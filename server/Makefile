@@ -233,6 +233,13 @@ build/fw-rules-test: tests/fw_rules_test.c src/fw/rules.c src/fw/fwmap.c src/sec
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/fw_rules_test.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c
 	./$@ || { rm -f $@; exit 1; }
+# the destinations a user types in the rule sheet (tests/fw_dest_cases.txt), through the store's
+# parser; tests/fwrule_input_test.mjs checks the same file against sdk/fwrule.js (run_suites.sh)
+test: build/fwdest-test
+build/fwdest-test: tests/fwdest_test.c tests/fw_dest_cases.txt src/fw/rules.c src/fw/fwmap.c src/sec/json.c $(wildcard src/fw/*.h) src/sec/json.h
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/fwdest_test.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c
+	./$@ || { rm -f $@; exit 1; }
 build/dnsmap-test: tests/dnsmap_test.c src/fw/dnsmap.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c $(wildcard src/fw/*.h) src/sec/json.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/dnsmap_test.c src/fw/dnsmap.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c

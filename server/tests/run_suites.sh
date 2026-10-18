@@ -147,6 +147,9 @@ EOF
     run "ipp-test" build/ipp-test
     run "tp-test" build/tp-test
     run "fan-test" build/fan-test
+    # the firewall rule sheet's parser (sdk/fwrule.js) against the same cases as build/fwdest-test
+    if have node; then run "fwrule-input-test (sdk/fwrule.js)" node tests/fwrule_input_test.mjs
+    else skip "fwrule-input-test" "node"; fi
 }
 
 full() {
