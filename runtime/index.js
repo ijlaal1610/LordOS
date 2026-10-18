@@ -89,7 +89,7 @@ let updatePriority = NoEventPriority;
 // react-reconciler 0.34 host interface (React 19), mutation mode like React Native.
 const host = {
   rendererPackageName: '@lordos/runtime',
-  rendererVersion: '0.7.0',
+  rendererVersion: '0.8.0',
   supportsMutation: true,
   supportsPersistence: false,
   supportsHydration: false,

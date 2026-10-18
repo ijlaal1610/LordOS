@@ -414,7 +414,7 @@ build/gen/lord_version.h: FORCE
 	@printf '#define LORD_VERSION "%s"\n#define LORD_CHANNEL "%s"\n#define LORD_BUILD "%s"\n' \
 	    '$(or $(LORD_VERSION),0.0.0)' '$(LORD_CHANNEL)' '$(shell printf %s '$(LORD_BUILD)' | tr -cd 'A-Za-z0-9.+~-')' > $@.new
 	@if cmp -s $@.new $@; then rm -f $@.new; else mv $@.new $@; fi
-build/obj/ui/js.o build/obj/ui/js_sys.o: build/gen/lord_version.h
+build/obj/ui/js.o build/obj/ui/js_sys.o build/obj/term/pty.o: build/gen/lord_version.h
 .PHONY: FORCE
 FORCE:
 

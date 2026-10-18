@@ -12,7 +12,7 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 Nothing yet.
 
-## [0.8.0-beta] - TBD
+## [0.8.0-beta] - 2026-10-18
 
 LordOS is a free GNU/Linux distribution based on Debian 13 ("trixie") with its own desktop
 environment. Debian provides the kernel, the drivers, Mesa, PipeWire, CUPS, BlueZ and every
@@ -244,6 +244,13 @@ machines, but some parts have not been tested on real hardware yet (see
   checks the release signature and SHA-256, installs with apt, sets up the login screen and asks
   before switching the display manager; `--uninstall` undoes it
   ([docs/INSTALL-DEBIAN.md](docs/INSTALL-DEBIAN.md)).
+- **Servers and VPS without a screen:** `curl -fsSL https://lordos.org/install.sh | sh -s -- --remote-desktop`
+  (optionally `--remote-port N`, 1024–65535, default 5673) also turns on the remote desktop, in
+  the same configuration file Settings → Sharing uses, after a confirmation that warns the port
+  accepts logins from the network. Without a display manager the login screen runs headless, so
+  the desktop is reached at `https://<server IP>:5673` from a browser, on amd64 and arm64.
+  `--uninstall` removes the configuration and closes the port
+  ([docs/INSTALL-DEBIAN.md](docs/INSTALL-DEBIAN.md), "Servers and VPS").
 - **Boot splash and boot menu:** a LordOS GRUB theme and a Plymouth splash (the crown with a
   progress bar) that hands off to the login screen without a black frame or console text.
 - **The version and release channel** are built into the system and shown in About and
@@ -267,6 +274,14 @@ machines, but some parts have not been tested on real hardware yet (see
   gallery, FAQ, the project paper (with PDFs), the release key and `install.sh`, and complete
   legal and trust pages (security policy, code signing, licences, privacy, support lifecycle,
   standards and more).
+- **A hero slideshow** of 39 real, checked screenshots inside the laptop on the home page, in
+  story order, with play/pause, previous/next, a counter and captions; it pauses on hover, focus
+  and hidden tabs and respects reduced motion. The spec facts sit in a stats row below it.
+- **Site navigation:** a hamburger menu with a CSS-only drawer on phones (focus trap, Esc), a
+  back-to-top button, a one-slot language dropdown, a dark-mode switch and a centred footer bar;
+  the Debian card covers PCs and servers (amd64 and arm64, with the `--remote-desktop` hint) and
+  the FAQ has an entry on servers and VPS. The site runs under a strict CSP (no inline styles or
+  scripts).
 - **Documentation** for every part of the system, indexed in [docs/README.md](docs/README.md),
   with the [project paper](docs/PAPER.md) and screenshots from real test runs.
 - **Repository policies:** [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md),
@@ -295,6 +310,17 @@ machines, but some parts have not been tested on real hardware yet (see
   ([docs/DESIGN.md](docs/DESIGN.md), before and after screenshots in `docs/polish/`).
 - **The boot menu** drops GRUB's countdown bar and uses a tighter selection band.
 - **The README** uses the same copy as lordos.org, with measured figures instead of estimates.
+- **Linux apps restricted from the microphone, camera, USB or Bluetooth start in their own view,
+  without the session bus or the user manager** (no notifications or portals for them), so they
+  can't escape their scope. A restriction set while such an app runs applies fully only after the
+  app is restarted; Settings says so ([docs/FIREWALL.md](docs/FIREWALL.md)).
+- **pipewire-pulse doesn't load modules** (`/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf`):
+  a module loaded by a restricted app would run outside its restrictions. Apps that load PulseAudio
+  modules at run time (`pactl load-module`) get an error.
+- **`kernel.yama.ptrace_scope = 1`** (`/usr/lib/sysctl.d/50-lordos-ptrace.conf`): a process can
+  only trace its own descendants. Debuggers still work on programs they start; attaching to a
+  running process (`gdb -p`, `strace -p`) needs `sudo`.
+- **The copyright holder** is "iPERFEX and the LordOS contributors" (MIT licence unchanged).
 
 ### Fixed
 
@@ -310,6 +336,9 @@ machines, but some parts have not been tested on real hardware yet (see
 - The Dock's hit box, audio for newly created users, upgrade-safe helpers, and the login screen now
   preselects the last user.
 - `lord-server` survives `SIGPIPE` when a client hangs up mid-write.
+- Restarting `lordos.service` left the old login screen running (and, after an upgrade, its old
+  binary); `lord-sessiond` now stops the login screen's processes when it stops and any leftover
+  when it starts ([docs/SESSIONS.md](docs/SESSIONS.md)).
 - A crash when a Dock window had no icon.
 - The firewall attributed "last matched" to the wrong rule after a save.
 - Short connections (such as `curl`) were missing from Monitor → Network; recent destinations are
@@ -351,6 +380,49 @@ described in [SECURITY.md](SECURITY.md).
 - **Signed releases:** `SHA256SUMS` is signed with the LordOS Ed25519 release key, and the Debian
   installer refuses to install when the signature is missing or invalid.
 - **Remote desktop** is off by default and only reachable after the owner turns it on.
+
+Fixed from the security review before this release (high and medium findings; the numbers are
+the review's, in [docs/SECURITY-REVIEW-0.8.0.md](docs/SECURITY-REVIEW-0.8.0.md)):
+
+- **A malicious `.desktop` file could leave the "no access to your files" view** (#1, high): the
+  working directory was entered before the private folders were mounted, so a relative path still
+  reached the real session bus. The directory is now entered inside the view.
+- **An app that couldn't be placed in its own scope still ran, unrestricted** (#2, high), for
+  unusual desktop ids or when lord-sessiond was unreachable. Desktop ids are now limited to safe
+  characters and length, and inside a LordOS session an app that can't be placed never starts.
+- **The microphone guard failed open** (#3, high) when its client or node tables filled up or a
+  permission list was too long. It now disconnects clients it can't follow and destroys streams it
+  can't store.
+- **A restricted app could record the microphone through a PulseAudio module** (#4, high), which
+  ran as the unrestricted pipewire-pulse. Module loading is off (see "Changed").
+- **A restricted Linux app could take over an unrestricted process of the same user with
+  `ptrace`** (#5, high). Only descendants can be traced now (see "Changed").
+- **Restricted Linux apps could escape through the user's own services** (#13, #37, high): two
+  attempts to exempt "the real sound server" under `user@` were forgeable, because the user
+  controls their own systemd manager. Nothing under `user@` is trusted for who it claims to be any
+  more; apps restricted from the microphone, camera, USB or Bluetooth start in their own view
+  instead (see "Changed"), and the desktop keeps its microphone.
+- **"Open with" could hand an app protected folders** (#6, medium) such as `~/.config/autostart`,
+  `firewall.json` or `~/.ssh` when a parent folder was opened, and **a symlink swapped in between
+  the check and the grant** could redirect it (#10, medium). Writable grants never cover those
+  folders, hard-linked files are read-only, and the grant is reopened without following symlinks
+  and must still be the checked file.
+- **Shared memory, terminals and caches of the session were reachable** from the files view (#7,
+  #8, medium): it now has its own `/dev/shm`, its own pseudo-terminals and IPC namespace, and the
+  font, shader and GStreamer caches are read-only. More folders that other programs run code from
+  are protected (#9), and a missing `XDG_RUNTIME_DIR` no longer leaves the bus reachable (#11).
+- **A USB microphone plugged in while a no-mic app ran** was open to it for a few seconds (#12,
+  medium): every sound device not known to be playback-only is now denied in its scope.
+- **A user process could pose as the sound server** to the microphone guard (#14, #15, #16,
+  medium) with a nested cgroup or another PID namespace. Matching is now exact (cgroup path, sole
+  process, root-owned binary, our PID namespace).
+- **The last frame of another user's desktop could be read after a user switch** (#17, medium):
+  lord-sessiond now removes the leaving session's framebuffers before handing the screen over.
+- **Landlock's socket scoping failed open on older kernels** (#38, medium): the files view and the
+  device view now require Landlock ABI 6 and refuse to start the app otherwise, with a notification.
+- **Installer and release tools** (low): the verified package is reinstalled from a root-owned
+  copy, a missing release key is an error, a validly signed older release can't downgrade an
+  install, and the signing script refuses unexpected file names.
 
 ### Known issues and limitations
 

@@ -4,6 +4,7 @@
  * login shell (the one in /etc/passwd), just like any terminal emulator.
  * The child inherits no capabilities, blocked signals or descriptors from the server. */
 #include "term.h"
+#include "lord_version.h"           /* build/gen: LordOS version (Makefile, from package.json) */
 
 #include <errno.h>
 #include <fcntl.h>
@@ -67,7 +68,7 @@ static void child(int fd, const char *cwd, int id) {
     setenv("TERM", "xterm-256color", 1);
     setenv("COLORTERM", "truecolor", 1);
     setenv("TERM_PROGRAM", "LordTerminal", 1);
-    setenv("TERM_PROGRAM_VERSION", "0.7.0", 1);
+    setenv("TERM_PROGRAM_VERSION", LORD_VERSION, 1);
     setenv("LORD_TERMINAL_SESSION", idbuf, 1);
     setenv("SHELL", shell, 1);
     if (pw) { setenv("USER", pw->pw_name, 1); setenv("LOGNAME", pw->pw_name, 1); }
