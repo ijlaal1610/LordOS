@@ -11,7 +11,13 @@
 #include "restrict.h"
 #include "../fw/rules.h"
 
+#include <dirent.h>
 #include <errno.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+#include <linux/sock_diag.h>
+#include <linux/unix_diag.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
@@ -44,7 +50,8 @@
 
 typedef struct {
     uint32_t id, proxy;         /* global id; our bound proxy (0 = not bound yet) */
-    int pid_sec, pid_app, pulse;/* pipewire.sec.pid, application.process.id, a pipewire-pulse client */
+    int pid_sec, pid_app, pulse;/* pipewire.sec.pid (kernel), application.process.id (app-reported), a client of the real pipewire-pulse */
+    int unverified;             /* who it is can't be established: treated as restricted while restricted apps run */
     int resolved;               /* app worked out (needs the client's info) */
     char app[FW_APP_MAX];
     uint32_t want, applied;     /* restrictions (FW_R_NO_MIC | FW_R_NO_CAMERA) to apply / applied */
@@ -248,9 +255,15 @@ static PgNode *node_by_id(uint32_t id) {
     return NULL;
 }
 
+/* Restricted apps are running (an app scope of this session whose app has no-mic or no-camera):
+ * only then are clients we can't identify treated as restricted, so normal use without
+ * restrictions never pays for it. */
+static int guard_armed;
+
 /* What the client's app is restricted to, among what PipeWire hands out. */
 static uint32_t client_restrictions(PgClient *c) {
     if (!c->resolved) return 0;
+    if (c->unverified) return guard_armed ? (FW_R_NO_MIC | FW_R_NO_CAMERA) : 0;
     if (!c->app[0]) return 0;
     uint32_t f = 0;
     if (restrict_blocks(c->app, FW_R_NO_MIC)) f |= FW_R_NO_MIC;
@@ -310,11 +323,138 @@ static void evaluate(PgClient *c) {
     if (c->want != c->applied) apply_permissions(c, c->want);
 }
 
+/* ---- who a client really is ---------------------------------------------------------------- */
+
+/* Is pid the session's real pipewire-pulse? Never from a property: the executable is the root-owned
+ * /usr/bin/pipewire (pipewire-pulse is a link to it), the process is ours, and it runs in the user
+ * manager's pipewire-pulse.service. */
+static int is_pulse_daemon(int pid) {
+    char p[64], line[512];
+    snprintf(p, sizeof p, "/proc/%d/exe", pid);
+    struct stat st, want;
+    if (stat(p, &st) || stat("/usr/bin/pipewire", &want) || st.st_dev != want.st_dev || st.st_ino != want.st_ino || want.st_uid != 0) return 0;
+    snprintf(p, sizeof p, "/proc/%d", pid);
+    if (stat(p, &st) || st.st_uid != getuid()) return 0;
+    snprintf(p, sizeof p, "/proc/%d/cgroup", pid);
+    FILE *f = fopen(p, "re");
+    int ok = 0;
+    char unit[96];
+    snprintf(unit, sizeof unit, "/user@%u.service/session.slice/pipewire-pulse.service\n", (unsigned)getuid());
+    while (f && fgets(line, sizeof line, f)) {
+        if (strncmp(line, "0::", 3)) continue;
+        size_t l = strlen(line), ul = strlen(unit);
+        ok = l > ul && !strcmp(line + l - ul, unit);
+    }
+    if (f) fclose(f);
+    return ok;
+}
+
+/* The unix sockets of the system and their peers (sock_diag), to see who is really connected to
+ * pipewire-pulse. Returns the number of pairs written into ino/peer. */
+static int unix_peers(uint32_t *ino, uint32_t *peer, int max) {
+    int fd = socket(AF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC, NETLINK_SOCK_DIAG);
+    if (fd < 0) return -1;
+    struct { struct nlmsghdr nh; struct unix_diag_req r; } req;
+    memset(&req, 0, sizeof req);
+    req.nh.nlmsg_len = sizeof req;
+    req.nh.nlmsg_type = SOCK_DIAG_BY_FAMILY;
+    req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
+    req.r.sdiag_family = AF_UNIX;
+    req.r.udiag_states = ~0u;
+    req.r.udiag_show = UDIAG_SHOW_PEER;
+    if (send(fd, &req, sizeof req, 0) != (ssize_t)sizeof req) { close(fd); return -1; }
+    static uint8_t buf[32768];
+    int n = 0, done = 0;
+    while (!done) {
+        ssize_t r = recv(fd, buf, sizeof buf, 0);
+        if (r <= 0) break;
+        for (struct nlmsghdr *h = (struct nlmsghdr *)buf; NLMSG_OK(h, (size_t)r); h = NLMSG_NEXT(h, r)) {
+            if (h->nlmsg_type == NLMSG_DONE || h->nlmsg_type == NLMSG_ERROR) { done = 1; break; }
+            struct unix_diag_msg *m = NLMSG_DATA(h);
+            int len = (int)h->nlmsg_len - (int)NLMSG_LENGTH(sizeof *m);
+            for (struct rtattr *a = (struct rtattr *)(m + 1); len > 0 && RTA_OK(a, len); a = RTA_NEXT(a, len))
+                if (a->rta_type == UNIX_DIAG_PEER && RTA_PAYLOAD(a) >= 4 && n < max) { ino[n] = m->udiag_ino; memcpy(&peer[n], RTA_DATA(a), 4); n++; }
+        }
+    }
+    close(fd);
+    return n;
+}
+
+/* How many distinct connections to pipewire-pulse (process pp) process pid holds; -1 if unknown. */
+static int pulse_connections(int pp, int pid) {
+    static uint32_t ino[65536], peer[65536];
+    int np = unix_peers(ino, peer, 65536);
+    if (np < 0) return -1;
+    /* the server ends held by pipewire-pulse, and the client ends held by pid */
+    char d[64], l[320], t[64];
+    uint32_t mine[4096];
+    int nm = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        snprintf(d, sizeof d, "/proc/%d/fd", pass ? pid : pp);
+        DIR *dir = opendir(d);
+        if (!dir) return -1;
+        struct dirent *e;
+        int count = 0;
+        while ((e = readdir(dir))) {
+            if (e->d_name[0] == '.') continue;
+            snprintf(l, sizeof l, "%s/%s", d, e->d_name);
+            ssize_t k = readlink(l, t, sizeof t - 1);
+            unsigned long v;
+            if (k <= 0) continue;
+            t[k] = 0;
+            if (sscanf(t, "socket:[%lu]", &v) != 1) continue;
+            if (!pass) { if (nm < 4096) mine[nm++] = (uint32_t)v; continue; }
+            /* a client socket of pid whose peer is one of pipewire-pulse's */
+            for (int i = 0; i < np; i++) {
+                if (ino[i] != (uint32_t)v) continue;
+                for (int k2 = 0; k2 < nm; k2++) if (mine[k2] == peer[i]) { count++; break; }
+                break;
+            }
+        }
+        closedir(dir);
+        if (pass) return count;
+    }
+    return -1;
+}
+
 static void resolve(PgClient *c) {
-    int pid = c->pulse ? c->pid_app : c->pid_sec;
     c->app[0] = 0;
-    if (pid <= 0 || appid_of_pid((unsigned)pid, c->app, sizeof c->app)) c->app[0] = 0;
+    c->unverified = 0;
     c->resolved = 1;
+    int pid = c->pid_sec;                           /* the socket's credentials: always the start */
+    if (c->pulse && !guard_armed) pid = c->pid_app;  /* no restricted app runs: nothing to verify */
+    else if (c->pulse) {
+        /* a pulse client of the real pipewire-pulse: the app's own pid is what it reported, so it
+         * counts only if that process really holds as many connections to pipewire-pulse as
+         * there are clients claiming it */
+        int claims = 0;
+        for (int i = 0; i < MAX_CLIENTS; i++) if (P.cl[i].live && P.cl[i].pulse && P.cl[i].pid_app == c->pid_app) claims++;
+        int real = c->pid_app > 0 ? pulse_connections(c->pid_sec, c->pid_app) : -1;
+        if (real < claims) { c->unverified = 1; return; }
+        pid = c->pid_app;
+    }
+    if (pid <= 0) { c->unverified = 1; return; }
+    int r = appid_of_pid((unsigned)pid, c->app, sizeof c->app);
+    if (r < 0) { c->unverified = 1; c->app[0] = 0; }  /* gone or unreadable */
+    else if (r > 0) c->app[0] = 0;                  /* not in any app's scope */
+}
+
+/* Re-arms the guard: is any restricted app of this session running? (its scope is there) */
+static void arm(void) {
+    char dir[96];
+    snprintf(dir, sizeof dir, "/sys/fs/cgroup/system.slice/lordos.service/lordos-session-%u", (unsigned)getuid());
+    DIR *d = opendir(dir);
+    int armed = 0;
+    struct dirent *e;
+    while (d && (e = readdir(d)) && !armed) {
+        char path[512], app[FW_APP_MAX];
+        if (strncmp(e->d_name, "app-lordos-", 11)) continue;
+        snprintf(path, sizeof path, "/lordos-session-%u/%s", (unsigned)getuid(), e->d_name);
+        if (appid_of_cgroup(path, app, sizeof app)) continue;
+        armed = restrict_blocks(app, FW_R_NO_MIC) || restrict_blocks(app, FW_R_NO_CAMERA);
+    }
+    if (d) closedir(d);
+    guard_armed = armed;
 }
 
 /* ---- events -------------------------------------------------------------------------------- */
@@ -389,7 +529,10 @@ static void on_client_info(uint32_t proxy, PwPod body) {
     const char *sp = dict_get(props, "pipewire.sec.pid"), *ap = dict_get(props, "application.process.id");
     c->pid_sec = sp ? atoi(sp) : 0;
     c->pid_app = ap ? atoi(ap) : 0;
-    c->pulse = dict_get(props, "pulse.server.type") != NULL;
+    /* a pulse client only if the connection really comes from the session's pipewire-pulse; the
+     * pulse.server.type property alone is the client's word */
+    c->pulse = dict_get(props, "pulse.server.type") != NULL && c->pid_sec > 0 && is_pulse_daemon(c->pid_sec);
+    arm();
     resolve(c);
     evaluate(c);
     kill_streams();
@@ -460,8 +603,15 @@ void pwguard_tick(void) {
     }
     if (t < P.next_tick) return;
     P.next_tick = t + 1000;
-    /* the rules may have changed (Settings): apply or lift */
-    for (int i = 0; i < MAX_CLIENTS; i++) if (P.cl[i].live) evaluate(&P.cl[i]);
+    /* the rules or the running apps may have changed: apply or lift; who the pulse clients are is
+     * checked again (their claims depend on who else is connected) */
+    arm();
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        PgClient *c = &P.cl[i];
+        if (!c->live || !c->resolved) continue;
+        if (c->pulse || c->unverified) resolve(c);
+        evaluate(c);
+    }
     kill_streams();
     flush_out();
 }

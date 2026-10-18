@@ -76,6 +76,24 @@ sleep 1.5
 f=$OUTD/out.raw; timeout 3 pw-record --rate 48000 --channels 1 --format s16 "$f" >/dev/null 2>&1
 n=$(stat -c %s "$f" 2>/dev/null || echo 0)
 [ "$n" -gt 20000 ] && ok "another program records ($n bytes)" || bad "another program got $n bytes"
+echo "6. lying about who it is: still nothing recorded"
+# an unrestricted recorder outside the scope, whose pid the restricted app claims
+timeout 12 parecord --raw "$OUTD/decoy.raw" >/dev/null 2>&1 &
+DECOY=$!
+sleep 1
+spoof() {   # spoof <name> <command...>: records in the scope with a lie; prints the bytes it got
+    local name=$1; shift
+    local f=$OUTD/$name.raw
+    in_scope "$SC" env "$@" "$f" >/dev/null 2>&1
+    stat -c %s "$f" 2>/dev/null || echo 0
+}
+n=$(spoof claim-pulse PULSE_PROP="application.process.id=$DECOY" timeout 3 parecord --raw)
+[ "$n" -lt 4096 ] && ok "pulse client claiming another process's pid: $n bytes" || bad "spoofed application.process.id recorded $n bytes"
+n=$(spoof fake-pulse PIPEWIRE_PROPS="{ \"pulse.server.type\": \"unix\", \"application.process.id\": \"$DECOY\" }" timeout 3 pw-record --rate 48000 --channels 1 --format s16)
+[ "$n" -lt 4096 ] && ok "native client posing as a pulse client: $n bytes" || bad "fake pulse.server.type recorded $n bytes"
+n=$(spoof bad-pid PULSE_PROP="application.process.id=999999" timeout 3 parecord --raw)
+[ "$n" -lt 4096 ] && ok "pulse client claiming a pid that doesn't exist: $n bytes" || bad "unresolvable pid recorded $n bytes"
+kill $DECOY 2>/dev/null; wait $DECOY 2>/dev/null
 kill $GPID 2>/dev/null; wait $GPID 2>/dev/null
 rm -rf "$OUTD"
 fwlinux_done
