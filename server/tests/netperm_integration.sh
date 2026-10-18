@@ -113,6 +113,31 @@ rules '{"v":1,"mode":"silent","trusted":[],"restricted":{},"rules":[{"app":"'$AP
 got=$(python3 -c 'import socket;socket.create_connection(("'$GW'",53),timeout=4);print("ok")' 2>&1 | tail -1)
 [ "$got" = ok ] && ok "outside the scope → ok" || bad "outside the scope → $got"
 
+echo "9. connection notices carry the names the resolver gave (hosts)"
+rules '{"v":1,"mode":"silent","trusted":[],"restricted":{},"rules":[{"app":"'$APP'","dir":"out","dst":"example.com","action":"deny","when":0}]}'
+python3 - "$APP" > /tmp/np-hosts-$U.txt <<'PY' &
+import socket, struct, sys, time, json
+s = socket.socket(socket.AF_UNIX); s.connect('/run/lordos/netperm.sock'); s.settimeout(8)
+buf = b''; end = time.time() + 8
+while time.time() < end:
+    try: d = s.recv(65536)
+    except socket.timeout: break
+    if not d: break
+    buf += d
+    while len(buf) >= 5:
+        l, t = struct.unpack('<IB', buf[:5])
+        if len(buf) < 4 + l: break
+        body = buf[5:4 + l]; buf = buf[4 + l:]
+        if t == 11:
+            ev = json.loads(body)
+            if ev.get('app') == sys.argv[1] and ev.get('hosts'): print(' '.join(ev['hosts'])); sys.exit(0)
+PY
+sleep 1
+try https example.com 443 >/dev/null
+wait
+grep -q "example.com" /tmp/np-hosts-$U.txt && ok "the notice names example.com ($(cat /tmp/np-hosts-$U.txt))" || bad "no host names in the notice"
+rm -f /tmp/np-hosts-$U.txt
+
 echo "netperm-integration: $pass passed, $fail failed"
 sudo rmdir "$SC" 2>/dev/null
 [ $fail = 0 ]

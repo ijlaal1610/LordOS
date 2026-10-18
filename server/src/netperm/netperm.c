@@ -595,12 +595,27 @@ static void on_event(void *u, const void *data, uint32_t len) {
         return;
     }
     const char *flag = ev.flag ? fw_flag_name(ev.flag) : "";
-    char app[FW_APP_MAX * 2 + 4], j[700];
+    /* the names the system resolver gave for that address (at most 4, so the Monitor can offer
+     * "block this domain" with the real name) */
+    char hosts[4 * (FW_NAME_MAX * 2 + 4) + 4] = "[]";
+    if (ev.fam == 4 || ev.fam == 6) {
+        char names[4][FW_NAME_MAX];
+        int nh = dnsmap_lookup(G.names, NAMES_APP, ev.fam, ev.addr, mono(), names, 4);
+        size_t w = 0;
+        hosts[w++] = '[';
+        for (int i = 0; i < nh; i++) {
+            char q[FW_NAME_MAX * 2 + 4];
+            json_quote(q, sizeof q, names[i]);
+            w += (size_t)snprintf(hosts + w, sizeof hosts - w, "%s%s", i ? "," : "", q);
+        }
+        snprintf(hosts + w, sizeof hosts - w, "]");
+    }
+    char app[FW_APP_MAX * 2 + 4], j[700 + sizeof hosts];
     json_quote(app, sizeof app, sc->app);
-    int n = snprintf(j, sizeof j, "{\"app\":%s,\"v\":\"%s\",\"dir\":\"%s\",\"proto\":\"%s\",\"addr\":\"%s\",\"port\":%u,\"by\":\"%s\",\"rule\":%u,\"flag\":\"%s\",\"record\":%d}",
+    int n = snprintf(j, sizeof j, "{\"app\":%s,\"v\":\"%s\",\"dir\":\"%s\",\"proto\":\"%s\",\"addr\":\"%s\",\"port\":%u,\"by\":\"%s\",\"rule\":%u,\"flag\":\"%s\",\"record\":%d,\"hosts\":%s}",
                      app, ev.verdict == NP_V_DENY ? "deny" : "allow", ev.dir == NP_D_IN ? "in" : "out",
                      ev.proto == NP_P_TCP ? "tcp" : ev.proto == NP_P_UDP ? "udp" : "other", addr, ev.port, by_name(ev.reason),
-                     ev.rule_id, flag ? flag : "", ev.record);
+                     ev.rule_id, flag ? flag : "", ev.record, hosts);
     if (n > 0 && (size_t)n < sizeof j) send_uid(s->uid, NP_MSG_EVENT, j, (size_t)n, 1);
     if (ev.verdict == NP_V_DENY)
         logf_("uid %u %s: denied %s %s %s:%u (%s%s%s)", s->uid, sc->app, ev.dir == NP_D_IN ? "in" : "out",

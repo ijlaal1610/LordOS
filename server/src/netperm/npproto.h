@@ -15,7 +15,10 @@
  * From lord-netperm to lord-server (compact JSON in the data):
  *   NP_MSG_STATUS   {"bpf":true,"dns":"resolved","error":""}             on connect and when it changes
  *   NP_MSG_EVENT    {"app":"desktop:x","v":"deny","dir":"out","proto":"tcp","addr":"1.2.3.4",
- *                    "port":443,"by":"rule","rule":7,"flag":"","record":0}  a new connection
+ *                    "port":443,"by":"rule","rule":7,"flag":"","record":0,
+ *                    "hosts":["example.com"]}                          a new connection; hosts:
+ *                                                                       up to 4 names the resolver
+ *                                                                       gave for addr
  *   NP_MSG_COUNTS   {"desktop:x":[allowed,denied],...}                   every second, if it changed */
 #ifndef LORD_NP_PROTO_H
 #define LORD_NP_PROTO_H
