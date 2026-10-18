@@ -809,8 +809,14 @@ write('favicon-512.png', read(r('docs/brand/favicon/favicon-512.png')));
 write('apple-touch-icon.png', read(r('docs/brand/favicon/apple-touch-icon-180.png')));
 write('social-card.png', read(r('docs/brand/png/social-card-1200x630.png')));
 write('lordos-release.pub.pem', read(r('tools/release/lordos-release.pub.pem')));
-write('install.sh', read(r('tools/install/install.sh')));
-execFileSync('cmp', [r('tools/install/install.sh'), path.join(DIST, 'install.sh')]); // throws if they differ
+// install.sh is published from the last commit, never from uncommitted edits in the working tree
+let installSh = read(r('tools/install/install.sh'));
+try {
+  const committed = execFileSync('git', ['-C', REPO, 'show', 'HEAD:tools/install/install.sh'], { maxBuffer: 16 << 20 });
+  if (!committed.equals(installSh)) { console.warn('[web] tools/install/install.sh has uncommitted changes: publishing the committed version'); installSh = committed; }
+} catch { /* not a git checkout */ }
+write('install.sh', installSh);
+if (!read(path.join(DIST, 'install.sh')).equals(installSh)) throw new Error('install.sh copy differs');
 const secTxt = path.join(CONTENT, 'well-known/security.txt');
 if (fs.existsSync(secTxt)) {
   const txt = fs.readFileSync(secTxt, 'utf8');
