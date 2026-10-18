@@ -2,7 +2,7 @@ Esta página explica quais versões do LordOS recebem correções, como as atual
 
 ## Situação atual: beta
 
-O LordOS **0.7.0** é o primeiro beta público, lançado em 18 de outubro de 2026; a próxima versão é a **0.8.0 beta**. As versões beta podem mudar comportamentos, ajustes e formatos de arquivo de uma versão para outra, e não são pensadas para trabalho crítico. Veja os [Termos de uso](/legal/terms/).
+O LordOS **0.8.0 beta** é a primeira versão pública (a 0.7.0 nunca foi publicada). O que cada versão traz está nas notas dela no [GitHub Releases](https://github.com/lordbasex/LordOS/releases). As versões beta podem mudar comportamentos, ajustes e formatos de arquivo de uma versão para outra, e não são pensadas para trabalho crítico. Veja os [Termos de uso](/legal/terms/).
 
 ## Quais versões recebem correções
 

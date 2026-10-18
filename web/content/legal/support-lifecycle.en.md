@@ -2,7 +2,7 @@ This page explains which LordOS versions receive fixes, how updates reach you, a
 
 ## Current status: beta
 
-LordOS **0.7.0** is the first public beta, released on 18 October 2026; the next release is **0.8.0 beta**. Beta releases can change behaviour, settings and file formats between versions, and they are not meant for critical work. See the [Terms of use](/legal/terms/).
+LordOS **0.8.0 beta** is the first public release (0.7.0 was never published). What each release contains is in its notes on [GitHub Releases](https://github.com/lordbasex/LordOS/releases). Beta releases can change behaviour, settings and file formats between versions, and they are not meant for critical work. See the [Terms of use](/legal/terms/).
 
 ## Which versions get fixes
 

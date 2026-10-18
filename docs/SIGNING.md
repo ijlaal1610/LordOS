@@ -150,6 +150,9 @@ Each release also carries an SPDX SBOM (`lordos_<version>_<arch>.spdx.json`, fro
 `tools/release/make-sbom.sh`). It goes into the release folder before signing, so `SHA256SUMS` and
 its signature cover it too. See [COMPLIANCE.md](COMPLIANCE.md).
 
+The whole release process (changelog, tag, build, SBOM, signing and `gh release create`) is in
+[RELEASING.md](RELEASING.md).
+
 ## Files
 
 | Path | What it is |

@@ -107,9 +107,9 @@
             "pt": "Está pronto para o dia a dia?"
           },
           "a": {
-            "en": "Not yet: LordOS 0.7.0 is the first public beta. Most of it works, but some parts haven't been tested on real hardware yet (for example the Raspberry Pi 5 desktop, real printers and NVIDIA cards), and features such as accessibility tools are still to come. Try it live or on a spare computer, and keep backups.",
-            "es": "Todavía no: LordOS 0.7.0 es la primera beta pública. Casi todo funciona, pero algunas partes todavía no se probaron en hardware real (por ejemplo el escritorio en la Raspberry Pi 5, impresoras reales y placas NVIDIA), y faltan cosas como las herramientas de accesibilidad. Probala en modo live o en una compu de repuesto, y hacé copias de seguridad.",
-            "pt": "Ainda não: o LordOS 0.7.0 é o primeiro beta público. Quase tudo funciona, mas algumas partes ainda não foram testadas em hardware real (por exemplo o desktop no Raspberry Pi 5, impressoras reais e placas NVIDIA), e recursos como as ferramentas de acessibilidade ainda estão por vir. Experimente no modo live ou num computador reserva, e faça backups."
+            "en": "Not yet: LordOS 0.8.0 beta is the first public release. Most of it works, but some parts haven't been tested on real hardware yet (for example the Raspberry Pi 5 desktop, real printers and NVIDIA cards), and features such as accessibility tools are still to come. Try it live or on a spare computer, and keep backups.",
+            "es": "Todavía no: LordOS 0.8.0 beta es la primera versión pública. Casi todo funciona, pero algunas partes todavía no se probaron en hardware real (por ejemplo el escritorio en la Raspberry Pi 5, impresoras reales y placas NVIDIA), y faltan cosas como las herramientas de accesibilidad. Probala en modo live o en una compu de repuesto, y hacé copias de seguridad.",
+            "pt": "Ainda não: o LordOS 0.8.0 beta é a primeira versão pública. Quase tudo funciona, mas algumas partes ainda não foram testadas em hardware real (por exemplo o desktop no Raspberry Pi 5, impressoras reais e placas NVIDIA), e recursos como as ferramentas de acessibilidade ainda estão por vir. Experimente no modo live ou num computador reserva, e faça backups."
           }
         }
       ]
@@ -710,9 +710,9 @@
             "pt": "Como pego uma versão nova do LordOS?"
           },
           "a": {
-            "en": "New versions are published on [GitHub Releases](https://github.com/lordbasex/LordOS/releases) as a `.deb` package, an ISO and a Raspberry Pi image. On Debian, running the one-line installer again upgrades LordOS; you can also install a downloaded `.deb` from the Store. A built-in updater for LordOS itself is not available yet.",
-            "es": "Las versiones nuevas se publican en [GitHub Releases](https://github.com/lordbasex/LordOS/releases) como paquete `.deb`, ISO e imagen para Raspberry Pi. En Debian, volver a ejecutar el instalador de una línea actualiza LordOS; también podés instalar un `.deb` descargado desde la Tienda. Un actualizador propio de LordOS todavía no está disponible.",
-            "pt": "As versões novas são publicadas no [GitHub Releases](https://github.com/lordbasex/LordOS/releases) como pacote `.deb`, ISO e imagem para Raspberry Pi. No Debian, rodar de novo o instalador de uma linha atualiza o LordOS; você também pode instalar um `.deb` baixado pela Loja. Um atualizador próprio do LordOS ainda não está disponível."
+            "en": "New versions are published on [GitHub Releases](https://github.com/lordbasex/LordOS/releases) as a `.deb` package, an ISO and a Raspberry Pi image. On Debian, running the one-line installer again upgrades LordOS; you can also install a downloaded `.deb` from the Store. A built-in updater for LordOS itself is not available yet. Each release's notes list everything that changed, and [CHANGELOG.md](https://github.com/lordbasex/LordOS/blob/main/CHANGELOG.md) keeps the whole history.",
+            "es": "Las versiones nuevas se publican en [GitHub Releases](https://github.com/lordbasex/LordOS/releases) como paquete `.deb`, ISO e imagen para Raspberry Pi. En Debian, volver a ejecutar el instalador de una línea actualiza LordOS; también podés instalar un `.deb` descargado desde la Tienda. Un actualizador propio de LordOS todavía no está disponible. Las notas de cada versión detallan todo lo que cambió, y [CHANGELOG.md](https://github.com/lordbasex/LordOS/blob/main/CHANGELOG.md) guarda el historial completo.",
+            "pt": "As versões novas são publicadas no [GitHub Releases](https://github.com/lordbasex/LordOS/releases) como pacote `.deb`, ISO e imagem para Raspberry Pi. No Debian, rodar de novo o instalador de uma linha atualiza o LordOS; você também pode instalar um `.deb` baixado pela Loja. Um atualizador próprio do LordOS ainda não está disponível. As notas de cada versão listam tudo o que mudou, e o [CHANGELOG.md](https://github.com/lordbasex/LordOS/blob/main/CHANGELOG.md) guarda o histórico completo."
           }
         },
         {
