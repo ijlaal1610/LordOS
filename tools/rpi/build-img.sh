@@ -13,8 +13,13 @@
 #   emulated, and lord-server is built in a separate arm64 chroot (slow: ~15–30 min the first time).
 #
 # Variables: MIRROR (Debian), RPI_MIRROR (Raspberry Pi archive), IMG_EXTRA_MB (free space in the
-# image before it grows on boot, 512), RPI_SSH=1 (adds openssh-server, for development),
-# RPI_KEY_NOCHECK=1 (do not verify the Raspberry Pi archive key fingerprint; not recommended).
+# image before it grows on boot, 512), RPI_SSH=1 (SSH server on from the start, for development;
+# otherwise it ships off and the `ssh` switch file turns it on), RPI_KEY_NOCHECK=1 (do not verify
+# the Raspberry Pi archive key fingerprint; not recommended), KERNEL_DEBS (folder with the LordOS
+# kernel packages from tools/rpi/build-kernel.sh, default /var/tmp/lordos-kernel/out).
+#
+# Kernel: the LordOS build of the Raspberry Pi kernel (with Landlock) when its .debs are in
+# $KERNEL_DEBS; otherwise Raspberry Pi's archive kernel, which has no Landlock (a loud warning).
 set -eu
 
 [ "$(id -u)" = 0 ] || { echo "build-img.sh: run as root (sudo)" >&2; exit 1; }
@@ -42,6 +47,7 @@ NAME="lordos-$VERSION-rpi5-arm64"
 IMG="$OUT/$NAME.img"
 DEB="$OUT/lordos_${VERSION}_arm64.deb"
 RPI="$ROOT/tools/rpi/rootfs"
+KERNEL_DEBS=${KERNEL_DEBS:-/var/tmp/lordos-kernel/out}
 T0=$(date +%s)
 
 for t in debootstrap dpkg-deb sfdisk losetup mkfs.vfat mkfs.ext4 xz curl gpg partx; do
@@ -61,20 +67,39 @@ PKGS_BASE="initramfs-tools systemd-sysv udev kmod dbus dbus-user-session sudo lo
 PKGS_LORDOS="libwayland-server0 libxkbcommon0 xkb-data pipewire pipewire-pulse pipewire-alsa wireplumber rtkit
  alsa-ucm-conf wpasupplicant openvpn fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji libthai-data
  skkdic rime-data-pinyin-simp fonts-dejavu-core"
-# Raspberry Pi: Pi 5 kernel (2712: 16K pages) and Pi 4/400/CM4 kernel (v8: 4K), boot firmware
-# (start*.elf are not used on the Pi 5: its firmware lives in the EEPROM) and Wi-Fi/BT (CYW43455)
-PKGS_RPI="raspi-firmware linux-image-rpi-2712 linux-image-rpi-v8 firmware-brcm80211"
+# Raspberry Pi: boot firmware (start*.elf are not used on the Pi 5: its firmware lives in the
+# EEPROM) and Wi-Fi/BT (CYW43455); kernels below
+PKGS_RPI="raspi-firmware firmware-brcm80211 rsync"
 PKGS_RPI_EXTRA="rpi-eeprom raspi-utils"
+# Kernels: Pi 5 (2712: 16K pages) and Pi 4/400/CM4 (v8: 4K pages). Ours (Landlock) if built,
+# per flavour; otherwise Raspberry Pi's.
+OWN_KDEBS=""; ARCHIVE_K=""; OWN_FLAVOURS=""
+for fl in 2712 v8; do
+    d=$(ls "$KERNEL_DEBS"/linux-image-*-lordos-rpi-${fl}_*_arm64.deb 2>/dev/null | sort -V | tail -1 || true)
+    if [ -n "$d" ]; then OWN_KDEBS="$OWN_KDEBS $d"; OWN_FLAVOURS="$OWN_FLAVOURS $fl"
+    else ARCHIVE_K="$ARCHIVE_K linux-image-rpi-$fl"; fi
+done
 # Debian 13 Mesa: v3d (OpenGL ES 3.1 on the Pi 5), v3dv (Vulkan 1.2/1.3) and kmsro (vc4 + v3d)
 PKGS_GPU="libgl1-mesa-dri libegl1 libgles2 libgbm1 mesa-vulkan-drivers mesa-utils vulkan-tools glmark2-es2-wayland"
 PKGS_APPS="foot featherpad qt6-wayland"
-PKGS_DEV=""
-[ "${RPI_SSH:-0}" = 1 ] && PKGS_DEV="openssh-server"
+# the SSH server ships off; the `ssh` switch file on the boot partition (rpi/firstboot) or RPI_SSH=1 turns it on
+PKGS_SSH="openssh-server"
 # to build lord-server (only in the build chroot, not in the image)
 PKGS_BUILD="build-essential pkg-config libxkbcommon-dev libwayland-dev wayland-protocols libgbm-dev libegl-dev libgles-dev
  libssl-dev libcrypt-dev dpkg-dev file"
 
 echo "== LordOS $VERSION: Raspberry Pi image in $WORK (host $(uname -m))"
+kernel_warning() {
+    echo "##########################################################################################" >&2
+    echo "## WARNING: no LordOS kernel for rpi-$1 in $KERNEL_DEBS: using Raspberry Pi's archive kernel." >&2
+    echo "## It has NO Landlock: app and helper isolation will be seccomp-only on that board and" >&2
+    echo "## doc_evil.sh / sandbox-test fail. Build it first: tools/rpi/build-kernel.sh (docs/RASPBERRY.md)." >&2
+    echo "##########################################################################################" >&2
+}
+for fl in 2712 v8; do
+    case " $OWN_FLAVOURS " in *" $fl "*) echo "   kernel rpi-$fl: LordOS build ($(basename "$(ls "$KERNEL_DEBS"/linux-image-*-lordos-rpi-${fl}_*_arm64.deb | sort -V | tail -1)"))" ;;
+        *) kernel_warning "$fl" ;; esac
+done
 umount_tree() {
     for d in "$CH" "$BR"; do
         for m in dev/pts dev proc sys run; do mountpoint -q "$d/$m" 2>/dev/null && umount -l "$d/$m" || true; done
@@ -201,8 +226,29 @@ mount_ch "$CH"
 echo "== paquetes"
 in_root "$CH" apt-get update -q > "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
 # shellcheck disable=SC2086
-in_root "$CH" apt-get install -y -q --no-install-recommends $PKGS_BASE $PKGS_LORDOS $PKGS_RPI $PKGS_GPU $PKGS_APPS $PKGS_DEV \
+in_root "$CH" apt-get install -y -q --no-install-recommends $PKGS_BASE $PKGS_LORDOS $PKGS_RPI $ARCHIVE_K $PKGS_GPU $PKGS_APPS $PKGS_SSH \
     >> "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
+# the LordOS kernels (same hooks as Raspberry Pi's: initramfs, raspi-firmware copies kernel_2712.img,
+# device trees and overlays), and an apt pin so the archive kernel of that flavour never replaces them
+if [ -n "$OWN_KDEBS" ]; then
+    mkdir -p "$CH/tmp/kernel"
+    # shellcheck disable=SC2086
+    cp $OWN_KDEBS "$CH/tmp/kernel/"
+    in_root "$CH" sh -c 'apt-get install -y -q --no-install-recommends /tmp/kernel/*.deb' >> "$WORK/apt.log" 2>&1 || {
+        tail -30 "$WORK/apt.log"; exit 1; }
+    rm -rf "$CH/tmp/kernel"
+    {
+        echo "# LordOS on Raspberry Pi: the kernel is LordOS's build of the Raspberry Pi kernel (with Landlock,"
+        echo "# tools/rpi/build-kernel.sh, docs/RASPBERRY.md). Raspberry Pi's kernel packages for the same"
+        echo "# board are never installed over it; LordOS updates ship as new linux-image-*-lordos-rpi-* packages."
+        for fl in $OWN_FLAVOURS; do
+            echo
+            echo "Package: linux-image-rpi-$fl linux-image-*+rpt-rpi-$fl linux-headers-rpi-$fl linux-headers-*+rpt-rpi-$fl"
+            echo "Pin: version *"
+            echo "Pin-Priority: -1"
+        done
+    } > "$CH/etc/apt/preferences.d/lordos-kernel"
+fi
 # shellcheck disable=SC2086
 in_root "$CH" apt-get install -y -q --no-install-recommends $PKGS_RPI_EXTRA >> "$WORK/apt.log" 2>&1 ||
     echo "   warning: $PKGS_RPI_EXTRA were not installed (see $WORK/apt.log)"
@@ -240,6 +286,8 @@ in_root "$CH" systemctl --global enable pipewire.socket pipewire-pulse.socket wi
 # first boot and wait for vc4
 install -d "$CH/usr/lib/lordos/rpi" "$CH/etc/systemd/system/lordos.service.d"
 install -m 755 "$RPI/usr/lib/lordos/rpi/firstboot" "$RPI/usr/lib/lordos/rpi/wait-kms" "$CH/usr/lib/lordos/rpi/"
+# the post-flash check (docs/RASPBERRY.md, "After flashing"): sudo /usr/lib/lordos/rpi/verify-board
+install -m 755 "$ROOT/tools/rpi/verify-board.sh" "$CH/usr/lib/lordos/rpi/verify-board"
 install -m 644 "$RPI/etc/systemd/system/lordos-rpi-firstboot.service" "$CH/etc/systemd/system/"
 install -m 644 "$RPI/etc/systemd/system/lordos.service.d/rpi.conf" "$CH/etc/systemd/system/lordos.service.d/"
 mkdir -p "$CH/var/lib/lordos/rpi"
@@ -255,6 +303,10 @@ in_root "$CH" usermod -p '*' root
 KV2712=$(ls "$CH/boot" | sed -n 's/^vmlinuz-\(.*-rpi-2712\)$/\1/p' | sort -V | tail -1)
 KV8=$(ls "$CH/boot" | sed -n 's/^vmlinuz-\(.*-rpi-v8\)$/\1/p' | sort -V | tail -1)
 [ -n "$KV2712" ] || { echo "build-img.sh: the rpi-2712 kernel was not installed" >&2; exit 1; }
+for kv in $KV2712 $KV8; do
+    if grep -q '^CONFIG_SECURITY_LANDLOCK=y' "$CH/boot/config-$kv" 2>/dev/null; then echo "   kernel $kv: Landlock built in"
+    else echo "   WARNING: kernel $kv has NO Landlock (seccomp-only isolation on that board)" >&2; fi
+done
 in_root "$CH" update-initramfs -u -k all > /dev/null 2>&1 || true
 place_kernel() {     # version, kernel name on the FAT, initramfs name
     [ -n "$1" ] || return 0
@@ -273,8 +325,10 @@ install -m 644 "$RPI/boot/firmware/lordos-user.txt.example" "$CH/boot/firmware/l
 rm -f "$CH/usr/sbin/policy-rc.d" "$CH/usr/bin/qemu-aarch64-static"
 in_root "$CH" apt-get clean
 rm -rf "$CH/var/lib/apt/lists/"* "$CH/var/cache/apt/"*.bin "$CH/tmp/"* "$CH/var/log/"*.log
-rm -f "$CH/etc/ssh/ssh_host_"*      # generated on first boot (if openssh-server is present)
-[ "${RPI_SSH:-0}" = 1 ] && in_root "$CH" systemctl enable ssh > /dev/null 2>&1 || true
+rm -f "$CH/etc/ssh/ssh_host_"*      # each board creates its own on first boot (rpi/firstboot)
+# SSH off unless asked for: the `ssh` switch file turns it on at boot (rpi/firstboot)
+in_root "$CH" systemctl disable ssh.service ssh.socket > /dev/null 2>&1 || true
+if [ "${RPI_SSH:-0}" = 1 ]; then in_root "$CH" systemctl enable ssh.service > /dev/null 2>&1 || true; fi
 : > "$CH/etc/resolv.conf"
 : > "$CH/etc/machine-id"
 umount_ch "$CH"
@@ -311,8 +365,9 @@ PARTUUID=$PARTUUID_ROOT  /              ext4  defaults,noatime  0 1
 PARTUUID=$PARTUUID_BOOT  /boot/firmware vfat  defaults,umask=0077  0 2
 EOF
 # lordos.gpu=0 (safe mode, everything on the CPU) and lordos.lang=en|pt can be added here, as on the ISO.
-# lsm=: Landlock for app isolation (server/src/sec); those the kernel lacks are ignored.
-printf 'console=serial0,115200 console=tty3 root=PARTUUID=%s rootfstype=ext4 fsck.repair=yes rootwait quiet loglevel=3 cgroup_enable=memory lsm=landlock,lockdown,yama,integrity,apparmor,bpf lordos.lang=en\n' \
+# lsm=: the same list as the LordOS kernel's CONFIG_LSM (Landlock for app isolation, server/src/sec);
+# those the kernel lacks are ignored, so the active list is "capability,landlock".
+printf 'console=serial0,115200 console=tty3 root=PARTUUID=%s rootfstype=ext4 fsck.repair=yes rootwait quiet loglevel=3 cgroup_enable=memory lsm=landlock,lockdown,yama,integrity,bpf lordos.lang=en\n' \
     "$PARTUUID_ROOT" > "$WORK/mnt/boot/firmware/cmdline.txt"
 sync
 umount "$WORK/mnt/boot/firmware"

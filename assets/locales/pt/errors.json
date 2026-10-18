@@ -530,5 +530,12 @@
   "wifi.rejected": "O serviço de Wi-Fi não aceitou a rede",
   "wifi.saveFailed": "Não foi possível salvar a rede",
   "wifi.selectFailed": "O serviço de Wi-Fi não conseguiu escolher a rede",
-  "wifi.startFailed": "Não foi possível iniciar o Wi-Fi em {name}"
+  "wifi.startFailed": "Não foi possível iniciar o Wi-Fi em {name}",
+  "fan.notAdmin": "Só um administrador pode mudar as ventoinhas",
+  "fan.badRequest": "O serviço de ventoinhas recusou o pedido",
+  "fan.badCurve": "Curva inválida: temperaturas de 30 a 90 °C subindo e velocidades que nunca diminuem",
+  "fan.saveFailed": "Não foi possível salvar as configurações das ventoinhas",
+  "fan.unavailable": "O serviço de ventoinhas não está em execução",
+  "hw.notRaspberryPi5": "Isto só funciona em um Raspberry Pi 5",
+  "hw.caseFailed": "Não foi possível salvar as configurações do gabinete"
 }

@@ -217,3 +217,44 @@ void hw_act_bt_unblock(const AdminReq *r, const char *arg, size_t len) {
     if (w != RFKILL_EVENT_SIZE_V1) admin_err("hw.rfkillFailed", "errno", lerr_errno(errno), NULL);
     else admin_ok("hw.unblocked", NULL);
 }
+
+/* ---- Raspberry Pi 5 case accessories (docs/FANS.md, "Argon ONE V5 case") ---- */
+
+/* The cases LordOS knows. The text is fixed here; the file is included from config.txt
+ * ("include lordos-case.txt", tools/rpi). Never user text. */
+const char *hw_rpi_case_text(const char *id) {
+    if (!strcmp(id, "none"))
+        return "# lordos-case.txt: written by LordOS (Settings, Cooling). No case accessories.\n";
+    if (!strcmp(id, "argon-one-v5"))
+        return "# lordos-case.txt: written by LordOS (Settings, Cooling). Do not edit by hand.\n"
+               "# Argon ONE V5 case: its board puts the two front USB 2.0 ports and the audio chip\n"
+               "# (USB) on the USB-C controller, which has to work as a host. Its fan is on the fan\n"
+               "# header and is driven by lord-fand: nothing to set for it.\n"
+               "[pi5]\n"
+               "dtoverlay=dwc2,dr_mode=host\n"
+               "[all]\n";
+    return NULL;
+}
+
+void hw_act_rpi_case(const AdminReq *r, const char *arg, size_t len) {
+    (void)r;
+    char id[24], model[96] = "";
+    const char *text;
+    if (arg_copy(arg, len, id, sizeof id) || !(text = hw_rpi_case_text(id))) { admin_err("admin.invalidArgument", NULL); return; }
+    int fd = open("/proc/device-tree/model", O_RDONLY | O_CLOEXEC);
+    if (fd >= 0) { ssize_t n = read(fd, model, sizeof model - 1); if (n > 0) model[n] = 0; close(fd); }
+    struct stat st;
+    if (!strstr(model, "Raspberry Pi 5") || stat("/boot/firmware/config.txt", &st) || !S_ISREG(st.st_mode)) {
+        admin_err("hw.notRaspberryPi5", NULL);
+        return;
+    }
+    /* written next to config.txt: temporary file, then rename (the FAT partition has no links) */
+    const char *tmp = "/boot/firmware/lordos-case.tmp", *dst = "/boot/firmware/lordos-case.txt";
+    fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0644);
+    if (fd < 0) { admin_err("hw.caseFailed", "errno", lerr_errno(errno), NULL); return; }
+    size_t l = strlen(text);
+    int ok = write(fd, text, l) == (ssize_t)l && fsync(fd) == 0;
+    close(fd);
+    if (!ok || rename(tmp, dst)) { unlink(tmp); admin_err("hw.caseFailed", "errno", lerr_errno(errno), NULL); return; }
+    admin_ok("hw.caseSet", "case", id, NULL);
+}

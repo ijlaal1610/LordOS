@@ -115,5 +115,6 @@
   },
   "wifi.connecting": "Conectando a {ssid}…",
   "wifi.disconnected": "Desconectado",
-  "wifi.forgotten": "Red olvidada"
+  "wifi.forgotten": "Red olvidada",
+  "hw.caseSet": "Caja: {case}"
 }

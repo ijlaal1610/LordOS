@@ -14,6 +14,7 @@ import { Glyph, MonitorIcon } from './icons.jsx';
 import { NetworkTab } from './Network.jsx';
 import { MonitorPrivacy } from './Privacy.jsx';
 import { FirewallPrivacy } from './Firewall.jsx';
+import { CoolingTab } from './Cooling.jsx';
 
 export function Icon({ size }) { return <MonitorIcon size={size} />; }
 
@@ -461,7 +462,7 @@ export default function Monitor() {
   const ready = useStore(monitorSamples, (l) => l.length > 0);
   const tabs = [
     ['overview', tr('monitor.tab.overview')], ['cpu', tr('monitor.cpu')], ['memory', tr('monitor.memory')],
-    ['network', tr('monitor.network')], ['disks', tr('monitor.disks')], ['processes', tr('monitor.processes')],
+    ['network', tr('monitor.network')], ['disks', tr('monitor.disks')], ['processes', tr('monitor.processes')], ['cooling', tr('monitor.tab.cooling')],
   ];
   if (!monitor.available()) {
     return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 13, color: t.textDim }}>{tr('monitor.unavailable')}</Text></View>;
@@ -479,6 +480,10 @@ export default function Monitor() {
         <View style={{ flex: 1, padding: 20 }}><Text style={{ fontSize: 13, color: t.textDim }}>{tr('monitor.waiting')}</Text></View>
       ) : tab === 'network' ? (
         <Network prefs={prefs} />
+      ) : tab === 'cooling' ? (
+        <ScrollView style={{ flex: 1 }}>
+          <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 24, gap: 16 }}><CoolingTab /></View>
+        </ScrollView>
       ) : tab === 'processes' ? (
         <ScrollView style={{ flex: 1 }}>
           <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 24, gap: 16 }}><ProcessesTab /></View>

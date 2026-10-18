@@ -530,5 +530,12 @@
   "wifi.rejected": "The Wi-Fi service did not accept the network",
   "wifi.saveFailed": "Could not save the network",
   "wifi.selectFailed": "The Wi-Fi service could not select the network",
-  "wifi.startFailed": "Could not start Wi-Fi on {name}"
+  "wifi.startFailed": "Could not start Wi-Fi on {name}",
+  "fan.notAdmin": "Only an administrator can change the fans",
+  "fan.badRequest": "The fan service refused the request",
+  "fan.badCurve": "Invalid curve: temperatures from 30 to 90 °C going up, and speeds that never go down",
+  "fan.saveFailed": "Could not save the fan settings",
+  "fan.unavailable": "The fan service is not running",
+  "hw.notRaspberryPi5": "This only works on a Raspberry Pi 5",
+  "hw.caseFailed": "Could not save the case settings"
 }

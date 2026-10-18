@@ -237,5 +237,9 @@
   "keywords.power": "batería energía perfil ahorro rendimiento suspender reposo tapa botón de encendido apagar pantalla",
   "keywords.notifications": "notificaciones avisos alertas carteles no molestar concentración sonido",
   "keywords.datetime": "fecha hora reloj ntp zona horaria 24 horas 12 horas barra de menú segundos",
-  "keywords.defaultapps": "apps por defecto predeterminadas navegador correo música video imágenes pdf editor de texto terminal abrir con"
+  "keywords.defaultapps": "apps por defecto predeterminadas navegador correo música video imágenes pdf editor de texto terminal abrir con",
+  "section.cooling": "Refrigeración",
+  "keywords.cooling": "ventilador ventiladores temperatura refrigeración calor ruido curva caja a tope fan cooling",
+  "reduceMotion": "Reducir movimiento",
+  "reduceMotionHint": "Detiene las animaciones decorativas, como el ventilador que gira en Refrigeración."
 }

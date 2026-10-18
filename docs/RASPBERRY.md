@@ -10,6 +10,12 @@ This document gathers what's needed to build the image, write it, develop on the
 > board"). **Not verified yet:** anything with a monitor on HDMI (KMS modeset, GPU composition on
 > screen, hardware cursor, FPS), the desktop session, remote-desktop screenshots, and booting the
 > image that `build-img.sh` produced.
+>
+> **Update (2026-10-18, later):** the image now ships **the LordOS build of the Raspberry Pi kernel**
+> (`6.18.57-lordos-rpi-2712`, Raspberry Pi's source and `bcm2712_defconfig` plus Landlock; see "The
+> LordOS kernel"), **switch files** on the boot partition (`ssh`, `remote-desktop`, Wi-Fi in
+> `lordos-user.txt`; see "Switch files") and a post-flash check (`verify-board`, see "After
+> flashing"). Built on the board; it is verified by booting the reflashed card.
 
 ## Models
 
@@ -42,11 +48,15 @@ SD card or an NVMe, and the same image boots on the Pi 5 and the Pi 4.
 
 - **Debian 13 (trixie) arm64**, minbase, with the same LordOS packages as the ISO: PipeWire,
   wpa_supplicant, OpenVPN, Noto, foot, FeatherPad.
-- **Kernel and firmware from the Raspberry Pi archive** (`archive.raspberrypi.com/debian`, suite
-  trixie), only these packages (`/etc/apt/preferences.d/raspberrypi`):
-  - `linux-image-rpi-2712`: the Pi 5 one, with 16K pages;
-  - `linux-image-rpi-v8`: the Pi 4/400/CM4 one, with 4K pages. The Pi 5 can also use it, with
-    `kernel=kernel8.img` in `config.txt`;
+- **The LordOS build of the Raspberry Pi kernel** (see "The LordOS kernel"), when
+  `tools/rpi/build-kernel.sh` has built it; otherwise Raspberry Pi's archive kernel, with a loud
+  warning (it has no Landlock):
+  - `linux-image-<version>-lordos-rpi-2712`: the Pi 5 one, with 16K pages (archive:
+    `linux-image-rpi-2712`);
+  - `linux-image-<version>-lordos-rpi-v8`: the Pi 4/400/CM4 one, with 4K pages (archive:
+    `linux-image-rpi-v8`). The Pi 5 can also use it, with `kernel=kernel8.img` in `config.txt`.
+- **Firmware from the Raspberry Pi archive** (`archive.raspberrypi.com/debian`, suite trixie), only
+  these packages (`/etc/apt/preferences.d/raspberrypi`):
   - `raspi-firmware`: the boot files, device trees and overlays in `/boot/firmware`;
   - `firmware-brcm80211`: Wi-Fi and Bluetooth (CYW43455);
   - `rpi-eeprom` and `raspi-utils` (`vcgencmd`, `pinctrl`), if available.
@@ -83,8 +93,64 @@ Researched as of October 2026 (confirm on the board):
   Its hooks copy the kernel to `/boot/firmware` under the name the firmware looks for
   (`kernel_2712.img`). If they don't, `build-img.sh` copies it by hand. **Chosen.**
 
-With the pinning, `apt upgrade` on the installed system keeps bringing the kernel and firmware from
-Raspberry Pi, and everything else from Debian.
+With the pinning, `apt upgrade` on the installed system keeps bringing the firmware from Raspberry
+Pi, and everything else from Debian. The kernel is LordOS's own build of it (next section).
+
+### The LordOS kernel
+
+Raspberry Pi's kernel leaves Landlock out (`# CONFIG_SECURITY_LANDLOCK is not set`, `CONFIG_LSM=""`,
+so `/sys/kernel/security/lsm` is just `capability`). LordOS confines apps (`.lpk`) and its helpers
+(`lord-doc`, `lord-media`, `lord-maild`) with Landlock (`server/src/sec/sandbox.c`, see
+`PRIVACY.md`); without it `doc_evil.sh` fails 5 of 25 and `sandbox-test` is skipped. The tests stay
+as they are: the fix is the kernel.
+
+`tools/rpi/build-kernel.sh` builds it from **Raspberry Pi's own source and defconfig**, changing only
+what LordOS needs:
+
+```sh
+# on the Pi (arm64 Debian 13), ~70–90 min per flavour on a Pi 5 with 4 cores
+sudo apt-get install -y --no-install-recommends build-essential bc bison flex libssl-dev libelf-dev \
+  libdw-dev dwarves cpio kmod rsync dpkg-dev debhelper git
+tools/rpi/build-kernel.sh /var/tmp/lordos-kernel all     # 2712 (Pi 5), v8 (Pi 4), or all
+# → /var/tmp/lordos-kernel/out/linux-image-6.18.57-lordos-rpi-2712_6.18.57-1+lordos_arm64.deb, …
+```
+
+- **Source:** `github.com/raspberrypi/linux`, branch `rpi-6.18.y` (`RPI_KERNEL_BRANCH`;
+  `RPI_KERNEL_REF=<commit>` pins one). The first build (2026-10-18) used commit `234188315037`,
+  kernel **6.18.57**; the archive shipped 6.18.50 at the time. `out/SOURCE` records it.
+- **Config:** `bcm2712_defconfig` (Pi 5, 16K pages) or `bcm2711_defconfig` (Pi 4, 4K pages), then
+  `scripts/config` and `olddefconfig`. The whole diff against the defconfig (`out/config-*.diff`):
+
+  ```diff
+  -CONFIG_LOCALVERSION="-v8-16k"
+  +CONFIG_LOCALVERSION="-lordos-rpi-2712"
+  -# CONFIG_SECURITY_LANDLOCK is not set
+  +CONFIG_SECURITY_LANDLOCK=y
+  -CONFIG_LSM=""
+  +CONFIG_LSM="landlock,lockdown,yama,integrity,bpf"
+  ```
+
+  `CONFIG_LSM` uses the usual Debian order; the kernel skips the ones it doesn't build (lockdown,
+  Yama, IMA/EVM and the BPF LSM stay off, as Raspberry Pi has them), so the active list is
+  **`capability,landlock`**. The image's `cmdline.txt` has the same `lsm=` list.
+- **Already in the defconfig, checked by the script** so a future defconfig can't drop them:
+  `SECCOMP_FILTER` (sandbox.c), cgroup v2 with `MEMCG`, `CGROUP_PIDS` and `CGROUP_SCHED` (per-app
+  limits; `cgroup_enable=memory` is in `cmdline.txt` because Raspberry Pi turns memcg off at boot),
+  and `BPF_SYSCALL`, `BPF_JIT`, `CGROUP_BPF` (lord-netperm's cgroup hooks). LordOS doesn't need user
+  namespaces (`USER_NS` stays as Raspberry Pi has it, on) or the BPF LSM.
+- **Packages:** `make bindeb-pkg`, version `6.18.57-1+lordos`, release `6.18.57-lordos-rpi-2712`
+  (`-lordos-rpi-v8` for the Pi 4). The `-rpi-<flavour>` suffix is what `raspi-firmware`'s hook keys
+  on, so it installs exactly like Raspberry Pi's: `kernel_2712.img`, initramfs, device trees and
+  overlays in `/boot/firmware`. The script checks the package carries the device trees and
+  overlays. Headers are built too (`linux-headers-*`), not put in the image.
+- **Not replaced by the archive.** `build-img.sh` installs the LordOS `.debs` from `KERNEL_DEBS`
+  (default `/var/tmp/lordos-kernel/out`) instead of `linux-image-rpi-<flavour>`, and writes
+  `/etc/apt/preferences.d/lordos-kernel` with priority -1 for Raspberry Pi's kernel packages of
+  that flavour (`linux-image-rpi-2712`, `linux-image-*+rpt-rpi-2712` and the headers; checked with
+  `apt-cache policy`: no candidate). Otherwise a newer `+rpt` kernel would win the hook's "newest
+  `vmlinuz-*-rpi-2712`" and boot without Landlock. Kernel updates come as new LordOS packages.
+- **Per flavour:** if only the 2712 kernel was built, the Pi 4 kernel comes from the archive (with
+  a warning, and without the pin).
 
 ### Packages to build it
 
@@ -131,7 +197,8 @@ Variables:
 
 | Variable | What for |
 |---|---|
-| `RPI_SSH=1` | adds `openssh-server` (for development) |
+| `RPI_SSH=1` | SSH server on from the start (for development); without it `openssh-server` ships off and the `ssh` switch file turns it on |
+| `KERNEL_DEBS` | folder with the LordOS kernel packages (`build-kernel.sh`), `/var/tmp/lordos-kernel/out` by default |
 | `IMG_EXTRA_MB` | free space in the image, 512 by default |
 | `MIRROR`, `RPI_MIRROR` | Debian and Raspberry Pi mirrors |
 | `RPI_KEY_FPR`, `RPI_KEY_NOCHECK=1` | the Raspberry Pi key |
@@ -154,9 +221,11 @@ Estimate: on x86-64 with qemu, 30–60 minutes the first time. Natively on the P
 
 - **Raspberry Pi Imager:** "Choose OS" → "Use custom" → the `.img.xz`, and then the card or the
   NVMe.
-  - Imager's OS customization (user, Wi-Fi, SSH) is designed for Raspberry Pi OS. If it leaves a
-    `userconf.txt` on the boot partition, LordOS uses it (see below).
-  - The rest (Wi-Fi, SSH, keyboard) isn't applied.
+  - Skip Imager's OS customization (it's designed for Raspberry Pi OS; newer versions write
+    cloud-init files that LordOS doesn't read). If it leaves a `userconf.txt` on the boot
+    partition, LordOS uses it (see below).
+  - Instead, add the switch files and `lordos-user.txt` to the `bootfs` partition (see "Switch
+    files"); `out/FLASHING.txt` next to the image has the exact steps for macOS.
 - **dd** (Linux and other Unix-like systems):
   ```sh
   shasum -a 256 -c lordos-<version>-rpi5-arm64.img.xz.sha256
@@ -201,8 +270,33 @@ two things.
      - In the meantime, **don't turn on remote desktop** and don't leave the board exposed on the
        network.
 
+3. **Switch files** (next section), on every boot.
+
 Pending: a "create user" step of our own on the login screen, so setup mode isn't needed (see
 ROADMAP, M8).
+
+### Switch files
+
+Like Raspberry Pi OS's `ssh` file: files dropped on the `bootfs` partition (FAT, editable from any
+computer) before booting. `firstboot` applies each one, logs it (`journalctl -u
+lordos-rpi-firstboot`) and deletes it (overwritten with zeros first, since they can hold a password).
+A name with `.txt` (as some editors save it) works the same.
+
+| File | Contents | What it does |
+|---|---|---|
+| `ssh` | empty | Turns the SSH server on (`systemctl enable ssh`, started right away) and keeps it on. The image ships `openssh-server` off; each board creates its own host keys. Logging in needs an account with a password: root is locked and the setup user has none |
+| `remote-desktop` | empty, or `port=5673` and/or `allow=all\|group` | Turns LordOS remote desktop on (`https://<board IP>:5673`, `REMOTE.md`), writing the same `/etc/lordos/remote/config` (`enabled=1`, `port=`, `allow=`) that Settings → Sharing's `remote-enable`/`remote-config` write; lord-sessiond reads it when `lordos.service` starts. It still asks for a user and password: while there's no account with a password (setup mode) the file is **kept** and applied on a later boot. `port` must be 1024–65535 (5673 by default); `allow=group` limits it to the `lordos-remote` group |
+| `lordos-user.txt` | from `lordos-user.txt.example` | The first-boot user (above), read only on the first boot. Optional Wi-Fi: `wifi_ssid=`, `wifi_password=` (8–128 characters; empty for an open network) and `wifi_country=` (two letters) |
+| `userconf.txt` | `user:hash` | Raspberry Pi OS / Imager's user file, first boot only |
+
+**Wi-Fi at first boot.** The image's network stack is **lord-netd** (no NetworkManager, no
+systemd-networkd): at boot it brings up every free physical interface with its own DHCP client, and
+on Wi-Fi interfaces it starts `wpa_supplicant` and loads the saved networks. `firstboot` saves the
+network from `lordos-user.txt` the same way Settings → Network does
+(`/etc/lordos/net/wifi/<SSID in hex>.json`, and `.key` with mode 0600), before lord-netd starts, so
+the board joins it on the first boot. `wifi_country` adds `cfg80211.ieee80211_regdom=<XX>` to
+`cmdline.txt` (the 5 GHz channels of that country, from the second boot; until then the world
+domain). lord-netd skips interfaces NetworkManager manages, which only matters on Raspberry Pi OS.
 
 Options in `cmdline.txt` (a single line), as on the ISO:
 
@@ -211,6 +305,32 @@ Options in `cmdline.txt` (a single line), as on the ISO:
 | `lordos.gpu=0` | safe mode: everything on the CPU |
 | `lordos.lang=es` / `pt` | first-boot language (English by default, like the ISO) |
 | `video=HDMI-A-1:1920x1080@60` | pins the mode, for example on a 4K monitor (on the CPU, 4K is heavy: see below) |
+
+### After flashing
+
+`tools/rpi/verify-board.sh` (in the image as `/usr/lib/lordos/rpi/verify-board`) checks a freshly
+booted board and prints a PASS/FAIL table. It only reads `/sys`, `/proc`, the kernel log and the
+configs; it changes nothing.
+
+```sh
+sudo /usr/lib/lordos/rpi/verify-board                  # system checks
+sudo /usr/lib/lordos/rpi/verify-board --repo ~/LordOS  # plus make -C server test-full and doc_evil.sh
+```
+
+| Check | PASS when |
+|---|---|
+| kernel | `uname -r` is a `-lordos-rpi-*` kernel; page size 16K on the Pi 5 (4K with `-rpi-v8`) |
+| Landlock | `/sys/kernel/security/lsm` lists `landlock`; the kernel log says `landlock: Up and running`; the kernel config has `SECURITY_LANDLOCK`, `SECCOMP_FILTER`, `CGROUP_BPF`, `BPF_SYSCALL`, `MEMCG` |
+| seccomp, cgroups | seccomp available; the cgroup v2 `memory` controller is on (`cgroup_enable=memory`) |
+| first boot | the root partition has grown; no switch file left on `bootfs` (WARN for a `remote-desktop` still waiting for an account); not in setup mode |
+| display, GPU | a `connected` KMS output with its mode (WARN with no monitor); `eglinfo -p gbm` shows V3D; the session log shows `GPU composition` |
+| fan, temperature | a fan hwmon (`pwmfan`, rpm and PWM; `lord-fand` active if it's installed); SoC < 75 °C; `throttled=0x0` |
+| remote desktop | port 5673 (or the configured one) listens **only** when `/etc/lordos/remote/config` has `enabled=1` |
+| services | `lordos.service` active; SSH shown as on or off |
+| `--repo` | `make -C server test-full` passes; `doc_evil.sh` N/N (25/25 with the archive tools installed); the three `sandbox-test` runs ok |
+
+`--repo` needs the tree and the build packages ("Developing on the board"); it builds as the tree's
+owner.
 
 ## Display and GPU on the Pi 5
 
@@ -349,7 +469,8 @@ There are two possible systems on the board:
 
 1. **SSH:**
    - with Raspberry Pi OS, enable it in Imager;
-   - with LordOS, build with `RPI_SSH=1` and use the account created at first boot;
+   - with LordOS, put an empty `ssh` file on the boot partition (or build with `RPI_SSH=1`) and use
+     the account created at first boot;
    - `ssh user@<ip>`; the IP shows up on the login screen or with `ip -4 addr`.
 2. **Packages for compiling** (the same as in `VM-SETUP.md` plus Mesa):
    ```sh
@@ -403,7 +524,7 @@ Each item, with a screenshot or the pasted output, in this document.
 | 11 | Temperature | `vcgencmd measure_temp`, `vcgencmd get_throttled`, LordOS Monitor (`cpu_thermal` and the fan) | <75 °C with the Active Cooler under load; `throttled=0x0` |
 | 12 | NEON | `server/build/canvas-test` | "NEON matches C"; NEON faster than C |
 | 13 | Headless tests | `make -C server test` and each `build/*-test` | all pass, as on x86 (WASM: the full wg-2.0 suite) |
-| 14 | App isolation | open a `.lpk`; `sandbox[...]:` in the log; `cat /sys/kernel/security/lsm` | seccomp=1. **The Raspberry Pi kernel has no Landlock** (`# CONFIG_SECURITY_LANDLOCK is not set` in 6.18.50+rpt): seccomp only |
+| 14 | App isolation | open a `.lpk`; `sandbox[...]:` in the log; `cat /sys/kernel/security/lsm`; `make -C server test-full` | `capability,landlock`; Landlock and seccomp=1; `doc_evil.sh` 25/25 and `sandbox-test` ok. Needs the LordOS kernel: Raspberry Pi's has no Landlock (`6.18.50+rpt`: seccomp only) |
 | 15 | Remote desktop | Settings → Sharing, `https://<ip>:5673` from the development machine | visible and controllable; screenshots for this document |
 | 16 | Network and sound | Wi-Fi (brcmfmac), Ethernet, HDMI audio via PipeWire | IP from our own DHCP; `wpctl status` shows HDMI |
 | 17 | Pi 4 | the same image | boots with `kernel8.img`; note what fails |
@@ -443,9 +564,9 @@ Notes for the image:
 
 - Raspberry Pi OS boots with `cgroup_disable=memory`; the image's `cmdline.txt` already has
   `cgroup_enable=memory` (per-app memory limits need it).
-- `lsm=landlock,…` in the image's `cmdline.txt` does nothing on this kernel: Landlock isn't compiled
-  in. App and helper isolation on the Pi is seccomp + cgroups + no-new-privs only, until LordOS ships
-  a kernel with `CONFIG_SECURITY_LANDLOCK=y`.
+- `lsm=landlock,…` in the image's `cmdline.txt` does nothing on Raspberry Pi's kernel: Landlock isn't
+  compiled in, and isolation there is seccomp + cgroups + no-new-privs only. **Fixed:** the image now
+  ships the LordOS kernel with `CONFIG_SECURITY_LANDLOCK=y` ("The LordOS kernel").
 - The image takes Mesa (25.0.7) and FFmpeg (7.1.5) from Debian. Debian's FFmpeg has no V4L2-request
   decoding, so the hardware HEVC seen above needs the Raspberry Pi FFmpeg pinned (option 1 in
   "Video").

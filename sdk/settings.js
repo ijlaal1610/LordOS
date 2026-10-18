@@ -5,6 +5,7 @@ const DEFAULTS = {
   mode: 'dark',          // 'dark' | 'light'
   accent: 'azul',
   effects: true,         // transparency with blur
+  reduceMotion: false,   // decorative animations off (Settings → Appearance)
   wallpaper: 'aurora',
   keyboard: 'latam',     // before M5; now keyboards (see keyboard.js)
   keyboards: null,       // [{ layout, variant }] from xkb-data

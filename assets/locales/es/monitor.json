@@ -134,5 +134,6 @@
   "privacy.local": "Todo se calcula en este equipo y solo mientras el Monitor está abierto. Ninguna dirección IP sale del equipo.",
   "privacy.open": "Abrir Monitor",
   "net.placeApps": "Apps",
-  "net.privacyShort": "País por IP con una base local (DB-IP Lite, CC BY 4.0, db-ip.com): ninguna dirección sale del equipo."
+  "net.privacyShort": "País por IP con una base local (DB-IP Lite, CC BY 4.0, db-ip.com): ninguna dirección sale del equipo.",
+  "tab.cooling": "Refrigeración"
 }

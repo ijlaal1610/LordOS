@@ -233,7 +233,8 @@ sandbox_apply_helper(&cfg);                 /* SANDBOX_HELPER_DIR_FDS says the f
   (glibc falls back to `clone`, which can be filtered by flags).
 - **TSYNC**: the filter also reaches threads that already existed (VA-API, drivers). If seccomp
   can't be applied, the helper exits (`_exit(70)`): it **fails closed**. If Landlock is missing
-  (some Raspberry Pi kernels), it goes on with seccomp and warns.
+  (Raspberry Pi's own kernel; the LordOS Pi image ships its own build with Landlock, see
+  `RASPBERRY.md`, "The LordOS kernel"), it goes on with seccomp and warns.
 - **Files**: nothing except `ro_paths` and the folders that arrive as fds (`rw_dir_fds`: write,
   create files, folders and links, and delete files, **without truncating**).
 - **ioctl by class** (`allow_ioctl_classes`): only types `'d'` (DRM/VA-API), `'V'` (V4L2, Pi 5)

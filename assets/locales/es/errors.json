@@ -530,5 +530,12 @@
   "wifi.rejected": "El servicio de Wi-Fi no aceptó la red",
   "wifi.saveFailed": "No se pudo guardar la red",
   "wifi.selectFailed": "El servicio de Wi-Fi no pudo elegir la red",
-  "wifi.startFailed": "No se pudo iniciar el Wi-Fi en {name}"
+  "wifi.startFailed": "No se pudo iniciar el Wi-Fi en {name}",
+  "fan.notAdmin": "Solo un administrador puede cambiar los ventiladores",
+  "fan.badRequest": "El servicio de ventiladores rechazó la solicitud",
+  "fan.badCurve": "Curva no válida: temperaturas de 30 a 90 °C en subida y velocidades que nunca bajan",
+  "fan.saveFailed": "No se pudo guardar la configuración de los ventiladores",
+  "fan.unavailable": "El servicio de ventiladores no está en marcha",
+  "hw.notRaspberryPi5": "Esto solo funciona en una Raspberry Pi 5",
+  "hw.caseFailed": "No se pudo guardar la configuración de la caja"
 }

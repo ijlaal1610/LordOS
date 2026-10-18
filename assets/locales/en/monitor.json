@@ -134,5 +134,6 @@
   "privacy.local": "Everything is computed on this computer, and only while Monitor is open. No IP address leaves the computer.",
   "privacy.open": "Open Monitor",
   "net.placeApps": "Apps",
-  "net.privacyShort": "IP-to-country from a local database (DB-IP Lite, CC BY 4.0, db-ip.com): no address leaves the computer."
+  "net.privacyShort": "IP-to-country from a local database (DB-IP Lite, CC BY 4.0, db-ip.com): no address leaves the computer.",
+  "tab.cooling": "Cooling"
 }

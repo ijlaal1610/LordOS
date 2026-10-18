@@ -249,6 +249,10 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
     - the partition grows by itself;
     - first boot with `lordos-user.txt`/`userconf.txt` (login screen) or setup
       mode.
+  - [x] LordOS build of the Raspberry Pi kernel with Landlock (`tools/rpi/build-kernel.sh`,
+    `6.18.57-lordos-rpi-2712`), pinned over the archive kernel.
+  - [x] Switch files on the boot partition: `ssh`, `remote-desktop`, Wi-Fi in `lordos-user.txt`;
+    `tools/rpi/verify-board.sh` after flashing.
   - [ ] Run `build-img.sh` and test on the 16 GB Pi 5 (test list in `RASPBERRY.md`,
     with screenshots through the remote desktop).
   - [ ] Hardware video on the Pi 5 (HEVC via V4L2 stateless; H.264 in software) in

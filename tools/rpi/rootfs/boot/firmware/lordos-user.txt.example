@@ -17,3 +17,12 @@ lang=en
 timezone=America/Argentina/Buenos_Aires
 keyboard=latam
 keyboard_variant=
+# Wi-Fi (optional): saved like Settings → Network does, joined at boot. Leave wifi_password empty
+# for an open network. wifi_country (two letters) unlocks the country's 5 GHz channels from the
+# second boot on. Without Wi-Fi, plug in an Ethernet cable (DHCP).
+#wifi_ssid=MyNetwork
+#wifi_password=
+#wifi_country=AR
+#
+# Remote desktop and SSH are not set here: create an empty file named «remote-desktop» (and/or
+# «ssh») on this partition. See docs/RASPBERRY.md, "Switch files".

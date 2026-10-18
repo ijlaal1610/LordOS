@@ -18,8 +18,10 @@
  *   lord.mime.get(mime) / set(mime, id) / guess(path) / terminal() / setTerminal(id)
  *   lord.timedate.refresh()                     answer as __lordHw('timedate', …)
  *   lord.notifyd.closed(id, reason) / action(id, key)   back to the Linux app that notified
+ *   lord.fan.status() / setProfile(p) / setCurve(pts) / force(v) / caseConfig()   (js_fan.c, lord-fand)
  */
 #include "js_hw.h"
+#include "js_fan.h"
 #include "../hw/bt.h"
 #include "../hw/defaults.h"
 #include "../hw/display.h"
@@ -347,4 +349,5 @@ void js_hw_register(JSContext *c, JSValue lord) {
     add(c, lord, "mime", mime_funcs, sizeof mime_funcs / sizeof mime_funcs[0]);
     add(c, lord, "timedate", td_funcs, sizeof td_funcs / sizeof td_funcs[0]);
     add(c, lord, "notifyd", nd_funcs, sizeof nd_funcs / sizeof nd_funcs[0]);
+    js_fan_register(c, lord);           /* lord.fan: Settings → Cooling and Monitor (js_fan.c) */
 }

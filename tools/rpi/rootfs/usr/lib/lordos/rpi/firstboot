@@ -14,6 +14,15 @@
 # 3. On every boot in setup mode: if there is already a person administrator account
 #    besides `lordos`, `lordos` (and its passwordless sudo) is removed and the system switches to the
 #    login screen.
+# 4. On every boot: the switch files on the boot partition, like Raspberry Pi OS's `ssh` file.
+#    Each one is applied, logged and deleted (docs/RASPBERRY.md, "Switch files"):
+#    - `ssh` (or `ssh.txt`): turns the SSH server on (if the image ships it) and keeps it on.
+#    - `remote-desktop` (or `remote-desktop.txt`; empty, or `port=<1024..65535>` and/or
+#      `allow=all|group`): turns LordOS remote desktop on, in the same file Settings → Sharing
+#      writes (/etc/lordos/remote/config, read by lord-sessiond when lordos.service starts).
+#      Logging in still needs an account with a password: while there is none (setup mode) the
+#      file is kept and applied on a later boot.
+#    Every boot also creates missing SSH host keys (the image ships none).
 set -u
 STATE=/var/lib/lordos/rpi
 BOOT=/boot/firmware
@@ -88,6 +97,41 @@ user_dirs() {         # user folders by language, like Settings' user-add
     for d in "$@"; do install -d -o "$u" -g "$u" "$h/$d"; done
 }
 
+# ---- Wi-Fi from lordos-user.txt (wifi_ssid=, wifi_password=, wifi_country=) ----
+# Saved exactly as Settings → Network saves a network (lord-netd, server/src/net/wifi.c):
+# /etc/lordos/net/wifi/<ssid in hex>.json (public) and <ssid in hex>.key (0600). lord-netd loads the
+# saved networks into wpa_supplicant when it brings Wi-Fi up at boot (DHCP, no NetworkManager).
+NET_WIFI=/etc/lordos/net/wifi
+json_esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+wifi_from() {
+    WS=$(kv wifi_ssid "$1"); WP=$(kv wifi_password "$1"); WC=$(kv wifi_country "$1")
+    [ -n "$WS" ] || return 0
+    WL=$(printf '%s' "$WS" | wc -c); PL=$(printf '%s' "$WP" | wc -c)
+    if [ "$WL" -gt 32 ] || printf '%s' "$WS" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+        log "$(basename "$1"): wifi_ssid is longer than 32 bytes or has control characters: Wi-Fi not saved"
+    elif [ -n "$WP" ] && { [ "$PL" -lt 8 ] || [ "$PL" -gt 128 ] || printf '%s' "$WP" | LC_ALL=C grep -q '[[:cntrl:]]'; }; then
+        log "$(basename "$1"): wifi_password must be 8–128 characters: Wi-Fi not saved"
+    else
+        SH=$(printf '%s' "$WS" | od -An -v -tx1 | tr -d ' \n')
+        install -d -m 755 /etc/lordos/net "$NET_WIFI"
+        if [ -n "$WP" ]; then SEC=psk; else SEC=open; fi
+        printf '{"ssid":"%s","security":"%s"}\n' "$(json_esc "$WS")" "$SEC" > "$NET_WIFI/$SH.json"
+        chmod 644 "$NET_WIFI/$SH.json"
+        (umask 077; printf 'pass=%s\n' "$WP" > "$NET_WIFI/$SH.key")
+        log "Wi-Fi network saved: $WS ($SEC)"
+    fi
+    # regulatory domain (5 GHz channels): kernel option, takes effect from the next boot
+    if [ -n "$WC" ]; then
+        WC=$(echo "$WC" | tr '[:lower:]' '[:upper:]')
+        if echo "$WC" | grep -Eq '^[A-Z]{2}$' && [ -f "$BOOT/cmdline.txt" ]; then
+            sed -i -e 's/ *cfg80211\.ieee80211_regdom=[A-Z0-9]*//g' -e "1s/\$/ cfg80211.ieee80211_regdom=$WC/" "$BOOT/cmdline.txt"
+            log "Wi-Fi country $WC (cmdline.txt, from the next boot)"
+        else
+            log "$(basename "$1"): wifi_country must be a two-letter code (AR, US, DE…)"
+        fi
+    fi
+}
+
 # ---- 2. first boot: the user ----
 if [ -e "$STATE/firstboot-pending" ]; then
     F=""
@@ -100,6 +144,7 @@ if [ -e "$STATE/firstboot-pending" ]; then
         HASH=$(kv password_hash "$F"); PASS=$(kv password "$F"); HOST=$(kv hostname "$F")
         L=$(kv lang "$F"); case "$L" in es|en|pt) LANG_UI=$L ;; esac
         TZ_=$(kv timezone "$F"); KB=$(kv keyboard "$F"); KBV=$(kv keyboard_variant "$F")
+        wifi_from "$F"
     elif [ -f "$BOOT/userconf.txt" ]; then
         F="$BOOT/userconf.txt"
         LINE=$(head -1 "$F" | tr -d '\r')
@@ -164,4 +209,76 @@ if [ -e "$STATE/setup-mode" ]; then
         rm -f "$STATE/setup-mode"
     fi
 fi
+
+# ---- 4. switch files on the boot partition ----
+# SSH host keys: the image ships none (each board gets its own); created on the first boot that
+# has the SSH server installed.
+if [ -x /usr/sbin/sshd ] && ! ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1; then
+    if ssh-keygen -A >/dev/null 2>&1; then log "SSH host keys created"; else log "ssh-keygen -A failed"; fi
+fi
+
+consume() {           # overwrites and deletes a switch file (it can hold a password)
+    dd if=/dev/zero of="$1" bs=1 count="$(stat -c %s "$1")" conv=notrunc 2>/dev/null || true
+    rm -f "$1"
+    sync
+}
+
+for S in "$BOOT/ssh" "$BOOT/ssh.txt"; do
+    [ -e "$S" ] || continue
+    if [ -x /usr/sbin/sshd ]; then
+        # enable for the following boots; --no-block: this unit runs inside the boot transaction
+        systemctl enable ssh.service >/dev/null 2>&1 || true
+        systemctl start --no-block ssh.service >/dev/null 2>&1 || true
+        log "$(basename "$S"): SSH server turned on (password logins need an account with a password; root is locked)"
+    else
+        log "$(basename "$S"): this image has no SSH server (openssh-server): ignored"
+    fi
+    consume "$S"
+done
+
+has_login_account() { # a person account (uid 1000–59999) with a real password: remote login refuses the rest
+    getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 { print $1 }' | while read -r u; do
+        [ "$u" = "$SETUP_USER" ] && continue
+        getent shadow "$u" | cut -d: -f2 | grep -q '^\$' && echo "$u"
+    done | grep -q .
+}
+
+RD_DIR=/etc/lordos/remote
+for S in "$BOOT/remote-desktop" "$BOOT/remote-desktop.txt"; do
+    [ -e "$S" ] || continue
+    N=$(basename "$S")
+    if [ -e "$STATE/setup-mode" ] || ! has_login_account; then
+        log "$N: kept until an account with a password exists (lordos-user.txt, or Settings → Users and a reboot)"
+        continue
+    fi
+    # the current values (Settings → Sharing may have saved some), then the file's
+    PORT=5673; ALLOW=all; DEV=0
+    if [ -f "$RD_DIR/config" ]; then
+        v=$(kv port "$RD_DIR/config"); [ -n "$v" ] && PORT=$v
+        v=$(kv allow "$RD_DIR/config"); [ "$v" = group ] && ALLOW=group
+        v=$(kv insecure_dev "$RD_DIR/config"); [ "$v" = 1 ] && DEV=1
+    fi
+    v=$(kv port "$S")
+    if [ -n "$v" ]; then
+        if echo "$v" | grep -Eq '^[0-9]{4,5}$' && [ "$v" -ge 1024 ] && [ "$v" -le 65535 ]; then PORT=$v
+        else log "$N: port=$v is not 1024–65535: using $PORT"; fi
+    fi
+    v=$(kv allow "$S")
+    case "$v" in
+        '') ;;
+        all|group) ALLOW=$v ;;
+        *) log "$N: allow=$v is not all or group: using $ALLOW" ;;
+    esac
+    if [ "$ALLOW" = group ] && ! getent group lordos-remote >/dev/null; then
+        groupadd --system lordos-remote 2>/dev/null || true
+    fi
+    install -d -m 755 /etc/lordos "$RD_DIR"
+    # the same file and format as remote-enable/remote-config (server/src/remote/remote_admin.c)
+    printf '# LordOS · remote desktop (Settings → Sharing). See docs/REMOTE.md\nenabled=1\nport=%s\nallow=%s\ninsecure_dev=%s\n' \
+        "$PORT" "$ALLOW" "$DEV" > "$RD_DIR/config.lordos"
+    chmod 644 "$RD_DIR/config.lordos"
+    mv -f "$RD_DIR/config.lordos" "$RD_DIR/config"
+    log "$N: remote desktop on, port $PORT, allow=$ALLOW (https://<this board's IP>:$PORT; log in with your account)"
+    consume "$S"
+done
 exit 0

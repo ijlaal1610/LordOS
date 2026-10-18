@@ -153,6 +153,18 @@ build/npcompile-test: tests/npcompile_test.c src/netperm/npcompile.c src/netperm
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/npcompile_test.c src/netperm/npcompile.c src/netperm/npdns.c src/fw/rules.c src/fw/dnsmap.c src/fw/fwmap.c src/sec/json.c
 	./$@ || { rm -f $@; exit 1; }
+# lord-fand (src/fan, docs/FANS.md): the root service that drives the fans by temperature. libc
+# only; it executes nothing and has no network. tests/fan_test.c: curves, fan.json, requests and a
+# fake sysfs (run by tests/run_suites.sh).
+FAN_SRC := src/fan/fancurve.c src/fan/fanhw.c src/sec/json.c
+ALL += build/lord-fand
+build/lord-fand: src/fan/fand.c $(FAN_SRC) $(wildcard src/fan/*.h) src/sec/json.h
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ src/fan/fand.c $(FAN_SRC)
+test: build/fan-test
+build/fan-test: tests/fan_test.c $(FAN_SRC) $(wildcard src/fan/*.h) src/sec/json.h
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/fan_test.c $(FAN_SRC)
 all: $(ALL)
 
 # Headless tests: terminal emulator (tests/vt_dump.c), OpenType shaping against

@@ -237,5 +237,9 @@
   "keywords.power": "battery energy power profile low power performance sleep suspend lid power button screen off",
   "keywords.notifications": "notifications alerts banners do not disturb focus sound",
   "keywords.datetime": "date time clock ntp time zone 24-hour 12-hour menu bar seconds",
-  "keywords.defaultapps": "default apps browser mail music video images pdf text editor terminal open with mimeapps"
+  "keywords.defaultapps": "default apps browser mail music video images pdf text editor terminal open with mimeapps",
+  "section.cooling": "Cooling",
+  "keywords.cooling": "fan fans temperature cooling heat noise curve case full speed",
+  "reduceMotion": "Reduce motion",
+  "reduceMotionHint": "Stops decorative animations, like the spinning fan in Cooling."
 }

@@ -22,6 +22,7 @@ import { DockSettings } from './Dock.jsx';
 import { DisplaysSettings } from './Displays.jsx';
 import { BluetoothSettings } from './Bluetooth.jsx';
 import { PowerSettings } from './Power.jsx';
+import { CoolingSettings } from './Cooling.jsx';
 import { NotificationsSettings } from './Notifications.jsx';
 import { DateTimeSettings } from './DateTime.jsx';
 import { DefaultAppsSettings } from './DefaultApps.jsx';
@@ -118,6 +119,9 @@ function Appearance() {
         </SettingRow>
         <SettingRow label={tr('settings.effects')} hint={tr('settings.effectsHint')}>
           <Toggle small on={s.effects} onChange={(effects) => set({ effects })} />
+        </SettingRow>
+        <SettingRow label={tr('settings.reduceMotion')} hint={tr('settings.reduceMotionHint')}>
+          <Toggle small on={!!s.reduceMotion} onChange={(reduceMotion) => set({ reduceMotion })} />
         </SettingRow>
       </Section>
     </Stack>
@@ -418,12 +422,26 @@ function BoltGlyph() {
   );
 }
 
+// A fan: three rounded blades around a hub.
+function FanGlyph() {
+  return (
+    <View style={{ width: 14, height: 14, direction: 'ltr' }}>
+      {[0, 120, 240].map((r) => (
+        <View key={r} style={{ position: 'absolute', left: 0, top: 0, width: 14, height: 14, transform: `rotate(${r}deg)` }}>
+          <View style={{ position: 'absolute', left: 6, top: 0, width: 5, height: 7, borderTopRightRadius: 5, borderTopLeftRadius: 2, borderBottomRightRadius: 2, backgroundColor: '#fff' }} />
+        </View>
+      ))}
+      <View style={{ position: 'absolute', left: 5, top: 5, width: 4, height: 4, borderRadius: 2, backgroundColor: '#fff' }} />
+    </View>
+  );
+}
+
 // Sidebar groups (as in TangoOS): [id, component, icon color, symbol (a glyph or a component)].
 const GROUPS = [
   [['general', General, '#8e8e93', 'i'], ['appearance', Appearance, '#3a3a3c', '◐'], ['wallpaper', Wallpapers, '#30b0c7', '▣'], ['dock', DockSettings, '#3a3a3c', '▁'], ['displays', DisplaysSettings, '#0a84ff', '▭']],
   [['network', NetworkSettings, '#0a84ff', '⇅'], ['bluetooth', BluetoothSettings, '#0a84ff', 'ᛒ'], ['sound', SoundSettings, '#ff375f', '♪'], ['notifications', NotificationsSettings, '#ff3b30', '◉'], ['printers', PrintersSettings, '#636366', '⎙'], ['clipboard', ClipboardSettings, '#5e5ce6', '⎘'], ['sharing', SharingSettings, '#34c759', '⇄']],
   [['language', LanguageRegion, '#30b0c7', 'A'], ['datetime', DateTimeSettings, '#0a84ff', '◷'], ['keyboard', Keyboard, '#8e8e93', '⌨'], ['trackpad', TrackpadSettings, '#8e8e93', '▭'], ['defaultapps', DefaultAppsSettings, '#8e8e93', '◫']],
-  [['power', PowerSettings, '#30d158', BoltGlyph], ['privacy', PrivacySettings, '#0a84ff', LockGlyph], ['users', UsersSettings, '#0a84ff', '☺'], ['updates', Updates, '#8e8e93', '↻'], ['themes', Themes, '#ff9f0a', '◧'], ['session', Session, '#ff453a', '↪']],
+  [['power', PowerSettings, '#30d158', BoltGlyph], ['cooling', CoolingSettings, '#32ade6', FanGlyph], ['privacy', PrivacySettings, '#0a84ff', LockGlyph], ['users', UsersSettings, '#0a84ff', '☺'], ['updates', Updates, '#8e8e93', '↻'], ['themes', Themes, '#ff9f0a', '◧'], ['session', Session, '#ff453a', '↪']],
 ];
 const SECTIONS = GROUPS.flat();
 
