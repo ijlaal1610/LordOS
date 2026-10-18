@@ -112,15 +112,16 @@ Images: [`docs/ISO.md`](docs/ISO.md) (PC) and [`docs/RASPBERRY.md`](docs/RASPBER
 LordOS is free and open source. If it makes your computer better, help us keep building it:
 [lordos.org/#support](https://lordos.org/#support).
 
-## Made by IPERFEX
+## Made by iPERFEX
 
-LordOS is created by the [IPERFEX](https://www.iperfex.com) group, by
-[Pablo Miranda](https://www.linkedin.com/in/pablomirandasavina/) and
-[Federico Pereira](https://www.linkedin.com/in/wilson-federico-pereira-medina/).
-Meet Lumo, the guardian of LordOS, in the [brand guide](docs/LORDOS-BRAND.md).
+LordOS is developed by [iPERFEX](https://www.iperfex.com/?lang=en). Meet Lumo, the guardian of
+LordOS, in the [brand guide](docs/LORDOS-BRAND.md). To work with us on LordOS (sponsorship,
+collaborations, custom apps or support), see [lordos.org/about](https://lordos.org/about/).
 
 ## License
 
 MIT for LordOS's code (see [`LICENSE`](LICENSE)). Each third-party component keeps its own
 license (see [`THIRD_PARTY.md`](THIRD_PARTY.md) and [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md)).
 The LordOS name, logo and Lumo are covered by the [trademark policy](https://lordos.org/legal/trademark/).
+
+Copyright © 2026 [iPERFEX](https://www.iperfex.com/?lang=en). All rights reserved for the website, brand and content; the code is free software under the MIT license.
