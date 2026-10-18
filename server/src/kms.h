@@ -35,6 +35,9 @@ typedef struct {
     uint64_t cursor_size;
     int cursor_ok, cursor_visible;
     int borrowed;       /* the fd came from lord-sessiond (it handles master and the previous mode) */
+    /* boot splash hand-off (kms_attach with keep): no modeset until the first real frame, so the
+     * splash stays up instead of a black frame. presented: a frame of ours is on the screen. */
+    int modeset_pending, presented;
     int shared;         /* a second display (kms_head_open): the fd belongs to the main head */
     /* the CRTC's primary plane: formats and modifiers it accepts (IN_FORMATS property). On the
      * Raspberry Pi (vc4) RGB is only shown linear: buffers with v3d's UIF tiling do not go
@@ -45,8 +48,9 @@ typedef struct {
 } Kms;
 
 int  kms_open(Kms *k, const char *path);
-/* With a card fd passed by lord-sessiond (already master): same setup as kms_open. */
-int  kms_attach(Kms *k, int fd);
+/* With a card fd passed by lord-sessiond (already master): same setup as kms_open. keep: what
+ * the screen shows (the boot splash) stays until the first kms_flip/kms_set_fb/kms_flip_fb. */
+int  kms_attach(Kms *k, int fd, int keep);
 void kms_close(Kms *k);
 /* Free buffer to draw on (the one not on screen). */
 KmsBuffer *kms_back(Kms *k);

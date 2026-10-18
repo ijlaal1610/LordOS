@@ -47,6 +47,9 @@ PKGS_GPU="libgl1-mesa-dri libegl1 libgles2 libgbm1 mesa-vulkan-drivers mesa-util
 PKGS_APPS="foot featherpad qt6-wayland chromium firefox-esr"
 # the disk installer (server/src/install): partition, format, copy and grub for UEFI and BIOS
 PKGS_INSTALLER="gdisk dosfstools e2fsprogs squashfs-tools util-linux grub-common grub2-common grub-efi-amd64-bin grub-pc-bin"
+# the boot splash (the LordOS Plymouth theme comes in the lordos package; plymouth-label draws the
+# password prompt's text for encrypted disks)
+PKGS_SPLASH="plymouth plymouth-label"
 
 echo "== LordOS $VERSION: live ISO in $WORK"
 umount_all() {
@@ -87,7 +90,7 @@ in_ch() { chroot "$CH" env DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 PATH=/usr
 echo "== paquetes"
 in_ch apt-get update -q > "$WORK/apt.log" 2>&1
 # shellcheck disable=SC2086
-in_ch apt-get install -y -q --no-install-recommends $PKGS_BASE $PKGS_LORDOS $PKGS_FIRMWARE $PKGS_GPU $PKGS_APPS $PKGS_INSTALLER \
+in_ch apt-get install -y -q --no-install-recommends $PKGS_BASE $PKGS_LORDOS $PKGS_FIRMWARE $PKGS_GPU $PKGS_APPS $PKGS_INSTALLER $PKGS_SPLASH \
     >> "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
 cp "$DEB" "$CH/tmp/lordos.deb"
 in_ch apt-get install -y -q --no-install-recommends /tmp/lordos.deb >> "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
@@ -142,6 +145,8 @@ in_ch systemctl enable lordos.service > /dev/null
 in_ch systemctl enable lord-netperm.service > /dev/null
 in_ch systemctl enable lord-fand.service > /dev/null     # fans by temperature (docs/FANS.md)
 in_ch systemctl mask getty@tty1.service > /dev/null
+# the boot splash: the LordOS theme (the initramfs below is built with it); docs/ISO.md, "Boot splash"
+in_ch plymouth-set-default-theme lordos
 # quiet and faster boot
 in_ch systemctl mask systemd-networkd-wait-online.service > /dev/null 2>&1 || true
 printf 'root:lordos\n' | in_ch chpasswd     # emergency console: root / lordos (documented)
@@ -164,31 +169,42 @@ mksquashfs "$CH" "$IMG/live/filesystem.squashfs" -comp xz -Xbcj x86 -b 1M -noapp
 
 # 5. grub (BIOS + UEFI in the same hybrid ISO). GRUB menus are English; the entries with a
 # language name pass lordos.lang to lordos-live-prep (English is the default).
+# The LordOS boot menu theme (dark, small crown, the splash's bar as the countdown); "safe mode" boots
+# without the splash (text), the other entries with it.
+install -d "$IMG/boot/grub/themes/lordos"
+install -m 644 tools/iso/grub/lordos/theme.txt tools/iso/grub/lordos/*.png tools/iso/grub/lordos/*.pf2 "$IMG/boot/grub/themes/lordos/"
 cat > "$IMG/boot/grub/grub.cfg" <<EOF
 set default=0
 set timeout=5
 insmod all_video
 insmod gfxterm
+insmod png
 loadfont unicode
+set gfxmode=auto
+set gfxpayload=keep
 terminal_output gfxterm
+loadfont /boot/grub/themes/lordos/inter-regular-14.pf2
+loadfont /boot/grub/themes/lordos/inter-regular-16.pf2
+loadfont /boot/grub/themes/lordos/inter-semibold-16.pf2
+set theme=/boot/grub/themes/lordos/theme.txt
 menuentry "LordOS $VERSION (live)" {
-    linux /live/vmlinuz boot=live components quiet loglevel=3 splash lordos.lang=en
+    linux /live/vmlinuz boot=live components quiet loglevel=3 splash vt.global_cursor_default=0 lordos.lang=en
     initrd /live/initrd.img
 }
 menuentry "LordOS $VERSION (safe mode: no GPU)" {
-    linux /live/vmlinuz boot=live components quiet loglevel=3 lordos.gpu=0 lordos.lang=en
+    linux /live/vmlinuz boot=live components quiet loglevel=3 nosplash lordos.gpu=0 lordos.lang=en
     initrd /live/initrd.img
 }
 menuentry "LordOS $VERSION (Español)" {
-    linux /live/vmlinuz boot=live components quiet loglevel=3 splash lordos.lang=es
+    linux /live/vmlinuz boot=live components quiet loglevel=3 splash vt.global_cursor_default=0 lordos.lang=es
     initrd /live/initrd.img
 }
 menuentry "LordOS $VERSION (Português)" {
-    linux /live/vmlinuz boot=live components quiet loglevel=3 splash lordos.lang=pt
+    linux /live/vmlinuz boot=live components quiet loglevel=3 splash vt.global_cursor_default=0 lordos.lang=pt
     initrd /live/initrd.img
 }
 menuentry "LordOS $VERSION (copy to RAM: the USB drive can be removed)" {
-    linux /live/vmlinuz boot=live components quiet loglevel=3 splash toram lordos.lang=en
+    linux /live/vmlinuz boot=live components quiet loglevel=3 splash vt.global_cursor_default=0 toram lordos.lang=en
     initrd /live/initrd.img
 }
 EOF

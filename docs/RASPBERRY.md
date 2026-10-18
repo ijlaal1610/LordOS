@@ -314,6 +314,42 @@ Options in `cmdline.txt` (a single line), as on the ISO:
 | `lordos.gpu=0` | safe mode: everything on the CPU |
 | `lordos.lang=es` / `pt` | first-boot language (English by default, like the ISO) |
 | `video=HDMI-A-1:1920x1080@60` | pins the mode, for example on a 4K monitor (on the CPU, 4K is heavy: see below) |
+| remove `splash` (or add `nosplash`) | boots in text, without the boot splash |
+
+### Boot splash
+
+From power-on to the login screen the board shows the LordOS crown with a progress bar (the same
+Plymouth theme as the ISO, `ISO.md`, "Boot splash and boot menu"), with no rainbow square, no kernel
+logo and no console text.
+
+![Boot splash (static preview, 1x)](boot/splash-preview.png)
+
+- **`config.txt`:** `disable_splash=1`: the firmware's rainbow square is not drawn.
+- **`cmdline.txt`:** `console=serial0,115200 console=tty1 … quiet splash
+  plymouth.ignore-serial-consoles logo.nologo vt.global_cursor_default=0 loglevel=3`, keeping
+  `root=`, `lsm=`, `cgroup_enable=memory` and `lordos.lang=`. The local console moved from `tty3`
+  to **`tty1`**: Plymouth takes its terminal (keyboard, password prompt, Esc) from the local
+  `console=` and LordOS runs on tty1, so both stay on the same VT (Raspberry Pi OS does the same). The kernel's messages
+  stay hidden (`quiet`, Plymouth); **Esc** shows them during the boot, as usual.
+- **initramfs:** `plymouth` and `plymouth-label` are installed and `lordos` is the selected theme
+  (`plymouth-set-default-theme lordos`), so Plymouth's initramfs hook copies the theme, its plugins
+  and a font (for the encrypted-disk password prompt). `/etc/initramfs-tools/modules` lists `vc4`
+  and `conf.d/lordos-splash.conf` keeps `MODULES=most` (the hook then adds the DRM drivers), so the
+  HDMI output is up in the initramfs and the splash shows within the first seconds instead of after
+  the root file system is mounted. The LordOS kernels have `DRM`, `DRM_VC4` and `DRM_V3D` as modules,
+  and their packages build an initramfs through `/etc/kernel/postinst.d` (initramfs-tools); the
+  raspi-firmware hook and `build-img.sh` copy it as `initramfs_2712` / `initramfs8`
+  (`auto_initramfs=1`). `build-img.sh` fails if an initramfs has no `lordos.script`.
+- **Hand-off:** the same as the ISO (`SESSIONS.md`, "Boot splash"); on the Pi
+  `lordos-splash deactivate` runs after `wait-kms`, so Plymouth keeps drawing until vc4 is ready.
+  Plymouth draws on vc4 (`card1`), the card with the HDMI connectors; `v3d` (`card0`) has none.
+- **First boot:** `lordos-rpi-firstboot` (growing the partition, the user, the switch files) runs
+  under the splash; its messages go to the journal and to the console, which Plymouth keeps hidden
+  (Esc shows them).
+
+Checked on the image (read-only, loop-mounted on the Pi): `config.txt`, `cmdline.txt`, the default
+theme and `lsinitramfs` of both initramfs files. Still to check on a board: the timing of the first
+frame of the splash after power-on, the hand-off with no flash on vc4, and 4K.
 
 ### After flashing
 

@@ -2,7 +2,7 @@
 # mkdeb.sh — builds lordos_<version>_amd64.deb from the already compiled tree.
 # Usage: tools/iso/mkdeb.sh <output.deb>     (from the repository root; needs dpkg-deb)
 #
-# Contenido:
+# Contents:
 #   /usr/lib/lordos/bin/lord-sessiond     sessions, login screen and remote desktop (root)
 #   /usr/lib/lordos/bin/lord-netperm      per-app network permissions with cgroup BPF (root, own service)
 #   /usr/lib/lordos/bin/lord-netd         system networking (root; launched and watched by lord-sessiond)
@@ -13,6 +13,10 @@
 #   /usr/lib/lordos/assets/               fonts, texts (locales), icons, shell integration
 #   /usr/lib/lordos/lordos-live-prep      live preparation (grub language, folders)
 #   /usr/lib/systemd/system/lordos.service  lord-sessiond on tty1
+#   /usr/lib/lordos/lordos-splash         boot splash hand-off (Plymouth → LordOS, docs/SESSIONS.md)
+#   /usr/share/plymouth/themes/lordos/    the boot splash theme (selected by the ISO, the Raspberry Pi
+#                                         image or install.sh; the package never selects it)
+#   /usr/share/grub/themes/lordos/        the boot menu theme (amd64; the ISO and the disk installer)
 #   /usr/share/doc/lordos/                README, copyright, changelog
 set -eu
 OUT=${1:?uso: mkdeb.sh salida.deb}
@@ -68,6 +72,19 @@ install -m 644 assets/app-host.bundle.js "$L/assets/app-host.bundle.js"
 install -m 755 tools/iso/rootfs/usr/lib/lordos/lordos-live-prep "$L/lordos-live-prep"
 install -D -m 644 tools/iso/rootfs/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf "$PKG/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf"
 install -m 644 tools/iso/rootfs/etc/systemd/system/lordos.service "$PKG/usr/lib/systemd/system/lordos.service"
+# boot splash (docs/brand/README.md, "Boot splash"): the Plymouth theme and the hand-off to LordOS
+install -m 755 tools/boot/lordos-splash "$L/lordos-splash"
+install -m 644 tools/boot/systemd/lordos-splash-quit.service "$PKG/usr/lib/systemd/system/lordos-splash-quit.service"
+install -D -m 644 tools/boot/systemd/plymouth-quit.service.d/lordos.conf "$PKG/usr/lib/systemd/system/plymouth-quit.service.d/lordos.conf"
+install -d "$PKG/usr/share/plymouth/themes/lordos"
+install -m 644 tools/boot/plymouth/lordos/lordos.plymouth tools/boot/plymouth/lordos/lordos.script \
+    tools/boot/plymouth/lordos/*.png "$PKG/usr/share/plymouth/themes/lordos/"
+# boot menu theme (GRUB: x86-64 only; the Raspberry Pi boots without GRUB)
+if [ "${DEB_ARCH:-$(dpkg --print-architecture)}" = amd64 ]; then
+    install -d "$PKG/usr/share/grub/themes/lordos"
+    install -m 644 tools/iso/grub/lordos/theme.txt tools/iso/grub/lordos/*.png tools/iso/grub/lordos/*.pf2 \
+        "$PKG/usr/share/grub/themes/lordos/"
+fi
 # LordOS GTK3 themes (the settings portal picks them by light/dark)
 install -d "$PKG/usr/share/themes"
 cp -r assets/gtk/LordOS assets/gtk/LordOS-dark "$PKG/usr/share/themes/"
@@ -169,6 +186,12 @@ if [ "$1" = configure ] && command -v systemctl >/dev/null 2>&1; then
     systemctl enable lord-fand.service >/dev/null 2>&1 || true
     if [ -d /run/systemd/system ]; then systemctl restart lord-fand.service >/dev/null 2>&1 || true; fi
 fi
+# the boot splash lives in the initramfs: when it is the selected theme, rebuild it with the new images
+# (initramfs-tools' trigger; the theme is selected by the ISO, the Pi image or install.sh, never here)
+if [ "$1" = configure ] && [ -x /usr/sbin/plymouth-set-default-theme ] &&
+   [ "$(/usr/sbin/plymouth-set-default-theme 2>/dev/null)" = lordos ] && command -v update-initramfs >/dev/null 2>&1; then
+    dpkg-trigger --no-await update-initramfs 2>/dev/null || true
+fi
 C
 chmod 755 "$PKG/DEBIAN/postinst"
 # removing the package gives the fans back first (ExecStopPost restores the kernel's control)
@@ -178,6 +201,12 @@ set -e
 if [ "$1" = remove ] && command -v systemctl >/dev/null 2>&1; then
     if [ -d /run/systemd/system ]; then systemctl stop lord-fand.service >/dev/null 2>&1 || true; fi
     systemctl disable lord-fand.service >/dev/null 2>&1 || true
+fi
+# the boot splash theme goes away with the package: Plymouth back to its default theme first
+if [ "$1" = remove ] && [ -x /usr/sbin/plymouth-set-default-theme ] &&
+   [ "$(/usr/sbin/plymouth-set-default-theme 2>/dev/null)" = lordos ]; then
+    /usr/sbin/plymouth-set-default-theme --reset >/dev/null 2>&1 || true
+    command -v update-initramfs >/dev/null 2>&1 && { dpkg-trigger --no-await update-initramfs 2>/dev/null || true; }
 fi
 C
 chmod 755 "$PKG/DEBIAN/prerm"

@@ -540,6 +540,23 @@ static void set_shown(char k, const char *user) {
     rd_unlock();
 }
 
+/* Boot splash hand-off (docs/SESSIONS.md, "Boot splash"). Until the first session frame of this boot
+ * is on the monitor, the screen shows the boot splash (or the console): the session keeps it there
+ * instead of a black first frame (RP_DISPLAY_KEEP) and says when its frame is up (RP_SHOWN). Then
+ * SD_FIRST_FRAME is created and lordos-splash-quit.service ends Plymouth. Only before that first
+ * frame: later the screen may hold another user's session, which must never stay visible. */
+static int splash_up(void) {
+    struct stat st;
+    return stat(SD_FIRST_FRAME, &st) != 0;
+}
+
+static void first_frame(void) {
+    if (!splash_up()) return;
+    int f = open(SD_FIRST_FRAME, O_WRONLY | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0644);
+    if (f >= 0) close(f);
+    sd_log("first frame on the monitor: the boot splash can go");
+}
+
 /* What the workers send: which session to show and messages for the login screen. */
 static void from_worker(void) {
     char buf[4200];
@@ -549,13 +566,13 @@ static void from_worker(void) {
     char user[40];
     if (!strcmp(buf, "show g") && fd >= 0) {
         set_shown('g', NULL);
-        if (sd_mon_show(fd, "-")) { sd_mon_lost(); set_shown('-', NULL); }
+        if (sd_mon_show(fd, "-", splash_up())) { sd_mon_lost(); set_shown('-', NULL); }
         return;
     }
     if (sscanf(buf, "show u %32s", user) == 1 && fd >= 0 && sd_valid_username(user)) {
         sd_log("monitor: %s's session", user);
         set_shown('u', user);
-        if (sd_mon_show(fd, user)) { sd_mon_lost(); set_shown('-', NULL); show_greeter("login", NULL); }
+        if (sd_mon_show(fd, user, splash_up())) { sd_mon_lost(); set_shown('-', NULL); show_greeter("login", NULL); }
         else save_last_user(user);
         return;
     }
@@ -566,6 +583,7 @@ static void from_worker(void) {
 /* Requests from the session being shown: lock or switch user; from the login screen:
  * log in, restart or shut down. */
 static void from_shown(int type, const char *j) {
+    if (type == RP_SHOWN) { first_frame(); return; }
     if (type == RP_SESSION && shown == 'u') {
         if (strstr(j, "\"lock\"")) { sd_log("%s locked the screen", shown_user); show_greeter("lock", shown_user); }
         else if (strstr(j, "\"switch\"")) { sd_log("%s is switching user", shown_user); show_greeter("switch", shown_user); }
@@ -745,6 +763,7 @@ int main(int argc, char **argv) {
     sd_netd_start();
     has_monitor = !no_monitor && sd_mon_open() == 0;
     if (has_monitor) boot_monitor();
+    else first_frame();                 /* nothing will be shown: the boot splash can go now */
     if (rd_conf.enabled) start_remote();
     write_status();
 

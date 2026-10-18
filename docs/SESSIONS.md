@@ -112,6 +112,38 @@ put in graphics mode once (`KD_GRAPHICS`) and goes back to text when the service
 The card, the input and the monitor socket are never left open in the children (web
 connections, workers): `sd_mon_child()` closes them before dropping root.
 
+### Boot splash
+
+The boot splash (Plymouth, theme `lordos`; see `ISO.md` and `RASPBERRY.md`, "Boot splash") hands
+the screen to LordOS without a black frame or a flash of the text console:
+
+1. **`lordos.service` → `lordos-splash deactivate`**, the last `ExecStartPre` (on the Raspberry Pi
+   after `wait-kms`): Plymouth stops drawing and drops DRM master, but its last frame stays on the
+   screen. The unit has `TTYReset=no`: systemd's terminal reset switches tty1 back to text mode
+   before every `Exec*` line, and with nobody holding DRM master the console would be drawn on top
+   of the splash.
+2. **lord-sessiond** opens the card, becomes DRM master (`SET_MASTER` works because Plymouth
+   dropped it) and lends it to the login screen, or the autologin session, with
+   **`RP_DISPLAY_KEEP`** (a flags byte after the fd count in `RP_DISPLAY`). The flag is only sent while
+   `/run/lordos/first-frame` doesn't exist, that is, before the first frame of this boot: later the
+   screen may hold another user's session, which must never stay visible.
+3. **The session** (`kms_attach(..., keep)`) skips the black first modeset: `modeset_pending`
+   makes the first `kms_flip` (CPU path) or `kms_set_fb`/`kms_flip_fb` (GPU path, direct scanout)
+   do the `SETCRTC` with a real frame. Until then the splash is what the screen shows. Then it sends
+   **`RP_SHOWN`** to lord-sessiond.
+4. **lord-sessiond** creates `/run/lordos/first-frame` (also at once when there is no monitor).
+5. **`lordos-splash-quit.service`** (wanted by `lordos.service`) waits for that file and runs
+   `plymouth quit --retain-splash`: Plymouth closes its card without touching the screen, which
+   already shows LordOS. Without the file after 30 s it ends Plymouth anyway.
+6. Plymouth's own `plymouth-quit.service` (a plain `plymouth quit`) is ordered after it by
+   `plymouth-quit.service.d/lordos.conf`, so it can't end the splash early. There is no
+   `Conflicts=` with it (the display-manager way): starting `plymouth-quit.service` by hand would
+   then stop LordOS.
+
+lord-sessiond runs nothing new for this: Plymouth is only called from the units, with fixed
+arguments (`/usr/lib/lordos/lordos-splash`). Without Plymouth installed or running, both steps do
+nothing and the boot is the same as before (the first frame is then black, as always).
+
 ### The login screen (greeter)
 
 It's a `lord-server --headless --greeter` running as `lordos-greeter`, unprivileged and without
@@ -306,6 +338,8 @@ session. Everything that changes something goes through closed `admin.c` actions
 | `themes/greeter/`                      | the login screen                                          |
 | `apps/settings/Users.jsx`              | Settings → Users                                          |
 | `/run/lordos/status.json`              | sessions, who's on the monitor and who's connected over the network |
+| `/run/lordos/first-frame`              | the first session frame of this boot is on the monitor (boot splash hand-off) |
+| `tools/boot/lordos-splash`, `tools/boot/systemd/` | the boot splash hand-off: `deactivate`, `quit` and the units |
 | `/etc/lordos/session.conf`             | `AUTOLOGIN=`                                              |
 
 ## Screenshots

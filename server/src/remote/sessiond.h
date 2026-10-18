@@ -16,6 +16,9 @@
 #define RD_CONF_DIR "/etc/lordos/remote"
 #define SD_RUN_DIR "/run/lordos"
 #define SD_STATUS SD_RUN_DIR "/status.json"
+/* created when the first session frame is on the monitor; lordos-splash-quit.service waits for it to
+ * end the boot splash (plymouth quit --retain-splash). See docs/SESSIONS.md, "Boot splash". */
+#define SD_FIRST_FRAME SD_RUN_DIR "/first-frame"
 #define SD_GREETER_RUN SD_RUN_DIR "/greeter"        /* XDG_RUNTIME_DIR of the login screen */
 #define SD_SESSION_CONF "/etc/lordos/session.conf"   /* AUTOLOGIN=user (empty: login screen) */
 #define SD_USERS_DIR "/var/lib/lordos/users"         /* avatars: <user>.json and <user>.png */
@@ -101,7 +104,8 @@ unsigned char *rd_encode_rgba(const uint32_t *px, int w, int h, int *len);   /* 
 /* ---- monitor.c: lending the monitor to a session ---- */
 int  sd_mon_open(void);                             /* 0 if there is a video card (and puts the console in graphics mode) */
 void sd_mon_close(void);
-int  sd_mon_show(int session_fd, const char *who);  /* gives it the card and input; keeps the fd */
+int  sd_mon_show(int session_fd, const char *who, int keep);  /* gives it the card and input; keeps the fd.
+                                                   * keep: the boot splash is still up (RP_DISPLAY_KEEP) */
 int  sd_mon_fd(void);                               /* socket of the session being shown, or -1 */
 int  sd_mon_read(void (*fn)(int type, const char *json));   /* -1 if the session closed */
 void sd_mon_greeter(const char *json);              /* RP_GREETER_IN to the login screen */

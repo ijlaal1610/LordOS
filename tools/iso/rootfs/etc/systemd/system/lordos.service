@@ -1,8 +1,11 @@
 [Unit]
 Description=LordOS (lord-sessiond: login screen, sessions and remote desktop)
 Documentation=file:///usr/share/doc/lordos/README.md
-After=systemd-user-sessions.service systemd-logind.service systemd-udev-settle.service
+After=systemd-user-sessions.service systemd-logind.service systemd-udev-settle.service plymouth-start.service
 Wants=systemd-udev-settle.service
+# boot splash: ended (keeping our first frame) once LordOS is on the screen; see docs/SESSIONS.md,
+# "Boot splash". No Conflicts= with plymouth-quit.service: that one is ordered after it instead.
+Wants=lordos-splash-quit.service
 Conflicts=getty@tty1.service
 After=getty@tty1.service
 
@@ -10,11 +13,16 @@ After=getty@tty1.service
 Type=simple
 # live only: grub language (lordos.lang) and the lordos user's folders
 ExecStartPre=-/usr/lib/lordos/lordos-live-prep
+# the last step before lord-sessiond: Plymouth drops DRM master and leaves its last frame up
+ExecStartPre=-/usr/lib/lordos/lordos-splash deactivate
 ExecStart=/usr/lib/lordos/bin/lord-sessiond
 # SIGHUP: rereads /etc/lordos/remote/config (Settings → Sharing)
 ExecReload=/bin/kill -HUP $MAINPID
 TTYPath=/dev/tty1
-TTYReset=yes
+# no TTYReset: it switches tty1 back to text mode before every Exec* line, and between Plymouth
+# dropping DRM master and lord-sessiond taking it the console would flash on top of the splash
+# (lord-sessiond sets graphics mode itself and restores text mode when it stops)
+TTYReset=no
 TTYVHangup=yes
 StandardInput=null
 StandardOutput=journal

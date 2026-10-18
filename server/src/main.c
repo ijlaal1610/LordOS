@@ -32,6 +32,7 @@
 #include "wl/wl.h"
 #include "gpu/gpu.h"
 #include "remote/mirror.h"
+#include "remote/proto.h"
 #include "tp/tp.h"
 #include "tp/tp_route.h"
 #include "wl/wl_input.h"
@@ -703,14 +704,18 @@ static void remote_input_add(const int *fds, int n) {
  * dock): the fds are kept and display_attach is tried again on the next DRM uevent, so plugging in the
  * monitor later shows the session without restarting anything. RP_UNDISPLAY drops them. */
 #define PARK_MAX 40
-static int parked_fd[PARK_MAX], parked_n;
+static int parked_fd[PARK_MAX], parked_n, parked_flags;
 static unsigned parked_seq;
 static void parked_drop(void) {
     for (int i = 0; i < parked_n; i++) close(parked_fd[i]);
     parked_n = 0;
 }
 
-static void display_attach(const int *fds, int n) {
+/* Boot splash hand-off: lord-sessiond lent the card with RP_DISPLAY_KEEP; RP_SHOWN goes back once
+ * the first frame is on the screen (docs/SESSIONS.md, "Boot splash"). */
+static int splash_wait;
+
+static void display_attach(const int *fds, int n, int flags) {
     Server *s = remote_server;
     parked_drop();                      /* a new RP_DISPLAY replaces what was waiting */
     if (!s->headless || n < 1) { for (int i = 0; i < n; i++) close(fds[i]); return; }
@@ -719,13 +724,15 @@ static void display_attach(const int *fds, int n) {
     memset(o0, 0, sizeof *o0);
     o0->gpu = -1;
     int card = dup(fds[0]);             /* kms_attach closes its fd when it fails */
-    if (kms_attach(&o0->kms, fds[0])) {
+    int keep = (flags & RP_DISPLAY_KEEP) != 0;
+    if (kms_attach(&o0->kms, fds[0], keep)) {
         o0->kms.fd = -1;
         if (card >= 0 && n <= PARK_MAX) {
             fprintf(stderr, "monitor: nothing connected to the card; waiting for a monitor (hotplug)\n");
             parked_fd[0] = card;
             for (int i = 1; i < n; i++) parked_fd[i] = fds[i];
             parked_n = n;
+            parked_flags = flags;
             parked_seq = display_hotplug_seq();
         } else {
             fprintf(stderr, "monitor: could not use the card\n");
@@ -736,6 +743,7 @@ static void display_attach(const int *fds, int n) {
         return;
     }
     if (card >= 0) close(card);
+    splash_wait = keep;
     if (input_open_fds(&s->input, fds + 1, n - 1)) fprintf(stderr, "monitor: no keyboard or mouse\n");
     wl_input_devices_changed();         /* is there a touch screen? (wl_seat touch) */
     s->headless = 0;
@@ -768,6 +776,7 @@ static void display_attach(const int *fds, int n) {
 static void display_detach(void) {
     Server *s = remote_server;
     parked_drop();
+    splash_wait = 0;
     if (s->headless) return;
     gpu_tex_free(s->cursor_tex);
     s->cursor_tex = NULL;
@@ -1619,7 +1628,11 @@ int main(int argc, char **argv) {
             int f[PARK_MAX], fn = parked_n;
             memcpy(f, parked_fd, sizeof(int) * (size_t)fn);
             parked_n = 0;
-            display_attach(f, fn);
+            display_attach(f, fn, parked_flags);
+        }
+        if (splash_wait && !s.headless && main_out(&s)->kms.presented) {
+            splash_wait = 0;
+            mirror_shown();                 /* lord-sessiond: the boot splash can go */
         }
         hw_events();
         media_events(js_media_event);

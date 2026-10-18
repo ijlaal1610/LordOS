@@ -84,6 +84,9 @@ PKGS_GPU="libgl1-mesa-dri libegl1 libgles2 libgbm1 mesa-vulkan-drivers mesa-util
 PKGS_APPS="foot featherpad qt6-wayland"
 # the SSH server ships off; the `ssh` switch file on the boot partition (rpi/firstboot) or RPI_SSH=1 turns it on
 PKGS_SSH="openssh-server"
+# the boot splash (the LordOS Plymouth theme comes in the lordos package; plymouth-label draws the
+# password prompt's text for encrypted disks). See docs/RASPBERRY.md, "Boot splash".
+PKGS_SPLASH="plymouth plymouth-label"
 # to build lord-server (only in the build chroot, not in the image)
 PKGS_BUILD="build-essential pkg-config libxkbcommon-dev libwayland-dev wayland-protocols libgbm-dev libegl-dev libgles-dev
  libssl-dev libcrypt-dev dpkg-dev file"
@@ -226,7 +229,7 @@ mount_ch "$CH"
 echo "== paquetes"
 in_root "$CH" apt-get update -q > "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
 # shellcheck disable=SC2086
-in_root "$CH" apt-get install -y -q --no-install-recommends $PKGS_BASE $PKGS_LORDOS $PKGS_RPI $ARCHIVE_K $PKGS_GPU $PKGS_APPS $PKGS_SSH \
+in_root "$CH" apt-get install -y -q --no-install-recommends $PKGS_BASE $PKGS_LORDOS $PKGS_RPI $ARCHIVE_K $PKGS_GPU $PKGS_APPS $PKGS_SSH $PKGS_SPLASH \
     >> "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
 # the LordOS kernels (same hooks as Raspberry Pi's: initramfs, raspi-firmware copies kernel_2712.img,
 # device trees and overlays), and an apt pin so the archive kernel of that flavour never replaces them
@@ -308,7 +311,22 @@ for kv in $KV2712 $KV8; do
     if grep -q '^CONFIG_SECURITY_LANDLOCK=y' "$CH/boot/config-$kv" 2>/dev/null; then echo "   kernel $kv: Landlock built in"
     else echo "   WARNING: kernel $kv has NO Landlock (seccomp-only isolation on that board)" >&2; fi
 done
-in_root "$CH" update-initramfs -u -k all > /dev/null 2>&1 || true
+# boot splash: the LordOS theme, and vc4 (HDMI) with DRM in the initramfs so Plymouth draws from the
+# first seconds instead of waiting for the root file system. Plymouth's own hook adds the rest of
+# kernel/drivers/gpu/drm (MODULES=most), its plugins, the theme and a font for the password prompt.
+in_root "$CH" plymouth-set-default-theme lordos
+install -d "$CH/etc/initramfs-tools/conf.d"
+grep -qx vc4 "$CH/etc/initramfs-tools/modules" 2>/dev/null || {
+    echo "# LordOS: the display driver early, for the boot splash (docs/RASPBERRY.md, \"Boot splash\")"
+    echo vc4
+} >> "$CH/etc/initramfs-tools/modules"
+printf '# LordOS: the boot splash needs the DRM drivers in the initramfs (docs/RASPBERRY.md)\nMODULES=most\n' \
+    > "$CH/etc/initramfs-tools/conf.d/lordos-splash.conf"
+in_root "$CH" update-initramfs -u -k all > "$WORK/initramfs.log" 2>&1 || { tail -20 "$WORK/initramfs.log"; exit 1; }
+for kv in $KV2712 $KV8; do
+    in_root "$CH" lsinitramfs "/boot/initrd.img-$kv" 2>/dev/null | grep -q 'plymouth/themes/lordos/lordos.script' ||
+        { echo "build-img.sh: the initramfs of $kv has no LordOS splash (see $WORK/initramfs.log)" >&2; exit 1; }
+done
 place_kernel() {     # version, kernel name on the FAT, initramfs name
     [ -n "$1" ] || return 0
     [ -f "$CH/boot/firmware/$2" ] || cp "$CH/boot/vmlinuz-$1" "$CH/boot/firmware/$2"
@@ -368,9 +386,12 @@ PARTUUID=$PARTUUID_ROOT  /              ext4  defaults,noatime  0 1
 PARTUUID=$PARTUUID_BOOT  /boot/firmware vfat  defaults,umask=0077  0 2
 EOF
 # lordos.gpu=0 (safe mode, everything on the CPU) and lordos.lang=en|pt can be added here, as on the ISO.
+# The boot splash: quiet splash (Plymouth), no serial console for it, no kernel logo or blinking cursor;
+# the console is tty1, where Plymouth draws and where Esc shows the boot messages. Removing "splash"
+# boots in text as before (docs/RASPBERRY.md, "Boot splash").
 # lsm=: the same list as the LordOS kernel's CONFIG_LSM (Landlock for app isolation, server/src/sec);
 # those the kernel lacks are ignored, so the active list is "capability,landlock".
-printf 'console=serial0,115200 console=tty3 root=PARTUUID=%s rootfstype=ext4 fsck.repair=yes rootwait quiet loglevel=3 cgroup_enable=memory lsm=landlock,lockdown,yama,integrity,bpf lordos.lang=en\n' \
+printf 'console=serial0,115200 console=tty1 root=PARTUUID=%s rootfstype=ext4 fsck.repair=yes rootwait quiet splash plymouth.ignore-serial-consoles logo.nologo vt.global_cursor_default=0 loglevel=3 cgroup_enable=memory lsm=landlock,lockdown,yama,integrity,bpf lordos.lang=en\n' \
     "$PARTUUID_ROOT" > "$WORK/mnt/boot/firmware/cmdline.txt"
 sync
 umount "$WORK/mnt/boot/firmware"

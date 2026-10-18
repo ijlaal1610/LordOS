@@ -136,6 +136,31 @@ open `S`) and the weight contrast best.
 - Don't use the detailed icon below 32 px or the detailed crown below 24 px; use the small variants.
 - Don't redraw or trace the logo from screenshots. Edit `tools/gen-brand.py` and regenerate.
 
+## Boot splash and boot menu
+
+What the screen shows from power-on to the login screen (`docs/ISO.md`, "Boot splash and boot menu";
+`docs/RASPBERRY.md`, "Boot splash"). Calm and minimal: no text messages, nothing that moves except
+the bar.
+
+| Splash, mid-boot (static preview, 1x) | Splash, encrypted disk |
+|---|---|
+| ![Boot splash](../boot/splash-preview.png) | ![Password prompt](../boot/splash-preview-password.png) |
+
+| Part | Spec (1x, for 1080p; @2x files for 4K) |
+|---|---|
+| Background | vertical gradient `#12122A` (top) → `#0B0B1C` (bottom) |
+| Crown | `crown.svg` at 112 px, centred, 40 px above the middle |
+| Glow | a 420 px radial gradient of `#6E4BFF` behind the crown, 30 % → 12 % → 0 alpha. It is light *behind* the logo on the background, not an effect on the logo (see "Don'ts") |
+| Progress bar | 200 × 6 px, 56 px under the crown; track white at 12 %; fill `#B46CFF` → `#6E4BFF` with round caps; eased, never goes back |
+| Wordmark | the lockup's outlined Plus Jakarta Sans text, 12 px high, white at 55 %, 28 px under the bar |
+| Password field | 280 × 40 px, 12 px radius, white at 7 % with a 22 % hairline; white dots and a small lock above |
+| Boot menu (GRUB) | the same background with a soft glow, the crown at 96 px, entries in Inter 16 (`#B9B6D9`, selected white on a rounded violet band `#6E4BFF` at 34 % with a `#B46CFF` hairline), the bar as the countdown |
+
+The files are generated, never edited by hand: `python3 tools/boot/gen-boot-assets.py` renders
+`tools/boot/plymouth/lordos/*.png` (1x and @2x) and `tools/iso/grub/lordos/*.png` from
+`assets/brand/crown.svg` and `logo-horizontal-dark.svg` with rsvg-convert; `--preview` writes the
+previews above. The script lays the theme out at run time (`lordos.script`).
+
 ## Lumo, the mascot (`mascot/`)
 
 Lumo, the guardian of LordOS: a small celestial fox with white fur and violet highlights, who wears

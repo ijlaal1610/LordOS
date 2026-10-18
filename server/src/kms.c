@@ -295,7 +295,7 @@ int kms_scanout_ok(const Kms *k, uint32_t fourcc, uint64_t modifier) {
     return 0;
 }
 
-static int kms_setup(Kms *k) {
+static int kms_setup(Kms *k, int keep) {
     if (pick_output(k)) return -1;
     read_scanout_formats(k);
     k->saved.crtc_id = k->crtc_id;
@@ -304,13 +304,19 @@ static int kms_setup(Kms *k) {
     /* the first frame in black (not what the previous session left) */
     memset(k->buf[0].map, 0, k->buf[0].size);
     memset(k->buf[1].map, 0, k->buf[1].size);
-    struct drm_mode_crtc set = {
-        .crtc_id = k->crtc_id, .fb_id = k->buf[0].fb_id,
-        .set_connectors_ptr = (uintptr_t)&k->conn_id, .count_connectors = 1,
-        .mode = k->mode, .mode_valid = 1,
-    };
-    if (xioctl(k->fd, DRM_IOCTL_MODE_SETCRTC, &set)) { perror("SETCRTC"); return -1; }
     k->front = 0;
+    if (keep) {
+        /* the boot splash stays on the screen until our first frame (the modeset is done there) */
+        k->modeset_pending = 1;
+    } else {
+        struct drm_mode_crtc set = {
+            .crtc_id = k->crtc_id, .fb_id = k->buf[0].fb_id,
+            .set_connectors_ptr = (uintptr_t)&k->conn_id, .count_connectors = 1,
+            .mode = k->mode, .mode_valid = 1,
+        };
+        if (xioctl(k->fd, DRM_IOCTL_MODE_SETCRTC, &set)) { perror("SETCRTC"); return -1; }
+        k->presented = 1;
+    }
     busy_crtcs |= 1u << k->crtc_index;
     fprintf(stderr, "kms: %ux%u@%u on connector %u, crtc %u\n",
             k->width, k->height, k->mode.vrefresh, k->conn_id, k->crtc_id);
@@ -352,15 +358,15 @@ int kms_open(Kms *k, const char *path) {
     if (k->fd < 0) { perror(path); return -1; }
     if (xioctl(k->fd, DRM_IOCTL_SET_MASTER, NULL))
         fprintf(stderr, "kms: warning, we are not DRM master (%s)\n", strerror(errno));
-    if (kms_setup(k)) { kms_close(k); return -1; }
+    if (kms_setup(k, 0)) { kms_close(k); return -1; }
     return 0;
 }
 
-int kms_attach(Kms *k, int fd) {
+int kms_attach(Kms *k, int fd, int keep) {
     memset(k, 0, sizeof *k);
     k->fd = fd;
     k->borrowed = 1;
-    if (kms_setup(k)) { kms_close(k); return -1; }
+    if (kms_setup(k, keep)) { kms_close(k); return -1; }
     return 0;
 }
 
@@ -399,6 +405,11 @@ KmsBuffer *kms_back(Kms *k) { return &k->buf[k->front ^ 1]; }
 
 int kms_flip(Kms *k) {
     int back = k->front ^ 1;
+    if (k->modeset_pending) {               /* the first frame after the boot splash: modeset */
+        if (kms_set_fb(k, k->buf[back].fb_id)) { perror("SETCRTC"); return -1; }
+        k->front = back;
+        return 0;
+    }
     struct drm_mode_crtc_page_flip pf = {
         .crtc_id = k->crtc_id, .fb_id = k->buf[back].fb_id,
         .flags = DRM_MODE_PAGE_FLIP_EVENT,
@@ -491,7 +502,10 @@ int kms_set_fb(Kms *k, uint32_t fb) {
         .set_connectors_ptr = (uintptr_t)&k->conn_id, .count_connectors = 1,
         .mode = k->mode, .mode_valid = 1,
     };
-    return xioctl(k->fd, DRM_IOCTL_MODE_SETCRTC, &set);
+    if (xioctl(k->fd, DRM_IOCTL_MODE_SETCRTC, &set)) return -1;
+    k->modeset_pending = 0;
+    k->presented = 1;
+    return 0;
 }
 
 int kms_flip_fb(Kms *k, uint32_t fb, void *data) {
@@ -499,7 +513,7 @@ int kms_flip_fb(Kms *k, uint32_t fb, void *data) {
         .crtc_id = k->crtc_id, .fb_id = fb, .flags = DRM_MODE_PAGE_FLIP_EVENT, .user_data = (uintptr_t)data,
     };
     k->custom = 1;
-    if (xioctl(k->fd, DRM_IOCTL_MODE_PAGE_FLIP, &pf) == 0) { k->flip_pending = 1; return 0; }
+    if (!k->modeset_pending && xioctl(k->fd, DRM_IOCTL_MODE_PAGE_FLIP, &pf) == 0) { k->flip_pending = 1; return 0; }
     /* no page flip: synchronous modeset and notify right away */
     if (kms_set_fb(k, fb)) return -1;
     struct timespec t;
@@ -587,6 +601,7 @@ int kms_modeset(Kms *k, uint32_t conn_id, const struct drm_mode_modeinfo *mode) 
             .set_connectors_ptr = (uintptr_t)&k->conn_id, .count_connectors = 1, .mode = k->mode, .mode_valid = 1 };
         ok = xioctl(k->fd, DRM_IOCTL_MODE_SETCRTC, &set) == 0;
         if (!ok) perror("kms: SETCRTC (new mode)");
+        else { k->modeset_pending = 0; k->presented = 1; }
     }
     if (!ok) {                                  /* back to the previous mode */
         destroy_buffer(k, &k->buf[0]);

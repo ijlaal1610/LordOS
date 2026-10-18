@@ -18,8 +18,8 @@ typedef struct {
     void (*resize)(int w, int h);           /* request for another screen size (RP_RESIZE) */
     void (*greeter)(const char *json);      /* notice from lord-sessiond to the login screen */
     /* lord-sessiond lends the monitor: fds[0] the card (already master), the rest keyboards and mice
-     * (they now belong to the session). undisplay: gives it back. */
-    void (*display)(const int *fds, int n);
+     * (they now belong to the session); flags: RP_DISPLAY_KEEP (proto.h). undisplay: gives it back. */
+    void (*display)(const int *fds, int n, int flags);
     void (*undisplay)(void);
     /* browser trackpad: scroll in pixels (phase 1 begins, 2 continues, 3 ends) and pinch
      * (ctrl+wheel or the gesturechange of WebKit browsers; scale relative to the start, rotation in degrees) */
@@ -40,6 +40,8 @@ int  mirror_has_seat(void);                           /* is lord-sessiond (monit
  * ({"a":"lock"}: lock; {"a":"switch"}: switch user) and RP_GREETER to the monitor. */
 void mirror_session(const char *json);
 void mirror_greeter(const char *json);
+/* To lord-sessiond: the first frame after an RP_DISPLAY_KEEP is on the screen (RP_SHOWN). */
+void mirror_shown(void);
 
 /* A new screen frame (without the cursor). Compares it tile by tile with the previous one and sends
  * only what changed to each connection that is ready. */

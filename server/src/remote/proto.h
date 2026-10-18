@@ -17,6 +17,8 @@ enum {
     RP_CURSOR = 4,      /* i16 x, y, u8 mode (0 arrow, 1 image, 2 hidden) */
     RP_SHAPE = 5,       /* u16 w, h, hx, hy + w*h u32 pixels: an app's cursor image */
     RP_CLIP = 6,        /* UTF-8 text: the session clipboard changed */
+    RP_SHOWN = 7,       /* no data, to lord-sessiond only: the first frame after an RP_DISPLAY with
+                         * RP_DISPLAY_KEEP is on the screen (the boot splash can go; docs/SESSIONS.md) */
     RP_SESSION = 9,     /* JSON: request from the session to the monitor ({"a":"lock"} or {"a":"switch"}) */
     RP_GREETER = 20,    /* JSON: request from the login screen to lord-sessiond (greeter mode only) */
 };
@@ -34,7 +36,8 @@ enum {
     RP_SEAT = 18,       /* this connection is lord-sessiond, which drives the monitor: it doesn't get the screen,
                          * only the requests (RP_SESSION, RP_GREETER); root only */
     RP_DISPLAY = 19,    /* + fds (SCM_RIGHTS): the video card (already master) and the input
-                         * devices. The session starts showing on the monitor (with GPU if any). Root only */
+                         * devices. The session starts showing on the monitor (with GPU if any). Root only.
+                         * Data: u8 number of fds, optional u8 flags (RP_DISPLAY_KEEP) */
     RP_UNDISPLAY = 22,  /* the session leaves the monitor (goes back to drawing in memory). Root only */
     RP_GREETER_IN = 21, /* JSON: reply or notice from lord-sessiond to the login screen */
     RP_INPUT_ADD = 23,  /* + fds: keyboards, mice or touchpads plugged in later (only to the monitor's
@@ -44,5 +47,9 @@ enum {
     RP_SCROLL = 30,     /* u8 phase (1 begins, 2 continues, 3 ends), i32 dx, dy in 1/256 pixel: browser trackpad */
     RP_PINCH = 31,      /* u8 phase, i32 scale ×65536 (relative to the start), i32 rotation in degrees ×256 */
 };
+
+/* RP_DISPLAY flags */
+#define RP_DISPLAY_KEEP 1   /* the screen still shows the boot splash: keep it (no black first frame)
+                             * until the session's first frame, then answer RP_SHOWN */
 
 #endif

@@ -41,7 +41,52 @@ motherboard. It works with **UEFI** and with **BIOS/Legacy**. **Secure Boot** ha
 | LordOS (Español) / LordOS (Português) | `lordos.lang=es` / `lordos.lang=pt`: the interface in Spanish or Portuguese the first time |
 | LordOS (copy to RAM) | `toram`: copies the system to memory (~1 GB free is needed) and the USB stick can be removed |
 
-The GRUB menu itself is in English (GRUB's default).
+The GRUB menu itself is in English (GRUB's default). Every entry except safe mode boots with the
+boot splash (`splash`); safe mode boots in text (`nosplash`).
+
+## Boot splash and boot menu
+
+From power-on to the login screen LordOS shows its own look: the boot menu, then the crown with a
+progress bar, then the login screen (or the desktop, with autologin) without a black frame or console
+text in between.
+
+| Boot menu (GRUB theme) | Boot splash (Plymouth) |
+|---|---|
+| ![Boot menu](boot/iso-grub.png) | ![Boot splash](boot/iso-splash.png) |
+
+- **Boot menu:** the GRUB theme `tools/iso/grub/lordos/` (`theme.txt`, images and Inter as GRUB
+  fonts): the navy background, a small crown, the entries in the brand colours with the selected one
+  on a rounded violet band, and the countdown as the splash's bar. The ISO copies it to
+  `/boot/grub/themes/lordos/`; the package installs it in `/usr/share/grub/themes/lordos/` (amd64
+  only) and the disk installer sets `GRUB_THEME` to it. The entries (English, Español, Português,
+  safe mode, copy to RAM) are the same as before.
+- **Boot splash:** the Plymouth theme `lordos` (`tools/boot/plymouth/lordos/`, the `script`
+  module), installed by the package in `/usr/share/plymouth/themes/lordos/`. The ISO installs
+  `plymouth` and `plymouth-label` and selects it (`plymouth-set-default-theme lordos`) before building
+  the initramfs, so it shows from the initramfs on. The bar follows Plymouth's boot progress, eased so
+  it never jumps or goes back; there are no text messages, and **Esc** shows the text console as
+  usual. If a disk is encrypted (LUKS), a styled password field with a lock replaces the bar.
+- **Installed system:** the installer writes `GRUB_CMDLINE_LINUX_DEFAULT="quiet splash
+  vt.global_cursor_default=0 loglevel=3"`, `GRUB_GFXPAYLOAD_LINUX=keep`, `GRUB_TERMINAL_OUTPUT=gfxterm`
+  and `GRUB_THEME` (each only when Plymouth and the themes are in the copied system), then rebuilds
+  the initramfs and the GRUB menu. `nosplash` on the kernel command line (`e` in the menu) boots in
+  text for one boot.
+- **Hand-off:** see `SESSIONS.md`, "Boot splash": Plymouth gives up the card just before
+  lord-sessiond takes it, its last frame stays until LordOS's first frame replaces it, and only then
+  is Plymouth ended with `--retain-splash`.
+- **On Debian (install.sh):** optional and asked for; see `INSTALL-DEBIAN.md`.
+
+The images come from `python3 tools/boot/gen-boot-assets.py` (rsvg-convert; `--preview` also
+writes the static previews in `docs/boot/`). The GRUB fonts are made on a Debian with `grub-common`:
+
+```sh
+R=0x20-0x7E,0xA0-0x17F,0x2010-0x2027
+grub-mkfont -s 16 -r $R -o tools/iso/grub/lordos/inter-regular-16.pf2  assets/fonts/Inter-Regular.ttf
+grub-mkfont -s 14 -r $R -o tools/iso/grub/lordos/inter-regular-14.pf2  assets/fonts/Inter-Regular.ttf
+grub-mkfont -s 16 -r $R -o tools/iso/grub/lordos/inter-semibold-16.pf2 assets/fonts/Inter-SemiBold.ttf
+```
+
+Inter is under the SIL Open Font License 1.1 (`assets/fonts/Inter-LICENSE.txt`).
 
 In the live session:
 - **User:** `lordos`, no password, with passwordless `sudo`.

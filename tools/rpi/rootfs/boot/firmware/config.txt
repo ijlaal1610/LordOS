@@ -3,6 +3,8 @@
 
 [all]
 arm_64bit=1
+# no rainbow square at power-on: the LordOS boot splash (Plymouth) is the first thing on the screen
+disable_splash=1
 # initramfs with the same name as the kernel (kernel_2712.img → initramfs_2712, kernel8.img → initramfs8)
 auto_initramfs=1
 # Full KMS: vc4 drives HDMI (the display) and v3d the 3D GPU. lord-server uses KMS without libdrm.

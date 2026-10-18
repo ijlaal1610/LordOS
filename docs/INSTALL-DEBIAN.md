@@ -95,10 +95,33 @@ curl -fsSL https://lordos.org/install.sh | sh -s -- [options]
 | `--user NAME` | the user to set up (default: the user who ran `sudo`; as plain root with no `sudo`, nobody) |
 | `--keep-display-manager` | leave the current display manager enabled; LordOS is not enabled at boot |
 | `--no-extras` | don't install the extra sound and font packages |
+| `--boot-splash` | set up the LordOS boot splash without asking (see "Boot splash (optional)") |
+| `--no-boot-splash` | don't offer the boot splash |
 | `--no-systemd-check` | continue without a running systemd (containers, chroots): services, display manager, getty and linger are skipped. Detected automatically in Docker/Podman |
 | `--uninstall` | remove LordOS and restore the previous login setup |
 | `--purge` | with `--uninstall`: purge the package and its files in `/etc` |
 | `-h`, `--help` | help |
+
+## Boot splash (optional)
+
+At the end the installer asks whether to show the LordOS boot splash (the crown and a progress bar,
+`ISO.md`, "Boot splash and boot menu"). The default answer is no, and `--yes` skips it unless
+`--boot-splash` is given. If you accept:
+
+- `plymouth` and `plymouth-label` are installed and the theme is set to `lordos` with
+  `plymouth-set-default-theme -R` (it rebuilds the initramfs). If you had picked a boot splash theme
+  that isn't one of Debian's own, it asks before replacing it.
+- **GRUB, only if nobody customised it for this:** when the system boots with GRUB, and its settings
+  (`/etc/default/grub` and `/etc/default/grub.d/*.cfg`) don't already have `splash`/`nosplash` or a
+  `GRUB_THEME`, and the terminal isn't `console`/`serial`, it writes its own drop-in
+  `/etc/default/grub.d/lordos.cfg` (`splash` added to `GRUB_CMDLINE_LINUX_DEFAULT`,
+  `GRUB_GFXPAYLOAD_LINUX=keep` and, on amd64, the LordOS boot menu as `GRUB_THEME`) and runs
+  `update-grub`. `/etc/default/grub` itself is never edited. Without GRUB (systemd-boot, a
+  Raspberry Pi), only the theme is set and the final message says to add `quiet splash` to the kernel
+  command line.
+
+`--uninstall` removes the drop-in (and runs `update-grub`) and puts the previous Plymouth theme
+back; Plymouth itself stays installed.
 
 ## Uninstalling
 

@@ -232,7 +232,7 @@ static void handle(Client *c, int type, const unsigned char *d, uint32_t n) {
         break;
     case RP_DISPLAY:
         if (c->seat && c->nfds > 0 && cb.display) {
-            cb.display(c->fds, c->nfds);            /* the fds now belong to the session */
+            cb.display(c->fds, c->nfds, n >= 2 ? d[1] : 0);  /* the fds now belong to the session */
             c->nfds = 0;
         }
         break;
@@ -389,6 +389,14 @@ void mirror_session(const char *json) {
     send_json(RP_SESSION, json, 0);
 }
 void mirror_greeter(const char *json) { send_json(RP_GREETER, json, 1); }
+void mirror_shown(void) {
+    if (lfd < 0) return;
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (cl[i].fd < 0 || !cl[i].seat) continue;
+        msg(&cl[i], RP_SHOWN, NULL, 0, NULL, 0);
+        pump(&cl[i]);
+    }
+}
 
 int mirror_pollfds(struct pollfd *p, int max) {
     int n = 0;

@@ -118,7 +118,7 @@ void sd_mon_close(void) {
 
 int sd_mon_fd(void) { return conn; }
 
-int sd_mon_show(int fd, const char *who) {
+int sd_mon_show(int fd, const char *who, int keep) {
     take_back();
     conn = fd;
     drm = open(CARD, O_RDWR | O_CLOEXEC);
@@ -136,9 +136,11 @@ int sd_mon_show(int fd, const char *who) {
     memcpy(fds + 1, ins, sizeof(int) * (size_t)nin);
     char hello[64];
     snprintf(hello, sizeof hello, "monitor %s", who);
-    unsigned char count = (unsigned char)(nin + 1);
+    /* keep: the boot splash is still on the screen; the session leaves it there until its first
+     * frame instead of showing black, and answers RP_SHOWN */
+    unsigned char disp[2] = { (unsigned char)(nin + 1), keep ? RP_DISPLAY_KEEP : 0 };
     if (send_msg(RP_SEAT, NULL, 0, NULL, 0) || send_msg(RP_HELLO, hello, strlen(hello), NULL, 0) ||
-        send_msg(RP_DISPLAY, &count, 1, fds, nin + 1)) {
+        send_msg(RP_DISPLAY, disp, sizeof disp, fds, nin + 1)) {
         sd_log("the session did not get the monitor");
         return -1;
     }
@@ -147,8 +149,8 @@ int sd_mon_show(int fd, const char *who) {
 
 void sd_mon_greeter(const char *json) { send_msg(RP_GREETER_IN, json, strlen(json), NULL, 0); }
 
-/* Requests from the session being shown (RP_SESSION, RP_GREETER: JSON up to 4 KB). Everything else is
- * discarded without looking at it. -1 if the session closed. */
+/* Requests from the session being shown (RP_SESSION, RP_GREETER: JSON up to 4 KB; RP_SHOWN with no
+ * data). Everything else is discarded without looking at it. -1 if the session closed. */
 int sd_mon_read(void (*fn)(int type, const char *json)) {
     for (;;) {
         if (rcap - rlen < 8192) {
@@ -183,7 +185,8 @@ int sd_mon_read(void (*fn)(int type, const char *json)) {
             }
             if (rlen - off < 4 + (size_t)len) break;
             int type = rb[off + 4];
-            if ((type == RP_SESSION || type == RP_GREETER) && len - 1 < 4096) {
+            if (type == RP_SHOWN) fn(type, "");
+            else if ((type == RP_SESSION || type == RP_GREETER) && len - 1 < 4096) {
                 char j[4096];
                 memcpy(j, rb + off + 5, len - 1);
                 j[len - 1] = 0;

@@ -75,6 +75,9 @@ Options:
   --keep-display-manager    do not disable the current display manager (LordOS is not
                             enabled at boot then; see the final message)
   --no-extras               do not install the extra sound/font packages the ISO has
+  --boot-splash             also set up the LordOS boot splash (Plymouth) without asking;
+                            without it, it is only offered (and skipped with --yes)
+  --no-boot-splash          do not offer the boot splash
   --no-systemd-check        continue without a running systemd (containers, chroots):
                             the systemd steps are skipped
   --uninstall               remove LordOS and restore the previous login setup
@@ -484,6 +487,105 @@ setup_systemd() {
     fi
 }
 
+# ---------------------------------------------------------------- boot splash (optional)
+
+GRUB_DROPIN=/etc/default/grub.d/lordos.cfg
+# themes a stock Debian may have selected; anything else is someone's choice and is asked about
+STOCK_PLYMOUTH_THEMES="ceratopsian emerald futureprototype homeworld joy lines moonlight softwaves spacefun bgrt spinner text details tribar script fade-in glow solar spinfinity"
+
+# the effective GRUB settings (/etc/default/grub plus its grub.d drop-ins), as "cmdline|theme|terminal"
+grub_settings() {
+    (
+        GRUB_CMDLINE_LINUX_DEFAULT=""; GRUB_THEME=""; GRUB_TERMINAL=""; GRUB_TERMINAL_OUTPUT=""
+        # shellcheck disable=SC1091,SC1090
+        [ -r /etc/default/grub ] && . /etc/default/grub
+        for f in /etc/default/grub.d/*.cfg; do
+            # shellcheck disable=SC1090
+            [ -r "$f" ] && [ "$f" != "$GRUB_DROPIN" ] && . "$f"
+        done
+        printf '%s|%s|%s\n' "$GRUB_CMDLINE_LINUX_DEFAULT" "$GRUB_THEME" "${GRUB_TERMINAL_OUTPUT:-$GRUB_TERMINAL}"
+    ) 2>/dev/null
+}
+
+# The LordOS boot splash: Plymouth with the lordos theme (it ships in the package) and, when this
+# system boots with an unmodified GRUB, "splash" on the kernel command line and the LordOS boot menu,
+# through a drop-in of our own that --uninstall removes. A custom bootloader setup is never edited:
+# then only the theme is set and the final message says what to add. See docs/INSTALL-DEBIAN.md.
+setup_splash() {
+    [ "$BOOT_SPLASH" = no ] && return 0
+    [ -f /usr/share/plymouth/themes/lordos/lordos.plymouth ] || return 0
+    if [ "$BOOT_SPLASH" != yes ]; then
+        ask "Also show the LordOS boot splash (logo and progress bar) at boot? It installs Plymouth" 1 || {
+            ok "boot splash: not set up (run again with --boot-splash to add it)"; return 0; }
+    fi
+    step "Setting up the boot splash"
+    apt_install plymouth plymouth-label || { warn "could not install Plymouth; the boot splash was skipped"; return 0; }
+    prev=$(plymouth-set-default-theme 2>/dev/null || true)
+    set_theme=1
+    if [ "$prev" = lordos ]; then
+        set_theme=0
+    elif [ -n "$prev" ] && ! printf '%s\n' $STOCK_PLYMOUTH_THEMES | grep -qx "$prev"; then
+        ask "Your boot splash theme is \"$prev\". Replace it with LordOS's?" 1 || set_theme=0
+    fi
+    if [ "$set_theme" = 1 ]; then
+        state_set PREV_PLYMOUTH_THEME "${prev:-none}"
+        if as_root plymouth-set-default-theme -R lordos >/dev/null 2>&1; then
+            changed "boot splash theme set to lordos (was ${prev:-the default}; initramfs rebuilt)"
+        else
+            warn "plymouth-set-default-theme failed; the boot splash theme was not changed"
+        fi
+    fi
+    # the bootloader: only a GRUB that nobody customised for these settings
+    if ! command -v update-grub >/dev/null 2>&1 || [ ! -f /boot/grub/grub.cfg ]; then
+        SPLASH_NOTE="this system does not boot with GRUB here: add \"quiet splash\" to the kernel command line to see the splash"
+        return 0
+    fi
+    IFS='|' read -r g_cmd g_theme g_term <<EOF
+$(grub_settings)
+EOF
+    add_splash=1; add_theme=1
+    case " $g_cmd " in *" splash "*) add_splash=0 ;; esac
+    case " $g_cmd " in *" nosplash "*) add_splash=0; SPLASH_NOTE="your kernel command line has \"nosplash\" and was left as it is" ;; esac
+    [ -n "$g_theme" ] && add_theme=0
+    case "$g_term" in *console*|*serial*) add_theme=0 ;; esac
+    [ -f /usr/share/grub/themes/lordos/theme.txt ] || add_theme=0
+    if [ "$add_splash" = 0 ] && [ "$add_theme" = 0 ]; then
+        ok "bootloader: left as it is (it already has a splash setting or a theme of its own)"
+        return 0
+    fi
+    as_root mkdir -p /etc/default/grub.d
+    {
+        echo "# LordOS boot splash and boot menu, written by the LordOS installer (install.sh)."
+        echo "# Remove this file and run update-grub to undo (install.sh --uninstall does it)."
+        if [ "$add_splash" = 1 ]; then echo 'GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT splash"'; fi
+        echo 'GRUB_GFXPAYLOAD_LINUX=keep'
+        if [ "$add_theme" = 1 ]; then echo 'GRUB_THEME=/usr/share/grub/themes/lordos/theme.txt'; fi
+    } | as_root tee "$GRUB_DROPIN" >/dev/null
+    state_set GRUB_DROPIN 1
+    if as_root update-grub >/dev/null 2>&1; then
+        changed "GRUB: $GRUB_DROPIN ($( [ "$add_splash" = 1 ] && printf 'splash' )$( [ "$add_splash" = 1 ] && [ "$add_theme" = 1 ] && printf ' and ' )$( [ "$add_theme" = 1 ] && printf 'the LordOS boot menu' )) and update-grub"
+    else
+        warn "update-grub failed; $GRUB_DROPIN was removed again"
+        as_root rm -f "$GRUB_DROPIN"
+        state_set GRUB_DROPIN 0
+    fi
+}
+
+undo_splash() {
+    if [ "$(state_get GRUB_DROPIN)" = 1 ] && [ -f "$GRUB_DROPIN" ]; then
+        as_root rm -f "$GRUB_DROPIN"
+        as_root update-grub >/dev/null 2>&1 || warn "update-grub failed; run it by hand"
+        changed "GRUB: $GRUB_DROPIN removed and update-grub run"
+    fi
+    prev=$(state_get PREV_PLYMOUTH_THEME)
+    if [ -n "$prev" ] && command -v plymouth-set-default-theme >/dev/null 2>&1 &&
+       [ "$(plymouth-set-default-theme 2>/dev/null)" = lordos ]; then
+        if [ "$prev" = none ]; then as_root plymouth-set-default-theme -R --reset >/dev/null 2>&1 || true
+        else as_root plymouth-set-default-theme -R "$prev" >/dev/null 2>&1 || true; fi
+        changed "boot splash theme restored ($prev); Plymouth itself is kept (sudo apt remove plymouth removes it)"
+    fi
+}
+
 remote_note() {
     if [ -f /etc/lordos/remote/config ] && grep -q '^enabled=1' /etc/lordos/remote/config 2>/dev/null; then
         warn "remote desktop was already turned on in /etc/lordos/remote/config before this run; it was left as it was (Settings > Sharing)"
@@ -537,6 +639,7 @@ do_install() {
             say "  6. Offer to disable your current display manager, $DM_UNIT (you can switch back)"
         fi
     fi
+    [ "$BOOT_SPLASH" != no ] && say "  Then it offers the LordOS boot splash (Plymouth; never changes a customised bootloader)"
     say "  It does NOT touch your network configuration, and remote desktop stays off."
     say ""
     ask "Continue?" 0 || die "cancelled; nothing was changed"
@@ -552,6 +655,7 @@ do_install() {
     setup_locales
     setup_session_conf
     setup_systemd
+    setup_splash
     remote_note
     network_note
     state_set INSTALLER_VERSION "$INSTALLER_VERSION"
@@ -561,6 +665,7 @@ do_install() {
     say "What changed:$CHANGES"
     say ""
     if [ -n "$SIG_NOTE" ]; then say "Signature: $SIG_NOTE."; say ""; fi
+    if [ -n "$SPLASH_NOTE" ]; then say "Boot splash: $SPLASH_NOTE."; say ""; fi
     if ! has_systemd; then
         say "No systemd here, so nothing was set to start. On a real system run the installer again."
     elif [ "$KEEP_DM" = 1 ] && [ -n "$DM_UNIT" ]; then
@@ -614,6 +719,8 @@ do_uninstall() {
     fi
     [ -n "$(state_get GROUPS_ADDED)" ] && say "  - remove $(state_get GROUPS_USER) from the groups the installer added: $(state_get GROUPS_ADDED)"
     [ "$(state_get GREETER_CREATED)" = 1 ] && say "  - delete the $GREETER_USER system user"
+    [ "$(state_get GRUB_DROPIN)" = 1 ] && say "  - remove the LordOS GRUB settings ($GRUB_DROPIN) and run update-grub"
+    [ -n "$(state_get PREV_PLYMOUTH_THEME)" ] && say "  - put back the previous boot splash theme"
     say "  Your home folder and LordOS settings in it (~/.config/lordos) are kept."
     say ""
     ask "Continue?" 0 || die "cancelled; nothing was changed"
@@ -644,6 +751,7 @@ do_uninstall() {
             changed "linger disabled for $lu"
         fi
     fi
+    undo_splash
     case "$installed" in
         ii*|iF*|iU*|rc*)
             step "Removing the package"
@@ -694,6 +802,7 @@ main() {
     ASSUME_YES=0; [ "${LORDOS_YES:-0}" = 1 ] && ASSUME_YES=1
     WANT_VERSION=""; LOCAL_DEB=""; TARGET_USER=""; MODE=install; PURGE=""
     KEEP_DM=0; NO_EXTRAS=0; SKIP_SYSTEMD_CHECK=0; NO_SYSTEMD=0; DM_SWITCHED=0
+    BOOT_SPLASH=ask; SPLASH_NOTE=""
     while [ $# -gt 0 ]; do
         case "$1" in
             -y|--yes) ASSUME_YES=1 ;;
@@ -705,6 +814,8 @@ main() {
             --user=*) TARGET_USER=${1#*=} ;;
             --keep-display-manager) KEEP_DM=1 ;;
             --no-extras) NO_EXTRAS=1 ;;
+            --boot-splash) BOOT_SPLASH=yes ;;
+            --no-boot-splash) BOOT_SPLASH=no ;;
             --no-systemd-check) SKIP_SYSTEMD_CHECK=1 ;;
             --uninstall) MODE=uninstall ;;
             --purge) PURGE=1 ;;
