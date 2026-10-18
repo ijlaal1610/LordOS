@@ -107,9 +107,9 @@
             "pt": "Seu próprio escopo de cgroup"
           },
           "sub": {
-            "en": "Root-owned; the firewall and Monitor use it",
-            "es": "De root; lo usan el firewall y el Monitor",
-            "pt": "Do root; usado pelo firewall e pelo Monitor"
+            "en": "Root-owned; the firewall, its restrictions and the Monitor use it",
+            "es": "De root; lo usan el firewall, sus restricciones y el Monitor",
+            "pt": "Do root; usado pelo firewall, por suas restrições e pelo Monitor"
           },
           "tone": "kernel"
         },
@@ -121,9 +121,9 @@
             "pt": "GTK / Qt / navegador"
           },
           "sub": {
-            "en": "Runs as you; not sandboxed",
-            "es": "Corre como vos; sin caja de arena",
-            "pt": "Roda como você; sem sandbox"
+            "en": "Runs as you; not sandboxed by default",
+            "es": "Corre como vos; sin caja de arena de forma predeterminada",
+            "pt": "Roda como você; sem sandbox por padrão"
           },
           "tone": "reused"
         },
@@ -181,9 +181,9 @@
         }
       ],
       "caption": {
-        "en": "Linux apps connect straight to the compositor; they get the frame, the Dock and the firewall, but not the app sandbox.",
-        "es": "Las apps de Linux se conectan directo al compositor; tienen el marco, el Dock y el firewall, pero no la caja de arena de las apps.",
-        "pt": "Apps Linux se conectam direto ao compositor; ganham a moldura, o Dock e o firewall, mas não o sandbox de apps."
+        "en": "Linux apps connect straight to the compositor; they get the frame, the Dock, the firewall and the restrictions you set, but not the app sandbox.",
+        "es": "Las apps de Linux se conectan directo al compositor; tienen el marco, el Dock, el firewall y las restricciones que fijes, pero no la caja de arena de las apps.",
+        "pt": "Apps Linux se conectam direto ao compositor; ganham a moldura, o Dock, o firewall e as restrições que você definir, mas não o sandbox de apps."
       }
     }
   ],
@@ -199,9 +199,17 @@
     {
       "path": "server/src/apps.c",
       "what": {
-        "en": "The .desktop launcher",
-        "es": "El lanzador de .desktop",
-        "pt": "O lançador de .desktop"
+        "en": "The .desktop launcher and the files restriction",
+        "es": "El lanzador de .desktop y la restricción de archivos",
+        "pt": "O lançador de .desktop e a restrição de arquivos"
+      }
+    },
+    {
+      "path": "server/src/sec/pwguard.c",
+      "what": {
+        "en": "The PipeWire guard",
+        "es": "La guardia de PipeWire",
+        "pt": "O guarda do PipeWire"
       }
     },
     {

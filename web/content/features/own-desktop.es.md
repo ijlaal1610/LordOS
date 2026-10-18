@@ -60,7 +60,7 @@ O sea que el compositor es el punto de encuentro. El motor de interfaz lo usan l
 
 LordOS apunta a máquinas modestas. Algunas mediciones reales de los registros de prueba del proyecto:
 
-- La ISO final 0.7.0 Beta, en reposo un minuto después de ingresar, en una VM de 4 GB y 4 núcleos: **465 MB de RAM usados** por todo el sistema en la sesión live y **487 MB** en el sistema instalado, con la CPU **99 % ociosa**. El arranque tardó 16,3 s (`docs/ISO.md`, "Final ISO test").
+- La ISO de la prueba final, en reposo un minuto después de ingresar, en una VM de 4 GB y 4 núcleos: **465 MB de RAM usados** por todo el sistema en la sesión live y **487 MB** en el sistema instalado, con la CPU **99 % ociosa**. El arranque tardó 16,3 s (`docs/ISO.md`, "Final ISO test").
 - En una Raspberry Pi 5 (16 GB) en la pantalla de ingreso, sin monitor: `lord-server` con **36 MB de RSS** y 0,6 % de CPU (`docs/RASPBERRY.md`).
 - Cuando la máquina no tiene una placa con 3D, `lord-server` ni siquiera carga Mesa y se queda en unos 32 MB de RSS (`docs/GPU.md`).
 
@@ -79,7 +79,7 @@ El compositor maneja varias pantallas a la vez, extendidas o en espejo, y dibuja
 - **Las GPU reales todavía no están verificadas.** El camino por GPU se probó con el renderizador por software de Mesa en máquinas virtuales. Falta probar en placas AMD y Nvidia reales (`docs/GPU.md`).
 - **Las pantallas múltiples se probaron con dos salidas virtuales**, no con monitores reales, paneles de notebook ni hubs DisplayPort (`docs/DISPLAYS.md`).
 - **La Raspberry Pi 5 todavía no se probó con un monitor conectado.** La compilación, las pruebas y la pantalla de ingreso corrieron en una placa real sin HDMI (`docs/RASPBERRY.md`).
-- **Xwayland no es parte de LordOS**, así que las apps que solo hablan X11 no funcionan. Arrastrar y soltar entre apps de Linux, la selección primaria y los métodos de entrada de LordOS dentro de apps de Linux están pendientes (`docs/WAYLAND.md`).
+- **Xwayland todavía no es parte de LordOS** (está planeado antes de la 1.0), así que las apps que solo hablan X11 no funcionan. Arrastrar y soltar entre apps de Linux, la selección primaria y los métodos de entrada de LordOS dentro de apps de Linux están pendientes (`docs/WAYLAND.md`).
 - **La accesibilidad está mayormente por delante:** hoy hay un ajuste de "reducir movimiento"; un lector de pantalla, el zoom y el alto contraste están en la hoja de ruta.
 
 ## Leé el código

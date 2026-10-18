@@ -60,7 +60,7 @@ So the compositor is the meeting point. The UI engine is used by LordOS's own in
 
 LordOS aims at modest machines. A few real measurements from the project's test logs:
 
-- The final 0.7.0 Beta ISO, idle a minute after login on a 4 GB, 4-core VM: **465 MB of RAM used** for the whole system in the live session and **487 MB** on the installed system, with the CPU **99 % idle**. Boot took 16.3 s (`docs/ISO.md`, "Final ISO test").
+- The final test ISO, idle a minute after login on a 4 GB, 4-core VM: **465 MB of RAM used** for the whole system in the live session and **487 MB** on the installed system, with the CPU **99 % idle**. Boot took 16.3 s (`docs/ISO.md`, "Final ISO test").
 - On a Raspberry Pi 5 (16 GB) at the login screen, without a monitor: `lord-server` at **36 MB RSS** and 0.6 % CPU (`docs/RASPBERRY.md`).
 - When the machine has no 3D-capable card, `lord-server` doesn't even load Mesa and stays at about 32 MB of RSS (`docs/GPU.md`).
 
@@ -79,7 +79,7 @@ The compositor drives several displays at once, extended or mirrored, and draws 
 - **Real GPUs are not verified yet.** The GPU path was exercised with Mesa's software renderer in virtual machines. Testing on real AMD and Nvidia cards is still pending (`docs/GPU.md`).
 - **Multiple displays were tested with two virtual heads**, not with real monitors, laptop panels or DisplayPort hubs (`docs/DISPLAYS.md`).
 - **The Raspberry Pi 5 has not been tested with a monitor attached yet.** The build, the tests and the login screen ran on a real board without HDMI (`docs/RASPBERRY.md`).
-- **Xwayland is not part of LordOS**, so apps that only speak X11 don't run. Drag and drop between Linux apps, the primary selection and LordOS input methods inside Linux apps are pending (`docs/WAYLAND.md`).
+- **Xwayland is not part of LordOS yet** (it is planned before 1.0), so apps that only speak X11 don't run. Drag and drop between Linux apps, the primary selection and LordOS input methods inside Linux apps are pending (`docs/WAYLAND.md`).
 - **Accessibility is mostly ahead of us:** today there is a "reduce motion" setting; a screen reader, zoom and high contrast are on the roadmap.
 
 ## Read the source

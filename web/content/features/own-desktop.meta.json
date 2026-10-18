@@ -39,9 +39,9 @@
     {
       "file": "docs/iso-final/live-idle.png",
       "caption": {
-        "en": "The 0.7.0 Beta live ISO at rest on a 4 GB VM: 465 MB used and a 16.3 s boot.",
-        "es": "La ISO live 0.7.0 Beta en reposo en una VM de 4 GB: 465 MB usados y un arranque de 16,3 s.",
-        "pt": "A ISO live 0.7.0 Beta em repouso numa VM de 4 GB: 465 MB em uso e boot de 16,3 s."
+        "en": "The final test live ISO at rest on a 4 GB VM: 465 MB used and a 16.3 s boot.",
+        "es": "La ISO live de la prueba final en reposo en una VM de 4 GB: 465 MB usados y un arranque de 16,3 s.",
+        "pt": "A ISO live do teste final em repouso numa VM de 4 GB: 465 MB em uso e boot de 16,3 s."
       }
     },
     {

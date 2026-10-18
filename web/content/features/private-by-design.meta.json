@@ -440,6 +440,14 @@
       }
     },
     {
+      "path": "server/src/sec/restrict.c",
+      "what": {
+        "en": "Firewall restrictions in the broker",
+        "es": "Restricciones del firewall en el broker",
+        "pt": "Restrições do firewall no broker"
+      }
+    },
+    {
       "path": "server/src/sec/cgroup.c",
       "what": {
         "en": "Per-app cgroup scopes",

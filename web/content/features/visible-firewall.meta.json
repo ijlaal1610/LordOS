@@ -66,36 +66,36 @@
       "id": "path",
       "kind": "flow",
       "title": {
-        "en": "The path of a connection",
-        "es": "El camino de una conexión",
-        "pt": "O caminho de uma conexão"
+        "en": "The path of a connection or a device",
+        "es": "El camino de una conexión o un dispositivo",
+        "pt": "O caminho de uma conexão ou de um dispositivo"
       },
       "nodes": [
         {
           "id": "socket",
           "label": {
-            "en": "App opens a connection",
-            "es": "La app abre una conexión",
-            "pt": "O app abre uma conexão"
+            "en": "App opens a connection or a device",
+            "es": "La app abre una conexión o un dispositivo",
+            "pt": "O app abre uma conexão ou um dispositivo"
           },
           "sub": {
-            "en": "connect, sendto, bind or socket",
-            "es": "connect, sendto, bind o socket",
-            "pt": "connect, sendto, bind ou socket"
+            "en": "connect, sendto, bind, socket, or open() of a device node",
+            "es": "connect, sendto, bind, socket u open() de un nodo de dispositivo",
+            "pt": "connect, sendto, bind, socket ou open() de um nó de dispositivo"
           },
           "tone": "user"
         },
         {
           "id": "hook",
           "label": {
-            "en": "cgroup eBPF hook",
-            "es": "Gancho eBPF de cgroup",
-            "pt": "Gancho eBPF de cgroup"
+            "en": "eBPF programs in the kernel",
+            "es": "Programas eBPF en el kernel",
+            "pt": "Programas eBPF no kernel"
           },
           "sub": {
-            "en": "In the kernel; finds the app by its scope",
-            "es": "En el kernel; reconoce la app por su scope",
-            "pt": "No kernel; reconhece o app pelo escopo"
+            "en": "cgroup network hooks; cgroup/dev for camera, USB, ALSA capture and /dev/fb; BPF LSM socket_create for Bluetooth. The app is found by its scope",
+            "es": "Ganchos de red de cgroup; cgroup/dev para cámara, USB, captura ALSA y /dev/fb; BPF LSM socket_create para Bluetooth. La app se reconoce por su scope",
+            "pt": "Ganchos de rede do cgroup; cgroup/dev para câmera, USB, captura ALSA e /dev/fb; BPF LSM socket_create para Bluetooth. O app é reconhecido pelo escopo"
           },
           "tone": "kernel"
         },
@@ -107,9 +107,9 @@
             "pt": "Regras por app"
           },
           "sub": {
-            "en": "Restrictions, then the most specific rule, then trusted, then mode",
-            "es": "Restricciones, luego la regla más específica, luego confianza, luego el modo",
-            "pt": "Restrições, depois a regra mais específica, depois confiança, depois o modo"
+            "en": "Restrictions first, then the most specific rule, then trusted, then mode",
+            "es": "Primero las restricciones, luego la regla más específica, luego confianza, luego el modo",
+            "pt": "Primeiro as restrições, depois a regra mais específica, depois confiança, depois o modo"
           },
           "tone": "ours"
         },
@@ -135,9 +135,9 @@
             "pt": "Mapa do Monitor"
           },
           "sub": {
-            "en": "New connections and counters, once per second",
-            "es": "Conexiones nuevas y contadores, una vez por segundo",
-            "pt": "Conexões novas e contadores, uma vez por segundo"
+            "en": "New connections, denials and counters, once per second",
+            "es": "Conexiones nuevas, rechazos y contadores, una vez por segundo",
+            "pt": "Conexões novas, negações e contadores, uma vez por segundo"
           },
           "tone": "ours"
         }
@@ -181,9 +181,96 @@
         }
       ],
       "caption": {
-        "en": "The decision happens in the kernel when the connection opens; nothing runs per packet.",
-        "es": "La decisión ocurre en el kernel cuando se abre la conexión; nada corre por cada paquete.",
-        "pt": "A decisão acontece no kernel quando a conexão abre; nada roda por pacote."
+        "en": "The decision happens in the kernel when a connection, a socket or a device opens; nothing runs per packet.",
+        "es": "La decisión ocurre en el kernel cuando se abre una conexión, un socket o un dispositivo; nada corre por cada paquete.",
+        "pt": "A decisão acontece no kernel quando abre uma conexão, um socket ou um dispositivo; nada roda por pacote."
+      }
+    },
+    {
+      "id": "restrictions",
+      "kind": "stack",
+      "title": {
+        "en": "Where each restriction is enforced",
+        "es": "Dónde se aplica cada restricción",
+        "pt": "Onde cada restrição é aplicada"
+      },
+      "nodes": [
+        {
+          "id": "broker",
+          "label": {
+            "en": "Broker in lord-server",
+            "es": "Broker en lord-server",
+            "pt": "Broker no lord-server"
+          },
+          "sub": {
+            "en": ".lpk apps and Passwords: all eight restrictions, refused without a prompt",
+            "es": "Apps .lpk y Contraseñas: las ocho restricciones, rechazadas sin aviso",
+            "pt": "Apps .lpk e Senhas: as oito restrições, recusadas sem aviso"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "launcher",
+          "label": {
+            "en": "App launcher",
+            "es": "Lanzador de apps",
+            "pt": "Lançador de apps"
+          },
+          "sub": {
+            "en": "Linux apps, no access to your files: own user, mount and PID namespaces, a tmpfs home and Landlock, from the next launch",
+            "es": "Apps de Linux, sin acceso a tus archivos: espacios de nombres de usuario, montaje y PID propios, un home en tmpfs y Landlock, desde el próximo inicio",
+            "pt": "Apps Linux, sem acesso aos seus arquivos: namespaces próprios de usuário, montagem e PID, uma home em tmpfs e Landlock, a partir da próxima abertura"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "notifyd",
+          "label": {
+            "en": "Notification server (notifyd)",
+            "es": "Servidor de notificaciones (notifyd)",
+            "pt": "Servidor de notificações (notifyd)"
+          },
+          "sub": {
+            "en": "Linux apps' notifications: the sender's identity comes from the bus; failures drop it",
+            "es": "Notificaciones de apps de Linux: la identidad del remitente la da el bus; si algo falla, se descarta",
+            "pt": "Notificações de apps Linux: a identidade do remetente vem do barramento; se algo falha, é descartada"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "pwguard",
+          "label": {
+            "en": "PipeWire guard (pwguard)",
+            "es": "Guardia de PipeWire (pwguard)",
+            "pt": "Guarda do PipeWire (pwguard)"
+          },
+          "sub": {
+            "en": "Microphone and camera through PipeWire: identity from the socket's credentials, applied live",
+            "es": "Micrófono y cámara por PipeWire: identidad tomada de las credenciales del socket, en vivo",
+            "pt": "Microfone e câmera pelo PipeWire: identidade tirada das credenciais do socket, ao vivo"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "kernel",
+          "label": {
+            "en": "lord-netperm's eBPF programs in the kernel",
+            "es": "Programas eBPF de lord-netperm en el kernel",
+            "pt": "Programas eBPF do lord-netperm no kernel"
+          },
+          "sub": {
+            "en": "Network hooks; cgroup/dev for camera, USB, ALSA capture and /dev/fb; BPF LSM socket_create for Bluetooth sockets",
+            "es": "Ganchos de red; cgroup/dev para cámara, USB, captura ALSA y /dev/fb; BPF LSM socket_create para sockets Bluetooth",
+            "pt": "Ganchos de rede; cgroup/dev para câmera, USB, captura ALSA e /dev/fb; BPF LSM socket_create para sockets Bluetooth"
+          },
+          "tone": "kernel"
+        }
+      ],
+      "edges": [],
+      "caption": {
+        "en": "Each restriction is checked where the resource is handed out, against the app's root-owned scope, never against a name the app gives itself.",
+        "es": "Cada restricción se revisa donde se entrega el recurso, contra el scope de la app, que es de root, nunca contra un nombre que la app se da a sí misma.",
+        "pt": "Cada restrição é conferida onde o recurso é entregue, contra o escopo do app, que é do root, nunca contra um nome que o app dá a si mesmo."
       }
     },
     {
@@ -283,9 +370,9 @@
     {
       "path": "server/src/netperm/np.bpf.c",
       "what": {
-        "en": "The cgroup eBPF programs",
-        "es": "Los programas eBPF de cgroup",
-        "pt": "Os programas eBPF de cgroup"
+        "en": "The cgroup and LSM eBPF programs",
+        "es": "Los programas eBPF de cgroup y LSM",
+        "pt": "Os programas eBPF de cgroup e LSM"
       }
     },
     {
@@ -326,6 +413,30 @@
         "en": "lord.fw, the session API",
         "es": "lord.fw, la API de la sesión",
         "pt": "lord.fw, a API da sessão"
+      }
+    },
+    {
+      "path": "apps/monitor/FwRules.jsx",
+      "what": {
+        "en": "Network rules by app in Settings",
+        "es": "Reglas de red por app en Ajustes",
+        "pt": "Regras de rede por app nos Ajustes"
+      }
+    },
+    {
+      "path": "server/src/sec/restrict.c",
+      "what": {
+        "en": "Restrictions in the broker",
+        "es": "Restricciones en el broker",
+        "pt": "Restrições no broker"
+      }
+    },
+    {
+      "path": "server/src/sec/pwguard.c",
+      "what": {
+        "en": "The PipeWire guard",
+        "es": "La guardia de PipeWire",
+        "pt": "O guarda do PipeWire"
       }
     },
     {

@@ -21,10 +21,10 @@ Es la primera pregunta que tiene que hacerse un lector cuidadoso, así que acá 
 | Apps `.lpk` instaladas | sí | sí | sí, con límites de memoria y CPU | sí | sí |
 | Contraseñas (hoy la única app incluida con proceso propio) | sí | sí | sí | sí | sí |
 | Otras apps incluidas (Archivos, Ajustes, Mail, Terminal…) | no, corren dentro de `lord-server` | no | no (cuentan como "LordOS") | su uso de cámara, micrófono y pantalla se revisa en C | sí, como "LordOS" |
-| Apps de Linux abiertas desde el lanzador de apps (apt, la Tienda) | sí, un proceso común | **no** | sí, `app-lordos-<id>.scope`, sin límites | **no** | **sí** |
+| Apps de Linux abiertas desde el lanzador de apps (apt, la Tienda) | sí, un proceso común | **no** de forma predeterminada; con "sin acceso a tus archivos", espacios de nombres propios y Landlock | sí, `app-lordos-<id>.scope`, sin límites | **no** | **sí**, más las restricciones que fijes (cámara, micrófono, USB, Bluetooth, archivos, notificaciones) |
 | Programas iniciados desde la Terminal | sí | no | comparten el lugar de la Terminal en el árbol | no | como "LordOS" |
 
-O sea: **LordOS no encierra a las apps de Linux en una caja de arena.** Corren como tu usuario, exactamente como en cualquier sistema Debian, y pueden leer tu carpeta personal. Lo que LordOS les suma es atribución (el Monitor sabe qué app hizo cada conexión) y el firewall por app que aplica el kernel. LordOS no usa ni integra Flatpak, y no se probó.
+O sea: **LordOS no encierra a las apps de Linux en una caja de arena de forma predeterminada.** Corren como tu usuario, exactamente como en cualquier sistema Debian, y pueden leer tu carpeta personal. Lo que LordOS les suma es atribución (el Monitor sabe qué app hizo cada conexión), el firewall por app que aplica el kernel y las restricciones que elijas para una app: sin cámara, sin micrófono, sin USB, sin sockets Bluetooth, sin notificaciones y "sin acceso a tus archivos", que desde su próximo inicio abre la app en sus propios espacios de nombres, con una carpeta personal vacía que solo tiene sus propias carpetas. LordOS no usa ni integra Flatpak, y no se probó.
 
 Las apps incluidas son parte del código propio del sistema y se revisan junto con él; no tienen el aislamiento por proceso que tienen los paquetes de terceros, con la excepción de Contraseñas, porque guarda tus secretos.
 
@@ -40,7 +40,7 @@ La caja de arena es código propio de LordOS (`server/src/sec/sandbox.c`), no bu
 - **Un cgroup propio**, `app-lordos-lpk-<id>.scope`, con un límite blando de memoria de 192 MB, uno duro de 512 MB y como máximo un núcleo de CPU. El scope lo crea y lo tiene root (`lord-sessiond`), así que la app no se puede mudar a otro lado.
 - **Red solo con permiso.** Sin el permiso `network`, seccomp se niega a crear sockets de internet y Landlock niega el connect y el bind de TCP. Con el permiso (declarado en el manifiesto **y** permitido por vos), se habilitan, y el firewall por app sigue aplicando.
 
-**¿Se usan namespaces?** No. `lord-server` corre sin root, y crear un namespace de red necesita privilegios que no tiene. El diseño usa Landlock, seccomp y cgroups en su lugar, y deja la app en el namespace de red de la máquina bajo las reglas de arriba.
+**¿Se usan namespaces?** No para las apps `.lpk`. `lord-server` corre sin root, y crear un namespace de red necesita privilegios que no tiene. El diseño usa Landlock, seccomp y cgroups en su lugar, y deja la app en el namespace de red de la máquina bajo las reglas de arriba. El único lugar donde LordOS usa namespaces es una app de Linux restringida con "sin acceso a tus archivos": arranca en sus propios namespaces de usuario, montaje y PID, sin privilegios, armados por código propio de LordOS en el lanzador, así que no llega a los sockets de la sesión.
 
 El proyecto mantiene una app de prueba maliciosa a propósito (`tests/lpk-evil`). No declara permisos e intenta de todo al arrancar: leer `~/.ssh/id_rsa` y `settings.json`, escribir fuera de su carpeta, leer el portapapeles sin avisar, abrir `/etc/shadow`, abrir un socket, ejecutar `/bin/sh`, `ptrace`, abrir la placa de video. Todos los intentos quedan bloqueados. La batería de pruebas de la caja de arena pasa 14 de 14 controles para apps, 14 de 14 con red y 17 de 17 para ayudantes.
 
@@ -58,7 +58,7 @@ Permisos que una app puede declarar: archivos, portapapeles, notificaciones, red
 
 ## Las preguntas del lector escéptico
 
-**¿Se puede saltear el aviso?** La app aislada no. El aviso lo dibuja la sesión, fuera de la ventana de la app. La respuesta llega directo a `lord-server`, y el broker lee en C la decisión guardada en cada pedido. El archivo de decisiones está fuera de lo que Landlock le deja ver a la app, y `lord.fs` se niega a escribirlo. Una app podría dibujar un diálogo falso dentro de su propia ventana, pero tocarlo no cambia nada. El hueco honesto: una app de Linux, que no está en caja de arena y corre como vos, podría editar `permisos.json` como cualquier otro archivo de tu carpeta personal.
+**¿Se puede saltear el aviso?** La app aislada no. El aviso lo dibuja la sesión, fuera de la ventana de la app. La respuesta llega directo a `lord-server`, y el broker lee en C la decisión guardada en cada pedido. El archivo de decisiones está fuera de lo que Landlock le deja ver a la app, y `lord.fs` se niega a escribirlo. Una app podría dibujar un diálogo falso dentro de su propia ventana, pero tocarlo no cambia nada. El hueco honesto: una app de Linux, que de forma predeterminada no está en caja de arena y corre como vos, podría editar `permisos.json` como cualquier otro archivo de tu carpeta personal, salvo que esté restringida con "sin acceso a tus archivos".
 
 **¿Tengo "Permitir una vez" o "Permitir siempre"?** Hoy el aviso ofrece Permitir y No permitir, y la decisión se recuerda hasta que la cambies en Ajustes. Todavía no hay "permitir una vez" para los permisos de las apps.
 
@@ -76,6 +76,8 @@ Permisos que una app puede declarar: archivos, portapapeles, notificaciones, red
 
 [[shot:3]]
 
+**¿Puedo asegurarme de que una app nunca reciba la cámara, pida lo que pida?** Sí: restringila en Ajustes → Privacidad → Red de las apps. Una restricción del firewall les gana a los permisos: la app recibe un rechazo sin aviso aunque antes la hayas permitido, y restringir una app en marcha le quita la cámara y el micrófono al instante. Para las apps aisladas, el broker aplica las ocho restricciones (cámara, micrófono, pantalla, USB, archivos, portapapeles, Bluetooth, notificaciones).
+
 **¿Y las apps que necesitan más privilegios?** No hay forma de que una app `.lpk` obtenga root ni capacidades extra. Todo lo que en LordOS necesita root pasa por una lista cerrada de acciones validadas (`server/src/admin.c`), y JavaScript no puede ejecutar comandos arbitrarios. Las apps de Linux se comportan como en cualquier sistema Debian: si un programa necesita `sudo`, lo corrés vos en la Terminal.
 
 ## Los ayudantes que leen datos no confiables
@@ -84,15 +86,14 @@ Los archivos que vienen de afuera son la puerta de entrada clásica. LordOS los 
 
 ## Ventanas protegidas
 
-Una ventana se puede marcar como protegida. La de Contraseñas lo está. Sus píxeles salen en negro en las capturas de LordOS, las grabaciones de pantalla, las miniaturas y el escritorio remoto, mientras el monitor real la muestra normal. Las apps de Linux no pueden capturar la pantalla a través de LordOS: el compositor no les ofrece ningún protocolo de captura.
+Una ventana se puede marcar como protegida. La de Contraseñas lo está. Sus píxeles salen en negro en las capturas de LordOS, las grabaciones de pantalla, las miniaturas y el escritorio remoto, mientras el monitor real la muestra normal. Las apps de Linux no pueden capturar la pantalla a través de LordOS: el compositor no les ofrece ningún protocolo de captura, no hay servidor X, y a una app restringida también se le niega el dispositivo de framebuffer.
 
 [[shot:5]]
 
 ## Límites honestos
 
-- **Las apps de Linux no están en caja de arena.** A ellas solo se les aplican las reglas de red y la atribución.
+- **Las apps de Linux no están en caja de arena de forma predeterminada.** Se les aplican las reglas de red, la atribución y las restricciones que fijes; las restricciones no cubren el portapapeles, el Bluetooth a través de BlueZ en el bus del sistema, el bus del sistema en general ni los programas iniciados fuera del lanzador de apps.
 - **El uso de cámara y micrófono por apps de Linux todavía no se muestra** en los indicadores. La lista de dispositivos del Monitor está planeada.
-- **Algunas "restricciones" del firewall todavía no se aplican.** Ajustes te deja marcar "sin cámara", "sin micrófono", "sin captura de pantalla", "sin USB", "sin Bluetooth", "sin archivos fuera del selector" y "sin notificaciones" para una app. Se guardan, pero hoy ningún componente las revisa; solo se aplican las cuatro restricciones de red. Para la cámara y el micrófono, usá el permiso en sí (Denegar), que sí se aplica.
 - **El broker todavía no cubre todo.** Permisos como Bluetooth o abrir otras apps se pueden declarar, pero no hay una llamada del broker para ellos, así que una app aislada directamente no puede hacer esas cosas.
 - **Si falta una función del kernel, la caja de arena de las apps se debilita sin hacer ruido.** Si faltan Landlock o un controlador de cgroup, las apps igual arrancan, con una advertencia en el registro. Los ayudantes, en cambio, se niegan a correr sin seccomp.
 
@@ -102,6 +103,7 @@ Una ventana se puede marcar como protegida. La de Contraseñas lo está. Sus pí
 - [server/src/sec/brokersrv.c](https://github.com/lordbasex/LordOS/blob/main/server/src/sec/brokersrv.c): el broker, del lado del servidor
 - [server/src/sec/perms.c](https://github.com/lordbasex/LordOS/blob/main/server/src/sec/perms.c): permisos por app
 - [server/src/sec/brokercam.c](https://github.com/lordbasex/LordOS/blob/main/server/src/sec/brokercam.c): la cámara para apps aisladas
+- [server/src/sec/restrict.c](https://github.com/lordbasex/LordOS/blob/main/server/src/sec/restrict.c): las restricciones del firewall en el broker
 - [server/src/sec/cgroup.c](https://github.com/lordbasex/LordOS/blob/main/server/src/sec/cgroup.c) y [server/src/remote/cgsup.c](https://github.com/lordbasex/LordOS/blob/main/server/src/remote/cgsup.c): scopes de las apps en manos de root
 - [server/src/app/appclient.c](https://github.com/lordbasex/LordOS/blob/main/server/src/app/appclient.c): el proceso de la app aislada
 - [sdk/privacy.js](https://github.com/lordbasex/LordOS/blob/main/sdk/privacy.js) y [sdk/powerbox.jsx](https://github.com/lordbasex/LordOS/blob/main/sdk/powerbox.jsx): los avisos y el diálogo de archivos

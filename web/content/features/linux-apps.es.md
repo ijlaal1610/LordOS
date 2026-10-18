@@ -22,7 +22,7 @@ Las apps con un archivo `.desktop` aparecen en el lanzador de apps, en el menú 
 
 1. La interfaz solo puede pasar el **id** de un archivo `.desktop` que ya esté instalado en `/usr/share/applications` o `~/.local/share/applications`, nunca un comando.
 2. `lord-server` vuelve a leer ese archivo, verifica que sea una aplicación real, visible y que no sea de terminal, y arma el comando a partir de su línea `Exec` según la especificación, sin shell y sin argumentos de quien llama. "Abrir con" en Archivos puede agregar exactamente un archivo, solo si la app declara los tipos de archivo que maneja y el archivo está en tu carpeta personal o en un disco que montaste.
-3. La app arranca en su propio cgroup, `app-lordos-<id>.scope`, creado por root, así el Monitor y el firewall por app saben a qué app pertenece cada proceso.
+3. La app arranca en su propio cgroup, `app-lordos-<id>.scope`, creado por root, así el Monitor, el firewall por app y sus restricciones saben a qué app pertenece cada proceso. Si le restringiste a la app tus archivos, acá es también donde recibe su propia vista: sus propios espacios de nombres, una carpeta personal vacía con solo sus propias carpetas, y Landlock.
 
 El JavaScript de LordOS no puede escribir archivos `.desktop`, así que la interfaz no puede inventar un comando: solo puede elegir una app que ya está instalada.
 
@@ -51,11 +51,11 @@ Ausente a propósito: cualquier protocolo que le permita a una app capturar la p
 
 ## Las preguntas del lector escéptico
 
-**¿Las apps de Linux están en una caja de arena?** No. Esto es importante: corren como tu usuario, como en cualquier sistema Debian, y pueden leer tu carpeta personal. Lo que LordOS suma es un cgroup por app, la atribución en el Monitor y el firewall por app que aplica el kernel (permitir, denegar, solo LAN, sin conexiones entrantes). Solo las apps `.lpk` propias de LordOS tienen la caja de arena completa.
+**¿Las apps de Linux están en una caja de arena?** No de forma predeterminada. Esto es importante: corren como tu usuario, como en cualquier sistema Debian, y pueden leer tu carpeta personal. Lo que LordOS suma es un cgroup por app, la atribución en el Monitor, el firewall por app que aplica el kernel (permitir, denegar, solo LAN, sin conexiones entrantes, reglas por dominio o dirección) y restricciones que podés fijar por app: sin cámara, sin USB y sin sockets Bluetooth (en el kernel), sin micrófono (la guardia de PipeWire de LordOS más los nodos de captura de la placa de sonido), sin notificaciones y "sin acceso a tus archivos", que se aplica desde el próximo inicio. No cubren el portapapeles, el Bluetooth a través de BlueZ en el bus del sistema ni los programas iniciados fuera del lanzador de apps. Solo las apps `.lpk` propias de LordOS tienen la caja de arena completa.
 
-**¿Una app de Linux puede ver otras ventanas o grabar la pantalla?** No a través de LordOS. El compositor solo le da a una app sus propias superficies y no ofrece ningún protocolo de captura de pantalla, así que las ventanas protegidas como Contraseñas también quedan a salvo de ellas.
+**¿Una app de Linux puede ver otras ventanas o grabar la pantalla?** No a través de LordOS. El compositor solo le da a una app sus propias superficies y no ofrece ningún protocolo de captura de pantalla, no hay servidor X ni portal de captura de pantalla, y a una app restringida también se le niega el dispositivo de framebuffer, así que las ventanas protegidas como Contraseñas también quedan a salvo de ellas.
 
-**¿Y las apps que solo usan X11?** No funcionan: Xwayland no es parte de LordOS. Las apps GTK y Qt actuales hablan Wayland, y también el juego SDL que se probó.
+**¿Y las apps que solo usan X11?** Todavía no funcionan: Xwayland no es parte de LordOS 0.8.0 Beta. Está planeado antes de la 1.0, con las apps X11 con la misma identidad por app, el mismo firewall y las mismas restricciones. Las apps GTK y Qt actuales hablan Wayland, y también el juego SDL que se probó.
 
 **¿Y Flatpak?** LordOS no lo usa ni lo integra, y no se probó.
 
@@ -63,7 +63,7 @@ Ausente a propósito: cualquier protocolo que le permita a una app capturar la p
 
 ## Límites honestos
 
-- **Sin Xwayland,** así que no hay apps que usen solo X11.
+- **Todavía sin Xwayland** (planeado antes de la 1.0), así que no hay apps que usen solo X11.
 - **Todavía no:** arrastrar y soltar entre apps, la selección primaria con clic del medio, los métodos de entrada de LordOS (coreano, japonés, chino) dentro de las apps de Linux, y los pedidos de activación de apps.
 - **Íconos solo en SVG:** LordOS todavía no dibuja SVG. Usa los íconos PNG que publica Debian para la mayoría de las apps, o la inicial.
 - **Las apps de terminal** con archivo `.desktop` no aparecen en el lanzador de apps; arrancalas desde la Terminal.

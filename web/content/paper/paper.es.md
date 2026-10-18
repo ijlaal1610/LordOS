@@ -2,7 +2,7 @@
 
 LordOS es una distribución GNU/Linux libre basada en Debian 13 que trae un entorno de escritorio propio, construido desde sus componentes fundamentales sobre Debian y Wayland. En lugar de GNOME o KDE, tiene su propio servidor gráfico y compositor Wayland escritos en C (`lord-server`), su propio motor de interfaz (React corriendo sobre el motor de JavaScript QuickJS, con layout, pintado y texto en código C nativo), sus propias apps nativas y sus propios servicios de seguridad: un lanzador de apps en caja de arena, un broker de permisos, un registro de permisos por app, un firewall por app que aplica el kernel, firma de paquetes y una bóveda de contraseñas cifrada. Reutiliza lo que está maduro y muy revisado: el kernel Linux, Debian y sus paquetes, Mesa, PipeWire, el protocolo Wayland y unas pocas bibliotecas (FFmpeg, Poppler, libarchive, OpenSSL, Monocypher) que quedan encerradas en pequeños procesos ayudantes aislados.
 
-Este documento describe el diseño y el estado actual de la versión **0.7.0 Beta** (octubre de 2026) para un lector técnico que quiere verificar el proyecto en lugar de creer en él a ciegas. Cada afirmación remite a un archivo del repositorio público. Los números son los medidos en los registros de prueba del proyecto, e indican dónde se midieron. Lo que está diseñado pero no construido aparece marcado como tal.
+Este documento describe el diseño y el estado actual de la versión **0.8.0 Beta** (octubre de 2026), el primer lanzamiento público, para un lector técnico que quiere verificar el proyecto en lugar de creer en él a ciegas. Cada afirmación remite a un archivo del repositorio público. Los números son los medidos en los registros de prueba del proyecto, e indican dónde se midieron. Lo que está diseñado pero no construido aparece marcado como tal.
 
 ## 1. Visión
 
@@ -55,7 +55,7 @@ Un LordOS en marcha tiene pocos procesos, con roles bien separados:
 |---|---|---|
 | `lord-sessiond` | root | pantalla de inicio de sesión, sesiones, prestar la pantalla y la entrada a la sesión visible, escritorio remoto |
 | `lord-netd` | root | la red del sistema: DHCP, Wi-Fi, VPN; solo las acciones `net-*` |
-| `lord-netperm` | root (capacidades limitadas) | reglas de red por app, aplicadas con eBPF de cgroup |
+| `lord-netperm` | root (capacidades limitadas) | reglas de red por app, y las restricciones de dispositivos y Bluetooth de las apps de Linux, aplicadas con programas eBPF de cgroup y de LSM |
 | `lord-fand` | root (sin capacidades) | control de ventiladores según la temperatura |
 | `lord-server` | el usuario | uno por sesión: compositor, motor de interfaz, broker |
 | `lord-server --app <id>` | el usuario, aislado | uno por app `.lpk` en ejecución (y Contraseñas) |
@@ -120,7 +120,7 @@ El compositor (`server/src/wl/wl.c`) usa solo `libwayland-server` y código gene
 
 Las ventanas de Linux entran al gestor de ventanas del SDK como cualquier otra, con título, foco, maximizar, minimizar e ícono en el Dock. Las apps que piden decoración del lado del servidor reciben el marco del tema; las que dibujan el suyo (GTK 4) lo conservan, y se recorta su sombra. Las apps GTK 4 y libadwaita siguen el modo claro u oscuro, el color de acento y el orden de los botones a través de una implementación de `org.freedesktop.portal.Settings` que `lord-server` sirve él mismo en el bus de sesión; GTK 3 los sigue a través del archivo de claves de GSettings.
 
-**Xwayland no está soportado**: LordOS no corre apps que solo hablan X11. También quedan pendientes: arrastrar y soltar, la selección primaria, los métodos de entrada de LordOS dentro de apps de Linux (`text-input`), la activación (`xdg-activation`), la sincronización explícita y los íconos de app en SVG. No se ofrece a las apps ningún protocolo de captura de pantalla.
+**Xwayland todavía no está soportado**: LordOS no corre apps que solo hablan X11 (Xwayland está planeado antes de la 1.0, §10.3). También quedan pendientes: arrastrar y soltar, la selección primaria, los métodos de entrada de LordOS dentro de apps de Linux (`text-input`), la activación (`xdg-activation`), la sincronización explícita y los íconos de app en SVG. No se ofrece a las apps ningún protocolo de captura de pantalla.
 
 ### 3.5 Varias pantallas y HiDPI
 
@@ -136,6 +136,7 @@ Todas las pantallas conectadas se manejan a la vez, extendidas o en espejo, en u
 - **Una sesión por usuario**, y todas pueden vivir a la vez (cambio rápido de usuario). Cada una es un `lord-server` que arranca como root y suelta los privilegios enseguida.
 - **Préstamo de la pantalla.** `lord-sessiond` abre la placa gráfica y los dispositivos de entrada como root y se los presta a la sesión que está en el monitor, por un socket Unix. Al cambiar, los revoca: `EVIOCREVOKE` hace que los descriptores de entrada de la sesión anterior dejen de funcionar, y `DROP_MASTER` le quita el control de la pantalla, antes de darle algo a la sesión siguiente. La sesión visible sigue componiendo en la GPU sin ser nunca root. Una sesión fuera del monitor dibuja en memoria, y solo si alguien la está mirando de forma remota.
 - **Bloquear saca de verdad la sesión del monitor**; no es una capa dibujada encima. Si la sesión del usuario se cuelga, la pantalla de inicio sigue funcionando.
+- **Arranque.** Un tema de GRUB de LordOS dibuja el menú de arranque, y un tema de Plymouth de LordOS dibuja la pantalla de carga (la corona con una barra de progreso). El traspaso no tiene ningún cuadro negro ni texto de consola: Plymouth deja de dibujar y suelta el control de la pantalla mientras su último cuadro queda visible, `lord-sessiond` toma el control de la pantalla y pone el primer cuadro real de la pantalla de inicio de sesión, y recién entonces Plymouth termina, dejando la pantalla de carga hasta que se reemplaza.
 
 **Escritorio remoto.** El mismo servicio ofrece el escritorio a un navegador de la red local en `https://<dirección>:5673` (5673 deletrea "LORD" en un teclado de teléfono). Viene **desactivado por defecto** y se activa en Ajustes → Compartir. Usa TLS 1.2 o superior con un certificado P-256 autofirmado cuya huella muestra Ajustes para comparar, una política de seguridad de contenido estricta, controles de mismo origen, esperas por IP ante inicios fallidos y una cookie de sesión `Secure`, `HttpOnly` y `SameSite=Strict`. La página de inicio nunca lista las cuentas de usuario. El proceso que atiende una conexión suelta root apenas sabe de quién es la sesión. Las actualizaciones de pantalla se envían como PNG cuando está quieta y como JPEG mientras se mueve. El audio está diseñado pero no construido. El acceso desde internet no está previsto; se recomienda una VPN.
 
@@ -145,6 +146,7 @@ Todas las pantallas conectadas se manejan a la vez, extendidas o en espejo, en u
 - [server/src/input.c](https://github.com/lordbasex/LordOS/blob/main/server/src/input.c), [server/src/tp](https://github.com/lordbasex/LordOS/tree/main/server/src/tp), [server/src/ui/grab.c](https://github.com/lordbasex/LordOS/blob/main/server/src/ui/grab.c)
 - [server/src/wl/wl.c](https://github.com/lordbasex/LordOS/blob/main/server/src/wl/wl.c), [server/src/ui/portal.c](https://github.com/lordbasex/LordOS/blob/main/server/src/ui/portal.c)
 - [server/src/remote/sessiond.c](https://github.com/lordbasex/LordOS/blob/main/server/src/remote/sessiond.c), [server/src/remote/monitor.c](https://github.com/lordbasex/LordOS/blob/main/server/src/remote/monitor.c), [server/src/remote/sess.c](https://github.com/lordbasex/LordOS/blob/main/server/src/remote/sess.c)
+- [tools/boot/plymouth](https://github.com/lordbasex/LordOS/tree/main/tools/boot/plymouth), [tools/iso/grub](https://github.com/lordbasex/LordOS/tree/main/tools/iso/grub), [docs/SESSIONS.md](https://github.com/lordbasex/LordOS/blob/main/docs/SESSIONS.md)
 
 ## 4. El motor de interfaz
 
@@ -204,7 +206,7 @@ La Tienda muestra las apps de Debian por categoría con búsqueda, las apps `.lp
 
 ### 5.4 Apps de Linux
 
-Las apps de Linux con un archivo `.desktop` aparecen en el lanzador de apps. El lanzamiento pasa por `lord.apps.launch(id)`: la interfaz solo puede nombrar un archivo `.desktop` instalado; `lord-server` lo vuelve a leer, lo verifica, arma `argv` a partir de su línea `Exec` según la especificación y lo ejecuta con `execve`, sin shell ni argumentos del llamador, dentro de su propio scope de cgroup que pertenece a root. Chromium y Firefox vienen preinstalados en la ISO y se verificaron con el marco de LordOS. **LordOS no aísla las apps de Linux**; tienen atribución y el firewall por app (§6.6).
+Las apps de Linux con un archivo `.desktop` aparecen en el lanzador de apps. El lanzamiento pasa por `lord.apps.launch(id)`: la interfaz solo puede nombrar un archivo `.desktop` instalado; `lord-server` lo vuelve a leer, lo verifica, arma `argv` a partir de su línea `Exec` según la especificación y lo ejecuta con `execve`, sin shell ni argumentos del llamador, dentro de su propio scope de cgroup que pertenece a root. Chromium y Firefox vienen preinstalados en la ISO y se verificaron con el marco de LordOS. **LordOS no aísla las apps de Linux de forma predeterminada**: corren como el usuario, como en cualquier Debian. Tienen atribución, el firewall por app y las restricciones por app que fije el dueño (§6.6), incluida una vista opcional "sin acceso a tus archivos" que aplica el lanzador.
 
 ### 5.5 WebAssembly
 
@@ -214,7 +216,7 @@ LordOS incluye su propio intérprete de WebAssembly en C (`server/src/wasm`), ex
 
 - **ISO live** para PC de 64 bits, con un instalador gráfico (UEFI y BIOS).
 - **Imagen para Raspberry Pi 5** para tarjeta SD o NVMe (§7.4).
-- **Sobre un Debian 13 existente**: `curl -fsSL https://lordos.org/install.sh | sh`. El script pregunta antes de cambiar nada, descarga `SHA256SUMS` y verifica su firma Ed25519 con la clave de releases embebida en el script, se niega a seguir sin una firma válida, verifica el SHA-256 del `.deb`, lo instala con apt y configura el sistema como la ISO. El repositorio es privado hasta la primera beta pública, así que la ruta de descarga todavía no es pública.
+- **Sobre un Debian 13 existente**: `curl -fsSL https://lordos.org/install.sh | sh`. El script pregunta antes de cambiar nada, descarga `SHA256SUMS` y verifica su firma Ed25519 con la clave de releases embebida en el script, se niega a seguir sin una firma válida, verifica el SHA-256 del `.deb`, lo instala con apt y configura el sistema como la ISO. Los archivos del release se publican en GitHub Releases.
 
 ### Archivos fuente
 
@@ -235,7 +237,7 @@ LordOS está diseñado contra estas amenazas:
 - **Un atacante en la red local** que intenta usar el escritorio remoto o alterar descargas.
 - **Paquetes y releases alterados.**
 
-Fuera del modelo, por ahora: un kernel o una cuenta root comprometidos; ataques físicos; canales laterales; y apps de Linux que leen los archivos del usuario (corren como el usuario, como en cualquier Debian). A las apps de Linux se las limita solo en la red.
+Fuera del modelo, por ahora: un kernel o una cuenta root comprometidos; ataques físicos; canales laterales; y apps de Linux que el dueño no restringió, que corren como el usuario, como en cualquier Debian, y pueden leer sus archivos. A las apps de Linux se las limita solo con las restricciones que el dueño les fija (§6.6), y solo cuando se abren desde el lanzador de apps.
 
 ### 6.2 Mínimo privilegio
 
@@ -255,7 +257,18 @@ Fuera del modelo, por ahora: un kernel o una cuenta root comprometidos; ataques 
 | `lord-netperm` | `RELOAD` sin datos | ejecutar programas; recibir argumentos; abrir sockets de internet |
 | `lord-fand` | `STATUS` para cualquiera; `PROFILE`, `CURVE`, `FORCE` para administradores | nombrar rutas o dispositivos; ejecutar programas; usar la red |
 
-### 6.4 La caja de arena de las apps
+### 6.4 Qué está aislado, y la caja de arena de las apps
+
+No todos los programas de LordOS están aislados. Esto es exactamente lo que se aplica a cada tipo:
+
+| Tipo | Proceso | Caja de arena | Scope de cgroup | Broker y permisos | Firewall y restricciones (§6.6) |
+|---|---|---|---|---|---|
+| Apps `.lpk` y Contraseñas | propio (`lord-server --app <id>`) | Landlock, seccomp, sin capacidades | propio, de root, con límites | cada llamada se verifica en C | reglas de red y las ocho restricciones que no son de red, en el broker |
+| Las demás apps incluidas | dentro de `lord-server` | no (son parte del escritorio) | el de `lord-server` | sin broker; cámara, micrófono y pantalla se verifican en C | como "LordOS": reglas de red; cámara, micrófono, pantalla y notificaciones |
+| Apps de Linux desde el lanzador de apps | propio | ninguna de forma predeterminada; con "sin acceso a tus archivos", espacios de nombres de usuario, montaje y PID propios más Landlock, desde el próximo inicio | propio, de root | no | reglas de red; cámara, micrófono, USB, sockets Bluetooth, archivos y notificaciones; no el portapapeles |
+| Programas de la Terminal | hijos de la shell de la Terminal | no | el de `lord-server` | no | como "LordOS": reglas de red |
+
+Un programa iniciado de otra forma, fuera del lanzador de apps, no está en ningún scope de app y no recibe reglas por app. No se usan Flatpak ni bubblewrap.
 
 Cada app `.lpk`, y la app Contraseñas, corre como `lord-server --app <id>`: el mismo binario en "modo app", lanzado por `lord-server` con un id de paquete validado como único argumento. El proceso se conecta al compositor como cliente Wayland y abre el socket del broker, después aplica la caja de arena, y recién entonces carga el código de la app (`server/src/sec/sandbox.c`):
 
@@ -280,21 +293,54 @@ La app aislada habla con `lord-server` solo por un socket `SOCK_SEQPACKET`. Cada
 - **Revocación:** denegar la cámara o el micrófono en Ajustes los corta al instante (se mata el `lord-media` de la app; se cierra el stream de PipeWire). El permiso `network` se decide al lanzar la app.
 - **Llavero:** los pedidos al llavero de una app aislada llevan un dueño que `lord-server` fija a partir del id verificado de la app.
 
-**Límites.** No hay "permitir una vez". Algunos permisos declarables (Bluetooth, lanzar apps, notificaciones) todavía no tienen llamada en el broker, así que las apps aisladas directamente no pueden usar esas capacidades; escuchar en un puerto depende del permiso de red. Una app de Linux que corre como el usuario podría editar el archivo de permisos.
+**Las restricciones les ganan a los permisos.** Una restricción del firewall (§6.6) gana sobre cualquier decisión guardada: el pedido se rechaza sin aviso, aunque la app haya tenido permiso antes, y restringir una app en marcha le quita la cámara y el micrófono al instante, como revocar.
 
-### 6.6 El firewall por app y el Monitor
+**Límites.** No hay "permitir una vez". Algunos permisos declarables (Bluetooth, lanzar apps, notificaciones) todavía no tienen llamada en el broker, así que las apps aisladas directamente no pueden usar esas capacidades; escuchar en un puerto depende del permiso de red. Una app de Linux que corre como el usuario podría editar el archivo de permisos, salvo que esté restringida con "sin acceso a tus archivos".
+
+### 6.6 El firewall por app, sus restricciones y el Monitor
 
 [[diagram:firewall]]
 
-`lord-netperm` aplica las reglas de red por app en el kernel. Las apps de Linux abiertas desde el lanzador de apps corren en `app-lordos-<id>.scope`, las apps `.lpk` en `app-lordos-lpk-<id>.scope`, y el resto de la sesión cuenta como `lordos`. Todos los scopes pertenecen a root. El servicio carga siete programas eBPF de cgroup (`connect4/6`, `sendmsg4/6`, `bind4/6`, `sock_create`) en el cgroup de `lordos.service`, identifica la app de cada proceso por su ancestro de cgroup y devuelve permitir o denegar (`EPERM`). Los programas están compilados dentro del binario y se cargan con un cargador propio de LordOS sobre la llamada al sistema `bpf()`; no se usan libbpf ni bcc.
+`lord-netperm` aplica las reglas por app en el kernel. Las apps de Linux abiertas desde el lanzador de apps corren en `app-lordos-<id>.scope`, las apps `.lpk` en `app-lordos-lpk-<id>.scope`, y el resto de la sesión cuenta como `lordos`. Todos los scopes pertenecen a root. El servicio carga siete programas de red (`connect4/6`, `sendmsg4/6`, `bind4/6`, `sock_create`), un programa de dispositivos (`cgroup/dev`) y un programa LSM por cgroup sobre `socket_create` en el cgroup de `lordos.service`, identifica la app de cada proceso por su ancestro de cgroup y devuelve permitir o denegar (`EPERM`). Los programas están compilados dentro del binario y se cargan con un cargador propio de LordOS sobre la llamada al sistema `bpf()`, que además lee el BTF del kernel para encontrar el gancho LSM; no se usan libbpf ni bcc. Si el kernel rechaza el programa de dispositivos o el LSM, los programas de red siguen funcionando y el servicio lo avisa.
 
 - **Las reglas** admiten dominios exactos, comodines, redes IPv4/IPv6, `lan`, `internet`, puertos, protocolos y dirección. Primero van las restricciones (sin internet, sin LAN, sin red, sin entrantes); después gana la regla más específica, y denegar le gana a permitir a igual especificidad; después las apps de confianza; después el modo (silencioso, el predeterminado, o apagado). `npcompile.c` precalcula todo esto en mapas hash y de coincidencia por prefijo más largo. Una prueba corre el código de decisión del kernel contra el decisor de referencia sobre 480.000 conexiones aleatorias: 0 diferencias.
-- **Los nombres de dominio** vienen solo del resolvedor del sistema: la interfaz de monitoreo de systemd-resolved o, sin él, las respuestas del puerto 53 de los servidores configurados, leídas por un socket de paquetes que solo recibe. Nunca se confía en respuestas que una app recibió por sus propios sockets.
+- **Los nombres de dominio** vienen solo del resolvedor del sistema: la interfaz de monitoreo de systemd-resolved o, sin él, las respuestas del puerto 53 de los servidores configurados, leídas por un socket de paquetes que solo recibe. Nunca se confía en respuestas que una app recibió por sus propios sockets. Por eso, una app que resuelve nombres por su cuenta con DNS cifrado (DNS sobre HTTPS dentro de un navegador, por ejemplo) no queda alcanzada por las reglas de dominio: una regla "permitir solo example.com" la sigue bloqueando, pero una regla "bloquear example.com" no la frena. Las reglas por dirección y por red, el valor predeterminado de la app y sus restricciones siguen valiendo, y Ajustes lo dice debajo de las reglas.
+- **Las reglas en la interfaz.** Ajustes → Privacidad → Reglas de red por app muestra el valor predeterminado de cada app ("Permitir todo" o "Bloquear todo salvo las reglas") y sus reglas en el orden en que ganan, con cuándo coincidió cada una por última vez; la hoja para agregar una regla revisa lo que se escribe mientras se escribe. En Monitor → Red, "Permitir / Bloquear este dominio" sobre un destino de una app abre la misma hoja, completada con el nombre que dio el resolvedor del sistema para esa dirección.
 - **Escapes.** El árbol de cgroups pertenece a root, así que una app no puede moverse sola. Un proceso que le pide al gestor de systemd del usuario una unidad nueva (`systemd-run --user`) termina bajo `user@<uid>.service`; `lord-netperm` engancha los mismos programas ahí y somete esos procesos a la unión más estricta de las apps restringidas en ejecución de ese usuario. Probado: todos los intentos de escape denegados, los otros usuarios sin afectar.
 - **Costo**: alrededor de 0,5 µs por connect de UDP, TCP dentro del ruido, sin cambio en el rendimiento, porque nada corre por paquete.
-- **El Monitor** muestra las conexiones de cada app (desde `sock_diag`), los bytes, los destinos por país desde una base de datos local y un interruptor de Regla por app. Ninguna dirección sale de la máquina para consultas: sin DNS inverso, sin geolocalización en línea.
+- **El Monitor** muestra las conexiones de cada app (desde `sock_diag`) y los destinos que el firewall informó hace poco, los bytes, los destinos por país desde una base de datos local y un interruptor de Regla por app. Ninguna dirección sale de la máquina para consultas: sin DNS inverso, sin geolocalización en línea.
 
-**Límites.** El modo "preguntar" está diseñado pero hoy se comporta como silencioso. Todavía no hay interfaz para reglas por dominio ni interruptores por destino (el motor y la API las soportan). ICMP se bloquea solo con "sin red"; las conexiones a un puerto ya abierto no se verifican. Ajustes también ofrece restricciones que no son de red (cámara, micrófono, pantalla, USB, Bluetooth, archivos, notificaciones): se guardan, pero **ningún componente las aplica todavía**.
+**Restricciones más allá de la red.** Además de las cuatro restricciones de red (sin internet, sin LAN, sin red, sin conexiones entrantes), el dueño puede restringirle a una app la cámara, el micrófono, la pantalla, el USB, los archivos, el portapapeles, el Bluetooth y las notificaciones. Cada una se aplica donde se entrega el recurso, se verifica contra el scope de la app y nunca contra un nombre que la app se da a sí misma, y gana sobre cualquier permiso otorgado en `permisos.json`.
+
+[[diagram:restrictions]]
+
+| Restricción | Apps `.lpk` y Contraseñas | Apps incluidas ("LordOS") | Apps de Linux desde el lanzador de apps |
+|---|---|---|---|
+| cámara | broker (`brokercam.c`) | `js_media.c` | `cgroup/dev` sobre los nodos V4L2, y la guardia de PipeWire |
+| micrófono | broker | `js_media.c` | la guardia de PipeWire, y `cgroup/dev` sobre los nodos de captura ALSA |
+| pantalla | broker (sin API de captura en modo app) | `js_media.c` | por diseño: sin protocolo de captura, sin servidor X, sin portal de captura de pantalla; `/dev/fb*` denegado |
+| USB | broker (la llave de seguridad de Contraseñas) | no se ofrece | `cgroup/dev`: nodos USB directos, hidraw y serie USB |
+| archivos | broker (selector de archivos, guardados de la cámara) | no se ofrece | el lanzador: espacios de nombres propios, un home en tmpfs y Landlock, desde el próximo inicio |
+| portapapeles | broker | no se ofrece | no disponible |
+| Bluetooth | broker (sin API de Bluetooth en modo app) | no se ofrece | programa BPF LSM sobre `socket_create`: sin sockets `AF_BLUETOOTH` |
+| notificaciones | el permiso `notifications` | `sdk/notify.js` | `notifyd`, por la identidad verificada de quien llama |
+
+Para las apps aisladas, el broker (`sec/restrict.c`) es el único punto de aplicación: un pedido restringido se rechaza sin aviso, y restringir una app en marcha le quita la cámara y el micrófono al instante (`tests/broker_restrict_test.c` cubre cada restricción, con y sin ella). La fila "LordOS" es el escritorio mismo (Archivos, copiar y pegar, Discos, los ajustes de Bluetooth), así que no ofrece archivos, USB, portapapeles ni Bluetooth; en su lugar se restringen apps individuales. Para las apps de Linux:
+
+- **Dispositivos.** En cgroup v2 el controlador de dispositivos es un programa BPF. El de `lord-netperm` rechaza `open()` y `mknod()` de las clases de dispositivo que la app tiene restringidas (V4L2, USB directo, hidraw, serie USB, nodos de captura ALSA, `/dev/fb*`) y permite todo lo demás. Se aplica en el próximo `open`; un descriptor ya abierto sigue sirviendo.
+- **Sockets Bluetooth.** El gancho de sockets inet nunca ve `AF_BLUETOOTH`, así que un programa LSM por cgroup sobre `socket_create` los rechaza.
+- **Archivos.** Justo antes de `execve`, el hijo del lanzador entra en sus propios espacios de nombres de usuario, montaje y PID, sin privilegios. La carpeta personal es un tmpfs vacío que tiene solo las carpetas propias de la app (derivadas de su id de escritorio, nunca de campos que controla un archivo `.desktop`) y el archivo con el que se abrió; la carpeta de runtime tiene solo los sockets de Wayland y de sonido, así que el bus de sesión y el systemd del usuario quedan fuera de alcance; después Landlock limita el resto. Se aplica desde el próximo inicio. Las apps GTK, Firefox y Chromium corren sin sus integraciones de D-Bus.
+- **Notificaciones.** `notifyd` le pide al bus el PID de quien llama (solo cuenta una respuesta que mandó el propio bus), encuentra su scope de app y descarta la notificación de una app restringida; un error o una respuesta tardía también la descartan (falla cerrado).
+- **Micrófono y cámara por PipeWire.** La guardia de PipeWire (`sec/pwguard.c`), el cliente de PipeWire propio de `lord-server`, identifica a cada cliente por el PID que PipeWire tomó de las credenciales del socket y, para una app restringida, oculta los nodos de captura y destruye sus streams de captura en menos de un segundo, incluida una grabación ya en curso. Mientras corre una app restringida, un cliente cuya identidad no se puede establecer se trata como restringido.
+
+**Límites.** El modo "preguntar" está diseñado pero hoy se comporta como silencioso. ICMP se bloquea solo con "sin red"; las conexiones a un puerto ya abierto no se verifican. Las restricciones para apps de Linux no cubren:
+
+- BlueZ por D-Bus: una app con el Bluetooth restringido todavía puede pedirle a `bluetoothd`, por el bus del sistema, que busque, empareje y conecte;
+- el bus del sistema, que sigue al alcance incluso con "sin acceso a tus archivos";
+- el portapapeles;
+- las apps iniciadas fuera del lanzador de apps, que no están en ningún scope de app;
+- los efectos secundarios de la unión de `user@`: mientras corre una app restringida, los servicios propios del usuario quedan sujetos a la misma unión (el audio de llamadas de unos auriculares, que PipeWire abre en cada llamada, se corta durante ese tiempo);
+- una ventana de pocos milisegundos en la que un cliente nuevo de PipeWire de una app restringida tiene todos los permisos, o en la que un stream de captura puede recibir audio antes de ser destruido.
 
 ### 6.7 Ayudantes que procesan datos no confiables
 
@@ -312,7 +358,7 @@ La app aislada habla con `lord-server` solo por un socket `SOCK_SEQPACKET`. Cada
 
 Los paquetes `.lpk` llevan un manifiesto con el SHA-256 de cada archivo y una firma Ed25519 sobre él. SHA-256 y Ed25519 son código propio de LordOS (Ed25519 siguiendo la aritmética de TweetNaCl), probado contra los vectores del NIST y del RFC 8032 (55 de 55). La verificación ocurre en C al instalar y al cargar. La Tienda muestra el nivel de confianza: **LordOS** (clave oficial, compilada dentro del binario para que ningún archivo pueda agregar otra), **Autor verificado** (listado en el catálogo firmado), **Firmado por <nombre>**, o **Sin firmar** con una advertencia. Las actualizaciones tienen que estar firmadas con la misma clave. Un catálogo firmado lleva una lista de revocación. Si editás una app instalada, LordOS la marca "Modificada por vos", puede restaurar la original o compartir tu versión firmada con tu propia clave, con crédito al original.
 
-**Estado:** hoy los paquetes oficiales se firman con una clave de desarrollo; la clave final la reemplaza para el lanzamiento público. Todavía no está construido un repositorio firmado de apps de LordOS para la Tienda.
+**Estado:** en la 0.8.0 Beta los paquetes oficiales todavía se firman con una clave de desarrollo, hasta que la reemplace la clave final. Todavía no está construido un repositorio firmado de apps de LordOS para la Tienda.
 
 ### 6.9 Firma de releases
 
@@ -320,7 +366,7 @@ Cada archivo de release (el `.deb`, la ISO y la imagen para Raspberry Pi) aparec
 
 `c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053ea108e`
 
-La clave privada vive solo en la máquina del mantenedor, nunca en el repositorio ni en una máquina de compilación. La §11 muestra cómo verificar una descarga.
+La clave privada vive solo en la máquina del mantenedor, nunca en el repositorio ni en una máquina de compilación. Cada release trae además una lista de materiales de software (SBOM) SPDX 2.3 por arquitectura, listada en `SHA256SUMS` y por lo tanto cubierta por la firma, y sus notas salen de `CHANGELOG.md`, escrito en el formato Keep a Changelog. La §11 muestra cómo verificar una descarga.
 
 ### 6.10 La bóveda
 
@@ -330,13 +376,19 @@ La clave privada vive solo en la máquina del mantenedor, nunca en el repositori
 
 Una ventana marcada como protegida (Contraseñas lo está) se pinta en negro en todos los caminos que copian píxeles hacia afuera: capturas, grabaciones, miniaturas, el escritorio remoto, y los menús y la pantalla completa de Wayland. El monitor real la muestra normalmente. Las apps de Linux, para empezar, no tienen ningún protocolo de captura de pantalla.
 
+### 6.12 Divulgación y estándares
+
+Las vulnerabilidades se informan como describe `SECURITY.md`, que también se publica como `/.well-known/security.txt` (RFC 9116). Los procesos de LordOS están **alineados con, no certificados en**, ISO/IEC 29147 e ISO/IEC 30111 (divulgación y manejo de vulnerabilidades), ISO/IEC 5230 (cumplimiento de licencias de OpenChain: el inventario en `THIRD_PARTY.md`, los avisos de licencia y el SBOM) e ISO/IEC 18974 (garantía de seguridad de OpenChain: el SBOM más las actualizaciones de seguridad de Debian para los paquetes de los que depende LordOS). lordos.org publica las páginas legales y de confianza (política de seguridad, firma de código, licencias, privacidad, ciclo de soporte, estándares) y dice lo que todavía falta: sin autocertificación formal, sin cruce automático del SBOM con bases de vulnerabilidades, sin SBOM de las imágenes completas y sin auditoría de terceros.
+
 ### Archivos fuente
 
 - [server/src/sec/sandbox.c](https://github.com/lordbasex/LordOS/blob/main/server/src/sec/sandbox.c), [server/src/sec/brokersrv.c](https://github.com/lordbasex/LordOS/blob/main/server/src/sec/brokersrv.c), [server/src/sec/perms.c](https://github.com/lordbasex/LordOS/blob/main/server/src/sec/perms.c), [server/src/sec/cgroup.c](https://github.com/lordbasex/LordOS/blob/main/server/src/sec/cgroup.c)
 - [server/src/netperm/np.bpf.c](https://github.com/lordbasex/LordOS/blob/main/server/src/netperm/np.bpf.c), [server/src/netperm/netperm.c](https://github.com/lordbasex/LordOS/blob/main/server/src/netperm/netperm.c), [server/src/fw/rules.c](https://github.com/lordbasex/LordOS/blob/main/server/src/fw/rules.c)
-- [server/src/sec/sign.c](https://github.com/lordbasex/LordOS/blob/main/server/src/sec/sign.c), [server/src/pkg/crypto.c](https://github.com/lordbasex/LordOS/blob/main/server/src/pkg/crypto.c), [tools/release/sign-release.sh](https://github.com/lordbasex/LordOS/blob/main/tools/release/sign-release.sh)
+- [server/src/sec/restrict.c](https://github.com/lordbasex/LordOS/blob/main/server/src/sec/restrict.c), [server/src/sec/pwguard.c](https://github.com/lordbasex/LordOS/blob/main/server/src/sec/pwguard.c), [server/src/hw/notifyd.c](https://github.com/lordbasex/LordOS/blob/main/server/src/hw/notifyd.c), [server/src/apps.c](https://github.com/lordbasex/LordOS/blob/main/server/src/apps.c), [server/tests/broker_restrict_test.c](https://github.com/lordbasex/LordOS/blob/main/server/tests/broker_restrict_test.c)
+- [server/src/sec/sign.c](https://github.com/lordbasex/LordOS/blob/main/server/src/sec/sign.c), [server/src/pkg/crypto.c](https://github.com/lordbasex/LordOS/blob/main/server/src/pkg/crypto.c), [tools/release/sign-release.sh](https://github.com/lordbasex/LordOS/blob/main/tools/release/sign-release.sh), [tools/release/make-sbom.sh](https://github.com/lordbasex/LordOS/blob/main/tools/release/make-sbom.sh)
 - [server/src/vault/vault.c](https://github.com/lordbasex/LordOS/blob/main/server/src/vault/vault.c), [server/src/vault/vfile.c](https://github.com/lordbasex/LordOS/blob/main/server/src/vault/vfile.c)
 - [server/src/media/capture.c](https://github.com/lordbasex/LordOS/blob/main/server/src/media/capture.c)
+- [SECURITY.md](https://github.com/lordbasex/LordOS/blob/main/SECURITY.md), [docs/COMPLIANCE.md](https://github.com/lordbasex/LordOS/blob/main/docs/COMPLIANCE.md), [CHANGELOG.md](https://github.com/lordbasex/LordOS/blob/main/CHANGELOG.md)
 
 ## 7. Rendimiento
 
@@ -396,7 +448,7 @@ Todavía no hay mediciones en PC reales en el repositorio. La ISO se prueba en m
 ## 8. Experiencia visual
 
 - **Una guía de diseño.** Las apps siguen una guía común (`docs/DESIGN.md`): una grilla de espaciado de 8 px, una escala tipográfica chica, alturas de controles consistentes y una sola acción con el color de acento por vista. El SDK exporta los tokens (`spacing`, `typeScale`, `controlSize`), y cada app pasó por rondas de pulido documentadas con capturas de antes y después en claro, oscuro, de derecha a izquierda y en ventanas chicas.
-- **Temas.** Un tema es un escritorio completo escrito en React: barra de menú, Dock, lanzador de apps, Centro de control y marco de ventana, más sus tokens. LordOS trae un tema predeterminado con barra de menú y Dock, y un tema Clásico con barra de tareas y menú de inicio. Los temas cambian en vivo; la configuración se conserva.
+- **Temas.** Un tema es un escritorio completo escrito en React: barra de menú, Dock, lanzador de apps, Centro de control y marco de ventana, más sus tokens. LordOS trae un tema predeterminado con barra de menú y Dock, y un tema Clásico con barra de tareas y menú de inicio, que hoy es una plantilla y pasa a ser una segunda apariencia completa antes de la 1.0 (§10.3). Los temas cambian en vivo; la configuración se conserva.
 - **Claro y oscuro, acentos.** Los dos modos y el color de acento se aplican en vivo a las apps nativas, a las apps aisladas y, a través del portal y de GSettings, a las apps GTK.
 - **De derecha a izquierda.** Toda la interfaz se espeja para el árabe, el hebreo y escrituras similares, incluidas las apps aisladas, que siguen en vivo el idioma de la sesión.
 - **Lumo.** La mascota de LordOS es Lumo, un pequeño zorro celestial, que aparece en pantallas de bienvenida, estados vacíos y material de marca, con un conjunto fijo de poses definido en la guía de marca.
@@ -424,14 +476,16 @@ Todavía no hay mediciones en PC reales en el repositorio. La ISO se prueba en m
 
 ### 10.1 Dónde estamos
 
-Los hitos M1 a M9 están completos en la 0.7.0 Beta: el servidor gráfico, el motor de interfaz, el SDK y los temas, la terminal, los idiomas y las escrituras complejas, la compatibilidad con apps de Linux, los paquetes y los servicios del sistema, las sesiones, el aislamiento y el firewall, y las suites de apps de M9 (documentos e impresión, multimedia, apps del sistema, contraseñas, configuración de hardware, correo y calendario). La ISO final se armó y se probó en máquinas virtuales el 18 de octubre de 2026.
+La 0.8.0 Beta es el primer lanzamiento público; la 0.7.0 fue una compilación interna y nunca se publicó. Los hitos M1 a M9 están completos: el servidor gráfico, el motor de interfaz, el SDK y los temas, la terminal, los idiomas y las escrituras complejas, la compatibilidad con apps de Linux, los paquetes y los servicios del sistema, las sesiones, el aislamiento y el firewall, y las suites de apps de M9 (documentos e impresión, multimedia, apps del sistema, contraseñas, configuración de hardware, correo y calendario). Antes del lanzamiento, las restricciones del firewall que no son de red pasaron a aplicarse para todos los tipos de app, las reglas por dominio tuvieron interfaz en Ajustes y en el Monitor, el arranque sumó una pantalla de carga y un tema de GRUB de LordOS, y los releases sumaron un SBOM firmado y un registro de cambios. La ISO final se armó y se probó en máquinas virtuales el 18 de octubre de 2026.
 
 ### 10.2 Limitaciones conocidas
 
 - Hardware real: no se probaron GPU AMD y Nvidia, monitores reales, notebooks (batería, brillo, tapa), controladores Bluetooth, impresoras y escáneres, llaves FIDO2 ni proveedores de correo reales.
-- La Raspberry Pi 5 no se probó con un monitor, y su imagen generada todavía no se arrancó.
-- Las apps de Linux no están aisladas; no hay Xwayland.
-- Firewall: sin modo "preguntar", sin interfaz para reglas por dominio, restricciones que no son de red sin aplicar.
+- La Raspberry Pi 5 es la única placa soportada, con la compilación de LordOS de su kernel con Landlock; no se probó con un monitor, y su imagen generada todavía no se arrancó.
+- Las apps de Linux no están aisladas de forma predeterminada; todavía no hay Xwayland.
+- Firewall: sin modo "preguntar"; las reglas por dominio no ven a las apps que resuelven nombres con su propio DNS cifrado.
+- Las restricciones para apps de Linux no cubren BlueZ por D-Bus, el bus del sistema, el portapapeles ni las apps iniciadas fuera del lanzador de apps; la unión de `user@` también sujeta a los servicios propios del usuario mientras corre una app restringida; un cliente nuevo de PipeWire tiene una ventana de pocos milisegundos antes de que la guardia lo restrinja (§6.6).
+- La clave de firma de `.lpk` todavía es una clave de desarrollo, y todavía no hay un repositorio firmado de apps de LordOS.
 - Permisos: no hay "permitir una vez"; no se muestra el uso de cámara y micrófono por parte de apps de Linux.
 - Hay que desactivar Secure Boot; la firma con un shim está pendiente.
 - Las descargas de paquetes usan HTTP (firmadas y con hash).
@@ -440,7 +494,12 @@ Los hitos M1 a M9 están completos en la 0.7.0 Beta: el servidor gráfico, el mo
 
 ### 10.3 Lo que viene
 
-Antes del lanzamiento final: la ISO final con todo y una imagen para Raspberry Pi 5 probada en la placa real. Después, según lo planeado en `docs/ROADMAP.md`: una app de virtualización de escritorio construida sobre KVM y QEMU; un contenedor Android con LineageOS y apps desde la Tienda de LordOS; el modo "preguntar" del firewall; accesibilidad; y un video de demostración completo.
+Lo próximo, una imagen para Raspberry Pi 5 arrancada y probada en la placa real. Antes de la 1.0, según lo planeado en `docs/ROADMAP.md`:
+
+- **Xwayland**, iniciado a pedido, con el compositor como gestor de ventanas X y las apps X11 con la misma identidad por app, el mismo firewall y las mismas restricciones que las apps Wayland;
+- **el tema Clásico como segunda apariencia completa**: barra de tareas, menú de inicio con búsqueda, bandeja, ajustes rápidos, panel de notificaciones y acomodo de ventanas, con las mismas apps con otra piel, hecho solo con diseño y recursos propios de LordOS.
+
+Después de la 1.0: una app de virtualización de escritorio construida sobre KVM y QEMU; un contenedor Android con LineageOS y apps desde la Tienda de LordOS; el modo "preguntar" del firewall; accesibilidad; y un video de demostración completo.
 
 ### Archivos fuente
 
@@ -486,16 +545,18 @@ openssl pkeyutl -verify -pubin -inkey lordos-release.pub.pem -rawin -in SHA256SU
 sha256sum -c --ignore-missing SHA256SUMS
 ```
 
+El SBOM de cada arquitectura (`lordos_<version>_<arch>.spdx.json`) también está en `SHA256SUMS`, así que la misma verificación lo cubre.
+
 ### 11.4 Verificá un sistema en marcha
 
-- `systemctl status lord-netperm lord-fand lordos` muestra los servicios; la prueba de la ISO confirmó siete programas BPF enganchados.
+- `systemctl status lord-netperm lord-fand lordos` muestra los servicios; la prueba de la ISO confirmó los siete programas de red enganchados. Si el kernel rechaza el programa de dispositivos o el LSM, `lord-netperm` informa `"devices":false` o `"bluetooth":false`.
 - `cat /proc/<pid>/status | grep -E 'Seccomp|NoNewPrivs'` sobre un proceso `lord-server --app` muestra la caja de arena.
 - `systemd-cgls` muestra el árbol `lordos-session-<uid>`, de root, con un scope por app.
 - Escritorio remoto: `ss -ltn` no muestra nada en el puerto 5673 hasta que lo activás en Ajustes → Compartir.
 
 ## 12. Licencia y créditos
 
-El código de LordOS se publica bajo la **licencia MIT**. Los componentes de terceros conservan sus propias licencias, listadas en `THIRD_PARTY.md`: QuickJS y stb (incluidos como código fuente), Monocypher (CC0/BSD-2), la lista de palabras de la EFF (CC BY 3.0 US), la lista de contraseñas comunes (MIT), los datos de países de DB-IP Lite (CC BY 4.0), Natural Earth (dominio público) y las fuentes Inter, JetBrains Mono y Plus Jakarta Sans (OFL).
+El código de LordOS se publica bajo la **licencia MIT**. Los componentes de terceros conservan sus propias licencias, listadas en `THIRD_PARTY.md`: QuickJS y stb (incluidos como código fuente), Monocypher (CC0/BSD-2), la lista de palabras de la EFF (CC BY 3.0 US), la lista de contraseñas comunes (MIT), los datos de países de DB-IP Lite (CC BY 4.0), Natural Earth (dominio público) y las fuentes Inter, JetBrains Mono y Plus Jakarta Sans (OFL). Cada release trae un SBOM SPDX de lo que el paquete incluye y de lo que depende (`docs/COMPLIANCE.md`).
 
 LordOS lo crea el grupo **IPERFEX**: **Pablo Miranda** y **Federico Pereira**.
 
@@ -505,14 +566,18 @@ LordOS lo crea el grupo **IPERFEX**: **Pablo Miranda** y **Federico Pereira**.
 - **cgroup (v2):** un mecanismo del kernel que agrupa procesos para contabilizar y limitar recursos. LordOS le da a cada app su propio grupo, un "scope", y lo usa para identificar la app en el firewall.
 - **Compositor:** el programa que combina las ventanas de todas las apps en la imagen final de la pantalla.
 - **DRM/KMS:** las interfaces del kernel para los dispositivos gráficos y para configurar los modos de pantalla.
-- **eBPF:** programas pequeños y verificados que corren dentro del kernel; LordOS los engancha a cgroups para decidir sobre las conexiones de red.
+- **eBPF:** programas pequeños y verificados que corren dentro del kernel; LordOS los engancha a cgroups para decidir sobre las conexiones de red, la apertura de dispositivos y los sockets Bluetooth.
 - **evdev:** la interfaz del kernel para los dispositivos de entrada.
+- **LSM (BPF LSM):** los ganchos de seguridad del kernel; con el LSM `bpf`, un programa chico enganchado por cgroup puede rechazar una operación, como crear un socket Bluetooth.
+- **Espacio de nombres (namespace):** una función del kernel que le da a un proceso su propia vista de algo (usuarios, montajes, ids de proceso); LordOS usa espacios sin privilegios para las apps de Linux a las que se les restringen los archivos del usuario.
 - **Ayudante:** un proceso chico de LordOS que maneja datos no confiables o secretos en una caja de arena más estricta (`lord-doc`, `lord-media`, `lord-maild`, `lord-vault`).
 - **Landlock:** una función del kernel que permite que un proceso sin privilegios restrinja qué archivos y puertos de red puede usar él, y sus hijos.
 - **`.lpk`:** el formato de paquete de LordOS para apps nativas instalables.
 - **`.lvault`:** el formato de archivo de bóveda cifrada de LordOS.
+- **Guardia de PipeWire:** el cliente de PipeWire propio de `lord-server` que les oculta los dispositivos de captura a las apps de Linux restringidas y frena sus streams de captura.
 - **Powerbox:** un diálogo de archivos dibujado por el sistema que le da a la app solo el archivo que eligió el usuario.
 - **QuickJS:** un motor de JavaScript chico escrito en C.
+- **SBOM:** una lista de materiales de software, el listado legible por máquina de los componentes que contiene un release, en formato SPDX.
 - **Scope:** un cgroup para una app, como `app-lordos-lpk-<id>.scope`.
 - **seccomp-bpf:** un filtro del kernel que restringe qué llamadas al sistema puede hacer un proceso.
 - **Secret Service:** el estándar de D-Bus de freedesktop que usan las apps de Linux para guardar secretos.
@@ -527,8 +592,8 @@ LordOS lo crea el grupo **IPERFEX**: **Pablo Miranda** y **Federico Pereira**.
 | 3. Compositor | GPU.md, DISPLAYS.md, WINDOWS.md, TRACKPAD.md, WAYLAND.md, SESSIONS.md, REMOTE.md |
 | 4. Motor de interfaz | ARCHITECTURE.md, LANGUAGES.md, TERMINAL.md |
 | 5. Aplicaciones | NATIVE-APPS.md, PACKAGES.md, WASM.md, FILES.md, MEDIA.md, DOCUMENTS.md, MAIL.md, ISO.md, INSTALL-DEBIAN.md |
-| 6. Seguridad | PRIVACY.md, FIREWALL.md, MONITOR.md, SIGNING.md, PASSWORDS.md, MEDIA.md, REMOTE.md |
+| 6. Seguridad | PRIVACY.md, FIREWALL.md, MONITOR.md, SIGNING.md, PASSWORDS.md, MEDIA.md, REMOTE.md, COMPLIANCE.md, y `SECURITY.md` |
 | 7. Rendimiento | ISO.md, RASPBERRY.md, FANS.md, DISPLAYS.md, GPU.md |
 | 8. Experiencia visual | DESIGN.md, LORDOS-BRAND.md, LANGUAGES.md, DOCK.md |
 | 9. Extensibilidad | NATIVE-APPS.md, WASM.md, y `apps/README.md`, `themes/README.md` |
-| 10. Hoja de ruta | ROADMAP.md y `CHANGELOG.md` |
+| 10. Hoja de ruta | ROADMAP.md, RELEASING.md y `CHANGELOG.md` |

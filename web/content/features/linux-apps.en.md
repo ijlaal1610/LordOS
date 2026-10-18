@@ -22,7 +22,7 @@ Apps with a `.desktop` file appear in the app launcher, the Classic theme's star
 
 1. The interface can only pass the **id** of a `.desktop` file that is already installed in `/usr/share/applications` or `~/.local/share/applications`, never a command.
 2. `lord-server` re-reads that file, checks it is a real, visible, non-terminal application, and builds the command from its `Exec` line by the specification, without a shell and without arguments from the caller. "Open With" in Files may add exactly one file, only if the app declares the file types it handles and the file is in your home folder or on a disk you mounted.
-3. The app is started in its own cgroup, `app-lordos-<id>.scope`, created by root, so the Monitor and the per-app firewall know which app each process belongs to.
+3. The app is started in its own cgroup, `app-lordos-<id>.scope`, created by root, so the Monitor, the per-app firewall and its restrictions know which app each process belongs to. If you restricted the app from your files, this is also where it gets its own view: its own namespaces, an empty home folder with only its own folders, and Landlock.
 
 JavaScript in LordOS can't write `.desktop` files, so the interface can't invent a command: it can only pick an app that is already installed.
 
@@ -51,11 +51,11 @@ Deliberately absent: any protocol that lets an app capture the screen or other a
 
 ## The skeptical reader's questions
 
-**Are Linux apps sandboxed?** No. This is important: they run as your user, as on any Debian system, and can read your home folder. What LordOS adds is a per-app cgroup, attribution in the Monitor, and the kernel-enforced per-app firewall (allow, deny, LAN only, no incoming connections). Only LordOS's own `.lpk` apps get the full sandbox.
+**Are Linux apps sandboxed?** Not by default. This is important: they run as your user, as on any Debian system, and can read your home folder. What LordOS adds is a per-app cgroup, attribution in the Monitor, the kernel-enforced per-app firewall (allow, deny, LAN only, no incoming connections, rules by domain or address), and restrictions you can set per app: no camera, no USB and no Bluetooth sockets (in the kernel), no microphone (LordOS's PipeWire guard plus the sound card's capture nodes), no notifications, and "no access to your files", applied from the next launch. They don't cover the clipboard, Bluetooth through BlueZ on the system bus, or programs started outside the app launcher. Only LordOS's own `.lpk` apps get the full sandbox.
 
-**Can a Linux app see other windows or record the screen?** Not through LordOS. The compositor only gives an app its own surfaces and offers no screen-capture protocol, so protected windows like Passwords stay private from them too.
+**Can a Linux app see other windows or record the screen?** Not through LordOS. The compositor only gives an app its own surfaces and offers no screen-capture protocol, there is no X server and no screen-cast portal, and a restricted app is also denied the framebuffer device, so protected windows like Passwords stay private from them too.
 
-**What about X11-only apps?** They don't run: Xwayland is not part of LordOS. Current GTK and Qt apps speak Wayland, and so did the SDL game tested.
+**What about X11-only apps?** They don't run yet: Xwayland is not part of LordOS 0.8.0 Beta. It is planned before 1.0, with X11 apps getting the same per-app identity, firewall and restrictions. Current GTK and Qt apps speak Wayland, and so did the SDL game tested.
 
 **And Flatpak?** LordOS doesn't use or integrate it, and it hasn't been tested.
 
@@ -63,7 +63,7 @@ Deliberately absent: any protocol that lets an app capture the screen or other a
 
 ## Honest limits
 
-- **No Xwayland,** so no X11-only apps.
+- **No Xwayland yet** (planned before 1.0), so no X11-only apps.
 - **Not yet:** drag and drop between apps, the middle-click primary selection, LordOS input methods (Korean, Japanese, Chinese) inside Linux apps, and app activation requests.
 - **SVG-only icons:** LordOS doesn't draw SVG yet. It uses the PNG icons Debian publishes for most apps, or the initial.
 - **Terminal apps** with a `.desktop` file aren't shown in the app launcher; start them from the Terminal.

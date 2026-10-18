@@ -60,7 +60,7 @@ Ou seja, o compositor é o ponto de encontro. O motor de interface é usado pela
 
 O LordOS mira máquinas modestas. Algumas medições reais dos registros de teste do projeto:
 
-- A ISO final 0.7.0 Beta, ociosa um minuto após o login numa VM com 4 GB e 4 núcleos: **465 MB de RAM em uso** para o sistema inteiro na sessão live e **487 MB** no sistema instalado, com a CPU **99 % ociosa**. O boot levou 16,3 s (`docs/ISO.md`, "Final ISO test").
+- A ISO do teste final, ociosa um minuto após o login numa VM com 4 GB e 4 núcleos: **465 MB de RAM em uso** para o sistema inteiro na sessão live e **487 MB** no sistema instalado, com a CPU **99 % ociosa**. O boot levou 16,3 s (`docs/ISO.md`, "Final ISO test").
 - Num Raspberry Pi 5 (16 GB), na tela de login e sem monitor: `lord-server` com **36 MB de RSS** e 0,6 % de CPU (`docs/RASPBERRY.md`).
 - Quando a máquina não tem placa com 3D, o `lord-server` nem carrega o Mesa e fica em torno de 32 MB de RSS (`docs/GPU.md`).
 
@@ -79,7 +79,7 @@ O compositor controla várias telas ao mesmo tempo, estendidas ou espelhadas, e 
 - **GPUs reais ainda não foram verificadas.** O caminho da GPU foi exercitado com o renderizador por software do Mesa em máquinas virtuais. O teste em placas AMD e Nvidia reais ainda está pendente (`docs/GPU.md`).
 - **Várias telas foram testadas com duas saídas virtuais**, não com monitores reais, painéis de notebook ou hubs DisplayPort (`docs/DISPLAYS.md`).
 - **O Raspberry Pi 5 ainda não foi testado com um monitor conectado.** A compilação, os testes e a tela de login rodaram numa placa real sem HDMI (`docs/RASPBERRY.md`).
-- **O Xwayland não faz parte do LordOS**, então apps que só falam X11 não rodam. Arrastar e soltar entre apps Linux, a seleção primária e os métodos de entrada do LordOS dentro de apps Linux estão pendentes (`docs/WAYLAND.md`).
+- **O Xwayland ainda não faz parte do LordOS** (está planejado antes da 1.0), então apps que só falam X11 não rodam. Arrastar e soltar entre apps Linux, a seleção primária e os métodos de entrada do LordOS dentro de apps Linux estão pendentes (`docs/WAYLAND.md`).
 - **A acessibilidade ainda está quase toda pela frente:** hoje existe um ajuste para "reduzir movimento"; leitor de tela, zoom e alto contraste estão no roadmap.
 
 ## Leia o código
