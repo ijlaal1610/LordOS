@@ -318,6 +318,57 @@ text was fixed (sha256 `daba6313…c8ec65`). That ISO has the same binaries; onl
 With the final ISO, UEFI boot, the network, ❖L/Enter and the installer summary were repeated. Nothing
 was installed in that repeat.
 
+## Final ISO test (0.7.0 Beta, October 18)
+
+`lordos-live-0.7.0-amd64.iso`, 963 794 944 bytes, sha256
+`999afa4009de0a67ba980e982cdeac42c2c9121f4d1fcf945346a6852919474a`, built on VM 116 from `main`
+8941033 (new brand and Lumo) with `GPU=1`; `make -C server test`: 23 passed, 0 failed, 1 skipped
+(bidi data not installed). `lordos_0.7.0_amd64.deb` (6.0 MB): lintian 0 errors. squashfs 843 MB,
+uncompressed system 2.5 GB, build 14.5 minutes. Screenshots in `docs/iso-final/`.
+
+The live checks were made on VM 117 (OVMF) with the build just before this one (sha256
+`881c24c3…88dd9cfd`), which only lacks `gsettings-desktop-schemas`; the GTK app, both browsers and
+the whole installation were repeated with the final ISO.
+
+| Check | Result |
+|---|---|
+| Boot menu: English default, safe mode, Español, Português, copy to RAM | pass ([grub](iso-final/grub.png), [es](iso-final/live-es-desktop.png)) |
+| Live user → desktop (autologin), keyboard follows the entry's language (US / LA) | pass (after fix 1) |
+| `lordos`, `lord-netperm`, `lord-fand` active; `lord-fand` enabled | pass ([terminal](iso-final/live-services.png)) |
+| `lord-fand` on a VM: "0 fan(s) … profile auto", Cooling says "No controllable fans" calmly | pass |
+| Firewall step 2: 7 BPF programs loaded and attached to `lordos.service` and `user@1000.service` | pass |
+| Remote desktop off: no `/etc/lordos/remote/config`, port 5673 closed, toggle off in Sharing | pass |
+| Chromium 155 and Firefox ESR 153 preinstalled, open pages, LordOS frame | pass |
+| GTK 3 app (Mousepad, installed with apt in the live session) with the LordOS titlebar and dark theme | pass (after fix 2) |
+| Passwords: separate `lord-server --app passwords` in its own scope, seccomp, NoNewPrivs; create, lock | pass |
+| Mail, Monitor (Cooling and Network tabs), Settings (General, Cooling, Sharing), Files, Store (73 097 packages), Terminal, About "0.7.0 · Beta" | pass |
+| Audio: 30 s tone through PipeWire (HDA), 0 errors in `pw-top`, data loop real time (FIFO 88) | pass |
+| Network: DHCP from `lord-netd`, ping to the internet | pass |
+| ❖L lock and unlock with an empty password | pass |
+| Install on VM 120 (24 GB, OVMF): en / en_US / Buenos Aires / US / 2 GB swap, ~2 minutes | pass |
+| Installed: login screen, sign in, services active, no `live-boot` or `lordos` user, `AUTOLOGIN=` empty, groups, UEFI, network, Chromium, Firefox, audio | pass |
+
+Idle (after a minute without input):
+
+| | Used RAM (`free`) | CPU idle (`vmstat`) | Boot |
+|---|---|---|---|
+| Live, VM 117 (4 GB, 4 cores) | 465 MB | 99 % | 16.3 s (4.9 kernel + 11.4 userspace) |
+| Installed, VM 120 (4 GB, 4 cores) | 487 MB | 99 % | — |
+
+**Fixes made in this test:**
+
+1. **English live session with the Latin American keyboard.** The SDK's default layout is `latam`,
+   and `lordos-live-prep` only wrote the language. It now also writes `keyboards` for the live user
+   from the boot entry: English → `us`, Español → `latam`, Português → `br`.
+2. **GTK 3 apps drew light Adwaita.** lord-server writes `gtk-theme` to the GSettings keyfile, but
+   without `gsettings-desktop-schemas` GTK 3 can't read it. The ISO installs it and the package
+   recommends it.
+3. **Package copyright** said the license was undefined; it now carries the MIT text and lists
+   Plus Jakarta Sans with the other OFL fonts.
+
+Noted, not changed: Notes stores its notes in `~/Notas`, a Spanish folder name that also appears in
+English sessions (`apps/notes/store.js`); changing it needs a migration.
+
 ## Tests (VM 117 `lordos-live`, Proxmox)
 
 VM 117 has 4 GB of RAM, 4 cores, q35, `vga: virtio`, an HDA sound card and the ISO as a CD. It also
