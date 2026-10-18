@@ -16,8 +16,9 @@
  *   np_counts  HASH   cgroup id → NpCount           allowed / denied
  *   np_events  RINGBUF                              NpEvent towards lord-netperm
  *
- * Besides the network, the same per-app policy carries three device restrictions (docs/FIREWALL.md,
- * "Linux apps"): "no camera" and "no USB" (cgroup/dev, by device major) and "no Bluetooth"
+ * Besides the network, the same per-app policy carries the device restrictions (docs/FIREWALL.md,
+ * "Linux apps"): "no camera", "no USB" and "no screen capture" (/dev/fb*) (cgroup/dev, by device
+ * major) and "no Bluetooth"
  * (socket(AF_BLUETOOTH), cgroup/lsm_socket_create).
  */
 #ifndef LORD_NP_SHARED_H
@@ -53,13 +54,15 @@ typedef uint64_t np_u64;
 #define NP_R_NO_NETWORK   (1u << 2)
 #define NP_R_NO_INCOMING  (1u << 3)
 #define NP_R_NO_CAMERA    (1u << 4)
+#define NP_R_NO_SCREEN    (1u << 6)
 #define NP_R_NO_USB       (1u << 7)
 #define NP_R_NO_BLUETOOTH (1u << 8)
 #define NP_R_NET_MASK     (NP_R_NO_INTERNET | NP_R_NO_LAN | NP_R_NO_NETWORK | NP_R_NO_INCOMING)
-#define NP_R_DEV_MASK     (NP_R_NO_CAMERA | NP_R_NO_USB | NP_R_NO_BLUETOOTH)
+#define NP_R_DEV_MASK     (NP_R_NO_CAMERA | NP_R_NO_SCREEN | NP_R_NO_USB | NP_R_NO_BLUETOOTH)
 
 /* Character device majors (Documentation/admin-guide/devices.txt; hidraw is dynamic and comes
  * from /proc/devices, in NpCfg). */
+#define NP_MAJOR_FB       29    /* /dev/fb* (the framebuffer device) */
 #define NP_MAJOR_V4L      81    /* /dev/video*, /dev/v4l-subdev*, /dev/radio*, /dev/vbi* */
 #define NP_MAJOR_TTYACM   166   /* USB modems and boards (/dev/ttyACM*) */
 #define NP_MAJOR_TTYUSB   188   /* USB serial adapters (/dev/ttyUSB*) */
@@ -134,11 +137,13 @@ typedef struct {
 } NpRes;
 
 /* Which restriction covers opening a character device (cgroup/dev): NP_R_NO_CAMERA for video
- * devices, NP_R_NO_USB for raw USB, hidraw and USB serial; 0 for everything else (always
+ * devices, NP_R_NO_SCREEN for the framebuffer device, NP_R_NO_USB for raw USB, hidraw and USB
+ * serial; 0 for everything else (always
  * allowed: the program only takes away what the user restricted). */
 NP_INLINE np_u32 np_dev_restriction(np_u32 type, np_u32 major, np_u32 hidraw_major) {
     if (type != NP_DEV_CHAR) return 0;
     if (major == NP_MAJOR_V4L) return NP_R_NO_CAMERA;
+    if (major == NP_MAJOR_FB) return NP_R_NO_SCREEN;
     if (major == NP_MAJOR_USBDEV || major == NP_MAJOR_TTYACM || major == NP_MAJOR_TTYUSB) return NP_R_NO_USB;
     if (hidraw_major && major == hidraw_major) return NP_R_NO_USB;
     return 0;

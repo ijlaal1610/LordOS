@@ -422,6 +422,7 @@ static void bench(void) {
 static void device_cases(void) {
     const uint32_t HID = 242;
     CHECK(np_dev_restriction(NP_DEV_CHAR, 81, HID) == NP_R_NO_CAMERA);          /* /dev/video* */
+    CHECK(np_dev_restriction(NP_DEV_CHAR, 29, HID) == NP_R_NO_SCREEN);          /* /dev/fb* */
     CHECK(np_dev_restriction(NP_DEV_CHAR, 189, HID) == NP_R_NO_USB);            /* /dev/bus/usb */
     CHECK(np_dev_restriction(NP_DEV_CHAR, 166, HID) == NP_R_NO_USB);            /* ttyACM */
     CHECK(np_dev_restriction(NP_DEV_CHAR, 188, HID) == NP_R_NO_USB);            /* ttyUSB */
@@ -431,7 +432,7 @@ static void device_cases(void) {
     static const uint32_t free_majors[] = { 1, 4, 5, 10, 13, 116, 226, 180, 246, 0 };   /* mem, tty, misc, input, sound, dri... */
     for (int i = 0; free_majors[i]; i++) CHECK(np_dev_restriction(NP_DEV_CHAR, free_majors[i], HID) == 0);
     /* the FW_R_* bits are the same */
-    CHECK(NP_R_NO_CAMERA == FW_R_NO_CAMERA && NP_R_NO_USB == FW_R_NO_USB && NP_R_NO_BLUETOOTH == FW_R_NO_BLUETOOTH);
+    CHECK(NP_R_NO_CAMERA == FW_R_NO_CAMERA && NP_R_NO_SCREEN == FW_R_NO_SCREEN && NP_R_NO_USB == FW_R_NO_USB && NP_R_NO_BLUETOOTH == FW_R_NO_BLUETOOTH);
 
     FwStore *s = fw_store_new();
     DnsMap *names = dnsmap_new(0);

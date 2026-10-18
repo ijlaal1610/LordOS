@@ -266,6 +266,10 @@ build/pwguard-test: tests/pwguard_test.c $(PWGUARD_SRC) $(wildcard src/sec/*.h s
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/pwguard_test.c $(PWGUARD_SRC)
 	./$@ || { rm -f $@; exit 1; }
+# tests/wl_globals.c: the compositor's globals as a client sees them (tests/fwlinux/screen.sh)
+build/wl-globals: tests/wl_globals.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(WARN) -std=c11 -o $@ $< -lwayland-client
 build/fw-rules-test: tests/fw_rules_test.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c $(wildcard src/fw/*.h) src/sec/json.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/fw_rules_test.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c

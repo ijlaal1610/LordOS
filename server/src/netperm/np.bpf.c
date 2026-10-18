@@ -9,9 +9,9 @@
  *   cgroup/sendmsg4, sendmsg6   unconnected UDP (sendto with an address)
  *   cgroup/bind4, bind6         "no incoming connections" and inbound rules (local port != 0)
  *   cgroup/sock_create          "no network": not even creating an AF_INET/AF_INET6 socket
- *   cgroup/dev                  "no camera" and "no USB": opening video devices, raw USB devices
- *                               (/dev/bus/usb), hidraw, ttyACM and ttyUSB (by major); every other
- *                               device stays allowed
+ *   cgroup/dev                  "no camera", "no USB" and "no screen capture": opening video
+ *                               devices, raw USB devices (/dev/bus/usb), hidraw, ttyACM, ttyUSB
+ *                               and the framebuffer (by major); every other device stays allowed
  *   cgroup/lsm_socket_create    "no Bluetooth": socket(AF_BLUETOOTH) (a per-cgroup LSM program,
  *                               BPF_LSM_CGROUP: the inet sock_create hook never sees that family)
  *
