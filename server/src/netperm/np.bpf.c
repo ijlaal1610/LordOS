@@ -11,8 +11,9 @@
  *   cgroup/sock_create          "no network": not even creating an AF_INET/AF_INET6 socket
  *   cgroup/dev                  "no camera", "no USB", "no screen capture" and "no microphone":
  *                               opening video devices, raw USB devices (/dev/bus/usb), hidraw,
- *                               ttyACM, ttyUSB, the framebuffer (by major) and ALSA capture PCM
- *                               nodes (np_capdev); every other device stays allowed
+ *                               ttyACM, ttyUSB, the framebuffer (by major) and ALSA capture
+ *                               nodes (np_snd: for an app's own scope every ALSA node not known
+ *                               to be a non-capture one); every other device stays allowed
  *   cgroup/lsm_socket_create    "no Bluetooth": socket(AF_BLUETOOTH) (a per-cgroup LSM program,
  *                               BPF_LSM_CGROUP: the inet sock_create hook never sees that family)
  *
@@ -51,7 +52,7 @@ char np_lpm6[4] SEC("maps");
 char np_seen[4] SEC("maps");
 char np_counts[4] SEC("maps");
 char np_events[4] SEC("maps");
-char np_capdev[4] SEC("maps");
+char np_snd[4] SEC("maps");
 
 #define AF_INET  2
 #define AF_INET6 10
@@ -288,14 +289,24 @@ SEC("cgroup/dev") int np_dev(struct bpf_cgroup_dev_ctx *ctx) {
     NpCfg *cfg = bpf_map_lookup_elem(&np_cfg, &zero);
     if (!cfg || !cfg->on) return 1;
     np_u32 need = np_dev_restriction(ctx->access_type & 0xffff, ctx->major, cfg->hidraw_major);
-    if (!need && (ctx->access_type & 0xffff) == NP_DEV_CHAR && ctx->major == NP_MAJOR_SND) {
-        np_u32 minor = ctx->minor;              /* a capture PCM node: recording straight from ALSA */
-        if (bpf_map_lookup_elem(&np_capdev, &minor)) need = NP_R_NO_MIC;
-    }
-    if (!need) return 1;
+    int snd = !need && (ctx->access_type & 0xffff) == NP_DEV_CHAR && ctx->major == NP_MAJOR_SND;
+    if (!need && !snd) return 1;
     np_u64 cgid = 0;
     NpApp *app = find_app(cfg, &cgid);
-    if (!app || !(app->flags & need)) return 1;
+    if (!app) return 1;
+    if (snd) {
+        /* Recording straight from the card. In the app's own scope this fails closed: an ALSA node
+         * the last scan didn't classify (a USB microphone plugged in since) counts as capture. In
+         * the user@ union (the user's own PipeWire and WirePlumber too) only the known capture
+         * nodes are denied, so plugging in a headset still works for the desktop. */
+        np_u32 minor = ctx->minor;
+        np_u32 *kind = bpf_map_lookup_elem(&np_snd, &minor);
+        np_u64 sid = bpf_get_current_ancestor_cgroup_id((int)cfg->level);
+        int own = sid && sid == cgid;
+        if (kind ? *kind == NP_SND_CAPTURE : own) need = NP_R_NO_MIC;
+        else return 1;
+    }
+    if (!(app->flags & need)) return 1;
     report_dev(cgid, NP_D_DEV, ctx->major, ctx->minor, need);
     return 0;
 }

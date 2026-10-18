@@ -15,7 +15,8 @@
  *   np_seen    LRU    NpSeenKey → u64 ns            to report only new connections
  *   np_counts  HASH   cgroup id → NpCount           allowed / denied
  *   np_events  RINGBUF                              NpEvent towards lord-netperm
- *   np_capdev  HASH   ALSA minor (u32) → u32           the capture PCM nodes (/dev/snd/pcmC*D*c), for "no microphone"
+ *   np_snd     HASH   ALSA minor (u32) → u32           every ALSA node in /sys/class/sound: NP_SND_CAPTURE for the
+ *                                                     capture PCMs (/dev/snd/pcmC*D*c), NP_SND_OTHER for the rest
  *
  * Besides the network, the same per-app policy carries the device restrictions (docs/FIREWALL.md,
  * "Linux apps"): "no camera", "no USB" and "no screen capture" (/dev/fb*) (cgroup/dev, by device
@@ -65,7 +66,9 @@ typedef uint64_t np_u64;
 /* Character device majors (Documentation/admin-guide/devices.txt; hidraw is dynamic and comes
  * from /proc/devices, in NpCfg). */
 #define NP_MAJOR_FB       29    /* /dev/fb* (the framebuffer device) */
-#define NP_MAJOR_SND      116   /* ALSA: only its capture PCM nodes (np_capdev) */
+#define NP_MAJOR_SND      116   /* ALSA: its capture nodes (np_snd) */
+#define NP_SND_OTHER      1u
+#define NP_SND_CAPTURE    2u
 #define NP_MAJOR_V4L      81    /* /dev/video*, /dev/v4l-subdev*, /dev/radio*, /dev/vbi* */
 #define NP_MAJOR_TTYACM   166   /* USB modems and boards (/dev/ttyACM*) */
 #define NP_MAJOR_TTYUSB   188   /* USB serial adapters (/dev/ttyUSB*) */

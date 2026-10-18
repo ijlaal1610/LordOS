@@ -187,8 +187,11 @@ program; with none attached, everything is allowed. `lord-netperm` attaches one 
 `bpf_link`, multi-attach) to `lordos.service` and to each session's `user@<uid>.service`. It looks
 the app up exactly like the network programs (its scope's ancestor id, or the `user@` union), runs
 on `open()` and `mknod()` of a device node, and returns 0 only for the device classes the app is
-restricted from (`np_dev_restriction()` in `np_shared.h`, plus the ALSA capture minors in
-`np_capdev`); everything else returns 1. Programs systemd attaches higher up (`DeviceAllow=`) still
+restricted from (`np_dev_restriction()` in `np_shared.h`, plus, for "no microphone", the ALSA
+capture PCMs in `np_snd`). In the app's own scope "no microphone" fails closed: an ALSA node the
+last scan of `/sys/class/sound` hasn't classified yet (a USB microphone plugged in, at most 5 s)
+is denied too. In the `user@` union only the known capture nodes are, so the user's own PipeWire
+can still open a headset plugged in meanwhile. Everything else returns 1. Programs systemd attaches higher up (`DeviceAllow=`) still
 apply: the kernel allows only what all of them allow. A denial is logged by `lord-netperm` once per
 5 s, not counted with the connections. `lord-server`'s own scope (`lordos`) never gets device
 restrictions in the kernel: it opens the camera, the FIDO key and the sound for the apps after
@@ -639,7 +642,7 @@ is denied by the union all the same. The decision helper (`np_decide`) is unchan
 | `np_seen` | LRU | (cgroup, address, port, protocol, connection direction, verdict) → last time reported |
 | `np_counts` | hash | cgroup id → allowed, denied |
 | `np_events` | ring buffer | new connections (and device or Bluetooth denials) to the service |
-| `np_capdev` | hash | ALSA capture PCM minors (from `/sys/class/sound`) → 1 |
+| `np_snd` | hash | every ALSA minor in `/sys/class/sound` → 2 for a capture PCM, 1 for the rest |
 
 **What is counted and reported.** Every TCP `connect()` and every `bind()` is counted. A UDP
 `sendto` and a UDP `connect()` count only the first time in 5 s, so the numbers don't get

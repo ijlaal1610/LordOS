@@ -101,9 +101,9 @@ typedef struct {
 static struct {
     int bpf_ok;
     char bpf_err[200];                  /* a code line (errcode.h): the firewall page shows it translated */
-    int m_np_cfg, m_np_apps, m_np_union, m_np_lpm4, m_np_lpm6, m_np_seen, m_np_counts, m_np_events, m_np_capdev;
-    uint32_t capdev[256];               /* the ALSA capture minors in np_capdev */
-    int ncapdev;
+    int m_np_cfg, m_np_apps, m_np_union, m_np_lpm4, m_np_lpm6, m_np_seen, m_np_counts, m_np_events, m_np_snd;
+    uint32_t snd[NP_MAX_SND];           /* the ALSA minors in np_snd */
+    int nsnd;
     int dev_ok, bt_ok;                  /* the device / Bluetooth programs loaded */
     int links[16], nlinks;
     int progs[16], nprogs;
@@ -210,7 +210,7 @@ static int map_fd(const char *name) {
     if (!strcmp(name, "np_seen")) return G.m_np_seen;
     if (!strcmp(name, "np_counts")) return G.m_np_counts;
     if (!strcmp(name, "np_events")) return G.m_np_events;
-    if (!strcmp(name, "np_capdev")) return G.m_np_capdev;
+    if (!strcmp(name, "np_snd")) return G.m_np_snd;
     return -1;
 }
 #endif
@@ -425,41 +425,49 @@ static void drop_session(int k) {
     G.sess[k] = G.sess[--G.nsess];
 }
 
-/* The ALSA capture PCM nodes (/sys/class/sound/pcmC*D*c, "116:<minor>"), for "no microphone"
- * against apps that read the sound card directly instead of through PipeWire. Rescanned with the
- * sessions (a USB microphone plugged in later). Only sysfs: no device node is opened. */
-static void scan_capdev(void) {
+/* Every ALSA node (/sys/class/sound/<name>/dev, "116:<minor>"), capture PCMs (pcmC*D*c) marked,
+ * for "no microphone" against apps that read the sound card directly instead of through PipeWire.
+ * The program denies a no-mic app's own scope every ALSA minor not marked NP_SND_OTHER, so a node
+ * that appears between two scans (a USB microphone plugged in) is denied until it is known: fail
+ * closed. Rescanned with the sessions. Only sysfs: no device node is opened. */
+static int capture_pcm(const char *name) {
+    size_t l = strlen(name);
+    return !strncmp(name, "pcmC", 4) && l >= 6 && name[l - 1] == 'c';
+}
+
+static void scan_snd(void) {
     if (!G.bpf_ok) return;
-    uint32_t now[256];
+    static uint32_t now[NP_MAX_SND], kind[NP_MAX_SND];
     int n = 0;
     DIR *d = opendir("/sys/class/sound");
     struct dirent *e;
-    while (d && (e = readdir(d)) && n < 256) {
-        size_t l = strlen(e->d_name);
-        if (strncmp(e->d_name, "pcmC", 4) || l < 6 || e->d_name[l - 1] != 'c') continue;
+    while (d && (e = readdir(d)) && n < NP_MAX_SND) {
+        if (e->d_name[0] == '.' || strlen(e->d_name) > 64) continue;
         char p[300], buf[32];
         snprintf(p, sizeof p, "/sys/class/sound/%s/dev", e->d_name);
-        int fd = open(p, O_RDONLY | O_CLOEXEC);
+        int fd = open(p, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
         if (fd < 0) continue;
         ssize_t k = read(fd, buf, sizeof buf - 1);
         close(fd);
         unsigned ma, mi;
-        if (k > 0 && (buf[k] = 0, sscanf(buf, "%u:%u", &ma, &mi) == 2) && ma == NP_MAJOR_SND) now[n++] = mi;
+        if (k > 0 && (buf[k] = 0, sscanf(buf, "%u:%u", &ma, &mi) == 2) && ma == NP_MAJOR_SND) {
+            now[n] = mi;
+            kind[n++] = capture_pcm(e->d_name) ? NP_SND_CAPTURE : NP_SND_OTHER;
+        }
     }
     if (d) closedir(d);
-    for (int i = 0; i < G.ncapdev; i++) {
+    for (int k = 0; k < n; k++) bpfs_map_update(G.m_np_snd, &now[k], &kind[k], BPF_ANY);
+    for (int i = 0; i < G.nsnd; i++) {
         int keep = 0;
-        for (int k = 0; k < n; k++) keep |= now[k] == G.capdev[i];
-        if (!keep) bpfs_map_delete(G.m_np_capdev, &G.capdev[i]);
+        for (int k = 0; k < n && !keep; k++) keep = now[k] == G.snd[i];
+        if (!keep) bpfs_map_delete(G.m_np_snd, &G.snd[i]);
     }
-    uint32_t one = 1;
-    for (int k = 0; k < n; k++) bpfs_map_update(G.m_np_capdev, &now[k], &one, BPF_ANY);
-    memcpy(G.capdev, now, sizeof now);
-    G.ncapdev = n;
+    memcpy(G.snd, now, sizeof(uint32_t) * (size_t)n);
+    G.nsnd = n;
 }
 
 static void scan_all(void) {
-    scan_capdev();
+    scan_snd();
     DIR *d = opendir(CG_ROOT "/" CG_SERVICE);
     for (int i = 0; i < G.nsess; i++) G.sess[i].seen = 0;
     struct dirent *e;
@@ -748,7 +756,7 @@ static int bpf_setup(void) {
 #define NP_MKMAP(n, t, k, v, m, f) G.m_##n = bpfs_map_create(t, k, v, m, f, #n);
     NP_MAPS(NP_MKMAP)
 #undef NP_MKMAP
-    if (G.m_np_capdev < 0 || G.m_np_cfg < 0 || G.m_np_apps < 0 || G.m_np_union < 0 || G.m_np_lpm4 < 0 || G.m_np_lpm6 < 0 || G.m_np_seen < 0 || G.m_np_counts < 0 || G.m_np_events < 0) {
+    if (G.m_np_snd < 0 || G.m_np_cfg < 0 || G.m_np_apps < 0 || G.m_np_union < 0 || G.m_np_lpm4 < 0 || G.m_np_lpm6 < 0 || G.m_np_seen < 0 || G.m_np_counts < 0 || G.m_np_events < 0) {
         lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfMaps", "errno", lerr_errno(errno), NULL);
         return -1;
     }
