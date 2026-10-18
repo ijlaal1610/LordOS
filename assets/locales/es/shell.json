@@ -65,7 +65,6 @@
   "desktop.openLaunchpad": "Abrir Aplicaciones",
   "desktop.wallpaper": "Cambiar fondo de pantalla…",
   "dock.closeAll": "Cerrar todas las ventanas",
-  "dock.dropHere": "Soltá acá para fijarla en el Dock",
   "dock.hide": "Ocultar",
   "dock.keep": "Mantener en el Dock",
   "dock.newWindow": "Nueva ventana",
@@ -74,6 +73,11 @@
   "dock.pin": "Anclar a la barra de tareas",
   "dock.quit": "Salir",
   "dock.showAll": "Mostrar todas las ventanas",
+  "dock.remove": "Quitar del Dock",
+  "dock.showInFiles": "Mostrar en Archivos",
+  "dock.removeCue": "Quitar",
+  "dock.unpin": "Desanclar de la barra de tareas",
+  "dock.unpinCue": "Desanclar",
   "help.theme": "Crear un tema: themes/README.md",
   "launchpad.empty": "Sin resultados",
   "launchpad.search": "Buscar",
@@ -123,5 +127,10 @@
   "wallpaper.aurora": "Aurora",
   "wallpaper.ocean": "Océano",
   "wallpaper.sunset": "Atardecer",
-  "wallpaper.graphite": "Grafito"
+  "wallpaper.graphite": "Grafito",
+  "trash.name": "Papelera",
+  "trash.empty": "Vaciar Papelera",
+  "trash.confirmTitle": "¿Vaciar la Papelera?",
+  "trash.confirmDetail": "Todo lo que hay en la Papelera se borrará para siempre. No se puede deshacer.",
+  "trash.cancel": "Cancelar"
 }

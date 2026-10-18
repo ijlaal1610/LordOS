@@ -5,7 +5,7 @@
 import {
   View, Text, useTheme, useStore, useAppWindow, useKeyboard, Button, TextInput, ScrollView, t, wm, fs, monthName, formatDate, formatTime,
   Toolbar, ToolbarButton, ToolbarSpacer, ToolbarDivider, SearchField, Hairline, direction, textDirection,
-  mailRequest, onMailEvent, mailStatus, mailConfig, mailAccounts, mailAvailable, addListener, clipboard,
+  mailRequest, onMailEvent, mailStatus, mailConfig, mailAccounts, mailAvailable, addListener, clipboard, registerDockActions,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { HtmlView, TextView } from './HtmlView.jsx';
@@ -413,9 +413,12 @@ function MessageView({ msg, width, onLink, cfg, onTrustSender, collapsed, onExpa
 
 export default function Mail() {
   const { args } = useAppWindow();
-  if (args?.compose) return <Compose draft={args.compose} />;
+  if (args?.compose) return <Compose draft={typeof args.compose === 'object' ? args.compose : {}} />;
   return <MailMain />;
 }
+
+// The Dock's quick action: New Message (a compose window; sdk/dock.js).
+registerDockActions('mail', () => [{ id: 'compose', label: 'mail.compose.newMessage', args: { compose: true }, new: true }]);
 
 function compose(draft) { wm.open('mail', { new: true, args: { compose: draft || {} } }); }
 

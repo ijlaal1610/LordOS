@@ -150,7 +150,7 @@ static int parse_desktop(const char *file, const char *lang, Entry *e) {
                 for (int i = 0; i < e->nact; i++) if (!strcmp(e->act[i].name, name)) dup = 1;
                 if (valid_action(name) && !dup && e->nact < APPS_MAX_ACTIONS) {
                     act = &e->act[e->nact++];
-                    snprintf(act->name, sizeof act->name, "%s", name);
+                    memcpy(act->name, name, strlen(name) + 1);      /* valid_action: shorter than the field */
                 }
             }
             continue;

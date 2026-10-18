@@ -1,8 +1,10 @@
 // Settings → Desktop & Dock: Dock position (bottom, left, right), size, magnification, auto-hide
 // and recent apps; in the Classic theme, the taskbar position. Saved in
 // settings.json (sdk/dock.js: DOCK_DEFAULTS) and the theme applies it live, including the work area.
-import { View, Text, useTheme, useLocale, useSettings, Toggle, Slider, dockPrefs, themes, spacing, typeScale } from '@lordos/sdk';
-import { Stack, Section, SettingRow } from './ui.jsx';
+// «Reset Dock to defaults» puts the theme's apps back (dock.reset), after a confirmation in the page.
+import { View, Text, Button, useTheme, useLocale, useSettings, Toggle, Slider, dockPrefs, dock, themes, spacing, typeScale } from '@lordos/sdk';
+import { useState } from 'react';
+import { Stack, Section, SettingRow, Actions } from './ui.jsx';
 
 // A small picture of the screen with the Dock (or the taskbar) on the chosen side.
 function Preview({ side, t }) {
@@ -50,6 +52,32 @@ function SizeSlider({ value, min, max, onChange }) {
   );
 }
 
+// The pinned apps back to the theme's: the button asks first, in place (never alert()).
+function ResetDock({ classic }) {
+  const t = useTheme();
+  const { t: tr } = useLocale();
+  const [ask, setAsk] = useState(false);
+  const [done, setDone] = useState(false);
+  return (
+    <Section footer={tr(classic ? 'settings.dock.resetHintTaskbar' : 'settings.dock.resetHint')}>
+      {ask ? (
+        <View style={{ gap: spacing.s, paddingVertical: spacing.s }}>
+          <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text, textAlign: 'start' }}>{tr('settings.dock.resetAsk')}</Text>
+          <Text style={{ fontSize: typeScale.callout, color: t.textDim, textAlign: 'start' }}>{tr('settings.dock.resetDetail')}</Text>
+          <Actions>
+            <Button label={tr('settings.dock.resetCancel')} onClick={() => setAsk(false)} />
+            <Button primary label={tr('settings.dock.resetConfirm')} onClick={() => { dock.reset(); setAsk(false); setDone(true); }} />
+          </Actions>
+        </View>
+      ) : (
+        <SettingRow label={tr(classic ? 'settings.dock.resetTaskbar' : 'settings.dock.reset')} hint={done ? tr('settings.dock.resetDone') : undefined}>
+          <Button label={tr('settings.dock.resetButton')} onClick={() => { setDone(false); setAsk(true); }} />
+        </SettingRow>
+      )}
+    </Section>
+  );
+}
+
 export function DockSettings() {
   const { t: tr } = useLocale();
   const [s, set] = useSettings();
@@ -61,6 +89,7 @@ export function DockSettings() {
         <Section title={tr('settings.dock.taskbar')} footer={`${tr('settings.dock.taskbarHint')} ${tr('settings.dock.sidesHint')}`}>
           <SidePicker value={p.taskbarPosition} sides={['bottom', 'top', 'left', 'right']} onChange={(v) => set({ taskbarPosition: v })} />
         </Section>
+        <ResetDock classic />
       </Stack>
     );
   }
@@ -90,6 +119,7 @@ export function DockSettings() {
           <Toggle small on={p.dockRecents} onChange={(dockRecents) => set({ dockRecents })} />
         </SettingRow>
       </Section>
+      <ResetDock />
     </Stack>
   );
 }

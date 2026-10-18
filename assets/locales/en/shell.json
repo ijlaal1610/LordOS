@@ -65,7 +65,6 @@
   "desktop.openLaunchpad": "Open Apps",
   "desktop.wallpaper": "Change Wallpaper…",
   "dock.closeAll": "Close all windows",
-  "dock.dropHere": "Drop here to keep it in the Dock",
   "dock.hide": "Hide",
   "dock.keep": "Keep in Dock",
   "dock.newWindow": "New Window",
@@ -74,6 +73,11 @@
   "dock.pin": "Pin to taskbar",
   "dock.quit": "Quit",
   "dock.showAll": "Show All Windows",
+  "dock.remove": "Remove from Dock",
+  "dock.showInFiles": "Show in Files",
+  "dock.removeCue": "Remove",
+  "dock.unpin": "Unpin from taskbar",
+  "dock.unpinCue": "Unpin",
   "help.theme": "Create a theme: themes/README.md",
   "launchpad.empty": "No results",
   "launchpad.search": "Search",
@@ -123,5 +127,10 @@
   "wallpaper.aurora": "Aurora",
   "wallpaper.ocean": "Ocean",
   "wallpaper.sunset": "Sunset",
-  "wallpaper.graphite": "Graphite"
+  "wallpaper.graphite": "Graphite",
+  "trash.name": "Trash",
+  "trash.empty": "Empty Trash",
+  "trash.confirmTitle": "Empty the Trash?",
+  "trash.confirmDetail": "Everything in the Trash will be deleted permanently. You can’t undo this action.",
+  "trash.cancel": "Cancel"
 }

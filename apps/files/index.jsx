@@ -4,7 +4,7 @@
 // Disk operations go through lord.fs (server/src/fsops.c); see docs/FILES.md.
 import {
   View, Text, useTheme, useAppWindow, useKeyboard, useStore, useLauncherApps, addListener, wm, fs, clipboard, archive, warmDocs,
-  formatBytes, t as tr, ScrollView, Toolbar, ToolbarButton, ToolbarGroup, SearchField, Hairline, direction, spacing, typeScale,
+  formatBytes, t as tr, ScrollView, Toolbar, ToolbarButton, ToolbarGroup, SearchField, Hairline, direction, spacing, typeScale, registerDockActions,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FolderGlyph, DocGlyph, TAG_COLORS, TrashGlyph, DriveGlyph } from './glyphs.jsx';
@@ -39,6 +39,7 @@ const winStates = new Map();
 
 const homeLoc = () => ({ type: 'dir', path: fs.home() });
 function argLoc(args) {
+  if (args?.place === 'trash') return { type: 'trash' };
   if (!args?.path) return null;
   const home = fs.home();
   const p = String(args.path).replace(/^~(?=\/|$)/, home);
@@ -47,6 +48,17 @@ function argLoc(args) {
   if (archive.isArchive(fs.basename(path))) { try { if (!fs.stat(path).dir) return { type: 'archive', path, inner: '' }; } catch (e) { /* not there */ } }
   return { type: 'dir', path };
 }
+// The Dock's quick actions: Home, Downloads, Documents and the Trash (sdk/dock.js).
+registerDockActions('files', () => {
+  const dirs = userDirs();
+  const dir = (label) => dirs.find((d) => d.label === label);
+  return [
+    { id: 'home', label: 'files.place.home', args: { path: '~' } },
+    ...['downloads', 'documents'].filter(dir).map((k) => ({ id: k, label: `files.place.${k}`, args: { path: dir(k).path } })),
+    { id: 'trash', label: 'files.place.trash', args: { place: 'trash' } },
+  ];
+});
+
 // args.view ('icons' | 'list' | 'columns' | 'gallery') picks the view of the opened folder
 const argView = (args) => (VIEWS.includes(args?.view) ? args.view : null);
 

@@ -65,7 +65,6 @@
   "desktop.openLaunchpad": "Abrir Aplicativos",
   "desktop.wallpaper": "Alterar papel de parede…",
   "dock.closeAll": "Fechar todas as janelas",
-  "dock.dropHere": "Solte aqui para fixar no Dock",
   "dock.hide": "Ocultar",
   "dock.keep": "Manter no Dock",
   "dock.newWindow": "Nova janela",
@@ -74,6 +73,11 @@
   "dock.pin": "Fixar na barra de tarefas",
   "dock.quit": "Sair",
   "dock.showAll": "Mostrar todas as janelas",
+  "dock.remove": "Remover do Dock",
+  "dock.showInFiles": "Mostrar em Arquivos",
+  "dock.removeCue": "Remover",
+  "dock.unpin": "Desafixar da barra de tarefas",
+  "dock.unpinCue": "Desafixar",
   "help.theme": "Criar um tema: themes/README.md",
   "launchpad.empty": "Nenhum resultado",
   "launchpad.search": "Pesquisar",
@@ -123,5 +127,10 @@
   "wallpaper.aurora": "Aurora",
   "wallpaper.ocean": "Oceano",
   "wallpaper.sunset": "Pôr do sol",
-  "wallpaper.graphite": "Grafite"
+  "wallpaper.graphite": "Grafite",
+  "trash.name": "Lixo",
+  "trash.empty": "Esvaziar Lixo",
+  "trash.confirmTitle": "Esvaziar o Lixo?",
+  "trash.confirmDetail": "Tudo o que está no Lixo será apagado permanentemente. Não é possível desfazer.",
+  "trash.cancel": "Cancelar"
 }
