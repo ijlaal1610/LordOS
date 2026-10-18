@@ -296,9 +296,9 @@ SEC("cgroup/dev") int np_dev(struct bpf_cgroup_dev_ctx *ctx) {
     if (!app) return 1;
     if (snd) {
         /* Recording straight from the card. In the app's own scope this fails closed: an ALSA node
-         * the last scan didn't classify (a USB microphone plugged in since) counts as capture. In
-         * the user@ union (the user's own PipeWire and WirePlumber too) only the known capture
-         * nodes are denied, so plugging in a headset still works for the desktop. */
+         * the last scan didn't classify (a USB microphone plugged in since) counts as capture.
+         * Outside it only the known capture nodes count (lord-netperm keeps no-mic out of the
+         * user@ union today, so this is for a union that ever carries it). */
         np_u32 minor = ctx->minor;
         np_u32 *kind = bpf_map_lookup_elem(&np_snd, &minor);
         np_u64 sid = bpf_get_current_ancestor_cgroup_id((int)cfg->level);

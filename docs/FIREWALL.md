@@ -190,8 +190,10 @@ on `open()` and `mknod()` of a device node, and returns 0 only for the device cl
 restricted from (`np_dev_restriction()` in `np_shared.h`, plus, for "no microphone", the ALSA
 capture PCMs in `np_snd`). In the app's own scope "no microphone" fails closed: an ALSA node the
 last scan of `/sys/class/sound` hasn't classified yet (a USB microphone plugged in, at most 5 s)
-is denied too. In the `user@` union only the known capture nodes are, so the user's own PipeWire
-can still open a headset plugged in meanwhile. Everything else returns 1. Programs systemd attaches higher up (`DeviceAllow=`) still
+is denied too. "No microphone" is never part of the `user@` union: there it would deny the ALSA
+capture nodes to the user's own PipeWire, which drops the microphone for every app and doesn't
+get it back. A process that escaped to `user@` is held by the PipeWire guard instead; opening the
+card directly from there is a residual risk. Everything else returns 1. Programs systemd attaches higher up (`DeviceAllow=`) still
 apply: the kernel allows only what all of them allow. A denial is logged by `lord-netperm` once per
 5 s, not counted with the connections. `lord-server`'s own scope (`lordos`) never gets device
 restrictions in the kernel: it opens the camera, the FIDO key and the sound for the apps after

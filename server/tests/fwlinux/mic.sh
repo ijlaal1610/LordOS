@@ -88,6 +88,21 @@ except OSError as e: print(errno.errorcode.get(e.errno))' "$CAP" 2>&1 | tail -1)
 try: os.close(os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK)); print("ok")
 except OSError as e: print(errno.errorcode.get(e.errno))' "$PB" 2>&1 | tail -1)
     [ "$got" != EPERM ] && ok "the playback node $PB is not refused ($got)" || bad "playback node refused"
+    # an ALSA node the last scan hasn't seen (a microphone plugged in a moment ago): refused to the
+    # app (fail closed), but not to the user's own services in user@ (the restriction union)
+    NODE=$HOME/fwlinux-snd-new
+    sudo rm -f "$NODE"; sudo mknod -m 666 "$NODE" c 116 250
+    got=$(in_scope "$SC" python3 -c 'import os,sys,errno
+try: os.close(os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK)); print("ok")
+except OSError as e: print(errno.errorcode.get(e.errno))' "$NODE" 2>&1 | tail -1)
+    [ "$got" = EPERM ] && ok "an unknown ALSA node → EPERM in the app's scope" || bad "unknown ALSA node in the scope → $got"
+    if command -v systemd-run >/dev/null; then
+        got=$(timeout 10 systemd-run --user --pipe --quiet python3 -c 'import os,sys,errno
+try: os.close(os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK)); print("ok")
+except OSError as e: print(errno.errorcode.get(e.errno))' "$NODE" 2>&1 | tail -1)
+        [ "$got" != EPERM ] && ok "the same node from user@ is not refused ($got)" || bad "unknown ALSA node refused in user@"
+    fi
+    sudo rm -f "$NODE"
 fi
 
 echo "7. lying about who it is: still nothing recorded"

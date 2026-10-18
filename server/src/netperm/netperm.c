@@ -313,7 +313,12 @@ static void sync_union(Session *s) {
     if (!G.bpf_ok || !s->user_cg) return;
     NpApp u;
     memset(&u, 0, sizeof u);
-    for (int k = 0; k < s->nsc; k++) u.flags |= s->sc[k].app_v.flags;
+    /* "no microphone" stays out of the union: under user@ it would deny the ALSA capture nodes
+     * to the user's own PipeWire, which then drops the microphone for every app (and doesn't get
+     * it back). A process escaped there is held by the PipeWire guard instead (its clients count
+     * as restricted while restricted apps run); reading the card directly from there is the
+     * residual risk (docs/FIREWALL.md). */
+    for (int k = 0; k < s->nsc; k++) u.flags |= s->sc[k].app_v.flags & ~NP_R_NO_MIC;
     if (u.flags) {
         u.trusted = 1;                  /* whatever the union doesn't restrict is allowed without notice */
         u.mode = NP_M_SILENT;
