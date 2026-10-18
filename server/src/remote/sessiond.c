@@ -553,8 +553,20 @@ static int splash_up(void) {
 static void first_frame(void) {
     if (!splash_up()) return;
     int f = open(SD_FIRST_FRAME, O_WRONLY | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0644);
-    if (f >= 0) close(f);
+    if (f < 0) { sd_log("warning: %s: %s", SD_FIRST_FRAME, strerror(errno)); return; }
+    close(f);
     sd_log("first frame on the monitor: the boot splash can go");
+}
+
+/* RP_DISPLAY_KEEP only for the first lend of this process: whatever happens to RP_SHOWN (lost on a
+ * switch, the file could not be created), a later lend (lock, user switch) must start black, never
+ * on the picture left by the previous session. */
+static int keep_lend(void) {
+    static int lent;
+    int keep = !lent && splash_up();
+    if (lent) first_frame();
+    lent = 1;
+    return keep;
 }
 
 /* What the workers send: which session to show and messages for the login screen. */
@@ -566,13 +578,13 @@ static void from_worker(void) {
     char user[40];
     if (!strcmp(buf, "show g") && fd >= 0) {
         set_shown('g', NULL);
-        if (sd_mon_show(fd, "-", splash_up())) { sd_mon_lost(); set_shown('-', NULL); }
+        if (sd_mon_show(fd, "-", keep_lend())) { sd_mon_lost(); set_shown('-', NULL); }
         return;
     }
     if (sscanf(buf, "show u %32s", user) == 1 && fd >= 0 && sd_valid_username(user)) {
         sd_log("monitor: %s's session", user);
         set_shown('u', user);
-        if (sd_mon_show(fd, user, splash_up())) { sd_mon_lost(); set_shown('-', NULL); show_greeter("login", NULL); }
+        if (sd_mon_show(fd, user, keep_lend())) { sd_mon_lost(); set_shown('-', NULL); show_greeter("login", NULL); }
         else save_last_user(user);
         return;
     }

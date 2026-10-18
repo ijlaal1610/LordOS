@@ -92,6 +92,32 @@ static int send_msg(int type, const void *d, size_t n, const int *fds, int nfds)
     return r == (ssize_t)(5 + n) ? 0 : -1;
 }
 
+/* Removes every framebuffer of the leaving session. They belong to the open file we lent (ours
+ * is the same one), and the next DRM master could otherwise read them back (GETFB2 + map): the
+ * last frame of an unlocked desktop. The session itself frees them when it handles RP_UNDISPLAY,
+ * but that is asynchronous and a stuck or hostile session never does. Removing the one on the
+ * screen turns that output off, which is what a switch shows anyway. */
+static void drop_framebuffers(int fd) {
+    for (int pass = 0; pass < 16; pass++) {
+        uint32_t ids[64];
+        struct drm_mode_card_res r = {0};
+        if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &r) || !r.count_fbs) return;
+        uint32_t n = r.count_fbs < 64 ? r.count_fbs : 64;
+        r = (struct drm_mode_card_res){ .fb_id_ptr = (uint64_t)(uintptr_t)ids, .count_fbs = n };
+        if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &r)) return;
+        if (r.count_fbs < n) n = r.count_fbs;
+        int removed = 0;
+        for (uint32_t i = 0; i < n; i++) {
+            uint32_t id = ids[i];
+            if (!ioctl(fd, DRM_IOCTL_MODE_RMFB, &id)) removed++;
+        }
+        if (!removed) {
+            sd_log("warning: %u framebuffer(s) of the leaving session could not be removed", n);
+            return;
+        }
+    }
+}
+
 /* Takes the monitor away from the session that has it. */
 static void take_back(void) {
     if (conn >= 0) send_msg(RP_UNDISPLAY, NULL, 0, NULL, 0);
@@ -101,6 +127,7 @@ static void take_back(void) {
     }
     nin = 0;
     if (drm >= 0) {
+        drop_framebuffers(drm);
         ioctl(drm, DRM_IOCTL_DROP_MASTER, NULL);
         close(drm);
     }
