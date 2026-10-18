@@ -72,6 +72,11 @@ install -m 644 assets/app-host.bundle.js "$L/assets/app-host.bundle.js"
 install -m 755 tools/iso/rootfs/usr/lib/lordos/lordos-live-prep "$L/lordos-live-prep"
 install -D -m 644 tools/iso/rootfs/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf "$PKG/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf"
 install -D -m 644 tools/iso/rootfs/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf "$PKG/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf"
+# a process may only trace its own descendants: a restricted Linux app must not take over an
+# unrestricted process of the same user (lord-server, PipeWire, another app) and act through it
+install -d "$PKG/usr/lib/sysctl.d"
+printf '%s\n' '# LordOS: ptrace only of descendants (docs/FIREWALL.md, "Linux apps")' 'kernel.yama.ptrace_scope = 1' > "$PKG/usr/lib/sysctl.d/50-lordos-ptrace.conf"
+chmod 644 "$PKG/usr/lib/sysctl.d/50-lordos-ptrace.conf"
 install -m 644 tools/iso/rootfs/etc/systemd/system/lordos.service "$PKG/usr/lib/systemd/system/lordos.service"
 # boot splash (docs/brand/README.md, "Boot splash"): the Plymouth theme and the hand-off to LordOS
 install -m 755 tools/boot/lordos-splash "$L/lordos-splash"
@@ -185,6 +190,7 @@ set -e
 if [ "$1" = configure ] && command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload >/dev/null 2>&1 || true
     systemctl enable lord-fand.service >/dev/null 2>&1 || true
+    if [ -d /run/systemd/system ]; then systemctl restart systemd-sysctl.service >/dev/null 2>&1 || true; fi
     if [ -d /run/systemd/system ]; then systemctl restart lord-fand.service >/dev/null 2>&1 || true; fi
 fi
 # the boot splash lives in the initramfs: when it is the selected theme, rebuild it with the new images
