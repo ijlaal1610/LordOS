@@ -91,6 +91,47 @@
     paint();
   }
 
+  // mobile menu: upgrade the CSS-only toggle (checkbox + labels) to a modal dialog
+  var cb = $('#nav-cb'), drawer = $('#drawer');
+  if (cb && drawer) {
+    var burger = $('.burger'), xbtn = $('.dclose', drawer), panel = $('.dpanel', drawer);
+    cb.tabIndex = -1; cb.setAttribute('aria-hidden', 'true');
+    [burger, xbtn].forEach(function (b) {
+      b.setAttribute('role', 'button'); b.tabIndex = 0; b.removeAttribute('aria-hidden');
+      b.setAttribute('aria-label', b.getAttribute('data-label'));
+      b.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); b.click(); }
+      });
+    });
+    burger.setAttribute('aria-controls', 'drawer');
+    var navFocusables = function () {
+      return $$('a[href], summary, [tabindex="0"]', panel).filter(function (x) { return x.offsetParent !== null; });
+    };
+    var navState = function () {
+      var open = cb.checked;
+      burger.setAttribute('aria-expanded', String(open));
+      if (open) { drawer.setAttribute('role', 'dialog'); drawer.setAttribute('aria-modal', 'true'); }
+      else { drawer.removeAttribute('role'); drawer.removeAttribute('aria-modal'); }
+      return open;
+    };
+    cb.addEventListener('change', function () {
+      if (navState()) setTimeout(function () { xbtn.focus(); }, 30);
+      else burger.focus();
+    });
+    var navClose = function () { if (cb.checked) { cb.checked = false; navState(); burger.focus(); } };
+    drawer.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.preventDefault(); navClose(); return; }
+      if (e.key !== 'Tab') return;
+      var f = navFocusables(); if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && d.activeElement === first) { last.focus(); e.preventDefault(); }
+      else if (!e.shiftKey && d.activeElement === last) { first.focus(); e.preventDefault(); }
+    });
+    $$('a[href]', panel).forEach(function (a) { a.addEventListener('click', function () { cb.checked = false; navState(); }); });
+    window.addEventListener('resize', function () { if (cb.checked && innerWidth > 900) { cb.checked = false; navState(); } });
+    navState();
+  }
+
   // language dropdowns: close on Escape or a click outside
   var dds = $$('.lang-dd');
   d.addEventListener('click', function (e) { dds.forEach(function (dd) { if (dd.open && !dd.contains(e.target)) dd.open = false; }); });

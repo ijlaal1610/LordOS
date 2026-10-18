@@ -110,6 +110,8 @@ const cssUrl = hashed(Buffer.from(css), 'site', 'css');
 const minCss = (c) => c.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s*([{};,>])\s*/g, '$1').replace(/;}/g, '}').replace(/\n\s*/g, '\n').replace(/\n+/g, '\n');
 const docCss = minCss(src('doc.css'));
 const docCssUrl = hashed(Buffer.from(docCss), 'doc', 'css');
+const homeCss = minCss(src('home.css').replace('__FONT_MEDIUM__', fontMedium));
+const homeCssUrl = hashed(Buffer.from(homeCss), 'home', 'css');
 // [[PLACEHOLDER]] markers left by the content agents: highlighted when --allow-placeholders, else the build fails
 const ALLOW_PH = process.argv.includes('--allow-placeholders');
 const placeholders = new Map();
@@ -271,7 +273,7 @@ ${alts}
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preload" href="${fontExtraBold}" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="${fontMedium}" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="${cssUrl}">${doc ? `\n<link rel="stylesheet" href="${docCssUrl}">` : ''}
+<link rel="stylesheet" href="${cssUrl}">${doc ? `\n<link rel="stylesheet" href="${doc === 'home' ? homeCssUrl : docCssUrl}">` : ''}
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="LordOS">
 <meta property="og:title" content="${esc(title)}">
@@ -291,21 +293,45 @@ ${LANGS.filter((l) => l !== t.lang).map((l) => `<meta property="og:locale:altern
 
 
 function header(t, page) {
-  const home = prefix(t.lang);
+  const l = t.lang;
+  const home = prefix(l);
   const h = (frag) => (page === 'home' ? frag : home + frag);
   const cur = (p) => (page === p ? ' aria-current="page"' : '');
   const links = [
     `<a href="${h('#features')}">${esc(t.navFeatures)}</a>`,
-    HAS_APPS ? `<a href="${pageUrl(t.lang, 'apps')}"${cur('apps')}>${esc(t.navApps)}</a>` : '',
-    `<a href="${pageUrl(t.lang, 'gallery')}"${cur('gallery')}>${esc(t.navGallery)}</a>`,
-    HAS_PAPER ? `<a href="${pageUrl(t.lang, 'paper')}"${cur('paper')}>${esc(t.pages.navPaper)}</a>` : '',
-    HAS_FAQ ? `<a href="${pageUrl(t.lang, 'faq')}"${cur('faq')}>${esc(t.pages.navFaq)}</a>` : '',
+    HAS_APPS ? `<a href="${pageUrl(l, 'apps')}"${cur('apps')}>${esc(t.navApps)}</a>` : '',
+    `<a href="${pageUrl(l, 'gallery')}"${cur('gallery')}>${esc(t.navGallery)}</a>`,
+    HAS_PAPER ? `<a href="${pageUrl(l, 'paper')}"${cur('paper')}>${esc(t.pages.navPaper)}</a>` : '',
+    HAS_FAQ ? `<a href="${pageUrl(l, 'faq')}"${cur('faq')}>${esc(t.pages.navFaq)}</a>` : '',
     `<a href="${h('#download')}">${esc(t.navDownload)}</a>`,
     `<a href="${h('#support')}">${esc(t.navSupport)}</a>`,
-    `<a href="${pageUrl(t.lang, 'about')}"${cur('about')}>${esc(t.navAbout)}</a>`,
+    `<a href="${pageUrl(l, 'about')}"${cur('about')}>${esc(t.navAbout)}</a>`,
     `<a href="${GITHUB}">GitHub</a>`,
   ].filter(Boolean).join('\n');
-  return `<header class="top">
+
+  // mobile drawer: a CSS-only toggle (hidden checkbox + labels) that site.js upgrades to a real dialog
+  const row = (href, label, attrs = '') => `<li><a href="${href}"${attrs}>${esc(label)}</a></li>`;
+  const group = (label, items, open) => `<li><details${open ? ' open' : ''}><summary>${esc(label)}${CHEVRON}</summary><ul>${items.join('')}</ul></details></li>`;
+  const legalLinks = ['security', 'code-signing', 'privacy', 'terms'].map((sl) => legalPages.find((x) => x.slug === sl)).filter(Boolean);
+  const dl = [
+    featureList.length
+      ? group(t.navFeatures, [row(h('#features'), t.pages.allFeatures), ...featureList.map((m) => row(pageUrl(l, 'features/' + m.slug), loc(m.title, l), cur('features/' + m.slug)))], page.startsWith('features/'))
+      : row(h('#features'), t.navFeatures),
+    HAS_APPS ? row(pageUrl(l, 'apps'), t.navApps, cur('apps')) : '',
+    row(pageUrl(l, 'gallery'), t.navGallery, cur('gallery')),
+    HAS_PAPER ? row(pageUrl(l, 'paper'), t.pages.navPaper, cur('paper')) : '',
+    HAS_FAQ ? row(pageUrl(l, 'faq'), t.pages.navFaq, cur('faq')) : '',
+    row(h('#download'), t.navDownload),
+    row(h('#support'), t.navSupport),
+    group(t.navAbout, [row(pageUrl(l, 'about'), t.navAbout, cur('about')), row(team.company.contact.replace('{lang}', l), t.pages.contact, ' rel="noopener"')], page === 'about'),
+    legalPages.length
+      ? group(t.pages.legal.nav, [row(pageUrl(l, 'legal'), t.pages.legal.all, cur('legal')), ...legalLinks.map((x) => row(pageUrl(l, 'legal/' + x.slug), loc(x.title, l), cur('legal/' + x.slug)))], page.startsWith('legal'))
+      : '',
+    row(GITHUB, 'GitHub', ' rel="noopener"'),
+  ].filter(Boolean).join('\n');
+  const X = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  return `<input type="checkbox" id="nav-cb" class="nav-cb" aria-label="${esc(t.pages.menu)}">
+<header class="top">
 <nav class="wrap${page === 'home' ? '' : ' wide'} nav" aria-label="${esc(t.navLabel)}">
 <a class="nav-home" href="${home}" aria-label="${esc(t.homeLabel)}"><img class="logo-l" src="${img.logoLight}" alt="LordOS" width="122" height="36"><img class="logo-d" src="${img.logoDark}" alt="LordOS" width="122" height="36"></a>
 <div class="nav-links">
@@ -314,9 +340,23 @@ ${links}
 <div class="tools">
 ${themeSwitch(t)}
 ${langMenu(t, page, false)}
+<label for="nav-cb" class="burger" aria-hidden="true" data-label="${esc(t.pages.menu)}"><span></span><span></span><span></span></label>
 </div>
 </nav>
-</header>`;
+</header>
+<div class="drawer" id="drawer" aria-label="${esc(t.pages.menu)}">
+<label for="nav-cb" class="scrim" aria-hidden="true"></label>
+<div class="dpanel">
+<div class="dhead"><a href="${home}" aria-label="${esc(t.homeLabel)}"><img src="${img.logoDark}" alt="LordOS" width="115" height="34"></a><label for="nav-cb" class="dclose" aria-hidden="true" data-label="${esc(t.pages.closeMenu)}">${X}</label></div>
+<ul class="dlist">
+${dl}
+</ul>
+<div class="dfoot">
+${langMenu(t, page, true)}
+<a class="btn btn-violet" href="${h('#download')}">${esc(t.ctaDownload)}</a>
+</div>
+</div>
+</div>`;
 }
 
 // localized site path for footer.json links: /x/ -> /es/x/; files and absolute URLs unchanged
@@ -449,7 +489,7 @@ ${featureList[i] ? `<a class="more" href="${pageUrl(l, 'features/' + featureList
 <div class="show-img">${picture(SHOWCASE_IMG[i], alt, { sizes: '(max-width: 900px) 100vw, 640px' })}</div>
 </div>`).join('\n');
   write(path.join(pageUrl(l, 'home'), 'index.html'), render(tpl.home, {
-    ...common('home'), features, showcase, teaser: teaser(t),
+    ...common('home', null, 'home'), features, showcase, teaser: teaser(t),
     heroImg: (() => {
       // the desktop inside a laptop drawn in CSS, as a slideshow of real screenshots (site.js runs it;
       // without JS only the first slide shows). Slide 1 has light and dark variants that follow the theme.
@@ -565,7 +605,7 @@ ${shot}
 ${apps.filter((a) => a.category === c).sort((x, y) => appName(x, l).localeCompare(appName(y, l), l)).map(card).join('\n')}
 </div>
 </section>`).join('\n');
-    write(path.join(pageUrl(l, 'apps'), 'index.html'), render(tpl.apps, { ...common('apps'), catButtons, sections }, t));
+    write(path.join(pageUrl(l, 'apps'), 'index.html'), render(tpl.apps, { ...common('apps', null, true), catButtons, sections }, t));
   }
 
   // feature pages and paper share these helpers
@@ -738,7 +778,7 @@ ${(c.items || []).map((it) => {
     }).join('\n');
     const work = A.work.map(([title, text]) => `<article class="feat"><h3>${esc(title)}</h3><p>${esc(text)}</p></article>`).join('\n');
     write(path.join(pageUrl(l, 'about'), 'index.html'), render(tpl.about, {
-      ...common('about', [A.metaTitle, A.metaDescription]),
+      ...common('about', [A.metaTitle, A.metaDescription], true),
       people, work, liIcon: li, lumoWave: img.lumoWave,
       siteUrl: esc(team.company.site.replace('{lang}', l)), companyLinkedin: esc(team.company.linkedin),
       contactUrl: esc(team.company.contact.replace('{lang}', l)), supportUrl: prefix(l) + '#support',
@@ -810,7 +850,7 @@ for (const f of html) {
 const jsSize = Buffer.byteLength(jsSrc) + Buffer.byteLength(themeSrc), cssSize = Buffer.byteLength(css);
 if (jsSize > 15 * 1024) throw new Error(`JS is ${jsSize} bytes (limit 15 KB)`);
 if (cssSize > 30 * 1024) throw new Error(`site.css is ${cssSize} bytes (limit 30 KB)`);
-if (docCss.length > 30 * 1024) throw new Error(`doc.css is ${docCss.length} bytes (limit 30 KB)`);
+for (const [n, c] of [['doc.css', docCss], ['home.css', homeCss]]) if (c.length > 30 * 1024) throw new Error(`${n} is ${c.length} bytes (limit 30 KB)`);
 log(`built ${html.length} pages into web/dist (js ${jsSize} B, css ${cssSize} B, ${shots.length} gallery images, ${apps.length} apps); install.sh byte-identical`);
 
 // ---------- paper PDFs (headless Chromium prints the built page) ----------
