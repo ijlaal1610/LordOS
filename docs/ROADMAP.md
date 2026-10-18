@@ -521,6 +521,23 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
     from Wayland apps and protected windows (Passwords) are never exposed to them; documented in
     `PRIVACY.md`;
   - tests with real X11 apps (an xterm-style terminal, a Java/Swing app, a game) and screenshots.
+- [ ] **A second full appearance: "Taskbar" theme** (Settings → Themes), for people coming from the
+  most common desktop layout: a centered taskbar with a start menu, pinned and running apps, a
+  system tray with quick settings and a notification panel, snap layouts for windows, rounded
+  corners and translucent materials. It grows from today's `themes/classic` template into a
+  complete, polished theme:
+  - **same apps, different skin:** no app is rewritten. Native apps keep every feature; the theme
+    supplies the window frame, title bar buttons on the right, menus, controls, typography scale and
+    spacing through the SDK's theme tokens and components (`configureWindows`, shared controls), so
+    every app adapts automatically;
+  - shell pieces of its own: taskbar, start menu with search and pinned apps, tray, quick settings,
+    notification panel, window snapping (halves, quarters), task view;
+  - switchable at runtime, in light and dark, RTL, and with the same accent colors;
+  - **our own design and assets only:** inspired by the familiar layout, but with LordOS icons,
+    fonts (Inter / Plus Jakarta Sans), wallpapers and names. No copied logos, icons, wallpapers,
+    fonts, sounds or product names from any company, and no third-party "clone" projects' assets
+    (they often bundle copyrighted material). See `docs/LORDOS-BRAND.md` and the no-brand rule;
+  - before/after screenshots of every app in both themes, like the polish pass.
 
 ## After the final ISO
 
