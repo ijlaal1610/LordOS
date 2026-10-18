@@ -246,7 +246,7 @@ function ImportPanel({ t, onClose, onDone }) {
         <Text style={{ fontSize: typeScale.callout, color: t.textDim, lineHeight: 1.4, textAlign: 'start' }}>{T('terminal.prefs.import.intro')}</Text>
       </View>
       <View style={{ flexDirection: 'row', gap: spacing.s, alignItems: 'center' }}>
-        <TextInput value={path} placeholder="~/Descargas/Profiles.json" onChange={setPath} onSubmit={load} style={{ flex: 1 }} />
+        <TextInput value={path} placeholder={T('terminal.prefs.import.placeholder')} onChange={setPath} onSubmit={load} style={{ flex: 1 }} />
         <Button label={T('terminal.prefs.cancel')} onClick={onClose} />
         <Button label={T('terminal.prefs.import.open')} primary onClick={() => load(path)} />
       </View>

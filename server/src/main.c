@@ -1324,12 +1324,20 @@ static int hw_heads(Kms **out, int max) {
 static void hw_redraw(void) { if (hw_server) full_damage(hw_server); }
 static const DisplayHost hw_host = { hw_kms, hw_redraw, js_hw_event, hw_heads };
 
+/* A client that hangs up mid-write (remote desktop, Wayland, a helper) must not kill the
+ * session: writes get EPIPE instead. Caught, not SIG_IGN, so exec'd children (shells, Linux
+ * apps) get the default SIGPIPE back, as execve resets caught signals. */
+static void on_sigpipe(int sig) { (void)sig; }
+
 static void usage(const char *argv0) {
     fprintf(stderr, "usage: %s [--theme bundle.js] [--fonts dir] [--shell dir] [--user name] [--card /dev/dri/cardN]\n"
                     "          [--headless WIDTHxHEIGHT [--greeter]] [--timeout s] [--debug] [--profile]\n", argv0);
 }
 
 int main(int argc, char **argv) {
+    struct sigaction pipe_sa = { .sa_handler = on_sigpipe };
+    sigemptyset(&pipe_sa.sa_mask);
+    sigaction(SIGPIPE, &pipe_sa, NULL);
     /* guardián de una sesión de terminal (ver term/hold.c): no abre pantalla ni input */
     if (argc > 1 && !strcmp(argv[1], "--term-holder")) return hold_main(argc, argv);
     /* «modo app»: lord-server --app <id> corre una app .lpk como cliente Wayland aislado

@@ -202,6 +202,7 @@
     "other": "Color presets ({count})"
   },
   "prefs.import.title": "Import Profiles",
+  "prefs.import.placeholder": "~/Downloads/Profiles.json",
   "prefs.import.triggers": {
     "one": "{count} trigger",
     "other": "{count} triggers"

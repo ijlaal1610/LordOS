@@ -202,6 +202,7 @@
     "other": "Esquemas de color ({count})"
   },
   "prefs.import.title": "Importar perfiles",
+  "prefs.import.placeholder": "~/Descargas/Profiles.json",
   "prefs.import.triggers": {
     "one": "{count} disparador",
     "other": "{count} disparadores"

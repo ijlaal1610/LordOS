@@ -202,6 +202,7 @@
     "other": "Esquemas de cores ({count})"
   },
   "prefs.import.title": "Importar perfis",
+  "prefs.import.placeholder": "~/Downloads/Profiles.json",
   "prefs.import.triggers": {
     "one": "{count} gatilho",
     "other": "{count} gatilhos"
