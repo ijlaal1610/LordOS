@@ -696,7 +696,7 @@ for (const f of html) {
     const msg = 'forbidden wording in ' + path.relative(DIST, f) + ': ' + s.match(/.{0,60}(operating system|sistema operativo|sistema operacional|\b(?:our|own|nuestro|propio|próprio|nosso)\s+X11\b|\bX11\s+(?:display\s+)?server\b|from scratch|desde cero|\bdo zero\b).{0,40}/i)[0];
     if (process.env.WEB_SKIP_WORDING) console.warn('[web] WARNING ' + msg); else throw new Error(msg);
   }
-  { const m = s.replace(/<[^>]+>/g, ' ').match(/.{0,70}(Raspberry Pi (4|400|500)\b|\bCM4\b).{0,50}/i); if (m) console.warn(`[web] other Raspberry Pi model mentioned (only Pi 5 is supported; check the wording) in ${path.relative(DIST, f)}: …${m[0].trim()}…`); }
+  { const m = s.replace(/<[^>]+>/g, ' ').match(/.{0,70}(\bPi (4|400|500)\b|\bCM[45]\b).{0,50}/i); if (m) throw new Error(`only the Raspberry Pi 5 is supported; other models are not mentioned in website copy (${path.relative(DIST, f)}): …${m[0].trim()}…`); }
 }
 const jsSize = Buffer.byteLength(jsSrc) + Buffer.byteLength(themeSrc), cssSize = Buffer.byteLength(css);
 if (jsSize > 15 * 1024) throw new Error(`JS is ${jsSize} bytes (limit 15 KB)`);

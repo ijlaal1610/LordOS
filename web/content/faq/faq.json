@@ -270,9 +270,9 @@
             "pt": "Quais modelos de Raspberry Pi são suportados?"
           },
           "a": {
-            "en": "Only the Raspberry Pi 5 (4, 8 or 16 GB). The Pi 500 and CM5 may work but aren't tested, and the Pi 4, 400, CM4 and older models aren't supported. The Pi 5 image is still in beta: parts such as HDMI and the desktop session haven't been verified on the board yet.",
-            "es": "Solo la Raspberry Pi 5 (4, 8 o 16 GB). La Pi 500 y la CM5 quizás anden, pero no están probadas, y la Pi 4, 400, CM4 y modelos anteriores no están soportados. La imagen para Pi 5 sigue en beta: partes como el HDMI y la sesión de escritorio todavía no se verificaron en la placa.",
-            "pt": "Só o Raspberry Pi 5 (4, 8 ou 16 GB). O Pi 500 e o CM5 talvez funcionem, mas não foram testados, e o Pi 4, 400, CM4 e modelos anteriores não são suportados. A imagem para o Pi 5 ainda está em beta: partes como o HDMI e a sessão de desktop ainda não foram verificadas na placa."
+            "en": "Only the Raspberry Pi 5 is supported (4, 8 or 16 GB); it is the only board we test. The Pi 5 image is still in beta: parts such as HDMI and the desktop session haven't been verified on the board yet.",
+            "es": "Solo está soportada la Raspberry Pi 5 (4, 8 o 16 GB); es la única placa que probamos. La imagen para Pi 5 sigue en beta: partes como el HDMI y la sesión de escritorio todavía no se verificaron en la placa.",
+            "pt": "Só o Raspberry Pi 5 é suportado (4, 8 ou 16 GB); é a única placa que testamos. A imagem para o Pi 5 ainda está em beta: partes como o HDMI e a sessão de desktop ainda não foram verificadas na placa."
           }
         },
         {
