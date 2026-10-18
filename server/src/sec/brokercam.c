@@ -282,7 +282,7 @@ void brokercam_handle(int conn, int fd, uint32_t reqid, const char *payload, uin
         if (!s || s->sock < 0 || !allowed || c->pick_req) { brokersrv_reply(fd, reqid, BST_ERROR, NULL, 0, -1); return; }
         clean_name(rest, cmd[0] == 'p' ? "foto.jpg" : "video.mp4", c->out_name, sizeof c->out_name);
         /* the save dialog is the system's; the chosen file is opened here and goes to lord-media */
-        c->pick_req = 0x80000000u | (next_pick++ & 0x7fffffffu);
+        c->pick_req = 0x80000000u | (next_pick++ & 0x3fffffffu);   /* never the keyring's 0xC0000000 tag */
         c->pick_kind = cmd[0] == 'p' ? 1 : 2;
         c->pick_mirror = mirror != 0;
         c->pick_mic = mic != 0;

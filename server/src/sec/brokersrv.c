@@ -32,9 +32,16 @@
 typedef struct { int fd, pid, used, resync; char id[48]; MAudio *mic; int mic_ringfd; int vault; } AppConn;
 static AppConn apps[MAX_APPS];
 
-/* avisos pendientes de respuesta del usuario (reqid → app + fd + permiso) */
-typedef struct { int used; uint32_t reqid; int fd; char id[48]; Perm perm; } Pending;
+/* prompts waiting for the user's answer (ui id → app + fd + permission + the app's reqid) */
+typedef struct { int used; uint32_t ui, reqid; int fd; char id[48]; Perm perm; } Pending;
 static Pending pend[MAX_PENDING];
+
+/* Ids shown to the system UI for permission prompts and file pickers. They are generated here,
+ * never taken from the app's reqid: an app chooses its reqids, so using them would let it collide
+ * with another app's prompt or with the keyring (0xC0000000 tag) and camera (0x80000000 tag)
+ * ranges, and have the user's answer applied to a request it did not make. Range 1..0x3fffffff. */
+static uint32_t ui_seq;
+static uint32_t next_ui_id(void) { ui_seq = (ui_seq % 0x3fffffffu) + 1; return ui_seq; }
 
 /* cola de eventos para JS (prompts a mostrar, cambios de indicador) */
 typedef struct { char kind[16]; char json[256]; } Evt;
@@ -98,13 +105,14 @@ static void clip_secret_tick(void);
 static int send_reply(int fd, uint32_t reqid, int status, const void *data, uint32_t len);
 
 /* picker (powerbox): avisos pendientes de que el usuario elija un archivo */
-typedef struct { int used, save; uint32_t reqid; int fd; char id[48]; } Pick;
+typedef struct { int used, save; uint32_t ui, reqid; int fd; char id[48]; } Pick;
 static Pick picks[MAX_PENDING];
 
-void brokersrv_pick_result(uint32_t reqid, const char *path) {
-    if (brokercam_pick_result(reqid, path)) return;     /* a camera photo/video save */
+void brokersrv_pick_result(uint32_t ui, const char *path) {
+    if (brokercam_pick_result(ui, path)) return;     /* a camera photo/video save */
     for (int i = 0; i < MAX_PENDING; i++) {
-        if (!picks[i].used || picks[i].reqid != reqid) continue;
+        if (!picks[i].used || picks[i].ui != ui) continue;
+        uint32_t reqid = picks[i].reqid;
         int f = -1;
         const char *name = path ? strrchr(path, '/') : NULL;
         name = name ? name + 1 : path;
@@ -215,6 +223,11 @@ int brokersrv_count(void) { int n = 0; for (int i = 0; i < MAX_APPS; i++) n += a
 static void drop(AppConn *a) {
     brokercam_conn_closed((int)(a - apps));
     brokerkr_conn_closed((int)(a - apps));
+    /* its open prompts and pickers die with it: their fd may be reused by another app */
+    for (int i = 0; i < MAX_PENDING; i++) {
+        if (pend[i].used && pend[i].fd == a->fd) pend[i].used = 0;
+        if (picks[i].used && picks[i].fd == a->fd) picks[i].used = 0;
+    }
     /* los indicadores de esta app se apagan */
     queue_evt("device", "{\"app\":\"%s\",\"off\":true}", a->id);
     if (a->mic) { maudio_close(a->mic); a->mic = NULL; }
@@ -338,9 +351,9 @@ static void handle(AppConn *a, BrokerHdr *h, char *payload) {
         if (st == PERM_DENY) { send_reply(fd, h->reqid, BST_OK, "0", 1); break; }
         /* preguntar: el aviso lo dibuja el sistema; se responde cuando el usuario decide */
         for (int i = 0; i < MAX_PENDING; i++) if (!pend[i].used) {
-            pend[i] = (Pending){ .used = 1, .reqid = h->reqid, .fd = fd, .perm = (Perm)p };
+            pend[i] = (Pending){ .used = 1, .ui = next_ui_id(), .reqid = h->reqid, .fd = fd, .perm = (Perm)p };
             snprintf(pend[i].id, sizeof pend[i].id, "%s", a->id);
-            queue_evt("prompt", "{\"reqid\":%u,\"app\":\"%s\",\"perm\":\"%s\"}", h->reqid, a->id, perm_name((Perm)p));
+            queue_evt("prompt", "{\"reqid\":%u,\"app\":\"%s\",\"perm\":\"%s\"}", pend[i].ui, a->id, perm_name((Perm)p));
             return;
         }
         send_reply(fd, h->reqid, BST_DENIED, NULL, 0);
@@ -362,11 +375,11 @@ static void handle(AppConn *a, BrokerHdr *h, char *payload) {
         const char *suggest = memchr(payload, 0, h->len);
         suggest = suggest ? suggest + 1 : "";
         for (int i = 0; i < MAX_PENDING; i++) if (!picks[i].used) {
-            picks[i] = (Pick){ .used = 1, .save = save, .reqid = h->reqid, .fd = fd };
+            picks[i] = (Pick){ .used = 1, .save = save, .ui = next_ui_id(), .reqid = h->reqid, .fd = fd };
             snprintf(picks[i].id, sizeof picks[i].id, "%s", a->id);
             char sq[300];
             json_quote(sq, sizeof sq, suggest);
-            queue_evt("pick", "{\"reqid\":%u,\"app\":\"%s\",\"save\":%s,\"suggest\":%s}", h->reqid, a->id, save ? "true" : "false", sq);
+            queue_evt("pick", "{\"reqid\":%u,\"app\":\"%s\",\"save\":%s,\"suggest\":%s}", picks[i].ui, a->id, save ? "true" : "false", sq);
             return;
         }
         send_reply(fd, h->reqid, BST_DENIED, NULL, 0);
@@ -452,11 +465,11 @@ static void handle(AppConn *a, BrokerHdr *h, char *payload) {
     }
 }
 
-void brokersrv_resolve(uint32_t reqid, int allow) {
-    if (brokerkr_resolve(reqid, allow)) return;
-    for (int i = 0; i < MAX_PENDING; i++) if (pend[i].used && pend[i].reqid == reqid) {
+void brokersrv_resolve(uint32_t ui, int allow) {
+    if (brokerkr_resolve(ui, allow)) return;
+    for (int i = 0; i < MAX_PENDING; i++) if (pend[i].used && pend[i].ui == ui) {
         perm_set(pend[i].id, pend[i].perm, allow ? PERM_ALLOW : PERM_DENY);
-        send_reply(pend[i].fd, reqid, BST_OK, allow ? "1" : "0", 1);
+        send_reply(pend[i].fd, pend[i].reqid, BST_OK, allow ? "1" : "0", 1);
         pend[i].used = 0;
         return;
     }
