@@ -29,6 +29,7 @@
 #include "../media/media.h"
 #include "ui.h"
 #include "../term/term.h"
+#include "lord_version.h"           /* build/gen: version, channel and build (Makefile) */
 
 #include <libgen.h>
 #include <stdio.h>
@@ -391,7 +392,7 @@ int js_init(const char *bundle_path) {
     JS_SetPropertyStr(ctx, screen, "height", JS_NewFloat64(ctx, ui.height));
     set_screen_displays(screen);
     JS_SetPropertyStr(ctx, lord, "screen", screen);
-    JS_SetPropertyStr(ctx, lord, "version", JS_NewString(ctx, "0.7.0"));
+    JS_SetPropertyStr(ctx, lord, "version", JS_NewString(ctx, LORD_VERSION));
     js_sys_init();
     js_sys_register(ctx, lord);
     js_term_register(ctx, lord);
@@ -453,7 +454,7 @@ int js_init_app(const char *host_bundle, const char *app_id) {
     JS_SetPropertyStr(ctx, screen, "width", JS_NewFloat64(ctx, ui.width));
     JS_SetPropertyStr(ctx, screen, "height", JS_NewFloat64(ctx, ui.height));
     JS_SetPropertyStr(ctx, lord, "screen", screen);
-    JS_SetPropertyStr(ctx, lord, "version", JS_NewString(ctx, "0.7.0"));
+    JS_SetPropertyStr(ctx, lord, "version", JS_NewString(ctx, LORD_VERSION));
     js_broker_register(ctx, lord, app_id);         /* fs/clipboard/perms through the broker + appId */
     js_vault_register_app(ctx, lord);              /* Passwords only: its own channel to lord-vault */
     js_sys_register_app(ctx, lord);                /* lord.text (language, direction) and lord.image */

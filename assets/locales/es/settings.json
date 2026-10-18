@@ -104,6 +104,7 @@
   "section.users": "Usuarios",
   "section.wallpaper": "Fondo de pantalla",
   "session.hint": "Sale de LordOS y vuelve a la consola.",
+  "session.hintManaged": "Cierra tu sesión y vuelve a la pantalla de ingreso. Las apps abiertas se cierran.",
   "sharing.allUsers": "Todos los usuarios",
   "sharing.connected": "Conectados ahora",
   "sharing.disconnect": "Desconectar",

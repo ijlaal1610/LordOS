@@ -870,6 +870,17 @@ RAM and disappears on reboot.
   replace `lord.pkg` in the harness with sample data (16 apps, 5 other packages). Extra sample
   content: `Documentos/muestra.zip`. Nothing is installed with `apt`.
 
+- **UI engine pass (ellipsis, per-side borders, transforms):** same workflow on the live session
+  (`docs/WINDOWS.md`, "The UI engine pass"). Server binaries from the `debian:trixie` container; a
+  scratch-only demo app and harness bundled into the test theme (F9 steps through Files in list and
+  icon view in English and Arabic, the demo in LTR and RTL, the Dock's minimize effect slowed down to 6 s,
+  and the Player); sample files with long English, Arabic, Hebrew, Thai and emoji names in
+  `Documentos/Largos`. The drag was measured with a small static C uinput tablet (the live ISO has no
+  `python3`) run with `sudo` from the Terminal, switching only `lord-server` between the two builds.
+  Nothing is installed with `apt`. Once a React error in the scratch demo app (no `Icon` export) left the
+  session black; `system_reset` from the Proxmox monitor brought the live ISO back and the build was
+  deployed again.
+
 ## Step 21 — M8 app isolation: root-owned scopes, camera, several windows (VM 122 `lordos-sandbox`)
 
 See `PRIVACY.md` («Root-owned app scopes», «Camera for isolated apps», «Several windows per
@@ -1045,3 +1056,33 @@ See `DISPLAYS.md`.
   fractional-scale).
 - The GPU path was tested by adding `Environment=LORD_GPU=1` to `lordos.service` in a temporary
   drop-in, removed afterwards.
+
+## Step 25 — Pre-ISO integration QA (VM 122 `lordos-sandbox`, October 18)
+
+Clean build of the whole tree, the `.deb` installed with apt, and a smoke test from the login
+screen. Results and screenshots: `docs/qa/` (`all-apps.png`, `settings-pages.png`, one PNG per app).
+
+- **Packages** (build deps from `ISO.md`, "Build packages"): `libgbm-dev libegl-dev libgles-dev
+  libssl-dev libpoppler-glib-dev libarchive-dev libavcodec-dev libavformat-dev libavutil-dev
+  libswscale-dev libswresample-dev libva-dev clang lintian` (most were already there), plus
+  `linux-headers-6.12.113+deb13-amd64`: an apt run had upgraded the kernel to 6.12.113 and DKMS needed
+  the headers to rebuild `v4l2loopback` for the virtual camera (`/dev/video10`).
+- **The package instead of `/usr/local`:** `tools/iso/mkdeb.sh /tmp/lordos-qa-122.deb` and
+  `apt-get install /tmp/lordos-qa-122.deb` (this validates `Depends`). The VM's own units in
+  `/etc/systemd/system` (`lordos.service`, `lord-netperm.service`, pointing at `/usr/local/lib/lordos`)
+  were moved aside to `*.qa-122.bak` so the package's units in `/usr/lib/systemd/system` are used;
+  both enabled. `/usr/local/lib/lordos` is left in place, unused.
+- **Login screen instead of autologin:** `/etc/lordos/session.conf` is `AUTOLOGIN=` (the previous
+  file is `session.conf.qa-122.bak`).
+- **Test user:** `qa` («Qa Tester», standard), created from Settings → Users to check a new user's
+  defaults.
+- **Tree and scripts:** the tree is synced to `~/LordOS-qa` by the Mac's scratch script
+  `sync-qa-122.sh`; screenshots via `qm monitor 122` (`screendump`), mouse via
+  `/root/lord-qmp-input.py 122`, typing via `/root/lord-type.py 122`. Network untouched.
+- **QA fixes (login screen, `make test` runner):** `unicode-data` installed with apt so
+  `tests/run_suites.sh` finds `/usr/share/unicode/BidiCharacterTest.txt` (the bidi conformance suite).
+  The fixes were built in a separate copy, `~/LordOS-qafix-122`. The new `lord-sessiond` and the
+  greeter bundle are installed in `/usr/lib/lordos` (the package's originals are kept as
+  `*.qafix-122.bak`). To test "last user", `qa` was shown once through a one-time
+  `AUTOLOGIN=qa` (restored to `AUTOLOGIN=` right away) and its session was then ended, which follows
+  the same path in `lord-sessiond` as a logout. `/var/lib/lordos/last-user` now exists.

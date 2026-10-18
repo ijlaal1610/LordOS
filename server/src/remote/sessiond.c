@@ -312,9 +312,41 @@ static void file_value(const char *path, const char *key, char *out, size_t n) {
 
 static char greeter_mode[8] = "login", greeter_user[33];
 
+/* The last user whose session was shown on the monitor: the login screen preselects it. Kept in
+ * SD_LAST_USER (root's, 0644) so it survives a reboot; only a valid user name is read back. */
+#define SD_LAST_USER "/var/lib/lordos/last-user"
+static char last_user[33];
+
+static void load_last_user(void) {
+    last_user[0] = 0;
+    int fd = open(SD_LAST_USER, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return;
+    char buf[40];
+    ssize_t n = read(fd, buf, sizeof buf - 1);
+    close(fd);
+    if (n <= 0) return;
+    buf[n] = 0;
+    buf[strcspn(buf, "\n")] = 0;
+    if (sd_valid_username(buf)) snprintf(last_user, sizeof last_user, "%.32s", buf);
+}
+
+static void save_last_user(const char *user) {
+    if (!sd_valid_username(user) || !strcmp(user, last_user)) return;
+    snprintf(last_user, sizeof last_user, "%.32s", user);
+    mkdir("/var/lib/lordos", 0755);
+    unlink(SD_LAST_USER ".new");
+    int fd = open(SD_LAST_USER ".new", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0644);
+    if (fd < 0) return;
+    size_t n = strlen(last_user);
+    int ok = write(fd, last_user, n) == (ssize_t)n && write(fd, "\n", 1) == 1;
+    close(fd);
+    if (!ok || rename(SD_LAST_USER ".new", SD_LAST_USER)) unlink(SD_LAST_USER ".new");
+}
+
 static void greeter_reply_hello(void) {
     Str s = { 0 };
-    sput(&s, "{\"t\":\"hello\",\"mode\":\"%s\",\"user\":\"%s\",\"host\":\"", greeter_mode, greeter_user);
+    sput(&s, "{\"t\":\"hello\",\"mode\":\"%s\",\"user\":\"%s\",\"last\":\"%s\",\"host\":\"", greeter_mode, greeter_user,
+         last_user);
     char host[128] = "lordos";
     gethostname(host, sizeof host - 1);
     sput_esc(&s, host, 64);
@@ -524,6 +556,7 @@ static void from_worker(void) {
         sd_log("monitor: %s's session", user);
         set_shown('u', user);
         if (sd_mon_show(fd, user)) { sd_mon_lost(); set_shown('-', NULL); show_greeter("login", NULL); }
+        else save_last_user(user);
         return;
     }
     if (fd >= 0) close(fd);
@@ -659,6 +692,7 @@ int main(int argc, char **argv) {
     sigaction(SIGHUP, &sh, NULL);
     find_paths();
     load_config();
+    load_last_user();
     mkdir("/run/lordos", 0755);
     /* delegated cgroup (Delegate=yes): sessiond moves into the "supervisor" leaf and each session gets
      * its own subtree (cgroup_delegate_session in sess.c). Without delegation it works as before. */

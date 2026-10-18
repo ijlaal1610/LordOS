@@ -150,24 +150,34 @@ Check every pass on the VM with:
   an Arabic UI still reads left to right);
 - the **minimum window size** (`minSize` in the manifest) and a **large/maximized** window;
 - no overlapping or clipped controls, and no toolbar that wraps. Text that can be long uses
-  `whiteSpace: 'nowrap'` and `overflow: 'hidden'` inside a `flex: 1` box.
+  `whiteSpace: 'nowrap'` and `textOverflow: 'ellipsis'` inside a `flex: 1` box (see "Engine notes").
 
 ## Engine notes
 
-- `left`/`right` and `margin*` on absolute boxes are physical, and `marginInlineStart`/`insetInline*`
-  are not supported: use `Hairline` or `[direction() === 'rtl' ? 'right' : 'left']`.
-- `flex: 0` means a zero flex basis, so a box with `flex: 0` and a `width` collapses to nothing.
-  Pass `flex: 1` or `width`, not both (`style={[base, narrow ? { flex: 1 } : { width: 380 }]}`).
-- `getLayout` exported by the SDK is the **keyboard** layout. A box's size after layout is
-  `lord.getLayout(ref.current.id)` → `[x, y, w, h]` (Logs measured its list with the wrong one).
-- A `flex: 1` box with wrapped word rows inside a row (a Markdown list item next to its bullet) can be
-  measured shorter than it is drawn, and the next row overlaps it. Give it an explicit `width`
-  (`<Markdown fitWidth width={exact} />`, as Help does).
-- A toolbar must not wrap: measure its width and move the actions that don't fit into a `MenuButton`
-  (Disks' toolbar, the Backups browser) or narrow its fields (Logs).
+- **Long text:** truncate it, don't let it be cut at the edge. A file name, a song title or a
+  subject in a row: `whiteSpace: 'nowrap', textOverflow: 'ellipsis'` inside a `flex: 1` (or
+  `minWidth: 0`) box. A preview or a description: `numberOfLines: 2` (the last line ends in "…").
+  Text that has a fixed height and `textOverflow: 'ellipsis'` keeps the lines that fit. The cut
+  never splits a ligature, a mark or an emoji sequence, and the "…" goes where the text ends: on the
+  left in Arabic and Hebrew (screenshots: `engine-ellipsis-*.png`).
+- **Hairlines:** a separator that belongs to a box is a border of that box:
+  `borderBottomWidth: 1, borderBottomColor: t.separator` (or `borderTop…`, `borderStart…`/`borderEnd…`,
+  which follow RTL). Remember that a border is inside the box: add 1 px to a fixed height to keep the
+  content where it was. `Hairline` (an absolute 1 px view) is still the tool for a line inset from
+  the edges or over something else.
+- **Corners:** `borderTopLeftRadius`… or the logical `borderTopStartRadius`… for shapes rounded on one
+  side (a segmented control's ends, a bubble).
+- **Logical edges:** `marginInlineStart`/`End`, `paddingInlineStart`/`End` and `insetInlineStart`/`End`
+  follow the node's direction, so `[direction() === 'rtl' ? 'right' : 'left']` is no longer needed
+  (`left`/`right` and `margin*Left`/`Right` stay physical, as in CSS).
+- **Scale and rotate:** `transform: [{ scale: pressed ? 0.96 : 1 }]` for a press effect,
+  `transform: 'rotate(…deg)'` for a spinner; layout doesn't change and clicks follow what is painted.
+  lord-server paints the subtree once into a cached raster and composites it, so animating the scale
+  is cheap (the Dock's minimize effect does it on a whole window: `engine-dock-minimize.png`).
+- **`flex: 0`** is React Native's: the box keeps its `width`/`height` and doesn't grow or shrink (it
+  used to mean a zero basis, which collapsed a box with a `width`). `flex: 1` and a `width` on the same
+  box still mean "grow from 0" (the `width` is ignored): pass one or the other.
 
 ## Pending (engine)
 
-- The text engine has no ellipsis (`…`) for clipped text: long names are cut at the edge.
-- No per-side borders: hairlines are drawn as 1 px absolute `View`s.
 - No vector icon set: icons are font glyphs (see above).

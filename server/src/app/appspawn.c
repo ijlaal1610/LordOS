@@ -84,7 +84,7 @@ int app_spawn(const char *id) {
         if (null >= 0) { dup2(null, 0); if (null > 2) close(null); }
         /* el id lo pasa lord-server, ya validado; no hay argumentos del llamador */
         char *const argv[] = { self, (char *)"--app", (char *)id, NULL };
-        execve(self, argv, environ);
+        execve("/proc/self/exe", argv, environ);   /* not `self`: after a package upgrade it is "<path> (deleted)" */
         _exit(127);
     }
     close(sv[1]);

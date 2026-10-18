@@ -215,6 +215,11 @@ void users_act_add(const AdminReq *r, const char *arg, size_t len) {
             if (adm) { const char *const g[] = { "/usr/sbin/usermod", "--append", "--groups", ADMIN_GROUP, name, NULL }; admin_run(g); print_group(name, 1); }
             if (getgrnam("pipewire")) { const char *const g[] = { "/usr/sbin/usermod", "--append", "--groups", "pipewire", name, NULL }; admin_run(g); }   /* real-time sound (docs/SOUND.md) */
             if (getgrnam("plugdev")) { const char *const g[] = { "/usr/sbin/usermod", "--append", "--groups", "plugdev", name, NULL }; admin_run(g); }   /* FIDO2 security keys (docs/PASSWORDS.md) */
+            /* sound card, camera and GPU render node: lord-sessiond sessions have no logind seat, so
+             * there are no uaccess ACLs; without these groups a new user only gets a dummy output
+             * (same groups as the installer's first user, minus input, which lord-sessiond lends) */
+            for (const char *const *gr = (const char *const[]){ "audio", "video", "render", NULL }; *gr; gr++)
+                if (getgrnam(*gr)) { const char *const g[] = { "/usr/sbin/usermod", "--append", "--groups", *gr, name, NULL }; admin_run(g); }
             prepare_home(pw);
             admin_ok("users.created", "name", name, NULL);
         }

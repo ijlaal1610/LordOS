@@ -2,7 +2,10 @@
   "name": "lordos",
   "private": true,
   "version": "0.7.0",
-  "description": "LordOS — temas y apps React para lord-server",
+  "description": "LordOS — React themes and apps for lord-server",
+  "lordos": {
+    "channel": "beta"
+  },
   "scripts": {
     "build": "node tools/build-theme.mjs",
     "build:theme": "node tools/build-theme.mjs"

@@ -1,6 +1,6 @@
 // About LordOS: real system data (/proc) and display server stats.
 import { version as reactVersion } from 'react';
-import { View, Text, LordOSLogo, screen, system, useTheme, useSystemInfo, useServerStats, formatBytes, formatDuration, formatNumber, typeScale, t as tr } from '@lordos/sdk';
+import { View, Text, LordOSLogo, screen, lordosVersion, useTheme, useSystemInfo, useServerStats, formatBytes, formatDuration, formatNumber, typeScale, t as tr } from '@lordos/sdk';
 
 export function Icon({ size }) {
   return <LordOSLogo size={size} />;
@@ -25,11 +25,13 @@ export default function About() {
   const info = useSystemInfo(5000);
   const st = useServerStats(2000);
   const cpu = info.cpu.replace(/\(R\)|\(TM\)|CPU|Processor/g, '').replace(/\s+/g, ' ').trim();
+  const ver = lordosVersion(info);
   return (
     <View style={{ flex: 1, alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16 }}>
       <Icon size={64} />
       <Text style={{ fontSize: typeScale.largeTitle, fontWeight: 600, color: t.text, marginTop: 12 }}>LordOS</Text>
-      <Text style={{ fontSize: typeScale.callout, color: t.textDim, marginTop: 2 }}>{tr('about.version', { v: system.version, m: 'M7' })}</Text>
+      <Text style={{ fontSize: typeScale.callout, color: t.textDim, marginTop: 2 }}>{ver.channel ? tr('about.versionChannel', { v: ver.version, channel: ver.channel }) : tr('about.version', { v: ver.version })}</Text>
+      {ver.build ? <Text style={{ fontSize: typeScale.caption, color: t.textDim, marginTop: 1 }}>{tr('about.build', { b: ver.build })}</Text> : null}
       <View style={{ alignSelf: 'stretch', marginTop: 16, gap: 2 }}>
         <InfoRow k={tr('about.os')} v={info.os} />
         <InfoRow k={tr('about.kernel')} v={`${info.kernel} (${info.arch})`} />

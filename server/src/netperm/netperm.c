@@ -194,6 +194,7 @@ static void load_rules(Session *s) {
 
 /* ---- maps ------------------------------------------------------------------------------------ */
 
+#ifdef NP_HAVE_BPF                     /* the program loader's relocations (bpf_setup) */
 static int map_fd(const char *name) {
     if (!strcmp(name, "np_cfg")) return G.m_cfg;
     if (!strcmp(name, "np_apps")) return G.m_apps;
@@ -205,6 +206,7 @@ static int map_fd(const char *name) {
     if (!strcmp(name, "np_events")) return G.m_events;
     return -1;
 }
+#endif
 
 static uint32_t idx_of(unsigned uid, const char *app) {
     char key[FW_APP_MAX + 16];
@@ -584,8 +586,8 @@ static void on_event(void *u, const void *data, uint32_t len) {
                      ev.rule_id, flag ? flag : "", ev.record);
     if (n > 0 && (size_t)n < sizeof j) send_uid(s->uid, NP_MSG_EVENT, j, (size_t)n, 1);
     if (ev.verdict == NP_V_DENY)
-        logf_("uid %u %s: denegada %s %s %s:%u (%s%s%s)", s->uid, sc->app, ev.dir == NP_D_IN ? "entrada" : "salida",
-              ev.proto == NP_P_TCP ? "tcp" : ev.proto == NP_P_UDP ? "udp" : "otro", addr[0] ? addr : "?", ev.port, by_name(ev.reason),
+        logf_("uid %u %s: denied %s %s %s:%u (%s%s%s)", s->uid, sc->app, ev.dir == NP_D_IN ? "in" : "out",
+              ev.proto == NP_P_TCP ? "tcp" : ev.proto == NP_P_UDP ? "udp" : "other", addr[0] ? addr : "?", ev.port, by_name(ev.reason),
               ev.flag ? " " : "", ev.flag && flag ? flag : "");
 }
 
@@ -702,7 +704,7 @@ static int bpf_setup(void) {
     NpCfg cfg = { SCOPE_LEVEL, 1, USER_LEVEL };
     uint32_t zero = 0;
     if (bpfs_map_update(G.m_cfg, &zero, &cfg, BPF_ANY)) { lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfConfig", "errno", lerr_errno(errno), NULL); return -1; }
-    logf_("%d programas BPF cargados", np);
+    logf_("%d BPF programs loaded", np);
     return 0;
 #endif
 }

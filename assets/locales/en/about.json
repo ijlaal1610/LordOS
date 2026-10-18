@@ -1,4 +1,10 @@
 {
+  "build": "Build {b}",
+  "buildLabel": "Build",
+  "channelAlpha": "Alpha",
+  "channelBeta": "Beta",
+  "channelDev": "Development",
+  "channelRc": "Release candidate",
   "cpu": "Processor",
   "cpuUnknown": "Unknown",
   "cpuValue": {
@@ -21,5 +27,6 @@
   },
   "server": "Display server",
   "uptime": "Uptime",
-  "version": "Version {v} · milestone {m}"
+  "version": "Version {v}",
+  "versionChannel": "Version {v} · {channel}"
 }

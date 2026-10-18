@@ -184,6 +184,43 @@ displays paint the window normally while it crosses. Dragging uses each display'
 frame before, 6.73–6.94 ms after (≈ +5 %, the per-display bookkeeping); the layer still renders
 once and is then only copied. Numbers with two displays and at 150 %: `DISPLAYS.md`.
 
+## The UI engine pass (2026-10-18)
+
+Adding per-side borders, logical edges, ellipsis and transforms (`docs/DESIGN.md`, "Engine notes")
+was checked against this path:
+
+- **Layout of what didn't change is skipped.** A node whose subtree had no change (`node_invalidate`
+  clears `layout_ok` up to the root) and that gets the same box keeps its children's layout. Moving a
+  window only changes its `left`/`top` (`grab.c` calls `node_moved`), so a frame of a drag lays out the
+  desktop's top level and places the rest (`place()`), instead of laying out every window.
+- **Text outside the clip is not laid out** (a list row scrolled away), and a cut "…" is remembered
+  like a measurement.
+- **The node stays small:** the rare styles (per-side edges, per-corner radii, scale/rotate,
+  `transformOrigin`) live in a separate `StyleExt`, so every walk over the tree touches the same
+  memory as before (a node 240 bytes larger made the benchmark's drag about 40 % slower).
+- **Transforms:** a scaled or rotated subtree is painted into its own raster and composited; inside
+  a dragged window it goes into the drag layer like anything else. A transformed window is not put in
+  the drag layer.
+
+`build/engine-test bench` (`server/tests/engine_test.c`, in the `debian:trixie` build container, i9-10900,
+medians of 3 interleaved runs; "before" is the same benchmark built against the tree of checkpoint
+03c2569): a 900 × 600 window with a 2000-row list (icon, name with ellipsis, size, date), a 520 × 360
+dialog dragged over it for 240 frames, and a Dock with a backdrop blur.
+
+| | Before | After |
+|---|---|---|
+| Layout of the list, cold / warm | 18.5 / 0.9 ms | 18.8 / 0.62 ms |
+| Full-screen paint | 12.5 ms | 4.8 ms |
+| Scroll frame (layout + damage + paint) | 11.9 ms | 3.8 ms |
+| Drag, one display (1280×800) | 1.74 ms per frame (layout 1.0) | 1.0 ms (layout 0.17) |
+| Drag, two displays (1280×800 + 1920×1200 at 150 %) | 11.3 ms | 2.5 ms |
+
+On VM 120 (live ISO, CPU path, 1280 × 800, the Terminal dragged in circles for 6 s with a uinput
+tablet, lord-server's `drag:` line), switching only `lord-server`: before 7.88–7.99 ms of work per
+frame (paint 7.30–7.41, layout 0.02, 104.7–105.8 FPS), after 7.98–8.37 ms (paint 7.41–7.76, layout
+0.01–0.02, 101.5–105.4 FPS). The difference is within the run-to-run spread; most of that frame is
+still the Dock's blur.
+
 ## Pending
 
 - A real GPU layer (the window as its own texture that is only shifted), so nothing is painted on the

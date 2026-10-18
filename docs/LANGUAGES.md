@@ -255,8 +255,28 @@ from the syllable it closes; Lao, only at spaces. To test breaks without a scree
 on the line, it's broken anyway, but never inside a glyph cluster (a shaped syllable, a letter
 with its marks).
 
-Each text is shaped once and stored in a small cache (48 entries): layout measures it and every
+Each text is shaped once and stored in a small cache (128 entries): layout measures it and every
 repaint draws it without shaping it again.
+
+### Truncation with an ellipsis
+
+`textOverflow: 'ellipsis'` and `numberOfLines` (`themes/README.md`) cut a line with "…"
+(`text_ellipsize` in `text.c`, `text_layout_ellipsize` in `textlayout.c`):
+
+- **Where it may cut:** only between grapheme clusters, using the shaped line: never inside a glyph
+  that covers several characters (lam-alef, an Indic syllable, an emoji ZWJ family), before a mark
+  or a spacing mark (Thai and Lao SARA AM), after a ZWJ or a virama, inside a skin-tone sequence or
+  between the two regional indicators of a flag. Trailing spaces before the "…" are dropped.
+- **Shaping again:** the cut prefix plus "…" is shaped as a new text, so the last Arabic letter takes
+  its final form; if that made it wider than the box, one more cluster goes.
+- **Which side:** the "…" is the end of the paragraph for bidi, so it lands at the visual end: on the
+  left of Arabic and Hebrew text, on the right of Latin text, whatever the interface direction (the
+  text's own direction, like its alignment).
+- **Cost:** the widths come from the cached shaping (a prefix sum), and each cut is remembered like a
+  measurement, so a list repaints its labels without searching again.
+
+`server/tests/engine_test.c` checks it for Latin, Arabic, Hebrew, Thai, combining accents and emoji
+ZWJ sequences and flags at every box width from 8 to 400 px (`make -C server test`).
 
 ### Mirrored interface
 

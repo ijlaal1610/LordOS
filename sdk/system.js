@@ -1,8 +1,18 @@
 // system.js — system and server information, as React hooks.
 import { useEffect, useState } from 'react';
-import { formatNumber } from './i18n.js';
+import { formatNumber, t } from './i18n.js';
 
 export const systemInfo = () => lord.system.info();
+
+// LordOS's own version, from the build (package.json "version" and "lordos": {"channel"}, see
+// server/Makefile): { version: '0.7.0', channel: 'Beta' (empty for a stable release), build }.
+export function lordosVersion(info) {
+  const i = info || systemInfo();
+  const id = String(i.channel || '');
+  const channel = id === 'beta' ? t('about.channelBeta') : id === 'alpha' ? t('about.channelAlpha')
+    : id === 'rc' ? t('about.channelRc') : id === 'dev' ? t('about.channelDev') : id ? id[0].toUpperCase() + id.slice(1) : '';
+  return { version: String(i.version || lord.version || ''), channel, build: String(i.build || '') };
+}
 
 function usePoll(read, intervalMs) {
   const [value, setValue] = useState(read);

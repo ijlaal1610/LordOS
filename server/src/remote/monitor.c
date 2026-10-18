@@ -123,7 +123,7 @@ int sd_mon_show(int fd, const char *who) {
     conn = fd;
     drm = open(CARD, O_RDWR | O_CLOEXEC);
     if (drm < 0) { sd_log("%s: %s", CARD, strerror(errno)); return -1; }
-    if (ioctl(drm, DRM_IOCTL_SET_MASTER, NULL)) sd_log("aviso: DRM master: %s", strerror(errno));
+    if (ioctl(drm, DRM_IOCTL_SET_MASTER, NULL)) sd_log("warning: DRM master: %s", strerror(errno));
     for (int i = 0; i < 64 && nin < MAX_IN; i++) {
         char p[32];
         snprintf(p, sizeof p, "/dev/input/event%d", i);
@@ -228,7 +228,7 @@ static void plug(const char *name) {
     ins[nin++] = f;
     char dev[80] = "";
     ioctl(f, EVIOCGNAME(sizeof dev), dev);
-    sd_log("entrada enchufada: %s (%s)", name, dev);
+    sd_log("input plugged in: %s (%s)", name, dev);
 }
 
 static void unplug(const char *name) {
@@ -238,7 +238,7 @@ static void unplug(const char *name) {
         ins[i] = ins[nin - 1];
         memcpy(inname[i], inname[nin - 1], sizeof inname[i]);
         nin--;
-        sd_log("entrada quitada: %s", name);
+        sd_log("input removed: %s", name);
         return;
     }
 }

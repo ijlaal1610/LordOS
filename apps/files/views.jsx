@@ -1,6 +1,6 @@
 // views.jsx — the four Files views: icons (cards), list (with expandable folders),
 // columns (Miller, with a preview) and gallery.
-import { View, Text, Image, TextInput, ScrollView, EmptyState, useTheme, direction, formatBytes, formatDate, formatTime, typeScale, t as tr } from '@lordos/sdk';
+import { View, Text, Image, TextInput, ScrollView, EmptyState, useTheme, formatBytes, formatDate, formatTime, typeScale, t as tr } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 import { EntryIcon, TagDots } from './glyphs.jsx';
 import { kindOf, isImage, isTextual } from './kinds.js';

@@ -119,7 +119,10 @@ an admin helper. Its runtime is in `/run/lordos/greeter` and its home in
 `/var/lib/lordos-greeter`. It loads the special theme `themes/greeter` (React, the same engine):
 
 - the date and a large clock;
-- the chosen user's avatar with the «Password» field (→);
+- the chosen user's avatar with the «Password» field (→). When the screen is shown it preselects
+  the locked user, otherwise the last user whose session was on the monitor (`last` in the `hello`
+  reply, kept in `/var/lib/lordos/last-user` across reboots), then a user with an open session, then
+  the first one. An avatar the person clicks always wins over a later `hello` reply;
 - the other users below; a green dot marks those with an open session;
 - bottom left, the machine's IP;
 - bottom right:
@@ -140,7 +143,7 @@ greeter (JS) → RP_GREETER → lord-sessiond (root), over the login screen's so
 
 | Request (greeter → sessiond)       | Reply / notice (sessiond → greeter)                                       |
 |------------------------------------|---------------------------------------------------------------------------|
-| `{t:'hello'}`                      | `{t:'hello', mode, user, host, layouts, variants, lang, users:[…]}`        |
+| `{t:'hello'}`                      | `{t:'hello', mode, user, last, host, layouts, variants, lang, users:[…]}`  |
 | `{t:'login', user, pass}`          | `{t:'ok'}` and the monitor switches to the session · `{t:'fail', wait}` · `{t:'error'}` |
 | `{t:'power', a:'reboot'│'poweroff'}` | (`systemctl reboot` / `poweroff`, a closed list)                         |
 |                                    | `{t:'mode', mode:'login'│'lock'│'switch', user}` when shown                |
@@ -262,7 +265,11 @@ session. Everything that changes something goes through closed `admin.c` actions
     `locale.conf`. The list lives in one place, `server/src/users/homedirs.c`, which the installer
     uses too; it matches `lordos-live-prep`. Test: `build/homedirs-test`;
     ![new user ana, created with her folders](m9-sistema-usuario-nuevo.png)
-  - the username is suggested from the full name.
+  - the username is suggested from the full name;
+  - it joins `pipewire` and `plugdev`, and `audio`, `video` and `render` when those groups exist:
+    `lord-sessiond` sessions have no logind seat, so there are no `uaccess` ACLs, and without
+    them a new user only got PipeWire's dummy output (integration QA, VM 122). `input` is not
+    added: `lord-sessiond` lends the input devices to the session on the monitor.
 
 ## Security
 

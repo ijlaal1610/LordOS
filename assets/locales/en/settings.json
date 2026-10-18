@@ -104,6 +104,7 @@
   "section.users": "Users",
   "section.wallpaper": "Wallpaper",
   "session.hint": "Leaves LordOS and returns to the console.",
+  "session.hintManaged": "Ends your session and returns to the login screen. Open apps are closed.",
   "sharing.allUsers": "All users",
   "sharing.connected": "Connected now",
   "sharing.disconnect": "Disconnect",

@@ -103,7 +103,7 @@ HDR += $(wildcard src/disk/*.h)
 OBJ := $(SRC:src/%.c=build/obj/%.o)
 HDR += $(wildcard src/tp/*.h)
 
-.PHONY: all clean test
+.PHONY: all clean test test-full
 # lord-sessiond: sessions, login screen and remote desktop (docs/SESSIONS.md). It's the
 # only one that links OpenSSL (TLS); without libssl-dev, only lord-server is built.
 SESSIOND ?= $(shell pkg-config --exists openssl 2>/dev/null && echo 1 || echo 0)
@@ -159,7 +159,15 @@ all: $(ALL)
 # HarfBuzz (tests/shape_test.c), bidi against BidiCharacterTest.txt (tests/bidi_test.c) and
 # input methods (tests/ime_test.c); Thai line breaking (tests/thbrk_test.c, against libthai
 # with tests/thbrk_compare.sh).
+#
+# Most suites run inside their own build rule (`./$@ || ...`). The ones below are only built here; once
+# every prerequisite of `test` is done, tests/run_suites.sh runs them (a few seconds) and fails if any
+# fails; a suite whose tool or data isn't installed says "skipped: needs X". `make test-full` adds the
+# helpers (lord-media, lord-doc), the sandbox (Landlock kernel) and the HarfBuzz comparison.
 test: build/vt-dump build/shape-test build/bidi-test build/ime-test build/thbrk-test build/sound-test build/wasm-test build/net-test build/wasm-js-test build/pkg-test build/fsops-test build/sign-test build/mmdb-test build/canvas-test build/arcpath-test build/ipp-test build/tp-test build/media-test
+	@sh tests/run_suites.sh
+test-full: test build/sandbox-test build/doc-test $(filter build/lord-media build/lord-doc,$(ALL))
+	@sh tests/run_suites.sh full
 SHAPE_SRC := src/ui/otf.c src/ui/shape.c src/ui/shape_indic.c src/ui/shape_syl.c src/ui/shape_khmer.c src/ui/shape_myanmar.c src/ui/shape_use.c src/ui/unicode.c
 build/shape-test: tests/shape_test.c $(SHAPE_SRC) $(HDR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/shape_test.c $(SHAPE_SRC)
@@ -324,6 +332,23 @@ build/obj/remote/pages.o: src/remote/login.html src/remote/client.html
 	$(LD) -r -b binary -z noexecstack -o $@ src/remote/login.html src/remote/client.html
 build/lord-sessiond: $(SESSIOND_OBJ)
 	$(CC) $(LDFLAGS) -o $@ $^ $(shell pkg-config --libs openssl) -lcrypt -lpthread
+
+# Version, channel and build of LordOS, shown in About and Settings → General (lord.version and
+# lord.system.info()). Version and channel come from ../package.json ("version" and "lordos": {"channel"}),
+# the only place to set them; the build is the date (SOURCE_DATE_EPOCH if set) and the git commit, or
+# LORD_BUILD=... The header is rewritten only when its contents change.
+LORD_VERSION := $(shell sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' ../package.json 2>/dev/null | head -1 | tr -cd 'A-Za-z0-9.+~-')
+LORD_CHANNEL := $(shell sed -n 's/.*"channel": *"\([^"]*\)".*/\1/p' ../package.json 2>/dev/null | head -1 | tr -cd 'a-z0-9-')
+LORD_BUILD ?= $(shell d=$$(date -u -d "@$${SOURCE_DATE_EPOCH:-$$(date +%s)}" +%Y%m%d 2>/dev/null || date -u +%Y%m%d); \
+                      c=$$(git -C .. rev-parse --short=8 HEAD 2>/dev/null); echo "$$d$${c:+.$$c}")
+build/gen/lord_version.h: FORCE
+	@mkdir -p build/gen
+	@printf '#define LORD_VERSION "%s"\n#define LORD_CHANNEL "%s"\n#define LORD_BUILD "%s"\n' \
+	    '$(or $(LORD_VERSION),0.0.0)' '$(LORD_CHANNEL)' '$(shell printf %s '$(LORD_BUILD)' | tr -cd 'A-Za-z0-9.+~-')' > $@.new
+	@if cmp -s $@.new $@; then rm -f $@.new; else mv $@.new $@; fi
+build/obj/ui/js.o build/obj/ui/js_sys.o: build/gen/lord_version.h
+.PHONY: FORCE
+FORCE:
 
 build/obj/%.o: src/%.c $(HDR)
 	@mkdir -p $(dir $@)

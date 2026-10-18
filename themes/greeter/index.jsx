@@ -7,7 +7,8 @@
 // arrives through __lordGreeter: this JS never sees /etc/shadow.
 //
 // Requests: {t:'hello'} · {t:'login', user, pass} · {t:'power', a:'reboot'|'poweroff'}
-// Notices:  {t:'hello', mode, user, host, layouts, variants, lang, users:[{name, full, color, image, admin, open}]}
+// Notices:  {t:'hello', mode, user, last, host, layouts, variants, lang, users:[{name, full, color, image, admin, open}]}
+//           (last: the user whose session was last shown on the monitor)
 //           {t:'mode', mode:'login'|'lock'|'switch', user} · {t:'ok'} · {t:'fail', wait} · {t:'error'} · {t:'busy'}
 import { render, screen } from '@lordos/runtime';
 import {
@@ -134,7 +135,12 @@ function Greeter() {
   const [confirm, setConfirm] = useState(null);   // 'reboot' | 'poweroff'
   const [ip, setIp] = useState(lanAddress());
   const timers = useRef([]);
-  const reselect = useRef(true);
+  const reselect = useRef(true);                  // the next hello chooses the selected user
+  // when the person last clicked an avatar (0: not since the last login). Input only reaches the
+  // greeter while it's on the monitor, and until the 'mode' notice is handled the monitor still shows
+  // the previous showing's last frame: a click made there a moment before the notice belongs to this
+  // showing and must survive it.
+  const chosen = useRef(0);
   const [focusRev, setFocusRev] = useState(0);      // when shown again, focus goes back to the field
 
   const doShake = () => {
@@ -156,23 +162,27 @@ function Greeter() {
           const sys = String(m.lang || '').slice(0, 2);
           setLanguage(['es', 'en', 'pt'].includes(sys) ? sys : 'en');
         }
-        // the selected user: the one from the locked screen, another (switch user) or the first;
-        // only when the mode changes, so the refreshed list doesn't override what the person chose
-        const pick = reselect.current;
+        // the selected user: the one from the locked screen, another (switch user), the last one
+        // shown on the monitor, one with an open session or the first. Only when the screen is shown
+        // again, and never over an avatar the person clicked: a late reply must not undo that click.
+        const choose = reselect.current && !chosen.current;
         reselect.current = false;
         setSel((cur) => {
-          if (!pick && cur && m.users.some((u) => u.name === cur)) return cur;
-          if (m.mode === 'lock' && m.user) return m.user;
+          const has = (name) => !!name && m.users.some((u) => u.name === name);
+          if (!choose && has(cur)) return cur;
+          if (m.mode === 'lock' && has(m.user)) return m.user;
           if (m.mode === 'switch') return (m.users.find((u) => u.name !== m.user) || m.users[0] || {}).name || '';
-          return (m.users[0] || {}).name || '';
+          if (has(m.last)) return m.last;
+          return (m.users.find((u) => u.open) || m.users[0] || {}).name || '';
         });
       } else if (m.t === 'mode') {
         setPass(''); setMsg(''); setBusy(false); setMenu(null); setConfirm(null); setFocusRev((v) => v + 1);
         setInfo((old) => ({ ...old, mode: m.mode, user: m.user }));
         reselect.current = true;
+        if (Date.now() - chosen.current > 10000) chosen.current = 0;   // a click from an earlier showing
         send({ t: 'hello' });                       // who has an open session, again
         setIp(lanAddress());
-      } else if (m.t === 'ok') { setPass(''); setMsg(''); setBusy(false); }
+      } else if (m.t === 'ok') { setPass(''); setMsg(''); setBusy(false); chosen.current = 0; }
       else if (m.t === 'fail') {
         setPass(''); setBusy(false); doShake();
         setMsg(m.wait > 0 ? t('greeter.wait', { count: m.wait }) : t('greeter.wrong'));
@@ -195,7 +205,7 @@ function Greeter() {
     setMsg('');
     if (!send({ t: 'login', user: user.name, pass })) { setBusy(false); setMsg(t('greeter.error')); }
   };
-  const pick = (name) => { setSel(name); setPass(''); setMsg(''); };
+  const pick = (name) => { chosen.current = Date.now(); reselect.current = false; setSel(name); setPass(''); setMsg(''); };
   const anyOpen = info.users.some((u) => u.open);
   const power = (a) => { if (anyOpen && confirm !== a) setConfirm(a); else { setConfirm(null); send({ t: 'power', a }); } };
 

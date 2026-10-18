@@ -160,7 +160,10 @@ What `install-run` validates on the root side, without trusting the interface:
 
 ## What it ships
 
-- **LordOS** as its own package, `lordos_<version>_amd64.deb`, built by `tools/iso/mkdeb.sh`:
+- **LordOS** as its own package, `lordos_<version>_amd64.deb`, built by `tools/iso/mkdeb.sh`. The
+  version and the release channel come from `package.json` (`"version"` and `"lordos": {"channel": "beta"}`;
+  an empty channel is a stable release). `make -C server` bakes both, plus the build date and git
+  commit, into `lord-server`, and About and Settings → General show them. The package contains:
   - `/usr/lib/lordos/bin/lord-sessiond` (root: sessions, login screen, remote desktop off, port
     5673) and `/usr/lib/lordos/bin/lord-server` (each session);
   - the prebuilt themes, in `/usr/lib/lordos/themes`;

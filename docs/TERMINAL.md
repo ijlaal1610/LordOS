@@ -285,7 +285,7 @@ RemoteHost (user@host, for automatic profile switching) and define
 ## Tests
 
 ```sh
-make -C server test            # builds build/vt-dump and build/shape-test
+make -C server test            # builds and runs every suite (tests/run_suites.sh: vt-dump, shape-test, ime-test…)
 printf 'hola\033[31m rojo\r\n' | server/build/vt-dump 20 5 12 6 rojo
 #                                       columns rows  → resizes to 12×6 and searches for "rojo"
 printf 'e\xcc\x81\033[?2027h\xf0\x9f\x87\xa6\xf0\x9f\x87\xb7' | server/build/vt-dump 10 2   # [é][🇦🇷]

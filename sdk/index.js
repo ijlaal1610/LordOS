@@ -63,7 +63,7 @@ import { startAlarms } from './alarms.js';
 import { maybeStartTour } from './help.js';
 import { getApp as getAppOf, isLiveSystem as isLiveSystemOf, wm as wmOf } from './windows.js';
 export const windowIcon = (w) => windowIconOf(w, getAppOf);
-export { systemInfo, useSystemInfo, useServerStats, useCpuUsage, formatBytes, formatDuration } from './system.js';
+export { systemInfo, lordosVersion, useSystemInfo, useServerStats, useCpuUsage, formatBytes, formatDuration } from './system.js';
 export * as fs from './fs.js';
 export { useDirectory } from './fs.js';
 export { ThemeProvider, useTheme, DEFAULT_TOKENS } from './theme.js';

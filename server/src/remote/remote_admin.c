@@ -73,6 +73,9 @@ static pid_t sessiond_pid(void) {
     ssize_t l = readlink(link, exe, sizeof exe - 1);
     if (l <= 0) return -1;
     exe[l] = 0;
+    /* after a package upgrade the running binary was replaced: the link ends in " (deleted)" */
+    static const char deleted[] = " (deleted)";
+    if ((size_t)l > sizeof deleted - 1 && !strcmp(exe + l - (sizeof deleted - 1), deleted)) exe[l - (sizeof deleted - 1)] = 0;
     const char *base = strrchr(exe, '/');
     return base && !strcmp(base + 1, "lord-sessiond") ? (pid_t)pid : -1;
 }

@@ -27,6 +27,7 @@
 #include "../keyboard.h"
 #include "../fsops.h"
 #include "../remote/mirror.h"
+#include "lord_version.h"           /* build/gen: version, channel and build (Makefile) */
 
 #include <ctype.h>
 #include <fcntl.h>
@@ -235,6 +236,10 @@ static JSValue f_sys_info(JSContext *c, JSValueConst this_val, int argc, JSValue
     JS_SetPropertyStr(c, o, "memTotalKB", JS_NewFloat64(c, mem_total));
     JS_SetPropertyStr(c, o, "memAvailableKB", JS_NewFloat64(c, mem_avail));
     JS_SetPropertyStr(c, o, "uptime", JS_NewFloat64(c, uptime));
+    /* LordOS itself: package.json's version and channel ("beta"; empty for a stable release) and the build */
+    JS_SetPropertyStr(c, o, "version", JS_NewString(c, LORD_VERSION));
+    JS_SetPropertyStr(c, o, "channel", JS_NewString(c, LORD_CHANNEL));
+    JS_SetPropertyStr(c, o, "build", JS_NewString(c, LORD_BUILD));
     JS_SetPropertyStr(c, o, "user", JS_NewString(c, getenv("USER") ? getenv("USER") : ""));
     /* full name (first GECOS field) and whether they are an administrator (sudo/admin/wheel) */
     struct passwd *pw = getpwuid(getuid());

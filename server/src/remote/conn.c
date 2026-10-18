@@ -698,8 +698,8 @@ void rd_serve(SSL_CTX *ctx, int fd, const char *ip) {
 
     if (!strcmp(r.method, "POST") && !strcmp(r.path, "/login")) {
         if (!same_origin(&r)) {
-            sd_log("ingreso rechazado: origen «%s» y host «%s»", r.origin, r.host);
-            respond(403, "Forbidden", "text/plain", NULL, "origen", 6);
+            sd_log("login rejected: origin \"%s\" and host \"%s\"", r.origin, r.host);
+            respond(403, "Forbidden", "text/plain", NULL, "origin", 6);
             return;
         }
         double wait = sd_fail_wait(peer);

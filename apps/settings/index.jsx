@@ -386,7 +386,7 @@ function Session() {
   const { t: tr } = useLocale();
   return (
     <Stack>
-      <Section footer={tr('settings.session.hint')}>
+      <Section footer={tr(session.managed() ? 'settings.session.hintManaged' : 'settings.session.hint')}>
         <SettingRow label={tr('shell.menu.logout')}>
           <Button small label={tr('shell.menu.logout')} onClick={() => session.quit()} />
         </SettingRow>

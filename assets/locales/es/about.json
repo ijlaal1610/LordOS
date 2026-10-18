@@ -1,4 +1,10 @@
 {
+  "build": "Compilación {b}",
+  "buildLabel": "Compilación",
+  "channelAlpha": "Alfa",
+  "channelBeta": "Beta",
+  "channelDev": "Desarrollo",
+  "channelRc": "Versión candidata",
   "cpu": "Procesador",
   "cpuUnknown": "Desconocido",
   "cpuValue": {
@@ -21,5 +27,6 @@
   },
   "server": "Servidor gráfico",
   "uptime": "Encendido hace",
-  "version": "Versión {v} · hito {m}"
+  "version": "Versión {v}",
+  "versionChannel": "Versión {v} · {channel}"
 }

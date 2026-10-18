@@ -104,17 +104,38 @@ A theme draws `<DesktopWidgets layer="below" />` between the wallpaper and the w
   `wrap-reverse` or `alignContent`), `justifyContent`, `alignItems`, `alignSelf`, `flex`,
   `flexGrow`, `flexShrink`, `flexBasis`, `gap`, `width`/`height` (px, `%`, `auto`),
   `min*`/`max*`, `left`/`top`/`right`/`bottom`, `inset`, `margin*`, `padding*`, `overflow`, `zIndex`.
+  `flex` follows React Native: `flex: N > 0` grows and shrinks from a zero basis, `flex: 0` keeps its
+  `width`/`height` and doesn't flex, `flex: -N` only shrinks.
+- **Logical edges** (they follow the node's `direction`, and win over the physical side as in React
+  Native): `marginInlineStart`/`marginInlineEnd` (also `marginStart`/`marginEnd`, `marginInline`),
+  `paddingInlineStart`/`paddingInlineEnd` (`paddingStart`/`paddingEnd`, `paddingInline`),
+  `insetInlineStart`/`insetInlineEnd` (`start`/`end`, `insetInline`).
 - **Visual:** `backgroundColor`, `background: linear-gradient(...)`, `borderRadius`, `border`,
   `borderWidth`, `borderColor`, `opacity`, `boxShadow`, `backdropFilter: blur(px)`,
-  `transform: translate(...)` / `translateX` / `translateY`, `pointerEvents`, `cursor` (`default`, `pointer`,
+  `pointerEvents`, `cursor` (`default`, `pointer`,
   `text`, `move`, `grab`, `grabbing`, `not-allowed`, `wait`, `progress`, `crosshair`, `n-resize`… `ew-resize`,
   `ns-resize`, `nesw-resize`, `nwse-resize`; the one of the first node upwards that has it applies).
-- **Text:** `color`, `fontSize`, `fontWeight`, `lineHeight`, `textAlign`, `whiteSpace: nowrap`.
+- **Per-side borders:** `borderTop`/`borderRight`/`borderBottom`/`borderLeft` (`'1px solid #ccc'`), their
+  `…Width` and `…Color`, and `borderStart`/`borderEnd` (also `borderInlineStart`/`borderInlineEnd`) with
+  `…Width`/`…Color`, which go on the right in RTL. A side's value replaces `borderWidth`/`borderColor`
+  for that side only; a side without a color uses `borderColor`.
+- **Per-corner radii:** `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomRightRadius`,
+  `borderBottomLeftRadius`, and the logical `borderTopStartRadius`/`borderTopEndRadius`/
+  `borderBottomStartRadius`/`borderBottomEndRadius` (CSS `borderStartStartRadius`… too). With
+  `overflow: 'hidden'` the children and images are clipped to that shape.
+- **Transform:** `transform: 'translate(x, y) scale(s) rotate(deg)'` or the React Native array
+  (`[{ translateX }, { scale }, { scaleX }, { rotate: '45deg' }]`; `rad` and `turn` work too), `translateX`,
+  `translateY`, and `transformOrigin` (`'50% 50%'` by default, `'left top'`, px). As in CSS, scale and
+  rotate only change how the box is painted and hit: layout doesn't move (translate does move the box).
+- **Text:** `color`, `fontSize`, `fontWeight`, `lineHeight`, `textAlign`, `whiteSpace: nowrap`,
+  `textOverflow: 'ellipsis'` (with `nowrap`: one line cut with "…"; without it, the lines that fit in
+  the box's height, the last one ending in "…"), `numberOfLines: N` (also `lineClamp`/`WebkitLineClamp`:
+  at most N lines, "…" at the end of the last one).
 - **Image:** `objectFit` (`cover`, `contain`, `fill`).
 
 Colors: `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()` and some names.
-Not available yet: `flexWrap`, per-side borders, per-corner radii, `transform: scale/rotate`,
-CSS animations (animate from JS with state and `requestAnimationFrame`).
+Not available yet: dashed or dotted borders, `transform: skew/matrix`, 3D transforms, CSS
+animations (animate from JS with state and `requestAnimationFrame`).
 
 The full SDK is in `apps/README.md`.
 

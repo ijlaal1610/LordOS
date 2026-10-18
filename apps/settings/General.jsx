@@ -1,6 +1,6 @@
 // Settings → General (machine and software details) and Updates (Debian and LordOS).
 import {
-  View, Text, Button, useTheme, useLocale, useSystemInfo, useServerStats, system, screen, formatBytes, formatDuration, formatNumber,
+  View, Text, Button, useTheme, useLocale, useSystemInfo, useServerStats, lordosVersion, screen, formatBytes, formatDuration, formatNumber,
   admin, wm, LordOSLogo, spacing, typeScale,
 } from '@lordos/sdk';
 import { useState, version as reactVersion } from 'react';
@@ -21,12 +21,13 @@ export function General() {
   const info = useSystemInfo(5000);
   const st = useServerStats(3000);
   const cpu = info.cpu.replace(/\(R\)|\(TM\)|CPU|Processor/g, '').replace(/\s+/g, ' ').trim();
+  const ver = lordosVersion(info);
   return (
     <Stack>
       <View style={{ alignItems: 'center', gap: spacing.xs, paddingTop: spacing.xs }}>
         <LordOSLogo size={72} />
         <Text style={{ fontSize: typeScale.largeTitle, fontWeight: 600, color: t.text, marginTop: spacing.s }}>LordOS</Text>
-        <Text style={{ fontSize: typeScale.callout, color: t.textDim }}>{tr('about.version', { v: system.version, m: 'M7' })}</Text>
+        <Text style={{ fontSize: typeScale.callout, color: t.textDim }}>{ver.channel ? tr('about.versionChannel', { v: ver.version, channel: ver.channel }) : tr('about.version', { v: ver.version })}</Text>
         <Text style={{ fontSize: typeScale.caption, color: t.textDim }}>{`${info.hostname} · ${info.os}`}</Text>
       </View>
       <Card title={tr('settings.general.machine')} rows={[
@@ -38,7 +39,8 @@ export function General() {
         [tr('about.uptime'), formatDuration(info.uptime)],
       ]} />
       <Card title={tr('settings.general.software')} rows={[
-        ['LordOS', system.version],
+        ['LordOS', ver.channel ? `${ver.version} ${ver.channel}` : ver.version],
+        ver.build ? [tr('about.buildLabel'), ver.build] : null,
         [tr('about.os'), info.os],
         [tr('about.kernel'), `${info.kernel} (${info.arch})`],
         [tr('about.server'), 'lord-server (C · DRM/KMS · evdev · Wayland)'],
