@@ -1,6 +1,6 @@
 // Photos — image viewer and library (our own design, in the style of desktop viewers).
 //
-// The library is ~/Imágenes (and its folders), with thumbnails in ~/.cache/lordos/thumbs. The
+// The library is the XDG pictures folder, ~/Pictures by default (and its folders), with thumbnails in ~/.cache/lordos/thumbs. The
 // viewer decodes with lord-media (PNG, JPEG, animated GIF, WebP, BMP; HEIC/AVIF if FFmpeg can)
 // and C draws it: zoom, panning, rotation, full screen and slideshow. Edits
 // (crop, rotation, brightness and contrast) are saved as a copy: the original is left untouched.

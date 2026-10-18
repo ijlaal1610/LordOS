@@ -180,7 +180,7 @@ export function useThumb(path, size = 256) {
   return thumbFor(path, size);
 }
 
-// User folders (xdg-user-dirs; if missing, the LordOS names).
+// User folders (xdg-user-dirs; if missing, the English defaults).
 export function userDirs() {
   let conf = '';
   try { conf = fs.read('.config/user-dirs.dirs'); } catch (e) { /* no xdg-user-dirs */ }
@@ -189,7 +189,7 @@ export function userDirs() {
     const m = new RegExp(`^XDG_${key}_DIR="\\$HOME/([^"]+)"`, 'm').exec(conf);
     return `${home}/${m ? m[1] : def}`;
   };
-  return { home, pictures: get('PICTURES', 'Imágenes'), music: get('MUSIC', 'Música'), videos: get('VIDEOS', 'Videos'), desktop: get('DESKTOP', 'Escritorio') };
+  return { home, pictures: get('PICTURES', 'Pictures'), music: get('MUSIC', 'Music'), videos: get('VIDEOS', 'Videos'), desktop: get('DESKTOP', 'Desktop') };
 }
 
 // ---- what's playing now (Control Center and media keys) ----

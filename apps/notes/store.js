@@ -1,4 +1,4 @@
-// store.js — the notes on disk: ~/Notas/<slug>/nota.md (markdown with a minimal YAML
+// store.js — the notes on disk: ~/Notes/<slug>/nota.md (markdown with a minimal YAML
 // header) and its attachments next to it. They save themselves, about 600 ms after the last change.
 //
 //   ---
@@ -17,7 +17,8 @@
 //   - [ ] yerba mate
 import { createStore, fs, screen, registerWidgetType, setWidgets } from '@lordos/sdk';
 
-export const DIR = 'Notas';
+export const DIR = 'Notes';
+const OLD_DIR = 'Notas'; // before 0.7.0: moved to ~/Notes on first run (see ensureDir)
 export const COLORS = ['yellow', 'pink', 'green', 'blue', 'purple', 'gray'];
 export const notesStore = createStore({ loaded: false, list: [] });
 
@@ -59,7 +60,20 @@ export function titleOf(body) {
 export const folder = (slug) => `${DIR}/${slug}`;
 export const absFolder = (slug) => `${fs.home()}/${DIR}/${slug}`;
 
+const exists = (p) => { try { return !!fs.stat(p); } catch (e) { return false; } };
+
+// First run after the rename: ~/Notas becomes ~/Notes. If both exist, ~/Notes wins and ~/Notas is
+// left untouched.
+let migrated = false;
+function migrateOldDir() {
+  if (migrated) return;
+  migrated = true;
+  if (exists(DIR) || !exists(OLD_DIR)) return;
+  try { fs.rename(OLD_DIR, DIR); console.log('notes: moved ~/Notas to ~/Notes'); } catch (e) { console.log(`notes: could not move ~/Notas to ~/Notes: ${e.message}`); }
+}
+
 function ensureDir() {
+  migrateOldDir();
   try { fs.list(DIR); } catch (e) { try { fs.mkdir(DIR); } catch (e2) { /* no home folder */ } }
 }
 
@@ -113,8 +127,8 @@ export function updateNote(slug, patch, { touch = true } = {}) {
 const stamp = () => new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '-');
 function newSlug() {
   const taken = new Set(notesStore.get().list.map((n) => n.slug));
-  let s = `nota-${stamp()}`, i = 2;
-  while (taken.has(s)) s = `nota-${stamp()}-${i++}`;
+  let s = `note-${stamp()}`, i = 2;
+  while (taken.has(s)) s = `note-${stamp()}-${i++}`;
   return s;
 }
 
@@ -142,15 +156,15 @@ export function duplicateNote(slug) {
   return copy;
 }
 
-// Delete: to the Trash if it exists; otherwise, to ~/Notas/.papelera (can be recovered by hand).
+// Delete: to the Trash if it exists; otherwise, to ~/Notes/.trash (can be recovered by hand).
 export function deleteNote(slug) {
   clearTimeout(timers.get(slug));
   timers.delete(slug);
   let ok = false;
   try { if (fs.trash) { fs.trash(folder(slug)); ok = true; } } catch (e) { ok = false; }
   if (!ok) {
-    try { fs.mkdir(`${DIR}/.papelera`); } catch (e) { /* already there */ }
-    try { fs.rename(folder(slug), `${DIR}/.papelera/${slug}`); ok = true; } catch (e) { ok = false; }
+    try { fs.mkdir(`${DIR}/.trash`); } catch (e) { /* already there */ }
+    try { fs.rename(folder(slug), `${DIR}/.trash/${slug}`); ok = true; } catch (e) { ok = false; }
   }
   if (ok) patchList((list) => list.filter((n) => n.slug !== slug));
   return ok;
@@ -183,15 +197,15 @@ export function attachFile(slug, path) {
   return isImage(name) ? `![${name}](${name})` : `[📎 ${name}](${name})`;
 }
 
-// The clipboard image (copied in any app) as the note's imagen-N.png.
+// The clipboard image (copied in any app) as the note's image-N.png.
 export function pasteClipboardImage(slug) {
   const data = lord.clipboard.imageData ? lord.clipboard.imageData() : null;
   if (!data) return null;
   let names;
   try { names = new Set(fs.list(folder(slug)).map((e) => e.name)); } catch (e) { names = new Set(); }
   let i = 1;
-  while (names.has(`imagen-${i}.png`)) i++;
-  const name = `imagen-${i}.png`;
+  while (names.has(`image-${i}.png`)) i++;
+  const name = `image-${i}.png`;
   try { fs.write(`${folder(slug)}/${name}`, data); } catch (e) { return null; }
   return `![${name}](${name})`;
 }

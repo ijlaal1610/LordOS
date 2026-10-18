@@ -174,7 +174,7 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
       permissions, a signed LordOS app repository.
 - [x] `flexWrap` in our own layout engine (`layout.c`).
 - [x] Notes: sticky notes on the desktop (widgets), markdown with reading view and index, images,
-      attachments and emoji, saved automatically in `~/Notas` (`NOTES.md`).
+      attachments and emoji, saved automatically in `~/Notes` (`NOTES.md`).
 
 ## M8 — Session and system
 

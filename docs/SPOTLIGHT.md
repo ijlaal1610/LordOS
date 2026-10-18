@@ -41,7 +41,7 @@ Sections are ordered by their best result; the calculator always goes on top.
 | Settings | the Settings sections and their translated keywords (`settings.keywords.*`) | `wm.open('settings', { args: { section } })` |
 | Actions | dark or light mode; log out | the action |
 | Files | name in the home folder: the server's `lord.fs.search` (up to 6 levels); if unavailable, our own walk in chunks (4 levels, 5000 entries, no hidden files) | folders in Files, text in the Editor, the rest in Files with the file selected |
-| Notes | `~/Notas/*/nota.md` (title from the Notes app's YAML header, and the content); the section only appears if the Notes app is present | `wm.open('notes', { args: { slug } })` |
+| Notes | `~/Notes/*/nota.md` (title from the Notes app's YAML header, and the content); the section only appears if the Notes app is present | `wm.open('notes', { args: { slug } })` |
 | Clipboard | texts from the history | copies again |
 | Store | `lord.pkg.search`: only AppStream apps that aren't installed, up to 5 | `wm.open('store', { args: { search } })` |
 

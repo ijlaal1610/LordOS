@@ -1,6 +1,6 @@
 // Notes — advanced sticky notes: markdown with reading view and outline, images, attachments, emojis and
 // notes that live on the desktop as widgets (they move, resize and come back on
-// login). Everything is saved automatically in ~/Notas/<note>/nota.md (see store.js and docs/NOTES.md).
+// login). Everything is saved automatically in ~/Notes/<note>/nota.md (see store.js and docs/NOTES.md).
 import {
   View, Text, useTheme, useLocale, useAppWindow, useStore, useKeyboard, Button, TextInput, ScrollView, ThemeProvider, Segmented,
   Toolbar, ToolbarButton, ToolbarSpacer, MenuButton, SearchField, EmptyState, textDirection,

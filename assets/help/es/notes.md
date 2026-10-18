@@ -19,5 +19,5 @@ Notas rápidas con markdown, que también se pueden dejar pegadas en el escritor
   las ventanas.
 - **Borrar:** la nota va a la Papelera y se puede restaurar.
 
-Las notas son carpetas comunes en `~/Notas`, con un `nota.md` adentro. Buscar las encuentra
+Las notas son carpetas comunes en `~/Notes`, con un `nota.md` adentro. Buscar las encuentra
 por título y por texto.

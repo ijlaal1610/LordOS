@@ -224,7 +224,7 @@ function revealFile(f) {
   wm.open('files', { new: true, args: { path: parent, select: f.name } });
 }
 
-// ---- notes (Notes app: ~/Notas/<note>/nota.md) ----
+// ---- notes (Notes app: ~/Notes/<note>/nota.md; ~/Notas before 0.7.0) ----
 
 let notesCache = { at: 0, list: [] };
 function loadNotes() {
@@ -232,10 +232,11 @@ function loadNotes() {
   if (Date.now() - notesCache.at < 30000) return notesCache.list;
   const list = [];
   let dirs = [];
-  try { dirs = fs.list('Notas'); } catch (e) { dirs = []; }
+  let base = 'Notes';
+  try { dirs = fs.list(base); } catch (e) { base = 'Notas'; try { dirs = fs.list(base); } catch (e2) { dirs = []; } }
   for (const d of dirs.filter((x) => x.dir).slice(0, 400)) {
     let text = '';
-    try { text = fs.read(`Notas/${d.name}/nota.md`).slice(0, 65536); } catch (e) { continue; }
+    try { text = fs.read(`${base}/${d.name}/nota.md`).slice(0, 65536); } catch (e) { continue; }
     // the Notes app's YAML header (title: …) and the markdown body
     const head = /^---\n([\s\S]*?)\n---\n?/.exec(text);
     const body = head ? text.slice(head[0].length) : text;

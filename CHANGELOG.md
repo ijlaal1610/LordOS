@@ -86,6 +86,8 @@ architecture and dependency policy are in `docs/ARCHITECTURE.md`.
 - One-line installer for an existing Debian 13 system (`curl -fsSL https://lordos.org/install.sh | sh`,
   `tools/install/install.sh`, `docs/INSTALL-DEBIAN.md`): SHA-256 check, apt install, the ISO's
   setup, display manager switch and `--uninstall`. Tested in containers; a real-machine run is pending.
+- Notes keeps its notes in `~/Notes` (it was `~/Notas`) and moves the old folder on first run; the
+  SDK's user-folder defaults are the English names when `user-dirs.dirs` is missing.
 
 ### Known gaps
 

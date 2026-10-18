@@ -20,15 +20,20 @@ save themselves in the home folder.
 
 ## Where they are stored
 
-Each note is a folder in `~/Notas/<note>/`:
+Each note is a folder in `~/Notes/<note>/`:
 
 ```
-~/Notas/nota-20261016-135509/
+~/Notes/note-20261016-135509/
 ├── nota.md          the note
-├── imagen-1.png     pasted from the clipboard
+├── image-1.png      pasted from the clipboard
 ├── m1-first-frame.png   inserted with «Image»
 └── informe.txt      attached with «Attach»
 ```
+
+Before 0.7.0 the folder was `~/Notas`. On the first run Notes moves it to `~/Notes` (a rename
+in the home folder through `lord.fs`). If both folders exist, Notes uses `~/Notes` and leaves
+`~/Notas` untouched; Search also falls back to `~/Notas` while `~/Notes` doesn't exist yet. If
+there is no Trash, a deleted note goes to `~/Notes/.trash`.
 
 `nota.md` is plain markdown with a small YAML header: it opens with any editor. If it is edited
 by hand while LordOS is running, the change shows up the next time the session is opened.
@@ -94,7 +99,7 @@ Each note marked «On the desktop» is a sticky note between the wallpaper and t
 | Enter in a list | continues the list (next number, empty checkbox); on an empty item it ends it |
 | Tab / ⇧Tab in a list | indent / outdent |
 | ❖Z / ❖⇧Z | undo / redo |
-| ❖C / ❖X / ❖V | copy / cut / paste. If what was copied is an image (from any app, Linux ones too), it is saved as `imagen-N.png` in the note and inserted |
+| ❖C / ❖X / ❖V | copy / cut / paste. If what was copied is an image (from any app, Linux ones too), it is saved as `image-N.png` in the note and inserted |
 | `:` + name | emoji suggestions (`:cafe` → ☕); Enter or Tab picks |
 
 The editor is our own (`apps/notes/NoteEditor.jsx`): text in a monospace font with word wrap,
@@ -111,7 +116,7 @@ and `toggleTask(text, line)`.
   checkboxes (`- [ ]` / `- [x]`, ticked with a click, which changes the `.md`), code blocks,
   tables with alignment, and separators.
 - **Inline:** bold, italic, strikethrough, `code`, links, bare URLs, local images
-  `![](imagen.png)` (relative to the note's folder, at their real size up to the available
+  `![](image.png)` (relative to the note's folder, at their real size up to the available
   width) and `:emoji:`.
 - **How mixed-style text is built.** The LordOS engine has no runs with different styles inside
   a single `<Text>`. So a paragraph is a row with `flexWrap: 'wrap'` and one `<Text>` per word

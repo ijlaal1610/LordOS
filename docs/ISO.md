@@ -366,8 +366,9 @@ Idle (after a minute without input):
 3. **Package copyright** said the license was undefined; it now carries the MIT text and lists
    Plus Jakarta Sans with the other OFL fonts.
 
-Noted, not changed: Notes stores its notes in `~/Notas`, a Spanish folder name that also appears in
-English sessions (`apps/notes/store.js`); changing it needs a migration.
+Noted then, fixed for 0.7.0-beta: Notes stored its notes in `~/Notas`, a Spanish folder name that
+also appeared in English sessions. It now uses `~/Notes` and moves `~/Notas` there on first run
+(`docs/NOTES.md`).
 
 ## Tests (VM 117 `lordos-live`, Proxmox)
 
