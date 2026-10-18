@@ -102,7 +102,9 @@
   var show = $('#hero-show');
   var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (show && !reduce) {
-    var slides = $$('.slide', show), dots = $$('.hc-dots button', show), pb = $('.hc-play', show), live = $('.lp-display', show);
+    var slides = $$('.slide', show), ctl = $('.hero-ctl', show), pb = $('.hc-play', show);
+    var status = $('.hc-status', show), num = $('.hc-n', show), capEl = $('.hc-cap', show), bar = $('.hc-bar', show);
+    var caps = ctl ? JSON.parse(ctl.getAttribute('data-caps')) : [];
     var cur = 0, timer = null, user = false, hover = false, focus = false;
     var load = function (i) {
       $$('img[data-src]', slides[i]).forEach(function (im) {
@@ -110,34 +112,43 @@
         im.removeAttribute('data-src'); im.removeAttribute('data-srcset');
       });
     };
+    var running = function () { return !user && !hover && !focus && !d.hidden; };
+    var restartBar = function () {
+      bar.classList.remove('run');
+      if (running()) { void bar.offsetWidth; bar.classList.add('run'); }
+    };
     var go = function (i) {
       var n = slides.length;
       i = (i + n) % n;
       load(i); load((i + 1) % n);
       slides.forEach(function (sl, k) { sl.classList.toggle('on', k === i); if (k === i) sl.removeAttribute('aria-hidden'); else sl.setAttribute('aria-hidden', 'true'); });
-      dots.forEach(function (dt, k) { if (k === i) dt.setAttribute('aria-current', 'true'); else dt.removeAttribute('aria-current'); });
+      num.textContent = i + 1; capEl.textContent = caps[i] || '';
       cur = i;
     };
-    var running = function () { return !user && !hover && !focus && !d.hidden; };
     var sync = function () {
       clearInterval(timer); timer = null;
-      if (running()) timer = setInterval(function () { go(cur + 1); }, 3000);
-      live.setAttribute('aria-live', running() ? 'off' : 'polite');
+      if (running()) timer = setInterval(function () { go(cur + 1); restartBar(); }, 3000);
+      status.setAttribute('aria-live', running() ? 'off' : 'polite');
+      restartBar();
     };
-    if (slides.length > 1) {
+    if (slides.length > 1 && ctl) {
       load(1);
       show.addEventListener('mouseenter', function () { hover = true; sync(); });
       show.addEventListener('mouseleave', function () { hover = false; sync(); });
       show.addEventListener('focusin', function (e) { focus = e.target !== pb; sync(); });
       show.addEventListener('focusout', function (e) { if (!show.contains(e.relatedTarget)) { focus = false; sync(); } });
       d.addEventListener('visibilitychange', sync);
-      if (pb) pb.addEventListener('click', function () {
+      pb.addEventListener('click', function () {
         user = !user;
         pb.setAttribute('data-state', user ? 'paused' : 'playing');
         pb.setAttribute('aria-label', pb.getAttribute(user ? 'data-play' : 'data-pause'));
         sync();
       });
-      dots.forEach(function (dt, k) { dt.addEventListener('click', function () { go(k); sync(); }); });
+      $('.hc-prev', show).addEventListener('click', function () { go(cur - 1); sync(); });
+      $('.hc-next', show).addEventListener('click', function () { go(cur + 1); sync(); });
+      ctl.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { go(cur + (e.key === 'ArrowRight' ? 1 : -1)); sync(); e.preventDefault(); }
+      });
       sync();
     }
   }

@@ -109,7 +109,9 @@
       "play": "Play the slideshow",
       "choose": "Choose a screen",
       "show": "Show",
-      "of": "of"
+      "of": "of",
+      "prev": "Previous screen",
+      "next": "Next screen"
     }
   },
   "es": {
@@ -222,7 +224,9 @@
       "play": "Reanudar las imágenes",
       "choose": "Elegí una pantalla",
       "show": "Mostrar",
-      "of": "de"
+      "of": "de",
+      "prev": "Pantalla anterior",
+      "next": "Pantalla siguiente"
     }
   },
   "pt": {
@@ -335,7 +339,9 @@
       "play": "Retomar a apresentação",
       "choose": "Escolha uma tela",
       "show": "Mostrar",
-      "of": "de"
+      "of": "de",
+      "prev": "Tela anterior",
+      "next": "Próxima tela"
     }
   }
 }

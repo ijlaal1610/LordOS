@@ -458,11 +458,48 @@ ${featureList[i] ? `<a class="more" href="${pageUrl(l, 'features/' + featureList
       // the desktop inside a laptop drawn in CSS, as a slideshow of real screenshots (site.js runs it;
       // without JS only the first slide shows). Slide 1 has light and dark variants that follow the theme.
       const cap = (f) => { const g = shots.find((x) => x.file === r(f)); return (g && g.caption && (g.caption[l] || g.caption.en)) || t.pages.hero.alt; };
+      // the story: the desktop, then apps (productivity, media, system, privacy), ending at the login screen.
+      // Each was checked by eye: English UI, no "before" shots, no old About tagline. [light, dark] pairs follow the theme.
       const SLIDES = [
         ['docs/screenshots/desktop-overview-light.png', 'docs/screenshots/desktop-overview-dark.png'],
-        ['docs/screenshots/files.png'], ['docs/screenshots/mail.png'], ['docs/screenshots/calendar.png'], ['docs/screenshots/photos.png'],
-        ['docs/screenshots/player.png'], ['docs/screenshots/settings-general.png'], ['docs/screenshots/monitor-network-map.png'],
-        ['docs/screenshots/store.png'], ['docs/screenshots/terminal.png'],
+        ['docs/screenshots/mail.png'],
+        ['docs/screenshots/calendar.png', 'docs/calendar-week.png'],
+        ['docs/contacts-light.png', 'docs/contacts.png'],
+        ['docs/reminders-light.png', 'docs/reminders.png'],
+        ['docs/notes-editing.png'],
+        ['docs/editor-light.png'],
+        ['docs/pdf-annotations.png'],
+        ['docs/qa/calculator.png'],
+        ['docs/characters-app.png'],
+        ['docs/fonts-installed.png'],
+        ['docs/screenshots/photos.png'],
+        ['docs/screenshots/player.png'],
+        ['docs/video-subtitles.png'],
+        ['docs/camera.png'],
+        ['docs/recorder.png'],
+        ['docs/screenshots-annotate.png'],
+        ['docs/screenshots/files.png'],
+        ['docs/files-columns.png'],
+        ['docs/files-quick-preview.png'],
+        ['docs/search-apps.png'],
+        ['docs/control-center-network.png'],
+        ['docs/dock-left.png'],
+        ['docs/app-launcher-categories.png'],
+        ['docs/screenshots/terminal.png'],
+        ['docs/screenshots/settings-general.png'],
+        ['docs/settings-power-light.png', 'docs/settings-power-dark.png'],
+        ['docs/screenshots/store.png'],
+        ['docs/disks.png'],
+        ['docs/backup-browse.png'],
+        ['docs/logs.png'],
+        ['docs/clock-world.png'],
+        ['docs/help-welcome.png'],
+        ['docs/screenshots/monitor-network-map.png'],
+        ['docs/screenshots/firewall-rules.png'],
+        ['docs/screenshots/monitor-cooling.png'],
+        ['docs/privacy-prompt.png'],
+        ['docs/qa/passwords.png'],
+        ['docs/screenshots/greeter.png']
       ].filter((v) => v.every((f) => fs.existsSync(r(f))));
       const H = t.pages.hero;
       const im = (f, cls, mode, alt) => {
@@ -476,15 +513,19 @@ ${featureList[i] ? `<a class="more" href="${pageUrl(l, 'features/' + featureList
       const n = SLIDES.length;
       const slides = SLIDES.map((v, i) => {
         const alt = i === 0 ? H.alt : cap(v[0]);
-        const imgs = v.length === 2 ? im(v[0], 'lp-l', 'eager', alt) + im(v[1], 'lp-d', 'lazy', alt) : im(v[0], '', 'deferred', alt);
+        const imgs = v.length === 2
+          ? (i === 0 ? im(v[0], 'lp-l', 'eager', alt) + im(v[1], 'lp-d', 'lazy', alt) : im(v[0], 'lp-l', 'deferred', alt) + im(v[1], 'lp-d', 'deferred', alt))
+          : im(v[0], '', i === 0 ? 'eager' : 'deferred', alt);
         return `<figure class="slide${i === 0 ? ' on' : ''}" role="group" aria-roledescription="slide" aria-label="${i + 1} ${esc(H.of)} ${n}"${i ? ' aria-hidden="true"' : ''}>${imgs}</figure>`;
       }).join('');
       const pause = '<svg class="i-pause" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
       const play = '<svg class="i-play" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15a1 1 0 001.5.86l12-7.5a1 1 0 000-1.72l-12-7.5A1 1 0 007 4.5z"/></svg>';
-      const dots = SLIDES.map((v, i) => `<button type="button" aria-label="${esc(`${H.show} ${i + 1} ${H.of} ${n}: ${i === 0 ? H.alt : cap(v[0])}`)}"${i === 0 ? ' aria-current="true"' : ''}></button>`).join('');
-      const ctl = n > 1 ? `<div class="hero-ctl"><button type="button" class="hc-play" data-state="playing" data-pause="${esc(H.pause)}" data-play="${esc(H.play)}" aria-label="${esc(H.pause)}">${pause}${play}</button><div class="hc-dots" role="group" aria-label="${esc(H.choose)}">${dots}</div></div>` : '';
+      const capOf = (i) => (i === 0 ? H.alt : cap(SLIDES[i][0]));
+      const ico = (d0) => `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d0}"/></svg>`;
+      const caps = esc(JSON.stringify(SLIDES.map((v, i) => capOf(i))));
+      const ctl = n > 1 ? `<div class="hero-ctl" data-caps="${caps}"><button type="button" class="hc-btn hc-play" data-state="playing" data-pause="${esc(H.pause)}" data-play="${esc(H.play)}" aria-label="${esc(H.pause)}">${pause}${play}</button><button type="button" class="hc-btn hc-prev" aria-label="${esc(H.prev)}">${ico('M15 5l-7 7 7 7')}</button><button type="button" class="hc-btn hc-next" aria-label="${esc(H.next)}">${ico('M9 5l7 7-7 7')}</button><p class="hc-status" aria-live="off"><span class="hc-count"><span class="hc-n">1</span> / ${n}</span><span class="hc-cap">${esc(capOf(0))}</span></p><span class="hc-bar" aria-hidden="true"><i></i></span></div>` : '';
       const pills = H.pills.map((p) => `<li>${esc(p)}</li>`).join('');
-      return `<div class="laptop" id="hero-show" role="region" aria-roledescription="carousel" aria-label="${esc(H.carousel)}"><div class="lp-screen"><span class="lp-cam" aria-hidden="true"></span><div class="lp-display" aria-live="off">${slides}</div></div><div class="lp-base" aria-hidden="true"><span class="lp-notch"></span></div>${ctl}</div><ul class="stats">${pills}</ul>`;
+      return `<div class="laptop" id="hero-show" role="region" aria-roledescription="carousel" aria-label="${esc(H.carousel)}"><div class="lp-screen"><span class="lp-cam" aria-hidden="true"></span><div class="lp-display">${slides}</div></div><div class="lp-base" aria-hidden="true"><span class="lp-notch"></span></div>${ctl}</div><ul class="stats">${pills}</ul>`;
     })(),
     fingerprint: FINGERPRINT, banner: l === 'en' ? banner() : '',
   }, t));
