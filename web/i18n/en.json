@@ -80,7 +80,7 @@
   "piText": "A ready-to-flash image for SD card or NVMe, with fan control and our own kernel.",
   "piBtn": "Download image",
   "debTitle": "Already on Debian 13?",
-  "debText": "Install LordOS on top of your current system with one command:",
+  "debText": "Add LordOS to the system you already have, on a PC or a server (VPS), with one command:",
   "copy": "Copy",
   "copied": "Copied",
   "copyCmdLabel": "Copy the install command",
@@ -170,5 +170,7 @@
       "system": "System",
       "privacy": "Privacy & security"
     }
-  }
+  },
+  "debHintA": "On a server without a screen, add",
+  "debHintB": "and use it from your browser."
 }

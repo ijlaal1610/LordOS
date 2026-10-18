@@ -79,8 +79,8 @@
   "piTitle": "Raspberry Pi 5",
   "piText": "Imagem pronta para gravar em SD ou NVMe, com controle de ventoinhas e kernel próprio.",
   "piBtn": "Baixar imagem",
-  "debTitle": "Já usa Debian 13?",
-  "debText": "Instale o LordOS sobre o seu sistema atual com um único comando:",
+  "debTitle": "Já usa o Debian 13?",
+  "debText": "Adicione o LordOS ao sistema que você já tem — num PC ou num servidor (VPS) — com um único comando:",
   "copy": "Copiar",
   "copied": "Copiado",
   "copyCmdLabel": "Copiar o comando de instalação",
@@ -170,5 +170,7 @@
       "system": "Sistema",
       "privacy": "Privacidade e segurança"
     }
-  }
+  },
+  "debHintA": "Num servidor sem tela, adicione",
+  "debHintB": "e use-o pelo navegador."
 }

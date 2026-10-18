@@ -566,6 +566,7 @@ ${featureList[i] ? `<a class="more" href="${pageUrl(l, 'features/' + featureList
       return `<div class="laptop" id="hero-show" role="region" aria-roledescription="carousel" aria-label="${esc(H.carousel)}"><div class="lp-screen"><span class="lp-cam" aria-hidden="true"></span><div class="lp-display">${slides}</div></div><div class="lp-base" aria-hidden="true"><span class="lp-notch"></span></div>${ctl}</div><ul class="stats">${pills}</ul>`;
     })(),
     fingerprint: FINGERPRINT, banner: l === 'en' ? banner() : '',
+    faqServer: HAS_FAQ ? pageUrl(l, 'faq') + '#server-vps' : `${GITHUB}/blob/main/docs/INSTALL-DEBIAN.md#servers-and-vps`,
   }, t));
 
   // gallery

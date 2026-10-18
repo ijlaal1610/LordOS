@@ -42,21 +42,25 @@
 <div class="dl-grid">
 <article class="dl-card">
 <h3>{{t.isoTitle}}</h3>
+<p class="arch"><span>amd64</span></p>
 <p>{{t.isoText}}</p>
 <a href="https://github.com/lordbasex/LordOS/releases" class="btn btn-violet">{{t.isoBtn}}</a>
 </article>
 <article class="dl-card">
 <h3>{{t.piTitle}}</h3>
+<p class="arch"><span>arm64</span></p>
 <p>{{t.piText}}</p>
 <a href="https://github.com/lordbasex/LordOS/releases" class="btn btn-violet">{{t.piBtn}}</a>
 </article>
 <article class="dl-card">
 <h3>{{t.debTitle}}</h3>
+<p class="arch"><span>amd64</span><span>arm64</span></p>
 <p>{{t.debText}}</p>
 <div class="cmd">
 <div class="cmd-bar"><span class="cmd-t" aria-hidden="true"><i></i><i></i><i></i>shell</span><button type="button" class="copy" data-copy="install-cmd" data-done="{{t.copied}}" aria-label="{{t.copyCmdLabel}}" hidden>{{t.copy}}</button></div>
 <pre id="install-cmd" tabindex="0">curl -fsSL https://lordos.org/install.sh | sh</pre>
 </div>
+<p class="dl-hint">{{t.debHintA}} <a href="{{{faqServer}}}"><code>--remote-desktop</code></a> {{t.debHintB}}</p>
 </article>
 </div>
 <div class="verify">

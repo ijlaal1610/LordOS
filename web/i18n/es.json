@@ -80,7 +80,7 @@
   "piText": "Imagen lista para grabar en SD o NVMe, con control de ventiladores y kernel propio.",
   "piBtn": "Descargar imagen",
   "debTitle": "¿Ya usás Debian 13?",
-  "debText": "Instalá LordOS sobre tu sistema actual con un solo comando:",
+  "debText": "Sumá LordOS al sistema que ya tenés —en una PC o en un servidor (VPS)— con un solo comando:",
   "copy": "Copiar",
   "copied": "Copiado",
   "copyCmdLabel": "Copiar el comando de instalación",
@@ -170,5 +170,7 @@
       "system": "Sistema",
       "privacy": "Privacidad y seguridad"
     }
-  }
+  },
+  "debHintA": "En un servidor sin pantalla, agregá",
+  "debHintB": "y usalo desde el navegador."
 }

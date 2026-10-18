@@ -214,6 +214,19 @@
           }
         },
         {
+          "id": "server-vps",
+          "q": {
+            "en": "Can I install LordOS on a server or VPS?",
+            "es": "¿Puedo instalar LordOS en un servidor o VPS?",
+            "pt": "Posso instalar o LordOS num servidor ou VPS?"
+          },
+          "a": {
+            "en": "Yes, on Debian 13 (amd64 or arm64). Run the one-line installer with `--remote-desktop`: the desktop sessions run headless and you connect from a browser at `https://<server>:5673`. Protect that port with a firewall or a VPN rather than exposing it to the internet. Remote desktop stays off unless you enable it.",
+            "es": "Sí, en Debian 13 (amd64 o arm64). Ejecutá el instalador de una línea con `--remote-desktop`: las sesiones de escritorio corren sin pantalla y te conectás desde un navegador en `https://<servidor>:5673`. Protegé ese puerto con un firewall o una VPN en vez de exponerlo a internet. El escritorio remoto queda apagado salvo que lo actives.",
+            "pt": "Sim, no Debian 13 (amd64 ou arm64). Execute o instalador de uma linha com `--remote-desktop`: as sessões de desktop rodam sem tela e você se conecta por um navegador em `https://<servidor>:5673`. Proteja essa porta com um firewall ou uma VPN em vez de expô-la à internet. A área de trabalho remota fica desligada a menos que você a ative."
+          }
+        },
+        {
           "id": "what-script-changes",
           "q": {
             "en": "What does the Debian installer change?",

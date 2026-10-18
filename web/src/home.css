@@ -130,3 +130,11 @@ pre::-webkit-scrollbar-thumb,.table::-webkit-scrollbar-thumb{background:#4A4775;
   .sup-card>img{width:160px;height:160px}
   .teaser-box{padding:22px}
 }
+
+/* download cards: architecture chips, equal heights, server hint */
+.dl-card .arch{display:flex;gap:6px;margin:-4px 0 2px}
+.dl-card .arch span{padding:3px 9px;border-radius:999px;border:1px solid var(--night-line);background:#14132B;color:#C9C6E6;font:600 12px/1.3 var(--mono)}
+.dl-card>p:not(.arch):not(.dl-hint){margin-bottom:8px}
+.dl-hint{margin:2px 0 0!important;font-size:13.5px!important;color:var(--night-note)!important}
+.dl-hint a{color:#FFD60A}
+.dl-hint code{font:600 13px var(--mono);white-space:nowrap}
