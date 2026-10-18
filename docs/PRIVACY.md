@@ -35,11 +35,15 @@ Not every program on LordOS is sandboxed. This is exactly what applies to each k
 |---|---|---|---|---|---|
 | `.lpk` apps and Passwords | own process (`lord-server --app <id>`) | yes | own (`app-lordos-lpk-<id>.scope`) | yes: every call is checked in `lord-server` | per app (`lpk:<id>`): network rules and every non-network restriction (broker) |
 | Other built-in apps | inside `lord-server` | no | `lord-server`'s | no broker: camera, microphone and screen are checked in C (`js_media.c`), notifications in `sdk/notify.js` | as "LordOS" (`lordos`): network rules; camera, microphone, screen and notifications restrictions |
-| Linux apps from the launcher | own process | no | own (`app-lordos-<id>.scope`) | no | per app (`desktop:<id>`): network rules (the non-network restrictions don't apply to them yet) |
+| Linux apps from the launcher | own process | no by default; with "no access to your files", their own user, mount and PID namespace plus Landlock (no seccomp), from the next launch | own (`app-lordos-<id>.scope`) | no | per app (`desktop:<id>`), when the owner sets them: network rules; camera, USB and screen (`/dev/fb*`) devices and Bluetooth sockets in the kernel (`lord-netperm`); microphone and PipeWire cameras (our PipeWire guard, plus ALSA capture nodes in the kernel); files (the launcher); notifications (our notification server). Not the clipboard, and not BlueZ over D-Bus |
 | Terminal programs | children of the Terminal's shell | no | `lord-server`'s | no | as "LordOS" (`lordos`): network rules |
 
-Flatpak, bubblewrap and namespaces are not used. The firewall's restrictions and where each one
-is enforced are in [FIREWALL.md](FIREWALL.md#non-network-restrictions).
+Flatpak and bubblewrap are not used. Namespaces are used in one place: a Linux app restricted
+with "no access to your files" starts in its own unprivileged user, mount and PID namespace,
+built by our own code in the launcher (`sec/sandbox.c`, `sandbox_files_isolate`), so it can't
+reach the session's sockets. The firewall's restrictions, where each one is enforced and what each
+one doesn't cover are in [FIREWALL.md](FIREWALL.md#non-network-restrictions) and, for Linux apps,
+[FIREWALL.md, "Linux apps"](FIREWALL.md#linux-apps).
 
 ## The per-app process
 

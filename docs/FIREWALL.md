@@ -94,14 +94,17 @@ A valid id:
   | no LAN | `no-lan` | same (also `127.0.0.1` and `::1`) | same | same |
   | no network | `no-network` | same | same | same |
   | no incoming connections | `no-incoming` | same | same | same |
-  | no camera | `no-camera` | broker (`brokercam.c`) | `js_media.c` | not yet |
-  | no microphone | `no-mic` | broker (`BOP_MIC`, camera videos) | `js_media.c` | not yet |
-  | no screen capture | `no-screen` | broker (the `screen` permission; isolated apps have no capture API) | `js_media.c` | not yet |
-  | no USB | `no-usb` | broker (`BOP_VAULT_FIDO`, the `usb` permission) | not offered (the desktop itself) | not yet |
-  | no Bluetooth | `no-bluetooth` | broker (the `bluetooth` permission; no Bluetooth API in app mode) | not offered (the desktop itself) | not yet |
-  | no access to your files | `no-files` | broker (file picker, camera saves, the `files` permission) | not offered (the desktop itself) | not yet |
-  | no reading the clipboard | `no-clipboard` | broker (`BOP_CLIP_GET`, the `clipboard` permission) | not offered (the desktop itself) | not yet |
-  | no notifications | `no-notifications` | `sdk/notify.js` and the `notifications` permission | `sdk/notify.js` | not yet |
+  | no camera | `no-camera` | broker (`brokercam.c`) | `js_media.c` | `lord-netperm` (`cgroup/dev`) and the PipeWire guard |
+  | no microphone | `no-mic` | broker (`BOP_MIC`, camera videos) | `js_media.c` | the PipeWire guard and `lord-netperm` (ALSA capture nodes) |
+  | no screen capture | `no-screen` | broker (the `screen` permission; isolated apps have no capture API) | `js_media.c` | by design (no capture protocol), and `lord-netperm` (`/dev/fb*`) |
+  | no USB | `no-usb` | broker (`BOP_VAULT_FIDO`, the `usb` permission) | not offered (the desktop itself) | `lord-netperm` (`cgroup/dev`) |
+  | no Bluetooth | `no-bluetooth` | broker (the `bluetooth` permission; no Bluetooth API in app mode) | not offered (the desktop itself) | `lord-netperm` (`socket(AF_BLUETOOTH)`); BlueZ over D-Bus is not covered |
+  | no access to your files | `no-files` | broker (file picker, camera saves, the `files` permission) | not offered (the desktop itself) | the launcher (own namespaces + Landlock), at the next launch |
+  | no reading the clipboard | `no-clipboard` | broker (`BOP_CLIP_GET`, the `clipboard` permission) | not offered (the desktop itself) | not offered yet |
+  | no notifications | `no-notifications` | `sdk/notify.js` and the `notifications` permission | `sdk/notify.js` | `hw/notifyd.c` (by the caller's cgroup) |
+
+  For Linux apps the details, what each one doesn't cover and how it is tested are in
+  [Linux apps](#linux-apps).
 
 An app is in only one list: trusting it removes it from the restricted ones, and restricting it
 removes the trust. Non-network restrictions are queried with `fw_blocks(app, flag)`, through
@@ -136,9 +139,12 @@ reloading anything. What each kind of app goes through:
   `LordOS` row in Settings does not offer files, USB, clipboard or Bluetooth: that row is the
   desktop itself (Files, copy and paste, Disks, Settings → Bluetooth), and the screen says so in
   one line. Restrict individual apps instead.
-- **Linux apps (`desktop:<id>`) and terminal programs.** They are not sandboxed and reach devices
-  directly, so today only the network restrictions apply to them. Kernel-level checks for them
-  are separate work.
+- **Linux apps (`desktop:<id>`).** They are not sandboxed by default and reach devices, sockets
+  and the sound server directly, so each restriction is enforced at a point the app can't go
+  around: the kernel (`lord-netperm`), the launcher (`no-files`), our notification server and our
+  connection to PipeWire. See [Linux apps](#linux-apps). Terminal programs run in `lord-server`'s
+  cgroup and count as `lordos` (network rules only); a program started some other way, outside
+  the launcher, is in no app scope and gets no per-app restriction.
 
 **Live revocation.** Adding a restriction to a running app (`restrict_changed()`, called by
 `setRestricted`) takes the device away at once, the same way revoking the permission does: for an
@@ -151,6 +157,167 @@ moment.
 Tested by `server/tests/broker_restrict_test.c` (`make -C server test`): the real broker code
 against a fake app, every restriction with and without it, no prompt, the error codes, live
 revocation of camera and microphone and the built-in apps' hook.
+
+### Linux apps
+
+A Linux app started from the launcher (`lord.apps.launch`, `launchWith`) runs in its own
+root-owned scope, `app-lordos-<id>.scope`, which gives it the firewall id `desktop:<id>`. Every
+restriction below is checked against that scope, or against the PID's cgroup, never against a name
+the app gives itself.
+
+| Restriction | Where | How | Applies | Tested by |
+|---|---|---|---|---|
+| network (4) | `lord-netperm` | cgroup `sock_addr`/`sock_create` programs (above) | at once: new connections, binds and sockets | `tests/netperm_integration.sh` |
+| no camera | `lord-netperm`, `cgroup/dev` | `open()` of a V4L2 node (major 81) → `EPERM` | at once (next `open`; an fd already open stays usable) | `tests/fwlinux/devices.sh` (v4l2loopback, `v4l2-ctl`) |
+| | PipeWire guard (`sec/pwguard.c`) | `Video/Source` nodes hidden from the app, its `Stream/Input/Video` streams destroyed | within 1 s | unit test only (no PipeWire camera node on the test VM) |
+| no USB | `lord-netperm`, `cgroup/dev` | `/dev/bus/usb/*` (189), `/dev/hidraw*` (dynamic, from `/proc/devices`), `/dev/ttyACM*` (166), `/dev/ttyUSB*` (188) | at once (next `open`) | `devices.sh` |
+| no Bluetooth | `lord-netperm`, `cgroup/lsm_socket_create` | `socket(AF_BLUETOOTH, …)` → `EPERM` | at once (new sockets) | `tests/fwlinux/bluetooth.sh` |
+| no screen capture | by design, and `lord-netperm` | the compositor offers no capture protocol, there's no X server, no screen-cast portal is installed; `/dev/fb*` (29) is denied | always | `tests/fwlinux/screen.sh` |
+| no microphone | PipeWire guard | capture nodes (`Audio/Source*`, `Audio/Duplex`) and their ports hidden, the app's `Stream/Input/Audio` streams destroyed, including a recording already running | within 1 s | `tests/fwlinux/mic.sh` (`pw-record`, `parecord`, `arecord`) |
+| | `lord-netperm`, `cgroup/dev` | ALSA capture PCM nodes (`/dev/snd/pcmC*D*c`, from `/sys/class/sound`): recording from the card without PipeWire | at once (next `open`) | `mic.sh` |
+| no access to your files | the launcher (`apps.c`, `sec/sandbox.c`) | its own user, mount and PID namespace and Landlock (below) | at the next launch | `tests/fwlinux/files.sh` (a probe app, malicious `.desktop` files, `gtk4-print-editor`) |
+| no notifications | `hw/notifyd.c` | the caller's PID from the bus → its cgroup → its app: dropped, answered with a valid id | the next notification | `tests/fwlinux/notify.sh`, `notifyd-test` |
+| no reading the clipboard | — | not offered for Linux apps yet: the Wayland data device is not mediated per app | — | — |
+
+Settings → Privacy shows "(at next launch)" next to "No access to your files" for a Linux app,
+says that everything else applies at once, and has one help line per restriction.
+
+**Devices (`cgroup/dev`).** In cgroup v2 the device controller *is* a `BPF_PROG_TYPE_CGROUP_DEVICE`
+program; with none attached, everything is allowed. `lord-netperm` attaches one (with a
+`bpf_link`, multi-attach) to `lordos.service` and to each session's `user@<uid>.service`. It looks
+the app up exactly like the network programs (its scope's ancestor id, or the `user@` union), runs
+on `open()` and `mknod()` of a device node, and returns 0 only for the device classes the app is
+restricted from (`np_dev_restriction()` in `np_shared.h`, plus the ALSA capture minors in
+`np_capdev`); everything else returns 1. Programs systemd attaches higher up (`DeviceAllow=`) still
+apply: the kernel allows only what all of them allow. A denial is logged by `lord-netperm` once per
+5 s, not counted with the connections. `lord-server`'s own scope (`lordos`) never gets device
+restrictions in the kernel: it opens the camera, the FIDO key and the sound for the apps after
+their own permission and restriction checks.
+
+What `no-camera` and `no-usb` don't cover: a V4L2 memory-to-memory codec (the Raspberry Pi's
+hardware video decoder) has the same major and is denied too; USB storage is a block device and
+its files are covered by `no-files`, not `no-usb`; USB keyboards, mice, sound cards and cameras
+reach the app through the input, sound and camera paths, not as raw USB.
+
+**Bluetooth sockets (`cgroup/lsm_socket_create`).** The inet `sock_create` hook never sees
+`AF_BLUETOOTH`, so this is a per-cgroup LSM program (`BPF_LSM_CGROUP`, kernel 6.0 or later, with
+the `bpf` LSM active, as in Debian 13) on the `socket_create` hook. Its attach point is the BTF id
+of `bpf_lsm_socket_create`, which `lord-netperm` reads from `/sys/kernel/btf/vmlinux` with its own
+small reader (`bpfs_btf_func_id`). The kernel only loads LSM programs that declare a
+GPL-compatible license: this one declares "Dual MIT/GPL" (our code is MIT, which may also be
+distributed under the GPL); the others keep "LordOS". If the kernel refuses the device or the
+Bluetooth program, the network ones still work and the status says `"devices":false` or
+`"bluetooth":false`.
+
+*Not covered:* BlueZ over D-Bus. An app can still ask `bluetoothd` on the system bus (`org.bluez`)
+to scan, pair and connect, and a profile it registers gets its connected socket from `bluetoothd`.
+The system bus policy can't tell two apps of the same user apart; mediating it per app needs a
+D-Bus proxy per app in front of the system bus, which isn't built. `no-files` doesn't hide the
+system bus either (see below).
+
+**Screen capture.** No Linux app can copy the screen, restricted or not: the compositor
+(`wl/wl.c`) offers no screencopy, image-capture or dmabuf-export protocol, Xwayland isn't
+supported, and no `xdg-desktop-portal` screen-cast backend is installed, so PipeWire has no screen
+node. `screen.sh` checks all four on the running system (`build/wl-globals` lists the globals as
+a client sees them), and `no-screen` also denies `/dev/fb*`. If a screen-cast portal backend is
+ever installed, this no longer holds and `screen.sh` fails.
+
+**The PipeWire guard (`sec/pwguard.c`).** `lord-server` keeps one connection of its own to the
+session's PipeWire, on the manager socket, with our own implementation of the native protocol
+(no libpipewire). It binds every client, reads who it is and, for a restricted app, sends
+`update_permissions`: permission 0 on every capture node and its ports and on every other client
+(so it can't see or link a microphone, nor change another client's permissions), and destroys the
+capture streams that client creates. The rules are lord.fw's store, read every second, so setting
+or lifting a restriction applies to a running app within a second; nothing is written to a file
+the apps could change. Who a client is:
+
+- for a native client, `pipewire.sec.pid`, which PipeWire takes from the socket's credentials
+  (a client can't change `pipewire.sec.*`), and that PID's cgroup;
+- `application.process.id` (what the app reported) is used only when `pipewire.sec.pid` is the
+  session's real `pipewire-pulse`: the root-owned `/usr/bin/pipewire` executable, our uid, in the
+  user manager's `pipewire-pulse.service`. `pulse.server.type` alone is the client's word and is
+  ignored;
+- even then the claimed process must really hold as many connections to `pipewire-pulse` as there
+  are clients claiming it (the kernel's unix socket peers, `sock_diag`, against the process's
+  fds);
+- while a restricted app of the session is running, a client whose identity can't be established
+  (a false claim, a PID that doesn't resolve or is gone) is treated as restricted; with no
+  restricted app running nothing is checked, so normal use pays nothing.
+
+*Residual risk, exactly:*
+
+- A new PipeWire client of a restricted app has the permissions WirePlumber gives it (all) from
+  the moment it connects until the guard's first `update_permissions` (milliseconds). Code written
+  to use that window could, for example, grant permissions to another of its own clients; the
+  guard rewrites every restricted client's permissions every second. Closing the window needs
+  PipeWire to start clients without permissions (a non-"unrestricted" socket in `module-access`
+  and a session manager that grants them), which is the next step.
+- A capture stream is destroyed when it appears; if WirePlumber links it first, a few
+  milliseconds of audio can reach it.
+- When a restricted app falsely claims another process's PID through `pipewire-pulse`, every
+  client claiming that PID is treated as restricted while the false claim lasts, the honest one
+  included.
+- A process that escaped to `user@<uid>` (`systemd-run --user`) is in no app scope: its PipeWire
+  clients aren't restricted (PipeWire, WirePlumber and `pipewire-pulse` themselves live there).
+  With `no-files` the app can't reach the session bus or the user manager, which closes that path;
+  without it, it stays open.
+- A pulse socket of its own for each restricted app (`pipewire-pulse` listening on a per-app
+  address bound into the app's view) would remove the need to trust `application.process.id` at
+  all: also the next step.
+
+**No access to your files.** Applied by the launcher's child after it entered its scope and right
+before `execve`, so a restriction set while the app runs applies at its next launch (Settings
+says so). Two layers:
+
+1. Its own view (`sandbox_files_isolate`): a new user namespace (uid and gid mapped to
+   themselves), mount namespace and PID namespace, unprivileged. The home folder is an empty
+   tmpfs with only the allowed folders bound into it; `$XDG_RUNTIME_DIR` is an empty tmpfs with
+   only the Wayland socket, `pipewire-0` and `pulse/native` bound into it (no session bus, no
+   `systemd/private`, no `pipewire-0-manager`, no agents, no LordOS sockets); `/tmp` and
+   `/var/tmp` are private; `/proc` is a new procfs of the new PID namespace, so
+   `/proc/<pid>/root` of the session's processes isn't reachable. PID 1 of the namespace is a
+   small reaper (our code); the app is its child. This layer exists because Landlock in kernel
+   6.12 doesn't cover `connect()` on unix sockets: without it the app could ask the user's
+   systemd, over the session bus, to start anything outside the restriction.
+2. Landlock (`sandbox_apply_files`, no seccomp): read and execute on the system (`/usr`, `/etc`,
+   `/opt`, `/var/lib`, `/var/cache`, `/sys`, a few service folders of `/run`), read and write on
+   `/tmp`, `/var/tmp`, `/dev`, `/proc` and the runtime dir, its own folders, the shared caches
+   (fontconfig, Mesa shaders, GStreamer) and the file or folder it was opened with; read only on
+   the desktop's look (GTK/Qt settings, fonts, icons, themes, MIME data, `.desktop` files).
+   Abstract unix sockets outside the app are scoped out (ABI 6). Device ioctls aren't handled,
+   so GPU and sound keep working. Landlock needs `no_new_privs`: setuid programs the app starts
+   don't gain privileges.
+
+Its own folders come **only from its canonical desktop id**: `~/.config/<id>`, `~/.cache/<id>`,
+`~/.local/share/<id>` and `~/.local/state/<id>` (created if missing), plus a fixed table for apps
+whose data folder isn't named after them (`firefox-esr` → `~/.mozilla`). Never from `Exec`,
+`StartupWMClass` or `Name`, which a `.desktop` file can set to anything, and never a home-level
+folder. An id that names someone else's folder (`autostart`, `applications`, `systemd`,
+`lordos*`, `ssh`, `gnupg`, `git`, shells' and editors' config folders...) gets none, and a grant
+never lands on a folder in `fsops_protected()` or on a shell startup file. The file passed by
+"Open with" is bound read-write (read only if it is one of the protected ones). Everything else in
+the home folder doesn't exist for the app, and `/media`, `/run/media` and other users' homes are
+denied by Landlock. If the kernel refuses a namespace or Landlock, the app is not launched.
+
+*What breaks, tested on VM 119:* without the session bus, GTK apps print warnings and run
+(`gtk4-print-editor` opens the file it was given), and Firefox and Chromium start and keep their
+profiles, without their D-Bus integrations (no portal, no media keys, no desktop notifications,
+no keyring). Xfce's Ristretto exits, because it requires `xfconf` over the bus. An app whose
+settings folder isn't named after its id can't save its settings.
+
+*Not covered:* apps not started from the launcher; the system bus (`/run/dbus`), which stays
+reachable (NetworkManager, UPower, BlueZ...); a session-bus filtering proxy with an allowlist
+would let more apps keep their D-Bus integrations and is the next step.
+
+**Notifications (`hw/notifyd.c`).** Before a `Notify` is shown, the server asks the bus for the
+caller's PID (`GetConnectionUnixProcessID`); only an answer whose sender is `org.freedesktop.DBus`
+counts (the bus daemon sets the sender: another client can't forge it). The PID's cgroup gives
+its app scope (`sec/appid.c`); if that app is restricted the notification is dropped and the call
+still gets a valid id (and a `NotificationClosed`), so the app doesn't treat it as an error. An
+error answer, a PID whose process can't be read, or no answer within 3 s also drop it (fail
+closed). *Not covered:* a process that escaped to `user@<uid>` isn't in an app scope; a PID reused
+in the instant between the bus's answer and reading `/proc` (the caller would have to exit in that
+instant); `GetConnectionCredentials` with a process fd would remove that race and isn't used yet.
 
 ### Precedence
 
@@ -395,6 +562,8 @@ tests/netperm_bench.c, netperm_measure.sh   measurements
 | `cgroup/sendmsg4`, `sendmsg6` | unconnected UDP (`sendto` with an address) |
 | `cgroup/bind4`, `bind6` | incoming: "no incoming connections" and `in` rules. A bind to port 0 (ephemeral, client) isn't checked |
 | `cgroup/sock_create` | "no network": the app can't even create an AF_INET/AF_INET6 socket, so it can't ping either |
+| `cgroup/dev` | "no camera", "no USB", "no screen capture" (`/dev/fb*`) and "no microphone" (ALSA capture nodes): device `open()`/`mknod()` (see [Linux apps](#linux-apps)) |
+| `cgroup/lsm_socket_create` | "no Bluetooth": `socket(AF_BLUETOOTH)`, a per-cgroup LSM program (`BPF_LSM_CGROUP`) |
 
 Each program does the following:
 
@@ -445,6 +614,15 @@ Why this and not the alternatives:
   restricted app runs. A precise per-process identity (option c) is a possible future refinement if
   the loader gains tracing support.
 
+The device and Bluetooth programs use the same union, over **every** process under `user@<uid>`,
+the user's own PipeWire, WirePlumber and `pipewire-pulse` included. There is deliberately no
+exemption by cgroup: the user owns that subtree, so any of their processes (an escapee included)
+can move itself into `pipewire.service`'s cgroup, and an exemption there would be an open door
+(`devices.sh` and `bluetooth.sh` test an escapee that does exactly that). The cost: while a
+camera- or Bluetooth-restricted app runs, the user's own services can't open a new camera or
+create a new Bluetooth socket either (a headset's call audio, which PipeWire opens per call, stops
+working for that time); what they already have open keeps working.
+
 `sock_create` ("no network") is **not** enforced through the union, so the user manager can still
 create its own sockets; a "no network" escapee can open a socket but every `connect`/`sendmsg`/`bind`
 is denied by the union all the same. The decision helper (`np_decide`) is unchanged, so
@@ -460,7 +638,8 @@ is denied by the union all the same. The decision helper (`np_decide`) is unchan
 | `np_lpm4`, `np_lpm6` | LPM trie | (app index, network) → ordered list of rules |
 | `np_seen` | LRU | (cgroup, address, port, protocol, connection direction, verdict) → last time reported |
 | `np_counts` | hash | cgroup id → allowed, denied |
-| `np_events` | ring buffer | new connections to the service |
+| `np_events` | ring buffer | new connections (and device or Bluetooth denials) to the service |
+| `np_capdev` | hash | ALSA capture PCM minors (from `/sys/class/sound`) → 1 |
 
 **What is counted and reported.** Every TCP `connect()` and every `bind()` is counted. A UDP
 `sendto` and a UDP `connect()` count only the first time in 5 s, so the numbers don't get
@@ -708,7 +887,8 @@ over TCP on 127.0.0.1.
   restriction union (see [Escape via `systemd-run --user`](#escape-via-systemd-run---user-the-user-union)).
   Tested on VM 122 (see below). What stays coarse: the union restricts the whole `user@` subtree
   while a restricted app runs, not just the escaped process. `firewall.json` and `permisos.json` are
-  still writable by an unsandboxed app running as the user (a filesystem matter, not the firewall).
+  still writable by an unsandboxed app running as the user (a filesystem matter, not the firewall);
+  an app restricted with `no-files` can't see them.
 - **A freshly created scope** is registered via inotify within microseconds, before the program
   finishes starting (exec + libraries). If a connection arrived earlier, it would pass under the
   default rules.
@@ -722,10 +902,9 @@ over TCP on 127.0.0.1.
 - **The "ask" mode** is applied as silent.
 - **Per-destination rules** in the Monitor: done ("Allow / Block this domain", see
   [Rules by app](#rules-by-app-settings-and-monitor)).
-- **Host names** still aren't passed to the session: `lord-netperm` has them, but its `EVENT`
-  notice carries only the address. The Monitor already reads a `host` (or `hosts`) field if a
-  notice brings one; until then its "Block this domain" is prefilled with the address and the user
-  types the domain.
+- **Host names** are passed to the session: each `EVENT` notice carries `"hosts"`, up to 4 names
+  the system resolver gave for that address, and the Monitor prefills "Block this domain" with
+  the first one (tested by `netperm_integration.sh`, step 9).
 - **Domain rules and encrypted DNS:** see [What domain rules can't see](#what-domain-rules-cant-see).
 
 ### Screenshots (VM 122)

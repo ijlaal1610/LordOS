@@ -1086,3 +1086,23 @@ screen. Results and screenshots: `docs/qa/` (`all-apps.png`, `settings-pages.png
   `*.qafix-122.bak`). To test "last user", `qa` was shown once through a one-time
   `AUTOLOGIN=qa` (restored to `AUTOLOGIN=` right away) and its session was then ended, which follows
   the same path in `lord-sessiond` as a logout. `/var/lib/lordos/last-user` now exists.
+
+## Step 26 — Firewall restrictions for Linux apps (VM 119, October 18)
+
+See `FIREWALL.md`, "Linux apps". Tree in `~/LordOS-fwlinux`, built there (`make -C server -j8`,
+`make -C server test`: 23 passed, 2 skipped).
+
+- **Packages (tests only):** `strace` (the GTK app's file opens in `tests/fwlinux/files.sh`),
+  `libnotify-bin` (`notify-send`, `notify.sh`), `libglib2.0-bin` (`gdbus`, the
+  `StartTransientUnit` escape test), `ristretto` (an image viewer for the "what breaks" check),
+  `alsa-utils` (`arecord`, `mic.sh`).
+- **Installed:** `server/build/lord-netperm` in `/usr/lib/lordos/bin/` and
+  `tools/iso/rootfs/etc/systemd/system/lord-netperm.service` in `/etc/systemd/system/`, enabled
+  (this VM didn't have the service). The session's `lord-server` was not replaced: the launcher,
+  notification and PipeWire code were tested with their test tools (`build/launch-cli`,
+  `build/notifyd-cli`, `build/pwguard-cli`), which run the same source files.
+- **Devices:** the VM's `v4l2loopback` camera (`/dev/video10`), its USB buses, `/dev/hidraw0`,
+  `/dev/fb0` and the emulated sound card (`alsa_input…analog-stereo`).
+- **Scripts:** `server/tests/fwlinux/{devices,bluetooth,files,notify,mic,screen}.sh`, run as `lord`.
+  They build app scopes by hand as root under `lordos-session-1000` and put `firewall.json` back
+  at the end. Nothing in the network configuration was touched.
