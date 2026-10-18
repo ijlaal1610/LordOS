@@ -31,9 +31,11 @@ LOCALES="en_US.UTF-8 es_ES.UTF-8 pt_BR.UTF-8"
 KNOWN_DMS="gdm3 gdm sddm lightdm lxdm xdm slim nodm greetd ly"
 
 # Ed25519 public key that signs SHA256SUMS (SHA256SUMS.sig = base64 of the 64-byte signature).
-# TODO(release-signing): LordOS has no release-signing key yet (docs/SIGNING.md, "Release files").
-# While this is empty only the SHA-256 checksum is verified, and the installer says so.
-RELEASE_PUBKEY_PEM=""
+# Fingerprint (SHA-256 of the DER key): c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053ea108e
+# See docs/SIGNING.md, "Release files". A missing or invalid signature stops the install.
+RELEASE_PUBKEY_PEM="-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA8cqwDzH+ZVMdBqNjC3141dmo3gcH8PWt88I+RE9dOaA=
+-----END PUBLIC KEY-----"
 
 # ---------------------------------------------------------------- output
 

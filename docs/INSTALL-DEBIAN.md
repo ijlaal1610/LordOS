@@ -35,10 +35,10 @@ this works even though the script itself comes through a pipe.
    release is looked up through the GitHub API; since betas are marked as pre-releases, which
    `releases/latest` skips, it falls back to the newest release of any kind.
 3. **Verifies** the `.deb`'s SHA-256 against `SHA256SUMS`. A mismatch stops everything.
-   - **Signature:** LordOS has no release-signing key yet, so `SHA256SUMS` itself is not signed.
-     The installer says so in its output: the checksum catches a corrupted download, not a
-     tampered release. The Ed25519 check is already written and switches on once the key is added
-     (`SIGNING.md`, "Release files").
+   - **Signature:** before downloading the `.deb`, it checks `SHA256SUMS.sig`, the Ed25519
+     signature of `SHA256SUMS` made with the LordOS release key (fingerprint
+     `c7155b8e…53ea108e`, see `SIGNING.md`, "Release files"). A missing or invalid signature
+     stops the install.
 4. **Installs** with `apt-get install ./lordos_<version>_<arch>.deb`, so the dependencies come from
    your Debian mirrors. It also installs, if they are missing, what the ISO adds for sound, fonts
    and the user session (`dbus-user-session`, PipeWire with `pipewire-pulse`, `pipewire-alsa` and

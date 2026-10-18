@@ -121,30 +121,30 @@ one, the **development** key:
 
 For a public release, the final key is added to `keys.h` and the development one is removed.
 
-### Release files (not signed yet)
+### Release files
 
-The GitHub release files (the `.deb`, the ISO, the Raspberry Pi image) are listed with their
-SHA-256 in `SHA256SUMS`. The Debian installer (`tools/install/install.sh`, see
-`INSTALL-DEBIAN.md`) always checks the `.deb` against it. **`SHA256SUMS` itself is not signed
-yet**, so that check catches corrupted downloads but not a tampered release page; the installer
-says so in its output.
+Every GitHub release file (the `.deb`, the ISO, the Raspberry Pi image) is listed with its SHA-256
+in `SHA256SUMS`, and `SHA256SUMS` is signed with the LordOS release key:
 
-The verification side is already in the installer, waiting for a key:
+- `SHA256SUMS.sig` = base64 of the 64-byte Ed25519 signature over the exact bytes of `SHA256SUMS`.
+- Public key: `tools/release/lordos-release.pub.pem`, also embedded as `RELEASE_PUBKEY_PEM` in
+  `tools/install/install.sh`.
+- Fingerprint (SHA-256 of the DER public key):
+  `c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053ea108e`
+- Signing: `tools/release/sign-release.sh <release-dir>` writes `SHA256SUMS` and `SHA256SUMS.sig`
+  and checks the result against the public key. The private key lives only on the maintainer's
+  machine (`~/.config/lordos-release/release-ed25519.key.pem`, mode 0600), never in the repository
+  or on a build VM. Keep an offline backup of it.
+- The Debian installer refuses to install when the signature is missing or invalid, before the
+  `.deb` is downloaded.
 
-- `SHA256SUMS.sig` = base64 of the 64-byte Ed25519 signature over the exact bytes of `SHA256SUMS`;
-- the public key goes in `RELEASE_PUBKEY_PEM` in `install.sh` (PEM, as OpenSSL 3 reads it). From a
-  raw hex key like `packaging/keys/lordos-dev.pub`:
-  `printf '302a300506032b6570032100%s' "$(cat key.pub)" | xxd -r -p | openssl pkey -pubin -inform DER`;
-- when the key is set, a missing or invalid signature stops the install before the `.deb` is
-  downloaded (tested with a throwaway key through `LORDOS_PUBKEY_FILE`, a test-only override).
+Checking a download by hand (OpenSSL 3):
 
-TODO(release-signing), before the first public release:
-
-1. Generate the release key offline and keep the private half off the build VMs.
-2. Sign: `openssl pkeyutl -sign -rawin -inkey release.key.pem -in SHA256SUMS | base64 -w0 > SHA256SUMS.sig`,
-   and upload `SHA256SUMS.sig` with the release.
-3. Put the public key in `RELEASE_PUBKEY_PEM`, and publish its fingerprint on the website and in
-   the README, so people who download the ISO by hand can check `SHA256SUMS.sig` too.
+```sh
+base64 -d SHA256SUMS.sig > SHA256SUMS.sig.bin
+openssl pkeyutl -verify -pubin -inkey lordos-release.pub.pem -rawin -in SHA256SUMS -sigfile SHA256SUMS.sig.bin
+sha256sum -c --ignore-missing SHA256SUMS
+```
 
 ## Files
 
