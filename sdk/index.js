@@ -37,6 +37,7 @@ export { admin } from './admin.js';
 export { errorText, statusText, codeError, parseCode } from './errors.js';
 export { logs } from './logs.js';
 export { LordOSLogo, LordOSGlyph, LordOSWordmark } from './logo.js';
+export { Lumo, lumoSource } from './mascot.js';
 export { DesktopWidgets, registerWidgetType, setWidgets, desktopWidgets } from './widgets.js';
 export { Markdown, markdownHeadings, parseMarkdown, parseInline, toggleTask } from './markdown.jsx';
 export { dock, useDockEntries, dockActivate, dockMenu, registerDockMenu, launcherIdOf, dockPrefs, DOCK_DEFAULTS, quitApp } from './dock.js';

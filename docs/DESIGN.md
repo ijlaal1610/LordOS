@@ -86,6 +86,10 @@ the Recorder draw their empty-state icons. `↻ ⤮ ♪ ◫ ▣ ☺ ≡` render 
   right-aligned column (`labelWidth`) and the values leading-aligned.
 - **Empty state:** `EmptyState` with an icon, a short title (15/600) and one hint line (12,
   `textDim`), centered. At most one primary button.
+  For an outcome worth a little warmth (an error or an unavailable service, "everything is up to
+  date") pass `mascot` instead of the icon: `mascot="confused"`, `"celebrate"`, `"shield"` or
+  `"wave"` draws Lumo at 112 px (`sdk/mascot.js`, docs/LORDOS-BRAND.md). Not in "nothing selected"
+  panes, and never more than one Lumo per view.
 - **Dialogs and sheets:** 20 px padding, title 15/600, body 13 with `lineHeight: 1.4`, buttons at
   the end of the last row with 12 px above them. The default action is `primary`.
 - **Hierarchy:** one primary (accent) action per view. Everything else is plain or neutral.

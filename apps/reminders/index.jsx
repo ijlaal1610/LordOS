@@ -106,7 +106,7 @@ export default function RemindersApp() {
           <ToolbarButton icon="+" iconSize={20} title={t('reminders.newReminder')} disabled={unavailable || sel === 'completed'} onClick={() => newRow.current?.()} />
         </Toolbar>
         {unavailable ? (
-          <EmptyState icon="☑" title={t('reminders.unavailable')} hint={t('reminders.unavailableHint')} />
+          <EmptyState mascot="confused" title={t('reminders.unavailable')} hint={t('reminders.unavailableHint')} />
         ) : (
           <ListView key={sel} sel={sel} title={title} color={color} items={items} lists={lists} now={now} showDone={showDone || sel === 'completed'}
             newRowRef={newRow} loading={!itemsQ.data} />

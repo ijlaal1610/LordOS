@@ -13,7 +13,7 @@
 // de regla de la lista y los contadores de permitidas/denegadas ya están en su lugar.
 import {
   View, Text, Image, ScrollView, SearchField, useTheme, useLocale, useStore, monitor, monitorConnections, useMonitor,
-  formatBytes, formatNumber, tOptional, useSystemInfo, wm, direction, firewall, firewallState, useLauncherApps,
+  formatBytes, formatNumber, tOptional, useSystemInfo, wm, direction, firewall, firewallState, useLauncherApps, Lumo,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { C, fmt, AppGlyph, useCardStyle } from './index.jsx';
@@ -242,6 +242,12 @@ function Summary({ groups, conns, last, tr, fw }) {
         <KV k={tr('monitor.net.incoming')} v={formatNumber(incoming, 0)} />
         <KV k={tr('monitor.net.listening')} v={formatNumber(listening, 0)} />
         {conns?.others ? <KV k={tr('monitor.net.others')} v={formatNumber(conns.others, 0)} color={t.textDim} /> : null}
+        {fwOn && !fwDenied ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            <Lumo pose="shield" size={40} />
+            <Text style={{ flex: 1, fontSize: 11, color: t.textDim, lineHeight: 1.35 }}>{tr('monitor.net.allGood')}</Text>
+          </View>
+        ) : null}
       </Section>
       <Section title={tr('monitor.net.topApps')}>
         {groups.slice(0, 5).map((g) => (

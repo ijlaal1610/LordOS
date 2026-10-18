@@ -184,4 +184,61 @@ a crown and a cape as symbols of protection, freedom and control.
 - a round, kitten-like face with big, expressive eyes;
 - a small, compact fantasy-creature body.
 
-<!-- Mascot images and the pose table go here (files in brand/mascot/). -->
+Lumo is curious by nature and loyal by design: a small guardian for a greater tomorrow. It
+watches over the system quietly and shows up only when there is something worth a little warmth:
+a welcome, a job well done, a moment of calm, or a gentle hand when something goes wrong.
+
+| Front | Three-quarter | Back | Avatar |
+|:-:|:-:|:-:|:-:|
+| ![Lumo, front view](brand/mascot/png/lumo-front-512.png) | ![Lumo, three-quarter view](brand/mascot/png/lumo-three-quarter-512.png) | ![Lumo, back view](brand/mascot/png/lumo-back-512.png) | ![Lumo avatar](brand/mascot/png/lumo-avatar-256.png) |
+
+The head is big and the body small. The LordOS crown sits on top of the head, with a small
+three-lobed tuft of fur in front of its band. The violet capelet is fastened at the neck with a
+yellow gem and leaves the round white belly in view; from the back it shows a four-point star.
+
+### Poses
+
+| Pose | Name | Meaning | Where LordOS uses it |
+|:-:|---|---|---|
+| ![Lumo waving](brand/mascot/png/lumo-wave-512.png) | `lumo-wave` | Hello, welcome | The installer's welcome step and the first page of the first-login tour (Help) |
+| ![Lumo with a shield](brand/mascot/png/lumo-shield-512.png) | `lumo-shield` | Protected, all good | Monitor → Network when the firewall is on and nothing was blocked |
+| ![Lumo running](brand/mascot/png/lumo-run-512.png) | `lumo-run` | Speed, work in progress | Brand material for speed and downloads |
+| ![Lumo sleeping](brand/mascot/png/lumo-sleep-512.png) | `lumo-sleep` | Rest, energy saving, idle | Brand material for energy saving and idle |
+| ![Lumo celebrating](brand/mascot/png/lumo-celebrate-512.png) | `lumo-celebrate` | Done, success | Store → Updates when everything is up to date |
+| ![Lumo confused](brand/mascot/png/lumo-confused-512.png) | `lumo-confused` | Something went wrong, nothing here | Error and "not available" states (Calendar, Contacts, Reminders, Logs, Disks, Help, the Store's package engine) |
+
+In LordOS (real sessions on the test VM, light and dark):
+
+| First-login tour (Help) | Installer | Service not available | About |
+|:-:|:-:|:-:|:-:|
+| ![Welcome tour with Lumo waving](brand/mascot/screens/help-welcome-light.png) | ![Installer welcome with Lumo waving](brand/mascot/screens/installer-welcome-light.png) | ![Calendar not available, Lumo confused](brand/mascot/screens/calendar-unavailable-dark.png) | ![About with the Lumo avatar](brand/mascot/screens/about-dark.png) |
+
+In the UI, `<Lumo pose="..." size={...} />` (sdk/mascot.js) or `<EmptyState mascot="confused" />`
+draws a pose; `<Lumo pose="avatar" size={20} />` draws the avatar (About). One Lumo per view at most,
+in outcome states, never in "nothing selected" panes.
+
+### Palette
+
+| Colour | Hex | Use |
+|---|---|---|
+| Outline | `#2A2366` | thin dark-indigo outline (3.4 px on silhouettes, 2.2 px inside, on a 512 canvas) |
+| Fur | `#FFFFFF` → `#E9E4FF` → `#7C78EE` | white face and belly, lavender shading, periwinkle tufts |
+| Violet highlights | `#7C5CFF` | ear tips, tail tip, cape |
+| Cape | `#7C5CFF` → `#5B3FE0` | capelet gradient; lining `#4C31C9` → `#3B24A6`; sheen `#9B6BFF` |
+| Eyes | `#0B0833` → `#3A2BA0` | irises, violet rim light below, white highlights |
+| Paws | `#5550C8` → `#2E2984` | dark-indigo paws with toe lines |
+| Blush and mouth | `#FF8FAB`, `#B42E55`, `#FF8098` | cheeks, mouth, tongue |
+| Gems | `#FFF1A8`, `#FFD60A`, `#FFC300`, `#FFB000`, `#FFE45C` | the crown's and the clasp's facets |
+
+### Do's and don'ts
+
+- Do use the files in `assets/brand/mascot/` or their renders; change `tools/gen-mascot.py` or
+  `assets/brand/mascot/src/lumo-parts.svg` and regenerate, so every pose stays the same character.
+- Do keep Lumo small and occasional: one per view, in welcome, success, security and error states.
+- Do keep the outline: it is what makes Lumo read on dark backgrounds.
+- Don't distort, stretch, rotate or crop Lumo (the avatar is the only crop).
+- Don't recolour the crown or its gems; it is the LordOS crown.
+- Don't change the cape's colour: it stays violet.
+- Don't give Lumo a long snout, a long tail or a big body; don't make it look like another
+  project's mascot.
+- Don't trace or rebuild Lumo from raster images or screenshots.

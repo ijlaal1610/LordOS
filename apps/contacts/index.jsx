@@ -146,7 +146,7 @@ export default function ContactsApp() {
       </View>
       <View style={{ flex: 1 }}>
         {unavailable ? (
-          <EmptyState icon={<PersonGlyph size={44} color={th.textDim} />} title={t('contacts.unavailable')} hint={t('contacts.unavailableHint')} />
+          <EmptyState mascot="confused" title={t('contacts.unavailable')} hint={t('contacts.unavailableHint')} />
         ) : draft ? (
           <Editor key={draft._new ? 'new' : keyOf(draft)} contact={draft} groups={groups} onCancel={() => setDraft(null)} onSave={saveDraft}
             onDelete={draft._new ? null : () => setSheet({ confirm: draft })} />

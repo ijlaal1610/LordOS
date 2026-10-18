@@ -109,6 +109,7 @@
   "net.connections": "Conexiones",
   "net.allowed": "Permitidas",
   "net.denied": "Denegadas",
+  "net.allGood": "Nada bloqueado. Lumo está de guardia.",
   "net.deniedNone": "0 (sin reglas todavía)",
   "net.incoming": "Entrantes",
   "net.listening": "En escucha",

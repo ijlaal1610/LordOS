@@ -188,7 +188,7 @@ export default function CalendarApp() {
           </ToolbarGroup>
         </View>
         {unavailable ? (
-          <EmptyState icon="▦" title={t('calendar.unavailable')} hint={t('calendar.unavailableHint')} />
+          <EmptyState mascot="confused" title={t('calendar.unavailable')} hint={t('calendar.unavailableHint')} />
         ) : view === 'month' ? (
           <MonthGrid cursor={cursor} days={days} cals={cals} now={now} onOpen={(ev) => setSheet({ ev })}
             onSlot={(d) => newEvent(d, 9 * 60)} onDay={(d) => { setCursor(sod(d).getTime()); setView('day'); }} />

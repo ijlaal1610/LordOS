@@ -59,7 +59,7 @@ for d in themes/*/; do
     install -m 644 "$d/theme.json" "$d/theme.bundle.js" "$L/themes/$n/"
     [ -d "$d/assets" ] && cp -r "$d/assets" "$L/themes/$n/"
 done
-cp -r assets/fonts assets/locales assets/shell assets/icons assets/monitor assets/help "$L/assets/"
+cp -r assets/fonts assets/locales assets/shell assets/icons assets/mascot assets/monitor assets/help "$L/assets/"
 # each isolated app's process (lord-server --app) loads its runtime from here
 [ -f assets/app-host.bundle.js ] || { echo "missing assets/app-host.bundle.js (npm run build)" >&2; exit 1; }
 install -m 644 assets/app-host.bundle.js "$L/assets/app-host.bundle.js"
@@ -86,13 +86,30 @@ Upstream-Name: LordOS
 Source: https://github.com/lordbasex/LordOS
 
 Files: *
-Copyright: LordOS
-License: proprietary-or-tbd
- LordOS's license is not defined yet (see the repository).
+Copyright: 2026 Federico Pereira and the LordOS contributors
+License: Expat
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
 
 Files: usr/lib/lordos/assets/fonts/*
 License: OFL-1.1
- Inter and JetBrains Mono: SIL Open Font License 1.1.
+ Inter, JetBrains Mono and Plus Jakarta Sans: SIL Open Font License 1.1 (each
+ font's license text ships next to it, *-LICENSE.txt).
  On Debian: /usr/share/common-licenses does not include it; see https://openfontlicense.org
 
 Files: usr/lib/lordos/assets/monitor/geoip-country.mmdb.xz

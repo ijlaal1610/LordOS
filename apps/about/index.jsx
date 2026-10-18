@@ -1,6 +1,6 @@
 // About LordOS: real system data (/proc) and display server stats.
 import { version as reactVersion } from 'react';
-import { View, Text, LordOSLogo, LordOSWordmark, screen, lordosVersion, useTheme, useSystemInfo, useServerStats, formatBytes, formatDuration, formatNumber, typeScale, t as tr } from '@lordos/sdk';
+import { View, Text, LordOSLogo, LordOSWordmark, Lumo, screen, lordosVersion, useTheme, useSystemInfo, useServerStats, formatBytes, formatDuration, formatNumber, typeScale, t as tr } from '@lordos/sdk';
 
 export function Icon({ size }) {
   return <LordOSLogo size={size} />;
@@ -48,7 +48,10 @@ export default function About() {
         <InfoRow k={tr('about.render')} v={tr('about.renderValue', { ms: formatNumber(st.layoutMs + st.paintMs, 1), count: st.nodes })} />
       </View>
       <View style={{ flex: 1, minHeight: 12 }} />
-      <Text style={{ fontSize: typeScale.caption, color: t.textDim, textAlign: 'center', lineHeight: 1.4, maxWidth: 360 }}>{tr('about.credits')}</Text>
+      <View style={{ alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24 }}>
+        <Lumo pose="avatar" size={24} />
+        <Text style={{ flex: 1, fontSize: typeScale.caption, color: t.textDim, textAlign: 'start', lineHeight: 1.4 }}>{tr('about.credits')}</Text>
+      </View>
     </View>
   );
 }

@@ -192,7 +192,7 @@ function Discover({ query }) {
   const [cat, setCat] = useState('Utility');
   const [open, setOpen] = useState(null);
   useEffect(() => setOpen(null), [query]);
-  if (!available()) return h(EmptyState, { icon: 'ⓘ', title: t('store.debian.unavailable'), style: { minHeight: 360 } });
+  if (!available()) return h(EmptyState, { mascot: 'confused', title: t('store.debian.unavailable'), style: { minHeight: 360 } });
   if (!ready()) {
     return h(View, { style: { gap: 12 } }, h(Progress),
       h(EmptyState, { icon: h(StoreGlyph), title: t('store.debian.noIndexTitle'), hint: t('store.debian.noIndex'), style: { minHeight: 380 },
@@ -238,7 +238,7 @@ function Updates() {
     return available()
       ? h(EmptyState, { icon: h(StoreGlyph), title: t('store.debian.noIndexTitle'), hint: t('store.debian.noIndex'), style: { minHeight: 380 },
         action: h(Button, { primary: true, label: t('store.debian.update'), onClick: () => !job && runJob('pkg-update', '', t('store.job.update')) }) })
-      : h(EmptyState, { icon: 'ⓘ', title: t('store.debian.unavailable'), style: { minHeight: 360 } });
+      : h(EmptyState, { mascot: 'confused', title: t('store.debian.unavailable'), style: { minHeight: 360 } });
   }
   const ups = lord.pkg.upgrades();
   return h(View, { style: { gap: 12 } },
@@ -255,7 +255,7 @@ function Updates() {
           const extra = plan.items.some((i) => i.action === 'remove');
           runJob('pkg-upgrade', extra ? '--allow-remove' : '', t('store.job.upgrade')); setPlan(null);
         } }))),
-    ups.length === 0 ? h(EmptyState, { icon: '✓', title: t('store.updates.none'), style: { minHeight: 300 } }) : null,
+    ups.length === 0 ? h(EmptyState, { mascot: 'celebrate', title: t('store.updates.none'), style: { minHeight: 300 } }) : null,
     ...ups.map((u) => h(View, { key: u.name, style: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 } },
       h(PkgIcon, { name: u.name, size: 32 }),
       h(View, { style: { flex: 1, minWidth: 0, gap: 2 } },

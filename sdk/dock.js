@@ -95,7 +95,7 @@ export function useDockEntries(defaults = [], opts = {}) {
     groups.get(k).push(w);
   }
   const entry = (id, a, wins) => ({
-    id, name: a?.name || windowTitle(wins[0]) || id, Icon: a?.Icon || (wins[0] ? windowIcon(wins[0]) : ({ size }) => h(LetterIcon, { size, name: id })),
+    id, name: a?.name || windowTitle(wins[0]) || id, Icon: a?.Icon || (wins[0] ? windowIcon(wins[0], getApp) : ({ size }) => h(LetterIcon, { size, name: id })),
     windows: wins, pinned: pinned.includes(id), running: wins.length > 0, focused: wins.some((w) => w.id === focused), app: a,
   });
   const out = [];

@@ -4,7 +4,7 @@
 // (validates everything again on the root side) and install-reboot. See docs/ISO.md.
 import {
   View, Text, Button, TextInput, ScrollView, Toggle, Segmented, SearchField, Hairline, GroupBox, FormRow, useTheme, useLocale, useStore, createStore,
-  admin, keyboard, languages, setLanguage, formatBytes, locale, wm, useAppWindow, typeScale, statusText,
+  admin, keyboard, languages, setLanguage, formatBytes, locale, wm, useAppWindow, typeScale, statusText, Lumo,
 } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 
@@ -88,8 +88,8 @@ function Welcome() {
   const t = useTheme();
   const { t: tr } = useLocale();
   return (
-    <View style={{ alignItems: 'center', gap: 12, paddingTop: 40 }}>
-      <Icon size={96} />
+    <View style={{ alignItems: 'center', gap: 12, paddingTop: 32 }}>
+      <Lumo pose="wave" size={128} />
       <Text style={{ fontSize: 26, fontWeight: 600, color: t.text, marginTop: 8 }}>{tr('installer.welcome.title')}</Text>
       <Text style={{ fontSize: 13, color: t.textDim, textAlign: 'center', maxWidth: 480, lineHeight: 1.45 }}>{tr('installer.welcome.text')}</Text>
       {!admin.available() && <Text style={{ fontSize: 12, color: '#ff453a' }}>{tr('installer.needAdmin')}</Text>}

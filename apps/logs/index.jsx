@@ -354,7 +354,7 @@ export default function Registros() {
           <Hairline edge="bottom" />
         </View>
         <View style={{ flex: 1, minHeight: 0 }}>
-          {state.error ? <EmptyState icon={<Icon size={48} />} title={tr('logs.errorTitle')} hint={state.error} />
+          {state.error ? <EmptyState mascot="confused" title={tr('logs.errorTitle')} hint={state.error} />
             : !items.length ? <EmptyState title={null} hint={state.loading ? tr('logs.loading') : tr('logs.empty')} />
             : <VirtualList items={items} selected={sel} onSelect={(i) => { setSel(i); setStick(false); }} stick={stick && sel < 0} onStick={setStick} renderRow={renderRow} />}
         </View>

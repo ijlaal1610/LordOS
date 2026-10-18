@@ -278,7 +278,7 @@ export default function Disks() {
   // pick something on open (the first removable, if any) and keep a valid selection if it disappears
   const disk = list.find((d) => d.name === sel.disk) || list.find((d) => d.removable) || list[0];
   const part = disk && sel.part ? disk.partitions.find((p) => p.name === sel.part) || null : null;
-  if (!disks.available()) return <EmptyState icon={<DisksIcon size={56} />} title={tr('disks.unavailable')} />;
+  if (!disks.available()) return <EmptyState mascot="confused" title={tr('disks.unavailable')} />;
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>
       <Sidebar list={list} sel={{ disk: disk && disk.name, part: part && part.name }} onSel={setSel} />
