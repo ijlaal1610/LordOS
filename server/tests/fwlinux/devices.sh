@@ -55,9 +55,10 @@ sleep 1.5                               # lord-netperm sees the scope and builds
 got=$(systemd-run --user --quiet --wait --pipe python3 -c "$OPEN" "$VID" 2>&1 | tail -1)
 expect EPERM "$got" "systemd-run --user (user@ union)"
 PWCG=/sys/fs/cgroup/user.slice/user-$U.slice/user@$U.service/session.slice/pipewire.service
-if [ -d "$PWCG" ]; then             # the user's PipeWire keeps the camera for the whole session
-    got=$(sudo bash -c 'echo $$ > "$0/cgroup.procs"; exec setpriv --reuid='"$U"' --regid='"$G"' --init-groups python3 -c "$1" "$2"' "$PWCG" "$OPEN" "$VID" 2>&1 | tail -1)
-    expect ok "$got" "a process in pipewire.service (exempt from the union)"
+if [ -d "$PWCG" ]; then             # no exemption a process could join: an escapee that moves itself
+    # into the user's pipewire.service (the user owns user@'s subtree, so it can) is still refused
+    got=$(systemd-run --user --scope --quiet bash -c 'echo $$ > "$0/cgroup.procs" && exec python3 -c "$1" "$2"' "$PWCG" "$OPEN" "$VID" 2>&1 | tail -1)
+    expect EPERM "$got" "an escapee that moved itself into pipewire.service"
 fi
 wait
 fwlinux_done

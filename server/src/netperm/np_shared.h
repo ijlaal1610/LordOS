@@ -15,9 +15,6 @@
  *   np_seen    LRU    NpSeenKey → u64 ns            to report only new connections
  *   np_counts  HASH   cgroup id → NpCount           allowed / denied
  *   np_events  RINGBUF                              NpEvent towards lord-netperm
- *   np_exempt  HASH   cgroup id (u64) → u32           the user's audio services (PipeWire,
- *                                                     WirePlumber) under user@<uid>: the device and
- *                                                     Bluetooth union doesn't apply to them
  *
  * Besides the network, the same per-app policy carries three device restrictions (docs/FIREWALL.md,
  * "Linux apps"): "no camera" and "no USB" (cgroup/dev, by device major) and "no Bluetooth"

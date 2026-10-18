@@ -50,7 +50,6 @@ char np_lpm6[4] SEC("maps");
 char np_seen[4] SEC("maps");
 char np_counts[4] SEC("maps");
 char np_events[4] SEC("maps");
-char np_exempt[4] SEC("maps");
 
 #define AF_INET  2
 #define AF_INET6 10
@@ -73,28 +72,6 @@ NP_INLINE NpApp *find_app(NpCfg *cfg, np_u64 *cgid) {
         if (app) { *cgid = id; return app; }
     }
     if (cfg->user_level) {
-        np_u64 uid = bpf_get_current_ancestor_cgroup_id((int)cfg->user_level);
-        if (uid) {
-            NpApp *app = bpf_map_lookup_elem(&np_union, &uid);
-            if (app) { *cgid = uid; return app; }
-        }
-    }
-    return 0;
-}
-
-/* The same for the device and Bluetooth restrictions, with one difference: under user@<uid> the
- * user's own audio services (PipeWire, WirePlumber: np_exempt, a service at level
- * cfg->user_level + 2) are left out of the union, so a restricted app running doesn't take the
- * camera or Bluetooth audio away from the whole session. */
-NP_INLINE NpApp *find_dev_app(NpCfg *cfg, np_u64 *cgid) {
-    np_u64 id = bpf_get_current_ancestor_cgroup_id((int)cfg->level);
-    if (id) {
-        NpApp *app = bpf_map_lookup_elem(&np_apps, &id);
-        if (app) { *cgid = id; return app; }
-    }
-    if (cfg->user_level) {
-        np_u64 svc = bpf_get_current_ancestor_cgroup_id((int)cfg->user_level + 2);
-        if (svc && bpf_map_lookup_elem(&np_exempt, &svc)) return 0;
         np_u64 uid = bpf_get_current_ancestor_cgroup_id((int)cfg->user_level);
         if (uid) {
             NpApp *app = bpf_map_lookup_elem(&np_union, &uid);
@@ -299,6 +276,11 @@ NP_INLINE void report_dev(np_u64 cgid, int dir, np_u32 major, np_u32 minor, np_u
  * open() and mknod() of a device node; 1 = allow, 0 = EPERM. Programs attached higher up (systemd's
  * DeviceAllow) still apply: the kernel allows only what all of them allow. Only the devices of
  * np_dev_restriction are ever denied, and only to a restricted app. */
+/* Under user@<uid> the union applies to every process, PipeWire and WirePlumber included: the
+ * user owns that subtree and can move any of their processes into any of its cgroups, so an
+ * exemption by cgroup would be an open door. The cost (docs/FIREWALL.md): while a camera- or
+ * Bluetooth-restricted app runs, the user's own services can't open a new camera or create a new
+ * Bluetooth socket either; what they already have open keeps working. */
 SEC("cgroup/dev") int np_dev(struct bpf_cgroup_dev_ctx *ctx) {
     np_u32 zero = 0;
     NpCfg *cfg = bpf_map_lookup_elem(&np_cfg, &zero);
@@ -306,7 +288,7 @@ SEC("cgroup/dev") int np_dev(struct bpf_cgroup_dev_ctx *ctx) {
     np_u32 need = np_dev_restriction(ctx->access_type & 0xffff, ctx->major, cfg->hidraw_major);
     if (!need) return 1;
     np_u64 cgid = 0;
-    NpApp *app = find_dev_app(cfg, &cgid);
+    NpApp *app = find_app(cfg, &cgid);
     if (!app || !(app->flags & need)) return 1;
     report_dev(cgid, NP_D_DEV, ctx->major, ctx->minor, need);
     return 0;
@@ -323,7 +305,7 @@ SEC("cgroup/lsm_socket_create") int np_bt_socket(unsigned long long *ctx) {
     NpCfg *cfg = bpf_map_lookup_elem(&np_cfg, &zero);
     if (!cfg || !cfg->on) return 1;
     np_u64 cgid = 0;
-    NpApp *app = find_dev_app(cfg, &cgid);
+    NpApp *app = find_app(cfg, &cgid);
     if (!app || !(app->flags & NP_R_NO_BLUETOOTH)) return 1;
     report_dev(cgid, NP_D_BT, 0, 0, NP_R_NO_BLUETOOTH);
     return 0;

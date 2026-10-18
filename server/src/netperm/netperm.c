@@ -80,8 +80,6 @@ typedef struct {
     int nsc, cap;
     int dirty_counts;
     uint64_t user_cg;                   /* id of user@<uid>.service, or 0 if it isn't there (nor attached) */
-    uint64_t exempt[8];                 /* the user's audio services in np_exempt (see sync_exempt) */
-    int nexempt;
     int ulinks[16], nulinks;            /* the programs attached to user@<uid>.service */
 } Session;
 
@@ -103,7 +101,7 @@ typedef struct {
 static struct {
     int bpf_ok;
     char bpf_err[200];                  /* a code line (errcode.h): the firewall page shows it translated */
-    int m_np_cfg, m_np_apps, m_np_union, m_np_lpm4, m_np_lpm6, m_np_seen, m_np_counts, m_np_events, m_np_exempt;
+    int m_np_cfg, m_np_apps, m_np_union, m_np_lpm4, m_np_lpm6, m_np_seen, m_np_counts, m_np_events;
     int dev_ok, bt_ok;                  /* the device / Bluetooth programs loaded */
     int links[16], nlinks;
     int progs[16], nprogs;
@@ -210,7 +208,6 @@ static int map_fd(const char *name) {
     if (!strcmp(name, "np_seen")) return G.m_np_seen;
     if (!strcmp(name, "np_counts")) return G.m_np_counts;
     if (!strcmp(name, "np_events")) return G.m_np_events;
-    if (!strcmp(name, "np_exempt")) return G.m_np_exempt;
     return -1;
 }
 #endif
@@ -323,35 +320,6 @@ static void sync_union(Session *s) {
     }
 }
 
-/* The user's audio services stay out of the device and Bluetooth union (np.bpf.c, find_dev_app):
- * PipeWire opens the cameras for its video nodes and WirePlumber the Bluetooth audio sockets, for
- * the whole session. Their cgroups (user@<uid>.service/session.slice/<unit>) change id when they
- * restart, so this runs on every pass. Fixed unit names, nothing from the user. */
-static void sync_exempt(Session *s) {
-    static const char *const units[] = { "pipewire.service", "pipewire-pulse.service", "wireplumber.service", "filter-chain.service" };
-    uint64_t now[8];
-    int n = 0;
-    if (s->user_cg) {
-        char path[200];
-        snprintf(path, sizeof path, CG_ROOT "/" CG_USER "/user-%u.slice/user@%u.service/session.slice", s->uid, s->uid);
-        int dfd = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-        for (size_t i = 0; dfd >= 0 && i < sizeof units / sizeof units[0] && n < 8; i++) {
-            uint64_t id = bpfs_cgroup_id(dfd, units[i]);
-            if (id) now[n++] = id;
-        }
-        if (dfd >= 0) close(dfd);
-    }
-    for (int i = 0; i < s->nexempt; i++) {
-        int keep = 0;
-        for (int k = 0; k < n; k++) keep |= now[k] == s->exempt[i];
-        if (!keep) bpfs_map_delete(G.m_np_exempt, &s->exempt[i]);
-    }
-    uint32_t one = 1;
-    for (int k = 0; k < n; k++) bpfs_map_update(G.m_np_exempt, &now[k], &one, BPF_ANY);
-    memcpy(s->exempt, now, sizeof now);
-    s->nexempt = n;
-}
-
 static void drop_user_links(Session *s) {
     for (int i = 0; i < s->nulinks; i++) close(s->ulinks[i]);
     s->nulinks = 0;
@@ -441,7 +409,6 @@ static void scan_session(Session *s) {
     }
     sync_user_scope(s);                 /* attaches/re-attaches user@ and recompiles the union */
     sync_union(s);
-    if (G.bpf_ok) sync_exempt(s);
 }
 
 static void drop_session(int k) {
@@ -449,7 +416,6 @@ static void drop_session(int k) {
     for (int i = 0; i < s->nsc; i++) drop_scope(&s->sc[i]);
     drop_user_links(s);
     if (s->user_cg) { bpfs_map_delete(G.m_np_union, &s->user_cg); bpfs_map_delete(G.m_np_counts, &s->user_cg); }
-    if (G.bpf_ok) for (int i = 0; i < s->nexempt; i++) bpfs_map_delete(G.m_np_exempt, &s->exempt[i]);
     if (s->wd >= 0) inotify_rm_watch(G.ifd, s->wd);
     free(s->sc);
     fw_store_free(s->store);
@@ -730,7 +696,7 @@ static int bpf_setup(void) {
 #define NP_MKMAP(n, t, k, v, m, f) G.m_##n = bpfs_map_create(t, k, v, m, f, #n);
     NP_MAPS(NP_MKMAP)
 #undef NP_MKMAP
-    if (G.m_np_exempt < 0 || G.m_np_cfg < 0 || G.m_np_apps < 0 || G.m_np_union < 0 || G.m_np_lpm4 < 0 || G.m_np_lpm6 < 0 || G.m_np_seen < 0 || G.m_np_counts < 0 || G.m_np_events < 0) {
+    if (G.m_np_cfg < 0 || G.m_np_apps < 0 || G.m_np_union < 0 || G.m_np_lpm4 < 0 || G.m_np_lpm6 < 0 || G.m_np_seen < 0 || G.m_np_counts < 0 || G.m_np_events < 0) {
         lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfMaps", "errno", lerr_errno(errno), NULL);
         return -1;
     }
