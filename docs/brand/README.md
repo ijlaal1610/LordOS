@@ -154,7 +154,7 @@ the bar.
 | Progress bar | 200 × 6 px, 56 px under the crown; track white at 12 %; fill `#B46CFF` → `#6E4BFF` with round caps; eased, never goes back |
 | Wordmark | the lockup's outlined Plus Jakarta Sans text, 12 px high, white at 55 %, 28 px under the bar |
 | Password field | 280 × 40 px, 12 px radius, white at 7 % with a 22 % hairline; white dots and a small lock above |
-| Boot menu (GRUB) | the same background with a soft glow, the crown at 96 px, entries in Inter 16 (`#B9B6D9`, selected white on a rounded violet band `#6E4BFF` at 34 % with a `#B46CFF` hairline), the bar as the countdown |
+| Boot menu (GRUB) | the same background with a soft glow, the crown at 96 px, entries in Inter 16 (`#B9B6D9`, selected white on a rounded violet band `#6E4BFF` at 34 % with a `#B46CFF` hairline); no countdown bar (GRUB draws it a text line high) |
 
 The files are generated, never edited by hand: `python3 tools/boot/gen-boot-assets.py` renders
 `tools/boot/plymouth/lordos/*.png` (1x and @2x) and `tools/iso/grub/lordos/*.png` from

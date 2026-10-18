@@ -40,18 +40,8 @@ terminal-box: "terminal_box_*.png"
     scrollbar = false
 }
 
-# the countdown: a thin bar in the splash colours (GRUB draws it square)
-+ progress_bar {
-    id = "__timeout__"
-    left = 50%-100
-    top = 50%+210
-    width = 200
-    height = 6
-    show_text = false
-    bg_color = "#24243A"
-    fg_color = "#8B5CFF"
-    border_color = "#24243A"
-}
+# no countdown bar: GRUB draws its progress bar at least one text line high, which doesn't match
+# the splash's thin bar; the timeout still runs
 
 + label {
     left = 0

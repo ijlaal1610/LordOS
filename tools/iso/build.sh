@@ -169,7 +169,7 @@ mksquashfs "$CH" "$IMG/live/filesystem.squashfs" -comp xz -Xbcj x86 -b 1M -noapp
 
 # 5. grub (BIOS + UEFI in the same hybrid ISO). GRUB menus are English; the entries with a
 # language name pass lordos.lang to lordos-live-prep (English is the default).
-# The LordOS boot menu theme (dark, small crown, the splash's bar as the countdown); "safe mode" boots
+# The LordOS boot menu theme (dark, small crown, rounded selection); "safe mode" boots
 # without the splash (text), the other entries with it.
 install -d "$IMG/boot/grub/themes/lordos"
 install -m 644 tools/iso/grub/lordos/theme.txt tools/iso/grub/lordos/*.png tools/iso/grub/lordos/*.pf2 "$IMG/boot/grub/themes/lordos/"

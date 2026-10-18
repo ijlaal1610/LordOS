@@ -56,7 +56,7 @@ text in between.
 
 - **Boot menu:** the GRUB theme `tools/iso/grub/lordos/` (`theme.txt`, images and Inter as GRUB
   fonts): the navy background, a small crown, the entries in the brand colours with the selected one
-  on a rounded violet band, and the countdown as the splash's bar. The ISO copies it to
+  on a rounded violet band,. The ISO copies it to
   `/boot/grub/themes/lordos/`; the package installs it in `/usr/share/grub/themes/lordos/` (amd64
   only) and the disk installer sets `GRUB_THEME` to it. The entries (English, Español, Português,
   safe mode, copy to RAM) are the same as before.
@@ -75,6 +75,21 @@ text in between.
   lord-sessiond takes it, its last frame stays until LordOS's first frame replaces it, and only then
   is Plymouth ended with `--retain-splash`.
 - **On Debian (install.sh):** optional and asked for; see `INSTALL-DEBIAN.md`.
+
+**Tested on VM 117** (OVMF, `vga: virtio`, 2026-10-18), recording the screen at 4 frames per second
+over QMP (`tools/demo/record.py`): the boot menu, ~2.5 s of black while the kernel loads virtio-gpu
+and Plymouth starts, the splash from ~19 s, and at ~43 s the desktop (autologin) replaces the
+splash directly: no black or console frame between the last splash frame and the first LordOS one.
+The journal (of the first test boot, the same hand-off code) shows the chain: `lordos.service` started (21.2 s), lord-sessiond "first frame on the
+monitor" (27.9 s), `lordos-splash-quit.service` finished, then `plymouth-quit.service`.
+
+| Last splash frame | Next frame: LordOS | The journal |
+|---|---|---|
+| ![Splash before the hand-off](boot/iso-handoff-1-splash.png) | ![Desktop after the hand-off](boot/iso-handoff-2-desktop.png) | ![Journal](boot/iso-handoff-journal.png) |
+
+Not done yet: while GRUB loads the kernel it clears its terminal area to black for about a second
+(visible in the recording); and an encrypted-disk (LUKS) boot was not tested on a VM, only the
+static preview of the password field (`docs/boot/splash-preview-password.png`).
 
 The images come from `python3 tools/boot/gen-boot-assets.py` (rsvg-convert; `--preview` also
 writes the static previews in `docs/boot/`). The GRUB fonts are made on a Debian with `grub-common`:
