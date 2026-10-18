@@ -1,4 +1,4 @@
-/* shape_use.c — Universal Shaping Engine (Microsoft's, as HarfBuzz implements it): the
+/* shape_use.c — Universal Shaping Engine (the OpenType shaping model, as HarfBuzz implements it): the
  * shaping of the South and Southeast Asian scripts that have no shaper of their own (Tibetan,
  * Sinhala, Balinese, Javanese, Sundanese, Buginese, Tai Tham, Chakma, Brahmi, Limbu, Lepcha…) and of
  * some joining ones (Mongolian, N'Ko, Adlam):

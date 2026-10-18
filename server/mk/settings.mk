@@ -1,4 +1,4 @@
-# Settings' hardware pages (src/hw, docs/SETTINGS.md): displays (EDID, modes, Night Shift),
+# Settings' hardware pages (src/hw, docs/SETTINGS.md): displays (EDID, modes, Night Light),
 # Bluetooth (BlueZ over our own D-Bus client), battery and power, date and time, default apps.
 # Objects are added to lord-server as extra prerequisites ($^ in its link rule takes them).
 HW_SRC := src/hw/edid.c src/hw/modes.c src/hw/night.c src/hw/mimeapps.c src/hw/power.c src/hw/jbuf.c src/hw/display.c \

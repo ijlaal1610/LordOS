@@ -13,7 +13,7 @@ let registry = new Map();
 let builtins = [];
 let themeApps = [];
 let packageApps = [];
-// Changes when an app is installed or removed (to redraw the Launchpad).
+// Changes when an app is installed or removed (to redraw the app launcher).
 export const appRegistry = createStore(0);
 const rebuild = () => {
   registry = new Map([...themeApps, ...packageApps, ...builtins].map((a) => [a.id, a]));
@@ -76,7 +76,7 @@ export function configureWindows({ apps, workArea, chrome: c }) {
   if (c) chrome = c;
 }
 
-// SDK internal apps (they don't appear in the Launchpad): 'linux' = Wayland windows.
+// SDK internal apps (they don't appear in the app launcher): 'linux' = Wayland windows.
 export function registerBuiltinApp(app) {
   builtins = [...builtins.filter((a) => a.id !== app.id), app];
   registry.set(app.id, app);
@@ -202,7 +202,7 @@ export const wm = {
     const vis = windows.get().filter((w) => !w.minimized);
     return vis.length ? vis[vis.length - 1].id : null;
   },
-  // Protected window (like macOS capture protection): it looks normal on screen, but
+  // Protected window (capture protection): it looks normal on screen, but
   // comes out black in screenshots, recordings and remote desktop (docs/MEDIA.md). Used, for
   // example, by a password app.
   setProtected: (id, on = true) => patch(id, { protected: !!on }),

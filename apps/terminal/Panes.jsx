@@ -7,8 +7,8 @@ import { getProfile } from './profiles.js';
 
 export const paneNodes = new Map();     // sid → instancia del nodo (para navegar entre paneles)
 
-// Ctrl/❖+clic: carpetas y archivos de la carpeta personal se abren en Archivos (como el
-// "semantic history" de iTerm2); los enlaces web se copian (LordOS aún no tiene navegador).
+// Ctrl/❖+clic: carpetas y archivos de la carpeta personal se abren en Archivos ("semantic
+// history"); web links are copied (LordOS has no browser yet).
 function openLink(wid, sid, url) {
   const home = fs.home();
   let path = url.startsWith('file://') ? decodeURIComponent(url.replace(/^file:\/\/[^/]*/, '')) : url;

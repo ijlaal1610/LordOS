@@ -147,7 +147,7 @@ static JSValue f_fs_list(JSContext *c, JSValueConst this_val, int argc, JSValueC
 }
 
 /* lord.fs.read(path, 'text' | 'binary') — content of a regular file in $HOME
- * (UTF-8 text or ArrayBuffer). Used, for example, by the iTerm2 profile importer. */
+ * (UTF-8 text or ArrayBuffer). Used, for example, by the Terminal's profile importer. */
 static JSValue f_fs_read(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     const char *p = JS_ToCString(c, argv[0]);

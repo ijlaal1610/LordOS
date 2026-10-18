@@ -37,8 +37,8 @@
   "net.unmanaged": "{name} is managed by the system again",
   "net.up": "{name} turned on",
   "ovpn.ignoredWindows": {
-    "one": "{count} Windows-only option ignored",
-    "other": "{count} Windows-only options ignored"
+    "one": "{count} option for other operating systems ignored",
+    "other": "{count} options for other operating systems ignored"
   },
   "pkg.componentMissing": "{component} is missing ({suite})",
   "pkg.done": "{installed} installed, {upgraded} upgraded, {removed} removed",

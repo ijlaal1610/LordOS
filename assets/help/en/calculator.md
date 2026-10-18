@@ -14,5 +14,5 @@ parentheses, with the usual precedence.
 - **⌫** deletes the last character and **C** (or Esc) clears everything.
 - It uses your region's decimal separator.
 
-For a quick calculation you don't need to open it: type it in [Spotlight](help:spotlight)
+For a quick calculation you don't need to open it: type it in [Search](help:spotlight)
 (**❖Space**), which also converts units.

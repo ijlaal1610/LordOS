@@ -10,7 +10,7 @@ keywords: ayuda, manual, consejos, recorrido, bienvenida
 Esta app. Tiene un artículo por cada app y función de LordOS.
 
 - **Buscar:** el campo de arriba busca en los títulos y en el texto. Los artículos también
-  aparecen en [Spotlight](help:spotlight) (**❖Espacio**).
+  aparecen en [Buscar](help:spotlight) (**❖Espacio**).
 - **Enlaces:** algunos abren directamente la sección de Ajustes que hace falta, una app u otro
   artículo.
 - **Abrir la app:** en el artículo de una app, el botón de arriba la abre.

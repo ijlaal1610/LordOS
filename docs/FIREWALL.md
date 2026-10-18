@@ -1,7 +1,7 @@
 # Per-app firewall
 
 The owner of the machine decides which of their apps may use the network, just like the "network
-access" permission on macOS or Android. It is built in steps:
+access" permission on Android and other systems. It is built in steps:
 
 | Step | What | Status |
 |---|---|---|
@@ -100,7 +100,7 @@ A valid id:
 
 An app is in only one list: trusting it removes it from the restricted ones, and restricting it
 removes the trust. Non-network restrictions are queried with `fw_blocks(app, flag)`. They beat a
-TCC permission granted in `permisos.json`: a restricted app with no camera doesn't get it even if
+per-app permission granted in `permisos.json`: a restricted app with no camera doesn't get it even if
 it was given once.
 
 ### Precedence
@@ -184,7 +184,7 @@ Each app has its own index. Finding the app is a hash table lookup (O(1)), and i
 - **Caps:** 65,536 rules, 4096 apps with state and a 4 MB file.
 
 In the test, with 50,000 rules from 500 apps, a decision with one name and one IPv4 takes
-0.17 µs on macOS (clang -O2) and 0.21 µs on Linux (gcc 14 -O2).
+0.17 µs on the development machine (clang -O2) and 0.21 µs on Linux (gcc 14 -O2).
 
 ### File
 
@@ -283,7 +283,7 @@ Otherwise, an app with its own DNS server could claim that `permitido.com` is an
 - use with the rules (`*.doubleclick.net` behind a CNAME);
 - 200,000 random or mutated packets, each one in its own heap block.
 
-During development they were also run with `-fsanitize=address,undefined`, with clang on macOS and
+During development they were also run with `-fsanitize=address,undefined`, with clang on the development machine and
 with gcc 14 on Linux.
 
 ## Step 2: `lord-netperm`, the rules in the kernel

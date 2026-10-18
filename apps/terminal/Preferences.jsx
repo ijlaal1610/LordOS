@@ -1,5 +1,5 @@
-// Preferences.jsx — the profile editor (like iTerm2's Settings → Profiles), configurable shortcuts
-// and the iTerm2 profile import. Laid out as a macOS preferences pane (docs/DESIGN.md): a sidebar
+// Preferences.jsx — the profile editor, configurable shortcuts
+// and the profile import from other terminal emulators. Laid out as a preferences pane (docs/DESIGN.md): a sidebar
 // with the profiles and the sections, and a form with a right-aligned label column that stacks the
 // labels above the controls when the window is narrow.
 import {
@@ -167,7 +167,7 @@ function KeyMapEditor({ t, list, onChange }) {
   );
 }
 
-// ---- import from iTerm2 ----
+// ---- import from other terminal emulators ----
 
 function fontsApi() {
   const list = lord.fonts.list();

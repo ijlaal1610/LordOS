@@ -11,7 +11,7 @@ Firefox, Electron— se abren como ventanas más del escritorio.
 
 - **Instalarlas:** desde la [Tienda](help:store), que trae las apps de Debian con sus íconos y
   descripciones.
-- **Abrirlas:** el Launchpad, el Dock o Spotlight, como cualquier app.
+- **Abrirlas:** Aplicaciones, el Dock o Buscar, como cualquier app.
 - **Abrir un archivo con una de ellas:** en [Archivos](help:files), clic derecho → «Abrir con».
 - **Portapapeles:** lo que copiás en una app Linux se pega en LordOS y al revés, también imágenes.
 - **Teclado y touchpad:** reciben las teclas (las combinaciones con ❖ siguen siendo de LordOS) y

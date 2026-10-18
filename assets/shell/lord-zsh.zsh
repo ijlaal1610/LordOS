@@ -1,4 +1,4 @@
-# lord-zsh.zsh — integración de LordOS Terminal con zsh (equivalente a la de iTerm2).
+# lord-zsh.zsh — LordOS Terminal shell integration for zsh (the same escape sequences popular terminal emulators use).
 # Mismas secuencias que lord-bash.sh: OSC 133 A/B/C/D (marcas de prompt y comandos),
 # OSC 7 (directorio) y OSC 1337 RemoteHost (usuario@host, para el cambio automático de perfil).
 

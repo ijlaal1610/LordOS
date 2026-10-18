@@ -16,7 +16,7 @@ LordOS maneja los touchpads y las pantallas táctiles con su propio controlador.
 | Dos dedos | Desplazar, con inercia; tocar con dos dedos es clic derecho |
 | Pellizcar | Acercar y alejar (Fotos, Visor de PDF, mapas) |
 | Tres dedos a los costados | Cambiar de ventana |
-| Tres dedos arriba / abajo | Abrir / cerrar el Launchpad |
+| Tres dedos arriba / abajo | Abrir / cerrar Aplicaciones |
 
 En [Ajustes → Trackpad](settings:trackpad) (aparece solo si hay un touchpad) elegís la velocidad,
 el sentido del desplazamiento, tocar para hacer clic, si los gestos son con tres o cuatro dedos y

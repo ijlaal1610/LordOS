@@ -14,5 +14,5 @@ precedência de sempre.
 - **⌫** apaga o último caractere e **C** (ou Esc) apaga tudo.
 - Usa o separador decimal da sua região.
 
-Para uma conta rápida nem precisa abri-la: digite no [Spotlight](help:spotlight) (**❖Espaço**),
+Para uma conta rápida nem precisa abri-la: digite em [Pesquisar](help:spotlight) (**❖Espaço**),
 que também converte unidades.

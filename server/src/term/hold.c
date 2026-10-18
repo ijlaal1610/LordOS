@@ -1,4 +1,4 @@
-/* hold.c — sessions that survive a lord-server restart (like iTerm2's "session server").
+/* hold.c — sessions that survive a lord-server restart (a session server).
  *
  * For each session a holder is launched: the same binary re-executed with --term-holder,
  * with no privileges and none of the server's memory. It only keeps the PTY master open (so

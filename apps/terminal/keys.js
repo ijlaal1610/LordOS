@@ -1,9 +1,9 @@
-// keys.js — atajos de la Terminal. "Super" cumple el papel de Cmd en iTerm2; casi todos
+// keys.js — Terminal shortcuts. "Super" is the main modifier; almost all of them
 // tienen además una variante Ctrl+Shift, como en las terminales de Linux.
 // Las teclas se identifican por su posición física (código evdev), no por la letra que
 // produce la distribución, para que funcionen igual en latam y us.
 //
-// Configurables (Preferencias → Teclas), como en iTerm2:
+// Configurable (Preferences → Keys):
 //   · terminal.shortcuts { acción: [combinaciones] } reemplaza los atajos de una acción.
 //   · terminal.keyMap y perfil.keyMap: [{ combo, action, param }] con action = 'text' (enviar
 //     texto, admite \n \t \e \a \\ \xHH), 'escape' (Esc + texto), 'hex' ("0x1b 0x5b 0x41"),

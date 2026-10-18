@@ -145,7 +145,7 @@ static void allow_url(Allow *list, int *n, const char *url) {
     int port;
     if (!url_host(url, host, sizeof host, &port)) return;
     add_allow(list, n, host, port, 0);
-    /* CalDAV/CardDAV discovery redirects inside the same provider (iCloud → pNN-caldav.icloud.com):
+    /* CalDAV/CardDAV discovery redirects inside the same provider (to a numbered host such as pNN-caldav.<domain>):
      * allow other hosts of the same domain, HTTPS only */
     const char *dot1 = strrchr(host, '.');
     if (!dot1) return;

@@ -134,7 +134,7 @@ export function openEntry(e, ctx) {
   if (e.dir) { ctx.navigate({ type: 'dir', path: e.path }); return; }
   if (!e.trash && archive.isArchive(e.name)) { ctx.navigate({ type: 'archive', path: e.path, inner: '' }); return; }
   const list = openersFor(e, ctx.linuxApps, ctx.t);
-  if (isImage(e) && !list.some((o) => o.id !== 'editor')) { ctx.quickLook(e); return; }    // no viewer: Quick Look
+  if (isImage(e) && !list.some((o) => o.id !== 'editor')) { ctx.quickLook(e); return; }    // no viewer: Quick Preview
   if (list.length) list[0].run();
   else ctx.quickLook(e);
 }

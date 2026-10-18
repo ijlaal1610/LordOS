@@ -1,4 +1,4 @@
-// Screenshots: screen captures and screen recording (in the style of the macOS screenshot panel,
+// Screenshots: screen captures and screen recording (a floating capture panel,
 // with our own design).
 //
 // Shortcuts (global, also with a Linux app in front):

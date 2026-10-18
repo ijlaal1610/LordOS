@@ -6,7 +6,7 @@ their own. `lord-server` runs the theme with QuickJS and paints it with its C en
 
 | Theme | Style |
 |---|---|
-| `default` | Lord Default: menu bar, dock with magnification, Launchpad, Control Center |
+| `default` | Lord Default: menu bar, dock with magnification, app launcher, Control Center |
 | `classic` | Classic (**template**): taskbar, start menu, everything in a single file |
 
 ```sh
@@ -84,7 +84,7 @@ Globals: `addListener('pointermove' | 'pointerup' | 'pointerdown' | 'keydown' | 
 Three-finger swipes (or four, depending on Settings → Trackpad) belong to the desktop. The theme
 chooses what each direction does with the SDK's `registerGestureActions({ up, down, left, right })`,
 which returns the function to remove them (use it in a `useEffect`). Examples:
-- `default`: up opens the Launchpad and down closes it;
+- `default`: up opens the app launcher and down closes it;
 - `classic`: up opens the start menu and down closes it.
 
 Without a theme action, left and right switch windows and up/down do nothing.

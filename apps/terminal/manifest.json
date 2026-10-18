@@ -1,7 +1,7 @@
 {
   "id": "terminal",
   "name": "Terminal",
-  "description": "iTerm2-style native terminal: tabs, panes, profiles, search, images",
+  "description": "Native terminal: tabs, panes, profiles, search, images",
   "size": [
     860,
     540

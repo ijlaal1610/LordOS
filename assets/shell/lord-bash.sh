@@ -1,4 +1,4 @@
-# lord-bash.sh — integración de LordOS Terminal con bash (equivalente a la de iTerm2).
+# lord-bash.sh — LordOS Terminal shell integration for bash (the same escape sequences popular terminal emulators use).
 #
 # La terminal lanza `bash --rcfile lord-bash.sh -i`. Este archivo primero carga lo mismo
 # que un shell de login (/etc/profile y ~/.bash_profile, ~/.bash_login o ~/.profile) y
@@ -49,7 +49,7 @@ __lord_msg() {
     esac
 }
 
-# imgcat: muestra una imagen en la terminal (protocolo de imágenes de iTerm2, OSC 1337).
+# imgcat: shows an image in the terminal (the OSC 1337 inline-image protocol).
 #   imgcat [-w ancho] [-h alto] archivo...   (ancho/alto en celdas, "Npx", "N%" o auto)
 lord_imgcat() {
     local f w=auto h=auto

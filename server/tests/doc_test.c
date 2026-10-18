@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
         call(DQ_PDF_FIND, "{\"text\":\"the\"}", NULL, 0, 0);
         printf("times: start+confinement %.1f ms, open %.1f ms, page 1 %.1f ms, total until the image %.1f ms\n", t1 - t0, t2 - t1, t3 - t2, t3 - t0);
     } else if (!strcmp(cmd, "thumb") && argc > 3) {
-        /* Quick Look: the utility session already warm; the second run is measured */
+        /* Quick Preview: the utility session already warm; the second run is measured */
         start(helper, "util", NULL, NULL, 0);
         for (int i = 0; i < 3; i++) {
             int fd = open(argv[3], O_RDONLY | O_CLOEXEC);

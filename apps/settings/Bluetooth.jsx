@@ -58,7 +58,7 @@ export function BluetoothSettings() {
   const st = useBluetooth();
   const [err, setErr] = useState('');
   const a = st?.adapter;
-  // discovery while the page is open and Bluetooth is on (like macOS)
+  // discovery while the page is open and Bluetooth is on
   useEffect(() => {
     if (!a?.powered) return undefined;
     lord.bt.discover(true);

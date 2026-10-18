@@ -18,5 +18,5 @@ Quick notes in markdown that can also stay on the desktop as sticky notes.
 - **On the desktop:** each note can stay as a sticky note, in a color, and be pinned above windows.
 - **Delete:** the note goes to the Trash and can be restored.
 
-Notes are regular folders in `~/Notas`, with a `nota.md` inside. Spotlight finds them by title and
+Notes are regular folders in `~/Notas`, with a `nota.md` inside. Search finds them by title and
 by text.

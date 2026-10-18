@@ -87,7 +87,7 @@ export { FilePicker } from './filepicker.jsx';
 export { books as addressBooks, contacts, displayName as contactName, initials as contactInitials, ContactPhoto } from './contacts.js';
 import { startMail } from './mail.js';
 import { startReminders } from './calendar.js';
-// Settings' hardware pages (docs/SETTINGS.md): displays, Night Shift, battery, Bluetooth, idle, clock
+// Settings' hardware pages (docs/SETTINGS.md): displays, Night Light, battery, Bluetooth, idle, clock
 export {
   displays, useDisplays, applyDisplay, keepDisplay, revertDisplay, arrangeDisplay, setDisplayMirror, setMainDisplay, setCaptureAllDisplays, displayConfirm, DisplayGlyph, nightPrefs, NIGHT_DEFAULTS, nightWindow,
   nightActive, nightAmount, setNightManual, previewNight, nightTick, sunTimes, battery, useBattery, BatteryGlyph, powerPrefs, POWER_DEFAULTS,
@@ -128,7 +128,7 @@ export const session = {
   switchUser: () => typeof lord.session !== 'undefined' && lord.session.switchUser(),
 };
 
-// ❖L or ❖Ctrl+Q lock the screen (as on macOS).
+// ❖L or ❖Ctrl+Q lock the screen.
 addListener('keydown', (e) => {
   const k = String(e.base || e.key || '').toLowerCase();
   if (e.meta && !e.alt && !e.repeat && ((k === 'l' && !e.ctrl && !e.shift) || (k === 'q' && e.ctrl)) && session.managed()) session.lock();
@@ -151,7 +151,7 @@ export function startShell(element) {
   startMail();                          // new-mail notifications and passwords on demand (docs/MAIL.md)
   startReminders();                     // calendar and reminder alarms, with the apps closed
   maybeStartTour();                     // "Welcome to LordOS", the first time
-  startHardware();                      // Night Shift, idle timers, battery in the menu bar (hardware.jsx)
+  startHardware();                      // Night Light, idle timers, battery in the menu bar (hardware.jsx)
 }
 
 // Changing the language remounts the whole interface (windows, tabs and

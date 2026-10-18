@@ -1,7 +1,7 @@
 {
   "id": "files",
   "name": "Files",
-  "description": "Finder-style file browser: tabs, views, Trash and Quick Look",
+  "description": "File browser: tabs, views, Trash and Quick Preview",
   "size": [
     960,
     600

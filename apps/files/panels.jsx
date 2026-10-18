@@ -1,4 +1,4 @@
-// panels.jsx — context menu (with submenus), Quick Look, Get Info and confirm.
+// panels.jsx — context menu (with submenus), Quick Preview, Get Info and confirm.
 // All are drawn inside the window, with coordinates relative to it.
 import { View, Text, Button, ToolbarButton, Hairline, useTheme, formatBytes, formatDate, formatTime, addListener, direction, typeScale, spacing, t as tr } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
@@ -68,7 +68,7 @@ export function ContextMenu({ x, y, items, onClose, bounds }) {
   );
 }
 
-// Quick Look (Space): the image, the text or the file's card, large, in a rounded panel.
+// Quick Preview (Space): the image, the text or the file's card, large, in a rounded panel.
 export function QuickLook({ e, onClose, index, count }) {
   const t = useTheme();
   if (!e) return null;

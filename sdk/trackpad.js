@@ -2,7 +2,7 @@
 // live) and desktop actions when swiping with 3 fingers (or 4). See docs/TRACKPAD.md.
 //
 // The theme chooses what each direction does with registerGestureActions({ up, down, left, right }):
-// the default theme opens the Launchpad upwards. Without a theme action, left/right
+// the default theme opens the app launcher upwards. Without a theme action, left/right
 // switch windows (the one behind comes to the front) and up/down do nothing.
 import { useEffect } from 'react';
 import { addListener } from '@lordos/runtime';
@@ -14,7 +14,7 @@ export const TRACKPAD_DEFAULTS = {
   speed: 0.5,               // pointer speed (0..1)
   tap: true,                // tap to click
   tapDrag: true,            // tap and drag
-  natural: true,            // natural scrolling (like macOS)
+  natural: true,            // natural scrolling
   secondary: 'two-fingers', // secondary click: 'two-fingers' | 'bottom-right' | 'bottom-left'
   threeDrag: false,         // three-finger drag (swiping moves to 4 fingers)
   dwt: true,                // ignore while typing

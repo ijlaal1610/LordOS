@@ -10,7 +10,7 @@ keywords: help, manual, tips, tour, welcome
 This app. It has an article for every LordOS app and feature.
 
 - **Search:** the field at the top searches titles and text. Articles also show up in
-  [Spotlight](help:spotlight) (**❖Space**).
+  [Search](help:spotlight) (**❖Space**).
 - **Links:** some open the right Settings section, an app or another article directly.
 - **Open the app:** in an app's article, the button at the top opens it.
 - **Welcome to LordOS:** the first-login tour. Watch it again from the sidebar or from the

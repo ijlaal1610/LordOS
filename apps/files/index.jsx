@@ -1,5 +1,5 @@
-// Files — a Finder-style browser: tabs, four views (icons, list, columns and gallery), a sidebar
-// with Favorites, Locations and Tags, the freedesktop Trash, Quick Look, Get Info,
+// Files — a file browser: tabs, four views (icons, list, columns and gallery), a sidebar
+// with Favorites, Locations and Tags, the freedesktop Trash, Quick Preview, Get Info,
 // copy/cut/paste, drag and drop, and search.
 // Disk operations go through lord.fs (server/src/fsops.c); see docs/FILES.md.
 import {
@@ -68,7 +68,7 @@ function locTitle(loc, dirs) {
 
 // ---- window pieces ----
 
-// Source-list row (Finder): 28 px, accent-colored icon, a soft highlight when selected and the
+// Source-list row: 28 px, accent-colored icon, a soft highlight when selected and the
 // accent when something is dragged over it.
 function SideItem({ label, icon, selected, onClick, t, drop, hot }) {
   const [hover, setHover] = useState(false);
@@ -100,7 +100,7 @@ function useWidth(ref, initial) {
   return w;
 }
 
-// Search scope chip ("Search: Home | “Folder”"), as in the Finder's scope bar.
+// Search scope chip ("Search: Home | “Folder”"), as in a search scope bar.
 function ScopeChip({ label, on, onClick, t }) {
   return (
     <View onClick={onClick} style={{ paddingHorizontal: 10, height: 22, borderRadius: 6, justifyContent: 'center',
@@ -145,7 +145,7 @@ export default function Files() {
   const [drag, setDrag] = useState(null);                 // { paths, x, y, alt }
   const [dropTarget, setDropTarget] = useState(null);
   const [volumes, setVolumes] = useState(() => fs.volumes());
-  useEffect(() => { setTimeout(warmDocs, 800); }, []);             // PDF Quick Look without waiting for the helper
+  useEffect(() => { setTimeout(warmDocs, 800); }, []);             // PDF Quick Preview without waiting for the helper
   const [msg, setMsg] = useState(null);
   const root = useRef(null);
   const press = useRef(null);
@@ -157,7 +157,7 @@ export default function Files() {
   const [entries, error] = useMemo(() => {
     try { return [loadEntries(loc, { hidden, launcherApps }), null]; } catch (e) { return [[], e.message]; }
   }, [loc.type, loc.path, loc.color, loc.query, loc.root, loc.inner, hidden, version, tags, launcherApps, arcVer]);
-  // Recents and the Trash go by date (newest first), as in the Finder, unless another order is chosen
+  // Recents and the Trash go by date (newest first), unless another order is chosen
   const sortBy = (loc.type === 'recent' || loc.type === 'trash') && !tab.sortChosen ? { by: 'date', desc: true } : tab.sort;
   const sorted = useMemo(() => sortEntries(entries, sortBy), [entries, sortBy.by, sortBy.desc]);
   const groups = useMemo(() => groupEntries(sorted, tab.group, tr), [sorted, tab.group]);

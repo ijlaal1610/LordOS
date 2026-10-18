@@ -1,4 +1,4 @@
-// statusitems.js — status icons in the theme's bar (like macOS "menu extras").
+// statusitems.js — status icons in the theme's bar (menu bar extras).
 //
 //   const off = registerStatusItem('clock', ClockStatus, 10)   // ClockStatus({ color }) draws its own
 //   <StatusItems color={t.menuText} />                          // the theme shows them wherever it wants

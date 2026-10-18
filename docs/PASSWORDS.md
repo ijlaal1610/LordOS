@@ -29,7 +29,7 @@ No gnome-keyring, kwallet, libsecret, libdbus or sd-bus is used by LordOS.
 | ![Unlock with a USB key file](m9-contrasenas-desbloquear-usb.png) | ![Unlock with a FIDO2 key](m9-contrasenas-desbloquear-fido.png) |
 | Unlocking with a key file on a USB stick (`/media/pwtest/PENDRIVE`) | Unlocking with a FIDO2 security key (here the software authenticator, see "Testing") |
 | ![Vault settings](m9-contrasenas-ajustes.png) | ![USB permission prompt](m9-contrasenas-fido-permiso.png) |
-| Unlock methods: password, recovery key, FIDO2 key and key file side by side; each wraps the same vault key | Using the security key goes through the system permission prompt (TCC-style `usb` permission); only `lord-server` opens `/dev/hidrawN` |
+| Unlock methods: password, recovery key, FIDO2 key and key file side by side; each wraps the same vault key | Using the security key goes through the system permission prompt (the per-app `usb` permission); only `lord-server` opens `/dev/hidrawN` |
 | ![Chromium offers to save](m9-contrasenas-chromium-guardar.png) | ![Chromium Safe Storage in the session keyring](m9-contrasenas-llavero-chromium.png) |
 | Chromium (Wayland, `--password-store=gnome-libsecret`) saving a password | …its "Chromium Safe Storage" key lands in our Secret Service, visible in *Session keyring* |
 | ![Chromium autofills after a restart](m9-contrasenas-chromium-autocompletar.png) | ![Protected window in a capture](m9-contrasenas-captura-protegida.png) |
@@ -90,7 +90,7 @@ in that process and in `lord-vault`; `lord-server`'s QuickJS heap never sees the
 | FIDO2 | `BOP_VAULT_FIDO`: after the user allows `usb`, `lord-server` opens the hidraw device and gives it straight to `lord-vault` (`vc_fido_attach`); the app never holds the device. Only the app spawned with a vault channel may ask. |
 | Clipboard | `BOP_CLIP_SECRET`: the copy is marked sensitive (out of the history, password-manager hint for Wayland clients) and `lord-server` clears it after the chosen seconds if it still holds the same text (compared by SHA-256; the text is not kept). |
 | Protection | The manifest says `"protected": true`; `sdk/wayland.js` marks the app's Wayland window protected as soon as it maps, so it is black in screenshots, recordings and the remote desktop (`m9-contrasenas-app-captura.png`). |
-| Window | Opening Passwords (Dock, Launchpad, Spotlight, `wm.open('passwords')`) starts the process or focuses its window; the manifest's `size`/`minSize` now size the app window. |
+| Window | Opening Passwords (Dock, app launcher, Search, `wm.open('passwords')`) starts the process or focuses its window; the manifest's `size`/`minSize` now size the app window. |
 
 **Fallback.** If `lord-server` has no app mode or the system package is missing (a dev tree
 without `npm run build`), the same UI runs in the shell's context as before (path-based files, the
@@ -195,7 +195,7 @@ LABEL="lordos_fido_end"
 
 **Auto-lock.** The vault locks after the idle timeout (default 5 min, Settings → Preferences),
 when the screen is locked (❖L, ❖Ctrl+Q: `mirror_session("lock")` → `vc_lock_all`) and when
-switching users. The session keyring stays open until logout, like the macOS login keychain.
+switching users. The session keyring stays open until logout, like the login keyring of other desktop systems.
 Locking frees the model block by block; every arena block is wiped on free.
 
 ## Memory protection (`src/vault/smem.c`)
@@ -215,7 +215,7 @@ Locking frees the model block by block; every arena block is wiped on free.
 ## Clipboard
 
 - Copying a password, PIN, card number or 2FA code calls `clipboard.set(value, { secure: true })`:
-  it never enters LordOS' clipboard history (Spotlight / ❖V panel).
+  it never enters LordOS' clipboard history (Search / ❖V panel).
 - Wayland clients now see the extra MIME type `x-kde-passwordManagerHint` (value `secret`) on a
   sensitive LordOS clipboard, the KDE/GNOME convention clipboard managers honour
   (`src/wl/wl.c`). The bytes handed to Wayland clients are wiped after sending.
@@ -225,7 +225,7 @@ Locking frees the model block by block; every arena block is wiped on free.
 
 ## The session keyring (`login.lvault`)
 
-A separate vault, like the macOS *login* keychain:
+A separate vault, like the *login* keyring of other desktop systems:
 
 1. `lord-sessiond` (root) verifies the password typed at the login screen (`crypt_r` against
    `/etc/shadow`, unchanged).
@@ -312,7 +312,7 @@ fuzzed (truncation at every offset and random byte flips under ASan/UBSan).
 | KeePass **KDBX 3.1** | same reader (Salsa20 inner stream, hashed blocks); AES-KDF uses AES-NI when present |
 | KeePassXC CSV | supported as a fallback; it loses tags, custom fields and attachments |
 | Bitwarden JSON / CSV | logins, notes, cards, identities, custom fields, folders; encrypted exports are refused with a clear message |
-| Chrome/Chromium, Firefox, Apple CSV | yes |
+| Chrome/Chromium, Firefox, CSV from other password managers (Title, URL, Username, Password, Notes, OTPAuth) | yes |
 | Passwords CSV / copy (`.lvault`) | export and import; a `.lvault` copy opens with its own unlock methods and is merged |
 
 Twofish KDBX files and Argon2 version 0x10 are not supported. Export to CSV shows a red warning

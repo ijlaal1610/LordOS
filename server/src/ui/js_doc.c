@@ -208,7 +208,7 @@ static JSValue f_arc_list(JSContext *c, JSValueConst t, int argc, JSValueConst *
 }
 
 /* arcExtract(archive, folder, json, exists): the folder is created (fails if it already exists) unless
- * exists=true (the Quick Look cache); the json may carry only and rawname. */
+ * exists=true (the Quick Preview cache); the json may carry only and rawname. */
 static JSValue f_arc_extract(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     const char *p = arg_str(c, argc, argv, 0), *d = arg_str(c, argc, argv, 1);
@@ -445,7 +445,7 @@ static const JSCFunctionListEntry doc_funcs[] = {
 };
 
 void js_doc_register(JSContext *c, JSValue lord) {
-    /* the helper reads LordOS's fonts for Quick Look and the samples */
+    /* the helper reads LordOS's fonts for Quick Preview and the samples */
     const char *assets = js_sys_assets();
     if (assets && !getenv("LORD_DOC_FONTS")) {
         char p[PATH_MAX];

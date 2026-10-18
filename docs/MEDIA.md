@@ -13,7 +13,7 @@ interface and compositing are our own.
 | **Recorder** | `recorder` | Record the microphone, waveform, list, rename, trim and export to Opus, MP3 or WAV |
 
 The names are generic and the icons are our own, drawn with nodes like those of the other apps.
-We took the way macOS's apps work, never their logos or their design.
+We took the way the apps of popular desktop systems work, never their logos or their design.
 
 ## Screenshots (VM 119, real lord-server, Proxmox `screendump`)
 
@@ -163,7 +163,7 @@ changing the output, so a compromised decoder must not have it. Audio goes throu
 
 ### Protected windows
 
-`wm.setProtected(id, true)` (SDK) marks a window as protected, like macOS's capture protection
+`wm.setProtected(id, true)` (SDK) marks a window as protected, like the capture protection of other desktop systems
 (KeePassXC uses it). The future Passwords app will use it. It looks normal on screen and comes out
 **black** in:
 
@@ -259,7 +259,7 @@ Events: `__lordMedia(id, type, data)`. Types: `info`, `pos`, `state`, `sub`, `st
   - the ones that fail aren't requested again during the session;
   - Files uses them for videos, audio covers and the images stb doesn't read (WebP, HEIC, AVIF).
 - **"Open with":** Photos for images and Player for audio and video, both as the default option.
-- **Quick Look:** the one in Files (from the documents agent) uses `media.poster`.
+- **Quick Preview:** the one in Files (from the documents agent) uses `media.poster`.
 - **Where things are saved:**
   - screenshots in `~/Imágenes/Capturas`;
   - camera in `~/Imágenes/Cámara`;

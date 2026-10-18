@@ -20,7 +20,7 @@
 //   keywords: alarm, timer
 //   ---
 // Special links in the text: [Open Settings → Network](settings:network), [Files](app:files)
-// and [another article](help:spotlight). Spotlight indexes the articles (registerSpotlightSource).
+// and [another article](help:spotlight). Search indexes the articles (registerSpotlightSource).
 // They are read by lord.help (server/src/ui/js_help.c), only from LordOS's assets/help folder.
 import { locale, t } from './i18n.js';
 import { settings } from './settings.js';
@@ -130,7 +130,7 @@ export const help = {
   },
 };
 
-// Spotlight: the Help articles
+// Search: the Help articles
 registerSpotlightSource('help', (q, query) => {
   if (!getApp('help') || q.length < 2) return [];
   return help.search(query).slice(0, 4).map((r) => ({

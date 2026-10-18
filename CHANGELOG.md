@@ -26,7 +26,7 @@ architecture and dependency policy are in `docs/ARCHITECTURE.md`.
 
 ### M4 — Native terminal
 
-- Our own xterm-256color emulator with iTerm2 parity: tabs, split panes, profiles, inline images,
+- Our own xterm-256color emulator with the features of popular terminal emulators: tabs, split panes, profiles, inline images,
   Sixel, shell integration, triggers, Instant Replay, `tmux -CC`, ligatures and color emoji.
 - Sessions survive a server restart.
 
@@ -47,12 +47,12 @@ architecture and dependency policy are in `docs/ARCHITECTURE.md`.
 - Our own Debian package engine (OpenPGP, xz, HTTP, resolver, then `dpkg`) and the Store.
 - Installable native `.lpk` apps and our own WebAssembly interpreter.
 - Network, Wi-Fi and VPN (WireGuard, OpenVPN), sound on PipeWire, clipboard history.
-- Finder-style Files, Notes, the Launchpad with categories and Linux app launching.
+- Files, Notes, the app launcher with categories and Linux app launching.
 
 ### M8 — Session and system
 
 - `lord-sessiond`: login screen, lock, fast user switching and remote desktop from the browser.
-- Per-app sandbox (Landlock, seccomp, cgroup v2), TCC-style permissions, Ed25519 app signing, and each
+- Per-app sandbox (Landlock, seccomp, cgroup v2), per-app permissions with system-drawn prompts, Ed25519 app signing, and each
   `.lpk` app as its own isolated process behind a permission broker.
 - Per-app firewall with cgroup BPF (`lord-netperm`) and the Monitor app.
 - Our own touchpad and touchscreen driver, fluid window moving and resizing in C, and the live ISO
@@ -60,7 +60,7 @@ architecture and dependency policy are in `docs/ARCHITECTURE.md`.
 
 ### M9 — Apps and system
 
-- Documents (`lord-doc`): PDF Viewer, archives, Quick Look, Fonts, Emoji & Symbols.
+- Documents (`lord-doc`): PDF Viewer, archives, Quick Preview, Fonts, Emoji & Symbols.
 - Printing and scanning: our own IPP client for CUPS, mDNS and eSCL.
 - Media (`lord-media`): Photos, Player, Screenshots, Camera and Recorder, with protected windows.
 - Passwords and the system keyring (`lord-vault`): own `.lvault` format, FIDO2 unlock, KDBX import,

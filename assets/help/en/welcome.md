@@ -11,14 +11,14 @@ interface running on its own engine. It is designed to run well on modest hardwa
 
 ## First steps
 
-- **Open apps:** the Dock (at the bottom) or Launchpad (**F4**, or tap the ❖ key on its own).
-- **Find anything:** **❖Space** opens Spotlight. See [Spotlight](help:spotlight).
+- **Open apps:** the Dock (at the bottom) or Apps (**F4**, or tap the ❖ key on its own).
+- **Find anything:** **❖Space** opens Search. See [Search](help:spotlight).
 - **Change the look:** [Settings → Appearance](settings:appearance) and [Wallpaper](settings:wallpaper).
 - **Get online:** [Settings → Network](settings:network).
 - **Lock the screen:** **❖L**.
 
-The ❖ key is the Super key (the one with the Windows logo on many keyboards). It plays the role of
-Cmd on macOS: almost every app shortcut uses it.
+The ❖ key is the Super key (the logo key between Ctrl and Alt on most keyboards): almost every app
+shortcut uses it.
 
 ## Next
 

@@ -1,4 +1,4 @@
-// controls.jsx — shared building blocks for the macOS-style layout of LordOS apps: toolbar buttons
+// controls.jsx — shared building blocks for the layout of LordOS apps: toolbar buttons
 // with tooltips, toolbars, a "more" menu button, a search field, empty states and grouped
 // ("inset") forms. The spacing and type scale they follow is in docs/DESIGN.md.
 import { View, Text, addListener } from '@lordos/runtime';
@@ -8,7 +8,7 @@ import { TextInput, useAppWindow } from './components.jsx';
 import { wm } from './windows.js';
 import { direction } from './i18n.js';
 
-// Design tokens (docs/DESIGN.md): an 8 px grid, macOS-like type sizes and control heights.
+// Design tokens (docs/DESIGN.md): an 8 px grid, desktop-standard type sizes and control heights.
 export const spacing = { xxs: 2, xs: 4, s: 8, m: 12, l: 16, xl: 20, xxl: 24, xxxl: 32 };
 export const typeScale = { caption: 11, body: 13, callout: 12, headline: 15, title: 17, largeTitle: 22 };
 export const controlSize = { regular: 28, small: 22, toolbar: 44, radius: 7, radiusSmall: 6, groupRadius: 10 };
@@ -24,7 +24,7 @@ function nearEnd(winId, node) {
   } catch (e) { return false; }
 }
 
-// Hover tooltip (shown after a short delay), as macOS does for icon-only toolbar items.
+// Hover tooltip (shown after a short delay), for icon-only toolbar items.
 function useTooltip(title) {
   const [show, setShow] = useState(false);
   const timer = useRef(0);
@@ -187,7 +187,7 @@ export function EmptyState({ icon, title, hint, action, style }) {
   );
 }
 
-// Grouped ("inset") section like macOS Settings: an optional caption above a rounded box whose rows
+// Grouped ("inset") section, as in Settings: an optional caption above a rounded box whose rows
 // are separated by hairlines. Children are FormRow (or any element).
 export function GroupBox({ title, children, footer, style }) {
   const t = useTheme();
@@ -210,7 +210,7 @@ export function GroupBox({ title, children, footer, style }) {
 }
 
 // A row of a GroupBox: label at the start, value or control at the end (labelWidth: a right-aligned
-// label column, as in macOS forms).
+// label column, as in classic desktop forms).
 export function FormRow({ label, children, labelWidth, minHeight = 36 }) {
   const t = useTheme();
   const value = typeof children === 'string' || typeof children === 'number'

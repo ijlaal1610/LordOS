@@ -142,7 +142,7 @@ function StartMenu({ t, onClose, pos }) {
   );
 }
 
-// The bar's right-click menu (like Windows' jump list). Uses the SDK's
+// The bar's right-click menu (a jump list). Uses the SDK's
 // items (dockMenu), with submenus flattened and taskbar wording.
 function JumpList({ t, entry, x, onClose, pos }) {
   const ref = useRef(null);

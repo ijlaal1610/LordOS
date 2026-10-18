@@ -47,7 +47,7 @@ export default function Recorder() {
   }, [cs.video]);
   useEffect(() => {
     wm.setMenus(id, [{ label: t('grabadora.menu'), items: [
-      { label: t('grabadora.newWindow'), hint: '⌘N', onClick: () => wm.open(appId, { new: true }) },
+      { label: t('grabadora.newWindow'), hint: '❖N', onClick: () => wm.open(appId, { new: true }) },
       '-',
       { label: t('grabadora.record'), onClick: toggle },
       { label: cam ? t('grabadora.cameraOff') : t('grabadora.camera'), onClick: toggleCam },

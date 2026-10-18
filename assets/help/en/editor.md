@@ -19,5 +19,5 @@ syntax highlighting.
 - **Comment:** ❖/ depending on the language. **Duplicate line:** ❖⇧D. **Indent:** ❖] and ❖[.
 - **Files:** ❖N new, ❖O open, ❖S save, ❖⇧S save as, ❖W close, ❖P print.
 
-Text and code files from [Files](help:files) and Spotlight open here. It works with the Japanese,
+Text and code files from [Files](help:files) and Search open here. It works with the Japanese,
 Chinese and Korean input methods.

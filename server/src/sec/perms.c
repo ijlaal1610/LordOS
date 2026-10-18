@@ -1,4 +1,4 @@
-/* perms.c — per-app permissions, TCC style (see perms.h). In-memory table + permisos.json. */
+/* perms.c — per-app permissions with system-drawn prompts (see perms.h). In-memory table + permisos.json. */
 #include "perms.h"
 #include "json.h"
 

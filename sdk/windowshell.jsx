@@ -1,5 +1,5 @@
 // windowshell.jsx — <WindowShell>: a window's node with invisible borders for resizing
-// on all 4 sides and 4 corners, 6 px outside the frame and 3 px inside (like macOS), with the
+// on all 4 sides and 4 corners, 6 px outside the frame and 3 px inside, with the
 // cursor for each direction. Moving and resizing is done by lord-server in C (wm.beginMove/beginResize,
 // docs/WINDOWS.md): the theme doesn't receive an event per frame.
 //

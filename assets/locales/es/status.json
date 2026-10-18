@@ -37,8 +37,8 @@
   "net.unmanaged": "{name} vuelve a administrarla el sistema",
   "net.up": "{name} encendida",
   "ovpn.ignoredWindows": {
-    "one": "Se ignoró {count} opción que solo vale en Windows",
-    "other": "Se ignoraron {count} opciones que solo valen en Windows"
+    "one": "Se ignoró {count} opción que solo vale en otros sistemas operativos",
+    "other": "Se ignoraron {count} opciones que solo valen en otros sistemas operativos"
   },
   "pkg.componentMissing": "Falta {component} ({suite})",
   "pkg.done": "{installed} instalado(s), {upgraded} actualizado(s), {removed} quitado(s)",

@@ -1,6 +1,6 @@
 # LordOS Terminal
 
-LordOS's native terminal, inspired by iTerm2. It isn't a Linux app running inside LordOS:
+LordOS's native terminal, inspired by popular terminal emulators. It isn't a Linux app running inside LordOS:
 the emulation, the PTY and the drawing are written from scratch in C inside `lord-server`,
 and the UI (tabs, panes, profiles, menus) is a React app like the others.
 
@@ -12,13 +12,13 @@ server/src/term/
   term.c        sessions: PTY ↔ emulator, keyboard, mouse, events, Instant Replay, logging,
                 tmux -CC (virtual panes), save/restore screen
   vt.c          xterm-256color emulator: VT500 parser, grid + history, reflow, selection,
-                search, marks, graphemes, OSC 7/8/52/133/1337, images (iTerm2 and Sixel)
+                search, marks, graphemes, OSC 7/8/52/133/1337, images (OSC 1337 and Sixel)
   pty.c         posix_openpt + fork/exec of the user's shell, without privileges
   hold.c        holders: keep the shells alive if lord-server restarts
   term_paint.c  grid drawing: fonts, ligatures, emoji, boxes, cursor, selection, images
 server/src/ui/otf.c     our own OpenType: GSUB substitutions (ligatures, emoji) and CBDT glyphs
 server/src/ui/fonts.c   catalog of installed fonts (TTF/OTF/TTC)
-apps/terminal/iterm.js  iTerm2 profile importer (JSON, .itermcolors, XML/binary plist)
+apps/terminal/iterm.js  importer for profiles from other terminal emulators (JSON, .itermcolors, XML/binary plist)
 apps/terminal/tmux.js   tmux control-mode protocol → native tabs and panes
 assets/shell/           integration with bash (lord-bash.sh), zsh (zsh/.zshenv + lord-zsh.zsh)
                         and fish (lord-fish.fish)
@@ -45,9 +45,9 @@ that changed) is repainted.
 | ![colors](m4-terminal-colores.png) | ![theme](m4-terminal-cambio-tema.png) |
 | SGR: bold, italic, underline, strikethrough, direct color | The same shell (PID 4126) is still alive after switching to the Classic theme |
 | ![ligatures](m4-terminal-ligaduras.png) | ![emoji](m4-terminal-emoji.png) |
-| Profile imported from iTerm2: Fira Code with ligatures, Dracula, a trigger that highlights "ERROR" | Ligatures, combining marks and color emoji; below, with mode 2027 (👍🏽 🇦🇷 👨‍👩‍👧 as one glyph) |
+| Profile imported from another terminal emulator: Fira Code with ligatures, Dracula, a trigger that highlights "ERROR" | Ligatures, combining marks and color emoji; below, with mode 2027 (👍🏽 🇦🇷 👨‍👩‍👧 as one glyph) |
 | ![import](m4-terminal-importar-iterm2.png) | ![keys](m4-terminal-teclas.png) |
-| Importing iTerm2's binary preferences plist | Per-profile and global keys, editable shortcuts |
+| Importing a binary preferences plist | Per-profile and global keys, editable shortcuts |
 | ![recovered](m4-terminal-sesion-recuperada.png) | ![tmux](m4-terminal-tmux.png) |
 | After restarting lord-server: same tabs and panes, the counter kept running | `tmux -CC`: tmux window with 3 native panes (recovered after a restart) |
 | ![fish](m4-terminal-fish.png) | ![host](m4-terminal-perfil-host.png) |
@@ -63,7 +63,7 @@ that changed) is repainted.
 | Server RAM with 6 sessions + 3 tmux panes + emoji font | ~43 MB |
 | Each session holder (`lord-term-holder`) | ~2.2 MB |
 
-## Parity with iTerm2
+## Parity with popular terminal emulators
 
 Status: ✅ done and tested in the VM · 🟡 partial · ⏳ pending · — doesn't apply to LordOS.
 
@@ -83,14 +83,14 @@ Status: ✅ done and tested in the VM · 🟡 partial · ⏳ pending · — does
 | OSC 8 hyperlinks, OSC 0/2 title, OSC 7 directory, OSC 52 clipboard (write only) | ✅ | reading the clipboard from the shell isn't allowed |
 | OSC 9 notifications | ✅ | notice inside the window |
 | OSC 4/10/11/12/104 dynamic colors | ✅ | |
-| iTerm2 inline images (OSC 1337 File, `imgcat`) | ✅ | PNG/JPEG/GIF (first frame), with `-w`/`-h` |
+| OSC 1337 inline-image protocol (File, `imgcat`) | ✅ | PNG/JPEG/GIF (first frame), with `-w`/`-h` |
 | Sixel | ✅ | tested with a sixel image generated with `printf` (see `docs/m4-terminal-sixel.png`) |
 | Badge (OSC 1337 SetBadgeFormat), marks, CurrentDir, SetProfile, CursorShape, ReportCellSize, Copy, ClearScrollback, RequestAttention | ✅ | |
 | Shell integration (OSC 133): prompt marks, exit code, command run | ✅ | bash, zsh and fish |
 | Hand-drawn boxes, blocks and powerline arrows | ✅ | they join without gaps |
 | Font choice and "non-ASCII" font | ✅ | installed monospace fonts; synthetic bold if the family has none |
 | Ligatures | ✅ | our own GSUB (`calt`/`liga`); same glyphs as HarfBuzz in the tests (JetBrains Mono, Fira Code) |
-| Arabic, Hebrew, Indic, Thai (bidi) | ✅ | Visual order (Unicode bidi) and words shaped at their natural width; not on the alternate screen; per-profile option (iTerm2 has it as experimental). See `LANGUAGES.md` |
+| Arabic, Hebrew, Indic, Thai (bidi) | ✅ | Visual order (Unicode bidi) and words shaped at their natural width; not on the alternate screen; per-profile option (other terminal emulators have it as experimental). See `LANGUAGES.md` |
 | Color emoji | ✅ | CBDT (Noto Color Emoji); not COLR/SVG |
 | tmux integration (`tmux -CC`) | ✅ | windows → tabs, panes → native panes; see below |
 
@@ -148,11 +148,11 @@ Status: ✅ done and tested in the VM · 🟡 partial · ⏳ pending · — does
 | Configurable keyboard shortcuts | ✅ | Preferences → Keys |
 | Per-profile and global keys (send text, Esc+, hex, ignore, action) | ✅ | the profile's win over the global ones and the shortcuts |
 | Send text on open, size of new windows in columns × rows | ✅ | |
-| Import iTerm2 profiles | ✅ | see below |
+| Import profiles from other terminal emulators | ✅ | see below |
 
 ### Not applicable or pending by design
 
-| iTerm2 feature | Status |
+| Feature of other terminal emulators | Status |
 |---|---|
 | Password manager, Python API, AI assistant | — no secrets or scripting are exposed to the theme |
 | Triggers that run scripts or coprocesses, custom per-profile commands | — LordOS only opens the user's shell; an imported "command" is typed into the shell on open |
@@ -162,8 +162,8 @@ Status: ✅ done and tested in the VM · 🟡 partial · ⏳ pending · — does
 
 ## Shortcuts
 
-❖ = the Super key (it plays the role of Cmd). Almost all have a Ctrl+Shift variant.
-Super on its own opens Launchpad only if released without having done a shortcut.
+❖ = the Super key (the main shortcut modifier). Almost all have a Ctrl+Shift variant.
+Super on its own opens the app launcher only if released without having done a shortcut.
 
 | Action | Shortcut |
 |---|---|
@@ -200,14 +200,15 @@ changed (click on the shortcut and press the new combination). Changes are saved
 - Fallback for missing characters: profile font → "non-ASCII" font → JetBrains Mono → DejaVu
   Sans Mono → Noto Sans Mono → DejaVu Sans → Noto Sans Symbols → Inter → emoji → empty box.
 
-## Importing iTerm2 profiles
+## Importing profiles from other terminal emulators
 
-Preferences → **Import from iTerm2…** accepts:
+Preferences → **Import Profiles…** accepts profiles exported by other terminal emulators
+(JSON/plist, `.itermcolors` presets):
 
-| File (exported on the Mac) | What it brings |
+| File | What it brings |
 |---|---|
 | `Profiles.json` (Other Actions → Copy All Profiles as JSON / Save Profile as JSON) or a Dynamic Profile | profiles |
-| `*.itermcolors` | color scheme (shows up in Colors → Imported from iTerm2) |
+| `*.itermcolors` | color scheme (shows up in Colors → Imported) |
 | `~/Library/Preferences/com.googlecode.iterm2.plist` (binary or XML) | all profiles, the default profile, custom schemes and global shortcuts |
 
 Converted: colors (sRGB and Display P3, with light/dark variants), font and size, non-ASCII

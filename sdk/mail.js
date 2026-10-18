@@ -10,7 +10,7 @@
 //   mailConfig.get() / mailConfig.save(cfg)  the accounts file (no passwords: those live in the keyring)
 //   mailAccounts.add(account, password)      saves the account, the password in the keyring, and starts it
 //   mailAccounts.remove(id) / setPassword(id, pw) / trustCertificate(id, which, sha256)
-//   autoconfig(email)                        our provider table (Gmail, Outlook.com, Yahoo, iCloud) or a guess
+//   autoconfig(email)                        our provider table (Gmail, Yahoo and others) or a guess
 //   OAUTH_PROVIDERS                          prepared, disabled until you register a client ID
 //   mailStatus (store)                       { accounts: { id: { status, error } }, unread, rev, certs: [] }
 //   startMail()                              called by startShell: new-mail notifications, passwords on demand
@@ -175,8 +175,8 @@ export function autoconfig(email) {
     sentSaved: false, user: email, known: false };
 }
 
-// OAuth2 (XOAUTH2) is prepared but OFF: Google and Microsoft only hand out tokens to apps whose
-// client ID is registered in their consoles (Google Cloud, Azure). Put yours here and enable it
+// OAuth2 (XOAUTH2) is prepared but OFF: large mail providers only hand out tokens to apps whose
+// client ID is registered in their developer consoles. Put yours here and enable it
 // in docs/MAIL.md, "OAuth"; until then these accounts use app passwords.
 export const OAUTH_PROVIDERS = {
   google: { enabled: false, clientId: '', authUrl: 'https://accounts.google.com/o/oauth2/v2/auth', tokenUrl: 'https://oauth2.googleapis.com/token',

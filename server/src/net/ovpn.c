@@ -54,7 +54,7 @@ static const char *const allowed[] = {
 static const char *const blocks[] = { "ca", "cert", "key", "tls-auth", "tls-crypt", "tls-crypt-v2", "extra-certs", "peer-fingerprint", NULL };
 /* LordOS sets these: they're removed from the file. */
 static const char *const replaced[] = { "dev", "verb", "auth-retry", NULL };
-/* Only valid on Windows: ignored. */
+/* Only valid on other operating systems: ignored. */
 static const char *const windows_only[] = { "block-outside-dns", "register-dns", "route-method", "ip-win32", "tap-sleep", NULL };
 
 static int in_list(const char *const *l, const char *w) {

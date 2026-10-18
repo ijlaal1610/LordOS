@@ -25,7 +25,7 @@ typedef struct {
     int tap_drag;           /* tap and drag (tap, and put the finger back down right away) */
     int natural;            /* natural scrolling (the content follows the fingers) */
     int secondary;          /* TP_CLICK_* */
-    int three_drag;         /* three-finger drag (macOS style) */
+    int three_drag;         /* three-finger drag */
     int dwt;                /* ignore the touchpad while typing */
     int scroll;             /* two-finger scroll */
     int kinetic;            /* inertia on release */

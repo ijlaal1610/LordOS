@@ -19,10 +19,10 @@ run in one sandboxed helper process, **`lord-maild`**.
 | Invitations (.ics in mail): Accept / Maybe / Decline, event added to Calendar, iTIP REPLY sent to the organizer | **done** (REPLY delivered to the organizer's mailbox) |
 | Calendar: day / week / month, several calendars with colors, local and CalDAV, recurrence, alarms | **done** |
 | Reminders: lists, due dates, priorities, flags, Today / Scheduled / All / Flagged / Completed, VTODO over CalDAV | **done** |
-| Contacts: local and CardDAV, groups, photo, Apple-like fields; Mail autocompletes from it | **done** |
+| Contacts: local and CardDAV, groups, photo, the usual vCard fields; Mail autocompletes from it | **done** |
 | Alarms of events and to-dos fire as notifications with the apps closed | **done** (seen in the VM with every app closed) |
-| Accounts: any IMAP/SMTP; built-in settings for Gmail, Outlook.com, Yahoo and iCloud; app passwords | **done** (built-in providers not tested: no real accounts were used) |
-| OAuth2 (XOAUTH2) for Gmail and Outlook.com | **prepared, disabled**: needs your client ID (see [OAuth](#oauth-needs-your-client-id)) |
+| Accounts: any IMAP/SMTP; built-in settings for popular providers (Gmail, Yahoo and others); app passwords | **done** (built-in providers not tested: no real accounts were used) |
+| OAuth2 (XOAUTH2) for Gmail and other large providers | **prepared, disabled**: needs your client ID (see [OAuth](#oauth-needs-your-client-id)) |
 
 ![Mail: conversation](m9-mail-hilos.png)
 
@@ -50,7 +50,7 @@ run in one sandboxed helper process, **`lord-maild`**.
   file and, if allowed, resolves it, connects (10 s timeout) on a thread of its own and passes the
   connected socket back (`MQ_SOCK`). The allowed endpoints are exactly: each account's IMAP and
   SMTP `host:port`, each DAV URL's `host:port`, and — for CalDAV/CardDAV discovery redirects inside
-  the same provider (iCloud's `pNN-caldav.icloud.com`) — other hosts of the same domain on port 443.
+  the same provider (for example `pNN-caldav.icloud.com`) — other hosts of the same domain on port 443.
   So a malicious message that takes over `lord-maild` still cannot talk to anything else.
 - **Remote images** are the only other endpoints, and only after the user presses *Load Images*
   (or trusts the sender): `lord.mail.allowImages(urls)` grants those `http(s)` hosts on ports 80/443
@@ -198,7 +198,7 @@ are added below the cursor. Replies quote the original; Forward brings its attac
   the previous version is replaced), and the draft is removed when the message is sent.
 - **Send later**: in 1 hour, tomorrow at 8:00, Monday at 8:00. The message is composed at once and
   kept in `outbox/`; the sender thread sends it when it is due, with Mail closed too.
-- Sent messages are appended to Sent unless the server files them itself (Gmail, Outlook.com). The
+- Sent messages are appended to Sent unless the server files them itself (Gmail and some other large providers). The
   original gets `\Answered` or `$Forwarded`.
 
 Attachment names chosen by the sender are reduced to a safe basename everywhere (RFC 2231/2047
@@ -214,19 +214,19 @@ table (`sdk/mail.js`, `PROVIDERS`, in the spirit of Mozilla's ISPDB; nothing is 
 | Provider | IMAP | SMTP | Notes |
 |---|---|---|---|
 | Gmail | imap.gmail.com:993 SSL | smtp.gmail.com:465 SSL | needs an **app password** (2-Step Verification on); server files sent mail; CalDAV needs OAuth |
-| Outlook.com / Hotmail / Live | outlook.office365.com:993 SSL | smtp-mail.outlook.com:587 STARTTLS | app password; Microsoft has been retiring password sign-in for IMAP: OAuth may be required |
+| Outlook.com / Hotmail / Live | outlook.office365.com:993 SSL | smtp-mail.outlook.com:587 STARTTLS | app password; the provider has been retiring password sign-in for IMAP: OAuth may be required |
 | Yahoo | imap.mail.yahoo.com:993 SSL | smtp.mail.yahoo.com:465 SSL | app password |
 | iCloud | imap.mail.me.com:993 SSL | smtp.mail.me.com:587 STARTTLS | app-specific password; also offers iCloud calendars and contacts (caldav.icloud.com, contacts.icloud.com) |
 | anything else | imap.&lt;domain&gt;:993 | smtp.&lt;domain&gt;:465 | a guess; *Set the servers by hand* shows every field |
 
 None of the four providers was tested here (no real accounts were used, by design); the settings
-are the providers' published ones. A CalDAV/CardDAV account (Nextcloud, Radicale, iCloud, Fastmail…)
+are the providers' published ones. A CalDAV/CardDAV account (Nextcloud, Radicale, Fastmail…)
 is added with its URL; discovery follows `current-user-principal`, `calendar-home-set` /
 `addressbook-home-set` and `/.well-known/caldav`.
 
 ### OAuth (needs your client ID)
 
-Gmail and Outlook.com prefer OAuth2 (XOAUTH2). Google and Microsoft only hand out tokens to
+Gmail and other large providers prefer OAuth2 (XOAUTH2). They only hand out tokens to
 applications registered in their consoles, so this is **prepared but disabled**:
 
 - `sdk/mail.js` → `OAUTH_PROVIDERS.google` / `.microsoft`: endpoints and scopes are filled in;
@@ -258,7 +258,7 @@ reminders list, an address book); CalDAV/CardDAV accounts add the server's colle
   `calendar-multiget` / `addressbook-multiget` of what changed; deletions on the server delete
   locally.
 - **iCalendar** (`ical.c`): VEVENT/VTODO/VALARM, DATE and DATE-TIME (UTC, `TZID` through the system
-  tz database with our TZif reader, Windows zone names mapped, floating = local), `RRULE` with
+  tz database with our TZif reader, non-IANA zone names mapped, floating = local), `RRULE` with
   DAILY/WEEKLY/MONTHLY/YEARLY, INTERVAL, COUNT, UNTIL, BYDAY (with ordinals ±1..53), BYMONTHDAY,
   BYMONTH; `EXDATE`; `RECURRENCE-ID` overrides. Events we write carry a `VTIMEZONE` built from
   the zone's own rule.
@@ -318,7 +318,7 @@ Operations of `lord-maild` (`server/src/mail/maild.c`): `status`, `auth`, `folde
   KOI8-R, ISO-8859-15 and UTF-16), the HTML sanitizer against hostile input (script, event
   handlers, `javascript:` with tabs and entities, hidden text, tracking pixels, deceptive links,
   400 KB of nested tables, 400 KB of `<`), iCalendar (time zones across a DST change, RRULE with
-  COUNT/EXDATE/BYDAY ordinals, Windows zones, REPLY, a round trip; hostile RRULEs with
+  COUNT/EXDATE/BYDAY ordinals, non-IANA zone names, REPLY, a round trip; hostile RRULEs with
   `2147483647MO` and friends), vCard (2.1 QP, groups, photo round trip), the XML reader
   (namespaces, CDATA, DOCTYPE refused, depth limit), hostile attachment names — and for each
   parser a deterministic mutation fuzzer (thousands of mutated inputs).
@@ -351,7 +351,7 @@ test CA added to the VM's CA store, and test data from scratch scripts. No real 
 
 ## Not done / not tested
 
-- The four built-in providers (Gmail, Outlook.com, Yahoo, iCloud) and Google CalDAV: settings
+- The four built-in providers and Google CalDAV: settings
   from the providers' documentation, not tried. OAuth: prepared, disabled.
 - Editing **one occurrence** of a repeating event (changes apply to the series; deleting one
   occurrence works). Editing a series rewrites it without its per-occurrence overrides.

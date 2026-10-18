@@ -7,7 +7,7 @@ keywords: backup, restore, time machine, recover files
 ---
 # Backups
 
-Automatic backups of your home folder, in the style of Time Machine.
+Automatic backups of your home folder.
 
 ## Getting started
 

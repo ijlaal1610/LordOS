@@ -55,7 +55,7 @@ export function MenuBar({ t, height, focused, onLaunchpad, onControlCenter, cont
       { label: tr('shell.menu.about'), onClick: () => wm.open('about') },
       '-',
       { label: tr('shell.menu.settings'), onClick: () => wm.open('settings') },
-      { label: 'Launchpad', hint: 'F4', onClick: onLaunchpad },
+      { label: tr('shell.menu.apps'), hint: 'F4', onClick: onLaunchpad },
       '-',
       ...(session.managed() ? [
         { label: tr('shell.menu.lock'), hint: '❖L', onClick: () => session.lock() },

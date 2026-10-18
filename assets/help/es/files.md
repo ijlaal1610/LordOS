@@ -7,7 +7,7 @@ keywords: archivos, carpetas, papelera, explorador, finder, comprimir, etiquetas
 ---
 # Archivos
 
-El explorador de archivos, al estilo del Finder.
+El explorador de archivos.
 
 ## Lo básico
 

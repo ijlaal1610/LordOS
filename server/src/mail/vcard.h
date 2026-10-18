@@ -5,7 +5,7 @@
  *    "emails":[{"type","value"}],"phones":[…],"addrs":[{"type","street","city","region","code","country"}],
  *    "urls":[…],"im":[…],"bday":"YYYY-MM-DD","notes","cats":[…],"photo":true,"kind":"individual"|"group",
  *    "members":["uid"…],"rev"}
- * Writing produces vCard 3.0 (what iCloud, Nextcloud and Radicale all accept). */
+ * Writing produces vCard 3.0 (what the common CardDAV servers, Nextcloud and Radicale among them, accept). */
 #ifndef LORD_MAIL_VCARD_H
 #define LORD_MAIL_VCARD_H
 

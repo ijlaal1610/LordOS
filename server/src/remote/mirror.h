@@ -22,7 +22,7 @@ typedef struct {
     void (*display)(const int *fds, int n);
     void (*undisplay)(void);
     /* browser trackpad: scroll in pixels (phase 1 begins, 2 continues, 3 ends) and pinch
-     * (ctrl+wheel or Safari's gesturechange; scale relative to the start, rotation in degrees) */
+     * (ctrl+wheel or the gesturechange of WebKit browsers; scale relative to the start, rotation in degrees) */
     void (*scroll)(int phase, double dx, double dy);
     void (*pinch)(int phase, double scale, double rotation);
     /* lord-sessiond: input devices plugged in later (the fds now belong to the session) */

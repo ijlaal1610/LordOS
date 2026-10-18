@@ -7,7 +7,7 @@ keywords: logs, journal, errors, debug, console, diagnostics
 ---
 # Logs
 
-System and LordOS logs, like macOS Console. Use it to see what happened when something fails.
+System and LordOS logs. Use it to see what happened when something fails.
 
 ## Sources
 

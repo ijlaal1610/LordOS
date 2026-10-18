@@ -80,7 +80,7 @@ CUPS (/run/cups/cups.sock) → Debian filters and drivers → the printer
 
 **Adding a printer:**
 - CUPS-Add-Modify-Printer with `ppd-name=everywhere`: CUPS asks the printer for its capabilities
-  and builds the PPD, without a driver (IPP Everywhere, AirPrint);
+  and builds the PPD, without a driver (driverless printing, IPP Everywhere);
 - in the same request it's left accepting jobs (`printer-is-accepting-jobs`,
   `printer-state=idle`);
 - the queue name is built from the announcement's name (`queueName`: letters, digits, `_` and `-`).
@@ -102,7 +102,7 @@ CUPS (/run/cups/cups.sock) → Debian filters and drivers → the printer
 
 ### Scanner (eSCL, `apps/scanner`)
 
-`server/src/print/escl.c` + the **Scanner** app (opened from Settings or from the Launchpad):
+`server/src/print/escl.c` + the **Scanner** app (opened from Settings or from the app launcher):
 
 - **Capabilities** (`GET /eSCL/ScannerCapabilities`): model, flatbed or feeder, maximum size,
   resolutions, color modes and formats. The XML is read with our own bounded tag finder, without

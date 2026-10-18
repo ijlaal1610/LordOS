@@ -77,7 +77,7 @@ HDR += $(wildcard src/fw/*.h)
 # Wayland apps (src/wl/wl_input.c) and lord.input (src/ui/js_input.c). See docs/TRACKPAD.md.
 TP_SRC := src/tp/tp.c src/tp/tp_route.c src/wl/wl_input.c src/ui/js_input.c
 SRC += $(TP_SRC)
-# Windows: dragging in C, a layer for the window being moved and our own cursors (docs/WINDOWS.md).
+# Window management: dragging in C, a layer for the window being moved and our own cursors (docs/WINDOWS.md).
 # cursor-shape-v1 needs the tablet-v2 interfaces (they're only linked, not advertised).
 # GTK/GNOME/Qt apps: our own org.freedesktop.portal.Settings (src/ui/portal.c) with the D-Bus client from
 # Passwords (src/vault/dbus.c, docs/PASSWORDS.md).

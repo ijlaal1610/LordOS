@@ -69,7 +69,7 @@ struct Account {
     char name[128], email[256], full_name[160], user[256];
     char auth[16];                  /* "password" | "oauth2" (prepared, disabled) */
     Server imap, smtp;
-    int sent_saved;                 /* the server files sent mail itself (Gmail, Outlook.com) */
+    int sent_saved;                 /* the server files sent mail itself (some large providers) */
     char pin_imap[96], pin_smtp[96], pin_dav[96];
     char url[512];                  /* DAV: base URL */
     int cal, card;                  /* DAV: sync calendars / contacts */

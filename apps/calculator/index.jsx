@@ -81,7 +81,7 @@ export default function Calculator() {
   // the big number shrinks so it never gets clipped
   const big = shown.length <= 8 ? 44 : shown.length <= 11 ? 34 : 26;
   return (
-    // the calculator is always left to right (as on macOS), also in Arabic or Hebrew
+    // the calculator is always left to right, also in Arabic or Hebrew
     <View style={{ flex: 1, padding: 16, gap: 8, direction: 'ltr', backgroundColor: t.mode === 'dark' ? '#1c1c1e' : '#f5f5f7' }}>
       <View style={{ height: 92, justifyContent: 'flex-end', alignItems: 'flex-end', paddingHorizontal: 6, marginBottom: 4, overflow: 'hidden' }}>
         <Text style={{ fontSize: 13, color: t.textDim, whiteSpace: 'nowrap' }}>{show(expr) || ' '}</Text>

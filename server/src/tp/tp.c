@@ -8,7 +8,7 @@
  *   3 fingers        swipe (desktop actions) or three-finger drag
  *   4 fingers        swipe (desktop or apps, depending on the setting)
  *   tap              click (1 finger left, 2 right, 3 middle), tap and drag
- *   physical click   clickpad: depending on how many fingers there are (macOS style) or the bottom corner
+ *   physical click   clickpad: depending on how many fingers there are or the bottom corner
  *
  * Palms are discarded (large contact, high pressure, touches that start at the edges and don't
  * leave them) as are touches that start while typing. On a clickpad, a finger that

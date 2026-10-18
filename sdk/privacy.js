@@ -1,4 +1,4 @@
-// privacy.js — per-app permissions in the style of macOS TCC, camera/microphone indicators and the frame
+// privacy.js — per-app permissions with system-drawn prompts, camera/microphone indicators and the frame
 // of the Settings → Privacy page (see docs/PRIVACY.md).
 //
 // The permission state is kept by the server (lord.perms, server/src/sec/perms.c) in a

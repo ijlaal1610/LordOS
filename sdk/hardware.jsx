@@ -1,9 +1,9 @@
 // hardware.jsx — the session side of Settings' hardware pages (docs/SETTINGS.md):
 //
-//   displays      store with lord.display.list() (outputs, modes, Night Shift, backlight)
+//   displays      store with lord.display.list() (outputs, modes, Night Light, backlight)
 //   applyDisplay  change resolution/refresh/rotation/main display live, with the 15-second
 //                 "Keep these display settings?" countdown (<DisplayConfirm />, drawn by the system)
-//   night         Night Shift scheduler: sunset to sunrise (from the time zone's coordinates, never
+//   night         Night Light scheduler: sunset to sunrise (from the time zone's coordinates, never
 //                 from the network) or custom hours, with a 30-minute fade, plus "on until tomorrow"
 //   battery       store with lord.power.state(); low-battery notice; battery in the menu bar
 //   idle          screen off / lock / sleep after N minutes (deadlines live in lord-server)
@@ -63,7 +63,7 @@ export function menuClock(d) {
   return `${formatDate(d, 'short')}   ${time}`;
 }
 
-// ---- Night Shift ----
+// ---- Night Light ----
 
 const NEUTRAL = 6500;
 const minutesOf = (d) => d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
@@ -111,7 +111,7 @@ function nightTarget(now = new Date()) {
 
 export const nightActive = () => nightTarget().amount > 0;
 
-// "Turn on until tomorrow" / "off until the next night" (like Control Center on macOS): an override
+// "Turn on until tomorrow" / "off until the next night" (from Control Center): an override
 // that lasts until the end of the current (or next) scheduled night, or 07:00 without a schedule.
 export function setNightManual(on) {
   const now = new Date(), m = minutesOf(now), w = nightWindow();
@@ -207,7 +207,7 @@ function useSystemTokens() {
     separator: 'rgba(0,0,0,0.12)', control: '#e2e2e7' } : th;
 }
 
-// The "Keep these display settings?" alert, drawn like a macOS alert: a 260 px panel with the icon on
+// The "Keep these display settings?" alert, drawn like a standard system alert: a 260 px panel with the icon on
 // top, a 13/700 title, an 11 px body with the countdown and two equal buttons (the default one in the
 // accent color).
 export function DisplayConfirm() {
@@ -296,7 +296,7 @@ function BatteryStatus({ color, height }) {
     h(BatteryGlyph, { percent: b.percent, charging: b.charging, color }));
 }
 
-// ---- Bluetooth pairing requests (drawn by the system, like macOS) ----
+// ---- Bluetooth pairing requests (drawn by the system) ----
 
 export function BluetoothPrompt() {
   const st = useBluetooth();
@@ -371,7 +371,7 @@ globalThis.__lordHw = (kind, data) => {
   }
 };
 
-// Called once by startShell: Night Shift, idle timers and the battery item.
+// Called once by startShell: Night Light, idle timers and the battery item.
 export function startHardware() {
   if (!has('display')) return;
   nightTick();

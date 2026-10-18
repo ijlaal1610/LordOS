@@ -49,16 +49,16 @@ From the LordOS Terminal: every new tab has `WAYLAND_DISPLAY`, `XDG_SESSION_TYPE
 `foot &` is enough. Apps also receive LordOS's language and region (`LANG`, `LC_*`, see
 `LANGUAGES.md`).
 
-They also appear in the **Launchpad**, in the Classic theme's start menu and in the Store (see
+They also appear in the **app launcher**, in the Classic theme's start menu and in the Store (see
 `NATIVE-APPS.md` and `PACKAGES.md`): they are the apps with a `.desktop` in
 `/usr/share/applications` or `~/.local/share/applications`. They open with one click, and their
-window carries the same icon in the Dock as in the Launchpad (they're recognized by the Wayland
+window carries the same icon in the Dock as in the app launcher (they're recognized by the Wayland
 app id or by `StartupWMClass`).
 
 | | |
 |---|---|
 | ![launchpad](m7-launchpad-linux.png) | ![launched](m7-lanzada-desde-launchpad.png) |
-| The Launchpad with the installed Linux apps (foot with its PNG; those that only ship SVG, with their initial) | FeatherPad opened with one click; it carries the same icon in the Dock |
+| The app launcher with the installed Linux apps (foot with its PNG; those that only ship SVG, with their initial) | FeatherPad opened with one click; it carries the same icon in the Dock |
 | ![classic](m7-clasico-inicio.png) | ![classic2](m7-clasico-featherpad.png) |
 | Classic theme: the start menu with LordOS apps, Linux apps and Fractal (installed as a package) | FeatherPad launched from there, with its icon in the taskbar |
 

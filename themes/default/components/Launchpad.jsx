@@ -1,4 +1,4 @@
-// Launchpad: all apps in full screen, with keyboard search.
+// App launcher ("Apps"): all apps in full screen, with keyboard search.
 // An app is pinned to the Dock by dragging it to the bottom strip or with a right click.
 import { View, Text, TextInput, ScrollView, screen, t as tr, appName, APP_CATEGORIES, appCategory, addListener, dock, useStore, settings } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';

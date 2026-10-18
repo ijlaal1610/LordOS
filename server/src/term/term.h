@@ -76,7 +76,7 @@ typedef struct {
     int blink_text, alt_esc, scrollback, mouse_reporting, timestamps, copy_on_select;
     int alt_scroll, has_sel_fg, has_cursor_text;
     char word_chars[64];
-    int font[4], font_na[4];    /* chosen font and "non-ASCII" one (iTerm2): regular, bold, italic, both; -1 = the bundled one */
+    int font[4], font_na[4];    /* chosen font and "non-ASCII" one: regular, bold, italic, both; -1 = the bundled one */
     int ligatures;              /* apply calt/liga (JetBrains Mono, Fira Code...) */
     int bidi;                   /* Arabic/Hebrew in visual order and with joined forms (not on the alternate screen) */
     char font_family[64], na_family[64];

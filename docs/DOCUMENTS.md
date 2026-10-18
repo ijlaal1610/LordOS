@@ -3,7 +3,7 @@
 PDFs, archives, fonts and emoji in LordOS. This document covers:
 
 - the **PDF Viewer**;
-- in **Files**, archives and **Quick Look**;
+- in **Files**, archives and **Quick Preview**;
 - **Fonts**;
 - **Emoji & Symbols**;
 - the sandboxed helper **lord-doc**, which does the heavy lifting for all of the above.
@@ -21,9 +21,9 @@ Printing and scanning are in `PRINTING.md`.
 | ![form](m9-docs-pdf-formulario.png) | ![dark](m9-docs-pdf-oscuro.png) |
 | Form (text fields of a CUPS PDF) filled in | Dark page: luminance inverted, keeping the colors |
 | ![rotate](m9-docs-pdf-rotar.png) | ![quick look](m9-docs-vista-rapida-pdf.png) |
-| Rotated a quarter turn; the fields stay in place | Quick Look of a PDF: the first page and the page count |
+| Rotated a quarter turn; the fields stay in place | Quick Preview of a PDF: the first page and the page count |
 | ![font](m9-docs-vista-rapida-fuente.png) | ![zip](m9-docs-vista-rapida-zip.png) |
-| Quick Look of a `.ttf` font | Quick Look of a `.zip`: count, size and what's inside |
+| Quick Preview of a `.ttf` font | Quick Preview of a `.zip`: count, size and what's inside |
 | ![menu](m9-docs-comprimidos-menu.png) | ![inside](m9-docs-comprimidos-adentro.png) |
 | "Extract here" and "Compress" in the context menu | A `.zip` opened as a folder |
 | ![extract](m9-docs-comprimidos-extraer.png) | ![compress](m9-docs-comprimidos-comprimir.png) |
@@ -41,7 +41,7 @@ Printing and scanning are in `PRINTING.md`.
 
 ## PDF Viewer (`apps/pdf`)
 
-In the style of macOS's Preview:
+In the style of a classic document viewer:
 
 - **View:**
   - continuous scrolling or one page at a time;
@@ -140,7 +140,7 @@ Tested in `tests/doc_evil.sh` with the archives from `tests/make_evil_archives.p
 Result: nothing outside the destination, in 31 of 31 checks (with the confinement and the
 formats).
 
-## Quick Look (Space)
+## Quick Preview (Space)
 
 `apps/files/quicklook.jsx`. What it shows depending on the file type:
 
@@ -278,16 +278,16 @@ lord-server (no Poppler or libarchive)
 | First page in the viewer, from the double click (135 %, 1070 px wide) | 437–479 ms |
 | Page drawn by Poppler, with the document already open | median 20 ms, between 0.5 and 155 ms depending on the content |
 | PDF thumbnail in the warm utility session (400×480) | 102–150 ms |
-| **Quick Look of a PDF**, from opening until the page is there | **174 ms** the first time; the helper alone, 125–150 ms |
-| Quick Look of text, code and images | under 1 ms (doesn't go through the helper) |
-| Quick Look of a font | 24 ms |
-| Quick Look of a `.zip` (launches a helper and lists) | 146–310 ms; browsing with the arrows adds Files' redraw (~400 ms) |
+| **Quick Preview of a PDF**, from opening until the page is there | **174 ms** the first time; the helper alone, 125–150 ms |
+| Quick Preview of text, code and images | under 1 ms (doesn't go through the helper) |
+| Quick Preview of a font | 24 ms |
+| Quick Preview of a `.zip` (launches a helper and lists) | 146–310 ms; browsing with the arrows adds Files' redraw (~400 ms) |
 | Extract a 100 MB `.tar.gz` (232 MB, 8,958 files) | 1.59 s (GNU tar: 2.32 s); identical content, except an absolute link that was skipped on purpose |
 | Save a 1.6 MB annotated copy | 34 ms |
 | lord-server RAM | 53.6 MB without documents, 82 MB with the 224-page PDF open at 135 % |
 | Helpers' RAM | pdf session: 87 MB with that PDF; utility session: 25 MB |
 
-**The 150 ms goal for Quick Look:**
+**The 150 ms goal for Quick Preview:**
 - **It's met** with text, images and fonts; a small `.zip`, sometimes.
 - **A PDF lands at ~175 ms** on this VM: almost all of it is Poppler's drawing. The utility session
   is already prepared (Files "warms" it when it opens, with a minimal PDF), so the helper's startup
@@ -295,7 +295,7 @@ lord-server (no Poppler or libarchive)
 
 The measurements show up in the session log:
 - `js: pdf: … first page in N ms (N pages)`;
-- `js: quick-look: <kind> <name> in N ms` (Quick Look, from Files);
+- `js: quick-look: <kind> <name> in N ms` (Quick Preview, from Files);
 - with the file `~/.cache/lordos/doc-trace` (or `LORD_DOC_TRACE=1`), `lord-doc: request N: queue X
   ms, helper Y ms` for each request.
 
@@ -311,7 +311,7 @@ server/build/doc-test server/build/lord-doc pdf file.pdf 900   # open, draw and 
 ## Pending
 
 - **Files:**
-  - PDF thumbnails in the icon view (today only in Quick Look);
+  - PDF thumbnails in the icon view (today only in Quick Preview);
   - extracting encrypted archives (asking for the password);
   - writing `.tar.gz` or `.7z`.
 - **PDF Viewer:**
@@ -325,5 +325,5 @@ server/build/doc-test server/build/lord-doc pdf file.pdf 900   # open, draw and 
   - ZWJ sequences (❤️‍🔥, 👩‍💻) show as their parts, because the text engine doesn't join them yet;
   - in Linux apps it types by pasting, because there's no Wayland `text-input`.
 - **Untested:**
-  - Quick Look of audio and video with `media.poster`: lord-media isn't built on VM 116;
+  - Quick Preview of audio and video with `media.poster`: lord-media isn't built on VM 116;
   - printing from Photos (it belongs to the media agent; the API is ready: `print.open({ image })`).

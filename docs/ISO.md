@@ -17,14 +17,14 @@ installable image).
 The ISO is **hybrid**: it is written as is, without special tools. Careful: the whole USB stick is
 erased.
 
-- **Linux or macOS:**
+- **Linux and other Unix-like systems:**
   ```sh
-  sha256sum -c lordos-live-0.7.0-amd64.iso.sha256      # macOS: shasum -a 256 -c …
+  sha256sum -c lordos-live-0.7.0-amd64.iso.sha256      # or: shasum -a 256 -c …
   sudo dd if=lordos-live-0.7.0-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
   ```
-  `/dev/sdX` is the whole USB stick (not a partition). On macOS it is `/dev/rdiskN`: find it with
-  `diskutil list` and unmount it first with `diskutil unmountDisk /dev/diskN`.
-- **Windows:** Rufus in **DD** mode (when it asks "ISO or DD", choose DD) or balenaEtcher.
+  `/dev/sdX` is the whole USB stick (not a partition). On BSD-derived systems it is usually `/dev/rdiskN`: find
+  it with the system disk tool and unmount it first.
+- **Other systems:** Rufus in **DD** mode (when it asks "ISO or DD", choose DD) or balenaEtcher.
 - **Ventoy** also works: copy the `.iso` onto the stick.
 
 Then boot the PC from the USB stick: usually F12, F11, F8 or Esc at power-on, depending on the
@@ -201,7 +201,7 @@ On a Debian 13, from the root of an already compiled repository. Since M8 it is 
 is not used for this.
 
 ```sh
-# on the Mac: the themes (also the login screen, themes/greeter)
+# on the development machine: the themes (also the login screen, themes/greeter)
 npm run build
 COPYFILE_DISABLE=1 tar czf - --no-xattrs --exclude build --exclude node_modules \
   package.json README.md server third_party assets themes tools | \

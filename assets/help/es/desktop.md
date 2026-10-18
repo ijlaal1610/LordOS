@@ -10,19 +10,19 @@ keywords: barra de menú, dock, launchpad, centro de control, fondo, widgets
 
 Arriba de todo:
 
-- **El logo de LordOS:** Acerca de, Ajustes, Launchpad, bloquear la pantalla, cambiar de usuario
+- **El logo de LordOS:** Acerca de, Ajustes, Aplicaciones, bloquear la pantalla, cambiar de usuario
   y cerrar la sesión.
 - **Los menús de la app del frente** (por ejemplo Archivo, Edición, Ver), y los menús Ventana y
   Ayuda.
 - **A la derecha:** íconos de estado (como el temporizador o la próxima alarma del Reloj), los
   indicadores de privacidad (cámara, micrófono, pantalla), la distribución de teclado, la lupa de
-  Spotlight, el **Centro de control** y la fecha y hora.
+  Buscar, el **Centro de control** y la fecha y hora.
 
-## El Dock y el Launchpad
+## El Dock y Aplicaciones
 
 - El **Dock** muestra las apps fijadas y las abiertas (un punto debajo). Clic derecho en un ícono
   para sus opciones.
-- El **Launchpad** (**F4** o tocar sola la tecla ❖) muestra todas las apps por categoría, con
+- **Aplicaciones** (**F4** o tocar sola la tecla ❖), el lanzador de apps, muestra todas las apps por categoría, con
   búsqueda: las de LordOS, las instaladas desde la Tienda y las apps Linux.
 
 ## Centro de control

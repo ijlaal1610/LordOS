@@ -124,7 +124,7 @@ sudo timedatectl set-timezone America/Argentina/Buenos_Aires
 
 ## Step 6 — Deploy and run M2
 
-On the Mac: `npm install && npm run build` (generates `themes/default/theme.bundle.js`). Then:
+On the development machine: `npm install && npm run build` (generates `themes/default/theme.bundle.js`). Then:
 
 ```sh
 COPYFILE_DISABLE=1 tar czf - --no-xattrs --exclude build --exclude node_modules --exclude legacy \
@@ -209,9 +209,9 @@ cd ~/LordOS/server && sudo setsid -f sh -c "./build/lord-server > /tmp/lord.log 
 ls /run/user/1000/lordos-term/   # one .sock (and .state) per live session
 ```
 
-iTerm2 test files in `~/Descargas`: `Dracula.itermcolors` and
-`Catppuccin Mocha.itermcolors` (from the iTerm2-Color-Schemes repository), a `Profiles.json` and
-a binary `com.googlecode.iterm2.plist` built in iTerm2's format.
+Terminal profile import test files in `~/Descargas`: `Dracula.itermcolors` and
+`Catppuccin Mocha.itermcolors` (from a popular collection of terminal color schemes), a `Profiles.json` and
+a binary `com.googlecode.iterm2.plist` in the same preferences format.
 
 ## Step 10 — M5: language and region
 
@@ -400,7 +400,7 @@ Test scripts in the host's `/root`, besides `lord-qmp-input.py`:
 - `lordos-grubsel.sh <vm> <n> <screenshot>`: reboots the VM and picks grub entry `n`. It sends
   `home` repeatedly to stop the countdown.
 
-**VM 119 `lordos-spot`** (Spotlight and clipboard, `SPOTLIGHT.md`): a full clone of 115
+**VM 119 `lordos-spot`** (Search and clipboard, `SPOTLIGHT.md`): a full clone of 115
 (`qm clone 115 119 --name lordos-spot --full`), IP 172.17.0.54 via cloud-init (snippet
 `local:snippets/lordos-spot.yaml`, the same as 116's with another hostname) and a new MAC. Tests
 only: `wl-clipboard` (`wl-copy`/`wl-paste`) and `tests/clip_secret.c`
@@ -489,9 +489,9 @@ qm start 122
 - **Tests** (`make -C server test` and separately): `build/sign-test` (55/55), `build/pkgstate-test`
   (11/11, with a test `.lpk`) and `build/sandbox-test` (13/13 app, 13/13 with network, 17/17
   `helper`; it needs `XDG_RUNTIME_DIR` for the Wayland socket test).
-- **Sync** from the Mac with a script with its own name (`sync-sandbox-122.sh`), never a
+- **Sync** from the development machine with a script with its own name (`sync-sandbox-122.sh`), never a
   generic one: another agent once sent its tree to this VM through a shared `sync.sh`.
-- **Development signing key**: on the Mac, `~/.config/lordos-dev/lordos-dev.key` (private, never
+- **Development signing key**: on the development machine, `~/.config/lordos-dev/lordos-dev.key` (private, never
   committed); the public one is in `packaging/keys/lordos-dev.pub` and in `server/src/sec/keys.h`.
 
 Do not touch VMs 115, 117, 118, 119, 120 or 123.
@@ -909,7 +909,7 @@ isolated app»). On VM 122 (172.17.0.56):
 - **Scripts:** `~/deploy-aisla-122.sh [full]` (installs the build; `full` stops/kills
   `lordos.service`, clears `/run/lordos/autologin-done` and starts it) and
   `~/vmbuild-aisla-122.sh` (runs `make`; while another agent's `src/hw` work was half done it added
-  those sources and `-include stddef.h` to the VM's copy only). From the Mac:
+  those sources and `-include stddef.h` to the VM's copy only). From the development machine:
   `sync-aisla-122.sh`, kept outside the repo.
 - **Screenshots:** `qm monitor 122` (`screendump`) on the Proxmox host; the mouse through
   `/root/lord-qmp-input.py 122`, typing through `/root/lord-type.py 122`.
@@ -941,7 +941,7 @@ See `SETTINGS.md`. On VM 118 (172.17.0.53), which already had `lord-sessiond` wi
   `poweroff`, lid `suspend`: logind's defaults), `~/.config/lordos/displays.json` (1280×800),
   `~/.config/mimeapps.list` (Firefox ESR as browser, Mousepad as text editor),
   `~/Escritorio/nota-ajustes.txt`. NTP was turned off and on again; the clock was set by hand once.
-- **Screenshots** with `qm monitor 118` (`screendump`, converted to PNG on the Mac) and the mouse
+- **Screenshots** with `qm monitor 118` (`screendump`, converted to PNG on the development machine) and the mouse
   through `/root/lord-qmp-input.py 118`.
 
 ## Step 23 — M9 system apps and `lord-netd` (VM 119 `lordos-spot`)
@@ -1076,7 +1076,7 @@ screen. Results and screenshots: `docs/qa/` (`all-apps.png`, `settings-pages.png
   file is `session.conf.qa-122.bak`).
 - **Test user:** `qa` («Qa Tester», standard), created from Settings → Users to check a new user's
   defaults.
-- **Tree and scripts:** the tree is synced to `~/LordOS-qa` by the Mac's scratch script
+- **Tree and scripts:** the tree is synced to `~/LordOS-qa` by the development machine's scratch script
   `sync-qa-122.sh`; screenshots via `qm monitor 122` (`screendump`), mouse via
   `/root/lord-qmp-input.py 122`, typing via `/root/lord-type.py 122`. Network untouched.
 - **QA fixes (login screen, `make test` runner):** `unicode-data` installed with apt so

@@ -1,8 +1,8 @@
 // Settings → Displays: arrangement of several displays (extend or mirror), resolution, refresh rate,
-// rotation, scale (100–200 %, sharp), the main display, brightness and Night Shift (docs/SETTINGS.md,
+// rotation, scale (100–200 %, sharp), the main display, brightness and Night Light (docs/SETTINGS.md,
 // "Displays", and docs/DISPLAYS.md). Changes apply live with the system's 15-second "Keep these
 // display settings?" countdown (sdk/hardware.jsx) and are saved per display (EDID identity).
-// Layout after macOS System Settings → Displays: the arrangement on top, then the selected display's
+// Layout: the arrangement on top, then the selected display's
 // settings in inset boxes, with the scale as "Larger text … More space" tiles.
 import {
   View, Text, useTheme, useLocale, useSettings, Slider, Toggle, admin, useDisplays, applyDisplay, DisplayGlyph, addListener,
@@ -100,7 +100,7 @@ function Arrangement({ outs, sel, onSelect, mirror, t }) {
 }
 
 // One scale as a picture of the screen with a window: the larger the scale, the bigger the window
-// (macOS "Larger text … More space"). A 2 px accent ring marks the current one.
+// ("Larger text … More space"). A 2 px accent ring marks the current one.
 function ScaleTile({ n, on, rec, label, onPick, t, tr }) {
   const [hover, setHover] = useState(false);
   const ww = Math.round(20 + (n - 100) * 0.26), wh = Math.round(ww * 0.64);

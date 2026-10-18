@@ -7,7 +7,7 @@ keywords: backup, cópia de segurança, restaurar, time machine, recuperar arqui
 ---
 # Backups
 
-Cópias automáticas da sua pasta pessoal, no estilo do Time Machine.
+Cópias automáticas da sua pasta pessoal.
 
 ## Começar
 

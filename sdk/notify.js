@@ -1,4 +1,4 @@
-// notify.js — session notifications (like macOS or GNOME notifications).
+// notify.js — session notifications (like GNOME notifications).
 //
 //   const id = notify({ app: 'backup', title: 'Backup done', body: '1234 files',
 //                       actions: [{ id: 'open', label: 'Open', run: () => wm.open('backup') }],
@@ -68,7 +68,7 @@ export function notify({ app = '', title = '', body = '', actions = [], sound: w
   app = String(app);
   const ap = appNotifyPrefs(app);
   remember(app);
-  if (!ap.allow) return 0;                                  // not delivered at all (like macOS)
+  if (!ap.allow) return 0;                                  // not delivered at all
   const id = seq++;
   const n = { id, app, label: String(label), Icon: typeof icon === 'function' ? icon : null, title: String(title), body: String(body), actions: Array.isArray(actions) ? actions.slice(0, 3) : [],
     sticky: !!sticky || ap.style === 'alert', time: Date.now(), onClose };

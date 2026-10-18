@@ -113,7 +113,7 @@ globalThis.__lordKey = (code, value, key, chr, base, flags) => {
 //   pinch:  onPinch({ scale, rotation, x, y, dx, dy, phase }), scale relative to the start.
 //   swipe:  onSwipe({ dx, dy, fingers, phase, system }); system = desktop swipe (handled by
 //           the SDK with the theme's actions if nobody calls stopPropagation()).
-// During a gesture the target stays fixed (the node under the pointer when it started), as on macOS.
+// During a gesture the target stays fixed (the node under the pointer when it started).
 const latched = { scroll: null, pinch: null, swipe: null };
 let wheelAcc = 0;
 globalThis.__lordGesture = (kind, phase, id, x, y, a, b, c, d) => run(ContinuousEventPriority, () => {

@@ -11,7 +11,7 @@ open as regular desktop windows.
 
 - **Install them:** from the [Store](help:store), which lists Debian apps with their icons and
   descriptions.
-- **Open them:** Launchpad, the Dock or Spotlight, like any app.
+- **Open them:** Apps, the Dock or Search, like any app.
 - **Open a file with one of them:** in [Files](help:files), right-click → “Open with”.
 - **Clipboard:** what you copy in a Linux app pastes in LordOS and the other way round, images too.
 - **Keyboard and touchpad:** they get the keys (❖ combinations still belong to LordOS) and the

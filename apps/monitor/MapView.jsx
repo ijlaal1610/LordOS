@@ -1,4 +1,4 @@
-// MapView.jsx — mapa del mundo de la pestaña Red, como el de Little Snitch: tierra en vectores
+// MapView.jsx — world map of the Network tab, as in per-app network monitors: vector land
 // (dibujada por lord-server en otro hilo: lord.monitor.map / mapFrame, server/src/monitor/map.c),
 // un arco desde "Este equipo" a cada país con conexiones, un punto por país y etiquetas en
 // píldora. Rueda: zoom hacia el cursor; arrastrar: mover; doble clic: acercar; botones +, − y
@@ -171,7 +171,7 @@ export function MapView({ places, home, selected, onSelect, geoOn, fitKey }) {
       if (!moved) onSelect(hit(start.x, start.y));
     });
   };
-  // trackpad: dos dedos mueven el mapa (como un mapa de macOS); ctrl + dos dedos o una rueda, zoom
+  // trackpad: dos dedos mueven el mapa (like a maps app); ctrl + dos dedos o una rueda, zoom
   const onWheel = (e) => {
     if (e.precise && !e.ctrl) {
       const cur = viewRef.current;

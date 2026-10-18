@@ -43,7 +43,7 @@ function newTab(path, text) {
     useTabs: /\t/.test(text.slice(0, 20000).split('\n').find((l) => /^\s/.test(l)) || '') || /Makefile$|\.go$/.test(path || '') };
 }
 
-// Fuzzy score (like TextMate's ⌘T): letters in order; worth more at the start of a word.
+// Fuzzy score (like TextMate's Go to File): letters in order; worth more at the start of a word.
 function fuzzy(q, s) {
   const a = q.toLowerCase(), b = s.toLowerCase();
   let score = 0, j = 0, prev = -2;

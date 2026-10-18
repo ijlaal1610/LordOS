@@ -145,7 +145,7 @@ cv.addEventListener('pointerdown', (e) => {
 cv.addEventListener('pointerup', (e) => { pend = pos(e); flushMove(); if (e.button <= 2) send({ t: 'b', b: e.button, d: 0 }); });
 cv.addEventListener('contextmenu', (e) => e.preventDefault());
 // Wheel: a mouse sends steps ('w'); a trackpad, pixels with a phase ('s': 1 begins, 2 continues, 3
-// ends) and pinch arrives as a wheel with ctrlKey (Chrome, Firefox) or gesturechange (Safari)
+// ends) and pinch arrives as a wheel with ctrlKey (Chrome, Firefox) or gesturechange (WebKit browsers)
 // ('pz': scale relative to the start). Gestures end after 150 ms without events.
 let scrollOn = false, scrollT = 0, pinchOn = false, pinchT = 0, pinchScale = 1, pinchRot = 0;
 function pinch(scale, rot) {
@@ -177,7 +177,7 @@ cv.addEventListener('gestureend', (e) => e.preventDefault());
 function key(e, down) {
   const c = K[e.code];
   if (!c) return;
-  // Ctrl/⌘+V: let the browser fire "paste" (the local clipboard goes first)
+  // Ctrl+V: let the browser fire "paste" (the local clipboard goes first)
   if (down && e.code === 'KeyV' && (e.ctrlKey || e.metaKey)) return;
   e.preventDefault();
   if (down) held.add(c); else held.delete(c);

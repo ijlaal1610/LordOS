@@ -53,7 +53,7 @@ enum {
     DQ_PDF_UNDO,        /* {"page"}: removes the last annotation added on that page */
     DQ_PDF_SIZES,       /* → {sizes:[[w,h]...], forms} (open with "quick" only brings the first) */
     DQ_PDF_THUMB,       /* (util session) fd + {"width","height","invert"} → DR_IMG of page 1 */
-    DQ_WARM,            /* (util session) prepares fontconfig and Poppler, so Quick Look doesn't wait */
+    DQ_WARM,            /* (util session) prepares fontconfig and Poppler, so Quick Preview doesn't wait */
 
     DQ_ARC_LIST = 30,   /* {"slot"} → {entries:[{p,s,m,d,l}], truncated, format} */
     DQ_ARC_EXTRACT,     /* {"slot","dir","only":[...]} → DR_PROG..., DR_DONE */

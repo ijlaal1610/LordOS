@@ -1,5 +1,5 @@
 /* h_font.c — fonts in the helper (FreeType + cairo): data of a .ttf/.otf/.ttc, a sample with
- * a text and sizes, and the character table. The Fonts app and Quick Look use it: a
+ * a text and sizes, and the character table. The Fonts app and Quick Preview use it: a
  * broken or malicious font (for example, one downloaded from the internet before installing it) can only
  * bring down this process. */
 #include "helper.h"

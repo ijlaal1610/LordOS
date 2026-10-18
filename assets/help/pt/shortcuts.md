@@ -12,8 +12,8 @@ keywords: teclas, atalhos, combinações, super, cmd
 
 | Atalho | O que faz |
 |---|---|
-| ❖Espaço · Ctrl+Espaço | Spotlight: buscar apps, arquivos, ajustes e ajuda |
-| ❖ sozinha · F4 | Launchpad |
+| ❖Espaço · Ctrl+Espaço | Pesquisar: buscar apps, arquivos, ajustes e ajuda |
+| ❖ sozinha · F4 | Aplicativos (o lançador de apps) |
 | ❖⌥Espaço | Próximo layout de teclado ou método de entrada |
 | ❖V · ❖⇧V | Área de transferência: o último · o histórico completo |
 | ❖. | Emojis e símbolos |

@@ -1,6 +1,6 @@
 /* keyring.c — the system keyring (see docs/PASSWORDS.md, "The session keyring").
  *
- * It is a separate vault, login.lvault, like macOS's "login" keyring: it unlocks by itself at
+ * It is a separate vault, login.lvault, a "login" keyring: it unlocks by itself at
  * login with the session password (lord-sessiond verifies it and hands it to the session
  * only once; lord-server forwards it here and wipes it), and stays open until logout.
  * Locking the screen does not lock it (the Passwords vault does lock).

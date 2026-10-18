@@ -1,10 +1,10 @@
 ---
-title: Spotlight
+title: Buscar
 section: desktop
 order: 12
 keywords: buscar, búsqueda, calculadora, convertir, unidades
 ---
-# Spotlight
+# Buscar
 
 **❖Espacio** (o Ctrl+Espacio, o la lupa ⌕ de la barra) abre la búsqueda de todo el sistema.
 

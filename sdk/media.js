@@ -69,7 +69,7 @@ export const media = {
   thumb: (path, size = 256) => { try { return call('thumb', path, size); } catch (e) { return null; } },
   probe: (path) => job(() => call('probe', path)).then((r) => (r.ok ? r.result : null)),
   waveform: (path, bars = 200) => job(() => call('waveform', path, bars)).then((r) => (r.ok ? r.result : null)),
-  // a video frame or the audio cover art, in RGBA pixels for <Image pixels> (Quick Look)
+  // a video frame or the audio cover art, in RGBA pixels for <Image pixels> (Quick Preview)
   poster: (path, maxSize = 512) => job(() => call('poster', path, maxSize)).then((r) => (r.ok ? call('take', r.id) : null)),
   edit: (app, path, out, opts) => job(() => call('edit', app, path, out, opts)),
   transcode: (app, path, out, opts) => job(() => call('transcode', app, path, out, opts)),

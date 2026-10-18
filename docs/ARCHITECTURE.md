@@ -29,24 +29,24 @@ like React Native but on top of our display server.
 | `server/src/` (kms, input, canvas) | **M1 done** | Display (KMS), input (evdev), 2D rasterizer |
 | `server/src/ui/` | **M2 done** | Nodes, styles, flexbox, text, images, painting, damage, QuickJS |
 | `runtime/`    | **M2 done** | React renderer (`@lordos/runtime`): reconciler, CSS → native, events |
-| `themes/default/` | **M2 done** | Mac-OS-Desktop style theme with our own assets |
+| `themes/default/` | **M2 done** | Theme with a menu bar, a dock and an app launcher, with our own assets |
 | `server/src/ui/js_sys.c` | **M3 done** | System APIs: fs (in `$HOME`), /proc, settings, themes, session |
 | `sdk/` | **M3 done** | `@lordos/sdk`: windows, settings, tokens, controls, system hooks |
 | `apps/` | **M3 done** | Apps as packages (`manifest.json` + `index.jsx`), independent of the theme |
 | `themes/classic/` | **M3 done** | Second theme and template for creating themes |
 | `server/src/term/` | **M4 done** | Our own terminal: xterm emulator, PTY, drawing, session holders (see `TERMINAL.md`) |
 | `server/src/ui/otf.c`, `fonts.c` | **M4 done** | Our own OpenType (GSUB substitutions, CBDT emoji) and catalog of installed fonts: no HarfBuzz or fontconfig |
-| `apps/terminal/` | **M4 done** | iTerm2-style Terminal app (tabs, panes, profiles…) |
+| `apps/terminal/` | **M4 done** | Native Terminal app (tabs, panes, profiles…) |
 | `sdk/i18n.js`, `assets/locales/` | **M5 done** | Text, plurals and formats per language and region (see `LANGUAGES.md`) |
 | `server/src/keyboard.c` | **M5 done** | Keyboard with libxkbcommon: every XKB layout, compose |
 | `server/src/admin.c` | **M5 done** | Privileged helper with closed actions (region, time zone, language packs) |
 | `server/src/ui/bidi.c`, `unicode.c`, `shape.c`, `textlayout.c` | **M5b done** | Full Unicode bidi, Arabic shaping and marks (GSUB/GPOS), per-script font fallback, CJK line breaking, mirrored interface (`direction`) |
 | `server/src/ime.c`, `sdk/ime.js` | **M5b done** | Input methods: Korean, Japanese (SKK), Chinese (pinyin) |
 | `server/src/app/`, `ui/js_broker.c`, `runtime/app-host.js` | **M8 done** | App mode: each `.lpk` as an isolated process (`lord-server --app <id>`), a Wayland client of the compositor, with a permission broker (see `PRIVACY.md`) |
-| `server/src/sec/`, `ui/js_sec.c` | **M8 done** | Isolation of .lpk apps (Landlock+seccomp+cgroup), TCC permissions and Ed25519 signing (see `PRIVACY.md`, `SIGNING.md`) |
+| `server/src/sec/`, `ui/js_sec.c` | **M8 done** | Isolation of .lpk apps (Landlock+seccomp+cgroup), per-app permissions and Ed25519 signing (see `PRIVACY.md`, `SIGNING.md`) |
 | `server/src/wl/`, `sdk/wayland.js` | **M6 done** | Our own Wayland compositor on libwayland-server: GTK and Qt apps as theme windows (see `WAYLAND.md`) |
 | `server/src/tp/`, `wl/wl_input.c`, `js_input.c`, `sdk/trackpad.js` | **done (VM, uinput)** | Our own touchpad and touchscreen driver on evdev (no libinput): pointer acceleration, tap, finger clicks, palm rejection, kinetic scrolling, pinch, swipe; gestures and touches for Wayland apps (see `TRACKPAD.md`) |
-| `server/src/doc/`, `js_doc.c`, `apps/pdf`, `apps/fonts`, `apps/characters` | **M9** | Documents: the sandboxed helper `lord-doc` (Poppler, libarchive, FreeType) and its apps: PDF Viewer, archives and Quick Look in Files, Fonts, Emoji & Symbols (see `DOCUMENTS.md`) |
+| `server/src/doc/`, `js_doc.c`, `apps/pdf`, `apps/fonts`, `apps/characters` | **M9** | Documents: the sandboxed helper `lord-doc` (Poppler, libarchive, FreeType) and its apps: PDF Viewer, archives and Quick Preview in Files, Fonts, Emoji & Symbols (see `DOCUMENTS.md`) |
 | `server/src/print/`, `js_print.c`, `sdk/printdialog.jsx`, `apps/scanner` | **M9** | Printing: our own IPP client against CUPS, our own mDNS, eSCL scanners, the system print dialog (see `PRINTING.md`) |
 | `server/src/media/`, `js_media.c`, `sdk/media.js`, `apps/{photos,player,screenshots,camera,recorder}` | **M9** | Media: the sandboxed helper `lord-media` (FFmpeg, libva) and the Photos, Player, Screenshots, Camera and Recorder apps; `media` node, audio over shared memory with the PipeWire stream in lord-server, protected windows in screenshots, recording and remote desktop (see `MEDIA.md`) |
 | `server/src/netperm/`, `server/src/fw/`, `js_fw.c` | **M8** | Per-app firewall: the root service `lord-netperm` enforces the rules with cgroup BPF in the sessions; Rule column in the Monitor and Trusted / Restricted apps in Settings (see `FIREWALL.md`) |
@@ -57,10 +57,10 @@ like React Native but on top of our display server.
 | `server/src/mail/`, `js_mail.c`, `sdk/{mail,calendar,contacts}.js`, `apps/{mail,calendar,contacts,reminders}` | **M9** | Mail, Calendar, Contacts and Reminders: the sandboxed helper `lord-maild` (IMAP with IDLE/CONDSTORE, SMTP, CalDAV/CardDAV, OpenSSL) with no sockets of its own — `lord-server` connects only to configured servers and hands it the fd; own MIME, HTML sanitizer, iCalendar, vCard and XML parsers (see `MAIL.md`) |
 | `server/src/backup/`, `js_backup.c`, `sdk/backup.js`, `apps/backup` | **M9** | Backups: hard-link snapshots in a lord-server thread (nice 19, idle I/O), hourly/daily/weekly retention, optional encryption with the vendored Monocypher; no root and no `admin.c` actions (see `SYSTEM.md`) |
 | `server/src/logs/`, `js_logs.c`, `sdk/logs.js`, `apps/logs` | **M9** | Logs: our own systemd journal reader (no libsystemd), LordOS logs, system logs for admins through a closed action, live follow with inotify (see `SYSTEM.md`) |
-| `server/src/ui/tzif.c`, `js_help.c`, `sdk/{notify,alarms,statusitems,help}.js`, `apps/{clock,help}` | **M9** | Clock (our own TZif reader, session alarms with the app closed), session notifications, menu-bar status items, Help (markdown articles in es/en/pt, welcome tour, Spotlight source) (see `SYSTEM.md`) |
+| `server/src/ui/tzif.c`, `js_help.c`, `sdk/{notify,alarms,statusitems,help}.js`, `apps/{clock,help}` | **M9** | Clock (our own TZif reader, session alarms with the app closed), session notifications, menu-bar status items, Help (markdown articles in es/en/pt, welcome tour, Search source) (see `SYSTEM.md`) |
 | `server/src/ui/grab.c`, `cursor.c`, `sdk/windowshell.jsx` | **M8** | Windows: moving and resizing in C (one event per frame, no JS), a layer for the window being moved, edges on all 4 sides and corners, our own cursors and `cursor-shape-v1` (see `WINDOWS.md`) |
 | `server/src/outputs.c`, `kms.c`, `hw/display.c`, `ui/paint.c` (`paint_view`) | **M9** | Several displays (extend and mirror, arrangement by EDID identity, hotplug) and sharp HiDPI at 100–200 % per display: one logical space, each display painted at its own resolution; one `wl_output` per display, xdg-output, fractional-scale-v1 (see `DISPLAYS.md`) |
-| `server/src/hw/`, `ui/js_hw.c`, `sdk/hardware.jsx`, `sdk/defaults.js` | **M9** | Settings' hardware pages: displays (EDID, live modes with a 15 s revert, per-display persistence, software rotation and 200 % scale, Night Shift on the gamma LUT or by software), Bluetooth (BlueZ over our own D-Bus client, pairing agent), battery and power profiles, idle (DPMS, lock, sleep), date and time, notifications from Linux apps (`org.freedesktop.Notifications`) and default apps (`mimeapps.list`); kernel uevents and D-Bus signals, no polling (see `SETTINGS.md`) |
+| `server/src/hw/`, `ui/js_hw.c`, `sdk/hardware.jsx`, `sdk/defaults.js` | **M9** | Settings' hardware pages: displays (EDID, live modes with a 15 s revert, per-display persistence, software rotation and 200 % scale, Night Light on the gamma LUT or by software), Bluetooth (BlueZ over our own D-Bus client, pairing agent), battery and power profiles, idle (DPMS, lock, sleep), date and time, notifications from Linux apps (`org.freedesktop.Notifications`) and default apps (`mimeapps.list`); kernel uevents and D-Bus signals, no polling (see `SETTINGS.md`) |
 
 ### Flow of a frame
 
@@ -218,8 +218,8 @@ A theme is a JS package that exports React components with a fixed contract:
 `Desktop`, `MenuBar`, `Dock`, `Launcher`, `ControlCenter`, `WindowFrame` and its tokens
 (colors, radii, shadows, fonts, wallpaper). The theme talks to the server only through
 `@lordos/sdk` (`useWindows()`, `launch()`, `focus()`, `close()`…), never directly.
-The default theme replicates the style of https://github.com/mhmdmhd6/Mac-OS-Desktop with
-our own icons and wallpapers. Apple's assets cannot be redistributed.
+The default theme follows a familiar menu-bar-and-dock desktop layout, drawn with
+our own icons and wallpapers; no third-party desktop assets are used or redistributed.
 
 ## JavaScript layers
 

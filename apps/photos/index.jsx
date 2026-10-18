@@ -299,7 +299,7 @@ function Viewer({ list, index, setIndex, onClose, winId, mode }) {
 const viewerTokens = (th) => ({ ...th, mode: 'dark', text: '#f5f5f7', textDim: 'rgba(235,235,245,0.55)', hover: 'rgba(255,255,255,0.1)',
   control: 'rgba(255,255,255,0.1)', separator: 'rgba(255,255,255,0.1)', windowBg: '#1f1f23', inputBg: '#2a2a2f' });
 
-// Small folder icon for the sidebar (the folder emoji is a color picture; macOS uses a line glyph).
+// Small folder icon for the sidebar (the folder emoji is a color picture; a line glyph fits better).
 function FolderGlyph({ on }) {
   const th = useTheme();
   const c = on ? '#fff' : th.accent;

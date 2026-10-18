@@ -1,4 +1,4 @@
-// apps.js — every app that can be opened, for the Launchpad, the start menu and the Store:
+// apps.js — every app that can be opened, for the app launcher, the start menu and the Store:
 //   - the LordOS apps bundled with the theme (apps/),
 //   - the LordOS apps installed as a package (.lpk, see docs/NATIVE-APPS.md),
 //   - the installed Linux apps (.desktop files; they open as Wayland windows).

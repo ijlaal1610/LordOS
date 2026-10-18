@@ -12,7 +12,7 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 #if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
-#define _DARWIN_C_SOURCE                /* O_NOFOLLOW with _POSIX_C_SOURCE on macOS (tests) */
+#define _DARWIN_C_SOURCE                /* O_NOFOLLOW with _POSIX_C_SOURCE on BSD-libc hosts (tests) */
 #endif
 #include "fw/rules.h"
 #include "fw/fwmap.h"

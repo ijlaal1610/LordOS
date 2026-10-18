@@ -7,7 +7,7 @@ keywords: files, folders, trash, file manager, finder, compress, tags
 ---
 # Files
 
-The file manager, in the style of the Finder.
+The file manager.
 
 ## Basics
 
@@ -16,7 +16,7 @@ The file manager, in the style of the Finder.
 - **Views:** icons (❖1), list (❖2), columns (❖3) and gallery (❖4). You can also group by kind,
   date or size.
 - **Tabs** (❖T) and **new windows** (❖N).
-- **Quick Look:** Space shows the image, text, PDF or video without opening it; the arrows move
+- **Quick Preview:** Space shows the image, text, PDF or video without opening it; the arrows move
   to the next one.
 - **Get Info** (❖I): size, location, dates, permissions and “Open with”.
 

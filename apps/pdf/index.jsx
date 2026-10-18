@@ -1,4 +1,4 @@
-// PDF Viewer — in the style of macOS Preview: continuous or single-page scrolling,
+// PDF Viewer — continuous or single-page scrolling,
 // thumbnails and outline, search with highlighting, zoom and fit, rotate, select and copy text,
 // go to a page, links, forms, annotations (highlight, note and freehand) saved as a
 // copy, dark mode with the page inverted and printing with the system dialog.

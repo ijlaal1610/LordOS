@@ -1,5 +1,5 @@
 // dock.js — Dock and taskbar: pinned (favorite) apps, windows grouped by app and the
-// right-click menu (as in macOS). Every theme uses it; each one draws it its own way.
+// right-click menu. Every theme uses it; each one draws it its own way.
 //
 //   const entries = useDockEntries(['files', 'terminal'])   // the theme's default pinned apps
 //   // entry = { id, name, Icon, windows: [window…], pinned, running, focused }
@@ -36,7 +36,7 @@ export const dock = {
 
 // ---- Dock and taskbar preferences (Settings → Desktop & Dock) ----
 // Stored in settings.json. Left and right are physical sides of the screen, even with a
-// right-to-left language (as in macOS).
+// right-to-left language.
 export const DOCK_DEFAULTS = {
   dockPosition: 'bottom',     // 'bottom' | 'left' | 'right' (Lord Default theme)
   dockSize: 54,               // px of each icon (36–80)
@@ -114,7 +114,7 @@ export function useDockEntries(defaults = [], opts = {}) {
 }
 
 // Click on the icon: with no windows it opens the app; with windows it brings up the most recent one (if it
-// was already in front and there are several, it moves to the next, like ❖` in macOS).
+// was already in front and there are several, it moves to the next, like ❖`).
 export function dockActivate(e) {
   if (!e.windows.length) { launchApp(e.id); return; }
   const top = wm.focused();

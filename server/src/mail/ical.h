@@ -4,7 +4,7 @@
  * The parser is bounded (line count, nesting, property count) and never reads outside the input.
  * Times are kept as Unix seconds (UTC). An all-day value keeps its civil date (YYYYMMDD) so it
  * never shifts with the time zone. TZID values are resolved with the system tz database
- * (/usr/share/zoneinfo, through our TZif reader); Windows zone names from Outlook are mapped. */
+ * (/usr/share/zoneinfo, through our TZif reader); non-IANA zone names (as some calendar servers send) are mapped. */
 #ifndef LORD_MAIL_ICAL_H
 #define LORD_MAIL_ICAL_H
 

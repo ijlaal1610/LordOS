@@ -1,6 +1,6 @@
 # Design guide for LordOS apps
 
-LordOS apps follow the macOS Human Interface Guidelines: generous whitespace, a small type scale,
+LordOS apps follow our design guide, modeled on widely used desktop human-interface conventions: generous whitespace, a small type scale,
 consistent control heights and one accent-colored action per view. This guide is the reference
 for every polish pass, so all apps share the same spacing, type and controls. The shared building
 blocks are in `sdk/controls.jsx` and `sdk/components.jsx`, and the tokens below are exported from
@@ -45,7 +45,7 @@ Inter, weights 400 / 500 / 600 only (700 only for very short emphasis).
 | `title` | 17 | 600 | the title of a pane when space is short |
 | `largeTitle` | 22 | 600 | the title of a library or detail view (Photos, Fonts) |
 
-Secondary text uses `textDim`. Avoid uppercase captions: macOS uses sentence case ("Contents",
+Secondary text uses `textDim`. Avoid uppercase captions: use sentence case ("Contents",
 not "CONTENTS").
 
 ## Controls
@@ -77,7 +77,7 @@ the Recorder draw their empty-state icons. `↻ ⤮ ♪ ◫ ▣ ☺ ≡` render 
 - **Sidebar (source list):** 200–240 px, `sidebarBg`, a hairline on its trailing edge,
   `SectionTitle` captions (11 px, 600, `textDim`) and `SidebarItem` rows. A search field goes at
   the top of the sidebar when the list is what you search.
-- **Toolbar:** icon-only buttons with tooltips where macOS does that. Show a text label only for
+- **Toolbar:** icon-only buttons with tooltips where that is the convention. Show a text label only for
   the main mode switch or the back button. Push trailing items to the end with `ToolbarSpacer`. In
   narrow windows, hide items that are also in the app menus (print, invert, rotate), and move
   secondary actions into a `MenuButton` ("⋯"), so the toolbar never wraps to a second row.

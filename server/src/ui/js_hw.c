@@ -3,7 +3,7 @@
  * program (root work goes through the admin helper's closed actions, hw/hw_admin.c). Notices
  * arrive in JS as __lordHw(kind, data).
  *
- *   lord.display.list()                         outputs, modes, Night Shift, backlight
+ *   lord.display.list()                         outputs, modes, Night Light, backlight
  *   lord.display.apply(conn, w, h, mHz, rot, scale)   live (queued between frames); scale in % (100–200,
  *                                               25 % steps); true if accepted
  *   lord.display.arrange(conn, x, y, apply)     drop a display at global logical (x, y): { x, y } snapped

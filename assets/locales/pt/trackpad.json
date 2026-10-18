@@ -31,7 +31,7 @@
   "pinchHint": "Afaste ou aproxime dois dedos para ampliar ou reduzir (também no Chromium e no GTK).",
   "swipe3": "Deslizar com três dedos",
   "swipe3Moved": "Deslizar com quatro dedos",
-  "swipe3Hint": "Para cima: Launchpad ou menu iniciar. Para baixo: fechá-lo. Esquerda e direita: trocar de janela.",
+  "swipe3Hint": "Para cima: Aplicativos ou menu iniciar. Para baixo: fechá-lo. Esquerda e direita: trocar de janela.",
   "swipe4": "Deslizar com quatro dedos para a área de trabalho",
   "swipe4Hint": "Desligado, os apps recebem o gesto de quatro dedos."
 }

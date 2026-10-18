@@ -18,7 +18,7 @@ void fonts_set_builtin_dir(const char *dir);
 const FontEntry *fonts_list(int force, int *count);
 /* Best variant of the family for bold/italic; NULL if none exists. */
 const FontEntry *fonts_pick(const char *family, int bold, int italic);
-/* By PostScript name (as iTerm2 saves it: "JetBrainsMono-Regular"). */
+/* By PostScript name (as terminal profiles exported by other terminal emulators save it: "JetBrainsMono-Regular"). */
 const FontEntry *fonts_by_ps(const char *ps);
 /* First installed color font (Noto Color Emoji...). */
 const FontEntry *fonts_color(void);

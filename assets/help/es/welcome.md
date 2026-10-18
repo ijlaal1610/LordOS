@@ -11,14 +11,14 @@ en React que corre sobre su propio motor. Está pensado para andar bien en equip
 
 ## Lo primero
 
-- **Abrir apps:** el Dock (abajo) o el Launchpad (**F4**, o tocar sola la tecla ❖).
-- **Buscar cualquier cosa:** **❖Espacio** abre Spotlight. Ver [Spotlight](help:spotlight).
+- **Abrir apps:** el Dock (abajo) o Aplicaciones (**F4**, o tocar sola la tecla ❖).
+- **Buscar cualquier cosa:** **❖Espacio** abre Buscar. Ver [Buscar](help:spotlight).
 - **Cambiar el aspecto:** [Ajustes → Apariencia](settings:appearance) y [Fondo de pantalla](settings:wallpaper).
 - **Conectarte a la red:** [Ajustes → Red](settings:network).
 - **Bloquear la pantalla:** **❖L**.
 
-La tecla ❖ es la tecla Super (la del logo de Windows en muchos teclados). Cumple el papel de Cmd
-en macOS: casi todos los atajos de las apps la usan.
+La tecla ❖ es la tecla Super (la del logo, entre Ctrl y Alt en la mayoría de los teclados): casi
+todos los atajos de las apps la usan.
 
 ## Para seguir
 

@@ -4,7 +4,7 @@
  * A single collection, the session keyring: /org/freedesktop/secrets/collection/login, with the
  * alias "default" (/org/freedesktop/secrets/aliases/default is accepted too). CreateCollection
  * returns that same collection (no others are created: so any app that asks for "a new
- * collection" ends up in the session keyring, as on macOS). Deleting the collection: NotSupported.
+ * collection" ends up in the session keyring). Deleting the collection: NotSupported.
  *
  * Sessions: "plain" and "dh-ietf1024-sha256-aes128-cbc-pkcs7" (the 1024-bit MODP group of RFC 2409,
  * HKDF-SHA256 without salt or info → AES-128 key, AES-128-CBC with PKCS#7 and the IV in the

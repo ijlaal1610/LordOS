@@ -1,5 +1,5 @@
 /* settings_hw_test.c — tests for the pure parts of Settings' hardware pages (src/hw):
- * EDID parsing, KMS mode selection, the Night Shift math (temperature, gamma ramp, sunrise and
+ * EDID parsing, KMS mode selection, the Night Light math (temperature, gamma ramp, sunrise and
  * sunset, schedule), mimeapps.list editing and globs2, and the power_supply reader over a fake
  * sysfs tree. Run by `make test` (mk/settings.mk). */
 #include "hw/edid.h"

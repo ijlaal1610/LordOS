@@ -1,8 +1,8 @@
 // Dock with magnification by mouse position, tooltip and open-app dot. It can go at the bottom,
 // on the left or on the right (Settings → Desktop & Dock), auto-hide and show recent
-// apps. Left and right are physical sides of the screen, also in Arabic or Hebrew (like
-// macOS): the Dock is laid out with direction: 'ltr' and only the bottom row reverses its order in RTL.
-import { View, Text, screen, appName, useLocale, addListener } from '@lordos/sdk';
+// apps. Left and right are physical sides of the screen, also in Arabic or Hebrew (as
+// on popular desktop systems): the Dock is laid out with direction: 'ltr' and only the bottom row reverses its order in RTL.
+import { View, Text, screen, appName, useLocale, addListener, t as tr } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 
 const GAP = 8, PAD = 9, MARGIN = 6;
@@ -81,14 +81,14 @@ export function Dock({ t, items: list, running, onOpen, onContext, position = 'b
   const [m, setM] = useState(null);             // mouse position along the Dock's axis
   const { dir } = useLocale();
   // The magnifier computes positions with the mouse coordinate: in Arabic/Hebrew the bottom row reverses
-  // the list (same visual result as macOS); on the side the order is top to bottom in all of them.
+  // the list (the visual result users expect); on the side the order is top to bottom in all of them.
   const items = !vert && dir === 'rtl' ? [...list].reverse() : list;
   const n = items.length;
   const sepAt = items.findIndex((it) => it.recent);
   const sep = sepAt > 0 ? SEP : 0;
   const origin = vert ? area.y + top : area.x, avail = vert ? area.h - top : area.w;
   const AX = area.x, AY = area.y, AR = area.x + area.w, AB = area.y + area.h;
-  // with many apps the icons shrink so the Dock fits on screen (like macOS)
+  // with many apps the icons shrink so the Dock fits on screen
   // (it accounts for magnifier growth: about 2.6 extra icons in total)
   const grow = magnify ? 2.6 * Math.max(0, maxSize / size - 1) : 0;
   const fit = Math.floor((avail - 2 * PAD - 16 - (n - 1) * GAP - sep) / (Math.max(1, n) + grow));
@@ -136,7 +136,7 @@ export function Dock({ t, items: list, running, onOpen, onContext, position = 'b
   // where to open the right-click menu and the tooltip: beside the icon, on the inner side
   const anchor = (i) => (position === 'bottom' ? { x: start + iconC[i], y: AB - MARGIN - bar - 6 }
     : position === 'left' ? { x: AX + MARGIN + bar + 8, y: start + iconC[i] } : { x: AR - MARGIN - bar - 8, y: start + iconC[i] });
-  const label = hovered >= 0 ? (items[hovered].id === 'launchpad' ? 'Launchpad' : appName(items[hovered])) : '';
+  const label = hovered >= 0 ? (items[hovered].id === 'launchpad' ? tr('shell.menu.apps') : appName(items[hovered])) : '';
   const tip = (
     <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 7, backgroundColor: t.panelBg,
       backdropFilter: `blur(${t.blur}px)`, border: `1px solid ${t.windowBorder}` }}>

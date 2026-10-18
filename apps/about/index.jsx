@@ -6,7 +6,7 @@ export function Icon({ size }) {
   return <LordOSLogo size={size} />;
 }
 
-// One line of the spec list, like macOS "About This Mac": the label in a trailing-aligned column
+// One line of the spec list, as in a classic "About" window: the label in a trailing-aligned column
 // and the value at its side.
 function InfoRow({ k, v }) {
   const t = useTheme();

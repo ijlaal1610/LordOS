@@ -720,7 +720,7 @@ static void display_attach(const int *fds, int n) {
     o0->on = 1;
     struct stat st;
     if (fstat(o0->kms.fd, &st) == 0) wl_set_drm_device(st.st_rdev);
-    display_attached();                 /* Night Shift, idle timers, the list in Settings; queues a resync */
+    display_attached();                 /* Night Light, idle timers, the list in Settings; queues a resync */
     display_take_resync();
     outputs_apply(s);                   /* the other displays, saved modes, scales and arrangement */
     /* the pointer where it is (an absolute tablet does not report if it does not move) or in the middle of the main display */
@@ -1128,7 +1128,7 @@ static void present_cpu(Server *s, Out *o, int index, Rect r, int feed) {
     Rect cr = cursor_rect(s, o, &k);
     o->cur_on = cr.x1 > cr.x0;
     if (!xf) {
-        display_tint(&out, need);           /* Night Shift without a gamma LUT (software) */
+        display_tint(&out, need);           /* Night Light without a gamma LUT (software) */
         if (o->cur_on) {
             canvas_blit(&out, k.px, k.w, k.h, cr.x0, cr.y0, 0, 1, 0);
             o->curs[bi] = cr;

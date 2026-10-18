@@ -51,7 +51,7 @@ static float contrast(uint32_t a, uint32_t b) {
     return la > lb ? (la + 0.05f) / (lb + 0.05f) : (lb + 0.05f) / (la + 0.05f);
 }
 
-/* iTerm2's "Minimum contrast": moves the text towards white or black until the requested contrast. */
+/* "Minimum contrast": moves the text towards white or black until the requested contrast. */
 static uint32_t min_contrast(uint32_t fg, uint32_t bg, float amount) {
     if (amount <= 0) return fg;
     float target = 1 + amount * 20;
@@ -690,7 +690,7 @@ void term_paint(Canvas *c, int id, float x, float y, float w, float h, float op)
             if (cell.attr & (A_UNDER | A_UNDER2 | A_CURLY | A_STRIKE | A_OVERLINE))
                 decorations(c, p, cell.attr, cx0, ry, COLX(vc + width) - cx0, ch, base, fg);
         }
-        /* shell marks in the left margin (like iTerm2) */
+        /* shell marks in the left margin */
         if (l->flags & (LINE_PROMPT | LINE_MARK) && pad >= 4) {
             uint32_t mc = l->flags & LINE_FAIL ? 0xffff453a : l->flags & LINE_MARK && !(l->flags & LINE_PROMPT) ? 0xff8e8e93 : 0xff0a84ff;
             int mh = ch / 2, my = ry + (ch - mh) / 2;

@@ -2,7 +2,7 @@
 
 LordOS handles touchpads and touchscreens with its **own driver** that reads evdev directly
 (multitouch, protocol B). It doesn't use libinput: the dependency policy forbids it (see
-`ARCHITECTURE.md`). The driver does what you expect from a laptop, macOS style:
+`ARCHITECTURE.md`). The driver does what you expect from a modern laptop:
 
 - pointer with acceleration;
 - tap to click and two-finger click;
@@ -32,7 +32,7 @@ but badly.
 | ![before](trackpad-mapa-antes.png) | ![after](trackpad-mapa-despues.png) |
 | Monitor → Network: the map before the pinch, with the pointer over the North Atlantic | After `pinch-out` (scale ×6): zoom toward the pointer; the Faroe Islands ended up under the cursor |
 | ![settings](trackpad-ajustes.png) | ![launchpad](trackpad-deslizar-launchpad.png) |
-| Settings → Trackpad (only appears if there is a touchpad) | Swiping up with three fingers opens the theme's Launchpad |
+| Settings → Trackpad (only appears if there is a touchpad) | Swiping up with three fingers opens the theme's app launcher |
 | ![chromium before](trackpad-chromium-antes.png) | ![chromium](trackpad-chromium-pellizco.png) |
 | Chromium 155 (Wayland) before | Pinch: Chromium zooms the page via `zwp_pointer_gestures_v1` |
 | ![windows](trackpad-deslizar-ventanas.png) | ![remote](trackpad-remoto-pellizco.png) |
@@ -113,7 +113,7 @@ stop its own inertia.
 **Scroll:**
 
 - ~5 px per mm, up to ×3 if the fingers move fast;
-- natural by default (like macOS): moving the fingers up moves down in the document;
+- natural by default: moving the fingers up moves down in the document;
 - if it goes almost straight, it locks to one axis.
 
 **Inertia:**
@@ -137,7 +137,7 @@ drag" off it's released immediately.
 
 **Physical click (clickpad):**
 
-- fingers are counted: 1 left, 2 right, 3 middle (like macOS);
+- fingers are counted: 1 left, 2 right, 3 middle (the usual convention);
 - or, depending on the setting, the bottom-right (or bottom-left) corner is the right click;
 - while it's pressed only the pointer moves (with the finger that moves the most).
 
@@ -167,7 +167,7 @@ Uses in the apps:
 on):
 
 - the theme chooses with `registerGestureActions({ up, down, left, right })`:
-  - `default` theme: up opens the Launchpad, down closes it;
+  - `default` theme: up opens the app launcher, down closes it;
   - `classic` theme: the same with the start menu;
 - without a theme action, left and right switch windows (the rearmost comes to the front, or the
   front one goes to the back).
@@ -234,7 +234,7 @@ Verified in the VM with `WAYLAND_DEBUG=1 foot`:
 ## Remote desktop
 
 The browser sends the trackpad as fine scrolling and pinch (`REMOTE.md`). Chrome and Firefox deliver
-the pinch as a wheel with `ctrlKey`, Safari as `gesturechange`, and Ctrl+wheel on a mouse is also a
+the pinch as a wheel with `ctrlKey`, WebKit browsers as `gesturechange`, and Ctrl+wheel on a mouse is also a
 pinch. The session treats them the same as the local touchpad's, via `tp_route_scroll` and
 `tp_route_pinch`.
 
@@ -396,7 +396,7 @@ The maximum is a frame that was being drawn on the CPU at that exact moment.
 7. **Pinch:**
    - the Monitor map, Photos, Chromium (page zoom);
    - a GTK 4 viewer, if there is one.
-8. **Three-finger swipe:** up opens the Launchpad (default) or the start menu (classic); left and
+8. **Three-finger swipe:** up opens the app launcher (default) or the start menu (classic); left and
    right switch windows.
 9. **Three-finger drag:** moves a window; swiping moves to 4 fingers.
 10. **Palms:** while typing in the Editor with the palm on the touchpad, the pointer doesn't move and
@@ -417,7 +417,7 @@ The maximum is a frame that was being drawn on the CPU at that exact moment.
 - **Missing gestures:**
   - drag lock (tap and drag that continues when the finger lifts for a moment);
   - edge scrolling for single-finger touchpads;
-  - 4- or 5-finger pinch (macOS Launchpad);
+  - 4- or 5-finger pinch (to open the app launcher);
   - right click by long press on the touchscreen.
 - **Palm by size:** only works on devices that report `TOUCH_MAJOR` in the same units as the
   position. The others rely on pressure and edges.

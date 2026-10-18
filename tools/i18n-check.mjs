@@ -7,11 +7,13 @@
 // catalog (en), keys each language is missing or has in excess compared to en, and
 // {x} variables that do not match. Exits with code 1 if something is missing.
 // With every language it also runs tools/err-check.mjs: error/status codes used by the server
-// without an English string, and prose (or Spanish) in ERR lines and JS exceptions.
+// without an English string, and prose (or Spanish) in ERR lines and JS exceptions, and
+// tools/brand-check.mjs: third-party brand names in the catalogs, Help, README and CHANGELOG.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkErrors } from './err-check.mjs';
+import { checkBrands } from './brand-check.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const dir = path.join(root, 'assets/locales');
@@ -67,5 +69,5 @@ for (const id of langs) {
   for (const k of varDiff) console.log(`  vars    ${k}: ${vars(ref[k])} ≠ ${vars(cur[k])}`);
   bad += missing.length + varDiff.length;
 }
-if (!process.argv[2]) bad += checkErrors().problems.length;
+if (!process.argv[2]) bad += checkErrors().problems.length + checkBrands().problems.length;
 process.exit(bad ? 1 : 0);

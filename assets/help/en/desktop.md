@@ -10,16 +10,16 @@ keywords: menu bar, dock, launchpad, control center, wallpaper, widgets
 
 At the very top:
 
-- **The LordOS logo:** About, Settings, Launchpad, lock the screen, switch user and log out.
+- **The LordOS logo:** About, Settings, Apps, lock the screen, switch user and log out.
 - **The menus of the app in front** (for example File, Edit, View), plus the Window and Help menus.
 - **On the right:** status icons (like the Clock timer or next alarm), the privacy indicators
-  (camera, microphone, screen), the keyboard layout, the Spotlight magnifier, **Control Center**
+  (camera, microphone, screen), the keyboard layout, the Search magnifier, **Control Center**
   and the date and time.
 
-## The Dock and Launchpad
+## The Dock and Apps
 
 - The **Dock** shows pinned and running apps (a dot underneath). Right-click an icon for its options.
-- **Launchpad** (**F4** or tap the ❖ key alone) shows every app by category, with search: LordOS
+- **Apps** (**F4** or tap the ❖ key alone), the app launcher, shows every app by category, with search: LordOS
   apps, apps installed from the Store and Linux apps.
 
 ## Control Center

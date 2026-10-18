@@ -64,7 +64,7 @@
   "job.aborted": "falhou",
   "job.completed": "concluído",
   "addTitle": "Adicionar uma impressora",
-  "addHint": "Impressoras IPP Everywhere e AirPrint da rede aparecem sozinhas e não precisam de driver: o CUPS pergunta o que elas sabem fazer.",
+  "addHint": "Impressoras sem driver da rede (IPP Everywhere) aparecem sozinhas e não precisam de driver: o CUPS pergunta o que elas sabem fazer.",
   "searchAgain": "Procurar de novo",
   "manual": "Por endereço…",
   "add": "Adicionar",

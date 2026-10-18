@@ -1,5 +1,5 @@
 /* rules.h — per-app network rules: the machine's owner decides which of their apps use the network
- * (like the "network access" permission on macOS or Android). See docs/FIREWALL.md, "Rules".
+ * (like the "network access" permission on other systems). See docs/FIREWALL.md, "Rules".
  *
  * This part is only the rule store and the decider: it doesn't touch the kernel or the network.
  * It's used later by the daemon (with the cgroup hooks), the Monitor ("Rule" column) and Settings

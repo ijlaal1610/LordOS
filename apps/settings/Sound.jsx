@@ -44,7 +44,7 @@ function Meter({ source }) {
   useEffect(() => { if (source) sound.meter(source.index); return () => sound.meter(-1); }, [source?.index]);
   const v = peak.source === source?.index ? Math.min(1, peak.level) : 0;
   const n = 16;
-  // macOS-style segmented level meter
+  // segmented level meter
   return (
     <View style={{ flexDirection: 'row', gap: 3, direction: 'ltr' }}>
       {Array.from({ length: n }, (_, i) => (

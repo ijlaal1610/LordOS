@@ -1,7 +1,7 @@
 /* import_test.c — the vault importers (src/vault/vimport.c, csvp.c, kdbx.c, xmlmini.c).
  *
  * Data in tests/import/:
- *   - CSV/JSON written by hand with each exporter's headers (Chrome, Firefox, Apple,
+ *   - CSV/JSON written by hand with each exporter's headers (Chrome, Firefox, generic CSV (apple.csv),
  *     Bitwarden CSV and JSON) and keepassxc.csv, really exported by keepassxc-cli 2.7.10;
  *   - real KDBX vaults (gen-kdbx.sh/gen-kdbx.py on VM 116): kx3-aeskdf.kdbx (KeePassXC
  *     2.7.10, KDBX 3.1, AES-256 + AES-KDF, Salsa20 inner stream) and kx4-*.kdbx (pykeepass 4.2.0,
@@ -115,11 +115,11 @@ static void test_formats(void) {
     check(e && !e->username && eq(e->password, "only-pass"), "Firefox: no username");
     imp_free(&l);
 
-    check(parse_file("apple.csv", 0, NULL, NULL, &l) == 0 && l.n == 2, "Apple: 2 entries");
+    check(parse_file("apple.csv", 0, NULL, NULL, &l) == 0 && l.n == 2, "Generic CSV: 2 entries");
     e = find(&l, "example.com (ana)");
-    check(e && eq(e->password, "x,y") && e->otp && !strncmp(e->otp, "otpauth://totp/example.com:ana?secret=JBSWY3DPEHPK3PXP", 53), "Apple: OTPAuth");
+    check(e && eq(e->password, "x,y") && e->otp && !strncmp(e->otp, "otpauth://totp/example.com:ana?secret=JBSWY3DPEHPK3PXP", 53), "Generic CSV: OTPAuth");
     e = find(&l, "GitHub");
-    check(e && eq(e->notes, "Nota \"importante\"") && !e->otp, "Apple: note");
+    check(e && eq(e->notes, "Nota \"importante\"") && !e->otp, "Generic CSV: note");
     imp_free(&l);
 
     check(parse_file("bitwarden.csv", 0, NULL, NULL, &l) == 0 && l.n == 2, "Bitwarden CSV: 2 entries");

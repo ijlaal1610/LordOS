@@ -16,7 +16,7 @@ O LordOS controla touchpads e telas sensíveis ao toque com o seu próprio drive
 | Dois dedos | Rolar, com inércia; tocar com dois dedos é o botão direito |
 | Pinça | Aproximar e afastar (Fotos, Visualizador de PDF, mapas) |
 | Três dedos para os lados | Trocar de janela |
-| Três dedos para cima / baixo | Abrir / fechar o Launchpad |
+| Três dedos para cima / baixo | Abrir / fechar Aplicativos |
 
 Em [Ajustes → Trackpad](settings:trackpad) (só aparece se houver touchpad) você escolhe a
 velocidade, o sentido da rolagem, tocar para clicar, se os gestos são com três ou quatro dedos e se

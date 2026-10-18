@@ -1,5 +1,5 @@
-// powerbox.jsx — the open/save file dialog is drawn by lord-server (not the app), in
-// the style of macOS's «powerbox»: the isolated app doesn't see the home folder; it only receives the fd
+// powerbox.jsx — the open/save file dialog is drawn by lord-server (not the app), as
+// a «powerbox»: the isolated app doesn't see the home folder; it only receives the fd
 // of the file the user picks here. See docs/PRIVACY.md and server/src/sec/brokersrv.c.
 //
 // In the theme (compositor) process: lord-server notifies with __lordBrokerPick(reqid, app, save,

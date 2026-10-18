@@ -7,7 +7,7 @@
  *     main display (menu bar and Dock). main.c applies it between frames (display_take_resync);
  *   - live changes are kept per display (EDID identity) and saved on "Keep" in
  *     ~/.config/lordos/displays.json;
- *   - Night Shift: a color temperature on every CRTC's gamma LUT, or a software LUT applied while
+ *   - Night Light: a color temperature on every CRTC's gamma LUT, or a software LUT applied while
  *     copying frames when a card has no gamma (virtio-gpu, some ARM boards);
  *   - idle: screen off (DPMS on every display) after N seconds without input, plus "lock" and
  *     "sleep" notices for the theme. Deadlines go into the main loop's poll timeout: no polling;
@@ -88,7 +88,7 @@ void display_rotate_copy_at(const uint32_t *px, int stride, int ox, int oy, Rect
 /* Physical normalized position (0..1, as a tablet reports it) → upright normalized position. */
 void display_unrotate_point(int rot, double px, double py, double *lx, double *ly);
 
-/* Night Shift: kelvin (6500 = off). Hardware gamma when the CRTC has one, else software. */
+/* Night Light: kelvin (6500 = off). Hardware gamma when the CRTC has one, else software. */
 void display_set_temperature(int kelvin);
 int  display_temperature(void);
 const uint8_t *display_soft_lut(void);  /* 3×256 (r, g, b) when the software tint is on, else NULL */

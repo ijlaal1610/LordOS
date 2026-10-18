@@ -1,10 +1,10 @@
 ---
-title: Spotlight
+title: Search
 section: desktop
 order: 12
 keywords: search, find, calculator, convert, units
 ---
-# Spotlight
+# Search
 
 **❖Space** (or Ctrl+Space, or the ⌕ magnifier in the bar) opens system-wide search.
 

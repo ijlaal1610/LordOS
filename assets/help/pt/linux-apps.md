@@ -10,7 +10,7 @@ O LordOS tem o seu próprio compositor Wayland, então os apps Linux —GTK (GNO
 Firefox, Electron— abrem como mais uma janela da área de trabalho.
 
 - **Instalar:** pela [Loja](help:store), que traz os apps do Debian com ícones e descrições.
-- **Abrir:** o Launchpad, o Dock ou o Spotlight, como qualquer app.
+- **Abrir:** Aplicativos, o Dock ou Pesquisar, como qualquer app.
 - **Abrir um arquivo com um deles:** em [Arquivos](help:files), botão direito → “Abrir com”.
 - **Área de transferência:** o que você copia em um app Linux cola no LordOS e vice-versa, também
   imagens.

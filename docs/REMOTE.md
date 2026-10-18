@@ -14,8 +14,8 @@ The port is **5673**, which spells "LORD" on a phone keypad.
   background.
 - **If the session was already open:** it's resumed (including one somebody left on the monitor
   before switching users).
-- **It's off by default.** It's turned on and off in Settings → Sharing → «Remote Desktop», as in
-  macOS.
+- **It's off by default.** It's turned on and off in Settings → Sharing → «Remote Desktop», as on
+  popular desktop systems.
 
 ![Settings → Sharing](m8-remoto-ajustes.png)
 
@@ -76,7 +76,7 @@ session was locked).
     fractions or small steps;
   - `pz{p,s,r}`: pinch, with the scale ×65536 relative to the start and the rotation in degrees
     ×256. It comes from the wheel with `ctrlKey`, which is how Chrome and Firefox deliver the
-    trackpad pinch (and also a mouse's Ctrl+wheel), or from `gesturechange` in Safari;
+    trackpad pinch (and also a mouse's Ctrl+wheel), or from `gesturechange` in WebKit browsers;
   - the bridge passes them to the session as `RP_SCROLL` and `RP_PINCH`, with clamped values;
 - `k{c,d}`, with evdev codes derived from `KeyboardEvent.code`, so the session applies the
   layout;

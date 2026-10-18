@@ -70,10 +70,10 @@
   "min": 5
  },
  {
-  "chapter": "Launchpad",
+  "chapter": "Aplicaciones",
   "chapter_es": "Todas tus apps, por categoría",
-  "en": "Launchpad shows every app: our own LordOS apps, Linux apps, and installed packages, organized by category. Press F4 or tap the Super key to open it.",
-  "es": "El Launchpad muestra todas las apps: las de LordOS, las de Linux y los paquetes instalados, por categoría. Se abre con F4 o la tecla Super.",
+  "en": "The app launcher shows every app: our own LordOS apps, Linux apps, and installed packages, organized by category. Press F4 or tap the Super key to open it.",
+  "es": "Aplicaciones muestra todas las apps: las de LordOS, las de Linux y los paquetes instalados, por categoría. Se abre con F4 o la tecla Super.",
   "actions": [
    [
     "key",
@@ -234,9 +234,9 @@
  },
  {
   "chapter": "Archivos",
-  "chapter_es": "Inspirado en el Finder",
-  "en": "Files is inspired by the Finder. Icons with thumbnails, a list with sortable columns, Miller columns and a gallery, plus tabs, tags and a real trash.",
-  "es": "Archivos se inspira en el Finder: íconos con miniaturas, lista, columnas Miller y galería, más pestañas, etiquetas y una papelera de verdad.",
+  "chapter_es": "Íconos, lista, columnas y galería",
+  "en": "Files has icons with thumbnails, a list with sortable columns, Miller columns and a gallery, plus tabs, tags and a real trash.",
+  "es": "Archivos tiene íconos con miniaturas, lista, columnas Miller y galería, más pestañas, etiquetas y una papelera de verdad.",
   "actions": [
    [
     "click",
@@ -304,9 +304,9 @@
  },
  {
   "chapter": "Terminal",
-  "chapter_es": "Una terminal tipo iTerm2, propia",
-  "en": "The Terminal is our own, inspired by iTerm2, with tabs, split panes, profiles and ligatures, and the emulator itself is written in C.",
-  "es": "La Terminal es propia, inspirada en iTerm2: pestañas, paneles divididos, perfiles y ligaduras, con el emulador escrito en C.",
+  "chapter_es": "Una terminal propia",
+  "en": "The Terminal is our own, with tabs, split panes, profiles and ligatures, and the emulator itself is written in C.",
+  "es": "La Terminal es propia: pestañas, paneles divididos, perfiles y ligaduras, con el emulador escrito en C.",
   "actions": [
    [
     "key",
@@ -376,10 +376,10 @@
   "min": 8
  },
  {
-  "chapter": "Spotlight",
+  "chapter": "Buscar",
   "chapter_es": "Buscar todo con Super + Espacio",
-  "en": "Press Super and Space for Spotlight. It finds apps, files, settings and notes, does math and converts units. Here it calculates fifteen percent of twenty four hundred.",
-  "es": "Con Super + Espacio se abre Spotlight: encuentra apps, archivos, ajustes y notas, hace cuentas y convierte unidades. Acá calcula el 15 % de 2400.",
+  "en": "Press Super and Space to search. It finds apps, files, settings and notes, does math and converts units. Here it calculates fifteen percent of twenty four hundred.",
+  "es": "Con Super + Espacio se abre Buscar: encuentra apps, archivos, ajustes y notas, hace cuentas y convierte unidades. Acá calcula el 15 % de 2400.",
   "actions": [
    [
     "key",
@@ -549,7 +549,7 @@
  },
  {
   "chapter": "Ajustes",
-  "chapter_es": "Todo agrupado, como en macOS",
+  "chapter_es": "Todo agrupado",
   "en": "Settings brings everything together: general information, appearance, network and VPN, sound, language, keyboard, updates and themes.",
   "es": "Ajustes reúne todo: información general, apariencia, red y VPN, sonido, idioma, teclado, actualizaciones y temas.",
   "actions": [
@@ -626,7 +626,7 @@
  },
  {
   "chapter": "Dock",
-  "chapter_es": "Clic derecho como en macOS",
+  "chapter_es": "Clic derecho en todas partes",
   "en": "Right click an app in the Dock to see all its windows, open a new one, or keep it in the Dock as a favorite.",
   "es": "Con clic derecho en el Dock ves las ventanas de la app, abrís una nueva o la fijás en el Dock como favorita.",
   "actions": [

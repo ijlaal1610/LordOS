@@ -348,7 +348,7 @@ typedef struct { const char *uri, *info, *location; } AddArgs;
 
 static void add_more(IppBuf *q, const void *ud) {
     const AddArgs *a = ud;
-    /* "everywhere" model: CUPS builds the PPD by asking the printer (IPP Everywhere / AirPrint) */
+    /* "everywhere" model: CUPS builds the PPD by asking the printer (driverless printing, IPP Everywhere) */
     ipp_add_str(q, IPP_T_NAME, "ppd-name", "everywhere");
     ipp_group(q, IPP_G_PRINTER);
     ipp_add_str(q, IPP_T_URI, "device-uri", a->uri);

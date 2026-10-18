@@ -108,10 +108,10 @@ display with most of a window.
 - New windows (LordOS and Linux) open on the display under the pointer; maximize uses the work
   area of the display with most of the window; `wm.beginMove` passes each display's top limit, so
   a window never goes under a menu bar but can go up to the top of a display without one.
-- System dialogs (permission prompts, Spotlight, clipboard, keyring, print dialog, the display
+- System dialogs (permission prompts, Search, clipboard, keyring, print dialog, the display
   confirmation) go on the main display (`mainBox()`); fullscreen SDK windows cover their display.
 - Both themes: wallpaper per display, menu bar (default) or taskbar (classic) and Dock on the main
-  display, Launchpad and Control Center on the main display (or the menu bar's display).
+  display, the app launcher and Control Center on the main display (or the menu bar's display).
 
 ## Wayland
 
@@ -201,5 +201,5 @@ head: `screendump file.ppm vga 1` in `qm monitor 118`.
 - Apps' own cursor images (`wl_pointer.set_cursor`) are not scaled.
 - Different refresh rates: each display flips on its own vblank, but `wp_presentation` and frame
   callbacks follow the main display.
-- Per-display Night Shift: the temperature is the same for all; if any display lacks a gamma LUT
+- Per-display Night Light: the temperature is the same for all; if any display lacks a gamma LUT
   the software tint is used for all of them.

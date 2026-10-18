@@ -7,7 +7,7 @@ keywords: discos, pendrive, usb, formatear, particiones, smart, salud, montar, e
 ---
 # Discos
 
-Para ver y preparar los discos y pendrives, como la Utilidad de Discos de macOS o GNOME Discos.
+Para ver y preparar los discos y pendrives, como GNOME Discos.
 
 ## Ver
 
@@ -21,8 +21,8 @@ Para ver y preparar los discos y pendrives, como la Utilidad de Discos de macOS 
 
 - **Montar**, **desmontar** y **expulsar** un pendrive antes de sacarlo.
 - **Formatear** un pendrive o una partición en **FAT32** (anda en todos lados, archivos de hasta
-  4 GB), **exFAT** (pendrives grandes, sin ese límite), **ext4** (Linux) o **NTFS** (Windows, si
-  está instalado su programa).
+  4 GB), **exFAT** (pendrives grandes, sin ese límite), **ext4** (Linux) o **NTFS** (para discos compartidos
+  con otros sistemas operativos, si está instalado su programa).
 - **Renombrar** el volumen (desmontado).
 - **Borrar:** rápido (la tabla y las firmas) o escribiendo ceros en todo.
 - **Crear un USB de arranque** con una imagen `.iso` o `.img`: se copia tal cual y después se

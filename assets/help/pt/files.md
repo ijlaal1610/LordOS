@@ -7,7 +7,7 @@ keywords: arquivos, pastas, lixeira, gerenciador, finder, compactar, etiquetas
 ---
 # Arquivos
 
-O gerenciador de arquivos, no estilo do Finder.
+O gerenciador de arquivos.
 
 ## O básico
 

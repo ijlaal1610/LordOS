@@ -157,7 +157,7 @@ export function ListView({ groups, ctx, sort, onSort }) {
   );
 }
 
-// ---- preview (columns, gallery, Quick Look) ----
+// ---- preview (columns, gallery, Quick Preview) ----
 
 export function Preview({ e, big = false }) {
   const t = useTheme();

@@ -7,7 +7,7 @@ keywords: terminal, console, shell, bash, abas, painéis, tmux
 ---
 # Terminal
 
-Um terminal nativo no estilo do iTerm2, com abas, painéis, perfis e busca.
+Um terminal nativo com abas, painéis, perfis e busca.
 
 ## Atalhos principais
 
@@ -30,7 +30,7 @@ Um terminal nativo no estilo do iTerm2, com abas, painéis, perfis e busca.
 - **Modo de cópia pelo teclado** (❖⇧C), **Instant Replay** para ver o que aconteceu (❖⌥B) e
   marcas de tempo por linha (❖⇧E).
 - **Avisar quando o comando terminar** (❖⌥A) e transmitir o que você digita para todos os painéis (❖⌥I).
-- **Perfis:** cores, fonte, transparência e comando; podem ser importados do iTerm2.
+- **Perfis:** cores, fonte, transparência e comando; podem ser importados de outros emuladores de terminal.
 - **tmux -CC:** as janelas e painéis do tmux aparecem como abas e painéis nativos.
 - As sessões **sobrevivem a um reinício** do desktop: ao voltar, continuam lá.
 

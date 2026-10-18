@@ -36,7 +36,7 @@ static double now_ms(void) {
     return ts.tv_sec * 1e3 + ts.tv_nsec / 1e6;
 }
 
-/* ---- default profile: iTerm2's colors ("Default") ---- */
+/* ---- default profile: the "Classic" colors ---- */
 
 void term_profile_defaults(TermProfile *p) {
     static const uint32_t pal[16] = {
@@ -659,7 +659,7 @@ int term_replay(Session *s, int index) {
     return s->replay;
 }
 
-/* Session log in ~/.local/share/lordos/terminal (raw output, like iTerm2's "Log"). */
+/* Session log in ~/.local/share/lordos/terminal (raw output). */
 const char *term_log(Session *s, int on) {
     if (!on) { if (s->log) fclose(s->log); s->log = NULL; return NULL; }
     if (s->log) return s->log_path;

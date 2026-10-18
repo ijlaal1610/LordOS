@@ -242,7 +242,7 @@ export function askThen(wid, sids, what, fn) {
   patchWin(wid, () => ({ dialog: { text: T(`terminal.dialog.close.${what}`), detail: T('terminal.dialog.busy', { list: [...new Set(busy)].join(', ') }), onConfirm: fn } }));
 }
 
-// Cerrar un panel: la sesión queda 5 s en espera por si se deshace (❖Z), como en iTerm2.
+// Cerrar un panel: la sesión queda 5 s en espera por si se deshace (❖Z).
 export function closePane(wid, sid) {
   askThen(wid, [sid], 'pane', () => {
     const f = findSession(sid);
@@ -299,7 +299,7 @@ export function equalize(wid) {
   patchWin(wid, (w) => ({ tabs: w.tabs.map((t) => (t.id === w.active ? { ...t, root: even(t.root) } : t)) }));
 }
 
-// ---- disposiciones de ventanas (Window Arrangements de iTerm2) ----
+// ---- window arrangements ----
 
 export function saveArrangement() {
   const out = [];
@@ -389,7 +389,7 @@ function runTriggers(sid, wid) {
       else if (tr.action === 'send') term.write(sid, param.replace(/\\n/g, '\r'));
       else if (tr.action === 'capture') captured.set((c) => [{ text: line.trim(), sid, time: Date.now() }, ...c].slice(0, 100));
       else if (tr.action === 'highlight') {
-        // "#texto,#fondo" o el formato de iTerm2 "{#texto,#fondo}"; por defecto, fondo amarillo
+        // "#texto,#fondo" o el formato "{#texto,#fondo}"; por defecto, fondo amarillo
         const [fg, bg] = (tr.param || '').replace(/[{}\s]/g, '').split(',');
         term.highlight(sid, m[0], hexColor(fg), tr.param ? hexColor(bg) : 0xffd60a);
       }
@@ -457,7 +457,7 @@ term.onAny((sid, type, data) => {
   }
 });
 
-// Cambio automático de perfil ("Automatic Profile Switching" de iTerm2). Cada línea de
+// Automatic profile switching. Cada línea de
 // perfil.rules es una regla: ruta ("~/prod/*", "/srv/**"), "usuario@host", "host",
 // "usuario@" o "usuario@host:/ruta", con * como comodín. Gana la regla más específica.
 let localInfo = null;
@@ -512,7 +512,7 @@ export function toggleAlert(wid, sid) {
   toast(wid, on ? T('terminal.toast.alertOn') : T('terminal.toast.alertOff'));
 }
 
-// ---- ventana desplegable (hotkey window de iTerm2) ----
+// ---- drop-down hotkey window ----
 
 export function toggleHotkeyWindow() {
   const id = 'terminal#hotkey';

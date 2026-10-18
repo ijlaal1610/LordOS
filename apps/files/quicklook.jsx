@@ -1,4 +1,4 @@
-// quicklook.jsx — Quick Look contents (Space): an image, the first page of a PDF, text or code,
+// quicklook.jsx — Quick Preview contents (Space): an image, the first page of a PDF, text or code,
 // a font sample, what is inside an archive and, if the media agent offers it (media.poster), a
 // video frame or an audio cover. What comes from outside (PDFs, fonts, archives) is opened by the
 // confined helper lord-doc.
@@ -12,7 +12,7 @@ import { extractEntry } from './archive.js';
 
 const isFont = (e) => /^(ttf|otf|ttc|otc)$/.test(extOf(e.name));
 
-// measurement: from opening Quick Look until the content is there (docs/DOCUMENTS.md,
+// measurement: from opening Quick Preview until the content is there (docs/DOCUMENTS.md,
 // "Performance"). The start mark is taken on the first draw, not in an effect.
 function useTiming(e, ready) {
   const t0 = useRef(null);

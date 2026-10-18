@@ -1,14 +1,14 @@
-// profiles.js — perfiles de la Terminal (como los de iTerm2) y esquemas de color.
+// profiles.js — Terminal profiles and color schemes.
 // Se guardan en ~/.config/lordos/settings.json bajo la clave "terminal".
 import { settings, t } from '@lordos/sdk';
 
 const ansi = (s) => s.split(' ').map((h) => `#${h}`);
 
-// Esquemas incluidos: los de iTerm2 y algunos populares.
+// Bundled schemes: a classic default and some popular ones.
 export const PRESETS = {
   lordos: { name: 'LordOS', fg: '#e5e5ea', bg: '#1c1c1f', cursor: '#0a84ff', cursorText: '#ffffff', selection: '#3a5a8c', selectionText: '#ffffff',
     ansi: ansi('2c2c30 ff453a 32d74b ffd60a 0a84ff bf5af2 64d2ff d1d1d6 636366 ff6961 30db5b ffd426 409cff da8fff 70d7ff ffffff') },
-  iterm: { name: 'iTerm2 Default', fg: '#c7c7c7', bg: '#000000', cursor: '#c7c7c7', cursorText: '#000000', selection: '#b5d5ff', selectionText: '#000000',
+  iterm: { name: 'Classic', fg: '#c7c7c7', bg: '#000000', cursor: '#c7c7c7', cursorText: '#000000', selection: '#b5d5ff', selectionText: '#000000',
     ansi: ansi('000000 c91b00 00c200 c7c400 2225c4 ca30c7 00c5c7 c7c7c7 686868 ff6e67 5ffa68 fffc67 6871ff ff77ff 60fdff ffffff') },
   dark: { name: 'Dark Background', fg: '#bbbbbb', bg: '#000000', cursor: '#bbbbbb', cursorText: '#ffffff', selection: '#b5d5ff', selectionText: '#000000',
     ansi: ansi('000000 bb0000 00bb00 bbbb00 0000bb bb00bb 00bbbb bbbbbb 555555 ff5555 55ff55 ffff55 5555ff ff55ff 55ffff ffffff') },
@@ -75,7 +75,7 @@ export const DEFAULT_PROFILE = {
   tabColor: '',
   rules: '',                 // cambio automático de perfil: una regla por línea (ver autoProfile en state.js)
   font: '',                  // familia ('' = JetBrains Mono incluida)
-  nonAsciiFont: '',          // fuente para caracteres no ASCII (como iTerm2)
+  nonAsciiFont: '',          // font for non-ASCII characters
   ligatures: false,
   bidi: true,          // árabe y hebreo en orden visual y con letras unidas
   keyMap: [],                // [{ combo, action: 'text'|'escape'|'hex'|'ignore'|<acción>, param }]

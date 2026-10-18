@@ -6,7 +6,7 @@
  *     mounts); outputs never overwrite anything (temporary + rename without replacing) and cannot go
  *     to the protected folders;
  *   - camera, microphone and screen are checked against the system permissions (sec/perms.c,
- *     TCC style) in C, not only in the SDK: the prompt is shown by the system (sdk/privacy.js) and here
+ *     per-app permission prompts) in C, not only in the SDK: the prompt is shown by the system (sdk/privacy.js) and here
  *     the saved decision is required to be "allow";
  *   - the decoder (lord-media) never receives a path: lord-server opens the file and passes the fd. */
 #include "js_media.h"

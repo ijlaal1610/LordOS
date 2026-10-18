@@ -11,14 +11,14 @@ React que roda sobre o seu próprio motor. Ele foi pensado para funcionar bem em
 
 ## Primeiros passos
 
-- **Abrir apps:** o Dock (embaixo) ou o Launchpad (**F4**, ou tocar sozinha a tecla ❖).
-- **Buscar qualquer coisa:** **❖Espaço** abre o Spotlight. Veja [Spotlight](help:spotlight).
+- **Abrir apps:** o Dock (embaixo) ou Aplicativos (**F4**, ou tocar sozinha a tecla ❖).
+- **Buscar qualquer coisa:** **❖Espaço** abre Pesquisar. Veja [Pesquisar](help:spotlight).
 - **Mudar a aparência:** [Ajustes → Aparência](settings:appearance) e [Fundo de tela](settings:wallpaper).
 - **Conectar à rede:** [Ajustes → Rede](settings:network).
 - **Bloquear a tela:** **❖L**.
 
-A tecla ❖ é a tecla Super (a do logotipo do Windows em muitos teclados). Ela faz o papel do Cmd no
-macOS: quase todos os atalhos dos apps a usam.
+A tecla ❖ é a tecla Super (a do logotipo, entre Ctrl e Alt na maioria dos teclados): quase todos
+os atalhos dos apps a usam.
 
 ## Para continuar
 

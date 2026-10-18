@@ -1,6 +1,6 @@
 # Settings: Displays, Bluetooth, Energy, Notifications, Date & Time, Default Apps
 
-Six Settings pages modeled on macOS System Settings, with the hardware side in
+Six Settings pages laid out like the system settings of popular desktop systems, with the hardware side in
 `server/src/hw/` (C, libc only) and the session side in `sdk/hardware.jsx`, `sdk/defaults.js` and
 `sdk/notify.js`. Tested on VM 118 (`lordos-notes`) with `lord-sessiond`, virtio-gpu and a virtual
 Bluetooth controller (`btvirt`). Screenshots: `docs/ajustes-*.png`.
@@ -9,7 +9,7 @@ Screenshots, dark and light: Displays (`ajustes-pantallas-oscuro.png`, `-claro.p
 (`ajustes-bluetooth-*`), Energy (`ajustes-energia-*`), Notifications (`ajustes-notificaciones-*`,
 plus `ajustes-notificaciones-app-claro.png`), Date & Time (`ajustes-fecha-hora-*`), Default Apps
 (`ajustes-apps-por-defecto-*`); the revert countdown in both modes (`ajustes-pantallas-revertir.png`,
-`ajustes-pantallas-revertir-claro.png`), 200 % before sharp HiDPI (`ajustes-pantallas-200.png`; now see `DISPLAYS.md`), rotation, Night Shift,
+`ajustes-pantallas-revertir-claro.png`), 200 % before sharp HiDPI (`ajustes-pantallas-200.png`; now see `DISPLAYS.md`), rotation, Night Light,
 pairing, Sound with a Bluetooth headset, a Linux app's notification and Files' "Open With".
 
 | Page | Sidebar group | Code |
@@ -30,7 +30,7 @@ the time fields keep `direction: 'ltr'`.
 ## How it fits together
 
 ```
- apps/settings/*.jsx ── sdk/hardware.jsx (stores, Night Shift timer, idle, system dialogs)
+ apps/settings/*.jsx ── sdk/hardware.jsx (stores, Night Light timer, idle, system dialogs)
         │                    ▲ __lordHw(kind, data): "display" "idle" "power" "bt" "bt-prompt"
         ▼                    │  "bt-result" "ppd" "ppd-result" "timedate" "notify" "notify-close"
  lord.display / power / bt / mime / timedate / notifyd   (server/src/ui/js_hw.c, validated)
@@ -48,7 +48,7 @@ the time fields keep `direction: 'ltr'`.
 
 Nothing polls. Hotplugged displays, batteries and chargers arrive as kernel uevents (one
 `NETLINK_KOBJECT_UEVENT` socket in the main loop), Bluetooth and power profiles as D-Bus signals,
-idle deadlines go into the main loop's poll timeout, and the Night Shift schedule is a JavaScript
+idle deadlines go into the main loop's poll timeout, and the Night Light schedule is a JavaScript
 timer that sleeps until the next change (30 s steps only during the 30-minute fade).
 
 ## Displays
@@ -68,7 +68,7 @@ timer that sleeps until the next change (30 s steps only during the 30-minute fa
   restored.
 - **"Keep these display settings?"** The system draws the dialog (`DisplayConfirm`, mounted by
   `startShell`, so it works even if Settings is closed) and goes back to the previous mode after
-  15 seconds without an answer, like macOS.
+  15 seconds without an answer, as popular desktop systems do.
 
   ![Keep these display settings](ajustes-pantallas-revertir.png)
   ![The same in light mode](ajustes-pantallas-revertir-claro.png)
@@ -109,14 +109,14 @@ timer that sleeps until the next change (30 s steps only during the 30-minute fa
   action `display-brightness <name> <value>`: the name must be a real backlight under `/sys/devices`
   and the value within `0..max_brightness`. External monitors (DDC/CI) and virtual machines have
   none; the row says so. Untested on hardware (the VM has no backlight).
-- **Night Shift.** A color temperature from 6500 K (off) down to 1900 K, from a blackbody fit
+- **Night Light.** A color temperature from 6500 K (off) down to 1900 K, from a blackbody fit
   (`night_temp_rgb`) normalized so that 6500 K is neutral. It goes into the CRTC's gamma LUT
   (`DRM_IOCTL_MODE_SETGAMMA`) when the card has one: free, and the cursor and direct scanout are
   tinted too. Without a LUT (virtio-gpu, some ARM boards) a 3×256 table is applied by software to
   each damaged rectangle while copying the frame, and the page says so; the cursor is not tinted
   then, and the GPU path is not tinted (pending: a multiply pass in `gpu.c`).
 
-  ![Night Shift applied](ajustes-night-shift.png)
+  ![Night Light applied](ajustes-night-shift.png)
 
   Schedule: off, **sunset to sunrise** or **custom hours**, with a 30-minute fade, plus "Turn on
   now" (until the end of tonight's schedule, or 07:00). Sunrise and sunset come from the Almanac
@@ -144,7 +144,7 @@ and signals dispatched to handlers.
   `Adapter1`, `Device1` and `Battery1` properties are parsed into a small model
   (`bt_apply_props`); changes are sent to the theme once per main-loop turn.
 - **Actions.** Power (`Properties.Set Powered`), discovery while the page is open
-  (`StartDiscovery`/`StopDiscovery`), pair (then `Trusted = true` and `Connect`, like macOS),
+  (`StartDiscovery`/`StopDiscovery`), pair (then `Trusted = true` and `Connect`, as other desktop systems do),
   connect, disconnect and forget (`Adapter1.RemoveDevice`). A soft rfkill block is lifted with the
   closed action `bt-unblock`.
 - **Pairing agent.** lord-server exports `org.bluez.Agent1` at `/org/lordos/BluetoothAgent` with
@@ -290,19 +290,19 @@ The validators are unit-tested in `build/settings-hw-test`.
 ## Tests
 
 - `build/settings-hw-test` (`make test`): EDID (QEMU's real block, serial/name identities, broken
-  checksums), mode selection and refresh rates, Night Shift math (temperature, ramp, sunrise and
+  checksums), mode selection and refresh rates, Night Light math (temperature, ramp, sunrise and
   sunset in London, Buenos Aires, Tokyo and Svalbard, schedule across midnight, zone1970.tab),
   mimeapps.list editing and globs2, the power_supply reader, the admin validators. 129 checks.
 - `build/bt-test` (`make test`): BlueZ parsing. 32 checks.
 - On VM 118: live mode changes with revert and keep, persistence across a session restart,
-  rotation, software Night Shift, Bluetooth with `btvirt`, power profiles with
+  rotation, software Night Light, Bluetooth with `btvirt`, power profiles with
   power-profiles-daemon (placeholder driver), the logind drop-in, NTP and manual time, Linux
   notifications with `busctl`, default apps with `xdg-mime` and Files.
 
 ## Not done or untested
 
 - Several displays and HiDPI on real monitors (tested with two virtio-gpu heads; see `DISPLAYS.md`).
-- Night Shift on the GPU path when the card has no gamma LUT.
+- Night Light on the GPU path when the card has no gamma LUT.
 - Brightness, battery, lid and power profiles on real laptops; Bluetooth with real controllers.
 - Notifications on the lock screen; a notification center listing the history.
 - Wayland idle inhibit (a video player does not keep the screen on yet).

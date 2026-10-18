@@ -1,5 +1,5 @@
 /* mdns.h — our own DNS-SD over mDNS lookup (RFC 6762/6763) to find IPP
- * Everywhere/AirPrint printers (_ipp._tcp, _ipps._tcp) and eSCL scanners (_uscan._tcp, _uscans._tcp) on the
+ * Everywhere (driverless printing) printers (_ipp._tcp, _ipps._tcp) and eSCL scanners (_uscan._tcp, _uscans._tcp) on the
  * local network. It asks from an arbitrary port («legacy unicast»): it doesn't need 5353 nor
  * avahi, and it changes nothing on the network. Replies are validated as untrusted data. */
 #ifndef LORD_PRINT_MDNS_H

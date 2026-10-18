@@ -1,12 +1,11 @@
 // ui.jsx — the building blocks of every Settings page, on top of the SDK's GroupBox (docs/DESIGN.md,
 // "Settings"): a page column, titled sections (inset grouped boxes with hairlines between rows),
-// rows with the control or the value at the trailing edge, form rows, a pop-up button (macOS
-// NSPopUpButton), a page header, badges and notes.
+// rows with the control or the value at the trailing edge, form rows, a pop-up button, a page header, badges and notes.
 import { View, Text, useTheme, addListener, GroupBox as InsetBox, spacing, typeScale, createStore, useStore, screen, ScrollView } from '@lordos/sdk';
 import { createElement as h, useEffect, useRef, useState } from 'react';
 
 
-// Status colors used by the pages (macOS system colors).
+// Status colors used by the pages (standard system colors).
 export const tint = { ok: '#30d158', warn: '#ff9f0a', error: '#ff453a', off: '#8e8e93' };
 
 // A row of a GroupBox: label (and an optional hint below it) at the start, the control at the end.
@@ -49,7 +48,7 @@ export function ValueRow({ label, value, children, mono }) {
   );
 }
 
-// A form row: the label at the start and a field of a fixed width at the trailing edge (macOS forms
+// A form row: the label at the start and a field of a fixed width at the trailing edge (forms
 // inside a grouped box). The field shrinks in narrow windows.
 export function FieldRow({ label, children, hint, width = 240 }) {
   const t = useTheme();
@@ -73,7 +72,7 @@ export function Actions({ children, start, style }) {
   );
 }
 
-// A titled section: a 13/600 header, the inset box and an optional footer (macOS System Settings).
+// A titled section: a 13/600 header, the inset box and an optional footer.
 // A section without rows (children) shows only its header and footer.
 export function Section({ title, footer, children, accessory, icon, style }) {
   const t = useTheme();
@@ -96,7 +95,7 @@ export function Section({ title, footer, children, accessory, icon, style }) {
 // The hardware pages call it GroupBox (same props as the SDK's: title, footer, rows).
 export const GroupBox = Section;
 
-// Page header: a big icon, the title and one line of explanation (like the top of a macOS pane).
+// Page header: a big icon, the title and one line of explanation (the top of a settings pane).
 export function PageHeader({ icon, title, subtitle, children }) {
   const t = useTheme();
   return (

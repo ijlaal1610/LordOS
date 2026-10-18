@@ -1,4 +1,4 @@
-# lord-fish.fish — integración de LordOS Terminal con fish (equivalente a la de iTerm2).
+# lord-fish.fish — LordOS Terminal shell integration for fish (the same escape sequences popular terminal emulators use).
 # La terminal lanza `fish -l --init-command 'source …/lord-fish.fish'`: corre después de la
 # configuración del usuario. Mismas secuencias que bash/zsh: OSC 133 A/B/C/D, OSC 7 y
 # OSC 1337 RemoteHost.

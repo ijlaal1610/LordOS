@@ -1,10 +1,10 @@
-# Spotlight and the advanced clipboard
+# Search and the advanced clipboard
 
 Both are mounted by the SDK, so **every theme has them** without doing anything:
 `startShell` adds `<SpotlightPanel />` and `<ClipboardPanel />`. Code: `sdk/spotlight.js` and
 `sdk/clipboard.js`.
 
-## Spotlight
+## Search
 
 | | |
 |---|---|
@@ -20,7 +20,7 @@ menu bar. With the Terminal in front, Ctrl+Space is left to the program (in emac
 mark); ❖Space works the same.
 
 **Shortcut change:** ❖Space used to switch the keyboard or input method. Now that is
-**❖⌥Space** or **Ctrl+⌥Space**, like ⌃⌥Space on macOS (`sdk/keyboard.js`).
+**❖⌥Space** or **Ctrl+⌥Space** (`sdk/keyboard.js`).
 
 | Key | What it does |
 |---|---|
@@ -143,7 +143,7 @@ Sensitive content never enters the history, but it can still be pasted:
   on top.
 - **Full panel:** filters, pin and delete work.
 - **Paste:** ❖V and the 8 key pasted into a LordOS text field.
-- **Spotlight:** apps, settings, files (which opened in the Editor), notes, the Store, the
+- **Search:** apps, settings, files (which opened in the Editor), notes, the Store, the
   calculator and the conversions.
 
 ### Pending
@@ -152,5 +152,5 @@ Sensitive content never enters the history, but it can still be pasted:
   still missing.
 - Formats that aren't text or PNG (HTML, `text/uri-list` with files): today they pass between
   Linux apps while the source app stays open, but they don't go into the history.
-- Spotlight: searching file contents (today, names only), contacts and mail, which don't exist
+- Search: searching file contents (today, names only), contacts and mail, which don't exist
   yet, and «Lock screen», which doesn't exist (M8).

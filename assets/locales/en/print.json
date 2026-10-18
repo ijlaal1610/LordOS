@@ -64,7 +64,7 @@
   "job.aborted": "aborted",
   "job.completed": "completed",
   "addTitle": "Add a printer",
-  "addHint": "IPP Everywhere and AirPrint printers on the network show up by themselves and need no driver: CUPS asks them what they can do.",
+  "addHint": "Driverless printers on the network (IPP Everywhere) show up by themselves and need no driver: CUPS asks them what they can do.",
   "searchAgain": "Search again",
   "manual": "By address…",
   "add": "Add",

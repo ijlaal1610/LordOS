@@ -92,7 +92,7 @@ the translated description (`errors.errno.ENOENT`) and `reason=<code line>` is a
 
 Each language's `format.json` has month and day names, date patterns (`short`, `long`,
 `numeric`), decimal and thousands separators, and 12- or 24-hour clock, with per-region variants
-(`regions.en_GB`, `regions.pt_PT`…). As in macOS, the **names** come from the interface language
+(`regions.en_GB`, `regions.pt_PT`…). As on popular desktop systems, the **names** come from the interface language
 and the **order, separators and clock** from the region: English with region pt_BR gives
 «Thursday, October 15, 2026 · 21:56» and «15/10/2026 · 1.234.567,89».
 
@@ -123,7 +123,11 @@ the same format.
 
 `node tools/i18n-check.mjs` with no arguments checks every bundled language and also the keys the
 code uses (`t('…')` in apps, themes and SDK) that don't exist in English. Today: 391 keys,
-complete in es, en and pt.
+complete in es, en and pt. It also runs `tools/brand-check.mjs`, which fails when a third-party
+brand or product name (another operating system, its apps or features) shows up in the catalogs,
+the Help articles, the app manifests, README.md or CHANGELOG.md: LordOS uses its own names
+(Search, Apps, Night Light, Quick Preview…) and generic wording. Real exceptions go in its
+`ALLOW` list.
 
 ## Privileged helper (`lord-admin`)
 
@@ -168,7 +172,7 @@ Unicode 15.1): explicit embeddings and overrides, isolates (LRI/RLI/FSI/PDI), is
 sequences, W rules, bracket pairs (N0), N1–N2, I1–I2 and, per line, L1–L2. It passes **all 91,707
 cases of Unicode's `BidiCharacterTest.txt`** with no failures.
 
-Each paragraph's direction is that of its first strong character (like "natural" in macOS): a file
+Each paragraph's direction is that of its first strong character (the "natural" direction): a file
 name in Arabic looks right even when the interface is in Spanish, and "Informe (versión 2)
 تقرير.pdf" mixes both directions correctly. Brackets are mirrored in RTL runs. In Arabic context,
 "4.5%" is shown as "%4.5": that's what the algorithm says (digits following an Arabic letter are
@@ -210,7 +214,7 @@ shapers:
 |---|---|---|
 | Khmer (`shape_khmer.c`) | Khmer | split vowels (ើ = េ + ើ), coeng + ro before the base (pref, and cfar for what follows), the left vowel at the start, ◌ in broken syllables; locl…cfar together per syllable and clig instead of liga |
 | Myanmar (`shape_myanmar.c`) | Burmese, Mon, Shan, Karen… (fonts with the `mym2` tag; old `mymr` ones go through the default shaper, as in HarfBuzz) | kinzi (င်္) after the base, medial ra (ြ) and ေ before, the order of the below marks; rphf, pref, blwf and pstf one at a time; zero-width marks before GPOS |
-| Universal Shaping Engine (`shape_use.c`) | Tibetan, Sinhala, Balinese, Javanese, Sundanese, Buginese, Batak, Cham, Lepcha, Limbu, Tai Tham, Tai Le, Chakma, Brahmi and the ~80 scripts HarfBuzz sends to the USE, among them Mongolian, N'Ko and Adlam (with Arabic joining forms) | Microsoft's USE categories, syllables with their grammar (ignoring CGJ and the ZWNJ before a mark), rphf (a substituted reph becomes R), pref, the basic features per syllable, ◌ in broken syllables, the reph before the first post-base glyph and pre-base vowels at the start, isol/init/medi/fina per syllable |
+| Universal Shaping Engine (`shape_use.c`) | Tibetan, Sinhala, Balinese, Javanese, Sundanese, Buginese, Batak, Cham, Lepcha, Limbu, Tai Tham, Tai Le, Chakma, Brahmi and the ~80 scripts HarfBuzz sends to the USE, among them Mongolian, N'Ko and Adlam (with Arabic joining forms) | The USE categories, syllables with their grammar (ignoring CGJ and the ZWNJ before a mark), rphf (a substituted reph becomes R), pref, the basic features per syllable, ◌ in broken syllables, the reph before the first post-base glyph and pre-base vowels at the start, isol/init/medi/fina per syllable |
 
 The syllable grammars are HarfBuzz's Ragel ones, written as text in each shaper and compiled on
 first use by `shape_syl.c` (a Thompson automaton walked with state sets; the longest alternative
@@ -224,7 +228,7 @@ The Unicode tables (bidi class, mirrors, brackets, joining type, script, combini
 invisibles, line break, marks, Indic, Khmer, Myanmar and USE categories) are generated with
 `node tools/gen-unicode.mjs <UCD>` into `server/src/ui/unidata.h` and compiled only in
 `unicode.c`. The USE categories follow HarfBuzz's `gen-use-table.py`: besides the UCD they need
-`ArabicShaping.txt` and the two Microsoft files shipped with HarfBuzz
+`ArabicShaping.txt` and the two Universal Shaping Engine data files shipped with HarfBuzz
 (`src/ms-use/IndicSyllabicCategory-Additional.txt` and
 `IndicPositionalCategory-Additional.txt`).
 
@@ -281,7 +285,7 @@ ZWJ sequences and flags at every box width from 8 to 400 px (`make -C server tes
 ### Mirrored interface
 
 If the language is right to left (`meta.json` → `"direction": "rtl"`; `i18n-pack` sets it
-automatically for ar, he, fa, ur…), **the whole interface flips** like in macOS: menu bar, menus
+automatically for ar, he, fa, ur…), **the whole interface flips**, as on popular desktop systems: menu bar, menus
 (they open to the left), windows (buttons on the right), Dock, tabs, Settings, Files and the
 Classic theme (start and taskbar on the right). The terminal's content stays left to right (see
 "In the terminal" below).
@@ -299,7 +303,7 @@ APIs: `direction()` (the interface direction), `textDirection(text)` (that of a 
 
 `server/src/ime.c` has three methods on top of the Latin (us) keyboard. They are added as input
 sources in **Settings → Keyboard → Input Methods**; the bar button (한, あ, 拼) and
-**❖⌥Space** (or Ctrl+⌥Space) switch from one source to the next, like ⌃⌥Space in macOS. ❖Space and Ctrl+Space open Spotlight (`SPOTLIGHT.md`).
+**❖⌥Space** (or Ctrl+⌥Space) switch from one source to the next. ❖Space and Ctrl+Space open Search (`SPOTLIGHT.md`).
 
 | Method | How you type | Dictionary (Debian) |
 |---|---|---|

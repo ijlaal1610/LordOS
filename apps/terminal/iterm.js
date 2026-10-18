@@ -1,14 +1,14 @@
-// iterm.js — importar perfiles y esquemas de color de iTerm2.
+// iterm.js — import profiles and color schemes exported by other terminal emulators.
 //
-// Formatos aceptados (todos se exportan desde iTerm2 en el Mac):
-//   · Perfil en JSON: Preferencias → Profiles → Other Actions → "Save Profile as JSON" o
-//     "Copy All Profiles as JSON"; también los Dynamic Profiles ({ "Profiles": [...] }).
-//   · Esquema de colores .itermcolors (plist XML).
-//   · Preferencias completas com.googlecode.iterm2.plist (XML o binario): trae todos los
-//     perfiles ("New Bookmarks"), el perfil por defecto y los atajos globales.
+// Accepted formats:
+//   · Profile JSON ("Save Profile as JSON" or "Copy All Profiles as JSON"); also Dynamic
+//     Profiles ({ "Profiles": [...] }).
+//   · .itermcolors color presets (XML plist).
+//   · The full com.googlecode.iterm2.plist preferences (XML or binary): every profile
+//     ("New Bookmarks"), the default profile and the global shortcuts.
 //
-// Devuelve { profiles, schemes, keyMap, defaultGuid, warnings }: el que llama decide qué
-// guardar. Lo que LordOS no tiene se informa en `warnings`, no se inventa.
+// Returns { profiles, schemes, keyMap, defaultGuid, warnings }: the caller decides what to
+// keep. What LordOS doesn't have is reported in `warnings`, never made up.
 import { t as T } from '@lordos/sdk';
 import { DEFAULT_PROFILE, newProfileId } from './profiles.js';
 
@@ -117,7 +117,7 @@ function parseBinaryPlist(buf) {
 const clamp01 = (v) => Math.max(0, Math.min(1, Number(v) || 0));
 const toHex = (r, g, b) => `#${[r, g, b].map((v) => Math.round(clamp01(v) * 255).toString(16).padStart(2, '0')).join('')}`;
 
-// Display P3 → sRGB (iTerm2 3.4+ guarda los colores en P3 por defecto).
+// Display P3 → sRGB (recent exports store colors in P3 by default).
 function p3ToSrgb(r, g, b) {
   const lin = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
   const gam = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
@@ -155,7 +155,7 @@ function schemeFrom(o, name) {
 
 // ---- teclas ----
 
-// Caracteres especiales de NSEvent que usa iTerm2 en "Keyboard Map".
+// The special-key character codes used in the exported "Keyboard Map".
 const NS_KEYS = {
   0xf700: 'ArrowUp', 0xf701: 'ArrowDown', 0xf702: 'ArrowLeft', 0xf703: 'ArrowRight',
   0xf727: 'Insert', 0xf728: 'Delete', 0xf729: 'Home', 0xf72b: 'End', 0xf72c: 'PageUp', 0xf72d: 'PageDown',
@@ -189,7 +189,7 @@ export function itermCombo(spec) {
   return out.join('+');
 }
 
-// Acciones de iTerm2 (KEY_ACTION_*) que existen en LordOS.
+// Exported key actions (KEY_ACTION_*) that exist in LordOS.
 const ITERM_ACTIONS = {
   0: 'nextTab', 2: 'prevTab', 4: 'scrollBottom', 5: 'scrollTop', 6: 'scrollLineDown', 7: 'scrollLineUp',
   8: 'scrollPageDown', 9: 'scrollPageUp', 18: 'paneLeft', 19: 'paneRight', 20: 'paneUp', 21: 'paneDown',
@@ -234,7 +234,7 @@ function nearestScrollback(o) {
 }
 
 export function convertProfile(o, fonts, warnings) {
-  const name = String(o.Name || 'iTerm2');
+  const name = String(o.Name || 'Imported');
   const w = (msg) => warnings.push(`${name}: ${msg}`);
   const p = { ...DEFAULT_PROFILE, id: newProfileId() + Math.random().toString(36).slice(2, 5), name, itermGuid: o.Guid || '' };
 
@@ -349,7 +349,7 @@ export function importIterm(data, fileName, fonts) {
     else throw new Error(T('terminal.iterm.notIterm'));
   }
   const out = { profiles: [], schemes: [], keyMap: [], defaultGuid: null, warnings };
-  const baseName = String(fileName || 'iTerm2').split('/').pop().replace(/\.(itermcolors|json|plist)$/i, '');
+  const baseName = String(fileName || 'Imported').split('/').pop().replace(/\.(itermcolors|json|plist)$/i, '');
 
   if (isColorsDict(doc)) {
     const s = schemeFrom(doc, baseName);

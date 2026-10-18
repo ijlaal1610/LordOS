@@ -108,7 +108,7 @@ export const decodeImage = (path, { maxw = 1600, maxh = 1600 } = {}) => util('de
 export const convertImage = (path, out, { format = 'png', quality = 90, paper, native, dpi } = {}) => util('convert', { format, quality, paper, native, dpi }, path, out);
 export const makeTextPdf = ({ text, title = '', mono = false, paper = 'a4', size }) => util('maketext', { text, title, mono, paper, size });
 export const makeImagePdf = (path, { paper = 'a4', fill = false } = {}) => util('makeimage', { paper, fill }, path);
-// Prepares the utilities session (Files calls it when it opens: the first Quick Look doesn't wait)
+// Prepares the utilities session (Files calls it when it opens: the first Quick Preview doesn't wait)
 let warmed = false;
 export const warmDocs = () => { if (warmed || !docAvailable()) return; warmed = true; util('warm', {}).catch(() => { warmed = false; }); };
 export const pdfThumb = (path, { width = 400, height = 600, invert = false } = {}) => util('pdfthumb', { width, height, invert }, path);

@@ -12,7 +12,7 @@ top of the SDK: it doesn't use CodeMirror or Monaco, nor vendored TextMate gramm
 | ![ir](m7-editor-ir-a-archivo.png) | ![japones](m7-editor-japones.png) |
 | ❖T: open a project file by letters in order («wjs» → windows.js) | Japanese with LordOS's input method: 日本語を書きます |
 | ![python](m7-editor-python.png) | ![claro](m7-editor-claro.png) |
-| Python: comment, duplicate and move line; Indic scripts use the font fallback | Light mode (Xcode-style palette) |
+| Python: comment, duplicate and move line; Indic scripts use the font fallback | Light mode (classic IDE-style palette) |
 | ![cerrar](m7-editor-guardar-cambios.png) | ![archivos](m7-editor-desde-archivos.png) |
 | Closing with unsaved changes | Double click in Files: the editor opens it, with the folder as the project |
 
@@ -91,7 +91,7 @@ It is our own state-based tokenizer (`apps/editor/syntax.js`):
 Languages: JavaScript, JSX and TypeScript; C and C++; Python; Go; Rust; Shell (also Makefile and
 Dockerfile); JSON; Markdown; HTML, XML and SVG; CSS, SCSS and Less; YAML; PHP; SQL; INI, TOML and
 `.desktop`; diff and patch; plain text. The language comes from the extension, and can also be
-chosen in the status bar. The colors are a TextMate/Xcode-style palette, dark or light depending
+chosen in the status bar. The colors are a classic TextMate/IDE-style palette, dark or light depending
 on the theme's mode.
 
 ## How it's built
@@ -141,7 +141,7 @@ For the editor, these were added to the system:
 
 - Soft wrap, code folding and a minimap.
 - TextMate `.tmLanguage` grammars, bundles and snippets with tab stops.
-- Find in the whole project (TextMate's ⌘⇧F).
+- Find in the whole project.
 - Encodings other than UTF-8.
 - Remembering open files between sessions.
 - Text drag and drop.

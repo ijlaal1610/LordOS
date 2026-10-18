@@ -7,7 +7,7 @@ keywords: terminal, console, shell, bash, tabs, panes, tmux
 ---
 # Terminal
 
-A native terminal in the style of iTerm2, with tabs, panes, profiles and search.
+A native terminal with tabs, panes, profiles and search.
 
 ## Main shortcuts
 
@@ -30,7 +30,7 @@ A native terminal in the style of iTerm2, with tabs, panes, profiles and search.
 - **Keyboard copy mode** (❖⇧C), **Instant Replay** to see what happened (❖⌥B) and per-line
   timestamps (❖⇧E).
 - **Alert when the command finishes** (❖⌥A) and broadcast input to all panes (❖⌥I).
-- **Profiles:** colors, font, transparency and command; they can be imported from iTerm2.
+- **Profiles:** colors, font, transparency and command; they can be imported from other terminal emulators.
 - **tmux -CC:** tmux windows and panes show as native tabs and panes.
 - Sessions **survive a desktop restart**: when you come back they are still there.
 

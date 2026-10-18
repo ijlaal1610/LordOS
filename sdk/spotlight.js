@@ -1,4 +1,4 @@
-// spotlight.js — global search (like macOS Spotlight). ❖Space or Ctrl+Space open it
+// spotlight.js — LordOS Search, the global search. ❖Space or Ctrl+Space open it
 // from anywhere; <SpotlightPanel /> is mounted by startShell, so every theme has it.
 //
 // Searches apps, files in the home folder, Settings sections, notes, the clipboard
@@ -25,9 +25,9 @@ export const spotlight = {
   toggle() { if (spotlightOpen.get()) spotlight.close(); else spotlight.open(); },
 };
 
-// ❖Space (like ⌘Space on macOS) and Ctrl+Space. With the Terminal in front, Ctrl+Space
+// ❖Space and Ctrl+Space. With the Terminal in front, Ctrl+Space
 // is left to the program (in emacs it marks the start of a selection). Switching keyboard or
-// input method moved to ❖⌥Space / Ctrl+⌥Space (sdk/keyboard.js), as on macOS.
+// input method moved to ❖⌥Space / Ctrl+⌥Space (sdk/keyboard.js).
 addListener('keydown', (e) => {
   if (e.key !== ' ' || e.repeat || e.alt || e.shift) return;
   if (e.meta && !e.ctrl) spotlight.toggle();

@@ -4,7 +4,7 @@ Besides the apps bundled with the theme (`apps/`), LordOS installs third-party n
 **.lpk** packages:
 
 - they install without root, in the home folder (`~/.local/share/lordos/apps/<id>/`);
-- they open like any other LordOS app (Launchpad, Dock, start menu);
+- they open like any other LordOS app (app launcher, Dock, start menu);
 - they can ship **WebAssembly** modules for code that has to be fast (see `WASM.md`).
 
 They are installed from the Store, or by double-clicking the `.lpk` in Files.
@@ -103,7 +103,7 @@ Since M8 there is **package signing** and a **permissions and isolation** model 
   the trust level (LordOS / Verified author / Signed by <name> / Unsigned), a revoked package
   doesn't install, and there are «Modified by you», «Restore original» and «Share my version».
 - **Permissions**: the manifest's `permissions` are declared and shown; the system asks the
-  first time (macOS TCC style) and stores the decision where the app can't write it; they are
+  first time (a system-drawn prompt) and stores the decision where the app can't write it; they are
   reviewed in Settings → Privacy.
 - **Isolation**: each installed app runs as **its own process** (`lord-server --app <id>`), with
   its own sandbox (Landlock + seccomp + cgroup, `server/src/sec`). It is drawn as a Wayland

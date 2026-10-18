@@ -588,7 +588,7 @@ int pdf_handle(const DocMsg *m, const JVal *a) {
     }
 }
 
-/* Thumbnail of page 1 without its own session (Quick Look, Files thumbnails): the utilities
+/* Thumbnail of page 1 without its own session (Quick Preview, Files thumbnails): the utilities
  * session is already warm, so the process startup isn't paid. */
 /* A minimal PDF rendered once: loads Poppler, cairo and fontconfig before the first Quick
  * Look (Files asks the utilities session for it when it opens). */

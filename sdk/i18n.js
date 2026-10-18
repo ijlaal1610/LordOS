@@ -98,7 +98,7 @@ export const locale = createStore({ lang: initial(), region: settings.get().regi
 
 // The server picks the CJK font according to the language (the same ideograph is drawn differently in
 // Chinese, Japanese and Korean) and, if the language is right-to-left (meta.json "direction": "rtl"),
-// mirrors the interface: rows, start alignment, menus (as on macOS).
+// mirrors the interface: rows, start alignment, menus.
 function applyNative({ lang }) {
   try {
     lord.text.setLanguage(lang);
@@ -157,7 +157,7 @@ export const appName = (app) => (app ? (lookup(locale.get().lang, `apps.${app.id
 
 const clock24 = () => settings.get().clock?.hour24 || 'auto';
 
-// As on macOS: day and month names in the interface language; date order,
+// Day and month names in the interface language; date order,
 // separators and 12/24 h clock according to the region (es_AR, pt_BR, en_US…).
 function formats() {
   const { lang, region } = locale.get();

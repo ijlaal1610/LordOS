@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Builds the LordOS demo video: records the VM while it runs a script of scenes,
-with an English voice (macOS say) and Spanish subtitles drawn over the video.
+with an English voice (the host's `say` command) and Spanish subtitles drawn over the video.
 
-Usage (on the development Mac, with ffmpeg and Pillow):
+Usage (on the development machine, with ffmpeg and Pillow):
   python3 tools/demo/demo.py script.json output.mp4 [--vmid 117] [--voice Samantha]
 
 The script is a list of scenes:
@@ -28,7 +28,7 @@ def ssh(host, cmd, check=False):
 
 
 # Voice: Kokoro-82M (tts_kokoro.py) if LORDOS_TTS_PY (python with kokoro-onnx) and
-# LORDOS_TTS_MODEL (model folder) are set and the voice is a Kokoro one (af_heart…); otherwise macOS `say`.
+# LORDOS_TTS_MODEL (model folder) are set and the voice is a Kokoro one (af_heart…); otherwise the host's `say`.
 def voice(text, path, name):
     py, model = os.environ.get('LORDOS_TTS_PY'), os.environ.get('LORDOS_TTS_MODEL')
     if py and model and '_' in name:

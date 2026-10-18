@@ -7,7 +7,7 @@ keywords: disks, usb stick, usb, format, partitions, smart, health, mount, eject
 ---
 # Disks
 
-To inspect and prepare disks and USB sticks, like macOS Disk Utility or GNOME Disks.
+To inspect and prepare disks and USB sticks, like GNOME Disks.
 
 ## View
 
@@ -21,8 +21,8 @@ To inspect and prepare disks and USB sticks, like macOS Disk Utility or GNOME Di
 
 - **Mount**, **unmount** and **eject** a USB stick before pulling it out.
 - **Format** a USB stick or partition as **FAT32** (works everywhere, files up to 4 GB), **exFAT**
-  (large sticks, without that limit), **ext4** (Linux) or **NTFS** (Windows, if its tool is
-  installed).
+  (large sticks, without that limit), **ext4** (Linux) or **NTFS** (for disks shared with other operating
+  systems, if its tool is installed).
 - **Rename** the volume (unmounted).
 - **Erase:** quick (the table and signatures) or writing zeros everywhere.
 - **Create a bootable USB** from an `.iso` or `.img` image: it is copied as is and then

@@ -1,7 +1,7 @@
 # Privacy: app isolation and permissions (M8)
 
 LordOS isolates third-party apps (`.lpk`) and controls what each one can use (camera,
-microphone, files, network…) with permissions in the style of **macOS TCC**: the system asks the
+microphone, files, network…) with per-app permissions and system-drawn prompts: the system asks the
 first time and the user decides. See also [SIGNING.md](SIGNING.md) (signed packages) and
 [NATIVE-APPS.md](NATIVE-APPS.md).
 
@@ -14,7 +14,7 @@ first time and the user decides. See also [SIGNING.md](SIGNING.md) (signed packa
 | Our own sandbox (`server/src/sec/sandbox.c`): Landlock + seccomp (TSYNC) + cgroup + no capabilities | **done** (`build/sandbox-test`: 13/13 app, 13/13 with network) |
 | Hardened variant for decoding helpers (`sandbox_apply_helper`, lord-media and lord-doc) | **done** (`build/sandbox-test helper`: 17/17) |
 | Sandbox (`build/sandbox-test`) | **13/13→14/14 app**, 14/14 with network, 17/17 helper |
-| Per-app permissions, TCC style, stored where the app can't write (`server/src/sec/perms.c`) | **done** |
+| Per-app permissions with system-drawn prompts, stored where the app can't write (`server/src/sec/perms.c`) | **done** |
 | Prompts drawn by the system (including those an isolated app requests through the broker), Settings → Privacy, green/orange dots | **done** |
 | Per-app cgroup (`app-lordos-lpk-<id>.scope`, `app-lordos-<id>.scope`) with limits, in the session's delegated subtree | **done**, tested with `lord-sessiond` and `Delegate=yes` |
 | **Root-owned app scopes**: an app can't move itself to another cgroup (`lord-sessiond` places each process, see [Root-owned app scopes](#root-owned-app-scopes)) | **done**, tested on VM 122 (the `systemd-run --user` escape is now closed by the `user@` union, see there and `docs/FIREWALL.md`) |
@@ -29,7 +29,7 @@ first time and the user decides. See also [SIGNING.md](SIGNING.md) (signed packa
 
 ## The per-app process
 
-When a `.lpk` app is opened (Launchpad, Dock, Store), `lord-server` launches it as its own
+When a `.lpk` app is opened (app launcher, Dock, Store), `lord-server` launches it as its own
 process: **the same binary in "app mode"**, `lord-server --app <id>` (`server/src/app/`).
 
 ```
@@ -295,7 +295,7 @@ Unit lordos.service (/system.slice/lordos.service):
 `100000 100000`. Without delegation (for example a standalone `lord-server` run with sudo, during
 development) the apps run without a scope, with a warning.
 
-## Permissions (macOS TCC style)
+## Permissions (per-app prompts)
 
 - **First-time prompts**, drawn by the system, never by the app:
   "**"App" wants to use the microphone — Allow / Don't Allow**". For an isolated app, the request
@@ -321,7 +321,7 @@ Permissions: `files`, `clipboard`, `notifications`, `network`, `camera`, `microp
 
 ### Settings → Privacy
 
-A page in the macOS/TangoOS-style groups, like "Privacy & Security": it lists each permission
+A page in the TangoOS-style groups, "Privacy & Security": it lists each permission
 with its apps and an Allow / Ask / Deny control (`apps/settings/Privacy.jsx`). The **Monitor** adds
 its own section (see connections per app, locate them on the map) through
 `registerPrivacySection({ id, order, Component })` from `@lordos/sdk`, without touching the page.
@@ -369,7 +369,7 @@ through `globalThis.__lordos.monitorDevices`.
 | `sdk/powerbox.jsx` | the open/save dialog (powerbox) and `fs.openFile`/`fs.saveFile` |
 | `server/src/sec/sandbox.c` | Landlock + seccomp + network + no_new_privs + capabilities; `sandbox_apply_helper` |
 | `server/src/sec/cgroup.c` | per-app scopes and delegation of the session subtree |
-| `server/src/sec/perms.c` | per-app permissions (TCC), `permisos.json` |
+| `server/src/sec/perms.c` | per-app permissions, `permisos.json` |
 | `server/src/ui/js_sec.c` | `lord.perms`, `lord.sign` and `lord.broker.resolve` |
 | `sdk/privacy.js` | prompts, indicators, `registerPrivacySection`, `requestPermission` |
 | `server/src/remote/cgsup.c` | the root placement service on `/run/lordos/cgroup.sock` (child of `lord-sessiond`) |

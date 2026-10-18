@@ -169,7 +169,7 @@ export function tokenizeLine(lang, line, state = 'root') {
   return { tokens, state: stack.join('/') };
 }
 
-// TextMate / Xcode-style palette, dark and light.
+// TextMate / classic IDE-style palette, dark and light.
 const DARK = {
   text: '#e4e4e7', comment: '#7f8c98', string: '#fc6a5d', keyword: '#fc5fa3', number: '#d0bf69', constant: '#d0bf69',
   type: '#5dd8ff', function: '#67b7a4', operator: '#e4e4e7', punct: '#a1a1aa', regexp: '#ff8170', variable: '#a167e6',

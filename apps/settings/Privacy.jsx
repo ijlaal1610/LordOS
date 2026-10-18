@@ -1,4 +1,4 @@
-// Settings → Privacy — per-app permissions, like macOS «Privacy & Security». Lists each
+// Settings → Privacy — per-app permissions («Privacy & Security»). Lists each
 // permission with the apps that requested it and lets you revoke it. The Monitor adds its own section
 // through registerPrivacySection (see sdk/privacy.js); this page does not know about the Monitor.
 import { View, Text, useTheme, useLocale, Segmented, useStore, perms, permsRev, privacySections, useIndicators, packages, appName, getApp, spacing, typeScale } from '@lordos/sdk';

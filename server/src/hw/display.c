@@ -37,7 +37,7 @@ static struct {
     int capture_all;
     int dirty, retry, save_pending;
     DisplayPlan cur;                    /* what main.c applied */
-    /* Night Shift */
+    /* Night Light */
     int kelvin, soft;
     uint8_t lut[3][256];
     /* idle */
@@ -308,7 +308,7 @@ int display_cpu_only(void) {
     return 0;
 }
 
-/* ---- Night Shift ---- */
+/* ---- Night Light ---- */
 
 static void apply_tint(void) { apply_tint_all(); }
 static void apply_tint_all(void) {

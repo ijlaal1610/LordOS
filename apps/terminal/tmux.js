@@ -1,4 +1,4 @@
-// tmux.js — integración con tmux en modo control (`tmux -CC`), como la de iTerm2.
+// tmux.js — tmux control-mode integration (`tmux -CC`).
 //
 // Al correr `tmux -CC` (o `tmux -CC attach`) en una pestaña, esa sesión pasa a ser la
 // "puerta": tmux habla un protocolo de líneas (%begin/%end, %output, %layout-change…).

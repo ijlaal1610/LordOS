@@ -19,5 +19,5 @@ reemplazar y resaltado de sintaxis.
 - **Comentar:** ❖/ según el lenguaje. **Duplicar línea:** ❖⇧D. **Sangrar:** ❖] y ❖[.
 - **Archivos:** ❖N nuevo, ❖O abrir, ❖S guardar, ❖⇧S guardar como, ❖W cerrar, ❖P imprimir.
 
-Los archivos de texto y código de [Archivos](help:files) y de Spotlight se abren acá. Funciona con
+Los archivos de texto y código de [Archivos](help:files) y de Buscar se abren acá. Funciona con
 los métodos de entrada de japonés, chino y coreano.

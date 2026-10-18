@@ -7,7 +7,7 @@ keywords: registros, logs, journal, errores, depurar, consola, diagnóstico
 ---
 # Registros
 
-Los registros del sistema y de LordOS, como la Consola de macOS. Sirve para ver qué pasó cuando
+Los registros del sistema y de LordOS. Sirve para ver qué pasó cuando
 algo falla.
 
 ## Fuentes

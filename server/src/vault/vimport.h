@@ -8,7 +8,8 @@
  *     bloques HMAC-SHA256, gzip, flujo interno ChaCha20/Salsa20 y el XML de KeePass), con
  *     contraseña y/o archivo llave; y el CSV que exporta KeePassXC.
  *   - Bitwarden JSON (sin cifrar) y CSV.
- *   - Chrome/Chromium/Edge, Firefox y Apple (Contraseñas/Safari) CSV.
+ *   - Chrome and other Chromium-based browsers, Firefox, and the generic
+ *     Title,URL,Username,Password,Notes,OTPAuth CSV of other password managers.
  *   - CSV propio de LordOS (el que escribe exp_csv).
  * Los parsers son robustos ante archivos rotos o maliciosos (pruebas «fuzz-ish» en tests/). */
 #ifndef LORD_VAULT_VIMPORT_H

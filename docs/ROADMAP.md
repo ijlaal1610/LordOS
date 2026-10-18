@@ -49,7 +49,7 @@ input (keyboard → characters per layout), copying only the damaged region to t
       (`ThemeProvider`/`useTheme`), `TextInput`, `ScrollView`, controls, system hooks.
 - [x] Apps as packages (`apps/<id>/manifest.json`): Files (real FS), Settings, About
       (real data), Calculator, Terminal (M4 notice).
-- [x] "Lord Default" theme: Launchpad with search, Control Center (live CPU/RAM),
+- [x] "Lord Default" theme: app launcher with search, Control Center (live CPU/RAM),
       drop-down menus, context menu, 4 wallpapers of our own.
 - [x] "Classic" theme as a template (taskbar + start menu, a single file).
 - [x] Live theme switching from Settings, persistent, with protection against broken themes.
@@ -58,17 +58,17 @@ Measured on the VM: server RAM 24–26 MB with Lord Default, 11 MB with Classic;
 switch ~30 ms + first frame ~60 ms.
 
 Left over from M3 and moved to later: volume and brightness (no audio or backlight on the VM),
-real per-app isolation by permissions, a development environment in the Mac's browser.
+real per-app isolation by permissions, a development environment in the development machine's browser.
 
-## M4 — Native iTerm2-style terminal ✅ (2026-10-15)
+## M4 — Native terminal ✅ (2026-10-15)
 
 Moved ahead of Wayland at the project's request: the LordOS terminal is our own, not a Linux
-app. Full details, shortcuts and the iTerm2 parity table in `TERMINAL.md`.
+app. Full details, shortcuts and the parity table with popular terminal emulators in `TERMINAL.md`.
 
 - [x] C engine (`server/src/term/`): xterm-256color emulator (VT500 parser, direct color,
       alternate screen, mouse, bracketed paste, synchronized output), scrollback with
       reflow, unprivileged PTY, drawing with per-row damage, hand-drawn boxes/blocks/powerline.
-- [x] iTerm2 extensions: inline images (`imgcat`), badges, marks, bash
+- [x] OSC 1337 extensions: inline images (`imgcat`), badges, marks, bash
       integration (OSC 133/7), Sixel, OSC 8 hyperlinks, OSC 52, OSC 9 notifications.
 - [x] React app: tabs, split panes, profiles with 16 color schemes, transparency and
       blur, regex search, toolbelt, status bar, hotkey window (F12),
@@ -78,12 +78,12 @@ app. Full details, shortcuts and the iTerm2 parity table in `TERMINAL.md`.
       bar, confirmation on close, arguments when opening apps, window resizing,
       `<Terminal>` component, session clipboard, `Stepper` and `Slider`.
 
-- [x] iTerm2 parity completed: font choice and "non-ASCII" font,
+- [x] Parity with popular terminal emulators completed: font choice and "non-ASCII" font,
       ligatures (our own GSUB engine, `server/src/ui/otf.c`), color emoji (CBDT), combining
       characters and graphemes (mode 2027), zsh and fish integration, configurable shortcuts and
       keys, profile switching by user@host, highlight/mark/title triggers,
       sessions that survive a server restart (holders, `term/hold.c`),
-      `tmux -CC` with native tabs and panes, and **iTerm2 profile import**
+      `tmux -CC` with native tabs and panes, and **profile import from other terminal emulators**
       (JSON, `.itermcolors`, XML and binary plist).
 
 Measured on the VM: `seq 1 1000000` in 2.1 s with transparency; server RAM ~39 MB with
@@ -138,7 +138,7 @@ Details in `WAYLAND.md`.
 - [x] GTK4 (own frame) and Qt6 (theme frame) app windows inside both themes:
       title, focus, move, resize, maximize, minimize, close, Dock.
 - [x] Clipboard shared with LordOS in both directions, `xdg-decoration`.
-- [ ] Launching `.desktop` apps from the Launchpad (needs an approved exception to "the server
+- [ ] Launching `.desktop` apps from the app launcher (needs an approved exception to "the server
       doesn't execute commands"), `linux-dmabuf`, app cursors, drag and drop,
       `text-input`, Xwayland.
 
@@ -147,7 +147,7 @@ Details in `WAYLAND.md`.
 Defined with the user on 2026-10-16: our own store (Debian apps and native LordOS apps),
 our own installer, and network, VPN, sound and clipboard with our own interface.
 
-- [x] Launcher for installed Linux apps (`.desktop`) in the Launchpad, the start menu and the
+- [x] Launcher for installed Linux apps (`.desktop`) in the app launcher, the start menu and the
       Dock, with the approved `lord.apps.launch(id)` exception (`WAYLAND.md`, "The launcher").
 - [x] Installable native `.lpk` apps (no root), with React and the SDK shared with the theme,
       `<Image pixels>` and `loadWasm` (`NATIVE-APPS.md`); example `examples/apps/fractal`.
@@ -157,9 +157,9 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
       resolver, `dpkg` at the end; plans identical to apt in 12 cases; orphans.
 - [x] Store: Debian apps by category (AppStream), search, plan before installing or
       removing, updates, local `.deb` and `.lpk`.
-- [x] Launchpad and start menu with categories (freedesktop), AppStream icons for apps
+- [x] App launcher and start menu with categories (freedesktop), AppStream icons for apps
       that only ship SVG.
-- [x] Settings grouped as in macOS/TangoOS (search, user, General, Network, Sound,
+- [x] Settings grouped as in TangoOS (search, user, General, Network, Sound,
       Updates…).
 - [x] Clipboard: images between Linux apps that survive the source app, history (❖V).
 - [x] Sound on PipeWire with our own client (`SOUND.md`): Control Center and Settings.
@@ -167,8 +167,8 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
       OpenVPN) in Settings → Network (`NETWORK.md`).
 - [x] React 19.3.1 (`react-reconciler` 0.34): adapted renderer (`runtime/index.js`), tested with
       both themes, live theme switching, installed apps (.lpk) and Linux apps. lord-server: 34 MB RSS.
-- [x] Finder-style Files (`FILES.md`): tabs, four views, freedesktop
-      Trash, Quick Look, Get Info, background copy/move (`fsops.c`),
+- [x] Files (`FILES.md`): tabs, four views, freedesktop
+      Trash, Quick Preview, Get Info, background copy/move (`fsops.c`),
       drag and drop, tags, search, mounted disks and «Open With» (`launchWith`).
 - [ ] Left over from M7: OpenConnect and IPsec (strongSwan), WPA3/Enterprise, real per-app
       permissions, a signed LordOS app repository.
@@ -186,7 +186,7 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
   - [x] Our own sandbox (`server/src/sec/sandbox.c`): Landlock (ABI≤6), seccomp-bpf (allow
     list), no network without permission, `no_new_privs`, dropped capabilities and per-app cgroup v2;
     tested on the VM (`build/sandbox-test`, 7/7). No bubblewrap/flatpak/firejail.
-  - [x] macOS TCC-style permissions: prompts drawn by the system, decisions stored where
+  - [x] per-app permissions: prompts drawn by the system, decisions stored where
     the app can't write (`permisos.json`), Settings → Privacy and the green/orange
     camera/microphone dots in both themes.
   - [x] Our own Ed25519 signing (SHA-256/Ed25519, verify and sign), `contenido.json` with hashes,
@@ -225,7 +225,7 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
   - [x] metrics read by `lord-server` in its own thread, at 4 Hz and only while the app is open
     (closed, it costs nothing);
   - [x] per-app connections with sock_diag, from process to app through the `.desktop` files;
-  - [x] our own vector map with zoom and arcs, Little Snitch style;
+  - [x] our own vector map with zoom and arcs, in the style of a per-app network monitor;
   - [x] country by IP with our own MaxMind DB reader and DB-IP Lite (CC BY 4.0), no network;
   - [x] item in Settings → Privacy.
   - [x] Phase 2, firewall: see "Per-app firewall" above.
@@ -279,8 +279,8 @@ Details in `DOCUMENTS.md` and `PRINTING.md`. Tested on VM 116 with screenshots (
   - Extract Here (zip, tar.gz/xz/zst/bz2, 7z, bare gz) without leaving the folder, with
     `arcpath-test` and malicious archives: 31/31;
   - Compress to `.zip`;
-  - Quick Look for PDFs, fonts, archives and what is inside an archive;
-  - Quick Look for audio and video with `media.poster` when available.
+  - Quick Preview for PDFs, fonts, archives and what is inside an archive;
+  - Quick Preview for audio and video with `media.poster` when available.
 - [x] **Fonts:** samples, character table by block, information, installing and removing
   user fonts.
 - [x] **Emoji & Symbols:**
@@ -289,7 +289,7 @@ Details in `DOCUMENTS.md` and `PRINTING.md`. Tested on VM 116 with screenshots (
   - an app with Unicode symbols by block.
 - [x] **Printing:**
   - our own IPP client for CUPS (no libcups), our own mDNS;
-  - Settings → Printers & Scanners: add IPP Everywhere/AirPrint, manual URI,
+  - Settings → Printers & Scanners: add driverless printers (IPP Everywhere), manual URI,
     default, queue and cancel, administration through `lpadmin` + PeerCred;
   - the system print dialog with preview, used by the PDF Viewer, the Editor and
     Notes (Photos has the API ready).
@@ -340,7 +340,7 @@ Details in `MEDIA.md`. Tested on VM 119 with screenshots (`m9-media-*.png`).
 - [x] **Recorder:** microphone over PipeWire, waveform, rename, trim and export to Opus,
   MP3 or WAV.
 - [x] **Files:** «Open With» Photos and Player, video thumbnails, cover art and WebP/HEIC/AVIF;
-  `media.poster` for Quick Look.
+  `media.poster` for Quick Preview.
 - [x] **Performance:** painting straight from the video when only an opaque frame changed: lord-server with
   a 1080p video went from 42 % to 13 % of a core windowed and from 92 % to 15 % fullscreen.
 - [ ] **Pending:**
@@ -378,7 +378,7 @@ with screenshots (`m9-sistema-*.png`).
 - [x] **Clock** (`apps/clock`): world clock with our own TZif reader (`build/tzif-test`), alarms that
   fire with the app closed, timer and stopwatch, a menu-bar status item.
 - [x] **Help** (`apps/help`): searchable markdown articles in es/en/pt, a skippable welcome tour on
-  first login, links to Settings pages, indexed by Spotlight.
+  first login, links to Settings pages, indexed by Search.
 - [x] **Session notifications** (`sdk/notify.js`) and **menu-bar status items**
   (`sdk/statusitems.js`) for any theme.
 - [ ] **Pending:**
@@ -401,11 +401,11 @@ Details in `PASSWORDS.md`. Tested on VM 116 with a real `lord-sessiond` session
   byte and every truncation detected (`vault-test`, 74/74).
 - [x] **Unlock:** master password, FIDO2 `hmac-secret` key (own CTAP2 client), key file on a USB
   stick, password + key file, printable recovery key. Auto-lock on idle, ❖L and user switch.
-- [x] **App:** Apple-Passwords-style sidebar (All, Favorites, Archived, 2FA codes, Wi-Fi, Secure
+- [x] **App:** sidebar (All, Favorites, Archived, 2FA codes, Wi-Fi, Secure
   notes, Cards, Security), KeePassX-style category tree with 16 built-in templates and user
   categories with their own fields, tags, history, trash, attachments, rotation reminders, Wi-Fi QR,
   TOTP with countdown (also from a QR image), generator, security report (offline breach check),
-  import (own KDBX 4/3.1 reader, Bitwarden, Chrome, Firefox, Apple) and export. Protected window.
+  import (own KDBX 4/3.1 reader, Bitwarden, Chrome, Firefox, CSV from other password managers) and export. Protected window.
 - [x] **Clipboard:** secrets marked sensitive (out of the history, `x-kde-passwordManagerHint` for
   Wayland clients), cleared after 30 s.
 - [x] **Session keyring** (`login.lvault`) opened with the login password via `lord-sessiond`;
@@ -429,7 +429,7 @@ Details in `SETTINGS.md`. Tested on VM 118 (`ajustes-*.png`), Bluetooth with a v
 - [x] **Displays:** outputs, resolutions and refresh rates from KMS with EDID names; live modeset
   with the system's 15-second "Keep these display settings?"; saved per display (EDID identity) and
   used from the first frame; main display choice and move on unplug (DRM uevents); software rotation
-  and a doubled 200 % scale (CPU path); brightness through a closed action; Night Shift on the gamma
+  and a doubled 200 % scale (CPU path); brightness through a closed action; Night Light on the gamma
   LUT or by software, scheduled sunset-to-sunrise from the time zone's coordinates or custom hours.
 - [x] **Bluetooth:** BlueZ over our own D-Bus client: power, discovery, pair (system-drawn PIN,
   passkey and confirmation prompts), connect, disconnect, forget; headsets in Sound through
@@ -443,7 +443,7 @@ Details in `SETTINGS.md`. Tested on VM 118 (`ajustes-*.png`), Bluetooth with a v
   12/24 h, menu bar clock format.
 - [x] **Default Apps:** `mimeapps.list` and `xdg-terminals.list`; Files' "Open With" and
   `lord.apps.launchWith('', path)` honor them.
-- [ ] **Pending:** extend/mirror across displays; sharp HiDPI and 125/150 %; Night Shift on the GPU
+- [ ] **Pending:** extend/mirror across displays; sharp HiDPI and 125/150 %; Night Light on the GPU
   path without a LUT; real laptops (battery, backlight, lid) and real Bluetooth controllers;
   notifications on the lock screen and a notification center; Wayland idle inhibit.
 
@@ -463,7 +463,7 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   plain compose, server drafts, send later, new-mail notifications.
 - [x] **HTML** through our own sanitizer into native views (no web engine), remote images blocked
   until asked, tracking pixels dropped, deceptive links flagged; plain-text fallback.
-- [x] **Accounts:** any IMAP/SMTP; Gmail, Outlook.com, Yahoo and iCloud from our own table; app
+- [x] **Accounts:** any IMAP/SMTP; popular providers (Gmail, Yahoo and others) from our own table; app
   passwords in the keyring; OAuth prepared and disabled ("needs your client ID").
 - [x] **Calendar** (day / week / month, colored calendars, local and CalDAV, recurrence),
   **invitations** from Mail (Accept / Maybe / Decline with iTIP REPLY), **Reminders** (lists, due
@@ -471,7 +471,7 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   groups, photo; Mail autocompletes from it). Alarms ring with the apps closed.
 - [x] **Tests:** `mail-test` 30,953 checks (IMAP, MIME, charsets, HTML sanitizer, iCal, vCard, XML,
   mutation fuzzing), `mailnet-test` 138, `mailc-test` 69; ASan/UBSan target.
-- [ ] Real providers (Gmail, Outlook.com, Yahoo, iCloud) and OAuth2 with a registered client ID.
+- [ ] Real providers (Gmail, Yahoo and the others in the table) and OAuth2 with a registered client ID.
 - [ ] Edit a single occurrence of a repeating event; create calendars/address books on the server.
 - [ ] CJK multibyte charsets; S/MIME and OpenPGP; QRESYNC.
 
@@ -486,54 +486,54 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   `PRIVACY.md`): read-only frame ring from `lord-media` with validated ACKs, photo/video through
   the powerbox, instant revoke; one Wayland toplevel per window, grouped in the Dock, «New
   window» from the app and the Dock.
-- [ ] **Apple-style visual polish, app by app** (before the ISO): review every native app
+- [ ] **Visual polish, app by app** (before the ISO): review every native app
   (Settings, Files, Terminal, Store, Editor, Notes, Calculator, Monitor, PDF, Fonts,
   Emoji, Scanner, Photos, Player, Screenshots, Camera, Recorder, Passwords, Disks, Backups,
-  Logs, Clock, Help, Mail…) following the macOS Human Interface Guidelines (HIG): 8 px grid,
+  Logs, Clock, Help, Mail…) following our design guide, modeled on widely used desktop human-interface conventions (`DESIGN.md`): 8 px grid,
   uniform margins and spacing, alignment, typographic hierarchy, sidebars,
-  toolbars and sheets as in macOS, controls with the same size and height, nothing overlapping or
+  toolbars and sheets as in the design guide, controls with the same size and height, nothing overlapping or
   clipped; in light, dark, RTL and in small windows; with before and after screenshots.
 - [ ] **Final ISO** with everything (check that `lord-doc` and `lord-media` are inside) and a **Raspberry
   Pi 5 image** (`tools/rpi/build-img.sh`), tested on the real Pi.
 
 ## After the final ISO
 
-- [ ] **Virtual machines**: a **free clone of Parallels Desktop**, with the same interface and
-  way of working (not Proxmox's, which only contributes the pieces underneath: KVM, QEMU and drivers).
+- [ ] **Virtual machines**: a **free desktop virtualization app**, with the polish and
+  way of working of the best commercial ones (not Proxmox's, which only contributes the pieces underneath: KVM, QEMU and drivers).
   A generic name and our own logo, icon and colors:
   - **Control Center** with the list of VMs and their live thumbnail, state, start, pause,
     suspend and shut down;
-  - **Installation Assistant** like Parallels': cards for «Download Windows 11»,
+  - **Installation Assistant**: cards for downloading popular guest systems,
     Ubuntu, Debian, Fedora, Android, «Install from an ISO file», «Migrate from another PC»;
   - **VM window** with its bar (Actions, Devices: USB, CD, folders, network, sound) and
-    the **Window, Full Screen, Coherence and Picture in Picture** modes;
-  - **Configuration** in tabs like Parallels: General, Options (startup and shutdown,
-    optimization, sharing, applications, Coherence), Hardware (CPU and memory, graphics,
+    the **Window, Full Screen, Seamless and Picture in Picture** modes;
+  - **Configuration** in tabs: General, Options (startup and shutdown,
+    optimization, sharing, applications, Seamless), Hardware (CPU and memory, graphics,
     mouse and keyboard, network, sound, USB, disks, printers, TPM, boot), Security, Backup;
   - **profiles** when creating the VM (Productivity, Software Development, Testing, Design, Games)
     that tune CPU, memory and options automatically;
-  - the guest's apps in the Launchpad and the Dock, opening LordOS files with a guest
+  - the guest's apps in the app launcher and the Dock, opening LordOS files with a guest
     app, clipboard and dragging files between the two;
   - the **KVM** hypervisor (the kernel's); **QEMU** as the device engine, with **swtpm** (TPM)
-    and **OVMF** (UEFI and secure boot) for Windows 11;
+    and **OVMF** (UEFI and secure boot) for guests that require them;
   - the same drivers Proxmox uses: **virtio-win** (disk, network, memory, 2D display
-    `viogpudo`, virtiofs for Windows) signed by Red Hat, the **QEMU guest agent**
+    `viogpudo`, virtiofs for non-Linux guests) signed by Red Hat, the **QEMU guest agent**
     (`qemu-ga`) and the **SPICE agent** (clipboard, resolution, file dragging); they are
     downloaded from Fedora's official source the first time and their signature is verified; Linux
     guests already ship them in the kernel;
-  - our own assistant (automatic download and installation, mounts virtio-win during the Windows
+  - our own assistant (automatic download and installation, mounts virtio-win during the guest
     install and installs the tools at the end), snapshots, cloning, host USB passthrough to the
     VM, shared folders (virtiofs), resolution that follows the window;
   - the VM's display inside our compositor via dmabuf (no QEMU windows);
-  - **Coherence** mode: apps of a Linux guest as standalone LordOS windows (forwarding
-    Wayland); Windows with our own agent, later;
-  - accelerated 3D in Linux guests (virgl/venus); on Windows only 2D for now (there is no good free
+  - **Seamless** mode: apps of a Linux guest as standalone LordOS windows (forwarding
+    Wayland); other guests with our own agent, later;
+  - accelerated 3D in Linux guests (virgl/venus); on other guests only 2D for now (there is no good free
     3D driver);
   - another architecture (arm64 on a PC, amd64 on the Pi) through TCG emulation: it works, but 5–20×
     slower;
   - later, a lightweight engine of our own only for Linux guests (like crosvm/Firecracker).
 - [ ] **Android:** our own container with LineageOS and apps from our Store.
-- [ ] **Firewall, ask mode** (an alert on the first connection attempt, Little Snitch style).
+- [ ] **Firewall, ask mode** (an alert on the first connection attempt, like a per-app network monitor).
 - [ ] **Accessibility:** screen reader, zoom, high contrast.
 - [ ] Full **demo video** (installation + tour, English voice-over with Spanish
   subtitles).

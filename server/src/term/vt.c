@@ -3,7 +3,7 @@
  * Sequence parser (VT500 states), grid with history in a ring, text reflow
  * on resize, alternate screen, SGR with 256 colors and direct color,
  * mouse modes, bracketed paste, synchronized output, hyperlinks
- * (OSC 8), shell integration (OSC 133 / 7) and iTerm2 extensions (OSC 1337:
+ * (OSC 8), shell integration (OSC 133 / 7) and the OSC 1337 inline-image protocol extensions (
  * marks, badge, inline images, current directory). */
 #include "term.h"
 
@@ -912,7 +912,7 @@ static int add_link(Term *t, const char *uri) {
     return t->links[t->nlinks] ? ++t->nlinks : 0;
 }
 
-/* iTerm2 image dimension: "N" cells, "Npx", "N%" or "auto". */
+/* OSC 1337 image dimension: "N" cells, "Npx", "N%" or "auto". */
 static int image_dim(const char *v, int cell, int avail_cells, int *px) {
     *px = 0;
     if (!v || !*v || !strcmp(v, "auto")) return -1;
@@ -2026,7 +2026,7 @@ char *vt_serialize(Term *t, int max_lines, size_t *len) {
     return s.s;
 }
 
-/* "Highlight" trigger (iTerm2 Highlight Text): paints the last occurrence of `text` on the
+/* "Highlight" trigger (as in popular terminal emulators): paints the last occurrence of `text` on the
  * screen with the given colors (-1 = unchanged). Returns 1 if it found it. */
 int vt_highlight(Term *t, const char *text, int64_t fg, int64_t bg) {
     uint32_t q[512];
@@ -2231,7 +2231,7 @@ char *vt_words(Term *t, const char *prefix, int max) {
     return out.s;
 }
 
-/* ---- copy mode (like iTerm2's): move an own cursor with the keyboard and copy ---- */
+/* ---- copy mode: move an own cursor with the keyboard and copy ---- */
 
 int vt_copy_mode(Term *t, int on) {
     t->copy_active = on;

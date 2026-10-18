@@ -1,7 +1,7 @@
-# Files (Finder-style)
+# Files
 
 `apps/files`. A browser for the home folder and the user's mounted disks, with the useful parts
-of the macOS Finder: tabs, four views, Trash, Quick Look, Get Info, copy/cut/paste, drag and
+of a classic desktop file manager: tabs, four views, Trash, Quick Preview, Get Info, copy/cut/paste, drag and
 drop, color tags and search. Disk operations belong to the server (`server/src/fsops.c`,
 `lord.fs` in `js_sys.c`); the app only requests them.
 
@@ -14,7 +14,7 @@ drop, color tags and search. Disk operations belong to the server (`server/src/f
 | ![columnas](m7-archivos-columnas.png) | ![galeria](m7-archivos-galeria.png) |
 | Columns (Miller) with the text preview | Gallery: large preview and the strip below |
 | ![quick look](m7-archivos-vista-rapida.png) | ![info](m7-archivos-info.png) |
-| Quick Look (Space), 5 of 7; the arrows go to the next one | Get Info (❖I): size, location, dates, permissions and «Open with» |
+| Quick Preview (Space), 5 of 7; the arrows go to the next one | Get Info (❖I): size, location, dates, permissions and «Open with» |
 | ![menú](m7-archivos-menu.png) | ![abrir con](m7-archivos-abrir-con.png) |
 | Context menu of a file, with tags | «Open with»: the Text Editor or a Linux app that declares the type (FeatherPad) |
 | ![featherpad](m7-archivos-featherpad.png) | ![mover](m7-archivos-mover.png) |
@@ -72,7 +72,7 @@ drop, color tags and search. Disk operations belong to the server (`server/src/f
     overwritten and you are told;
   - emptying asks for confirmation;
   - permanent deletion exists only inside the Trash.
-- **Quick Look** (Space): the image, the text (the first 64 KB, in monospace), the first page of
+- **Quick Preview** (Space): the image, the text (the first 64 KB, in monospace), the first page of
   a PDF, a font sample, the contents of an archive, a video frame (if `media.poster` is
   available) or the file's info card. The arrows go to the next one and Space or Esc close it.
   See `DOCUMENTS.md`.
@@ -109,7 +109,7 @@ drop, color tags and search. Disk operations belong to the server (`server/src/f
 | ❖C / ❖X / Ctrl+V | Copy / cut / paste files (also with Ctrl) |
 | ❖⌫ or Del | Move to Trash (in the Trash: delete permanently, with confirmation) |
 | ❖I | Get Info |
-| Space | Quick Look |
+| Space | Quick Preview |
 | ❖⇧. | Show hidden files |
 | ❖A | Select all |
 | Arrows, Home, End | Move the selection (in the list, → and ← expand and collapse) |
@@ -158,7 +158,7 @@ file:
   - size, search and recents.
 - On VM 116 (screenshots above): new folder and rename, copy and paste (with a 600 MB file in the
   background, without freezing the UI), duplicate, move by dragging onto a folder, to the Trash
-  (with a valid `.trashinfo`), restore, empty with confirmation, Quick Look with arrows, Get Info,
+  (with a valid `.trashinfo`), restore, empty with confirmation, Quick Preview with arrows, Get Info,
   the four views, tabs, search, tags, Recents, Applications, «Open with» the Editor and
   FeatherPad, light and dark theme, and Arabic.
 
@@ -167,12 +167,12 @@ file:
 - Ask «Replace?» when pasting or dropping onto a name that already exists: today a free name is
   chosen.
 - Selection rectangle by dragging on empty space.
-- PDF, video and SVG thumbnails in the icon view (PDF already shows in Quick Look); app icons per
+- PDF, video and SVG thumbnails in the icon view (PDF already shows in Quick Preview); app icons per
   file type.
 - Ejecting disks (needs an `admin.c` action or udisks).
 - Watching folders with inotify: today the view reloads on re-entering or after one of its own
   operations.
-- The status bar and the path bar end up behind the Dock with the window maximized, just like in
-  macOS when the Dock doesn't hide.
+- The status bar and the path bar end up behind the Dock with the window maximized, as on other
+  desktop systems when the Dock doesn't hide.
 - On the VM, ❖C opened Settings, because some ❖ shortcut of the theme or another part of the
   system grabbed it. Ctrl+C/Ctrl+V works.

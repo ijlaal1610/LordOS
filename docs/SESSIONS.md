@@ -1,6 +1,6 @@
 # Sessions, login screen and fast user switching (M8)
 
-LordOS has its own session manager, `lord-sessiond`. It does the same as GDM or macOS's
+LordOS has its own session manager, `lord-sessiond`. It does the same as GDM or any other
 "display manager":
 
 - it shows the login screen on the monitor;

@@ -470,7 +470,7 @@ static void op_done(const DMsg *m, void *ctx) {
     }
     BtDevice *d = o->path[0] ? device(&model, o->path, 0) : NULL;
     if (!strcmp(o->op, "pair") && !err && d) {
-        /* paired: trust it (reconnects without asking) and connect, as macOS does */
+        /* paired: trust it (reconnects without asking) and connect */
         DBuf b;
         dw_init(&b);
         dw_str(&b, "org.bluez.Device1");

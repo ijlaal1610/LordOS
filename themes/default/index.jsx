@@ -1,5 +1,5 @@
-// "Lord Default" theme — style inspired by Mac-OS-Desktop, with its own assets.
-// The theme builds the desktop (wallpaper, bar, dock, Launchpad, Control Center) and the
+// "Lord Default" theme — a menu bar and dock layout, with its own assets.
+// The theme builds the desktop (wallpaper, bar, dock, app launcher, Control Center) and the
 // window frames. Apps come from apps/ through the SDK.
 import {
   startShell, View, Text, Image, screen, ThemeProvider, useSettings, useWindows, configureWindows, getApp, wm, addListener, t as tr,
@@ -90,8 +90,8 @@ function App() {
   const all = screenDisplays();
   const bars = s.menuBarAllDisplays && !screen.mirror ? all : [main];
 
-  // F4 opens the Launchpad; Super too, but only if released without being used in a shortcut
-  // (Super+T, Super+D... belong to the apps, like Cmd on macOS).
+  // F4 opens the app launcher; Super too, but only if released without being used in a shortcut
+  // (Super+T, Super+D... belong to the apps).
   useEffect(() => {
     let superAlone = false;
     const offDown = addListener('keydown', (e) => {
@@ -106,12 +106,12 @@ function App() {
     return () => { offDown(); offUp(); };
   }, []);
 
-  // Trackpad: a 3-finger swipe up opens the Launchpad and down closes it (like
-  // macOS); left/right switch windows (the SDK does that). See docs/TRACKPAD.md.
+  // Trackpad: a 3-finger swipe up opens the app launcher and down closes it;
+  // left/right switch windows (the SDK does that). See docs/TRACKPAD.md.
   useEffect(() => registerGestureActions({ up: () => setLaunchpad(true), down: () => setLaunchpad(false) }), []);
 
   const wallpaper = t.wallpapers.find((w) => w.id === s.wallpaper) || t.wallpapers[0];
-  const launchpadEntry = { id: 'launchpad', name: 'Launchpad', Icon: LaunchpadIcon };
+  const launchpadEntry = { id: 'launchpad', name: tr('shell.menu.apps'), Icon: LaunchpadIcon };
   // Pinned and open apps; windows of the same app (Linux too) share a single icon.
   const entries = useDockEntries(DOCK_DEFAULT, { recents: dp.dockRecents ? 3 : 0 });
   const byId = new Map(entries.map((e) => [e.id, e]));

@@ -1,4 +1,4 @@
-// Terminal — terminal nativa de LordOS, inspirada en iTerm2.
+// Terminal — LordOS's native terminal.
 //
 // La emulación (xterm-256color, color directo, mouse, imágenes en línea, marcas del shell)
 // y el dibujo están en C (server/src/term); esta app arma pestañas, paneles divididos,
@@ -19,7 +19,7 @@ import { tmuxAction, isGateway, detach } from './tmux.js';
 import { actionOf, hint, keyMappingOf, mappingBytes, keyCapture, comboOf, actionLabel } from './keys.js';
 import { getProfile, schemeOf, terminalSettings, profileName } from './profiles.js';
 
-// Menú del Dock (clic derecho): nueva ventana, nueva pestaña y pestaña con un perfil, como en iTerm2.
+// Menú del Dock (clic derecho): nueva ventana, nueva pestaña y pestaña con un perfil.
 registerDockMenu('terminal', (entry) => {
   const last = entry.windows[entry.windows.length - 1];
   const items = [{ label: actionLabel('newWindow'), onClick: () => (last ? run(last.id, 'newWindow') : wm.open('terminal', { new: true })) }];
@@ -98,7 +98,7 @@ function run(wid, action) {
   switch (action) {
     case 'newTab': addTab(wid); break;
     case 'newWindow': {
-      // tamaño en columnas × filas del perfil por defecto (Ventana → columnas/filas), como iTerm2
+      // tamaño en columnas × filas del perfil por defecto (Ventana → columnas/filas)
       const dp = getProfile(terminalSettings().defaultProfile);
       const info = term.info(sid), cur = wm.get(wid);
       const frame = dp.columns && dp.rows && info?.cellWidth && cur ? {

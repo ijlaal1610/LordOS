@@ -5,7 +5,7 @@
  * - scroll, pinch and swipe: to the Wayland app that has the pointer when the gesture starts
  *   (zwp_pointer_gestures, axis finger) or, if there is none, to the UI node under the pointer
  *   (__lordGesture → the SDK's onWheel / onPinch / onSwipe). The target stays fixed until the
- *   gesture ends, as on macOS;
+ *   gesture ends;
  * - 3-finger swipe (or 4, depending on the settings) belongs to the desktop: it always goes to JS, which decides
  *   the theme's action;
  * - scroll inertia is only for the UI (Wayland apps do their own);

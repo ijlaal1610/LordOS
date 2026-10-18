@@ -1,6 +1,6 @@
-/* vimport.c — importar y exportar (ver vimport.h): detección del formato, los CSV de KeePassXC,
- * Bitwarden, Chrome, Firefox, Apple y el propio, el JSON de Bitwarden, y el CSV de exportación.
- * KDBX está en kdbx.c. Todo en la arena de secretos. */
+/* vimport.c — import and export (see vimport.h): format detection, the CSVs of KeePassXC,
+ * Bitwarden, Chrome, Firefox, the generic password-manager CSV and our own, the Bitwarden JSON,
+ * and the export CSV. KDBX lives in kdbx.c. Everything in the secrets arena. */
 #include "vimport.h"
 #include "csvp.h"
 #include "kdbx.h"

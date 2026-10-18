@@ -7,7 +7,7 @@ closed `admin.c` actions, with arguments validated on the root side and programs
 
 ## Disks (`apps/disks`)
 
-The LordOS disk utility, like macOS Disk Utility or GNOME Disks.
+The LordOS disk utility, like GNOME Disks.
 
 - **On the left:** disks grouped into Internal, External (USB and cards) and Images (`loop`
   devices backed by a file), each with its partitions. A dot marks the mounted ones.
@@ -251,7 +251,7 @@ modules.
 
 ## Backups (`apps/backup`)
 
-Scheduled backups of the home folder to an external disk or a folder, like Time Machine. The
+Scheduled backups of the home folder to an external disk or a folder. The
 engine is our own code (no rsync) and runs **as the user**, inside `lord-server`: backing up the
 home folder needs no root, so no new action was added to `admin.c`.
 
@@ -428,13 +428,13 @@ the thread not competing with the compositor for CPU (wakeup p99 of 2 ms at most
 - Test "Pause on battery" on a laptop (the VM has no battery).
 - Notice when the backup disk is plugged in (today it checks again every 5 minutes).
 - Store the encryption passphrase in the session keyring.
-- File versions (every backup of one file, like "Enter Time Machine").
+- File versions (every backup of one file, browsable in Backups).
 - RTL was reviewed in code (rows the engine mirrors, text with `start`/`end`, the progress bar in
   `ltr`); there is no Arabic screenshot.
 
 ## Logs (`apps/logs`)
 
-LordOS's log viewer, like macOS Console.
+LordOS's log viewer.
 
 - **Sources** (sidebar):
   - **My logs:** the user's own systemd journal (`user-<uid>.journal` and its archived files);
@@ -543,7 +543,7 @@ Export of the "lord-netd" view: `~/Documentos/Registros-20261018-035235.txt`, 20
 
 ## Clock (`apps/clock`)
 
-World clock, alarms, timer and stopwatch, like the macOS Clock or GNOME Clocks.
+World clock, alarms, timer and stopwatch, like GNOME Clocks.
 
 | Tab | What it does |
 |---|---|
@@ -601,7 +601,7 @@ running, and so does its JS.
 ### Menu bar status items (`sdk/statusitems.js`)
 
 `registerStatusItem(id, Component, order)` and `<StatusItems color />`: an optional registry so
-system apps can show something in the theme's bar, like macOS "menu extras". The `default` theme
+system apps can show something in the theme's bar, like the "menu extras" of popular desktop systems. The `default` theme
 (next to the privacy indicators) and `classic` (in the taskbar) draw it; a theme that does not draw
 it simply doesn't show them.
 
@@ -639,9 +639,9 @@ dismissNotification(id);
 
 ## Help (`apps/help`)
 
-LordOS help and tips, like the macOS Tips app and help viewer.
+LordOS help and tips: a help viewer and a tips app.
 
-- **Articles:** one per app and per feature (desktop, windows, Spotlight, clipboard, keyboard and
+- **Articles:** one per app and per feature (desktop, windows, Search, clipboard, keyboard and
   input methods, Linux apps, touchpad, network, VPN, users and sessions, remote desktop, privacy,
   printing, sound, updates, settings, appearance, language, and the system apps). 44 articles in
   `assets/help/{en,es,pt}/<id>.md`, written from the documents in `docs/`. English is the default;
@@ -686,7 +686,7 @@ slashes), so nothing outside `<assets>/help/` can be reached; `O_NOFOLLOW`, regu
 256 KB. In the SDK, `help` (`sdk/help.js`): `list`, `read`, `search`, `open(id)`, `startTour()` and
 `link(url)`.
 
-### Spotlight
+### Search
 
 `sdk/spotlight.js` now has a source registry, `registerSpotlightSource(id, fn)`. Help registers
 its own: articles appear in the "Help" section with a snippet in the preview, and Enter opens the
@@ -694,7 +694,7 @@ article. The section title comes from `shell.spotlight.section.<id>`.
 
 ### "Welcome to LordOS"
 
-A six-step tour (welcome, the desktop, Spotlight, Settings with buttons to Appearance, Network and
+A six-step tour (welcome, the desktop, Search, Settings with buttons to Appearance, Network and
 Users, the system apps, and where help is), with "Skip", "Back" and "Next".
 
 - It opens by itself **the first time** the session starts: `startShell` calls `maybeStartTour()`,
@@ -708,9 +708,9 @@ Users, the system apps, and where help is), with "Skip", "Back" and "Next".
 | | |
 |---|---|
 | ![welcome](m9-sistema-ayuda-bienvenida.png) | ![article](m9-sistema-ayuda-articulo.png) |
-| "Welcome to LordOS" on first login | An article opened from Spotlight, with links to other articles |
+| "Welcome to LordOS" on first login | An article opened from Search, with links to other articles |
 | ![spotlight](m9-sistema-ayuda-spotlight.png) | |
-| Spotlight finds Help articles | |
+| Search finds Help articles | |
 
 ### Pending
 

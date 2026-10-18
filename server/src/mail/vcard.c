@@ -62,7 +62,7 @@ static void type_of(const IcProp *p, char *out, size_t cap) {
         snprintf(out, cap, "%s", tok);
         return;
     }
-    /* Apple: item1.X-ABLabel:_$!<Other>!$_ is a separate property; ignore */
+    /* item1.X-ABLabel:_$!<Other>!$_: some clients put a separate label property; ignore */
 }
 
 static void list_item(JBuf *b, int *first, const char *type, const char *value) {

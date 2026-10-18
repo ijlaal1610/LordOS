@@ -66,7 +66,7 @@ export function TabBar({ t, wid, w }) {
   );
 }
 
-// ---- status bar (like iTerm2's) ----
+// ---- status bar ----
 
 export function StatusBar({ t, sid }) {
   const [info, setInfo] = useState(() => term.info(sid));
@@ -330,7 +330,7 @@ function EditTitle({ t, wid, tab }) {
   );
 }
 
-// Composer: write a long command before sending it (like iTerm2's).
+// Composer: write a long command before sending it.
 function Composer({ t, wid, sid, w }) {
   const [v, setV] = useState('');
   return (

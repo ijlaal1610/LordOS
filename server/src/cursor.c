@@ -1,7 +1,7 @@
 /* cursor.c — our own cursors: each shape is a union of signed-distance primitives
  * (polygons, capsules, rings) in a 32×32-unit space; rasterized with 4×4 samples
  * per pixel at 1x (32 px) or 2x (64 px, what fits in the KMS cursor plane). Black fill,
- * white outline and a soft shadow, like macOS's. No system theme is read. */
+ * white outline and a soft shadow. No system theme is read. */
 #include "cursor.h"
 
 #include <math.h>

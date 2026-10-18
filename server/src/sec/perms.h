@@ -1,4 +1,4 @@
-/* perms.h — per-app permissions in the style of macOS TCC (see perms.c and docs/PRIVACY.md).
+/* perms.h — per-app permissions with system-drawn prompts (see perms.c and docs/PRIVACY.md).
  *
  * Each permission of each app has a state: ask (the first time), allowed or denied.
  * Decisions are stored per user in ~/.config/lordos/permisos.json, a file that

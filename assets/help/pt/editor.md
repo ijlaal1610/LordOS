@@ -20,5 +20,5 @@ realce de sintaxe.
 - **Comentar:** ❖/ conforme a linguagem. **Duplicar linha:** ❖⇧D. **Indentar:** ❖] e ❖[.
 - **Arquivos:** ❖N novo, ❖O abrir, ❖S salvar, ❖⇧S salvar como, ❖W fechar, ❖P imprimir.
 
-Os arquivos de texto e código de [Arquivos](help:files) e do Spotlight abrem aqui. Funciona com
+Os arquivos de texto e código de [Arquivos](help:files) e de Pesquisar abrem aqui. Funciona com
 os métodos de entrada de japonês, chinês e coreano.

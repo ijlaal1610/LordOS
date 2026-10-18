@@ -8,7 +8,7 @@
  * same label is measured in layout and drawn on every repaint.
  *
  * Latin, Greek and Cyrillic text that Inter covers doesn't come through here (text.c, fast path).
- * The paragraph direction is that of the first strong character (like "natural" in macOS); the
+ * The paragraph direction is that of the first strong character ("natural" direction); the
  * start/end alignment is resolved by paint.c with the node's direction. */
 #include "ui.h"
 

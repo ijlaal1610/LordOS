@@ -64,7 +64,7 @@
   "job.aborted": "falló",
   "job.completed": "terminado",
   "addTitle": "Agregar una impresora",
-  "addHint": "Las impresoras IPP Everywhere y AirPrint de la red aparecen solas y no necesitan controlador: CUPS les pregunta qué saben hacer.",
+  "addHint": "Las impresoras sin controlador de la red (IPP Everywhere) aparecen solas y no necesitan controlador: CUPS les pregunta qué saben hacer.",
   "searchAgain": "Buscar de nuevo",
   "manual": "Por dirección…",
   "add": "Agregar",

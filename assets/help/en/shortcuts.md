@@ -12,8 +12,8 @@ keywords: keys, shortcuts, hotkeys, super, cmd
 
 | Shortcut | What it does |
 |---|---|
-| ❖Space · Ctrl+Space | Spotlight: find apps, files, settings and help |
-| ❖ alone · F4 | Launchpad |
+| ❖Space · Ctrl+Space | Search: find apps, files, settings and help |
+| ❖ alone · F4 | Apps (the app launcher) |
 | ❖⌥Space | Next keyboard layout or input method |
 | ❖V · ❖⇧V | Clipboard: latest items · full history |
 | ❖. | Emoji and symbols |

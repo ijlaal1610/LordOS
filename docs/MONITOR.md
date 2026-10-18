@@ -4,7 +4,7 @@ Preinstalled native app (`apps/monitor`) to see how this machine is being used: 
 network, disks, processes and each app's network connections on a world map. It copies the look
 of TangoOS's Monitor (`tangoos/web/packages/app-monitor`): segmented tabs, dark cards with an icon,
 a big number and a live area chart, a row of small figures and a footer with the sampling rate.
-The Network tab takes the shape of Little Snitch (apps on the left, map in the middle, summary on
+The Network tab takes the shape of a per-app network monitor (apps on the left, map in the middle, summary on
 the right).
 
 Phase 1 (this one): read-only. No root daemon, no firewall, no saved history and no alerts.

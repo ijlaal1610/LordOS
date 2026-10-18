@@ -1,4 +1,4 @@
-// Logs — a log viewer in the style of the macOS Console (see docs/SYSTEM.md, «Logs»).
+// Logs — a log viewer (see docs/SYSTEM.md, «Logs»).
 //
 // Sources (sidebar):
 //   - LordOS: the session logs (~/.cache/lordos/<name>.log: session.log…);

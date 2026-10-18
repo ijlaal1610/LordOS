@@ -253,7 +253,7 @@ enums += `enum { ${SEA.map((c) => `SEA_${c}`).join(', ')} };\n#define SEA_NAMES 
 h += `static const UniRange uni_sea[] = {\n${seaR.map((r) => `    { ${hex(r.lo)}, ${hex(r.hi)}, SEA_${SEA[r.v]} },`).join('\n')}\n};\n\n`;
 
 // ---- Universal Shaping Engine: categories as in HarfBuzz's gen-use-table.py ----
-// Also needs ArabicShaping.txt and the two Microsoft files that ship with HarfBuzz
+// Also needs ArabicShaping.txt and the two USE data files that ship with HarfBuzz
 // (src/ms-use/IndicSyllabicCategory-Additional.txt and IndicPositionalCategory-Additional.txt).
 const useIsc = new Map(iscAll), useIpc = new Map(ipcAll), ajt = new Map(), udi = new Set();
 const inUse = new Set([...iscAll.keys(), ...ipcAll.keys()]);

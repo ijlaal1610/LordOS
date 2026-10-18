@@ -1,4 +1,4 @@
-// Disks — the LordOS disk utility, like macOS Disk Utility or GNOME Disks (see docs/SYSTEM.md,
+// Disks — the LordOS disk utility, like GNOME Disks (see docs/SYSTEM.md,
 // "Disks"). On the left, the disks and their partitions; on the right, usage, details, health
 // (SMART) and the actions: mount, unmount, eject, format, rename, erase and create a bootable USB
 // from an image.
@@ -158,7 +158,7 @@ function Sidebar({ list, sel, onSel }) {
   );
 }
 
-// The toolbar over the details, like Disk Utility's: the actions that apply to the selection as
+// The toolbar over the details: the actions that apply to the selection as
 // labelled toolbar items; the ones that don't fit go into the "⋯" menu, so the bar never wraps.
 function DiskToolbar({ disk, part, onDialog, run, busy }) {
   const { t: tr } = useLocale();

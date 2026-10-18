@@ -44,7 +44,7 @@ static size_t table(Buf b, size_t font, const char *tag, size_t *len) {
     return 0;
 }
 
-/* Name `id` from the name table, in UTF-8 (Windows UTF-16BE preferred, otherwise Mac Roman). */
+/* Name `id` from the name table, in UTF-8 (platform 3, UTF-16BE, preferred; otherwise platform 1, Mac Roman). */
 static int name_of(Buf b, size_t name, size_t nlen, unsigned id, char *out, size_t size) {
     unsigned count = u16(b, name + 2), strs = u16(b, name + 4);
     int best = -1, best_score = -1;
@@ -207,7 +207,7 @@ const FontEntry *fonts_by_ps(const char *ps) {
     int n;
     const FontEntry *l = fonts_list(0, &n);
     for (int i = 0; i < n; i++) if (!strcasecmp(l[i].ps, ps)) return &l[i];
-    /* iTerm2 sometimes saves the name without hyphens: "JetBrainsMonoNL-Regular" vs family */
+    /* some terminal emulators save the name without hyphens: "JetBrainsMonoNL-Regular" vs family */
     char fam[64];
     snprintf(fam, sizeof fam, "%s", ps);
     char *dash = strchr(fam, '-');

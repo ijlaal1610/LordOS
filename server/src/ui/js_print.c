@@ -7,7 +7,7 @@
  *   cancel(job)
  *   submit(printer, source, options)     source: a lord.doc blob (built PDF) or the path of a
  *                                    PDF; options { name, copies, pages, sides, color, media, orientation }
- *   add(name, uri, info, location)   IPP Everywhere / AirPrint printer (driverless)
+ *   add(name, uri, info, location)   driverless printing (IPP Everywhere) printer
  *   remove(name), setDefault(name)
  *   discover()                       printers and scanners on the network via mDNS
  *   scanCaps(ip, port, rs), scan(ip, port, rs, settings)

@@ -16,7 +16,7 @@ LordOS drives touchpads and touchscreens with its own driver.
 | Two fingers | Scroll, with momentum; a two-finger tap is a right-click |
 | Pinch | Zoom in and out (Photos, PDF Viewer, maps) |
 | Three fingers sideways | Switch windows |
-| Three fingers up / down | Open / close Launchpad |
+| Three fingers up / down | Open / close Apps |
 
 In [Settings → Trackpad](settings:trackpad) (shown only when there is a touchpad) you choose the
 speed, scroll direction, tap to click, whether gestures use three or four fingers and whether

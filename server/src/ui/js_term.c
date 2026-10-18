@@ -368,7 +368,7 @@ static JSValue f_clear(JSContext *c, JSValueConst this_val, int argc, JSValueCon
     if (s && w) {
         if (!strcmp(w, "scrollback")) vt_clear_scrollback(&s->t);
         else if (!strcmp(w, "buffer")) {
-            /* Like iTerm2's Cmd+K: everything is cleared and the shell redraws the prompt. */
+            /* Clear buffer (❖K): everything is cleared and the shell redraws the prompt. */
             vt_clear_scrollback(&s->t);
             vt_write(&s->t, (const uint8_t *)"\033[H\033[2J", 7);
             term_input(s, "\f", 1);

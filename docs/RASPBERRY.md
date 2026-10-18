@@ -96,7 +96,7 @@ sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support
 ### Building it
 
 ```sh
-# on the Mac: the themes (they are JS, the same on every architecture)
+# on the development machine: the themes (they are JS, the same on every architecture)
 npm run build
 # on the Debian where it's built (VM 116 or the Pi itself), from the repository root
 sudo tools/rpi/build-img.sh /var/tmp/lordos-rpi     # → /var/tmp/lordos-rpi/out/
@@ -146,7 +146,7 @@ natively on the Pi 5 with NVMe, about 10.
   - Imager's OS customization (user, Wi-Fi, SSH) is designed for Raspberry Pi OS. If it leaves a
     `userconf.txt` on the boot partition, LordOS uses it (see below).
   - The rest (Wi-Fi, SSH, keyboard) isn't applied.
-- **dd** (Linux or macOS):
+- **dd** (Linux and other Unix-like systems):
   ```sh
   shasum -a 256 -c lordos-<version>-rpi5-arm64.img.xz.sha256
   xz -dc lordos-<version>-rpi5-arm64.img.xz | sudo dd of=/dev/rdiskN bs=4m   # Linux: of=/dev/sdX bs=4M conv=fsync
@@ -346,7 +346,7 @@ There are two possible systems on the board:
      wayland-protocols libgbm-dev libegl-dev libgles-dev libssl-dev libcrypt-dev xkb-data \
      libgl1-mesa-dri libegl1 libgles2 libgbm1 mesa-utils glmark2-es2-wayland
    ```
-3. **The tree,** from the Mac (as for the VM; the themes are built on the Mac):
+3. **The tree,** from the development machine (as for the VM; the themes are built there):
    ```sh
    npm run build
    COPYFILE_DISABLE=1 tar czf - --no-xattrs --exclude build --exclude node_modules \
@@ -367,7 +367,7 @@ There are two possible systems on the board:
 6. **Install it on the LordOS image:** `sh tools/iso/mkdeb.sh /tmp/lordos.deb` (on the board it takes
    `arm64` from `dpkg --print-architecture`) and `sudo apt install /tmp/lordos.deb`.
 7. **Screenshots:**
-   - LordOS's remote desktop (Settings → Sharing, port 5673; `REMOTE.md`) from the Mac's browser,
+   - LordOS's remote desktop (Settings → Sharing, port 5673; `REMOTE.md`) from the development machine's browser,
      only on the LAN and turning it off afterward;
    - or `grim` inside a Wayland session.
 
@@ -383,7 +383,7 @@ Each item, with a screenshot or the pasted output, in this document.
 | 2 | First boot | freshly written image, with and without `lordos-user.txt` | partition grown (`df -h /`); login screen or setup mode; the file deleted |
 | 3 | RAM | `free -m`, lord-server RSS (`ps -o rss`) | idle desktop <400 MB total; lord-server ~35–60 MB (with 16K pages RSS goes up a bit) |
 | 4 | Card and GPU | the log (see "What to verify") | `vc4`, `V3D 7.1`, `renderD128`, hardware cursor |
-| 5 | GPU compositing FPS | `glmark2-es2-wayland` windowed and fullscreen; dragging windows; Launchpad | 60 FPS synced to vblank |
+| 5 | GPU compositing FPS | `glmark2-es2-wayland` windowed and fullscreen; dragging windows; the app launcher | 60 FPS synced to vblank |
 | 6 | CPU path | `lordos.gpu=0` | usable at 1080p; note ms per frame with `--profile` |
 | 7 | Modifiers | `LORD_GPU_DEBUG=1`, `kms:` in the log | linear on the plane; UIF only for textures; no garbage on screen |
 | 8 | Apps' dmabuf | gtk4-demo, foot, FeatherPad (Qt6), `vkcube` | they look right; `WAYLAND_DEBUG` shows renderD128 |
@@ -393,13 +393,13 @@ Each item, with a screenshot or the pasted output, in this document.
 | 12 | NEON | `server/build/canvas-test` | "NEON matches C"; NEON faster than C |
 | 13 | Headless tests | `make -C server test` and each `build/*-test` | all pass, as on x86 (WASM: the full wg-2.0 suite) |
 | 14 | App isolation | open a `.lpk`; `sandbox[...]:` in the log; `cat /sys/kernel/security/lsm` | seccomp=1 and Landlock if the kernel has it (the Raspberry Pi one might not) |
-| 15 | Remote desktop | Settings → Sharing, `https://<ip>:5673` from the Mac | visible and controllable; screenshots for this document |
+| 15 | Remote desktop | Settings → Sharing, `https://<ip>:5673` from the development machine | visible and controllable; screenshots for this document |
 | 16 | Network and sound | Wi-Fi (brcmfmac), Ethernet, HDMI audio via PipeWire | IP from our own DHCP; `wpctl status` shows HDMI |
 | 17 | Pi 4 | the same image | boots with `kernel8.img`; note what fails |
 
 ## Server portability audit (aarch64)
 
-A review of `server/` on the Mac, without compiling for Linux ARM. The changed files were checked
+A review of `server/` on the development machine, without compiling for Linux ARM. The changed files were checked
 with `clang -arch arm64 -fsyntax-only -Wall -Wextra` against the Linux 6.12 DRM headers and the
 EGL/GLES/GBM ones. What follows is the result.
 
@@ -413,7 +413,7 @@ EGL/GLES/GBM ones. What follows is the result.
 | Where | What |
 |---|---|
 | `server/Makefile` | `ARCH` (from `$(CC) -dumpmachine`). On aarch64, `NEON=1` by default (`-DLORD_NEON`; `NEON=0` turns it off). QuickJS with `-ffp-contract=off`: GCC in GNU mode fuses `a*b+c` into FMA on ARM and would change JS numeric results; our code uses `-std=c11`, which already turns it off. `$(LD)` instead of `ld` for `pages.o` (cross-compiling). New test `build/canvas-test` |
-| `server/src/canvas.c` | The rows of `canvas_blit` (without corners) and of `canvas_alpha_mask` (text, shadows) are separate functions, with a NEON version (4 pixels per iteration) under `LORD_NEON && __ARM_NEON`. Bit-for-bit identical to C with valid premultiplied sources: checked with `tests/canvas_test.c` under emulation (SIMDe) on the Mac, 4000 random rows. Still to do on the board |
+| `server/src/canvas.c` | The rows of `canvas_blit` (without corners) and of `canvas_alpha_mask` (text, shadows) are separate functions, with a NEON version (4 pixels per iteration) under `LORD_NEON && __ARM_NEON`. Bit-for-bit identical to C with valid premultiplied sources: checked with `tests/canvas_test.c` under emulation (SIMDe) on the development machine, 4000 random rows. Still to do on the board |
 | `server/src/ui/stb.c` | `STBI_NEON` on aarch64: stb's JPEG uses NEON (on x86 it already used SSE2) |
 | `server/src/term/vt.c:890` | `src[i] >= 0 && …` with `char`: on ARM `char` is unsigned and `-Wextra` warns (`-Wtype-limits`). Now `(unsigned char)src[i] < 0x20`, the same on both architectures |
 | `server/src/kms.c` `kms_dispatch` | the DRM event buffer aligned to 8 (it's read with a cast to `drm_event_vblank`, which has 64-bit fields) |

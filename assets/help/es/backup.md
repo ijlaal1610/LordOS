@@ -7,7 +7,7 @@ keywords: copia de seguridad, backup, restaurar, time machine, recuperar archivo
 ---
 # Copias de seguridad
 
-Copias automáticas de tu carpeta personal, al estilo de Time Machine.
+Copias automáticas de tu carpeta personal.
 
 ## Empezar
 

@@ -1,4 +1,4 @@
-// Network.jsx — pestaña Red del Monitor, con la forma de Little Snitch y los colores de TangoOS:
+// Network.jsx — the Monitor's Network tab, laid out like a per-app network monitor, with TangoOS colors:
 //   izquierda: apps con conexiones (búsqueda, barra de tráfico, columna de regla reservada para
 //              la fase 2), cada una desplegable con sus destinos; abajo, totales y barras de
 //              subida/bajada por segundo;

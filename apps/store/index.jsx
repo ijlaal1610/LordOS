@@ -308,7 +308,7 @@ export default function Store() {
   useEffect(() => {
     if (args?.install) setFile(args.install);
     if (args?.page) setPage(args.page);
-    if (args?.search) { setQuery(args.search); setPage('discover'); }       // from Spotlight
+    if (args?.search) { setQuery(args.search); setPage('discover'); }       // from Search
   }, [args?.nonce]);
   const pages = [
     ['discover', tr('store.page.discover')],

@@ -1,6 +1,6 @@
 # Dock and taskbar
 
-In **Settings → Desktop & Dock** you choose, as in macOS:
+In **Settings → Desktop & Dock** you choose:
 
 - where the Dock goes (bottom, left or right);
 - its size, magnification and how much it magnifies;
@@ -45,7 +45,7 @@ Each theme calls `configureWindows({ apps, workArea })` again when the position,
 - maximized and new windows don't end up underneath it;
 - notifications (`NotificationBanner`) adjust on their own.
 
-With "auto-hide" the area is the whole screen minus the menu bar, as in macOS. Windows that were
+With "auto-hide" the area is the whole screen minus the menu bar. Windows that were
 already open don't move.
 
 If there are many apps, the icons shrink so the Dock fits on the screen, counting how much it grows
@@ -66,7 +66,7 @@ already worked this way: its state belongs to the Dock component.
 
 ## Right to left (Arabic, Hebrew)
 
-**Left and right are physical sides of the screen**, as in macOS: with an RTL language a Dock on the
+**Left and right are physical sides of the screen**, as on popular desktop systems: with an RTL language a Dock on the
 left stays on the left.
 
 - The Dock is laid out with `direction: 'ltr'`.
@@ -83,4 +83,4 @@ Settings says so below "Position on screen".
 
 - Minimize effect (genie or scale): the engine doesn't have `transform: scale` yet.
 - Auto-hide for the Classic theme's bar.
-- Dragging the Dock to another edge with the mouse, like macOS with ⇧ on the separator.
+- Dragging the Dock to another edge with the mouse (⇧ on the separator).

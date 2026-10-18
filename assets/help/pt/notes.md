@@ -19,5 +19,5 @@ Notas rápidas em markdown, que também podem ficar coladas na área de trabalho
   janelas.
 - **Apagar:** a nota vai para a Lixeira e pode ser restaurada.
 
-As notas são pastas comuns em `~/Notas`, com um `nota.md` dentro. O Spotlight as encontra pelo
+As notas são pastas comuns em `~/Notas`, com um `nota.md` dentro. Pesquisar as encontra pelo
 título e pelo texto.

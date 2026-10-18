@@ -6,7 +6,7 @@ import {
 import { useState, version as reactVersion } from 'react';
 import { Stack, Section, ValueRow, Note, Message, Actions } from './ui.jsx';
 
-// Card with "key … value" rows, as in macOS (kept for other pages that list details).
+// Card with "key … value" rows (kept for other pages that list details).
 export function Card({ title, rows }) {
   return (
     <Section title={title}>

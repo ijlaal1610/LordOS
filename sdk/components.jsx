@@ -27,7 +27,7 @@ export function Button({ label, onClick, primary, style, small, plain, disabled,
 }
 
 // small: the 36 × 20 switch of grouped forms (Settings rows) instead of 42 × 24. The knob moves
-// physically (direction: 'ltr'), as on macOS also in right-to-left languages.
+// physically (direction: 'ltr'), also in right-to-left languages.
 export function Toggle({ on, onChange, small }) {
   const t = useTheme();
   const w = small ? 36 : 42, h = small ? 20 : 24, k = h - 4;
@@ -41,7 +41,7 @@ export function Toggle({ on, onChange, small }) {
 }
 
 // appearance: 'accent' (default: the selected segment is filled with the accent) or 'neutral'
-// (macOS view switcher: a raised neutral segment). small: 22 px high instead of 28. fill: the
+// (view switcher: a raised neutral segment). small: 22 px high instead of 28. fill: the
 // segments share the full width of the control.
 export function Segmented({ options, value, onChange, appearance = 'accent', small, fill, style }) {
   const t = useTheme();
@@ -145,7 +145,7 @@ export function releaseTextFocus(token, onChange) {
   if (focused === token) setFocus(null);
 }
 export const textFocusOwner = () => focused;
-// For panels that take the keyboard for a moment (Spotlight, clipboard): remember the focused
+// For panels that take the keyboard for a moment (Search, clipboard): remember the focused
 // field, give focus back on close and paste the clipboard into it as if it were Ctrl+V.
 export const focusToken = () => focused;
 export function restoreFocus(tok) { if (tok && handlers.has(tok)) setFocus(tok); }
@@ -158,7 +158,7 @@ export function pasteIntoFocused() {
 // onKeyDown(e) optional: return true if the key was already handled (e.g. Shift+Enter).
 // secure: password field (shows •, does not go through the input method and cannot be copied).
 // selectAll: starts with all the text selected (the first key replaces it; the arrows
-// deselect it), as when renaming in the Finder.
+// deselect it), as when renaming in Files.
 export function TextInput({ value, onChange, placeholder, onSubmit, onCancel, onKeyDown, autoFocus, style, secure, size = 13, selectAll = false }) {
   const t = useTheme();
   const token = useRef({}).current;

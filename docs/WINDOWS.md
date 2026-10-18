@@ -93,7 +93,7 @@ wm.beginResize(id, edges)     // edges as in xdg_toplevel.resize: 1 top, 2 botto
 ### Resize edges (`sdk/windowshell.jsx`)
 
 `<WindowShell>` is the window's node: the frame goes inside and around it there are 8 invisible
-zones. They are 6 px outside the frame and 3 px inside, as in macOS. The sides carry
+zones. They are 6 px outside the frame and 3 px inside. The sides carry
 `ns-resize`/`ew-resize` and the corners (16 px) `nwse-resize`/`nesw-resize`. Both themes use it,
 also for Linux apps with their own frame (CSD): their resize edge is in the shadow, which LordOS
 crops.

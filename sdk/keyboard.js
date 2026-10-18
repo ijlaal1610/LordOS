@@ -55,8 +55,8 @@ export const keyboard = {
   missingDictionary: () => imeStatus === 1,
 };
 
-// ❖⌥Space or Ctrl+⌥Space switch to the next layout or input method (like
-// ⌃⌥Space on macOS). ❖Space and Ctrl+Space belong to Spotlight (sdk/spotlight.js).
+// ❖⌥Space or Ctrl+⌥Space switch to the next layout or input method.
+// ❖Space and Ctrl+Space belong to Search (sdk/spotlight.js).
 addListener('keydown', (e) => {
   if ((e.meta || e.ctrl) && e.alt && !e.shift && e.key === ' ' && !e.repeat && configured().length > 1) keyboard.next();
 });

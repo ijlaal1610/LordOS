@@ -1,4 +1,4 @@
-/* night.c — Night Shift math (see night.h). */
+/* night.c — Night Light math (see night.h). */
 #include "night.h"
 
 #include <math.h>

@@ -31,7 +31,7 @@
   "pinchHint": "Spread or pinch two fingers to zoom in or out (also in Chromium and GTK).",
   "swipe3": "Three finger swipe",
   "swipe3Moved": "Four finger swipe",
-  "swipe3Hint": "Up: Launchpad or start menu. Down: close it. Left and right: switch windows.",
+  "swipe3Hint": "Up: the app launcher or start menu. Down: close it. Left and right: switch windows.",
   "swipe4": "Four finger swipe for the desktop",
   "swipe4Hint": "When off, apps receive the four finger gesture."
 }
