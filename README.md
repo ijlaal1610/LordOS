@@ -12,7 +12,8 @@
 LordOS is a free GNU/Linux distribution based on Debian 13. It ships its own desktop
 environment instead of GNOME or KDE, built from its fundamental components on top of Debian and
 Wayland, and it doesn't use X11: a display server and Wayland compositor written in C, its own React-based UI engine, and native apps designed to feel calm,
-clear and private. An idle session uses about 120 MB of RAM. Its look and workflow take inspiration from the desktop of a well-known
+clear and private. Measured idle, the whole system uses 465–487 MB of RAM, of which `lord-server`
+(the display server with the whole desktop) is 32–36 MB. Its look and workflow take inspiration from the desktop of a well-known
 fruit-logo company: a Dock, an app launcher, a menu bar, instant search and polished native
 apps, all reimagined as free software. It runs on Intel/AMD PCs and on the Raspberry Pi 5, and
 it still runs regular Linux apps such as Chromium, Firefox, GTK and Qt programs.
@@ -22,16 +23,19 @@ it still runs regular Linux apps such as Chromium, Firefox, GTK and Qt programs.
 1. **Our own, end to end.** Display server, Wayland compositor and UI engine; login, sessions
    and remote desktop; app store and package installer; firewall; password manager; touchpad
    driver. All written for LordOS.
-2. **Light and smooth.** Built for modest hardware: about 120 MB at rest and 0 % CPU when idle,
+2. **Light and smooth.** Built for modest hardware: the whole system idles at 465–487 MB of RAM
+   (`lord-server` 32–36 MB) and about 1 % CPU (see `docs/ISO.md`, "Final ISO test", and
+   `docs/RASPBERRY.md`),
    windows that move at the display's refresh rate, GPU composition when available and a CPU
    path when not.
 3. **Secure by design.**
    - Third-party apps run sandboxed in their own process and ask before using the camera,
      microphone, files or network.
-   - Every app gets kernel-enforced network rules (allow, block, LAN-only, per domain).
+   - Per-app network rules enforced by the kernel (allow, block, LAN only), with per-domain
+     rules coming, and restrictions for LordOS apps (camera, microphone, screen, files and more).
    - A built-in Monitor shows network and hardware activity per app, with a world map.
    - Signed packages, capture-protected windows and an encrypted password vault.
-4. **Complete and polished.** More than 35 native apps (Files, Mail, Calendar, Contacts,
+4. **Complete and polished.** 29 native apps (Files, Mail, Calendar, Contacts,
    Photos, Player, PDF viewer, Passwords, Disks, Backups and more), multiple monitors with
    sharp fractional scaling, touchpad gestures, multi-user sessions, remote desktop from any
    browser, and English, Spanish and Portuguese, including right-to-left scripts.

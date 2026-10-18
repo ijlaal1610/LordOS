@@ -203,8 +203,9 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
     `lordos-session-<uid>`; tested with fast user switching and remote desktop.
   - [x] `sandbox_apply_helper` hardened for lord-media and lord-doc (no sockets or exec, threads
     only, TSYNC, folders by fd, ioctl by class, our own kcmp): `sandbox-test helper` 17/17.
-  - [ ] Pending: graphical powerbox (a dialog that hands over the fd), the camera fd and PipeWire
-    stream to the app, live tokens/language/RTL and menus for the isolated app.
+  - [x] Graphical powerbox (a dialog drawn by `lord-server` that hands over only the fd), the
+    camera as a read-only frame ring and the microphone stream for the app, live
+    tokens/language/RTL and menus for the isolated app (`PRIVACY.md`).
 - [x] **Per-app firewall**, steps 1 to 4 (`FIREWALL.md`), tested on VM 122:
   - [x] rule store, precedence, `dnsmap` and JSON (`server/src/fw`, step 1);
   - [x] `lord-netperm`, the root service that enforces the rules with cgroup BPF (connect, sendmsg,
@@ -213,8 +214,12 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
     0 differences) and names only from the system resolver (systemd-resolved monitor);
   - [x] kernel test `tests/netperm_integration.sh` 18/18: deny/allow, "only
     example.com", LAN only, no incoming, no network, off;
-  - [x] Monitor: per-app Rule switch and allowed/denied counters; Settings →
-    Privacy: mode, Trusted apps and Restricted apps;
+  - [x] Monitor: the Rule column is a per-app switch (`lord.fw.setAppRule`, enforced in the
+    kernel) with allowed/denied counters (`MONITOR.md`, "Phase 2"); Settings → Privacy: mode,
+    Trusted apps and Restricted apps;
+  - [x] non-network restrictions (camera, microphone, screen, USB, files, clipboard, Bluetooth,
+    notifications) enforced for LordOS apps in the broker, `js_media.c` and `sdk/notify.js`, with
+    live revocation (`FIREWALL.md`, "Non-network restrictions"); Linux apps: network only;
   - [x] root-owned scopes: `lord-sessiond` places every app process and a Linux app can't move
     itself to another cgroup (VM 122). Still open: `systemd-run --user --scope` (PID 1 moves it
     into `user@<uid>.service`).
@@ -421,7 +426,8 @@ Details in `PASSWORDS.md`. Tested on VM 116 with a real `lord-sessiond` session
   (`vc_attach_app`), files through the powerbox, FIDO2 and secret clipboard through the broker
   (`BOP_VAULT_FIDO`, `BOP_CLIP_SECRET`), protected Wayland window. Revealed values never enter
   `lord-server`'s JavaScript heap. In-process fallback kept (see `PASSWORDS.md`).
-- [ ] Keyring for isolated `.lpk` apps: a broker op that sets the owner from the verified app id.
+- [x] Keyring for isolated `.lpk` apps: a broker op (`BOP_KEYRING`, `sec/brokerkr.c`) that sets
+  the owner from the verified app id (`PASSWORDS.md`, "Keyring for isolated .lpk apps").
 - [ ] Test with real FIDO2 keys (only the uhid software authenticator was available).
 
 ## M9 — Settings: hardware pages ✅ (2026-10-18)

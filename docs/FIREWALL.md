@@ -82,26 +82,74 @@ A valid id:
 
 - **Trusted apps:** nothing is recorded and nothing is asked for them. Explicit rules still
   apply: a `deny` the owner set for a trusted app is enforced.
-- **Restricted apps:** each one has a set of restrictions.
+- **Restricted apps:** each one has a set of restrictions. The four network ones are decided by
+  `fw_decide` and enforced in the kernel by `lord-netperm` for every app with its own scope. The
+  others are enforced where the resource is handed out (see
+  [Non-network restrictions](#non-network-restrictions)).
 
-  | Restriction | In the JSON | Who enforces it |
-  |---|---|---|
-  | no internet | `no-internet` | `fw_decide` |
-  | no LAN | `no-lan` | `fw_decide` (also `127.0.0.1` and `::1`) |
-  | no network | `no-network` | `fw_decide` |
-  | no incoming connections | `no-incoming` | `fw_decide` |
-  | no camera | `no-camera` | whoever hands out the camera (`fw_blocks`) |
-  | no microphone | `no-mic` | same |
-  | no screen capture | `no-screen` | same |
-  | no USB | `no-usb` | same |
-  | no Bluetooth | `no-bluetooth` | same |
-  | no files outside the picker | `no-files` | same |
-  | no notifications | `no-notifications` | same |
+  | Restriction | In the JSON | .lpk apps and Passwords (`lpk:<id>`) | Built-in apps (`lordos`) | Linux apps (`desktop:<id>`) |
+  |---|---|---|---|---|
+  | no internet | `no-internet` | `lord-netperm` | `lord-netperm` | `lord-netperm` |
+  | no LAN | `no-lan` | same (also `127.0.0.1` and `::1`) | same | same |
+  | no network | `no-network` | same | same | same |
+  | no incoming connections | `no-incoming` | same | same | same |
+  | no camera | `no-camera` | broker (`brokercam.c`) | `js_media.c` | not yet |
+  | no microphone | `no-mic` | broker (`BOP_MIC`, camera videos) | `js_media.c` | not yet |
+  | no screen capture | `no-screen` | broker (the `screen` permission; isolated apps have no capture API) | `js_media.c` | not yet |
+  | no USB | `no-usb` | broker (`BOP_VAULT_FIDO`, the `usb` permission) | not offered (the desktop itself) | not yet |
+  | no Bluetooth | `no-bluetooth` | broker (the `bluetooth` permission; no Bluetooth API in app mode) | not offered (the desktop itself) | not yet |
+  | no access to your files | `no-files` | broker (file picker, camera saves, the `files` permission) | not offered (the desktop itself) | not yet |
+  | no reading the clipboard | `no-clipboard` | broker (`BOP_CLIP_GET`, the `clipboard` permission) | not offered (the desktop itself) | not yet |
+  | no notifications | `no-notifications` | `sdk/notify.js` and the `notifications` permission | `sdk/notify.js` | not yet |
 
 An app is in only one list: trusting it removes it from the restricted ones, and restricting it
-removes the trust. Non-network restrictions are queried with `fw_blocks(app, flag)`. They beat a
-per-app permission granted in `permisos.json`: a restricted app with no camera doesn't get it even if
-it was given once.
+removes the trust. Non-network restrictions are queried with `fw_blocks(app, flag)`, through
+`server/src/sec/restrict.h`. They beat a per-app permission granted in `permisos.json`: a
+restricted app with no camera doesn't get it even if it was given once.
+
+### Non-network restrictions
+
+`lord.fw` (`ui/js_fw.c`) owns the rule store; `restrict_set_store()` hands the same store to
+`sec/restrict.c`, so a change made in Settings applies to the next request at once, without
+reloading anything. What each kind of app goes through:
+
+- **Isolated apps (`.lpk` and Passwords, firewall id `lpk:<id>`).** Everything they get from the
+  user goes through the broker, so the broker is the enforcement point (`brokersrv.c`,
+  `brokercam.c`). `restrict_perm_pkg()` returns `PERM_DENY` when a restriction covers a
+  permission, whatever `permisos.json` says. A restricted request is refused without drawing a
+  prompt, and the reply carries a code line (`fw.restricted.camera app=<id>`), which the app side
+  throws as a translated error (`errors.json`):
+  - `BOP_PERM` answers `"0 fw.restricted.<perm> …"` for camera, microphone, screen, USB,
+    Bluetooth, files, clipboard and notifications;
+  - `BOP_CAMERA`: `list` returns no cameras, `open` is refused, and photo or video saves (they are
+    user files) are refused under `no-files`;
+  - `BOP_MIC`, `BOP_PICK` (the file picker), `BOP_CLIP_GET` (reading the clipboard) and
+    `BOP_VAULT_FIDO` (the USB security key of Passwords) are refused;
+  - `BOP_DEVICE` does not light the indicator for a restricted device;
+  - a prompt the user allows, or a file the user picks, after the app was restricted is refused too.
+- **Built-in apps inside `lord-server` (firewall id `lordos`).** They share one JS context with
+  the desktop shell, so the checks are at the native boundary that knows what is asked for:
+  `js_media.c` `permitted()` refuses camera, microphone and screen capture and recording with
+  `fw.restricted.*`, before the permission. `sdk/notify.js` drops notifications from built-in and
+  isolated apps (`lord.fw.blocks()`); Settings' own system warnings (battery) are exempt. The
+  `LordOS` row in Settings does not offer files, USB, clipboard or Bluetooth: that row is the
+  desktop itself (Files, copy and paste, Disks, Settings → Bluetooth), and the screen says so in
+  one line. Restrict individual apps instead.
+- **Linux apps (`desktop:<id>`) and terminal programs.** They are not sandboxed and reach devices
+  directly, so today only the network restrictions apply to them. Kernel-level checks for them
+  are separate work.
+
+**Live revocation.** Adding a restriction to a running app (`restrict_changed()`, called by
+`setRestricted`) takes the device away at once, the same way revoking the permission does: for an
+isolated app `brokersrv_revoke()` sends `revoke`, kills the camera's `lord-media`, closes the
+microphone stream and stops a camera video that records sound; for the built-in apps a hook in
+`js_media.c` kills the camera helper (the window gets `closed` with `revoked`) and finishes
+microphone and screen recordings properly. New notifications and file picks are refused from that
+moment.
+
+Tested by `server/tests/broker_restrict_test.c` (`make -C server test`): the real broker code
+against a fake app, every restriction with and without it, no prompt, the error codes, live
+revocation of camera and microphone and the built-in apps' hook.
 
 ### Precedence
 
@@ -540,6 +588,7 @@ the SDK calls once per second while the Monitor's Network tab is open.
 | `setTrusted(app, on)`, `setRestricted(app, [restriction])`, `setMode('silent'\|'ask'\|'off')` | lists and mode |
 | `rules(app)`, `addRule({ app, dir, dst, port, proto, action })`, `removeRule(id)` | rules (domains, networks, ports) |
 | `poll()` | `{ counts, events }` |
+| `blocks(app, restriction)` | `true` if the app is restricted in it (`sdk/notify.js`) |
 
 Everything is validated in C:
 
@@ -710,8 +759,9 @@ What remains of steps 3 and 4 (the original design; what's done is above, in "`l
   - **Restricted apps:** `fw_set_restricted`, with a checkbox per restriction from the table
     above.
 - **The mode selector:** silent / ask / off.
-- **Outside the network:** the non-network restrictions are queried with `fw_blocks` by the
-  permission broker (`server/src/sec/brokersrv.c`, for camera, microphone, screen, USB, Bluetooth
-  and notifications) and by the file picker (`no-files`). They are queried before `perms.c`.
+- **Outside the network:** the non-network restrictions are queried with `fw_blocks` (through
+  `sec/restrict.h`) before `perms.c`, by the broker for isolated apps and by `js_media.c` and
+  `sdk/notify.js` for the built-in apps. Exactly what is enforced where is in
+  [Non-network restrictions](#non-network-restrictions).
 - **The JS API:** goes in its own `js_fw.c`, with input validation like the rest of `lord.*`. It
   never takes paths: the file's path is fixed by the server.

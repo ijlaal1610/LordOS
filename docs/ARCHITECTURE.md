@@ -14,13 +14,13 @@ like React Native but on top of our display server.
         │                 <View style={{flexDirection:'row', borderRadius:12}}>
         ▼
  lord-ui (C, ours) ───── QuickJS (JS engine, vendored)
-        │                + our own React reconciler + our own flexbox layout
+        │                + a host config for the stock react-reconciler + our own flexbox layout
         │                + our own 2D rasterizer + text (stb_truetype)
         ▼
  lord-server (C, ours)   display server: DRM/KMS + evdev, windows, focus,
         │                composition, theme decorations
         │                + Wayland protocol → GTK (GNOME), Qt (KDE) apps,
-        │                  Firefox, Electron; optional Xwayland for X11
+        │                  Firefox, Electron (Wayland only: Xwayland is not supported)
         ▼
  Linux kernel (minimal Debian 13, generic kernel with DRM)
 ```
@@ -29,7 +29,7 @@ like React Native but on top of our display server.
 |---------------|-------------|---------------------------------------------------------------|
 | `server/src/` (kms, input, canvas) | **M1 done** | Display (KMS), input (evdev), 2D rasterizer |
 | `server/src/ui/` | **M2 done** | Nodes, styles, flexbox, text, images, painting, damage, QuickJS |
-| `runtime/`    | **M2 done** | React renderer (`@lordos/runtime`): reconciler, CSS → native, events |
+| `runtime/`    | **M2 done** | React renderer (`@lordos/runtime`): a host config for the stock `react-reconciler` package, CSS → native, events |
 | `themes/default/` | **M2 done** | Theme with a menu bar, a dock and an app launcher, with our own assets |
 | `server/src/ui/js_sys.c` | **M3 done** | System APIs: fs (in `$HOME`), /proc, settings, themes, session |
 | `sdk/` | **M3 done** | `@lordos/sdk`: windows, settings, tokens, controls, system hooks |

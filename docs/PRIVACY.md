@@ -27,6 +27,20 @@ first time and the user decides. See also [SIGNING.md](SIGNING.md) (signed packa
 | Camera as decoded frames through a ring (via lord-media), after consent | **done**, tested on VM 122 with v4l2loopback (see [Camera for isolated apps](#camera-for-isolated-apps)) |
 | Several windows per isolated app | **done**, tested on VM 122 (see [Several windows per isolated app](#several-windows-per-isolated-app)) |
 
+## What is isolated today
+
+Not every program on LordOS is sandboxed. This is exactly what applies to each kind:
+
+| Kind | Process | Landlock + seccomp | cgroup scope | Broker and permissions | Firewall |
+|---|---|---|---|---|---|
+| `.lpk` apps and Passwords | own process (`lord-server --app <id>`) | yes | own (`app-lordos-lpk-<id>.scope`) | yes: every call is checked in `lord-server` | per app (`lpk:<id>`): network rules and every non-network restriction (broker) |
+| Other built-in apps | inside `lord-server` | no | `lord-server`'s | no broker: camera, microphone and screen are checked in C (`js_media.c`), notifications in `sdk/notify.js` | as "LordOS" (`lordos`): network rules; camera, microphone, screen and notifications restrictions |
+| Linux apps from the launcher | own process | no | own (`app-lordos-<id>.scope`) | no | per app (`desktop:<id>`): network rules (the non-network restrictions don't apply to them yet) |
+| Terminal programs | children of the Terminal's shell | no | `lord-server`'s | no | as "LordOS" (`lordos`): network rules |
+
+Flatpak, bubblewrap and namespaces are not used. The firewall's restrictions and where each one
+is enforced are in [FIREWALL.md](FIREWALL.md#non-network-restrictions).
+
 ## The per-app process
 
 When a `.lpk` app is opened (app launcher, Dock, Store), `lord-server` launches it as its own
@@ -310,8 +324,15 @@ development) the apps run without a scope, with a warning.
 - **Manifest:** an app declares `permissions`. The installer and the Store show them, and an app
   can't obtain a permission it didn't declare (for example, `network` is only granted if it is
   declared **and** allowed).
-- **Revoking** in Settings → Privacy applies to the next request; a permission already in use (for
-  example, an open microphone) lasts until the app releases it or closes.
+- **Revoking** in Settings → Privacy applies at once to the camera and the microphone: the app is
+  told (`revoke`), `lord-server` kills the camera's `lord-media` and closes the microphone stream,
+  and a camera video that records sound stops (see [Menus and revocation](#menus-and-revocation)).
+  Other permissions apply to the next request. The network permission is applied when the app
+  starts (its scope's rules), so a change reaches a running app the next time it is opened.
+- **Firewall restrictions** (Settings → Privacy → App network access) are stronger than any
+  permission: a restricted app is refused without a prompt even if it was allowed before, and
+  restricting a running app takes its camera and microphone away at once, like revoking. See
+  [FIREWALL.md](FIREWALL.md#non-network-restrictions).
 
 Permissions: `files`, `clipboard`, `notifications`, `network`, `camera`, `microphone`, `screen`,
 `listen`, `usb`, `bluetooth`, `apps`.

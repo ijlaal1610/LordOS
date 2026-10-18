@@ -28,8 +28,8 @@ itself.
 
 - **Left:** search (by app, address or country) and one row per app with its icon, number of
   connections, a traffic bar (received in green, sent in orange, relative to the app that moved
-  the most), the bytes and the **Rule** column, reserved for the firewall: today it is a read-only
-  switch set to "allow". Each app expands to show its destinations (IP and country). At the bottom,
+  the most), the bytes and the **Rule** column: a per-app allow/deny switch that `lord-netperm`
+  enforces in the kernel (see "Phase 2"). Each app expands to show its destinations (IP and country). At the bottom,
   the current download and upload speed and per-second bars for the last 60 s.
 - **Center:** the map fills the whole height of the column. It has an arc from "This computer" to
   each country, one dot per country (bigger the more connections) and pill labels with the name
