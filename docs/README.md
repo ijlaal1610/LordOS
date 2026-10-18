@@ -49,6 +49,9 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 | [FIREWALL.md](FIREWALL.md) | Per-app firewall, restrictions and domain rules |
 | [SIGNING.md](SIGNING.md) | Package signing, trust levels and release signing |
 | [PASSWORDS.md](PASSWORDS.md) | Passwords and the system keyring |
+| [COMPLIANCE.md](COMPLIANCE.md) | Licence compliance, the SBOM, and the standards our processes align with |
+| [../SECURITY.md](../SECURITY.md) | How to report a vulnerability |
+| [../CONTRIBUTING.md](../CONTRIBUTING.md), [../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | How to contribute, and the code of conduct |
 
 ## Apps
 
