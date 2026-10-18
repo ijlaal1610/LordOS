@@ -40,8 +40,6 @@
 static void *(*bpf_map_lookup_elem)(void *map, const void *key) = (void *)1;
 static long (*bpf_map_update_elem)(void *map, const void *key, const void *value, unsigned long long flags) = (void *)2;
 static unsigned long long (*bpf_ktime_get_ns)(void) = (void *)5;
-static unsigned long long (*bpf_get_current_pid_tgid)(void) = (void *)14;
-static unsigned long long (*bpf_get_current_cgroup_id)(void) = (void *)80;
 static unsigned long long (*bpf_get_current_ancestor_cgroup_id)(int level) = (void *)123;
 static long (*bpf_ringbuf_output)(void *ringbuf, void *data, unsigned long long size, unsigned long long flags) = (void *)130;
 
@@ -55,7 +53,6 @@ char np_seen[4] SEC("maps");
 char np_counts[4] SEC("maps");
 char np_events[4] SEC("maps");
 char np_snd[4] SEC("maps");
-char np_sndsvc[4] SEC("maps");
 
 #define AF_INET  2
 #define AF_INET6 10
@@ -300,21 +297,14 @@ SEC("cgroup/dev") int np_dev(struct bpf_cgroup_dev_ctx *ctx) {
     if (snd) {
         /* Recording straight from the card. In the app's own scope this fails closed: an ALSA node
          * the last scan didn't classify (a USB microphone plugged in since) counts as capture.
-         * Under the user@ union only the known capture nodes count, and the user's real PipeWire
-         * and WirePlumber keep them: exactly their process (tgid) in exactly their unit's cgroup
-         * (np_sndsvc, which lord-netperm fills only while that cgroup holds that one process). A
-         * process the user moves into that cgroup has another tgid, so it never matches. */
+         * Outside it only the known capture nodes count (lord-netperm keeps no-mic out of the
+         * user@ union today, so this is for a union that ever carries it). */
         np_u32 minor = ctx->minor;
         np_u32 *kind = bpf_map_lookup_elem(&np_snd, &minor);
         np_u64 sid = bpf_get_current_ancestor_cgroup_id((int)cfg->level);
         int own = sid && sid == cgid;
-        if (!(kind ? *kind == NP_SND_CAPTURE : own)) return 1;
-        if (!own) {
-            np_u32 tgid = (np_u32)(bpf_get_current_pid_tgid() >> 32);
-            np_u64 *svc = bpf_map_lookup_elem(&np_sndsvc, &tgid);
-            if (svc && *svc == bpf_get_current_cgroup_id()) return 1;
-        }
-        need = NP_R_NO_MIC;
+        if (kind ? *kind == NP_SND_CAPTURE : own) need = NP_R_NO_MIC;
+        else return 1;
     }
     if (!(app->flags & need)) return 1;
     report_dev(cgid, NP_D_DEV, ctx->major, ctx->minor, need);

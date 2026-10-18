@@ -12,6 +12,8 @@ import { createElement as h } from 'react';
 import { View, Text, Image } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
 import { locale, appName } from './i18n.js';
+import { errorText } from './errors.js';
+import { notify } from './notify.js';
 import { listApps, wm, windows, appRegistry, getApp as registryApp } from './windows.js';
 
 const DESKTOP = 'desktop:';
@@ -74,7 +76,13 @@ export function appCategory(a) {
 }
 
 export function launchApp(id) {
-  if (isLinuxApp(id)) return lord.apps.launch(String(id).slice(DESKTOP.length));
+  if (isLinuxApp(id)) {
+    const ok = lord.apps.launch(String(id).slice(DESKTOP.length));
+    // refused for a reason the user can act on (e.g. its restrictions need a newer kernel)
+    const code = !ok && typeof lord.apps.lastError === 'function' ? lord.apps.lastError() : '';
+    if (code) notify({ app: 'settings', title: errorText(code) });
+    return ok;
+  }
   // An installed .lpk app runs as its own isolated process (lord-server --app <id>), if the
   // server supports it; it reaches the desktop as a Wayland window with app_id = its id. Otherwise it
   // falls back to in-process mode (compatibility). See docs/PRIVACY.md.

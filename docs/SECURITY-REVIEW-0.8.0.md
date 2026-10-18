@@ -37,8 +37,8 @@ Tests:
 | 10 | Medium | Launcher | Time-of-check to time-of-use on "Open with": the path was checked with `realpath()` in lord-server but bound (and given to Landlock) later by path, following symlinks. A running instance could swap a component for a symlink to `~/.ssh`. | Fixed: the opened file is reopened with `openat2(RESOLVE_NO_SYMLINKS)` and must still be the inode that was checked (dev and inode), both for the bind and for the Landlock rule (also on `/media`). Otherwise the grant is dropped. | 594399c |
 | 11 | Medium | Launcher | Without `XDG_RUNTIME_DIR` no tmpfs went over the runtime dir, so the bus stayed reachable. | Fixed: it falls back to `/run/user/<uid>`, or refuses to launch. | 594399c |
 | 12 | Medium | lord-netperm (root) | No-mic denied only the ALSA capture minors seen at the last scan (every 5 s). A USB microphone plugged in was open to a restricted app in between, and the app keeps the fd afterwards. | Fixed: in the app's own scope every ALSA minor not classified as non-capture is denied (fail closed; `np_snd` classifies every node). Test: `mic.sh` 6, with an unknown minor. | bd09ae7 |
-| 13 | Medium | lord-netperm, `user@` union | The union's no-mic denied the capture nodes to the user's own PipeWire and WirePlumber. While any no-mic app ran, the microphone disappeared for the whole desktop and did not come back (WirePlumber drops the source). Reproduced on VM 118. A first fix took no-mic out of the union; review showed that reopened an escape (a no-mic app without no-files can `systemd-run --user` and open `/dev/snd` directly). | Fixed: no-mic is in the union. Only the user's real PipeWire and WirePlumber keep the capture nodes: the exact cgroup `user@<uid>.service/session.slice/{pipewire,wireplumber}.service`, only while it holds one process, matched in the program by that process's tgid **and** the cgroup id (`np_sndsvc`, refreshed every second). A process moved into that cgroup has another tgid. Tests: `mic.sh` 9 (escaped open, open from inside pipewire.service's cgroup) and "once lifted, the desktop still records". | 00b2c95, 30d4e8a |
-| 14 | Medium | PipeWire guard | A process escaped to `user@` (`systemd-run --user pw-record`) was not restricted. | Fixed: while a restricted app runs, a client under `user@<uid>` counts as restricted, except PipeWire, WirePlumber and pipewire-pulse. Those are identified by the exact unit path, being the only process in it, and their root-owned executable. Clients outside app scopes are re-checked every second. Test: `mic.sh` 9. | c1f12c7, 99a0c7d |
+| 13 | High | lord-netperm, `user@` union, launcher | The union's no-mic denied the capture nodes to the user's own PipeWire and WirePlumber: while any no-mic app ran, the microphone disappeared for the whole desktop and did not come back (reproduced on VM 118). Taking no-mic out of the union reopened the escape (a no-mic app without no-files could `systemd-run --user` and open `/dev/snd` directly). Two exemptions for "the real sound services" were tried and rejected (see "Design change" below). | Fixed by design: no process under `user@` is exempted for who it is. Every app restricted with no-mic, no-camera, no-usb or no-bluetooth is started in its own view (no session bus, no user manager, Landlock scoping), so it can't escape its scope, and no-mic stays out of the union. Tests: `files.sh` 3c (for each of the four restrictions: no bus, no `systemd/private`, no `systemd-run`, home kept, PipeWire reachable), `mic.sh` 6 (ALSA capture → EPERM in the scope) and "once lifted, the desktop still records". | 00b2c95, see below |
+| 14 | Medium | PipeWire guard | A process escaped to `user@` (`systemd-run --user pw-record`) was not restricted. | Mitigated: escape is closed for launcher-started apps (#13). While a restricted app runs, the guard also holds `user@` clients as restricted, except PipeWire, WirePlumber and pipewire-pulse (exact unit path, alone in it, root-owned binary). That exemption is best effort: it decides only what the guard hides, never a kernel decision. Test: `mic.sh` 9. | c1f12c7, 99a0c7d |
 | 15 | Medium | PipeWire guard (reported by the automated reviewer) | The first fix for #14, and the existing pipewire-pulse check, matched the cgroup path by suffix. The user owns `user@`, so a nested `…/x.scope/session.slice/pipewire.service` posed as the sound server. Reproduced on VM 118 against the suffix version (it recorded 286 KB). | Fixed: exact path built from the uid, sole process in the unit, root-owned executable (same inode). Test: `mic.sh` 9 (nested fake pipewire and wireplumber units). Other cgroup matching was checked: `appid.c` (now anchored, #18), netperm `scope_app` (reads only root-owned directories), `cgroup.c` (exact `strcmp`). | 99a0c7d |
 | 16 | Medium | PipeWire guard | The pulse identity check counted connections but didn't tie them to the claimant. A process in another PID namespace (a no-files app) reports its inner PID, which left slack that a no-mic app could claim with the outer PID. | Fixed: a claimed PID must live in our PID namespace (`NSpid`). Test: `mic.sh` 7 (claim of a namespaced recorder's outer PID). | c1f12c7 |
 | 17 | Medium | lord-sessiond (root), pre-existing | On a switch the leaving session's framebuffers stayed alive until it handled RP_UNDISPLAY; a stuck or hostile one never does. The next DRM master can read them (`GETFB2` + map): the last frame of another user's unlocked desktop. The new keep path made the window longer. | Fixed: `take_back()` removes every framebuffer of the lent file (`GETRESOURCES` + `RMFB`) before `DROP_MASTER`. | 913113f |
@@ -60,7 +60,43 @@ Tests:
 | 33 | Low | Launcher | The abstract unix socket scoping (`LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET`) depends on the build headers. It is present on Debian 13. | Open. | — |
 | 34 | Low | Launcher | `/run/dbus` (system bus), `/run/cups` and `/run/lordos/*.sock` stay reachable from a no-files view. Each was checked: `cgroup.sock` requires the session leaf and a trusted binary, `netperm.sock` takes only RELOAD, `fand.sock` gives STATUS only. | Accepted. | — |
 | 35 | Info | PipeWire guard | A new client has full permissions for milliseconds before the first `update_permissions`, and a stream can get a few milliseconds of audio before it is destroyed. | Documented (FIREWALL.md). | — |
-| 36 | Info | Escapes | A no-mic or no-camera app without no-files can still reach the session bus and `systemd-run --user`. It is held by the `user@` union and the guard only while a restricted app runs. Cutting the bus for those restrictions would break most apps. | Documented. | — |
+| 36 | Info | Escapes | An app not started from the launcher, or already running when it was restricted, may have escaped to `user@`; the ALSA capture nodes stay open there. An app restricted without no-files can write its own home (startup files, user units, `firewall.json`), which takes effect later, outside the restriction. | Documented (FIREWALL.md); Settings says "restart the app". | — |
+| 37 | High | lord-netperm (reported by the automated reviewer) | The `np_sndsvc` exemption (the exact unit cgroup, its sole process's tgid, the packaged binary, no user unit files or drop-ins) was still forgeable. The user controls their own manager: `systemd-run --user --unit=pipewire.service` passed the file checks (reproduced on VM 118: `sndsvc.sh` 3 and 4 got the exemption), and so would type-wide `service.d` drop-ins, `set-environment` (`LD_PRELOAD`) and PipeWire's or WirePlumber's own config (modules are code). | Removed: replaced by the design in #13. The intermediate commits 30d4e8a and the uncommitted hardening are superseded. | see below |
+| 38 | Medium | `sec/sandbox.c` (reported by the automated reviewer) | Landlock's abstract unix socket scoping failed open: with ABI < 6, or built without the scoping constants, the files sandbox went on without it, so a restricted app could reach the session's abstract sockets. | Fixed: both the files sandbox and the device view require ABI 6, otherwise the app isn't started. The launcher checks this before forking and reports `apps.restrictKernel` (a localized notification). The read-only remount of a read-only grant now fails closed too. Test: `files.sh` 3d (`LORD_SANDBOX_MAX_ABI=5`, which can only lower the ABI). | see below |
+
+## Design change: no exemption by identity under `user@`
+
+The user owns their systemd user manager, so anything that runs in `user@<uid>.service` can be
+made to look like anything:
+- a nested cgroup with the same names;
+- a process moved into the real unit's cgroup;
+- a unit file, drop-in or type-wide `service.d` drop-in;
+- a transient unit with the same name (`systemd-run --user --unit=pipewire.service`);
+- the manager's environment (`set-environment`, `environment.d`, `LD_PRELOAD`);
+- PipeWire's and WirePlumber's own config, which loads modules.
+
+Two attempts to exempt the user's real PipeWire from the union's no-mic were rejected:
+1. matching by cgroup path suffix (#15);
+2. the exact cgroup, its sole process's tgid, the packaged binary's inode and the absence of user
+   unit files (#37).
+
+Both were beaten on VM 118. The design now:
+1. **No process under `user@` is trusted by lord-netperm** for who or what it claims to be.
+2. **The escape is closed at the source.** A Linux app restricted with no-files, no-mic,
+   no-camera, no-usb or no-bluetooth is started by the launcher in its own view:
+   - user, mount, PID and IPC namespaces;
+   - a runtime dir with only the Wayland socket, `pipewire-0` and `pulse/native`, so no session
+     bus, no `systemd/private` and no agents;
+   - private `/tmp`, `/var/tmp`, `/dev/shm` and devpts;
+   - Landlock scoping of abstract sockets and signals.
+
+   Only no-files also hides the home folder. Such an app can't create or change a unit, or start
+   anything outside its scope, so the device program and the PipeWire guard always find it by its
+   scope.
+3. **No-mic stays out of the `user@` union.** The union keeps covering the network and the other
+   devices for processes that escaped earlier.
+4. **The cost:** these apps lose the session bus (notifications, portals). A restriction set while
+   the app runs needs a restart to close the escape (the Settings note says so).
 
 ## Checked and clean
 

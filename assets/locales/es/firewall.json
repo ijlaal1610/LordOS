@@ -41,7 +41,7 @@
   "r.no-clipboard": "Sin leer el portapapeles",
   "desktopAlways": "El escritorio en sí siempre tiene acceso a los archivos, las unidades extraíbles, el portapapeles y Bluetooth; restringe apps individuales.",
   "whenNextLaunch": "{name} (al próximo inicio)",
-  "linuxWhen": "Se aplica enseguida a la app abierta, salvo el acceso a tus archivos, que se aplica la próxima vez que se inicie.",
+  "linuxWhen": "Se aplica de inmediato a la app abierta. El acceso a tus archivos se aplica la próxima vez que se abra; para el micrófono, la cámara, USB y Bluetooth, reinicia la app para que no pueda esquivarlas.",
   "helpLine": "{name}: {help}",
   "help.no-internet": "solo la red local; se comprueba en cada conexión nueva.",
   "help.no-lan": "nada de la red local, ni esta computadora.",

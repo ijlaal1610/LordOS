@@ -571,6 +571,36 @@ static FilesPlan *files_plan(const DesktopApp *a, const char *file, const char *
     return p;
 }
 
+/* No microphone, camera, USB or Bluetooth (without no-files): the same view minus the home
+ * restriction. No session bus, no systemd user manager, no agents: such an app can't create or
+ * change a unit, or start anything outside its scope (systemd-run --user, D-Bus activation), so the
+ * device program and the PipeWire guard, which know it by its scope, always see it. */
+static FilesPlan *view_plan(const char *cwd) {
+    FilesPlan *p = calloc(1, sizeof *p);
+    if (!p) return NULL;
+    const char *h = getenv("HOME");
+    if (!h || !realpath(h, p->home) || p->home[0] != '/' || !strcmp(p->home, "/")) { free(p); return NULL; }
+    p->cfg.home = p->home;
+    p->cfg.keep_home = 1;
+    const char *rt = getenv("XDG_RUNTIME_DIR");
+    char rtdef[64];
+    snprintf(rtdef, sizeof rtdef, "/run/user/%u", (unsigned)getuid());
+    if (!(rt && rt[0] == '/' && realpath(rt, p->runtime)) && !realpath(rtdef, p->runtime)) { free(p); return NULL; }
+    p->cfg.runtime_dir = p->runtime;
+    const char *wd = getenv("WAYLAND_DISPLAY");
+    int ns = 0;
+    if (wd && wd[0] && !strchr(wd, '/') && strlen(wd) < sizeof p->wayland) { snprintf(p->wayland, sizeof p->wayland, "%s", wd); p->cfg.sockets[ns++] = p->wayland; }
+    else p->cfg.sockets[ns++] = "wayland-0";
+    p->cfg.sockets[ns++] = "pipewire-0";            /* playback; capture goes through the PipeWire guard */
+    p->cfg.sockets[ns++] = "pulse/native";
+    p->cfg.sockets[ns] = NULL;
+    if (cwd && cwd[0] == '/') { snprintf(p->cwd, sizeof p->cwd, "%s", cwd); p->cfg.cwd = p->cwd; }
+    return p;
+}
+
+static char last_error[64];
+const char *apps_last_error(void) { return last_error; }
+
 static int launch(const char *id, const char *file);
 int apps_launch(const char *id) { return launch(id, NULL); }
 
@@ -589,6 +619,7 @@ int apps_launch_with(const char *id, const char *path) {
 }
 
 static int launch(const char *id, const char *file) {
+    last_error[0] = 0;
     if (!valid_id(id)) return -1;
     const DesktopApp *list;
     int n = apps_list(cached_lang[0] ? cached_lang : "en", &list);
@@ -613,9 +644,23 @@ static int launch(const char *id, const char *file) {
     FilesPlan *plan = NULL;
     char fwid[FW_APP_MAX];
     snprintf(fwid, sizeof fwid, "desktop:%s", id);
+    uint32_t viewed = FW_R_NO_FILES | FW_R_NO_MIC | FW_R_NO_CAMERA | FW_R_NO_USB | FW_R_NO_BLUETOOTH;
+    if (restrict_blocks(fwid, viewed) && sandbox_landlock_abi() < 6) {
+        /* fail closed: without Landlock ABI 6 the session's abstract sockets can't be kept away */
+        fprintf(stderr, "apps: %s is restricted, but this kernel's Landlock is too old (ABI < 6): not launched\n", id);
+        snprintf(last_error, sizeof last_error, "apps.restrictKernel");
+        free(buf);
+        return -1;
+    }
     if (restrict_blocks(fwid, FW_R_NO_FILES)) {
         if (!sandbox_landlock_abi() || !(plan = files_plan(a, file, cwd))) {
             fprintf(stderr, "apps: %s is restricted to no files, but Landlock is not available: not launched\n", id);
+            free(buf);
+            return -1;
+        }
+    } else if (restrict_blocks(fwid, FW_R_NO_MIC | FW_R_NO_CAMERA | FW_R_NO_USB | FW_R_NO_BLUETOOTH)) {
+        if (!(plan = view_plan(cwd))) {
+            fprintf(stderr, "apps: %s is restricted, but its own view can't be built: not launched\n", id);
             free(buf);
             return -1;
         }
@@ -645,7 +690,8 @@ static int launch(const char *id, const char *file) {
             _exit(126);
         }
         /* its own view (namespaces: no session sockets, only its folders), then Landlock */
-        if (plan && (sandbox_files_isolate(&plan->cfg) || sandbox_apply_files(&plan->cfg))) {
+        if (plan && (sandbox_files_isolate(&plan->cfg) ||
+                     (plan->cfg.keep_home ? sandbox_apply_scope() : sandbox_apply_files(&plan->cfg)))) {
             static const char msg[] = "apps: could not apply the no-files restriction: not launched\n";
             if (write(2, msg, sizeof msg - 1) < 0) {}
             _exit(126);

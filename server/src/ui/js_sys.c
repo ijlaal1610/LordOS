@@ -1414,6 +1414,12 @@ static JSValue f_apps_launch(JSContext *c, JSValueConst this_val, int argc, JSVa
     return JS_NewBool(c, ok);
 }
 
+/* lord.apps.lastError(): the error code of the last refused launch ("" if none), no arguments */
+static JSValue f_apps_last_error(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
+    (void)this_val; (void)argc; (void)argv;
+    return JS_NewString(c, apps_last_error());
+}
+
 /* ---- lord.apps: native LordOS app packages (.lpk, lpk.c) ---- */
 
 #define LPK_JS_MAX (16 * 1024 * 1024)
@@ -1790,6 +1796,7 @@ static const JSCFunctionListEntry apps_funcs[] = {
     JS_CFUNC_DEF("linux", 1, f_apps_linux),
     JS_CFUNC_DEF("launch", 1, f_apps_launch),
     JS_CFUNC_DEF("launchWith", 2, f_apps_launch_with),
+    JS_CFUNC_DEF("lastError", 0, f_apps_last_error),
     JS_CFUNC_DEF("packages", 0, f_apps_packages),
     JS_CFUNC_DEF("inspectPackage", 1, f_apps_inspect),
     JS_CFUNC_DEF("installPackage", 1, f_apps_install),

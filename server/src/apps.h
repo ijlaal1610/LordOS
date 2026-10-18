@@ -26,5 +26,7 @@ int apps_launch(const char *id);
 /* Same, but opening a file or folder (see apps.c: only apps with MimeType and paths in the
  * home folder or the user's mounts, as a single argument). */
 int apps_launch_with(const char *id, const char *path);
+/* Why the last apps_launch/apps_launch_with refused, as an error code ("" = no specific reason). */
+const char *apps_last_error(void);
 
 #endif

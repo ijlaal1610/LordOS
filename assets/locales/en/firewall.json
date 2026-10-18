@@ -41,7 +41,7 @@
   "r.no-clipboard": "No reading the clipboard",
   "desktopAlways": "The desktop itself always has access to files, removable drives, the clipboard and Bluetooth; restrict individual apps instead.",
   "whenNextLaunch": "{name} (at next launch)",
-  "linuxWhen": "Applies immediately to the running app, except access to your files, which applies the next time it starts.",
+  "linuxWhen": "Applies immediately to the running app. Access to your files applies the next time it starts; for the microphone, the camera, USB and Bluetooth, restart the app so it can't get around them.",
   "helpLine": "{name}: {help}",
   "help.no-internet": "only the local network; checked on every new connection.",
   "help.no-lan": "nothing on the local network, including this computer.",

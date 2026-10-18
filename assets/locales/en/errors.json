@@ -1,4 +1,5 @@
 {
+  "apps.restrictKernel": "This app's restrictions need a newer kernel: it was not started",
   "admin.actionFailed": "The action finished with an error",
   "admin.forkFailed": "Could not start the action",
   "admin.invalidArgument": "Invalid argument",

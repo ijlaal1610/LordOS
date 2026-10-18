@@ -94,6 +94,11 @@ typedef struct {
      * again without following any symlink and only if it is still the same inode the launcher checked */
     const char *opened;
     unsigned long long opened_dev, opened_ino;
+    /* 1: the view without the home restriction (no-mic, no-camera, no-usb, no-bluetooth): the home
+     * folder stays as it is and rw[]/ro[] are unused; everything else (runtime dir with only
+     * sockets[], private /tmp, /var/tmp, /dev/shm, devpts, /proc, PID and IPC namespaces) is the
+     * same. Then sandbox_apply_scope instead of sandbox_apply_files. */
+    int keep_home;
 } SandboxFilesCfg;
 
 /* Before sandbox_apply_files: the app's own view of the system, so no unix socket of the session
@@ -115,6 +120,11 @@ typedef struct {
  * app. Doesn't allocate. */
 int sandbox_files_isolate(const SandboxFilesCfg *cfg);
 int sandbox_apply_files(const SandboxFilesCfg *cfg);
+/* For keep_home views: Landlock with no filesystem rules, only its scoping (ABI 6): no abstract
+ * unix socket and no signal outside the app (the view has no network namespace, so abstract
+ * sockets are shared with the session). Sets no_new_privs. 0 applied (or a kernel without ABI 6:
+ * logged, nothing else to do), -1 failed. */
+int sandbox_apply_scope(void);
 /* Landlock ABI of the running kernel (0 = none). */
 int sandbox_landlock_abi(void);
 

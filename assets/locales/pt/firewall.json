@@ -41,7 +41,7 @@
   "r.no-clipboard": "Sem ler a área de transferência",
   "desktopAlways": "A própria área de trabalho sempre tem acesso aos arquivos, unidades removíveis, área de transferência e Bluetooth; restrinja apps individuais.",
   "whenNextLaunch": "{name} (na próxima abertura)",
-  "linuxWhen": "Aplica-se na hora ao app aberto, exceto o acesso aos seus arquivos, que vale a partir da próxima vez que ele abrir.",
+  "linuxWhen": "Aplica-se imediatamente ao app aberto. O acesso aos seus arquivos se aplica na próxima vez que ele abrir; para o microfone, a câmera, USB e Bluetooth, reinicie o app para que ele não possa contorná-las.",
   "helpLine": "{name}: {help}",
   "help.no-internet": "só a rede local; verificado a cada nova conexão.",
   "help.no-lan": "nada da rede local, nem este computador.",

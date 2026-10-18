@@ -16,6 +16,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sched.h>
 #include <signal.h>
@@ -64,7 +65,14 @@ static int drop_caps(void) {
 static int ll_create(struct landlock_ruleset_attr *a, size_t n) { return (int)syscall(SYS_landlock_create_ruleset, a, n, 0U); }
 static int ll_add(int fd, enum landlock_rule_type t, const void *attr) { return (int)syscall(SYS_landlock_add_rule, fd, t, attr, 0U); }
 static int ll_enforce(int fd) { return (int)syscall(SYS_landlock_restrict_self, fd, 0U); }
-static int ll_abi(void) { return (int)syscall(SYS_landlock_create_ruleset, NULL, 0U, LANDLOCK_CREATE_RULESET_VERSION); }
+/* The kernel's Landlock ABI. LORD_SANDBOX_MAX_ABI (tests only) can lower it, never raise it: the
+ * only effect is that restricted apps refuse to start. */
+static int ll_abi(void) {
+    int abi = (int)syscall(SYS_landlock_create_ruleset, NULL, 0U, LANDLOCK_CREATE_RULESET_VERSION);
+    const char *cap = getenv("LORD_SANDBOX_MAX_ABI");
+    if (cap && *cap >= '0' && *cap <= '9' && atoi(cap) < abi) abi = atoi(cap);
+    return abi;
+}
 
 static int ll_path(int rs, const char *path, uint64_t allow) {
     struct landlock_path_beneath_attr pb = { .allowed_access = allow };
@@ -194,9 +202,9 @@ int sandbox_landlock_abi(void) {
 }
 
 int sandbox_apply_files(const SandboxFilesCfg *cfg) {
-#ifdef HAVE_LANDLOCK
+#if defined(HAVE_LANDLOCK) && defined(LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET)
     int abi = ll_abi();
-    if (abi < 1) return -1;
+    if (abi < 6) return -1;             /* fail closed: abstract unix sockets must be scoped too */
     uint64_t ro = LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR | LANDLOCK_ACCESS_FS_EXECUTE;
     uint64_t rw = ro | LANDLOCK_ACCESS_FS_WRITE_FILE | LANDLOCK_ACCESS_FS_MAKE_DIR | LANDLOCK_ACCESS_FS_MAKE_REG |
                   LANDLOCK_ACCESS_FS_REMOVE_FILE | LANDLOCK_ACCESS_FS_REMOVE_DIR | LANDLOCK_ACCESS_FS_MAKE_SYM |
@@ -213,10 +221,8 @@ int sandbox_apply_files(const SandboxFilesCfg *cfg) {
     struct landlock_ruleset_attr attr;
     memset(&attr, 0, sizeof attr);
     attr.handled_access_fs = handled;
-#ifdef LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET
     /* abstract unix sockets of programs outside the app (ABI 6): refused too */
-    if (abi >= 6) attr.scoped = LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET;
-#endif
+    attr.scoped = LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET;
     int rs = ll_create(&attr, sizeof attr);
     if (rs < 0) return -1;
     /* not "/run" or "/var" as a whole: /run/media/<user> and /var/mail are the user's */
@@ -250,6 +256,30 @@ int sandbox_apply_files(const SandboxFilesCfg *cfg) {
     return r ? -1 : 0;
 #else
     (void)cfg;
+    return -1;
+#endif
+}
+
+int sandbox_apply_scope(void) {
+#if defined(HAVE_LANDLOCK) && defined(LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET) && defined(LANDLOCK_SCOPE_SIGNAL)
+    int abi = ll_abi();
+    if (abi < 6) {                      /* fail closed: the session's abstract sockets would stay reachable */
+        static const char m[] = "sandbox: Landlock ABI < 6 (abstract unix sockets can't be scoped): not launched\n";
+        if (write(2, m, sizeof m - 1) < 0) {}
+        return -1;
+    }
+    if (apply_nopriv()) return -1;
+    struct landlock_ruleset_attr attr;
+    memset(&attr, 0, sizeof attr);
+    attr.scoped = LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET | LANDLOCK_SCOPE_SIGNAL;
+    int rs = ll_create(&attr, sizeof attr);
+    if (rs < 0) return -1;
+    int r = ll_enforce(rs);
+    close(rs);
+    return r ? -1 : 0;
+#else
+    static const char m[] = "sandbox: built without Landlock scoping: not launched\n";
+    if (write(2, m, sizeof m - 1) < 0) {}
     return -1;
 #endif
 }
@@ -330,7 +360,7 @@ int sandbox_files_isolate(const SandboxFilesCfg *cfg) {
     int nk = 0;
     for (int pass = 0; pass < 2; pass++) {
         const char *const *list = pass ? cfg->ro : cfg->rw;
-        for (int i = 0; i < SANDBOX_FILES_MAX && list[i]; i++) {
+        for (int i = 0; !cfg->keep_home && i < SANDBOX_FILES_MAX && list[i]; i++) {
             if (!is_under(list[i], cfg->home) || !strcmp(list[i], cfg->home)) continue;   /* outside home: Landlock alone */
             struct stat st;
             int t;
@@ -360,7 +390,7 @@ int sandbox_files_isolate(const SandboxFilesCfg *cfg) {
     }
     int bad = 0;
     const char *opts = "mode=0700,size=64m";
-    bad |= mount("tmpfs", cfg->home, "tmpfs", MS_NOSUID | MS_NODEV, opts);
+    if (!cfg->keep_home) bad |= mount("tmpfs", cfg->home, "tmpfs", MS_NOSUID | MS_NODEV, opts);
     if (cfg->runtime_dir) bad |= mount("tmpfs", cfg->runtime_dir, "tmpfs", MS_NOSUID | MS_NODEV, "mode=0700,size=8m");
     bad |= mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV, "mode=1777");
     struct stat vt;
@@ -373,7 +403,7 @@ int sandbox_files_isolate(const SandboxFilesCfg *cfg) {
     if (!bad) bad |= mount("/dev/pts/ptmx", "/dev/ptmx", NULL, MS_BIND, NULL);
     for (int i = 0; i < nk && !bad; i++) {
         if (bind_clone(keep[i].fd, keep[i].path, keep[i].dir)) { bad = 1; break; }
-        if (keep[i].ro) mount(NULL, keep[i].path, NULL, MS_REMOUNT | MS_BIND | MS_RDONLY | MS_NOSUID | MS_NODEV, NULL);
+        if (keep[i].ro && mount(NULL, keep[i].path, NULL, MS_REMOUNT | MS_BIND | MS_RDONLY | MS_NOSUID | MS_NODEV, NULL)) { bad = 1; break; }
     }
     for (int i = 0; i < nk; i++) close(keep[i].fd);
     /* the working directory again, inside the view: the one inherited still points into the real

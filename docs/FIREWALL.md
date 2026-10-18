@@ -190,13 +190,12 @@ on `open()` and `mknod()` of a device node, and returns 0 only for the device cl
 restricted from (`np_dev_restriction()` in `np_shared.h`, plus, for "no microphone", the ALSA
 capture PCMs in `np_snd`). In the app's own scope "no microphone" fails closed: an ALSA node the
 last scan of `/sys/class/sound` hasn't classified yet (a USB microphone plugged in, at most 5 s)
-is denied too. Under the `user@` union "no microphone" denies the known capture nodes to every
-process except the user's real PipeWire and WirePlumber (otherwise the microphone is gone for
-every app and doesn't come back): exactly their process id in exactly the cgroups
-`user.slice/user-<uid>.slice/user@<uid>.service/session.slice/{pipewire,wireplumber}.service`, and
-only while each holds that one process (`np_sndsvc`, refreshed every second). A process the user moves
-into that cgroup has another process id and is still denied; a nested cgroup that merely ends in
-the same names is another cgroup. Everything else returns 1. Programs systemd attaches higher up (`DeviceAllow=`) still
+is denied too. "No microphone" is not part of the `user@` union: there it would deny the capture
+nodes to the user's own PipeWire and WirePlumber, and the microphone would be gone for every app
+(it doesn't come back). Nothing under `user@` is exempted for being, or claiming to be, the sound
+server: the user controls that manager (units, drop-ins, environment, PipeWire's own config), so
+no such check is unforgeable. Instead a restricted app can't get there: see "Its own view"
+below. Everything else returns 1. Programs systemd attaches higher up (`DeviceAllow=`) still
 apply: the kernel allows only what all of them allow. A denial is logged by `lord-netperm` once per
 5 s, not counted with the connections. `lord-server`'s own scope (`lordos`) never gets device
 restrictions in the kernel: it opens the camera, the FIDO key and the sound for the apps after
@@ -279,13 +278,15 @@ the apps could change. Who a client is:
 - When a restricted app falsely claims another process's PID through `pipewire-pulse`, every
   client claiming that PID is treated as restricted while the false claim lasts, the honest one
   included.
-- A process that escaped to `user@<uid>` (`systemd-run --user`) is held as restricted only while
-  a restricted app runs, like `lord-netperm`'s union (which also denies it the ALSA capture
-  nodes). If the restricted app exits first, the escaped process is free. With `no-files` the app
-  can't reach the session bus or the user manager, which closes that path; no-mic and no-camera
-  alone don't cut the session bus (that would break most apps' D-Bus use).
-- If PipeWire restarts while a no-mic app runs, the new daemon is known to `lord-netperm` within a
-  second; an ALSA capture open in that second is refused.
+- An app restricted with no-files, no-mic, no-camera, no-usb or no-bluetooth and started from
+  the launcher has no session bus and no user manager (its own view), so it can't escape to
+  `user@<uid>`. One that wasn't started by the launcher, or that was already running when the
+  restriction was set (restart it to apply; Settings says so), may have escaped. The guard holds
+  `user@` clients as restricted while a restricted app runs, but the ALSA capture nodes stay open
+  to processes there.
+- An app restricted without `no-files` can still write its home folder: startup files, user units,
+  `firewall.json` itself. Such a change takes effect outside the restriction later (the next
+  login, a reload). Only `no-files` keeps an app from them.
 - A Linux app restricted without `no-files` runs as the user, so it could take over another of the
   user's processes (lord-server, PipeWire, another app) with `ptrace` and act through it. LordOS
   sets `kernel.yama.ptrace_scope = 1` (`/usr/lib/sysctl.d/50-lordos-ptrace.conf`): only a
@@ -293,6 +294,17 @@ the apps could change. Who a client is:
 - A pulse socket of its own for each restricted app (`pipewire-pulse` listening on a per-app
   address bound into the app's view) would remove the need to trust `application.process.id` at
   all: also the next step.
+
+**Its own view, for device restrictions.** An app restricted with no-mic, no-camera, no-usb or
+no-bluetooth (without no-files) gets the same view as below, without the home restriction: its
+home folder stays as it is, but the runtime dir holds only the Wayland socket, `pipewire-0` and
+`pulse/native` (no session bus, no `systemd/private`, no agents). `/tmp`, `/var/tmp` and
+`/dev/shm` are private, `/dev/pts` is its own, with new PID and IPC namespaces and Landlock's
+scoping (no abstract unix socket and no signal outside it). So it can't create or change a unit
+nor start anything outside its scope, and the device program and the PipeWire guard always find
+it by its scope. It costs the app the session bus: notifications, portals and the like over
+D-Bus don't work for it. Applied at launch: restart the app to apply. Without Landlock ABI 6
+(kernel 6.12 or later) a restricted app isn't started at all, and the launcher says why.
 
 **No access to your files.** Applied by the launcher's child after it entered its scope and right
 before `execve`, so a restriction set while the app runs applies at its next launch (Settings

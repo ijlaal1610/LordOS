@@ -98,6 +98,30 @@ probe ~/.config
 expect write_autostart "@(Permission denied|No such file|Read-only)*"
 [ -e ~/.config/autostart/fwlinux.desktop ] && bad "an autostart entry was written through ~/.config" || ok "~/.config was not granted writable"
 
+for r in no-mic no-camera no-usb no-bluetooth; do
+    echo "3c. $r alone: its home stays, but not the session bus nor the user manager (no escape from its scope)"
+    restrict desktop:fwprobe $r
+    probe
+    expect read_documents ok
+    expect write_own_config ok
+    expect connect_session_bus "No such file"
+    expect connect_systemd_private "No such file"
+    expect connect_pipewire_manager "No such file"
+    expect cwd_relative_bus "No such file"
+    expect connect_pipewire ok
+    expect connect_tmp_socket "No such file"
+    expect read_session_shm "No such file"
+    expect systemd_run_user "exit"
+    [ -e ~/.cache/fwprobe/escaped ] && bad "$r: a process escaped through the user manager" || ok "$r: nothing started through the user manager"
+    # its home is its own to write (startup files too: see docs/FIREWALL.md, the residual risk)
+    rm -f ~/.config/autostart/fwlinux.desktop ~/.local/share/applications/fwlinux-evil.desktop ~/.cache/fwprobe/escaped
+done
+echo "3d. a restricted app on a kernel whose Landlock can't scope abstract sockets: not launched"
+rm -f "$OUT"
+LORD_SANDBOX_MAX_ABI=5 WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/$U "$CLI" fwprobe >/dev/null 2>&1 && bad "launched with Landlock ABI 5" || ok "refused with Landlock ABI 5"
+sleep 1; [ -s "$OUT" ] && bad "the app ran with Landlock ABI 5" || ok "the app did not run"
+restrict desktop:fwprobe no-files
+
 echo "4. malicious .desktop files: names chosen to reach other programs' folders"
 EVIL=/usr/local/lib/lordos-tests/files_probe.py          # a system path: these ids get no folders of their own
 sudo install -D -m 644 "$D/files_probe.py" "$EVIL"
