@@ -39,5 +39,20 @@
   "counts": "Conexões",
   "countsValue": "{allowed} permitidas · {denied} negadas",
   "r.no-clipboard": "Sem ler a área de transferência",
-  "desktopAlways": "A própria área de trabalho sempre tem acesso aos arquivos, unidades removíveis, área de transferência e Bluetooth; restrinja apps individuais."
+  "desktopAlways": "A própria área de trabalho sempre tem acesso aos arquivos, unidades removíveis, área de transferência e Bluetooth; restrinja apps individuais.",
+  "whenNextLaunch": "{name} (na próxima abertura)",
+  "linuxWhen": "Aplica-se na hora ao app aberto, exceto o acesso aos seus arquivos, que vale a partir da próxima vez que ele abrir.",
+  "helpLine": "{name}: {help}",
+  "help.no-internet": "só a rede local; verificado a cada nova conexão.",
+  "help.no-lan": "nada da rede local, nem este computador.",
+  "help.no-network": "o app nem consegue abrir um socket de rede.",
+  "help.no-incoming": "o app não pode esperar conexões.",
+  "help.no-camera": "não pode abrir câmeras, nem diretamente nem pelo servidor de som e vídeo.",
+  "help.no-mic": "o app não vê nenhum microfone e suas gravações param.",
+  "help.no-screen": "o app não pode copiar a tela; apps Linux nunca podem.",
+  "help.no-usb": "sem dispositivos USB diretos, chaves de segurança nem portas seriais USB.",
+  "help.no-bluetooth": "sem sockets Bluetooth próprios.",
+  "help.no-files": "só as próprias pastas de configuração e o arquivo com que você o abre.",
+  "help.no-notifications": "as notificações dele não aparecem.",
+  "help.no-clipboard": "não pode ler o que você copiou (apps do LordOS)."
 }

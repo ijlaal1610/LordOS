@@ -6,6 +6,8 @@
 //     no incoming connections, and the non-network ones: camera, microphone…). Every one is
 //     enforced (docs/FIREWALL.md, "Non-network restrictions"). The "LordOS" row is the desktop
 //     itself: it does not offer files, USB, clipboard or Bluetooth, which the shell always uses.
+//     For Linux apps each checkbox says when it applies (all at once, files at the next launch)
+//     and the clipboard isn't offered yet; a help line per restriction says what it covers.
 // The rules are saved by lord-server (lord.fw); this screen writes no files. Drawn like the
 // Settings sections: 13/600 headers, inset GroupBoxes with hairlines, footers.
 import { View, Text, Button, Segmented, ScrollView, GroupBox, useTheme, useLocale, useStore, useLauncherApps, firewall, firewallState, spacing, typeScale, errorText } from '@lordos/sdk';
@@ -16,7 +18,14 @@ import { useState } from 'react';
 const fwId = (a) => (a.kind === 'linux' ? a.id : a.kind === 'package' || a.isolated ? `lpk:${a.id}` : 'lordos');
 // The desktop shell and the built-in apps share "lordos": these would cut the desktop off itself.
 const DESKTOP_ALWAYS = ['no-files', 'no-usb', 'no-clipboard', 'no-bluetooth'];
-const offered = (id) => (id === 'lordos' ? firewall.RESTRICTIONS.filter((f) => !DESKTOP_ALWAYS.includes(f)) : firewall.RESTRICTIONS);
+// Linux apps: the clipboard of a Wayland app isn't mediated per app yet, so it isn't offered.
+const LINUX_NOT_YET = ['no-clipboard'];
+// For a Linux app every restriction applies at once (new connections, device opens, sockets,
+// sound streams, notifications), except files: the app's view is built when it starts.
+const NEXT_LAUNCH = ['no-files'];
+const isLinux = (id) => id.startsWith('desktop:');
+const offered = (id) => (id === 'lordos' ? firewall.RESTRICTIONS.filter((f) => !DESKTOP_ALWAYS.includes(f))
+  : isLinux(id) ? firewall.RESTRICTIONS.filter((f) => !LINUX_NOT_YET.includes(f)) : firewall.RESTRICTIONS);
 
 function useAppIndex() {
   const list = useLauncherApps();
@@ -147,9 +156,11 @@ export function FirewallPrivacy() {
               </View>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 32 }}>
                 {offered(id).map((f) => (
-                  <Check key={f} on={restricted[id].includes(f)} label={tr(`firewall.r.${f}`)} onChange={(on) => setFlag(id, f, on)} />
+                  <Check key={f} on={restricted[id].includes(f)} onChange={(on) => setFlag(id, f, on)}
+                    label={isLinux(id) && NEXT_LAUNCH.includes(f) ? tr('firewall.whenNextLaunch', { name: tr(`firewall.r.${f}`) }) : tr(`firewall.r.${f}`)} />
                 ))}
               </View>
+              {isLinux(id) && <Text style={{ fontSize: typeScale.caption, color: t.textDim, lineHeight: 1.35, paddingHorizontal: 32, textAlign: 'start' }}>{tr('firewall.linuxWhen')}</Text>}
               {id === 'lordos' && <Text style={{ fontSize: typeScale.caption, color: t.textDim, lineHeight: 1.35, paddingHorizontal: 32, textAlign: 'start' }}>{tr('firewall.desktopAlways')}</Text>}
             </View>
           ))}
@@ -157,6 +168,15 @@ export function FirewallPrivacy() {
           <AddApp apps={apps} exclude={inLists} tr={tr} onPick={(id) => firewall.setRestricted(id, ['no-internet'])} />
         </GroupBox>
         {foot(tr('firewall.restrictedHint'))}
+        {Object.keys(restricted).length > 0 && (
+          <View style={{ gap: 3, marginHorizontal: spacing.xs }}>
+            {firewall.RESTRICTIONS.map((f) => (
+              <Text key={f} style={{ fontSize: typeScale.caption, color: t.textDim, lineHeight: 1.4, textAlign: 'start' }}>
+                {tr('firewall.helpLine', { name: tr(`firewall.r.${f}`), help: tr(`firewall.help.${f}`) })}
+              </Text>
+            ))}
+          </View>
+        )}
       </View>
       {foot(tr('firewall.footer'))}
     </View>

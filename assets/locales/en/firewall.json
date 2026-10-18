@@ -39,5 +39,20 @@
   "counts": "Connections",
   "countsValue": "{allowed} allowed · {denied} denied",
   "r.no-clipboard": "No reading the clipboard",
-  "desktopAlways": "The desktop itself always has access to files, removable drives, the clipboard and Bluetooth; restrict individual apps instead."
+  "desktopAlways": "The desktop itself always has access to files, removable drives, the clipboard and Bluetooth; restrict individual apps instead.",
+  "whenNextLaunch": "{name} (at next launch)",
+  "linuxWhen": "Applies immediately to the running app, except access to your files, which applies the next time it starts.",
+  "helpLine": "{name}: {help}",
+  "help.no-internet": "only the local network; checked on every new connection.",
+  "help.no-lan": "nothing on the local network, including this computer.",
+  "help.no-network": "the app can't even open a network socket.",
+  "help.no-incoming": "the app can't listen for connections.",
+  "help.no-camera": "cameras can't be opened, directly or through the sound and video server.",
+  "help.no-mic": "the app sees no microphone and its recordings are stopped.",
+  "help.no-screen": "the app can't copy the screen; Linux apps never can.",
+  "help.no-usb": "no raw USB devices, security keys or USB serial ports.",
+  "help.no-bluetooth": "no Bluetooth sockets of its own.",
+  "help.no-files": "only its own settings folders and the file you open it with.",
+  "help.no-notifications": "its notifications aren't shown.",
+  "help.no-clipboard": "it can't read what you copied (LordOS apps)."
 }
