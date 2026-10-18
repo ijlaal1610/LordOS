@@ -9,7 +9,9 @@
  * the bus is asked for the caller's PID (GetConnectionUnixProcessID, answered by the bus from the
  * socket's credentials, not by the app), the PID's cgroup gives its app scope and so its firewall
  * id; if that app is restricted the notification is dropped and the call still gets a valid id,
- * so the app carries on as if it had been shown. Applies to the next notification. */
+ * so the app carries on as if it had been shown. Only the bus's own answer counts; an error, a
+ * process that can't be read or no answer within 3 s also drop it (fail closed). Applies to the
+ * next notification. */
 #ifndef LORD_HW_NOTIFYD_H
 #define LORD_HW_NOTIFYD_H
 
@@ -22,6 +24,8 @@ int  notifyd_start(NotifydEvent fn);    /* 0 if we own the name */
 int  notifyd_fd(void);
 int  notifyd_wants_write(void);
 void notifyd_dispatch(void);
+/* Called on every pass of the main loop: drops Notify calls the bus didn't answer in time. */
+void notifyd_tick(void);
 /* From the theme: the banner went away (reason: 1 expired, 2 dismissed, 3 closed by a call) or
  * an action was clicked. */
 void notifyd_closed(uint32_t id, uint32_t reason);
@@ -30,6 +34,9 @@ void notifyd_action(uint32_t id, const char *key);
  * "0::") is given: a launcher scope ".../lordos-session-<uid>/app-lordos-<id>.scope[/...]" gives
  * "desktop:<id>" (or "lpk:<id>"). 0 ok, -1 not in an app's scope. */
 int notifyd_app_of_cgroup(const char *path, char *out, size_t n);
+/* Tests only: replaces the PID → firewall id lookup (/proc/<pid>/cgroup). fn returns 0 with the
+ * id, 1 if the PID is in no app's scope, -1 if it can't tell. */
+void notifyd_set_app_of_pid(int (*fn)(uint32_t pid, char *out, size_t n));
 /* Strips markup (<b>, <i>, <a href>, <img>...) and decodes &amp; &lt; &gt; &quot; &apos;. */
 void notifyd_plain(const char *in, char *out, size_t n);
 

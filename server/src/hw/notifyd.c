@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define BUS_NAME "org.freedesktop.Notifications"
 #define OBJ "/org/freedesktop/Notifications"
@@ -19,8 +20,12 @@ static NotifydEvent emit;
 
 /* Notify calls waiting for the bus to say who sent them (GetConnectionUnixProcessID). */
 #define MAX_PENDING 32
-static struct { uint32_t serial; DMsg call; } pending[MAX_PENDING];
+#define PENDING_MS  3000
+static struct { uint32_t serial; DMsg call; double since; } pending[MAX_PENDING];
 static int npending;
+static int (*app_of_pid)(uint32_t pid, char *out, size_t n);
+
+static double mono_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
 
 int notifyd_fd(void) { return up ? conn.fd : -1; }
 int notifyd_wants_write(void) { return up && dbus_pending_out(&conn); }
@@ -147,17 +152,30 @@ int notifyd_app_of_cgroup(const char *path, char *out, size_t n) {
     return fw_app_canon(scope, out, n);
 }
 
-/* Is the process behind this PID in the scope of an app restricted to "no notifications"? */
-static int pid_blocked(uint32_t pid) {
-    char f[64], line[1024], app[FW_APP_MAX];
+/* Firewall id of a PID's app scope, from /proc/<pid>/cgroup. 0 ok, 1 not in an app's scope, -1
+ * the process is gone (or unreadable). */
+static int app_of_pid_proc(uint32_t pid, char *out, size_t n) {
+    char f[64], line[1024];
     snprintf(f, sizeof f, "/proc/%u/cgroup", pid);
     FILE *fp = fopen(f, "re");
-    if (!fp) return 0;
-    int blocked = 0;
+    if (!fp) return -1;
+    int r = -1;
     while (fgets(line, sizeof line, fp))
-        if (!strncmp(line, "0::", 3)) { blocked = !notifyd_app_of_cgroup(line + 3, app, sizeof app) && restrict_blocks(app, FW_R_NO_NOTIFICATIONS); break; }
+        if (!strncmp(line, "0::", 3)) { r = notifyd_app_of_cgroup(line + 3, out, n) ? 1 : 0; break; }
     fclose(fp);
-    return blocked;
+    return r;
+}
+
+void notifyd_set_app_of_pid(int (*fn)(uint32_t pid, char *out, size_t n)) { app_of_pid = fn; }
+
+/* Shown or not: only a PID the bus gave us whose process is outside any restricted app's scope.
+ * Fails closed: no PID, or a process we can't read (it already exited), is not shown. */
+static int pid_blocked(uint32_t pid) {
+    char app[FW_APP_MAX];
+    if (!pid) return 1;
+    int r = (app_of_pid ? app_of_pid : app_of_pid_proc)(pid, app, sizeof app);
+    if (r < 0) return 1;
+    return r == 0 && restrict_blocks(app, FW_R_NO_NOTIFICATIONS);
 }
 
 /* A restricted app's notification: not shown, but answered with a real id (and closed at once),
@@ -193,19 +211,23 @@ static int ask_sender(DMsg *m) {
     if (!s) { on_notify(m); return 0; }
     pending[npending].serial = s;
     pending[npending].call = *m;
+    pending[npending].since = mono_ms();
     npending++;
     return 1;
 }
 
-/* The bus's answer about a pending Notify. */
+/* The bus's answer about a pending Notify. Only the bus itself may answer (its sender can't be
+ * forged: the bus daemon sets it); a reply from anyone else is ignored. An error, an odd answer
+ * or no answer within PENDING_MS: the notification is dropped (with a valid id). */
 static void on_sender(const DMsg *m) {
+    if (!m->sender || strcmp(m->sender, "org.freedesktop.DBus")) return;
     for (int i = 0; i < npending; i++) {
         if (pending[i].serial != m->reply_serial) continue;
         DMsg call = pending[i].call;
         pending[i] = pending[--npending];
         uint32_t pid = 0;
         if (m->type == DBUS_RETURN && m->sig && !strcmp(m->sig, "u")) { DRd r; dr_init(&r, m); pid = dr_u32(&r); if (r.err) pid = 0; }
-        if (pid && pid_blocked(pid)) drop_notify(&call);
+        if (pid_blocked(pid)) drop_notify(&call);
         else on_notify(&call);
         dbus_msg_free(&call);
         return;
@@ -274,11 +296,27 @@ int notifyd_start(NotifydEvent fn) {
     return 0;
 }
 
+void notifyd_tick(void) {
+    if (!up || !npending) return;
+    double now = mono_ms();
+    int dropped = 0;
+    for (int i = 0; i < npending;) {                /* the bus never answered: fail closed */
+        if (now - pending[i].since < PENDING_MS) { i++; continue; }
+        DMsg call = pending[i].call;
+        pending[i] = pending[--npending];
+        drop_notify(&call);
+        dbus_msg_free(&call);
+        dropped = 1;
+    }
+    if (dropped) dbus_flush(&conn);
+}
+
 void notifyd_dispatch(void) {
     if (!up) return;
     DMsg m;
     int r;
     while ((r = dbus_next(&conn, &m)) == 1) { if (!handle(&m)) dbus_msg_free(&m); }
+    notifyd_tick();
     if (r < 0 || dbus_flush(&conn) < 0) {
         fprintf(stderr, "notifyd: lost the session bus\n");
         for (int i = 0; i < npending; i++) dbus_msg_free(&pending[i].call);

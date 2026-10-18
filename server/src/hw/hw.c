@@ -65,6 +65,7 @@ void hw_dispatch(const struct pollfd *p, int n) {
 
 void hw_events(void) {
     bt_flush_events();
+    notifyd_tick();
     if (sysbus_up() && sysbus_wants_write()) dbus_flush(sysbus_conn());
 }
 
