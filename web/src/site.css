@@ -135,6 +135,15 @@ body:has(.nav-cb:checked){overflow:hidden}
 @media (min-width:901px){.drawer,.nav-cb{display:none}}
 @media (prefers-reduced-motion:reduce){.dpanel,.scrim,.drawer{transition:none}}
 
+/* back to top (shown by site.js) */
+.totop{position:fixed;right:24px;bottom:24px;z-index:40;width:48px;height:48px;border:0;border-radius:12px;background:#6E4BFF;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(40,20,120,.35);cursor:pointer;opacity:0;transform:translateY(12px);pointer-events:none;transition:opacity .25s,transform .25s}
+.totop[hidden]{display:none}
+.totop.on{opacity:.85;transform:none;pointer-events:auto}
+.totop:hover,.totop:focus-visible{opacity:1}
+body:has(.nav-cb:checked) .totop,body:has(.lb[open]) .totop{display:none}
+@media (max-width:640px){.totop{width:44px;height:44px;right:16px;bottom:16px}}
+@media (prefers-reduced-motion:reduce){.totop{transition:none}}
+
 /* buttons */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;border-radius:12px;font:700 16px/1.2 var(--ff);text-decoration:none;border:0;cursor:pointer;text-align:center}
 .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent-hover);color:#fff}

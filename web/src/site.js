@@ -132,6 +132,26 @@
     navState();
   }
 
+  // back to top: shown after one screen while scrolling; on phones it hides again after 2.5 s idle
+  var tt = $('.totop');
+  if (tt) {
+    tt.hidden = false;
+    var ttBusy = false, ttIdle = null;
+    var ttUpd = function () {
+      ttBusy = false;
+      var on = scrollY > innerHeight;
+      tt.classList.toggle('on', on);
+      clearTimeout(ttIdle);
+      if (on && innerWidth <= 640) ttIdle = setTimeout(function () { tt.classList.remove('on'); }, 2500);
+    };
+    addEventListener('scroll', function () { if (!ttBusy) { ttBusy = true; requestAnimationFrame(ttUpd); } }, { passive: true });
+    tt.addEventListener('click', function () {
+      scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+      var h = $('main h1') || $('#main');
+      if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
+    });
+  }
+
   // language dropdowns: close on Escape or a click outside
   var dds = $$('.lang-dd');
   d.addEventListener('click', function (e) { dds.forEach(function (dd) { if (dd.open && !dd.contains(e.target)) dd.open = false; }); });

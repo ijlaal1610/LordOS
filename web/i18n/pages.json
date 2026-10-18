@@ -118,7 +118,8 @@
     "mitLine": "LordOS is free software under the MIT license",
     "menu": "Menu",
     "closeMenu": "Close menu",
-    "contact": "Contact"
+    "contact": "Contact",
+    "toTop": "Back to top"
   },
   "es": {
     "navPaper": "Paper",
@@ -239,7 +240,8 @@
     "mitLine": "LordOS es software libre con licencia MIT",
     "menu": "Menú",
     "closeMenu": "Cerrar menú",
-    "contact": "Contacto"
+    "contact": "Contacto",
+    "toTop": "Volver arriba"
   },
   "pt": {
     "navPaper": "Paper",
@@ -360,6 +362,7 @@
     "mitLine": "LordOS é software livre sob a licença MIT",
     "menu": "Menu",
     "closeMenu": "Fechar menu",
-    "contact": "Contato"
+    "contact": "Contato",
+    "toTop": "Voltar ao topo"
   }
 }

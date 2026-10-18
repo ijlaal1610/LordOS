@@ -119,9 +119,10 @@ const PH_RE = /\[\[([A-Z][A-Z0-9_]*)\]\]/g;
 const notePh = (text, where) => { for (const m of String(text).matchAll(PH_RE)) placeholders.set(`${where}: [[${m[1]}]]`, true); return text; };
 const phIn = (text, where) => notePh(text, where).replace(PH_RE, '\u0001$1\u0001');
 const phOut = (html) => html.replace(/\u0001([A-Z0-9_]+)\u0001/g, '<mark class="ph">[[$1]]</mark>');
-const jsSrc = src('site.js');
+const minJs = (j) => j.split('\n').map((x) => x.trim()).filter((x) => x && !x.startsWith('//')).join('\n');
+const jsSrc = minJs(src('site.js'));
 const jsUrl = hashed(Buffer.from(jsSrc), 'site', 'js');
-const themeSrc = src('theme.js');
+const themeSrc = minJs(src('theme.js'));
 const themeUrl = hashed(Buffer.from(themeSrc), 'theme', 'js');
 
 // ---------- images ----------
@@ -393,6 +394,7 @@ const MOON = '<svg class="ts-moon" width="14" height="14" viewBox="0 0 24 24" fi
 function themeSwitch(t) {
   return `<button type="button" class="theme-sw" role="switch" aria-checked="false"><span class="vh">${esc(t.pages.darkMode)}</span><span class="ts-ball" aria-hidden="true">${SUN}${MOON}</span></button>`;
 }
+const toTop = (t) => `<button type="button" class="totop" hidden aria-label="${esc(t.pages.toTop)}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12M12 20V9M7 13l5-5 5 5"/></svg></button>`;
 function footer(t, page = 'home') {
   const l = t.lang;
   if (!footerJson) {
@@ -407,7 +409,7 @@ function footer(t, page = 'home') {
 </div>
 <p>${esc(t.footer)}</p>
 </div>
-</footer>`;
+</footer>${toTop(t)}`;
   }
   const cols = (footerJson.columns || []).map((c, i) => `<nav class="fcol" aria-labelledby="fcol-${i}">
 <h2 id="fcol-${i}">${esc(loc(c.title, l))}</h2>
@@ -432,7 +434,7 @@ ${langMenu(t, page, true)}
 </div>
 </div>
 </div>
-</footer>`;
+</footer>${toTop(t)}`;
 }
 
 const ICONS = ['M4 17l6-6-6-6M12 19h8', 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z', 'M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18M12 3a9 9 0 110 18 9 9 0 010-18', 'M7 11V8a5 5 0 0110 0v3M5 11h14v10H5z', 'M4 6h16v12H4zM4 7l8 6 8-6', 'M4 5h16v14H4zM4 9h16M8 5v4'];
@@ -788,7 +790,7 @@ ${(c.items || []).map((it) => {
 
 // 404 (English, noindex)
 write('404.html', render(tpl.notFound, {
-  img,
+  img, js: jsUrl, toTop: toTop(dict.en),
   head: `<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Page not found · LordOS</title>
