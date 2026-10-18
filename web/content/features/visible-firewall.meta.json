@@ -1,0 +1,348 @@
+{
+  "slug": "visible-firewall",
+  "order": 3,
+  "title": {
+    "en": "A firewall you can see",
+    "es": "Un firewall que podés ver",
+    "pt": "Um firewall que você pode ver"
+  },
+  "tagline": {
+    "en": "See every app's connections on a live map, then allow, block or limit each app, enforced in the kernel.",
+    "es": "Mirá las conexiones de cada app en un mapa en vivo y después permití, bloqueá o limitá cada app, con reglas que aplica el kernel.",
+    "pt": "Veja as conexões de cada app num mapa ao vivo e depois permita, bloqueie ou limite cada app, com regras aplicadas pelo kernel."
+  },
+  "lumo": {
+    "pose": "shield",
+    "intro": {
+      "en": "This is my favourite room: the map! I watch every app that talks to the internet, and when you say an app may not, I make sure the kernel itself says no.",
+      "es": "Esta es mi habitación favorita: ¡el mapa! Vigilo cada app que habla con internet, y cuando decís que una app no puede, me aseguro de que el propio kernel diga que no.",
+      "pt": "Este é meu cômodo favorito: o mapa! Eu vigio cada app que fala com a internet, e quando você diz que um app não pode, garanto que o próprio kernel diga não."
+    }
+  },
+  "screenshots": [
+    {
+      "file": "docs/screenshots/monitor-network-map.png",
+      "caption": {
+        "en": "Monitor → Network: apps on the left, their destinations on a world map, the summary on the right.",
+        "es": "Monitor → Red: las apps a la izquierda, sus destinos en un mapa del mundo y el resumen a la derecha.",
+        "pt": "Monitor → Rede: os apps à esquerda, os destinos num mapa-múndi e o resumo à direita."
+      }
+    },
+    {
+      "file": "docs/firewall-monitor-denied.png",
+      "caption": {
+        "en": "The Rule switch set to deny for one app, with the kernel's allowed and denied counters.",
+        "es": "El interruptor de Regla en denegar para una app, con los contadores de permitidas y denegadas del kernel.",
+        "pt": "O botão de Regra em negar para um app, com os contadores de permitidas e negadas do kernel."
+      }
+    },
+    {
+      "file": "docs/firewall-settings.png",
+      "caption": {
+        "en": "Settings → Privacy → App network access: the mode, Trusted apps and Restricted apps.",
+        "es": "Ajustes → Red de las apps: el modo, las apps de confianza y las restringidas.",
+        "pt": "Ajustes → Rede dos apps: o modo, os apps confiáveis e os restritos."
+      }
+    },
+    {
+      "file": "docs/firewall-escape-blocked.png",
+      "caption": {
+        "en": "Escape attempts through the user's service manager, all denied.",
+        "es": "Intentos de escape a través del gestor de servicios del usuario, todos denegados.",
+        "pt": "Tentativas de fuga pelo gerenciador de serviços do usuário, todas negadas."
+      }
+    },
+    {
+      "file": "docs/firewall-app-denied.png",
+      "caption": {
+        "en": "A denied app: its commands get \"Operation not permitted\".",
+        "es": "Una app denegada: sus comandos reciben \"Operation not permitted\".",
+        "pt": "Um app negado: os comandos recebem \"Operation not permitted\"."
+      }
+    }
+  ],
+  "diagrams": [
+    {
+      "id": "path",
+      "kind": "flow",
+      "title": {
+        "en": "The path of a connection",
+        "es": "El camino de una conexión",
+        "pt": "O caminho de uma conexão"
+      },
+      "nodes": [
+        {
+          "id": "socket",
+          "label": {
+            "en": "App opens a connection",
+            "es": "La app abre una conexión",
+            "pt": "O app abre uma conexão"
+          },
+          "sub": {
+            "en": "connect, sendto, bind or socket",
+            "es": "connect, sendto, bind o socket",
+            "pt": "connect, sendto, bind ou socket"
+          },
+          "tone": "user"
+        },
+        {
+          "id": "hook",
+          "label": {
+            "en": "cgroup eBPF hook",
+            "es": "Gancho eBPF de cgroup",
+            "pt": "Gancho eBPF de cgroup"
+          },
+          "sub": {
+            "en": "In the kernel; finds the app by its scope",
+            "es": "En el kernel; reconoce la app por su scope",
+            "pt": "No kernel; reconhece o app pelo escopo"
+          },
+          "tone": "kernel"
+        },
+        {
+          "id": "rule",
+          "label": {
+            "en": "Per-app rules",
+            "es": "Reglas por app",
+            "pt": "Regras por app"
+          },
+          "sub": {
+            "en": "Restrictions, then the most specific rule, then trusted, then mode",
+            "es": "Restricciones, luego la regla más específica, luego confianza, luego el modo",
+            "pt": "Restrições, depois a regra mais específica, depois confiança, depois o modo"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "verdict",
+          "label": {
+            "en": "Allow or deny",
+            "es": "Permitir o denegar",
+            "pt": "Permitir ou negar"
+          },
+          "sub": {
+            "en": "Denied: the app gets EPERM",
+            "es": "Denegada: la app recibe EPERM",
+            "pt": "Negada: o app recebe EPERM"
+          },
+          "tone": "deny"
+        },
+        {
+          "id": "monitor",
+          "label": {
+            "en": "Monitor map",
+            "es": "Mapa del Monitor",
+            "pt": "Mapa do Monitor"
+          },
+          "sub": {
+            "en": "New connections and counters, once per second",
+            "es": "Conexiones nuevas y contadores, una vez por segundo",
+            "pt": "Conexões novas e contadores, uma vez por segundo"
+          },
+          "tone": "ours"
+        }
+      ],
+      "edges": [
+        {
+          "from": "socket",
+          "to": "hook",
+          "label": {
+            "en": "system call",
+            "es": "llamada al sistema",
+            "pt": "chamada de sistema"
+          }
+        },
+        {
+          "from": "hook",
+          "to": "rule",
+          "label": {
+            "en": "map lookup",
+            "es": "búsqueda en el mapa",
+            "pt": "consulta ao mapa"
+          }
+        },
+        {
+          "from": "rule",
+          "to": "verdict",
+          "label": {
+            "en": "decision",
+            "es": "decisión",
+            "pt": "decisão"
+          }
+        },
+        {
+          "from": "verdict",
+          "to": "monitor",
+          "label": {
+            "en": "ring buffer",
+            "es": "anillo de eventos",
+            "pt": "anel de eventos"
+          }
+        }
+      ],
+      "caption": {
+        "en": "The decision happens in the kernel when the connection opens; nothing runs per packet.",
+        "es": "La decisión ocurre en el kernel cuando se abre la conexión; nada corre por cada paquete.",
+        "pt": "A decisão acontece no kernel quando a conexão abre; nada roda por pacote."
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "flow",
+      "title": {
+        "en": "Where domain names come from",
+        "es": "De dónde salen los nombres de dominio",
+        "pt": "De onde vêm os nomes de domínio"
+      },
+      "nodes": [
+        {
+          "id": "resolver",
+          "label": {
+            "en": "System resolver",
+            "es": "Resolvedor del sistema",
+            "pt": "Resolvedor do sistema"
+          },
+          "sub": {
+            "en": "systemd-resolved, or replies from port 53 of the configured servers",
+            "es": "systemd-resolved, o respuestas del puerto 53 de los servidores configurados",
+            "pt": "systemd-resolved, ou respostas da porta 53 dos servidores configurados"
+          },
+          "tone": "reused"
+        },
+        {
+          "id": "reader",
+          "label": {
+            "en": "Strict DNS reader",
+            "es": "Lector DNS estricto",
+            "pt": "Leitor DNS estrito"
+          },
+          "sub": {
+            "en": "Only the chain that follows from the question",
+            "es": "Solo la cadena que sale de la pregunta",
+            "pt": "Só a cadeia que decorre da pergunta"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "maps",
+          "label": {
+            "en": "Address entries",
+            "es": "Entradas por dirección",
+            "pt": "Entradas por endereço"
+          },
+          "sub": {
+            "en": "One kernel map node per learned address",
+            "es": "Un nodo del mapa del kernel por dirección aprendida",
+            "pt": "Um nó do mapa do kernel por endereço aprendido"
+          },
+          "tone": "kernel"
+        },
+        {
+          "id": "nope",
+          "label": {
+            "en": "App's own DNS",
+            "es": "DNS propio de la app",
+            "pt": "DNS próprio do app"
+          },
+          "sub": {
+            "en": "Never learned: such addresses don't match an allow rule",
+            "es": "Nunca se aprende: esas direcciones no coinciden con una regla de permitir",
+            "pt": "Nunca é aprendido: esses endereços não batem com regra de permitir"
+          },
+          "tone": "deny"
+        }
+      ],
+      "edges": [
+        {
+          "from": "resolver",
+          "to": "reader",
+          "label": {
+            "en": "answers",
+            "es": "respuestas",
+            "pt": "respostas"
+          }
+        },
+        {
+          "from": "reader",
+          "to": "maps",
+          "label": {
+            "en": "name → IP",
+            "es": "nombre → IP",
+            "pt": "nome → IP"
+          }
+        }
+      ],
+      "caption": {
+        "en": "Domain rules trust only answers the system resolver received, never packets an app received itself.",
+        "es": "Las reglas por dominio solo confían en respuestas que recibió el resolvedor del sistema, nunca en paquetes que recibió la app.",
+        "pt": "Regras por domínio só confiam em respostas recebidas pelo resolvedor do sistema, nunca em pacotes recebidos pelo próprio app."
+      }
+    }
+  ],
+  "sources": [
+    {
+      "path": "server/src/netperm/np.bpf.c",
+      "what": {
+        "en": "The cgroup eBPF programs",
+        "es": "Los programas eBPF de cgroup",
+        "pt": "Os programas eBPF de cgroup"
+      }
+    },
+    {
+      "path": "server/src/netperm/netperm.c",
+      "what": {
+        "en": "The root service lord-netperm",
+        "es": "El servicio root lord-netperm",
+        "pt": "O serviço root lord-netperm"
+      }
+    },
+    {
+      "path": "server/src/netperm/npcompile.c",
+      "what": {
+        "en": "Rules compiled into kernel maps",
+        "es": "Reglas compiladas a mapas del kernel",
+        "pt": "Regras compiladas em mapas do kernel"
+      }
+    },
+    {
+      "path": "server/src/netperm/npdns.c",
+      "what": {
+        "en": "Names from the system resolver",
+        "es": "Nombres desde el resolvedor del sistema",
+        "pt": "Nomes do resolvedor do sistema"
+      }
+    },
+    {
+      "path": "server/src/fw/rules.c",
+      "what": {
+        "en": "Rules, precedence and the file reader",
+        "es": "Reglas, precedencia y lector del archivo",
+        "pt": "Regras, precedência e leitor do arquivo"
+      }
+    },
+    {
+      "path": "server/src/ui/js_fw.c",
+      "what": {
+        "en": "lord.fw, the session API",
+        "es": "lord.fw, la API de la sesión",
+        "pt": "lord.fw, a API da sessão"
+      }
+    },
+    {
+      "path": "server/tests/netperm_integration.sh",
+      "what": {
+        "en": "Kernel integration test",
+        "es": "Prueba de integración con el kernel",
+        "pt": "Teste de integração com o kernel"
+      }
+    },
+    {
+      "path": "docs/FIREWALL.md",
+      "what": {
+        "en": "Full design and measurements",
+        "es": "Diseño completo y mediciones",
+        "pt": "Projeto completo e medições"
+      }
+    }
+  ]
+}

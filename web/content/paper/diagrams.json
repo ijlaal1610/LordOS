@@ -1,0 +1,798 @@
+{
+  "diagrams": [
+    {
+      "id": "layers",
+      "kind": "stack",
+      "title": {
+        "en": "The layers of LordOS",
+        "es": "Las capas de LordOS",
+        "pt": "As camadas do LordOS"
+      },
+      "nodes": [
+        {
+          "id": "apps",
+          "label": {
+            "en": "Apps",
+            "es": "Apps",
+            "pt": "Apps"
+          },
+          "sub": {
+            "en": "Built-in apps and the theme · isolated .lpk apps · Linux apps (GTK, Qt, browsers)",
+            "es": "Apps incluidas y el tema · apps .lpk aisladas · apps de Linux (GTK, Qt, navegadores)",
+            "pt": "Apps incluídos e o tema · apps .lpk isolados · apps Linux (GTK, Qt, navegadores)"
+          },
+          "tone": "user"
+        },
+        {
+          "id": "engine",
+          "label": {
+            "en": "LordOS UI engine",
+            "es": "Motor de interfaz de LordOS",
+            "pt": "Motor de interface do LordOS"
+          },
+          "sub": {
+            "en": "React on QuickJS, native layout, painting and text in C. Used by LordOS's own apps; Linux apps don't go through it",
+            "es": "React sobre QuickJS, layout, pintado y texto nativos en C. Lo usan las apps de LordOS; las apps de Linux no pasan por acá",
+            "pt": "React sobre QuickJS, layout, pintura e texto nativos em C. Usado pelos apps do LordOS; apps Linux não passam por ele"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "server",
+          "label": {
+            "en": "LordOS display server and Wayland compositor",
+            "es": "Servidor gráfico y compositor Wayland de LordOS",
+            "pt": "Servidor gráfico e compositor Wayland do LordOS"
+          },
+          "sub": {
+            "en": "lord-server, in C: KMS without libdrm, evdev without libinput, composition on CPU or GPU. Linux apps and isolated .lpk apps connect here as Wayland clients",
+            "es": "lord-server, en C: KMS sin libdrm, evdev sin libinput, composición en CPU o GPU. Las apps de Linux y las .lpk aisladas se conectan acá como clientes Wayland",
+            "pt": "lord-server, em C: KMS sem libdrm, evdev sem libinput, composição na CPU ou GPU. Apps Linux e apps .lpk isolados se conectam aqui como clientes Wayland"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "debian",
+          "label": {
+            "en": "Debian 13 userland",
+            "es": "Espacio de usuario de Debian 13",
+            "pt": "Espaço de usuário do Debian 13"
+          },
+          "sub": {
+            "en": "dpkg and packages, Mesa (optional GPU), PipeWire, libwayland, libxkbcommon, systemd",
+            "es": "dpkg y paquetes, Mesa (GPU opcional), PipeWire, libwayland, libxkbcommon, systemd",
+            "pt": "dpkg e pacotes, Mesa (GPU opcional), PipeWire, libwayland, libxkbcommon, systemd"
+          },
+          "tone": "reused"
+        },
+        {
+          "id": "kernel",
+          "label": {
+            "en": "Linux kernel",
+            "es": "Kernel Linux",
+            "pt": "Kernel Linux"
+          },
+          "sub": {
+            "en": "DRM/KMS, evdev, Landlock, seccomp, cgroups v2, eBPF",
+            "es": "DRM/KMS, evdev, Landlock, seccomp, cgroups v2, eBPF",
+            "pt": "DRM/KMS, evdev, Landlock, seccomp, cgroups v2, eBPF"
+          },
+          "tone": "kernel"
+        }
+      ],
+      "edges": [],
+      "caption": {
+        "en": "Violet layers are LordOS's own code; the lower layers are reused from Debian and Linux.",
+        "es": "Las capas violetas son código propio de LordOS; las de abajo se reutilizan de Debian y Linux.",
+        "pt": "As camadas violeta são código próprio do LordOS; as de baixo são reaproveitadas do Debian e do Linux."
+      }
+    },
+    {
+      "id": "processes",
+      "kind": "stack",
+      "title": {
+        "en": "Processes and privileges",
+        "es": "Procesos y privilegios",
+        "pt": "Processos e privilégios"
+      },
+      "nodes": [
+        {
+          "id": "apps",
+          "label": {
+            "en": "Sandboxed app processes",
+            "es": "Procesos de apps aisladas",
+            "pt": "Processos de apps isolados"
+          },
+          "sub": {
+            "en": "lord-server --app <id>: one per .lpk app and Passwords; Landlock, seccomp, cgroup",
+            "es": "lord-server --app <id>: uno por app .lpk y Contraseñas; Landlock, seccomp, cgroup",
+            "pt": "lord-server --app <id>: um por app .lpk e Senhas; Landlock, seccomp, cgroup"
+          },
+          "tone": "user"
+        },
+        {
+          "id": "helpers",
+          "label": {
+            "en": "Sandboxed helpers",
+            "es": "Ayudantes aislados",
+            "pt": "Ajudantes isolados"
+          },
+          "sub": {
+            "en": "lord-doc, lord-media, lord-maild, lord-vault: no sockets, no exec, files only as descriptors",
+            "es": "lord-doc, lord-media, lord-maild, lord-vault: sin sockets, sin exec, archivos solo como descriptores",
+            "pt": "lord-doc, lord-media, lord-maild, lord-vault: sem sockets, sem exec, arquivos só como descritores"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "session",
+          "label": {
+            "en": "lord-server (one per user)",
+            "es": "lord-server (uno por usuario)",
+            "pt": "lord-server (um por usuário)"
+          },
+          "sub": {
+            "en": "Runs as the user: compositor, UI engine, broker; no command execution",
+            "es": "Corre como el usuario: compositor, motor de interfaz, broker; sin ejecución de comandos",
+            "pt": "Roda como o usuário: compositor, motor de interface, broker; sem execução de comandos"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "root",
+          "label": {
+            "en": "Root services with closed interfaces",
+            "es": "Servicios root con interfaces cerradas",
+            "pt": "Serviços root com interfaces fechadas"
+          },
+          "sub": {
+            "en": "lord-sessiond, lord-netd, lord-netperm, lord-fand, and the admin helper's fixed action table",
+            "es": "lord-sessiond, lord-netd, lord-netperm, lord-fand y la tabla fija de acciones del ayudante admin",
+            "pt": "lord-sessiond, lord-netd, lord-netperm, lord-fand e a tabela fixa de ações do ajudante admin"
+          },
+          "tone": "kernel"
+        },
+        {
+          "id": "kernel",
+          "label": {
+            "en": "Linux kernel",
+            "es": "Kernel Linux",
+            "pt": "Kernel Linux"
+          },
+          "sub": {
+            "en": "Enforces Landlock, seccomp, cgroups and the firewall's eBPF programs",
+            "es": "Aplica Landlock, seccomp, cgroups y los programas eBPF del firewall",
+            "pt": "Aplica Landlock, seccomp, cgroups e os programas eBPF do firewall"
+          },
+          "tone": "kernel"
+        }
+      ],
+      "edges": [],
+      "caption": {
+        "en": "Privilege goes down the stack; each layer talks to the one below only through a narrow, validated interface.",
+        "es": "El privilegio aumenta hacia abajo; cada capa habla con la de abajo solo por una interfaz angosta y validada.",
+        "pt": "O privilégio aumenta para baixo; cada camada fala com a de baixo só por uma interface estreita e validada."
+      }
+    },
+    {
+      "id": "sessions",
+      "kind": "flow",
+      "title": {
+        "en": "Lending the display to a session",
+        "es": "Prestarle la pantalla a una sesión",
+        "pt": "Emprestar a tela a uma sessão"
+      },
+      "nodes": [
+        {
+          "id": "greeter",
+          "label": {
+            "en": "Login screen",
+            "es": "Pantalla de inicio de sesión",
+            "pt": "Tela de login"
+          },
+          "sub": {
+            "en": "Runs as lordos-greeter; only sends the request",
+            "es": "Corre como lordos-greeter; solo envía el pedido",
+            "pt": "Roda como lordos-greeter; só envia o pedido"
+          },
+          "tone": "user"
+        },
+        {
+          "id": "sessiond",
+          "label": {
+            "en": "lord-sessiond (root)",
+            "es": "lord-sessiond (root)",
+            "pt": "lord-sessiond (root)"
+          },
+          "sub": {
+            "en": "Verifies the password against /etc/shadow",
+            "es": "Verifica la contraseña contra /etc/shadow",
+            "pt": "Verifica a senha contra /etc/shadow"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "devices",
+          "label": {
+            "en": "Card and input",
+            "es": "Placa e entrada",
+            "pt": "Placa e entrada"
+          },
+          "sub": {
+            "en": "Opened as root, passed over a socket",
+            "es": "Abiertos como root, pasados por un socket",
+            "pt": "Abertos como root, passados por um socket"
+          },
+          "tone": "kernel"
+        },
+        {
+          "id": "session",
+          "label": {
+            "en": "User session",
+            "es": "Sesión del usuario",
+            "pt": "Sessão do usuário"
+          },
+          "sub": {
+            "en": "lord-server as the user, composing on GPU or CPU",
+            "es": "lord-server como el usuario, componiendo en GPU o CPU",
+            "pt": "lord-server como o usuário, compondo na GPU ou CPU"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "switch",
+          "label": {
+            "en": "Switch user",
+            "es": "Cambiar de usuario",
+            "pt": "Trocar de usuário"
+          },
+          "sub": {
+            "en": "Input revoked, display control dropped, then lent to the next",
+            "es": "Entrada revocada, control de pantalla quitado, y recién ahí se presta a la siguiente",
+            "pt": "Entrada revogada, controle da tela retirado, só então emprestado à próxima"
+          },
+          "tone": "deny"
+        }
+      ],
+      "edges": [
+        {
+          "from": "greeter",
+          "to": "sessiond",
+          "label": {
+            "en": "login request",
+            "es": "pedido de inicio",
+            "pt": "pedido de login"
+          }
+        },
+        {
+          "from": "sessiond",
+          "to": "devices",
+          "label": {
+            "en": "opens",
+            "es": "abre",
+            "pt": "abre"
+          }
+        },
+        {
+          "from": "devices",
+          "to": "session",
+          "label": {
+            "en": "lent",
+            "es": "prestados",
+            "pt": "emprestados"
+          }
+        },
+        {
+          "from": "session",
+          "to": "switch",
+          "label": {
+            "en": "on a switch",
+            "es": "al cambiar",
+            "pt": "na troca"
+          }
+        }
+      ],
+      "caption": {
+        "en": "The visible session uses the GPU without ever being root; on a switch its access is revoked before the next session gets the devices.",
+        "es": "La sesión visible usa la GPU sin ser nunca root; al cambiar, se le revoca el acceso antes de que la siguiente reciba los dispositivos.",
+        "pt": "A sessão visível usa a GPU sem nunca ser root; na troca, o acesso é revogado antes que a próxima receba os dispositivos."
+      }
+    },
+    {
+      "id": "frame",
+      "kind": "flow",
+      "title": {
+        "en": "From a mouse move to a new frame",
+        "es": "De un movimiento del mouse a un cuadro nuevo",
+        "pt": "De um movimento do mouse a um novo quadro"
+      },
+      "nodes": [
+        {
+          "id": "input",
+          "label": {
+            "en": "evdev event",
+            "es": "Evento evdev",
+            "pt": "Evento evdev"
+          },
+          "sub": {
+            "en": "From the kernel",
+            "es": "Desde el kernel",
+            "pt": "Do kernel"
+          },
+          "tone": "kernel"
+        },
+        {
+          "id": "hit",
+          "label": {
+            "en": "Hit test",
+            "es": "Búsqueda del nodo",
+            "pt": "Teste de clique"
+          },
+          "sub": {
+            "en": "Which node is under the pointer",
+            "es": "Qué nodo está bajo el puntero",
+            "pt": "Qual nó está sob o ponteiro"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "react",
+          "label": {
+            "en": "React update",
+            "es": "Actualización de React",
+            "pt": "Atualização do React"
+          },
+          "sub": {
+            "en": "Only changed nodes are marked",
+            "es": "Solo se marcan los nodos que cambiaron",
+            "pt": "Só os nós alterados são marcados"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "paint",
+          "label": {
+            "en": "Layout and paint",
+            "es": "Layout y pintado",
+            "pt": "Layout e pintura"
+          },
+          "sub": {
+            "en": "Only the damaged region",
+            "es": "Solo la región dañada",
+            "pt": "Só a região alterada"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "flip",
+          "label": {
+            "en": "Page flip",
+            "es": "Cambio de página",
+            "pt": "Troca de página"
+          },
+          "sub": {
+            "en": "On the next vblank, CPU or GPU path",
+            "es": "En el próximo vblank, por CPU o GPU",
+            "pt": "No próximo vblank, via CPU ou GPU"
+          },
+          "tone": "kernel"
+        }
+      ],
+      "edges": [
+        {
+          "from": "input",
+          "to": "hit",
+          "label": {
+            "en": "read",
+            "es": "lectura",
+            "pt": "leitura"
+          }
+        },
+        {
+          "from": "hit",
+          "to": "react",
+          "label": {
+            "en": "JS event",
+            "es": "evento JS",
+            "pt": "evento JS"
+          }
+        },
+        {
+          "from": "react",
+          "to": "paint",
+          "label": {
+            "en": "styles, children, text",
+            "es": "estilos, hijos, texto",
+            "pt": "estilos, filhos, texto"
+          }
+        },
+        {
+          "from": "paint",
+          "to": "flip",
+          "label": {
+            "en": "back buffer",
+            "es": "buffer trasero",
+            "pt": "buffer traseiro"
+          }
+        }
+      ],
+      "caption": {
+        "en": "The engine repaints only what changed, then flips the page on the next vertical blank.",
+        "es": "El motor repinta solo lo que cambió y cambia de página en el siguiente refresco vertical.",
+        "pt": "O motor repinta só o que mudou e troca a página no próximo retraço vertical."
+      }
+    },
+    {
+      "id": "permission",
+      "kind": "flow",
+      "title": {
+        "en": "How a permission request travels",
+        "es": "Cómo viaja un pedido de permiso",
+        "pt": "Como um pedido de permissão viaja"
+      },
+      "nodes": [
+        {
+          "id": "app",
+          "label": {
+            "en": "Isolated app",
+            "es": "App aislada",
+            "pt": "App isolado"
+          },
+          "sub": {
+            "en": "Asks through the broker socket",
+            "es": "Pide por el socket del broker",
+            "pt": "Pede pelo socket do broker"
+          },
+          "tone": "user"
+        },
+        {
+          "id": "broker",
+          "label": {
+            "en": "Broker in lord-server",
+            "es": "Broker en lord-server",
+            "pt": "Broker no lord-server"
+          },
+          "sub": {
+            "en": "Looks up the stored decision (perms.c)",
+            "es": "Busca la decisión guardada (perms.c)",
+            "pt": "Consulta a decisão salva (perms.c)"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "prompt",
+          "label": {
+            "en": "System prompt",
+            "es": "Aviso del sistema",
+            "pt": "Aviso do sistema"
+          },
+          "sub": {
+            "en": "Only if not decided yet; drawn by the session",
+            "es": "Solo si todavía no se decidió; lo dibuja la sesión",
+            "pt": "Só se ainda não foi decidido; desenhado pela sessão"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "user",
+          "label": {
+            "en": "You decide",
+            "es": "Vos decidís",
+            "pt": "Você decide"
+          },
+          "sub": {
+            "en": "Allow or Don't Allow, saved in permisos.json",
+            "es": "Permitir o No permitir, guardado en permisos.json",
+            "pt": "Permitir ou Não permitir, salvo em permisos.json"
+          },
+          "tone": "user"
+        },
+        {
+          "id": "enforce",
+          "label": {
+            "en": "Enforced",
+            "es": "Se aplica",
+            "pt": "Aplicado"
+          },
+          "sub": {
+            "en": "Broker checks every call; sandbox and kernel block the rest",
+            "es": "El broker revisa cada llamada; la caja de arena y el kernel bloquean el resto",
+            "pt": "O broker confere cada chamada; o sandbox e o kernel bloqueiam o resto"
+          },
+          "tone": "kernel"
+        },
+        {
+          "id": "revoke",
+          "label": {
+            "en": "Revocable",
+            "es": "Revocable",
+            "pt": "Revogável"
+          },
+          "sub": {
+            "en": "Settings → Privacy; camera and microphone stop at once",
+            "es": "Ajustes → Privacidad; cámara y micrófono se cortan al instante",
+            "pt": "Ajustes → Privacidade; câmera e microfone param na hora"
+          },
+          "tone": "allow"
+        }
+      ],
+      "edges": [
+        {
+          "from": "app",
+          "to": "broker",
+          "label": {
+            "en": "request",
+            "es": "pedido",
+            "pt": "pedido"
+          }
+        },
+        {
+          "from": "broker",
+          "to": "prompt",
+          "label": {
+            "en": "state is Ask",
+            "es": "estado Preguntar",
+            "pt": "estado Perguntar"
+          }
+        },
+        {
+          "from": "prompt",
+          "to": "user",
+          "label": {
+            "en": "shown",
+            "es": "se muestra",
+            "pt": "exibido"
+          }
+        },
+        {
+          "from": "user",
+          "to": "enforce",
+          "label": {
+            "en": "answer",
+            "es": "respuesta",
+            "pt": "resposta"
+          }
+        },
+        {
+          "from": "enforce",
+          "to": "revoke",
+          "label": {
+            "en": "later",
+            "es": "después",
+            "pt": "depois"
+          }
+        }
+      ],
+      "caption": {
+        "en": "The app never answers its own prompt: the decision is stored where it can't write, and checked in C on every request.",
+        "es": "La app nunca responde su propio aviso: la decisión se guarda donde no puede escribir y se revisa en C en cada pedido.",
+        "pt": "O app nunca responde ao próprio aviso: a decisão fica onde ele não pode escrever e é conferida em C a cada pedido."
+      }
+    },
+    {
+      "id": "firewall",
+      "kind": "flow",
+      "title": {
+        "en": "The path of a connection",
+        "es": "El camino de una conexión",
+        "pt": "O caminho de uma conexão"
+      },
+      "nodes": [
+        {
+          "id": "socket",
+          "label": {
+            "en": "App opens a connection",
+            "es": "La app abre una conexión",
+            "pt": "O app abre uma conexão"
+          },
+          "sub": {
+            "en": "connect, sendto, bind or socket",
+            "es": "connect, sendto, bind o socket",
+            "pt": "connect, sendto, bind ou socket"
+          },
+          "tone": "user"
+        },
+        {
+          "id": "hook",
+          "label": {
+            "en": "cgroup eBPF hook",
+            "es": "Gancho eBPF de cgroup",
+            "pt": "Gancho eBPF de cgroup"
+          },
+          "sub": {
+            "en": "In the kernel; finds the app by its scope",
+            "es": "En el kernel; reconoce la app por su scope",
+            "pt": "No kernel; reconhece o app pelo escopo"
+          },
+          "tone": "kernel"
+        },
+        {
+          "id": "rule",
+          "label": {
+            "en": "Per-app rules",
+            "es": "Reglas por app",
+            "pt": "Regras por app"
+          },
+          "sub": {
+            "en": "Restrictions, then the most specific rule, then trusted, then mode",
+            "es": "Restricciones, luego la regla más específica, luego confianza, luego el modo",
+            "pt": "Restrições, depois a regra mais específica, depois confiança, depois o modo"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "verdict",
+          "label": {
+            "en": "Allow or deny",
+            "es": "Permitir o denegar",
+            "pt": "Permitir ou negar"
+          },
+          "sub": {
+            "en": "Denied: the app gets EPERM",
+            "es": "Denegada: la app recibe EPERM",
+            "pt": "Negada: o app recebe EPERM"
+          },
+          "tone": "deny"
+        },
+        {
+          "id": "monitor",
+          "label": {
+            "en": "Monitor map",
+            "es": "Mapa del Monitor",
+            "pt": "Mapa do Monitor"
+          },
+          "sub": {
+            "en": "New connections and counters, once per second",
+            "es": "Conexiones nuevas y contadores, una vez por segundo",
+            "pt": "Conexões novas e contadores, uma vez por segundo"
+          },
+          "tone": "ours"
+        }
+      ],
+      "edges": [
+        {
+          "from": "socket",
+          "to": "hook",
+          "label": {
+            "en": "system call",
+            "es": "llamada al sistema",
+            "pt": "chamada de sistema"
+          }
+        },
+        {
+          "from": "hook",
+          "to": "rule",
+          "label": {
+            "en": "map lookup",
+            "es": "búsqueda en el mapa",
+            "pt": "consulta ao mapa"
+          }
+        },
+        {
+          "from": "rule",
+          "to": "verdict",
+          "label": {
+            "en": "decision",
+            "es": "decisión",
+            "pt": "decisão"
+          }
+        },
+        {
+          "from": "verdict",
+          "to": "monitor",
+          "label": {
+            "en": "ring buffer",
+            "es": "anillo de eventos",
+            "pt": "anel de eventos"
+          }
+        }
+      ],
+      "caption": {
+        "en": "The decision happens in the kernel when the connection opens; nothing runs per packet.",
+        "es": "La decisión ocurre en el kernel cuando se abre la conexión; nada corre por cada paquete.",
+        "pt": "A decisão acontece no kernel quando a conexão abre; nada roda por pacote."
+      }
+    },
+    {
+      "id": "helpers",
+      "kind": "flow",
+      "title": {
+        "en": "Opening an untrusted file",
+        "es": "Abrir un archivo no confiable",
+        "pt": "Abrir um arquivo não confiável"
+      },
+      "nodes": [
+        {
+          "id": "app",
+          "label": {
+            "en": "App asks to open a file",
+            "es": "La app pide abrir un archivo",
+            "pt": "O app pede para abrir um arquivo"
+          },
+          "sub": {
+            "en": "PDF, archive, video, photo, mail",
+            "es": "PDF, archivo comprimido, video, foto, correo",
+            "pt": "PDF, arquivo compactado, vídeo, foto, e-mail"
+          },
+          "tone": "user"
+        },
+        {
+          "id": "server",
+          "label": {
+            "en": "lord-server",
+            "es": "lord-server",
+            "pt": "lord-server"
+          },
+          "sub": {
+            "en": "Validates the path and opens the file",
+            "es": "Valida la ruta y abre el archivo",
+            "pt": "Valida o caminho e abre o arquivo"
+          },
+          "tone": "ours"
+        },
+        {
+          "id": "helper",
+          "label": {
+            "en": "Sandboxed helper",
+            "es": "Ayudante aislado",
+            "pt": "Ajudante isolado"
+          },
+          "sub": {
+            "en": "Parses with FFmpeg, Poppler, libarchive or OpenSSL; no network, no exec",
+            "es": "Lee con FFmpeg, Poppler, libarchive u OpenSSL; sin red, sin exec",
+            "pt": "Lê com FFmpeg, Poppler, libarchive ou OpenSSL; sem rede, sem exec"
+          },
+          "tone": "reused"
+        },
+        {
+          "id": "result",
+          "label": {
+            "en": "Sealed shared memory",
+            "es": "Memoria compartida sellada",
+            "pt": "Memória compartilhada selada"
+          },
+          "sub": {
+            "en": "Pixels or pages, validated by lord-server",
+            "es": "Píxeles o páginas, validados por lord-server",
+            "pt": "Pixels ou páginas, validados pelo lord-server"
+          },
+          "tone": "allow"
+        }
+      ],
+      "edges": [
+        {
+          "from": "app",
+          "to": "server",
+          "label": {
+            "en": "request",
+            "es": "pedido",
+            "pt": "pedido"
+          }
+        },
+        {
+          "from": "server",
+          "to": "helper",
+          "label": {
+            "en": "file descriptor",
+            "es": "descriptor de archivo",
+            "pt": "descritor de arquivo"
+          }
+        },
+        {
+          "from": "helper",
+          "to": "result",
+          "label": {
+            "en": "sealed memfd",
+            "es": "memfd sellado",
+            "pt": "memfd selado"
+          }
+        }
+      ],
+      "caption": {
+        "en": "A malicious file can crash its helper, but the helper can't reach the network, run programs or open other files.",
+        "es": "Un archivo malicioso puede tirar abajo su ayudante, pero el ayudante no puede llegar a la red, correr programas ni abrir otros archivos.",
+        "pt": "Um arquivo malicioso pode derrubar o ajudante, mas o ajudante não alcança a rede, não roda programas nem abre outros arquivos."
+      }
+    }
+  ]
+}

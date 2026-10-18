@@ -1,0 +1,796 @@
+{
+  "categories": [
+    {
+      "id": "about",
+      "title": {
+        "en": "About LordOS",
+        "es": "Sobre LordOS",
+        "pt": "Sobre o LordOS"
+      },
+      "items": [
+        {
+          "id": "what-is-lordos",
+          "q": {
+            "en": "What is LordOS?",
+            "es": "¿Qué es LordOS?",
+            "pt": "O que é o LordOS?"
+          },
+          "a": {
+            "en": "LordOS is a free Debian-based GNU/Linux distribution with its own desktop environment. Its display server, Wayland compositor, interface engine and more than 35 native apps are built from their fundamental components on top of Debian, with a light, private and fast desktop as the goal.",
+            "es": "LordOS es una distribución GNU/Linux libre basada en Debian, con su propio entorno de escritorio. Su servidor gráfico, su compositor Wayland, su motor de interfaz y más de 35 apps nativas están construidos desde sus componentes fundamentales sobre Debian, con el objetivo de un escritorio liviano, privado y rápido.",
+            "pt": "O LordOS é uma distribuição GNU/Linux livre baseada no Debian, com seu próprio ambiente de desktop. O servidor gráfico, o compositor Wayland, o motor de interface e mais de 35 apps nativos são construídos a partir de seus componentes fundamentais sobre o Debian, com o objetivo de um desktop leve, privado e rápido."
+          }
+        },
+        {
+          "id": "distro-or-desktop",
+          "q": {
+            "en": "Is it a distribution or a desktop environment?",
+            "es": "¿Es una distribución o un entorno de escritorio?",
+            "pt": "É uma distribuição ou um ambiente de desktop?"
+          },
+          "a": {
+            "en": "Both. You can install LordOS as a complete distribution from the ISO or the Raspberry Pi image, or add the LordOS desktop to an existing Debian 13 system with a single command. In both cases the base system comes from Debian.",
+            "es": "Las dos cosas. Podés instalar LordOS como distribución completa desde la ISO o la imagen para Raspberry Pi, o sumar el escritorio de LordOS a un Debian 13 que ya tengas con un solo comando. En los dos casos, el sistema base viene de Debian.",
+            "pt": "Os dois. Você pode instalar o LordOS como distribuição completa a partir da ISO ou da imagem para Raspberry Pi, ou adicionar o desktop do LordOS a um Debian 13 que você já tem com um único comando. Nos dois casos, o sistema base vem do Debian."
+          }
+        },
+        {
+          "id": "based-on-debian",
+          "q": {
+            "en": "Is it based on Debian?",
+            "es": "¿Está basada en Debian?",
+            "pt": "É baseada no Debian?"
+          },
+          "a": {
+            "en": "Yes, on Debian 13. The kernel, drivers, Mesa, PipeWire, CUPS, BlueZ and every package in the Store come from Debian's own mirrors and keep Debian's security updates. LordOS replaces only the graphical layer: there is no X11, GNOME or KDE underneath.",
+            "es": "Sí, en Debian 13. El kernel, los drivers, Mesa, PipeWire, CUPS, BlueZ y todos los paquetes de la Tienda vienen de los mirrors de Debian y reciben sus actualizaciones de seguridad. LordOS reemplaza solo la capa gráfica: abajo no hay X11, GNOME ni KDE.",
+            "pt": "Sim, no Debian 13. O kernel, os drivers, o Mesa, o PipeWire, o CUPS, o BlueZ e todos os pacotes da Loja vêm dos espelhos do Debian e recebem as atualizações de segurança dele. O LordOS substitui só a camada gráfica: por baixo não há X11, GNOME nem KDE."
+          }
+        },
+        {
+          "id": "why-not-gnome-kde",
+          "q": {
+            "en": "Why not just use GNOME or KDE?",
+            "es": "¿Por qué no usar GNOME o KDE?",
+            "pt": "Por que não usar GNOME ou KDE?"
+          },
+          "a": {
+            "en": "We want a complete desktop that runs well on modest hardware: an idle LordOS session uses about 120 MB of memory and no CPU. Building our own environment also lets us design privacy in from the start, with per-app isolation, permissions and a visible firewall. GTK (GNOME) and Qt (KDE) apps still run on LordOS.",
+            "es": "Queremos un escritorio completo que ande bien en equipos modestos: una sesión de LordOS en reposo usa unos 120 MB de memoria y nada de CPU. Tener nuestro propio entorno también nos deja pensar la privacidad desde el principio, con aislamiento por app, permisos y un firewall visible. Las apps GTK (GNOME) y Qt (KDE) igual funcionan en LordOS.",
+            "pt": "Queremos um desktop completo que rode bem em hardware modesto: uma sessão do LordOS em repouso usa cerca de 120 MB de memória e nada de CPU. Ter nosso próprio ambiente também permite pensar a privacidade desde o começo, com isolamento por app, permissões e um firewall visível. Os apps GTK (GNOME) e Qt (KDE) continuam funcionando no LordOS."
+          }
+        },
+        {
+          "id": "who-makes-it",
+          "q": {
+            "en": "Who makes LordOS?",
+            "es": "¿Quién hace LordOS?",
+            "pt": "Quem faz o LordOS?"
+          },
+          "a": {
+            "en": "LordOS is made by the IPERFEX group, by Pablo Miranda and Federico Pereira, in Argentina.",
+            "es": "LordOS lo hace el grupo IPERFEX, de Pablo Miranda y Federico Pereira, en Argentina.",
+            "pt": "O LordOS é feito pelo grupo IPERFEX, de Pablo Miranda e Federico Pereira, na Argentina."
+          }
+        },
+        {
+          "id": "is-it-free",
+          "q": {
+            "en": "Is it free?",
+            "es": "¿Es gratis?",
+            "pt": "É grátis?"
+          },
+          "a": {
+            "en": "Yes. LordOS is free to download and use, with no accounts, ads or paid editions. If it helps you, you can [support the project](/#support) with a voluntary donation.",
+            "es": "Sí. LordOS es gratis para descargar y usar, sin cuentas, publicidad ni ediciones pagas. Si te sirve, podés [apoyar el proyecto](/#support) con una donación voluntaria.",
+            "pt": "Sim. O LordOS é grátis para baixar e usar, sem contas, anúncios nem edições pagas. Se ele te ajudar, você pode [apoiar o projeto](/#support) com uma doação voluntária."
+          }
+        },
+        {
+          "id": "license",
+          "q": {
+            "en": "What is the license?",
+            "es": "¿Qué licencia tiene?",
+            "pt": "Qual é a licença?"
+          },
+          "a": {
+            "en": "LordOS's own code is under the MIT license, so you can use, study, change and share it. Bundled components and Debian packages keep their own licenses; see [Licenses](/legal/licenses/). The name, the crown logo and Lumo follow the [Trademark policy](/legal/trademark/).",
+            "es": "El código propio de LordOS está bajo la licencia MIT: podés usarlo, estudiarlo, cambiarlo y compartirlo. Los componentes incluidos y los paquetes de Debian mantienen sus propias licencias; mirá [Licencias](/legal/licenses/). El nombre, el logo de la corona y Lumo siguen la [Política de marca](/legal/trademark/).",
+            "pt": "O código próprio do LordOS está sob a licença MIT: você pode usar, estudar, alterar e compartilhar. Os componentes incluídos e os pacotes do Debian mantêm suas próprias licenças; veja [Licenças](/legal/licenses/). O nome, o logo da coroa e o Lumo seguem a [Política de marca](/legal/trademark/)."
+          }
+        },
+        {
+          "id": "production-ready",
+          "q": {
+            "en": "Is it ready for everyday use?",
+            "es": "¿Está lista para usar todos los días?",
+            "pt": "Está pronto para o dia a dia?"
+          },
+          "a": {
+            "en": "Not yet: LordOS 0.7.0 is the first public beta. Most of it works, but some parts haven't been tested on real hardware yet (for example the Raspberry Pi 5 desktop, real printers and NVIDIA cards), and features such as accessibility tools are still to come. Try it live or on a spare computer, and keep backups.",
+            "es": "Todavía no: LordOS 0.7.0 es la primera beta pública. Casi todo funciona, pero algunas partes todavía no se probaron en hardware real (por ejemplo el escritorio en la Raspberry Pi 5, impresoras reales y placas NVIDIA), y faltan cosas como las herramientas de accesibilidad. Probala en modo live o en una compu de repuesto, y hacé copias de seguridad.",
+            "pt": "Ainda não: o LordOS 0.7.0 é o primeiro beta público. Quase tudo funciona, mas algumas partes ainda não foram testadas em hardware real (por exemplo o desktop no Raspberry Pi 5, impressoras reais e placas NVIDIA), e recursos como as ferramentas de acessibilidade ainda estão por vir. Experimente no modo live ou num computador reserva, e faça backups."
+          }
+        }
+      ]
+    },
+    {
+      "id": "install",
+      "title": {
+        "en": "Download and install",
+        "es": "Descarga e instalación",
+        "pt": "Download e instalação"
+      },
+      "items": [
+        {
+          "id": "requirements",
+          "q": {
+            "en": "What do I need to run LordOS?",
+            "es": "¿Qué necesito para usar LordOS?",
+            "pt": "Do que eu preciso para rodar o LordOS?"
+          },
+          "a": {
+            "en": "A 64-bit PC (x86-64) or a Raspberry Pi 5, a USB stick of at least 1 GB for the ISO, and a disk of at least 8 GB to install it. A 3D graphics card is optional: without one, LordOS draws with the CPU.",
+            "es": "Una PC de 64 bits (x86-64) o una Raspberry Pi 5, un pendrive de al menos 1 GB para la ISO y un disco de al menos 8 GB para instalarla. La placa de video 3D es opcional: sin ella, LordOS dibuja con la CPU.",
+            "pt": "Um PC de 64 bits (x86-64) ou um Raspberry Pi 5, um pendrive de pelo menos 1 GB para a ISO e um disco de pelo menos 8 GB para instalar. A placa de vídeo 3D é opcional: sem ela, o LordOS desenha com a CPU."
+          }
+        },
+        {
+          "id": "64-bit-pc",
+          "q": {
+            "en": "Which processors are supported?",
+            "es": "¿Qué procesadores soporta?",
+            "pt": "Quais processadores são suportados?"
+          },
+          "a": {
+            "en": "On PCs, 64-bit x86 processors (amd64) from Intel and AMD. On ARM, only the Raspberry Pi 5 is supported. There are no 32-bit images.",
+            "es": "En PC, procesadores x86 de 64 bits (amd64) de Intel y AMD. En ARM, solo la Raspberry Pi 5. No hay imágenes de 32 bits.",
+            "pt": "No PC, processadores x86 de 64 bits (amd64) da Intel e da AMD. Em ARM, só o Raspberry Pi 5. Não há imagens de 32 bits."
+          }
+        },
+        {
+          "id": "how-much-ram",
+          "q": {
+            "en": "How much memory does it need?",
+            "es": "¿Cuánta memoria necesita?",
+            "pt": "Quanta memória ele precisa?"
+          },
+          "a": {
+            "en": "An idle LordOS session uses about 120 MB, and the whole live system used about 465 MB on a 4 GB test machine. We haven't published an official minimum yet; the apps you open (a web browser, above all) decide how much more you need. On the Raspberry Pi 5, 4 GB works and 8 or 16 GB is recommended.",
+            "es": "Una sesión de LordOS en reposo usa unos 120 MB, y el sistema live completo usó unos 465 MB en una máquina de prueba de 4 GB. Todavía no publicamos un mínimo oficial; cuánto más necesitás depende de las apps que abras (sobre todo el navegador). En la Raspberry Pi 5 anda con 4 GB y se recomiendan 8 o 16 GB.",
+            "pt": "Uma sessão do LordOS em repouso usa cerca de 120 MB, e o sistema live completo usou cerca de 465 MB numa máquina de teste de 4 GB. Ainda não publicamos um mínimo oficial; quanto a mais você precisa depende dos apps que abrir (principalmente o navegador). No Raspberry Pi 5, 4 GB funcionam e 8 ou 16 GB são recomendados."
+          }
+        },
+        {
+          "id": "uefi-bios",
+          "q": {
+            "en": "Does it boot with UEFI or legacy BIOS?",
+            "es": "¿Arranca con UEFI o BIOS?",
+            "pt": "Ele inicia com UEFI ou BIOS legado?"
+          },
+          "a": {
+            "en": "Both: the ISO is hybrid and works with UEFI and with BIOS/Legacy, and the installer sets up the disk for both. Secure Boot has to be turned off for now. Write the ISO with dd, balenaEtcher, Ventoy or Rufus in DD mode.",
+            "es": "Con los dos: la ISO es híbrida y funciona con UEFI y con BIOS/Legacy, y el instalador prepara el disco para ambos. Por ahora tenés que desactivar Secure Boot. Grabá la ISO con dd, balenaEtcher, Ventoy o Rufus en modo DD.",
+            "pt": "Com os dois: a ISO é híbrida e funciona com UEFI e com BIOS/Legacy, e o instalador prepara o disco para ambos. Por enquanto o Secure Boot precisa estar desligado. Grave a ISO com dd, balenaEtcher, Ventoy ou Rufus no modo DD."
+          }
+        },
+        {
+          "id": "live-mode",
+          "q": {
+            "en": "Can I try it without installing?",
+            "es": "¿Puedo probarla sin instalar?",
+            "pt": "Posso experimentar sem instalar?"
+          },
+          "a": {
+            "en": "Yes. Boot the ISO from a USB stick and LordOS starts in live mode, without touching your disk; changes are kept in memory and disappear when you turn it off. The boot menu also offers Spanish and Portuguese, a safe mode without the GPU and a copy-to-RAM option.",
+            "es": "Sí. Arrancá la ISO desde un pendrive y LordOS inicia en modo live, sin tocar tu disco; los cambios quedan en memoria y se pierden al apagar. El menú de arranque también ofrece español y portugués, un modo seguro sin GPU y la opción de copiar todo a la RAM.",
+            "pt": "Sim. Inicie a ISO a partir de um pendrive e o LordOS abre no modo live, sem mexer no seu disco; as mudanças ficam na memória e somem ao desligar. O menu de inicialização também oferece espanhol e português, um modo seguro sem GPU e a opção de copiar tudo para a RAM."
+          }
+        },
+        {
+          "id": "dual-boot",
+          "q": {
+            "en": "Can I install it next to another system?",
+            "es": "¿Puedo instalarla junto a otro sistema?",
+            "pt": "Posso instalar junto com outro sistema?"
+          },
+          "a": {
+            "en": "Not with the ISO's installer yet: it uses the whole disk and erases it, after asking you to confirm. To keep another system, install Debian 13 next to it with Debian's installer and then add LordOS with the one-line installer, or use a separate disk.",
+            "es": "Con el instalador de la ISO, todavía no: usa el disco entero y lo borra, después de pedirte que confirmes. Si querés conservar otro sistema, instalá Debian 13 al lado con el instalador de Debian y después sumá LordOS con el instalador de una línea, o usá otro disco.",
+            "pt": "Com o instalador da ISO, ainda não: ele usa o disco inteiro e o apaga, depois de pedir sua confirmação. Para manter outro sistema, instale o Debian 13 ao lado com o instalador do Debian e depois adicione o LordOS com o instalador de uma linha, ou use outro disco."
+          }
+        },
+        {
+          "id": "debian-one-liner",
+          "q": {
+            "en": "How do I install LordOS on Debian 13?",
+            "es": "¿Cómo instalo LordOS en Debian 13?",
+            "pt": "Como instalo o LordOS no Debian 13?"
+          },
+          "a": {
+            "en": "Run `curl -fsSL https://lordos.org/install.sh | sh` on Debian 13 (amd64 or arm64). The script asks before changing anything, downloads the LordOS package from GitHub Releases, checks its SHA-256 and signature, and installs it with apt, so the dependencies come from your Debian mirrors. Other Debian versions are refused.",
+            "es": "Ejecutá `curl -fsSL https://lordos.org/install.sh | sh` en Debian 13 (amd64 o arm64). El script pregunta antes de cambiar nada, descarga el paquete de LordOS desde GitHub Releases, verifica su SHA-256 y su firma, y lo instala con apt, así que las dependencias salen de tus mirrors de Debian. Con otras versiones de Debian no se instala.",
+            "pt": "Rode `curl -fsSL https://lordos.org/install.sh | sh` no Debian 13 (amd64 ou arm64). O script pergunta antes de mudar qualquer coisa, baixa o pacote do LordOS do GitHub Releases, confere o SHA-256 e a assinatura, e instala com o apt, então as dependências vêm dos seus espelhos do Debian. Outras versões do Debian são recusadas."
+          }
+        },
+        {
+          "id": "what-script-changes",
+          "q": {
+            "en": "What does the Debian installer change?",
+            "es": "¿Qué cambia el instalador para Debian?",
+            "pt": "O que o instalador para Debian muda?"
+          },
+          "a": {
+            "en": "It installs the `lordos` package and a few audio and font packages, creates the login screen's system user, adds your user to groups such as audio and video, and enables the LordOS services. If you agree, it disables your current display manager (GDM, SDDM, LightDM…) for the next boot without removing it. It doesn't touch your network configuration or your home folder, and remote desktop stays off.",
+            "es": "Instala el paquete `lordos` y algunos paquetes de audio y fuentes, crea el usuario de sistema de la pantalla de inicio, suma tu usuario a grupos como audio y video, y habilita los servicios de LordOS. Si aceptás, deshabilita tu gestor de pantalla actual (GDM, SDDM, LightDM…) para el próximo arranque, sin desinstalarlo. No toca tu configuración de red ni tu carpeta personal, y el escritorio remoto queda apagado.",
+            "pt": "Instala o pacote `lordos` e alguns pacotes de áudio e fontes, cria o usuário de sistema da tela de login, adiciona seu usuário a grupos como audio e video, e habilita os serviços do LordOS. Se você aceitar, desativa o seu gerenciador de exibição atual (GDM, SDDM, LightDM…) para a próxima inicialização, sem removê-lo. Não mexe na sua configuração de rede nem na sua pasta pessoal, e o desktop remoto fica desligado."
+          }
+        },
+        {
+          "id": "uninstall",
+          "q": {
+            "en": "How do I uninstall it?",
+            "es": "¿Cómo la desinstalo?",
+            "pt": "Como desinstalo?"
+          },
+          "a": {
+            "en": "On Debian, run `curl -fsSL https://lordos.org/install.sh | sh -s -- --uninstall` (add `--purge` to remove its configuration too). It undoes exactly what the installer recorded and turns your previous display manager back on; your home folder is kept. If you installed from the ISO, LordOS is the whole system, so you'd reinstall another one.",
+            "es": "En Debian, ejecutá `curl -fsSL https://lordos.org/install.sh | sh -s -- --uninstall` (sumá `--purge` para borrar también su configuración). Deshace exactamente lo que el instalador registró y vuelve a activar tu gestor de pantalla anterior; tu carpeta personal queda. Si instalaste desde la ISO, LordOS es todo el sistema, así que tendrías que instalar otro.",
+            "pt": "No Debian, rode `curl -fsSL https://lordos.org/install.sh | sh -s -- --uninstall` (adicione `--purge` para remover também a configuração). Ele desfaz exatamente o que o instalador registrou e reativa o seu gerenciador de exibição anterior; sua pasta pessoal é mantida. Se você instalou pela ISO, o LordOS é o sistema inteiro, então seria preciso instalar outro."
+          }
+        },
+        {
+          "id": "verify-signatures",
+          "q": {
+            "en": "How do I verify a download?",
+            "es": "¿Cómo verifico una descarga?",
+            "pt": "Como verifico um download?"
+          },
+          "a": {
+            "en": "Each release has a `SHA256SUMS` file signed with the LordOS release key (Ed25519, fingerprint `c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053ea108e`). Check the signature with OpenSSL and the file with `sha256sum -c`; the exact commands are in the [Security policy](/legal/security/). The Debian installer does this by itself and refuses an invalid signature.",
+            "es": "Cada versión trae un archivo `SHA256SUMS` firmado con la clave de versiones de LordOS (Ed25519, huella `c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053ea108e`). Verificá la firma con OpenSSL y el archivo con `sha256sum -c`; los comandos exactos están en la [Política de seguridad](/legal/security/). El instalador para Debian lo hace solo y rechaza una firma inválida.",
+            "pt": "Cada versão traz um arquivo `SHA256SUMS` assinado com a chave de versões do LordOS (Ed25519, impressão digital `c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053ea108e`). Confira a assinatura com o OpenSSL e o arquivo com `sha256sum -c`; os comandos exatos estão na [Política de segurança](/legal/security/). O instalador para Debian faz isso sozinho e recusa uma assinatura inválida."
+          }
+        }
+      ]
+    },
+    {
+      "id": "raspberry-pi",
+      "title": {
+        "en": "Raspberry Pi",
+        "es": "Raspberry Pi",
+        "pt": "Raspberry Pi"
+      },
+      "items": [
+        {
+          "id": "which-pi",
+          "q": {
+            "en": "Which Raspberry Pi models are supported?",
+            "es": "¿Qué modelos de Raspberry Pi soporta?",
+            "pt": "Quais modelos de Raspberry Pi são suportados?"
+          },
+          "a": {
+            "en": "Only the Raspberry Pi 5 (4, 8 or 16 GB). The Pi 500 and CM5 may work but aren't tested, and the Pi 4, 400, CM4 and older models aren't supported. The Pi 5 image is still in beta: parts such as HDMI and the desktop session haven't been verified on the board yet.",
+            "es": "Solo la Raspberry Pi 5 (4, 8 o 16 GB). La Pi 500 y la CM5 quizás anden, pero no están probadas, y la Pi 4, 400, CM4 y modelos anteriores no están soportados. La imagen para Pi 5 sigue en beta: partes como el HDMI y la sesión de escritorio todavía no se verificaron en la placa.",
+            "pt": "Só o Raspberry Pi 5 (4, 8 ou 16 GB). O Pi 500 e o CM5 talvez funcionem, mas não foram testados, e o Pi 4, 400, CM4 e modelos anteriores não são suportados. A imagem para o Pi 5 ainda está em beta: partes como o HDMI e a sessão de desktop ainda não foram verificadas na placa."
+          }
+        },
+        {
+          "id": "sd-or-nvme",
+          "q": {
+            "en": "Can I use an SD card or an NVMe drive?",
+            "es": "¿Puedo usar una tarjeta SD o un disco NVMe?",
+            "pt": "Posso usar um cartão SD ou um SSD NVMe?"
+          },
+          "a": {
+            "en": "Both: the same image (`lordos-<version>-rpi5-arm64.img.xz`) is written to an SD card or to an NVMe drive. NVMe on the M.2 HAT+ is recommended for speed; to boot from it first, set the Pi's EEPROM boot order to NVMe.",
+            "es": "Las dos: la misma imagen (`lordos-<versión>-rpi5-arm64.img.xz`) se graba en una tarjeta SD o en un disco NVMe. Por velocidad se recomienda NVMe en el M.2 HAT+; para arrancar primero desde ahí, poné NVMe primero en el orden de arranque de la EEPROM de la Pi.",
+            "pt": "Os dois: a mesma imagem (`lordos-<versão>-rpi5-arm64.img.xz`) é gravada num cartão SD ou num SSD NVMe. Pela velocidade, recomenda-se NVMe no M.2 HAT+; para iniciar primeiro por ele, coloque o NVMe primeiro na ordem de boot da EEPROM do Pi."
+          }
+        },
+        {
+          "id": "pi-fans",
+          "q": {
+            "en": "Does it control the fan? What about the Argon ONE V5 case?",
+            "es": "¿Controla el ventilador? ¿Y la carcasa Argon ONE V5?",
+            "pt": "Ele controla a ventoinha? E o case Argon ONE V5?"
+          },
+          "a": {
+            "en": "Yes. LordOS drives the Pi 5 fan header by temperature, with profiles in Settings → Cooling; an Active Cooler or a fan heatsink is recommended, since without one the Pi slows down when hot. The Argon ONE V5 case's fan uses the same header: choose it in Settings → Cooling → Case and restart, which also enables its front USB ports and audio.",
+            "es": "Sí. LordOS maneja el conector de ventilador de la Pi 5 según la temperatura, con perfiles en Ajustes → Refrigeración; se recomienda un Active Cooler o un disipador con ventilador, porque sin eso la Pi baja la velocidad cuando se calienta. El ventilador de la carcasa Argon ONE V5 usa el mismo conector: elegila en Ajustes → Refrigeración → Caja y reiniciá, y eso también activa sus USB frontales y el audio.",
+            "pt": "Sim. O LordOS controla o conector de ventoinha do Pi 5 pela temperatura, com perfis em Ajustes → Resfriamento; recomenda-se um Active Cooler ou um dissipador com ventoinha, porque sem isso o Pi reduz a velocidade quando esquenta. A ventoinha do case Argon ONE V5 usa o mesmo conector: escolha-o em Ajustes → Resfriamento → Gabinete e reinicie, o que também ativa as USB frontais e o áudio."
+          }
+        },
+        {
+          "id": "switch-files",
+          "q": {
+            "en": "What are the switch files on the boot partition?",
+            "es": "¿Qué son los archivos interruptor de la partición de arranque?",
+            "pt": "O que são os arquivos interruptores da partição de boot?"
+          },
+          "a": {
+            "en": "Files you put on the image's `bootfs` partition before booting: `lordos-user.txt` (copied from `lordos-user.txt.example`) creates your user and can join a Wi-Fi network, an empty `ssh` file turns on the SSH server, and `remote-desktop` turns on LordOS remote desktop. Raspberry Pi Imager's `userconf.txt` also works. Without a user file, LordOS starts in setup mode so you can create the account in Settings → Users.",
+            "es": "Archivos que ponés en la partición `bootfs` de la imagen antes de arrancar: `lordos-user.txt` (copiado de `lordos-user.txt.example`) crea tu usuario y puede conectarse a una red Wi-Fi, un archivo vacío `ssh` enciende el servidor SSH y `remote-desktop` enciende el escritorio remoto de LordOS. También sirve el `userconf.txt` de Raspberry Pi Imager. Sin archivo de usuario, LordOS arranca en modo configuración para que crees la cuenta en Ajustes → Usuarios.",
+            "pt": "Arquivos que você coloca na partição `bootfs` da imagem antes de iniciar: `lordos-user.txt` (copiado de `lordos-user.txt.example`) cria seu usuário e pode conectar a uma rede Wi-Fi, um arquivo vazio `ssh` liga o servidor SSH e `remote-desktop` liga o desktop remoto do LordOS. O `userconf.txt` do Raspberry Pi Imager também funciona. Sem arquivo de usuário, o LordOS inicia no modo de configuração para você criar a conta em Ajustes → Usuários."
+          }
+        }
+      ]
+    },
+    {
+      "id": "apps",
+      "title": {
+        "en": "Apps",
+        "es": "Apps",
+        "pt": "Apps"
+      },
+      "items": [
+        {
+          "id": "included-apps",
+          "q": {
+            "en": "Which apps are included?",
+            "es": "¿Qué apps vienen incluidas?",
+            "pt": "Quais apps vêm incluídos?"
+          },
+          "a": {
+            "en": "More than 35 native apps, among them Files, Settings, Terminal, Text Editor, Mail, Calendar, Contacts, Notes, Reminders, Photos, Player, Camera, Voice Recorder, PDF Viewer, Passwords, Monitor, Store, Disks, Backups, Clock and Calculator. On PCs, Firefox ESR and Chromium come preinstalled. See the [apps page](/apps/).",
+            "es": "Más de 35 apps nativas, entre ellas Archivos, Ajustes, Terminal, Editor de texto, Mail, Calendario, Contactos, Notas, Recordatorios, Fotos, Reproductor, Cámara, Grabadora, Visor de PDF, Contraseñas, Monitor, Tienda, Discos, Copias de seguridad, Reloj y Calculadora. En PC vienen instalados Firefox ESR y Chromium. Mirá la [página de apps](/apps/).",
+            "pt": "Mais de 35 apps nativos, entre eles Arquivos, Ajustes, Terminal, Editor de texto, Mail, Calendário, Contatos, Notas, Lembretes, Fotos, Reprodutor, Câmera, Gravador, Visualizador de PDF, Senhas, Monitor, Loja, Discos, Cópias de segurança, Relógio e Calculadora. No PC, o Firefox ESR e o Chromium vêm pré-instalados. Veja a [página de apps](/apps/)."
+          }
+        },
+        {
+          "id": "linux-apps",
+          "q": {
+            "en": "Can I run regular Linux apps?",
+            "es": "¿Puedo usar apps de Linux comunes?",
+            "pt": "Posso rodar apps Linux comuns?"
+          },
+          "a": {
+            "en": "Yes, apps that speak Wayland: GTK 3 and 4 (GNOME), Qt (KDE), Firefox, Chromium and Electron apps open as normal LordOS windows, with the LordOS frame and theme. Apps that only support X11 don't run yet, because Xwayland isn't available yet.",
+            "es": "Sí, las que hablan Wayland: las apps GTK 3 y 4 (GNOME), Qt (KDE), Firefox, Chromium y Electron se abren como ventanas normales de LordOS, con su marco y su tema. Las apps que solo soportan X11 todavía no funcionan, porque Xwayland todavía no está disponible.",
+            "pt": "Sim, os que falam Wayland: apps GTK 3 e 4 (GNOME), Qt (KDE), Firefox, Chromium e Electron abrem como janelas normais do LordOS, com a moldura e o tema dele. Apps que só suportam X11 ainda não rodam, porque o Xwayland ainda não está disponível."
+          }
+        },
+        {
+          "id": "flatpak",
+          "q": {
+            "en": "Does it support Flatpak?",
+            "es": "¿Soporta Flatpak?",
+            "pt": "Tem suporte a Flatpak?"
+          },
+          "a": {
+            "en": "Not yet: LordOS doesn't integrate Flatpak. The Store installs Debian packages and LordOS `.lpk` apps, and isolated apps use LordOS's own sandbox.",
+            "es": "Todavía no: LordOS no integra Flatpak. La Tienda instala paquetes de Debian y apps `.lpk` de LordOS, y las apps aisladas usan el sandbox propio de LordOS.",
+            "pt": "Ainda não: o LordOS não integra o Flatpak. A Loja instala pacotes do Debian e apps `.lpk` do LordOS, e os apps isolados usam o sandbox próprio do LordOS."
+          }
+        },
+        {
+          "id": "games",
+          "q": {
+            "en": "Can I play games?",
+            "es": "¿Puedo jugar?",
+            "pt": "Posso jogar?"
+          },
+          "a": {
+            "en": "Wayland games can run with GPU acceleration: LordOS supports fullscreen, relative pointer and pointer locking, which games need, and Neverball has been tested. Games that only use X11 need Xwayland, which isn't available yet, so many games and launchers won't start for now.",
+            "es": "Los juegos para Wayland pueden andar con aceleración por GPU: LordOS soporta pantalla completa, puntero relativo y bloqueo del puntero, que los juegos necesitan, y se probó Neverball. Los juegos que solo usan X11 necesitan Xwayland, que todavía no está disponible, así que por ahora muchos juegos y lanzadores no arrancan.",
+            "pt": "Jogos para Wayland podem rodar com aceleração por GPU: o LordOS suporta tela cheia, ponteiro relativo e travamento do ponteiro, que os jogos precisam, e o Neverball foi testado. Jogos que só usam X11 precisam do Xwayland, que ainda não está disponível, então por enquanto muitos jogos e launchers não abrem."
+          }
+        },
+        {
+          "id": "webassembly",
+          "q": {
+            "en": "What are WebAssembly apps?",
+            "es": "¿Qué son las apps WebAssembly?",
+            "pt": "O que são apps WebAssembly?"
+          },
+          "a": {
+            "en": "LordOS has its own WebAssembly 2.0 interpreter (without SIMD) that `.lpk` apps can use to run code compiled from C, Rust or other languages. A WebAssembly module has no access to files, the network or the system unless its app passes them explicitly.",
+            "es": "LordOS tiene su propio intérprete de WebAssembly 2.0 (sin SIMD) que las apps `.lpk` pueden usar para correr código compilado desde C, Rust u otros lenguajes. Un módulo WebAssembly no tiene acceso a archivos, red ni sistema salvo que su app se los pase explícitamente.",
+            "pt": "O LordOS tem seu próprio interpretador de WebAssembly 2.0 (sem SIMD) que os apps `.lpk` podem usar para rodar código compilado de C, Rust ou outras linguagens. Um módulo WebAssembly não tem acesso a arquivos, rede nem sistema, a menos que o app os passe explicitamente."
+          }
+        },
+        {
+          "id": "store",
+          "q": {
+            "en": "How does the Store work?",
+            "es": "¿Cómo funciona la Tienda?",
+            "pt": "Como a Loja funciona?"
+          },
+          "a": {
+            "en": "The Store installs Debian packages from your apt sources with LordOS's own package engine, which checks Debian's signatures and shows you the plan (what is installed, upgraded or removed, and how much is downloaded) before changing anything. It also installs `.lpk` apps and local `.deb` files. Its package lists are refreshed only when you press Check for updates.",
+            "es": "La Tienda instala paquetes de Debian desde tus fuentes de apt con el motor de paquetes propio de LordOS, que verifica las firmas de Debian y te muestra el plan (qué se instala, actualiza o quita, y cuánto se descarga) antes de cambiar nada. También instala apps `.lpk` y archivos `.deb` locales. Las listas de paquetes se actualizan solo cuando tocás Buscar actualizaciones.",
+            "pt": "A Loja instala pacotes do Debian a partir das suas fontes do apt com o motor de pacotes próprio do LordOS, que confere as assinaturas do Debian e mostra o plano (o que é instalado, atualizado ou removido, e quanto é baixado) antes de mudar qualquer coisa. Ela também instala apps `.lpk` e arquivos `.deb` locais. As listas de pacotes só são atualizadas quando você toca em Procurar atualizações."
+          }
+        },
+        {
+          "id": "lpk-apps",
+          "q": {
+            "en": "What is an .lpk app?",
+            "es": "¿Qué es una app .lpk?",
+            "pt": "O que é um app .lpk?"
+          },
+          "a": {
+            "en": "A `.lpk` is the package format for LordOS native apps: a compressed archive with a manifest, the app's code, its icon and translations. It installs into your home folder without root, runs in its own isolated process and can be signed so you know who made it.",
+            "es": "Un `.lpk` es el formato de paquete de las apps nativas de LordOS: un archivo comprimido con un manifiesto, el código de la app, su ícono y sus traducciones. Se instala en tu carpeta personal sin root, corre en su propio proceso aislado y puede estar firmado para que sepas quién lo hizo.",
+            "pt": "Um `.lpk` é o formato de pacote dos apps nativos do LordOS: um arquivo compactado com um manifesto, o código do app, o ícone e as traduções. Ele é instalado na sua pasta pessoal sem root, roda no próprio processo isolado e pode ser assinado para você saber quem o fez."
+          }
+        }
+      ]
+    },
+    {
+      "id": "privacy-security",
+      "title": {
+        "en": "Privacy and security",
+        "es": "Privacidad y seguridad",
+        "pt": "Privacidade e segurança"
+      },
+      "items": [
+        {
+          "id": "telemetry",
+          "q": {
+            "en": "Does LordOS collect telemetry?",
+            "es": "¿LordOS manda telemetría?",
+            "pt": "O LordOS coleta telemetria?"
+          },
+          "a": {
+            "en": "No. There are no usage statistics, crash reports, device IDs or accounts, and nothing is sent to us. By default LordOS only uses DHCP and DNS on your network, network time and local-network discovery; everything else happens when you ask for it. The full list is in the [Privacy policy](/legal/privacy/).",
+            "es": "No. No hay estadísticas de uso, reportes de fallas, identificadores del equipo ni cuentas, y no se nos envía nada. De fábrica, LordOS solo usa DHCP y DNS en tu red, la hora por red y el descubrimiento en la red local; todo lo demás pasa cuando vos lo pedís. La lista completa está en la [Política de privacidad](/legal/privacy/).",
+            "pt": "Não. Não há estatísticas de uso, relatórios de falhas, identificadores do aparelho nem contas, e nada é enviado para nós. Por padrão, o LordOS só usa DHCP e DNS na sua rede, a hora pela rede e a descoberta na rede local; todo o resto acontece quando você pede. A lista completa está na [Política de privacidade](/legal/privacy/)."
+          }
+        },
+        {
+          "id": "sandbox",
+          "q": {
+            "en": "Which apps are sandboxed?",
+            "es": "¿Qué apps están aisladas?",
+            "pt": "Quais apps ficam isolados?"
+          },
+          "a": {
+            "en": "Every third-party `.lpk` app runs in its own process, isolated with LordOS's own sandbox (Landlock, seccomp, cgroups and no privileges), and reaches the system only through a broker that checks its permissions. Passwords and the helpers that decode mail, documents and media are isolated too. Regular Linux apps (GTK, Qt, browsers) aren't sandboxed, but the per-app firewall applies to them.",
+            "es": "Cada app `.lpk` de terceros corre en su propio proceso, aislada con el sandbox propio de LordOS (Landlock, seccomp, cgroups y sin privilegios), y llega al sistema solo a través de un intermediario que revisa sus permisos. Contraseñas y los procesos que decodifican correo, documentos y multimedia también están aislados. Las apps de Linux comunes (GTK, Qt, navegadores) no están aisladas, pero el firewall por app sí se les aplica.",
+            "pt": "Cada app `.lpk` de terceiros roda no próprio processo, isolado com o sandbox próprio do LordOS (Landlock, seccomp, cgroups e sem privilégios), e só chega ao sistema por um intermediário que confere as permissões. O Senhas e os processos que decodificam e-mail, documentos e mídia também são isolados. Apps Linux comuns (GTK, Qt, navegadores) não ficam isolados, mas o firewall por app vale para eles."
+          }
+        },
+        {
+          "id": "permissions",
+          "q": {
+            "en": "How do app permissions work?",
+            "es": "¿Cómo funcionan los permisos de las apps?",
+            "pt": "Como funcionam as permissões dos apps?"
+          },
+          "a": {
+            "en": "The first time an isolated app wants your files, camera, microphone, screen, network, Bluetooth or USB, the system asks you with a prompt the app can't fake. You can review and change every answer in Settings → Privacy, and revoking a permission takes effect at once. A green dot shows the camera is on and an orange dot the microphone.",
+            "es": "La primera vez que una app aislada quiere tus archivos, la cámara, el micrófono, la pantalla, la red, Bluetooth o USB, el sistema te pregunta con un aviso que la app no puede falsificar. Podés revisar y cambiar cada respuesta en Ajustes → Privacidad, y quitar un permiso tiene efecto al instante. Un punto verde avisa que la cámara está encendida y uno naranja, el micrófono.",
+            "pt": "Na primeira vez que um app isolado quer seus arquivos, a câmera, o microfone, a tela, a rede, o Bluetooth ou o USB, o sistema pergunta com um aviso que o app não consegue falsificar. Você pode revisar e mudar cada resposta em Ajustes → Privacidade, e revogar uma permissão vale na hora. Um ponto verde indica a câmera ligada e um laranja, o microfone."
+          }
+        },
+        {
+          "id": "firewall",
+          "q": {
+            "en": "Is there a per-app firewall?",
+            "es": "¿Hay un firewall por app?",
+            "pt": "Existe um firewall por app?"
+          },
+          "a": {
+            "en": "Yes. `lord-netperm` enforces per-app network rules in the kernel for LordOS apps, `.lpk` apps and Linux apps alike: allow or block, local network or internet, domains, ports and time limits. Monitor shows each app's connections on a world map and lets you block an app with one switch. An \"ask me\" mode is still to come.",
+            "es": "Sí. `lord-netperm` aplica reglas de red por app en el kernel, tanto para las apps de LordOS como para las `.lpk` y las de Linux: permitir o bloquear, red local o internet, dominios, puertos y límites de tiempo. Monitor muestra las conexiones de cada app en un mapa del mundo y te deja bloquear una app con un interruptor. El modo \"preguntarme\" todavía no está.",
+            "pt": "Sim. O `lord-netperm` aplica regras de rede por app no kernel, para os apps do LordOS, os `.lpk` e os apps Linux: permitir ou bloquear, rede local ou internet, domínios, portas e limites de tempo. O Monitor mostra as conexões de cada app num mapa-múndi e deixa bloquear um app com um interruptor. O modo \"perguntar\" ainda está por vir."
+          }
+        },
+        {
+          "id": "remote-desktop",
+          "q": {
+            "en": "Is remote desktop on by default?",
+            "es": "¿El escritorio remoto viene encendido?",
+            "pt": "O desktop remoto vem ligado?"
+          },
+          "a": {
+            "en": "No. It's off by default and port 5673 stays closed until you turn it on in Settings → Sharing. Then you open `https://<the computer's address>:5673` in a browser on your local network and log in with your account; the connection is encrypted with TLS. To reach it from the internet, use a VPN rather than opening the port.",
+            "es": "No. Viene apagado y el puerto 5673 queda cerrado hasta que lo encendés en Ajustes → Compartir. Después abrís `https://<la dirección del equipo>:5673` en un navegador de tu red local y entrás con tu cuenta; la conexión va cifrada con TLS. Para llegar desde internet, usá una VPN en vez de abrir el puerto.",
+            "pt": "Não. Ele vem desligado e a porta 5673 fica fechada até você ligá-lo em Ajustes → Compartilhar. Depois você abre `https://<o endereço do computador>:5673` num navegador da sua rede local e entra com sua conta; a conexão é criptografada com TLS. Para acessar pela internet, use uma VPN em vez de abrir a porta."
+          }
+        },
+        {
+          "id": "passwords",
+          "q": {
+            "en": "How are my passwords stored?",
+            "es": "¿Cómo se guardan mis contraseñas?",
+            "pt": "Como minhas senhas são guardadas?"
+          },
+          "a": {
+            "en": "In an encrypted vault (XChaCha20-Poly1305 with an Argon2id key) handled by `lord-vault`, a process with no network access. The Passwords app keeps logins, 2FA codes, cards and notes, can unlock with a FIDO2 security key and imports KeePass files; Wi-Fi and VPN passwords and browsers' saved secrets use the same vault. The breached-password check works offline.",
+            "es": "En una bóveda cifrada (XChaCha20-Poly1305 con clave Argon2id) que maneja `lord-vault`, un proceso sin acceso a la red. La app Contraseñas guarda accesos, códigos 2FA, tarjetas y notas, se puede desbloquear con una llave de seguridad FIDO2 e importa archivos de KeePass; las contraseñas de Wi-Fi y VPN y los secretos que guardan los navegadores usan la misma bóveda. La revisión de contraseñas filtradas funciona sin conexión.",
+            "pt": "Num cofre criptografado (XChaCha20-Poly1305 com chave Argon2id) controlado pelo `lord-vault`, um processo sem acesso à rede. O app Senhas guarda logins, códigos 2FA, cartões e notas, pode ser desbloqueado com uma chave de segurança FIDO2 e importa arquivos do KeePass; as senhas de Wi-Fi e VPN e os segredos salvos pelos navegadores usam o mesmo cofre. A verificação de senhas vazadas funciona offline."
+          }
+        },
+        {
+          "id": "signed-packages",
+          "q": {
+            "en": "Are packages signed?",
+            "es": "¿Los paquetes están firmados?",
+            "pt": "Os pacotes são assinados?"
+          },
+          "a": {
+            "en": "Yes. Debian packages are checked against Debian's signed package lists and their SHA-256. `.lpk` apps can be signed with Ed25519, and the Store shows whether one comes from LordOS, a verified author, a named signer or nobody, and warns if it was modified. LordOS's own releases are signed with the release key.",
+            "es": "Sí. Los paquetes de Debian se verifican contra las listas firmadas de Debian y su SHA-256. Las apps `.lpk` pueden estar firmadas con Ed25519, y la Tienda muestra si vienen de LordOS, de un autor verificado, de un firmante con nombre o de nadie, y avisa si fueron modificadas. Las versiones de LordOS se firman con la clave de versiones.",
+            "pt": "Sim. Os pacotes do Debian são conferidos contra as listas assinadas do Debian e o SHA-256. Os apps `.lpk` podem ser assinados com Ed25519, e a Loja mostra se vêm do LordOS, de um autor verificado, de um assinante identificado ou de ninguém, e avisa se foram modificados. As versões do LordOS são assinadas com a chave de versões."
+          }
+        },
+        {
+          "id": "report-vulnerability",
+          "q": {
+            "en": "How do I report a security problem?",
+            "es": "¿Cómo reporto un problema de seguridad?",
+            "pt": "Como relato um problema de segurança?"
+          },
+          "a": {
+            "en": "Write privately to [[SECURITY_EMAIL]] and don't publish details until there is a fix. The [Security policy](/legal/security/) explains the scope, the safe harbour and our response times.",
+            "es": "Escribinos en privado a [[SECURITY_EMAIL]] y no publiques detalles hasta que haya un arreglo. La [Política de seguridad](/legal/security/) explica el alcance, el puerto seguro y nuestros tiempos de respuesta.",
+            "pt": "Escreva em privado para [[SECURITY_EMAIL]] e não publique detalhes até haver uma correção. A [Política de segurança](/legal/security/) explica o escopo, o porto seguro e nossos prazos de resposta."
+          }
+        }
+      ]
+    },
+    {
+      "id": "hardware",
+      "title": {
+        "en": "Hardware",
+        "es": "Hardware",
+        "pt": "Hardware"
+      },
+      "items": [
+        {
+          "id": "gpu",
+          "q": {
+            "en": "Which graphics cards work?",
+            "es": "¿Qué placas de video funcionan?",
+            "pt": "Quais placas de vídeo funcionam?"
+          },
+          "a": {
+            "en": "LordOS uses Debian's Mesa drivers for AMD, Intel and NVIDIA (radeonsi, iris, nouveau and their Vulkan drivers), and falls back to drawing with the CPU when there is no usable GPU. If graphics fail, choose the safe mode in the boot menu. Testing on real AMD and NVIDIA cards is still in progress.",
+            "es": "LordOS usa los drivers Mesa de Debian para AMD, Intel y NVIDIA (radeonsi, iris, nouveau y sus drivers Vulkan), y si no hay una GPU que sirva dibuja con la CPU. Si falla el video, elegí el modo seguro en el menú de arranque. Las pruebas en placas AMD y NVIDIA reales siguen en curso.",
+            "pt": "O LordOS usa os drivers Mesa do Debian para AMD, Intel e NVIDIA (radeonsi, iris, nouveau e os drivers Vulkan deles), e quando não há uma GPU utilizável desenha com a CPU. Se o vídeo falhar, escolha o modo seguro no menu de inicialização. Os testes em placas AMD e NVIDIA reais ainda estão em andamento."
+          }
+        },
+        {
+          "id": "nvidia",
+          "q": {
+            "en": "Does it work with NVIDIA cards?",
+            "es": "¿Funciona con placas NVIDIA?",
+            "pt": "Funciona com placas NVIDIA?"
+          },
+          "a": {
+            "en": "NVIDIA cards use Mesa's open drivers (nouveau, and NVK for Vulkan), which are included. It hasn't been tested on real NVIDIA hardware yet, and NVIDIA's proprietary driver isn't supported yet. If the desktop doesn't start, the safe mode uses the CPU.",
+            "es": "Las placas NVIDIA usan los drivers abiertos de Mesa (nouveau, y NVK para Vulkan), que vienen incluidos. Todavía no se probó en hardware NVIDIA real, y el driver propietario de NVIDIA todavía no está soportado. Si el escritorio no arranca, el modo seguro usa la CPU.",
+            "pt": "As placas NVIDIA usam os drivers abertos do Mesa (nouveau, e NVK para Vulkan), que vêm incluídos. Ainda não foi testado em hardware NVIDIA real, e o driver proprietário da NVIDIA ainda não é suportado. Se o desktop não abrir, o modo seguro usa a CPU."
+          }
+        },
+        {
+          "id": "multi-monitor-hidpi",
+          "q": {
+            "en": "Does it support several monitors and HiDPI screens?",
+            "es": "¿Soporta varios monitores y pantallas HiDPI?",
+            "pt": "Suporta vários monitores e telas HiDPI?"
+          },
+          "a": {
+            "en": "Yes. In Settings → Displays you can extend or mirror screens, arrange and rotate them, and set each one's scale (100, 125, 150, 175 or 200 %), even mixing different scales. GTK 4, Qt 6 and Chromium apps draw sharply at fractional scales.",
+            "es": "Sí. En Ajustes → Pantallas podés extender o duplicar pantallas, acomodarlas y rotarlas, y elegir la escala de cada una (100, 125, 150, 175 o 200 %), incluso mezclando escalas distintas. Las apps GTK 4, Qt 6 y Chromium se ven nítidas con escalas fraccionarias.",
+            "pt": "Sim. Em Ajustes → Telas você pode estender ou espelhar telas, organizá-las e girá-las, e definir a escala de cada uma (100, 125, 150, 175 ou 200 %), até misturando escalas diferentes. Apps GTK 4, Qt 6 e Chromium ficam nítidos em escalas fracionárias."
+          }
+        },
+        {
+          "id": "touchpad",
+          "q": {
+            "en": "Do touchpad gestures work?",
+            "es": "¿Funcionan los gestos del touchpad?",
+            "pt": "Os gestos do touchpad funcionam?"
+          },
+          "a": {
+            "en": "Yes. LordOS has its own touchpad driver with tap to click, two-finger click, natural and inertial scrolling, pinch to zoom and three-finger swipes, set up in Settings → Trackpad. Touchscreens work too.",
+            "es": "Sí. LordOS tiene su propio driver de touchpad con tocar para hacer clic, clic con dos dedos, desplazamiento natural y con inercia, pellizcar para hacer zoom y deslizar con tres dedos, que configurás en Ajustes → Trackpad. Las pantallas táctiles también funcionan.",
+            "pt": "Sim. O LordOS tem seu próprio driver de touchpad com tocar para clicar, clique com dois dedos, rolagem natural e com inércia, pinçar para zoom e deslizar com três dedos, configurados em Ajustes → Trackpad. Telas sensíveis ao toque também funcionam."
+          }
+        },
+        {
+          "id": "printers-scanners",
+          "q": {
+            "en": "Can I use printers and scanners?",
+            "es": "¿Puedo usar impresoras y escáneres?",
+            "pt": "Posso usar impressoras e scanners?"
+          },
+          "a": {
+            "en": "Yes, driverless ones: printers that support IPP Everywhere (through CUPS) and scanners that support eSCL, found automatically on your network in Settings → Printers & Scanners. Printers that need a special driver aren't supported yet, and testing with real printers is still pending.",
+            "es": "Sí, las que no necesitan driver: impresoras con IPP Everywhere (a través de CUPS) y escáneres con eSCL, que aparecen solos en tu red en Ajustes → Impresoras y escáneres. Las impresoras que necesitan un driver especial todavía no están soportadas, y las pruebas con impresoras reales siguen pendientes.",
+            "pt": "Sim, as que não precisam de driver: impressoras com IPP Everywhere (via CUPS) e scanners com eSCL, encontrados sozinhos na sua rede em Ajustes → Impressoras e scanners. Impressoras que precisam de driver especial ainda não são suportadas, e os testes com impressoras reais ainda estão pendentes."
+          }
+        },
+        {
+          "id": "bluetooth",
+          "q": {
+            "en": "Does Bluetooth work?",
+            "es": "¿Funciona el Bluetooth?",
+            "pt": "O Bluetooth funciona?"
+          },
+          "a": {
+            "en": "Yes. Settings → Bluetooth finds, pairs and connects devices through BlueZ, and Bluetooth headphones and speakers play through PipeWire.",
+            "es": "Sí. Ajustes → Bluetooth busca, empareja y conecta dispositivos a través de BlueZ, y los auriculares y parlantes Bluetooth suenan a través de PipeWire.",
+            "pt": "Sim. Ajustes → Bluetooth encontra, pareia e conecta dispositivos via BlueZ, e fones e caixas de som Bluetooth tocam pelo PipeWire."
+          }
+        },
+        {
+          "id": "pc-fans",
+          "q": {
+            "en": "Can it control the fans on my PC?",
+            "es": "¿Puede controlar los ventiladores de mi PC?",
+            "pt": "Ele controla as ventoinhas do meu PC?"
+          },
+          "a": {
+            "en": "Only on desktop motherboards with a known fan controller chip, and only if you choose a profile other than System in Settings → Cooling; by default the firmware stays in control. Laptop and graphics card fans are never touched. PC fan control hasn't been tried on a real motherboard yet.",
+            "es": "Solo en motherboards de escritorio con un chip controlador de ventiladores conocido, y solo si elegís un perfil distinto de Sistema en Ajustes → Refrigeración; de fábrica manda el firmware. Los ventiladores de notebooks y placas de video nunca se tocan. El control de ventiladores en PC todavía no se probó en una motherboard real.",
+            "pt": "Só em placas-mãe de desktop com um chip controlador de ventoinhas conhecido, e só se você escolher um perfil diferente de Sistema em Ajustes → Resfriamento; por padrão o firmware continua no controle. As ventoinhas de notebooks e placas de vídeo nunca são tocadas. O controle de ventoinhas no PC ainda não foi testado numa placa-mãe real."
+          }
+        }
+      ]
+    },
+    {
+      "id": "languages-accessibility",
+      "title": {
+        "en": "Languages and accessibility",
+        "es": "Idiomas y accesibilidad",
+        "pt": "Idiomas e acessibilidade"
+      },
+      "items": [
+        {
+          "id": "languages",
+          "q": {
+            "en": "Which languages does LordOS speak?",
+            "es": "¿En qué idiomas está LordOS?",
+            "pt": "Em quais idiomas o LordOS está?"
+          },
+          "a": {
+            "en": "English (the default), Spanish and Portuguese are built in, and you can pick one on the boot menu or in Settings → Language & Region. Other languages are added as language packs: anyone can make one from a set of translation files.",
+            "es": "Inglés (el predeterminado), español y portugués vienen incluidos, y podés elegir uno en el menú de arranque o en Ajustes → Idioma y región. Otros idiomas se suman como paquetes de idioma: cualquiera puede armar uno a partir de un conjunto de archivos de traducción.",
+            "pt": "Inglês (o padrão), espanhol e português vêm incluídos, e você pode escolher um no menu de inicialização ou em Ajustes → Idioma e região. Outros idiomas entram como pacotes de idioma: qualquer pessoa pode montar um a partir de um conjunto de arquivos de tradução."
+          }
+        },
+        {
+          "id": "scripts-input",
+          "q": {
+            "en": "Does it handle Arabic, Hebrew, Asian scripts and input methods?",
+            "es": "¿Maneja árabe, hebreo, escrituras asiáticas y métodos de entrada?",
+            "pt": "Ele lida com árabe, hebraico, escritas asiáticas e métodos de entrada?"
+          },
+          "a": {
+            "en": "Yes. Text layout supports bidirectional text with a mirrored right-to-left interface, Arabic and Indic shaping, Thai, and Chinese, Japanese and Korean. Built-in input methods cover Korean, Japanese (kana and SKK) and Chinese (pinyin), along with every standard keyboard layout.",
+            "es": "Sí. El texto soporta escritura bidireccional con la interfaz espejada de derecha a izquierda, el modelado del árabe y de las escrituras índicas, el tailandés y el chino, japonés y coreano. Los métodos de entrada incluidos cubren coreano, japonés (kana y SKK) y chino (pinyin), además de todas las distribuciones de teclado estándar.",
+            "pt": "Sim. O texto suporta escrita bidirecional com a interface espelhada da direita para a esquerda, a modelagem do árabe e das escritas índicas, o tailandês e o chinês, japonês e coreano. Os métodos de entrada incluídos cobrem coreano, japonês (kana e SKK) e chinês (pinyin), além de todos os layouts de teclado padrão."
+          }
+        },
+        {
+          "id": "accessibility",
+          "q": {
+            "en": "Is LordOS accessible?",
+            "es": "¿LordOS es accesible?",
+            "pt": "O LordOS é acessível?"
+          },
+          "a": {
+            "en": "Partly, for now. There is a Reduce motion setting, per-display scaling and keyboard shortcuts, but a screen reader, screen zoom and a high-contrast theme are not available yet; they are on the roadmap. The website's accessibility is described in the [Accessibility statement](/legal/accessibility/).",
+            "es": "En parte, por ahora. Hay una opción para reducir el movimiento, escala por pantalla y atajos de teclado, pero un lector de pantalla, la lupa y un tema de alto contraste todavía no están; están en la hoja de ruta. La accesibilidad del sitio está descrita en la [Declaración de accesibilidad](/legal/accessibility/).",
+            "pt": "Em parte, por enquanto. Há uma opção para reduzir o movimento, escala por tela e atalhos de teclado, mas um leitor de tela, a lupa e um tema de alto contraste ainda não estão disponíveis; estão no roteiro. A acessibilidade do site está descrita na [Declaração de acessibilidade](/legal/accessibility/)."
+          }
+        }
+      ]
+    },
+    {
+      "id": "updates",
+      "title": {
+        "en": "Updates",
+        "es": "Actualizaciones",
+        "pt": "Atualizações"
+      },
+      "items": [
+        {
+          "id": "how-updates",
+          "q": {
+            "en": "How do I keep LordOS up to date?",
+            "es": "¿Cómo mantengo LordOS actualizada?",
+            "pt": "Como mantenho o LordOS atualizado?"
+          },
+          "a": {
+            "en": "Open the Store's Updates tab and press Check for updates: it refreshes Debian's package lists, shows what will change and upgrades everything together, including Debian's security updates. Nothing is checked or downloaded automatically. You can still use `apt` in the Terminal if you prefer.",
+            "es": "Abrí la pestaña Actualizaciones de la Tienda y tocá Buscar actualizaciones: refresca las listas de paquetes de Debian, te muestra qué va a cambiar y actualiza todo junto, incluidas las actualizaciones de seguridad de Debian. Nada se revisa ni se descarga solo. Si preferís, podés seguir usando `apt` en la Terminal.",
+            "pt": "Abra a aba Atualizações da Loja e toque em Procurar atualizações: ela atualiza as listas de pacotes do Debian, mostra o que vai mudar e atualiza tudo junto, incluindo as atualizações de segurança do Debian. Nada é verificado nem baixado automaticamente. Se preferir, você ainda pode usar o `apt` no Terminal."
+          }
+        },
+        {
+          "id": "new-versions",
+          "q": {
+            "en": "How do I get a new LordOS version?",
+            "es": "¿Cómo paso a una versión nueva de LordOS?",
+            "pt": "Como pego uma versão nova do LordOS?"
+          },
+          "a": {
+            "en": "New versions are published on [GitHub Releases](https://github.com/lordbasex/LordOS/releases) as a `.deb` package, an ISO and a Raspberry Pi image. On Debian, running the one-line installer again upgrades LordOS; you can also install a downloaded `.deb` from the Store. A built-in updater for LordOS itself is not available yet.",
+            "es": "Las versiones nuevas se publican en [GitHub Releases](https://github.com/lordbasex/LordOS/releases) como paquete `.deb`, ISO e imagen para Raspberry Pi. En Debian, volver a ejecutar el instalador de una línea actualiza LordOS; también podés instalar un `.deb` descargado desde la Tienda. Un actualizador propio de LordOS todavía no está disponible.",
+            "pt": "As versões novas são publicadas no [GitHub Releases](https://github.com/lordbasex/LordOS/releases) como pacote `.deb`, ISO e imagem para Raspberry Pi. No Debian, rodar de novo o instalador de uma linha atualiza o LordOS; você também pode instalar um `.deb` baixado pela Loja. Um atualizador próprio do LordOS ainda não está disponível."
+          }
+        }
+      ]
+    },
+    {
+      "id": "contributing-support",
+      "title": {
+        "en": "Contributing and support",
+        "es": "Contribuir y soporte",
+        "pt": "Contribuir e suporte"
+      },
+      "items": [
+        {
+          "id": "report-bug",
+          "q": {
+            "en": "How do I report a bug?",
+            "es": "¿Cómo reporto un error?",
+            "pt": "Como relato um bug?"
+          },
+          "a": {
+            "en": "Once the repository is public, open an issue on [GitHub](https://github.com/lordbasex/LordOS/issues) with your LordOS version (from the About LordOS app), your hardware and the steps to reproduce it. Until then, write to [[CONTACT_EMAIL]]. Security problems go privately to [[SECURITY_EMAIL]].",
+            "es": "Cuando el repositorio sea público, abrí un issue en [GitHub](https://github.com/lordbasex/LordOS/issues) con tu versión de LordOS (la ves en la app Acerca de LordOS), tu hardware y los pasos para reproducirlo. Mientras tanto, escribinos a [[CONTACT_EMAIL]]. Los problemas de seguridad van en privado a [[SECURITY_EMAIL]].",
+            "pt": "Quando o repositório for público, abra uma issue no [GitHub](https://github.com/lordbasex/LordOS/issues) com sua versão do LordOS (no app Sobre o LordOS), seu hardware e os passos para reproduzir. Até lá, escreva para [[CONTACT_EMAIL]]. Problemas de segurança vão em privado para [[SECURITY_EMAIL]]."
+          }
+        },
+        {
+          "id": "contribute",
+          "q": {
+            "en": "Can I contribute code or translations?",
+            "es": "¿Puedo aportar código o traducciones?",
+            "pt": "Posso contribuir com código ou traduções?"
+          },
+          "a": {
+            "en": "We'd love that. Contribution guidelines will be published together with the public repository; until then, write to [[CONTACT_EMAIL]]. Translations can already be made as LordOS language packs.",
+            "es": "Nos encantaría. Las pautas para contribuir se van a publicar junto con el repositorio público; mientras tanto, escribinos a [[CONTACT_EMAIL]]. Las traducciones ya se pueden hacer como paquetes de idioma de LordOS.",
+            "pt": "Adoraríamos. As diretrizes de contribuição serão publicadas junto com o repositório público; até lá, escreva para [[CONTACT_EMAIL]]. As traduções já podem ser feitas como pacotes de idioma do LordOS."
+          }
+        },
+        {
+          "id": "donations",
+          "q": {
+            "en": "How can I donate, and what do donations fund?",
+            "es": "¿Cómo puedo donar y qué financian las donaciones?",
+            "pt": "Como posso doar e o que as doações financiam?"
+          },
+          "a": {
+            "en": "From the [Support section](/#support), with PayPal or Mercado Pago (Binance is coming). Donations help us keep working on LordOS: development time, testing on real hardware and hosting. They are voluntary gifts, not purchases; see the [Donation terms](/legal/donations/).",
+            "es": "Desde la [sección Apoyar](/#support), con PayPal o Mercado Pago (Binance está por llegar). Las donaciones nos ayudan a seguir trabajando en LordOS: tiempo de desarrollo, pruebas en hardware real y hosting. Son aportes voluntarios, no compras; mirá los [Términos de las donaciones](/legal/donations/).",
+            "pt": "Pela [seção Apoiar](/#support), com PayPal ou Mercado Pago (Binance vem aí). As doações nos ajudam a continuar trabalhando no LordOS: tempo de desenvolvimento, testes em hardware real e hospedagem. São contribuições voluntárias, não compras; veja os [Termos das doações](/legal/donations/)."
+          }
+        },
+        {
+          "id": "contact",
+          "q": {
+            "en": "How do I contact the team?",
+            "es": "¿Cómo me contacto con el equipo?",
+            "pt": "Como entro em contato com a equipe?"
+          },
+          "a": {
+            "en": "Write to [[CONTACT_EMAIL]]. We answer in English, Spanish and Portuguese.",
+            "es": "Escribinos a [[CONTACT_EMAIL]]. Respondemos en inglés, español y portugués.",
+            "pt": "Escreva para [[CONTACT_EMAIL]]. Respondemos em inglês, espanhol e português."
+          }
+        },
+        {
+          "id": "use-logo",
+          "q": {
+            "en": "Can I use the LordOS logo?",
+            "es": "¿Puedo usar el logo de LordOS?",
+            "pt": "Posso usar o logo do LordOS?"
+          },
+          "a": {
+            "en": "Yes, to refer to the project, link to it or write about it, using the unmodified files from the [brand kit](https://github.com/lordbasex/LordOS/blob/main/docs/LORDOS-BRAND.md). Don't modify the logo or Lumo or suggest we endorse you, and a modified distribution or fork needs its own name and logo. The details are in the [Trademark policy](/legal/trademark/).",
+            "es": "Sí, para mencionar el proyecto, enlazarlo o escribir sobre él, usando los archivos sin modificar del [kit de marca](https://github.com/lordbasex/LordOS/blob/main/docs/LORDOS-BRAND.md). No modifiques el logo ni a Lumo ni des a entender que te respaldamos, y una distribución modificada o un fork necesita su propio nombre y logo. Los detalles están en la [Política de marca](/legal/trademark/).",
+            "pt": "Sim, para mencionar o projeto, colocar um link ou escrever sobre ele, usando os arquivos sem modificação do [kit de marca](https://github.com/lordbasex/LordOS/blob/main/docs/LORDOS-BRAND.md). Não modifique o logo nem o Lumo nem dê a entender que apoiamos você, e uma distribuição modificada ou um fork precisa de nome e logo próprios. Os detalhes estão na [Política de marca](/legal/trademark/)."
+          }
+        }
+      ]
+    }
+  ]
+}

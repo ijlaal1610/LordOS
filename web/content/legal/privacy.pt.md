@@ -1,0 +1,85 @@
+O LordOS não tem contas, publicidade nem rastreamento, nem no site nem na distribuição. Ninguém vende, compartilha ou guarda os seus dados, porque nunca os coletamos. Esta política tem duas partes: o **site lordos.org** e a **distribuição LordOS** que você instala no seu computador.
+
+## Parte 1: o site
+
+### O que o seu navegador guarda
+
+O site é um conjunto de páginas estáticas. Ele **não define cookies** e guarda apenas dois valores no `localStorage` do seu navegador, no seu dispositivo:
+
+| Chave | O que contém | Para quê |
+|---|---|---|
+| `lordos-theme` | `light` ou `dark` (nada quando você usa o automático) | para mostrar o tema que você escolheu |
+| `lordos-lang-seen` | `1` | para que a sugestão "esta página também está no seu idioma" apareça só uma vez |
+
+Esses valores nunca saem do seu navegador e nós não podemos lê-los. Apague-os quando quiser nas configurações de dados de sites do navegador. Veja o [Aviso de cookies](/legal/cookies/).
+
+### Sem análises, sem anúncios, sem código de terceiros
+
+O site não carrega ferramentas de análise, publicidade, widgets de redes sociais nem fontes ou scripts de outros servidores: tudo o que ele precisa é servido por lordos.org.
+
+### Registros do servidor
+
+O site é hospedado na Amazon Web Services (S3 e CloudFront). Como em qualquer site, o seu navegador envia o seu endereço IP e os dados normais de uma requisição (a página pedida, o horário, o user agent do navegador) para receber a página. O nosso provedor de hospedagem pode manter registros padrão de requisições da CDN por motivos de segurança, por um tempo limitado. Não os usamos para identificar nem traçar o perfil de visitantes.
+
+### Downloads no GitHub
+
+A imagem ISO, a imagem para Raspberry Pi, o pacote `.deb` e as assinaturas deles ficam hospedados no GitHub Releases. Quando você os baixa, ou quando o script de instalação para Debian os busca, o GitHub recebe a sua requisição conforme a [declaração de privacidade do GitHub](https://docs.github.com/pt/site-policy/privacy-policies/github-general-privacy-statement).
+
+### Doações
+
+Os botões de doação levam você ao PayPal ou ao Mercado Pago (e, mais adiante, à Binance). O pagamento acontece inteiramente nos sites deles: nunca vemos nem guardamos os dados do seu cartão ou da sua conta. O processador nos informa o valor, a data e o nome ou e-mail que você forneceu a ele, que guardamos apenas para a nossa contabilidade. Valem as políticas deles: [PayPal](https://www.paypal.com/myaccount/privacy/privacyhub), [Mercado Pago](https://www.mercadopago.com.ar/privacidad). Veja os [Termos das doações](/legal/donations/).
+
+### E-mail
+
+Se você nos escrever, guardamos a sua mensagem e o seu endereço apenas para responder e acompanhar o assunto.
+
+## Parte 2: a distribuição LordOS
+
+### Sem telemetria
+
+O LordOS **não envia telemetria**: nada de estatísticas de uso, relatórios de falhas, identificadores do dispositivo, verificações que "ligam para casa" ou login em contas. Nada sobre você ou o seu computador é enviado para nós.
+
+### A que o LordOS se conecta por padrão
+
+Estas são as únicas conexões de rede que uma instalação nova do LordOS faz sem que você peça algo:
+
+| Conexão | Quando | Por quê | Como desligar |
+|---|---|---|---|
+| **DHCP e DNS** na sua rede local | quando um cabo de rede ou uma rede Wi-Fi está conectado | para obter um endereço e resolver nomes; o DNS vai para os servidores que a sua rede fornece ou que você define | desconecte, ou defina endereço e DNS manuais em Ajustes → Rede |
+| **Hora pela rede (NTP)** via `systemd-timesyncd`, para o pool público de NTP do Debian | quando o computador está on-line | para manter o relógio certo | Ajustes → Data e hora → desligue a hora automática |
+| **mDNS** (`avahi-daemon`, em PCs; a imagem para Raspberry Pi não o inclui) | apenas na rede local | anuncia o nome do computador para que outros dispositivos da sua rede o encontrem, e responde a consultas de nomes locais | `sudo systemctl disable --now avahi-daemon` |
+
+O fuso horário nunca é deduzido pela rede. Nada nesta tabela vai para o projeto LordOS.
+
+### Só quando você pede
+
+Estas conexões acontecem só depois de uma ação sua:
+
+- **Loja e atualizações:** as listas de pacotes e os pacotes vêm dos espelhos do Debian configurados nas suas fontes do apt (`deb.debian.org` e `security.debian.org` por padrão; no Raspberry Pi, o kernel e o firmware vêm de `archive.raspberrypi.com`). A Loja só as atualiza quando você toca em **Procurar atualizações** (na Loja ou em Ajustes → Atualizações) ou instala algo, e confere cada lista com as assinaturas do Debian. Os apps `.lpk` do LordOS são instalados a partir de arquivos que você escolhe; não existe um catálogo on-line do LordOS.
+- **Pacotes de idioma:** adicionar um idioma em Ajustes pode instalar os dicionários e as fontes dele a partir dos mesmos espelhos do Debian.
+- **Impressoras e scanners:** Ajustes → Impressoras e scanners pergunta à rede local (mDNS) quais impressoras e scanners existem nela, e só fala com endereços locais.
+- **Mail, Calendário e Contatos:** conectam-se apenas aos servidores das contas que você adiciona (IMAP, SMTP, CalDAV, CardDAV). As imagens remotas das mensagens ficam bloqueadas até você tocar em **Carregar imagens**, e os pixels de rastreamento são removidos.
+- **Wi-Fi, Bluetooth e VPNs:** apenas as redes, os dispositivos e os servidores VPN que você escolhe.
+- **A área de trabalho remota** vem **desligada** por padrão (porta 5673 fechada). Ela só escuta depois que você a liga em Ajustes → Compartilhar. No Raspberry Pi, a área de trabalho remota e o servidor SSH também ficam desligados, a menos que você coloque um arquivo de ativação `remote-desktop` ou `ssh` na partição de boot.
+- **Navegadores e outros apps:** o Firefox ESR, o Chromium e qualquer app Linux que você instalar são programas separados, de seus próprios projetos. Eles fazem as conexões que as configurações deles permitem, sob as políticas de privacidade deles. Os apps `.lpk` isolados só acessam a rede se você der a permissão, e o firewall por app mostra e controla a que cada app se conecta.
+- **O script de instalação para Debian** (`curl -fsSL https://lordos.org/install.sh | sh`) contata apenas `api.github.com` (para encontrar a última versão), `github.com` (para baixá-la com a assinatura) e os seus espelhos do apt. Ele não envia telemetria.
+
+### O que fica no seu computador
+
+- **O mapa-múndi do Monitor** usa um banco de dados offline de IP para país (DB-IP Lite) que vem com o LordOS. Descobrir para onde vai uma conexão nunca consulta um servidor.
+- **Senhas:** o cofre fica criptografado no seu disco e o processo dele não tem acesso à rede. A verificação de "senha vazada" é apenas offline.
+- **Configurações, e-mails, arquivos e registros** ficam no seu computador. Os registros não são enviados para lugar nenhum.
+
+## Parte 3: seus direitos, contato e alterações
+
+### Seus direitos
+
+Como não coletamos dados pessoais pelo site nem pela distribuição, normalmente não há nada sobre você para acessarmos, corrigirmos ou apagarmos. Para o que de fato guardamos (um e-mail que você nos enviou, um registro de doação), você pode pedir para ver, corrigir ou apagar, respeitados os registros que a lei nos obriga a manter. No Brasil, a Lei Geral de Proteção de Dados (LGPD, Lei 13.709/2018) garante esses direitos, e você pode apresentar reclamação à Autoridade Nacional de Proteção de Dados (ANPD). Na Argentina, a Lei 25.326 de proteção de dados pessoais dá esses direitos, com reclamação perante a Agência de Acesso à Informação Pública (AAIP). Na União Europeia ou em outro país com leis semelhantes (como o GDPR), você tem os direitos que essas leis lhe dão.
+
+### Contato
+
+Dúvidas ou pedidos sobre privacidade: [[CONTACT_EMAIL]].
+
+### Alterações
+
+Se o LordOS ou o site passar a fazer um novo tipo de conexão, ou se esta política mudar de qualquer outra forma, atualizaremos esta página antes e mudaremos a data no topo.

@@ -26,7 +26,7 @@
     "other": "{ms} ms · {count} nós"
   },
   "server": "Servidor gráfico",
-  "tagline": "Um desktop GNU/Linux livre, rápido e seguro, feito do zero.",
+  "tagline": "Um desktop GNU/Linux livre, rápido e seguro, construído sobre Debian e Wayland.",
   "uptime": "Ligado há",
   "version": "Versão {v}",
   "versionChannel": "Versão {v} · {channel}"

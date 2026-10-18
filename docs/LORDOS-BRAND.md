@@ -14,8 +14,8 @@ the renders by hand.
 
 ## 1. What LordOS is
 
-LordOS is a free, fast and secure GNU/Linux distribution based on Debian, with a desktop built from
-scratch. Its desktop environment has its own display server and Wayland compositor written in C and
+LordOS is a free, fast and secure GNU/Linux distribution based on Debian, with a desktop environment of
+its own, built from its fundamental components on top of Debian and Wayland. It has its own display server and Wayland compositor written in C and
 its own React-based interface engine, an idle session uses
 about 120 MB of RAM, and it brings a Dock, an app launcher, a menu bar, instant search and polished
 native apps to PCs and to the Raspberry Pi 5, while still running regular Linux applications. The

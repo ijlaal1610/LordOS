@@ -1,0 +1,14 @@
+{
+  "updated": "2026-10-18",
+  "pages": [
+    { "slug": "terms", "title": { "en": "Terms of use", "es": "Términos de uso", "pt": "Termos de uso" }, "updated": "2026-10-18" },
+    { "slug": "privacy", "title": { "en": "Privacy policy", "es": "Política de privacidad", "pt": "Política de privacidade" }, "updated": "2026-10-18" },
+    { "slug": "cookies", "title": { "en": "Cookie notice", "es": "Aviso de cookies", "pt": "Aviso de cookies" }, "updated": "2026-10-18" },
+    { "slug": "donations", "title": { "en": "Donation terms", "es": "Términos de las donaciones", "pt": "Termos das doações" }, "updated": "2026-10-18" },
+    { "slug": "licenses", "title": { "en": "Licenses and open-source notices", "es": "Licencias y avisos de código abierto", "pt": "Licenças e avisos de código aberto" }, "updated": "2026-10-18" },
+    { "slug": "trademark", "title": { "en": "Trademark and brand policy", "es": "Política de marca", "pt": "Política de marca" }, "updated": "2026-10-18" },
+    { "slug": "security", "title": { "en": "Security policy", "es": "Política de seguridad", "pt": "Política de segurança" }, "updated": "2026-10-18" },
+    { "slug": "legal-notice", "title": { "en": "Legal notice", "es": "Aviso legal", "pt": "Aviso legal" }, "updated": "2026-10-18" },
+    { "slug": "accessibility", "title": { "en": "Accessibility statement", "es": "Declaración de accesibilidad", "pt": "Declaração de acessibilidade" }, "updated": "2026-10-18" }
+  ]
+}

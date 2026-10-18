@@ -1,7 +1,7 @@
 # LordOS Terminal
 
 LordOS's native terminal, inspired by popular terminal emulators. It isn't a Linux app running inside LordOS:
-the emulation, the PTY and the drawing are written from scratch in C inside `lord-server`,
+the emulation, the PTY and the drawing are LordOS's own C code inside `lord-server`,
 and the UI (tabs, panes, profiles, menus) is a React app like the others.
 
 ```

@@ -7,11 +7,11 @@
 
 # LordOS
 
-**A free, fast and secure GNU/Linux desktop, built from scratch.**
+**A free, fast and secure GNU/Linux desktop, built on solid Debian and Wayland foundations.**
 
 LordOS is a free GNU/Linux distribution based on Debian 13. It ships its own desktop
-environment instead of GNOME or KDE, and it doesn't use X11: a display server and Wayland
-compositor written in C, its own React-based UI engine, and native apps designed to feel calm,
+environment instead of GNOME or KDE, built from its fundamental components on top of Debian and
+Wayland, and it doesn't use X11: a display server and Wayland compositor written in C, its own React-based UI engine, and native apps designed to feel calm,
 clear and private. An idle session uses about 120 MB of RAM. Its look and workflow take inspiration from the desktop of a well-known
 fruit-logo company: a Dock, an app launcher, a menu bar, instant search and polished native
 apps, all reimagined as free software. It runs on Intel/AMD PCs and on the Raspberry Pi 5, and

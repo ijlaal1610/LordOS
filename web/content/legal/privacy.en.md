@@ -1,0 +1,85 @@
+LordOS has no accounts, no advertising and no tracking, on the website or in the distribution. Nobody sells, shares or keeps your data, because we never collect it. This policy has two parts: the **lordos.org website**, and the **LordOS distribution** you install on your computer.
+
+## Part 1: the website
+
+### What your browser keeps
+
+The website is a set of static pages. It sets **no cookies** and keeps only two values in your browser's `localStorage`, on your device:
+
+| Key | What it holds | Why |
+|---|---|---|
+| `lordos-theme` | `light` or `dark` (nothing when you use automatic) | to show the theme you chose |
+| `lordos-lang-seen` | `1` | so the "this page is also in your language" suggestion appears only once |
+
+They never leave your browser and we can't read them. Clear them at any time from your browser's site data settings. See the [Cookie notice](/legal/cookies/).
+
+### No analytics, no ads, no third-party code
+
+The website loads no analytics, no advertising, no social media widgets and no fonts or scripts from other servers: everything it needs is served from lordos.org.
+
+### Server logs
+
+The website is hosted on Amazon Web Services (S3 and CloudFront). As with any website, your browser sends your IP address and the usual request data (the page asked for, the time, the browser's user agent) to deliver the page. Standard CDN request logs may be kept by our hosting provider for security, retained for a limited time. We don't use them to identify or profile visitors.
+
+### Downloads on GitHub
+
+The ISO image, the Raspberry Pi image, the `.deb` package and their signatures are hosted on GitHub Releases. When you download them, or when the Debian installer script fetches them, GitHub receives your request under [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
+
+### Donations
+
+Donation buttons take you to PayPal or Mercado Pago (and, later, Binance). The payment happens entirely on their sites: we never see or store your card or account details. The processor tells us the amount, the date and the name or email you gave it, which we keep only for our accounting. Their own policies apply: [PayPal](https://www.paypal.com/myaccount/privacy/privacyhub), [Mercado Pago](https://www.mercadopago.com.ar/privacidad). See the [Donation terms](/legal/donations/).
+
+### Email
+
+If you write to us, we keep your message and address only to answer you and to follow up on the matter.
+
+## Part 2: the LordOS distribution
+
+### No telemetry
+
+LordOS sends **no telemetry**: no usage statistics, no crash reports, no device identifiers, no "phone home" checks and no account sign-in. Nothing about you or your computer is sent to us.
+
+### What LordOS connects to by default
+
+These are the only network connections a fresh LordOS installation makes without you asking for something:
+
+| Connection | When | Why | How to turn it off |
+|---|---|---|---|
+| **DHCP and DNS** on your local network | when a network cable or Wi-Fi network is connected | to get an address and resolve names; DNS goes to the servers your network gives you or that you set | disconnect, or set a manual address and DNS in Settings → Network |
+| **Network time (NTP)** through `systemd-timesyncd`, to Debian's public NTP pool | when the computer is online | to keep the clock right | Settings → Date & Time → automatic time off |
+| **mDNS** (`avahi-daemon`, on PCs; the Raspberry Pi image does not include it) | on the local network only | announces the computer's name so other devices on your network can find it, and answers local name queries | `sudo systemctl disable --now avahi-daemon` |
+
+The time zone is never guessed from the network. Nothing in this table goes to the LordOS project.
+
+### Only when you ask
+
+These connections happen only after an action of yours:
+
+- **Store and updates:** the package lists and packages come from the Debian mirrors in your apt sources (`deb.debian.org` and `security.debian.org` by default; on the Raspberry Pi, the kernel and firmware come from `archive.raspberrypi.com`). The Store refreshes them only when you press **Check for updates** (in the Store or in Settings → Updates) or install something, and checks every list with Debian's signatures. LordOS's own `.lpk` apps are installed from files you choose; there is no online LordOS catalog.
+- **Language packages:** adding a language in Settings can install its dictionaries and fonts from the same Debian mirrors.
+- **Printers and scanners:** Settings → Printers & Scanners asks the local network (mDNS) which printers and scanners are there, and talks only to local addresses.
+- **Mail, Calendar and Contacts:** they connect only to the servers of the accounts you add (IMAP, SMTP, CalDAV, CardDAV). Remote images in messages are blocked until you press **Load Images**, and tracking pixels are removed.
+- **Wi-Fi, Bluetooth and VPNs:** only the networks, devices and VPN servers you choose.
+- **Remote desktop** is **off** by default (port 5673 closed). It listens only after you turn it on in Settings → Sharing. On the Raspberry Pi, remote desktop and the SSH server also stay off unless you put a `remote-desktop` or `ssh` switch file on the boot partition.
+- **Web browsers and other apps:** Firefox ESR, Chromium and any Linux app you install are separate programs from their own projects. They make the connections their settings allow, under their own privacy policies. Isolated `.lpk` apps reach the network only if you grant them the permission, and the per-app firewall shows and controls what each app connects to.
+- **The Debian installer script** (`curl -fsSL https://lordos.org/install.sh | sh`) contacts only `api.github.com` (to find the latest release), `github.com` (to download it and its signature) and your apt mirrors. It sends no telemetry.
+
+### What stays on your computer
+
+- **Monitor's world map** uses an offline IP-to-country database (DB-IP Lite) shipped with LordOS. Looking up where a connection goes never asks a server.
+- **Passwords:** the vault is encrypted on your disk and its process has no network access. The "breached password" check is offline only.
+- **Settings, mail, files and logs** stay on your computer. Logs are not uploaded anywhere.
+
+## Part 3: your rights, contact and changes
+
+### Your rights
+
+Because we don't collect personal data through the website or the distribution, there is usually nothing about you for us to access, correct or delete. For anything we do hold (an email you sent us, a donation record), you can ask to see it, correct it or delete it, subject to the records we must keep by law. If you are in Argentina, Law 25.326 on personal data protection gives you these rights, and you can complain to the Agency of Access to Public Information (AAIP). If you are in the European Union, Brazil or another country with similar laws (GDPR, LGPD), you have the rights those laws give you.
+
+### Contact
+
+Privacy questions or requests: [[CONTACT_EMAIL]].
+
+### Changes
+
+If LordOS or the website starts making a new kind of connection, or this policy changes in any other way, we will update this page first and change the date at the top.

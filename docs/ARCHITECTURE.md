@@ -2,7 +2,7 @@
 
 LordOS is a **GNU/Linux distribution based on Debian 13** that ships a **desktop environment of
 its own** (on the level of KDE or GNOME) with a **real display server and Wayland compositor
-written from scratch in C**. It is not a simulator or a web page: it takes the
+written in C**, built from its fundamental components on top of Debian and Wayland. It is not a simulator or a web page: it takes the
 graphics card and input directly from the Linux kernel. The interface (desktop, bar, dock,
 native apps) is written in **JavaScript with React**, which draws on an engine of our own, just
 like React Native but on top of our display server.
