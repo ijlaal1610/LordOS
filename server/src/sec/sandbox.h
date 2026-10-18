@@ -69,4 +69,27 @@ typedef struct {
  * only works for comparing fds of the process itself (pid1 == pid2 == getpid()). */
 int sandbox_apply_helper(const SandboxHelperCfg *cfg);
 
+/* ---- "no access to your files" for Linux apps (the launcher, apps.c) ----
+ * Landlock only: no seccomp, no capability changes, no network or scoping rules, so a normal
+ * GTK/Qt app or browser keeps working; device ioctls are not handled (the device restrictions are
+ * lord-netperm's). What the app may touch:
+ *   read and execute: the system (/usr, /etc, /opt, /var/lib, /var/cache, /sys, a few service
+ *   folders of /run), plus ro[];
+ *   read and write: /tmp, /var/tmp, /dev, /proc, the runtime dir, plus rw[] (its own config, cache and
+ *   data dirs, and the file or folder the user opened it with);
+ * everything else under the home folder and the user's mounts is denied. Applied in the
+ * launcher's child, after it entered its scope and right before execve; it also sets
+ * no_new_privs (Landlock requires it), so setuid programs started by the app don't gain
+ * privileges. Doesn't allocate (safe after fork). 0 applied, -1 not (kernel without Landlock:
+ * the caller decides). */
+#define SANDBOX_FILES_MAX 48
+typedef struct {
+    const char *runtime_dir;
+    const char *rw[SANDBOX_FILES_MAX + 1];     /* NULL-terminated */
+    const char *ro[SANDBOX_FILES_MAX + 1];
+} SandboxFilesCfg;
+int sandbox_apply_files(const SandboxFilesCfg *cfg);
+/* Landlock ABI of the running kernel (0 = none). */
+int sandbox_landlock_abi(void);
+
 #endif

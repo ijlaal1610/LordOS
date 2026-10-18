@@ -151,6 +151,68 @@ static int apply_landlock(const SandboxConfig *cfg, const int *ro_fds, const int
 #endif
 }
 
+/* ---- "no files" for Linux apps (sandbox.h) ---- */
+
+int sandbox_landlock_abi(void) {
+#ifdef HAVE_LANDLOCK
+    int abi = ll_abi();
+    return abi > 0 ? abi : 0;
+#else
+    return 0;
+#endif
+}
+
+int sandbox_apply_files(const SandboxFilesCfg *cfg) {
+#ifdef HAVE_LANDLOCK
+    int abi = ll_abi();
+    if (abi < 1) return -1;
+    uint64_t ro = LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR | LANDLOCK_ACCESS_FS_EXECUTE;
+    uint64_t rw = ro | LANDLOCK_ACCESS_FS_WRITE_FILE | LANDLOCK_ACCESS_FS_MAKE_DIR | LANDLOCK_ACCESS_FS_MAKE_REG |
+                  LANDLOCK_ACCESS_FS_REMOVE_FILE | LANDLOCK_ACCESS_FS_REMOVE_DIR | LANDLOCK_ACCESS_FS_MAKE_SYM |
+                  LANDLOCK_ACCESS_FS_MAKE_SOCK | LANDLOCK_ACCESS_FS_MAKE_FIFO | LANDLOCK_ACCESS_FS_MAKE_CHAR |
+                  LANDLOCK_ACCESS_FS_MAKE_BLOCK;
+    uint64_t handled = rw;
+    /* REFER (ABI 2): handled and granted in the writable folders. Leaving it unhandled would make
+     * every rename between folders fail, which breaks browsers and editors. */
+    if (abi >= 2) { handled |= LANDLOCK_ACCESS_FS_REFER; rw |= LANDLOCK_ACCESS_FS_REFER; }
+    if (abi >= 3) { handled |= LANDLOCK_ACCESS_FS_TRUNCATE; rw |= LANDLOCK_ACCESS_FS_TRUNCATE; }
+    /* IOCTL_DEV (ABI 5) is not handled: GPU and sound ioctls stay as they are */
+    uint64_t file_rw = (LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_WRITE_FILE |
+                        (abi >= 3 ? LANDLOCK_ACCESS_FS_TRUNCATE : 0)) & handled;
+    struct landlock_ruleset_attr attr;
+    memset(&attr, 0, sizeof attr);
+    attr.handled_access_fs = handled;
+    int rs = ll_create(&attr, sizeof attr);
+    if (rs < 0) return -1;
+    /* not "/run" or "/var" as a whole: /run/media/<user> and /var/mail are the user's */
+    static const char *const sys_ro[] = { "/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc", "/opt",
+                                          "/var/lib", "/var/cache", "/sys", "/run/dbus", "/run/systemd", "/run/udev",
+                                          "/run/resolvconf", "/run/NetworkManager", "/run/cups", "/run/avahi-daemon",
+                                          "/run/lock", NULL };
+    static const char *const sys_rw[] = { "/tmp", "/var/tmp", "/dev", "/proc", NULL };
+    for (int i = 0; sys_ro[i]; i++) ll_path(rs, sys_ro[i], ro);
+    for (int i = 0; sys_rw[i]; i++) ll_path(rs, sys_rw[i], rw);
+    if (cfg->runtime_dir) ll_path(rs, cfg->runtime_dir, rw);
+    for (int i = 0; i < SANDBOX_FILES_MAX && cfg->ro[i]; i++) {
+        struct stat st;
+        if (stat(cfg->ro[i], &st)) continue;
+        ll_path(rs, cfg->ro[i], S_ISDIR(st.st_mode) ? ro : (LANDLOCK_ACCESS_FS_READ_FILE & handled));
+    }
+    for (int i = 0; i < SANDBOX_FILES_MAX && cfg->rw[i]; i++) {
+        struct stat st;
+        if (stat(cfg->rw[i], &st)) continue;
+        ll_path(rs, cfg->rw[i], S_ISDIR(st.st_mode) ? rw : file_rw);
+    }
+    if (apply_nopriv()) { close(rs); return -1; }
+    int r = ll_enforce(rs);
+    close(rs);
+    return r ? -1 : 0;
+#else
+    (void)cfg;
+    return -1;
+#endif
+}
+
 /* ---- seccomp-bpf: allowlist ---- */
 
 #if defined(__x86_64__)

@@ -237,6 +237,14 @@ build/broker-restrict-test: tests/broker_restrict_test.c $(BROKER_RESTRICT_SRC) 
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/broker_restrict_test.c $(BROKER_RESTRICT_SRC) -Wl,--wrap=open
 	./$@ || { rm -f $@; exit 1; }
+# tests/launch_cli.c: the real Linux app launcher outside the desktop, for tests/fwlinux/files.sh
+# (built by `make test`, run by that script in the VM)
+LAUNCH_CLI_SRC := src/apps.c src/fsops.c src/hw/defaults.c src/hw/mimeapps.c src/sec/cgroup.c src/sec/sandbox.c \
+                  src/sec/restrict.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c
+test: build/launch-cli
+build/launch-cli: tests/launch_cli.c $(LAUNCH_CLI_SRC) src/apps.h $(wildcard src/sec/*.h src/fw/*.h src/hw/*.h)
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/launch_cli.c $(LAUNCH_CLI_SRC)
 build/fw-rules-test: tests/fw_rules_test.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c $(wildcard src/fw/*.h) src/sec/json.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/fw_rules_test.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c
