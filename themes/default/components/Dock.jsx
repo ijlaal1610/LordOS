@@ -170,9 +170,15 @@ function Poof({ poof, size, reduce }) {
   const s = size;
   return (
     <View style={{ position: 'absolute', left: poof.x - s, top: poof.y - s, width: s * 2, height: s * 2, pointerEvents: 'none' }}>
-      <View style={{ position: 'absolute', left: s / 2, top: s / 2, width: s, height: s, opacity: 1 - p, transform: `scale(${1 - 0.6 * p})` }}>
-        {poof.Icon ? <poof.Icon size={s} /> : null}
-      </View>
+      {(() => {
+        // the icon shrinks (drawn smaller, not scaled: a scaled raster would show its box) and fades
+        const k = Math.round(s * (1 - 0.6 * p));
+        return (
+          <View style={{ position: 'absolute', left: s - k / 2, top: s - k / 2, width: k, height: k, opacity: 1 - p }}>
+            {poof.Icon ? <poof.Icon size={k} /> : null}
+          </View>
+        );
+      })()}
       {[0, 72, 144, 216, 288].map((a) => {
         const r = s * (0.25 + 0.75 * p), d = s * (0.22 + 0.2 * p);
         const cx = s + Math.cos((a * Math.PI) / 180) * r, cy = s + Math.sin((a * Math.PI) / 180) * r;

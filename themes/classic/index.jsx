@@ -375,9 +375,10 @@ function PoofFade() {
     return () => cancelAnimationFrame(raf);
   });
   if (!poof || p >= 1 || reduce) return null;
+  const k = Math.round(28 * (1 - 0.5 * p));
   return (
-    <View style={{ position: 'absolute', left: poof.x - 14, top: poof.y - 14, pointerEvents: 'none', opacity: 1 - p, transform: `scale(${1 - 0.5 * p})` }}>
-      {poof.Icon ? <poof.Icon size={28} /> : null}
+    <View style={{ position: 'absolute', left: poof.x - k / 2, top: poof.y - k / 2, pointerEvents: 'none', opacity: 1 - p }}>
+      {poof.Icon ? <poof.Icon size={k} /> : null}
     </View>
   );
 }
