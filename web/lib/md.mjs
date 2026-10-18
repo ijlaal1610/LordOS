@@ -119,7 +119,7 @@ export function markdown(src, opts = {}) {
       i += 2;
       const rows = [];
       while (i < lines.length && lines[i].includes('|') && lines[i].trim()) rows.push(cells(lines[i++]));
-      const td = (tag, c, k) => `<${tag}${align[k] ? ` style="text-align:${align[k]}"` : ''}>${inline(c, opts)}</${tag}>`;
+      const td = (tag, c, k) => `<${tag}${align[k] ? ` class="ta-${align[k]}"` : ''}>${inline(c, opts)}</${tag}>`;
       out.push(`<div class="table"><table><thead><tr>${head.map((c, k) => td('th', c, k)).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c, k) => td('td', c, k)).join('')}</tr>`).join('')}</tbody></table></div>`);
       continue;
     }

@@ -772,7 +772,7 @@ ${(c.items || []).map((it) => {
       const photo = p.photo && fs.existsSync(r(p.photo))
         ? `<img class="avatar" src="${webp(r(p.photo), 336, 82).url}" alt="${esc(fill(A.photoOf, p.name))}" width="168" height="168" loading="lazy">`
         : `<div class="avatar initials" role="img" aria-label="${esc(fill(A.initialsOf, p.name))}">${esc(p.initials)}</div>`;
-      const link = p.linkedin && !/^\[\[/.test(p.linkedin)
+      const link = p.linkedin && /^https:\/\//.test(p.linkedin)
         ? `<a class="btn btn-ghost" href="${esc(p.linkedin)}" rel="noopener" aria-label="${esc(fill(A.linkedinOf, p.name))}">${li}LinkedIn</a>` : '';
       return `<article class="creator">${photo}<h3>${esc(p.name)}</h3><p>${esc(A.role)}</p>${link}</article>`;
     }).join('\n');

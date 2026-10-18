@@ -223,3 +223,4 @@ mark.ph{background:#FFE58A;color:#3A2A00;padding:1px 6px;border-radius:6px;font-
 .avatar{width:120px;height:120px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 4px var(--surface),0 0 0 6px var(--ring)}
 .initials{background:linear-gradient(135deg,#B46CFF,#4F46E5);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:38px}
 @media (max-width:640px){.apps-grid{grid-template-columns:1fr}}
+.table .ta-center{text-align:center}.table .ta-right{text-align:right}
