@@ -2,6 +2,8 @@
 #include "notifyd.h"
 #include "jbuf.h"
 #include "../vault/dbus.h"
+#include "../fw/rules.h"
+#include "../sec/restrict.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +16,11 @@ static DConn conn = { .fd = -1 };
 static int up;
 static uint32_t next_id = 1;
 static NotifydEvent emit;
+
+/* Notify calls waiting for the bus to say who sent them (GetConnectionUnixProcessID). */
+#define MAX_PENDING 32
+static struct { uint32_t serial; DMsg call; } pending[MAX_PENDING];
+static int npending;
 
 int notifyd_fd(void) { return up ? conn.fd : -1; }
 int notifyd_wants_write(void) { return up && dbus_pending_out(&conn); }
@@ -128,8 +135,87 @@ static void on_notify(const DMsg *m) {
     free(js);
 }
 
-static void handle(const DMsg *m) {
-    if (m->type != DBUS_CALL || !m->member) return;
+int notifyd_app_of_cgroup(const char *path, char *out, size_t n) {
+    const char *p = strstr(path, "/lordos-session-");
+    if (!p || !(p = strchr(p + 1, '/'))) return -1;
+    p++;
+    char scope[FW_APP_MAX + 32];
+    size_t l = strcspn(p, "/\n");
+    if (l < 18 || l >= sizeof scope || strncmp(p, "app-lordos-", 11) || strncmp(p + l - 6, ".scope", 6)) return -1;
+    memcpy(scope, p, l);
+    scope[l] = 0;
+    return fw_app_canon(scope, out, n);
+}
+
+/* Is the process behind this PID in the scope of an app restricted to "no notifications"? */
+static int pid_blocked(uint32_t pid) {
+    char f[64], line[1024], app[FW_APP_MAX];
+    snprintf(f, sizeof f, "/proc/%u/cgroup", pid);
+    FILE *fp = fopen(f, "re");
+    if (!fp) return 0;
+    int blocked = 0;
+    while (fgets(line, sizeof line, fp))
+        if (!strncmp(line, "0::", 3)) { blocked = !notifyd_app_of_cgroup(line + 3, app, sizeof app) && restrict_blocks(app, FW_R_NO_NOTIFICATIONS); break; }
+    fclose(fp);
+    return blocked;
+}
+
+/* A restricted app's notification: not shown, but answered with a real id (and closed at once),
+ * so the app doesn't treat it as an error. */
+static void drop_notify(const DMsg *m) {
+    DRd r;
+    dr_init(&r, m);
+    dr_str(&r, NULL);
+    uint32_t replaces = dr_u32(&r);
+    uint32_t id = replaces ? replaces : next_id++;
+    if (!next_id) next_id = 1;
+    DBuf b;
+    dw_init(&b);
+    dw_u32(&b, id);
+    dbus_reply(&conn, m, "u", &b);
+    dw_free(&b);
+    notifyd_closed(id, 3);
+}
+
+/* Asks the bus who sent the Notify; the call waits in `pending`. 1 kept, 0 handled now. */
+static int ask_sender(DMsg *m) {
+    if (!m->sender || npending == MAX_PENDING) {
+        dbus_error(&conn, m, "org.freedesktop.DBus.Error.LimitsExceeded", "too many notifications at once");
+        return 0;
+    }
+    DBuf b;
+    dw_init(&b);
+    dw_str(&b, m->sender);
+    DHdr h = { .type = DBUS_CALL, .path = "/org/freedesktop/DBus", .iface = "org.freedesktop.DBus",
+               .member = "GetConnectionUnixProcessID", .dest = "org.freedesktop.DBus", .sig = "s" };
+    uint32_t s = dbus_send(&conn, &h, &b);
+    dw_free(&b);
+    if (!s) { on_notify(m); return 0; }
+    pending[npending].serial = s;
+    pending[npending].call = *m;
+    npending++;
+    return 1;
+}
+
+/* The bus's answer about a pending Notify. */
+static void on_sender(const DMsg *m) {
+    for (int i = 0; i < npending; i++) {
+        if (pending[i].serial != m->reply_serial) continue;
+        DMsg call = pending[i].call;
+        pending[i] = pending[--npending];
+        uint32_t pid = 0;
+        if (m->type == DBUS_RETURN && m->sig && !strcmp(m->sig, "u")) { DRd r; dr_init(&r, m); pid = dr_u32(&r); if (r.err) pid = 0; }
+        if (pid && pid_blocked(pid)) drop_notify(&call);
+        else on_notify(&call);
+        dbus_msg_free(&call);
+        return;
+    }
+}
+
+/* 1 if the message was kept (a Notify waiting for its sender), 0 if the caller frees it. */
+static int handle(DMsg *m) {
+    if ((m->type == DBUS_RETURN || m->type == DBUS_ERROR) && m->reply_serial) { on_sender(m); return 0; }
+    if (m->type != DBUS_CALL || !m->member) return 0;
     if (m->iface && !strcmp(m->iface, "org.freedesktop.DBus.Introspectable")) {
         DBuf b;
         dw_init(&b);
@@ -139,16 +225,16 @@ static void handle(const DMsg *m) {
                    "</interface></node>");
         dbus_reply(&conn, m, "s", &b);
         dw_free(&b);
-        return;
+        return 0;
     }
     if (!m->path || strcmp(m->path, OBJ) || (m->iface && strcmp(m->iface, BUS_NAME))) {
         dbus_error(&conn, m, "org.freedesktop.DBus.Error.UnknownObject", "no such object");
-        return;
+        return 0;
     }
     const char *sig = m->sig ? m->sig : "";
     if (!strcmp(m->member, "GetCapabilities")) reply_caps(m);
     else if (!strcmp(m->member, "GetServerInformation")) reply_info(m);
-    else if (!strcmp(m->member, "Notify") && !strcmp(sig, "susssasa{sv}i")) on_notify(m);
+    else if (!strcmp(m->member, "Notify") && !strcmp(sig, "susssasa{sv}i")) return ask_sender(m);
     else if (!strcmp(m->member, "CloseNotification") && !strcmp(sig, "u")) {
         DRd r;
         dr_init(&r, m);
@@ -159,6 +245,7 @@ static void handle(const DMsg *m) {
         if (emit) emit("notify-close", j);
         notifyd_closed(id, 3);
     } else dbus_error(&conn, m, "org.freedesktop.DBus.Error.UnknownMethod", "unknown method");
+    return 0;
 }
 
 int notifyd_start(NotifydEvent fn) {
@@ -191,8 +278,14 @@ void notifyd_dispatch(void) {
     if (!up) return;
     DMsg m;
     int r;
-    while ((r = dbus_next(&conn, &m)) == 1) { handle(&m); dbus_msg_free(&m); }
-    if (r < 0 || dbus_flush(&conn) < 0) { fprintf(stderr, "notifyd: lost the session bus\n"); dbus_close(&conn); up = 0; }
+    while ((r = dbus_next(&conn, &m)) == 1) { if (!handle(&m)) dbus_msg_free(&m); }
+    if (r < 0 || dbus_flush(&conn) < 0) {
+        fprintf(stderr, "notifyd: lost the session bus\n");
+        for (int i = 0; i < npending; i++) dbus_msg_free(&pending[i].call);
+        npending = 0;
+        dbus_close(&conn);
+        up = 0;
+    }
 }
 
 void notifyd_closed(uint32_t id, uint32_t reason) {
