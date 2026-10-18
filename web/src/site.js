@@ -97,6 +97,51 @@
     label();
   }
 
+  // Home hero slideshow: crossfade every 3 s; pauses on hover, focus, hidden tab or the Pause button;
+  // off with prefers-reduced-motion (only the first screen shows). Loads each image just before it shows.
+  var show = $('#hero-show');
+  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (show && !reduce) {
+    var slides = $$('.slide', show), dots = $$('.hc-dots button', show), pb = $('.hc-play', show), live = $('.lp-display', show);
+    var cur = 0, timer = null, user = false, hover = false, focus = false;
+    var load = function (i) {
+      $$('img[data-src]', slides[i]).forEach(function (im) {
+        im.srcset = im.getAttribute('data-srcset'); im.src = im.getAttribute('data-src');
+        im.removeAttribute('data-src'); im.removeAttribute('data-srcset');
+      });
+    };
+    var go = function (i) {
+      var n = slides.length;
+      i = (i + n) % n;
+      load(i); load((i + 1) % n);
+      slides.forEach(function (sl, k) { sl.classList.toggle('on', k === i); if (k === i) sl.removeAttribute('aria-hidden'); else sl.setAttribute('aria-hidden', 'true'); });
+      dots.forEach(function (dt, k) { if (k === i) dt.setAttribute('aria-current', 'true'); else dt.removeAttribute('aria-current'); });
+      cur = i;
+    };
+    var running = function () { return !user && !hover && !focus && !d.hidden; };
+    var sync = function () {
+      clearInterval(timer); timer = null;
+      if (running()) timer = setInterval(function () { go(cur + 1); }, 3000);
+      live.setAttribute('aria-live', running() ? 'off' : 'polite');
+    };
+    if (slides.length > 1) {
+      load(1);
+      show.addEventListener('mouseenter', function () { hover = true; sync(); });
+      show.addEventListener('mouseleave', function () { hover = false; sync(); });
+      show.addEventListener('focusin', function (e) { focus = e.target !== pb; sync(); });
+      show.addEventListener('focusout', function (e) { if (!show.contains(e.relatedTarget)) { focus = false; sync(); } });
+      d.addEventListener('visibilitychange', sync);
+      if (pb) pb.addEventListener('click', function () {
+        user = !user;
+        pb.setAttribute('data-state', user ? 'paused' : 'playing');
+        pb.setAttribute('aria-label', pb.getAttribute(user ? 'data-play' : 'data-pause'));
+        sync();
+      });
+      dots.forEach(function (dt, k) { dt.addEventListener('click', function () { go(k); sync(); }); });
+      sync();
+    }
+  }
+
   // Paper: highlight the section being read in the table of contents
   var tocLinks = $$('.toc a');
   if (tocLinks.length && 'IntersectionObserver' in window) {

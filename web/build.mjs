@@ -455,11 +455,36 @@ ${featureList[i] ? `<a class="more" href="${pageUrl(l, 'features/' + featureList
   write(path.join(pageUrl(l, 'home'), 'index.html'), render(tpl.home, {
     ...common('home'), features, showcase, teaser: teaser(t),
     heroImg: (() => {
-      // the desktop inside a laptop drawn in CSS; light and dark screenshots follow the theme
-      const L = r('docs/screenshots/desktop-overview-light.png'), D = r('docs/screenshots/desktop-overview-dark.png');
-      const im = (f, cls, eager) => { const s1 = webp(f, 720), s2 = webp(f, 1600); return `<img class="${cls}" src="${s2.url}" srcset="${s1.url} ${s1.w}w, ${s2.url} ${s2.w}w" sizes="(max-width: 1040px) 92vw, 920px" width="${s2.w}" height="${s2.h}" alt="${esc(t.pages.hero.alt)}"${eager ? ' fetchpriority="high"' : ' loading="lazy"'} decoding="async">`; };
-      const pills = t.pages.hero.pills.map((p, k) => `<span class="pill p${k + 1}">${esc(p)}</span>`).join('');
-      return `<div class="laptop"><div class="lp-screen"><span class="lp-cam" aria-hidden="true"></span><div class="lp-display">${im(L, 'lp-l', true)}${im(D, 'lp-d', false)}</div></div><div class="lp-base" aria-hidden="true"><span class="lp-notch"></span></div><p class="pills">${pills}</p></div>`;
+      // the desktop inside a laptop drawn in CSS, as a slideshow of real screenshots (site.js runs it;
+      // without JS only the first slide shows). Slide 1 has light and dark variants that follow the theme.
+      const cap = (f) => { const g = shots.find((x) => x.file === r(f)); return (g && g.caption && (g.caption[l] || g.caption.en)) || t.pages.hero.alt; };
+      const SLIDES = [
+        ['docs/screenshots/desktop-overview-light.png', 'docs/screenshots/desktop-overview-dark.png'],
+        ['docs/screenshots/files.png'], ['docs/screenshots/mail.png'], ['docs/screenshots/calendar.png'], ['docs/screenshots/photos.png'],
+        ['docs/screenshots/player.png'], ['docs/screenshots/settings-general.png'], ['docs/screenshots/monitor-network-map.png'],
+        ['docs/screenshots/store.png'], ['docs/screenshots/terminal.png'],
+      ].filter((v) => v.every((f) => fs.existsSync(r(f))));
+      const H = t.pages.hero;
+      const im = (f, cls, mode, alt) => {
+        const s1 = webp(r(f), 720), s2 = webp(r(f), 1600);
+        const set = `${s1.url} ${s1.w}w, ${s2.url} ${s2.w}w`;
+        const common = `${cls ? `class="${cls}" ` : ''}sizes="(max-width: 1040px) 92vw, 920px" width="${s2.w}" height="${s2.h}" alt="${esc(alt)}" decoding="async"`;
+        if (mode === 'eager') return `<img ${common} src="${s2.url}" srcset="${set}" fetchpriority="high">`;
+        if (mode === 'lazy') return `<img ${common} src="${s2.url}" srcset="${set}" loading="lazy">`;
+        return `<img ${common} data-src="${s2.url}" data-srcset="${set}">`; // loaded by site.js just before it shows
+      };
+      const n = SLIDES.length;
+      const slides = SLIDES.map((v, i) => {
+        const alt = i === 0 ? H.alt : cap(v[0]);
+        const imgs = v.length === 2 ? im(v[0], 'lp-l', 'eager', alt) + im(v[1], 'lp-d', 'lazy', alt) : im(v[0], '', 'deferred', alt);
+        return `<figure class="slide${i === 0 ? ' on' : ''}" role="group" aria-roledescription="slide" aria-label="${i + 1} ${esc(H.of)} ${n}"${i ? ' aria-hidden="true"' : ''}>${imgs}</figure>`;
+      }).join('');
+      const pause = '<svg class="i-pause" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
+      const play = '<svg class="i-play" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15a1 1 0 001.5.86l12-7.5a1 1 0 000-1.72l-12-7.5A1 1 0 007 4.5z"/></svg>';
+      const dots = SLIDES.map((v, i) => `<button type="button" aria-label="${esc(`${H.show} ${i + 1} ${H.of} ${n}: ${i === 0 ? H.alt : cap(v[0])}`)}"${i === 0 ? ' aria-current="true"' : ''}></button>`).join('');
+      const ctl = n > 1 ? `<div class="hero-ctl"><button type="button" class="hc-play" data-state="playing" data-pause="${esc(H.pause)}" data-play="${esc(H.play)}" aria-label="${esc(H.pause)}">${pause}${play}</button><div class="hc-dots" role="group" aria-label="${esc(H.choose)}">${dots}</div></div>` : '';
+      const pills = H.pills.map((p, k) => `<span class="pill p${k + 1}">${esc(p)}</span>`).join('');
+      return `<div class="laptop" id="hero-show" role="region" aria-roledescription="carousel" aria-label="${esc(H.carousel)}"><div class="lp-screen"><span class="lp-cam" aria-hidden="true"></span><div class="lp-display" aria-live="off">${slides}</div></div><div class="lp-base" aria-hidden="true"><span class="lp-notch"></span></div><p class="pills">${pills}</p>${ctl}</div>`;
     })(),
     fingerprint: FINGERPRINT, banner: l === 'en' ? banner() : '',
   }, t));

@@ -103,7 +103,13 @@
         "Boots in 16 s",
         "Signed releases · Ed25519"
       ],
-      "alt": "The LordOS desktop with Calendar, Files, Photos and Player open"
+      "alt": "The LordOS desktop with Calendar, Files, Photos and Player open",
+      "carousel": "Screens of LordOS",
+      "pause": "Pause the slideshow",
+      "play": "Play the slideshow",
+      "choose": "Choose a screen",
+      "show": "Show",
+      "of": "of"
     }
   },
   "es": {
@@ -210,7 +216,13 @@
         "Arranca en 16 s",
         "Versiones firmadas · Ed25519"
       ],
-      "alt": "El escritorio de LordOS con Calendario, Archivos, Fotos y Reproductor abiertos"
+      "alt": "El escritorio de LordOS con Calendario, Archivos, Fotos y Reproductor abiertos",
+      "carousel": "Pantallas de LordOS",
+      "pause": "Pausar las imágenes",
+      "play": "Reanudar las imágenes",
+      "choose": "Elegí una pantalla",
+      "show": "Mostrar",
+      "of": "de"
     }
   },
   "pt": {
@@ -317,7 +329,13 @@
         "Inicia em 16 s",
         "Versões assinadas · Ed25519"
       ],
-      "alt": "O desktop do LordOS com Calendário, Arquivos, Fotos e Player abertos"
+      "alt": "O desktop do LordOS com Calendário, Arquivos, Fotos e Player abertos",
+      "carousel": "Telas do LordOS",
+      "pause": "Pausar a apresentação",
+      "play": "Retomar a apresentação",
+      "choose": "Escolha uma tela",
+      "show": "Mostrar",
+      "of": "de"
     }
   }
 }
