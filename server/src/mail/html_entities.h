@@ -1,5 +1,5 @@
-/* html_entities.h — entidades con nombre de HTML5 (solo las de un carácter), generadas desde
-* html.entities de Python. Ordenadas por nombre para búsqueda binaria. No editar a mano. */
+/* html_entities.h — HTML5 named entities (single-character ones only), generated from
+* Python's html.entities. Sorted by name for binary search. Do not edit by hand. */
 #ifndef LORD_MAIL_HTML_ENTITIES_H
 #define LORD_MAIL_HTML_ENTITIES_H
 #include <stdint.h>

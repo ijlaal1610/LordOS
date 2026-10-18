@@ -1,5 +1,5 @@
 /* logs_admin.c — logs-system: el journal del sistema para un administrador que no está en los
- * grupos systemd-journal/adm (app Registros, docs/SISTEMA.md).
+ * grupos systemd-journal/adm (app Registros, docs/SYSTEM.md).
  *
  *   logs-system <consulta>   líneas clave=valor: since, until (segundos o µs), prio (0..7),
  *                            kernel (0|1), match (unidad o identificador: [A-Za-z0-9@._:-]),

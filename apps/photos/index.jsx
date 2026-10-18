@@ -6,7 +6,7 @@
 // (recorte, giro, brillo y contraste) se guardan como una copia: el original no se toca.
 import {
   View, Text, Image, MediaView, ScrollView, SidebarItem, SectionTitle, Button, Slider, useTheme, useAppWindow, useKeyboard, useWindowState, wm,
-  t as tr, media, useThumb, userDirs, fs, addListener, direction, print,
+  t as tr, media, useThumb, userDirs, fs, addListener, direction, print, ThemeProvider, ToolbarButton, ToolbarGroup, EmptyState, useStore, windows,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 
@@ -48,8 +48,8 @@ function Thumb({ e, size, selected, onOpen, onSelect }) {
   const thumb = useThumb(e.path, 256);
   return (
     <View onClick={onSelect} onDoubleClick={onOpen} style={{ width: size, height: size, borderRadius: 6, overflow: 'hidden', backgroundColor: th.control,
-      border: selected ? `2px solid ${th.accent}` : '2px solid transparent', alignItems: 'center', justifyContent: 'center' }}>
-      {thumb ? <Image src={thumb} style={{ width: size - 4, height: size - 4, objectFit: 'cover' }} />
+      border: selected ? `3px solid ${th.accent}` : '0px solid transparent', alignItems: 'center', justifyContent: 'center' }}>
+      {thumb ? <Image src={thumb} style={{ width: selected ? size - 6 : size, height: selected ? size - 6 : size, objectFit: 'cover', borderRadius: selected ? 3 : 0 }} />
         : <Text style={{ fontSize: 10, color: th.textDim }}>{e.name.split('.').pop().toUpperCase()}</Text>}
     </View>
   );
@@ -209,23 +209,29 @@ function Viewer({ list, index, setIndex, onClose, winId, mode }) {
   };
 
   const full = mode === 'fullscreen';
+  // the viewer is always dark (photos look best on a dark surround), in light mode too
   return (
+    <ThemeProvider tokens={viewerTokens(th)}>
     <View style={{ flex: 1, backgroundColor: full ? '#000' : '#141416' }}>
       {!full && (
-        <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 4, backgroundColor: '#1d1d20' }}>
-          <ToolBtn dark glyph={direction() === 'rtl' ? '›' : '‹'} label={tr('photos.library')} onClick={onClose} />
-          <View style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={{ fontSize: 12, color: '#eee', whiteSpace: 'nowrap' }}>{baseName(path)}</Text>
-            <Text style={{ fontSize: 10, color: '#999' }}>{info?.sourceWidth ? `${info.sourceWidth} × ${info.sourceHeight}` : ''}{list.length > 1 ? `  ·  ${index + 1} / ${list.length}` : ''}</Text>
+        <View style={{ height: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8, backgroundColor: '#1d1d20' }}>
+          <ToolbarButton icon={direction() === 'rtl' ? '›' : '‹'} iconSize={18} label={tr('photos.library')} onClick={onClose} />
+          <View style={{ flex: 1, alignItems: 'center', overflow: 'hidden' }}>
+            <Text style={{ fontSize: 13, fontWeight: 600, color: '#f5f5f7', whiteSpace: 'nowrap' }}>{baseName(path)}</Text>
+            <Text style={{ fontSize: 11, color: 'rgba(235,235,245,0.55)', whiteSpace: 'nowrap' }}>{info?.sourceWidth ? `${info.sourceWidth} × ${info.sourceHeight}` : ''}{list.length > 1 ? `  ·  ${index + 1} / ${list.length}` : ''}</Text>
           </View>
-          <ToolBtn dark glyph="−" onClick={() => zoomBy(0.8)} />
-          <ToolBtn dark glyph="⤢" label={zoom ? `${Math.round(zoom * 100)} %` : tr('photos.fit')} onClick={() => setZoomAt(zoom ? 0 : 1)} />
-          <ToolBtn dark glyph="+" onClick={() => zoomBy(1.25)} />
-          <ToolBtn dark glyph="⟲" onClick={() => setRot((r) => r - 90)} />
-          <ToolBtn dark glyph="⟳" onClick={() => setRot((r) => r + 90)} />
-          <ToolBtn dark glyph="✎" label={tr('photos.edit')} active={!!edit} onClick={() => setEdit(edit ? null : { bright: 0, contrast: 0, crop: null })} />
-          <ToolBtn dark glyph="▶" label={tr('photos.slideshow')} onClick={() => setSlide(true)} />
-          <ToolBtn dark glyph="⛶" onClick={() => wm.setFullscreen(winId, true)} />
+          <ToolbarGroup>
+            <ToolbarButton icon="−" small title={tr('photos.zoomOut')} onClick={() => zoomBy(0.8)} />
+            <View onClick={() => setZoomAt(zoom ? 0 : 1)} style={{ minWidth: 56, alignItems: 'center' }}>
+              <Text style={{ fontSize: 11, fontWeight: 500, color: '#f5f5f7', whiteSpace: 'nowrap' }}>{zoom ? `${Math.round(zoom * 100)} %` : tr('photos.fit')}</Text>
+            </View>
+            <ToolbarButton icon="+" small title={tr('photos.zoomIn')} onClick={() => zoomBy(1.25)} />
+          </ToolbarGroup>
+          <ToolbarButton icon="⟲" title={tr('photos.rotateLeft')} onClick={() => setRot((r) => r - 90)} />
+          <ToolbarButton icon="⟳" title={tr('photos.rotateRight')} onClick={() => setRot((r) => r + 90)} />
+          <ToolbarButton icon="▶" iconSize={13} title={tr('photos.slideshow')} onClick={() => setSlide(true)} />
+          <ToolbarButton icon="⛶" title={tr('photos.fullscreen')} onClick={() => wm.setFullscreen(winId, true)} />
+          <ToolbarButton icon="✎" label={tr('photos.edit')} active={!!edit} onClick={() => setEdit(edit ? null : { bright: 0, contrast: 0, crop: null })} />
         </View>
       )}
       <View ref={box} style={{ flex: 1, overflow: 'hidden' }}
@@ -274,16 +280,35 @@ function Viewer({ list, index, setIndex, onClose, winId, mode }) {
         </View>}
       </View>
       {edit && !full && (
-        <View style={{ height: 56, flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 14, backgroundColor: '#1d1d20' }}>
+        <View style={{ height: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, backgroundColor: '#1d1d20' }}>
           <Text style={{ fontSize: 12, color: '#ccc' }}>{tr('photos.brightness')}</Text>
           <Slider value={edit.bright} min={-100} max={100} width={130} onChange={(v) => setEdit({ ...edit, bright: Math.round(v) })} />
-          <Text style={{ fontSize: 12, color: '#ccc' }}>{tr('photos.contrast')}</Text>
+          <Text style={{ fontSize: 12, color: '#ccc', marginLeft: 8 }}>{tr('photos.contrast')}</Text>
           <Slider value={edit.contrast} min={-100} max={100} width={130} onChange={(v) => setEdit({ ...edit, contrast: Math.round(v) })} />
           <Text style={{ fontSize: 11, color: '#999', flex: 1 }}>{edit.crop ? tr('photos.cropReady') : tr('photos.cropHint')}</Text>
           <Button label={tr('photos.reset')} onClick={() => { setEdit({ bright: 0, contrast: 0, crop: null }); setRot(0); }} />
           <Button primary label={tr('photos.saveCopy')} onClick={saveCopy} />
         </View>
       )}
+    </View>
+    </ThemeProvider>
+  );
+}
+
+// Tokens for the viewer's always-dark chrome (toolbar buttons, tooltips, sliders).
+const viewerTokens = (th) => ({ ...th, mode: 'dark', text: '#f5f5f7', textDim: 'rgba(235,235,245,0.55)', hover: 'rgba(255,255,255,0.1)',
+  control: 'rgba(255,255,255,0.1)', separator: 'rgba(255,255,255,0.1)', windowBg: '#1f1f23', inputBg: '#2a2a2f' });
+
+// Small folder icon for the sidebar (the folder emoji is a color picture; macOS uses a line glyph).
+function FolderGlyph({ on }) {
+  const th = useTheme();
+  const c = on ? '#fff' : th.accent;
+  return (
+    <View style={{ width: 18, alignItems: 'center' }}>
+      <View style={{ width: 15, height: 11, marginTop: 2 }}>
+        <View style={{ position: 'absolute', left: 0, top: 0, width: 6, height: 3, borderRadius: 1, backgroundColor: c }} />
+        <View style={{ position: 'absolute', left: 0, top: 2, width: 15, height: 9, borderRadius: 2, border: `1.5px solid ${c}` }} />
+      </View>
     </View>
   );
 }
@@ -299,6 +324,7 @@ export default function Photos() {
   const [viewer, setViewer] = useWindowState('viewer', null);    // { list, index } (sobrevive a la pantalla completa)
   const [size, setSize] = useState(132);
   const [rev, setRev] = useState(0);
+  const winW = useStore(windows, (ws) => ws.find((w) => w.id === win.id)?.w || 980);
 
   useEffect(() => {
     const out = [];
@@ -325,6 +351,8 @@ export default function Photos() {
       onClose={() => { setViewer(null); wm.setTitle(win.id, null); wm.setFullscreen(win.id, false); }} />;
   }
 
+  // narrow window (close to minSize): a smaller title so it is not clipped
+  const narrow = winW < 700;
   // agrupado por mes, como una fototeca
   const groups = [];
   for (const e of items) {
@@ -335,32 +363,37 @@ export default function Photos() {
   }
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>
-      <View style={{ width: 190, backgroundColor: th.sidebarBg, padding: 8, gap: 2 }}>
+      <View style={{ width: 210, backgroundColor: th.sidebarBg, paddingTop: 8, paddingHorizontal: 10, gap: 2 }}>
+        <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 1, backgroundColor: th.separator }} />
         <SectionTitle>{tr('photos.library')}</SectionTitle>
         <SidebarItem label={tr('photos.allPhotos')} icon="▦" selected={all && folder === dirs.pictures} onClick={() => { setFolder(dirs.pictures); setAll(true); }} />
+        <View style={{ height: 8 }} />
         <SectionTitle>{tr('photos.folders')}</SectionTitle>
         {subfolders(dirs.pictures).map((f) => (
-          <SidebarItem key={f} label={baseName(f)} icon="📁" selected={!all && folder === f} onClick={() => { setFolder(f); setAll(false); }} />
+          <SidebarItem key={f} label={baseName(f)} icon={<FolderGlyph on={!all && folder === f} />} selected={!all && folder === f} onClick={() => { setFolder(f); setAll(false); }} />
         ))}
       </View>
       <View style={{ flex: 1 }}>
-        <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 10 }}>
-          <Text style={{ fontSize: 17, fontWeight: 700, color: th.text, flex: 1 }}>{all ? tr('photos.allPhotos') : baseName(folder)}</Text>
-          <Text style={{ fontSize: 11, color: th.textDim }}>{tr('photos.count', { count: items.length })}</Text>
-          <Slider value={size} min={80} max={240} width={100} onChange={(v) => setSize(Math.round(v))} />
-          <View onClick={() => setRev((r) => r + 1)} style={{ paddingHorizontal: 6 }}><Text style={{ fontSize: 14, color: th.textDim }}>↻</Text></View>
+        <View style={{ height: 64, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, gap: 12 }}>
+          <View style={{ flex: 1, overflow: 'hidden' }}>
+            <Text style={{ fontSize: narrow ? 17 : 22, fontWeight: 600, color: th.text, whiteSpace: 'nowrap' }}>{all ? tr('photos.allPhotos') : baseName(folder)}</Text>
+            <Text style={{ fontSize: 11, color: th.textDim, whiteSpace: 'nowrap' }}>{tr('photos.count', { count: items.length })}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, direction: 'ltr' }}>
+            {!narrow && <View style={{ width: 8, height: 8, borderRadius: 2, border: `1.5px solid ${th.textDim}` }} />}
+            <Slider value={size} min={80} max={240} width={narrow ? 72 : 96} onChange={(v) => setSize(Math.round(v))} />
+            {!narrow && <View style={{ width: 13, height: 13, borderRadius: 3, border: `1.5px solid ${th.textDim}` }} />}
+          </View>
+          <ToolbarButton icon="↻" title={tr('photos.refresh')} onClick={() => setRev((r) => r + 1)} />
         </View>
-        <ScrollView style={{ flex: 1, paddingHorizontal: 14 }}>
+        <ScrollView style={{ flex: 1, paddingHorizontal: 20 }}>
           {!items.length && (
-            <View style={{ padding: 40, alignItems: 'center', gap: 6 }}>
-              <Text style={{ fontSize: 30 }}>🖼</Text>
-              <Text style={{ fontSize: 13, color: th.textDim, textAlign: 'center' }}>{tr('photos.empty')}</Text>
-            </View>
+            <EmptyState icon="▦" title={tr('photos.emptyTitle')} hint={tr('photos.empty')} style={{ paddingTop: 80 }} />
           )}
           {groups.map((g) => (
-            <View key={g.k} style={{ gap: 8, marginBottom: 14 }}>
-              <Text style={{ fontSize: 13, fontWeight: 600, color: th.text }}>{tr('photos.monthYear', { month: tr(`photos.month.${g.date.getMonth()}`), year: g.date.getFullYear() })}</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            <View key={g.k} style={{ gap: 10, marginBottom: 24 }}>
+              <Text style={{ fontSize: 15, fontWeight: 600, color: th.text }}>{tr('photos.monthYear', { month: tr(`photos.month.${g.date.getMonth()}`), year: g.date.getFullYear() })}</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
                 {g.list.map((e) => (
                   <Thumb key={e.path} e={e} size={size} selected={sel === e.path} onSelect={() => setSel(e.path)}
                     onOpen={() => setViewer({ list: items, index: items.indexOf(e) })} />

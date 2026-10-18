@@ -1,19 +1,19 @@
-// disks.js — discos y particiones (app Discos; ver docs/SISTEMA.md, «Discos»).
+// disks.js — disks and partitions (Disks app; see docs/SYSTEM.md, "Disks").
 //
-//   const [lista, recargar] = useDisks()    // se actualiza sola al montar, desmontar o enchufar
-//   disks.list()  disks.tools()             // lord.disks, de solo lectura y sin root
+//   const [list, reload] = useDisks()       // updates itself on mount, unmount or plug-in
+//   disks.list()  disks.tools()             // lord.disks, read-only and without root
 //
-// Lo que cambia algo va por el ayudante con las acciones cerradas disk-* (admin.run): disk-smart,
-// disk-mount, disk-unmount, disk-eject, disk-format, disk-label, disk-erase, disk-write-image y
-// disk-cancel. Los avisos de cambios (mountinfo y udev, sin sondeo) solo están prendidos mientras
-// alguien usa useDisks().
+// Anything that changes something goes through the helper with the closed disk-* actions
+// (admin.run): disk-smart, disk-mount, disk-unmount, disk-eject, disk-format, disk-label,
+// disk-erase, disk-write-image and disk-cancel. Change notifications (mountinfo and udev, no
+// polling) are only on while someone uses useDisks().
 import { useEffect, useState } from 'react';
 
 const listeners = new Set();
 let timer = null;
 
 globalThis.__lordDisks = () => {
-  // los avisos de udev llegan de a varios: se juntan en uno
+  // udev events come in bursts: coalesce them into one
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {
     timer = null;

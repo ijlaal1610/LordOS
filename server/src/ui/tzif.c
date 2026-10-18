@@ -1,6 +1,6 @@
-/* tzif.c — zonas horarias con código propio: archivos TZif (RFC 8536, versiones 1 a 4) y reglas
- * POSIX TZ (el pie de los TZif, para fechas después de la última transición). Ver tzif.h.
- * Todo se valida: un archivo corto o con índices fuera de rango devuelve -1, nunca lee de más. */
+/* tzif.c — time zones with our own code: TZif files (RFC 8536, versions 1 to 4) and POSIX TZ
+ * rules (the TZif footer, for dates after the last transition). See tzif.h.
+ * Everything is validated: a short file or out-of-range indices return -1, it never over-reads. */
 #include "tzif.h"
 
 #include <ctype.h>
@@ -15,9 +15,9 @@
 static uint32_t be32(const uint8_t *p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
 static int64_t be64(const uint8_t *p) { return (int64_t)((uint64_t)be32(p) << 32 | be32(p + 4)); }
 
-/* ---- fechas ---- */
+/* ---- dates ---- */
 
-/* días desde 1970-01-01 (algoritmo de Howard Hinnant) */
+/* days since 1970-01-01 (Howard Hinnant's algorithm) */
 static int64_t days_from_civil(int64_t y, int m, int d) {
     y -= m <= 2;
     int64_t era = (y >= 0 ? y : y - 399) / 400;
@@ -44,7 +44,7 @@ static int mdays(int64_t y, int m) {
     return m == 2 && leap(y) ? 29 : d[m - 1];
 }
 
-/* ---- reglas POSIX ---- */
+/* ---- POSIX rules ---- */
 
 typedef struct { char kind; int a, b, c; int32_t time; } TzDate;   /* 'J' n, 'D' n, 'M' m.w.d */
 
@@ -62,7 +62,7 @@ static const char *p_name(const char *s, char *out, size_t n) {
     return k >= 1 ? s : NULL;
 }
 
-/* [+-]hh[:mm[:ss]]; max: horas permitidas (24 para offsets, 167 para las horas de la regla) */
+/* [+-]hh[:mm[:ss]]; max: allowed hours (24 for offsets, 167 for rule times) */
 static const char *p_time(const char *s, int32_t *out, int max) {
     int sign = 1;
     if (*s == '+') s++;
@@ -106,13 +106,13 @@ static const char *p_date(const char *s, TzDate *d) {
     return s;
 }
 
-/* Segundos desde 1970 del comienzo (00:00 local) del día que dice la regla en el año y. */
+/* Seconds since 1970 of the start (local 00:00) of the day the rule names in year y. */
 static int64_t rule_day(const TzDate *d, int64_t y) {
     int64_t jan1 = days_from_civil(y, 1, 1);
     if (d->kind == 'J') return (jan1 + d->a - 1 + (leap(y) && d->a >= 60)) * 86400;
     if (d->kind == 'D') return (jan1 + d->a) * 86400;
     int64_t first = days_from_civil(y, d->a, 1);
-    int wd = (int)(((first + 4) % 7 + 7) % 7);          /* 1970-01-01 fue jueves */
+    int wd = (int)(((first + 4) % 7 + 7) % 7);          /* 1970-01-01 was a Thursday */
     int day = 1 + (d->c - wd + 7) % 7 + (d->b - 1) * 7;
     while (day > mdays(y, d->a)) day -= 7;
     return (first + day - 1) * 86400;
@@ -123,12 +123,12 @@ int tz_posix(const char *rule, int64_t t, TzInfo *out) {
     int32_t stdoff, dstoff;
     const char *s = rule ? p_name(rule, std, sizeof std) : NULL;
     if (!s || !(s = p_time(s, &stdoff, 24))) return -1;
-    stdoff = -stdoff;                                   /* POSIX cuenta al oeste */
+    stdoff = -stdoff;                                   /* POSIX counts westwards */
     if (!*s) { *out = (TzInfo){ .utoff = stdoff }; snprintf(out->abbr, sizeof out->abbr, "%s", std); return 0; }
     if (!(s = p_name(s, dst, sizeof dst))) return -1;
     dstoff = stdoff + 3600;
     if (*s && *s != ',') { if (!(s = p_time(s, &dstoff, 24))) return -1; dstoff = -dstoff; }
-    TzDate a = { 'M', 3, 2, 0, 7200 }, b = { 'M', 11, 1, 0, 7200 };   /* por defecto, la de EE. UU. */
+    TzDate a = { 'M', 3, 2, 0, 7200 }, b = { 'M', 11, 1, 0, 7200 };   /* default: the US rule */
     if (*s == ',') {
         if (!(s = p_date(s + 1, &a)) || *s != ',' || !(s = p_date(s + 1, &b))) return -1;
     }
@@ -136,12 +136,12 @@ int tz_posix(const char *rule, int64_t t, TzInfo *out) {
     int64_t y = year_of(t + stdoff);
     int in = 0;
     for (int64_t yy = y - 1; yy <= y + 1 && !in; yy++) {
-        /* el comienzo va en hora estándar y el fin en hora de verano */
+        /* the start is given in standard time and the end in daylight time */
         int64_t start = rule_day(&a, yy) + a.time - stdoff;
         int64_t end = rule_day(&b, yy) + b.time - dstoff;
         if (start < end) in = t >= start && t < end;
         else {
-            /* hemisferio sur: el verano cruza el año; se mira el tramo de este año */
+            /* southern hemisphere: summer spans the new year; check this year's span */
             int64_t next_end = rule_day(&b, yy + 1) + b.time - dstoff;
             in = t >= start && t < next_end;
         }
@@ -186,7 +186,7 @@ int tzif_lookup(const uint8_t *buf, size_t n, int64_t t, TzInfo *out) {
     const uint8_t *p = buf + 44;
     size_t rem = n - 44, len = block_len(&c, 0);
     if (len > rem) return -1;
-    if (v2) {                                   /* se salta el bloque de 32 bits */
+    if (v2) {                                   /* skip the 32-bit block */
         p += len; rem -= len;
         if (counts(p, rem, &c)) return -1;
         p += 44; rem -= 44;
@@ -209,7 +209,7 @@ int tzif_lookup(const uint8_t *buf, size_t n, int64_t t, TzInfo *out) {
         return 0;
     }
     if (t >= TT(c.time - 1) && footer && footer[0] && !tz_posix(footer, t, out)) return 0;
-    uint32_t lo = 0, hi = c.time - 1;           /* la última transición <= t */
+    uint32_t lo = 0, hi = c.time - 1;           /* the last transition <= t */
     while (lo < hi) {
         uint32_t mid = lo + (hi - lo + 1) / 2;
         if (TT(mid) <= t) lo = mid; else hi = mid - 1;
@@ -230,7 +230,7 @@ int tz_zone_offset(const char *zone, int64_t t, TzInfo *out) {
     if (!tz_zone_valid(zone)) return -1;
     char path[160];
     snprintf(path, sizeof path, "/usr/share/zoneinfo/%s", zone);
-    /* tzdata usa enlaces (Europe/Madrid → ../Europe/…): se siguen, pero sin salir de zoneinfo */
+    /* tzdata uses links: follow them, but never outside zoneinfo */
     char real[PATH_MAX];
     if (!realpath(path, real) || strncmp(real, "/usr/share/zoneinfo/", 20)) return -1;
     int fd = open(real, O_RDONLY | O_CLOEXEC);

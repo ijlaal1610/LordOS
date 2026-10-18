@@ -9,6 +9,7 @@
 //       el llavero de la sesión, por app: una app ve solo lo suyo (salvo que el usuario lo comparta)
 //   autofill(app, { url | service })                → [{ id, title, username }] de Contraseñas (si está abierta)
 //   <KeyringPrompt />                               aviso del sistema para abrir el llavero (lo monta startShell)
+//   <AutofillButton app service|url|ssid onFill />   "fill from Passwords" next to a login field
 import { createElement as h, useEffect, useState } from 'react';
 import { View, Text } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
@@ -87,15 +88,16 @@ export const keyring = {
 
 const hostOf = (u) => String(u || '').replace(/^[a-z]+:\/\//i, '').split(/[/:?#]/)[0].toLowerCase().replace(/^www\./, '');
 
-// Entradas de Contraseñas que sirven para ese sitio o servicio (solo si la bóveda está abierta).
-export async function autofill(app, { url, service } = {}) {
+// Passwords entries that match a site, a service or a Wi-Fi network (only while the vault is unlocked).
+export async function autofill(app, { url, service, ssid } = {}) {
   const host = hostOf(url || service);
-  if (!host) return [];
+  if (!host && !ssid) return [];
   let list;
   try { list = (await vaultRequest('list')).entries || []; } catch (e) { return []; }
-  return list.filter((e) => !e.trash && (hostOf(e.url) === host || hostOf(e.url).endsWith(`.${host}`) || host.endsWith(`.${hostOf(e.url)}`) ||
-    String(e.title).toLowerCase().includes(host.split('.')[0])))
-    .map((e) => ({ id: e.id, title: e.title, username: e.sub || '' }));
+  const hit = (e) => (ssid ? e.cat === 'wifi' && e.sub === ssid
+    : hostOf(e.url) === host || hostOf(e.url).endsWith(`.${host}`) || (hostOf(e.url) && host.endsWith(`.${hostOf(e.url)}`)) ||
+      String(e.title).toLowerCase().includes(host.split('.')[0]));
+  return list.filter((e) => !e.trash && hit(e)).map((e) => ({ id: e.id, title: e.title, username: e.sub || '' }));
 }
 
 // El usuario eligió una: usuario y contraseña (la contraseña sale de lord-vault solo ahora).
@@ -140,4 +142,36 @@ export function KeyringPrompt() {
   h(View, { style: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 } },
     h(Button, { label: t('passwords.cancel'), onClick: () => done(false) }),
     h(Button, { label: busy ? t('passwords.unlock.working') : t('passwords.keyring.unlock'), primary: true, onClick: submit }))));
+}
+
+// ---- "fill from Passwords" button for native login fields ----
+//
+//   <AutofillButton app="settings" service="wifi:Casa" ssid="Casa" onFill={({ username, password }) => …} />
+// Offers what the app saved in the session keyring (service) and matching Passwords entries.
+// The secret leaves lord-vault only when the user picks one.
+export function AutofillButton({ app, service, url, ssid, onFill }) {
+  const th = useTheme();
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState(null);
+  const load = async () => {
+    const out = [];
+    if (service) { try { const k = await keyring.get(app, { service }); if (k) out.push({ kind: 'kr', title: k.label || service, username: k.account, secret: k.secret }); } catch (e) { /* locked */ } }
+    for (const e of await autofill(app, { url, service: url ? undefined : service, ssid })) out.push({ kind: 'pw', ...e });
+    setItems(out);
+  };
+  const pick = async (it) => {
+    setOpen(false);
+    if (it.kind === 'kr') { onFill({ username: it.username, password: it.secret }); return; }
+    try { onFill(await autofillReveal(it.id)); } catch (e) { /* locked */ }
+  };
+  return h(View, null,
+    h(View, { onClick: () => { setOpen(!open); if (!open) load(); }, style: { width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: th.control } }, h(Text, { style: { fontSize: 14 } }, '🔑')),
+    open ? h(View, { style: { position: 'absolute', top: 34, right: 0, width: 260, zIndex: 100, padding: 4, borderRadius: 9, backgroundColor: th.windowBg,
+      border: `1px solid ${th.separator}`, boxShadow: '0 10px 28px rgba(0,0,0,0.4)' } },
+      h(Text, { style: { fontSize: 11, fontWeight: 600, color: th.textDim, padding: 6 } }, t('passwords.autofill.title')),
+      items == null ? null : !items.length ? h(Text, { style: { fontSize: 12, color: th.textDim, padding: 6 } }, t('passwords.autofill.none'))
+        : items.map((it, i) => h(View, { key: i, onClick: () => pick(it), style: { padding: 6, borderRadius: 6 } },
+          h(Text, { style: { fontSize: 13, color: th.text } }, it.title),
+          it.username ? h(Text, { style: { fontSize: 11, color: th.textDim } }, it.username) : null))) : null);
 }

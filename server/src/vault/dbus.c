@@ -554,6 +554,24 @@ int dbus_connect_session(void) {
     return fd;
 }
 
+/* System bus (BlueZ, power-profiles-daemon; Settings, see docs/SETTINGS.md):
+ * DBUS_SYSTEM_BUS_ADDRESS if it is a unix:path=, else /run/dbus/system_bus_socket. */
+int dbus_connect_system(void) {
+    struct sockaddr_un a = { .sun_family = AF_UNIX };
+    const char *addr = getenv("DBUS_SYSTEM_BUS_ADDRESS"), *path = "/run/dbus/system_bus_socket";
+    char buf[sizeof a.sun_path];
+    if (addr && !strncmp(addr, "unix:path=", 10)) {
+        size_t n = strcspn(addr + 10, ",;");
+        if (n && n < sizeof buf) { memcpy(buf, addr + 10, n); buf[n] = 0; path = buf; }
+    }
+    if (strlen(path) >= sizeof a.sun_path) return -1;
+    memcpy(a.sun_path, path, strlen(path) + 1);
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0) return -1;
+    if (connect(fd, (struct sockaddr *)&a, sizeof a)) { close(fd); return -1; }
+    return fd;
+}
+
 static double now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
 
 static int wait_fd(int fd, short ev, double deadline) {

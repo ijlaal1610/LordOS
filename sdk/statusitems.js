@@ -1,11 +1,11 @@
-// statusitems.js — íconos de estado en la barra del tema (como los "menu extras" de macOS).
+// statusitems.js — status icons in the theme's bar (like macOS "menu extras").
 //
-//   const off = registerStatusItem('clock', ClockStatus, 10)   // ClockStatus({ color }) dibuja el suyo
-//   <StatusItems color={t.menuText} />                          // el tema los muestra donde quiera
+//   const off = registerStatusItem('clock', ClockStatus, 10)   // ClockStatus({ color }) draws its own
+//   <StatusItems color={t.menuText} />                          // the theme shows them wherever it wants
 //
-// Es opcional: un tema que no dibuja <StatusItems /> simplemente no los muestra. Los temas default
-// y classic los ponen junto a los indicadores de privacidad. Un ítem que no tiene nada que mostrar
-// devuelve null.
+// It is optional: a theme that does not draw <StatusItems /> simply doesn't show them. The default
+// and classic themes put them next to the privacy indicators. An item with nothing to show returns
+// null.
 import { createElement as h } from 'react';
 import { View } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';

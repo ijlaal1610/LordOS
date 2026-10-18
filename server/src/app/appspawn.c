@@ -27,6 +27,8 @@ int app_spawn(const char *id) {
     char dir[PATH_MAX];
     struct stat st;
     if (!root || (size_t)snprintf(dir, sizeof dir, "%s/%s", root, id) >= sizeof dir || stat(dir, &st) || !S_ISDIR(st.st_mode)) return -1;
+    /* one process per app: if it is already running, it opens another window instead */
+    if (!brokersrv_new_window(id)) { fprintf(stderr, "lord-server: app '%s' already running: new window\n", id); return 0; }
 
     char self[PATH_MAX];
     ssize_t n = readlink("/proc/self/exe", self, sizeof self - 1);
@@ -44,6 +46,9 @@ int app_spawn(const char *id) {
         if (fork() != 0) _exit(0);          /* nieto huérfano, como el lanzador de apps Linux */
         signal(SIGTERM, SIG_DFL);
         signal(SIGHUP, SIG_DFL);
+        sigset_t none;                       /* lord-server blocks SIGINT/SIGTERM (signalfd): not the app */
+        sigemptyset(&none);
+        sigprocmask(SIG_SETMASK, &none, NULL);
         char fdstr[16];
         snprintf(fdstr, sizeof fdstr, "%d", sv[1]);
         setenv(BROKER_FD_ENV, fdstr, 1);

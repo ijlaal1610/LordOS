@@ -2,7 +2,8 @@
 // notas que viven en el escritorio como widgets (se mueven, cambian de tamaño y vuelven al
 // iniciar sesión). Todo se guarda solo en ~/Notas/<nota>/nota.md (ver store.js y docs/NOTAS.md).
 import {
-  View, Text, useTheme, useLocale, useAppWindow, useStore, useKeyboard, Button, TextInput, ScrollView, ThemeProvider,
+  View, Text, useTheme, useLocale, useAppWindow, useStore, useKeyboard, Button, TextInput, ScrollView, ThemeProvider, Segmented,
+  Toolbar, ToolbarButton, ToolbarSpacer, MenuButton, SearchField, EmptyState, textDirection,
   Markdown, markdownHeadings, toggleTask, wm, fs, formatBytes, addListener, screen, t, print,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
@@ -57,7 +58,7 @@ function EmojiPicker({ onPick, onClose, x = 0, y = 0 }) {
   const [cat, setCat] = useState('caras');
   const list = (q ? searchEmoji(q) : EMOJIS.filter((e) => e.cat === cat)).slice(0, 96);
   return (
-    <View onMouseDown={(e) => e.stopPropagation?.()} style={{ position: 'absolute', left: x, top: y, width: 300, padding: 8, gap: 6, borderRadius: 10,
+    <View onMouseDown={(e) => e.stopPropagation?.()} style={{ position: 'absolute', left: x, top: y, width: 308, padding: 10, gap: 8, borderRadius: 12,
       backgroundColor: th.windowBg, border: `1px solid ${th.separator}`, boxShadow: '0 12px 30px rgba(0,0,0,0.35)' }}>
       <TextInput value={q} onChange={setQ} placeholder={tr('notes.emoji.search')} autoFocus onCancel={onClose}
         onSubmit={() => list[0] && onPick(list[0].ch)} />
@@ -92,17 +93,17 @@ function FilePicker({ onPick, onClose, images }) {
   try { entries = fs.list(dir || '.').filter((e) => !e.name.startsWith('.') && (e.dir || !images || isImage(e.name))); } catch (e) { entries = []; }
   entries.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name));
   return (
-    <View onMouseDown={(e) => e.stopPropagation?.()} style={{ position: 'absolute', left: 40, top: 50, right: 40, bottom: 40, padding: 10, gap: 6, borderRadius: 10,
+    <View onMouseDown={(e) => e.stopPropagation?.()} style={{ position: 'absolute', left: 32, top: 52, right: 32, bottom: 32, padding: 16, gap: 10, borderRadius: 12,
       backgroundColor: th.windowBg, border: `1px solid ${th.separator}`, boxShadow: '0 14px 36px rgba(0,0,0,0.4)' }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Button label="‹" onClick={() => setDir(dir.split('/').slice(0, -1).join('/'))} />
-        <Text style={{ flex: 1, fontSize: 13, fontWeight: 600, color: th.text }}>{`~/${dir}`}</Text>
+        <ToolbarButton icon="‹" iconSize={18} onClick={() => setDir(dir.split('/').slice(0, -1).join('/'))} />
+        <Text style={{ flex: 1, fontSize: 13, fontWeight: 600, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{`~/${dir}`}</Text>
         <Button label={tr('notes.close')} onClick={onClose} />
       </View>
       <ScrollView style={{ flex: 1 }}>
         {entries.map((e) => (
           <View key={e.name} onClick={() => (e.dir ? setDir(dir ? `${dir}/${e.name}` : e.name) : onPick(`${fs.home()}/${dir ? `${dir}/` : ''}${e.name}`))}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5, paddingHorizontal: 6, borderRadius: 5 }}>
+            style={{ height: 28, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, borderRadius: 6 }}>
             <Text style={{ fontSize: 15 }}>{e.dir ? '📁' : isImage(e.name) ? '🖼️' : '📄'}</Text>
             <Text style={{ flex: 1, fontSize: 13, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{e.name}</Text>
             {!e.dir && <Text style={{ fontSize: 11, color: th.textDim }}>{formatBytes(e.size)}</Text>}
@@ -152,21 +153,23 @@ function NoteBody({ note, mode, onMode, editorApi, compact, showToc, size = 14, 
     sc.scrollTo(lord.getLayout(n.id)[1] - lord.getLayout(sc.inner.current.id)[1] - 4);
   };
   return (
-    <View ref={box} style={{ flex: 1, flexDirection: 'row' }}>
+    // the note's own direction (an Arabic note reads right to left even in a Spanish interface)
+    <View ref={box} style={{ flex: 1, flexDirection: 'row', direction: textDirection(note.body) }}>
       {showToc && toc.length > 1 && (
-        <View style={{ width: 170, paddingVertical: 12, paddingHorizontal: 10, gap: 2, borderRight: `1px solid ${th.separator}` }}>
-          <Text style={{ fontSize: 10, fontWeight: 700, color: th.textDim, marginBottom: 4 }}>{t('notes.toc')}</Text>
+        <View style={{ width: 180, paddingTop: 20, paddingHorizontal: 16, gap: 2 }}>
+          <View style={{ position: 'absolute', right: 0, top: 16, bottom: 16, width: 1, backgroundColor: th.separator }} />
+          <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, marginBottom: 6 }}>{t('notes.toc')}</Text>
           {toc.map((h) => (
-            <View key={h.id} onClick={() => jump(h.id)} style={{ paddingVertical: 3, paddingLeft: (h.level - 1) * 10 }}>
+            <View key={h.id} onClick={() => jump(h.id)} style={{ paddingVertical: 4, paddingLeft: (h.level - 1) * 10 }}>
               <Text style={{ fontSize: 12, color: h.level === 1 ? th.text : th.textDim, fontWeight: h.level === 1 ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden' }}>{h.text}</Text>
             </View>
           ))}
         </View>
       )}
       <ScrollView scrollRef={scroll} style={{ flex: 1 }}>
-        <View onDoubleClick={() => onMode('edit')} style={{ padding: compact ? 10 : 18, minHeight: 60 }}>
+        <View onDoubleClick={() => onMode('edit')} style={{ paddingVertical: compact ? 10 : 20, paddingHorizontal: compact ? 10 : 28, minHeight: 60 }}>
           {note.body.trim() ? (
-            <Markdown source={note.body} base={absFolder(note.slug)} width={Math.max(80, w - (showToc && toc.length > 1 ? 170 : 0) - (compact ? 20 : 36))} size={size}
+            <Markdown source={note.body} base={absFolder(note.slug)} width={Math.max(80, w - (showToc && toc.length > 1 ? 180 : 0) - (compact ? 20 : 56))} size={size}
               emoji={emojiFor} onLink={(u) => openLink(note.slug, u)} onHeadingRef={(id, n) => { if (n) heads.current.set(id, n); }}
               onToggleTask={(line) => updateNote(note.slug, { body: toggleTask(note.body, line) })} />
           ) : <Text style={{ fontSize: 13, color: th.textDim }}>{t('notes.empty')}</Text>}
@@ -320,72 +323,83 @@ export default function Notes() {
       ] },
     ]);
   });
-  const colorBar = note && (
-    <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}>
-      {COLORS.map((c) => <Dot key={c} color={c} size={14} selected={c === note.color} onClick={() => updateNote(note.slug, { color: c }, { touch: false })} />)}
-    </View>
-  );
-  const ToolBtn = ({ label, onClick, active }) => (
-    <View onClick={onClick} style={{ height: 26, paddingHorizontal: 9, borderRadius: 6, justifyContent: 'center', backgroundColor: active ? th.accent : th.control }}>
-      <Text style={{ fontSize: 12, color: active ? '#fff' : th.text, whiteSpace: 'nowrap' }}>{label}</Text>
-    </View>
-  );
+  // window width: a narrower sidebar and a compact toolbar in small windows
+  const root = useRef(null);
+  const [winW, setWinW] = useState(860);
+  useEffect(() => {
+    const id = setInterval(() => { if (root.current) { const w = lord.getLayout(root.current.id)[2]; if (Math.abs(w - winW) > 2) setWinW(w); } }, 300);
+    return () => clearInterval(id);
+  }, [winW]);
+  const sideW = winW < 720 ? 200 : 240;
+  const compact = winW - sideW < 470;
+  const colorItems = note ? COLORS.map((c) => ({ label: tr(`notes.color.${c}`), checked: c === note.color, onClick: () => updateNote(note.slug, { color: c }, { touch: false }) })) : [];
   return (
-    <View style={{ flex: 1, flexDirection: 'row' }}>
-      <View style={{ width: 230, backgroundColor: th.sidebarBg, padding: 8, gap: 6 }}>
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          <TextInput value={q} onChange={setQ} placeholder={tr('notes.search')} onCancel={() => setQ('')} style={{ flex: 1 }} />
-          <Button label="＋" onClick={newNote} />
+    <View ref={root} style={{ flex: 1, flexDirection: 'row' }}>
+      <View style={{ width: sideW, backgroundColor: th.sidebarBg, paddingTop: 12, paddingHorizontal: 10, gap: 10 }}>
+        <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 1, backgroundColor: th.separator }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <SearchField value={q} onChange={setQ} placeholder={tr('notes.search')} style={{ flex: 1 }} />
+          <ToolbarButton icon="✎" title={tr('notes.new')} onClick={newNote} />
         </View>
         <ScrollView style={{ flex: 1 }}>
           {shown.map((n) => {
             const on = note && n.slug === note.slug;
+            const pv = previewOf(n.body);
             return (
-              <View key={n.slug} onClick={() => { setSel(n.slug); setMode('read'); }} style={{ flexDirection: 'row', gap: 8, padding: 8, borderRadius: 8, marginBottom: 2,
-                backgroundColor: on ? th.accent : 'transparent' }}>
-                <View style={{ width: 10, height: 34, borderRadius: 3, backgroundColor: PAPER[n.color][1] }} />
+              <View key={n.slug} onClick={() => { setSel(n.slug); setMode('read'); }} style={{ flexDirection: 'row', gap: 10, paddingVertical: 9, paddingHorizontal: 10,
+                borderRadius: 8, marginBottom: 2, backgroundColor: on ? th.accent : 'transparent' }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, marginTop: 5, backgroundColor: PAPER[n.color][1], border: '1px solid rgba(0,0,0,0.12)' }} />
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={{ fontSize: 13, fontWeight: 600, color: on ? '#fff' : th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{n.title || tr('notes.untitled')}</Text>
-                  <Text style={{ fontSize: 11, color: on ? 'rgba(255,255,255,0.8)' : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-                    {`${fmtDate(n.updated, formatDate)}${n.desktop ? ` · ${tr('notes.onDesktop')}` : ''}`}</Text>
+                  <View style={{ flexDirection: 'row', gap: 6, overflow: 'hidden' }}>
+                    <Text style={{ fontSize: 11, color: on ? 'rgba(255,255,255,0.85)' : th.text, whiteSpace: 'nowrap' }}>{fmtDate(n.updated, formatDate)}</Text>
+                    <Text style={{ flex: 1, fontSize: 11, color: on ? 'rgba(255,255,255,0.75)' : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden',
+                      direction: n.desktop ? 'inherit' : textDirection(pv) }}>{n.desktop ? tr('notes.onDesktop') : pv}</Text>
+                  </View>
                 </View>
               </View>
             );
           })}
-          {!shown.length && <Text style={{ fontSize: 12, color: th.textDim, margin: 8 }}>{loaded ? tr('notes.none') : '…'}</Text>}
+          {!shown.length && <Text style={{ fontSize: 12, color: th.textDim, margin: 10 }}>{loaded ? tr('notes.none') : '…'}</Text>}
         </ScrollView>
       </View>
       {note ? (
         <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderBottom: `1px solid ${th.separator}` }}>
-            <ToolBtn label={tr('notes.read')} active={mode === 'read'} onClick={() => setMode('read')} />
-            <ToolBtn label={tr('notes.edit')} active={mode === 'edit'} onClick={() => setMode('edit')} />
-            <View style={{ width: 6 }} />
-            {colorBar}
-            <View style={{ width: 6 }} />
-            <ToolBtn label="😀" onClick={() => setPanel(panel === 'emoji' ? null : 'emoji')} active={panel === 'emoji'} />
-            <ToolBtn label={tr('notes.image')} onClick={() => setPanel('image')} />
-            <ToolBtn label={tr('notes.attach')} onClick={() => setPanel('attach')} />
-            <ToolBtn label={tr('notes.showDesktop')} active={note.desktop} onClick={cmd.desktop} />
-            <View style={{ flex: 1 }} />
-            <ToolBtn label={tr('notes.duplicate')} onClick={cmd.duplicate} />
-            <ToolBtn label={tr('notes.delete')} onClick={cmd.del} />
-          </View>
+          <Toolbar>
+            <Segmented appearance="neutral" value={mode} onChange={setMode} options={[['read', tr('notes.read')], ['edit', tr('notes.edit')]]} />
+            {!compact && <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginLeft: 8 }}>
+              {COLORS.map((c) => <Dot key={c} color={c} size={14} selected={c === note.color} onClick={() => updateNote(note.slug, { color: c }, { touch: false })} />)}
+            </View>}
+            <ToolbarSpacer />
+            <MenuButton icon="⊕" title={tr('notes.insert')} items={[
+              { label: tr('notes.insertEmoji'), onClick: () => setPanel('emoji') },
+              { label: tr('notes.insertImage'), onClick: () => setPanel('image') },
+              { label: tr('notes.insertFile'), onClick: () => setPanel('attach') },
+            ]} />
+            <MenuButton title={tr('notes.more')} items={[
+              { label: tr('notes.duplicate'), onClick: cmd.duplicate },
+              { label: tr('notes.showDesktop'), checked: !!note.desktop, onClick: cmd.desktop },
+              { label: tr('notes.openFolder'), onClick: cmd.folder },
+              ...(compact ? ['-', ...colorItems] : []),
+              '-',
+              { label: tr('notes.delete'), destructive: true, onClick: cmd.del },
+            ]} />
+          </Toolbar>
           <View style={{ flex: 1, backgroundColor: PAPER[note.color][0] }}>
             <ThemeProvider tokens={paperTokens(th)}>
-              <NoteBody key={note.slug} note={note} mode={mode} onMode={setMode} editorApi={api} showToc={toc} onCommand={(b) => (b === 'n' ? cmd.new() : b === 'e' ? cmd.toggle() : null)} />
+              <NoteBody key={note.slug} note={note} mode={mode} onMode={setMode} editorApi={api} showToc={toc && winW - sideW >= 520} onCommand={(b) => (b === 'n' ? cmd.new() : b === 'e' ? cmd.toggle() : null)} />
             </ThemeProvider>
           </View>
-          {panel === 'emoji' && <EmojiPicker x={180} y={40} onClose={() => setPanel(null)} onPick={(ch) => { insert(ch); setPanel(null); }} />}
+          {panel === 'emoji' && <EmojiPicker x={Math.max(8, winW - sideW - 316)} y={48} onClose={() => setPanel(null)} onPick={(ch) => { insert(ch); setPanel(null); }} />}
           {(panel === 'attach' || panel === 'image') && (
             <FilePicker images={panel === 'image'} onClose={() => setPanel(null)} onPick={(p) => { insert(attachFile(note.slug, p), true); setPanel(null); }} />
           )}
           {panel === 'delete' && (
             <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.25)' }}>
-              <View style={{ width: 320, padding: 16, gap: 10, borderRadius: 12, backgroundColor: th.windowBg, border: `1px solid ${th.separator}` }}>
-                <Text style={{ fontSize: 14, fontWeight: 700, color: th.text }}>{tr('notes.deleteTitle', { title: note.title || tr('notes.untitled') })}</Text>
-                <Text style={{ fontSize: 12, color: th.textDim, lineHeight: 1.4 }}>{tr('notes.deleteHint')}</Text>
-                <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+              <View style={{ width: 340, padding: 20, gap: 8, borderRadius: 12, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`, boxShadow: '0 16px 40px rgba(0,0,0,0.4)' }}>
+                <Text style={{ fontSize: 15, fontWeight: 600, color: th.text }}>{tr('notes.deleteTitle', { title: note.title || tr('notes.untitled') })}</Text>
+                <Text style={{ fontSize: 13, color: th.textDim, lineHeight: 1.4 }}>{tr('notes.deleteHint')}</Text>
+                <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
                   <Button label={tr('notes.cancel')} onClick={() => setPanel(null)} />
                   <Button primary label={tr('notes.delete')} onClick={() => { deleteNote(note.slug); setSel(null); setPanel(null); }} />
                 </View>
@@ -394,12 +408,15 @@ export default function Notes() {
           )}
         </View>
       ) : (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-          <Icon size={64} />
-          <Text style={{ fontSize: 13, color: th.textDim }}>{tr('notes.none')}</Text>
-          <Button primary label={tr('notes.new')} onClick={newNote} />
-        </View>
+        <EmptyState icon={<Icon size={56} />} title={tr('notes.none')} hint={tr('notes.noneHint')}
+          action={<Button primary label={tr('notes.new')} onClick={newNote} />} />
       )}
     </View>
   );
+}
+
+// Preview line of a note: the first line with text after the title, without markdown marks.
+function previewOf(body) {
+  const lines = body.split('\n').map((l) => l.trim()).filter((l) => l && !/^(`{3,}|---|#)/.test(l));
+  return (lines[0] || '').replace(/^(>\s*|[-*+]\s+(\[[ xX]\]\s+)?|\d+[.)]\s+)/, '').replace(/[*_`~]|!\[[^\]]*\]\([^)]*\)/g, '').slice(0, 80);
 }

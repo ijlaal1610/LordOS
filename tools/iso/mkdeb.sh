@@ -40,6 +40,12 @@ strip --strip-unneeded "$L/bin/lord-server" "$L/bin/lord-sessiond" "$L/bin/lord-
 # lord-server solo lanza el lord-media de su misma carpeta (medios: video, fotos, cámara, grabadora)
 [ -x server/build/lord-media ] && install -m 755 server/build/lord-media "$L/bin/lord-media"
 [ -x "$L/bin/lord-media" ] && { strip --strip-unneeded "$L/bin/lord-media" 2>/dev/null || true; }
+# lord-vault: Passwords and the system keyring (docs/PASSWORDS.md); lord-server only launches the one in its own folder
+[ -x server/build/lord-vault ] && install -m 755 server/build/lord-vault "$L/bin/lord-vault"
+[ -x "$L/bin/lord-vault" ] && { strip --strip-unneeded "$L/bin/lord-vault" 2>/dev/null || true; }
+# FIDO2 security keys reachable by the session user (lord-sessiond sessions have no logind seat)
+install -d "$PKG/usr/lib/udev/rules.d"
+install -m 644 packaging/udev/71-lordos-fido.rules "$PKG/usr/lib/udev/rules.d/71-lordos-fido.rules"
 for d in themes/*/; do
     n=$(basename "$d")
     [ -f "$d/theme.bundle.js" ] || continue

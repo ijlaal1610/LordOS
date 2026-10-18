@@ -1,10 +1,11 @@
-/* js_disk.c — lord.disks: discos y particiones para la app Discos (ver docs/SISTEMA.md).
+/* js_disk.c — lord.disks: disks and partitions for the Disks app (see docs/SYSTEM.md).
  *
- * Solo lectura y sin root (disk/disk.c). Lo que cambia algo va por el ayudante (acciones disk-*).
+ * Read-only and without root (disk/disk.c). Anything that changes something goes through the
+ * helper (disk-* actions).
  *   list()        [{ name, model, size, transport, removable, system, table, partitions: […] }]
- *   tools()       { fat32, exfat, ext4, ntfs }: qué formatos se pueden crear en este equipo
- *   watch(on)     avisos de cambios mientras la app está abierta: __lordDisks('change') cuando
- *                 se monta, se desmonta, se enchufa o cambia un disco (mountinfo + udev, sin sondeo) */
+ *   tools()       { fat32, exfat, ext4, ntfs }: which formats can be created on this machine
+ *   watch(on)     change notifications while the app is open: __lordDisks('change') when a disk is
+ *                 mounted, unmounted, plugged in or changed (mountinfo + udev, no polling) */
 #include "js_disk.h"
 #include "../disk/disk.h"
 

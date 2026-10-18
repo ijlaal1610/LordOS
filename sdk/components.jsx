@@ -8,14 +8,20 @@ import { useStore } from './store.js';
 import { textDirection } from './i18n.js';
 import { ime, useIme, Preedit } from './ime.js';
 
-export function Button({ label, onClick, primary, style }) {
+// Push button. Optional (all additive): small (22 px high), plain (no fill until hover), disabled,
+// destructive (red text) and icon (a glyph before the label). See docs/DESIGN.md.
+export function Button({ label, onClick, primary, style, small, plain, disabled, destructive, icon }) {
   const t = useTheme();
   const [hover, setHover] = useState(false);
+  const fg = primary ? '#fff' : destructive ? '#ff453a' : t.text;
+  const bg = primary ? t.accent : plain ? (hover && !disabled ? t.hover : 'transparent') : t.control;
   return (
-    <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={[{ height: 28, paddingHorizontal: 14, borderRadius: 7, justifyContent: 'center', alignItems: 'center',
-        backgroundColor: primary ? t.accent : t.control, opacity: hover ? 0.85 : 1 }, style]}>
-      <Text style={{ fontSize: 13, fontWeight: 500, color: primary ? '#fff' : t.text }}>{label}</Text>
+    <View onClick={disabled ? undefined : onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={[{ height: small ? 22 : 28, paddingHorizontal: small ? 10 : 14, borderRadius: small ? 6 : 7, flexDirection: 'row', gap: 6,
+        justifyContent: 'center', alignItems: 'center', backgroundColor: bg,
+        opacity: disabled ? 0.4 : hover && !plain ? 0.85 : 1 }, style]}>
+      {icon ? <Text style={{ fontSize: small ? 12 : 14, color: fg }}>{icon}</Text> : null}
+      {label != null && label !== '' ? <Text style={{ fontSize: small ? 12 : 13, fontWeight: 500, color: fg, whiteSpace: 'nowrap' }}>{label}</Text> : null}
     </View>
   );
 }
@@ -31,29 +37,42 @@ export function Toggle({ on, onChange }) {
   );
 }
 
-export function Segmented({ options, value, onChange }) {
+// appearance: 'accent' (default: the selected segment is filled with the accent) or 'neutral'
+// (macOS view switcher: a raised neutral segment). small: 22 px high instead of 28. fill: the
+// segments share the full width of the control.
+export function Segmented({ options, value, onChange, appearance = 'accent', small, fill, style }) {
   const t = useTheme();
+  const neutral = appearance === 'neutral';
+  const raised = t.mode === 'dark' ? 'rgba(255,255,255,0.18)' : '#ffffff';
   return (
-    <View style={{ flexDirection: 'row', backgroundColor: t.control, borderRadius: 8, padding: 2 }}>
-      {options.map(([v, label]) => (
-        <View key={v} onClick={() => onChange(v)} style={{ paddingHorizontal: 14, height: 26, borderRadius: 6,
-          justifyContent: 'center', backgroundColor: value === v ? t.accent : 'transparent' }}>
-          <Text style={{ fontSize: 12, fontWeight: 600, color: value === v ? '#fff' : t.text }}>{label}</Text>
-        </View>
-      ))}
+    <View style={[{ flexDirection: 'row', backgroundColor: t.control, borderRadius: small ? 6 : 8, padding: 2 }, style]}>
+      {options.map(([v, label]) => {
+        const on = value === v;
+        return (
+          <View key={v} onClick={() => onChange(v)} style={{ paddingHorizontal: small ? 10 : 14, height: small ? 18 : 24, borderRadius: small ? 5 : 6,
+            justifyContent: 'center', alignItems: 'center', flexGrow: fill ? 1 : 0,
+            backgroundColor: on ? (neutral ? raised : t.accent) : 'transparent',
+            boxShadow: on && neutral ? '0 1px 2px rgba(0,0,0,0.18)' : 'none' }}>
+            <Text style={{ fontSize: small ? 11 : 12, fontWeight: on && neutral ? 600 : neutral ? 500 : 600, whiteSpace: 'nowrap',
+              color: on && !neutral ? '#fff' : t.text }}>{label}</Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
 
-export function SidebarItem({ label, selected, onClick, icon }) {
+// Source-list row. Optional: detail (trailing text, e.g. a count) and indent (nesting level).
+export function SidebarItem({ label, selected, onClick, icon, detail, indent = 0 }) {
   const t = useTheme();
   const [hover, setHover] = useState(false);
   return (
     <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ height: 28, paddingHorizontal: 10, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 8,
+      style={{ height: 28, paddingLeft: 10 + indent * 14, paddingRight: 10, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 8,
         backgroundColor: selected ? t.accent : hover ? t.hover : 'transparent' }}>
-      {icon}
-      <Text style={{ fontSize: 13, fontWeight: 500, color: selected ? '#fff' : t.text }}>{label}</Text>
+      {typeof icon === 'string' ? <Text style={{ width: 18, textAlign: 'center', fontSize: 14, color: selected ? '#fff' : t.accent }}>{icon}</Text> : icon}
+      <Text style={{ flex: 1, fontSize: 13, fontWeight: 500, color: selected ? '#fff' : t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</Text>
+      {detail != null ? <Text style={{ fontSize: 11, color: selected ? 'rgba(255,255,255,0.8)' : t.textDim }}>{detail}</Text> : null}
     </View>
   );
 }
@@ -186,7 +205,7 @@ export function TextInput({ value, onChange, placeholder, onSubmit, onCancel, on
 
   return (
     <View onMouseDown={() => { focusedNow = true; setFocus(token); }}
-      style={[{ height: Math.max(30, size + 17), paddingHorizontal: 10, borderRadius: 7, flexDirection: 'row', alignItems: 'center',
+      style={[{ height: Math.max(28, size + 15), paddingHorizontal: 10, borderRadius: 7, flexDirection: 'row', alignItems: 'center',
         // el cursor va al final lógico: a la izquierda si el texto es árabe o hebreo
         direction: secure ? 'ltr' : value ? textDirection(value) : 'inherit',
         backgroundColor: t.inputBg, border: `1px solid ${isFocused ? t.accent : t.separator}`, overflow: 'hidden' }, style]}>

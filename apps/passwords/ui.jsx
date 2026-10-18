@@ -11,7 +11,7 @@ export const RED = '#ff453a', ORANGE = '#ff9f0a', GREEN = '#30d158', YELLOW = '#
 export function CatIcon({ cat, size = 28 }) {
   const b = cat ? builtinById(cat.id) : null;
   const color = cat?.color || b?.color || '#8e8e93';
-  const icon = cat?.icon || b?.icon || '🗂️';
+  const icon = /^[a-z_-]+$/i.test(cat?.icon || '') ? '📁' : cat?.icon || b?.icon || '🗂️';
   return (
     <View style={{ width: size, height: size, borderRadius: size * 0.26, alignItems: 'center', justifyContent: 'center',
       background: `linear-gradient(160deg, ${color}, ${shade(color, -0.25)})` }}>

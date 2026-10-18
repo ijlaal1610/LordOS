@@ -1,6 +1,6 @@
-/* homedirs_test.c — carpetas comunes del usuario (src/users/homedirs.c): las de cada idioma,
- * user-dirs.dirs y user-dirs.locale, que una segunda vez no pisa nada y que no sigue enlaces.
- * Corre sin root: el dueño es el propio usuario. */
+/* homedirs_test.c — the user's common folders (src/users/homedirs.c): each language's names,
+ * user-dirs.dirs and user-dirs.locale, a second run overwrites nothing, and symlinks are not
+ * followed. Runs without root: the owner is the current user. */
 #include "users/homedirs.h"
 
 #include <stdio.h>
@@ -10,7 +10,7 @@
 #include <unistd.h>
 
 static int fails;
-#define CHECK(c, ...) do { if (!(c)) { fails++; printf("FALLA %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
+#define CHECK(c, ...) do { if (!(c)) { fails++; printf("FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
 static int is_dir(const char *base, const char *name) {
     char p[512];
@@ -36,25 +36,25 @@ static void lang(const char *locale, const char *const want[6], const char *xdg_
     if (!mkdtemp(home)) { perror("mkdtemp"); exit(1); }
     CHECK(homedirs_create(home, getuid(), getgid(), locale) == 0, "%s: homedirs_create", locale);
     for (int i = 0; i < 6; i++) {
-        CHECK(is_dir(home, want[i]), "%s: falta %s", locale, want[i]);
-        CHECK(!strcmp(homedirs_name(homedirs_ui_lang(locale), i), want[i]), "%s: nombre %d", locale, i);
+        CHECK(is_dir(home, want[i]), "%s: missing %s", locale, want[i]);
+        CHECK(!strcmp(homedirs_name(homedirs_ui_lang(locale), i), want[i]), "%s: name %d", locale, i);
     }
     char *d = slurp(home, ".config/user-dirs.dirs");
-    CHECK(d && strstr(d, xdg_doc), "%s: user-dirs.dirs sin %s", locale, xdg_doc);
-    CHECK(d && strstr(d, "XDG_TEMPLATES_DIR=\"$HOME/\""), "%s: plantillas", locale);
+    CHECK(d && strstr(d, xdg_doc), "%s: user-dirs.dirs lacks %s", locale, xdg_doc);
+    CHECK(d && strstr(d, "XDG_TEMPLATES_DIR=\"$HOME/\""), "%s: templates", locale);
     char *l = slurp(home, ".config/user-dirs.locale");
-    CHECK(l && !strncmp(l, loc, strlen(loc)), "%s: user-dirs.locale = %s", locale, l ? l : "(nada)");
-    /* una segunda vez: no falla y no pisa lo que el usuario cambió */
+    CHECK(l && !strncmp(l, loc, strlen(loc)), "%s: user-dirs.locale = %s", locale, l ? l : "(none)");
+    /* a second run: succeeds and keeps what the user changed */
     char p[512];
     snprintf(p, sizeof p, "%s/.config/user-dirs.dirs", home);
     FILE *f = fopen(p, "w");
     if (f) { fputs("XDG_DOCUMENTS_DIR=\"$HOME/Mis cosas\"\n", f); fclose(f); }
-    CHECK(homedirs_create(home, getuid(), getgid(), locale) == 0, "%s: segunda vez", locale);
+    CHECK(homedirs_create(home, getuid(), getgid(), locale) == 0, "%s: second run", locale);
     d = slurp(home, ".config/user-dirs.dirs");
-    CHECK(d && strstr(d, "Mis cosas"), "%s: pisó user-dirs.dirs", locale);
+    CHECK(d && strstr(d, "Mis cosas"), "%s: overwrote user-dirs.dirs", locale);
     char cmd[600];
     snprintf(cmd, sizeof cmd, "rm -rf '%s'", home);
-    if (system(cmd)) { /* nada */ }
+    if (system(cmd)) { /* ignored */ }
 }
 
 int main(void) {
@@ -64,20 +64,20 @@ int main(void) {
     lang("es_AR.UTF-8", es, "XDG_DOCUMENTS_DIR=\"$HOME/Documentos\"", "es_AR");
     lang("en_US.UTF-8", en, "XDG_DOWNLOAD_DIR=\"$HOME/Downloads\"", "en_US");
     lang("pt_BR.UTF-8", pt, "XDG_DESKTOP_DIR=\"$HOME/Área de trabalho\"", "pt_BR");
-    lang("C.UTF-8", es, "XDG_PICTURES_DIR=\"$HOME/Imágenes\"", "es_ES");     /* sin idioma: español */
+    lang("C.UTF-8", es, "XDG_PICTURES_DIR=\"$HOME/Imágenes\"", "es_ES");     /* no language: Spanish */
 
-    /* ~/.config como enlace a otro lado: no se escribe a través de él */
+    /* ~/.config is a symlink elsewhere: nothing is written through it */
     char home[] = "/tmp/homedirs-test-XXXXXX", other[] = "/tmp/homedirs-other-XXXXXX";
     if (!mkdtemp(home) || !mkdtemp(other)) return 1;
     char link[512];
     snprintf(link, sizeof link, "%s/.config", home);
     if (symlink(other, link)) return 1;
-    CHECK(homedirs_create(home, getuid(), getgid(), "es_ES.UTF-8") != 0, "enlace: tendría que fallar");
-    CHECK(!slurp(other, "user-dirs.dirs"), "enlace: escribió a través de ~/.config");
+    CHECK(homedirs_create(home, getuid(), getgid(), "es_ES.UTF-8") != 0, "symlink: should fail");
+    CHECK(!slurp(other, "user-dirs.dirs"), "symlink: wrote through ~/.config");
     char cmd[600];
     snprintf(cmd, sizeof cmd, "rm -rf '%s' '%s'", home, other);
-    if (system(cmd)) { /* nada */ }
+    if (system(cmd)) { /* ignored */ }
 
-    printf("homedirs: %s\n", fails ? "FALLA" : "ok");
+    printf("homedirs: %s\n", fails ? "FAIL" : "ok");
     return fails ? 1 : 0;
 }

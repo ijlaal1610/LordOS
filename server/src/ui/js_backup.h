@@ -1,4 +1,4 @@
-/* js_backup.h — lord.backup (Copias de seguridad; ver js_backup.c). */
+/* js_backup.h — lord.backup (Backups; see js_backup.c). */
 #ifndef LORD_JS_BACKUP_H
 #define LORD_JS_BACKUP_H
 

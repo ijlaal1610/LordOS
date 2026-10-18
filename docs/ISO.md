@@ -177,8 +177,8 @@ Qué valida `install-run` del lado root, sin confiar en la interfaz:
   - El usuario tiene linger, así su PipeWire arranca con el sistema.
   - El usuario de sistema `lordos-greeter`, el de la pantalla de ingreso, se crea al armar el
     ISO (lord-sessiond también lo crea si falta).
-- **Red:** el DHCP propio de LordOS, en `lord-netd` desde el arranque (`RED.md`). No trae
-  ifupdown, systemd-networkd ni NetworkManager.
+- **Network:** LordOS's own DHCP, in `lord-netd` from boot (`RED.md`). No ifupdown,
+  systemd-networkd or NetworkManager.
 - **Sonido:** PipeWire, pipewire-pulse, WirePlumber, alsa-ucm-conf y el firmware SOF (audio de
   las notebooks Intel).
 - **GPU:** Mesa (radeonsi, iris, nouveau, llvmpipe y RADV/ANV/NVK para Vulkan), `libgbm1`,
@@ -364,11 +364,11 @@ tiene una instalación vieja. Arranca primero del CD.
   aunque ifupdown no esté instalado. Convendría que también mire que exista `/sbin/ifup`. El ISO
   hoy lo esquiva en `lordos-live-prep`.
 - Las herramientas de diagnóstico de audio (`pactl`) no vienen; `wpctl status` sí.
-- ~~**Red antes del primer ingreso**~~ y ~~**carpetas del usuario instalado**~~: resueltos en M9.
-  La red es del sistema (`lord-netd`, lanzado por `lord-sessiond` al arrancar; ver `RED.md`) y el
-  instalador crea Escritorio, Documentos, Descargas, Música, Imágenes y Videos en el idioma
-  elegido, con `~/.config/user-dirs.dirs` (`server/src/users/homedirs.c`, la misma lista que
-  Ajustes → Usuarios y `lordos-live-prep`). Falta repetirlo con un ISO nuevo instalado al disco.
+- ~~**Network before the first login**~~ and ~~**folders of the installed user**~~: fixed in M9.
+  The network belongs to the system (`lord-netd`, started by `lord-sessiond` at boot; see `RED.md`)
+  and the installer creates Escritorio, Documentos, Descargas, Música, Imágenes and Videos in the
+  chosen language, with `~/.config/user-dirs.dirs` (`server/src/users/homedirs.c`, the same list as
+  Settings → Users and `lordos-live-prep`). Still to repeat with a new ISO installed to disk.
 - **Primer movimiento del mouse después de desbloquear:** en la VM 117, el primer evento
   absoluto por QMP después de ❖L/Enter dejó el cursor arriba (y≈8). Los siguientes funcionaron
   bien. No se investigó.

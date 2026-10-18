@@ -1,14 +1,14 @@
-/* engine.c — motor de las copias de seguridad: instantáneas con enlaces duros, retención y
- * restauración (ver engine.h y docs/SISTEMA.md, «Copias de seguridad»).
+/* engine.c — the backup engine: hard-linked snapshots, retention and restore (see engine.h and
+ * docs/SYSTEM.md, "Backups").
  *
- * Reglas:
- *   - nunca se sigue un enlace simbólico: el recorrido usa lstat y abre con O_NOFOLLOW; los
- *     enlaces se guardan como enlaces (se copia el texto, no el destino);
- *   - no se cruza a otro sistema de archivos (un disco montado adentro de la carpeta personal);
- *   - fifos, sockets y dispositivos se saltean;
- *   - un archivo se copia a "<nombre>.bkpart~" y se renombra al terminar, así un nombre final
- *     siempre es un archivo completo (lo que permite retomar una copia cortada);
- *   - se borra solo adentro de la carpeta del equipo y con nombres validados. */
+ * Rules:
+ *   - a symbolic link is never followed: the walk uses lstat and opens with O_NOFOLLOW; links are
+ *     stored as links (their text is copied, not their target);
+ *   - never crosses into another filesystem (a disk mounted inside the home folder);
+ *   - fifos, sockets and devices are skipped;
+ *   - a file is copied to "<name>.bkpart~" and renamed when done, so a final name is always a
+ *     complete file (which is what makes resuming an interrupted run possible);
+ *   - deletion only happens inside the machine folder and with validated names. */
 #include "engine.h"
 #include "../fsops.h"
 #include "crypt.h"
@@ -67,12 +67,12 @@ static int rm_tree(const char *p) {
     struct stat st;
     if (lstat(p, &st)) return errno == ENOENT ? 0 : -1;
     if (!S_ISDIR(st.st_mode)) return unlink(p);
-    /* las carpetas sin permiso de escritura (copiadas tal cual) no se podrían vaciar */
+    /* folders without write permission (copied as they were) could not be emptied */
     return nftw(p, rm_cb, 32, FTW_DEPTH | FTW_PHYS | FTW_MOUNT);
 }
 
 static void rm_cb_chmod_dirs(const char *p) {
-    /* antes de borrar: las carpetas guardadas con permisos 0500 no dejan borrar su contenido */
+    /* before deleting: folders stored with mode 0500 do not let their contents be removed */
     DIR *d = opendir(p);
     if (!d) { chmod(p, 0700); d = opendir(p); if (!d) return; }
     chmod(p, 0700);
@@ -94,7 +94,7 @@ static int rm_tree_force(const char *p) {
     return rm_tree(p);
 }
 
-/* ---- nombres de las instantáneas ---- */
+/* ---- snapshot names ---- */
 
 int bk_id_valid(const char *id) {
     static const char pat[] = "dddd-dd-dd-dddddd";
@@ -158,7 +158,7 @@ int bk_rel_valid(const char *rel) {
     return 1;
 }
 
-/* ---- retención ---- */
+/* ---- retention ---- */
 
 static long floordiv(long a, long b) { long q = a / b; return (a % b && (a < 0) != (b < 0)) ? q - 1 : q; }
 
@@ -175,7 +175,7 @@ void bk_retention(const time_t *t, int n, time_t now, long tz_off, int *keep) {
             long day = floordiv(lt, 86400);
             if (day != lastday) { keep[i] = 1; lastday = day; }
         } else {
-            long week = floordiv(lt - 4L * 86400, 7L * 86400);      /* semanas de lunes (1970-01-05) */
+            long week = floordiv(lt - 4L * 86400, 7L * 86400);      /* weeks start on Monday (1970-01-05) */
             if (week != lastweek) { keep[i] = 1; lastweek = week; }
         }
     }
@@ -191,7 +191,7 @@ int bk_delete(const char *machine, const char *id) {
     if (!bk_id_valid(id)) return -1;
     char p[PATH_MAX];
     if (pathf(p, sizeof p, "%s/%s", machine, id)) return -1;
-    /* primero fuera de la lista (renombrar es atómico), después se borra con calma */
+    /* first out of the list (rename is atomic), then deleted at leisure */
     char gone[PATH_MAX];
     if (pathf(gone, sizeof gone, "%s/.deleting-%s", machine, id) || rename(p, gone)) return -1;
     return rm_tree_force(gone);
@@ -207,7 +207,7 @@ int bk_prune(const char *machine, time_t now, uint64_t need) {
     localtime_r(&now, &tm);
     bk_retention(t, n, now, tm.tm_gmtoff, keep);
     for (int i = 0; i < n; i++) if (!keep[i] && !bk_delete(machine, ids[i])) { gone++; ids[i][0] = 0; }
-    /* restos de borrados cortados */
+    /* leftovers of interrupted deletions */
     DIR *d = opendir(machine);
     struct dirent *e;
     while (d && (e = readdir(d))) {
@@ -216,7 +216,7 @@ int bk_prune(const char *machine, time_t now, uint64_t need) {
         if (!pathf(p, sizeof p, "%s/%s", machine, e->d_name)) rm_tree_force(p);
     }
     if (d) closedir(d);
-    /* falta lugar: las más viejas, nunca la última */
+    /* short on space: the oldest go, never the newest */
     if (need) {
         int left = 0;
         for (int i = 0; i < n; i++) if (ids[i][0]) left++;
@@ -228,12 +228,12 @@ int bk_prune(const char *machine, time_t now, uint64_t need) {
     return gone;
 }
 
-/* ---- instantánea ---- */
+/* ---- snapshot ---- */
 
 typedef struct {
     BkRun *r;
-    char src[PATH_MAX], dst[PATH_MAX];          /* raíces */
-    char link1[PATH_MAX], link2[PATH_MAX];      /* fuentes de enlaces: copia a medias, anterior */
+    char src[PATH_MAX], dst[PATH_MAX];          /* roots */
+    char link1[PATH_MAX], link2[PATH_MAX];      /* link sources: interrupted run, previous snapshot */
     dev_t home_dev;
     dev_t skip_dev;
     ino_t skip_ino;
@@ -245,7 +245,7 @@ static int excluded(const Walk *w, const char *rel) {
     return 0;
 }
 
-/* a: el original; b: el de la copia (cifrado: su tamaño es el del cifrado de a) */
+/* a: the original; b: the one in the snapshot (encrypted: its size is the encrypted size of a) */
 static int same_file(const struct stat *a, const struct stat *b, const uint8_t *key) {
     uint64_t want = key ? bkc_enc_size((uint64_t)a->st_size) : (uint64_t)a->st_size;
     return S_ISREG(b->st_mode) && (uint64_t)b->st_size == want && a->st_mtim.tv_sec == b->st_mtim.tv_sec &&
@@ -259,7 +259,7 @@ static int check(Walk *w) {
     return w->stop;
 }
 
-/* Intenta enlazar dst a base/rel si es el mismo archivo. 1: enlazado. */
+/* Hard-links dst to base/rel if it is the same file. 1: linked. */
 static int try_link(const char *base, const char *rel, const struct stat *st, const char *dst, const uint8_t *key) {
     if (!base[0]) return 0;
     char p[PATH_MAX];
@@ -267,7 +267,7 @@ static int try_link(const char *base, const char *rel, const struct stat *st, co
     if (pathf(p, sizeof p, "%s/%s", base, rel) || lstat(p, &o) || !same_file(st, &o, key)) return 0;
     if (link(p, dst) == 0) return 1;
     if (errno == EEXIST) { unlink(dst); return link(p, dst) == 0; }
-    return 0;                           /* EMLINK, EPERM (FAT/exFAT): se copia */
+    return 0;                           /* EMLINK, EPERM (FAT/exFAT): copy instead */
 }
 
 static int enc_tick(void *ud, size_t n) {
@@ -277,7 +277,7 @@ static int enc_tick(void *ud, size_t n) {
     return check(w);
 }
 
-/* -1 error del archivo, -2 sin lugar (fatal), 1 cortado, 0 bien */
+/* -1 file error, -2 out of space (fatal), 1 interrupted, 0 ok */
 static int copy_data(Walk *w, int in, int out) {
     char *buf = NULL;
     int use_cfr = 1;
@@ -325,20 +325,20 @@ static int copy_file(Walk *w, const char *src, const char *dst, const struct sta
         int r = w->r->key ? bkc_encrypt_fd(in, out, w->r->key, enc_tick, w) : copy_data(w, in, out);
         struct stat b;
         int changed = !fstat(in, &b) && (b.st_size != a.st_size || b.st_mtim.tv_sec != a.st_mtim.tv_sec || b.st_mtim.tv_nsec != a.st_mtim.tv_nsec);
-        /* no ensuciar la caché de páginas del escritorio con la copia */
+        /* do not pollute the desktop's page cache with the copy */
         posix_fadvise(in, 0, 0, POSIX_FADV_DONTNEED);
         if (r == 0) {
             fchmod(out, a.st_mode & 07777);
             struct timespec ts[2] = { a.st_atim, a.st_mtim };
             futimens(out, ts);
-            /* sin fsync por archivo (sería muy lento con muchos archivos chicos): syncfs al final,
-             * antes de renombrar la instantánea */
+            /* no fsync per file (too slow with many small files): syncfs at the end, before the
+             * snapshot is renamed */
             posix_fadvise(out, 0, 0, POSIX_FADV_DONTNEED);
         }
         close(in);
         if (close(out) && r == 0) r = -1;
         if (r != 0) { unlink(tmp); return r; }
-        if (changed && attempt < 2) { w->r->bytes = before; continue; }   /* cambió mientras se copiaba */
+        if (changed && attempt < 2) { w->r->bytes = before; continue; }   /* changed while being copied */
         if (rename(tmp, dst)) { unlink(tmp); return -1; }
         (void)st;
         return 0;
@@ -360,7 +360,7 @@ static void entry(Walk *w, const char *rel, int depth) {
         if (!w->counting && mkdir(dst, 0700) && errno != EEXIST) { w->r->errors++; return; }
         walk(w, rel, depth + 1);
         if (!w->counting) {
-            chmod(dst, (st.st_mode & 07777) | 0700);            /* el dueño siempre puede volver a entrar */
+            chmod(dst, (st.st_mode & 07777) | 0700);            /* the owner can always get back in */
             struct timespec ts[2] = { st.st_atim, st.st_mtim };
             utimensat(AT_FDCWD, dst, ts, AT_SYMLINK_NOFOLLOW);
         }
@@ -377,10 +377,10 @@ static void entry(Walk *w, const char *rel, int depth) {
         }
         int r = copy_file(w, src, dst, &st);
         if (r == -2) {
-            /* sin lugar: se borran instantáneas viejas (nunca la última) y se reintenta una vez */
+            /* out of space: delete old snapshots (never the newest) and retry once */
             if (bk_prune(w->r->machine, time(NULL), (uint64_t)st.st_size + (w->r->min_free ? w->r->min_free : (512u << 20))) > 0)
                 r = copy_file(w, src, dst, &st);
-            if (r == -2) { w->fatal = 1; snprintf(w->r->error, sizeof w->r->error, "sin lugar en el destino"); return; }
+            if (r == -2) { w->fatal = 1; snprintf(w->r->error, sizeof w->r->error, "no space left on the destination"); return; }
         }
         if (r == 0) w->r->copied++;
         else if (r < 0) w->r->errors++;
@@ -394,12 +394,12 @@ static void entry(Walk *w, const char *rel, int depth) {
         if (k < 0) { w->r->errors++; return; }
         target[k] = 0;
         unlink(dst);
-        if (symlink(target, dst)) { w->r->errors++; return; }   /* FAT no tiene enlaces */
+        if (symlink(target, dst)) { w->r->errors++; return; }   /* FAT has no symlinks */
         struct timespec ts[2] = { st.st_atim, st.st_mtim };
         utimensat(AT_FDCWD, dst, ts, AT_SYMLINK_NOFOLLOW);
         return;
     }
-    if (!w->counting) w->r->skipped++;   /* fifos, sockets, dispositivos */
+    if (!w->counting) w->r->skipped++;   /* fifos, sockets, devices */
 }
 
 static int cmp_str(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
@@ -410,7 +410,7 @@ static void walk(Walk *w, const char *rel, int depth) {
     int fd = open(dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     DIR *d = fd >= 0 ? fdopendir(fd) : NULL;
     if (!d) { if (fd >= 0) close(fd); w->r->errors++; return; }
-    /* los nombres primero (la carpeta se cierra antes de bajar: no se acumulan fds) */
+    /* names first (the folder is closed before descending: fds do not pile up) */
     char **names = NULL;
     size_t n = 0, cap = 0;
     struct dirent *e;
@@ -447,7 +447,7 @@ int bk_snapshot(BkRun *r, time_t now) {
     w.r = r;
     struct stat hs;
     if (pathf(w.src, sizeof w.src, "%s", r->home) || lstat(w.src, &hs) || !S_ISDIR(hs.st_mode)) {
-        snprintf(r->error, sizeof r->error, "no se puede leer la carpeta de origen");
+        snprintf(r->error, sizeof r->error, "cannot read the source folder");
         return -1;
     }
     w.home_dev = hs.st_dev;
@@ -455,15 +455,15 @@ int bk_snapshot(BkRun *r, time_t now) {
         struct stat ss;
         if (!stat(r->skip_real, &ss)) { w.has_skip = 1; w.skip_dev = ss.st_dev; w.skip_ino = ss.st_ino; }
     }
-    if (mkdir_p(r->machine, 0700)) { snprintf(r->error, sizeof r->error, "no se pudo crear %s: %s", r->machine, strerror(errno)); return -1; }
+    if (mkdir_p(r->machine, 0700)) { snprintf(r->error, sizeof r->error, "could not create %s: %s", r->machine, strerror(errno)); return -1; }
 
     static char ids[BK_MAX_SNAPS][BK_ID_LEN];
     int n = bk_list(r->machine, ids, BK_MAX_SNAPS);
     bk_id_make(now, r->id);
-    while (n && strcmp(r->id, ids[n - 1]) <= 0) bk_id_make(++now, r->id);   /* siempre posterior */
+    while (n && strcmp(r->id, ids[n - 1]) <= 0) bk_id_make(++now, r->id);   /* always later than the previous one */
     if (n) pathf(w.link2, sizeof w.link2, "%s/%s", r->machine, ids[n - 1]);
 
-    /* copias cortadas: la más nueva es fuente de enlaces; las demás sobran */
+    /* interrupted runs: the newest is a link source; the others are dropped */
     char old[PATH_MAX] = "", oldname[256] = "";
     DIR *d = opendir(r->machine);
     struct dirent *e;
@@ -479,12 +479,12 @@ int bk_snapshot(BkRun *r, time_t now) {
     }
     if (d) closedir(d);
     if (oldname[0]) {
-        /* se renombra para que no choque con la nueva y para saber que es la de antes */
+        /* renamed so it does not clash with the new one and is known to be the old one */
         char p[PATH_MAX];
         if (!pathf(p, sizeof p, "%s/%s", r->machine, oldname) && !pathf(old, sizeof old, "%s/.resume-%s", r->machine, oldname + 12))
             if (rename(p, old)) old[0] = 0;
     }
-    {   /* también una .resume- que haya quedado de un corte durante una reanudación */
+    {   /* also a .resume- left by an interruption during a resume */
         d = opendir(r->machine);
         while (d && (e = readdir(d))) {
             if (strncmp(e->d_name, ".resume-", 8)) continue;
@@ -496,23 +496,23 @@ int bk_snapshot(BkRun *r, time_t now) {
     }
     if (old[0]) snprintf(w.link1, sizeof w.link1, "%s", old);
 
-    /* lugar mínimo antes de empezar */
+    /* minimum free space before starting */
     uint64_t min_free = r->min_free ? r->min_free : (512u << 20);
     if (free_bytes(r->machine) < min_free) bk_prune(r->machine, now, min_free);
 
-    /* recuento (para el progreso) */
+    /* count (for progress) */
     w.counting = 1;
     walk(&w, "", 0);
     w.counting = 0;
     if (w.stop) return 1;
 
     if (pathf(w.dst, sizeof w.dst, "%s/.inprogress-%s", r->machine, r->id) || mkdir(w.dst, 0700)) {
-        snprintf(r->error, sizeof r->error, "no se pudo escribir en el destino: %s", strerror(errno));
+        snprintf(r->error, sizeof r->error, "cannot write to the destination: %s", strerror(errno));
         return -1;
     }
     walk(&w, "", 0);
     if (w.fatal) {
-        /* queda a medias para retomar cuando haya lugar */
+        /* left half done, to resume when there is space */
         return -1;
     }
     if (w.stop) return 1;
@@ -521,7 +521,7 @@ int bk_snapshot(BkRun *r, time_t now) {
     if (dfd >= 0) { syncfs(dfd); close(dfd); }
     char final[PATH_MAX];
     if (pathf(final, sizeof final, "%s/%s", r->machine, r->id) || rename(w.dst, final)) {
-        snprintf(r->error, sizeof r->error, "no se pudo cerrar la copia: %s", strerror(errno));
+        snprintf(r->error, sizeof r->error, "could not finish the snapshot: %s", strerror(errno));
         return -1;
     }
     int mfd = open(r->machine, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
@@ -531,7 +531,7 @@ int bk_snapshot(BkRun *r, time_t now) {
     return 0;
 }
 
-/* ---- restaurar ---- */
+/* ---- restore ---- */
 
 typedef struct {
     BkRestore *o;
@@ -542,8 +542,8 @@ typedef struct {
 
 static int rcancel(Rest *x) { return x->o->cancel && *x->o->cancel; }
 
-/* ¿Se puede escribir dst? Su carpeta (resuelta) tiene que estar en las raíces de lord.fs y el
- * nombre final no puede caer en una carpeta protegida. */
+/* May dst be written? Its (resolved) folder must be inside the lord.fs roots and the final name
+ * must not fall inside a protected folder. */
 static int writable_target(const char *dst) {
     char parent[PATH_MAX], real[PATH_MAX], full[PATH_MAX + 256];
     if (pathf(parent, sizeof parent, "%s", dst)) return 0;
@@ -555,7 +555,7 @@ static int writable_target(const char *dst) {
     return !fsops_protected(full) && !fsops_protected(real);
 }
 
-/* "foto.jpg" + " (restaurado)" → "foto (restaurado).jpg", y si existe "foto (restaurado) 2.jpg" */
+/* "photo.jpg" + " (restored)" → "photo (restored).jpg", and if that exists "photo (restored) 2.jpg" */
 static int alt_name(const char *dst, const char *suffix, char *out, size_t n) {
     const char *slash = strrchr(dst, '/');
     const char *name = slash ? slash + 1 : dst;
@@ -588,7 +588,7 @@ static int restore_file(Rest *x, const char *src, const char *dst, const struct 
     int r = 0;
     if (x->o->key) {
         r = bkc_decrypt_fd(in, out, x->o->key, rest_tick, x);
-        if (r == -3) snprintf(x->o->error, sizeof x->o->error, "un archivo de la copia no verifica (alterado o clave incorrecta)");
+        if (r == -3) snprintf(x->o->error, sizeof x->o->error, "a backup file failed verification (tampered with or wrong key)");
         if (r < 0) r = -1;
     } else {
         char *buf = malloc(1 << 20);
@@ -665,7 +665,7 @@ static void restore_entry(Rest *x, const char *src, const char *dst, int depth) 
         uint64_t plain = (uint64_t)st.st_size;
         if (x->o->key && S_ISREG(st.st_mode) && bkc_plain_size((uint64_t)st.st_size, &plain)) plain = UINT64_MAX;
         if (S_ISREG(st.st_mode) && S_ISREG(cur.st_mode) && (uint64_t)cur.st_size == plain && cur.st_mtim.tv_sec == st.st_mtim.tv_sec) {
-            x->o->skipped++;                    /* igual: nada que hacer */
+            x->o->skipped++;                    /* identical: nothing to do */
             return;
         }
         if (S_ISDIR(cur.st_mode) || !x->replace) {
@@ -682,7 +682,7 @@ static void restore_entry(Rest *x, const char *src, const char *dst, int depth) 
         if (k >= 0 && !pathf(tmp, sizeof tmp, "%s.bkpart~", target)) {
             l[k] = 0;
             unlink(tmp);
-            r = symlink(l, tmp) || rename(tmp, target) ? -1 : 0;   /* rename reemplaza el enlace, no lo sigue */
+            r = symlink(l, tmp) || rename(tmp, target) ? -1 : 0;   /* rename replaces the link, it does not follow it */
             if (r) unlink(tmp);
         }
     }
@@ -694,27 +694,27 @@ int bk_restore(const char *machine, const char *id, const char *rel, const char 
                int replace, const char *suffix, BkRestore *out) {
     out->files = out->bytes = out->kept_both = out->replaced = out->skipped = out->errors = 0;
     out->error[0] = 0;
-    if (!bk_id_valid(id) || !bk_rel_valid(rel)) { snprintf(out->error, sizeof out->error, "ruta inválida"); return -1; }
+    if (!bk_id_valid(id) || !bk_rel_valid(rel)) { snprintf(out->error, sizeof out->error, "invalid path"); return -1; }
     size_t sl = strlen(suffix);
-    if (!sl || sl > 64 || strchr(suffix, '/')) { snprintf(out->error, sizeof out->error, "sufijo inválido"); return -1; }
-    for (const char *p = suffix; *p; p++) if ((unsigned char)*p < 0x20) { snprintf(out->error, sizeof out->error, "sufijo inválido"); return -1; }
+    if (!sl || sl > 64 || strchr(suffix, '/')) { snprintf(out->error, sizeof out->error, "invalid suffix"); return -1; }
+    for (const char *p = suffix; *p; p++) if ((unsigned char)*p < 0x20) { snprintf(out->error, sizeof out->error, "invalid suffix"); return -1; }
     Rest x = { .o = out, .suffix = suffix, .replace = replace };
     char snap[PATH_MAX], src[PATH_MAX], breal[PATH_MAX], dst[PATH_MAX];
     if (pathf(snap, sizeof snap, "%s/%s", machine, id) || !realpath(snap, x.snapreal)) {
-        snprintf(out->error, sizeof out->error, "no existe la copia %s", id);
+        snprintf(out->error, sizeof out->error, "backup %s does not exist", id);
         return -1;
     }
     if (pathf(src, sizeof src, "%s%s%s", x.snapreal, rel[0] ? "/" : "", rel)) return -1;
-    /* nada de enlaces en el camino adentro de la copia: la carpeta resuelta sigue adentro */
+    /* no links along the path inside the snapshot: the resolved folder must stay inside */
     if (rel[0]) {
         char parent[PATH_MAX], preal[PATH_MAX];
         snprintf(parent, sizeof parent, "%s", src);
         *strrchr(parent, '/') = 0;
-        if (!realpath(parent, preal) || !under(preal, x.snapreal)) { snprintf(out->error, sizeof out->error, "ruta inválida"); return -1; }
+        if (!realpath(parent, preal) || !under(preal, x.snapreal)) { snprintf(out->error, sizeof out->error, "invalid path"); return -1; }
     }
-    if (!realpath(base, breal) || !fsops_allowed(breal)) { snprintf(out->error, sizeof out->error, "destino no permitido"); return -1; }
+    if (!realpath(base, breal) || !fsops_allowed(breal)) { snprintf(out->error, sizeof out->error, "destination not allowed"); return -1; }
     if (!rel[0]) {
-        /* todo: el contenido de la copia, adentro de base */
+        /* everything: the snapshot's contents, inside base */
         DIR *d = opendir(src);
         struct dirent *e;
         while (d && (e = readdir(d)) && !rcancel(&x)) {
@@ -725,7 +725,7 @@ int bk_restore(const char *machine, const char *id, const char *rel, const char 
         }
         if (d) closedir(d);
     } else {
-        /* crear las carpetas que falten hasta el destino, sin seguir enlaces que no estén permitidos */
+        /* create the missing folders up to the target, never through links to forbidden places */
         char cur[PATH_MAX];
         snprintf(cur, sizeof cur, "%s", breal);
         char tmp[PATH_MAX];
@@ -737,9 +737,9 @@ int bk_restore(const char *machine, const char *id, const char *rel, const char 
             char p[PATH_MAX];
             if (pathf(p, sizeof p, "%s/%s", cur, tok)) return -1;
             struct stat st;
-            if (lstat(p, &st) && mkdir(p, 0700)) { snprintf(out->error, sizeof out->error, "no se pudo crear %.200s", p); return -1; }
+            if (lstat(p, &st) && mkdir(p, 0700)) { snprintf(out->error, sizeof out->error, "could not create %.200s", p); return -1; }
             char pr[PATH_MAX];
-            if (!realpath(p, pr) || !fsops_allowed(pr) || fsops_protected(pr)) { snprintf(out->error, sizeof out->error, "destino no permitido"); return -1; }
+            if (!realpath(p, pr) || !fsops_allowed(pr) || fsops_protected(pr)) { snprintf(out->error, sizeof out->error, "destination not allowed"); return -1; }
             snprintf(cur, sizeof cur, "%s", pr);
             tok = next;
         }

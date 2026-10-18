@@ -1,4 +1,4 @@
-/* homedirs.c — carpetas comunes del usuario y xdg-user-dirs (ver homedirs.h). */
+/* homedirs.c — the user's common folders and xdg-user-dirs (see homedirs.h). */
 #include "homedirs.h"
 
 #include <errno.h>
@@ -9,7 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-/* La misma lista que tools/iso/rootfs/usr/lib/lordos/lordos-live-prep (allí con _ por espacio). */
+/* The same list as tools/iso/rootfs/usr/lib/lordos/lordos-live-prep (there with _ for spaces). */
 static const char *const names[3][HOMEDIRS_COUNT] = {
     { "Escritorio", "Documentos", "Descargas", "Música", "Imágenes", "Videos" },
     { "Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos" },
@@ -30,7 +30,7 @@ const char *homedirs_name(const char *ui_lang, int i) {
     return names[lang_index(ui_lang ? ui_lang : "es")][i];
 }
 
-/* Archivo nuevo (O_EXCL, sin seguir enlaces) relativo a la carpeta abierta dfd. */
+/* New file (O_EXCL, no symlinks followed) relative to the open directory dfd. */
 static int write_new(int dfd, const char *name, const char *text, uid_t uid, gid_t gid) {
     int fd = openat(dfd, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0644);
     if (fd < 0) return errno == EEXIST ? 0 : -1;
@@ -41,7 +41,7 @@ static int write_new(int dfd, const char *name, const char *text, uid_t uid, gid
     return ok ? 0 : -1;
 }
 
-/* Subcarpeta nueva de dfd con dueño; abierta (sin seguir enlaces) o -1. */
+/* New owned subdirectory of dfd; returns it opened (no symlinks followed) or -1. */
 static int mkdir_owned(int dfd, const char *name, uid_t uid, gid_t gid) {
     if (mkdirat(dfd, name, 0755) == 0) {
         if (fchownat(dfd, name, uid, gid, AT_SYMLINK_NOFOLLOW)) return -1;
@@ -63,12 +63,12 @@ int homedirs_create(const char *home, uid_t uid, gid_t gid, const char *locale) 
     if (cfd >= 0) {
         char text[1024];
         size_t o = (size_t)snprintf(text, sizeof text,
-            "# Carpetas del usuario (xdg-user-dirs). Lo escribe LordOS al crear la cuenta.\n");
+            "# User folders (xdg-user-dirs). Written by LordOS when the account was created.\n");
         for (int i = 0; i < HOMEDIRS_COUNT && o < sizeof text; i++)
             o += (size_t)snprintf(text + o, sizeof text - o, "XDG_%s_DIR=\"$HOME/%s\"\n", xdg_keys[i], names[li][i]);
         if (o < sizeof text) snprintf(text + o, sizeof text - o, "XDG_TEMPLATES_DIR=\"$HOME/\"\nXDG_PUBLICSHARE_DIR=\"$HOME/\"\n");
         if (write_new(cfd, "user-dirs.dirs", text, uid, gid)) bad = -1;
-        /* el idioma con el que se nombraron (xdg-user-dirs-update lo compara al cambiar de idioma) */
+        /* the language they were named in (xdg-user-dirs-update compares it when the language changes) */
         char loc[64];
         snprintf(loc, sizeof loc, "%s", li == 1 ? "en_US" : li == 2 ? "pt_BR" : "es_ES");
         if (locale && !strncmp(locale, ui, 2)) { snprintf(loc, sizeof loc, "%s", locale); loc[strcspn(loc, ".@")] = 0; }

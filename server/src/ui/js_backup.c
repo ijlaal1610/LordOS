@@ -1,18 +1,18 @@
-/* js_backup.c — lord.backup: Copias de seguridad (ver backup/backup.c y docs/SISTEMA.md).
+/* js_backup.c — lord.backup: Backups (see backup/backup.c and docs/SYSTEM.md).
  *
- *   status()                         estado (también llega solo: __lordBackup(estado))
+ *   status()                         status (also pushed by itself: __lordBackup(status))
  *   config() / configure(obj)        { dest, interval: 'hourly'|'daily'|'weekly'|'manual',
- *                                      pauseOnBattery, exclude: ['rel', …], encrypt: false }
+ *                                      pauseOnBattery, exclude: ['rel', …], encrypt }
  *   runNow() / pause(bool) / cancel()
- *   list()                           [{ id, time }] de la más vieja a la más nueva
- *   ls(id, rel)                      [{ name, dir, link, size, mtime }] adentro de una copia
- *   path(id)                         ruta real de la copia (para abrirla en Archivos)
- *   restore(id, rel, { replace, suffix, to })   rel '' = todo; en el hilo, el resultado llega
- *                                      en status().restore
- *   remove(id)                       borrar una copia
- *   unlock(frase, crear) / lock()    cifrado: la clave sale de la frase (Argon2id, en el hilo) y queda
- *                                    solo en memoria; el resultado llega en status().unlock
- * Los errores se tiran como excepciones con el motivo. */
+ *   list()                           [{ id, time }] oldest first
+ *   ls(id, rel)                      [{ name, dir, link, size, mtime }] inside a snapshot
+ *   path(id)                         real path of the snapshot (to open it in Files)
+ *   restore(id, rel, { replace, suffix, to })   rel '' = everything; runs in the thread, the
+ *                                      result arrives in status().restore
+ *   remove(id)                       delete a snapshot
+ *   unlock(pass, create) / lock()    encryption: the key is derived from the passphrase (Argon2id, in
+ *                                    the thread) and kept only in memory; result in status().unlock
+ * Errors are thrown as exceptions carrying the reason. */
 #include "js_backup.h"
 #include "../backup/backup.h"
 
@@ -40,7 +40,7 @@ static JSValue f_config(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
 
 static JSValue f_configure(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (argc < 1) return JS_ThrowTypeError(c, "falta la configuración");
+    if (argc < 1) return JS_ThrowTypeError(c, "missing configuration");
     JSValue s = JS_JSONStringify(c, argv[0], JS_UNDEFINED, JS_UNDEFINED);
     const char *j = JS_IsException(s) ? NULL : JS_ToCString(c, s);
     JS_FreeValue(c, s);
@@ -85,7 +85,7 @@ static JSValue f_ls(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) 
     char *j = id ? backup_ls_json(id, rel ? rel : "", err, sizeof err) : NULL;
     if (id) JS_FreeCString(c, id);
     if (rel) JS_FreeCString(c, rel);
-    if (!j) return fail(c, id ? err : "falta la copia");
+    if (!j) return fail(c, id ? err : "missing backup id");
     return parsed(c, j, "<backup.ls>");
 }
 
@@ -120,7 +120,7 @@ static JSValue f_restore(JSContext *c, JSValueConst t, int argc, JSValueConst *a
     if (rel) JS_FreeCString(c, rel);
     if (suffix) JS_FreeCString(c, suffix);
     if (to) JS_FreeCString(c, to);
-    return r ? fail(c, id ? err : "falta la copia") : JS_TRUE;
+    return r ? fail(c, id ? err : "missing backup id") : JS_TRUE;
 }
 
 static JSValue f_remove(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
@@ -129,7 +129,7 @@ static JSValue f_remove(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
     char err[256] = "";
     int r = id ? backup_delete(id, err, sizeof err) : -1;
     if (id) JS_FreeCString(c, id);
-    return r ? fail(c, id ? err : "falta la copia") : JS_TRUE;
+    return r ? fail(c, id ? err : "missing backup id") : JS_TRUE;
 }
 
 static JSValue f_unlock(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
@@ -139,8 +139,8 @@ static JSValue f_unlock(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
     int create = argc > 1 && JS_ToBool(c, argv[1]) > 0;
     char err[256] = "";
     int r = pass && strlen(pass) == len ? backup_unlock(pass, create, err, sizeof err) : -1;
-    if (pass) JS_FreeCString(c, pass);      /* no se borra: puede ser la memoria del string de JS */
-    return r ? fail(c, pass ? err : "falta la frase") : JS_TRUE;
+    if (pass) JS_FreeCString(c, pass);      /* not wiped: it may be the JS string's own memory */
+    return r ? fail(c, pass ? err : "missing passphrase") : JS_TRUE;
 }
 
 static JSValue f_lock(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {

@@ -1,15 +1,15 @@
-// Copias de seguridad — instantáneas programadas de la carpeta personal en un disco externo o una
-// carpeta, como Time Machine (ver docs/SISTEMA.md). El motor es de lord-server (lord.backup): un
-// hilo con la prioridad más baja que copia solo lo que cambió y enlaza el resto. Esta app elige el
-// destino, la frecuencia y las exclusiones, muestra el progreso y deja recorrer las copias por fecha
-// y restaurar un archivo, una carpeta o todo.
+// Backups — scheduled snapshots of the home folder to an external disk or a folder, like Time
+// Machine (see docs/SYSTEM.md). The engine lives in lord-server (lord.backup): a lowest-priority
+// thread that copies only what changed and hard-links the rest. This app picks the destination,
+// schedule and exclusions, shows progress, and lets you browse backups by date and restore a
+// file, a folder or everything.
 import {
-  View, Text, ScrollView, Segmented, Toggle, Button, TextInput, useTheme, useBackup, backup, fs, wm, t as tr,
+  View, Text, ScrollView, Segmented, Toggle, Button, TextInput, useTheme, useBackup, backup, fs, wm, t as tr, tOptional,
   formatBytes, formatDate, formatTime, formatNumber, direction,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useState } from 'react';
 
-// ---- ícono: reloj con la flecha que vuelve (dibujado con View) ----
+// ---- icon: a clock with a returning arrow (drawn with View) ----
 export function Icon({ size }) {
   const s = size, ring = s * 0.62, bw = Math.max(1.5, s * 0.06);
   return (
@@ -19,23 +19,25 @@ export function Icon({ size }) {
         <View style={{ position: 'absolute', left: ring / 2 - bw / 2 - bw, top: ring * 0.16, width: bw, height: ring * 0.36, backgroundColor: '#fff', borderRadius: bw / 2 }} />
         <View style={{ position: 'absolute', left: ring / 2 - bw, top: ring / 2 - bw * 1.5, width: ring * 0.3, height: bw, backgroundColor: '#fff', borderRadius: bw / 2 }} />
       </View>
-      {/* el corte de la flecha (arriba a la izquierda) y su punta */}
+      {/* the arrow's gap (top left) and its head */}
       <View style={{ position: 'absolute', left: s * 0.13, top: s * 0.17, width: s * 0.2, height: s * 0.2, backgroundColor: '#25744a', borderRadius: s * 0.04 }} />
       <View style={{ position: 'absolute', left: s * 0.16, top: s * 0.3, width: s * 0.17, height: bw * 1.4, backgroundColor: '#fff', borderRadius: bw }} />
       <View style={{ position: 'absolute', left: s * 0.26, top: s * 0.2, width: bw * 1.4, height: s * 0.13, backgroundColor: '#fff', borderRadius: bw }} />
-      {/* disco abajo */}
+      {/* disk at the bottom */}
       <View style={{ position: 'absolute', bottom: s * 0.08, width: s * 0.5, height: s * 0.07, borderRadius: s * 0.03, backgroundColor: 'rgba(255,255,255,0.55)' }} />
     </View>
   );
 }
 
-// ---- utilidades ----
+// ---- helpers ----
 const when = (sec) => {
   if (!sec) return '';
   const d = new Date(sec * 1000), now = new Date();
   const same = d.toDateString() === now.toDateString();
   return same ? tr('backup.todayAt', { time: formatTime(d) }) : `${formatDate(d, 'short')} ${formatTime(d)}`;
 };
+// error codes from C (backup.c) → translated text; anything else is shown as is
+const errText = (e) => (e ? tOptional(`backup.err.${e}`) || e : '');
 const pct = (a, b) => (b > 0 ? Math.min(1, a / b) : 0);
 const join = (a, b) => (a ? `${a}/${b}` : b);
 
@@ -88,7 +90,7 @@ function Confirm({ title, body, ok, onOk, onCancel, danger }) {
   );
 }
 
-// ---- encabezado: estado y botones ----
+// ---- header: status and buttons ----
 function Header({ st }) {
   const th = useTheme();
   const [err, setErr] = useState('');
@@ -143,7 +145,7 @@ function Header({ st }) {
   );
 }
 
-// ---- Ajustes ----
+// ---- Settings ----
 function Settings({ st }) {
   const th = useTheme();
   const [cfg, setCfg] = useState(() => backup.config() || { dest: '', interval: 'hourly', pauseOnBattery: true, exclude: [] });
@@ -158,7 +160,7 @@ function Settings({ st }) {
   };
   const expand = (p) => (p.startsWith('~') ? home + p.slice(1) : p);
   const short = (p) => (home && p.startsWith(home) ? `~${p.slice(home.length)}` : p);
-  useEffect(() => { const id = setInterval(() => { try { setVols(fs.volumes()); } catch (e) { /* sin discos */ } }, 5000); return () => clearInterval(id); }, []);
+  useEffect(() => { const id = setInterval(() => { try { setVols(fs.volumes()); } catch (e) { /* no disks */ } }, 5000); return () => clearInterval(id); }, []);
   const removable = vols.filter((v) => v.path !== home && v.path !== '/');
   return (
     <ScrollView style={{ flex: 1 }}>
@@ -225,7 +227,7 @@ function Settings({ st }) {
   );
 }
 
-// ---- Cifrado (Monocypher: XChaCha20-Poly1305 por trozos, clave con Argon2id) ----
+// ---- Encryption (Monocypher: chunked XChaCha20-Poly1305, key from Argon2id) ----
 function Encryption({ st, cfg, save }) {
   const th = useTheme();
   const [p1, setP1] = useState('');
@@ -244,7 +246,7 @@ function Encryption({ st, cfg, save }) {
     run(() => { if (!cfg.encrypt) save({ ...cfg, encrypt: true }); backup.unlock(p1, true); });
   };
   const setup = !destEnc && (wantOn || cfg.encrypt);
-  const msg = busy ? tr('backup.encWorking') : u && u.done && !u.ok ? u.error : err;
+  const msg = busy ? tr('backup.encWorking') : u && u.done && !u.ok ? errText(u.error) : err;
   return (
     <Card title={tr('backup.encryption')}>
       {!destEnc && !setup ? (
@@ -284,7 +286,7 @@ function Encryption({ st, cfg, save }) {
   );
 }
 
-// ---- Copias: línea de tiempo y explorador ----
+// ---- Backups: timeline and browser ----
 function Browser({ st }) {
   const th = useTheme();
   const [snaps, setSnaps] = useState(() => backup.list());
@@ -306,7 +308,7 @@ function Browser({ st }) {
   }, [sel, rel]);
   const busy = st && st.state !== 'idle' && st.state !== 'nodest';
   const restore = (r) => { setErr(''); try { backup.restore(sel, r, { replace }); } catch (e) { setErr(String(e.message || e)); } };
-  // días agrupados
+  // grouped by day
   const groups = [];
   for (const s of list) {
     const d = new Date(s.time * 1000);
@@ -384,7 +386,7 @@ function Browser({ st }) {
         <View style={{ padding: 12, gap: 8 }}>
           {rr && rr.done && rr.id === sel ? (
             <Label size={12} dim>{rr.ok ? tr('backup.restoredInfo', { count: rr.files, both: rr.keptBoth, replaced: rr.replaced })
-              : tr('backup.restoreFailed', { error: rr.error || tr('backup.restoreErrors', { count: rr.errors }) })}</Label>
+              : tr('backup.restoreFailed', { error: errText(rr.error) || tr('backup.restoreErrors', { count: rr.errors }) })}</Label>
           ) : null}
           {err && items.length ? <Label size={12} style={{ color: '#e5534b' }}>{err}</Label> : null}
           <Row>

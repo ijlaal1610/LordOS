@@ -5,102 +5,102 @@ La red de LordOS es propia y corre directo sobre el kernel. No usa NetworkManage
 | Lado | Qué hace | Archivos |
 |---|---|---|
 | lord-server (sin root) | Lee el estado con rtnetlink (interfaces, direcciones, rutas, contadores) y escucha los cambios. El DNS sale de `/run/systemd/resolve/resolv.conf` o de `/etc/resolv.conf`. Lo expone a JS como `lord.net`. | `state.c`, `ui/js_net.c` |
-| `lord-netd` (root, la red del sistema) | Atiende las acciones `net-*` de la lista cerrada de `admin.c` y es dueño de los procesos residentes (DHCP, wpa_supplicant, VPN). Lo lanza y vigila `lord-sessiond` al arrancar el equipo (ver «La red es del sistema»). Sin `lord-sessiond`, las atiende el ayudante de la sesión, como antes. | `actions.c`, `dhcp.c`, `wifi.c`, `wg.c`, `ovpn.c`, `ipsec.c` + `vici.c`, `vpnproc.c` (PPTP, OpenConnect, Fortinet), `vpn.c` (lo común), `sys.c` |
+| `lord-netd` (root, the system network) | Serves the `net-*` actions of `admin.c`'s closed list and owns the resident processes (DHCP, wpa_supplicant, VPN). `lord-sessiond` starts and supervises it at boot (see "The network belongs to the system"). Without `lord-sessiond`, the session's helper serves them, as before. | `actions.c`, `dhcp.c`, `wifi.c`, `wg.c`, `ovpn.c`, `ipsec.c` + `vici.c`, `vpnproc.c` (PPTP, OpenConnect, Fortinet), `vpn.c` (lo común), `sys.c` |
 | compartido | netlink propio, criptografía mínima (X25519, SHA-1/PBKDF2, base64), utilidades | `nl.c`, `crypto.c`, `netpriv.h` |
 
-## La red es del sistema: `lord-netd` (M9)
+## The network belongs to the system: `lord-netd` (M9)
 
-Hasta M8 la red la levantaba el ayudante root de la **primera sesión** que entraba
-(`/run/lordos/net-owner`). Eso tenía tres problemas en un sistema instalado:
+Up to M8 the network was brought up by the root helper of the **first session** that logged in
+(`/run/lordos/net-owner`). On an installed system that had three problems:
 
-- antes del primer ingreso no había red: la pantalla de ingreso mostraba el nombre del equipo en
-  lugar de la IP y el escritorio remoto no se alcanzaba;
-- si esa sesión cerraba, sus DHCP y wpa_supplicant terminaban con ella y las otras sesiones no la
-  volvían a levantar;
-- la red dependía de quién entraba primero.
+- there was no network before the first login, so the greeter showed the hostname instead of the
+  IP and the remote desktop was unreachable;
+- if that session logged out, its DHCP client and wpa_supplicant exited with it, and the other
+  sessions didn't bring the network back;
+- the network depended on who logged in first.
 
-Ahora la red es del sistema, como NetworkManager o systemd-networkd:
+Now the network belongs to the system, like NetworkManager or systemd-networkd:
 
 ```
 lordos.service
 └── lord-sessiond
-    └── lord-netd                       la red: DHCP, Wi-Fi guardadas, configs, DNS, VPN
-        ├── if:<if>                     cliente DHCP (código propio)
+    └── lord-netd                       the network: DHCP, saved Wi-Fi, configs, DNS, VPN
+        ├── if:<if>                     DHCP client (our own code)
         ├── wpa:<if>                    wpa_supplicant
-        └── vpn:<nombre>                openvpn, charon, pppd…
-lord-server --user lord ── lord-admin ──┐  /run/lordos/netd.sock (0600, solo root)
-lord-server --user ana  ── lord-admin ──┘  las acciones net-* se pasan tal cual
+        └── vpn:<name>                  openvpn, charon, pppd…
+lord-server --user lord ── lord-admin ──┐  /run/lordos/netd.sock (0600, root only)
+lord-server --user ana  ── lord-admin ──┘  net-* actions are forwarded as they are
 ```
 
-- **Qué es.** `lord-netd` es el mismo `admin.c` compilado con `LORD_NETD` (`server/src/net/netd.c`
-  solo tiene `main`): su tabla tiene **solo** las acciones `net-*`, con las mismas validaciones, y no
-  ejecuta nada que esas acciones no ejecutaran ya. Solo libc.
-- **Cuándo arranca.** `lord-sessiond` lo lanza al arrancar, antes que la pantalla de ingreso
+- **What it is.** `lord-netd` is `admin.c` built with `LORD_NETD` (`server/src/net/netd.c` only has
+  `main`). Its table has **only** the `net-*` actions, with the same validation, and it runs
+  nothing those actions didn't already run. libc only.
+- **When it starts.** `lord-sessiond` starts it at boot, before the greeter
   (`server/src/remote/netsup.c`):
-  - ruta fija `<carpeta de lord-sessiond>/lord-netd`, de root y no escribible por otros (salvo
-    `insecure_dev`);
-  - sin argumentos y con un entorno mínimo;
-  - en su propia sesión (`setsid`).
+  - fixed path `<lord-sessiond's directory>/lord-netd`, root-owned and not writable by others
+    (unless `insecure_dev`);
+  - no arguments and a minimal environment;
+  - in its own session (`setsid`).
 
-  `lord-netd` corre `net-restore` él solo: configs de `/etc/lordos/net/if`, DHCP en las placas
-  físicas libres, Wi-Fi con las redes guardadas y DNS. Por eso hay IP antes de que alguien entre.
-- **Las sesiones** no levantan nada. El ayudante de cada sesión se conecta a `/run/lordos/netd.sock`
-  (`SO_PEERCRED`: solo uid 0), se presenta con `HELLO <usuario>` y le pasa tal cual cada acción
-  `net-*`. `lord-netd` vuelve a calcular si ese usuario es administrador (grupo sudo) y aplica
-  `A_ANYONE` igual que antes. Las respuestas vuelven al ayudante que pidió; los avisos (`net dhcp…`,
-  `net wifi…`, `net vpn…`), a todas las sesiones. Ajustes → Red no cambió.
-- **`net-restore` de una sesión** responde `OK 0 interfaz(es): la red es del sistema (lord-netd)`.
-- **Contraseñas de Wi-Fi y VPN:** siguen en `/etc/lordos/net/wifi` y `/etc/lordos/net/vpn` (root,
-  0600). Viajan por el socket entre dos procesos root y nunca vuelven a una sesión.
-- **Si `lord-netd` termina,** `lord-sessiond` lo vuelve a lanzar: espera 1, 2, 4… hasta 30 s, y
-  vuelve a 1 s si había durado más de un minuto.
-  - Su cliente DHCP recibe `SIGUSR1` (`PR_SET_PDEATHSIG`): se va **sin soltar la dirección** y deja
-    la concesión en `/run/lordos/dhcp/<if>.lease` (0600). El cliente nuevo la confirma
-    (INIT-REBOOT) y las conexiones no se cortan.
-  - Las VPN que estaban prendidas se vuelven a conectar (`/run/lordos/netd-vpns`).
-  - wpa_supplicant sí se reinicia: el Wi-Fi se vuelve a asociar en unos segundos.
-- **Si se reinicia `lord-sessiond`** (`KillMode=process`), `lord-netd` sigue vivo y el
-  `lord-sessiond` nuevo lo **adopta**: lee `/run/lordos/netd.pid`, verifica que sea un proceso
-  root llamado `lord-netd` y lo vigila con un `pidfd` en su `poll`, sin sondear. El lock
-  `/run/lordos/netd.lock` (`flock`) impide que corran dos.
-- **Reconexión de las sesiones:** si `lord-netd` se reinicia, el ayudante de cada sesión lo ve
-  aparecer de nuevo con inotify sobre `/run/lordos` (el socket se crea con otro nombre y se renombra
-  cuando ya escucha) y se vuelve a conectar. Una acción que estaba en curso responde «la red del
-  sistema se reinició: probá de nuevo».
-- **Sin `lord-sessiond`** (un `lord-server` suelto, en desarrollo) no existe
-  `/run/lordos/netd.enabled` y el ayudante de la sesión corre la red él mismo, como antes (con
-  `net-owner`). Con esa marca, una sesión nunca levanta la red por su cuenta.
-- **Los procesos residentes ya no viven en los hijos del ayudante** (`admin_daemon_fork` y las
-  acciones `A_FORK` solo se quedan con su pipe): un DHCP que sobrevive no retiene el lock ni el
-  socket de `lord-netd`.
+  `lord-netd` runs `net-restore` by itself: the configs in `/etc/lordos/net/if`, DHCP on free
+  physical NICs, Wi-Fi with the saved networks, and DNS. That is why there is an IP before anyone
+  logs in.
+- **Sessions** bring nothing up. Each session's helper connects to `/run/lordos/netd.sock`
+  (`SO_PEERCRED`: uid 0 only), introduces itself with `HELLO <user>` and forwards every `net-*`
+  action as it is. `lord-netd` works out again whether that user is an administrator (group sudo)
+  and applies `A_ANYONE` as before. Replies go back to the helper that asked; events
+  (`net dhcp…`, `net wifi…`, `net vpn…`) go to every session. Settings → Network didn't change.
+- **A session's `net-restore`** answers `OK 0 interfaz(es): la red es del sistema (lord-netd)`.
+- **Wi-Fi and VPN passwords** stay in `/etc/lordos/net/wifi` and `/etc/lordos/net/vpn` (root, 0600).
+  They travel over the socket between two root processes and never go back to a session.
+- **If `lord-netd` exits,** `lord-sessiond` starts it again: it waits 1, 2, 4… up to 30 s, and goes
+  back to 1 s if it had run for more than a minute.
+  - Its DHCP client gets `SIGUSR1` (`PR_SET_PDEATHSIG`): it exits **without releasing the address**
+    and leaves the lease in `/run/lordos/dhcp/<if>.lease` (0600). The new client confirms it
+    (INIT-REBOOT) and connections are not dropped.
+  - VPNs that were up are reconnected (`/run/lordos/netd-vpns`).
+  - wpa_supplicant does restart: Wi-Fi reassociates within a few seconds.
+- **If `lord-sessiond` restarts** (`KillMode=process`), `lord-netd` keeps running and the new
+  `lord-sessiond` **adopts** it: it reads `/run/lordos/netd.pid`, checks that it is a root process
+  named `lord-netd` and watches it with a `pidfd` in its `poll`, without polling. The lock
+  `/run/lordos/netd.lock` (`flock`) prevents two from running.
+- **Sessions reconnect:** when `lord-netd` restarts, each session's helper sees it come back with
+  inotify on `/run/lordos` (the socket is created under another name and renamed once it listens)
+  and reconnects. An action in progress answers "la red del sistema se reinició: probá de nuevo".
+- **Without `lord-sessiond`** (a standalone `lord-server`, in development) there is no
+  `/run/lordos/netd.enabled`, and the session's helper runs the network itself, as before (with
+  `net-owner`). With that mark, a session never brings the network up on its own.
+- **Resident processes no longer inherit the helper's descriptors** (`admin_daemon_fork` and
+  `A_FORK` actions keep only their pipe): a DHCP client that outlives `lord-netd` doesn't hold its
+  lock or socket.
 
-### Prueba (VM 119, 17 de octubre)
+### Test (VM 119, October 17)
 
-La VM 119 corre `lord-sessiond` instalado como el `.deb` (no se instaló desde el ISO; ver
-`VM-SETUP.md`, paso 20). `eth0` la maneja systemd-networkd (netplan) y LordOS no la toca, así que la
-prueba usa una placa de LordOS: el veth `lnt0`, con su par en el netns `lnt` y un `dnsmasq` ahí
-(`lordos-test-netns.service`, arranca antes que `lordos.service`) y `/etc/lordos/net/if/lnt0.conf`
-con `method=dhcp`.
+VM 119 runs `lord-sessiond` installed like the `.deb`; it was not installed from the ISO (see
+`VM-SETUP.md`, step 20). `eth0` is managed by systemd-networkd (netplan) and LordOS leaves it
+alone, so the test uses a LordOS-managed NIC: the veth `lnt0`, whose peer is in the netns `lnt`
+with a `dnsmasq` there (`lordos-test-netns.service`, which starts before `lordos.service`), and
+`/etc/lordos/net/if/lnt0.conf` with `method=dhcp`.
 
-| Prueba | Resultado |
+| Test | Result |
 |---|---|
-| Arranque, sin nadie adentro | `lord-netd` lanzado a la vez que la pantalla de ingreso; `lnt0` con `10.77.0.96/24` a los **3 s** |
-| Escritorio remoto antes de ingresar | `curl https://10.77.0.96:5673/` desde el netns: **200** |
-| `lord` entra por el monitor, `ana` (creada en Ajustes → Usuarios) por la red | dos ayudantes conectados a `netd.sock`; Ajustes → Red muestra `lnt0` «por DHCP» |
-| `lord` cierra la sesión (era la «primera») | `lnt0` sigue con su IP |
-| `ana` también cierra: no queda ninguna sesión | `lnt0` sigue con su IP y el remoto responde 200 |
-| `kill -9` a `lord-netd` | relanzado en 1 s, `resume` de la concesión: la dirección **no se cayó ni un instante** (muestreo cada 0,5 s) |
-| `systemctl restart lordos` | `lord-netd sigue corriendo (pid …): la red no se cortó`; matarlo después: relanzado y retomado igual |
+| Boot, nobody logged in | `lord-netd` started together with the greeter; `lnt0` had `10.77.0.96/24` after **3 s** |
+| Remote desktop before login | `curl https://10.77.0.96:5673/` from the netns: **200** |
+| `lord` logs in on the monitor, `ana` (created in Settings → Users) over the network | two helpers connected to `netd.sock`; Settings → Network shows `lnt0` "por DHCP" |
+| `lord` logs out (it was the "first" session) | `lnt0` keeps its IP |
+| `ana` logs out too: no session left | `lnt0` keeps its IP and the remote desktop answers 200 |
+| `kill -9` on `lord-netd` | restarted in 1 s, lease `resume`: the address **never dropped** (sampled every 0.5 s) |
+| `systemctl restart lordos` | `lord-netd still running (pid …): the network was not interrupted`; killing it afterwards: restarted and resumed the same way |
 
 | | |
 |---|---|
-| ![pantalla de ingreso](m9-sistema-red-greeter.png) | ![Ajustes → Red](m9-sistema-red-sesion.png) |
-| Pantalla de ingreso recién arrancada, nadie adentro: abajo la IP. En esta VM es la de `eth0` (netplan); la de `lnt0` (lord-netd) ya estaba, como muestra el registro | Ya adentro: `lnt0` «por DHCP», la levantó `lord-netd` |
+| ![greeter](m9-sistema-red-greeter.png) | ![Settings → Network](m9-sistema-red-sesion.png) |
+| Greeter right after boot, nobody logged in: the IP at the bottom. On this VM it is `eth0`'s (netplan); `lnt0`'s (lord-netd) was already up, as the log shows | Logged in: `lnt0` "por DHCP", brought up by `lord-netd` |
 
-Arreglo que salió de la prueba: `systemctl restart lordos` fallaba con «Failed to spawn executor:
-Device or resource busy» cuando quedaban procesos vivos (pantalla de ingreso, sesiones y ahora
-`lord-netd`): systemd quiere poner al principal nuevo en la raíz del cgroup del servicio, que tiene
-controladores habilitados. `lordos.service` lleva ahora `DelegateSubgroup=supervisor`.
+A fix that came out of the test: `systemctl restart lordos` failed with "Failed to spawn executor:
+Device or resource busy" while processes were still alive (greeter, sessions and now `lord-netd`):
+systemd tries to put the new main process in the service cgroup's root, which has controllers
+enabled. `lordos.service` now has `DelegateSubgroup=supervisor`.
 
 ## Qué hay (probado en la VM)
 
@@ -164,7 +164,7 @@ El argumento puede tener varias líneas (`\n`). "Cualquiera" quiere decir que no
 
 | Acción | Argumento | Quién | Respuesta |
 |---|---|---|---|
-| `net-restore` | — | cualquiera | Con `lord-netd` la corre él solo al arrancar el equipo; la que manda cada sesión responde `OK 0 … la red es del sistema`. Sin `lord-netd` (desarrollo) la aplica la primera sesión, anotada en `/run/lordos/net-owner` mientras viva. Aplica las configs de `/etc/lordos/net/if`, y las interfaces físicas libres sin config van por DHCP (con Wi-Fi: wpa_supplicant más las redes guardadas). `OK <n>` |
+| `net-restore` | — | cualquiera | With `lord-netd`, it runs it by itself at boot; the one each session sends answers `OK 0 … la red es del sistema`. Without `lord-netd` (development) the first session applies it, noted in `/run/lordos/net-owner` while alive. Aplica las configs de `/etc/lordos/net/if`, y las interfaces físicas libres sin config van por DHCP (con Wi-Fi: wpa_supplicant más las redes guardadas). `OK <n>` |
 | `net-up` / `net-down` | `if` | admin | `net-down` además para su DHCP/wpa |
 | `net-config` | `if\nmethod=dhcp\|static\|off\naddress=ip/n\n…gateway=ip\ndns=ip…` | admin | Guarda y aplica. Rechaza las interfaces del sistema. |
 | `net-manage` / `net-unmanage` | `if` | admin | Escribe y borra `/etc/systemd/network/00-lordos-<if>.network` (`Unmanaged=yes`) y hace `networkctl reload`. |
@@ -283,7 +283,7 @@ daemon <proceso> exit <código> (fin de "if:<if>", "wpa:<if>", "vpn:<nombre>")
 
 ## Procesos residentes
 
-Son hijos de `lord-netd` (o, sin él, del ayudante de la sesión), que los lanza con `admin_daemon_*`:
+They are children of `lord-netd` (or, without it, of the session's helper), which starts them with `admin_daemon_*`:
 
 | Proceso | Qué es |
 |---|---|
@@ -291,7 +291,7 @@ Son hijos de `lord-netd` (o, sin él, del ayudante de la sesión), que los lanza
 | `wpa:<if>` | wpa_supplicant. Deja un pidfile en `/run/lordos/wpa/<if>.pid` para matar uno que haya quedado de una sesión anterior. |
 | `vpn:<nombre>` | Maneja openvpn, charon, pppd, openconnect u openfortivpn. El programa muere con él (`PDEATHSIG`). |
 
-Si `lord-netd` se reinicia, vuelve a levantar todo y retoma las concesiones DHCP y las VPN que estaban prendidas. Después de apagar el equipo, las VPN no se conectan solas.
+If `lord-netd` restarts, it brings everything back up and resumes the DHCP leases and the VPNs that were up. After a shutdown, VPNs don't reconnect by themselves.
 
 ## Cómo se reproduce la prueba
 
@@ -419,6 +419,6 @@ Ya estaban: `openssl` (PKI de prueba), systemd-networkd, systemd-resolved y los 
 - **VPN, más:** varias IPsec a la vez, que hoy no se puede por el pidfile único de charon. IPv6 por dentro de los túneles de PPTP, OpenConnect y Fortinet (hoy solo IPv4).
 - **Wi-Fi:** probar WPA3/SAE con un hostapd SAE; WPA-Enterprise (802.1X); redes ocultas desde la UI; elegir entre varios BSSID.
 - **IPv6:** DHCPv6 (hoy el kernel hace SLAAC solo) y DNS por RA (RDNSS).
-- **VPN al arrancar el equipo:** una opción «conectar sola» por VPN. Hoy se restauran interfaces, Wi-Fi y las VPN prendidas antes de un reinicio de `lord-netd`, pero no las de antes de apagar.
-- **Probar `lord-netd` con una placa física y Wi-Fi reales** en un sistema instalado desde el ISO (en la VM 119 se probó con un veth y `lord-sessiond` instalado como el `.deb`).
+- **VPN at boot:** a per-VPN "connect automatically" option. Today interfaces, Wi-Fi and the VPNs that were up before a `lord-netd` restart are restored, but not those from before a shutdown.
+- **Test `lord-netd` with a real physical NIC and Wi-Fi** on a system installed from the ISO (on VM 119 it was tested with a veth and `lord-sessiond` installed like the `.deb`).
 - **ifupdown:** las interfaces de `/etc/network/interfaces` se ven como del sistema, pero `net-manage` todavía no sabe sacarlas de ahí.

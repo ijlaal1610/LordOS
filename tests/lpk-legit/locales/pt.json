@@ -9,5 +9,20 @@
   "noFiles": "Sem permissão de arquivos",
   "canceled": "Cancelado",
   "menu": "Gravador",
-  "about": "Gravador de teste do LordOS"
+  "about": "Gravador de teste do LordOS",
+  "newWindow": "Nova janela",
+  "window": "Gravador — janela {n}",
+  "camera": "Câmera",
+  "cameraOff": "Desligar a câmera",
+  "photo": "Tirar foto",
+  "video": "Gravar vídeo",
+  "videoStop": "Parar vídeo",
+  "noCam": "Sem permissão de câmera",
+  "camOn": "Câmera ligada (ponto verde na barra de menus)",
+  "camOff": "Câmera desligada",
+  "revoked": "Permissão de câmera revogada: o vídeo parou",
+  "photoSaved": "Foto salva: {name}",
+  "videoSaved": "Vídeo salvo: {name}",
+  "saveFailed": "Não foi salvo",
+  "noDevice": "Nenhuma câmera"
 }

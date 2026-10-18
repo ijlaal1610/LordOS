@@ -1,29 +1,29 @@
-/* disk_admin.c — las acciones «disk-*» del ayudante privilegiado (admin.c), app Discos.
+/* disk_admin.c — the "disk-*" actions of the privileged helper (admin.c), Disks app.
  *
- *   disk-smart <disco>                      salud: SMART de ATA (SG_IO, ATA PASS-THROUGH 16) o
- *                                           el registro de salud de NVMe (NVME_IOCTL_ADMIN_CMD)
- *   disk-mount <dispositivo>                monta en /media/<usuario>/<etiqueta> (nosuid,nodev)
- *   disk-unmount <dispositivo>              desmonta lo que esté en /media o /run/media
- *   disk-eject <disco>                      desmonta todo, vacía cachés y lo expulsa (USB: lo apaga)
- *   disk-format <disp>\n<fs>\n<etiqueta>    fat32 | exfat | ext4 | ntfs (si está mkfs.ntfs). Un disco
- *                                           entero recibe una tabla MBR propia con una partición
- *   disk-label <partición>\n<etiqueta>     renombrar el volumen
- *   disk-erase <disp>\nquick|zero          borra las firmas (rápido) o escribe ceros en todo
- *   disk-write-image <disco>\n<ruta>       copia una imagen ISO/IMG al disco y la verifica (SHA-256)
- *   disk-cancel <disco>                     corta un borrado con ceros o una copia de imagen
+ *   disk-smart <disk>                       health: ATA SMART (SG_IO, ATA PASS-THROUGH 16) or the
+ *                                           NVMe health log (NVME_IOCTL_ADMIN_CMD)
+ *   disk-mount <device>                     mounts at /media/<user>/<label> (nosuid,nodev)
+ *   disk-unmount <device>                   unmounts whatever is under /media or /run/media
+ *   disk-eject <disk>                       unmounts everything, flushes caches and ejects it (USB: powers off)
+ *   disk-format <dev>\n<fs>\n<label>        fat32 | exfat | ext4 | ntfs (if mkfs.ntfs exists). A whole
+ *                                           disk gets our own MBR table with one partition
+ *   disk-label <partition>\n<label>         rename the volume
+ *   disk-erase <dev>\nquick|zero             wipes the signatures (quick) or writes zeros everywhere
+ *   disk-write-image <disk>\n<path>         copies an ISO/IMG image to the disk and verifies it (SHA-256)
+ *   disk-cancel <disk>                      stops a zero erase or an image copy
  *
- * Reglas, todas del lado root (no se confía en la app):
- *   - el nombre es un dispositivo de bloque real (sd*, vd*, hd*, xvd*, nvme*, mmcblk*, loop*), con
- *     /dev/<nombre> de bloque y el mismo número que en sysfs;
- *   - nunca el disco del sistema (disk_is_system: /, /usr, /var, /home, /boot, swap, live…), salvo
- *     para leer su SMART;
- *   - los discos internos solo los toca un administrador; los extraíbles (USB, tarjetas),
- *     cualquier usuario de la sesión, como udisks;
- *   - solo se desmonta lo montado en /media o /run/media; lo demás se rechaza;
- *   - programas de ruta fija (mkfs.*, *label) con argumentos ya validados; montar, desmontar,
- *     particionar, borrar y copiar la imagen se hacen con llamadas al sistema, sin programas;
- *   - la imagen se abre con los permisos del usuario (setfsuid), solo de su carpeta o de sus
- *     montajes, y nunca del mismo disco que se va a escribir. */
+ * Rules, all on the root side (the app is not trusted):
+ *   - the name is a real block device (sd*, vd*, hd*, xvd*, nvme*, mmcblk*, loop*), with
+ *     /dev/<name> a block device with the same number as in sysfs;
+ *   - never the system disk (disk_is_system: /, /usr, /var, /home, /boot, swap, live…), except
+ *     to read its SMART;
+ *   - internal disks only for an administrator; removable ones (USB, cards) for any session user,
+ *     like udisks;
+ *   - only what is mounted under /media or /run/media is unmounted; anything else is refused;
+ *   - fixed-path programs (mkfs.*, *label) with validated arguments; mount, unmount, partition,
+ *     erase and the image copy are system calls, no programs;
+ *   - the image is opened with the user's permissions (setfsuid), only from their home or their
+ *     mounts, and never from the disk being written. */
 #include "disk.h"
 #include "../pkg/crypto.h"
 
@@ -54,10 +54,10 @@
 #define MIB (1024u * 1024u)
 
 typedef struct {
-    char name[32];                      /* lo pedido */
-    char disk[32];                      /* su disco */
+    char name[32];                      /* what was asked for */
+    char disk[32];                      /* its disk */
     char dev[48];                       /* /dev/<name> */
-    int part;                           /* es una partición */
+    int part;                           /* is a partition */
     int removable;
     uint64_t size;
 } Target;
@@ -85,8 +85,8 @@ static int known_kind(const char *n) {
     return 0;
 }
 
-/* want: 0 cualquiera, 1 solo disco entero, 2 solo partición. allow_system: solo para leer (SMART):
- * vale también para el disco del sistema y para cualquier usuario. */
+/* want: 0 any, 1 whole disk only, 2 partition only. allow_system: read-only use (SMART):
+ * also allowed on the system disk and for any user. */
 static int target(const AdminReq *r, const char *name, int want, int allow_system, Target *t) {
     memset(t, 0, sizeof *t);
     if (!disk_valid_name(name) || !known_kind(name)) { admin_say("ERR", "dispositivo inválido"); return -1; }
@@ -115,7 +115,7 @@ static int target(const AdminReq *r, const char *name, int want, int allow_syste
     return 0;
 }
 
-/* ---- trabajos largos que se pueden cortar (disk-cancel) ---- */
+/* ---- long jobs that can be cancelled (disk-cancel) ---- */
 
 static volatile sig_atomic_t cancelled;
 static void on_cancel(int s) { (void)s; cancelled = 1; }
@@ -130,7 +130,7 @@ static void job_begin(const AdminReq *r, const char *disk) {
     if (f) { fprintf(f, "%d %u\n", (int)getpid(), (unsigned)r->uid); fclose(f); }
     struct sigaction sa = { .sa_handler = on_cancel };
     sigaction(SIGTERM, &sa, NULL);
-    /* que el escritorio no se trabe: prioridad baja de CPU y de disco (best effort, nivel 7) */
+    /* keep the desktop smooth: low CPU and disk priority (best effort, level 7) */
     setpriority(PRIO_PROCESS, 0, 10);
     syscall(SYS_ioprio_set, 1 /* IOPRIO_WHO_PROCESS */, 0, (2 << 13) | 7 /* IOPRIO_CLASS_BE, 7 */);
 }
@@ -153,7 +153,7 @@ void disk_act_cancel(const AdminReq *r, const char *arg, size_t len) {
     if (f) fclose(f);
     if (!ok || pid <= 1) { admin_say("ERR", "no hay nada en curso en %s", arg); return; }
     if (uid != r->uid && !r->admin) { admin_say("ERR", "lo empezó otro usuario"); return; }
-    /* que sea de verdad un hijo de un ayudante (lord-admin) y no un pid reciclado */
+    /* it must really be a helper child (lord-admin), not a recycled pid */
     char cp[64], comm[32] = "";
     snprintf(cp, sizeof cp, "/proc/%d/comm", pid);
     FILE *c = fopen(cp, "re");
@@ -163,13 +163,13 @@ void disk_act_cancel(const AdminReq *r, const char *arg, size_t len) {
     admin_say("OK", "cancelando");
 }
 
-/* ---- montajes ---- */
+/* ---- mounts ---- */
 
 static int in_media(const char *point) {
     return !strncmp(point, "/media/", 7) || !strncmp(point, "/run/media/", 11);
 }
 
-/* Desmonta las de /media del dispositivo; con otros montajes (no del sistema) se niega. */
+/* Unmounts the device's mounts under /media; refuses if it is mounted anywhere else. */
 static int unmount_dev(const char *name) {
     char mounts[4096];
     if (!disk_mounts(name, mounts, sizeof mounts)) return 0;
@@ -215,7 +215,7 @@ void disk_act_mount(const AdminReq *r, const char *arg, size_t len) {
     if (disk_mounts(t.name, NULL, 0)) { admin_say("ERR", "%s ya está montado", t.name); return; }
     char fs[32], label[256], uuid[96];
     disk_udev_prop(t.name, "ID_FS_TYPE", fs, sizeof fs);
-    disk_fs_label(t.name, label, sizeof label);                      /* sanitize_dir saca / y control */
+    disk_fs_label(t.name, label, sizeof label);                      /* sanitize_dir removes / and control characters */
     disk_udev_prop(t.name, "ID_FS_UUID", uuid, sizeof uuid);
     static const struct { const char *udev, *kernel; int owner, ro; } kinds[] = {
         { "vfat", "vfat", 1, 0 }, { "exfat", "exfat", 1, 0 }, { "ntfs", "ntfs3", 1, 0 }, { "ext4", "ext4", 0, 0 },
@@ -228,12 +228,12 @@ void disk_act_mount(const AdminReq *r, const char *arg, size_t len) {
     char base[96], dir[PATH_MAX], leaf[200];
     mkdir("/media", 0755);
     snprintf(base, sizeof base, "/media/%.64s", r->user);
-    if (mkdir(base, 0750) == 0 || errno == EEXIST) { if (chown(base, 0, r->gid)) { /* sigue */ } chmod(base, 0750); }
+    if (mkdir(base, 0750) == 0 || errno == EEXIST) { if (chown(base, 0, r->gid)) { /* keep going */ } chmod(base, 0750); }
     sanitize_dir(label[0] ? label : uuid[0] ? uuid : t.name, leaf, sizeof leaf);
     snprintf(dir, sizeof dir, "%s/%s", base, leaf);
     for (int i = 2; mkdir(dir, 0700) && i < 100; i++) {
         struct stat st;
-        /* una carpeta vacía que quedó (y no es un montaje) se vuelve a usar */
+        /* an empty leftover folder (not a mount point) is reused */
         if (errno == EEXIST && !lstat(dir, &st) && S_ISDIR(st.st_mode) && rmdir(dir) == 0 && mkdir(dir, 0700) == 0) break;
         snprintf(dir, sizeof dir, "%s/%s %d", base, leaf, i);
     }
@@ -279,8 +279,8 @@ static int sg_cmd(int fd, const uint8_t *cdb, int cdblen, void *buf, unsigned le
     h.mx_sb_len = (unsigned char)slen;
     h.timeout = 15000;
     if (ioctl(fd, SG_IO, &h)) return -1;
-    if (h.host_status || (h.driver_status & 0x07)) return -1;      /* 0x08 = DRIVER_SENSE: trae sense, no es error */
-    return h.status;                    /* 0 bien, 2 CHECK CONDITION (con sense) */
+    if (h.host_status || (h.driver_status & 0x07)) return -1;      /* 0x08 = DRIVER_SENSE: sense data attached, not an error */
+    return h.status;                    /* 0 good, 2 CHECK CONDITION (with sense) */
 }
 
 static int ata_smart_read(int fd, uint8_t feature, uint8_t out[512]) {
@@ -290,7 +290,7 @@ static int ata_smart_read(int fd, uint8_t feature, uint8_t out[512]) {
     return sg_cmd(fd, cdb, 16, out, 512, SG_DXFER_FROM_DEV, sense, sizeof sense) == 0 ? 0 : -1;
 }
 
-/* RETURN STATUS: LBA mid/high 4Fh/C2h = bien, F4h/2Ch = umbral superado. */
+/* RETURN STATUS: LBA mid/high 4Fh/C2h = good, F4h/2Ch = threshold exceeded. */
 static int ata_smart_status(int fd) {
     uint8_t cdb[16] = { 0x85, 3 << 1, 0x20, 0, 0xda, 0, 0, 0, 0, 0, 0x4f, 0, 0xc2, 0, 0xb0, 0 };
     uint8_t sense[64] = { 0 };
@@ -310,7 +310,7 @@ static int ata_smart_status(int fd) {
 void disk_act_smart(const AdminReq *r, const char *arg, size_t len) {
     (void)len;
     Target t;
-    if (target(r, arg, 1, 1, &t)) return;     /* el del sistema también: solo se lee */
+    if (target(r, arg, 1, 1, &t)) return;     /* the system disk too: read only */
     if (strncmp(t.name, "sd", 2) && strncmp(t.name, "nvme", 4) && strncmp(t.name, "hd", 2)) {
         admin_say("ERR", "este disco no informa SMART (%s)", t.name);
         return;
@@ -328,7 +328,7 @@ void disk_act_smart(const AdminReq *r, const char *arg, size_t len) {
         c.nsid = 0xffffffff;
         c.addr = (uint64_t)(uintptr_t)log;
         c.data_len = sizeof log;
-        c.cdw10 = (127u << 16) | 0x02;  /* 128 palabras, registro 02h */
+        c.cdw10 = (127u << 16) | 0x02;  /* 128 dwords, log page 02h */
         ok = ioctl(fd, NVME_IOCTL_ADMIN_CMD, &c) == 0 && smart_nvme_parse(log, &rep) == 0;
     } else {
         uint8_t data[512], th[512];
@@ -346,13 +346,13 @@ void disk_act_smart(const AdminReq *r, const char *arg, size_t len) {
     admin_say("OK", "%.1f ms", (now_s() - t0) * 1000);
 }
 
-/* ---- escribir en el dispositivo ---- */
+/* ---- writing to the device ---- */
 
 static void uevent_change(const char *name) {
     char p[PATH_MAX];
     snprintf(p, sizeof p, "/sys/class/block/%s/uevent", name);
     int fd = open(p, O_WRONLY | O_CLOEXEC);
-    if (fd >= 0) { if (write(fd, "change", 6) < 0) { /* sigue */ } close(fd); }
+    if (fd >= 0) { if (write(fd, "change", 6) < 0) { /* keep going */ } close(fd); }
 }
 
 static void settle(void) {
@@ -374,7 +374,7 @@ static int zero_range(int fd, uint64_t off, uint64_t len) {
     return 0;
 }
 
-/* Borra firmas: el primer y el último MiB (MBR, GPT y su copia, superbloques del principio). */
+/* Wipes signatures: the first and last MiB (MBR, GPT and its backup, leading superblocks). */
 static int wipe_ends(int fd, uint64_t size) {
     uint64_t a = size < 2 * MIB ? size : MIB;
     if (zero_range(fd, 0, a)) return -1;
@@ -393,7 +393,7 @@ static void part_name(const char *disk, int n, char *out, size_t cap) {
     snprintf(out, cap, "%.24s%s%d", disk, l && isdigit((unsigned char)disk[l - 1]) ? "p" : "", n);
 }
 
-/* Tabla MBR con una sola partición desde 1 MiB hasta el final. */
+/* MBR table with a single partition from 1 MiB to the end. */
 static int write_mbr(int fd, uint64_t size, uint8_t type) {
     uint64_t sectors = size / 512;
     if (sectors > 0xffffffffull) return -2;
@@ -406,7 +406,7 @@ static int write_mbr(int fd, uint64_t size, uint8_t type) {
     uint8_t *p = mbr + 446;
     uint32_t start = 2048, count = (uint32_t)(sectors - start);
     p[0] = 0x00;
-    p[1] = 0xfe; p[2] = 0xff; p[3] = 0xff;       /* CHS fuera de rango: se usa LBA */
+    p[1] = 0xfe; p[2] = 0xff; p[3] = 0xff;       /* CHS out of range: LBA is used */
     p[4] = type;
     p[5] = 0xfe; p[6] = 0xff; p[7] = 0xff;
     memcpy(p + 8, &start, 4);
@@ -416,7 +416,7 @@ static int write_mbr(int fd, uint64_t size, uint8_t type) {
     return pwrite(fd, mbr, sizeof mbr, 0) == (ssize_t)sizeof mbr ? 0 : -1;
 }
 
-/* Valida la etiqueta para ese sistema de archivos; para FAT la pasa a mayúsculas. */
+/* Validates the label for that file system; for FAT it uppercases it. */
 static int valid_label(const char *fs, char *label) {
     size_t n = strlen(label), cps = 0;
     if (label[0] == '-') return 0;
@@ -440,7 +440,7 @@ static int valid_label(const char *fs, char *label) {
 }
 
 void disk_act_format(const AdminReq *r, const char *arg, size_t len) {
-    /* <dispositivo>\n<fs>[\n<etiqueta>] */
+    /* <device>\n<fs>[\n<label>] */
     char *buf = strndup(arg, len), *f[3] = { NULL, NULL, NULL };
     int nf = 0;
     for (char *s = buf; s && nf < 3; nf++) {
@@ -448,7 +448,7 @@ void disk_act_format(const AdminReq *r, const char *arg, size_t len) {
         char *nl = strchr(s, '\n');
         if (nl) *nl = 0;
         s = nl ? nl + 1 : NULL;
-        if (nf == 2 && nl) { nf = -1; break; }      /* más líneas de la cuenta */
+        if (nf == 2 && nl) { nf = -1; break; }      /* too many lines */
     }
     if (!buf || nf < 2) { admin_say("ERR", "argumento inválido"); free(buf); return; }
     char *name = f[0], fsname[16], lab[64];
@@ -482,7 +482,7 @@ void disk_act_format(const AdminReq *r, const char *arg, size_t len) {
             return;
         }
         fsync(fd);
-        if (!strncmp(t.disk, "loop", 4)) {        /* una imagen sin «partscan»: se lo prende */
+        if (!strncmp(t.disk, "loop", 4)) {        /* an image without "partscan": turn it on */
             struct loop_info64 li;
             if (!ioctl(fd, LOOP_GET_STATUS64, &li) && !(li.lo_flags & LO_FLAGS_PARTSCAN)) {
                 li.lo_flags |= LO_FLAGS_PARTSCAN;
@@ -502,7 +502,7 @@ void disk_act_format(const AdminReq *r, const char *arg, size_t len) {
         if (stat(dev, &st) || !S_ISBLK(st.st_mode)) { admin_say("ERR", "no apareció la partición nueva %s", dev); return; }
         snprintf(t.name, sizeof t.name, "%s", pn);
     } else {
-        int e = zero_range(fd, 0, t.size < MIB ? t.size : MIB);    /* firmas viejas al principio */
+        int e = zero_range(fd, 0, t.size < MIB ? t.size : MIB);    /* old signatures at the start */
         fsync(fd);
         close(fd);
         if (e) { admin_say("ERR", "no se pudo escribir en %s", t.name); return; }
@@ -579,7 +579,7 @@ void disk_act_erase(const AdminReq *r, const char *arg, size_t len) {
             off += (uint64_t)w;
             if (now_s() - last > 0.5 || off == t.size) {
                 last = now_s();
-                fdatasync(fd);          /* que el progreso sea real y no llene la caché */
+                fdatasync(fd);          /* real progress, and don't fill the page cache */
                 admin_say("LOG", "progress phase=erase done=%llu total=%llu", (unsigned long long)off, (unsigned long long)t.size);
             }
         }
@@ -595,9 +595,9 @@ void disk_act_erase(const AdminReq *r, const char *arg, size_t len) {
     else admin_say("OK", "borrado");
 }
 
-/* ---- imagen → disco ---- */
+/* ---- image → disk ---- */
 
-/* Abre la imagen con los permisos del usuario, solo de su carpeta o de sus montajes. */
+/* Opens the image with the user's permissions, only from their home or their mounts. */
 static int open_image(const AdminReq *r, const char *path, struct stat *st) {
     if (path[0] != '/') return -1;
     char real[PATH_MAX], roots[3][PATH_MAX];
@@ -643,7 +643,7 @@ void disk_act_write_image(const AdminReq *r, const char *arg, size_t len) {
     if (in < 0) { admin_say("ERR", "no se pudo abrir la imagen (tiene que ser un archivo de tu carpeta o de tus discos)"); return; }
     uint64_t total = (uint64_t)st.st_size;
     if (total > t.size) { close(in); admin_say("ERR", "la imagen (%llu bytes) no entra en %s (%llu bytes)", (unsigned long long)total, t.name, (unsigned long long)t.size); return; }
-    {   /* la imagen no puede estar en el mismo disco */
+    {   /* the image cannot be on the same disk */
         char dn[32] = "", base[32] = "";
         char p[64], real[PATH_MAX];
         snprintf(p, sizeof p, "/sys/dev/block/%u:%u", major(st.st_dev), minor(st.st_dev));
@@ -671,7 +671,7 @@ void disk_act_write_image(const AdminReq *r, const char *arg, size_t len) {
         if (k <= 0) { err = 1; break; }
         sha256_update(&hs, b, (size_t)k);
         size_t wl = (size_t)k;
-        if (wl % (size_t)ssz) {          /* el final que no es múltiplo del sector: sin O_DIRECT */
+        if (wl % (size_t)ssz) {          /* a tail that is not a sector multiple: without O_DIRECT */
             fcntl(out, F_SETFL, fcntl(out, F_GETFL) & ~O_DIRECT);
         }
         for (size_t o = 0; o < wl;) {
@@ -691,7 +691,7 @@ void disk_act_write_image(const AdminReq *r, const char *arg, size_t len) {
     sha256_final(&hs, want);
     if (!err && !cancelled && fsync(out)) err = 2;
     double tw = now_s() - t0;
-    /* verificación: se relee del disco (sin la caché) y se compara el SHA-256 */
+    /* verification: read the disk back (bypassing the cache) and compare the SHA-256 */
     if (!err && !cancelled) {
         ioctl(out, BLKFLSBUF);
         close(out);
@@ -729,7 +729,7 @@ void disk_act_write_image(const AdminReq *r, const char *arg, size_t len) {
     else admin_say("OK", "verificado sha256=%s ms=%.0f mbps=%.1f", hex, tw * 1000, tw > 0 ? total / tw / 1e6 : 0);
 }
 
-/* ---- expulsar ---- */
+/* ---- eject ---- */
 
 void disk_act_eject(const AdminReq *r, const char *arg, size_t len) {
     (void)len;
@@ -737,7 +737,7 @@ void disk_act_eject(const AdminReq *r, const char *arg, size_t len) {
     if (target(r, arg, 1, 0, &t)) return;
     if (unmount_disk(&t)) return;
     sync();
-    /* nadie más lo tiene abierto en exclusiva (un borrado o una copia en curso) */
+    /* nobody else holds it exclusively (an erase or a copy in progress) */
     int ex = open(t.dev, O_RDONLY | O_EXCL | O_NONBLOCK | O_CLOEXEC);
     if (ex < 0 && errno == EBUSY) { admin_say("ERR", "%s está en uso: esperá a que termine lo que está haciendo", t.name); return; }
     if (ex >= 0) close(ex);
@@ -751,7 +751,7 @@ void disk_act_eject(const AdminReq *r, const char *arg, size_t len) {
         }
         close(fd);
     }
-    /* por USB: se apaga el dispositivo (como «Apagar» de GNOME Discos) */
+    /* over USB: power the device off (like "Power Off" in GNOME Disks) */
     char tr[16] = "", path[256] = "";
     disk_udev_prop(t.name, "ID_BUS", tr, sizeof tr);
     disk_udev_prop(t.name, "ID_PATH", path, sizeof path);
@@ -759,7 +759,7 @@ void disk_act_eject(const AdminReq *r, const char *arg, size_t len) {
         char p[PATH_MAX];
         snprintf(p, sizeof p, "/sys/block/%s/device/delete", t.disk);
         int d = open(p, O_WRONLY | O_CLOEXEC);
-        if (d >= 0) { if (write(d, "1", 1) < 0) { /* sigue */ } close(d); }
+        if (d >= 0) { if (write(d, "1", 1) < 0) { /* keep going */ } close(d); }
     }
     admin_say("OK", "expulsado");
 }

@@ -1,12 +1,13 @@
-/* js_help.c — lord.help (artículos de la app Ayuda) y lord.time.zoneOffset (app Reloj).
- * Ver docs/SISTEMA.md.
+/* js_help.c — lord.help (Help app articles) and lord.time.zoneOffset (Clock app).
+ * See docs/SYSTEM.md.
  *
- *   lord.help.list(idioma)      → [{ id, title, app, section, keywords }] de los .md de assets/help/<idioma>
- *   lord.help.read(idioma, id)  → texto del artículo, o null
- *   lord.time.zoneOffset(zona, segundosUnix) → { offset, abbr, dst } o null (TZif propio, tzif.c)
+ *   lord.help.list(lang)      → [{ id, title, app, section, order, keywords }] of the .md files in assets/help/<lang>
+ *   lord.help.read(lang, id)  → the article text, or null
+ *   lord.time.zoneOffset(zone, unixSeconds) → { offset, abbr, dst } or null (our own TZif reader, tzif.c)
  *
- * Solo lectura y solo de la carpeta assets/help de LordOS: el idioma y el id se validan
- * ([a-z0-9-], sin puntos ni barras), así que no se puede salir de ahí. */
+ * Read-only and only from LordOS's assets/help folder: the language and the id are validated
+ * ([a-z0-9-], no dots or slashes), so nothing outside it can be reached. English (assets/help/en)
+ * is the default; the SDK (sdk/help.js) falls back to it when an article is not translated. */
 #include "js_help.h"
 #include "js_sys.h"
 #include "tzif.h"
@@ -21,7 +22,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define HELP_MAX (256 * 1024)           /* un artículo */
+#define HELP_MAX (256 * 1024)           /* one article */
 
 static int valid_part(const char *s, size_t max) {
     size_t n = s ? strlen(s) : 0;
@@ -53,7 +54,7 @@ static char *read_article(const char *lang, const char *id, size_t *len) {
     return buf;
 }
 
-/* valor de "clave: valor" en el encabezado --- … --- */
+/* value of "key: value" in the --- … --- header */
 static void front(const char *txt, const char *key, char *out, size_t n) {
     out[0] = 0;
     if (strncmp(txt, "---\n", 4)) return;
@@ -144,7 +145,7 @@ void js_help_register(JSContext *c, JSValue lord) {
     JSValue o = JS_NewObject(c);
     JS_SetPropertyFunctionList(c, o, help_funcs, sizeof help_funcs / sizeof help_funcs[0]);
     JS_SetPropertyStr(c, lord, "help", o);
-    /* lord.time ya lo creó js_sys_register: se le agrega zoneOffset */
+    /* lord.time was already created by js_sys_register: zoneOffset is added to it */
     JSValue time = JS_GetPropertyStr(c, lord, "time");
     if (JS_IsObject(time)) JS_SetPropertyStr(c, time, "zoneOffset", JS_NewCFunction(c, f_zone_offset, "zoneOffset", 2));
     JS_FreeValue(c, time);

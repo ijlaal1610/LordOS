@@ -1,18 +1,18 @@
-/* backup.h — Copias de seguridad de la sesión (ver backup.c, engine.h y docs/SISTEMA.md).
+/* backup.h — the session's backups (see backup.c, engine.h and docs/SYSTEM.md).
  *
- * Un hilo de lord-server, como el usuario y con la prioridad más baja (nice 19, E/S «idle»),
- * hace las instantáneas programadas y las restauraciones. Avisa a JS por un eventfd que el bucle
- * principal mira (backup_fd → backup_dispatch → __lordBackup(estado)). */
+ * A lord-server thread, running as the user at the lowest priority (nice 19, "idle" I/O), takes
+ * the scheduled snapshots and does restores. It notifies JS through an eventfd watched by the main
+ * loop (backup_fd → backup_dispatch → __lordBackup(status)). */
 #ifndef LORD_BACKUP_H
 #define LORD_BACKUP_H
 
 #include <stddef.h>
 
-int   backup_start(const char *home, const char *user);   /* después de soltar root; una vez */
-int   backup_fd(void);                                    /* -1 si no corre */
-void  backup_dispatch(void (*fn)(const char *json));      /* hay novedades: fn(estado JSON) */
+int   backup_start(const char *home, const char *user);   /* after dropping root; once */
+int   backup_fd(void);                                    /* -1 if not running */
+void  backup_dispatch(void (*fn)(const char *json));      /* something changed: fn(status JSON) */
 
-/* Todo devuelve texto JSON en memoria nueva (free) o NULL; err recibe el motivo. */
+/* Everything returns JSON text in new memory (free it) or NULL; err receives the reason. */
 char *backup_status_json(void);
 char *backup_config_json(void);
 int   backup_configure(const char *json, char *err, size_t n);
@@ -23,11 +23,12 @@ char *backup_list_json(void);
 char *backup_ls_json(const char *id, const char *rel, char *err, size_t n);
 int   backup_restore(const char *id, const char *rel, int replace, const char *suffix, const char *to, char *err, size_t n);
 int   backup_delete(const char *id, char *err, size_t n);
-/* Cifrado: desbloquear (o, con create, crear en un destino sin copias) con la frase; el resultado
- * llega en el estado (unlock). La clave queda solo en memoria. lock() la borra. */
+/* Encryption: unlock (or, with create, set up on a destination without backups) with the
+ * passphrase; the result arrives in the status (unlock). The key stays only in memory; lock()
+ * wipes it. */
 int   backup_unlock(const char *pass, int create, char *err, size_t n);
 void  backup_lock(void);
-/* Ruta real de una instantánea (para abrirla en Archivos), o -1. */
+/* Real path of a snapshot (to open it in Files), or -1. */
 int   backup_snapshot_path(const char *id, char *out, size_t n);
 
 #endif

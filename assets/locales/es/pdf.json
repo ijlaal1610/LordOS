@@ -61,5 +61,12 @@
   "zoom.page": "Página entera",
   "go.page": "Ir a la página…",
   "go.first": "Primera página",
-  "go.last": "Última página"
+  "go.last": "Última página",
+  "tool.sidebar": "Mostrar u ocultar la barra lateral",
+  "tool.select": "Seleccionar texto",
+  "tool.highlight": "Resaltar",
+  "tool.ink": "Dibujar a mano alzada",
+  "tool.note": "Agregar una nota",
+  "tool.zoomToggle": "Ajustar al ancho o a la página",
+  "recent": "PDF en tu carpeta"
 }

@@ -98,6 +98,7 @@ static void dispatch_event(const char *buf, size_t n) {
     if (!nul) return;
     const char *kind = buf, *json = nul + 1;
     size_t jl = n - (size_t)(json - buf);
+    if (!strcmp(kind, "cam")) { js_brokercam_event(json, jl); return; }     /* camera frames (js_brokercam.c) */
     if (!strcmp(kind, "keyboard")) { apply_keyboard(json, jl); return; }
     if (!strcmp(kind, "state")) {                    /* resincronizar: teclado acá, el resto a JS */
         JDoc d;
@@ -113,6 +114,9 @@ static void dispatch_event(const char *buf, size_t n) {
     js_broker_app_event(kind, json, jl);
 }
 
+/* events queued while an RPC was waiting: the loop must not sleep on them */
+int js_broker_pending(void) { return nqueued > 0; }
+
 void js_broker_poll(void) {
     for (int i = 0; i < nqueued; i++) { dispatch_event(queued[i].buf, queued[i].len); free(queued[i].buf); }
     nqueued = 0;
@@ -125,6 +129,7 @@ void js_broker_poll(void) {
         ssize_t n = recvmsg(broker_fd, &rm, MSG_DONTWAIT);
         if (n < (ssize_t)sizeof r) break;
         if (r.op != BOP_EVENT) continue;              /* una respuesta tardía: nadie la espera */
+        buf[(size_t)n - sizeof r] = 0;                /* JS_ParseJSON needs the text NUL-terminated */
         dispatch_event(buf, (size_t)n - sizeof r);
     }
 }
@@ -259,6 +264,17 @@ static int rpc_fd(int op, const void *payload, uint32_t len, char *name, size_t 
         if (name && nn) { size_t k = pl < nn - 1 ? pl : nn - 1; memcpy(name, buf, k); name[k] = 0; }
         return fd;
     }
+}
+
+/* For js_brokercam.c (js_broker.h): the same RPCs, plus a send that does not wait for a reply. */
+int js_broker_rpc(int op, const void *payload, uint32_t len, int *status, char **out, uint32_t *outlen) { return rpc(op, payload, len, status, out, outlen); }
+int js_broker_rpc_fd(int op, const void *payload, uint32_t len, char *info, size_t n) { return rpc_fd(op, payload, len, info, n); }
+int js_broker_send(int op, const void *payload, uint32_t len) {
+    if (broker_fd < 0) return -1;
+    BrokerHdr h = { .reqid = next_req++, .op = (uint16_t)op, .status = BROKER_REQ, .len = len };
+    struct iovec iov[2] = { { &h, sizeof h }, { (void *)payload, len } };
+    struct msghdr m = { .msg_iov = iov, .msg_iovlen = len ? 2 : 1 };
+    return sendmsg(broker_fd, &m, MSG_NOSIGNAL | MSG_DONTWAIT) < 0 ? -1 : 0;
 }
 
 /* lord.broker.pick(save, nombreSugerido) → { fd, name } | null (el diálogo lo dibuja lord-server) */
@@ -602,4 +618,6 @@ void js_broker_register(JSContext *c, JSValue lord, const char *id) {
     add_obj(c, lord, "locale", locale_funcs, sizeof locale_funcs / sizeof locale_funcs[0]);
     JS_SetPropertyStr(c, lord, "appId", JS_NewString(c, id));
     JS_SetPropertyStr(c, lord, "loadApp", JS_NewCFunction(c, f_load_app, "loadApp", 0));
+    app_windows_register(c, lord);           /* several windows per isolated app */
+    js_brokercam_register(c, lord);          /* lord.media: the camera through lord-server (js_brokercam.c) */
 }

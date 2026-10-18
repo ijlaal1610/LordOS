@@ -611,6 +611,7 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
     /* administrador de impresoras de CUPS (grupo lpadmin, docs/IMPRESION.md); si CUPS no vino en
      * la imagen, el grupo no existe y no pasa nada */
     { const char *const a[] = { "/usr/sbin/usermod", "--append", "--groups", "lpadmin", pl.user, NULL }; if (in_target(a)) { /* sin CUPS */ } }
+    { const char *const a[] = { "/usr/sbin/usermod", "--append", "--groups", "plugdev", pl.user, NULL }; if (in_target(a)) { /* no plugdev group */ } }   /* FIDO2 keys (docs/PASSWORDS.md) */
     char *salt = crypt_gensalt_ra("$y$", 0, NULL, 0);
     struct crypt_data cd;
     memset(&cd, 0, sizeof cd);
@@ -655,8 +656,8 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
       if (chown(p, uid, gid)) admin_say("LOG", "aviso: no se pudo cambiar el dueño");
       snprintf(p, sizeof p, TARGET "/home/%s/.config/locale.conf", pl.user);
       writef(p, 0644, "LANG=%s\n", pl.locale); if (chown(p, uid, gid)) admin_say("LOG", "aviso: no se pudo cambiar el dueño"); }
-    /* Escritorio, Documentos, Descargas… en el idioma elegido y ~/.config/user-dirs.dirs (la misma
-     * lista que Ajustes → Usuarios y el live: users/homedirs.c) */
+    /* Escritorio, Documentos, Descargas… in the chosen language and ~/.config/user-dirs.dirs (the
+     * same list as Settings → Users and the live system: users/homedirs.c) */
     { char p[PATH_MAX]; snprintf(p, sizeof p, TARGET "/home/%s", pl.user);
       if (homedirs_create(p, uid, gid, pl.locale)) admin_say("LOG", "aviso: no se pudieron crear las carpetas del usuario"); }
     progress("configure", ++step, steps);

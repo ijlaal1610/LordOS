@@ -1,4 +1,4 @@
-// logs.js — registros para la app Registros (lord.logs, server/src/ui/js_logs.c; docs/SISTEMA.md).
+// logs.js — registros para la app Registros (lord.logs, server/src/ui/js_logs.c; docs/SYSTEM.md).
 //
 //   await logs.query({ scope: 'user'|'system', since, until, prio, kernel, match, grep, limit })
 //        → [{ t (µs), s, p, pid, uid, k, id, u, b, m }]  (lo lee un hilo de lord-server, como el

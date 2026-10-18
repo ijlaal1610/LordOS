@@ -248,9 +248,9 @@ function loadNotes() {
 
 // ---- secciones de Ajustes ----
 
-// ---- otras fuentes (artículos de Ayuda, …) ----
+// ---- other sources (Help articles, …) ----
 // registerSpotlightSource('help', (q, query, { fold, best }) => [{ key, score, title, subtitle, glyph, preview, run }])
-// q es la búsqueda normalizada (minúsculas, sin acentos). El título de la sección es
+// q is the normalized query (lowercase, no accents). The section title is
 // t('shell.spotlight.section.<id>').
 const sources = new Map();
 export function registerSpotlightSource(id, fn) { sources.set(id, fn); return () => sources.delete(id); }
@@ -320,7 +320,7 @@ function buildResults(raw, apps) {
     .map((c) => ({ key: `clip:${c.id || c.time}`, score: 20, title: c.text.replace(/\s+/g, ' ').slice(0, 80), subtitle: t('shell.spotlight.fromClipboard'), glyph: '📋',
       preview: { kind: 'text', text: c.text }, run: () => clipboard.use(c), hint: t('shell.spotlight.copy') })));
 
-  // fuentes registradas (Ayuda…)
+  // registered sources (Help…)
   for (const [id, fn] of sources) {
     let items = [];
     try { items = fn(q, query, { fold, best }) || []; } catch (e) { console.error(`spotlight ${id}:`, e); }

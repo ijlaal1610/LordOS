@@ -51,6 +51,12 @@ que React Native pero sobre nuestro servidor gráfico.
 | `server/src/media/`, `js_media.c`, `sdk/media.js`, `apps/{photos,player,screenshots,camera,recorder}` | **M9** | Medios: el ayudante encerrado `lord-media` (FFmpeg, libva) y las apps Fotos, Reproductor, Capturas, Cámara y Grabadora; nodo `media`, audio por memoria compartida con el stream de PipeWire en lord-server, ventanas protegidas en capturas, grabación y escritorio remoto (ver `MEDIOS.md`) |
 | `server/src/netperm/`, `server/src/fw/`, `js_fw.c` | **M8** | Firewall por app: el servicio root `lord-netperm` aplica las reglas con BPF de cgroup en las sesiones; columna Regla del Monitor y Apps confiables / restringidas en Ajustes (ver `FIREWALL.md`) |
 | `server/src/monitor/`, `js_monitor.c`, `apps/monitor/` | **M8** | Monitor: CPU, memoria, red, discos, procesos y conexiones por app con mapa; hilo propio solo con la app abierta, sock_diag y país por IP con una base local (ver `MONITOR.md`) |
+| `server/src/vault/`, `js_vault.c`, `sdk/vault.js`, `apps/passwords` | **M9** | Passwords and the system keyring: the sandboxed helper `lord-vault` (Monocypher: XChaCha20-Poly1305, Argon2id), own `.lvault` format, FIDO2/CTAP2 client, session keyring opened at login, Secret Service on D-Bus with own code (see `PASSWORDS.md`) |
+| `server/src/net/netd.c`, `remote/netsup.c` | **M9** | `lord-netd`: the network belongs to the system. A root service started and supervised by `lord-sessiond` at boot, serving the `net-*` actions for every session (see `RED.md`) |
+| `server/src/disk/`, `js_disk.c`, `sdk/disks.js`, `apps/disks` | **M9** | Disks: listing without root (sysfs, udev database, mountinfo), our own SMART reader (ATA PASS-THROUGH over SG_IO, NVMe health log), closed `disk-*` actions, bootable USB verified with SHA-256 (see `SYSTEM.md`) |
+| `server/src/backup/`, `js_backup.c`, `sdk/backup.js`, `apps/backup` | **M9** | Backups: hard-link snapshots in a lord-server thread (nice 19, idle I/O), hourly/daily/weekly retention, optional encryption with the vendored Monocypher; no root and no `admin.c` actions (see `SYSTEM.md`) |
+| `server/src/logs/`, `js_logs.c`, `sdk/logs.js`, `apps/logs` | **M9** | Logs: our own systemd journal reader (no libsystemd), LordOS logs, system logs for admins through a closed action, live follow with inotify (see `SYSTEM.md`) |
+| `server/src/ui/tzif.c`, `js_help.c`, `sdk/{notify,alarms,statusitems,help}.js`, `apps/{clock,help}` | **M9** | Clock (our own TZif reader, session alarms with the app closed), session notifications, menu-bar status items, Help (markdown articles in es/en/pt, welcome tour, Spotlight source) (see `SYSTEM.md`) |
 | `server/src/ui/grab.c`, `cursor.c`, `sdk/windowshell.jsx` | **M8** | Ventanas: mover y agrandar en C (un evento por cuadro, sin JS), capa de la ventana que se mueve, bordes en los 4 lados y esquinas, cursores propios y `cursor-shape-v1` (ver `VENTANAS.md`) |
 
 ### Flujo de un frame
@@ -79,6 +85,8 @@ Solo se permite, además del kernel y la libc:
 | FFmpeg (`libavcodec`, `libavformat`, `libavutil`, `libswscale`, `libswresample`) y `libva` (+ `libva-drm`) | Decodificar y codificar video, audio e imágenes; VA-API para decodificar por hardware (M9, aprobados por el usuario). **Solo los enlaza `lord-media`**, el ayudante encerrado; el reproductor, la sincronización y la interfaz son propios. Nunca `lord-server` (`MEDIOS.md`) | sistema |
 | Poppler (`libpoppler-glib`) y libarchive | PDF y comprimidos (M9, aprobados por el usuario). **Solo los enlaza `lord-doc`**, el ayudante encerrado; con Poppler vienen cairo, FreeType y fontconfig, que `lord-doc` también usa para las muestras de fuentes y para armar PDF. Nunca `lord-server` (`DOCUMENTOS.md`) | sistema |
 | `clang` (solo al compilar) | los programas BPF de `lord-netperm` (`np.bpf.c`, `clang -target bpf`); van adentro del binario. Sin clang (`BPF=0`) el servicio corre sin BPF. No se usa libbpf ni bcc | máquina que compila |
+| Monocypher 4.0.2 | XChaCha20-Poly1305, Argon2id/Argon2d, BLAKE2b, ChaCha20 for the Passwords vault and the KeePass importer (approved by the user; CC0/BSD-2, one C file). **Only `lord-vault` links it**; its official test vectors run in `make test` (`PASSWORDS.md`) | vendorizado |
+| EFF word list, 10k common passwords | passphrase generator and the offline "breached" check (CC BY 3.0 US / MIT), embedded in `lord-vault` | `third_party/wordlists` |
 | Inter, JetBrains Mono | fuentes de la interfaz y de la terminal (OFL)            | `assets/fonts` |
 
 React (`react`, `react-reconciler`) es dependencia **del tema**, no del sistema: se empaqueta
@@ -87,6 +95,9 @@ con esbuild dentro del `.js` del tema. Desde 0.7.0 es React 19.3.1 con `react-re
 usa en la máquina de desarrollo.
 
 Desde M8 hay dos programas, y desde M9 dos ayudantes:
+
+- **`lord-netd`** (M9, root): the system network, started and supervised by `lord-sessiond` at boot;
+  only the `net-*` actions of `admin.c`. libc only. See `RED.md`.
 
 - **`lord-sessiond`** (root, `lordos.service`): la pantalla de ingreso, la lista de sesiones, el
   monitor y el escritorio remoto. Ver `SESIONES.md` y `REMOTO.md`.
@@ -105,6 +116,13 @@ Desde M8 hay dos programas, y desde M9 dos ayudantes:
   cámara y el render node), en `sandbox_apply_helper`. Decodifica y codifica con FFmpeg; los
   cuadros vuelven por memoria compartida sellada y el audio va a un anillo cuyo stream de
   PipeWire es de `lord-server`. Ver `MEDIOS.md`.
+
+- **`lord-vault`** (M9): the Passwords and keyring helper. Same rules as `lord-doc`/`lord-media`
+  (fixed path, no arguments, minimal environment, `sandbox_apply_helper`: no network, no new
+  sockets, no exec), but it lives for the whole session: it holds the decrypted vaults in an
+  `mlock`/`MADV_DONTDUMP` arena, receives the vault folder, picked files, the FIDO2 hidraw device
+  and the already-connected session D-Bus socket as fds, and serves the Secret Service. See
+  `PASSWORDS.md`.
 
 `lord-server` sigue pudiendo correr solo, con DRM y evdev propios, para el desarrollo.
 
@@ -133,6 +151,8 @@ Desde M7, lo que LordOS hace con código propio y lo que delega en un programa d
   `/run/cups/cups.sock`; administra la cola y los controladores, ver `IMPRESION.md`).
 - **Programas de Debian** (con ruta fija, nunca enlazados, lanzados por el ayudante `admin.c`):
   - `dpkg`: desempaquetar y configurar;
+  - `mkfs.vfat`, `mkfs.exfat`, `mkfs.ext4`, `mkfs.ntfs` (optional) and their label tools: formatting
+    and renaming in Disks (M9, `disk-*` actions);
   - `wpa_supplicant`: Wi-Fi;
   - `openvpn`;
   - `resolvectl` y `networkctl`.

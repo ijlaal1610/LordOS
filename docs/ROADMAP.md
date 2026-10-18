@@ -215,8 +215,10 @@ instalador propio, y red, VPN, sonido y portapapeles con interfaz propia.
     example.com", solo LAN, sin entrantes, sin red, apagado;
   - [x] Monitor: interruptor Regla por app y contadores de permitidas/denegadas; Ajustes →
     Privacidad: modo, Apps confiables y Apps restringidas;
-  - [ ] modo "preguntar" (diseñado), interruptores por destino, scopes con `cgroup.procs` de root
-    para que una app Linux no pueda mudarse de scope.
+  - [x] root-owned scopes: `lord-sessiond` places every app process and a Linux app can't move
+    itself to another cgroup (VM 122). Still open: `systemd-run --user --scope` (PID 1 moves it
+    into `user@<uid>.service`).
+  - [ ] modo "preguntar" (diseñado), interruptores por destino.
 - [x] App **Monitor**, fase 1 (`MONITOR.md`), probada en la VM 123:
   - [x] pestañas Resumen, CPU, Memoria, Red, Discos y Procesos con el aspecto del Monitor de
     TangoOS;
@@ -349,6 +351,71 @@ Detalle en `MEDIOS.md`. Probado en la VM 119 con capturas (`m9-media-*.png`).
   - grabar un área y el audio del sistema;
   - guardar en WebP.
 
+## M9 — System apps and system network ✅ (2026-10-18)
+
+Details in `SYSTEM.md` (apps), `RED.md` (network) and `SESIONES.md` (user folders). Tested on VM 119
+with screenshots (`m9-sistema-*.png`).
+
+- [x] **The network belongs to the system (`lord-netd`):** a small root service started and
+  supervised by `lord-sessiond` at boot. DHCP, saved Wi-Fi, saved configs and DNS come up before
+  anyone logs in (IP on the greeter, remote desktop reachable); sessions forward their `net-*`
+  actions over `/run/lordos/netd.sock`. It survives two users logging in and out, its own crash
+  (the DHCP lease is resumed without dropping the address) and a `lord-sessiond` restart (adopted
+  through a pidfd).
+- [x] **User folders:** the installer and Settings → Users create Escritorio, Documentos,
+  Descargas, Música, Imágenes and Videos in the user's language plus `user-dirs.dirs`
+  (`users/homedirs.c`, with `build/homedirs-test`).
+- [x] **Disks** (`apps/disks`): disks and partitions with usage, our own SMART reader (ATA over
+  `SG_IO`, NVMe health log; `build/smart-test`), mount/unmount/eject, format FAT32/exFAT/ext4/NTFS,
+  rename, erase, bootable USB from an ISO/IMG verified with SHA-256; closed `disk-*` actions that
+  never touch the system disk.
+- [x] **Backups** (`apps/backup`): scheduled hard-link snapshots of the home, hourly/daily/weekly
+  retention, browse by date and restore, exclusions, optional encryption with Monocypher; a
+  lord-server thread at nice 19 and idle I/O, paused on battery (`build/backup-test`).
+- [x] **Logs** (`apps/logs`): our own systemd journal reader, the user's own journal and LordOS
+  logs, system logs for admins through a closed action, filters, search, live follow and export
+  (`build/journal-test`).
+- [x] **Clock** (`apps/clock`): world clock with our own TZif reader (`build/tzif-test`), alarms that
+  fire with the app closed, timer and stopwatch, a menu-bar status item.
+- [x] **Help** (`apps/help`): searchable markdown articles in es/en/pt, a skippable welcome tour on
+  first login, links to Settings pages, indexed by Spotlight.
+- [x] **Session notifications** (`sdk/notify.js`) and **menu-bar status items**
+  (`sdk/statusitems.js`) for any theme.
+- [ ] **Pending:**
+  - install a new ISO to disk and repeat the network-before-login and user-folder checks there;
+  - test `lord-netd` with real NICs and Wi-Fi; a per-VPN "connect at boot" option;
+  - Disks: GPT for disks over 2 TiB, manual partitioning, LUKS/LVM, real NVMe;
+  - Backups: test pausing on a real laptop battery, store the passphrase in the Passwords keyring;
+  - Logs: zstd-compressed journal fields;
+  - RTL screenshots of the five apps.
+
+## M9 — Passwords and the system keyring ✅ (2026-10-18)
+
+Details in `PASSWORDS.md`. Tested on VM 116 with a real `lord-sessiond` session
+(`m9-contrasenas-*.png`).
+
+- [x] **`lord-vault`**, sandboxed helper (no network, no sockets, no exec, fd-only files); the only
+  binary with Monocypher; decrypted data in an mlock/MADV_DONTDUMP arena, wiped on lock.
+- [x] **Own `.lvault` format:** XChaCha20-Poly1305, vault key wrapped per unlock method (Argon2id
+  tuned per machine, BLAKE2b), attachments sealed separately, atomic save with `.bak`; every flipped
+  byte and every truncation detected (`vault-test`, 74/74).
+- [x] **Unlock:** master password, FIDO2 `hmac-secret` key (own CTAP2 client), key file on a USB
+  stick, password + key file, printable recovery key. Auto-lock on idle, ❖L and user switch.
+- [x] **App:** Apple-Passwords-style sidebar (All, Favorites, Archived, 2FA codes, Wi-Fi, Secure
+  notes, Cards, Security), KeePassX-style category tree with 16 built-in templates and user
+  categories with their own fields, tags, history, trash, attachments, rotation reminders, Wi-Fi QR,
+  TOTP with countdown (also from a QR image), generator, security report (offline breach check),
+  import (own KDBX 4/3.1 reader, Bitwarden, Chrome, Firefox, Apple) and export. Protected window.
+- [x] **Clipboard:** secrets marked sensitive (out of the history, `x-kde-passwordManagerHint` for
+  Wayland clients), cleared after 30 s.
+- [x] **Session keyring** (`login.lvault`) opened with the login password via `lord-sessiond`;
+  `keyring` API per app with sharing; Settings → Network stores Wi-Fi/VPN secrets there;
+  `<AutofillButton>`.
+- [x] **Secret Service** with our own D-Bus code (plain + DH sessions): `secret-tool` and Chromium
+  work without gnome-keyring.
+- [ ] Run the Passwords UI as an isolated process (app mode); today only `lord-vault` is sandboxed.
+- [ ] Test with real FIDO2 keys (only the uhid software authenticator was available).
+
 ## Pendiente antes del ISO final
 
 - [ ] **Mail, Calendario, Contactos y Recordatorios** (estilo Outlook; cuentas IMAP/SMTP, CalDAV y
@@ -356,7 +423,10 @@ Detalle en `MEDIOS.md`. Probado en la VM 119 con capturas (`m9-media-*.png`).
 - [ ] **Secciones de Ajustes que faltan:** Pantallas, Bluetooth, Energía, Notificaciones, Fecha y
   hora, Apps por defecto.
 - [ ] **Chromium y Firefox** preinstalados (apps Linux, no nativas).
-- [ ] **Cámara en apps aisladas** (`.lpk`) y **varias ventanas por app aislada**.
+- [x] **Cámara en apps aisladas** (`.lpk`) y **varias ventanas por app aislada** (VM 122,
+  `PRIVACIDAD.md`): read-only frame ring from `lord-media` with validated ACKs, photo/video through
+  the powerbox, instant revoke; one Wayland toplevel per window, grouped in the Dock, «New
+  window» from the app and the Dock.
 - [ ] **Pulido visual estilo Apple, app por app** (antes del ISO): revisar todas las apps nativas
   (Ajustes, Archivos, Terminal, Store, Editor, Notas, Calculadora, Monitor, PDF, Tipografías,
   Emojis, Escáner, Fotos, Reproductor, Capturas, Cámara, Grabadora, Contraseñas, Discos, Copias,

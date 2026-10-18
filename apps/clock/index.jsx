@@ -1,7 +1,7 @@
-// Reloj — reloj mundial, alarmas, temporizador y cronómetro (docs/SISTEMA.md).
-// Las alarmas, el temporizador y el cronómetro viven en el SDK (sdk/alarms.js): siguen andando y
-// suenan con la ventana cerrada. La hora de otras ciudades sale de tzdata con un lector propio
-// (lord.time.zoneOffset, server/src/ui/tzif.c), sin cambiar la zona de la sesión.
+// Clock — world clock, alarms, timer and stopwatch (docs/SYSTEM.md).
+// Alarms, the timer and the stopwatch live in the SDK (sdk/alarms.js): they keep running and ring
+// with the window closed. Other cities' times come from tzdata through our own reader
+// (lord.time.zoneOffset, server/src/ui/tzif.c), without changing the session time zone.
 import {
   View, Text, useTheme, useSettings, useStore, useAppWindow, t as tr, formatTime, weekdayName, formatNumber,
   Segmented, Toggle, Button, Stepper, TextInput, ScrollView, clockAlarms, clockTimer, timerStart, timerPause, timerResume,
@@ -9,7 +9,7 @@ import {
 } from '@lordos/sdk';
 import { useEffect, useMemo, useState } from 'react';
 
-// ---- esfera analógica sin rotaciones: las agujas son puntos a lo largo del radio ----
+// ---- analog face without rotations: the hands are dots along the radius ----
 
 function Face({ size, h, m, s, dark, accent }) {
   const r = size / 2;
@@ -51,12 +51,12 @@ export function Icon({ size: s }) {
   );
 }
 
-// ---- utilidades ----
+// ---- utilities ----
 
 const pad = (n) => String(n).padStart(2, '0');
 const localOffset = (d) => -d.getTimezoneOffset() * 60;
 
-// Fecha "corrida" a la zona: sus getHours() dan la hora local de esa ciudad.
+// Date "shifted" to the zone: its getHours() give that city's local time.
 function zoneDate(zone, now) {
   let z = null;
   try { z = lord.time.zoneOffset(zone, Math.floor(now / 1000)); } catch (e) { z = null; }
@@ -86,7 +86,7 @@ function inWords(ms) {
   return hh ? tr('clock.inHours', { h: hh, m: mm }) : tr('clock.inMinutes', { m: mm });
 }
 
-// ---- reloj mundial ----
+// ---- world clock ----
 
 function ZonePicker({ onPick, onClose }) {
   const t = useTheme();
@@ -148,7 +148,7 @@ function World() {
   const now = useTick(1000);
   const cities = s.clock?.cities || [];
   let localZone = 'UTC';
-  try { localZone = lord.time.zone(); } catch (e) { /* sin zona */ }
+  try { localZone = lord.time.zone(); } catch (e) { /* no zone */ }
   const save = (list) => set({ clock: { ...(s.clock || {}), cities: list } });
   return (
     <View style={{ flex: 1 }}>
@@ -166,9 +166,9 @@ function World() {
   );
 }
 
-// ---- alarmas ----
+// ---- alarms ----
 
-// la semana empieza el lunes (como en la mayoría de las regiones de es y pt)
+// the week starts on Monday (as in most es and pt regions)
 const weekOrder = () => [1, 2, 3, 4, 5, 6, 0];
 
 function daysText(days) {
@@ -232,7 +232,7 @@ function AlarmEditor({ alarm, onClose }) {
 function Alarms() {
   const t = useTheme();
   const [s] = useSettings();
-  const [editing, setEditing] = useState(null);       // null | 'new' | alarma
+  const [editing, setEditing] = useState(null);       // null | 'new' | alarm
   const now = useTick(30000);
   const alarms = (s.clock?.alarms || []).slice().sort((a, b) => a.h * 60 + a.m - (b.h * 60 + b.m));
   const next = alarms.map((a) => nextFire(a, now)).filter((x) => x != null).sort((a, b) => a - b)[0];
@@ -265,7 +265,7 @@ function Alarms() {
   );
 }
 
-// ---- temporizador ----
+// ---- timer ----
 
 function Timer() {
   const t = useTheme();
@@ -318,7 +318,7 @@ function Timer() {
   );
 }
 
-// ---- cronómetro ----
+// ---- stopwatch ----
 
 function Stopwatch() {
   const t = useTheme();
@@ -352,7 +352,7 @@ function Stopwatch() {
   );
 }
 
-// ---- ventana ----
+// ---- window ----
 
 let lastTab = 'world';
 

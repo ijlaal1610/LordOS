@@ -1,4 +1,4 @@
-/* mime.c — ver mime.h. */
+/* mime.c — see mime.h. */
 #include "mime.h"
 #include "charset_tables.h"
 
@@ -8,7 +8,7 @@
 #include <string.h>
 #include <strings.h>
 
-/* ---- utilidades ---- */
+/* ---- utilities ---- */
 
 static int lc(int c) { return (c >= 'A' && c <= 'Z') ? c + 32 : c; }
 
@@ -21,9 +21,18 @@ static void copy_trim(char *out, size_t cap, const char *s, size_t n) {
     out[n] = 0;
 }
 
+/* Bounded copy that always terminates (no truncation warnings from snprintf). */
+static void scpy(char *d, size_t cap, const char *s) {
+    if (!cap) return;
+    size_t n = strlen(s);
+    if (n >= cap) n = cap - 1;
+    memcpy(d, s, n);
+    d[n] = 0;
+}
+
 static void lower_ascii(char *s) { for (; *s; s++) *s = (char)lc((unsigned char)*s); }
 
-/* Corta un texto UTF-8 en cap-1 bytes sin partir un carácter. */
+/* Truncates UTF-8 text to cap-1 bytes without splitting a character. */
 static void utf8_fit(char *s, size_t cap) {
     size_t n = strlen(s);
     if (n < cap) return;
@@ -63,7 +72,7 @@ static int put_cp(char *o, uint32_t cp) {
     return 4;
 }
 
-/* Largo de la secuencia UTF-8 válida en s (0 si es inválida). */
+/* Length of the valid UTF-8 sequence at s (0 if invalid). */
 static int utf8_len(const unsigned char *s, size_t n) {
     if (!n) return 0;
     unsigned c = s[0];
@@ -90,31 +99,31 @@ char *utf8_clean(const char *in, size_t len, size_t *olen) {
     for (size_t i = 0; i < len;) {
         int k = utf8_len((const unsigned char *)in + i, len - i);
         if (!k) { bput(&b, "\xef\xbf\xbd", 3); i++; continue; }
-        if (k == 1 && in[i] == 0) { i++; continue; }      /* sin NUL adentro */
+        if (k == 1 && in[i] == 0) { i++; continue; }      /* no embedded NUL */
         bput(&b, in + i, (size_t)k);
         i += (size_t)k;
     }
     return bdone(&b, olen);
 }
 
-/* ---- juegos de caracteres ---- */
+/* ---- character sets ---- */
 
 static void cs_norm(const char *cs, char *out, size_t cap) {
     size_t o = 0;
     for (; cs && *cs && o + 1 < cap; cs++) {
         unsigned char c = (unsigned char)*cs;
         if (c == '"' || c == '\'' || c == '-' || c == '_' || c == ' ' || c == '.') continue;
-        if (c == '*') break;                          /* idioma de RFC 2231 */
+        if (c == '*') break;                          /* RFC 2231 language */
         out[o++] = (char)lc(c);
     }
     out[o] = 0;
-    /* alias comunes */
+    /* common aliases */
     if (!strncmp(out, "cp125", 5)) { char t[64]; snprintf(t, sizeof t, "windows%s", out + 2); snprintf(out, cap, "%s", t); }
     else if (!strncmp(out, "xcp125", 6)) { char t[64]; snprintf(t, sizeof t, "windows%s", out + 3); snprintf(out, cap, "%s", t); }
     else if (!strcmp(out, "cp850")) snprintf(out, cap, "ibm850");
     else if (!strcmp(out, "cp437")) snprintf(out, cap, "ibm437");
     else if (!strcmp(out, "mac") || !strcmp(out, "macroman") || !strcmp(out, "xmacroman")) snprintf(out, cap, "macintosh");
-    else if (!strncmp(out, "iso8859", 7) && out[7] && out[7] != '-') { /* "iso88591" ya está bien */ }
+    else if (!strncmp(out, "iso8859", 7) && out[7] && out[7] != '-') { /* "iso88591" is already fine */ }
 }
 
 static const CsTable *cs_table(const char *norm) {
@@ -178,7 +187,7 @@ char *charset_to_utf8(const char *cs, const char *in, size_t len, size_t *olen) 
     cs_norm(cs, n, sizeof n);
     if (is_utf8_name(n)) return utf8_clean(in, len, olen);
     if (is_ascii_name(n)) {
-        /* "us-ascii" con bytes de 8 bits: casi siempre es UTF-8 o windows-1252 mal declarado */
+        /* "us-ascii" with 8-bit bytes: almost always mislabeled UTF-8 or windows-1252 */
         if (utf8_valid(in, len)) return utf8_clean(in, len, olen);
         const CsTable *w = cs_table("windows1252");
         return from_table(w ? w->hi : NULL, in, len, olen);
@@ -192,17 +201,17 @@ char *charset_to_utf8(const char *cs, const char *in, size_t len, size_t *olen) 
         const char *suf = n + 5;
         if (!strcmp(suf, "le")) be = 0;
         else if (!strcmp(suf, "be")) be = 1;
-        else if (len >= 2) {          /* con BOM */
+        else if (len >= 2) {          /* with BOM */
             unsigned char a = (unsigned char)in[0], c = (unsigned char)in[1];
             if (a == 0xff && c == 0xfe) be = 0;
         }
         return from_utf16(in, len, be, wide, olen);
     }
-    /* desconocido (GB2312, Shift_JIS, …): UTF-8 si lo es, si no reemplazo */
+    /* unknown (GB2312, Shift_JIS, …): UTF-8 if it is, otherwise replacement */
     return utf8_clean(in, len, olen);
 }
 
-/* ---- base64 y quoted-printable ---- */
+/* ---- base64 and quoted-printable ---- */
 
 static int b64v(unsigned char c) {
     if (c >= 'A' && c <= 'Z') return c - 'A';
@@ -261,7 +270,7 @@ size_t qp_decode(const char *in, size_t len, char *out, int header) {
         if (c != '=') { out[o++] = c; continue; }
         if (i + 1 < len && in[i + 1] == '\n') { i += 1; continue; }
         if (i + 2 < len && in[i + 1] == '\r' && in[i + 2] == '\n') { i += 2; continue; }
-        /* "=" con espacios antes del salto (relleno de transporte) */
+        /* "=" with whitespace before the line break (transport padding) */
         size_t k = i + 1;
         while (k < len && (in[k] == ' ' || in[k] == '\t')) k++;
         if (k < len && k > i + 1 && (in[k] == '\n' || in[k] == '\r')) { i = (in[k] == '\r' && k + 1 < len && in[k + 1] == '\n') ? k + 1 : k; continue; }
@@ -287,7 +296,7 @@ char *qp_encode(const char *in, size_t len, size_t *olen) {
         size_t el;
         if ((c >= 33 && c <= 126 && c != '=') || ((c == ' ' || c == '\t') && !at_eol)) { enc[0] = (char)c; el = 1; }
         else { enc[0] = '='; enc[1] = hx[c >> 4]; enc[2] = hx[c & 15]; el = 3; }
-        /* "." al principio de línea también se codifica (algunos servidores lo tocan) */
+        /* "." at the start of a line is also encoded (some servers mangle it) */
         if (col == 0 && c == '.') { enc[0] = '='; enc[1] = '2'; enc[2] = 'E'; el = 3; }
         if (col + (int)el > 75) { bput(&b, "=\r\n", 3); col = 0; }
         bput(&b, enc, el);
@@ -296,7 +305,7 @@ char *qp_encode(const char *in, size_t len, size_t *olen) {
     return bdone(&b, olen);
 }
 
-/* ---- encabezados ---- */
+/* ---- headers ---- */
 
 void mime_split(const char *m, size_t len, const char **hdr, size_t *hlen, const char **body, size_t *blen) {
     *hdr = m; *hlen = 0; *body = m + len; *blen = 0;
@@ -311,7 +320,7 @@ void mime_split(const char *m, size_t len, const char **hdr, size_t *hlen, const
     *hlen = len;
 }
 
-/* Busca el encabezado y llama put con cada pedazo del valor desplegado. */
+/* Finds the header and calls put with each piece of the unfolded value. */
 static int header_find(const char *h, size_t n, const char *name, Buf *b, char *out, size_t cap) {
     size_t nl = strlen(name);
     size_t o = 0;
@@ -337,7 +346,7 @@ static int header_find(const char *h, size_t n, const char *name, Buf *b, char *
             }
             if (!b && cap) {
                 out[o] = 0;
-                /* sin espacios a los costados */
+                /* trimmed */
                 size_t s = 0;
                 while (out[s] == ' ' || out[s] == '\t') s++;
                 if (s) memmove(out, out + s, o - s + 1);
@@ -367,7 +376,7 @@ char *mime_header_dup(const char *hdr, size_t hlen, const char *name) {
     return r;
 }
 
-/* Texto crudo de encabezado (sin palabras codificadas) a UTF-8. */
+/* Raw header text (without encoded words) to UTF-8. */
 static void raw_header_utf8(Buf *b, const char *s, size_t n) {
     if (utf8_valid(s, n)) { bput(b, s, n); return; }
     size_t ol;
@@ -384,7 +393,7 @@ void mime_decode_words(const char *in, char *out, size_t cap) {
     int last_was_word = 0;
     while (i < n) {
         if (in[i] == '=' && i + 1 < n && in[i + 1] == '?') {
-            /* =?charset?E?texto?= */
+            /* =?charset?E?text?= */
             size_t q1 = i + 2;
             while (q1 < n && in[q1] != '?' && q1 - i < 70) q1++;
             if (q1 + 3 < n && in[q1] == '?' && in[q1 + 2] == '?') {
@@ -392,7 +401,7 @@ void mime_decode_words(const char *in, char *out, size_t cap) {
                 size_t t = q1 + 3, te = t;
                 while (te + 1 < n && !(in[te] == '?' && in[te + 1] == '=')) te++;
                 if ((enc == 'b' || enc == 'q') && te + 1 < n) {
-                    /* el espacio entre dos palabras codificadas no cuenta */
+                    /* whitespace between two encoded words is ignored */
                     size_t ws = lit;
                     int only_ws = 1;
                     for (size_t k = lit; k < i; k++) if (in[k] != ' ' && in[k] != '\t' && in[k] != '\r' && in[k] != '\n') only_ws = 0;
@@ -434,7 +443,7 @@ void mime_decode_words(const char *in, char *out, size_t cap) {
     }
     out[o] = 0;
     utf8_fit(out, cap);
-    /* sin espacios a los costados */
+    /* trimmed */
     size_t s = 0;
     while (out[s] == ' ') s++;
     if (s) memmove(out, out + s, strlen(out + s) + 1);
@@ -442,7 +451,7 @@ void mime_decode_words(const char *in, char *out, size_t cap) {
     while (l && out[l - 1] == ' ') out[--l] = 0;
 }
 
-/* RFC 2231: %XX con charset'idioma' al principio del primer pedazo */
+/* RFC 2231: %XX with charset'language' at the start of the first piece */
 static void pct_decode(Buf *b, const char *s, size_t n) {
     for (size_t i = 0; i < n; i++) {
         if (s[i] == '%' && i + 2 < n) {
@@ -459,7 +468,7 @@ int mime_param(const char *value, const char *name, char *out, size_t cap) {
     if (!value) return 0;
     size_t nl = strlen(name);
     const char *p = value;
-    /* saltar el valor principal */
+    /* skip the main value */
     int inq = 0;
     while (*p && (inq || *p != ';')) { if (*p == '"') inq = !inq; else if (*p == '\\' && inq && p[1]) p++; p++; }
     struct { int idx, ext; char *val; } seg[32];
@@ -548,7 +557,7 @@ int mime_param(const char *value, const char *name, char *out, size_t cap) {
     return 0;
 }
 
-/* ---- partes ---- */
+/* ---- parts ---- */
 
 static void parse_ctype(const char *hdr, size_t hlen, MimePart *p, const MimePart *parent) {
     char ct[1024], v[256];
@@ -570,10 +579,10 @@ static void parse_ctype(const char *hdr, size_t hlen, MimePart *p, const MimePar
             copy_trim(p->type, sizeof p->type, main, strlen(main));
             copy_trim(p->subtype, sizeof p->subtype, slash + 1, strlen(slash + 1));
         }
-        if (mime_param(ct, "charset", v, sizeof v)) { snprintf(p->charset, sizeof p->charset, "%s", v); lower_ascii(p->charset); }
-        if (mime_param(ct, "boundary", v, sizeof v)) snprintf(p->boundary, sizeof p->boundary, "%s", v);
+        if (mime_param(ct, "charset", v, sizeof v)) { scpy(p->charset, sizeof p->charset, v); lower_ascii(p->charset); }
+        if (mime_param(ct, "boundary", v, sizeof v)) scpy(p->boundary, sizeof p->boundary, v);
         if (mime_param(ct, "name", v, sizeof v)) snprintf(p->filename, sizeof p->filename, "%s", v);
-        if (mime_param(ct, "method", v, sizeof v)) { snprintf(p->method, sizeof p->method, "%s", v); for (char *c = p->method; *c; c++) *c = (char)toupper((unsigned char)*c); }
+        if (mime_param(ct, "method", v, sizeof v)) { scpy(p->method, sizeof p->method, v); for (char *c = p->method; *c; c++) *c = (char)toupper((unsigned char)*c); }
     }
     if (mime_header(hdr, hlen, "Content-Transfer-Encoding", v, sizeof v)) { copy_trim(p->encoding, sizeof p->encoding, v, strlen(v)); lower_ascii(p->encoding); }
     char cd[1024];
@@ -591,11 +600,11 @@ static void parse_ctype(const char *hdr, size_t hlen, MimePart *p, const MimePar
         while (l && (a[l - 1] == '>' || a[l - 1] == ' ')) l--;
         copy_trim(p->cid, sizeof p->cid, a, l);
     }
-    /* nombres de archivo: sin rutas ni controles */
+    /* file names: no paths or control characters */
     for (char *c = p->filename; *c; c++) if (*c == '/' || *c == '\\' || (unsigned char)*c < 0x20) *c = '_';
 }
 
-/* Busca la próxima línea "--boundary" desde from. Devuelve el inicio de la línea o (size_t)-1. */
+/* Finds the next "--boundary" line starting at from. Returns the start of the line or (size_t)-1. */
 static size_t find_boundary(const char *b, size_t len, size_t from, const char *bnd, size_t bl) {
     for (size_t i = from; i + 2 + bl <= len; i++) {
         if ((i == 0 || b[i - 1] == '\n') && b[i] == '-' && b[i + 1] == '-' && !memcmp(b + i + 2, bnd, bl)) return i;
@@ -621,13 +630,13 @@ static void parse_part(MimeMsg *m, const char *data, size_t len, int parent, int
         size_t pos = find_boundary(b, blen, 0, p->boundary, bl);
         while (pos != (size_t)-1) {
             size_t after = pos + 2 + bl;
-            if (after + 1 < blen + 1 && after + 2 <= blen && b[after] == '-' && b[after + 1] == '-') break;   /* cierre */
+            if (after + 1 < blen + 1 && after + 2 <= blen && b[after] == '-' && b[after + 1] == '-') break;   /* closing */
             const char *nl = memchr(b + after, '\n', blen - after);
             if (!nl) break;
             size_t start = (size_t)(nl - b) + 1;
             size_t next = find_boundary(b, blen, start, p->boundary, bl);
             size_t end = next == (size_t)-1 ? blen : next;
-            /* el salto de línea antes del delimitador es del delimitador */
+            /* the line break before the delimiter belongs to the delimiter */
             if (end > start && b[end - 1] == '\n') end--;
             if (end > start && b[end - 1] == '\r') end--;
             if (end < start) end = start;
@@ -669,14 +678,14 @@ char *mime_part_text(const MimePart *p, size_t *olen) {
     return u;
 }
 
-/* ---- direcciones ---- */
+/* ---- addresses ---- */
 
 int mime_addrs(const char *value, MimeAddr *out, int max) {
     int n = 0;
     if (!value) return 0;
     const char *s = value;
     while (*s && n < max) {
-        /* un elemento hasta la coma de nivel 0 */
+        /* one element up to the top-level comma */
         Buf name = { 0 }, email = { 0 }, comment = { 0 }, bare = { 0 };
         int inq = 0, angle = 0, par = 0, had_angle = 0;
         for (; *s; s++) {
@@ -699,7 +708,7 @@ int mime_addrs(const char *value, MimeAddr *out, int max) {
             if (c == '(') { par = 1; continue; }
             if (c == '<') { angle = 1; had_angle = 1; continue; }
             if (c == ',' || c == ';') { s++; break; }
-            if (c == ':') {                       /* nombre de grupo: se descarta */
+            if (c == ':') {                       /* group name: discarded */
                 free(name.p); free(bare.p);
                 memset(&name, 0, sizeof name); memset(&bare, 0, sizeof bare);
                 continue;
@@ -718,7 +727,7 @@ int mime_addrs(const char *value, MimeAddr *out, int max) {
             mime_decode_words(tmp, a.name, sizeof a.name);
         } else if (br) {
             copy_trim(a.email, sizeof a.email, br, strlen(br));
-            /* "a@b" sin comillas pero con espacios: quedarse con la palabra que tiene @ */
+            /* unquoted "a@b" with spaces: keep the word containing @ */
             if (strchr(a.email, ' ')) {
                 char *at = strchr(a.email, '@');
                 if (at) {
@@ -732,7 +741,7 @@ int mime_addrs(const char *value, MimeAddr *out, int max) {
             if (cm) { char tmp[512]; copy_trim(tmp, sizeof tmp, cm, strlen(cm)); mime_decode_words(tmp, a.name, sizeof a.name); }
         }
         free(nm); free(em); free(cm); free(br);
-        /* solo direcciones con forma de dirección */
+        /* only address-shaped addresses */
         for (char *c = a.email; *c; c++) if ((unsigned char)*c < 0x21 || *c == '<' || *c == '>' || *c == '"') { *c = 0; break; }
         if (a.email[0] && strchr(a.email, '@')) out[n++] = a;
         while (*s == ' ' || *s == '\t' || *s == ',' || *s == '\r' || *s == '\n') s++;
@@ -740,7 +749,7 @@ int mime_addrs(const char *value, MimeAddr *out, int max) {
     return n;
 }
 
-/* ---- fechas ---- */
+/* ---- dates ---- */
 
 static long long days_from_civil(long long y, unsigned m, unsigned d) {
     y -= m <= 2;
@@ -812,7 +821,7 @@ void mime_format_date(time_t t, char *out, size_t cap) {
              tm.tm_hour, tm.tm_min, tm.tm_sec, sign, off / 3600, (off % 3600) / 60);
 }
 
-/* ---- armar encabezados ---- */
+/* ---- building headers ---- */
 
 static int needs_encoding(const char *s) {
     for (; *s; s++) if ((unsigned char)*s >= 0x7f || ((unsigned char)*s < 0x20 && *s != '\t')) return 1;
@@ -877,7 +886,7 @@ void mime_base_subject(const char *subj, char *out, size_t cap) {
             const char *t = s + l;
             if (*t == '[' || *t == '(') { char close = *t == '[' ? ']' : ')'; t++; while (isdigit((unsigned char)*t)) t++; if (*t != close) continue; t++; }
             while (*t == ' ') t++;
-            if (*t == ':' || (unsigned char)t[0] == 0xef) {         /* también los dos puntos de ancho completo (：) */
+            if (*t == ':' || (unsigned char)t[0] == 0xef) {         /* also the full-width colon (：) */
                 if (*t == ':') t++;
                 else if ((unsigned char)t[1] == 0xbc && (unsigned char)t[2] == 0x9a) t += 3;
                 else continue;

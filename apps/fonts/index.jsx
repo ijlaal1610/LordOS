@@ -4,7 +4,7 @@
 // lord-doc (FreeType), así una fuente rota o maliciosa no afecta al escritorio.
 import {
   View, Text, TextInput, Slider, Button, Segmented, useTheme, useAppWindow, useKeyboard, wm, fs, clipboard, DocImage, releaseImage,
-  fontInfo, fontSample, fontGrid, formatBytes, t as tr,
+  fontInfo, fontSample, fontGrid, formatBytes, t as tr, SidebarItem, SectionTitle, SearchField, GroupBox, FormRow, EmptyState,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BLOCKS } from './blocks.js';
@@ -85,12 +85,12 @@ function CharMap({ font, ranges, th }) {
   const size = cur ? cur[2] - cur[1] + 1 : 0;
   const pages = Math.ceil(size / 256);
   return (
-    <View style={{ flex: 1, flexDirection: 'row', gap: 12 }}>
-      <View style={{ width: 190 }}>
+    <View style={{ flex: 1, flexDirection: 'row', gap: 16 }}>
+      <View style={{ width: 200 }}>
         <View style={{ flex: 1, overflow: 'hidden' }}>
           {blocks.slice(0, 40).map((b, i) => (
-            <View key={b[0]} onClick={() => setBlock(i)} style={{ height: 24, paddingHorizontal: 8, justifyContent: 'center', borderRadius: 5, backgroundColor: i === block ? th.accent : 'transparent' }}>
-              <Text style={{ fontSize: 12, color: i === block ? '#fff' : th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{tr(`fonts.block.${b[0]}`)}</Text>
+            <View key={b[0]} onClick={() => setBlock(i)} style={{ height: 26, paddingHorizontal: 10, justifyContent: 'center', borderRadius: 6, backgroundColor: i === block ? th.accent : 'transparent' }}>
+              <Text style={{ fontSize: 13, color: i === block ? '#fff' : th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{tr(`fonts.block.${b[0]}`)}</Text>
             </View>
           ))}
         </View>
@@ -113,7 +113,7 @@ function CharMap({ font, ranges, th }) {
           </View>
         </View>
         {pick != null && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 8, borderRadius: 8, backgroundColor: th.control }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, backgroundColor: th.control }}>
             <Text style={{ fontSize: 28, color: th.text, minWidth: 40, textAlign: 'center' }}>{String.fromCodePoint(pick)}</Text>
             <Text style={{ flex: 1, fontSize: 12, color: th.textDim }}>{`U+${pick.toString(16).toUpperCase().padStart(4, '0')}`}</Text>
             <Button label={tr('fonts.copy')} onClick={() => clipboard.set(String.fromCodePoint(pick))} />
@@ -142,7 +142,7 @@ export default function Fonts() {
   const [file, setFile] = useState(() => (args?.path && FONT_EXT.test(args.path) ? args.path : null));
   useEffect(() => { if (args?.path && args?.nonce && FONT_EXT.test(args.path)) setFile(args.path); }, [args?.nonce]);
   useEffect(() => { if (!msg) return undefined; const id = setTimeout(() => setMsg(null), 4000); return () => clearTimeout(id); }, [msg]);
-  useEffect(() => { const id = setInterval(() => { if (pane.current) { const w = lord.getLayout(pane.current.id)[2] - 32; if (Math.abs(w - width) > 8) setWidth(w); } }, 300); return () => clearInterval(id); }, [width]);
+  useEffect(() => { const id = setInterval(() => { if (pane.current) { const w = lord.getLayout(pane.current.id)[2] - 48; if (Math.abs(w - width) > 8) setWidth(w); } }, 300); return () => clearInterval(id); }, [width]);
 
   const visible = fams.filter((f) => (coll === 'all' || (coll === 'user' && f.user) || (coll === 'mono' && f.mono) || (coll === 'color' && f.color))
     && (!q || f.family.toLowerCase().includes(q.toLowerCase())));
@@ -201,22 +201,23 @@ export default function Fonts() {
   const colls = [['all', tr('fonts.coll.all')], ['user', tr('fonts.coll.user')], ['mono', tr('fonts.coll.mono')], ['color', tr('fonts.coll.color')]];
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>
-      <View style={{ width: 230, backgroundColor: th.sidebarBg, padding: 8, gap: 6 }}>
+      <View style={{ width: 230, backgroundColor: th.sidebarBg, paddingTop: 12, paddingHorizontal: 10, gap: 2 }}>
+        <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 1, backgroundColor: th.separator }} />
+        <SearchField value={q} onChange={setQ} placeholder={tr('fonts.search')} style={{ marginBottom: 6 }} />
+        <SectionTitle>{tr('fonts.collections')}</SectionTitle>
         {colls.map(([k, l]) => (
-          <View key={k} onClick={() => { setColl(k); setSel(null); }} style={{ height: 24, paddingHorizontal: 8, justifyContent: 'center', borderRadius: 6, backgroundColor: coll === k ? (th.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)') : 'transparent' }}>
-            <Text style={{ fontSize: 13, color: th.text }}>{l}</Text>
-          </View>
+          <SidebarItem key={k} label={l} selected={coll === k} onClick={() => { setColl(k); setSel(null); }} />
         ))}
-        <TextInput value={q} onChange={setQ} placeholder={tr('fonts.search')} onCancel={() => setQ('')} style={{ height: 26, marginTop: 6 }} />
-        <Text style={{ fontSize: 11, color: th.textDim, marginLeft: 4 }}>{tr('fonts.families', { count: visible.length })}</Text>
+        <View style={{ height: 6 }} />
+        <SectionTitle>{tr('fonts.families', { count: visible.length })}</SectionTitle>
         <FamilyList list={visible} fileFont={fileFont} current={fam} onPick={(f) => setSel(f.file ? 'file' : f.family)} th={th} />
       </View>
-      <View ref={pane} style={{ flex: 1, padding: 16, gap: 10 }}>
-        {!fam ? <Text style={{ fontSize: 13, color: th.textDim }}>{tr('fonts.none')}</Text> : (
+      <View ref={pane} style={{ flex: 1, paddingVertical: 20, paddingHorizontal: 24, gap: 14 }}>
+        {!fam ? <EmptyState icon="A" title={tr('fonts.none')} /> : (
           <>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 20, fontWeight: 700, color: th.text }}>{fam.family}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ flex: 1, gap: 2, overflow: 'hidden' }}>
+                <Text style={{ fontSize: 22, fontWeight: 600, color: th.text, whiteSpace: 'nowrap' }}>{fam.family}</Text>
                 <Text style={{ fontSize: 12, color: th.textDim }}>{fam.file ? tr('fonts.notInstalled') : tr('fonts.styles', { count: fam.styles.length })}</Text>
               </View>
               {fam.file && !already ? <Button primary label={tr('fonts.install')} onClick={install} /> : null}
@@ -226,41 +227,41 @@ export default function Fonts() {
             {fam.styles.length > 1 && (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 {fam.styles.map((s, i) => (
-                  <View key={`${s.path}#${s.index}`} onClick={() => setStyleIdx(i)} style={{ paddingHorizontal: 10, height: 24, borderRadius: 12, justifyContent: 'center', backgroundColor: i === styleIdx ? th.accent : th.control }}>
+                  <View key={`${s.path}#${s.index}`} onClick={() => setStyleIdx(i)} style={{ paddingHorizontal: 12, height: 24, borderRadius: 12, justifyContent: 'center', backgroundColor: i === styleIdx ? th.accent : th.control }}>
                     <Text style={{ fontSize: 12, color: i === styleIdx ? '#fff' : th.text }}>{s.style}</Text>
                   </View>
                 ))}
               </View>
             )}
-            <Segmented value={tab} onChange={setTab} options={[['sample', tr('fonts.tab.sample')], ['chars', tr('fonts.tab.chars')], ['info', tr('fonts.tab.info')]]} />
+            <Segmented appearance="neutral" value={tab} onChange={setTab} style={{ alignSelf: 'center' }}
+              options={[['sample', tr('fonts.tab.sample')], ['chars', tr('fonts.tab.chars')], ['info', tr('fonts.tab.info')]]} />
             {tab === 'sample' && (
-              <View style={{ flex: 1, gap: 10 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <TextInput value={text} onChange={setText} placeholder={tr('fonts.typeHere')} style={{ flex: 1, height: 28 }} />
-                  <Slider value={size} min={8} max={120} onChange={(v) => setSize(Math.round(v))} width={140} />
-                  <Text style={{ width: 44, fontSize: 12, color: th.textDim }}>{`${size} px`}</Text>
+              <View style={{ flex: 1, gap: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <TextInput value={text} onChange={setText} placeholder={tr('fonts.typeHere')} style={{ flex: 1 }} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, direction: 'ltr' }}>
+                    <Text style={{ fontSize: 11, color: th.textDim }}>A</Text>
+                    <Slider value={size} min={8} max={120} onChange={(v) => setSize(Math.round(v))} width={120} />
+                    <Text style={{ fontSize: 17, color: th.textDim }}>A</Text>
+                  </View>
+                  <Text style={{ width: 48, fontSize: 12, color: th.textDim, textAlign: 'end' }}>{`${size} px`}</Text>
                 </View>
-                <View style={{ flex: 1, overflow: 'hidden', borderRadius: 10, padding: 8, backgroundColor: th.mode === 'dark' ? '#1c1c20' : '#ffffff', border: `1px solid ${th.separator}` }}>
-                  <Sample font={font} text={sampleText} size={size} width={width - 20} th={th} />
-                  <View style={{ height: 1, backgroundColor: th.separator, marginVertical: 8 }} />
-                  <Sample font={font} text={tr('fonts.alphabet')} size={18} width={width - 20} th={th} extra={[12, 18, 24, 36]} />
+                <View style={{ flex: 1, overflow: 'hidden', borderRadius: 10, paddingVertical: 14, paddingHorizontal: 16, backgroundColor: th.mode === 'dark' ? '#1c1c20' : '#ffffff', border: `1px solid ${th.separator}` }}>
+                  <Sample font={font} text={sampleText} size={size} width={width - 36} th={th} />
+                  <View style={{ height: 1, backgroundColor: th.separator, marginVertical: 14 }} />
+                  <Sample font={font} text={tr('fonts.alphabet')} size={18} width={width - 36} th={th} extra={[12, 18, 24, 36]} />
                 </View>
               </View>
             )}
             {tab === 'chars' && info && !info.error && <CharMap font={font} ranges={info.ranges || []} th={th} />}
             {tab === 'info' && (
               <View style={{ gap: 4 }}>
-                {info?.error ? <Text style={{ fontSize: 12, color: '#ff453a' }}>{tr('fonts.invalid')}</Text> : info && [
+                {info?.error ? <Text style={{ fontSize: 12, color: '#ff453a' }}>{tr('fonts.invalid')}</Text> : info && <GroupBox>{[
                   [tr('fonts.info.family'), info.family], [tr('fonts.info.style'), info.style], [tr('fonts.info.ps'), info.ps],
                   [tr('fonts.info.glyphs'), String(info.glyphs)], [tr('fonts.info.chars'), String(info.chars)],
                   [tr('fonts.info.kind'), [info.mono ? tr('fonts.coll.mono') : null, info.color ? tr('fonts.coll.color') : null, info.scalable ? tr('fonts.scalable') : tr('fonts.bitmap')].filter(Boolean).join(' · ')],
                   [tr('fonts.info.file'), font.path], [tr('fonts.info.size'), (() => { try { return formatBytes(fs.stat(font.path).size); } catch (e) { return '—'; } })()],
-                ].map(([k, v]) => (
-                  <View key={k} style={{ flexDirection: 'row', gap: 10 }}>
-                    <Text style={{ width: 140, fontSize: 12, color: th.textDim, textAlign: 'end' }}>{k}</Text>
-                    <Text style={{ flex: 1, fontSize: 12, color: th.text }}>{v}</Text>
-                  </View>
-                ))}
+                ].map(([k, v]) => <FormRow key={k} label={k} labelWidth={150} minHeight={32}>{v}</FormRow>)}</GroupBox>}
               </View>
             )}
           </>
@@ -274,16 +275,16 @@ export default function Fonts() {
 function FamilyList({ list, fileFont, current, onPick, th }) {
   const [offset, setOffset] = useState(0);
   const all = fileFont ? [fileFont, ...list] : list;
-  const ROW = 24;
+  const ROW = 26;
   const from = Math.floor(offset / ROW);
   return (
     <View onWheel={(e) => setOffset((o) => Math.max(0, Math.min(Math.max(0, all.length * ROW - 300), o + e.deltaY)))} style={{ flex: 1, overflow: 'hidden' }}>
       {all.slice(from, from + 40).map((f, i) => {
         const on = current && current.family === f.family && !!current.file === !!f.file;
         return (
-          <View key={`${f.file ? 'file:' : ''}${f.family}`} onClick={() => onPick(f)} style={{ position: 'absolute', left: 0, right: 0, top: (from + i) * ROW - offset, height: ROW, paddingHorizontal: 8,
-            flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 5, backgroundColor: on ? th.accent : 'transparent' }}>
-            <Text style={{ flex: 1, fontSize: 12, color: on ? '#fff' : th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{f.family}</Text>
+          <View key={`${f.file ? 'file:' : ''}${f.family}`} onClick={() => onPick(f)} style={{ position: 'absolute', left: 0, right: 0, top: (from + i) * ROW - offset, height: ROW, paddingHorizontal: 10,
+            flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 6, backgroundColor: on ? th.accent : 'transparent' }}>
+            <Text style={{ flex: 1, fontSize: 13, color: on ? '#fff' : th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{f.family}</Text>
             {f.file ? <Text style={{ fontSize: 10, color: on ? '#fff' : th.accent }}>{tr('fonts.new')}</Text> : f.user ? <Text style={{ fontSize: 10, color: on ? '#fff' : th.textDim }}>●</Text> : null}
           </View>
         );

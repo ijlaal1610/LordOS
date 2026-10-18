@@ -179,7 +179,7 @@ static void prepare_home(const struct passwd *pw) {
     while (f && fgets(line, sizeof line, f)) if (sscanf(line, "LANG=%63[A-Za-z_.@0-9-]", lang) == 1) break;
     if (f) fclose(f);
     char path[PATH_MAX];
-    /* Escritorio, Documentos… y ~/.config/user-dirs.dirs en el idioma del sistema (homedirs.c) */
+    /* Escritorio, Documentos… and ~/.config/user-dirs.dirs in the system language (homedirs.c) */
     if (homedirs_create(pw->pw_dir, pw->pw_uid, pw->pw_gid, lang)) admin_say("LOG", "aviso: no se pudieron crear todas las carpetas");
     snprintf(path, sizeof path, "%s/.config", pw->pw_dir);
     if (!mkdir(path, 0755) && chown(path, pw->pw_uid, pw->pw_gid)) { /* sigue */ }
@@ -214,6 +214,7 @@ void users_act_add(const AdminReq *r, const char *arg, size_t len) {
         else {
             if (adm) { const char *const g[] = { "/usr/sbin/usermod", "--append", "--groups", ADMIN_GROUP, name, NULL }; admin_run(g); print_group(name, 1); }
             if (getgrnam("pipewire")) { const char *const g[] = { "/usr/sbin/usermod", "--append", "--groups", "pipewire", name, NULL }; admin_run(g); }   /* sonido en tiempo real (docs/SONIDO.md) */
+            if (getgrnam("plugdev")) { const char *const g[] = { "/usr/sbin/usermod", "--append", "--groups", "plugdev", name, NULL }; admin_run(g); }   /* FIDO2 security keys (docs/PASSWORDS.md) */
             prepare_home(pw);
             admin_say("OK", "usuario %s creado", name);
         }

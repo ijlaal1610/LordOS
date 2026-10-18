@@ -1,7 +1,7 @@
-// Ayuda — artículos de ayuda de cada app y función, con búsqueda, y el recorrido «Bienvenido a
-// LordOS» del primer ingreso (docs/SISTEMA.md). Los artículos son markdown en
-// assets/help/<idioma>/ y los lee el SDK (sdk/help.js → lord.help). Los enlaces settings:<sección>,
-// app:<id> y help:<artículo> abren Ajustes, una app u otro artículo.
+// Help — help articles for every app and feature, with search, and the first-login "Welcome to
+// LordOS" tour (docs/SYSTEM.md). Articles are markdown in assets/help/<lang>/ (English is the
+// default) and are read by the SDK (sdk/help.js → lord.help). The links settings:<section>,
+// app:<id> and help:<article> open Settings, an app or another article.
 import {
   View, Text, useTheme, useAppWindow, useLocale, t as tr, help, Markdown, ScrollView, TextInput, SidebarItem, Button,
   getApp, wm, appName, settings,
@@ -21,7 +21,7 @@ export function Icon({ size: s }) {
 
 const SECTIONS = ['start', 'desktop', 'apps', 'system', 'settings'];
 
-// ---- recorrido de bienvenida ----
+// ---- welcome tour ----
 
 function TourArt({ step }) {
   const t = useTheme();
@@ -74,7 +74,7 @@ function Tour({ onDone }) {
   );
 }
 
-// ---- artículos ----
+// ---- articles ----
 
 function Article({ id, onOpen }) {
   const t = useTheme();

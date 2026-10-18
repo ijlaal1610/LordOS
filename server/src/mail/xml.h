@@ -1,12 +1,12 @@
-/* xml.h — lector de XML propio para WebDAV (CalDAV y CardDAV) en lord-maild (ver docs/MAIL.md).
+/* xml.h — in-house XML reader for WebDAV (CalDAV and CardDAV) in lord-maild (see docs/MAIL.md).
  *
- * Entiende espacios de nombres (xmlns y xmlns:p), así se buscan los elementos por (espacio, nombre)
- * sin importar el prefijo que eligió el servidor ("d:", "D:", ninguno). Es estricto y acotado:
- *   - nunca expande entidades declaradas: un <!DOCTYPE es un error (sin «billion laughs» ni
- *     entidades externas); solo las cinco predefinidas y las numéricas válidas;
- *   - profundidad máxima MX_MAX_DEPTH, MX_MAX_NODES elementos, entrada de hasta MX_MAX_INPUT;
- *   - todo índice se verifica contra el largo: nunca lee fuera de la entrada.
- * La prueba (tests/mail_test.c) lo recorre con entradas mutadas al azar. */
+ * Understands namespaces (xmlns and xmlns:p), so elements are looked up by (namespace, name)
+ * regardless of the prefix the server chose ("d:", "D:", none). It is strict and bounded:
+ *   - never expands declared entities: a <!DOCTYPE is an error (no "billion laughs" and no
+ *     external entities); only the five predefined ones and valid numeric ones;
+ *   - maximum depth MX_MAX_DEPTH, MX_MAX_NODES elements, input of up to MX_MAX_INPUT;
+ *   - every index is checked against the length: it never reads outside the input.
+ * The test (tests/mail_test.c) exercises it with randomly mutated inputs. */
 #ifndef LORD_MAIL_XML_H
 #define LORD_MAIL_XML_H
 
@@ -24,26 +24,26 @@
 
 typedef struct MxNode MxNode;
 struct MxNode {
-    const char *ns;           /* espacio de nombres resuelto ("" si ninguno) */
-    const char *name;         /* nombre local, sin prefijo */
-    char *text;               /* texto directo (sin el de los hijos), ya sin entidades */
+    const char *ns;           /* resolved namespace ("" if none) */
+    const char *name;         /* local name, without prefix */
+    char *text;               /* direct text (excluding children's), entities already decoded */
     size_t tlen;
     MxNode *kid, *last, *next, *parent;
 };
 
-/* Árbol del documento (el elemento raíz) o NULL. err (opcional) recibe un texto corto. */
+/* Document tree (the root element) or NULL. err (optional) receives a short message. */
 MxNode *mx_parse(const char *s, size_t len, const char **err);
 void    mx_free(MxNode *root);
-/* primer hijo directo con ese espacio y nombre (ns NULL = cualquiera) */
+/* first direct child with that namespace and name (ns NULL = any) */
 MxNode *mx_child(const MxNode *n, const char *ns, const char *name);
-/* siguiente hermano con ese espacio y nombre */
+/* next sibling with that namespace and name */
 MxNode *mx_next(const MxNode *n, const char *ns, const char *name);
-/* primer descendiente (en profundidad, sin recursión) */
+/* first descendant (depth-first, without recursion) */
 MxNode *mx_find(const MxNode *n, const char *ns, const char *name);
-const char *mx_text(const MxNode *n);     /* "" si no hay */
-/* texto de un hijo (ns, name), sin espacios a los costados, en out; "" si no está */
+const char *mx_text(const MxNode *n);     /* "" if none */
+/* text of a child (ns, name), trimmed, into out; "" if absent */
 void    mx_child_text(const MxNode *n, const char *ns, const char *name, char *out, size_t cap);
-/* Escapa texto para meterlo en XML (&, <, >, "). Devuelve bytes escritos (sin el 0). */
+/* Escapes text for embedding in XML (&, <, >, "). Returns bytes written (excluding the NUL). */
 size_t  mx_escape(char *out, size_t cap, const char *s);
 
 #endif

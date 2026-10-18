@@ -1,6 +1,6 @@
 // ops.js — lo que comparten las ventanas de Archivos: portapapeles de archivos, tareas de
 // copia en curso, etiquetas de colores y abrir archivos con la app que corresponde.
-import { createStore, fs, wm, launchApp, archive } from '@lordos/sdk';
+import { createStore, fs, wm, launchApp, archive, defaultOpenerId, nativeOf } from '@lordos/sdk';
 import { kindOf, mimeOf, appOpens, isTextual, isImage } from './kinds.js';
 
 // Cambia cada vez que algo cambió en disco (copia terminada, papelera…): las vistas se recargan.
@@ -113,7 +113,16 @@ export function openersFor(e, linuxApps, t) {
   if (isTextual(e) || k === 'other') out.push({ id: 'editor', label: t('apps.editor'), run: () => wm.open('editor', { args: { path: e.path } }) });
   const mime = mimeOf(e);
   for (const a of linuxApps) {
-    if (a.kind === 'linux' && appOpens(a.mimeTypes, mime)) out.push({ id: a.id, label: a.name, run: () => lord.apps.launchWith(a.desktopId, e.path) });
+    if (a.kind === 'linux' && appOpens(a.mimeTypes, mime)) out.push({ id: a.id, desktopId: a.desktopId, label: a.name, run: () => lord.apps.launchWith(a.desktopId, e.path) });
+  }
+  // the default app for this type (Settings → Default Apps, ~/.config/mimeapps.list) goes first,
+  // marked; the type comes from the system's MIME database when it knows the name
+  const def = defaultOpenerId((typeof lord.mime !== 'undefined' && lord.mime.guess(e.name)) || mime);
+  const native = nativeOf(def);
+  const i = def ? out.findIndex((o) => (native ? o.id === native : o.desktopId && `${o.desktopId}.desktop` === def)) : -1;
+  if (i >= 0) {
+    const [d] = out.splice(i, 1);
+    out.unshift({ ...d, label: t('prefs.defaults.tag', { name: d.label }), isDefault: true });
   }
   return out;
 }

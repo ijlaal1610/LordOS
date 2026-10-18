@@ -8,5 +8,9 @@
   ],
   "dock": true,
   "permissions": [],
-  "category": "Utility"
+  "category": "Utility",
+  "minSize": [
+    260,
+    380
+  ]
 }

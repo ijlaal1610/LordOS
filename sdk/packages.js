@@ -49,7 +49,12 @@ const isolated = () => typeof lord.apps !== 'undefined' && typeof lord.apps.laun
 function Redirect({ id }) {
   const win = sdk.useAppWindow();
   React.useEffect(() => {
-    lord.apps.launchPackage(id);
+    // already running: a plain open focuses its window; «New window» (wm.open(id, { new: true }))
+    // asks the running process for another window (lord-server forwards it over the broker)
+    const running = windows.get().filter((w) => w.args?.pkg && w.args?.appId === id);
+    const wantsNew = win && win.id && String(win.id).includes('#');
+    if (running.length && !wantsNew) wm.focus(running[running.length - 1].id);
+    else lord.apps.launchPackage(id);
     if (win && win.id) wm.close(win.id, true);
   }, []);
   return null;

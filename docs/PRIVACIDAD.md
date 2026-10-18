@@ -17,14 +17,15 @@ primera vez y el usuario decide. Ver también [FIRMA.md](FIRMA.md) (paquetes fir
 | Permisos por app, estilo TCC, guardados donde la app no escribe (`server/src/sec/perms.c`) | **hecho** |
 | Avisos dibujados por el sistema (también los que pide una app aislada por el broker), Ajustes → Privacidad, puntos verde/naranja | **hecho** |
 | cgroup por app (`app-lordos-lpk-<id>.scope`, `app-lordos-<id>.scope`) con límites, en el subárbol delegado de la sesión | **hecho**, probado con `lord-sessiond` y `Delegate=yes` |
+| **Root-owned app scopes**: an app can't move itself to another cgroup (`lord-sessiond` places each process, see [Root-owned app scopes](#root-owned-app-scopes)) | **done**, tested on VM 122 (the `systemd-run --user --scope` path stays open, see there) |
 | Firma de paquetes y niveles de confianza | **hecho**, ver [FIRMA.md](FIRMA.md) |
 | Tokens del tema, idioma y dirección (RTL) **en vivo** dentro del proceso de la app | **hecho** (claro/oscuro, acento, idioma; probado con árabe) |
 | Revocación en vivo: al denegar un permiso, la app suelta la cámara/el micrófono al instante | **hecho** |
 | Powerbox: diálogo de abrir/guardar **dibujado por lord-server** que entrega solo el fd del archivo elegido | **hecho** (`fs.openFile`/`fs.saveFile`) |
 | Menús de la app en la barra de menú del sistema | **hecho** (por el broker) |
 | **Micrófono** como datos (audio) por un anillo de solo lectura, tras consentimiento | **hecho** (lord-server abre el flujo de PipeWire; la app lee el nivel por su cursor; revocar lo cierra) |
-| Cámara como frames decodificados por un anillo (vía lord-media), tras consentimiento | **pendiente** (consentimiento, indicador y revocación listos; falta el anillo MM_RING de lord-media y un `/dev/video` para probar — la VM 122 no tiene) |
-| Varias ventanas por app aislada | **pendiente** — ver nota abajo |
+| Cámara como frames decodificados por un anillo (vía lord-media), tras consentimiento | **done**, tested on VM 122 with v4l2loopback (see [Camera for isolated apps](#camera-for-isolated-apps)) |
+| Varias ventanas por app aislada | **done**, tested on VM 122 (see [Several windows per isolated app](#several-windows-per-isolated-app)) |
 
 ## El proceso por app
 
@@ -259,11 +260,12 @@ delegado**. Lo prepara `lord-sessiond` (ver [SESIONES.md](SESIONES.md)):
 2. Al arrancar, `lord-sessiond` se mueve a la hoja `supervisor` (`cgroup_service_init`): la raíz
    del servicio queda sin procesos y puede habilitar `cpu memory pids` para sus hijos (regla «sin
    procesos internos» de cgroup v2).
-3. Por cada sesión, `cgroup_delegate_session(uid, gid)` crea `lordos-session-<uid>/server`, mete
-   ahí al `lord-server` del usuario y le **cede** el subárbol (`chown`).
-4. `lord-server` crea las scopes de sus apps como hermanas de `server`, sin root:
-   `app-lordos-lpk-<id>.scope` (apps `.lpk`, desde `sandbox.c`) y `app-lordos-<id>.scope` (apps
-   Linux, una línea en el lanzador de `apps.c`: `app_scope_enter(id)`).
+3. Por cada sesión, `cgroup_delegate_session(uid, gid)` crea `lordos-session-<uid>/server` y mete
+   ahí al `lord-server` del usuario. **Update:** the subtree is no longer chowned to the user; it
+   stays root's.
+4. **Update:** the app scopes (`app-lordos-lpk-<id>.scope`, `app-lordos-<id>.scope`,
+   `app-lordos-media.scope`…) are created by `lord-sessiond` on request and are root-owned, so an
+   app can't leave its scope. See [Root-owned app scopes](#root-owned-app-scopes).
 
 Medido en la VM 122 (dos usuarios, `lord` en el monitor y `bob` desde el navegador):
 
@@ -367,18 +369,169 @@ micrófono (temas `default` y `classic`); al tocarlo muestra qué app lo usa. Fu
 | `server/src/sec/perms.c` | permisos por app (TCC), `permisos.json` |
 | `server/src/ui/js_sec.c` | `lord.perms`, `lord.sign` y `lord.broker.resolve` |
 | `sdk/privacy.js` | avisos, indicadores, `registerPrivacySection`, `requestPermission` |
+| `server/src/remote/cgsup.c` | the root placement service on `/run/lordos/cgroup.sock` (child of `lord-sessiond`) |
+| `server/src/sec/brokercam.c`, `broker_int.h` | the camera of isolated apps, server side (ring, ACK validation, powerbox saves, revoke) |
+| `server/src/ui/js_brokercam.c` | `lord.media` (camera) inside the app process |
+| `tests/lpk-legit` | also: camera, photo/video through the powerbox, «New window» |
 | `apps/settings/Privacy.jsx` | Ajustes → Privacidad |
 | `tests/lpk-evil`, `tests/lpk-legit` | apps de prueba (maliciosa y legítima) |
 | `server/tests/sandbox_test.c` | pruebas de la caja de arena (app, red, ayudante) |
 
-### Varias ventanas por app aislada (pendiente)
+## Root-owned app scopes
 
-Hoy cada app `.lpk` aislada tiene **una** ventana: `server/src/app/appclient.c` guarda la superficie,
-el `xdg_surface` y el `xdg_toplevel` en variables globales (una sola de cada una), y todo el dibujo
-(buffers, callbacks de cuadro) y la entrada se arman alrededor de esa única superficie. Soportar
-varias ventanas es un cambio transversal, no aditivo: hay que pasar esos globales a una estructura
-por ventana, que el «app host» (`runtime/app-host.js`) monte varios *roots* (uno por superficie) y
-que la app pueda pedir una ventana nueva, y que el compositor (`sdk/wayland.js`) mapee cada
-superficie como su propia ventana `linux#…` con el mismo `appId` (menús, tema e idioma a la correcta).
-Queda para una próxima iteración; el resto de M8 (proceso por app, broker, powerbox, micrófono,
-menús, revocación) no lo necesita.
+The session's cgroup subtree used to be delegated to the user (`chown`), so a Linux app without a
+sandbox, running as the user, could write its pid into another cgroup's `cgroup.procs` (another
+app's scope, `server`, or a new cgroup it created) and leave its per-app firewall rules and its
+accounting behind. `.lpk` apps never could (Landlock hides `/sys`).
+
+Now the subtree stays **root-owned** and the scopes are created by root:
+
+- `cgroup_delegate_session()` (`server/src/sec/cgroup.c`) creates `lordos-session-<uid>/server`
+  and moves the session's `lord-server` there, but no longer chowns anything to the user
+  (`cgroup_harden_session`). At startup, `cgroup_service_init()` hardens the subtrees left by an
+  older `lord-sessiond` (sessions survive a restart).
+- `lord-sessiond` forks a small root child (`server/src/remote/cgsup.c`) that listens on
+  `/run/lordos/cgroup.sock` (`SOCK_SEQPACKET`, mode 0666; `SO_PEERCRED` decides). It serves one
+  request: `enter <scope> <memory.high MB> <memory.max MB> <cpu %>`. It dies with its parent
+  (`PR_SET_PDEATHSIG`) and is restarted if it ends.
+- `cgroup_enter()` (used by the Linux app launcher, `sandbox_apply` and `sandbox_apply_helper`)
+  asks that socket to place **the calling process itself**, right before `execve` (or before the
+  sandbox). Without `lord-sessiond` (development) it falls back to the old self-migration.
+- `cgroup_place_serve()` (root) only places a peer that:
+  - is in its own session's `server` leaf (`/proc/<pid>/cgroup`): `lord-server` or a child it
+    forked right before exec. A process already in an app scope can never ask;
+  - runs a binary from `lord-server`'s directory (root-owned, not writable by others;
+    `insecure_dev` relaxes it on development VMs). A binary replaced while running
+    (`(deleted)`) is still accepted;
+  - asks for a valid name: `app-lordos-<id>.scope` or `lordos-<helper>.scope`, never
+    `lordos-session-…`.
+
+  It creates the scope (root-owned, its control files too), writes the limits, and writes the
+  peer's pid into `cgroup.procs`. The peer is blocked waiting for the reply, so its pid can't be
+  reused meanwhile.
+
+Result: in the session subtree every `cgroup.procs` (the session's, `server`'s and each scope's)
+and every directory is root's. Moving a process between two cgroups needs write access to the
+`cgroup.procs` of their common ancestor, so a user process can't leave its scope, enter another
+one or create a cgroup.
+
+Tested on VM 122, from inside a Linux app (`foot` in `app-lordos-aisla.scope`, with the firewall
+restriction «no internet»):
+
+```
+$ echo $$ > server/cgroup.procs                 Permission denied
+$ echo $$ > ./cgroup.procs        (session)     Permission denied
+$ mkdir lordos-session-1000/escape              Permission denied
+$ mkdir <own scope>/sub                         Permission denied
+== my cgroup now: lordos-session-1000/app-lordos-aisla.scope
+== net after: curl: (7) Failed to connect to example.com port 443   (the rule still applies)
+```
+
+![The scope escape attempts fail](m8-aislamiento-scope.png)
+
+Also tested: the `.lpk` app, `lord-media` (`app-lordos-media.scope`) and Linux apps are placed
+by `lord-sessiond`; `systemctl restart lordos` twice with the session alive (the new
+`lord-sessiond` hardens the old subtree, starts a new placement service, and an app launched
+afterwards still lands in its scope); `DelegateSubgroup=supervisor` in the unit.
+
+**Known gap: `systemd-run --user --scope`.** The same screenshot shows it: a process can still ask
+the user's systemd manager for a new scope. The user manager can't migrate it itself, so it asks
+PID 1 (`AttachProcessesToUnit`), which runs as root and only checks that the process and the
+target unit belong to the same UID; it does not look at the source cgroup. The process then runs
+in `user@<uid>.service/app.slice/run-….scope`, outside `lordos.service`, where `lord-netperm`'s
+programs aren't attached. Closing it needs either `lord-netperm` hooks on the users' `user@`
+subtrees (treating a LordOS session user's transient scopes as an unknown app) or a systemd-side
+policy; neither is done. `.lpk` apps can't do it (no D-Bus, no new sockets).
+
+Not tested this round: a second user over fast user switching and the remote desktop (no test
+password at hand). Their code path is the same `cgroup_delegate_session()` per uid.
+
+## Camera for isolated apps
+
+Consent, the green dot and revocation already existed. The frames now reach the app without the
+app ever touching the device:
+
+```
+/dev/video10 ──open (after consent)──▶ lord-server ──fd──▶ lord-media (MK_CAMERA, sandbox_apply_helper)
+                                                              │ decodes into MM_RING (3 BGRA slots,
+                                                              │ sealed memfd), MM_FRAME per frame
+lord-server (sec/brokercam.c) ◀──────────────────────────────┘
+   │ read-only reopen of the ring (/proc/self/fd/N, O_RDONLY) + "frame <sid> <id>" events
+   ▼
+lord-server --app (ui/js_brokercam.c) — maps it PROT_READ, draws it with <MediaView> (media/mview.c),
+   answers "ack <sid> <id>"; lord-server validates it and only then sends MM_ACK to lord-media
+```
+
+- **Broker op `BOP_CAMERA`** (`sec/broker.h`): `list`, `open dev w h`, `ring sid` (→ the read-only
+  fd), `ack sid id` and `size sid w h` (no reply), `photo sid mirror name`,
+  `record sid mirror mic name`, `recstop sid`, `close sid`. Each one checks the `camera`
+  permission again in `lord-server`.
+- **The device:** `lord-server` validates `/dev/videoN`, opens it and passes it only to
+  `lord-media`. The app process never sees it (Landlock hides `/dev` anyway).
+- **The ring:** `lord-server` checks the memfd from `lord-media` (sealed against shrinking, big
+  enough) and keeps it. The app gets a new **read-only** open file description, so it can only map
+  it `PROT_READ` (verified: the mapping is `r--s` in `/proc/<pid>/maps`) and can't write a frame
+  that another reader would see.
+- **ACK validation** (`brokercam.c`): an ACK is forwarded to `lord-media` only if its generation
+  is the current ring's, its slot exists and holds a frame `lord-server` forwarded and nobody
+  acknowledged yet, and the app has tokens left (120 ACKs/s, burst 30). Anything else is dropped
+  and counted. `lord-media` frees slots only on a valid ACK, so an app that never acknowledges, or
+  acknowledges garbage, only stops its own preview. If the app's socket is full, `lord-server`
+  acknowledges the frame itself so the ring never jams. After a resize the app may acknowledge a
+  frame of the previous generation once: that's logged as `invalid camera ACK ignored (1)`.
+- **Photo and video:** the app asks `photo`/`record` with a suggested name. `lord-server` opens
+  the **system's save dialog** (the powerbox, reqids with the high bit set), opens the chosen
+  file itself (`O_NOFOLLOW`, regular file only) and gives that fd to `lord-media` (`MM_PHOTO`,
+  `MM_RECORD`). The app only gets the file's name back (event `photo`/`video`). Recording with
+  sound also needs the `microphone` permission; the PipeWire stream is `lord-server`'s.
+- **Revoke:** Settings → Privacy → Camera → Deny calls `brokersrv_revoke`, which sends `revoke`
+  to the app, kills its `lord-media` (`SIGKILL`) and closes the source: the stream stops at once
+  and the green dot goes off. The app gets `closed` (`revoked: true`) and blanks its view.
+- **Same SDK:** an isolated app uses `media.cameras()`, `media.camera()`, `<MediaView>`,
+  `media.photo()` and `media.cameraRecord()` as in the session; in the app process `lord.media`
+  is the camera subset above (`js_brokercam.c`).
+
+Tested on VM 122 with `v4l2loopback` (`/dev/video10`) fed by `ffmpeg` (`testsrc2` 1280×720 YUYV,
+service `lordos-test-camfeed`) and `tests/lpk-legit`: live preview, `foto.jpg` (1280×720 JPEG)
+and `video.mp4` (H.264, 4.5 s) saved through the powerbox, and revocation (the `lord-media`
+process is gone within 0.5 s). While previewing, the app process uses ~1–2 % CPU and
+`lord-media` ~9 %.
+
+| | |
+|---|---|
+| ![camera preview inside the isolated app](m8-aislamiento-camara.png) | ![camera revoked](m8-aislamiento-camara-revocada.png) |
+| The preview in `tests/lpk-legit` (its own process), with the green dot | After «Deny» in Settings: the stream stopped, the dot is gone |
+
+Not tested: a hostile app sending forged or flooded ACKs (the JS API only acknowledges frames it
+received; it would take native code inside the sandbox). The validation is in
+`brokercam_handle` (`"ack"`).
+
+## Several windows per isolated app
+
+`server/src/app/appclient.c` keeps one `AppWin` per toplevel (surface, `xdg_surface`,
+`xdg_toplevel`, decoration, its two `wl_shm` buffers, size, frame callback and the root node it
+draws). The app host (`runtime/app-host.js`) registers the app in the SDK's window store of its
+own process, so the app opens and closes windows with the usual SDK:
+
+- `wm.open(appId, { new: true })` opens another window; `wm.close(id)`, `wm.setTitle(id, t)` and
+  `useAppWindow()` work per window. The app host renders every window as a child of the React root
+  and binds it to its surface with `lord.appWindows` (`open`, `attach`, `close`, `setTitle`).
+- Each window is laid out and painted on its own surface from its root node (`layout_root`,
+  `paint_root`), and the pointer is hit-tested in the window it is over (`wl_pointer.enter`).
+  Keyboard focus follows `wl_keyboard.enter`; the app host raises that window (`wm.focus`).
+- The frame's close button sends `xdg_toplevel.close` for that surface; the app host runs
+  `wm.close(id)` (close guards still apply). Closing the last window ends the process.
+- In the session, every surface is its own `linux#<surface>` window with the theme frame
+  (`sdk/wayland.js`); the Dock groups all of them under the app's entry (`launcherIdOf`), the app's
+  menus go to every window of the app, and «New window» in the Dock reaches the running process
+  through the broker (`window` event) instead of launching a second process.
+
+![two windows of one isolated app, the Dock menu lists both](m8-aislamiento-ventanas.png)
+
+Tested on VM 122 with `tests/lpk-legit`: «New window» from the app and from the Dock menu, the Dock
+menu listing every window, closing a window, focus and input in each one.
+
+Also fixed while testing: the app's event loop now drains broker events that arrived during a
+synchronous RPC (`js_broker_pending`), events are NUL-terminated before `JS_ParseJSON` (a
+`revoke` could be dropped), and an isolated app no longer inherits `lord-server`'s blocked
+`SIGTERM`/`SIGINT`.

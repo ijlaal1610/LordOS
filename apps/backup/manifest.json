@@ -1,7 +1,7 @@
 {
   "id": "backup",
-  "name": "Copias de seguridad",
-  "description": "Copias programadas de la carpeta personal en un disco externo o una carpeta, con restauración por fecha",
+  "name": "Backups",
+  "description": "Scheduled backups of the home folder to an external disk or a folder, with restore by date",
   "size": [
     980,
     640

@@ -5,7 +5,7 @@
 //   4. App: fondo + ventanas + barra
 // Copiá esta carpeta, cambiá theme.json y empezá a modificar.
 import {
-  startShell, View, Text, screen, addListener, ThemeProvider, useSettings, useWindows, useClock,
+  startShell, settings, View, Text, screen, addListener, ThemeProvider, useSettings, useWindows, useClock,
   configureWindows, getApp, wm, AppHost, session, windowTitle, t as tr, formatTime,
   ScrollView, useLauncherApps, launchApp, windowIcon, APP_CATEGORIES, appCategory, useDockEntries, dockActivate, dockMenu,
   DesktopWidgets, PrivacyIndicators, registerGestureActions, WindowShell, StatusItems, dockPrefs,
@@ -173,7 +173,7 @@ function JumpList({ t, entry, x, onClose, pos }) {
 // Barra de tareas: apps ancladas y abiertas, una por app (las ventanas de la misma app van juntas).
 // Clic: abre la app o trae su ventana (si ya estaba al frente, la minimiza); clic derecho: JumpList.
 function Taskbar({ t, onStart, pos }) {
-  const clock = useClock((d) => formatTime(d), 1000);
+  const clock = useClock((d) => formatTime(d, { seconds: !!settings.get().clock?.seconds }), 1000);   // Settings → Date & Time
   const entries = useDockEntries(['files', 'terminal', 'store']);
   const { focused } = useWindows();
   const [jump, setJump] = useState(null);

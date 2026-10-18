@@ -224,5 +224,17 @@
   "dock.recentsHint": "Las últimas tres apps usadas que no están fijadas, después de una línea.",
   "dock.taskbar": "Posición de la barra de tareas",
   "dock.taskbarHint": "Tema Clásico. Las ventanas maximizadas no quedan debajo de la barra.",
-  "dock.sidesHint": "Izquierda y derecha son lados de la pantalla: no cambian con un idioma de derecha a izquierda."
+  "dock.sidesHint": "Izquierda y derecha son lados de la pantalla: no cambian con un idioma de derecha a izquierda.",
+  "section.displays": "Pantallas",
+  "section.bluetooth": "Bluetooth",
+  "section.power": "Energía",
+  "section.notifications": "Notificaciones",
+  "section.datetime": "Fecha y hora",
+  "section.defaultapps": "Apps por defecto",
+  "keywords.displays": "pantalla monitor resolución frecuencia hz rotación girar brillo night shift noche temperatura color edid",
+  "keywords.bluetooth": "bluetooth vincular emparejar auriculares parlante teclado mouse inalámbrico",
+  "keywords.power": "batería energía perfil ahorro rendimiento suspender reposo tapa botón de encendido apagar pantalla",
+  "keywords.notifications": "notificaciones avisos alertas carteles no molestar concentración sonido",
+  "keywords.datetime": "fecha hora reloj ntp zona horaria 24 horas 12 horas barra de menú segundos",
+  "keywords.defaultapps": "apps por defecto predeterminadas navegador correo música video imágenes pdf editor de texto terminal abrir con"
 }

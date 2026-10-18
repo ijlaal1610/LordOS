@@ -1,16 +1,16 @@
-/* smart.c — analizadores de SMART (funciones puras, sin E/S; prueba: tests/smart_test.c).
+/* smart.c — SMART parsers (pure functions, no I/O; test: tests/smart_test.c).
  *
- * ATA (ACS-3, «SMART READ DATA» 0xB0/0xD0 y «READ THRESHOLDS» 0xB0/0xD1, 512 bytes cada uno):
- *   bytes 0-1 versión, 2-361: 30 atributos de 12 bytes
- *     [0] id, [1-2] banderas (bit 0 = pre-falla), [3] valor normalizado, [4] peor, [5-10] crudo
- *     (48 bits, little endian), [11] reservado;
- *   byte 511: suma de comprobación (los 512 bytes suman 0 módulo 256).
- *   Umbrales: misma posición, [0] id, [1] umbral.
- * NVMe (1.4, registro 02h «SMART / Health Information», 512 bytes):
- *   [0] advertencia crítica, [1-2] temperatura (kelvin), [3] repuesto disponible %, [4] umbral del
- *   repuesto, [5] % de vida usada, [32-47] unidades leídas, [48-63] escritas (unidades de 512 000
- *   bytes), [112-127] ciclos de encendido, [128-143] horas encendido, [144-159] apagados
- *   inseguros, [160-175] errores de medio (enteros de 128 bits; acá se usan los 64 de abajo). */
+ * ATA (ACS-3, "SMART READ DATA" 0xB0/0xD0 and "READ THRESHOLDS" 0xB0/0xD1, 512 bytes each):
+ *   bytes 0-1 version, 2-361: 30 attributes of 12 bytes
+ *     [0] id, [1-2] flags (bit 0 = pre-fail), [3] normalized value, [4] worst, [5-10] raw
+ *     (48 bits, little endian), [11] reserved;
+ *   byte 511: checksum (the 512 bytes sum to 0 modulo 256).
+ *   Thresholds: same layout, [0] id, [1] threshold.
+ * NVMe (1.4, log page 02h "SMART / Health Information", 512 bytes):
+ *   [0] critical warning, [1-2] temperature (kelvin), [3] available spare %, [4] spare
+ *   threshold, [5] % life used, [32-47] data units read, [48-63] written (units of 512 000
+ *   bytes), [112-127] power cycles, [128-143] power-on hours, [144-159] unsafe shutdowns,
+ *   [160-175] media errors (128-bit integers; the low 64 bits are used here). */
 #include "disk.h"
 
 #include <stdio.h>
@@ -22,7 +22,7 @@ static uint64_t le(const uint8_t *p, int n) {
     return v;
 }
 
-/* 128 bits → 64 (si lo de arriba no es cero, se satura) */
+/* 128 bits → 64 (saturates if the high half is not zero) */
 static uint64_t le128(const uint8_t *p) {
     if (le(p + 8, 8)) return UINT64_MAX;
     return le(p, 8);
@@ -60,7 +60,7 @@ int smart_ata_parse(const uint8_t data[512], const uint8_t *thresh, int status, 
                 if (t[0] == x->id) { x->thresh = t[1]; break; }
             }
         }
-        /* valor 0 o 0xFE/0xFF = sin dato (algunos discos); el umbral 0 nunca falla */
+        /* value 0 or 0xFE/0xFF = no data (some disks); threshold 0 never fails */
         x->failing = x->thresh && x->value && x->value <= x->thresh && x->value < 0xfe;
         if (x->failing && (x->flags & 1)) failing = 1;
         switch (x->id) {
@@ -98,8 +98,8 @@ int smart_nvme_parse(const uint8_t log[512], SmartReport *r) {
     r->power_on_hours = hrs > INT64_MAX ? INT64_MAX : (int64_t)hrs;
     r->unsafe_shutdowns = le128(log + 144);
     r->media_errors = le128(log + 160);
-    /* bits de la advertencia: 0 repuesto bajo, 1 temperatura, 2 confiabilidad degradada,
-     * 3 solo lectura, 4 copia volátil fallida */
+    /* warning bits: 0 low spare, 1 temperature, 2 degraded reliability, 3 read-only,
+     * 4 volatile backup failed */
     if (r->crit_warning & 0x0d) r->health = SMART_FAIL;
     else if (r->crit_warning || r->used_pct >= 100 || r->spare < r->spare_thresh || r->media_errors) r->health = SMART_WARN;
     else r->health = SMART_OK;

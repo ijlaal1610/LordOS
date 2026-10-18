@@ -1,5 +1,5 @@
 /* logs_admin.h — la acción logs-system del ayudante (registros del sistema para los
- * administradores; app Registros, ver docs/SISTEMA.md). */
+ * administradores; app Registros, ver docs/SYSTEM.md). */
 #ifndef LORD_LOGS_ADMIN_H
 #define LORD_LOGS_ADMIN_H
 

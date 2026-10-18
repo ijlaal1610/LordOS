@@ -2,13 +2,20 @@
  * sin libsystemd ni D-Bus. Degrada con un aviso si falta la delegación o un controlador. */
 #include "cgroup.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
+#include <sys/time.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #define CG_ROOT "/sys/fs/cgroup"
@@ -82,11 +89,61 @@ static int write_at(int dirfd, const char *leaf, const char *val) {
     return w == (ssize_t)n ? 0 : -1;
 }
 
+/* Is this a scope name lord-sessiond agrees to create? "app-lordos-<id>.scope" (Linux and .lpk
+ * apps, lord-media) or "lordos-<helper>.scope" (lord-doc, lord-vault), never "lordos-session-…". */
+int cgroup_scope_name_ok(const char *name) {
+    size_t n = name ? strlen(name) : 0;
+    if (n < 8 || n > 90 || strcmp(name + n - 6, ".scope")) return 0;
+    if (strncmp(name, "app-lordos-", 11) && (strncmp(name, "lordos-", 7) || !strncmp(name, "lordos-session-", 15))) return 0;
+    for (const char *p = name; *p; p++)
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '-' || *p == '.' || *p == '_' || *p == '@')) return 0;
+    return !strstr(name, "..");
+}
+
+/* Ask lord-sessiond (root) over CGROUP_SOCK to move THIS process into the scope. Returns 0 when
+ * placed, -1 when refused or unanswered, -2 when there is no lord-sessiond (development). In a
+ * lord-sessiond session (LORDOS_SESSIOND) it waits up to 3 s for a restarting lord-sessiond. */
+static int enter_via_sessiond(const char *name, const CgroupLimits *lim) {
+    int managed = getenv("LORDOS_SESSIOND") != NULL;
+    struct sockaddr_un a = { .sun_family = AF_UNIX };
+    snprintf(a.sun_path, sizeof a.sun_path, "%s", CGROUP_SOCK);
+    int fd = -1;
+    for (int i = 0; i < 30; i++) {
+        fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
+        if (fd < 0) return managed ? -1 : -2;
+        if (!connect(fd, (struct sockaddr *)&a, sizeof a)) break;
+        int e = errno;
+        close(fd);
+        fd = -1;
+        if (!managed && e == ENOENT) return -2;
+        if (e != ENOENT && e != ECONNREFUSED && e != EAGAIN) break;
+        struct timespec ts = { 0, 100 * 1000 * 1000 };
+        nanosleep(&ts, NULL);
+    }
+    if (fd < 0) { fprintf(stderr, "cgroup: lord-sessiond does not answer (%s); %s runs without a scope\n", CGROUP_SOCK, name); return -1; }
+    struct timeval tv = { 3, 0 };
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    char req[160], rep[128];
+    int n = snprintf(req, sizeof req, "enter %s %ld %ld %d", name, lim ? lim->mem_high_mb : 0, lim ? lim->mem_max_mb : 0, lim ? lim->cpu_percent : 0);
+    ssize_t r = n > 0 && n < (int)sizeof req ? send(fd, req, (size_t)n, MSG_NOSIGNAL) : -1;
+    if (r == n) r = recv(fd, rep, sizeof rep - 1, 0);
+    close(fd);
+    if (r <= 0) { fprintf(stderr, "cgroup: no reply from lord-sessiond; %s runs without a scope\n", name); return -1; }
+    rep[r] = 0;
+    if (strncmp(rep, "ok", 2)) { fprintf(stderr, "cgroup: lord-sessiond refused %s: %s\n", name, rep); return -1; }
+    return 0;
+}
+
 int cgroup_enter(const char *name, const CgroupLimits *lim) {
     char base[PATH_MAX], scope[PATH_MAX], val[64];
     for (const char *p = name; *p; p++)
         if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '-' || *p == '.' || *p == '_' || *p == '@'))
             { fprintf(stderr, "cgroup: nombre inválido %s\n", name); return -1; }
+    /* With lord-sessiond the scopes belong to root (root-owned cgroup.procs): it creates them and
+     * moves us, so an app cannot migrate to another cgroup of the session. Without it
+     * (development) we fall back to the old self-migration. */
+    int via = enter_via_sessiond(name, lim);
+    if (via != -2) return via;
     if (base_dir(base, sizeof base)) { fprintf(stderr, "cgroup: sin subárbol delegado (%s); la app corre sin scope\n", errno == EACCES ? "no escribible" : strerror(errno)); return -1; }
     enable_controllers(base);
     if ((size_t)snprintf(scope, sizeof scope, "%s/%s", base, name) >= sizeof scope) return -1;
@@ -105,10 +162,30 @@ int cgroup_enter(const char *name, const CgroupLimits *lim) {
     return 0;
 }
 
-/* chown del directorio del cgroup y de sus controles, relativo a dirfd (sin armar rutas largas). */
-static void chown_ctl_at(int dirfd, unsigned uid, unsigned gid) {
-    static const char *const f[] = { ".", "cgroup.procs", "cgroup.subtree_control", "cgroup.threads", NULL };
-    for (int i = 0; f[i]; i++) fchownat(dirfd, f[i], uid, gid, 0);
+/* chown root:root a cgroup directory and every control file in it (dirfd = that directory). */
+static void chown_root_dir(int dirfd) {
+    fchown(dirfd, 0, 0);
+    int d = dup(dirfd);
+    DIR *dir = d >= 0 ? fdopendir(d) : NULL;
+    if (!dir) { if (d >= 0) close(d); return; }
+    struct dirent *e;
+    while ((e = readdir(dir))) if (e->d_name[0] != '.') fchownat(dirfd, e->d_name, 0, 0, AT_SYMLINK_NOFOLLOW);
+    closedir(dir);
+}
+
+void cgroup_harden_session(int sessfd) {
+    if (geteuid() != 0 || sessfd < 0) return;
+    chown_root_dir(sessfd);
+    int d = dup(sessfd);
+    DIR *dir = d >= 0 ? fdopendir(d) : NULL;
+    if (!dir) { if (d >= 0) close(d); return; }
+    struct dirent *e;
+    while ((e = readdir(dir))) {
+        if (e->d_name[0] == '.' || e->d_type != DT_DIR) continue;
+        int c = openat(sessfd, e->d_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        if (c >= 0) { chown_root_dir(c); close(c); }
+    }
+    closedir(dir);
 }
 
 /* Raíz del servicio: el cgroup propio, o su padre si estamos en la hoja «supervisor» que crea
@@ -135,11 +212,23 @@ int cgroup_service_init(void) {
     close(fd);
     if (r) { fprintf(stderr, "cgroup: lordos.service sin Delegate=yes (no se pudo usar la hoja supervisor)\n"); return -1; }
     enable_controllers(svc);        /* ahora la raíz no tiene procesos: puede habilitar controladores */
+    /* sessions that survived a restart (or were delegated by an older lord-sessiond): back to root */
+    DIR *dir = opendir(svc);
+    struct dirent *e;
+    while (dir && (e = readdir(dir))) {
+        unsigned u;
+        char tail;
+        if (sscanf(e->d_name, "lordos-session-%u%c", &u, &tail) != 1) continue;
+        int sfd = openat(dirfd(dir), e->d_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        if (sfd >= 0) { cgroup_harden_session(sfd); close(sfd); }
+    }
+    if (dir) closedir(dir);
     return 0;
 }
 
 int cgroup_delegate_session(unsigned uid, unsigned gid) {
     char svc[PATH_MAX], sess[PATH_MAX];
+    (void)gid;
     if (service_root(svc, sizeof svc)) return -1;
     if (access(svc, W_OK)) { fprintf(stderr, "cgroup: lordos.service sin Delegate=yes; la sesión de %u corre sin subárbol\n", uid); return -1; }
     enable_controllers(svc);
@@ -151,12 +240,13 @@ int cgroup_delegate_session(unsigned uid, unsigned gid) {
     if (mkdirat(sfd, "server", 0755) && errno != EEXIST) { close(sfd); return -1; }
     int lfd = openat(sfd, "server", O_DIRECTORY | O_CLOEXEC);
     if (lfd < 0 || write_at(lfd, "cgroup.procs", "0")) { fprintf(stderr, "cgroup: no se pudo mover la sesión %u a su hoja: %s\n", uid, strerror(errno)); if (lfd >= 0) close(lfd); close(sfd); return -1; }
-    /* el usuario es dueño del subárbol: lord-server (ya sin root) crea las scopes de las apps */
-    chown_ctl_at(sfd, uid, gid);
-    chown_ctl_at(lfd, uid, gid);
+    /* The subtree stays root-owned (it used to be chowned to the user). lord-sessiond creates the
+     * app scopes on request (cgroup_place_serve) with a root-owned cgroup.procs, so no user
+     * process can migrate to another cgroup of the session (see docs/PRIVACIDAD.md). */
     close(lfd);
+    cgroup_harden_session(sfd);
     close(sfd);
-    fprintf(stderr, "cgroup: sesión %u delegada en lordos-session-%u\n", uid, uid);
+    fprintf(stderr, "cgroup: session %u in lordos-session-%u (root-owned scopes)\n", uid, uid);
     return 0;
 }
 
@@ -165,4 +255,90 @@ void app_scope_enter(const char *id) {
     if (snprintf(name, sizeof name, "app-lordos-%s.scope", id) >= (int)sizeof name) return;
     CgroupLimits lim = { .mem_high_mb = 0, .mem_max_mb = 0, .cpu_percent = 0 };   /* Linux apps: sin límite, solo atribución */
     cgroup_enter(name, &lim);
+}
+
+/* ---- lord-sessiond side: placing a session process into its app scope ---- */
+
+/* "0::<path>" of /proc/<pid>/cgroup, or -1. */
+static int proc_cgroup(pid_t pid, char *out, size_t n) {
+    char p[64], line[PATH_MAX];
+    snprintf(p, sizeof p, "/proc/%d/cgroup", (int)pid);
+    FILE *f = fopen(p, "re");
+    if (!f) return -1;
+    int r = -1;
+    while (fgets(line, sizeof line, f)) {
+        if (strncmp(line, "0::", 3)) continue;
+        char *nl = strchr(line, '\n');
+        if (nl) *nl = 0;
+        if ((size_t)snprintf(out, n, "%s", line + 3) < n) r = 0;
+        break;
+    }
+    fclose(f);
+    return r;
+}
+
+/* The executable of the peer must be a LordOS binary from bindir (lord-server, lord-media,
+ * lord-doc…). A binary replaced while it runs shows up as "<path> (deleted)": still accepted. */
+static int exe_trusted(pid_t pid, const char *bindir, int insecure) {
+    char p[64], exe[PATH_MAX];
+    snprintf(p, sizeof p, "/proc/%d/exe", (int)pid);
+    ssize_t l = readlink(p, exe, sizeof exe - 1);
+    if (l <= 0) return 0;
+    exe[l] = 0;
+    static const char del[] = " (deleted)";
+    size_t el = strlen(exe);
+    if (el > sizeof del - 1 && !strcmp(exe + el - (sizeof del - 1), del)) exe[el - (sizeof del - 1)] = 0;
+    char *slash = strrchr(exe, '/');
+    if (!slash) return 0;
+    *slash = 0;
+    if (strcmp(exe, bindir)) return 0;
+    if (insecure) return 1;
+    struct stat st;
+    return stat(bindir, &st) == 0 && st.st_uid == 0 && !(st.st_mode & (S_IWGRP | S_IWOTH));
+}
+
+static void reply(int fd, const char *msg) { send(fd, msg, strlen(msg), MSG_NOSIGNAL | MSG_DONTWAIT); }
+
+int cgroup_place_serve(int cfd, const char *bindir, int insecure) {
+    struct ucred cr;
+    socklen_t cl = sizeof cr;
+    if (getsockopt(cfd, SOL_SOCKET, SO_PEERCRED, &cr, &cl) || cr.pid <= 0) { reply(cfd, "err peer"); return -1; }
+    struct timeval tv = { 1, 0 };
+    setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    char req[256], name[96];
+    ssize_t r = recv(cfd, req, sizeof req - 1, 0);
+    if (r <= 0) return -1;
+    req[r] = 0;
+    long mh = 0, mm = 0;
+    int cpu = 0;
+    if (sscanf(req, "enter %95s %ld %ld %d", name, &mh, &mm, &cpu) != 4 || !cgroup_scope_name_ok(name)) { reply(cfd, "err request"); return -1; }
+    if (cr.uid < 1000 || cr.uid >= 60000) { reply(cfd, "err uid"); return -1; }
+    /* The peer must still be in its session's «server» leaf: lord-server itself, or a child it
+     * forked right before exec. A process already in an app scope (an app) can never ask. */
+    char svc[PATH_MAX], want[PATH_MAX], have[PATH_MAX];
+    if (service_root(svc, sizeof svc)) { reply(cfd, "err service"); return -1; }
+    const char *rel = svc + strlen(CG_ROOT);
+    if ((size_t)snprintf(want, sizeof want, "%s/lordos-session-%u/server", rel, (unsigned)cr.uid) >= sizeof want) return -1;
+    if (proc_cgroup(cr.pid, have, sizeof have) || strcmp(have, want)) { reply(cfd, "err not in the session leaf"); return -1; }
+    if (!exe_trusted(cr.pid, bindir, insecure)) { reply(cfd, "err untrusted executable"); return -1; }
+    char sess[PATH_MAX];
+    if ((size_t)snprintf(sess, sizeof sess, "%s/lordos-session-%u", svc, (unsigned)cr.uid) >= sizeof sess) return -1;
+    int sfd = open(sess, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (sfd < 0) { reply(cfd, "err no session subtree"); return -1; }
+    if (mkdirat(sfd, name, 0755) && errno != EEXIST) { close(sfd); reply(cfd, "err mkdir"); return -1; }
+    int dfd = openat(sfd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    close(sfd);
+    if (dfd < 0) { reply(cfd, "err open"); return -1; }
+    chown_root_dir(dfd);            /* a scope left by an older lord-sessiond may be the user's */
+    char val[64];
+    if (mh > 0 && mh <= 65536) { snprintf(val, sizeof val, "%ld", mh * 1024L * 1024L); write_at(dfd, "memory.high", val); }
+    if (mm > 0 && mm <= 65536) { snprintf(val, sizeof val, "%ld", mm * 1024L * 1024L); write_at(dfd, "memory.max", val); }
+    if (cpu > 0 && cpu <= 6400) { snprintf(val, sizeof val, "%ld 100000", (long)cpu * 1000L); write_at(dfd, "cpu.max", val); }
+    snprintf(val, sizeof val, "%d", (int)cr.pid);
+    int w = write_at(dfd, "cgroup.procs", val);
+    close(dfd);
+    if (w) { reply(cfd, "err move"); return -1; }
+    /* the peer is blocked waiting for this reply, so the pid cannot have been reused meanwhile */
+    reply(cfd, "ok");
+    return 0;
 }

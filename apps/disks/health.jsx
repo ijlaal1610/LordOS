@@ -1,9 +1,9 @@
-// health.jsx — salud del disco (SMART). Se lee solo cuando se pide (acción disk-smart): nunca en
-// segundo plano, así no se despierta el disco ni se frena nada.
+// health.jsx — disk health (SMART). Read only on request (disk-smart action), never in the
+// background, so the disk is not woken up and nothing stalls.
 import { View, Text, Button, useTheme, useLocale, admin, formatBytes, formatNumber } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 
-const cache = new Map();          // disco → último resultado (mientras la app está abierta)
+const cache = new Map();          // disk → last result (while the app is open)
 
 const HEALTH_COLOR = { ok: '#30d158', warning: '#ff9f0a', failing: '#ff453a', unknown: '#8e8e93' };
 const KNOWN = [1, 3, 4, 5, 7, 9, 10, 12, 177, 183, 184, 187, 188, 190, 192, 193, 194, 196, 197, 198, 199, 231, 233, 241, 242];
@@ -16,7 +16,7 @@ function readSmart(name) {
     try {
       if (line.startsWith('smart ')) res.summary = JSON.parse(line.slice(6));
       else if (line.startsWith('attr ')) res.attrs.push(JSON.parse(line.slice(5)));
-    } catch (e) { /* línea rota */ }
+    } catch (e) { /* malformed line */ }
   }, { quiet: true }).then((ms) => ({ ...res, ms }));
 }
 

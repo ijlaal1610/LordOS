@@ -44,13 +44,14 @@ export { packages, packageList, refreshPackages, packageFile, loadWasm } from '.
 import { refreshPackages } from './packages.js';
 export {
   windows, wm, useWindows, configureWindows, getApp, listApps, isLiveSystem, appIdOf, workArea, appMenus, useAppMenus, windowTitle, appRegistry, appMenuClick,
+  registerBuiltinApp,
 } from './windows.js';
 export { WindowShell, WINDOW_EDGE } from './windowshell.jsx';
 export { term } from './terminal.js';
 export { clipboard, clipboardHistory, clipboardPanel, clipboardKind } from './clipboard.js';
 export { spotlight, spotlightOpen, calc as spotlightCalc, convert as spotlightConvert } from './spotlight.js';
 export { registerSpotlightSource } from './spotlight.js';
-// avisos de la sesión, íconos de estado de la barra, Reloj (alarmas) y Ayuda (docs/SISTEMA.md)
+// session notifications, menu bar status items, Clock (alarms) and Help (docs/SYSTEM.md)
 export { notify, dismissNotification, useNotifications, notifications, notifyHistory, clearNotifyHistory, NotificationBanner } from './notify.js';
 export { registerStatusItem, StatusItems, statusItems } from './statusitems.js';
 export { clockAlarms, clockTimer, timerStart, timerPause, timerResume, timerReset, timerLeft, stopwatch, swStart, swStop, swLap, swReset, swElapsed, nextAlarm, nextFire } from './alarms.js';
@@ -69,11 +70,24 @@ export {
   AppHost, useAppWindow, useKeyboard, focusToken, restoreFocus, pasteIntoFocused, FloatingWindows, useWindowState,
 } from './components.jsx';
 import { FloatingWindows } from './components.jsx';
+export {
+  ToolbarButton, ToolbarGroup, Toolbar, ToolbarSpacer, ToolbarDivider, MenuButton, SearchField, EmptyState, GroupBox, FormRow, spacing, typeScale, controlSize,
+} from './controls.jsx';
 export { media, useMedia, usePlayer, nowPlaying, useNowPlaying, NowPlayingTile, mediaFormatTime, thumbFor, useThumb, userDirs } from './media.js';
 export { disks, useDisks } from './disks.js';
-export { backup, useBackup, backupStatus } from './backup.js';   // Copias de seguridad (docs/SISTEMA.md)
-export { vaultAvailable, vaultRequest, onVaultEvent, keyring, autofill, autofillReveal, KeyringPrompt } from './vault.js';   // Contraseñas y llavero (docs/CONTRASENAS.md)
+export { backup, useBackup, backupStatus } from './backup.js';   // Backups (docs/SYSTEM.md)
+export { vaultAvailable, vaultRequest, onVaultEvent, keyring, autofill, autofillReveal, KeyringPrompt, AutofillButton } from './vault.js';   // Contraseñas y llavero (docs/CONTRASENAS.md)
 import { KeyringPrompt } from './vault.js';
+// Settings' hardware pages (docs/SETTINGS.md): displays, Night Shift, battery, Bluetooth, idle, clock
+export {
+  displays, useDisplays, applyDisplay, keepDisplay, revertDisplay, displayConfirm, DisplayGlyph, nightPrefs, NIGHT_DEFAULTS, nightWindow,
+  nightActive, nightAmount, setNightManual, previewNight, nightTick, sunTimes, battery, useBattery, BatteryGlyph, powerPrefs, POWER_DEFAULTS,
+  powerProfiles, usePowerProfiles, onPowerProfileResult, bluetooth, useBluetooth, onBluetoothResult, timedate, useTimedate, menuClock, clockPrefs,
+  CLOCK_DEFAULTS, applyIdle,
+} from './hardware.jsx';
+import { DisplayConfirm, BluetoothPrompt, startHardware } from './hardware.jsx';
+export { DEFAULT_CATEGORIES, defaultFor, setDefaultFor, candidatesFor, defaultOpenerId, nativeOf } from './defaults.js';
+export { notifyPrefs, appNotifyPrefs, setAppNotifyPrefs, dndActive, NOTIFY_DEFAULTS } from './notify.js';
 
 // ---- temas instalados ----
 
@@ -124,8 +138,9 @@ export function startShell(element) {
   render(createElement(LocaleRoot, null, element));
   // ISO live: el asistente de instalación se abre solo, al frente
   if (isLiveSystemOf() && getAppOf('installer')) setTimeout(() => wmOf.open('installer'), 300);
-  startAlarms();                        // alarmas y temporizador del Reloj, con la app cerrada
-  maybeStartTour();                     // «Bienvenido a LordOS», la primera vez
+  startAlarms();                        // Clock alarms and timer, with the app closed
+  maybeStartTour();                     // "Welcome to LordOS", the first time
+  startHardware();                      // Night Shift, idle timers, battery in the menu bar (hardware.jsx)
 }
 
 // Al cambiar el idioma se vuelve a montar toda la interfaz (las ventanas, pestañas y
@@ -133,5 +148,5 @@ export function startShell(element) {
 function LocaleRoot({ children }) {
   const { lang, region } = useStore(locale);
   const rev = useStore(screenRev);
-  return createElement(Fragment, { key: `${lang}|${region}` }, rev ? cloneElement(children, { screenRev: rev }) : children, createElement(ClipboardPanel), createElement(SpotlightPanel), createElement(ClipboardToast), createElement(RemoteBadge), createElement(ImeOverlay), createElement(FloatingWindows), createElement(PermissionPrompt), createElement(EmojiPanel), createElement(PrintDialog), createElement(Powerbox), createElement(NotificationBanner), createElement(KeyringPrompt));
+  return createElement(Fragment, { key: `${lang}|${region}` }, rev ? cloneElement(children, { screenRev: rev }) : children, createElement(ClipboardPanel), createElement(SpotlightPanel), createElement(ClipboardToast), createElement(RemoteBadge), createElement(ImeOverlay), createElement(FloatingWindows), createElement(PermissionPrompt), createElement(EmojiPanel), createElement(PrintDialog), createElement(Powerbox), createElement(NotificationBanner), createElement(KeyringPrompt), createElement(BluetoothPrompt), createElement(DisplayConfirm));
 }

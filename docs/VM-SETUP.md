@@ -776,3 +776,104 @@ Ver `FIREWALL.md`, paso 2. En la VM 122 (172.17.0.56), que ya tenía `lord-sessi
   - `/etc/firefox-esr/lordos.js` con `pref("browser.tabs.inTitlebar", 0)`;
   - `assets/gtk/LordOS*` copiados a `/usr/share/themes/`.
 
+
+## Step — M9: Passwords and the system keyring (VM 116 `lordos-gpu`)
+
+See `PASSWORDS.md`. Everything was built in a new folder, `~/LordOS-pw` (the workers used
+`~/LordOS-pw-ctap`, `~/LordOS-pw-dbus`, `~/LordOS-pw-kdbx` and `~/LordOS-pw-qr`); `~/LordOS-iso`
+and `~/LordOS-m9` were not touched.
+
+- **Deploy:** `make -C server` in `~/LordOS-pw`, then `lord-server`, `lord-sessiond`,
+  `lord-vault` (new) and `lord-doc` installed into `/usr/local/lib/lordos/bin` (root, 755), and
+  `themes/` and `assets/` copied to `/usr/local/lib/lordos/`. Restarting the service needs the
+  sessions killed first (`KillMode=process`): `systemctl stop lordos`, `pkill -x lord-server`,
+  `reset-failed`, `start`.
+- **Test user** `pwtest` (`useradd -m -s /bin/bash -c "Prueba Contraseñas" pwtest`, test-only
+  password) so the login password path (`RP_KEYRING` → `login.lvault`) could be tested without
+  touching `lord`'s password; added to `plugdev` for the FIDO2 rule.
+- **Packages, test-only:**
+
+  | Package | Version | Why |
+  |---|---|---|
+  | `libsecret-tools` (+ `libsecret-1-0`) | 0.21.7-1 | `secret-tool` against our Secret Service |
+  | `chromium` | 155.0.8059.79-1~deb13u1 | saving and autofilling a login through the Secret Service |
+  | `keepassxc-minimal` | 2.7.10+dfsg1-1 | creating the KDBX test files (`server/tests/import/`) |
+  | `python3-venv` | 3.13.5-1 | a venv in `~/LordOS-pw-kdbx/venv` with pykeepass 4.2.0 for KDBX 4 variants |
+  | `libavcodec-dev`, `libavformat-dev`, `libavutil-dev`, `libswscale-dev`, `libswresample-dev` | Debian 13 | building `lord-media`, so LordOS screenshots work for the protected-window capture |
+
+- **FIDO2:** `/etc/udev/rules.d/71-lordos-fido.rules` (the rule in `PASSWORDS.md`); the software
+  authenticator `server/build/softfido` (from `tests/fido-soft/softfido.c`) runs as root on
+  `/dev/uhid` and shows up as `/dev/hidrawN` (`root:plugdev 0660`). No real key was available.
+- **Fake USB stick:** `/var/tmp/pendrive-pw-116.img` (32 MB ext4, label `PENDRIVE`) loop-mounted at
+  `/media/pwtest/PENDRIVE` (owned by `pwtest`) for the key-file screenshots.
+- **Remote desktop** turned on (`/etc/lordos/remote/config`: `enabled=1`, `port=5673`) while trying
+  the remote-viewer capture.
+- **Demo data:** `server/build/vault-demo lordos foto.jpg`, run as `pwtest`, creates a vault with
+  invented items of every template (test-only master password `lordos`); `/tmp/sitio-pw/` is a
+  local login page served on 127.0.0.1:8080 for the Chromium test.
+- **Screenshots** with `qm monitor 116` (`screendump`) from the Proxmox host; mouse via
+  `/root/lord-qmp-input.py 116`, keys via `sendkey` (`/root/lord-type.py`, and
+  `/root/lordos-latam-type.py` once the session uses the latam layout).
+- No network configuration was changed.
+
+## Step 20 — App polish pass (VM 120 `lordos-video`)
+
+See `DESIGN.md` and `docs/polish/`. VM 120 boots the **live ISO** (`lordos-live-0.7.0-amd64.iso`);
+its disk is empty. Nothing persistent was changed: everything below lives in the live session's
+RAM and disappears on reboot.
+
+- **Network:** untouched (DHCP, it got `172.17.0.22`). No SSH or listening service was added.
+- **Boot order:** set to `scsi0;ide2` for one boot to check the disk (empty), then restored to
+  `ide2;scsi0`.
+- **Deploying a build:** the tree goes into a raw `tar` file that is hot-plugged as a read-only
+  USB disk from the Proxmox monitor (`drive_add` + `device_add usb-storage`, removed with
+  `device_del`). It's installed from the session's Terminal (`sudo tar xf /dev/sdX -C /tmp` and
+  `instalar-pulido-120.sh`, which copies `bin`, `themes` and `assets` to `/usr/lib/lordos` and
+  restarts `lordos.service`).
+- **Libraries:** the 0.7.0 ISO doesn't have the runtime libraries of the current `lord-doc` and
+  `lord-media` (Poppler, libarchive, FFmpeg and their dependencies), so the PDF Viewer, Fonts and the
+  Photos thumbnails failed (`libpoppler-glib.so.8: cannot open shared object file`). The libraries
+  that were missing were copied from a Debian 13 container (`cp -n` into
+  `/usr/lib/x86_64-linux-gnu`, then `ldconfig`). They aren't installed with `apt`.
+- **Binaries:** built in a `debian:trixie` container with the `-dev` packages of steps 16 and 19.
+- **Sample content** in `/home/lordos`: generated photos in `Imágenes` (with `Viajes` and `Familia`
+  subfolders), `Documentos/Guia-LordOS.pdf` (5 pages with an outline), five notes in `Notas`, a
+  small project in `Proyectos/lordos-demo`, and the Arabic test pack in
+  `~/.local/share/lordos/locales/ar`.
+- **Screenshots:** a scratch-only harness (never in the repo) bundled into the test theme. F9/F8
+  step through 30 scenarios (6 apps × dark, light, RTL, minimum size, large), F7 opens a Terminal
+  and F6 shows a glyph test. Captured with `screendump` from the Proxmox monitor.
+
+## Step 21 — M8 app isolation: root-owned scopes, camera, several windows (VM 122 `lordos-sandbox`)
+
+See `PRIVACIDAD.md` («Root-owned app scopes», «Camera for isolated apps», «Several windows per
+isolated app»). On VM 122 (172.17.0.56):
+
+- **Packages:**
+  - `v4l2loopback-dkms` 0.15.0-2 and `linux-headers-6.12.111+deb13-amd64` (the cloud kernel
+    doesn't ship v4l2loopback; DKMS built and signed it);
+  - `ffmpeg` 7.1.5 and `v4l-utils` 1.30.1, to feed and inspect the virtual camera;
+  - `libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libva-dev`, to
+    build `lord-media` (as in step 19).
+- **Virtual camera:** `/etc/modules-load.d/v4l2loopback.conf` (`v4l2loopback`) and
+  `/etc/modprobe.d/v4l2loopback.conf` (`video_nr=10 card_label="Camara virtual (v4l2loopback)"
+  exclusive_caps=1`) → `/dev/video10` (group `video`). The service
+  `/etc/systemd/system/lordos-test-camfeed.service` (enabled) runs `ffmpeg -re -f lavfi -i
+  testsrc2=size=1280x720:rate=30 -pix_fmt yuyv422 -f v4l2 /dev/video10`.
+- **`lordos.service`:** added `DelegateSubgroup=supervisor` (as in the ISO's unit).
+  `/usr/local/lib/lordos/bin` now also has `lord-media`.
+- **Test apps and files (test only):**
+  - `~/.local/share/applications/aisla.desktop` («Prueba de aislamiento»): `foot -e
+    ~/bin/escape-aisla-122.sh`, which tries to leave its scope and checks the network before and
+    after; `~/.config/lordos/firewall.json` restricts `desktop:aisla` (no internet, no incoming);
+  - `tests/lpk-legit` 1.1.0 (camera, «New window») unpacked into
+    `~/.local/share/lordos/apps/grabadora`;
+  - `~/foto.jpg` and `~/video.mp4`, saved through the powerbox during the test.
+- **Scripts:** `~/deploy-aisla-122.sh [full]` (installs the build; `full` stops/kills
+  `lordos.service`, clears `/run/lordos/autologin-done` and starts it) and
+  `~/vmbuild-aisla-122.sh` (runs `make`; while another agent's `src/hw` work was half done it added
+  those sources and `-include stddef.h` to the VM's copy only). From the Mac:
+  `sync-aisla-122.sh`, kept outside the repo.
+- **Screenshots:** `qm monitor 122` (`screendump`) on the Proxmox host; the mouse through
+  `/root/lord-qmp-input.py 122`, typing through `/root/lord-type.py 122`.
+- **Network:** untouched (no eth0 change, no nftables).

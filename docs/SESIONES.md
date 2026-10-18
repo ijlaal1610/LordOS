@@ -16,7 +16,7 @@ LordOS tiene su propio administrador de sesiones, `lord-sessiond`. Hace lo mismo
 ```
 lordos.service (root)
 └── lord-sessiond                     principal: config, lista de sesiones, contraseñas, monitor
-    ├── lord-netd (netsup.c)          la red del sistema, desde el arranque (RED.md); lo relanza si termina
+    ├── lord-netd (netsup.c)          the system network, from boot (RED.md); restarted if it exits
     ├── conexiones web (conn.c)       un hijo por navegador; pasa a ser el usuario (REMOTO.md)
     └── trabajadores                  hijos cortos: verificar contraseña, crear la sesión
 lord-server --greeter --user lordos-greeter   pantalla de ingreso (tema themes/greeter)
@@ -166,10 +166,9 @@ primeros no esperan; después la espera es de 1, 2, 4… segundos, hasta 5 minut
 - **Reinicio de `lord-sessiond`:**
   - las sesiones siguen vivas (`KillMode=process`), y al volver se entra de nuevo por la
     pantalla de ingreso;
-  - `lord-netd` también sigue vivo y el `lord-sessiond` nuevo lo adopta: la red no se corta;
-  - `lordos.service` lleva `DelegateSubgroup=supervisor`: sin eso, systemd no podía arrancar el
-    principal nuevo mientras quedaban procesos vivos en el árbol delegado («Device or resource
-    busy»);
+  - `lord-netd` keeps running too and the new `lord-sessiond` adopts it: the network is not cut;
+  - `lordos.service` has `DelegateSubgroup=supervisor`: without it, systemd couldn't start the new
+    main process while live processes remained in the delegated tree ("Device or resource busy");
   - el inicio automático se aplica una sola vez por arranque del equipo
     (`/run/lordos/autologin-done`), así que un reinicio del servicio no desbloquea una sesión
     bloqueada.
@@ -191,6 +190,11 @@ corre sin root, así que `lord-sessiond` le **delega** un subárbol:
   `lordos-session-<uid>/server`, se mete ahí y le cede el subárbol al usuario (`chown`).
 - `lord-server` crea las scopes de sus apps como hermanas de `server`, sin root:
   `app-lordos-lpk-<id>.scope` (apps `.lpk` aisladas) y `app-lordos-<id>.scope` (apps Linux).
+- **Update (root-owned scopes):** the subtree is no longer chowned to the user. The scopes are
+  created by `lord-sessiond` (a root child on `/run/lordos/cgroup.sock`, `remote/cgsup.c`) when
+  `lord-server`, or a child it forked right before exec, asks to be placed; all of them, and
+  every `cgroup.procs`, are root's. After a restart the new `lord-sessiond` hardens the subtrees
+  of the sessions that survived. See `PRIVACIDAD.md`, «Root-owned app scopes».
 - La pantalla de ingreso y las conexiones web quedan en `supervisor`.
 
 ```
@@ -256,11 +260,11 @@ root:
 - **Avatares:** quedan en `/var/lib/lordos/users/<u>.json` (el color) y `<u>.png` (la imagen).
   La pantalla de ingreso los puede leer; la casa de cada usuario, no.
 - **Usuario nuevo:**
-  - se crea con las carpetas comunes en el idioma del sistema (Escritorio, Documentos, Descargas,
-    Música, Imágenes y Videos; en inglés o portugués si ese es el idioma), su
-    `~/.config/user-dirs.dirs` y `user-dirs.locale` (xdg-user-dirs), más `settings.json` y
-    `locale.conf`. La lista está en un solo lugar, `server/src/users/homedirs.c`, y la usa también
-    el instalador; es la misma de `lordos-live-prep`. Prueba: `build/homedirs-test`;
+  - it is created with the common folders in the system language (Escritorio, Documentos,
+    Descargas, Música, Imágenes and Videos; in English or Portuguese if that is the language), its
+    `~/.config/user-dirs.dirs` and `user-dirs.locale` (xdg-user-dirs), plus `settings.json` and
+    `locale.conf`. The list lives in one place, `server/src/users/homedirs.c`, which the installer
+    uses too; it matches `lordos-live-prep`. Test: `build/homedirs-test`;
   - el nombre de usuario se sugiere a partir del nombre completo.
 
 ## Seguridad
@@ -268,7 +272,7 @@ root:
 | Proceso                           | Corre como      | Qué puede                                                        |
 |-----------------------------------|-----------------|------------------------------------------------------------------|
 | `lord-sessiond` (principal)       | root            | lee shadow, abre y presta la placa y la entrada, crea sesiones, reinicia; no lee píxeles |
-| `lord-netd`                       | root            | solo las acciones `net-*` de `admin.c` (RED.md); habla solo con los ayudantes root de las sesiones (`netd.sock` 0600) |
+| `lord-netd`                       | root            | only the `net-*` actions of `admin.c` (RED.md); talks only to the sessions' root helpers (`netd.sock` 0600) |
 | pantalla de ingreso               | `lordos-greeter` | dibujar y pedir; sin ayudante de administración ni acceso a casas |
 | sesión                            | el usuario      | lo de siempre (el ayudante `admin.c` con su lista cerrada); la placa y la entrada solo mientras está en el monitor |
 | conexión web                      | root → usuario  | suelta root apenas sabe de quién es la sesión (REMOTO.md)          |
@@ -292,9 +296,9 @@ root:
 | `server/src/remote/mirror.c`           | lado de la sesión: visores, monitor prestado, tamaño, pedidos |
 | `server/src/remote/proto.h`            | el protocolo local                                        |
 | `server/src/users/users_admin.c`       | acciones `user-*`                                         |
-| `server/src/users/homedirs.c`          | carpetas comunes y `user-dirs.dirs` (Usuarios y el instalador) |
-| `server/src/remote/netsup.c`           | lanza, vigila y adopta a `lord-netd` (RED.md)             |
-| `/run/lordos/netd.sock`, `netd.pid`, `netd.enabled` | la red del sistema (RED.md)                  |
+| `server/src/users/homedirs.c`          | common folders and `user-dirs.dirs` (Users and the installer) |
+| `server/src/remote/netsup.c`           | starts, supervises and adopts `lord-netd` (RED.md)       |
+| `/run/lordos/netd.sock`, `netd.pid`, `netd.enabled` | the system network (RED.md)                 |
 | `server/src/sec/cgroup.c`              | subárbol de cgroup por sesión y scopes por app (`Delegate=yes`) |
 | `themes/greeter/`                      | la pantalla de ingreso                                    |
 | `apps/settings/Users.jsx`              | Ajustes → Usuarios                                        |

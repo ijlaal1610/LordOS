@@ -8,8 +8,22 @@
 
 int  js_broker_fd(void);              /* fd del broker para poll; -1 si no hay */
 void js_broker_poll(void);            /* mensajes del servidor sin pedir (indicadores, tema) */
+int  js_broker_pending(void);         /* events queued during an RPC, not dispatched yet */
 void js_broker_set_pkgdir(const char *dir);   /* antes de la caja de arena */
 int  js_broker_wants_network(void);   /* la app declaró `network` y lo tiene permitido */
 void js_broker_register(JSContext *c, JSValue lord, const char *app_id);
+/* lord.appWindows: the app's own windows (app/appclient.c, docs/PRIVACIDAD.md) */
+void app_windows_register(JSContext *c, JSValue lord);
+
+/* RPCs over the broker for the app-side modules (js_brokercam.c). rpc_fd returns the passed fd
+ * (or -1) and copies the reply text to info; js_broker_send does not wait for a reply. */
+#include <stddef.h>
+#include <stdint.h>
+int  js_broker_rpc(int op, const void *payload, uint32_t len, int *status, char **out, uint32_t *outlen);
+int  js_broker_rpc_fd(int op, const void *payload, uint32_t len, char *info, size_t n);
+int  js_broker_send(int op, const void *payload, uint32_t len);
+/* lord.media of an isolated app: the camera (js_brokercam.c) */
+void js_brokercam_register(JSContext *c, JSValue lord);
+void js_brokercam_event(const char *data, size_t len);
 
 #endif

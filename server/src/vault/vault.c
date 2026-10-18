@@ -1130,7 +1130,7 @@ static const char *group_cat(Vault *v, GroupMap **gm, int *ngm, const char *path
     vb_open(&b, '{');
     vb_ks(&b, "id", g->id);
     vb_ks(&b, "name", name);
-    vb_ks(&b, "icon", "folder");
+    vb_ks(&b, "icon", "\xf0\x9f\x93\x81");
     vb_ks(&b, "color", "#8e8e93");
     vb_ks(&b, "template", "general");
     if (pid) vb_ks(&b, "parent", pid);

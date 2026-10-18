@@ -1,21 +1,21 @@
-// alarms.js — alarmas, temporizador y cronómetro de la sesión (app Reloj, docs/SISTEMA.md).
+// alarms.js — the session's alarms, timer and stopwatch (Clock app, docs/SYSTEM.md).
 //
-// Viven en el SDK y no en la ventana del Reloj: startShell llama a startAlarms() y las alarmas
-// suenan aunque la app esté cerrada (o la sesión esté sin monitor). El temporizador y el
-// cronómetro también siguen al cerrar la ventana.
+// They live in the SDK, not in the Clock window: startShell calls startAlarms() and alarms ring
+// even when the app is closed (or the session is not on the monitor). The timer and the stopwatch
+// also keep going when the window is closed.
 //
-//   settings.clock = { alarms: [{ id, h, m, days: [0..6] (0 = domingo; vacío = una vez), label, on,
-//                                 snooze (ms o 0), fired (ms de la última vez que sonó) }],
+//   settings.clock = { alarms: [{ id, h, m, days: [0..6] (0 = Sunday; empty = once), label, on,
+//                                 snooze (ms or 0), fired (ms of the last time it rang) }],
 //                      cities: ['Europe/Madrid', …] }
-//   clockAlarms.add({ h, m, days, label }) / update(id, cambios) / remove(id) / nextFire(alarma)
-//   clockTimer (store) + timerStart(segundos) / timerPause() / timerResume() / timerReset()
+//   clockAlarms.add({ h, m, days, label }) / update(id, changes) / remove(id) / nextFire(alarm)
+//   clockTimer (store) + timerStart(seconds) / timerPause() / timerResume() / timerReset()
 //   stopwatch (store) + swStart() / swStop() / swLap() / swReset() / swElapsed()
 //
-// Sin sondeos: un solo setTimeout hasta lo próximo que tiene que sonar. Los timers del servidor
-// van con CLOCK_MONOTONIC, que no avanza mientras el equipo está suspendido; por eso la espera se
-// corta en tramos (como mucho 1 minuto si algo suena dentro de la hora, si no 10 minutos) y en
-// cada despertar se mira la hora real: si saltó (cambio de hora, suspensión), se recalcula.
-// Lo que debió sonar hace menos de 10 minutos suena igual; lo más viejo se da por perdido.
+// No polling: a single setTimeout until the next thing due. The server's timers use
+// CLOCK_MONOTONIC, which does not advance while the computer is suspended; so the wait is cut into
+// slices (at most 1 minute if something is due within the hour, 10 minutes otherwise) and each
+// wake-up looks at the real time: if it jumped (clock change, suspend), everything is recomputed.
+// Anything that should have rung less than 10 minutes ago still rings; older ones are dropped.
 import { createElement as h, useEffect, useState } from 'react';
 import { View, Text } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
@@ -35,7 +35,7 @@ const saveAlarms = (alarms) => settings.set({ clock: { ...conf(), alarms } });
 const atDay = (base, addDays, hh, mm) => { const d = new Date(base); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + addDays); d.setHours(hh, mm, 0, 0); return d.getTime(); };
 const dayOk = (a, ms) => !a.days?.length || a.days.includes(new Date(ms).getDay());
 
-// Próxima vez que suena (ms), o null si está apagada.
+// Next time it rings (ms), or null if it is off.
 export function nextFire(a, now = Date.now()) {
   if (!a.on) return null;
   if (a.snooze && a.snooze > now) return a.snooze;
@@ -46,7 +46,7 @@ export function nextFire(a, now = Date.now()) {
   return null;
 }
 
-// La última vez que tendría que haber sonado (≤ ahora), para saber si quedó una pendiente.
+// The last time it should have rung (≤ now), to know whether one is pending.
 function lastDue(a, now) {
   if (!a.on) return null;
   if (a.snooze) return a.snooze <= now ? a.snooze : null;
@@ -66,14 +66,14 @@ export const clockAlarms = {
     return a.id;
   },
   update(id, patch) {
-    // al prenderla o cambiar la hora no tiene que sonar por algo "pendiente" de antes
+    // turning it on or changing the time must not ring for something "pending" from before
     saveAlarms(alarmsOf().map((a) => (a.id === id ? { ...a, ...patch, snooze: 'snooze' in patch ? patch.snooze : 0, fired: Date.now() } : a)));
   },
   remove(id) { saveAlarms(alarmsOf().filter((a) => a.id !== id)); },
   nextFire,
 };
 
-// ---- temporizador y cronómetro (en memoria de la sesión) ----
+// ---- timer and stopwatch (in session memory) ----
 
 export const clockTimer = createStore({ state: 'idle', duration: 0, endsAt: 0, left: 0 });
 export function timerStart(seconds) {
@@ -101,9 +101,9 @@ export const swStop = () => { const s = stopwatch.get(); if (s.running) stopwatc
 export const swLap = () => { const s = stopwatch.get(); stopwatch.set({ laps: [swElapsed(s), ...s.laps].slice(0, 200) }); };
 export const swReset = () => stopwatch.set({ running: false, start: 0, acc: 0, laps: [] });
 
-// ---- sonar ----
+// ---- ringing ----
 
-export const ringing = createStore([]);       // ids de notificación que están sonando
+export const ringing = createStore([]);       // notification ids that are ringing
 function ring(notifyOpts) {
   let iv = null, stopAt = Date.now() + RING_MS;
   const id = notify({
@@ -137,10 +137,10 @@ function fireTimer() {
   });
 }
 
-// ---- programación ----
+// ---- scheduling ----
 
 let handle = null, started = false;
-export const nextAlarm = createStore(null);    // { at, label } la próxima alarma (para la barra)
+export const nextAlarm = createStore(null);    // { at, label } the next alarm (for the bar)
 
 function check() {
   const now = Date.now();
@@ -162,7 +162,7 @@ function check() {
 export function arm() {
   clearTimeout(handle);
   if (!started) return;
-  check();                 // puede volver a entrar acá (guardar las alarmas avisa a la suscripción)
+  check();                 // may re-enter here (saving the alarms notifies the subscription)
   clearTimeout(handle);
   const now = Date.now();
   let next = Infinity, nextA = null;
@@ -179,7 +179,7 @@ export function arm() {
   handle = setTimeout(arm, Math.max(0, Math.min(wait, cap)));
 }
 
-// La barra: ⏱ con lo que falta del temporizador, o ⏰ si hay una alarma en las próximas 24 h.
+// The bar: ⏱ with the time left on the timer, or ⏰ if an alarm rings within the next 24 h.
 function TimerLeft({ color }) {
   const s = useStore(clockTimer);
   useTick(s.state === 'running');
@@ -188,7 +188,7 @@ function TimerLeft({ color }) {
   const txt = `${sec >= 3600 ? `${Math.floor(sec / 3600)}:` : ''}${String(Math.floor(sec / 60) % 60).padStart(sec >= 3600 ? 2 : 1, '0')}:${String(sec % 60).padStart(2, '0')}`;
   return h(Text, { style: { fontSize: 12, fontWeight: 600, color, fontFamily: 'monospace' } }, `⏱ ${txt}`);
 }
-// vuelve a dibujar cada segundo, solo mientras corre
+// redraws every second, only while it runs
 function useTick(on) {
   const [, set] = useState(0);
   useEffect(() => { if (!on) return undefined; const id = setInterval(() => set((x) => x + 1), 1000); return () => clearInterval(id); }, [on]);
@@ -207,7 +207,7 @@ function ClockStatus({ color, height }) {
   soon && tm.state === 'idle' ? h(Text, { style: { fontSize: 12, color } }, `⏰ ${formatTime(new Date(na.at))}`) : null);
 }
 
-// La llama startShell una vez. Las alarmas se vuelven a programar cuando cambian.
+// Called once by startShell. Alarms are re-armed when they change.
 export function startAlarms() {
   if (started) return;
   started = true;

@@ -913,6 +913,7 @@ static int writer_ready(int fd, uint32_t mask, void *data) {
     }
     wl_event_source_remove(w->ev);
     close(w->fd);
+    explicit_bzero(w->buf, w->len);       /* may be a password copied from Passwords */
     free(w->buf);
     free(w);
     return 0;
@@ -940,6 +941,8 @@ static void ofr_receive(struct wl_client *c, struct wl_resource *r, const char *
     if (src && src == selection) { wl_data_source_send_send(src->res, mime, fd); close(fd); return; }
     if (!src && clip_is_image && clip_png && !strcmp(mime, "image/png")) { send_bytes(fd, clip_png, clip_png_len); return; }
     if (!src && !clip_is_image && text_mime(mime)) { const char *t = term_clipboard(); send_bytes(fd, t, strlen(t)); return; }
+    /* KDE/GNOME convention: clipboard managers skip an offer carrying this hint */
+    if (!src && !clip_is_image && !strcmp(mime, "x-kde-passwordManagerHint") && term_clipboard_sensitive()) { send_bytes(fd, "secret", 6); return; }
     close(fd);
 }
 static void ofr_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
@@ -965,6 +968,8 @@ static void offer_selection(struct wl_resource *dev) {
         wl_data_offer_send_offer(o, "text/plain;charset=utf-8");
         wl_data_offer_send_offer(o, "text/plain");
         wl_data_offer_send_offer(o, "UTF8_STRING");
+        /* a secret copied in LordOS (Passwords, password fields): Linux clipboard managers must not keep it */
+        if (term_clipboard_sensitive()) wl_data_offer_send_offer(o, "x-kde-passwordManagerHint");
     }
     wl_data_device_send_selection(dev, o);
 }

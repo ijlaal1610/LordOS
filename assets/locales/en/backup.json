@@ -22,7 +22,7 @@
   "bytes": "{done} of {total}",
   "cancel": "Cancel",
   "dest": "Destination",
-  "destHelp": "An external disk (ext4 recommended) or a folder. Backups are stored in LordOS-Copias.",
+  "destHelp": "An external disk (ext4 recommended) or a folder. Backups are stored in LordOS-Backups.",
   "volFree": "{free} free of {total} · {fs}",
   "noLinks": "no hard links: every backup takes full space",
   "noDisks": "No external disks mounted. Connect one or choose a folder.",
@@ -104,5 +104,12 @@
   "encLock": "Lock",
   "encWorking": "Checking the passphrase…",
   "notify.lockedTitle": "Backups are encrypted",
-  "notify.lockedBody": "Enter the passphrase so scheduled backups can continue."
+  "notify.lockedBody": "Enter the passphrase so scheduled backups can continue.",
+  "err.wrong-passphrase": "Wrong passphrase",
+  "err.not-encrypted": "This destination is not encrypted",
+  "err.plain-backups-exist": "There are unencrypted backups on this destination: choose another one",
+  "err.setup-failed": "Couldn't turn on encryption",
+  "err.no-destination": "Choose a destination first",
+  "err.locked": "Backups are encrypted: unlock them first",
+  "err.interrupted": "It was interrupted"
 }

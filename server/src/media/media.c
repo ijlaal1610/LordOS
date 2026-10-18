@@ -380,6 +380,7 @@ static uint8_t *map_sealed(int fd, size_t need) {
 
 static void on_src_msg(MediaSrc *s, const MediaMsg *m, int *fds) {
     char esc[MP_PAYLOAD_MAX * 2 + 16];
+    if (s->bk_msg && s->bk_msg(s, m, payload, fds)) return;    /* camera of an isolated app (brokercam.c) */
     switch (m->type) {
     case MM_INFO:
         if (m->len && payload[0] == '{') media_event(s->id, "info", "%s", payload);

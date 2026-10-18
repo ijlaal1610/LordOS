@@ -224,5 +224,17 @@
   "dock.recentsHint": "The last three apps used that aren't pinned, after a divider.",
   "dock.taskbar": "Taskbar position",
   "dock.taskbarHint": "Classic theme. Maximized windows don't go under the taskbar.",
-  "dock.sidesHint": "Left and right are sides of the screen: they don't swap in a right-to-left language."
+  "dock.sidesHint": "Left and right are sides of the screen: they don't swap in a right-to-left language.",
+  "section.displays": "Displays",
+  "section.bluetooth": "Bluetooth",
+  "section.power": "Energy",
+  "section.notifications": "Notifications",
+  "section.datetime": "Date & Time",
+  "section.defaultapps": "Default Apps",
+  "keywords.displays": "display monitor screen resolution refresh rate hz rotation brightness night shift color temperature edid",
+  "keywords.bluetooth": "bluetooth pair pairing headphones headset speaker keyboard mouse wireless",
+  "keywords.power": "battery energy power profile low power performance sleep suspend lid power button screen off",
+  "keywords.notifications": "notifications alerts banners do not disturb focus sound",
+  "keywords.datetime": "date time clock ntp time zone 24-hour 12-hour menu bar seconds",
+  "keywords.defaultapps": "default apps browser mail music video images pdf text editor terminal open with mimeapps"
 }

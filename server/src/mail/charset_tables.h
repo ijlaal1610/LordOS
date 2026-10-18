@@ -1,5 +1,5 @@
-/* charset_tables.h — generado con tools (codecs de Python): 0x80..0xFF de cada juego de 8 bits → Unicode.
- * 0xFFFD donde el juego no define el byte. No editar a mano. */
+/* charset_tables.h — generated with tools (Python codecs): 0x80..0xFF of each 8-bit charset → Unicode.
+ * 0xFFFD where the charset does not define the byte. Do not edit by hand. */
 #ifndef LORD_MAIL_CHARSET_TABLES_H
 #define LORD_MAIL_CHARSET_TABLES_H
 #include <stdint.h>

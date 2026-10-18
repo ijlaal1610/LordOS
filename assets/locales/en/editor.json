@@ -72,5 +72,10 @@
   "status.tabs": "Tabs: {n}",
   "tooBig": "is too big for the editor ({size}; max. 8 MB)",
   "untitled": "Untitled",
-  "cmd.print": "Print…"
+  "cmd.print": "Print…",
+  "find.prev": "Previous match",
+  "find.next": "Next match",
+  "find.close": "Close find",
+  "find.regex": "Regular expression",
+  "find.case": "Match case"
 }

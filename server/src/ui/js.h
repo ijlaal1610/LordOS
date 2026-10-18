@@ -20,14 +20,15 @@ void   js_media_event(int id, const char *type, const char *json);
 void   js_term_event(int id, const char *type, const char *data);
 void   js_sound_event(const char *type, const char *json);
 void   js_net_event(const char *what);
-void   js_disk_event(const char *what);      /* app Discos: cambió algo (disk/disk.c) */
-void   js_backup_event(const char *json);    /* Copias de seguridad → __lordBackup */
+void   js_disk_event(const char *what);      /* Disks app: something changed (disk/disk.c) */
+void   js_backup_event(const char *json);    /* Backups → __lordBackup */
 void   js_admin_event(int id, const char *kind, const char *text);
 void   js_logs_event(const char *kind, int id, const char *name);   /* app Registros */
 void   js_clipboard_poll(void);
 void   js_remote_event(const char *json);
 void   js_greeter_event(const char *json);
 void   js_screen_resized(void);
+void   js_hw_event(const char *kind, const char *json);   /* Settings' hardware (src/hw) → __lordHw */
 void   js_broker_event(const char *kind, const char *json);   /* avisos del broker → tema */
 void   js_broker_app_event(const char *kind, const char *json, size_t len);   /* lord-server → app aislada */
 

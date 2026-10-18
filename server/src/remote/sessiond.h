@@ -76,12 +76,17 @@ int  sd_session_running(uid_t uid);                 /* ¿hay un lord-server vivo
 /* Usuario de sistema sin login para la pantalla de ingreso o el monitor; lo crea si falta. */
 struct passwd *sd_system_user(const char *name, const char *home);
 
-/* ---- netsup.c: lord-netd, la red del sistema (docs/RED.md) ---- */
-void sd_netd_start(void);                           /* al arrancar; después, sd_netd_tick */
-int  sd_netd_fd(void);                              /* pidfd de un lord-netd adoptado, o -1 */
-void sd_netd_event(void);                           /* ese pidfd avisó que terminó */
-int  sd_netd_reaped(pid_t pid, int status);         /* 1 si el hijo era lord-netd */
-void sd_netd_tick(void);                            /* lo vuelve a lanzar cuando toca */
+/* ---- netsup.c: lord-netd, the system network (docs/RED.md) ---- */
+void sd_netd_start(void);                           /* at startup; afterwards, sd_netd_tick */
+int  sd_netd_fd(void);                              /* pidfd of an adopted lord-netd, or -1 */
+void sd_netd_event(void);                           /* that pidfd says it exited */
+int  sd_netd_reaped(pid_t pid, int status);         /* 1 if the child was lord-netd */
+void sd_netd_tick(void);                            /* restarts it when due */
+
+/* ---- cgsup.c: root-owned app scopes (/run/lordos/cgroup.sock, docs/PRIVACIDAD.md) ---- */
+void sd_cgroup_start(void);                         /* after cgroup_service_init */
+int  sd_cgroup_reaped(pid_t pid, int status);       /* 1 if the child was the cgroup service */
+void sd_cgroup_tick(void);                          /* restarts it if it died */
 
 /* "LORD_GPU=0" con lordos.gpu=0 en la línea del kernel (o el LORD_GPU del servicio), o vacío */
 extern char sd_gpu_env[24];

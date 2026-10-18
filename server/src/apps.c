@@ -14,6 +14,7 @@
  *     inventar un comando.
  * La salida de las apps va a ~/.cache/lordos/apps.log (se recorta al pasar 1 MB). */
 #include "apps.h"
+#include "hw/defaults.h"
 #include "fsops.h"
 #include "sec/cgroup.h"
 
@@ -400,6 +401,10 @@ int apps_launch_with(const char *id, const char *path) {
     char real[PATH_MAX];
     struct stat st;
     if (!path || !realpath(path, real) || !fsops_allowed(real) || stat(real, &st) || !(S_ISREG(st.st_mode) || S_ISDIR(st.st_mode))) return -1;
+    /* id "" = the default app for the file's type (Settings → Default Apps, ~/.config/mimeapps.list);
+     * -1 if that is one of LordOS's own apps (the theme opens those) or there is none */
+    char def[160];
+    if (id && !id[0]) { if (defaults_app_for(real, def, sizeof def)) return -1; id = def; }
     return launch(id, real);
 }
 

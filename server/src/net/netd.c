@@ -1,14 +1,14 @@
-/* netd.c — lord-netd: la red de LordOS es del sistema, no de una sesión (docs/RED.md, «La red es
- * del sistema»).
+/* netd.c — lord-netd: LordOS networking belongs to the system, not to a session (docs/RED.md,
+ * "The network belongs to the system").
  *
- * Lo lanza lord-sessiond al arrancar (ruta fija, al lado de su binario, de root y no escribible
- * por otros), sin argumentos, y lo vuelve a lanzar si termina. Levanta la red antes de que alguien
- * entre (DHCP, Wi-Fi guardadas, configs de /etc/lordos/net/if, DNS), así la pantalla de ingreso
- * muestra la IP y el escritorio remoto se alcanza; y la mantiene aunque las sesiones entren y
- * salgan. Es el mismo admin.c compilado con LORD_NETD: su tabla tiene solo las acciones net-*
- * (las mismas validaciones), y las atiende por /run/lordos/netd.sock, un socket 0600 al que solo
- * se conectan los ayudantes root de las sesiones. No ejecuta nada fuera de lo que ya ejecutan
- * esas acciones (wpa_supplicant, openvpn, charon, pppd, resolvectl, networkctl… con ruta fija). */
+ * lord-sessiond starts it at boot (fixed path next to its own binary, root-owned and not writable
+ * by others), with no arguments, and restarts it if it exits. It brings the network up before
+ * anyone logs in (DHCP, saved Wi-Fi, /etc/lordos/net/if configs, DNS), so the greeter shows the IP
+ * and the remote desktop is reachable, and keeps it up while sessions come and go. It is admin.c
+ * built with LORD_NETD: its table has only the net-* actions (same validation), served on
+ * /run/lordos/netd.sock, a 0600 socket that only the sessions' root helpers connect to. It runs
+ * nothing beyond what those actions already run (wpa_supplicant, openvpn, charon, pppd, resolvectl,
+ * networkctl… at fixed paths). */
 #include "../admin.h"
 
 #include <stdio.h>
@@ -17,8 +17,8 @@
 
 int main(int argc, char **argv) {
     (void)argv;
-    if (argc != 1) { fprintf(stderr, "uso: lord-netd (sin argumentos; lo lanza lord-sessiond)\n"); return 2; }
-    if (geteuid() != 0) { fprintf(stderr, "lord-netd: tiene que correr como root\n"); return 1; }
+    if (argc != 1) { fprintf(stderr, "usage: lord-netd (no arguments; started by lord-sessiond)\n"); return 2; }
+    if (geteuid() != 0) { fprintf(stderr, "lord-netd: must run as root\n"); return 1; }
     setvbuf(stderr, NULL, _IOLBF, 0);
     return admin_netd_serve();
 }

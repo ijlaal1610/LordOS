@@ -22,7 +22,7 @@
   "bytes": "{done} de {total}",
   "cancel": "Cancelar",
   "dest": "Destino",
-  "destHelp": "Um disco externo (recomendado: ext4) ou uma pasta. As cópias ficam em LordOS-Copias.",
+  "destHelp": "Um disco externo (recomendado: ext4) ou uma pasta. As cópias ficam em LordOS-Backups.",
   "volFree": "{free} livres de {total} · {fs}",
   "noLinks": "sem links físicos: cada cópia ocupa tudo",
   "noDisks": "Nenhum disco externo montado. Conecte um ou escolha uma pasta.",
@@ -104,5 +104,12 @@
   "encLock": "Bloquear",
   "encWorking": "Verificando a frase…",
   "notify.lockedTitle": "As cópias de segurança estão criptografadas",
-  "notify.lockedBody": "Digite a frase para que as cópias programadas continuem."
+  "notify.lockedBody": "Digite a frase para que as cópias programadas continuem.",
+  "err.wrong-passphrase": "Frase incorreta",
+  "err.not-encrypted": "Este destino não está criptografado",
+  "err.plain-backups-exist": "Já existem cópias sem criptografia neste destino: escolha outro",
+  "err.setup-failed": "Não foi possível ativar a criptografia",
+  "err.no-destination": "Escolha um destino primeiro",
+  "err.locked": "As cópias estão criptografadas: desbloqueie-as primeiro",
+  "err.interrupted": "Foi interrompida"
 }

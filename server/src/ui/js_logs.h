@@ -1,4 +1,4 @@
-/* js_logs.h — lord.logs (app Registros; ver js_logs.c y docs/SISTEMA.md). */
+/* js_logs.h — lord.logs (app Registros; ver js_logs.c y docs/SYSTEM.md). */
 #ifndef LORD_JS_LOGS_H
 #define LORD_JS_LOGS_H
 

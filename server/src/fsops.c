@@ -64,7 +64,10 @@ int fsops_protected(const char *real) {
                                            "/.local/share/lordos/apps", "/.config/lordos/settings.json",
                                            "/.config/lordos/permisos.json",
                                            "/.config/lordos/firewall.json", /* permisos de red: una app no escribe sus reglas */
-                                           "/.config/lordos/backup.json",   /* Copias de seguridad: a dónde van los datos */
+                                           "/.config/lordos/backup.json",   /* Backups: decides where the data goes */
+                                           "/.config/lordos/mail",          /* Mail accounts and trusted certificates: only lord.mail.saveConfig (docs/MAIL.md) */
+                                           "/.local/share/lordos/mail",     /* Mail cache: only lord-maild writes it */
+                                           "/.local/share/lordos/vault",    /* Passwords vaults: only lord-vault writes them (docs/PASSWORDS.md) */
                                            NULL };
     for (int i = 0; protect[i]; i++) {
         char p[PATH_MAX + 64];

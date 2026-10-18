@@ -32,6 +32,9 @@ enum BrokerOp {
     BOP_STATE,          /* → JSON { theme, locale, keyboard }: el estado actual, al arrancar */
     BOP_MENU,           /* payload: JSON de los menús de la app (para la barra de menú del sistema) */
     BOP_MIC,            /* payload "1"/"0": pedir/soltar el micrófono. Con permiso, → fd de solo lectura del anillo */
+    BOP_CAMERA,         /* payload "list" | "open dev w h" | "ring sid" (→ read-only ring fd) | "ack sid id" |
+                         * "size sid w h" | "photo sid mirror name" | "record sid mirror mic name" |
+                         * "recstop sid" | "close sid". See brokercam.c */
     BOP_EVENT = 100,    /* servidor → app, sin pedido (reqid 0): payload "tipo\0json" */
 };
 
@@ -60,6 +63,8 @@ void brokersrv_events(BrokerEventFn fn);
 /* Respuesta del usuario a un aviso (desde JS: lord.broker.resolve). */
 void brokersrv_resolve(uint32_t reqid, int allow);
 int  brokersrv_count(void);
+/* The app <id> is running: ask it for a new window. 0 if sent, -1 if it is not running. */
+int  brokersrv_new_window(const char *id);
 /* El tema publica su estado (tipo "theme" o "locale", JSON) y se reenvía en vivo a todas las
  * apps aisladas; también se guarda para las que arranquen después (BOP_STATE). */
 int  brokersrv_publish(const char *kind, const char *json, size_t len);

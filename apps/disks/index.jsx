@@ -1,11 +1,12 @@
-// Discos — la utilidad de discos de LordOS, como Utilidad de Discos de macOS o GNOME Discos (ver
-// docs/SISTEMA.md, «Discos»). A la izquierda los discos y sus particiones; a la derecha el uso, los
-// datos, la salud (SMART) y las acciones: montar, desmontar, expulsar, formatear, renombrar, borrar
-// y crear un USB de arranque desde una imagen.
+// Disks — the LordOS disk utility, like macOS Disk Utility or GNOME Disks (see docs/SYSTEM.md,
+// "Disks"). On the left, the disks and their partitions; on the right, usage, details, health
+// (SMART) and the actions: mount, unmount, eject, format, rename, erase and create a bootable USB
+// from an image.
 //
-// La lista la lee lord-server sin root (lord.disks, actualizada sola con los avisos de montajes y de
-// udev). Todo lo que cambia algo va por el ayudante, con las acciones cerradas disk-*, que vuelven a
-// validar del lado root: nunca el disco del sistema, y los discos internos solo un administrador.
+// lord-server reads the list without root (lord.disks, refreshed by itself on mount and udev
+// events). Anything that changes something goes through the helper with the closed disk-*
+// actions, which validate again on the root side: never the system disk, and internal disks only
+// for an administrator.
 import { View, Text, ScrollView, Button, useTheme, useLocale, useSystemInfo, admin, useDisks, disks, formatBytes } from '@lordos/sdk';
 import { useEffect, useMemo, useState } from 'react';
 import { DisksIcon, DriveGlyph, PartGlyph, fsColor } from './icons.jsx';
@@ -37,7 +38,7 @@ function Row({ label, value }) {
   );
 }
 
-// Barra de uso: un disco muestra sus particiones a escala; una partición, lo usado y lo libre.
+// Usage bar: a disk shows its partitions to scale; a partition, used and free space.
 function UsageBar({ disk, part }) {
   const t = useTheme();
   const { t: tr } = useLocale();
@@ -220,7 +221,7 @@ export default function Disks() {
   const [sel, setSel] = useState({ disk: null, part: null });
   const [dialog, setDialog] = useState(null);
   const tools = useMemo(() => disks.tools(), []);
-  // elegir algo al abrir (el primer extraíble, si hay) y no perder la elección si desaparece
+  // pick something on open (the first removable, if any) and keep a valid selection if it disappears
   const disk = list.find((d) => d.name === sel.disk) || list.find((d) => d.removable) || list[0];
   const part = disk && sel.part ? disk.partitions.find((p) => p.name === sel.part) || null : null;
   if (!disks.available()) {

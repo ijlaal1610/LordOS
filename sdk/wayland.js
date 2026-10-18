@@ -126,8 +126,8 @@ locale.subscribe(() => setTimeout(() => {
 // los clics vuelven a la app por lord.broker.menuClick. Ver docs/PRIVACIDAD.md.
 function applyAppMenus(app) {
   if (typeof lord === 'undefined' || !lord.broker || typeof lord.broker.menus !== 'function') return;
-  const win = windows.get().find((w) => surfaceOf(w.id) > 0 && w.args?.appId === app);
-  if (!win) return;
+  const wins = windows.get().filter((w) => surfaceOf(w.id) > 0 && w.args?.appId === app);   // every window of the app
+  if (!wins.length) return;
   let raw;
   try { raw = lord.broker.menus(app); } catch (e) { return; }
   const groups = (Array.isArray(raw) ? raw : []).map((g) => ({
@@ -140,6 +140,6 @@ function applyAppMenus(app) {
       return row;
     }),
   }));
-  wm.setMenus(win.id, groups);
+  for (const win of wins) wm.setMenus(win.id, groups);
 }
 if (typeof globalThis !== 'undefined') globalThis.__lordApplyAppMenus = applyAppMenus;

@@ -153,6 +153,8 @@ export const appName = (app) => (app ? (lookup(locale.get().lang, `apps.${app.id
 
 // ---- formatos (fecha, hora, números) ----
 
+const clock24 = () => settings.get().clock?.hour24 || 'auto';
+
 // Como en macOS: nombres de días y meses en el idioma de la interfaz; orden de la fecha,
 // separadores y reloj de 12/24 h según la región (es_AR, pt_BR, en_US…).
 function formats() {
@@ -165,7 +167,8 @@ function formats() {
   return {
     ...names,
     date: { ...(names.date || {}), numeric: r.date?.numeric || names.date?.numeric, ...(own ? r.date : {}) },
-    decimal: r.decimal, group: r.group, hour12: r.hour12,
+    // Settings → Date & Time can force a 24-hour or 12-hour clock over the region's
+    decimal: r.decimal, group: r.group, hour12: clock24() === '24' ? false : clock24() === '12' ? true : r.hour12,
     am: own ? r.am : names.am || r.am, pm: own ? r.pm : names.pm || r.pm,
   };
 }
@@ -183,7 +186,7 @@ export function formatDate(d, style = 'short') {
   });
 }
 
-// Nombre del día de la semana (0 = domingo) en el idioma de la interfaz: weekdayName(1) → "lun".
+// Weekday name (0 = Sunday) in the interface language: weekdayName(1) → "Mon".
 export function weekdayName(wd, short = true) {
   const f = formats();
   return (short ? f.weekdaysShort : f.weekdays)?.[wd] ?? String(wd);

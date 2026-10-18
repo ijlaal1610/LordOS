@@ -3,10 +3,10 @@
  * con netlink, renueva en T1 (unicast al servidor) y re-pide en T2 (broadcast); si vence la
  * concesión o llega un NAK, vuelve a empezar. Sigue el enlace: sin portadora espera, y al
  * volver confirma la misma dirección (INIT-REBOOT). En Wi-Fi además traduce los avisos de
- * wpa_supplicant (conectado/desconectado) a EVENTs. SIGTERM: DHCPRELEASE y limpia. Si muere el
- * proceso que lo lanzó (lord-netd, que lord-sessiond vuelve a lanzar enseguida) recibe SIGUSR1:
- * deja la dirección puesta y la concesión en /run/lordos/dhcp/<if>.lease, y el cliente nuevo la
- * confirma (INIT-REBOOT) sin cortar las conexiones.
+ * wpa_supplicant (conectado/desconectado) a EVENTs. SIGTERM: DHCPRELEASE y limpia. If the process that
+ * started it dies (lord-netd, which lord-sessiond restarts right away) it gets SIGUSR1: it keeps
+ * the address and leaves the lease in /run/lordos/dhcp/<if>.lease, and the new client confirms it
+ * (INIT-REBOOT) without dropping connections.
  *
  * Envía y recibe por un socket AF_PACKET (no hace falta tener IP todavía); un socket UDP en
  * el puerto 68 atado a la interfaz evita que el kernel conteste "puerto inalcanzable" y sirve
@@ -286,7 +286,7 @@ static void enter(Dhcp *d, int st) {
     if (st == S_REBOOTING) d->deadline = now_s() + 10;
 }
 
-/* ---- la concesión guardada (para que un lord-netd nuevo la retome) ---- */
+/* ---- the saved lease (so a new lord-netd can resume it) ---- */
 
 #define LEASE_DIR NET_RUN_DIR "/dhcp"
 #define LEASE_MAGIC 0x4c444c31u           /* "LDL1" */
@@ -309,7 +309,7 @@ static void lease_save(const Dhcp *d) {
 
 static void lease_forget(const Dhcp *d) { char p[96]; lease_path(d, p, sizeof p); unlink(p); }
 
-/* La de un cliente anterior en esta misma interfaz, si todavía vale. */
+/* The lease of an earlier client on this same interface, if still valid. */
 static void lease_load(Dhcp *d) {
     char p[96];
     lease_path(d, p, sizeof p);
@@ -394,7 +394,7 @@ void dhcp_run(const char *ifname, int wifi) {
     sigaction(SIGINT, &sa, NULL);
     struct sigaction sk = { .sa_handler = on_parent_gone };
     sigaction(SIGUSR1, &sk, NULL);
-    prctl(PR_SET_PDEATHSIG, SIGUSR1);           /* muere lord-netd: se va sin soltar la dirección */
+    prctl(PR_SET_PDEATHSIG, SIGUSR1);           /* lord-netd dies: exit without releasing the address */
     d.ifindex = rt_ifindex(ifname);
     gethostname(d.host, sizeof d.host - 1);
     for (char *p = d.host; *p; p++) if (*p == '.') { *p = 0; break; }
@@ -474,7 +474,7 @@ void dhcp_run(const char *ifname, int wifi) {
             }
         }
     }
-    if (keep_flag) {                            /* lo retoma el próximo lord-netd */
+    if (keep_flag) {                            /* the next lord-netd resumes it */
         if (d.lease.addr && d.state == S_BOUND) lease_save(&d);
         _exit(0);
     }

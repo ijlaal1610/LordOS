@@ -4,8 +4,8 @@
 // copia, modo oscuro con la página invertida e imprimir con el diálogo del sistema.
 // Poppler corre en el ayudante encerrado lord-doc (ver docs/DOCUMENTOS.md); esta app solo pide.
 import {
-  View, Text, TextInput, useTheme, useAppWindow, useKeyboard, addListener, wm, fs, clipboard, pdf, print, DocImage, releaseImage,
-  formatNumber, t as tr,
+  View, Text, TextInput, Button, useTheme, useAppWindow, useKeyboard, addListener, wm, fs, clipboard, pdf, print, DocImage, releaseImage,
+  formatNumber, direction, t as tr, Toolbar, ToolbarButton, ToolbarGroup, ToolbarSpacer, SearchField, EmptyState,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PageCache } from './cache.js';
@@ -54,20 +54,34 @@ function ToolBtn({ label, onClick, active, disabled, th, title }) {
 function Welcome({ onOpen, th }) {
   const [list, setList] = useState(null);
   useEffect(() => { const id = setTimeout(() => { try { setList(fs.search(fs.home(), '.pdf', { limit: 40, depth: 6 }).filter((e) => /\.pdf$/i.test(e.name))); } catch (e) { setList([]); } }, 30); return () => clearTimeout(id); }, []);
+  const box = th.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.7)';
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 30 }}>
-      <Icon size={72} />
-      <Text style={{ fontSize: 16, fontWeight: 700, color: th.text }}>{tr('pdf.welcome')}</Text>
-      <Text style={{ fontSize: 12, color: th.textDim, textAlign: 'center' }}>{tr('pdf.welcomeHint')}</Text>
-      <View style={{ width: 420, maxHeight: 260, gap: 2 }}>
-        {list == null ? <Text style={{ fontSize: 12, color: th.textDim, textAlign: 'center' }}>{tr('pdf.searching')}</Text>
-          : list.length ? list.slice(0, 10).map((e) => (
-            <View key={e.path} onClick={() => onOpen(e.path)} style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 10, height: 26, alignItems: 'center', borderRadius: 6, backgroundColor: th.control }}>
-              <Text style={{ fontSize: 12, color: '#ff453a', fontWeight: 700 }}>PDF</Text>
-              <Text style={{ flex: 1, fontSize: 12, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{e.name}</Text>
-            </View>
-          )) : <Text style={{ fontSize: 12, color: th.textDim, textAlign: 'center' }}>{tr('pdf.noneFound')}</Text>}
-      </View>
+    <View style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, direction: direction() }}>
+      <EmptyState icon={<Icon size={64} />} title={tr('pdf.welcome')} hint={tr('pdf.welcomeHint')} action={
+        <View style={{ width: 420, maxHeight: 300, gap: 6 }}>
+          {list == null ? <Text style={{ fontSize: 12, color: th.textDim, textAlign: 'center' }}>{tr('pdf.searching')}</Text>
+            : list.length ? (
+              <>
+                <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, marginLeft: 8 }}>{tr('pdf.recent')}</Text>
+                <View style={{ borderRadius: 10, backgroundColor: box, border: `1px solid ${th.separator}`, overflow: 'hidden' }}>
+                  {list.slice(0, 8).map((e, i) => <RecentRow key={e.path} e={e} first={i === 0} onOpen={onOpen} th={th} />)}
+                </View>
+              </>
+            ) : <Text style={{ fontSize: 12, color: th.textDim, textAlign: 'center' }}>{tr('pdf.noneFound')}</Text>}
+        </View>
+      } />
+    </View>
+  );
+}
+
+function RecentRow({ e, first, onOpen, th }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <View onClick={() => onOpen(e.path)} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{ height: 32, flexDirection: 'row', gap: 10, paddingHorizontal: 12, alignItems: 'center', backgroundColor: hover ? th.hover : 'transparent' }}>
+      {!first ? <View style={{ position: 'absolute', left: 12, right: 0, top: 0, height: 1, backgroundColor: th.separator }} /> : null}
+      <Text style={{ fontSize: 10, color: '#ff453a', fontWeight: 700 }}>PDF</Text>
+      <Text style={{ flex: 1, fontSize: 13, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{e.name}</Text>
     </View>
   );
 }
@@ -561,44 +575,45 @@ export default function PdfViewer() {
   }
 
   const barBg = dark ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.03)';
+  const winW = view.w + (side && doc ? 184 : 0);
   const pageLabel = n ? tr('pdf.pageOf', { page: page + 1, count: n }) : '';
   return (
     <View style={{ flex: 1 }}>
-      {/* barra de herramientas */}
-      <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10 }}>
-        <ToolBtn th={th} label="◧" active={!!side} onClick={() => setSide((s) => (s ? null : 'thumbs'))} />
-        <Text style={{ fontSize: 14, fontWeight: 700, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden', marginHorizontal: 6, maxWidth: 220 }}>{path ? fs.basename(path) : tr('apps.pdf')}</Text>
+      {/* toolbar: icon-only items with tooltips, as in Preview; the narrow window drops what is also in the menus */}
+      <Toolbar style={{ gap: 6 }}>
+        <ToolbarButton icon="◫" title={tr('pdf.tool.sidebar')} active={!!side} onClick={() => setSide((s) => (s ? null : 'thumbs'))} />
         {goto != null ? (
           <TextInput autoFocus value={goto} onChange={setGoto} placeholder={tr('pdf.goPlaceholder')} onCancel={() => setGoto(null)}
-            onSubmit={() => { const v = Number(goto); setGoto(null); if (v >= 1) goPage(v - 1); }} style={{ width: 90, height: 24 }} />
+            onSubmit={() => { const v = Number(goto); setGoto(null); if (v >= 1) goPage(v - 1); }} style={{ width: 96 }} />
         ) : (
-          <View onClick={() => doc && setGoto('')}><Text style={{ fontSize: 12, color: th.textDim, whiteSpace: 'nowrap' }}>{pageLabel}</Text></View>
-        )}
-        <View style={{ flex: 1 }} />
-        <View style={{ flexDirection: 'row', backgroundColor: th.control, borderRadius: 7, padding: 2, direction: 'ltr' }}>
-          <ToolBtn th={th} label="−" onClick={() => zoomStep(-1)} disabled={!doc} />
-          <View onClick={() => setZoomTo(zoom === 'width' ? 'page' : 'width')} style={{ minWidth: 46, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontSize: 11, color: th.text }}>{doc ? `${formatNumber(pct)} %` : ''}</Text>
+          <View onClick={() => doc && setGoto('')} style={{ paddingHorizontal: 4, overflow: 'hidden', flexShrink: 1 }}>
+            <Text style={{ fontSize: 12, color: th.textDim, whiteSpace: 'nowrap' }}>{winW < 640 ? (n ? `${page + 1} / ${n}` : '') : pageLabel}</Text>
           </View>
-          <ToolBtn th={th} label="+" onClick={() => zoomStep(1)} disabled={!doc} />
-        </View>
-        <ToolBtn th={th} label="↻" onClick={() => rotate(1)} disabled={!doc} />
-        <View style={{ flexDirection: 'row', backgroundColor: th.control, borderRadius: 7, padding: 2 }}>
-          <ToolBtn th={th} label="I" active={tool === 'select'} onClick={() => setTool('select')} disabled={!doc} />
-          <ToolBtn th={th} label="▬" active={tool === 'highlight'} onClick={() => setTool('highlight')} disabled={!doc} />
-          <ToolBtn th={th} label="✎" active={tool === 'ink'} onClick={() => setTool((x) => (x === 'ink' ? 'select' : 'ink'))} disabled={!doc} />
-          <ToolBtn th={th} label="🗨" active={tool === 'note'} onClick={() => setTool('note')} disabled={!doc} />
-        </View>
+        )}
+        <ToolbarSpacer />
+        <ToolbarGroup style={{ direction: 'ltr' }}>
+          <ToolbarButton icon="−" small title={tr('pdf.zoom.out')} onClick={() => zoomStep(-1)} disabled={!doc} />
+          <View onClick={() => setZoomTo(zoom === 'width' ? 'page' : 'width')} style={{ minWidth: 48, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 11, fontWeight: 500, color: th.text }}>{doc ? `${formatNumber(pct)} %` : '—'}</Text>
+          </View>
+          <ToolbarButton icon="+" small title={tr('pdf.zoom.in')} onClick={() => zoomStep(1)} disabled={!doc} />
+        </ToolbarGroup>
+        {winW >= 760 && <ToolbarButton icon="↻" title={tr('pdf.rotateRight')} onClick={() => rotate(1)} disabled={!doc} />}
+        <ToolbarGroup>
+          <ToolbarButton icon="I" small iconSize={13} title={tr('pdf.tool.select')} active={tool === 'select'} onClick={() => setTool('select')} disabled={!doc} />
+          <ToolbarButton icon="▬" small iconSize={11} title={tr('pdf.tool.highlight')} active={tool === 'highlight'} onClick={() => setTool('highlight')} disabled={!doc} />
+          <ToolbarButton icon="✎" small title={tr('pdf.tool.ink')} active={tool === 'ink'} onClick={() => setTool((x) => (x === 'ink' ? 'select' : 'ink'))} disabled={!doc} />
+          <ToolbarButton icon="▤" small title={tr('pdf.tool.note')} active={tool === 'note'} onClick={() => setTool('note')} disabled={!doc} />
+        </ToolbarGroup>
         {(tool === 'highlight' || tool === 'ink') && (
-          <View style={{ flexDirection: 'row', gap: 3 }}>
+          <View style={{ flexDirection: 'row', gap: 4 }}>
             {TOOL_COLORS.map((c) => <View key={c} onClick={() => setColor(c)} style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: c, border: `2px solid ${color === c ? th.text : 'transparent'}` }} />)}
           </View>
         )}
-        <ToolBtn th={th} label="◐" active={invert} onClick={() => setInvert((v) => !v)} disabled={!doc} />
-        <ToolBtn th={th} label="⎙" onClick={doPrint} disabled={!doc} />
-        <FindField th={th} query={query} setQuery={setQuery} hits={hits} onFind={runFind} onNext={nextHit} focusReq={findRef} disabled={!doc} />
-      </View>
-      <View style={{ height: 1, backgroundColor: th.separator }} />
+        {winW >= 760 && <ToolbarButton icon="◐" title={tr('pdf.invert')} active={invert} onClick={() => setInvert((v) => !v)} disabled={!doc} />}
+        {winW >= 760 && <ToolbarButton icon="⎙" title={tr('pdf.menu.print')} onClick={doPrint} disabled={!doc} />}
+        <FindField th={th} query={query} setQuery={setQuery} hits={hits} onFind={runFind} onNext={nextHit} focusReq={findRef} disabled={!doc} width={winW < 760 ? 130 : 180} />
+      </Toolbar>
       <View style={{ flex: 1, flexDirection: 'row' }}>
         {side && doc && (
           <Sidebar side={side} setSide={setSide} doc={doc} sizes={sizes} page={page} onPage={goPage} cache={thumbs.current} rot={rot} invert={invert} rev={rev} th={th} />
@@ -611,8 +626,8 @@ export default function PdfViewer() {
           {!path && <Welcome th={th} onOpen={setPath} />}
           {path && !doc && !error && !needPass && <Text style={{ margin: 40, fontSize: 13, color: th.textDim, textAlign: 'center' }}>{tr('pdf.opening')}</Text>}
           {needPass && (
-            <View style={{ position: 'absolute', left: view.w / 2 - 150, top: view.h / 2 - 60, width: 300, padding: 16, gap: 10, borderRadius: 12, backgroundColor: th.windowBg, boxShadow: '0 12px 30px rgba(0,0,0,0.4)' }}>
-              <Text style={{ fontSize: 13, fontWeight: 700, color: th.text }}>{tr('pdf.passwordTitle')}</Text>
+            <View style={{ position: 'absolute', left: view.w / 2 - 160, top: view.h / 2 - 70, width: 320, padding: 20, gap: 12, borderRadius: 12, backgroundColor: th.windowBg, boxShadow: '0 12px 30px rgba(0,0,0,0.4)' }}>
+              <Text style={{ fontSize: 15, fontWeight: 600, color: th.text }}>{tr('pdf.passwordTitle')}</Text>
               <PassField onSubmit={(p) => setPassword(p)} />
               {error ? <Text style={{ fontSize: 11, color: '#ff453a' }}>{error}</Text> : null}
             </View>
@@ -620,10 +635,7 @@ export default function PdfViewer() {
           {error && !needPass && (
             <View style={{ position: 'absolute', left: 0, right: 0, top: view.h / 2 - 40, alignItems: 'center', gap: 10 }}>
               <Text style={{ fontSize: 13, color: '#ff453a', textAlign: 'center' }}>{error}</Text>
-              <View onClick={() => { const p = path; setError(null); setPath(null); setTimeout(() => setPath(p), 0); }}
-                style={{ paddingHorizontal: 12, height: 26, borderRadius: 6, justifyContent: 'center', backgroundColor: th.control }}>
-                <Text style={{ fontSize: 12, color: th.text }}>{tr('pdf.reopen')}</Text>
-              </View>
+              <Button label={tr('pdf.reopen')} onClick={() => { const p = path; setError(null); setPath(null); setTimeout(() => setPath(p), 0); }} />
             </View>
           )}
           {/* barra de desplazamiento */}
@@ -634,7 +646,8 @@ export default function PdfViewer() {
         </View>
       </View>
       {/* barra de estado */}
-      <View style={{ height: 24, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, backgroundColor: barBg }}>
+      <View style={{ height: 26, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, backgroundColor: barBg }}>
+        <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 1, backgroundColor: th.separator }} />
         <Text style={{ flex: 1, fontSize: 11, color: msg ? th.accent : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {msg || (hits ? (hits.list.length ? tr('pdf.matches', { cur: hits.cur + 1, count: hits.list.length }) + (hits.done ? '' : '…') : hits.done ? tr('pdf.noMatches') : tr('pdf.searchingText'))
             : selection?.text ? tr('pdf.selected', { count: selection.text.length }) : tool === 'ink' ? tr('pdf.inkHint') : tool === 'note' ? tr('pdf.noteTool') : tool === 'highlight' ? tr('pdf.highlightHint') : doc?.info.title || '')}
@@ -648,17 +661,17 @@ export default function PdfViewer() {
 
 function PassField({ onSubmit }) {
   const [v, setV] = useState('');
-  return <TextInput autoFocus secure value={v} onChange={setV} onSubmit={() => onSubmit(v)} placeholder={tr('pdf.password')} style={{ height: 26 }} />;
+  return <TextInput autoFocus secure value={v} onChange={setV} onSubmit={() => onSubmit(v)} placeholder={tr('pdf.password')} />;
 }
 
-function FindField({ th, query, setQuery, hits, onFind, onNext, focusReq, disabled }) {
+function FindField({ th, query, setQuery, hits, onFind, onNext, focusReq, disabled, width = 180 }) {
   const [key, setKey] = useState(0);
   useEffect(() => { if (focusReq.current) { focusReq.current = false; setKey((k) => k + 1); } });
   useEffect(() => { const id = setTimeout(() => onFind(query), 350); return () => clearTimeout(id); }, [query]);
-  if (disabled) return <View style={{ width: 170 }} />;
+  if (disabled) return <View style={{ width }} />;
   return (
-    <TextInput key={key} autoFocus={key > 0} value={query} onChange={setQuery} placeholder={tr('pdf.find')} onCancel={() => setQuery('')}
+    <SearchField key={key} autoFocus={key > 0} value={query} onChange={setQuery} placeholder={tr('pdf.find')}
       onSubmit={() => (hits?.list.length ? onNext(1) : onFind(query))} onKeyDown={(e) => { if (e.key === 'Enter' && e.shift) { onNext(-1); return true; } return false; }}
-      style={{ width: 170, height: 26 }} />
+      width={width} />
   );
 }

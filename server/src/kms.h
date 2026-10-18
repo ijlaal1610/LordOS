@@ -2,6 +2,7 @@
 #ifndef LORD_KMS_H
 #define LORD_KMS_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include <drm/drm.h>
 #include <drm/drm_mode.h>
@@ -72,5 +73,41 @@ int  kms_scanout_ok(const Kms *k, uint32_t fourcc, uint64_t modifier);
 int  kms_cursor_image(Kms *k, const uint32_t *argb, int w, int h, int hot_x, int hot_y);
 void kms_cursor_move(Kms *k, int x, int y);
 void kms_cursor_show(Kms *k, int visible);
+
+/* ---- outputs and Settings → Displays (see hw/display.c, docs/SETTINGS.md) ---- */
+
+#define KMS_MAX_OUTPUTS 8
+typedef struct {
+    uint32_t id, type, type_id;         /* connector id; type (DRM_MODE_CONNECTOR_*) and its number */
+    int connected;
+    uint32_t mm_w, mm_h;
+    uint32_t possible_crtcs;            /* bit j = the j-th CRTC of GETRESOURCES */
+    uint32_t current_crtc;              /* driving it now, 0 if none */
+    int nmodes;
+    struct drm_mode_modeinfo *modes;    /* malloc */
+    uint8_t *edid;                      /* malloc, or NULL */
+    size_t edid_len;
+} KmsOutput;
+
+/* Every connector of the card (connected or not), with modes and EDID. Free with
+ * kms_outputs_free. Returns how many (≤ max). */
+int  kms_outputs(int fd, KmsOutput *out, int max);
+void kms_outputs_free(KmsOutput *o, int n);
+const char *kms_connector_type_name(uint32_t type);        /* "HDMI-A", "eDP", "Virtual"... */
+/* Optional choice for kms_open/kms_attach: which connected output (index in o) and mode. Returns
+ * 0 if it chose; otherwise the first connected output with its preferred mode is used. */
+typedef int (*KmsPicker)(const KmsOutput *o, int n, int *index, struct drm_mode_modeinfo *mode);
+void kms_set_picker(KmsPicker fn);
+/* Value and property id of a KMS object property by name. 0 if found. */
+int  kms_obj_prop(int fd, uint32_t obj, uint32_t type, const char *name, uint64_t *val, uint32_t *prop_id);
+/* Runtime modeset (CPU path: the dumb buffers are recreated at the new size). The GPU path must
+ * be shut down first and started again after. Not while a flip is pending. On failure the
+ * previous mode is restored and -1 returned. */
+int  kms_modeset(Kms *k, uint32_t conn_id, const struct drm_mode_modeinfo *mode);
+/* Hardware gamma LUT of the CRTC: entries per channel (0 = none, e.g. virtio-gpu), and set it. */
+int  kms_gamma_size(Kms *k);
+int  kms_set_gamma(Kms *k, int n, const uint16_t *r, const uint16_t *g, const uint16_t *b);
+/* Connector DPMS (screen off/on). 0 if the driver took it. */
+int  kms_dpms(Kms *k, int on);
 
 #endif

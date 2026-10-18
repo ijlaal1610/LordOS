@@ -3,7 +3,7 @@
 // archivo del proyecto (❖T), resaltado de sintaxis propio y métodos de entrada.
 // Ver docs/EDITOR.md.
 import {
-  View, Text, TextInput, Button, ScrollView, useTheme, useLocale, useAppWindow, useKeyboard, wm, fs, formatBytes, addListener, hasTextFocus, print,
+  View, Text, TextInput, Button, ScrollView, ToolbarButton, direction, useTheme, useLocale, useAppWindow, useKeyboard, wm, fs, formatBytes, addListener, hasTextFocus, print,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Doc, cursorAt, hasSel, selStart, selEnd } from './buffer.js';
@@ -91,10 +91,10 @@ function Tree({ t, root, open, expanded, onToggle, active }) {
   walk(root, 0);
   return rows.map((r) => (
     <View key={r.p} onClick={() => (r.dir ? onToggle(r.p) : open(`${fs.home()}/${r.p}`))}
-      style={{ height: 22, flexDirection: 'row', alignItems: 'center', paddingLeft: 8 + r.depth * 14, gap: 5,
-        backgroundColor: active === `${fs.home()}/${r.p}` ? t.accent : 'transparent', borderRadius: 4 }}>
-      <Text style={{ width: 10, fontSize: 9, color: active === `${fs.home()}/${r.p}` ? '#fff' : t.textDim }}>{r.dir ? (expanded.has(r.p) ? '▾' : '▸') : ''}</Text>
-      <Text style={{ fontSize: 12, color: active === `${fs.home()}/${r.p}` ? '#fff' : r.dir ? t.text : t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{r.name}</Text>
+      style={{ height: 24, flexDirection: 'row', alignItems: 'center', paddingLeft: 6 + r.depth * 14, paddingRight: 8, gap: 4,
+        backgroundColor: active === `${fs.home()}/${r.p}` ? t.accent : 'transparent', borderRadius: 6 }}>
+      <Text style={{ width: 12, fontSize: 10, textAlign: 'center', color: active === `${fs.home()}/${r.p}` ? '#fff' : t.textDim }}>{r.dir ? (expanded.has(r.p) ? '▾' : '▸') : ''}</Text>
+      <Text style={{ flex: 1, fontSize: 13, color: active === `${fs.home()}/${r.p}` ? '#fff' : t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{r.name}</Text>
     </View>
   ));
 }
@@ -111,11 +111,11 @@ function FileDialog({ t, tr, mode, start, initialName, onPick, onCancel }) {
   const pickDir = mode === 'folder';
   return (
     <View onClick={onCancel} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center' }}>
-      <View onClick={(e) => e.stopPropagation()} style={{ marginTop: 40, width: 460, height: 380, padding: 12, gap: 8, borderRadius: 12,
+      <View onClick={(e) => e.stopPropagation()} style={{ marginTop: 40, width: 480, height: 400, padding: 20, gap: 12, borderRadius: 12,
         backgroundColor: t.windowBg, border: `1px solid ${t.separator}`, boxShadow: '0 16px 40px rgba(0,0,0,0.45)' }}>
-        <Text style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{title}</Text>
+        <Text style={{ fontSize: 15, fontWeight: 600, color: t.text }}>{title}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Button label="‹" onClick={() => setDir(dirOf(dir))} />
+          <ToolbarButton icon={direction() === 'rtl' ? '›' : '‹'} iconSize={18} onClick={() => setDir(dirOf(dir))} />
           <Text style={{ flex: 1, fontSize: 12, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{`~/${dir}`}</Text>
         </View>
         <View style={{ flex: 1, borderRadius: 8, border: `1px solid ${t.separator}` }}>
@@ -123,9 +123,9 @@ function FileDialog({ t, tr, mode, start, initialName, onPick, onCancel }) {
             {error && <Text style={{ fontSize: 12, color: '#ff453a', margin: 6 }}>{error}</Text>}
             {entries.map((e) => (
               <View key={e.name} onClick={() => { if (e.dir) setDir(dir ? `${dir}/${e.name}` : e.name); else if (mode === 'save') setName(e.name); else if (!pickDir) onPick(`${fs.home()}/${dir ? `${dir}/` : ''}${e.name}`); }}
-                style={{ height: 24, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 8, borderRadius: 5 }}>
+                style={{ height: 26, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 8, borderRadius: 6 }}>
                 <Text style={{ width: 14, fontSize: 11, color: t.textDim }}>{e.dir ? '▸' : ''}</Text>
-                <Text style={{ flex: 1, fontSize: 12, color: e.dir || !pickDir ? t.text : t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{e.name}</Text>
+                <Text style={{ flex: 1, fontSize: 13, color: e.dir || !pickDir ? t.text : t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{e.name}</Text>
                 {!e.dir && <Text style={{ fontSize: 11, color: t.textDim }}>{formatBytes(e.size)}</Text>}
               </View>
             ))}
@@ -153,9 +153,9 @@ function Picker({ t, title, placeholder, items, onPick, onCancel, render = (x) =
   }, [q, items]);
   return (
     <View onClick={onCancel} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, alignItems: 'center' }}>
-      <View onClick={(e) => e.stopPropagation()} style={{ marginTop: 30, width: 480, padding: 10, gap: 6, borderRadius: 12,
+      <View onClick={(e) => e.stopPropagation()} style={{ marginTop: 30, width: 480, padding: 12, gap: 8, borderRadius: 12,
         backgroundColor: t.windowBg, border: `1px solid ${t.separator}`, boxShadow: '0 16px 40px rgba(0,0,0,0.45)' }}>
-        {title && <Text style={{ fontSize: 12, fontWeight: 700, color: t.textDim }}>{title}</Text>}
+        {title && <Text style={{ fontSize: 11, fontWeight: 600, color: t.textDim, marginLeft: 4 }}>{title}</Text>}
         <TextInput value={q} onChange={(v) => { setQ(v); setSel(0); }} placeholder={placeholder} autoFocus onCancel={onCancel}
           onSubmit={() => shown[sel] && onPick(shown[sel])}
           onKeyDown={(e) => {
@@ -165,7 +165,7 @@ function Picker({ t, title, placeholder, items, onPick, onCancel, render = (x) =
           }} />
         <View style={{ maxHeight: 330, overflow: 'hidden' }}>
           {shown.map((x, i) => (
-            <View key={x.key} onClick={() => onPick(x)} style={{ height: 26, justifyContent: 'center', paddingHorizontal: 8, borderRadius: 5,
+            <View key={x.key} onClick={() => onPick(x)} style={{ height: 28, justifyContent: 'center', paddingHorizontal: 10, borderRadius: 6,
               backgroundColor: i === sel ? t.accent : 'transparent' }}>
               {render(x, i === sel)}
             </View>
@@ -196,27 +196,25 @@ function findMatches(doc, q, { regex, caseSensitive }) {
 
 function FindBar({ t, tr, find, setFind, count, current, error, onNext, onPrev, onReplace, onReplaceAll, onClose }) {
   const toggle = (k) => setFind({ ...find, [k]: !find[k] });
-  const Chip = ({ k, label }) => (
-    <View onClick={() => toggle(k)} style={{ height: 24, paddingHorizontal: 8, borderRadius: 6, justifyContent: 'center', backgroundColor: find[k] ? t.accent : t.control }}>
-      <Text style={{ fontSize: 11, fontWeight: 700, color: find[k] ? '#fff' : t.text, fontFamily: 'monospace' }}>{label}</Text>
-    </View>
+  const Chip = ({ k, label, title }) => (
+    <ToolbarButton label={label} title={title} active={find[k]} onClick={() => toggle(k)} style={{ minWidth: 34 }} />
   );
   return (
-    <View style={{ padding: 8, gap: 6, backgroundColor: t.sidebarBg }}>
+    <View style={{ paddingVertical: 8, paddingHorizontal: 12, gap: 8, backgroundColor: t.sidebarBg }}>
       <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 1, backgroundColor: t.separator }} />
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <TextInput value={find.query} onChange={(query) => setFind({ ...find, query })} placeholder={tr('editor.find.placeholder')} autoFocus style={{ flex: 1 }}
           onSubmit={onNext} onCancel={onClose}
           onKeyDown={(e) => { if (e.key === 'Enter' && e.shift) { onPrev(); return true; } return false; }} />
-        <Chip k="regex" label=".*" />
-        <Chip k="caseSensitive" label="Aa" />
+        <Chip k="regex" label=".*" title={tr('editor.find.regex')} />
+        <Chip k="caseSensitive" label="Aa" title={tr('editor.find.case')} />
         <Text style={{ width: 92, fontSize: 11, color: error ? '#ff453a' : t.textDim, textAlign: 'center' }}>
           {error ? tr('editor.find.badRegex') : find.query ? tr('editor.find.count', { current: count ? current + 1 : 0, count }) : ''}</Text>
-        <Button label="↑" onClick={onPrev} />
-        <Button label="↓" onClick={onNext} />
-        <Button label="×" onClick={onClose} />
+        <ToolbarButton icon="↑" title={tr('editor.find.prev')} onClick={onPrev} />
+        <ToolbarButton icon="↓" title={tr('editor.find.next')} onClick={onNext} />
+        <ToolbarButton icon="✕" iconSize={12} title={tr('editor.find.close')} onClick={onClose} />
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <TextInput value={find.replace} onChange={(replace) => setFind({ ...find, replace })} placeholder={tr('editor.find.replacePlaceholder')} style={{ flex: 1 }}
           onSubmit={onReplace} onCancel={onClose} />
         <Button label={tr('editor.find.replace')} onClick={onReplace} />
@@ -424,16 +422,14 @@ export default function Editor() {
   return (
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: t.editorBg }}>
       {root !== null && (
-        <View style={{ width: 200, backgroundColor: t.sidebarBg }}>
+        <View style={{ width: 220, backgroundColor: t.sidebarBg }}>
           <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 1, backgroundColor: t.separator }} />
-          <View style={{ height: 30, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, gap: 6 }}>
-            <Text style={{ flex: 1, fontSize: 11, fontWeight: 700, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-              {(root ? baseName(root) : tr('editor.home')).toUpperCase()}</Text>
-            <View onClick={() => setOverlay('folder')} style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, backgroundColor: t.control }}>
-              <Text style={{ fontSize: 11, color: t.text }}>…</Text>
-            </View>
+          <View style={{ height: 34, flexDirection: 'row', alignItems: 'center', paddingLeft: 18, paddingRight: 8, gap: 6 }}>
+            <Text style={{ flex: 1, fontSize: 11, fontWeight: 600, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+              {root ? baseName(root) : tr('editor.home')}</Text>
+            <ToolbarButton icon="⋯" small title={tr('editor.cmd.openFolder')} onClick={() => setOverlay('folder')} />
           </View>
-          <ScrollView style={{ flex: 1, paddingHorizontal: 4 }}>
+          <ScrollView style={{ flex: 1, paddingHorizontal: 8 }}>
             <Tree t={t} root={root} open={(p) => openPath(p, { fromTree: true })} active={tab.path} expanded={expanded}
               onToggle={(p) => setExpanded((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; })} />
           </ScrollView>
@@ -441,12 +437,12 @@ export default function Editor() {
       )}
       <View style={{ flex: 1 }}>
         {/* pestañas */}
-        <View style={{ height: 32, flexDirection: 'row', backgroundColor: t.sidebarBg, direction: 'ltr' }}>
+        <View style={{ height: 34, flexDirection: 'row', backgroundColor: t.sidebarBg, direction: 'ltr' }}>
           <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: t.separator }} />
           {tabs.map((x) => {
             const on = x.id === tab.id;
             return (
-              <View key={x.id} onClick={() => setActiveId(x.id)} style={{ maxWidth: 200, paddingLeft: 12, paddingRight: 6, flexDirection: 'row', alignItems: 'center', gap: 6,
+              <View key={x.id} onClick={() => setActiveId(x.id)} style={{ maxWidth: 200, paddingLeft: 14, paddingRight: 8, flexDirection: 'row', alignItems: 'center', gap: 6,
                 backgroundColor: on ? t.editorBg : 'transparent' }}>
                 <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 1, backgroundColor: t.separator }} />
                 <Text style={{ fontSize: 12, color: on ? t.text : t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{x.path ? baseName(x.path) : tr('editor.untitled')}</Text>
@@ -463,7 +459,7 @@ export default function Editor() {
         {find.open && <FindBar t={t} tr={tr} find={find} setFind={setFind} count={found.list.length} current={current} error={found.error}
           onNext={nextMatch} onPrev={prevMatch} onReplace={replaceOne} onReplaceAll={replaceAll} onClose={() => setFind((f) => ({ ...f, open: false }))} />}
         {/* barra de estado */}
-        <View style={{ height: 24, flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 12, backgroundColor: t.sidebarBg,
+        <View style={{ height: 26, flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 14, backgroundColor: t.sidebarBg,
           direction: 'ltr' }}>
           <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 1, backgroundColor: t.separator }} />
           <Text style={{ fontSize: 11, color: t.textDim }}>{tr('editor.status.position', { line: k.l + 1, col })}</Text>
@@ -513,9 +509,9 @@ export default function Editor() {
       )}
       {overlay === 'gotoLine' && (
         <View onClick={() => setOverlay(null)} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, alignItems: 'center' }}>
-          <View onClick={(e) => e.stopPropagation()} style={{ marginTop: 30, width: 320, padding: 10, gap: 6, borderRadius: 12, backgroundColor: t.windowBg,
+          <View onClick={(e) => e.stopPropagation()} style={{ marginTop: 30, width: 320, padding: 12, gap: 8, borderRadius: 12, backgroundColor: t.windowBg,
             border: `1px solid ${t.separator}`, boxShadow: '0 16px 40px rgba(0,0,0,0.45)' }}>
-            <Text style={{ fontSize: 12, fontWeight: 700, color: t.textDim }}>{tr('editor.gotoLine.title', { count: doc.lineCount })}</Text>
+            <Text style={{ fontSize: 11, fontWeight: 600, color: t.textDim, marginLeft: 4 }}>{tr('editor.gotoLine.title', { count: doc.lineCount })}</Text>
             <TextInput value={lineQuery} onChange={(v) => setLineQuery(v.replace(/[^\d:]/g, ''))} placeholder={tr('editor.gotoLine.placeholder')} autoFocus
               onCancel={() => setOverlay(null)}
               onSubmit={() => {
@@ -528,11 +524,11 @@ export default function Editor() {
       )}
       {confirmTab && (
         <View style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center' }}>
-          <View style={{ marginTop: 60, width: 380, padding: 16, gap: 10, borderRadius: 12, backgroundColor: t.windowBg, border: `1px solid ${t.separator}`,
+          <View style={{ marginTop: 60, width: 400, padding: 20, gap: 8, borderRadius: 12, backgroundColor: t.windowBg, border: `1px solid ${t.separator}`,
             boxShadow: '0 16px 40px rgba(0,0,0,0.45)' }}>
-            <Text style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{tr('editor.confirm.title', { name: confirmTab.path ? baseName(confirmTab.path) : tr('editor.untitled') })}</Text>
-            <Text style={{ fontSize: 12, color: t.textDim }}>{tr('editor.confirm.body')}</Text>
-            <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+            <Text style={{ fontSize: 15, fontWeight: 600, color: t.text }}>{tr('editor.confirm.title', { name: confirmTab.path ? baseName(confirmTab.path) : tr('editor.untitled') })}</Text>
+            <Text style={{ fontSize: 13, color: t.textDim, lineHeight: 1.4 }}>{tr('editor.confirm.body')}</Text>
+            <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
               <Button label={tr('editor.confirm.discard')} onClick={() => {
                 const win = overlay.window;
                 confirmTab.doc.markSaved();

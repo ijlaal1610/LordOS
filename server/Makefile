@@ -50,9 +50,9 @@ QJS_OBJ := $(patsubst %,build/qjs/%.o,quickjs libregexp libunicode cutils dtoa)
 MON_SRC := src/monitor/mon.c src/monitor/conn.c src/monitor/mmdb.c src/monitor/map.c src/ui/js_monitor.c
 # Medios (src/media, docs/MEDIOS.md): solo el lado de lord-server. FFmpeg lo enlaza solo lord-media.
 MEDIA_SRC := src/media/media.c src/media/mview.c src/media/capture.c src/media/annot.c src/media/maudio.c src/media/mpulse.c src/media/proto.c src/ui/js_media.c
-SEC_SRC := src/sec/json.c src/sec/sign.c src/sec/pkgstate.c src/sec/perms.c src/sec/cgroup.c src/sec/sandbox.c src/sec/brokersrv.c
+SEC_SRC := src/sec/json.c src/sec/sign.c src/sec/pkgstate.c src/sec/perms.c src/sec/cgroup.c src/sec/sandbox.c src/sec/brokersrv.c src/sec/brokercam.c
 # Modo app: lord-server --app <id> corre una app .lpk como cliente Wayland aislado (src/app)
-APP_SRC := src/app/appclient.c src/app/appspawn.c src/ui/js_broker.c
+APP_SRC := src/app/appclient.c src/app/appspawn.c src/ui/js_broker.c src/ui/js_brokercam.c
 SRC := src/main.c src/kms.c src/gpu/gpu.c src/input.c src/canvas.c src/admin.c src/install/install.c src/apps.c src/lpk.c src/fsops.c src/remote/mirror.c src/remote/remote_admin.c src/users/users_admin.c src/users/homedirs.c src/keyboard.c src/ime.c src/wl/wl.c \
        src/ui/node.c src/ui/style.c src/ui/layout.c src/ui/text.c src/ui/image.c \
        src/ui/paint.c src/ui/js.c src/ui/js_sys.c src/ui/js_term.c src/ui/js_wasm.c src/wasm/wasm.c src/wasm/wasm_run.c src/ui/js_sound.c src/ui/js_net.c src/sound/snd.c src/sound/pulse.c src/ui/otf.c src/ui/fonts.c \
@@ -82,20 +82,20 @@ SRC += $(TP_SRC)
 # Contraseñas (src/vault/dbus.c, docs/CONTRASENAS.md).
 WM_SRC := src/cursor.c src/ui/grab.c src/ui/js_wm.c src/ui/portal.c src/vault/dbus.c
 SRC += $(WM_SRC)
-# Reloj y Ayuda (docs/SISTEMA.md): zonas horarias con un lector TZif propio y los artículos de ayuda
+# Clock and Help (docs/SYSTEM.md): time zones with our own TZif reader, and the help articles
 CLOCK_SRC := src/ui/tzif.c src/ui/js_help.c
 SRC += $(CLOCK_SRC)
-# Registros (docs/SISTEMA.md): lector propio del journal de systemd, la acción logs-system y lord.logs
+# Registros (docs/SYSTEM.md): lector propio del journal de systemd, la acción logs-system y lord.logs
 LOGS_SRC := src/logs/journal.c src/logs/logs_admin.c src/ui/js_logs.c
 SRC += $(LOGS_SRC)
 HDR += $(wildcard src/logs/*.h)
-# Copias de seguridad (docs/SISTEMA.md): instantáneas con enlaces duros en un hilo de baja prioridad
+# Backups (docs/SYSTEM.md): hard-linked snapshots in a low-priority thread
 BACKUP_SRC := src/backup/engine.c src/backup/crypt.c src/backup/backup.c src/ui/js_backup.c
 SRC += $(BACKUP_SRC)
 HDR += $(wildcard src/backup/*.h)
-# el cifrado opcional usa Monocypher (vendorizado, third_party/monocypher; su objeto es el de mk/vault.mk)
+# optional encryption uses Monocypher (vendored in third_party/monocypher; the object comes from mk/vault.mk)
 build/obj/backup/%.o: CPPFLAGS += -isystem ../third_party/monocypher
-# Discos (docs/SISTEMA.md): discos, particiones y montajes sin root, SMART propio y las acciones disk-*
+# Disks (docs/SYSTEM.md): disks, partitions and mounts without root, our own SMART and the disk-* actions
 DISK_SRC := src/disk/disk.c src/disk/smart.c src/disk/disk_admin.c src/ui/js_disk.c
 SRC += $(DISK_SRC)
 HDR += $(wildcard src/disk/*.h)
@@ -185,7 +185,7 @@ build/sandbox-test: tests/sandbox_test.c src/sec/sandbox.c src/sec/cgroup.c src/
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -D_GNU_SOURCE -o $@ tests/sandbox_test.c src/sec/sandbox.c src/sec/cgroup.c -lpthread
 build/sign-test: tests/sign_test.c src/sec/json.c src/sec/sign.c src/lpk.c src/pkg/crypto.c build/obj/ui/stb.o $(wildcard src/sec/*.h) src/lpk.h src/pkg/crypto.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -DLORD_SIGN_TEST -o $@ tests/sign_test.c src/sec/json.c src/sec/sign.c src/lpk.c src/pkg/crypto.c build/obj/ui/stb.o -lm
-# zonas horarias del Reloj: TZif y reglas POSIX contra glibc (docs/SISTEMA.md)
+# Clock time zones: TZif and POSIX rules against glibc (docs/SYSTEM.md)
 test: build/tzif-test
 build/tzif-test: tests/tzif_test.c src/ui/tzif.c src/ui/tzif.h
 	@mkdir -p build
@@ -208,7 +208,7 @@ build/dnsmap-test: tests/dnsmap_test.c src/fw/dnsmap.c src/fw/rules.c src/fw/fwm
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/dnsmap_test.c src/fw/dnsmap.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c
 	./$@ || { rm -f $@; exit 1; }
-# motor de Copias de seguridad: instantánea, enlaces duros, restaurar, retención, cortes, exclusiones
+# backup engine: snapshots, hard links, restore, retention, interruptions, exclusions, encryption
 build/lord-server: build/obj/vault/monocypher.o
 test: build/backup-test
 build/backup-test: tests/backup_test.c src/backup/engine.c src/backup/crypt.c src/fsops.c src/backup/engine.h src/backup/crypt.h src/fsops.h build/obj/vault/monocypher.o
@@ -307,7 +307,7 @@ build/lord-server: $(OBJ) build/obj/ui/stb.o $(QJS_OBJ) $(WL_OBJ)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 SESSIOND_OBJ := build/obj/remote/sessiond.o build/obj/remote/sess.o build/obj/remote/monitor.o build/obj/remote/conn.o \
-                build/obj/remote/enc.o build/obj/remote/pages.o build/obj/sec/cgroup.o build/obj/remote/netsup.o
+                build/obj/remote/enc.o build/obj/remote/pages.o build/obj/sec/cgroup.o build/obj/remote/netsup.o build/obj/remote/cgsup.o
 build/obj/remote/pages.o: src/remote/login.html src/remote/client.html
 	@mkdir -p $(dir $@)
 	$(LD) -r -b binary -z noexecstack -o $@ src/remote/login.html src/remote/client.html
@@ -355,8 +355,8 @@ build/doc-test: tests/doc_test.c src/doc/wire.c src/sec/json.c $(wildcard src/do
 # Contraseñas y llavero del sistema (docs/CONTRASENAS.md): reglas en mk/vault*.mk
 include $(sort $(wildcard mk/*.mk))
 
-# lord-netd (docs/RED.md, «La red es del sistema»): admin.c con LORD_NETD (solo las acciones net-*)
-# más la red y el motor de paquetes (net-vpn-enable). Solo libc; lo lanza y vigila lord-sessiond.
+# lord-netd (docs/RED.md, "The network belongs to the system"): admin.c with LORD_NETD (net-* actions
+# only) plus networking and the package engine (net-vpn-enable). libc only; lord-sessiond runs it.
 all: build/lord-netd
 NETD_OBJ := build/obj/netd/admin.o build/obj/netd/netd.o $(NET_SRC:src/%.c=build/obj/%.o) $(PKG_SRC:src/%.c=build/obj/%.o) build/obj/ui/stb.o
 build/obj/netd/admin.o: src/admin.c $(HDR)
@@ -368,17 +368,17 @@ build/obj/netd/netd.o: src/net/netd.c src/admin.h
 build/lord-netd: $(NETD_OBJ)
 	$(CC) $(LDFLAGS) -o $@ $^ -lm -lpthread
 
-# analizadores de SMART (ATA y NVMe) de la app Discos: datos armados a mano, sano/advertencia/falla
+# SMART parsers (ATA and NVMe) of the Disks app: hand-built data, healthy/warning/failing
 test: build/smart-test
 build/smart-test: tests/smart_test.c src/disk/smart.c src/disk/disk.h src/admin.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/smart_test.c src/disk/smart.c
 	./$@ || { rm -f $@; exit 1; }
-# prueba a mano de las acciones disk-* (root y dispositivos de verdad; no está en `test`)
+# manual test of the disk-* actions (root and real devices; not part of `test`)
 build/disk-cli: tests/disk_cli.c src/disk/disk.c src/disk/smart.c src/disk/disk_admin.c src/pkg/crypto.c src/disk/disk.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/disk_cli.c src/disk/disk.c src/disk/smart.c src/disk/disk_admin.c src/pkg/crypto.c
-# carpetas del usuario (src/users/homedirs.c): idiomas, user-dirs.dirs, no pisar, no seguir enlaces
+# user folders (src/users/homedirs.c): languages, user-dirs.dirs, no overwriting, no symlinks
 test: build/homedirs-test
 build/homedirs-test: tests/homedirs_test.c src/users/homedirs.c src/users/homedirs.h
 	@mkdir -p build

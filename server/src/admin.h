@@ -19,8 +19,8 @@ int  admin_known(const char *action);                 /* ¿está en la lista cer
 int  admin_send(const char *action, const char *arg, size_t len);
 void admin_dispatch(void (*fn)(int id, const char *kind, const char *text));
 
-/* ---- lord-netd (root, lo lanza lord-sessiond): la red del sistema; ver admin.c y docs/RED.md ---- */
-int  admin_netd_serve(void);                          /* no vuelve salvo por un error */
+/* ---- lord-netd (root, started by lord-sessiond): the system network; see admin.c, docs/RED.md ---- */
+int  admin_netd_serve(void);                          /* returns only on error */
 
 /* ---- lado del ayudante (root): para los módulos que agregan acciones ---- */
 

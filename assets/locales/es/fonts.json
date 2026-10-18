@@ -85,5 +85,7 @@
   "block.ligatures": "Ligaduras",
   "block.halfwidth": "Ancho completo",
   "block.mathAlnum": "Letras matemáticas",
-  "block.emoji": "Emoji y pictogramas"
+  "block.emoji": "Emoji y pictogramas",
+  "collections": "Colecciones",
+  "sizeTip": "Tamaño de la muestra"
 }

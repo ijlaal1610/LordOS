@@ -1,12 +1,12 @@
-/* disk.c — discos, particiones y montajes sin root (app Discos; ver disk.h y docs/SISTEMA.md).
+/* disk.c — disks, partitions and mounts without root (Disks app; see disk.h and docs/SYSTEM.md).
  *
- * Fuentes:
- *   /sys/block/<disco>/…                 tamaño, extraíble, solo lectura, rotacional, modelo
- *   /run/udev/data/b<mayor>:<menor>      lo que udev ya probó: sistema de archivos, etiqueta, UUID,
- *                                        tabla de particiones, bus (sin abrir el dispositivo)
- *   /proc/self/mountinfo                 dónde está montado cada uno
- * Nada de esto necesita root: el disco del sistema se reconoce acá mismo y el ayudante lo vuelve
- * a verificar con las mismas funciones antes de tocar nada. */
+ * Sources:
+ *   /sys/block/<disk>/…                  size, removable, read-only, rotational, model
+ *   /run/udev/data/b<major>:<minor>      what udev already probed: file system, label, UUID,
+ *                                        partition table, bus (without opening the device)
+ *   /proc/self/mountinfo                 where each one is mounted
+ * None of this needs root: the system disk is recognized right here, and the helper checks it
+ * again with the same functions before touching anything. */
 #include "disk.h"
 
 #include <ctype.h>
@@ -41,7 +41,7 @@ static int read_small(const char *path, char *out, size_t n) {
     close(fd);
     if (r < 0) { out[0] = 0; return -1; }
     out[r] = 0;
-    while (r > 0 && (out[r - 1] == '\n' || out[r - 1] == ' ')) out[--r] = 0;    /* el modelo viene con espacios al final */
+    while (r > 0 && (out[r - 1] == '\n' || out[r - 1] == ' ')) out[--r] = 0;    /* the model comes with trailing spaces */
     return 0;
 }
 
@@ -81,7 +81,7 @@ uint64_t disk_size(const char *name) {
     return s > 0 ? (uint64_t)s * 512 : 0;
 }
 
-/* ---- base de udev ---- */
+/* ---- udev database ---- */
 
 int disk_udev_prop(const char *name, const char *key, char *out, size_t n) {
     out[0] = 0;
@@ -106,7 +106,7 @@ int disk_udev_prop(const char *name, const char *key, char *out, size_t n) {
     return found;
 }
 
-/* ID_FS_LABEL_ENC: los caracteres raros vienen como \xNN */
+/* ID_FS_LABEL_ENC: unusual characters come as \xNN */
 static void unescape_udev(const char *in, char *out, size_t n) {
     size_t o = 0;
     for (size_t i = 0; in[i] && o + 1 < n; i++) {
@@ -141,7 +141,7 @@ static void unescape_octal(char *s) {
     *o = 0;
 }
 
-/* Llama fn por cada montaje; si fn devuelve != 0, corta y devuelve eso. */
+/* Calls fn for each mount; if fn returns != 0, stops and returns that. */
 static int each_mount(int (*fn)(const Mnt *m, void *u), void *u) {
     FILE *f = fopen("/proc/self/mountinfo", "re");
     if (!f) return 0;
@@ -162,7 +162,7 @@ static int each_mount(int (*fn)(const Mnt *m, void *u), void *u) {
     return ret;
 }
 
-/* Número de dispositivo de un montaje: el de mountinfo, o (btrfs, 0:N) el de su origen /dev/… */
+/* Device number of a mount: the one in mountinfo, or (btrfs, 0:N) the one of its /dev/… source */
 static int mount_dev(const Mnt *m, unsigned *ma, unsigned *mi) {
     if (m->maj) { *ma = m->maj; *mi = m->min; return 0; }
     struct stat st;
@@ -193,10 +193,10 @@ int disk_mounts(const char *name, char *out, size_t n) {
     return q.count;
 }
 
-/* ---- disco del sistema ---- */
+/* ---- system disk ---- */
 
-/* Agrega a set (nombres separados por espacio) los discos que hay debajo de name: si es una
- * partición, su disco; si es dm/md, los discos de sus esclavos (recursivo). */
+/* Adds to set (space-separated names) the disks under name: for a partition, its disk; for
+ * dm/md, the disks of its slaves (recursively). */
 static void base_disks(const char *name, char *set, size_t n, int depth) {
     if (depth > 8 || !disk_valid_name(name)) return;
     char parent[32];
@@ -252,7 +252,7 @@ static void system_set(char *set, size_t n) {
     SysQ q;
     snprintf(q.set, sizeof q.set, " ");
     each_mount(sys_cb, &q);
-    /* swaps activas */
+    /* active swaps */
     FILE *f = fopen("/proc/swaps", "re");
     char line[512];
     if (f && fgets(line, sizeof line, f)) {
@@ -321,7 +321,7 @@ static void bstr(Buf *b, const char *key, const char *s) {
     bput(b, "\",");
 }
 
-/* Datos de sistema de archivos y montaje de un dispositivo (disco o partición). */
+/* File system and mount fields of a device (disk or partition). */
 static void fs_fields(Buf *b, const char *name) {
     char v[512], label[256];
     disk_udev_prop(name, "ID_FS_TYPE", v, sizeof v);
@@ -347,7 +347,7 @@ static void fs_fields(Buf *b, const char *name) {
 static int skip_disk(const char *n) {
     static const char *const pre[] = { "ram", "zram", "dm-", "md", "sr", "fd", "nbd", "mtdblock", "zd" };
     for (size_t i = 0; i < sizeof pre / sizeof *pre; i++) if (!strncmp(n, pre[i], strlen(pre[i]))) return 1;
-    if (!strncmp(n, "loop", 4)) {      /* solo los loop con archivo detrás (pruebas, imágenes) */
+    if (!strncmp(n, "loop", 4)) {      /* only loops backed by a file (tests, images) */
         char p[PATH_MAX];
         snprintf(p, sizeof p, "/sys/block/%s/loop/backing_file", n);
         return access(p, F_OK) != 0;
@@ -415,7 +415,7 @@ char *disk_list_json(void) {
              disk_is_removable(n) ? "true" : "false", !strcmp(ro, "1") ? "true" : "false", !strcmp(rot, "1") ? "true" : "false",
              strstr(sys, key) ? "true" : "false");
         fs_fields(&b, n);
-        /* particiones */
+        /* partitions */
         Part parts[128];
         int np = 0;
         char p[PATH_MAX];
@@ -467,11 +467,11 @@ char *disk_tools_json(void) {
     return out;
 }
 
-/* ---- avisos: mountinfo (POLLPRI) + udev (netlink, grupo 2) en un solo epoll ---- */
+/* ---- notifications: mountinfo (POLLPRI) + udev (netlink, group 2) in a single epoll ---- */
 
-/* Huella de mountinfo. El poll de /proc/self/mountinfo se «consume» al consultarlo: el poll del
- * bucle principal sobre el epoll ya lo gasta y epoll_wait después no lo informa. Por eso, en cada
- * aviso, se compara el contenido (unos pocos KB) con el de la vez anterior. */
+/* Fingerprint of mountinfo. Polling /proc/self/mountinfo "consumes" the event: the main loop's
+ * poll on the epoll already uses it up and epoll_wait then doesn't report it. So on every
+ * notification the content (a few KB) is compared with the previous one. */
 static uint64_t mounts_hash(void) {
     uint64_t h = 1469598103934665603ull;
     int fd = open("/proc/self/mountinfo", O_RDONLY | O_CLOEXEC);
@@ -506,7 +506,7 @@ int disk_watch(int on) {
         struct epoll_event ev = { .events = EPOLLPRI | EPOLLERR, .data.fd = mfd };
         epoll_ctl(ep, EPOLL_CTL_ADD, mfd, &ev);
     }
-    /* avisos que manda udevd después de procesar el dispositivo (la base ya está al día) */
+    /* events udevd sends after processing the device (its database is already up to date) */
     ufd = socket(AF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, NETLINK_KOBJECT_UEVENT);
     if (ufd >= 0) {
         struct sockaddr_nl sa = { .nl_family = AF_NETLINK, .nl_groups = 2 };

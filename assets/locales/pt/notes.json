@@ -39,7 +39,20 @@
   "read": "Ler",
   "search": "Buscar nas notas",
   "showDesktop": "Na área de trabalho",
-  "toc": "ÍNDICE",
+  "toc": "Índice",
   "untitled": "Sem título",
-  "print": "Imprimir…"
+  "print": "Imprimir…",
+  "insert": "Inserir",
+  "insertEmoji": "Emoji…",
+  "insertImage": "Imagem…",
+  "insertFile": "Anexo…",
+  "more": "Mais",
+  "color": "Cor",
+  "color.yellow": "Amarelo",
+  "color.pink": "Rosa",
+  "color.green": "Verde",
+  "color.blue": "Azul",
+  "color.purple": "Roxo",
+  "color.gray": "Cinza",
+  "noneHint": "Crie uma com o botão ✎ ou com ❖N."
 }

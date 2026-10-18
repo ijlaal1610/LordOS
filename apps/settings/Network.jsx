@@ -2,7 +2,7 @@
 // (lord.net, netlink) y cambia por el ayudante de administración (acciones net-*). Ver docs/RED.md.
 import {
   View, Text, useTheme, useLocale, Button, Toggle, Segmented, TextInput, SectionTitle,
-  admin, fs, formatBytes,
+  admin, fs, formatBytes, keyring, AutofillButton,
 } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 
@@ -177,6 +177,8 @@ function WifiPage({ net }) {
   const connect = (n, password) => {
     setPick(null);
     setPass('');
+    // the password also goes to the session keyring (Passwords → Session keyring; docs/PASSWORDS.md)
+    if (password && n.ssid) keyring.set('settings', { service: `wifi:${n.ssid}`, secret: password, label: `Wi-Fi ${n.ssid}` }).catch(() => {});
     run(setMsg, 'net-wifi-connect', `${dev}\n${n.ssid}\n${password || ''}`, tr('network.wifi.connecting', { ssid: n.ssid }));
   };
   return (
@@ -204,6 +206,7 @@ function WifiPage({ net }) {
             <View style={{ flexDirection: 'row', gap: 8, paddingBottom: 10, paddingHorizontal: 4 }}>
               <TextInput secure autoFocus value={pass} onChange={setPass} placeholder={tr('network.wifi.password')} onSubmit={() => connect(n, pass)}
                 onCancel={() => setPick(null)} style={{ flex: 1 }} />
+              <AutofillButton app="settings" service={`wifi:${n.ssid}`} ssid={n.ssid} onFill={({ password }) => setPass(password || '')} />
               <Button primary label={tr('network.wifi.join')} onClick={() => connect(n, pass)} />
             </View>
           )}
@@ -379,11 +382,15 @@ function VpnPage({ net }) {
         <View style={{ padding: 12, borderRadius: 10, backgroundColor: t.hover, gap: 8, marginBottom: 10 }}>
           <Text style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{tr('network.vpn.authTitle', { name: auth.name })}</Text>
           <TextInput value={auth.user} onChange={(user) => setAuth({ ...auth, user })} placeholder={tr('network.vpn.user')} />
-          <TextInput secure value={auth.pass} onChange={(pass) => setAuth({ ...auth, pass })} placeholder={tr('network.vpn.password')} />
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <TextInput secure value={auth.pass} onChange={(pass) => setAuth({ ...auth, pass })} placeholder={tr('network.vpn.password')} style={{ flex: 1 }} />
+            <AutofillButton app="settings" service={`vpn:${auth.name}`} onFill={({ username, password }) => setAuth({ ...auth, user: username || auth.user, pass: password || '' })} />
+          </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Button primary label={tr('network.vpn.saveConnect')} onClick={() => {
               const a = auth;
               setAuth(null);
+              if (a.pass) keyring.set('settings', { service: `vpn:${a.name}`, account: a.user, secret: a.pass, label: `VPN ${a.name}` }).catch(() => {});
               run(setMsg, 'net-vpn-credentials', `${a.name}\n${a.user}\n${a.pass}`).then((r) => r != null && up({ name: a.name }));
             }} />
             <Button label={tr('network.cancel')} onClick={() => setAuth(null)} />

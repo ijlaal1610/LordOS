@@ -662,7 +662,10 @@ int main(int argc, char **argv) {
     mkdir("/run/lordos", 0755);
     /* cgroup delegado (Delegate=yes): sessiond pasa a la hoja «supervisor» y cada sesión recibe
      * su subárbol (cgroup_delegate_session en sess.c). Sin delegación sigue igual que antes. */
-    if (!cgroup_service_init()) sd_log("cgroup: servicio delegado; cada sesión tendrá su subárbol");
+    if (!cgroup_service_init()) {
+        sd_log("cgroup: servicio delegado; cada sesión tendrá su subárbol");
+        sd_cgroup_start();          /* app scopes are root's: placed on request (cgsup.c) */
+    }
 
     rd_shared = mmap(NULL, sizeof *rd_shared, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if (rd_shared == MAP_FAILED) return 1;
@@ -704,7 +707,7 @@ int main(int argc, char **argv) {
     sd_log("sesiones con %s%s%s", rd_conf.server, sd_gpu_env[0] ? ", " : "", sd_gpu_env);
     int wk[2];
     if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, wk) == 0) { wk_r = wk[0]; wk_w = wk[1]; }
-    /* la red es del sistema: lord-netd la levanta antes que la pantalla de ingreso (netsup.c) */
+    /* the network belongs to the system: lord-netd brings it up before the greeter (netsup.c) */
     sd_netd_start();
     has_monitor = !no_monitor && sd_mon_open() == 0;
     if (has_monitor) boot_monitor();
@@ -729,6 +732,7 @@ int main(int argc, char **argv) {
         int st;
         while ((pid = waitpid(-1, &st, WNOHANG)) > 0) {
             if (sd_netd_reaped(pid, st)) continue;     /* lord-netd (netsup.c) */
+            if (sd_cgroup_reaped(pid, st)) continue;   /* cgroup placement service (cgsup.c) */
             if (pid == worker_pid) {
                 worker_pid = -1;
                 WorkKind k = pending;
@@ -745,6 +749,7 @@ int main(int argc, char **argv) {
         }
         if (r > 0 && p[4].fd >= 0 && p[4].revents) sd_netd_event();
         sd_netd_tick();
+        sd_cgroup_tick();
         if (r > 0 && (p[0].revents & POLLIN)) from_worker();
         if (r > 0 && lfd >= 0 && (p[1].revents & POLLIN)) accept_remote();
         if (r > 0 && p[2].fd >= 0 && p[2].fd == sd_mon_fd() && p[2].revents) monitor_event();

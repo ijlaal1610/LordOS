@@ -1,15 +1,15 @@
-/* netsup.c — lord-sessiond vigila a lord-netd, la red del sistema (docs/RED.md, «La red es del
- * sistema»; el proceso en sí está en admin.c con LORD_NETD y net/netd.c).
+/* netsup.c — lord-sessiond supervises lord-netd, the system network (docs/RED.md, "The network
+ * belongs to the system"; the process itself is admin.c built with LORD_NETD plus net/netd.c).
  *
- *   - Lo lanza al arrancar, antes que la pantalla de ingreso: así hay red (y la IP) antes de que
- *     alguien entre, y el escritorio remoto se alcanza.
- *   - Ruta fija: <carpeta de lord-sessiond>/lord-netd, de root y no escribible por otros (salvo
- *     insecure_dev, como lord-server). Sin argumentos y con un entorno mínimo.
- *   - Si termina, lo vuelve a lanzar con una espera creciente (1, 2, 4… hasta 30 s).
- *   - Un reinicio de lord-sessiond (KillMode=process) no corta la red: lord-netd sigue vivo y el
- *     lord-sessiond nuevo lo adopta (pidfd sobre el pid de /run/lordos/netd.pid), sin sondear.
- *   - Deja /run/lordos/netd.enabled: con esa marca, los ayudantes de las sesiones nunca levantan
- *     la red por su cuenta (si lord-netd se está reiniciando, la acción responde un error). */
+ *   - Started at boot, before the greeter, so there is a network (and an IP) before anyone logs
+ *     in, and the remote desktop is reachable.
+ *   - Fixed path: <lord-sessiond's directory>/lord-netd, root-owned and not writable by others
+ *     (unless insecure_dev, as for lord-server). No arguments and a minimal environment.
+ *   - If it exits, it is started again with a growing delay (1, 2, 4… up to 30 s).
+ *   - Restarting lord-sessiond (KillMode=process) doesn't cut the network: lord-netd keeps running
+ *     and the new lord-sessiond adopts it (a pidfd on the pid in /run/lordos/netd.pid), no polling.
+ *   - Leaves /run/lordos/netd.enabled: with that mark, the sessions' helpers never bring the
+ *     network up themselves (while lord-netd restarts, the action answers with an error). */
 #include "sessiond.h"
 
 #include <errno.h>
@@ -27,11 +27,11 @@
 #define NETD_PIDFILE SD_RUN_DIR "/netd.pid"
 #define NETD_MARK    SD_RUN_DIR "/netd.enabled"
 
-static pid_t child = -1;                /* lord-netd hijo nuestro */
-static int pidfd = -1;                  /* uno adoptado (de un lord-sessiond anterior) */
-static double next_try;                 /* cuándo volver a lanzarlo */
+static pid_t child = -1;                /* lord-netd as our child */
+static int pidfd = -1;                  /* an adopted one (from an earlier lord-sessiond) */
+static double next_try;                 /* when to start it again */
 static int fails;
-static double started;                  /* cuándo se lanzó o adoptó (si duró, la espera vuelve a 1 s) */
+static double started;                  /* when it was started or adopted (if it lasted, the delay goes back to 1 s) */
 static char path[PATH_MAX];
 
 static void netd_path(void) {
@@ -41,14 +41,14 @@ static void netd_path(void) {
     if (slash) snprintf(slash + 1, sizeof path - (size_t)(slash + 1 - path), "lord-netd");
 }
 
-/* ¿Sigue vivo un lord-netd de antes (de un lord-sessiond anterior)? */
+/* Is a lord-netd from an earlier lord-sessiond still alive? */
 static int adopt(void) {
     FILE *f = fopen(NETD_PIDFILE, "r");
     int p = 0;
     if (f) { if (fscanf(f, "%d", &p) != 1) p = 0; fclose(f); }
     if (p <= 1) return -1;
-    /* el pidfile es de root; el proceso tiene que ser de root y llamarse lord-netd (prctl). No se
-     * compara /proc/<pid>/exe: si el binario se actualizó mientras corría, apunta a otro nombre */
+    /* the pidfile is root's; the process must be root's and named lord-netd (prctl). /proc/<pid>/exe
+     * is not compared: if the binary was updated while running, it points to another name */
     char proc[64], comm[32] = "";
     struct stat st;
     snprintf(proc, sizeof proc, "/proc/%d", p);
@@ -65,7 +65,7 @@ static int adopt(void) {
     fcntl(fd, F_SETFD, FD_CLOEXEC);
     pidfd = fd;
     started = rd_now();
-    sd_log("lord-netd sigue corriendo (pid %d): la red no se cortó", p);
+    sd_log("lord-netd still running (pid %d): the network was not interrupted", p);
     return 0;
 }
 
@@ -73,9 +73,9 @@ void sd_netd_start(void) {
     netd_path();
     if (child > 0 || pidfd >= 0) return;
     struct stat st;
-    if (stat(path, &st)) { if (!fails++) sd_log("sin %s: la red la levanta cada sesión, como antes", path); next_try = rd_now() + 3600; return; }
+    if (stat(path, &st)) { if (!fails++) sd_log("no %s: each session brings the network up, as before", path); next_try = rd_now() + 3600; return; }
     if (!rd_conf.insecure_dev && (st.st_uid != 0 || (st.st_mode & 022))) {
-        sd_log("%s no es de root o lo pueden escribir otros: no se lanza", path);
+        sd_log("%s is not root-owned or is writable by others: not started", path);
         next_try = rd_now() + 3600;
         return;
     }
@@ -85,7 +85,7 @@ void sd_netd_start(void) {
     if (!adopt()) return;
     pid_t p = fork();
     if (p == 0) {
-        syscall(SYS_close_range, 3, ~0u, 0);    /* nada del monitor ni de las conexiones */
+        syscall(SYS_close_range, 3, ~0u, 0);    /* nothing from the monitor or the connections */
         int null = open("/dev/null", O_RDWR);
         if (null >= 0) dup2(null, 0);
         sigset_t none;
@@ -94,7 +94,7 @@ void sd_netd_start(void) {
         signal(SIGPIPE, SIG_DFL);
         signal(SIGTERM, SIG_DFL);
         signal(SIGHUP, SIG_DFL);
-        setsid();                               /* no muere con lord-sessiond (KillMode=process) */
+        setsid();                               /* does not die with lord-sessiond (KillMode=process) */
         char *const argv[] = { path, NULL };
         char *const env[] = { "PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8", NULL };
         execve(path, argv, env);
@@ -103,7 +103,7 @@ void sd_netd_start(void) {
     if (p < 0) { next_try = rd_now() + 5; return; }
     child = p;
     started = rd_now();
-    sd_log("lord-netd lanzado (pid %d)", (int)p);
+    sd_log("lord-netd started (pid %d)", (int)p);
 }
 
 int sd_netd_fd(void) { return pidfd; }
@@ -113,22 +113,22 @@ static void schedule(const char *why) {
     double wait = fails < 5 ? (double)(1 << fails) : 30;
     fails++;
     next_try = rd_now() + wait;
-    sd_log("lord-netd %s: se vuelve a lanzar en %.0f s", why, wait);
+    sd_log("lord-netd %s: restarting in %.0f s", why, wait);
 }
 
-void sd_netd_event(void) {                      /* el pidfd del adoptado avisó que terminó */
+void sd_netd_event(void) {                      /* the adopted one's pidfd says it exited */
     close(pidfd);
     pidfd = -1;
-    schedule("(adoptado) terminó");
+    schedule("(adopted) exited");
 }
 
 int sd_netd_reaped(pid_t pid, int status) {
     if (pid != child) return 0;
     child = -1;
-    if (WIFEXITED(status) && WEXITSTATUS(status) == 3) { next_try = rd_now() + 1; adopt(); return 1; }   /* ya corría otro */
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 3) { next_try = rd_now() + 1; adopt(); return 1; }   /* another one was already running */
     char why[48];
-    if (WIFEXITED(status)) snprintf(why, sizeof why, "terminó con código %d", WEXITSTATUS(status));
-    else snprintf(why, sizeof why, "terminó por la señal %d", WIFSIGNALED(status) ? WTERMSIG(status) : 0);
+    if (WIFEXITED(status)) snprintf(why, sizeof why, "exited with code %d", WEXITSTATUS(status));
+    else snprintf(why, sizeof why, "killed by signal %d", WIFSIGNALED(status) ? WTERMSIG(status) : 0);
     schedule(why);
     return 1;
 }

@@ -34,6 +34,7 @@
 #include "users/users_admin.h"
 #include "disk/disk.h"
 #include "logs/logs_admin.h"
+#include "hw/hw_admin.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -64,8 +65,8 @@
 static int out_fd = -1;                 /* socket, o el pipe hacia el ayudante en un hijo */
 static int cur_id;
 
-/* lord-netd (la red del sistema, ver más abajo): en su proceso principal las respuestas van al
- * cliente que pidió (cur_client) y los avisos (id 0) a todos. En los hijos vale 0. */
+/* lord-netd (the system network, see below): in its main process, replies go to the client that
+ * asked (cur_client) and events (id 0) to everyone. It is 0 in child processes. */
 static int netd_main;
 static int cur_client = -1;
 static void netd_route(int id, const char *line, size_t n);
@@ -238,7 +239,7 @@ typedef struct {
     int done;                           /* ya mandó OK/ERR */
     int raw;                            /* programa externo: cada línea se envuelve en un EVENT */
     char name[32];                      /* residente */
-    int client;                         /* lord-netd: cliente que pidió la acción (-1 ninguno) */
+    int client;                         /* lord-netd: client that requested the action (-1: none) */
     char buf[2048];
     size_t len;
 } Kid;
@@ -285,8 +286,8 @@ int admin_daemon_fork(const char *name, void (*fn)(void *), void *arg) {
     pid_t pid = fork();
     if (pid == 0) {
         close(p[0]);
-        /* solo el pipe: ni el socket de lord-server ni, en lord-netd, su lock y su socket (si no,
-         * un DHCP que sobrevive al lord-netd muerto le impediría arrancar al siguiente) */
+        /* only the pipe: neither lord-server's socket nor, in lord-netd, its lock and socket
+         * (otherwise a DHCP client outliving a dead lord-netd would keep the next one from starting) */
         int keep = fcntl(p[1], F_DUPFD, 3);
         for (int f = 3; f < 1024; f++) if (f != keep) close(f);
         out_fd = keep;
@@ -376,7 +377,7 @@ static void a_langpack(const AdminReq *r, const char *a, size_t n) { (void)r; (v
 
 static const struct { const char *name; ActionFn fn; int flags; } actions[] = {
 #ifdef LORD_NETD
-    /* lord-netd: solo la red (docs/RED.md, «La red es del sistema») */
+    /* lord-netd: networking only (docs/RED.md, "The network belongs to the system") */
     NET_ADMIN_ACTIONS
 #else
     { "locale-gen", a_locale_gen, A_FORK },
@@ -390,7 +391,8 @@ static const struct { const char *name; ActionFn fn; int flags; } actions[] = {
     USERS_ADMIN_ACTIONS
     DISK_ADMIN_ACTIONS
     LOGS_ADMIN_ACTIONS
-#endif /* LORD_NETD: las acciones de otros módulos van arriba de esta línea */
+    HW_ADMIN_ACTIONS
+#endif /* LORD_NETD: other modules' actions go above this line */
 };
 #define N_ACTIONS (sizeof actions / sizeof actions[0])
 
@@ -595,13 +597,13 @@ static void act_langpack(const char *arg) {
 
 #endif /* LORD_NETD */
 
-/* Saca del búfer los pedidos completos "<id> <acción> <largo>\n<argumento>" y llama a fn con cada
- * uno (el argumento en memoria propia, terminado en 0; fn no lo libera). */
+/* Takes the complete requests "<id> <action> <length>\n<argument>" out of the buffer and calls fn
+ * for each (the argument in its own NUL-terminated memory; fn does not free it). */
 typedef void (*ReqFn)(int id, const char *action, char *arg, size_t len, void *ctx);
 static void parse_requests(char *in, size_t *inlen, ReqFn fn, void *ctx) {
     for (;;) {
         char *nl = memchr(in, '\n', *inlen < 160 ? *inlen : 160);
-        if (!nl) { if (*inlen >= 160) *inlen = 0; break; }      /* encabezado inválido: se descarta */
+        if (!nl) { if (*inlen >= 160) *inlen = 0; break; }      /* invalid header: dropped */
         *nl = 0;
         int id = 0;
         char action[64] = "";
@@ -609,20 +611,20 @@ static void parse_requests(char *in, size_t *inlen, ReqFn fn, void *ctx) {
         int ok = sscanf(in, "%d %63s %lu", &id, action, &len) == 3 && id > 0 && len <= ADMIN_ARG_MAX;
         size_t head = (size_t)(nl - in) + 1;
         if (!ok) { memmove(in, in + head, *inlen - head); *inlen -= head; continue; }
-        if (*inlen < head + len) { *nl = '\n'; break; }          /* falta el argumento */
+        if (*inlen < head + len) { *nl = '\n'; break; }          /* argument not complete yet */
         char *arg = malloc(len + 1);
         if (arg) { memcpy(arg, in + head, len); arg[len] = 0; }
         memmove(in, in + head + len, *inlen - head - len);
         *inlen -= head + len;
         if (!arg) continue;
         fn(id, action, arg, len, ctx);
-        explicit_bzero(arg, len);           /* puede traer una contraseña (user-add, user-passwd, Wi-Fi) */
+        explicit_bzero(arg, len);           /* may carry a password (user-add, user-passwd, Wi-Fi) */
         free(arg);
     }
 }
 
-/* Corre la acción a (ya autorizada) con req: en un hijo si es A_FORK (que solo se queda con el pipe
- * de su salida). client: en lord-netd, a quién van sus respuestas (-1 en el ayudante de la sesión). */
+/* Runs action a (already authorized) with req: in a child if A_FORK (which keeps only its output
+ * pipe). client: in lord-netd, who gets its replies (-1 in a session's helper). */
 static void run_action(size_t a, AdminReq *req, int id, const char *arg, size_t len, int client) {
     if (actions[a].flags & A_FORK) {
         Kid *k = kid_new();
@@ -631,7 +633,7 @@ static void run_action(size_t a, AdminReq *req, int id, const char *arg, size_t 
         pid_t pid = fork();
         if (pid == 0) {
             close(p[0]);
-            /* sin los sockets de lord-server ni de los clientes de lord-netd: solo el pipe */
+            /* none of lord-server's or lord-netd's client sockets: only the pipe */
             int keep = fcntl(p[1], F_DUPFD, 3);
             for (int f = 3; f < 1024; f++) if (f != keep) close(f);
             out_fd = keep;
@@ -652,21 +654,21 @@ static size_t find_action(const char *name) {
     return a;
 }
 
-/* ---- la red del sistema: lord-netd (docs/RED.md, «La red es del sistema») ----
+/* ---- the system network: lord-netd (docs/RED.md, "The network belongs to the system") ----
  *
- * La red no es de una sesión: la levanta lord-netd, un proceso root chico que lanza y vigila
- * lord-sessiond al arrancar el equipo (antes de que alguien entre). Atiende solo las acciones
- * net-* de esta misma tabla, por /run/lordos/netd.sock (0600, solo root: los ayudantes de las
- * sesiones). Cada ayudante se presenta con "HELLO <usuario>" y lord-netd vuelve a calcular si ese
- * usuario es administrador. Las respuestas van al ayudante que pidió; los avisos (id 0), a todos.
- * Los procesos residentes (DHCP, wpa_supplicant, VPN) son hijos de lord-netd: sobreviven a que
- * las sesiones entren y salgan. Sin lord-netd (lord-server suelto, en desarrollo) el ayudante de
- * la sesión corre la red él mismo, como antes. */
+ * The network doesn't belong to a session: lord-netd brings it up, a small root process that
+ * lord-sessiond starts and supervises at boot (before anyone logs in). It serves only the net-*
+ * actions of this same table, on /run/lordos/netd.sock (0600, root only: the sessions' helpers).
+ * Each helper introduces itself with "HELLO <user>" and lord-netd works out again whether that
+ * user is an administrator. Replies go to the helper that asked; events (id 0) go to all of them.
+ * The resident processes (DHCP, wpa_supplicant, VPN) are lord-netd's children, so they outlive
+ * sessions logging in and out. Without lord-netd (a standalone lord-server, in development) the
+ * session's helper runs the network itself, as before. */
 #define NETD_SOCK  "/run/lordos/netd.sock"
-#define NETD_MARK  "/run/lordos/netd.enabled"     /* lo crea lord-sessiond al lanzar lord-netd */
-#define NETD_VPNS  "/run/lordos/netd-vpns"        /* VPN prendidas: vuelven si lord-netd se reinicia */
+#define NETD_MARK  "/run/lordos/netd.enabled"     /* created by lord-sessiond when it starts lord-netd */
+#define NETD_VPNS  "/run/lordos/netd-vpns"        /* VPNs that are up: restored if lord-netd restarts */
 
-/* lado del ayudante de la sesión */
+/* session helper side */
 static int netd_fd = -1;
 static char netd_user[64];
 static char netd_buf[8192];
@@ -701,7 +703,7 @@ static void netd_lost(void) {
     netd_npending = 0;
 }
 
-/* Lo que llega de lord-netd va tal cual a lord-server (los id son los de esta sesión). */
+/* What lord-netd sends goes to lord-server unchanged (the ids are this session's). */
 static void netd_read(void) {
     ssize_t r = read(netd_fd, netd_buf + netd_len, sizeof netd_buf - 1 - netd_len);
     if (r < 0 && (errno == EINTR || errno == EAGAIN)) return;
@@ -724,7 +726,7 @@ static void netd_read(void) {
     if (netd_len >= sizeof netd_buf - 1) netd_len = 0;
 }
 
-/* 1: no hay lord-netd (la sesión corre la red); 0: se le pasó; -1: tendría que estar y no está. */
+/* 1: no lord-netd (the session runs the network); 0: forwarded; -1: it should be there and isn't. */
 static int netd_forward(int id, const char *action, const char *arg, size_t len) {
     if (netd_connect()) return access(NETD_MARK, F_OK) == 0 ? -1 : 1;
     char head[128];
@@ -770,8 +772,8 @@ static void helper(int fd, const char *user) {
     char *in = malloc(ADMIN_ARG_MAX + 512);
     size_t inlen = 0;
     if (!in) _exit(1);
-    /* lord-netd: conectarse ya (para recibir los avisos de la red) y volver a conectarse cuando
-     * lord-sessiond lo reinicia (aparece de nuevo el socket: inotify, sin sondear) */
+    /* lord-netd: connect now (to receive network events) and reconnect when lord-sessiond restarts
+     * it (the socket appears again: inotify, no polling) */
     netd_connect();
     int ino = inotify_init1(IN_CLOEXEC | IN_NONBLOCK);
     if (ino >= 0 && inotify_add_watch(ino, "/run/lordos", IN_CREATE | IN_MOVED_TO) < 0) { close(ino); ino = -1; }
@@ -810,12 +812,12 @@ static void helper(int fd, const char *user) {
     _exit(0);
 }
 
-/* lado de lord-netd */
+/* lord-netd side */
 #define NETD_MAX_CLIENTS 32
 
 typedef struct {
-    int fd;                             /* -1: libre */
-    int hello;                          /* ya dijo quién es */
+    int fd;                             /* -1: free */
+    int hello;                          /* has said who it is */
     char user[64], home[PATH_MAX];
     AdminReq req;
     char *in;
@@ -826,7 +828,7 @@ static NetdClient clients[NETD_MAX_CLIENTS];
 
 static void netd_route(int id, const char *line, size_t n) {
     if (id == 0) {
-        /* aviso: a todas las sesiones, y al registro (journal, por lord-sessiond) */
+        /* event: to every session, and to the log (the journal, through lord-sessiond) */
         const char *t = memchr(line, ' ', n);
         if (t) { t = memchr(t + 1, ' ', n - (size_t)(t + 1 - line)); }
         if (t) fprintf(stderr, "lord-netd: %.*s", (int)(n - (size_t)(t + 1 - line)), t + 1);
@@ -842,10 +844,10 @@ static void netd_drop(int c) {
     clients[c].fd = -1;
     free(clients[c].in);
     clients[c].in = NULL;
-    for (int i = 0; i < MAX_KIDS; i++) if (kids[i].client == c) kids[i].client = -1;     /* su respuesta ya no tiene a quién ir */
+    for (int i = 0; i < MAX_KIDS; i++) if (kids[i].client == c) kids[i].client = -1;     /* its reply has nowhere to go now */
 }
 
-/* Lista de VPN prendidas (una por línea): para volver a conectarlas si lord-netd se reinicia. */
+/* List of VPNs that are up (one per line): to reconnect them if lord-netd restarts. */
 static void netd_vpn_note(const char *name, int up) {
     char *t = NULL, line[64];
     size_t tl = 0;
@@ -912,9 +914,9 @@ int admin_netd_serve(void) {
     umask(022);
     prctl(PR_SET_NAME, "lord-netd");
     mkdir("/run/lordos", 0755);
-    /* uno solo: si ya corre (sobrevivió a un reinicio de lord-sessiond), este se va */
+    /* only one: if one is already running (it outlived a lord-sessiond restart), this one exits */
     int lk = open("/run/lordos/netd.lock", O_RDWR | O_CREAT | O_CLOEXEC, 0600);
-    if (lk < 0 || flock(lk, LOCK_EX | LOCK_NB)) { fprintf(stderr, "lord-netd: ya hay otro corriendo\n"); return 3; }
+    if (lk < 0 || flock(lk, LOCK_EX | LOCK_NB)) { fprintf(stderr, "lord-netd: another instance is already running\n"); return 3; }
     FILE *pf = fopen("/run/lordos/netd.pid", "w");
     if (pf) { fprintf(pf, "%d\n", (int)getpid()); fclose(pf); }
     for (int i = 0; i < NETD_MAX_CLIENTS; i++) clients[i].fd = -1;
@@ -923,18 +925,18 @@ int admin_netd_serve(void) {
     struct sockaddr_un sa = { .sun_family = AF_UNIX };
     snprintf(sa.sun_path, sizeof sa.sun_path, "%s.new", NETD_SOCK);
     unlink(sa.sun_path);
-    mode_t old = umask(077);            /* 0600: solo root (los ayudantes de las sesiones) */
+    mode_t old = umask(077);            /* 0600: root only (the sessions' helpers) */
     int bad = lfd < 0 || bind(lfd, (struct sockaddr *)&sa, sizeof sa) || listen(lfd, 16);
     umask(old);
-    if (bad || rename(sa.sun_path, NETD_SOCK)) { fprintf(stderr, "lord-netd: no se pudo abrir %s: %s\n", NETD_SOCK, strerror(errno)); return 1; }
+    if (bad || rename(sa.sun_path, NETD_SOCK)) { fprintf(stderr, "lord-netd: cannot open %s: %s\n", NETD_SOCK, strerror(errno)); return 1; }
 
-    /* la red al arrancar el equipo: configs guardadas, DHCP, Wi-Fi conocidas y DNS */
+    /* the network at boot: saved configs, DHCP, known Wi-Fi and DNS */
     netd_main = 1;
     static char sys_user[] = "root", sys_home[] = "/root";
     AdminReq sys = { .user = sys_user, .home = sys_home, .uid = 0, .gid = 0, .admin = 1 };
     cur_client = -1;
     net_act_restore(&sys, "system", 6);
-    /* las VPN que estaban prendidas antes de un reinicio de lord-netd (no las de antes de apagar) */
+    /* VPNs that were up before lord-netd restarted (not those from before a shutdown) */
     {
         FILE *f = fopen(NETD_VPNS, "r");
         char line[64];
@@ -944,11 +946,11 @@ int admin_netd_serve(void) {
         }
         if (f) fclose(f);
     }
-    fprintf(stderr, "lord-netd: listo (%s)\n", NETD_SOCK);
+    fprintf(stderr, "lord-netd: ready (%s)\n", NETD_SOCK);
 
     for (;;) {
         struct pollfd pfd[1 + NETD_MAX_CLIENTS + MAX_KIDS];
-        int ref[1 + NETD_MAX_CLIENTS + MAX_KIDS];       /* >= 0 cliente; < 0: -(kid + 1) */
+        int ref[1 + NETD_MAX_CLIENTS + MAX_KIDS];       /* >= 0: client; < 0: -(kid + 1) */
         int n = 0;
         pfd[n] = (struct pollfd){ lfd, POLLIN, 0 }; ref[n++] = 0;
         for (int i = 0; i < NETD_MAX_CLIENTS; i++)
@@ -976,7 +978,7 @@ int admin_netd_serve(void) {
             for (int i = 0; i < NETD_MAX_CLIENTS && slot < 0; i++) if (clients[i].fd < 0) slot = i;
             char *in = slot >= 0 ? malloc(ADMIN_ARG_MAX + 512) : NULL;
             if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cr, &cl) || cr.uid != 0 || !in) { free(in); close(fd); continue; }
-            struct timeval tv = { 2, 0 };           /* una sesión trabada no frena la red */
+            struct timeval tv = { 2, 0 };           /* a stuck session doesn't block the network */
             setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
             clients[slot] = (NetdClient){ .fd = fd, .in = in };
         }

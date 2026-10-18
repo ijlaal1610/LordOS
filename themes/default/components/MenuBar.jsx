@@ -1,11 +1,12 @@
 // Barra de menú superior: menú L, app activa, menú Ventana, distribución de teclado,
 // Centro de control y reloj.
-import { View, Text, useClock, wm, getApp, session, useAppMenus, t as tr, appName, formatDate, formatTime, keyboard, useSettings, direction, screen, windowTitle, LordOSLogo, spotlight, PrivacyIndicators, StatusItems, help } from '@lordos/sdk';
+import { View, Text, useClock, wm, getApp, session, useAppMenus, t as tr, appName, formatDate, formatTime, keyboard, useSettings, direction, screen, windowTitle, LordOSLogo, spotlight, PrivacyIndicators, StatusItems, help, menuClock } from '@lordos/sdk';
 import { useRef, useState } from 'react';
 import { Menu } from './Menu.jsx';
 
 // Fecha y hora con el formato de la región (sdk/i18n.js).
-const format = (d) => `${formatDate(d, 'short')}   ${formatTime(d)}`;
+// with the format chosen in Settings → Date & Time (sdk/hardware.jsx)
+const format = (d) => menuClock(d);
 
 function BarItem({ t, children, onClick, active, anchorRef }) {
   const [hover, setHover] = useState(false);

@@ -1,4 +1,4 @@
-/* crypt.c — cifrado de las Copias de seguridad con Monocypher (ver crypt.h). */
+/* crypt.c — backup encryption with Monocypher (see crypt.h). */
 #include "crypt.h"
 #include "monocypher.h"
 
@@ -27,7 +27,7 @@ int bkc_plain_size(uint64_t enc, uint64_t *plain) {
     uint64_t body = enc - BKC_HDR;
     uint64_t full = body / (BKC_CHUNK + BKC_MAC), rest = body % (BKC_CHUNK + BKC_MAC);
     uint64_t p;
-    if (rest == 0) p = full * BKC_CHUNK;                    /* el último trozo está lleno */
+    if (rest == 0) p = full * BKC_CHUNK;                    /* the last chunk is full */
     else if (rest >= BKC_MAC) p = full * BKC_CHUNK + (rest - BKC_MAC);
     else return -1;
     if (bkc_enc_size(p) != enc) return -1;
@@ -87,7 +87,7 @@ int bkc_encrypt_fd(int in, int out, const uint8_t key[BKC_KEY], int (*tick)(void
     if (r) return r;
     uint8_t *a = malloc(BKC_CHUNK), *b = malloc(BKC_CHUNK), *c = malloc(BKC_CHUNK + BKC_MAC);
     if (!a || !b || !c) { free(a); free(b); free(c); return -1; }
-    /* se lee un trozo adelantado para saber cuál es el último */
+    /* read one chunk ahead to know which one is the last */
     ssize_t n = read_full(in, a, BKC_CHUNK);
     uint64_t i = 0;
     while (n >= 0) {
@@ -121,7 +121,7 @@ int bkc_decrypt_fd(int in, int out, const uint8_t key[BKC_KEY], int (*tick)(void
     ssize_t n = read_full(in, a, BKC_CHUNK + BKC_MAC);
     uint64_t i = 0;
     for (;;) {
-        if (n < (ssize_t)BKC_MAC) { r = n < 0 ? -1 : -3; break; }       /* cortado */
+        if (n < (ssize_t)BKC_MAC) { r = n < 0 ? -1 : -3; break; }       /* truncated */
         ssize_t next = (size_t)n == BKC_CHUNK + BKC_MAC ? read_full(in, b, BKC_CHUNK + BKC_MAC) : 0;
         if (next < 0) { r = -1; break; }
         int last = next == 0;
@@ -154,7 +154,7 @@ int bkc_derive(const char *pass, const uint8_t salt[BKC_SALT], uint8_t key[BKC_K
 }
 
 void bkc_check(const uint8_t key[BKC_KEY], uint8_t out[16]) {
-    static const char label[] = "LordOS-Copias verificador v1";
+    static const char label[] = "LordOS-Backups key check v1";
     crypto_blake2b_keyed(out, 16, key, BKC_KEY, (const uint8_t *)label, sizeof label - 1);
 }
 

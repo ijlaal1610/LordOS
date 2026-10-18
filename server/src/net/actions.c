@@ -2,8 +2,8 @@
  * argumento acá; ninguna pasa texto del usuario a un shell ni como argumentos libres.
  *
  *   net-restore                 al arrancar: aplica las configs de /etc/lordos/net/if y levanta DHCP
- *                               (y Wi-Fi) en las interfaces libres. Con lord-netd lo corre él solo,
- *                               al arrancar el equipo ("system"); ver admin.c
+ *                               (y Wi-Fi) en las interfaces libres. With lord-netd it runs it itself
+ *                               at boot ("system"); see admin.c
  *   net-up / net-down <if>
  *   net-config <if>\n<líneas>   method=dhcp|static|off, address=ip/prefijo (varias),
  *                               gateway=ip, dns=ip (varias)
@@ -147,10 +147,10 @@ static char *load_if_conf(const char *ifname) {
 void net_act_restore(const AdminReq *r, const char *arg, size_t len) {
     (void)r;
     mkdir(NET_RUN_DIR, 0755);
-    /* Normalmente la red es del sistema: la levanta lord-netd al arrancar el equipo (arg "system",
-     * ver admin.c) y el net-restore de las sesiones ni llega acá. Sin lord-netd (lord-server suelto,
-     * en desarrollo) la levanta el ayudante de la sesión; si hubiera varias, solo la primera (su pid
-     * en net-owner, mientras viva), así dos no arrancan dos DHCP en la misma placa. */
+    /* Normally the network belongs to the system: lord-netd brings it up at boot (arg "system", see
+     * admin.c) and the sessions' net-restore never gets here. Without lord-netd (a standalone
+     * lord-server, in development) the session's helper brings it up; with several, only the first
+     * (its pid in net-owner, while alive), so two don't start two DHCP clients on the same NIC. */
     if (!(len == 6 && !strcmp(arg, "system"))) {
         char *o = read_file(NET_RUN_DIR "/net-owner", 32, NULL);
         if (o) {

@@ -61,5 +61,12 @@
   "zoom.page": "Whole page",
   "go.page": "Go to page…",
   "go.first": "First page",
-  "go.last": "Last page"
+  "go.last": "Last page",
+  "tool.sidebar": "Show or hide the sidebar",
+  "tool.select": "Select text",
+  "tool.highlight": "Highlight",
+  "tool.ink": "Draw freehand",
+  "tool.note": "Add a note",
+  "tool.zoomToggle": "Fit width or whole page",
+  "recent": "PDFs in your folder"
 }

@@ -1,15 +1,15 @@
-// backup.js — Copias de seguridad (lord.backup, ver server/src/backup y docs/SISTEMA.md).
+// backup.js — Backups (lord.backup, see server/src/backup and docs/SYSTEM.md).
 //
-//   const st = useBackup()            estado en vivo: { state, progress, last, next, dest, … }
+//   const st = useBackup()            live status: { state, progress, last, next, dest, … }
 //   backup.config() / backup.configure({ dest, interval, pauseOnBattery, exclude })
 //   backup.runNow() / pause(on) / cancel()
 //   backup.list() → [{ id, time }]    backup.ls(id, rel) → [{ name, dir, link, size, mtime }]
-//   backup.restore(id, rel, { replace, suffix })   ('' = todo; el resultado llega en estado.restore)
-//   backup.unlock(frase, crear) / backup.lock()     copias cifradas (resultado en estado.unlock)
+//   backup.restore(id, rel, { replace, suffix })   ('' = everything; result in status.restore)
+//   backup.unlock(pass, create) / backup.lock()     encrypted backups (result in status.unlock)
 //
-// La copia la hace un hilo de lord-server con la prioridad más baja; el estado llega solo
-// (__lordBackup), sin consultar. Al terminar mal (o bien, si la pidió el usuario) se avisa con
-// notify(), aunque la app esté cerrada.
+// A lord-server thread at the lowest priority does the copying; the status is pushed
+// (__lordBackup), never polled. When a run fails (or succeeds, if the user asked for it) the
+// user is notified with notify(), even with the app closed.
 import { createStore, useStore } from './store.js';
 import { notify } from './notify.js';
 import { t } from './i18n.js';
@@ -20,9 +20,9 @@ const has = () => typeof lord !== 'undefined' && lord.backup;
 const read = () => { try { return has() ? lord.backup.status() : null; } catch (e) { return null; } };
 
 export const backupStatus = createStore(read());
-let asked = false;            // «Copiar ahora»: se avisa también si termina bien
+let asked = false;            // "Back Up Now": also notify on success
 let restoring = false;
-let lockedNoticed = false;    // «desbloqueá las copias»: una vez por sesión
+let lockedNoticed = false;    // "unlock your backups": once per session
 
 function changed(prev, st) {
   if (!prev || !st) return;
@@ -69,7 +69,7 @@ export const backup = {
     return lord.backup.restore(id, rel, { suffix: t('backup.restoredSuffix'), ...opts });
   },
   remove: (id) => lord.backup.remove(id),
-  // cifrado (Monocypher): la frase se convierte en la clave en el hilo de la copia; queda solo en memoria
+  // encryption (Monocypher): the passphrase becomes the key in the backup thread; kept only in memory
   unlock: (pass, create = false) => lord.backup.unlock(String(pass), !!create),
   lock: () => lord.backup.lock(),
 };

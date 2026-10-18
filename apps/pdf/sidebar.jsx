@@ -4,7 +4,7 @@ import { View, Text, Segmented, DocImage, t as tr } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { shown } from './geometry.js';
 
-const W = 168, TW = 112;
+const W = 184, TW = 116;
 
 function Thumbs({ doc, sizes, page, onPage, cache, rot, invert, th }) {
   const [offset, setOffset] = useState(0);
@@ -38,12 +38,12 @@ function Thumbs({ doc, sizes, page, onPage, cache, rot, invert, th }) {
         const e = cache?.get(i, TW, rot, invert) || cache?.best(i, rot, invert, TW);
         return (
           <View key={i} onClick={() => onPage(i)} style={{ position: 'absolute', left: 0, right: 0, top: tops[i] - offset, alignItems: 'center', gap: 4 }}>
-            <View style={{ width: TW + 6, height: th2 + 6, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: i === page ? th.accent : 'transparent' }}>
+            <View style={{ width: TW + 8, height: th2 + 8, borderRadius: 5, alignItems: 'center', justifyContent: 'center', border: `3px solid ${i === page ? th.accent : 'transparent'}` }}>
               <View style={{ width: TW, height: th2, backgroundColor: invert ? '#1b1b1f' : '#ffffff', boxShadow: '0 1px 4px rgba(0,0,0,0.35)' }}>
                 {e ? <DocImage image={e.image} style={{ width: TW, height: th2, objectFit: 'fill' }} /> : null}
               </View>
             </View>
-            <Text style={{ fontSize: 10, color: i === page ? th.text : th.textDim }}>{String(i + 1)}</Text>
+            <Text style={{ fontSize: 11, fontWeight: i === page ? 600 : 400, color: i === page ? th.text : th.textDim }}>{String(i + 1)}</Text>
           </View>
         );
       })}
@@ -57,11 +57,11 @@ function OutlineItems({ items, depth, onPage, page, th, open, toggle, path }) {
     const isOpen = open.has(key) || (it.open && !open.has(`!${key}`));
     return (
       <View key={key}>
-        <View onClick={() => it.page >= 0 && onPage(it.page)} style={{ flexDirection: 'row', alignItems: 'center', minHeight: 24, paddingRight: 6, paddingLeft: 4 + depth * 12, borderRadius: 5 }}>
+        <View onClick={() => it.page >= 0 && onPage(it.page)} style={{ flexDirection: 'row', alignItems: 'center', minHeight: 26, paddingRight: 8, paddingLeft: 4 + depth * 12, borderRadius: 6 }}>
           <View onClick={(e) => { e.stopPropagation(); toggle(key, isOpen); }} style={{ width: 14, alignItems: 'center' }}>
             {it.kids ? <Text style={{ fontSize: 8, color: th.textDim }}>{isOpen ? '▼' : '▶'}</Text> : null}
           </View>
-          <Text style={{ flex: 1, fontSize: 12, color: th.text, lineHeight: 16 }}>{it.title}</Text>
+          <Text style={{ flex: 1, fontSize: 12, fontWeight: depth === 0 ? 500 : 400, color: th.text, lineHeight: 16 }}>{it.title}</Text>
           {it.page >= 0 ? <Text style={{ fontSize: 10, color: th.textDim }}>{String(it.page + 1)}</Text> : null}
         </View>
         {it.kids && isOpen ? <OutlineItems items={it.kids} depth={depth + 1} onPage={onPage} page={page} th={th} open={open} toggle={toggle} path={`${key}.`} /> : null}
@@ -80,7 +80,7 @@ function Outline({ doc, onPage, page, th }) {
   if (!items.length) return <Text style={{ margin: 12, fontSize: 12, color: th.textDim }}>{tr('pdf.noOutline')}</Text>;
   return (
     <View onWheel={(e) => setOffset((o) => Math.max(0, o + e.deltaY))} style={{ flex: 1, overflow: 'hidden' }}>
-      <View style={{ translateY: -offset, padding: 4 }}>
+      <View style={{ translateY: -offset, paddingHorizontal: 8, paddingVertical: 4 }}>
         <OutlineItems items={items} depth={0} onPage={onPage} page={page} th={th} open={open} toggle={toggle} path="" />
       </View>
     </View>
@@ -90,8 +90,8 @@ function Outline({ doc, onPage, page, th }) {
 export function Sidebar({ side, setSide, doc, sizes, page, onPage, cache, rot, invert, th }) {
   return (
     <View style={{ width: W, backgroundColor: th.sidebarBg }}>
-      <View style={{ padding: 8, alignItems: 'center' }}>
-        <Segmented value={side} onChange={setSide} options={[['thumbs', tr('pdf.side.thumbsShort')], ['outline', tr('pdf.side.outlineShort')]]} />
+      <View style={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6 }}>
+        <Segmented appearance="neutral" small fill value={side} onChange={setSide} options={[['thumbs', tr('pdf.side.thumbsShort')], ['outline', tr('pdf.side.outlineShort')]]} />
       </View>
       {side === 'thumbs'
         ? <Thumbs doc={doc} sizes={sizes} page={page} onPage={onPage} cache={cache} rot={rot} invert={invert} th={th} />

@@ -1,8 +1,8 @@
-// dialogs.jsx — los diálogos de Discos: formatear, renombrar, borrar y crear un USB de arranque.
+// dialogs.jsx — the Disks dialogs: format, rename, erase and create a bootable USB.
 //
-// Todo lo que borra datos pasa por la misma confirmación: dice exactamente qué se pierde (modelo,
-// tamaño, cada partición con su etiqueta, sistema de archivos y dónde está montada) y, si es el
-// disco entero, pide escribir su nombre (sdb). El ayudante vuelve a validar todo del lado root.
+// Everything that erases data goes through the same confirmation: it says exactly what is lost
+// (model, size, each partition with its label, file system and mount point) and, for a whole
+// disk, asks to type its name (sdb). The helper validates everything again on the root side.
 import { View, Text, ScrollView, Button, TextInput, Segmented, useTheme, useLocale, admin, fs, formatBytes, formatNumber } from '@lordos/sdk';
 import { useMemo, useState } from 'react';
 import { PartGlyph } from './icons.jsx';
@@ -23,7 +23,7 @@ function Card({ title, children }) {
   );
 }
 
-// Lo que se va a borrar, con todos sus datos.
+// What will be erased, with all its details.
 function WhatErased({ disk, part }) {
   const t = useTheme();
   const { t: tr } = useLocale();
@@ -49,7 +49,7 @@ function WhatErased({ disk, part }) {
   );
 }
 
-// Paso final común: lo que se borra, el nombre escrito (disco entero) y el botón rojo.
+// Common final step: what gets erased, the typed name (whole disk) and the red button.
 function Confirm({ disk, part, action, onBack, onGo }) {
   const t = useTheme();
   const { t: tr } = useLocale();
@@ -100,7 +100,7 @@ const parseProgress = (line) => {
   return o;
 };
 
-// Corre una acción larga con progreso; done(texto) o el error.
+// Runs a long action with progress; ends with the result text or the error.
 function useJob() {
   const [state, setState] = useState({ running: false, progress: null, result: null, error: null });
   const start = (action, arg) => {
@@ -226,7 +226,7 @@ function ImageDialog({ disk, onClose }) {
   const found = useMemo(() => {
     const out = [];
     for (const ext of ['.iso', '.img']) {
-      try { for (const f of fs.search(home, ext, { limit: 40, depth: 4 })) if (!f.dir && f.name.toLowerCase().endsWith(ext)) out.push(f); } catch (e) { /* sin permiso */ }
+      try { for (const f of fs.search(home, ext, { limit: 40, depth: 4 })) if (!f.dir && f.name.toLowerCase().endsWith(ext)) out.push(f); } catch (e) { /* no permission */ }
     }
     return out.sort((a, b) => (b.mtime || 0) - (a.mtime || 0)).slice(0, 12);
   }, [home]);

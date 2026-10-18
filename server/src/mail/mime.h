@@ -1,8 +1,8 @@
-/* mime.h — mensajes de correo (RFC 5322, MIME 2045-2049, 2047, 2231) para lord-maild.
+/* mime.h — mail messages (RFC 5322, MIME 2045-2049, 2047, 2231) for lord-maild.
  *
- * Todo trabaja sobre el mensaje crudo en memoria y verifica cada índice contra el largo:
- * un mensaje roto o malicioso da partes vacías, nunca una lectura fuera del búfer. Lo que se
- * entrega a la interfaz siempre es UTF-8 válido (lo inválido pasa a U+FFFD). */
+ * Everything works on the raw in-memory message and checks every index against the length:
+ * a broken or malicious message yields empty parts, never a read outside the buffer. What is
+ * handed to the UI is always valid UTF-8 (invalid input becomes U+FFFD). */
 #ifndef LORD_MAIL_MIME_H
 #define LORD_MAIL_MIME_H
 
@@ -14,71 +14,71 @@
 #define MIME_MAX_DEPTH 16
 
 typedef struct {
-    int parent;               /* índice de la parte madre (-1 la raíz) */
+    int parent;               /* index of the parent part (-1 for the root) */
     int depth;
-    char type[48], subtype[64];       /* en minúsculas; "text"/"plain" si no hay Content-Type */
+    char type[48], subtype[64];       /* lowercase; "text"/"plain" if there is no Content-Type */
     char charset[40];
     char boundary[128];
-    char encoding[24];                /* content-transfer-encoding en minúsculas */
+    char encoding[24];                /* content-transfer-encoding, lowercase */
     char disposition[16];             /* "inline" | "attachment" | "" */
-    char filename[256];               /* UTF-8 (2231/2047 ya decodificados) */
-    char cid[160];                    /* Content-ID sin <> */
+    char filename[256];               /* UTF-8 (2231/2047 already decoded) */
+    char cid[160];                    /* Content-ID without <> */
     char method[24];                  /* text/calendar; method= */
-    const char *hdr; size_t hlen;     /* encabezado crudo de la parte */
-    const char *body; size_t blen;    /* cuerpo crudo (codificado) */
+    const char *hdr; size_t hlen;     /* raw header of the part */
+    const char *body; size_t blen;    /* raw body (encoded) */
 } MimePart;
 
 typedef struct {
     MimePart parts[MIME_MAX_PARTS];
     int nparts;
-    int truncated;                    /* había más partes de las que entran */
+    int truncated;                    /* there were more parts than fit */
 } MimeMsg;
 
-/* Separa encabezado y cuerpo de un mensaje o parte (CRLF o LF). */
+/* Splits header and body of a message or part (CRLF or LF). */
 void mime_split(const char *m, size_t len, const char **hdr, size_t *hlen, const char **body, size_t *blen);
-/* Valor de un encabezado (primera aparición), desplegado (sin CRLF+espacios), crudo. 1 si estaba. */
+/* Value of a header (first occurrence), unfolded (no CRLF+whitespace), raw. 1 if present. */
 int  mime_header(const char *hdr, size_t hlen, const char *name, char *out, size_t cap);
-/* Igual pero en memoria nueva (malloc), para encabezados largos (References). NULL si no está. */
+/* Same but in newly allocated memory (malloc), for long headers (References). NULL if absent. */
 char *mime_header_dup(const char *hdr, size_t hlen, const char *name);
-/* Decodifica palabras codificadas (=?cs?B|Q?...?=) a UTF-8 y limpia controles. */
+/* Decodes encoded words (=?cs?B|Q?...?=) to UTF-8 and strips control characters. */
 void mime_decode_words(const char *in, char *out, size_t cap);
-/* Parámetro de un valor estructurado ("text/plain; charset=utf-8"), con RFC 2231 (name*=, name*0*=). */
+/* Parameter of a structured value ("text/plain; charset=utf-8"), with RFC 2231 (name*=, name*0*=). */
 int  mime_param(const char *value, const char *name, char *out, size_t cap);
-/* Arma el árbol de partes. Siempre deja al menos la raíz. */
+/* Builds the part tree. Always leaves at least the root. */
 void mime_parse(const char *m, size_t len, MimeMsg *out);
-/* Cuerpo decodificado (base64, quoted-printable, 7bit/8bit/binary) en memoria nueva. */
+/* Decoded body (base64, quoted-printable, 7bit/8bit/binary) in newly allocated memory. */
 char *mime_decode_body(const MimePart *p, size_t *olen);
-/* Texto de una parte text/* en UTF-8 (charset convertido). */
+/* Text of a text/... part in UTF-8 (charset converted). */
 char *mime_part_text(const MimePart *p, size_t *olen);
 
-/* Juegos de caracteres → UTF-8 (UTF-8, ASCII, Latin-1, la familia ISO-8859 y windows-125x, KOI8,
- * UTF-16/32 con o sin BOM). Desconocido: se toma como UTF-8 con reemplazo. malloc. */
+/* Character sets → UTF-8 (UTF-8, ASCII, Latin-1, the ISO-8859 and windows-125x families, KOI8,
+ * UTF-16/32 with or without BOM). Unknown: treated as UTF-8 with replacement. malloc. */
 char *charset_to_utf8(const char *cs, const char *in, size_t len, size_t *olen);
 int  charset_known(const char *cs);
-/* Copia UTF-8 reemplazando las secuencias inválidas por U+FFFD. malloc. */
+/* Copies UTF-8, replacing invalid sequences with U+FFFD. malloc. */
 char *utf8_clean(const char *in, size_t len, size_t *olen);
 
-/* base64 y quoted-printable */
+/* base64 and quoted-printable */
 size_t b64_decode(const char *in, size_t len, unsigned char *out);   /* out ≥ len*3/4+3 */
-char  *b64_encode(const unsigned char *in, size_t len, int wrap, size_t *olen);  /* wrap 76 con CRLF */
+char  *b64_encode(const unsigned char *in, size_t len, int wrap, size_t *olen);  /* wrap at 76 with CRLF */
 size_t qp_decode(const char *in, size_t len, char *out, int header); /* out ≥ len */
-char  *qp_encode(const char *in, size_t len, size_t *olen);          /* cuerpo, líneas ≤ 76, CRLF */
+char  *qp_encode(const char *in, size_t len, size_t *olen);          /* body, lines ≤ 76, CRLF */
 
-/* Una dirección de una lista (From, To, Cc). */
+/* One address from a list (From, To, Cc). */
 typedef struct { char name[160]; char email[256]; } MimeAddr;
-/* Separa una lista de direcciones (con nombres entre comillas, comentarios y grupos). Devuelve
- * cuántas dejó en out (como mucho max). El valor ya tiene que venir con las palabras decodificadas
- * o no: se decodifican los nombres acá. */
+/* Splits an address list (with quoted names, comments and groups). Returns
+ * how many were stored in out (at most max). The value may come with encoded words
+ * decoded or not: names are decoded here. */
 int  mime_addrs(const char *value, MimeAddr *out, int max);
-/* Fecha RFC 5322 ("Tue, 3 Jun 2025 10:22:01 -0300") → segundos UNIX, 0 si no se entiende. */
+/* RFC 5322 date ("Tue, 3 Jun 2025 10:22:01 -0300") → UNIX seconds, 0 if unparseable. */
 time_t mime_date(const char *value);
-/* Fecha para el encabezado Date (hora local con su desplazamiento). */
+/* Date for the Date header (local time with its offset). */
 void mime_format_date(time_t t, char *out, size_t cap);
-/* Encabezado con palabras codificadas si hace falta (UTF-8 → =?UTF-8?B?...?=, ≤ 75 por palabra). */
+/* Header with encoded words if needed (UTF-8 → =?UTF-8?B?...?=, ≤ 75 per word). */
 char *mime_encode_header(const char *utf8);
-/* Una dirección para un encabezado: "Nombre" <a@b> con el nombre codificado si hace falta. */
+/* An address for a header: "Name" <a@b> with the name encoded if needed. */
 char *mime_format_addr(const char *name, const char *email);
-/* Asunto sin "Re:", "RE:", "Fwd:", "RV:", "AW:"… repetidos, para agrupar conversaciones. */
+/* Subject without repeated "Re:", "RE:", "Fwd:", "RV:", "AW:"…, for grouping conversations. */
 void mime_base_subject(const char *subj, char *out, size_t cap);
 
 #endif

@@ -14,6 +14,13 @@ import { PrivacySettings } from './Privacy.jsx';
 import { PrintersSettings } from './Printers.jsx';
 import { TrackpadSettings } from './Trackpad.jsx';
 import { DockSettings } from './Dock.jsx';
+// hardware pages (docs/SETTINGS.md)
+import { DisplaysSettings } from './Displays.jsx';
+import { BluetoothSettings } from './Bluetooth.jsx';
+import { PowerSettings } from './Power.jsx';
+import { NotificationsSettings } from './Notifications.jsx';
+import { DateTimeSettings } from './DateTime.jsx';
+import { DefaultAppsSettings } from './DefaultApps.jsx';
 
 export function Icon({ size: s }) {
   const dark = '#3b3e46';
@@ -339,10 +346,10 @@ function Session() {
 
 // Grupos de la barra lateral (como en macOS / TangoOS): [id, componente, color del ícono, símbolo].
 const GROUPS = [
-  [['general', General, '#8e8e93', 'i'], ['appearance', Appearance, '#bf5af2', '◐'], ['wallpaper', Wallpapers, '#0a84ff', '▣'], ['dock', DockSettings, '#1c1c1e', '▁']],
-  [['network', NetworkSettings, '#0a84ff', '⇅'], ['sound', SoundSettings, '#ff375f', '♪'], ['printers', PrintersSettings, '#636366', '⎙'], ['clipboard', ClipboardSettings, '#5e5ce6', '⎘'], ['sharing', SharingSettings, '#34c759', '⇄']],
-  [['language', LanguageRegion, '#30b0c7', 'A'], ['keyboard', Keyboard, '#636366', '⌨'], ['trackpad', TrackpadSettings, '#8e8e93', '▭']],
-  [['privacy', PrivacySettings, '#0a84ff', '🔒'], ['users', UsersSettings, '#0a84ff', '☺'], ['updates', Updates, '#64d2ff', '↻'], ['themes', Themes, '#ff9f0a', '◧'], ['session', Session, '#ff453a', '↪']],
+  [['general', General, '#8e8e93', 'i'], ['appearance', Appearance, '#bf5af2', '◐'], ['wallpaper', Wallpapers, '#0a84ff', '▣'], ['dock', DockSettings, '#1c1c1e', '▁'], ['displays', DisplaysSettings, '#0a84ff', '▭']],
+  [['network', NetworkSettings, '#0a84ff', '⇅'], ['bluetooth', BluetoothSettings, '#0a84ff', 'ᛒ'], ['sound', SoundSettings, '#ff375f', '♪'], ['notifications', NotificationsSettings, '#ff3b30', '◉'], ['printers', PrintersSettings, '#636366', '⎙'], ['clipboard', ClipboardSettings, '#5e5ce6', '⎘'], ['sharing', SharingSettings, '#34c759', '⇄']],
+  [['language', LanguageRegion, '#30b0c7', 'A'], ['datetime', DateTimeSettings, '#0a84ff', '◷'], ['keyboard', Keyboard, '#636366', '⌨'], ['trackpad', TrackpadSettings, '#8e8e93', '▭'], ['defaultapps', DefaultAppsSettings, '#8e8e93', '◫']],
+  [['power', PowerSettings, '#30d158', '⚡'], ['privacy', PrivacySettings, '#0a84ff', '🔒'], ['users', UsersSettings, '#0a84ff', '☺'], ['updates', Updates, '#64d2ff', '↻'], ['themes', Themes, '#ff9f0a', '◧'], ['session', Session, '#ff453a', '↪']],
 ];
 const SECTIONS = GROUPS.flat();
 

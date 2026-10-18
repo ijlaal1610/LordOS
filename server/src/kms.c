@@ -47,65 +47,142 @@ static void destroy_buffer(Kms *k, KmsBuffer *b) {
     memset(b, 0, sizeof *b);
 }
 
-/* Busca un conector enchufado, su modo preferido y un CRTC compatible. */
-static int pick_output(Kms *k) {
+/* ---- outputs (connectors), shared by the initial pick and Settings → Displays ---- */
+
+static KmsPicker picker;
+void kms_set_picker(KmsPicker fn) { picker = fn; }
+
+const char *kms_connector_type_name(uint32_t t) {
+    static const char *const names[] = { "Unknown", "VGA", "DVI-I", "DVI-D", "DVI-A", "Composite", "SVIDEO", "LVDS",
+        "Component", "DIN", "DP", "HDMI-A", "HDMI-B", "TV", "eDP", "Virtual", "DSI", "DPI", "Writeback", "SPI", "USB" };
+    return t < sizeof names / sizeof names[0] ? names[t] : "Unknown";
+}
+
+/* Reads the EDID blob of a connector (property "EDID"). */
+static void read_edid(int fd, uint32_t conn, KmsOutput *o) {
+    uint64_t blob = 0;
+    if (kms_obj_prop(fd, conn, DRM_MODE_OBJECT_CONNECTOR, "EDID", &blob, NULL) || !blob) return;
+    struct drm_mode_get_blob gb = { .blob_id = (uint32_t)blob };
+    if (xioctl(fd, DRM_IOCTL_MODE_GETPROPBLOB, &gb) || gb.length < 128 || gb.length > 32768) return;
+    uint8_t *d = malloc(gb.length);
+    if (!d) return;
+    gb.data = (uintptr_t)d;
+    if (xioctl(fd, DRM_IOCTL_MODE_GETPROPBLOB, &gb)) { free(d); return; }
+    o->edid = d;
+    o->edid_len = gb.length;
+}
+
+int kms_outputs(int fd, KmsOutput *out, int max) {
     struct drm_mode_card_res res = {0};
-    if (xioctl(k->fd, DRM_IOCTL_MODE_GETRESOURCES, &res)) { perror("GETRESOURCES"); return -1; }
-    uint32_t *conns = calloc(res.count_connectors + 1, 4);
-    uint32_t *crtcs = calloc(res.count_crtcs + 1, 4);
-    uint32_t *encs  = calloc(res.count_encoders + 1, 4);
-    uint32_t *fbs   = calloc(res.count_fbs + 1, 4);
+    if (xioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res)) return 0;
+    uint32_t *conns = calloc(res.count_connectors + 1, 4), *crtcs = calloc(res.count_crtcs + 1, 4);
+    uint32_t *encs = calloc(res.count_encoders + 1, 4), *fbs = calloc(res.count_fbs + 1, 4);
+    int n = 0;
+    if (!conns || !crtcs || !encs || !fbs) goto out;
     res.connector_id_ptr = (uintptr_t)conns;
     res.crtc_id_ptr = (uintptr_t)crtcs;
     res.encoder_id_ptr = (uintptr_t)encs;
     res.fb_id_ptr = (uintptr_t)fbs;
-    int ret = -1;
-    if (xioctl(k->fd, DRM_IOCTL_MODE_GETRESOURCES, &res)) { perror("GETRESOURCES"); goto out; }
-
-    for (uint32_t i = 0; i < res.count_connectors && ret; i++) {
+    if (xioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res)) goto out;
+    for (uint32_t i = 0; i < res.count_connectors && n < max; i++) {
         struct drm_mode_get_connector c = { .connector_id = conns[i] };
-        if (xioctl(k->fd, DRM_IOCTL_MODE_GETCONNECTOR, &c)) continue;
-        if (c.connection != 1 || c.count_modes == 0) continue;
-
-        struct drm_mode_modeinfo *modes = calloc(c.count_modes, sizeof *modes);
-        uint32_t *cencs = calloc(c.count_encoders + 1, 4);
+        if (xioctl(fd, DRM_IOCTL_MODE_GETCONNECTOR, &c)) continue;
+        KmsOutput *o = &out[n];
+        memset(o, 0, sizeof *o);
+        uint32_t nm = c.count_modes, ne = c.count_encoders;
+        struct drm_mode_modeinfo *modes = nm ? calloc(nm, sizeof *modes) : NULL;
+        uint32_t *cencs = calloc(ne + 1, 4);
         c.modes_ptr = (uintptr_t)modes;
         c.encoders_ptr = (uintptr_t)cencs;
         c.count_props = 0; c.props_ptr = 0; c.prop_values_ptr = 0;
-        if (xioctl(k->fd, DRM_IOCTL_MODE_GETCONNECTOR, &c) || c.count_modes == 0) {
-            free(modes); free(cencs); continue;
-        }
-
-        struct drm_mode_modeinfo *mode = &modes[0];
-        for (uint32_t m = 0; m < c.count_modes; m++)
-            if (modes[m].type & DRM_MODE_TYPE_PREFERRED) { mode = &modes[m]; break; }
-
-        uint32_t crtc = 0;
+        if ((nm && !modes) || !cencs || xioctl(fd, DRM_IOCTL_MODE_GETCONNECTOR, &c)) { free(modes); free(cencs); continue; }
+        if (c.count_modes < nm) nm = c.count_modes;      /* the list can shrink between the two calls */
+        if (c.count_encoders < ne) ne = c.count_encoders;
+        o->id = c.connector_id;
+        o->type = c.connector_type;
+        o->type_id = c.connector_type_id;
+        o->connected = c.connection == 1;
+        o->mm_w = c.mm_width;
+        o->mm_h = c.mm_height;
+        o->modes = modes;
+        o->nmodes = (int)nm;
+        o->current_crtc = 0;
         if (c.encoder_id) {
             struct drm_mode_get_encoder e = { .encoder_id = c.encoder_id };
-            if (!xioctl(k->fd, DRM_IOCTL_MODE_GETENCODER, &e)) crtc = e.crtc_id;
+            if (!xioctl(fd, DRM_IOCTL_MODE_GETENCODER, &e)) o->current_crtc = e.crtc_id;
         }
-        for (uint32_t e_i = 0; !crtc && e_i < c.count_encoders; e_i++) {
+        for (uint32_t e_i = 0; e_i < ne; e_i++) {
             struct drm_mode_get_encoder e = { .encoder_id = cencs[e_i] };
-            if (xioctl(k->fd, DRM_IOCTL_MODE_GETENCODER, &e)) continue;
-            for (uint32_t j = 0; j < res.count_crtcs; j++)
-                if (e.possible_crtcs & (1u << j)) { crtc = crtcs[j]; break; }
+            if (xioctl(fd, DRM_IOCTL_MODE_GETENCODER, &e)) continue;
+            for (uint32_t j = 0; j < res.count_crtcs && j < 32; j++)
+                if (e.possible_crtcs & (1u << j)) o->possible_crtcs |= 1u << j;
         }
-        if (crtc) {
-            k->conn_id = c.connector_id;
-            k->crtc_id = crtc;
-            k->crtc_index = 0;
-            for (uint32_t j = 0; j < res.count_crtcs; j++) if (crtcs[j] == crtc) { k->crtc_index = (int)j; break; }
-            k->mode = *mode;
-            k->width = mode->hdisplay;
-            k->height = mode->vdisplay;
-            ret = 0;
-        }
-        free(modes); free(cencs);
+        free(cencs);
+        if (o->connected) read_edid(fd, o->id, o);
+        n++;
     }
-    if (ret) fprintf(stderr, "kms: no hay monitor conectado\n");
 out:
     free(conns); free(crtcs); free(encs); free(fbs);
+    return n;
+}
+
+void kms_outputs_free(KmsOutput *o, int n) {
+    for (int i = 0; i < n; i++) { free(o[i].modes); free(o[i].edid); o[i].modes = NULL; o[i].edid = NULL; }
+}
+
+/* CRTC id (and index) able to drive `conn`: the one it already has, else `prefer` if possible,
+ * else the first free in possible_crtcs. 0 if none. */
+static uint32_t crtc_for(int fd, const KmsOutput *o, uint32_t prefer, int *index) {
+    struct drm_mode_card_res res = {0};
+    if (xioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res) || !res.count_crtcs) return 0;
+    uint32_t *crtcs = calloc(res.count_crtcs, 4);
+    if (!crtcs) return 0;
+    struct drm_mode_card_res r2 = { .crtc_id_ptr = (uintptr_t)crtcs, .count_crtcs = res.count_crtcs };
+    uint32_t got = 0;
+    if (!xioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &r2)) {
+        uint32_t n = r2.count_crtcs < res.count_crtcs ? r2.count_crtcs : res.count_crtcs;
+        uint32_t want[3] = { o->current_crtc, prefer, 0 };
+        for (int w = 0; w < 2 && !got; w++)
+            for (uint32_t j = 0; j < n && j < 32 && want[w]; j++)
+                if (crtcs[j] == want[w] && (o->possible_crtcs >> j & 1)) { got = crtcs[j]; *index = (int)j; }
+        for (uint32_t j = 0; j < n && j < 32 && !got; j++)
+            if (o->possible_crtcs >> j & 1) { got = crtcs[j]; *index = (int)j; }
+    }
+    free(crtcs);
+    return got;
+}
+
+/* Picks a connected connector and its mode (Settings' choice through the picker, else the first
+ * connected one with its preferred mode) and a CRTC that can drive it. */
+static int pick_output(Kms *k) {
+    KmsOutput outs[KMS_MAX_OUTPUTS];
+    int n = kms_outputs(k->fd, outs, KMS_MAX_OUTPUTS), sel = -1, ret = -1;
+    struct drm_mode_modeinfo mode;
+    if (picker && picker(outs, n, &sel, &mode) == 0 && sel >= 0 && sel < n && outs[sel].connected) {
+        /* the picker's choice */
+    } else {
+        sel = -1;
+        for (int i = 0; i < n && sel < 0; i++) {
+            if (!outs[i].connected || !outs[i].nmodes) continue;
+            sel = i;
+            mode = outs[i].modes[0];
+            for (int m = 0; m < outs[i].nmodes; m++)
+                if (outs[i].modes[m].type & DRM_MODE_TYPE_PREFERRED) { mode = outs[i].modes[m]; break; }
+        }
+    }
+    int idx = 0;
+    uint32_t crtc = sel >= 0 ? crtc_for(k->fd, &outs[sel], 0, &idx) : 0;
+    if (crtc) {
+        k->conn_id = outs[sel].id;
+        k->crtc_id = crtc;
+        k->crtc_index = idx;
+        k->mode = mode;
+        k->width = mode.hdisplay;
+        k->height = mode.vdisplay;
+        ret = 0;
+    }
+    kms_outputs_free(outs, n);
+    if (ret) fprintf(stderr, "kms: no hay monitor conectado\n");
     return ret;
 }
 
@@ -113,8 +190,8 @@ out:
 
 #define PLANE_TYPE_PRIMARY 1        /* enum drm_plane_type del kernel (no está en la uapi) */
 
-/* Valor de la propiedad `name` de un objeto KMS. 0 si la encontró. */
-static int obj_prop(int fd, uint32_t obj, uint32_t type, const char *name, uint64_t *val) {
+/* Value (and property id) of property `name` of a KMS object. 0 if found. */
+int kms_obj_prop(int fd, uint32_t obj, uint32_t type, const char *name, uint64_t *val, uint32_t *prop_id) {
     struct drm_mode_obj_get_properties op = { .obj_id = obj, .obj_type = type };
     if (xioctl(fd, DRM_IOCTL_MODE_OBJ_GETPROPERTIES, &op) || !op.count_props) return -1;
     uint32_t ids[64], n = op.count_props > 64 ? 64 : op.count_props;
@@ -128,10 +205,11 @@ static int obj_prop(int fd, uint32_t obj, uint32_t type, const char *name, uint6
         struct drm_mode_get_property pr = { .prop_id = ids[i] };
         if (xioctl(fd, DRM_IOCTL_MODE_GETPROPERTY, &pr)) continue;
         pr.name[DRM_PROP_NAME_LEN - 1] = 0;
-        if (!strcmp(pr.name, name)) { *val = vals[i]; return 0; }
+        if (!strcmp(pr.name, name)) { *val = vals[i]; if (prop_id) *prop_id = ids[i]; return 0; }
     }
     return -1;
 }
+static int obj_prop(int fd, uint32_t obj, uint32_t type, const char *name, uint64_t *val) { return kms_obj_prop(fd, obj, type, name, val, NULL); }
 
 static int rgb32(uint32_t f) {
     return f == DRM_FORMAT_XRGB8888 || f == DRM_FORMAT_ARGB8888 || f == DRM_FORMAT_XBGR8888 || f == DRM_FORMAT_ABGR8888;
@@ -420,4 +498,74 @@ void kms_cursor_show(Kms *k, int visible) {
                                   .handle = visible ? k->cursor_handle : 0 };
     xioctl(k->fd, DRM_IOCTL_MODE_CURSOR2, &c);
     k->cursor_visible = visible;
+}
+
+/* ---- Settings → Displays: change the mode at runtime, gamma, DPMS ---- */
+
+int kms_modeset(Kms *k, uint32_t conn_id, const struct drm_mode_modeinfo *mode) {
+    if (k->fd < 0 || k->flip_pending) return -1;
+    KmsOutput outs[KMS_MAX_OUTPUTS];
+    int n = kms_outputs(k->fd, outs, KMS_MAX_OUTPUTS), sel = -1;
+    for (int i = 0; i < n; i++) if (outs[i].id == conn_id && outs[i].connected) sel = i;
+    int idx = k->crtc_index;
+    uint32_t crtc = sel >= 0 ? crtc_for(k->fd, &outs[sel], k->crtc_id, &idx) : 0;
+    kms_outputs_free(outs, n);
+    if (!crtc) return -1;
+    Kms old = *k;
+    destroy_buffer(k, &k->buf[0]);
+    destroy_buffer(k, &k->buf[1]);
+    k->conn_id = conn_id;
+    k->crtc_id = crtc;
+    k->crtc_index = idx;
+    k->mode = *mode;
+    k->width = mode->hdisplay;
+    k->height = mode->vdisplay;
+    k->custom = 0;
+    k->front = 0;
+    int ok = create_buffer(k, &k->buf[0]) == 0 && create_buffer(k, &k->buf[1]) == 0;
+    if (ok && crtc != old.crtc_id) {           /* the old CRTC stops scanning out */
+        struct drm_mode_crtc off = { .crtc_id = old.crtc_id };
+        xioctl(k->fd, DRM_IOCTL_MODE_SETCRTC, &off);
+    }
+    if (ok) {
+        struct drm_mode_crtc set = { .crtc_id = k->crtc_id, .fb_id = k->buf[0].fb_id,
+            .set_connectors_ptr = (uintptr_t)&k->conn_id, .count_connectors = 1, .mode = k->mode, .mode_valid = 1 };
+        ok = xioctl(k->fd, DRM_IOCTL_MODE_SETCRTC, &set) == 0;
+        if (!ok) perror("kms: SETCRTC (new mode)");
+    }
+    if (!ok) {                                  /* back to the previous mode */
+        destroy_buffer(k, &k->buf[0]);
+        destroy_buffer(k, &k->buf[1]);
+        k->conn_id = old.conn_id; k->crtc_id = old.crtc_id; k->crtc_index = old.crtc_index;
+        k->mode = old.mode; k->width = old.width; k->height = old.height;
+        if (create_buffer(k, &k->buf[0]) == 0 && create_buffer(k, &k->buf[1]) == 0) {
+            struct drm_mode_crtc set = { .crtc_id = k->crtc_id, .fb_id = k->buf[0].fb_id,
+                .set_connectors_ptr = (uintptr_t)&k->conn_id, .count_connectors = 1, .mode = k->mode, .mode_valid = 1 };
+            xioctl(k->fd, DRM_IOCTL_MODE_SETCRTC, &set);
+        }
+        return -1;
+    }
+    if (crtc != old.crtc_id) { k->scan_known = 0; k->nscan = 0; read_scanout_formats(k); k->cursor_ok = 0; }
+    fprintf(stderr, "kms: mode %ux%u@%u on connector %u, crtc %u\n", k->width, k->height, k->mode.vrefresh, k->conn_id, k->crtc_id);
+    return 0;
+}
+
+int kms_gamma_size(Kms *k) {
+    struct drm_mode_crtc c = { .crtc_id = k->crtc_id };
+    if (k->fd < 0 || xioctl(k->fd, DRM_IOCTL_MODE_GETCRTC, &c)) return 0;
+    return (int)c.gamma_size;
+}
+
+int kms_set_gamma(Kms *k, int n, const uint16_t *r, const uint16_t *g, const uint16_t *b) {
+    struct drm_mode_crtc_lut l = { .crtc_id = k->crtc_id, .gamma_size = (uint32_t)n,
+        .red = (uintptr_t)r, .green = (uintptr_t)g, .blue = (uintptr_t)b };
+    return k->fd < 0 || n <= 0 ? -1 : xioctl(k->fd, DRM_IOCTL_MODE_SETGAMMA, &l);
+}
+
+int kms_dpms(Kms *k, int on) {
+    uint64_t v = 0;
+    uint32_t id = 0;
+    if (k->fd < 0 || kms_obj_prop(k->fd, k->conn_id, DRM_MODE_OBJECT_CONNECTOR, "DPMS", &v, &id)) return -1;
+    struct drm_mode_connector_set_property sp = { .value = on ? DRM_MODE_DPMS_ON : DRM_MODE_DPMS_OFF, .prop_id = id, .connector_id = k->conn_id };
+    return xioctl(k->fd, DRM_IOCTL_MODE_SETPROPERTY, &sp);
 }

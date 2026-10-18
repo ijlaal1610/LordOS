@@ -68,6 +68,10 @@ typedef struct {
     int job;                    /* imagen: trabajo que la decodifica */
     MAudio *audio;              /* reproductor: el stream de PipeWire (de lord-server) */
     MAudio *mic;                /* grabaciones: el micrófono (de lord-server, con permiso) */
+    /* camera of an isolated app (sec/brokercam.c): its helper's messages go to the app over the
+     * broker instead of the session; bk_msg returns 1 when it consumed the message */
+    void *bk;
+    int (*bk_msg)(void *src, const MediaMsg *m, const char *payload, int *fds);
 } MediaSrc;
 
 /* media.c */

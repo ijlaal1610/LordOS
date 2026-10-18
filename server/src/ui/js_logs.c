@@ -1,4 +1,4 @@
-/* js_logs.c — lord.logs: los registros para la app Registros (docs/SISTEMA.md).
+/* js_logs.c — lord.logs: los registros para la app Registros (docs/SYSTEM.md).
  *
  * Todo es de solo lectura y como el usuario de la sesión: los archivos del journal que el kernel y
  * las ACL de journald le dejan leer (su user-<uid>.journal; el del sistema solo si está en

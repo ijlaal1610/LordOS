@@ -587,14 +587,13 @@ y `/dev/tcp`:
 
 ### Límites conocidos
 
-- **Las scopes son del usuario.** El subárbol de la sesión está delegado a él (`PRIVACIDAD.md`).
-  Una app Linux sin caja de arena que corre como el usuario puede mudarse a otra scope, a `server`
-  o a una cgroup nueva de la sesión. En una cgroup que no es una scope conocida, no se aplica
-  nada. Pasa lo mismo con `firewall.json` y con `permisos.json`. Las `.lpk` no pueden, por
-  Landlock.
-
-  Para cerrarlo, el próximo paso: que `lord-sessiond` cree las scopes y deje `cgroup.procs` de
-  root.
+- **App scopes are root's now** (was: «Las scopes son del usuario»). `lord-sessiond` creates the
+  scopes and places each process; every `cgroup.procs` of the session subtree is root-owned, so a
+  Linux app can no longer move itself to another scope, to `server` or to a new cgroup (tested on
+  VM 122, see `PRIVACIDAD.md`, «Root-owned app scopes»). The remaining hole: `systemd-run --user
+  --scope` asks PID 1 (`AttachProcessesToUnit`), which moves the process as root into
+  `user@<uid>.service`, outside `lordos.service`, where no rule applies. `firewall.json` and
+  `permisos.json` are still writable by an unsandboxed app running as the user.
 - **Una scope recién creada** se registra con inotify en microsegundos, antes de que el programa
   termine de arrancar (exec + bibliotecas). Si una conexión llegara antes, pasaría con las reglas
   por omisión.

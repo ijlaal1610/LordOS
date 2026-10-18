@@ -122,7 +122,7 @@ echo 'net.ipv4.ping_group_range = 0 2147483647' > "$CH/etc/sysctl.d/50-lordos-pi
 # usuario de la sesión live: sin contraseña, sudo sin contraseña. Entra solo (inicio automático de
 # lord-sessiond); al bloquear la pantalla se vuelve con la contraseña vacía (solo en el monitor y
 # solo para el usuario de inicio automático; ver docs/SESIONES.md)
-in_ch useradd -m -s /bin/bash -c "LordOS" -G sudo,audio,video,input,render,lpadmin,pipewire lordos
+in_ch useradd -m -s /bin/bash -c "LordOS" -G sudo,audio,video,input,render,lpadmin,pipewire,plugdev lordos
 in_ch passwd -d lordos > /dev/null
 mkdir -p "$CH/etc/lordos"
 printf '# ISO live: entra solo con el usuario lordos. El sistema instalado usa la pantalla de ingreso.\nAUTOLOGIN=lordos\n' > "$CH/etc/lordos/session.conf"

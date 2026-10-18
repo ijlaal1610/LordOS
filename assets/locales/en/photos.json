@@ -35,5 +35,13 @@
   "month.11": "December",
   "menu.file": "File",
   "menu.print": "Print…",
-  "menu.slideshow": "Slideshow"
+  "menu.slideshow": "Slideshow",
+  "refresh": "Reload the folder",
+  "zoomIn": "Zoom in",
+  "zoomOut": "Zoom out",
+  "rotateLeft": "Rotate left",
+  "rotateRight": "Rotate right",
+  "fullscreen": "Full screen",
+  "emptyTitle": "No photos",
+  "thumbSize": "Thumbnail size"
 }

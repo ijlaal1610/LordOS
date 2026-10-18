@@ -117,6 +117,8 @@ typedef struct {
 /* Conecta (sin autenticar) al bus de la sesión: DBUS_SESSION_BUS_ADDRESS (unix:path= o
  * unix:abstract=) o $XDG_RUNTIME_DIR/bus. Para lord-server, fuera de la caja de arena. fd o -1. */
 int  dbus_connect_session(void);
+/* System bus: DBUS_SYSTEM_BUS_ADDRESS (unix:path=) or /run/dbus/system_bus_socket. fd or -1. */
+int  dbus_connect_system(void);
 /* SASL EXTERNAL + Hello sobre un socket conectado (espera hasta timeout_ms). Deja el fd sin
  * bloquear. 0 bien. */
 int  dbus_open(DConn *c, int fd, int timeout_ms);

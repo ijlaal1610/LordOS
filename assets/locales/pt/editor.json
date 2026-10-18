@@ -72,5 +72,10 @@
   "status.tabs": "Tabs: {n}",
   "tooBig": "é grande demais para o editor ({size}; máx. 8 MB)",
   "untitled": "Sem título",
-  "cmd.print": "Imprimir…"
+  "cmd.print": "Imprimir…",
+  "find.prev": "Ocorrência anterior",
+  "find.next": "Próxima ocorrência",
+  "find.close": "Fechar a busca",
+  "find.regex": "Expressão regular",
+  "find.case": "Diferenciar maiúsculas e minúsculas"
 }

@@ -1,5 +1,5 @@
 /* journal.h — lector propio de los archivos del journal de systemd (ver journal.c y
- * docs/SISTEMA.md, «Registros»). Sin libsystemd: se leen los archivos con pread y se valida cada
+ * docs/SYSTEM.md, «Registros»). Sin libsystemd: se leen los archivos con pread y se valida cada
  * desplazamiento, así un archivo roto o cortado no tira abajo a lord-server. */
 #ifndef LORD_LOGS_JOURNAL_H
 #define LORD_LOGS_JOURNAL_H

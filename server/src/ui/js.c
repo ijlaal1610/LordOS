@@ -13,6 +13,7 @@
 #include "js_doc.h"
 #include "js_print.h"
 #include "js_vault.h"
+#include "js_mail.h"
 #include "js_input.h"
 #include "js_fw.h"
 #include "js_backup.h"
@@ -24,6 +25,7 @@
 #include "js_disk.h"
 #include "js_logs.h"
 #include "js_help.h"
+#include "js_hw.h"
 #include "../media/media.h"
 #include "ui.h"
 #include "../term/term.h"
@@ -398,13 +400,15 @@ int js_init(const char *bundle_path) {
     js_doc_register(ctx, lord);        /* lord.doc: PDF, comprimidos y fuentes por el ayudante lord-doc */
     js_print_register(ctx, lord);      /* lord.print: CUPS por IPP y escáneres eSCL */
     js_vault_register(ctx, lord);      /* lord.vault: Contraseñas y el llavero por el ayudante lord-vault */
+    js_mail_register(ctx, lord);       /* lord.mail: Mail, Calendar, Contacts, Reminders via lord-maild (docs/MAIL.md) */
     js_wm_register(ctx, lord);         /* lord.wm: mover y cambiar el tamaño de ventanas en C (grab.c) */
     js_input_register(ctx, lord);      /* lord.input: touchpads y pantallas táctiles (tp/) */
     js_fw_register(ctx, lord);         /* lord.fw: permisos de red por app (lord-netperm, docs/FIREWALL.md) */
-    js_disk_register(ctx, lord);       /* lord.disks: discos y particiones (app Discos) */
-    js_backup_register(ctx, lord);     /* lord.backup: Copias de seguridad (backup/) */
+    js_disk_register(ctx, lord);       /* lord.disks: disks and partitions (Disks app) */
+    js_backup_register(ctx, lord);     /* lord.backup: Backups (backup/) */
     js_logs_register(ctx, lord);       /* lord.logs: journal y registros de LordOS (app Registros) */
-    js_help_register(ctx, lord);       /* lord.help (Ayuda) y lord.time.zoneOffset (Reloj, tzif.c) */
+    js_help_register(ctx, lord);       /* lord.help (Help) and lord.time.zoneOffset (Clock, tzif.c) */
+    js_hw_register(ctx, lord);         /* lord.display/power/bt/mime/timedate (Settings, src/hw) */
     JS_SetPropertyStr(ctx, g, "lord", lord);
     JS_FreeValue(ctx, g);
 
@@ -602,7 +606,7 @@ void js_sound_event(const char *type, const char *json) {
     drain_jobs();
 }
 
-/* Copias de seguridad (backup/backup.c): cambió el estado → __lordBackup(estado). */
+/* Backups (backup/backup.c): the status changed → __lordBackup(status). */
 void js_backup_event(const char *json) {
     if (!ctx) return;
     JSValueConst arg = JS_ParseJSON(ctx, json, strlen(json), "<backup>");
@@ -612,7 +616,7 @@ void js_backup_event(const char *json) {
 }
 
 /* Red (net/state.c): cambió algo de enlaces, direcciones o rutas → __lordNet("link"|"addr"|"route"). */
-/* Discos (disk/disk.c): se montó, desmontó, enchufó o cambió algo → __lordDisks(qué). */
+/* Disks (disk/disk.c): something was mounted, unmounted, plugged in or changed → __lordDisks(what). */
 void js_disk_event(const char *what) {
     if (!ctx) return;
     JSValueConst arg = JS_NewString(ctx, what);
@@ -638,6 +642,18 @@ void js_logs_event(const char *kind, int id, const char *name) {
     JS_FreeValue(ctx, call_global("__lordLogs", 3, args));
     JS_FreeValue(ctx, args[0]);
     JS_FreeValue(ctx, args[2]);
+    drain_jobs();
+}
+
+/* Settings' hardware modules (src/hw): "display", "idle", "power", "bt", "bt-prompt", "bt-result",
+ * "ppd", "ppd-result", "timedate" → __lordHw(kind, data). */
+void js_hw_event(const char *kind, const char *json) {
+    if (!ctx) return;
+    JSValueConst args[2] = { JS_NewString(ctx, kind), JS_ParseJSON(ctx, json, strlen(json), "<hw>") };
+    if (JS_IsException(args[1])) { JS_FreeValue(ctx, JS_GetException(ctx)); args[1] = JS_NULL; }
+    JS_FreeValue(ctx, call_global("__lordHw", 2, args));
+    JS_FreeValue(ctx, args[0]);
+    JS_FreeValue(ctx, args[1]);
     drain_jobs();
 }
 

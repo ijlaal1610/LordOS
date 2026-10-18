@@ -9,7 +9,7 @@
     "es": "Graba una nota de voz y adjunta un archivo",
     "en": "Record a voice note and attach a file"
   },
-  "version": "1.0.0",
+  "version": "1.1.0",
   "icon": "icon.png",
   "size": [
     520,
@@ -17,6 +17,7 @@
   ],
   "permissions": [
     "microphone",
+    "camera",
     "files"
   ]
 }

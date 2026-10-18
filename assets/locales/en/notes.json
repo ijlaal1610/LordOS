@@ -39,7 +39,20 @@
   "read": "Read",
   "search": "Search notes",
   "showDesktop": "On desktop",
-  "toc": "CONTENTS",
+  "toc": "Contents",
   "untitled": "Untitled",
-  "print": "Print…"
+  "print": "Print…",
+  "insert": "Insert",
+  "insertEmoji": "Emoji…",
+  "insertImage": "Image…",
+  "insertFile": "Attachment…",
+  "more": "More",
+  "color": "Color",
+  "color.yellow": "Yellow",
+  "color.pink": "Pink",
+  "color.green": "Green",
+  "color.blue": "Blue",
+  "color.purple": "Purple",
+  "color.gray": "Gray",
+  "noneHint": "Create one with the ✎ button or ❖N."
 }

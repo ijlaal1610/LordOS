@@ -1,12 +1,12 @@
-/* disk_cli.c — corre una acción disk-* como el ayudante, para probar a mano en la VM (no es parte de
- * `make test`: necesita root y dispositivos de verdad). Ver docs/SISTEMA.md, «Discos».
+/* disk_cli.c — runs a disk-* action like the helper does, for manual testing on the VM (not part of
+ * `make test`: it needs root and real devices). See docs/SYSTEM.md, "Disks".
  *
- *   build/disk-cli list                         la lista que ve lord.disks.list()
- *   build/disk-cli system <disco>               ¿es del sistema?
- *   sudo build/disk-cli [-u usuario] [-n] <acción> '<arg con \n>'
- *        -n: como un usuario que no es administrador
+ *   build/disk-cli list                         the list lord.disks.list() sees
+ *   build/disk-cli system <disk>                is it the system disk?
+ *   sudo build/disk-cli [-u user] [-n] <action> '<arg with \n>'
+ *        -n: as a user who is not an administrator
  *
- * admin_say/admin_run son versiones mínimas de las de admin.c (imprimen en la salida). */
+ * admin_say/admin_run are minimal versions of the ones in admin.c (they print to stdout). */
 #include "disk/disk.h"
 
 #include <errno.h>
@@ -70,18 +70,18 @@ static void unescape(char *s) {
 }
 
 int main(int argc, char **argv) {
-    prctl(PR_SET_NAME, "lord-admin");      /* como el ayudante (disk-cancel lo verifica) */
+    prctl(PR_SET_NAME, "lord-admin");      /* like the helper (disk-cancel checks it) */
     const char *user = getenv("SUDO_USER");
     int admin = 1, i = 1;
     for (; i < argc && argv[i][0] == '-'; i++) {
         if (!strcmp(argv[i], "-u") && i + 1 < argc) user = argv[++i];
         else if (!strcmp(argv[i], "-n")) admin = 0;
     }
-    if (i >= argc) { fprintf(stderr, "uso: disk-cli list | system <disco> | [-u usuario] [-n] <acción> [arg]\n"); return 2; }
+    if (i >= argc) { fprintf(stderr, "usage: disk-cli list | system <disk> | [-u user] [-n] <action> [arg]\n"); return 2; }
     if (!strcmp(argv[i], "list")) { char *j = disk_list_json(); puts(j ? j : "null"); free(j); return 0; }
     if (!strcmp(argv[i], "system") && i + 1 < argc) { printf("%d\n", disk_is_system(argv[i + 1])); return 0; }
     struct passwd *pw = getpwnam(user ? user : "root");
-    if (!pw) { fprintf(stderr, "usuario desconocido\n"); return 2; }
+    if (!pw) { fprintf(stderr, "unknown user\n"); return 2; }
     AdminReq r = { .id = 1, .user = pw->pw_name, .home = pw->pw_dir, .uid = pw->pw_uid, .gid = pw->pw_gid, .admin = admin };
     char *arg = strdup(i + 1 < argc ? argv[i + 1] : "");
     unescape(arg);
@@ -92,6 +92,6 @@ int main(int argc, char **argv) {
     };
     for (size_t k = 0; k < sizeof acts / sizeof *acts; k++)
         if (!strcmp(acts[k].n, argv[i])) { acts[k].fn(&r, arg, strlen(arg)); free(arg); return 0; }
-    fprintf(stderr, "acción desconocida\n");
+    fprintf(stderr, "unknown action\n");
     return 2;
 }

@@ -35,5 +35,13 @@
   "month.11": "diciembre",
   "menu.file": "Archivo",
   "menu.print": "Imprimir…",
-  "menu.slideshow": "Presentación"
+  "menu.slideshow": "Presentación",
+  "refresh": "Volver a leer la carpeta",
+  "zoomIn": "Acercar",
+  "zoomOut": "Alejar",
+  "rotateLeft": "Girar a la izquierda",
+  "rotateRight": "Girar a la derecha",
+  "fullscreen": "Pantalla completa",
+  "emptyTitle": "No hay fotos",
+  "thumbSize": "Tamaño de las miniaturas"
 }

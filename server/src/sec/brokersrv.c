@@ -2,7 +2,7 @@
  * compositor). Atiende los pedidos de cada app .lpk aislada, verifica los permisos
  * (perms.c) y, cuando hace falta consentimiento, le pide a la interfaz que dibuje el aviso del
  * sistema (nunca lo dibuja la app). */
-#include "broker.h"
+#include "broker_int.h"
 #include "perms.h"
 #include "json.h"
 #include "../lpk.h"
@@ -98,6 +98,7 @@ typedef struct { int used, save; uint32_t reqid; int fd; char id[48]; } Pick;
 static Pick picks[MAX_PENDING];
 
 void brokersrv_pick_result(uint32_t reqid, const char *path) {
+    if (brokercam_pick_result(reqid, path)) return;     /* a camera photo/video save */
     for (int i = 0; i < MAX_PENDING; i++) {
         if (!picks[i].used || picks[i].reqid != reqid) continue;
         int f = -1;
@@ -131,11 +132,13 @@ void brokersrv_revoke(const char *app, const char *perm) {
     for (int i = 0; i < MAX_APPS; i++) if (apps[i].used && !strcmp(apps[i].id, app)) send_event(&apps[i], "revoke", json, strlen(json));
     if (!strcmp(perm, "microphone")) for (int i = 0; i < MAX_APPS; i++)
         if (apps[i].used && !strcmp(apps[i].id, app) && apps[i].mic) { maudio_close(apps[i].mic); apps[i].mic = NULL; }
+    if (!strcmp(perm, "camera")) brokercam_revoke(app);     /* kills its lord-media: the stream stops now */
     if (!strcmp(perm, "camera") || !strcmp(perm, "microphone"))
         queue_evt("device", "{\"app\":\"%s\",\"kind\":\"%s\",\"on\":false}", app, perm);
 }
 
 void brokersrv_tick(void) {
+    brokercam_tick();
     char kb[512];
     keyboard_json(kb, sizeof kb);
     int kb_changed = strcmp(kb, sent_kb) != 0;
@@ -161,9 +164,18 @@ int brokersrv_add(int fd, const char *id, int pid) {
     return -1;
 }
 
+/* The app is already running: ask its process for another window (Dock → «New window»). */
+int brokersrv_new_window(const char *id) {
+    static const char json[] = "{\"new\":true}";
+    for (int i = 0; i < MAX_APPS; i++)
+        if (apps[i].used && !strcmp(apps[i].id, id)) return send_event(&apps[i], "window", json, sizeof json - 1) ? -1 : 0;
+    return -1;
+}
+
 int brokersrv_count(void) { int n = 0; for (int i = 0; i < MAX_APPS; i++) n += apps[i].used; return n; }
 
 static void drop(AppConn *a) {
+    brokercam_conn_closed((int)(a - apps));
     /* los indicadores de esta app se apagan */
     queue_evt("device", "{\"app\":\"%s\",\"off\":true}", a->id);
     if (a->mic) { maudio_close(a->mic); a->mic = NULL; }
@@ -362,6 +374,9 @@ static void handle(AppConn *a, BrokerHdr *h, char *payload) {
     case BOP_QUIT:
         send_reply(fd, h->reqid, BST_OK, NULL, 0);
         break;
+    case BOP_CAMERA:
+        brokercam_handle((int)(a - apps), fd, h->reqid, payload, h->len);
+        break;
     default:
         send_reply(fd, h->reqid, BST_ERROR, NULL, 0);
         break;
@@ -422,6 +437,32 @@ void brokersrv_audio_dispatch(struct pollfd *pfd, int n) {
         if (f >= 0 && (pfd[k].revents || 1)) { maudio_service(apps[i].mic); maudio_mic_drain(apps[i].mic); }
         if (f >= 0) k++;
     }
+}
+
+/* ---- for brokercam.c (broker_int.h) ---- */
+
+const char *brokersrv_conn_app(int conn) { return conn >= 0 && conn < MAX_APPS && apps[conn].used ? apps[conn].id : NULL; }
+
+int brokersrv_conn_event(int conn, const char *kind, const char *data, size_t len) {
+    if (conn < 0 || conn >= MAX_APPS || !apps[conn].used) return -1;
+    BrokerHdr h = { .reqid = 0, .op = BOP_EVENT, .status = 0, .len = (uint32_t)(strlen(kind) + 1 + len) };
+    struct iovec iov[3] = { { &h, sizeof h }, { (void *)kind, strlen(kind) + 1 }, { (void *)data, len } };
+    struct msghdr m = { .msg_iov = iov, .msg_iovlen = 3 };
+    return sendmsg(apps[conn].fd, &m, MSG_NOSIGNAL | MSG_DONTWAIT) < 0 ? -1 : 0;   /* no resync for frames */
+}
+
+int brokersrv_reply(int fd, uint32_t reqid, int status, const void *data, uint32_t len, int passfd) {
+    return send_reply_fd(fd, reqid, status, data, len, passfd);
+}
+
+void brokersrv_device(const char *app, const char *kind, int on) {
+    queue_evt("device", "{\"app\":\"%s\",\"kind\":\"%s\",\"on\":%s}", app, kind, on ? "true" : "false");
+}
+
+void brokersrv_powerbox_save(uint32_t reqid, const char *app, const char *suggest) {
+    char sq[300];
+    json_quote(sq, sizeof sq, suggest);
+    queue_evt("pick", "{\"reqid\":%u,\"app\":\"%s\",\"save\":true,\"suggest\":%s}", reqid, app, sq);
 }
 
 void brokersrv_events(BrokerEventFn fn) {

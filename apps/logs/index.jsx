@@ -1,4 +1,4 @@
-// Registros — visor de registros estilo Consola de macOS (ver docs/SISTEMA.md, «Registros»).
+// Registros — visor de registros estilo Consola de macOS (ver docs/SYSTEM.md, «Registros»).
 //
 // Fuentes (barra lateral):
 //   - LordOS: los registros de la sesión (~/.cache/lordos/*.log: session.log…);
