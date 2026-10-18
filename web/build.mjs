@@ -483,8 +483,8 @@ ${featureList[i] ? `<a class="more" href="${pageUrl(l, 'features/' + featureList
       const play = '<svg class="i-play" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15a1 1 0 001.5.86l12-7.5a1 1 0 000-1.72l-12-7.5A1 1 0 007 4.5z"/></svg>';
       const dots = SLIDES.map((v, i) => `<button type="button" aria-label="${esc(`${H.show} ${i + 1} ${H.of} ${n}: ${i === 0 ? H.alt : cap(v[0])}`)}"${i === 0 ? ' aria-current="true"' : ''}></button>`).join('');
       const ctl = n > 1 ? `<div class="hero-ctl"><button type="button" class="hc-play" data-state="playing" data-pause="${esc(H.pause)}" data-play="${esc(H.play)}" aria-label="${esc(H.pause)}">${pause}${play}</button><div class="hc-dots" role="group" aria-label="${esc(H.choose)}">${dots}</div></div>` : '';
-      const pills = H.pills.map((p, k) => `<span class="pill p${k + 1}">${esc(p)}</span>`).join('');
-      return `<div class="laptop" id="hero-show" role="region" aria-roledescription="carousel" aria-label="${esc(H.carousel)}"><div class="lp-screen"><span class="lp-cam" aria-hidden="true"></span><div class="lp-display" aria-live="off">${slides}</div></div><div class="lp-base" aria-hidden="true"><span class="lp-notch"></span></div><p class="pills">${pills}</p>${ctl}</div>`;
+      const pills = H.pills.map((p) => `<li>${esc(p)}</li>`).join('');
+      return `<div class="laptop" id="hero-show" role="region" aria-roledescription="carousel" aria-label="${esc(H.carousel)}"><div class="lp-screen"><span class="lp-cam" aria-hidden="true"></span><div class="lp-display" aria-live="off">${slides}</div></div><div class="lp-base" aria-hidden="true"><span class="lp-notch"></span></div>${ctl}</div><ul class="stats">${pills}</ul>`;
     })(),
     fingerprint: FINGERPRINT, banner: l === 'en' ? banner() : '',
   }, t));
