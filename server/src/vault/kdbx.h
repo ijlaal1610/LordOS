@@ -1,5 +1,5 @@
 /* kdbx.h — lector propio de bases de KeePass 2.x / KeePassXC (.kdbx), para importar (ver
- * vimport.h y docs/CONTRASENAS.md, «Importar y exportar»).
+ * vimport.h y docs/PASSWORDS.md, «Importar y exportar»).
  *
  * Versiones: KDBX 4.0/4.1 (cabecera con SHA-256 y HMAC, bloques HMAC-SHA256, encabezado interno
  * con los adjuntos) y KDBX 3.1 (bloques con SHA-256, adjuntos en Meta/Binaries). KDF: Argon2d,

@@ -1,5 +1,5 @@
 /* ctap2.h — cliente FIDO2 propio (CTAP 2.0/2.1 sobre USB HID) para desbloquear la bóveda con una
- * llave de seguridad (ver docs/CONTRASENAS.md, «Llave de seguridad FIDO2»).
+ * llave de seguridad (ver docs/PASSWORDS.md, «Llave de seguridad FIDO2»).
  *
  * Usa la extensión `hmac-secret`: la llave guarda un secreto por credencial (CredRandom) y, dado
  * un «salt» de 32 bytes, devuelve HMAC-SHA256(CredRandom, salt). Ese resultado es la clave que

@@ -1,6 +1,6 @@
-/* KAT: qrcodegen de Nayuki 1.8 (referencia de la norma; segno agrega 8 bits de relleno de más cuando
- * los datos terminan justo en un byte). BIG: segno 1.6.6, con capacidad llena (sin relleno), y
- * verificado igual contra qrcodegen. */
+/* KAT: Nayuki's qrcodegen 1.8 (the standard's reference; segno adds 8 extra padding bits when
+ * the data ends exactly on a byte). BIG: segno 1.6.6, at full capacity (no padding), and
+ * verified identical against qrcodegen. */
 typedef struct { const char *data; int ecc, ver, mask; const char *rows[57]; } QrKat;
 static const QrKat KAT[] = {
   { "HELLO WORLD", 2, 1, 0, {"111111101100001111111", "100000101001001000001", "101110101001101011101", "101110101000001011101", "101110101010001011101", "100000100010001000001", "111111101010101111111", "000000001000000000000", "011010110000101011111", "010000001111000010001", "001101110110001011000", "011011010011010101110", "100010101011101110101", "000000001101001000101", "111111101010000101100", "100000100101101101000", "101110101010001111111", "101110100101010100010", "101110101001011101001", "100000101011110001011", "111111100001011100001"} },

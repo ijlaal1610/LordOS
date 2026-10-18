@@ -1,4 +1,4 @@
-/* smem.h — memoria para secretos de lord-vault (ver docs/CONTRASENAS.md, «Memoria»).
+/* smem.h — memoria para secretos de lord-vault (ver docs/PASSWORDS.md, «Memoria»).
  *
  * Todo lo descifrado (la bóveda, los campos, los pedidos y respuestas que llevan secretos) vive
  * en bloques de esta arena y no en el montón de la libc:

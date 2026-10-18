@@ -1,4 +1,4 @@
-/* vclient.h — lado de lord-server de lord-vault (ver vault.c y docs/CONTRASENAS.md).
+/* vclient.h — lado de lord-server de lord-vault (ver vault.c y docs/PASSWORDS.md).
  *
  * lord-server lanza el ayudante una vez por sesión (ruta fija: <carpeta de este binario>/lord-vault,
  * sin argumentos, entorno mínimo), le pasa la carpeta de las bóvedas

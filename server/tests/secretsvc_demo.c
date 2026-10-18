@@ -1,8 +1,8 @@
-/* secretsvc_demo.c — Secret Service propio con un llavero en memoria, sobre el bus de la sesión
- * real (sin caja de arena). Para probar con secret-tool/libsecret: tests/secretsvc/run-pw-116.sh.
+/* secretsvc_demo.c — our own Secret Service with an in-memory keyring, on the real session bus
+ * (no sandbox). To test with secret-tool/libsecret: tests/secretsvc/run-pw-116.sh.
  *   build/secretsvc-demo [--locked] [--seconds N]
- * Con --locked arranca bloqueado: Unlock muestra un «aviso» que se acepta solo al segundo.
- * Sale con 0 al terminar, 3 si org.freedesktop.secrets ya tenía dueño. */
+ * With --locked it starts locked: Unlock shows a "prompt" that accepts itself after one second.
+ * Exits with 0 when done, 3 if org.freedesktop.secrets already had an owner. */
 #include "vault/dbus.h"
 #include "vault/secretsvc.h"
 #include "ss_memback.h"
@@ -29,19 +29,19 @@ int main(int argc, char **argv) {
     setenv("LORD_SS_DEBUG", "1", 0);
     memback_init(&mb, locked);
     int fd = dbus_connect_session();
-    if (fd < 0) { fprintf(stderr, "demo: no hay bus de la sesión\n"); return 1; }
+    if (fd < 0) { fprintf(stderr, "demo: no session bus\n"); return 1; }
     int r = ss_start(fd, &memback_ops, &mb);
-    if (r == 1) { fprintf(stderr, "demo: org.freedesktop.secrets ya tiene dueño\n"); return 3; }
-    if (r) { fprintf(stderr, "demo: no se pudo arrancar\n"); return 1; }
-    fprintf(stderr, "demo: listo como %s (%s)\n", ss_unique_name(), locked ? "bloqueado" : "desbloqueado");
+    if (r == 1) { fprintf(stderr, "demo: org.freedesktop.secrets already has an owner\n"); return 3; }
+    if (r) { fprintf(stderr, "demo: could not start\n"); return 1; }
+    fprintf(stderr, "demo: ready as %s (%s)\n", ss_unique_name(), locked ? "locked" : "unlocked");
     time_t end = time(NULL) + seconds;
     while (!stop && time(NULL) < end) {
         struct pollfd p = { ss_fd(), POLLIN | (ss_pending_out() ? POLLOUT : 0), 0 };
         poll(&p, 1, 100);
-        if (ss_dispatch() < 0) { fprintf(stderr, "demo: el bus se cerró\n"); return 1; }
+        if (ss_dispatch() < 0) { fprintf(stderr, "demo: the bus closed\n"); return 1; }
         memback_tick(&mb);
     }
     ss_stop();
-    fprintf(stderr, "demo: fin\n");
+    fprintf(stderr, "demo: done\n");
     return 0;
 }

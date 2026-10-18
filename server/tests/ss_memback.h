@@ -1,4 +1,4 @@
-/* ss_memback.h — llavero en memoria para probar secretsvc.c (dbus_test y secretsvc-demo). */
+/* ss_memback.h — in-memory keyring for testing secretsvc.c (dbus_test and secretsvc-demo). */
 #ifndef SS_MEMBACK_H
 #define SS_MEMBACK_H
 #include "vault/secretsvc.h"
@@ -19,14 +19,14 @@ typedef struct {
 typedef struct {
     MbItem it[MB_MAX];
     int locked, counter;
-    unsigned pending;        /* aviso de desbloqueo en curso (0 = ninguno) */
-    double pending_at;       /* ms monotónicos en que se completa */
+    unsigned pending;        /* unlock prompt in progress (0 = none) */
+    double pending_at;       /* monotonic ms at which it completes */
     char last_caller[256];
     unsigned last_pid;
 } MemBack;
 
 extern const SsBackend memback_ops;
 void memback_init(MemBack *b, int locked);
-/* completa el aviso pendiente si pasó 1 s: desbloquea y llama a ss_prompt_done */
+/* completes the pending prompt once 1 s has passed: unlocks and calls ss_prompt_done */
 void memback_tick(MemBack *b);
 #endif

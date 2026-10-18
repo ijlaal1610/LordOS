@@ -1,5 +1,5 @@
 /* app.h — «modo app» de lord-server: correr una app .lpk como su propio proceso aislado y
- * cliente Wayland del compositor (ver appclient.c, docs/PRIVACIDAD.md). */
+ * cliente Wayland del compositor (ver appclient.c, docs/PRIVACY.md). */
 #ifndef LORD_APP_H
 #define LORD_APP_H
 

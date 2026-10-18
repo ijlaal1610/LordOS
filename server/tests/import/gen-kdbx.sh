@@ -1,7 +1,7 @@
 #!/bin/sh
-# Genera las bóvedas KDBX de prueba (VM 116). Contraseña de todas: "lordos-prueba"
-#   kx3-aeskdf.kdbx: KeePassXC 2.7.10 (keepassxc-cli import de sample.xml): KDBX 3.1, AES-256, AES-KDF
-#   kx4-*.kdbx: pykeepass 4.2.0 (KDBX 4), con las mismas entradas
+# Generates the KDBX test vaults (VM 116). Password for all of them: "lordos-prueba"
+#   kx3-aeskdf.kdbx: KeePassXC 2.7.10 (keepassxc-cli import of sample.xml): KDBX 3.1, AES-256, AES-KDF
+#   kx4-*.kdbx: pykeepass 4.2.0 (KDBX 4), with the same entries
 set -e
 cd "$(dirname "$0")"
 rm -f kx*.kdbx kx-*.key kx-*.keyx

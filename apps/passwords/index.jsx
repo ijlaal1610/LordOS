@@ -2,7 +2,7 @@
 // de campos) y etiquetas, favoritas, archivadas, papelera, historial, códigos 2FA, Wi-Fi con QR,
 // notas seguras, tarjetas, informe de seguridad, generador, importar/exportar y el llavero de la
 // sesión. Todo lo descifrado lo maneja lord-vault, encerrado y sin red; esta ventana está
-// protegida (negra en capturas, grabaciones y escritorio remoto). Ver docs/CONTRASENAS.md.
+// protegida (negra en capturas, grabaciones y escritorio remoto). Ver docs/PASSWORDS.md.
 import {
   View, Text, useTheme, useStore, useAppWindow, useKeyboard, Button, TextInput, ScrollView, wm, t, vaultAvailable,
 } from '@lordos/sdk';

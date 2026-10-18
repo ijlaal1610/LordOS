@@ -1,13 +1,13 @@
-/* clip_secret.c — prueba del historial del portapapeles: un cliente Wayland que copia un texto
- * marcándolo como secreto, igual que KeePassXC (ofrece text/plain y x-kde-passwordManagerHint).
- * El historial de LordOS no tiene que guardarlo, pero sí se tiene que poder pegar.
+/* clip_secret.c — clipboard history test: a Wayland client that copies a text
+ * marking it as secret, just like KeePassXC (it offers text/plain and x-kde-passwordManagerHint).
+ * LordOS's history must not store it, but it must still be possible to paste it.
  *
  *   cc -o clip-secret tests/clip_secret.c -lwayland-client
  *   WAYLAND_DISPLAY=wayland-0 ./clip-secret "contraseña"
  *
- * Necesita una ventana con foco de teclado para que el compositor acepte la selección; como no
- * dibuja ninguna, usa el serial del primer evento de teclado que reciba (el compositor manda
- * enter al dar el foco) o, si no llega, 0. */
+ * It needs a window with keyboard focus for the compositor to accept the selection; since it
+ * draws none, it uses the serial of the first keyboard event it receives (the compositor sends
+ * enter when giving focus) or, if none arrives, 0. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -40,11 +40,11 @@ static const struct wl_data_source_listener src = { .target = src_target, .send 
 int main(int argc, char **argv) {
     secret = argc > 1 ? argv[1] : "s3creta";
     struct wl_display *dpy = wl_display_connect(NULL);
-    if (!dpy) { fprintf(stderr, "sin Wayland\n"); return 1; }
+    if (!dpy) { fprintf(stderr, "no Wayland\n"); return 1; }
     struct wl_registry *r = wl_display_get_registry(dpy);
     wl_registry_add_listener(r, &reg, NULL);
     wl_display_roundtrip(dpy);
-    if (!seat || !ddm) { fprintf(stderr, "faltan wl_seat o wl_data_device_manager\n"); return 1; }
+    if (!seat || !ddm) { fprintf(stderr, "wl_seat or wl_data_device_manager is missing\n"); return 1; }
     struct wl_data_device *dev = wl_data_device_manager_get_data_device(ddm, seat);
     struct wl_data_source *s = wl_data_device_manager_create_data_source(ddm);
     wl_data_source_add_listener(s, &src, NULL);
@@ -53,8 +53,8 @@ int main(int argc, char **argv) {
     wl_data_source_offer(s, "x-kde-passwordManagerHint");
     wl_data_device_set_selection(dev, s, 0);
     wl_display_flush(dpy);
-    /* queda vivo unos segundos para servir el texto */
+    /* stays alive for a few seconds to serve the text */
     for (int i = 0; i < 40 && !cancelled; i++) { wl_display_dispatch_pending(dpy); wl_display_flush(dpy); wl_display_roundtrip(dpy); usleep(100000); }
-    printf("listo\n");
+    printf("ready\n");
     return 0;
 }

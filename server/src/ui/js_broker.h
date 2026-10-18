@@ -12,7 +12,7 @@ int  js_broker_pending(void);         /* events queued during an RPC, not dispat
 void js_broker_set_pkgdir(const char *dir);   /* antes de la caja de arena */
 int  js_broker_wants_network(void);   /* la app declaró `network` y lo tiene permitido */
 void js_broker_register(JSContext *c, JSValue lord, const char *app_id);
-/* lord.appWindows: the app's own windows (app/appclient.c, docs/PRIVACIDAD.md) */
+/* lord.appWindows: the app's own windows (app/appclient.c, docs/PRIVACY.md) */
 void app_windows_register(JSContext *c, JSValue lord);
 
 /* RPCs over the broker for the app-side modules (js_brokercam.c). rpc_fd returns the passed fd

@@ -1,4 +1,4 @@
-/* ss_memback.c — llavero en memoria para las pruebas del Secret Service. */
+/* ss_memback.c — in-memory keyring for the Secret Service tests. */
 #include "ss_memback.h"
 #include "vault/smem.h"
 
@@ -45,12 +45,12 @@ static int mb_request_unlock(void *ud, unsigned id) {
     if (!b->locked) return 0;
     b->pending = id;
     b->pending_at = now_ms() + 1000;
-    fprintf(stderr, "memback: aviso de desbloqueo %u (se completa en 1 s)\n", id);
+    fprintf(stderr, "memback: unlock prompt %u (completes in 1 s)\n", id);
     return 1;
 }
 static int mb_lock(void *ud) { ((MemBack *)ud)->locked = 1; return 0; }
 static int mb_search(void *ud, const SsAttr *a, int n, char (*ids)[40], int max) {
-    MemBack *b = ud;           /* busca también bloqueado: los atributos son un índice aparte */
+    MemBack *b = ud;           /* also searches while locked: the attributes are a separate index */
     int k = 0;
     for (int i = 0; i < MB_MAX && k < max; i++) {
         MbItem *x = &b->it[i];
@@ -148,7 +148,7 @@ void memback_tick(MemBack *b) {
         unsigned id = b->pending;
         b->pending = 0;
         b->locked = 0;
-        fprintf(stderr, "memback: aviso %u aceptado, desbloqueado\n", id);
+        fprintf(stderr, "memback: prompt %u accepted, unlocked\n", id);
         ss_prompt_done(id, 1);
     }
 }

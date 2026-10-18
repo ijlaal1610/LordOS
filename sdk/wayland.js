@@ -78,7 +78,7 @@ globalThis.__lordWayland = (sid, type, d = {}) => {
       break;
     }
     // desde donde se apretó el botón (la app pide mover recién después de un umbral)
-    // lo sigue lord-server en C (wm.beginMove/beginResize, docs/VENTANAS.md); si no se puede (el tema no
+    // lo sigue lord-server en C (wm.beginMove/beginResize, docs/WINDOWS.md); si no se puede (el tema no
     // marcó el nodo de la ventana), con los eventos del puntero como antes
     case 'move': if (win) { wm.focus(id); if (!wm.beginMove(id)) drag = { id, edges: null, start: { x: d.x, y: d.y, f: wm.frame(wm.get(id)) } }; } break;
     case 'resize': if (win) { wm.focus(id); if (!wm.beginResize(id, d.edges || 10)) drag = { id, edges: d.edges || 10, start: { x: d.x, y: d.y, f: wm.frame(wm.get(id)) } }; } break;
@@ -125,7 +125,7 @@ locale.subscribe(() => setTimeout(() => {
 
 // Compositor: una app .lpk aislada publicó sus menús por el broker. Se ponen en la ventana de esa
 // app (linux#<superficie> con app_id = su id) para que el tema los muestre en su barra de menú;
-// los clics vuelven a la app por lord.broker.menuClick. Ver docs/PRIVACIDAD.md.
+// los clics vuelven a la app por lord.broker.menuClick. Ver docs/PRIVACY.md.
 function applyAppMenus(app) {
   if (typeof lord === 'undefined' || !lord.broker || typeof lord.broker.menus !== 'function') return;
   const wins = windows.get().filter((w) => surfaceOf(w.id) > 0 && w.args?.appId === app);   // every window of the app

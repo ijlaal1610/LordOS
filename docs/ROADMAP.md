@@ -1,355 +1,355 @@
-# Roadmap LordOS
+# LordOS roadmap
 
-Cada hito se verifica en la VM `lordos-dev` (ver `VM-SETUP.md`) con capturas reales de
-pantalla (`screendump` de QEMU) y se documenta.
+Every milestone is verified on the `lordos-dev` VM (see `VM-SETUP.md`) with real
+screenshots (QEMU `screendump`) and documented.
 
-## M1 — Servidor gráfico mínimo ✅ (2026-10-15)
+## M1 — Minimal display server ✅ (2026-10-15)
 
-- [x] Modesetting propio con ioctls DRM (sin libdrm), doble buffer + page flip.
-- [x] Input propio desde evdev (sin libinput): teclado, mouse relativo, tablet absoluto, `EVIOCGRAB`.
-- [x] Rasterizador 2D propio: alpha, rectángulos redondeados con antialiasing, sombras.
-- [x] Escena de prueba: fondo, barra de menú, dock con magnificación, ventana arrastrable, cursor.
-- [x] Medido: 1280×800, render completo por CPU ≈ 13 ms/frame en la VM.
+- [x] Our own modesetting with DRM ioctls (no libdrm), double buffering + page flip.
+- [x] Our own input from evdev (no libinput): keyboard, relative mouse, absolute tablet, `EVIOCGRAB`.
+- [x] Our own 2D rasterizer: alpha, antialiased rounded rectangles, shadows.
+- [x] Test scene: wallpaper, menu bar, dock with magnification, draggable window, cursor.
+- [x] Measured: 1280×800, full CPU render ≈ 13 ms/frame on the VM.
 
-## M2 — Motor de UI con React ✅ (2026-10-15)
+## M2 — UI engine with React ✅ (2026-10-15)
 
-- [x] QuickJS 2025-04-26 vendorizado en `third_party/quickjs`, embebido en `lord-server`.
-- [x] Árbol de nodos nativo (`View`, `Text`, `Image`) + estilos (subconjunto CSS, ver `themes/README.md`).
-- [x] Layout flexbox propio (`server/src/ui/layout.c`).
-- [x] Texto con `stb_truetype` y fuente Inter (OFL); imágenes PNG/JPEG con `stb_image`.
-- [x] Renderer de React 18 (`runtime/`, `react-reconciler` 0.29) que crea y actualiza nodos nativos.
-- [x] Eventos de mouse con burbujeo (enter/leave/click), teclado, timers, `requestAnimationFrame`.
-- [x] Tema "Lord Default": barra de menú con blur, dock con magnificación y tooltip, ventanas
-      arrastrables con semáforo, apps Archivos/Ajustes/Acerca de, modo claro/oscuro y acentos en vivo.
-- [x] Sombras cacheadas, blur a resolución reducida, damage tracking.
+- [x] QuickJS 2025-04-26 vendored in `third_party/quickjs`, embedded in `lord-server`.
+- [x] Native node tree (`View`, `Text`, `Image`) + styles (a CSS subset, see `themes/README.md`).
+- [x] Our own flexbox layout (`server/src/ui/layout.c`).
+- [x] Text with `stb_truetype` and the Inter font (OFL); PNG/JPEG images with `stb_image`.
+- [x] React 18 renderer (`runtime/`, `react-reconciler` 0.29) that creates and updates native nodes.
+- [x] Mouse events with bubbling (enter/leave/click), keyboard, timers, `requestAnimationFrame`.
+- [x] "Lord Default" theme: menu bar with blur, dock with magnification and tooltip, draggable
+      windows with traffic lights, Files/Settings/About apps, light/dark mode and live accents.
+- [x] Cached shadows, reduced-resolution blur, damage tracking.
 
-Medido en la VM (1280×800, CPU, sin GPU):
+Measured on the VM (1280×800, CPU, no GPU):
 
-| Situación | Render |
+| Situation | Render |
 |---|---|
-| Primer frame (pantalla completa) | ~65 ms |
-| Hover en menú | 0,3–0,6 ms |
-| Hover en dock con magnificación | 2–4 ms |
-| Arrastrar ventana | ~5 ms |
-| RAM total del servidor (con tema React) | ~24 MB |
-| Carga del tema (126 KB, React incluido) | ~28 ms |
+| First frame (full screen) | ~65 ms |
+| Menu hover | 0.3–0.6 ms |
+| Dock hover with magnification | 2–4 ms |
+| Window drag | ~5 ms |
+| Total server RAM (with React theme) | ~24 MB |
+| Theme load (126 KB, React included) | ~28 ms |
 
-Pendiente para más adelante: radios por esquina, `transform: scale`, entrada de
-texto (teclado → caracteres según layout), copiar al back buffer solo la región dañada.
+Left for later: per-corner radii, `transform: scale`, text
+input (keyboard → characters per layout), copying only the damaged region to the back buffer.
 
-## M3 — SDK, apps como paquetes y temas intercambiables ✅ (2026-10-15)
+## M3 — SDK, apps as packages and swappable themes ✅ (2026-10-15)
 
-- [x] Seguridad: `lord-server` suelta root tras abrir pantalla/input; corre como el usuario con
-      solo `CAP_SYS_TTY_CONFIG` (verificado en `/proc/<pid>/status`).
-- [x] APIs nativas: `lord.fs` (solo lectura, encerrado en `$HOME`), `lord.system` (/proc),
+- [x] Security: `lord-server` drops root after opening the display/input; it runs as the user with
+      only `CAP_SYS_TTY_CONFIG` (verified in `/proc/<pid>/status`).
+- [x] Native APIs: `lord.fs` (read-only, confined to `$HOME`), `lord.system` (/proc),
       `lord.settings` (`~/.config/lordos/settings.json`), `lord.themes`, `lord.quit`.
-- [x] Input: clic derecho, rueda, doble clic; teclado con distribuciones `latam` y `us`,
-      tildes con tecla muerta, keypad.
-- [x] `@lordos/sdk` (`sdk/`): gestor de ventanas, ajustes persistentes, contrato de tokens
-      (`ThemeProvider`/`useTheme`), `TextInput`, `ScrollView`, controles, hooks de sistema.
-- [x] Apps como paquetes (`apps/<id>/manifest.json`): Archivos (FS real), Ajustes, Acerca de
-      (datos reales), Calculadora, Terminal (aviso M4).
-- [x] Tema "Lord Default": Launchpad con búsqueda, Centro de control (CPU/RAM en vivo),
-      menús desplegables, menú contextual, 4 fondos propios.
-- [x] Tema "Clásico" como plantilla (barra de tareas + menú de inicio, un solo archivo).
-- [x] Cambio de tema en vivo desde Ajustes, persistente, con protección ante temas rotos.
+- [x] Input: right click, wheel, double click; keyboard with `latam` and `us` layouts,
+      accents with dead keys, keypad.
+- [x] `@lordos/sdk` (`sdk/`): window manager, persistent settings, token contract
+      (`ThemeProvider`/`useTheme`), `TextInput`, `ScrollView`, controls, system hooks.
+- [x] Apps as packages (`apps/<id>/manifest.json`): Files (real FS), Settings, About
+      (real data), Calculator, Terminal (M4 notice).
+- [x] "Lord Default" theme: Launchpad with search, Control Center (live CPU/RAM),
+      drop-down menus, context menu, 4 wallpapers of our own.
+- [x] "Classic" theme as a template (taskbar + start menu, a single file).
+- [x] Live theme switching from Settings, persistent, with protection against broken themes.
 
-Medido en la VM: RAM del servidor 24–26 MB con Lord Default, 11 MB con Clásico; cambio de
-tema ~30 ms + primer frame ~60 ms.
+Measured on the VM: server RAM 24–26 MB with Lord Default, 11 MB with Classic; theme
+switch ~30 ms + first frame ~60 ms.
 
-Pendiente de M3 que pasa a más adelante: volumen y brillo (no hay audio ni backlight en la VM),
-aislamiento real de apps por permisos, entorno de desarrollo en el navegador del Mac.
+Left over from M3 and moved to later: volume and brightness (no audio or backlight on the VM),
+real per-app isolation by permissions, a development environment in the Mac's browser.
 
-## M4 — Terminal nativa estilo iTerm2 ✅ (2026-10-15)
+## M4 — Native iTerm2-style terminal ✅ (2026-10-15)
 
-Se adelantó a Wayland por pedido del proyecto: la terminal de LordOS es propia, no una app
-Linux. Detalle completo, atajos y tabla de paridad con iTerm2 en `TERMINAL.md`.
+Moved ahead of Wayland at the project's request: the LordOS terminal is our own, not a Linux
+app. Full details, shortcuts and the iTerm2 parity table in `TERMINAL.md`.
 
-- [x] Motor en C (`server/src/term/`): emulador xterm-256color (parser VT500, color directo,
-      pantalla alternativa, mouse, pegado entre corchetes, salida sincronizada), historia con
-      reflujo, PTY sin privilegios, dibujo con daño por filas, cajas/bloques/powerline a mano.
-- [x] Extensiones de iTerm2: imágenes en línea (`imgcat`), insignias, marcas, integración con
-      bash (OSC 133/7), Sixel, hipervínculos OSC 8, OSC 52, notificaciones OSC 9.
-- [x] App React: pestañas, paneles divididos, perfiles con 16 esquemas, transparencia y
-      desenfoque, buscador con regex, toolbelt, barra de estado, ventana desplegable (F12),
-      modo copia, Instant Replay, disparadores, cambio automático de perfil, disposiciones
-      guardadas, deshacer cierre, compositor, autocompletar, historial de comandos y pegado.
-- [x] Plataforma: varias ventanas por app, título dinámico, menús de la app en la barra del
-      tema, confirmación al cerrar, argumentos al abrir apps, redimensionar ventanas,
-      componente `<Terminal>`, portapapeles de la sesión, `Stepper` y `Slider`.
+- [x] C engine (`server/src/term/`): xterm-256color emulator (VT500 parser, direct color,
+      alternate screen, mouse, bracketed paste, synchronized output), scrollback with
+      reflow, unprivileged PTY, drawing with per-row damage, hand-drawn boxes/blocks/powerline.
+- [x] iTerm2 extensions: inline images (`imgcat`), badges, marks, bash
+      integration (OSC 133/7), Sixel, OSC 8 hyperlinks, OSC 52, OSC 9 notifications.
+- [x] React app: tabs, split panes, profiles with 16 color schemes, transparency and
+      blur, regex search, toolbelt, status bar, hotkey window (F12),
+      copy mode, Instant Replay, triggers, automatic profile switching, saved
+      arrangements, undo close, composer, autocomplete, command and paste history.
+- [x] Platform: several windows per app, dynamic title, app menus in the theme's
+      bar, confirmation on close, arguments when opening apps, window resizing,
+      `<Terminal>` component, session clipboard, `Stepper` and `Slider`.
 
-- [x] Completada la paridad con iTerm2: elección de fuente y fuente "no ASCII",
-      ligaduras (motor GSUB propio, `server/src/ui/otf.c`), emoji a color (CBDT), caracteres
-      combinantes y grafemas (modo 2027), integración con zsh y fish, atajos y teclas
-      configurables, cambio de perfil por usuario@host, disparadores de resaltar/marca/título,
-      sesiones que sobreviven a un reinicio del servidor (guardianes, `term/hold.c`),
-      `tmux -CC` con pestañas y paneles nativos, e **importación de perfiles de iTerm2**
-      (JSON, `.itermcolors`, plist XML y binario).
+- [x] iTerm2 parity completed: font choice and "non-ASCII" font,
+      ligatures (our own GSUB engine, `server/src/ui/otf.c`), color emoji (CBDT), combining
+      characters and graphemes (mode 2027), zsh and fish integration, configurable shortcuts and
+      keys, profile switching by user@host, highlight/mark/title triggers,
+      sessions that survive a server restart (holders, `term/hold.c`),
+      `tmux -CC` with native tabs and panes, and **iTerm2 profile import**
+      (JSON, `.itermcolors`, XML and binary plist).
 
-Medido en la VM: `seq 1 1000000` en 2,1 s con transparencia; RAM del servidor ~39 MB con
-3 terminales, ~43 MB con 6 sesiones + 3 paneles de tmux + emoji; ~2,2 MB por guardián.
-Lo que queda fuera (imagen de fondo, emoji COLR/SVG, GPOS) está en `TERMINAL.md`.
+Measured on the VM: `seq 1 1000000` in 2.1 s with transparency; server RAM ~39 MB with
+3 terminals, ~43 MB with 6 sessions + 3 tmux panes + emoji; ~2.2 MB per holder.
+What is left out (background image, COLR/SVG emoji, GPOS) is in `TERMINAL.md`.
 
-## M5 — Idioma y región (todo el sistema) ✅ (2026-10-15)
+## M5 — Language and region (system-wide) ✅ (2026-10-15)
 
-Detalle en `LANGUAGES.md`. Va antes de Wayland para que las apps GTK/Qt reciban el mismo idioma.
+Details in `LANGUAGES.md`. It comes before Wayland so GTK/Qt apps receive the same language.
 
-- [x] Región del sistema por usuario (`~/.config/locale.conf`) heredada por la sesión y los
-      shells; mensajes de Debian (gettext) en el idioma elegido (verificado con `ls`, `date`, `printf`).
-- [x] Interfaz: catálogos por espacio (`assets/locales/<idioma>/*.json`), `t()`/`useLocale()`,
-      plurales (reglas CLDR propias), fechas y números por región; cambio en vivo sin perder
-      ventanas ni terminales; respaldo en inglés. 391 claves.
-- [x] Español, inglés y portugués completos; `tools/i18n-check.mjs` y `tools/i18n-pack.mjs`;
-      paquete de prueba en francés instalado desde Ajustes.
-- [x] Paquetes de idioma: catálogos de LordOS (usuario, sin root) + región de glibc + paquetes
-      de Debian del idioma (manpages, hunspell, aspell, hyphen, mythes, fuentes de la escritura).
-- [x] Teclado con libxkbcommon + xkb-data: todas las distribuciones y variantes, hasta 4 a la
-      vez, teclas muertas y compose.
-- [x] Zona horaria y región del sistema desde Ajustes.
-- [x] Ayudante privilegiado mínimo (`server/src/admin.c`) con acciones cerradas, aprobado.
+- [x] Per-user system region (`~/.config/locale.conf`) inherited by the session and the
+      shells; Debian messages (gettext) in the chosen language (verified with `ls`, `date`, `printf`).
+- [x] Interface: catalogs per namespace (`assets/locales/<language>/*.json`), `t()`/`useLocale()`,
+      plurals (our own CLDR rules), dates and numbers per region; live switching without losing
+      windows or terminals; English fallback. 391 keys.
+- [x] Spanish, English and Portuguese complete; `tools/i18n-check.mjs` and `tools/i18n-pack.mjs`;
+      test French pack installed from Settings.
+- [x] Language packs: LordOS catalogs (user, no root) + glibc region + the language's Debian
+      packages (manpages, hunspell, aspell, hyphen, mythes, fonts for the script).
+- [x] Keyboard with libxkbcommon + xkb-data: every layout and variant, up to 4 at
+      once, dead keys and compose.
+- [x] System time zone and region from Settings.
+- [x] Minimal privileged helper (`server/src/admin.c`) with closed actions, approved.
 
-## M5b — Escrituras complejas ✅ (2026-10-15)
+## M5b — Complex scripts ✅ (2026-10-15)
 
-Detalle en `LANGUAGES.md` → "Escrituras complejas". Sin HarfBuzz, fribidi, ICU, ibus ni fcitx.
+Details in `LANGUAGES.md` → "Complex scripts". No HarfBuzz, fribidi, ICU, ibus or fcitx.
 
-- [x] Bidi de Unicode completo (UAX #9): 91.707/91.707 casos de `BidiCharacterTest.txt`.
-- [x] Formas contextuales del árabe, ligaduras, marcas, cursivo (nastaliq), shaper índico
-      (9 escrituras) y tailandés/laosiano: 217/217 frases idénticas a HarfBuzz.
-- [x] Respaldo de fuentes por escritura en la interfaz y la terminal (Noto; CJK según el idioma).
-- [x] Corte de línea para chino y japonés.
-- [x] Interfaz espejada para idiomas RTL (`direction` como en CSS, `textAlign` start/end),
-      probada en árabe con los dos temas.
-- [x] Métodos de entrada: coreano (hangul), japonés (romaji → kana + SKK, conversión por
-      frase con segmentos), chino (pinyin con abreviaturas); en la terminal y en campos de texto.
-- [x] Terminal: árabe y hebreo en orden visual y escrituras complejas armadas (opción por perfil).
-- [x] Shapers de jemer y birmano y el Universal Shaping Engine (tibetano, cingalés, balinés,
-      javanés, mongol y ~80 escrituras más): con lo anterior, 409/409 frases idénticas a HarfBuzz
+- [x] Full Unicode bidi (UAX #9): 91,707/91,707 cases of `BidiCharacterTest.txt`.
+- [x] Arabic contextual forms, ligatures, marks, cursive (nastaliq), Indic shaper
+      (9 scripts) and Thai/Lao: 217/217 sentences identical to HarfBuzz.
+- [x] Per-script font fallback in the interface and the terminal (Noto; CJK by language).
+- [x] Line breaking for Chinese and Japanese.
+- [x] Mirrored interface for RTL languages (`direction` as in CSS, `textAlign` start/end),
+      tested in Arabic with both themes.
+- [x] Input methods: Korean (hangul), Japanese (romaji → kana + SKK, phrase
+      conversion with segments), Chinese (pinyin with abbreviations); in the terminal and in text fields.
+- [x] Terminal: Arabic and Hebrew in visual order and shaped complex scripts (per-profile option).
+- [x] Khmer and Myanmar shapers and the Universal Shaping Engine (Tibetan, Sinhala, Balinese,
+      Javanese, Mongolian and ~80 more scripts): with the above, 409/409 sentences identical to HarfBuzz
       (2026-10-16).
-- [x] Corte de línea del tailandés por palabras con el diccionario de libthai-data y lector
-      propio (igual a libthai en 705/705 párrafos de prueba); jemer y birmano por sílaba (2026-10-16).
-- [ ] Pendiente: laosiano por palabras, restricciones de vocales con ◌, japonés con frecuencias.
+- [x] Thai word-based line breaking with the libthai-data dictionary and our own
+      reader (identical to libthai on 705/705 test paragraphs); Khmer and Myanmar by syllable (2026-10-16).
+- [ ] Pending: Lao by words, vowel constraints with ◌, Japanese with frequencies.
 
-## M6 — Compatibilidad con apps Linux (Wayland) ✅ (2026-10-16)
+## M6 — Linux app compatibility (Wayland) ✅ (2026-10-16)
 
-Detalle en `WAYLAND.md`.
+Details in `WAYLAND.md`.
 
 - [x] `libwayland-server` + `wl_compositor`, `wl_shm`, `wl_subcompositor`, `xdg_shell`
-      (ventanas y menús emergentes), `wl_seat` (puntero y teclado XKB), `wl_output`.
-- [x] Ventanas de apps GTK4 (marco propio) y Qt6 (marco del tema) dentro de los dos temas:
-      título, foco, mover, cambiar tamaño, maximizar, minimizar, cerrar, Dock.
-- [x] Portapapeles compartido con LordOS en los dos sentidos, `xdg-decoration`.
-- [ ] Lanzar apps `.desktop` desde el Launchpad (necesita aprobar una excepción a "el servidor
-      no ejecuta comandos"), `linux-dmabuf`, cursores de las apps, arrastrar y soltar,
+      (windows and popups), `wl_seat` (pointer and XKB keyboard), `wl_output`.
+- [x] GTK4 (own frame) and Qt6 (theme frame) app windows inside both themes:
+      title, focus, move, resize, maximize, minimize, close, Dock.
+- [x] Clipboard shared with LordOS in both directions, `xdg-decoration`.
+- [ ] Launching `.desktop` apps from the Launchpad (needs an approved exception to "the server
+      doesn't execute commands"), `linux-dmabuf`, app cursors, drag and drop,
       `text-input`, Xwayland.
 
-## M7 — Apps, paquetes y servicios del sistema ✅ (2026-10-16)
+## M7 — Apps, packages and system services ✅ (2026-10-16)
 
-Definido con el usuario el 2026-10-16: tienda propia (apps de Debian y apps nativas LordOS),
-instalador propio, y red, VPN, sonido y portapapeles con interfaz propia.
+Defined with the user on 2026-10-16: our own store (Debian apps and native LordOS apps),
+our own installer, and network, VPN, sound and clipboard with our own interface.
 
-- [x] Lanzador de apps Linux instaladas (`.desktop`) en el Launchpad, el menú de inicio y el
-      Dock, con la excepción `lord.apps.launch(id)` aprobada (`WAYLAND.md`, "El lanzador").
-- [x] Apps nativas instalables `.lpk` (sin root), con React y el SDK compartidos con el tema,
-      `<Image pixels>` y `loadWasm` (`NATIVE-APPS.md`); ejemplo `examples/apps/fractal`.
-- [x] Intérprete WebAssembly propio y el global `WebAssembly` (`WASM.md`): 26.290/26.290
-      aserciones de la suite oficial wg-2.0; 3–5× más rápido que el mismo código en JS.
-- [x] Motor de paquetes de Debian propio (`PACKAGES.md`): OpenPGP (RSA/Ed25519), xz, HTTP y
-      resolvedor propios, `dpkg` al final; planes idénticos a apt en 12 casos; huérfanos.
-- [x] Tienda: apps de Debian por categoría (AppStream), búsqueda, plan antes de instalar o
-      quitar, actualizaciones, `.deb` y `.lpk` locales.
-- [x] Launchpad y menú de inicio con categorías (freedesktop), íconos de AppStream para las apps
-      que solo traen SVG.
-- [x] Ajustes agrupado como en macOS/TangoOS (buscador, usuario, General, Red, Sonido,
-      Actualizaciones…).
-- [x] Portapapeles: imágenes entre apps Linux que sobreviven a la app de origen, historial (❖V).
-- [x] Sonido sobre PipeWire con cliente propio (`SOUND.md`): Centro de control y Ajustes.
-- [x] Red propia (netlink, DHCP, Wi-Fi con wpa_supplicant) y VPN (WireGuard por netlink propio,
-      OpenVPN) en Ajustes → Red (`NETWORK.md`).
-- [x] React 19.3.1 (`react-reconciler` 0.34): renderer adaptado (`runtime/index.js`), probado con
-      los dos temas, cambio de tema en vivo, apps instaladas (.lpk) y apps Linux. lord-server: 34 MB de RSS.
-- [x] Archivos al estilo Finder (`FILES.md`): pestañas, cuatro vistas, Papelera de
-      freedesktop, Vista rápida, Ver información, copiar/mover en segundo plano (`fsops.c`),
-      arrastrar y soltar, etiquetas, búsqueda, discos montados y «Abrir con» (`launchWith`).
-- [ ] Pendiente de M7: OpenConnect e IPsec (strongSwan), WPA3/Enterprise, permisos reales por
-      app, repositorio de apps LordOS firmado.
-- [x] `flexWrap` en el motor de layout propio (`layout.c`).
-- [x] Notas: post-its en el escritorio (widgets), markdown con lectura e índice, imágenes,
-      adjuntos y emojis, guardadas solas en `~/Notas` (`NOTES.md`).
+- [x] Launcher for installed Linux apps (`.desktop`) in the Launchpad, the start menu and the
+      Dock, with the approved `lord.apps.launch(id)` exception (`WAYLAND.md`, "The launcher").
+- [x] Installable native `.lpk` apps (no root), with React and the SDK shared with the theme,
+      `<Image pixels>` and `loadWasm` (`NATIVE-APPS.md`); example `examples/apps/fractal`.
+- [x] Our own WebAssembly interpreter and the `WebAssembly` global (`WASM.md`): 26,290/26,290
+      assertions of the official wg-2.0 suite; 3–5× faster than the same code in JS.
+- [x] Our own Debian package engine (`PACKAGES.md`): our own OpenPGP (RSA/Ed25519), xz, HTTP and
+      resolver, `dpkg` at the end; plans identical to apt in 12 cases; orphans.
+- [x] Store: Debian apps by category (AppStream), search, plan before installing or
+      removing, updates, local `.deb` and `.lpk`.
+- [x] Launchpad and start menu with categories (freedesktop), AppStream icons for apps
+      that only ship SVG.
+- [x] Settings grouped as in macOS/TangoOS (search, user, General, Network, Sound,
+      Updates…).
+- [x] Clipboard: images between Linux apps that survive the source app, history (❖V).
+- [x] Sound on PipeWire with our own client (`SOUND.md`): Control Center and Settings.
+- [x] Our own networking (netlink, DHCP, Wi-Fi with wpa_supplicant) and VPN (WireGuard over our own netlink,
+      OpenVPN) in Settings → Network (`NETWORK.md`).
+- [x] React 19.3.1 (`react-reconciler` 0.34): adapted renderer (`runtime/index.js`), tested with
+      both themes, live theme switching, installed apps (.lpk) and Linux apps. lord-server: 34 MB RSS.
+- [x] Finder-style Files (`FILES.md`): tabs, four views, freedesktop
+      Trash, Quick Look, Get Info, background copy/move (`fsops.c`),
+      drag and drop, tags, search, mounted disks and «Open With» (`launchWith`).
+- [ ] Left over from M7: OpenConnect and IPsec (strongSwan), WPA3/Enterprise, real per-app
+      permissions, a signed LordOS app repository.
+- [x] `flexWrap` in our own layout engine (`layout.c`).
+- [x] Notes: sticky notes on the desktop (widgets), markdown with reading view and index, images,
+      attachments and emoji, saved automatically in `~/Notas` (`NOTES.md`).
 
-## M8 — Sesión y sistema
+## M8 — Session and system
 
-- [x] Sesión propia: `lord-sessiond` con pantalla de ingreso, bloqueo (❖L), cambio rápido de
-  usuario, sesiones en paralelo y Ajustes → Usuarios (`SESSIONS.md`).
-- [x] Escritorio remoto en la LAN desde el navegador (puerto 5673, apagado por defecto;
-  `REMOTE.md`). Pendiente: audio (etapa 2, diseñada).
-- [x] Privacidad y firma de apps `.lpk` (`PRIVACY.md`, `SIGNING.md`):
-  - [x] Caja de arena propia (`server/src/sec/sandbox.c`): Landlock (ABI≤6), seccomp-bpf (lista
-    blanca), sin red sin permiso, `no_new_privs`, capacidades soltadas y cgroup v2 por app;
-    probada en la VM (`build/sandbox-test`, 7/7). Sin bubblewrap/flatpak/firejail.
-  - [x] Permisos estilo TCC de macOS: avisos dibujados por el sistema, decisiones guardadas donde
-    la app no escribe (`permisos.json`), Ajustes → Privacidad y los puntos verde/naranja de
-    cámara/micrófono en los dos temas.
-  - [x] Firma Ed25519 propia (SHA-256/Ed25519, verificar y firmar), `contenido.json` con hashes,
-    niveles de confianza, catálogo firmado con revocación, y «Modificada por vos» / «Restaurar
-    original» / «Compartir mi versión». Pruebas `build/sign-test` (55/55, RFC 8032 + NIST) y
+- [x] Our own session: `lord-sessiond` with a login screen, lock (❖L), fast user
+  switching, parallel sessions and Settings → Users (`SESSIONS.md`).
+- [x] Remote desktop on the LAN from the browser (port 5673, off by default;
+  `REMOTE.md`). Pending: audio (stage 2, designed).
+- [x] Privacy and signing of `.lpk` apps (`PRIVACY.md`, `SIGNING.md`):
+  - [x] Our own sandbox (`server/src/sec/sandbox.c`): Landlock (ABI≤6), seccomp-bpf (allow
+    list), no network without permission, `no_new_privs`, dropped capabilities and per-app cgroup v2;
+    tested on the VM (`build/sandbox-test`, 7/7). No bubblewrap/flatpak/firejail.
+  - [x] macOS TCC-style permissions: prompts drawn by the system, decisions stored where
+    the app can't write (`permisos.json`), Settings → Privacy and the green/orange
+    camera/microphone dots in both themes.
+  - [x] Our own Ed25519 signing (SHA-256/Ed25519, verify and sign), `contenido.json` with hashes,
+    trust levels, signed catalog with revocation, and «Modified by you» / «Restore
+    original» / «Share my version». Tests `build/sign-test` (55/55, RFC 8032 + NIST) and
     `build/pkgstate-test` (11/11).
-  - [x] `tools/lpk.mjs`: `keygen`, firmar al empaquetar, `sign`, `verify` y `catalog`.
-  - [x] Cada `.lpk` como proceso aislado (`lord-server --app <id>`): cliente Wayland con el marco
-    del tema, en el Dock y el escritorio remoto; broker que verifica cada `lord.*`; avisos del
-    sistema pedidos por la app. La app maliciosa (`tests/lpk-evil`) falla en todo en tiempo de
-    ejecución; la legítima (`tests/lpk-legit`) funciona tras el consentimiento.
-  - [x] cgroup delegado por sesión (`Delegate=yes`, `lord-sessiond` en la hoja `supervisor`):
-    `app-lordos-lpk-<id>.scope` y `app-lordos-<id>.scope` (apps Linux) bajo
-    `lordos-session-<uid>`; probado con cambio rápido de usuario y escritorio remoto.
-  - [x] `sandbox_apply_helper` endurecido para lord-media y lord-doc (sin sockets ni exec, solo
-    hilos, TSYNC, carpetas por fd, ioctl por clase, kcmp propio): `sandbox-test helper` 17/17.
-  - [ ] Pendiente: powerbox gráfico (diálogo que entrega el fd), fd de la cámara y flujo de
-    PipeWire hacia la app, tokens/idioma/RTL en vivo y menús de la app aislada.
-- [x] **Firewall por app**, pasos 1 a 4 (`FIREWALL.md`), probado en la VM 122:
-  - [x] tienda de reglas, precedencia, `dnsmap` y JSON (`server/src/fw`, paso 1);
-  - [x] `lord-netperm`, el servicio root que aplica las reglas con BPF de cgroup (connect, sendmsg,
-    bind, sock_create) en el subárbol de las sesiones, con cargador propio (sin libbpf), reglas
-    compiladas a mapas LPM/hash (`build/npcompile-test`: 480 000 conexiones contra `fw_decide`,
-    0 diferencias) y nombres solo del resolvedor del sistema (monitor de systemd-resolved);
-  - [x] prueba con el kernel `tests/netperm_integration.sh` 18/18: denegar/permitir, "solo
-    example.com", solo LAN, sin entrantes, sin red, apagado;
-  - [x] Monitor: interruptor Regla por app y contadores de permitidas/denegadas; Ajustes →
-    Privacidad: modo, Apps confiables y Apps restringidas;
+  - [x] `tools/lpk.mjs`: `keygen`, signing when packaging, `sign`, `verify` and `catalog`.
+  - [x] Each `.lpk` as an isolated process (`lord-server --app <id>`): a Wayland client with the
+    theme's frame, in the Dock and the remote desktop; a broker that checks every `lord.*`; system
+    prompts requested by the app. The malicious app (`tests/lpk-evil`) fails at everything at
+    run time; the legitimate one (`tests/lpk-legit`) works after consent.
+  - [x] Per-session delegated cgroup (`Delegate=yes`, `lord-sessiond` in the `supervisor` leaf):
+    `app-lordos-lpk-<id>.scope` and `app-lordos-<id>.scope` (Linux apps) under
+    `lordos-session-<uid>`; tested with fast user switching and remote desktop.
+  - [x] `sandbox_apply_helper` hardened for lord-media and lord-doc (no sockets or exec, threads
+    only, TSYNC, folders by fd, ioctl by class, our own kcmp): `sandbox-test helper` 17/17.
+  - [ ] Pending: graphical powerbox (a dialog that hands over the fd), the camera fd and PipeWire
+    stream to the app, live tokens/language/RTL and menus for the isolated app.
+- [x] **Per-app firewall**, steps 1 to 4 (`FIREWALL.md`), tested on VM 122:
+  - [x] rule store, precedence, `dnsmap` and JSON (`server/src/fw`, step 1);
+  - [x] `lord-netperm`, the root service that enforces the rules with cgroup BPF (connect, sendmsg,
+    bind, sock_create) in the sessions' subtree, with our own loader (no libbpf), rules
+    compiled to LPM/hash maps (`build/npcompile-test`: 480,000 connections against `fw_decide`,
+    0 differences) and names only from the system resolver (systemd-resolved monitor);
+  - [x] kernel test `tests/netperm_integration.sh` 18/18: deny/allow, "only
+    example.com", LAN only, no incoming, no network, off;
+  - [x] Monitor: per-app Rule switch and allowed/denied counters; Settings →
+    Privacy: mode, Trusted apps and Restricted apps;
   - [x] root-owned scopes: `lord-sessiond` places every app process and a Linux app can't move
     itself to another cgroup (VM 122). Still open: `systemd-run --user --scope` (PID 1 moves it
     into `user@<uid>.service`).
-  - [ ] modo "preguntar" (diseñado), interruptores por destino.
-- [x] App **Monitor**, fase 1 (`MONITOR.md`), probada en la VM 123:
-  - [x] pestañas Resumen, CPU, Memoria, Red, Discos y Procesos con el aspecto del Monitor de
-    TangoOS;
-  - [x] métricas leídas por `lord-server` en un hilo propio, a 4 Hz y solo con la app abierta
-    (cerrada no cuesta nada);
-  - [x] conexiones por app con sock_diag, del proceso a la app por los `.desktop`;
-  - [x] mapa vectorial propio con zoom y arcos, al estilo de Little Snitch;
-  - [x] país por IP con un lector propio de MaxMind DB y DB-IP Lite (CC BY 4.0), sin red;
-  - [x] ítem en Ajustes → Privacidad.
-  - [x] Fase 2, firewall: ver "Firewall por app" arriba.
-  - [ ] Fase 2, resto: alertas de conexión ("preguntar"), cámara y micrófono en uso (`monitor.deviceUsers()`), nombres de host sin
-    DNS inverso, historial y alertas de uso.
-- [ ] Sesiones con GPU (hoy se dibujan por CPU), cambio de VT y varios monitores.
-- [ ] Más apps nativas LordOS en React (editor de texto, visor de imágenes, navegador).
-- [ ] Imagen instalable basada en Debian 13 mínimo, con LordOS como paquetes `.deb`.
-- [ ] **ARM64 / Raspberry Pi 5 como plataforma oficial** (`RASPBERRY.md`):
-  - [x] Auditoría de portabilidad de `server/` para aarch64: char sin signo, páginas de 16K,
-    seccomp de arm64, alineación y `ARCH` en el Makefile (sin `-march=native`).
-  - [x] NEON opcional por arquitectura en `canvas.c` (blit y máscaras), igual bit a bit a C
+  - [ ] "ask" mode (designed), per-destination switches.
+- [x] **Monitor** app, phase 1 (`MONITOR.md`), tested on VM 123:
+  - [x] Overview, CPU, Memory, Network, Disks and Processes tabs with the look of TangoOS's
+    Monitor;
+  - [x] metrics read by `lord-server` in its own thread, at 4 Hz and only while the app is open
+    (closed, it costs nothing);
+  - [x] per-app connections with sock_diag, from process to app through the `.desktop` files;
+  - [x] our own vector map with zoom and arcs, Little Snitch style;
+  - [x] country by IP with our own MaxMind DB reader and DB-IP Lite (CC BY 4.0), no network;
+  - [x] item in Settings → Privacy.
+  - [x] Phase 2, firewall: see "Per-app firewall" above.
+  - [ ] Phase 2, the rest: connection alerts ("ask"), camera and microphone in use (`monitor.deviceUsers()`), host names without
+    reverse DNS, history and usage alerts.
+- [ ] GPU sessions (today they are drawn on the CPU), VT switching and multiple monitors.
+- [ ] More native LordOS apps in React (text editor, image viewer, browser).
+- [ ] Installable image based on minimal Debian 13, with LordOS as `.deb` packages.
+- [ ] **ARM64 / Raspberry Pi 5 as an official platform** (`RASPBERRY.md`):
+  - [x] Portability audit of `server/` for aarch64: unsigned char, 16K pages,
+    arm64 seccomp, alignment and `ARCH` in the Makefile (no `-march=native`).
+  - [x] Optional per-architecture NEON in `canvas.c` (blit and masks), bit-identical to C
     (`build/canvas-test`); `STBI_NEON`.
-  - [x] Pantalla y GPU separadas (vc4 + v3d):
-    - la tarjeta con conectores (`drmcard.h`), en lord-server y lord-sessiond;
-    - `IN_FORMATS` del plano primario y scanout directo solo con modificadores aceptados;
-    - el render node de EGL en el feedback de dmabuf.
-  - [x] `tools/rpi/build-img.sh`: `lordos-<versión>-rpi5-arm64.img.xz` para Raspberry Pi Imager:
-    - Debian 13 arm64 con el kernel y el firmware de Raspberry Pi;
-    - el mismo `.deb` del ISO;
-    - la partición se agranda sola;
-    - primer arranque con `lordos-user.txt`/`userconf.txt` (pantalla de ingreso) o modo de
-      configuración.
-  - [ ] Correr `build-img.sh` y probar en la Pi 5 de 16 GB (lista de pruebas de `RASPBERRY.md`,
-    con capturas por el escritorio remoto).
-  - [ ] Video por hardware en la Pi 5 (HEVC por V4L2 stateless; H.264 por software) en
+  - [x] Separate display and GPU (vc4 + v3d):
+    - the card with connectors (`drmcard.h`), in lord-server and lord-sessiond;
+    - `IN_FORMATS` of the primary plane and direct scanout only with accepted modifiers;
+    - the EGL render node in the dmabuf feedback.
+  - [x] `tools/rpi/build-img.sh`: `lordos-<version>-rpi5-arm64.img.xz` for Raspberry Pi Imager:
+    - Debian 13 arm64 with the Raspberry Pi kernel and firmware;
+    - the same `.deb` as the ISO;
+    - the partition grows by itself;
+    - first boot with `lordos-user.txt`/`userconf.txt` (login screen) or setup
+      mode.
+  - [ ] Run `build-img.sh` and test on the 16 GB Pi 5 (test list in `RASPBERRY.md`,
+    with screenshots through the remote desktop).
+  - [ ] Hardware video on the Pi 5 (HEVC via V4L2 stateless; H.264 in software) in
     `lord-media`.
-  - [ ] Paso de «crear usuario» en la pantalla de ingreso, en lugar del modo de configuración.
-  - [ ] Pi 4 (mejor esfuerzo).
+  - [ ] A «create user» step on the login screen, instead of setup mode.
+  - [ ] Pi 4 (best effort).
 
-## M9 — Documentos e impresión ✅ (2026-10-17)
+## M9 — Documents and printing ✅ (2026-10-17)
 
-Detalle en `DOCUMENTS.md` y `PRINTING.md`. Probado en la VM 116 con capturas (`m9-docs-*.png`).
+Details in `DOCUMENTS.md` and `PRINTING.md`. Tested on VM 116 with screenshots (`m9-docs-*.png`).
 
-- [x] **`lord-doc`, el ayudante encerrado:**
-  - es el único binario con Poppler (interfaz de glib) y libarchive;
-  - se lanza a pedido con ruta fija y sin argumentos, y trabaja solo con los fds que le pasa
-    lord-server;
-  - se encierra con `sandbox_apply_helper`: sin red ni sockets, Landlock con escritura solo
-    debajo del destino, seccomp, cgroup y tope de memoria;
-  - las páginas vuelven en memfd sellados;
-  - el compositor no espera nunca: hay plazos, y si el ayudante se cae no pasa nada más.
-- [x] **Visor de PDF:**
-  - desplazamiento continuo y de a una página, miniaturas, índice;
-  - búsqueda con resaltado, zoom y ajuste, rotar, seleccionar y copiar, ir a página, enlaces;
-  - anotaciones (resaltar, nota, a mano alzada) guardadas como copia, formularios;
-  - página oscura invertida;
-  - imprimir.
-- [x] **Archivos:**
-  - mirar adentro de los comprimidos como una carpeta;
-  - Extraer aquí (zip, tar.gz/xz/zst/bz2, 7z, gz sueltos) sin salir de la carpeta, con
-    `arcpath-test` y comprimidos maliciosos: 31/31;
-  - Comprimir a `.zip`;
-  - Vista rápida de PDF, fuentes, comprimidos y lo de adentro de un comprimido;
-  - Vista rápida de audio y video con `media.poster` si está.
-- [x] **Tipografías:** muestras, tabla de caracteres por bloque, información, instalar y quitar
-  fuentes del usuario.
-- [x] **Emojis y símbolos:**
-  - selector global (❖.) con búsqueda en es/en/pt (CLDR), categorías, recientes y tono de piel;
-  - escribe por el camino del método de entrada;
-  - app con símbolos de Unicode por bloque.
-- [x] **Impresión:**
-  - cliente IPP propio para CUPS (sin libcups), mDNS propio;
-  - Ajustes → Impresoras y escáneres: agregar IPP Everywhere/AirPrint, URI manual,
-    predeterminada, cola y cancelar, administración por `lpadmin` + PeerCred;
-  - diálogo de impresión del sistema con vista previa, usado por el Visor de PDF, el Editor y
-    Notas (Fotos tiene la API lista).
-- [x] **Escáner:** cliente eSCL propio, sin SANE: vista previa, área, resolución, color, y
-  guardar como PDF/PNG/JPEG. Probado con un escáner de prueba (`tests/escl_server.py`).
-- [ ] **Pendiente:**
-  - miniaturas de PDF en la vista de íconos;
-  - comprimidos cifrados;
-  - firmas en PDF;
-  - escáneres y `ipps` por TLS desde lord-server;
-  - armado de escrituras complejas en el texto impreso;
-  - emojis con ZWJ en el motor de texto;
-  - probar con impresoras y escáneres reales.
+- [x] **`lord-doc`, the sandboxed helper:**
+  - it is the only binary with Poppler (glib interface) and libarchive;
+  - it is launched on demand with a fixed path and no arguments, and works only with the fds
+    lord-server passes it;
+  - it locks itself in with `sandbox_apply_helper`: no network or sockets, Landlock with writes only
+    under the destination, seccomp, cgroup and a memory cap;
+  - pages come back in sealed memfds;
+  - the compositor never waits: there are deadlines, and if the helper crashes nothing else happens.
+- [x] **PDF Viewer:**
+  - continuous and single-page scrolling, thumbnails, outline;
+  - search with highlighting, zoom and fit, rotate, select and copy, go to page, links;
+  - annotations (highlight, note, freehand) saved as a copy, forms;
+  - inverted dark page;
+  - print.
+- [x] **Files:**
+  - looking inside archives as if they were a folder;
+  - Extract Here (zip, tar.gz/xz/zst/bz2, 7z, bare gz) without leaving the folder, with
+    `arcpath-test` and malicious archives: 31/31;
+  - Compress to `.zip`;
+  - Quick Look for PDFs, fonts, archives and what is inside an archive;
+  - Quick Look for audio and video with `media.poster` when available.
+- [x] **Fonts:** samples, character table by block, information, installing and removing
+  user fonts.
+- [x] **Emoji & Symbols:**
+  - global picker (❖.) with search in es/en/pt (CLDR), categories, recents and skin tone;
+  - it types through the input method path;
+  - an app with Unicode symbols by block.
+- [x] **Printing:**
+  - our own IPP client for CUPS (no libcups), our own mDNS;
+  - Settings → Printers & Scanners: add IPP Everywhere/AirPrint, manual URI,
+    default, queue and cancel, administration through `lpadmin` + PeerCred;
+  - the system print dialog with preview, used by the PDF Viewer, the Editor and
+    Notes (Photos has the API ready).
+- [x] **Scanner:** our own eSCL client, no SANE: preview, area, resolution, color, and
+  saving as PDF/PNG/JPEG. Tested with a test scanner (`tests/escl_server.py`).
+- [ ] **Pending:**
+  - PDF thumbnails in icon view;
+  - encrypted archives;
+  - PDF signatures;
+  - scanners and `ipps` over TLS from lord-server;
+  - complex-script shaping in printed text;
+  - ZWJ emoji in the text engine;
+  - testing with real printers and scanners.
 
-## M9 — Apps nativas de medios ✅ (2026-10-17)
+## M9 — Native media apps ✅ (2026-10-17)
 
-Detalle en `MEDIA.md`. Probado en la VM 119 con capturas (`m9-media-*.png`).
+Details in `MEDIA.md`. Tested on VM 119 with screenshots (`m9-media-*.png`).
 
-- [x] **`lord-media`, el ayudante encerrado:**
-  - es el único binario con FFmpeg (libavcodec, libavformat, libswscale, libswresample) y libva;
-  - se lanza a pedido con ruta fija y sin argumentos, y trabaja solo con los fds que le pasa
-    lord-server (archivos, cámara, render node);
-  - `sandbox_apply_helper`: sin sockets, exec ni red, ioctl por clase (DRM, V4L2) solo si hace
-    falta, TSYNC; `media-test sandbox` lo verifica;
-  - los cuadros vuelven por tres ranuras de memoria compartida sellada; si se cae, solo la
-    ventana se entera (probado con un segfault real).
-- [x] **Audio por memoria compartida:** el stream de PipeWire es de lord-server; el PCM va por un
-  anillo y el reloj del video por un seqlock en la misma página (sin idas y vueltas). Desfase A/V
-  medio 0,5–1,9 ms. El micrófono, al revés.
-- [x] **Reproductor:**
-  - video con audio sincronizado, barra de tiempo, volumen, subtítulos `.srt` y de la pista;
-  - pantalla completa e imagen en imagen (`wm.setFullscreen`/`wm.setPip` en el SDK);
-  - biblioteca de música por artista y álbum con carátulas, cola, aleatorio y repetir;
-  - teclas multimedia y el tile del Centro de control.
-- [x] **Fotos:** fototeca de `~/Imágenes` con miniaturas en `~/.cache/lordos/thumbs`, visor con zoom,
-  desplazamiento, giro, pantalla completa, presentación, GIF animado, HEIC/AVIF/WebP/BMP, edición
-  básica guardada como copia e imprimir.
-- [x] **Capturas:**
-  - pantalla, ventana o área y temporizador;
-  - al portapapeles o a `~/Imágenes/Capturas`;
-  - miniatura flotante y editor de anotaciones;
-  - grabación de pantalla a MP4 (H.264 + AAC del micrófono);
-  - atajos ❖⇧3/❖⇧4/❖⇧5 e Impr Pant.
-- [x] **Ventanas protegidas** (`wm.setProtected`): negras en capturas, grabaciones, el escritorio
-  remoto y las miniaturas; también las apps Wayland y sus menús.
-- [x] **Cámara:** V4L2 propio, foto JPEG, video H.264 + AAC, espejo, elegir cámara (probado con
+- [x] **`lord-media`, the sandboxed helper:**
+  - it is the only binary with FFmpeg (libavcodec, libavformat, libswscale, libswresample) and libva;
+  - it is launched on demand with a fixed path and no arguments, and works only with the fds
+    lord-server passes it (files, camera, render node);
+  - `sandbox_apply_helper`: no sockets, exec or network, ioctl by class (DRM, V4L2) only when
+    needed, TSYNC; `media-test sandbox` verifies it;
+  - frames come back through three sealed shared-memory slots; if it crashes, only the
+    window finds out (tested with a real segfault).
+- [x] **Audio over shared memory:** the PipeWire stream belongs to lord-server; the PCM goes through a
+  ring and the video clock through a seqlock on the same page (no round trips). Mean A/V offset
+  0.5–1.9 ms. The microphone, the other way around.
+- [x] **Player:**
+  - video with synchronized audio, time bar, volume, `.srt` and in-track subtitles;
+  - fullscreen and picture in picture (`wm.setFullscreen`/`wm.setPip` in the SDK);
+  - music library by artist and album with cover art, queue, shuffle and repeat;
+  - media keys and the Control Center tile.
+- [x] **Photos:** photo library from `~/Imágenes` with thumbnails in `~/.cache/lordos/thumbs`, viewer with zoom,
+  panning, rotation, fullscreen, slideshow, animated GIF, HEIC/AVIF/WebP/BMP, basic
+  editing saved as a copy, and printing.
+- [x] **Screenshots:**
+  - screen, window or area, and a timer;
+  - to the clipboard or to `~/Imágenes/Capturas`;
+  - floating thumbnail and annotation editor;
+  - screen recording to MP4 (H.264 + AAC from the microphone);
+  - shortcuts ❖⇧3/❖⇧4/❖⇧5 and Print Screen.
+- [x] **Protected windows** (`wm.setProtected`): black in screenshots, recordings, the remote
+  desktop and thumbnails; also Wayland apps and their menus.
+- [x] **Camera:** our own V4L2, JPEG photo, H.264 + AAC video, mirror, camera choice (tested with
   v4l2loopback).
-- [x] **Grabadora:** micrófono por PipeWire, forma de onda, renombrar, recortar y exportar a Opus,
-  MP3 o WAV.
-- [x] **Archivos:** «Abrir con» Fotos y Reproductor, miniaturas de video, carátulas y WebP/HEIC/AVIF;
-  `media.poster` para la Vista rápida.
-- [x] **Rendimiento:** pintar desde el video cuando solo cambió un cuadro opaco: lord-server con
-  un 1080p pasó de 42 % a 13 % de un núcleo en ventana y de 92 % a 15 % en pantalla completa.
-- [ ] **Pendiente:**
-  - medir VA-API en la PC con AMD (la VM no tiene driver);
-  - cero-copia dmabuf → EGL en el camino GPU;
-  - HEVC por `v4l2request` en la Raspberry Pi 5;
-  - subtítulos de imagen;
-  - grabar un área y el audio del sistema;
-  - guardar en WebP.
+- [x] **Recorder:** microphone over PipeWire, waveform, rename, trim and export to Opus,
+  MP3 or WAV.
+- [x] **Files:** «Open With» Photos and Player, video thumbnails, cover art and WebP/HEIC/AVIF;
+  `media.poster` for Quick Look.
+- [x] **Performance:** painting straight from the video when only an opaque frame changed: lord-server with
+  a 1080p video went from 42 % to 13 % of a core windowed and from 92 % to 15 % fullscreen.
+- [ ] **Pending:**
+  - measure VA-API on the AMD PC (the VM has no driver);
+  - zero-copy dmabuf → EGL on the GPU path;
+  - HEVC via `v4l2request` on the Raspberry Pi 5;
+  - image-based subtitles;
+  - recording an area and the system audio;
+  - saving as WebP.
 
 ## M9 — System apps and system network ✅ (2026-10-18)
 
@@ -475,65 +475,65 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
 - [ ] Edit a single occurrence of a repeating event; create calendars/address books on the server.
 - [ ] CJK multibyte charsets; S/MIME and OpenPGP; QRESYNC.
 
-## Pendiente antes del ISO final
+## Pending before the final ISO
 
-- [x] **Mail, Calendario, Contactos y Recordatorios** (see "M9 — Mail, Calendar, Contacts and
+- [x] **Mail, Calendar, Contacts and Reminders** (see "M9 — Mail, Calendar, Contacts and
   Reminders" above and `MAIL.md`).
-- [x] **Secciones de Ajustes que faltan:** Pantallas, Bluetooth, Energía, Notificaciones, Fecha y
-  hora, Apps por defecto (see "M9 — Settings: hardware pages" above and `SETTINGS.md`).
-- [ ] **Chromium y Firefox** preinstalados (apps Linux, no nativas).
-- [x] **Cámara en apps aisladas** (`.lpk`) y **varias ventanas por app aislada** (VM 122,
+- [x] **Missing Settings sections:** Displays, Bluetooth, Energy, Notifications, Date &
+  Time, Default Apps (see "M9 — Settings: hardware pages" above and `SETTINGS.md`).
+- [ ] **Chromium and Firefox** preinstalled (Linux apps, not native).
+- [x] **Camera in isolated apps** (`.lpk`) and **several windows per isolated app** (VM 122,
   `PRIVACY.md`): read-only frame ring from `lord-media` with validated ACKs, photo/video through
   the powerbox, instant revoke; one Wayland toplevel per window, grouped in the Dock, «New
   window» from the app and the Dock.
-- [ ] **Pulido visual estilo Apple, app por app** (antes del ISO): revisar todas las apps nativas
-  (Ajustes, Archivos, Terminal, Store, Editor, Notas, Calculadora, Monitor, PDF, Tipografías,
-  Emojis, Escáner, Fotos, Reproductor, Capturas, Cámara, Grabadora, Contraseñas, Discos, Copias,
-  Registros, Reloj, Ayuda, Mail…) siguiendo las guías de interfaz de macOS (HIG): grilla de 8 px,
-  márgenes y separaciones uniformes, alineación, jerarquía tipográfica, barras laterales, barras de
-  herramientas y hojas como en macOS, controles con el mismo tamaño y altura, nada encimado ni
-  cortado; en claro, oscuro, RTL y en ventanas chicas; con capturas antes y después.
-- [ ] **ISO final** con todo (verificar que `lord-doc` y `lord-media` estén adentro) e **imagen
-  para Raspberry Pi 5** (`tools/rpi/build-img.sh`), probada en la Pi real.
+- [ ] **Apple-style visual polish, app by app** (before the ISO): review every native app
+  (Settings, Files, Terminal, Store, Editor, Notes, Calculator, Monitor, PDF, Fonts,
+  Emoji, Scanner, Photos, Player, Screenshots, Camera, Recorder, Passwords, Disks, Backups,
+  Logs, Clock, Help, Mail…) following the macOS Human Interface Guidelines (HIG): 8 px grid,
+  uniform margins and spacing, alignment, typographic hierarchy, sidebars,
+  toolbars and sheets as in macOS, controls with the same size and height, nothing overlapping or
+  clipped; in light, dark, RTL and in small windows; with before and after screenshots.
+- [ ] **Final ISO** with everything (check that `lord-doc` and `lord-media` are inside) and a **Raspberry
+  Pi 5 image** (`tools/rpi/build-img.sh`), tested on the real Pi.
 
-## Después del ISO final
+## After the final ISO
 
-- [ ] **Máquinas virtuales**: un **clon libre de Parallels Desktop**, con su misma interfaz y
-  forma de trabajar (no la de Proxmox, que solo aporta las piezas de abajo: KVM, QEMU y drivers).
-  Nombre genérico y logo, ícono y colores propios:
-  - **Centro de control** con la lista de VMs y su miniatura en vivo, estado, iniciar, pausar,
-    suspender y apagar;
-  - **Asistente de instalación** como el de Parallels: tarjetas para «Descargar Windows 11»,
-    Ubuntu, Debian, Fedora, Android, «Instalar desde un archivo ISO», «Migrar desde otra PC»;
-  - **Ventana de la VM** con su barra (Acciones, Dispositivos: USB, CD, carpetas, red, sonido) y
-    los modos **Ventana, Pantalla completa, Coherence e Imagen en imagen**;
-  - **Configuración** en pestañas como Parallels: General, Opciones (inicio y apagado,
-    optimización, compartir, aplicaciones, Coherence), Hardware (CPU y memoria, gráficos,
-    mouse y teclado, red, sonido, USB, discos, impresoras, TPM, arranque), Seguridad, Copias;
-  - **perfiles** al crear la VM (Productividad, Desarrollo de software, Pruebas, Diseño, Juegos)
-    que ajustan CPU, memoria y opciones solos;
-  - las apps del invitado en el Launchpad y el Dock, abrir archivos de LordOS con una app del
-    invitado, portapapeles y arrastrar archivos entre los dos;
-  - hipervisor **KVM** (el del kernel); **QEMU** como motor de dispositivos, con **swtpm** (TPM)
-    y **OVMF** (UEFI y arranque seguro) para Windows 11;
-  - los mismos drivers que usa Proxmox: **virtio-win** (disco, red, memoria, pantalla 2D
-    `viogpudo`, virtiofs para Windows) firmados por Red Hat, el **agente invitado de QEMU**
-    (`qemu-ga`) y el **agente de SPICE** (portapapeles, resolución, arrastrar archivos); se
-    descargan de la fuente oficial de Fedora la primera vez y se verifica la firma; los invitados
-    Linux ya los traen en el kernel;
-  - asistente propio (descarga e instalación automática, monta virtio-win durante la instalación
-    de Windows e instala las herramientas al final), instantáneas, clonado, USB del equipo a la
-    VM, carpetas compartidas (virtiofs), resolución que se ajusta a la ventana;
-  - la pantalla de la VM dentro de nuestro compositor por dmabuf (sin ventanas de QEMU);
-  - modo **Coherence**: apps de un Linux invitado como ventanas sueltas de LordOS (reenviando
-    Wayland); Windows con agente propio, más adelante;
-  - 3D acelerado en invitados Linux (virgl/venus); en Windows solo 2D por ahora (no hay driver 3D
-    libre de calidad);
-  - otra arquitectura (arm64 en una PC, amd64 en la Pi) por emulación TCG: funciona, pero 5–20×
-    más lento;
-  - más adelante, un motor propio liviano solo para invitados Linux (como crosvm/Firecracker).
-- [ ] **Android:** contenedor propio con LineageOS y apps desde nuestro Store.
-- [ ] **Firewall, modo pregunta** (alerta al primer intento de conexión, estilo Little Snitch).
-- [ ] **Accesibilidad:** lector de pantalla, lupa, alto contraste.
-- [ ] **Video de demostración** completo (instalación + recorrido, voz en inglés con subtítulos
-  en español).
+- [ ] **Virtual machines**: a **free clone of Parallels Desktop**, with the same interface and
+  way of working (not Proxmox's, which only contributes the pieces underneath: KVM, QEMU and drivers).
+  A generic name and our own logo, icon and colors:
+  - **Control Center** with the list of VMs and their live thumbnail, state, start, pause,
+    suspend and shut down;
+  - **Installation Assistant** like Parallels': cards for «Download Windows 11»,
+    Ubuntu, Debian, Fedora, Android, «Install from an ISO file», «Migrate from another PC»;
+  - **VM window** with its bar (Actions, Devices: USB, CD, folders, network, sound) and
+    the **Window, Full Screen, Coherence and Picture in Picture** modes;
+  - **Configuration** in tabs like Parallels: General, Options (startup and shutdown,
+    optimization, sharing, applications, Coherence), Hardware (CPU and memory, graphics,
+    mouse and keyboard, network, sound, USB, disks, printers, TPM, boot), Security, Backup;
+  - **profiles** when creating the VM (Productivity, Software Development, Testing, Design, Games)
+    that tune CPU, memory and options automatically;
+  - the guest's apps in the Launchpad and the Dock, opening LordOS files with a guest
+    app, clipboard and dragging files between the two;
+  - the **KVM** hypervisor (the kernel's); **QEMU** as the device engine, with **swtpm** (TPM)
+    and **OVMF** (UEFI and secure boot) for Windows 11;
+  - the same drivers Proxmox uses: **virtio-win** (disk, network, memory, 2D display
+    `viogpudo`, virtiofs for Windows) signed by Red Hat, the **QEMU guest agent**
+    (`qemu-ga`) and the **SPICE agent** (clipboard, resolution, file dragging); they are
+    downloaded from Fedora's official source the first time and their signature is verified; Linux
+    guests already ship them in the kernel;
+  - our own assistant (automatic download and installation, mounts virtio-win during the Windows
+    install and installs the tools at the end), snapshots, cloning, host USB passthrough to the
+    VM, shared folders (virtiofs), resolution that follows the window;
+  - the VM's display inside our compositor via dmabuf (no QEMU windows);
+  - **Coherence** mode: apps of a Linux guest as standalone LordOS windows (forwarding
+    Wayland); Windows with our own agent, later;
+  - accelerated 3D in Linux guests (virgl/venus); on Windows only 2D for now (there is no good free
+    3D driver);
+  - another architecture (arm64 on a PC, amd64 on the Pi) through TCG emulation: it works, but 5–20×
+    slower;
+  - later, a lightweight engine of our own only for Linux guests (like crosvm/Firecracker).
+- [ ] **Android:** our own container with LineageOS and apps from our Store.
+- [ ] **Firewall, ask mode** (an alert on the first connection attempt, Little Snitch style).
+- [ ] **Accessibility:** screen reader, zoom, high contrast.
+- [ ] Full **demo video** (installation + tour, English voice-over with Spanish
+  subtitles).

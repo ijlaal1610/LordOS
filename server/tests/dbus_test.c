@@ -1,13 +1,13 @@
-/* dbus_test.c — D-Bus propio y Secret Service (src/vault/dbus.c, secretsvc.c):
- *   - firmas, rutas y nombres válidos e inválidos;
- *   - ida y vuelta de cada tipo (escribir → armar → validar → leer) y casos de alineación;
- *   - mensajes reales capturados con dbus-monitor --binary (secret-tool + libsecret), si están;
- *   - rechazo de mensajes truncados, enormes, con firma, booleano, ruta o relleno inválidos;
- *   - «fuzz»: bytes cambiados y cortes al azar sobre mensajes válidos (nunca se cae);
- *   - la aritmética de 1024 bits contra pow() de Python y el grupo 2 de RFC 2409;
- *   - el Secret Service de punta a punta con un bus falso (socketpair + fork): sesiones plain y
- *     DH (cliente propio: modexp + HKDF + AES-128-CBC), crear, buscar, leer, cambiar, borrar,
- *     propiedades, introspección, bloquear y desbloquear con aviso (Prompt + Completed). */
+/* dbus_test.c — our own D-Bus and Secret Service (src/vault/dbus.c, secretsvc.c):
+ *   - valid and invalid signatures, paths and names;
+ *   - round trip of every type (write → build → validate → read) and alignment cases;
+ *   - real messages captured with dbus-monitor --binary (secret-tool + libsecret), if present;
+ *   - rejection of truncated and huge messages, and of invalid signatures, booleans, paths or padding;
+ *   - "fuzz": flipped bytes and random cuts over valid messages (it never crashes);
+ *   - the 1024-bit arithmetic against Python's pow() and RFC 2409 group 2;
+ *   - the Secret Service end to end with a fake bus (socketpair + fork): plain and DH sessions
+ *     (our own client: modexp + HKDF + AES-128-CBC), create, search, read, change, delete,
+ *     properties, introspection, lock and unlock with a prompt (Prompt + Completed). */
 #include "vault/dbus.h"
 #include "vault/secretsvc.h"
 #include "vault/smem.h"
@@ -26,13 +26,13 @@
 #include <unistd.h>
 
 static int fails, total;
-static void check(int ok, const char *what) { total++; if (!ok) { fails++; printf("FALLA: %s\n", what); } }
+static void check(int ok, const char *what) { total++; if (!ok) { fails++; printf("FAIL: %s\n", what); } }
 
 static void unhex(const char *h, uint8_t *out, size_t n) {
     for (size_t i = 0; i < n; i++) { unsigned v; sscanf(h + 2 * i, "%2x", &v); out[i] = (uint8_t)v; }
 }
 
-/* ---------- firmas ---------- */
+/* ---------- signatures ---------- */
 static void t_sigs(void) {
     const char *good[] = { "", "s", "a{sv}", "(oayays)", "a{o(oayays)}", "aoao", "a{ss}", "vo", "a(yv)", "aaaai", "(i(s(b)))", "sa{sv}as", NULL };
     const char *bad[] = { "a", "a{", "a{sv", "{sv}", "()", "(s", "a{vs}", "a{(s)s}", "z", "ss)", "a{s}", "a{sss}", NULL };
@@ -41,13 +41,13 @@ static void t_sigs(void) {
     char deep[80];
     memset(deep, 'a', 40);
     strcpy(deep + 40, "i");
-    check(!dbus_sig_valid(deep), "firma demasiado profunda");
-    check(dbus_path_valid("/") && dbus_path_valid("/org/freedesktop/secrets") && dbus_path_valid("/a_b/C9"), "rutas válidas");
-    check(!dbus_path_valid("") && !dbus_path_valid("org") && !dbus_path_valid("/a/") && !dbus_path_valid("//a") && !dbus_path_valid("/a-b"), "rutas inválidas");
-    check(dbus_name_valid("org.freedesktop.Secret.Service") && !dbus_name_valid("org") && !dbus_name_valid(".a.b") && !dbus_name_valid("a..b") && !dbus_name_valid("1a.b"), "nombres");
+    check(!dbus_sig_valid(deep), "signature nested too deep");
+    check(dbus_path_valid("/") && dbus_path_valid("/org/freedesktop/secrets") && dbus_path_valid("/a_b/C9"), "valid paths");
+    check(!dbus_path_valid("") && !dbus_path_valid("org") && !dbus_path_valid("/a/") && !dbus_path_valid("//a") && !dbus_path_valid("/a-b"), "invalid paths");
+    check(dbus_name_valid("org.freedesktop.Secret.Service") && !dbus_name_valid("org") && !dbus_name_valid(".a.b") && !dbus_name_valid("a..b") && !dbus_name_valid("1a.b"), "names");
 }
 
-/* ---------- ida y vuelta ---------- */
+/* ---------- round trip ---------- */
 static int build_parse(DHdr *h, DBuf *body, DMsg *m) {
     DBuf out;
     if (dbus_build(h, body, &out)) { dw_free(&out); return -1; }
@@ -82,19 +82,19 @@ static void t_roundtrip(void) {
     dw_arr_end(&b, mk);
     dw_struct(&b);                               /* (oayays) */
     dw_str(&b, "/s/1"); dw_bytes(&b, raw, 16); dw_bytes(&b, raw, 5); dw_str(&b, "text/plain");
-    mk = dw_arr_begin(&b, 8);                   /* ax vacío: igual se alinea a 8 */
+    mk = dw_arr_begin(&b, 8);                   /* empty ax: still aligned to 8 */
     dw_arr_end(&b, mk);
     const char *sig = "ybiuts" "og" "aya{ss}a{sv}(oayays)ax";
     DHdr h = { .type = DBUS_CALL, .serial = 9, .path = "/test", .iface = "a.b", .member = "M", .dest = "x.y", .sig = sig, .sender = ":1.1" };
     DMsg m;
     int r = build_parse(&h, &b, &m);
-    check(r == 0, "ida y vuelta: armar y validar");
+    check(r == 0, "round trip: build and validate");
     if (r) { dw_free(&b); return; }
-    check(!strcmp(m.path, "/test") && !strcmp(m.iface, "a.b") && !strcmp(m.member, "M") && !strcmp(m.dest, "x.y") && !strcmp(m.sender, ":1.1") && !strcmp(m.sig, sig) && m.serial == 9, "campos de la cabecera");
+    check(!strcmp(m.path, "/test") && !strcmp(m.iface, "a.b") && !strcmp(m.member, "M") && !strcmp(m.dest, "x.y") && !strcmp(m.sender, ":1.1") && !strcmp(m.sig, sig) && m.serial == 9, "header fields");
     DRd d;
     dr_init(&d, &m);
-    check(dr_u8(&d) == 0xab && dr_bool(&d) == 1 && dr_i32(&d) == -5 && dr_u32(&d) == 0xdeadbeef && dr_u64(&d) == 0x0123456789abcdefULL, "números");
-    check(!strcmp(dr_str(&d, NULL), "hola, ñandú") && !strcmp(dr_str(&d, NULL), "/org/freedesktop/secrets") && !strcmp(dr_sig(&d), "a{sv}"), "textos");
+    check(dr_u8(&d) == 0xab && dr_bool(&d) == 1 && dr_i32(&d) == -5 && dr_u32(&d) == 0xdeadbeef && dr_u64(&d) == 0x0123456789abcdefULL, "numbers");
+    check(!strcmp(dr_str(&d, NULL), "hola, ñandú") && !strcmp(dr_str(&d, NULL), "/org/freedesktop/secrets") && !strcmp(dr_sig(&d), "a{sv}"), "strings");
     uint32_t n;
     const uint8_t *p = dr_bytes(&d, &n);
     check(n == 300 && !memcmp(p, raw, 300), "ay");
@@ -105,32 +105,32 @@ static void t_roundtrip(void) {
     end = dr_arr(&d, 8);
     k = 0;
     while (dr_more(&d, end)) { dr_struct(&d); dr_str(&d, NULL); const char *vs = dr_variant(&d); dr_skip(&d, vs); k++; }
-    check(k == 3, "a{sv} con dr_skip");
+    check(k == 3, "a{sv} with dr_skip");
     dr_struct(&d);
     check(!strcmp(dr_str(&d, NULL), "/s/1"), "(oayays) o");
     dr_bytes(&d, &n); check(n == 16, "(oayays) params");
     dr_bytes(&d, &n); check(n == 5, "(oayays) value");
     check(!strcmp(dr_str(&d, NULL), "text/plain"), "(oayays) s");
     end = dr_arr(&d, 8);
-    check(!dr_more(&d, end) && !d.err && d.pos == d.len, "ax vacío y fin exacto");
+    check(!dr_more(&d, end) && !d.err && d.pos == d.len, "empty ax and exact end");
     dbus_msg_free(&m);
     dw_free(&b);
 
-    /* alineación: y seguido de t (7 de relleno), cuerpo vacío sin firma */
+    /* alignment: y followed by t (7 bytes of padding), empty body without a signature */
     dw_init(&b);
     dw_u8(&b, 1);
     dw_u64(&b, 2);
-    check(b.n == 16 && b.p[1] == 0 && b.p[7] == 0 && b.p[8] == 2, "relleno de y→t");
+    check(b.n == 16 && b.p[1] == 0 && b.p[7] == 0 && b.p[8] == 2, "y→t padding");
     DHdr h2 = { .type = DBUS_RETURN, .serial = 3, .reply_serial = 2, .sig = "yt" };
-    check(build_parse(&h2, &b, &m) == 0, "yt válido");
+    check(build_parse(&h2, &b, &m) == 0, "valid yt");
     dbus_msg_free(&m);
     dw_free(&b);
     DHdr h3 = { .type = DBUS_SIGNAL, .serial = 4, .path = "/", .iface = "a.b", .member = "S" };
-    check(build_parse(&h3, NULL, &m) == 0 && m.body_len == 0 && !strcmp(m.sig, ""), "señal sin cuerpo");
+    check(build_parse(&h3, NULL, &m) == 0 && m.body_len == 0 && !strcmp(m.sig, ""), "signal without a body");
     dbus_msg_free(&m);
 }
 
-/* ---------- rechazos ---------- */
+/* ---------- rejections ---------- */
 static uint8_t *valid_msg(size_t *len) {
     DBuf b;
     dw_init(&b);
@@ -154,7 +154,7 @@ static void t_reject(void) {
     size_t len;
     uint8_t *v = valid_msg(&len);
     DMsg m;
-    check(dbus_msg_parse(v, len, &m) == 0, "base válida");
+    check(dbus_msg_parse(v, len, &m) == 0, "valid base");
     dbus_msg_free(&m);
     int ok = 1;
     for (size_t i = 0; i < len; i++) {
@@ -162,71 +162,71 @@ static void t_reject(void) {
         if (s > 0 && s == (long)i) ok = 0;
         if (dbus_msg_parse(v, i, &m) == 0) { ok = 0; dbus_msg_free(&m); }
     }
-    check(ok, "todos los cortes se rechazan");
+    check(ok, "every cut is rejected");
     uint8_t *w = malloc(len);
-    /* largo del cuerpo enorme */
+    /* huge body length */
     memcpy(w, v, len); w[4] = 0xff; w[5] = 0xff; w[6] = 0xff; w[7] = 0x7f;
-    check(dbus_msg_size(w, len) == -1, "cuerpo de 2 GB");
-    /* versión mala / orden de bytes malo / tipo malo / serial 0 */
-    memcpy(w, v, len); w[3] = 2; check(dbus_msg_parse(w, len, &m) != 0, "versión 2");
-    memcpy(w, v, len); w[0] = 'x'; check(dbus_msg_parse(w, len, &m) != 0, "orden de bytes");
-    memcpy(w, v, len); w[1] = 9; check(dbus_msg_parse(w, len, &m) != 0, "tipo 9");
+    check(dbus_msg_size(w, len) == -1, "2 GB body");
+    /* bad version / bad byte order / bad type / serial 0 */
+    memcpy(w, v, len); w[3] = 2; check(dbus_msg_parse(w, len, &m) != 0, "version 2");
+    memcpy(w, v, len); w[0] = 'x'; check(dbus_msg_parse(w, len, &m) != 0, "byte order");
+    memcpy(w, v, len); w[1] = 9; check(dbus_msg_parse(w, len, &m) != 0, "type 9");
     memcpy(w, v, len); memset(w + 8, 0, 4); check(dbus_msg_parse(w, len, &m) != 0, "serial 0");
-    /* buscar en el mensaje y romper: el booleano (último u32 antes del arreglo), la firma */
+    /* find things in the message and break them: the boolean (last u32 before the array), the signature */
     uint8_t *sg = memmem(w, len, "sba{sv}", 7);
     memcpy(w, v, len); sg = memmem(w, len, "sba{sv}", 7);
-    if (sg) { sg[3] = '('; check(dbus_msg_parse(w, len, &m) != 0, "firma rota"); }
+    if (sg) { sg[3] = '('; check(dbus_msg_parse(w, len, &m) != 0, "broken signature"); }
     memcpy(w, v, len); sg = memmem(w, len, "hola", 4);
     if (sg) {
-        sg[1] = 0; check(dbus_msg_parse(w, len, &m) != 0, "NUL adentro de un texto");
+        sg[1] = 0; check(dbus_msg_parse(w, len, &m) != 0, "NUL inside a string");
         memcpy(w, v, len);
-        size_t bo = (size_t)(sg - w) + 5;           /* después de "hola\0" viene el booleano alineado */
+        size_t bo = (size_t)(sg - w) + 5;           /* after "hola\0" comes the aligned boolean */
         bo = (bo + 3) & ~(size_t)3;
-        w[bo] = 2; check(dbus_msg_parse(w, len, &m) != 0, "booleano 2");
+        w[bo] = 2; check(dbus_msg_parse(w, len, &m) != 0, "boolean 2");
         memcpy(w, v, len);
-        w[(size_t)(sg - w) + 5] = 7;                /* relleno distinto de cero */
-        check(dbus_msg_parse(w, len, &m) != 0, "relleno no nulo");
+        w[(size_t)(sg - w) + 5] = 7;                /* non-zero padding */
+        check(dbus_msg_parse(w, len, &m) != 0, "non-zero padding");
     }
     memcpy(w, v, len); sg = memmem(w, len, "/x", 2);
-    if (sg) { sg[1] = '-'; check(dbus_msg_parse(w, len, &m) != 0, "ruta inválida"); }
-    /* llamada sin member */
+    if (sg) { sg[1] = '-'; check(dbus_msg_parse(w, len, &m) != 0, "invalid path"); }
+    /* call without a member */
     DBuf out;
     DHdr h = { .type = DBUS_CALL, .serial = 1, .path = "/x" };
     dbus_build(&h, NULL, &out);
-    check(dbus_msg_parse(out.p, out.n, &m) != 0, "llamada sin member");
+    check(dbus_msg_parse(out.p, out.n, &m) != 0, "call without a member");
     dw_free(&out);
-    /* error sin reply_serial */
+    /* error without reply_serial */
     DHdr he = { .type = DBUS_ERROR, .serial = 1, .error = "a.b" };
     dbus_build(&he, NULL, &out);
-    check(dbus_msg_parse(out.p, out.n, &m) != 0, "error sin reply_serial");
+    check(dbus_msg_parse(out.p, out.n, &m) != 0, "error without reply_serial");
     dw_free(&out);
-    /* cuerpo sin firma */
+    /* body without a signature */
     DBuf b;
     dw_init(&b);
     dw_u32(&b, 1);
     DHdr hn = { .type = DBUS_RETURN, .serial = 1, .reply_serial = 1 };
     dbus_build(&hn, &b, &out);
-    check(dbus_msg_parse(out.p, out.n, &m) != 0, "cuerpo sin firma");
+    check(dbus_msg_parse(out.p, out.n, &m) != 0, "body without a signature");
     dw_free(&out);
-    /* arreglo cuyo largo pasa el final y variante con dos tipos */
+    /* array whose length runs past the end, and a variant with two types */
     dw_free(&b); dw_init(&b);
     dw_u32(&b, 1000);
     DHdr ha = { .type = DBUS_RETURN, .serial = 1, .reply_serial = 1, .sig = "ay" };
     dbus_build(&ha, &b, &out);
-    check(dbus_msg_parse(out.p, out.n, &m) != 0, "arreglo más largo que el cuerpo");
+    check(dbus_msg_parse(out.p, out.n, &m) != 0, "array longer than the body");
     dw_free(&out);
     dw_free(&b); dw_init(&b);
     dw_sig(&b, "ss"); dw_str(&b, "a"); dw_str(&b, "b");
     DHdr hv = { .type = DBUS_RETURN, .serial = 1, .reply_serial = 1, .sig = "v" };
     dbus_build(&hv, &b, &out);
-    check(dbus_msg_parse(out.p, out.n, &m) != 0, "variante con dos tipos");
+    check(dbus_msg_parse(out.p, out.n, &m) != 0, "variant with two types");
     dw_free(&out);
-    /* variantes anidadas sin fin */
+    /* endlessly nested variants */
     dw_free(&b); dw_init(&b);
     for (int i = 0; i < 40; i++) dw_sig(&b, "v");
     dw_sig(&b, "y"); dw_u8(&b, 1);
     dbus_build(&hv, &b, &out);
-    check(dbus_msg_parse(out.p, out.n, &m) != 0, "variantes anidadas de más");
+    check(dbus_msg_parse(out.p, out.n, &m) != 0, "too many nested variants");
     dw_free(&out);
     dw_free(&b);
     free(w);
@@ -276,7 +276,7 @@ static int fuzz_one(const uint8_t *base, size_t len, int rounds) {
     return accepted;
 }
 
-/* ---------- capturas reales ---------- */
+/* ---------- real captures ---------- */
 static int t_capture(const char *file, uint8_t ***msgs, size_t **lens) {
     FILE *f = fopen(file, "rb");
     if (!f) return -1;
@@ -303,7 +303,7 @@ static int t_capture(const char *file, uint8_t ***msgs, size_t **lens) {
         }
         p += (size_t)s;
     }
-    check(!bad, "capturas: todos los mensajes válidos");
+    check(!bad, "captures: every message valid");
     return count;
 }
 
@@ -319,17 +319,17 @@ static void t_modexp(void) {
         unhex(MODEXP[i][0], b, 128); unhex(MODEXP[i][1], e, 128); unhex(MODEXP[i][2], m, 128); unhex(MODEXP[i][3], want, 128);
         if (ss_dh_modexp(b, e, m, got) || memcmp(got, want, 128)) { ok = 0; printf("  modexp vector %d\n", i); }
     }
-    check(ok, "modexp contra pow() de Python");
-    check(!memcmp(ss_dh_prime(), (const uint8_t *)"\xff\xff\xff\xff\xff\xff\xff\xff\xc9\x0f\xda\xa2", 12) && ss_dh_prime()[127] == 0xff, "primo del grupo 2");
+    check(ok, "modexp against Python's pow()");
+    check(!memcmp(ss_dh_prime(), (const uint8_t *)"\xff\xff\xff\xff\xff\xff\xff\xff\xc9\x0f\xda\xa2", 12) && ss_dh_prime()[127] == 0xff, "group 2 prime");
     uint8_t even[128] = { 0 }, one[128] = { 0 }, out[128];
     even[127] = 4; one[127] = 1;
-    check(ss_dh_modexp(one, one, even, out) != 0, "módulo par rechazado");
+    check(ss_dh_modexp(one, one, even, out) != 0, "even modulus rejected");
     double t0 = (double)clock();
     for (int i = 0; i < 10; i++) ss_dh_modexp(one, (const uint8_t *)MODEXP[0][1], ss_dh_prime(), out);
-    printf("modexp de 1024 bits: %.2f ms\n", ((double)clock() - t0) / CLOCKS_PER_SEC * 100.0);
+    printf("1024-bit modexp: %.2f ms\n", ((double)clock() - t0) / CLOCKS_PER_SEC * 100.0);
 }
 
-/* ---------- Secret Service con un bus falso ---------- */
+/* ---------- Secret Service with a fake bus ---------- */
 static DConn bus;
 static uint32_t bserial = 100;
 static int completed_seen, completed_dismissed, item_created_seen;
@@ -348,8 +348,8 @@ static int bus_read_line(int fd, char *out, size_t cap) {
 
 static void bus_send(DHdr *h, DBuf *b) { h->serial = ++bserial; dbus_send(&bus, h, b); }
 
-/* espera la respuesta a serial (contesta con error las llamadas del servicio al bus, toma nota de
- * las señales). 1 RETURN, 0 ERROR, -1 nada */
+/* waits for the reply to serial (answers the service's calls to the bus with an error, takes note of
+ * the signals). 1 RETURN, 0 ERROR, -1 nothing */
 static int bus_wait(uint32_t serial, DMsg *m, int ms) {
     double end = (double)time(NULL) + ms / 1000.0 + 1;
     while ((double)time(NULL) < end) {
@@ -364,7 +364,7 @@ static int bus_wait(uint32_t serial, DMsg *m, int ms) {
             if (!serial) return 2;
             continue;
         }
-        if (m->type == DBUS_CALL) {      /* GetConnectionUnixProcessID: contestar 4242 */
+        if (m->type == DBUS_CALL) {      /* GetConnectionUnixProcessID: answer 4242 */
             if (!strcmp(m->member, "GetConnectionUnixProcessID")) {
                 DBuf b; dw_init(&b); dw_u32(&b, 4242);
                 DHdr h = { .type = DBUS_RETURN, .reply_serial = m->serial, .dest = ":1.7", .sig = "u", .sender = "org.freedesktop.DBus" };
@@ -481,7 +481,7 @@ static int get_secret_val(DRd *d, const Cli *c, char *out, size_t cap) {
     return 0;
 }
 
-/* El flujo real con el bus falso: hace falta contestar Hello y RequestName antes. */
+/* The real flow with the fake bus: Hello and RequestName have to be answered first. */
 static int fake_bus_start(pid_t *pid_out) {
     int sv[2];
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv)) return -1;
@@ -512,7 +512,7 @@ static int fake_bus_start(pid_t *pid_out) {
         if (!strcmp(m.member, "Hello")) { dw_str(&b, ":1.7"); sig = "s"; }
         else if (!strcmp(m.member, "RequestName")) {
             DRd d; dr_init(&d, &m);
-            check(!strcmp(dr_str(&d, NULL), "org.freedesktop.secrets") && dr_u32(&d) == 4, "RequestName con DO_NOT_QUEUE");
+            check(!strcmp(dr_str(&d, NULL), "org.freedesktop.secrets") && dr_u32(&d) == 4, "RequestName with DO_NOT_QUEUE");
             dw_u32(&b, 1); sig = "u";
         } else { dbus_msg_free(&m); dw_free(&b); return -1; }
         DHdr h = { .type = DBUS_RETURN, .reply_serial = m.serial, .dest = ":1.7", .sig = sig, .sender = "org.freedesktop.DBus" };
@@ -537,7 +537,7 @@ static char *create(const Cli *c, const char *label, const char *user, const cha
     dw_struct(&b); dw_str(&b, "org.freedesktop.Secret.Item.Label"); dw_variant(&b, "s"); dw_str(&b, label);
     dw_struct(&b); dw_str(&b, "org.freedesktop.Secret.Item.Attributes"); dw_variant(&b, "a{ss}");
     attrs2(&b, "service", "demo", "user", user);
-    dw_struct(&b); dw_str(&b, "otra.cosa"); dw_variant(&b, "a{sv}");     /* desconocida: se saltea */
+    dw_struct(&b); dw_str(&b, "otra.cosa"); dw_variant(&b, "a{sv}");     /* unknown: skipped */
     size_t mk2 = dw_arr_begin(&b, 8); dw_struct(&b); dw_str(&b, "x"); dw_variant(&b, "u"); dw_u32(&b, 1); dw_arr_end(&b, mk2);
     dw_arr_end(&b, mk);
     put_secret(&b, c, secret);
@@ -591,8 +591,8 @@ static int search_count(const char *user, int *nlocked) {
 
 static void t_service_flow(void) {
     pid_t pid;
-    if (fake_bus_start(&pid)) { check(0, "bus falso: arranque"); return; }
-    check(1, "bus falso: SASL, Hello y RequestName");
+    if (fake_bus_start(&pid)) { check(0, "fake bus: startup"); return; }
+    check(1, "fake bus: SASL, Hello and RequestName");
     Cli plain, dh;
     check(open_session(&plain, 0) == 0, "OpenSession plain");
     check(open_session(&dh, 1) == 0, "OpenSession dh-ietf1024-sha256-aes128-cbc-pkcs7");
@@ -602,17 +602,17 @@ static void t_service_flow(void) {
     char *it2 = create(&dh, "Banco", "beto", "secreto con DH: 0123456789abcdef", 0, &err);
     check(it2 != NULL, "CreateItem (DH)");
     char *it3 = create(&dh, "Banco", "beto", "reemplazado", 1, &err);
-    check(it3 && it2 && !strcmp(it2, it3), "CreateItem replace reusa el ítem");
+    check(it3 && it2 && !strcmp(it2, it3), "CreateItem replace reuses the item");
     char v[128];
     check(read_item(it1, &plain, ":1.9", v) == 0 && !strcmp(v, "clave plana ñ"), "GetSecret plain");
-    check(read_item(it1, &dh, ":1.9", v) == 0 && !strcmp(v, "clave plana ñ"), "GetSecret DH (descifrado del lado cliente)");
-    check(read_item(it2, &dh, ":1.9", v) == 0 && !strcmp(v, "reemplazado"), "secreto reemplazado");
-    check(read_item(it1, &plain, ":1.66", v) != 0 && !strcmp(v, "org.freedesktop.Secret.Error.NoSession"), "sesión de otro cliente: NoSession");
+    check(read_item(it1, &dh, ":1.9", v) == 0 && !strcmp(v, "clave plana ñ"), "GetSecret DH (decrypted on the client side)");
+    check(read_item(it2, &dh, ":1.9", v) == 0 && !strcmp(v, "reemplazado"), "secret replaced");
+    check(read_item(it1, &plain, ":1.66", v) != 0 && !strcmp(v, "org.freedesktop.Secret.Error.NoSession"), "another client's session: NoSession");
     int nl = -1;
     check(search_count(NULL, &nl) == 2 && nl == 0, "SearchItems (service=demo)");
     check(search_count("ana", NULL) == 1, "SearchItems (user=ana)");
-    check(search_count("nadie", NULL) == 0, "SearchItems sin resultados");
-    /* GetSecrets de los dos */
+    check(search_count("nadie", NULL) == 0, "SearchItems with no results");
+    /* GetSecrets of both */
     {
         DBuf b; dw_init(&b);
         size_t mk = dw_arr_begin(&b, 4); dw_str(&b, it1); dw_str(&b, it2); dw_str(&b, "/org/freedesktop/secrets/collection/login/nada"); dw_arr_end(&b, mk);
@@ -627,9 +627,9 @@ static void t_service_flow(void) {
             while (dr_more(&d, end)) { dr_struct(&d); dr_str(&d, NULL); char s[128]; if (get_secret_val(&d, &dh, s, sizeof s)) good = 0; n++; }
             dbus_msg_free(&m);
         }
-        check(r == 1 && n == 2 && good, "GetSecrets (2 de 3, DH)");
+        check(r == 1 && n == 2 && good, "GetSecrets (2 of 3, DH)");
     }
-    /* SetSecret por DH */
+    /* SetSecret over DH */
     {
         DBuf b; dw_init(&b);
         put_secret(&b, &dh, "nuevo valor");
@@ -639,7 +639,7 @@ static void t_service_flow(void) {
         if (r >= 0) dbus_msg_free(&m);
         check(r == 1 && read_item(it1, &plain, ":1.9", v) == 0 && !strcmp(v, "nuevo valor"), "SetSecret (DH)");
     }
-    /* propiedades */
+    /* properties */
     {
         DBuf b; dw_init(&b); dw_str(&b, "org.freedesktop.Secret.Item");
         DMsg m;
@@ -658,7 +658,7 @@ static void t_service_flow(void) {
             }
             dbus_msg_free(&m);
         }
-        check(r == 1 && found == 2, "Properties.GetAll del ítem");
+        check(r == 1 && found == 2, "Properties.GetAll of the item");
         dw_init(&b); dw_str(&b, "org.freedesktop.Secret.Item"); dw_str(&b, "Label"); dw_variant(&b, "s"); dw_str(&b, "Correo 2");
         r = call(":1.9", it1, "org.freedesktop.DBus.Properties", "Set", "ssv", &b, &m);
         dw_free(&b);
@@ -676,7 +676,7 @@ static void t_service_flow(void) {
         if (r == 1) { DRd d; dr_init(&d, &m); ok = !strcmp(dr_variant(&d), "ao"); size_t e = dr_arr(&d, 4); ok = ok && dr_more(&d, e) && !strcmp(dr_str(&d, NULL), "/org/freedesktop/secrets/collection/login"); dbus_msg_free(&m); }
         check(ok, "Service.Collections");
     }
-    /* alias, introspección, errores */
+    /* alias, introspection, errors */
     {
         DBuf b; dw_init(&b); dw_str(&b, "default");
         DMsg m;
@@ -688,11 +688,11 @@ static void t_service_flow(void) {
         r = call(":1.9", "/org/freedesktop/secrets", "org.freedesktop.DBus.Introspectable", "Introspect", "", NULL, &m);
         ok = 0;
         if (r == 1) { DRd d; dr_init(&d, &m); const char *x = dr_str(&d, NULL); ok = strstr(x, "OpenSession") && strstr(x, "<node name=\"collection\"/>"); dbus_msg_free(&m); }
-        check(ok, "Introspect del servicio");
+        check(ok, "Introspect of the service");
         r = call(":1.9", "/org/freedesktop/secrets/collection/login", "org.freedesktop.DBus.Introspectable", "Introspect", "", NULL, &m);
         ok = 0;
         if (r == 1) { DRd d; dr_init(&d, &m); const char *x = dr_str(&d, NULL); ok = strstr(x, "CreateItem") && strstr(x, "<node name=\"i0001\"/>"); dbus_msg_free(&m); }
-        check(ok, "Introspect de la colección con sus ítems");
+        check(ok, "Introspect of the collection with its items");
         r = call(":1.9", "/org/freedesktop/secrets/collection/login", "org.freedesktop.Secret.Collection", "Delete", "", NULL, &m);
         ok = r == 0 && !strcmp(m.error, "org.freedesktop.DBus.Error.NotSupported");
         if (r >= 0) dbus_msg_free(&m);
@@ -700,22 +700,22 @@ static void t_service_flow(void) {
         r = call(":1.9", "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "Inventado", "", NULL, &m);
         ok = r == 0 && !strcmp(m.error, "org.freedesktop.DBus.Error.UnknownMethod");
         if (r >= 0) dbus_msg_free(&m);
-        check(ok, "método desconocido");
+        check(ok, "unknown method");
         r = call(":1.9", "/no/existe", NULL, "Ping", "", NULL, &m);
         ok = r == 0;
         if (r >= 0) dbus_msg_free(&m);
-        check(ok, "objeto desconocido");
+        check(ok, "unknown object");
         dw_init(&b); dw_str(&b, "plain");
         r = call(":1.9", "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "OpenSession", "s", &b, &m);
         dw_free(&b);
         ok = r == 0 && !strcmp(m.error, "org.freedesktop.DBus.Error.InvalidArgs");
         if (r >= 0) dbus_msg_free(&m);
-        check(ok, "firma equivocada: InvalidArgs");
+        check(ok, "wrong signature: InvalidArgs");
         r = call(":1.9", "/org/freedesktop/secrets", "org.freedesktop.DBus.Peer", "Ping", "", NULL, &m);
         if (r >= 0) dbus_msg_free(&m);
         check(r == 1, "Peer.Ping");
     }
-    /* bloquear → búsqueda vacía, GetSecret IsLocked → Unlock con aviso → Completed */
+    /* lock → empty search, GetSecret IsLocked → Unlock with a prompt → Completed */
     {
         DBuf b; dw_init(&b);
         size_t mk = dw_arr_begin(&b, 4); dw_str(&b, "/org/freedesktop/secrets/collection/login"); dw_arr_end(&b, mk);
@@ -724,8 +724,8 @@ static void t_service_flow(void) {
         if (r >= 0) dbus_msg_free(&m);
         check(r == 1, "Lock");
         int nlk = -1;
-        check(search_count(NULL, &nlk) == 0 && nlk == 2, "bloqueado: los ítems van en la lista locked");
-        check(read_item(it1, &plain, ":1.9", v) != 0 && !strcmp(v, "org.freedesktop.Secret.Error.IsLocked"), "bloqueado: IsLocked");
+        check(search_count(NULL, &nlk) == 0 && nlk == 2, "locked: the items go in the locked list");
+        check(read_item(it1, &plain, ":1.9", v) != 0 && !strcmp(v, "org.freedesktop.Secret.Error.IsLocked"), "locked: IsLocked");
         r = call(":1.9", "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "Unlock", "ao", &b, &m);
         dw_free(&b);
         char prompt[96] = "";
@@ -738,7 +738,7 @@ static void t_service_flow(void) {
             snprintf(prompt, sizeof prompt, "%s", dr_str(&d, NULL));
             dbus_msg_free(&m);
         }
-        check(r == 1 && nun == 0 && !strncmp(prompt, "/org/freedesktop/secrets/prompt/", 32), "Unlock devuelve un aviso");
+        check(r == 1 && nun == 0 && !strncmp(prompt, "/org/freedesktop/secrets/prompt/", 32), "Unlock returns a prompt");
         dw_init(&b); dw_str(&b, "");
         completed_seen = 0;
         r = call(":1.9", prompt, "org.freedesktop.Secret.Prompt", "Prompt", "s", &b, &m);
@@ -746,10 +746,10 @@ static void t_service_flow(void) {
         if (r >= 0) dbus_msg_free(&m);
         check(r == 1, "Prompt.Prompt");
         for (int i = 0; i < 40 && !completed_seen; i++) { DMsg s; if (bus_wait(0, &s, 100) == 1) dbus_msg_free(&s); }
-        check(completed_seen == 1 && completed_dismissed == 0, "Completed (no cancelado)");
-        check(read_item(it1, &plain, ":1.9", v) == 0 && !strcmp(v, "nuevo valor"), "desbloqueado: GetSecret de nuevo");
+        check(completed_seen == 1 && completed_dismissed == 0, "Completed (not dismissed)");
+        check(read_item(it1, &plain, ":1.9", v) == 0 && !strcmp(v, "nuevo valor"), "unlocked: GetSecret again");
     }
-    /* borrar */
+    /* delete */
     {
         DMsg m;
         int r = call(":1.9", it1, "org.freedesktop.Secret.Item", "Delete", "", NULL, &m);
@@ -759,7 +759,7 @@ static void t_service_flow(void) {
         if (r >= 0) dbus_msg_free(&m);
         check(r == 1 && read_item(it2, &plain, ":1.9", v) != 0, "Session.Close");
     }
-    check(item_created_seen >= 2, "señales ItemCreated");
+    check(item_created_seen >= 2, "ItemCreated signals");
     free(it1); free(it2); free(it3);
     kill(pid, SIGKILL);
     waitpid(pid, NULL, 0);
@@ -773,7 +773,7 @@ int main(int argc, char **argv) {
     t_roundtrip();
     t_reject();
     t_modexp();
-    /* fuzz sobre mensajes propios y capturados */
+    /* fuzz over our own and captured messages */
     size_t len;
     uint8_t *v = valid_msg(&len);
     int acc = fuzz_one(v, len, 100000);
@@ -784,10 +784,10 @@ int main(int argc, char **argv) {
     int acc2 = 0;
     for (int i = 0; i < ncap; i++) { acc2 += fuzz_one(caps[i], clens[i], 4000); free(caps[i]); }
     free(caps); free(clens);
-    if (ncap >= 0) printf("capturas reales: %d mensajes de libsecret\n", ncap);
-    else printf("capturas reales: no está tests/secretsvc/libsecret-capture.bin (se saltea)\n");
-    printf("fuzz: 100000 + %d mutaciones, aceptadas %d + %d, sin caídas\n", ncap > 0 ? ncap * 4000 : 0, acc, acc2);
-    check(1, "fuzz sin caídas");
+    if (ncap >= 0) printf("real captures: %d messages from libsecret\n", ncap);
+    else printf("real captures: tests/secretsvc/libsecret-capture.bin is missing (skipped)\n");
+    printf("fuzz: 100000 + %d mutations, accepted %d + %d, no crashes\n", ncap > 0 ? ncap * 4000 : 0, acc, acc2);
+    check(1, "fuzz without crashes");
     t_service_flow();
     printf("dbus-test: %d/%d\n", total - fails, total);
     return fails ? 1 : 0;

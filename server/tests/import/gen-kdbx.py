@@ -1,4 +1,4 @@
-# KDBX 4 con pykeepass (otro cifrado/KDF/archivo llave), mismas entradas que sample.xml.
+# KDBX 4 with pykeepass (other cipher/KDF/key file), same entries as sample.xml.
 from pykeepass import PyKeePass, create_database
 import copy, datetime
 PW = 'lordos-prueba'
@@ -33,7 +33,7 @@ e.mtime = datetime.datetime(2025, 1, 2, 3, 4, 5, tzinfo=datetime.timezone.utc)
 k.add_entry(inet, 'Correo', 'yo@example.org', 'correo-123', url='https://mail.example.org', tags=['web'])
 k.add_entry(srv, 'vps1', 'root', 'ssh-pass', url='ssh://203.0.113.5:22')
 k.add_entry(k.root_group, 'Raíz suelta', 'u', 'p')
-# una entrada en la papelera: no se importa
+# an entry in the trash: it is not imported
 trash = k.add_entry(k.root_group, 'Borrada', 'x', 'y')
 k.trash_entry(trash)
 d0 = k.kdbx.header.value.dynamic_header.kdf_parameters.data.dict

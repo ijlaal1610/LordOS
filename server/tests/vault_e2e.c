@@ -1,9 +1,9 @@
-/* vault_e2e.c — lord-vault de punta a punta, por el mismo cliente que usa lord-server
- * (src/vault/vclient.c): crear, abrir, contraseña incorrecta, entradas, búsqueda, informe, TOTP,
- * QR, generador, importar/exportar, adjuntos, ranuras (archivo llave, recuperación), llavero,
- * bloqueo automático, y que la memoria del proceso esté protegida (VmFlags "dd" = MADV_DONTDUMP,
- * "lo" = mlock; Dumpable 0). Usa una HOME temporal; no toca el bus de D-Bus.
- * Se corre con `make build/vault-e2e && build/vault-e2e` (necesita build/lord-vault al lado). */
+/* vault_e2e.c — lord-vault end to end, through the same client lord-server uses
+ * (src/vault/vclient.c): create, unlock, wrong password, entries, search, report, TOTP,
+ * QR, generator, import/export, attachments, slots (key file, recovery), keyring,
+ * auto-lock, and that the process memory is protected (VmFlags "dd" = MADV_DONTDUMP,
+ * "lo" = mlock; Dumpable 0). Uses a temporary HOME; does not touch the D-Bus bus.
+ * Run with `make build/vault-e2e && build/vault-e2e` (needs build/lord-vault next to it). */
 #include "vault/vclient.h"
 #include "vault/vjson.h"
 #include "vault/vwire.h"
@@ -18,13 +18,13 @@
 #include <unistd.h>
 
 static int fails, total;
-static void check(int ok, const char *what) { total++; if (!ok) { fails++; printf("FALLA: %s\n", what); } }
+static void check(int ok, const char *what) { total++; if (!ok) { fails++; printf("FAIL: %s\n", what); } }
 static double now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
 
-static char last[1 << 22];        /* última respuesta */
+static char last[1 << 22];        /* last reply */
 static int events_locked;
 
-/* manda y espera la respuesta (texto JSON en `last`) */
+/* sends and waits for the reply (JSON text in `last`) */
 static const char *req(const char *json, int *fds, int nfds) {
     int id = vc_request(json, strlen(json), fds, nfds);
     if (id < 0) { snprintf(last, sizeof last, "{\"error\":\"send\"}"); return last; }
@@ -77,55 +77,55 @@ int main(void) {
     setenv("HOME", home, 1);
     setenv("XDG_RUNTIME_DIR", "/nonexistent", 1);
     unsetenv("DBUS_SESSION_BUS_ADDRESS");
-    check(vc_available(), "lord-vault al lado del binario");
-    check(vc_start() == 0, "lanzar lord-vault");
+    check(vc_available(), "lord-vault next to the binary");
+    check(vc_start() == 0, "launch lord-vault");
     const char *r;
     char p[512], rec[64];
 
     r = req("{\"op\":\"status\"}", NULL, 0);
-    check(ok(r) && strstr(r, "\"exists\":false"), "estado inicial: sin bóveda");
+    check(ok(r) && strstr(r, "\"exists\":false"), "initial state: no vault");
     double t0 = now_ms();
     r = req("{\"op\":\"create\",\"method\":\"password\",\"password\":\"Contraseña maestra 1\",\"targetMs\":600}", NULL, 0);
     double tcreate = now_ms() - t0;
-    check(ok(r), "crear bóveda con contraseña");
+    check(ok(r), "create vault with password");
     jstr(r, "recovery", rec, sizeof rec);
-    check(strlen(rec) == 47, "clave de recuperación de 8 grupos");
-    printf("crear: %.0f ms (%s)\n", tcreate, r);
+    check(strlen(rec) == 47, "8-group recovery key");
+    printf("create: %.0f ms (%s)\n", tcreate, r);
 
-    /* entradas */
+    /* entries */
     r = req("{\"op\":\"save\",\"entry\":{\"cat\":\"internet\",\"title\":\"Banco Ejemplo\",\"tags\":[\"finanzas\"],\"f\":[{\"k\":\"username\",\"t\":\"text\",\"v\":\"ana\"},"
             "{\"k\":\"password\",\"t\":\"hidden\",\"v\":\"password\"},{\"k\":\"url\",\"t\":\"url\",\"v\":\"https://banco.example\"},"
             "{\"k\":\"totp\",\"t\":\"totp\",\"v\":\"otpauth://totp/Banco:ana?secret=JBSWY3DPEHPK3PXP&issuer=Banco\"}]}}", NULL, 0);
-    check(ok(r), "guardar entrada");
+    check(ok(r), "save entry");
     char id1[40];
     jstr(r, "id", id1, sizeof id1);
     r = req("{\"op\":\"save\",\"entry\":{\"cat\":\"wifi\",\"title\":\"Casa\",\"f\":[{\"k\":\"ssid\",\"t\":\"text\",\"v\":\"MiRed\"},{\"k\":\"security\",\"t\":\"text\",\"v\":\"WPA2\"},{\"k\":\"password\",\"t\":\"hidden\",\"v\":\"password\"}]}}", NULL, 0);
-    check(ok(r), "guardar Wi-Fi");
+    check(ok(r), "save Wi-Fi");
     char id2[40];
     jstr(r, "id", id2, sizeof id2);
     r = req("{\"op\":\"list\"}", NULL, 0);
-    check(ok(r) && strstr(r, "Banco Ejemplo") && !strstr(r, "JBSWY3DP") && !strstr(r, "\"password\""), "lista sin secretos");
+    check(ok(r) && strstr(r, "Banco Ejemplo") && !strstr(r, "JBSWY3DP") && !strstr(r, "\"password\""), "list without secrets");
     snprintf(p, sizeof p, "{\"op\":\"get\",\"id\":\"%s\"}", id1);
     r = req(p, NULL, 0);
-    check(ok(r) && strstr(r, "\"has\":true") && !strstr(r, "JBSWY3DP"), "get sin reveal");
+    check(ok(r) && strstr(r, "\"has\":true") && !strstr(r, "JBSWY3DP"), "get without reveal");
     snprintf(p, sizeof p, "{\"op\":\"reveal\",\"id\":\"%s\",\"k\":\"password\"}", id1);
     r = req(p, NULL, 0);
-    check(ok(r) && strstr(r, "\"value\":\"password\""), "reveal de un campo");
+    check(ok(r) && strstr(r, "\"value\":\"password\""), "reveal one field");
     r = req("{\"op\":\"search\",\"q\":\"banco finanzas\"}", NULL, 0);
-    check(ok(r) && strstr(r, id1), "búsqueda");
+    check(ok(r) && strstr(r, id1), "search");
     r = req("{\"op\":\"totp\"}", NULL, 0);
-    check(ok(r) && strstr(r, "\"code\":\"") && strstr(r, "\"issuer\":\"Banco\"") && !strstr(r, "JBSWY3DP"), "códigos TOTP sin el secreto");
+    check(ok(r) && strstr(r, "\"code\":\"") && strstr(r, "\"issuer\":\"Banco\"") && !strstr(r, "JBSWY3DP"), "TOTP codes without the secret");
     r = req("{\"op\":\"report\"}", NULL, 0);
-    check(ok(r) && strstr(r, "\"common\":true") && strstr(r, "\"reused\":[[\""), "informe: débil y repetida");
+    check(ok(r) && strstr(r, "\"common\":true") && strstr(r, "\"reused\":[[\""), "report: weak and reused");
     snprintf(p, sizeof p, "{\"op\":\"qr\",\"id\":\"%s\"}", id2);
     r = req(p, NULL, 0);
-    check(ok(r) && strstr(r, "\"rows\":[\""), "QR del Wi-Fi");
+    check(ok(r) && strstr(r, "\"rows\":[\""), "Wi-Fi QR");
     r = req("{\"op\":\"generate\",\"length\":32,\"symbols\":true}", NULL, 0);
-    check(ok(r) && strstr(r, "\"score\":4"), "generador");
+    check(ok(r) && strstr(r, "\"score\":4"), "generator");
     r = req("{\"op\":\"generate\",\"words\":5,\"sep\":\" \"}", NULL, 0);
-    check(ok(r), "frase");
+    check(ok(r), "passphrase");
 
-    /* adjuntos */
+    /* attachments */
     char f[600];
     snprintf(f, sizeof f, "%s/lic.txt", home);
     FILE *fp = fopen(f, "w");
@@ -134,7 +134,7 @@ int main(void) {
     int fd = openr(f);
     snprintf(p, sizeof p, "{\"op\":\"att-add\",\"id\":\"%s\",\"name\":\"lic.txt\",\"mime\":\"text/plain\"}", id1);
     r = req(p, &fd, 1);
-    check(ok(r) && strstr(r, "\"natt\":1"), "agregar adjunto");
+    check(ok(r) && strstr(r, "\"natt\":1"), "add attachment");
     snprintf(p, sizeof p, "{\"op\":\"get\",\"id\":\"%s\"}", id1);
     r = req(p, NULL, 0);
     char *a = strstr(r, "\"att\":[{\"id\":\"");
@@ -142,23 +142,23 @@ int main(void) {
     if (a) { memcpy(attid, a + 14, 32); attid[32] = 0; }
     snprintf(p, sizeof p, "{\"op\":\"att-text\",\"id\":\"%s\",\"att\":\"%s\"}", id1, attid);
     r = req(p, NULL, 0);
-    check(ok(r) && strstr(r, "CLAVE-DE-LICENCIA-1234"), "leer adjunto");
+    check(ok(r) && strstr(r, "CLAVE-DE-LICENCIA-1234"), "read attachment");
 
-    /* bloquear, contraseña incorrecta, abrir */
+    /* lock, wrong password, unlock */
     r = req("{\"op\":\"lock\"}", NULL, 0);
-    check(ok(r), "bloquear");
+    check(ok(r), "lock");
     r = req("{\"op\":\"list\"}", NULL, 0);
-    check(err(r, "locked"), "bloqueada no lista");
+    check(err(r, "locked"), "locked vault doesn't list");
     r = req("{\"op\":\"unlock\",\"method\":\"password\",\"password\":\"otra\"}", NULL, 0);
-    check(err(r, "bad-key"), "contraseña incorrecta");
+    check(err(r, "bad-key"), "wrong password");
     t0 = now_ms();
     r = req("{\"op\":\"unlock\",\"method\":\"password\",\"password\":\"Contraseña maestra 1\"}", NULL, 0);
     double tun = now_ms() - t0;
-    check(ok(r), "abrir");
-    printf("abrir con contraseña: %.0f ms (%s)\n", tun, r);
+    check(ok(r), "unlock");
+    printf("unlock with password: %.0f ms (%s)\n", tun, r);
     snprintf(p, sizeof p, "{\"op\":\"att-text\",\"id\":\"%s\",\"att\":\"%s\"}", id1, attid);
     r = req(p, NULL, 0);
-    check(ok(r) && strstr(r, "CLAVE-DE-LICENCIA-1234"), "adjunto después de guardar y abrir");
+    check(ok(r) && strstr(r, "CLAVE-DE-LICENCIA-1234"), "attachment after save and unlock");
 
     /* App channel (vc_attach_app): what the sandboxed Passwords process (lord-server --app) uses.
      * Same API on its own socket; a lock from the control channel reaches it as an event. */
@@ -186,82 +186,82 @@ int main(void) {
         }
     }
 
-    /* archivo llave nuevo (como en un pendrive) + abrir con él */
+    /* new key file (as on a USB stick) + unlock with it */
     snprintf(f, sizeof f, "%s/pendrive.key", home);
     fd = openw(f);
     r = req("{\"op\":\"slot-add\",\"method\":\"keyfile\",\"newkey\":true,\"label\":\"Pendrive\"}", &fd, 1);
-    check(ok(r), "ranura de archivo llave");
+    check(ok(r), "key file slot");
     struct stat st;
-    check(stat(f, &st) == 0 && st.st_size == 64, "archivo llave de 64 bytes");
+    check(stat(f, &st) == 0 && st.st_size == 64, "64-byte key file");
     req("{\"op\":\"lock\"}", NULL, 0);
     fd = openr(f);
     r = req("{\"op\":\"unlock\",\"method\":\"keyfile\"}", &fd, 1);
-    check(ok(r), "abrir con el archivo llave");
+    check(ok(r), "unlock with the key file");
     req("{\"op\":\"lock\"}", NULL, 0);
     snprintf(p, sizeof p, "{\"op\":\"unlock\",\"method\":\"recovery\",\"recovery\":\"%s\"}", rec);
     r = req(p, NULL, 0);
-    check(ok(r), "abrir con la clave de recuperación");
+    check(ok(r), "unlock with the recovery key");
 
-    /* contraseña + archivo llave (dos factores): reemplaza a la contraseña sola */
+    /* password + key file (two factors): replaces the password alone */
     snprintf(f, sizeof f, "%s/segundo.key", home);
     fd = openw(f);
     r = req("{\"op\":\"slot-add\",\"method\":\"passkey\",\"newkey\":true,\"password\":\"Dos factores 2\"}", &fd, 1);
-    check(ok(r), "ranura contraseña + archivo llave");
+    check(ok(r), "password + key file slot");
     req("{\"op\":\"lock\"}", NULL, 0);
     r = req("{\"op\":\"unlock\",\"method\":\"password\",\"password\":\"Contraseña maestra 1\"}", NULL, 0);
-    check(!ok(r), "la contraseña sola ya no abre");
+    check(!ok(r), "the password alone no longer unlocks");
     fd = openr(f);
     r = req("{\"op\":\"unlock\",\"method\":\"passkey\",\"password\":\"Dos factores 2\"}", &fd, 1);
-    check(ok(r), "abrir con contraseña + archivo llave");
+    check(ok(r), "unlock with password + key file");
 
-    /* importar Chrome CSV y exportar CSV */
+    /* import Chrome CSV and export CSV */
     snprintf(f, sizeof f, "%s/chrome.csv", home);
     fp = fopen(f, "w");
     fputs("name,url,username,password,note\nEjemplo,https://ejemplo.com/,bob,Xy7#kd92!aQ,\n\"Con, coma\",https://otro.com/,ana,\"pa\"\"ss\",nota\n", fp);
     fclose(fp);
     fd = openr(f);
     r = req("{\"op\":\"import\",\"name\":\"chrome.csv\"}", &fd, 1);
-    check(ok(r) && strstr(r, "\"count\":2") && strstr(r, "chrome-csv"), "importar CSV de Chrome");
+    check(ok(r) && strstr(r, "\"count\":2") && strstr(r, "chrome-csv"), "import Chrome CSV");
     snprintf(f, sizeof f, "%s/export.csv", home);
     fd = openw(f);
     r = req("{\"op\":\"export-csv\"}", &fd, 1);
-    check(ok(r) && strstr(r, "\"count\":4"), "exportar CSV");
+    check(ok(r) && strstr(r, "\"count\":4"), "export CSV");
     snprintf(f, sizeof f, "%s/copia.lvault", home);
     fd = openw(f);
     r = req("{\"op\":\"export-vault\"}", &fd, 1);
-    check(ok(r), "exportar copia .lvault");
+    check(ok(r), "export .lvault copy");
 
-    /* llavero: no existe sin la contraseña de la sesión; se crea con ella */
+    /* keyring: it doesn't exist without the session password; it is created with it */
     r = req("{\"op\":\"kr-set\",\"owner\":\"mail\",\"service\":\"imap.example.com\",\"account\":\"ana\",\"secret\":\"s\"}", NULL, 0);
-    check(err(r, "no-keyring"), "sin llavero de sesión todavía");
+    check(err(r, "no-keyring"), "no session keyring yet");
     vc_session_password("clave de la sesión");
     usleep(1500000);
     r = req("{\"op\":\"status\"}", NULL, 0);
-    check(strstr(r, "\"login\":{\"exists\":true,\"unreadable\":false,\"unlocked\":true") != NULL, "llavero creado y abierto con la sesión");
+    check(strstr(r, "\"login\":{\"exists\":true,\"unreadable\":false,\"unlocked\":true") != NULL, "keyring created and unlocked with the session");
     r = req("{\"op\":\"kr-set\",\"owner\":\"mail\",\"service\":\"imap.example.com\",\"account\":\"ana\",\"secret\":\"secreto-imap\"}", NULL, 0);
     check(ok(r), "kr-set");
     r = req("{\"op\":\"kr-get\",\"owner\":\"mail\",\"service\":\"imap.example.com\",\"account\":\"ana\"}", NULL, 0);
-    check(ok(r) && strstr(r, "secreto-imap"), "kr-get de la misma app");
+    check(ok(r) && strstr(r, "secreto-imap"), "kr-get from the same app");
     r = req("{\"op\":\"kr-get\",\"owner\":\"settings\",\"service\":\"imap.example.com\",\"account\":\"ana\"}", NULL, 0);
-    check(err(r, "not-shared"), "otra app no lo ve");
+    check(err(r, "not-shared"), "another app can't see it");
     r = req("{\"op\":\"kr-list\",\"owner\":\"settings\"}", NULL, 0);
-    check(ok(r) && !strstr(r, "imap"), "kr-list de otra app vacío");
+    check(ok(r) && !strstr(r, "imap"), "kr-list from another app is empty");
     char kid[40] = "";
     r = req("{\"op\":\"kr-list\",\"owner\":\"mail\"}", NULL, 0);
     char *ki = strstr(r, "\"id\":\"");
     if (ki) { memcpy(kid, ki + 6, 32); kid[32] = 0; }
     snprintf(p, sizeof p, "{\"op\":\"kr-share\",\"admin\":true,\"id\":\"%s\",\"app\":\"settings\"}", kid);
     r = req(p, NULL, 0);
-    check(ok(r), "compartir con permiso del usuario");
+    check(ok(r), "share with the user's permission");
     r = req("{\"op\":\"kr-get\",\"owner\":\"settings\",\"service\":\"imap.example.com\",\"account\":\"ana\"}", NULL, 0);
-    check(ok(r) && strstr(r, "secreto-imap"), "ahora sí lo ve");
+    check(ok(r) && strstr(r, "secreto-imap"), "now it can see it");
     vc_lock_all("screen");
     usleep(300000);
     r = req("{\"op\":\"status\"}", NULL, 0);
     check(strstr(r, "\"main\":{\"exists\":true,\"unreadable\":false,\"unlocked\":false") && strstr(r, "\"login\":{\"exists\":true,\"unreadable\":false,\"unlocked\":true"),
-          "bloquear la pantalla cierra Contraseñas y no el llavero");
+          "locking the screen locks Passwords but not the keyring");
 
-    /* memoria protegida del proceso */
+    /* protected process memory */
     {
         FILE *ps = popen("pgrep -n -x lord-vault", "r");
         int vpid = 0;
@@ -272,18 +272,18 @@ int main(void) {
         int dd = 0, lo = 0;
         while (sm && fgets(line, sizeof line, sm)) if (!strncmp(line, "VmFlags:", 8)) { if (strstr(line, " dd")) dd++; if (strstr(line, " lo")) lo++; }
         if (sm) fclose(sm);
-        printf("lord-vault %d: %d regiones MADV_DONTDUMP, %d con mlock (smaps %s)\n", vpid, dd, lo, sm ? "legible" : "no legible: no dumpable");
-        check(vpid > 0, "lord-vault corre");
-        check(!sm || (dd > 0 && lo > 0), "memoria con DONTDUMP y mlock (o el proceso no es dumpable)");
+        printf("lord-vault %d: %d MADV_DONTDUMP regions, %d mlocked (smaps %s)\n", vpid, dd, lo, sm ? "readable" : "unreadable: not dumpable");
+        check(vpid > 0, "lord-vault is running");
+        check(!sm || (dd > 0 && lo > 0), "memory with DONTDUMP and mlock (or the process isn't dumpable)");
         snprintf(path, sizeof path, "/proc/%d/status", vpid);
         FILE *ss = fopen(path, "r");
         int nnp = 0, secc = 0;
         while (ss && fgets(line, sizeof line, ss)) { if (!strncmp(line, "NoNewPrivs:\t1", 13)) nnp = 1; if (!strncmp(line, "Seccomp:\t2", 10)) secc = 1; }
         if (ss) fclose(ss);
-        check(nnp && secc, "encerrado: no_new_privs y seccomp");
+        check(nnp && secc, "sandboxed: no_new_privs and seccomp");
     }
 
-    /* 10 000 entradas por importación y búsqueda medida dentro de lord-vault */
+    /* 10,000 entries through import, and search measured inside lord-vault */
     {
         snprintf(f, sizeof f, "%s/grande.csv", home);
         fp = fopen(f, "w");
@@ -296,23 +296,23 @@ int main(void) {
         fd = openr(f);
         t0 = now_ms();
         r = req("{\"op\":\"import\",\"name\":\"grande.csv\"}", &fd, 1);
-        printf("importar 10 000: %.0f ms (%s)\n", now_ms() - t0, r);
-        check(ok(r) && strstr(r, "\"count\":10000"), "importar 10 000");
+        printf("import 10,000: %.0f ms (%s)\n", now_ms() - t0, r);
+        check(ok(r) && strstr(r, "\"count\":10000"), "import 10,000");
         double worst = 0;
         for (int k = 0; k < 5; k++) {
             r = req(k % 2 ? "{\"op\":\"search\",\"q\":\"usuario9999\"}" : "{\"op\":\"search\",\"q\":\"sitio 42\"}", NULL, 0);
             Vj j;
             if (!vj_parse(&j, r, strlen(r))) { double ms = vj_getn(&j, 0, "ms", 99); if (ms > worst) worst = ms; vj_free(&j); }
         }
-        printf("búsqueda en lord-vault con 10 004 entradas: peor %.2f ms\n", worst);
-        check(worst < 10, "búsqueda < 10 ms en lord-vault");
+        printf("search in lord-vault with 10,004 entries: worst %.2f ms\n", worst);
+        check(worst < 10, "search < 10 ms in lord-vault");
         t0 = now_ms();
         r = req("{\"op\":\"list\"}", NULL, 0);
-        printf("lista de 10 004 entradas: %zu KB en %.0f ms (ida y vuelta)\n", strlen(r) / 1024, now_ms() - t0);
+        printf("list of 10,004 entries: %zu KB in %.0f ms (round trip)\n", strlen(r) / 1024, now_ms() - t0);
         req("{\"op\":\"lock\"}", NULL, 0);
         t0 = now_ms();
         r = req(p, NULL, 0);
-        printf("abrir 10 004 entradas con la clave de recuperación: %.0f ms\n", now_ms() - t0);
+        printf("unlock 10,004 entries with the recovery key: %.0f ms\n", now_ms() - t0);
     }
 
     char cmd[200];

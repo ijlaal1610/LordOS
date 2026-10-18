@@ -1,4 +1,4 @@
-# FIDO2 de Contraseñas (src/vault/ctap2.c, p256.c, cbor.c, fidodev.c; docs/CONTRASENAS.md).
+# FIDO2 de Contraseñas (src/vault/ctap2.c, p256.c, cbor.c, fidodev.c; docs/PASSWORDS.md).
 # ctap-test corre con `make test`; softfido y fido-e2e necesitan root (uhid): ver
 # ../tests/fido-soft/run-pw-116.sh. Los prerrequisitos van escritos a mano (este archivo se
 # incluye antes que mk/vault.mk).

@@ -1,5 +1,5 @@
 /* dbus.h — cliente D-Bus propio y mínimo (sin libdbus ni sd-bus), lo justo para atender el
- * Secret Service (secretsvc.c) desde lord-vault. Ver docs/CONTRASENAS.md, «Secret Service».
+ * Secret Service (secretsvc.c) desde lord-vault. Ver docs/PASSWORDS.md, «Secret Service».
  *
  *   - Mensajes (especificación D-Bus 0.41): cabecera fija + campos a(yv) + cuerpo, alineación
  *     por tipo, little endian al escribir y los dos órdenes al leer. Tipos: y b n q i u x t d s

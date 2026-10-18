@@ -1,4 +1,4 @@
-/* vfile.c — formato .lvault (ver vfile.h y docs/CONTRASENAS.md). */
+/* vfile.c — formato .lvault (ver vfile.h y docs/PASSWORDS.md). */
 #include "vfile.h"
 #include "smem.h"
 #include "vcrypto.h"

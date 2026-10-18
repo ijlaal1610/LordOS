@@ -1,4 +1,4 @@
-/* vfile.h — el formato de archivo de la bóveda (.lvault), versión 1. Ver docs/CONTRASENAS.md,
+/* vfile.h — el formato de archivo de la bóveda (.lvault), versión 1. Ver docs/PASSWORDS.md,
  * «El formato».
  *
  *   cabecera   "LORDVLT\x1a", versión, largo de cabecera, id de la bóveda, fechas, contador,

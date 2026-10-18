@@ -1,6 +1,6 @@
-/* import_smem_shim.c — la API de smem.h sobre malloc, solo para las pruebas de los importadores:
- * así AddressSanitizer y LeakSanitizer ven cada bloque (la arena real usa su propio mmap y los
- * desbordes adentro de un trozo no se detectarían). Borra al liberar, como la real. */
+/* import_smem_shim.c — the smem.h API on top of malloc, only for the importer tests:
+ * this way AddressSanitizer and LeakSanitizer see every block (the real arena uses its own mmap and
+ * overflows inside a chunk would go undetected). It wipes on free, like the real one. */
 #include "vault/smem.h"
 
 #include <malloc.h>

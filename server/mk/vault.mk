@@ -1,4 +1,4 @@
-# Contraseñas y llavero del sistema (src/vault, docs/CONTRASENAS.md). Monocypher 4.0.2 vendorizado
+# Contraseñas y llavero del sistema (src/vault, docs/PASSWORDS.md). Monocypher 4.0.2 vendorizado
 # (CC0) en ../third_party/monocypher. Cada parte agrega sus pruebas en mk/vault-*.mk.
 MC_DIR := ../third_party/monocypher
 VAULT_CPP := -isystem $(MC_DIR)

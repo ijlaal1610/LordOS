@@ -1,9 +1,9 @@
-/* vault_demo.c — arma una bóveda de demostración (para las capturas de docs/CONTRASENAS.md) con
- * entradas de todas las plantillas, categorías del usuario en árbol, etiquetas, 2FA, adjuntos y
- * contraseñas débiles, repetidas y viejas para el informe. Todo inventado.
+/* vault_demo.c — builds a demo vault (for the screenshots in docs/PASSWORDS.md) with
+ * entries from every template, a tree of user categories, tags, 2FA, attachments and
+ * weak, reused and old passwords for the report. All invented.
  *
- *   build/vault-demo <contraseña> [imagen.jpg]      (HOME = la del usuario; lanza su propio lord-vault)
- * No pisa una bóveda existente. */
+ *   build/vault-demo <password> [image.jpg]      (HOME = the user's; launches its own lord-vault)
+ * It does not overwrite an existing vault. */
 #include "vault/vclient.h"
 #include "vault/vjson.h"
 
@@ -53,14 +53,14 @@ static void save(const char *entry) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 2) { fprintf(stderr, "uso: vault-demo <contraseña> [imagen]\n"); return 2; }
+    if (argc < 2) { fprintf(stderr, "usage: vault-demo <password> [image]\n"); return 2; }
     setenv("XDG_RUNTIME_DIR", "/nonexistent", 1);
     unsetenv("DBUS_SESSION_BUS_ADDRESS");
-    if (vc_start()) { fprintf(stderr, "no se pudo lanzar lord-vault\n"); return 1; }
+    if (vc_start()) { fprintf(stderr, "could not launch lord-vault\n"); return 1; }
     char buf[4096];
     snprintf(buf, sizeof buf, "{\"op\":\"create\",\"method\":\"password\",\"password\":\"%s\"}", argv[1]);
     const char *r = req(buf, NULL, 0);
-    printf("crear: %s\n", r);
+    printf("create: %s\n", r);
     if (!strstr(r, "\"ok\":true")) return 1;
     long now = (long)time(NULL), old = now - 400L * 86400, mid = now - 120L * 86400;
     req("{\"op\":\"set-cats\",\"cats\":[{\"id\":\"utrabajo\",\"name\":\"Trabajo\",\"icon\":\"💼\",\"color\":\"#5e5ce6\",\"template\":\"internet\"},"
@@ -133,19 +133,19 @@ int main(int argc, char **argv) {
          "{\"k\":\"password\",\"t\":\"hidden\",\"v\":\"qwerty\"}]}");
     snprintf(buf, sizeof buf, "{\"op\":\"trash\",\"id\":\"%s\"}", lastid);
     req(buf, NULL, 0);
-    /* adjuntos: la licencia (texto) y la foto del documento (si se pasó una imagen) */
+    /* attachments: the license (text) and the photo of the ID document (if an image was given) */
     FILE *f = fopen("/tmp/licencia-demo.txt", "w");
     if (f) { fputs("Editor de fotos Pro 12\nLicencia: EFP-7Q2K-9M4X-RT8B-1ZC6\nTitular: Ana Gómez\n", f); fclose(f); }
     int fd = open("/tmp/licencia-demo.txt", O_RDONLY | O_CLOEXEC);
     if (fd >= 0) {
         snprintf(buf, sizeof buf, "{\"op\":\"att-add\",\"id\":\"%s\",\"name\":\"licencia.txt\",\"mime\":\"text/plain\"}", lic);
-        printf("adjunto licencia: %s\n", req(buf, &fd, 1));
+        printf("license attachment: %s\n", req(buf, &fd, 1));
     }
     unlink("/tmp/licencia-demo.txt");
     if (argc > 2 && (fd = open(argv[2], O_RDONLY | O_CLOEXEC)) >= 0) {
         snprintf(buf, sizeof buf, "{\"op\":\"att-add\",\"id\":\"%s\",\"name\":\"foto-documento.jpg\",\"mime\":\"image/jpeg\"}", dni);
-        printf("adjunto foto: %s\n", req(buf, &fd, 1));
+        printf("photo attachment: %s\n", req(buf, &fd, 1));
     }
-    printf("listo: %s\n", req("{\"op\":\"status\"}", NULL, 0));
+    printf("done: %s\n", req("{\"op\":\"status\"}", NULL, 0));
     return 0;
 }

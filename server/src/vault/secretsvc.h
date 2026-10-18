@@ -1,5 +1,5 @@
 /* secretsvc.h — la API freedesktop Secret Service (org.freedesktop.secrets) sobre D-Bus, con un
- * cliente D-Bus propio y mínimo (dbus.h: sin libdbus ni sd-bus). Ver docs/CONTRASENAS.md,
+ * cliente D-Bus propio y mínimo (dbus.h: sin libdbus ni sd-bus). Ver docs/PASSWORDS.md,
  * «Secret Service».
  *
  * Así Chromium, Firefox, libsecret/secret-tool y las demás apps Linux guardan sus contraseñas en

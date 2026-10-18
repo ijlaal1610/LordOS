@@ -1,4 +1,4 @@
-# Importar/exportar contraseñas (src/vault/vimport.c, csvp.c, kdbx.c, xmlmini.c; docs/CONTRASENAS.md).
+# Importar/exportar contraseñas (src/vault/vimport.c, csvp.c, kdbx.c, xmlmini.c; docs/PASSWORDS.md).
 # La prueba usa smem sobre malloc (tests/import_smem_shim.c) para que ASan/LSan vean cada bloque.
 IMPORT_SRC := src/vault/vimport.c src/vault/csvp.c src/vault/kdbx.c src/vault/xmlmini.c
 IMPORT_HDR := src/vault/vimport.h src/vault/csvp.h src/vault/kdbx.h src/vault/xmlmini.h src/vault/vjson.h src/vault/smem.h src/vault/vstb.h src/vault/vcrypto.h

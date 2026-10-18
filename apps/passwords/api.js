@@ -1,7 +1,7 @@
 // api.js — estado de la app Contraseñas y los pedidos a lord-vault (por @lordos/sdk vaultRequest).
 // Lo descifrado vive en lord-vault; acá llega solo lo que se muestra: la lista liviana (sin
 // secretos), la entrada abierta (los ocultos sin valor) y un valor cuando el usuario lo pide
-// (mostrar, copiar, editar). Ver docs/CONTRASENAS.md.
+// (mostrar, copiar, editar). Ver docs/PASSWORDS.md.
 import { createStore, vaultRequest, onVaultEvent, clipboard, t } from '@lordos/sdk';
 
 export const APP_ID = 'passwords';

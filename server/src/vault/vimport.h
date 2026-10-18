@@ -1,4 +1,4 @@
-/* vimport.h — importar y exportar contraseñas de otros gestores (ver docs/CONTRASENAS.md,
+/* vimport.h — importar y exportar contraseñas de otros gestores (ver docs/PASSWORDS.md,
  * «Importar y exportar»). Corre adentro de lord-vault (encerrado, sin red): el archivo llega como
  * bytes ya leídos de un fd que abrió lord-server. Todo lo que se arma (textos, adjuntos) va en la
  * arena de secretos (smem.h) y imp_free lo borra.

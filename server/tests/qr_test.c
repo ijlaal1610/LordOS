@@ -1,11 +1,11 @@
-/* qr_test.c — códigos QR propios (src/vault/qr.c):
- *   1. respuestas conocidas: matrices generadas con segno (tests/qr/qr_ref.h), con la máscara
- *      elegida por la penalización y, en versiones grandes, con la máscara fija (hash);
- *   2. ida y vuelta: codificar → dibujar (escala 2–8, invertido, girado, ruido, desenfoque) → leer;
- *   3. corrección de errores: módulos invertidos hasta la capacidad (lee) y más allá (falla);
- *   4. imágenes reales (PNG de segno en tests/qr/, incluida una captura con interfaz);
- *   5. «fuzz»: imágenes al azar y QR dañados no pueden romper nada.
- * Se corre desde server/ (make test). */
+/* qr_test.c — our own QR codes (src/vault/qr.c):
+ *   1. known answers: matrices generated with segno (tests/qr/qr_ref.h), with the mask
+ *      chosen by the penalty score and, for large versions, with a fixed mask (hash);
+ *   2. round trip: encode → draw (scale 2–8, inverted, rotated, noise, blur) → decode;
+ *   3. error correction: modules flipped up to the capacity (decodes) and beyond (fails);
+ *   4. real images (segno PNGs in tests/qr/, including a screenshot with UI);
+ *   5. "fuzz": random images and damaged QR codes can't break anything.
+ * Run from server/ (make test). */
 #include "vault/qr.h"
 #include "vault/vstb.h"
 #include "vault/smem.h"
@@ -20,7 +20,7 @@
 int qr_encode_ex(const uint8_t *data, size_t len, int ecc, int mask, int minver, uint8_t *modules, int *size, int *mask_out);
 
 static int fails, total;
-static void check(int ok, const char *what) { total++; if (!ok) { fails++; printf("FALLA: %s\n", what); } }
+static void check(int ok, const char *what) { total++; if (!ok) { fails++; printf("FAIL: %s\n", what); } }
 
 static uint64_t rs = 0x9e3779b97f4a7c15ULL;
 static uint32_t rnd(void) { rs ^= rs << 13; rs ^= rs >> 7; rs ^= rs << 17; return (uint32_t)(rs >> 11); }
@@ -28,7 +28,7 @@ static double now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
 
 static uint8_t M[QR_MAX_SIZE * QR_MAX_SIZE];
 
-/* Dibuja la matriz: escala sc, zona en blanco de 4, giro en grados, invertido. */
+/* Draws the matrix: scale sc, quiet zone of 4, rotation in degrees, inverted. */
 static uint32_t *raster(const uint8_t *m, int s, double sc, double deg, int inv, int *W, int *H) {
     double side = (s + 8) * sc, a = deg * M_PI / 180, ca = cos(a), sa = sin(a);
     int w = (int)ceil(side * (fabs(ca) + fabs(sa))) + 4;
@@ -104,19 +104,19 @@ int main(void) {
     uint8_t out[4096];
     int s, mask;
 
-    /* ---- 1. respuestas conocidas ---- */
+    /* ---- 1. known answers ---- */
     for (size_t k = 0; k < sizeof KAT / sizeof KAT[0]; k++) {
         const QrKat *q = &KAT[k];
         int v = qr_encode_ex((const uint8_t *)q->data, strlen(q->data), q->ecc, -1, q->ver, M, &s, &mask);
         char what[96];
-        snprintf(what, sizeof what, "KAT «%s» versión %d", q->data, q->ver);
+        snprintf(what, sizeof what, "KAT «%s» version %d", q->data, q->ver);
         check(v == q->ver, what);
-        snprintf(what, sizeof what, "KAT «%s» máscara elegida %d (segno %d)", q->data, mask, q->mask);
+        snprintf(what, sizeof what, "KAT «%s» chosen mask %d (segno %d)", q->data, mask, q->mask);
         check(mask == q->mask, what);
         qr_encode_ex((const uint8_t *)q->data, strlen(q->data), q->ecc, q->mask, q->ver, M, &s, NULL);
         int same = 1;
         for (int y = 0; y < s; y++) for (int x = 0; x < s; x++) if ((q->rows[y][x] == '1') != M[y * s + x]) same = 0;
-        snprintf(what, sizeof what, "KAT «%s» matriz igual a segno", q->data);
+        snprintf(what, sizeof what, "KAT «%s» matrix identical to segno", q->data);
         check(same, what);
     }
     {
@@ -127,21 +127,21 @@ int main(void) {
             const QrBig *b = &BIG[k];
             int v = qr_encode_ex(txt, (size_t)b->len, b->ecc, b->mask, b->ver, M, &s, NULL);
             char what[96];
-            snprintf(what, sizeof what, "versión %d ecc %d máscara %d: hash igual a segno", b->ver, b->ecc, b->mask);
+            snprintf(what, sizeof what, "version %d ecc %d mask %d: hash identical to segno", b->ver, b->ecc, b->mask);
             check(v == b->ver && fnv(M, s) == b->hash, what);
-            /* un byte más no entra en esa versión */
+            /* one more byte doesn't fit in that version */
             v = qr_encode_ex(txt, (size_t)b->len + 1, b->ecc, b->mask, b->ver, M, &s, NULL);
-            check(v != b->ver, "un byte más sube de versión");
+            check(v != b->ver, "one more byte bumps the version");
         }
     }
-    check(qr_encode((const uint8_t *)"x", 1, QR_ECC_L, M, &s) == 1 && s == 21, "versión 1");
+    check(qr_encode((const uint8_t *)"x", 1, QR_ECC_L, M, &s) == 1 && s == 21, "version 1");
     {
         static uint8_t big[3000];
         memset(big, 'a', sizeof big);
-        check(qr_encode(big, 2954, QR_ECC_L, M, &s) == -1, "no entra en la versión 40");
+        check(qr_encode(big, 2954, QR_ECC_L, M, &s) == -1, "doesn't fit in version 40");
     }
 
-    /* ---- 2. ida y vuelta ---- */
+    /* ---- 2. round trip ---- */
     int rt_ok = 0, rt_n = 0, rot_ok = 0, rot_n = 0;
     for (int it = 0; it < 360; it++) {
         int ecc = (int)(rnd() % 4), kind = (int)(rnd() % 3);
@@ -153,7 +153,7 @@ int main(void) {
         static uint8_t data[7100];
         for (int i = 0; i < len; i++) data[i] = kind == 0 ? (uint8_t)('0' + rnd() % 10) : kind == 1 ? (uint8_t)ALN[rnd() % 45] : (uint8_t)(rnd() % 255 + 1);
         int v = qr_encode(data, (size_t)len, ecc, M, &s);
-        if (v < 0) { check(0, "codificar dato al azar"); continue; }
+        if (v < 0) { check(0, "encode random data"); continue; }
         int extra = (int)(rnd() % 10);
         double sc = 2 + rnd() % 7;
         while ((s + 8) * sc > 900 && sc > 2) sc--;
@@ -168,14 +168,14 @@ int main(void) {
         int n = qr_decode(px, w, h, out, sizeof out);
         int ok = n == len && !memcmp(out, data, (size_t)len);
         if (deg != 0) { rot_n++; rot_ok += ok; } else { rt_n++; rt_ok += ok; }
-        if (!ok) printf("  no leyó: versión %d ecc %d largo %d escala %.0f giro %.0f inv %d extra %d\n", v, ecc, len, sc, deg, inv, extra);
+        if (!ok) printf("  not decoded: version %d ecc %d length %d scale %.0f rotation %.0f inv %d extra %d\n", v, ecc, len, sc, deg, inv, extra);
         free(px);
     }
-    printf("ida y vuelta: %d/%d derechas, %d/%d giradas ±10°\n", rt_ok, rt_n, rot_ok, rot_n);
-    check(rt_ok == rt_n, "ida y vuelta (todas las derechas)");
-    check(rot_ok * 100 >= rot_n * 95, "ida y vuelta giradas (≥ 95 %)");
+    printf("round trip: %d/%d upright, %d/%d rotated ±10°\n", rt_ok, rt_n, rot_ok, rot_n);
+    check(rt_ok == rt_n, "round trip (all upright ones)");
+    check(rot_ok * 100 >= rot_n * 95, "round trip rotated (≥ 95 %)");
 
-    /* ---- 3. corrección de errores (versión 1-H: 17 de corrección, hasta 8 palabras) ---- */
+    /* ---- 3. error correction (version 1-H: 17 correction codewords, up to 8 words) ---- */
     {
         const char *msg = "LORDOS-2FA";
         int good = 0, bad_fail = 0, bad_wrong = 0;
@@ -196,14 +196,14 @@ int main(void) {
             if (it < 40) good += ok;
             else if (n < 0) bad_fail++;
             else if (!ok) bad_wrong++;
-            else bad_fail++;                         /* se salvó igual (flips repetidos): cuenta como limpio */
+            else bad_fail++;                         /* recovered anyway (repeated flips): counts as clean */
         }
-        printf("corrección: %d/40 con hasta 8 módulos mal; con 80–100 mal: %d sin leer, %d mal leídos\n", good, bad_fail, bad_wrong);
-        check(good == 40, "corrige hasta la capacidad");
-        check(bad_wrong <= 1, "más allá de la capacidad falla limpio");
+        printf("correction: %d/40 with up to 8 bad modules; with 80–100 bad: %d not decoded, %d decoded wrong\n", good, bad_fail, bad_wrong);
+        check(good == 40, "corrects up to the capacity");
+        check(bad_wrong <= 1, "beyond the capacity it fails cleanly");
     }
 
-    /* ---- 4. imágenes reales ---- */
+    /* ---- 4. real images ---- */
     {
         struct { const char *file, *want; } real[] = {
             { "tests/qr/wifi.png", "WIFI:T:WPA;S:Casa Lord;P:clave-segura-123;;" },
@@ -217,7 +217,7 @@ int main(void) {
             int w = 0, h = 0;
             uint32_t *px = f ? vstb_decode_argb(f, n, &w, &h) : NULL;
             char what[96];
-            snprintf(what, sizeof what, "imagen real %s", real[k].file);
+            snprintf(what, sizeof what, "real image %s", real[k].file);
             double t0 = now();
             int r = px ? qr_decode(px, w, h, out, sizeof out) : -1;
             double t1 = now();
@@ -246,25 +246,25 @@ int main(void) {
             for (int f = 0; f < 5 + it * 3; f++) M[rnd() % (unsigned)(s * s)] ^= 1;
             int w, h;
             uint32_t *px = raster(M, s, 3, 0, it % 2, &w, &h);
-            /* rectángulos tapados */
+            /* covered rectangles */
             for (int r = 0; r < it % 4; r++) {
                 int x0 = (int)(rnd() % (unsigned)w), y0 = (int)(rnd() % (unsigned)h), rw = (int)(rnd() % 40), rh = (int)(rnd() % 40);
                 for (int y = y0; y < y0 + rh && y < h; y++) for (int x = x0; x < x0 + rw && x < w; x++) px[y * w + x] = rnd();
             }
             qr_decode(px, w, h, out, sizeof out);
-            qr_decode(px, w, h, out, 3);          /* búfer chico: nunca se pasa */
+            qr_decode(px, w, h, out, 3);          /* small buffer: never overrun */
             free(px);
         }
-        check(crashes == 0, "fuzz sin romper");
-        check(qr_decode(NULL, 0, 0, out, sizeof out) == -1, "entrada nula");
+        check(crashes == 0, "fuzz without breaking");
+        check(qr_decode(NULL, 0, 0, out, sizeof out) == -1, "null input");
     }
 
-    /* ---- tiempos ---- */
+    /* ---- timings ---- */
     {
         const char *wifi = "WIFI:T:WPA;S:Casa Lord;P:clave-segura-123;;";
         double t0 = now();
         for (int i = 0; i < 1000; i++) qr_encode((const uint8_t *)wifi, strlen(wifi), QR_ECC_M, M, &s);
-        printf("tiempo: generar el QR de una red Wi-Fi: %.3f ms\n", (now() - t0));
+        printf("time: generating the QR of a Wi-Fi network: %.3f ms\n", (now() - t0));
     }
 
     printf("qr-test: %d/%d\n", total - fails, total);

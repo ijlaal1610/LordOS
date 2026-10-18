@@ -1,12 +1,12 @@
-// dock.js — Dock y barra de tareas: apps fijadas (favoritas), ventanas agrupadas por app y el
-// menú del clic derecho (como en macOS). Lo usan todos los temas; cada uno lo dibuja a su modo.
+// dock.js — Dock and taskbar: pinned (favorite) apps, windows grouped by app and the
+// right-click menu (as in macOS). Every theme uses it; each one draws it its own way.
 //
-//   const entries = useDockEntries(['files', 'terminal'])   // fijadas por defecto del tema
-//   // entry = { id, name, Icon, windows: [ventana…], pinned, running, focused }
-//   dockActivate(entry)        // clic: abre la app o trae su ventana
-//   dockMenu(entry)            // ítems para el menú contextual: [{ label, onClick, checked, submenu, header } | '-']
+//   const entries = useDockEntries(['files', 'terminal'])   // the theme's default pinned apps
+//   // entry = { id, name, Icon, windows: [window…], pinned, running, focused }
+//   dockActivate(entry)        // click: opens the app or brings up its window
+//   dockMenu(entry)            // items for the context menu: [{ label, onClick, checked, submenu, header } | '-']
 //
-// Una app puede sumar sus propios ítems al menú (la Terminal: Nueva ventana, Nueva pestaña…):
+// An app can add its own items to the menu (the Terminal: New Window, New Tab…):
 //   registerDockMenu('terminal', (entry) => [{ label: '…', onClick }])
 import { createElement as h } from 'react';
 import { settings } from './settings.js';
@@ -18,7 +18,7 @@ import { t } from './i18n.js';
 const menuProviders = new Map();
 export function registerDockMenu(appId, fn) { menuProviders.set(appId, fn); return () => menuProviders.delete(appId); }
 
-// ---- fijadas (en ~/.config/lordos/settings.json → dockPinned) ----
+// ---- pinned (in ~/.config/lordos/settings.json → dockPinned) ----
 
 let themeDefaults = [];
 const pinnedList = () => settings.get().dockPinned || themeDefaults;
@@ -34,17 +34,17 @@ export const dock = {
   move(id, index) { dock.pin(id, index); },
 };
 
-// ---- preferencias del Dock y de la barra de tareas (Ajustes → Escritorio y Dock) ----
-// Se guardan en settings.json. Izquierda y derecha son lados físicos de la pantalla, también con un
-// idioma de derecha a izquierda (como macOS).
+// ---- Dock and taskbar preferences (Settings → Desktop & Dock) ----
+// Stored in settings.json. Left and right are physical sides of the screen, even with a
+// right-to-left language (as in macOS).
 export const DOCK_DEFAULTS = {
-  dockPosition: 'bottom',     // 'bottom' | 'left' | 'right' (tema Lord Default)
-  dockSize: 54,               // px de cada ícono (36–80)
-  dockMagnify: true,          // lupa
-  dockMagnifySize: 86,        // px del ícono más grande con la lupa (más que dockSize)
-  dockAutohide: false,        // se esconde y vuelve al tocar el borde
-  dockRecents: false,         // muestra las últimas apps usadas que no están fijadas
-  taskbarPosition: 'bottom',  // 'bottom' | 'top' | 'left' | 'right' (tema Clásico)
+  dockPosition: 'bottom',     // 'bottom' | 'left' | 'right' (Lord Default theme)
+  dockSize: 54,               // px of each icon (36–80)
+  dockMagnify: true,          // magnification
+  dockMagnifySize: 86,        // px of the largest icon when magnified (more than dockSize)
+  dockAutohide: false,        // hides and comes back when the edge is touched
+  dockRecents: false,         // shows the most recently used apps that aren't pinned
+  taskbarPosition: 'bottom',  // 'bottom' | 'top' | 'left' | 'right' (Classic theme)
 };
 export function dockPrefs(s = settings.get()) {
   const p = { ...DOCK_DEFAULTS };
@@ -56,7 +56,7 @@ export function dockPrefs(s = settings.get()) {
   return p;
 }
 
-// Apps usadas hace poco (para «Mostrar apps recientes»): cada app que abre una ventana pasa adelante.
+// Recently used apps (for «Show recent apps»): each app that opens a window moves to the front.
 let openIds = new Set();
 windows.subscribe(() => {
   const now = new Set();
@@ -69,7 +69,7 @@ windows.subscribe(() => {
   if (next.join('\n') !== cur.join('\n')) settings.set({ dockRecentApps: next });
 });
 
-// A qué ícono del Dock pertenece una ventana: su app LordOS, o la app Linux de su .desktop.
+// Which Dock icon a window belongs to: its LordOS app, or the Linux app from its .desktop.
 export function launcherIdOf(w) {
   if (!String(w.id).startsWith('linux#')) return appIdOf(w.id);
   const appId = w.args?.appId || '';
@@ -78,7 +78,7 @@ export function launcherIdOf(w) {
   return a ? a.id : `linux:${appId || w.id}`;
 }
 
-// opts.recents: cuántas apps recientes (no fijadas ni abiertas) se agregan al final, con recent: true.
+// opts.recents: how many recent apps (neither pinned nor open) are appended at the end, with recent: true.
 export function useDockEntries(defaults = [], opts = {}) {
   themeDefaults = defaults;
   const s = useStore(settings);
@@ -100,7 +100,7 @@ export function useDockEntries(defaults = [], opts = {}) {
   const out = [];
   for (const id of pinned) {
     const a = byId.get(id);
-    if (!a && !groups.has(id)) continue;          // fijada pero desinstalada
+    if (!a && !groups.has(id)) continue;          // pinned but uninstalled
     out.push(entry(id, a, groups.get(id) || []));
   }
   for (const [id, wins] of groups) if (!pinned.includes(id)) out.push(entry(id, byId.get(id), wins));
@@ -113,8 +113,8 @@ export function useDockEntries(defaults = [], opts = {}) {
   return out;
 }
 
-// Clic en el ícono: sin ventanas abre la app; con ventanas trae la más reciente (si ya estaba
-// al frente y hay varias, pasa a la siguiente, como ❖` en macOS).
+// Click on the icon: with no windows it opens the app; with windows it brings up the most recent one (if it
+// was already in front and there are several, it moves to the next, like ❖` in macOS).
 export function dockActivate(e) {
   if (!e.windows.length) { launchApp(e.id); return; }
   const top = wm.focused();

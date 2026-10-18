@@ -1,8 +1,8 @@
-/* ctap_test.c — capa FIDO2 sin hardware: CBOR (RFC 8949, apéndice A, rechazos y mutaciones al
- * azar), P-256 (vectores de ECDH y k·G generados con python3-cryptography 43), la matemática del
- * protocolo de PIN 1 / hmac-secret (contra los mismos vectores), CTAPHID (armado de una respuesta
- * en varios paquetes, con KEEPALIVE, otro canal y continuaciones sueltas en el medio) contra un
- * dispositivo falso por socketpair, y el reconocimiento de descriptores HID de fidodev.c. */
+/* ctap_test.c — the FIDO2 layer without hardware: CBOR (RFC 8949, appendix A, rejections and random
+ * mutations), P-256 (ECDH and k·G vectors generated with python3-cryptography 43), the math of
+ * PIN protocol 1 / hmac-secret (against the same vectors), CTAPHID (reassembling a response
+ * from several packets, with KEEPALIVE, another channel and stray continuations in between) against a
+ * fake device over a socketpair, and fidodev.c's recognition of HID descriptors. */
 #include "vault/cbor.h"
 #include "vault/p256.h"
 #include "vault/ctap2.h"
@@ -18,7 +18,7 @@
 #include <unistd.h>
 
 static int fails, total;
-static void check(int ok, const char *what) { total++; if (!ok) { fails++; printf("FALLA: %s\n", what); } }
+static void check(int ok, const char *what) { total++; if (!ok) { fails++; printf("FAIL: %s\n", what); } }
 
 static size_t unhex(const char *h, uint8_t *out) {
     size_t k = 0;
@@ -29,13 +29,13 @@ static int eqhex(const uint8_t *b, size_t n, const char *h) { uint8_t x[512]; si
 
 /* ---------- CBOR ---------- */
 
-/* vuelve a codificar un ítem decodificado (prueba de ida y vuelta canónica) */
+/* re-encodes a decoded item (canonical round-trip test) */
 static int reenc(const Cb *c, int i, CbW *w) {
     const CbItem *it = &c->it[i];
     switch (it->type) {
     case CB_UINT: cbw_uint(w, it->v); break;
     case CB_NINT: { uint8_t b = 0x20; (void)b;
-        /* -1 - v: con v que puede ser 2^64-1 */
+        /* -1 - v: where v can be 2^64-1 */
         if (it->v < 24) { uint8_t x = (uint8_t)(0x20 | it->v); cbw_raw(w, &x, 1); }
         else { uint8_t hb[9]; int n; uint64_t v = it->v;
             if (v <= 0xff) { hb[0] = 0x38; hb[1] = (uint8_t)v; n = 2; }
@@ -87,22 +87,22 @@ static void test_cbor(void) {
         snprintf(what, sizeof what, "CBOR RFC 8949 A: %s", ok[i]);
         check(roundtrip(b, n), what);
     }
-    /* el escritor solo */
+    /* the writer alone */
     {
         uint8_t out[64];
         CbW w;
         cbw_init(&w, out, sizeof out);
         cbw_map(&w, 2); cbw_text(&w, "a"); cbw_int(&w, 1); cbw_text(&w, "b"); cbw_array(&w, 2); cbw_uint(&w, 2); cbw_uint(&w, 3);
-        check(eqhex(out, w.n, "a26161016162820203"), "CBOR escribir {a:1,b:[2,3]}");
+        check(eqhex(out, w.n, "a26161016162820203"), "CBOR write {a:1,b:[2,3]}");
         cbw_init(&w, out, sizeof out);
         cbw_int(&w, -1000); cbw_int(&w, -25); cbw_uint(&w, 1000000000000ull);
-        check(eqhex(out, w.n, "3903e738181b000000e8d4a51000"), "CBOR escribir enteros");
+        check(eqhex(out, w.n, "3903e738181b000000e8d4a51000"), "CBOR write integers");
         cbw_init(&w, out, 3);
         cbw_bytes(&w, "abcd", 4);
-        check(w.err, "CBOR escribir: búfer chico da error");
+        check(w.err, "CBOR write: a small buffer gives an error");
     }
-    /* lo que se rechaza: flotantes, etiquetas, indefinidos, simples reservados, no mínimos,
-     * truncados, UTF-8 inválido, bytes de más, demasiado anidado */
+    /* what is rejected: floats, tags, indefinite lengths, reserved simple values, non-minimal encodings,
+     * truncation, invalid UTF-8, trailing bytes, nesting too deep */
     static const char *bad[] = {
         "f90000", "fa47c35000", "fb3ff199999999999a", "c074323031332d30332d32315432303a30343a30305a",
         "5f42010243030405ff", "9f018202039f0405ffff", "bf61610161629f0203ffff", "7f657374726561646d696e67ff",
@@ -117,18 +117,18 @@ static void test_cbor(void) {
         CbItem it[64];
         Cb c;
         char what[96];
-        snprintf(what, sizeof what, "CBOR rechaza %s", bad[i][0] ? bad[i] : "(vacío)");
+        snprintf(what, sizeof what, "CBOR rejects %s", bad[i][0] ? bad[i] : "(empty)");
         check(cb_parse(&c, b, n, it, 64, 0) != 0, what);
     }
-    /* con allow_trailing: used dice dónde terminó */
+    /* with allow_trailing: used says where it ended */
     {
         uint8_t b[8];
         size_t n = unhex("820102ffee", b);
         CbItem it[8];
         Cb c;
-        check(cb_parse(&c, b, n, it, 8, 1) == 0 && c.used == 3, "CBOR prefijo: used");
+        check(cb_parse(&c, b, n, it, 8, 1) == 0 && c.used == 3, "CBOR prefix: used");
     }
-    /* búsqueda en mapas */
+    /* map lookup */
     {
         uint8_t b[64];
         size_t n = unhex("a3010238180c626964a1617801", b);   /* {1:2, -25:12, "id":{"x":1}} */
@@ -141,9 +141,9 @@ static void test_cbor(void) {
         int m = cb_map_text(&c, 0, "id");
         ok2 = ok2 && cb_type(&c, m) == CB_MAP && cb_int(&c, cb_map_text(&c, m, "x"), &v) == 0 && v == 1;
         ok2 = ok2 && cb_map_int(&c, 0, 7) == -1 && cb_map_text(&c, 0, "nada") == -1;
-        check(ok2, "CBOR mapas: claves int y texto");
+        check(ok2, "CBOR maps: int and text keys");
     }
-    /* mutaciones al azar: nunca se cae, y lo que acepta vuelve a codificarse igual (canónico) */
+    /* random mutations: it never crashes, and whatever it accepts re-encodes identically (canonical) */
     {
         uint64_t s = 0x9e3779b97f4a7c15ull;
         int accepted = 0, bad_rt = 0;
@@ -159,7 +159,7 @@ static void test_cbor(void) {
                 switch (s % 4) {
                 case 0: b[pos] ^= (uint8_t)(1u << ((s >> 32) % 8)); break;
                 case 1: b[pos] = (uint8_t)(s >> 40); break;
-                case 2: n = pos; break;                                    /* truncar */
+                case 2: n = pos; break;                                    /* truncate */
                 default: if (n < sizeof b) { memmove(b + pos + 1, b + pos, n - pos); b[pos] = (uint8_t)(s >> 48); n++; } break;
                 }
             }
@@ -167,16 +167,16 @@ static void test_cbor(void) {
             Cb c;
             if (cb_parse(&c, b, n, it, 64, 0) == 0) { accepted++; if (!roundtrip(b, n)) bad_rt++; }
         }
-        printf("cbor: 200000 mutaciones, %d aceptadas\n", accepted);
-        check(bad_rt == 0, "CBOR mutaciones: lo aceptado es canónico");
+        printf("cbor: 200000 mutations, %d accepted\n", accepted);
+        check(bad_rt == 0, "CBOR mutations: what is accepted is canonical");
     }
-    /* más ítems que el arreglo del llamador */
+    /* more items than the caller's array */
     {
         uint8_t b[64];
         size_t n = unhex("98190102030405060708090a0b0c0d0e0f101112131415161718181819", b);
         CbItem it[10];
         Cb c;
-        check(cb_parse(&c, b, n, it, 10, 0) != 0, "CBOR: tope de ítems");
+        check(cb_parse(&c, b, n, it, 10, 0) != 0, "CBOR: item limit");
     }
 }
 
@@ -204,26 +204,26 @@ static void test_p256(void) {
         check(p256_mul_base(k, x, y) == 0 && eqhex(x, 32, BASE[i][1]) && eqhex(y, 32, BASE[i][2]), "P-256 k·G");
     }
     unhex("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551", k);   /* n */
-    check(p256_mul_base(k, x, y) == -1, "P-256 n·G = infinito");
-    check(p256_public(k, x, y) == -1, "P-256 clave privada = n se rechaza");
+    check(p256_mul_base(k, x, y) == -1, "P-256 n·G = infinity");
+    check(p256_public(k, x, y) == -1, "P-256 private key = n is rejected");
     memset(k, 0, 32);
-    check(p256_public(k, x, y) == -1, "P-256 clave privada 0 se rechaza");
+    check(p256_public(k, x, y) == -1, "P-256 private key 0 is rejected");
     for (size_t i = 0; i < sizeof ECDH / sizeof *ECDH; i++) {
         uint8_t d1[32], d2[32], x1[32], y1[32], x2[32], y2[32];
         unhex(ECDH[i][0], d1); unhex(ECDH[i][1], d2);
-        check(p256_public(d1, x1, y1) == 0 && eqhex(x1, 32, ECDH[i][2]) && eqhex(y1, 32, ECDH[i][3]), "P-256 pública 1");
-        check(p256_public(d2, x2, y2) == 0 && eqhex(x2, 32, ECDH[i][4]) && eqhex(y2, 32, ECDH[i][5]), "P-256 pública 2");
+        check(p256_public(d1, x1, y1) == 0 && eqhex(x1, 32, ECDH[i][2]) && eqhex(y1, 32, ECDH[i][3]), "P-256 public 1");
+        check(p256_public(d2, x2, y2) == 0 && eqhex(x2, 32, ECDH[i][4]) && eqhex(y2, 32, ECDH[i][5]), "P-256 public 2");
         check(p256_ecdh(d1, x2, y2, z) == 0 && eqhex(z, 32, ECDH[i][6]), "P-256 ECDH d1·Q2");
         check(p256_ecdh(d2, x1, y1, z) == 0 && eqhex(z, 32, ECDH[i][6]), "P-256 ECDH d2·Q1");
-        check(p256_on_curve(x1, y1), "P-256 en la curva");
+        check(p256_on_curve(x1, y1), "P-256 on the curve");
         y1[31] ^= 1;
-        check(!p256_on_curve(x1, y1) && p256_ecdh(d2, x1, y1, z) == -1, "P-256 punto fuera de la curva se rechaza");
+        check(!p256_on_curve(x1, y1) && p256_ecdh(d2, x1, y1, z) == -1, "P-256 point off the curve is rejected");
     }
-    /* coordenada >= p */
+    /* coordinate >= p */
     memset(x, 0xff, 32);
     memset(y, 0xff, 32);
-    check(!p256_on_curve(x, y), "P-256 coordenada >= p se rechaza");
-    /* par al azar: ECDH simétrico */
+    check(!p256_on_curve(x, y), "P-256 coordinate >= p is rejected");
+    /* random pair: symmetric ECDH */
     {
         uint8_t a[32], ax[32], ay[32], b[32], bx[32], by[32], z1[32], z2[32];
         int ok = 1;
@@ -231,11 +231,11 @@ static void test_p256(void) {
             ok = p256_keypair(a, ax, ay) == 0 && p256_keypair(b, bx, by) == 0 &&
                  p256_ecdh(a, bx, by, z1) == 0 && p256_ecdh(b, ax, ay, z2) == 0 && !memcmp(z1, z2, 32);
         }
-        check(ok, "P-256 20 pares al azar: ECDH simétrico");
+        check(ok, "P-256 20 random pairs: symmetric ECDH");
     }
 }
 
-/* ---------- protocolo de PIN 1 / hmac-secret ---------- */
+/* ---------- PIN protocol 1 / hmac-secret ---------- */
 
 static void test_pinproto(void) {
     uint8_t d1[32], d2[32], x2[32], y2[32], z[32], key[32], h[32], enc[32], mac[32], iv[16];
@@ -260,7 +260,7 @@ static void test_pinproto(void) {
     aes_wipe(&a);
 }
 
-/* ---------- CTAPHID con un dispositivo falso ---------- */
+/* ---------- CTAPHID with a fake device ---------- */
 
 static int dev_cbor_caps = 0x04;
 static uint8_t info_cbor[512];
@@ -269,12 +269,12 @@ static size_t info_len;
 static void fake_send(int s, uint32_t cid, uint8_t cmd, const uint8_t *d, size_t n, int noise) {
     uint8_t p[64];
     if (noise) {
-        memset(p, 0, 64); p[0] = 0xde; p[1] = 0xad; p[2] = 0xbe; p[3] = 0xef; p[4] = 0x90; p[6] = 3; p[7] = 9;   /* otro canal */
+        memset(p, 0, 64); p[0] = 0xde; p[1] = 0xad; p[2] = 0xbe; p[3] = 0xef; p[4] = 0x90; p[6] = 3; p[7] = 9;   /* another channel */
         send(s, p, 64, 0);
         memset(p, 0, 64); p[0] = (uint8_t)(cid >> 24); p[1] = (uint8_t)(cid >> 16); p[2] = (uint8_t)(cid >> 8); p[3] = (uint8_t)cid;
         p[4] = 0xbb; p[6] = 1; p[7] = 2;                        /* KEEPALIVE UPNEEDED */
         send(s, p, 64, 0);
-        p[4] = 0x05;                                            /* continuación suelta */
+        p[4] = 0x05;                                            /* stray continuation */
         send(s, p, 64, 0);
     }
     memset(p, 0, 64);
@@ -290,7 +290,7 @@ static void fake_send(int s, uint32_t cid, uint8_t cmd, const uint8_t *d, size_t
         memcpy(p + 5, d + off, k);
         off += k;
         send(s, p, 64, 0);
-        if (noise && seq == 0) {                                /* keepalive entre continuaciones */
+        if (noise && seq == 0) {                                /* keepalive between continuations */
             uint8_t q[64];
             memcpy(q, p, 4); memset(q + 4, 0, 60); q[4] = 0xbb; q[6] = 1; q[7] = 1;
             send(s, q, 64, 0);
@@ -308,7 +308,7 @@ static void *fake_dev(void *arg) {
     for (;;) {
         ssize_t r = recv(s, in, sizeof in, 0);
         if (r <= 0) break;
-        if (r != 65 || in[0] != 0) { printf("FALLA: el cliente no escribió 65 bytes con reporte 0 (%zd)\n", r); fails++; break; }
+        if (r != 65 || in[0] != 0) { printf("FAIL: the client did not write 65 bytes with report 0 (%zd)\n", r); fails++; break; }
         fake_packets++;
         uint8_t *p = in + 1;
         if (p[4] & 0x80) { cid = (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; cmd = p[4]; total = (size_t)p[5] << 8 | p[6]; got = total < 57 ? total : 57; memcpy(msg, p + 7, got); }
@@ -319,7 +319,7 @@ static void *fake_dev(void *arg) {
             memcpy(rsp, msg, 8);
             rsp[8] = 0x11; rsp[9] = 0x22; rsp[10] = 0x33; rsp[11] = 0x44;
             rsp[12] = 2; rsp[13] = 5; rsp[14] = 4; rsp[15] = 3; rsp[16] = (uint8_t)dev_cbor_caps;
-            /* primero una respuesta a OTRO init (nonce distinto): el cliente la tiene que ignorar */
+            /* first a reply to ANOTHER init (different nonce): the client has to ignore it */
             uint8_t other[17];
             memcpy(other, rsp, 17);
             other[0] ^= 0xff;
@@ -331,17 +331,17 @@ static void *fake_dev(void *arg) {
             memcpy(rsp + 1, info_cbor, info_len);
             fake_send(s, cid, 0x90, rsp, info_len + 1, 1);
         } else if (cmd == 0x90 && msg[0] == 0x06) {
-            uint8_t rsp[] = { 0x00, 0xa1, 0x03, 0x07 };        /* {3: 7} reintentos */
+            uint8_t rsp[] = { 0x00, 0xa1, 0x03, 0x07 };        /* {3: 7} retries */
             fake_send(s, cid, 0x90, rsp, sizeof rsp, 0);
         } else if (cmd == 0xc1) {
-            fake_send(s, cid, 0xc1, msg, total, 0);            /* eco */
+            fake_send(s, cid, 0xc1, msg, total, 0);            /* echo */
         }
     }
     return NULL;
 }
 
 static void test_ctaphid(void) {
-    /* getInfo como el de una llave real (CTAP 2.1 PRE): 4 paquetes */
+    /* getInfo like a real key's (CTAP 2.1 PRE): 4 packets */
     CbW w;
     cbw_init(&w, info_cbor, sizeof info_cbor);
     cbw_map(&w, 6);
@@ -365,17 +365,17 @@ static void test_ctaphid(void) {
         FidoInfo info;
         int rc = fido_get_info(sv[0], &info);
         if (round == 0) {
-            check(rc == 0, "CTAPHID: getInfo en varios paquetes");
-            check(!strcmp(info.versions, "U2F_V2,FIDO_2_0,FIDO_2_1_PRE"), "CTAPHID: versiones");
-            check(info.hmac_secret == 1 && info.client_pin == 1 && info.pin_retries == 7, "CTAPHID: hmac-secret, PIN y reintentos");
+            check(rc == 0, "CTAPHID: getInfo in several packets");
+            check(!strcmp(info.versions, "U2F_V2,FIDO_2_0,FIDO_2_1_PRE"), "CTAPHID: versions");
+            check(info.hmac_secret == 1 && info.client_pin == 1 && info.pin_retries == 7, "CTAPHID: hmac-secret, PIN and retries");
             check(!memcmp(info.aaguid, aaguid, 16), "CTAPHID: aaguid");
             uint8_t echo[200], back[200];
             for (int i = 0; i < 200; i++) echo[i] = (uint8_t)(i * 7);
             size_t bl = 0;
             rc = ctaphid_command(sv[0], 0xc1, echo, sizeof echo, back, sizeof back, &bl, 2000);
-            check(rc == 0 && bl == 200 && !memcmp(echo, back, 200), "CTAPHID: comando crudo de 200 bytes (ida y vuelta)");
+            check(rc == 0 && bl == 200 && !memcmp(echo, back, 200), "CTAPHID: 200-byte raw command (round trip)");
         } else {
-            check(rc == 0 && info.hmac_secret == 0, "CTAPHID: llave solo U2F → sin hmac-secret");
+            check(rc == 0 && info.hmac_secret == 0, "CTAPHID: U2F-only key → no hmac-secret");
             uint8_t cred[8] = { 1 }, salt[32] = { 0 }, out[32];
             check(fido_hmac_secret(sv[0], NULL, cred, 8, salt, out, 1000, NULL, NULL) == FIDO_ERR_NO_HMAC, "CTAPHID: U2F → FIDO_ERR_NO_HMAC");
         }
@@ -383,33 +383,33 @@ static void test_ctaphid(void) {
         pthread_join(th, NULL);
         close(sv[1]);
     }
-    /* nadie contesta: se vence el plazo del INIT */
+    /* nobody answers: the INIT deadline expires */
     {
         int sv[2];
         socketpair(AF_UNIX, SOCK_SEQPACKET, 0, sv);
         FidoInfo info;
-        check(fido_get_info(sv[0], &info) == FIDO_ERR_TIMEOUT, "CTAPHID: sin respuesta → timeout");
+        check(fido_get_info(sv[0], &info) == FIDO_ERR_TIMEOUT, "CTAPHID: no answer → timeout");
         close(sv[0]);
         close(sv[1]);
     }
     check(!strcmp(fido_strerror(FIDO_ERR_PIN_REQUIRED), "pin-required"), "fido_strerror");
 }
 
-/* ---------- descriptores HID ---------- */
+/* ---------- HID descriptors ---------- */
 
 static void test_desc(void) {
     uint8_t d[64];
     size_t n = unhex("06d0f10901a1010920150026ff007508954081020921150026ff00750895409102c0", d);
-    check(fidodev_desc_is_fido(d, n), "HID: descriptor FIDO");
-    n = unhex("0b0100d0f1a101c0", d);                        /* Usage de 32 bits (página en los 16 altos) */
-    check(fidodev_desc_is_fido(d, n), "HID: Usage de 32 bits");
-    n = unhex("05010906a101050719e029e7150025017501950881020507a102c0c0", d);   /* teclado */
-    check(!fidodev_desc_is_fido(d, n), "HID: un teclado no es FIDO");
-    n = unhex("06d0f10901a1", d);                            /* cortado en el medio */
-    check(!fidodev_desc_is_fido(d, n), "HID: truncado");
-    n = unhex("06d0f10902a101c0", d);                        /* otra usage de la misma página */
-    check(!fidodev_desc_is_fido(d, n), "HID: página FIDO con otra usage");
-    check(fidodev_open("/etc/passwd") == -1 && fidodev_open("/dev/hidraw../x") == -1, "fidodev_open: rutas que no son hidraw");
+    check(fidodev_desc_is_fido(d, n), "HID: FIDO descriptor");
+    n = unhex("0b0100d0f1a101c0", d);                        /* 32-bit Usage (page in the high 16 bits) */
+    check(fidodev_desc_is_fido(d, n), "HID: 32-bit Usage");
+    n = unhex("05010906a101050719e029e7150025017501950881020507a102c0c0", d);   /* keyboard */
+    check(!fidodev_desc_is_fido(d, n), "HID: a keyboard is not FIDO");
+    n = unhex("06d0f10901a1", d);                            /* cut in the middle */
+    check(!fidodev_desc_is_fido(d, n), "HID: truncated");
+    n = unhex("06d0f10902a101c0", d);                        /* another usage on the same page */
+    check(!fidodev_desc_is_fido(d, n), "HID: FIDO page with another usage");
+    check(fidodev_open("/etc/passwd") == -1 && fidodev_open("/dev/hidraw../x") == -1, "fidodev_open: paths that are not hidraw");
 }
 
 int main(void) {
