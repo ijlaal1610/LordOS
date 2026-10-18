@@ -574,6 +574,28 @@ Each item, with a screenshot or the pasted output, in this document.
 | 16 | Network and sound | Wi-Fi (brcmfmac), Ethernet, HDMI audio via PipeWire | IP from our own DHCP; `wpctl status` shows HDMI |
 | 17 | Pi 4 | the same image | boots with `kernel8.img`; note what fails |
 
+## 0.8.0 Beta image (2026-10-18)
+
+`lordos-0.8.0-rpi5-arm64.img.xz` from the `v0.8.0-beta` tag (46c972a), built natively on the Pi 5 in
+about 10 minutes with the LordOS kernels: 532,884,784 bytes, SHA-256
+`827f3c550eb01f639f3f93f9551b8051a8c6791398b00135f5624d4e5b16724f` (2693 MB uncompressed, system
+1448 MB). `make -C server test` on the board: everything passes except `npverify-test` 35/36, because
+the board runs Raspberry Pi's archive kernel, which has no `/sys/kernel/btf/vmlinux`.
+
+Checked read-only (loop device, `ro,noload`): `config.txt` (vc4-kms-v3d, PCIe gen 3, `include
+lordos-case.txt`), `cmdline.txt` (`quiet splash`, `lsm=landlock,lockdown,yama,integrity,bpf`),
+`kernel_2712.img` is the LordOS vmlinuz, Plymouth and the `lordos` theme are in the initramfs,
+`Theme=lordos`, `lordos`, `lord-netperm`, `lord-fand` and `lordos-rpi-firstboot` enabled, SSH off,
+`kernel.yama.ptrace_scope = 1`, pipewire-pulse module loading off, `lordos-user.txt.example`, the
+`remote-desktop` switch file handled by `firstboot`, and the build id `20261018.46c972ac`.
+
+Found while checking: **the image didn't enable `lord-netperm`** (the ISO and `install.sh` do), so
+the per-app firewall was off on the Pi; `build-img.sh` enables it now. **The LordOS kernel has no
+BPF LSM** (`CONFIG_BPF_LSM` is not set, and no BTF), so "No Bluetooth" for Linux apps isn't enforced
+on the Pi (`lord-netperm` reports `"bluetooth":false`); the network and device programs work. Turning
+on `CONFIG_BPF_LSM` and `CONFIG_DEBUG_INFO_BTF` in `build-kernel.sh` is pending. **The image has not
+been booted on a board yet.**
+
 ## Results on the board (2026-10-18)
 
 Raspberry Pi 5, 16 GB, 32 GB SD card, no fan load, **no monitor on HDMI** (both HDMI connectors

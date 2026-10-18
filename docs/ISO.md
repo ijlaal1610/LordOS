@@ -378,6 +378,35 @@ text was fixed (sha256 `daba6313…c8ec65`). That ISO has the same binaries; onl
 With the final ISO, UEFI boot, the network, ❖L/Enter and the installer summary were repeated. Nothing
 was installed in that repeat.
 
+## Release test (0.8.0 Beta, October 18)
+
+`lordos-live-0.8.0-amd64.iso` from the `v0.8.0-beta` tag (46c972a, build `20261018.46c972ac`),
+1 041 377 280 bytes, sha256 `e3a370eca1c756888fd0efcc6f02def8cf6d4c99b3618b8ed3f31465074af90c`, built on
+VM 116 with `GPU=1` in 14.5 minutes; `make -C server test`: 23 passed, 0 failed, 2 skipped, 0 compiler
+warnings. `lordos_0.8.0_amd64.deb` (6.3 MB): lintian 0 errors, 14 warnings (the known ones). SBOM
+validated with `pyspdxtools` (spdx-tools 0.8.5). Most checks were made on the build just before it
+(f4f266d), which differs only in the build id and `/etc/.updated`; boot, About, services, audio,
+network, the greeter restart and the full install were repeated with the tagged ISO.
+
+| Check | Result |
+|---|---|
+| Boot menu with the LordOS theme ("LordOS 0.8.0 (live)"), splash with its bar, hand-off to the desktop without a black or text frame (recorded at 5 fps on VM 117) | pass |
+| About "Version 0.8.0 · Beta", build `20261018.46c972ac`; Settings → General 0.8.0 | pass |
+| `lordos`, `lord-netperm` (9 BPF programs, devices and Bluetooth: yes), `lord-fand` active; 0 failed units; `ptrace_scope = 1`; pipewire-pulse module loading off; remote desktop off | pass |
+| Network (DHCP from `lord-netd`, ping) and audio (tone through the HDA sink, 0 errors in `pw-top`) | pass |
+| Chromium and Firefox ESR open pages with the LordOS frame; Passwords opens as `lord-server --app passwords` (own scope, seccomp, NoNewPrivs) | pass |
+| Firewall: Foot launched from the app launcher, "No internet (LAN only)" set in Settings → Privacy while it runs: a connection to the internet gets EPERM (logged by `lord-netperm`), the LAN still works; Monitor's per-app switch blocks it too | pass |
+| Domain rules: Settings → Privacy → Network rules by app → Add rule opens the "Block a destination" sheet | pass |
+| SIGPIPE: Foot killed with `kill -9` while flooding output; `lord-server` (same pid) and the session survive; shells keep the default SIGPIPE | pass |
+| `systemctl restart lordos` twice: exactly one login screen process (the old one is stopped) | pass (fixed in this release) |
+| Live boot: 5.4 s kernel + 16.1 s userspace; 666 MB used after login; `ldconfig.service` no longer runs on every live boot | pass |
+| Install on VM 120 (OVMF, 24 GB): en / en_US / Buenos Aires / US / 2 GB swap, 81 s; "Restart" in one click | pass |
+| Installed: splash, login screen, sign in, `lordos`/`lord-netperm`/`lord-fand` active, 0 failed units, boot 4.3 + 3.0 s, 493 MB used, UEFI, network | pass |
+| `install.sh --remote-desktop` on the installed VM 120: port 5673 listening, login page and a login from another machine | pass |
+
+Seen and left for later: the installed system's GRUB prints "Booting `LordOS GNU/Linux`" and
+"Loading Linux …" in the theme's text box for about a second (Debian's `10_linux` echoes them).
+
 ## Final ISO test (0.7.0 Beta, October 18)
 
 `lordos-live-0.7.0-amd64.iso`, 963 794 944 bytes, sha256

@@ -12,7 +12,7 @@ curl -fsSL https://lordos.org/install.sh | sh
 The script asks before changing anything. It reads the answers from the terminal (`/dev/tty`), so
 this works even though the script itself comes through a pipe.
 
-> **Status (2026-10-18):** the repository is private until the first beta, so the download from
+> **Status (2026-10-18):** 0.8.0-beta is published, but the repository is still private, so the download from
 > GitHub doesn't work publicly yet. Until then, use `--deb` with a package you already have (see
 > [Testing](#testing)).
 
@@ -266,6 +266,9 @@ Done on 2026-10-18 on the development Mac with Docker (`debian:trixie`, amd64) a
 | No display manager | `lordos` enabled, `getty@tty1` masked, the final message offers `systemctl start lordos` |
 | `--uninstall --purge` with the state file deleted | still finds and re-enables lightdm, unmasks getty, keeps the greeter user (not created by the installer) |
 | `shellcheck -s sh` and `-s dash` | clean |
+| `--remote-desktop` (0.8.0, systemd in a privileged `debian:trixie` container, no display) | config written in the Settings → Sharing format, `lordos.service` started headless, port 5673 listening, login page served and a login accepted; `--remote-port 8443` while running moves it (reload); a bad port or `--remote-port` alone is refused; "no" to the question keeps the install and leaves it off; `--uninstall` removes the config and closes the port |
+| Release files signed with the real key (`LORDOS_BASE_URL=file://…`, `--version 0.8.0-beta --remote-desktop`) | "valid Ed25519 signature", SHA-256 OK, installed, remote desktop listening |
+| `--remote-desktop` on VM 120 (LordOS installed from the ISO) | reload path: port 5673 listening, login from another machine accepted |
 
 ### Still to test on a real Debian 13 machine
 
