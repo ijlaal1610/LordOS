@@ -83,6 +83,9 @@ architecture and dependency policy are in `docs/ARCHITECTURE.md`.
   shown in About.
 - English only: code, comments and documentation are now in English (UI text stays translated in
   `assets/locales/`).
+- One-line installer for an existing Debian 13 system (`curl -fsSL https://lordos.org/install.sh | sh`,
+  `tools/install/install.sh`, `docs/INSTALL-DEBIAN.md`): SHA-256 check, apt install, the ISO's
+  setup, display manager switch and `--uninstall`. Tested in containers; a real-machine run is pending.
 
 ### Known gaps
 

@@ -66,7 +66,7 @@ They are shown in the Store and in the install dialog:
 
 | | |
 |---|---|
-| ![unsigned](m8-firma-sinfirma.png) | ![revoked](m8-firma-revocada.png) |
+| ![unsigned](signing-unsigned.png) | ![revoked](signing-revoked.png) |
 | An unsigned package warns before installing | A revoked package is not installed, with a clear message |
 
 ## Rules
@@ -91,7 +91,7 @@ They are shown in the Store and in the install dialog:
 
 | | |
 |---|---|
-| ![modified by you](m8-firma-modificada.png) | ![restored](m8-firma-restaurada.png) |
+| ![modified by you](signing-modified.png) | ![restored](signing-restored.png) |
 | "Modified by you": what changed, Restore and Share | "Fractal restored to the original" |
 
 ## Tools (`tools/lpk.mjs`)
@@ -120,6 +120,31 @@ one, the **development** key:
   `~/.config/lordos-dev/lordos-dev.key` (permissions 600). **Do not commit private keys.**
 
 For a public release, the final key is added to `keys.h` and the development one is removed.
+
+### Release files (not signed yet)
+
+The GitHub release files (the `.deb`, the ISO, the Raspberry Pi image) are listed with their
+SHA-256 in `SHA256SUMS`. The Debian installer (`tools/install/install.sh`, see
+`INSTALL-DEBIAN.md`) always checks the `.deb` against it. **`SHA256SUMS` itself is not signed
+yet**, so that check catches corrupted downloads but not a tampered release page; the installer
+says so in its output.
+
+The verification side is already in the installer, waiting for a key:
+
+- `SHA256SUMS.sig` = base64 of the 64-byte Ed25519 signature over the exact bytes of `SHA256SUMS`;
+- the public key goes in `RELEASE_PUBKEY_PEM` in `install.sh` (PEM, as OpenSSL 3 reads it). From a
+  raw hex key like `packaging/keys/lordos-dev.pub`:
+  `printf '302a300506032b6570032100%s' "$(cat key.pub)" | xxd -r -p | openssl pkey -pubin -inform DER`;
+- when the key is set, a missing or invalid signature stops the install before the `.deb` is
+  downloaded (tested with a throwaway key through `LORDOS_PUBKEY_FILE`, a test-only override).
+
+TODO(release-signing), before the first public release:
+
+1. Generate the release key offline and keep the private half off the build VMs.
+2. Sign: `openssl pkeyutl -sign -rawin -inkey release.key.pem -in SHA256SUMS | base64 -w0 > SHA256SUMS.sig`,
+   and upload `SHA256SUMS.sig` with the release.
+3. Put the public key in `RELEASE_PUBKEY_PEM`, and publish its fingerprint on the website and in
+   the README, so people who download the ISO by hand can check `SHA256SUMS.sig` too.
 
 ## Files
 
