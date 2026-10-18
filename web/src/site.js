@@ -97,13 +97,13 @@
     label();
   }
 
-  // Home hero slideshow: crossfade every 3 s; pauses on hover, focus, hidden tab or the Pause button;
+  // Home hero slideshow: crossfade every 6 s; pauses on hover, focus, hidden tab or the Pause button;
   // off with prefers-reduced-motion (only the first screen shows). Loads each image just before it shows.
   var show = $('#hero-show');
   var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (show && !reduce) {
     var slides = $$('.slide', show), ctl = $('.hero-ctl', show), pb = $('.hc-play', show);
-    var status = $('.hc-status', show), num = $('.hc-n', show), capEl = $('.hc-cap', show), bar = $('.hc-bar', show);
+    var status = $('.hc-status', show), num = $('.hc-n', show), capEl = $('.hc-cap', show);
     var caps = ctl ? JSON.parse(ctl.getAttribute('data-caps')) : [];
     var cur = 0, timer = null, user = false, hover = false, focus = false;
     var load = function (i) {
@@ -113,10 +113,6 @@
       });
     };
     var running = function () { return !user && !hover && !focus && !d.hidden; };
-    var restartBar = function () {
-      bar.classList.remove('run');
-      if (running()) { void bar.offsetWidth; bar.classList.add('run'); }
-    };
     var go = function (i) {
       var n = slides.length;
       i = (i + n) % n;
@@ -127,9 +123,8 @@
     };
     var sync = function () {
       clearInterval(timer); timer = null;
-      if (running()) timer = setInterval(function () { go(cur + 1); restartBar(); }, 3000);
+      if (running()) timer = setInterval(function () { go(cur + 1); }, 6000);
       status.setAttribute('aria-live', running() ? 'off' : 'polite');
-      restartBar();
     };
     if (slides.length > 1 && ctl) {
       load(1);

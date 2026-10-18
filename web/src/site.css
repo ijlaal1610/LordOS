@@ -148,9 +148,9 @@ h1,h2,h3{text-wrap:balance}
 .lp-cam{position:absolute;top:1.1%;left:50%;width:7px;height:7px;margin-left:-3.5px;border-radius:50%;background:#2A2940;box-shadow:inset 0 0 0 2px #1A1A28}
 .lp-display{position:relative;overflow:hidden;border-radius:6px;background:var(--shot-bg);aspect-ratio:16/10}
 .lp-display img{display:block;width:100%;height:100%;object-fit:cover}
-.slide{position:absolute;inset:0;margin:0;opacity:0;visibility:hidden;transition:opacity .6s ease,visibility 0s linear .6s}
-.slide.on{opacity:1;visibility:visible;transition:opacity .6s ease}
-.hero-ctl{display:none;position:relative;align-items:center;gap:6px;max-width:720px;margin:14px auto 0;padding:6px 14px 8px 6px;border-radius:999px;background:var(--surface);border:1px solid var(--line-2);box-shadow:0 8px 24px var(--shadow-2)}
+.slide{position:absolute;inset:0;margin:0;opacity:0;visibility:hidden;transition:opacity .8s ease-in-out,visibility 0s linear .8s}
+.slide.on{opacity:1;visibility:visible;transition:opacity .8s ease-in-out}
+.hero-ctl{display:none;position:relative;align-items:center;gap:6px;max-width:720px;margin:14px auto 0;padding:6px 14px 6px 6px;border-radius:999px;background:var(--surface);border:1px solid var(--line-2);box-shadow:0 8px 24px var(--shadow-2)}
 .jt .hero-ctl{display:flex}
 .hc-btn{flex:0 0 auto;width:34px;height:34px;border-radius:50%;border:0;background:var(--chip);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 .hc-btn:hover{color:var(--brand)}
@@ -159,10 +159,6 @@ h1,h2,h3{text-wrap:balance}
 .hc-status{margin:0 0 0 6px;min-width:0;flex:1;display:flex;align-items:baseline;gap:10px;font-size:14px;color:var(--ink-2)}
 .hc-count{flex:0 0 auto;font:600 13px/1 var(--mono);color:var(--subtle)}
 .hc-cap{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
-.hc-bar{position:absolute;left:18px;right:18px;bottom:3px;height:2px;border-radius:2px;background:var(--line);overflow:hidden}
-.hc-bar i{display:block;height:100%;width:0;background:var(--accent)}
-.hc-bar.run i{animation:hcbar 3s linear forwards}
-@keyframes hcbar{from{width:0}to{width:100%}}
 @media (prefers-reduced-motion:reduce){.jt .hero-ctl{display:none}.slide{transition:none}}
 .lp-d{display:none!important}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]) .lp-l{display:none!important}:root:not([data-theme=light]) .lp-d{display:block!important}}
