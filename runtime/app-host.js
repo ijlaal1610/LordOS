@@ -33,7 +33,8 @@ const tokens = createStore(DEFAULT_TOKENS);
 function applyLocale(l) {
   if (!l || !l.lang) return;
   const cur = locale.get();
-  if (cur.lang !== l.lang || (cur.region || '') !== (l.region || '')) locale.set({ lang: l.lang, region: l.region || '' });
+  const dir = l.dir === 'rtl' || l.dir === 'ltr' ? l.dir : undefined;
+  if (cur.lang !== l.lang || (cur.region || '') !== (l.region || '') || cur.dir !== dir) locale.set({ lang: l.lang, region: l.region || '', dir });
 }
 
 function applyState(st) {
@@ -120,16 +121,17 @@ globalThis.__lordOnRevoke = (fn) => { revokeListeners.add(fn); return () => revo
 
 function Root() {
   const tk = useStore(tokens);
-  const { lang, region } = useStore(locale);
+  const { lang, region, dir } = useStore(locale);
   const list = useStore(windows);
   const focused = sdk.wm.focused();
   // a language change remounts the app, as in the theme (texts are built while rendering)
   return h(ThemeProvider, { tokens: tk },
-    h(Fragment, { key: `${lang}|${region}` },
+    h(Fragment, { key: `${lang}|${region}|${dir || ''}` },
       list.map((w, i) => h(runtime.View, {
         key: w.id,
         ref: (inst) => attach(w.id, inst),
-        style: { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', backgroundColor: tk.windowBg },
+        // each window is laid out as its own root (appclient.c), so it states the UI direction itself
+        style: { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', backgroundColor: tk.windowBg, direction: sdk.direction() },
       }, h(AppHost, { id: w.id, focused: w.id === focused }), i === 0 ? h(PermissionPrompt) : null))));
 }
 

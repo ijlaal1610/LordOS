@@ -1,40 +1,47 @@
-// Security.jsx — el informe de seguridad (contraseñas débiles, repetidas y viejas; filtradas según
-// la lista de comunes y, si el usuario lo elige, un archivo local de Have I Been Pwned: nunca por
-// red) y la vista de todos los códigos 2FA con su cuenta regresiva.
-import { View, Text, useTheme, useStore, Button, ScrollView, t } from '@lordos/sdk';
+// Security.jsx — the security report (weak, reused and old passwords; breached ones from the
+// list of common passwords and, if the user picks one, a local file of known-breached hashes:
+// never over the network) and the view with every 2FA code and its countdown.
+import { View, Text, useTheme, useStore, Button, ScrollView, EmptyState, t } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { app, req, errorText, toast, copySecret } from './api.js';
 import { allCategories, builtinById } from './templates.js';
 import { EntryIcon, Hint, FilePicker, strengthColor, strengthLabel, RED, ORANGE, YELLOW, GREEN, IconButton, fileReq } from './ui.jsx';
+import { Glyph } from './glyphs.jsx';
 import { Center } from './Detail.jsx';
 
+// One finding: a colored dot, the title and the count, a hint line and the items, in an inset box.
 function Card({ title, count, color, children, hint }) {
   const th = useTheme();
+  const kids = (Array.isArray(children) ? children.flat() : [children]).filter(Boolean);
   return (
-    <View style={{ gap: 6, padding: 14, borderRadius: 12, backgroundColor: th.control }}>
+    <View style={{ borderRadius: 10, border: `1px solid ${th.separator}`, backgroundColor: th.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.025)',
+      paddingHorizontal: 14, paddingTop: 12, paddingBottom: kids.length ? 6 : 12, gap: 4 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: color }} />
-        <Text style={{ flex: 1, fontSize: 14, fontWeight: 700, color: th.text }}>{title}</Text>
-        <Text style={{ fontSize: 20, fontWeight: 700, color: count ? color : th.textDim }}>{String(count)}</Text>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
+        <Text style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: th.text }}>{title}</Text>
+        <Text style={{ fontSize: 17, fontWeight: 600, color: count ? color : th.textDim }}>{String(count)}</Text>
       </View>
       {hint && <Hint>{hint}</Hint>}
-      {children}
+      {kids.length ? <View style={{ marginTop: 4 }}>{kids}</View> : null}
     </View>
   );
 }
 
 function Item({ e, cats, sub, onOpen }) {
   const th = useTheme();
+  const [hover, setHover] = useState(false);
   if (!e) return null;
   const cat = cats.find((c) => c.id === e.cat) || builtinById(e.cat);
   return (
-    <View onClick={() => onOpen(e.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 5 }}>
-      <EntryIcon entry={e} cat={cat} size={26} />
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 13, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{e.title || t('passwords.untitled')}</Text>
-        {sub && <Text style={{ fontSize: 11, color: th.textDim }}>{sub}</Text>}
+    <View onClick={() => onOpen(e.id)} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 40, paddingHorizontal: 6, marginHorizontal: -6, borderRadius: 6,
+        borderTopWidth: 1, borderTopColor: th.separator, backgroundColor: hover ? th.hover : 'transparent' }}>
+      <EntryIcon entry={e} cat={cat} size={24} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ fontSize: 13, color: th.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{e.title || t('passwords.untitled')}</Text>
+        {sub && <Text style={{ fontSize: 11, color: th.textDim, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{sub}</Text>}
       </View>
-      <Text style={{ fontSize: 12, color: th.textDim }}>›</Text>
+      <Text style={{ fontSize: 14, color: th.textDim }}>›</Text>
     </View>
   );
 }
@@ -59,16 +66,20 @@ export function SecurityView({ onOpen }) {
   const total = st.entries.filter((e) => !e.trash).length;
   return (
     <ScrollView style={{ flex: 1 }}>
-      <View style={{ padding: 22, gap: 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: issues ? 'rgba(255,159,10,0.2)' : 'rgba(48,209,88,0.2)' }}>
-            <Text style={{ fontSize: 28 }}>{issues ? '⚠️' : '✅'}</Text>
+      <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 24, gap: 12, width: '100%', maxWidth: 760, alignSelf: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 4 }}>
+          <View style={{ width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+            background: issues ? 'linear-gradient(180deg, #ffb340, #ff9500)' : 'linear-gradient(180deg, #4cd964, #28b84a)' }}>
+            <Glyph kind="shield" size={28} color="#fff" />
+            <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', paddingBottom: 3 }}>
+              <Text style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{issues ? '!' : '✓'}</Text>
+            </View>
           </View>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ fontSize: 22, fontWeight: 700, color: th.text }}>{t('passwords.report.title')}</Text>
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <Text style={{ fontSize: 22, fontWeight: 600, color: th.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{t('passwords.report.title')}</Text>
             <Text style={{ fontSize: 12, color: th.textDim }}>{issues ? t('passwords.report.issues', { count: issues, total }) : t('passwords.report.allGood', { total })}</Text>
           </View>
-          <Button label={busy ? t('passwords.report.loading') : t('passwords.report.again')} onClick={() => run(hibp)} />
+          <Button small label={busy ? t('passwords.report.loading') : t('passwords.report.again')} onClick={() => run(hibp)} />
         </View>
         <Card title={t('passwords.report.weak')} count={rep.weak.length} color={RED} hint={t('passwords.report.weakHint')}>
           {rep.weak.map((w) => <Item key={w.id} e={byId.get(w.id)} cats={cats} onOpen={onOpen}
@@ -76,8 +87,8 @@ export function SecurityView({ onOpen }) {
         </Card>
         <Card title={t('passwords.report.reused')} count={rep.reused.length} color={ORANGE} hint={t('passwords.report.reusedHint')}>
           {rep.reused.map((g, i) => (
-            <View key={i} style={{ gap: 2, paddingVertical: 4, borderBottom: `1px solid ${th.separator}` }}>
-              <Text style={{ fontSize: 11, color: th.textDim }}>{t('passwords.report.sameIn', { count: g.length })}</Text>
+            <View key={i}>
+              <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, paddingTop: 8, paddingBottom: 4 }}>{t('passwords.report.sameIn', { count: g.length })}</Text>
               {g.map((id) => <Item key={id} e={byId.get(id)} cats={cats} onOpen={onOpen} />)}
             </View>
           ))}
@@ -88,9 +99,9 @@ export function SecurityView({ onOpen }) {
         <Card title={t('passwords.report.breached')} count={rep.breached ? rep.breached.length : rep.weak.filter((w) => w.common).length} color={RED}
           hint={hibp ? t('passwords.report.hibpUsing') : t('passwords.report.breachedHint')}>
           {(rep.breached || []).map((b) => <Item key={b.id} e={byId.get(b.id)} cats={cats} onOpen={onOpen} sub={t('passwords.report.seen', { count: b.count })} />)}
-          <Button label={t('passwords.report.hibpChoose')} onClick={() => setPicking(true)} style={{ alignSelf: 'flex-start' }} />
+          <View style={{ paddingTop: 4, paddingBottom: 6, alignItems: 'flex-start' }}><Button small label={t('passwords.report.hibpChoose')} onClick={() => setPicking(true)} /></View>
         </Card>
-        <Hint>{t('passwords.report.offline')}</Hint>
+        <View style={{ paddingHorizontal: 4 }}><Hint>{t('passwords.report.offline')}</Hint></View>
       </View>
       {picking && <FilePicker title={t('passwords.report.hibpChoose')} onClose={() => setPicking(false)}
         onPick={(p) => { setPicking(false); setHibp(typeof p === 'string' ? p : null); run(p); }} />}
@@ -98,7 +109,7 @@ export function SecurityView({ onOpen }) {
   );
 }
 
-// ---- todos los códigos 2FA ----
+// ---- every 2FA code ----
 
 export function CodesView({ onOpen }) {
   const th = useTheme();
@@ -119,31 +130,32 @@ export function CodesView({ onOpen }) {
     return () => clearInterval(iv);
   }, [codes]);
   const byId = new Map(st.entries.map((e) => [e.id, e]));
-  if (!codes.length) return <Center text={t('passwords.codes.empty')}><Text style={{ fontSize: 40 }}>🔢</Text></Center>;
+  if (!codes.length) return <EmptyState icon={<Glyph kind="clock" size={40} color={th.textDim} />} title={t('passwords.side.codes')} hint={t('passwords.codes.empty')} />;
   const el = Date.now() / 1000 - base.current.at;
   return (
     <ScrollView style={{ flex: 1 }}>
-      <View style={{ padding: 22, gap: 10 }}>
-        <Text style={{ fontSize: 22, fontWeight: 700, color: th.text }}>{t('passwords.side.codes')}</Text>
+      <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 24, gap: 8, width: '100%', maxWidth: 760, alignSelf: 'center' }}>
+        <Text style={{ fontSize: 22, fontWeight: 600, color: th.text, marginBottom: 8 }}>{t('passwords.side.codes')}</Text>
         {codes.map((c) => {
           const e = byId.get(c.id);
           const left = Math.max(0, Math.round(c.remaining - el));
           const shown = c.code.length === 6 ? `${c.code.slice(0, 3)} ${c.code.slice(3)}` : c.code;
           return (
-            <View key={`${c.id}-${c.k}`} onClick={() => onOpen(c.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, backgroundColor: th.control }}>
-              {e && <EntryIcon entry={e} cat={cats.find((x) => x.id === e.cat)} size={34} />}
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={{ fontSize: 13, color: th.text }}>{e?.title || c.issuer || ''}</Text>
-                <Text style={{ fontSize: 11, color: th.textDim }}>{c.account || e?.sub || ''}</Text>
+            <View key={`${c.id}-${c.k}`} onClick={() => onOpen(c.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, height: 60,
+              borderRadius: 10, border: `1px solid ${th.separator}`, backgroundColor: th.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.025)' }}>
+              {e && <EntryIcon entry={e} cat={cats.find((x) => x.id === e.cat)} size={32} />}
+              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                <Text style={{ fontSize: 13, fontWeight: 600, color: th.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{e?.title || c.issuer || ''}</Text>
+                <Text style={{ fontSize: 11, color: th.textDim, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{c.account || e?.sub || ''}</Text>
               </View>
-              <Text style={{ fontSize: 22, fontWeight: 600, fontFamily: 'monospace', color: left <= 5 ? RED : th.text, direction: 'ltr' }}>{shown}</Text>
-              <View style={{ width: 34, alignItems: 'center' }}>
+              <Text style={{ fontSize: 20, fontWeight: 600, fontFamily: 'monospace', color: left <= 5 ? RED : th.text, direction: 'ltr' }}>{shown}</Text>
+              <View style={{ width: 34, alignItems: 'center', gap: 4 }}>
                 <Text style={{ fontSize: 12, color: left <= 5 ? RED : th.textDim }}>{`${left}s`}</Text>
                 <View style={{ width: 30, height: 3, borderRadius: 2, backgroundColor: th.windowBg, direction: 'ltr' }}>
                   <View style={{ width: Math.round(30 * (c.period ? left / c.period : 0)), height: 3, borderRadius: 2, backgroundColor: left <= 5 ? RED : GREEN }} />
                 </View>
               </View>
-              <IconButton glyph="⧉" onClick={() => copySecret(c.code, t('passwords.totp.code'))} />
+              <IconButton glyph="⧉" tip={t('passwords.copy')} onClick={() => copySecret(c.code, t('passwords.totp.code'))} />
             </View>
           );
         })}

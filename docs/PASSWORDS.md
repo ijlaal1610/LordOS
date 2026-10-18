@@ -8,6 +8,10 @@ No gnome-keyring, kwallet, libsecret, libdbus or sd-bus is used by LordOS.
 
 ## Screenshots (VM 116, real `lord-sessiond` session, user `pwtest`)
 
+The current look (polish pass, VM 118) is in [`docs/polish/passwords-comparison.png`](polish/passwords-comparison.png)
+with every `passwords-before-*` / `passwords-after-*` shot (light, dark, RTL, minimum size, locked,
+editor, generator, first run); the shots below are from the first version.
+
 | | |
 |---|---|
 | ![Create the vault](m9-contrasenas-crear.png) | ![Unlock with the master password](m9-contrasenas-desbloquear.png) |
@@ -368,8 +372,10 @@ Built-in categories, each with a field template (`apps/passwords/templates.js`):
 Internet, Email, Finance, Cards, Network, Wi-Fi (with QR), Servers/SSH, Databases, Apps,
 Licenses (attachments), API and tokens, Identity and documents (photo attachments), Crypto (extra
 warning), VPN (link to Settings → Network), Secure notes (markdown + attachments). Users create
-categories with a name, icon, colour, parent (any depth: KeePassX-style tree) and their own field
-definitions; imported KeePass/Bitwarden folders become user categories. Items have one category,
+categories with a name, icon, colour, parent (any depth: a tree) and their own field
+definitions; folders of imported password databases and exports become user categories. Icons are
+drawn glyphs (`apps/passwords/glyphs.jsx`, no color emoji): a category stores the glyph's name, and
+categories saved by older versions (an emoji) are shown with the nearest glyph. Items have one category,
 many tags (with colours), favourite, archived, trash, history, attachments and an optional
 "change every N days" reminder.
 

@@ -11,7 +11,7 @@ The first pass (Calculator, Text Editor, Notes, Photos, PDF Viewer and Fonts) an
 with the system emoji picker, About and the Installer) are documented with before/after
 screenshots in [`docs/polish/`](polish/), as is the third (Settings page by page, Files, Terminal
 Preferences and the Store's remaining pages), and the fourth (the system apps: Disks, Backups, Logs,
-Clock and Help), as is the fifth (Mail, Calendar, Contacts and Reminders).
+Clock and Help), as is the fifth (Mail, Calendar, Contacts and Reminders) and the last one (Passwords).
 
 ## Spacing: an 8 px grid
 
@@ -134,6 +134,16 @@ the Recorder draw their empty-state icons. `↻ ⤮ ♪ ◫ ▣ ☺ ≡` render 
   edge), `Actions` (buttons under a group, trailing), `Note`/`Message`. Buttons inside rows are
   `small` (22 px); switches are `<Toggle small>` (36 × 20). Pickers between a few pictures (light/dark,
   Dock side) are thumbnail tiles with a 2 px accent ring.
+- **Passwords (an isolated app):** a 220 px source list (`SearchField`, then accent glyph rows,
+  `SectionTitle` captions, category rows with 18 px colored tiles and tag rows with a color dot; a 41 px
+  bottom bar with the generator, settings and Lock), a 290 px item list (17/600 title, 48 px rows with a
+  30 px tile, sort and "+" as toolbar buttons) and the detail pane (22/600 title, chips, the fields in
+  an inset group with icon-only copy/show buttons, small secondary buttons, destructive ones in red).
+  Under 960 px the columns shrink to 200 / 250 px and the detail title to 17 px. Category glyphs are
+  drawn (`apps/passwords/glyphs.jsx`); a category stores the glyph's name, and old emoji values map to
+  the nearest glyph. The lock screens are a 360–460 px centered column with a 22/600 title and a neutral
+  method switch; sheets are 48 px title + 20 px padding and scroll when the window is too small. An
+  isolated app gets the UI direction with the language (`locale.dir`), so it mirrors in RTL too.
 - **Preferences panes (Terminal):** sections as sidebar rows (not a long tab bar that cannot fit),
   a header with the section and profile names and the `Done` button, and a form with a 170 px
   right-aligned label column. Measure the pane: under 480 px the labels go above their controls.

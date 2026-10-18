@@ -99,10 +99,10 @@ export const locale = createStore({ lang: initial(), region: settings.get().regi
 // The server picks the CJK font according to the language (the same ideograph is drawn differently in
 // Chinese, Japanese and Korean) and, if the language is right-to-left (meta.json "direction": "rtl"),
 // mirrors the interface: rows, start alignment, menus.
-function applyNative({ lang }) {
+function applyNative(l) {
   try {
-    lord.text.setLanguage(lang);
-    lord.text.setDirection(meta(lang).direction === 'rtl');
+    lord.text.setLanguage(l.lang);
+    lord.text.setDirection(dirOf(l) === 'rtl');
   } catch (e) { /* server without lord.text */ }
 }
 applyNative(locale.get());
@@ -110,7 +110,10 @@ locale.subscribe(() => applyNative(locale.get()));
 
 // Direction of the interface ('rtl' in Arabic, Hebrew, Persian…) and of a standalone text (that of its
 // first strong character: an Arabic file name inside an English interface).
-export const direction = () => (meta(locale.get().lang).direction === 'rtl' ? 'rtl' : 'ltr');
+// An isolated app (runtime/app-host.js) also gets the direction from lord-server with the language
+// (`dir`), so it mirrors like the desktop even if it cannot read that language's meta.json.
+function dirOf(l) { return l.dir === 'rtl' || l.dir === 'ltr' ? l.dir : meta(l.lang).direction === 'rtl' ? 'rtl' : 'ltr'; }
+export const direction = () => dirOf(locale.get());
 export const textDirection = (s) => { try { return lord.text.direction(String(s ?? '')); } catch (e) { return 'ltr'; } };
 
 settings.subscribe(() => {

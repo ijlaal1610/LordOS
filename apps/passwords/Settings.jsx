@@ -1,15 +1,18 @@
-// Settings.jsx — ajustes de la bóveda (formas de abrir, clave de recuperación, bloqueo automático,
-// portapapeles, Argon2id), importar y exportar, y editar categorías y etiquetas.
+// Settings.jsx — vault settings (ways to unlock, recovery key, auto-lock, clipboard, Argon2id),
+// import and export, and editing categories and tags. Each sheet is built from inset groups
+// (Group) with the one primary action in the footer (docs/DESIGN.md).
 import { View, Text, useTheme, useStore, Button, TextInput, Segmented, requestPermission, t, formatDate } from '@lordos/sdk';
 import { useState } from 'react';
 import { app, req, refreshStatus, reload, errorText, toast, setMeta, setCats, setTags, APP_ID } from './api.js';
 import { allCategories, BUILTIN, ICONS, COLORS, FIELD_TYPES, catName, builtinById } from './templates.js';
-import { Sheet, Label, Hint, Warning, FilePicker, Choice, CatIcon, StrengthBar, RED, fileReq, fileName } from './ui.jsx';
+import { Sheet, Label, Hint, Warning, FilePicker, Choice, CatIcon, StrengthBar, Group, Check, RED, GREEN, fileReq, fileName } from './ui.jsx';
+import { Glyph, iconKind } from './glyphs.jsx';
 import { RecoveryView } from './Lock.jsx';
 
-const slotIcon = { password: '🔤', keyfile: '💾', passkey: '🔤💾', fido: '🔑', recovery: '🧾', session: '👤' };
+// The glyph of each way to unlock (drawn: glyphs.jsx).
+const slotIcon = { password: 'lock', keyfile: 'drive', passkey: 'drive', fido: 'key', recovery: 'note', session: 'person' };
 
-// ---- ajustes ----
+// ---- settings ----
 
 export function SettingsSheet({ onClose }) {
   const th = useTheme();
@@ -49,35 +52,35 @@ export function SettingsSheet({ onClose }) {
   if (rec) return <Sheet title={t('passwords.recovery.title')} onClose={() => setRec(null)} width={600}><RecoveryView code={rec} onDone={() => setRec(null)} /></Sheet>;
   return (
     <Sheet title={t('passwords.set.title')} onClose={onClose} width={560}>
-      <Segmented value={tab} onChange={setTab} options={[['unlock', t('passwords.set.tabUnlock')], ['prefs', t('passwords.set.tabPrefs')]]} />
+      <Segmented appearance="neutral" fill value={tab} onChange={setTab} options={[['unlock', t('passwords.set.tabUnlock')], ['prefs', t('passwords.set.tabPrefs')]]} />
       {tab === 'unlock' ? (
-        <View style={{ gap: 8 }}>
+        <View style={{ gap: 10 }}>
           <Hint>{t('passwords.set.unlockHint')}</Hint>
-          {slots.map((s) => (
-            <View key={s.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 9, backgroundColor: th.control }}>
-              <Text style={{ fontSize: 16 }}>{slotIcon[s.type] || '•'}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, color: th.text }}>{t(`passwords.method.${s.type}`)}{s.label ? ` · ${s.label}` : ''}</Text>
-                <Text style={{ fontSize: 11, color: th.textDim }}>
+          <Group>{slots.map((s) => (
+            <View key={s.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48 }}>
+              <Glyph kind={slotIcon[s.type] || 'key'} size={16} color={th.accent} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 13, color: th.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{t(`passwords.method.${s.type}`)}{s.label ? ` · ${s.label}` : ''}</Text>
+                <Text style={{ fontSize: 11, color: th.textDim, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
                   {s.m ? t('passwords.set.kdf', { m: Math.round(s.m / 1024), t: s.t }) : ''}{s.created ? ` ${formatDate(new Date(s.created * 1000))}` : ''}
                 </Text>
               </View>
               {s.type === 'recovery'
-                ? <Button label={t('passwords.set.newRecovery')} onClick={() => run(async () => { const r = await req('recovery-new'); await refreshStatus(); setRec(r.recovery); })} />
-                : <Button label={t('passwords.set.remove')} onClick={() => run(async () => { await req('slot-del', { slot: s.id }); await done(t('passwords.set.removed')); })} />}
+                ? <Button small label={t('passwords.set.newRecovery')} onClick={() => run(async () => { const r = await req('recovery-new'); await refreshStatus(); setRec(r.recovery); })} />
+                : <Button small destructive label={t('passwords.set.remove')} onClick={() => run(async () => { await req('slot-del', { slot: s.id }); await done(t('passwords.set.removed')); })} />}
             </View>
-          ))}
+          ))}</Group>
           {!add && (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              {slots.some((s) => s.type === 'password') && <Button label={t('passwords.set.change')} onClick={() => setAdd('change')} />}
-              {!slots.some((s) => s.type === 'password') && <Button label={t('passwords.set.addPassword')} onClick={() => setAdd('password')} />}
-              <Button label={t('passwords.set.addKeyfile')} onClick={() => setAdd('keyfile')} />
-              <Button label={t('passwords.set.addPasskey')} onClick={() => setAdd('passkey')} />
-              <Button label={t('passwords.set.addFido')} onClick={() => setAdd('fido')} />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {slots.some((s) => s.type === 'password') && <Button small label={t('passwords.set.change')} onClick={() => setAdd('change')} />}
+              {!slots.some((s) => s.type === 'password') && <Button small label={t('passwords.set.addPassword')} onClick={() => setAdd('password')} />}
+              <Button small label={t('passwords.set.addKeyfile')} onClick={() => setAdd('keyfile')} />
+              <Button small label={t('passwords.set.addPasskey')} onClick={() => setAdd('passkey')} />
+              <Button small label={t('passwords.set.addFido')} onClick={() => setAdd('fido')} />
             </View>
           )}
           {add && (
-            <View style={{ gap: 8, padding: 12, borderRadius: 10, border: `1px solid ${th.separator}` }}>
+            <View style={{ gap: 10, padding: 14, borderRadius: 10, border: `1px solid ${th.separator}` }}>
               <Text style={{ fontSize: 13, fontWeight: 600, color: th.text }}>{t(`passwords.set.adding.${add}`)}</Text>
               <Hint>{t(`passwords.create.about.${add === 'change' ? 'password' : add}`)}</Hint>
               {add === 'change' && <TextInput value={old} onChange={setOld} secure placeholder={t('passwords.set.oldPassword')} />}
@@ -87,8 +90,9 @@ export function SettingsSheet({ onClose }) {
               </>}
               {(add === 'keyfile' || add === 'passkey') && (
                 <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                  <Text style={{ flex: 1, fontSize: 12, color: path ? th.text : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{fileName(path) || t('passwords.create.keyWhere')}</Text>
-                  <Button label={t('passwords.create.chooseKeyPath')} onClick={() => setPicking(true)} />
+                  <Glyph kind="drive" size={14} color={path ? th.accent : th.textDim} />
+                  <Text style={{ flex: 1, minWidth: 0, fontSize: 12, color: path ? th.text : th.textDim, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{fileName(path) || t('passwords.create.keyWhere')}</Text>
+                  <Button small label={t('passwords.create.chooseKeyPath')} onClick={() => setPicking(true)} />
                 </View>
               )}
               {add === 'passkey' && <Warning>{t('passwords.set.passkeyWarn')}</Warning>}
@@ -104,25 +108,24 @@ export function SettingsSheet({ onClose }) {
           {!add && err ? <Text style={{ fontSize: 12, color: RED }}>{err}</Text> : null}
         </View>
       ) : (
-        <View style={{ gap: 10 }}>
-          <Row label={t('passwords.set.autolock')}>
+        <View style={{ gap: 12 }}>
+          <Group>
+          <Row label={t('passwords.set.autolock')} hint={t('passwords.set.autolockHint')}>
             <Choice value={meta.autolock ?? 300} width={190} onChange={(autolock) => setMeta({ autolock }).catch((e) => toast(errorText(e.code)))} options={[
               [60, t('passwords.set.min', { n: 1 })], [300, t('passwords.set.min', { n: 5 })], [900, t('passwords.set.min', { n: 15 })],
               [3600, t('passwords.set.hour')], [0, t('passwords.set.never')]]} />
           </Row>
-          <Hint>{t('passwords.set.autolockHint')}</Hint>
-          <Row label={t('passwords.set.clip')}>
+          <Row label={t('passwords.set.clip')} hint={t('passwords.set.clipHint')}>
             <Choice value={meta.clip ?? 30} width={190} onChange={(clip) => setMeta({ clip }).catch(() => {})} options={[
               [15, t('passwords.set.sec', { n: 15 })], [30, t('passwords.set.sec', { n: 30 })], [60, t('passwords.set.sec', { n: 60 })], [120, t('passwords.set.sec', { n: 120 })]]} />
           </Row>
-          <Hint>{t('passwords.set.clipHint')}</Hint>
-          <Row label={t('passwords.set.calibrate')}>
-            <Button label={busy ? t('passwords.saving') : t('passwords.set.measure')} onClick={() => run(async () => {
+          <Row label={t('passwords.set.calibrate')} hint={t('passwords.set.calibrateHint')}>
+            <Button small label={busy ? t('passwords.saving') : t('passwords.set.measure')} onClick={() => run(async () => {
               const r = await req('calibrate', { targetMs: 700 });
               toast(t('passwords.set.measured', { m: Math.round(r.m / 1024), t: r.t, ms: r.ms }));
             })} />
           </Row>
-          <Hint>{t('passwords.set.calibrateHint')}</Hint>
+          </Group>
           <Hint>{t('passwords.set.memory', { kb: Math.round((st.status?.mem?.inUse || 0) / 1024), locked: Math.round((st.status?.mem?.locked || 0) / 1024) })}</Hint>
         </View>
       )}
@@ -131,17 +134,21 @@ export function SettingsSheet({ onClose }) {
   );
 }
 
-function Row({ label, children }) {
+// A settings row: the label (and a hint under it) at the start, the control at the end.
+function Row({ label, hint, children }) {
   const th = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      <Text style={{ flex: 1, fontSize: 13, color: th.text }}>{label}</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, minHeight: 36 }}>
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Text style={{ fontSize: 13, color: th.text }}>{label}</Text>
+        {hint ? <Text style={{ fontSize: 11, color: th.textDim, lineHeight: 15 }}>{hint}</Text> : null}
+      </View>
       {children}
     </View>
   );
 }
 
-// ---- importar ----
+// ---- import ----
 
 export function ImportSheet({ onClose }) {
   const th = useTheme();
@@ -174,26 +181,31 @@ export function ImportSheet({ onClose }) {
       <Button key="c" label={t('passwords.close')} onClick={onClose} />,
       <Button key="g" primary label={busy ? t('passwords.imp.working') : t('passwords.imp.button')} onClick={go} />]}>
       <Hint>{t('passwords.imp.formats')}</Hint>
-      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-        <Text style={{ flex: 1, fontSize: 12, color: file ? th.text : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{fileName(file) || t('passwords.imp.noFile')}</Text>
-        <Button label={t('passwords.imp.choose')} onClick={() => setPicking('file')} />
+      <View style={{ height: 40, flexDirection: 'row', gap: 8, alignItems: 'center', paddingInlineStart: 12, paddingInlineEnd: 6, borderRadius: 8, border: `1px solid ${th.separator}` }}>
+        <Glyph kind="note" size={15} color={file ? th.accent : th.textDim} />
+        <Text style={{ flex: 1, minWidth: 0, fontSize: 12, color: file ? th.text : th.textDim, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{fileName(file) || t('passwords.imp.noFile')}</Text>
+        <Button small label={t('passwords.imp.choose')} onClick={() => setPicking('file')} />
       </View>
       {(isKdbx || isVault) && (
         <View style={{ gap: 8 }}>
           <TextInput value={pw} onChange={setPw} secure placeholder={isVault ? t('passwords.imp.vaultPassword') : t('passwords.imp.kdbxPassword')} onSubmit={go} />
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            <Text style={{ flex: 1, fontSize: 12, color: key ? th.text : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{fileName(key) || t('passwords.imp.noKey')}</Text>
-            <Button label={t('passwords.imp.chooseKey')} onClick={() => setPicking('key')} />
+            <Text style={{ flex: 1, minWidth: 0, fontSize: 12, color: key ? th.text : th.textDim, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{fileName(key) || t('passwords.imp.noKey')}</Text>
+            <Button small label={t('passwords.imp.chooseKey')} onClick={() => setPicking('key')} />
           </View>
         </View>
       )}
       {isKdbx && <Hint>{t('passwords.imp.kdbxHint')}</Hint>}
       {err ? <Text style={{ fontSize: 12, color: RED }}>{err}</Text> : null}
       {res && (
-        <View style={{ padding: 12, borderRadius: 10, backgroundColor: 'rgba(48,209,88,0.15)', gap: 4 }}>
-          <Text style={{ fontSize: 14, fontWeight: 600, color: th.text }}>{t('passwords.imp.done', { count: res.count })}</Text>
+        <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(48,209,88,0.12)',
+          border: '1px solid rgba(48,209,88,0.35)' }}>
+          <Text style={{ fontSize: 13, fontWeight: 700, color: GREEN, lineHeight: 18 }}>✓</Text>
+          <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ fontSize: 13, fontWeight: 600, color: th.text, lineHeight: 18 }}>{t('passwords.imp.done', { count: res.count })}</Text>
           {res.format && <Text style={{ fontSize: 12, color: th.textDim }}>{t('passwords.imp.detected', { format: t(`passwords.fmt.${res.format}`) })}</Text>}
           {res.cats ? <Text style={{ fontSize: 12, color: th.textDim }}>{t('passwords.imp.cats', { count: res.cats })}</Text> : null}
+          </View>
         </View>
       )}
       {picking && <FilePicker title={picking === 'file' ? t('passwords.imp.choose') : t('passwords.imp.chooseKey')} onClose={() => setPicking(null)}
@@ -203,7 +215,7 @@ export function ImportSheet({ onClose }) {
   );
 }
 
-// ---- exportar ----
+// ---- export ----
 
 export function ExportSheet({ onClose }) {
   const th = useTheme();
@@ -222,17 +234,12 @@ export function ExportSheet({ onClose }) {
   return (
     <Sheet title={t('passwords.exp.title')} onClose={onClose} width={520} footer={[
       <Button key="c" label={t('passwords.cancel')} onClick={onClose} />,
-      <Button key="g" primary label={t('passwords.exp.button')} onClick={() => (kind === 'vault' || ok) && setPicking(true)} />]}>
-      <Segmented value={kind} onChange={(k) => { setKind(k); setOk(false); }} options={[['vault', t('passwords.exp.vault')], ['csv', t('passwords.exp.csv')]]} />
+      <Button key="g" primary disabled={kind === 'csv' && !ok} label={t('passwords.exp.button')} onClick={() => (kind === 'vault' || ok) && setPicking(true)} />]}>
+      <Segmented appearance="neutral" fill value={kind} onChange={(k) => { setKind(k); setOk(false); }} options={[['vault', t('passwords.exp.vault')], ['csv', t('passwords.exp.csv')]]} />
       {kind === 'vault' ? <Hint>{t('passwords.exp.vaultHint')}</Hint> : (
         <View style={{ gap: 8 }}>
           <Warning>{t('passwords.exp.csvWarning')}</Warning>
-          <View onClick={() => setOk(!ok)} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            <View style={{ width: 18, height: 18, borderRadius: 4, border: `1px solid ${th.separator}`, backgroundColor: ok ? RED : th.inputBg, alignItems: 'center', justifyContent: 'center' }}>
-              {ok && <Text style={{ fontSize: 11, color: '#fff' }}>✓</Text>}
-            </View>
-            <Text style={{ flex: 1, fontSize: 12, color: th.text }}>{t('passwords.exp.csvConfirm')}</Text>
-          </View>
+          <Check on={ok} onChange={setOk} color={RED} label={t('passwords.exp.csvConfirm')} />
         </View>
       )}
       {err ? <Text style={{ fontSize: 12, color: RED }}>{err}</Text> : null}
@@ -241,7 +248,7 @@ export function ExportSheet({ onClose }) {
   );
 }
 
-// ---- categorías ----
+// ---- categories ----
 
 export function CategorySheet({ cat, onClose }) {
   const th = useTheme();
@@ -249,7 +256,7 @@ export function CategorySheet({ cat, onClose }) {
   const cats = allCategories(st.cats);
   const isNew = !cat;
   const [name, setName] = useState(cat?.name || '');
-  const [icon, setIcon] = useState(cat?.icon || '📁');
+  const [icon, setIcon] = useState(iconKind(cat?.icon));
   const [color, setColor] = useState(cat?.color || COLORS[0]);
   const [parent, setParent] = useState(cat?.parent || '');
   const [template, setTemplate] = useState(cat?.template || 'general');
@@ -270,45 +277,52 @@ export function CategorySheet({ cat, onClose }) {
   const parents = [['', t('passwords.cats.noParent')], ...cats.filter((c) => c.id !== cat?.id).map((c) => [c.id, catName(c)])];
   return (
     <Sheet title={isNew ? t('passwords.cats.new') : t('passwords.cats.edit')} onClose={onClose} width={540} footer={[
-      !isNew && <Button key="d" label={t('passwords.cats.delete')} onClick={remove} />,
+      !isNew && <Button key="d" destructive label={t('passwords.cats.delete')} onClick={remove} />, !isNew && <View key="sp" style={{ flex: 1 }} />,
       <Button key="c" label={t('passwords.cancel')} onClick={onClose} />,
       <Button key="s" primary label={t('passwords.save')} onClick={save} />].filter(Boolean)}>
-      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-        <CatIcon cat={{ icon, color }} size={40} />
-        <TextInput value={name} onChange={setName} placeholder={t('passwords.cats.name')} autoFocus style={{ flex: 1 }} />
+      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+        <CatIcon cat={{ icon, color }} size={36} />
+        <TextInput value={name} onChange={setName} placeholder={t('passwords.cats.name')} autoFocus style={{ flex: 1, minWidth: 0 }} />
       </View>
-      <Label>{t('passwords.cats.icon')}</Label>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-        {ICONS.map((i) => <View key={i} onClick={() => setIcon(i)} style={{ width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: i === icon ? th.accent : th.control }}>
-          <Text style={{ fontSize: 16 }}>{i}</Text></View>)}
+      <View style={{ gap: 6 }}>
+        <Label>{t('passwords.cats.icon')}</Label>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+          {ICONS.map((i) => <View key={i} onClick={() => setIcon(i)} style={{ width: 32, height: 32, borderRadius: 7, alignItems: 'center', justifyContent: 'center',
+            backgroundColor: i === icon ? th.accent : th.control }}>
+            <Glyph kind={i} size={16} color={i === icon ? '#fff' : th.text} /></View>)}
+        </View>
       </View>
-      <Label>{t('passwords.cats.color')}</Label>
-      <View style={{ flexDirection: 'row', gap: 6 }}>
-        {COLORS.map((c) => <View key={c} onClick={() => setColor(c)} style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: c, border: c === color ? `2px solid ${th.text}` : '2px solid transparent' }} />)}
+      <View style={{ gap: 6 }}>
+        <Label>{t('passwords.cats.color')}</Label>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {COLORS.map((c) => <View key={c} onClick={() => setColor(c)} style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
+            border: c === color ? `2px solid ${th.accent}` : '2px solid transparent' }}>
+            <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: c }} /></View>)}
+        </View>
       </View>
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <View style={{ flex: 1, gap: 4 }}><Label>{t('passwords.cats.parent')}</Label><Choice value={parent} options={parents} onChange={setParent} width={230} /></View>
-        <View style={{ flex: 1, gap: 4 }}><Label>{t('passwords.cats.template')}</Label>
-          <Choice value={template} options={BUILTIN.map((b) => [b.id, `${b.icon}  ${t(`passwords.cat.${b.id}`)}`])} onChange={setTemplate} width={230} /></View>
+      <View style={{ flexDirection: 'row', gap: 12 }}>
+        <View style={{ flex: 1, minWidth: 0, gap: 6 }}><Label>{t('passwords.cats.parent')}</Label><Choice value={parent} options={parents} onChange={setParent} width={220} /></View>
+        <View style={{ flex: 1, minWidth: 0, gap: 6 }}><Label>{t('passwords.cats.template')}</Label>
+          <Choice value={template} options={BUILTIN.map((b) => [b.id, t(`passwords.cat.${b.id}`)])} onChange={setTemplate} width={220} /></View>
       </View>
       <Label>{t('passwords.cats.fields')}</Label>
       <Hint>{t('passwords.cats.fieldsHint')}</Hint>
       {fields.map((f, i) => (
         <View key={i} style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-          <TextInput value={f.l || ''} onChange={(l) => setFields(fields.map((x, k) => (k === i ? { ...x, l } : x)))} placeholder={t('passwords.edit.fieldName')} style={{ flex: 1 }} />
+          <TextInput value={f.l || ''} onChange={(l) => setFields(fields.map((x, k) => (k === i ? { ...x, l } : x)))} placeholder={t('passwords.edit.fieldName')} style={{ flex: 1, minWidth: 0 }} />
           <Choice value={f.multiline ? 'multiline' : f.t} options={FIELD_TYPES.map((x) => [x, t(`passwords.ftype.${x}`)])} width={150}
             onChange={(ty) => setFields(fields.map((x, k) => (k === i ? { ...x, t: ty === 'multiline' ? 'text' : ty, multiline: ty === 'multiline' } : x)))} />
-          <Button label="✕" onClick={() => setFields(fields.filter((_, k) => k !== i))} />
+          <Button small plain label="✕" onClick={() => setFields(fields.filter((_, k) => k !== i))} />
         </View>
       ))}
-      <Button label={t('passwords.edit.addFieldDots')} style={{ alignSelf: 'flex-start' }}
+      <Button small icon="+" label={t('passwords.edit.addFieldDots')} style={{ alignSelf: 'flex-start' }}
         onClick={() => setFields([...fields, { k: `c${fields.length + 1}`, t: 'text', l: '' }])} />
       {err ? <Text style={{ fontSize: 12, color: RED }}>{err}</Text> : null}
     </Sheet>
   );
 }
 
-// ---- etiquetas ----
+// ---- tags ----
 
 export function TagSheet({ tag, onClose }) {
   const st = useStore(app);
@@ -327,10 +341,13 @@ export function TagSheet({ tag, onClose }) {
   const remove = async () => { try { await req('rename-tag', { from: tag, to: '' }); await setTags((st.tags || []).filter((x) => x.name !== tag)); await reload(); onClose(); } catch (e) { toast(errorText(e.code)); } };
   return (
     <Sheet title={t('passwords.tags.edit')} onClose={onClose} width={420} footer={[
-      <Button key="d" label={t('passwords.tags.delete')} onClick={remove} />, <Button key="s" primary label={t('passwords.save')} onClick={save} />]}>
+      <Button key="d" destructive label={t('passwords.tags.delete')} onClick={remove} />, <View key="sp" style={{ flex: 1 }} />,
+      <Button key="c" label={t('passwords.cancel')} onClick={onClose} />, <Button key="s" primary label={t('passwords.save')} onClick={save} />]}>
       <TextInput value={name} onChange={setName} autoFocus />
-      <View style={{ flexDirection: 'row', gap: 6 }}>
-        {COLORS.map((c) => <View key={c} onClick={() => setColor(c)} style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: c, border: c === color ? `2px solid ${th.text}` : '2px solid transparent' }} />)}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {COLORS.map((c) => <View key={c} onClick={() => setColor(c)} style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
+          border: c === color ? `2px solid ${th.accent}` : '2px solid transparent' }}>
+          <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: c }} /></View>)}
       </View>
     </Sheet>
   );

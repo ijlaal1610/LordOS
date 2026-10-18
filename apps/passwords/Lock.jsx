@@ -1,22 +1,53 @@
-// Lock.jsx — crear la bóveda (elegir cómo se abre), abrirla (contraseña, archivo llave, llave
-// FIDO2, contraseña + archivo llave, clave de recuperación) y mostrar la clave de recuperación
-// para imprimirla o guardarla.
+// Lock.jsx — creating the vault (choosing how it unlocks), unlocking it (password, key file,
+// FIDO2 security key, password + key file, recovery key) and showing the recovery key to print
+// or save. A centered column (360 px; 440 px for the forms with more choices), the padlock, a
+// 22 px title, a neutral method switch and one primary button (docs/DESIGN.md).
 import { View, Text, useTheme, useStore, Button, TextInput, Segmented, requestPermission, print, fs, t } from '@lordos/sdk';
 import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { app, req, refreshStatus, errorText, APP_ID, toast, appMode } from './api.js';
-import { StrengthBar, Hint, Warning, FilePicker, Label, RED, fileReq, fileName } from './ui.jsx';
+import { StrengthBar, Hint, Warning, FilePicker, Label, Check, RED, fileReq, fileName } from './ui.jsx';
+import { Glyph } from './glyphs.jsx';
 
+// The padlock of the lock screens, in the app icon's colors; the shackle is a neutral gray that
+// reads on light and dark backgrounds.
 function Padlock({ size = 64, open }) {
+  const th = useTheme();
+  const shackle = th.mode === 'dark' ? 'rgba(235,235,245,0.62)' : '#a8a8b0';
   return (
-    <View style={{ width: size, height: size * 1.1, alignItems: 'center' }}>
-      <View style={{ width: size * 0.56, height: size * 0.56, borderRadius: size * 0.28, border: `${Math.max(3, size * 0.09)}px solid #ffffffcc`,
-        marginBottom: -size * 0.28, marginLeft: open ? size * 0.3 : 0 }} />
-      <View style={{ width: size * 0.84, height: size * 0.58, borderRadius: size * 0.12, background: 'linear-gradient(160deg, #7d7aff, #3a37c4)',
-        alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 18px rgba(0,0,0,0.35)' }}>
+    <View style={{ width: size, height: size * 1.04, alignItems: 'center', direction: 'ltr' }}>
+      <View style={{ width: size * 0.5, height: size * 0.5, borderRadius: size * 0.25, border: `${Math.max(3, Math.round(size * 0.085))}px solid ${shackle}`,
+        marginBottom: -size * 0.25, marginLeft: open ? size * 0.34 : 0 }} />
+      <View style={{ width: size * 0.8, height: size * 0.56, borderRadius: size * 0.13, background: 'linear-gradient(180deg, #38c6d4, #1f6fd1)',
+        alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.22)' }}>
         <View style={{ width: size * 0.12, height: size * 0.12, borderRadius: size * 0.06, backgroundColor: '#fff' }} />
-        <View style={{ width: size * 0.05, height: size * 0.14, borderRadius: size * 0.02, backgroundColor: '#fff' }} />
+        <View style={{ width: size * 0.05, height: size * 0.12, marginTop: -1, borderRadius: size * 0.02, backgroundColor: '#fff' }} />
       </View>
+    </View>
+  );
+}
+
+// The header of a lock screen: picture, title and one line under it.
+function Head({ pic, title, sub }) {
+  const th = useTheme();
+  return (
+    <View style={{ alignItems: 'center', gap: 8, marginBottom: 4 }}>
+      {pic}
+      <Text style={{ marginTop: 6, fontSize: 22, fontWeight: 600, color: th.text, textAlign: 'center' }}>{title}</Text>
+      {sub ? <Text style={{ fontSize: 13, color: th.textDim, textAlign: 'center', lineHeight: 18, maxWidth: 400 }}>{sub}</Text> : null}
+    </View>
+  );
+}
+
+// A picked file: its name (or a dim placeholder) and the button that picks it.
+function FileRow({ file, empty, button, onPick }) {
+  const th = useTheme();
+  return (
+    <View style={{ height: 36, flexDirection: 'row', gap: 8, alignItems: 'center', paddingInlineStart: 10, paddingInlineEnd: 4, borderRadius: 8,
+      border: `1px solid ${th.separator}` }}>
+      <Glyph kind="drive" size={14} color={file ? th.accent : th.textDim} />
+      <Text style={{ flex: 1, minWidth: 0, fontSize: 12, color: file ? th.text : th.textDim, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{fileName(file) || empty}</Text>
+      <Button small label={button} onClick={onPick} />
     </View>
   );
 }
@@ -29,15 +60,15 @@ function Shell({ children, wide, picker }) {
   const kids = React.Children.toArray(children);
   const inline = picker && !appMode;
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: th.windowBg }}>
-      <View style={{ width: inline ? 520 : wide ? 520 : 380, gap: 12, alignItems: 'stretch' }}>
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: th.windowBg, padding: 20 }}>
+      <View style={{ width: inline ? 500 : wide ? 460 : 360, maxWidth: '100%', gap: 14, alignItems: 'stretch' }}>
         {inline ? [kids[0], <React.Fragment key="picker">{picker}</React.Fragment>] : [...kids, picker ? <React.Fragment key="picker">{picker}</React.Fragment> : null]}
       </View>
     </View>
   );
 }
 
-// ---- abrir ----
+// ---- unlock ----
 
 export function UnlockView() {
   const th = useTheme();
@@ -91,39 +122,35 @@ export function UnlockView() {
   if (has('recovery')) opts.push(['recovery', t('passwords.method.recovery')]);
   return (
     <Shell picker={picking && <FilePicker inline title={t('passwords.unlock.chooseKeyfile')} onClose={() => setPicking(false)} onPick={(p) => { setKeyfile(p); setPicking(false); }} />}>
-      <View style={{ alignItems: 'center', gap: 6 }}>
-        <Padlock size={72} />
-        <Text style={{ fontSize: 20, fontWeight: 700, color: th.text }}>{t('passwords.unlock.title')}</Text>
-        <Text style={{ fontSize: 12, color: th.textDim, textAlign: 'center' }}>{t('passwords.unlock.subtitle')}</Text>
-      </View>
-      {opts.length > 1 && <View style={{ alignItems: 'center' }}><Segmented options={opts} value={method} onChange={(m) => { setMethod(m); setErr(''); }} /></View>}
+      <Head pic={<Padlock size={64} />} title={t('passwords.unlock.title')} sub={t('passwords.unlock.subtitle')} />
+      {opts.length > 1 && <View style={{ alignItems: 'center' }}><Segmented appearance="neutral" options={opts} value={method} onChange={(m) => { setMethod(m); setErr(''); }} /></View>}
       {(method === 'password' || method === 'passkey') && (
-        <TextInput value={pw} onChange={setPw} secure autoFocus placeholder={t('passwords.unlock.password')} onSubmit={go} size={15} />
+        <TextInput value={pw} onChange={setPw} secure autoFocus placeholder={t('passwords.unlock.password')} onSubmit={go} />
       )}
       {(method === 'keyfile' || method === 'passkey') && (
-        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-          <Text style={{ flex: 1, fontSize: 12, color: keyfile ? th.text : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{fileName(keyfile) || t('passwords.unlock.noKeyfile')}</Text>
-          <Button label={t('passwords.unlock.chooseKeyfile')} onClick={() => setPicking(true)} />
-        </View>
+        <FileRow file={keyfile} empty={t('passwords.unlock.noKeyfile')} button={t('passwords.unlock.chooseKeyfile')} onPick={() => setPicking(true)} />
       )}
       {method === 'fido' && (
-        <View style={{ gap: 8 }}>
-          <Hint>{st.touch ? t('passwords.fido.touch') : t('passwords.fido.insert')}</Hint>
+        <View style={{ gap: 10 }}>
+          <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, backgroundColor: th.control }}>
+            <Glyph kind="key" size={16} color={th.accent} />
+            <Text style={{ flex: 1, fontSize: 12, color: th.text, lineHeight: 17 }}>{st.touch ? t('passwords.fido.touch') : t('passwords.fido.insert')}</Text>
+          </View>
           <TextInput value={pin} onChange={setPin} secure placeholder={t('passwords.fido.pinOptional')} onSubmit={go} />
         </View>
       )}
       {method === 'recovery' && (
-        <TextInput value={rec} onChange={setRec} placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" onSubmit={go} />
+        <TextInput value={rec} onChange={setRec} placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" onSubmit={go} style={{ direction: 'ltr' }} />
       )}
-      {err ? <Text style={{ fontSize: 12, color: RED, textAlign: 'center' }}>{err}</Text> : null}
-      <Button primary label={busy ? (st.touch ? t('passwords.fido.touchShort') : t('passwords.unlock.working')) : t('passwords.unlock.button')} onClick={go} style={{ height: 34 }} />
-      {ms != null && <Hint>{t('passwords.unlock.took', { ms })}</Hint>}
+      {err ? <Text style={{ fontSize: 12, color: RED, textAlign: 'center', lineHeight: 17 }}>{err}</Text> : null}
+      <Button primary label={busy ? (st.touch ? t('passwords.fido.touchShort') : t('passwords.unlock.working')) : t('passwords.unlock.button')} onClick={go} />
+      {ms != null && <Text style={{ fontSize: 11, color: th.textDim, textAlign: 'center' }}>{t('passwords.unlock.took', { ms })}</Text>}
       {st.status?.main?.unreadable && <Warning>{t('passwords.unlock.unreadable')}</Warning>}
     </Shell>
   );
 }
 
-// ---- crear ----
+// ---- create ----
 
 export function CreateView() {
   const th = useTheme();
@@ -174,16 +201,14 @@ export function CreateView() {
   return (
     <Shell wide picker={picking && <FilePicker inline save suggest="contrasenas.key" title={t('passwords.create.chooseKeyPath')} onClose={() => setPicking(false)}
         onPick={(p) => { setKeyPath(p); setPicking(false); }} />}>
-      <View style={{ alignItems: 'center', gap: 6 }}>
-        <Padlock size={64} open />
-        <Text style={{ fontSize: 20, fontWeight: 700, color: th.text }}>{t('passwords.create.title')}</Text>
-        <Text style={{ fontSize: 12, color: th.textDim, textAlign: 'center', lineHeight: 17 }}>{t('passwords.create.subtitle')}</Text>
+      <Head pic={<Padlock size={60} open />} title={t('passwords.create.title')} sub={t('passwords.create.subtitle')} />
+      <View style={{ gap: 8, marginTop: 4 }}>
+        <Label>{t('passwords.create.how')}</Label>
+        <Segmented appearance="neutral" fill value={method} onChange={(m) => { setMethod(m); setErr(''); }} options={[
+          ['password', t('passwords.method.password')], ['fido', t('passwords.method.fido')],
+          ['keyfile', t('passwords.method.keyfile')], ['passkey', t('passwords.method.passkey')]]} />
+        <Hint>{t(`passwords.create.about.${method}`)}</Hint>
       </View>
-      <Label>{t('passwords.create.how')}</Label>
-      <Segmented value={method} onChange={(m) => { setMethod(m); setErr(''); }} options={[
-        ['password', t('passwords.method.password')], ['fido', t('passwords.method.fido')],
-        ['keyfile', t('passwords.method.keyfile')], ['passkey', t('passwords.method.passkey')]]} />
-      <Hint>{t(`passwords.create.about.${method}`)}</Hint>
       {needPw && (
         <View style={{ gap: 8 }}>
           <TextInput value={pw} onChange={setPw} secure autoFocus placeholder={t('passwords.create.password')} />
@@ -192,10 +217,7 @@ export function CreateView() {
         </View>
       )}
       {needKey && (
-        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-          <Text style={{ flex: 1, fontSize: 12, color: keyPath ? th.text : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{fileName(keyPath) || t('passwords.create.keyWhere')}</Text>
-          <Button label={t('passwords.create.chooseKeyPath')} onClick={() => setPicking(true)} />
-        </View>
+        <FileRow file={keyPath} empty={t('passwords.create.keyWhere')} button={t('passwords.create.chooseKeyPath')} onPick={() => setPicking(true)} />
       )}
       {method === 'fido' && (
         <View style={{ gap: 8 }}>
@@ -204,13 +226,13 @@ export function CreateView() {
         </View>
       )}
       {err ? <Text style={{ fontSize: 12, color: RED }}>{err}</Text> : null}
-      <Button primary label={busy ? (st.touch ? t('passwords.fido.touchShort') : t('passwords.create.working')) : t('passwords.create.button')} onClick={go} style={{ height: 34 }} />
-      <Hint>{t('passwords.create.local')}</Hint>
+      <Button primary label={busy ? (st.touch ? t('passwords.fido.touchShort') : t('passwords.create.working')) : t('passwords.create.button')} onClick={go} />
+      <Text style={{ fontSize: 11, color: th.textDim, textAlign: 'center', lineHeight: 15 }}>{t('passwords.create.local')}</Text>
     </Shell>
   );
 }
 
-// ---- clave de recuperación ----
+// ---- recovery key ----
 
 export function RecoveryView({ code, onDone }) {
   const th = useTheme();
@@ -227,22 +249,18 @@ export function RecoveryView({ code, onDone }) {
           } catch (e) { toast(errorText('file')); }
           setSaving(false);
         }} />}>
-      <Text style={{ fontSize: 20, fontWeight: 700, color: th.text, textAlign: 'center' }}>{t('passwords.recovery.title')}</Text>
-      <Hint>{t('passwords.recovery.body')}</Hint>
-      <View style={{ padding: 16, borderRadius: 10, backgroundColor: th.control, alignItems: 'center', direction: 'ltr' }}>
-        <Text style={{ fontSize: 17, fontWeight: 600, color: th.text, fontFamily: 'monospace' }}>{code}</Text>
+      <Head pic={<View style={{ width: 56, height: 56, borderRadius: 14, alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(180deg, #38c6d4, #1f6fd1)' }}>
+        <Glyph kind="key" size={32} color="#fff" /></View>} title={t('passwords.recovery.title')} sub={t('passwords.recovery.body')} />
+      <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderRadius: 10, border: `1px solid ${th.separator}`,
+        backgroundColor: th.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', alignItems: 'center', direction: 'ltr' }}>
+        <Text style={{ fontSize: 15, fontWeight: 600, color: th.text, fontFamily: 'monospace', textAlign: 'center', lineHeight: 22 }}>{code}</Text>
       </View>
       <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'center' }}>
-        {!appMode && <Button label={t('passwords.recovery.print')} onClick={() => print.open({ title: t('passwords.recovery.printTitle'), text })} />}
-        <Button label={t('passwords.recovery.save')} onClick={() => setSaving(true)} />
+        {!appMode && <Button small label={t('passwords.recovery.print')} onClick={() => print.open({ title: t('passwords.recovery.printTitle'), text })} />}
+        <Button small label={t('passwords.recovery.save')} onClick={() => setSaving(true)} />
       </View>
-      <View onClick={() => setOk(!ok)} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-        <View style={{ width: 18, height: 18, borderRadius: 4, border: `1px solid ${th.separator}`, backgroundColor: ok ? th.accent : th.inputBg, alignItems: 'center', justifyContent: 'center' }}>
-          {ok && <Text style={{ fontSize: 11, color: '#fff' }}>✓</Text>}
-        </View>
-        <Text style={{ flex: 1, fontSize: 12, color: th.text }}>{t('passwords.recovery.confirm')}</Text>
-      </View>
-      <Button primary label={t('passwords.recovery.done')} onClick={() => ok && onDone()} style={{ opacity: ok ? 1 : 0.5, height: 34 }} />
+      <Check on={ok} onChange={setOk} label={t('passwords.recovery.confirm')} />
+      <Button primary disabled={!ok} label={t('passwords.recovery.done')} onClick={() => ok && onDone()} />
     </Shell>
   );
 }

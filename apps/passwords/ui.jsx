@@ -1,9 +1,11 @@
-// ui.jsx — piezas chicas de la app Contraseñas: íconos de categoría, hojas (diálogos), barra de
-// fuerza, imagen de un código QR, un campo de varias líneas, un selector de archivos y menús.
-import { View, Text, Image, useTheme, useStore, createStore, Button, ScrollView, TextInput, takeTextFocus, releaseTextFocus, fs, t } from '@lordos/sdk';
+// ui.jsx — small pieces of Passwords: category and item icons, sheets (dialogs), the strength
+// bar, a QR code image, a multi-line field, a file picker and pop-up menus. Spacing, type and
+// controls follow docs/DESIGN.md; icons are drawn (glyphs.jsx), never color emoji.
+import { View, Text, Image, useTheme, useStore, createStore, Button, ScrollView, TextInput, ToolbarButton, takeTextFocus, releaseTextFocus, fs, t } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { builtinById } from './templates.js';
 import { appMode } from './api.js';
+import { Glyph, Tile, iconKind, tint } from './glyphs.jsx';
 
 // A picked file is a path (shell: lord-server opens it, validated like lord.fs) or { fd, name }
 // (app process: the system dialog opened it). fileReq builds the request options for either.
@@ -19,21 +21,17 @@ export const fileName = (p) => (typeof p === 'string' ? p : p?.name || '');
 
 export const RED = '#ff453a', ORANGE = '#ff9f0a', GREEN = '#30d158', YELLOW = '#ffd60a';
 
-// ---- íconos ----
+// ---- icons ----
 
+// A category's tile: its color and its glyph (a user category stores the glyph's name; older
+// versions stored an emoji, mapped by iconKind).
 export function CatIcon({ cat, size = 28 }) {
   const b = cat ? builtinById(cat.id) : null;
   const color = cat?.color || b?.color || '#8e8e93';
-  const icon = /^[a-z_-]+$/i.test(cat?.icon || '') ? '📁' : cat?.icon || b?.icon || '🗂️';
-  return (
-    <View style={{ width: size, height: size, borderRadius: size * 0.26, alignItems: 'center', justifyContent: 'center',
-      background: `linear-gradient(160deg, ${color}, ${shade(color, -0.25)})` }}>
-      <Text style={{ fontSize: size * 0.56 }}>{icon}</Text>
-    </View>
-  );
+  return <Tile kind={iconKind(cat?.icon || b?.icon)} color={color} size={size} />;
 }
 
-// Inicial del sitio (o del título) sobre el color de la categoría: como los íconos de sitios sin descargar nada
+// The site's initial (or the title's) on the category color: like site icons, without downloading anything
 export function EntryIcon({ entry, cat, size = 32 }) {
   const b = cat ? builtinById(cat.id) : null;
   const color = cat?.color || b?.color || '#8e8e93';
@@ -43,25 +41,18 @@ export function EntryIcon({ entry, cat, size = 32 }) {
   const ch = ([...(host || entry.title || '?')][0] || '?').toUpperCase();
   return (
     <View style={{ width: size, height: size, borderRadius: size * 0.26, alignItems: 'center', justifyContent: 'center',
-      background: `linear-gradient(160deg, ${color}, ${shade(color, -0.3)})` }}>
-      <Text style={{ fontSize: size * 0.5, fontWeight: 700, color: '#fff' }}>{ch}</Text>
+      background: `linear-gradient(180deg, ${tint(color, 0.18)}, ${tint(color, -0.12)})` }}>
+      <Text style={{ fontSize: Math.round(size * 0.46), fontWeight: 600, color: '#fff' }}>{ch}</Text>
     </View>
   );
 }
 
-export function shade(hex, amt) {
-  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
-  if (!m) return hex;
-  const n = parseInt(m[1], 16);
-  const ch = (v) => Math.max(0, Math.min(255, Math.round(v + (amt < 0 ? v * amt : (255 - v) * amt))));
-  const r = ch(n >> 16), g = ch((n >> 8) & 255), b = ch(n & 255);
-  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
-}
+export const shade = tint;
 
-// ---- hoja (diálogo encima de la ventana) ----
+// ---- sheet (a dialog over the window) ----
 
-// Las hojas se dibujan arriba de toda la ventana (no adentro del panel que las abre): cada
-// <Sheet> se anota en `overlays` y <Overlays /> (al final de la app) las muestra.
+// Sheets are drawn over the whole window (not inside the pane that opens them): each <Sheet>
+// registers itself in `overlays` and <Overlays /> (at the end of the app) shows them.
 const overlays = createStore([]);           // [{ key, node }]
 let overlaySeq = 0;
 
@@ -100,40 +91,76 @@ function SheetBox(props) {
 function SheetPanel({ title, onClose, children, width = 460, footer, inline }) {
   const th = useTheme();
   return (
-      <View style={{ width: inline ? undefined : width, alignSelf: inline ? 'stretch' : undefined, maxHeight: inline ? undefined : '94%', borderRadius: 14,
-        backgroundColor: th.windowBg, border: `1px solid ${th.separator}`,
-        boxShadow: inline ? '0 6px 18px rgba(0,0,0,0.25)' : '0 18px 50px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottom: `1px solid ${th.separator}` }}>
-          <Text style={{ flex: 1, fontSize: 15, fontWeight: 700, color: th.text }}>{title}</Text>
-          {onClose && <View onClick={onClose} style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: th.control }}>
-            <Text style={{ fontSize: 12, color: th.textDim }}>✕</Text></View>}
-        </View>
-        <View style={{ padding: 16, gap: 10, flexShrink: 1, overflow: 'hidden' }}>{children}</View>
-        {footer && <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderTop: `1px solid ${th.separator}` }}>{footer}</View>}
+    <View style={{ width: inline ? undefined : width, maxWidth: inline ? undefined : '92%', alignSelf: inline ? 'stretch' : undefined,
+      maxHeight: inline ? undefined : '92%', borderRadius: 12, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`,
+      boxShadow: inline ? '0 4px 14px rgba(0,0,0,0.18)' : '0 18px 50px rgba(0,0,0,0.45)', overflow: 'hidden' }}>
+      <View style={{ height: 48, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: th.separator }}>
+        <Text style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, color: th.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{title}</Text>
+        {onClose && <ToolbarButton small icon="✕" iconSize={11} title={t('passwords.close')} onClick={onClose} />}
       </View>
+      {inline ? <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 12 }}>{children}</View> : (
+        // a body taller than the window scrolls instead of being cut off (small windows)
+        <ScrollView style={{ flex: -1 }}>
+          <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 12 }}>{children}</View>
+        </ScrollView>
+      )}
+      {footer && <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingHorizontal: 20, paddingVertical: 12, borderTopWidth: 1, borderTopColor: th.separator }}>{footer}</View>}
+    </View>
   );
 }
 
+// Caption over a field (11 px, 600, dim).
 export function Label({ children }) {
   const th = useTheme();
   return <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim }}>{children}</Text>;
 }
 
+// One hint line (12 px, dim).
 export function Hint({ children, color }) {
   const th = useTheme();
   return <Text style={{ fontSize: 12, color: color || th.textDim, lineHeight: 17 }}>{children}</Text>;
 }
 
-export function Warning({ children }) {
+// A calm warning box: a monochrome sign and the text, on a soft tint.
+export function Warning({ children, tone = 'red' }) {
+  const th = useTheme();
+  const c = tone === 'orange' ? ORANGE : RED;
   return (
-    <View style={{ flexDirection: 'row', gap: 8, padding: 10, borderRadius: 9, backgroundColor: 'rgba(255,69,58,0.14)', border: '1px solid rgba(255,69,58,0.45)' }}>
-      <Text style={{ fontSize: 15 }}>⚠️</Text>
-      <Text style={{ flex: 1, fontSize: 12, color: RED, lineHeight: 17 }}>{children}</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10,
+      backgroundColor: tone === 'orange' ? 'rgba(255,159,10,0.12)' : 'rgba(255,69,58,0.10)', border: `1px solid ${tone === 'orange' ? 'rgba(255,159,10,0.35)' : 'rgba(255,69,58,0.32)'}` }}>
+      <Text style={{ fontSize: 13, lineHeight: 17, fontWeight: 600, color: c }}>⚠</Text>
+      <Text style={{ flex: 1, fontSize: 12, color: th.mode === 'dark' ? '#ffb3ad' : '#c4281c', lineHeight: 17 }}>{children}</Text>
     </View>
   );
 }
 
-// ---- fuerza ----
+// A grouped ("inset") box as in docs/DESIGN.md: rows separated by hairlines.
+export function Group({ children, style }) {
+  const th = useTheme();
+  const rows = (Array.isArray(children) ? children.flat() : [children]).filter(Boolean);
+  return (
+    <View style={[{ borderRadius: 10, backgroundColor: th.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.025)',
+      border: `1px solid ${th.separator}`, paddingHorizontal: 12 }, style]}>
+      {rows.map((r, i) => <View key={i} style={i ? { borderTopWidth: 1, borderTopColor: th.separator } : null}>{r}</View>)}
+    </View>
+  );
+}
+
+// A checkbox with its label (16 px box, accent when on).
+export function Check({ on, onChange, label, color }) {
+  const th = useTheme();
+  return (
+    <View onClick={() => onChange(!on)} style={{ flexDirection: 'row', gap: 8, alignItems: 'center', minHeight: 24 }}>
+      <View style={{ width: 16, height: 16, borderRadius: 4, border: `1px solid ${on ? 'transparent' : th.textDim}`,
+        backgroundColor: on ? (color || th.accent) : th.inputBg, alignItems: 'center', justifyContent: 'center' }}>
+        {on && <Text style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>✓</Text>}
+      </View>
+      <Text style={{ flex: 1, fontSize: 13, color: th.text, lineHeight: 18 }}>{label}</Text>
+    </View>
+  );
+}
+
+// ---- strength ----
 
 export function strengthColor(score) { return [RED, RED, ORANGE, YELLOW, GREEN][Math.max(0, Math.min(4, score | 0))]; }
 export function strengthLabel(score) { return [t('passwords.strength.0'), t('passwords.strength.1'), t('passwords.strength.2'), t('passwords.strength.3'), t('passwords.strength.4')][Math.max(0, Math.min(4, score | 0))]; }
@@ -141,18 +168,18 @@ export function strengthLabel(score) { return [t('passwords.strength.0'), t('pas
 export function StrengthBar({ score, bits }) {
   const th = useTheme();
   return (
-    <View style={{ gap: 4 }}>
-      <View style={{ flexDirection: 'row', gap: 3, direction: 'ltr' }}>
+    <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: 'row', gap: 4, direction: 'ltr' }}>
         {[0, 1, 2, 3].map((i) => (
-          <View key={i} style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: i < Math.max(1, score) ? strengthColor(score) : th.control }} />
+          <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < Math.max(1, score) ? strengthColor(score) : th.control }} />
         ))}
       </View>
-      <Text style={{ fontSize: 11, color: strengthColor(score) }}>{bits != null ? t('passwords.strength.bits', { label: strengthLabel(score), bits }) : strengthLabel(score)}</Text>
+      <Text style={{ fontSize: 11, fontWeight: 500, color: strengthColor(score) }}>{bits != null ? t('passwords.strength.bits', { label: strengthLabel(score), bits }) : strengthLabel(score)}</Text>
     </View>
   );
 }
 
-// ---- código QR (filas en hex de lord-vault → píxeles) ----
+// ---- QR code (hex rows from lord-vault → pixels) ----
 
 export function QrImage({ qr, scale = 5 }) {
   if (!qr || !qr.size) return null;
@@ -172,7 +199,7 @@ export function QrImage({ qr, scale = 5 }) {
   return <Image pixels={{ width: side, height: side, data }} style={{ width: side, height: side, borderRadius: 8 }} />;
 }
 
-// ---- campo de varias líneas (notas, claves privadas, frases semilla) ----
+// ---- multi-line field (notes, private keys, seed phrases) ----
 
 export function TextArea({ value, onChange, placeholder, minHeight = 90, mono, secure }) {
   const th = useTheme();
@@ -193,18 +220,18 @@ export function TextArea({ value, onChange, placeholder, minHeight = 90, mono, s
   const shown = secure && !focus ? String(value || '').replace(/[^\n]/g, '•') : value;
   return (
     <View onMouseDown={() => { takeTextFocus(token, onKey, () => setFocus(false)); setFocus(true); }}
-      style={{ minHeight, padding: 8, borderRadius: 7, backgroundColor: th.inputBg, border: `1px solid ${focus ? th.accent : th.separator}` }}>
+      style={{ minHeight, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 7, backgroundColor: th.inputBg, border: `1px solid ${focus ? th.accent : th.separator}` }}>
       {value ? <Text style={{ fontSize: 13, color: th.text, lineHeight: 18, fontFamily: mono ? 'monospace' : undefined }}>{shown}{focus ? '▏' : ''}</Text>
         : <Text style={{ fontSize: 13, color: th.textDim }}>{focus ? '▏' : placeholder || ''}</Text>}
     </View>
   );
 }
 
-// ---- elegir un archivo (carpeta personal y discos del usuario: pendrives) ----
+// ---- pick a file (home folder and the user's disks: USB sticks) ----
 
 export function FilePicker({ title, save, suggest = '', onPick, onClose, filter, inline }) {
   const th = useTheme();
-  const [dir, setDir] = useState(null);            // null = lugares
+  const [dir, setDir] = useState(null);            // null = places
   const [name, setName] = useState(suggest);
   const [sel, setSel] = useState(null);
   // app process: the system's own dialog (powerbox) picks the file and hands over only its fd
@@ -218,8 +245,8 @@ export function FilePicker({ title, save, suggest = '', onPick, onClose, filter,
   let entries = [];
   let places = [];
   if (dir === null) {
-    places = [{ name: t('passwords.picker.home'), path: fs.home(), icon: '🏠' }];
-    try { for (const v of fs.volumes()) places.push({ name: v.name || v.path, path: v.path, icon: '💾' }); } catch (e) { /* sin discos */ }
+    places = [{ name: t('passwords.picker.home'), path: fs.home(), icon: 'folder' }];
+    try { for (const v of fs.volumes()) places.push({ name: v.name || v.path, path: v.path, icon: 'drive' }); } catch (e) { /* no disks */ }
   } else {
     try { entries = fs.list(dir).filter((e) => e.dir || !filter || filter(e.name)); } catch (e) { entries = []; }
   }
@@ -233,15 +260,15 @@ export function FilePicker({ title, save, suggest = '', onPick, onClose, filter,
       <Button key="c" label={t('passwords.cancel')} onClick={onClose} />,
       <Button key="o" primary label={save ? t('passwords.picker.save') : t('passwords.picker.open')} onClick={choose} />]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Button label="‹" onClick={up} />
-        <Text style={{ flex: 1, fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{dir === null ? t('passwords.picker.places') : dir}</Text>
+        <ToolbarButton icon="‹" title={t('passwords.picker.up')} onClick={up} />
+        <Text style={{ flex: 1, minWidth: 0, fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{dir === null ? t('passwords.picker.places') : dir}</Text>
       </View>
       <View style={{ height: inline ? 190 : 260, borderRadius: 8, border: `1px solid ${th.separator}`, overflow: 'hidden' }}>
         <ScrollView style={{ flex: 1 }}>
           {dir === null ? places.map((p) => (
             <Row key={p.path} icon={p.icon} label={p.name} onClick={() => setDir(p.path)} />
           )) : entries.map((e) => (
-            <Row key={e.name} icon={e.dir ? '📁' : '📄'} label={e.name} selected={sel === e.name}
+            <Row key={e.name} icon={e.dir ? 'folder' : 'note'} label={e.name} selected={sel === e.name}
               onClick={() => (e.dir ? (setDir(fs.join(dir, e.name)), setSel(null)) : (setSel(e.name), save && setName(e.name)))}
               onDoubleClick={() => !e.dir && onPick(fs.join(dir, e.name))} />
           ))}
@@ -256,15 +283,15 @@ export function FilePicker({ title, save, suggest = '', onPick, onClose, filter,
 function Row({ icon, label, onClick, onDoubleClick, selected }) {
   const th = useTheme();
   return (
-    <View onClick={onClick} onDoubleClick={onDoubleClick} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6,
-      backgroundColor: selected ? th.accent : 'transparent' }}>
-      <Text style={{ fontSize: 14 }}>{icon}</Text>
-      <Text style={{ flex: 1, fontSize: 13, color: selected ? '#fff' : th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</Text>
+    <View onClick={onClick} onDoubleClick={onDoubleClick} style={{ height: 28, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10,
+      marginHorizontal: 4, borderRadius: 6, backgroundColor: selected ? th.accent : 'transparent' }}>
+      <Glyph kind={icon} size={15} color={selected ? '#fff' : th.accent} />
+      <Text style={{ flex: 1, minWidth: 0, fontSize: 13, color: selected ? '#fff' : th.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{label}</Text>
     </View>
   );
 }
 
-// ---- menú desplegable chico ----
+// ---- small pop-up menu ----
 
 export function Choice({ value, options, onChange, width = 200 }) {
   const th = useTheme();
@@ -272,53 +299,54 @@ export function Choice({ value, options, onChange, width = 200 }) {
   const cur = options.find((o) => o[0] === value);
   return (
     <View style={{ width }}>
-      <View onClick={() => setOpen(!open)} style={{ height: 30, paddingHorizontal: 10, borderRadius: 7, flexDirection: 'row', alignItems: 'center',
-        backgroundColor: th.inputBg, border: `1px solid ${th.separator}` }}>
-        <Text style={{ flex: 1, fontSize: 13, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{cur ? cur[1] : String(value ?? '')}</Text>
-        <Text style={{ fontSize: 10, color: th.textDim }}>▾</Text>
+      <View onClick={() => setOpen(!open)} style={{ height: 28, paddingHorizontal: 10, borderRadius: 7, flexDirection: 'row', alignItems: 'center', gap: 6,
+        backgroundColor: th.control, border: `1px solid ${open ? th.accent : 'transparent'}` }}>
+        <Text style={{ flex: 1, minWidth: 0, fontSize: 13, color: th.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{cur ? cur[1] : String(value ?? '')}</Text>
+        <Text style={{ fontSize: 9, color: th.textDim }}>▼</Text>
       </View>
       {open && (
-        <View style={{ position: 'absolute', top: 32, left: 0, width, zIndex: 60, borderRadius: 8, padding: 4, backgroundColor: th.windowBg,
-          border: `1px solid ${th.separator}`, boxShadow: '0 10px 28px rgba(0,0,0,0.4)' }}>
-          {options.map(([v, label]) => (
-            <View key={String(v)} onClick={() => { setOpen(false); onChange(v); }}
-              style={{ paddingHorizontal: 8, paddingVertical: 5, borderRadius: 5, backgroundColor: v === value ? th.accent : 'transparent' }}>
-              <Text style={{ fontSize: 13, color: v === value ? '#fff' : th.text }}>{label}</Text>
-            </View>
-          ))}
+        <View style={{ position: 'absolute', top: 32, insetInlineStart: 0, width, zIndex: 60, borderRadius: 8, padding: 5,
+          backgroundColor: th.mode === 'dark' ? '#2c2c31' : '#ffffff', border: `1px solid ${th.separator}`, boxShadow: '0 10px 30px rgba(0,0,0,0.35)' }}>
+          {options.map(([v, label]) => <ChoiceRow key={String(v)} label={label} on={v === value} onClick={() => { setOpen(false); onChange(v); }} />)}
         </View>
       )}
     </View>
   );
 }
 
-// Botón chico con un símbolo (copiar, mostrar, generar)
-export function IconButton({ glyph, onClick, title, active, size = 26 }) {
+function ChoiceRow({ label, on, onClick }) {
   const th = useTheme();
   const [hover, setHover] = useState(false);
   return (
     <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ minWidth: size, height: size, paddingHorizontal: title ? 8 : 0, borderRadius: 6, flexDirection: 'row', gap: 4, alignItems: 'center',
-        justifyContent: 'center', backgroundColor: active ? th.accent : hover ? th.hover : th.control }}>
-      <Text style={{ fontSize: 12, color: active ? '#fff' : th.text }}>{glyph}</Text>
-      {title ? <Text style={{ fontSize: 12, color: active ? '#fff' : th.text }}>{title}</Text> : null}
+      style={{ height: 24, paddingHorizontal: 8, borderRadius: 5, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: hover ? th.accent : 'transparent' }}>
+      <Text style={{ width: 12, fontSize: 11, color: hover ? '#fff' : th.text }}>{on ? '✓' : ''}</Text>
+      <Text style={{ flex: 1, minWidth: 0, fontSize: 13, color: hover ? '#fff' : th.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{label}</Text>
     </View>
   );
+}
+
+// Small borderless button with a glyph (copy, show, generate): a string glyph or a drawn kind
+// ({ kind: 'eye' }). label: visible text after the glyph; tip: the tooltip (icon-only buttons).
+export function IconButton({ glyph, onClick, label, tip, active, color }) {
+  const th = useTheme();
+  const icon = glyph && typeof glyph === 'object' && glyph.kind ? <Glyph kind={glyph.kind} size={14} color={active ? th.accent : color || th.text} /> : glyph;
+  return <ToolbarButton small icon={icon} iconSize={13} label={label} title={tip} active={active} color={color} onClick={onClick} />;
 }
 
 export function Chip({ label, color, onClick, onRemove, selected }) {
   const th = useTheme();
   return (
-    <View onClick={onClick} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 22, paddingHorizontal: 8, borderRadius: 11,
+    <View onClick={onClick} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 22, paddingHorizontal: 9, borderRadius: 11,
       backgroundColor: selected ? th.accent : th.control }}>
-      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color || '#8e8e93' }} />
-      <Text style={{ fontSize: 11, color: selected ? '#fff' : th.text }}>{label}</Text>
-      {onRemove && <Text onClick={(e) => { e.stopPropagation?.(); onRemove(); }} style={{ fontSize: 10, color: th.textDim }}>✕</Text>}
+      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color || '#8e8e93' }} />
+      <Text style={{ fontSize: 11, fontWeight: 500, color: selected ? '#fff' : th.text, whiteSpace: 'nowrap' }}>{label}</Text>
+      {onRemove && <Text onClick={(e) => { e.stopPropagation?.(); onRemove(); }} style={{ fontSize: 9, color: th.textDim, paddingInlineStart: 2 }}>✕</Text>}
     </View>
   );
 }
 
-// base64 → bytes (QuickJS no trae atob)
+// base64 → bytes (QuickJS has no atob)
 export function b64ToBytes(s) {
   const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   const map = new Uint8Array(128);

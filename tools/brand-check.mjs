@@ -18,7 +18,7 @@ const BRANDS = [
   'Apple', 'macOS', 'Mac OS', 'OS X', 'Mac', 'MacBook', 'iMac', 'iPhone', 'iPad', 'iOS', 'iCloud', 'Safari',
   'Xcode', 'Finder', 'Spotlight', 'Launchpad', 'Night Shift', 'Quick Look', 'Time Machine', 'AirPrint',
   'AirDrop', 'Mission Control', 'Disk Utility', 'TCC', 'Windows', 'Microsoft', 'Outlook', 'Hotmail',
-  'Little Snitch', 'iTerm', 'iTerm2', 'Parallels',
+  'Little Snitch', 'iTerm', 'iTerm2', 'Parallels', 'KeePass', 'KeePassXC', '1Password', 'Bitwarden', 'LastPass', 'Have I Been Pwned',
 ];
 const BRAND_RE = new RegExp(`(?<![\\w.-])(?:${BRANDS.map((b) => b.replace(/ /g, '\\s+')).join('|')})(?![\\w])`, 'g');
 
