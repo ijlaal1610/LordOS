@@ -19,7 +19,7 @@ The official files and the rules for using them (clear space, colours, minimum s
 
 ## What needs our permission
 
-- **Implying endorsement:** don't suggest that the LordOS project or IPERFEX makes, sponsors, certifies or supports your product, service, company or event.
+- **Implying endorsement:** don't suggest that the LordOS project or iPERFEX makes, sponsors, certifies or supports your product, service, company or event.
 - **Modified distributions:** if you change LordOS (other packages, code, settings or branding) and distribute the result, you can't call it LordOS or use the crown logo or Lumo without written permission.
 - **Commercial use of the brand:** selling merchandise with the logo or Lumo, or using them in advertising for a product.
 - **Names and domains:** using "LordOS" or something confusingly similar in the name of a product, company, app, distribution or domain name.

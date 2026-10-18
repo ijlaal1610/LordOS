@@ -19,7 +19,7 @@ Los archivos oficiales y las reglas para usarlos (espacio libre, colores, tamañ
 
 ## Qué necesita nuestro permiso
 
-- **Dar a entender un respaldo:** no sugieras que el proyecto LordOS o IPERFEX hace, patrocina, certifica o respalda tu producto, servicio, empresa o evento.
+- **Dar a entender un respaldo:** no sugieras que el proyecto LordOS o iPERFEX hace, patrocina, certifica o respalda tu producto, servicio, empresa o evento.
 - **Distribuciones modificadas:** si cambiás LordOS (otros paquetes, código, configuración o marca) y distribuís el resultado, no podés llamarlo LordOS ni usar el logo de la corona ni a Lumo sin permiso por escrito.
 - **Uso comercial de la marca:** vender productos con el logo o con Lumo, o usarlos en la publicidad de un producto.
 - **Nombres y dominios:** usar "LordOS", o algo que se le parezca hasta confundirse, en el nombre de un producto, empresa, app, distribución o dominio.

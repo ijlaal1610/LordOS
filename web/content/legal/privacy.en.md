@@ -31,7 +31,7 @@ Donation buttons take you to PayPal or Mercado Pago (and, later, Binance). The p
 
 ### Contact form
 
-If you write to us through [our contact form](https://www.iperfex.com/contacto/?lang=en), on the IPERFEX website, we keep your message and the contact details you give only to answer you and to follow up on the matter.
+If you write to us through [our contact form](https://www.iperfex.com/contacto/?lang=en), on the iPERFEX website, we keep your message and the contact details you give only to answer you and to follow up on the matter.
 
 ## Part 2: the LordOS distribution
 

@@ -289,11 +289,6 @@ ${LANGS.filter((l) => l !== t.lang).map((l) => `<meta property="og:locale:altern
 <meta name="twitter:image" content="${SITE}/social-card.png">`;
 }
 
-const THEME_ICONS = {
-  auto: '<svg data-m="auto" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 010 18z" fill="currentColor"/></svg>',
-  light: '<svg data-m="light" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
-  dark: '<svg data-m="dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M21 13A9 9 0 1111 3a7 7 0 0010 10z"/></svg>',
-};
 
 function header(t, page) {
   const home = prefix(t.lang);
@@ -310,8 +305,6 @@ function header(t, page) {
     `<a href="${pageUrl(t.lang, 'about')}"${cur('about')}>${esc(t.navAbout)}</a>`,
     `<a href="${GITHUB}">GitHub</a>`,
   ].filter(Boolean).join('\n');
-  const langs = LANGS.map((l) =>
-    `<a class="lang" href="${pageUrl(l, page)}" hreflang="${l}" lang="${l}" title="${esc(dict[l].langName)}"${l === t.lang ? ' aria-current="page"' : ''}>${l.toUpperCase()}</a>`).join('\n');
   return `<header class="top">
 <nav class="wrap${page === 'home' ? '' : ' wide'} nav" aria-label="${esc(t.navLabel)}">
 <a class="nav-home" href="${home}" aria-label="${esc(t.homeLabel)}"><img class="logo-l" src="${img.logoLight}" alt="LordOS" width="122" height="36"><img class="logo-d" src="${img.logoDark}" alt="LordOS" width="122" height="36"></a>
@@ -319,10 +312,8 @@ function header(t, page) {
 ${links}
 </div>
 <div class="tools">
-<button type="button" class="theme-btn" data-label="${esc(t.themeLabel)}" data-auto="${esc(t.themeAuto)}" data-light="${esc(t.themeLight)}" data-dark="${esc(t.themeDark)}" aria-label="${esc(t.themeLabel)}">${THEME_ICONS.auto}${THEME_ICONS.light}${THEME_ICONS.dark}<span class="tl">${esc(t.themeAuto)}</span></button>
-<div class="langs" role="group" aria-label="${esc(t.langLabel)}">
-${langs}
-</div>
+${themeSwitch(t)}
+${langMenu(t, page, false)}
 </div>
 </nav>
 </header>`;
@@ -349,11 +340,18 @@ function builtPages() {
   if (!_built) _built = new Set(['', 'apps', 'gallery', 'about', ...featureList.map((m) => 'features/' + m.slug), ...(HAS_PAPER ? ['paper'] : []), ...(HAS_FAQ ? ['faq'] : []), ...legalPages.map((x) => 'legal/' + x.slug), ...(legalPages.length ? ['legal', ...LEGAL_MOVED.map((m) => 'legal/' + m[0])] : [])]);
   return _built;
 }
-function langLinks(t, page) {
-  return LANGS.map((l) => `<a class="lang" href="${pageUrl(l, page)}" hreflang="${l}" lang="${l}" title="${esc(dict[l].langName)}"${l === t.lang ? ' aria-current="page"' : ''}>${l.toUpperCase()}</a>`).join('\n');
+// one-slot language picker: a <details> dropdown of plain links (works without JS; keeps the page)
+const GLOBE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>';
+const CHEVRON = '<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+function langMenu(t, page, up) {
+  const items = LANGS.map((x) => `<li><a href="${pageUrl(x, page)}" hreflang="${x}" lang="${x}"${x === t.lang ? ' aria-current="true"' : ''}>${esc(dict[x].langName)}</a></li>`).join('');
+  return `<details class="lang-dd${up ? ' up' : ''}"><summary aria-label="${esc(t.langLabel)}: ${esc(t.langName)}">${GLOBE}<span class="ld-name">${esc(t.langName)}</span>${CHEVRON}</summary><ul>${items}</ul></details>`;
 }
-function themeButton(t, withText) {
-  return `<button type="button" class="theme-btn" data-label="${esc(t.themeLabel)}" data-auto="${esc(t.themeAuto)}" data-light="${esc(t.themeLight)}" data-dark="${esc(t.themeDark)}" aria-label="${esc(t.themeLabel)}">${THEME_ICONS.auto}${THEME_ICONS.light}${THEME_ICONS.dark}${withText ? `<span class="tl">${esc(t.themeAuto)}</span>` : ''}</button>`;
+// dark-mode switch (Tabler icons, MIT); site.js runs it, theme.js applies the stored choice before paint
+const SUN = '<svg class="ts-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7"/></svg>';
+const MOON = '<svg class="ts-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/></svg>';
+function themeSwitch(t) {
+  return `<button type="button" class="theme-sw" role="switch" aria-checked="false"><span class="vh">${esc(t.pages.darkMode)}</span><span class="ts-ball" aria-hidden="true">${SUN}${MOON}</span></button>`;
 }
 function footer(t, page = 'home') {
   const l = t.lang;
@@ -387,12 +385,10 @@ ${cols}
 </div>
 <div class="fbar">
 <div class="wrap">
-<p>${phOut(esc(phIn(loc(footerJson.copyright, l) || t.footer, 'footer.json')))}${footerJson.note ? ` ${phOut(esc(phIn(loc(footerJson.note, l), 'footer.json')))}` : ''}</p>
+<div class="fcopy"><p>${t.pages.copyright.split('{co}').map(esc).join(`<a href="https://www.iperfex.com/?lang=${l}" rel="noopener">iPERFEX</a>`)}</p>
+<p class="fmit"><a href="${builtPages().has('legal/licenses') ? pageUrl(l, 'legal/licenses') : GITHUB + '/blob/main/LICENSE'}">${esc(t.pages.mitLine)}</a></p></div>
 <div class="tools">
-${themeButton(t, false)}
-<div class="langs" role="group" aria-label="${esc(t.langLabel)}">
-${langLinks(t, page)}
-</div>
+${langMenu(t, page, true)}
 </div>
 </div>
 </div>

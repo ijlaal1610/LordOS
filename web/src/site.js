@@ -73,29 +73,31 @@
   }
 
   // Theme toggle: Auto -> Light -> Dark. theme.js already applied the saved choice before paint.
-  var tbs = $$('.theme-btn');
-  if (tbs.length) {
+  var sws = $$('.theme-sw');
+  if (sws.length) {
     var root = d.documentElement;
-    var modes = ['auto', 'light', 'dark'];
-    var label = function () {
-      var m = root.getAttribute('data-theme') || 'auto';
-      tbs.forEach(function (tb) {
-        var tl = $('.tl', tb);
-        if (tl) tl.textContent = tb.getAttribute('data-' + m);
-        tb.setAttribute('aria-label', tb.getAttribute('data-label') + ': ' + tb.getAttribute('data-' + m));
-        $$('svg', tb).forEach(function (s) { s.style.display = s.getAttribute('data-m') === m ? '' : 'none'; });
-      });
-    };
-    tbs.forEach(function (tb) {
-      tb.addEventListener('click', function () {
-        var m = modes[(modes.indexOf(root.getAttribute('data-theme') || 'auto') + 1) % 3];
-        if (m === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', m);
+    var mq = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+    var isDark = function () { var m = root.getAttribute('data-theme'); return m ? m === 'dark' : !!(mq && mq.matches); };
+    var paint = function () { sws.forEach(function (b) { b.setAttribute('aria-checked', String(isDark())); }); };
+    sws.forEach(function (b) {
+      b.addEventListener('click', function () {
+        var m = isDark() ? 'light' : 'dark';
+        root.setAttribute('data-theme', m);
         store.set('lordos-theme', m);
-        label();
+        paint();
       });
     });
-    label();
+    if (mq && mq.addEventListener) mq.addEventListener('change', paint);
+    paint();
   }
+
+  // language dropdowns: close on Escape or a click outside
+  var dds = $$('.lang-dd');
+  d.addEventListener('click', function (e) { dds.forEach(function (dd) { if (dd.open && !dd.contains(e.target)) dd.open = false; }); });
+  d.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    dds.forEach(function (dd) { if (dd.open) { dd.open = false; $('summary', dd).focus(); } });
+  });
 
   // Home hero slideshow: crossfade every 6 s; pauses on hover, focus, hidden tab or the Pause button;
   // off with prefers-reduced-motion (only the first screen shows). Loads each image just before it shows.

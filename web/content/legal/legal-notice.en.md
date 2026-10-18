@@ -2,9 +2,9 @@
 
 lordos.org is the website of **LordOS**, a free Debian-based GNU/Linux distribution with its own desktop environment.
 
-- **Project:** LordOS, by the IPERFEX group
+- **Project:** LordOS, by the iPERFEX group
 - **Authors:** Pablo Miranda and Federico Pereira
-- **Responsible entity:** IPERFEX (Pablo Miranda and Federico Pereira)
+- **Responsible entity:** iPERFEX (Pablo Miranda and Federico Pereira)
 - **Country:** Argentina
 - **Contact:** [our contact form](https://www.iperfex.com/contacto/?lang=en)
 - **Security reports:** [our contact form](https://www.iperfex.com/contacto/?lang=en), with "Security" in the subject (see the [Security policy](/legal/security/))

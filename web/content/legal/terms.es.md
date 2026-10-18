@@ -1,4 +1,4 @@
-Estos términos cubren el sitio lordos.org y los archivos de LordOS que descargás desde él o desde nuestras versiones en GitHub (la imagen ISO, la imagen para Raspberry Pi, el paquete `.deb` y el script de instalación para Debian). LordOS es una distribución GNU/Linux libre basada en Debian, con un entorno de escritorio propio, hecha por el grupo IPERFEX (Pablo Miranda y Federico Pereira, Argentina).
+Estos términos cubren el sitio lordos.org y los archivos de LordOS que descargás desde él o desde nuestras versiones en GitHub (la imagen ISO, la imagen para Raspberry Pi, el paquete `.deb` y el script de instalación para Debian). LordOS es una distribución GNU/Linux libre basada en Debian, con un entorno de escritorio propio, hecha por el grupo iPERFEX (Pablo Miranda y Federico Pereira, Argentina).
 
 ## Aceptación
 
@@ -20,7 +20,7 @@ LordOS y este sitio se ofrecen **"tal cual"** y **"según disponibilidad"**, sin
 
 ## Limitación de responsabilidad
 
-En la máxima medida que permita la ley, el grupo IPERFEX, los autores y los colaboradores no son responsables por ningún daño que surja del uso del sitio o de LordOS, o de la imposibilidad de usarlos. Eso incluye pérdida de datos, lucro cesante, daños al hardware, trabajo interrumpido y cualquier daño directo, indirecto, incidental o consecuente, aunque se nos haya advertido que podía ocurrir. Algunas jurisdicciones no permiten algunos de estos límites; en ellas, se aplican hasta donde la ley lo permita.
+En la máxima medida que permita la ley, el grupo iPERFEX, los autores y los colaboradores no son responsables por ningún daño que surja del uso del sitio o de LordOS, o de la imposibilidad de usarlos. Eso incluye pérdida de datos, lucro cesante, daños al hardware, trabajo interrumpido y cualquier daño directo, indirecto, incidental o consecuente, aunque se nos haya advertido que podía ocurrir. Algunas jurisdicciones no permiten algunos de estos límites; en ellas, se aplican hasta donde la ley lo permita.
 
 ## Tu responsabilidad
 

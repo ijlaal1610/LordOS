@@ -558,7 +558,7 @@ El SBOM de cada arquitectura (`lordos_<version>_<arch>.spdx.json`) también est�
 
 El código de LordOS se publica bajo la **licencia MIT**. Los componentes de terceros conservan sus propias licencias, listadas en `THIRD_PARTY.md`: QuickJS y stb (incluidos como código fuente), Monocypher (CC0/BSD-2), la lista de palabras de la EFF (CC BY 3.0 US), la lista de contraseñas comunes (MIT), los datos de países de DB-IP Lite (CC BY 4.0), Natural Earth (dominio público) y las fuentes Inter, JetBrains Mono y Plus Jakarta Sans (OFL). Cada release trae un SBOM SPDX de lo que el paquete incluye y de lo que depende (`docs/COMPLIANCE.md`).
 
-LordOS lo crea el grupo **IPERFEX**: **Pablo Miranda** y **Federico Pereira**.
+LordOS lo crea el grupo **iPERFEX**: **Pablo Miranda** y **Federico Pereira**.
 
 ## 13. Glosario
 

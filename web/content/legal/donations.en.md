@@ -1,4 +1,4 @@
-LordOS is free and will stay free. Donations help the IPERFEX group keep building it: development time, testing on real hardware and hosting.
+LordOS is free and will stay free. Donations help the iPERFEX group keep building it: development time, testing on real hardware and hosting.
 
 ## A donation is voluntary
 
@@ -24,11 +24,11 @@ Donations are **non-refundable**, except where the law requires otherwise. If yo
 
 ## Taxes
 
-Donations to LordOS are **not tax-deductible**. The IPERFEX group is not a registered charity or non-profit organization, and we can't issue tax receipts for donations. You are responsible for any taxes that apply to you.
+Donations to LordOS are **not tax-deductible**. The iPERFEX group is not a registered charity or non-profit organization, and we can't issue tax receipts for donations. You are responsible for any taxes that apply to you.
 
 ## Who receives them
 
-Donations are received by IPERFEX (Pablo Miranda and Federico Pereira).
+Donations are received by iPERFEX (Pablo Miranda and Federico Pereira).
 
 ## Contact
 

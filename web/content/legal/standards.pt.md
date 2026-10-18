@@ -1,6 +1,6 @@
 O LordOS é feito por uma equipe pequena, e tentamos trabalhar como fazem os projetos de código aberto sérios. Esta página explica, com honestidade, com quais normas internacionais nossos processos estão alinhados, o que implementa cada uma e o que ainda falta.
 
-**O LordOS e a IPERFEX não têm nenhuma certificação ISO.** "Alinhado com" significa que seguimos as principais práticas de uma norma e publicamos as evidências abaixo; não significa que um auditor nos avaliou ou certificou, nem que cumprimos todos os requisitos.
+**O LordOS e a iPERFEX não têm nenhuma certificação ISO.** "Alinhado com" significa que seguimos as principais práticas de uma norma e publicamos as evidências abaixo; não significa que um auditor nos avaliou ou certificou, nem que cumprimos todos os requisitos.
 
 ## Divulgação e tratamento de vulnerabilidades: ISO/IEC 29147 e ISO/IEC 30111
 

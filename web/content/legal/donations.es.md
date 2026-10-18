@@ -1,4 +1,4 @@
-LordOS es gratis y va a seguir siéndolo. Las donaciones ayudan al grupo IPERFEX a seguir construyéndolo: tiempo de desarrollo, pruebas en hardware real y alojamiento.
+LordOS es gratis y va a seguir siéndolo. Las donaciones ayudan al grupo iPERFEX a seguir construyéndolo: tiempo de desarrollo, pruebas en hardware real y alojamiento.
 
 ## Donar es voluntario
 
@@ -24,11 +24,11 @@ Las donaciones **no son reembolsables**, salvo cuando la ley disponga otra cosa.
 
 ## Impuestos
 
-Las donaciones a LordOS **no son deducibles de impuestos**. El grupo IPERFEX no es una entidad de bien público ni una organización sin fines de lucro registrada, y no podemos emitir comprobantes fiscales por donaciones. Sos responsable de los impuestos que te correspondan.
+Las donaciones a LordOS **no son deducibles de impuestos**. El grupo iPERFEX no es una entidad de bien público ni una organización sin fines de lucro registrada, y no podemos emitir comprobantes fiscales por donaciones. Sos responsable de los impuestos que te correspondan.
 
 ## Quién las recibe
 
-Las donaciones las recibe IPERFEX (Pablo Miranda y Federico Pereira).
+Las donaciones las recibe iPERFEX (Pablo Miranda y Federico Pereira).
 
 ## Contacto
 

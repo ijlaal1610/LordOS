@@ -2,7 +2,7 @@ Respetamos los derechos de los autores y esperamos lo mismo de todas las persona
 
 ## La ley que se aplica
 
-LordOS lo lleva adelante desde Argentina IPERFEX (Pablo Miranda y Federico Pereira), y tratamos estos reclamos según la ley argentina, principalmente la Ley 11.723 de propiedad intelectual. No somos un proveedor de servicios de Estados Unidos y no prometemos los procedimientos de la Digital Millennium Copyright Act (DMCA) estadounidense. El aviso que pedimos se parece a un aviso DMCA, así que podés usar uno que ya tengas.
+LordOS lo lleva adelante desde Argentina iPERFEX (Pablo Miranda y Federico Pereira), y tratamos estos reclamos según la ley argentina, principalmente la Ley 11.723 de propiedad intelectual. No somos un proveedor de servicios de Estados Unidos y no prometemos los procedimientos de la Digital Millennium Copyright Act (DMCA) estadounidense. El aviso que pedimos se parece a un aviso DMCA, así que podés usar uno que ya tengas.
 
 ## Cómo enviar un aviso
 

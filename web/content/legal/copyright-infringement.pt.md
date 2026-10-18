@@ -2,7 +2,7 @@ Respeitamos os direitos dos autores e esperamos o mesmo de todas as pessoas que 
 
 ## A lei aplicável
 
-O LordOS é mantido a partir da Argentina pela IPERFEX (Pablo Miranda e Federico Pereira), e tratamos essas notificações segundo a lei argentina, principalmente a Lei 11.723 de propriedade intelectual. Não somos um provedor de serviços dos Estados Unidos e não prometemos os procedimentos da Digital Millennium Copyright Act (DMCA) americana. A notificação que pedimos é parecida com uma notificação DMCA, então você pode usar uma que já tenha.
+O LordOS é mantido a partir da Argentina pela iPERFEX (Pablo Miranda e Federico Pereira), e tratamos essas notificações segundo a lei argentina, principalmente a Lei 11.723 de propriedade intelectual. Não somos um provedor de serviços dos Estados Unidos e não prometemos os procedimentos da Digital Millennium Copyright Act (DMCA) americana. A notificação que pedimos é parecida com uma notificação DMCA, então você pode usar uma que já tenha.
 
 ## Como enviar uma notificação
 

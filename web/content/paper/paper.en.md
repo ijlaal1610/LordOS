@@ -558,7 +558,7 @@ The SBOM of each architecture (`lordos_<version>_<arch>.spdx.json`) is listed in
 
 LordOS's code is released under the **MIT license**. Third-party components keep their own licenses, listed in `THIRD_PARTY.md`: QuickJS and stb (vendored), Monocypher (CC0/BSD-2), the EFF word list (CC BY 3.0 US), the common-password list (MIT), DB-IP Lite country data (CC BY 4.0), Natural Earth (public domain), and the Inter, JetBrains Mono and Plus Jakarta Sans fonts (OFL). Each release carries an SPDX SBOM of what the package bundles and depends on (`docs/COMPLIANCE.md`).
 
-LordOS is created by the **IPERFEX** group: **Pablo Miranda** and **Federico Pereira**.
+LordOS is created by the **iPERFEX** group: **Pablo Miranda** and **Federico Pereira**.
 
 ## 13. Glossary
 

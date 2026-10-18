@@ -1,6 +1,6 @@
 LordOS is made by a small team, and we try to work the way serious open-source projects do. This page explains, honestly, which international standards our processes are aligned with, what implements each one, and what is still missing.
 
-**LordOS and IPERFEX hold no ISO certification.** "Aligned with" means that we follow the main practices of a standard and publish the evidence below; it does not mean that an auditor has assessed or certified us, or that we meet every requirement.
+**LordOS and iPERFEX hold no ISO certification.** "Aligned with" means that we follow the main practices of a standard and publish the evidence below; it does not mean that an auditor has assessed or certified us, or that we meet every requirement.
 
 ## Vulnerability disclosure and handling: ISO/IEC 29147 and ISO/IEC 30111
 

@@ -55,19 +55,19 @@
     "navFaq": "FAQ",
     "theme": "Theme",
     "about": {
-      "metaTitle": "About · Made by IPERFEX · LordOS",
-      "metaDescription": "LordOS is created and maintained by IPERFEX, a technology company from Argentina led by Pablo Miranda and Federico Pereira.",
+      "metaTitle": "About · Made by iPERFEX · LordOS",
+      "metaDescription": "LordOS is created and maintained by iPERFEX, a technology company from Argentina led by Pablo Miranda and Federico Pereira.",
       "kicker": "About",
-      "title": "Made by IPERFEX",
-      "lead": "LordOS is created and maintained by IPERFEX, a technology company from Argentina, led by Pablo Miranda and Federico Pereira.",
+      "title": "Made by iPERFEX",
+      "lead": "LordOS is created and maintained by iPERFEX, a technology company from Argentina, led by Pablo Miranda and Federico Pereira.",
       "site": "Visit iperfex.com",
-      "linkedin": "IPERFEX on LinkedIn",
+      "linkedin": "iPERFEX on LinkedIn",
       "creatorsTitle": "The creators",
-      "role": "Co-creator · IPERFEX",
+      "role": "Co-creator · iPERFEX",
       "linkedinOf": "{name} on LinkedIn",
       "photoOf": "Photo of {name}",
       "initialsOf": "Initials of {name}",
-      "workTitle": "Work with IPERFEX",
+      "workTitle": "Work with iPERFEX",
       "workLead": "The team that builds LordOS can help your organisation use it.",
       "work": [
         [
@@ -91,7 +91,7 @@
           "Training for teams that deploy, manage or build apps for LordOS."
         ]
       ],
-      "contact": "Contact IPERFEX",
+      "contact": "Contact iPERFEX",
       "supportTitle": "Support the project",
       "supportText": "LordOS is free software. You can help with a donation or by following the project.",
       "donate": "Donate",
@@ -112,7 +112,10 @@
       "of": "of",
       "prev": "Previous screen",
       "next": "Next screen"
-    }
+    },
+    "darkMode": "Dark mode",
+    "copyright": "Copyright © 2026 {co} — All rights reserved.",
+    "mitLine": "LordOS is free software under the MIT license"
   },
   "es": {
     "navPaper": "Paper",
@@ -170,19 +173,19 @@
     "navFaq": "FAQ",
     "theme": "Tema",
     "about": {
-      "metaTitle": "Nosotros · Hecho por IPERFEX · LordOS",
-      "metaDescription": "LordOS es creado y mantenido por IPERFEX, una empresa de tecnología de Argentina liderada por Pablo Miranda y Federico Pereira.",
+      "metaTitle": "Nosotros · Hecho por iPERFEX · LordOS",
+      "metaDescription": "LordOS es creado y mantenido por iPERFEX, una empresa de tecnología de Argentina liderada por Pablo Miranda y Federico Pereira.",
       "kicker": "Nosotros",
-      "title": "Hecho por IPERFEX",
-      "lead": "LordOS es creado y mantenido por IPERFEX, una empresa de tecnología de Argentina, liderada por Pablo Miranda y Federico Pereira.",
+      "title": "Hecho por iPERFEX",
+      "lead": "LordOS es creado y mantenido por iPERFEX, una empresa de tecnología de Argentina, liderada por Pablo Miranda y Federico Pereira.",
       "site": "Visitá iperfex.com",
-      "linkedin": "IPERFEX en LinkedIn",
+      "linkedin": "iPERFEX en LinkedIn",
       "creatorsTitle": "Los creadores",
-      "role": "Cocreador · IPERFEX",
+      "role": "Cocreador · iPERFEX",
       "linkedinOf": "{name} en LinkedIn",
       "photoOf": "Foto de {name}",
       "initialsOf": "Iniciales de {name}",
-      "workTitle": "Trabajá con IPERFEX",
+      "workTitle": "Trabajá con iPERFEX",
       "workLead": "El equipo que construye LordOS puede ayudar a tu organización a usarlo.",
       "work": [
         [
@@ -206,7 +209,7 @@
           "Capacitación para equipos que despliegan, administran o desarrollan apps para LordOS."
         ]
       ],
-      "contact": "Contactar a IPERFEX",
+      "contact": "Contactar a iPERFEX",
       "supportTitle": "Apoyá el proyecto",
       "supportText": "LordOS es software libre. Podés ayudar con una donación o siguiendo el proyecto.",
       "donate": "Donar",
@@ -227,7 +230,10 @@
       "of": "de",
       "prev": "Pantalla anterior",
       "next": "Pantalla siguiente"
-    }
+    },
+    "darkMode": "Modo oscuro",
+    "copyright": "Copyright © 2026 {co} — Todos los derechos reservados.",
+    "mitLine": "LordOS es software libre con licencia MIT"
   },
   "pt": {
     "navPaper": "Paper",
@@ -285,19 +291,19 @@
     "navFaq": "FAQ",
     "theme": "Tema",
     "about": {
-      "metaTitle": "Sobre · Feito pela IPERFEX · LordOS",
-      "metaDescription": "O LordOS é criado e mantido pela IPERFEX, uma empresa de tecnologia da Argentina liderada por Pablo Miranda e Federico Pereira.",
+      "metaTitle": "Sobre · Feito pela iPERFEX · LordOS",
+      "metaDescription": "O LordOS é criado e mantido pela iPERFEX, uma empresa de tecnologia da Argentina liderada por Pablo Miranda e Federico Pereira.",
       "kicker": "Sobre",
-      "title": "Feito pela IPERFEX",
-      "lead": "O LordOS é criado e mantido pela IPERFEX, uma empresa de tecnologia da Argentina, liderada por Pablo Miranda e Federico Pereira.",
+      "title": "Feito pela iPERFEX",
+      "lead": "O LordOS é criado e mantido pela iPERFEX, uma empresa de tecnologia da Argentina, liderada por Pablo Miranda e Federico Pereira.",
       "site": "Visite iperfex.com",
-      "linkedin": "IPERFEX no LinkedIn",
+      "linkedin": "iPERFEX no LinkedIn",
       "creatorsTitle": "Os criadores",
-      "role": "Cocriador · IPERFEX",
+      "role": "Cocriador · iPERFEX",
       "linkedinOf": "{name} no LinkedIn",
       "photoOf": "Foto de {name}",
       "initialsOf": "Iniciais de {name}",
-      "workTitle": "Trabalhe com a IPERFEX",
+      "workTitle": "Trabalhe com a iPERFEX",
       "workLead": "A equipe que constrói o LordOS pode ajudar a sua organização a usá-lo.",
       "work": [
         [
@@ -321,7 +327,7 @@
           "Treinamento para equipes que implantam, administram ou desenvolvem apps para o LordOS."
         ]
       ],
-      "contact": "Contatar a IPERFEX",
+      "contact": "Contatar a iPERFEX",
       "supportTitle": "Apoie o projeto",
       "supportText": "O LordOS é software livre. Você pode ajudar com uma doação ou acompanhando o projeto.",
       "donate": "Doar",
@@ -342,6 +348,9 @@
       "of": "de",
       "prev": "Tela anterior",
       "next": "Próxima tela"
-    }
+    },
+    "darkMode": "Modo escuro",
+    "copyright": "Copyright © 2026 {co} — Todos os direitos reservados.",
+    "mitLine": "LordOS é software livre sob a licença MIT"
   }
 }

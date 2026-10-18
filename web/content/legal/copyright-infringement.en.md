@@ -2,7 +2,7 @@ We respect the rights of authors, and we expect everyone who contributes to Lord
 
 ## The law that applies
 
-LordOS is run from Argentina by IPERFEX (Pablo Miranda and Federico Pereira), and we handle these reports under Argentine law, mainly Law 11.723 on intellectual property. We are not a US service provider and we don't promise the procedures of the US Digital Millennium Copyright Act (DMCA). The notice we ask for is similar to a DMCA notice, so you can use one you already have.
+LordOS is run from Argentina by iPERFEX (Pablo Miranda and Federico Pereira), and we handle these reports under Argentine law, mainly Law 11.723 on intellectual property. We are not a US service provider and we don't promise the procedures of the US Digital Millennium Copyright Act (DMCA). The notice we ask for is similar to a DMCA notice, so you can use one you already have.
 
 ## How to send a notice
 

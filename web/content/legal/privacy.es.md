@@ -31,7 +31,7 @@ Los botones de donación te llevan a PayPal o a Mercado Pago (y, más adelante, 
 
 ### Formulario de contacto
 
-Si nos escribís por [nuestro formulario de contacto](https://www.iperfex.com/contacto/?lang=es), en el sitio de IPERFEX, guardamos tu mensaje y los datos de contacto que nos des solo para responderte y hacer el seguimiento del tema.
+Si nos escribís por [nuestro formulario de contacto](https://www.iperfex.com/contacto/?lang=es), en el sitio de iPERFEX, guardamos tu mensaje y los datos de contacto que nos des solo para responderte y hacer el seguimiento del tema.
 
 ## Parte 2: la distribución LordOS
 
