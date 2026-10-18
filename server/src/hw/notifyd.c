@@ -185,7 +185,7 @@ static int ask_sender(DMsg *m) {
                .member = "GetConnectionUnixProcessID", .dest = "org.freedesktop.DBus", .sig = "s" };
     uint32_t s = dbus_send(&conn, &h, &b);
     dw_free(&b);
-    if (!s) { on_notify(m); return 0; }
+    if (!s) { drop_notify(m); return 0; }      /* fail closed: who sent it is unknown */
     pending[npending].serial = s;
     pending[npending].call = *m;
     pending[npending].since = mono_ms();

@@ -52,6 +52,7 @@ typedef struct {
     uint32_t id, proxy;         /* global id; our bound proxy (0 = not bound yet) */
     int pid_sec, pid_app, pulse;/* pipewire.sec.pid (kernel), application.process.id (app-reported), a client of the real pipewire-pulse */
     int unverified;             /* who it is can't be established: treated as restricted while restricted apps run */
+    int daemon;                 /* pipewire-pulse's own connection: the streams of modules a pulse client loaded */
     int resolved;               /* app worked out (needs the client's info) */
     char app[FW_APP_MAX];
     uint32_t want, applied;     /* restrictions (FW_R_NO_MIC | FW_R_NO_CAMERA) to apply / applied */
@@ -263,6 +264,10 @@ static int guard_armed;
 /* What the client's app is restricted to, among what PipeWire hands out. */
 static uint32_t client_restrictions(PgClient *c) {
     if (!c->resolved) return 0;
+    /* pipewire-pulse's own connection carries the capture streams of modules any pulse client
+     * loaded (module-loopback from the microphone into a pipe or a TCP server): while restricted
+     * apps run they can't be told apart, so they are closed */
+    if (c->daemon) return guard_armed ? (FW_R_NO_MIC | FW_R_NO_CAMERA) : 0;
     if (c->unverified) return guard_armed ? (FW_R_NO_MIC | FW_R_NO_CAMERA) : 0;
     if (!c->app[0]) return 0;
     uint32_t f = 0;
@@ -273,33 +278,49 @@ static uint32_t client_restrictions(PgClient *c) {
 
 /* Sends the whole permission list of a restricted client (or the restore list when its
  * restriction is lifted): hidden = the capture nodes and ports of what it is restricted to, and
- * every other client. */
-static void apply_permissions(PgClient *c, uint32_t flags) {
-    if (!c->proxy) return;
+ * every other client. In chunks: PipeWire merges successive update_permissions, so a list longer
+ * than one message is never dropped (that would leave the client with every permission). */
+#define PERM_CHUNK 400
+static void send_perm_chunk(PgClient *c, const int32_t *pairs, int32_t n) {
     Pb b = { .n = 0 };
     size_t s = pb_begin(&b);
-    size_t count_at = b.n;
-    pb_int(&b, 0);                                              /* patched below */
+    pb_int(&b, n);
+    for (int32_t i = 0; i < n; i++) { pb_int(&b, pairs[2 * i]); pb_int(&b, pairs[2 * i + 1]); }
+    pb_end(&b, s);
+    if (b.err) { fprintf(stderr, "pwguard: permission chunk too long for %s\n", c->app); drop(); return; }
+    send_msg(c->proxy, 4, &b);                                  /* client.update_permissions */
+}
+
+static void apply_permissions(PgClient *c, uint32_t flags) {
+    if (!c->proxy) return;
+    int32_t pairs[2 * PERM_CHUNK];
     int32_t n = 0;
+#define PERM_ADD(id_, perm_) do { pairs[2 * n] = (int32_t)(id_); pairs[2 * n + 1] = (int32_t)(perm_); \
+                                 if (++n == PERM_CHUNK) { send_perm_chunk(c, pairs, n); n = 0; if (P.fd < 0) return; } } while (0)
     uint32_t perm_clients = flags ? 0 : PW_ALL;
-    for (int i = 0; i < MAX_NODES && !b.err; i++) {
+    for (int i = 0; i < MAX_NODES; i++) {
         PgNode *nd = &P.node[i];
         if (!nd->live || !nd->flag) continue;
         uint32_t want = (flags & nd->flag) ? 0 : PW_ALL;    /* restored when lifted */
-        pb_int(&b, (int32_t)nd->id); pb_int(&b, (int32_t)want); n++;
-        for (int k = 0; k < MAX_PORTS && !b.err; k++)
-            if (P.port[k].live && P.port[k].node == nd->id) { pb_int(&b, (int32_t)P.port[k].id); pb_int(&b, (int32_t)want); n++; }
+        PERM_ADD(nd->id, want);
+        for (int k = 0; k < MAX_PORTS; k++)
+            if (P.port[k].live && P.port[k].node == nd->id) PERM_ADD(P.port[k].id, want);
     }
-    for (int i = 0; i < MAX_CLIENTS && !b.err; i++) {
+    for (int i = 0; i < MAX_CLIENTS; i++) {
         PgClient *o = &P.cl[i];
         if (!o->live || o == c) continue;
-        pb_int(&b, (int32_t)o->id); pb_int(&b, (int32_t)perm_clients); n++;
+        PERM_ADD(o->id, perm_clients);
     }
-    pb_end(&b, s);
-    if (b.err) { fprintf(stderr, "pwguard: permission list too long for %s\n", c->app); return; }
-    memcpy(b.b + count_at + 8, &n, 4);
-    send_msg(c->proxy, 4, &b);                                  /* client.update_permissions */
-    c->applied = flags;
+#undef PERM_ADD
+    if (n) send_perm_chunk(c, pairs, n);
+    if (P.fd >= 0) c->applied = flags;
+}
+
+/* registry.destroy of a global (a stream, a node or a client we must not leave running) */
+static void destroy_global(uint32_t id) {
+    Pb b = { .n = 0 };
+    size_t s = pb_begin(&b); pb_int(&b, (int32_t)id); pb_end(&b, s);
+    send_msg(2, 2, &b);
 }
 
 /* Destroys the capture streams of a restricted client (the app gets its stream closed). */
@@ -308,11 +329,10 @@ static void kill_streams(void) {
         PgNode *nd = &P.node[i];
         if (!nd->live || !nd->stream) continue;
         PgClient *c = client_by_id(nd->client);
-        if (!c || !(c->want & nd->stream)) continue;
-        Pb b = { .n = 0 };
-        size_t s = pb_begin(&b); pb_int(&b, (int32_t)nd->id); pb_end(&b, s);
-        send_msg(2, 2, &b);                                     /* registry.destroy */
-        fprintf(stderr, "pwguard: %s is restricted (%s): its capture stream %u was closed\n", c->app,
+        /* an owner we don't track (no client slot) counts as restricted while restricted apps run */
+        if (c ? !(c->want & nd->stream) : !guard_armed) continue;
+        destroy_global(nd->id);
+        fprintf(stderr, "pwguard: %s is restricted (%s): its capture stream %u was closed\n", c ? (c->daemon ? "pipewire-pulse (a loaded module)" : c->app) : "an untracked client",
                 nd->stream == FW_R_NO_MIC ? "no-mic" : "no-camera", nd->id);
         nd->stream = 0;                                         /* once; the global_remove follows */
     }
@@ -320,6 +340,7 @@ static void kill_streams(void) {
 
 static void evaluate(PgClient *c) {
     c->want = client_restrictions(c);
+    if (c->daemon) return;              /* only its module streams are closed: it serves every pulse client */
     if (c->want != c->applied) apply_permissions(c, c->want);
 }
 
@@ -417,6 +438,47 @@ static int pulse_connections(int pp, int pid) {
     return -1;
 }
 
+/* The pid as the process itself sees it is pid: it lives in our PID namespace. A process in another
+ * one (a no-files app, a container) reports its inner pid, so a claim of its outer pid can only be
+ * someone else's. */
+static int same_pidns(int pid) {
+    char p[64], line[256];
+    snprintf(p, sizeof p, "/proc/%d/status", pid);
+    FILE *f = fopen(p, "re");
+    int ok = 0;
+    while (f && fgets(line, sizeof line, f)) {
+        if (strncmp(line, "NSpid:", 6)) continue;
+        int a, b;
+        ok = sscanf(line + 6, "%d %d", &a, &b) == 1 && a == pid;
+        break;
+    }
+    if (f) fclose(f);
+    return ok;
+}
+
+/* A process the user's service manager runs (systemd-run --user, D-Bus activation): outside every
+ * app scope, so an app could escape its restriction there. The sound services themselves don't count. */
+static int in_user_manager(int pid) {
+    char p[64], line[1024], unit[64];
+    snprintf(p, sizeof p, "/proc/%d/cgroup", pid);
+    FILE *f = fopen(p, "re");
+    int r = 0;
+    snprintf(unit, sizeof unit, "/user@%u.service/", (unsigned)getuid());
+    while (f && fgets(line, sizeof line, f)) {
+        if (strncmp(line, "0::", 3)) continue;
+        line[strcspn(line, "\n")] = 0;
+        if (!strstr(line, unit)) break;
+        static const char *const sound[] = { "/session.slice/pipewire.service", "/session.slice/wireplumber.service",
+                                             "/session.slice/pipewire-pulse.service", NULL };
+        r = 1;
+        size_t l = strlen(line);
+        for (int i = 0; sound[i]; i++) { size_t k = strlen(sound[i]); if (l > k && !strcmp(line + l - k, sound[i])) r = 0; }
+        break;
+    }
+    if (f) fclose(f);
+    return r;
+}
+
 static void resolve(PgClient *c) {
     c->app[0] = 0;
     c->unverified = 0;
@@ -430,13 +492,18 @@ static void resolve(PgClient *c) {
         int claims = 0;
         for (int i = 0; i < MAX_CLIENTS; i++) if (P.cl[i].live && P.cl[i].pulse && P.cl[i].pid_app == c->pid_app) claims++;
         int real = c->pid_app > 0 ? pulse_connections(c->pid_sec, c->pid_app) : -1;
-        if (real < claims) { c->unverified = 1; return; }
+        if (real < claims || !same_pidns(c->pid_app)) { c->unverified = 1; return; }
         pid = c->pid_app;
     }
     if (pid <= 0) { c->unverified = 1; return; }
     int r = appid_of_pid((unsigned)pid, c->app, sizeof c->app);
     if (r < 0) { c->unverified = 1; c->app[0] = 0; }  /* gone or unreadable */
-    else if (r > 0) c->app[0] = 0;                  /* not in any app's scope */
+    else if (r > 0) {                                /* not in any app's scope */
+        c->app[0] = 0;
+        /* escaped to the user's service manager while restricted apps run: treated as restricted
+         * (like lord-netperm's per-user union) */
+        if (guard_armed && in_user_manager(pid)) c->unverified = 1;
+    }
 }
 
 /* Re-arms the guard: is any restricted app of this session running? (its scope is there) */
@@ -449,7 +516,7 @@ static void arm(void) {
     while (d && (e = readdir(d)) && !armed) {
         char path[512], app[FW_APP_MAX];
         if (strncmp(e->d_name, "app-lordos-", 11)) continue;
-        snprintf(path, sizeof path, "/lordos-session-%u/%s", (unsigned)getuid(), e->d_name);
+        snprintf(path, sizeof path, "/system.slice/lordos.service/lordos-session-%u/%s", (unsigned)getuid(), e->d_name);
         if (appid_of_cgroup(path, app, sizeof app)) continue;
         armed = restrict_blocks(app, FW_R_NO_MIC) || restrict_blocks(app, FW_R_NO_CAMERA);
     }
@@ -469,12 +536,17 @@ static void on_global(PwPod body) {
     if (!strcmp(type, "PipeWire:Interface:Client")) {
         PgClient *c = NULL;
         for (int i = 0; i < MAX_CLIENTS && !c; i++) if (!P.cl[i].live) c = &P.cl[i];
-        if (!c) return;
+        uint32_t px = c ? proxy_new() : 0;
+        if (!c || !px) {
+            /* fail closed: a client we can't follow could record without its restriction */
+            fprintf(stderr, "pwguard: too many PipeWire clients: client %d was disconnected\n", (int)id);
+            destroy_global((uint32_t)id);
+            return;
+        }
         memset(c, 0, sizeof *c);
         c->live = 1;
         c->id = (uint32_t)id;
-        uint32_t px = proxy_new();
-        if (px) {
+        {
             Pb b = { .n = 0 };
             size_t s = pb_begin(&b); pb_int(&b, id); pb_str(&b, "PipeWire:Interface:Client"); pb_int(&b, 3); pb_int(&b, (int32_t)px); pb_end(&b, s);
             send_msg(2, 1, &b);                                 /* registry.bind → client.info follows */
@@ -489,7 +561,16 @@ static void on_global(PwPod body) {
         if (!flag && !stream) return;
         PgNode *nd = NULL;
         for (int i = 0; i < MAX_NODES && !nd; i++) if (!P.node[i].live) nd = &P.node[i];
-        if (!nd) return;
+        if (!nd) {
+            /* fail closed: a capture stream, or a capture node of a client that is restricted or
+             * not tracked, that we can't follow is destroyed */
+            PgClient *oc = cid ? client_by_id((uint32_t)strtoul(cid, NULL, 10)) : NULL;
+            if (guard_armed && (stream || !oc || oc->want)) {
+                fprintf(stderr, "pwguard: too many capture nodes: node %d was destroyed\n", (int)id);
+                destroy_global((uint32_t)id);
+            }
+            return;
+        }
         nd->live = 1;
         nd->id = (uint32_t)id;
         nd->flag = flag;
@@ -531,7 +612,9 @@ static void on_client_info(uint32_t proxy, PwPod body) {
     c->pid_app = ap ? atoi(ap) : 0;
     /* a pulse client only if the connection really comes from the session's pipewire-pulse; the
      * pulse.server.type property alone is the client's word */
-    c->pulse = dict_get(props, "pulse.server.type") != NULL && c->pid_sec > 0 && is_pulse_daemon(c->pid_sec);
+    int pulse_conn = c->pid_sec > 0 && is_pulse_daemon(c->pid_sec);
+    c->pulse = dict_get(props, "pulse.server.type") != NULL && pulse_conn;
+    c->daemon = pulse_conn && !c->pulse;
     arm();
     resolve(c);
     evaluate(c);
@@ -609,7 +692,7 @@ void pwguard_tick(void) {
     for (int i = 0; i < MAX_CLIENTS; i++) {
         PgClient *c = &P.cl[i];
         if (!c->live || !c->resolved) continue;
-        if (c->pulse || c->unverified) resolve(c);
+        if (c->pulse || c->unverified || !c->app[0]) resolve(c);   /* also: did it escape to user@ meanwhile? */
         evaluate(c);
     }
     kill_streams();

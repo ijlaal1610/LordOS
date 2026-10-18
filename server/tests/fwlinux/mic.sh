@@ -17,7 +17,7 @@ SC=$(scope fwmic)
 OUTD=$(mktemp -d); chmod 755 "$OUTD"
 GLOG=$OUTD/guard.log
 restrict $APP ""
-"$CLI" 60 > "$GLOG" 2>&1 &
+"$CLI" 120 > "$GLOG" 2>&1 &
 GPID=$!
 sleep 1
 # rec <tool> <seconds>: records inside the scope; prints the bytes of audio it got
@@ -108,6 +108,28 @@ n=$(spoof fake-pulse PIPEWIRE_PROPS="{ \"pulse.server.type\": \"unix\", \"applic
 n=$(spoof bad-pid PULSE_PROP="application.process.id=999999" timeout 3 parecord --raw)
 [ "$n" -lt 4096 ] && ok "pulse client claiming a pid that doesn't exist: $n bytes" || bad "unresolvable pid recorded $n bytes"
 kill $DECOY 2>/dev/null; wait $DECOY 2>/dev/null
+# a recorder in another PID namespace reports its inner pid, so its outer pid has a connection no
+# client claims: claiming that pid must not pass
+if unshare --user --pid --fork --map-current-user true 2>/dev/null; then
+    unshare --user --pid --fork --map-current-user timeout 12 parecord --raw "$OUTD/nsdecoy.raw" >/dev/null 2>&1 &
+    sleep 1.5
+    NSDECOY=$(pgrep -u "$U" -n -x parecord)
+    n=$(spoof claim-nspid PULSE_PROP="application.process.id=$NSDECOY" timeout 3 parecord --raw)
+    [ "$n" -lt 4096 ] && ok "claiming the outer pid of a process in another PID namespace: $n bytes" || bad "claimed outer pid recorded $n bytes"
+    pkill -u "$U" -x parecord 2>/dev/null; sleep 0.5
+fi
+
+echo "8. loading a module through pipewire-pulse (a loopback from the microphone): its stream is closed"
+SRC=$(pactl get-default-source 2>/dev/null)
+NULLMOD=$(in_scope "$SC" pactl load-module module-null-sink sink_name=fwmicnull 2>/dev/null)
+LOOPMOD=$(in_scope "$SC" pactl load-module module-loopback source="$SRC" sink=fwmicnull 2>/dev/null)
+sleep 2
+if grep -q "pipewire-pulse (a loaded module) is restricted (no-mic)" "$GLOG"; then ok "the loopback's capture stream was closed"
+elif [ -z "$LOOPMOD" ]; then ok "the loopback could not start"
+else bad "a module's capture stream stayed open"; fi
+[ -n "$LOOPMOD" ] && pactl unload-module "$LOOPMOD" 2>/dev/null
+[ -n "$NULLMOD" ] && pactl unload-module "$NULLMOD" 2>/dev/null
+
 kill $GPID 2>/dev/null; wait $GPID 2>/dev/null
 rm -rf "$OUTD"
 fwlinux_done

@@ -3,12 +3,20 @@
 #include "../fw/rules.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
+/* Only the root-owned session subtree of lordos.service counts: a cgroup the user creates under
+ * user@<uid>.service with the same names must never pose as an app. */
 int appid_of_cgroup(const char *path, char *out, size_t n) {
-    const char *p = strstr(path, "/lordos-session-");
-    if (!p || !(p = strchr(p + 1, '/'))) return -1;
-    p++;
+    static const char base[] = "/system.slice/lordos.service/lordos-session-";
+    if (strncmp(path, base, sizeof base - 1)) return -1;
+    const char *p = path + sizeof base - 1;
+    char *end;
+    unsigned long uid = strtoul(p, &end, 10);
+    if (end == p || *end != '/' || uid != (unsigned long)getuid()) return -1;
+    p = end + 1;
     char scope[FW_APP_MAX + 32];
     size_t l = strcspn(p, "/\n");
     if (l < 18 || l >= sizeof scope || strncmp(p, "app-lordos-", 11) || strncmp(p + l - 6, ".scope", 6)) return -1;
