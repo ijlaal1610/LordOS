@@ -7,8 +7,9 @@ access" permission on Android and other systems. It is built in steps:
 |---|---|---|
 | 1 | Rule store, the decision maker and the names learned from DNS (`server/src/fw`), with tests | **done** |
 | 2 | Enforce it in the kernel with cgroup hooks: the root service `lord-netperm` (`server/src/netperm`) | **done** (VM 122) |
-| 3 | Monitor: the "Rule" column and the counters | **done**: per-app switch and counters; no per-destination switch |
+| 3 | Monitor: the "Rule" column and the counters | **done**: per-app switch, counters and "Allow / Block this domain" per destination |
 | 4 | Settings: "Trusted apps" and "Restricted apps" | **done**: lists and mode (silent / off) |
+| 4b | Settings: network rules by app (domains, addresses, networks) | **done** (VM 122), see [Rules by app](#rules-by-app-settings-and-monitor) |
 | 5 | "Ask" mode | planned (see "The ask mode") |
 
 Step 1 is C code only, with no daemon and without touching the kernel or the network (step 2,
@@ -586,7 +587,9 @@ the SDK calls once per second while the Monitor's Network tab is open.
 | `state()` | `{ mode, trusted, restricted: { app: [restriction] } }` |
 | `appRule(app)` / `setAppRule(app, 'allow'\|'deny'\|null)` | the switch's `{app, out, any}` rule |
 | `setTrusted(app, on)`, `setRestricted(app, [restriction])`, `setMode('silent'\|'ask'\|'off')` | lists and mode |
-| `rules(app)`, `addRule({ app, dir, dst, port, proto, action })`, `removeRule(id)` | rules (domains, networks, ports) |
+| `rules(app)`, `addRule({ app, dir, dst, port, proto, action })`, `removeRule(id)` | rules (domains, networks, ports); each rule from `rules()` also has `when` and `lastMatch` (Unix seconds, 0 = not seen) |
+| `updateRule(id, { dir, dst, port, proto, action })` | replaces a rule of the same app; if the new one can't be added, the old one is put back |
+| `ruleApps()` | the apps that have at least one rule |
 | `poll()` | `{ counts, events }` |
 | `blocks(app, restriction)` | `true` if the app is restricted in it (`sdk/notify.js`) |
 
@@ -717,9 +720,13 @@ over TCP on 127.0.0.1.
   That would need `cgroup_skb/ingress`, which runs per packet.
 - **Per-port rules with direction `in`** are applied at `bind`, with an unknown address.
 - **The "ask" mode** is applied as silent.
-- **Per-destination switches** in the Monitor: not yet. The API (`lord.fw.addRule`) exists.
-- **Host names** still aren't shown in the Monitor. `lord-netperm` has them, but doesn't pass them
-  to the session.
+- **Per-destination rules** in the Monitor: done ("Allow / Block this domain", see
+  [Rules by app](#rules-by-app-settings-and-monitor)).
+- **Host names** still aren't passed to the session: `lord-netperm` has them, but its `EVENT`
+  notice carries only the address. The Monitor already reads a `host` (or `hosts`) field if a
+  notice brings one; until then its "Block this domain" is prefilled with the address and the user
+  types the domain.
+- **Domain rules and encrypted DNS:** see [What domain rules can't see](#what-domain-rules-cant-see).
 
 ### Screenshots (VM 122)
 
@@ -733,6 +740,120 @@ over TCP on 127.0.0.1.
   ![settings](firewall-settings.png)
 - "LAN only" from Settings: no internet, the gateway yes. ![LAN only](firewall-lan-only.png)
 
+
+## Rules by app (Settings and Monitor)
+
+The rules the store always supported (`lord.fw.addRule`: domains, wildcards, addresses, networks,
+ports, protocols) now have screens:
+
+```
+apps/monitor/FwRules.jsx     Settings → Privacy → "Network rules by app" (registerPrivacySection)
+apps/monitor/RuleSheet.jsx   the add / edit sheet, shared with the Monitor
+apps/monitor/Network.jsx     Monitor → Network: "Allow / Block this domain" on an app's destinations
+sdk/fwrule.js                checks what is typed, orders rules by precedence (fwRule in @lordos/sdk)
+server/tests/fw_dest_cases.txt, fwdest_test.c, fwrule_input_test.mjs   the parser tests
+```
+
+**Settings → Privacy → Network rules by app.** One row per app that has rules (plus any app added
+with "Add app…" or opened from the Monitor). Open, an app shows:
+
+- **Default for this app:** "Allow all" (no `{out, any}` rule: what no rule covers follows the mode)
+  or "Block all except rules" (the `{out, any, deny}` rule, the same one the Monitor's switch writes).
+- **Its rules**, each with Allow / Block, the destination, its kind (exact domain, domain and
+  subdomains, address, network…), port, protocol and **when it last matched**, with Edit and Delete
+  (Delete asks once more in the row).
+- **Add rule…** opens the sheet: action, destination, optional port (`443` or `8000-8080`) and
+  protocol (any, TCP, UDP). What is typed is checked as it is typed and the sheet says what the
+  destination covers ("example.com and every name under it", "a network of 256 addresses") or what
+  is wrong (a host bit outside the prefix in `10.0.0.1/8`, a bad label, a port out of range). A bare
+  "any" is refused there: that is the app's default, set above.
+
+**There is no priority to reorder.** `fw_decide` has no rule order: of the rules that match a
+connection, the most specific destination wins (exact domain > longer wildcard > shorter wildcard
+> longer prefix > shorter prefix > lan/internet > any), then the smaller port range, a concrete
+protocol, deny over allow, and the newest (see [Precedence](#precedence)). The list shows each app's
+rules in exactly that order (`sortByPrecedence` in `sdk/fwrule.js`, a copy of `consider` in
+`rules.c`) and the footer explains it, so the top rule is the one that would win.
+
+**Monitor → Network.** Selecting an app's destination (in the list or in the detail pane) offers
+"Allow this domain" / "Block this domain" for that app. The sheet opens over the window:
+
+- prefilled with the name the system resolver gave for that address when the firewall notice
+  carries one, with the exact name and `*.parent` as one-click choices;
+- without a name (today, see Known limits) it says so and is prefilled with the address, which the
+  user can replace with a domain.
+
+Short connections (a `curl`) close before the next sample, so besides the open sockets each app
+lists the destinations `lord-netperm` reported recently ("recent connection" / "recently denied").
+The detail pane also links to "Rules for this app" (Settings → Privacy, with that app open).
+
+**Last match.** `lord-netperm`'s `EVENT` notices carry the rule that decided (`"by":"rule"`,
+`"rule": N`). lord-server keeps, per rule, the time it last saw one (memory only, like the counters;
+`lastMatch` in `rules()`), and Settings reads it every 5 s while shown. Two details:
+
+- `lord-netperm` numbers rules on its own: on every reload it reads `firewall.json` into a new
+  store, so its ids are 1, 2, 3… in file order. After every save `js_fw.c` reads the saved text the
+  same way and maps those ids to its own rules by app, direction, destination, ports and protocol.
+- Notices are deduplicated per destination for 5 s, and only those this session received count:
+  "matched just now" means within the last minute, not per packet.
+
+### What domain rules can't see
+
+A connection only carries an address. Domains are matched with the names the **system resolver**
+returned for that address ([Where the names come from](#where-the-names-come-from)), never with
+what the app says. So:
+
+- An app that resolves names **by itself** with encrypted DNS (DNS over HTTPS or over TLS inside a
+  browser, for example) never goes through the system resolver: its names aren't learned, and a
+  domain rule doesn't see its connections. An "allow only example.com" app is still safe (an
+  address the resolver never gave isn't in the trie, so it falls to the default and is blocked),
+  but a "block example.com" rule doesn't stop it.
+- **Address and network rules, the app's default and its restrictions still apply** to those
+  connections: they don't depend on names.
+- Names belong to the system, not to one app: if another program resolved `example.com`, its
+  addresses count as `example.com` for every app (they are real answers).
+
+Settings says this in a footer under the rules, in the user's language.
+
+### Tests
+
+- `build/fwdest-test` (in `make -C server test`) runs every destination in
+  `server/tests/fw_dest_cases.txt` (exact and wildcard domains, upper case and trailing dots,
+  punycode, bad labels, IPv4 and IPv6 addresses and networks, host bits outside the prefix, bad
+  prefixes, `::ffff:` mapped addresses, leading zeros) through `fw_parse_dest` + `fw_format_dest`:
+  62 cases, 0 failures on VM 122.
+- `server/tests/fwrule_input_test.mjs` (run by `run_suites.sh` when `node` is installed, otherwise
+  "skipped: needs node") runs the same file through the sheet's parser, plus ports, protocols, the
+  default rule and the precedence order: 99 checks. Both parsers read one file, so they can't drift.
+- End to end on VM 122 (`lord-netperm` from the package, the new `lord-server` and bundle): a
+  `.desktop` "Curl test" (`foot -e` a loop of `curl https://example.com` and
+  `https://www.debian.org`, every 4 s) started from the launcher runs in
+  `app-lordos-curltest.scope`. From the Monitor, "Block this address" → typed `*.example.com` →
+  Add rule:
+
+  | Time | `example.com` | `www.debian.org` |
+  |---|---|---|
+  | before the rule | 200 | 200 |
+  | rule added (14:55:02) | `curl: (7) Failed to connect … Could not connect to server` from 14:55:07 | 200 |
+  | rule deleted in Settings (14:58:18) | 200 at 14:58:18 | 200 |
+
+  `lord-netperm` logged each denial for `desktop:curltest` (`tcp 172.66.147.243:443 (rule)`, the
+  other address, and UDP 443 for HTTP/3). Edit (`10.0.0.0/8` → `10.1.0.0/16`) replaced the rule in
+  `firewall.json` in place.
+
+### Screenshots (VM 122)
+
+- Settings → Privacy → Network rules by app, rules in precedence order with their last match:
+  ![settings light](firewall-domain-rules-settings-light.png)
+  ![settings dark](firewall-domain-rules-settings-dark.png)
+- The sheet: in the Monitor, "Block this address" changed to `*.example.com` (light); in Settings,
+  a network with a host bit outside the prefix (dark):
+  ![sheet light](firewall-domain-rules-sheet-light.png)
+  ![sheet dark](firewall-domain-rules-sheet-dark.png)
+- Monitor → Network with the rule on: the app's recent destinations, "recently denied", and the
+  actions on the selected one:
+  ![monitor light](firewall-domain-rules-monitor-light.png)
+  ![monitor dark](firewall-domain-rules-monitor-dark.png)
 
 ## How the next steps plug in
 

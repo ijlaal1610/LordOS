@@ -29,7 +29,9 @@ itself.
 - **Left:** search (by app, address or country) and one row per app with its icon, number of
   connections, a traffic bar (received in green, sent in orange, relative to the app that moved
   the most), the bytes and the **Rule** column: a per-app allow/deny switch that `lord-netperm`
-  enforces in the kernel (see "Phase 2"). Each app expands to show its destinations (IP and country). At the bottom,
+  enforces in the kernel (see "Phase 2"). Each app expands to show its destinations (IP and country,
+  plus the ones the firewall reported recently: "recent connection" or "recently denied"); a click
+  on one selects it in the right panel. At the bottom,
   the current download and upload speed and per-second bars for the last 60 s.
 - **Center:** the map fills the whole height of the column. It has an arc from "This computer" to
   each country, one dot per country (bigger the more connections) and pill labels with the name
@@ -52,8 +54,11 @@ itself.
   - no selection: traffic (current and since boot), allowed and denied connections (0: there are
     no rules yet), incoming, listening and from other users, and the apps and destinations with the
     most traffic;
-  - with an app chosen: executable path, user, PIDs, rule, bytes and speed, ports and protocols,
-    listening ports and addresses;
+  - with an app chosen: executable path, user, PIDs, rule, a "Rules for this app" link (Settings
+    → Privacy with that app open), bytes and speed, ports and protocols, listening ports and
+    addresses. A selected address offers **Allow / Block this domain** (or "this address" when no
+    name is known) for that app: a sheet prefilled with the destination (see `FIREWALL.md`, "Rules
+    by app");
   - with a country chosen: bytes, apps and addresses (with ports and app).
 
 Hosts are shown as IPs. There is no reverse DNS: asking for an IP's name sends it to the DNS
@@ -208,19 +213,22 @@ two switches, saved in `settings.monitor`:
 - The **allowed** and **denied** counters in the summary and for each app come from the kernel.
 - An app with no open connections but with denied attempts still shows up in the list.
 - Each process is attributed to the scope of the app it runs in (`/proc/<pid>/cgroup`).
+- **Per-destination rules:** "Allow / Block this domain" on an app's destination writes a rule for
+  that app (domain, `*.domain`, address or network, optional port and protocol), and the app's
+  rules are listed and edited in Settings → Privacy → Network rules by app. Domains match the names
+  the system resolver returned; an app with its own encrypted DNS is held only by address rules.
+  Screenshots: [light](firewall-domain-rules-monitor-light.png),
+  [dark](firewall-domain-rules-monitor-dark.png).
 
 **Planned:**
 
 
-- **Firewall** per app and per domain, connection alerts and silent mode, on the same screen:
-  - each connection already carries `verdict` (always `'allow'` today) and is grouped by a stable
-    key (`appKey`: `lordos`, `desktop:<id>` or the executable path);
-  - rules would be `{ appKey, host | country, port, protocol, direction, verdict }`;
-  - the Rule column and the allowed/denied counters are already in the interface.
+- **Connection alerts** (the "ask" mode, `FIREWALL.md`) and rules per country.
 - **Devices:** `monitor.deviceUsers()` → `[{ kind: 'camera' | 'microphone', app, name, pid }]` and
   the `monitorDevices` store (already exported, empty).
-- **Host names** without asking anyone: for example, the names the apps themselves resolved
-  (requires a local resolver).
+- **Host names** without asking anyone: `lord-netperm` already learns them from the system
+  resolver; its notices don't carry them to the session yet. The Network tab shows a `host` /
+  `hosts` field as soon as a notice brings one.
 - Saved history and usage alerts.
 
 ## Measurements

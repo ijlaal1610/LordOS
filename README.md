@@ -31,8 +31,10 @@ it still runs regular Linux apps such as Chromium, Firefox, GTK and Qt programs.
 3. **Secure by design.**
    - Third-party apps run sandboxed in their own process and ask before using the camera,
      microphone, files or network.
-   - Per-app network rules enforced by the kernel (allow, block, LAN only), with per-domain
-     rules coming, and restrictions for LordOS apps (camera, microphone, screen, files and more).
+   - Per-app network rules enforced by the kernel (allow, block, LAN only, and per domain,
+     address or network, from Settings or straight from the Monitor), and restrictions for LordOS
+     apps (camera, microphone, screen, files and more). Domain rules use the names the system
+     resolver returned, so an app with its own encrypted DNS is held only by its address rules.
    - A built-in Monitor shows network and hardware activity per app, with a world map.
    - Signed packages, capture-protected windows and an encrypted password vault.
 4. **Complete and polished.** 29 native apps (Files, Mail, Calendar, Contacts,

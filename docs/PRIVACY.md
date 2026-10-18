@@ -333,6 +333,13 @@ development) the apps run without a scope, with a warning.
   permission: a restricted app is refused without a prompt even if it was allowed before, and
   restricting a running app takes its camera and microphone away at once, like revoking. See
   [FIREWALL.md](FIREWALL.md#non-network-restrictions).
+- **Network rules by app** (Settings → Privacy, or "Allow / Block this domain" in Monitor →
+  Network): allow or block an exact domain, `*.domain`, an address or a network, optionally with a
+  port and protocol, and an app default of "allow all" or "block all except the rules". The most
+  specific rule wins. Domains are matched with the names the **system resolver** returned: an app
+  that resolves names with its own encrypted DNS (DNS over HTTPS inside a browser, for example)
+  can't be matched by name, so for it only address and network rules, its default and its
+  restrictions apply. See [FIREWALL.md](FIREWALL.md#rules-by-app-settings-and-monitor).
 
 Permissions: `files`, `clipboard`, `notifications`, `network`, `camera`, `microphone`, `screen`,
 `listen`, `usb`, `bluetooth`, `apps`.
