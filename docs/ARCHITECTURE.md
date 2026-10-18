@@ -50,6 +50,7 @@ like React Native but on top of our display server.
 | `server/src/print/`, `js_print.c`, `sdk/printdialog.jsx`, `apps/scanner` | **M9** | Printing: our own IPP client against CUPS, our own mDNS, eSCL scanners, the system print dialog (see `PRINTING.md`) |
 | `server/src/media/`, `js_media.c`, `sdk/media.js`, `apps/{photos,player,screenshots,camera,recorder}` | **M9** | Media: the sandboxed helper `lord-media` (FFmpeg, libva) and the Photos, Player, Screenshots, Camera and Recorder apps; `media` node, audio over shared memory with the PipeWire stream in lord-server, protected windows in screenshots, recording and remote desktop (see `MEDIA.md`) |
 | `server/src/netperm/`, `server/src/fw/`, `js_fw.c` | **M8** | Per-app firewall: the root service `lord-netperm` enforces the rules with cgroup BPF in the sessions; Rule column in the Monitor and Trusted / Restricted apps in Settings (see `FIREWALL.md`) |
+| `server/src/fan/`, `js_fan.c`, `sdk/cooling.jsx` | **M8** | Fans: the root service `lord-fand` drives them by temperature; Settings → Cooling and Monitor → Cooling (see `FANS.md`) |
 | `server/src/monitor/`, `js_monitor.c`, `apps/monitor/` | **M8** | Monitor: CPU, memory, network, disks, processes and per-app connections with a map; its own thread only while the app is open, sock_diag and country by IP from a local database (see `MONITOR.md`) |
 | `server/src/vault/`, `js_vault.c`, `sdk/vault.js`, `apps/passwords` | **M9** | Passwords and the system keyring: the sandboxed helper `lord-vault` (Monocypher: XChaCha20-Poly1305, Argon2id), own `.lvault` format, FIDO2/CTAP2 client, session keyring opened at login, Secret Service on D-Bus with own code (see `PASSWORDS.md`) |
 | `server/src/net/netd.c`, `remote/netsup.c` | **M9** | `lord-netd`: the network belongs to the system. A root service started and supervised by `lord-sessiond` at boot, serving the `net-*` actions for every session (see `NETWORK.md`) |
@@ -109,6 +110,9 @@ Since M8 there are two programs, and since M9 two helpers:
 - **`lord-netperm`** (root, `lord-netperm.service`): per-app network permissions. It attaches its
   cgroup BPF programs to `lordos.service` and reads each user's rules. No network of its own and no
   execution. See `FIREWALL.md`.
+- **`lord-fand`** (root, `lord-fand.service`): fans by temperature from the first boot (the
+  Raspberry Pi 5 fan header and motherboard PWM chips). No capabilities, no network, executes
+  nothing; sessions pick a profile over `/run/lordos/fand.sock`. See `FANS.md`.
 
 - **`lord-doc`** (M9): the documents helper. `lord-server` launches it when needed, with a
   fixed path (next to its binary) and no arguments. It runs as the user, without network and sandboxed

@@ -294,6 +294,7 @@ mkdir -p "$CH/var/lib/lordos/rpi"
 : > "$CH/var/lib/lordos/rpi/resize-pending"
 : > "$CH/var/lib/lordos/rpi/firstboot-pending"
 in_root "$CH" systemctl enable lordos-rpi-firstboot.service lordos.service > /dev/null
+in_root "$CH" systemctl enable lord-fand.service > /dev/null    # fans by temperature from the first boot (docs/FANS.md)
 in_root "$CH" systemctl mask getty@tty1.service > /dev/null
 in_root "$CH" systemctl mask systemd-networkd-wait-online.service > /dev/null 2>&1 || true
 # no root password: the emergency console stays locked (like the installed system)
@@ -320,6 +321,8 @@ place_kernel() {     # version, kernel name on the FAT, initramfs name
 place_kernel "$KV2712" kernel_2712.img initramfs_2712
 place_kernel "$KV8" kernel8.img initramfs8
 install -m 644 "$RPI/boot/firmware/config.txt" "$CH/boot/firmware/config.txt"
+# case accessories (Settings → Cooling, admin action rpi-case); config.txt includes it
+printf '# lordos-case.txt: written by LordOS (Settings, Cooling). No case accessories.\n' > "$CH/boot/firmware/lordos-case.txt"
 install -m 644 "$RPI/boot/firmware/lordos-user.txt.example" "$CH/boot/firmware/lordos-user.txt.example"
 
 rm -f "$CH/usr/sbin/policy-rc.d" "$CH/usr/bin/qemu-aarch64-static"

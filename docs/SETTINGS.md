@@ -1,4 +1,4 @@
-# Settings: Displays, Bluetooth, Energy, Notifications, Date & Time, Default Apps
+# Settings: Displays, Bluetooth, Energy, Cooling, Notifications, Date & Time, Default Apps
 
 Six Settings pages laid out like the system settings of popular desktop systems, with the hardware side in
 `server/src/hw/` (C, libc only) and the session side in `sdk/hardware.jsx`, `sdk/defaults.js` and
@@ -20,6 +20,7 @@ pairing, Sound with a Bluetooth headset, a Linux app's notification and Files' "
 | Date & Time | with Language & Region | `apps/settings/DateTime.jsx`, `hw/hw.c` (timedated) |
 | Default Apps | with Keyboard and Trackpad | `apps/settings/DefaultApps.jsx`, `sdk/defaults.js`, `hw/defaults.c`, `hw/mimeapps.c` |
 | Energy (Battery) | with Privacy | `apps/settings/Power.jsx`, `hw/power.c`, `hw/ppd.c` |
+| Cooling | after Energy | `apps/settings/Cooling.jsx`, `sdk/cooling.jsx`, `ui/js_fan.c` → `lord-fand` (`server/src/fan/`); see `FANS.md` |
 
 Shared pieces: `apps/settings/ui.jsx` (a row with a hint, a pop-up button, the page header) on top of
 the SDK's `GroupBox` (`docs/DESIGN.md`). All text goes through `t()` in the `prefs` namespace
@@ -43,7 +44,9 @@ the time fields keep `direction: 'ltr'`.
         │
         ▼  root work: closed admin actions (hw/hw_admin.c)
  admin.c ─ display-brightness, power-profile, power-suspend, power-buttons, time-ntp, time-set,
-           bt-unblock
+           bt-unblock, rpi-case
+
+ Cooling: lord.fan (ui/js_fan.c) ── /run/lordos/fand.sock ── lord-fand (root service, src/fan)
 ```
 
 Nothing polls. Hotplugged displays, batteries and chargers arrive as kernel uevents (one
@@ -209,6 +212,20 @@ with real hardware** (no controller in the VMs).
   `systemctl reload systemd-logind`. LordOS never grabs the ACPI power button (only keyboards, mice
   and tablets are grabbed), so logind sees it. Lid rows only show with a battery.
 
+## Cooling
+
+![Cooling](fans-settings.png)
+
+Fans by temperature, from the first boot, by the root service `lord-fand` (all the details in
+`FANS.md`). The page draws the detected hardware (the fan turns with the real duty and the fins warm
+with the temperature), the profile (System, Quiet, Balanced, Performance, Always on, Custom), the
+curve with its hysteresis bands and the live point (the custom curve's points are dragged on it),
+**Heavy work** (full speed for 30 min, 1 h, 2 h or until turned off) and, on a Raspberry Pi 5, the
+**Case** (`rpi-case`). Without controllable fans it says so ("No controllable fans", or "Fans
+managed by the firmware" with their RPM). Only administrators change anything: `lord-fand` checks
+the peer and reports `canChange`. Monitor has the same view read-only, with a history and a
+"Full speed for 30 min" button.
+
 ## Notifications
 
 ![Notifications](ajustes-notificaciones-oscuro.png)
@@ -284,6 +301,7 @@ All in `server/src/hw/hw_admin.c`, in the `actions` table through `HW_ADMIN_ACTI
 | `time-ntp` | `on` \| `off` | admin | `/usr/bin/timedatectl set-ntp` |
 | `time-set` | `YYYY-MM-DD HH:MM:SS` | admin | `/usr/bin/timedatectl set-time` |
 | `bt-unblock` | — | anyone | rfkill "unblock all Bluetooth" on `/dev/rfkill` |
+| `rpi-case` | `none` \| `argon-one-v5` | admin | Raspberry Pi 5 only: writes `/boot/firmware/lordos-case.txt` (fixed text, included from `config.txt`; see `FANS.md`) |
 
 The validators are unit-tested in `build/settings-hw-test`.
 
@@ -294,6 +312,8 @@ The validators are unit-tested in `build/settings-hw-test`.
   sunset in London, Buenos Aires, Tokyo and Svalbard, schedule across midnight, zone1970.tab),
   mimeapps.list editing and globs2, the power_supply reader, the admin validators. 129 checks.
 - `build/bt-test` (`make test`): BlueZ parsing. 32 checks.
+- `build/fan-test` (`make test`): curves, hysteresis, `fan.json`, the socket requests and the fan
+  driver on fake sysfs trees (see `FANS.md`).
 - On VM 118: live mode changes with revert and keep, persistence across a session restart,
   rotation, software Night Light, Bluetooth with `btvirt`, power profiles with
   power-profiles-daemon (placeholder driver), the logind drop-in, NTP and manual time, Linux

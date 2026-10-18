@@ -56,11 +56,12 @@ export function CoolingSettings() {
   const caseId = useStore(fanCase);
   const [err, setErr] = useState('');
   const [caseMsg, setCaseMsg] = useState(null);
-  const isAdmin = admin.available();
   const variant = coolingVariant(s, caseId);
   const run = (code) => setErr(code ? tr(`errors.${code}`) : '');
 
   if (s === undefined) return <Stack><Note>{tr('cooling.loading')}</Note></Stack>;
+  // lord-fand says whether this user may change the fans (an administrator); the case is an admin action
+  const isAdmin = !!s?.canChange;
   const controllable = !!s && s.fans.length > 0;
   const custom = s?.custom?.length ? s.custom : PRESET_CURVE;
   const shown = s?.profile === 'custom' ? custom : s?.curve || [];

@@ -83,37 +83,45 @@ export function heatColor(temp, alpha = 1) {
 
 // ---- the spinning fan ----
 
-// Rotation that follows the duty: up to 1.5 turns per second at 100 %, eased; stops (no timer) at
-// 0 %, while the window is minimized and with Reduce motion.
+// Rotation that follows the duty: up to 1.2 turns per second at 100 %, eased; stops (no timer) at
+// 0 %, while the window is minimized and with Reduce motion. The rotors are turned with
+// lord.setStyle on their nodes (no React render per frame): lord-server repaints a cached raster.
 function useSpin(pct) {
   const { id } = useAppWindow() || {};
   const hidden = useStore(windows, (ws) => !!ws.find((w) => w.id === id)?.minimized);
-  const effects = useStore(settings, (s) => !s.reduceMotion);
-  const [angle, setAngle] = useState(0);
-  const st = useRef({ v: 0, a: 0 });
-  const target = effects && !hidden ? Math.max(0, Math.min(100, pct || 0)) / 100 * 1.5 : 0;
+  const motion = useStore(settings, (s) => !s.reduceMotion);
+  const st = useRef(null);
+  if (!st.current) st.current = { v: 0, a: 0, rotors: new Map() };
+  const s = st.current;
+  const target = motion && !hidden ? Math.max(0, Math.min(100, pct || 0)) / 100 * 1.2 : 0;
   useEffect(() => {
-    const s = st.current;
-    if (!effects || hidden || (target === 0 && s.v < 0.01)) { s.v = target; return undefined; }
+    if (!motion || hidden || (target === 0 && s.v < 0.01)) { s.v = target; return undefined; }
     const FPS = 20;
     let tm = null;
     const step = () => {
       s.v += (target - s.v) * 0.12;
       if (target === 0 && s.v < 0.01) { s.v = 0; return; }
       s.a = (s.a + s.v * 360 / FPS) % 360;
-      setAngle(s.a);
+      for (const [node, k] of s.rotors) call(() => lord.setStyle(node, 'transform', `rotate(${(s.a * k).toFixed(1)}deg)`));
       tm = setTimeout(step, 1000 / FPS);
     };
     tm = setTimeout(step, 1000 / FPS);
     return () => clearTimeout(tm);
-  }, [target, effects, hidden]);
-  return angle;
+  }, [target, motion, hidden]);
+  return s;
 }
 
-function Fan({ size, pct, frame, blade, hub, angle }) {
+function Fan({ size, frame, blade, hub, spin, k = 1 }) {
   const b = Math.round(size * 0.42), bh = Math.round(size * 0.2);
+  const rotor = useRef(null);
+  useEffect(() => {
+    const n = rotor.current?.id;
+    if (!spin || n == null) return undefined;
+    spin.rotors.set(n, k);
+    return () => spin.rotors.delete(n);
+  }, [spin, k]);
   return h(View, { style: { width: size, height: size, borderRadius: size / 2, backgroundColor: frame, alignItems: 'center', justifyContent: 'center' } },
-    h(View, { style: { position: 'absolute', left: 0, top: 0, width: size, height: size, transform: `rotate(${angle}deg)` } },
+    h(View, { ref: rotor, style: { position: 'absolute', left: 0, top: 0, width: size, height: size, transform: `rotate(${((spin?.a || 0) * k).toFixed(1)}deg)` } },
       [0, 1, 2, 3, 4].map((i) => h(View, { key: i, style: { position: 'absolute', left: 0, top: 0, width: size, height: size, transform: `rotate(${i * 72}deg)` } },
         h(View, { style: { position: 'absolute', left: size / 2 - 1, top: size / 2 - bh, width: b, height: bh, borderTopRightRadius: bh, borderBottomRightRadius: bh / 3,
           borderTopLeftRadius: 2, backgroundColor: blade } })))),
@@ -141,7 +149,7 @@ function palette(dark) {
       blade: '#eef1f5', hub: '#ffffff', tower: 'linear-gradient(170deg, #50545c, #33363c)', glass: 'rgba(150,180,220,0.18)' };
 }
 
-function ArgonArt({ p, pct, temp, angle, W, H }) {
+function ArgonArt({ p, pct, temp, spin, W, H }) {
   const cw = Math.round(W * 0.78), ch = Math.round(H * 0.6), x = (W - cw) / 2, y = Math.round(H * 0.16);
   const glow = heatColor(temp, 0.55);
   return h(View, { style: { position: 'absolute', left: x, top: y, width: cw, height: ch } },
@@ -155,7 +163,7 @@ function ArgonArt({ p, pct, temp, angle, W, H }) {
       // round blower window with the fan
       h(View, { style: { position: 'absolute', right: 22, top: (ch - ch * 0.62) / 2 - 4, width: ch * 0.62, height: ch * 0.62, borderRadius: ch * 0.31,
         backgroundColor: p.slot, alignItems: 'center', justifyContent: 'center', border: `2px solid ${p.aluEdge}` } },
-        h(Fan, { size: ch * 0.54, pct, frame: p.slot, blade: p.blade, hub: p.hub, angle })),
+        h(Fan, { size: ch * 0.54, frame: p.slot, blade: p.blade, hub: p.hub, spin })),
       // front edge: two USB, the audio jacks and a light
       h(View, { style: { position: 'absolute', left: 18, bottom: 9, flexDirection: 'row', alignItems: 'center', gap: 7 } },
         h(View, { style: { width: 18, height: 7, borderRadius: 1.5, backgroundColor: p.slot, border: `1px solid ${p.port}` } }),
@@ -165,7 +173,7 @@ function ArgonArt({ p, pct, temp, angle, W, H }) {
         h(View, { style: { width: 4, height: 4, borderRadius: 2, marginLeft: 6, backgroundColor: pct > 0 ? '#30d158' : p.port } }))));
 }
 
-function CoolerArt({ p, pct, temp, angle, W, H }) {
+function CoolerArt({ p, temp, spin, W, H }) {
   const bw = Math.round(W * 0.66), bh = Math.round(H * 0.68), x = (W - bw) / 2, y = Math.round(H * 0.14);
   const glow = heatColor(temp, 0.6);
   const hs = Math.round(bh * 0.66);
@@ -185,31 +193,31 @@ function CoolerArt({ p, pct, temp, angle, W, H }) {
         h(View, { style: { position: 'absolute', left: 6, right: 6, top: 6, bottom: 6, flexDirection: 'row', justifyContent: 'space-between' } },
           h(Fins, { n: 9, w: 3, len: hs - 12, span: hs * 1.25 - 12, color: p.fin, glow, vertical: true })),
         h(View, { style: { width: hs * 0.8, height: hs * 0.8, borderRadius: hs * 0.4, backgroundColor: p.frame, alignItems: 'center', justifyContent: 'center', border: `2px solid ${p.aluEdge}` } },
-          h(Fan, { size: hs * 0.72, pct, frame: p.frame, blade: p.blade, hub: p.hub, angle })))));
+          h(Fan, { size: hs * 0.72, frame: p.frame, blade: p.blade, hub: p.hub, spin })))));
 }
 
-function PcArt({ p, pct, temp, angle, W, H }) {
-  const tw = Math.round(H * 0.82), th = Math.round(H * 0.82), x = (W - tw) / 2, y = Math.round(H * 0.08);
+function PcArt({ p, temp, spin, W, H }) {
+  const tw = Math.round(H * 1.08), th = Math.round(H * 0.84), x = (W - tw) / 2, y = Math.round(H * 0.08);
   const glow = heatColor(temp, 0.6);
   return h(View, { style: { position: 'absolute', left: x, top: y, width: tw, height: th } },
     h(View, { style: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 12, background: p.tower, boxShadow: `0 10px 24px ${p.shadow}`, border: `1px solid ${p.aluEdge}` } },
       // glass side panel with the board inside
       h(View, { style: { position: 'absolute', left: 10, right: 10, top: 10, bottom: 10, borderRadius: 8, backgroundColor: p.glass, border: `1px solid rgba(255,255,255,0.12)` } },
-        h(View, { style: { position: 'absolute', left: 14, top: 12, width: tw * 0.52, height: th * 0.62, borderRadius: 4, background: 'linear-gradient(160deg, #2b3340, #1b2029)' } },
+        h(View, { style: { position: 'absolute', left: 12, top: 12, width: tw * 0.5, height: th * 0.66, borderRadius: 4, background: 'linear-gradient(160deg, #2b3340, #1b2029)' } },
           // CPU tower cooler
-          h(View, { style: { position: 'absolute', left: tw * 0.08, top: th * 0.08, width: tw * 0.3, height: th * 0.3, borderRadius: 4, background: p.alu, alignItems: 'center', justifyContent: 'center' } },
+          h(View, { style: { position: 'absolute', left: tw * 0.06, top: th * 0.08, width: tw * 0.26, height: tw * 0.26, borderRadius: 4, background: p.alu, alignItems: 'center', justifyContent: 'center' } },
             h(View, { style: { position: 'absolute', left: 4, right: 4, top: 4, bottom: 4, flexDirection: 'row', justifyContent: 'space-between' } },
-              h(Fins, { n: 7, w: 2, len: th * 0.3 - 8, span: tw * 0.3 - 8, color: p.fin, glow, vertical: true })),
-            h(Fan, { size: tw * 0.24, pct, frame: p.frame, blade: p.blade, hub: p.hub, angle })),
+              h(Fins, { n: 7, w: 2, len: tw * 0.26 - 8, span: tw * 0.26 - 8, color: p.fin, glow, vertical: true })),
+            h(Fan, { size: tw * 0.21, frame: p.frame, blade: p.blade, hub: p.hub, spin })),
           // memory and a card
-          h(View, { style: { position: 'absolute', left: tw * 0.41, top: th * 0.08, width: 5, height: th * 0.3, borderRadius: 1, backgroundColor: '#5e6878' } }),
-          h(View, { style: { position: 'absolute', left: tw * 0.43, top: th * 0.08, width: 5, height: th * 0.3, borderRadius: 1, backgroundColor: '#5e6878' } }),
-          h(View, { style: { position: 'absolute', left: tw * 0.06, top: th * 0.46, width: tw * 0.4, height: 9, borderRadius: 2, backgroundColor: '#3c4554' } })),
+          h(View, { style: { position: 'absolute', left: tw * 0.35, top: th * 0.08, width: 5, height: th * 0.3, borderRadius: 1, backgroundColor: '#5e6878' } }),
+          h(View, { style: { position: 'absolute', left: tw * 0.38, top: th * 0.08, width: 5, height: th * 0.3, borderRadius: 1, backgroundColor: '#5e6878' } }),
+          h(View, { style: { position: 'absolute', left: tw * 0.06, top: th * 0.5, width: tw * 0.36, height: 9, borderRadius: 2, backgroundColor: '#3c4554' } })),
         // rear and front case fans
-        h(View, { style: { position: 'absolute', right: 10, top: 14, width: tw * 0.24, height: tw * 0.24, borderRadius: 4, backgroundColor: p.frame, alignItems: 'center', justifyContent: 'center' } },
-          h(Fan, { size: tw * 0.22, pct, frame: p.frame, blade: p.blade, hub: p.hub, angle: -angle })),
-        h(View, { style: { position: 'absolute', right: 10, bottom: 14, width: tw * 0.24, height: tw * 0.24, borderRadius: 4, backgroundColor: p.frame, alignItems: 'center', justifyContent: 'center' } },
-          h(Fan, { size: tw * 0.22, pct, frame: p.frame, blade: p.blade, hub: p.hub, angle: angle * 0.9 })))));
+        h(View, { style: { position: 'absolute', right: 12, top: 12, width: tw * 0.26, height: tw * 0.26, borderRadius: 6, backgroundColor: p.frame, alignItems: 'center', justifyContent: 'center' } },
+          h(Fan, { size: tw * 0.24, frame: p.frame, blade: p.blade, hub: p.hub, spin, k: -1 })),
+        h(View, { style: { position: 'absolute', right: 12, bottom: 12, width: tw * 0.26, height: tw * 0.26, borderRadius: 6, backgroundColor: p.frame, alignItems: 'center', justifyContent: 'center' } },
+          h(Fan, { size: tw * 0.24, frame: p.frame, blade: p.blade, hub: p.hub, spin, k: 0.9 })))));
 }
 
 function PassiveArt({ p, temp, W, H }) {
@@ -229,9 +237,9 @@ function PassiveArt({ p, temp, W, H }) {
 export function CoolingArt({ variant, pct = 0, temp = null, width = 320, height = 168 }) {
   const th = useTheme();
   const p = palette(th.mode === 'dark');
-  const angle = useSpin(variant === 'none' ? 0 : pct);
+  const spin = useSpin(variant === 'none' ? 0 : pct);
   const W = width, H = height;
-  const props = { p, pct, temp, angle, W, H };
+  const props = { p, pct, temp, spin, W, H };
   const Art = variant === 'argon' ? ArgonArt : variant === 'cooler' ? CoolerArt : variant === 'pc' ? PcArt : PassiveArt;
   return h(View, { style: { width: W, height: H, borderRadius: 14, background: p.stage, overflow: 'hidden', direction: 'ltr' } },
     h(View, { style: { position: 'absolute', left: W * 0.15, right: W * 0.15, top: H * 0.1, bottom: H * 0.1, borderRadius: H, backgroundColor: heatColor(temp, th.mode === 'dark' ? 0.08 : 0.1) } }),

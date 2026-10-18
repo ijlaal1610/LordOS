@@ -22,10 +22,13 @@ dtparam=audio=on
 # there are PCIe errors in `dmesg`, comment out the gen 3 line.
 dtparam=pciex1
 dtparam=pciex1_gen=3
-# Active Cooler fan: driven by the kernel (cooling_fan in the device tree), nothing to set
+# Fan header (Active Cooler or a case fan): lord-fand drives it by temperature (docs/FANS.md);
+# without it the kernel does (cooling_fan in the device tree)
 
 [pi4]
 # Pi 4: best effort (see docs/RASPBERRY.md)
 arm_boost=1
 
 [all]
+# the case's extras, written by Settings → Cooling (admin action rpi-case, docs/FANS.md)
+include lordos-case.txt

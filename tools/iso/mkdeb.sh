@@ -6,6 +6,7 @@
 #   /usr/lib/lordos/bin/lord-sessiond     sessions, login screen and remote desktop (root)
 #   /usr/lib/lordos/bin/lord-netperm      per-app network permissions with cgroup BPF (root, own service)
 #   /usr/lib/lordos/bin/lord-netd         system networking (root; launched and watched by lord-sessiond)
+#   /usr/lib/lordos/bin/lord-fand         fan control by temperature (root, own service, enabled)
 #   /usr/lib/lordos/bin/lord-server       each session's server (looks for ../themes and ../assets)
 #   /usr/lib/lordos/themes/<theme>/       theme.json, theme.bundle.js and their resources (greeter: the
 #                                         login screen)
@@ -20,6 +21,7 @@ VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)
 [ -x server/build/lord-server ] || { echo "missing server/build/lord-server (make -C server)" >&2; exit 1; }
 [ -x server/build/lord-netperm ] || { echo "missing server/build/lord-netperm (make -C server; clang for BPF)" >&2; exit 1; }
 [ -x server/build/lord-netd ] || { echo "missing server/build/lord-netd (make -C server)" >&2; exit 1; }
+[ -x server/build/lord-fand ] || { echo "missing server/build/lord-fand (make -C server)" >&2; exit 1; }
 [ -x server/build/lord-sessiond ] || { echo "missing server/build/lord-sessiond (make -C server, with libssl-dev)" >&2; exit 1; }
 [ -f themes/greeter/theme.bundle.js ] || { echo "missing the login screen (npm run build)" >&2; exit 1; }
 for t in themes/*/theme.bundle.js; do [ -f "$t" ] || { echo "built themes missing (npm run build)" >&2; exit 1; }; done
@@ -32,10 +34,11 @@ install -m 755 server/build/lord-server "$L/bin/lord-server"
 install -m 755 server/build/lord-sessiond "$L/bin/lord-sessiond"
 install -m 755 server/build/lord-netd "$L/bin/lord-netd"
 install -m 755 server/build/lord-netperm "$L/bin/lord-netperm"
+install -m 755 server/build/lord-fand "$L/bin/lord-fand"
 # isolated PDF and archive helper (optional: make skips it without libpoppler-glib-dev/libarchive-dev);
 # lord-server only launches the lord-doc in its own folder
 [ -x server/build/lord-doc ] && install -m 755 server/build/lord-doc "$L/bin/lord-doc"
-strip --strip-unneeded "$L/bin/lord-server" "$L/bin/lord-sessiond" "$L/bin/lord-netd" "$L/bin/lord-netperm" 2>/dev/null || true
+strip --strip-unneeded "$L/bin/lord-server" "$L/bin/lord-sessiond" "$L/bin/lord-netd" "$L/bin/lord-netperm" "$L/bin/lord-fand" 2>/dev/null || true
 [ -x "$L/bin/lord-doc" ] && { strip --strip-unneeded "$L/bin/lord-doc" 2>/dev/null || true; }
 # lord-server only launches the lord-media in its own folder (media: video, photos, camera, recorder)
 [ -x server/build/lord-media ] && install -m 755 server/build/lord-media "$L/bin/lord-media"
@@ -70,6 +73,8 @@ install -d "$PKG/usr/share/themes"
 cp -r assets/gtk/LordOS assets/gtk/LordOS-dark "$PKG/usr/share/themes/"
 find "$PKG/usr/share/themes" -type d -exec chmod 755 {} +; find "$PKG/usr/share/themes" -type f -exec chmod 644 {} +
 install -m 644 tools/iso/rootfs/etc/systemd/system/lord-netperm.service "$PKG/usr/lib/systemd/system/lord-netperm.service"
+# fans by temperature from the first boot (docs/FANS.md): enabled by postinst, also in a chroot
+install -m 644 tools/iso/rootfs/etc/systemd/system/lord-fand.service "$PKG/usr/lib/systemd/system/lord-fand.service"
 find "$L" -type d -exec chmod 755 {} +
 find "$L/themes" "$L/assets" -type f -exec chmod 644 {} +
 
@@ -136,15 +141,28 @@ Description: desktop environment with its own display server
  lordos.service service (lord-sessiond) that starts it on tty1. Remote desktop
  (browser, port 5673) ships turned off.
 C
-# lordos.service is enabled by hand (the ISO does it; on an installed system the user decides)
+# lordos.service is enabled by hand (the ISO does it; on an installed system the user decides).
+# lord-fand.service is always enabled (and started on a running system): fans need no choice.
 cat > "$PKG/DEBIAN/postinst" <<'C'
 #!/bin/sh
 set -e
 if [ "$1" = configure ] && command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable lord-fand.service >/dev/null 2>&1 || true
+    if [ -d /run/systemd/system ]; then systemctl restart lord-fand.service >/dev/null 2>&1 || true; fi
 fi
 C
 chmod 755 "$PKG/DEBIAN/postinst"
+# removing the package gives the fans back first (ExecStopPost restores the kernel's control)
+cat > "$PKG/DEBIAN/prerm" <<'C'
+#!/bin/sh
+set -e
+if [ "$1" = remove ] && command -v systemctl >/dev/null 2>&1; then
+    if [ -d /run/systemd/system ]; then systemctl stop lord-fand.service >/dev/null 2>&1 || true; fi
+    systemctl disable lord-fand.service >/dev/null 2>&1 || true
+fi
+C
+chmod 755 "$PKG/DEBIAN/prerm"
 # files under /etc are conffiles (lintian: file-in-etc-not-marked-as-conffile)
 ( cd "$PKG" && find etc -type f | sed 's|^|/|' ) > "$PKG/DEBIAN/conffiles"
 chmod 644 "$PKG/DEBIAN/conffiles"

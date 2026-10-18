@@ -137,6 +137,7 @@ in_ch systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumbe
 # LordOS on tty1 instead of the text login; the other consoles remain (Ctrl+Alt+F2)
 in_ch systemctl enable lordos.service > /dev/null
 in_ch systemctl enable lord-netperm.service > /dev/null
+in_ch systemctl enable lord-fand.service > /dev/null     # fans by temperature (docs/FANS.md)
 in_ch systemctl mask getty@tty1.service > /dev/null
 # quiet and faster boot
 in_ch systemctl mask systemd-networkd-wait-online.service > /dev/null 2>&1 || true

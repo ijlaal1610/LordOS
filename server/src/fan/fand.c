@@ -5,7 +5,8 @@
  *   - reads the CPU temperature every FAND_TICK_MS and writes each fan's duty (fan/fanhw.c);
  *   - its configuration is /etc/lordos/fan.json, written only here, after validating;
  *   - talks to sessions over /run/lordos/fand.sock (0666) with one line per connection:
- *       STATUS                     anyone: a JSON line with temperature, fans, profile and step
+ *       STATUS                     anyone: a JSON line with temperature, fans, profile, step and
+ *                                  whether this peer may change them ("canChange")
  *       PROFILE <name> / CURVE <t:p,...> / FORCE off|on|<minutes>
  *                                  administrators only (SO_PEERCRED: root, or a member of
  *                                  sudo, admin or wheel): "OK" or "ERR <code>"
@@ -139,10 +140,10 @@ static void tick(void) {
 
 /* ---- status ---- */
 
-static size_t status_json(char *o, size_t n) {
+static size_t status_json(char *o, size_t n, int can_change) {
     size_t k = 0;
 #define PUT(...) do { if (k < n) { int r_ = snprintf(o + k, n - k, __VA_ARGS__); if (r_ > 0) k += (size_t)r_; } } while (0)
-    PUT("{\"ok\":true,\"board\":\"%s\",\"tempSource\":\"%s\",", S.hw.board ? "pi5" : "", S.hw.temp_src);
+    PUT("{\"ok\":true,\"canChange\":%s,\"board\":\"%s\",\"tempSource\":\"%s\",", can_change ? "true" : "false", S.hw.board ? "pi5" : "", S.hw.temp_src);
     if (S.temp > -1000000) PUT("\"temp\":%d.%d,", S.temp / 1000, (S.temp < 0 ? -S.temp : S.temp) % 1000 / 100);
     else PUT("\"temp\":null,");
     PUT("\"profile\":\"%s\",\"hyst\":%d,\"controlling\":%s,\"step\":%d,\"target\":%d,",
@@ -204,7 +205,7 @@ static void handle(Client *c) {
     if (fan_req_parse(c->buf, (size_t)(nl - c->buf), &r)) { reply(c->fd, "ERR fan.badRequest\n", 19); return; }
     if (r.type == FR_STATUS) {
         char o[FAND_STATUS_MAX];
-        size_t n = status_json(o, sizeof o);
+        size_t n = status_json(o, sizeof o, peer_is_admin(c->fd));
         reply(c->fd, o, n);
         return;
     }

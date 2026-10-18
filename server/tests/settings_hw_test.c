@@ -357,6 +357,10 @@ static void test_admin(void) {
     CHECK(!hw_time_valid("2026-10-18 03:15:0;") && !hw_time_valid("") && !hw_time_valid(NULL));
     CHECK(hw_button_action_valid("suspend", 1) && hw_button_action_valid("poweroff", 0) && hw_button_action_valid("ignore", 1));
     CHECK(!hw_button_action_valid("lock", 1) && !hw_button_action_valid("kexec", 0) && !hw_button_action_valid("suspend\n", 0));
+    /* rpi-case: only the known cases, fixed text with the host-mode USB line for the Argon ONE V5 */
+    CHECK(hw_rpi_case_text("none") && !strstr(hw_rpi_case_text("none"), "dtoverlay"));
+    CHECK(hw_rpi_case_text("argon-one-v5") && strstr(hw_rpi_case_text("argon-one-v5"), "\n[pi5]\ndtoverlay=dwc2,dr_mode=host\n[all]\n"));
+    CHECK(!hw_rpi_case_text("") && !hw_rpi_case_text("argon") && !hw_rpi_case_text("none ") && !hw_rpi_case_text("../x"));
     CHECK(hw_backlight_name_valid("intel_backlight") && hw_backlight_name_valid("amdgpu_bl1") && hw_backlight_name_valid("acpi_video0"));
     CHECK(!hw_backlight_name_valid("../x") && !hw_backlight_name_valid(".x") && !hw_backlight_name_valid("a/b") && !hw_backlight_name_valid(""));
 }
