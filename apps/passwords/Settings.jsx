@@ -4,7 +4,7 @@ import { View, Text, useTheme, useStore, Button, TextInput, Segmented, requestPe
 import { useState } from 'react';
 import { app, req, refreshStatus, reload, errorText, toast, setMeta, setCats, setTags, APP_ID } from './api.js';
 import { allCategories, BUILTIN, ICONS, COLORS, FIELD_TYPES, catName, builtinById } from './templates.js';
-import { Sheet, Label, Hint, Warning, FilePicker, Choice, CatIcon, StrengthBar, RED } from './ui.jsx';
+import { Sheet, Label, Hint, Warning, FilePicker, Choice, CatIcon, StrengthBar, RED, fileReq, fileName } from './ui.jsx';
 import { RecoveryView } from './Lock.jsx';
 
 const slotIcon = { password: '🔤', keyfile: '💾', passkey: '🔤💾', fido: '🔑', recovery: '🧾', session: '👤' };
@@ -36,14 +36,14 @@ export function SettingsSheet({ onClose }) {
     const args = { method: add, label: '' };
     let files;
     if (add === 'password' || add === 'passkey') args.password = pw;
-    if (add === 'keyfile' || add === 'passkey') { if (!path) { setErr(t('passwords.create.needKeyPath')); return; } args.newkey = true; files = [{ path, mode: 'w' }]; }
+    if (add === 'keyfile' || add === 'passkey') { if (!path) { setErr(t('passwords.create.needKeyPath')); return; } args.newkey = true; files = fileReq([path, 'w']); }
     if (add === 'fido') {
       if (!(await requestPermission(APP_ID, 'usb'))) throw Object.assign(new Error(''), { code: 'fido-denied' });
       const a = lord.vault.fidoAttach(APP_ID);
       if (!a.ok) throw Object.assign(new Error(''), { code: a.error });
       if (pin) args.pin = pin;
     }
-    await req('slot-add', args, { files });
+    await req('slot-add', args, files);
     await done(t('passwords.set.added'));
   });
   if (rec) return <Sheet title={t('passwords.recovery.title')} onClose={() => setRec(null)} width={600}><RecoveryView code={rec} onDone={() => setRec(null)} /></Sheet>;
@@ -87,7 +87,7 @@ export function SettingsSheet({ onClose }) {
               </>}
               {(add === 'keyfile' || add === 'passkey') && (
                 <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                  <Text style={{ flex: 1, fontSize: 12, color: path ? th.text : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{path || t('passwords.create.keyWhere')}</Text>
+                  <Text style={{ flex: 1, fontSize: 12, color: path ? th.text : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{fileName(path) || t('passwords.create.keyWhere')}</Text>
                   <Button label={t('passwords.create.chooseKeyPath')} onClick={() => setPicking(true)} />
                 </View>
               )}
@@ -152,20 +152,21 @@ export function ImportSheet({ onClose }) {
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState(null);
   const [err, setErr] = useState('');
-  const isKdbx = /\.kdbx$/i.test(file);
-  const isVault = /\.lvault$/i.test(file);
+  const isKdbx = /\.kdbx$/i.test(fileName(file));
+  const isVault = /\.lvault$/i.test(fileName(file));
   const go = async () => {
     if (!file) return;
     setBusy(true); setErr(''); setRes(null);
     try {
-      const files = [{ path: file, mode: 'r' }];
-      if (key) files.push({ path: key, mode: 'r' });
-      const name = file.split('/').pop();
-      const r = isVault ? await req('import-vault', { password: pw, recovery: '' }, { files })
-        : await req('import', { name, password: pw || undefined }, { files });
+      const files = fileReq([file, 'r'], [key, 'r']);
+      const name = fileName(file).split('/').pop();
+      const r = isVault ? await req('import-vault', { password: pw, recovery: '' }, files)
+        : await req('import', { name, password: pw || undefined }, files);
       setRes(r);
       await reload();
     } catch (e) { setErr(errorText(e.code)); }
+    // app process: a picked file is an fd that the request already used up; pick again to retry
+    if (typeof file !== 'string') { setFile(''); setKey(''); }
     setBusy(false);
   };
   return (
@@ -174,14 +175,14 @@ export function ImportSheet({ onClose }) {
       <Button key="g" primary label={busy ? t('passwords.imp.working') : t('passwords.imp.button')} onClick={go} />]}>
       <Hint>{t('passwords.imp.formats')}</Hint>
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-        <Text style={{ flex: 1, fontSize: 12, color: file ? th.text : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{file || t('passwords.imp.noFile')}</Text>
+        <Text style={{ flex: 1, fontSize: 12, color: file ? th.text : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{fileName(file) || t('passwords.imp.noFile')}</Text>
         <Button label={t('passwords.imp.choose')} onClick={() => setPicking('file')} />
       </View>
       {(isKdbx || isVault) && (
         <View style={{ gap: 8 }}>
           <TextInput value={pw} onChange={setPw} secure placeholder={isVault ? t('passwords.imp.vaultPassword') : t('passwords.imp.kdbxPassword')} onSubmit={go} />
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            <Text style={{ flex: 1, fontSize: 12, color: key ? th.text : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{key || t('passwords.imp.noKey')}</Text>
+            <Text style={{ flex: 1, fontSize: 12, color: key ? th.text : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{fileName(key) || t('passwords.imp.noKey')}</Text>
             <Button label={t('passwords.imp.chooseKey')} onClick={() => setPicking('key')} />
           </View>
         </View>
@@ -213,7 +214,7 @@ export function ExportSheet({ onClose }) {
   const go = async (p) => {
     setPicking(false); setErr('');
     try {
-      const r = await req(kind === 'csv' ? 'export-csv' : 'export-vault', {}, { files: [{ path: p, mode: 'w' }] });
+      const r = await req(kind === 'csv' ? 'export-csv' : 'export-vault', {}, fileReq([p, 'w']));
       toast(kind === 'csv' ? t('passwords.exp.doneCsv', { count: r.count }) : t('passwords.exp.doneVault'));
       onClose();
     } catch (e) { setErr(errorText(e.code)); }

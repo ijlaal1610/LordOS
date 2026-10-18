@@ -1,14 +1,17 @@
-// Emojis y símbolos — la versión en ventana del selector del sistema (❖.): emojis por categoría
-// con búsqueda en español, inglés y portugués, tonos de piel y recientes, más los símbolos de
-// Unicode por bloque. Un clic elige; «Copiar» lo deja en el portapapeles.
-import { View, Text, TextInput, Button, Segmented, ScrollView, useTheme, clipboard, emoji, EmojiGrid, EmojiToneBar, t as tr } from '@lordos/sdk';
+// Emoji & Symbols: the window version of the system picker (❖.): emoji by category with search in
+// Spanish, English and Portuguese, skin tones and recents, plus the Unicode symbols by block. A
+// click picks one; "Copy" puts it on the clipboard.
+import {
+  View, Text, Button, Segmented, ScrollView, SidebarItem, Toolbar, ToolbarSpacer, Hairline, SearchField, EmptyState, useTheme, clipboard, emoji,
+  EmojiGrid, EmojiToneBar, typeScale, t as tr,
+} from '@lordos/sdk';
 import { useMemo, useState } from 'react';
 
 export function Icon({ size: s }) {
   return (
     <View style={{ width: s, height: s, borderRadius: s * 0.225, background: 'linear-gradient(160deg, #5ac8fa, #5856d6)',
       boxShadow: `0 ${s * 0.04}px ${s * 0.12}px rgba(0,0,0,0.35)`, overflow: 'hidden' }}>
-      {/* carita propia (círculo y rasgos) y un símbolo */}
+      {/* our own smiley (a circle and its features) and a symbol */}
       <View style={{ position: 'absolute', left: s * 0.14, top: s * 0.16, width: s * 0.5, height: s * 0.5, borderRadius: s * 0.25, backgroundColor: '#ffd60a' }} />
       <View style={{ position: 'absolute', left: s * 0.27, top: s * 0.3, width: s * 0.06, height: s * 0.09, borderRadius: s * 0.03, backgroundColor: '#3a2a00' }} />
       <View style={{ position: 'absolute', left: s * 0.45, top: s * 0.3, width: s * 0.06, height: s * 0.09, borderRadius: s * 0.03, backgroundColor: '#3a2a00' }} />
@@ -18,7 +21,7 @@ export function Icon({ size: s }) {
   );
 }
 
-// bloques de símbolos (nombre en characters.block.<id>)
+// symbol blocks (named in characters.block.<id>)
 const SYMBOL_BLOCKS = [
   ['arrows', 0x2190, 0x21ff], ['math', 0x2200, 0x22ff], ['technical', 0x2300, 0x23ff], ['currency', 0x20a0, 0x20c0], ['letterlike', 0x2100, 0x214f],
   ['numberForms', 0x2150, 0x218b], ['punctuation', 0x2010, 0x205e], ['superSub', 0x2070, 0x209c], ['enclosed', 0x2460, 0x24ff], ['boxDrawing', 0x2500, 0x257f],
@@ -26,18 +29,31 @@ const SYMBOL_BLOCKS = [
   ['braille', 0x2800, 0x28ff], ['greek', 0x391, 0x3c9], ['latin1', 0xa1, 0xff], ['cjkSymbols', 0x3000, 0x303f], ['halfwidth', 0xff01, 0xff5e],
 ];
 
+// Inspector of the picked character (an empty state until there is one), with a hairline on its
+// leading edge.
+const PREVIEW_W = 200;
 function Preview({ ch, th }) {
-  if (!ch) return <View style={{ width: 220 }} />;
+  const edge = <Hairline edge="start" />;
+  if (!ch) {
+    return (
+      <View style={{ width: PREVIEW_W, backgroundColor: th.sidebarBg }}>
+        {edge}
+        <EmptyState icon="☺" title={tr('characters.pickTitle')} hint={tr('characters.pickHint')} style={{ padding: 16 }} />
+      </View>
+    );
+  }
   const cps = [...ch].map((c) => `U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`).join(' ');
   const name = emoji.name(ch);
   return (
-    <View style={{ width: 220, alignItems: 'center', gap: 10, padding: 16, backgroundColor: th.sidebarBg }}>
-      <View style={{ width: 140, height: 140, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: th.control }}>
-        <Text style={{ fontSize: 80, color: th.text, lineHeight: 120 }}>{ch}</Text>
+    <View style={{ width: PREVIEW_W, alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 24, backgroundColor: th.sidebarBg }}>
+      {edge}
+      <View style={{ width: 128, height: 128, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 6,
+        backgroundColor: th.mode === 'dark' ? 'rgba(255,255,255,0.06)' : '#ffffff', border: `1px solid ${th.separator}` }}>
+        <Text style={{ fontSize: 72, color: th.text, lineHeight: 110 }}>{ch}</Text>
       </View>
-      {name ? <Text style={{ fontSize: 13, fontWeight: 600, color: th.text, textAlign: 'center' }}>{name}</Text> : null}
-      <Text style={{ fontSize: 11, color: th.textDim, textAlign: 'center' }}>{cps}</Text>
-      <Button primary label={tr('characters.copy')} onClick={() => clipboard.set(ch)} />
+      {name ? <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: th.text, textAlign: 'center' }}>{name}</Text> : null}
+      <Text style={{ fontSize: typeScale.caption, color: th.textDim, textAlign: 'center', direction: 'ltr' }}>{cps}</Text>
+      <Button primary label={tr('characters.copy')} onClick={() => clipboard.set(ch)} style={{ marginTop: 8 }} />
     </View>
   );
 }
@@ -64,36 +80,37 @@ export default function Characters() {
     : SYMBOL_BLOCKS.map((b, i) => [i, tr(`characters.block.${b[0]}`)]);
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12 }}>
-        <Segmented value={tab} onChange={(v) => { setTab(v); setPick(null); }} options={[['emoji', tr('characters.tab.emoji')], ['symbols', tr('characters.tab.symbols')]]} />
-        <View style={{ flex: 1 }} />
+      <Toolbar>
+        <Segmented appearance="neutral" value={tab} onChange={(v) => { setTab(v); setPick(null); }}
+          options={[['emoji', tr('characters.tab.emoji')], ['symbols', tr('characters.tab.symbols')]]} />
+        <ToolbarSpacer />
         {tab === 'emoji' && <EmojiToneBar tone={tone} onTone={(n) => { setTone(n); emoji.setTone(n); }} th={th} />}
-        {tab === 'emoji' && <TextInput value={q} onChange={setQ} placeholder={tr('emoji.search')} onCancel={() => setQ('')} style={{ width: 200, height: 26 }} />}
-      </View>
-      <View style={{ height: 1, backgroundColor: th.separator }} />
+        {tab === 'emoji' && <SearchField value={q} onChange={setQ} placeholder={tr('emoji.search')} width={180} />}
+      </Toolbar>
       <View style={{ flex: 1, flexDirection: 'row' }}>
-        <View style={{ width: 180, backgroundColor: th.sidebarBg, padding: 6 }}>
-          <ScrollView style={{ flex: 1 }}>
+        <View style={{ width: 180, backgroundColor: th.sidebarBg }}>
+          <ScrollView style={{ flex: 1, paddingHorizontal: 10, paddingTop: 10 }}>
             {side.map(([id, label]) => {
               const on = tab === 'emoji' ? (!q.trim() && group === id) : block === id;
-              return (
-                <View key={id} onClick={() => { if (tab === 'emoji') { setQ(''); setGroup(id); } else setBlock(id); }}
-                  style={{ height: 26, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 6, backgroundColor: on ? th.accent : 'transparent' }}>
-                  <Text style={{ fontSize: 13, color: on ? '#fff' : th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</Text>
-                </View>
-              );
+              return <SidebarItem key={id} label={label} selected={on} onClick={() => { if (tab === 'emoji') { setQ(''); setGroup(id); } else setBlock(id); }} />;
             })}
+            <View style={{ height: 10 }} />
           </ScrollView>
+          <Hairline edge="end" />
         </View>
-        <View style={{ flex: 1, padding: 10, direction: 'ltr' }}>
+        <View style={{ flex: 1, minWidth: 0, direction: 'ltr' }}>
           {tab === 'emoji' ? (
-            list.length ? <ScrollView style={{ flex: 1 }}><EmojiGrid list={list} sel={-1} onPick={choose} tone={tone} size={44} th={th} /></ScrollView>
-              : <Text style={{ margin: 20, fontSize: 12, color: th.textDim, textAlign: 'center' }}>{group === 'recent' && !q.trim() ? tr('emoji.noRecent') : tr('emoji.none')}</Text>
+            list.length ? (
+              <ScrollView style={{ flex: 1, padding: 12 }}>
+                <EmojiGrid list={list} sel={-1} picked={pick} onPick={choose} tone={tone} size={44} th={th} wrap />
+              </ScrollView>
+            ) : <EmptyState title={group === 'recent' && !q.trim() ? tr('emoji.noRecent') : tr('emoji.none')} />
           ) : (
-            <ScrollView style={{ flex: 1 }}>
+            <ScrollView style={{ flex: 1, padding: 12 }}>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
                 {chars.map((ch) => (
-                  <View key={ch} onClick={() => choose(ch)} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 6, backgroundColor: pick === ch ? th.accent : 'transparent' }}>
+                  <View key={ch} onClick={() => choose(ch)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 8,
+                    backgroundColor: pick === ch ? th.accent : 'transparent' }}>
                     <Text style={{ fontSize: 20, color: pick === ch ? '#fff' : th.text }}>{ch}</Text>
                   </View>
                 ))}

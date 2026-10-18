@@ -680,9 +680,22 @@ char *mime_part_text(const MimePart *p, size_t *olen) {
 
 /* ---- addresses ---- */
 
+static int addrs_raw(const char *value, MimeAddr *out, int max);
+
 int mime_addrs(const char *value, MimeAddr *out, int max) {
-    int n = 0;
     if (!value) return 0;
+    int n = addrs_raw(value, out, max);
+    /* broken mailers encode the whole "Name <addr>" as one encoded word: decode, then parse */
+    if (!n && strstr(value, "=?")) {
+        char dec[2048];
+        mime_decode_words(value, dec, sizeof dec);
+        n = addrs_raw(dec, out, max);
+    }
+    return n;
+}
+
+static int addrs_raw(const char *value, MimeAddr *out, int max) {
+    int n = 0;
     const char *s = value;
     while (*s && n < max) {
         /* one element up to the top-level comma */

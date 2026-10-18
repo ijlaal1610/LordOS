@@ -26,6 +26,7 @@
 #include "../doc/wire.h"
 #include "../sec/json.h"
 #include "net.h"
+#include "snpf.h"
 
 extern pthread_mutex_t G;
 extern int cache_fd;

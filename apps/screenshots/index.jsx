@@ -1,14 +1,15 @@
-// Capturas — capturas de pantalla y grabación de la pantalla (al estilo del panel de capturas de
-// macOS, con diseño propio).
+// Screenshots: screen captures and screen recording (in the style of the macOS screenshot panel,
+// with our own design).
 //
-// Atajos (globales, también con una app Linux al frente):
-//   ❖⇧3 / Impr Pant  pantalla completa        ❖⇧4  área (o ventana, con Espacio)
-//   ❖⇧5              el panel de Capturas (y detener una grabación en curso)
-// Las ventanas protegidas (wm.setProtected) salen negras: lo hace el servidor, no esta app.
-// Después de cada captura aparece una miniatura flotante; un clic abre el editor de anotaciones
-// (flecha, recuadro, texto, desenfoque). Se guardan en ~/Imágenes/Capturas o al portapapeles.
+// Shortcuts (global, also with a Linux app in front):
+//   ❖⇧3 / Print Screen  entire screen        ❖⇧4  area (or window, with Space)
+//   ❖⇧5                 the Screenshots panel (and stop a recording in progress)
+// Protected windows (wm.setProtected) come out black: the server does that, not this app.
+// After each capture a floating thumbnail shows up; a click opens the markup editor (arrow, box,
+// text, blur). They are saved in ~/Pictures/Screenshots or to the clipboard.
 import {
-  View, Text, MediaView, Button, Toggle, Segmented, TextInput, useTheme, useAppWindow, useKeyboard, useStore, useWindows, wm, windows,
+  View, Text, MediaView, Button, Toggle, Segmented, TextInput, Toolbar, ToolbarButton, ToolbarGroup, ToolbarDivider, ToolbarSpacer, GroupBox, FormRow,
+  useTheme, useAppWindow, useKeyboard, useStore, useWindows, wm, windows, typeScale,
   t as tr, media, userDirs, fs, addListener, createStore, windowTitle, settings, useSettings,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
@@ -22,7 +23,7 @@ export function Icon({ size: s }) {
   return (
     <View style={{ width: s, height: s, borderRadius: s * 0.225, background: 'linear-gradient(160deg, #5e6b7a, #2c333d)',
       boxShadow: `0 ${s * 0.04}px ${s * 0.12}px rgba(0,0,0,0.35)`, overflow: 'hidden' }}>
-      {/* el recuadro de selección: cuatro esquinas y un lente */}
+      {/* the selection frame: four corners and a lens */}
       {corner(0.18, 0.2, 0.18, 0.05)}{corner(0.18, 0.2, 0.05, 0.18)}
       {corner(0.64, 0.2, 0.18, 0.05)}{corner(0.77, 0.2, 0.05, 0.18)}
       {corner(0.18, 0.75, 0.18, 0.05)}{corner(0.18, 0.62, 0.05, 0.18)}
@@ -34,7 +35,7 @@ export function Icon({ size: s }) {
   );
 }
 
-// ---- archivos ----
+// ---- files ----
 
 const pad = (n) => String(n).padStart(2, '0');
 function stamp() {
@@ -43,8 +44,8 @@ function stamp() {
 }
 function captureDir() {
   const dir = `${userDirs().pictures}/${tr('screenshots.folder')}`;
-  try { fs.mkdir(userDirs().pictures); } catch (e) { /* ya está */ }
-  try { fs.mkdir(dir); } catch (e) { /* ya está */ }
+  try { fs.mkdir(userDirs().pictures); } catch (e) { /* already there */ }
+  try { fs.mkdir(dir); } catch (e) { /* already there */ }
   return dir;
 }
 function freeName(dir, base, ext) {
@@ -56,7 +57,7 @@ function freeName(dir, base, ext) {
 }
 const opts = () => ({ timer: 0, clipboard: false, mic: false, ...(settings.get().screenshots || {}) });
 
-// ---- capturar ----
+// ---- capture ----
 
 async function finish(handle) {
   if (!handle) return;
@@ -76,7 +77,7 @@ function showThumb(handle, path) {
   wm.setPip(id, { x: lord.screen.width - w - 20, y: lord.screen.height - h - 90, w, h });
 }
 
-// toma la pantalla después de que se dibuje un cuadro sin nuestras ventanas (las cierra antes)
+// takes the screen once a frame without our windows was drawn (it closes them first)
 function afterHide(fn, delay = 160) {
   for (const w of windows.get()) if (w.app === APP && w.id !== `${APP}#edit` && !String(w.id).startsWith(`${APP}#edit`)) wm.close(w.id, true);
   setTimeout(fn, delay);
@@ -121,7 +122,7 @@ export const capture = {
   },
 };
 
-// atajos globales (evdev: 3 = KEY_2+1… KEY_3 = 4, KEY_4 = 5, KEY_5 = 6; Impr Pant = 99)
+// global shortcuts (evdev: KEY_3 = 4, KEY_4 = 5, KEY_5 = 6; Print Screen = 99)
 addListener('keydown', (e) => {
   if (e.repeat || typeof lord === 'undefined' || !lord.media) return;
   if (e.code === 99 && !e.meta) { capture.full(); return; }
@@ -131,7 +132,7 @@ addListener('keydown', (e) => {
   else if (e.code === 6) { if (recording.get()) capture.record(); else wm.open(APP); }
 });
 
-// ---- ventanas de la app ----
+// ---- the app's windows ----
 
 function Overlay({ handle, mode: initial }) {
   const win = useAppWindow();
@@ -155,7 +156,7 @@ function Overlay({ handle, mode: initial }) {
   useEffect(() => {
     const offMove = addListener('pointermove', (e) => {
       if (drag.current) { const d = drag.current; setRect({ x: Math.min(d.x, e.x), y: Math.min(d.y, e.y), w: Math.abs(e.x - d.x), h: Math.abs(e.y - d.y) }); return; }
-      // ventana bajo el puntero (la de más arriba)
+      // window under the pointer (the topmost one)
       const vis = list.filter((w) => !w.minimized && w.app !== APP);
       let found = null;
       for (const w of vis) { const f = wm.frame(w); if (e.x >= f.x && e.y >= f.y && e.x < f.x + f.w && e.y < f.y + f.h) found = { ...f, title: windowTitle(w) }; }
@@ -188,7 +189,7 @@ function Overlay({ handle, mode: initial }) {
         </>
       ) : <View style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: dim }} />}
       <View style={{ position: 'absolute', left: 0, right: 0, top: 18, alignItems: 'center', pointerEvents: 'none' }}>
-        <View style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.7)' }}>
+        <View style={{ paddingHorizontal: 14, height: 30, justifyContent: 'center', borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.7)' }}>
           <Text style={{ fontSize: 12, color: '#fff' }}>{tr(mode === 'window' ? 'screenshots.hintWindow' : 'screenshots.hintArea')}</Text>
         </View>
       </View>
@@ -213,8 +214,8 @@ function Thumb({ handle, path }) {
         setTimeout(() => wm.close(win.id, true), 50);
       }}>
       <MediaView media={handle} style={{ flex: 1 }} />
-      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: 'rgba(0,0,0,0.55)' }}>
-        <Text style={{ fontSize: 10, color: '#fff' }}>{path ? tr('screenshots.savedTo', { folder: tr('screenshots.folder') }) : tr('screenshots.copied')}</Text>
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: 'rgba(0,0,0,0.55)' }}>
+        <Text style={{ fontSize: 11, color: '#fff' }}>{path ? tr('screenshots.savedTo', { folder: tr('screenshots.folder') }) : tr('screenshots.copied')}</Text>
       </View>
     </View>
   );
@@ -226,7 +227,7 @@ function Countdown({ secs, start }) {
   const left = Math.max(0, Math.ceil(secs - (now - start) / 1000));
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(20,20,24,0.85)' }}>
-      <Text style={{ fontSize: 54, fontWeight: 700, color: '#fff' }}>{left}</Text>
+      <Text style={{ fontSize: 56, fontWeight: 600, color: '#fff' }}>{left}</Text>
     </View>
   );
 }
@@ -238,16 +239,16 @@ function RecBadge() {
   const secs = rec ? Math.floor((now - rec.start) / 1000) : 0;
   return (
     <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, backgroundColor: 'rgba(30,30,34,0.92)' }}>
-      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#ff3b30' }} />
-      <Text style={{ fontSize: 13, color: '#fff', flex: 1 }}>{`${Math.floor(secs / 60)}:${pad(secs % 60)}`}</Text>
-      <View onClick={() => capture.record()} style={{ paddingHorizontal: 10, height: 24, borderRadius: 6, justifyContent: 'center', backgroundColor: '#ff3b30' }}>
+      <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: '#ff3b30' }} />
+      <Text style={{ fontSize: 13, fontWeight: 500, color: '#fff', flex: 1, direction: 'ltr' }}>{`${Math.floor(secs / 60)}:${pad(secs % 60)}`}</Text>
+      <View onClick={() => capture.record()} style={{ paddingHorizontal: 12, height: 24, borderRadius: 6, justifyContent: 'center', backgroundColor: '#ff3b30' }}>
         <Text style={{ fontSize: 12, fontWeight: 600, color: '#fff' }}>{tr('screenshots.stop')}</Text>
       </View>
     </View>
   );
 }
 
-// ---- editor de anotaciones ----
+// ---- markup editor ----
 
 const COLORS = ['#ff3b30', '#ffcc00', '#34c759', '#0a84ff', '#ffffff', '#1c1c1e'];
 
@@ -258,7 +259,7 @@ function Editor({ handle, path }) {
   const [color, setColor] = useState(COLORS[0]);
   const [ops, setOps] = useState([]);
   const [draft, setDraft] = useState(null);
-  const [text, setText] = useState(null);        // { x, y, value } (coordenadas de la imagen)
+  const [text, setText] = useState(null);        // { x, y, value } (image coordinates)
   const [preview, setPreview] = useState(0);
   const [msg, setMsg] = useState(null);
   const box = useRef(null);
@@ -310,28 +311,31 @@ function Editor({ handle, path }) {
     setTimeout(() => setMsg(null), 2500);
   };
   const copy = async () => { const r = await media.copyImage(preview || handle); setMsg(r.ok ? tr('screenshots.copied') : tr('screenshots.saveError')); setTimeout(() => setMsg(null), 2500); };
-  const tools = [['arrow', '↗'], ['box', '▢'], ['text', 'T'], ['blur', '▒'], ['line', '╱']];
+  const tools = [['arrow', '↗', 'screenshots.tool.arrow'], ['box', '▢', 'screenshots.tool.box'], ['text', 'T', 'screenshots.tool.text'],
+    ['blur', '▒', 'screenshots.tool.blur'], ['line', '╱', 'screenshots.tool.line']];
   const tp = text ? (() => { const [lx, ly, bw, bh] = box.current ? lord.getLayout(box.current.id) : [0, 0, 1, 1]; const s = Math.min(bw / info.width, bh / info.height);
     return { left: (bw - info.width * s) / 2 + text.x * s, top: (bh - info.height * s) / 2 + text.y * s }; })() : null;
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10 }}>
-        {tools.map(([k, g]) => (
-          <View key={k} onClick={() => setTool(k)} style={{ width: 32, height: 28, borderRadius: 7, alignItems: 'center', justifyContent: 'center',
-            backgroundColor: tool === k ? th.accent : th.control }}>
-            <Text style={{ fontSize: 14, color: tool === k ? '#fff' : th.text }}>{g}</Text>
-          </View>
-        ))}
-        <View style={{ width: 10 }} />
-        {COLORS.map((c) => (
-          <View key={c} onClick={() => setColor(c)} style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: c, border: `2px solid ${color === c ? th.accent : th.separator}` }} />
-        ))}
-        <View style={{ flex: 1 }} />
-        <Button label={tr('screenshots.undo')} onClick={() => setOps((o) => o.slice(0, -1))} />
-        <Button label={tr('screenshots.copy')} onClick={copy} />
-        <Button primary label={tr('screenshots.save')} onClick={save} />
+      <Toolbar>
+        <ToolbarGroup>
+          {tools.map(([k, g, key]) => <ToolbarButton key={k} icon={g} title={tr(key)} active={tool === k} onClick={() => setTool(k)} />)}
+        </ToolbarGroup>
+        <ToolbarDivider />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {COLORS.map((c) => (
+            <View key={c} onClick={() => setColor(c)} style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
+              border: `2px solid ${color === c ? th.accent : 'transparent'}` }}>
+              <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: c, border: `1px solid ${th.separator}` }} />
+            </View>
+          ))}
+        </View>
+        <ToolbarSpacer />
+        <ToolbarButton icon="⟲" title={tr('screenshots.undo')} onClick={() => setOps((o) => o.slice(0, -1))} />
+        <ToolbarButton icon="⧉" title={tr('screenshots.copy')} onClick={copy} />
         <Button label={tr('screenshots.done')} onClick={() => wm.close(win.id)} />
-      </View>
+        <Button primary label={tr('screenshots.save')} onClick={save} />
+      </Toolbar>
       <View ref={box} style={{ flex: 1, backgroundColor: th.mode === 'dark' ? '#111' : '#ddd', overflow: 'hidden', direction: 'ltr' }} onMouseDown={down}>
         <MediaView media={preview || handle} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }} />
         {text && tp && (
@@ -340,15 +344,15 @@ function Editor({ handle, path }) {
               placeholder={tr('screenshots.textHint')} />
           </View>
         )}
-        {msg && <View style={{ position: 'absolute', left: 0, right: 0, bottom: 16, alignItems: 'center' }}>
-          <View style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.75)' }}><Text style={{ fontSize: 12, color: '#fff' }}>{msg}</Text></View>
+        {msg && <View style={{ position: 'absolute', left: 0, right: 0, bottom: 20, alignItems: 'center' }}>
+          <View style={{ paddingHorizontal: 14, height: 30, justifyContent: 'center', borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.75)' }}><Text style={{ fontSize: 12, color: '#fff' }}>{msg}</Text></View>
         </View>}
       </View>
     </View>
   );
 }
 
-// ---- el panel (ventana principal) ----
+// ---- the panel (main window) ----
 
 function Panel() {
   const th = useTheme();
@@ -368,44 +372,43 @@ function Panel() {
     ] }]);
   }, []);
   const Mode = ({ glyph, label, onClick, danger }) => (
-    <View onClick={onClick} style={{ flex: 1, height: 74, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 6,
-      backgroundColor: danger ? 'rgba(255,59,48,0.15)' : th.control }}>
+    <View onClick={onClick} style={{ flex: 1, minWidth: 0, height: 82, borderRadius: 10, alignItems: 'center', gap: 6, paddingHorizontal: 4, paddingTop: 16,
+      backgroundColor: danger ? 'rgba(255,59,48,0.14)' : th.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', border: `1px solid ${th.separator}` }}>
       <Text style={{ fontSize: 22, color: danger ? '#ff3b30' : th.text }}>{glyph}</Text>
-      <Text style={{ fontSize: 11, color: th.text, textAlign: 'center' }}>{label}</Text>
+      <Text style={{ fontSize: typeScale.caption, fontWeight: 500, color: th.text, textAlign: 'center', lineHeight: 1.2 }}>{label}</Text>
     </View>
   );
   const prot = windows.get().filter((w) => w.protected).length;
   return (
-    <View style={{ flex: 1, padding: 14, gap: 12 }}>
+    <View style={{ flex: 1, padding: 20, gap: 16 }}>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Mode glyph="▣" label={tr('screenshots.mode.full')} onClick={() => capture.full()} />
         <Mode glyph="⧈" label={tr('screenshots.mode.window')} onClick={() => capture.area('window')} />
         <Mode glyph="⬚" label={tr('screenshots.mode.area')} onClick={() => capture.area('area')} />
         <Mode glyph={rec ? '■' : '●'} danger label={tr(rec ? 'screenshots.mode.stop' : 'screenshots.mode.record')} onClick={() => capture.record()} />
       </View>
-      <View style={{ gap: 8, padding: 12, borderRadius: 10, backgroundColor: th.hover }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Text style={{ fontSize: 12, color: th.text, flex: 1 }}>{tr('screenshots.timer')}</Text>
-          <Segmented value={o.timer} onChange={(v) => set({ timer: v })} options={[[0, tr('screenshots.timerNone')], [5, '5 s'], [10, '10 s']]} />
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Text style={{ fontSize: 12, color: th.text, flex: 1 }}>{tr('screenshots.toClipboard')}</Text>
-          <Toggle on={!!o.clipboard} onChange={(v) => set({ clipboard: v })} />
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Text style={{ fontSize: 12, color: th.text, flex: 1 }}>{tr('screenshots.mic')}</Text>
-          <Toggle on={!!o.mic} onChange={(v) => set({ mic: v })} />
-        </View>
-      </View>
-      <Text style={{ fontSize: 11, color: th.textDim }}>{tr('screenshots.shortcuts')}</Text>
-      {prot > 0 && <Text style={{ fontSize: 11, color: th.textDim }}>{tr('screenshots.protectedNote', { count: prot })}</Text>}
-      {list.length > 0 && <Text style={{ fontSize: 12, fontWeight: 600, color: th.text }}>{tr('screenshots.recent')}</Text>}
-      {list.slice(0, 5).map((r) => (
-        <View key={r.path} onClick={() => wm.open(r.video ? 'player' : 'photos', { new: true, args: { path: r.path } })} style={{ flexDirection: 'row', gap: 8 }}>
-          <Text style={{ fontSize: 12, color: th.textDim }}>{r.video ? '🎬' : '🖼'}</Text>
-          <Text style={{ fontSize: 12, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden', flex: 1 }}>{r.path.split('/').pop()}</Text>
-        </View>
-      ))}
+      <GroupBox footer={null}>
+        <FormRow label={tr('screenshots.timer')}>
+          <Segmented small value={o.timer} onChange={(v) => set({ timer: v })} options={[[0, tr('screenshots.timerNone')], [5, '5 s'], [10, '10 s']]} />
+        </FormRow>
+        <FormRow label={tr('screenshots.toClipboard')}><Toggle on={!!o.clipboard} onChange={(v) => set({ clipboard: v })} /></FormRow>
+        <FormRow label={tr('screenshots.mic')}><Toggle on={!!o.mic} onChange={(v) => set({ mic: v })} /></FormRow>
+      </GroupBox>
+      <Text style={{ fontSize: typeScale.caption, color: th.textDim, lineHeight: 1.45, paddingHorizontal: 8 }}>{tr('screenshots.shortcuts')}</Text>
+      {prot > 0 && <Text style={{ fontSize: typeScale.caption, color: th.textDim, paddingHorizontal: 8 }}>{tr('screenshots.protectedNote', { count: prot })}</Text>}
+      {list.length > 0 && (
+        <GroupBox title={tr('screenshots.recent')}>
+          {list.slice(0, 5).map((r) => (
+            <View key={r.path} onClick={() => wm.open(r.video ? 'player' : 'photos', { new: true, args: { path: r.path } })}
+              style={{ minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ width: 16, fontSize: 12, color: th.accent, textAlign: 'center' }}>{r.video ? '▶' : '◫'}</Text>
+              <View style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                <Text style={{ fontSize: typeScale.callout, color: th.text, whiteSpace: 'nowrap' }}>{r.path.split('/').pop()}</Text>
+              </View>
+            </View>
+          ))}
+        </GroupBox>
+      )}
     </View>
   );
 }

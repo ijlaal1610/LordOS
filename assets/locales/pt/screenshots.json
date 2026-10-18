@@ -30,5 +30,10 @@
   "done": "Pronto",
   "textHint": "Digite e tecle Enter",
   "menu.window": "Privacidade",
-  "menu.protect": "Proteger a janela da frente das capturas"
+  "menu.protect": "Proteger a janela da frente das capturas",
+  "tool.arrow": "Seta",
+  "tool.box": "Retângulo",
+  "tool.text": "Texto",
+  "tool.blur": "Desfocar",
+  "tool.line": "Linha"
 }

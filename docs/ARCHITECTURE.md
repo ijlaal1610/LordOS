@@ -58,6 +58,7 @@ que React Native pero sobre nuestro servidor gráfico.
 | `server/src/logs/`, `js_logs.c`, `sdk/logs.js`, `apps/logs` | **M9** | Logs: our own systemd journal reader (no libsystemd), LordOS logs, system logs for admins through a closed action, live follow with inotify (see `SYSTEM.md`) |
 | `server/src/ui/tzif.c`, `js_help.c`, `sdk/{notify,alarms,statusitems,help}.js`, `apps/{clock,help}` | **M9** | Clock (our own TZif reader, session alarms with the app closed), session notifications, menu-bar status items, Help (markdown articles in es/en/pt, welcome tour, Spotlight source) (see `SYSTEM.md`) |
 | `server/src/ui/grab.c`, `cursor.c`, `sdk/windowshell.jsx` | **M8** | Ventanas: mover y agrandar en C (un evento por cuadro, sin JS), capa de la ventana que se mueve, bordes en los 4 lados y esquinas, cursores propios y `cursor-shape-v1` (ver `VENTANAS.md`) |
+| `server/src/hw/`, `ui/js_hw.c`, `sdk/hardware.jsx`, `sdk/defaults.js` | **M9** | Settings' hardware pages: displays (EDID, live modes with a 15 s revert, per-display persistence, software rotation and 200 % scale, Night Shift on the gamma LUT or by software), Bluetooth (BlueZ over our own D-Bus client, pairing agent), battery and power profiles, idle (DPMS, lock, sleep), date and time, notifications from Linux apps (`org.freedesktop.Notifications`) and default apps (`mimeapps.list`); kernel uevents and D-Bus signals, no polling (see `SETTINGS.md`) |
 
 ### Flujo de un frame
 
@@ -149,6 +150,9 @@ Desde M7, lo que LordOS hace con código propio y lo que delega en un programa d
     ni SANE.
 - **Servicios de Debian a los que se les habla por su protocolo:** CUPS (IPP por
   `/run/cups/cups.sock`; administra la cola y los controladores, ver `IMPRESION.md`).
+- **D-Bus services (Settings, `SETTINGS.md`):** BlueZ (`bluetoothd`), power-profiles-daemon and
+  systemd-timedated on the system bus, with our own D-Bus client (`vault/dbus.c`); lord-server also
+  serves `org.freedesktop.Notifications` on the session bus. No libdbus, sd-bus or libbluetooth.
 - **Programas de Debian** (con ruta fija, nunca enlazados, lanzados por el ayudante `admin.c`):
   - `dpkg`: desempaquetar y configurar;
   - `mkfs.vfat`, `mkfs.exfat`, `mkfs.ext4`, `mkfs.ntfs` (optional) and their label tools: formatting
@@ -156,6 +160,8 @@ Desde M7, lo que LordOS hace con código propio y lo que delega en un programa d
   - `wpa_supplicant`: Wi-Fi;
   - `openvpn`;
   - `resolvectl` y `networkctl`.
+  - `powerprofilesctl`, `systemctl suspend`/`reload systemd-logind` and `timedatectl` (Settings'
+    closed `power-*` and `time-*` actions, `SETTINGS.md`).
 - **Servidor de sonido:** PipeWire, por el protocolo de PulseAudio.
 
 No se usan apt, libapt, gpgv, curl, zlib, liblzma, NetworkManager, wireguard-tools, libpulse,

@@ -413,15 +413,46 @@ Details in `PASSWORDS.md`. Tested on VM 116 with a real `lord-sessiond` session
   `<AutofillButton>`.
 - [x] **Secret Service** with our own D-Bus code (plain + DH sessions): `secret-tool` and Chromium
   work without gnome-keyring.
-- [ ] Run the Passwords UI as an isolated process (app mode); today only `lord-vault` is sandboxed.
+- [x] **The Passwords UI runs as its own sandboxed process** (`lord-server --app passwords`, a
+  system package built into `assets/sysapps/`): its own channel to `lord-vault`
+  (`vc_attach_app`), files through the powerbox, FIDO2 and secret clipboard through the broker
+  (`BOP_VAULT_FIDO`, `BOP_CLIP_SECRET`), protected Wayland window. Revealed values never enter
+  `lord-server`'s JavaScript heap. In-process fallback kept (see `PASSWORDS.md`).
+- [ ] Keyring for isolated `.lpk` apps: a broker op that sets the owner from the verified app id.
 - [ ] Test with real FIDO2 keys (only the uhid software authenticator was available).
+
+## M9 — Settings: hardware pages ✅ (2026-10-18)
+
+Details in `SETTINGS.md`. Tested on VM 118 (`ajustes-*.png`), Bluetooth with a virtual controller
+(`btvirt`).
+
+- [x] **Displays:** outputs, resolutions and refresh rates from KMS with EDID names; live modeset
+  with the system's 15-second "Keep these display settings?"; saved per display (EDID identity) and
+  used from the first frame; main display choice and move on unplug (DRM uevents); software rotation
+  and a doubled 200 % scale (CPU path); brightness through a closed action; Night Shift on the gamma
+  LUT or by software, scheduled sunset-to-sunrise from the time zone's coordinates or custom hours.
+- [x] **Bluetooth:** BlueZ over our own D-Bus client: power, discovery, pair (system-drawn PIN,
+  passkey and confirmation prompts), connect, disconnect, forget; headsets in Sound through
+  PipeWire.
+- [x] **Energy:** battery state, time and health from sysfs, low-battery notices, percentage in the
+  menu bar, power profiles (power-profiles-daemon or the cpufreq governor), display off / lock /
+  sleep after N minutes, power button and lid (logind drop-in).
+- [x] **Notifications:** per-app allow, style, sound; Do Not Disturb with a schedule; grouping;
+  `org.freedesktop.Notifications` for Linux apps; packages use the sandbox permission.
+- [x] **Date & Time:** NTP (timesyncd) or manual time, manual time zone (never from the network),
+  12/24 h, menu bar clock format.
+- [x] **Default Apps:** `mimeapps.list` and `xdg-terminals.list`; Files' "Open With" and
+  `lord.apps.launchWith('', path)` honor them.
+- [ ] **Pending:** extend/mirror across displays; sharp HiDPI and 125/150 %; Night Shift on the GPU
+  path without a LUT; real laptops (battery, backlight, lid) and real Bluetooth controllers;
+  notifications on the lock screen and a notification center; Wayland idle inhibit.
 
 ## Pendiente antes del ISO final
 
 - [ ] **Mail, Calendario, Contactos y Recordatorios** (estilo Outlook; cuentas IMAP/SMTP, CalDAV y
   CardDAV; usa el llavero de Contraseñas).
-- [ ] **Secciones de Ajustes que faltan:** Pantallas, Bluetooth, Energía, Notificaciones, Fecha y
-  hora, Apps por defecto.
+- [x] **Secciones de Ajustes que faltan:** Pantallas, Bluetooth, Energía, Notificaciones, Fecha y
+  hora, Apps por defecto (see "M9 — Settings: hardware pages" above and `SETTINGS.md`).
 - [ ] **Chromium y Firefox** preinstalados (apps Linux, no nativas).
 - [x] **Cámara en apps aisladas** (`.lpk`) y **varias ventanas por app aislada** (VM 122,
   `PRIVACIDAD.md`): read-only frame ring from `lord-media` with validated ACKs, photo/video through

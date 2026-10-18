@@ -88,6 +88,18 @@ export function Toolbar({ children, style, separator = true }) {
 
 export const ToolbarSpacer = () => <View style={{ flex: 1 }} />;
 
+// 1 px hairline on one edge of its parent (absolutely positioned). edge: 'top' | 'bottom' |
+// 'start' | 'end'; start and end follow the UI direction (the engine's left/right are physical).
+// inset: space left at both ends of the line.
+export function Hairline({ edge = 'bottom', inset = 0 }) {
+  const t = useTheme();
+  const rtl = direction() === 'rtl';
+  const side = edge === 'start' ? (rtl ? 'right' : 'left') : edge === 'end' ? (rtl ? 'left' : 'right') : edge;
+  const box = side === 'top' || side === 'bottom'
+    ? { left: inset, right: inset, [side]: 0, height: 1 } : { top: inset, bottom: inset, [side]: 0, width: 1 };
+  return <View style={{ position: 'absolute', backgroundColor: t.separator, pointerEvents: 'none', ...box }} />;
+}
+
 // Thin vertical divider between toolbar groups.
 export function ToolbarDivider() {
   const t = useTheme();

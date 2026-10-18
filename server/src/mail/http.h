@@ -23,5 +23,8 @@ int  http_split_url(const char *url, int *tls, char *host, size_t hcap, int *por
 int  http_request(Conn *c, const char *method, const char *host, const char *path, const char *extra_headers,
                   const char *body, size_t blen, size_t max_body, int deadline_ms, HttpResp *out);
 void http_resp_free(HttpResp *r);
+/* strict parsers (exposed for tests): 0 ok, -1 invalid */
+int  http_chunk_size(const char *line, unsigned long long *out);
+int  http_content_length(const char *v, unsigned long long *out);
 
 #endif

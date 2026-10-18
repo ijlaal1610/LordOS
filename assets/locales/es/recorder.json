@@ -17,5 +17,6 @@
   "working": "Exportando…",
   "exported": "Se guardó «{name}»",
   "exportError": "No se pudo exportar",
-  "renameError": "No se pudo renombrar (¿ya existe ese nombre?)"
+  "renameError": "No se pudo renombrar (¿ya existe ese nombre?)",
+  "emptyTitle": "Elegí o hacé una grabación"
 }

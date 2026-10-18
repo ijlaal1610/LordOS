@@ -1,10 +1,10 @@
-// Monitor — uso de CPU, memoria, red, discos y procesos de este equipo, y las conexiones de
-// red de cada app con un mapa (ver docs/MONITOR.md). Copia el Monitor de TangoOS: pestañas,
-// tarjetas oscuras con número grande y gráfico en vivo, fila de datos chicos y pie con la
-// frecuencia de muestreo. Las métricas las lee lord-server (lord.monitor) solo mientras esta
-// ventana está abierta, cuatro veces por segundo.
+// Monitor: CPU, memory, network, disk and process usage of this computer, and the network
+// connections of each app on a map (see docs/MONITOR.md). It follows TangoOS's Monitor: tabs,
+// dark cards with a big number and a live chart, a row of small stats and a footer with the
+// sampling rate. lord-server (lord.monitor) reads the metrics only while this window is open,
+// four times per second.
 import {
-  View, Text, Image, ScrollView, Segmented, TextInput, useTheme, useLocale, useStore, useSettings, useAppWindow,
+  View, Text, Image, ScrollView, Segmented, SearchField, Toolbar, typeScale, useTheme, useLocale, useStore, useSettings, useAppWindow,
   useMonitor, monitor, monitorProcesses, monitorSamples, formatBytes, formatNumber, LordOSLogo, iconFromFile,
 } from '@lordos/sdk';
 import * as sdk from '@lordos/sdk';
@@ -17,15 +17,15 @@ import { FirewallPrivacy } from './Firewall.jsx';
 
 export function Icon({ size }) { return <MonitorIcon size={size} />; }
 
-// Colores de las series (los de TangoOS)
+// Series colors (TangoOS's)
 export const C = { mem: '#8b5cf6', cache: '#c4b5fd', rx: '#22c55e', tx: '#f97316', read: '#2f7cf6', write: '#ec4899' };
 
-// Settings → Privacidad → Monitor (la página es de otro módulo: se registra si existe).
+// Settings → Privacy → Monitor (the page belongs to another module: registered if it exists).
 if (typeof sdk.registerPrivacySection === 'function') sdk.registerPrivacySection({ id: 'monitor', order: 10, Component: MonitorPrivacy });
-// … y «Red de las apps»: apps confiables y restringidas (lord.fw, docs/FIREWALL.md)
+// … and "App network": trusted and restricted apps (lord.fw, docs/FIREWALL.md)
 if (typeof sdk.registerPrivacySection === 'function') sdk.registerPrivacySection({ id: 'firewall', order: 11, Component: FirewallPrivacy });
 
-// ---- formatos ----
+// ---- formats ----
 export const fmt = {
   pct: (tr, v) => tr('monitor.pct', { v: formatNumber(Math.round((v || 0) * 100), 0) }),
   mem: (n) => formatBytes(Math.max(0, n || 0)),
@@ -33,13 +33,13 @@ export const fmt = {
   load: (v) => formatNumber(v || 0, 2),
 };
 
-// Tarjeta oscura con ícono y título (tm-card)
+// Dark card with an icon and a title (tm-card)
 export function useCardStyle() {
   const t = useTheme();
   const dark = t.mode === 'dark';
   return {
     bg: dark ? '#26272c' : '#f4f4f6',
-    style: { borderRadius: 12, backgroundColor: dark ? '#26272c' : '#f4f4f6', border: `1px solid ${t.separator}`, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12, gap: 10, minWidth: 0 },
+    style: { borderRadius: 12, backgroundColor: dark ? '#26272c' : '#f4f4f6', border: `1px solid ${t.separator}`, padding: 16, gap: 12, minWidth: 0 },
   };
 }
 
@@ -50,7 +50,7 @@ export function Card({ icon, title, right, children, style }) {
     <View style={{ ...card.style, ...style }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         {icon ? <Glyph name={icon} color={t.accent} /> : null}
-        <Text style={{ fontSize: 12, fontWeight: 600, color: t.textDim }}>{title}</Text>
+        <Text style={{ fontSize: typeScale.callout, fontWeight: 600, color: t.textDim, whiteSpace: 'nowrap' }}>{title}</Text>
         <View style={{ flex: 1 }} />
         {right}
       </View>
@@ -63,42 +63,42 @@ export function Big({ value, small }) {
   const t = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>
-      <Text style={{ fontSize: 26, fontWeight: 700, color: t.text, lineHeight: 1.05 }}>{value}</Text>
+      <Text style={{ fontSize: 24, fontWeight: 600, color: t.text, lineHeight: 1.05 }}>{value}</Text>
       {small ? <Text style={{ fontSize: 13, fontWeight: 500, color: t.textDim, marginBottom: 2 }}>{small}</Text> : null}
     </View>
   );
 }
 
-// Par de valores con leyenda de color (Recibido / Enviado)
+// Pair of values with a color legend (Received / Sent)
 export function Pair({ items }) {
   const t = useTheme();
   return (
-    <View style={{ flexDirection: 'row', gap: 18 }}>
+    <View style={{ flexDirection: 'row', gap: 20 }}>
       {items.map((i) => (
-        <View key={i.label} style={{ gap: 1 }}>
+        <View key={i.label} style={{ gap: 2 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             {i.color && <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: i.color }} />}
             <Text style={{ fontSize: 11, color: t.textDim }}>{i.label}</Text>
           </View>
-          <Text style={{ fontSize: 17, fontWeight: 700, color: t.text }}>{i.value}</Text>
+          <Text style={{ fontSize: typeScale.title, fontWeight: 600, color: t.text }}>{i.value}</Text>
         </View>
       ))}
     </View>
   );
 }
 
-// Dato chico (tm-stat)
+// Small stat (tm-stat)
 export function Stat({ label, value, unit, icon, children }) {
   const t = useTheme();
   const card = useCardStyle();
   return (
-    <View style={{ flex: 1, minWidth: 120, borderRadius: 10, backgroundColor: card.bg, border: `1px solid ${t.separator}`, paddingHorizontal: 12, paddingVertical: 10, gap: 2 }}>
+    <View style={{ flex: 1, minWidth: 120, borderRadius: 10, backgroundColor: card.bg, border: `1px solid ${t.separator}`, paddingHorizontal: 12, paddingVertical: 10, gap: 4 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
         {icon ? <Glyph name={icon} color={t.textDim} size={11} /> : null}
         <Text style={{ fontSize: 11, color: t.textDim, whiteSpace: 'nowrap' }}>{label}</Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4 }}>
-        <Text style={{ fontSize: 17, fontWeight: 700, color: t.text, whiteSpace: 'nowrap' }}>{value}</Text>
+        <Text style={{ fontSize: typeScale.title, fontWeight: 600, color: t.text, whiteSpace: 'nowrap' }}>{value}</Text>
         {unit ? <Text style={{ fontSize: 11, color: t.textDim, marginBottom: 2 }}>{unit}</Text> : null}
       </View>
       {children}
@@ -106,7 +106,7 @@ export function Stat({ label, value, unit, icon, children }) {
   );
 }
 
-// Series derivadas de la historia de muestras
+// Series derived from the sample history
 function useSeries(samples) {
   return useMemo(() => {
     const pick = (f) => samples.map(f);
@@ -125,7 +125,7 @@ function useSeries(samples) {
   }, [samples]);
 }
 
-// ---- Resumen ----
+// ---- Overview ----
 
 function TempStat({ last }) {
   const t = useTheme();
@@ -197,11 +197,11 @@ function CpuTab({ s, last }) {
   for (let i = 0; i < s.cores.length; i += cols) rows.push(s.cores.slice(i, i + cols).map((v, k) => [i + k, v]));
   return (
     <>
-      <Card icon="cpu" title={tr('monitor.totalUse')} right={<Text style={{ fontSize: 20, fontWeight: 700, color: t.text }}>{fmt.pct(tr, last.cpu)}</Text>}>
+      <Card icon="cpu" title={tr('monitor.totalUse')} right={<Text style={{ fontSize: 20, fontWeight: 600, color: t.text }}>{fmt.pct(tr, last.cpu)}</Text>}>
         <Chart series={[{ label: tr('monitor.cpu'), values: s.cpu, color: t.accent }]} max={1} format={(v) => fmt.pct(tr, v)} times={s.times} height={160} bg={card.bg} />
       </Card>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <Text style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{tr('monitor.perCore')}</Text>
+        <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text }}>{tr('monitor.perCore')}</Text>
         <Text style={{ fontSize: 12, color: t.textDim }}>{info?.cpuModel || ''}</Text>
       </View>
       {rows.map((row, r) => (
@@ -229,7 +229,7 @@ function CpuTab({ s, last }) {
   );
 }
 
-// ---- Memoria ----
+// ---- Memory ----
 
 function MemTab({ s, last }) {
   const t = useTheme();
@@ -273,9 +273,9 @@ function MemTab({ s, last }) {
   );
 }
 
-// ---- Discos ----
+// ---- Disks ----
 
-// Columna de tabla: la flexible se estira; las de ancho fijo no se encogen.
+// Table column: the flexible one stretches; fixed-width ones don't shrink.
 const colBox = (c) => (c.flex ? { flex: c.flex, minWidth: 0 } : { width: c.width, flexShrink: 0 });
 
 function Table({ cols, rows, onSort, sort }) {
@@ -338,7 +338,7 @@ function DisksTab({ s, last }) {
   );
 }
 
-// ---- Procesos ----
+// ---- Processes ----
 
 export function AppGlyph({ item, size = 16 }) {
   if (item.app === 'lordos') return <LordOSLogo size={size} />;
@@ -377,11 +377,11 @@ function ProcessesTab() {
   return (
     <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <Text style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{tr('monitor.processes')}</Text>
+        <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text }}>{tr('monitor.processes')}</Text>
         <Text style={{ fontSize: 12, color: t.textDim }}>{tr('monitor.procCount', { count: procs.total })}</Text>
         <View style={{ flex: 1 }} />
         <Segmented value={mine} onChange={setMine} options={[['mine', tr('monitor.mine')], ['all', tr('monitor.all')]]} />
-        <View style={{ width: 200 }}><TextInput value={q} onChange={setQ} placeholder={tr('monitor.search')} onCancel={() => setQ('')} /></View>
+        <SearchField value={q} onChange={setQ} placeholder={tr('monitor.search')} width={200} />
       </View>
       <Table cols={cols} sort={sort} onSort={(key) => setSort((s0) => ({ key, dir: s0.key === key ? -s0.dir : key === 'name' || key === 'user' || key === 'pid' ? 1 : -1 }))}
         rows={shown.map((p, i) => (
@@ -400,13 +400,13 @@ function ProcessesTab() {
   );
 }
 
-// ---- ventana ----
+// ---- window ----
 
 let lastTab = 'overview';
 
-// Cada pestaña se suscribe a lo que muestra, al ritmo que necesita: las de gráficos con cada
-// muestra (4 por segundo al frente, 1 en segundo plano); Procesos y Red, una vez por segundo.
-// La ventana en sí no se vuelve a dibujar con cada muestra.
+// Each tab subscribes to what it shows, at the rate it needs: the chart tabs on every sample (4 per
+// second in front, 1 in the background); Processes and Network, once per second. The window itself
+// doesn't redraw on every sample.
 function Charts({ tab, rate }) {
   const samples = useMonitor({ everyMs: rate });
   const s = useSeries(samples);
@@ -414,7 +414,7 @@ function Charts({ tab, rate }) {
   if (!last) return null;
   return (
     <ScrollView style={{ flex: 1 }}>
-      <View style={{ paddingHorizontal: 22, paddingTop: 18, paddingBottom: 26, gap: 16 }}>
+      <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 24, gap: 16 }}>
         {tab === 'overview' && <Overview s={s} last={last} />}
         {tab === 'cpu' && <CpuTab s={s} last={last} />}
         {tab === 'memory' && <MemTab s={s} last={last} />}
@@ -437,7 +437,7 @@ function Footer() {
   const samples = useMonitor({ everyMs: 1000 });
   const last = samples[samples.length - 1];
   return (
-    <View style={{ height: 30, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, backgroundColor: card.bg }}>
+    <View style={{ height: 28, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, backgroundColor: card.bg }}>
       <Glyph name="activity" color={t.textDim} size={11} />
       <Text style={{ fontSize: 11, color: t.textDim, whiteSpace: 'nowrap' }}>{tr('monitor.footer')}</Text>
       <View style={{ flex: 1 }} />
@@ -456,7 +456,7 @@ export default function Monitor() {
   const setTab = (v) => { lastTab = v; setTabState(v); };
   useEffect(() => { if (args?.tab) setTab(args.tab); }, [args?.tab, args?.nonce]);
   const showConns = tab === 'network' && prefs.connections !== false;
-  // qué listas arma lord-server (sin volver a dibujar esta ventana con cada muestra)
+  // which lists lord-server builds (without redrawing this window on every sample)
   useMonitor({ procs: tab === 'processes', conns: showConns, geo: showConns && prefs.geo !== false, everyMs: 0 });
   const ready = useStore(monitorSamples, (l) => l.length > 0);
   const tabs = [
@@ -468,21 +468,20 @@ export default function Monitor() {
   }
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ height: 46, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 12 }}>
-        <Text style={{ fontSize: 14, fontWeight: 700, color: t.text, width: 110 }}>{tr('monitor.title')}</Text>
+      <Toolbar style={{ paddingHorizontal: 20 }}>
+        <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text, width: 110, whiteSpace: 'nowrap' }}>{tr('monitor.title')}</Text>
         <View style={{ flex: 1, alignItems: 'center' }}>
           <Segmented value={tab} onChange={setTab} options={tabs} />
         </View>
         <View style={{ width: 110 }} />
-      </View>
-      <View style={{ height: 1, backgroundColor: t.separator }} />
+      </Toolbar>
       {!ready ? (
-        <View style={{ flex: 1, padding: 22 }}><Text style={{ fontSize: 13, color: t.textDim }}>{tr('monitor.waiting')}</Text></View>
+        <View style={{ flex: 1, padding: 20 }}><Text style={{ fontSize: 13, color: t.textDim }}>{tr('monitor.waiting')}</Text></View>
       ) : tab === 'network' ? (
         <Network prefs={prefs} />
       ) : tab === 'processes' ? (
         <ScrollView style={{ flex: 1 }}>
-          <View style={{ paddingHorizontal: 22, paddingTop: 18, paddingBottom: 26, gap: 16 }}><ProcessesTab /></View>
+          <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 24, gap: 16 }}><ProcessesTab /></View>
         </ScrollView>
       ) : (
         <Charts tab={tab} rate={focused === false ? 1000 : 250} />

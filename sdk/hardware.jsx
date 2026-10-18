@@ -140,12 +140,12 @@ export function previewNight(kelvin) { if (has('display')) call(() => lord.displ
 
 // Applies a mode live and starts the 15-second countdown; keepDisplay() saves it, revert brings back
 // the previous one (also when the countdown runs out with nobody answering).
-export function applyDisplay(out, { w, h: hh, refresh = 0, rotation = 0, conn = out.id }) {
+export function applyDisplay(out, { w, h: hh, refresh = 0, rotation = 0, scale = 1, conn = out.id }) {
   if (!has('display')) return false;
   const d = displays.get();
   const cur = (d?.outputs || []).find((o) => o.current) || out;
-  const old = { conn: cur.id, w: cur.mode?.w || 0, h: cur.mode?.h || 0, refresh: cur.mode?.refresh || 0, rotation: d?.rotation || 0 };
-  if (!lord.display.apply(conn, w, hh, refresh, rotation)) return false;
+  const old = { conn: cur.id, w: cur.mode?.w || 0, h: cur.mode?.h || 0, refresh: cur.mode?.refresh || 0, rotation: d?.rotation || 0, scale: d?.scale || 1 };
+  if (!lord.display.apply(conn, w, hh, refresh, rotation, scale)) return false;
   const prev = displayConfirm.get();
   displayConfirm.set({ conn, old: prev ? prev.old : old, deadline: Date.now() + 15000, left: 15 });
   scheduleConfirm();
@@ -174,7 +174,7 @@ export function revertDisplay() {
   const c = displayConfirm.get();
   clearTimeout(confirmTimer);
   displayConfirm.set(null);
-  if (c && has('display')) lord.display.apply(c.old.conn, c.old.w, c.old.h, c.old.refresh, c.old.rotation);
+  if (c && has('display')) lord.display.apply(c.old.conn, c.old.w, c.old.h, c.old.refresh, c.old.rotation, c.old.scale || 1);
 }
 
 // System dialogs are drawn outside the theme's provider: light or dark from the user's setting.
@@ -311,7 +311,7 @@ function linuxNotify(n) {
   if (prev) dismissNotification(prev, 'replaced');
   const reason = { closed: 2, expired: 1, action: 2, replaced: 0, remote: 0 };
   const id = notify({
-    app: key, label: app?.name || n.app, title: n.title, body: n.body, sticky: n.urgency === 2,
+    app: key, label: app?.name || n.app, icon: app?.Icon || null, title: n.title, body: n.body, sticky: n.urgency === 2,
     timeout: n.timeout > 0 ? n.timeout : 6000,
     actions: (n.actions || []).filter(([k]) => k !== 'default').map(([k, label]) => ({ id: k, label, run: () => lord.notifyd.action(n.id, k) })),
     onClose: (why) => { if (fromLinux.get(n.id) === id) fromLinux.delete(n.id); if (reason[why]) lord.notifyd.closed(n.id, reason[why]); },

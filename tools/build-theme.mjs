@@ -21,8 +21,14 @@ const appsPlugin = {
         return `import * as A${i} from ${JSON.stringify(path.join(base, 'index.jsx'))};\n` +
                `import M${i} from ${JSON.stringify(path.join(base, 'manifest.json'))};`;
       });
-      const list = ids.map((_, i) => `{ ...M${i}, Component: A${i}.default, Icon: A${i}.Icon }`).join(',\n  ');
-      return { contents: `${lines.join('\n')}\nexport const apps = [\n  ${list}\n];\n`, resolveDir: root, loader: 'js' };
+      // "process": "isolated": a built-in app that runs as its own sandboxed process (its window in
+      // the theme only starts it; see sdk/packages.js isolatedApp and buildSysApps below)
+      const iso = ids.map((id) => JSON.parse(fs.readFileSync(path.join(dir, id, 'manifest.json'), 'utf8')).process === 'isolated');
+      const list = ids.map((_, i) => (iso[i]
+        ? `{ ...M${i}, isolated: true, Component: isolatedApp(M${i}.id, A${i}.default), Icon: A${i}.Icon }`
+        : `{ ...M${i}, Component: A${i}.default, Icon: A${i}.Icon }`)).join(',\n  ');
+      const head = iso.some(Boolean) ? `import { isolatedApp } from ${JSON.stringify(path.join(root, 'sdk', 'packages.js'))};\n` : '';
+      return { contents: `${head}${lines.join('\n')}\nexport const apps = [\n  ${list}\n];\n`, resolveDir: root, loader: 'js' };
     });
   },
 };
@@ -67,7 +73,48 @@ async function buildAppHost() {
   console.log(`app-host: ${(bytes / 1024).toFixed(0)} KB en ${Date.now() - t0} ms`);
 }
 
+// Built-in apps with "process": "isolated" (Passwords): their app.js for `lord-server --app <id>`,
+// built like an .lpk (React and the SDK come from the app host), into assets/sysapps/<id>/.
+// lord-server prefers this read-only system package over any user package with the same id.
+async function buildSysApps() {
+  const dir = path.join(root, 'apps');
+  const sharedPlugin = {
+    name: 'lordos-shared',
+    setup(b) {
+      b.onResolve({ filter: /^(react|react\/jsx-runtime|@lordos\/sdk|@lordos\/runtime)$/ }, (a) => ({ path: a.path, namespace: 'lordos-shared' }));
+      b.onLoad({ filter: /.*/, namespace: 'lordos-shared' }, (a) => ({
+        contents: `module.exports = globalThis.__lordos.require(${JSON.stringify(a.path)});`, loader: 'js',
+      }));
+    },
+  };
+  for (const id of fs.readdirSync(dir).sort()) {
+    const mf = path.join(dir, id, 'manifest.json');
+    if (!fs.existsSync(mf)) continue;
+    const manifest = JSON.parse(fs.readFileSync(mf, 'utf8'));
+    if (manifest.process !== 'isolated') continue;
+    const t0 = Date.now();
+    const out = path.join(root, 'assets', 'sysapps', id);
+    fs.mkdirSync(out, { recursive: true });
+    const result = await build({
+      entryPoints: [path.join(dir, id, 'index.jsx')],
+      bundle: true, write: false, format: 'iife', globalName: '__lordosApp', target: 'es2020', minify: true,
+      jsx: 'automatic', plugins: [sharedPlugin], define: { 'process.env.NODE_ENV': '"production"' }, logLevel: 'warning',
+    });
+    fs.writeFileSync(path.join(out, 'app.js'), result.outputFiles[0].contents);
+    fs.writeFileSync(path.join(out, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    // the app process reads the texts of its own namespace from the package (lord.locale.catalog)
+    for (const lang of fs.readdirSync(path.join(root, 'assets', 'locales'))) {
+      const src = path.join(root, 'assets', 'locales', lang, `${id}.json`);
+      if (!fs.existsSync(src)) continue;
+      fs.mkdirSync(path.join(out, 'locales'), { recursive: true });
+      fs.copyFileSync(src, path.join(out, 'locales', `${lang}.json`));
+    }
+    console.log(`system app ${id}: ${(result.outputFiles[0].contents.length / 1024).toFixed(0)} KB in ${Date.now() - t0} ms`);
+  }
+}
+
 const all = fs.readdirSync(path.join(root, 'themes'))
   .filter((d) => fs.existsSync(path.join(root, 'themes', d, 'index.jsx')));
-for (const name of (names.length ? names : all).filter((n) => n !== 'app-host')) await buildTheme(name);
+for (const name of (names.length ? names : all).filter((n) => n !== 'app-host' && n !== 'sysapps')) await buildTheme(name);
 if (!names.length || names.includes('app-host')) await buildAppHost();
+if (!names.length || names.includes('sysapps')) await buildSysApps();

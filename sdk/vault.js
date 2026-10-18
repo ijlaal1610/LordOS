@@ -52,10 +52,11 @@ function pump() {
 // Los eventos (bloqueo automático, avisos de Secret Service) llegan aunque nadie espere nada.
 function startSlow() { if (!slow && has()) slow = setInterval(pump, 600); }
 
-export function vaultRequest(op, args = {}, { files } = {}) {
+export function vaultRequest(op, args = {}, { files, fds } = {}) {
   if (!has()) return Promise.reject(Object.assign(new Error('unavailable'), { code: 'unavailable' }));
   let id;
-  try { id = lord.vault.request(JSON.stringify({ op, ...args }), files ? { files } : undefined); }
+  // files: paths opened by lord-server (shell); fds: files picked in the system dialog (app process)
+  try { id = lord.vault.request(JSON.stringify({ op, ...args }), files || fds ? { files, fds } : undefined); }
   catch (e) { return Promise.reject(Object.assign(new Error(e.message), { code: 'file' })); }
   startSlow();
   return new Promise((resolve, reject) => {

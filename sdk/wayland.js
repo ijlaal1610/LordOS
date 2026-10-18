@@ -9,7 +9,7 @@ import { createElement as h } from 'react';
 import { View, Text, Surface, addListener } from '@lordos/runtime';
 import { windows, wm, registerBuiltinApp, windowChrome, workArea, getApp } from './windows.js';
 import { useAppWindow } from './components.jsx';
-import { locale } from './i18n.js';
+import { locale, appName } from './i18n.js';
 
 const idOf = (sid) => `linux#${sid}`;
 export const surfaceOf = (wid) => (String(wid).startsWith('linux#') ? Number(String(wid).slice(6)) || 0 : 0);
@@ -59,12 +59,14 @@ globalThis.__lordWayland = (sid, type, d = {}) => {
       wm.open('linux', {
         instance: String(sid),
         frame: { w, h: hh, x: Math.round(area.x + (area.w - w) / 2 + (n % 5) * 24), y: Math.round(area.y + Math.max(8, (area.h - hh) / 2 - 30) + (n % 5) * 24) },
-        args: { surface: sid, csd: !!d.csd, appId: d.appId || '', pkg: !!(d.appId && getApp(d.appId)?.package) },
+        args: { surface: sid, csd: !!d.csd, appId: d.appId || '', pkg: !!(d.appId && (getApp(d.appId)?.package || getApp(d.appId)?.isolated)) },
       });
       // app .lpk aislada: su nombre (del manifest) en vez del id
-      { const pkg = d.appId ? getApp(d.appId) : null; wm.setTitle(id, pkg && pkg.package && (!d.title || d.title === d.appId) ? pkg.name : (d.title || d.appId || null)); }
+      { const pkg = d.appId ? getApp(d.appId) : null; wm.setTitle(id, pkg && (pkg.package || pkg.isolated) && (!d.title || d.title === d.appId) ? (pkg.isolated ? appName(pkg) : pkg.name) : (d.title || d.appId || null)); }
+      // a built-in isolated app that asks for it (manifest "protected": Passwords) is black in captures
+      if (d.appId && getApp(d.appId)?.isolated && getApp(d.appId)?.protected) wm.setProtected(id, true);
       wm.setCloseGuard(id, () => { lord.wayland.close(sid); return false; });   // la app decide cuándo cierra
-      if (d.appId && getApp(d.appId)?.package) setTimeout(() => applyAppMenus(d.appId), 0);   // menús de la app aislada (ya mapeada)
+      if (d.appId && (getApp(d.appId)?.package || getApp(d.appId)?.isolated)) setTimeout(() => applyAppMenus(d.appId), 0);   // menús de la app aislada (ya mapeada)
       break;
     }
     case 'unmap': if (win) wm.close(id, true); break;
@@ -117,7 +119,7 @@ locale.subscribe(() => setTimeout(() => {
   for (const w of windows.get()) {
     if (!w.args?.pkg) continue;
     const pkg = getApp(w.args.appId);
-    if (pkg && pkg.name) wm.setTitle(w.id, pkg.name);
+    if (pkg && pkg.name) wm.setTitle(w.id, pkg.isolated ? appName(pkg) : pkg.name);
   }
 }, 0));
 

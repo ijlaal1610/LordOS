@@ -1,13 +1,13 @@
-// Tienda — apps de LordOS (paquetes .lpk, sin root) y de Debian (motor de paquetes propio,
-// server/src/pkg; instalar y quitar pasan por el ayudante de administración).
+// Store: LordOS apps (.lpk packages, no root) and Debian apps (our own package engine,
+// server/src/pkg; install and remove go through the administration helper).
 import {
-  View, Text, Image, useTheme, useLocale, useAppWindow, useStore, Button, TextInput, ScrollView, SidebarItem, SectionTitle,
-  packages, packageList, refreshPackages, useLauncherApps, launchApp, fs, formatBytes, wm,
+  View, Text, Image, useTheme, useLocale, useAppWindow, useStore, Button, ScrollView, SidebarItem, SectionTitle, SearchField, Hairline, EmptyState,
+  packages, packageList, refreshPackages, useLauncherApps, launchApp, fs, formatBytes, wm, direction, typeScale,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useState } from 'react';
 import { debian, useDebian } from './debian.js';
 
-// Nivel de confianza de un paquete según su firma (ver docs/FIRMA.md).
+// Trust level of a package from its signature (see docs/FIRMA.md).
 const TRUST = {
   lordos: { color: '#30d158', glyph: '◆' },
   verified: { color: '#0a84ff', glyph: '✓' },
@@ -44,18 +44,33 @@ export function Icon({ size: s }) {
   );
 }
 
-const Divider = () => <View style={{ height: 1, backgroundColor: useTheme().separator }} />;
+// Hairline between list rows, inset to start at the text (after the icon), as macOS lists do.
+const Divider = ({ inset = 56 }) => <View style={{ height: 1, backgroundColor: useTheme().separator, [direction() === 'rtl' ? 'marginRight' : 'marginLeft']: inset }} />;
 
-// Fila de una app: ícono, nombre, detalle y acciones a la derecha.
+// Page title (large title) with an optional subtitle.
+export function PageTitle({ title, subtitle, children }) {
+  const t = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+      <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+        <Text style={{ fontSize: typeScale.largeTitle, fontWeight: 600, color: t.text }}>{title}</Text>
+        {subtitle ? <Text style={{ fontSize: typeScale.callout, color: t.textDim, lineHeight: 1.4 }}>{subtitle}</Text> : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+// An app row: icon, name, detail and actions at the end.
 export function AppRow({ icon, name, detail, extra, children, onClick }) {
   const t = useTheme();
   return (
-    <View onClick={onClick} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 4 }}>
+    <View onClick={onClick} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }}>
       {icon}
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ fontSize: 14, fontWeight: 600, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{name}</Text>
-        {detail ? <Text style={{ fontSize: 12, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{detail}</Text> : null}
-        {extra ? <Text style={{ fontSize: 11, color: t.textDim }}>{extra}</Text> : null}
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{name}</Text>
+        {detail ? <Text style={{ fontSize: typeScale.callout, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{detail}</Text> : null}
+        {extra ? <Text style={{ fontSize: typeScale.caption, color: t.textDim }}>{extra}</Text> : null}
       </View>
       <View style={{ flexDirection: 'row', gap: 8 }}>{children}</View>
     </View>
@@ -64,12 +79,12 @@ export function AppRow({ icon, name, detail, extra, children, onClick }) {
 
 export function Message({ msg }) {
   if (!msg) return null;
-  return <Text style={{ fontSize: 12, color: msg.ok ? '#30d158' : '#ff453a', marginVertical: 8 }}>{msg.text}</Text>;
+  return <Text style={{ fontSize: typeScale.callout, color: msg.ok ? '#30d158' : '#ff453a', marginVertical: 8, lineHeight: 1.4 }}>{msg.text}</Text>;
 }
 
-// ---- apps LordOS (.lpk) ----
+// ---- LordOS apps (.lpk) ----
 
-// Paquetes encontrados en la carpeta personal (Descargas, Escritorio y la raíz).
+// Packages found in the home folder (Downloads, Desktop and the top level).
 function findPackageFiles() {
   const out = [];
   for (const dir of ['', 'Descargas', 'Downloads', 'Escritorio', 'Desktop']) {
@@ -80,7 +95,7 @@ function findPackageFiles() {
   return out;
 }
 
-// Confirmación antes de instalar un archivo: lo que dice el paquete y qué pide.
+// Confirmation before installing a file: what the package says and what it asks for.
 function InstallFile({ path, onDone }) {
   const t = useTheme();
   const { t: tr } = useLocale();
@@ -111,12 +126,12 @@ function InstallFile({ path, onDone }) {
     } catch (e) { setMsg({ ok: false, text: e.message }); }
   };
   return (
-    <View style={{ padding: 14, borderRadius: 10, backgroundColor: t.hover, gap: 8, marginBottom: 12 }}>
-      <Text style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{tr('store.file.title')}</Text>
+    <View style={{ padding: 16, borderRadius: 10, backgroundColor: t.hover, border: `1px solid ${t.separator}`, gap: 8, marginBottom: 20 }}>
+      <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text }}>{tr('store.file.title')}</Text>
       <Text style={{ fontSize: 12, color: t.textDim }}>{path}</Text>
       {m && (
         <View style={{ gap: 4 }}>
-          <Text style={{ fontSize: 14, fontWeight: 600, color: t.text }}>{loc(m.name)} {m.version}</Text>
+          <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text }}>{loc(m.name)} {m.version}</Text>
           {m.description ? <Text style={{ fontSize: 12, color: t.text }}>{loc(m.description)}</Text> : null}
           <Text style={{ fontSize: 12, color: t.textDim }}>{tr('store.file.size', { size: formatBytes(info.size), files: info.files })}</Text>
           <Text style={{ fontSize: 12, color: t.textDim }}>
@@ -127,9 +142,9 @@ function InstallFile({ path, onDone }) {
       )}
       {isDeb && <Text style={{ fontSize: 12, color: t.text }}>{tr('store.file.deb')}</Text>}
       <Message msg={msg} />
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        {(m || isDeb) && !msg?.ok && <Button primary label={busy ? tr('store.working') : tr('store.install')} onClick={() => !busy && install()} />}
+      <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
         <Button label={tr('store.close')} onClick={() => onDone?.(true)} />
+        {(m || isDeb) && !msg?.ok && <Button primary label={busy ? tr('store.working') : tr('store.install')} onClick={() => !busy && install()} />}
       </View>
     </View>
   );
@@ -146,12 +161,11 @@ function LordOSPage({ query }) {
   const shown = list.filter((p) => !q || `${p.name} ${p.description} ${p.id}`.toLowerCase().includes(q));
   return (
     <View>
-      <Text style={{ fontSize: 22, fontWeight: 700, color: t.text, marginBottom: 4 }}>{tr('store.lordos.title')}</Text>
-      <Text style={{ fontSize: 12, color: t.textDim, marginBottom: 12 }}>{tr('store.lordos.subtitle')}</Text>
+      <PageTitle title={tr('store.lordos.title')} subtitle={tr('store.lordos.subtitle')} />
       {pick && <InstallFile path={pick} onDone={(cancel) => { if (cancel) setPick(null); setFiles(findPackageFiles().filter((f) => /\.lpk$/i.test(f.name))); }} />}
       <Message msg={msg} />
       <SectionTitle>{tr('store.lordos.installedTitle')}</SectionTitle>
-      {shown.length === 0 && <Text style={{ fontSize: 13, color: t.textDim, margin: 10 }}>{tr('store.lordos.none')}</Text>}
+      {shown.length === 0 && <Text style={{ fontSize: typeScale.callout, color: t.textDim, marginHorizontal: 10, marginVertical: 8 }}>{tr('store.lordos.none')}</Text>}
       {shown.map((p, i) => (
         <View key={p.id}>
           {i > 0 && <Divider />}
@@ -163,7 +177,7 @@ function LordOSPage({ query }) {
         </View>
       ))}
       <SectionTitle>{tr('store.lordos.filesTitle')}</SectionTitle>
-      {files.length === 0 && <Text style={{ fontSize: 12, color: t.textDim, margin: 10 }}>{tr('store.lordos.noFiles')}</Text>}
+      {files.length === 0 && <Text style={{ fontSize: typeScale.callout, color: t.textDim, marginHorizontal: 10, marginVertical: 8 }}>{tr('store.lordos.noFiles')}</Text>}
       {files.map((f) => (
         <AppRow key={f.path} icon={<Icon size={32} />} name={f.name} detail={`${f.path.replace(fs.home(), '~')} · ${formatBytes(f.size)}`}>
           <Button label={tr('store.install')} onClick={() => setPick(f.path)} />
@@ -173,7 +187,7 @@ function LordOSPage({ query }) {
   );
 }
 
-// Confianza, «Modificada por vos», Restaurar original y Compartir mi versión (docs/FIRMA.md).
+// Trust, "Modified by you", Restore original and Share my version (docs/FIRMA.md).
 function PkgManage({ pkg, onMsg }) {
   const t = useTheme();
   const { t: tr } = useLocale();
@@ -195,7 +209,7 @@ function PkgManage({ pkg, onMsg }) {
     } catch (e) { onMsg({ ok: false, text: e.message }); }
   };
   return (
-    <View style={{ marginInlineStart: 56, marginBottom: 8, gap: 6 }}>
+    <View style={{ [direction() === 'rtl' ? 'marginRight' : 'marginLeft']: 56, marginBottom: 8, gap: 6 }}>
       {st.hasOriginal ? <TrustBadge sig={st} /> : <Text style={{ fontSize: 11, color: t.textDim }}>{tr('store.manage.noOriginal')}</Text>}
       {st.modified && (
         <View style={{ gap: 4 }}>
@@ -216,7 +230,7 @@ function PkgManage({ pkg, onMsg }) {
 }
 const pkgManifest = (pkg) => ({ name: pkg.name, description: pkg.description, icon: 'icon.png', size: pkg.size, minSize: pkg.minSize, permissions: pkg.permissions });
 
-// ---- apps instaladas (todas: LordOS, paquetes y Linux) ----
+// ---- installed apps (all of them: LordOS, packages and Linux) ----
 
 function InstalledPage({ query }) {
   const t = useTheme();
@@ -227,10 +241,10 @@ function InstalledPage({ query }) {
   const kind = (a) => tr(`store.kind.${a.kind}`);
   return (
     <View>
-      <Text style={{ fontSize: 22, fontWeight: 700, color: t.text, marginBottom: 12 }}>{tr('store.installed.title')}</Text>
+      <PageTitle title={tr('store.installed.title')} />
       {shown.map((a, i) => (
         <View key={a.id}>
-          {i > 0 && <Divider />}
+          {i > 0 && <Divider inset={48} />}
           <AppRow icon={<a.Icon size={36} />} name={a.name} detail={a.comment || a.genericName || ''} extra={kind(a)}>
             <Button label={tr('store.open')} onClick={() => launchApp(a.id)} />
             {a.kind === 'linux' && debian.canRemove(a) && <Button label={tr('store.remove')} onClick={() => debian.removeApp(a)} />}
@@ -241,7 +255,7 @@ function InstalledPage({ query }) {
   );
 }
 
-// ---- ventana ----
+// ---- window ----
 
 export default function Store() {
   const t = useTheme();
@@ -254,7 +268,7 @@ export default function Store() {
   useEffect(() => {
     if (args?.install) setFile(args.install);
     if (args?.page) setPage(args.page);
-    if (args?.search) { setQuery(args.search); setPage('discover'); }       // desde Spotlight
+    if (args?.search) { setQuery(args.search); setPage('discover'); }       // from Spotlight
   }, [args?.nonce]);
   const pages = [
     ['discover', tr('store.page.discover')],
@@ -265,17 +279,18 @@ export default function Store() {
   const Page = { discover: debian.Discover, lordos: LordOSPage, installed: InstalledPage, updates: debian.Updates }[page];
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>
-      <View style={{ width: 200, backgroundColor: t.sidebarBg, padding: 10, gap: 4 }}>
-        <TextInput value={query} onChange={(v) => { setQuery(v); if (v && page !== 'discover' && page !== 'installed' && page !== 'lordos') setPage('discover'); }}
-          placeholder={tr('store.search')} onCancel={() => setQuery('')} />
-        <View style={{ height: 6 }} />
+      <View style={{ width: 210, backgroundColor: t.sidebarBg, paddingHorizontal: 10, paddingTop: 10, paddingBottom: 12, gap: 2 }}>
+        <Hairline edge="end" />
+        <SearchField value={query} onChange={(v) => { setQuery(v); if (v && page !== 'discover' && page !== 'installed' && page !== 'lordos') setPage('discover'); }}
+          placeholder={tr('store.search')} style={{ marginBottom: 10 }} />
         {pages.map(([id, label]) => <SidebarItem key={id} label={label} selected={page === id} onClick={() => setPage(id)} />)}
         <View style={{ flex: 1 }} />
-        <debian.Status />
+        <View style={{ paddingHorizontal: 10 }}><debian.Status /></View>
       </View>
-      <ScrollView style={{ flex: 1, padding: 18 }}>
+      <ScrollView style={{ flex: 1, paddingHorizontal: 20, paddingTop: 20 }}>
         {file && <InstallFile path={file} onDone={(cancel) => cancel && setFile(null)} />}
         <Page query={query} onPage={setPage} />
+        <View style={{ height: 20 }} />
       </ScrollView>
     </View>
   );

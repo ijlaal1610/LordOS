@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 #include <ctype.h>
 
 static int fails, checks;
@@ -415,9 +416,20 @@ static void test_html(void) {
     CHECK(strstr(j, "\"bg\":\"#f4f4f4\"") != NULL);
     CHECK(strstr(j, "\"mk\":\"2.\"") != NULL);
     CHECK(strstr(j, "{\"t\":\"tbl\"") != NULL);
+    CHECK(strstr(j, "\"c\":[]}") == NULL || !strstr(j, "{\"t\":\"tr\",\"s\":{\"_\":0},\"c\":[]}"));     /* no empty rows */
     for (int i = 0; i < nd; i++) free((void *)data[i].p);
     free(j);
 
+    {
+        const char *tb = "<table><tr><td>a</td><td>b</td></tr><tr><td>c<td>d</table>";
+        size_t tn;
+        char *tj = html_sanitize(tb, strlen(tb), &tn, &st, NULL, NULL);
+        int rows = 0, cells = 0;
+        for (const char *p = tj; (p = strstr(p, "\"t\":\"tr\"")); p++) rows++;
+        for (const char *p = tj; (p = strstr(p, "\"t\":\"td\"")); p++) cells++;
+        CHECK(rows == 2 && cells == 4);
+        free(tj);
+    }
     CHECK(html_link_warning("https://www.mibanco.com", "https://mibanco.com.evil.net/") != NULL);
     CHECK(html_link_warning("www.mibanco.com", "https://login.mibanco.com/x") == NULL);
     CHECK(html_link_warning("Ver más", "https://cualquier.net/") == NULL);
@@ -728,6 +740,7 @@ static void test_vcard(void) {
 }
 
 int main(void) {
+    alarm(300);                 /* never hang a `make test`: SIGALRM kills a runaway parser */
     clock_t t0 = clock();
     static const struct { const char *name; void (*fn)(void); } parts[] = {
         { "imap", test_imap }, { "mime", test_mime }, { "html", test_html }, { "xml", test_xml }, { "ical", test_ical }, { "vcard", test_vcard },

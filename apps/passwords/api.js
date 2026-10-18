@@ -6,6 +6,10 @@ import { createStore, vaultRequest, onVaultEvent, clipboard, t } from '@lordos/s
 
 export const APP_ID = 'passwords';
 
+// true when this UI runs as its own sandboxed process (lord-server --app passwords) with a direct
+// channel to lord-vault; false in the shell (in-process fallback). See docs/PASSWORDS.md.
+export const appMode = typeof lord !== 'undefined' && !!(lord.vault && lord.vault.appMode);
+
 export const app = createStore({
   phase: 'loading',          // loading | none | locked | unlocked | unavailable
   status: null,              // respuesta de "status"
@@ -66,6 +70,12 @@ export function toast(text, kind = 'info') {
 let clearTimer = null;
 export function copySecret(value, label) {
   const secs = Number(app.get().meta?.clip ?? 30) || 30;
+  if (appMode) {
+    // app process: lord-server marks it sensitive and clears it after `secs` if unchanged
+    lord.clipboard.set(value, { secure: true, clearAfter: secs });
+    toast(t('passwords.copied', { what: label, secs }));
+    return;
+  }
   clipboard.set(value, { secure: true, origin: APP_ID });
   if (clearTimer) clearTimeout(clearTimer);
   clearTimer = setTimeout(() => {

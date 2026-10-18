@@ -767,6 +767,18 @@ Ver `FIREWALL.md`, paso 2. En la VM 122 (172.17.0.56), que ya tenía `lord-sessi
     nada grande de internet.
 - **Ninguna red tocada:** ni eth0 ni reglas de nftables. Los ganchos son de cgroup y solo
   alcanzan a las apps de las sesiones de LordOS.
+- **`systemd-run --user` escape (M8 follow-up, no new packages).** `lord-netperm` now also attaches
+  to each session user's `user@<uid>.service` and applies the per-user restriction union there (see
+  `FIREWALL.md`, «Escape via `systemd-run --user`»). Tested as the restricted app `desktop:aisla`
+  ("no internet"): `systemd-run --user --scope curl`, `systemd-run --user curl` (service) and
+  `setsid curl` all blocked, a normal process unaffected, and `bob`'s restriction not leaking into
+  `lord`'s. Scratch scripts (outside the repo): `~/bin/escape-aisla-122.sh`,
+  `~/union-escape-122.sh`, `~/bob-escape-122.sh`, `~/bin/run-escape-shot-122.sh` and
+  `~/bin/escape-wait-122.sh`. The screenshot `docs/m8-firewall-escape-blocked.png` is a `foot`
+  window opened on the compositor (`WAYLAND_DISPLAY=wayland-0`) running the escape test inside the
+  restricted scope, captured with `qm monitor 122` `screendump`. The lock screen was cleared by a
+  full `lordos.service` restart with autologin (`rm /run/lordos/autologin-done`), not by changing
+  any password.
 - **Capturas** con `qm monitor 122` (`screendump`) desde el host. El mouse va por
   `/root/lord-qmp-input.py 122`.
 - **Marco y colores de las apps Linux** (`WAYLAND.md`):
@@ -806,8 +818,9 @@ and `~/LordOS-m9` were not touched.
   `/dev/uhid` and shows up as `/dev/hidrawN` (`root:plugdev 0660`). No real key was available.
 - **Fake USB stick:** `/var/tmp/pendrive-pw-116.img` (32 MB ext4, label `PENDRIVE`) loop-mounted at
   `/media/pwtest/PENDRIVE` (owned by `pwtest`) for the key-file screenshots.
-- **Remote desktop** turned on (`/etc/lordos/remote/config`: `enabled=1`, `port=5673`) while trying
-  the remote-viewer capture.
+- **Remote desktop** was turned on for a while (`/etc/lordos/remote/config`: `enabled=1`,
+  `port=5673`) and turned off again afterwards (file removed). The fake USB stick is unmounted,
+  `softfido`, the local web page and Chromium were stopped at the end.
 - **Demo data:** `server/build/vault-demo lordos foto.jpg`, run as `pwtest`, creates a vault with
   invented items of every template (test-only master password `lordos`); `/tmp/sitio-pw/` is a
   local login page served on 127.0.0.1:8080 for the Chromium test.
@@ -877,3 +890,80 @@ isolated app»). On VM 122 (172.17.0.56):
 - **Screenshots:** `qm monitor 122` (`screendump`) on the Proxmox host; the mouse through
   `/root/lord-qmp-input.py 122`, typing through `/root/lord-type.py 122`.
 - **Network:** untouched (no eth0 change, no nftables).
+
+## Step 22 — Settings: displays, Bluetooth, energy, date and time (VM 118)
+
+See `SETTINGS.md`. On VM 118 (172.17.0.53), which already had `lord-sessiond` with
+`AUTOLOGIN=lord` (step 18):
+
+- **Tree and install:** a copy in `~/LordOS-ajustes` (sent with `tar` over ssh; the VM has no
+  rsync), built there and installed as root into `/usr/local/lib/lordos/{bin,themes,assets}`; the
+  session restarts with `systemctl kill -s KILL --kill-whom=all lordos`, `reset-failed`,
+  `rm /run/lordos/autologin-done` and `start`.
+- **Packages:**
+  - **`bluez`** and **`bluez-test-tools`** (`btvirt`). `modprobe hci_vhci` and `btvirt -l2` (as
+    root, in the background, log in `/tmp/btvirt-ajustes-118.log`) create two virtual controllers
+    on one virtual radio: hci0 is the computer, hci1 plays a headset (alias "Auriculares de prueba",
+    `btmgmt --index 1 class 4 4`, discoverable, a `bluetoothctl` agent fed through the FIFO
+    `/tmp/btctl-ajustes-118.in`, script `~/btpeer-ajustes-118.sh`). Not persistent across reboots.
+  - **`libspa-0.2-bluetooth`**: PipeWire's BlueZ support, so the headset shows up in Sound.
+  - **`power-profiles-daemon`** (placeholder driver in the VM: power-saver and balanced).
+  - `systemd-timesyncd` was already installed.
+- **WirePlumber:** `~/.config/wireplumber/wireplumber.conf.d/lordos-bluez.conf` with
+  `monitor.bluez.seat-monitoring = disabled` (lord-sessiond sessions are not logind seat sessions;
+  without it WirePlumber never enables Bluetooth audio). The ISO needs the same file in
+  `/etc/wireplumber/wireplumber.conf.d/`.
+- **Files written by the tests:** `/etc/systemd/logind.conf.d/lordos.conf` (power button back to
+  `poweroff`, lid `suspend`: logind's defaults), `~/.config/lordos/displays.json` (1280×800),
+  `~/.config/mimeapps.list` (Firefox ESR as browser, Mousepad as text editor),
+  `~/Escritorio/nota-ajustes.txt`. NTP was turned off and on again; the clock was set by hand once.
+- **Screenshots** with `qm monitor 118` (`screendump`, converted to PNG on the Mac) and the mouse
+  through `/root/lord-qmp-input.py 118`.
+
+## Step 23 — M9 system apps and `lord-netd` (VM 119 `lordos-spot`)
+
+See `SYSTEM.md` (Disks, Backups, Logs, Clock, Help) and `RED.md` ("The network belongs to the
+system"). VM 119 still runs LordOS installed like the `.deb` (step 19). It was not reinstalled from
+the ISO.
+
+**Deploy:** the tree is copied to `~/LordOS-sis` (only changed files, so `make` never keeps stale
+objects), built with `make -C server -j4`, and `lord-server`, `lord-sessiond`, `lord-media` and the
+new `lord-netd` are installed root-owned in `/usr/lib/lordos/bin`, with the themes and `assets`.
+
+**Proxmox change (approved by main):** `qm set 119 --sata1 local-lvm:8`, an 8 GB SATA disk (`sdb`,
+"QEMU HARDDISK" on AHCI). QEMU's SATA disk answers ATA SMART; the virtio-scsi `sda` doesn't. It
+**stays** attached for the Disks tests. Remove it with `qm set 119 --delete sata1` and free
+`local-lvm:vm-119-disk-1`. The boot order is unchanged (`scsi0`).
+
+**Service:** `/etc/systemd/system/lordos.service.d/delegate.conf` now has
+`DelegateSubgroup=supervisor` next to `Delegate=yes` (without it `systemctl restart lordos` failed
+while processes survived; see `SESIONES.md`).
+
+**Packages:**
+
+| Package | For |
+|---|---|
+| `exfatprogs` | Disks: format and label exFAT (`mkfs.exfat`, `exfatlabel`); also for the ISO |
+| `ntfs-3g` | Disks: NTFS (optional; without `mkfs.ntfs` the app doesn't offer it) |
+
+`dosfstools` and `e2fsprogs` were already installed.
+
+**Test-only setup (not part of LordOS):**
+
+| Item | For |
+|---|---|
+| `/usr/local/sbin/lordos-test-netns` + `lordos-test-netns.service` (enabled, `Before=lordos.service`) | netns `lnt` with `dnsmasq` (`10.77.0.50-99`, no router, `--leasefile-ro`) behind the veth `lnt0`, so `lord-netd` has a NIC of its own to bring up at boot; `eth0` (netplan) is never touched |
+| `/etc/lordos/net/if/lnt0.conf` (`method=dhcp`) | the saved profile `lord-netd` restores at boot |
+| `/etc/lordos/remote/config` `enabled=1` | remote desktop reachable before login (the test); set back to `enabled=0` after the tests if it isn't needed |
+| user `ana` ("Ana Prueba", created in Settings → Users, test password) | second user for the login/logout test and the home-folder check |
+| `dummy_hcd` + `g_mass_storage file=/var/tmp/usb-disk-sistema-119.img removable=1 stall=0` | a real USB mass-storage stick inside the VM (sdc, TRAN usb, RM 1) for Disks; remove with `sudo rmmod g_mass_storage dummy_hcd` |
+| `~/Descargas/lordos-prueba.img` (300 MB) | image for the bootable-USB test |
+| ext4 image on a loop device under `/media/lord` | Backups destination during the tests (deleted afterwards) |
+
+To undo the network test: `sudo systemctl disable --now lordos-test-netns`, `sudo ip netns del lnt`,
+`sudo rm /etc/lordos/net/if/lnt0.conf /usr/local/sbin/lordos-test-netns
+/etc/systemd/system/lordos-test-netns.service`.
+
+**Screenshots** with `qm monitor 119` (`screendump … -f png`) and the mouse through
+`/root/lord-qmp-input.py 119`, holding `flock /tmp/sistema-119-screen.lock` on the host while
+driving the screen.

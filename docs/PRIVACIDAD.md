@@ -17,7 +17,7 @@ primera vez y el usuario decide. Ver también [FIRMA.md](FIRMA.md) (paquetes fir
 | Permisos por app, estilo TCC, guardados donde la app no escribe (`server/src/sec/perms.c`) | **hecho** |
 | Avisos dibujados por el sistema (también los que pide una app aislada por el broker), Ajustes → Privacidad, puntos verde/naranja | **hecho** |
 | cgroup por app (`app-lordos-lpk-<id>.scope`, `app-lordos-<id>.scope`) con límites, en el subárbol delegado de la sesión | **hecho**, probado con `lord-sessiond` y `Delegate=yes` |
-| **Root-owned app scopes**: an app can't move itself to another cgroup (`lord-sessiond` places each process, see [Root-owned app scopes](#root-owned-app-scopes)) | **done**, tested on VM 122 (the `systemd-run --user --scope` path stays open, see there) |
+| **Root-owned app scopes**: an app can't move itself to another cgroup (`lord-sessiond` places each process, see [Root-owned app scopes](#root-owned-app-scopes)) | **done**, tested on VM 122 (the `systemd-run --user` escape is now closed by the `user@` union, see there and `docs/FIREWALL.md`) |
 | Firma de paquetes y niveles de confianza | **hecho**, ver [FIRMA.md](FIRMA.md) |
 | Tokens del tema, idioma y dirección (RTL) **en vivo** dentro del proceso de la app | **hecho** (claro/oscuro, acento, idioma; probado con árabe) |
 | Revocación en vivo: al denegar un permiso, la app suelta la cámara/el micrófono al instante | **hecho** |
@@ -434,14 +434,18 @@ by `lord-sessiond`; `systemctl restart lordos` twice with the session alive (the
 `lord-sessiond` hardens the old subtree, starts a new placement service, and an app launched
 afterwards still lands in its scope); `DelegateSubgroup=supervisor` in the unit.
 
-**Known gap: `systemd-run --user --scope`.** The same screenshot shows it: a process can still ask
-the user's systemd manager for a new scope. The user manager can't migrate it itself, so it asks
-PID 1 (`AttachProcessesToUnit`), which runs as root and only checks that the process and the
-target unit belong to the same UID; it does not look at the source cgroup. The process then runs
-in `user@<uid>.service/app.slice/run-….scope`, outside `lordos.service`, where `lord-netperm`'s
-programs aren't attached. Closing it needs either `lord-netperm` hooks on the users' `user@`
-subtrees (treating a LordOS session user's transient scopes as an unknown app) or a systemd-side
-policy; neither is done. `.lpk` apps can't do it (no D-Bus, no new sockets).
+**`systemd-run --user --scope`: closed (M8, the `user@` union).** A process can still ask the
+user's systemd manager for a new scope or service. The manager has PID 1 do the move
+(`AttachProcessesToUnit`), which runs as root and only checks that the process and the target unit
+belong to the same UID; it does not look at the source cgroup. The process then runs in
+`user@<uid>.service/app.slice/…`, outside `lordos.service`. This is closed by `lord-netperm`:
+it attaches its cgroup programs to each LordOS session user's `user@<uid>.service` too, and holds a
+process that escapes there to the strictest **union** of that user's running restricted apps'
+restrictions (restriction-only, so never less restrictive than the app's own policy). Tested on
+VM 122 with `systemd-run --user --scope`, `systemd-run --user` (service) and `setsid` — all denied,
+normal processes unaffected, and the union never leaks between users. See `docs/FIREWALL.md`,
+«Escape via `systemd-run --user`», and `docs/m8-firewall-escape-blocked.png`. `.lpk` apps couldn't
+do it anyway (no D-Bus, no new sockets).
 
 Not tested this round: a second user over fast user switching and the remote desktop (no test
 password at hand). Their code path is the same `cgroup_delegate_session()` per uid.

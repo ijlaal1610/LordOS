@@ -22,7 +22,7 @@ export function DefaultAppsSettings() {
         {DEFAULT_CATEGORIES.map((c) => {
           const list = candidatesFor(c.id, apps);
           const cur = defaultFor(c.id);
-          const opts = list.map((a) => [a.id, a.native ? a.name : `${a.name}`]);
+          const opts = list.map((a) => [a.id, a.name, a.Icon]);
           if (cur && !opts.some(([id]) => id === cur)) opts.push([cur, tr('prefs.defaults.other', { id: cur.replace(/\.desktop$/, '') })]);
           const [glyph, color] = LOOK[c.id];
           return (

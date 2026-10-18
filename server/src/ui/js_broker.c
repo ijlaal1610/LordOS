@@ -230,12 +230,46 @@ static JSValue f_clip_get(JSContext *c, JSValueConst t, int argc, JSValueConst *
     return v;
 }
 static JSValue f_clip_set(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
-    (void)t; (void)argc;
-    const char *s = JS_ToCString(c, argv[0]);
+    (void)t;
+    size_t sl = 0;
+    const char *s = JS_ToCStringLen(c, &sl, argv[0]);
     int st;
-    if (s) rpc(BOP_CLIP_SET, s, (uint32_t)strlen(s), &st, NULL, NULL);
+    /* lord.clipboard.set(text, { secure, clearAfter }): a secret (Passwords) is marked sensitive and
+     * cleared by lord-server after clearAfter seconds if it is still there */
+    int secure = 0, clear_after = 0;
+    if (argc > 1 && JS_IsObject(argv[1])) {
+        JSValue v = JS_GetPropertyStr(c, argv[1], "secure");
+        secure = JS_ToBool(c, v);
+        JS_FreeValue(c, v);
+        v = JS_GetPropertyStr(c, argv[1], "clearAfter");
+        int32_t ca = 0;
+        if (JS_IsNumber(v)) JS_ToInt32(c, &ca, v);
+        JS_FreeValue(c, v);
+        clear_after = ca > 0 && ca <= 600 ? ca : 0;
+    }
+    if (s && secure) {
+        char *buf = malloc(sl + 16);
+        if (buf) {
+            int k = snprintf(buf, 16, "%d", clear_after) + 1;
+            memcpy(buf + k, s, sl);
+            rpc(BOP_CLIP_SECRET, buf, (uint32_t)(k + sl), &st, NULL, NULL);
+            explicit_bzero(buf, (size_t)k + sl);
+            free(buf);
+        }
+    } else if (s) rpc(BOP_CLIP_SET, s, (uint32_t)sl, &st, NULL, NULL);
     if (s) JS_FreeCString(c, s);
     return JS_UNDEFINED;
+}
+
+/* For js_vault.c (Passwords in app mode): lord-server opens the FIDO2 key for lord-vault after the
+ * `usb` permission. 0 and the device name, or -1 with err ("denied", "no-device"…). */
+int js_broker_vault_fido(char *name, size_t n, char *err, size_t en) {
+    int st = BST_ERROR; char *out = NULL; uint32_t len = 0;
+    int r = rpc(BOP_VAULT_FIDO, NULL, 0, &st, &out, &len);
+    if (!r && st == BST_OK) { snprintf(name, n, "%.*s", (int)len, out ? out : ""); free(out); return 0; }
+    snprintf(err, en, "%s", st == BST_DENIED ? "fido-denied" : out && len ? out : "no-device");
+    free(out);
+    return -1;
 }
 
 /* ---- lord.broker: pedir un permiso (aviso del sistema) y marcar un dispositivo en uso ---- */

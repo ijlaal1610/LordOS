@@ -64,13 +64,13 @@ function remember(app) {
   settings.set((s) => ({ ...s, notifications: { ...notifyPrefs(s), seen: [app, ...notifyPrefs(s).seen].slice(0, 64) } }));
 }
 
-export function notify({ app = '', title = '', body = '', actions = [], sound: withSound = true, sticky = false, timeout = 6000, onClose, label = '' } = {}) {
+export function notify({ app = '', title = '', body = '', actions = [], sound: withSound = true, sticky = false, timeout = 6000, onClose, label = '', icon = null } = {}) {
   app = String(app);
   const ap = appNotifyPrefs(app);
   remember(app);
   if (!ap.allow) return 0;                                  // not delivered at all (like macOS)
   const id = seq++;
-  const n = { id, app, label: String(label), title: String(title), body: String(body), actions: Array.isArray(actions) ? actions.slice(0, 3) : [],
+  const n = { id, app, label: String(label), Icon: typeof icon === 'function' ? icon : null, title: String(title), body: String(body), actions: Array.isArray(actions) ? actions.slice(0, 3) : [],
     sticky: !!sticky || ap.style === 'alert', time: Date.now(), onClose };
   notifyHistory.set((l) => [{ id, app: n.app, label: n.label, title: n.title, body: n.body, time: n.time }, ...l].slice(0, HISTORY));
   // Do Not Disturb or "no banner": kept in the history only, without a sound
@@ -109,7 +109,7 @@ function Banner({ n, th }) {
       boxShadow: '0 10px 30px rgba(0,0,0,0.4)' },
   },
   h(View, { style: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' } },
-    app?.Icon ? h(app.Icon, { size: 34 }) : h(View, { style: { width: 34, height: 34, borderRadius: 8, backgroundColor: th.accent } }),
+    app?.Icon ? h(app.Icon, { size: 34 }) : n.Icon ? h(n.Icon, { size: 34 }) : h(View, { style: { width: 34, height: 34, borderRadius: 8, backgroundColor: th.accent } }),
     h(View, { style: { flex: 1, gap: 2 } },
       h(View, { style: { flexDirection: 'row', gap: 6 } },
         h(Text, { style: { flex: 1, fontSize: 11, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' } },
@@ -130,7 +130,10 @@ function Banner({ n, th }) {
 
 export function NotificationBanner() {
   const list = useNotifications();
-  const th = useTheme();
+  // drawn outside the theme's provider: follow the user's light/dark setting
+  const base = useTheme(), mode = useStore(settings, (x) => x.mode);
+  const th = mode === 'light' ? { ...base, mode: 'light', windowBg: '#f6f6f8', text: '#1d1d1f', textDim: 'rgba(60,60,67,0.62)',
+    separator: 'rgba(0,0,0,0.12)', control: '#e2e2e7' } : base;
   const [, force] = useState(0);
   useEffect(() => { if (list.length) force((x) => x + 1); }, [list.length]);
   if (!list.length) return null;

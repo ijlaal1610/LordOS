@@ -77,7 +77,7 @@ lord-server --user ana  ── lord-admin ──┘  net-* actions are forwarded
 ### Test (VM 119, October 17)
 
 VM 119 runs `lord-sessiond` installed like the `.deb`; it was not installed from the ISO (see
-`VM-SETUP.md`, step 20). `eth0` is managed by systemd-networkd (netplan) and LordOS leaves it
+`VM-SETUP.md`, step 23). `eth0` is managed by systemd-networkd (netplan) and LordOS leaves it
 alone, so the test uses a LordOS-managed NIC: the veth `lnt0`, whose peer is in the netns `lnt`
 with a `dnsmasq` there (`lordos-test-netns.service`, which starts before `lordos.service`), and
 `/etc/lordos/net/if/lnt0.conf` with `method=dhcp`.

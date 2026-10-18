@@ -35,6 +35,10 @@ enum BrokerOp {
     BOP_CAMERA,         /* payload "list" | "open dev w h" | "ring sid" (→ read-only ring fd) | "ack sid id" |
                          * "size sid w h" | "photo sid mirror name" | "record sid mirror mic name" |
                          * "recstop sid" | "close sid". See brokercam.c */
+    BOP_VAULT_FIDO = 40,/* (Passwords only) open the FIDO2 key for lord-vault after the `usb` permission →
+                         * "name"; the app never gets the device (docs/PASSWORDS.md) */
+    BOP_CLIP_SECRET,    /* payload "seconds\0text": a secret to the clipboard, marked sensitive (out of
+                         * the history, x-kde-passwordManagerHint) and cleared after `seconds` if unchanged */
     BOP_EVENT = 100,    /* servidor → app, sin pedido (reqid 0): payload "tipo\0json" */
 };
 
@@ -63,6 +67,9 @@ void brokersrv_events(BrokerEventFn fn);
 /* Respuesta del usuario a un aviso (desde JS: lord.broker.resolve). */
 void brokersrv_resolve(uint32_t reqid, int allow);
 int  brokersrv_count(void);
+/* The app on broker fd `fd` was spawned with a channel to lord-vault (system Passwords app): it may
+ * use BOP_VAULT_FIDO. */
+void brokersrv_set_vault(int fd);
 /* The app <id> is running: ask it for a new window. 0 if sent, -1 if it is not running. */
 int  brokersrv_new_window(const char *id);
 /* El tema publica su estado (tipo "theme" o "locale", JSON) y se reenvía en vivo a todas las

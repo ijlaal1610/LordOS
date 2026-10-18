@@ -20,7 +20,7 @@
 #define MAX_SAVED 16
 #define ID_MAX 96
 
-typedef struct { char id[ID_MAX]; int w, h, refresh, rot; } Saved;
+typedef struct { char id[ID_MAX]; int w, h, refresh, rot, scale; } Saved;
 
 static struct {
     const DisplayHost *host;
@@ -37,9 +37,10 @@ static struct {
     int done_off, done_lock, done_sleep, off;
     /* queued modeset */
     int pending, prot, rot, prev_rot;
+    int pscale, scale, prev_scale;      /* 1, or 2: the frame is drawn at half size and doubled */
     uint32_t pconn;
     struct drm_mode_modeinfo pmode;
-} D = { .kelvin = NIGHT_K_MAX };
+} D = { .kelvin = NIGHT_K_MAX, .pscale = 1, .scale = 1, .prev_scale = 1 };
 
 static double now_ms(void) {
     struct timespec t;
@@ -92,6 +93,7 @@ static void load(void) {
         s->h = (int)json_num(v, "h", 0);
         s->refresh = (int)json_num(v, "refresh", 0);
         s->rot = (int)json_num(v, "rotation", 0) & 3;
+        s->scale = json_num(v, "scale", 1) == 2 ? 2 : 1;
         if (s->w < 0 || s->w > 16384 || s->h < 0 || s->h > 16384) s->w = s->h = 0;
     }
     json_free(&doc);
@@ -107,7 +109,7 @@ static int store(void) {
         const Saved *s = &D.saved[i];
         hb_printf(&b, "%s\n    ", i ? "," : "");
         hb_str(&b, s->id);
-        hb_printf(&b, ": { \"w\": %d, \"h\": %d, \"refresh\": %d, \"rotation\": %d }", s->w, s->h, s->refresh, s->rot);
+        hb_printf(&b, ": { \"w\": %d, \"h\": %d, \"refresh\": %d, \"rotation\": %d, \"scale\": %d }", s->w, s->h, s->refresh, s->rot, s->scale);
     }
     hb_printf(&b, "\n  }\n}\n");
     char *txt = hb_take(&b);
@@ -142,7 +144,7 @@ void display_init(const DisplayHost *h) {
     int n = kms_outputs(k->fd, outs, KMS_MAX_OUTPUTS), idx = -1;
     struct drm_mode_modeinfo m;
     if (display_pick(outs, n, &idx, &m) == 0 && idx >= 0 &&
-        (outs[idx].id != k->conn_id || m.hdisplay != k->mode.hdisplay || m.vdisplay != k->mode.vdisplay || mode_refresh_mhz(&m) != mode_refresh_mhz(&k->mode) || D.prot != D.rot)) {
+        (outs[idx].id != k->conn_id || m.hdisplay != k->mode.hdisplay || m.vdisplay != k->mode.vdisplay || mode_refresh_mhz(&m) != mode_refresh_mhz(&k->mode) || D.prot != D.rot || D.pscale != D.scale)) {
         D.pending = 1;
         D.pconn = outs[idx].id;
         D.pmode = m;
@@ -169,6 +171,8 @@ int display_pick(const KmsOutput *o, int n, int *index, struct drm_mode_modeinfo
     *mode = o[sel].modes[m];
     D.prot = s ? s->rot : 0;
     D.rot = D.prot;                     /* kms_open/kms_attach use this mode right away */
+    D.pscale = s && s->scale == 2 ? 2 : 1;
+    D.scale = D.pscale;
     return 0;
 }
 
@@ -291,8 +295,8 @@ static void out_json(HBuf *b, const KmsOutput *o, const Kms *k) {
 char *display_list_json(void) {
     Kms *k = kms();
     HBuf b = { 0 };
-    hb_printf(&b, "{\"onMonitor\":%s,\"rotation\":%d,\"temperature\":%d,\"gammaSize\":%d,\"softTint\":%s,\"maxOutputs\":1,\"outputs\":[",
-              k ? "true" : "false", D.rot, D.kelvin, k ? kms_gamma_size(k) : 0, D.soft ? "true" : "false");
+    hb_printf(&b, "{\"onMonitor\":%s,\"scale\":%d,\"rotation\":%d,\"temperature\":%d,\"gammaSize\":%d,\"softTint\":%s,\"maxOutputs\":1,\"outputs\":[",
+              k ? "true" : "false", D.scale, D.rot, D.kelvin, k ? kms_gamma_size(k) : 0, D.soft ? "true" : "false");
     if (k) {
         KmsOutput outs[KMS_MAX_OUTPUTS];
         int n = kms_outputs(k->fd, outs, KMS_MAX_OUTPUTS), first = 1;
@@ -333,9 +337,9 @@ char *display_list_json(void) {
     return hb_take(&b);
 }
 
-int display_request(uint32_t conn, int w, int h, int refresh_mhz, int rotation) {
+int display_request(uint32_t conn, int w, int h, int refresh_mhz, int rotation, int scale) {
     Kms *k = kms();
-    if (!k || rotation < 0 || rotation > 3) return -1;
+    if (!k || rotation < 0 || rotation > 3 || (scale != 1 && scale != 2)) return -1;
     KmsOutput outs[KMS_MAX_OUTPUTS];
     int n = kms_outputs(k->fd, outs, KMS_MAX_OUTPUTS), ret = -1;
     for (int i = 0; i < n; i++) {
@@ -346,6 +350,7 @@ int display_request(uint32_t conn, int w, int h, int refresh_mhz, int rotation) 
         D.pconn = conn;
         D.pmode = outs[i].modes[m];
         D.prot = rotation;
+        D.pscale = scale;
         ret = 0;
     }
     kms_outputs_free(outs, n);
@@ -359,22 +364,26 @@ int display_take_modeset(uint32_t *conn, struct drm_mode_modeinfo *mode) {
     *mode = D.pmode;
     D.prev_rot = D.rot;
     D.rot = D.prot;
+    D.prev_scale = D.scale;
+    D.scale = D.pscale;
     return 1;
 }
 
 void display_modeset_done(int ok) {
-    if (!ok) D.rot = D.prev_rot;
+    if (!ok) { D.rot = D.prev_rot; D.scale = D.prev_scale; }
     apply_tint();                       /* a new CRTC (or a modeset) can reset its LUT */
     char *j = display_list_json();
     if (j) { event("display", j); free(j); }
 }
 
 int display_rotation(void) { return D.rot; }
+int display_scale(void) { return D.scale; }
+int display_cpu_only(void) { return D.rot || D.scale > 1; }
 
 void display_logical_size(int pw, int ph, int *lw, int *lh) {
     int swap = D.rot & 1;
-    *lw = swap ? ph : pw;
-    *lh = swap ? pw : ph;
+    *lw = (swap ? ph : pw) / D.scale;
+    *lh = (swap ? pw : ph) / D.scale;
 }
 
 int display_save(uint32_t conn) {
@@ -394,6 +403,7 @@ int display_save(uint32_t conn) {
         s->h = k->mode.vdisplay;
         s->refresh = mode_refresh_mhz(&k->mode);
         s->rot = D.rot;
+        s->scale = D.scale;
         snprintf(D.main_id, sizeof D.main_id, "%s", id);
         ret = store();
     }
@@ -491,12 +501,15 @@ int display_is_off(void) { return D.off; }
 /* ---- software rotation ---- */
 
 Rect display_rotate_rect(Rect r, int lw, int lh, int rot) {
+    Rect o;
     switch (rot & 3) {
-    case 1: return (Rect){ lh - r.y1, r.x0, lh - r.y0, r.x1 };       /* (x, y) → (lh-1-y, x) */
-    case 2: return (Rect){ lw - r.x1, lh - r.y1, lw - r.x0, lh - r.y0 };
-    case 3: return (Rect){ r.y0, lw - r.x1, r.y1, lw - r.x0 };        /* (x, y) → (y, lw-1-x) */
-    default: return r;
+    case 1: o = (Rect){ lh - r.y1, r.x0, lh - r.y0, r.x1 }; break;    /* (x, y) → (lh-1-y, x) */
+    case 2: o = (Rect){ lw - r.x1, lh - r.y1, lw - r.x0, lh - r.y0 }; break;
+    case 3: o = (Rect){ r.y0, lw - r.x1, r.y1, lw - r.x0 }; break;     /* (x, y) → (y, lw-1-x) */
+    default: o = r; break;
     }
+    int k = D.scale;                    /* 200 %: every logical pixel is a 2×2 block */
+    return (Rect){ o.x0 * k, o.y0 * k, o.x1 * k, o.y1 * k };
 }
 
 /* Copies rect r (logical coordinates, inside lw×lh) to dst rotated; the logical pixel (x, y) is
@@ -508,19 +521,35 @@ void display_rotate_copy_at(const uint32_t *px, int stride, int ox, int oy, Rect
     if (r.y1 > lh) r.y1 = lh;
     if (r.x1 <= r.x0 || r.y1 <= r.y0) return;
     rot &= 3;
+    int k = D.scale;
+    if (k == 1) {
+        for (int y = r.y0; y < r.y1; y++) {
+            const uint32_t *s = px + (size_t)(y - oy) * stride;
+            switch (rot) {
+            case 0: memcpy(dst->px + (size_t)y * dst->stride + r.x0, s + (r.x0 - ox), (size_t)(r.x1 - r.x0) * 4); break;
+            case 1: { uint32_t *col = dst->px + (lh - 1 - y);                 /* column lh-1-y, rows x */
+                      for (int x = r.x0; x < r.x1; x++) col[(size_t)x * dst->stride] = s[x - ox];
+                      break; }
+            case 2: { uint32_t *row = dst->px + (size_t)(lh - 1 - y) * dst->stride;
+                      for (int x = r.x0; x < r.x1; x++) row[lw - 1 - x] = s[x - ox];
+                      break; }
+            case 3: { uint32_t *col = dst->px + y;                            /* column y, rows lw-1-x */
+                      for (int x = r.x0; x < r.x1; x++) col[(size_t)(lw - 1 - x) * dst->stride] = s[x - ox];
+                      break; }
+            }
+        }
+        return;
+    }
+    /* scaled: the pixel at rotated position (rx, ry) fills the k×k block at (rx·k, ry·k) */
     for (int y = r.y0; y < r.y1; y++) {
         const uint32_t *s = px + (size_t)(y - oy) * stride;
-        switch (rot) {
-        case 0: memcpy(dst->px + (size_t)y * dst->stride + r.x0, s + (r.x0 - ox), (size_t)(r.x1 - r.x0) * 4); break;
-        case 1: { uint32_t *col = dst->px + (lh - 1 - y);                     /* column lh-1-y, rows x */
-                  for (int x = r.x0; x < r.x1; x++) col[(size_t)x * dst->stride] = s[x - ox];
-                  break; }
-        case 2: { uint32_t *row = dst->px + (size_t)(lh - 1 - y) * dst->stride;
-                  for (int x = r.x0; x < r.x1; x++) row[lw - 1 - x] = s[x - ox];
-                  break; }
-        case 3: { uint32_t *col = dst->px + y;                                /* column y, rows lw-1-x */
-                  for (int x = r.x0; x < r.x1; x++) col[(size_t)(lw - 1 - x) * dst->stride] = s[x - ox];
-                  break; }
+        for (int x = r.x0; x < r.x1; x++) {
+            int rx = rot == 0 ? x : rot == 1 ? lh - 1 - y : rot == 2 ? lw - 1 - x : y;
+            int ry = rot == 0 ? y : rot == 1 ? x : rot == 2 ? lh - 1 - y : lw - 1 - x;
+            if (rx * k + k > dst->w || ry * k + k > dst->h) continue;
+            uint32_t v = s[x - ox], *d = dst->px + (size_t)(ry * k) * dst->stride + (size_t)rx * k;
+            for (int j = 0; j < k; j++, d += dst->stride)
+                for (int i = 0; i < k; i++) d[i] = v;
         }
     }
 }

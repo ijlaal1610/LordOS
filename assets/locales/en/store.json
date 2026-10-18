@@ -106,5 +106,6 @@
   "manage.share": "Share my version",
   "manage.noOriginal": "Installed before signing; no original kept",
   "restore.done": "“{name}” restored to the original.",
-  "share.done": "Signed package written to {path} (your key {key}…)"
+  "share.done": "Signed package written to {path} (your key {key}…)",
+  "debian.noIndexTitle": "The Debian catalog is missing"
 }

@@ -186,6 +186,7 @@ void term_set_clipboard(const char *s, size_t n) {
     if (!c) return;
     memcpy(c, s, n);
     c[n] = 0;
+    if (clip) explicit_bzero(clip, strlen(clip));     /* the previous copy may have been a password */
     free(clip);
     clip = c;
     clip_gen++;

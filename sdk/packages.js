@@ -60,6 +60,25 @@ function Redirect({ id }) {
   return null;
 }
 
+// A built-in app that runs as its own sandboxed process (manifest "process": "isolated", shipped as
+// <assets>/sysapps/<id>, see tools/build-theme.mjs): opening its window in the theme starts the
+// process instead and closes this placeholder. Without app mode (or without the built system
+// package) the app runs in-process as before.
+export function isolatedApp(id, Fallback) {
+  return function IsolatedApp(props) {
+    const win = sdk.useAppWindow();
+    const [inproc, setInproc] = React.useState(false);
+    React.useEffect(() => {
+      // already running: focus its window (a single window: it holds a vault)
+      const running = windows.get().filter((w) => w.args?.pkg && w.args?.appId === id);
+      if (isolated() && running.length) { wm.focus(running[running.length - 1].id); if (win && win.id) wm.close(win.id, true); }
+      else if (isolated() && lord.apps.launchPackage(id)) { if (win && win.id) wm.close(win.id, true); }
+      else setInproc(true);
+    }, []);
+    return inproc && Fallback ? h(Fallback, props) : null;
+  };
+}
+
 function lazyComponent(id) {
   return function PackageApp(props) {
     if (isolated()) return h(Redirect, { id });

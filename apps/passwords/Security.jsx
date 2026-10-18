@@ -5,7 +5,7 @@ import { View, Text, useTheme, useStore, Button, ScrollView, t } from '@lordos/s
 import { useEffect, useRef, useState } from 'react';
 import { app, req, errorText, toast, copySecret } from './api.js';
 import { allCategories, builtinById } from './templates.js';
-import { EntryIcon, Hint, FilePicker, strengthColor, strengthLabel, RED, ORANGE, YELLOW, GREEN, IconButton } from './ui.jsx';
+import { EntryIcon, Hint, FilePicker, strengthColor, strengthLabel, RED, ORANGE, YELLOW, GREEN, IconButton, fileReq } from './ui.jsx';
 import { Center } from './Detail.jsx';
 
 function Card({ title, count, color, children, hint }) {
@@ -49,7 +49,7 @@ export function SecurityView({ onOpen }) {
   const [busy, setBusy] = useState(false);
   const run = async (file) => {
     setBusy(true);
-    try { setRep(await req('report', {}, file ? { files: [{ path: file, mode: 'r' }] } : undefined)); } catch (e) { toast(errorText(e.code)); }
+    try { setRep(await req('report', {}, file ? fileReq([file, 'r']) : undefined)); } catch (e) { toast(errorText(e.code)); }
     setBusy(false);
   };
   useEffect(() => { run(hibp); }, [st.entries.length]);
@@ -93,7 +93,7 @@ export function SecurityView({ onOpen }) {
         <Hint>{t('passwords.report.offline')}</Hint>
       </View>
       {picking && <FilePicker title={t('passwords.report.hibpChoose')} onClose={() => setPicking(false)}
-        onPick={(p) => { setPicking(false); setHibp(p); run(p); }} />}
+        onPick={(p) => { setPicking(false); setHibp(typeof p === 'string' ? p : null); run(p); }} />}
     </ScrollView>
   );
 }

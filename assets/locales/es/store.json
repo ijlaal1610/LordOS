@@ -106,5 +106,6 @@
   "manage.share": "Compartir mi versión",
   "manage.noOriginal": "Instalada antes de la firma; no se guardó el original",
   "restore.done": "«{name}» restaurada al original.",
-  "share.done": "Paquete firmado escrito en {path} (tu clave {key}…)"
+  "share.done": "Paquete firmado escrito en {path} (tu clave {key}…)",
+  "debian.noIndexTitle": "Falta el catálogo de Debian"
 }

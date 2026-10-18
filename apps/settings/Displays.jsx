@@ -134,7 +134,8 @@ export function DisplaysSettings() {
   const curRes = res.find((r) => r.w === mode.w && r.h === mode.h) || res[0];
   const go = (o, x) => { if (!applyDisplay(o, x)) setMsg(tr('prefs.display.failed')); else setMsg(''); };
   const native = (r) => r.w === cur.preferred.w && r.h === cur.preferred.h;
-  const sizeLine = [cur.connector, cur.diagonal ? tr('prefs.display.inches', { n: (cur.diagonal / 10).toFixed(1) }) : '', `${mode.w} × ${mode.h}`].filter(Boolean).join(' · ');
+  const looks = d.scale === 2 ? tr('prefs.display.looksLike', { w: Math.floor(mode.w / 2), h: Math.floor(mode.h / 2) }) : '';
+  const sizeLine = [cur.connector, cur.diagonal ? tr('prefs.display.inches', { n: (cur.diagonal / 10).toFixed(1) }) : '', `${mode.w} × ${mode.h}`, looks].filter(Boolean).join(' · ');
   return (
     <Stack>
       <Arrangement outs={outs} current={cur} t={t} tr={tr} onPick={(o) => go(o, { conn: o.id, w: 0, h: 0, refresh: 0, rotation: 0 })} />
@@ -147,19 +148,20 @@ export function DisplaysSettings() {
       </View>
       <GroupBox>
         <SettingRow label={tr('prefs.display.resolution')}>
-          <PopUp width={230} value={`${curRes?.w}x${curRes?.h}`} onChange={(v) => { const [w, h] = v.split('x').map(Number); go(cur, { w, h, refresh: 0, rotation: d.rotation }); }}
+          <PopUp width={230} value={`${curRes?.w}x${curRes?.h}`} onChange={(v) => { const [w, h] = v.split('x').map(Number); go(cur, { w, h, refresh: 0, rotation: d.rotation, scale: d.scale || 1 }); }}
             options={res.map((r) => [`${r.w}x${r.h}`, native(r) ? tr('prefs.display.native', { w: r.w, h: r.h }) : `${r.w} × ${r.h}`])} />
         </SettingRow>
         <SettingRow label={tr('prefs.display.refresh')}>
-          <PopUp value={mode.refresh} onChange={(refresh) => go(cur, { w: mode.w, h: mode.h, refresh, rotation: d.rotation })}
+          <PopUp value={mode.refresh} onChange={(refresh) => go(cur, { w: mode.w, h: mode.h, refresh, rotation: d.rotation, scale: d.scale || 1 })}
             options={(curRes?.rates || []).map((r) => [r, tr('prefs.display.hz', { hz: hz(r) })])} disabled={(curRes?.rates || []).length < 2} />
         </SettingRow>
         <SettingRow label={tr('prefs.display.rotation')} hint={d.rotation ? tr('prefs.display.rotationHint') : ''}>
-          <PopUp value={d.rotation} onChange={(rotation) => go(cur, { w: mode.w, h: mode.h, refresh: mode.refresh, rotation })}
+          <PopUp value={d.rotation} onChange={(rotation) => go(cur, { w: mode.w, h: mode.h, refresh: mode.refresh, rotation, scale: d.scale || 1 })}
             options={[[0, tr('prefs.display.rotStandard')], [1, '90°'], [2, '180°'], [3, '270°']]} />
         </SettingRow>
-        <SettingRow label={tr('prefs.display.scale')} hint={tr('prefs.display.scaleHint')} disabled>
-          <Segmented small value="100" onChange={() => {}} options={[['100', '100 %'], ['125', '125 %'], ['150', '150 %'], ['200', '200 %']]} />
+        <SettingRow label={tr('prefs.display.scale')} hint={tr(d.scale === 2 ? 'prefs.display.scale2Hint' : 'prefs.display.scaleHint')}>
+          <PopUp value={d.scale || 1} onChange={(scale) => go(cur, { w: mode.w, h: mode.h, refresh: mode.refresh, rotation: d.rotation, scale })}
+            options={[[1, tr('prefs.display.scale100')], [2, tr('prefs.display.scale200')]]} />
         </SettingRow>
       </GroupBox>
       {msg ? <Note tone="warn">{msg}</Note> : null}

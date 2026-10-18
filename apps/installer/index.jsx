@@ -1,10 +1,10 @@
-// Instalar LordOS — asistente para instalar el sistema en vivo (ISO) en el disco.
-// Solo aparece en el live ("live": true en el manifest). Lo que necesita root lo hace el
-// ayudante de administración con acciones cerradas (server/src/install): install-disks,
-// install-run (valida todo de nuevo del lado root) e install-reboot. Ver docs/ISO.md.
+// Install LordOS: a wizard that installs the live system (ISO) on the disk.
+// It only shows up in the live session ("live": true in the manifest). What needs root is done by
+// the administration helper with closed actions (server/src/install): install-disks, install-run
+// (validates everything again on the root side) and install-reboot. See docs/ISO.md.
 import {
-  View, Text, Button, TextInput, ScrollView, Toggle, Segmented, useTheme, useLocale, useStore, createStore,
-  admin, keyboard, languages, setLanguage, formatBytes, locale, wm, useAppWindow,
+  View, Text, Button, TextInput, ScrollView, Toggle, Segmented, SearchField, Hairline, GroupBox, FormRow, useTheme, useLocale, useStore, createStore,
+  admin, keyboard, languages, setLanguage, formatBytes, locale, wm, useAppWindow, typeScale,
 } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 
@@ -12,11 +12,11 @@ export function Icon({ size: s }) {
   return (
     <View style={{ width: s, height: s, borderRadius: s * 0.225, background: 'linear-gradient(180deg, #5eead4, #0f766e)',
       boxShadow: `0 ${s * 0.04}px ${s * 0.12}px rgba(0,0,0,0.35)`, alignItems: 'center' }}>
-      {/* flecha hacia abajo */}
+      {/* down arrow */}
       <View style={{ position: 'absolute', top: s * 0.14, left: s * 0.44, width: s * 0.12, height: s * 0.3, borderRadius: s * 0.03, backgroundColor: '#fff' }} />
       <View style={{ position: 'absolute', top: s * 0.38, left: s * 0.35, width: s * 0.3, height: s * 0.09, borderRadius: s * 0.045, backgroundColor: '#fff' }} />
       <View style={{ position: 'absolute', top: s * 0.45, left: s * 0.42, width: s * 0.16, height: s * 0.07, borderRadius: s * 0.035, backgroundColor: '#fff' }} />
-      {/* el disco */}
+      {/* the disk */}
       <View style={{ position: 'absolute', bottom: s * 0.14, left: s * 0.16, right: s * 0.16, height: s * 0.22, borderRadius: s * 0.06, backgroundColor: '#fff' }}>
         <View style={{ position: 'absolute', right: s * 0.07, top: s * 0.08, width: s * 0.06, height: s * 0.06, borderRadius: s * 0.03, backgroundColor: '#22c55e' }} />
         <View style={{ position: 'absolute', left: s * 0.07, top: s * 0.095, width: s * 0.3, height: s * 0.03, borderRadius: s * 0.015, backgroundColor: '#99f6e4' }} />
@@ -25,7 +25,7 @@ export function Icon({ size: s }) {
   );
 }
 
-// Estado del asistente: sobrevive a que la interfaz se vuelva a montar al cambiar el idioma.
+// Wizard state: it survives the UI remounting when the language changes.
 const wiz = createStore({
   step: 0, lang: '', region: '', zone: '', kb: null, disk: null, confirmDisk: '', confirmBox: false, swap: 2048,
   fullname: '', user: '', userEdited: false, host: '', hostEdited: false, pass: '', pass2: '',
@@ -44,21 +44,22 @@ const STEPS = ['welcome', 'language', 'keyboard', 'disk', 'user', 'summary', 'in
 
 function Card({ children, style }) {
   const t = useTheme();
-  return <View style={[{ padding: 14, borderRadius: 10, backgroundColor: t.hover, border: `1px solid ${t.separator}`, gap: 8 }, style]}>{children}</View>;
+  return <View style={[{ padding: 16, borderRadius: 10, backgroundColor: t.hover, border: `1px solid ${t.separator}`, gap: 8 }, style]}>{children}</View>;
 }
 
 function Field({ label, children, hint, error }) {
   const t = useTheme();
   return (
-    <View style={{ gap: 4, marginBottom: 10 }}>
-      <Text style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{label}</Text>
+    <View style={{ gap: 6, marginBottom: 16 }}>
+      <Text style={{ fontSize: typeScale.callout, fontWeight: 600, color: t.text }}>{label}</Text>
       {children}
-      {error ? <Text style={{ fontSize: 11, color: '#ff453a' }}>{error}</Text> : hint ? <Text style={{ fontSize: 11, color: t.textDim }}>{hint}</Text> : null}
+      {error ? <Text style={{ fontSize: typeScale.caption, color: '#ff453a', lineHeight: 1.35 }}>{error}</Text>
+        : hint ? <Text style={{ fontSize: typeScale.caption, color: t.textDim, lineHeight: 1.35 }}>{hint}</Text> : null}
     </View>
   );
 }
 
-// Lista con búsqueda (regiones, zonas, distribuciones).
+// A list with search (regions, zones, layouts).
 function Pick({ items, value, onPick, placeholder, height = 170 }) {
   const t = useTheme();
   const [q, setQ] = useState('');
@@ -66,13 +67,13 @@ function Pick({ items, value, onPick, placeholder, height = 170 }) {
   const shown = (n ? items.filter(([id, label]) => `${id} ${label}`.toLowerCase().includes(n)) : items).slice(0, 300);
   return (
     <View style={{ gap: 6 }}>
-      <TextInput value={q} onChange={setQ} placeholder={placeholder} onCancel={() => setQ('')} />
-      <View style={{ height, borderRadius: 8, border: `1px solid ${t.separator}` }}>
+      <SearchField value={q} onChange={setQ} placeholder={placeholder} />
+      <View style={{ height, borderRadius: 8, border: `1px solid ${t.separator}`, backgroundColor: t.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }}>
         <ScrollView style={{ padding: 4 }}>
           {shown.map(([id, label]) => (
             <View key={id} onClick={() => onPick(id)} style={{ height: 24, justifyContent: 'center', paddingHorizontal: 8, borderRadius: 5,
               backgroundColor: id === value ? t.accent : 'transparent' }}>
-              <Text style={{ fontSize: 12, color: id === value ? '#fff' : t.text, whiteSpace: 'nowrap' }}>{label}</Text>
+              <Text style={{ fontSize: typeScale.callout, color: id === value ? '#fff' : t.text, whiteSpace: 'nowrap' }}>{label}</Text>
             </View>
           ))}
         </ScrollView>
@@ -81,15 +82,15 @@ function Pick({ items, value, onPick, placeholder, height = 170 }) {
   );
 }
 
-// ---- pasos ----
+// ---- steps ----
 
 function Welcome() {
   const t = useTheme();
   const { t: tr } = useLocale();
   return (
-    <View style={{ alignItems: 'center', gap: 14, paddingTop: 30 }}>
+    <View style={{ alignItems: 'center', gap: 12, paddingTop: 40 }}>
       <Icon size={96} />
-      <Text style={{ fontSize: 26, fontWeight: 700, color: t.text }}>{tr('installer.welcome.title')}</Text>
+      <Text style={{ fontSize: 26, fontWeight: 600, color: t.text, marginTop: 8 }}>{tr('installer.welcome.title')}</Text>
       <Text style={{ fontSize: 13, color: t.textDim, textAlign: 'center', maxWidth: 480, lineHeight: 1.45 }}>{tr('installer.welcome.text')}</Text>
       {!admin.available() && <Text style={{ fontSize: 12, color: '#ff453a' }}>{tr('installer.needAdmin')}</Text>}
     </View>
@@ -107,18 +108,18 @@ function Language() {
   return (
     <View>
       <Field label={tr('installer.language.language')}>
-        <Pick items={langs.map((l) => [l.id, l.english ? `${l.name} · ${l.english}` : l.name])} value={lang} height={110}
+        <Pick items={langs.map((l) => [l.id, l.english ? `${l.name} · ${l.english}` : l.name])} value={lang} height={100}
           placeholder={tr('installer.search')} onPick={(id) => { set({ lang: id, region: '' }); setLanguage(id); }} />
       </Field>
-      <View style={{ flexDirection: 'row', gap: 14 }}>
-        <View style={{ flex: 1 }}>
+      <View style={{ flexDirection: 'row', gap: 16 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Field label={tr('installer.language.region')} hint={tr('installer.language.regionHint')}>
-            <Pick items={regions} value={s.region} onPick={(region) => set({ region })} placeholder={tr('installer.search')} height={130} />
+            <Pick items={regions} value={s.region} onPick={(region) => set({ region })} placeholder={tr('installer.search')} height={116} />
           </Field>
         </View>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Field label={tr('installer.language.zone')}>
-            <Pick items={zones.map((z) => [z, z.replace(/_/g, ' ')])} value={s.zone} onPick={(zone) => set({ zone })} placeholder={tr('installer.search')} height={130} />
+            <Pick items={zones.map((z) => [z, z.replace(/_/g, ' ')])} value={s.zone} onPick={(zone) => set({ zone })} placeholder={tr('installer.search')} height={116} />
           </Field>
         </View>
       </View>
@@ -134,13 +135,13 @@ function Keyboard() {
   const cur = s.kb || keyboard.active() || { layout: 'us', variant: '' };
   const id = cur.variant ? `${cur.layout}(${cur.variant})` : cur.layout;
   const all2 = all.flatMap((l) => [[l.id, l.name], ...l.variants.map((v) => [`${l.id}(${v.id})`, `${l.name} — ${v.name}`])]);
-  const items = [...all2.filter(([k]) => k === id), ...all2.filter(([k]) => k !== id)];   // la actual, primero
+  const items = [...all2.filter(([k]) => k === id), ...all2.filter(([k]) => k !== id)];   // the current one first
   const pick = (v) => {
     const m = /^([\w-]+)(?:\(([\w-]+)\))?$/.exec(v);
     if (!m) return;
     const kb = { layout: m[1], variant: m[2] || '' };
     set({ kb });
-    keyboard.set([kb]);                  // también en la sesión en vivo, para probarlo
+    keyboard.set([kb]);                  // also in the live session, to try it
   };
   return (
     <View>
@@ -163,23 +164,23 @@ function DiskStep() {
   const load = () => {
     const found = [];
     setDisks(null);
-    admin.run('install-disks', '', (l) => { try { found.push(JSON.parse(l)); } catch (e) { /* texto */ } }, { quiet: true })
+    admin.run('install-disks', '', (l) => { try { found.push(JSON.parse(l)); } catch (e) { /* plain text */ } }, { quiet: true })
       .then(() => setDisks(found), (e) => { setErr(e.message); setDisks([]); });
   };
   useEffect(load, []);
   const content = (d) => (d.parts.length ? d.parts.map((p) => [p.label || p.name, p.fstype, formatBytes(p.size)].filter(Boolean).join(' ')).join(' · ')
     : tr('installer.disk.empty'));
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: 12 }}>
       {err && <Text style={{ fontSize: 12, color: '#ff453a' }}>{err}</Text>}
       {disks === null && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('installer.disk.loading')}</Text>}
       {disks && disks.length === 0 && !err && <Text style={{ fontSize: 13, color: t.text }}>{tr('installer.disk.none')}</Text>}
       {(disks || []).map((d) => (
         <View key={d.name} onClick={() => d.usable && set({ disk: d, confirmDisk: '', confirmBox: false })}
-          style={{ padding: 12, borderRadius: 10, gap: 4, opacity: d.usable ? 1 : 0.5,
+          style={{ padding: 14, borderRadius: 10, gap: 4, opacity: d.usable ? 1 : 0.5,
             border: `2px solid ${s.disk?.name === d.name ? t.accent : t.separator}`, backgroundColor: t.hover }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Text style={{ flex: 1, fontSize: 14, fontWeight: 700, color: t.text }}>{[d.vendor, d.model].filter(Boolean).join(' ') || d.name}</Text>
+            <Text style={{ flex: 1, fontSize: typeScale.body, fontWeight: 600, color: t.text }}>{[d.vendor, d.model].filter(Boolean).join(' ') || d.name}</Text>
             <Text style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{formatBytes(d.size)}</Text>
           </View>
           <Text style={{ fontSize: 11, color: t.textDim }}>{`${d.path} · ${d.transport.toUpperCase()}${d.removable ? ` · ${tr('installer.disk.removable')}` : ''}`}</Text>
@@ -189,7 +190,7 @@ function DiskStep() {
       ))}
       {s.disk && (
         <Card style={{ borderColor: '#ff453a' }}>
-          <Text style={{ fontSize: 13, fontWeight: 700, color: '#ff453a' }}>{tr('installer.disk.eraseTitle', { disk: s.disk.path })}</Text>
+          <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: '#ff453a' }}>{tr('installer.disk.eraseTitle', { disk: s.disk.path })}</Text>
           <Text style={{ fontSize: 12, color: t.text, lineHeight: 1.4 }}>{tr('installer.disk.eraseText')}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Toggle on={s.confirmBox} onChange={(confirmBox) => set({ confirmBox })} />
@@ -252,7 +253,7 @@ function UserStep() {
   );
 }
 
-// Nombre de la distribución para el resumen ("Spanish (Latin American)"), como lo da xkb.
+// Layout name for the summary ("Spanish (Latin American)"), as xkb gives it.
 const kbName = (kb) => {
   const l = keyboard.list().find((x) => x.id === kb.layout);
   const v = l?.variants.find((x) => x.id === kb.variant);
@@ -284,16 +285,15 @@ function Summary() {
     [tr('installer.summary.host'), s.host],
   ];
   return (
-    <View style={{ gap: 10 }}>
-      <View style={{ borderRadius: 10, border: `1px solid ${t.separator}`, backgroundColor: t.hover }}>
-        {rows.map(([k, v], i) => (
-          <View key={k} style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 9, gap: 12, borderTop: i ? `1px solid ${t.separator}` : '0 solid transparent' }}>
-            <Text style={{ width: 150, fontSize: 12, color: t.textDim }}>{k}</Text>
-            <Text style={{ flex: 1, fontSize: 12, color: t.text }}>{v}</Text>
-          </View>
+    <View style={{ gap: 12 }}>
+      <GroupBox>
+        {rows.map(([k, v]) => (
+          <FormRow key={k} label={k} labelWidth={140} minHeight={34}>
+            <Text style={{ fontSize: typeScale.callout, color: t.text, lineHeight: 1.35 }}>{v}</Text>
+          </FormRow>
         ))}
-      </View>
-      <Text style={{ fontSize: 11, color: t.textDim, lineHeight: 1.4 }}>{tr('installer.summary.login')}</Text>
+      </GroupBox>
+      <Text style={{ fontSize: typeScale.caption, color: t.textDim, lineHeight: 1.4, paddingHorizontal: 8 }}>{tr('installer.summary.login')}</Text>
     </View>
   );
 }
@@ -315,9 +315,9 @@ function Install() {
   const s = useStore(wiz);
   const f = s.done ? 1 : overall(s.progress);
   return (
-    <View style={{ gap: 14, paddingTop: 20, alignItems: 'center' }}>
+    <View style={{ gap: 14, paddingTop: 32, alignItems: 'center' }}>
       <Icon size={72} />
-      <Text style={{ fontSize: 20, fontWeight: 700, color: t.text }}>
+      <Text style={{ fontSize: typeScale.largeTitle, fontWeight: 600, color: t.text }}>
         {s.done ? tr('installer.done.title') : s.error ? tr('installer.error.title') : tr('installer.install.title')}</Text>
       {!s.error && (
         <View style={{ width: 460, gap: 6 }}>
@@ -330,7 +330,7 @@ function Install() {
       )}
       {s.error && <Text style={{ fontSize: 12, color: '#ff453a', textAlign: 'center', maxWidth: 480 }}>{s.error}</Text>}
       <View style={{ width: 520, gap: 2 }}>
-        {s.log.slice(-4).map((l, i) => <Text key={i} style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{l}</Text>)}
+        {s.log.slice(-4).map((l, i) => <Text key={i} style={{ fontSize: 11, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{l}</Text>)}
       </View>
       {s.done && <Text style={{ fontSize: 12, color: t.text, maxWidth: 480, textAlign: 'center' }}>{tr('installer.done.usb')}</Text>}
     </View>
@@ -345,7 +345,7 @@ function startInstall() {
     disk: s.disk.name, user: s.user, fullname: s.fullname.trim(), password: s.pass, hostname: s.host,
     lang: p.lang, locale: `${p.region}.UTF-8`, timezone: p.zone, kblayout: p.kb.layout, kbvariant: p.kb.variant || '', swap: s.swap,
   };
-  set({ pass: '', pass2: '' });            // la contraseña no queda en la interfaz
+  set({ pass: '', pass2: '' });            // the password doesn't stay in the UI
   admin.run('install-run', JSON.stringify(job), (line) => {
     const m = /^progress (\w+) (\d+) (\d+)$/.exec(line);
     if (m) set({ progress: { phase: m[1], done: Number(m[2]), total: Number(m[3]) } });
@@ -370,32 +370,34 @@ export default function Installer() {
   const steps = STEPS.slice(1, 6);
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>
-      <View style={{ width: 190, backgroundColor: t.sidebarBg, padding: 14, gap: 6 }}>
-        <Text style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 8 }}>{tr('installer.title')}</Text>
+      <View style={{ width: 200, backgroundColor: t.sidebarBg, paddingHorizontal: 16, paddingTop: 20, gap: 4 }}>
+        <Hairline edge="end" />
+        <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text, marginBottom: 12, paddingHorizontal: 4 }}>{tr('installer.title')}</Text>
         {steps.map((st) => {
           const i = STEPS.indexOf(st);
           const cur = i === s.step, past = i < s.step;
           return (
-            <View key={st} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 26 }}>
-              <View style={{ width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center',
+            <View key={st} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 30, paddingHorizontal: 4, borderRadius: 6,
+              backgroundColor: cur ? t.hover : 'transparent' }}>
+              <View style={{ width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
                 backgroundColor: cur ? t.accent : past ? '#30d158' : t.control }}>
-                <Text style={{ fontSize: 10, fontWeight: 700, color: cur || past ? '#fff' : t.textDim }}>{past ? '✓' : String(i)}</Text>
+                <Text style={{ fontSize: 11, fontWeight: 600, color: cur || past ? '#fff' : t.textDim }}>{past ? '✓' : String(i)}</Text>
               </View>
-              <Text style={{ fontSize: 12, fontWeight: cur ? 700 : 500, color: cur ? t.text : t.textDim }}>{tr(`installer.step.${st}`)}</Text>
+              <Text style={{ flex: 1, fontSize: typeScale.body, fontWeight: cur ? 600 : 400, color: cur ? t.text : t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{tr(`installer.step.${st}`)}</Text>
             </View>
           );
         })}
       </View>
-      <View style={{ flex: 1 }}>
-        <ScrollView style={{ flex: 1, paddingHorizontal: 22, paddingTop: 18 }}>
-          {name !== 'welcome' && name !== 'install' && <Text style={{ fontSize: 20, fontWeight: 700, color: t.text, marginBottom: 12 }}>{tr(`installer.step.${name}`)}</Text>}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <ScrollView style={{ flex: 1, paddingHorizontal: 24, paddingTop: 20 }}>
+          {name !== 'welcome' && name !== 'install' && <Text style={{ fontSize: typeScale.largeTitle, fontWeight: 600, color: t.text, marginBottom: 16 }}>{tr(`installer.step.${name}`)}</Text>}
           <Body />
         </ScrollView>
-        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, padding: 14, borderTop: `1px solid ${t.separator}` }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingVertical: 14 }}>
+          <Hairline edge="top" />
           {name !== 'install' && s.step > 0 && <Button label={tr('installer.back')} onClick={() => set({ step: s.step - 1 })} />}
           {name === 'summary' && <Button primary label={tr('installer.summary.install')} onClick={startInstall} />}
-          {name !== 'summary' && name !== 'install' && <Button primary label={tr('installer.next')} onClick={() => canNext && set({ step: s.step + 1 })}
-            style={{ opacity: canNext ? 1 : 0.4 }} />}
+          {name !== 'summary' && name !== 'install' && <Button primary disabled={!canNext} label={tr('installer.next')} onClick={() => canNext && set({ step: s.step + 1 })} />}
           {name === 'install' && s.error && <Button label={tr('installer.back')} onClick={() => set({ step: STEPS.indexOf('summary'), error: null })} />}
           {name === 'install' && s.done && <Button primary label={s.rebooting ? tr('installer.done.rebooting') : tr('installer.done.reboot')}
             onClick={() => { if (!s.rebooting) { set({ rebooting: true }); admin.run('install-reboot').catch((e) => set({ rebooting: false, error: e.message })); } }} />}

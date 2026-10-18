@@ -1,10 +1,20 @@
 {
   "id": "passwords",
-  "name": "Contraseñas",
-  "description": "Contraseñas, códigos 2FA, Wi-Fi, tarjetas y notas seguras en una bóveda cifrada; también el llavero de la sesión",
-  "size": [1040, 660],
-  "minSize": [820, 500],
+  "name": "Passwords",
+  "description": "Passwords, 2FA codes, Wi-Fi, cards and secure notes in an encrypted vault; also the session keyring",
+  "size": [
+    1040,
+    660
+  ],
+  "minSize": [
+    820,
+    500
+  ],
   "dock": true,
   "category": "Utility",
-  "permissions": ["usb"]
+  "permissions": [
+    "usb"
+  ],
+  "process": "isolated",
+  "protected": true
 }

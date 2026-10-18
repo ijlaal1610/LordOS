@@ -25,5 +25,12 @@
   "emptyMusic": "There is no music in the Music folder",
   "emptyVideos": "There are no videos in the Videos folder",
   "error": "Could not play: {error}",
-  "crashed": "The decoder stopped unexpectedly; the rest of the desktop is fine"
+  "crashed": "The decoder stopped unexpectedly; the rest of the desktop is fine",
+  "col.title": "Title",
+  "col.artist": "Artist",
+  "col.album": "Album",
+  "col.time": "Time",
+  "back": "Back",
+  "emptyMusicTitle": "No music",
+  "emptyVideosTitle": "No videos"
 }

@@ -47,8 +47,10 @@
 
 #define CG_ROOT      "/sys/fs/cgroup"
 #define CG_SERVICE   "system.slice/lordos.service"
+#define CG_USER      "user.slice"       /* user.slice/user-<uid>.slice/user@<uid>.service */
 #define SVC_LEVEL    2                  /* system.slice/lordos.service */
 #define SCOPE_LEVEL  (SVC_LEVEL + 2)    /* lordos-session-<uid>/<scope> */
+#define USER_LEVEL   3                  /* user.slice/user-<uid>.slice/user@<uid>.service */
 #define NAMES_APP    "lordos"           /* clave de dnsmap para lo que dice el resolvedor */
 #define MAX_SESS     64
 #define MAX_CLIENTS  64
@@ -73,6 +75,8 @@ typedef struct {
     Scope *sc;
     int nsc, cap;
     int dirty_counts;
+    uint64_t user_cg;                   /* id de user@<uid>.service, o 0 si no está (ni enganchado) */
+    int ulinks[16], nulinks;            /* los programas enganchados en user@<uid>.service */
 } Session;
 
 typedef struct {
@@ -93,7 +97,7 @@ typedef struct {
 static struct {
     int bpf_ok;
     char bpf_err[200];
-    int m_cfg, m_apps, m_lpm4, m_lpm6, m_seen, m_counts, m_events;
+    int m_cfg, m_apps, m_union, m_lpm4, m_lpm6, m_seen, m_counts, m_events;
     int links[16], nlinks;
     int progs[16], nprogs;
     uint32_t attach[16];
@@ -192,6 +196,7 @@ static void load_rules(Session *s) {
 static int map_fd(const char *name) {
     if (!strcmp(name, "np_cfg")) return G.m_cfg;
     if (!strcmp(name, "np_apps")) return G.m_apps;
+    if (!strcmp(name, "np_union")) return G.m_union;
     if (!strcmp(name, "np_lpm4")) return G.m_lpm4;
     if (!strcmp(name, "np_lpm6")) return G.m_lpm6;
     if (!strcmp(name, "np_seen")) return G.m_seen;
@@ -281,6 +286,70 @@ static void drop_scope(Scope *sc) {
     prune(sc->idx, 0);
 }
 
+/* ---- user@<uid>.service: la fuga de systemd-run --------------------------------------------- */
+
+/* Una app sin caja de arena, corriendo como el usuario, puede pedirle a su gestor de systemd
+ * (systemd-run --user, scope o servicio) que mueva un proceso a user@<uid>.service, fuera de
+ * lordos.service, donde las scopes de las apps no llegan. Para cerrarlo se enganchan los mismos
+ * programas también en user@<uid>.service de cada sesión y, cuando el proceso no está en la scope
+ * de ninguna app, cae en np_union[user@]: la unión estricta (OR de las restricciones NP_R_*) de
+ * las apps restringidas del usuario. Así un proceso escapado nunca es menos restrictivo que su
+ * propia política; no otorga nada. Si no hay ninguna app restringida corriendo, no hay entrada y
+ * user@ queda libre (el gestor de usuario y sus servicios no se tocan). */
+
+/* Recompila la unión del usuario desde las flags de sus scopes y la escribe (o la borra si no hay
+ * ninguna restricción). Solo tiene efecto con user@ enganchado. */
+static void sync_union(Session *s) {
+    if (!G.bpf_ok || !s->user_cg) return;
+    NpApp u;
+    memset(&u, 0, sizeof u);
+    for (int k = 0; k < s->nsc; k++) u.flags |= s->sc[k].app_v.flags;
+    if (u.flags) {
+        u.trusted = 1;                  /* lo que la unión no restringe, se permite sin avisar */
+        u.mode = NP_M_SILENT;
+        if (bpfs_map_update(G.m_union, &s->user_cg, &u, BPF_ANY)) logf_("np_union: %s", strerror(errno));
+    } else {
+        bpfs_map_delete(G.m_union, &s->user_cg);
+    }
+}
+
+static void drop_user_links(Session *s) {
+    for (int i = 0; i < s->nulinks; i++) close(s->ulinks[i]);
+    s->nulinks = 0;
+}
+
+/* Engancha (o re-engancha) los programas en user@<uid>.service. systemd lo crea al ingresar y lo
+ * borra y recrea con otro id al reiniciar el gestor de usuario, así que esto se llama en cada
+ * repaso: si el id cambió (o desapareció), suelta los links viejos y la unión vieja. */
+static void sync_user_scope(Session *s) {
+    if (!G.bpf_ok) return;
+    char path[200];
+    snprintf(path, sizeof path, CG_ROOT "/" CG_USER "/user-%u.slice", s->uid);
+    char leaf[64];
+    snprintf(leaf, sizeof leaf, "user@%u.service", s->uid);
+    uint64_t id = 0;
+    int ufd = -1, sfd = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (sfd >= 0) {
+        id = bpfs_cgroup_id(sfd, leaf);
+        if (id) ufd = openat(sfd, leaf, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        close(sfd);
+    }
+    if (id == s->user_cg) { if (ufd >= 0) close(ufd); return; }
+    drop_user_links(s);
+    if (s->user_cg) { bpfs_map_delete(G.m_union, &s->user_cg); bpfs_map_delete(G.m_counts, &s->user_cg); }
+    s->user_cg = 0;
+    if (!id || ufd < 0) { if (ufd >= 0) close(ufd); return; }
+    for (int i = 0; i < G.nprogs && s->nulinks < (int)(sizeof s->ulinks / sizeof s->ulinks[0]); i++) {
+        int l = bpfs_link_create(G.progs[i], ufd, G.attach[i]);
+        if (l < 0) { logf_("uid %u: no se pudo enganchar en user@: %s", s->uid, strerror(errno)); drop_user_links(s); close(ufd); return; }
+        s->ulinks[s->nulinks++] = l;
+    }
+    close(ufd);
+    s->user_cg = id;
+    logf_("uid %u: %d programas enganchados en user@%u.service", s->uid, s->nulinks, s->uid);
+    sync_union(s);
+}
+
 /* ---- sesiones y scopes ----------------------------------------------------------------------- */
 
 static int scope_app(const char *name, char *app) {
@@ -331,11 +400,15 @@ static void scan_session(Session *s) {
         drop_scope(&s->sc[i]);
         s->sc[i] = s->sc[--s->nsc];
     }
+    sync_user_scope(s);                 /* engancha/re-engancha user@ y recompila la unión */
+    sync_union(s);
 }
 
 static void drop_session(int k) {
     Session *s = &G.sess[k];
     for (int i = 0; i < s->nsc; i++) drop_scope(&s->sc[i]);
+    drop_user_links(s);
+    if (s->user_cg) { bpfs_map_delete(G.m_union, &s->user_cg); bpfs_map_delete(G.m_counts, &s->user_cg); }
     if (s->wd >= 0) inotify_rm_watch(G.ifd, s->wd);
     free(s->sc);
     fw_store_free(s->store);
@@ -377,6 +450,11 @@ static Scope *scope_by_cgid(uint64_t id, Session **out) {
     for (int i = 0; i < G.nsess; i++)
         for (int k = 0; k < G.sess[i].nsc; k++)
             if (G.sess[i].sc[k].cgid == id) { *out = &G.sess[i]; return &G.sess[i].sc[k]; }
+    return NULL;
+}
+
+static Session *session_by_user_cg(uint64_t id) {
+    for (int i = 0; i < G.nsess; i++) if (G.sess[i].user_cg && G.sess[i].user_cg == id) return &G.sess[i];
     return NULL;
 }
 
@@ -449,6 +527,7 @@ static void reload_uid(unsigned uid) {
         if (G.sess[i].uid != uid) continue;
         load_rules(&G.sess[i]);
         for (int k = 0; k < G.sess[i].nsc; k++) sync_scope(&G.sess[i], &G.sess[i].sc[k]);
+        sync_union(&G.sess[i]);
     }
 }
 
@@ -483,10 +562,18 @@ static void on_event(void *u, const void *data, uint32_t len) {
     memcpy(&ev, data, sizeof ev);
     Session *s;
     Scope *sc = scope_by_cgid(ev.cgid, &s);
-    if (!sc) return;
     char addr[INET6_ADDRSTRLEN] = "";
     if (ev.fam == 4) inet_ntop(AF_INET, ev.addr, addr, sizeof addr);
     else if (ev.fam == 6) inet_ntop(AF_INET6, ev.addr, addr, sizeof addr);
+    if (!sc) {
+        /* la unión de user@: un proceso que se escapó con systemd-run --user (sin scope de app) */
+        Session *us = session_by_user_cg(ev.cgid);
+        if (us && ev.verdict == NP_V_DENY)
+            logf_("uid %u user@: denegada %s %s %s:%u (unión de apps restringidas%s%s)", us->uid,
+                  ev.dir == NP_D_IN ? "entrada" : "salida", ev.proto == NP_P_TCP ? "tcp" : ev.proto == NP_P_UDP ? "udp" : "otro",
+                  addr[0] ? addr : "?", ev.port, ev.flag ? " " : "", ev.flag ? fw_flag_name(ev.flag) : "");
+        return;
+    }
     const char *flag = ev.flag ? fw_flag_name(ev.flag) : "";
     char app[FW_APP_MAX * 2 + 4], j[700];
     json_quote(app, sizeof app, sc->app);
@@ -570,12 +657,13 @@ static int bpf_setup(void) {
 #else
     G.m_cfg = bpfs_map_create(BPF_MAP_TYPE_ARRAY, 4, sizeof(NpCfg), 1, 0, "np_cfg");
     G.m_apps = bpfs_map_create(BPF_MAP_TYPE_HASH, 8, sizeof(NpApp), NP_MAX_APPS, 0, "np_apps");
+    G.m_union = bpfs_map_create(BPF_MAP_TYPE_HASH, 8, sizeof(NpApp), MAX_SESS, 0, "np_union");
     G.m_lpm4 = bpfs_map_create(BPF_MAP_TYPE_LPM_TRIE, sizeof(NpLpm4Key), sizeof(NpList), NP_MAX_LPM, BPF_F_NO_PREALLOC, "np_lpm4");
     G.m_lpm6 = bpfs_map_create(BPF_MAP_TYPE_LPM_TRIE, sizeof(NpLpm6Key), sizeof(NpList), NP_MAX_LPM, BPF_F_NO_PREALLOC, "np_lpm6");
     G.m_seen = bpfs_map_create(BPF_MAP_TYPE_LRU_HASH, sizeof(NpSeenKey), 8, NP_MAX_SEEN, 0, "np_seen");
     G.m_counts = bpfs_map_create(BPF_MAP_TYPE_HASH, 8, sizeof(NpCount), NP_MAX_APPS, 0, "np_counts");
     G.m_events = bpfs_map_create(BPF_MAP_TYPE_RINGBUF, 0, 0, NP_RINGBUF, 0, "np_events");
-    if (G.m_cfg < 0 || G.m_apps < 0 || G.m_lpm4 < 0 || G.m_lpm6 < 0 || G.m_seen < 0 || G.m_counts < 0 || G.m_events < 0) {
+    if (G.m_cfg < 0 || G.m_apps < 0 || G.m_union < 0 || G.m_lpm4 < 0 || G.m_lpm6 < 0 || G.m_seen < 0 || G.m_counts < 0 || G.m_events < 0) {
         snprintf(G.bpf_err, sizeof G.bpf_err, "no se pudieron crear los mapas BPF: %s", strerror(errno));
         return -1;
     }
@@ -610,7 +698,7 @@ static int bpf_setup(void) {
         G.progs[np++] = fd;
     }
     G.nprogs = np;
-    NpCfg cfg = { SCOPE_LEVEL, 1 };
+    NpCfg cfg = { SCOPE_LEVEL, 1, USER_LEVEL };
     uint32_t zero = 0;
     if (bpfs_map_update(G.m_cfg, &zero, &cfg, BPF_ANY)) { snprintf(G.bpf_err, sizeof G.bpf_err, "np_cfg: %s", strerror(errno)); return -1; }
     logf_("%d programas BPF cargados", np);

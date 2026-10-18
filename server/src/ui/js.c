@@ -450,6 +450,7 @@ int js_init_app(const char *host_bundle, const char *app_id) {
     JS_SetPropertyStr(ctx, lord, "screen", screen);
     JS_SetPropertyStr(ctx, lord, "version", JS_NewString(ctx, "0.7.0"));
     js_broker_register(ctx, lord, app_id);         /* fs/clipboard/perms por el broker + appId */
+    js_vault_register_app(ctx, lord);              /* Passwords only: its own channel to lord-vault */
     js_sys_register_app(ctx, lord);                /* lord.text (idioma, dirección) y lord.image */
     js_wasm_register(ctx, g);                      /* WebAssembly para loadWasm de la app */
     JS_SetPropertyStr(ctx, g, "lord", lord);

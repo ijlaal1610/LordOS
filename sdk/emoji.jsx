@@ -17,7 +17,8 @@ import { settings } from './settings.js';
 import { useTheme } from './theme.js';
 import { t, locale } from './i18n.js';
 import { ime } from './ime.js';
-import { TextInput, ScrollView, focusToken, restoreFocus } from './components.jsx';
+import { ScrollView, focusToken, restoreFocus } from './components.jsx';
+import { SearchField } from './controls.jsx';
 import { clipboard, toast } from './clipboard.js';
 import { wm } from './windows.js';
 import { EMOJI_GROUPS, TONED } from './emojidata.js';
@@ -136,25 +137,30 @@ addListener('keyup', (e) => { if (e.code === 125 || e.code === 126) superDown = 
 const GROUP_ICON = { recent: '🕘', smileys: '😀', people: '👋', animals: '🐻', food: '🍔', travel: '🚗', activities: '⚽', objects: '💡', symbols: '❤️', flags: '🏁' };
 const COLS = 9, CELL = 36;
 
-export function Grid({ list, sel, onPick, onHover, tone, size = CELL, th }) {
+// Emoji grid. cols: cells per row (default 9, the picker's width); wrap: fill the available width
+// instead (the Characters window). picked: the chosen character, drawn selected.
+export function Grid({ list, sel, onPick, onHover, tone, size = CELL, th, cols = COLS, wrap = false, picked }) {
+  const cell = (ch, i) => {
+    const shown = emoji.withTone(ch, tone);
+    const on = sel === i || (picked != null && picked === shown);
+    return h(View, {
+      key: ch, onClick: () => onPick(shown), onMouseEnter: () => onHover?.(i),
+      style: { width: size, height: size, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? `${th.accent}55` : 'transparent' },
+    }, h(Text, { style: { fontSize: Math.round(size * 0.62), lineHeight: size } }, shown));
+  };
+  if (wrap) return h(View, { style: { flexDirection: 'row', flexWrap: 'wrap' } }, list.map(cell));
   const rows = [];
-  for (let i = 0; i < list.length; i += COLS) rows.push(list.slice(i, i + COLS));
+  for (let i = 0; i < list.length; i += cols) rows.push(list.slice(i, i + cols));
   return h(View, { style: { gap: 0 } }, rows.map((r, ri) => h(View, { key: ri, style: { flexDirection: 'row' } },
-    r.map((ch, ci) => {
-      const i = ri * COLS + ci;
-      const shown = emoji.withTone(ch, tone);
-      return h(View, {
-        key: ch, onClick: () => onPick(shown), onMouseEnter: () => onHover?.(i),
-        style: { width: size, height: size, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: sel === i ? th.accent + '55' : 'transparent' },
-      }, h(Text, { style: { fontSize: Math.round(size * 0.62), lineHeight: size } }, shown));
-    }))));
+    r.map((ch, ci) => cell(ch, ri * cols + ci)))));
 }
 
-export function ToneBar({ tone, onTone, th }) {
-  return h(View, { style: { flexDirection: 'row', gap: 4 } }, TONE_CP.map((cp, i) => h(View, {
+// Skin tone choice. size: the diameter of each swatch (22 by default; the picker uses a smaller one).
+export function ToneBar({ tone, onTone, th, size = 22 }) {
+  return h(View, { style: { flexDirection: 'row', gap: size < 22 ? 2 : 4 } }, TONE_CP.map((cp, i) => h(View, {
     key: i, onClick: () => onTone(i),
-    style: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', border: `2px solid ${tone === i ? th.accent : 'transparent'}` },
-  }, h(Text, { style: { fontSize: 14 } }, cp ? String.fromCodePoint(0x270b, cp) : '✋'))));
+    style: { width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center', border: `2px solid ${tone === i ? th.accent : 'transparent'}` },
+  }, h(Text, { style: { fontSize: Math.round(size * 0.62) } }, cp ? String.fromCodePoint(0x270b, cp) : '✋'))));
 }
 
 function Panel() {
@@ -186,7 +192,7 @@ function Panel() {
     return false;
   };
   // donde está el cursor del campo; si no, al medio de la pantalla
-  const W = COLS * CELL + 20, H = 400;
+  const W = COLS * CELL + 24, H = 404;
   const c = target?.caret;
   const left = Math.max(8, Math.min(screen.width - W - 8, c ? c.x - 20 : screen.width / 2 - W / 2));
   const top = c ? (c.y + c.h + H + 8 < screen.height ? c.y + c.h + 6 : Math.max(8, c.y - H - 6)) : Math.max(40, screen.height / 2 - H / 2);
@@ -196,24 +202,26 @@ function Panel() {
   return h(View, {
     emojiPanel: true,
     style: { position: 'absolute', left, top, width: W, height: H, borderRadius: 12, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`,
-      boxShadow: '0 14px 40px rgba(0,0,0,0.45)', padding: 10, gap: 8 },
+      boxShadow: '0 14px 40px rgba(0,0,0,0.45)', padding: 12, gap: 8 },
   },
-  h(TextInput, { value: q, onChange: setQ, autoFocus: true, placeholder: t('emoji.search'), onCancel: () => panel.set(false),
-    onSubmit: () => { if (list[sel]) pick(emoji.withTone(list[sel], tone)); }, onKeyDown: onKey, style: { height: 28 } }),
+  h(SearchField, { value: q, onChange: setQ, autoFocus: true, placeholder: t('emoji.search'), onCancel: () => panel.set(false),
+    onSubmit: () => { if (list[sel]) pick(emoji.withTone(list[sel], tone)); }, onKeyDown: onKey }),
   !q.trim() && h(View, { style: { flexDirection: 'row', justifyContent: 'space-between', direction: 'ltr' } }, ids.map((id) => h(View, {
     key: id, onClick: () => setGroup(id),
-    style: { width: 30, height: 26, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: group === id ? th.hover : 'transparent' },
+    style: { width: 30, height: 28, borderRadius: 6, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: group === id ? (th.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)') : 'transparent' },
   }, h(Text, { style: { fontSize: 15 } }, GROUP_ICON[id])))),
-  h(Text, { style: { fontSize: 11, fontWeight: 700, color: th.textDim } }, q.trim() ? t('emoji.results', { count: list.length }) : t(`emoji.group.${group}`)),
+  h(Text, { style: { fontSize: 11, fontWeight: 600, color: th.textDim, marginTop: 2, paddingHorizontal: 2 } }, q.trim() ? t('emoji.results', { count: list.length }) : t(`emoji.group.${group}`)),
   h(View, { style: { flex: 1, direction: 'ltr' } },
     list.length ? h(ScrollView, { style: { flex: 1 }, scrollRef: scroll }, h(Grid, { list, sel, onPick: pick, onHover: setHover, tone, th }))
       : h(Text, { style: { margin: 16, fontSize: 12, color: th.textDim, textAlign: 'center' } }, group === 'recent' && !q.trim() ? t('emoji.noRecent') : t('emoji.none'))),
   h(View, { style: { height: 1, backgroundColor: th.separator } }),
-  h(View, { style: { flexDirection: 'row', alignItems: 'center', gap: 8 } },
-    h(Text, { style: { fontSize: 22, width: 30 } }, label ? emoji.withTone(label, tone) : ''),
-    h(Text, { style: { flex: 1, fontSize: 11, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' } }, label ? emoji.name(label) : ''),
-    h(ToneBar, { tone, onTone: (n) => { setToneState(n); emoji.setTone(n); }, th }),
-    h(View, { onClick: () => { panel.set(false); wm.open('characters'); }, style: { paddingHorizontal: 4 } }, h(Text, { style: { fontSize: 11, color: th.accent } }, t('emoji.more')))));
+  h(View, { style: { height: 30, flexDirection: 'row', alignItems: 'center', gap: 8 } },
+    h(Text, { style: { fontSize: 20, width: 24, textAlign: 'center' } }, label ? emoji.withTone(label, tone) : ''),
+    h(View, { style: { flex: 1, minWidth: 0, overflow: 'hidden' } },
+      h(Text, { style: { fontSize: 12, color: th.textDim, whiteSpace: 'nowrap' } }, label ? emoji.name(label) : '')),
+    h(ToneBar, { tone, onTone: (n) => { setToneState(n); emoji.setTone(n); }, th, size: 20 }),
+    h(View, { onClick: () => { panel.set(false); wm.open('characters'); }, style: { paddingHorizontal: 4 } }, h(Text, { style: { fontSize: 12, color: th.accent, whiteSpace: 'nowrap' } }, t('emoji.more')))));
 }
 
 export function EmojiPanel() {

@@ -115,5 +115,8 @@
   "help.open": "Ayuda de LordOS",
   "help.tour": "Bienvenido a LordOS",
   "spotlight.section.help": "Ayuda",
-  "spotlight.inHelp": "Artículo de ayuda"
+  "spotlight.inHelp": "Artículo de ayuda",
+  "picker.cancel": "Cancelar",
+  "picker.choose": "Elegir ({n})",
+  "picker.empty": "No hay archivos acá."
 }

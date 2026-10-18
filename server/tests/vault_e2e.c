@@ -6,6 +6,7 @@
  * Se corre con `make build/vault-e2e && build/vault-e2e` (necesita build/lord-vault al lado). */
 #include "vault/vclient.h"
 #include "vault/vjson.h"
+#include "vault/vwire.h"
 #include "vault/smem.h"
 
 #include <fcntl.h>
@@ -158,6 +159,32 @@ int main(void) {
     snprintf(p, sizeof p, "{\"op\":\"att-text\",\"id\":\"%s\",\"att\":\"%s\"}", id1, attid);
     r = req(p, NULL, 0);
     check(ok(r) && strstr(r, "CLAVE-DE-LICENCIA-1234"), "adjunto después de guardar y abrir");
+
+    /* App channel (vc_attach_app): what the sandboxed Passwords process (lord-server --app) uses.
+     * Same API on its own socket; a lock from the control channel reaches it as an event. */
+    {
+        int afd = vc_attach_app();
+        check(afd >= 0, "app channel: attach");
+        if (afd >= 0) {
+            VMsg m;
+            int got = 0, locked_ev = 0;
+            vw_send(afd, VW_REQ, 7, "{\"op\":\"list\"}", 13, NULL, 0);
+            while (!got && vw_recv(afd, &m, &vw_malloc) == 0) {
+                if (m.kind == VW_REP && m.id == 7) got = ok(m.json) && strstr(m.json, "Banco Ejemplo") != NULL;
+                vw_msg_free(&m, &vw_malloc);
+            }
+            check(got, "app channel: list over its own socket");
+            r = req("{\"op\":\"lock\"}", NULL, 0);
+            for (int k = 0; k < 8 && !locked_ev && vw_recv(afd, &m, &vw_malloc) == 0; k++) {
+                if (m.kind == VW_EVT && strstr(m.json, "\"locked\"")) locked_ev = 1;
+                vw_msg_free(&m, &vw_malloc);
+            }
+            check(locked_ev, "app channel: lock event");
+            close(afd);
+            r = req("{\"op\":\"unlock\",\"method\":\"password\",\"password\":\"Contraseña maestra 1\"}", NULL, 0);
+            check(ok(r), "unlock again after the app channel closed");
+        }
+    }
 
     /* archivo llave nuevo (como en un pendrive) + abrir con él */
     snprintf(f, sizeof f, "%s/pendrive.key", home);

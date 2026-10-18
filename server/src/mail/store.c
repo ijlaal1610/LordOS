@@ -3,6 +3,7 @@
  * with 10,000 messages opens instantly and offline. Callers hold G. */
 #include "maild.h"
 #include "mime.h"
+#include "proto.h"
 
 #include <stdio.h>
 #include <stdlib.h>

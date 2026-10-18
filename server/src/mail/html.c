@@ -520,7 +520,7 @@ static int open_frame(H *h, const char *t, const BStyle *b, const char *extra) {
     if (extra) jb_raw(&h->out, extra);
     jb_raw(&h->out, ",\"c\":[");
     h->fr[h->nfr].kids = 0;
-    h->fr[h->nfr].kind = t[0];
+    h->fr[h->nfr].kind = !strcmp(t, "tbl") ? 'T' : !strcmp(t, "tr") ? 'R' : !strcmp(t, "td") ? 'D' : 'B';
     h->nfr++;
     return 1;
 }
@@ -799,7 +799,7 @@ static void open_tag(H *h, const char *tag, Attr *a, int na, int selfclose) {
     }
     if (!strcmp(tag, "a")) { int k = find_open(h, "a", STOP_CELL); if (k >= 0) pop_to(h, k); }
     /* stray td inside a table without tr: open a tr */
-    if ((!strcmp(tag, "td") || !strcmp(tag, "th")) && h->nfr > 0 && h->fr[h->nfr - 1].kind == 't' && h->nopen < (int)(sizeof h->open / sizeof h->open[0])) {
+    if ((!strcmp(tag, "td") || !strcmp(tag, "th")) && h->nfr > 0 && h->fr[h->nfr - 1].kind == 'T' && h->nopen < (int)(sizeof h->open / sizeof h->open[0])) {
         Attr none[1];
         open_tag(h, "tr", none, 0, 0);
     }

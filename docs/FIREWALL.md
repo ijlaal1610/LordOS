@@ -329,6 +329,11 @@ tests/netperm_bench.c, netperm_measure.sh   mediciones
     enganchar si cambió el id.
   - Si el servicio se para, los links se cierran y todo queda permitido. El escritorio no depende
     de él.
+  - **Also on `user@<uid>.service`** (closing the `systemd-run --user` escape, see
+    [Escape via `systemd-run --user`](#escape-via-systemd-run---user-la-unión-de-user)): the same
+    programs are attached a second time, with a `bpf_link` per session, to each LordOS session
+    user's `user@<uid>.service` cgroup. Re-attached the same way when that cgroup changes (the user
+    manager restarting) or disappears.
 - **Las apps.** Lee las carpetas de las sesiones (`lordos-session-<uid>`) con inotify, más un
   repaso cada 5 s:
   - `server` es `lordos`;
@@ -357,12 +362,56 @@ Cada programa hace lo siguiente:
 Lo que no es de una app de sesión pasa enseguida: `lord-sessiond`, la pantalla de ingreso y el
 resto del sistema.
 
+#### Escape via `systemd-run --user` (la unión de `user@`)
+
+Root-owned scopes (see `docs/PRIVACIDAD.md`) stop an app from writing `cgroup.procs` to leave its
+scope, but an unsandboxed Linux app can still ask its own systemd **user manager** for a new unit:
+`systemd-run --user --scope <cmd>` (a scope) or `systemd-run --user <cmd>` (a transient service).
+The user manager has PID 1 do the move (`AttachProcessesToUnit`), which only checks the UID, not
+the source cgroup, so the process lands in `user@<uid>.service/app.slice/…` — outside
+`lordos.service`, where the programs above are not attached. A "no internet" app could reach the
+internet from there.
+
+**Chosen fix (option a): attach to `user@<uid>.service` + a per-user restriction union.** For each
+LordOS session user, `lord-netperm` attaches the same cgroup programs a second time to that user's
+`user@<uid>.service`. There the process is not in any app scope, so `find_app` (`np.bpf.c`) falls
+back to `np_union`, keyed by the `user@<uid>` cgroup id (the ancestor at `cfg->user_level`). Its
+value is the **strictest union** of the restrictions (the `NP_R_*` bits ORed) of all of that user's
+currently-running restricted apps, with `trusted=1` so anything the union does not forbid is
+allowed silently. If the user has no restricted app running, there is no entry and `user@` is fully
+open (the user manager and its own services are untouched). `lord-netperm` rebuilds the union
+whenever a scope or a rule changes (`sync_union`), and removes it when the user's session or user
+manager goes away.
+
+Why this and not the alternatives:
+
+- A process escaping through a `systemd-run --user` **service** is forked by the user manager, not
+  by the app, so its process lineage no longer reaches the restricted app. Carrying the app
+  identity in BPF task-local storage and inheriting it across `fork` (option c) therefore cannot
+  cover the service case — and it would also need a `BPF_PROG_TYPE_TRACING`/raw-tracepoint program
+  plus a BTF-typed task-storage map, which our own `bpf()` loader (`bpfsys.c`) does not build.
+  Kernel 6.12 has BTF and `bpf` LSM, but the loader would have to grow that machinery.
+- Denying the app access to the user bus / `$XDG_RUNTIME_DIR/systemd/private` (option b) can't be
+  enforced for unsandboxed Linux apps (Landlock is not applied to them).
+- The union is **restriction-only**: it never grants access, so an escaped process is always at
+  least as restricted as its own policy. The cost is that it is coarse — while a restricted app is
+  running, every process under that user's `user@` is held to the union. That is acceptable because
+  LordOS's own apps live under `lordos.service` (unaffected), and it activates only while a
+  restricted app runs. A precise per-process identity (option c) is a possible future refinement if
+  the loader gains tracing support.
+
+`sock_create` ("no network") is **not** enforced through the union, so the user manager can still
+create its own sockets; a "no network" escapee can open a socket but every `connect`/`sendmsg`/`bind`
+is denied by the union all the same. The decision helper (`np_decide`) is unchanged, so
+`tests/npcompile_test.c` still covers it.
+
 **Mapas**
 
 | Mapa | Tipo | Clave → valor |
 |---|---|---|
-| `np_cfg` | array | nivel de las scopes, encendido |
+| `np_cfg` | array | nivel de las scopes, encendido, nivel de `user@<uid>` |
 | `np_apps` | hash | id de cgroup → restricciones, confiable, modo y lista genérica (lan / internet / any) |
+| `np_union` | hash | id de `user@<uid>.service` → unión estricta de las apps restringidas del usuario |
 | `np_lpm4`, `np_lpm6` | LPM trie | (índice de la app, red) → lista ordenada de reglas |
 | `np_seen` | LRU | (cgroup, dirección, puerto, protocolo, dirección de la conexión, veredicto) → última vez avisada |
 | `np_counts` | hash | id de cgroup → permitidas, denegadas |
@@ -565,6 +614,25 @@ y `/dev/tcp`:
 - **Ajustes → Privacidad → Red de las apps:** con "sin internet" marcado en Apps restringidas, la
   puerta de enlace anda e internet no.
 
+**`systemd-run --user` escape (the `user@` union).** With a restricted app running
+(`desktop:aisla`, "no internet"), from a `foot` terminal placed in `app-lordos-aisla.scope`:
+
+| Escape attempt | Result |
+|---|---|
+| `curl https://example.com` (direct, in the app scope) | blocked — "Could not connect" (existing scope rule) |
+| `systemd-run --user --scope curl https://example.com` | blocked — the scope lands in `user@1000`, `np_union` denies the connect |
+| `systemd-run --user curl https://example.com` (transient service) | blocked — same, even though the user manager forks it |
+| `setsid curl https://example.com` | blocked — `setsid` does not change the cgroup, stays in the app scope |
+
+`lord-netperm` logs each `user@` denial as `uid 1000 user@: denegada … (unión de apps
+restringidas no-internet)`. A normal process outside `user@`/`lordos.service` app scopes (e.g. an
+SSH session scope) still reaches the internet while the restricted app runs, so normal apps are
+unaffected. Cross-user: a restricted app for `bob` (uid 1001) blocks `bob`'s `systemd-run --user`
+escape while `lord` (uid 1000, no restricted app) keeps full access — the union is per
+`user@<uid>`, never leaking between users. The screenshot shows the four attempts blocked:
+
+![systemd-run escape blocked](m8-firewall-escape-blocked.png)
+
 ### Mediciones (VM 122, 4 vCPU Xeon Silver 4108, kernel 6.12)
 
 `tests/netperm_measure.sh`: 3 corridas de 20 000 `connect()` a 127.0.0.1 adentro de una scope, y
@@ -590,10 +658,13 @@ y `/dev/tcp`:
 - **App scopes are root's now** (was: «Las scopes son del usuario»). `lord-sessiond` creates the
   scopes and places each process; every `cgroup.procs` of the session subtree is root-owned, so a
   Linux app can no longer move itself to another scope, to `server` or to a new cgroup (tested on
-  VM 122, see `PRIVACIDAD.md`, «Root-owned app scopes»). The remaining hole: `systemd-run --user
-  --scope` asks PID 1 (`AttachProcessesToUnit`), which moves the process as root into
-  `user@<uid>.service`, outside `lordos.service`, where no rule applies. `firewall.json` and
-  `permisos.json` are still writable by an unsandboxed app running as the user.
+  VM 122, see `PRIVACIDAD.md`, «Root-owned app scopes»).
+- **`systemd-run --user` escape: closed** (was the remaining hole). The programs are now attached to
+  each user's `user@<uid>.service` too, and a process that escapes there is held to the per-user
+  restriction union (see [Escape via `systemd-run --user`](#escape-via-systemd-run---user-la-unión-de-user)).
+  Tested on VM 122 (see below). What stays coarse: the union restricts the whole `user@` subtree
+  while a restricted app runs, not just the escaped process. `firewall.json` and `permisos.json` are
+  still writable by an unsandboxed app running as the user (a filesystem matter, not the firewall).
 - **Una scope recién creada** se registra con inotify en microsegundos, antes de que el programa
   termine de arrancar (exec + bibliotecas). Si una conexión llegara antes, pasaría con las reglas
   por omisión.

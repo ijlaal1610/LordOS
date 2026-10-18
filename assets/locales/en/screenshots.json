@@ -30,5 +30,10 @@
   "done": "Done",
   "textHint": "Type and press Enter",
   "menu.window": "Privacy",
-  "menu.protect": "Protect the front window from captures"
+  "menu.protect": "Protect the front window from captures",
+  "tool.arrow": "Arrow",
+  "tool.box": "Box",
+  "tool.text": "Text",
+  "tool.blur": "Blur",
+  "tool.line": "Line"
 }

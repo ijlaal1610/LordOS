@@ -16,6 +16,12 @@ No gnome-keyring, kwallet, libsecret, libdbus or sd-bus is used by LordOS.
 | An *Internet* item: website, user, hidden password (reveal/copy), live 2FA code with countdown, notes, reminder "change every 90 days" | All 2FA codes with their countdown; the TOTP secret never leaves `lord-vault` |
 | ![Wi-Fi QR](m9-contrasenas-wifi-qr.png) | ![Identity document with photo](m9-contrasenas-identidad.png) |
 | Wi-Fi: the QR code to join from a phone (`WIFI:T:WPA;S:…;P:…;;`) is generated inside `lord-vault` | *Identity and documents*: encrypted photo attachment previewed (decoded and downscaled inside `lord-vault`) |
+| ![Finance](m9-contrasenas-finanzas.png) | ![Card](m9-contrasenas-tarjeta.png) |
+| *Finance*: password and coordinates card revealed on request; the "change every 90 days" reminder is overdue | *Cards*: the list shows only the last 4 digits; number, CVV and PIN stay hidden |
+| ![Servers/SSH](m9-contrasenas-ssh.png) | ![Crypto](m9-contrasenas-cripto.png) |
+| *Servers/SSH* with the private key (multi-line hidden field) and host fingerprint | *Crypto*: extra warning about the seed phrase |
+| ![License with its attached file](m9-contrasenas-licencia.png) | |
+| *Licenses*: the licence key plus the attached licence file, opened from the encrypted attachment | |
 | ![Security report](m9-contrasenas-seguridad.png) | ![Generator](m9-contrasenas-generador.png) |
 | Security report: weak, reused, old and breached (offline) passwords | Password generator |
 | ![Passphrase generator](m9-contrasenas-generador-frase.png) | ![Import KeePass](m9-contrasenas-importar.png) |
@@ -29,15 +35,18 @@ No gnome-keyring, kwallet, libsecret, libdbus or sd-bus is used by LordOS.
 | ![Chromium autofills after a restart](m9-contrasenas-chromium-autocompletar.png) | ![Protected window in a capture](m9-contrasenas-captura-protegida.png) |
 | After restarting Chromium it decrypts and autofills the saved login: the key came back from our service | The Passwords window comes out black in LordOS screenshots, recordings and the remote desktop |
 
-Main window with categories (tree) and tags: see `m9-contrasenas-categorias.png`.
+| ![Categories tree and tags](m9-contrasenas-categorias.png) | ![The real screen at the same moment](m9-contrasenas-pantalla-real.png) |
+|---|---|
+| Main window: user categories as a tree (Trabajo → Clientes, Hogar → Inventario, imported KeePass folders), tags with colours | The real monitor (QEMU screendump) when the black LordOS screenshot above was taken: only captures are blanked |
 
 ## Architecture: where the secrets live
 
 ```
- Passwords app (React, apps/passwords)      Settings → Network, Mail, … (sdk keyring)
-        │ lord.vault.request(json, files)            │
-        ▼                                            ▼
- lord-server  (src/vault/vclient.c, src/ui/js_vault.c)
+ Passwords app process                       Settings → Network, Mail, … (sdk keyring)
+ (lord-server --app passwords, sandboxed;            │ lord.vault.request(json, files)
+  apps/passwords, src/ui/js_vault.c app mode)        │
+        │ own channel (vc_attach_app)                ▼
+        │ LORD_VAULT_FD                     lord-server  (src/vault/vclient.c, src/ui/js_vault.c)
    - spawns lord-vault (fixed path, no args, minimal env), one per session
    - opens files the user picked (validated like lord.fs) and passes only fds
    - opens /dev/hidrawN for FIDO2 after the `usb` permission, passes the fd
@@ -66,14 +75,37 @@ the vault key and never parses the vault. The UI gets just what it shows:
 - TOTP secrets never leave `lord-vault`: the UI receives the 6–8 digit code and the seconds left;
 - the Wi-Fi QR is built from the item inside `lord-vault`; the UI receives a bitmap.
 
-**Known limitation: the UI is not a separate sandboxed process yet.** Like every other built-in app
-(Notes, Settings, Files…), the Passwords UI runs inside the session's JavaScript context, so a
-value the user reveals sits for a moment in `lord-server`'s QuickJS heap (garbage collected, not
-wiped). Only `.lpk` packages run as isolated processes today (`lord-server --app <id>`). The
-protocol is ready for it: `vc_attach_app()` gives an isolated app its own channel to `lord-vault`
-(role `app`), so moving the UI to app mode means (1) shipping it as a system package, (2) using the
-powerbox for files and a broker op for the FIDO2 device, and (3) polling the vault channel in
-`appclient.c`. That is the next step; it was not done in this milestone.
+### The UI runs in its own sandboxed process (app mode)
+
+The Passwords window is not drawn by the session's JavaScript context: it is its own process,
+`lord-server --app passwords` (a Wayland client of the compositor with Landlock + seccomp and no
+network, like an installed `.lpk`). Revealed values, edited fields and the decrypted list live only
+in that process and in `lord-vault`; `lord-server`'s QuickJS heap never sees them.
+
+| Piece | How |
+|---|---|
+| System package | `tools/build-theme.mjs` builds every built-in app whose manifest says `"process": "isolated"` into `assets/sysapps/<id>/` (`app.js`, `manifest.json`, `locales/`). `app_package_dir()` (`src/app/appspawn.c`) prefers that folder (root- or user-owned, not world-writable) over a user `.lpk` with the same id, so a package cannot shadow it. |
+| Vault channel | `app_spawn()` calls `vc_attach_app()` **only** for the system `passwords` package and hands the socket to the child as `LORD_VAULT_FD`. In the app, `js_vault_register_app()` exposes the same `lord.vault` API over that socket (non-blocking `vw_feed` polling, `lord.vault.appMode = true`). The relayed JSON is wiped after use. |
+| Files | The system's own open/save dialog (powerbox, drawn by `lord-server`) picks the file; the app gets only the fd and passes it on to `lord-vault` (`request(json, { fds })`). Key files, attachments, import, export, the breach list and QR images all go this way. |
+| FIDO2 | `BOP_VAULT_FIDO`: after the user allows `usb`, `lord-server` opens the hidraw device and gives it straight to `lord-vault` (`vc_fido_attach`); the app never holds the device. Only the app spawned with a vault channel may ask. |
+| Clipboard | `BOP_CLIP_SECRET`: the copy is marked sensitive (out of the history, password-manager hint for Wayland clients) and `lord-server` clears it after the chosen seconds if it still holds the same text (compared by SHA-256; the text is not kept). |
+| Protection | The manifest says `"protected": true`; `sdk/wayland.js` marks the app's Wayland window protected as soon as it maps, so it is black in screenshots, recordings and the remote desktop (`m9-contrasenas-app-captura.png`). |
+| Window | Opening Passwords (Dock, Launchpad, Spotlight, `wm.open('passwords')`) starts the process or focuses its window; the manifest's `size`/`minSize` now size the app window. |
+
+**Fallback.** If `lord-server` has no app mode or the system package is missing (a dev tree
+without `npm run build`), the same UI runs in the shell's context as before (path-based files, the
+in-app file picker, the shell clipboard timer). The vault itself is unchanged either way.
+
+Hidden in app mode: "Print" for the recovery key (the print dialog lives in the shell; saving it
+to a file works) and the "Open Settings" link on VPN items.
+
+| App mode: the system file dialog over the lock screen | App mode: a LordOS screenshot of the app window |
+|---|---|
+| ![Powerbox](m9-contrasenas-app-powerbox.png) | ![Protected app window](m9-contrasenas-app-captura.png) |
+
+In the in-process fallback the lock and create screens show their file picker inline, under the
+padlock and the title (`m9-contrasenas-selector-en-linea.png`), instead of a centred dialog that
+covered the whole form.
 
 ## The vault format (`.lvault`, version 1)
 
@@ -187,8 +219,9 @@ Locking frees the model block by block; every arena block is wiped on free.
 - Wayland clients now see the extra MIME type `x-kde-passwordManagerHint` (value `secret`) on a
   sensitive LordOS clipboard, the KDE/GNOME convention clipboard managers honour
   (`src/wl/wl.c`). The bytes handed to Wayland clients are wiped after sending.
-- The app clears the clipboard after 30 s (configurable: 15/30/60/120 s) if it still holds the
-  same value.
+- The clipboard is cleared after 30 s (configurable: 15/30/60/120 s) if it still holds the same
+  value: by `lord-server` in app mode (`BOP_CLIP_SECRET`), by the app in the in-process fallback.
+  Replacing the clipboard also wipes the previous text in `lord-server` (`term_set_clipboard`).
 
 ## The session keyring (`login.lvault`)
 
@@ -227,7 +260,8 @@ await keyring.list('mail');                         // without secrets
 - **Trust boundary:** built-in apps run in the shell's JavaScript context, so for them the owner
   string is passed by trusted system code, not enforced by a process boundary. For isolated `.lpk`
   apps the owner must be set by `lord-server` from the broker (the app id it already verifies);
-  wiring that broker op is part of moving to app mode (see above).
+  that broker op is still to do. The Passwords app process manages the keyring over its own
+  vault channel, which only the system `passwords` package receives.
 - **Settings → Network** now stores Wi-Fi passwords (`wifi:<ssid>`) and VPN credentials
   (`vpn:<name>`) in the keyring when you join or save, and offers them back with the 🔑 button.
   The root-owned copy that `wpa_supplicant`/the VPN daemons need to connect at boot is still
@@ -352,10 +386,14 @@ many tags (with colours), favourite, archived, trash, history, attachments and a
 
 Not part of `make test` because they need the real helper or root:
 
-- `build/vault-e2e` (47/47): drives the real sandboxed `lord-vault` through `vclient.c` (create,
+- `build/vault-e2e` (51/51): drives the real sandboxed `lord-vault` through `vclient.c` (create,
   unlock, wrong password, items, search, report, TOTP, QR, attachments, key file on a "USB",
   recovery key, password + key file, import/export, keyring ownership and sharing, screen lock
-  closing Passwords but not the keyring, `NoNewPrivs`/`Seccomp` set).
+  closing Passwords but not the keyring, `NoNewPrivs`/`Seccomp` set, and the app channel from
+  `vc_attach_app()`: requests over its own socket and the lock event reaching it).
+- App mode by hand on VM 116: the app process unlocks, reveals, copies (pasted in the Terminal,
+  empty again after 30 s), attaches a file through the powerbox, locks, and its window is black in
+  a LordOS screenshot.
 - `tests/fido-soft/run-pw-116.sh` (32/32): `softfido`, a software CTAP2 authenticator on
   `/dev/uhid` (CTAPHID, getInfo, clientPIN, makeCredential, getAssertion with hmac-secret), and the
   client against it: same salt → same secret, other salt or credential → different, wrong key →
@@ -385,7 +423,10 @@ whose only verification is built in (fingerprint) are not implemented/tested.
 | `server/src/vault/ctap2.c`, `cbor.c`, `p256.c`, `fidodev.c` | FIDO2 client, CBOR, P-256, device discovery |
 | `server/src/vault/dbus.c`, `secretsvc.c` | own D-Bus and the Secret Service |
 | `server/src/vault/vimport.c`, `kdbx.c`, `csvp.c`, `xmlmini.c` | importers |
-| `server/src/vault/vclient.c`, `server/src/ui/js_vault.c` | lord-server side, `lord.vault` |
+| `server/src/vault/vclient.c`, `server/src/ui/js_vault.c` | lord-server side, `lord.vault` (shell and app mode) |
+| `server/src/app/appspawn.c`, `appclient.c` | system package lookup, the vault channel for the app, window size from the manifest |
+| `server/src/sec/brokersrv.c`, `server/src/ui/js_broker.c` | `BOP_VAULT_FIDO`, `BOP_CLIP_SECRET` |
+| `assets/sysapps/passwords/` | the built app process bundle (generated by `npm run build`) |
 | `server/mk/vault*.mk` | build and test rules |
 | `sdk/vault.js` | `vaultRequest`, `keyring`, `autofill`, `<AutofillButton>`, `<KeyringPrompt>` |
 | `apps/passwords/` | the app |

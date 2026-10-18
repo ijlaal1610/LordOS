@@ -9,6 +9,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -125,9 +126,9 @@ char *compose_message(Account *a, const JVal *m, int *fds, int nfds, size_t *ole
     int natt = nfds;
     char bm[48], ba[48];
     rand_hex(rnd, 12);
-    snprintf(bm, sizeof bm, "=_lordos_m_%s", rnd);
+    SNPF(bm, sizeof bm, "=_lordos_m_%s", rnd);
     rand_hex(rnd, 12);
-    snprintf(ba, sizeof ba, "=_lordos_a_%s", rnd);
+    SNPF(ba, sizeof ba, "=_lordos_a_%s", rnd);
     int mixed = natt > 0;
     int alt = (html && *html) || (ics && *ics);
     if (mixed) jb_printf(&b, "Content-Type: multipart/mixed; boundary=\"%s\"\r\n\r\nThis is a multi-part message in MIME format.\r\n--%s\r\n", bm, bm);

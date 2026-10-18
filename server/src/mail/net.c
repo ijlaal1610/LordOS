@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -159,9 +160,10 @@ char *conn_line(Conn *c, size_t *len, size_t max) {
         if (!fill(c)) { free(o); return NULL; }
         char *nl = memchr(c->rb + c->rpos, '\n', c->rlen - c->rpos);
         size_t take = nl ? (size_t)(nl - (c->rb + c->rpos)) + 1 : c->rlen - c->rpos;
+        if (n + take > max) { free(o); snprintf(c->err, sizeof c->err, "line too long"); return NULL; }
         if (n + take + 1 > cap) {
             while (n + take + 1 > cap) cap *= 2;
-            if (cap > max + 2) { if (n + take > max) { free(o); snprintf(c->err, sizeof c->err, "line too long"); return NULL; } cap = max + 2; }
+            if (cap > max + 1) cap = max + 1;            /* n + take <= max, so the NUL still fits */
             char *no = realloc(o, cap);
             if (!no) { free(o); return NULL; }
             o = no;
@@ -177,9 +179,11 @@ char *conn_line(Conn *c, size_t *len, size_t max) {
 }
 
 int conn_read_n(Conn *c, size_t want, char **buf, size_t *len, size_t *cap) {
-    if (*len + want + 1 > *cap) {
+    if (*len >= SIZE_MAX - 1 || want > SIZE_MAX - *len - 1) return -1;
+    size_t need = *len + want + 1;               /* always room for the terminating NUL */
+    if (need > *cap) {
         size_t nc = *cap ? *cap : 1024;
-        while (nc < *len + want + 1) nc *= 2;
+        while (nc < need) { if (nc > SIZE_MAX / 2) { nc = need; break; } nc *= 2; }
         char *nb = realloc(*buf, nc);
         if (!nb) return -1;
         *buf = nb; *cap = nc;

@@ -30,5 +30,10 @@
   "done": "Listo",
   "textHint": "Escribí y apretá Enter",
   "menu.window": "Privacidad",
-  "menu.protect": "Proteger la ventana del frente de las capturas"
+  "menu.protect": "Proteger la ventana del frente de las capturas",
+  "tool.arrow": "Flecha",
+  "tool.box": "Recuadro",
+  "tool.text": "Texto",
+  "tool.blur": "Desenfocar",
+  "tool.line": "Línea"
 }

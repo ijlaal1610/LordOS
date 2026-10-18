@@ -21,5 +21,7 @@
   "block.greek": "Griego",
   "block.latin1": "Latín acentuado",
   "block.cjkSymbols": "Signos CJK",
-  "block.halfwidth": "Ancho completo"
+  "block.halfwidth": "Ancho completo",
+  "pickTitle": "Elegí un carácter",
+  "pickHint": "Hacé clic en uno para ver su nombre y su código, y copiarlo."
 }

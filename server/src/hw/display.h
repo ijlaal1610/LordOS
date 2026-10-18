@@ -35,9 +35,10 @@ void display_hotplug(void);             /* DRM uevent: connectors may have chang
 
 /* JSON for lord.display.list(). Returns a malloc'd string. */
 char *display_list_json(void);
-/* Apply live (not saved): output id, w×h, refresh in mHz (0 = best), rotation 0..3 (×90°).
+/* Apply live (not saved): output id, w×h, refresh in mHz (0 = best), rotation 0..3 (×90°), scale
+ * 1 or 2 (200 %: drawn at half the size and doubled while copying the frame, CPU path).
  * Queued; main.c runs it between frames (display_take_modeset). 0 if accepted. */
-int  display_request(uint32_t conn, int w, int h, int refresh_mhz, int rotation);
+int  display_request(uint32_t conn, int w, int h, int refresh_mhz, int rotation, int scale);
 /* Save the current configuration of that output as its display's default (and as the main
  * display). 0 if written. */
 int  display_save(uint32_t conn);
@@ -45,11 +46,14 @@ int  display_save(uint32_t conn);
 int  display_take_modeset(uint32_t *conn, struct drm_mode_modeinfo *mode);
 void display_modeset_done(int ok);      /* main.c after kms_modeset (+ set_size, GPU restart) */
 int  display_rotation(void);            /* 0..3: the frame is rotated by software (CPU path) */
-/* Logical size for a physical one with the current rotation (90°/270° swap). */
+int  display_scale(void);               /* 1 or 2 */
+int  display_cpu_only(void);            /* rotated or scaled: composed by the CPU, no GPU path */
+/* Logical size for a physical one with the current rotation (90°/270° swap) and scale. */
 void display_logical_size(int pw, int ph, int *lw, int *lh);
 
-/* Software rotation (CPU path): rect r of the logical frame (lw×lh) in physical coordinates, and
- * the copy of that rect from the logical canvas into the physical one. rot 1 = 90° clockwise. */
+/* Software rotation and scale (CPU path): rect r of the logical frame (lw×lh) in physical
+ * coordinates, and the copy of that rect from the logical canvas into the physical one. rot 1 =
+ * 90° clockwise; with scale 2 every logical pixel becomes a 2×2 block. */
 Rect display_rotate_rect(Rect r, int lw, int lh, int rot);
 void display_rotate_copy(const Canvas *src, Rect r, Canvas *dst, int rot);
 /* Same, from a buffer whose first pixel is logical (ox, oy) (a cursor composited apart). */

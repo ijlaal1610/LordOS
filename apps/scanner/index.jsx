@@ -1,8 +1,9 @@
-// Escáner — escáneres «sin controlador» de la red (eSCL / AirScan) con un cliente propio, sin
-// SANE: vista previa, área a mano, resolución, color o grises, y guardar como PDF, PNG o JPEG.
-// Lo que manda el escáner se decodifica y convierte en el ayudante encerrado lord-doc.
+// Scanner: "driverless" network scanners (eSCL / AirScan) with our own client, without SANE:
+// preview, a hand-drawn area, resolution, color or grayscale, and save as PDF, PNG or JPEG. What
+// the scanner sends is decoded and converted in the sandboxed lord-doc helper.
 import {
-  View, Text, Button, Segmented, useTheme, useAppWindow, wm, fs, print, DocImage, releaseImage, decodeImage, convertImage, formatDate, formatTime, t as tr,
+  View, Text, Button, Segmented, Hairline, EmptyState, ScrollView, useTheme, useAppWindow, wm, fs, print, DocImage, releaseImage, decodeImage, convertImage,
+  formatDate, formatTime, typeScale, t as tr,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 
@@ -10,7 +11,7 @@ export function Icon({ size: s }) {
   return (
     <View style={{ width: s, height: s, borderRadius: s * 0.225, background: 'linear-gradient(160deg, #66d4cf, #0f7c78)',
       boxShadow: `0 ${s * 0.04}px ${s * 0.12}px rgba(0,0,0,0.35)`, overflow: 'hidden' }}>
-      {/* cama del escáner con la tapa y la luz que pasa */}
+      {/* scanner bed with the lid and the passing light */}
       <View style={{ position: 'absolute', left: s * 0.12, top: s * 0.46, width: s * 0.76, height: s * 0.3, borderRadius: s * 0.06, backgroundColor: '#e9f7f6' }} />
       <View style={{ position: 'absolute', left: s * 0.12, top: s * 0.3, width: s * 0.76, height: s * 0.12, borderRadius: s * 0.05, backgroundColor: '#cfe9e7' }} />
       <View style={{ position: 'absolute', left: s * 0.18, top: s * 0.54, width: s * 0.64, height: s * 0.05, backgroundColor: '#7cf5a0' }} />
@@ -24,7 +25,7 @@ const COLORS = { RGB24: 'color', Grayscale8: 'gray', BlackAndWhite1: 'bw' };
 function destDir(kind) {
   const home = fs.home();
   const names = kind === 'pdf' ? ['Documentos', 'Documents'] : ['Imágenes', 'Pictures', 'Imagens'];
-  for (const n of names) { try { if (fs.stat(`${home}/${n}`).dir) return `${home}/${n}`; } catch (e) { /* no está */ } }
+  for (const n of names) { try { if (fs.stat(`${home}/${n}`).dir) return `${home}/${n}`; } catch (e) { /* not there */ } }
   return home;
 }
 
@@ -40,7 +41,7 @@ export default function Scanner() {
   const [format, setFormat] = useState('pdf');
   const [source, setSource] = useState('Platen');
   const [preview, setPreview] = useState(null);      // { image, w, h }
-  const [area, setArea] = useState(null);            // [x, y, w, h] en fracciones de la vista previa
+  const [area, setArea] = useState(null);            // [x, y, w, h] as fractions of the preview
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
   const box = useRef(null);
@@ -105,7 +106,7 @@ export default function Scanner() {
   };
   const lastSaved = useRef(null);
 
-  // área: arrastrar sobre la vista previa
+  // area: drag on the preview
   const onDown = (ev) => {
     if (!preview || !box.current) return;
     const [bx, by, bw, bh] = lord.getLayout(box.current.id);
@@ -122,27 +123,33 @@ export default function Scanner() {
   const onUp = () => { const d = drag.current; drag.current = null; if (d && area && (area[2] < 0.02 || area[3] < 0.02)) setArea(null); };
 
   if (!scanner) {
+    if (!found || !found.length) {
+      return <EmptyState icon={<Icon size={56} />} title={tr('scanner.choose')} hint={found == null ? tr('scanner.searching') : tr('scanner.none')} />;
+    }
     return (
       <View style={{ flex: 1, padding: 20, gap: 12 }}>
-        <Text style={{ fontSize: 16, fontWeight: 700, color: th.text }}>{tr('scanner.choose')}</Text>
-        {found == null ? <Text style={{ fontSize: 12, color: th.textDim }}>{tr('scanner.searching')}</Text>
-          : !found.length ? <Text style={{ fontSize: 12, color: th.textDim }}>{tr('scanner.none')}</Text>
-            : found.map((s) => (
-              <View key={`${s.addr}:${s.port}`} onClick={() => setScanner(s)} style={{ flexDirection: 'row', gap: 10, padding: 10, borderRadius: 8, backgroundColor: th.control, alignItems: 'center' }}>
-                <Icon size={28} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, fontWeight: 600, color: th.text }}>{s.name}</Text>
-                  <Text style={{ fontSize: 11, color: th.textDim }}>{`${s.model || ''} ${s.addr}:${s.port}`}</Text>
-                </View>
+        <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: th.text }}>{tr('scanner.choose')}</Text>
+        <View style={{ borderRadius: 10, border: `1px solid ${th.separator}`, backgroundColor: th.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.025)', paddingHorizontal: 12 }}>
+          {found.map((s, i) => (
+            <View key={`${s.addr}:${s.port}`} onClick={() => setScanner(s)} style={{ flexDirection: 'row', gap: 12, paddingVertical: 10, alignItems: 'center' }}>
+              {i > 0 ? <Hairline edge="top" /> : null}
+              <Icon size={32} />
+              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{s.name}</Text>
+                <Text style={{ fontSize: typeScale.caption, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{`${s.model || ''} ${s.addr}:${s.port}`}</Text>
               </View>
-            ))}
+              <Text style={{ fontSize: 15, color: th.textDim }}>›</Text>
+            </View>
+          ))}
+        </View>
       </View>
     );
   }
   const sel = area;
+  const caption = (text) => <Text style={{ fontSize: typeScale.caption, fontWeight: 600, color: th.textDim, marginTop: 6 }}>{text}</Text>;
   return (
     <View style={{ flex: 1, flexDirection: 'row' }} onMouseMove={onMove} onMouseUp={onUp}>
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16, backgroundColor: th.mode === 'dark' ? '#2a2a2e' : '#d9d9de' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: th.mode === 'dark' ? '#2a2a2e' : '#e3e3e8' }}>
         {preview ? (
           <View ref={box} onMouseDown={onDown} style={{ width: preview.w, height: preview.h, backgroundColor: '#fff', boxShadow: '0 2px 10px rgba(0,0,0,0.35)', direction: 'ltr' }}>
             <DocImage image={preview.image} style={{ width: preview.w, height: preview.h }} />
@@ -151,39 +158,50 @@ export default function Scanner() {
                 border: `2px solid ${th.accent}`, backgroundColor: `${th.accent}22` }} />
             )}
           </View>
-        ) : <Text style={{ fontSize: 13, color: th.textDim, textAlign: 'center' }}>{busy === 'preview' ? tr('scanner.previewing') : tr('scanner.previewHint')}</Text>}
+        ) : <EmptyState title={busy === 'preview' ? tr('scanner.previewing') : null} hint={busy === 'preview' ? null : tr('scanner.previewHint')} />}
       </View>
-      <View style={{ width: 280, padding: 14, gap: 10, backgroundColor: th.sidebarBg }}>
-        <Text style={{ fontSize: 14, fontWeight: 700, color: th.text }}>{scanner.name}</Text>
-        <Text style={{ fontSize: 11, color: th.textDim }}>{caps ? caps.model || `${scanner.addr}:${scanner.port}` : error ? '' : tr('scanner.connecting')}</Text>
-        {caps && (
-          <>
-            {caps.platen && caps.adf ? <Segmented value={source} onChange={setSource} options={[['Platen', tr('scanner.platen')], ['Feeder', tr('scanner.feeder')]]} /> : null}
-            <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim }}>{tr('scanner.mode')}</Text>
-            <Segmented value={color} onChange={setColor} options={(caps.colors.length ? caps.colors : ['RGB24']).filter((c) => COLORS[c]).map((c) => [c, tr(`scanner.color.${COLORS[c]}`)])} />
-            <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim }}>{tr('scanner.resolution')}</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-              {(caps.res.length ? caps.res : [75, 150, 300, 600]).slice(0, 8).map((r) => (
-                <View key={r} onClick={() => setRes(r)} style={{ paddingHorizontal: 8, height: 22, borderRadius: 11, justifyContent: 'center', backgroundColor: res === r ? th.accent : th.control }}>
-                  <Text style={{ fontSize: 11, color: res === r ? '#fff' : th.text }}>{tr('scanner.dpi', { dpi: r })}</Text>
-                </View>
-              ))}
+      <View style={{ width: 280, backgroundColor: th.sidebarBg }}>
+        <Hairline edge="start" />
+        <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
+          <View style={{ gap: 8, paddingBottom: 12 }}>
+            <View style={{ gap: 2 }}>
+              <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: th.text }}>{scanner.name}</Text>
+              <Text style={{ fontSize: typeScale.caption, color: th.textDim }}>{caps ? caps.model || `${scanner.addr}:${scanner.port}` : error ? '' : tr('scanner.connecting')}</Text>
             </View>
-            <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim }}>{tr('scanner.format')}</Text>
-            <Segmented value={format} onChange={setFormat} options={[['pdf', 'PDF'], ['png', 'PNG'], ['jpeg', 'JPEG']]} />
-            <Text style={{ fontSize: 11, color: th.textDim }}>{area ? tr('scanner.areaSet', { w: Math.round(region().w / 300 * 25.4), h: Math.round(region().h / 300 * 25.4) }) : tr('scanner.areaAll')}</Text>
-          </>
-        )}
-        {/* las acciones van arriba (no al pie): con el Dock a la vista no quedan tapadas */}
-        {error ? <Text style={{ fontSize: 12, color: '#ff453a' }}>{error}</Text> : null}
-        {msg ? <Text style={{ fontSize: 12, color: th.accent }}>{msg}</Text> : null}
-        <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-          {lastSaved.current && format !== 'pdf' ? <Button label={tr('scanner.print')} onClick={() => print.open({ title: fs.basename(lastSaved.current), image: lastSaved.current })} /> : null}
-          <Button label={busy === 'preview' ? tr('scanner.working') : tr('scanner.preview')} onClick={() => !busy && caps && doPreview()} />
-          <Button primary label={busy === 'scan' ? tr('scanner.working') : tr('scanner.scan')} onClick={() => !busy && caps && doScan()} />
+            {caps && (
+              <>
+                {caps.platen && caps.adf ? <Segmented fill value={source} onChange={setSource} options={[['Platen', tr('scanner.platen')], ['Feeder', tr('scanner.feeder')]]} /> : null}
+                {caption(tr('scanner.mode'))}
+                <Segmented fill value={color} onChange={setColor} options={(caps.colors.length ? caps.colors : ['RGB24']).filter((c) => COLORS[c]).map((c) => [c, tr(`scanner.color.${COLORS[c]}`)])} />
+                {caption(tr('scanner.resolution'))}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {(caps.res.length ? caps.res : [75, 150, 300, 600]).slice(0, 8).map((r) => (
+                    <View key={r} onClick={() => setRes(r)} style={{ paddingHorizontal: 10, height: 24, borderRadius: 12, justifyContent: 'center', backgroundColor: res === r ? th.accent : th.control }}>
+                      <Text style={{ fontSize: typeScale.callout, color: res === r ? '#fff' : th.text }}>{tr('scanner.dpi', { dpi: r })}</Text>
+                    </View>
+                  ))}
+                </View>
+                {caption(tr('scanner.format'))}
+                <Segmented fill value={format} onChange={setFormat} options={[['pdf', 'PDF'], ['png', 'PNG'], ['jpeg', 'JPEG']]} />
+                <Text style={{ fontSize: typeScale.caption, color: th.textDim, lineHeight: 1.4, marginTop: 4 }}>{area ? tr('scanner.areaSet', { w: Math.round(region().w / 300 * 25.4), h: Math.round(region().h / 300 * 25.4) }) : tr('scanner.areaAll')}</Text>
+              </>
+            )}
+            {error ? <Text style={{ fontSize: typeScale.callout, color: '#ff453a', lineHeight: 1.4 }}>{error}</Text> : null}
+            {msg ? <Text style={{ fontSize: typeScale.callout, color: th.accent, lineHeight: 1.4 }}>{msg}</Text> : null}
+          </View>
+        </ScrollView>
+        {/* the actions sit in a fixed footer of the panel, above the Dock */}
+        <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16, gap: 10 }}>
+          <Hairline edge="top" />
+          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            {lastSaved.current && format !== 'pdf' ? <Button label={tr('scanner.print')} onClick={() => print.open({ title: fs.basename(lastSaved.current), image: lastSaved.current })} /> : null}
+            <Button label={busy === 'preview' ? tr('scanner.working') : tr('scanner.preview')} onClick={() => !busy && caps && doPreview()} />
+            <Button primary label={busy === 'scan' ? tr('scanner.working') : tr('scanner.scan')} onClick={() => !busy && caps && doScan()} />
+          </View>
+          <View onClick={() => { setScanner(null); setCaps(null); setPreview(null); }} style={{ alignSelf: 'flex-start' }}>
+            <Text style={{ fontSize: typeScale.callout, color: th.accent }}>{tr('scanner.other')}</Text>
+          </View>
         </View>
-        <View onClick={() => { setScanner(null); setCaps(null); setPreview(null); }}><Text style={{ fontSize: 11, color: th.accent }}>{tr('scanner.other')}</Text></View>
-        <View style={{ flex: 1 }} />
       </View>
     </View>
   );

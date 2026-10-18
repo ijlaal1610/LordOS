@@ -2,11 +2,14 @@
 #include "http.h"
 
 #include <ctype.h>
+#include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <time.h>
+#include <limits.h>
 
 static double now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
 
@@ -41,6 +44,39 @@ int http_split_url(const char *url, int *tls, char *host, size_t hcap, int *port
 
 void http_resp_free(HttpResp *r) { free(r->body); memset(r, 0, sizeof *r); }
 
+/* Chunk size line: hex digits, optional ";extensions", CRLF (or LF). -1 if anything else. */
+int http_chunk_size(const char *line, unsigned long long *out) {
+    const char *p = line;
+    if (!isxdigit((unsigned char)*p)) return -1;
+    char *end;
+    errno = 0;
+    unsigned long long v = strtoull(p, &end, 16);
+    if (errno == ERANGE || end == p) return -1;
+    if (end - p > 16) return -1;
+    if (*end == ';') { end++; while (*end && *end != '\r' && *end != '\n') { if ((unsigned char)*end < 0x20 && *end != '\t') return -1; end++; } }
+    while (*end == ' ' || *end == '\t') end++;
+    if (!(end[0] == '\r' && end[1] == '\n' && !end[2]) && !(end[0] == '\n' && !end[1])) return -1;
+    *out = v;
+    return 0;
+}
+
+/* Content-Length: decimal digits only (no sign, no garbage), no overflow. -1 if invalid. */
+int http_content_length(const char *v, unsigned long long *out) {
+    const char *p = v;
+    while (*p == ' ' || *p == '\t') p++;
+    if (!isdigit((unsigned char)*p)) return -1;
+    unsigned long long x = 0;
+    for (; isdigit((unsigned char)*p); p++) {
+        unsigned d = (unsigned)(*p - '0');
+        if (x > (ULLONG_MAX - d) / 10) return -1;
+        x = x * 10 + d;
+    }
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p) return -1;
+    *out = x;
+    return 0;
+}
+
 static void hdr_copy(const char *line, const char *name, char *out, size_t cap) {
     size_t n = strlen(name);
     if (strncasecmp(line, name, n) || line[n] != ':') return;
@@ -66,15 +102,22 @@ int http_request(Conn *c, const char *method, const char *host, const char *path
     if (sscanf(line, "HTTP/%d.%d %d", &maj, &mn, &out->status) != 3) { free(line); return -1; }
     free(line);
     long long clen = -1;
-    int chunked = 0, close_after = maj == 1 && mn == 0;
+    int chunked = 0, close_after = maj == 1 && mn == 0, done = 0;
+    size_t hdr_total = 0;
     for (int n = 0; n < 200; n++) {
         if (now_ms() > end) return -1;
         line = conn_line(c, &ll, 16384);
         if (!line) return -1;
-        if (!strcmp(line, "\r\n") || !strcmp(line, "\n")) { free(line); break; }
+        hdr_total += ll;
+        if (hdr_total > 64 * 1024) { free(line); return -1; }          /* headers: 64 KB at most */
+        if (!strcmp(line, "\r\n") || !strcmp(line, "\n")) { free(line); done = 1; break; }
         char v[64] = "";
         hdr_copy(line, "Content-Length", v, sizeof v);
-        if (v[0]) clen = atoll(v);
+        if (v[0]) {
+            unsigned long long cl;
+            if (http_content_length(v, &cl) || cl > (unsigned long long)LLONG_MAX) { free(line); return -1; }
+            clen = (long long)cl;
+        }
         v[0] = 0;
         hdr_copy(line, "Transfer-Encoding", v, sizeof v);
         if (strcasestr(v, "chunked")) chunked = 1;
@@ -86,6 +129,7 @@ int http_request(Conn *c, const char *method, const char *host, const char *path
         hdr_copy(line, "Content-Type", out->content_type, sizeof out->content_type);
         free(line);
     }
+    if (!done) return -1;                                       /* more than 200 header lines */
     size_t cap = 0;
     out->blen = 0;
     if (!strcasecmp(method, "HEAD") || out->status == 204 || out->status == 304 || (out->status >= 100 && out->status < 200)) clen = 0;
@@ -94,20 +138,22 @@ int http_request(Conn *c, const char *method, const char *host, const char *path
             if (now_ms() > end) { http_resp_free(out); return -1; }
             line = conn_line(c, &ll, 1024);
             if (!line) { http_resp_free(out); return -1; }
-            unsigned long long sz = strtoull(line, NULL, 16);
+            unsigned long long sz;
+            int bad = http_chunk_size(line, &sz);
             free(line);
+            if (bad) { http_resp_free(out); return -1; }
             if (sz == 0) {
                 /* trailers until the empty line */
                 while ((line = conn_line(c, &ll, 8192))) { int done = !strcmp(line, "\r\n") || !strcmp(line, "\n"); free(line); if (done) break; }
                 break;
             }
-            if (out->blen + sz > max_body) { http_resp_free(out); return -2; }
+            if (sz > max_body || out->blen > max_body - sz) { http_resp_free(out); return -2; }
             if (conn_read_n(c, (size_t)sz, &out->body, &out->blen, &cap)) { http_resp_free(out); return -1; }
             line = conn_line(c, &ll, 16);
             free(line);
         }
     } else if (clen >= 0) {
-        if ((unsigned long long)clen > max_body) { http_resp_free(out); return -2; }
+        if ((unsigned long long)clen > (unsigned long long)max_body) { http_resp_free(out); return -2; }
         if (clen && conn_read_n(c, (size_t)clen, &out->body, &out->blen, &cap)) { http_resp_free(out); return -1; }
     } else {
         /* until the server closes */
@@ -116,9 +162,16 @@ int http_request(Conn *c, const char *method, const char *host, const char *path
             if (now_ms() > end) { http_resp_free(out); return -1; }
             ssize_t r = conn_read_some(c, tmp, sizeof tmp);
             if (r <= 0) break;
-            if (out->blen + (size_t)r > max_body) { http_resp_free(out); return -2; }
             size_t want = (size_t)r;
-            if (out->blen + want + 1 > cap) { cap = (out->blen + want + 1) * 2; char *nb = realloc(out->body, cap); if (!nb) { http_resp_free(out); return -1; } out->body = nb; }
+            if (want > max_body || out->blen > max_body - want) { http_resp_free(out); return -2; }
+            if (out->blen + want + 1 > cap) {
+                size_t nc = out->blen + want + 1;
+                nc = nc <= SIZE_MAX / 2 ? nc * 2 : nc;
+                char *nb = realloc(out->body, nc);
+                if (!nb) { http_resp_free(out); return -1; }
+                out->body = nb;
+                cap = nc;
+            }
             memcpy(out->body + out->blen, tmp, want);
             out->blen += want;
         }

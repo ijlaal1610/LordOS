@@ -8,6 +8,7 @@
  * flags, move, delete, drafts) interrupt the IDLE through an eventfd. */
 #include "maild.h"
 #include "imapp.h"
+#include "imapio.h"
 #include "mime.h"
 
 #include <ctype.h>
@@ -61,33 +62,10 @@ static void parse_caps(Imap *im, const char *line) {
 
 /* One complete response (line + literals) as raw bytes. NULL on I/O error. */
 static char *read_raw(Imap *im, size_t *len) {
-    size_t n = 0, cap = 0;
-    char *buf = NULL;
-    for (;;) {
-        size_t ll;
-        char *line = conn_line(im->c, &ll, LINE_MAX_BYTES);
-        if (!line) { free(buf); return NULL; }
-        if (n + ll + 1 > cap) { cap = (n + ll + 1) * 2; char *nb = realloc(buf, cap); if (!nb) { free(line); free(buf); return NULL; } buf = nb; }
-        memcpy(buf + n, line, ll);
-        n += ll;
-        buf[n] = 0;
-        free(line);
-        /* "{123}\r\n" or "{123+}\r\n" at the end: a literal follows */
-        size_t e = n;
-        if (e >= 2 && buf[e - 1] == '\n') e--;
-        if (e >= 1 && buf[e - 1] == '\r') e--;
-        if (e < 3 || buf[e - 1] != '}') break;
-        size_t s = e - 1;
-        while (s > 0 && buf[s - 1] != '{') s--;
-        if (!s) break;
-        char *endp;
-        unsigned long long lit = strtoull(buf + s, &endp, 10);
-        if (endp == buf + s || (*endp != '}' && *endp != '+')) break;
-        if (lit > LINE_MAX_BYTES * 4) { free(buf); snprintf(im->text, sizeof im->text, "literal too big"); return NULL; }
-        if (conn_read_n(im->c, (size_t)lit, &buf, &n, &cap)) { free(buf); return NULL; }
-    }
-    *len = n;
-    return buf;
+    char err[96];
+    char *r = imap_read_response(im->c, len, LINE_MAX_BYTES, (size_t)64 << 20, err, sizeof err);
+    if (!r) snprintf(im->text, sizeof im->text, "%s", err);
+    return r;
 }
 
 typedef void (*Untagged)(Imap *im, IResp *r, void *u);
@@ -243,7 +221,7 @@ static int imap_open(Imap *im, char *err, size_t ecap) {
     explicit_bzero(pw, strlen(pw));
     free(pw);
     if (r) {
-        snprintf(err, ecap, r < 0 ? "io" : "auth: %s", im->text);
+        SNPF(err, ecap, r < 0 ? "io" : "auth: %s", im->text);
         imap_close(im);
         if (r > 0) {
             /* wrong password: ask again (from the keyring prompt) */
@@ -295,7 +273,7 @@ static void on_list(Imap *im, IResp *r, void *u) {
         f->noselect = strcasestr(fl, "\\Noselect") || strcasestr(fl, "\\NonExistent");
     }
     pthread_mutex_unlock(&G);
-    if (lc->nseen < 512) snprintf(lc->seen[lc->nseen++], sizeof lc->seen[0], "%s", !strcasecmp(nm, "INBOX") ? "INBOX" : nm);
+    if (lc->nseen < 512) SNPF(lc->seen[lc->nseen++], sizeof lc->seen[0], "%s", !strcasecmp(nm, "INBOX") ? "INBOX" : nm);
 }
 
 static int sync_folder_list(Imap *im) {
@@ -364,6 +342,7 @@ static void addr_list_text(const char *raw, char *out, size_t cap) {
 }
 
 static void on_fetch(Imap *im, IResp *r, void *u) {
+    (void)im;
     FetchCtx *fc = u;
     if (!r->first || !iv_is(r->first->next, "FETCH")) return;
     IVal *list = r->first->next->next;
@@ -407,7 +386,7 @@ static void on_fetch(Imap *im, IResp *r, void *u) {
     }
     if (mime_header(h, hl, "To", v, sizeof v)) addr_list_text(v, to, sizeof to);
     if (mime_header(h, hl, "Cc", v, sizeof v)) addr_list_text(v, cc, sizeof cc);
-    if (mime_header(h, hl, "Subject", v, sizeof v)) { mime_decode_words(v, dec, sizeof dec); snprintf(subject, sizeof subject, "%s", dec); }
+    if (mime_header(h, hl, "Subject", v, sizeof v)) { mime_decode_words(v, dec, sizeof dec); SNPF(subject, sizeof subject, "%s", dec); }
     mime_header(h, hl, "Message-ID", msgid, sizeof msgid);
     mime_header(h, hl, "In-Reply-To", irt, sizeof irt);
     char *refs = mime_header_dup(h, hl, "References");
@@ -551,7 +530,7 @@ static int sync_folder(Imap *im, Folder *f) {
         char set[CHUNK * 12];
         imap_uidset(chunk, n, set, sizeof set);
         rc = cmd(im, on_fetch, &fc, "UID FETCH %s (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO "
-                                    "REFERENCES CONTENT-TYPE)] BODY.PEEK[TEXT]<0.2048>)", set);
+                                    "REFERENCES CONTENT-TYPE CONTENT-TRANSFER-ENCODING)] BODY.PEEK[TEXT]<0.2048>)", set);
         if (rc < 0) break;
         pthread_mutex_lock(&G);
         store_save(a, f);

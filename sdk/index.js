@@ -71,13 +71,20 @@ export {
 } from './components.jsx';
 import { FloatingWindows } from './components.jsx';
 export {
-  ToolbarButton, ToolbarGroup, Toolbar, ToolbarSpacer, ToolbarDivider, MenuButton, SearchField, EmptyState, GroupBox, FormRow, spacing, typeScale, controlSize,
+  ToolbarButton, ToolbarGroup, Toolbar, ToolbarSpacer, ToolbarDivider, Hairline, MenuButton, SearchField, EmptyState, GroupBox, FormRow, spacing, typeScale, controlSize,
 } from './controls.jsx';
 export { media, useMedia, usePlayer, nowPlaying, useNowPlaying, NowPlayingTile, mediaFormatTime, thumbFor, useThumb, userDirs } from './media.js';
 export { disks, useDisks } from './disks.js';
 export { backup, useBackup, backupStatus } from './backup.js';   // Backups (docs/SYSTEM.md)
 export { vaultAvailable, vaultRequest, onVaultEvent, keyring, autofill, autofillReveal, KeyringPrompt, AutofillButton } from './vault.js';   // Contraseñas y llavero (docs/CONTRASENAS.md)
 import { KeyringPrompt } from './vault.js';
+// Mail, Calendar, Contacts and Reminders through the sandboxed helper lord-maild (docs/MAIL.md)
+export { mailAvailable, mailRequest, onMailEvent, mailConfig, mailAccounts, mailStatus, autoconfig, OAUTH_PROVIDERS } from './mail.js';
+export { calendars, events as calendarEvents, reminders, usePim, usePimQuery, pimRev, startOfDay } from './calendar.js';
+export { FilePicker } from './filepicker.jsx';
+export { books as addressBooks, contacts, displayName as contactName, initials as contactInitials, ContactPhoto } from './contacts.js';
+import { startMail } from './mail.js';
+import { startReminders } from './calendar.js';
 // Settings' hardware pages (docs/SETTINGS.md): displays, Night Shift, battery, Bluetooth, idle, clock
 export {
   displays, useDisplays, applyDisplay, keepDisplay, revertDisplay, displayConfirm, DisplayGlyph, nightPrefs, NIGHT_DEFAULTS, nightWindow,
@@ -139,6 +146,8 @@ export function startShell(element) {
   // ISO live: el asistente de instalación se abre solo, al frente
   if (isLiveSystemOf() && getAppOf('installer')) setTimeout(() => wmOf.open('installer'), 300);
   startAlarms();                        // Clock alarms and timer, with the app closed
+  startMail();                          // new-mail notifications and passwords on demand (docs/MAIL.md)
+  startReminders();                     // calendar and reminder alarms, with the apps closed
   maybeStartTour();                     // "Welcome to LordOS", the first time
   startHardware();                      // Night Shift, idle timers, battery in the menu bar (hardware.jsx)
 }

@@ -20,6 +20,8 @@
 #include "../sec/perms.h"
 #include "../vault/vclient.h"
 #include "../vault/fidodev.h"
+#include "../vault/vwire.h"
+#include "js_broker.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -176,4 +178,146 @@ void js_vault_register(JSContext *c, JSValue lord) {
     JS_SetPropertyFunctionList(c, o, vault_funcs, sizeof vault_funcs / sizeof vault_funcs[0]);
     JS_SetPropertyStr(c, lord, "vault", o);
     vc_start();               /* el llavero y Secret Service andan desde el comienzo de la sesión */
+}
+
+/* ================= app mode =================
+ * The Passwords app runs as its own sandboxed process (lord-server --app passwords). lord-server
+ * gave it a channel of its own to lord-vault (vc_attach_app, env LORD_VAULT_FD): requests and
+ * replies, including revealed secrets, travel between the two sandboxed processes only; lord-server
+ * never sees them. Same lord.vault API as in the shell, except that files are fds the user picked
+ * in the system dialog (powerbox): request(json, { fds: [fd…] }). */
+
+static int app_fd = -1;
+static uint32_t app_next = 1;
+static int app_inflight;
+static VwRx app_rx;
+
+static JSValue fa_available(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    return JS_NewBool(c, app_fd >= 0);
+}
+
+static JSValue fa_request(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    if (app_fd < 0) return JS_ThrowInternalError(c, "lord-vault is not available");
+    if (argc < 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(c, "vault.request(json)");
+    size_t len;
+    const char *j = JS_ToCStringLen(c, &len, argv[0]);
+    if (!j) return JS_EXCEPTION;
+    int fds[VW_MAX_FDS], nf = 0;
+    if (argc > 1 && JS_IsObject(argv[1])) {
+        JSValue arr = JS_GetPropertyStr(c, argv[1], "fds");
+        if (JS_IsArray(c, arr)) {
+            JSValue lv = JS_GetPropertyStr(c, arr, "length");
+            int32_t n = 0;
+            JS_ToInt32(c, &n, lv);
+            JS_FreeValue(c, lv);
+            for (int i = 0; i < n && nf < VW_MAX_FDS; i++) {
+                JSValue v = JS_GetPropertyUint32(c, arr, (uint32_t)i);
+                int32_t fd = -1;
+                JS_ToInt32(c, &fd, v);
+                JS_FreeValue(c, v);
+                if (fd > 2) fds[nf++] = fd;
+            }
+        }
+        JS_FreeValue(c, arr);
+    }
+    uint32_t id = app_next++;
+    if (app_next > 0x7fffffff) app_next = 1;
+    int r = vw_send(app_fd, VW_REQ, id, j, len, fds, nf);
+    JS_FreeCString(c, j);
+    for (int i = 0; i < nf; i++) close(fds[i]);        /* the powerbox fds are spent */
+    if (r) return JS_ThrowInternalError(c, "lord-vault is not available");
+    app_inflight++;
+    return JS_NewInt32(c, (int32_t)id);
+}
+
+static JSValue fa_poll(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    if (app_fd < 0) return JS_NULL;
+    size_t cap = 0, o = 0;
+    char *out = NULL;
+    for (;;) {
+        VMsg m;
+        int r = vw_feed(app_fd, &app_rx, &m, &vw_malloc);
+        if (r == 0) break;
+        if (r < 0) {                                     /* lord-vault went away */
+            close(app_fd);
+            app_fd = -1;
+            static const char crash[] = "{\"id\":0,\"kind\":\"evt\",\"data\":{\"ev\":\"crash\"}}";
+            size_t need = o + sizeof crash + 4;
+            char *nb = realloc(out, need);
+            if (nb) { out = nb; cap = need; o += (size_t)snprintf(out + o, cap - o, "%s%s", o ? "," : "[", crash); }
+            break;
+        }
+        for (int i = 0; i < m.nfds; i++) close(m.fds[i]);
+        if (m.kind == VW_REP && app_inflight > 0) app_inflight--;
+        size_t need = o + m.len + 80;
+        if (need > cap) {
+            size_t nc = cap ? cap * 2 : 4096;
+            while (nc < need) nc *= 2;
+            char *nb = malloc(nc);
+            if (!nb) { vw_msg_free(&m, &vw_malloc); break; }
+            if (out) { memcpy(nb, out, o); explicit_bzero(out, cap); free(out); }
+            out = nb;
+            cap = nc;
+        }
+        o += (size_t)snprintf(out + o, cap - o, "%s{\"id\":%u,\"kind\":\"%s\",\"data\":", o ? "," : "[", m.id, m.kind == VW_EVT ? "evt" : "rep");
+        if (m.len) { memcpy(out + o, m.json, m.len); o += m.len; } else { memcpy(out + o, "{}", 2); o += 2; }
+        out[o++] = '}';
+        vw_msg_free(&m, &vw_malloc);                     /* wipes the text */
+    }
+    if (!out) return JS_NULL;
+    out[o++] = ']';
+    JSValue v = JS_NewStringLen(c, out, o);
+    explicit_bzero(out, cap);
+    free(out);
+    return v;
+}
+
+static JSValue fa_pending(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    return JS_NewInt32(c, app_inflight);
+}
+
+static JSValue fa_lock(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)c; (void)t; (void)argc; (void)argv;
+    if (app_fd >= 0 && !vw_send(app_fd, VW_REQ, app_next++, "{\"op\":\"lock\"}", 13, NULL, 0)) app_inflight++;
+    return JS_UNDEFINED;
+}
+
+static JSValue fa_fido_attach(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    char name[128] = "", err[64] = "";
+    int r = js_broker_vault_fido(name, sizeof name, err, sizeof err);
+    JSValue o = JS_NewObject(c);
+    JS_SetPropertyStr(c, o, "ok", JS_NewBool(c, r == 0));
+    if (r) JS_SetPropertyStr(c, o, "error", JS_NewString(c, err));
+    else JS_SetPropertyStr(c, o, "name", JS_NewString(c, name));
+    return o;
+}
+
+static JSValue fa_noop(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) { (void)c; (void)t; (void)argc; (void)argv; return JS_UNDEFINED; }
+
+static const JSCFunctionListEntry vault_app_funcs[] = {
+    JS_CFUNC_DEF("available", 0, fa_available),
+    JS_CFUNC_DEF("request", 2, fa_request),
+    JS_CFUNC_DEF("poll", 0, fa_poll),
+    JS_CFUNC_DEF("pending", 0, fa_pending),
+    JS_CFUNC_DEF("lock", 1, fa_lock),
+    JS_CFUNC_DEF("fidoAttach", 1, fa_fido_attach),
+    JS_CFUNC_DEF("promptDone", 2, fa_noop),
+};
+
+void js_vault_register_app(JSContext *c, JSValue lord) {
+    const char *s = getenv("LORD_VAULT_FD");
+    if (!s) return;                                      /* only the app spawned with a vault channel */
+    app_fd = atoi(s);
+    if (app_fd <= 2) { app_fd = -1; return; }
+    fcntl(app_fd, F_SETFD, FD_CLOEXEC);
+    unsetenv("LORD_VAULT_FD");
+    JSValue o = JS_NewObject(c);
+    JS_SetPropertyFunctionList(c, o, vault_app_funcs, sizeof vault_app_funcs / sizeof vault_app_funcs[0]);
+    JS_SetPropertyStr(c, o, "appMode", JS_TRUE);
+    JS_SetPropertyStr(c, lord, "vault", o);
 }

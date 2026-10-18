@@ -10,7 +10,14 @@
  *   cgroup/bind4, bind6         "sin conexiones entrantes" y reglas de entrada (puerto local != 0)
  *   cgroup/sock_create          "sin red": ni siquiera crear un socket AF_INET/AF_INET6
  *
- * Cada uno: busca la app por la scope del proceso (antepasado de nivel cfg.level), decide con
+ * Los mismos programas se enganchan además en el user@<uid>.service de cada sesión de LordOS, para
+ * cerrar la fuga de `systemd-run --user` (el proceso termina ahí, fuera de lordos.service). Un
+ * proceso que no está en la scope de ninguna app (antepasado de nivel cfg.level) cae en la unión
+ * estricta de las restricciones de las apps restringidas del usuario (np_union, con la clave del
+ * user@<uid> en el nivel cfg.user_level): nunca es menos restrictivo que su propia política.
+ *
+ * Cada uno: busca la app por la scope del proceso (antepasado de nivel cfg.level) o, si no, por la
+ * unión de user@ (nivel cfg.user_level), decide con
  * np_decide (np_shared.h, lo mismo que prueba tests/npcompile_test.c) y devuelve 1 (permitir) o
  * 0 (el kernel le devuelve EPERM a la app). Cuenta la conexión y avisa a lord-netperm por el anillo
  * solo si es nueva (np_seen, 5 s). Nada por paquete: solo por conexión, bind o sendto. Un connect()
@@ -32,6 +39,7 @@ static long (*bpf_ringbuf_output)(void *ringbuf, void *data, unsigned long long 
 /* los mapas: solo sus nombres (los define lord-netperm, netperm.c) */
 char np_cfg[4] SEC("maps");
 char np_apps[4] SEC("maps");
+char np_union[4] SEC("maps");
 char np_lpm4[4] SEC("maps");
 char np_lpm6[4] SEC("maps");
 char np_seen[4] SEC("maps");
@@ -45,6 +53,26 @@ char np_events[4] SEC("maps");
 
 NP_INLINE int proto_of(np_u32 p) {
     return p == IPPROTO_TCP ? NP_P_TCP : p == IPPROTO_UDP ? NP_P_UDP : NP_P_OTHER;
+}
+
+/* Busca la política del proceso actual: primero su scope de app (np_apps, antepasado de nivel
+ * cfg->level); si no está (por ejemplo salió a user@<uid> con systemd-run), la unión estricta de
+ * las apps restringidas del usuario (np_union, antepasado de nivel cfg->user_level). Devuelve la
+ * NpApp y deja en *cgid la clave con la que contar y avisar (la scope o el user@). 0 si no aplica. */
+NP_INLINE NpApp *find_app(NpCfg *cfg, np_u64 *cgid) {
+    np_u64 id = bpf_get_current_ancestor_cgroup_id((int)cfg->level);
+    if (id) {
+        NpApp *app = bpf_map_lookup_elem(&np_apps, &id);
+        if (app) { *cgid = id; return app; }
+    }
+    if (cfg->user_level) {
+        np_u64 uid = bpf_get_current_ancestor_cgroup_id((int)cfg->user_level);
+        if (uid) {
+            NpApp *app = bpf_map_lookup_elem(&np_union, &uid);
+            if (app) { *cgid = uid; return app; }
+        }
+    }
+    return 0;
 }
 
 NP_INLINE void count(np_u64 cgid, int deny) {
@@ -65,10 +93,9 @@ NP_INLINE int handle(int fam, np_u8 *addr, int port, int proto, int dir, int alw
     np_u32 zero = 0;
     NpCfg *cfg = bpf_map_lookup_elem(&np_cfg, &zero);
     if (!cfg || !cfg->on) return 1;
-    np_u64 cgid = bpf_get_current_ancestor_cgroup_id((int)cfg->level);
-    if (!cgid) return 1;
-    NpApp *app = bpf_map_lookup_elem(&np_apps, &cgid);
-    if (!app) return 1;                                 /* fuera de las apps de una sesión */
+    np_u64 cgid = 0;
+    NpApp *app = find_app(cfg, &cgid);
+    if (!app) return 1;                                 /* ni una scope de app ni user@ restringido */
 
     int lan = -1;
     NpList *l = 0;

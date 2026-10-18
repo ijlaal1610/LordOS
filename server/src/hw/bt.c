@@ -326,7 +326,8 @@ static int on_call(DMsg *m) {
     else if (!strcmp(mem, "RequestAuthorization") && !strcmp(sig, "o")) kind = "authorize";
     else if (!strcmp(mem, "AuthorizeService") && !strcmp(sig, "os")) {
         const BtDevice *d = device(&model, dev, 0);
-        if (d && (d->paired || d->bonded) && d->trusted) { dbus_reply(sysbus_conn(), m, NULL, NULL); return 1; }
+        /* a device that went through pairing (the user confirmed it) may use its services */
+        if (d && (d->paired || d->bonded)) { dbus_reply(sysbus_conn(), m, NULL, NULL); return 1; }
         kind = "service";
     } else if (!strcmp(mem, "DisplayPinCode") && !strcmp(sig, "os")) {
         const char *pin = dr_str(&r, NULL);

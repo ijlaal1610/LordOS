@@ -25,5 +25,12 @@
   "emptyMusic": "Não há músicas na pasta Música",
   "emptyVideos": "Não há vídeos na pasta Vídeos",
   "error": "Não foi possível reproduzir: {error}",
-  "crashed": "O decodificador parou de repente; o resto da área de trabalho está bem"
+  "crashed": "O decodificador parou de repente; o resto da área de trabalho está bem",
+  "col.title": "Título",
+  "col.artist": "Artista",
+  "col.album": "Álbum",
+  "col.time": "Duração",
+  "back": "Voltar",
+  "emptyMusicTitle": "Sem música",
+  "emptyVideosTitle": "Sem vídeos"
 }

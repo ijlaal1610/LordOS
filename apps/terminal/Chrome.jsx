@@ -1,7 +1,8 @@
-// Chrome.jsx — todo lo que rodea a los paneles: pestañas, barra de estado, buscador,
-// barra de herramientas (toolbelt), ventanas emergentes, diálogos y avisos.
+// Chrome.jsx — everything around the panes: tabs, status bar, find bar, toolbelt, popups, dialogs
+// and toasts.
 import {
-  View, Text, TextInput, Button, Slider, useStore, useTheme, term, clipboard, clipboardHistory, useClock, t as tr, formatTime,
+  View, Text, TextInput, Button, Slider, SearchField, ToolbarButton, Hairline, useStore, useTheme, term, clipboard, clipboardHistory, useClock,
+  t as tr, formatTime,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -12,7 +13,7 @@ import { terminalSettings, getProfile, profileName } from './profiles.js';
 
 const small = (t, extra) => ({ fontSize: 12, color: t.textDim, whiteSpace: 'nowrap', ...extra });
 
-// ---- pestañas ----
+// ---- tabs ----
 
 function Tab({ t, wid, tab, active, index, maxChars }) {
   const [hover, setHover] = useState(false);
@@ -25,11 +26,12 @@ function Tab({ t, wid, tab, active, index, maxChars }) {
     <View onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       onMouseDown={() => selectTab(wid, tab.id)}
       onMouseUp={(e) => { if (e.button === 1) closeTab(wid, tab.id); }}
-      style={{ flex: 1, maxWidth: 260, minWidth: 90, height: 28, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 6,
-        borderRadius: 6, backgroundColor: active ? t.control : hover ? t.hover : 'transparent' }}>
+      style={{ flex: 1, maxWidth: 260, minWidth: 90, height: 26, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 6,
+        borderRadius: 6, backgroundColor: active ? (t.mode === 'dark' ? 'rgba(255,255,255,0.12)' : '#ffffff') : hover ? t.hover : 'transparent',
+        boxShadow: active && t.mode !== 'dark' ? '0 1px 2px rgba(0,0,0,0.12)' : 'none' }}>
       <View onClick={(e) => { e.stopPropagation(); closeTab(wid, tab.id); }} style={{ width: 16, height: 16, borderRadius: 4,
         alignItems: 'center', justifyContent: 'center', backgroundColor: hover ? t.hover : 'transparent' }}>
-        <Text style={{ fontSize: 13, color: hover ? t.text : 'transparent' }}>×</Text>
+        <Text style={{ fontSize: 13, color: hover ? t.textDim : 'transparent' }}>✕</Text>
       </View>
       {anyBell && <Text style={{ fontSize: 11, color: '#ffd60a' }}>●</Text>}
       {!anyBell && anyActivity && !active && <Text style={{ fontSize: 9, color: t.accent }}>●</Text>}
@@ -38,7 +40,7 @@ function Tab({ t, wid, tab, active, index, maxChars }) {
         <Text style={{ fontSize: 12, fontWeight: active ? 600 : 500, color: active ? t.text : t.textDim, whiteSpace: 'nowrap',
           textAlign: 'center' }}>{title.length > maxChars ? `…${title.slice(title.length - maxChars + 1)}` : title}</Text>
       </View>
-      <Text style={small(t, { fontSize: 11 })}>{index < 9 ? `❖${index + 1}` : ''}</Text>
+      <Text style={small(t, { fontSize: 11, opacity: active || hover ? 1 : 0.7 })}>{index < 9 ? `❖${index + 1}` : ''}</Text>
       {color ? <View style={{ position: 'absolute', left: 8, right: 8, bottom: 1, height: 3, borderRadius: 2, backgroundColor: color }} /> : null}
     </View>
   );
@@ -51,21 +53,20 @@ export function TabBar({ t, wid, w }) {
   const tabW = Math.min(260, (width - 50) / Math.max(1, w.tabs.length));
   const maxChars = Math.max(6, Math.floor((tabW - 64) / 6.6));
   return (
-    <View ref={ref} style={{ height: 34, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, gap: 4, backgroundColor: t.sidebarBg }}>
+    <View ref={ref} style={{ height: 36, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 4, backgroundColor: t.sidebarBg }}>
+      <Hairline edge="bottom" />
       {w.tabs.map((tab, i) => <Tab key={tab.id} t={t} wid={wid} tab={tab} index={i} active={tab.id === w.active} maxChars={maxChars} />)}
-      <View onClick={() => addTab(wid)} style={{ width: 28, height: 28, borderRadius: 6, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 18, color: t.textDim }}>+</Text>
-      </View>
+      <ToolbarButton icon="+" iconSize={17} small title={tr('terminal.action.newTab')} color={t.textDim} onClick={() => addTab(wid)} style={{ width: 26 }} />
       {w.broadcast && (
         <View style={{ paddingHorizontal: 8, height: 22, borderRadius: 5, justifyContent: 'center', backgroundColor: '#ff453a' }}>
-          <Text style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>{tr('terminal.broadcasting')}</Text>
+          <Text style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>{tr('terminal.broadcasting')}</Text>
         </View>
       )}
     </View>
   );
 }
 
-// ---- barra de estado (como la de iTerm2) ----
+// ---- status bar (like iTerm2's) ----
 
 export function StatusBar({ t, sid }) {
   const [info, setInfo] = useState(() => term.info(sid));
@@ -82,6 +83,7 @@ export function StatusBar({ t, sid }) {
   const Item = ({ label, color }) => <Text style={small(t, { color: color || t.textDim })}>{label}</Text>;
   return (
     <View style={{ height: 24, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 16, backgroundColor: t.sidebarBg }}>
+      <Hairline edge="top" />
       <Item label={cwd || '~'} />
       <Item label={info.busy ? `▶ ${info.process}` : `${info.shell || 'shell'}`} color={info.busy ? t.accent : undefined} />
       {m.lastExit > 0 && <Item label={tr('terminal.status.lastExit', { code: m.lastExit })} color="#ff453a" />}
@@ -94,10 +96,10 @@ export function StatusBar({ t, sid }) {
   );
 }
 
-// ---- buscador ----
+// ---- find bar ----
 
-// Búsqueda con expresión regular: el motor C da el texto por líneas lógicas y recibe las
-// coincidencias como (línea, primer carácter, cantidad).
+// Regular expression search: the C engine gives the text by logical lines and takes the matches
+// as (line, first character, count).
 function regexSearch(sid, q, cs) {
   let re;
   try { re = new RegExp(q, cs ? 'gu' : 'giu'); } catch (e) { return { count: 0, index: -1, error: true }; }
@@ -128,16 +130,11 @@ export function FindBar({ t, wid, sid, find }) {
   };
   const move = (d) => setRes(term.searchMove(sid, d));
   const close = () => { term.search(sid, '', false); patchWin(wid, () => ({ find: null })); };
-  const Btn = ({ label, onClick, on }) => (
-    <View onClick={onClick} style={{ width: 26, height: 24, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-      backgroundColor: on ? t.accent : t.control }}>
-      <Text style={{ fontSize: 12, fontWeight: 600, color: on ? '#fff' : t.text }}>{label}</Text>
-    </View>
-  );
+  const Btn = ({ label, onClick, on }) => <ToolbarButton small label={label} active={on} onClick={onClick} style={{ minWidth: 26, paddingHorizontal: 4 }} />;
   return (
-    <View style={{ position: 'absolute', right: 14, top: 8, flexDirection: 'row', alignItems: 'center', gap: 6, padding: 6, borderRadius: 9,
+    <View style={{ position: 'absolute', right: 12, top: 8, flexDirection: 'row', alignItems: 'center', gap: 4, padding: 6, borderRadius: 10,
       backgroundColor: t.windowBg, border: `1px solid ${t.separator}`, boxShadow: '0 6px 18px rgba(0,0,0,0.35)' }}>
-      <TextInput value={find.query} autoFocus placeholder={tr('terminal.find.placeholder')} style={{ width: 200, height: 26 }}
+      <SearchField value={find.query} autoFocus placeholder={tr('terminal.find.placeholder')} width={200}
         onChange={(q) => set({ query: q })} onSubmit={() => move(-1)} onCancel={close}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && e.shift) { move(1); return true; }
@@ -145,12 +142,12 @@ export function FindBar({ t, wid, sid, find }) {
           if (e.key === 'ArrowDown') { move(1); return true; }
           return false;
         }} />
-      <Text style={small(t, { width: 92, textAlign: 'center' })}>{res.error ? tr('terminal.find.badRegex') : res.count ? tr('terminal.find.position', { i: res.count - res.index, n: res.count }) : find.query ? tr('terminal.find.none') : ''}</Text>
+      <Text style={small(t, { width: 88, fontSize: 11, textAlign: 'center' })}>{res.error ? tr('terminal.find.badRegex') : res.count ? tr('terminal.find.position', { i: res.count - res.index, n: res.count }) : find.query ? tr('terminal.find.none') : ''}</Text>
       <Btn label="↑" onClick={() => move(-1)} />
       <Btn label="↓" onClick={() => move(1)} />
       <Btn label="Aa" on={find.cs} onClick={() => set({ cs: !find.cs })} />
       <Btn label=".*" on={find.regex} onClick={() => set({ regex: !find.regex })} />
-      <Btn label="×" onClick={close} />
+      <ToolbarButton small icon="✕" iconSize={11} title={tr('terminal.find.close')} onClick={close} />
     </View>
   );
 }
@@ -159,8 +156,8 @@ export function FindBar({ t, wid, sid, find }) {
 
 function Section({ t, title, children }) {
   return (
-    <View style={{ marginBottom: 12 }}>
-      <Text style={{ fontSize: 11, fontWeight: 700, color: t.textDim, marginBottom: 6 }}>{title}</Text>
+    <View style={{ marginBottom: 16 }}>
+      <Text style={{ fontSize: 11, fontWeight: 600, color: t.textDim, marginBottom: 4, paddingHorizontal: 6 }}>{title}</Text>
       {children}
     </View>
   );
@@ -170,9 +167,9 @@ function Row({ t, label, sub, onClick }) {
   const [hover, setHover] = useState(false);
   return (
     <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ paddingVertical: 4, paddingHorizontal: 6, borderRadius: 5, backgroundColor: hover ? t.hover : 'transparent' }}>
+      style={{ paddingVertical: 4, paddingHorizontal: 6, borderRadius: 6, backgroundColor: hover ? t.hover : 'transparent' }}>
       <Text style={{ fontSize: 12, color: t.text, whiteSpace: 'nowrap' }}>{label.length > 34 ? `${label.slice(0, 33)}…` : label}</Text>
-      {sub ? <Text style={small(t, { fontSize: 10 })}>{sub}</Text> : null}
+      {sub ? <Text style={small(t, { fontSize: 11 })}>{sub}</Text> : null}
     </View>
   );
 }
@@ -189,7 +186,8 @@ export function Toolbelt({ t, wid, w, sid }) {
   const sessions = w.tabs.flatMap((tab) => leaves(tab.root));
   const quote = (s) => `'${s.replace(/'/g, "'\\''")}'`;
   return (
-    <View style={{ width: 230, padding: 10, backgroundColor: t.sidebarBg, overflow: 'hidden' }}>
+    <View style={{ width: 240, paddingHorizontal: 10, paddingVertical: 12, backgroundColor: t.sidebarBg, overflow: 'hidden' }}>
+      <Hairline edge="start" />
       <Section t={t} title={tr('terminal.belt.jobs')}>
         {sessions.map((s) => {
           const info = term.info(s);
@@ -223,21 +221,21 @@ export function Toolbelt({ t, wid, w, sid }) {
         {list.map((n, i) => (
           <Row key={i} t={t} label={n} sub={tr('terminal.belt.noteHint')} onClick={() => notes.set((x) => x.filter((_, j) => j !== i))} />
         ))}
-        <TextInput value={note} placeholder={tr('terminal.belt.addNote')} onChange={setNote} style={{ height: 26, marginTop: 4 }}
+        <TextInput value={note} placeholder={tr('terminal.belt.addNote')} onChange={setNote} style={{ marginTop: 6 }}
           onSubmit={(v) => { if (v.trim()) notes.set((x) => [...x, v.trim()]); setNote(''); }} />
       </Section>
     </View>
   );
 }
 
-// ---- ventanas emergentes: autocompletar, historial de pegado, abrir rápido, título, compositor ----
+// ---- popups: autocomplete, paste history, quick open, title, composer ----
 
 function Popup({ t, title, children, width = 380 }) {
   return (
     <View style={{ position: 'absolute', left: 0, right: 0, top: 50, alignItems: 'center' }}>
-      <View style={{ width, padding: 10, borderRadius: 11, backgroundColor: t.windowBg, border: `1px solid ${t.separator}`,
+      <View style={{ width, padding: 12, borderRadius: 12, backgroundColor: t.windowBg, border: `1px solid ${t.separator}`,
         boxShadow: '0 16px 40px rgba(0,0,0,0.45)' }}>
-        <Text style={{ fontSize: 12, fontWeight: 700, color: t.textDim, marginBottom: 8 }}>{title}</Text>
+        <Text style={{ fontSize: 11, fontWeight: 600, color: t.textDim, marginBottom: 8, paddingHorizontal: 2 }}>{title}</Text>
         {children}
       </View>
     </View>
@@ -248,16 +246,16 @@ function ListPopup({ t, title, items, sel, empty }) {
   return (
     <Popup t={t} title={title}>
       {items.length ? items.slice(0, 12).map((it, i) => (
-        <View key={i} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5, backgroundColor: i === sel ? t.accent : 'transparent' }}>
+        <View key={i} style={{ paddingHorizontal: 8, height: 24, justifyContent: 'center', borderRadius: 5, backgroundColor: i === sel ? t.accent : 'transparent' }}>
           <Text style={{ fontSize: 12, color: i === sel ? '#fff' : t.text, whiteSpace: 'nowrap' }}>{it.length > 60 ? `${it.slice(0, 59)}…` : it}</Text>
         </View>
       )) : <Text style={small(t)}>{empty}</Text>}
-      <Text style={small(t, { fontSize: 10, marginTop: 6 })}>{tr('terminal.popup.keys')}</Text>
+      <Text style={small(t, { fontSize: 11, marginTop: 8, paddingHorizontal: 2 })}>{tr('terminal.popup.keys')}</Text>
     </Popup>
   );
 }
 
-// Teclas de las listas emergentes; devuelve true si las usó.
+// Keys of the popup lists; returns true if it used them.
 export function popupKey(wid, w, sid, e) {
   const p = w.popup;
   if (!p || p.kind === 'quick' || p.kind === 'title' || p.kind === 'composer') return false;
@@ -312,7 +310,7 @@ function QuickOpen({ t, wid }) {
         }} />
       <View style={{ marginTop: 8 }}>
         {items.slice(0, 10).map((x, i) => (
-          <View key={x.s} onClick={() => pick(x)} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5,
+          <View key={x.s} onClick={() => pick(x)} style={{ paddingHorizontal: 8, height: 24, justifyContent: 'center', borderRadius: 5,
             backgroundColor: i === sel ? t.accent : 'transparent' }}>
             <Text style={{ fontSize: 12, color: i === sel ? '#fff' : t.text, whiteSpace: 'nowrap' }}>{x.title}</Text>
           </View>
@@ -332,13 +330,13 @@ function EditTitle({ t, wid, tab }) {
   );
 }
 
-// Compositor: escribir un comando largo antes de mandarlo (como el de iTerm2).
+// Composer: write a long command before sending it (like iTerm2's).
 function Composer({ t, wid, sid, w }) {
   const [v, setV] = useState('');
   return (
-    <View style={{ position: 'absolute', left: 12, right: 12, bottom: 12, padding: 8, borderRadius: 10, backgroundColor: t.windowBg,
+    <View style={{ position: 'absolute', left: 12, right: 12, bottom: 12, padding: 10, borderRadius: 10, backgroundColor: t.windowBg,
       border: `1px solid ${t.accent}`, boxShadow: '0 10px 30px rgba(0,0,0,0.4)' }}>
-      <Text style={small(t, { fontSize: 10, marginBottom: 4 })}>
+      <Text style={small(t, { fontSize: 11, marginBottom: 6 })}>
         {w.broadcast ? tr('terminal.composer.broadcast') : tr('terminal.composer.hint')}
       </Text>
       <TextInput value={v} autoFocus onChange={setV}
@@ -362,11 +360,11 @@ export function Overlays({ t, wid, w, sid, tab }) {
       {w.dialog && (
         <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center',
           backgroundColor: 'rgba(0,0,0,0.35)' }}>
-          <View style={{ width: 340, padding: 18, borderRadius: 12, backgroundColor: t.windowBg, border: `1px solid ${t.separator}`,
+          <View style={{ width: 340, padding: 20, borderRadius: 12, backgroundColor: t.windowBg, border: `1px solid ${t.separator}`,
             boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
-            <Text style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{w.dialog.text}</Text>
-            <Text style={{ fontSize: 12, color: t.textDim, marginTop: 6, lineHeight: 1.4 }}>{w.dialog.detail}</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+            <Text style={{ fontSize: 15, fontWeight: 600, color: t.text }}>{w.dialog.text}</Text>
+            <Text style={{ fontSize: 13, color: t.textDim, marginTop: 6, lineHeight: 1.4 }}>{w.dialog.detail}</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
               <Button label={tr('terminal.dialog.cancel')} onClick={() => patchWin(wid, () => ({ dialog: null }))} />
               <Button label={tr('terminal.dialog.close')} primary onClick={() => { const fn = w.dialog.onConfirm; patchWin(wid, () => ({ dialog: null })); fn(); }} />
             </View>
@@ -394,7 +392,7 @@ export function ReplayBar({ t, wid, replay }) {
   const ago = Math.max(0, Math.round((Date.now() - replay.time) / 1000));
   return (
     <View style={{ height: 40, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, backgroundColor: '#3a1d5c' }}>
-      <Text style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>INSTANT REPLAY</Text>
+      <Text style={{ fontSize: 12, fontWeight: 600, color: '#fff' }}>Instant Replay</Text>
       <Button label="◀" onClick={() => go(Math.max(0, replay.index - 1))} />
       <Slider value={replay.index} min={0} max={Math.max(1, replay.count - 1)} width={300} onChange={go} />
       <Button label="▶" onClick={() => go(Math.min(replay.count - 1, replay.index + 1))} />
@@ -405,10 +403,10 @@ export function ReplayBar({ t, wid, replay }) {
   );
 }
 
-// ---- menú contextual de un panel ----
+// ---- a pane's context menu ----
 
 export function ContextMenu({ t, x, y, items, onClose }) {
-  // ancho según el texto más largo (cambia con el idioma)
+  // width from the longest text (it changes with the language)
   const width = Math.ceil(Math.max(230, ...items.filter((it) => it !== '-').map((it) =>
     40 + lord.measureText(it.label, 13, 400) + (it.hint ? 16 + lord.measureText(it.hint, 11, 400) : 0))));
   return (

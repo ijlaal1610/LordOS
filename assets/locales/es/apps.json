@@ -23,5 +23,8 @@
   "logs": "Registros",
   "disks": "Discos",
   "backup": "Copias de seguridad",
-  "passwords": "Contraseñas"
+  "passwords": "Contraseñas",
+  "calendar": "Calendario",
+  "contacts": "Contactos",
+  "reminders": "Recordatorios"
 }

@@ -23,5 +23,8 @@
   "logs": "Logs",
   "disks": "Disks",
   "backup": "Backups",
-  "passwords": "Passwords"
+  "passwords": "Passwords",
+  "calendar": "Calendar",
+  "contacts": "Contacts",
+  "reminders": "Reminders"
 }

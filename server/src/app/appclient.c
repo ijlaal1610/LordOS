@@ -419,14 +419,38 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char
 static void reg_remove(void *d, struct wl_registry *r, uint32_t name) { (void)d; (void)r; (void)name; }
 static const struct wl_registry_listener reg_listener = { reg_global, reg_remove };
 
+/* "key": [w, h] from the package's manifest.json (size, minSize); 0 if missing or out of range. */
+static int manifest_pair(const char *dir, const char *key, int *w, int *h) {
+    char p[PATH_MAX + 32], buf[8192], pat[40];
+    if ((size_t)snprintf(p, sizeof p, "%s/manifest.json", dir) >= sizeof p) return 0;
+    FILE *f = fopen(p, "r");
+    if (!f) return 0;
+    size_t n = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    snprintf(pat, sizeof pat, "\"%s\"", key);
+    const char *k = strstr(buf, pat);
+    if (!k || !(k = strchr(k + strlen(pat), '['))) return 0;
+    int a = 0, b = 0;
+    if (sscanf(k + 1, " %d , %d", &a, &b) != 2 || a < 160 || b < 100 || a > 8192 || b > 8192) return 0;
+    *w = a;
+    *h = b;
+    return 1;
+}
+
 int app_main(const char *id, const char *theme_bundle, const char *fonts) {
     if (!lpk_valid_id(id)) { fprintf(stderr, "lord-server --app: id inválido\n"); return 2; }
-    const char *root = lpk_root();
     char dir[PATH_MAX];
-    struct stat st;
-    if (!root || (size_t)snprintf(dir, sizeof dir, "%s/%s", root, id) >= sizeof dir || stat(dir, &st) || !S_ISDIR(st.st_mode)) {
-        fprintf(stderr, "lord-server --app: la app '%s' no está instalada\n", id);
-        return 2;
+    {
+        /* <assets> = the parent of the fonts folder; a system app there wins over a user .lpk */
+        char assets[PATH_MAX];
+        snprintf(assets, sizeof assets, "%s", fonts);
+        char *sl = strrchr(assets, '/');
+        if (sl) *sl = 0;
+        if (app_package_dir(id, assets, dir, sizeof dir) < 0) {
+            fprintf(stderr, "lord-server --app: la app '%s' no está instalada\n", id);
+            return 2;
+        }
     }
     /* carpeta de datos de la app (la única que puede escribir) */
     const char *home = getenv("HOME");
@@ -448,7 +472,11 @@ int app_main(const char *id, const char *theme_bundle, const char *fonts) {
     if (!comp || !shm || !wm) { fprintf(stderr, "lord-server --app: el compositor no ofrece lo necesario\n"); return 1; }
 
     app_id_str = id;
-    if (!win_create(0, id, 640, 480)) return 1;    /* the main window (key 0) */
+    int mw = 640, mh = 480, nw = 0, nh = 0;
+    manifest_pair(dir, "size", &mw, &mh);    /* the size the app asks for in its manifest */
+    AppWin *main_win = win_create(0, id, mw, mh);
+    if (!main_win) return 1;                 /* the main window (key 0) */
+    if (manifest_pair(dir, "minSize", &nw, &nh)) xdg_toplevel_set_min_size(main_win->top, nw, nh);
     wl_display_roundtrip(dpy);               /* first configure */
 
     /* Caja de arena: después de conectar Wayland y abrir el broker, antes de cargar la app. */

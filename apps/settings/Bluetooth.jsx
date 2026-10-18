@@ -2,7 +2,7 @@
 // (pair). BlueZ over the system bus, from lord-server (server/src/hw/bt.c); PIN and passkey
 // requests are drawn by the system (sdk/hardware.jsx, BluetoothPrompt). Headphones and speakers
 // show up in Sound through PipeWire. See docs/SETTINGS.md, "Bluetooth".
-import { View, Text, useTheme, useLocale, Toggle, Button, MenuButton, admin, useBluetooth, onBluetoothResult } from '@lordos/sdk';
+import { View, Text, useTheme, useLocale, Toggle, Button, admin, useBluetooth, onBluetoothResult } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 import { GroupBox, SettingRow, PageHeader, Note, Stack } from './ui.jsx';
 
@@ -44,11 +44,8 @@ function Device({ d, tr }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         {!d.busy && <Button small label={d.connected ? tr('prefs.bt.disconnect') : tr('prefs.bt.connect')}
           onClick={() => (d.connected ? lord.bt.disconnect(d.path) : lord.bt.connect(d.path))} />}
-        <MenuButton small title={tr('prefs.bt.more')} items={[
-          { label: d.connected ? tr('prefs.bt.disconnect') : tr('prefs.bt.connect'), onClick: () => (d.connected ? lord.bt.disconnect(d.path) : lord.bt.connect(d.path)) },
-          '-',
-          { label: tr('prefs.bt.forget'), destructive: true, onClick: () => lord.bt.forget(d.path) },
-        ]} />
+        {/* MenuButton's menu would sit under the next group (zIndex only orders siblings) */}
+        <Button small plain destructive label={tr('prefs.bt.forget')} onClick={() => lord.bt.forget(d.path)} />
       </View>
     </SettingRow>
   );

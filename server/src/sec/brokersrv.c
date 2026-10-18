@@ -10,6 +10,8 @@
 #include "../media/media_int.h"
 #include "../media/aring.h"
 #include "../keyboard.h"
+#include "../vault/vclient.h"
+#include "../pkg/crypto.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -21,12 +23,13 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #define MAX_APPS 32
 #define MAX_PENDING 32
 
-typedef struct { int fd, pid, used, resync; char id[48]; MAudio *mic; int mic_ringfd; } AppConn;
+typedef struct { int fd, pid, used, resync; char id[48]; MAudio *mic; int mic_ringfd; int vault; } AppConn;
 static AppConn apps[MAX_APPS];
 
 /* avisos pendientes de respuesta del usuario (reqid → app + fd + permiso) */
@@ -91,6 +94,7 @@ int brokersrv_publish(const char *kind, const char *json, size_t len) {
 }
 
 static int send_reply_fd(int fd, uint32_t reqid, int status, const void *data, uint32_t len, int passfd);
+static void clip_secret_tick(void);
 static int send_reply(int fd, uint32_t reqid, int status, const void *data, uint32_t len);
 
 /* picker (powerbox): avisos pendientes de que el usuario elija un archivo */
@@ -139,6 +143,7 @@ void brokersrv_revoke(const char *app, const char *perm) {
 
 void brokersrv_tick(void) {
     brokercam_tick();
+    clip_secret_tick();
     char kb[512];
     keyboard_json(kb, sizeof kb);
     int kb_changed = strcmp(kb, sent_kb) != 0;
@@ -170,6 +175,24 @@ int brokersrv_new_window(const char *id) {
     for (int i = 0; i < MAX_APPS; i++)
         if (apps[i].used && !strcmp(apps[i].id, id)) return send_event(&apps[i], "window", json, sizeof json - 1) ? -1 : 0;
     return -1;
+}
+
+void brokersrv_set_vault(int fd) { for (int i = 0; i < MAX_APPS; i++) if (apps[i].used && apps[i].fd == fd) apps[i].vault = 1; }
+
+/* A secret an isolated app put on the clipboard: cleared at `deadline` if it is still there
+ * (compared by hash, the text itself is not kept). */
+static struct { double deadline; uint8_t hash[32]; } clip_secret;
+
+static double mono_s(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
+
+static void clip_secret_tick(void) {
+    if (!clip_secret.deadline || mono_s() < clip_secret.deadline) return;
+    clip_secret.deadline = 0;
+    const char *cur = term_clipboard();
+    uint8_t h[32];
+    sha256(cur ? cur : "", cur ? strlen(cur) : 0, h);
+    if (!memcmp(h, clip_secret.hash, 32)) { term_set_clipboard("", 0); term_clipboard_mark("lordos", 0); }
+    explicit_bzero(h, sizeof h);
 }
 
 int brokersrv_count(void) { int n = 0; for (int i = 0; i < MAX_APPS; i++) n += apps[i].used; return n; }
@@ -369,6 +392,33 @@ static void handle(AppConn *a, BrokerHdr *h, char *payload) {
         int n = snprintf(info, sizeof info, "%u %u %u", 1u << 18, (unsigned)AR_RATE, 1u);
         send_reply_fd(fd, h->reqid, BST_OK, info, (uint32_t)n, ro);
         close(ro);
+        break;
+    }
+    case BOP_CLIP_SECRET: {
+        /* "seconds\0text": sensitive copy (Passwords), cleared later if unchanged */
+        char *nul = memchr(payload, 0, h->len);
+        if (!nul) { send_reply(fd, h->reqid, BST_ERROR, NULL, 0); break; }
+        int secs = atoi(payload);
+        const char *txt = nul + 1;
+        size_t tl = h->len - (size_t)(txt - payload);
+        term_set_clipboard(txt, tl);
+        term_clipboard_mark(a->id, 1);
+        if (secs > 0 && secs <= 600) {
+            sha256(txt, tl, clip_secret.hash);
+            clip_secret.deadline = mono_s() + secs;
+        }
+        explicit_bzero(payload, h->len);
+        send_reply(fd, h->reqid, BST_OK, NULL, 0);
+        break;
+    }
+    case BOP_VAULT_FIDO: {
+        /* only the system Passwords app (spawned with a vault channel), only with `usb` allowed; the
+         * hidraw fd goes from here straight to lord-vault */
+        if (!a->vault || perm_get(a->id, PERM_USB) != PERM_ALLOW) { send_reply(fd, h->reqid, BST_DENIED, NULL, 0); break; }
+        char name[128] = "";
+        int r = vc_fido_attach(name, sizeof name);
+        if (r) send_reply(fd, h->reqid, BST_ERROR, r == -1 ? "no-device" : "no-access", r == -1 ? 9 : 9);
+        else send_reply(fd, h->reqid, BST_OK, name, (uint32_t)strlen(name));
         break;
     }
     case BOP_QUIT:

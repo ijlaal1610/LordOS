@@ -3,6 +3,19 @@
 import { View, Text, Image, useTheme, useStore, createStore, Button, ScrollView, TextInput, takeTextFocus, releaseTextFocus, fs, t } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { builtinById } from './templates.js';
+import { appMode } from './api.js';
+
+// A picked file is a path (shell: lord-server opens it, validated like lord.fs) or { fd, name }
+// (app process: the system dialog opened it). fileReq builds the request options for either.
+export function fileReq(...items) {
+  const files = [], fds = [];
+  for (const [p, mode] of items) {
+    if (!p) continue;
+    if (typeof p === 'string') files.push({ path: p, mode }); else fds.push(p.fd);
+  }
+  return fds.length ? { fds } : { files };
+}
+export const fileName = (p) => (typeof p === 'string' ? p : p?.name || '');
 
 export const RED = '#ff453a', ORANGE = '#ff9f0a', GREEN = '#30d158', YELLOW = '#ffd60a';
 
@@ -53,6 +66,13 @@ const overlays = createStore([]);           // [{ key, node }]
 let overlaySeq = 0;
 
 export function Sheet(props) {
+  // inline: the panel goes in the layout where it is written, without the dimmed overlay. The lock
+  // and create screens use it so the dialog does not cover the whole (small) form behind it.
+  if (props.inline) return <SheetPanel {...props} inline />;
+  return <OverlaySheet {...props} />;
+}
+
+function OverlaySheet(props) {
   const key = useRef(null);
   if (!key.current) key.current = `s${++overlaySeq}`;
   useEffect(() => {
@@ -68,13 +88,21 @@ export function Overlays() {
   return l.map((x) => <View key={x.key} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}>{x.node}</View>);
 }
 
-function SheetBox({ title, onClose, children, width = 460, footer }) {
-  const th = useTheme();
+function SheetBox(props) {
   return (
     <View onMouseDown={(e) => e.stopPropagation?.()} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 50,
       alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.38)' }}>
-      <View style={{ width, maxHeight: '94%', borderRadius: 14, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`,
-        boxShadow: '0 18px 50px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
+      <SheetPanel {...props} />
+    </View>
+  );
+}
+
+function SheetPanel({ title, onClose, children, width = 460, footer, inline }) {
+  const th = useTheme();
+  return (
+      <View style={{ width: inline ? undefined : width, alignSelf: inline ? 'stretch' : undefined, maxHeight: inline ? undefined : '94%', borderRadius: 14,
+        backgroundColor: th.windowBg, border: `1px solid ${th.separator}`,
+        boxShadow: inline ? '0 6px 18px rgba(0,0,0,0.25)' : '0 18px 50px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottom: `1px solid ${th.separator}` }}>
           <Text style={{ flex: 1, fontSize: 15, fontWeight: 700, color: th.text }}>{title}</Text>
           {onClose && <View onClick={onClose} style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: th.control }}>
@@ -83,7 +111,6 @@ function SheetBox({ title, onClose, children, width = 460, footer }) {
         <View style={{ padding: 16, gap: 10, flexShrink: 1, overflow: 'hidden' }}>{children}</View>
         {footer && <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderTop: `1px solid ${th.separator}` }}>{footer}</View>}
       </View>
-    </View>
   );
 }
 
@@ -156,7 +183,7 @@ export function TextArea({ value, onChange, placeholder, minHeight = 90, mono, s
   useEffect(() => () => releaseTextFocus(token), []);
   const onKey = (e) => {
     const { value: v, onChange: set } = latest.current;
-    if (e.ctrl && e.base === 'v') { set(v + lord.clipboard.get()); return; }
+    if (e.ctrl && e.base === 'v') { try { set(v + lord.clipboard.get()); } catch (err) { /* no clipboard permission */ } return; }
     if (e.key === 'Backspace') set([...v].slice(0, -1).join(''));
     else if (e.key === 'Enter') set(`${v}\n`);
     else if (e.key === 'Tab') set(`${v}  `);
@@ -175,11 +202,19 @@ export function TextArea({ value, onChange, placeholder, minHeight = 90, mono, s
 
 // ---- elegir un archivo (carpeta personal y discos del usuario: pendrives) ----
 
-export function FilePicker({ title, save, suggest = '', onPick, onClose, filter }) {
+export function FilePicker({ title, save, suggest = '', onPick, onClose, filter, inline }) {
   const th = useTheme();
   const [dir, setDir] = useState(null);            // null = lugares
   const [name, setName] = useState(suggest);
   const [sel, setSel] = useState(null);
+  // app process: the system's own dialog (powerbox) picks the file and hands over only its fd
+  useEffect(() => {
+    if (!appMode) return;
+    let r = null;
+    try { r = lord.broker.pick(save ? 1 : 0, suggest || ''); } catch (e) { r = null; }
+    if (r && r.fd >= 0) onPick({ fd: r.fd, name: r.name }); else onClose();
+  }, []);
+  if (appMode) return null;
   let entries = [];
   let places = [];
   if (dir === null) {
@@ -194,14 +229,14 @@ export function FilePicker({ title, save, suggest = '', onPick, onClose, filter 
     if (sel) onPick(fs.join(dir, sel));
   };
   return (
-    <Sheet title={title} onClose={onClose} width={520} footer={[
+    <Sheet title={title} onClose={onClose} width={520} inline={inline} footer={[
       <Button key="c" label={t('passwords.cancel')} onClick={onClose} />,
       <Button key="o" primary label={save ? t('passwords.picker.save') : t('passwords.picker.open')} onClick={choose} />]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Button label="‹" onClick={up} />
         <Text style={{ flex: 1, fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{dir === null ? t('passwords.picker.places') : dir}</Text>
       </View>
-      <View style={{ height: 260, borderRadius: 8, border: `1px solid ${th.separator}`, overflow: 'hidden' }}>
+      <View style={{ height: inline ? 190 : 260, borderRadius: 8, border: `1px solid ${th.separator}`, overflow: 'hidden' }}>
         <ScrollView style={{ flex: 1 }}>
           {dir === null ? places.map((p) => (
             <Row key={p.path} icon={p.icon} label={p.name} onClick={() => setDir(p.path)} />

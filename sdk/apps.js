@@ -12,7 +12,7 @@ import { createElement as h } from 'react';
 import { View, Text, Image } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
 import { locale, appName } from './i18n.js';
-import { listApps, wm, appRegistry, getApp as registryApp } from './windows.js';
+import { listApps, wm, windows, appRegistry, getApp as registryApp } from './windows.js';
 
 const DESKTOP = 'desktop:';
 export const isLinuxApp = (id) => String(id).startsWith(DESKTOP);
@@ -81,6 +81,12 @@ export function launchApp(id) {
   const app = registryApp(id);
   if (app && app.package && typeof lord.apps !== 'undefined' && typeof lord.apps.launchPackage === 'function')
     return lord.apps.launchPackage(id);
+  // a built-in app that runs as its own sandboxed process (manifest "process": "isolated")
+  if (app && app.isolated && typeof lord.apps !== 'undefined' && typeof lord.apps.launchPackage === 'function') {
+    const running = windows.get().filter((w) => w.args?.pkg && w.args?.appId === id);
+    if (running.length) { wm.focus(running[running.length - 1].id); return true; }
+    if (lord.apps.launchPackage(id)) return true;
+  }
   return wm.open(id) != null;
 }
 
@@ -99,7 +105,7 @@ export function windowIcon(w, getApp) {
   if (String(w?.id).startsWith('linux#')) {
     // una app .lpk aislada (lord-server --app) llega como ventana Wayland con app_id = su id
     const pkg = appId ? registryApp(appId) : null;
-    if (pkg && pkg.package && pkg.Icon) return pkg.Icon;
+    if (pkg && (pkg.package || pkg.isolated) && pkg.Icon) return pkg.Icon;
     const a = linuxAppFor(appId);
     return a ? a.Icon : ({ size }) => h(LetterIcon, { size, name: appId || w?.title || 'Linux' });
   }

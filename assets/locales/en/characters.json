@@ -21,5 +21,7 @@
   "block.greek": "Greek",
   "block.latin1": "Latin accented",
   "block.cjkSymbols": "CJK symbols",
-  "block.halfwidth": "Fullwidth forms"
+  "block.halfwidth": "Fullwidth forms",
+  "pickTitle": "Choose a character",
+  "pickHint": "Click one to see its name and code point, and to copy it."
 }

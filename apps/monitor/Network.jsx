@@ -12,7 +12,7 @@
 // reglas futuras son { appKey, host | país, puerto, protocolo, dirección, verdict }: la columna
 // de regla de la lista y los contadores de permitidas/denegadas ya están en su lugar.
 import {
-  View, Text, Image, ScrollView, TextInput, useTheme, useLocale, useStore, monitor, monitorConnections, useMonitor,
+  View, Text, Image, ScrollView, SearchField, useTheme, useLocale, useStore, monitor, monitorConnections, useMonitor,
   formatBytes, formatNumber, tOptional, useSystemInfo, wm, direction, firewall, firewallState, useLauncherApps,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -201,7 +201,7 @@ function Section({ title, children }) {
   const t = useTheme();
   return (
     <View style={{ gap: 6 }}>
-      <Text style={{ fontSize: 11, fontWeight: 700, color: t.textDim }}>{title}</Text>
+      <Text style={{ fontSize: 11, fontWeight: 600, color: t.textDim }}>{title}</Text>
       {children}
     </View>
   );
@@ -282,7 +282,7 @@ function Detail({ g, tr, user }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <AppGlyph item={g.item} size={32} />
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{g.key === 'lordos' ? tr('monitor.lordos') : g.name}</Text>
+          <Text style={{ fontSize: 15, fontWeight: 600, color: t.text }}>{g.key === 'lordos' ? tr('monitor.lordos') : g.name}</Text>
           <Text style={{ fontSize: 11, color: t.textDim }}>{tr('monitor.net.connCount', { count: g.conns.length - g.listen.length })}</Text>
         </View>
       </View>
@@ -322,7 +322,7 @@ function PlaceDetail({ p, tr }) {
   return (
     <>
       <View style={{ gap: 2 }}>
-        <Text style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{countryName(p.cc)}</Text>
+        <Text style={{ fontSize: 15, fontWeight: 600, color: t.text }}>{countryName(p.cc)}</Text>
         <Text style={{ fontSize: 11, color: t.textDim }}>{tr('monitor.net.connCount', { count: p.count })}</Text>
       </View>
       <Section title={tr('monitor.net.data')}>
@@ -379,10 +379,10 @@ export function NetworkTab({ last, prefs }) {
   const toggle = (key) => setOpen((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   const column = { borderRadius: 12, backgroundColor: card.bg, border: `1px solid ${t.separator}`, padding: 12 };
   return (
-    <View style={{ flex: 1, flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 14 }}>
-      {/* izquierda */}
+    <View style={{ flex: 1, flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingVertical: 16 }}>
+      {/* left */}
       <View style={{ ...column, width: 320, gap: 8, padding: 10 }}>
-        <TextInput value={q} onChange={setQ} placeholder={tr('monitor.net.search')} onCancel={() => setQ('')} />
+        <SearchField value={q} onChange={setQ} placeholder={tr('monitor.net.search')} />
         <View style={{ flexDirection: 'row', paddingHorizontal: 8 }}>
           <Text style={{ flex: 1, fontSize: 10, fontWeight: 600, color: t.textDim }}>{tr('monitor.net.apps', { count: apps.length })}</Text>
           <Text style={{ width: 54, fontSize: 10, fontWeight: 600, color: t.textDim, textAlign: 'end' }}>{tr('monitor.net.dataCol')}</Text>
@@ -402,11 +402,11 @@ export function NetworkTab({ last, prefs }) {
         <View style={{ flexDirection: 'row', gap: 14, paddingHorizontal: 4 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 10, color: t.textDim }}>{`↓ ${tr('monitor.received')}`}</Text>
-            <Text style={{ fontSize: 14, fontWeight: 700, color: C.rx }}>{fmt.rate(tr, last.net.rx)}</Text>
+            <Text style={{ fontSize: 14, fontWeight: 600, color: C.rx }}>{fmt.rate(tr, last.net.rx)}</Text>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 10, color: t.textDim }}>{`↑ ${tr('monitor.sent')}`}</Text>
-            <Text style={{ fontSize: 14, fontWeight: 700, color: C.tx }}>{fmt.rate(tr, last.net.tx)}</Text>
+            <Text style={{ fontSize: 14, fontWeight: 600, color: C.tx }}>{fmt.rate(tr, last.net.tx)}</Text>
           </View>
         </View>
         <TrafficBarsFromStore />

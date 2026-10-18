@@ -9,6 +9,7 @@
  * Mapas (los crea lord-netperm; los programas los ven por nombre):
  *   np_cfg     ARRAY  [0] → NpCfg                   nivel de la scope de las apps, encendido
  *   np_apps    HASH   id de cgroup (u64) → NpApp    restricciones, confiable, modo, lista genérica
+ *   np_union   HASH   id de user@<uid> (u64) → NpApp  unión estricta de las apps restringidas del usuario
  *   np_lpm4    LPM    (idx de app, IPv4/n) → NpList reglas de red y de dominio, ordenadas
  *   np_lpm6    LPM    (idx de app, IPv6/n) → NpList
  *   np_seen    LRU    NpSeenKey → u64 ns            para avisar solo las conexiones nuevas
@@ -86,6 +87,7 @@ typedef struct { np_u32 prefixlen; np_u8 data[20]; } NpLpm6Key;   /* idx (big en
 typedef struct {
     np_u32 level;               /* profundidad de las scopes de apps (bpf_get_current_ancestor_cgroup_id) */
     np_u32 on;                  /* 0: todo se permite sin mirar nada */
+    np_u32 user_level;          /* profundidad de user@<uid>.service; 0: no mirar la unión de user@ */
 } NpCfg;
 
 typedef struct {

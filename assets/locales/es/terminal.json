@@ -304,5 +304,6 @@
     "other": "{count} sesiones recuperadas tras reiniciar el servidor"
   },
   "toast.saveFailed": "No se pudo guardar",
-  "toast.saved": "Guardado en {path}"
+  "toast.saved": "Guardado en {path}",
+  "find.close": "Cerrar la búsqueda"
 }

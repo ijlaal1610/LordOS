@@ -5,10 +5,10 @@ import {
   View, Text, Image, useTheme, useStore, Button, TextInput, Toggle, ScrollView, Markdown, wm, formatDate, formatTime, formatBytes, t,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
-import { app, req, copySecret, copyText, revealField, upsertItem, dropItem, toast, errorText } from './api.js';
+import { app, req, copySecret, copyText, revealField, upsertItem, dropItem, toast, errorText, appMode } from './api.js';
 import { builtinById, fieldLabel, templateFields, allCategories, catName, FIELD_TYPES } from './templates.js';
 import {
-  EntryIcon, CatIcon, Sheet, b64ToBytes, Label, Hint, Warning, QrImage, TextArea, FilePicker, Choice, IconButton, Chip, StrengthBar, RED, ORANGE,
+  EntryIcon, CatIcon, Sheet, b64ToBytes, fileReq, fileName, Label, Hint, Warning, QrImage, TextArea, FilePicker, Choice, IconButton, Chip, StrengthBar, RED, ORANGE,
 } from './ui.jsx';
 import { GeneratorSheet } from './Generator.jsx';
 
@@ -157,13 +157,13 @@ function Attachments({ v, entry, onChanged }) {
       {saveAtt && <FilePicker save suggest={saveAtt.name} title={t('passwords.att.save')} onClose={() => setSaveAtt(null)}
         onPick={async (p) => {
           const a = saveAtt; setSaveAtt(null);
-          try { await req('att-get', { v, id: entry.id, att: a.id }, { files: [{ path: p, mode: 'w' }] }); toast(t('passwords.att.saved')); } catch (e) { toast(errorText(e.code)); }
+          try { await req('att-get', { v, id: entry.id, att: a.id }, fileReq([p, 'w'])); toast(t('passwords.att.saved')); } catch (e) { toast(errorText(e.code)); }
         }} />}
       {adding && <FilePicker title={t('passwords.att.add')} onClose={() => setAdding(false)}
         onPick={async (p) => {
           setAdding(false);
-          const name = p.split('/').pop();
-          try { const r = await req('att-add', { v, id: entry.id, name, mime: mimeOf(name) }, { files: [{ path: p, mode: 'r' }] }); upsertItem(r.item); onChanged(); toast(t('passwords.att.added')); }
+          const name = fileName(p).split('/').pop();
+          try { const r = await req('att-add', { v, id: entry.id, name, mime: mimeOf(name) }, fileReq([p, 'r'])); upsertItem(r.item); onChanged(); toast(t('passwords.att.added')); }
           catch (e) { toast(errorText(e.code)); }
         }} />}
     </View>
@@ -273,7 +273,7 @@ export function EntryView({ v, id, onEdit, onDeleted }) {
             </View>}
           </View>
         )}
-        {b?.settingsLink && <Button label={t('passwords.vpn.openSettings')} onClick={() => wm.open('settings', { args: { page: 'network' } })} style={{ alignSelf: 'flex-start' }} />}
+        {b?.settingsLink && !appMode && <Button label={t('passwords.vpn.openSettings')} onClick={() => wm.open('settings', { args: { page: 'network' } })} style={{ alignSelf: 'flex-start' }} />}
         {e.notes ? (
           <View style={{ gap: 4 }}>
             <Label>{t('passwords.field.notes')}</Label>
@@ -484,7 +484,7 @@ export function EntryEditor({ v, entry, catId, onDone, onCancel }) {
         onPick={async (p) => {
           const i = qrFor; setQrFor(null);
           try {
-            const r = await req('qr-scan', {}, { files: [{ path: p, mode: 'r' }] });
+            const r = await req('qr-scan', {}, fileReq([p, 'r']));
             if (!r.totp) { toast(t('passwords.totp.notOtp')); return; }
             setField(i, { ...fields[i], v: r.text, keep: false });
             if (!title && r.issuer) setTitle(r.issuer);

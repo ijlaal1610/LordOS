@@ -17,5 +17,6 @@
   "working": "Exporting…",
   "exported": "Saved “{name}”",
   "exportError": "Could not export",
-  "renameError": "Could not rename (does that name exist already?)"
+  "renameError": "Could not rename (does that name exist already?)",
+  "emptyTitle": "Pick or make a recording"
 }

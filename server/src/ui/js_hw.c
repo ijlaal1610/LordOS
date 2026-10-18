@@ -4,7 +4,7 @@
  * arrive in JS as __lordHw(kind, data).
  *
  *   lord.display.list()                         outputs, modes, Night Shift, backlight
- *   lord.display.apply(conn, w, h, mHz, rot)    live (queued between frames); true if accepted
+ *   lord.display.apply(conn, w, h, mHz, rot, scale)   live (queued between frames); true if accepted
  *   lord.display.save(conn)                     keep the current mode for that display
  *   lord.display.setTemperature(K) / temperature()
  *   lord.display.sun(zone, y, m, d)             { rise, set } minutes UTC, or null
@@ -65,9 +65,9 @@ static JSValue f_display_apply(JSContext *c, JSValueConst t, int argc, JSValueCo
     (void)t;
     if (argc < 5) return JS_FALSE;
     int conn = arg_int(c, argv[0], 0), w = arg_int(c, argv[1], 0), h = arg_int(c, argv[2], 0);
-    int hz = arg_int(c, argv[3], 0), rot = arg_int(c, argv[4], 0);
-    if (conn <= 0 || w < 0 || h < 0 || w > 16384 || h > 16384 || hz < 0 || hz > 1000000 || rot < 0 || rot > 3) return JS_FALSE;
-    return JS_NewBool(c, display_request((uint32_t)conn, w, h, hz, rot) == 0);
+    int hz = arg_int(c, argv[3], 0), rot = arg_int(c, argv[4], 0), scale = argc > 5 ? arg_int(c, argv[5], 1) : 1;
+    if (conn <= 0 || w < 0 || h < 0 || w > 16384 || h > 16384 || hz < 0 || hz > 1000000 || rot < 0 || rot > 3 || (scale != 1 && scale != 2)) return JS_FALSE;
+    return JS_NewBool(c, display_request((uint32_t)conn, w, h, hz, rot, scale) == 0);
 }
 
 static JSValue f_display_save(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
@@ -117,7 +117,7 @@ static JSValue f_display_wake(JSContext *c, JSValueConst t, int argc, JSValueCon
 
 static const JSCFunctionListEntry display_funcs[] = {
     JS_CFUNC_DEF("list", 0, f_display_list),
-    JS_CFUNC_DEF("apply", 5, f_display_apply),
+    JS_CFUNC_DEF("apply", 6, f_display_apply),
     JS_CFUNC_DEF("save", 1, f_display_save),
     JS_CFUNC_DEF("setTemperature", 1, f_display_set_temp),
     JS_CFUNC_DEF("temperature", 0, f_display_temp),

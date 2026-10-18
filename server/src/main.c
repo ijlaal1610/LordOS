@@ -376,7 +376,7 @@ static void display_attach(const int *fds, int n) {
     s->gpu_paused = 0;
     struct stat st;
     if (fstat(s->kms.fd, &st) == 0) wl_set_drm_device(st.st_rdev);
-    if (display_rotation() || mirror_clients() || media_needs_cpu() || gpu_start(s)) s->gpu_paused = mirror_clients() > 0 || media_needs_cpu();
+    if (display_cpu_only() || mirror_clients() || media_needs_cpu() || gpu_start(s)) s->gpu_paused = mirror_clients() > 0 || media_needs_cpu();
     /* el puntero donde está (una tablet absoluta no avisa si no se mueve) o en el medio */
     s->cx = s->W / 2;
     s->cy = s->H / 2;
@@ -709,11 +709,11 @@ static void render_frame(Server *s) {
     } else {
         KmsBuffer *b = kms_back(&s->kms);
         Canvas out, phys;
-        /* rotated (Settings → Displays): the frame is composed upright in s->frame and copied
-         * rotated into the card's buffer; otherwise straight into the buffer */
-        int rot = display_rotation();
-        canvas_init(&phys, b->map, rot ? (int)s->kms.width : s->W, rot ? (int)s->kms.height : s->H, (int)(b->pitch / 4));
-        if (rot) canvas_init(&out, s->frame, s->W, s->H, s->W);
+        /* rotated or at 200 % (Settings → Displays): the frame is composed upright and at the logical size
+         * in s->frame and copied rotated/doubled into the card's buffer; otherwise straight into it */
+        int rot = display_rotation(), xf = display_cpu_only();     /* rotated or at 200 % */
+        canvas_init(&phys, b->map, xf ? (int)s->kms.width : s->W, xf ? (int)s->kms.height : s->H, (int)(b->pitch / 4));
+        if (xf) canvas_init(&out, s->frame, s->W, s->H, s->W);
         else out = phys;
         int bi = s->kms.front ^ 1, fs = wl_fullscreen_active();
         if (fs != s->was_fs) { s->was_fs = fs; s->full_copy = 2; }
@@ -746,7 +746,7 @@ static void render_frame(Server *s) {
         mirror_cursor(s->cx, s->cy, mode, px, w, h, hx, hy, gen);
         cursor_local(s, &k);                    /* la flecha también es una imagen (cursor.c) */
         Rect cr = { s->cx - k.hx, s->cy - k.hy, s->cx - k.hx + k.w, s->cy - k.hy + k.h };
-        if (!rot) {
+        if (!xf) {
             display_tint(&out, need);           /* Night Shift without a gamma LUT (software) */
             if (k.mode == 1) {
                 canvas_blit(&out, k.px, k.w, k.h, s->cx - k.hx, s->cy - k.hy, 0, 1, 0);
@@ -828,7 +828,7 @@ static void run_modeset(Server *s, uint32_t conn, const struct drm_mode_modeinfo
     memset(s->stale, 0, sizeof s->stale);
     memset(s->curs, 0, sizeof s->curs);
     s->full_copy = 2;
-    if (gpu_was_on && !display_rotation() && !mirror_clients() && !media_needs_cpu() && gpu_start(s) == 0) gpu_was_on = 0;
+    if (gpu_was_on && !display_cpu_only() && !mirror_clients() && !media_needs_cpu() && gpu_start(s) == 0) gpu_was_on = 0;
     display_modeset_done(ok);
     hw_redraw();
 }
@@ -938,7 +938,7 @@ int main(int argc, char **argv) {
     kms_set_picker(display_pick);
     hw_server = &s;
     if (ok && !s.greeter) hw_start(&hw_host, 1);
-    if (ok && !s.headless && !display_rotation()) gpu_start(&s);
+    if (ok && !s.headless && !display_cpu_only()) gpu_start(&s);
     {
         struct stat st;
         if (s.kms.fd >= 0 && fstat(s.kms.fd, &st) == 0) wl_set_drm_device(st.st_rdev);
@@ -1086,7 +1086,7 @@ int main(int argc, char **argv) {
         for (int k = nlost - 1; k >= 0; k--) input_remove(&s.input, lost[k]);
         if (nlost) wl_input_devices_changed();
         /* la GPU vuelve cuando ya nadie mira desde la red */
-        if (s.gpu_paused && !s.headless && !mirror_clients() && !media_needs_cpu() && !s.kms.flip_pending && !display_rotation()) {
+        if (s.gpu_paused && !s.headless && !mirror_clients() && !media_needs_cpu() && !s.kms.flip_pending && !display_cpu_only()) {
             s.gpu_paused = 0;
             gpu_start(&s);
         }

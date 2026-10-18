@@ -26,4 +26,7 @@ int  js_broker_send(int op, const void *payload, uint32_t len);
 void js_brokercam_register(JSContext *c, JSValue lord);
 void js_brokercam_event(const char *data, size_t len);
 
+/* Passwords (app mode): ask lord-server to hand the FIDO2 key to lord-vault (see js_broker.c). */
+int js_broker_vault_fido(char *name, size_t n, char *err, size_t en);
+
 #endif

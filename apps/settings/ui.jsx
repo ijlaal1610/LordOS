@@ -2,7 +2,7 @@
 // Notifications, Date & Time, Default Apps), on top of the SDK's GroupBox (docs/DESIGN.md): a row
 // with a hint, a pop-up button (macOS NSPopUpButton), a page header and a note.
 import { View, Text, useTheme, addListener, GroupBox, spacing, typeScale, createStore, useStore, screen, ScrollView } from '@lordos/sdk';
-import { useEffect, useRef, useState } from 'react';
+import { createElement as h, useEffect, useRef, useState } from 'react';
 
 export { GroupBox };
 
@@ -80,6 +80,7 @@ export function PopUp({ value, options, onChange, width = 190, disabled }) {
     <View ref={btn} onClick={toggle} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{ width, height: 24, paddingHorizontal: 9, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6,
         backgroundColor: t.control, opacity: disabled ? 0.45 : hover || open ? 0.88 : 1, boxShadow: '0 1px 1px rgba(0,0,0,0.12)' }}>
+      {cur && cur[2] ? h(cur[2], { size: 16 }) : null}
       <Text style={{ flex: 1, fontSize: 12, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{cur ? cur[1] : ''}</Text>
       <View style={{ width: 16, height: 18, borderRadius: 4, backgroundColor: t.accent, alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ fontSize: 8, color: '#fff', lineHeight: 8 }}>▲</Text>
@@ -118,20 +119,21 @@ function PopUpLayer() {
         backgroundColor: t.mode === 'dark' ? '#2c2c31' : '#ffffff', border: `1px solid ${t.separator}`, boxShadow: '0 10px 30px rgba(0,0,0,0.35)' }}>
         <ScrollView style={{ flex: 1 }}>
           {p.options.map(([v, label], i) => (v === '-' ? <View key={`s${i}`} style={{ height: 1, marginVertical: 4, marginHorizontal: 6, backgroundColor: t.separator }} />
-            : <PopRow key={String(v)} label={label} checked={v === p.value} onClick={() => { popup.set(null); if (v !== p.value) p.onChange(v); }} />))}
+            : <PopRow key={String(v)} label={label} Icon={p.options[i][2]} checked={v === p.value} onClick={() => { popup.set(null); if (v !== p.value) p.onChange(v); }} />))}
         </ScrollView>
       </View>
     </>
   );
 }
 
-function PopRow({ label, checked, onClick }) {
+function PopRow({ label, checked, onClick, Icon }) {
   const t = useTheme();
   const [hover, setHover] = useState(false);
   return (
     <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ height: 24, paddingHorizontal: 6, borderRadius: 5, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: hover ? t.accent : 'transparent' }}>
+      style={{ height: 24, paddingHorizontal: 6, borderRadius: 5, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: hover ? t.accent : 'transparent' }}>
       <Text style={{ width: 14, fontSize: 11, color: hover ? '#fff' : t.text }}>{checked ? '✓' : ''}</Text>
+      {Icon ? <Icon size={16} /> : null}
       <Text style={{ flex: 1, fontSize: 12, whiteSpace: 'nowrap', color: hover ? '#fff' : t.text, textAlign: 'start' }}>{label}</Text>
     </View>
   );

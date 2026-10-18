@@ -73,7 +73,7 @@ windows.subscribe(() => {
 export function launcherIdOf(w) {
   if (!String(w.id).startsWith('linux#')) return appIdOf(w.id);
   const appId = w.args?.appId || '';
-  if (w.args?.pkg && appId && getApp(appId)?.package) return appId;   // isolated .lpk app: grouped under its own entry
+  if (w.args?.pkg && appId && (getApp(appId)?.package || getApp(appId)?.isolated)) return appId;   // isolated app (.lpk or built-in): grouped under its own entry
   const a = linuxAppFor(appId);
   return a ? a.id : `linux:${appId || w.id}`;
 }

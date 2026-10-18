@@ -13,3 +13,4 @@ assets/app-host.bundle.js
 *.lpk
 .vscode/
 .idea/
+assets/sysapps/

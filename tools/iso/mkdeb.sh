@@ -53,11 +53,14 @@ for d in themes/*/; do
     install -m 644 "$d/theme.json" "$d/theme.bundle.js" "$L/themes/$n/"
     [ -d "$d/assets" ] && cp -r "$d/assets" "$L/themes/$n/"
 done
-cp -r assets/fonts assets/locales assets/shell assets/icons assets/monitor "$L/assets/"
+cp -r assets/fonts assets/locales assets/shell assets/icons assets/monitor assets/help "$L/assets/"
 # el proceso de cada app aislada (lord-server --app) carga su runtime de acá
 [ -f assets/app-host.bundle.js ] || { echo "falta assets/app-host.bundle.js (npm run build)" >&2; exit 1; }
 install -m 644 assets/app-host.bundle.js "$L/assets/app-host.bundle.js"
+# system apps that run as their own sandboxed process (manifest "process": "isolated"; e.g. Passwords)
+[ -d assets/sysapps ] && cp -r assets/sysapps "$L/assets/"
 install -m 755 tools/iso/rootfs/usr/lib/lordos/lordos-live-prep "$L/lordos-live-prep"
+install -D -m 644 tools/iso/rootfs/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf "$PKG/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf"
 install -m 644 tools/iso/rootfs/etc/systemd/system/lordos.service "$PKG/usr/lib/systemd/system/lordos.service"
 # temas GTK3 de LordOS (los elige el portal de ajustes según claro/oscuro)
 install -d "$PKG/usr/share/themes"
@@ -118,7 +121,7 @@ Architecture: ${DEB_ARCH:-$(dpkg --print-architecture)}
 Maintainer: LordOS <lord.basex@gmail.com>
 Installed-Size: $SIZE
 Depends: libc6 (>= 2.38), libwayland-server0 (>= 1.22), libwayland-client0 (>= 1.22), libxkbcommon0 (>= 1.5), libcrypt1, libssl3t64 | libssl3, passwd, procps, xkb-data$GPUDEPS$DOCDEPS$MEDIADEPS
-Recommends: pipewire-pulse, wireplumber, wpasupplicant, openvpn, fonts-noto-core, locales, tzdata, sudo, cups, cups-client, avahi-daemon, mesa-va-drivers
+Recommends: pipewire-pulse, wireplumber, wpasupplicant, openvpn, fonts-noto-core, locales, tzdata, sudo, cups, cups-client, avahi-daemon, mesa-va-drivers, bluez, libspa-0.2-bluetooth, power-profiles-daemon, systemd-timesyncd, shared-mime-info
 Section: x11
 Priority: optional
 Homepage: https://github.com/lordbasex/LordOS

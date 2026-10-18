@@ -1,34 +1,101 @@
-// Reproductor — videos y música (al estilo de los reproductores de escritorio, con diseño propio).
+// Player: videos and music (in the style of desktop players, with our own design).
 //
-// La decodificación es de lord-media (aislado); acá están la biblioteca (artista y álbum desde
-// las etiquetas, carátulas), la cola, aleatorio y repetir, los controles del video (barra de
-// tiempo, volumen, subtítulos .srt y de la pista, pantalla completa, imagen en imagen) y lo que
-// se publica para el Centro de control y las teclas multimedia (nowPlaying).
+// Decoding belongs to lord-media (sandboxed); here are the library (artist and album from the
+// tags, covers), the queue, shuffle and repeat, the video controls (time bar, volume, .srt and
+// in-stream subtitles, full screen, picture in picture) and what is published for Control Center
+// and the media keys (nowPlaying).
 import {
-  View, Text, Image, MediaView, ScrollView, SidebarItem, SectionTitle, useTheme, useAppWindow, useKeyboard, useStore, useWindowState, wm,
-  t as tr, media, usePlayer, nowPlaying, mediaFormatTime, useThumb, fs, addListener, direction,
+  View, Text, Image, MediaView, ScrollView, SidebarItem, SectionTitle, Hairline, EmptyState, ToolbarButton, useTheme, useAppWindow, useKeyboard,
+  useStore, useWindowState, wm, typeScale, t as tr, media, usePlayer, nowPlaying, mediaFormatTime, useThumb, fs, addListener, direction,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { library, scan, albumsOf, artistsOf, parseSrt, AUDIO, VIDEO } from './library.js';
 
 const APP = 'player';
-const useWindowNonce = new Map();      // último «Abrir con» atendido por ventana
+const useWindowNonce = new Map();      // last "Open with" handled, per window
 
-// Triángulo con barras (el motor no gira cajas): para íconos de reproducir.
-function Tri({ x, y, w, h, color, steps = 12 }) {
+// Triangle made of bars (the engine doesn't rotate boxes): for the play icons. left: pointing left.
+function Tri({ x, y, w, h, color, steps = 12, left = false }) {
   const rows = [];
   for (let i = 0; i < steps; i++) {
     const f = 1 - Math.abs((i + 0.5) / steps - 0.5) * 2;
-    rows.push(<View key={i} style={{ position: 'absolute', left: x, top: y + (h * i) / steps, width: Math.max(1, w * f), height: h / steps + 0.6, backgroundColor: color }} />);
+    const bw = Math.max(1, w * f);
+    rows.push(<View key={i} style={{ position: 'absolute', left: left ? x + w - bw : x, top: y + (h * i) / steps, width: bw, height: h / steps + 0.6, backgroundColor: color }} />);
   }
   return rows;
+}
+
+// Monochrome transport glyphs drawn with boxes: the media symbols of the fonts are color emoji.
+// They always point left to right (time runs that way, also in RTL).
+function PlayGlyph({ size, color }) {
+  return <View style={{ width: size, height: size, direction: 'ltr' }}><Tri x={size * 0.2} y={0} w={size * 0.72} h={size} color={color} steps={Math.max(8, Math.round(size))} /></View>;
+}
+function PauseGlyph({ size, color }) {
+  const bw = Math.max(2, Math.round(size * 0.28));
+  return (
+    <View style={{ width: size, height: size, flexDirection: 'row', justifyContent: 'center', gap: Math.round(size * 0.2), direction: 'ltr' }}>
+      <View style={{ width: bw, height: size, borderRadius: 1, backgroundColor: color }} />
+      <View style={{ width: bw, height: size, borderRadius: 1, backgroundColor: color }} />
+    </View>
+  );
+}
+function SkipGlyph({ size, color, back }) {
+  const h = size * 0.7, w = size * 0.42, y = (size - h) / 2, steps = Math.max(8, Math.round(h));
+  return (
+    <View style={{ width: size, height: size, direction: 'ltr' }}>
+      {back ? <View style={{ position: 'absolute', left: 0, top: y, width: 2, height: h, backgroundColor: color }} /> : null}
+      <Tri x={back ? 2 : size - 2 - w * 2} y={y} w={w} h={h} color={color} steps={steps} left={back} />
+      <Tri x={back ? 2 + w : size - 2 - w} y={y} w={w} h={h} color={color} steps={steps} left={back} />
+      {back ? null : <View style={{ position: 'absolute', left: size - 2, top: y, width: 2, height: h, backgroundColor: color }} />}
+    </View>
+  );
+}
+function SpeakerGlyph({ size, color, level }) {
+  const h = size * 0.75, y = (size - h) / 2;
+  return (
+    <View style={{ width: size + 6, height: size, direction: 'ltr' }}>
+      <View style={{ position: 'absolute', left: 0, top: size * 0.36, width: size * 0.22, height: size * 0.28, backgroundColor: color }} />
+      <Tri x={0} y={y} w={size * 0.5} h={h} color={color} steps={Math.max(8, Math.round(h))} left />
+      {level > 0 ? <View style={{ position: 'absolute', left: size * 0.62, top: size * 0.36, width: 2, height: size * 0.28, borderRadius: 1, backgroundColor: color }} /> : null}
+      {level > 0.5 ? <View style={{ position: 'absolute', left: size * 0.62 + 4, top: size * 0.22, width: 2, height: size * 0.56, borderRadius: 1, backgroundColor: color }} /> : null}
+      {level > 1 ? <View style={{ position: 'absolute', left: size * 0.62 + 8, top: size * 0.08, width: 2, height: size * 0.84, borderRadius: 1, backgroundColor: color }} /> : null}
+    </View>
+  );
+}
+// Subtitles: "CC" in a rounded box.
+function CaptionsGlyph({ color }) {
+  return (
+    <View style={{ height: 14, paddingHorizontal: 3, borderRadius: 3, border: `1.5px solid ${color}`, justifyContent: 'center' }}>
+      <Text style={{ fontSize: 8, fontWeight: 700, color, lineHeight: 10 }}>CC</Text>
+    </View>
+  );
+}
+// Repeat (one): the circular arrow with a small "1".
+function RepeatGlyph({ color, one }) {
+  return (
+    <View style={{ width: 18, height: 18, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ fontSize: 16, color }}>↻</Text>
+      {one ? <Text style={{ position: 'absolute', right: -2, bottom: -2, fontSize: 8, fontWeight: 700, color }}>1</Text> : null}
+    </View>
+  );
+}
+
+// Width of a box after layout (to adapt the bar and the columns to the window).
+function useBoxWidth(ref, initial) {
+  const [w, setW] = useState(initial);
+  useEffect(() => {
+    if (!ref.current) return;
+    const lw = Math.round(lord.getLayout(ref.current.id)[2]);
+    if (lw > 0 && Math.abs(lw - w) > 2) setW(lw);
+  });
+  return w;
 }
 
 export function Icon({ size: s }) {
   return (
     <View style={{ width: s, height: s, borderRadius: s * 0.225, background: 'linear-gradient(160deg, #ff7a59, #d6246e)',
       boxShadow: `0 ${s * 0.04}px ${s * 0.12}px rgba(0,0,0,0.35)`, overflow: 'hidden' }}>
-      {/* pantalla con perforaciones de película */}
+      {/* a screen with film perforations */}
       <View style={{ position: 'absolute', left: s * 0.14, top: s * 0.22, width: s * 0.72, height: s * 0.56, borderRadius: s * 0.08, backgroundColor: 'rgba(20,10,30,0.82)' }} />
       {[0, 1, 2, 3].map((i) => (
         <View key={i} style={{ position: 'absolute', left: s * (0.2 + i * 0.17), top: s * 0.25, width: s * 0.08, height: s * 0.05, borderRadius: s * 0.015, backgroundColor: 'rgba(255,255,255,0.35)' }} />
@@ -45,7 +112,7 @@ const isVideo = (p) => VIDEO.test(p || '');
 const isAudio = (p) => AUDIO.test(p || '');
 const baseName = (p) => String(p || '').split('/').pop();
 
-// Barra de tiempo (y de volumen): se arrastra; fija la dirección LTR (usa la x del puntero).
+// Time (and volume) bar: draggable; fixed LTR direction (it uses the pointer's x).
 function Bar({ value, onChange, onCommit, height = 4, color, track, style }) {
   const ref = useRef(null), drag = useRef(false), cb = useRef({});
   cb.current = { onChange, onCommit };
@@ -69,14 +136,15 @@ function Bar({ value, onChange, onCommit, height = 4, color, track, style }) {
   );
 }
 
-function IconBtn({ glyph, onClick, size = 16, color, active }) {
+// Round borderless button for a glyph (text) or a drawn icon (children).
+function IconBtn({ glyph, onClick, size = 16, color, active, children, box = 30 }) {
   const th = useTheme();
   const [hover, setHover] = useState(false);
   return (
     <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ minWidth: 30, height: 30, paddingHorizontal: 4, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
+      style={{ minWidth: box, height: box, paddingHorizontal: 4, borderRadius: box / 2, alignItems: 'center', justifyContent: 'center',
         backgroundColor: hover ? 'rgba(127,127,127,0.18)' : 'transparent' }}>
-      <Text style={{ fontSize: size, color: active ? th.accent : color || th.text }}>{glyph}</Text>
+      {children || <Text style={{ fontSize: size, color: active ? th.accent : color || th.text }}>{glyph}</Text>}
     </View>
   );
 }
@@ -92,16 +160,17 @@ function Cover({ path, size, radius = 6 }) {
   );
 }
 
-// Menú simple que se abre hacia arriba (subtítulos, audio).
+// Simple menu that opens upwards (subtitles, audio).
 function Popup({ items, onClose, right = 12, bottom = 64 }) {
   const th = useTheme();
   return (
     <View onMouseDown={(e) => e.stopPropagation?.()} style={{ position: 'absolute', right, bottom, minWidth: 200, padding: 6, borderRadius: 10, gap: 2,
       backgroundColor: th.windowBg, border: `1px solid ${th.separator}`, boxShadow: '0 12px 30px rgba(0,0,0,0.45)', zIndex: 20 }}>
       {items.map((it, i) => (it === '-' ? <View key={i} style={{ height: 1, backgroundColor: th.separator, marginVertical: 3 }} /> : (
-        <View key={i} onClick={() => { it.onClick(); onClose(); }} style={{ paddingHorizontal: 10, height: 26, borderRadius: 6, justifyContent: 'center',
+        <View key={i} onClick={() => { it.onClick(); onClose(); }} style={{ paddingHorizontal: 8, height: 26, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6,
           backgroundColor: it.checked ? th.hover : 'transparent' }}>
-          <Text style={{ fontSize: 12, color: th.text }}>{it.checked ? `✓ ${it.label}` : it.label}</Text>
+          <Text style={{ width: 12, fontSize: 11, color: th.text }}>{it.checked ? '✓' : ''}</Text>
+          <Text style={{ fontSize: 13, color: th.text, whiteSpace: 'nowrap' }}>{it.label}</Text>
         </View>
       )))}
     </View>
@@ -113,20 +182,22 @@ export default function Player() {
   const win = useAppWindow();
   const lib = useStore(library);
   const [view, setView] = useWindowState('view', 'songs');           // songs | artists | albums | videos | queue
-  const [sel, setSel] = useWindowState('sel', null);                 // artista o álbum elegido
-  const [queue, setQueue] = useWindowState('queue', []);               // rutas
+  const [sel, setSel] = useWindowState('sel', null);                 // chosen artist or album
+  const [queue, setQueue] = useWindowState('queue', []);               // paths
   const [index, setIndex] = useWindowState('index', -1);
   const [shuffle, setShuffle] = useWindowState('shuffle', false);
   const [repeat, setRepeat] = useWindowState('repeat', 'off');          // off | all | one
   const [id, setId] = useWindowState('id', 0);
   const [volume, setVolume] = useWindowState('volume', 1);
   const [seekPreview, setSeekPreview] = useState(null);
-  const [extSubs, setExtSubs] = useWindowState('extSubs', null);         // .srt al lado del video
-  const [subTrack, setSubTrack] = useWindowState('subTrack', -1);         // pista de subtítulos de la película
+  const [extSubs, setExtSubs] = useWindowState('extSubs', null);         // .srt next to the video
+  const [subTrack, setSubTrack] = useWindowState('subTrack', -1);         // subtitle track of the movie
   const [menu, setMenu] = useState(null);
   const [controls, setControls] = useState(true);
   const [showVideo, setShowVideo] = useWindowState('showVideo', false);
-  const [openFor, setOpenFor] = useWindowState('openFor', null);   // ruta del reproductor abierto
+  const [openFor, setOpenFor] = useWindowState('openFor', null);   // path of the open player
+  const root = useRef(null);
+  const width = useBoxWidth(root, 960);
   const p = usePlayer(id);
   const current = queue[index] || null;
   const video = !!current && isVideo(current) && p.info && p.info.video >= 0;
@@ -136,14 +207,14 @@ export default function Player() {
   state.current = { queue, index, shuffle, repeat };
 
   useEffect(() => { scan(); }, []);
-  // al cerrar la ventana (no al volver a montarse por pantalla completa o imagen en imagen)
+  // when the window closes (not when it remounts for full screen or picture in picture)
   useEffect(() => () => setTimeout(() => {
     if (wm.get(win.id)) return;
     media.close(idRef.current);
     if (nowPlaying.get()?.window === win.id) nowPlaying.set(null);
   }, 0), []);
 
-  // abrir lo que mandó Archivos («Abrir con»)
+  // open what Files sent ("Open with")
   const lastNonce = useRef(null);
   useEffect(() => {
     const path = win.args?.path;
@@ -154,9 +225,9 @@ export default function Player() {
     lastNonce.current = win.args?.nonce;
   }, [win.args?.nonce]);
 
-  // un reproductor por pista
+  // one player per track
   useEffect(() => {
-    if (current && current === openFor && idRef.current) return;     // ya está abierto (la app se volvió a montar)
+    if (current && current === openFor && idRef.current) return;     // already open (the app remounted)
     media.close(idRef.current);
     setId(0);
     setExtSubs(null);
@@ -167,7 +238,7 @@ export default function Player() {
     setId(nid || 0);
     if (isVideo(current)) {
       const srt = current.replace(/\.[^./]+$/, '.srt');
-      try { setExtSubs(parseSrt(fs.read(srt))); } catch (e) { /* sin .srt */ }
+      try { setExtSubs(parseSrt(fs.read(srt))); } catch (e) { /* no .srt */ }
     }
     wm.setTitle(win.id, baseName(current));
   }, [current, index]);
@@ -188,7 +259,7 @@ export default function Player() {
 
   useEffect(() => { if (p.state === 'ended') next(true); }, [p.state]);
 
-  // para el Centro de control y las teclas multimedia
+  // for Control Center and the media keys
   const tracks = lib.tracks;
   const meta = useMemo(() => tracks.find((x) => x.path === current) || null, [tracks, current]);
   useEffect(() => {
@@ -201,7 +272,7 @@ export default function Player() {
     });
   }, [current, id, p.playing, Math.floor(p.pos / 1000), p.duration, meta, p.info]);
 
-  // ocultar los controles del video
+  // hide the video controls
   const lastMove = useRef(0);
   useEffect(() => {
     if (!video || !p.playing) { setControls(true); return undefined; }
@@ -230,7 +301,7 @@ export default function Player() {
 
   const playList = (paths, i) => { setQueue(paths); setIndex(i); setShowVideo(isVideo(paths[i])); };
 
-  // subtítulos visibles ahora
+  // subtitles visible now
   const pos = seekPreview != null ? seekPreview : p.pos;
   const subs = subTrack >= 0 ? p.subs : extSubs;
   const cue = subs ? subs.filter((c) => c.start <= p.pos && p.pos < c.end).map((c) => c.text).join('\n') : '';
@@ -238,31 +309,52 @@ export default function Player() {
   const audioStreams = (p.info?.streams || []).filter((s) => s.type === 'audio');
   const label = (s, i) => [s.title, s.lang && s.lang !== 'und' ? s.lang : null].filter(Boolean).join(' · ') || tr('player.track', { n: i + 1 });
 
-  const transport = (dark) => {
-    const col = dark ? '#fff' : th.text, dim = dark ? 'rgba(255,255,255,0.7)' : th.textDim;
+  // ---- transport pieces (the library bar and the video overlay arrange them differently) ----
+  const buttons = (col) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, direction: 'ltr' }}>
+      {!video && <IconBtn glyph="⤮" size={15} color={col} active={shuffle} onClick={() => setShuffle(!shuffle)} />}
+      <IconBtn color={col} onClick={prev}><SkipGlyph size={14} color={col} back /></IconBtn>
+      <IconBtn color={col} box={36} onClick={toggle}>{p.playing ? <PauseGlyph size={16} color={col} /> : <PlayGlyph size={16} color={col} />}</IconBtn>
+      <IconBtn color={col} onClick={() => next(false)}><SkipGlyph size={14} color={col} /></IconBtn>
+      {!video && <IconBtn onClick={() => setRepeat(repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off')}>
+        <RepeatGlyph color={repeat !== 'off' ? th.accent : col} one={repeat === 'one'} />
+      </IconBtn>}
+    </View>
+  );
+  const progress = (dark) => {
+    const dim = dark ? 'rgba(255,255,255,0.7)' : th.textDim;
     return (
-      <View style={{ gap: 4 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, direction: 'ltr' }}>
-          <Text style={{ fontSize: 11, color: dim, width: 52, textAlign: 'end' }}>{mediaFormatTime(pos)}</Text>
-          <Bar style={{ flex: 1 }} value={p.duration ? pos / p.duration : 0} color={th.accent} track={dark ? 'rgba(255,255,255,0.25)' : th.control}
-            onChange={(f) => setSeekPreview(f * p.duration)} onCommit={(f) => { media.control(id, 'seek', Math.round(f * p.duration)); setSeekPreview(null); }} />
-          <Text style={{ fontSize: 11, color: dim, width: 52 }}>{mediaFormatTime(p.duration)}</Text>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, direction: 'ltr' }}>
-          {!video && <IconBtn glyph="⤮" color={col} active={shuffle} onClick={() => setShuffle(!shuffle)} />}
-          <IconBtn glyph="⏮" color={col} onClick={prev} />
-          <IconBtn glyph={p.playing ? '⏸' : '▶'} size={22} color={col} onClick={toggle} />
-          <IconBtn glyph="⏭" color={col} onClick={() => next(false)} />
-          {!video && <IconBtn glyph={repeat === 'one' ? '🔂' : '🔁'} color={col} active={repeat !== 'off'}
-            onClick={() => setRepeat(repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off')} />}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, direction: 'ltr' }}>
+        <Text style={{ fontSize: typeScale.caption, color: dim, width: 40, textAlign: 'end' }}>{mediaFormatTime(pos)}</Text>
+        <Bar style={{ flex: 1 }} value={p.duration ? pos / p.duration : 0} color={dark ? '#fff' : th.accent} track={dark ? 'rgba(255,255,255,0.25)' : th.control}
+          onChange={(f) => setSeekPreview(f * p.duration)} onCommit={(f) => { media.control(id, 'seek', Math.round(f * p.duration)); setSeekPreview(null); }} />
+        <Text style={{ fontSize: typeScale.caption, color: dim, width: 40 }}>{mediaFormatTime(p.duration)}</Text>
+      </View>
+    );
+  };
+  const volumeCtl = (dark, col) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, direction: 'ltr' }}>
+      <SpeakerGlyph size={13} color={dark ? '#fff' : th.textDim} level={volume} />
+      <Bar style={{ width: 84 }} value={volume / 1.5} color={dark ? '#fff' : th.textDim} track={dark ? 'rgba(255,255,255,0.25)' : th.control}
+        onChange={(f) => changeVolume(Math.round(f * 150) / 100)} />
+      {video && <IconBtn color={col} active={subTrack >= 0 || !!extSubs} onClick={() => setMenu(menu === 'subs' ? null : 'subs')}>
+        <CaptionsGlyph color={subTrack >= 0 || extSubs ? th.accent : col} />
+      </IconBtn>}
+      {video && audioStreams.length > 1 && <IconBtn glyph="♫" color={col} onClick={() => setMenu(menu === 'audio' ? null : 'audio')} />}
+      {video && <IconBtn glyph="⧉" color={col} active={win.mode === 'pip'} onClick={pip} />}
+      {video && <IconBtn glyph={win.mode === 'fullscreen' ? '⤡' : '⤢'} color={col} onClick={fullscreen} />}
+    </View>
+  );
+  // the video overlay: progress on top, the controls and the volume below
+  const transport = (dark) => {
+    const col = dark ? '#fff' : th.text;
+    return (
+      <View style={{ gap: 6 }}>
+        {progress(dark)}
+        <View style={{ flexDirection: 'row', alignItems: 'center', direction: 'ltr' }}>
           <View style={{ flex: 1 }} />
-          <Text style={{ fontSize: 14, color: col }}>{volume === 0 ? '🔇' : volume < 0.5 ? '🔈' : '🔊'}</Text>
-          <Bar style={{ width: 90 }} value={volume / 1.5} color={dark ? '#fff' : th.accent} track={dark ? 'rgba(255,255,255,0.25)' : th.control}
-            onChange={(f) => changeVolume(Math.round(f * 150) / 100)} />
-          {video && <IconBtn glyph="💬" color={col} active={subTrack >= 0 || !!extSubs} onClick={() => setMenu(menu === 'subs' ? null : 'subs')} />}
-          {video && audioStreams.length > 1 && <IconBtn glyph="♫" color={col} onClick={() => setMenu(menu === 'audio' ? null : 'audio')} />}
-          {video && <IconBtn glyph="⧉" color={col} active={win.mode === 'pip'} onClick={pip} />}
-          {video && <IconBtn glyph={win.mode === 'fullscreen' ? '⤡' : '⤢'} color={col} onClick={fullscreen} />}
+          {buttons(col)}
+          <View style={{ flex: 1, alignItems: 'flex-end' }}>{volumeCtl(dark, col)}</View>
         </View>
       </View>
     );
@@ -286,17 +378,17 @@ export default function Player() {
         ) : null}
         {small ? (
           <View style={{ position: 'absolute', right: 6, top: 6, flexDirection: 'row', gap: 2 }}>
-            <IconBtn glyph={p.playing ? '⏸' : '▶'} color="#fff" onClick={toggle} />
+            <IconBtn onClick={toggle}>{p.playing ? <PauseGlyph size={13} color="#fff" /> : <PlayGlyph size={13} color="#fff" />}</IconBtn>
             <IconBtn glyph="⧉" color="#fff" onClick={pip} />
           </View>
         ) : controls && (
-          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14, paddingTop: 24, paddingBottom: 8,
+          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 28, paddingBottom: 12,
             background: 'linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.75))' }}>
             {transport(true)}
           </View>
         )}
         {controls && !small && win.mode === 'window' && (
-          <View style={{ position: 'absolute', left: 10, top: 10 }}>
+          <View style={{ position: 'absolute', left: 12, top: 12 }}>
             <IconBtn glyph={direction() === 'rtl' ? '›' : '‹'} size={20} color="#fff" onClick={() => setShowVideo(false)} />
           </View>
         )}
@@ -311,45 +403,63 @@ export default function Player() {
     );
   }
 
-  // ---- biblioteca ----
+  // ---- library ----
   const albums = albumsOf(tracks), artists = artistsOf(tracks);
-  const row = (x, i, list, extra) => (
-    <View key={x.path} onDoubleClick={() => playList(list.map((y) => y.path), i)} onClick={() => playList(list.map((y) => y.path), i)}
-      style={{ height: 34, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, borderRadius: 6,
-        backgroundColor: x.path === current ? th.hover : i % 2 ? 'rgba(127,127,127,0.05)' : 'transparent' }}>
-      <Text style={{ width: 22, fontSize: 11, color: x.path === current ? th.accent : th.textDim, textAlign: 'end' }}>{x.path === current ? '♪' : extra ?? i + 1}</Text>
-      <Text style={{ flex: 2, fontSize: 12, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{x.title}</Text>
-      <Text style={{ flex: 1, fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{x.artist}</Text>
-      <Text style={{ flex: 1, fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{x.album}</Text>
-      <Text style={{ width: 48, fontSize: 11, color: th.textDim, textAlign: 'end' }}>{x.duration ? mediaFormatTime(x.duration) : ''}</Text>
+  const contentW = width - 200;
+  const showArtist = contentW >= 380, showAlbum = contentW >= 560;
+  const narrow = width < 720;
+  const col = (flex, extra) => ({ flex, minWidth: 0, fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden', ...extra });
+  const header = (
+    <View style={{ height: 26, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 10 }}>
+      <Hairline edge="bottom" />
+      <Text style={{ width: 22, fontSize: typeScale.caption, fontWeight: 600, color: th.textDim, textAlign: 'end' }}>#</Text>
+      <Text style={col(2, { fontSize: typeScale.caption, fontWeight: 600 })}>{tr('player.col.title')}</Text>
+      {showArtist && <Text style={col(1, { fontSize: typeScale.caption, fontWeight: 600 })}>{tr('player.col.artist')}</Text>}
+      {showAlbum && <Text style={col(1, { fontSize: typeScale.caption, fontWeight: 600 })}>{tr('player.col.album')}</Text>}
+      <Text style={{ width: 56, fontSize: typeScale.caption, fontWeight: 600, color: th.textDim, textAlign: 'end', whiteSpace: 'nowrap' }}>{tr('player.col.time')}</Text>
     </View>
   );
+  const row = (x, i, list, extra) => {
+    const on = x.path === current;
+    return (
+      <View key={x.path} onDoubleClick={() => playList(list.map((y) => y.path), i)} onClick={() => playList(list.map((y) => y.path), i)}
+        style={{ height: 30, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 10, borderRadius: 6,
+          backgroundColor: on ? th.hover : i % 2 ? (th.mode === 'dark' ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.025)') : 'transparent' }}>
+        <Text style={{ width: 22, fontSize: typeScale.caption, color: on ? th.accent : th.textDim, textAlign: 'end' }}>{on ? '♪' : extra ?? i + 1}</Text>
+        <Text style={col(2, { fontSize: 13, color: on ? th.accent : th.text, fontWeight: on ? 500 : 400 })}>{x.title}</Text>
+        {showArtist && <Text style={col(1)}>{x.artist}</Text>}
+        {showAlbum && <Text style={col(1)}>{x.album}</Text>}
+        <Text style={{ width: 56, fontSize: typeScale.caption, color: th.textDim, textAlign: 'end', direction: 'ltr' }}>{x.duration ? mediaFormatTime(x.duration) : ''}</Text>
+      </View>
+    );
+  };
+  const songList = (list, mk) => <View>{header}<View style={{ height: 4 }} />{list.map(mk)}</View>;
   let content;
   if (view === 'albums' || (view === 'artists' && sel)) {
     const list = view === 'artists' ? albums.filter((a) => a.artist === sel || a.tracks.some((x) => x.artist === sel)) : albums;
     if (view === 'albums' && sel) {
       const a = albums.find((x) => x.key === sel);
       content = a ? (
-        <View style={{ gap: 14 }}>
-          <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-end' }}>
+        <View style={{ gap: 20, paddingHorizontal: 10 }}>
+          <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-end' }}>
             <Cover path={a.tracks[0].path} size={140} radius={10} />
-            <View style={{ gap: 4, flex: 1 }}>
-              <Text style={{ fontSize: 22, fontWeight: 700, color: th.text }}>{a.album || tr('player.unknownAlbum')}</Text>
-              <Text style={{ fontSize: 14, color: th.accent }}>{a.artist || tr('player.unknownArtist')}</Text>
-              <Text style={{ fontSize: 12, color: th.textDim }}>{[a.year, tr('player.songs', { count: a.tracks.length })].filter(Boolean).join(' · ')}</Text>
+            <View style={{ gap: 4, flex: 1, minWidth: 0 }}>
+              <Text style={{ fontSize: typeScale.largeTitle, fontWeight: 600, color: th.text }}>{a.album || tr('player.unknownAlbum')}</Text>
+              <Text style={{ fontSize: typeScale.headline, color: th.accent }}>{a.artist || tr('player.unknownArtist')}</Text>
+              <Text style={{ fontSize: typeScale.callout, color: th.textDim }}>{[a.year, tr('player.songs', { count: a.tracks.length })].filter(Boolean).join(' · ')}</Text>
             </View>
           </View>
-          <View>{a.tracks.map((x, i) => row(x, i, a.tracks, x.track || i + 1))}</View>
+          <View style={{ marginHorizontal: -10 }}>{songList(a.tracks, (x, i) => row(x, i, a.tracks, x.track || i + 1))}</View>
         </View>
       ) : null;
     } else {
       content = (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 18 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 20, paddingHorizontal: 10 }}>
           {list.map((a) => (
-            <View key={a.key} onClick={() => { setView('albums'); setSel(a.key); }} style={{ width: 150, gap: 6 }}>
+            <View key={a.key} onClick={() => { setView('albums'); setSel(a.key); }} style={{ width: 150, gap: 2 }}>
               <Cover path={a.tracks[0].path} size={150} radius={8} />
-              <Text style={{ fontSize: 12, fontWeight: 600, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{a.album || tr('player.unknownAlbum')}</Text>
-              <Text style={{ fontSize: 11, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{a.artist || tr('player.unknownArtist')}</Text>
+              <Text style={{ fontSize: 13, fontWeight: 500, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden', marginTop: 6 }}>{a.album || tr('player.unknownAlbum')}</Text>
+              <Text style={{ fontSize: typeScale.callout, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{a.artist || tr('player.unknownArtist')}</Text>
             </View>
           ))}
         </View>
@@ -358,65 +468,77 @@ export default function Player() {
   } else if (view === 'artists') {
     content = (
       <View>{artists.map((a) => (
-        <View key={a.name} onClick={() => setSel(a.name)} style={{ height: 48, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8, borderRadius: 8 }}>
+        <View key={a.name} onClick={() => setSel(a.name)} style={{ height: 48, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 10, borderRadius: 8 }}>
           <Cover path={a.tracks[0].path} size={36} radius={18} />
-          <Text style={{ flex: 1, fontSize: 13, color: th.text }}>{a.name || tr('player.unknownArtist')}</Text>
-          <Text style={{ fontSize: 11, color: th.textDim }}>{tr('player.songs', { count: a.tracks.length })}</Text>
+          <Text style={{ flex: 1, minWidth: 0, fontSize: 13, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{a.name || tr('player.unknownArtist')}</Text>
+          <Text style={{ fontSize: typeScale.caption, color: th.textDim }}>{tr('player.songs', { count: a.tracks.length })}</Text>
         </View>
       ))}</View>
     );
   } else if (view === 'videos') {
     content = (
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 20, paddingHorizontal: 10 }}>
         {lib.videos.map((v, i) => <VideoCard key={v.path} v={v} onOpen={() => playList(lib.videos.map((x) => x.path), i)} />)}
       </View>
     );
   } else if (view === 'queue') {
-    content = <View>{queue.map((q, i) => row(tracks.find((x) => x.path === q) || { path: q, title: baseName(q), artist: '', album: '' }, i, queue.map((x) => ({ path: x }))))}</View>;
+    content = songList(queue, (q, i) => row(tracks.find((x) => x.path === q) || { path: q, title: baseName(q), artist: '', album: '' }, i, queue.map((x) => ({ path: x }))));
   } else {
-    content = <View>{tracks.slice().sort((a, b) => a.title.localeCompare(b.title)).map((x, i, list) => row(x, i, list))}</View>;
+    content = songList(tracks.slice().sort((a, b) => a.title.localeCompare(b.title)), (x, i, list) => row(x, i, list));
   }
   const titles = { songs: tr('player.songsTitle'), artists: sel || tr('player.artists'), albums: tr('player.albums'), videos: tr('player.videos'), queue: tr('player.queue') };
+  const empty = !((view === 'videos' ? lib.videos.length : tracks.length) || view === 'queue');
 
   return (
-    <View style={{ flex: 1, flexDirection: 'row' }} onMouseDown={() => setMenu(null)}>
-      <View style={{ width: 190, backgroundColor: th.sidebarBg, padding: 8, gap: 2 }}>
-        <SectionTitle>{tr('player.library')}</SectionTitle>
-        {[['songs', '♪'], ['artists', '👤'], ['albums', '◫'], ['videos', '▶']].map(([k, g]) => (
-          <SidebarItem key={k} label={tr(`player.nav.${k}`)} icon={g} selected={view === k} onClick={() => { setView(k); setSel(null); }} />
-        ))}
-        <SectionTitle>{tr('player.playing')}</SectionTitle>
-        <SidebarItem label={tr('player.nav.queue')} icon="≡" selected={view === 'queue'} onClick={() => setView('queue')} />
-        {current && isVideo(current) && <SidebarItem label={tr('player.nav.video')} icon="▣" selected={false} onClick={() => setShowVideo(true)} />}
-        <View style={{ flex: 1 }} />
-        {lib.scanning && <Text style={{ fontSize: 10, color: th.textDim, paddingHorizontal: 8 }}>{tr('player.scanning', { done: lib.done, total: lib.total })}</Text>}
-      </View>
-      <View style={{ flex: 1 }}>
-        <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 8 }}>
-          {sel && <IconBtn glyph={direction() === 'rtl' ? '›' : '‹'} size={18} onClick={() => setSel(null)} />}
-          <Text style={{ fontSize: 17, fontWeight: 700, color: th.text }}>{titles[view]}</Text>
+    <View ref={root} style={{ flex: 1 }} onMouseDown={() => setMenu(null)}>
+      <View style={{ flex: 1, flexDirection: 'row' }}>
+        <View style={{ width: 200, backgroundColor: th.sidebarBg, paddingHorizontal: 10, paddingTop: 4, gap: 2 }}>
+          <Hairline edge="end" />
+          <SectionTitle>{tr('player.library')}</SectionTitle>
+          {[['songs', '♪'], ['artists', '☺'], ['albums', '◫'], ['videos', '▶']].map(([k, g]) => (
+            <SidebarItem key={k} label={tr(`player.nav.${k}`)} icon={g} selected={view === k} onClick={() => { setView(k); setSel(null); }} />
+          ))}
+          <SectionTitle>{tr('player.playing')}</SectionTitle>
+          <SidebarItem label={tr('player.nav.queue')} icon="≡" selected={view === 'queue'} onClick={() => setView('queue')} />
+          {current && isVideo(current) && <SidebarItem label={tr('player.nav.video')} icon="▣" selected={false} onClick={() => setShowVideo(true)} />}
+          <View style={{ flex: 1 }} />
+          {lib.scanning && <Text style={{ fontSize: typeScale.caption, color: th.textDim, paddingHorizontal: 10, paddingBottom: 10 }}>{tr('player.scanning', { done: lib.done, total: lib.total })}</Text>}
         </View>
-        <ScrollView style={{ flex: 1, paddingHorizontal: 12 }}>
-          {(view === 'videos' ? lib.videos.length : tracks.length) || view === 'queue' ? content : (
-            <View style={{ padding: 40, alignItems: 'center', gap: 6 }}>
-              <Text style={{ fontSize: 28 }}>{view === 'videos' ? '🎬' : '🎵'}</Text>
-              <Text style={{ fontSize: 13, color: th.textDim, textAlign: 'center' }}>{tr(view === 'videos' ? 'player.emptyVideos' : 'player.emptyMusic')}</Text>
-            </View>
-          )}
-          <View style={{ height: 16 }} />
-        </ScrollView>
-        {current && <View style={{ height: 1, backgroundColor: th.separator }} />}
-        {current && (
-          <View style={{ height: 84, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, backgroundColor: th.sidebarBg }}>
-            <View onClick={() => isVideo(current) && setShowVideo(true)}><Cover path={current} size={56} /></View>
-            <View style={{ width: 170, gap: 2, overflow: 'hidden' }}>
-              <Text style={{ fontSize: 13, fontWeight: 600, color: th.text, whiteSpace: 'nowrap' }}>{meta?.title || p.info?.tags?.title || baseName(current)}</Text>
-              <Text style={{ fontSize: 11, color: th.textDim, whiteSpace: 'nowrap' }}>{meta?.artist || p.info?.tags?.artist || ''}</Text>
-            </View>
-            <View style={{ flex: 1 }}>{transport(false)}</View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ height: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, gap: 6 }}>
+            {sel && <ToolbarButton icon={direction() === 'rtl' ? '›' : '‹'} iconSize={20} title={tr('player.back')} onClick={() => setSel(null)} style={{ marginHorizontal: -6 }} />}
+            <Text style={{ fontSize: typeScale.largeTitle, fontWeight: 600, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{titles[view]}</Text>
           </View>
-        )}
+          {empty ? (
+            <EmptyState icon={view === 'videos' ? '▶' : '♪'} title={tr(view === 'videos' ? 'player.emptyVideosTitle' : 'player.emptyMusicTitle')}
+              hint={tr(view === 'videos' ? 'player.emptyVideos' : 'player.emptyMusic')} />
+          ) : (
+            <ScrollView style={{ flex: 1, paddingHorizontal: 10 }}>
+              {content}
+              <View style={{ height: 16 }} />
+            </ScrollView>
+          )}
+        </View>
       </View>
+      {current && (
+        <View style={{ height: 72, flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 16, backgroundColor: th.sidebarBg }}>
+          <Hairline edge="top" />
+          <View style={[{ minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 }, narrow ? null : { flex: 1 }]}>
+            <View onClick={() => isVideo(current) && setShowVideo(true)}><Cover path={current} size={48} /></View>
+            {!narrow && (
+              <View style={{ flex: 1, minWidth: 0, gap: 2, overflow: 'hidden' }}>
+                <Text style={{ fontSize: 13, fontWeight: 600, color: th.text, whiteSpace: 'nowrap' }}>{meta?.title || p.info?.tags?.title || baseName(current)}</Text>
+                <Text style={{ fontSize: typeScale.callout, color: th.textDim, whiteSpace: 'nowrap' }}>{meta?.artist || p.info?.tags?.artist || ''}</Text>
+              </View>
+            )}
+          </View>
+          <View style={[{ minWidth: 0, gap: 2 }, narrow ? { flex: 1 } : { width: 380 }]}>
+            {buttons(th.text)}
+            {progress(false)}
+          </View>
+          {!narrow && <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>{volumeCtl(false, th.text)}</View>}
+        </View>
+      )}
     </View>
   );
 }
@@ -425,11 +547,11 @@ function VideoCard({ v, onOpen }) {
   const th = useTheme();
   const thumb = useThumb(v.path, 320);
   return (
-    <View onClick={onOpen} style={{ width: 200, gap: 6 }}>
+    <View onClick={onOpen} style={{ width: 200, gap: 8 }}>
       <View style={{ width: 200, height: 112, borderRadius: 8, overflow: 'hidden', backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' }}>
         {thumb ? <Image src={thumb} style={{ width: 200, height: 112, objectFit: 'cover' }} /> : <Text style={{ fontSize: 26, color: '#666' }}>▶</Text>}
       </View>
-      <Text style={{ fontSize: 12, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{v.title}</Text>
+      <Text style={{ fontSize: 13, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{v.title}</Text>
     </View>
   );
 }

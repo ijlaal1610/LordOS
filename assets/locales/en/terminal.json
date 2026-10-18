@@ -304,5 +304,6 @@
     "other": "{count} sessions restored after the server restarted"
   },
   "toast.saveFailed": "Could not save",
-  "toast.saved": "Saved to {path}"
+  "toast.saved": "Saved to {path}",
+  "find.close": "Close find"
 }
