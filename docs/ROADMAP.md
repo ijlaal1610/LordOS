@@ -490,7 +490,7 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   `PRIVACY.md`): read-only frame ring from `lord-media` with validated ACKs, photo/video through
   the powerbox, instant revoke; one Wayland toplevel per window, grouped in the Dock, «New
   window» from the app and the Dock.
-- [ ] **Visual polish, app by app** (before the ISO): review every native app
+- [x] **Visual polish, app by app** (before the ISO; done 2026-10-18, see `docs/polish/`): review every native app
   (Settings, Files, Terminal, Store, Editor, Notes, Calculator, Monitor, PDF, Fonts,
   Emoji, Scanner, Photos, Player, Screenshots, Camera, Recorder, Passwords, Disks, Backups,
   Logs, Clock, Help, Mail…) following our design guide, modeled on widely used desktop human-interface conventions (`DESIGN.md`): 8 px grid,

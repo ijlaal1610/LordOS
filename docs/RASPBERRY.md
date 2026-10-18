@@ -108,7 +108,7 @@ as they are: the fix is the kernel.
 what LordOS needs:
 
 ```sh
-# on the Pi (arm64 Debian 13), ~70–90 min per flavour on a Pi 5 with 4 cores
+# on the Pi (arm64 Debian 13): about 50 min per flavour on a Pi 5 (4 cores, SD card, Active Cooler)
 sudo apt-get install -y --no-install-recommends build-essential bc bison flex libssl-dev libelf-dev \
   libdw-dev dwarves cpio kmod rsync dpkg-dev debhelper git
 tools/rpi/build-kernel.sh /var/tmp/lordos-kernel all     # 2712 (Pi 5), v8 (Pi 4), or all
@@ -143,6 +143,14 @@ tools/rpi/build-kernel.sh /var/tmp/lordos-kernel all     # 2712 (Pi 5), v8 (Pi 4
   on, so it installs exactly like Raspberry Pi's: `kernel_2712.img`, initramfs, device trees and
   overlays in `/boot/firmware`. The script checks the package carries the device trees and
   overlays. Headers are built too (`linux-headers-*`), not put in the image.
+  - `make` gets `LOCALVERSION=` (empty): otherwise, in a git tree that isn't at a tag, the release
+    gets a trailing `+` (`…-rpi-2712+`) and the hook skips it as an unknown flavour.
+  - `make dtbs_install` doesn't install `overlays/README`, which the hook copies (and fails
+    without): the script adds it to the package.
+  - Measured on 2026-10-18 on the Pi 5 (load 4, 40–55 °C with the Active Cooler): 2712 in 50 min,
+    v8 in 49 min. `linux-image-6.18.57-lordos-rpi-2712_6.18.57-1+lordos_arm64.deb` 32 MB (vmlinuz
+    10 MB, 385 overlays) and `linux-image-6.18.57-lordos-rpi-v8_…` 33 MB; `out/SHA256SUMS` lists
+    them. The v8 diff is the same three options (`-v8` → `-lordos-rpi-v8`).
 - **Not replaced by the archive.** `build-img.sh` installs the LordOS `.debs` from `KERNEL_DEBS`
   (default `/var/tmp/lordos-kernel/out`) instead of `linux-image-rpi-<flavour>`, and writes
   `/etc/apt/preferences.d/lordos-kernel` with priority -1 for Raspberry Pi's kernel packages of
@@ -548,6 +556,9 @@ on the development machine.
 | EGL/GBM | `V3D 7.1.10.2`, OpenGL ES 3.1 (`eglinfo -p gbm`). LordOS's GPU path on screen not exercised (no monitor) |
 | Video (FFmpeg CLI) | HEVC 1080p30 through `rpi-hevc-dec` (`/dev/video19`, `-hwaccel drm -hwaccel_output_format drm_prime`): 300 frames in 0.54 s with 0.12 s of CPU. Software, 4 threads: HEVC 1080p 251 fps, H.264 1080p ~420 fps (synthetic `testsrc2` clip: real content is heavier). lord-media only knows VA-API, so inside LordOS HEVC is software for now |
 | `build-img.sh` natively on the Pi | ✅ after the key fix (above): 7 min 58 s from the SD card. `/var/tmp/lordos-rpi/out/lordos-0.7.0-rpi5-arm64.img.xz`, 500 MB (2651 MB uncompressed, system 1412 MB). Kernel 6.18.50+rpt, `kernel_2712.img`/`kernel8.img`, initramfs, 386 overlays. **The image hasn't been booted yet** (the board's only SD is the running system) |
+| LordOS kernel (`build-kernel.sh all`, natively) | ✅ `6.18.57-lordos-rpi-2712` (50 min) and `6.18.57-lordos-rpi-v8` (49 min), Landlock built in; installed in a chroot: `raspi-firmware`'s hook copied `kernel_2712.img`, initramfs, device trees and 388 overlays. **Not booted yet** (the board's SD is the running system) |
+| `build-img.sh` with the LordOS kernels, lord-fand and the switch files | ✅ 8 min 18 s. `lordos-0.7.0-rpi5-arm64.img.xz`, 503,485,468 bytes (2673 MB uncompressed, system 1431 MB), SHA-256 `d47778e6cb8a614b3bb104d14f808dcdf27a4a4f6f61dc50c055cccc9f5cb045`. Checked read-only: `kernel_2712.img` = our vmlinuz, `lsm=landlock,…` in `cmdline.txt`, the apt pin, SSH installed but off, `lord-fand` enabled, `verify-board` present |
+| `firstboot` switch files (in a chroot of the image) | ✅ user + Wi-Fi from `lordos-user.txt` (SSID with quotes, `wifi_country` → `cmdline.txt`), `remote-desktop` with `port=5800` → `/etc/lordos/remote/config`, kept while the only account had no password, `allow=group` creates `lordos-remote`, a bad `port=99` falls back to 5673; the files are deleted |
 
 Found and fixed on the board:
 

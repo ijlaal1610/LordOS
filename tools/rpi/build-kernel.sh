@@ -2,7 +2,7 @@
 # build-kernel.sh — the LordOS Raspberry Pi kernel: Raspberry Pi's own kernel source and defconfig,
 # plus what LordOS needs that it lacks (Landlock). See docs/RASPBERRY.md, "The LordOS kernel".
 #
-# Usage (on an arm64 Debian 13, ideally the Pi itself; ~70–90 min per flavour on a Pi 5):
+# Usage (on an arm64 Debian 13, ideally the Pi itself; about 50 min per flavour on a Pi 5):
 #   tools/rpi/build-kernel.sh [work folder] [2712|v8|all]     # default /var/tmp/lordos-kernel 2712
 #
 # Result: <work>/out/linux-image-<release>_<version>_arm64.deb (+ linux-headers-…), where
@@ -43,7 +43,7 @@ done
 # raspi-firmware's kernel hook copies overlays/README along with the overlays and fails without it;
 # Raspberry Pi's own packages ship it, `make dtbs_install` doesn't: added to the package here.
 add_overlay_readme() {   # .deb, kernel release
-    dpkg-deb -c "$1" | grep -q "usr/lib/linux-image-$2/overlays/README\$" && return 0
+    dpkg-deb -c "$1" | grep -c "usr/lib/linux-image-$2/overlays/README\$" > /dev/null && return 0
     R="$WORK/repack"
     rm -rf "$R"; dpkg-deb -R "$1" "$R"
     install -m 644 "$SRC/arch/arm/boot/dts/overlays/README" "$R/usr/lib/linux-image-$2/overlays/README"
@@ -109,10 +109,12 @@ for FL in $FLAVOURS; do
     echo "   config diff: $(grep -c '^[<>]' "$OUT/config-$KV$LV.diff") lines ($OUT/config-$KV$LV.diff)"
 
     T0=$(date +%s)
-    rm -f "$WORK"/linux-*"$KV$LV"*.deb "$WORK"/linux-libc-dev_*.deb
+    rm -f "$WORK"/linux-*"$KV$LV"*.deb "$WORK"/linux-libc-dev_*.deb "$WORK"/linux-lordos-rpi-"$FL"_*
     # bindeb-pkg leaves the .debs in the parent of the build folder ($WORK)
     # shellcheck disable=SC2086
-    make -C "$SRC" O="$B" ARCH=arm64 $CROSS -j"$JOBS" \
+    # LOCALVERSION= (empty): without it setlocalversion appends "+" for a git tree that isn't at a
+    # tag, giving "…-rpi-2712+", which raspi-firmware's hook doesn't recognize as a flavour
+    make -C "$SRC" O="$B" ARCH=arm64 $CROSS -j"$JOBS" LOCALVERSION= \
         KDEB_PKGVERSION="$KV-$KREV+lordos" KDEB_SOURCENAME="linux-lordos-rpi-$FL" \
         KBUILD_BUILD_USER=lordos KBUILD_BUILD_HOST=lordos \
         bindeb-pkg > "$OUT/build-$FL.log" 2>&1 || { tail -40 "$OUT/build-$FL.log"; exit 1; }
@@ -120,13 +122,14 @@ for FL in $FLAVOURS; do
     for d in "$WORK/linux-image-$KV$LV"_*.deb "$WORK/linux-headers-$KV$LV"_*.deb; do
         [ -f "$d" ] && mv "$d" "$OUT/"
     done
-    rm -f "$WORK"/linux-libc-dev_*.deb "$WORK/linux-image-$KV$LV"-dbg_*.deb
-    IMGDEB=$(ls "$OUT/linux-image-$KV$LV"_*.deb)
+    rm -f "$WORK"/linux-libc-dev_*.deb "$WORK/linux-image-$KV$LV"-dbg_*.deb "$WORK"/linux-lordos-rpi-"$FL"_*
+    IMGDEB=$(ls "$OUT/linux-image-$KV$LV"_*.deb 2>/dev/null) || {
+        echo "build-kernel.sh: no linux-image-$KV$LV package; built: $(ls "$WORK"/*.deb 2>/dev/null)" >&2; exit 1; }
     add_overlay_readme "$IMGDEB" "$KV$LV"
     # the device trees and overlays where raspi-firmware's hook looks for them
-    dpkg-deb -c "$IMGDEB" | grep -q "usr/lib/linux-image-$KV$LV/broadcom/bcm2712-rpi-5-b.dtb" ||
+    dpkg-deb -c "$IMGDEB" | grep -c "usr/lib/linux-image-$KV$LV/broadcom/bcm27.*\.dtb" > /dev/null ||
         { echo "build-kernel.sh: $IMGDEB has no device trees in /usr/lib/linux-image-$KV$LV/broadcom" >&2; exit 1; }
-    dpkg-deb -c "$IMGDEB" | grep -q "usr/lib/linux-image-$KV$LV/overlays/.*\.dtbo" ||
+    dpkg-deb -c "$IMGDEB" | grep -c "usr/lib/linux-image-$KV$LV/overlays/.*\.dtbo" > /dev/null ||
         { echo "build-kernel.sh: $IMGDEB has no overlays" >&2; exit 1; }
     echo "   built in $(( (T1 - T0) / 60 )) min: $(basename "$IMGDEB") ($(du -h "$IMGDEB" | cut -f1))"
 done
