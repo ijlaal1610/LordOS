@@ -32,6 +32,7 @@ export default function About() {
       <Text style={{ fontSize: typeScale.largeTitle, fontWeight: 600, color: t.text, marginTop: 12 }}>LordOS</Text>
       <Text style={{ fontSize: typeScale.callout, color: t.textDim, marginTop: 2 }}>{ver.channel ? tr('about.versionChannel', { v: ver.version, channel: ver.channel }) : tr('about.version', { v: ver.version })}</Text>
       {ver.build ? <Text style={{ fontSize: typeScale.caption, color: t.textDim, marginTop: 1 }}>{tr('about.build', { b: ver.build })}</Text> : null}
+      <Text style={{ fontSize: typeScale.callout, color: t.textDim, marginTop: 10, maxWidth: 320, textAlign: 'center', lineHeight: 17 }}>{tr('about.tagline')}</Text>
       <View style={{ alignSelf: 'stretch', marginTop: 16, gap: 2 }}>
         <InfoRow k={tr('about.os')} v={info.os} />
         <InfoRow k={tr('about.kernel')} v={`${info.kernel} (${info.arch})`} />

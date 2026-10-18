@@ -26,6 +26,7 @@
     "other": "{ms} ms · {count} nodos"
   },
   "server": "Servidor gráfico",
+  "tagline": "Un escritorio libre, rápido y seguro, construido desde cero sobre Linux.",
   "uptime": "Encendido hace",
   "version": "Versión {v}",
   "versionChannel": "Versión {v} · {channel}"
