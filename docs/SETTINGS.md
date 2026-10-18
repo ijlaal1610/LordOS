@@ -3,13 +3,13 @@
 Six Settings pages laid out like the system settings of popular desktop systems, with the hardware side in
 `server/src/hw/` (C, libc only) and the session side in `sdk/hardware.jsx`, `sdk/defaults.js` and
 `sdk/notify.js`. Tested on VM 118 (`lordos-notes`) with `lord-sessiond`, virtio-gpu and a virtual
-Bluetooth controller (`btvirt`). Screenshots: `docs/ajustes-*.png`.
+Bluetooth controller (`btvirt`). Screenshots: `docs/settings-*.png`.
 
-Screenshots, dark and light: Displays (`ajustes-pantallas-oscuro.png`, `-claro.png`), Bluetooth
-(`ajustes-bluetooth-*`), Energy (`ajustes-energia-*`), Notifications (`ajustes-notificaciones-*`,
-plus `ajustes-notificaciones-app-claro.png`), Date & Time (`ajustes-fecha-hora-*`), Default Apps
-(`ajustes-apps-por-defecto-*`); the revert countdown in both modes (`ajustes-pantallas-revertir.png`,
-`ajustes-pantallas-revertir-claro.png`), 200 % before sharp HiDPI (`ajustes-pantallas-200.png`; now see `DISPLAYS.md`), rotation, Night Light,
+Screenshots, dark and light: Displays (`settings-displays-dark.png`, `-light.png`), Bluetooth
+(`settings-bluetooth-*`), Energy (`settings-power-*`), Notifications (`settings-notifications-*`,
+plus `settings-notifications-app-light.png`), Date & Time (`settings-date-time-*`), Default Apps
+(`settings-default-apps-*`); the revert countdown in both modes (`settings-displays-revert.png`,
+`settings-displays-revert-light.png`), 200 % before sharp HiDPI (`settings-displays-200-percent.png`; now see `DISPLAYS.md`), rotation, Night Light,
 pairing, Sound with a Bluetooth headset, a Linux app's notification and Files' "Open With".
 
 | Page | Sidebar group | Code |
@@ -56,7 +56,7 @@ timer that sleeps until the next change (30 s steps only during the 30-minute fa
 
 ## Displays
 
-![Displays](ajustes-pantallas-oscuro.png)
+![Displays](settings-displays-dark.png)
 
 - **Outputs and modes.** `kms_outputs()` reads every connector with its modes and EDID blob.
   `hw/edid.c` parses the base block (vendor, product, serial, name descriptor, size, native
@@ -73,8 +73,8 @@ timer that sleeps until the next change (30 s steps only during the 30-minute fa
   `startShell`, so it works even if Settings is closed) and goes back to the previous mode after
   15 seconds without an answer, as popular desktop systems do.
 
-  ![Keep these display settings](ajustes-pantallas-revertir.png)
-  ![The same in light mode](ajustes-pantallas-revertir-claro.png)
+  ![Keep these display settings](settings-displays-revert.png)
+  ![The same in light mode](settings-displays-revert-light.png)
 - **Saved per display.** "Keep" writes `~/.config/lordos/displays.json`:
 
   ```json
@@ -100,7 +100,7 @@ timer that sleeps until the next change (30 s steps only during the 30-minute fa
   which are mapped back (`display_unrotate_point`) when there is one display. A rotated display
   turns the GPU path off.
 
-  ![Rotated 90°](ajustes-pantallas-rotada.png)
+  ![Rotated 90°](settings-displays-rotated.png)
 - **Scale** (100, 125, 150, 175, 200 %), per display, sharp: the UI is laid out in logical px and
   rasterized at the display's resolution (text, vectors, images, the Terminal, the cursor). The
   menu marks the **recommended** one, from the EDID size (about 110 logical px per inch, never
@@ -119,7 +119,7 @@ timer that sleeps until the next change (30 s steps only during the 30-minute fa
   each damaged rectangle while copying the frame, and the page says so; the cursor is not tinted
   then, and the GPU path is not tinted (pending: a multiply pass in `gpu.c`).
 
-  ![Night Light applied](ajustes-night-shift.png)
+  ![Night Light applied](settings-night-light.png)
 
   Schedule: off, **sunset to sunrise** or **custom hours**, with a 30-minute fade, plus "Turn on
   now" (until the end of tonight's schedule, or 07:00). Sunrise and sunset come from the Almanac
@@ -135,7 +135,7 @@ timer that sleeps until the next change (30 s steps only during the 30-minute fa
 
 ## Bluetooth
 
-![Bluetooth](ajustes-bluetooth-oscuro.png)
+![Bluetooth](settings-bluetooth-dark.png)
 
 `hw/bt.c` talks to BlueZ (`bluetoothd`, Debian package `bluez`) on the system bus with our own D-Bus
 client (`vault/dbus.c`, plus `dbus_connect_system()`). One connection for Settings
@@ -157,7 +157,7 @@ and signals dispatched to handlers.
   Calls to the agent from anyone but bluetoothd are refused. A device that went through pairing may
   use its services without asking again.
 
-  ![Pairing request](ajustes-bluetooth-vincular.png)
+  ![Pairing request](settings-bluetooth-pairing.png)
 - **Audio.** Headphones and speakers become PipeWire devices through WirePlumber's BlueZ monitor
   (Debian `libspa-0.2-bluetooth`) and appear in Settings → Sound. WirePlumber 0.5 only enables
   Bluetooth for a user whose session is active **on a logind seat**; sessions started by
@@ -172,7 +172,7 @@ and signals dispatched to handlers.
   }
   ```
 
-  ![A Bluetooth headset in Sound](ajustes-sonido-bluetooth.png)
+  ![A Bluetooth headset in Sound](settings-sound-bluetooth-output.png)
 
 Tested with `btvirt -l2` (bluez-test-tools) on VM 118: two virtual controllers on one virtual
 radio. hci1 plays a headset (class 0x240404, discoverable, a `bluetoothctl` agent fed through a
@@ -183,7 +183,7 @@ with real hardware** (no controller in the VMs).
 
 ## Energy (Battery)
 
-![Energy](ajustes-energia-oscuro.png)
+![Energy](settings-power-dark.png)
 
 - **Battery.** `hw/power.c` reads `/sys/class/power_supply` (`energy_*`/`power_now` or
   `charge_*`/`current_now`/`voltage_now`): percentage, time to empty or to full (the kernel's
@@ -228,7 +228,7 @@ the peer and reports `canChange`. Monitor has the same view read-only, with a hi
 
 ## Notifications
 
-![Notifications](ajustes-notificaciones-oscuro.png)
+![Notifications](settings-notifications-dark.png)
 
 `sdk/notify.js` gained a policy, applied to every `notify()`:
 
@@ -247,11 +247,11 @@ the peer and reports `canChange`. Monitor has the same view read-only, with a hi
   become LordOS banners with the app's icon and actions, and follow the same per-app settings (the
   key is `linux:<desktop id>`, from the `desktop-entry` hint). Body markup is reduced to text.
 
-  ![A Linux app's notification](ajustes-notificaciones-linux.png)
+  ![A notification banner (the test button in Settings; a Linux app's notifications look the same)](settings-notifications-linux-app.png)
 
 ## Date & Time
 
-![Date & Time](ajustes-fecha-hora-oscuro.png)
+![Date & Time](settings-date-time-dark.png)
 
 - **Automatic time:** systemd-timesyncd, switched with the closed action `time-ntp on|off`
   (`timedatectl set-ntp`); its state (NTP on, synchronized, available) is read from timedated over
@@ -267,7 +267,7 @@ the peer and reports `canChange`. Monitor has the same view read-only, with a hi
 
 ## Default Apps
 
-![Default Apps](ajustes-apps-por-defecto-oscuro.png)
+![Default Apps](settings-default-apps-dark.png)
 
 Browser, mail, music, video, images, PDF, text editor and terminal. Candidates are LordOS's own apps
 and the Linux apps whose `.desktop` `MimeType` covers the category (terminals: `Categories` with
@@ -286,7 +286,7 @@ and the Linux apps whose `.desktop` `MimeType` covers the category (terminals: `
   (the same rules as `launchWith`: a real path in the home or `/media/$USER`, one argument, no
   shell); it returns false when the default is a LordOS app, which the theme opens itself.
 
-  ![Open With](ajustes-archivos-abrir-con.png)
+  ![Open With](files-open-with-menu.png)
 
 ## Admin actions
 

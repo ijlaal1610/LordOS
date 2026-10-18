@@ -17,7 +17,7 @@ The port is **5673**, which spells "LORD" on a phone keypad.
 - **It's off by default.** It's turned on and off in Settings → Sharing → «Remote Desktop», as on
   popular desktop systems.
 
-![Settings → Sharing](m8-remoto-ajustes.png)
+![Settings → Sharing](remote-desktop-settings.png)
 
 ## Settings → Sharing
 
@@ -35,7 +35,7 @@ lord-sessiond. Turning remote off cuts the connections, but the sessions stay op
 
 ## Login
 
-![Web login](m8-remoto-login-web.png)
+![Web login](remote-desktop-web-login.png)
 
 The page has the same look as the monitor's login screen: background, date, large clock, avatar
 and rounded fields. It has a language selector (es, en, pt) and an error shakes the field.
@@ -165,8 +165,8 @@ session's PipeWire:
 
 ## Screenshots
 
-- ![same session from the browser](m8-remoto-navegador-misma-sesion.png)
-- ![notice on the monitor](m8-remoto-monitor-aviso.png)
-- ![bob with his own desktop](m8-remoto-bob-propio.png)
-- ![Latin American keyboard from the browser (ñ)](m8-remoto-teclado-latam.png)
-- ![lock: the browser goes back to the login](m8-remoto-bloqueo-web.png)
+- ![same session from the browser](remote-desktop-browser-same-session.png)
+- ![notice on the monitor](remote-desktop-monitor-notice.png)
+- ![bob with his own desktop](remote-desktop-own-session.png)
+- ![Latin American keyboard from the browser (ñ)](remote-desktop-keyboard-layout.png)
+- ![lock: the browser goes back to the login](remote-desktop-web-locked.png)

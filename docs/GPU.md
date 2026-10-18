@@ -15,11 +15,11 @@ and its buffers and the apps' dmabufs become framebuffers with `DRM_IOCTL_MODE_A
 
 | | |
 |---|---|
-| ![ui](m7-gpu-ui.png) | ![gtk](m7-gpu-gtk.png) |
+| ![ui](gpu-ui.png) | ![gtk](gpu-gtk.png) |
 | The LordOS UI composited by EGL/GLES2 | GTK Demo (shm) under the Dock: the stacking order between app windows and LordOS windows is respected |
-| ![menu](m7-gpu-menu.png) | ![dmabuf](m7-gpu-dmabuf.png) |
+| ![menu](gpu-menu.png) | ![dmabuf](gpu-dmabuf.png) |
 | GTK menu (xdg_popup) on the top layer | `dmabuf-client`: an app's dmabuf buffers (udmabuf, linear) at 72 FPS, 400/400 presented |
-| ![fs](m7-gpu-pantalla-completa.png) | |
+| ![fs](gpu-fullscreen.png) | |
 | Fullscreen: the compositor presents it on top of everything | |
 
 ## How the path is chosen

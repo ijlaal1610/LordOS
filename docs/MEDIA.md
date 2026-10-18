@@ -19,36 +19,36 @@ We took the way the apps of popular desktop systems work, never their logos or t
 
 | | |
 |---|---|
-| ![photo library](m9-media-fotos-biblioteca.png) | ![avif](m9-media-fotos-avif.png) |
+| ![photo library](photos-library.png) | ![avif](photos-avif.png) |
 | Photo library: thumbnails made by lord-media (PNG, JPEG, WebP, BMP, HEIC, AVIF and GIF) | Viewer with an AVIF |
-| ![zoom](m9-media-fotos-zoom.png) | ![edit](m9-media-fotos-editar.png) |
+| ![zoom](photos-zoom.png) | ![edit](photos-edit.png) |
 | Rotated 90° and at 150 % | Editing: crop, brightness and contrast live; "Save as copy" |
-| ![albums](m9-media-musica-albumes.png) | ![playing](m9-media-musica-reproduciendo.png) |
+| ![albums](music-albums.png) | ![playing](music-now-playing.png) |
 | Music library by album, with covers from the tags | Playing: queue, shuffle and repeat |
-| ![control center](m9-media-centro-control.png) | ![video](m9-media-video-subtitulos.png) |
+| ![control center](media-control-center.png) | ![video](video-subtitles.png) |
 | The Control Center with what's playing | Big Buck Bunny 1080p with `.srt` subtitles |
-| ![mkv](m9-media-video-subtitulos-mkv.png) | ![full screen](m9-media-video-pantalla-completa.png) |
+| ![mkv](video-subtitles-mkv.png) | ![full screen](video-fullscreen.png) |
 | Subtitles from an MKV's track | Full screen |
-| ![picture in picture](m9-media-video-imagen-en-imagen.png) | ![open with](m9-media-archivos-abrir-con.png) |
+| ![picture in picture](video-picture-in-picture.png) | ![open with](media-open-with.png) |
 | Picture in picture over Files | Files: video thumbnails and "Open with → Player" |
-| ![panel](m9-media-capturas-panel.png) | ![permission](m9-media-capturas-permiso.png) |
+| ![panel](screenshots-panel.png) | ![permission](screenshots-permission.png) |
 | The Screenshots panel (❖⇧5) | The system asks for the screen permission the first time |
-| ![area](m9-media-capturas-area.png) | ![annotate](m9-media-capturas-anotar.png) |
+| ![area](screenshots-area.png) | ![annotate](screenshots-annotate.png) |
 | Capturing an area over the frozen screen | Editor: arrow, box, blur and text, at full resolution |
-| ![recording](m9-media-grabacion-en-curso.png) | ![frame](m9-media-grabacion-cuadro.png) |
+| ![recording](screen-recording-in-progress.png) | ![frame](screen-recording-frame.png) |
 | Recording the screen (orange microphone indicator) | A frame of the recorded MP4: protected Notes comes out black |
-| ![camera](m9-media-camara.png) | ![recorder](m9-media-grabadora-grabando.png) |
+| ![camera](camera.png) | ![recorder](recorder-recording.png) |
 | Camera (v4l2loopback; see "Tests"), with mirror and the green dot | Recorder: live level |
-| ![waveform](m9-media-grabadora.png) | ![trim](m9-media-grabadora-recortar.png) |
+| ![waveform](recorder.png) | ![trim](recorder-trim.png) |
 | The recording with its waveform | Trim and export |
-| ![rtl](m9-media-rtl.png) | |
+| ![rtl](media-rtl.png) | |
 | The Player in Arabic (right to left) | |
 
 ### Protected windows
 
 | On screen | In the screenshot | On remote desktop |
 |---|---|---|
-| ![screen](m9-media-protegida-pantalla.png) | ![screenshot](m9-media-protegida-captura.png) | ![remote](m9-media-protegida-remoto.png) |
+| ![screen](protected-window-screen.png) | ![screenshot](protected-window-capture.png) | ![remote](protected-window-remote.png) |
 | Protected Notes looks normal (below, the screenshot's thumbnail) | The saved PNG: the Notes content is black | What the browser receives over the remote's WebSocket |
 
 ## Architecture

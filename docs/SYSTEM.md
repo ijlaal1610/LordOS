@@ -21,11 +21,11 @@ The LordOS disk utility, like GNOME Disks.
 
 | | |
 |---|---|
-| ![disks](m9-sistema-discos.png) | ![health](m9-sistema-discos-smart.png) |
+| ![disks](disks.png) | ![health](disks-smart.png) |
 | A USB stick with its exFAT partition mounted | Health of the SATA disk: our own SMART over SG_IO, with the attributes |
-| ![format](m9-sistema-discos-formatear.png) | ![erase](m9-sistema-discos-confirmar.png) |
+| ![format](disks-format.png) | ![erase](disks-confirm.png) |
 | Format: FAT32, exFAT, ext4 or NTFS (if `mkfs.ntfs` is present), with the label | The confirmation says what gets erased and asks to type the disk name |
-| ![bootable usb](m9-sistema-discos-usb-arranque.png) | ![verified](m9-sistema-discos-usb-verificado.png) |
+| ![bootable usb](disks-boot-usb.png) | ![verified](disks-boot-usb-verified.png) |
 | Create a bootable USB: copying, with "Cancel" | Copied and verified (SHA-256 by reading the disk back); the image's partition shows up on its own |
 
 ### How it is built
@@ -257,11 +257,11 @@ home folder needs no root, so no new action was added to `admin.c`.
 
 | | |
 |---|---|
-| ![settings](m9-sistema-copias-ajustes.png) | ![progress](m9-sistema-copias-progreso.png) |
+| ![settings](backup-settings.png) | ![progress](backup-progress.png) |
 | Settings: destination (the user's mounted disks or a folder), schedule, battery and exclusions | "Back Up Now": progress by files and bytes, with Pause and Stop |
-| ![browse](m9-sistema-copias-explorar.png) | ![restored](m9-sistema-copias-restaurado.png) |
+| ![browse](backup-browse.png) | ![restored](backup-restored.png) |
 | Backups by date and the tree of each one | Restoring a deleted file: session notification when done |
-| ![encryption](m9-sistema-copias-cifrado.png) | ![locked](m9-sistema-copias-bloqueadas.png) |
+| ![encryption](backup-encryption.png) | ![locked](backup-locked.png) |
 | Turning on encryption for a new destination | Encrypted and locked destination: a wrong passphrase is rejected |
 
 The screenshots were taken before the backup folder was renamed from `LordOS-Copias` to
@@ -528,9 +528,9 @@ thread work.
 
 | | |
 |---|---|
-| ![my logs](m9-sistema-registros.png) | ![system](m9-sistema-registros-sistema.png) |
+| ![my logs](logs.png) | ![system](logs-system.png) |
 | My logs: the user's journal, read as the user (164 entries in 5 ms) | System, 24 h, through `logs-system` (lord is in `sudo` but not in `adm`): 3000 entries in 109 ms, with the detail of an entry |
-| ![search](m9-sistema-registros-buscar.png) | ![live](m9-sistema-registros-envivo.png) |
+| ![search](logs-search.png) | ![live](logs-live.png) |
 | Search "lord-netd": its DHCP renewals every ~4.5 min (T1 of a 10 min lease) | Live: `logger` lines sent over ssh after the view opened (7 and 8) appear without reloading |
 
 Export of the "lord-netd" view: `~/Documentos/Registros-20261018-035235.txt`, 203 lines.
@@ -634,7 +634,7 @@ dismissNotification(id);
 
 | | |
 |---|---|
-| ![world clock](m9-sistema-reloj-mundial.png) | ![alarm](m9-sistema-reloj-alarma.png) |
+| ![world clock](clock-world.png) | ![alarm](clock-alarm.png) |
 | World clock with several cities | The alarm rings with Clock closed: notification with Stop and Snooze, ⏰ in the bar |
 
 ## Help (`apps/help`)
@@ -707,9 +707,9 @@ Users, the system apps, and where help is), with "Skip", "Back" and "Next".
 
 | | |
 |---|---|
-| ![welcome](m9-sistema-ayuda-bienvenida.png) | ![article](m9-sistema-ayuda-articulo.png) |
+| ![welcome](help-welcome.png) | ![article](help-article.png) |
 | "Welcome to LordOS" on first login | An article opened from Search, with links to other articles |
-| ![spotlight](m9-sistema-ayuda-spotlight.png) | |
+| ![spotlight](help-in-search.png) | |
 | Search finds Help articles | |
 
 ### Pending

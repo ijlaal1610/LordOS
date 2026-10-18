@@ -9,11 +9,11 @@ Printers & Scanners, the system print dialog and the Scanner app.
 
 | | |
 |---|---|
-| ![printers](m9-docs-impresoras.png) | ![queue](m9-docs-impresoras-cola.png) |
+| ![printers](printers.png) | ![queue](printers-queue.png) |
 | Settings → Printers & Scanners: the CUPS queue, an IPP Everywhere printer found over mDNS and added, and the test scanner | The printer's queue with one job and "Cancel" |
-| ![dialog](m9-docs-imprimir-dialogo.png) | ![editor](m9-docs-imprimir-editor.png) |
+| ![dialog](print-dialog.png) | ![editor](print-from-editor.png) |
 | The system dialog from the PDF Viewer: preview with the filled-in form, printer, copies, pages, color and paper | The same dialog from the Editor: the text built as a PDF |
-| ![test](m9-docs-imprimir-prueba.png) | ![scanner](m9-docs-escaner.png) |
+| ![test](print-test-page.png) | ![scanner](scanner.png) |
 | Test page to a printer without color (black and white only) | Scanner: preview, area chosen by dragging, resolution, color and format |
 
 ## How it's built

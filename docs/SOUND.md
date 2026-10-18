@@ -13,9 +13,9 @@ client (`server/src/sound/`). With that client, the UI shows and changes:
 
 | | |
 |---|---|
-| ![control center](m7-centro-control-sonido.png) | ![settings](m7-ajustes-sonido.png) |
-| Volume in Control Center (it changes it in PipeWire: `pactl` reports the same value) | Settings → Sound: outputs, inputs, test and per-app volume (`paplay` playing) |
-| ![card](m7-ajustes-sonido-placa.png) | |
+| ![control center](control-center-sound.png) | ![settings](settings-sound.png) |
+| Volume in Control Center (it changes it in PipeWire: `pactl` reports the same value) | Settings → Sound: outputs, inputs, test and per-app volume (listed while an app plays sound) |
+| ![card](settings-sound-device.png) | |
 | With the VM's HDA card (`audio0: ich9-intel-hda`): output, port (Line Out ↔ Speakers, tested with `pactl`) and microphone with meter | |
 
 ## Why the PulseAudio protocol

@@ -262,7 +262,7 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
 
 ## M9 — Documents and printing ✅ (2026-10-17)
 
-Details in `DOCUMENTS.md` and `PRINTING.md`. Tested on VM 116 with screenshots (`m9-docs-*.png`).
+Details in `DOCUMENTS.md` and `PRINTING.md`. Tested on VM 116 with screenshots (`archives-*`, `pdf-*`, `print-*`, `fonts-*` and related `.png` files).
 
 - [x] **`lord-doc`, the sandboxed helper:**
   - it is the only binary with Poppler (glib interface) and libarchive;
@@ -310,7 +310,7 @@ Details in `DOCUMENTS.md` and `PRINTING.md`. Tested on VM 116 with screenshots (
 
 ## M9 — Native media apps ✅ (2026-10-17)
 
-Details in `MEDIA.md`. Tested on VM 119 with screenshots (`m9-media-*.png`).
+Details in `MEDIA.md`. Tested on VM 119 with screenshots (`photos-*`, `music-*`, `video-*`, `recorder-*`, `screenshots-*` and related `.png` files).
 
 - [x] **`lord-media`, the sandboxed helper:**
   - it is the only binary with FFmpeg (libavcodec, libavformat, libswscale, libswresample) and libva;
@@ -358,7 +358,7 @@ Details in `MEDIA.md`. Tested on VM 119 with screenshots (`m9-media-*.png`).
 ## M9 — System apps and system network ✅ (2026-10-18)
 
 Details in `SYSTEM.md` (apps), `NETWORK.md` (network) and `SESSIONS.md` (user folders). Tested on VM 119
-with screenshots (`m9-sistema-*.png`).
+with screenshots (`backup-*`, `disks-*`, `logs-*`, `clock-*`, `help-*` `.png` files).
 
 - [x] **The network belongs to the system (`lord-netd`):** a small root service started and
   supervised by `lord-sessiond` at boot. DHCP, saved Wi-Fi, saved configs and DNS come up before
@@ -396,7 +396,7 @@ with screenshots (`m9-sistema-*.png`).
 ## M9 — Passwords and the system keyring ✅ (2026-10-18)
 
 Details in `PASSWORDS.md`. Tested on VM 116 with a real `lord-sessiond` session
-(`m9-contrasenas-*.png`).
+(`passwords-*.png`).
 
 - [x] **`lord-vault`**, sandboxed helper (no network, no sockets, no exec, fd-only files); the only
   binary with Monocypher; decrypted data in an mlock/MADV_DONTDUMP arena, wiped on lock.
@@ -427,7 +427,7 @@ Details in `PASSWORDS.md`. Tested on VM 116 with a real `lord-sessiond` session
 
 ## M9 — Settings: hardware pages ✅ (2026-10-18)
 
-Details in `SETTINGS.md`. Tested on VM 118 (`ajustes-*.png`), Bluetooth with a virtual controller
+Details in `SETTINGS.md`. Tested on VM 118 (`settings-*.png`), Bluetooth with a virtual controller
 (`btvirt`).
 
 - [x] **Displays:** outputs, resolutions and refresh rates from KMS with EDID names; live modeset
@@ -454,7 +454,7 @@ Details in `SETTINGS.md`. Tested on VM 118 (`ajustes-*.png`), Bluetooth with a v
 ## M9 — Mail, Calendar, Contacts and Reminders ✅ (2026-10-18)
 
 Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radicale with a test CA
-(`m9-mail-*.png`, `m9-calendario-*.png`, `m9-contactos*.png`, `m9-recordatorio*.png`).
+(`mail-*.png`, `calendar-*.png`, `contacts*.png`, `reminders*.png`).
 
 - [x] **`lord-maild`**, sandboxed helper with no sockets of its own: `lord-server` connects only to
   the configured servers (or public image hosts after *Load Images*) and passes the fd. OpenSSL,
@@ -485,7 +485,8 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   Reminders" above and `MAIL.md`).
 - [x] **Missing Settings sections:** Displays, Bluetooth, Energy, Notifications, Date &
   Time, Default Apps (see "M9 — Settings: hardware pages" above and `SETTINGS.md`).
-- [ ] **Chromium and Firefox** preinstalled (Linux apps, not native).
+- [x] **Chromium and Firefox** preinstalled (Linux apps, not native; verified in the final ISO, see
+  `docs/ISO.md`, "Final ISO test").
 - [x] **Camera in isolated apps** (`.lpk`) and **several windows per isolated app** (VM 122,
   `PRIVACY.md`): read-only frame ring from `lord-media` with validated ACKs, photo/video through
   the powerbox, instant revoke; one Wayland toplevel per window, grouped in the Dock, «New

@@ -294,7 +294,7 @@ The ISO starts `lord-sessiond` instead of `lordos-session`. ISO tested:
 | ![english](iso-english.png) | ![disk](iso-installer-disk-m8.png) |
 | `lordos.lang=en`: the interface in English | Installer, in a temporary VM with an empty 24 GB disk (OVMF) |
 | ![user](iso-installer-user-m8.png) | ![summary](iso-installer-summary-m8.png) |
-| User `ana` / «Ana Prueba», computer `ana-pc` | Summary, with the new login text |
+| User `jordan` / «Jordan Lee», computer `jordan-pc` | Summary, with the new login text |
 | ![progress](iso-installer-progress-m8.png) | ![done](iso-installer-ready-m8.png) |
 | Installing (~1 minute) | Done; "Restart" with one click |
 | ![greeter](iso-installed-login.png) | ![session](iso-installed-session.png) |

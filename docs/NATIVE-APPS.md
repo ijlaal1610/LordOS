@@ -11,8 +11,8 @@ They are installed from the Store, or by double-clicking the `.lpk` in Files.
 
 | | |
 |---|---|
-| ![tienda](m7-tienda-lpk.png) | ![fractal](m7-fractal-wasm.png) |
-| Fractal installed from the Store (a 5 KB `.lpk` in `~/Descargas`) | Fractal open: Mandelbrot computed in WASM (16.9 M iterations in 0.9 s on the VM) and drawn with `<Image pixels>` |
+| ![tienda](store-lpk-apps.png) | ![fractal](wasm-fractal.png) |
+| Fractal installed from the Store (a 5 KB `.lpk` in `~/Downloads`) | Fractal open: Mandelbrot computed in WASM (16.9 M iterations in 0.9 s on the VM) and drawn with `<Image pixels>` |
 
 ## Format
 

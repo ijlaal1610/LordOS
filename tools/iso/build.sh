@@ -31,12 +31,15 @@ done
 # Live system packages. LordOS does not use X11, GNOME or KDE: only what is below.
 PKGS_BASE="linux-image-amd64 initramfs-tools live-boot live-boot-initramfs-tools systemd-sysv udev kmod dbus dbus-user-session sudo locales tzdata
  iproute2 iputils-ping less nano ca-certificates apt dpkg passwd procps"
+# gsettings-desktop-schemas: without it GTK 3 apps can't read gtk-theme from the keyfile backend
+# lord-server writes, and they draw light Adwaita instead of LordOS / LordOS-dark (docs/WAYLAND.md)
 PKGS_LORDOS="libwayland-server0 libwayland-client0 libxkbcommon0 xkb-data pipewire pipewire-pulse pipewire-alsa wireplumber rtkit
  alsa-ucm-conf wpasupplicant openvpn fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji libthai-data
  skkdic rime-data-pinyin-simp fonts-dejavu-core
  libpoppler-glib8t64 libarchive13t64 poppler-data cups avahi-daemon exfatprogs ntfs-3g
  libavcodec61 libavformat61 libavutil59 libswscale8 libswresample5 libva2 libva-drm2 mesa-va-drivers
- bluez libspa-0.2-bluetooth power-profiles-daemon systemd-timesyncd shared-mime-info"
+ bluez libspa-0.2-bluetooth power-profiles-daemon systemd-timesyncd shared-mime-info
+ gsettings-desktop-schemas"
 PKGS_FIRMWARE="firmware-amd-graphics firmware-misc-nonfree firmware-iwlwifi firmware-realtek firmware-atheros
  firmware-sof-signed"
 PKGS_GPU="libgl1-mesa-dri libegl1 libgles2 libgbm1 mesa-vulkan-drivers mesa-utils vulkan-tools glmark2-es2-wayland"

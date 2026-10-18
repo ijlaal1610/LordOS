@@ -22,13 +22,13 @@ Everything is managed from **Settings → Language & Region** and **Settings →
 
 | | |
 |---|---|
-| ![pt](m5-terminal-pt.png) | ![shell](m5-region-pt-shell.png) |
+| ![pt](terminal-portuguese-locale.png) | ![shell](language-region-portuguese-shell.png) |
 | Terminal in Portuguese (menus adjust to the text length) | With `pt_BR.UTF-8`: `date`, `ls` and `printf` respond as in Brazil |
-| ![en](m5-idioma-region-en.png) | ![terminal-en](m5-terminal-en.png) |
+| ![en](language-region-english.png) | ![terminal-en](terminal-english-locale.png) |
 | English interface with pt_BR region: English names, Brazilian numbers and date | Terminal preferences in English |
-| ![packages](m5-paquete-idioma.png) | ![xkb](m5-teclado-xkb.png) |
+| ![packages](language-pack-install.png) | ![xkb](keyboard-layouts.png) |
 | Installing the Debian packages for pt_BR (live apt output) | Brazilian layout (XKB): ´+a = á, ç, ~+a = ã |
-| ![fr](m5-paquete-frances.png) | |
+| ![fr](language-pack-french.png) | |
 | A new language pack (French) built with `i18n-pack` and added from Settings | |
 
 ## Interface text
@@ -204,7 +204,7 @@ Arabic) and invisibles (ZWJ, direction marks) are hidden.
 
 | | |
 |---|---|
-| ![files](m5b-use-archivos.png) | ![terminal](m5b-use-terminal.png) |
+| ![files](files-use-scripts.png) | ![terminal](terminal-use-scripts.png) |
 | In the interface (file names in Files): Sinhala, Tibetan, Myanmar, Khmer, Mongolian, Tai Tham, Sundanese, Balinese and Javanese | In the Terminal, with Thai at the end (`docs/packs/escrituras-m5b.txt`) |
 
 For the remaining scripts of South and Southeast Asia, LordOS follows HarfBuzz's other three
@@ -360,19 +360,19 @@ can drop).
 
 | | |
 |---|---|
-| ![scripts](m5b-archivos-escrituras.png) | ![arabic](m5b-interfaz-arabe.png) |
+| ![scripts](files-world-scripts.png) | ![arabic](ui-arabic.png) |
 | Names in Arabic, Hebrew, Chinese, Japanese, Korean and mixed (bidi), with emoji | Arabic interface: bar, window, sidebar, columns and Dock mirrored |
-| ![menu](m5b-menu-arabe.png) | ![classic](m5b-clasico-arabe.png) |
+| ![menu](menu-arabic.png) | ![classic](classic-theme-arabic.png) |
 | Menu in Arabic: opens to the left, shortcut on the other side | Classic theme in Arabic; the terminal stays left to right |
-| ![japanese](m5b-ime-japones.png) | ![pinyin](m5b-ime-pinyin.png) |
+| ![japanese](ime-japanese.png) | ![pinyin](ime-pinyin.png) |
 | Japanese in the Terminal: にほんご → 日本語 / にほんご / ニホンゴ | Pinyin: zhongguo → 中国, 中古, 中… (page 1 of 6) |
-| ![hangul](m5b-ime-hangul.png) | ![result](m5b-ime-terminal.png) |
+| ![hangul](ime-hangul.png) | ![result](ime-terminal.png) |
 | Korean: 한 committed, 글 in composition | `echo 日本語 中国 한글` with the three methods |
-| ![field](m5b-ime-campo-texto.png) | ![settings](m5b-ajustes-metodos.png) |
+| ![field](ime-text-field.png) | ![settings](settings-input-methods.png) |
 | In a text field: 東京 in composition, candidates over the cursor | Settings → Keyboard with the input sources |
-| ![indic](m5b-archivos-indicas.png) | ![terminal](m5b-terminal-escrituras.png) |
+| ![indic](files-indic-scripts.png) | ![terminal](terminal-world-scripts.png) |
 | Hindi, Bengali, Tamil, Malayalam, Thai and Urdu in Files | The terminal with Indic, Thai, Urdu, Arabic and Hebrew shaped and in visual order |
-| ![phrase](m5b-ime-japones-frase.png) | |
+| ![phrase](ime-japanese-phrase.png) | |
 | Phrase conversion: 私は日本語を勉強しています, with the 私は segment focused | |
 
 The Arabic pack in the screenshots is a test pack (`docs/packs/lordos-lang-ar.json`): it

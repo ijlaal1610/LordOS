@@ -95,9 +95,9 @@ with a `dnsmasq` there (`lordos-test-netns.service`, which starts before `lordos
 
 | | |
 |---|---|
-| ![greeter](m9-sistema-red-greeter.png) | ![Settings → Network](m9-sistema-red-sesion.png) |
+| ![greeter](network-login-screen.png) | ![Settings → Network](network-session.png) |
 | Greeter right after boot, nobody logged in: the IP at the bottom. On this VM it is `eth0`'s (netplan); `lnt0`'s (lord-netd) was already up, as the log shows | Logged in: `lnt0` "por DHCP", brought up by `lord-netd` |
-| ![greeter, no sessions](m9-sistema-red-greeter-sin-sesiones.png) | |
+| ![greeter, no sessions](network-login-screen-no-sessions.png) | |
 | Both users logged out: back at the greeter, the network stays up | |
 
 A fix that came out of the test: `systemctl restart lordos` failed with "Failed to spawn executor:
@@ -135,9 +135,9 @@ and whether there are active VPNs, and opens that section.
 
 | | |
 |---|---|
-| ![network](m7-ajustes-red.png) | ![vpn](m7-vpn-wireguard.png) |
+| ![network](settings-network.png) | ![vpn](vpn-wireguard.png) |
 | eth0, managed by systemd-networkd: LordOS shows it and doesn't touch it, unless it's handed to LordOS on purpose | WireGuard imported from `~/Descargas/oficina.conf` and connected: last handshake and traffic. The peer was in a test netns; ping through the tunnel answered and eth0's DNS didn't change |
-| ![cc](m7-centro-control-red.png) | |
+| ![cc](control-center-network.png) | |
 | Control Center: network and active VPNs | |
 
 ## JS API: `lord.net` (read-only, without root)

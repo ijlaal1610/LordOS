@@ -29,13 +29,13 @@ but badly.
 
 | | |
 |---|---|
-| ![before](trackpad-mapa-antes.png) | ![after](trackpad-mapa-despues.png) |
+| ![before](trackpad-map-before.png) | ![after](trackpad-map-after.png) |
 | Monitor → Network: the map before the pinch, with the pointer over the North Atlantic | After `pinch-out` (scale ×6): zoom toward the pointer; the Faroe Islands ended up under the cursor |
-| ![settings](trackpad-ajustes.png) | ![launchpad](trackpad-deslizar-launchpad.png) |
+| ![settings](trackpad-settings.png) | ![launchpad](trackpad-swipe-launcher.png) |
 | Settings → Trackpad (only appears if there is a touchpad) | Swiping up with three fingers opens the theme's app launcher |
-| ![chromium before](trackpad-chromium-antes.png) | ![chromium](trackpad-chromium-pellizco.png) |
+| ![chromium before](trackpad-browser-before.png) | ![chromium](trackpad-browser-pinch.png) |
 | Chromium 155 (Wayland) before | Pinch: Chromium zooms the page via `zwp_pointer_gestures_v1` |
-| ![windows](trackpad-deslizar-ventanas.png) | ![remote](trackpad-remoto-pellizco.png) |
+| ![windows](trackpad-swipe-windows.png) | ![remote](trackpad-remote-pinch.png) |
 | Three fingers to the left: the window behind (Files) comes to the front | Remote desktop pinch (`RP_PINCH`, as the browser sends it): ×3 zoom on the map |
 
 ## Pieces
@@ -306,7 +306,7 @@ beforehand. In VM 123 a test service creates it before `lordos.service` (see `VM
 
 | | |
 |---|---|
-| ![fractal](trackpad-lpk-antes.png) | ![fractal pinch](trackpad-lpk-pellizco.png) |
+| ![fractal](trackpad-lpk-before.png) | ![fractal pinch](trackpad-lpk-pinch.png) |
 | Fractal, an installed and isolated app | Pinch: zooms toward the pointer |
 
 ## Panning the Monitor map with two fingers
@@ -334,7 +334,7 @@ With that, panning the zoomed map nonstop for 10 s (two fingers with inertia) co
 (15.9 % the main thread, 3 % the map's), versus 4 % when still. The biggest remaining cost is copying
 the whole screen every frame (`canvas_copy`, in `main.c`).
 
-![map panned](trackpad-mapa-moviendo.png)
+![map panned](trackpad-map-moving.png)
 
 ## Measurements (VM 123: Xeon Silver 4108 at 1.8 GHz, 4 cores, no GPU, 1280×800, CPU compositing)
 

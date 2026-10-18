@@ -623,7 +623,7 @@ unaffected. Cross-user: a restricted app for `bob` (uid 1001) blocks `bob`'s `sy
 escape while `lord` (uid 1000, no restricted app) keeps full access — the union is per
 `user@<uid>`, never leaking between users. The screenshot shows the four attempts blocked:
 
-![systemd-run escape blocked](m8-firewall-escape-blocked.png)
+![systemd-run escape blocked](firewall-escape-blocked.png)
 
 ### Measurements (VM 122, 4 vCPU Xeon Silver 4108, kernel 6.12)
 
@@ -675,14 +675,14 @@ over TCP on 127.0.0.1.
 ### Screenshots (VM 122)
 
 - The denied app: `curl` and bash get "Operation not permitted".
-  ![denied app](m8-firewall-app-denegada.png)
+  ![denied app](firewall-app-denied.png)
 - Monitor → Network, with the app's switch on deny and the counters:
-  ![monitor](m8-firewall-monitor-denegada.png)
+  ![monitor](firewall-monitor-denied.png)
 - Monitor → Network with the app selected (rule and allowed and denied connections):
-  ![detail](m8-firewall-monitor-detalle.png)
+  ![detail](firewall-monitor-detail.png)
 - Settings → Privacy → App network: mode, Trusted apps and Restricted apps:
-  ![settings](m8-firewall-ajustes.png)
-- "LAN only" from Settings: no internet, the gateway yes. ![LAN only](m8-firewall-solo-lan.png)
+  ![settings](firewall-settings.png)
+- "LAN only" from Settings: no internet, the gateway yes. ![LAN only](firewall-lan-only.png)
 
 
 ## How the next steps plug in

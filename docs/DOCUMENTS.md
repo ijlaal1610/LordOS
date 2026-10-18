@@ -14,29 +14,29 @@ Printing and scanning are in `PRINTING.md`.
 
 | | |
 |---|---|
-| ![outline](m9-docs-pdf-indice.png) | ![search](m9-docs-pdf-busqueda.png) |
+| ![outline](pdf-outline.png) | ![search](pdf-search.png) |
 | PDF Viewer: the document's outline (bookmarks) on the left, 224 pages | Search with highlighting: the current result in orange, "2 of 8 matches" |
-| ![annotations](m9-docs-pdf-anotaciones.png) | ![note](m9-docs-pdf-nota.png) |
+| ![annotations](pdf-annotations.png) | ![note](pdf-note.png) |
 | Highlight and freehand stroke, drawn by Poppler on the page and on the thumbnail | Note: the icon stays on the page and is saved in the copy |
-| ![form](m9-docs-pdf-formulario.png) | ![dark](m9-docs-pdf-oscuro.png) |
+| ![form](pdf-form.png) | ![dark](pdf-dark.png) |
 | Form (text fields of a CUPS PDF) filled in | Dark page: luminance inverted, keeping the colors |
-| ![rotate](m9-docs-pdf-rotar.png) | ![quick look](m9-docs-vista-rapida-pdf.png) |
+| ![rotate](pdf-rotate.png) | ![quick look](quick-preview-pdf.png) |
 | Rotated a quarter turn; the fields stay in place | Quick Preview of a PDF: the first page and the page count |
-| ![font](m9-docs-vista-rapida-fuente.png) | ![zip](m9-docs-vista-rapida-zip.png) |
+| ![font](quick-preview-font.png) | ![zip](quick-preview-zip.png) |
 | Quick Preview of a `.ttf` font | Quick Preview of a `.zip`: count, size and what's inside |
-| ![menu](m9-docs-comprimidos-menu.png) | ![inside](m9-docs-comprimidos-adentro.png) |
+| ![menu](archives-menu.png) | ![inside](archives-browse.png) |
 | "Extract here" and "Compress" in the context menu | A `.zip` opened as a folder |
-| ![extract](m9-docs-comprimidos-extraer.png) | ![compress](m9-docs-comprimidos-comprimir.png) |
+| ![extract](archives-extract.png) | ![compress](archives-compress.png) |
 | A zip with `../` in the names: the sound entries are extracted, 2 entries are skipped for safety | "Compress" a folder: "Fotos-del-viaje 2.zip", 3 files |
-| ![fonts](m9-docs-tipografias-muestra.png) | ![characters](m9-docs-tipografias-caracteres.png) |
+| ![fonts](fonts-sample.png) | ![characters](fonts-characters.png) |
 | Fonts: sample with text and sizes of your choice | Character table by Unicode block |
-| ![file](m9-docs-tipografias-archivo.png) | ![installed](m9-docs-tipografias-instalada.png) |
+| ![file](fonts-file.png) | ![installed](fonts-installed.png) |
 | A `.ttf` opened from Files, not installed | Installed for the user (`~/.local/share/fonts`), with "Remove" |
-| ![picker](m9-docs-emoji-selector.png) | ![editor](m9-docs-emoji-en-editor.png) |
+| ![picker](emoji-picker.png) | ![editor](emoji-in-editor.png) |
 | ❖. in the Editor: search "corazon" (34 results), skin tones | 😍 and 📕 typed into the Editor through the input method path |
-| ![emoji](m9-docs-emoji-app.png) | ![symbols](m9-docs-simbolos-app.png) |
+| ![emoji](emoji-picker-app.png) | ![symbols](characters-app.png) |
 | Emoji & Symbols: a category with skin tone | Unicode symbols by block (arrows) |
-| ![rtl](m9-docs-pdf-rtl.png) | |
+| ![rtl](pdf-rtl.png) | |
 | In Arabic: the interface mirrored (sidebar on the right) and the page in its own direction; the field is filled in the same way | |
 
 ## PDF Viewer (`apps/pdf`)

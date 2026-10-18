@@ -135,9 +135,9 @@ progress. "Updates" lists what can be upgraded and upgrades everything together.
 
 | | |
 |---|---|
-| ![debian](m7-tienda-debian.png) | ![plan](m7-tienda-plan.png) |
+| ![debian](store-debian-packages.png) | ![plan](store-install-plan.png) |
 | Debian apps by category | The GNOME Sudoku plan: the same 9 packages as `apt-get -s install` |
-| ![sudoku](m7-sudoku-instalado.png) | |
+| ![sudoku](store-installed-app.png) | |
 | Installed and opened from the Store (GTK 4 + libadwaita, in Spanish, with its AppStream icon in the Dock) | |
 
 ## `lord.pkg` (lord-server, without root)

@@ -180,7 +180,7 @@ The monitor's `sendkey` drops keys in long bursts: the script sends them in batc
 Devices detected on the VM: AT keyboard (`event0`), VMMouse (`event1`/`event2`) and
 QEMU USB Tablet (`event3`, the one the noVNC console uses).
 
-![M1 on the VM](m1-screenshot.png)
+![M1 on the VM](m1-first-frame.png)
 
 ## Step 9 — M4: full terminal (fonts, shells, tmux)
 
@@ -774,7 +774,7 @@ See `FIREWALL.md`, step 2. On VM 122 (172.17.0.56), which already had `lord-sess
   `setsid curl` all blocked, a normal process unaffected, and `bob`'s restriction not leaking into
   `lord`'s. Scratch scripts (outside the repo): `~/bin/escape-aisla-122.sh`,
   `~/union-escape-122.sh`, `~/bob-escape-122.sh`, `~/bin/run-escape-shot-122.sh` and
-  `~/bin/escape-wait-122.sh`. The screenshot `docs/m8-firewall-escape-blocked.png` is a `foot`
+  `~/bin/escape-wait-122.sh`. The screenshot `docs/firewall-escape-blocked.png` is a `foot`
   window opened on the compositor (`WAYLAND_DISPLAY=wayland-0`) running the escape test inside the
   restricted scope, captured with `qm monitor 122` `screendump`. The lock screen was cleared by a
   full `lordos.service` restart with autologin (`rm /run/lordos/autologin-done`), not by changing

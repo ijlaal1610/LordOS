@@ -6,11 +6,11 @@ and the cursor shows the arrow for each direction.
 
 | | |
 |---|---|
-| ![edges](fix-ventanas-bordes.png) | ![resize](fix-ventanas-redimensionar.png) |
+| ![edges](windows-resize-edges.png) | ![resize](windows-resize.png) |
 | The 8 invisible edges of a window (Chromium with the theme's frame): ↖ ↕ ↗ ↔ ↔ ↙ ↕ ↘ | Resizing from the corner: Chromium redraws at the new size while dragging |
-| ![move](fix-ventanas-mover.png) | ![gtk](fix-ventanas-gtk-mover.png) |
+| ![move](windows-move.png) | ![gtk](windows-gtk-move.png) |
 | Moving a window: move cursor, the Dock stays on top | GTK Demo (own frame, CSD) moved from its bar: lord-server follows `xdg_toplevel.move` in C |
-| ![cursors](fix-ventanas-cursores.png) | ![app](fix-ventanas-cursor-app.png) |
+| ![cursors](windows-resize-cursors.png) | ![app](windows-app-cursor.png) |
 | LordOS cursors (`server/src/cursor.c`) at 2x over light and dark backgrounds; the red dot is the hotspot | The I-beam in Chromium's address bar: it asks for it via `cursor-shape-v1` and LordOS draws it |
 
 The screenshots are from VM 118 on the CPU path (on the GPU path the cursor goes through the cursor

@@ -34,23 +34,23 @@ that changed) is repainted.
 
 | | |
 |---|---|
-| ![panes](m4-terminal-paneles.png) | ![schemes](m4-terminal-esquemas.png) |
+| ![panes](terminal-split-panes.png) | ![schemes](terminal-color-schemes.png) |
 | Split panes, `top` on the alternate screen | Preferences → Colors |
-| ![transparency](m4-terminal-transparencia.png) | ![dropdown](m4-terminal-desplegable.png) |
+| ![transparency](terminal-transparency.png) | ![dropdown](terminal-drop-down.png) |
 | Dracula with transparency and blur | Dropdown window (F12), toolbelt, timestamps |
-| ![imgcat](m4-terminal-imgcat.png) | ![sixel](m4-terminal-sixel.png) |
+| ![imgcat](terminal-inline-images.png) | ![sixel](terminal-sixel.png) |
 | `imgcat` and badge | Sixel |
-| ![regex](m4-terminal-regex.png) | ![replay](m4-terminal-replay.png) |
+| ![regex](terminal-regex-search.png) | ![replay](terminal-session-replay.png) |
 | Regular-expression search | Instant Replay |
-| ![colors](m4-terminal-colores.png) | ![theme](m4-terminal-cambio-tema.png) |
+| ![colors](terminal-true-color.png) | ![theme](terminal-theme-switch.png) |
 | SGR: bold, italic, underline, strikethrough, direct color | The same shell (PID 4126) is still alive after switching to the Classic theme |
-| ![ligatures](m4-terminal-ligaduras.png) | ![emoji](m4-terminal-emoji.png) |
+| ![ligatures](terminal-ligatures.png) | ![emoji](terminal-emoji.png) |
 | Profile imported from another terminal emulator: Fira Code with ligatures, Dracula, a trigger that highlights "ERROR" | Ligatures, combining marks and color emoji; below, with mode 2027 (👍🏽 🇦🇷 👨‍👩‍👧 as one glyph) |
-| ![import](m4-terminal-importar-iterm2.png) | ![keys](m4-terminal-teclas.png) |
+| ![import](terminal-import-color-scheme.png) | ![keys](terminal-key-bindings.png) |
 | Importing a binary preferences plist | Per-profile and global keys, editable shortcuts |
-| ![recovered](m4-terminal-sesion-recuperada.png) | ![tmux](m4-terminal-tmux.png) |
+| ![recovered](terminal-session-restored.png) | ![tmux](terminal-tmux.png) |
 | After restarting lord-server: same tabs and panes, the counter kept running | `tmux -CC`: tmux window with 3 native panes (recovered after a restart) |
-| ![fish](m4-terminal-fish.png) | ![host](m4-terminal-perfil-host.png) |
+| ![fish](terminal-fish-shell.png) | ![host](terminal-host-profile.png) |
 | fish integration (red/blue marks, directory) | Automatic profile switch for `root@*` |
 
 ## Performance (development VM, 1280×800, CPU)
@@ -84,7 +84,7 @@ Status: ✅ done and tested in the VM · 🟡 partial · ⏳ pending · — does
 | OSC 9 notifications | ✅ | notice inside the window |
 | OSC 4/10/11/12/104 dynamic colors | ✅ | |
 | OSC 1337 inline-image protocol (File, `imgcat`) | ✅ | PNG/JPEG/GIF (first frame), with `-w`/`-h` |
-| Sixel | ✅ | tested with a sixel image generated with `printf` (see `docs/m4-terminal-sixel.png`) |
+| Sixel | ✅ | tested with a sixel image generated with `printf` (see `docs/terminal-sixel.png`) |
 | Badge (OSC 1337 SetBadgeFormat), marks, CurrentDir, SetProfile, CursorShape, ReportCellSize, Copy, ClearScrollback, RequestAttention | ✅ | |
 | Shell integration (OSC 133): prompt marks, exit code, command run | ✅ | bash, zsh and fish |
 | Hand-drawn boxes, blocks and powerline arrows | ✅ | they join without gaps |

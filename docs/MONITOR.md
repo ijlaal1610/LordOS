@@ -37,7 +37,7 @@ itself.
   - wheel: zoom toward the cursor;
   - touchpad: pinching zooms toward the center of the gesture and two fingers move the map (see
     `TRACKPAD.md`; with remote desktop, the browser's trackpad pinch works too).
-    Screenshots: [before](trackpad-mapa-antes.png) and [after pinching](trackpad-mapa-despues.png);
+    Screenshots: [before](trackpad-map-before.png) and [after pinching](trackpad-map-after.png);
   - drag: move;
   - double click: zoom in;
   - `+`, `−` and "show all" buttons in the corner.
@@ -276,19 +276,19 @@ It runs outside the frame. While it draws, the screen shows the previous frame s
 
 ## Screenshots (VM 123)
 
-- Overview: ![Overview](m8-monitor-resumen.png)
-- CPU: ![CPU](m8-monitor-cpu.png)
-- Memory: ![Memory](m8-monitor-memoria.png)
-- Disks: ![Disks](m8-monitor-discos.png)
-- Network, with curl expanded: ![Network](m8-monitor-red.png)
-- Firefox chosen: ![Chosen app](m8-monitor-red-app.png)
+- Overview: ![Overview](monitor-overview.png)
+- CPU: ![CPU](monitor-cpu.png)
+- Memory: ![Memory](monitor-memory.png)
+- Disks: ![Disks](monitor-disks.png)
+- Network, with curl expanded: ![Network](monitor-network.png)
+- Firefox chosen: ![Chosen app](monitor-network-app.png)
 - Map:
-  - the world: ![Map](m8-monitor-mapa-mundo.png)
-  - zoomed in on Europe: ![Europe](m8-monitor-mapa-europa.png)
-  - zoomed in on South America: ![South America](m8-monitor-mapa-sudamerica.png)
-  - Germany chosen: ![Chosen place](m8-monitor-mapa-seleccion.png)
-- Settings → Privacy → Monitor: ![Privacy](m8-monitor-privacidad.png)
-- In Arabic (RTL): ![RTL](m8-monitor-rtl.png)
+  - the world: ![Map](monitor-map-world.png)
+  - zoomed in on Europe: ![Europe](monitor-map-europe.png)
+  - zoomed in on South America: ![South America](monitor-map-south-america.png)
+  - Germany chosen: ![Chosen place](monitor-map-selection.png)
+- Settings → Privacy → Monitor: ![Privacy](monitor-privacy.png)
+- In Arabic (RTL): ![RTL](monitor-rtl.png)
 
 ## Pending
 

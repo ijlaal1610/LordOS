@@ -24,7 +24,7 @@ run in one sandboxed helper process, **`lord-maild`**.
 | Accounts: any IMAP/SMTP; built-in settings for popular providers (Gmail, Yahoo and others); app passwords | **done** (built-in providers not tested: no real accounts were used) |
 | OAuth2 (XOAUTH2) for Gmail and other large providers | **prepared, disabled**: needs your client ID (see [OAuth](#oauth-needs-your-client-id)) |
 
-![Mail: conversation](m9-mail-hilos.png)
+![Mail: conversation](mail-threads.png)
 
 ## Processes and trust
 
@@ -369,21 +369,21 @@ test CA added to the VM's CA store, and test data from scratch scripts. No real 
 
 | | |
 |---|---|
-| ![HTML blocked](m9-mail-html-bloqueadas.png) | ![HTML loaded](m9-mail-html-cargadas.png) |
+| ![HTML blocked](mail-html-images-blocked.png) | ![HTML loaded](mail-html-images-loaded.png) |
 | A newsletter: remote images blocked, one tracking pixel removed | After *Load Images* (decoded in the sandbox) |
-| ![conversation](m9-mail-hilos.png) | ![compose](m9-mail-redactar.png) |
+| ![conversation](mail-threads.png) | ![compose](mail-compose.png) |
 | A conversation, with the reply from Sent | Compose in rich text with live preview |
-| ![invitation](m9-mail-invitacion.png) | ![deceptive link](m9-mail-enlace-enganoso.png) |
+| ![invitation](mail-invitation.png) | ![deceptive link](mail-deceptive-link.png) |
 | An invitation, accepted (REPLY sent to the organizer) | A deceptive link and its real destination |
-| ![account](m9-mail-cuenta-2.png) | ![10,000](m9-mail-10000-mensajes.png) |
+| ![account](mail-account-setup-servers.png) | ![10,000](mail-10000-messages.png) |
 | Account setup: Gmail found, app password, OAuth needs a client ID | A 10,000-message folder from the cache |
-| ![week](m9-calendario-semana.png) | ![month](m9-calendario-mes.png) |
+| ![week](calendar-week.png) | ![month](calendar-month.png) |
 | Calendar, week (CalDAV and local) | Calendar, month |
-| ![contacts](m9-contactos.png) | ![reminders](m9-recordatorios.png) |
+| ![contacts](contacts.png) | ![reminders](reminders.png) |
 | Contacts (CardDAV, photo decoded in the sandbox) | Reminders: Today |
-| ![alarm](m9-recordatorio-aviso.png) | ![light](m9-mail-claro.png) |
+| ![alarm](reminders-alert.png) | ![light](mail-light.png) |
 | A reminder rings with every app closed | Mail in light mode |
-| ![calendar light](m9-calendario-claro.png) | ![contacts light](m9-contactos-claro.png) |
+| ![calendar light](calendar-light.png) | ![contacts light](contacts-light.png) |
 | Calendar in light mode | Contacts in light mode |
-| ![reminders light](m9-recordatorios-claro.png) | ![account 1](m9-mail-cuenta-1.png) |
+| ![reminders light](reminders-light.png) | ![account 1](mail-account-setup.png) |
 | Reminders in light mode | Add Account |

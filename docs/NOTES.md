@@ -9,13 +9,13 @@ save themselves in the home folder.
 
 | | |
 |---|---|
-| ![edición](m7-notas-edicion.png) | ![lectura](m7-notas-lectura.png) |
+| ![edición](notes-editing.png) | ![lectura](notes-reading.png) |
 | Editing: markdown with the headings highlighted; lists and checkboxes continue on their own with Enter | Reading: headings, bold, italic, code, checkboxes ticked with a click, numbered list, quote, table and table of contents |
-| ![índice](m7-notas-indice-imagen.png) | ![emoji](m7-notas-emoji.png) |
+| ![índice](notes-index-image.png) | ![emoji](notes-emoji.png) |
 | The table of contents jumps to the heading; the image is part of the note | Emoji picker with search in Spanish or English (also `:name` while typing) |
-| ![escritorio](m7-notas-escritorio-imagen.png) | ![fijada](m7-notas-fijada.png) |
+| ![escritorio](notes-desktop-image.png) | ![fijada](notes-pinned.png) |
 | A note on the desktop, with an image pasted from the clipboard | Pinned to the front: it stays above the windows |
-| ![clásico](m7-notas-clasico.png) | |
+| ![clásico](notes-classic-theme.png) | |
 | Classic theme: one pinned (green) and another on the desktop behind the window (pink) | |
 
 ## Where they are stored
@@ -26,7 +26,7 @@ Each note is a folder in `~/Notas/<note>/`:
 ~/Notas/nota-20261016-135509/
 ├── nota.md          the note
 ├── imagen-1.png     pasted from the clipboard
-├── m1-screenshot.png   inserted with «Image»
+├── m1-first-frame.png   inserted with «Image»
 └── informe.txt      attached with «Attach»
 ```
 

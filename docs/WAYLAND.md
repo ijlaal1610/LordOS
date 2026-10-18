@@ -10,13 +10,13 @@ compositor lives in `server/src/wl/wl.c`.
 
 | | |
 |---|---|
-| ![foot](m6-foot.png) | ![gtk](m6-gtk4-demo.png) |
+| ![foot](wayland-foot-terminal.png) | ![gtk](wayland-gtk4-demo.png) |
 | foot (Wayland terminal) with the theme's frame: it asks for server-side decoration | GTK Demo (GTK 4.18): draws its own frame; LordOS clips its shadow |
-| ![gtk-menu](m6-gtk-menu.png) | ![gtk-drag](m6-gtk-arrastre.png) |
+| ![gtk-menu](wayland-gtk-menu.png) | ![gtk-drag](wayland-gtk-drag.png) |
 | GTK popup menu (xdg_popup), placed with its positioner | Dragged from its own bar (xdg_toplevel.move): it follows the pointer |
-| ![qt](m6-featherpad-qt6.png) | ![qt-menu](m6-qt-menu.png) |
+| ![qt](wayland-qt6-editor.png) | ![qt-menu](wayland-qt-menu.png) |
 | FeatherPad (Qt 6.8) opened from the LordOS Terminal, with the theme's frame | Qt's File menu |
-| ![clipboard](m6-portapapeles.png) | ![dock](m6-tres-apps-dock.png) |
+| ![clipboard](wayland-clipboard.png) | ![dock](wayland-three-apps-dock.png) |
 | Copied in FeatherPad (Ctrl+C) and pasted in the LordOS Terminal | Three Linux apps open; each with its icon in the Dock |
 
 ## What's there
@@ -57,9 +57,9 @@ app id or by `StartupWMClass`).
 
 | | |
 |---|---|
-| ![launchpad](m7-launchpad-linux.png) | ![launched](m7-lanzada-desde-launchpad.png) |
+| ![launchpad](app-launcher-linux-apps.png) | ![launched](app-launched-from-launcher.png) |
 | The app launcher with the installed Linux apps (foot with its PNG; those that only ship SVG, with their initial) | FeatherPad opened with one click; it carries the same icon in the Dock |
-| ![classic](m7-clasico-inicio.png) | ![classic2](m7-clasico-featherpad.png) |
+| ![classic](classic-theme-start-menu.png) | ![classic2](classic-theme-linux-app.png) |
 | Classic theme: the start menu with LordOS apps, Linux apps and Fractal (installed as a package) | FeatherPad launched from there, with its icon in the taskbar |
 
 ### The launcher (`server/src/apps.c`)
@@ -113,7 +113,7 @@ There's a single one for the whole session:
 
 | | |
 |---|---|
-| ![history](m7-historial-imagen.png) | ![paste](m7-pegar-imagen.png) |
+| ![history](clipboard-history-image.png) | ![paste](clipboard-paste-image.png) |
 | Image copied in GTK Demo, now closed: it's still in the history (❖V) | GTK Demo opened again: «Paste» receives it from LordOS |
 
 **History (❖V quick, ❖⇧V full):** it keeps everything copied anywhere: text, links, colors,
@@ -151,11 +151,11 @@ resizing (see `WINDOWS.md`).
 
 | | |
 |---|---|
-| ![chromium](decoraciones-chromium.png) | ![firefox](decoraciones-firefox-oscuro.png) |
+| ![chromium](decorations-chromium.png) | ![firefox](decorations-firefox-dark.png) |
 | Chromium with the LordOS frame (without its own window buttons) | Firefox ESR with the LordOS frame, dark |
-| ![gtk dark](decoraciones-gtk-oscuro.png) | ![gtk light](decoraciones-gtk3-claro.png) |
+| ![gtk dark](decorations-gtk-dark.png) | ![gtk light](decorations-gtk3-light.png) |
 | Mousepad (GTK 3, «LordOS-dark» theme) and GNOME Calculator (GTK 4/libadwaita, green accent and buttons on the left), dark | The same in light: they change live when the mode is switched in Settings |
-| ![firefox light](decoraciones-firefox-claro.png) | |
+| ![firefox light](decorations-firefox-light.png) | |
 | Firefox switched to light live | |
 
 - **Chromium.** It uses the theme's frame if it asks for server-side decoration

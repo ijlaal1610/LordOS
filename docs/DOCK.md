@@ -13,13 +13,13 @@ Everything is applied live, without restarting, and is saved in
 
 | | |
 |---|---|
-| ![settings](dock-ajustes.png) | ![bottom](dock-abajo.png) |
+| ![settings](dock-settings.png) | ![bottom](dock-bottom.png) |
 | Settings → Desktop & Dock | Bottom (as always), with magnification |
-| ![left](dock-izquierda.png) | ![right](dock-derecha.png) |
+| ![left](dock-left.png) | ![right](dock-right.png) |
 | On the left: magnification along the vertical axis, name to the side | On the right: the open-app dots go on the outer side |
-| ![menu](dock-derecha-menu.png) | ![revealed](dock-oculto-revelado.png) |
-| Right click with the Dock on the right: the menu opens inward | Auto-hide: it appears when the pointer reaches the edge (without the Dock: [`dock-oculto.png`](dock-oculto.png)) |
-| ![classic](dock-clasico-izquierda-barra.png) | ![classic, start](dock-clasico-izquierda.png) |
+| ![menu](dock-right-menu.png) | ![revealed](dock-hidden-revealed.png) |
+| Right click with the Dock on the right: the menu opens inward | Auto-hide: it appears when the pointer reaches the edge (without the Dock: [`dock-hidden.png`](dock-hidden.png)) |
+| ![classic](dock-classic-left-with-bar.png) | ![classic, start](dock-classic-left.png) |
 | Classic theme with the bar on the left (only icons, and the time at the bottom) | Its start menu opens next to the bar |
 
 ## Settings (`sdk/dock.js`: `DOCK_DEFAULTS`, `dockPrefs(settings)`)

@@ -60,15 +60,15 @@ lord-server (session, compositor)                    lord-server --app evil (iso
   `assets/app-host.bundle.js`) brings React, the runtime and `@lordos/sdk`; drawing `lord.*` is
   local and the rest goes through the broker (`ui/js_broker.c`).
 
-![The malicious app in its own process: every attempt blocked](m8-privacidad-evil-proceso.png)
+![The malicious app in its own process: every attempt blocked](privacy-rogue-process.png)
 
 | | |
 |---|---|
-| ![light mode, violet accent, live](m8-privacidad-app-claro.png) | ![the same app in Arabic (RTL), live](m8-privacidad-app-arabe.png) |
+| ![light mode, violet accent, live](privacy-app-light.png) | ![the same app in Arabic (RTL), live](privacy-app-arabic.png) |
 | The theme switched to light and to the user's accent: the isolated app follows at once | Switching the session to Arabic mirrors the app and retranslates it, without restarting it |
-| ![powerbox: dialog drawn by the system](m8-privacidad-powerbox.png) | ![app menus in the system bar](m8-privacidad-app-menu.png) |
+| ![powerbox: dialog drawn by the system](privacy-file-picker.png) | ![app menus in the system bar](privacy-app-menu.png) |
 | Opening a file: lord-server draws the dialog; the app gets only the fd | The isolated app's menus in the system menu bar |
-| ![revoking closes the microphone](m8-privacidad-revocar.png) | ![app stopped: the compositor doesn't change](m8-privacidad-app-detenida.png) |
+| ![revoking closes the microphone](privacy-revoke.png) | ![app stopped: the compositor doesn't change](privacy-app-stopped.png) |
 | Denying the microphone turns it off at once (recording stopped, the dot went away) | With the app hung (SIGSTOP) the desktop responds just the same |
 
 ### The broker (`sec/broker.h`, `sec/brokersrv.c`, `ui/js_broker.c`)
@@ -136,13 +136,13 @@ reads with its own cursor and **never touches `rpos`**, the server frees the spa
 detects overruns (`wpos - cursor > size`) and reads only the most recent data. The app never opens
 PipeWire nor sees the device fd. `lord.broker.micLevel()` returns the RMS (0..1).
 
-![live microphone level in the isolated app](m8-privacidad-mic-nivel.png)
+![live microphone level in the isolated app](privacy-microphone-level.png)
 
 Tested on VM 122: with real audio coming in through the capture, the recorder's level bar moves;
 on pressing "Stop" or on **Denying** the permission in Settings, lord-server's `source-output`
 disappears and the bar and the orange dot go off.
 
-![denying the microphone closes the capture](m8-privacidad-mic-revocado.png)
+![denying the microphone closes the capture](privacy-microphone-revoked.png)
 
 ## The sandbox (`server/src/sec/sandbox.c`)
 
@@ -318,7 +318,7 @@ Permissions: `files`, `clipboard`, `notifications`, `network`, `camera`, `microp
 
 | | |
 |---|---|
-| ![prompt requested by an isolated app](m8-privacidad-prompt-broker.png) | ![microphone in use](m8-privacidad-indicador-broker.png) |
+| ![prompt requested by an isolated app](privacy-prompt-broker.png) | ![microphone in use](privacy-indicator-broker.png) |
 | The legitimate test app (`tests/lpk-legit`), in its own process, asks for the microphone: the system draws the prompt | After "Allow": it records and the orange dot appears; the decision stays in `permisos.json` |
 
 ### Settings → Privacy
@@ -328,7 +328,7 @@ with its apps and an Allow / Ask / Deny control (`apps/settings/Privacy.jsx`). T
 its own section (see connections per app, locate them on the map) through
 `registerPrivacySection({ id, order, Component })` from `@lordos/sdk`, without touching the page.
 
-![Settings → Privacy](m8-privacidad-ajustes.png)
+![Settings → Privacy](privacy-settings.png)
 
 ### Camera and microphone indicators
 
@@ -339,7 +339,7 @@ through `globalThis.__lordos.monitorDevices`.
 
 | | |
 |---|---|
-| ![prompt](m8-privacidad-prompt.png) | ![indicator](m8-privacidad-indicador-mic.png) |
+| ![prompt](privacy-prompt.png) | ![indicator](privacy-indicator-microphone.png) |
 | System prompt (files) | Orange dot with the app recording |
 
 ## Performance (VM 122, 4 vCPU, CPU without GPU)
@@ -354,7 +354,7 @@ through `globalThis.__lordos.monitorDevices`.
 - The compositor never waits for an app or the broker: the broker socket and the Wayland
   connection are served in the main `poll` only when there is data. With the app stopped, the
   window keeps its last frame and the rest of the desktop responds normally
-  (![app stopped](m8-privacidad-app-detenida.png)).
+  (![app stopped](privacy-app-stopped.png)).
 - Permission checks are O(1) (`perm_get`, in-memory table).
 - The high paint time (≈50 ms) comes from this VM's CPU path when moving the mouse with QMP; it is
   the same with or without isolated apps.
@@ -432,7 +432,7 @@ $ mkdir <own scope>/sub                         Permission denied
 == net after: curl: (7) Failed to connect to example.com port 443   (the rule still applies)
 ```
 
-![The scope escape attempts fail](m8-aislamiento-scope.png)
+![The scope escape attempts fail](isolation-scope.png)
 
 Also tested: the `.lpk` app, `lord-media` (`app-lordos-media.scope`) and Linux apps are placed
 by `lord-sessiond`; `systemctl restart lordos` twice with the session alive (the new
@@ -449,7 +449,7 @@ process that escapes there to the strictest **union** of that user's running res
 restrictions (restriction-only, so never less restrictive than the app's own policy). Tested on
 VM 122 with `systemd-run --user --scope`, `systemd-run --user` (service) and `setsid` — all denied,
 normal processes unaffected, and the union never leaks between users. See `docs/FIREWALL.md`,
-«Escape via `systemd-run --user`», and `docs/m8-firewall-escape-blocked.png`. `.lpk` apps couldn't
+«Escape via `systemd-run --user`», and `docs/firewall-escape-blocked.png`. `.lpk` apps couldn't
 do it anyway (no D-Bus, no new sockets).
 
 Not tested this round: a second user over fast user switching and the remote desktop (no test
@@ -508,7 +508,7 @@ process is gone within 0.5 s). While previewing, the app process uses ~1–2 % C
 
 | | |
 |---|---|
-| ![camera preview inside the isolated app](m8-aislamiento-camara.png) | ![camera revoked](m8-aislamiento-camara-revocada.png) |
+| ![camera preview inside the isolated app](isolation-camera.png) | ![camera revoked](isolation-camera-revoked.png) |
 | The preview in `tests/lpk-legit` (its own process), with the green dot | After «Deny» in Settings: the stream stopped, the dot is gone |
 
 Not tested: a hostile app sending forged or flooded ACKs (the JS API only acknowledges frames it
@@ -535,7 +535,7 @@ own process, so the app opens and closes windows with the usual SDK:
   menus go to every window of the app, and «New window» in the Dock reaches the running process
   through the broker (`window` event) instead of launching a second process.
 
-![two windows of one isolated app, the Dock menu lists both](m8-aislamiento-ventanas.png)
+![two windows of one isolated app, the Dock menu lists both](isolation-windows.png)
 
 Tested on VM 122 with `tests/lpk-legit`: «New window» from the app and from the Dock menu, the Dock
 menu listing every window, closing a window, focus and input in each one.

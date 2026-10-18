@@ -14,32 +14,32 @@ editor, generator, first run); the shots below are from the first version.
 
 | | |
 |---|---|
-| ![Create the vault](m9-contrasenas-crear.png) | ![Unlock with the master password](m9-contrasenas-desbloquear.png) |
+| ![Create the vault](passwords-create.png) | ![Unlock with the master password](passwords-unlock.png) |
 | Creating the vault: choose how it unlocks (password, FIDO2 key, key file, password + key file) | Locked vault: one tab per unlock method present in the file |
-| ![Internet item with TOTP](m9-contrasenas-internet.png) | ![2FA codes](m9-contrasenas-2fa.png) |
+| ![Internet item with TOTP](passwords-internet.png) | ![2FA codes](passwords-2fa.png) |
 | An *Internet* item: website, user, hidden password (reveal/copy), live 2FA code with countdown, notes, reminder "change every 90 days" | All 2FA codes with their countdown; the TOTP secret never leaves `lord-vault` |
-| ![Wi-Fi QR](m9-contrasenas-wifi-qr.png) | ![Identity document with photo](m9-contrasenas-identidad.png) |
+| ![Wi-Fi QR](passwords-wifi-qr.png) | ![Identity document with photo](passwords-identity.png) |
 | Wi-Fi: the QR code to join from a phone (`WIFI:T:WPA;S:…;P:…;;`) is generated inside `lord-vault` | *Identity and documents*: encrypted photo attachment previewed (decoded and downscaled inside `lord-vault`) |
-| ![Finance](m9-contrasenas-finanzas.png) | ![Card](m9-contrasenas-tarjeta.png) |
+| ![Finance](passwords-finance.png) | ![Card](passwords-card.png) |
 | *Finance*: password and coordinates card revealed on request; the "change every 90 days" reminder is overdue | *Cards*: the list shows only the last 4 digits; number, CVV and PIN stay hidden |
-| ![Servers/SSH](m9-contrasenas-ssh.png) | ![Crypto](m9-contrasenas-cripto.png) |
+| ![Servers/SSH](passwords-ssh-key.png) | ![Crypto](passwords-crypto-wallet.png) |
 | *Servers/SSH* with the private key (multi-line hidden field) and host fingerprint | *Crypto*: extra warning about the seed phrase |
-| ![License with its attached file](m9-contrasenas-licencia.png) | |
+| ![License with its attached file](passwords-software-license.png) | |
 | *Licenses*: the licence key plus the attached licence file, opened from the encrypted attachment | |
-| ![Security report](m9-contrasenas-seguridad.png) | ![Generator](m9-contrasenas-generador.png) |
+| ![Security report](passwords-security-check.png) | ![Generator](passwords-generator.png) |
 | Security report: weak, reused, old and breached (offline) passwords | Password generator |
-| ![Passphrase generator](m9-contrasenas-generador-frase.png) | ![Import KeePass](m9-contrasenas-importar.png) |
+| ![Passphrase generator](passwords-generator-passphrase.png) | ![Import KeePass](passwords-import.png) |
 | Passphrases from the EFF word list (12.9 bits per word) | Importing a real KeePass KDBX 4 file with our own reader: 4 entries, 3 folders become categories |
-| ![Unlock with a USB key file](m9-contrasenas-desbloquear-usb.png) | ![Unlock with a FIDO2 key](m9-contrasenas-desbloquear-fido.png) |
+| ![Unlock with a USB key file](passwords-unlock-usb-key.png) | ![Unlock with a FIDO2 key](passwords-unlock-security-key.png) |
 | Unlocking with a key file on a USB stick (`/media/pwtest/PENDRIVE`) | Unlocking with a FIDO2 security key (here the software authenticator, see "Testing") |
-| ![Vault settings](m9-contrasenas-ajustes.png) | ![USB permission prompt](m9-contrasenas-fido-permiso.png) |
+| ![Vault settings](passwords-settings.png) | ![USB permission prompt](passwords-security-key-permission.png) |
 | Unlock methods: password, recovery key, FIDO2 key and key file side by side; each wraps the same vault key | Using the security key goes through the system permission prompt (the per-app `usb` permission); only `lord-server` opens `/dev/hidrawN` |
-| ![Chromium offers to save](m9-contrasenas-chromium-guardar.png) | ![Chromium Safe Storage in the session keyring](m9-contrasenas-llavero-chromium.png) |
+| ![Chromium offers to save](passwords-browser-save.png) | ![Chromium Safe Storage in the session keyring](passwords-browser-keyring.png) |
 | Chromium (Wayland, `--password-store=gnome-libsecret`) saving a password | …its "Chromium Safe Storage" key lands in our Secret Service, visible in *Session keyring* |
-| ![Chromium autofills after a restart](m9-contrasenas-chromium-autocompletar.png) | ![Protected window in a capture](m9-contrasenas-captura-protegida.png) |
+| ![Chromium autofills after a restart](passwords-browser-autofill.png) | ![Protected window in a capture](passwords-protected-capture.png) |
 | After restarting Chromium it decrypts and autofills the saved login: the key came back from our service | The Passwords window comes out black in LordOS screenshots, recordings and the remote desktop |
 
-| ![Categories tree and tags](m9-contrasenas-categorias.png) | ![The real screen at the same moment](m9-contrasenas-pantalla-real.png) |
+| ![Categories tree and tags](passwords-categories.png) | ![The real screen at the same moment](passwords-real-screen.png) |
 |---|---|
 | Main window: user categories as a tree (Trabajo → Clientes, Hogar → Inventario, imported KeePass folders), tags with colours | The real monitor (QEMU screendump) when the black LordOS screenshot above was taken: only captures are blanked |
 
@@ -93,7 +93,7 @@ in that process and in `lord-vault`; `lord-server`'s QuickJS heap never sees the
 | Files | The system's own open/save dialog (powerbox, drawn by `lord-server`) picks the file; the app gets only the fd and passes it on to `lord-vault` (`request(json, { fds })`). Key files, attachments, import, export, the breach list and QR images all go this way. |
 | FIDO2 | `BOP_VAULT_FIDO`: after the user allows `usb`, `lord-server` opens the hidraw device and gives it straight to `lord-vault` (`vc_fido_attach`); the app never holds the device. Only the app spawned with a vault channel may ask. |
 | Clipboard | `BOP_CLIP_SECRET`: the copy is marked sensitive (out of the history, password-manager hint for Wayland clients) and `lord-server` clears it after the chosen seconds if it still holds the same text (compared by SHA-256; the text is not kept). |
-| Protection | The manifest says `"protected": true`; `sdk/wayland.js` marks the app's Wayland window protected as soon as it maps, so it is black in screenshots, recordings and the remote desktop (`m9-contrasenas-app-captura.png`). |
+| Protection | The manifest says `"protected": true`; `sdk/wayland.js` marks the app's Wayland window protected as soon as it maps, so it is black in screenshots, recordings and the remote desktop (`passwords-app-screenshot.png`). |
 | Window | Opening Passwords (Dock, app launcher, Search, `wm.open('passwords')`) starts the process or focuses its window; the manifest's `size`/`minSize` now size the app window. |
 
 **Fallback.** If `lord-server` has no app mode or the system package is missing (a dev tree
@@ -105,10 +105,10 @@ to a file works) and the "Open Settings" link on VPN items.
 
 | App mode: the system file dialog over the lock screen | App mode: a LordOS screenshot of the app window |
 |---|---|
-| ![Powerbox](m9-contrasenas-app-powerbox.png) | ![Protected app window](m9-contrasenas-app-captura.png) |
+| ![Powerbox](passwords-app-file-picker.png) | ![Protected app window](passwords-app-screenshot.png) |
 
 In the in-process fallback the lock and create screens show their file picker inline, under the
-padlock and the title (`m9-contrasenas-selector-en-linea.png`), instead of a centred dialog that
+padlock and the title (`passwords-inline-picker.png`), instead of a centred dialog that
 covered the whole form.
 
 ## The vault format (`.lvault`, version 1)

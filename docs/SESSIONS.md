@@ -9,7 +9,7 @@ LordOS has its own session manager, `lord-sessiond`. It does the same as GDM or 
 - it lets several sessions live at the same time (fast user switching);
 - it also serves the remote desktop on the LAN (see [REMOTE.md](REMOTE.md)).
 
-![Login screen](m8-login-greeter.png)
+![Login screen](login-screen.png)
 
 ## Pieces
 
@@ -161,7 +161,7 @@ after that the wait is 1, 2, 4… seconds, up to 5 minutes.
 - **Switch User…**: `{"a":"switch"}`. Shows the login screen with another user selected. The
   previous session stays alive in the background and you return to it by logging in again.
 
-  ![Switch user](m8-login-cambiar-usuario.png)
+  ![Switch user](login-switch-user.png)
 - **Log out:** ends that user's `lord-server` and the monitor goes back to the login screen.
 - **Restarting `lord-sessiond`:**
   - sessions stay alive (`KillMode=process`), and on return you get back in through the login
@@ -232,7 +232,7 @@ screen.
 
 ## Settings → Users
 
-![Users](m8-login-ajustes-usuarios.png)
+![Users](login-settings-users.png)
 
 The list comes from `lord.users.list()`, read-only: accounts with uid 1000–59999 and a real
 shell. It shows the avatar, whether the user is an administrator and whether they have an open
@@ -264,7 +264,7 @@ session. Everything that changes something goes through closed `admin.c` actions
     `~/.config/user-dirs.dirs` and `user-dirs.locale` (xdg-user-dirs), plus `settings.json` and
     `locale.conf`. The list lives in one place, `server/src/users/homedirs.c`, which the installer
     uses too; it matches `lordos-live-prep`. Test: `build/homedirs-test`;
-    ![new user ana, created with her folders](m9-sistema-usuario-nuevo.png)
+    ![new user ana, created with her folders](system-new-user.png)
   - the username is suggested from the full name;
   - it joins `pipewire` and `plugdev`, and `audio`, `video` and `render` when those groups exist:
     `lord-sessiond` sessions have no logind seat, so there are no `uaccess` ACLs, and without
@@ -310,14 +310,14 @@ session. Everything that changes something goes through closed `admin.c` actions
 
 ## Screenshots
 
-- ![session on the monitor compositing on the GPU (llvmpipe, LORD_GPU=1) after going through the login screen](m8-login-sesion-gpu.png)
-- ![wrong password](m8-login-error.png)
-- ![locked screen](m8-login-bloqueada.png)
-- ![logo menu: lock and switch user](m8-login-menu.png)
-- ![bob on the monitor while lord's session stays open](m8-login-sesion-bob.png)
-- ![restart with open sessions](m8-login-reiniciar.png)
-- ![new user](m8-login-usuario-nuevo.png)
-- ![delete a user](m8-login-borrar-usuario.png)
+- ![session on the monitor compositing on the GPU (llvmpipe, LORD_GPU=1) after going through the login screen](login-session-gpu.png)
+- ![wrong password](login-error.png)
+- ![locked screen](login-locked.png)
+- ![logo menu: lock and switch user](login-menu.png)
+- ![bob on the monitor while lord's session stays open](login-session-second-user.png)
+- ![restart with open sessions](login-restart.png)
+- ![new user](login-new-user.png)
+- ![delete a user](login-delete-user.png)
 
 ## Pending
 

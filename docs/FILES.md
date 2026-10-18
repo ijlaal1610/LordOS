@@ -9,27 +9,27 @@ drop, color tags and search. Disk operations belong to the server (`server/src/f
 
 | | |
 |---|---|
-| ![íconos](m7-archivos-iconos.png) | ![lista](m7-archivos-lista.png) |
+| ![íconos](files-icons.png) | ![lista](files-list.png) |
 | Icons with real image thumbnails | List: columns, alternating rows and folders that expand in place (names in several scripts) |
-| ![columnas](m7-archivos-columnas.png) | ![galeria](m7-archivos-galeria.png) |
+| ![columnas](files-columns.png) | ![galeria](files-gallery.png) |
 | Columns (Miller) with the text preview | Gallery: large preview and the strip below |
-| ![quick look](m7-archivos-vista-rapida.png) | ![info](m7-archivos-info.png) |
+| ![quick look](files-quick-preview.png) | ![info](files-get-info.png) |
 | Quick Preview (Space), 5 of 7; the arrows go to the next one | Get Info (❖I): size, location, dates, permissions and «Open with» |
-| ![menú](m7-archivos-menu.png) | ![abrir con](m7-archivos-abrir-con.png) |
+| ![menú](files-context-menu.png) | ![abrir con](files-open-with.png) |
 | Context menu of a file, with tags | «Open with»: the Text Editor or a Linux app that declares the type (FeatherPad) |
-| ![featherpad](m7-archivos-featherpad.png) | ![mover](m7-archivos-mover.png) |
+| ![featherpad](files-open-in-linux-app.png) | ![mover](files-move.png) |
 | `notas.txt` opened in FeatherPad (Qt) from «Open with» | Dragging onto a folder (it gets highlighted); with tabs |
-| ![papelera](m7-archivos-arrastrar.png) | ![restaurar](m7-archivos-papelera.png) |
+| ![papelera](files-drag.png) | ![restaurar](files-trash.png) |
 | Dragging to the Trash in the sidebar | In the Trash: Restore or Delete permanently |
-| ![vaciar](m7-archivos-vaciar.png) | ![etiquetas](m7-archivos-etiquetas.png) |
+| ![vaciar](files-empty-trash.png) | ![etiquetas](files-tags.png) |
 | Emptying the Trash asks for confirmation | Red tag: the dot on the icon and the filter in the sidebar |
-| ![búsqueda](m7-archivos-busqueda.png) | ![recientes](m7-archivos-recientes.png) |
+| ![búsqueda](files-search.png) | ![recientes](files-recents.png) |
 | Search in «Documents» or in Home, with each result's folder | Recents, by date |
-| ![agrupar](m7-archivos-agrupar.png) | ![aplicaciones](m7-archivos-aplicaciones.png) |
+| ![agrupar](files-group-by.png) | ![aplicaciones](files-applications.png) |
 | Grouped by kind | Applications (LordOS, packages and Linux) |
-| ![claro](m7-archivos-claro.png) | ![claro lista](m7-archivos-claro-lista.png) |
+| ![claro](files-icons-light.png) | ![claro lista](files-list-light.png) |
 | Light theme | List in the light theme |
-| ![rtl](m7-archivos-rtl.png) | ![fondo](m7-archivos-menu-fondo.png) |
+| ![rtl](files-rtl.png) | ![fondo](files-background-menu.png) |
 | In Arabic: the sidebar moves to the right | Right click on empty space: New Folder, Paste, View, Sort, Group, hidden files |
 
 ## What's there

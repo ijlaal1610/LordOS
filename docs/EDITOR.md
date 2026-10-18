@@ -5,15 +5,15 @@ top of the SDK: it doesn't use CodeMirror or Monaco, nor vendored TextMate gramm
 
 | | |
 |---|---|
-| ![proyecto](m7-editor-proyecto.png) | ![10000](m7-editor-10000-lineas.png) |
+| ![proyecto](editor-project.png) | ![10000](editor-10000-lines.png) |
 | Project on the left, tabs and highlighting (JavaScript) | A 10,001-line file, at the end and editing |
-| ![cursores](m7-editor-varios-cursores.png) | ![reemplazar](m7-editor-reemplazar.png) |
+| ![cursores](editor-multiple-cursors.png) | ![reemplazar](editor-replace.png) |
 | Three cursors with ❖D: «let» → «var» on the three lines at once | Find and replace all (case-sensitive), «3 replacements» |
-| ![ir](m7-editor-ir-a-archivo.png) | ![japones](m7-editor-japones.png) |
+| ![ir](editor-go-to-file.png) | ![japones](editor-japanese.png) |
 | ❖T: open a project file by letters in order («wjs» → windows.js) | Japanese with LordOS's input method: 日本語を書きます |
-| ![python](m7-editor-python.png) | ![claro](m7-editor-claro.png) |
+| ![python](editor-python.png) | ![claro](editor-light.png) |
 | Python: comment, duplicate and move line; Indic scripts use the font fallback | Light mode (classic IDE-style palette) |
-| ![cerrar](m7-editor-guardar-cambios.png) | ![archivos](m7-editor-desde-archivos.png) |
+| ![cerrar](editor-save-changes.png) | ![archivos](editor-open-from-files.png) |
 | Closing with unsaved changes | Double click in Files: the editor opens it, with the folder as the project |
 
 ## What it has
