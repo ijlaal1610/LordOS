@@ -33,6 +33,16 @@ int  bpfs_map_delete(int fd, const void *key);
 /* Loads a program with its relocations resolved (map_fd(name) gives the fd, -1 if it doesn't
  * exist). log (optional) receives the verifier log if it fails. Returns the fd or -1. */
 int  bpfs_prog_load(uint32_t type, uint32_t attach, const NpProgDesc *d, int (*map_fd)(const char *), char *log, size_t loglen);
+/* The same with the attach target's BTF id (LSM programs: the kernel function of the hook) and
+ * the license string. The kernel only loads LSM programs with a GPL-compatible license: the
+ * programs are ours (MIT), and MIT code may also be distributed under the GPL, so those go as
+ * "Dual MIT/GPL"; the others as "LordOS". */
+int  bpfs_prog_load_btf(uint32_t type, uint32_t attach, uint32_t btf_id, const char *license, const NpProgDesc *d,
+                        int (*map_fd)(const char *), char *log, size_t loglen);
+/* Id of a function (BTF_KIND_FUNC) in the kernel's own type information (/sys/kernel/btf/vmlinux,
+ * or the file given, for tests), 0 if it isn't there or the file is malformed. Only reads; checks
+ * every offset. */
+uint32_t bpfs_btf_func_id(const char *path, const char *name);
 int  bpfs_link_create(int prog_fd, int target_fd, uint32_t attach);
 
 /* Ring buffer: mmap of the consumer page (rw) and of the producer + data (ro). */

@@ -4,7 +4,9 @@
  *   - no arguments, executes nothing, no network of its own (it creates no AF_INET/AF_INET6
  *     sockets: the systemd service also forbids it with RestrictAddressFamilies);
  *   - loads the BPF programs it carries inside (np.bpf.c → build/gen/np_bpf.h) into the cgroup of
- *     lordos.service, which contains the subtrees of all sessions;
+ *     lordos.service, which contains the subtrees of all sessions: the network ones and, with the
+ *     same per-app policy, the device program ("no camera", "no USB") and the Bluetooth socket
+ *     program ("no Bluetooth"; it needs the kernel's function list, /sys/kernel/btf/vmlinux);
  *   - reads the rules of each user with a session from ~/.config/lordos/firewall.json (fixed,
  *     validated path) and compiles them into maps (npcompile.c);
  *   - learns names only from the system resolver (npdns.c);
@@ -17,6 +19,7 @@
 #include "netperm/bpfsys.h"
 #include "netperm/npcompile.h"
 #include "netperm/npdns.h"
+#include "netperm/npload.h"
 #include "netperm/npproto.h"
 #include "fw/fwmap.h"
 #include "errcode.h"
@@ -53,7 +56,7 @@
 #define SCOPE_LEVEL  (SVC_LEVEL + 2)    /* lordos-session-<uid>/<scope> */
 #define USER_LEVEL   3                  /* user.slice/user-<uid>.slice/user@<uid>.service */
 #define NAMES_APP    "lordos"           /* dnsmap key for what the resolver says */
-#define MAX_SESS     64
+#define MAX_SESS     NP_MAX_SESS
 #define MAX_CLIENTS  64
 #define CLIENT_OUT   (256u << 10)
 
@@ -77,6 +80,8 @@ typedef struct {
     int nsc, cap;
     int dirty_counts;
     uint64_t user_cg;                   /* id of user@<uid>.service, or 0 if it isn't there (nor attached) */
+    uint64_t exempt[8];                 /* the user's audio services in np_exempt (see sync_exempt) */
+    int nexempt;
     int ulinks[16], nulinks;            /* the programs attached to user@<uid>.service */
 } Session;
 
@@ -98,7 +103,8 @@ typedef struct {
 static struct {
     int bpf_ok;
     char bpf_err[200];                  /* a code line (errcode.h): the firewall page shows it translated */
-    int m_cfg, m_apps, m_union, m_lpm4, m_lpm6, m_seen, m_counts, m_events;
+    int m_np_cfg, m_np_apps, m_np_union, m_np_lpm4, m_np_lpm6, m_np_seen, m_np_counts, m_np_events, m_np_exempt;
+    int dev_ok, bt_ok;                  /* the device / Bluetooth programs loaded */
     int links[16], nlinks;
     int progs[16], nprogs;
     uint32_t attach[16];
@@ -196,14 +202,15 @@ static void load_rules(Session *s) {
 
 #ifdef NP_HAVE_BPF                     /* the program loader's relocations (bpf_setup) */
 static int map_fd(const char *name) {
-    if (!strcmp(name, "np_cfg")) return G.m_cfg;
-    if (!strcmp(name, "np_apps")) return G.m_apps;
-    if (!strcmp(name, "np_union")) return G.m_union;
-    if (!strcmp(name, "np_lpm4")) return G.m_lpm4;
-    if (!strcmp(name, "np_lpm6")) return G.m_lpm6;
-    if (!strcmp(name, "np_seen")) return G.m_seen;
-    if (!strcmp(name, "np_counts")) return G.m_counts;
-    if (!strcmp(name, "np_events")) return G.m_events;
+    if (!strcmp(name, "np_cfg")) return G.m_np_cfg;
+    if (!strcmp(name, "np_apps")) return G.m_np_apps;
+    if (!strcmp(name, "np_union")) return G.m_np_union;
+    if (!strcmp(name, "np_lpm4")) return G.m_np_lpm4;
+    if (!strcmp(name, "np_lpm6")) return G.m_np_lpm6;
+    if (!strcmp(name, "np_seen")) return G.m_np_seen;
+    if (!strcmp(name, "np_counts")) return G.m_np_counts;
+    if (!strcmp(name, "np_events")) return G.m_np_events;
+    if (!strcmp(name, "np_exempt")) return G.m_np_exempt;
     return -1;
 }
 #endif
@@ -226,8 +233,8 @@ static size_t inst_key(uint32_t idx, const NpNode *n, unsigned char *k) {
 }
 
 static int lpm_put(uint32_t idx, const NpNode *n) {
-    if (n->fam == 4) { NpLpm4Key k; np_key4(idx, n, &k); return bpfs_map_update(G.m_lpm4, &k, &n->list, BPF_ANY); }
-    NpLpm6Key k; np_key6(idx, n, &k); return bpfs_map_update(G.m_lpm6, &k, &n->list, BPF_ANY);
+    if (n->fam == 4) { NpLpm4Key k; np_key4(idx, n, &k); return bpfs_map_update(G.m_np_lpm4, &k, &n->list, BPF_ANY); }
+    NpLpm6Key k; np_key6(idx, n, &k); return bpfs_map_update(G.m_np_lpm6, &k, &n->list, BPF_ANY);
 }
 
 static void lpm_del(uint32_t idx, const unsigned char *ik) {
@@ -236,8 +243,8 @@ static void lpm_del(uint32_t idx, const unsigned char *ik) {
     n.fam = ik[4];
     n.prefix = ik[5];
     memcpy(n.addr, ik + 6, 16);
-    if (n.fam == 4) { NpLpm4Key k; np_key4(idx, &n, &k); bpfs_map_delete(G.m_lpm4, &k); }
-    else { NpLpm6Key k; np_key6(idx, &n, &k); bpfs_map_delete(G.m_lpm6, &k); }
+    if (n.fam == 4) { NpLpm4Key k; np_key4(idx, &n, &k); bpfs_map_delete(G.m_np_lpm4, &k); }
+    else { NpLpm6Key k; np_key6(idx, &n, &k); bpfs_map_delete(G.m_np_lpm6, &k); }
 }
 
 /* Installs a node if it changed. 0 ok. */
@@ -278,14 +285,14 @@ static void sync_scope(Session *s, Scope *sc) {
     prune(sc->idx, gen);
     sc->has_domains = c.has_domains;
     sc->app_v = c.app;
-    if (bpfs_map_update(G.m_apps, &sc->cgid, &c.app, BPF_ANY)) logf_("np_apps: %s", strerror(errno));
+    if (bpfs_map_update(G.m_np_apps, &sc->cgid, &c.app, BPF_ANY)) logf_("np_apps: %s", strerror(errno));
     np_compiled_free(&c);
 }
 
 static void drop_scope(Scope *sc) {
     if (!G.bpf_ok) return;
-    bpfs_map_delete(G.m_apps, &sc->cgid);
-    bpfs_map_delete(G.m_counts, &sc->cgid);
+    bpfs_map_delete(G.m_np_apps, &sc->cgid);
+    bpfs_map_delete(G.m_np_counts, &sc->cgid);
     prune(sc->idx, 0);
 }
 
@@ -310,10 +317,39 @@ static void sync_union(Session *s) {
     if (u.flags) {
         u.trusted = 1;                  /* whatever the union doesn't restrict is allowed without notice */
         u.mode = NP_M_SILENT;
-        if (bpfs_map_update(G.m_union, &s->user_cg, &u, BPF_ANY)) logf_("np_union: %s", strerror(errno));
+        if (bpfs_map_update(G.m_np_union, &s->user_cg, &u, BPF_ANY)) logf_("np_union: %s", strerror(errno));
     } else {
-        bpfs_map_delete(G.m_union, &s->user_cg);
+        bpfs_map_delete(G.m_np_union, &s->user_cg);
     }
+}
+
+/* The user's audio services stay out of the device and Bluetooth union (np.bpf.c, find_dev_app):
+ * PipeWire opens the cameras for its video nodes and WirePlumber the Bluetooth audio sockets, for
+ * the whole session. Their cgroups (user@<uid>.service/session.slice/<unit>) change id when they
+ * restart, so this runs on every pass. Fixed unit names, nothing from the user. */
+static void sync_exempt(Session *s) {
+    static const char *const units[] = { "pipewire.service", "pipewire-pulse.service", "wireplumber.service", "filter-chain.service" };
+    uint64_t now[8];
+    int n = 0;
+    if (s->user_cg) {
+        char path[200];
+        snprintf(path, sizeof path, CG_ROOT "/" CG_USER "/user-%u.slice/user@%u.service/session.slice", s->uid, s->uid);
+        int dfd = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        for (size_t i = 0; dfd >= 0 && i < sizeof units / sizeof units[0] && n < 8; i++) {
+            uint64_t id = bpfs_cgroup_id(dfd, units[i]);
+            if (id) now[n++] = id;
+        }
+        if (dfd >= 0) close(dfd);
+    }
+    for (int i = 0; i < s->nexempt; i++) {
+        int keep = 0;
+        for (int k = 0; k < n; k++) keep |= now[k] == s->exempt[i];
+        if (!keep) bpfs_map_delete(G.m_np_exempt, &s->exempt[i]);
+    }
+    uint32_t one = 1;
+    for (int k = 0; k < n; k++) bpfs_map_update(G.m_np_exempt, &now[k], &one, BPF_ANY);
+    memcpy(s->exempt, now, sizeof now);
+    s->nexempt = n;
 }
 
 static void drop_user_links(Session *s) {
@@ -339,7 +375,7 @@ static void sync_user_scope(Session *s) {
     }
     if (id == s->user_cg) { if (ufd >= 0) close(ufd); return; }
     drop_user_links(s);
-    if (s->user_cg) { bpfs_map_delete(G.m_union, &s->user_cg); bpfs_map_delete(G.m_counts, &s->user_cg); }
+    if (s->user_cg) { bpfs_map_delete(G.m_np_union, &s->user_cg); bpfs_map_delete(G.m_np_counts, &s->user_cg); }
     s->user_cg = 0;
     if (!id || ufd < 0) { if (ufd >= 0) close(ufd); return; }
     for (int i = 0; i < G.nprogs && s->nulinks < (int)(sizeof s->ulinks / sizeof s->ulinks[0]); i++) {
@@ -405,13 +441,15 @@ static void scan_session(Session *s) {
     }
     sync_user_scope(s);                 /* attaches/re-attaches user@ and recompiles the union */
     sync_union(s);
+    if (G.bpf_ok) sync_exempt(s);
 }
 
 static void drop_session(int k) {
     Session *s = &G.sess[k];
     for (int i = 0; i < s->nsc; i++) drop_scope(&s->sc[i]);
     drop_user_links(s);
-    if (s->user_cg) { bpfs_map_delete(G.m_union, &s->user_cg); bpfs_map_delete(G.m_counts, &s->user_cg); }
+    if (s->user_cg) { bpfs_map_delete(G.m_np_union, &s->user_cg); bpfs_map_delete(G.m_np_counts, &s->user_cg); }
+    if (G.bpf_ok) for (int i = 0; i < s->nexempt; i++) bpfs_map_delete(G.m_np_exempt, &s->exempt[i]);
     if (s->wd >= 0) inotify_rm_watch(G.ifd, s->wd);
     free(s->sc);
     fw_store_free(s->store);
@@ -499,7 +537,8 @@ static void send_uid(unsigned uid, int type, const char *json, size_t n, int dro
 static void status_json(char *b, size_t n) {
     char err[260];
     json_quote(err, sizeof err, G.bpf_ok ? "" : G.bpf_err);
-    snprintf(b, n, "{\"bpf\":%s,\"dns\":\"%s\",\"error\":%s}", G.bpf_ok ? "true" : "false", G.dns ? npdns_source(G.dns) : "none", err);
+    snprintf(b, n, "{\"bpf\":%s,\"devices\":%s,\"bluetooth\":%s,\"dns\":\"%s\",\"error\":%s}", G.bpf_ok ? "true" : "false",
+             G.bpf_ok && G.dev_ok ? "true" : "false", G.bpf_ok && G.bt_ok ? "true" : "false", G.dns ? npdns_source(G.dns) : "none", err);
 }
 
 static void accept_client(void) {
@@ -565,6 +604,18 @@ static void on_event(void *u, const void *data, uint32_t len) {
     memcpy(&ev, data, sizeof ev);
     Session *s;
     Scope *sc = scope_by_cgid(ev.cgid, &s);
+    if (ev.dir == NP_D_DEV || ev.dir == NP_D_BT) {
+        /* a device open or a Bluetooth socket: only in the journal (the Monitor's counters and
+         * connection log are about the network) */
+        Session *us = sc ? s : session_by_user_cg(ev.cgid);
+        unsigned minor = (unsigned)ev.addr[0] | (unsigned)ev.addr[1] << 8 | (unsigned)ev.addr[2] << 16 | (unsigned)ev.addr[3] << 24;
+        if (!us) return;
+        if (ev.dir == NP_D_DEV)
+            logf_("uid %u %s: denied opening device %u:%u (%s)", us->uid, sc ? sc->app : "user@ (union of restricted apps)", ev.port, minor, fw_flag_name(ev.flag));
+        else
+            logf_("uid %u %s: denied a Bluetooth socket (%s)", us->uid, sc ? sc->app : "user@ (union of restricted apps)", fw_flag_name(ev.flag));
+        return;
+    }
     char addr[INET6_ADDRSTRLEN] = "";
     if (ev.fam == 4) inet_ntop(AF_INET, ev.addr, addr, sizeof addr);
     else if (ev.fam == 6) inet_ntop(AF_INET6, ev.addr, addr, sizeof addr);
@@ -597,7 +648,7 @@ static void push_counts(void) {
         int changed = s->dirty_counts;
         for (int k = 0; k < s->nsc; k++) {
             NpCount c = { 0, 0 };
-            if (G.bpf_ok) bpfs_map_lookup(G.m_counts, &s->sc[k].cgid, &c);
+            if (G.bpf_ok) bpfs_map_lookup(G.m_np_counts, &s->sc[k].cgid, &c);
             if (c.allowed != s->sc[k].allowed || c.denied != s->sc[k].denied) changed = 1;
             s->sc[k].allowed = c.allowed;
             s->sc[k].denied = c.denied;
@@ -644,7 +695,7 @@ static void on_dns(void *u, const uint8_t *pkt, size_t len) {
                 if (np_compile_host(store_of(s), sc->app, r->addr[a].fam, r->addr[a].addr, (const char (*)[FW_NAME_MAX])names, n, &node, &tr) != 1) continue;
                 if (install(sc->idx, sc->gen, &node)) continue;
                 np_u8 *has = node.fam == 4 ? &sc->app_v.has4 : &sc->app_v.has6;
-                if (!*has) { *has = 1; bpfs_map_update(G.m_apps, &sc->cgid, &sc->app_v, BPF_ANY); }
+                if (!*has) { *has = 1; bpfs_map_update(G.m_np_apps, &sc->cgid, &sc->app_v, BPF_ANY); }
             }
         }
     }
@@ -653,43 +704,60 @@ static void on_dns(void *u, const uint8_t *pkt, size_t len) {
 
 /* ---- BPF ------------------------------------------------------------------------------------- */
 
+#ifdef NP_HAVE_BPF
+/* Major of /dev/hidraw* (dynamic): the "hidraw" line of /proc/devices, or 0. */
+static uint32_t hidraw_major(void) {
+    FILE *f = fopen("/proc/devices", "re");
+    char line[128];
+    unsigned m = 0, v;
+    char name[64];
+    int chr = 0;
+    while (f && fgets(line, sizeof line, f)) {
+        if (!strncmp(line, "Character devices:", 18)) { chr = 1; continue; }
+        if (!strncmp(line, "Block devices:", 14)) chr = 0;
+        if (chr && sscanf(line, "%u %63s", &v, name) == 2 && !strcmp(name, "hidraw")) m = v;
+    }
+    if (f) fclose(f);
+    return m;
+}
+#endif
+
 static int bpf_setup(void) {
 #ifndef NP_HAVE_BPF
     lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfNotBuilt", NULL);
     return -1;
 #else
-    G.m_cfg = bpfs_map_create(BPF_MAP_TYPE_ARRAY, 4, sizeof(NpCfg), 1, 0, "np_cfg");
-    G.m_apps = bpfs_map_create(BPF_MAP_TYPE_HASH, 8, sizeof(NpApp), NP_MAX_APPS, 0, "np_apps");
-    G.m_union = bpfs_map_create(BPF_MAP_TYPE_HASH, 8, sizeof(NpApp), MAX_SESS, 0, "np_union");
-    G.m_lpm4 = bpfs_map_create(BPF_MAP_TYPE_LPM_TRIE, sizeof(NpLpm4Key), sizeof(NpList), NP_MAX_LPM, BPF_F_NO_PREALLOC, "np_lpm4");
-    G.m_lpm6 = bpfs_map_create(BPF_MAP_TYPE_LPM_TRIE, sizeof(NpLpm6Key), sizeof(NpList), NP_MAX_LPM, BPF_F_NO_PREALLOC, "np_lpm6");
-    G.m_seen = bpfs_map_create(BPF_MAP_TYPE_LRU_HASH, sizeof(NpSeenKey), 8, NP_MAX_SEEN, 0, "np_seen");
-    G.m_counts = bpfs_map_create(BPF_MAP_TYPE_HASH, 8, sizeof(NpCount), NP_MAX_APPS, 0, "np_counts");
-    G.m_events = bpfs_map_create(BPF_MAP_TYPE_RINGBUF, 0, 0, NP_RINGBUF, 0, "np_events");
-    if (G.m_cfg < 0 || G.m_apps < 0 || G.m_union < 0 || G.m_lpm4 < 0 || G.m_lpm6 < 0 || G.m_seen < 0 || G.m_counts < 0 || G.m_events < 0) {
+#define NP_MKMAP(n, t, k, v, m, f) G.m_##n = bpfs_map_create(t, k, v, m, f, #n);
+    NP_MAPS(NP_MKMAP)
+#undef NP_MKMAP
+    if (G.m_np_exempt < 0 || G.m_np_cfg < 0 || G.m_np_apps < 0 || G.m_np_union < 0 || G.m_np_lpm4 < 0 || G.m_np_lpm6 < 0 || G.m_np_seen < 0 || G.m_np_counts < 0 || G.m_np_events < 0) {
         lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfMaps", "errno", lerr_errno(errno), NULL);
         return -1;
     }
-    if (bpfs_ring_open(&G.ring, G.m_events, NP_RINGBUF)) {
+    if (bpfs_ring_open(&G.ring, G.m_np_events, NP_RINGBUF)) {
         lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfRing", "errno", lerr_errno(errno), NULL);
         return -1;
     }
-    static const struct { const char *sec; uint32_t type, attach; } want[] = {
-        { "cgroup/connect4", BPF_PROG_TYPE_CGROUP_SOCK_ADDR, BPF_CGROUP_INET4_CONNECT },
-        { "cgroup/connect6", BPF_PROG_TYPE_CGROUP_SOCK_ADDR, BPF_CGROUP_INET6_CONNECT },
-        { "cgroup/sendmsg4", BPF_PROG_TYPE_CGROUP_SOCK_ADDR, BPF_CGROUP_UDP4_SENDMSG },
-        { "cgroup/sendmsg6", BPF_PROG_TYPE_CGROUP_SOCK_ADDR, BPF_CGROUP_UDP6_SENDMSG },
-        { "cgroup/bind4", BPF_PROG_TYPE_CGROUP_SOCK_ADDR, BPF_CGROUP_INET4_BIND },
-        { "cgroup/bind6", BPF_PROG_TYPE_CGROUP_SOCK_ADDR, BPF_CGROUP_INET6_BIND },
-        { "cgroup/sock_create", BPF_PROG_TYPE_CGROUP_SOCK, BPF_CGROUP_INET_SOCK_CREATE },
-    };
     static char log[1 << 20];
     int np = 0;
-    for (size_t w = 0; w < sizeof want / sizeof want[0]; w++) {
+    for (int w = 0; w < NP_NSPECS; w++) {
+        const NpProgSpec *want = np_prog_specs;
         const NpProgDesc *d = NULL;
         for (int i = 0; i < NP_NPROGS; i++) if (!strcmp(np_progs[i].section, want[w].sec)) d = &np_progs[i];
         if (!d) { lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfMissing", "program", want[w].sec, NULL); return -1; }
-        int fd = bpfs_prog_load(want[w].type, want[w].attach, d, map_fd, log, sizeof log);
+        uint32_t btf_id = 0;
+        if (want[w].btf && !(btf_id = bpfs_btf_func_id(NULL, want[w].btf))) {
+            logf_("%s: %s is not in the kernel's BTF: \"no Bluetooth\" is not enforced", want[w].sec, want[w].btf);
+            continue;
+        }
+        int fd = bpfs_prog_load_btf(want[w].type, want[w].attach, btf_id, np_prog_license(&want[w]), d, map_fd, log, sizeof log);
+        if (fd < 0 && want[w].opt) {
+            int e = errno;
+            size_t ll = strlen(log);
+            fprintf(stderr, "%s\n", ll > 3000 ? log + ll - 3000 : log);
+            logf_("%s: the kernel refused it (%s); that restriction is not enforced", want[w].sec, strerror(e));
+            continue;
+        }
         if (fd < 0) {
             int e = errno;
             size_t ll = strlen(log);
@@ -697,14 +765,17 @@ static int bpf_setup(void) {
             lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfRejected", "program", want[w].sec, "errno", lerr_errno(e), NULL);
             return -1;
         }
+        if (want[w].attach == BPF_CGROUP_DEVICE) G.dev_ok = 1;
+        if (want[w].attach == BPF_LSM_CGROUP) G.bt_ok = 1;
         G.attach[np] = want[w].attach;
         G.progs[np++] = fd;
     }
     G.nprogs = np;
-    NpCfg cfg = { SCOPE_LEVEL, 1, USER_LEVEL };
+    NpCfg cfg = { SCOPE_LEVEL, 1, USER_LEVEL, hidraw_major() };
     uint32_t zero = 0;
-    if (bpfs_map_update(G.m_cfg, &zero, &cfg, BPF_ANY)) { lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfConfig", "errno", lerr_errno(errno), NULL); return -1; }
-    logf_("%d BPF programs loaded", np);
+    if (bpfs_map_update(G.m_np_cfg, &zero, &cfg, BPF_ANY)) { lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfConfig", "errno", lerr_errno(errno), NULL); return -1; }
+    logf_("%d BPF programs loaded (devices: %s, Bluetooth sockets: %s, hidraw major %u)", np, G.dev_ok ? "yes" : "no",
+          G.bt_ok ? "yes" : "no", cfg.hidraw_major);
     return 0;
 #endif
 }
@@ -810,7 +881,7 @@ int main(int argc, char **argv) {
     epoll_ctl(G.ep, EPOLL_CTL_ADD, G.ifd, &ev);
     ev.data.u64 = 3;
     epoll_ctl(G.ep, EPOLL_CTL_ADD, G.tfd, &ev);
-    if (G.bpf_ok) { ev.data.u64 = 4; epoll_ctl(G.ep, EPOLL_CTL_ADD, G.m_events, &ev); }
+    if (G.bpf_ok) { ev.data.u64 = 4; epoll_ctl(G.ep, EPOLL_CTL_ADD, G.m_np_events, &ev); }
     G.root_wd = -1;
     G.sys_wd = inotify_add_watch(G.ifd, CG_ROOT "/system.slice", IN_CREATE | IN_ONLYDIR);
     attach_service();

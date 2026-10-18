@@ -15,6 +15,13 @@
  *   np_seen    LRU    NpSeenKey → u64 ns            to report only new connections
  *   np_counts  HASH   cgroup id → NpCount           allowed / denied
  *   np_events  RINGBUF                              NpEvent towards lord-netperm
+ *   np_exempt  HASH   cgroup id (u64) → u32           the user's audio services (PipeWire,
+ *                                                     WirePlumber) under user@<uid>: the device and
+ *                                                     Bluetooth union doesn't apply to them
+ *
+ * Besides the network, the same per-app policy carries three device restrictions (docs/FIREWALL.md,
+ * "Linux apps"): "no camera" and "no USB" (cgroup/dev, by device major) and "no Bluetooth"
+ * (socket(AF_BLUETOOTH), cgroup/lsm_socket_create).
  */
 #ifndef LORD_NP_SHARED_H
 #define LORD_NP_SHARED_H
@@ -48,9 +55,22 @@ typedef uint64_t np_u64;
 #define NP_R_NO_LAN       (1u << 1)
 #define NP_R_NO_NETWORK   (1u << 2)
 #define NP_R_NO_INCOMING  (1u << 3)
+#define NP_R_NO_CAMERA    (1u << 4)
+#define NP_R_NO_USB       (1u << 7)
+#define NP_R_NO_BLUETOOTH (1u << 8)
+#define NP_R_NET_MASK     (NP_R_NO_INTERNET | NP_R_NO_LAN | NP_R_NO_NETWORK | NP_R_NO_INCOMING)
+#define NP_R_DEV_MASK     (NP_R_NO_CAMERA | NP_R_NO_USB | NP_R_NO_BLUETOOTH)
+
+/* Character device majors (Documentation/admin-guide/devices.txt; hidraw is dynamic and comes
+ * from /proc/devices, in NpCfg). */
+#define NP_MAJOR_V4L      81    /* /dev/video*, /dev/v4l-subdev*, /dev/radio*, /dev/vbi* */
+#define NP_MAJOR_TTYACM   166   /* USB modems and boards (/dev/ttyACM*) */
+#define NP_MAJOR_TTYUSB   188   /* USB serial adapters (/dev/ttyUSB*) */
+#define NP_MAJOR_USBDEV   189   /* raw USB devices (/dev/bus/usb/BBB/DDD, libusb) */
+#define NP_DEV_CHAR       2     /* BPF_DEVCG_DEV_CHAR */
 
 enum { NP_P_ANY = 0, NP_P_TCP = 1, NP_P_UDP = 2, NP_P_OTHER = 3 };   /* like FwProto (+ other) */
-enum { NP_D_OUT = 0, NP_D_IN = 1 };
+enum { NP_D_OUT = 0, NP_D_IN = 1, NP_D_DEV = 2, NP_D_BT = 3 };   /* events: DEV = a device open, BT = a Bluetooth socket */
 enum { NP_V_ALLOW = 0, NP_V_DENY = 1 };
 enum { NP_K_RULE = 0, NP_K_ANY = 1, NP_K_LAN = 2, NP_K_INET = 3 };   /* NpEnt.kind */
 enum { NP_M_SILENT = 0, NP_M_OFF = 2 };                              /* "ask" is treated as silent */
@@ -88,6 +108,7 @@ typedef struct {
     np_u32 level;               /* depth of the apps' scopes (bpf_get_current_ancestor_cgroup_id) */
     np_u32 on;                  /* 0: everything is allowed without looking at anything */
     np_u32 user_level;          /* depth of user@<uid>.service; 0: don't look at the user@ union */
+    np_u32 hidraw_major;        /* /dev/hidraw* (dynamic major), 0 if the kernel has none */
 } NpCfg;
 
 typedef struct {
@@ -114,6 +135,17 @@ typedef struct {
     int    verdict, reason, record;
     np_u32 rule_id, flag;
 } NpRes;
+
+/* Which restriction covers opening a character device (cgroup/dev): NP_R_NO_CAMERA for video
+ * devices, NP_R_NO_USB for raw USB, hidraw and USB serial; 0 for everything else (always
+ * allowed: the program only takes away what the user restricted). */
+NP_INLINE np_u32 np_dev_restriction(np_u32 type, np_u32 major, np_u32 hidraw_major) {
+    if (type != NP_DEV_CHAR) return 0;
+    if (major == NP_MAJOR_V4L) return NP_R_NO_CAMERA;
+    if (major == NP_MAJOR_USBDEV || major == NP_MAJOR_TTYACM || major == NP_MAJOR_TTYUSB) return NP_R_NO_USB;
+    if (hidraw_major && major == hidraw_major) return NP_R_NO_USB;
+    return 0;
+}
 
 /* LAN, same as fw_addr_is_lan (addresses are in network order). */
 NP_INLINE int np_is_lan4(const np_u8 *a) {

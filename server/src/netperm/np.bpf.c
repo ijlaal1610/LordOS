@@ -9,6 +9,11 @@
  *   cgroup/sendmsg4, sendmsg6   unconnected UDP (sendto with an address)
  *   cgroup/bind4, bind6         "no incoming connections" and inbound rules (local port != 0)
  *   cgroup/sock_create          "no network": not even creating an AF_INET/AF_INET6 socket
+ *   cgroup/dev                  "no camera" and "no USB": opening video devices, raw USB devices
+ *                               (/dev/bus/usb), hidraw, ttyACM and ttyUSB (by major); every other
+ *                               device stays allowed
+ *   cgroup/lsm_socket_create    "no Bluetooth": socket(AF_BLUETOOTH) (a per-cgroup LSM program,
+ *                               BPF_LSM_CGROUP: the inet sock_create hook never sees that family)
  *
  * The same programs are also attached to the user@<uid>.service of each LordOS session, to
  * close the `systemd-run --user` escape (the process ends up there, outside lordos.service). A
@@ -45,9 +50,11 @@ char np_lpm6[4] SEC("maps");
 char np_seen[4] SEC("maps");
 char np_counts[4] SEC("maps");
 char np_events[4] SEC("maps");
+char np_exempt[4] SEC("maps");
 
 #define AF_INET  2
 #define AF_INET6 10
+#define AF_BLUETOOTH 31
 #define IPPROTO_TCP 6
 #define IPPROTO_UDP 17
 
@@ -66,6 +73,28 @@ NP_INLINE NpApp *find_app(NpCfg *cfg, np_u64 *cgid) {
         if (app) { *cgid = id; return app; }
     }
     if (cfg->user_level) {
+        np_u64 uid = bpf_get_current_ancestor_cgroup_id((int)cfg->user_level);
+        if (uid) {
+            NpApp *app = bpf_map_lookup_elem(&np_union, &uid);
+            if (app) { *cgid = uid; return app; }
+        }
+    }
+    return 0;
+}
+
+/* The same for the device and Bluetooth restrictions, with one difference: under user@<uid> the
+ * user's own audio services (PipeWire, WirePlumber: np_exempt, a service at level
+ * cfg->user_level + 2) are left out of the union, so a restricted app running doesn't take the
+ * camera or Bluetooth audio away from the whole session. */
+NP_INLINE NpApp *find_dev_app(NpCfg *cfg, np_u64 *cgid) {
+    np_u64 id = bpf_get_current_ancestor_cgroup_id((int)cfg->level);
+    if (id) {
+        NpApp *app = bpf_map_lookup_elem(&np_apps, &id);
+        if (app) { *cgid = id; return app; }
+    }
+    if (cfg->user_level) {
+        np_u64 svc = bpf_get_current_ancestor_cgroup_id((int)cfg->user_level + 2);
+        if (svc && bpf_map_lookup_elem(&np_exempt, &svc)) return 0;
         np_u64 uid = bpf_get_current_ancestor_cgroup_id((int)cfg->user_level);
         if (uid) {
             NpApp *app = bpf_map_lookup_elem(&np_union, &uid);
@@ -238,5 +267,64 @@ SEC("cgroup/sock_create") int np_sock_create(struct bpf_sock *sk) {
     if (!app || !(app->flags & NP_R_NO_NETWORK)) return 1;
     np_u8 a[16] = { 0 };
     handle(0, a, 0, proto_of(sk->protocol), NP_D_OUT, 1);   /* counts and reports (denies because of the restriction) */
+    return 0;
+}
+
+/* A denied device open or Bluetooth socket: reported once per 5 s (np_seen). Not counted: the
+ * Monitor's allowed/denied counters are about connections. */
+NP_INLINE void report_dev(np_u64 cgid, int dir, np_u32 major, np_u32 minor, np_u32 flag) {
+    NpSeenKey sk;
+    __builtin_memset(&sk, 0, sizeof sk);
+    sk.cgid = cgid;
+    sk.addr[0] = (np_u8)minor; sk.addr[1] = (np_u8)(minor >> 8); sk.addr[2] = (np_u8)(minor >> 16); sk.addr[3] = (np_u8)(minor >> 24);
+    sk.port = (np_u16)major;
+    sk.dir = (np_u8)dir; sk.verdict = 1;
+    np_u64 now = bpf_ktime_get_ns();
+    np_u64 *last = bpf_map_lookup_elem(&np_seen, &sk);
+    if (last && now - *last <= NP_REPEAT_NS) return;
+    bpf_map_update_elem(&np_seen, &sk, &now, BPF_ANY);
+    NpEvent ev;
+    __builtin_memset(&ev, 0, sizeof ev);
+    ev.cgid = cgid;
+    ev.ts = now;
+    for (int i = 0; i < 4; i++) ev.addr[i] = sk.addr[i];
+    ev.port = (np_u16)major;
+    ev.proto = NP_P_OTHER; ev.dir = (np_u8)dir; ev.verdict = NP_V_DENY;
+    ev.reason = NP_BY_RESTRICTED; ev.record = 1;
+    ev.flag = flag;
+    bpf_ringbuf_output(&np_events, &ev, sizeof ev, 0);
+}
+
+/* "no camera" / "no USB": the device controller of cgroup v2 is this kind of program. It runs on
+ * open() and mknod() of a device node; 1 = allow, 0 = EPERM. Programs attached higher up (systemd's
+ * DeviceAllow) still apply: the kernel allows only what all of them allow. Only the devices of
+ * np_dev_restriction are ever denied, and only to a restricted app. */
+SEC("cgroup/dev") int np_dev(struct bpf_cgroup_dev_ctx *ctx) {
+    np_u32 zero = 0;
+    NpCfg *cfg = bpf_map_lookup_elem(&np_cfg, &zero);
+    if (!cfg || !cfg->on) return 1;
+    np_u32 need = np_dev_restriction(ctx->access_type & 0xffff, ctx->major, cfg->hidraw_major);
+    if (!need) return 1;
+    np_u64 cgid = 0;
+    NpApp *app = find_dev_app(cfg, &cgid);
+    if (!app || !(app->flags & need)) return 1;
+    report_dev(cgid, NP_D_DEV, ctx->major, ctx->minor, need);
+    return 0;
+}
+
+/* "no Bluetooth": socket(AF_BLUETOOTH, ...) of a restricted app. A cgroup LSM program on the
+ * socket_create hook (BPF_LSM_CGROUP, kernel >= 6.0 with the bpf LSM active); ctx are the hook's
+ * arguments (family, type, protocol, kern). kern = 1 is the kernel's own socket: never touched. */
+SEC("cgroup/lsm_socket_create") int np_bt_socket(unsigned long long *ctx) {
+    int family = (int)ctx[0];
+    int kern = (int)ctx[3];
+    if (family != AF_BLUETOOTH || kern) return 1;
+    np_u32 zero = 0;
+    NpCfg *cfg = bpf_map_lookup_elem(&np_cfg, &zero);
+    if (!cfg || !cfg->on) return 1;
+    np_u64 cgid = 0;
+    NpApp *app = find_dev_app(cfg, &cgid);
+    if (!app || !(app->flags & NP_R_NO_BLUETOOTH)) return 1;
+    report_dev(cgid, NP_D_BT, 0, 0, NP_R_NO_BLUETOOTH);
     return 0;
 }

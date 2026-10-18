@@ -416,7 +416,45 @@ static void bench(void) {
     fw_store_free(s);
 }
 
+/* The device and Bluetooth restrictions (cgroup/dev, cgroup/lsm_socket_create): which majors each
+ * one covers, that they reach the compiled policy of Linux apps but never lord-server's own
+ * ("lordos"), and that they don't change any network decision. */
+static void device_cases(void) {
+    const uint32_t HID = 242;
+    CHECK(np_dev_restriction(NP_DEV_CHAR, 81, HID) == NP_R_NO_CAMERA);          /* /dev/video* */
+    CHECK(np_dev_restriction(NP_DEV_CHAR, 189, HID) == NP_R_NO_USB);            /* /dev/bus/usb */
+    CHECK(np_dev_restriction(NP_DEV_CHAR, 166, HID) == NP_R_NO_USB);            /* ttyACM */
+    CHECK(np_dev_restriction(NP_DEV_CHAR, 188, HID) == NP_R_NO_USB);            /* ttyUSB */
+    CHECK(np_dev_restriction(NP_DEV_CHAR, HID, HID) == NP_R_NO_USB);            /* hidraw */
+    CHECK(np_dev_restriction(NP_DEV_CHAR, HID, 0) == 0);                        /* no hidraw in the kernel */
+    CHECK(np_dev_restriction(1, 81, HID) == 0);                                 /* a block device 81: not a camera */
+    static const uint32_t free_majors[] = { 1, 4, 5, 10, 13, 116, 226, 180, 246, 0 };   /* mem, tty, misc, input, sound, dri... */
+    for (int i = 0; free_majors[i]; i++) CHECK(np_dev_restriction(NP_DEV_CHAR, free_majors[i], HID) == 0);
+    /* the FW_R_* bits are the same */
+    CHECK(NP_R_NO_CAMERA == FW_R_NO_CAMERA && NP_R_NO_USB == FW_R_NO_USB && NP_R_NO_BLUETOOTH == FW_R_NO_BLUETOOTH);
+
+    FwStore *s = fw_store_new();
+    DnsMap *names = dnsmap_new(0);
+    fw_set_restricted(s, "desktop:cam", FW_R_NO_CAMERA | FW_R_NO_USB | FW_R_NO_BLUETOOTH | FW_R_NO_FILES | FW_R_NO_MIC);
+    fw_set_restricted(s, "lordos", FW_R_NO_CAMERA | FW_R_NO_USB | FW_R_NO_BLUETOOTH | FW_R_NO_INTERNET);
+    NpCompiled c = compile(s, "desktop:cam", names, 1000);
+    CHECK(c.app.flags == (NP_R_NO_CAMERA | NP_R_NO_USB | NP_R_NO_BLUETOOTH));  /* files/mic aren't the kernel's */
+    uint8_t a[16];
+    FwDecision ref;
+    NpRes got;
+    int fam = ip("203.0.113.10", a);
+    CHECK(same(s, names, &c, "desktop:cam", FW_OUT, FW_PROTO_TCP, fam, a, 443, 1000, &ref, &got));
+    CHECK(got.verdict == NP_V_ALLOW);                                           /* the network is untouched */
+    np_compiled_free(&c);
+    c = compile(s, "lordos", names, 1000);
+    CHECK(c.app.flags == NP_R_NO_INTERNET);                                     /* lord-server keeps its devices */
+    np_compiled_free(&c);
+    fw_store_free(s);
+    dnsmap_free(names);
+}
+
 int main(void) {
+    device_cases();
     fixed_cases();
     dns_sources();
     int diffs = 0, queries = 0;

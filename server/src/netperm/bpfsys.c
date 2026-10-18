@@ -68,6 +68,11 @@ int bpfs_map_delete(int fd, const void *key) {
 }
 
 int bpfs_prog_load(uint32_t type, uint32_t attach, const NpProgDesc *d, int (*map_fd)(const char *), char *log, size_t loglen) {
+    return bpfs_prog_load_btf(type, attach, 0, "LordOS", d, map_fd, log, loglen);
+}
+
+int bpfs_prog_load_btf(uint32_t type, uint32_t attach, uint32_t btf_id, const char *license, const NpProgDesc *d,
+                       int (*map_fd)(const char *), char *log, size_t loglen) {
     if (!d || !d->ninsns || d->ninsns > 1000000) { errno = EINVAL; return -1; }
     struct bpf_insn *ins = malloc(d->ninsns * sizeof *ins);
     if (!ins) return -1;
@@ -86,7 +91,8 @@ int bpfs_prog_load(uint32_t type, uint32_t attach, const NpProgDesc *d, int (*ma
     a.expected_attach_type = attach;
     a.insns = (uint64_t)(uintptr_t)ins;
     a.insn_cnt = d->ninsns;
-    a.license = (uint64_t)(uintptr_t)"LordOS";
+    a.license = (uint64_t)(uintptr_t)license;
+    a.attach_btf_id = btf_id;
     set_name(a.prog_name, d->name);
     int fd = sys_bpf(BPF_PROG_LOAD, &a);
     if (fd < 0 && log && loglen > 1) {
@@ -150,6 +156,56 @@ void bpfs_ring_close(BpfRing *r) {
     if (r->cons) munmap(r->cons, r->page);
     if (r->prod) munmap(r->prod, r->page + 2 * r->size);
     r->cons = r->prod = NULL;
+}
+
+/* ---- kernel BTF: only enough to find a function by name ---- */
+
+static uint32_t rd32(const unsigned char *p) { uint32_t v; memcpy(&v, p, 4); return v; }
+
+uint32_t bpfs_btf_func_id(const char *path, const char *name) {
+    int fd = open(path ? path : "/sys/kernel/btf/vmlinux", O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return 0;
+    /* sysfs reports size 0 for this file: read until EOF, up to 64 MB */
+    size_t cap = 8u << 20, len = 0;
+    unsigned char *buf = malloc(cap);
+    while (buf) {
+        if (len == cap) {
+            if (cap >= (64u << 20)) { free(buf); buf = NULL; break; }
+            unsigned char *nb = realloc(buf, cap * 2);
+            if (!nb) { free(buf); buf = NULL; break; }
+            buf = nb; cap *= 2;
+        }
+        ssize_t n = read(fd, buf + len, cap - len);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) break;
+        len += (size_t)n;
+    }
+    close(fd);
+    if (!buf) return 0;
+    uint32_t found = 0;
+    if (len < 24 || buf[0] != 0x9f || buf[1] != 0xeb) goto out;    /* magic 0xeB9F, little endian */
+    uint32_t hl = rd32(buf + 4), toff = rd32(buf + 8), tlen = rd32(buf + 12), soff = rd32(buf + 16), slen = rd32(buf + 20);
+    if (hl < 24 || hl > len || toff > len - hl || tlen > len - hl - toff || soff > len - hl || slen > len - hl - soff) goto out;
+    const unsigned char *t = buf + hl + toff, *strs = buf + hl + soff;
+    size_t nl = strlen(name), pos = 0;
+    for (uint32_t id = 1; pos + 12 <= tlen; id++) {
+        uint32_t noff = rd32(t + pos), info = rd32(t + pos + 4);
+        uint32_t kind = (info >> 24) & 0x1f, vlen = info & 0xffff;
+        size_t extra;
+        switch (kind) {
+        case 1: case 14: case 17: extra = 4; break;                 /* INT, VAR, DECL_TAG */
+        case 3: extra = 12; break;                                  /* ARRAY */
+        case 4: case 5: case 15: case 19: extra = 12u * vlen; break;/* STRUCT, UNION, DATASEC, ENUM64 */
+        case 6: case 13: extra = 8u * vlen; break;                  /* ENUM, FUNC_PROTO */
+        case 2: case 7: case 8: case 9: case 10: case 11: case 12: case 16: case 18: extra = 0; break;
+        default: goto out;                                          /* a kind we don't know: give up */
+        }
+        if (kind == 12 && noff < slen && slen - noff > nl && !memcmp(strs + noff, name, nl + 1)) { found = id; break; }
+        pos += 12 + extra;
+    }
+out:
+    free(buf);
+    return found;
 }
 
 uint64_t bpfs_cgroup_id(int dirfd, const char *name) {
