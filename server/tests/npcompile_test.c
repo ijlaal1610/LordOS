@@ -432,14 +432,14 @@ static void device_cases(void) {
     static const uint32_t free_majors[] = { 1, 4, 5, 10, 13, 116, 226, 180, 246, 0 };   /* mem, tty, misc, input, sound, dri... */
     for (int i = 0; free_majors[i]; i++) CHECK(np_dev_restriction(NP_DEV_CHAR, free_majors[i], HID) == 0);
     /* the FW_R_* bits are the same */
-    CHECK(NP_R_NO_CAMERA == FW_R_NO_CAMERA && NP_R_NO_SCREEN == FW_R_NO_SCREEN && NP_R_NO_USB == FW_R_NO_USB && NP_R_NO_BLUETOOTH == FW_R_NO_BLUETOOTH);
+    CHECK(NP_R_NO_CAMERA == FW_R_NO_CAMERA && NP_R_NO_MIC == FW_R_NO_MIC && NP_R_NO_SCREEN == FW_R_NO_SCREEN && NP_R_NO_USB == FW_R_NO_USB && NP_R_NO_BLUETOOTH == FW_R_NO_BLUETOOTH);
 
     FwStore *s = fw_store_new();
     DnsMap *names = dnsmap_new(0);
     fw_set_restricted(s, "desktop:cam", FW_R_NO_CAMERA | FW_R_NO_USB | FW_R_NO_BLUETOOTH | FW_R_NO_FILES | FW_R_NO_MIC);
     fw_set_restricted(s, "lordos", FW_R_NO_CAMERA | FW_R_NO_USB | FW_R_NO_BLUETOOTH | FW_R_NO_INTERNET);
     NpCompiled c = compile(s, "desktop:cam", names, 1000);
-    CHECK(c.app.flags == (NP_R_NO_CAMERA | NP_R_NO_USB | NP_R_NO_BLUETOOTH));  /* files/mic aren't the kernel's */
+    CHECK(c.app.flags == (NP_R_NO_CAMERA | NP_R_NO_USB | NP_R_NO_BLUETOOTH | NP_R_NO_MIC));  /* files aren't the kernel's */
     uint8_t a[16];
     FwDecision ref;
     NpRes got;

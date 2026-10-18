@@ -9,9 +9,10 @@
  *   cgroup/sendmsg4, sendmsg6   unconnected UDP (sendto with an address)
  *   cgroup/bind4, bind6         "no incoming connections" and inbound rules (local port != 0)
  *   cgroup/sock_create          "no network": not even creating an AF_INET/AF_INET6 socket
- *   cgroup/dev                  "no camera", "no USB" and "no screen capture": opening video
- *                               devices, raw USB devices (/dev/bus/usb), hidraw, ttyACM, ttyUSB
- *                               and the framebuffer (by major); every other device stays allowed
+ *   cgroup/dev                  "no camera", "no USB", "no screen capture" and "no microphone":
+ *                               opening video devices, raw USB devices (/dev/bus/usb), hidraw,
+ *                               ttyACM, ttyUSB, the framebuffer (by major) and ALSA capture PCM
+ *                               nodes (np_capdev); every other device stays allowed
  *   cgroup/lsm_socket_create    "no Bluetooth": socket(AF_BLUETOOTH) (a per-cgroup LSM program,
  *                               BPF_LSM_CGROUP: the inet sock_create hook never sees that family)
  *
@@ -50,6 +51,7 @@ char np_lpm6[4] SEC("maps");
 char np_seen[4] SEC("maps");
 char np_counts[4] SEC("maps");
 char np_events[4] SEC("maps");
+char np_capdev[4] SEC("maps");
 
 #define AF_INET  2
 #define AF_INET6 10
@@ -286,6 +288,10 @@ SEC("cgroup/dev") int np_dev(struct bpf_cgroup_dev_ctx *ctx) {
     NpCfg *cfg = bpf_map_lookup_elem(&np_cfg, &zero);
     if (!cfg || !cfg->on) return 1;
     np_u32 need = np_dev_restriction(ctx->access_type & 0xffff, ctx->major, cfg->hidraw_major);
+    if (!need && (ctx->access_type & 0xffff) == NP_DEV_CHAR && ctx->major == NP_MAJOR_SND) {
+        np_u32 minor = ctx->minor;              /* a capture PCM node: recording straight from ALSA */
+        if (bpf_map_lookup_elem(&np_capdev, &minor)) need = NP_R_NO_MIC;
+    }
     if (!need) return 1;
     np_u64 cgid = 0;
     NpApp *app = find_app(cfg, &cgid);

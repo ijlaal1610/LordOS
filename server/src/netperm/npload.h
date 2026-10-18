@@ -20,7 +20,8 @@
     X(np_lpm6,   BPF_MAP_TYPE_LPM_TRIE, sizeof(NpLpm6Key), sizeof(NpList),  NP_MAX_LPM,      BPF_F_NO_PREALLOC) \
     X(np_seen,   BPF_MAP_TYPE_LRU_HASH, sizeof(NpSeenKey), 8,               NP_MAX_SEEN,     0) \
     X(np_counts, BPF_MAP_TYPE_HASH,     8,                 sizeof(NpCount), NP_MAX_APPS,     0) \
-    X(np_events, BPF_MAP_TYPE_RINGBUF,  0,                 0,               NP_RINGBUF,      0)
+    X(np_events, BPF_MAP_TYPE_RINGBUF,  0,                 0,               NP_RINGBUF,      0) \
+    X(np_capdev, BPF_MAP_TYPE_HASH,     4,                 4,               256,             0)
 
 /* Each program: its section, kind and attach point. btf: the kernel function an LSM program
  * hooks (its id comes from /sys/kernel/btf/vmlinux). opt: 1 = the device and Bluetooth

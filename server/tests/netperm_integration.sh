@@ -115,26 +115,31 @@ got=$(python3 -c 'import socket;socket.create_connection(("'$GW'",53),timeout=4)
 
 echo "9. connection notices carry the names the resolver gave (hosts)"
 rules '{"v":1,"mode":"silent","trusted":[],"restricted":{},"rules":[{"app":"'$APP'","dir":"out","dst":"example.com","action":"deny","when":0}]}'
-python3 - "$APP" > /tmp/np-hosts-$U.txt <<'PY' &
+HOSTPY='
 import socket, struct, sys, time, json
-s = socket.socket(socket.AF_UNIX); s.connect('/run/lordos/netperm.sock'); s.settimeout(8)
-buf = b''; end = time.time() + 8
+s = socket.socket(socket.AF_UNIX); s.connect("/run/lordos/netperm.sock"); s.settimeout(8)
+buf = b""; end = time.time() + 8
 while time.time() < end:
     try: d = s.recv(65536)
     except socket.timeout: break
     if not d: break
     buf += d
     while len(buf) >= 5:
-        l, t = struct.unpack('<IB', buf[:5])
+        l, t = struct.unpack("<IB", buf[:5])
         if len(buf) < 4 + l: break
         body = buf[5:4 + l]; buf = buf[4 + l:]
         if t == 11:
             ev = json.loads(body)
-            if ev.get('app') == sys.argv[1] and ev.get('hosts'): print(' '.join(ev['hosts'])); sys.exit(0)
-PY
-sleep 1
-try https example.com 443 >/dev/null
-wait
+            if ev.get("app") == sys.argv[1] and ev.get("hosts"): print(" ".join(ev["hosts"])); sys.exit(0)
+'
+for attempt in 1 2 3; do          # the resolver may answer from its cache: try a few times
+    python3 -c "$HOSTPY" "$APP" > /tmp/np-hosts-$U.txt &
+    sleep 1
+    try https example.com 443 >/dev/null
+    wait
+    grep -q "example.com" /tmp/np-hosts-$U.txt && break
+    sleep 5.5                        # a repeated notice comes again only after 5 s
+done
 grep -q "example.com" /tmp/np-hosts-$U.txt && ok "the notice names example.com ($(cat /tmp/np-hosts-$U.txt))" || bad "no host names in the notice"
 rm -f /tmp/np-hosts-$U.txt
 
