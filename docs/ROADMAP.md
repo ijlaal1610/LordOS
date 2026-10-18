@@ -521,11 +521,11 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
     from Wayland apps and protected windows (Passwords) are never exposed to them; documented in
     `PRIVACY.md`;
   - tests with real X11 apps (an xterm-style terminal, a Java/Swing app, a game) and screenshots.
-- [ ] **A second full appearance: "Taskbar" theme** (Settings → Themes), for people coming from the
+- [ ] **Turn the "Classic" theme into a second full appearance** (Settings → Themes), for people coming from the
   most common desktop layout: a centered taskbar with a start menu, pinned and running apps, a
   system tray with quick settings and a notification panel, snap layouts for windows, rounded
-  corners and translucent materials. It grows from today's `themes/classic` template into a
-  complete, polished theme:
+  corners and translucent materials. Today `themes/classic` is only a template (taskbar and start
+  menu); it becomes a complete, polished theme with the same name:
   - **same apps, different skin:** no app is rewritten. Native apps keep every feature; the theme
     supplies the window frame, title bar buttons on the right, menus, controls, typography scale and
     spacing through the SDK's theme tokens and components (`configureWindows`, shared controls), so
