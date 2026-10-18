@@ -506,6 +506,22 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
 - [ ] **Final ISO** with everything (check that `lord-doc` and `lord-media` are inside) and a **Raspberry
   Pi 5 image** (`tools/rpi/build-img.sh`), tested on the real Pi.
 
+## Before 1.0
+
+- [ ] **Xwayland** (X11 app compatibility). Today LordOS runs Wayland apps only, so programs that
+  speak only X11 don't start. Plan:
+  - start `Xwayland` on demand (rootless) when an X11 client connects, with its own `DISPLAY`
+    socket; the compositor (`server/src/wl/`) acts as the X window manager (XWM: map, stack,
+    focus, move and resize, titles and icons, transient/popup windows, our window frame);
+  - clipboard and drag and drop bridged between X11 and Wayland;
+  - HiDPI and fractional scaling for X11 windows, multi-monitor positions;
+  - the same per-app identity as Wayland apps (cgroup scope, firewall, Dock grouping), so X11 apps
+    get the per-app network and device restrictions too;
+  - security: X11 apps can read each other's input and windows by design; X11 clients are isolated
+    from Wayland apps and protected windows (Passwords) are never exposed to them; documented in
+    `PRIVACY.md`;
+  - tests with real X11 apps (an xterm-style terminal, a Java/Swing app, a game) and screenshots.
+
 ## After the final ISO
 
 - [ ] **Virtual machines**: a **free desktop virtualization app**, with the polish and
