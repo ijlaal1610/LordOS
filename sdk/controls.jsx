@@ -228,3 +228,39 @@ export function FormRow({ label, children, labelWidth, minHeight = 36 }) {
     </View>
   );
 }
+
+// A confirmation in the shell (the Dock's «Empty Trash»): a dimmed screen with a small panel,
+// never alert(). Escape cancels and Enter confirms. destructive: the button is red.
+export function ConfirmDialog({ title, detail, okLabel, cancelLabel, onOk, onCancel, destructive, area }) {
+  const t = useTheme();
+  useEffect(() => addListener('keydown', (e) => {
+    if (e.key === 'Escape') onCancel();
+    else if (e.key === 'Enter') onOk();
+  }), [onOk, onCancel]);
+  const a = area || { x: 0, y: 0, w: undefined, h: undefined };
+  return (
+    <View onClick={onCancel} style={{ position: 'absolute', left: a.x, top: a.y, ...(a.w ? { width: a.w, height: a.h } : { right: 0, bottom: 0 }),
+      backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'center', justifyContent: 'center' }}>
+      <View onClick={(e) => e.stopPropagation()} style={{ width: 360, padding: spacing.xl, gap: spacing.s, borderRadius: 12, backgroundColor: t.windowBg,
+        border: `1px solid ${t.separator}`, boxShadow: '0 14px 36px rgba(0,0,0,0.45)' }}>
+        <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text, textAlign: 'start' }}>{title}</Text>
+        {detail ? <Text style={{ fontSize: typeScale.body, color: t.textDim, lineHeight: 1.4, textAlign: 'start' }}>{detail}</Text> : null}
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.s, marginTop: spacing.m }}>
+          <DialogButton t={t} label={cancelLabel} onClick={onCancel} />
+          <DialogButton t={t} label={okLabel} onClick={onOk} primary destructive={destructive} />
+        </View>
+      </View>
+    </View>
+  );
+}
+function DialogButton({ t, label, onClick, primary, destructive }) {
+  const [hover, setHover] = useState(false);
+  const bg = primary ? (destructive ? '#e5483f' : t.accent) : t.control;
+  return (
+    <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{ height: controlSize.regular, paddingHorizontal: 14, borderRadius: controlSize.radius, justifyContent: 'center', alignItems: 'center',
+        backgroundColor: bg, opacity: hover ? 0.85 : 1 }}>
+      <Text style={{ fontSize: typeScale.body, fontWeight: 500, color: primary ? '#fff' : t.text, whiteSpace: 'nowrap' }}>{label}</Text>
+    </View>
+  );
+}

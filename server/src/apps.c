@@ -74,13 +74,52 @@ static int locale_rank(const char *loc, const char *lang) {
     return 0;
 }
 
+/* A desktop action ("[Desktop Action <name>]", Desktop Entry Specification, "Additional
+ * applications actions"): its name, translated label and Exec line. Only the actions listed in
+ * the main group's Actions= key count. */
+typedef struct {
+    char name[APPS_ACTION_NAME_MAX], label[160], exec[1024];
+    int rank, has_label;
+} Action;
+
 typedef struct {
     DesktopApp a;
     char exec[1024], tryexec[256], icon_name[256], path[512];
-    char only[256], not_[256];
+    char only[256], not_[256], actions[512];
     int ranks[5];                       /* name generic comment keywords: language priority */
     int hidden, nodisplay, terminal, is_app, has_name;
+    Action act[APPS_MAX_ACTIONS];       /* the [Desktop Action …] groups seen (valid names only) */
+    int nact;
 } Entry;
+
+/* An action identifier the launcher accepts: [A-Za-z0-9-] (the specification's charset), at most
+ * 63 characters. */
+static int valid_action(const char *s) {
+    size_t n = strlen(s);
+    if (!n || n >= APPS_ACTION_NAME_MAX) return 0;
+    for (const char *p = s; *p; p++) if (!isalnum((unsigned char)*p) && *p != '-') return 0;
+    return 1;
+}
+
+/* "Key[loc]=value" → key, loc (or NULL) and value, in place. 0 if the line has no '='. */
+static int split_kv(char *line, char **k, char **loc, char **v) {
+    char *eq = strchr(line, '=');
+    if (!eq) return 0;
+    *k = line; *v = eq + 1;
+    char *ke = eq;
+    while (ke > *k && ke[-1] == ' ') ke--;
+    *ke = 0;
+    while (**v == ' ') (*v)++;
+    *loc = NULL;
+    char *br = strchr(*k, '[');
+    if (br) {
+        *br = 0; *loc = br + 1;
+        char *cb = strchr(*loc, ']'); if (cb) *cb = 0;
+        char *at = strchr(*loc, '@'); if (at) *at = 0;
+        char *dot = strchr(*loc, '.'); if (dot) *dot = 0;
+    }
+    return 1;
+}
 
 static void set_tr(Entry *e, int slot, char *dst, size_t n, const char *val, const char *loc, const char *lang) {
     int r = locale_rank(loc, lang);
@@ -96,19 +135,38 @@ static int parse_desktop(const char *file, const char *lang, Entry *e) {
     memset(e, 0, sizeof *e);
     char line[2048];
     int in_main = 0;
+    Action *act = NULL;                 /* inside a [Desktop Action …] group that is kept */
     while (fgets(line, sizeof line, f)) {
         line[strcspn(line, "\r\n")] = 0;
-        if (line[0] == '[') { in_main = !strcmp(line, "[Desktop Entry]"); continue; }
-        if (!in_main || line[0] == '#' || !line[0]) continue;
-        char *eq = strchr(line, '=');
-        if (!eq) continue;
-        char *k = line, *v = eq + 1;
-        char *ke = eq;
-        while (ke > k && ke[-1] == ' ') ke--;
-        *ke = 0;
-        while (*v == ' ') v++;
-        char *loc = NULL, *br = strchr(k, '[');
-        if (br) { *br = 0; loc = br + 1; char *cb = strchr(loc, ']'); if (cb) *cb = 0; char *at = strchr(loc, '@'); if (at) *at = 0; char *dot = strchr(loc, '.'); if (dot) *dot = 0; }
+        if (line[0] == '[') {
+            static const char pre[] = "[Desktop Action ";
+            size_t len = strlen(line);
+            in_main = !strcmp(line, "[Desktop Entry]");
+            act = NULL;
+            if (!strncmp(line, pre, sizeof pre - 1) && len > sizeof pre && line[len - 1] == ']') {
+                line[len - 1] = 0;
+                const char *name = line + sizeof pre - 1;
+                int dup = 0;
+                for (int i = 0; i < e->nact; i++) if (!strcmp(e->act[i].name, name)) dup = 1;
+                if (valid_action(name) && !dup && e->nact < APPS_MAX_ACTIONS) {
+                    act = &e->act[e->nact++];
+                    /* bounded copy (valid_action already keeps it shorter than the field); the
+                     * precision keeps -Wformat-truncation quiet */
+                    snprintf(act->name, sizeof act->name, "%.*s", (int)sizeof act->name - 1, name);
+                }
+            }
+            continue;
+        }
+        if ((!in_main && !act) || line[0] == '#' || !line[0]) continue;
+        char *k, *loc, *v;
+        if (!split_kv(line, &k, &loc, &v)) continue;
+        if (act) {
+            if (!strcmp(k, "Name")) {
+                int r = locale_rank(loc, lang);
+                if ((r || !loc) && r >= act->rank) { act->rank = r; snprintf(act->label, sizeof act->label, "%s", v); act->has_label = 1; }
+            } else if (!loc && !strcmp(k, "Exec")) snprintf(act->exec, sizeof act->exec, "%s", v);
+            continue;
+        }
         if (!strcmp(k, "Name")) { set_tr(e, 0, e->a.name, sizeof e->a.name, v, loc, lang); e->has_name = 1; }
         else if (!strcmp(k, "GenericName")) set_tr(e, 1, e->a.generic, sizeof e->a.generic, v, loc, lang);
         else if (!strcmp(k, "Comment")) set_tr(e, 2, e->a.comment, sizeof e->a.comment, v, loc, lang);
@@ -127,9 +185,11 @@ static int parse_desktop(const char *file, const char *lang, Entry *e) {
         else if (!strcmp(k, "Hidden")) e->hidden = !strcmp(v, "true");
         else if (!strcmp(k, "NoDisplay")) e->nodisplay = !strcmp(v, "true");
         else if (!strcmp(k, "Terminal")) e->terminal = !strcmp(v, "true");
+        else if (!strcmp(k, "Actions")) snprintf(e->actions, sizeof e->actions, "%s", v);
     }
     fclose(f);
     unescape(e->a.name); unescape(e->a.generic); unescape(e->a.comment);
+    for (int i = 0; i < e->nact; i++) unescape(e->act[i].label);
     snprintf(e->a.file, sizeof e->a.file, "%s", file);
     return 0;
 }
@@ -601,8 +661,64 @@ static FilesPlan *view_plan(const char *cwd) {
 static char last_error[64];
 const char *apps_last_error(void) { return last_error; }
 
-static int launch(const char *id, const char *file);
-int apps_launch(const char *id) { return launch(id, NULL); }
+static int launch(const char *id, const char *file, const char *action);
+int apps_launch(const char *id) { return launch(id, NULL, NULL); }
+
+/* A desktop action of the entry that may run: listed in its Actions= key, with a valid name, a
+ * label and an Exec line. NULL otherwise. */
+static const Action *entry_action(const Entry *e, const char *name) {
+    if (!name || !valid_action(name) || !list_has(e->actions, name)) return NULL;
+    for (int i = 0; i < e->nact; i++)
+        if (!strcmp(e->act[i].name, name)) return e->act[i].has_label && e->act[i].exec[0] ? &e->act[i] : NULL;
+    return NULL;
+}
+
+/* The listed app with that id, or NULL (the same lookup as the launcher). */
+static const DesktopApp *find_app(const char *id) {
+    if (!valid_id(id)) return NULL;
+    const DesktopApp *list;
+    int n = apps_list(cached_lang[0] ? cached_lang : "en", &list);
+    for (int i = 0; i < n; i++) if (!strcmp(list[i].id, id)) return &list[i];
+    return NULL;
+}
+
+int apps_actions(const char *id, const char *lang, AppAction *out, int max) {
+    const DesktopApp *a = find_app(id);
+    if (!a || max <= 0) return 0;
+    Entry *e = malloc(sizeof *e);
+    if (!e) return 0;
+    int n = 0;
+    if (!parse_desktop(a->file, lang && lang[0] ? lang : "en", e)) {
+        /* in the order of the Actions= key */
+        for (const char *p = e->actions; *p && n < max;) {
+            const char *q = strchr(p, ';');
+            size_t len = q ? (size_t)(q - p) : strlen(p);
+            char name[APPS_ACTION_NAME_MAX];
+            if (len && len < sizeof name) {
+                memcpy(name, p, len);
+                name[len] = 0;
+                const Action *act = entry_action(e, name);
+                int dup = 0;
+                for (int i = 0; i < n; i++) if (!strcmp(out[i].name, name)) dup = 1;
+                if (act && !dup) {
+                    snprintf(out[n].name, sizeof out[n].name, "%s", act->name);
+                    snprintf(out[n].label, sizeof out[n].label, "%s", act->label);
+                    n++;
+                }
+            }
+            if (!q) break;
+            p = q + 1;
+        }
+    }
+    free(e);
+    return n;
+}
+
+int apps_launch_action(const char *id, const char *action) {
+    last_error[0] = 0;
+    if (!action || !valid_action(action)) return -1;
+    return launch(id, NULL, action);
+}
 
 /* Opening a file with an app: only an app that declares MimeType (accepts files), a real
  * path inside the home folder or /media/$USER (fsops_allowed), a regular file or folder,
@@ -615,16 +731,16 @@ int apps_launch_with(const char *id, const char *path) {
      * -1 if that is one of LordOS's own apps (the theme opens those) or there is none */
     char def[160];
     if (id && !id[0]) { if (defaults_app_for(real, def, sizeof def)) return -1; id = def; }
-    return launch(id, real);
+    return launch(id, real, NULL);
 }
 
-static int launch(const char *id, const char *file) {
+/* action: the name of one of the entry's desktop actions (apps_launch_action), whose Exec line
+ * replaces the main one; never together with a file. Everything else (the id, the listing filters,
+ * the scope, the restrictions) is the same as a plain launch. */
+static int launch(const char *id, const char *file, const char *action) {
     last_error[0] = 0;
-    if (!valid_id(id)) return -1;
-    const DesktopApp *list;
-    int n = apps_list(cached_lang[0] ? cached_lang : "en", &list);
-    const DesktopApp *a = NULL;
-    for (int i = 0; i < n; i++) if (!strcmp(list[i].id, id)) { a = &list[i]; break; }
+    if (file && action) return -1;
+    const DesktopApp *a = find_app(id);
     if (!a) return -1;
     /* the file is read again: what counts is what it says now */
     Entry *e = malloc(sizeof *e);
@@ -633,8 +749,13 @@ static int launch(const char *id, const char *file) {
     char prog[PATH_MAX];
     int used = 0;
     int ok = e && buf && !parse_desktop(a->file, cached_lang, e) && e->is_app && !e->terminal && !e->hidden &&
-             (!file || e->a.mime[0]) &&
-             split_exec(e->exec, e, argv, buf, 4096, file, &used) > 0 && (!file || used) && !find_program(argv[0], a->user, prog, sizeof prog);
+             (!file || e->a.mime[0]);
+    const char *exec = e ? e->exec : NULL;
+    if (ok && action) {
+        const Action *act = entry_action(e, action);
+        if (act) exec = act->exec; else ok = 0;
+    }
+    ok = ok && split_exec(exec, e, argv, buf, 4096, file, &used) > 0 && (!file || used) && !find_program(argv[0], a->user, prog, sizeof prog);
     char cwd[PATH_MAX] = "";
     if (ok && e->path[0] == '/') snprintf(cwd, sizeof cwd, "%s", e->path);
     free(e);

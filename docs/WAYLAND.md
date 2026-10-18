@@ -84,6 +84,18 @@ shell. The user approved it for M7. Limits:
   - it's run with `execve`, without a shell;
   - the program is looked up in a fixed PATH (`/usr/local/bin`, `/usr/bin`, `/bin`, games, and
     `~/.local/bin` only for the user's `.desktop` files).
+- **Desktop actions (0.8.1):** the Dock's right-click menu lists the `Actions=` of an app's
+  `.desktop` (a browser's "New Private Window", for instance). `lord.apps.actions(id, language)`
+  returns `[{ id, name }]` and `lord.apps.launchAction(id, action)` runs one, through the **same**
+  launcher (`apps_launch_action` → `launch()`): same id rules and filters, same scope, restrictions
+  and fixed PATH, no shell, no caller arguments, no file. Only that action's `Exec` line replaces the
+  main one, and only if:
+  - the action is listed in the main group's `Actions=` key;
+  - its name is `[A-Za-z0-9-]`, at most 63 characters;
+  - its `[Desktop Action <name>]` group has a `Name` and an `Exec`.
+
+  Anything else (an unlisted group, a bad name, no `Exec`) is refused. Tested by
+  `build/apps-actions-test` (in `make test`).
 - The app starts as an orphaned grandchild, in its own session, with normal signals and no other
   descriptors. Its output goes to `~/.cache/lordos/apps.log`, which is trimmed when it passes 1 MB.
 - A `.desktop` can't be created from JS:

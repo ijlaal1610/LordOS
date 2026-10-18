@@ -1,10 +1,11 @@
 // App launcher ("Apps"): all apps in full screen, with keyboard search.
-// An app is pinned to the Dock by dragging it to the bottom strip or with a right click.
-import { View, Text, TextInput, ScrollView, screen, t as tr, appName, APP_CATEGORIES, appCategory, addListener, dock, useStore, settings } from '@lordos/sdk';
-import { useEffect, useRef, useState } from 'react';
+// An app is pinned to the Dock by dragging it onto the Dock (the launcher steps aside as soon as the
+// drag starts, and the app lands where it is dropped) or with a right click → Keep in Dock. It works
+// the same for LordOS apps, .lpk packages and Linux apps (sdk/dock.js).
+import { View, Text, TextInput, ScrollView, screen, t as tr, appName, APP_CATEGORIES, appCategory, dock, dockIdOf, useStore, settings,
+  beginDockDrag, dockDragJustEnded } from '@lordos/sdk';
+import { useRef, useState } from 'react';
 import { Menu } from './Menu.jsx';
-
-const DROP_H = 110;              // bottom strip where you drop to pin to the Dock
 
 const COLS = 6, CELL = 130, ICON = 72;
 
@@ -23,26 +24,6 @@ export function Launchpad({ t, apps, onOpen, onClose, area = { x: 0, y: 0, w: sc
   const open = (id) => { onClose(); onOpen(id); };
   useStore(settings);                                         // «Keep in Dock» changes immediately
   const [ctx, setCtx] = useState(null);                       // { app, x, y }
-  const [drag, setDrag] = useState(null);                     // { app, x, y }
-  const press = useRef(null);
-  const dragged = useRef(false);
-  useEffect(() => {
-    const offMove = addListener('pointermove', (e) => {
-      const p = press.current;
-      if (!p) return;
-      if (!dragged.current && Math.hypot(e.x - p.x, e.y - p.y) < 8) return;
-      dragged.current = true;
-      setDrag({ app: p.app, x: e.x, y: e.y });
-    });
-    const offUp = addListener('pointerup', (e) => {
-      const p = press.current;
-      press.current = null;
-      if (p && dragged.current && e.y > A.current.y + A.current.h - DROP_H) dock.pin(p.app.id);
-      setDrag(null);
-      setTimeout(() => { dragged.current = false; }, 0);
-    });
-    return () => { offMove(); offUp(); };
-  }, []);
 
   return (
     <View onClick={onClose} style={{
@@ -69,8 +50,8 @@ export function Launchpad({ t, apps, onOpen, onClose, area = { x: 0, y: 0, w: sc
         {rows.map((row, r) => (
           <View key={r} style={{ flexDirection: 'row' }}>
             {row.map((a) => (
-              <View key={a.id} onClick={(e) => { e.stopPropagation(); if (!dragged.current) open(a.id); }}
-                onMouseDown={(e) => { press.current = { app: a, x: e.x, y: e.y }; dragged.current = false; }}
+              <View key={a.id} onClick={(e) => { e.stopPropagation(); if (!dockDragJustEnded()) open(a.id); }}
+                onMouseDown={(e) => { if (!e.button && dockIdOf(a)) beginDockDrag({ id: dockIdOf(a), Icon: a.Icon, x: e.x, y: e.y, source: 'launcher', onStart: onClose }); }}
                 onContextMenu={(e) => { e.stopPropagation(); setCtx({ app: a, x: e.x, y: e.y }); }}
                 style={{ width: CELL, alignItems: 'center', gap: 10 }}>
                 <a.Icon size={ICON} />
@@ -82,22 +63,11 @@ export function Launchpad({ t, apps, onOpen, onClose, area = { x: 0, y: 0, w: sc
         {list.length === 0 && <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', textAlign: 'center' }}>{tr('shell.launchpad.empty')}</Text>}
       </View>
       </ScrollView>
-      {drag && (
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: DROP_H, alignItems: 'center', justifyContent: 'center',
-          backgroundColor: drag.y > area.y + area.h - DROP_H ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)', pointerEvents: 'none' }}>
-          <Text style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{tr('shell.dock.dropHere')}</Text>
-        </View>
-      )}
-      {drag && (
-        <View style={{ position: 'absolute', left: drag.x - area.x - ICON / 2, top: drag.y - area.y - ICON / 2, opacity: 0.85, pointerEvents: 'none' }}>
-          <drag.app.Icon size={ICON} />
-        </View>
-      )}
       {ctx && (
         <Menu x={ctx.x - area.x} y={ctx.y - area.y} onClose={() => setCtx(null)} items={[
           { label: tr('shell.dock.open'), onClick: () => open(ctx.app.id) },
-          { label: tr('shell.dock.keep'), checked: dock.isPinned(ctx.app.id),
-            onClick: () => (dock.isPinned(ctx.app.id) ? dock.unpin(ctx.app.id) : dock.pin(ctx.app.id)) },
+          ...(dockIdOf(ctx.app) ? [{ label: tr('shell.dock.keep'), checked: dock.isPinned(ctx.app), disabled: dock.isPinned(ctx.app) && !dock.canRemove(ctx.app),
+            onClick: () => (dock.isPinned(ctx.app) ? dock.unpin(ctx.app) : dock.pin(ctx.app)) }] : []),
         ]} />
       )}
     </View>

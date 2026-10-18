@@ -7,6 +7,7 @@ import {
   View, Text, Image, ScrollView, Segmented, SearchField, Toolbar, typeScale, useTheme, useLocale, useStore, useSettings, useAppWindow,
   useMonitor, monitor, monitorProcesses, monitorSamples, formatBytes, formatNumber, LordOSLogo, iconFromFile,
 } from '@lordos/sdk';
+import { registerDockActions } from '@lordos/sdk';
 import * as sdk from '@lordos/sdk';
 import { useEffect, useMemo, useState } from 'react';
 import { Chart } from './Chart.jsx';
@@ -111,6 +112,12 @@ export function Stat({ label, value, unit, icon, children }) {
 }
 
 // Series derived from the sample history
+// The Dock's quick actions: the network map and Cooling (sdk/dock.js).
+registerDockActions('monitor', () => [
+  { id: 'network', label: 'monitor.network', args: { tab: 'network' } },
+  { id: 'cooling', label: 'monitor.tab.cooling', args: { tab: 'cooling' } },
+]);
+
 function useSeries(samples) {
   return useMemo(() => {
     const pick = (f) => samples.map(f);

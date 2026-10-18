@@ -5,7 +5,7 @@
 import {
   View, Text, Image, useTheme, useSettings, themes, session, keyboard, admin, languages, setLanguage, useLocale,
   reloadCatalogs, tOptional, statusText, fs, useStore, SidebarItem, Toggle, Button, TextInput, ScrollView, SearchField, Hairline, useSystemInfo, useAppWindow, useTrackpads,
-  spacing, typeScale,
+  spacing, typeScale, registerDockActions, hasTouchpad,
 } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 import { SoundSettings } from './Sound.jsx';
@@ -444,6 +444,13 @@ const GROUPS = [
   [['power', PowerSettings, '#30d158', BoltGlyph], ['cooling', CoolingSettings, '#32ade6', FanGlyph], ['privacy', PrivacySettings, '#0a84ff', LockGlyph], ['users', UsersSettings, '#0a84ff', '☺'], ['updates', Updates, '#8e8e93', '↻'], ['themes', Themes, '#ff9f0a', '◧'], ['session', Session, '#ff453a', '↪']],
 ];
 const SECTIONS = GROUPS.flat();
+// Trackpad only if there is a touchpad (lord-sessiond lends them with the monitor)
+const sectionShown = (id, hasPad) => id !== 'trackpad' || hasPad;
+
+// The Dock's right-click menu lists every section, in the sidebar's order and with its names; one
+// opens Settings on that page (sdk/dock.js, quick actions). Built from SECTIONS, so it never drifts.
+registerDockActions('settings', () => SECTIONS.filter(([id]) => sectionShown(id, hasTouchpad()))
+  .map(([id]) => ({ id, label: `settings.section.${id}`, args: { section: id } })));
 
 function SectionIcon({ color, glyph: G, size = 20 }) {
   return typeof G === 'string'
@@ -491,7 +498,7 @@ export default function Settings() {
   const q = query.trim().toLowerCase();
   // Trackpad only if there is a touchpad (lord-sessiond lends them with the monitor)
   const hasPad = useTrackpads().some((d) => d.kind === 'touchpad');
-  const visible = (id) => (id !== 'trackpad' || hasPad) && `${tr(`settings.section.${id}`)} ${tr(`settings.keywords.${id}`)}`.toLowerCase().includes(q);
+  const visible = (id) => sectionShown(id, hasPad) && `${tr(`settings.section.${id}`)} ${tr(`settings.keywords.${id}`)}`.toLowerCase().includes(q);
   const groups = GROUPS.map((g) => g.filter(([id]) => visible(id))).filter((g) => g.length);
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>

@@ -3,7 +3,8 @@
 // window frames. Apps come from apps/ through the SDK.
 import {
   startShell, View, Text, Image, screen, ThemeProvider, useSettings, useWindows, configureWindows, getApp, wm, addListener, t as tr,
-  useLauncherApps, launchApp, useDockEntries, dockActivate, dockMenu, dock, dockPrefs,
+  useLauncherApps, launchApp, useDockEntries, dockActivate, dockMenu, dockPrefs, DOCK_LAUNCHER,
+  useTrash, openTrash, emptyTrash, trashMenu, ConfirmDialog,
   DesktopWidgets, registerGestureActions, screenDisplays, mainDisplay, settings,
 } from '@lordos/sdk';
 import { apps } from '@lordos/apps';
@@ -17,7 +18,8 @@ import { ControlCenter } from './components/ControlCenter.jsx';
 import { Menu } from './components/Menu.jsx';
 
 const MENU_H = 28;
-const DOCK_ORDER = ['files', 'terminal', 'calculator', 'settings', 'about'];
+// Files is always first and the Trash always last (sdk/dockmodel.js); the app launcher follows Files.
+const DOCK_ORDER = ['files', DOCK_LAUNCHER, 'terminal', 'calculator', 'settings', 'about'];
 
 // Area for windows: below the menu bar and without the Dock's side (unless it auto-hides),
 // so maximized and new windows don't end up under the Dock.
@@ -40,7 +42,7 @@ configureWindows({ apps, workArea: areaFn, chrome: { w: 2, h: 43 } });
 wm.open('files');
 wm.open('about');
 
-// Pinned by default (the user changes the Dock with «Keep in Dock»: settings.dockPinned).
+// Pinned by default (the user changes the Dock by dragging and with «Keep in Dock»: settings.dockPinned).
 const DOCK_DEFAULT = [...DOCK_ORDER, ...apps.filter((a) => a.dock && !DOCK_ORDER.includes(a.id)).map((a) => a.id)];
 
 // Minimize effect: a window that was just minimized stays drawn for MIN_MS, shrinking towards the
@@ -72,6 +74,13 @@ function useMinimizing(windows) {
     .filter((x) => x.win && x.win.minimized);
 }
 
+// The Dock's right-click menus open toward the inside of the screen, next to the icon.
+function DockMenu({ pos, at, items, onClose }) {
+  return pos === 'bottom'
+    ? <Menu above side="right" x={at.x - 110} y={at.y} onClose={onClose} items={items} />
+    : <Menu centered side={pos === 'left' ? 'right' : 'left'} x={at.x} y={at.y} onClose={onClose} items={items} />;
+}
+
 function App() {
   const [s] = useSettings();
   const t = makeTheme(s);
@@ -81,6 +90,9 @@ function App() {
   const [control, setControl] = useState(null);         // the display whose menu bar opened it
   const [context, setContext] = useState(null);
   const [dockCtx, setDockCtx] = useState(null);
+  const [trashCtx, setTrashCtx] = useState(null);         // where the Trash's menu opens
+  const [askEmpty, setAskEmpty] = useState(false);
+  const trash = useTrash();
   const launcherApps = useLauncherApps();
   const dp = dockPrefs(s);
   // the work area follows the Dock live (position, size, auto-hide, another screen)
@@ -111,9 +123,9 @@ function App() {
   useEffect(() => registerGestureActions({ up: () => setLaunchpad(true), down: () => setLaunchpad(false) }), []);
 
   const wallpaper = t.wallpapers.find((w) => w.id === s.wallpaper) || t.wallpapers[0];
-  const launchpadEntry = { id: 'launchpad', name: tr('shell.menu.apps'), Icon: LaunchpadIcon };
-  // Pinned and open apps; windows of the same app (Linux too) share a single icon.
-  const entries = useDockEntries(DOCK_DEFAULT, { recents: dp.dockRecents ? 3 : 0 });
+  // Pinned and open apps; windows of the same app (Linux too) share a single icon. The app launcher
+  // is a Dock item too (it moves, but can't be removed).
+  const entries = useDockEntries(DOCK_DEFAULT, { recents: dp.dockRecents ? 3 : 0, launcher: { Icon: LaunchpadIcon, onOpen: () => setLaunchpad(true) } });
   const byId = new Map(entries.map((e) => [e.id, e]));
 
   return (
@@ -132,16 +144,19 @@ function App() {
           <MenuBar key={d.id + ':' + d.x} t={t} height={MENU_H} focused={focused} controlCenter={!!control} area={d}
             onLaunchpad={() => setLaunchpad(true)} onControlCenter={() => setControl((v) => (v ? null : d))} />
         ))}
-        <Dock t={t} items={[launchpadEntry, ...entries]} running={entries.filter((e) => e.running).map((e) => e.id)}
-          onOpen={(id) => (id === 'launchpad' ? setLaunchpad(true) : byId.has(id) && dockActivate(byId.get(id)))}
+        <Dock t={t} items={entries} running={entries.filter((e) => e.running).map((e) => e.id)}
+          onOpen={(id) => byId.has(id) && dockActivate(byId.get(id))}
           onContext={(id, at) => byId.has(id) && setDockCtx({ entry: byId.get(id), at })}
-          onDropApp={(id, index) => dock.pin(id, Math.max(0, index - 1))}
+          onTrash={openTrash} onTrashContext={(at) => setTrashCtx(at)} trashFull={trash.full}
           position={dp.dockPosition} size={dp.dockSize} magnify={dp.dockMagnify} maxSize={dp.dockMagnifySize}
-          autohide={dp.dockAutohide} top={MENU_H} keepOpen={!!dockCtx} area={main} />
-        {dockCtx && (dp.dockPosition === 'bottom'
-          ? <Menu above side="right" x={dockCtx.at.x - 110} y={dockCtx.at.y} onClose={() => setDockCtx(null)} items={dockMenu(byId.get(dockCtx.entry.id) || dockCtx.entry)} />
-          : <Menu centered side={dp.dockPosition === 'left' ? 'right' : 'left'} x={dockCtx.at.x} y={dockCtx.at.y} onClose={() => setDockCtx(null)}
-            items={dockMenu(byId.get(dockCtx.entry.id) || dockCtx.entry)} />)}
+          autohide={dp.dockAutohide} top={MENU_H} keepOpen={!!dockCtx || !!trashCtx} area={main} />
+        {dockCtx && <DockMenu pos={dp.dockPosition} at={dockCtx.at} onClose={() => setDockCtx(null)} items={dockMenu(byId.get(dockCtx.entry.id) || dockCtx.entry)} />}
+        {trashCtx && <DockMenu pos={dp.dockPosition} at={trashCtx} onClose={() => setTrashCtx(null)} items={trashMenu({ onEmpty: () => setAskEmpty(true) })} />}
+        {askEmpty && (
+          <ConfirmDialog title={tr('shell.trash.confirmTitle')} detail={tr('shell.trash.confirmDetail')} okLabel={tr('shell.trash.empty')}
+            cancelLabel={tr('shell.trash.cancel')} destructive area={main}
+            onCancel={() => setAskEmpty(false)} onOk={() => { setAskEmpty(false); emptyTrash(); }} />
+        )}
         {control && <ControlCenter t={t} top={MENU_H} area={control} onClose={() => setControl(null)} />}
         {context && (
           <Menu x={context.x} y={context.y} onClose={() => setContext(null)} items={[

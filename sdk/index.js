@@ -40,7 +40,11 @@ export { LordOSLogo, LordOSGlyph, LordOSWordmark } from './logo.js';
 export { Lumo, lumoSource } from './mascot.js';
 export { DesktopWidgets, registerWidgetType, setWidgets, desktopWidgets } from './widgets.js';
 export { Markdown, markdownHeadings, parseMarkdown, parseInline, toggleTask } from './markdown.jsx';
-export { dock, useDockEntries, dockActivate, dockMenu, registerDockMenu, launcherIdOf, dockPrefs, DOCK_DEFAULTS, quitApp } from './dock.js';
+export {
+  dock, useDockEntries, dockActivate, dockMenu, registerDockMenu, registerDockActions, dockQuickActions, launcherIdOf, dockIdOf, dockIdOfWindow,
+  launchDockItem, dockPrefs, DOCK_DEFAULTS, quitApp, DOCK_LAUNCHER, useTrash, trashState, refreshTrash, openTrash, emptyTrash, trashMenu,
+  dockDrag, dockPoof, beginDockDrag, registerDockTarget, dockDragJustEnded,
+} from './dock.js';
 export { sound, useSound, useSoundPeak, soundState, defaultSink, defaultSource, microphones } from './sound.js';
 export { monitor, useMonitor, monitorSamples, monitorProcesses, monitorConnections, monitorDevices, MONITOR_HISTORY, firewall, firewallState } from './monitor.js';
 export * as fwRule from './fwrule.js';            // checks what the user types for a firewall rule
@@ -75,7 +79,7 @@ export {
 } from './components.jsx';
 import { FloatingWindows } from './components.jsx';
 export {
-  ToolbarButton, ToolbarGroup, Toolbar, ToolbarSpacer, ToolbarDivider, Hairline, MenuButton, SearchField, EmptyState, GroupBox, FormRow, spacing, typeScale, controlSize,
+  ToolbarButton, ToolbarGroup, Toolbar, ToolbarSpacer, ToolbarDivider, Hairline, MenuButton, SearchField, EmptyState, GroupBox, FormRow, spacing, typeScale, controlSize, ConfirmDialog,
 } from './controls.jsx';
 export { media, useMedia, usePlayer, nowPlaying, useNowPlaying, NowPlayingTile, mediaFormatTime, thumbFor, useThumb, userDirs } from './media.js';
 export { disks, useDisks } from './disks.js';
