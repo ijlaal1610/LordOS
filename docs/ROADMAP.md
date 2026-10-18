@@ -258,7 +258,6 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
   - [ ] Hardware video on the Pi 5 (HEVC via V4L2 stateless; H.264 in software) in
     `lord-media`.
   - [ ] A «create user» step on the login screen, instead of setup mode.
-  - [ ] Pi 4 (best effort).
 
 ## M9 — Documents and printing ✅ (2026-10-17)
 

@@ -1,4 +1,4 @@
-# config.txt — LordOS for Raspberry Pi 5 (and Pi 4, where possible). See docs/RASPBERRY.md.
+# config.txt — LordOS for Raspberry Pi 5 (the only supported board). See docs/RASPBERRY.md.
 # Read by the board firmware before the kernel. It can be edited with the card in another machine.
 
 [all]
@@ -26,7 +26,7 @@ dtparam=pciex1_gen=3
 # without it the kernel does (cooling_fan in the device tree)
 
 [pi4]
-# Pi 4: best effort (see docs/RASPBERRY.md)
+# Pi 4: not supported, untested (see docs/RASPBERRY.md)
 arm_boost=1
 
 [all]

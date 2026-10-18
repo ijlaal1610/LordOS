@@ -1,6 +1,7 @@
 # LordOS on Raspberry Pi (ARM64)
 
-Since M8, ARM64 is an official LordOS platform, with the **Raspberry Pi 5** as the reference board.
+Since M8, ARM64 is an official LordOS platform. **The only supported board is the Raspberry Pi 5**:
+it is the only one we test. Other boards may boot the same image, but they are not supported.
 This document gathers what's needed to build the image, write it, develop on the board and test it.
 
 > **Status (2026-10-18):** first bring-up on a real **Raspberry Pi 5 (16 GB, SD card)** running
@@ -21,9 +22,9 @@ This document gathers what's needed to build the image, write it, develop on the
 
 | Board | Status | Notes |
 |---|---|---|
-| **Raspberry Pi 5** (4, 8 or 16 GB) | **main target** | BCM2712, 4× Cortex-A76 at 2.4 GHz, V3D 7.1 (OpenGL ES 3.1, Vulkan 1.3), kernel with 16K pages |
-| Raspberry Pi 500 / CM5 | should work the same | same SoC; untested |
-| Raspberry Pi 4 / 400 / CM4 | best effort | BCM2711, 4× Cortex-A72, V3D 4.2 (GLES 3.1), `rpi-v8` kernel with 4K pages; with 2 GB it's tight |
+| **Raspberry Pi 5** (4, 8 or 16 GB) | **supported (the only one)** | BCM2712, 4× Cortex-A76 at 2.4 GHz, V3D 7.1 (OpenGL ES 3.1, Vulkan 1.3), kernel with 16K pages |
+| Raspberry Pi 500 / CM5 | not supported | same SoC, so it may work; untested |
+| Raspberry Pi 4 / 400 / CM4 | not supported | BCM2711; the image still carries a `rpi-v8` kernel, but it is untested |
 | Pi 3 and earlier, Zero 2 | no | too little RAM and an old vc4 GPU (GLES 2 without modern dmabuf) |
 
 ## Recommended equipment
