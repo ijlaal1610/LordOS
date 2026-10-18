@@ -86,7 +86,7 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 | [boot/](boot/) | Boot menu and splash screenshots |
 | [iso-final/](iso-final/) | Screenshots of the final ISO test |
 | [polish/](polish/) | Before and after screenshots of the visual polish pass |
-| [qa/](qa/), [packs/](packs/) | QA and language-pack captures |
+| [packs/](packs/) | Sample language pack and script test text |
 
 ## Research notes
 
