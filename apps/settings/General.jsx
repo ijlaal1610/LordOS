@@ -1,7 +1,7 @@
 // Settings → General (machine and software details) and Updates (Debian and LordOS).
 import {
   View, Text, Button, useTheme, useLocale, useSystemInfo, useServerStats, lordosVersion, screen, formatBytes, formatDuration, formatNumber,
-  admin, wm, LordOSLogo, spacing, typeScale,
+  admin, wm, LordOSLogo, LordOSWordmark, spacing, typeScale,
 } from '@lordos/sdk';
 import { useState, version as reactVersion } from 'react';
 import { Stack, Section, ValueRow, Note, Message, Actions } from './ui.jsx';
@@ -26,7 +26,7 @@ export function General() {
     <Stack>
       <View style={{ alignItems: 'center', gap: spacing.xs, paddingTop: spacing.xs }}>
         <LordOSLogo size={72} />
-        <Text style={{ fontSize: typeScale.largeTitle, fontWeight: 600, color: t.text, marginTop: spacing.s }}>LordOS</Text>
+        <View style={{ marginTop: spacing.s }}><LordOSWordmark size={typeScale.largeTitle} crown={false} /></View>
         <Text style={{ fontSize: typeScale.callout, color: t.textDim }}>{ver.channel ? tr('about.versionChannel', { v: ver.version, channel: ver.channel }) : tr('about.version', { v: ver.version })}</Text>
         <Text style={{ fontSize: typeScale.caption, color: t.textDim }}>{`${info.hostname} · ${info.os}`}</Text>
       </View>

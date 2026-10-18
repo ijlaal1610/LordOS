@@ -12,7 +12,7 @@
 //           {t:'mode', mode:'login'|'lock'|'switch', user} · {t:'ok'} · {t:'fail', wait} · {t:'error'} · {t:'busy'}
 import { render, screen } from '@lordos/runtime';
 import {
-  View, Text, Image, TextInput, ThemeProvider, useStore, locale, t, formatDate, formatTime, setLanguage, languages, keyboard, settings,
+  View, Text, Image, TextInput, ThemeProvider, useStore, locale, t, formatDate, formatTime, setLanguage, languages, keyboard, settings, LordOSWordmark,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { createElement } from 'react';
@@ -261,6 +261,11 @@ function Greeter() {
               ))}
             </View>
           ) : null}
+        </View>
+
+        {/* the LordOS logo: the crown and the wordmark as live text (docs/brand/README.md) */}
+        <View style={{ position: 'absolute', left: 0, bottom: 24, width: W, height: 28, alignItems: 'center', justifyContent: 'center' }}>
+          <LordOSWordmark size={17} color="#ffffff" />
         </View>
 
         {/* bottom: the machine's address; language, keyboard, reboot and power off */}

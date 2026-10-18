@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/logo-horizontal-dark.svg">
+    <img src="assets/brand/logo-horizontal-light.svg" alt="LordOS" height="96">
+  </picture>
+</p>
+
 # LordOS
 
 **A free, fast and secure desktop operating system, built from scratch on Linux.**
@@ -40,6 +47,7 @@ Status: **0.7.0 Beta** (see `CHANGELOG.md` and `docs/ROADMAP.md`). License: MIT.
 - `docs/VM-SETUP.md`: development VM on Proxmox, step by step.
 - `docs/TERMINAL.md`: the native terminal, its shortcuts and features.
 - `docs/WAYLAND.md`: Linux apps (GTK, Qt) as LordOS windows with our own Wayland compositor.
+- `docs/LORDOS-BRAND.md` and `docs/brand/`: the brand identity, the logo, its files (SVG, PNG, favicons, social card), colours, typeface and usage rules.
 - `docs/LANGUAGES.md`: language and region across the whole system (es, en, pt and language
   packs), complex scripts (Arabic, Hebrew, CJK, mirrored UI) and input methods.
 
@@ -47,7 +55,7 @@ Status: **0.7.0 Beta** (see `CHANGELOG.md` and `docs/ROADMAP.md`). License: MIT.
 - `sdk/`: `@lordos/sdk`, the API for themes and apps (windows, settings, files, system).
 - `apps/`: native apps as packages. See `apps/README.md`.
 - `themes/`: themes (complete desktops) in React, swappable live. See `themes/README.md`.
-- `third_party/`: QuickJS, stb, Monocypher and word lists, vendored (see `THIRD_PARTY.md`). `assets/fonts/`: Inter and JetBrains Mono (OFL).
+- `third_party/`: QuickJS, stb, Monocypher and word lists, vendored (see `THIRD_PARTY.md`). `assets/fonts/`: Inter, JetBrains Mono and Plus Jakarta Sans (the wordmark) (OFL).
 - `assets/locales/`: UI texts per language. `tools/i18n-check.mjs` and `tools/i18n-pack.mjs`.
 - `server/src/term/`: our own terminal (xterm emulator, PTY, drawing); the app is in `apps/terminal/`.
 

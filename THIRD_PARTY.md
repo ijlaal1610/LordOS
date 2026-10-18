@@ -19,6 +19,9 @@ the components below, each under its own license.
 | DB-IP Lite Country (`assets/monitor/geoip-country.mmdb.xz`) | offline IP→country in Monitor | CC BY 4.0 — IP geolocation by DB-IP (https://db-ip.com) |
 | Natural Earth (`assets/monitor/land.bin`) | world map in Monitor | public domain |
 | Unicode Character Database / CLDR (generated tables) | text, bidi, emoji names | Unicode License v3 |
+| Inter (`assets/fonts/Inter-*.ttf`) | UI text | SIL OFL 1.1 (`assets/fonts/Inter-LICENSE.txt`) |
+| Plus Jakarta Sans 2.7.1 (`assets/fonts/PlusJakartaSans-ExtraBold.ttf`, `-Medium.ttf`) | the LordOS wordmark: live text in the UI (fontFamily `brand`) and outlined in `assets/brand/*.svg` | SIL OFL 1.1 (`assets/fonts/PlusJakartaSans-LICENSE.txt`) |
+| JetBrains Mono (`assets/fonts/JetBrainsMono-*.ttf`) | terminal and code text | SIL OFL 1.1 (`assets/fonts/JetBrainsMono-LICENSE.txt`) |
 
 ## npm packages (bundled into the theme JavaScript at build time)
 

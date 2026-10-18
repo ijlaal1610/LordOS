@@ -36,7 +36,7 @@ import { EmojiPanel } from './emoji.jsx';
 export { admin } from './admin.js';
 export { errorText, statusText, codeError, parseCode } from './errors.js';
 export { logs } from './logs.js';
-export { LordOSLogo } from './logo.js';
+export { LordOSLogo, LordOSGlyph, LordOSWordmark } from './logo.js';
 export { DesktopWidgets, registerWidgetType, setWidgets, desktopWidgets } from './widgets.js';
 export { Markdown, markdownHeadings, parseMarkdown, parseInline, toggleTask } from './markdown.jsx';
 export { dock, useDockEntries, dockActivate, dockMenu, registerDockMenu, launcherIdOf, dockPrefs, DOCK_DEFAULTS, quitApp } from './dock.js';

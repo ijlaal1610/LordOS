@@ -38,6 +38,7 @@ static Font fonts[MAX_FONTS];
 static int nfonts;
 static char font_dir[1024];
 static int mono_font[2] = { -2, -2 };   /* JetBrains Mono regular and bold: -2 not loaded, -1 absent */
+static int brand_font[2] = { -2, -2 };  /* Plus Jakarta Sans Medium and ExtraBold (the wordmark), same */
 
 static Glyph *cache;
 static size_t cache_cap, cache_used;
@@ -149,6 +150,16 @@ void text_font_vmetrics(int font, float size, float *asc, float *desc) {
 }
 
 static int font_for(float weight) {
+    if (weight >= TEXT_BRAND) {                 /* fontFamily: 'brand', loaded the first time it's used */
+        int bold = weight - TEXT_BRAND >= 600;
+        if (brand_font[bold] == -2) {
+            char path[1200];
+            snprintf(path, sizeof path, "%s/%s", font_dir, bold ? "PlusJakartaSans-ExtraBold.ttf" : "PlusJakartaSans-Medium.ttf");
+            brand_font[bold] = text_font_load(path, 0);
+        }
+        if (brand_font[bold] >= 0) return brand_font[bold];
+        weight -= TEXT_BRAND;                   /* missing: Inter */
+    }
     if (weight >= TEXT_MONO) {                  /* fontFamily: 'monospace' */
         int bold = weight - TEXT_MONO >= 600;
         if (mono_font[bold] == -2) {

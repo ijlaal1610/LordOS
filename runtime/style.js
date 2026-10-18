@@ -233,8 +233,9 @@ function expand(k, v, out) {
       out.fontWeight = typeof v === 'number' ? v : WEIGHTS[v] || parseFloat(v) || 400;
       return;
     case 'fontFamily':
-      // two families: Inter ('sans-serif') and JetBrains Mono ('monospace', or a name containing "mono")
-      out.fontFamily = /mono|courier|consol/i.test(String(v)) ? 'monospace' : 'sans-serif';
+      // three families: Inter ('sans-serif'), JetBrains Mono ('monospace', or a name containing "mono")
+      // and the brand face of the LordOS wordmark ('brand': Plus Jakarta Sans, see LordOSWordmark)
+      out.fontFamily = /mono|courier|consol/i.test(String(v)) ? 'monospace' : /brand|jakarta/i.test(String(v)) ? 'brand' : 'sans-serif';
       return;
     default:
       if (COLOR_KEYS.has(k)) out[k] = color(v);

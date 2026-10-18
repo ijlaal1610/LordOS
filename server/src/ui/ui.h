@@ -23,7 +23,7 @@ typedef struct {
     uint8_t overflow_hidden, pointer_none, text_align, object_fit, nowrap;
     uint8_t dir;                /* DIR_INHERIT / DIR_LTR / DIR_RTL (CSS direction) */
     uint8_t wrap;               /* flexWrap: 'wrap' (children that don't fit move to another line) */
-    uint8_t mono;               /* fontFamily: 'monospace' (JetBrains Mono) */
+    uint8_t mono;               /* fontFamily: 0 'sans-serif' (Inter), 1 'monospace' (JetBrains Mono), 2 'brand' (Plus Jakarta Sans) */
     uint8_t cursor;             /* cursor (CSS): CUR_* from cursor.h; 0 = the parent's */
     float grow, shrink;
     Dim basis, width, height, min_w, min_h, max_w, max_h;
@@ -206,7 +206,9 @@ int   text_init(const char *font_dir);
 /* Weight + TEXT_MONO picks the monospaced font (JetBrains Mono) in text_measure/text_draw and in
  * lord.measureText: this way the font travels with the weight without changing the signatures. */
 #define TEXT_MONO 1000.0f
-#define TEXT_WEIGHT(s) ((s)->font_weight + ((s)->mono ? TEXT_MONO : 0))
+/* Weight + TEXT_BRAND: the brand face of the LordOS wordmark (Plus Jakarta Sans, docs/brand/README.md). */
+#define TEXT_BRAND 2000.0f
+#define TEXT_WEIGHT(s) ((s)->font_weight + ((s)->mono == 2 ? TEXT_BRAND : (s)->mono ? TEXT_MONO : 0))
 float text_line_height(float size, float line_h);
 /* While painting a scaled display (paint.c): sizes passed to text_draw are physical, line breaks
  * and positions follow the logical metrics (size / scale), so text wraps exactly where layout said. */
