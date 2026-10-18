@@ -1,72 +1,91 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/logo-horizontal-dark.svg">
-    <img src="assets/brand/logo-horizontal-light.svg" alt="LordOS" height="96">
-  </picture>
+  <a href="https://lordos.org">
+    <img src="docs/brand/png/logo-horizontal-light-800.png#gh-light-mode-only" alt="LordOS" width="360">
+    <img src="docs/brand/png/logo-horizontal-dark-800.png#gh-dark-mode-only" alt="LordOS" width="360">
+  </a>
 </p>
 
-# LordOS
+<h3 align="center">The free, fast and secure Linux desktop.</h3>
 
-**A free, fast and secure GNU/Linux desktop, built on solid Debian and Wayland foundations.**
+<p align="center">
+  <a href="https://lordos.org"><b>lordos.org</b></a> ·
+  <a href="https://lordos.org/#download">Download</a> ·
+  <a href="https://lordos.org/features/own-desktop/">Features</a> ·
+  <a href="https://lordos.org/gallery/">Gallery</a> ·
+  <a href="https://lordos.org/paper/">Paper</a> ·
+  <a href="https://lordos.org/faq/">FAQ</a> ·
+  <a href="docs/README.md">Docs</a>
+</p>
 
-LordOS is a free GNU/Linux distribution based on Debian 13. It ships its own desktop
-environment instead of GNOME or KDE, built from its fundamental components on top of Debian and
-Wayland, and it doesn't use X11: a display server and Wayland compositor written in C, its own React-based UI engine, and native apps designed to feel calm,
-clear and private. Measured idle, the whole system uses 465–487 MB of RAM, of which `lord-server`
-(the display server with the whole desktop) is 32–36 MB. Its look and workflow take inspiration from the desktop of a well-known
-fruit-logo company: a Dock, an app launcher, a menu bar, instant search and polished native
-apps, all reimagined as free software. It runs on Intel/AMD PCs and on the Raspberry Pi 5, and
-it still runs regular Linux apps such as Chromium, Firefox, GTK and Qt programs.
+LordOS is a free GNU/Linux distribution based on Debian, with its own desktop environment:
+a display server and Wayland compositor written in C, its own interface engine, and native apps
+made to feel calm, clear and private. It runs on 64-bit PCs and on the Raspberry Pi 5, and the
+Linux apps you already use (Chromium, Firefox, GTK and Qt apps) run alongside the native ones.
 
-## Four pillars
+<p align="center">
+  <img src="docs/screenshots/desktop-overview-light.png#gh-light-mode-only" alt="The LordOS desktop" width="860">
+  <img src="docs/screenshots/desktop-overview-dark.png#gh-dark-mode-only" alt="The LordOS desktop in dark mode" width="860">
+</p>
 
-1. **Our own, end to end.** Display server, Wayland compositor and UI engine; login, sessions
-   and remote desktop; app store and package installer; firewall; password manager; touchpad
-   driver. All written for LordOS.
-2. **Light and smooth.** Built for modest hardware: the whole system idles at 465–487 MB of RAM
-   (`lord-server` 32–36 MB) and about 1 % CPU (see `docs/ISO.md`, "Final ISO test", and
-   `docs/RASPBERRY.md`),
-   windows that move at the display's refresh rate, GPU composition when available and a CPU
-   path when not.
-3. **Secure by design.**
-   - Third-party apps run sandboxed in their own process and ask before using the camera,
-     microphone, files or network.
-   - Per-app network rules enforced by the kernel (allow, block, LAN only, and per domain,
-     address or network, from Settings or straight from the Monitor), and restrictions for LordOS
-     apps (camera, microphone, screen, files and more). Domain rules use the names the system
-     resolver returned, so an app with its own encrypted DNS is held only by its address rules.
-   - A built-in Monitor shows network and hardware activity per app, with a world map.
-   - Signed packages, capture-protected windows and an encrypted password vault.
-4. **Complete and polished.** 29 native apps (Files, Mail, Calendar, Contacts,
-   Photos, Player, PDF viewer, Passwords, Disks, Backups and more), multiple monitors with
-   sharp fractional scaling, touchpad gestures, multi-user sessions, remote desktop from any
-   browser, and English, Spanish and Portuguese, including right-to-left scripts.
+## Everything you need. Nothing you don't.
 
-Status: **0.7.0 Beta** (see `CHANGELOG.md` and `docs/ROADMAP.md`). License: MIT.
+| | |
+|---|---|
+| **[A desktop of its own](https://lordos.org/features/own-desktop/)** | Its own display server and Wayland compositor in C and its own interface engine, on a solid Debian base. Light enough for a Raspberry Pi, smooth on a modern PC. |
+| **[Private by design](https://lordos.org/features/private-by-design/)** | Installable LordOS apps run isolated and ask before using your camera, microphone, files or network. You decide. |
+| **[A firewall you can see](https://lordos.org/features/visible-firewall/)** | Watch every connection on a live world map, then allow or block it per app, by domain, address or network, and restrict camera, microphone, files and more. |
+| **[Passwords built in](https://lordos.org/features/passwords/)** | A vault for passwords, 2FA codes and cards that unlocks with a password or a USB key. |
+| **[Mail, Calendar, Contacts](https://lordos.org/features/mail-calendar/)** | Native apps for your accounts, with remote images blocked until you say so. |
+| **[Your Linux apps too](https://lordos.org/features/linux-apps/)** | Chromium, Firefox and GTK apps fit right in, with the same window frame and dark mode. |
+
+Measured, not promised: the whole system idles at **465–487 MB of RAM**, of which `lord-server`
+(the display server with the whole desktop) is **32–36 MB**, and boots in about **16 s** (see
+[`docs/ISO.md`](docs/ISO.md), "Final ISO test"). What is isolated today, exactly, is in
+[`docs/PRIVACY.md`](docs/PRIVACY.md).
+
+## Get LordOS
+
+Releases are signed and published on [GitHub Releases](https://github.com/lordbasex/LordOS/releases)
+and on [lordos.org](https://lordos.org/#download).
+
+- **PC (64-bit):** a live and installable ISO. Try it without installing.
+- **Raspberry Pi 5:** a ready-to-flash image for SD card or NVMe, with fan control and our own
+  kernel. The Raspberry Pi 5 is the only supported board.
+- **Already on Debian 13?** Install LordOS on top of your current system with one command:
+
+  ```sh
+  curl -fsSL https://lordos.org/install.sh | sh
+  ```
+
+**Verify your download.** `SHA256SUMS` is signed with the LordOS release key (Ed25519),
+fingerprint `c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053ea108e`. See
+[code signing](https://lordos.org/legal/code-signing/) and [`docs/SIGNING.md`](docs/SIGNING.md).
+
+Status: **beta**. See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+## Documentation
+
+- [`docs/README.md`](docs/README.md): the index of every document.
+- [The paper](https://lordos.org/paper/) ([`docs/PAPER.md`](docs/PAPER.md)): vision, architecture,
+  security model, performance and roadmap, with links to the source files.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): components, processes and dependencies.
 
 ## Repository map
 
-- `server/`: `lord-server` (the display server: DRM/KMS and evdev straight from the kernel,
-  without X11, libdrm or libinput) plus `lord-sessiond`, `lord-netd`, `lord-netperm` and the
-  sandboxed helpers (`lord-media`, `lord-doc`, `lord-vault`, `lord-maild`).
-- `docs/ARCHITECTURE.md`: layers, dependency policy and theme model.
-- `docs/ROADMAP.md`: milestones and status.
-- `docs/VM-SETUP.md`: development VM on Proxmox, step by step.
-- `docs/TERMINAL.md`: the native terminal, its shortcuts and features.
-- `docs/WAYLAND.md`: Linux apps (GTK, Qt) as LordOS windows with our own Wayland compositor.
-- `docs/LORDOS-BRAND.md` and `docs/brand/`: the brand identity, the logo, its files (SVG, PNG, favicons, social card), colours, typeface and usage rules.
-- `docs/LANGUAGES.md`: language and region across the whole system (es, en, pt and language
-  packs), complex scripts (Arabic, Hebrew, CJK, mirrored UI) and input methods.
-
+- `server/`: `lord-server` (display server and Wayland compositor: DRM/KMS and evdev straight
+  from the kernel, without X11, libdrm or libinput) plus `lord-sessiond`, `lord-netd`,
+  `lord-netperm`, `lord-fand` and the sandboxed helpers (`lord-media`, `lord-doc`, `lord-vault`,
+  `lord-maild`).
 - `runtime/`: `@lordos/runtime`, the React renderer for lord-server.
-- `sdk/`: `@lordos/sdk`, the API for themes and apps (windows, settings, files, system).
-- `apps/`: native apps as packages. See `apps/README.md`.
-- `themes/`: themes (complete desktops) in React, swappable live. See `themes/README.md`.
-- `third_party/`: QuickJS, stb, Monocypher and word lists, vendored (see `THIRD_PARTY.md`). `assets/fonts/`: Inter, JetBrains Mono and Plus Jakarta Sans (the wordmark) (OFL).
-- `assets/locales/`: UI texts per language. `tools/i18n-check.mjs` and `tools/i18n-pack.mjs`.
-- `server/src/term/`: our own terminal (xterm emulator, PTY, drawing); the app is in `apps/terminal/`.
+- `sdk/`: `@lordos/sdk`, the API for themes and apps.
+- `apps/`: the native apps. See [`apps/README.md`](apps/README.md).
+- `themes/`: complete desktops in React, swappable live. See [`themes/README.md`](themes/README.md).
+- `assets/`: fonts, icons, the brand and Lumo, and the UI texts per language.
+- `tools/`: ISO and Raspberry Pi image builders, the Debian installer, release signing, the website.
+- `web/`: the [lordos.org](https://lordos.org) website.
+- `third_party/`: QuickJS, stb, Monocypher and word lists, vendored (see [`THIRD_PARTY.md`](THIRD_PARTY.md)).
 
-## Trying it
+## Building from source
 
 On the development machine (needs Node.js):
 
@@ -74,21 +93,34 @@ On the development machine (needs Node.js):
 npm install && npm run build        # bundles every theme with the SDK and the apps
 ```
 
-On Debian 13 with a generic kernel (see `docs/VM-SETUP.md` for copying the code):
+On Debian 13 (see [`docs/VM-SETUP.md`](docs/VM-SETUP.md) for the full list of packages):
 
 ```sh
-sudo apt-get install -y --no-install-recommends build-essential
-make -C server -j4
-cd server && sudo ./build/lord-server     # drops root on startup; quit: Ctrl+Alt+Backspace
+make -C server -j4 && make -C server test
 ```
 
-It must run from a text console, with no other graphical environment active.
+Images: [`docs/ISO.md`](docs/ISO.md) (PC) and [`docs/RASPBERRY.md`](docs/RASPBERRY.md) (Raspberry Pi 5).
 
-## Building the ISO
+## Contributing and security
 
-See `docs/ISO.md` (live USB for PCs) and `docs/RASPBERRY.md` (SD/NVMe image for the
-Raspberry Pi 5).
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md).
+- Found a vulnerability? Please read [`SECURITY.md`](SECURITY.md) and don't open a public issue.
+- Bugs and ideas: [how to report](https://lordos.org/legal/issues/).
+
+## Support the project
+
+LordOS is free and open source. If it makes your computer better, help us keep building it:
+[lordos.org/#support](https://lordos.org/#support).
+
+## Made by IPERFEX
+
+LordOS is created by the [IPERFEX](https://www.iperfex.com) group, by
+[Pablo Miranda](https://www.linkedin.com/in/pablomirandasavina/) and
+[Federico Pereira](https://www.linkedin.com/in/wilson-federico-pereira-medina/).
+Meet Lumo, the guardian of LordOS, in the [brand guide](docs/LORDOS-BRAND.md).
 
 ## License
 
-MIT for LordOS's code. Each third-party component keeps its own license (see `THIRD_PARTY.md`).
+MIT for LordOS's code (see [`LICENSE`](LICENSE)). Each third-party component keeps its own
+license (see [`THIRD_PARTY.md`](THIRD_PARTY.md) and [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md)).
+The LordOS name, logo and Lumo are covered by the [trademark policy](https://lordos.org/legal/trademark/).
