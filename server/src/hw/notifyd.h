@@ -30,10 +30,6 @@ void notifyd_tick(void);
  * an action was clicked. */
 void notifyd_closed(uint32_t id, uint32_t reason);
 void notifyd_action(uint32_t id, const char *key);
-/* Firewall id of the app whose cgroup path (the "0::" line of /proc/<pid>/cgroup, without the
- * "0::") is given: a launcher scope ".../lordos-session-<uid>/app-lordos-<id>.scope[/...]" gives
- * "desktop:<id>" (or "lpk:<id>"). 0 ok, -1 not in an app's scope. */
-int notifyd_app_of_cgroup(const char *path, char *out, size_t n);
 /* Tests only: replaces the PID → firewall id lookup (/proc/<pid>/cgroup). fn returns 0 with the
  * id, 1 if the PID is in no app's scope, -1 if it can't tell. */
 void notifyd_set_app_of_pid(int (*fn)(uint32_t pid, char *out, size_t n));

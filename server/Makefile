@@ -51,7 +51,7 @@ QJS_OBJ := $(patsubst %,build/qjs/%.o,quickjs libregexp libunicode cutils dtoa)
 MON_SRC := src/monitor/mon.c src/monitor/conn.c src/monitor/mmdb.c src/monitor/map.c src/ui/js_monitor.c
 # Media (src/media, docs/MEDIA.md): only the lord-server side. Only lord-media links FFmpeg.
 MEDIA_SRC := src/media/media.c src/media/mview.c src/media/capture.c src/media/annot.c src/media/maudio.c src/media/mpulse.c src/media/proto.c src/ui/js_media.c
-SEC_SRC := src/sec/json.c src/sec/sign.c src/sec/pkgstate.c src/sec/perms.c src/sec/cgroup.c src/sec/sandbox.c src/sec/brokersrv.c src/sec/brokercam.c src/sec/brokerkr.c src/sec/restrict.c
+SEC_SRC := src/sec/json.c src/sec/sign.c src/sec/pkgstate.c src/sec/perms.c src/sec/cgroup.c src/sec/sandbox.c src/sec/brokersrv.c src/sec/brokercam.c src/sec/brokerkr.c src/sec/restrict.c src/sec/appid.c src/sec/pwguard.c
 # App mode: lord-server --app <id> runs an .lpk app as an isolated Wayland client (src/app)
 APP_SRC := src/app/appclient.c src/app/appspawn.c src/ui/js_broker.c src/ui/js_brokercam.c
 SRC := src/main.c src/kms.c src/gpu/gpu.c src/input.c src/canvas.c src/admin.c src/install/install.c src/apps.c src/lpk.c src/fsops.c src/remote/mirror.c src/remote/remote_admin.c src/users/users_admin.c src/users/homedirs.c src/keyboard.c src/ime.c src/wl/wl.c \
@@ -246,7 +246,7 @@ build/launch-cli: tests/launch_cli.c $(LAUNCH_CLI_SRC) src/apps.h $(wildcard src
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/launch_cli.c $(LAUNCH_CLI_SRC)
 # tests/notifyd_cli.c: the real notification server on a private bus, for tests/fwlinux/notify.sh
-NOTIFYD_CLI_SRC := src/hw/notifyd.c src/hw/jbuf.c src/vault/dbus.c src/sec/restrict.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c
+NOTIFYD_CLI_SRC := src/hw/notifyd.c src/sec/appid.c src/hw/jbuf.c src/vault/dbus.c src/sec/restrict.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c
 test: build/notifyd-cli build/notifyd-test
 build/notifyd-test: tests/notifyd_test.c $(NOTIFYD_CLI_SRC) $(wildcard src/hw/*.h src/sec/*.h src/fw/*.h src/vault/*.h)
 	@mkdir -p build
@@ -255,6 +255,17 @@ build/notifyd-test: tests/notifyd_test.c $(NOTIFYD_CLI_SRC) $(wildcard src/hw/*.
 build/notifyd-cli: tests/notifyd_cli.c $(NOTIFYD_CLI_SRC) $(wildcard src/hw/*.h src/sec/*.h src/fw/*.h src/vault/*.h)
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/notifyd_cli.c $(NOTIFYD_CLI_SRC)
+# tests/pwguard_cli.c: the PipeWire guard against the session's PipeWire, for tests/fwlinux/mic.sh;
+# tests/pwguard_test.c: its POD reader and node classes
+PWGUARD_SRC := src/sec/pwguard.c src/sec/appid.c src/sec/restrict.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c
+test: build/pwguard-cli build/pwguard-test
+build/pwguard-cli: tests/pwguard_cli.c $(PWGUARD_SRC) $(wildcard src/sec/*.h src/fw/*.h)
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/pwguard_cli.c $(PWGUARD_SRC)
+build/pwguard-test: tests/pwguard_test.c $(PWGUARD_SRC) $(wildcard src/sec/*.h src/fw/*.h)
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/pwguard_test.c $(PWGUARD_SRC)
+	./$@ || { rm -f $@; exit 1; }
 build/fw-rules-test: tests/fw_rules_test.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c $(wildcard src/fw/*.h) src/sec/json.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/fw_rules_test.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c

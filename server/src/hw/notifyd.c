@@ -3,6 +3,7 @@
 #include "jbuf.h"
 #include "../vault/dbus.h"
 #include "../fw/rules.h"
+#include "../sec/appid.h"
 #include "../sec/restrict.h"
 
 #include <stdio.h>
@@ -140,31 +141,7 @@ static void on_notify(const DMsg *m) {
     free(js);
 }
 
-int notifyd_app_of_cgroup(const char *path, char *out, size_t n) {
-    const char *p = strstr(path, "/lordos-session-");
-    if (!p || !(p = strchr(p + 1, '/'))) return -1;
-    p++;
-    char scope[FW_APP_MAX + 32];
-    size_t l = strcspn(p, "/\n");
-    if (l < 18 || l >= sizeof scope || strncmp(p, "app-lordos-", 11) || strncmp(p + l - 6, ".scope", 6)) return -1;
-    memcpy(scope, p, l);
-    scope[l] = 0;
-    return fw_app_canon(scope, out, n);
-}
-
-/* Firewall id of a PID's app scope, from /proc/<pid>/cgroup. 0 ok, 1 not in an app's scope, -1
- * the process is gone (or unreadable). */
-static int app_of_pid_proc(uint32_t pid, char *out, size_t n) {
-    char f[64], line[1024];
-    snprintf(f, sizeof f, "/proc/%u/cgroup", pid);
-    FILE *fp = fopen(f, "re");
-    if (!fp) return -1;
-    int r = -1;
-    while (fgets(line, sizeof line, fp))
-        if (!strncmp(line, "0::", 3)) { r = notifyd_app_of_cgroup(line + 3, out, n) ? 1 : 0; break; }
-    fclose(fp);
-    return r;
-}
+static int app_of_pid_proc(uint32_t pid, char *out, size_t n) { return appid_of_pid(pid, out, n); }
 
 void notifyd_set_app_of_pid(int (*fn)(uint32_t pid, char *out, size_t n)) { app_of_pid = fn; }
 
