@@ -3,6 +3,7 @@
 #
 #   curl -fsSL https://lordos.org/install.sh | sh
 #   curl -fsSL https://lordos.org/install.sh | sh -s -- --uninstall
+#   curl -fsSL https://lordos.org/install.sh | sh -s -- --remote-desktop    (servers and VPS)
 #
 # Canonical copy: tools/install/install.sh in https://github.com/lordbasex/LordOS.
 # https://lordos.org/install.sh must stay byte-identical to the file in the release tag.
@@ -29,6 +30,11 @@ EXTRA_PKGS="dbus-user-session pipewire pipewire-pulse pipewire-alsa wireplumber 
 # locales the interface ships translations for (en is the default); only generated, never selected
 LOCALES="en_US.UTF-8 es_ES.UTF-8 pt_BR.UTF-8"
 KNOWN_DMS="gdm3 gdm sddm lightdm lxdm xdm slim nodm greetd ly"
+# remote desktop (--remote-desktop): the file Settings > Sharing and the Raspberry Pi switch file
+# write (server/src/remote/remote_admin.c, tools/rpi/rootfs/usr/lib/lordos/rpi/firstboot)
+REMOTE_DIR=/etc/lordos/remote
+REMOTE_CONF=$REMOTE_DIR/config
+REMOTE_DEFAULT_PORT=5673
 
 # Ed25519 public key that signs SHA256SUMS (SHA256SUMS.sig = base64 of the 64-byte signature).
 # Fingerprint (SHA-256 of the DER key): c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053ea108e
@@ -68,7 +74,7 @@ Usage:
 
 Options:
   -y, --yes                 do not ask for confirmation (also LORDOS_YES=1)
-  --version X               install release X (for example 0.7.0-beta); default: the latest
+  --version X               install release X (for example 0.8.0-beta); default: the latest
   --deb FILE                install a local lordos_<version>_<arch>.deb instead of downloading;
                             a SHA256SUMS file next to it is verified when present
   --user NAME               the user to set up (default: the user who ran sudo)
@@ -80,7 +86,12 @@ Options:
   --no-boot-splash          do not offer the boot splash
   --no-systemd-check        continue without a running systemd (containers, chroots):
                             the systemd steps are skipped
-  --uninstall               remove LordOS and restore the previous login setup
+  --remote-desktop          also turn on LordOS remote desktop (servers and VPS without a
+                            screen): https://<this machine's IP>:5673 in a browser, TLS and a
+                            user's password; asks first unless --yes
+  --remote-port N           with --remote-desktop: the port, 1024-65535 (default 5673)
+  --uninstall               remove LordOS and restore the previous login setup (also
+                            removes the remote desktop configuration)
   --purge                   with --uninstall: purge the package and its /etc files
   -h, --help                this help
 EOF
@@ -550,6 +561,7 @@ setup_splash() {
     apt_install plymouth plymouth-label || { warn "could not install Plymouth; the boot splash was skipped"; return 0; }
     prev=$(plymouth-set-default-theme 2>/dev/null || true)
     set_theme=1
+    # shellcheck disable=SC2086 # $STOCK_PLYMOUTH_THEMES: one theme name per line
     if [ "$prev" = lordos ]; then
         set_theme=0
     elif [ -n "$prev" ] && ! printf '%s\n' $STOCK_PLYMOUTH_THEMES | grep -qx "$prev"; then
@@ -585,6 +597,7 @@ EOF
     {
         echo "# LordOS boot splash and boot menu, written by the LordOS installer (install.sh)."
         echo "# Remove this file and run update-grub to undo (install.sh --uninstall does it)."
+        # shellcheck disable=SC2016 # expanded by GRUB's own shell, not here
         if [ "$add_splash" = 1 ]; then echo 'GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT splash"'; fi
         echo 'GRUB_GFXPAYLOAD_LINUX=keep'
         if [ "$add_theme" = 1 ]; then echo 'GRUB_THEME=/usr/share/grub/themes/lordos/theme.txt'; fi
@@ -615,11 +628,99 @@ undo_splash() {
 }
 
 remote_note() {
-    if [ -f /etc/lordos/remote/config ] && grep -q '^enabled=1' /etc/lordos/remote/config 2>/dev/null; then
-        warn "remote desktop was already turned on in /etc/lordos/remote/config before this run; it was left as it was (Settings > Sharing)"
+    if [ -f "$REMOTE_CONF" ] && grep -q '^enabled=1' "$REMOTE_CONF" 2>/dev/null; then
+        warn "remote desktop was already turned on in $REMOTE_CONF before this run; it was left as it was (Settings > Sharing)"
     else
-        ok "remote desktop: off (port 5673 closed; Settings > Sharing turns it on)"
+        ok "remote desktop: off (port $REMOTE_DEFAULT_PORT closed; Settings > Sharing or --remote-desktop turns it on)"
     fi
+}
+
+valid_port() {
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    [ "${#1}" -ge 4 ] && [ "${#1}" -le 5 ] && [ "$1" -ge 1024 ] && [ "$1" -le 65535 ]
+}
+
+# a value of the remote desktop configuration ("key=value" lines)
+remote_value() {
+    [ -r "$REMOTE_CONF" ] || return 0
+    sed -n "s/^$1=//p" "$REMOTE_CONF" | tail -n 1 | tr -d '[:space:]'
+}
+
+# a person account (uid 1000-59999) with a password: the remote login refuses every other account
+has_login_account() {
+    getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 { print $1 }' | while read -r u; do
+        as_root getent shadow "$u" 2>/dev/null | cut -d: -f2 | grep -q '^\$' && echo "$u"
+    done | grep -q .
+}
+
+# --remote-desktop: the same file and format as Settings > Sharing (remote-enable/remote-config in
+# server/src/remote/remote_admin.c) and the Raspberry Pi image's remote-desktop switch file
+# (tools/rpi/rootfs/usr/lib/lordos/rpi/firstboot); lord-sessiond (lordos.service) reads it
+setup_remote() {
+    if [ "$REMOTE" != 1 ]; then remote_note; return 0; fi
+    step "Turning on remote desktop"
+    # the current values (Settings > Sharing may have saved some), then the options
+    port=$REMOTE_DEFAULT_PORT; allow=all; dev=0
+    v=$(remote_value port); if [ -n "$v" ] && valid_port "$v"; then port=$v; fi
+    [ "$(remote_value allow)" = group ] && allow=group
+    [ "$(remote_value insecure_dev)" = 1 ] && dev=1
+    [ -n "$REMOTE_PORT" ] && port=$REMOTE_PORT
+    if [ "$allow" = group ] && ! getent group lordos-remote >/dev/null 2>&1; then
+        as_root groupadd --system lordos-remote 2>/dev/null || true
+    fi
+    as_root install -d -m 755 /etc/lordos "$REMOTE_DIR"
+    printf '# LordOS · remote desktop (Settings → Sharing). See docs/REMOTE.md\nenabled=1\nport=%s\nallow=%s\ninsecure_dev=%s\n' \
+        "$port" "$allow" "$dev" | as_root tee "$REMOTE_CONF.lordos" >/dev/null
+    as_root chmod 644 "$REMOTE_CONF.lordos"
+    as_root mv -f "$REMOTE_CONF.lordos" "$REMOTE_CONF"
+    state_set REMOTE_SET 1
+    changed "remote desktop turned on in $REMOTE_CONF: port $port, allow=$allow (Settings > Sharing changes it)"
+    REMOTE_NOTE_PORT=$port
+    has_login_account || REMOTE_NO_ACCOUNT=1
+    has_systemd || return 0
+    # lord-sessiond reads the file when it starts, and again on reload (SIGHUP)
+    if systemctl is-active -q lordos.service 2>/dev/null; then
+        as_root systemctl reload lordos.service >/dev/null 2>&1 || warn "could not reload lordos.service: run sudo systemctl restart lordos"
+        REMOTE_RUNNING=1
+    elif [ "$(systemctl is-enabled lordos.service 2>/dev/null || true)" = enabled ]; then
+        # start it now only when that can't take a screen from anyone: no display manager running
+        # and nobody logged in on tty1 (lordos.service takes tty1 over)
+        if [ "$dm_active" = 0 ] && ! who 2>/dev/null | awk '{ print $2 }' | grep -qx tty1; then
+            if as_root systemctl start lordos.service >/dev/null 2>&1; then
+                REMOTE_RUNNING=1
+                changed "lordos.service started (the login screen runs headless if there is no screen)"
+            else
+                warn "could not start lordos.service; it starts at the next boot (journalctl -u lordos)"
+            fi
+        fi
+    fi
+    if [ "$REMOTE_RUNNING" = 1 ]; then
+        i=0
+        while [ $i -lt 30 ]; do
+            if grep -q '"running":true' /run/lordos/status.json 2>/dev/null; then break; fi
+            i=$((i + 1)); sleep 0.2
+        done
+        if grep -q '"running":true' /run/lordos/status.json 2>/dev/null; then ok "remote desktop is listening on port $port"
+        else warn "remote desktop is not listening yet on port $port (journalctl -u lordos)"; fi
+    fi
+}
+
+undo_remote() {
+    [ -e "$REMOTE_CONF" ] || return 0
+    as_root rm -f "$REMOTE_CONF" "$REMOTE_CONF.lordos"
+    # a running lord-sessiond rereads it on reload: without the file, remote desktop is off
+    if has_systemd && systemctl is-active -q lordos.service 2>/dev/null; then
+        as_root systemctl reload lordos.service >/dev/null 2>&1 || true
+    fi
+    changed "remote desktop configuration $REMOTE_CONF removed (port closed)"
+}
+
+# the first IPv4 address of this machine, for the final message (empty if there is none)
+host_ip() {
+    if command -v hostname >/dev/null 2>&1; then
+        hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1
+    fi
+    return 0
 }
 
 network_note() {
@@ -668,8 +769,23 @@ do_install() {
         fi
     fi
     [ "$BOOT_SPLASH" != no ] && say "  Then it offers the LordOS boot splash (Plymouth; never changes a customised bootloader)"
-    say "  It does NOT touch your network configuration, and remote desktop stays off."
+    if [ "$REMOTE" = 1 ]; then
+        plan_port=$REMOTE_PORT
+        if [ -z "$plan_port" ]; then
+            plan_port=$(remote_value port)
+            valid_port "$plan_port" || plan_port=$REMOTE_DEFAULT_PORT
+        fi
+        say "  Remote desktop: turned on, port $plan_port (--remote-desktop)"
+        say "  It does NOT touch your network configuration."
+    else
+        say "  It does NOT touch your network configuration, and remote desktop stays off."
+    fi
     say ""
+    if [ "$REMOTE" = 1 ]; then
+        warn "with remote desktop on, this machine accepts remote-desktop logins from the network on port $plan_port (TLS and a user's password). Protect that port with a firewall or reach it through a VPN; don't leave it open to the whole internet."
+        # asked on its own (a "no" keeps the rest of the install); --yes means the flag is the answer
+        ask "Turn remote desktop on?" 0 || { REMOTE=0; warn "remote desktop stays off"; }
+    fi
     ask "Continue?" 0 || die "cancelled; nothing was changed"
 
     TMP=$(mktemp -d)
@@ -685,7 +801,7 @@ do_install() {
     setup_session_conf
     setup_systemd
     setup_splash
-    remote_note
+    setup_remote
     network_note
     state_set INSTALLER_VERSION "$INSTALLER_VERSION"
 
@@ -695,6 +811,24 @@ do_install() {
     say ""
     if [ -n "$SIG_NOTE" ]; then say "Signature: $SIG_NOTE."; say ""; fi
     if [ -n "$SPLASH_NOTE" ]; then say "Boot splash: $SPLASH_NOTE."; say ""; fi
+    if [ "$REMOTE" = 1 ]; then
+        ip=$(host_ip)
+        [ -n "$ip" ] || ip="<this machine's IP>"
+        say "Remote desktop: open ${C_B}https://$ip:$REMOTE_NOTE_PORT${C_0} in a browser and log in with a user of this machine."
+        say "  The certificate is self-signed: compare the fingerprint in /etc/lordos/remote/fingerprint."
+        say "  Keep port $REMOTE_NOTE_PORT behind a firewall or a VPN."
+        if [ "$REMOTE_NO_ACCOUNT" = 1 ]; then
+            warn "no user with a password can log in yet: create one with  sudo adduser NAME"
+        fi
+        if [ "$REMOTE_RUNNING" = 0 ] && has_systemd; then
+            if [ "$KEEP_DM" = 1 ] && [ -n "$DM_UNIT" ]; then
+                warn "remote desktop runs inside lordos.service, which is not enabled while $DM_UNIT stays the display manager"
+            else
+                say "  It starts with lordos.service (at the next boot, or: sudo systemctl start lordos)."
+            fi
+        fi
+        say ""
+    fi
     if ! has_systemd; then
         say "No systemd here, so nothing was set to start. On a real system run the installer again."
     elif [ "$KEEP_DM" = 1 ] && [ -n "$DM_UNIT" ]; then
@@ -702,6 +836,9 @@ do_install() {
         say "  sudo systemctl disable $DM_UNIT"
         say "  sudo systemctl enable lordos.service && sudo systemctl mask getty@tty1.service"
         say "  sudo reboot"
+    elif [ "$REMOTE_RUNNING" = 1 ]; then
+        say "LordOS is running (lordos.service) and starts at every boot; without a screen, the login"
+        say "screen and the sessions are reached through the remote desktop."
     else
         say "To start LordOS:"
         say "  - reboot:  ${C_B}sudo reboot${C_0}  (LordOS's login screen appears on the screen)"
@@ -750,6 +887,7 @@ do_uninstall() {
     [ "$(state_get GREETER_CREATED)" = 1 ] && say "  - delete the $GREETER_USER system user"
     [ "$(state_get GRUB_DROPIN)" = 1 ] && say "  - remove the LordOS GRUB settings ($GRUB_DROPIN) and run update-grub"
     [ -n "$(state_get PREV_PLYMOUTH_THEME)" ] && say "  - put back the previous boot splash theme"
+    [ -e "$REMOTE_CONF" ] && say "  - remove the remote desktop configuration ($REMOTE_CONF)"
     say "  Your home folder and LordOS settings in it (~/.config/lordos) are kept."
     say ""
     ask "Continue?" 0 || die "cancelled; nothing was changed"
@@ -781,6 +919,7 @@ do_uninstall() {
         fi
     fi
     undo_splash
+    undo_remote
     case "$installed" in
         ii*|iF*|iU*|rc*)
             step "Removing the package"
@@ -832,6 +971,8 @@ main() {
     WANT_VERSION=""; LOCAL_DEB=""; TARGET_USER=""; MODE=install; PURGE=""
     KEEP_DM=0; NO_EXTRAS=0; SKIP_SYSTEMD_CHECK=0; NO_SYSTEMD=0; DM_SWITCHED=0
     BOOT_SPLASH=ask; SPLASH_NOTE=""
+    REMOTE=0; REMOTE_PORT=""; REMOTE_NOTE_PORT=$REMOTE_DEFAULT_PORT; REMOTE_RUNNING=0; REMOTE_NO_ACCOUNT=0
+    dm_active=0
     while [ $# -gt 0 ]; do
         case "$1" in
             -y|--yes) ASSUME_YES=1 ;;
@@ -846,6 +987,9 @@ main() {
             --boot-splash) BOOT_SPLASH=yes ;;
             --no-boot-splash) BOOT_SPLASH=no ;;
             --no-systemd-check) SKIP_SYSTEMD_CHECK=1 ;;
+            --remote-desktop) REMOTE=1 ;;
+            --remote-port) [ $# -ge 2 ] || die "--remote-port needs a number"; REMOTE_PORT=$2; shift ;;
+            --remote-port=*) REMOTE_PORT=${1#*=} ;;
             --uninstall) MODE=uninstall ;;
             --purge) PURGE=1 ;;
             -h|--help) usage; exit 0 ;;
@@ -858,6 +1002,11 @@ main() {
     fi
     if [ -n "$WANT_VERSION" ] && [ -n "$LOCAL_DEB" ]; then die "use --version or --deb, not both"; fi
     if [ -n "$PURGE" ] && [ "$MODE" != uninstall ]; then die "--purge only goes with --uninstall"; fi
+    if [ -n "$REMOTE_PORT" ]; then
+        [ "$REMOTE" = 1 ] || die "--remote-port only goes with --remote-desktop"
+        valid_port "$REMOTE_PORT" || die "--remote-port must be a number from 1024 to 65535 (got: $REMOTE_PORT)"
+    fi
+    if [ "$REMOTE" = 1 ] && [ "$MODE" = uninstall ]; then die "--remote-desktop does not go with --uninstall"; fi
 
     say "${C_B}LordOS installer for Debian 13${C_0} (installer v$INSTALLER_VERSION)"
     if [ "$MODE" = uninstall ]; then do_uninstall; else do_install; fi

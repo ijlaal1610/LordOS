@@ -33,6 +33,10 @@ The port is **5673**, which spells "LORD" on a phone keypad.
 The actions change `/etc/lordos/remote/config` (`enabled=`, `port=`, `allow=`) and send SIGHUP to
 lord-sessiond. Turning remote off cuts the connections, but the sessions stay open, as with RDP.
 
+Without a screen, the same file is written by the Raspberry Pi image's `remote-desktop` switch file
+(`RASPBERRY.md`) and by the Debian installer's `--remote-desktop` option for servers and VPS
+(`INSTALL-DEBIAN.md`, "Servers and VPS").
+
 ## Login
 
 ![Web login](remote-desktop-web-login.png)

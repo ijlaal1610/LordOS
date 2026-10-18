@@ -90,7 +90,7 @@ curl -fsSL https://lordos.org/install.sh | sh -s -- [options]
 | Option | |
 |---|---|
 | `-y`, `--yes` | don't ask (also `LORDOS_YES=1`). With it, the display manager **is** disabled; add `--keep-display-manager` to avoid that |
-| `--version X` | install release `X` (`0.7.0-beta` or `v0.7.0-beta`) instead of the latest |
+| `--version X` | install release `X` (`0.8.0-beta` or `v0.8.0-beta`) instead of the latest |
 | `--deb FILE` | install a local `.deb`. If a `SHA256SUMS` is next to it, it is checked; otherwise the output says the checksum was not verified |
 | `--user NAME` | the user to set up (default: the user who ran `sudo`; as plain root with no `sudo`, nobody) |
 | `--keep-display-manager` | leave the current display manager enabled; LordOS is not enabled at boot |
@@ -98,7 +98,9 @@ curl -fsSL https://lordos.org/install.sh | sh -s -- [options]
 | `--boot-splash` | set up the LordOS boot splash without asking (see "Boot splash (optional)") |
 | `--no-boot-splash` | don't offer the boot splash |
 | `--no-systemd-check` | continue without a running systemd (containers, chroots): services, display manager, getty and linger are skipped. Detected automatically in Docker/Podman |
-| `--uninstall` | remove LordOS and restore the previous login setup |
+| `--remote-desktop` | also turn on LordOS remote desktop, for servers and VPS without a screen (see "Servers and VPS"). It asks first, with a warning, unless `--yes` |
+| `--remote-port N` | with `--remote-desktop`: the port, 1024–65535 (default 5673) |
+| `--uninstall` | remove LordOS and restore the previous login setup; also removes the remote desktop configuration |
 | `--purge` | with `--uninstall`: purge the package and its files in `/etc` |
 | `-h`, `--help` | help |
 
@@ -123,6 +125,57 @@ At the end the installer asks whether to show the LordOS boot splash (the crown 
 `--uninstall` removes the drop-in (and runs `update-grub`) and puts the previous Plymouth theme
 back; Plymouth itself stays installed.
 
+## Servers and VPS
+
+The same command works on a server or a VPS with no monitor, on **amd64 and arm64** (the release
+has a `.deb` for each, `lordos_<version>_amd64.deb` and `lordos_<version>_arm64.deb`; the installer
+picks the one for the machine). Add `--remote-desktop` to reach the desktop from a browser:
+
+```sh
+curl -fsSL https://lordos.org/install.sh | sh -s -- --remote-desktop
+curl -fsSL https://lordos.org/install.sh | sh -s -- --remote-desktop --remote-port 8443
+```
+
+**What works headless.** LordOS's sessions don't need a screen (`SESSIONS.md`): each session is a
+`lord-server --headless`, and the login screen runs headless too. Without a display manager the
+installer enables `lordos.service` (as on any machine without one), so `lord-sessiond` starts at
+boot and serves the login screen and the sessions over the remote desktop. Apps, Linux apps, the
+firewall and the rest of the desktop work as on a PC; without a GPU everything is drawn on the CPU.
+The remote desktop has no audio yet.
+
+**What `--remote-desktop` does:**
+
+- In interactive mode it first warns that the machine will accept remote-desktop logins from the
+  network on that port, and asks. "No" keeps the rest of the install and leaves remote desktop off.
+  With `--yes`, the flag is the answer (the warning is still printed).
+- It writes `/etc/lordos/remote/config` (`enabled=1`, the port, `allow=all`, `insecure_dev=0`) in
+  the same format Settings → Sharing and the Raspberry Pi `remote-desktop` switch file use
+  (`REMOTE.md`). Values saved there before (`allow=group`, a port) are kept unless
+  `--remote-port` is given.
+- If `lordos.service` is already running it is reloaded (it rereads the file). If it is enabled but
+  not running, it is started right away when that takes the screen from nobody: no display manager
+  running and nobody logged in on tty1. Otherwise it starts at the next boot.
+- The final message gives the address, and warns when there is no account that can log in yet.
+
+**Connecting.** Open `https://<the server's IP>:5673` (or your port) in a browser and log in with a
+user of the machine that has a password (uid 1000 or above; `sudo adduser NAME` creates one; root
+can't log in). The certificate is self-signed: the browser warns the first time; compare its
+fingerprint with `/etc/lordos/remote/fingerprint` on the server before accepting it. Nothing has
+to be installed on the other computer. See `REMOTE.md`.
+
+**Security.** The port is protected by TLS and the account's password, and nothing else. On a
+machine reachable from the internet:
+
+- don't leave the port open to everyone: allow it only from your own addresses in the provider's or
+  the host's firewall, or reach it through a VPN (WireGuard, OpenVPN) or an SSH tunnel
+  (`ssh -L 5673:localhost:5673 server`, then `https://localhost:5673`);
+- use strong passwords for every account that can log in, or limit remote login to the
+  `lordos-remote` group (Settings → Sharing, `allow=group`);
+- turn it off when you don't need it: Settings → Sharing, or `enabled=0` in
+  `/etc/lordos/remote/config` and `sudo systemctl reload lordos`.
+
+`--uninstall` removes `/etc/lordos/remote/config`, so the port is closed.
+
 ## Uninstalling
 
 ```sh
@@ -139,7 +192,8 @@ It asks first, then:
 - removes the package (`apt-get remove`; `--purge` for `apt-get purge`);
 - removes your user from the groups **the installer added** (not the ones you already had), turns
   off the linger it turned on, deletes `/etc/lordos/session.conf` and the `lordos-greeter` user if
-  it created them.
+  it created them;
+- removes the remote desktop configuration (`/etc/lordos/remote/config`), if there is one.
 
 Your home folder and `~/.config/lordos` are kept. The dependencies apt pulled in stay installed;
 `sudo apt autoremove` removes them. Reboot to get your previous login screen back.
@@ -158,7 +212,7 @@ sudo reboot
 | Symptom | What to do |
 |---|---|
 | `no terminal to ask "Continue?"` | The script runs without a terminal (CI, `ssh host 'curl … \| sh'`). Use `ssh -t`, or `--yes`. |
-| `could not find the latest LordOS release on GitHub` | No connection to `api.github.com`, the GitHub API rate limit (60 requests/hour per IP), or the repository is still private. Pass `--version 0.7.0-beta`, or download the files and use `--deb`. |
+| `could not find the latest LordOS release on GitHub` | No connection to `api.github.com`, the GitHub API rate limit (60 requests/hour per IP), or the repository is still private. Pass `--version 0.8.0-beta`, or download the files and use `--deb`. |
 | `SHA-256 mismatch` | The download is corrupted or incomplete. Run it again; if it persists, report it: nothing was installed. |
 | `the SHA256SUMS signature is NOT valid` | Don't install; report it (the release files may have been tampered with). |
 | `apt-get could not install LordOS` | Usually a broken apt state or mirrors that aren't trixie. `sudo apt-get update && sudo apt-get -f install`, then run the installer again. |
@@ -172,7 +226,7 @@ sudo reboot
 
 - **The canonical copy is `tools/install/install.sh`.** The website serves it at
   `https://lordos.org/install.sh`, and **that file must stay byte-identical to the one in the
-  release tag** (`git show v0.7.0-beta:tools/install/install.sh | sha256sum` against
+  release tag** (`git show v0.8.0-beta:tools/install/install.sh | sha256sum` against
   `curl -fsSL https://lordos.org/install.sh | sha256sum`). Change the script here, tag, then copy it
   to the website, never the other way round.
 - POSIX `sh` with `set -eu`; everything is inside `main()`, called on the last line, so a truncated
