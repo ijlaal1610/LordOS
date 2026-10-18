@@ -32,6 +32,7 @@
  * All of them validate: app ids with fw_app_canon, destinations with fw_parse_dest, ports 1–65535. */
 #include "js_fw.h"
 #include "../fw/rules.h"
+#include "../fw/fwmap.h"
 #include "../sec/restrict.h"
 #include "js_err.h"
 #include "../netperm/npproto.h"
@@ -82,6 +83,62 @@ static long long match_last(uint32_t id) {
     return 0;
 }
 
+/* lord-netperm numbers the rules on its own: on every reload it reads firewall.json into a new
+ * store, so its ids are 1, 2, 3… in the file's order, not this store's ids. To know which of our
+ * rules a notice is about, the saved text is read the same way here (fw_to_json, then fw_from_json
+ * into a scratch store) and each of those rules is matched to ours by what identifies a rule (app,
+ * direction, destination, ports, protocol). np_ids[their id] = our id. Rebuilt on every save. */
+static uint32_t *np_ids;
+static uint32_t n_np;
+
+static int rule_key(const FwRule *r, char *out, size_t n) {
+    char dst[FW_NAME_MAX + 8];
+    if (fw_format_dest(r, dst, sizeof dst)) return -1;
+    int w = snprintf(out, n, "%s|%d|%s|%u-%u|%d", r->app, (int)r->dir, dst, r->port_lo, r->port_hi, (int)r->proto);
+    return w <= 0 || (size_t)w >= n ? -1 : w;
+}
+
+static void np_map_rebuild(void) {
+    free(np_ids);
+    np_ids = NULL;
+    n_np = 0;
+    size_t len = 0;
+    char *j = fw_to_json(store, &len), err[80], k[FW_APP_MAX + FW_NAME_MAX + 48];
+    FwStore *sh = fw_store_new();
+    FwRule *mine = NULL, *theirs = NULL;
+    FwMap m = { 0 };
+    int a = 0, b = 0;
+    if (!j || !sh || fw_from_json(sh, j, len, err, sizeof err)) goto out;
+    a = fw_rule_list(store, NULL, NULL, 0);
+    b = fw_rule_list(sh, NULL, NULL, 0);
+    if (a <= 0 || b <= 0) goto out;
+    mine = malloc((size_t)a * sizeof *mine);
+    theirs = malloc((size_t)b * sizeof *theirs);
+    if (!mine || !theirs) goto out;
+    a = fw_rule_list(store, NULL, mine, a);
+    b = fw_rule_list(sh, NULL, theirs, b);
+    for (int i = 0; i < a; i++) {
+        int l = rule_key(&mine[i], k, sizeof k);
+        void **slot = l > 0 ? fwmap_slot(&m, k, (size_t)l, 1) : NULL;
+        if (slot) *slot = (void *)(uintptr_t)mine[i].id;
+    }
+    uint32_t top = 0;
+    for (int i = 0; i < b; i++) if (theirs[i].id > top) top = theirs[i].id;
+    if (!(np_ids = calloc((size_t)top + 1, sizeof *np_ids))) goto out;
+    n_np = top + 1;
+    for (int i = 0; i < b; i++) {
+        int l = rule_key(&theirs[i], k, sizeof k);
+        void *v = l > 0 ? fwmap_get(&m, k, (size_t)l) : NULL;
+        if (v) np_ids[theirs[i].id] = (uint32_t)(uintptr_t)v;
+    }
+out:
+    fwmap_free(&m, NULL);
+    free(mine);
+    free(theirs);
+    free(j);
+    if (sh) fw_store_free(sh);
+}
+
 /* The notice is lord-netperm's own compact JSON ("by":"rule","rule":N): read just those two keys. */
 static void match_event(const unsigned char *p, size_t n) {
     static const char by[] = "\"by\":\"rule\",\"rule\":";
@@ -92,7 +149,7 @@ static void match_event(const unsigned char *p, size_t n) {
     const char *s = strstr(j, by);
     if (!s) return;
     unsigned long id = strtoul(s + sizeof by - 1, NULL, 10);
-    if (id && id <= UINT32_MAX) match_note((uint32_t)id, (long long)time(NULL));
+    if (id && id < n_np && np_ids[id]) match_note(np_ids[id], (long long)time(NULL));
 }
 
 static long long now_s(void) {
@@ -179,6 +236,7 @@ static int save(void) {
     if (sl) { *sl = 0; mkdir(dir, 0700); }
     int r = fw_save(store, path);
     if (r) fprintf(stderr, "lord.fw: could not save %s\n", path);
+    np_map_rebuild();
     ensure();
     send_reload();
     return r;
@@ -564,6 +622,7 @@ void js_fw_register(JSContext *c, JSValue lord) {
         char err[200] = "";
         int r = store ? fw_load(store, path, err, sizeof err) : -1;
         if (r < 0) fprintf(stderr, "lord.fw: %s invalid (%s): starting without rules\n", path, err);
+        np_map_rebuild();
         restrict_set_store(store);                  /* the broker and js_media.c check it (sec/restrict.h) */
         ensure();                                   /* lord-netperm reads this session's rules */
     }
