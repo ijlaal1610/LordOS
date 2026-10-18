@@ -4,7 +4,7 @@
   "ogLocale": "en_US",
   "meta": {
     "title": "LordOS — the free, fast and secure Linux desktop",
-    "description": "LordOS is a free GNU/Linux distribution based on Debian with its own desktop environment, display server and Wayland compositor, built on solid Debian and Wayland foundations. Private by design, light enough for a Raspberry Pi.",
+    "description": "LordOS is a free GNU/Linux distribution based on Debian with its own desktop environment, display server and Wayland compositor, built on solid Debian and Wayland foundations. Private by design. Runs on 64-bit PCs (amd64) and on the Raspberry Pi 5 (arm64).",
     "galleryTitle": "LordOS gallery — every screen",
     "galleryDescription": "Real screenshots of LordOS, the free GNU/Linux distribution based on Debian with a desktop environment of its own. No mockups, no retouching."
   },
@@ -28,7 +28,7 @@
   "features": [
     [
       "A desktop of its own",
-      "Its own display server and Wayland compositor in C and its own interface engine, on a solid Debian base. Light enough for a Raspberry Pi, smooth on a modern PC."
+      "Its own display server and Wayland compositor in C and its own interface engine, on a solid Debian base. Smooth on any 64-bit PC (amd64), and light enough for the Raspberry Pi 5 (arm64)."
     ],
     [
       "Private by design",
