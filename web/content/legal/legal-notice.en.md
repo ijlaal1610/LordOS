@@ -4,11 +4,10 @@ lordos.org is the website of **LordOS**, a free Debian-based GNU/Linux distribut
 
 - **Project:** LordOS, by the IPERFEX group
 - **Authors:** Pablo Miranda and Federico Pereira
-- **Responsible entity:** [[LEGAL_ENTITY]]
-- **Address:** [[ADDRESS]]
+- **Responsible entity:** IPERFEX (Pablo Miranda and Federico Pereira)
 - **Country:** Argentina
-- **Email:** [[CONTACT_EMAIL]]
-- **Security reports:** [[SECURITY_EMAIL]] (see the [Security policy](/legal/security/))
+- **Contact:** [our contact form](https://www.iperfex.com/contacto/?lang=en)
+- **Security reports:** [our contact form](https://www.iperfex.com/contacto/?lang=en), with "Security" in the subject (see the [Security policy](/legal/security/))
 
 ## Hosting
 
@@ -24,4 +23,4 @@ The text, images and code of this website are part of the LordOS project and, un
 
 ## Other legal pages
 
-[Terms of use](/legal/terms/) · [Privacy policy](/legal/privacy/) · [Cookie notice](/legal/cookies/) · [Donation terms](/legal/donations/) · [Licenses](/legal/licenses/) · [Trademark and brand policy](/legal/trademark/) · [Security policy](/legal/security/) · [Accessibility](/legal/accessibility/)
+[Terms of use](/legal/terms/) · [Privacy policy](/legal/privacy/) · [Cookies and statistics](/legal/cookies-and-statistics/) · [Donation terms](/legal/donations/) · [Licenses and open-source notices](/legal/licenses/) · [Trademark and brand policy](/legal/trademark/) · [Security policy](/legal/security/) · [Code signing](/legal/code-signing/) · [Bug reports and feature requests](/legal/issues/) · [Contributing](/legal/contributing/) · [Code of conduct](/legal/code-of-conduct/) · [Support lifecycle](/legal/support-lifecycle/) · [Standards and good practices](/legal/standards/) · [Cryptography export notice](/legal/export-notice/) · [Copyright infringement](/legal/copyright-infringement/) · [Accessibility statement](/legal/accessibility/)

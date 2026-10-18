@@ -44,4 +44,4 @@ O LordOS se vincula dinamicamente a algumas bibliotecas do sistema: libwayland e
 
 ## Código-fonte
 
-O código-fonte do LordOS está em [github.com/lordbasex/LordOS](https://github.com/lordbasex/LordOS). Se você precisar do código-fonte correspondente de um componente GPL que distribuímos e não o encontrar, escreva para [[CONTACT_EMAIL]].
+O código-fonte do LordOS está em [github.com/lordbasex/LordOS](https://github.com/lordbasex/LordOS). Se você precisar do código-fonte correspondente de um componente GPL que distribuímos e não o encontrar, escreva pelo [nosso formulário de contato](https://www.iperfex.com/contacto/?lang=pt).

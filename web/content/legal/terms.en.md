@@ -38,7 +38,7 @@ Donations are voluntary and don't buy any product, service, support or special t
 
 ## Governing law
 
-These terms are governed by the laws of the Argentine Republic, and any dispute will be handled by the competent courts of [[ADDRESS]], unless the law of your country gives you a right that can't be waived. *(Pending confirmation by the project.)*
+These terms are governed by the laws of the Argentine Republic, and any dispute will be handled by the competent courts of the Argentine Republic, unless the law of your country gives you a right that can't be waived.
 
 ## Changes
 
@@ -46,4 +46,4 @@ We may update these terms. The date at the top of this page shows the last chang
 
 ## Contact
 
-Questions about these terms: [[CONTACT_EMAIL]]. See also the [Legal notice](/legal/legal-notice/).
+Questions about these terms: [our contact form](https://www.iperfex.com/contacto/?lang=en). See also the [Legal notice](/legal/legal-notice/).

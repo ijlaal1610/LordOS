@@ -11,7 +11,7 @@ O site é um conjunto de páginas estáticas. Ele **não define cookies** e guar
 | `lordos-theme` | `light` ou `dark` (nada quando você usa o automático) | para mostrar o tema que você escolheu |
 | `lordos-lang-seen` | `1` | para que a sugestão "esta página também está no seu idioma" apareça só uma vez |
 
-Esses valores nunca saem do seu navegador e nós não podemos lê-los. Apague-os quando quiser nas configurações de dados de sites do navegador. Veja o [Aviso de cookies](/legal/cookies/).
+Esses valores nunca saem do seu navegador e nós não podemos lê-los. Apague-os quando quiser nas configurações de dados de sites do navegador. Veja o [Cookies e estatísticas](/legal/cookies-and-statistics/).
 
 ### Sem análises, sem anúncios, sem código de terceiros
 
@@ -23,15 +23,15 @@ O site é hospedado na Amazon Web Services (S3 e CloudFront). Como em qualquer s
 
 ### Downloads no GitHub
 
-A imagem ISO, a imagem para Raspberry Pi, o pacote `.deb` e as assinaturas deles ficam hospedados no GitHub Releases. Quando você os baixa, ou quando o script de instalação para Debian os busca, o GitHub recebe a sua requisição conforme a [declaração de privacidade do GitHub](https://docs.github.com/pt/site-policy/privacy-policies/github-general-privacy-statement).
+A imagem ISO, a imagem para Raspberry Pi, o pacote `.deb` e as assinaturas deles ficam hospedados no GitHub Releases. Quando você os baixa, ou quando o script de instalação para Debian os busca, o GitHub recebe a sua requisição conforme a [declaração de privacidade do GitHub](https://docs.github.com/pt/site-policy/privacy-policies/github-general-privacy-statement). O GitHub conta quantas vezes cada arquivo de uma versão é baixado e mostra esses totais publicamente; são números agregados, sem informação sobre quem baixou. São os únicos números de downloads que olhamos.
 
 ### Doações
 
 Os botões de doação levam você ao PayPal ou ao Mercado Pago (e, mais adiante, à Binance). O pagamento acontece inteiramente nos sites deles: nunca vemos nem guardamos os dados do seu cartão ou da sua conta. O processador nos informa o valor, a data e o nome ou e-mail que você forneceu a ele, que guardamos apenas para a nossa contabilidade. Valem as políticas deles: [PayPal](https://www.paypal.com/myaccount/privacy/privacyhub), [Mercado Pago](https://www.mercadopago.com.ar/privacidad). Veja os [Termos das doações](/legal/donations/).
 
-### E-mail
+### Formulário de contato
 
-Se você nos escrever, guardamos a sua mensagem e o seu endereço apenas para responder e acompanhar o assunto.
+Se você nos escrever pelo [nosso formulário de contato](https://www.iperfex.com/contacto/?lang=pt), no site da IPERFEX, guardamos a sua mensagem e os dados de contato que você informar apenas para responder e acompanhar o assunto.
 
 ## Parte 2: a distribuição LordOS
 
@@ -78,7 +78,7 @@ Como não coletamos dados pessoais pelo site nem pela distribuição, normalment
 
 ### Contato
 
-Dúvidas ou pedidos sobre privacidade: [[CONTACT_EMAIL]].
+Dúvidas ou pedidos sobre privacidade: [nosso formulário de contato](https://www.iperfex.com/contacto/?lang=pt).
 
 ### Alterações
 

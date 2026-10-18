@@ -20,7 +20,7 @@ Nunca vemos nem guardamos os dados do seu cartão ou da sua conta bancária. O p
 
 ## Reembolsos
 
-As doações **não são reembolsáveis**, exceto quando a lei exigir o contrário. Se você doou por engano (por exemplo, um valor errado ou um pagamento duplicado), escreva para [[CONTACT_EMAIL]] em até 30 dias com a data, o valor e o processador, e analisaremos o caso de boa-fé.
+As doações **não são reembolsáveis**, exceto quando a lei exigir o contrário. Se você doou por engano (por exemplo, um valor errado ou um pagamento duplicado), escreva pelo [nosso formulário de contato](https://www.iperfex.com/contacto/?lang=pt) em até 30 dias com a data, o valor e o processador, e analisaremos o caso de boa-fé.
 
 ## Impostos
 
@@ -28,8 +28,8 @@ As doações ao LordOS **não são dedutíveis de impostos**. O grupo IPERFEX n�
 
 ## Quem as recebe
 
-As doações são recebidas por [[LEGAL_ENTITY]], em nome do grupo IPERFEX.
+As doações são recebidas por IPERFEX (Pablo Miranda e Federico Pereira).
 
 ## Contato
 
-Dúvidas sobre doações: [[CONTACT_EMAIL]].
+Dúvidas sobre doações: [nosso formulário de contato](https://www.iperfex.com/contacto/?lang=pt).

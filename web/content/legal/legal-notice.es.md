@@ -4,11 +4,10 @@ lordos.org es el sitio de **LordOS**, una distribución GNU/Linux libre basada e
 
 - **Proyecto:** LordOS, del grupo IPERFEX
 - **Autores:** Pablo Miranda y Federico Pereira
-- **Responsable:** [[LEGAL_ENTITY]]
-- **Domicilio:** [[ADDRESS]]
+- **Responsable:** IPERFEX (Pablo Miranda y Federico Pereira)
 - **País:** Argentina
-- **Email:** [[CONTACT_EMAIL]]
-- **Reportes de seguridad:** [[SECURITY_EMAIL]] (mirá la [Política de seguridad](/legal/security/))
+- **Contacto:** [nuestro formulario de contacto](https://www.iperfex.com/contacto/?lang=es)
+- **Reportes de seguridad:** [nuestro formulario de contacto](https://www.iperfex.com/contacto/?lang=es), con "Security" en el asunto (mirá la [Política de seguridad](/legal/security/))
 
 ## Alojamiento
 
@@ -24,4 +23,4 @@ Los textos, las imágenes y el código de este sitio son parte del proyecto Lord
 
 ## Otras páginas legales
 
-[Términos de uso](/legal/terms/) · [Política de privacidad](/legal/privacy/) · [Aviso de cookies](/legal/cookies/) · [Términos de las donaciones](/legal/donations/) · [Licencias](/legal/licenses/) · [Política de marca](/legal/trademark/) · [Política de seguridad](/legal/security/) · [Accesibilidad](/legal/accessibility/)
+[Términos de uso](/legal/terms/) · [Política de privacidad](/legal/privacy/) · [Cookies y estadísticas](/legal/cookies-and-statistics/) · [Términos de las donaciones](/legal/donations/) · [Licencias y avisos de código abierto](/legal/licenses/) · [Política de marca](/legal/trademark/) · [Política de seguridad](/legal/security/) · [Firma de código](/legal/code-signing/) · [Reportes de errores y pedidos de funciones](/legal/issues/) · [Cómo contribuir](/legal/contributing/) · [Código de conducta](/legal/code-of-conduct/) · [Ciclo de soporte](/legal/support-lifecycle/) · [Estándares y buenas prácticas](/legal/standards/) · [Aviso sobre exportación de criptografía](/legal/export-notice/) · [Infracciones de derechos de autor](/legal/copyright-infringement/) · [Declaración de accesibilidad](/legal/accessibility/)

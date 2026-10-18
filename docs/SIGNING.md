@@ -146,6 +146,10 @@ openssl pkeyutl -verify -pubin -inkey lordos-release.pub.pem -rawin -in SHA256SU
 sha256sum -c --ignore-missing SHA256SUMS
 ```
 
+Each release also carries an SPDX SBOM (`lordos_<version>_<arch>.spdx.json`, from
+`tools/release/make-sbom.sh`). It goes into the release folder before signing, so `SHA256SUMS` and
+its signature cover it too. See [COMPLIANCE.md](COMPLIANCE.md).
+
 ## Files
 
 | Path | What it is |

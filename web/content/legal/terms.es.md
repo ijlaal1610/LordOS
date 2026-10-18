@@ -38,7 +38,7 @@ Las donaciones son voluntarias y no compran ningún producto, servicio, soporte 
 
 ## Ley aplicable
 
-Estos términos se rigen por las leyes de la República Argentina, y cualquier controversia quedará a cargo de los tribunales competentes de [[ADDRESS]], salvo que la ley de tu país te dé un derecho al que no se pueda renunciar. *(Pendiente de confirmación por el proyecto.)*
+Estos términos se rigen por las leyes de la República Argentina, y cualquier controversia quedará a cargo de los tribunales competentes de la República Argentina, salvo que la ley de tu país te dé un derecho al que no se pueda renunciar.
 
 ## Cambios
 
@@ -46,4 +46,4 @@ Podemos actualizar estos términos. La fecha al principio de esta página indica
 
 ## Contacto
 
-Consultas sobre estos términos: [[CONTACT_EMAIL]]. Mirá también el [Aviso legal](/legal/legal-notice/).
+Consultas sobre estos términos: [nuestro formulario de contacto](https://www.iperfex.com/contacto/?lang=es). Mirá también el [Aviso legal](/legal/legal-notice/).

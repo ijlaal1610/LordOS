@@ -1,4 +1,4 @@
-Queremos que o lordos.org possa ser usado por todos, incluindo quem usa só o teclado, um leitor de tela, ampliação ou alto contraste. A nossa meta são as Diretrizes de Acessibilidade para Conteúdo Web (WCAG) 2.1, nível AA. Esta declaração cobre o site; a acessibilidade da distribuição LordOS é descrita no final.
+Queremos que o lordos.org possa ser usado por todos, incluindo quem usa só o teclado, um leitor de tela, ampliação ou alto contraste. A nossa meta são as Diretrizes de Acessibilidade para Conteúdo Web (WCAG) 2.2, nível AA. Esta declaração cobre o site; a acessibilidade da distribuição LordOS é descrita no final.
 
 ## O que o site faz hoje
 
@@ -22,4 +22,4 @@ A acessibilidade no desktop ainda está em andamento: o LordOS tem a opção **R
 
 ## Relatar um problema
 
-Se algo no site for difícil ou impossível de usar, conte para nós em [[CONTACT_EMAIL]]: a página, o que você estava tentando fazer, e o navegador e a tecnologia assistiva que você usa. Procuramos responder em até 5 dias úteis e corrigir os problemas na próxima atualização do site.
+Se algo no site for difícil ou impossível de usar, conte para nós pelo [nosso formulário de contato](https://www.iperfex.com/contacto/?lang=pt): a página, o que você estava tentando fazer, e o navegador e a tecnologia assistiva que você usa. Procuramos responder em até 5 dias úteis e corrigir os problemas na próxima atualização do site.

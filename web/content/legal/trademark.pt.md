@@ -31,7 +31,7 @@ Forks são bem-vindos; é para isso que existe o software livre. Um fork deve te
 
 ## Como pedir permissão
 
-Escreva para [[CONTACT_EMAIL]] contando o que você quer fazer. Normalmente ficamos felizes em dizer sim a grupos de usuários, eventos e projetos que ajudam as pessoas a usar o LordOS.
+Escreva pelo [nosso formulário de contato](https://www.iperfex.com/contacto/?lang=pt) contando o que você quer fazer. Normalmente ficamos felizes em dizer sim a grupos de usuários, eventos e projetos que ajudam as pessoas a usar o LordOS.
 
 ## Outras marcas
 

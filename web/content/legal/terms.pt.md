@@ -38,7 +38,7 @@ As doações são voluntárias e não compram nenhum produto, serviço, suporte 
 
 ## Lei aplicável
 
-Estes termos são regidos pelas leis da República Argentina, e qualquer controvérsia será tratada pelos tribunais competentes de [[ADDRESS]], salvo quando a lei do seu país lhe garantir um direito irrenunciável. *(Pendente de confirmação pelo projeto.)*
+Estes termos são regidos pelas leis da República Argentina, e qualquer controvérsia será tratada pelos tribunais competentes da República Argentina, salvo quando a lei do seu país lhe garantir um direito irrenunciável.
 
 ## Alterações
 
@@ -46,4 +46,4 @@ Podemos atualizar estes termos. A data no topo desta página mostra a última al
 
 ## Contato
 
-Dúvidas sobre estes termos: [[CONTACT_EMAIL]]. Veja também o [Aviso legal](/legal/legal-notice/).
+Dúvidas sobre estes termos: [nosso formulário de contato](https://www.iperfex.com/contacto/?lang=pt). Veja também o [Aviso legal](/legal/legal-notice/).

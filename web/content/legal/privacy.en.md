@@ -11,7 +11,7 @@ The website is a set of static pages. It sets **no cookies** and keeps only two 
 | `lordos-theme` | `light` or `dark` (nothing when you use automatic) | to show the theme you chose |
 | `lordos-lang-seen` | `1` | so the "this page is also in your language" suggestion appears only once |
 
-They never leave your browser and we can't read them. Clear them at any time from your browser's site data settings. See the [Cookie notice](/legal/cookies/).
+They never leave your browser and we can't read them. Clear them at any time from your browser's site data settings. See the [Cookies and statistics](/legal/cookies-and-statistics/).
 
 ### No analytics, no ads, no third-party code
 
@@ -23,15 +23,15 @@ The website is hosted on Amazon Web Services (S3 and CloudFront). As with any we
 
 ### Downloads on GitHub
 
-The ISO image, the Raspberry Pi image, the `.deb` package and their signatures are hosted on GitHub Releases. When you download them, or when the Debian installer script fetches them, GitHub receives your request under [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
+The ISO image, the Raspberry Pi image, the `.deb` package and their signatures are hosted on GitHub Releases. When you download them, or when the Debian installer script fetches them, GitHub receives your request under [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement). GitHub counts how many times each release file is downloaded and shows those totals publicly; they are aggregate numbers with no information about who downloaded. They are the only download figures we look at.
 
 ### Donations
 
 Donation buttons take you to PayPal or Mercado Pago (and, later, Binance). The payment happens entirely on their sites: we never see or store your card or account details. The processor tells us the amount, the date and the name or email you gave it, which we keep only for our accounting. Their own policies apply: [PayPal](https://www.paypal.com/myaccount/privacy/privacyhub), [Mercado Pago](https://www.mercadopago.com.ar/privacidad). See the [Donation terms](/legal/donations/).
 
-### Email
+### Contact form
 
-If you write to us, we keep your message and address only to answer you and to follow up on the matter.
+If you write to us through [our contact form](https://www.iperfex.com/contacto/?lang=en), on the IPERFEX website, we keep your message and the contact details you give only to answer you and to follow up on the matter.
 
 ## Part 2: the LordOS distribution
 
@@ -78,7 +78,7 @@ Because we don't collect personal data through the website or the distribution, 
 
 ### Contact
 
-Privacy questions or requests: [[CONTACT_EMAIL]].
+Privacy questions or requests: [our contact form](https://www.iperfex.com/contacto/?lang=en).
 
 ### Changes
 

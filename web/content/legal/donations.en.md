@@ -20,7 +20,7 @@ We never see or store your card or bank details. The processor may charge fees, 
 
 ## Refunds
 
-Donations are **non-refundable**, except where the law requires otherwise. If you donated by mistake (for example, a wrong amount or a duplicated payment), write to [[CONTACT_EMAIL]] within 30 days with the date, the amount and the processor, and we will look at it in good faith.
+Donations are **non-refundable**, except where the law requires otherwise. If you donated by mistake (for example, a wrong amount or a duplicated payment), write to us through [our contact form](https://www.iperfex.com/contacto/?lang=en) within 30 days with the date, the amount and the processor, and we will look at it in good faith.
 
 ## Taxes
 
@@ -28,8 +28,8 @@ Donations to LordOS are **not tax-deductible**. The IPERFEX group is not a regis
 
 ## Who receives them
 
-Donations are received by [[LEGAL_ENTITY]], on behalf of the IPERFEX group.
+Donations are received by IPERFEX (Pablo Miranda and Federico Pereira).
 
 ## Contact
 
-Questions about donations: [[CONTACT_EMAIL]].
+Questions about donations: [our contact form](https://www.iperfex.com/contacto/?lang=en).

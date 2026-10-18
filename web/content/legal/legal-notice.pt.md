@@ -4,11 +4,10 @@ lordos.org é o site do **LordOS**, uma distribuição GNU/Linux livre baseada n
 
 - **Projeto:** LordOS, do grupo IPERFEX
 - **Autores:** Pablo Miranda e Federico Pereira
-- **Entidade responsável:** [[LEGAL_ENTITY]]
-- **Endereço:** [[ADDRESS]]
+- **Entidade responsável:** IPERFEX (Pablo Miranda e Federico Pereira)
 - **País:** Argentina
-- **E-mail:** [[CONTACT_EMAIL]]
-- **Relatos de segurança:** [[SECURITY_EMAIL]] (veja a [Política de segurança](/legal/security/))
+- **Contato:** [nosso formulário de contato](https://www.iperfex.com/contacto/?lang=pt)
+- **Relatos de segurança:** [nosso formulário de contato](https://www.iperfex.com/contacto/?lang=pt), com "Security" no assunto (veja a [Política de segurança](/legal/security/))
 
 ## Hospedagem
 
@@ -24,4 +23,4 @@ Os textos, as imagens e o código deste site fazem parte do projeto LordOS e, sa
 
 ## Outras páginas legais
 
-[Termos de uso](/legal/terms/) · [Política de privacidade](/legal/privacy/) · [Aviso de cookies](/legal/cookies/) · [Termos das doações](/legal/donations/) · [Licenças](/legal/licenses/) · [Política de marca](/legal/trademark/) · [Política de segurança](/legal/security/) · [Acessibilidade](/legal/accessibility/)
+[Termos de uso](/legal/terms/) · [Política de privacidade](/legal/privacy/) · [Cookies e estatísticas](/legal/cookies-and-statistics/) · [Termos das doações](/legal/donations/) · [Licenças e avisos de código aberto](/legal/licenses/) · [Política de marca](/legal/trademark/) · [Política de segurança](/legal/security/) · [Assinatura de código](/legal/code-signing/) · [Relatos de bugs e pedidos de recursos](/legal/issues/) · [Como contribuir](/legal/contributing/) · [Código de conduta](/legal/code-of-conduct/) · [Ciclo de suporte](/legal/support-lifecycle/) · [Padrões e boas práticas](/legal/standards/) · [Aviso sobre exportação de criptografia](/legal/export-notice/) · [Violação de direitos autorais](/legal/copyright-infringement/) · [Declaração de acessibilidade](/legal/accessibility/)

@@ -44,4 +44,4 @@ LordOS enlaza dinámicamente algunas bibliotecas del sistema: libwayland y libxk
 
 ## Código fuente
 
-El código fuente de LordOS está en [github.com/lordbasex/LordOS](https://github.com/lordbasex/LordOS). Si necesitás el código fuente correspondiente de un componente GPL que distribuimos y no lo encontrás, escribinos a [[CONTACT_EMAIL]].
+El código fuente de LordOS está en [github.com/lordbasex/LordOS](https://github.com/lordbasex/LordOS). Si necesitás el código fuente correspondiente de un componente GPL que distribuimos y no lo encontrás, escribinos por [nuestro formulario de contacto](https://www.iperfex.com/contacto/?lang=es).

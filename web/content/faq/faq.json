@@ -247,9 +247,9 @@
             "pt": "Como verifico um download?"
           },
           "a": {
-            "en": "Each release has a `SHA256SUMS` file signed with the LordOS release key (Ed25519, fingerprint `c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053ea108e`). Check the signature with OpenSSL and the file with `sha256sum -c`; the exact commands are in the [Security policy](/legal/security/). The Debian installer does this by itself and refuses an invalid signature.",
-            "es": "Cada versión trae un archivo `SHA256SUMS` firmado con la clave de versiones de LordOS (Ed25519, huella `c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053ea108e`). Verificá la firma con OpenSSL y el archivo con `sha256sum -c`; los comandos exactos están en la [Política de seguridad](/legal/security/). El instalador para Debian lo hace solo y rechaza una firma inválida.",
-            "pt": "Cada versão traz um arquivo `SHA256SUMS` assinado com a chave de versões do LordOS (Ed25519, impressão digital `c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053ea108e`). Confira a assinatura com o OpenSSL e o arquivo com `sha256sum -c`; os comandos exatos estão na [Política de segurança](/legal/security/). O instalador para Debian faz isso sozinho e recusa uma assinatura inválida."
+            "en": "Each release has a `SHA256SUMS` file signed with the LordOS release key (Ed25519, fingerprint `c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053ea108e`). Check the signature with OpenSSL and the file with `sha256sum -c`; the exact commands are in the [Code signing page](/legal/code-signing/). The Debian installer does this by itself and refuses an invalid signature.",
+            "es": "Cada versión trae un archivo `SHA256SUMS` firmado con la clave de versiones de LordOS (Ed25519, huella `c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053ea108e`). Verificá la firma con OpenSSL y el archivo con `sha256sum -c`; los comandos exactos están en la [página de firma de código](/legal/code-signing/). El instalador para Debian lo hace solo y rechaza una firma inválida.",
+            "pt": "Cada versão traz um arquivo `SHA256SUMS` assinado com a chave de versões do LordOS (Ed25519, impressão digital `c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053ea108e`). Confira a assinatura com o OpenSSL e o arquivo com `sha256sum -c`; os comandos exatos estão na [página de assinatura de código](/legal/code-signing/). O instalador para Debian faz isso sozinho e recusa uma assinatura inválida."
           }
         }
       ]
@@ -524,9 +524,9 @@
             "pt": "Como relato um problema de segurança?"
           },
           "a": {
-            "en": "Write privately to [[SECURITY_EMAIL]] and don't publish details until there is a fix. The [Security policy](/legal/security/) explains the scope, the safe harbour and our response times.",
-            "es": "Escribinos en privado a [[SECURITY_EMAIL]] y no publiques detalles hasta que haya un arreglo. La [Política de seguridad](/legal/security/) explica el alcance, el puerto seguro y nuestros tiempos de respuesta.",
-            "pt": "Escreva em privado para [[SECURITY_EMAIL]] e não publique detalhes até haver uma correção. A [Política de segurança](/legal/security/) explica o escopo, o porto seguro e nossos prazos de resposta."
+            "en": "Report it privately through [our contact form](https://www.iperfex.com/contacto/?lang=en) with \"Security\" in the subject, and don't publish details until there is a fix. The [Security policy](/legal/security/) explains the scope, the safe harbour and our response times.",
+            "es": "Reportalo en privado por [nuestro formulario de contacto](https://www.iperfex.com/contacto/?lang=es) con \"Security\" en el asunto, y no publiques detalles hasta que haya un arreglo. La [Política de seguridad](/legal/security/) explica el alcance, el puerto seguro y nuestros tiempos de respuesta.",
+            "pt": "Relate em privado pelo [nosso formulário de contato](https://www.iperfex.com/contacto/?lang=pt) com \"Security\" no assunto, e não publique detalhes até haver uma correção. A [Política de segurança](/legal/security/) explica o escopo, o porto seguro e nossos prazos de resposta."
           }
         }
       ]
@@ -714,6 +714,19 @@
             "es": "Las versiones nuevas se publican en [GitHub Releases](https://github.com/lordbasex/LordOS/releases) como paquete `.deb`, ISO e imagen para Raspberry Pi. En Debian, volver a ejecutar el instalador de una línea actualiza LordOS; también podés instalar un `.deb` descargado desde la Tienda. Un actualizador propio de LordOS todavía no está disponible.",
             "pt": "As versões novas são publicadas no [GitHub Releases](https://github.com/lordbasex/LordOS/releases) como pacote `.deb`, ISO e imagem para Raspberry Pi. No Debian, rodar de novo o instalador de uma linha atualiza o LordOS; você também pode instalar um `.deb` baixado pela Loja. Um atualizador próprio do LordOS ainda não está disponível."
           }
+        },
+        {
+          "id": "support-lifecycle",
+          "q": {
+            "en": "How long is each version supported?",
+            "es": "¿Cuánto tiempo tiene soporte cada versión?",
+            "pt": "Por quanto tempo cada versão tem suporte?"
+          },
+          "a": {
+            "en": "Until 1.0, only the latest beta gets fixes, including security fixes, so keep LordOS up to date. The Debian base keeps receiving Debian's security updates through the Store and apt. The details, and the plan for after 1.0, are in the [Support lifecycle](/legal/support-lifecycle/).",
+            "es": "Hasta la 1.0, solo la última beta recibe arreglos, incluidos los de seguridad, así que mantené LordOS actualizada. La base Debian sigue recibiendo las actualizaciones de seguridad de Debian por la Tienda y apt. Los detalles, y el plan para después de la 1.0, están en el [Ciclo de soporte](/legal/support-lifecycle/).",
+            "pt": "Até a 1.0, só o beta mais recente recebe correções, incluindo as de segurança, então mantenha o LordOS atualizado. A base Debian continua recebendo as atualizações de segurança do Debian pela Loja e pelo apt. Os detalhes, e o plano para depois da 1.0, estão no [Ciclo de suporte](/legal/support-lifecycle/)."
+          }
         }
       ]
     },
@@ -733,9 +746,9 @@
             "pt": "Como relato um bug?"
           },
           "a": {
-            "en": "Once the repository is public, open an issue on [GitHub](https://github.com/lordbasex/LordOS/issues) with your LordOS version (from the About LordOS app), your hardware and the steps to reproduce it. Until then, write to [[CONTACT_EMAIL]]. Security problems go privately to [[SECURITY_EMAIL]].",
-            "es": "Cuando el repositorio sea público, abrí un issue en [GitHub](https://github.com/lordbasex/LordOS/issues) con tu versión de LordOS (la ves en la app Acerca de LordOS), tu hardware y los pasos para reproducirlo. Mientras tanto, escribinos a [[CONTACT_EMAIL]]. Los problemas de seguridad van en privado a [[SECURITY_EMAIL]].",
-            "pt": "Quando o repositório for público, abra uma issue no [GitHub](https://github.com/lordbasex/LordOS/issues) com sua versão do LordOS (no app Sobre o LordOS), seu hardware e os passos para reproduzir. Até lá, escreva para [[CONTACT_EMAIL]]. Problemas de segurança vão em privado para [[SECURITY_EMAIL]]."
+            "en": "While the repository is private, send bug reports through [our contact form](https://www.iperfex.com/contacto/?lang=en); once it is public, open an issue on [GitHub](https://github.com/lordbasex/LordOS/issues). Include your LordOS version (from the About LordOS app), your hardware, the steps to reproduce it and logs from the Logs app, but never passwords or personal data. See [Bug reports and feature requests](/legal/issues/); security problems go to the [Security policy](/legal/security/) instead.",
+            "es": "Mientras el repositorio sea privado, mandá los reportes por [nuestro formulario de contacto](https://www.iperfex.com/contacto/?lang=es); cuando sea público, abrí un issue en [GitHub](https://github.com/lordbasex/LordOS/issues). Incluí tu versión de LordOS (la ves en la app Acerca de LordOS), tu hardware, los pasos para reproducirlo y los registros de la app Registros, pero nunca contraseñas ni datos personales. Mirá [Reportes de errores y pedidos de funciones](/legal/issues/); los problemas de seguridad van por la [Política de seguridad](/legal/security/).",
+            "pt": "Enquanto o repositório for privado, envie os relatos pelo [nosso formulário de contato](https://www.iperfex.com/contacto/?lang=pt); quando for público, abra uma issue no [GitHub](https://github.com/lordbasex/LordOS/issues). Inclua sua versão do LordOS (no app Sobre o LordOS), seu hardware, os passos para reproduzir e os registros do app Registros, mas nunca senhas ou dados pessoais. Veja [Relatos de bugs e pedidos de recursos](/legal/issues/); problemas de segurança vão pela [Política de segurança](/legal/security/)."
           }
         },
         {
@@ -746,9 +759,9 @@
             "pt": "Posso contribuir com código ou traduções?"
           },
           "a": {
-            "en": "We'd love that. Contribution guidelines will be published together with the public repository; until then, write to [[CONTACT_EMAIL]]. Translations can already be made as LordOS language packs.",
-            "es": "Nos encantaría. Las pautas para contribuir se van a publicar junto con el repositorio público; mientras tanto, escribinos a [[CONTACT_EMAIL]]. Las traducciones ya se pueden hacer como paquetes de idioma de LordOS.",
-            "pt": "Adoraríamos. As diretrizes de contribuição serão publicadas junto com o repositório público; até lá, escreva para [[CONTACT_EMAIL]]. As traduções já podem ser feitas como pacotes de idioma do LordOS."
+            "en": "Yes. Until the repository is public, watch it on GitHub or write to us through [our contact form](https://www.iperfex.com/contacto/?lang=en); after that, fork it and open a pull request. Contributions are accepted under the MIT license with a `Signed-off-by` line (Developer Certificate of Origin). The rules are in [Contributing](/legal/contributing/) and the [Code of conduct](/legal/code-of-conduct/); translations can already be made as language packs.",
+            "es": "Sí. Hasta que el repositorio sea público, seguilo en GitHub o escribinos por [nuestro formulario de contacto](https://www.iperfex.com/contacto/?lang=es); después, hacé un fork y abrí un pull request. Las contribuciones se aceptan bajo la licencia MIT con una línea `Signed-off-by` (Certificado de Origen del Desarrollador). Las reglas están en [Cómo contribuir](/legal/contributing/) y en el [Código de conducta](/legal/code-of-conduct/); las traducciones ya se pueden hacer como paquetes de idioma.",
+            "pt": "Sim. Até o repositório ser público, acompanhe-o no GitHub ou escreva pelo [nosso formulário de contato](https://www.iperfex.com/contacto/?lang=pt); depois, faça um fork e abra um pull request. As contribuições são aceitas sob a licença MIT com uma linha `Signed-off-by` (Certificado de Origem do Desenvolvedor). As regras estão em [Como contribuir](/legal/contributing/) e no [Código de conduta](/legal/code-of-conduct/); as traduções já podem ser feitas como pacotes de idioma."
           }
         },
         {
@@ -772,9 +785,9 @@
             "pt": "Como entro em contato com a equipe?"
           },
           "a": {
-            "en": "Write to [[CONTACT_EMAIL]]. We answer in English, Spanish and Portuguese.",
-            "es": "Escribinos a [[CONTACT_EMAIL]]. Respondemos en inglés, español y portugués.",
-            "pt": "Escreva para [[CONTACT_EMAIL]]. Respondemos em inglês, espanhol e português."
+            "en": "Write to us through [our contact form](https://www.iperfex.com/contacto/?lang=en), on the IPERFEX website. We answer in English, Spanish and Portuguese.",
+            "es": "Escribinos por [nuestro formulario de contacto](https://www.iperfex.com/contacto/?lang=es), en el sitio de IPERFEX. Respondemos en inglés, español y portugués.",
+            "pt": "Escreva pelo [nosso formulário de contato](https://www.iperfex.com/contacto/?lang=pt), no site da IPERFEX. Respondemos em inglês, espanhol e português."
           }
         },
         {

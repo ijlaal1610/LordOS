@@ -44,4 +44,4 @@ LordOS links some system libraries dynamically: libwayland and libxkbcommon (MIT
 
 ## Source code
 
-The source code of LordOS is in [github.com/lordbasex/LordOS](https://github.com/lordbasex/LordOS). If you need the corresponding source of a GPL component we distribute and can't find it, write to [[CONTACT_EMAIL]].
+The source code of LordOS is in [github.com/lordbasex/LordOS](https://github.com/lordbasex/LordOS). If you need the corresponding source of a GPL component we distribute and can't find it, write to us through [our contact form](https://www.iperfex.com/contacto/?lang=en).

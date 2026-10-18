@@ -2,7 +2,7 @@ Nos tomamos en serio la seguridad de LordOS y agradecemos a cualquiera que nos a
 
 ## Cómo reportar una vulnerabilidad
 
-Escribinos a **[[SECURITY_EMAIL]]**. Por favor, no abras un issue público, no lo publiques en redes sociales ni des detalles hasta que salga una corrección.
+Escribinos por **[nuestro formulario de contacto](https://www.iperfex.com/contacto/?lang=es)**, con "Security" en el asunto. Cuando el repositorio sea público, también vas a poder usar el reporte privado de vulnerabilidades de GitHub. Por favor, no abras un issue público, no lo publiques en redes sociales ni des detalles hasta que salga una corrección.
 
 Incluí, en la medida de lo posible:
 
@@ -67,7 +67,7 @@ openssl pkeyutl -verify -pubin -inkey lordos-release.pub.pem -rawin -in SHA256SU
 sha256sum -c --ignore-missing SHA256SUMS
 ```
 
-Si la huella que ves no coincide con la de arriba, no instales el archivo y avisanos.
+Si la huella que ves no coincide con la de arriba, no instales el archivo y avisanos. Cómo firmamos las versiones, las apps y los paquetes, y cómo protegemos las claves, está explicado en [Firma de código](/legal/code-signing/).
 
 ## security.txt
 

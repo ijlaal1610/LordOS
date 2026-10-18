@@ -1,4 +1,4 @@
-We want lordos.org to be usable by everyone, including people who use a keyboard only, a screen reader, magnification or high contrast. Our goal is the Web Content Accessibility Guidelines (WCAG) 2.1, level AA. This statement covers the website; the accessibility of the LordOS distribution is described at the end.
+We want lordos.org to be usable by everyone, including people who use a keyboard only, a screen reader, magnification or high contrast. Our goal is the Web Content Accessibility Guidelines (WCAG) 2.2, level AA. This statement covers the website; the accessibility of the LordOS distribution is described at the end.
 
 ## What the website does today
 
@@ -22,4 +22,4 @@ Accessibility in the desktop is still in progress: LordOS has a **Reduce motion*
 
 ## Report a problem
 
-If something on the website is hard or impossible to use, tell us at [[CONTACT_EMAIL]]: the page, what you were trying to do, and the browser and assistive technology you use. We aim to reply within 5 business days and to fix problems in the next website update.
+If something on the website is hard or impossible to use, tell us through [our contact form](https://www.iperfex.com/contacto/?lang=en): the page, what you were trying to do, and the browser and assistive technology you use. We aim to reply within 5 business days and to fix problems in the next website update.

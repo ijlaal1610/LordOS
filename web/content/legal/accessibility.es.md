@@ -1,4 +1,4 @@
-Queremos que lordos.org lo pueda usar todo el mundo, incluidas las personas que usan solo el teclado, un lector de pantalla, ampliación o alto contraste. Nuestro objetivo son las Pautas de Accesibilidad para el Contenido Web (WCAG) 2.1, nivel AA. Esta declaración cubre el sitio; la accesibilidad de la distribución LordOS se describe al final.
+Queremos que lordos.org lo pueda usar todo el mundo, incluidas las personas que usan solo el teclado, un lector de pantalla, ampliación o alto contraste. Nuestro objetivo son las Pautas de Accesibilidad para el Contenido Web (WCAG) 2.2, nivel AA. Esta declaración cubre el sitio; la accesibilidad de la distribución LordOS se describe al final.
 
 ## Qué hace el sitio hoy
 
@@ -22,4 +22,4 @@ La accesibilidad del escritorio todavía está en desarrollo: LordOS tiene el aj
 
 ## Reportar un problema
 
-Si algo del sitio te resulta difícil o imposible de usar, contanos en [[CONTACT_EMAIL]]: la página, qué querías hacer, y el navegador y la tecnología de apoyo que usás. Buscamos responder dentro de 5 días hábiles y corregir los problemas en la próxima actualización del sitio.
+Si algo del sitio te resulta difícil o imposible de usar, contanos a través de [nuestro formulario de contacto](https://www.iperfex.com/contacto/?lang=es): la página, qué querías hacer, y el navegador y la tecnología de apoyo que usás. Buscamos responder dentro de 5 días hábiles y corregir los problemas en la próxima actualización del sitio.

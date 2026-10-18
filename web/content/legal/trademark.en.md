@@ -31,7 +31,7 @@ Forks are welcome; that's what free software is for. A fork must have **its own 
 
 ## Asking for permission
 
-Write to [[CONTACT_EMAIL]] with what you want to do. We are usually glad to say yes to user groups, events and projects that help people use LordOS.
+Write to us through [our contact form](https://www.iperfex.com/contacto/?lang=en) with what you want to do. We are usually glad to say yes to user groups, events and projects that help people use LordOS.
 
 ## Other trademarks
 
