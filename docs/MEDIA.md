@@ -26,7 +26,7 @@ We took the way the apps of popular desktop systems work, never their logos or t
 | ![albums](music-albums.png) | ![playing](music-now-playing.png) |
 | Music library by album, with covers from the tags | Playing: queue, shuffle and repeat |
 | ![control center](media-control-center.png) | ![video](video-subtitles.png) |
-| The Control Center with what's playing | Big Buck Bunny 1080p with `.srt` subtitles |
+| The Control Center with what's playing | A 1080p video with `.srt` subtitles |
 | ![mkv](video-subtitles-mkv.png) | ![full screen](video-fullscreen.png) |
 | Subtitles from an MKV's track | Full screen |
 | ![picture in picture](video-picture-in-picture.png) | ![open with](media-open-with.png) |
@@ -38,7 +38,7 @@ We took the way the apps of popular desktop systems work, never their logos or t
 | ![recording](screen-recording-in-progress.png) | ![frame](screen-recording-frame.png) |
 | Recording the screen (orange microphone indicator) | A frame of the recorded MP4: protected Notes comes out black |
 | ![camera](camera.png) | ![recorder](recorder-recording.png) |
-| Camera (v4l2loopback; see "Tests"), with mirror and the green dot | Recorder: live level |
+| Camera (v4l2loopback test pattern; see "Tests"), with mirror and the green dot | Recorder: live level |
 | ![waveform](recorder.png) | ![trim](recorder-trim.png) |
 | The recording with its waveform | Trim and export |
 | ![rtl](media-rtl.png) | |
@@ -49,7 +49,7 @@ We took the way the apps of popular desktop systems work, never their logos or t
 | On screen | In the screenshot | On remote desktop |
 |---|---|---|
 | ![screen](protected-window-screen.png) | ![screenshot](protected-window-capture.png) | ![remote](protected-window-remote.png) |
-| Protected Notes looks normal (below, the screenshot's thumbnail) | The saved PNG: the Notes content is black | What the browser receives over the remote's WebSocket |
+| Protected Notes looks normal on the local screen | The saved PNG: the Notes content is black | What the browser receives over the remote's WebSocket |
 
 ## Architecture
 

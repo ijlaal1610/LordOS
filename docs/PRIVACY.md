@@ -340,7 +340,7 @@ through `globalThis.__lordos.monitorDevices`.
 | | |
 |---|---|
 | ![prompt](privacy-prompt.png) | ![indicator](privacy-indicator-microphone.png) |
-| System prompt (files) | Orange dot with the app recording |
+| System prompt (camera) | Orange dot with the app recording |
 
 ## Performance (VM 122, 4 vCPU, CPU without GPU)
 

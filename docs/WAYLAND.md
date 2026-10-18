@@ -58,9 +58,9 @@ app id or by `StartupWMClass`).
 | | |
 |---|---|
 | ![launchpad](app-launcher-linux-apps.png) | ![launched](app-launched-from-launcher.png) |
-| The app launcher with the installed Linux apps (foot with its PNG; those that only ship SVG, with their initial) | FeatherPad opened with one click; it carries the same icon in the Dock |
+| The app launcher with the installed Linux apps next to the LordOS apps, each with its own icon | FeatherPad opened with one click; it carries the same icon in the Dock |
 | ![classic](classic-theme-start-menu.png) | ![classic2](classic-theme-linux-app.png) |
-| Classic theme: the start menu with LordOS apps, Linux apps and Fractal (installed as a package) | FeatherPad launched from there, with its icon in the taskbar |
+| Classic theme: the start menu with LordOS apps and Linux apps, grouped by category | FeatherPad running in the classic theme, with its icon in the taskbar |
 
 ### The launcher (`server/src/apps.c`)
 

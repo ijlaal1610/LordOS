@@ -365,9 +365,9 @@ can drop).
 | ![menu](menu-arabic.png) | ![classic](classic-theme-arabic.png) |
 | Menu in Arabic: opens to the left, shortcut on the other side | Classic theme in Arabic; the terminal stays left to right |
 | ![japanese](ime-japanese.png) | ![pinyin](ime-pinyin.png) |
-| Japanese in the Terminal: にほんご → 日本語 / にほんご / ニホンゴ | Pinyin: zhongguo → 中国, 中古, 中… (page 1 of 6) |
+| Japanese in the Terminal: にほんご → 日本語 / にほんご / ニホンゴ | Pinyin: zhongguo → 中国, 中古, 中… (page 1 of 7) |
 | ![hangul](ime-hangul.png) | ![result](ime-terminal.png) |
-| Korean: 한 committed, 글 in composition | `echo 日本語 中国 한글` with the three methods |
+| Korean: 한 committed, 국 in composition | `echo 日本語中国 한국` with the three methods |
 | ![field](ime-text-field.png) | ![settings](settings-input-methods.png) |
 | In a text field: 東京 in composition, candidates over the cursor | Settings → Keyboard with the input sources |
 | ![indic](files-indic-scripts.png) | ![terminal](terminal-world-scripts.png) |

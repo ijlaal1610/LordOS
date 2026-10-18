@@ -5,15 +5,15 @@ top of the SDK: it doesn't use CodeMirror or Monaco, nor vendored TextMate gramm
 
 | | |
 |---|---|
-| ![proyecto](editor-project.png) | ![10000](editor-10000-lines.png) |
+| ![project](editor-project.png) | ![10000](editor-10000-lines.png) |
 | Project on the left, tabs and highlighting (JavaScript) | A 10,001-line file, at the end and editing |
-| ![cursores](editor-multiple-cursors.png) | ![reemplazar](editor-replace.png) |
-| Three cursors with ❖D: «let» → «var» on the three lines at once | Find and replace all (case-sensitive), «3 replacements» |
-| ![ir](editor-go-to-file.png) | ![japones](editor-japanese.png) |
+| ![cursors](editor-multiple-cursors.png) | ![replace](editor-replace.png) |
+| Several cursors with ❖D: one word edited on several lines at once | Find and replace all (case-sensitive): «Map» → «Registry» |
+| ![go to file](editor-go-to-file.png) | ![japanese](editor-japanese.png) |
 | ❖T: open a project file by letters in order («wjs» → windows.js) | Japanese with LordOS's input method: 日本語を書きます |
-| ![python](editor-python.png) | ![claro](editor-light.png) |
+| ![python](editor-python.png) | ![light](editor-light.png) |
 | Python: comment, duplicate and move line; Indic scripts use the font fallback | Light mode (classic IDE-style palette) |
-| ![cerrar](editor-save-changes.png) | ![archivos](editor-open-from-files.png) |
+| ![close](editor-save-changes.png) | ![files](editor-open-from-files.png) |
 | Closing with unsaved changes | Double click in Files: the editor opens it, with the folder as the project |
 
 ## What it has

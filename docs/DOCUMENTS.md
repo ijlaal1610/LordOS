@@ -15,7 +15,7 @@ Printing and scanning are in `PRINTING.md`.
 | | |
 |---|---|
 | ![outline](pdf-outline.png) | ![search](pdf-search.png) |
-| PDF Viewer: the document's outline (bookmarks) on the left, 224 pages | Search with highlighting: the current result in orange, "2 of 8 matches" |
+| PDF Viewer: the document's outline (bookmarks) on the left | Search with highlighting: the current result in orange and the match count |
 | ![annotations](pdf-annotations.png) | ![note](pdf-note.png) |
 | Highlight and freehand stroke, drawn by Poppler on the page and on the thumbnail | Note: the icon stays on the page and is saved in the copy |
 | ![form](pdf-form.png) | ![dark](pdf-dark.png) |
@@ -27,13 +27,13 @@ Printing and scanning are in `PRINTING.md`.
 | ![menu](archives-menu.png) | ![inside](archives-browse.png) |
 | "Extract here" and "Compress" in the context menu | A `.zip` opened as a folder |
 | ![extract](archives-extract.png) | ![compress](archives-compress.png) |
-| A zip with `../` in the names: the sound entries are extracted, 2 entries are skipped for safety | "Compress" a folder: "Fotos-del-viaje 2.zip", 3 files |
+| A zip with `../` in the names: the safe entries are extracted, 2 entries are skipped for safety | "Compress" a folder: "Trip photos 2.zip" |
 | ![fonts](fonts-sample.png) | ![characters](fonts-characters.png) |
 | Fonts: sample with text and sizes of your choice | Character table by Unicode block |
 | ![file](fonts-file.png) | ![installed](fonts-installed.png) |
 | A `.ttf` opened from Files, not installed | Installed for the user (`~/.local/share/fonts`), with "Remove" |
 | ![picker](emoji-picker.png) | ![editor](emoji-in-editor.png) |
-| ❖. in the Editor: search "corazon" (34 results), skin tones | 😍 and 📕 typed into the Editor through the input method path |
+| ❖. in the Editor: search "heart", skin tones | 😍 and 📕 typed into the Editor through the input method path |
 | ![emoji](emoji-picker-app.png) | ![symbols](characters-app.png) |
 | Emoji & Symbols: a category with skin tone | Unicode symbols by block (arrows) |
 | ![rtl](pdf-rtl.png) | |

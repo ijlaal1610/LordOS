@@ -8,12 +8,12 @@ Both are mounted by the SDK, so **every theme has them** without doing anything:
 
 | | |
 |---|---|
-| ![apps](search-apps.png) | ![archivos](search-files.png) |
-| «term»: apps first, then folders | «roadmap»: a file with a text preview; Enter opens it in the Editor |
-| ![calc](search-calculator.png) | ![tienda](search-store.png) |
-| «15% de 2400» → 360 (Enter copies it) | «gimp»: Store apps that aren't installed |
-| ![notas](search-notes.png) | |
-| «yerba» finds the note by its content | |
+| ![apps](search-apps.png) | ![files](search-files.png) |
+| «term»: apps first, then folders | «budget»: a file with a text preview; Enter opens it in the Editor |
+| ![calc](search-calculator.png) | ![store](search-store.png) |
+| «15% of 2400» → 360 (Enter copies it) | «gimp»: Store apps that aren't installed |
+| ![notes](search-notes.png) | |
+| «apples» finds the note by its content | |
 
 It opens with **❖Space** or **Ctrl+Space**, or with the ⌕ magnifier in the Lord Default theme's
 menu bar. With the Terminal in front, Ctrl+Space is left to the program (in emacs it sets a
@@ -64,9 +64,9 @@ Sections are ordered by their best result; the calculator always goes on top.
 
 | | |
 |---|---|
-| ![completo](clipboard-full-panel.png) | ![rápido](clipboard-quick-panel.png) |
+| ![full](clipboard-full-panel.png) | ![quick](clipboard-quick-panel.png) |
 | ❖⇧V: filters with counters, color swatch, code in monospace, image preview and actions | ❖V: the latest items, after restarting lord-server (the pinned link is on top) |
-| ![pegar](clipboard-paste.png) | ![ajustes](clipboard-settings.png) |
+| ![paste](clipboard-paste.png) | ![settings](clipboard-settings.png) |
 | Chosen with ❖V and the 8 key: «360» was pasted into the Settings search box, which had focus | Settings → Clipboard |
 
 There is a single one for the whole session: the Terminal, LordOS's text fields and Linux apps

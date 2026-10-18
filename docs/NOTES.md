@@ -9,14 +9,14 @@ save themselves in the home folder.
 
 | | |
 |---|---|
-| ![edición](notes-editing.png) | ![lectura](notes-reading.png) |
+| ![editing](notes-editing.png) | ![reading](notes-reading.png) |
 | Editing: markdown with the headings highlighted; lists and checkboxes continue on their own with Enter | Reading: headings, bold, italic, code, checkboxes ticked with a click, numbered list, quote, table and table of contents |
-| ![índice](notes-index-image.png) | ![emoji](notes-emoji.png) |
+| ![outline](notes-index-image.png) | ![emoji](notes-emoji.png) |
 | The table of contents jumps to the heading; the image is part of the note | Emoji picker with search in Spanish or English (also `:name` while typing) |
-| ![escritorio](notes-desktop-image.png) | ![fijada](notes-pinned.png) |
-| A note on the desktop, with an image pasted from the clipboard | Pinned to the front: it stays above the windows |
-| ![clásico](notes-classic-theme.png) | |
-| Classic theme: one pinned (green) and another on the desktop behind the window (pink) | |
+| ![desktop](notes-desktop-image.png) | ![pinned](notes-pinned.png) |
+| A note on the desktop, with an attachment, checkboxes and an image | Pinned to the front: it stays above the windows |
+| ![classic](notes-classic-theme.png) | |
+| Classic theme: a note pinned in front of the Terminal | |
 
 ## Where they are stored
 

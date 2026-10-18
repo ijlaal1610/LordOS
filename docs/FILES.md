@@ -9,27 +9,27 @@ drop, color tags and search. Disk operations belong to the server (`server/src/f
 
 | | |
 |---|---|
-| ![íconos](files-icons.png) | ![lista](files-list.png) |
-| Icons with real image thumbnails | List: columns, alternating rows and folders that expand in place (names in several scripts) |
-| ![columnas](files-columns.png) | ![galeria](files-gallery.png) |
+| ![icons](files-icons.png) | ![list](files-list.png) |
+| Icons with real image thumbnails | List: columns, alternating rows and folders that expand in place |
+| ![columns](files-columns.png) | ![gallery](files-gallery.png) |
 | Columns (Miller) with the text preview | Gallery: large preview and the strip below |
 | ![quick look](files-quick-preview.png) | ![info](files-get-info.png) |
-| Quick Preview (Space), 5 of 7; the arrows go to the next one | Get Info (❖I): size, location, dates, permissions and «Open with» |
-| ![menú](files-context-menu.png) | ![abrir con](files-open-with.png) |
+| Quick Preview (Space), 1 of 5; the arrows go to the next one | Get Info (❖I): size, location, dates, permissions and «Open with» |
+| ![menu](files-context-menu.png) | ![open with](files-open-with.png) |
 | Context menu of a file, with tags | «Open with»: the Text Editor or a Linux app that declares the type (FeatherPad) |
-| ![featherpad](files-open-in-linux-app.png) | ![mover](files-move.png) |
-| `notas.txt` opened in FeatherPad (Qt) from «Open with» | Dragging onto a folder (it gets highlighted); with tabs |
-| ![papelera](files-drag.png) | ![restaurar](files-trash.png) |
+| ![linux app](files-open-in-linux-app.png) | ![move](files-move.png) |
+| `notes.txt` opened in FeatherPad (Qt) from «Open with» | Dragging onto a folder (it gets highlighted); with tabs |
+| ![trash](files-drag.png) | ![restore](files-trash.png) |
 | Dragging to the Trash in the sidebar | In the Trash: Restore or Delete permanently |
-| ![vaciar](files-empty-trash.png) | ![etiquetas](files-tags.png) |
+| ![empty](files-empty-trash.png) | ![tags](files-tags.png) |
 | Emptying the Trash asks for confirmation | Red tag: the dot on the icon and the filter in the sidebar |
-| ![búsqueda](files-search.png) | ![recientes](files-recents.png) |
+| ![search](files-search.png) | ![recents](files-recents.png) |
 | Search in «Documents» or in Home, with each result's folder | Recents, by date |
-| ![agrupar](files-group-by.png) | ![aplicaciones](files-applications.png) |
+| ![group](files-group-by.png) | ![applications](files-applications.png) |
 | Grouped by kind | Applications (LordOS, packages and Linux) |
-| ![claro](files-icons-light.png) | ![claro lista](files-list-light.png) |
+| ![light](files-icons-light.png) | ![light list](files-list-light.png) |
 | Light theme | List in the light theme |
-| ![rtl](files-rtl.png) | ![fondo](files-background-menu.png) |
+| ![rtl](files-rtl.png) | ![background](files-background-menu.png) |
 | In Arabic: the sidebar moves to the right | Right click on empty space: New Folder, Paste, View, Sort, Group, hidden files |
 
 ## What's there

@@ -137,7 +137,7 @@ sudo reboot
 | `no terminal to ask "Continue?"` | The script runs without a terminal (CI, `ssh host 'curl … \| sh'`). Use `ssh -t`, or `--yes`. |
 | `could not find the latest LordOS release on GitHub` | No connection to `api.github.com`, the GitHub API rate limit (60 requests/hour per IP), or the repository is still private. Pass `--version 0.7.0-beta`, or download the files and use `--deb`. |
 | `SHA-256 mismatch` | The download is corrupted or incomplete. Run it again; if it persists, report it: nothing was installed. |
-| `the SHA256SUMS signature is NOT valid` | (once releases are signed) Don't install; report it. |
+| `the SHA256SUMS signature is NOT valid` | Don't install; report it (the release files may have been tampered with). |
 | `apt-get could not install LordOS` | Usually a broken apt state or mirrors that aren't trixie. `sudo apt-get update && sudo apt-get -f install`, then run the installer again. |
 | `LordOS needs Debian 13 (trixie)` | Debian 12 and testing/unstable are not supported: the package depends on trixie's library versions. |
 | Black screen or back to text after the reboot | Switch to tty2 (Ctrl+Alt+F2), log in, and look at `journalctl -b -u lordos`. To go back to your desktop meanwhile, see "Switching back" above. |

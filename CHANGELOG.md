@@ -91,6 +91,6 @@ architecture and dependency policy are in `docs/ARCHITECTURE.md`.
 
 ### Known gaps
 
-- Not yet tested on the Raspberry Pi 5 or with real FIDO2 keys, printers and mail providers.
-- Chromium and Firefox are not preinstalled; per-app firewall "ask" mode and accessibility are still
-  to come. See the pending items in `docs/ROADMAP.md`.
+- Not yet tested with real FIDO2 keys, printers and mail providers. On the Raspberry Pi 5 the build,
+  tests and login screen are verified; booting the published image on the board is still pending.
+- Per-app firewall "ask" mode and accessibility are still to come. See the pending items in `docs/ROADMAP.md`.

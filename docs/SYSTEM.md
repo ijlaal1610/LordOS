@@ -22,7 +22,7 @@ The LordOS disk utility, like GNOME Disks.
 | | |
 |---|---|
 | ![disks](disks.png) | ![health](disks-smart.png) |
-| A USB stick with its exFAT partition mounted | Health of the SATA disk: our own SMART over SG_IO, with the attributes |
+| The system disk and its partitions (protected: no format, erase or unmount) | Health of the SATA disk: our own SMART over SG_IO, with the attributes |
 | ![format](disks-format.png) | ![erase](disks-confirm.png) |
 | Format: FAT32, exFAT, ext4 or NTFS (if `mkfs.ntfs` is present), with the label | The confirmation says what gets erased and asks to type the disk name |
 | ![bootable usb](disks-boot-usb.png) | ![verified](disks-boot-usb-verified.png) |
@@ -264,8 +264,6 @@ home folder needs no root, so no new action was added to `admin.c`.
 | ![encryption](backup-encryption.png) | ![locked](backup-locked.png) |
 | Turning on encryption for a new destination | Encrypted and locked destination: a wrong passphrase is rejected |
 
-The screenshots were taken before the backup folder was renamed from `LordOS-Copias` to
-`LordOS-Backups`.
 
 ### On-disk layout
 

@@ -8,10 +8,10 @@ installable image).
 
 | | |
 |---|---|
-| ![bios](iso-bios-boot.png) | ![uefi](iso-uefi-boot.png) |
-| VM with SeaBIOS: boots on its own into LordOS | VM with OVMF (UEFI) |
-| ![grub](iso-grub-menu.png) | ![terminal](iso-terminal.png) |
-| Boot menu (screenshot from before the grub font fix: the borders showed up as "?") | Network via LordOS's own DHCP, DNS, `ping` without root, sound (PipeWire) and boot in 11.8 s |
+| ![bios](iso-bios-boot.png) | ![uefi](iso-final/live-about.png) |
+| VM with SeaBIOS: boots on its own into LordOS | VM with OVMF (UEFI); screenshot from the final 0.7.0 ISO test |
+| ![grub](iso-grub-menu.png) | ![terminal](iso-final/live-services.png) |
+| Boot menu (screenshot from before the grub font fix: the borders showed up as "?") | Network via LordOS's own DHCP, DNS, `ping` without root, sound (PipeWire) and boot in 11.8 s (screenshot: services and network in the final 0.7.0 ISO test) |
 
 ## Writing it to a USB stick
 
@@ -285,9 +285,9 @@ The ISO starts `lord-sessiond` instead of `lordos-session`. ISO tested:
 |---|---|
 | ![grub](iso-grub-m8.png) | ![desktop](iso-desktop.png) |
 | UEFI (OVMF): grub menu | Logs straight into the desktop, without going through the login screen |
-| ![terminal](iso-terminal-m8.png) | ![locked](iso-session-locked.png) |
+| ![terminal](iso-terminal-m8.png) | ![locked](iso-final/live-locked.png) |
 | `lordos`, `AUTOLOGIN=lordos`, `/sys/firmware/efi`, network via DHCP, port 5673 closed | ❖L: locked screen, with the IP at the bottom |
-| ![unlocked](iso-session-unlocked.png) | ![sharing](iso-sharing.png) |
+| ![unlocked](iso-session-unlocked.png) | ![sharing](iso-final/live-settings-sharing.png) |
 | Enter with the field empty: back to the same session | Settings → Sharing: remote desktop off (there's no `/etc/lordos/remote/config`) |
 | ![safe grub](iso-grub-safe-mode.png) | ![safe mode](iso-safe-mode.png) |
 | "Safe mode" entry | `lordos.gpu=0` → the session receives `LORD_GPU=0` and composites on the CPU |
@@ -297,9 +297,9 @@ The ISO starts `lord-sessiond` instead of `lordos-session`. ISO tested:
 | User `jordan` / «Jordan Lee», computer `jordan-pc` | Summary, with the new login text |
 | ![progress](iso-installer-progress-m8.png) | ![done](iso-installer-ready-m8.png) |
 | Installing (~1 minute) | Done; "Restart" with one click |
-| ![greeter](iso-installed-login.png) | ![session](iso-installed-session.png) |
-| The installed system boots to the login screen | Logging in with `ana` and her password |
-| ![installed terminal](iso-installed-terminal.png) | |
+| ![greeter](iso-final/installed-greeter.png) | ![session](iso-final/installed-desktop.png) |
+| The installed system boots to the login screen | Logging in with the new user's password (final 0.7.0 ISO test) |
+| ![installed terminal](iso-final/installed-terminal.png) | |
 | Empty `AUTOLOGIN=`; no `live-boot` or `lordos` user; groups sudo, audio, video, render and input; network; UEFI | |
 
 **Fixes found in this test:**

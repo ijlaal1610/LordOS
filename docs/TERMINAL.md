@@ -49,9 +49,9 @@ that changed) is repainted.
 | ![import](terminal-import-color-scheme.png) | ![keys](terminal-key-bindings.png) |
 | Importing a binary preferences plist | Per-profile and global keys, editable shortcuts |
 | ![recovered](terminal-session-restored.png) | ![tmux](terminal-tmux.png) |
-| After restarting lord-server: same tabs and panes, the counter kept running | `tmux -CC`: tmux window with 3 native panes (recovered after a restart) |
+| After restarting lord-server: same tabs and panes, the counter kept running | `tmux -CC`: tmux windows as tabs, with 3 native panes |
 | ![fish](terminal-fish-shell.png) | ![host](terminal-host-profile.png) |
-| fish integration (red/blue marks, directory) | Automatic profile switch for `root@*` |
+| fish integration (red/blue marks, directory) | Automatic profile switch (rule `~/prod/*` → Production profile, badge PROD) |
 
 ## Performance (development VM, 1280×800, CPU)
 
