@@ -1,0 +1,10 @@
+{
+  "id": "editor",
+  "name": "Editor de texto",
+  "description": "Editor de código al estilo de TextMate: proyecto, pestañas, varios cursores, buscar y reemplazar, resaltado de sintaxis",
+  "size": [900, 600],
+  "minSize": [520, 340],
+  "dock": true,
+  "category": "Development",
+  "permissions": ["fs:read", "fs:write"]
+}

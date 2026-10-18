@@ -1,0 +1,33 @@
+/* Tema GTK 3 de LordOS (LordOS): Adwaita con los colores, la barra de título y los semáforos de
+ * LordOS. Lo elige el portal de LordOS (gtk-theme) según el modo; el acento de GTK 3 es fijo (azul):
+ * GTK 3 no tiene acento propio. GTK 4 y libadwaita toman el modo y el acento del portal. */
+@import url("resource:///org/gtk/libgtk/theme/Adwaita/gtk-contained.css");
+@define-color lordos_title_bg #ececee;
+@define-color lordos_separator rgba(0, 0, 0, 0.1);
+@define-color lordos_light_off #d0d0d4;
+@define-color theme_selected_bg_color #0a84ff;
+@define-color theme_selected_fg_color #ffffff;
+@define-color theme_bg_color #f6f6f7;
+@define-color theme_base_color #ffffff;
+@define-color theme_fg_color #1c1c1e;
+
+/* Semáforos a la izquierda (el orden lo da LordOS por el portal: close,minimize,maximize:). */
+headerbar button.titlebutton,
+.titlebar button.titlebutton {
+  min-width: 14px; min-height: 14px; padding: 0; margin: 0 3px;
+  border-radius: 50%; border: none; box-shadow: none; background-image: none;
+  color: transparent; -gtk-icon-shadow: none; -gtk-icon-transform: scale(0.75);
+}
+headerbar button.titlebutton.close, .titlebar button.titlebutton.close { background-color: #ff5f57; }
+headerbar button.titlebutton.minimize, .titlebar button.titlebutton.minimize { background-color: #febc2e; }
+headerbar button.titlebutton.maximize, .titlebar button.titlebutton.maximize { background-color: #28c840; }
+headerbar button.titlebutton:hover, .titlebar button.titlebutton:hover { color: rgba(0, 0, 0, 0.6); }
+headerbar button.titlebutton:backdrop, .titlebar button.titlebutton:backdrop { background-color: @lordos_light_off; }
+headerbar button.titlebutton:backdrop:hover, .titlebar button.titlebutton:backdrop:hover { color: transparent; }
+
+/* Marco y barra como las ventanas de LordOS */
+decoration { border-radius: 12px 12px 0 0; }
+headerbar, .titlebar { background-image: none; background-color: @lordos_title_bg; border-bottom: 1px solid @lordos_separator;
+  box-shadow: none; min-height: 40px; }
+headerbar:backdrop, .titlebar:backdrop { background-color: @lordos_title_bg; }
+headerbar .title { font-weight: 600; }

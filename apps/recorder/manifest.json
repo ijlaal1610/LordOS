@@ -1,0 +1,10 @@
+{
+  "id": "recorder",
+  "name": "Grabadora",
+  "description": "Notas de voz: grabar, forma de onda, renombrar, recortar y exportar a Opus, MP3 o WAV",
+  "size": [800, 480],
+  "minSize": [640, 400],
+  "dock": true,
+  "category": "AudioVideo",
+  "permissions": ["microphone", "fs:home:write"]
+}

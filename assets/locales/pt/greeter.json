@@ -1,0 +1,17 @@
+{
+  "busy": "Um momento…",
+  "cancel": "Cancelar",
+  "confirmRestart": "Há sessões abertas: o que não estiver salvo será perdido. Reiniciar mesmo assim?",
+  "confirmShutdown": "Há sessões abertas: o que não estiver salvo será perdido. Desligar mesmo assim?",
+  "error": "Não foi possível abrir a sessão.",
+  "locked": "Tela bloqueada",
+  "noUsers": "Não há usuários",
+  "password": "Senha",
+  "restart": "Reiniciar",
+  "shutdown": "Desligar",
+  "wait": {
+    "one": "Muitas tentativas. Aguarde {count} segundo.",
+    "other": "Muitas tentativas. Aguarde {count} segundos."
+  },
+  "wrong": "Senha incorreta."
+}

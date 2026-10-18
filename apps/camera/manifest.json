@@ -1,0 +1,10 @@
+{
+  "id": "camera",
+  "name": "Cámara",
+  "description": "Vista previa de la webcam, fotos y videos, con espejo y elección de cámara",
+  "size": [820, 560],
+  "minSize": [480, 360],
+  "dock": true,
+  "category": "AudioVideo",
+  "permissions": ["camera", "microphone", "fs:home:write"]
+}

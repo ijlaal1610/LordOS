@@ -1,0 +1,47 @@
+#!/bin/sh
+# lordos-live-prep — preparación del sistema live antes de lord-sessiond (ExecStartPre de
+# lordos.service). En un sistema instalado no hace nada. Ver docs/ISO.md y docs/SESIONES.md.
+#
+# Opciones en la línea del kernel (menú de grub):
+#   lordos.lang=en   idioma de la interfaz (es por defecto): /etc/default/locale y los ajustes
+#                    del usuario live la primera vez
+#   lordos.gpu=0     modo seguro: todo por CPU. Lo lee lord-sessiond de /proc/cmdline y les pasa
+#                    LORD_GPU=0 a todas las sesiones (acá no hace falta nada).
+set -u
+[ -d /run/live ] || exit 0          # solo en el live (live-boot)
+USER_NAME=lordos
+getent passwd "$USER_NAME" >/dev/null || exit 0
+
+LANG_UI=es
+for arg in $(cat /proc/cmdline); do
+    case "$arg" in
+        lordos.lang=en) LANG_UI=en ;;
+        lordos.lang=pt) LANG_UI=pt ;;
+    esac
+done
+case "$LANG_UI" in
+    en) LOC=en_US.UTF-8; DIRS="Desktop Documents Downloads Music Pictures Videos" ;;
+    pt) LOC=pt_BR.UTF-8; DIRS="Área_de_trabalho Documentos Downloads Música Imagens Vídeos" ;;
+    *)  LOC=es_ES.UTF-8; DIRS="Escritorio Documentos Descargas Música Imágenes Videos" ;;
+esac
+printf 'LANG=%s\n' "$LOC" > /etc/default/locale     # también el idioma de la pantalla de ingreso
+
+HOME_DIR=$(getent passwd "$USER_NAME" | cut -d: -f6)
+CFG="$HOME_DIR/.config/lordos"
+if [ ! -f "$CFG/settings.json" ]; then
+    install -d -o "$USER_NAME" -g "$USER_NAME" "$HOME_DIR/.config" "$CFG"
+    printf '{\n  "language": "%s"\n}\n' "$LANG_UI" > "$CFG/settings.json"
+    printf 'LANG=%s\n' "$LOC" > "$HOME_DIR/.config/locale.conf"
+    chown "$USER_NAME:$USER_NAME" "$CFG/settings.json" "$HOME_DIR/.config/locale.conf"
+fi
+if [ ! -e "$CFG/.dirs" ]; then
+    for d in $DIRS; do install -d -o "$USER_NAME" -g "$USER_NAME" "$HOME_DIR/$(echo "$d" | tr _ ' ')"; done
+    : > "$CFG/.dirs"; chown "$USER_NAME:$USER_NAME" "$CFG/.dirs"
+fi
+
+# live-boot escribe /etc/network/interfaces con las placas por DHCP; sin ifupdown nadie lo usa y
+# LordOS lo tomaría como "red del sistema" y no la configuraría: se deja solo lo.
+if [ ! -x /sbin/ifup ] && [ -f /etc/network/interfaces ] && grep -qv '^\s*\(#\|$\|auto lo\|iface lo\)' /etc/network/interfaces; then
+    printf 'auto lo\niface lo inet loopback\n' > /etc/network/interfaces
+fi
+exit 0

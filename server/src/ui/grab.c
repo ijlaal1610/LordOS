@@ -1,0 +1,111 @@
+/* grab.c — arrastre de ventanas en C: mover y cambiar el tamaño sin JS por cuadro (grab.h). */
+#include "grab.h"
+#include "../cursor.h"
+
+#include <math.h>
+#include <string.h>
+
+#define KEEP 48             /* px del marco que siempre quedan a la vista */
+
+static struct {
+    int active, node, edges;
+    float px0, py0;                 /* puntero al empezar */
+    float x0, y0, w0, h0;           /* left/top/width/height del nodo al empezar */
+    float x, y, w, h;               /* ahora */
+    float ox, oy;                   /* origen del padre en pantalla */
+    GrabLimits lim;
+} g;
+static float ptr_x, ptr_y;
+static int ptr_buttons;
+
+void grab_note_pointer(float x, float y, int buttons) {
+    ptr_x = x;
+    ptr_y = y;
+    ptr_buttons = buttons;
+}
+
+int grab_active(void) { return g.active; }
+
+int grab_cursor(void) { return g.edges ? cursor_for_edges(g.edges) : CUR_MOVE; }
+
+static float dim_or(Dim d, float fallback) { return d.unit == UNIT_PX ? d.v : fallback; }
+
+int grab_begin(int node, int edges, const GrabLimits *lim) {
+    Node *n = node_get(node);
+    if (!n || !ptr_buttons || !n->s.absolute) return -1;
+    if (g.active) grab_cancel();
+    memset(&g, 0, sizeof g);
+    g.active = 1;
+    g.node = node;
+    g.edges = edges & 15;
+    g.lim = *lim;
+    g.px0 = ptr_x;
+    g.py0 = ptr_y;
+    g.x = g.x0 = dim_or(n->s.pos[EDGE_L], n->x);
+    g.y = g.y0 = dim_or(n->s.pos[EDGE_T], n->y);
+    g.w = g.w0 = dim_or(n->s.width, n->w);
+    g.h = g.h0 = dim_or(n->s.height, n->h);
+    g.ox = n->ax - n->x;
+    g.oy = n->ay - n->y;
+    paint_layer_begin(node, g.edges != 0);
+    return 0;
+}
+
+static float clampf(float v, float lo, float hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+void grab_motion(float px, float py) {
+    if (!g.active) return;
+    Node *n = node_get(g.node);
+    if (!n) { grab_cancel(); return; }
+    float dx = roundf(px - g.px0), dy = roundf(py - g.py0), in = g.lim.inset;
+    float x = g.x0, y = g.y0, w = g.w0, h = g.h0;
+    /* límites del marco en coordenadas del nodo (el padre puede no estar en 0,0) */
+    float top = g.lim.min_top - g.oy - in, sw = ui.width - g.ox, sh = ui.height - g.oy;
+    if (!g.edges) {
+        x = clampf(g.x0 + dx, KEEP - (g.w0 - in), sw - KEEP - in);
+        y = clampf(g.y0 + dy, top, sh - KEEP - in);
+    } else {
+        float minw = g.lim.min_w + 2 * in, minh = g.lim.min_h + 2 * in;
+        float maxw = g.lim.max_w > 0 ? g.lim.max_w + 2 * in : 1e9f, maxh = g.lim.max_h > 0 ? g.lim.max_h + 2 * in : 1e9f;
+        if (g.edges & 8) w = clampf(g.w0 + dx, minw, fminf(maxw, sw + in - g.x0));
+        if (g.edges & 4) {
+            w = clampf(g.w0 - dx, minw, fminf(maxw, g.x0 + g.w0 + in));
+            x = g.x0 + g.w0 - w;
+        }
+        if (g.edges & 2) h = clampf(g.h0 + dy, minh, fminf(maxh, sh + in - g.y0));
+        if (g.edges & 1) {
+            h = clampf(g.h0 - dy, minh, fminf(maxh, g.y0 + g.h0 - top));
+            y = g.y0 + g.h0 - h;
+        }
+    }
+    if (x == g.x && y == g.y && w == g.w && h == g.h) return;
+    int sized = w != g.w || h != g.h;
+    g.x = x; g.y = y; g.w = w; g.h = h;
+    n->s.pos[EDGE_L] = (Dim){ x, UNIT_PX };
+    n->s.pos[EDGE_T] = (Dim){ y, UNIT_PX };
+    if (sized) {
+        n->s.width = (Dim){ w, UNIT_PX };
+        n->s.height = (Dim){ h, UNIT_PX };
+        node_invalidate(n);         /* el contenido se vuelve a acomodar */
+    }
+    ui.dirty = 1;                   /* mover: solo el layout de posición, sin repintar el contenido */
+}
+
+int grab_finish(int *node, int *edges, float *dx, float *dy, float *dw, float *dh) {
+    if (!g.active || ptr_buttons) return 0;
+    *node = g.node;
+    *edges = g.edges;
+    *dx = g.x - g.x0;
+    *dy = g.y - g.y0;
+    *dw = g.w - g.w0;
+    *dh = g.h - g.h0;
+    g.active = 0;
+    paint_layer_end();
+    return 1;
+}
+
+void grab_cancel(void) {
+    if (!g.active) return;
+    g.active = 0;
+    paint_layer_end();
+}

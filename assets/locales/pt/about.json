@@ -1,0 +1,24 @@
+{
+  "cpu": "Processador",
+  "cpuValue": {
+    "one": "{cpu} · {count} núcleo",
+    "other": "{cpu} · {count} núcleos"
+  },
+  "credits": "País por IP no Monitor: DB-IP Lite Country, © db-ip.com, CC BY 4.0. Mapa: Natural Earth (domínio público).",
+  "display": "Tela",
+  "engine": "Motor de interface",
+  "host": "Computador",
+  "hostValue": "{host} · usuário {user}",
+  "kernel": "Kernel",
+  "memory": "Memória",
+  "os": "Sistema",
+  "ram": "RAM do servidor",
+  "render": "Última renderização",
+  "renderValue": {
+    "one": "{ms} ms · {count} nó",
+    "other": "{ms} ms · {count} nós"
+  },
+  "server": "Servidor gráfico",
+  "uptime": "Ligado há",
+  "version": "Versão {v} · marco {m}"
+}

@@ -1,0 +1,13 @@
+{
+  "record": "Record",
+  "stop": "Stop",
+  "attach": "Attach file",
+  "recording": "Recording… (orange dot in the menu bar)",
+  "stopped": "Recording stopped",
+  "noMic": "No microphone permission",
+  "attached": "File attached: {name}",
+  "noFiles": "No files permission",
+  "canceled": "Canceled",
+  "menu": "Recorder",
+  "about": "LordOS test recorder"
+}

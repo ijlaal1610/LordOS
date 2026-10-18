@@ -1,0 +1,11 @@
+{
+  "folder": "Camera",
+  "photoName": "Photo {date}",
+  "videoName": "Video {date}",
+  "photo": "Photo",
+  "video": "Video",
+  "mirror": "Mirror",
+  "none": "No camera was found",
+  "denied": "Camera is not allowed to use the camera. Change it in Settings → Privacy.",
+  "error": "Could not use the camera: {error}"
+}

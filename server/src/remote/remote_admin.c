@@ -1,0 +1,174 @@
+/* remote_admin.c — acciones de root del escritorio remoto, en el ayudante privilegiado (admin.c).
+ *
+ *   remote-enable            prende el escritorio remoto (enabled=1 y lord-sessiond relee)
+ *   remote-disable           lo apaga; las sesiones siguen abiertas (se ven en el monitor)
+ *   remote-config <líneas>   allow=all|group, port=1024..65535
+ *   remote-member <u>\n1|0   suma o saca a un usuario del grupo lordos-remote
+ *   remote-kick <pid>        corta una conexión (solo un pid de la lista de lord-sessiond)
+ *
+ * El escritorio remoto es parte de lord-sessiond (lordos.service, docs/SESIONES.md): estas
+ * acciones solo cambian /etc/lordos/remote/config y le avisan con SIGHUP. */
+#include "remote_admin.h"
+
+#include <errno.h>
+#include <fcntl.h>
+#include <grp.h>
+#include <limits.h>
+#include <pwd.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#define CONF_DIR "/etc/lordos/remote"
+
+static int write_file(const char *path, const char *text, mode_t mode) {
+    char tmp[PATH_MAX];
+    snprintf(tmp, sizeof tmp, "%s.lordos", path);
+    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, mode);
+    if (fd < 0) return -1;
+    size_t n = strlen(text);
+    int ok = write(fd, text, n) == (ssize_t)n;
+    if (close(fd)) ok = 0;
+    return ok && !rename(tmp, path) ? 0 : -1;
+}
+
+typedef struct { int enabled, port, group_only, insecure_dev; } Conf;
+
+static void conf_read(Conf *c) {
+    c->port = 5673;
+    c->enabled = c->group_only = c->insecure_dev = 0;
+    FILE *f = fopen(CONF_DIR "/config", "r");
+    char line[128], s[32];
+    int v;
+    while (f && fgets(line, sizeof line, f)) {
+        if (sscanf(line, "enabled=%d", &v) == 1) c->enabled = v == 1;
+        else if (sscanf(line, "port=%d", &v) == 1 && v >= 1024 && v < 65536) c->port = v;
+        else if (sscanf(line, "allow=%31s", s) == 1) c->group_only = !strcmp(s, "group");
+        else if (sscanf(line, "insecure_dev=%d", &v) == 1) c->insecure_dev = v == 1;
+    }
+    if (f) fclose(f);
+}
+
+static int conf_write(const Conf *c) {
+    mkdir("/etc/lordos", 0755);
+    mkdir(CONF_DIR, 0755);
+    char text[256];
+    snprintf(text, sizeof text, "# LordOS · escritorio remoto (Ajustes → Compartir). Ver docs/REMOTO.md\nenabled=%d\nport=%d\nallow=%s\ninsecure_dev=%d\n",
+             c->enabled, c->port, c->group_only ? "group" : "all", c->insecure_dev);
+    return write_file(CONF_DIR "/config", text, 0644);
+}
+
+/* lord-sessiond que corre (el de lordos.service): relee la configuración con SIGHUP */
+static pid_t sessiond_pid(void) {
+    const char *const a[] = { "/usr/bin/systemctl", "show", "--property=MainPID", "--value", "lordos.service", NULL };
+    char out[64] = "";
+    if (admin_run_capture(a, out, sizeof out)) return -1;
+    long pid = strtol(out, NULL, 10);
+    if (pid <= 1) return -1;
+    char link[64], exe[PATH_MAX];
+    snprintf(link, sizeof link, "/proc/%ld/exe", pid);
+    ssize_t l = readlink(link, exe, sizeof exe - 1);
+    if (l <= 0) return -1;
+    exe[l] = 0;
+    const char *base = strrchr(exe, '/');
+    return base && !strcmp(base + 1, "lord-sessiond") ? (pid_t)pid : -1;
+}
+
+static void set_enabled(int on) {
+    pid_t pid = sessiond_pid();
+    if (pid < 0) { admin_say("ERR", "el escritorio remoto necesita lord-sessiond (lordos.service)"); return; }
+    Conf c;
+    conf_read(&c);
+    c.enabled = on;
+    if (conf_write(&c)) { admin_say("ERR", "no se pudo escribir %s/config", CONF_DIR); return; }
+    kill(pid, SIGHUP);
+    if (!on) { admin_say("OK", "escritorio remoto apagado"); return; }
+    /* espera a que escuche (status.json dice running) */
+    for (int i = 0; i < 40; i++) {
+        char st[512] = "";
+        int fd = open("/run/lordos/status.json", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+        if (fd >= 0) { ssize_t n = read(fd, st, sizeof st - 1); if (n > 0) st[n] = 0; close(fd); }
+        if (strstr(st, "\"running\":true")) { admin_say("OK", "escritorio remoto prendido"); return; }
+        usleep(100000);
+    }
+    admin_say("ERR", "lord-sessiond no pudo escuchar en el puerto %d (journalctl -u lordos)", c.port);
+}
+
+void remote_act_enable(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)arg; (void)len;
+    set_enabled(1);
+}
+
+void remote_act_disable(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)arg; (void)len;
+    set_enabled(0);
+}
+
+void remote_act_config(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    Conf c;
+    conf_read(&c);
+    char buf[256];
+    snprintf(buf, sizeof buf, "%s", arg);
+    for (char *line = strtok(buf, "\n"); line; line = strtok(NULL, "\n")) {
+        int v;
+        char s[16];
+        if (sscanf(line, "port=%d", &v) == 1) {
+            if (v < 1024 || v > 65535) { admin_say("ERR", "puerto inválido"); return; }
+            c.port = v;
+        } else if (sscanf(line, "allow=%15s", s) == 1) {
+            if (strcmp(s, "all") && strcmp(s, "group")) { admin_say("ERR", "allow inválido"); return; }
+            c.group_only = !strcmp(s, "group");
+        } else { admin_say("ERR", "opción desconocida"); return; }
+    }
+    if (c.group_only && !getgrnam("lordos-remote")) {
+        const char *const g[] = { "/usr/sbin/groupadd", "--system", "lordos-remote", NULL };
+        if (admin_run(g)) { admin_say("ERR", "no se pudo crear el grupo lordos-remote"); return; }
+    }
+    if (conf_write(&c)) { admin_say("ERR", "no se pudo escribir la configuración"); return; }
+    pid_t pid = sessiond_pid();
+    if (pid > 0) kill(pid, SIGHUP);
+    admin_say("OK", "configuración guardada");
+}
+
+void remote_act_member(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    char user[40] = "";
+    int on = -1;
+    if (sscanf(arg, "%39[a-z0-9_-]\n%d", user, &on) != 2 || (on != 0 && on != 1)) { admin_say("ERR", "argumento inválido"); return; }
+    struct passwd *pw = getpwnam(user);
+    if (!pw || pw->pw_uid < 1000 || pw->pw_uid >= 60000) { admin_say("ERR", "usuario inválido"); return; }
+    if (!getgrnam("lordos-remote")) {
+        const char *const g[] = { "/usr/sbin/groupadd", "--system", "lordos-remote", NULL };
+        if (admin_run(g)) { admin_say("ERR", "no se pudo crear el grupo lordos-remote"); return; }
+    }
+    const char *const a[] = { "/usr/bin/gpasswd", on ? "-a" : "-d", user, "lordos-remote", NULL };
+    if (admin_run(a)) admin_say("ERR", "gpasswd falló"); else admin_say("OK", "%s", on ? "agregado" : "quitado");
+}
+
+void remote_act_kick(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    char *end;
+    long pid = strtol(arg, &end, 10);
+    if (pid <= 1 || *end) { admin_say("ERR", "pid inválido"); return; }
+    /* solo una conexión que lord-sessiond (root) anotó en su lista */
+    char status[16384] = "", want[40];
+    int fd = open("/run/lordos/status.json", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    struct stat st;
+    if (fd < 0 || fstat(fd, &st) || st.st_uid != 0) { if (fd >= 0) close(fd); admin_say("ERR", "el servicio no está prendido"); return; }
+    ssize_t n = read(fd, status, sizeof status - 1);
+    close(fd);
+    if (n > 0) status[n] = 0;
+    snprintf(want, sizeof want, "{\"pid\":%ld,", pid);
+    char exe[PATH_MAX], link[64];
+    snprintf(link, sizeof link, "/proc/%ld/exe", pid);
+    ssize_t l = readlink(link, exe, sizeof exe - 1);
+    if (l > 0) exe[l] = 0;
+    const char *base = l > 0 ? strrchr(exe, '/') : NULL;
+    if (!strstr(status, want) || !base || strcmp(base + 1, "lord-sessiond")) { admin_say("ERR", "esa conexión no existe"); return; }
+    kill((pid_t)pid, SIGTERM);
+    admin_say("OK", "conexión cortada");
+}

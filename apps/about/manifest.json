@@ -1,0 +1,14 @@
+{
+  "id": "about",
+  "name": "Acerca de LordOS",
+  "description": "Información del sistema y del servidor gráfico",
+  "size": [
+    440,
+    530
+  ],
+  "dock": true,
+  "permissions": [
+    "system:read"
+  ],
+  "category": "System"
+}

@@ -1,0 +1,507 @@
+/* actions.c — las acciones "net-*" del ayudante privilegiado (admin.c). Cada una valida su
+ * argumento acá; ninguna pasa texto del usuario a un shell ni como argumentos libres.
+ *
+ *   net-restore                 al arrancar: aplica las configs de /etc/lordos/net/if y levanta DHCP
+ *                               (y Wi-Fi) en las interfaces libres. Con lord-netd lo corre él solo,
+ *                               al arrancar el equipo ("system"); ver admin.c
+ *   net-up / net-down <if>
+ *   net-config <if>\n<líneas>   method=dhcp|static|off, address=ip/prefijo (varias),
+ *                               gateway=ip, dns=ip (varias)
+ *   net-manage / net-unmanage <if>   pasar una interfaz de systemd-networkd a LordOS y volver
+ *   net-wifi-scan <if>          LOG por red (JSON) y OK <cantidad>
+ *   net-wifi-connect <if>\n<ssid>\n<contraseña>
+ *   net-wifi-disconnect <if> / net-wifi-forget <ssid>
+ *   net-vpn-import <tipo>\n<nombre>\n<config>   tipo wireguard | openvpn
+ *   net-vpn-credentials <nombre>\n<usuario>\n<contraseña>
+ *   net-vpn-up / net-vpn-down / net-vpn-delete <nombre>
+ *   net-vpn-status [nombre]     LOG por VPN (JSON) y OK */
+#include "net.h"
+#include "netpriv.h"
+#include "vpn.h"
+#include "../pkg/pkg.h"
+
+#include <net/if.h>                 /* antes que los de linux/ */
+
+#include <dirent.h>
+#include <signal.h>
+#include <errno.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#define NETWORKCTL "/usr/bin/networkctl"
+
+/* Divide el argumento en hasta n líneas (in-place sobre una copia). */
+static int split_lines(char *s, char **out, int n) {
+    int k = 0;
+    while (s && k < n) {
+        out[k++] = s;
+        char *nl = strchr(s, '\n');
+        if (!nl) break;
+        *nl = 0;
+        s = nl + 1;
+        if (k == n - 1) { out[k++] = s; break; }    /* el último se lleva el resto */
+    }
+    return k;
+}
+
+static int is_wifi(const char *ifname) {
+    char p[96];
+    snprintf(p, sizeof p, "/sys/class/net/%s/wireless", ifname);
+    if (access(p, F_OK) == 0) return 1;
+    snprintf(p, sizeof p, "/sys/class/net/%s/phy80211", ifname);
+    return access(p, F_OK) == 0;
+}
+
+/* Interfaz física (ethernet o wifi) existente, por sysfs: /sys/class/net/<if>/device. */
+static int is_physical(const char *ifname) {
+    char p[96];
+    snprintf(p, sizeof p, "/sys/class/net/%s/device", ifname);
+    return access(p, F_OK) == 0;
+}
+
+static int check_if(const char *ifname, int must_be_free) {
+    if (!valid_ifname(ifname) || !rt_ifindex(ifname)) { admin_say("ERR", "interfaz desconocida: %s", ifname); return -1; }
+    if (must_be_free && managed_by_system(ifname)) {
+        admin_say("ERR", "la interfaz %s la maneja el sistema (systemd-networkd/ifupdown): pasala a LordOS primero", ifname);
+        return -1;
+    }
+    return 0;
+}
+
+static void stop_if_daemons(const char *ifname) {
+    char d[40];
+    snprintf(d, sizeof d, "if:%s", ifname);
+    admin_daemon_stop(d);
+    snprintf(d, sizeof d, "wpa:%s", ifname);
+    admin_daemon_stop(d);
+}
+
+static void dhcp_entry(void *arg) { const char *n = arg; dhcp_run(n, 0); }
+
+static int start_dhcp(const char *ifname) {
+    static char name_arg[IFNAMSIZ];
+    char d[40];
+    snprintf(d, sizeof d, "if:%s", ifname);
+    if (admin_daemon_running(d)) return 0;
+    snprintf(name_arg, sizeof name_arg, "%s", ifname);
+    return admin_daemon_fork(d, dhcp_entry, name_arg);
+}
+
+/* Aplica la config guardada (texto clave=valor). */
+static int apply_config(const char *ifname, const char *t) {
+    char method[16];
+    kv_get(t, "method", 0, method, sizeof method);
+    int fd = nl_open(NETLINK_ROUTE, 0);
+    if (fd < 0) return -1;
+    int idx = rt_ifindex(ifname);
+    if (!strcmp(method, "off")) {
+        stop_if_daemons(ifname);
+        rt_addr_flush(fd, idx, AF_INET);
+        rt_addr_flush(fd, idx, AF_INET6);
+        rt_link_set(fd, idx, 0);
+        dns_revert(ifname);
+        close(fd);
+        return 0;
+    }
+    rt_link_set(fd, idx, 1);
+    if (!strcmp(method, "static")) {
+        char d[40];
+        snprintf(d, sizeof d, "if:%s", ifname);
+        admin_daemon_stop(d);
+        rt_addr_flush(fd, idx, AF_INET);
+        char v[128];
+        for (int i = 0; kv_get(t, "address", i, v, sizeof v); i++) {
+            Cidr c;
+            if (!parse_cidr(v, &c, 1)) rt_addr(fd, 1, idx, c.family, c.a, c.prefix, 0, 0);
+        }
+        if (kv_get(t, "gateway", 0, v, sizeof v) && v[0]) {
+            int fam;
+            uint8_t gw[16], any[16] = {0};
+            if (!parse_ip(v, &fam, gw)) rt_route(fd, 1, fam, any, 0, gw, idx, is_wifi(ifname) ? 600 : 100, 0);
+        }
+        char servers[400] = "";
+        for (int i = 0; kv_get(t, "dns", i, v, sizeof v); i++)
+            snprintf(servers + strlen(servers), sizeof servers - strlen(servers), "%s%s", i ? " " : "", v);
+        if (servers[0]) dns_set(ifname, servers, NULL, DNS_PLAIN); else dns_revert(ifname);
+        close(fd);
+        if (is_wifi(ifname)) wifi_start(ifname);        /* asociarse sigue siendo de wpa_supplicant */
+        return 0;
+    }
+    close(fd);
+    if (strcmp(method, "dhcp")) return 0;               /* sin configurar: solo levantada */
+    if (is_wifi(ifname)) return wifi_start(ifname);
+    return start_dhcp(ifname);
+}
+
+static char *load_if_conf(const char *ifname) {
+    char path[128];
+    snprintf(path, sizeof path, NET_IF_DIR "/%s.conf", ifname);
+    return read_file(path, 8192, NULL);
+}
+
+void net_act_restore(const AdminReq *r, const char *arg, size_t len) {
+    (void)r;
+    mkdir(NET_RUN_DIR, 0755);
+    /* Normalmente la red es del sistema: la levanta lord-netd al arrancar el equipo (arg "system",
+     * ver admin.c) y el net-restore de las sesiones ni llega acá. Sin lord-netd (lord-server suelto,
+     * en desarrollo) la levanta el ayudante de la sesión; si hubiera varias, solo la primera (su pid
+     * en net-owner, mientras viva), así dos no arrancan dos DHCP en la misma placa. */
+    if (!(len == 6 && !strcmp(arg, "system"))) {
+        char *o = read_file(NET_RUN_DIR "/net-owner", 32, NULL);
+        if (o) {
+            pid_t p = (pid_t)atoi(o);
+            free(o);
+            if (p > 1 && p != getpid() && kill(p, 0) == 0) { admin_say("OK", "0 interfaz(es): la maneja otra sesión"); return; }
+        }
+        FILE *of = fopen(NET_RUN_DIR "/net-owner", "w");
+        if (of) { fprintf(of, "%d\n", (int)getpid()); fclose(of); }
+    } else unlink(NET_RUN_DIR "/net-owner");
+    /* rutas de VPN que quedaron de una sesión que se cortó (protocolo RTPROT_LORDOS) */
+    int rfd = nl_open(NETLINK_ROUTE, 0);
+    if (rfd >= 0) { rt_flush_proto(rfd, RTPROT_LORDOS, AF_INET, NULL); rt_flush_proto(rfd, RTPROT_LORDOS, AF_INET6, NULL); close(rfd); }
+    struct if_nameindex *ifs = if_nameindex();
+    int n = 0;
+    for (struct if_nameindex *i = ifs; i && i->if_index; i++) {
+        const char *name = i->if_name;
+        if (!valid_ifname(name) || managed_by_system(name)) continue;
+        char *t = load_if_conf(name);
+        if (t) { if (!apply_config(name, t)) n++; free(t); continue; }
+        /* sin config: las físicas libres van por DHCP, como NetworkManager */
+        if (is_physical(name)) { if (!apply_config(name, "method=dhcp\n")) n++; }
+    }
+    if (ifs) if_freenameindex(ifs);
+    admin_say("OK", "%d interfaz(es)", n);
+}
+
+void net_act_up(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    if (check_if(arg, 1)) return;
+    int fd = nl_open(NETLINK_ROUTE, 0);
+    int e = fd >= 0 ? rt_link_set(fd, rt_ifindex(arg), 1) : -1;
+    if (fd >= 0) close(fd);
+    char *t = load_if_conf(arg);
+    if (!e) apply_config(arg, t ? t : (is_physical(arg) ? "method=dhcp\n" : "method=none\n"));
+    free(t);
+    if (e) admin_say("ERR", "no se pudo levantar %s: %s", arg, strerror(-e)); else admin_say("OK", "%s levantada", arg);
+}
+
+void net_act_down(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    if (check_if(arg, 1)) return;
+    stop_if_daemons(arg);
+    int fd = nl_open(NETLINK_ROUTE, 0);
+    int e = fd >= 0 ? rt_link_set(fd, rt_ifindex(arg), 0) : -1;
+    if (fd >= 0) close(fd);
+    if (e) admin_say("ERR", "no se pudo bajar %s: %s", arg, strerror(-e)); else admin_say("OK", "%s bajada", arg);
+}
+
+void net_act_config(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    char *copy = strdup(arg);
+    if (!copy) { admin_say("ERR", "sin memoria"); return; }
+    char *nl = strchr(copy, '\n');
+    char *body = nl ? nl + 1 : (char *)"";
+    if (nl) *nl = 0;
+    if (check_if(copy, 1)) { free(copy); return; }
+    /* se rearma la config solo con lo validado */
+    Buf b = {0};
+    char method[16] = "";
+    int naddr = 0, ok = 1;
+    for (char *l = body, *next; l && *l && ok; l = next) {
+        next = strchr(l, '\n');
+        if (next) *next++ = 0;
+        if (!*l) continue;
+        char *eq = strchr(l, '=');
+        if (!eq) { ok = 0; break; }
+        *eq = 0;
+        const char *k = l, *v = eq + 1;
+        Cidr c;
+        int fam;
+        uint8_t a[16];
+        if (!strcmp(k, "method")) {
+            if (strcmp(v, "dhcp") && strcmp(v, "static") && strcmp(v, "off")) ok = 0;
+            else snprintf(method, sizeof method, "%s", v);
+        } else if (!strcmp(k, "address")) { if (parse_cidr(v, &c, 1) || naddr++ >= 8) ok = 0; else buf_printf(&b, "address=%s\n", v); }
+        else if (!strcmp(k, "gateway")) { if (*v && parse_ip(v, &fam, a)) ok = 0; else if (*v) buf_printf(&b, "gateway=%s\n", v); }
+        else if (!strcmp(k, "dns")) { if (parse_ip(v, &fam, a)) ok = 0; else buf_printf(&b, "dns=%s\n", v); }
+        else ok = 0;
+        if (!ok) admin_say("ERR", "valor inválido: %s=%s", k, v);
+    }
+    if (ok && !method[0]) { ok = 0; admin_say("ERR", "falta method (dhcp, static u off)"); }
+    if (ok && !strcmp(method, "static") && !naddr) { ok = 0; admin_say("ERR", "falta address"); }
+    if (ok) {
+        Buf f = {0};
+        buf_printf(&f, "method=%s\n%s", method, b.p ? b.p : "");
+        char path[128];
+        snprintf(path, sizeof path, NET_IF_DIR "/%s.conf", copy);
+        if (f.oom || write_file_atomic(path, f.p, f.len, 0644)) admin_say("ERR", "no se pudo guardar");
+        else if (apply_config(copy, f.p)) admin_say("ERR", "no se pudo aplicar en %s", copy);
+        else admin_say("OK", "%s: %s", copy, method);
+        buf_free(&f);
+    }
+    buf_free(&b);
+    free(copy);
+}
+
+/* systemd-networkd deja de manejarla con un .network que la marca Unmanaged. */
+void net_act_manage(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    if (check_if(arg, 0)) return;
+    if (!managed_by_system(arg)) { admin_say("OK", "%s ya era de LordOS", arg); return; }
+    char path[160];
+    snprintf(path, sizeof path, "/etc/systemd/network/00-lordos-%s.network", arg);
+    char body[200];
+    int n = snprintf(body, sizeof body, "# LordOS maneja esta interfaz (net-manage)\n[Match]\nName=%s\n\n[Link]\nUnmanaged=yes\n", arg);
+    if (write_file_atomic(path, body, (size_t)n, 0644)) { admin_say("ERR", "no se pudo escribir %s", path); return; }
+    char out[256];
+    const char *argv[] = { NETWORKCTL, "reload", NULL };
+    if (access(NETWORKCTL, X_OK) == 0) admin_run_capture(argv, out, sizeof out);
+    for (int i = 0; i < 30 && managed_by_system(arg); i++) usleep(100000);
+    if (managed_by_system(arg)) { unlink(path); admin_run_capture(argv, out, sizeof out); admin_say("ERR", "%s la sigue manejando el sistema (¿ifupdown?)", arg); return; }
+    int fd = nl_open(NETLINK_ROUTE, 0);
+    if (fd >= 0) { rt_addr_flush(fd, rt_ifindex(arg), AF_INET); close(fd); }
+    char *t = load_if_conf(arg);
+    if (!t) {
+        char cp[128];
+        snprintf(cp, sizeof cp, NET_IF_DIR "/%s.conf", arg);
+        write_file_atomic(cp, "method=dhcp\n", 12, 0644);
+    }
+    apply_config(arg, t ? t : "method=dhcp\n");
+    free(t);
+    admin_say("OK", "%s ahora la maneja LordOS", arg);
+}
+
+void net_act_unmanage(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    if (check_if(arg, 0)) return;
+    stop_if_daemons(arg);
+    char path[160];
+    snprintf(path, sizeof path, NET_IF_DIR "/%s.conf", arg);
+    unlink(path);
+    snprintf(path, sizeof path, "/etc/systemd/network/00-lordos-%s.network", arg);
+    if (unlink(path) == 0 && access(NETWORKCTL, X_OK) == 0) {
+        char out[256];
+        const char *argv[] = { NETWORKCTL, "reload", NULL };
+        admin_run_capture(argv, out, sizeof out);
+        const char *rc[] = { NETWORKCTL, "reconfigure", arg, NULL };
+        admin_run_capture(rc, out, sizeof out);
+    }
+    admin_say("OK", "%s vuelve al sistema", arg);
+}
+
+/* ---- Wi-Fi ---- */
+
+static int check_wifi(const char *ifname) {
+    if (check_if(ifname, 1)) return -1;
+    if (!is_wifi(ifname)) { admin_say("ERR", "%s no es Wi-Fi", ifname); return -1; }
+    return 0;
+}
+
+void net_act_wifi_scan(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    if (check_wifi(arg)) return;
+    char d[40];
+    snprintf(d, sizeof d, "wpa:%s", arg);
+    if (!admin_daemon_running(d)) { admin_say("ERR", "la interfaz %s no tiene wpa_supplicant (net-up)", arg); return; }
+    wifi_act_scan(arg);
+}
+
+void net_act_wifi_connect(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    char *copy = strdup(arg), *l[3] = { NULL, NULL, NULL };
+    if (!copy) { admin_say("ERR", "sin memoria"); return; }
+    int k = split_lines(copy, l, 3);
+    if (k < 2) { admin_say("ERR", "formato: interfaz, SSID y contraseña en líneas"); free(copy); return; }
+    if (!check_wifi(l[0])) wifi_act_connect(l[0], l[1], k > 2 ? l[2] : "");
+    memset(copy, 0, len);
+    free(copy);
+}
+
+void net_act_wifi_disconnect(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    if (!check_wifi(arg)) wifi_act_disconnect(arg);
+}
+
+void net_act_wifi_forget(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    wifi_act_forget(arg);
+}
+
+/* ---- VPN ---- */
+
+static int vpn_type(const char *name, char *type, size_t n) {
+    char path[160];
+    snprintf(path, sizeof path, NET_VPN_DIR "/%s.json", name);
+    char *t = read_file(path, 8192, NULL);
+    if (!t) return -1;
+    const char *p = strstr(t, "\"type\":\"");
+    int ok = 0;
+    if (p) {
+        p += 8;
+        char ty[24];
+        size_t k = strcspn(p, "\"");
+        if (k < sizeof ty) { memcpy(ty, p, k); ty[k] = 0; ok = vpn_type_known(ty); if (ok) snprintf(type, n, "%s", ty); }
+    }
+    if (!ok) { free(t); return -1; }
+    free(t);
+    return 0;
+}
+
+static int check_vpn(const char *name, char *type, size_t n) {
+    if (!valid_vpn_name(name) || vpn_type(name, type, n)) { admin_say("ERR", "VPN desconocida: %s", name); return -1; }
+    return 0;
+}
+
+void net_act_vpn_import(const AdminReq *r, const char *arg, size_t len) {
+    (void)r;
+    char *copy = strdup(arg), *l[3] = { NULL, NULL, NULL };
+    if (!copy) { admin_say("ERR", "sin memoria"); return; }
+    int k = split_lines(copy, l, 3);
+    char err[200] = "";
+    if (k < 3) admin_say("ERR", "formato: tipo, nombre y configuración");
+    else if (!valid_vpn_name(l[1])) admin_say("ERR", "nombre inválido (letras, números, - y _; hasta 24)");
+    else if (!strcmp(l[0], "wireguard")) {
+        char pub[64];
+        if (wg_import(l[1], l[2], pub, err, sizeof err)) admin_say("ERR", "%s", err);
+        else admin_say("OK", "%s", pub);                 /* la clave pública, para darla al servidor */
+    } else if (!strcmp(l[0], "openvpn")) {
+        if (access("/usr/sbin/openvpn", X_OK)) admin_say("ERR", "falta openvpn (paquete openvpn)");
+        else if (ovpn_import(l[1], l[2], err, sizeof err)) admin_say("ERR", "%s", err);
+        else admin_say("OK", "importada");
+    } else if (!vpn_type_known(l[0])) admin_say("ERR", "tipo de VPN no soportado: %s", l[0]);
+    else if (!vpn_type_available(l[0])) admin_say("ERR", "falta el programa de %s (net-vpn-enable o los paquetes %s)", l[0], vpn_type_package(l[0]));
+    else {
+        int (*imp)(const char *, const char *, char *, size_t) = !strcmp(l[0], "ipsec") ? ipsec_import : !strcmp(l[0], "pptp") ? pptp_import
+                                                               : !strcmp(l[0], "openconnect") ? oc_import : forti_import;
+        if (imp(l[1], l[2], err, sizeof err)) admin_say("ERR", "%s", err);
+        else admin_say("OK", "importada");
+    }
+    memset(copy, 0, len);
+    free(copy);
+}
+
+void net_act_vpn_credentials(const AdminReq *r, const char *arg, size_t len) {
+    (void)r;
+    char *copy = strdup(arg), *l[3] = { NULL, NULL, NULL }, type[24];
+    if (!copy) { admin_say("ERR", "sin memoria"); return; }
+    int k = split_lines(copy, l, 3);
+    if (k < 3) admin_say("ERR", "formato: nombre, usuario y contraseña");
+    else if (!check_vpn(l[0], type, sizeof type)) {
+        if (strcmp(type, "openvpn")) admin_say("ERR", "solo OpenVPN usa usuario y contraseña");
+        else if (ovpn_set_credentials(l[0], l[1], l[2])) admin_say("ERR", "usuario o contraseña inválidos");
+        else admin_say("OK", "guardado");
+    }
+    memset(copy, 0, len);
+    free(copy);
+}
+
+static void ovpn_entry(void *arg) { ovpn_run((const char *)arg); }
+static void ipsec_entry(void *arg) { ipsec_run((const char *)arg); }
+static void pptp_entry(void *arg) { pptp_run((const char *)arg); }
+static void oc_entry(void *arg) { oc_run((const char *)arg); }
+static void forti_entry(void *arg) { forti_run((const char *)arg); }
+
+void net_act_vpn_up(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    char type[24], err[200] = "";
+    if (check_vpn(arg, type, sizeof type)) return;
+    if (!strcmp(type, "wireguard")) {
+        if (wg_up(arg, err, sizeof err)) { admin_say("ERR", "%s", err); admin_event("net vpn %s error", arg); }
+        else { admin_say("OK", "conectada"); admin_event("net vpn %s connected", arg); }
+        return;
+    }
+    static char name_arg[32];
+    char d[40];
+    snprintf(d, sizeof d, "vpn:%s", arg);
+    snprintf(name_arg, sizeof name_arg, "%s", arg);
+    if (admin_daemon_running(d)) { admin_say("OK", "ya estaba conectándose"); return; }
+    if (!vpn_type_available(type)) { admin_say("ERR", "falta el programa de %s (net-vpn-enable)", type); return; }
+    void (*fn)(void *) = !strcmp(type, "openvpn") ? ovpn_entry : !strcmp(type, "ipsec") ? ipsec_entry : !strcmp(type, "pptp") ? pptp_entry
+                       : !strcmp(type, "openconnect") ? oc_entry : forti_entry;
+    if (!strcmp(type, "ipsec") && access("/run/charon.pid", F_OK) == 0) {
+        /* charon usa un único /run/charon.pid: un IPsec a la vez */
+        char *t = read_file("/run/charon.pid", 32, NULL);
+        int busy = t && atoi(t) > 1 && kill(atoi(t), 0) == 0;
+        free(t);
+        if (busy) { admin_say("ERR", "ya hay otra VPN IPsec conectada (una a la vez)"); return; }
+    }
+    if (admin_daemon_fork(d, fn, name_arg)) admin_say("ERR", "no se pudo iniciar");
+    else admin_say("OK", "conectando");
+}
+
+void net_act_vpn_down(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    char type[24];
+    if (check_vpn(arg, type, sizeof type)) return;
+    if (!strcmp(type, "wireguard")) {
+        if (wg_down(arg)) admin_say("ERR", "no estaba conectada");
+        else { admin_say("OK", "desconectada"); admin_event("net vpn %s disconnected", arg); }
+    } else if (ovpn_down(arg)) admin_say("ERR", "no estaba conectada");      /* "vpn:<nombre>", cualquier tipo */
+    else admin_say("OK", "desconectando");
+}
+
+void net_act_vpn_delete(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    char type[24];
+    if (check_vpn(arg, type, sizeof type)) return;
+    if (!strcmp(type, "wireguard")) wg_down(arg); else ovpn_down(arg);
+    static const char *const ext[] = { "json", "conf", "ovpn", "auth", "ipsec", "pptp", "openconnect", "fortinet", "ca.pem", "cert.pem", "key.pem" };
+    for (size_t i = 0; i < sizeof ext / sizeof ext[0]; i++) {
+        char p[160];
+        snprintf(p, sizeof p, NET_VPN_DIR "/%s.%s", arg, ext[i]);
+        unlink(p);
+    }
+    /* configs generadas */
+    static const char *const gen[] = { NET_DIR "/ppp/%s.options", NET_DIR "/fortinet/%s.conf", "/etc/strongswan.d/lordos/%s.conf" };
+    for (size_t i = 0; i < sizeof gen / sizeof gen[0]; i++) {
+        char p[200];
+        snprintf(p, sizeof p, gen[i], arg);
+        unlink(p);
+    }
+    admin_say("OK", "borrada");
+}
+
+static void status_one(const char *name) {
+    char type[24];
+    if (!valid_vpn_name(name) || vpn_type(name, type, sizeof type)) return;
+    Buf b = {0};
+    if (!strcmp(type, "wireguard")) wg_status_json(name, &b);
+    else if (!strcmp(type, "openvpn")) ovpn_status_json(name, &b);
+    else vpn_status_json(name, type, &b);
+    if (b.p && !b.oom) admin_say("LOG", "%s", b.p);
+    buf_free(&b);
+}
+
+void net_act_vpn_status(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)len;
+    if (*arg) { status_one(arg); admin_say("OK", "1"); return; }
+    DIR *d = opendir(NET_VPN_DIR);
+    struct dirent *e;
+    int n = 0;
+    while (d && (e = readdir(d))) {
+        size_t l = strlen(e->d_name);
+        if (l < 6 || l - 5 > 24 || strcmp(e->d_name + l - 5, ".json")) continue;
+        char name[32];
+        memcpy(name, e->d_name, l - 5);
+        name[l - 5] = 0;
+        status_one(name);
+        n++;
+    }
+    if (d) closedir(d);
+    admin_say("OK", "%d", n);
+}
+
+/* net-vpn-enable openconnect|fortinet: instala el programa (opcional) con el motor de paquetes
+ * de LordOS (pkg-install, ver pkg/pkg.c). Corre en un proceso aparte (A_FORK). */
+void net_act_vpn_enable(const AdminReq *r, const char *arg, size_t len) {
+    (void)len;
+    const char *pkgs = !strcmp(arg, "openconnect") ? "openconnect" : !strcmp(arg, "fortinet") ? "openfortivpn" : NULL;
+    if (!pkgs) { admin_say("ERR", "net-vpn-enable: openconnect o fortinet"); return; }
+    if (vpn_type_available(arg)) { admin_say("OK", "ya estaba instalado"); return; }
+    pkg_act_install(r, pkgs, strlen(pkgs));
+}

@@ -1,0 +1,10 @@
+{
+  "id": "disks",
+  "name": "Discos",
+  "description": "Discos y pendrives: uso, salud (SMART), montar, formatear, borrar y crear un USB de arranque",
+  "size": [960, 620],
+  "minSize": [760, 480],
+  "dock": false,
+  "permissions": ["disks:manage"],
+  "category": "System"
+}

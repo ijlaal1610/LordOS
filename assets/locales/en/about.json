@@ -1,0 +1,24 @@
+{
+  "cpu": "Processor",
+  "cpuValue": {
+    "one": "{cpu} · {count} core",
+    "other": "{cpu} · {count} cores"
+  },
+  "credits": "IP-to-country in Monitor: DB-IP Lite Country, © db-ip.com, CC BY 4.0. Map: Natural Earth (public domain).",
+  "display": "Display",
+  "engine": "UI engine",
+  "host": "Computer",
+  "hostValue": "{host} · user {user}",
+  "kernel": "Kernel",
+  "memory": "Memory",
+  "os": "System",
+  "ram": "Server RAM",
+  "render": "Last render",
+  "renderValue": {
+    "one": "{ms} ms · {count} node",
+    "other": "{ms} ms · {count} nodes"
+  },
+  "server": "Display server",
+  "uptime": "Uptime",
+  "version": "Version {v} · milestone {m}"
+}

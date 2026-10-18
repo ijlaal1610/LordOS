@@ -1,0 +1,10 @@
+{
+  "id": "fonts",
+  "name": "Tipografías",
+  "description": "Visor y administrador de fuentes: muestras, tabla de caracteres, instalar y quitar fuentes del usuario",
+  "size": [960, 620],
+  "minSize": [640, 420],
+  "dock": false,
+  "category": "Utility",
+  "permissions": ["fs:home:read", "fs:home:write"]
+}

@@ -1,0 +1,143 @@
+// vault.js — Contraseñas y el llavero del sistema: habla con lord.vault (el ayudante encerrado
+// lord-vault, ver docs/CONTRASENAS.md). Todo es asincrónico: los pedidos devuelven promesas y un
+// temporizador lee las respuestas (lord.vault.poll); el escritorio nunca espera.
+//
+//   vaultAvailable()                                ¿está lord-vault?
+//   vaultRequest(op, args, { files })               → promesa con la respuesta ({ ok, … }) o error con .code
+//   onVaultEvent(fn)                                eventos: locked, unlocked, changed, touch, ss-prompt, keyring-mismatch, crash
+//   keyring.set(app, { service, account, secret, label }) / get(app, { service, account }) / remove / list
+//       el llavero de la sesión, por app: una app ve solo lo suyo (salvo que el usuario lo comparta)
+//   autofill(app, { url | service })                → [{ id, title, username }] de Contraseñas (si está abierta)
+//   <KeyringPrompt />                               aviso del sistema para abrir el llavero (lo monta startShell)
+import { createElement as h, useEffect, useState } from 'react';
+import { View, Text } from '@lordos/runtime';
+import { createStore, useStore } from './store.js';
+import { useTheme } from './theme.js';
+import { t } from './i18n.js';
+import { TextInput, Button } from './components.jsx';
+
+const has = () => typeof lord !== 'undefined' && typeof lord.vault !== 'undefined';
+export const vaultAvailable = () => has() && lord.vault.available();
+
+const waiting = new Map();          // id → { resolve, reject }
+const listeners = new Set();
+let fast = null, slow = null;
+
+function dispatch(m) {
+  if (m.kind === 'evt') {
+    for (const fn of listeners) { try { fn(m.data || {}); } catch (e) { console.log(`vault: ${e.message}`); } }
+    if (m.data?.ev === 'crash') for (const [id, w] of waiting) { waiting.delete(id); w.reject(Object.assign(new Error('crash'), { code: 'crash' })); }
+    return;
+  }
+  const w = waiting.get(m.id);
+  if (!w) return;
+  waiting.delete(m.id);
+  const d = m.data || {};
+  if (d.error) w.reject(Object.assign(new Error(d.error), { code: d.error, data: d }));
+  else w.resolve(d);
+}
+
+function pump() {
+  let s = null;
+  try { s = lord.vault.poll(); } catch (e) { s = null; }
+  if (s) {
+    let list = [];
+    try { list = JSON.parse(s); } catch (e) { list = []; }
+    for (const m of list) dispatch(m);
+  }
+  if (!waiting.size && fast) { clearInterval(fast); fast = null; }
+}
+
+// Los eventos (bloqueo automático, avisos de Secret Service) llegan aunque nadie espere nada.
+function startSlow() { if (!slow && has()) slow = setInterval(pump, 600); }
+
+export function vaultRequest(op, args = {}, { files } = {}) {
+  if (!has()) return Promise.reject(Object.assign(new Error('unavailable'), { code: 'unavailable' }));
+  let id;
+  try { id = lord.vault.request(JSON.stringify({ op, ...args }), files ? { files } : undefined); }
+  catch (e) { return Promise.reject(Object.assign(new Error(e.message), { code: 'file' })); }
+  startSlow();
+  return new Promise((resolve, reject) => {
+    waiting.set(id, { resolve, reject });
+    if (!fast) fast = setInterval(pump, 8);
+  });
+}
+
+export function onVaultEvent(fn) {
+  startSlow();
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+// ---- llavero de la sesión, por app ----
+
+export const keyring = {
+  set: (app, { service, account = '', secret, label = '' }) => vaultRequest('kr-set', { owner: app, service, account, secret: String(secret ?? ''), label }),
+  get: async (app, { service, account = '' }) => {
+    try { const r = await vaultRequest('kr-get', { owner: app, service, account }); return r.item; }
+    catch (e) { if (e.code === 'not-found') return null; throw e; }
+  },
+  remove: (app, { service, account = '' }) => vaultRequest('kr-del', { owner: app, service, account }),
+  list: async (app) => (await vaultRequest('kr-list', { owner: app })).items || [],
+  // el usuario aceptó que `app` use un ítem de otra app (lo pregunta el sistema, no la app)
+  share: (id, app, allow = true) => vaultRequest('kr-share', { admin: true, id, app, allow }),
+};
+
+// ---- autocompletar en los campos de inicio de sesión de las apps nativas ----
+
+const hostOf = (u) => String(u || '').replace(/^[a-z]+:\/\//i, '').split(/[/:?#]/)[0].toLowerCase().replace(/^www\./, '');
+
+// Entradas de Contraseñas que sirven para ese sitio o servicio (solo si la bóveda está abierta).
+export async function autofill(app, { url, service } = {}) {
+  const host = hostOf(url || service);
+  if (!host) return [];
+  let list;
+  try { list = (await vaultRequest('list')).entries || []; } catch (e) { return []; }
+  return list.filter((e) => !e.trash && (hostOf(e.url) === host || hostOf(e.url).endsWith(`.${host}`) || host.endsWith(`.${hostOf(e.url)}`) ||
+    String(e.title).toLowerCase().includes(host.split('.')[0])))
+    .map((e) => ({ id: e.id, title: e.title, username: e.sub || '' }));
+}
+
+// El usuario eligió una: usuario y contraseña (la contraseña sale de lord-vault solo ahora).
+export async function autofillReveal(id) {
+  const e = (await vaultRequest('get', { id, reveal: true })).entry;
+  const f = (k) => e.f.find((x) => x.k === k)?.v || '';
+  return { username: f('username') || f('email'), password: f('password') };
+}
+
+// ---- aviso del sistema: abrir el llavero (Secret Service lo pidió) ----
+
+const prompts = createStore([]);          // [{ prompt }]
+if (has()) {
+  onVaultEvent((ev) => {
+    if (ev.ev === 'ss-prompt') prompts.set((q) => [...q, { prompt: ev.prompt }]);
+  });
+}
+
+export function KeyringPrompt() {
+  const th = useTheme();
+  const q = useStore(prompts);
+  const [pw, setPw] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setPw(''); setErr(''); }, [q.length]);
+  if (!q.length) return null;
+  const cur = q[0];
+  const done = (ok) => { try { lord.vault.promptDone(cur.prompt, ok); } catch (e) { /* */ } prompts.set((l) => l.slice(1)); };
+  const submit = async () => {
+    setBusy(true);
+    try { await vaultRequest('unlock', { v: 'login', method: 'session', password: pw }); setBusy(false); done(true); }
+    catch (e) { setBusy(false); setErr(t('passwords.keyring.wrong')); }
+  };
+  return h(View, { style: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)', zIndex: 100001 } },
+  h(View, { style: { width: 380, padding: 18, gap: 10, borderRadius: 14, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`,
+    boxShadow: '0 20px 60px rgba(0,0,0,0.5)' } },
+  h(Text, { style: { fontSize: 15, fontWeight: 700, color: th.text } }, t('passwords.keyring.title')),
+  h(Text, { style: { fontSize: 12, color: th.textDim } }, t('passwords.keyring.body')),
+  h(TextInput, { value: pw, onChange: setPw, secure: true, autoFocus: true, placeholder: t('passwords.keyring.placeholder'), onSubmit: submit, onCancel: () => done(false) }),
+  err ? h(Text, { style: { fontSize: 12, color: '#ff453a' } }, err) : null,
+  h(View, { style: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 } },
+    h(Button, { label: t('passwords.cancel'), onClick: () => done(false) }),
+    h(Button, { label: busy ? t('passwords.unlock.working') : t('passwords.keyring.unlock'), primary: true, onClick: submit }))));
+}

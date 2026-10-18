@@ -1,0 +1,405 @@
+// Notas — post-its avanzados: markdown con lectura e índice, imágenes, adjuntos, emojis y
+// notas que viven en el escritorio como widgets (se mueven, cambian de tamaño y vuelven al
+// iniciar sesión). Todo se guarda solo en ~/Notas/<nota>/nota.md (ver store.js y docs/NOTAS.md).
+import {
+  View, Text, useTheme, useLocale, useAppWindow, useStore, useKeyboard, Button, TextInput, ScrollView, ThemeProvider,
+  Markdown, markdownHeadings, toggleTask, wm, fs, formatBytes, addListener, screen, t, print,
+} from '@lordos/sdk';
+import { useEffect, useRef, useState } from 'react';
+import { NoteEditor } from './NoteEditor.jsx';
+import { CATEGORIES, EMOJIS, emojiFor, searchEmoji } from './emoji.js';
+import {
+  notesStore, loadNotes, updateNote, createNote, duplicateNote, deleteNote, flushAll, attachFile, pasteClipboardImage,
+  absFolder, folder, COLORS, setupWidgets, isImage,
+} from './store.js';
+
+// ---- colores de los post-its (claros en los dos modos, con texto oscuro) ----
+
+const PAPER = {
+  yellow: ['#fff6a8', '#fde68a'], pink: ['#ffd9e8', '#ffc2db'], green: ['#d9f6cc', '#c1edab'],
+  blue: ['#d6ecff', '#bcdfff'], purple: ['#e9ddff', '#d9c6ff'], gray: ['#eeeeee', '#dedede'],
+};
+const ink = {
+  text: '#2a2a2a', dim: '#6b6b6b', heading: '#151515', code: '#5b3fa0', accent: '#0a5fd0',
+  selection: 'rgba(10,95,208,0.22)', caret: '#0a5fd0', popupBg: '#ffffff', popupText: '#222', border: 'rgba(0,0,0,0.15)',
+};
+// tokens del SDK para dibujar markdown sobre papel claro
+const paperTokens = (th) => ({ ...th, mode: 'light', text: ink.text, textDim: ink.dim, accent: ink.accent, separator: 'rgba(0,0,0,0.14)',
+  hover: 'rgba(0,0,0,0.06)', control: 'rgba(0,0,0,0.08)', inputBg: 'rgba(255,255,255,0.7)' });
+
+const noteBy = (slug) => notesStore.get().list.find((n) => n.slug === slug);
+
+// ---- ícono ----
+
+export function Icon({ size: s }) {
+  return (
+    <View style={{ width: s, height: s, borderRadius: s * 0.225, background: 'linear-gradient(160deg, #ffe066, #f7b733)',
+      boxShadow: `0 ${s * 0.04}px ${s * 0.12}px rgba(0,0,0,0.35)`, overflow: 'hidden' }}>
+      {/* hoja con la esquina doblada y renglones */}
+      <View style={{ position: 'absolute', left: s * 0.2, top: s * 0.18, width: s * 0.6, height: s * 0.64, borderRadius: s * 0.05,
+        backgroundColor: '#fffbe0', boxShadow: `0 ${s * 0.02}px ${s * 0.05}px rgba(0,0,0,0.25)` }} />
+      {[0, 1, 2, 3].map((i) => (
+        <View key={i} style={{ position: 'absolute', left: s * 0.28, top: s * (0.32 + i * 0.11), width: s * (i === 3 ? 0.26 : 0.44), height: Math.max(1, s * 0.035),
+          borderRadius: s * 0.02, backgroundColor: i === 0 ? '#e0a800' : '#c9b98a' }} />
+      ))}
+      <View style={{ position: 'absolute', left: s * 0.66, top: s * 0.68, width: s * 0.14, height: s * 0.14, backgroundColor: '#f3d77a',
+        borderRadius: s * 0.03 }} />
+    </View>
+  );
+}
+
+// ---- selector de emojis ----
+
+function EmojiPicker({ onPick, onClose, x = 0, y = 0 }) {
+  const th = useTheme();
+  const { t: tr } = useLocale();
+  const [q, setQ] = useState('');
+  const [cat, setCat] = useState('caras');
+  const list = (q ? searchEmoji(q) : EMOJIS.filter((e) => e.cat === cat)).slice(0, 96);
+  return (
+    <View onMouseDown={(e) => e.stopPropagation?.()} style={{ position: 'absolute', left: x, top: y, width: 300, padding: 8, gap: 6, borderRadius: 10,
+      backgroundColor: th.windowBg, border: `1px solid ${th.separator}`, boxShadow: '0 12px 30px rgba(0,0,0,0.35)' }}>
+      <TextInput value={q} onChange={setQ} placeholder={tr('notes.emoji.search')} autoFocus onCancel={onClose}
+        onSubmit={() => list[0] && onPick(list[0].ch)} />
+      {!q && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3 }}>
+          {CATEGORIES.map((c) => (
+            <View key={c} onClick={() => setCat(c)} style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, backgroundColor: c === cat ? th.accent : th.control }}>
+              <Text style={{ fontSize: 10, color: c === cat ? '#fff' : th.text }}>{tr(`notes.emoji.cat.${c}`)}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 2 }}>
+        {list.map((e) => (
+          <View key={e.ch + e.name} onClick={() => onPick(e.ch)} style={{ width: 32, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 6 }}>
+            <Text style={{ fontSize: 18 }}>{e.ch}</Text>
+          </View>
+        ))}
+      </View>
+      <Button label={tr('notes.close')} onClick={onClose} style={{ alignSelf: 'flex-end' }} />
+    </View>
+  );
+}
+
+// ---- elegir un archivo de la carpeta personal (adjuntar, insertar imagen) ----
+
+function FilePicker({ onPick, onClose, images }) {
+  const th = useTheme();
+  const { t: tr } = useLocale();
+  const [dir, setDir] = useState('');
+  let entries = [];
+  try { entries = fs.list(dir || '.').filter((e) => !e.name.startsWith('.') && (e.dir || !images || isImage(e.name))); } catch (e) { entries = []; }
+  entries.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name));
+  return (
+    <View onMouseDown={(e) => e.stopPropagation?.()} style={{ position: 'absolute', left: 40, top: 50, right: 40, bottom: 40, padding: 10, gap: 6, borderRadius: 10,
+      backgroundColor: th.windowBg, border: `1px solid ${th.separator}`, boxShadow: '0 14px 36px rgba(0,0,0,0.4)' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Button label="‹" onClick={() => setDir(dir.split('/').slice(0, -1).join('/'))} />
+        <Text style={{ flex: 1, fontSize: 13, fontWeight: 600, color: th.text }}>{`~/${dir}`}</Text>
+        <Button label={tr('notes.close')} onClick={onClose} />
+      </View>
+      <ScrollView style={{ flex: 1 }}>
+        {entries.map((e) => (
+          <View key={e.name} onClick={() => (e.dir ? setDir(dir ? `${dir}/${e.name}` : e.name) : onPick(`${fs.home()}/${dir ? `${dir}/` : ''}${e.name}`))}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5, paddingHorizontal: 6, borderRadius: 5 }}>
+            <Text style={{ fontSize: 15 }}>{e.dir ? '📁' : isImage(e.name) ? '🖼️' : '📄'}</Text>
+            <Text style={{ flex: 1, fontSize: 13, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{e.name}</Text>
+            {!e.dir && <Text style={{ fontSize: 11, color: th.textDim }}>{formatBytes(e.size)}</Text>}
+          </View>
+        ))}
+        {!entries.length && <Text style={{ fontSize: 12, color: th.textDim, margin: 8 }}>{tr('notes.picker.empty')}</Text>}
+      </ScrollView>
+    </View>
+  );
+}
+
+// ---- abrir enlaces y adjuntos de una nota ----
+
+function openLink(slug, url) {
+  if (/^https?:/i.test(url)) return;                     // todavía no hay navegador: se ve el enlace
+  const rel = url.startsWith('/') ? url.replace(`${fs.home()}/`, '') : `${folder(slug)}/${url}`;
+  if (/\.(txt|md|js|jsx|ts|json|c|h|py|sh|css|html|ya?ml|toml|ini|csv|log)$/i.test(rel)) wm.open('editor', { args: { path: `${fs.home()}/${rel}` } });
+  else wm.open('files', { new: true, args: { path: `${fs.home()}/${rel.split('/').slice(0, -1).join('/')}` } });
+}
+
+// ---- cuerpo de una nota: lectura (con índice) o edición ----
+
+function NoteBody({ note, mode, onMode, editorApi, compact, showToc, size = 14, onCommand }) {
+  const th = useTheme();
+  const scroll = useRef(null);
+  const heads = useRef(new Map());
+  const [w, setW] = useState(300);
+  const box = useRef(null);
+  useEffect(() => {
+    const id = setInterval(() => { if (box.current) { const nw = lord.getLayout(box.current.id)[2]; if (Math.abs(nw - w) > 1) setW(nw); } }, 400);
+    return () => clearInterval(id);
+  });
+  if (mode === 'edit') {
+    return (
+      <View ref={box} style={{ flex: 1 }}>
+        <NoteEditor value={note.body} onChange={(body) => updateNote(note.slug, { body })} size={size} colors={ink} autoFocus
+          apiRef={editorApi} emojiSearch={searchEmoji} padding={compact ? 8 : 14}
+          onPasteImage={() => pasteClipboardImage(note.slug)} onEscape={() => onMode('read')} onBlur={compact ? () => onMode('read') : undefined}
+          onCommand={(b) => { if (b === 'e') onMode('read'); else onCommand?.(b); }} />
+      </View>
+    );
+  }
+  const toc = markdownHeadings(note.body);
+  const jump = (id) => {
+    const n = heads.current.get(id), sc = scroll.current;
+    if (!n || !sc?.inner?.current) return;
+    sc.scrollTo(lord.getLayout(n.id)[1] - lord.getLayout(sc.inner.current.id)[1] - 4);
+  };
+  return (
+    <View ref={box} style={{ flex: 1, flexDirection: 'row' }}>
+      {showToc && toc.length > 1 && (
+        <View style={{ width: 170, paddingVertical: 12, paddingHorizontal: 10, gap: 2, borderRight: `1px solid ${th.separator}` }}>
+          <Text style={{ fontSize: 10, fontWeight: 700, color: th.textDim, marginBottom: 4 }}>{t('notes.toc')}</Text>
+          {toc.map((h) => (
+            <View key={h.id} onClick={() => jump(h.id)} style={{ paddingVertical: 3, paddingLeft: (h.level - 1) * 10 }}>
+              <Text style={{ fontSize: 12, color: h.level === 1 ? th.text : th.textDim, fontWeight: h.level === 1 ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden' }}>{h.text}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+      <ScrollView scrollRef={scroll} style={{ flex: 1 }}>
+        <View onDoubleClick={() => onMode('edit')} style={{ padding: compact ? 10 : 18, minHeight: 60 }}>
+          {note.body.trim() ? (
+            <Markdown source={note.body} base={absFolder(note.slug)} width={Math.max(80, w - (showToc && toc.length > 1 ? 170 : 0) - (compact ? 20 : 36))} size={size}
+              emoji={emojiFor} onLink={(u) => openLink(note.slug, u)} onHeadingRef={(id, n) => { if (n) heads.current.set(id, n); }}
+              onToggleTask={(line) => updateNote(note.slug, { body: toggleTask(note.body, line) })} />
+          ) : <Text style={{ fontSize: 13, color: th.textDim }}>{t('notes.empty')}</Text>}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+// ---- nota en el escritorio ----
+
+function Dot({ color, selected, onClick, size = 12 }) {
+  return <View onClick={onClick} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: PAPER[color][0], border: `1.5px solid ${selected ? '#333' : 'rgba(0,0,0,0.25)'}` }} />;
+}
+
+function HeadBtn({ label, onClick, title }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <View onClick={(e) => { e.stopPropagation?.(); onClick(); }} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ minWidth: 20, height: 20, paddingHorizontal: 3, borderRadius: 5, alignItems: 'center', justifyContent: 'center', backgroundColor: hov ? 'rgba(0,0,0,0.1)' : 'transparent' }}>
+      <Text style={{ fontSize: 12, color: '#3a3a3a' }}>{label || title}</Text>
+    </View>
+  );
+}
+
+function NoteCard({ widget }) {
+  const th = useTheme();
+  const note = useStore(notesStore, (s) => s.list.find((n) => n.slug === widget.id));
+  const [hover, setHover] = useState(false);
+  const [mode, setMode] = useState('read');
+  const [live, setLive] = useState(null);           // { x, y, w, h } mientras se arrastra
+  const [emoji, setEmoji] = useState(false);
+  const drag = useRef(null);
+  const api = useRef(null);
+  useEffect(() => {
+    const offMove = addListener('pointermove', (e) => {
+      const d = drag.current;
+      if (!d) return;
+      const dx = e.x - d.mx, dy = e.y - d.my;
+      if (d.kind === 'move') setLive({ x: Math.max(0, Math.min(screen.width - 60, d.x + dx)), y: Math.max(24, Math.min(screen.height - 40, d.y + dy)), w: d.w, h: d.h });
+      else setLive({ x: d.x, y: d.y, w: Math.max(160, d.w + dx), h: Math.max(110, d.h + dy) });
+    });
+    const offUp = addListener('pointerup', () => {
+      const d = drag.current;
+      drag.current = null;
+      setLive((l) => { if (d && l) updateNote(widget.id, { x: Math.round(l.x), y: Math.round(l.y), w: Math.round(l.w), h: Math.round(l.h) }, { touch: false }); return null; });
+    });
+    return () => { offMove(); offUp(); };
+  }, [widget.id]);
+  if (!note) return null;
+  const g = live || widget;
+  const [bg, head] = PAPER[note.color] || PAPER.yellow;
+  const start = (kind) => (e) => { drag.current = { kind, mx: e.x, my: e.y, x: g.x, y: g.y, w: g.w, h: g.h }; };
+  const showHead = hover || mode === 'edit' || emoji;
+  return (
+    <ThemeProvider tokens={paperTokens(th)}>
+      <View onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+        style={{ position: 'absolute', left: g.x, top: g.y, width: g.w, height: g.h, borderRadius: 4, backgroundColor: bg,
+          boxShadow: '0 6px 18px rgba(0,0,0,0.28)', overflow: 'hidden' }}>
+        <View onMouseDown={start('move')} style={{ height: 26, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6,
+          backgroundColor: showHead ? head : bg }}>
+          {showHead ? (
+            <>
+              {COLORS.map((c) => <Dot key={c} color={c} size={11} selected={c === note.color} onClick={() => updateNote(note.slug, { color: c }, { touch: false })} />)}
+              <View style={{ flex: 1 }} />
+              <HeadBtn label={mode === 'edit' ? '👁' : '✎'} onClick={() => setMode(mode === 'edit' ? 'read' : 'edit')} />
+              <HeadBtn label="😀" onClick={() => { setMode('edit'); setEmoji(!emoji); }} />
+              <HeadBtn label={note.pinned ? '📌' : '📍'} onClick={() => updateNote(note.slug, { pinned: !note.pinned }, { touch: false })} />
+              <HeadBtn label="⤢" onClick={() => wm.open('notes', { args: { slug: note.slug } })} />
+              <HeadBtn label="✕" onClick={() => { flushAll(); updateNote(note.slug, { desktop: false }, { touch: false }); }} />
+            </>
+          ) : <Text style={{ flex: 1, fontSize: 11, fontWeight: 600, color: '#5a5a5a', whiteSpace: 'nowrap', overflow: 'hidden' }}>{note.title || ' '}</Text>}
+        </View>
+        <NoteBody note={note} mode={mode} onMode={setMode} editorApi={api} compact size={13} />
+        <View onMouseDown={start('size')} style={{ position: 'absolute', right: 0, bottom: 0, width: 16, height: 16 }}>
+          <Text style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)', marginLeft: 4 }}>◢</Text>
+        </View>
+        {emoji && <EmojiPicker x={Math.max(0, g.w - 304)} y={28} onClose={() => setEmoji(false)} onPick={(ch) => { api.current?.insert(ch); setEmoji(false); }} />}
+      </View>
+    </ThemeProvider>
+  );
+}
+setupWidgets(NoteCard);
+
+// las notas se leen al arrancar la sesión (y las del escritorio aparecen solas)
+queueMicrotask(() => { try { loadNotes(); } catch (e) { console.log(`notas: ${e.message}`); } });
+
+// ---- ventana ----
+
+const fmtDate = (iso, formatDate) => { try { return formatDate(new Date(iso), 'short'); } catch (e) { return ''; } };
+
+export default function Notes() {
+  const th = useTheme();
+  const { t: tr, formatDate } = useLocale();
+  const { id: wid, args } = useAppWindow();
+  const { list, loaded } = useStore(notesStore);
+  const [sel, setSel] = useState(null);
+  const [q, setQ] = useState('');
+  const [mode, setMode] = useState('read');
+  const [panel, setPanel] = useState(null);             // 'emoji' | 'attach' | 'image' | 'delete'
+  const [toc, setToc] = useState(true);
+  const api = useRef(null);
+  useEffect(() => { if (!loaded) loadNotes(); }, []);
+  useEffect(() => { if (args?.slug) { setSel(args.slug); setMode('read'); } }, [args?.nonce]);
+  useEffect(() => () => flushAll(), []);
+  const needle = q.trim().toLowerCase();
+  const shown = list.filter((n) => !needle || `${n.title}\n${n.body}`.toLowerCase().includes(needle));
+  const note = list.find((n) => n.slug === sel) || shown[0] || null;
+  // block: imágenes y adjuntos van en su propio renglón
+  const insert = (md, block = false) => {
+    if (!md || !note) return;
+    if (mode === 'edit' && api.current) api.current.insert(block ? `\n${md}\n` : md);
+    else updateNote(note.slug, { body: `${note.body.replace(/\s*$/, '')}\n\n${md}\n` });
+  };
+  const newNote = () => { const s = createNote({ body: `# ${tr('notes.newTitle')}\n\n` }); setSel(s); setMode('edit'); };
+  const cmd = {
+    new: newNote,
+    duplicate: () => note && setSel(duplicateNote(note.slug)),
+    desktop: () => note && updateNote(note.slug, { desktop: !note.desktop }, { touch: false }),
+    folder: () => note && wm.open('files', { new: true, args: { path: absFolder(note.slug) } }),
+    del: () => note && setPanel('delete'),
+    toggle: () => setMode((m) => (m === 'edit' ? 'read' : 'edit')),
+    toc: () => setToc((v) => !v),
+  };
+  useKeyboard((e) => {
+    if (!(e.meta || e.ctrl)) return;
+    const b = (e.base || '').toLowerCase();
+    if (b === 'n') cmd.new();
+    else if (b === 'e') cmd.toggle();
+  });
+  useEffect(() => {
+    wm.setMenus(wid, [
+      { label: tr('notes.menu.file'), items: [
+        { label: tr('notes.new'), hint: '❖N', onClick: cmd.new },
+        { label: tr('notes.duplicate'), onClick: cmd.duplicate, disabled: !note },
+        { label: tr('notes.showDesktop'), checked: !!note?.desktop, onClick: cmd.desktop, disabled: !note },
+        { label: tr('notes.openFolder'), onClick: cmd.folder, disabled: !note }, '-',
+        { label: tr('notes.print'), onClick: () => note && print.open({ title: note.title || tr('notes.untitled'), text: note.body }), disabled: !note }, '-',
+        { label: tr('notes.delete'), onClick: cmd.del, disabled: !note },
+      ] },
+      { label: tr('notes.menu.format'), items: [
+        { label: tr('notes.fmt.bold'), hint: '❖B', disabled: true }, { label: tr('notes.fmt.italic'), hint: '❖I', disabled: true },
+        { label: tr('notes.fmt.link'), hint: '❖K', disabled: true }, '-',
+        { label: tr('notes.fmt.h1'), hint: '❖1', disabled: true }, { label: tr('notes.fmt.h2'), hint: '❖2', disabled: true },
+        { label: tr('notes.fmt.bullets'), hint: '❖⇧8', disabled: true }, { label: tr('notes.fmt.numbers'), hint: '❖⇧7', disabled: true },
+        { label: tr('notes.fmt.task'), hint: '❖⇧9', disabled: true }, { label: tr('notes.fmt.code'), hint: '❖⇧C', disabled: true },
+      ] },
+      { label: tr('notes.menu.view'), items: [
+        { label: mode === 'edit' ? tr('notes.read') : tr('notes.edit'), hint: '❖E', onClick: cmd.toggle },
+        { label: tr('notes.toc'), checked: toc, onClick: cmd.toc },
+      ] },
+    ]);
+  });
+  const colorBar = note && (
+    <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}>
+      {COLORS.map((c) => <Dot key={c} color={c} size={14} selected={c === note.color} onClick={() => updateNote(note.slug, { color: c }, { touch: false })} />)}
+    </View>
+  );
+  const ToolBtn = ({ label, onClick, active }) => (
+    <View onClick={onClick} style={{ height: 26, paddingHorizontal: 9, borderRadius: 6, justifyContent: 'center', backgroundColor: active ? th.accent : th.control }}>
+      <Text style={{ fontSize: 12, color: active ? '#fff' : th.text, whiteSpace: 'nowrap' }}>{label}</Text>
+    </View>
+  );
+  return (
+    <View style={{ flex: 1, flexDirection: 'row' }}>
+      <View style={{ width: 230, backgroundColor: th.sidebarBg, padding: 8, gap: 6 }}>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          <TextInput value={q} onChange={setQ} placeholder={tr('notes.search')} onCancel={() => setQ('')} style={{ flex: 1 }} />
+          <Button label="＋" onClick={newNote} />
+        </View>
+        <ScrollView style={{ flex: 1 }}>
+          {shown.map((n) => {
+            const on = note && n.slug === note.slug;
+            return (
+              <View key={n.slug} onClick={() => { setSel(n.slug); setMode('read'); }} style={{ flexDirection: 'row', gap: 8, padding: 8, borderRadius: 8, marginBottom: 2,
+                backgroundColor: on ? th.accent : 'transparent' }}>
+                <View style={{ width: 10, height: 34, borderRadius: 3, backgroundColor: PAPER[n.color][1] }} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ fontSize: 13, fontWeight: 600, color: on ? '#fff' : th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{n.title || tr('notes.untitled')}</Text>
+                  <Text style={{ fontSize: 11, color: on ? 'rgba(255,255,255,0.8)' : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                    {`${fmtDate(n.updated, formatDate)}${n.desktop ? ` · ${tr('notes.onDesktop')}` : ''}`}</Text>
+                </View>
+              </View>
+            );
+          })}
+          {!shown.length && <Text style={{ fontSize: 12, color: th.textDim, margin: 8 }}>{loaded ? tr('notes.none') : '…'}</Text>}
+        </ScrollView>
+      </View>
+      {note ? (
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderBottom: `1px solid ${th.separator}` }}>
+            <ToolBtn label={tr('notes.read')} active={mode === 'read'} onClick={() => setMode('read')} />
+            <ToolBtn label={tr('notes.edit')} active={mode === 'edit'} onClick={() => setMode('edit')} />
+            <View style={{ width: 6 }} />
+            {colorBar}
+            <View style={{ width: 6 }} />
+            <ToolBtn label="😀" onClick={() => setPanel(panel === 'emoji' ? null : 'emoji')} active={panel === 'emoji'} />
+            <ToolBtn label={tr('notes.image')} onClick={() => setPanel('image')} />
+            <ToolBtn label={tr('notes.attach')} onClick={() => setPanel('attach')} />
+            <ToolBtn label={tr('notes.showDesktop')} active={note.desktop} onClick={cmd.desktop} />
+            <View style={{ flex: 1 }} />
+            <ToolBtn label={tr('notes.duplicate')} onClick={cmd.duplicate} />
+            <ToolBtn label={tr('notes.delete')} onClick={cmd.del} />
+          </View>
+          <View style={{ flex: 1, backgroundColor: PAPER[note.color][0] }}>
+            <ThemeProvider tokens={paperTokens(th)}>
+              <NoteBody key={note.slug} note={note} mode={mode} onMode={setMode} editorApi={api} showToc={toc} onCommand={(b) => (b === 'n' ? cmd.new() : b === 'e' ? cmd.toggle() : null)} />
+            </ThemeProvider>
+          </View>
+          {panel === 'emoji' && <EmojiPicker x={180} y={40} onClose={() => setPanel(null)} onPick={(ch) => { insert(ch); setPanel(null); }} />}
+          {(panel === 'attach' || panel === 'image') && (
+            <FilePicker images={panel === 'image'} onClose={() => setPanel(null)} onPick={(p) => { insert(attachFile(note.slug, p), true); setPanel(null); }} />
+          )}
+          {panel === 'delete' && (
+            <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.25)' }}>
+              <View style={{ width: 320, padding: 16, gap: 10, borderRadius: 12, backgroundColor: th.windowBg, border: `1px solid ${th.separator}` }}>
+                <Text style={{ fontSize: 14, fontWeight: 700, color: th.text }}>{tr('notes.deleteTitle', { title: note.title || tr('notes.untitled') })}</Text>
+                <Text style={{ fontSize: 12, color: th.textDim, lineHeight: 1.4 }}>{tr('notes.deleteHint')}</Text>
+                <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+                  <Button label={tr('notes.cancel')} onClick={() => setPanel(null)} />
+                  <Button primary label={tr('notes.delete')} onClick={() => { deleteNote(note.slug); setSel(null); setPanel(null); }} />
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+      ) : (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+          <Icon size={64} />
+          <Text style={{ fontSize: 13, color: th.textDim }}>{tr('notes.none')}</Text>
+          <Button primary label={tr('notes.new')} onClick={newNote} />
+        </View>
+      )}
+    </View>
+  );
+}

@@ -1,0 +1,19 @@
+{
+  "id": "backup",
+  "name": "Copias de seguridad",
+  "description": "Copias programadas de la carpeta personal en un disco externo o una carpeta, con restauración por fecha",
+  "size": [
+    980,
+    640
+  ],
+  "minSize": [
+    760,
+    480
+  ],
+  "dock": false,
+  "permissions": [
+    "files:read",
+    "backup:configure"
+  ],
+  "category": "System"
+}

@@ -1,0 +1,19 @@
+{
+  "id": "store",
+  "name": "Tienda",
+  "description": "Apps de LordOS y de Debian: buscar, instalar, actualizar y quitar",
+  "size": [
+    880,
+    580
+  ],
+  "minSize": [
+    640,
+    420
+  ],
+  "dock": true,
+  "permissions": [
+    "packages:install",
+    "apps:launch"
+  ],
+  "category": "System"
+}

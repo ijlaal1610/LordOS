@@ -1,0 +1,10 @@
+{
+  "id": "scanner",
+  "name": "Escáner",
+  "description": "Escáneres de la red sin controlador (eSCL): vista previa, área, resolución y guardar como PDF, PNG o JPEG",
+  "size": [860, 620],
+  "minSize": [640, 460],
+  "dock": false,
+  "category": "Graphics",
+  "permissions": ["network:lan", "fs:home:write"]
+}

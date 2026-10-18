@@ -1,0 +1,47 @@
+// Tokens del tema "Lord Default". Las claves base (text, accent, windowBg…) son el contrato
+// con las apps (ver sdk/theme.js); el resto es propio de este tema.
+export const accents = {
+  azul: '#0a84ff',
+  violeta: '#bf5af2',
+  rosa: '#ff375f',
+  naranja: '#ff9f0a',
+  verde: '#30d158',
+  grafito: '#8e8e93',
+};
+
+export const wallpapers = [
+  { id: 'aurora', name: 'Aurora', src: 'assets/aurora.png' },
+  { id: 'ocean', name: 'Océano', src: 'assets/ocean.png' },
+  { id: 'sunset', name: 'Atardecer', src: 'assets/sunset.png' },
+  { id: 'graphite', name: 'Grafito', src: 'assets/graphite.png' },
+];
+
+export function makeTheme({ mode, accent, effects }) {
+  const dark = mode === 'dark';
+  return {
+    mode,
+    accent: accents[accent] || accents.azul,
+    accents,
+    wallpapers,
+    effects,
+    text: dark ? '#f5f5f7' : '#1d1d1f',
+    textDim: dark ? 'rgba(235,235,245,0.55)' : 'rgba(60,60,67,0.6)',
+    windowBg: dark ? '#1f1f23' : '#ffffff',
+    sidebarBg: dark ? '#26262b' : '#f3f3f6',
+    separator: dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+    hover: dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)',
+    control: dark ? '#3a3a40' : '#e3e3e8',
+    inputBg: dark ? '#2a2a2f' : '#ffffff',
+    // Propios del tema:
+    menuBg: dark ? 'rgba(24,24,30,0.42)' : 'rgba(250,250,252,0.55)',
+    menuText: dark ? '#f5f5f7' : '#1d1d1f',
+    menuHover: dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.08)',
+    panelBg: dark ? (effects ? 'rgba(36,36,42,0.72)' : '#2a2a30') : (effects ? 'rgba(246,246,248,0.78)' : '#f2f2f5'),
+    windowBorder: dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.14)',
+    titleBg: dark ? '#2b2b30' : '#ececef',
+    dockBg: dark ? 'rgba(46,46,56,0.42)' : 'rgba(255,255,255,0.38)',
+    dockBorder: dark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.55)',
+    lightOff: dark ? '#4a4a50' : '#c8c8cc',
+    blur: effects ? 24 : 0,
+  };
+}

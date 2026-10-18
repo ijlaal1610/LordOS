@@ -1,0 +1,16 @@
+[Unit]
+Description=LordOS en Raspberry Pi: primer arranque (agrandar la partición, usuario) y modo de configuración
+Documentation=file:///usr/share/doc/lordos/README.md
+DefaultDependencies=no
+After=local-fs.target systemd-remount-fs.service
+Before=lordos.service systemd-user-sessions.service
+ConditionPathExists=/usr/lib/lordos/rpi/firstboot
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/lordos/rpi/firstboot
+RemainAfterExit=yes
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,10 @@
+# LordOS en Raspberry Pi: del archivo de Raspberry Pi solo el kernel, el firmware y sus utilidades
+# (el kernel de Debian 13 no tiene RP1: sin USB, Ethernet ni HDMI en la Pi 5). Todo lo demás, Mesa
+# incluido, viene de Debian. Ver docs/RASPBERRY.md.
+Package: *
+Pin: origin archive.raspberrypi.com
+Pin-Priority: 100
+
+Package: raspi-firmware linux-image-rpi-* linux-image-*-rpi-* linux-headers-rpi-* linux-headers-*-rpi-* linux-kbuild-* firmware-brcm80211 rpi-eeprom raspi-utils* raspberrypi-archive-keyring
+Pin: origin archive.raspberrypi.com
+Pin-Priority: 990

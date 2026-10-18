@@ -1,0 +1,52 @@
+{
+  "archiveName": "Arquivo",
+  "archiveSummary": {
+    "one": "{count} arquivo, {size}",
+    "other": "{count} arquivos, {size}"
+  },
+  "compressOne": "Compactar “{name}”",
+  "compressMany": {
+    "one": "Compactar {count} item",
+    "other": "Compactar {count} itens"
+  },
+  "compressing": "Compactando “{name}”…",
+  "compressProgress": "Compactando “{name}”: {files} arquivos",
+  "compressed": {
+    "one": "“{name}” pronto ({count} arquivo)",
+    "other": "“{name}” pronto ({count} arquivos)"
+  },
+  "compressError": "Não foi possível compactar “{name}” ({error})",
+  "extractHere": "Extrair aqui",
+  "extractSelected": {
+    "one": "Extrair {count} item",
+    "other": "Extrair {count} itens"
+  },
+  "extracting": "Extraindo “{name}”…",
+  "extractProgress": "Extraindo “{name}”: {files} arquivos ({pct}%)",
+  "extracted": {
+    "one": "Extraído em “{name}” ({count} arquivo)",
+    "other": "Extraído em “{name}” ({count} arquivos)"
+  },
+  "extractedSkipped": {
+    "one": "Extraído em “{name}” ({count} arquivo); {skipped} ignorados por segurança",
+    "other": "Extraído em “{name}” ({count} arquivos); {skipped} ignorados por segurança"
+  },
+  "extractError": "Não foi possível extrair “{name}” ({error})",
+  "opening": "Abrindo “{name}”…",
+  "loading": "Carregando…",
+  "locked": "protegido por senha",
+  "pages": {
+    "one": "{count} página",
+    "other": "{count} páginas"
+  },
+  "more": {
+    "one": "e mais {count}",
+    "other": "e mais {count}"
+  },
+  "err.invalid": "não é um arquivo compactado ou está danificado",
+  "err.disk-full": "o disco está cheio",
+  "err.too-big": "é grande demais",
+  "err.too-many": "tem arquivos demais",
+  "err.corrupt": "está danificado",
+  "err.write": "não foi possível gravar"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "player",
+  "name": "Reproductor",
+  "description": "Videos y música: biblioteca por artista y álbum, cola, subtítulos, pantalla completa e imagen en imagen",
+  "size": [960, 600],
+  "minSize": [480, 320],
+  "dock": true,
+  "category": "AudioVideo",
+  "permissions": ["fs:home:read"]
+}

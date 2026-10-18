@@ -1,0 +1,22 @@
+{
+  "id": "settings",
+  "name": "Ajustes",
+  "description": "General, apariencia, red, sonido, idioma, teclado, actualizaciones y temas",
+  "size": [
+    880,
+    600
+  ],
+  "dock": true,
+  "permissions": [
+    "network:configure",
+    "packages:update",
+    "session:quit",
+    "settings:write",
+    "themes:switch"
+  ],
+  "category": "Settings",
+  "minSize": [
+    700,
+    460
+  ]
+}

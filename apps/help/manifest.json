@@ -1,0 +1,16 @@
+{
+  "id": "help",
+  "name": "Ayuda",
+  "description": "Ayuda y consejos de LordOS",
+  "size": [
+    860,
+    600
+  ],
+  "minSize": [
+    640,
+    440
+  ],
+  "dock": false,
+  "permissions": [],
+  "category": "System"
+}

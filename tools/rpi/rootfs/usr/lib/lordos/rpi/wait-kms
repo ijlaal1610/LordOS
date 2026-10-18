@@ -1,0 +1,13 @@
+#!/bin/sh
+# wait-kms — espera (hasta 10 s) a que alguna tarjeta DRM tenga un conector (vc4 en la Raspberry Pi).
+# Sin monitor no hay conector conectado, pero el conector igual existe: alcanza con que aparezca.
+i=0
+while [ $i -lt 100 ]; do
+    for c in /sys/class/drm/card*-*; do
+        [ -e "$c/status" ] && exit 0
+    done
+    sleep 0.1
+    i=$((i + 1))
+done
+echo "wait-kms: ninguna tarjeta con conectores después de 10 s" >&2
+exit 0

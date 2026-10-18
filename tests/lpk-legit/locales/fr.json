@@ -1,0 +1,13 @@
+{
+  "record": "Enregistrer",
+  "stop": "Arrêter",
+  "attach": "Joindre un fichier",
+  "recording": "Enregistrement… (point orange dans la barre des menus)",
+  "stopped": "Enregistrement arrêté",
+  "noMic": "Pas d’autorisation pour le micro",
+  "attached": "Fichier joint : {name}",
+  "noFiles": "Pas d’autorisation pour les fichiers",
+  "canceled": "Annulé",
+  "menu": "Enregistreur",
+  "about": "Enregistreur de test de LordOS"
+}

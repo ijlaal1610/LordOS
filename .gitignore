@@ -1,0 +1,15 @@
+build/
+__pycache__/
+*.pyc
+*.wasm
+.DS_Store
+node_modules/
+themes/*/theme.bundle.js
+assets/app-host.bundle.js
+*.iso
+*.img
+*.img.xz
+*.deb
+*.lpk
+.vscode/
+.idea/

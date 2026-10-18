@@ -1,0 +1,10 @@
+{
+  "id": "photos",
+  "name": "Fotos",
+  "description": "Visor y biblioteca de imágenes: zoom, giro, presentación y edición básica guardada como copia",
+  "size": [980, 640],
+  "minSize": [520, 360],
+  "dock": true,
+  "category": "Graphics",
+  "permissions": ["fs:home:read", "fs:home:write"]
+}

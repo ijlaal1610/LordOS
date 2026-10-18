@@ -1,0 +1,21 @@
+{
+  "id": "files",
+  "name": "Archivos",
+  "description": "Explorador de archivos al estilo Finder: pestañas, vistas, Papelera y Vista rápida",
+  "size": [
+    960,
+    600
+  ],
+  "dock": true,
+  "permissions": [
+    "fs:home:read",
+    "fs:home:write",
+    "fs:media",
+    "apps:open-with"
+  ],
+  "category": "System",
+  "minSize": [
+    640,
+    400
+  ]
+}

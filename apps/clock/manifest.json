@@ -1,0 +1,16 @@
+{
+  "id": "clock",
+  "name": "Reloj",
+  "description": "Reloj mundial, alarmas, temporizador y cronómetro",
+  "size": [
+    560,
+    520
+  ],
+  "minSize": [
+    440,
+    420
+  ],
+  "dock": false,
+  "permissions": [],
+  "category": "Utility"
+}

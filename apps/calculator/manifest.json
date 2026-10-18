@@ -1,0 +1,12 @@
+{
+  "id": "calculator",
+  "name": "Calculadora",
+  "description": "Calculadora con teclado",
+  "size": [
+    300,
+    430
+  ],
+  "dock": true,
+  "permissions": [],
+  "category": "Utility"
+}

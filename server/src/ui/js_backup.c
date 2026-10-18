@@ -1,0 +1,172 @@
+/* js_backup.c — lord.backup: Copias de seguridad (ver backup/backup.c y docs/SISTEMA.md).
+ *
+ *   status()                         estado (también llega solo: __lordBackup(estado))
+ *   config() / configure(obj)        { dest, interval: 'hourly'|'daily'|'weekly'|'manual',
+ *                                      pauseOnBattery, exclude: ['rel', …], encrypt: false }
+ *   runNow() / pause(bool) / cancel()
+ *   list()                           [{ id, time }] de la más vieja a la más nueva
+ *   ls(id, rel)                      [{ name, dir, link, size, mtime }] adentro de una copia
+ *   path(id)                         ruta real de la copia (para abrirla en Archivos)
+ *   restore(id, rel, { replace, suffix, to })   rel '' = todo; en el hilo, el resultado llega
+ *                                      en status().restore
+ *   remove(id)                       borrar una copia
+ *   unlock(frase, crear) / lock()    cifrado: la clave sale de la frase (Argon2id, en el hilo) y queda
+ *                                    solo en memoria; el resultado llega en status().unlock
+ * Los errores se tiran como excepciones con el motivo. */
+#include "js_backup.h"
+#include "../backup/backup.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+static JSValue parsed(JSContext *c, char *j, const char *what) {
+    if (!j) return JS_NULL;
+    JSValue v = JS_ParseJSON(c, j, strlen(j), what);
+    free(j);
+    return v;
+}
+
+static JSValue fail(JSContext *c, const char *err) { return JS_ThrowTypeError(c, "%s", err[0] ? err : "error"); }
+
+static JSValue f_status(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    return parsed(c, backup_status_json(), "<backup.status>");
+}
+
+static JSValue f_config(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    return parsed(c, backup_config_json(), "<backup.config>");
+}
+
+static JSValue f_configure(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    if (argc < 1) return JS_ThrowTypeError(c, "falta la configuración");
+    JSValue s = JS_JSONStringify(c, argv[0], JS_UNDEFINED, JS_UNDEFINED);
+    const char *j = JS_IsException(s) ? NULL : JS_ToCString(c, s);
+    JS_FreeValue(c, s);
+    if (!j) return JS_EXCEPTION;
+    char err[256] = "";
+    int r = backup_configure(j, err, sizeof err);
+    JS_FreeCString(c, j);
+    return r ? fail(c, err) : JS_TRUE;
+}
+
+static JSValue f_run(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    char err[256] = "";
+    return backup_run_now(err, sizeof err) ? fail(c, err) : JS_TRUE;
+}
+
+static JSValue f_pause(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    backup_pause(argc > 0 && JS_ToBool(c, argv[0]) > 0);
+    return JS_TRUE;
+}
+
+static JSValue f_cancel(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)c; (void)t; (void)argc; (void)argv;
+    backup_cancel();
+    return JS_TRUE;
+}
+
+static JSValue f_list(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    return parsed(c, backup_list_json(), "<backup.list>");
+}
+
+static const char *arg_str(JSContext *c, int argc, JSValueConst *argv, int i) {
+    return i < argc && JS_IsString(argv[i]) ? JS_ToCString(c, argv[i]) : NULL;
+}
+
+static JSValue f_ls(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    const char *id = arg_str(c, argc, argv, 0), *rel = arg_str(c, argc, argv, 1);
+    char err[256] = "";
+    char *j = id ? backup_ls_json(id, rel ? rel : "", err, sizeof err) : NULL;
+    if (id) JS_FreeCString(c, id);
+    if (rel) JS_FreeCString(c, rel);
+    if (!j) return fail(c, id ? err : "falta la copia");
+    return parsed(c, j, "<backup.ls>");
+}
+
+static JSValue f_path(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    const char *id = arg_str(c, argc, argv, 0);
+    char p[4096];
+    int r = id ? backup_snapshot_path(id, p, sizeof p) : -1;
+    if (id) JS_FreeCString(c, id);
+    return r ? JS_NULL : JS_NewString(c, p);
+}
+
+static JSValue f_restore(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    const char *id = arg_str(c, argc, argv, 0), *rel = arg_str(c, argc, argv, 1);
+    int replace = 0;
+    const char *suffix = NULL, *to = NULL;
+    if (argc > 2 && JS_IsObject(argv[2])) {
+        JSValue v = JS_GetPropertyStr(c, argv[2], "replace");
+        replace = JS_ToBool(c, v) > 0;
+        JS_FreeValue(c, v);
+        v = JS_GetPropertyStr(c, argv[2], "suffix");
+        if (JS_IsString(v)) suffix = JS_ToCString(c, v);
+        JS_FreeValue(c, v);
+        v = JS_GetPropertyStr(c, argv[2], "to");
+        if (JS_IsString(v)) to = JS_ToCString(c, v);
+        JS_FreeValue(c, v);
+    }
+    char err[256] = "";
+    int r = id ? backup_restore(id, rel ? rel : "", replace, suffix ? suffix : " (restaurado)", to, err, sizeof err) : -1;
+    if (id) JS_FreeCString(c, id);
+    if (rel) JS_FreeCString(c, rel);
+    if (suffix) JS_FreeCString(c, suffix);
+    if (to) JS_FreeCString(c, to);
+    return r ? fail(c, id ? err : "falta la copia") : JS_TRUE;
+}
+
+static JSValue f_remove(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    const char *id = arg_str(c, argc, argv, 0);
+    char err[256] = "";
+    int r = id ? backup_delete(id, err, sizeof err) : -1;
+    if (id) JS_FreeCString(c, id);
+    return r ? fail(c, id ? err : "falta la copia") : JS_TRUE;
+}
+
+static JSValue f_unlock(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    size_t len = 0;
+    const char *pass = argc > 0 && JS_IsString(argv[0]) ? JS_ToCStringLen(c, &len, argv[0]) : NULL;
+    int create = argc > 1 && JS_ToBool(c, argv[1]) > 0;
+    char err[256] = "";
+    int r = pass && strlen(pass) == len ? backup_unlock(pass, create, err, sizeof err) : -1;
+    if (pass) JS_FreeCString(c, pass);      /* no se borra: puede ser la memoria del string de JS */
+    return r ? fail(c, pass ? err : "falta la frase") : JS_TRUE;
+}
+
+static JSValue f_lock(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)c; (void)t; (void)argc; (void)argv;
+    backup_lock();
+    return JS_TRUE;
+}
+
+static const JSCFunctionListEntry fns[] = {
+    JS_CFUNC_DEF("status", 0, f_status),
+    JS_CFUNC_DEF("config", 0, f_config),
+    JS_CFUNC_DEF("configure", 1, f_configure),
+    JS_CFUNC_DEF("runNow", 0, f_run),
+    JS_CFUNC_DEF("pause", 1, f_pause),
+    JS_CFUNC_DEF("cancel", 0, f_cancel),
+    JS_CFUNC_DEF("list", 0, f_list),
+    JS_CFUNC_DEF("ls", 2, f_ls),
+    JS_CFUNC_DEF("path", 1, f_path),
+    JS_CFUNC_DEF("restore", 3, f_restore),
+    JS_CFUNC_DEF("remove", 1, f_remove),
+    JS_CFUNC_DEF("unlock", 2, f_unlock),
+    JS_CFUNC_DEF("lock", 0, f_lock),
+};
+
+void js_backup_register(JSContext *c, JSValue lord) {
+    JSValue o = JS_NewObject(c);
+    JS_SetPropertyFunctionList(c, o, fns, sizeof fns / sizeof fns[0]);
+    JS_SetPropertyStr(c, lord, "backup", o);
+}

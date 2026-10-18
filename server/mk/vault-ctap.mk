@@ -1,0 +1,17 @@
+# FIDO2 de Contraseñas (src/vault/ctap2.c, p256.c, cbor.c, fidodev.c; docs/CONTRASENAS.md).
+# ctap-test corre con `make test`; softfido y fido-e2e necesitan root (uhid): ver
+# ../tests/fido-soft/run-pw-116.sh. Los prerrequisitos van escritos a mano (este archivo se
+# incluye antes que mk/vault.mk).
+CTAP_SRC := src/vault/ctap2.c src/vault/p256.c src/vault/cbor.c src/vault/fidodev.c src/vault/vcrypto.c src/pkg/crypto.c
+CTAP_HDR := src/vault/ctap2.h src/vault/p256.h src/vault/cbor.h src/vault/fidodev.h src/vault/vcrypto.h src/pkg/crypto.h
+build/ctap-test: tests/ctap_test.c $(CTAP_SRC) $(CTAP_HDR)
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/ctap_test.c $(CTAP_SRC) -lpthread
+	./$@ || { rm -f $@; exit 1; }
+test: build/ctap-test
+build/fido-e2e: tests/fido_e2e.c $(CTAP_SRC) $(CTAP_HDR)
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/fido_e2e.c $(CTAP_SRC) -lpthread
+build/softfido: ../tests/fido-soft/softfido.c src/vault/p256.c src/vault/cbor.c src/vault/vcrypto.c src/pkg/crypto.c build/obj/vault/monocypher.o $(CTAP_HDR)
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(VAULT_CPP) $(CFLAGS) $(WARN) -std=c11 -o $@ ../tests/fido-soft/softfido.c src/vault/p256.c src/vault/cbor.c src/vault/vcrypto.c src/pkg/crypto.c build/obj/vault/monocypher.o

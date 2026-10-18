@@ -1,0 +1,13 @@
+{
+  "record": "Grabar",
+  "stop": "Detener",
+  "attach": "Adjuntar archivo",
+  "recording": "Grabando… (punto naranja en la barra de menú)",
+  "stopped": "Grabación detenida",
+  "noMic": "Sin permiso de micrófono",
+  "attached": "Archivo adjuntado: {name}",
+  "noFiles": "Sin permiso de archivos",
+  "canceled": "Cancelado",
+  "menu": "Grabadora",
+  "about": "Grabadora de prueba de LordOS"
+}

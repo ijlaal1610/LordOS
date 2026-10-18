@@ -1,0 +1,134 @@
+/* js_wm.c — lord.wm: arrastre de ventanas en C (grab.c, docs/VENTANAS.md).
+ *
+ *   lord.wm.grab(nodo, bordes, { inset, minW, minH, maxW, maxH, minTop }) → bool
+ *       bordes 0 = mover; 1 arriba, 2 abajo, 4 izquierda, 8 derecha (como xdg_toplevel.resize).
+ *       Solo con un botón apretado; lo sigue lord-server hasta que se suelta.
+ *   lord.wm.cancel()
+ * Al soltar: __lordWm('end', { node, edges, dx, dy, dw, dh }) con el cambio del nodo.
+ *
+ *   lord.portal.set({ dark, accent: '#rrggbb', accentName, buttons })
+ *       lo que leen las apps GTK, GNOME y Qt por org.freedesktop.portal.Settings (portal.c). */
+#include "js_wm.h"
+#include "grab.h"
+#include "portal.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static JSContext *wctx;
+
+static double num(JSContext *c, JSValueConst o, const char *k, double def, double lo, double hi) {
+    if (!JS_IsObject(o)) return def;
+    JSValue v = JS_GetPropertyStr(c, o, k);
+    double d = def;
+    if (JS_IsNumber(v)) JS_ToFloat64(c, &d, v);
+    JS_FreeValue(c, v);
+    if (!isfinite(d)) d = def;
+    return d < lo ? lo : d > hi ? hi : d;
+}
+
+static JSValue f_grab(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    int32_t node = 0, edges = 0;
+    if (argc < 2 || JS_ToInt32(c, &node, argv[0]) || JS_ToInt32(c, &edges, argv[1])) return JS_FALSE;
+    if (edges < 0 || edges > 15 || (edges & 3) == 3 || (edges & 12) == 12) return JS_FALSE;
+    JSValueConst o = argc > 2 ? argv[2] : JS_UNDEFINED;
+    GrabLimits lim = {
+        .inset = (float)num(c, o, "inset", 0, 0, 64),
+        .min_w = (float)num(c, o, "minW", 120, 32, 8192),
+        .min_h = (float)num(c, o, "minH", 80, 32, 8192),
+        .max_w = (float)num(c, o, "maxW", 0, 0, 16384),
+        .max_h = (float)num(c, o, "maxH", 0, 0, 16384),
+        .min_top = (float)num(c, o, "minTop", 0, -100000, 100000),
+    };
+    return JS_NewBool(c, grab_begin(node, edges, &lim) == 0);
+}
+
+static JSValue f_cancel(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)c; (void)t; (void)argc; (void)argv;
+    grab_cancel();
+    return JS_UNDEFINED;
+}
+
+/* Texto corto y sin caracteres raros (nombre de acento, orden de botones de GTK). */
+static int get_word(JSContext *c, JSValueConst o, const char *k, char *out, size_t n, const char *allowed) {
+    JSValue v = JS_GetPropertyStr(c, o, k);
+    const char *s = JS_IsString(v) ? JS_ToCString(c, v) : NULL;
+    int ok = s && strlen(s) < n && strspn(s, allowed) == strlen(s);
+    if (ok) snprintf(out, n, "%s", s);
+    if (s) JS_FreeCString(c, s);
+    JS_FreeValue(c, v);
+    return ok;
+}
+
+static JSValue f_portal_set(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    if (argc < 1 || !JS_IsObject(argv[0])) return JS_FALSE;
+    JSValue dv = JS_GetPropertyStr(c, argv[0], "dark");
+    int dark = JS_ToBool(c, dv);
+    JS_FreeValue(c, dv);
+    char hex[8] = "", name[16] = "", buttons[64] = "";
+    double rgb[3] = { 0.04, 0.52, 1.0 };
+    if (get_word(c, argv[0], "accent", hex, sizeof hex, "#0123456789abcdefABCDEF") && hex[0] == '#' && strlen(hex) == 7) {
+        unsigned long v = strtoul(hex + 1, NULL, 16);
+        rgb[0] = ((v >> 16) & 255) / 255.0;
+        rgb[1] = ((v >> 8) & 255) / 255.0;
+        rgb[2] = (v & 255) / 255.0;
+    }
+    int has_name = get_word(c, argv[0], "accentName", name, sizeof name, "abcdefghijklmnopqrstuvwxyz");
+    int has_buttons = get_word(c, argv[0], "buttons", buttons, sizeof buttons, "abcdefghijklmnopqrstuvwxyz,:");
+    portal_set(dark, rgb, has_name ? name : NULL, has_buttons ? buttons : NULL);
+    return JS_TRUE;
+}
+
+static const JSCFunctionListEntry portal_funcs[] = {
+    JS_CFUNC_DEF("set", 1, f_portal_set),
+};
+
+static const JSCFunctionListEntry wm_funcs[] = {
+    JS_CFUNC_DEF("grab", 3, f_grab),
+    JS_CFUNC_DEF("cancel", 0, f_cancel),
+};
+
+void js_wm_register(JSContext *c, JSValue lord) {
+    wctx = c;
+    JSValue o = JS_NewObject(c);
+    JS_SetPropertyFunctionList(c, o, wm_funcs, sizeof wm_funcs / sizeof wm_funcs[0]);
+    JS_SetPropertyStr(c, lord, "wm", o);
+    JSValue p = JS_NewObject(c);
+    JS_SetPropertyFunctionList(c, p, portal_funcs, sizeof portal_funcs / sizeof portal_funcs[0]);
+    JS_SetPropertyStr(c, lord, "portal", p);
+}
+
+void js_wm_end(int node, int edges, float dx, float dy, float dw, float dh) {
+    JSContext *c = wctx;
+    if (!c) return;
+    JSValue g = JS_GetGlobalObject(c), f = JS_GetPropertyStr(c, g, "__lordWm");
+    if (JS_IsFunction(c, f)) {
+        JSValue d = JS_NewObject(c);
+        JS_SetPropertyStr(c, d, "node", JS_NewInt32(c, node));
+        JS_SetPropertyStr(c, d, "edges", JS_NewInt32(c, edges));
+        JS_SetPropertyStr(c, d, "dx", JS_NewFloat64(c, dx));
+        JS_SetPropertyStr(c, d, "dy", JS_NewFloat64(c, dy));
+        JS_SetPropertyStr(c, d, "dw", JS_NewFloat64(c, dw));
+        JS_SetPropertyStr(c, d, "dh", JS_NewFloat64(c, dh));
+        JSValue args[2] = { JS_NewString(c, "end"), d };
+        JSValue r = JS_Call(c, f, g, 2, args);
+        if (JS_IsException(r)) {
+            JSValue e = JS_GetException(c);
+            const char *m = JS_ToCString(c, e);
+            fprintf(stderr, "js: __lordWm: %s\n", m ? m : "(excepción)");
+            if (m) JS_FreeCString(c, m);
+            JS_FreeValue(c, e);
+        }
+        JS_FreeValue(c, r);
+        JS_FreeValue(c, args[0]);
+        JS_FreeValue(c, args[1]);
+        JSContext *jc;
+        while (JS_ExecutePendingJob(JS_GetRuntime(c), &jc) > 0) {}
+    }
+    JS_FreeValue(c, f);
+    JS_FreeValue(c, g);
+}
