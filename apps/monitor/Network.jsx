@@ -13,16 +13,42 @@
 // de regla de la lista y los contadores de permitidas/denegadas ya están en su lugar.
 import {
   View, Text, Image, ScrollView, SearchField, useTheme, useLocale, useStore, monitor, monitorConnections, useMonitor,
-  formatBytes, formatNumber, tOptional, useSystemInfo, wm, direction, firewall, firewallState, useLauncherApps, Lumo,
+  formatBytes, formatNumber, tOptional, useSystemInfo, wm, direction, firewall, firewallState, useLauncherApps, Lumo, Button,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { C, fmt, AppGlyph, useCardStyle } from './index.jsx';
 import { Glyph } from './icons.jsx';
 import { canvas, drawBars } from './draw.js';
 import { MapView } from './MapView.jsx';
+import { RuleSheet } from './RuleSheet.jsx';
 
 export const appKeyOf = (c) => (c.self ? 'lordos' : c.app || c.exe || c.name || '?');
 const countryName = (cc) => (cc ? tOptional(`countries.${cc}`) || cc : '');
+
+// Names the system resolver gave for each address, if lord-netperm's notices carry them ("host" or
+// "hosts"). The names belong to the system, not to one app (docs/FIREWALL.md, "Where the names come
+// from"), so one map serves every app. Without them a row offers a rule for its address instead.
+function namesOf(events) {
+  const out = new Map();
+  for (const e of events || []) {
+    const n = Array.isArray(e.hosts) ? e.hosts[0] : e.host;
+    if (e.addr && typeof n === 'string' && n) out.set(e.addr, n);
+  }
+  return out;
+}
+
+// The sheet's choices for a name: the exact name and, a level up, its parent with every subdomain.
+function nameChoices(name) {
+  const labels = name.split('.');
+  const parent = labels.length > 2 ? labels.slice(1).join('.') : name;
+  return [...new Set([name, `*.${parent}`])];
+}
+
+// Settings → Privacy, with this app's rules open.
+export function openAppRules(key) {
+  firewall.focus.set(() => key);
+  wm.open('settings', { args: { section: 'privacy', nonce: Date.now() } });
+}
 
 // Agrupa las conexiones por app; los bytes por segundo salen de la diferencia con la lectura anterior.
 function useGroups(conns) {
@@ -98,7 +124,7 @@ function RuleSwitch({ g, selected, tr }) {
   );
 }
 
-function AppRow({ g, open, selected, onToggle, onSelect, maxBytes, tr }) {
+function AppRow({ g, open, selected, onToggle, onSelect, onHost, names, maxBytes, tr }) {
   const t = useTheme();
   const label = g.key === 'lordos' ? tr('monitor.lordos') : g.name;
   const total = g.sent + g.recv;
@@ -137,9 +163,9 @@ function AppRow({ g, open, selected, onToggle, onSelect, maxBytes, tr }) {
       {open && (
         <View style={{ ...(direction() === 'rtl' ? { paddingRight: 46, paddingLeft: 8 } : { paddingLeft: 46, paddingRight: 8 }), paddingBottom: 4, gap: 1 }}>
           {hosts.slice(0, 30).map((h) => (
-            <View key={h.remote} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 22 }}>
+            <View key={h.remote} onClick={() => onHost(h.remote)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 22 }}>
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: h.scope === 'internet' ? t.accent : t.textDim }} />
-              <Text style={{ flex: 1, fontSize: 11, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', fontFamily: 'monospace' }}>{h.remote}</Text>
+              <Text style={{ flex: 1, fontSize: 11, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', fontFamily: 'monospace' }}>{names.get(h.remote) || h.remote}</Text>
               <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{h.cc ? countryName(h.cc) : tr(`monitor.net.scope.${h.scope}`)}</Text>
             </View>
           ))}
@@ -275,8 +301,33 @@ function Summary({ groups, conns, last, tr, fw }) {
   );
 }
 
-function Detail({ g, tr, user }) {
+// One address of the selected app: its name (if the resolver gave one) and, selected, the
+// "Allow / Block this domain" actions (or "this address" when no name is known).
+function HostRow({ h, name, selected, onSelect, can, onRule, tr }) {
   const t = useTheme();
+  const what = name ? 'Domain' : 'Address';
+  return (
+    <View style={{ gap: 4, paddingVertical: 3, paddingHorizontal: 6, marginHorizontal: -6, borderRadius: 6, backgroundColor: selected ? t.control : 'transparent' }}>
+      <View onClick={onSelect} style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontSize: 11, color: t.text, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', direction: 'ltr', textAlign: 'start' }}>{name || h.remote}</Text>
+          {name ? <Text style={{ fontSize: 10, color: t.textDim, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', direction: 'ltr', textAlign: 'start' }}>{h.remote}</Text> : null}
+        </View>
+        <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{h.cc ? countryName(h.cc) : tr(`monitor.net.scope.${h.scope}`)}</Text>
+      </View>
+      {selected && can ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingBottom: 2 }}>
+          <Button small label={tr(`fwrules.allowThis${what}`)} onClick={() => onRule('allow')} />
+          <Button small label={tr(`fwrules.blockThis${what}`)} onClick={() => onRule('deny')} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function Detail({ g, tr, user, names, host, onHost, onRule }) {
+  const t = useTheme();
+  const can = firewall.available() && firewall.enforceable(g.key);
   const ports = new Set(), local = new Set();
   for (const c of g.conns) {
     if (c.dir === 'listen') local.add(`${c.proto.toUpperCase()} ${c.lport}`);
@@ -300,6 +351,11 @@ function Detail({ g, tr, user }) {
         <KV k={tr('monitor.net.rule')} v={tr(g.rule === 'deny' ? 'firewall.rule.deny' : g.rule === 'allow' ? 'firewall.rule.allow' : 'firewall.rule.none')}
           color={g.rule === 'deny' ? '#ff453a' : '#30d158'} />
         {g.allowed || g.denied ? <KV k={tr('firewall.counts')} v={tr('firewall.countsValue', { allowed: g.allowed || 0, denied: g.denied || 0 })} /> : null}
+        {can ? (
+          <View onClick={() => openAppRules(g.key)} style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+            <Text style={{ fontSize: 11, color: t.accent }}>{tr('fwrules.appRulesLink', { count: firewall.rules(g.key).length })}</Text>
+          </View>
+        ) : null}
       </Section>
       <Section title={tr('monitor.net.data')}>
         <KV k={`↓ ${tr('monitor.received')}`} v={`${formatBytes(g.recv)} · ${fmt.rate(tr, g.rateRx)}`} color={C.rx} />
@@ -311,12 +367,11 @@ function Detail({ g, tr, user }) {
       </Section>
       <Section title={tr('monitor.net.addresses')}>
         {hosts.slice(0, 10).map((h) => (
-          <View key={h.remote} style={{ flexDirection: 'row', gap: 6 }}>
-            <Text style={{ flex: 1, fontSize: 11, color: t.text, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden' }}>{h.remote}</Text>
-            <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{h.cc ? countryName(h.cc) : tr(`monitor.net.scope.${h.scope}`)}</Text>
-          </View>
+          <HostRow key={h.remote} h={h} name={names.get(h.remote)} selected={host === h.remote} can={can} tr={tr}
+            onSelect={() => onHost(host === h.remote ? null : h.remote)} onRule={(action) => onRule(h.remote, action)} />
         ))}
         {!hosts.length && <Text style={{ fontSize: 12, color: t.textDim }}>—</Text>}
+        {hosts.length > 0 && can ? <Text style={{ fontSize: 10, color: t.textDim, lineHeight: 1.35 }}>{tr('fwrules.pickAddress')}</Text> : null}
       </Section>
     </>
   );
@@ -375,6 +430,14 @@ export function NetworkTab({ last, prefs }) {
   const [open, setOpen] = useState(() => new Set());
   const [selected, setSelected] = useState(null);       // app elegida (clave)
   const [place, setPlace] = useState(null);             // país elegido en el mapa
+  const [host, setHost] = useState(null);               // the selected app's address with the actions open
+  const [sheet, setSheet] = useState(null);             // { app, label, dst, action, suggestions, note }
+  const names = useMemo(() => namesOf(fw.events), [fw.events]);
+  const ruleFor = (g, addr, action) => {
+    const name = names.get(addr);
+    setSheet({ app: g.key, label: g.key === 'lordos' ? tr('monitor.lordos') : g.name, dst: name || addr, action,
+      suggestions: name ? nameChoices(name) : [], note: name ? tr('fwrules.sheet.nameNote') : tr('fwrules.sheet.noName') });
+  };
   const enabled = prefs.connections !== false;
   const needle = q.trim().toLowerCase();
   const shown = apps.filter((g) => !needle || `${g.name || tr('monitor.lordos')} ${g.exe || ''} ${[...g.hosts.keys()].join(' ')} ${[...g.hosts.values()].map((h) => countryName(h.cc)).join(' ')}`.toLowerCase().includes(needle));
@@ -399,8 +462,9 @@ export function NetworkTab({ last, prefs }) {
           {enabled && !conns && <Text style={{ fontSize: 12, color: t.textDim, padding: 8 }}>{tr('monitor.loading')}</Text>}
           {enabled && conns && !conns.ok && <Text style={{ fontSize: 12, color: '#ff9f0a', padding: 8 }}>{tr('monitor.net.noDiag')}</Text>}
           {shown.map((g) => (
-            <AppRow key={g.key} g={g} tr={tr} open={open.has(g.key)} selected={selected === g.key} maxBytes={maxBytes}
-              onToggle={() => toggle(g.key)} onSelect={() => { setPlace(null); setSelected(selected === g.key ? null : g.key); }} />
+            <AppRow key={g.key} g={g} tr={tr} open={open.has(g.key)} selected={selected === g.key} maxBytes={maxBytes} names={names}
+              onToggle={() => toggle(g.key)} onSelect={() => { setPlace(null); setHost(null); setSelected(selected === g.key ? null : g.key); }}
+              onHost={(addr) => { setPlace(null); setSelected(g.key); setHost(addr); }} />
           ))}
           {enabled && conns && !shown.length && <Text style={{ fontSize: 12, color: t.textDim, padding: 8 }}>{tr('monitor.net.none')}</Text>}
         </ScrollView>
@@ -441,10 +505,16 @@ export function NetworkTab({ last, prefs }) {
       <View style={{ ...column, width: 270 }}>
         <ScrollView style={{ flex: 1 }}>
           <View style={{ gap: 16 }}>
-            {selPlace ? <PlaceDetail p={selPlace} tr={tr} /> : sel ? <Detail g={sel} tr={tr} user={sys.user} /> : <Summary groups={apps} conns={conns} last={last} tr={tr} fw={fw} />}
+            {selPlace ? <PlaceDetail p={selPlace} tr={tr} /> : sel ? (
+              <Detail g={sel} tr={tr} user={sys.user} names={names} host={host} onHost={setHost} onRule={(addr, action) => ruleFor(sel, addr, action)} />
+            ) : <Summary groups={apps} conns={conns} last={last} tr={tr} fw={fw} />}
           </View>
         </ScrollView>
       </View>
+      {sheet ? (
+        <RuleSheet overlay app={sheet.app} appLabel={sheet.label} initial={{ dst: sheet.dst, action: sheet.action }} suggestions={sheet.suggestions} note={sheet.note}
+          onDone={() => setSheet(null)} />
+      ) : null}
     </View>
   );
 }
