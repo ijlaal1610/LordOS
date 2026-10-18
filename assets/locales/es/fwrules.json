@@ -89,5 +89,7 @@
     "one": "Reglas de esta app ({count}) ›",
     "other": "Reglas de esta app ({count}) ›"
   },
-  "pickAddress": "Elegí una dirección para permitirla o bloquearla para esta app."
+  "pickAddress": "Elegí una dirección para permitirla o bloquearla para esta app.",
+  "recent": "conexión reciente",
+  "recentDenied": "denegada hace poco"
 }

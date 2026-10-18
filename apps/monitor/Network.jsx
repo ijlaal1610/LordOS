@@ -25,6 +25,10 @@ import { RuleSheet } from './RuleSheet.jsx';
 export const appKeyOf = (c) => (c.self ? 'lordos' : c.app || c.exe || c.name || '?');
 const countryName = (cc) => (cc ? tOptional(`countries.${cc}`) || cc : '');
 
+// Where an address is: its country, LAN / this computer, or, for a destination known only from the
+// firewall's recent notices, "recent" (or "recently denied").
+const placeOf = (tr, h) => (h.cc ? countryName(h.cc) : h.scope ? tr(`monitor.net.scope.${h.scope}`) : tr(h.denied ? 'fwrules.recentDenied' : 'fwrules.recent'));
+
 // Names the system resolver gave for each address, if lord-netperm's notices carry them ("host" or
 // "hosts"). The names belong to the system, not to one app (docs/FIREWALL.md, "Where the names come
 // from"), so one map serves every app. Without them a row offers a rule for its address instead.
@@ -94,7 +98,7 @@ function useGroups(conns) {
 // conexiones abiertas pero sí intentos (una app denegada no llega a tener sockets).
 function withFirewall(groups, fw, launcher) {
   const counts = fw?.counts || {};
-  const out = groups.map((g) => ({ ...g, rule: firewall.appRule(g.key), allowed: counts[g.key]?.[0] || 0, denied: counts[g.key]?.[1] || 0 }));
+  const out = groups.map((g) => ({ ...g, hosts: new Map(g.hosts), rule: firewall.appRule(g.key), allowed: counts[g.key]?.[0] || 0, denied: counts[g.key]?.[1] || 0 }));
   const have = new Set(out.map((g) => g.key));
   for (const [key, v] of Object.entries(counts)) {
     if (have.has(key) || key === 'lordos' || !(v[0] || v[1])) continue;
@@ -102,6 +106,18 @@ function withFirewall(groups, fw, launcher) {
     const name = la?.name || key.replace(/^(desktop|lpk):/, '');
     out.push({ key, item: { app: key, appName: name, name, appIcon: la?.icon || '' }, name, exe: '', pids: new Set(), conns: [], hosts: new Map(), sent: 0, recv: 0,
       rateTx: 0, rateRx: 0, listen: [], incoming: 0, verdict: 'deny', rule: firewall.appRule(key), allowed: v[0] || 0, denied: v[1] || 0 });
+  }
+  // Short connections (a curl, a DNS query) close before the next sample: the destinations the
+  // firewall reported recently are listed too, so they can be given a rule ("recent"; "denied" if
+  // the last one was refused).
+  const byKey = new Map(out.map((g) => [g.key, g]));
+  for (const e of fw?.events || []) {
+    const g = byKey.get(e.app);
+    if (!g || e.dir !== 'out' || !e.addr) continue;
+    const h = g.hosts.get(e.addr) || { remote: e.addr, cc: '', scope: '', ports: new Set(), sent: 0, recv: 0, count: 0, recent: true };
+    h.ports = new Set(h.ports).add(`${String(e.proto).toUpperCase()} ${e.port}`);
+    if (h.recent) { h.denied = e.v === 'deny'; h.count++; }
+    g.hosts.set(e.addr, h);
   }
   return out;
 }
@@ -164,9 +180,9 @@ function AppRow({ g, open, selected, onToggle, onSelect, onHost, names, maxBytes
         <View style={{ ...(direction() === 'rtl' ? { paddingRight: 46, paddingLeft: 8 } : { paddingLeft: 46, paddingRight: 8 }), paddingBottom: 4, gap: 1 }}>
           {hosts.slice(0, 30).map((h) => (
             <View key={h.remote} onClick={() => onHost(h.remote)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 22 }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: h.scope === 'internet' ? t.accent : t.textDim }} />
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: h.denied ? '#ff453a' : h.scope === 'internet' || h.recent ? t.accent : t.textDim }} />
               <Text style={{ flex: 1, fontSize: 11, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', fontFamily: 'monospace' }}>{names.get(h.remote) || h.remote}</Text>
-              <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{h.cc ? countryName(h.cc) : tr(`monitor.net.scope.${h.scope}`)}</Text>
+              <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{placeOf(tr, h)}</Text>
             </View>
           ))}
           {!hosts.length && <Text style={{ fontSize: 11, color: t.textDim, height: 22 }}>{tr('monitor.net.onlyListening', { ports: g.listen.map((c) => c.lport).join(', ') })}</Text>}
@@ -292,7 +308,7 @@ function Summary({ groups, conns, last, tr, fw }) {
               <Text style={{ flex: 1, fontSize: 11, color: t.text, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden' }}>{h.remote}</Text>
               <Text style={{ fontSize: 11, color: t.textDim }}>{formatBytes(h.sent + h.recv)}</Text>
             </View>
-            <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{`${h.cc ? countryName(h.cc) : tr(`monitor.net.scope.${h.scope}`)} · ${h.app.key === 'lordos' ? tr('monitor.lordos') : h.app.name}`}</Text>
+            <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{`${placeOf(tr, h)} · ${h.app.key === 'lordos' ? tr('monitor.lordos') : h.app.name}`}</Text>
           </View>
         ))}
         {!hosts.length && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('monitor.net.none')}</Text>}
@@ -307,13 +323,13 @@ function HostRow({ h, name, selected, onSelect, can, onRule, tr }) {
   const t = useTheme();
   const what = name ? 'Domain' : 'Address';
   return (
-    <View style={{ gap: 4, paddingVertical: 3, paddingHorizontal: 6, marginHorizontal: -6, borderRadius: 6, backgroundColor: selected ? t.control : 'transparent' }}>
+    <View style={{ gap: 4, paddingVertical: 3, paddingHorizontal: 6, marginHorizontal: -6, borderRadius: 6, backgroundColor: selected ? (t.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)') : 'transparent' }}>
       <View onClick={onSelect} style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ fontSize: 11, color: t.text, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', direction: 'ltr', textAlign: 'start' }}>{name || h.remote}</Text>
           {name ? <Text style={{ fontSize: 10, color: t.textDim, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', direction: 'ltr', textAlign: 'start' }}>{h.remote}</Text> : null}
         </View>
-        <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{h.cc ? countryName(h.cc) : tr(`monitor.net.scope.${h.scope}`)}</Text>
+        <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{placeOf(tr, h)}</Text>
       </View>
       {selected && can ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingBottom: 2 }}>
