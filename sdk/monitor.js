@@ -134,6 +134,10 @@ export const firewall = {
   rules: (app) => fwCall((f) => f.rules(app), []),
   addRule: (r) => fwBump(fwCall((f) => f.addRule(r), false)),
   removeRule: (id) => fwBump(fwCall((f) => f.removeRule(id), false)),
+  updateRule: (id, r) => fwBump(fwCall((f) => f.updateRule(id, r), false)),
+  ruleApps: () => fwCall((f) => (f.ruleApps ? f.ruleApps() : []), []),
+  // the app whose rules Settings → Privacy shows open (the Monitor's "Rules for this app")
+  focus: createStore(null),
   refresh: () => fwPoll(true),
   RESTRICTIONS: ['no-internet', 'no-lan', 'no-network', 'no-incoming', 'no-camera', 'no-mic', 'no-screen', 'no-usb', 'no-bluetooth', 'no-files', 'no-clipboard', 'no-notifications'],
 };

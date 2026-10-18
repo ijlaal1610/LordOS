@@ -13,8 +13,14 @@
  *   appRule(app)                 'allow' | 'deny' | null   (the {app, out, any} rule)
  *   setAppRule(app, v)           v: 'allow' | 'deny' | null (removes it); the Monitor's switch
  *   setTrusted(app, on) / setRestricted(app, [restriction]) / setMode('silent'|'ask'|'off')
- *   rules(app)                   [{ id, dir, dst, port, proto, action }]
+ *   rules(app)                   [{ id, dir, dst, port, proto, action, when, lastMatch }]
+ *                                when: Unix seconds of the decision; lastMatch: Unix seconds of the
+ *                                last connection lord-netperm reported as decided by that rule
+ *                                (seen by this session since it started; 0 = not seen)
+ *   ruleApps()                   [app]: the apps that have at least one rule
  *   addRule({ app, dir, dst, port, proto, action }) → id    removeRule(id)
+ *   updateRule(id, { dir, dst, port, proto, action }) → id  same app; the old rule comes back if
+ *                                the new one can't be added
  *   poll()                       { counts: { app: [allowed, denied] }, events: [...] }
  *   blocks(app, restriction)     true if the app is restricted in it (sdk/notify.js asks before showing
  *                                a built-in app's notification)
@@ -53,6 +59,41 @@ static size_t inlen;
 static char *status_json, *counts_json;
 static char *events[MAX_EVENTS];
 static int nevents;
+
+/* When each rule last decided a connection (from the EVENT notices, "by":"rule"): a small open
+ * addressing table rule id → Unix seconds. Memory only, like the counters. */
+#define MATCH_SLOTS 4096
+static struct { uint32_t id; long long t; } matches[MATCH_SLOTS];
+
+static void match_note(uint32_t id, long long t) {
+    if (!id) return;
+    uint32_t h = (id * 2654435761u) % MATCH_SLOTS;
+    for (int k = 0; k < MATCH_SLOTS; k++, h = (h + 1) % MATCH_SLOTS)
+        if (matches[h].id == id || !matches[h].id) { matches[h].id = id; matches[h].t = t; return; }
+    memset(matches, 0, sizeof matches);             /* full (rules come and go): start over */
+    matches[(id * 2654435761u) % MATCH_SLOTS].id = id;
+    matches[(id * 2654435761u) % MATCH_SLOTS].t = t;
+}
+
+static long long match_last(uint32_t id) {
+    uint32_t h = (id * 2654435761u) % MATCH_SLOTS;
+    for (int k = 0; k < MATCH_SLOTS && matches[h].id; k++, h = (h + 1) % MATCH_SLOTS)
+        if (matches[h].id == id) return matches[h].t;
+    return 0;
+}
+
+/* The notice is lord-netperm's own compact JSON ("by":"rule","rule":N): read just those two keys. */
+static void match_event(const unsigned char *p, size_t n) {
+    static const char by[] = "\"by\":\"rule\",\"rule\":";
+    if (n < sizeof by || n > 2048) return;
+    char j[2049];
+    memcpy(j, p, n);
+    j[n] = 0;
+    const char *s = strstr(j, by);
+    if (!s) return;
+    unsigned long id = strtoul(s + sizeof by - 1, NULL, 10);
+    if (id && id <= UINT32_MAX) match_note((uint32_t)id, (long long)time(NULL));
+}
 
 static long long now_s(void) {
     struct timespec ts;
@@ -118,6 +159,7 @@ static void pump(void) {
             if (h[4] == NP_MSG_STATUS) keep(&status_json, body, bl);
             else if (h[4] == NP_MSG_COUNTS) keep(&counts_json, body, bl);
             else if (h[4] == NP_MSG_EVENT) {
+                match_event(body, bl);
                 if (nevents == MAX_EVENTS) { free(events[0]); memmove(events, events + 1, (MAX_EVENTS - 1) * sizeof *events); nevents--; }
                 events[nevents] = NULL;
                 keep(&events[nevents], body, bl);
@@ -329,6 +371,8 @@ static JSValue rule_obj(JSContext *c, const FwRule *r) {
     JS_SetPropertyStr(c, o, "port", JS_NewString(c, port));
     JS_SetPropertyStr(c, o, "proto", JS_NewString(c, r->proto == FW_PROTO_TCP ? "tcp" : r->proto == FW_PROTO_UDP ? "udp" : ""));
     JS_SetPropertyStr(c, o, "action", JS_NewString(c, r->action == FW_DENY ? "deny" : "allow"));
+    JS_SetPropertyStr(c, o, "when", JS_NewInt64(c, r->when));
+    JS_SetPropertyStr(c, o, "lastMatch", JS_NewInt64(c, match_last(r->id)));
     return o;
 }
 
@@ -336,6 +380,7 @@ static JSValue f_rules(JSContext *c, JSValueConst t, int argc, JSValueConst *arg
     (void)t;
     char app[FW_APP_MAX];
     if (argc < 1 || arg_app(c, argv[0], app)) return js_throw_code(c, "fw.invalidApp", NULL);
+    pump();                                         /* fresh lastMatch values */
     JSValue arr = JS_NewArray(c);
     int n = fw_rule_list(store, app, NULL, 0);
     if (n <= 0) return arr;
@@ -363,36 +408,105 @@ static int parse_port(const char *s, FwRule *r) {
     return 0;
 }
 
+/* A rule object from JS → r. app: the canonical app id to use (updateRule keeps the old rule's), or
+ * NULL to read and check the object's "app". 0 ok; otherwise *exc holds the exception to return. */
+static int rule_from_js(JSContext *c, JSValueConst o, const char *app, FwRule *r, JSValue *exc) {
+    char given[FW_APP_MAX], canon[FW_APP_MAX], dir[8], dst[300], port[16], proto[8], action[8];
+    *exc = JS_UNDEFINED;
+    if (!JS_IsObject(o)) { *exc = js_throw_code(c, "fw.invalidRule", "field", "rule", NULL); return -1; }
+    if (!app) {
+        if (str_prop(c, o, "app", given, sizeof given) || fw_app_canon(given, canon, sizeof canon)) { *exc = js_throw_code(c, "fw.invalidApp", NULL); return -1; }
+        app = canon;
+    }
+    if (str_prop(c, o, "dst", dst, sizeof dst)) { *exc = js_throw_code(c, "fw.invalidRule", "field", "dst", NULL); return -1; }
+    if (str_prop(c, o, "dir", dir, sizeof dir) < 0 || str_prop(c, o, "port", port, sizeof port) < 0 ||
+        str_prop(c, o, "proto", proto, sizeof proto) < 0 || str_prop(c, o, "action", action, sizeof action)) {
+        *exc = js_throw_code(c, "fw.invalidRule", "field", "rule", NULL);
+        return -1;
+    }
+    memset(r, 0, sizeof *r);
+    snprintf(r->app, sizeof r->app, "%s", app);
+    const char *bad = NULL;
+    if (fw_parse_dest(dst, r)) { *exc = js_throw_code(c, "fw.invalidDestination", NULL); return -1; }
+    if (!dir[0] || !strcmp(dir, "out")) r->dir = FW_OUT;
+    else if (!strcmp(dir, "in")) r->dir = FW_IN;
+    else bad = "dir";
+    if (!bad && parse_port(port, r)) bad = "port";
+    if (!bad) {
+        if (!proto[0]) r->proto = FW_PROTO_ANY;
+        else if (!strcmp(proto, "tcp")) r->proto = FW_PROTO_TCP;
+        else if (!strcmp(proto, "udp")) r->proto = FW_PROTO_UDP;
+        else bad = "proto";
+    }
+    if (!bad) {
+        if (!strcmp(action, "allow")) r->action = FW_ALLOW;
+        else if (!strcmp(action, "deny")) r->action = FW_DENY;
+        else bad = "action";
+    }
+    if (bad) { *exc = js_throw_code(c, "fw.invalidRule", "field", bad, NULL); return -1; }
+    r->life = FW_LIFE_FOREVER;
+    r->when = (long long)time(NULL);
+    return 0;
+}
+
 static JSValue f_add_rule(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (argc < 1 || !JS_IsObject(argv[0])) return js_throw_code(c, "fw.invalidRule", "field", "rule", NULL);
-    char app[FW_APP_MAX], canon[FW_APP_MAX], dir[8], dst[300], port[16], proto[8], action[8];
-    if (str_prop(c, argv[0], "app", app, sizeof app) || fw_app_canon(app, canon, sizeof canon)) return js_throw_code(c, "fw.invalidApp", NULL);
-    if (str_prop(c, argv[0], "dst", dst, sizeof dst)) return js_throw_code(c, "fw.invalidRule", "field", "dst", NULL);
-    if (str_prop(c, argv[0], "dir", dir, sizeof dir) < 0 || str_prop(c, argv[0], "port", port, sizeof port) < 0 ||
-        str_prop(c, argv[0], "proto", proto, sizeof proto) < 0 || str_prop(c, argv[0], "action", action, sizeof action))
-        return js_throw_code(c, "fw.invalidRule", "field", "rule", NULL);
     FwRule r;
-    memset(&r, 0, sizeof r);
-    snprintf(r.app, sizeof r.app, "%s", canon);
-    if (fw_parse_dest(dst, &r)) return js_throw_code(c, "fw.invalidDestination", NULL);
-    if (!dir[0] || !strcmp(dir, "out")) r.dir = FW_OUT;
-    else if (!strcmp(dir, "in")) r.dir = FW_IN;
-    else return js_throw_code(c, "fw.invalidRule", "field", "dir", NULL);
-    if (parse_port(port, &r)) return js_throw_code(c, "fw.invalidRule", "field", "port", NULL);
-    if (!proto[0]) r.proto = FW_PROTO_ANY;
-    else if (!strcmp(proto, "tcp")) r.proto = FW_PROTO_TCP;
-    else if (!strcmp(proto, "udp")) r.proto = FW_PROTO_UDP;
-    else return js_throw_code(c, "fw.invalidRule", "field", "proto", NULL);
-    if (!strcmp(action, "allow")) r.action = FW_ALLOW;
-    else if (!strcmp(action, "deny")) r.action = FW_DENY;
-    else return js_throw_code(c, "fw.invalidRule", "field", "action", NULL);
-    r.life = FW_LIFE_FOREVER;
-    r.when = (long long)time(NULL);
+    JSValue exc;
+    if (argc < 1) return js_throw_code(c, "fw.invalidRule", "field", "rule", NULL);
+    if (rule_from_js(c, argv[0], NULL, &r, &exc)) return exc;
     uint32_t id = 0;
     if (fw_rule_add(store, &r, &id)) return JS_FALSE;
     save();
     return JS_NewUint32(c, id);
+}
+
+/* Edits a rule: the new one replaces it (same app). If the new one can't be added, the old one is
+ * put back, so a failed edit loses nothing. Adding a rule with the same destination, ports and
+ * protocol as another one of the app replaces that one too (fw_rule_add), as addRule does. */
+static JSValue f_update_rule(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    uint32_t id = 0;
+    if (argc < 2 || JS_ToUint32(c, &id, argv[0]) || !id) return js_throw_code(c, "fw.invalidRule", "field", "id", NULL);
+    const FwRule *cur = fw_rule_get(store, id);
+    if (!cur) return JS_FALSE;
+    FwRule old = *cur, r;
+    JSValue exc;
+    if (rule_from_js(c, argv[1], old.app, &r, &exc)) return exc;
+    if (fw_rule_remove(store, id)) return JS_FALSE;
+    uint32_t nid = 0;
+    if (fw_rule_add(store, &r, &nid)) {
+        old.id = 0;
+        fw_rule_add(store, &old, NULL);
+        return JS_FALSE;
+    }
+    save();
+    return JS_NewUint32(c, nid);
+}
+
+static int cmp_str(const void *a, const void *b) { return strcmp(*(const char *const *)a, *(const char *const *)b); }
+
+/* The apps that have rules, sorted by id. */
+static JSValue f_rule_apps(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    JSValue arr = JS_NewArray(c);
+    int n = fw_rule_list(store, NULL, NULL, 0);
+    if (n <= 0) return arr;
+    if (n > FW_MAX_RULES) n = FW_MAX_RULES;
+    FwRule *v = malloc((size_t)n * sizeof *v);
+    if (!v) return arr;
+    int got = fw_rule_list(store, NULL, v, n);
+    if (got < n) n = got < 0 ? 0 : got;
+    const char **ids = malloc((size_t)n * sizeof *ids);
+    if (!ids) { free(v); return arr; }
+    for (int i = 0; i < n; i++) ids[i] = v[i].app;
+    qsort(ids, (size_t)n, sizeof *ids, cmp_str);
+    uint32_t k = 0;
+    for (int i = 0; i < n; i++)
+        if (!i || strcmp(ids[i], ids[i - 1])) JS_SetPropertyUint32(c, arr, k++, JS_NewString(c, ids[i]));
+    free(ids);
+    free(v);
+    return arr;
 }
 
 static JSValue f_remove_rule(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
@@ -434,6 +548,8 @@ static const JSCFunctionListEntry fw_funcs[] = {
     JS_CFUNC_DEF("rules", 1, f_rules),
     JS_CFUNC_DEF("addRule", 1, f_add_rule),
     JS_CFUNC_DEF("removeRule", 1, f_remove_rule),
+    JS_CFUNC_DEF("updateRule", 2, f_update_rule),
+    JS_CFUNC_DEF("ruleApps", 0, f_rule_apps),
     JS_CFUNC_DEF("poll", 0, f_poll),
     JS_CFUNC_DEF("blocks", 2, f_blocks),
 };
