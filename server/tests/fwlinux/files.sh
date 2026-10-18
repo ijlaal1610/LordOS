@@ -19,7 +19,8 @@ mkdir -p "$APPS" ~/Documents ~/fwlinux-open
 echo secret > ~/Documents/fwlinux-secret.txt
 echo "opened with" > ~/fwlinux-open/note.txt
 echo sibling > ~/fwlinux-open/fwlinux-sibling.txt
-mkdir -p ~/.config/fwprobe ~/.cache/fwprobe
+mkdir -p ~/.config/fwprobe ~/.cache/fwprobe ~/.cache/fontconfig
+echo shm > /dev/shm/fwlinux-shm-$U                  # the session's shared memory: not visible to the app
 PROBE=~/.config/fwprobe/probe.py           # its own config dir: visible to the restricted app
 cp "$D/files_probe.py" "$PROBE"
 SPID=$(pgrep -u "$U" -o -x lord-server || echo 1)   # a session process: its /proc/<pid>/root must not be reachable
@@ -32,6 +33,7 @@ cat > "$APPS/fwprobe.desktop" <<DESK
 Type=Application
 Name=Files restriction probe
 Exec=python3 $PROBE --outside-pid=$SPID --tmp-socket=$TSOCK %f
+Path=/run/user/$U
 MimeType=text/plain;
 NoDisplay=false
 DESK
@@ -77,6 +79,10 @@ expect connect_pipewire_manager "No such file"
 expect outside_proc_visible "No such file"
 expect outside_proc_root "No such file"
 expect connect_tmp_socket "No such file"
+expect cwd_relative_bus "No such file"
+expect session_pts_hidden ok
+expect read_session_shm "No such file"
+expect write_shared_cache "@(Read-only|Permission denied)*"
 expect systemd_run_user "exit"
 expect gdbus_start_transient_unit "exit"
 [ -e ~/.cache/fwprobe/escaped ] && bad "a process escaped through the user manager" || ok "nothing started through the user manager"
@@ -87,6 +93,10 @@ expect read_opened_file ok
 expect write_opened_file ok
 expect read_next_to_opened "@(Permission denied|No such file)*"
 expect read_documents "@(Permission denied|No such file)*"
+echo "3b. opened with a folder that holds protected ones (~/.config): never writable"
+probe ~/.config
+expect write_autostart "@(Permission denied|No such file|Read-only)*"
+[ -e ~/.config/autostart/fwlinux.desktop ] && bad "an autostart entry was written through ~/.config" || ok "~/.config was not granted writable"
 
 echo "4. malicious .desktop files: names chosen to reach other programs' folders"
 EVIL=/usr/local/lib/lordos-tests/files_probe.py          # a system path: these ids get no folders of their own
@@ -148,6 +158,6 @@ DESK
     rm -f "$APPS/fwgtkdoc.desktop" "$APPS/fwgtkopen.desktop"
     rm -rf ~/.cache/fwgtkdoc ~/.cache/fwgtkopen ~/.config/fwgtkdoc ~/.config/fwgtkopen ~/.local/share/fwgtkdoc ~/.local/share/fwgtkopen ~/.local/state/fwgtkdoc ~/.local/state/fwgtkopen
 fi
-rm -f "$APPS/fwprobe.desktop" "$APPS/fwgtk.desktop" ~/Documents/fwlinux-secret.txt "$OUT"
+rm -f "$APPS/fwprobe.desktop" "$APPS/fwgtk.desktop" ~/Documents/fwlinux-secret.txt "$OUT" /dev/shm/fwlinux-shm-$U ~/.cache/fontconfig/fwlinux-probe
 rm -rf ~/fwlinux-open ~/.config/fwprobe ~/.cache/fwprobe ~/.local/share/fwprobe ~/.local/state/fwprobe
 fwlinux_done

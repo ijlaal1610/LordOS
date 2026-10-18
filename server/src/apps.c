@@ -237,11 +237,16 @@ static void find_icon(const char *name, char *out, size_t n) {
 
 /* ---- list ---- */
 
+/* A desktop id the launcher can run: it must also make a valid app scope name
+ * ("app-lordos-<id>.scope", cgroup_scope_name_ok: no '+', at most 62 characters, no "..") and
+ * never one that reads as a .lpk package's scope ("lpk-...": that would be lpk:<rest>'s identity,
+ * rules and restrictions). */
+#define DESKTOP_ID_MAX 62
 static int valid_id(const char *id) {
     size_t n = strlen(id);
-    if (!n || n >= sizeof apps[0].id) return 0;
-    for (const char *p = id; *p; p++) if (!isalnum((unsigned char)*p) && !strchr("._-+", *p)) return 0;
-    return id[0] != '.' && id[0] != '-';
+    if (!n || n >= sizeof apps[0].id || n > DESKTOP_ID_MAX) return 0;
+    for (const char *p = id; *p; p++) if (!isalnum((unsigned char)*p) && !strchr("._-", *p)) return 0;
+    return id[0] != '.' && id[0] != '-' && !strstr(id, "..") && strncmp(id, "lpk-", 4);
 }
 
 static void app_dirs(char dirs[2][PATH_MAX]) {
@@ -403,7 +408,7 @@ static void open_log(void) {
 
 typedef struct {
     SandboxFilesCfg cfg;
-    char home[PATH_MAX], runtime[PATH_MAX], wayland[64];
+    char home[PATH_MAX], runtime[PATH_MAX], wayland[64], opened[PATH_MAX], cwd[PATH_MAX];
     char buf[2 * SANDBOX_FILES_MAX][PATH_MAX];
     int nbuf, nrw, nro;
 } FilesPlan;
@@ -430,11 +435,18 @@ static void plan_add(FilesPlan *p, int rw, const char *fmt, const char *a, const
  * if it can't name a folder that belongs to someone else's startup, keys or settings. The id is
  * the only name used: Exec, StartupWMClass and Name are free text of the .desktop file. */
 static int own_dir_ok(const char *id) {
+    /* folders another program reads to run something, or that hold someone else's keys or data */
     static const char *const deny[] = { "lordos", "ssh", "gnupg", "autostart", "applications", "systemd", "environment.d",
                                         "keyrings", "dconf", "git", "trash", "mime", "fontconfig", "pulse", "pipewire",
                                         "wireplumber", "user-dirs.dirs", "mimeapps.list", "gtk-3.0", "gtk-4.0", "fish",
                                         "bash", "zsh", "nvim", "vim", "emacs", "nano", "mc", "flatpak", "containers",
-                                        "thumbnails", "recently-used.xbel", "icons", "themes", "fonts", NULL };
+                                        "thumbnails", "recently-used.xbel", "icons", "themes", "fonts", "dbus-1",
+                                        "user-tmpfiles.d", "xdg-desktop-portal", "menus", "kio", "plasma-workspace",
+                                        "tmux", "kitty", "alacritty", "foot", "wezterm", "mozilla", "chromium",
+                                        "google-chrome", "BraveSoftware", "Code", "keepassxc", "evolution", "Electron",
+                                        "gstreamer-1.0", "mesa_shader_cache", "mesa_shader_cache_db", "radv_builtin_shaders",
+                                        "bin", "applications-merged", "desktop-directories", "kservices5", "kservices6",
+                                        "speech-dispatcher", "environment", "profile.d", NULL };
     size_t n = strlen(id);
     if (!n || n > 100 || id[0] == '.' || id[0] == '-') return 0;
     for (const char *q = id; *q; q++) if (!isalnum((unsigned char)*q) && !strchr("._-+", *q)) return 0;
@@ -445,21 +457,45 @@ static int own_dir_ok(const char *id) {
 
 /* A writable grant must never land on a folder the system reads to start or install something,
  * or that holds a security decision (fsops_protected), nor on the shell's startup files. */
+/* Folders of the home that make the session run something or hold keys: no writable grant inside
+ * them, and none on a folder that contains one (opening ~/.config with an app must not hand it
+ * ~/.config/autostart). fsops_protected's list counts the same way. */
+static const char *const sensitive[] = { "/.ssh", "/.gnupg", "/.config/systemd", "/.local/share/systemd",
+                                         "/.local/share/dbus-1", "/.config/environment.d", "/.config/user-tmpfiles.d",
+                                         "/.local/bin", "/bin", "/.config/autostart", "/.local/share/applications",
+                                         "/.config/lordos", "/.local/share/lordos", NULL };
+
+static int path_under(const char *path, const char *dir) {
+    size_t n = strlen(dir);
+    return n && !strncmp(path, dir, n) && (path[n] == '/' || !path[n]);
+}
+
 static int grant_ok(const char *path) {
     if (fsops_protected(path)) return 0;
+    const char *h = getenv("HOME");
+    char home[PATH_MAX], full[PATH_MAX + 64];
+    if (!h || !realpath(h, home)) return 0;
+    if (!strcmp(path, home)) return 0;                  /* the whole home: never writable */
+    for (int i = 0; sensitive[i]; i++) {
+        snprintf(full, sizeof full, "%s%s", home, sensitive[i]);
+        if (path_under(path, full) || path_under(full, path)) return 0;
+    }
     const char *base = strrchr(path, '/');
     base = base ? base + 1 : path;
-    static const char *const startup[] = { ".bashrc", ".bash_profile", ".bash_login", ".profile", ".zshrc", ".zprofile",
-                                           ".zshenv", ".zlogin", ".xprofile", ".xsession", ".xsessionrc", ".pam_environment",
-                                           ".gitconfig", ".ssh", ".gnupg", NULL };
+    static const char *const startup[] = { ".bashrc", ".bash_profile", ".bash_login", ".bash_logout", ".bash_aliases",
+                                           ".profile", ".zshrc", ".zprofile", ".zshenv", ".zlogin", ".zlogout",
+                                           ".xprofile", ".xsession", ".xsessionrc", ".xinitrc", ".Xresources",
+                                           ".pam_environment", ".gitconfig", ".ssh", ".gnupg", NULL };
     for (int i = 0; startup[i]; i++) if (!strcmp(base, startup[i])) return 0;
+    struct stat st;
+    if (!lstat(path, &st) && S_ISREG(st.st_mode) && st.st_nlink > 1) return 0;   /* maybe another name of one of those */
     return 1;
 }
 
 static int is_dir(const char *p) { struct stat st; return !lstat(p, &st) && S_ISDIR(st.st_mode); }
 
 /* What a restricted app may touch (see sandbox.h). file: the realpath it was opened with, or NULL. */
-static FilesPlan *files_plan(const DesktopApp *a, const char *file) {
+static FilesPlan *files_plan(const DesktopApp *a, const char *file, const char *cwd) {
     const char *h = getenv("HOME");
     FilesPlan *p = calloc(1, sizeof *p);
     if (!p) return NULL;
@@ -467,7 +503,13 @@ static FilesPlan *files_plan(const DesktopApp *a, const char *file) {
     const char *home = p->home;
     p->cfg.home = home;
     const char *rt = getenv("XDG_RUNTIME_DIR");
-    if (rt && rt[0] == '/' && realpath(rt, p->runtime)) p->cfg.runtime_dir = p->runtime;
+    char rtdef[64];
+    snprintf(rtdef, sizeof rtdef, "/run/user/%u", (unsigned)getuid());
+    if (!(rt && rt[0] == '/' && realpath(rt, p->runtime)) && !realpath(rtdef, p->runtime)) {
+        free(p);                        /* no runtime dir to hide: its sockets (the bus) would stay reachable */
+        return NULL;
+    }
+    p->cfg.runtime_dir = p->runtime;
     /* the only sockets of the session it keeps: the display and the sound server's normal ones
      * (never pipewire-0-manager, the bus, systemd's, agents' or LordOS's own) */
     const char *wd = getenv("WAYLAND_DISPLAY");
@@ -505,7 +547,9 @@ static FilesPlan *files_plan(const DesktopApp *a, const char *file) {
      * thumbnails are pictures of the user's documents) */
     static const char *const caches[] = { "fontconfig", "mesa_shader_cache", "mesa_shader_cache_db", "radv_builtin_shaders",
                                           "gstreamer-1.0", NULL };
-    for (int k = 0; caches[k]; k++) plan_add(p, 1, "%s/.cache/%s", home, caches[k]);
+    /* read only: they are shared with unrestricted apps, which load them as trusted (a crafted
+     * font or shader cache would run in them) */
+    for (int k = 0; caches[k]; k++) plan_add(p, 0, "%s/.cache/%s", home, caches[k]);
     /* the desktop's look and settings, read only */
     static const char *const look[] = { ".config/gtk-3.0", ".config/gtk-4.0", ".config/fontconfig", ".config/dconf",
                                         ".config/mimeapps.list", ".config/user-dirs.dirs", ".config/user-dirs.locale",
@@ -514,7 +558,16 @@ static FilesPlan *files_plan(const DesktopApp *a, const char *file) {
                                         ".local/share/mime", ".local/share/applications", ".fonts", ".icons", ".themes", NULL };
     for (int k = 0; look[k]; k++) plan_add(p, 0, "%s/%s", home, look[k]);
     /* "Open with": that file or folder only (read only if it is one of the protected ones) */
-    if (file) plan_add(p, grant_ok(file), "%s%s", file, "");
+    if (file) {
+        struct stat st;
+        if (stat(file, &st)) { free(p); return NULL; }
+        plan_add(p, grant_ok(file), "%s%s", file, "");
+        snprintf(p->opened, sizeof p->opened, "%s", file);
+        p->cfg.opened = p->opened;
+        p->cfg.opened_dev = (unsigned long long)st.st_dev;
+        p->cfg.opened_ino = (unsigned long long)st.st_ino;
+    }
+    if (cwd && cwd[0] == '/') { snprintf(p->cwd, sizeof p->cwd, "%s", cwd); p->cfg.cwd = p->cwd; }
     return p;
 }
 
@@ -561,7 +614,7 @@ static int launch(const char *id, const char *file) {
     char fwid[FW_APP_MAX];
     snprintf(fwid, sizeof fwid, "desktop:%s", id);
     if (restrict_blocks(fwid, FW_R_NO_FILES)) {
-        if (!sandbox_landlock_abi() || !(plan = files_plan(a, file))) {
+        if (!sandbox_landlock_abi() || !(plan = files_plan(a, file, cwd))) {
             fprintf(stderr, "apps: %s is restricted to no files, but Landlock is not available: not launched\n", id);
             free(buf);
             return -1;
@@ -583,7 +636,14 @@ static int launch(const char *id, const char *file) {
         syscall(SYS_close_range, 3, ~0u, 0);
         const char *home = getenv("HOME");
         if (!cwd[0] || chdir(cwd)) { if (home && chdir(home)) {} }
-        app_scope_enter(id);        /* its own app-lordos-<id>.scope cgroup (the monitor attributes it) */
+        /* its own app-lordos-<id>.scope cgroup: the firewall, the Monitor, the PipeWire guard and
+         * the notification server know the app only by it. In a LordOS session a launch that can't
+         * be placed there never runs (it would run as lord-server itself, with none of its rules). */
+        if (app_scope_enter(id) && getenv("LORDOS_SESSIOND")) {
+            static const char msg[] = "apps: could not place the app in its own scope: not launched\n";
+            if (write(2, msg, sizeof msg - 1) < 0) {}
+            _exit(126);
+        }
         /* its own view (namespaces: no session sockets, only its folders), then Landlock */
         if (plan && (sandbox_files_isolate(&plan->cfg) || sandbox_apply_files(&plan->cfg))) {
             static const char msg[] = "apps: could not apply the no-files restriction: not launched\n";

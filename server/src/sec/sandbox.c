@@ -33,6 +33,10 @@
 #include <sys/socket.h>
 
 #ifdef __has_include
+#  if __has_include(<linux/openat2.h>)
+#    include <linux/openat2.h>
+#    define HAVE_OPENAT2 1
+#  endif
 #  if __has_include(<linux/landlock.h>)
 #    include <linux/landlock.h>
 #    define HAVE_LANDLOCK 1
@@ -157,6 +161,29 @@ static int apply_landlock(const SandboxConfig *cfg, const int *ro_fds, const int
 
 /* ---- "no files" for Linux apps (sandbox.h) ---- */
 
+/* The "Open with" grant, opened again without following any symlink, and only if it is still the
+ * inode the launcher checked: a running instance of the app may have swapped a component of the
+ * path for a symlink to somewhere else since. -1: the grant is dropped (fail closed). */
+static int open_opened(const SandboxFilesCfg *cfg) {
+#if defined(HAVE_OPENAT2) && defined(SYS_openat2)
+    struct open_how how;
+    memset(&how, 0, sizeof how);
+    how.flags = O_PATH | O_CLOEXEC;
+    how.resolve = RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS;
+    int fd = (int)syscall(SYS_openat2, AT_FDCWD, cfg->opened, &how, sizeof how);
+    if (fd < 0) return -1;
+    struct stat st;
+    if (fstat(fd, &st) || (unsigned long long)st.st_dev != cfg->opened_dev || (unsigned long long)st.st_ino != cfg->opened_ino ||
+        !(S_ISDIR(st.st_mode) || S_ISREG(st.st_mode))) { close(fd); return -1; }
+    return fd;
+#else
+    (void)cfg;
+    return -1;
+#endif
+}
+
+static int is_opened(const SandboxFilesCfg *cfg, const char *path) { return cfg->opened && !strcmp(cfg->opened, path); }
+
 int sandbox_landlock_abi(void) {
 #ifdef HAVE_LANDLOCK
     int abi = ll_abi();
@@ -201,15 +228,21 @@ int sandbox_apply_files(const SandboxFilesCfg *cfg) {
     for (int i = 0; sys_ro[i]; i++) ll_path(rs, sys_ro[i], ro);
     for (int i = 0; sys_rw[i]; i++) ll_path(rs, sys_rw[i], rw);
     if (cfg->runtime_dir) ll_path(rs, cfg->runtime_dir, rw);
-    for (int i = 0; i < SANDBOX_FILES_MAX && cfg->ro[i]; i++) {
-        struct stat st;
-        if (stat(cfg->ro[i], &st)) continue;
-        ll_path(rs, cfg->ro[i], S_ISDIR(st.st_mode) ? ro : (LANDLOCK_ACCESS_FS_READ_FILE & handled));
-    }
-    for (int i = 0; i < SANDBOX_FILES_MAX && cfg->rw[i]; i++) {
-        struct stat st;
-        if (stat(cfg->rw[i], &st)) continue;
-        ll_path(rs, cfg->rw[i], S_ISDIR(st.st_mode) ? rw : file_rw);
+    for (int pass = 0; pass < 2; pass++) {
+        const char *const *list = pass ? cfg->rw : cfg->ro;
+        for (int i = 0; i < SANDBOX_FILES_MAX && list[i]; i++) {
+            struct stat st;
+            if (is_opened(cfg, list[i])) {
+                int fd = open_opened(cfg);
+                if (fd < 0) continue;
+                if (!fstat(fd, &st))
+                    ll_fd(rs, fd, S_ISDIR(st.st_mode) ? (pass ? rw : ro) : (pass ? file_rw : (LANDLOCK_ACCESS_FS_READ_FILE & handled)));
+                close(fd);
+                continue;
+            }
+            if (stat(list[i], &st)) continue;
+            ll_path(rs, list[i], S_ISDIR(st.st_mode) ? (pass ? rw : ro) : (pass ? file_rw : (LANDLOCK_ACCESS_FS_READ_FILE & handled)));
+        }
     }
     if (apply_nopriv()) { close(rs); return -1; }
     int r = ll_enforce(rs);
@@ -268,7 +301,7 @@ int sandbox_files_isolate(const SandboxFilesCfg *cfg) {
     if (!cfg->home || cfg->home[0] != '/' || !strcmp(cfg->home, "/")) return -1;
     char map[64];
     unsigned uid = (unsigned)getuid(), gid = (unsigned)getgid();
-    if (unshare(CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID)) return -1;
+    if (unshare(CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWIPC)) return -1;
     if (write_file("/proc/self/setgroups", "deny")) return -1;
     snprintf(map, sizeof map, "%u %u 1", uid, uid);
     if (write_file("/proc/self/uid_map", map)) return -1;
@@ -300,8 +333,16 @@ int sandbox_files_isolate(const SandboxFilesCfg *cfg) {
         for (int i = 0; i < SANDBOX_FILES_MAX && list[i]; i++) {
             if (!is_under(list[i], cfg->home) || !strcmp(list[i], cfg->home)) continue;   /* outside home: Landlock alone */
             struct stat st;
-            if (lstat(list[i], &st) || !(S_ISDIR(st.st_mode) || S_ISREG(st.st_mode))) continue;
-            int t = (int)syscall(SYS_open_tree, AT_FDCWD, list[i], OPEN_TREE_CLONE | O_CLOEXEC);
+            int t;
+            if (is_opened(cfg, list[i])) {
+                int fd = open_opened(cfg);
+                if (fd < 0 || fstat(fd, &st)) { if (fd >= 0) close(fd); continue; }
+                t = (int)syscall(SYS_open_tree, fd, "", OPEN_TREE_CLONE | O_CLOEXEC | AT_EMPTY_PATH);
+                close(fd);
+            } else {
+                if (lstat(list[i], &st) || !(S_ISDIR(st.st_mode) || S_ISREG(st.st_mode))) continue;
+                t = (int)syscall(SYS_open_tree, AT_FDCWD, list[i], OPEN_TREE_CLONE | O_CLOEXEC);
+            }
             if (t < 0) continue;
             keep[nk].fd = t; keep[nk].dir = S_ISDIR(st.st_mode); keep[nk].path = list[i]; keep[nk].ro = pass; nk++;
         }
@@ -325,11 +366,19 @@ int sandbox_files_isolate(const SandboxFilesCfg *cfg) {
     struct stat vt;
     if (!stat("/var/tmp", &vt)) bad |= mount("tmpfs", "/var/tmp", "tmpfs", MS_NOSUID | MS_NODEV, "mode=1777");
     bad |= mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL);
+    /* /dev stays (GPU, sound, camera: lord-netperm decides those), but not the session's shared
+     * memory nor its terminals (keystrokes of a sudo password, TIOCSTI) */
+    if (!stat("/dev/shm", &vt)) bad |= mount("tmpfs", "/dev/shm", "tmpfs", MS_NOSUID | MS_NODEV, "mode=1777");
+    bad |= mount("devpts", "/dev/pts", "devpts", MS_NOSUID | MS_NOEXEC, "newinstance,ptmxmode=0666,mode=0620");
+    if (!bad) bad |= mount("/dev/pts/ptmx", "/dev/ptmx", NULL, MS_BIND, NULL);
     for (int i = 0; i < nk && !bad; i++) {
         if (bind_clone(keep[i].fd, keep[i].path, keep[i].dir)) { bad = 1; break; }
         if (keep[i].ro) mount(NULL, keep[i].path, NULL, MS_REMOUNT | MS_BIND | MS_RDONLY | MS_NOSUID | MS_NODEV, NULL);
     }
     for (int i = 0; i < nk; i++) close(keep[i].fd);
+    /* the working directory again, inside the view: the one inherited still points into the real
+     * folders under the tmpfs (relative connect() to the session bus, sockets in the home) */
+    if (!bad && (!cfg->cwd || chdir(cfg->cwd)) && chdir(cfg->home)) bad = 1;
     char ok = !bad;
     if (write(sync[1], &ok, 1) < 0) {}
     close(sync[1]);

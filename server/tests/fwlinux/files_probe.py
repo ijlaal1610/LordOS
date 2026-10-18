@@ -41,6 +41,14 @@ t("connect_systemd_private", lambda: conn(rt + "/systemd/private"))
 t("connect_pipewire_manager", lambda: conn(rt + "/pipewire-0-manager"))
 t("connect_wayland", lambda: conn(rt + "/" + os.environ.get("WAYLAND_DISPLAY", "wayland-0")))
 t("connect_pipewire", lambda: conn(rt + "/pipewire-0"))
+# the working directory it was started in (the .desktop's Path=): a relative connect must not reach
+# the real folder hidden under the tmpfs
+t("cwd_relative_bus", lambda: conn("bus"))
+def no_session_pts():
+    if [n for n in os.listdir("/dev/pts") if n.isdigit()]: raise OSError(0, "session terminals visible")
+t("session_pts_hidden", no_session_pts)
+t("read_session_shm", lambda: rd("/dev/shm/fwlinux-shm-%d" % os.getuid()))
+t("write_shared_cache", lambda: wr(home + "/.cache/fontconfig/fwlinux-probe"))
 if outside:
     t("outside_proc_root", lambda: conn("/proc/%s/root%s/bus" % (outside[0], rt)))
     t("outside_proc_visible", lambda: os.stat("/proc/%s" % outside[0]))

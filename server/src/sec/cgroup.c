@@ -250,11 +250,14 @@ int cgroup_delegate_session(unsigned uid, unsigned gid) {
     return 0;
 }
 
-void app_scope_enter(const char *id) {
-    char name[80];
-    if (snprintf(name, sizeof name, "app-lordos-%s.scope", id) >= (int)sizeof name) return;
+int app_scope_enter(const char *id) {
+    char name[96];
+    if (snprintf(name, sizeof name, "app-lordos-%s.scope", id) >= (int)sizeof name || !cgroup_scope_name_ok(name)) {
+        fprintf(stderr, "cgroup: %s can't be an app scope\n", id);
+        return -1;
+    }
     CgroupLimits lim = { .mem_high_mb = 0, .mem_max_mb = 0, .cpu_percent = 0 };   /* Linux apps: no limit, attribution only */
-    cgroup_enter(name, &lim);
+    return cgroup_enter(name, &lim);
 }
 
 /* ---- lord-sessiond side: placing a session process into its app scope ---- */

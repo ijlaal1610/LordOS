@@ -23,9 +23,9 @@ typedef struct {
  * applies the limits. 0 if it ended up in the scope; -1 if it couldn't (already warned, the caller goes on). */
 int cgroup_enter(const char *name, const CgroupLimits *lim);
 
-/* Shortcut for the child before execve: enters app-lordos-<id>.scope with loose limits. Only
- * logs a warning if it fails. */
-void app_scope_enter(const char *id);
+/* Shortcut for the child before execve: enters app-lordos-<id>.scope with loose limits. The
+ * launcher refuses to exec when it fails inside a LordOS session. */
+int app_scope_enter(const char *id);   /* 0 placed; -1 not (invalid scope name, refused or no answer) */
 
 /* The cgroup v2 path of the current process, relative to /sys/fs/cgroup (e.g. ".../app.slice/..."),
  * so the monitor knows which scope it's in. "" if it couldn't be read. */

@@ -89,6 +89,11 @@ typedef struct {
     const char *rw[SANDBOX_FILES_MAX + 1];     /* NULL-terminated */
     const char *ro[SANDBOX_FILES_MAX + 1];
     const char *sockets[8];                    /* names inside runtime_dir kept visible (wayland-0...), NULL-terminated */
+    const char *cwd;                           /* the .desktop's Path= (or NULL: the home folder), entered inside the view */
+    /* the file or folder the app was opened with ("Open with"; also in rw[] or ro[]): opened
+     * again without following any symlink and only if it is still the same inode the launcher checked */
+    const char *opened;
+    unsigned long long opened_dev, opened_ino;
 } SandboxFilesCfg;
 
 /* Before sandbox_apply_files: the app's own view of the system, so no unix socket of the session
@@ -98,7 +103,10 @@ typedef struct {
  *   - the home folder is an empty tmpfs with only rw[] and ro[] bound into it (ro[] read-only);
  *   - the runtime dir is an empty tmpfs with only sockets[] bound into it: no session bus, no
  *     systemd user manager, no agents, no LordOS sockets;
- *   - /tmp and /var/tmp are private tmpfs (no other program's sockets);
+ *   - /tmp, /var/tmp and /dev/shm are private tmpfs (no other program's sockets or shared memory),
+ *     with its own IPC namespace, and /dev/pts is a new devpts instance (not the session's terminals);
+ *   - the working directory is entered again inside the view (cwd, else the home folder): a
+ *     directory opened before the tmpfs went on would still reach what they hide;
  *   - /proc is a new procfs of the new PID namespace (no /proc/<pid>/root of the session's
  *     processes back into the real one).
  * The calling process forks: the parent _exits (the caller already is an orphan), the child is
