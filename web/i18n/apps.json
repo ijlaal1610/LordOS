@@ -629,9 +629,9 @@
     "screenshot": "docs/screenshots/terminal.png",
     "name": {"en": "Terminal", "es": "Terminal", "pt": "Terminal"},
     "tagline": {
-      "en": "A fast native terminal, written from scratch",
-      "es": "Una terminal nativa y rápida, escrita desde cero",
-      "pt": "Um terminal nativo e rápido, escrito do zero"
+      "en": "A fast native terminal with its own emulator",
+      "es": "Una terminal nativa y rápida, con emulador propio",
+      "pt": "Um terminal nativo e rápido, com emulador próprio"
     },
     "features": {
       "en": [

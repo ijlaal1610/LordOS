@@ -4,9 +4,9 @@
   "ogLocale": "en_US",
   "meta": {
     "title": "LordOS — the free, fast and secure Linux desktop",
-    "description": "LordOS is a free GNU/Linux distribution based on Debian with its own desktop environment, display server and Wayland compositor built from scratch. Private by design, light enough for a Raspberry Pi.",
+    "description": "LordOS is a free GNU/Linux distribution based on Debian with its own desktop environment, display server and Wayland compositor, built on solid Debian and Wayland foundations. Private by design, light enough for a Raspberry Pi.",
     "galleryTitle": "LordOS gallery — every screen",
-    "galleryDescription": "Real screenshots of LordOS, the free GNU/Linux distribution based on Debian with its own desktop environment built from scratch. No mockups, no retouching."
+    "galleryDescription": "Real screenshots of LordOS, the free GNU/Linux distribution based on Debian with a desktop environment of its own. No mockups, no retouching."
   },
   "skip": "Skip to content",
   "navLabel": "Main",
@@ -19,7 +19,7 @@
   "navAbout": "About",
   "badge": "Version 0.7.0 · Beta",
   "heroTitle": "The free, fast and secure Linux desktop.",
-  "heroLead": "LordOS is a free GNU/Linux distribution based on Debian with its own desktop environment, display server and Wayland compositor built from scratch in C, its own interface engine, and native apps made to feel calm, clear and private.",
+  "heroLead": "LordOS is a free GNU/Linux distribution based on Debian with its own desktop environment, display server and Wayland compositor written in C, its own interface engine, and native apps made to feel calm, clear and private.",
   "ctaDownload": "Download LordOS",
   "ctaTour": "Take the tour",
   "altDesktop": "The LordOS desktop with the Dock, the menu bar and the About window",
@@ -27,12 +27,12 @@
   "featLead": "A complete desktop with native apps, privacy built in, and the Linux apps you already use.",
   "features": [
     [
-      "A desktop built from scratch",
+      "A desktop of its own",
       "Its own display server and Wayland compositor in C and its own interface engine, on a solid Debian base. Light enough for a Raspberry Pi, smooth on a modern PC."
     ],
     [
       "Private by design",
-      "Apps run isolated and ask before using your camera, microphone, files or network. You decide."
+      "Installable LordOS apps run isolated and ask before using your camera, microphone, files or network. You decide."
     ],
     [
       "A firewall you can see",
@@ -159,7 +159,7 @@
     "isolatedTitle": "Runs in its own sandboxed process",
     "shotOpen": "Open screenshot",
     "metaTitle": "LordOS apps — every native app",
-    "metaDescription": "The native apps of LordOS, the free GNU/Linux distribution based on Debian with its own desktop environment built from scratch: mail, calendar, files, passwords, media and more.",
+    "metaDescription": "The native apps of LordOS, the free GNU/Linux distribution based on Debian with a desktop environment of its own: mail, calendar, files, passwords, media and more.",
     "teaserKicker": "Native apps",
     "teaserTitle": "Apps for everything you do",
     "teaserText": "Mail, calendar, files, passwords, photos, music and more: native apps that look and feel the same.",

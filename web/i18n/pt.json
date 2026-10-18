@@ -4,9 +4,9 @@
   "ogLocale": "pt_BR",
   "meta": {
     "title": "LordOS — o desktop Linux livre, rápido e seguro",
-    "description": "LordOS é uma distribuição GNU/Linux livre baseada no Debian com ambiente de desktop, servidor gráfico e compositor Wayland próprios, feitos do zero. Privado por padrão e leve para um Raspberry Pi.",
+    "description": "LordOS é uma distribuição GNU/Linux livre baseada no Debian com ambiente de desktop, servidor gráfico e compositor Wayland próprios, construído sobre bases sólidas de Debian e Wayland. Privado por padrão e leve para um Raspberry Pi.",
     "galleryTitle": "Galeria do LordOS — cada tela",
-    "galleryDescription": "Capturas reais do LordOS, a distribuição GNU/Linux livre baseada no Debian com ambiente de desktop próprio feito do zero. Sem maquetes nem retoques."
+    "galleryDescription": "Capturas reais do LordOS, a distribuição GNU/Linux livre baseada no Debian com ambiente de desktop próprio. Sem maquetes nem retoques."
   },
   "skip": "Ir para o conteúdo",
   "navLabel": "Principal",
@@ -19,7 +19,7 @@
   "navAbout": "Sobre",
   "badge": "Versão 0.7.0 · Beta",
   "heroTitle": "O desktop Linux livre, rápido e seguro.",
-  "heroLead": "LordOS é uma distribuição GNU/Linux livre baseada no Debian com ambiente de desktop, servidor gráfico e compositor Wayland próprios, feitos do zero em C, motor de interface próprio e apps nativos pensados para ser calmos, claros e privados.",
+  "heroLead": "LordOS é uma distribuição GNU/Linux livre baseada no Debian com ambiente de desktop, servidor gráfico e compositor Wayland próprios, escritos em C, motor de interface próprio e apps nativos pensados para ser calmos, claros e privados.",
   "ctaDownload": "Baixar LordOS",
   "ctaTour": "Fazer o tour",
   "altDesktop": "O desktop do LordOS com o Dock, a barra de menus e a janela Sobre",
@@ -27,12 +27,12 @@
   "featLead": "Um desktop completo com apps nativos, privacidade de fábrica e os apps Linux que você já usa.",
   "features": [
     [
-      "Um desktop feito do zero",
+      "Um desktop próprio",
       "Servidor gráfico e compositor Wayland próprios em C e motor de interface próprio, sobre uma base Debian sólida. Leve para um Raspberry Pi, fluido num PC moderno."
     ],
     [
       "Privado por padrão",
-      "Os apps rodam isolados e pedem permissão antes de usar câmera, microfone, arquivos ou rede. Você decide."
+      "Os apps instaláveis do LordOS rodam isolados e pedem permissão antes de usar câmera, microfone, arquivos ou rede. Você decide."
     ],
     [
       "Um firewall que se vê",
@@ -159,7 +159,7 @@
     "isolatedTitle": "Roda em seu próprio processo isolado",
     "shotOpen": "Abrir captura",
     "metaTitle": "Apps do LordOS — todos os apps nativos",
-    "metaDescription": "Os apps nativos do LordOS, a distribuição GNU/Linux livre baseada no Debian com ambiente de desktop próprio feito do zero: e-mail, calendário, arquivos, senhas, mídia e mais.",
+    "metaDescription": "Os apps nativos do LordOS, a distribuição GNU/Linux livre baseada no Debian com ambiente de desktop próprio: e-mail, calendário, arquivos, senhas, mídia e mais.",
     "teaserKicker": "Apps nativos",
     "teaserTitle": "Apps para tudo o que você faz",
     "teaserText": "E-mail, calendário, arquivos, senhas, fotos, música e mais: apps nativos com a mesma aparência e o mesmo jeito.",

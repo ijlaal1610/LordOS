@@ -1,0 +1,296 @@
+{
+  "en": {
+    "navPaper": "Paper",
+    "learnMore": "Learn more",
+    "featuresKicker": "Feature",
+    "shotsTitle": "Screenshots",
+    "sourcesTitle": "Read the source",
+    "sourcesLead": "The code behind this feature, on GitHub.",
+    "prev": "Previous",
+    "next": "Next",
+    "allFeatures": "All features",
+    "tones": {
+      "ours": "Ours",
+      "reused": "Reused",
+      "kernel": "Kernel",
+      "user": "You",
+      "allow": "Allowed",
+      "deny": "Blocked"
+    },
+    "legend": "Legend",
+    "then": "then",
+    "connections": "Connections",
+    "anchorLabel": "Link to this section",
+    "paper": {
+      "metaDescription": "How LordOS works inside: the paper behind the free GNU/Linux distribution based on Debian with its own desktop environment, display server and Wayland compositor.",
+      "toc": "Contents",
+      "pdf": "Download PDF",
+      "version": "Version",
+      "date": "Date",
+      "authors": "Authors",
+      "kicker": "Paper"
+    },
+    "lumoSays": "Lumo says",
+    "legal": {
+      "nav": "Legal",
+      "updated": "Last updated"
+    },
+    "faq": {
+      "title": "Frequently asked questions",
+      "lead": "Short answers about LordOS, downloads, hardware, privacy and the project.",
+      "search": "Search the questions",
+      "categories": "Categories",
+      "empty": "No question matches your search.",
+      "all": "All"
+    },
+    "navFaq": "FAQ",
+    "theme": "Theme",
+    "about": {
+      "metaTitle": "About · Made by IPERFEX · LordOS",
+      "metaDescription": "LordOS is created and maintained by IPERFEX, a technology company from Argentina led by Pablo Miranda and Federico Pereira.",
+      "kicker": "About",
+      "title": "Made by IPERFEX",
+      "lead": "LordOS is created and maintained by IPERFEX, a technology company from Argentina, led by Pablo Miranda and Federico Pereira.",
+      "site": "Visit iperfex.com",
+      "linkedin": "IPERFEX on LinkedIn",
+      "creatorsTitle": "The creators",
+      "role": "Co-creator · IPERFEX",
+      "linkedinOf": "{name} on LinkedIn",
+      "photoOf": "Photo of {name}",
+      "initialsOf": "Initials of {name}",
+      "workTitle": "Work with IPERFEX",
+      "workLead": "The team that builds LordOS can help your organisation use it.",
+      "work": [
+        [
+          "Sponsorship",
+          "Sponsor LordOS and help fund new features, hardware for testing and the release infrastructure."
+        ],
+        [
+          "Collaborations and partnerships",
+          "Work with us on joint projects, integrations or hardware partnerships around LordOS."
+        ],
+        [
+          "Custom apps for LordOS",
+          "Native apps built on the LordOS interface engine, packaged as .lpk, and integrations with your systems."
+        ],
+        [
+          "Support for companies",
+          "Help with deployments, Raspberry Pi 5 fleets and custom LordOS images for your devices."
+        ],
+        [
+          "Training",
+          "Training for teams that deploy, manage or build apps for LordOS."
+        ]
+      ],
+      "contact": "Contact IPERFEX",
+      "supportTitle": "Support the project",
+      "supportText": "LordOS is free software. You can help with a donation or by following the project.",
+      "donate": "Donate",
+      "github": "Follow the project on GitHub"
+    },
+    "hero": {
+      "pills": [
+        "465 MB RAM at idle",
+        "Boots in 16 s",
+        "Signed releases · Ed25519"
+      ],
+      "alt": "The LordOS desktop with Calendar, Files, Photos and Player open"
+    }
+  },
+  "es": {
+    "navPaper": "Paper",
+    "learnMore": "Ver más",
+    "featuresKicker": "Función",
+    "shotsTitle": "Capturas",
+    "sourcesTitle": "Leé el código",
+    "sourcesLead": "El código detrás de esta función, en GitHub.",
+    "prev": "Anterior",
+    "next": "Siguiente",
+    "allFeatures": "Todas las funciones",
+    "tones": {
+      "ours": "Propio",
+      "reused": "Reutilizado",
+      "kernel": "Kernel",
+      "user": "Vos",
+      "allow": "Permitido",
+      "deny": "Bloqueado"
+    },
+    "legend": "Referencias",
+    "then": "luego",
+    "connections": "Conexiones",
+    "anchorLabel": "Enlace a esta sección",
+    "paper": {
+      "metaDescription": "Cómo funciona LordOS por dentro: el paper de la distribución GNU/Linux libre basada en Debian con su propio entorno de escritorio, servidor gráfico y compositor Wayland.",
+      "toc": "Contenido",
+      "pdf": "Descargar PDF",
+      "version": "Versión",
+      "date": "Fecha",
+      "authors": "Autores",
+      "kicker": "Paper"
+    },
+    "lumoSays": "Lumo cuenta",
+    "legal": {
+      "nav": "Legal",
+      "updated": "Última actualización"
+    },
+    "faq": {
+      "title": "Preguntas frecuentes",
+      "lead": "Respuestas cortas sobre LordOS, descargas, hardware, privacidad y el proyecto.",
+      "search": "Buscar en las preguntas",
+      "categories": "Categorías",
+      "empty": "Ninguna pregunta coincide con tu búsqueda.",
+      "all": "Todas"
+    },
+    "navFaq": "FAQ",
+    "theme": "Tema",
+    "about": {
+      "metaTitle": "Nosotros · Hecho por IPERFEX · LordOS",
+      "metaDescription": "LordOS es creado y mantenido por IPERFEX, una empresa de tecnología de Argentina liderada por Pablo Miranda y Federico Pereira.",
+      "kicker": "Nosotros",
+      "title": "Hecho por IPERFEX",
+      "lead": "LordOS es creado y mantenido por IPERFEX, una empresa de tecnología de Argentina, liderada por Pablo Miranda y Federico Pereira.",
+      "site": "Visitá iperfex.com",
+      "linkedin": "IPERFEX en LinkedIn",
+      "creatorsTitle": "Los creadores",
+      "role": "Cocreador · IPERFEX",
+      "linkedinOf": "{name} en LinkedIn",
+      "photoOf": "Foto de {name}",
+      "initialsOf": "Iniciales de {name}",
+      "workTitle": "Trabajá con IPERFEX",
+      "workLead": "El equipo que construye LordOS puede ayudar a tu organización a usarlo.",
+      "work": [
+        [
+          "Patrocinio",
+          "Patrociná LordOS y ayudá a financiar nuevas funciones, hardware para pruebas y la infraestructura de publicación."
+        ],
+        [
+          "Colaboraciones y alianzas",
+          "Trabajá con nosotros en proyectos conjuntos, integraciones o alianzas de hardware alrededor de LordOS."
+        ],
+        [
+          "Apps a medida para LordOS",
+          "Apps nativas sobre el motor de interfaz de LordOS, empaquetadas como .lpk, e integraciones con tus sistemas."
+        ],
+        [
+          "Soporte para empresas",
+          "Ayuda con despliegues, flotas de Raspberry Pi 5 e imágenes de LordOS a medida para tus equipos."
+        ],
+        [
+          "Capacitación",
+          "Capacitación para equipos que despliegan, administran o desarrollan apps para LordOS."
+        ]
+      ],
+      "contact": "Contactar a IPERFEX",
+      "supportTitle": "Apoyá el proyecto",
+      "supportText": "LordOS es software libre. Podés ayudar con una donación o siguiendo el proyecto.",
+      "donate": "Donar",
+      "github": "Seguí el proyecto en GitHub"
+    },
+    "hero": {
+      "pills": [
+        "465 MB de RAM en reposo",
+        "Arranca en 16 s",
+        "Versiones firmadas · Ed25519"
+      ],
+      "alt": "El escritorio de LordOS con Calendario, Archivos, Fotos y Reproductor abiertos"
+    }
+  },
+  "pt": {
+    "navPaper": "Paper",
+    "learnMore": "Saiba mais",
+    "featuresKicker": "Recurso",
+    "shotsTitle": "Capturas",
+    "sourcesTitle": "Leia o código",
+    "sourcesLead": "O código por trás deste recurso, no GitHub.",
+    "prev": "Anterior",
+    "next": "Próximo",
+    "allFeatures": "Todos os recursos",
+    "tones": {
+      "ours": "Nosso",
+      "reused": "Reutilizado",
+      "kernel": "Kernel",
+      "user": "Você",
+      "allow": "Permitido",
+      "deny": "Bloqueado"
+    },
+    "legend": "Legenda",
+    "then": "depois",
+    "connections": "Conexões",
+    "anchorLabel": "Link para esta seção",
+    "paper": {
+      "metaDescription": "Como o LordOS funciona por dentro: o paper da distribuição GNU/Linux livre baseada no Debian com ambiente de desktop, servidor gráfico e compositor Wayland próprios.",
+      "toc": "Conteúdo",
+      "pdf": "Baixar PDF",
+      "version": "Versão",
+      "date": "Data",
+      "authors": "Autores",
+      "kicker": "Paper"
+    },
+    "lumoSays": "Lumo conta",
+    "legal": {
+      "nav": "Jurídico",
+      "updated": "Última atualização"
+    },
+    "faq": {
+      "title": "Perguntas frequentes",
+      "lead": "Respostas curtas sobre o LordOS, downloads, hardware, privacidade e o projeto.",
+      "search": "Buscar nas perguntas",
+      "categories": "Categorias",
+      "empty": "Nenhuma pergunta corresponde à sua busca.",
+      "all": "Todas"
+    },
+    "navFaq": "FAQ",
+    "theme": "Tema",
+    "about": {
+      "metaTitle": "Sobre · Feito pela IPERFEX · LordOS",
+      "metaDescription": "O LordOS é criado e mantido pela IPERFEX, uma empresa de tecnologia da Argentina liderada por Pablo Miranda e Federico Pereira.",
+      "kicker": "Sobre",
+      "title": "Feito pela IPERFEX",
+      "lead": "O LordOS é criado e mantido pela IPERFEX, uma empresa de tecnologia da Argentina, liderada por Pablo Miranda e Federico Pereira.",
+      "site": "Visite iperfex.com",
+      "linkedin": "IPERFEX no LinkedIn",
+      "creatorsTitle": "Os criadores",
+      "role": "Cocriador · IPERFEX",
+      "linkedinOf": "{name} no LinkedIn",
+      "photoOf": "Foto de {name}",
+      "initialsOf": "Iniciais de {name}",
+      "workTitle": "Trabalhe com a IPERFEX",
+      "workLead": "A equipe que constrói o LordOS pode ajudar a sua organização a usá-lo.",
+      "work": [
+        [
+          "Patrocínio",
+          "Patrocine o LordOS e ajude a financiar novos recursos, hardware para testes e a infraestrutura de publicação."
+        ],
+        [
+          "Colaborações e parcerias",
+          "Trabalhe conosco em projetos conjuntos, integrações ou parcerias de hardware em torno do LordOS."
+        ],
+        [
+          "Apps sob medida para o LordOS",
+          "Apps nativos sobre o motor de interface do LordOS, empacotados como .lpk, e integrações com os seus sistemas."
+        ],
+        [
+          "Suporte para empresas",
+          "Ajuda com implantações, frotas de Raspberry Pi 5 e imagens do LordOS sob medida para os seus equipamentos."
+        ],
+        [
+          "Treinamento",
+          "Treinamento para equipes que implantam, administram ou desenvolvem apps para o LordOS."
+        ]
+      ],
+      "contact": "Contatar a IPERFEX",
+      "supportTitle": "Apoie o projeto",
+      "supportText": "O LordOS é software livre. Você pode ajudar com uma doação ou acompanhando o projeto.",
+      "donate": "Doar",
+      "github": "Acompanhe o projeto no GitHub"
+    },
+    "hero": {
+      "pills": [
+        "465 MB de RAM em repouso",
+        "Inicia em 16 s",
+        "Versões assinadas · Ed25519"
+      ],
+      "alt": "O desktop do LordOS com Calendário, Arquivos, Fotos e Player abertos"
+    }
+  }
+}

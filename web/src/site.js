@@ -73,23 +73,65 @@
   }
 
   // Theme toggle: Auto -> Light -> Dark. theme.js already applied the saved choice before paint.
-  var tb = $('.theme-btn');
-  if (tb) {
+  var tbs = $$('.theme-btn');
+  if (tbs.length) {
     var root = d.documentElement;
     var modes = ['auto', 'light', 'dark'];
     var label = function () {
       var m = root.getAttribute('data-theme') || 'auto';
-      $('.tl', tb).textContent = tb.getAttribute('data-' + m);
-      tb.setAttribute('aria-label', tb.getAttribute('data-label') + ': ' + tb.getAttribute('data-' + m));
-      $$('svg', tb).forEach(function (s) { s.style.display = s.getAttribute('data-m') === m ? '' : 'none'; });
+      tbs.forEach(function (tb) {
+        var tl = $('.tl', tb);
+        if (tl) tl.textContent = tb.getAttribute('data-' + m);
+        tb.setAttribute('aria-label', tb.getAttribute('data-label') + ': ' + tb.getAttribute('data-' + m));
+        $$('svg', tb).forEach(function (s) { s.style.display = s.getAttribute('data-m') === m ? '' : 'none'; });
+      });
     };
-    tb.addEventListener('click', function () {
-      var m = modes[(modes.indexOf(root.getAttribute('data-theme') || 'auto') + 1) % 3];
-      if (m === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', m);
-      store.set('lordos-theme', m);
-      label();
+    tbs.forEach(function (tb) {
+      tb.addEventListener('click', function () {
+        var m = modes[(modes.indexOf(root.getAttribute('data-theme') || 'auto') + 1) % 3];
+        if (m === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', m);
+        store.set('lordos-theme', m);
+        label();
+      });
     });
     label();
+  }
+
+  // Paper: highlight the section being read in the table of contents
+  var tocLinks = $$('.toc a');
+  if (tocLinks.length && 'IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        tocLinks.forEach(function (a) {
+          if (a.getAttribute('href') === '#' + en.target.id) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
+        });
+      });
+    }, { rootMargin: '0px 0px -70% 0px' });
+    $$('.prose h2[id], .prose h3[id]').forEach(function (h) { io.observe(h); });
+  }
+
+  // FAQ search (the category chips are plain anchors)
+  var fq = $('#faq-q');
+  if (fq) {
+    var secs = $$('.faq-sec');
+    var norm = function (s) { return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); };
+    fq.addEventListener('input', function () {
+      var q = norm(fq.value.trim()), any = false;
+      secs.forEach(function (sec) {
+        var n = 0;
+        $$('details', sec).forEach(function (dt) {
+          var hit = !q || norm(dt.textContent).indexOf(q) >= 0;
+          dt.hidden = !hit;
+          if (hit) n++;
+          if (q) dt.open = hit;
+        });
+        sec.hidden = n === 0;
+        if (n) any = true;
+      });
+      $('#faq-empty').hidden = any;
+    });
+    if (location.hash) { var t0 = d.getElementById(location.hash.slice(1)); if (t0 && t0.tagName === 'DETAILS') t0.open = true; }
   }
 
   // Filters (gallery: category + appearance; apps: category). Items carry data-item.
