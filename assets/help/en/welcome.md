@@ -6,8 +6,10 @@ keywords: start, getting started, introduction, new
 ---
 # Welcome to LordOS
 
-LordOS is a complete desktop built from scratch: its own display server written in C and a React
-interface running on its own engine. It is designed to run well on modest hardware.
+LordOS is a free GNU/Linux distribution based on Debian, with its own desktop environment built
+from scratch: a display server and Wayland compositor written in C, and a React interface running
+on its own engine. Linux apps (GTK, Qt, browsers) run alongside the native ones. It is designed to
+run well on modest hardware.
 
 ## First steps
 

@@ -1,5 +1,7 @@
 # LordOS brand files
 
+LordOS is a Debian-based GNU/Linux distribution with a desktop built from scratch.
+
 The brand identity (logo usage, colours, typography, the mascot) is described in
 [`../LORDOS-BRAND.md`](../LORDOS-BRAND.md). This page is the file index.
 

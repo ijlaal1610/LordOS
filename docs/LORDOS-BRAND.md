@@ -14,8 +14,9 @@ the renders by hand.
 
 ## 1. What LordOS is
 
-LordOS is a free, fast and secure desktop operating system built from scratch on Linux. It has its
-own display server written in C and its own React-based interface engine, an idle session uses
+LordOS is a free, fast and secure GNU/Linux distribution based on Debian, with a desktop built from
+scratch. Its desktop environment has its own display server and Wayland compositor written in C and
+its own React-based interface engine, an idle session uses
 about 120 MB of RAM, and it brings a Dock, an app launcher, a menu bar, instant search and polished
 native apps to PCs and to the Raspberry Pi 5, while still running regular Linux applications. The
 crown stands for a desktop where the user rules: fast, private and fully under their control.
@@ -30,7 +31,7 @@ the base, a rounded rim and a faceted yellow gem on each tip. Next to it is the 
 <img src="brand/svg/app-icon.svg" alt="App icon" width="128"> <img src="brand/png/app-icon-64.png" alt="App icon, 64 px" width="64"> <img src="brand/png/app-icon-32.png" alt="App icon, 32 px" width="32"> <img src="brand/png/app-icon-16.png" alt="App icon, 16 px" width="16">
 
 The crown on a rounded square (22 % corner radius) with a diagonal violet gradient. It is the
-system's own icon (About, Settings → General, the Dock, Monitor, Help). Outside the OS, use it for
+system's own icon (About, Settings → General, the Dock, Monitor, Help). Outside LordOS, use it for
 store listings, avatars and anywhere a square mark is needed. File: `brand/svg/app-icon.svg`, PNGs
 from 16 to 1024 px in `brand/png/`.
 

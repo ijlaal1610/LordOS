@@ -2,8 +2,9 @@
 
 ## 0.7.0 Beta — first beta (2026-10-18)
 
-The first public beta of LordOS: a desktop environment with its own display server written in C
-and a React interface on its own engine. Milestone details are in `docs/ROADMAP.md`; the
+The first public beta of LordOS, a GNU/Linux distribution based on Debian 13 with its own desktop
+environment: a display server and Wayland compositor written in C, and a React interface on its own
+engine. Milestone details are in `docs/ROADMAP.md`; the
 architecture and dependency policy are in `docs/ARCHITECTURE.md`.
 
 ### M1 — Minimal display server

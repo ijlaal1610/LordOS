@@ -6,8 +6,10 @@ keywords: inicio, empezar, introducción, novedades
 ---
 # Bienvenido a LordOS
 
-LordOS es un escritorio completo hecho desde cero: un servidor gráfico propio en C y una interfaz
-en React que corre sobre su propio motor. Está pensado para andar bien en equipos modestos.
+LordOS es una distribución GNU/Linux libre basada en Debian, con su propio entorno de escritorio,
+servidor gráfico y compositor Wayland hechos desde cero en C, y una interfaz en React que corre
+sobre su propio motor. Las apps de Linux (GTK, Qt, navegadores) funcionan junto a las propias. Está
+pensado para andar bien en equipos modestos.
 
 ## Lo primero
 

@@ -26,7 +26,7 @@
     "other": "{ms} ms · {count} nós"
   },
   "server": "Servidor gráfico",
-  "tagline": "Um desktop livre, rápido e seguro, construído do zero sobre Linux.",
+  "tagline": "Um desktop GNU/Linux livre, rápido e seguro, feito do zero.",
   "uptime": "Ligado há",
   "version": "Versão {v}",
   "versionChannel": "Versão {v} · {channel}"

@@ -1,15 +1,16 @@
 # LordOS live ISO
 
 An image to boot LordOS from a USB stick or a CD on any 64-bit PC, without installing anything. It
-is a minimal Debian 13 with LordOS inside and it goes straight to the desktop. It's for testing real
-hardware: the GPU (AMD or Nvidia), sound, Wi-Fi and displays. It is the first step of M8 (the
+is the LordOS distribution itself (a minimal Debian 13 with the LordOS desktop environment) and
+it boots straight into the desktop. It's for testing real hardware: the GPU (AMD or Nvidia),
+sound, Wi-Fi and displays. It is the first step of M8 (the
 installable image).
 
 | | |
 |---|---|
-| ![bios](iso-bios-arranque.png) | ![uefi](iso-uefi-arranque.png) |
+| ![bios](iso-bios-boot.png) | ![uefi](iso-uefi-boot.png) |
 | VM with SeaBIOS: boots on its own into LordOS | VM with OVMF (UEFI) |
-| ![grub](iso-grub.png) | ![terminal](iso-terminal.png) |
+| ![grub](iso-grub-menu.png) | ![terminal](iso-terminal.png) |
 | Boot menu (screenshot from before the grub font fix: the borders showed up as "?") | Network via LordOS's own DHCP, DNS, `ping` without root, sound (PipeWire) and boot in 11.8 s |
 
 ## Writing it to a USB stick
@@ -56,13 +57,13 @@ on the live system: the manifest has `"live": true` and the SDK hides it if
 
 | | |
 |---|---|
-| ![welcome](iso-instalador-bienvenida.png) | ![disk](iso-instalador-disco.png) |
+| ![welcome](iso-installer-welcome.png) | ![disk](iso-installer-disk.png) |
 | Welcome | Disk: model, size, contents and a strong confirmation |
-| ![user](iso-instalador-usuario.png) | ![progress](iso-instalador-progreso.png) |
+| ![user](iso-installer-user.png) | ![progress](iso-installer-progress.png) |
 | User, password and computer name, with validation | Installing: progress bar by phase |
-| ![installed](iso-instalador-instalado.png) | ![terminal](iso-instalador-terminal.png) |
+| ![installed](iso-installer-installed.png) | ![terminal](iso-installer-terminal.png) |
 | Booted from the disk (UEFI), with the created user | Groups, fstab with UUIDs, es_AR, time zone, no live-boot, network; sudo asks for a password |
-| ![bios](iso-instalador-bios.png) | ![gpu](iso-live-gpu.png) |
+| ![bios](iso-installer-bios.png) | ![gpu](iso-live-gpu.png) |
 | The same disk booting through SeaBIOS (BIOS + GPT) | The ISO ships the GPU path (`GPU=1`); in the VM (virtio without 3D) it falls back to the CPU on its own |
 
 Assistant steps:
@@ -282,23 +283,23 @@ The ISO starts `lord-sessiond` instead of `lordos-session`. ISO tested:
 
 | | |
 |---|---|
-| ![grub](m8-iso-grub.png) | ![desktop](m8-iso-escritorio.png) |
+| ![grub](iso-grub-m8.png) | ![desktop](iso-desktop.png) |
 | UEFI (OVMF): grub menu | Logs straight into the desktop, without going through the login screen |
-| ![terminal](m8-iso-terminal.png) | ![locked](m8-iso-bloqueada.png) |
+| ![terminal](iso-terminal-m8.png) | ![locked](iso-session-locked.png) |
 | `lordos`, `AUTOLOGIN=lordos`, `/sys/firmware/efi`, network via DHCP, port 5673 closed | ❖L: locked screen, with the IP at the bottom |
-| ![unlocked](m8-iso-desbloqueada.png) | ![sharing](m8-iso-compartir.png) |
+| ![unlocked](iso-session-unlocked.png) | ![sharing](iso-sharing.png) |
 | Enter with the field empty: back to the same session | Settings → Sharing: remote desktop off (there's no `/etc/lordos/remote/config`) |
-| ![safe grub](m8-iso-grub-modo-seguro.png) | ![safe mode](m8-iso-modo-seguro.png) |
+| ![safe grub](iso-grub-safe-mode.png) | ![safe mode](iso-safe-mode.png) |
 | "Safe mode" entry | `lordos.gpu=0` → the session receives `LORD_GPU=0` and composites on the CPU |
-| ![english](m8-iso-english.png) | ![disk](m8-iso-instalador-disco.png) |
+| ![english](iso-english.png) | ![disk](iso-installer-disk-m8.png) |
 | `lordos.lang=en`: the interface in English | Installer, in a temporary VM with an empty 24 GB disk (OVMF) |
-| ![user](m8-iso-instalador-usuario.png) | ![summary](m8-iso-instalador-resumen.png) |
+| ![user](iso-installer-user-m8.png) | ![summary](iso-installer-summary-m8.png) |
 | User `ana` / «Ana Prueba», computer `ana-pc` | Summary, with the new login text |
-| ![progress](m8-iso-instalador-progreso.png) | ![done](m8-iso-instalador-listo.png) |
+| ![progress](iso-installer-progress-m8.png) | ![done](iso-installer-ready-m8.png) |
 | Installing (~1 minute) | Done; "Restart" with one click |
-| ![greeter](m8-iso-instalado-greeter.png) | ![session](m8-iso-instalado-sesion.png) |
+| ![greeter](iso-installed-login.png) | ![session](iso-installed-session.png) |
 | The installed system boots to the login screen | Logging in with `ana` and her password |
-| ![installed terminal](m8-iso-instalado-terminal.png) | |
+| ![installed terminal](iso-installed-terminal.png) | |
 | Empty `AUTOLOGIN=`; no `live-boot` or `lordos` user; groups sudo, audio, video, render and input; network; UEFI | |
 
 **Fixes found in this test:**
@@ -359,8 +360,9 @@ It boots from the CD first.
   Secure Boot has to be turned off.
 - **Switching consoles** (Ctrl+Alt+F2) while lord-server runs: part of M8's own session work.
 - **Installer to disk** (M8) and optional persistence on the USB stick (live-boot's `persistence`).
-- **Keyboard:** the ISO boots with the layout LordOS chooses for the language (in Spanish, Latin
-  American) and it's changed in Settings → Keyboard. A selector on first boot is missing.
+- **Keyboard:** `lordos-live-prep` sets the live user's layout from the boot entry's language
+  (English: US, Español: Latin American, Português: Brazilian) and it's changed in Settings →
+  Keyboard. A selector on first boot is missing.
 - **Real GPU (AMD/Nvidia):** tested with this ISO on real hardware. The GPU path is done by another
   fork; the ISO already ships Mesa and the firmware, and the "safe mode" entry passes `LORD_GPU=0`.
 - **Network robustness:** `net/state.c` takes `/etc/network/interfaces` as a sign of ifupdown even

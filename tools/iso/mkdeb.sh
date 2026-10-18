@@ -151,9 +151,10 @@ Recommends: pipewire-pulse, wireplumber, wpasupplicant, openvpn, fonts-noto-core
 Section: x11
 Priority: optional
 Homepage: https://github.com/lordbasex/LordOS
-Description: desktop environment with its own display server
- LordOS is a desktop environment with its own display server in C (DRM/KMS,
- evdev, Wayland compositor) and the interface in React on its own engine.
+Description: desktop environment for Debian GNU/Linux, built from scratch
+ LordOS is a desktop environment for Debian GNU/Linux with its own display
+ server and Wayland compositor written in C (DRM/KMS, evdev) and the
+ interface in React on its own engine.
  It includes the native apps, the themes, the login screen and the
  lordos.service service (lord-sessiond) that starts it on tty1. Remote desktop
  (browser, port 5673) ships turned off.

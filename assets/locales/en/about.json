@@ -26,7 +26,7 @@
     "other": "{ms} ms · {count} nodes"
   },
   "server": "Display server",
-  "tagline": "A free, fast and secure desktop, built from scratch on Linux.",
+  "tagline": "A free, fast and secure GNU/Linux desktop, built from scratch.",
   "uptime": "Uptime",
   "version": "Version {v}",
   "versionChannel": "Version {v} · {channel}"
