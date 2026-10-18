@@ -431,6 +431,10 @@ the review's, in [docs/SECURITY-REVIEW-0.8.0.md](docs/SECURITY-REVIEW-0.8.0.md))
 - **The Raspberry Pi 5 image has not been booted on a board yet.** The build, the tests and the
   login screen are verified on the Pi 5 running from its own SD card, but the published image
   itself is still untested on hardware ([docs/RASPBERRY.md](docs/RASPBERRY.md)).
+- **On the Raspberry Pi 5, "No Bluetooth" is not enforced for Linux apps:** the LordOS build of the
+  Raspberry Pi kernel has no BPF LSM (`CONFIG_BPF_LSM`), so the Bluetooth socket program can't be
+  loaded there (`lord-netperm` reports `"bluetooth":false`). The network rules and the other
+  restrictions work as on a PC.
 - **The clipboard restriction is not available for Linux apps:** the Wayland data device is not
   mediated per app.
 - **BlueZ over D-Bus is not mediated:** a Linux app restricted from Bluetooth can't open Bluetooth

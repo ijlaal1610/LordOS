@@ -158,6 +158,11 @@ rm -rf "$CH/var/lib/apt/lists/"* "$CH/var/cache/apt/"*.bin "$CH/tmp/"* "$CH/var/
 : > "$CH/etc/resolv.conf"
 : > "$CH/etc/machine-id"     # generated on every boot
 in_ch update-initramfs -u > /dev/null 2>&1
+# /etc/.updated and /var/.updated: without them every live boot ran ldconfig.service and
+# systemd-update-done (ConditionNeedsUpdate= compares them with /usr's time), about 7 s on VM 117.
+# The ld.so cache is already current (dpkg's triggers); written last, after every change to /usr.
+in_ch ldconfig
+in_ch /usr/lib/systemd/systemd-update-done
 umount_all
 
 # 4. kernel, initramfs and squashfs

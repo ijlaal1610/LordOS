@@ -298,6 +298,8 @@ mkdir -p "$CH/var/lib/lordos/rpi"
 : > "$CH/var/lib/lordos/rpi/firstboot-pending"
 in_root "$CH" systemctl enable lordos-rpi-firstboot.service lordos.service > /dev/null
 in_root "$CH" systemctl enable lord-fand.service > /dev/null    # fans by temperature from the first boot (docs/FANS.md)
+# per-app network permissions and the device restrictions in the kernel (docs/FIREWALL.md), as on the ISO
+in_root "$CH" systemctl enable lord-netperm.service > /dev/null
 in_root "$CH" systemctl mask getty@tty1.service > /dev/null
 in_root "$CH" systemctl mask systemd-networkd-wait-online.service > /dev/null 2>&1 || true
 # no root password: the emergency console stays locked (like the installed system)
