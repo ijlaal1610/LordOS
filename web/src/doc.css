@@ -19,7 +19,8 @@
 .prose h2:hover .anchor,.prose h3:hover .anchor,.prose .anchor:focus{opacity:1}
 .code{position:relative;margin:20px 0;padding:18px 20px;border-radius:14px;background:#0F0E22;border:1px solid #2F2C55;color:#E3E0FF;font:500 14px/1.65 var(--mono);overflow-x:auto;white-space:pre;tab-size:2}
 .code code{background:none;color:inherit;padding:0;font:inherit}
-.code[data-lang]::before{content:attr(data-lang);position:absolute;top:8px;right:12px;font:700 11px/1 var(--ff);letter-spacing:.06em;text-transform:uppercase;color:#A9A5CF}
+.code[data-lang]{padding-top:38px}
+.code[data-lang]::before{content:attr(data-lang);position:absolute;top:0;left:0;right:0;padding:9px 16px;border-bottom:1px solid #2F2C55;background:#16152E;border-radius:14px 14px 0 0;font:700 11px/1 var(--ff);letter-spacing:.06em;text-transform:uppercase;color:#A9A5CF}
 .table{overflow-x:auto;margin:20px 0;border:1px solid var(--line);border-radius:12px}
 .table table{border-collapse:collapse;width:100%;font-size:15px;line-height:1.5}
 .table th,.table td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}

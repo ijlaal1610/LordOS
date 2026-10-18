@@ -191,10 +191,18 @@ h1,h2,h3{text-wrap:balance}
 .dl-card h3{margin:0;font-size:20px}
 .dl-card p{margin:0;color:var(--night-text);font-size:15px;line-height:1.55}
 .dl-card .btn{margin-top:auto}
-.cmd{position:relative;margin-top:auto}
-.cmd pre{margin:0;padding:14px 16px;padding-right:88px;border-radius:12px;background:#0B0B1C;border:1px solid var(--night-line);color:#FFD60A;font:600 14px/1.5 var(--mono);overflow-x:auto;white-space:pre}
-.copy{position:absolute;top:6px;right:6px;min-height:36px;min-width:64px;padding:0 12px;border-radius:9px;border:1px solid var(--night-line);background:var(--night-card);color:#fff;font:700 13px/1 var(--ff);cursor:pointer}
+.cmd{margin-top:auto;border-radius:12px;background:#0B0B1C;border:1px solid var(--night-line);overflow:hidden}
+.cmd-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:42px;padding:5px 6px 5px 12px;border-bottom:1px solid var(--night-line);background:#121127}
+.cmd-t{display:inline-flex;align-items:center;gap:5px;font:600 12px/1 var(--mono);color:#A9A5CF}
+.cmd-t i{width:8px;height:8px;border-radius:50%;background:#3A3766}
+.cmd-t i:last-of-type{margin-right:6px}
+.cmd pre{margin:0;padding:12px 14px;color:#FFD60A;font:600 14px/1.55 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.copy{flex:0 0 auto;min-height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--night-line);background:var(--night-card);color:#fff;font:700 13px/1 var(--ff);cursor:pointer;white-space:nowrap}
 .copy:hover{background:#2a2850}
+pre,.code,.table{scrollbar-width:thin;scrollbar-color:#4A4775 transparent}
+pre::-webkit-scrollbar,.table::-webkit-scrollbar{height:8px;width:8px}
+pre::-webkit-scrollbar-track,.table::-webkit-scrollbar-track{background:transparent}
+pre::-webkit-scrollbar-thumb,.table::-webkit-scrollbar-thumb{background:#4A4775;border-radius:8px}
 .dl-note{margin:0;text-align:center;color:var(--night-note);font-size:14px}
 .verify{border:1px dashed var(--night-line);border-radius:18px;padding:22px 26px;display:flex;flex-direction:column;gap:10px}
 .verify h3{margin:0;font-size:18px}
@@ -370,9 +378,6 @@ h1,h2,h3{text-wrap:balance}
   .sup-card{padding:24px}
   .sup-card>img{width:160px;height:160px}
   .teaser-box{padding:22px}
-  .cmd{padding-bottom:46px}
-  .cmd pre{padding-right:16px}
-  .copy{top:auto;bottom:0;right:0}
   .apps-grid{grid-template-columns:1fr}
   .lb{padding:12px}
   .lb-row{gap:8px}
