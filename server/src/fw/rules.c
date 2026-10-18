@@ -264,7 +264,7 @@ int fw_format_dest(const FwRule *r, char *out, size_t n) {
 
 static const char *const FLAG_NAMES[] = {
     "no-internet", "no-lan", "no-network", "no-incoming", "no-camera", "no-mic", "no-screen",
-    "no-usb", "no-bluetooth", "no-files", "no-notifications",
+    "no-usb", "no-bluetooth", "no-files", "no-notifications", "no-clipboard",
 };
 #define NFLAGS (int)(sizeof FLAG_NAMES / sizeof *FLAG_NAMES)
 

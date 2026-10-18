@@ -163,7 +163,10 @@ static JSValue f_camera(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
     char *out = NULL;
     uint32_t len = 0;
     if (js_broker_rpc(BOP_CAMERA, p, (uint32_t)n, &st, &out, &len) || st != BST_OK || !out) {
+        char line[160] = "";
+        if (st == BST_DENIED && out && len && len < sizeof line) { memcpy(line, out, len); line[len] = 0; }
         free(out);
+        if (lerr_is(line)) return js_throw_line(c, line);          /* fw.restricted.camera */
         return js_throw_code(c, st == BST_DENIED ? "perm.cameraDenied" : "camera.openFailed", NULL);
     }
     int sid = atoi(out);

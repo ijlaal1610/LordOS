@@ -42,8 +42,10 @@ typedef enum {
     FW_DST_INTERNET,    /* everything that isn't LAN */
 } FwDstKind;
 
-/* Restrictions of an app in the "Restricted apps" list. The network ones are applied by fw_decide;
- * the others are checked with fw_blocks by whoever manages that resource (broker, camera, portal...). */
+/* Restrictions of an app in the "Restricted apps" list. The network ones are applied by fw_decide
+ * (and, in the kernel, by lord-netperm). The others are checked with fw_blocks, through
+ * sec/restrict.h, where the resource is handed out (docs/FIREWALL.md, "Non-network
+ * restrictions"): the broker for isolated apps, js_media.c and sdk/notify.js for built-in apps. */
 enum {
     FW_R_NO_INTERNET      = 1u << 0,
     FW_R_NO_LAN           = 1u << 1,
@@ -54,9 +56,10 @@ enum {
     FW_R_NO_SCREEN        = 1u << 6,
     FW_R_NO_USB           = 1u << 7,
     FW_R_NO_BLUETOOTH     = 1u << 8,
-    FW_R_NO_FILES         = 1u << 9,    /* nothing outside the file picker */
+    FW_R_NO_FILES         = 1u << 9,    /* no user files (isolated apps: the file picker is refused) */
     FW_R_NO_NOTIFICATIONS = 1u << 10,
-    FW_R_ALL              = (1u << 11) - 1,
+    FW_R_NO_CLIPBOARD     = 1u << 11,   /* no reading the clipboard */
+    FW_R_ALL              = (1u << 12) - 1,
 };
 
 typedef struct {

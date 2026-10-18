@@ -537,5 +537,13 @@
   "fan.saveFailed": "Não foi possível salvar as configurações das ventoinhas",
   "fan.unavailable": "O serviço de ventoinhas não está em execução",
   "hw.notRaspberryPi5": "Isto só funciona em um Raspberry Pi 5",
-  "hw.caseFailed": "Não foi possível salvar as configurações do gabinete"
+  "hw.caseFailed": "Não foi possível salvar as configurações do gabinete",
+  "fw.restricted.camera": "{app} está impedido de usar a câmera (Privacidade → Rede dos apps)",
+  "fw.restricted.microphone": "{app} está impedido de usar o microfone (Privacidade → Rede dos apps)",
+  "fw.restricted.screen": "{app} está impedido de capturar a tela (Privacidade → Rede dos apps)",
+  "fw.restricted.usb": "{app} está impedido de usar dispositivos USB (Privacidade → Rede dos apps)",
+  "fw.restricted.files": "{app} está impedido de abrir ou salvar seus arquivos (Privacidade → Rede dos apps)",
+  "fw.restricted.clipboard": "{app} está impedido de ler a área de transferência (Privacidade → Rede dos apps)",
+  "fw.restricted.bluetooth": "{app} está impedido de usar Bluetooth (Privacidade → Rede dos apps)",
+  "fw.restricted.notifications": "{app} está impedido de mostrar notificações (Privacidade → Rede dos apps)"
 }

@@ -12,6 +12,9 @@
  * Revoking the permission kills the helper and closes the stream at once. */
 #include "broker_int.h"
 #include "perms.h"
+#include "restrict.h"
+#include "../fw/rules.h"
+#include "../errcode.h"
 #include "json.h"
 #include "../media/media_int.h"
 
@@ -189,7 +192,7 @@ void brokercam_handle(int conn, int fd, uint32_t reqid, const char *payload, uin
     const char *app = brokersrv_conn_app(conn);
     char cmd[16] = "";
     sscanf(payload, "%15s", cmd);
-    int allowed = app && perm_get(app, PERM_CAMERA) == PERM_ALLOW;
+    int allowed = app && restrict_perm_pkg(app, PERM_CAMERA) == PERM_ALLOW;     /* a restriction beats the permission */
     if (!strcmp(cmd, "list")) {
         static char json[8192];
         if (!allowed) snprintf(json, sizeof json, "[]");
@@ -201,6 +204,13 @@ void brokercam_handle(int conn, int fd, uint32_t reqid, const char *payload, uin
         char dev[32] = "";
         int w = 1280, h = 720;
         sscanf(payload, "%*s %31s %d %d", dev, &w, &h);
+        if (app && restrict_blocks_pkg(app, FW_R_NO_CAMERA)) {
+            char line[160];
+            lerr_set(line, sizeof line, restrict_code(FW_R_NO_CAMERA), "app", app, NULL);
+            fprintf(stderr, "broker[%s]: camera refused by a restriction\n", app);
+            brokersrv_reply(fd, reqid, BST_DENIED, line, (uint32_t)strlen(line), -1);
+            return;
+        }
         if (!allowed) { brokersrv_reply(fd, reqid, BST_DENIED, NULL, 0, -1); return; }
         if (!dev_ok(dev)) { brokersrv_reply(fd, reqid, BST_ERROR, NULL, 0, -1); return; }
         if (w < 160 || w > 3840) w = 1280;
@@ -279,6 +289,13 @@ void brokercam_handle(int conn, int fd, uint32_t reqid, const char *payload, uin
         if (!strcmp(cmd, "photo")) sscanf(payload, "%*s %*d %d", &mirror);
         else sscanf(payload, "%*s %*d %d %d", &mirror, &mic);
         for (int k = 0; k < (cmd[0] == 'p' ? 3 : 4) && rest; k++) { rest = strchr(rest, ' '); if (rest) rest++; }
+        if (app && restrict_blocks_pkg(app, FW_R_NO_FILES)) {
+            /* photos and videos are user files, saved through the same system dialog as the picker */
+            char line[160];
+            lerr_set(line, sizeof line, restrict_code(FW_R_NO_FILES), "app", app, NULL);
+            brokersrv_reply(fd, reqid, BST_DENIED, line, (uint32_t)strlen(line), -1);
+            return;
+        }
         if (!s || s->sock < 0 || !allowed || c->pick_req) { brokersrv_reply(fd, reqid, BST_ERROR, NULL, 0, -1); return; }
         clean_name(rest, cmd[0] == 'p' ? "foto.jpg" : "video.mp4", c->out_name, sizeof c->out_name);
         /* the save dialog is the system's; the chosen file is opened here and goes to lord-media */
@@ -314,7 +331,8 @@ int brokercam_pick_result(uint32_t reqid, const char *path) {
         const char *app = brokersrv_conn_app(c->conn);
         int f = -1;
         struct stat st;
-        if (path && path[0] && s && s->sock >= 0 && app && perm_get(app, PERM_CAMERA) == PERM_ALLOW)
+        if (path && path[0] && s && s->sock >= 0 && app && restrict_perm_pkg(app, PERM_CAMERA) == PERM_ALLOW &&
+            !restrict_blocks_pkg(app, FW_R_NO_FILES))
             f = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0644);
         if (f >= 0 && (fstat(f, &st) || !S_ISREG(st.st_mode))) { close(f); f = -1; }
         const char *base = path ? strrchr(path, '/') : NULL;
@@ -330,7 +348,7 @@ int brokercam_pick_result(uint32_t reqid, const char *path) {
             r = mp_send(s->sock, MM_PHOTO, 1, v, NULL, 0, &f, 1);
         } else {
             int ring = -1;
-            if (c->pick_mic && perm_get(app, PERM_MICROPHONE) == PERM_ALLOW) {
+            if (c->pick_mic && restrict_perm_pkg(app, PERM_MICROPHONE) == PERM_ALLOW) {
                 maudio_close(s->mic);
                 s->mic = maudio_open(1, app, "Video", "", &ring);
             }
@@ -357,6 +375,21 @@ void brokercam_revoke(const char *app) {
         cam_event(c, "closed %d revoked", c->sid);
         fprintf(stderr, "broker[%s]: camera permission revoked: lord-media %d killed\n", app, (int)(media_src_get(c->sid) ? media_src_get(c->sid)->pid : 0));
         cam_free(c, 1);
+    }
+}
+
+/* The microphone was revoked or restricted: a video recording that takes sound from it stops now
+ * (the file is finished properly) and the stream is closed. */
+void brokercam_revoke_mic(const char *app) {
+    for (int i = 0; i < MAX_CAMS; i++) {
+        Cam *c = &cams[i];
+        const char *a = c->used ? brokersrv_conn_app(c->conn) : NULL;
+        MediaSrc *s = a && !strcmp(a, app) ? media_src_get(c->sid) : NULL;
+        if (!s || !s->mic) continue;
+        if (s->sock >= 0) mp_send(s->sock, MM_RECORD, 2, NULL, NULL, 0, NULL, 0);
+        maudio_close(s->mic);
+        s->mic = NULL;
+        fprintf(stderr, "broker[%s]: microphone revoked: camera recording stopped\n", app);
     }
 }
 

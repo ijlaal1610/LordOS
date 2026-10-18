@@ -537,5 +537,13 @@
   "fan.saveFailed": "No se pudo guardar la configuración de los ventiladores",
   "fan.unavailable": "El servicio de ventiladores no está en marcha",
   "hw.notRaspberryPi5": "Esto solo funciona en una Raspberry Pi 5",
-  "hw.caseFailed": "No se pudo guardar la configuración de la caja"
+  "hw.caseFailed": "No se pudo guardar la configuración de la caja",
+  "fw.restricted.camera": "{app} tiene restringido el uso de la cámara (Privacidad → Red de las apps)",
+  "fw.restricted.microphone": "{app} tiene restringido el uso del micrófono (Privacidad → Red de las apps)",
+  "fw.restricted.screen": "{app} tiene restringida la captura de pantalla (Privacidad → Red de las apps)",
+  "fw.restricted.usb": "{app} tiene restringido el uso de dispositivos USB (Privacidad → Red de las apps)",
+  "fw.restricted.files": "{app} tiene restringido abrir o guardar tus archivos (Privacidad → Red de las apps)",
+  "fw.restricted.clipboard": "{app} tiene restringido leer el portapapeles (Privacidad → Red de las apps)",
+  "fw.restricted.bluetooth": "{app} tiene restringido el uso de Bluetooth (Privacidad → Red de las apps)",
+  "fw.restricted.notifications": "{app} tiene restringido mostrar notificaciones (Privacidad → Red de las apps)"
 }

@@ -30,12 +30,14 @@
   "r.no-screen": "Sin captura de pantalla",
   "r.no-usb": "Sin USB",
   "r.no-bluetooth": "Sin Bluetooth",
-  "r.no-files": "Sin archivos fuera del selector",
+  "r.no-files": "Sin acceso a tus archivos",
   "r.no-notifications": "Sin notificaciones",
   "off": "— (el firewall no está activo)",
   "rule.allow": "Permitir",
   "rule.deny": "Denegar",
   "rule.none": "Sin regla (según el modo)",
   "counts": "Conexiones",
-  "countsValue": "{allowed} permitidas · {denied} denegadas"
+  "countsValue": "{allowed} permitidas · {denied} denegadas",
+  "r.no-clipboard": "Sin leer el portapapeles",
+  "desktopAlways": "El escritorio en sí siempre tiene acceso a los archivos, las unidades extraíbles, el portapapeles y Bluetooth; restringe apps individuales."
 }

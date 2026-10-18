@@ -4,6 +4,9 @@
  * sistema (nunca lo dibuja la app). */
 #include "broker_int.h"
 #include "perms.h"
+#include "restrict.h"
+#include "../fw/rules.h"
+#include "../errcode.h"
 #include "json.h"
 #include "../lpk.h"
 #include "../term/term.h"
@@ -116,6 +119,7 @@ void brokersrv_pick_result(uint32_t ui, const char *path) {
         int f = -1;
         const char *name = path ? strrchr(path, '/') : NULL;
         name = name ? name + 1 : path;
+        if (path && path[0] && restrict_blocks_pkg(picks[i].id, FW_R_NO_FILES)) path = NULL;   /* restricted meanwhile */
         if (path && path[0]) {
             /* lord-server abre el archivo con los permisos del usuario; la app recibe solo el fd */
             f = open(path, picks[i].save ? (O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC) : (O_RDONLY | O_CLOEXEC), 0644);
@@ -144,6 +148,7 @@ void brokersrv_revoke(const char *app, const char *perm) {
     for (int i = 0; i < MAX_APPS; i++) if (apps[i].used && !strcmp(apps[i].id, app)) send_event(&apps[i], "revoke", json, strlen(json));
     if (!strcmp(perm, "microphone")) for (int i = 0; i < MAX_APPS; i++)
         if (apps[i].used && !strcmp(apps[i].id, app) && apps[i].mic) { maudio_close(apps[i].mic); apps[i].mic = NULL; }
+    if (!strcmp(perm, "microphone")) brokercam_revoke_mic(app);
     if (!strcmp(perm, "camera")) brokercam_revoke(app);     /* kills its lord-media: the stream stops now */
     if (!strcmp(perm, "camera") || !strcmp(perm, "microphone"))
         queue_evt("device", "{\"app\":\"%s\",\"kind\":\"%s\",\"on\":false}", app, perm);
@@ -271,6 +276,18 @@ static int data_path(const char *id, const char *rel, char *out, size_t n) {
     return 0;
 }
 
+/* A firewall restriction (Settings → Privacy → "Apps' network") covers this request: it is
+ * refused without a prompt, whatever the permission says, and the reply carries the code line
+ * ("fw.restricted.camera app=<id>") so the app can say why. See restrict.h. */
+static int deny_restricted(int fd, uint32_t reqid, const char *id, uint32_t flag) {
+    if (!restrict_blocks_pkg(id, flag)) return 0;
+    char line[160];
+    lerr_set(line, sizeof line, restrict_code(flag), "app", id, NULL);
+    fprintf(stderr, "broker[%s]: refused by a restriction (%s)\n", id, fw_flag_name(flag));
+    send_reply(fd, reqid, BST_DENIED, line, (uint32_t)strlen(line));
+    return 1;
+}
+
 static void handle(AppConn *a, BrokerHdr *h, char *payload) {
     int fd = a->fd;
     switch (h->op) {
@@ -333,6 +350,7 @@ static void handle(AppConn *a, BrokerHdr *h, char *payload) {
         break;
     }
     case BOP_CLIP_GET: {
+        if (deny_restricted(fd, h->reqid, a->id, FW_R_NO_CLIPBOARD)) break;
         if (perm_get(a->id, PERM_CLIPBOARD) != PERM_ALLOW) { send_reply(fd, h->reqid, BST_DENIED, NULL, 0); break; }
         const char *txt = term_clipboard();
         send_reply(fd, h->reqid, BST_OK, txt ? txt : "", txt ? (uint32_t)strlen(txt) : 0);
@@ -345,6 +363,15 @@ static void handle(AppConn *a, BrokerHdr *h, char *payload) {
     case BOP_PERM: {
         int p = perm_from_name(payload);
         if (p < 0) { send_reply(fd, h->reqid, BST_DENIED, NULL, 0); break; }
+        uint32_t rf = restrict_flag_of((Perm)p);
+        if (rf && restrict_blocks_pkg(a->id, rf)) {
+            /* restricted: "no", without a prompt; the code line follows the "0" */
+            char line[160] = "0 ";
+            lerr_set(line + 2, sizeof line - 2, restrict_code(rf), "app", a->id, NULL);
+            fprintf(stderr, "broker[%s]: permission %s refused by a restriction\n", a->id, payload);
+            send_reply(fd, h->reqid, BST_OK, line, (uint32_t)strlen(line));
+            break;
+        }
         PermState st = perm_get(a->id, (Perm)p);
         fprintf(stderr, "broker[%s]: permission %s = %s\n", a->id, payload, st == PERM_ALLOW ? "allow" : st == PERM_DENY ? "deny" : "ask (prompt)");
         if (st == PERM_ALLOW) { send_reply(fd, h->reqid, BST_OK, "1", 1); break; }
@@ -364,13 +391,14 @@ static void handle(AppConn *a, BrokerHdr *h, char *payload) {
         char kind[16] = ""; int on = 0;
         sscanf(payload, "%15s %d", kind, &on);
         int p = perm_from_name(kind);
-        if (p >= 0 && perm_get(a->id, (Perm)p) == PERM_ALLOW)
+        if (p >= 0 && restrict_perm_pkg(a->id, (Perm)p) == PERM_ALLOW)
             queue_evt("device", "{\"app\":\"%s\",\"kind\":\"%s\",\"on\":%s}", a->id, kind, on ? "true" : "false");
         send_reply(fd, h->reqid, BST_OK, NULL, 0);
         break;
     }
     case BOP_PICK: {
-        /* payload: "save\0nombreSugerido"; el diálogo lo dibuja lord-server, no la app */
+        /* payload: "save\0suggestedName"; the dialog is drawn by lord-server, never by the app */
+        if (deny_restricted(fd, h->reqid, a->id, FW_R_NO_FILES)) break;
         int save = payload[0] == '1';
         const char *suggest = memchr(payload, 0, h->len);
         suggest = suggest ? suggest + 1 : "";
@@ -404,6 +432,7 @@ static void handle(AppConn *a, BrokerHdr *h, char *payload) {
     case BOP_MIC: {
         int want = payload[0] == '1';
         if (!want) { if (a->mic) { maudio_close(a->mic); a->mic = NULL; } send_reply(fd, h->reqid, BST_OK, NULL, 0); break; }
+        if (deny_restricted(fd, h->reqid, a->id, FW_R_NO_MIC)) break;
         if (perm_get(a->id, PERM_MICROPHONE) != PERM_ALLOW) { send_reply(fd, h->reqid, BST_DENIED, NULL, 0); break; }
         if (!a->mic) {
             int rfd = -1;
@@ -443,7 +472,9 @@ static void handle(AppConn *a, BrokerHdr *h, char *payload) {
     case BOP_VAULT_FIDO: {
         /* only the system Passwords app (spawned with a vault channel), only with `usb` allowed; the
          * hidraw fd goes from here straight to lord-vault */
-        if (!a->vault || perm_get(a->id, PERM_USB) != PERM_ALLOW) { send_reply(fd, h->reqid, BST_DENIED, NULL, 0); break; }
+        if (!a->vault) { send_reply(fd, h->reqid, BST_DENIED, NULL, 0); break; }
+        if (deny_restricted(fd, h->reqid, a->id, FW_R_NO_USB)) break;
+        if (perm_get(a->id, PERM_USB) != PERM_ALLOW) { send_reply(fd, h->reqid, BST_DENIED, NULL, 0); break; }
         char name[128] = "";
         int r = vc_fido_attach(name, sizeof name);
         if (r) send_reply(fd, h->reqid, BST_ERROR, r == -1 ? "no-device" : "no-access", r == -1 ? 9 : 9);
@@ -469,6 +500,7 @@ void brokersrv_resolve(uint32_t ui, int allow) {
     if (brokerkr_resolve(ui, allow)) return;
     for (int i = 0; i < MAX_PENDING; i++) if (pend[i].used && pend[i].ui == ui) {
         perm_set(pend[i].id, pend[i].perm, allow ? PERM_ALLOW : PERM_DENY);
+        if (allow && restrict_perm_pkg(pend[i].id, pend[i].perm) != PERM_ALLOW) allow = 0;   /* restricted meanwhile */
         send_reply(pend[i].fd, pend[i].reqid, BST_OK, allow ? "1" : "0", 1);
         pend[i].used = 0;
         return;

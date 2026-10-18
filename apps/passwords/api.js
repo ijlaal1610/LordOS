@@ -129,6 +129,6 @@ export function errorText(code) {
   const known = ['bad-key', 'locked', 'not-found', 'corrupt', 'truncated', 'not-a-vault', 'unsupported-version', 'no-device', 'keyfile-read',
     'keyfile-short', 'keyfile-write', 'unknown-format', 'bad-password', 'encrypted-export', 'unsupported-cipher', 'unsupported-kdf',
     'too-big', 'no-qr', 'not-an-image', 'last-slot', 'exists', 'busy', 'file', 'fido-timeout', 'fido-pin-required', 'fido-pin-invalid',
-    'fido-pin-blocked', 'fido-no-credential', 'fido-no-hmac', 'fido-denied', 'unavailable', 'bad-keyfile'];
+    'fido-pin-blocked', 'fido-no-credential', 'fido-no-hmac', 'fido-denied', 'fido-restricted', 'unavailable', 'bad-keyfile'];
   return known.includes(code) ? t(`passwords.err.${code}`) : t('passwords.err.other', { code: String(code || '?') });
 }

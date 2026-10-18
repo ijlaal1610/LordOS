@@ -30,12 +30,14 @@
   "r.no-screen": "No screen capture",
   "r.no-usb": "No USB",
   "r.no-bluetooth": "No Bluetooth",
-  "r.no-files": "No files outside the file picker",
+  "r.no-files": "No access to your files",
   "r.no-notifications": "No notifications",
   "off": "— (the firewall is not active)",
   "rule.allow": "Allow",
   "rule.deny": "Deny",
   "rule.none": "No rule (per the mode)",
   "counts": "Connections",
-  "countsValue": "{allowed} allowed · {denied} denied"
+  "countsValue": "{allowed} allowed · {denied} denied",
+  "r.no-clipboard": "No reading the clipboard",
+  "desktopAlways": "The desktop itself always has access to files, removable drives, the clipboard and Bluetooth; restrict individual apps instead."
 }

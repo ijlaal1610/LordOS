@@ -537,5 +537,13 @@
   "fan.saveFailed": "Could not save the fan settings",
   "fan.unavailable": "The fan service is not running",
   "hw.notRaspberryPi5": "This only works on a Raspberry Pi 5",
-  "hw.caseFailed": "Could not save the case settings"
+  "hw.caseFailed": "Could not save the case settings",
+  "fw.restricted.camera": "{app} is restricted from using the camera (Privacy → App network access)",
+  "fw.restricted.microphone": "{app} is restricted from using the microphone (Privacy → App network access)",
+  "fw.restricted.screen": "{app} is restricted from capturing the screen (Privacy → App network access)",
+  "fw.restricted.usb": "{app} is restricted from using USB devices (Privacy → App network access)",
+  "fw.restricted.files": "{app} is restricted from opening or saving your files (Privacy → App network access)",
+  "fw.restricted.clipboard": "{app} is restricted from reading the clipboard (Privacy → App network access)",
+  "fw.restricted.bluetooth": "{app} is restricted from using Bluetooth (Privacy → App network access)",
+  "fw.restricted.notifications": "{app} is restricted from showing notifications (Privacy → App network access)"
 }

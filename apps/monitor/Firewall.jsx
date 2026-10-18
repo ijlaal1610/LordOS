@@ -3,14 +3,20 @@
 //   - status of lord-netperm (the service that applies the rules in the kernel) and the mode;
 //   - Trusted apps: allowed without logging (explicit denials still apply);
 //   - Restricted apps: one checkbox per restriction (no internet = "LAN only", no LAN, no network,
-//     no incoming connections, and the non-network ones: camera, microphone…).
+//     no incoming connections, and the non-network ones: camera, microphone…). Every one is
+//     enforced (docs/FIREWALL.md, "Non-network restrictions"). The "LordOS" row is the desktop
+//     itself: it does not offer files, USB, clipboard or Bluetooth, which the shell always uses.
 // The rules are saved by lord-server (lord.fw); this screen writes no files. Drawn like the
 // Settings sections: 13/600 headers, inset GroupBoxes with hairlines, footers.
 import { View, Text, Button, Segmented, ScrollView, GroupBox, useTheme, useLocale, useStore, useLauncherApps, firewall, firewallState, spacing, typeScale, errorText } from '@lordos/sdk';
 import { useState } from 'react';
 
 // Firewall id of a launcher app: the built-in ones run inside LordOS.
-const fwId = (a) => (a.kind === 'linux' ? a.id : a.kind === 'package' ? `lpk:${a.id}` : 'lordos');
+// Isolated built-in apps (Passwords) have their own scope, like a package.
+const fwId = (a) => (a.kind === 'linux' ? a.id : a.kind === 'package' || a.isolated ? `lpk:${a.id}` : 'lordos');
+// The desktop shell and the built-in apps share "lordos": these would cut the desktop off itself.
+const DESKTOP_ALWAYS = ['no-files', 'no-usb', 'no-clipboard', 'no-bluetooth'];
+const offered = (id) => (id === 'lordos' ? firewall.RESTRICTIONS.filter((f) => !DESKTOP_ALWAYS.includes(f)) : firewall.RESTRICTIONS);
 
 function useAppIndex() {
   const list = useLauncherApps();
@@ -91,7 +97,7 @@ export function FirewallPrivacy() {
   const statusText = !status.daemon ? tr('firewall.status.noDaemon') : !status.bpf ? tr('firewall.status.noBpf', { error: errorText(status.error || '') }) :
     tr('firewall.status.on', { dns: tr(`firewall.dns.${status.dns || 'none'}`) });
   const setFlag = (id, flag, on) => {
-    const cur = restricted[id] || [];
+    const cur = (restricted[id] || []).filter((f) => offered(id).includes(f));
     const next = on ? [...cur, flag] : cur.filter((f) => f !== flag);
     firewall.setRestricted(id, next.length ? next : []);
   };
@@ -140,10 +146,11 @@ export function FirewallPrivacy() {
                 <Button small label={tr('firewall.remove')} onClick={() => firewall.setRestricted(id, [])} />
               </View>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 32 }}>
-                {firewall.RESTRICTIONS.map((f) => (
+                {offered(id).map((f) => (
                   <Check key={f} on={restricted[id].includes(f)} label={tr(`firewall.r.${f}`)} onChange={(on) => setFlag(id, f, on)} />
                 ))}
               </View>
+              {id === 'lordos' && <Text style={{ fontSize: typeScale.caption, color: t.textDim, lineHeight: 1.35, paddingHorizontal: 32, textAlign: 'start' }}>{tr('firewall.desktopAlways')}</Text>}
             </View>
           ))}
           {!Object.keys(restricted).length && empty}

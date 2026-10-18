@@ -64,11 +64,24 @@ function remember(app) {
   settings.set((s) => ({ ...s, notifications: { ...notifyPrefs(s), seen: [app, ...notifyPrefs(s).seen].slice(0, 64) } }));
 }
 
+// Firewall restriction "no notifications" (Settings → Privacy → Apps' network, docs/FIREWALL.md):
+// checked in lord-server's rule store before anything is shown, above the per-app setting. A
+// built-in app is "lordos", an isolated one (.lpk, Passwords) "lpk:<id>". Settings' own system
+// warnings (battery) are exempt; Linux apps ('linux:…') are checked where their D-Bus call arrives.
+function fwNotifyBlocked(app) {
+  try {
+    if (typeof lord === 'undefined' || !lord.fw || typeof lord.fw.blocks !== 'function') return false;
+    if (!app || app === 'settings' || app.startsWith('linux:')) return false;
+    const a = getApp(app);
+    return !!lord.fw.blocks(a && (a.package || a.isolated) ? `lpk:${app}` : 'lordos', 'no-notifications');
+  } catch (e) { return false; }
+}
+
 export function notify({ app = '', title = '', body = '', actions = [], sound: withSound = true, sticky = false, timeout = 6000, onClose, label = '', icon = null } = {}) {
   app = String(app);
   const ap = appNotifyPrefs(app);
   remember(app);
-  if (!ap.allow) return 0;                                  // not delivered at all
+  if (!ap.allow || fwNotifyBlocked(app)) return 0;          // not delivered at all
   const id = seq++;
   const n = { id, app, label: String(label), Icon: typeof icon === 'function' ? icon : null, title: String(title), body: String(body), actions: Array.isArray(actions) ? actions.slice(0, 3) : [],
     sticky: !!sticky || ap.style === 'alert', time: Date.now(), onClose };

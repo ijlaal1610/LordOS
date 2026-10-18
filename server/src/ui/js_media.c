@@ -8,11 +8,16 @@
  *   - camera, microphone and screen are checked against the system permissions (sec/perms.c,
  *     per-app permission prompts) in C, not only in the SDK: the prompt is shown by the system (sdk/privacy.js) and here
  *     the saved decision is required to be "allow";
+ *   - a firewall restriction of the built-in apps (firewall id "lordos", sec/restrict.h) beats the
+ *     permission: refused with fw.restricted.<perm>, and restricting while a camera, microphone
+ *     or screen recording runs stops it at once (media_restricted below);
  *   - the decoder (lord-media) never receives a path: lord-server opens the file and passes the fd. */
 #include "js_media.h"
 #include "../media/media_int.h"
 #include "../media/proto.h"
 #include "../sec/perms.h"
+#include "../sec/restrict.h"
+#include "../fw/rules.h"
 #include "ui.h"
 #include "js_err.h"
 
@@ -96,7 +101,15 @@ static int arg_id(JSContext *c, JSValueConst v) {
     return id;
 }
 
+/* Built-in apps run inside lord-server: their firewall id is "lordos" (docs/FIREWALL.md). */
+#define BUILTIN_FWID "lordos"
+
 static int permitted(JSContext *c, const char *app, Perm p) {
+    uint32_t rf = restrict_flag_of(p);
+    if (rf && restrict_blocks(BUILTIN_FWID, rf)) {           /* restricted: no prompt, no permission */
+        js_throw_code(c, restrict_code(rf), "app", app, NULL);
+        return 0;
+    }
     if (perm_get(app, p) == PERM_ALLOW) return 1;
     char code[48];
     snprintf(code, sizeof code, "media.denied.%s", perm_name(p));    /* media.denied.camera, .microphone, .screen */
@@ -629,7 +642,7 @@ static JSValue f_camera_record(JSContext *c, JSValueConst t, int argc, JSValueCo
     if (tmp[0]) return JS_FALSE;
     JSValueConst o = argc > 2 ? argv[2] : JS_UNDEFINED;
     int mic = opt_int(c, o, "mic", 1, 0, 1);
-    if (mic && perm_get(s->app, PERM_MICROPHONE) != PERM_ALLOW) mic = 0;    /* no permission: video without sound */
+    if (mic && (perm_get(s->app, PERM_MICROPHONE) != PERM_ALLOW || restrict_blocks(BUILTIN_FWID, FW_R_NO_MIC))) mic = 0;    /* no permission: video without sound */
     const char *out = arg_path(c, argv[1]);
     if (!out) return JS_FALSE;
     int fd = media_open_output(out, tmp, 2048, dst, 2048);
@@ -690,7 +703,37 @@ static const JSCFunctionListEntry media_funcs[] = {
     JS_CFUNC_DEF("hwaccel", 0, f_hwaccel),
 };
 
+/* A restriction was just added to the built-in apps: what it covers stops now, like revoking the
+ * permission of an isolated app. The camera's lord-media is killed (the window gets "closed" with
+ * revoked); recordings that use the microphone or the screen are finished properly (the file is
+ * kept up to the moment of the restriction). Sources of isolated apps (bk) are the broker's. */
+static void media_restricted(uint32_t added) {
+    for (int i = 0; i < MEDIA_MAX_SRC; i++) {
+        MediaSrc *s = media_src_at(i);
+        if (!s || s->bk) continue;
+        if (s->kind == SK_CAMERA && (added & FW_R_NO_CAMERA)) {
+            int id = s->id;
+            fprintf(stderr, "media: camera of %s stopped by a restriction\n", s->app);
+            media_src_close(s);
+            media_event(id, "closed", "{\"crashed\":false,\"revoked\":true}");
+            continue;
+        }
+        if (s->kind == SK_CAMERA && s->mic && (added & FW_R_NO_MIC) && s->sock >= 0) {
+            mp_send(s->sock, MM_RECORD, 2, NULL, NULL, 0, NULL, 0);      /* the video recording stops */
+            maudio_close(s->mic);
+            s->mic = NULL;
+        }
+        int stop = (s->kind == SK_AUDIOREC && (added & FW_R_NO_MIC)) ||
+                   (s->kind == SK_SCREENREC && ((added & FW_R_NO_SCREEN) || (s->mic && (added & FW_R_NO_MIC))));
+        if (stop && s->sock >= 0) {
+            fprintf(stderr, "media: recording of %s stopped by a restriction\n", s->app);
+            mp_sendv(s->sock, MM_STOP, 0, 0, 0, 0, 0);
+        }
+    }
+}
+
 void js_media_register(JSContext *c, JSValue lord) {
+    restrict_set_local_hook(media_restricted);
     JSValue m = JS_NewObject(c);
     JS_SetPropertyFunctionList(c, m, media_funcs, sizeof media_funcs / sizeof media_funcs[0]);
     JS_SetPropertyStr(c, lord, "media", m);

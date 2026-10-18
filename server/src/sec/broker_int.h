@@ -31,6 +31,7 @@ void brokercam_handle(int conn, int fd, uint32_t reqid, const char *payload, uin
 int  brokercam_pick_result(uint32_t reqid, const char *path);   /* 1 if it was a camera save */
 void brokercam_conn_closed(int conn);
 void brokercam_revoke(const char *app);
+void brokercam_revoke_mic(const char *app);                     /* stops recordings that use the microphone */
 void brokercam_tick(void);
 
 #endif

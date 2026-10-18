@@ -16,10 +16,17 @@
  *   rules(app)                   [{ id, dir, dst, port, proto, action }]
  *   addRule({ app, dir, dst, port, proto, action }) → id    removeRule(id)
  *   poll()                       { counts: { app: [allowed, denied] }, events: [...] }
+ *   blocks(app, restriction)     true if the app is restricted in it (sdk/notify.js asks before showing
+ *                                a built-in app's notification)
+ *
+ * The non-network restrictions are enforced in C where the resource is handed out (sec/restrict.h:
+ * the broker and js_media.c read this same store); adding one to a running app takes the camera
+ * or the microphone away at once (restrict_changed).
  *
  * All of them validate: app ids with fw_app_canon, destinations with fw_parse_dest, ports 1–65535. */
 #include "js_fw.h"
 #include "../fw/rules.h"
+#include "../sec/restrict.h"
 #include "js_err.h"
 #include "../netperm/npproto.h"
 
@@ -276,8 +283,22 @@ static JSValue f_set_restricted(JSContext *c, JSValueConst t, int argc, JSValueC
         if (!f) return js_throw_code(c, "fw.invalidRestrictions", NULL);
         flags |= f;
     }
+    uint32_t before = fw_restricted(store, app);
     if (fw_set_restricted(store, app, flags)) return JS_FALSE;
-    return JS_NewBool(c, save() == 0);
+    int ok = save() == 0;
+    restrict_changed(app, before, fw_restricted(store, app));
+    return JS_NewBool(c, ok);
+}
+
+static JSValue f_blocks(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    char app[FW_APP_MAX];
+    if (argc < 2 || arg_app(c, argv[0], app)) return js_throw_code(c, "fw.invalidApp", NULL);
+    const char *s = JS_IsString(argv[1]) ? JS_ToCString(c, argv[1]) : NULL;
+    uint32_t f = s ? fw_flag_from_name(s) : 0;
+    if (s) JS_FreeCString(c, s);
+    if (!f) return js_throw_code(c, "fw.invalidRestrictions", NULL);
+    return JS_NewBool(c, fw_blocks(store, app, f));
 }
 
 static JSValue f_set_mode(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
@@ -414,6 +435,7 @@ static const JSCFunctionListEntry fw_funcs[] = {
     JS_CFUNC_DEF("addRule", 1, f_add_rule),
     JS_CFUNC_DEF("removeRule", 1, f_remove_rule),
     JS_CFUNC_DEF("poll", 0, f_poll),
+    JS_CFUNC_DEF("blocks", 2, f_blocks),
 };
 
 void js_fw_register(JSContext *c, JSValue lord) {
@@ -426,6 +448,7 @@ void js_fw_register(JSContext *c, JSValue lord) {
         char err[200] = "";
         int r = store ? fw_load(store, path, err, sizeof err) : -1;
         if (r < 0) fprintf(stderr, "lord.fw: %s invalid (%s): starting without rules\n", path, err);
+        restrict_set_store(store);                  /* the broker and js_media.c check it (sec/restrict.h) */
         ensure();                                   /* lord-netperm reads this session's rules */
     }
     if (!store) return;

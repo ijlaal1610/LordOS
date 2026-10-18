@@ -130,11 +130,12 @@ export const firewall = {
   setTrusted: (app, on) => fwBump(fwCall((f) => f.setTrusted(app, !!on), false)),
   setRestricted: (app, flags) => fwBump(fwCall((f) => f.setRestricted(app, flags), false)),
   setMode: (m) => fwBump(fwCall((f) => f.setMode(m), false)),
+  blocks: (app, flag) => fwCall((f) => f.blocks(app, flag), false),
   rules: (app) => fwCall((f) => f.rules(app), []),
   addRule: (r) => fwBump(fwCall((f) => f.addRule(r), false)),
   removeRule: (id) => fwBump(fwCall((f) => f.removeRule(id), false)),
   refresh: () => fwPoll(true),
-  RESTRICTIONS: ['no-internet', 'no-lan', 'no-network', 'no-incoming', 'no-camera', 'no-mic', 'no-screen', 'no-usb', 'no-bluetooth', 'no-files', 'no-notifications'],
+  RESTRICTIONS: ['no-internet', 'no-lan', 'no-network', 'no-incoming', 'no-camera', 'no-mic', 'no-screen', 'no-usb', 'no-bluetooth', 'no-files', 'no-clipboard', 'no-notifications'],
 };
 
 let infoCache = null;

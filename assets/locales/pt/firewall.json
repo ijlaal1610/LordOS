@@ -30,12 +30,14 @@
   "r.no-screen": "Sem captura de tela",
   "r.no-usb": "Sem USB",
   "r.no-bluetooth": "Sem Bluetooth",
-  "r.no-files": "Sem arquivos fora do seletor",
+  "r.no-files": "Sem acesso aos seus arquivos",
   "r.no-notifications": "Sem notificações",
   "off": "— (o firewall não está ativo)",
   "rule.allow": "Permitir",
   "rule.deny": "Negar",
   "rule.none": "Sem regra (conforme o modo)",
   "counts": "Conexões",
-  "countsValue": "{allowed} permitidas · {denied} negadas"
+  "countsValue": "{allowed} permitidas · {denied} negadas",
+  "r.no-clipboard": "Sem ler a área de transferência",
+  "desktopAlways": "A própria área de trabalho sempre tem acesso aos arquivos, unidades removíveis, área de transferência e Bluetooth; restrinja apps individuais."
 }

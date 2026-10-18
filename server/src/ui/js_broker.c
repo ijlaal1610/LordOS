@@ -228,7 +228,13 @@ static JSValue f_fs_list(JSContext *c, JSValueConst t, int argc, JSValueConst *a
 static JSValue f_clip_get(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc; (void)argv;
     int st = BST_ERROR; char *out = NULL; uint32_t len = 0;
-    if (rpc(BOP_CLIP_GET, NULL, 0, &st, &out, &len) || st != BST_OK) { free(out); return js_throw_code(c, "app.clipboardDenied", NULL); }
+    if (rpc(BOP_CLIP_GET, NULL, 0, &st, &out, &len) || st != BST_OK) {
+        /* a firewall restriction comes back as its code line (fw.restricted.clipboard) */
+        char line[160] = "";
+        if (st == BST_DENIED && out && len && len < sizeof line) { memcpy(line, out, len); line[len] = 0; }
+        free(out);
+        return lerr_is(line) ? js_throw_line(c, line) : js_throw_code(c, "app.clipboardDenied", NULL);
+    }
     JSValue v = JS_NewStringLen(c, out, len);
     free(out);
     return v;
@@ -271,7 +277,8 @@ int js_broker_vault_fido(char *name, size_t n, char *err, size_t en) {
     int st = BST_ERROR; char *out = NULL; uint32_t len = 0;
     int r = rpc(BOP_VAULT_FIDO, NULL, 0, &st, &out, &len);
     if (!r && st == BST_OK) { snprintf(name, n, "%.*s", (int)len, out ? out : ""); free(out); return 0; }
-    snprintf(err, en, "%s", st == BST_DENIED ? "fido-denied" : out && len ? out : "no-device");
+    /* denied by the permission, or by a firewall restriction (a code line, "fw.restricted.usb …") */
+    snprintf(err, en, "%s", st == BST_DENIED ? (out && len && lerr_is(out) ? "fido-restricted" : "fido-denied") : out && len ? out : "no-device");
     free(out);
     return -1;
 }
@@ -298,7 +305,12 @@ static int rpc_fd(int op, const void *payload, uint32_t len, char *name, size_t 
         for (struct cmsghdr *cm = CMSG_FIRSTHDR(&rm); cm; cm = CMSG_NXTHDR(&rm, cm))
             if (cm->cmsg_level == SOL_SOCKET && cm->cmsg_type == SCM_RIGHTS) memcpy(&fd, CMSG_DATA(cm), sizeof fd);
         uint32_t pl = (uint32_t)n - sizeof r;
-        if (r.status != BST_OK) { if (fd >= 0) close(fd); return -1; }
+        if (r.status != BST_OK) {
+            if (fd >= 0) close(fd);
+            /* the reason, when it is a code line (a firewall restriction): the caller can throw it */
+            if (name && nn) { size_t k = pl < nn - 1 ? pl : nn - 1; memcpy(name, buf, k); name[k] = 0; if (!lerr_is(name)) name[0] = 0; }
+            return -1;
+        }
         if (name && nn) { size_t k = pl < nn - 1 ? pl : nn - 1; memcpy(name, buf, k); name[k] = 0; }
         return fd;
     }
@@ -320,13 +332,13 @@ static JSValue f_broker_pick(JSContext *c, JSValueConst t, int argc, JSValueCons
     (void)t; (void)argc;
     int save = JS_ToBool(c, argv[0]);
     const char *sg = JS_IsString(argv[1]) ? JS_ToCString(c, argv[1]) : "";
-    char pl[300], name[256];
+    char pl[300], name[256] = "";
     int n = snprintf(pl, sizeof pl, "%d", save);
     pl[n++] = 0;
     n += snprintf(pl + n, sizeof pl - n, "%s", sg ? sg : "");
     int fd = rpc_fd(BOP_PICK, pl, (uint32_t)n, name, sizeof name);
     if (sg && sg[0]) JS_FreeCString(c, sg);
-    if (fd < 0) return JS_NULL;
+    if (fd < 0) return name[0] ? js_throw_line(c, name) : JS_NULL;    /* restricted: fw.restricted.files; cancelled: null */
     JSValue o = JS_NewObject(c);
     JS_SetPropertyStr(c, o, "fd", JS_NewInt32(c, fd));
     JS_SetPropertyStr(c, o, "name", JS_NewString(c, name));
@@ -393,9 +405,9 @@ static int mic_fd = -1;
 
 static JSValue f_mic_start(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc; (void)argv;
-    char name[256];
+    char name[256] = "";
     int ro = rpc_fd(BOP_MIC, "1", 1, name, sizeof name);
-    if (ro < 0) return JS_NewBool(c, 0);
+    if (ro < 0) return name[0] ? js_throw_line(c, name) : JS_NewBool(c, 0);     /* fw.restricted.microphone */
     unsigned size = 0, rate = 0, ch = 0;
     sscanf(name, "%u %u %u", &size, &rate, &ch);
     size_t maplen = AR_HDR + size;
