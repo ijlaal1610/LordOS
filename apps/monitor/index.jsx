@@ -14,6 +14,7 @@ import { Glyph, MonitorIcon } from './icons.jsx';
 import { NetworkTab } from './Network.jsx';
 import { MonitorPrivacy } from './Privacy.jsx';
 import { FirewallPrivacy } from './Firewall.jsx';
+import { FirewallRulesPrivacy } from './FwRules.jsx';
 import { CoolingTab } from './Cooling.jsx';
 
 export function Icon({ size }) { return <MonitorIcon size={size} />; }
@@ -25,6 +26,8 @@ export const C = { mem: '#8b5cf6', cache: '#c4b5fd', rx: '#22c55e', tx: '#f97316
 if (typeof sdk.registerPrivacySection === 'function') sdk.registerPrivacySection({ id: 'monitor', order: 10, Component: MonitorPrivacy });
 // … and "App network": trusted and restricted apps (lord.fw, docs/FIREWALL.md)
 if (typeof sdk.registerPrivacySection === 'function') sdk.registerPrivacySection({ id: 'firewall', order: 11, Component: FirewallPrivacy });
+// … and the rules of each app: domains, addresses and networks, with the app's default
+if (typeof sdk.registerPrivacySection === 'function') sdk.registerPrivacySection({ id: 'fwrules', order: 12, Component: FirewallRulesPrivacy });
 
 // ---- formats ----
 export const fmt = {
