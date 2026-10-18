@@ -199,6 +199,10 @@ after that the wait is 1, 2, 4… seconds, up to 5 minutes.
   - sessions stay alive (`KillMode=process`), and on return you get back in through the login
     screen;
   - `lord-netd` keeps running too and the new `lord-sessiond` adopts it: the network is not cut;
+  - the login screen does **not** survive: it keeps no state, so `lord-sessiond` stops every
+    process of `lordos-greeter` when it stops, and any left over (after a crash) when it starts,
+    and starts a fresh one on demand. Before 0.8.0-beta the old greeter stayed ("remains running
+    after unit stopped") and, after a package upgrade, kept the old binary;
   - `lordos.service` has `DelegateSubgroup=supervisor`: without it, systemd couldn't start the new
     main process while live processes remained in the delegated tree ("Device or resource busy");
   - autologin is applied only once per machine boot (`/run/lordos/autologin-done`), so a service

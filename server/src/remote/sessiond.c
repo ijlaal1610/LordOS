@@ -27,6 +27,7 @@
 #include "proto.h"
 
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -698,6 +699,55 @@ static void accept_remote(void) {
     close(fd);
 }
 
+/* ---- login screen processes ----
+ * The login screen keeps no state of its own. lordos.service uses KillMode=process so that the
+ * sessions survive a restart, which also left the greeter running after its lord-sessiond had
+ * stopped (systemd: "remains running after unit stopped"): after a package upgrade it kept the
+ * old binary, and one the new lord-sessiond couldn't reach stayed for good. Every process of the
+ * greeter's system user is stopped when lord-sessiond stops, and any left over (a crash) when it
+ * starts; the next login screen is started on demand. */
+static int proc_real_uid(long pid, uid_t *uid) {
+    char p[64], line[128];
+    snprintf(p, sizeof p, "/proc/%ld/status", pid);
+    FILE *f = fopen(p, "re");
+    if (!f) return -1;
+    int found = -1;
+    char state = 0;
+    while (fgets(line, sizeof line, f)) {
+        unsigned long u;
+        if (sscanf(line, "State: %c", &state) == 1) continue;
+        if (sscanf(line, "Uid: %lu", &u) == 1) { *uid = (uid_t)u; found = 0; break; }
+    }
+    fclose(f);
+    return found == 0 && state != 'Z' ? 0 : -1;     /* a zombie is gone already */
+}
+
+static void stop_greeters(const char *why) {
+    struct passwd *pw = getpwnam(SD_GREETER_USER);
+    if (!pw || pw->pw_uid == 0) return;
+    uid_t gu = pw->pw_uid;
+    int stopped = 0;
+    for (int round = 0; round < 30; round++) {         /* SIGTERM, then SIGKILL after 1 s */
+        int left = 0;
+        DIR *d = opendir("/proc");
+        if (!d) return;
+        struct dirent *e;
+        while ((e = readdir(d))) {
+            char *end;
+            long pid = strtol(e->d_name, &end, 10);
+            uid_t u;
+            if (*end || pid <= 1 || pid == (long)getpid() || proc_real_uid(pid, &u) || u != gu) continue;
+            if (round == 0) { kill((pid_t)pid, SIGTERM); stopped++; }
+            else if (round == 20) kill((pid_t)pid, SIGKILL);
+            left++;
+        }
+        closedir(d);
+        if (!left) break;
+        usleep(50000);
+    }
+    if (stopped) sd_log("login screen: %d process(es) of %s stopped (%s)", stopped, SD_GREETER_USER, why);
+}
+
 /* ---- main ---- */
 
 static volatile sig_atomic_t stop, reload;
@@ -723,6 +773,7 @@ int main(int argc, char **argv) {
     find_paths();
     load_config();
     load_last_user();
+    stop_greeters("left over from before this start");
     mkdir("/run/lordos", 0755);
     /* delegated cgroup (Delegate=yes): sessiond moves into the "supervisor" leaf and each session gets
      * its own subtree (cgroup_delegate_session in sess.c). Without delegation it works as before. */
@@ -830,6 +881,7 @@ int main(int argc, char **argv) {
     stop_remote();
     if (has_monitor) sd_mon_close();
     if (worker_pid > 0) kill(worker_pid, SIGTERM);
+    stop_greeters("lord-sessiond is stopping");
     listening = 0;
     rd_lock();
     rd_shared->monitor[0] = 0;
