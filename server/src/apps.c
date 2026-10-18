@@ -275,8 +275,8 @@ int apps_list(const char *lang, const DesktopApp **out) {
             if (!valid_id(id) || seen(id, ids, nids)) continue;
             if (nids < MAX_APPS * 2) snprintf(ids[nids++], sizeof ids[0], "%s", id);   /* it also shadows if hidden */
             char file[PATH_MAX * 2];
-            snprintf(file, sizeof file, "%s/%s", dirs[d], de->d_name);
-            if (strlen(file) >= PATH_MAX || parse_desktop(file, lang, e)) continue;
+            int flen = snprintf(file, sizeof file, "%s/%s", dirs[d], de->d_name);
+            if (flen < 0 || flen >= PATH_MAX || parse_desktop(file, lang, e)) continue;
             if (!e->is_app || e->hidden || e->nodisplay || e->terminal || !e->has_name || !e->exec[0]) continue;
             if (e->only[0] && !list_has(e->only, "LordOS")) continue;
             if (e->not_[0] && list_has(e->not_, "LordOS")) continue;

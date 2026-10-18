@@ -143,6 +143,7 @@ void brokersrv_revoke(const char *app, const char *perm) {
 
 void brokersrv_tick(void) {
     brokercam_tick();
+    brokerkr_tick();
     clip_secret_tick();
     char kb[512];
     keyboard_json(kb, sizeof kb);
@@ -177,6 +178,20 @@ int brokersrv_new_window(const char *id) {
     return -1;
 }
 
+int brokersrv_quit(const char *id) {
+    static const char json[] = "{}";
+    int sent = -1;
+    for (int i = 0; i < MAX_APPS; i++)
+        if (apps[i].used && !strcmp(apps[i].id, id) && !send_event(&apps[i], "quit", json, sizeof json - 1)) sent = 0;
+    return sent;
+}
+
+const char *brokersrv_app_of_pid(int pid) {
+    if (pid <= 0) return NULL;
+    for (int i = 0; i < MAX_APPS; i++) if (apps[i].used && apps[i].pid == pid) return apps[i].id;
+    return NULL;
+}
+
 void brokersrv_set_vault(int fd) { for (int i = 0; i < MAX_APPS; i++) if (apps[i].used && apps[i].fd == fd) apps[i].vault = 1; }
 
 /* A secret an isolated app put on the clipboard: cleared at `deadline` if it is still there
@@ -199,6 +214,7 @@ int brokersrv_count(void) { int n = 0; for (int i = 0; i < MAX_APPS; i++) n += a
 
 static void drop(AppConn *a) {
     brokercam_conn_closed((int)(a - apps));
+    brokerkr_conn_closed((int)(a - apps));
     /* los indicadores de esta app se apagan */
     queue_evt("device", "{\"app\":\"%s\",\"off\":true}", a->id);
     if (a->mic) { maudio_close(a->mic); a->mic = NULL; }
@@ -317,7 +333,7 @@ static void handle(AppConn *a, BrokerHdr *h, char *payload) {
         int p = perm_from_name(payload);
         if (p < 0) { send_reply(fd, h->reqid, BST_DENIED, NULL, 0); break; }
         PermState st = perm_get(a->id, (Perm)p);
-        fprintf(stderr, "broker[%s]: permiso %s = %s\n", a->id, payload, st == PERM_ALLOW ? "allow" : st == PERM_DENY ? "deny" : "ask→aviso");
+        fprintf(stderr, "broker[%s]: permission %s = %s\n", a->id, payload, st == PERM_ALLOW ? "allow" : st == PERM_DENY ? "deny" : "ask (prompt)");
         if (st == PERM_ALLOW) { send_reply(fd, h->reqid, BST_OK, "1", 1); break; }
         if (st == PERM_DENY) { send_reply(fd, h->reqid, BST_OK, "0", 1); break; }
         /* preguntar: el aviso lo dibuja el sistema; se responde cuando el usuario decide */
@@ -421,6 +437,9 @@ static void handle(AppConn *a, BrokerHdr *h, char *payload) {
         else send_reply(fd, h->reqid, BST_OK, name, (uint32_t)strlen(name));
         break;
     }
+    case BOP_KEYRING:
+        brokerkr_handle((int)(a - apps), fd, h->reqid, a->id, payload, h->len);
+        break;
     case BOP_QUIT:
         send_reply(fd, h->reqid, BST_OK, NULL, 0);
         break;
@@ -434,6 +453,7 @@ static void handle(AppConn *a, BrokerHdr *h, char *payload) {
 }
 
 void brokersrv_resolve(uint32_t reqid, int allow) {
+    if (brokerkr_resolve(reqid, allow)) return;
     for (int i = 0; i < MAX_PENDING; i++) if (pend[i].used && pend[i].reqid == reqid) {
         perm_set(pend[i].id, pend[i].perm, allow ? PERM_ALLOW : PERM_DENY);
         send_reply(pend[i].fd, reqid, BST_OK, allow ? "1" : "0", 1);
@@ -445,6 +465,9 @@ void brokersrv_resolve(uint32_t reqid, int allow) {
 int brokersrv_pollfds(struct pollfd *pfd, int max) {
     int n = 0;
     for (int i = 0; i < MAX_APPS && n < max; i++) if (apps[i].used) { pfd[n].fd = apps[i].fd; pfd[n].events = POLLIN; pfd[n].revents = 0; n++; }
+    /* last: wakes the loop when lord-vault answers a keyring request (brokersrv_tick reads it) */
+    int kf = brokerkr_pollfd();
+    if (kf >= 0 && n < max) { pfd[n].fd = kf; pfd[n].events = POLLIN; pfd[n].revents = 0; n++; }
     return n;
 }
 
@@ -504,6 +527,8 @@ int brokersrv_conn_event(int conn, const char *kind, const char *data, size_t le
 int brokersrv_reply(int fd, uint32_t reqid, int status, const void *data, uint32_t len, int passfd) {
     return send_reply_fd(fd, reqid, status, data, len, passfd);
 }
+
+void brokersrv_prompt_event(const char *json) { queue_evt("prompt", "%s", json); }
 
 void brokersrv_device(const char *app, const char *kind, int on) {
     queue_evt("device", "{\"app\":\"%s\",\"kind\":\"%s\",\"on\":%s}", app, kind, on ? "true" : "false");

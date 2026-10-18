@@ -84,6 +84,7 @@ checked in `lord-server`:
 | `broker.device(kind, on)` | turns the camera/microphone indicator on/off, only if that permission is granted |
 | `broker.pick(save, name)` | **powerbox**: lord-server draws the open/save dialog and passes the app **only the fd** of the chosen file (SCM_RIGHTS); the app doesn't see the folder |
 | `broker.menus(json)` | publishes the app's menus for the system menu bar; clicks come back as an event |
+| `keyring.request(op, …)` | the session keyring (`BOP_KEYRING`, `sec/brokerkr.c`): lord-server sets the owner to `app.<id>` from the verified app id; another app's item only after a **system prompt** (docs/PASSWORDS.md, "Keyring for isolated .lpk apps") |
 
 In addition, lord-server sends the app, unrequested, the **live state** (`BOP_EVENT`): the theme
 tokens (light/dark, accent, background), the language and direction (RTL), the keyboard layout,
@@ -542,3 +543,27 @@ Also fixed while testing: the app's event loop now drains broker events that arr
 synchronous RPC (`js_broker_pending`), events are NUL-terminated before `JS_ParseJSON` (a
 `revoke` could be dropped), and an isolated app no longer inherits `lord-server`'s blocked
 `SIGTERM`/`SIGINT`.
+
+### Quitting, shortcuts and the keyboard layout
+
+- **Quit** (❖Q, or Dock → Quit): the session sends a `quit` event through the broker
+  (`brokersrv_quit`, `lord.broker.quit(app)`); the app host closes every window with `wm.close`, so
+  close guards still apply, and the process ends when the last window is gone. Other apps quit the
+  same way, by closing every window of their Dock entry (`quitApp` in `sdk/dock.js`).
+- **❖ shortcuts:** `appspawn.c` records the app process's real pid (the intermediate child reports
+  it through a pipe), so the compositor knows which Wayland client is an isolated LordOS app
+  (`brokersrv_app_of_pid`). That client also receives ❖ combinations (❖N, ❖C, ❖A, ❖W…) together
+  with the ❖ key itself, as an app inside the theme would. The system keeps ❖L, ❖⌃Q, ❖Q,
+  ❖Space, ❖⌥Space, ❖V, ❖., ❖Tab, ❖`, ❖Esc, ❖⇧3/4/5 and ❖F1–F12 (`system_meta_key` in
+  `wl/wl.c`); a Linux app still gets no ❖ combination.
+- **Keyboard layout:** the app compiles the keymap that the compositor sends over
+  `wl_keyboard.keymap` (`kb_set_keymap_string`), which is already expanded and reads no files.
+  `kb_set()` inside the sandbox failed, because Landlock hides `/usr/share/X11/xkb`
+  (`xkbcommon: ERROR … rules 'evdev'`); the broker now only moves the active group.
+
+![an isolated app's menu open in the system menu bar](appmode-menu.png)
+
+Tested in headless sessions on VM 116 (`lord-server --headless` as `lord`, real pointer and keys
+through the remote desktop socket): the app's menu opens from the menu bar and its
+items run in the app (File → New entry), ❖N/❖A/❖C/❖W reach the app while ❖V opens the clipboard
+history, and ❖Q and Dock → Quit end the process.

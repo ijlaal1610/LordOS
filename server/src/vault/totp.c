@@ -1,4 +1,4 @@
-/* totp.c — HOTP/TOTP, base32 y otpauth:// (ver totp.h). */
+/* totp.c — HOTP/TOTP, base32 and otpauth:// (see totp.h). */
 #include "totp.h"
 #include "vcrypto.h"
 
@@ -44,7 +44,7 @@ size_t base32_encode(const uint8_t *in, size_t n, char *out, size_t cap) {
     return o;
 }
 
-/* decodifica %XX de una URI en dst (cap bytes) */
+/* decodes %XX of a URI into dst (cap bytes) */
 static void pct_decode(const char *s, size_t n, char *dst, size_t cap) {
     size_t o = 0;
     for (size_t i = 0; i < n && o + 1 < cap; i++) {

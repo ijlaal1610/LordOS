@@ -53,7 +53,7 @@ stop
 
 grep -q "OpenSession dh-ietf1024-sha256-aes128-cbc-pkcs7" "$LOG" && pass "libsecret negotiated dh-ietf1024-sha256-aes128-cbc-pkcs7" || echo "note: libsecret did not use DH"
 grep -q "OpenSession plain" "$LOG" && echo "note: there were plain sessions too"
-grep -q "Unlock → aviso" "$LOG" && pass "Unlock went through a Prompt" || echo "note: there was no Prompt"   # matches the "Unlock → aviso" debug line of src/vault/secretsvc.c
+grep -q "Unlock → prompt" "$LOG" && pass "Unlock went through a Prompt" || echo "note: there was no Prompt"   # matches the "Unlock → prompt" debug line of src/vault/secretsvc.c
 owner && fail "someone still owns the name" || pass "the name is free"
 echo "log: $LOG"
 rm -f /tmp/ss-search.$$

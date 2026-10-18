@@ -54,7 +54,8 @@ if (typeof globalThis !== 'undefined') {
   globalThis.__lordBroker = (kind, data) => {
     try {
       if (kind === 'prompt') {
-        queue.set((q) => [...q, { id: seq++, app: data.app, perm: data.perm, broker: data.reqid }]);
+        // perm 'keyring': the app asks for an item another app saved (owner); see docs/PASSWORDS.md
+        queue.set((q) => [...q, { id: seq++, app: data.app, perm: data.perm, owner: data.owner, broker: data.reqid }]);
       } else if (kind === 'menu') {
         if (typeof globalThis.__lordApplyAppMenus === 'function') globalThis.__lordApplyAppMenus(data.app);
       } else if (kind === 'pick') {
@@ -84,7 +85,8 @@ export function PermissionPrompt() {
   if (!q.length) return null;
   const item = q[0];
   const name = appName(getApp(item.app)) || item.app;
-  const msg = t(`privacy.ask.${item.perm}`, { app: name });
+  const owner = item.owner ? appName(getApp(item.owner)) || item.owner : '';
+  const msg = t(`privacy.ask.${item.perm}`, { app: name, owner });
   return h(View, { style: { position: 'absolute', ...mainBox(), alignItems: 'center', justifyContent: 'flex-start',
     backgroundColor: 'rgba(0,0,0,0.35)', zIndex: 100000 } },
     h(View, { style: { marginTop: 80, width: 320, borderRadius: 14, padding: 20, gap: 14, backgroundColor: '#2b2b30',
@@ -92,7 +94,7 @@ export function PermissionPrompt() {
       h(View, { style: { width: 44, height: 44, borderRadius: 10, backgroundColor: item.perm === 'camera' ? '#30d158' : item.perm === 'microphone' ? '#ff9f0a' : '#0a84ff',
         alignItems: 'center', justifyContent: 'center' } }, h(Text, { style: { fontSize: 22 } }, glyph(item.perm))),
       h(Text, { style: { fontSize: 14, fontWeight: 700, color: '#f5f5f7', textAlign: 'center', lineHeight: 1.4 } }, msg),
-      h(Text, { style: { fontSize: 11, color: 'rgba(235,235,245,0.55)', textAlign: 'center' } }, t('privacy.ask.where')),
+      h(Text, { style: { fontSize: 11, color: 'rgba(235,235,245,0.55)', textAlign: 'center' } }, t(item.perm === 'keyring' ? 'privacy.ask.keyringNote' : 'privacy.ask.where')),
       h(View, { style: { flexDirection: 'row', gap: 10, marginTop: 4 } },
         h(Btn, { label: t('privacy.deny'), onClick: () => answer(item, false) }),
         h(Btn, { primary: true, label: t('privacy.allow'), onClick: () => answer(item, true) }))));
@@ -104,7 +106,7 @@ function Btn({ label, primary, onClick }) {
     h(Text, { style: { fontSize: 13, fontWeight: 600, color: '#fff' } }, label));
 }
 
-const glyph = (p) => (p === 'camera' ? '📷' : p === 'microphone' ? '🎙' : p === 'screen' ? '▦' : p === 'network' ? '⇅' : '●');
+const glyph = (p) => (p === 'camera' ? '📷' : p === 'microphone' ? '🎙' : p === 'screen' ? '▦' : p === 'network' ? '⇅' : p === 'keyring' ? '🔑' : '●');
 
 // ---- camera/microphone indicators ----
 // Own source (isolated .lpk apps: the broker knows and reflects it here with markDeviceUse) +

@@ -1,5 +1,5 @@
-# Importar/exportar contraseñas (src/vault/vimport.c, csvp.c, kdbx.c, xmlmini.c; docs/PASSWORDS.md).
-# La prueba usa smem sobre malloc (tests/import_smem_shim.c) para que ASan/LSan vean cada bloque.
+# Importing/exporting passwords (src/vault/vimport.c, csvp.c, kdbx.c, xmlmini.c; docs/PASSWORDS.md).
+# The test uses smem over malloc (tests/import_smem_shim.c) so ASan/LSan see every block.
 IMPORT_SRC := src/vault/vimport.c src/vault/csvp.c src/vault/kdbx.c src/vault/xmlmini.c
 IMPORT_HDR := src/vault/vimport.h src/vault/csvp.h src/vault/kdbx.h src/vault/xmlmini.h src/vault/vjson.h src/vault/smem.h src/vault/vstb.h src/vault/vcrypto.h
 IMPORT_SAN := $(shell echo 'int main(void){return 0;}' | $(CC) -fsanitize=address,undefined -x c - -o /dev/null 2>/dev/null && echo -fsanitize=address,undefined -fno-omit-frame-pointer)

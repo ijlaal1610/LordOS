@@ -699,20 +699,43 @@ static void remote_input_add(const int *fds, int n) {
     if (input_add_fds(&s->input, fds, n)) wl_input_devices_changed();
 }
 
+/* A lent card with no monitor connected (a Raspberry Pi booted headless, a laptop lid closed on a
+ * dock): the fds are kept and display_attach is tried again on the next DRM uevent, so plugging in the
+ * monitor later shows the session without restarting anything. RP_UNDISPLAY drops them. */
+#define PARK_MAX 40
+static int parked_fd[PARK_MAX], parked_n;
+static unsigned parked_seq;
+static void parked_drop(void) {
+    for (int i = 0; i < parked_n; i++) close(parked_fd[i]);
+    parked_n = 0;
+}
+
 static void display_attach(const int *fds, int n) {
     Server *s = remote_server;
+    parked_drop();                      /* a new RP_DISPLAY replaces what was waiting */
     if (!s->headless || n < 1) { for (int i = 0; i < n; i++) close(fds[i]); return; }
     Out *o0 = &s->out[0];
     out_free(o0);
     memset(o0, 0, sizeof *o0);
     o0->gpu = -1;
+    int card = dup(fds[0]);             /* kms_attach closes its fd when it fails */
     if (kms_attach(&o0->kms, fds[0])) {
-        fprintf(stderr, "monitor: could not use the card\n");
         o0->kms.fd = -1;
-        for (int i = 1; i < n; i++) close(fds[i]);
+        if (card >= 0 && n <= PARK_MAX) {
+            fprintf(stderr, "monitor: nothing connected to the card; waiting for a monitor (hotplug)\n");
+            parked_fd[0] = card;
+            for (int i = 1; i < n; i++) parked_fd[i] = fds[i];
+            parked_n = n;
+            parked_seq = display_hotplug_seq();
+        } else {
+            fprintf(stderr, "monitor: could not use the card\n");
+            if (card >= 0) close(card);
+            for (int i = 1; i < n; i++) close(fds[i]);
+        }
         set_size(s, s->W, s->H);            /* back to the frame in memory */
         return;
     }
+    if (card >= 0) close(card);
     if (input_open_fds(&s->input, fds + 1, n - 1)) fprintf(stderr, "monitor: no keyboard or mouse\n");
     wl_input_devices_changed();         /* is there a touch screen? (wl_seat touch) */
     s->headless = 0;
@@ -744,6 +767,7 @@ static void display_attach(const int *fds, int n) {
 
 static void display_detach(void) {
     Server *s = remote_server;
+    parked_drop();
     if (s->headless) return;
     gpu_tex_free(s->cursor_tex);
     s->cursor_tex = NULL;
@@ -1583,6 +1607,12 @@ int main(int argc, char **argv) {
         if (nabr) brokersrv_audio_dispatch(pfd + abr, nabr);
         if (nmed) media_dispatch(pfd + medbase, nmed);
         if (nhw) hw_dispatch(pfd + hwbase, nhw);
+        if (parked_n && s.headless && display_hotplug_seq() != parked_seq) {   /* a monitor may have appeared */
+            int f[PARK_MAX], fn = parked_n;
+            memcpy(f, parked_fd, sizeof(int) * (size_t)fn);
+            parked_n = 0;
+            display_attach(f, fn);
+        }
         hw_events();
         media_events(js_media_event);
         brokersrv_events(js_broker_event);        /* avisos de permiso e indicadores → tema */

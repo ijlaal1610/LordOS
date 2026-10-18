@@ -1,18 +1,18 @@
-/* vstb.h — stb_image (vendorizado) adentro de lord-vault, con la memoria en la arena de secretos
- * (smem.h): un KDBX descomprimido o la foto de un código QR nunca pasan por el montón de la libc.
- * Los símbolos de stb quedan estáticos (no chocan con los de ui/stb.c). */
+/* vstb.h — stb_image (vendored) inside lord-vault, with memory in the secrets arena
+ * (smem.h): a decompressed KDBX or the photo of a QR code never goes through the libc heap.
+ * The stb symbols stay static (they do not clash with those of ui/stb.c). */
 #ifndef LORD_VAULT_VSTB_H
 #define LORD_VAULT_VSTB_H
 
 #include <stddef.h>
 #include <stdint.h>
 
-/* deflate crudo (sin cabecera zlib) → bytes en smem (liberar con sm_free); NULL si es inválido o
- * pasa de max bytes. */
+/* raw deflate (no zlib header) → bytes in smem (free with sm_free); NULL if invalid or
+ * larger than max bytes. */
 uint8_t *vstb_inflate_raw(const uint8_t *in, size_t len, size_t max, size_t *outlen);
-/* gzip (RFC 1952, como el de KDBX) → bytes en smem; NULL si es inválido. */
+/* gzip (RFC 1952, like KDBX's) → bytes in smem; NULL if invalid. */
 uint8_t *vstb_gunzip(const uint8_t *in, size_t len, size_t max, size_t *outlen);
-/* PNG o JPEG → píxeles 0xAARRGGBB en smem (w*h); NULL si no se puede (lado máximo 8192). */
+/* PNG or JPEG → 0xAARRGGBB pixels in smem (w*h); NULL on failure (max side 8192). */
 uint32_t *vstb_decode_argb(const uint8_t *in, size_t len, int *w, int *h);
 
 #endif

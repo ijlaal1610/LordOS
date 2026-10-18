@@ -47,7 +47,7 @@ static void free_entry(ImpEntry *e) {
     memset(e, 0, sizeof *e);
 }
 
-/* saca la última entrada (una fila que no se importa) */
+/* removes the last entry (a row that is not imported) */
 static void drop_last(ImpList *l) { if (l->n) free_entry(&l->v[--l->n]); }
 
 void imp_free(ImpList *l) {
@@ -57,10 +57,10 @@ void imp_free(ImpList *l) {
     char err[sizeof l->err];
     memcpy(err, l->err, sizeof err);
     memset(l, 0, sizeof *l);
-    memcpy(l->err, err, sizeof err);              /* el código de error sobrevive a imp_free */
+    memcpy(l->err, err, sizeof err);              /* the error code survives imp_free */
 }
 
-/* ---- utilidades ---- */
+/* ---- utilities ---- */
 
 static int64_t days_from_civil(int64_t y, unsigned m, unsigned d) {
     y -= m <= 2;
@@ -119,7 +119,7 @@ static int add_field(ImpEntry *e, const char *k, const char *v, int type) {
     return 0;
 }
 
-/* separa por cualquiera de seps, recorta espacios, saltea vacíos */
+/* splits on any of seps, trims spaces, skips empties */
 static int split_add(char ***arr, int *n, const char *s, const char *seps) {
     while (s && *s) {
         while (*s && (strchr(seps, *s) || *s == ' ')) s++;
@@ -138,7 +138,7 @@ static int split_add(char ***arr, int *n, const char *s, const char *seps) {
     return 0;
 }
 
-/* "https://www.ejemplo.com:8080/x" → "ejemplo.com" (título de los CSV de navegadores) */
+/* "https://www.example.com:8080/x" → "example.com" (title for the browser CSVs) */
 static char *host_of(const char *url) {
     if (!url || !*url) return NULL;
     const char *p = strstr(url, "://");
@@ -154,7 +154,7 @@ static char *host_of(const char *url) {
 
 static int istrue(const char *s) { return s && (!strcmp(s, "1") || !strcasecmp(s, "true") || !strcasecmp(s, "yes")); }
 
-/* ---- detección ---- */
+/* ---- detection ---- */
 
 static int csv_kind(const CsvRow *h) {
 #define HAS(x) (csv_col(h, x) >= 0)
@@ -236,7 +236,7 @@ static int parse_csv(int kind, const uint8_t *data, size_t len, ImpList *l) {
     }
     int rc = 0, nr;
     while ((nr = csv_next(&c, &r)) == 1) {
-        /* una fila con todo vacío no es una entrada */
+        /* a row with everything empty is not an entry */
         int any = 0;
         for (int i = 0; i < r.n; i++) if (r.f[i][0]) any = 1;
         if (!any) continue;
@@ -249,7 +249,7 @@ static int parse_csv(int kind, const uint8_t *data, size_t len, ImpList *l) {
         bad |= set(&e->notes, csv_get(&r, k.notes));
         bad |= set(&e->otp, csv_get(&r, k.totp));
         if (kind == IMP_BITWARDEN_CSV) {
-            /* varias URIs separadas por coma; los campos son líneas "nombre: valor" */
+            /* several URIs separated by commas; the fields are "name: value" lines */
             char **u = NULL;
             int nu = 0;
             bad |= split_add(&u, &nu, csv_get(&r, k.url), ",\n");
@@ -276,12 +276,12 @@ static int parse_csv(int kind, const uint8_t *data, size_t len, ImpList *l) {
             bad |= set(&e->url, csv_get(&r, k.url));
         }
         if (kind == IMP_KEEPASSXC_CSV) {
-            /* "Root/Internet/Bancos": el primer componente es la carpeta raíz de la base */
+            /* "Root/Internet/Banks": the first component is the root folder of the database */
             const char *g = csv_get(&r, k.group);
             const char *slash = strchr(g, '/');
             g = slash ? slash + 1 : "";
             if (!strcmp(g, "Recycle Bin") || !strncmp(g, "Recycle Bin/", 12) || !strcmp(g, "Papelera") || !strncmp(g, "Papelera/", 9)) {
-                drop_last(l);                     /* lo borrado no se importa */
+                drop_last(l);                     /* deleted items are not imported */
                 continue;
             }
             bad |= set(&e->group, g);
@@ -293,7 +293,7 @@ static int parse_csv(int kind, const uint8_t *data, size_t len, ImpList *l) {
             e->modified = (int64_t)(strtod(csv_get(&r, k.modified), NULL) / 1000);
             if (e->created < 0) e->created = 0;
             if (e->modified < 0) e->modified = 0;
-            /* las entradas del "Never save" de Firefox vienen sin contraseña: igual se importan */
+            /* Firefox "Never save" entries come without a password: they are imported anyway */
         }
         if (kind == IMP_LORD_CSV) {
             bad |= set(&e->group, csv_get(&r, k.group));
@@ -316,7 +316,7 @@ static int parse_csv(int kind, const uint8_t *data, size_t len, ImpList *l) {
                         sm_free(fk); sm_free(fv);
                     }
                     vj_free(&j);
-                }                                 /* campos ilegibles: se ignoran */
+                }                                 /* unreadable fields: ignored */
             }
         }
         if (kind == IMP_CHROME_CSV || kind == IMP_FIREFOX_CSV) {
@@ -360,7 +360,7 @@ static const char *folder_name(const Folder *f, int n, const char *id) {
     return NULL;
 }
 
-/* campo de un subobjeto de Bitwarden (card/identity/sshKey) como ImpField */
+/* field of a Bitwarden subobject (card/identity/sshKey) as an ImpField */
 static int bw_sub(ImpEntry *e, const Vj *j, int o, const char *bw, const char *key, int type) {
     char *v = vj_gets(j, o, bw);
     int r = add_field(e, key, v, type);
@@ -456,14 +456,14 @@ static int parse_bitwarden(const uint8_t *data, size_t len, ImpList *l) {
             for (int f = 0; f < j.t[fields].count; f++) {
                 int fo = vj_at(&j, fields, f);
                 int ft = (int)vj_getn(&j, fo, "type", 0);
-                if (ft == 3) continue;                         /* «vinculado»: apunta a otro campo */
+                if (ft == 3) continue;                         /* "linked": points to another field */
                 char *fn = vj_gets(&j, fo, "name"), *fv = vj_gets(&j, fo, "value");
                 if (!fv) { int vt = vj_get(&j, fo, "value"); if (vj_type(&j, vt) == VJ_TRUE) fv = sm_strdup("true"); else if (vj_type(&j, vt) == VJ_FALSE) fv = sm_strdup("false"); }
                 bad |= add_field(e, fn, fv, ft == 1 ? IMPF_HIDDEN : IMPF_TEXT);
                 sm_free(fn); sm_free(fv);
             }
         }
-        /* vacíos → NULL, como en los CSV */
+        /* empties → NULL, as in the CSVs */
         char **strs[] = { &e->title, &e->notes, &e->username, &e->password, &e->otp };
         for (size_t k = 0; k < sizeof strs / sizeof *strs; k++) if (*strs[k] && !**strs[k]) { sm_free(*strs[k]); *strs[k] = NULL; }
         if (bad) rc = fail(l, "memory");
@@ -478,7 +478,7 @@ out:
     return rc;
 }
 
-/* ---- entrada ---- */
+/* ---- entry point ---- */
 
 int imp_parse(int kind, const uint8_t *data, size_t len, const char *password,
               const uint8_t *keyfile, size_t kflen, ImpList *l) {
@@ -497,11 +497,11 @@ int imp_parse(int kind, const uint8_t *data, size_t len, const char *password,
     default:
         return fail(l, "unknown-format");
     }
-    if (rc) imp_free(l);                          /* nada a medias; l->err queda */
+    if (rc) imp_free(l);                          /* nothing half-done; l->err stays */
     return rc;
 }
 
-/* ---- exportar ---- */
+/* ---- export ---- */
 
 static void csv_field(VjB *b, const char *s, int last) {
     if (!s) s = "";

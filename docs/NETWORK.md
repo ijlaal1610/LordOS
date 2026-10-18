@@ -115,6 +115,7 @@ enabled. `lordos.service` now has `DelegateSubgroup=supervisor`.
 | Static IP | address/prefix, gateway and DNS | ✅ |
 | DNS | With systemd-resolved: `resolvectl` per interface. Without resolved: `/etc/resolv.conf`. | ✅ resolved |
 | Coexistence with systemd-networkd | System interfaces are shown but not touched. `net-manage` hands them to LordOS and `net-unmanage` gives them back. | ✅ with a test interface |
+| Coexistence with NetworkManager | Interfaces with `managed=true` in `/run/NetworkManager/devices/<ifindex>` (read without D-Bus) are system interfaces too: lord-netd doesn't start DHCP or wpa_supplicant on them. `net-manage` only knows how to take them from systemd-networkd. | ✅ code; found on a Raspberry Pi OS board (2026-10-18), where lord-netd had started a second DHCP client and wpa_supplicant |
 | Wi-Fi WPA2-Personal and open networks | wpa_supplicant (Debian) through its control socket. The PSK is computed with PBKDF2. | ✅ scan, wrong key, connection and DHCP, reconnection on restart, forget (with mac80211_hwsim + hostapd) |
 | Wi-Fi WPA3 (SAE) | `sae_password` and `key_mgmt WPA-PSK SAE` | ⚠️ untested: the test hostapd is WPA2 |
 | WireGuard | Our own generic netlink (`WG_CMD_SET_DEVICE`/`GET_DEVICE`) and our own X25519 keys | ✅ against the official `wg`: split and full tunnel (0.0.0.0/0 with fwmark and rules like wg-quick), DNS, status |

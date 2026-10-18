@@ -56,6 +56,36 @@ int kb_set(const char *layouts, const char *variants) {
     return state ? 0 : -1;
 }
 
+/* App mode (appclient.c): the keymap the compositor sends over wl_keyboard, already fully
+ * expanded, so compiling it reads no files (the sandbox blocks /usr/share/X11/xkb). The compose
+ * table is kept from the kb_set() made before the sandbox. */
+int kb_set_keymap_string(const char *text) {
+    if (!text || !text[0]) return -1;
+    if (!ctx && !(ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS))) return -1;
+    struct xkb_keymap *km = xkb_keymap_new_from_string(ctx, text, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    if (!km) return -1;
+    struct xkb_state *st = xkb_state_new(km);
+    if (!st) { xkb_keymap_unref(km); return -1; }
+    if (state) xkb_state_unref(state);
+    if (keymap) xkb_keymap_unref(keymap);
+    keymap = km;
+    state = st;
+    return 0;
+}
+
+/* Forget the keys held down (app mode: the keyboard focus left or came back, and the releases
+ * that happened meanwhile were never seen). Keeps the active layout. */
+void kb_reset_state(void) {
+    if (!keymap || !state) return;
+    int g = kb_group();
+    struct xkb_state *st = xkb_state_new(keymap);
+    if (!st) return;
+    xkb_state_unref(state);
+    state = st;
+    altgr_down = 0;
+    kb_set_group(g);
+}
+
 int kb_ready(void) { return state != NULL; }
 const char *kb_layouts(void) { return cur_layouts; }
 const char *kb_variants(void) { return cur_variants; }

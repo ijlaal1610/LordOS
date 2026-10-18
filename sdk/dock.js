@@ -9,6 +9,7 @@
 // An app can add its own items to the menu (the Terminal: New Window, New Tab…):
 //   registerDockMenu('terminal', (entry) => [{ label: '…', onClick }])
 import { createElement as h } from 'react';
+import { addListener } from '@lordos/runtime';
 import { settings } from './settings.js';
 import { useStore } from './store.js';
 import { useWindows, wm, windowTitle, appIdOf, getApp, windows } from './windows.js';
@@ -123,7 +124,25 @@ export function dockActivate(e) {
   wm.focus(next.id);
 }
 
-const closeWindow = (w) => wm.close(w.id);
+// Quits an app: every window of its Dock entry closes, and each close guard still applies (it can
+// keep a window with unsaved changes open). An isolated app (its own process) is asked through
+// the broker, so its process closes its own windows and then ends.
+export function quitApp(wins) {
+  const iso = wins.find((w) => w.args?.pkg && w.args?.appId);
+  if (iso && typeof lord !== 'undefined' && lord.broker && typeof lord.broker.quit === 'function' && lord.broker.quit(iso.args.appId)) return;
+  for (const w of [...wins]) wm.close(w.id);
+}
+
+// ❖Q quits the app in front (only in the session: an isolated app never receives ❖Q).
+addListener('keydown', (e) => {
+  if (!e.meta || e.ctrl || e.alt || e.shift || e.repeat) return;
+  if (String(e.base || e.key || '').toLowerCase() !== 'q') return;
+  if (typeof lord !== 'undefined' && typeof lord.appId === 'string') return;
+  const top = wm.get(wm.focused());
+  if (!top) return;
+  const key = launcherIdOf(top);
+  quitApp(windows.get().filter((w) => launcherIdOf(w) === key));
+});
 
 export function dockMenu(e) {
   const top = wm.focused();
@@ -147,7 +166,7 @@ export function dockMenu(e) {
     items.push(
       { label: t('shell.dock.showAll'), onClick: () => { for (const w of e.windows) wm.focus(w.id); } },
       { label: t('shell.dock.hide'), onClick: () => { for (const w of e.windows) wm.minimize(w.id); } },
-      { label: t('shell.dock.quit'), onClick: () => { for (const w of [...e.windows]) closeWindow(w); } },
+      { label: t('shell.dock.quit'), onClick: () => quitApp(e.windows) },
     );
   } else items.push({ label: t('shell.dock.open'), onClick: () => launchApp(e.id) });
   while (items[items.length - 1] === '-') items.pop();

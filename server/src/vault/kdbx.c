@@ -1,7 +1,7 @@
-/* kdbx.c — lector de KDBX 3.1 y 4.x (ver kdbx.h).
+/* kdbx.c — KDBX 3.1 and 4.x reader (see kdbx.h).
  *
- * Referencia del formato: el código de KeePass 2.x (KdbxFile.*) y KeePassXC (Kdbx3Reader,
- * Kdbx4Reader, KeePass2RandomStream). Todo lo descifrado va en la arena de secretos. */
+ * Format reference: the KeePass 2.x code (KdbxFile.*) and KeePassXC (Kdbx3Reader,
+ * Kdbx4Reader, KeePass2RandomStream). Everything decrypted goes in the secrets arena. */
 #include "kdbx.h"
 #include "smem.h"
 #include "vcrypto.h"
@@ -27,7 +27,7 @@ static const uint8_t U_CHACHA[16] = { 0xd6,0x03,0x8a,0x2b,0x8b,0x6f,0x4c,0xb5,0x
 static const uint8_t U_ARGON2D[16] = { 0xef,0x63,0x6d,0xdf,0x8c,0x29,0x44,0x4b,0x91,0xf7,0xa9,0xa4,0x03,0xe3,0x0a,0x0c };
 static const uint8_t U_ARGON2ID[16] = { 0x9e,0x29,0x8b,0x19,0x56,0xdb,0x47,0x73,0xb2,0x3d,0xfc,0x3e,0xc6,0xf0,0xa1,0xe6 };
 static const uint8_t U_AESKDF[16] = { 0xc9,0xd9,0xf3,0x9a,0x62,0x8a,0x44,0x60,0xbf,0x74,0x0d,0x08,0xc1,0x8a,0x4f,0xea };
-/* KeePassXC también escribe AES-KDF con este UUID («KDBX 4») */
+/* KeePassXC also writes AES-KDF with this UUID ("KDBX 4") */
 static const uint8_t U_AESKDF4[16] = { 0x7c,0x02,0xbb,0x82,0x79,0xa7,0x4a,0xc0,0x92,0x7d,0x11,0x4a,0x00,0x64,0x82,0x38 };
 
 static uint32_t rd16(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8; }
@@ -41,12 +41,12 @@ static int fail(ImpList *l, const char *code) { snprintf(l->err, sizeof l->err, 
 
 int kdbx_is(const uint8_t *d, size_t len) { return len >= 8 && !memcmp(d, SIG, 8); }
 
-/* ---- archivo llave ---- */
+/* ---- key file ---- */
 
 static int hexv(int c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1; }
 
 int kdbx_keyfile_key(const uint8_t *kf, size_t n, uint8_t out[32]) {
-    /* XML de KeePass (1.0: base64; 2.0: hex con Hash = primeros 4 bytes del SHA-256) */
+    /* KeePass XML (1.0: base64; 2.0: hex with Hash = first 4 bytes of the SHA-256) */
     if (n > 8 && n < 65536 && memmem(kf, n, "<KeyFile", 8)) {
         XNode *x = xml_parse((const char *)kf, n, NULL);
         if (x && !strcmp(x->name, "KeyFile")) {
@@ -59,7 +59,7 @@ int kdbx_keyfile_key(const uint8_t *kf, size_t n, uint8_t out[32]) {
                 const char *t = xml_text(data);
                 for (; *t && m < 64; t++) {
                     int v = hexv((unsigned char)*t);
-                    if (v < 0) continue;              /* espacios y saltos de línea */
+                    if (v < 0) continue;              /* spaces and line breaks */
                     if (m % 2 == 0) k[m / 2] = (uint8_t)(v << 4); else k[m / 2] |= (uint8_t)v;
                     m++;
                 }
@@ -97,7 +97,7 @@ int kdbx_keyfile_key(const uint8_t *kf, size_t n, uint8_t out[32]) {
     return 0;
 }
 
-/* ---- flujo interno (valores protegidos) ---- */
+/* ---- inner stream (protected values) ---- */
 
 typedef struct { int kind; uint8_t key[32], nonce[12], buf[64]; int pos; uint64_t ctr; } Stream;
 
@@ -124,7 +124,7 @@ static void salsa20_block(const uint8_t key[32], const uint8_t nonce[8], uint64_
 
 static const uint8_t SALSA_IV[8] = { 0xe8, 0x30, 0x09, 0x4b, 0x97, 0x20, 0x5d, 0x2a };
 
-/* id: 2 Salsa20, 3 ChaCha20 (0 = sin protección) */
+/* id: 2 Salsa20, 3 ChaCha20 (0 = no protection) */
 static int stream_init(Stream *s, uint32_t id, const uint8_t *key, size_t klen) {
     memset(s, 0, sizeof *s);
     s->pos = 64;
@@ -156,7 +156,7 @@ static void stream_xor(Stream *s, uint8_t *p, size_t n) {
     }
 }
 
-/* ---- cabecera ---- */
+/* ---- header ---- */
 
 typedef struct {
     int major, minor;
@@ -197,7 +197,7 @@ static int read_header(const uint8_t *d, size_t len, Hdr *h, ImpList *l) {
         case 9: if (sz != 32) return fail(l, "corrupt"); h->start = v; break;
         case 10: if (sz != 4) return fail(l, "corrupt"); h->inner_id = rd32(v); h->have_inner = 1; break;
         case 11: h->kdf = v; h->kdflen = sz; break;
-        default: break;                          /* 12: datos públicos, y lo que venga */
+        default: break;                          /* 12: public data, and whatever else comes */
         }
     }
 done:
@@ -211,12 +211,12 @@ done:
     return 0;
 }
 
-/* VariantDictionary (KDF de KDBX 4) */
+/* VariantDictionary (KDBX 4 KDF) */
 typedef struct { uint8_t uuid[16]; const uint8_t *salt, *key, *ad; size_t saltlen, keylen, adlen; uint64_t rounds, iter, mem; uint32_t par, ver; int have_uuid; } Kdf;
 
 static int read_kdf(const uint8_t *v, size_t n, Kdf *k) {
     memset(k, 0, sizeof *k);
-    if (n < 2 || v[1] != 1) return -1;          /* versión 1.x */
+    if (n < 2 || v[1] != 1) return -1;          /* version 1.x */
     size_t p = 2;
     for (;;) {
         if (p >= n) return -1;
@@ -244,12 +244,12 @@ static int read_kdf(const uint8_t *v, size_t n, Kdf *k) {
     }
 }
 
-/* ---- AES-KDF rápido ----
- * KeePassXC crea con keepassxc-cli bases KDBX 3.1 con AES-KDF calibrado a 1 s con AES-NI: unos
- * 30 millones de rondas (60 millones de bloques). El AES por bytes de vcrypto.c tarda un minuto en
- * eso, así que acá va un camino propio solo para cifrar: AES-NI en x86-64 si la CPU lo tiene
- * (se pregunta al ejecutar) y si no, tablas T (como el AES «rápido» clásico, ~10 veces el de bytes).
- * Las claves de ronda salen de aes_init (vcrypto.c). */
+/* ---- fast AES-KDF ----
+ * keepassxc-cli creates KDBX 3.1 databases with AES-KDF calibrated to 1 s with AES-NI: about
+ * 30 million rounds (60 million blocks). The bytewise AES in vcrypto.c takes a minute on
+ * that, so here is a dedicated path for encryption only: AES-NI on x86-64 if the CPU has it
+ * (checked at run time) and otherwise T-tables (like the classic "fast" AES, ~10 times the bytewise one).
+ * The round keys come from aes_init (vcrypto.c). */
 static uint32_t T0[256], T1[256], T2[256], T3[256];
 static uint8_t SBX[256];
 static int tables_ready;
@@ -258,7 +258,7 @@ static uint8_t gf_mul2(uint8_t x) { return (uint8_t)((x << 1) ^ ((x >> 7) * 0x1b
 
 static void make_tables(void) {
     if (tables_ready) return;
-    /* S-box de AES: inverso en GF(2^8) (con logaritmos de base 3) + transformación afín */
+    /* AES S-box: inverse in GF(2^8) (with base-3 logarithms) + affine transform */
     uint8_t lg[256] = { 0 }, ex[256];
     uint8_t x = 1;
     for (int i = 0; i < 255; i++) { ex[i] = x; lg[x] = (uint8_t)i; x = (uint8_t)(x ^ gf_mul2(x)); }
@@ -315,7 +315,7 @@ static void aesni_kdf(const uint8_t rkb[15][16], uint8_t k[32], uint64_t rounds)
 }
 #endif
 
-int kdbx_aes_kdf_mode = 0;      /* 0 automático, 1 forzar tablas (pruebas) */
+int kdbx_aes_kdf_mode = 0;      /* 0 automatic, 1 force tables (tests) */
 
 static int aes_kdf(const uint8_t comp[32], const uint8_t seed[32], uint64_t rounds, uint8_t out[32]) {
     Aes a;
@@ -340,7 +340,7 @@ static int aes_kdf(const uint8_t comp[32], const uint8_t seed[32], uint64_t roun
     return 0;
 }
 
-/* referencia (vcrypto.c) para comparar en las pruebas */
+/* reference (vcrypto.c) to compare in tests */
 int kdbx_aes_kdf_ref(const uint8_t comp[32], const uint8_t seed[32], uint64_t rounds, uint8_t out[32]) {
     Aes a;
     if (aes_init(&a, seed, 256)) return -1;
@@ -368,7 +368,7 @@ static int transform(const Hdr *h, const uint8_t comp[32], uint8_t out[32], ImpL
     }
     int alg = !memcmp(k.uuid, U_ARGON2D, 16) ? CRYPTO_ARGON2_D : !memcmp(k.uuid, U_ARGON2ID, 16) ? CRYPTO_ARGON2_ID : -1;
     if (alg < 0) return fail(l, "unsupported-kdf");
-    if (k.ver != 0x13) return fail(l, "unsupported-kdf");      /* Monocypher: solo Argon2 1.3 */
+    if (k.ver != 0x13) return fail(l, "unsupported-kdf");      /* Monocypher: only Argon2 1.3 */
     if (!k.salt || k.saltlen < 8 || k.saltlen > 0xffffffffu || k.par < 1 || k.par > 0xffffff || k.iter < 1 || k.iter > 0xffffffffu)
         return fail(l, "corrupt");
     uint64_t kib = k.mem / 1024;
@@ -401,7 +401,7 @@ static int composite(const char *password, const uint8_t *kf, size_t kflen, uint
     return 0;
 }
 
-/* ---- descifrado del cuerpo ---- */
+/* ---- body decryption ---- */
 
 static uint8_t *decrypt(const Hdr *h, const uint8_t key[32], const uint8_t *ct, size_t n, size_t *outlen, int *badpad) {
     *badpad = 0;
@@ -424,7 +424,7 @@ static uint8_t *decrypt(const Hdr *h, const uint8_t key[32], const uint8_t *ct, 
     return out;
 }
 
-/* ---- XML de KeePass ---- */
+/* ---- KeePass XML ---- */
 
 typedef struct { const uint8_t *data; size_t len; uint8_t *own; } Bin;
 typedef struct {
@@ -545,7 +545,7 @@ static int walk_entry(Walk *w, const XNode *en, const char *group) {
             sm_free(own);
         }
     }
-    /* TOTP en formatos viejos de KeePassXC y en el de KeePass 2.47+ → URI otpauth */
+    /* TOTP in old KeePassXC formats and in KeePass 2.47+ → otpauth URI */
     if (!e->otp && (totp_seed || to_secret)) {
         VjB b;
         vb_init(&b);
@@ -594,12 +594,12 @@ static int walk_group(Walk *w, const XNode *g, const char *path, int depth) {
             sm_free(np);
             if (r) return -1;
         }
-        /* History, Times, Name…: no son entradas */
+        /* History, Times, Name…: not entries */
     }
     return 0;
 }
 
-/* Descifra en orden de documento todos los valores Protected="True". */
+/* Decrypts, in document order, all Protected="True" values. */
 static int unprotect(XNode *n, Stream *s) {
     if (is_true(xml_attr(n, "Protected"))) {
         size_t m = 0;
@@ -611,7 +611,7 @@ static int unprotect(XNode *n, Stream *s) {
         memcpy(t, b, m);
         t[m] = 0;
         sm_free(b);
-        xml_set_text(n, t, strlen(t));        /* hasta un NUL interno: como texto */
+        xml_set_text(n, t, strlen(t));        /* up to an embedded NUL: as text */
     }
     for (int i = 0; i < n->nkids; i++) if (unprotect(n->kids[i], s)) return -1;
     return 0;
@@ -631,7 +631,7 @@ static int parse_xml(const uint8_t *xml, size_t xlen, Stream *s, Bin *bins, int 
     if (meta) {
         const char *rb = xml_text(xml_child(meta, "RecycleBinUUID"));
         if (strcmp(rb, "AAAAAAAAAAAAAAAAAAAAAA==")) snprintf(w.recycle, sizeof w.recycle, "%s", rb);
-        /* KDBX 3.1: hash de la cabecera adentro del XML */
+        /* KDBX 3.1: header hash inside the XML */
         const char *hh = xml_text(xml_child(meta, "HeaderHash"));
         if (!v4 && *hh) {
             uint8_t want[32];
@@ -642,7 +642,7 @@ static int parse_xml(const uint8_t *xml, size_t xlen, Stream *s, Bin *bins, int 
             sm_free(b);
             if (!ok) { xml_free(root); return fail(l, "corrupt"); }
         }
-        /* KDBX 3.1: adjuntos en Meta/Binaries (ID, Compressed) */
+        /* KDBX 3.1: attachments in Meta/Binaries (ID, Compressed) */
         XNode *bs = xml_child(meta, "Binaries");
         if (!v4 && bs && bs->nkids) {
             int maxid = -1;
@@ -680,7 +680,7 @@ static int parse_xml(const uint8_t *xml, size_t xlen, Stream *s, Bin *bins, int 
     return rc;
 }
 
-/* ---- lectura completa ---- */
+/* ---- full read ---- */
 
 static int read_v4(const uint8_t *d, size_t len, const Hdr *h, const uint8_t comp[32], ImpList *l) {
     size_t p = h->hdr_end;
@@ -740,7 +740,7 @@ static int read_v4(const uint8_t *d, size_t len, const Hdr *h, const uint8_t com
         if (!plain) { fail(l, "corrupt"); goto out; }
         body = plain;
     }
-    /* encabezado interno */
+    /* inner header */
     Bin *bins = NULL;
     int nbins = 0;
     uint32_t sid = 0;
@@ -793,7 +793,7 @@ static int read_v3(const uint8_t *d, size_t len, const Hdr *h, const uint8_t com
     pt = decrypt(h, mk, d + h->hdr_end, len - h->hdr_end, &ptn, &badpad);
     if (!pt) { fail(l, badpad ? ((len - h->hdr_end) % 16 ? "truncated" : "bad-password") : "memory"); goto out; }
     if (ptn < 32 || !vc_equal(pt, h->start, 32)) { fail(l, "bad-password"); goto out; }
-    /* bloques con hash: índice u32, SHA-256, largo u32, datos */
+    /* hashed blocks: u32 index, SHA-256, u32 length, data */
     size_t p = 32, bn = 0;
     blocks = sm_alloc(ptn);
     if (!blocks) { fail(l, "memory"); goto out; }

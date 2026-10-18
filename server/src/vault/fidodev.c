@@ -1,4 +1,4 @@
-/* fidodev.c — llaves FIDO2 por hidraw (ver fidodev.h). */
+/* fidodev.c — FIDO2 keys over hidraw (see fidodev.h). */
 #include "fidodev.h"
 
 #include <dirent.h>
@@ -14,9 +14,9 @@ static const char *sysroot = "/sys/class/hidraw";
 
 void fidodev_set_sysroot(const char *dir) { sysroot = dir ? dir : "/sys/class/hidraw"; }
 
-/* Ítems cortos del descriptor HID: prefijo (tag 4 bits, tipo 2, tamaño 2) + 0/1/2/4 bytes;
- * ítem largo 0xFE: tamaño, tag, datos. Se siguen Usage Page (global, con push/pop), Usage
- * (local, 16 o 32 bits) y Collection (main). */
+/* Short items of the HID descriptor: prefix (tag 4 bits, type 2, size 2) + 0/1/2/4 bytes;
+ * long item 0xFE: size, tag, data. We track Usage Page (global, with push/pop), Usage
+ * (local, 16 or 32 bits) and Collection (main). */
 int fidodev_desc_is_fido(const uint8_t *d, size_t len) {
     uint32_t page = 0, stack[8];
     int sp = 0;
@@ -25,7 +25,7 @@ int fidodev_desc_is_fido(const uint8_t *d, size_t len) {
     size_t p = 0;
     while (p < len) {
         uint8_t b = d[p++];
-        if (b == 0xfe) {                                  /* ítem largo */
+        if (b == 0xfe) {                                  /* long item */
             if (p + 2 > len) return 0;
             size_t sz = d[p];
             p += 2 + sz;
@@ -47,7 +47,7 @@ int fidodev_desc_is_fido(const uint8_t *d, size_t len) {
             if (tag == 10 && v == 1) {                    /* Collection (Application) */
                 for (int i = 0; i < nusage; i++) if (usage[i] == 0xf1d00001u) return 1;
             }
-            nusage = 0;                                   /* los locales valen hasta el próximo main */
+            nusage = 0;                                   /* locals last until the next main */
         }
     }
     return 0;

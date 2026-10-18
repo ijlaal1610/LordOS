@@ -1,8 +1,8 @@
-/* appspawn.c — lord-server lanza una app .lpk como su propio proceso aislado
- * (`lord-server --app <id>`), la tercera excepción acotada a «el servidor no ejecuta comandos»
- * (ver AGENTS.md). El único argumento es un id VALIDADO de un paquete instalado; nunca argumentos
- * del llamador. Se crea el socket del broker (socketpair) y se le pasa al hijo; el extremo del
- * servidor queda registrado en brokersrv.c. */
+/* appspawn.c — lord-server launches an .lpk app as its own isolated process
+ * (`lord-server --app <id>`), the third narrow exception to "the server does not run commands"
+ * (see AGENTS.md). The only argument is a VALIDATED id of an installed package, never caller
+ * arguments. The broker socket (socketpair) is created here and handed to the child; the server
+ * end is registered in brokersrv.c together with the app process's real pid. */
 #include "app.h"
 #include "../lpk.h"
 #include "../sec/broker.h"
@@ -41,7 +41,7 @@ int app_package_dir(const char *id, const char *assets, char *out, size_t n) {
 /* System apps that get their own channel to lord-vault (vc_attach_app): only Passwords. */
 static int wants_vault(const char *id, int system) { return system == 1 && !strcmp(id, "passwords"); }
 
-/* 0 si lanzó el proceso (y registró el broker). El id tiene que ser de un paquete instalado. */
+/* 0 if the process was started (and its broker registered). The id must be an installed package. */
 int app_spawn(const char *id) {
     if (!lpk_valid_id(id)) return -1;
     char dir[PATH_MAX];
@@ -57,15 +57,20 @@ int app_spawn(const char *id) {
 
     int sv[2];
     if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sv)) return -1;
-    /* el extremo del hijo NO es CLOEXEC: lo hereda el proceso de la app */
+    /* the child's end is NOT close-on-exec: the app process inherits it */
     fcntl(sv[1], F_SETFD, 0);
+    /* the intermediate child reports the app's real pid here (so the compositor can tell which
+     * Wayland client is this app: wl.c routes its ❖ shortcuts to it) */
+    int pp[2];
+    if (pipe2(pp, O_CLOEXEC)) { close(sv[0]); close(sv[1]); return -1; }
     /* Passwords talks to lord-vault on its own channel: decrypted data never passes through here */
     int vfd = wants_vault(id, sys) ? vc_attach_app() : -1;
 
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
-        if (fork() != 0) _exit(0);          /* nieto huérfano, como el lanzador de apps Linux */
+        pid_t g = fork();                    /* orphaned grandchild, like the Linux app launcher */
+        if (g != 0) { if (g > 0 && write(pp[1], &g, sizeof g) != (ssize_t)sizeof g) _exit(1); _exit(0); }
         signal(SIGTERM, SIG_DFL);
         signal(SIGHUP, SIG_DFL);
         sigset_t none;                       /* lord-server blocks SIGINT/SIGTERM (signalfd): not the app */
@@ -82,17 +87,21 @@ int app_spawn(const char *id) {
         } else unsetenv("LORD_VAULT_FD");
         int null = open("/dev/null", O_RDWR);
         if (null >= 0) { dup2(null, 0); if (null > 2) close(null); }
-        /* el id lo pasa lord-server, ya validado; no hay argumentos del llamador */
+        /* lord-server passes the id, already validated; there are no caller arguments */
         char *const argv[] = { self, (char *)"--app", (char *)id, NULL };
         execve("/proc/self/exe", argv, environ);   /* not `self`: after a package upgrade it is "<path> (deleted)" */
         _exit(127);
     }
     close(sv[1]);
+    close(pp[1]);
     if (vfd >= 0) close(vfd);
-    if (pid < 0) { close(sv[0]); return -1; }
-    waitpid(pid, NULL, 0);                   /* el hijo intermedio sale enseguida */
-    if (brokersrv_add(sv[0], id, pid)) { close(sv[0]); return -1; }
+    if (pid < 0) { close(sv[0]); close(pp[0]); return -1; }
+    waitpid(pid, NULL, 0);                   /* the intermediate child exits right away */
+    pid_t app = -1;
+    if (read(pp[0], &app, sizeof app) != (ssize_t)sizeof app || app <= 0) app = -1;
+    close(pp[0]);
+    if (brokersrv_add(sv[0], id, (int)app)) { close(sv[0]); return -1; }
     if (vfd >= 0) brokersrv_set_vault(sv[0]);   /* this app may also ask for the FIDO2 device */
-    fprintf(stderr, "lord-server: app '%s' lanzada como proceso aislado\n", id);
+    fprintf(stderr, "lord-server: app '%s' started as an isolated process (pid %d)\n", id, (int)app);
     return 0;
 }

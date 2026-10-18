@@ -1,4 +1,4 @@
-/* vstb.c — stb_image con la memoria de smem (ver vstb.h). */
+/* vstb.c — stb_image using smem memory (see vstb.h). */
 #include "vstb.h"
 #include "smem.h"
 
@@ -42,7 +42,7 @@ uint8_t *vstb_inflate_raw(const uint8_t *in, size_t len, size_t max, size_t *out
 }
 
 uint8_t *vstb_gunzip(const uint8_t *in, size_t len, size_t max, size_t *outlen) {
-    /* cabecera de 10 bytes (1f 8b 08 flg mtime xfl os) + campos opcionales + deflate + crc32 + isize */
+    /* 10-byte header (1f 8b 08 flg mtime xfl os) + optional fields + deflate + crc32 + isize */
     if (len < 18 || in[0] != 0x1f || in[1] != 0x8b || in[2] != 8) return NULL;
     uint8_t flg = in[3];
     size_t p = 10;

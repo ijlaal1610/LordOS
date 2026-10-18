@@ -1,8 +1,8 @@
-/* xmlmini.h — lector de XML mínimo, sin validar, para el XML de KeePass (KDBX) y los archivos
- * llave: arma un árbol en la arena de secretos (smem.h). Elementos, atributos, texto con las
- * entidades predefinidas y numéricas (&#N; &#xN;), CDATA, comentarios e instrucciones de
- * procesamiento. Nunca expande entidades declaradas: un <!DOCTYPE es un error (sin «billion
- * laughs» ni entidades externas). Profundidad máxima 256. */
+/* xmlmini.h — minimal non-validating XML reader for the KeePass (KDBX) XML and key
+ * files: builds a tree in the secrets arena (smem.h). Elements, attributes, text with the
+ * predefined and numeric entities (&#N; &#xN;), CDATA, comments and processing
+ * instructions. Never expands declared entities: a <!DOCTYPE is an error (no "billion
+ * laughs" or external entities). Maximum depth 256. */
 #ifndef LORD_VAULT_XMLMINI_H
 #define LORD_VAULT_XMLMINI_H
 
@@ -11,19 +11,19 @@
 typedef struct { char *name, *value; } XAttr;
 typedef struct XNode {
     char *name;
-    char *text; size_t tlen;          /* texto directo (sin el de los hijos), sin entidades */
+    char *text; size_t tlen;          /* direct text (without the children's), no entities */
     XAttr *attrs; int nattrs;
     struct XNode **kids; int nkids, cap;
     struct XNode *parent;
 } XNode;
 
-/* Raíz del documento (el elemento de más arriba) o NULL; err (si no es NULL) recibe un código. */
+/* Document root (the topmost element) or NULL; err (if not NULL) receives a code. */
 XNode *xml_parse(const char *s, size_t len, const char **err);
 void   xml_free(XNode *n);
-XNode *xml_child(const XNode *n, const char *name);              /* primer hijo con ese nombre */
-const char *xml_attr(const XNode *n, const char *name);           /* NULL si no está */
-const char *xml_text(const XNode *n);                             /* "" si no hay */
-/* Reemplaza el texto (el nuevo queda a cargo del nodo; en smem). */
+XNode *xml_child(const XNode *n, const char *name);              /* first child with that name */
+const char *xml_attr(const XNode *n, const char *name);           /* NULL if absent */
+const char *xml_text(const XNode *n);                             /* "" if none */
+/* Replaces the text (the node takes ownership of the new one; in smem). */
 void   xml_set_text(XNode *n, char *text, size_t len);
 
 #endif

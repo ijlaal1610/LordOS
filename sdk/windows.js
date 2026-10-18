@@ -101,13 +101,18 @@ export const workArea = (d) => workAreaOf(d);
 
 function place(appId, count, frame) {
   if (frame) return { ...frame, minimized: false, maximized: false };
-  const [w, h] = registry.get(appId)?.size || [640, 420];
+  const [sw, sh] = registry.get(appId)?.size || [640, 420];
   const offset = (count % 6) * 30;
   const area = workAreaOf(pointerDisplay());       // where the pointer is (docs/DISPLAYS.md)
+  // the whole window stays inside the work area: a cascaded window must not slide under the
+  // Dock, which would cover (and take the clicks of) its bottom edge
+  const w = Math.min(sw, area.w), h = Math.min(sh, area.h);
+  const x = Math.round(area.x + (area.w - w) / 2 - 60 + offset);
+  const y = Math.round(Math.max(area.y + 16, area.y + (area.h - h) / 2 - 40 + offset));
   return {
     w, h, minimized: false, maximized: false,
-    x: Math.round(area.x + (area.w - w) / 2 - 60 + offset),
-    y: Math.round(Math.max(area.y + 16, area.y + (area.h - h) / 2 - 40 + offset)),
+    x: Math.max(area.x, Math.min(x, area.x + area.w - w)),
+    y: Math.max(area.y, Math.min(y, area.y + area.h - h)),
   };
 }
 

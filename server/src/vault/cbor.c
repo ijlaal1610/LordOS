@@ -1,9 +1,9 @@
-/* cbor.c — CBOR estricto para CTAP2 (ver cbor.h). */
+/* cbor.c — strict CBOR for CTAP2 (see cbor.h). */
 #include "cbor.h"
 
 #include <string.h>
 
-/* ================= escritor ================= */
+/* ================= writer ================= */
 
 void cbw_init(CbW *w, uint8_t *buf, size_t cap) { w->p = buf; w->n = 0; w->cap = cap; w->err = 0; }
 
@@ -35,7 +35,7 @@ void cbw_map(CbW *w, size_t n) { head(w, 5, n); }
 void cbw_bool(CbW *w, int v) { uint8_t b = v ? 0xf5 : 0xf4; cbw_raw(w, &b, 1); }
 void cbw_null(CbW *w) { uint8_t b = 0xf6; cbw_raw(w, &b, 1); }
 
-/* ================= lector ================= */
+/* ================= reader ================= */
 
 typedef struct { const uint8_t *d; size_t len, p; CbItem *it; int n, max; } R;
 
@@ -68,9 +68,9 @@ static int item(R *r, int depth) {
         v = 0;
         for (size_t i = 0; i < k; i++) v = v << 8 | r->d[r->p + i];
         r->p += k;
-        /* codificación mínima (canónica): si cabía en menos, es inválida */
+        /* minimal (canonical) encoding: if it fit in fewer bytes, it is invalid */
         if ((ai == 24 && v < 24) || (ai == 25 && v <= 0xff) || (ai == 26 && v <= 0xffff) || (ai == 27 && v <= 0xffffffffu)) return -1;
-    } else return -1;                                  /* 28-30 reservados, 31 indefinido */
+    } else return -1;                                  /* 28-30 reserved, 31 indefinite */
     int k = r->n++;
     CbItem *it = &r->it[k];
     memset(it, 0, sizeof *it);
@@ -89,13 +89,13 @@ static int item(R *r, int depth) {
         it->type = major == 4 ? CB_ARRAY : CB_MAP;
         it->v = v;
         uint64_t sub = major == 4 ? v : v * 2;
-        if (v > (uint64_t)r->max || sub > r->len - r->p) return -1;   /* cada ítem ocupa ≥ 1 byte */
+        if (v > (uint64_t)r->max || sub > r->len - r->p) return -1;   /* each item takes >= 1 byte */
         for (uint64_t i = 0; i < sub; i++) if (item(r, depth + 1)) return -1;
         break;
     }
-    case 6: return -1;                                 /* etiquetas: no en CTAP2 */
+    case 6: return -1;                                 /* tags: not in CTAP2 */
     default:
-        if (ai >= 24) return -1;                       /* flotantes y simples de 1 byte */
+        if (ai >= 24) return -1;                       /* floats and 1-byte simple values */
         if (v == 20) it->type = CB_FALSE;
         else if (v == 21) it->type = CB_TRUE;
         else if (v == 22) it->type = CB_NULL;

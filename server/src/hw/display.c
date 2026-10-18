@@ -642,7 +642,11 @@ void display_attached(void) {
 
 void display_detached(void) { D.off = 0; D.soft = D.soft && D.kelvin != NIGHT_K_MAX; memset(&D.cur, 0, sizeof D.cur); }
 
+static unsigned hotplug_seq;
+unsigned display_hotplug_seq(void) { return hotplug_seq; }
+
 void display_hotplug(void) {
+    hotplug_seq++;
     Kms *k = kms();
     if (k) {
         KmsOutput outs[KMS_MAX_OUTPUTS];

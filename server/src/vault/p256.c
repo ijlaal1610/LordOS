@@ -1,10 +1,10 @@
-/* p256.c — NIST P-256 propia (ver p256.h). */
+/* p256.c — our own NIST P-256 (see p256.h). */
 #include "p256.h"
 #include "vcrypto.h"
 
 #include <string.h>
 
-typedef struct { uint32_t v[8]; } Fe;          /* palabras little-endian */
+typedef struct { uint32_t v[8]; } Fe;          /* little-endian words */
 
 typedef struct { uint32_t m[8]; uint32_t minv; Fe r2, one; } Mod;
 
@@ -21,10 +21,10 @@ static const uint8_t GY[32] = {
     0x2b,0xce,0x33,0x57,0x6b,0x31,0x5e,0xce,0xcb,0xb6,0x40,0x68,0x37,0xbf,0x51,0xf5 };
 
 static Mod MP;
-static Fe B_M;            /* b en forma de Montgomery */
+static Fe B_M;            /* b in Montgomery form */
 static int ready;
 
-/* ---- enteros de 256 bits ---- */
+/* ---- 256-bit integers ---- */
 
 static void from_bytes(Fe *r, const uint8_t b[32]) {
     for (int i = 0; i < 8; i++)
@@ -37,7 +37,7 @@ static void to_bytes(uint8_t b[32], const Fe *a) {
     }
 }
 
-/* r = a - b; devuelve el préstamo (0 o 1) */
+/* r = a - b; returns the borrow (0 or 1) */
 static uint32_t sub_raw(uint32_t r[8], const uint32_t a[8], const uint32_t b[8]) {
     uint64_t borrow = 0;
     for (int i = 0; i < 8; i++) {
@@ -52,7 +52,7 @@ static uint32_t add_raw(uint32_t r[8], const uint32_t a[8], const uint32_t b[8])
     for (int i = 0; i < 8; i++) { c += (uint64_t)a[i] + b[i]; r[i] = (uint32_t)c; c >>= 32; }
     return (uint32_t)c;
 }
-/* r = sel ? a : b, sin ramas */
+/* r = sel ? a : b, branch-free */
 static void cmov(uint32_t r[8], const uint32_t a[8], const uint32_t b[8], uint32_t sel) {
     uint32_t m = (uint32_t)0 - (sel & 1);
     for (int i = 0; i < 8; i++) r[i] = (a[i] & m) | (b[i] & ~m);
@@ -71,7 +71,7 @@ static void mod_sub(Fe *r, const Fe *a, const Fe *b, const Mod *M) {
     cmov(r->v, t, s, br);
 }
 
-/* Multiplicación de Montgomery (CIOS): r = a*b*R^-1 mod m */
+/* Montgomery multiplication (CIOS): r = a*b*R^-1 mod m */
 static void mont_mul(Fe *r, const Fe *a, const Fe *b, const Mod *M) {
     uint32_t t[10] = { 0 };
     for (int i = 0; i < 8; i++) {
@@ -125,7 +125,7 @@ static void fmul(Fe *r, const Fe *a, const Fe *b) { mont_mul(r, a, b, &MP); }
 static void fadd(Fe *r, const Fe *a, const Fe *b) { mod_add(r, a, b, &MP); }
 static void fsub(Fe *r, const Fe *a, const Fe *b) { mod_sub(r, a, b, &MP); }
 
-/* a^(p-2) (el exponente es público) */
+/* a^(p-2) (the exponent is public) */
 static void finv(Fe *r, const Fe *a) {
     uint32_t e[8];
     uint32_t two[8] = { 2 };
@@ -141,7 +141,7 @@ static void finv(Fe *r, const Fe *a) {
 static int fe_is_zero(const Fe *a) { uint32_t z = 0; for (int i = 0; i < 8; i++) z |= a->v[i]; return z == 0; }
 static int lt(const uint32_t a[8], const uint32_t m[8]) { uint32_t t[8]; return (int)sub_raw(t, a, m); }
 
-/* ---- puntos proyectivos (X:Y:Z), Montgomery ---- */
+/* ---- projective points (X:Y:Z), Montgomery ---- */
 
 typedef struct { Fe x, y, z; } Pt;
 
@@ -199,11 +199,11 @@ static void pt_cswap(Pt *a, Pt *b, uint32_t bit) {
     for (size_t i = 0; i < sizeof(Pt) / 4; i++) { uint32_t t = (pa[i] ^ pb[i]) & m; pa[i] ^= t; pb[i] ^= t; }
 }
 
-/* r = k * p (k big-endian, 256 bits), escalera de Montgomery */
+/* r = k * p (k big-endian, 256 bits), Montgomery ladder */
 static void pt_mul(Pt *r, const uint8_t k[32], const Pt *p) {
     Pt r0, r1 = *p;
     memset(&r0, 0, sizeof r0);
-    r0.y = MP.one;                                  /* infinito (0:1:0) */
+    r0.y = MP.one;                                  /* infinity (0:1:0) */
     for (int i = 255; i >= 0; i--) {
         uint32_t bit = (k[31 - i / 8] >> (i % 8)) & 1;
         pt_cswap(&r0, &r1, bit);
@@ -229,7 +229,7 @@ static int pt_affine(const Pt *p, uint8_t x[32], uint8_t y[32]) {
     return 0;
 }
 
-/* (x, y) en afín (bytes) → punto validado */
+/* (x, y) in affine form (bytes) → validated point */
 static int pt_load(Pt *r, const uint8_t xb[32], const uint8_t yb[32]) {
     Fe x, y;
     from_bytes(&x, xb);

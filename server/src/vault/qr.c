@@ -1,22 +1,22 @@
-/* qr.c — códigos QR propios: generar y leer (ver qr.h). ISO/IEC 18004.
+/* qr.c — our own QR codes: encode and decode (see qr.h). ISO/IEC 18004.
  *
- * Generar: elige el modo más compacto (numérico, alfanumérico o byte) y la versión más chica en
- * la que entra con la corrección pedida; Reed-Solomon sobre GF(256) (polinomio 0x11d), bloques
- * intercalados, patrones de función, información de formato y de versión (BCH) y las 8 máscaras
- * con la penalización de la norma.
+ * Encode: picks the most compact mode (numeric, alphanumeric or byte) and the smallest version
+ * that fits with the requested correction level; Reed-Solomon over GF(256) (polynomial 0x11d),
+ * interleaved blocks, function patterns, format and version information (BCH) and the 8 masks
+ * with the standard's penalty.
  *
- * Leer: luminancia → binarización (Otsu global y umbral local de Bradley, normal e invertida) →
- * patrones de posición por la proporción 1:1:3:1:1 en filas, confirmados en columnas → los tres
- * mejores (triángulo rectángulo) → lado por el patrón de temporización y la información de
- * versión → grilla (afín, o perspectiva con el patrón de alineación) → formato, máscara,
- * palabras, Reed-Solomon (Berlekamp-Massey + Chien + Forney) → segmentos. */
+ * Decode: luminance → binarization (global Otsu and Bradley local threshold, normal and inverted) →
+ * finder patterns by the 1:1:3:1:1 ratio in rows, confirmed in columns → the three
+ * best (right triangle) → side from the timing pattern and the version
+ * information → grid (affine, or perspective with the alignment pattern) → format, mask,
+ * codewords, Reed-Solomon (Berlekamp-Massey + Chien + Forney) → segments. */
 #include "qr.h"
 
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* ================= tablas ================= */
+/* ================= tables ================= */
 
 static const int8_t ECC_PER_BLOCK[4][41] = {
     { -1, 7,10,15,20,26,18,20,24,30,18,20,24,26,30,22,24,28,30,28,28,28,28,30,30,26,28,30,30,30,30,30,30,30,30,30,30,30,30,30,30 },
@@ -30,7 +30,7 @@ static const int8_t NUM_BLOCKS[4][41] = {
     { -1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8,10,12,16,12,17,16,18,21,20,23,23,25,27,29,34,34,35,38,40,43,45,48,51,53,56,59,62,65,68 },
     { -1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8,11,11,16,16,18,16,19,21,25,25,25,34,30,32,35,37,40,42,45,48,51,54,57,60,63,66,70,74,77,81 },
 };
-static const int FORMAT_ECC_BITS[4] = { 1, 0, 3, 2 };     /* L M Q H en la información de formato */
+static const int FORMAT_ECC_BITS[4] = { 1, 0, 3, 2 };     /* L M Q H in the format information */
 static const char ALNUM[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
 
 static int raw_modules(int ver) {
@@ -59,7 +59,7 @@ static int cc_bits(int mode, int ver) {
     return t[mode == 1 ? 0 : mode == 2 ? 1 : 2][g];
 }
 
-/* ================= GF(256) y Reed-Solomon ================= */
+/* ================= GF(256) and Reed-Solomon ================= */
 
 static uint8_t GEXP[512], GLOG[256];
 static int gf_ready;
@@ -73,7 +73,7 @@ static void gf_init(void) {
 static uint8_t gmul(uint8_t a, uint8_t b) { return a && b ? GEXP[GLOG[a] + GLOG[b]] : 0; }
 static uint8_t gdiv(uint8_t a, uint8_t b) { return a ? GEXP[(GLOG[a] + 255 - GLOG[b]) % 255] : 0; }
 
-/* Generador de grado d: (x - a^0)(x - a^1)…; coeficientes sin el principal (1). */
+/* Generator of degree d: (x - a^0)(x - a^1)…; coefficients without the leading one (1). */
 static void rs_gen(int d, uint8_t *g) {
     memset(g, 0, (size_t)d);
     g[d - 1] = 1;
@@ -93,7 +93,7 @@ static void rs_rem(const uint8_t *data, int n, const uint8_t *g, int d, uint8_t 
     }
 }
 
-/* Corrige el bloque c de n bytes con ne de corrección. 0 bien (o sin errores), -1 si no se puede. */
+/* Corrects block c of n bytes with ne correction bytes. 0 = ok (or no errors), -1 if it cannot. */
 static int rs_correct(uint8_t *c, int n, int ne) {
     uint8_t S[64], L[64], B[64], T[64], O[64];
     int any = 0;
@@ -122,14 +122,14 @@ static int rs_correct(uint8_t *c, int n, int ne) {
     if (Ld > ne / 2) return -1;
     /* Omega = S * Lambda mod x^ne */
     for (int i = 0; i < ne; i++) { uint8_t v = 0; for (int j = 0; j <= i && j <= Ld; j++) v ^= gmul(L[j], S[i - j]); O[i] = v; }
-    /* Chien: posiciones p = 0..n-1 (potencia), arreglo k = n-1-p */
+    /* Chien: positions p = 0..n-1 (power), array index k = n-1-p */
     int found = 0;
     for (int p = 0; p < n; p++) {
         uint8_t xinv = GEXP[(255 - p) % 255];
         uint8_t v = 0, xp = 1;
         for (int i = 0; i <= Ld; i++) { v ^= gmul(L[i], xp); xp = gmul(xp, xinv); }
         if (v) continue;
-        /* Forney (primera raíz 0): e = X * Omega(X^-1) / Lambda'(X^-1) */
+        /* Forney (first root 0): e = X * Omega(X^-1) / Lambda'(X^-1) */
         uint8_t om = 0, dl = 0; xp = 1;
         for (int i = 0; i < ne; i++) { om ^= gmul(O[i], xp); xp = gmul(xp, xinv); }
         xp = 1;
@@ -148,7 +148,7 @@ static int rs_correct(uint8_t *c, int n, int ne) {
     return 0;
 }
 
-/* ================= armado de la matriz ================= */
+/* ================= building the matrix ================= */
 
 typedef struct { int size; uint8_t *m, *fn; } Grid;
 #define AT(g, x, y) (g)->m[(y) * (g)->size + (x)]
@@ -205,7 +205,7 @@ static void draw_functions(Grid *g, int ver) {
         if ((i == 0 && j == 0) || (i == 0 && j == na - 1) || (i == na - 1 && j == 0)) continue;
         draw_align(g, pos[i], pos[j]);
     }
-    draw_format(g, 0);           /* reserva; se escribe después */
+    draw_format(g, 0);           /* reserve; written later */
     if (ver >= 7) {
         int bits = version_bits(ver);
         for (int i = 0; i < 18; i++) {
@@ -233,7 +233,7 @@ static void apply_mask(Grid *g, int mask) {
         if (!FN(g, x, y) && mask_bit(mask, x, y)) AT(g, x, y) ^= 1;
 }
 
-/* Recorrido en zigzag de los módulos de datos: llama fn para cada uno, en orden. */
+/* Zigzag traversal of the data modules: calls fn for each one, in order. */
 typedef void (*ZigFn)(Grid *g, int x, int y, void *ud);
 static void zigzag(Grid *g, ZigFn fn, void *ud) {
     int s = g->size;
@@ -257,14 +257,14 @@ static void zig_get(Grid *g, int x, int y, void *ud) {
     z->i++;
 }
 
-/* Penalización de la norma (N1=3, N2=3, N3=40, N4=10). */
+/* Penalty from the standard (N1=3, N2=3, N3=40, N4=10). */
 static long run_finder_count(const int *h) {
     int n = h[1];
     int core = n > 0 && h[2] == n && h[3] == n * 3 && h[4] == n && h[5] == n;
     return (core && h[0] >= n * 4 && h[6] >= n) + (core && h[6] >= n * 4 && h[0] >= n);
 }
 static void run_push(int *h, int len, int s) {
-    if (h[0] == 0) len += s;                    /* zona en blanco a la izquierda */
+    if (h[0] == 0) len += s;                    /* blank area on the left */
     memmove(h + 1, h, 6 * sizeof(int));
     h[0] = len;
 }
@@ -284,7 +284,7 @@ static long penalty(Grid *g) {
                     run = 1;
                 }
             }
-            /* final de la línea */
+            /* end of the line */
             if (color) { run_push(h, run, s); run = 0; }
             run += s;
             run_push(h, run, s);
@@ -303,7 +303,7 @@ static long penalty(Grid *g) {
     return r;
 }
 
-/* Bits de los datos: modo + largo + contenido. Devuelve el largo en bits (o -1 si no entra). */
+/* Data bits: mode + length + content. Returns the length in bits (or -1 if it does not fit). */
 typedef struct { uint8_t *b; int n, cap; } Bits;
 static void bput(Bits *bb, unsigned v, int nb) {
     for (int i = nb - 1; i >= 0; i--) {
@@ -361,7 +361,7 @@ int qr_encode_ex(const uint8_t *data, size_t len, int ecc, int mask, int minver,
     bput(&bb, 0, (8 - bb.n % 8) % 8);
     for (int pad = 0xec; bb.n < cap; pad ^= 0xec ^ 0x11) bput(&bb, (unsigned)pad, 8);
 
-    /* bloques y corrección, intercalados */
+    /* blocks and correction, interleaved */
     int nb = NUM_BLOCKS[ecc][ver], ne = ECC_PER_BLOCK[ecc][ver];
     int raw = raw_modules(ver) / 8, nshort = nb - raw % nb, shortlen = raw / nb;
     uint8_t gen[30], blocks[81][160];
@@ -412,11 +412,11 @@ int qr_encode(const uint8_t *data, size_t len, int ecc, uint8_t *modules, int *s
     return qr_encode_ex(data, len, ecc, -1, 1, modules, size, NULL);
 }
 
-/* ================= lectura: de la grilla a los bytes ================= */
+/* ================= decoding: from the grid to the bytes ================= */
 
 static int popc(unsigned v) { int n = 0; while (v) { n += v & 1; v >>= 1; } return n; }
 
-/* formato: (ecc, máscara) con la distancia de Hamming más chica (≤ 3) */
+/* format: (ecc, mask) with the smallest Hamming distance (≤ 3) */
 static int decode_format(int bits, int *ecc, int *mask) {
     int best = 99;
     for (int e = 0; e < 4; e++) for (int m = 0; m < 8; m++) {
@@ -431,7 +431,7 @@ static int decode_version(int bits) {
     return best <= 3 ? v : -1;
 }
 
-/* Lee la información de formato de las dos copias de la grilla g (ya muestreada). */
+/* Reads the format information from the two copies in grid g (already sampled). */
 static int read_format(Grid *g, int *ecc, int *mask) {
     int s = g->size, a = 0, b = 0;
     for (int i = 0; i <= 5; i++) a |= AT(g, 8, i) << i;
@@ -461,7 +461,7 @@ static int brd(BR *r, int k) {
     return v;
 }
 
-/* Segmentos → bytes. */
+/* Segments → bytes. */
 static int parse_segments(const uint8_t *d, int nbytes, int ver, uint8_t *out, size_t cap) {
     BR r = { d, nbytes * 8, 0 };
     size_t o = 0;
@@ -470,7 +470,7 @@ static int parse_segments(const uint8_t *d, int nbytes, int ver, uint8_t *out, s
         if (r.n - r.p < 4) break;
         int mode = brd(&r, 4);
         if (mode == 0) break;
-        if (mode == 7) {                                   /* ECI: se saltea */
+        if (mode == 7) {                                   /* ECI: skipped */
             int f = brd(&r, 8);
             if (f < 0) return -1;
             if ((f & 0xc0) == 0x80) brd(&r, 8);
@@ -478,8 +478,8 @@ static int parse_segments(const uint8_t *d, int nbytes, int ver, uint8_t *out, s
             else if (f & 0x80) return -1;
             continue;
         }
-        if (mode == 3) { brd(&r, 16); continue; }          /* anexo estructurado */
-        if (mode == 5) continue;                           /* FNC1 primera posición */
+        if (mode == 3) { brd(&r, 16); continue; }          /* structured append */
+        if (mode == 5) continue;                           /* FNC1 first position */
         if (mode == 9) { brd(&r, 8); continue; }
         int g = ver <= 9 ? 0 : ver <= 26 ? 1 : 2;
         if (mode == 1) {
@@ -516,7 +516,7 @@ static int parse_segments(const uint8_t *d, int nbytes, int ver, uint8_t *out, s
     return (int)o;
 }
 
-/* Grilla muestreada (módulos de la versión ver) → bytes. */
+/* Sampled grid (modules of version ver) → bytes. */
 static int decode_grid(uint8_t *mods, int ver, uint8_t *out, size_t cap) {
     gf_init();
     int s = ver * 4 + 17;
@@ -527,7 +527,7 @@ static int decode_grid(uint8_t *mods, int ver, uint8_t *out, size_t cap) {
     if (!fn || !save) { free(fn); free(save); return -1; }
     memcpy(save, mods, (size_t)s * s);
     g.fn = fn;
-    draw_functions(&g, ver);                 /* solo para marcar fn; se restauran los módulos */
+    draw_functions(&g, ver);                 /* only to mark fn; the modules are restored */
     memcpy(mods, save, (size_t)s * s);
     free(save);
     apply_mask(&g, mask);
@@ -555,7 +555,7 @@ static int decode_grid(uint8_t *mods, int ver, uint8_t *out, size_t cap) {
     return parse_segments(data, nd, ver, out, cap);
 }
 
-/* ================= lectura: de la imagen a la grilla ================= */
+/* ================= decoding: from the image to the grid ================= */
 
 typedef struct { double x, y, ms; int count; } Cand;
 typedef struct { const uint8_t *bin; int w, h; Cand c[64]; int nc; } Img;
@@ -570,13 +570,13 @@ static int ratio_ok(const int *st) {
     return fabs(m - st[0]) < v && fabs(m - st[1]) < v && fabs(3 * m - st[2]) < 3 * v && fabs(m - st[3]) < v && fabs(m - st[4]) < v;
 }
 
-/* Cuenta las corridas en una dirección desde (x, y), que tiene que ser oscuro. */
+/* Counts the runs in one direction from (x, y), which must be dark. */
 static int cross(Img *im, double fx, double fy, int dx, int dy, int maxc, double *center, double *ms) {
     int x0 = (int)fx, y0 = (int)fy;
     if (x0 < 0 || y0 < 0 || x0 >= im->w || y0 >= im->h || !PX(im, x0, y0)) return 0;
     int st[5] = { 0 };
     int x = x0, y = y0;
-    /* hacia atrás: centro (oscuro), blanco, oscuro */
+    /* backwards: center (dark), white, dark */
     while (x >= 0 && y >= 0 && x < im->w && y < im->h && PX(im, x, y)) { st[2]++; x -= dx; y -= dy; }
     while (x >= 0 && y >= 0 && x < im->w && y < im->h && !PX(im, x, y) && st[1] <= maxc) { st[1]++; x -= dx; y -= dy; }
     while (x >= 0 && y >= 0 && x < im->w && y < im->h && PX(im, x, y) && st[0] <= maxc) { st[0]++; x -= dx; y -= dy; }
@@ -585,7 +585,7 @@ static int cross(Img *im, double fx, double fy, int dx, int dy, int maxc, double
     int ex;
     while (x >= 0 && y >= 0 && x < im->w && y < im->h && !PX(im, x, y) && st[3] <= maxc) { st[3]++; x += dx; y += dy; }
     while (x >= 0 && y >= 0 && x < im->w && y < im->h && PX(im, x, y) && st[4] <= maxc) { st[4]++; x += dx; y += dy; }
-    ex = dx ? x : y;                 /* fin (exclusivo) en la coordenada que se mueve */
+    ex = dx ? x : y;                 /* end (exclusive) on the coordinate that moves */
     if (!ratio_ok(st)) return 0;
     *center = ex - st[4] - st[3] - st[2] / 2.0;
     *ms = (st[0] + st[1] + st[2] + st[3] + st[4]) / 7.0;
@@ -615,7 +615,7 @@ static void found(Img *im, const int *st, int y, int xend) {
     if (!cross(im, cx, cy, 1, 0, st[2], &cx2, &msh)) return;
     double ms = (msv + msh) / 2;
     if (msv * 7 > total * 2 || msv * 7 * 2 < total) return;
-    /* diagonal (descarta rayas) */
+    /* diagonal (discards stripes) */
     double dc, dms;
     if (!cross(im, cx2, cy, 1, 1, st[2] * 2, &dc, &dms)) return;
     add_cand(im, cx2, cy, ms);
@@ -648,7 +648,7 @@ static void find_finders(Img *im) {
 
 static double dist(const Cand *a, const Cand *b) { return hypot(a->x - b->x, a->y - b->y); }
 
-/* Homografía: de (u, v) en módulos a (x, y) en la imagen, por 4 puntos (sistema 8x8). */
+/* Homography: from (u, v) in modules to (x, y) in the image, from 4 points (8x8 system). */
 typedef struct { double a[9]; } Hom;
 static int hom_solve(const double *u, const double *v, const double *x, const double *y, Hom *H) {
     double M[8][9];
@@ -685,7 +685,7 @@ static int sample(Img *im, double x, double y) {
     return PX(im, ix, iy);
 }
 
-/* Patrón de alineación cerca de (ex, ey): un módulo oscuro rodeado de un anillo claro y uno oscuro. */
+/* Alignment pattern near (ex, ey): a dark module surrounded by a light ring and a dark one. */
 static int find_align(Img *im, double ex, double ey, double ms, double *ax, double *ay) {
     int r = (int)(ms * 4 + 2), best = 0;
     double bd = 1e18;
@@ -693,7 +693,7 @@ static int find_align(Img *im, double ex, double ey, double ms, double *ax, doub
         if (y < 0 || y >= im->h) continue;
         for (int x = (int)ex - r; x <= (int)ex + r; x++) {
             if (x < 0 || x >= im->w || !PX(im, x, y)) continue;
-            /* corridas horizontales y verticales: oscuro (~1), claro (~1) a cada lado, oscuro afuera */
+            /* horizontal and vertical runs: dark (~1), light (~1) on each side, dark outside */
             int ok = 1;
             double c[2];
             for (int d = 0; d < 2 && ok; d++) {
@@ -718,7 +718,7 @@ static int find_align(Img *im, double ex, double ey, double ms, double *ax, doub
     return best;
 }
 
-/* Cuenta las corridas del patrón de temporización entre p0 y p1 (en píxeles). */
+/* Counts the runs of the timing pattern between p0 and p1 (in pixels). */
 static int timing_runs(Img *im, double x0, double y0, double x1, double y1, double ms) {
     double len = hypot(x1 - x0, y1 - y0);
     int steps = (int)(len / (ms / 4)) + 1, runs = 0, prev = -1;
@@ -735,7 +735,7 @@ static int try_grid(Img *im, const Cand *B, const Cand *A, const Cand *C, int ve
     double ms = (A->ms + B->ms + C->ms) / 3;
     double u[4] = { 3.5, s - 3.5, 3.5, 0 }, v[4] = { 3.5, 3.5, s - 3.5, 0 };
     double x[4] = { B->x, A->x, C->x, 0 }, y[4] = { B->y, A->y, C->y, 0 };
-    /* cuarto punto: esquina afín (o el patrón de alineación) */
+    /* fourth point: affine corner (or the alignment pattern) */
     double k = (s - 6.5 - 3.5) / (s - 7.0);
     u[3] = s - 6.5; v[3] = s - 6.5;
     x[3] = B->x + (A->x - B->x) * k + (C->x - B->x) * k;
@@ -758,7 +758,7 @@ static int try_grid(Img *im, const Cand *B, const Cand *A, const Cand *C, int ve
     if (ver >= 7) {
         Grid g = { s, mods, NULL };
         int vv = read_version_bits(&g);
-        if (vv > 0 && vv != ver) { free(mods); return -2 - vv; }    /* versión distinta: probar esa */
+        if (vv > 0 && vv != ver) { free(mods); return -2 - vv; }    /* different version: try that one */
     }
     n = decode_grid(mods, ver, out, cap);
     free(mods);
@@ -769,7 +769,7 @@ static int try_triplet(Img *im, Cand B, Cand A, Cand C, uint8_t *out, size_t cap
     double ms = (A.ms + B.ms + C.ms) / 3;
     double dab = dist(&B, &A), dbc = dist(&B, &C);
     int est = (int)lround((dab + dbc) / 2 / ms) + 7;
-    /* patrón de temporización: fila 6 (de B a A) y columna 6 (de B a C) */
+    /* timing pattern: row 6 (from B to A) and column 6 (from B to C) */
     double ux = (C.x - B.x) / dbc, uy = (C.y - B.y) / dbc, vx = (A.x - B.x) / dab, vy = (A.y - B.y) / dab;
     int t1 = timing_runs(im, B.x + ux * 3 * ms, B.y + uy * 3 * ms, A.x + ux * 3 * ms, A.y + uy * 3 * ms, ms) + 12;
     int t2 = timing_runs(im, B.x + vx * 3 * ms, B.y + vy * 3 * ms, C.x + vx * 3 * ms, C.y + vy * 3 * ms, ms) + 12;
@@ -788,7 +788,7 @@ static int try_triplet(Img *im, Cand B, Cand A, Cand C, uint8_t *out, size_t cap
             int n = try_grid(im, &B, &A, &C, ver, 1, out, cap);
             if (n == -1 && ver >= 2) n = try_grid(im, &B, &A, &C, ver, 0, out, cap);
             if (n >= 0) return n;
-            if (n <= -9) { ver = -2 - n; continue; }        /* la información de versión dijo otra */
+            if (n <= -9) { ver = -2 - n; continue; }        /* the version information said otherwise */
             break;
         }
     }
@@ -798,7 +798,7 @@ static int try_triplet(Img *im, Cand B, Cand A, Cand C, uint8_t *out, size_t cap
 static int decode_bin(Img *im, uint8_t *out, size_t cap) {
     find_finders(im);
     if (im->nc < 3) return -1;
-    /* los más confirmados primero */
+    /* most confirmed first */
     for (int i = 0; i < im->nc; i++) for (int j = i + 1; j < im->nc; j++)
         if (im->c[j].count > im->c[i].count) { Cand t = im->c[i]; im->c[i] = im->c[j]; im->c[j] = t; }
     int n = im->nc < 12 ? im->nc : 12;
@@ -827,7 +827,7 @@ enough:
     for (int i = 0; i < nt; i++) for (int j = i + 1; j < nt; j++) if (tri[j].score < tri[i].score) { Tri t = tri[i]; tri[i] = tri[j]; tri[j] = t; }
     for (int t = 0; t < nt && t < 6; t++) {
         Cand B = im->c[tri[t].a], A = im->c[tri[t].b], C = im->c[tri[t].c];
-        /* orientación: con y hacia abajo, (A-B) x (C-B) > 0 */
+        /* orientation: with y pointing down, (A-B) x (C-B) > 0 */
         double cr = (A.x - B.x) * (C.y - B.y) - (A.y - B.y) * (C.x - B.x);
         if (cr < 0) { Cand x = A; A = C; C = x; }
         int r = try_triplet(im, B, A, C, out, cap);
@@ -847,7 +847,7 @@ int qr_decode(const uint32_t *argb, int w, int h, uint8_t *out, size_t outcap) {
         uint32_t p = argb[i];
         unsigned a = p >> 24, r = p >> 16 & 255, g = p >> 8 & 255, b = p & 255;
         unsigned l = (r * 77 + g * 150 + b * 29) >> 8;
-        l = (l * a + 255 * (255 - a)) / 255;             /* sobre fondo blanco */
+        l = (l * a + 255 * (255 - a)) / 255;             /* over a white background */
         lum[i] = (uint8_t)l;
         hist[l]++;
     }
@@ -864,7 +864,7 @@ int qr_decode(const uint32_t *argb, int w, int h, uint8_t *out, size_t outcap) {
         double mb = sumb / wb, mf = (sum - sumb) / wf, v = wb * wf * (mb - mf) * (mb - mf);
         if (v > best) { best = v; th = i; }
     }
-    /* imagen integral para el umbral local */
+    /* integral image for the local threshold */
     for (int x = 0; x <= w; x++) integ[x] = 0;
     for (int y = 0; y < h; y++) {
         uint32_t row = 0;

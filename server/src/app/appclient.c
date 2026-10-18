@@ -379,20 +379,38 @@ static void gestures_setup(void) {
     zwp_pointer_gesture_swipe_v1_add_listener(zwp_pointer_gestures_v1_get_swipe_gesture(gestures, pointer), &swipe_listener, NULL);
 }
 
-static void k_keymap(void *d, struct wl_keyboard *k, uint32_t fmt, int32_t fd, uint32_t sz) { (void)d; (void)k; (void)fmt; (void)sz; if (fd >= 0) close(fd); }
+/* The compositor's keymap (the user's layouts, already expanded): compiling it reads no files,
+ * so it also works inside the sandbox (keyboard.c kb_set_keymap_string). */
+static void k_keymap(void *d, struct wl_keyboard *k, uint32_t fmt, int32_t fd, uint32_t sz) {
+    (void)d; (void)k;
+    if (fd < 0) return;
+    if (fmt == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1 && sz > 1 && sz < (16u << 20)) {
+        char *m = mmap(NULL, sz, PROT_READ, MAP_PRIVATE, fd, 0);
+        if (m != MAP_FAILED) {
+            if (!memchr(m, 0, sz) || m[sz - 1] == 0) {
+                char *txt = strndup(m, sz);
+                if (txt) { kb_set_keymap_string(txt); free(txt); }
+            }
+            munmap(m, sz);
+        }
+    }
+    close(fd);
+}
 /* keyboard focus moved to one of our windows: the app host raises it (wm.focus) */
 static void k_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *sf, struct wl_array *keys) {
     (void)d; (void)k; (void)s; (void)keys;
     AppWin *w = win_by_surface(sf);
+    kb_reset_state();                       /* keys released while another window had the keyboard */
     if (w && w != kbd_win) { kbd_win = w; win_event(w, "focus"); }
 }
-static void k_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *sf) { (void)d; (void)k; (void)s; (void)sf; }
+static void k_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *sf) { (void)d; (void)k; (void)s; (void)sf; kb_reset_state(); }
 static void k_key(void *d, struct wl_keyboard *k, uint32_t s, uint32_t t, uint32_t key, uint32_t st) {
     (void)d; (void)k; (void)s; (void)t;
     js_key((int)key, st == WL_KEYBOARD_KEY_STATE_PRESSED ? 1 : 0);
 }
 static void k_mods(void *d, struct wl_keyboard *k, uint32_t s, uint32_t dep, uint32_t lat, uint32_t lock, uint32_t grp) {
-    (void)d; (void)k; (void)s; (void)dep; (void)lat; (void)lock; (void)grp;   /* los modificadores salen de las propias teclas */
+    (void)d; (void)k; (void)s; (void)dep; (void)lat; (void)lock;   /* modifiers come from the keys themselves */
+    kb_set_group((int)grp);                                         /* the active layout follows the compositor */
 }
 static void k_repeat(void *d, struct wl_keyboard *k, int32_t rate, int32_t delay) { (void)d; (void)k; (void)rate; (void)delay; }
 static const struct wl_keyboard_listener k_listener = { k_keymap, k_enter, k_leave, k_key, k_mods, k_repeat };
@@ -439,7 +457,7 @@ static int manifest_pair(const char *dir, const char *key, int *w, int *h) {
 }
 
 int app_main(const char *id, const char *theme_bundle, const char *fonts) {
-    if (!lpk_valid_id(id)) { fprintf(stderr, "lord-server --app: id inválido\n"); return 2; }
+    if (!lpk_valid_id(id)) { fprintf(stderr, "lord-server --app: invalid id\n"); return 2; }
     char dir[PATH_MAX];
     {
         /* <assets> = the parent of the fonts folder; a system app there wins over a user .lpk */
@@ -448,7 +466,7 @@ int app_main(const char *id, const char *theme_bundle, const char *fonts) {
         char *sl = strrchr(assets, '/');
         if (sl) *sl = 0;
         if (app_package_dir(id, assets, dir, sizeof dir) < 0) {
-            fprintf(stderr, "lord-server --app: la app '%s' no está instalada\n", id);
+            fprintf(stderr, "lord-server --app: app '%s' is not installed\n", id);
             return 2;
         }
     }
@@ -460,16 +478,16 @@ int app_main(const char *id, const char *theme_bundle, const char *fonts) {
     snprintf(data, sizeof data, "%s/%.40s", parent, id);
     mkdir(data, 0700);
 
-    if (text_init(fonts)) { fprintf(stderr, "lord-server --app: sin fuentes\n"); return 1; }
+    if (text_init(fonts)) { fprintf(stderr, "lord-server --app: no fonts\n"); return 1; }
     { char a[PATH_MAX * 2]; snprintf(a, sizeof a, "%.*s/..", (int)(sizeof a - 4), fonts); js_sys_set_assets(a); }
     kb_set("us", "");
 
     dpy = wl_display_connect(NULL);
-    if (!dpy) { fprintf(stderr, "lord-server --app: no se pudo conectar al compositor\n"); return 1; }
+    if (!dpy) { fprintf(stderr, "lord-server --app: could not connect to the compositor\n"); return 1; }
     struct wl_registry *reg = wl_display_get_registry(dpy);
     wl_registry_add_listener(reg, &reg_listener, NULL);
     wl_display_roundtrip(dpy);
-    if (!comp || !shm || !wm) { fprintf(stderr, "lord-server --app: el compositor no ofrece lo necesario\n"); return 1; }
+    if (!comp || !shm || !wm) { fprintf(stderr, "lord-server --app: the compositor lacks a required interface\n"); return 1; }
 
     app_id_str = id;
     int mw = 640, mh = 480, nw = 0, nh = 0;
@@ -493,7 +511,7 @@ int app_main(const char *id, const char *theme_bundle, const char *fonts) {
     SandboxConfig sb = { .id = id, .pkg_dir = dir, .data_dir = data, .runtime_dir = getenv("XDG_RUNTIME_DIR"), .ro_extra = ro, .network = net };
     sandbox_apply(&sb);
 
-    if (js_init_app(theme_bundle, id)) { fprintf(stderr, "lord-server --app: no se pudo cargar la app\n"); return 1; }
+    if (js_init_app(theme_bundle, id)) { fprintf(stderr, "lord-server --app: could not load the app\n"); return 1; }
 
     int wfd = wl_display_get_fd(dpy);
     double start = now_ms();

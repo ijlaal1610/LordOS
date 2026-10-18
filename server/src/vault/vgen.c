@@ -1,4 +1,4 @@
-/* vgen.c — generador y fuerza de contraseñas (ver vgen.h). */
+/* vgen.c — password generator and strength (see vgen.h). */
 #include "vgen.h"
 #include "vcrypto.h"
 #include "smem.h"
@@ -15,7 +15,7 @@ static const char **words;
 static size_t nwords;
 static const char *common_buf;
 static size_t common_len;
-/* índice de la lista común: comienzo de cada línea (la lista está en orden de popularidad) */
+/* index of the common list: start of each line (the list is in popularity order) */
 static const char **common;
 static size_t ncommon;
 
@@ -42,7 +42,7 @@ void vg_set_lists(const char *w, size_t wlen, const char *c, size_t clen) {
     common_len = clen;
     ncommon = split_lines(c, clen, &common);
     common_index();
-    /* las palabras de la EFF: se terminan con '\n'; las copiamos sin él a un bloque propio */
+    /* the EFF words: they end with '\n'; we copy them without it into our own block */
     for (size_t i = 0; i < nwords; i++) {
         size_t l = line_len(words[i], w + wlen);
         char *s = malloc(l + 1);
@@ -106,7 +106,7 @@ int vg_generate(const VGenOpts *o, char *out, size_t cap, double *bits) {
     for (int tries = 0; tries < 1000; tries++) {
         for (int i = 0; i < len; i++) out[i] = pool[rnd_below((uint32_t)pn)];
         out[len] = 0;
-        int ok = 1;                              /* al menos uno de cada clase pedida */
+        int ok = 1;                              /* at least one of each requested class */
         for (int c = 0; c < ncls && ok; c++) if (!strpbrk(out, cls[c])) ok = 0;
         if (ok || len < ncls) break;
     }
@@ -115,11 +115,11 @@ int vg_generate(const VGenOpts *o, char *out, size_t cap, double *bits) {
     return 0;
 }
 
-/* ---- comunes ---- */
+/* ---- common ---- */
 
-/* tabla hash (direccionamiento abierto) de la lista común: búsqueda O(1) */
+/* hash table (open addressing) of the common list: O(1) lookup */
 #define CHASH 32768
-static int32_t ctab[CHASH];        /* índice + 1, 0 = libre */
+static int32_t ctab[CHASH];        /* index + 1, 0 = free */
 
 static uint32_t fnv(const char *s, size_t n) {
     uint32_t h = 2166136261u;
@@ -157,7 +157,7 @@ int vg_common_rank(const char *pw) {
     low[n] = 0;
     int r = common_exact(pw, n);
     if (!r) r = common_exact(low, n);
-    /* sin lo de atrás que suele agregarse: password1!, qwerty2024 */
+    /* without the trailing part people usually add: password1!, qwerty2024 */
     size_t m = n;
     while (m > 3 && (isdigit((unsigned char)low[m - 1]) || ispunct((unsigned char)low[m - 1]))) m--;
     if (!r && m < n) r = common_exact(low, m);
@@ -168,7 +168,7 @@ int vg_common_rank(const char *pw) {
         }
         unleet[m] = 0;
         r = common_exact(unleet, m);
-        if (!r) {                                /* 1 también puede ser l */
+        if (!r) {                                /* 1 can also be l */
             for (size_t i = 0; i < m; i++) if (low[i] == '1') unleet[i] = 'l';
             r = common_exact(unleet, m);
         }
@@ -178,7 +178,7 @@ int vg_common_rank(const char *pw) {
     return r;
 }
 
-/* ---- fuerza (estimación simple al estilo zxcvbn: patrones que bajan la entropía) ---- */
+/* ---- strength (simple zxcvbn-style estimate: patterns that lower entropy) ---- */
 
 static const char *ROWS[] = { "1234567890", "qwertyuiop", "asdfghjkl", "zxcvbnm", "qwertzuiop", "azertyuiop", NULL };
 
@@ -213,7 +213,7 @@ int vg_strength(const char *pw, double *bits_out) {
         if (i && keyboard_adjacent(pw[i], pw[i - 1])) { bits += 2; continue; }       /* qwerty */
         bits += per;
     }
-    /* años (19xx/20xx) y fechas cuentan poco */
+    /* years (19xx/20xx) and dates count for little */
     for (size_t i = 0; i + 4 <= n; i++)
         if ((!strncmp(pw + i, "19", 2) || !strncmp(pw + i, "20", 2)) && isdigit((unsigned char)pw[i + 2]) && isdigit((unsigned char)pw[i + 3])) { bits -= 2 * per - 7; break; }
     int rank = vg_common_rank(pw);
@@ -227,7 +227,7 @@ int vg_strength(const char *pw, double *bits_out) {
     return 4;
 }
 
-/* ---- HIBP local ---- */
+/* ---- local HIBP ---- */
 
 long vg_hibp_lookup(int fd, const char *pw) {
     struct stat st;
@@ -240,7 +240,7 @@ long vg_hibp_lookup(int fd, const char *pw) {
     char buf[256];
     for (int iter = 0; iter < 64 && lo < hi; iter++) {
         off_t mid = lo + (hi - lo) / 2;
-        /* ir al comienzo de la línea siguiente a mid (o mid si es 0) */
+        /* go to the start of the line after mid (or mid if it is 0) */
         ssize_t r = pread(fd, buf, sizeof buf - 1, mid);
         if (r <= 0) break;
         buf[r] = 0;
@@ -258,7 +258,7 @@ long vg_hibp_lookup(int fd, const char *pw) {
         if (c == 0) return buf[40] == ':' ? strtol(buf + 41, NULL, 10) : 1;
         if (c < 0) lo = start + 1; else hi = mid;
     }
-    /* la búsqueda puede saltear la primera línea: mirarla aparte */
+    /* the search may skip the first line: check it separately */
     ssize_t r = pread(fd, buf, sizeof buf - 1, 0);
     if (r >= 41) { buf[r] = 0; if (!strncasecmp(buf, hex, 40)) return strtol(buf + 41, NULL, 10); }
     return 0;

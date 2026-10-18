@@ -56,9 +56,11 @@ globalThis.__lordWayland = (sid, type, d = {}) => {
       const area = pointerWorkArea();         // on the display under the pointer (docs/DISPLAYS.md)
       const w = Math.min(area.w, d.width + c.w), hh = Math.min(area.h, d.height + c.h);
       const n = windows.get().length;
+      // cascaded, but always inside the work area (never under the Dock)
+      const x = Math.round(area.x + (area.w - w) / 2 + (n % 5) * 24), y = Math.round(area.y + Math.max(8, (area.h - hh) / 2 - 30) + (n % 5) * 24);
       wm.open('linux', {
         instance: String(sid),
-        frame: { w, h: hh, x: Math.round(area.x + (area.w - w) / 2 + (n % 5) * 24), y: Math.round(area.y + Math.max(8, (area.h - hh) / 2 - 30) + (n % 5) * 24) },
+        frame: { w, h: hh, x: Math.max(area.x, Math.min(x, area.x + area.w - w)), y: Math.max(area.y, Math.min(y, area.y + area.h - hh)) },
         args: { surface: sid, csd: !!d.csd, appId: d.appId || '', pkg: !!(d.appId && (getApp(d.appId)?.package || getApp(d.appId)?.isolated)) },
       });
       // app .lpk aislada: su nombre (del manifest) en vez del id
@@ -70,7 +72,12 @@ globalThis.__lordWayland = (sid, type, d = {}) => {
       break;
     }
     case 'unmap': if (win) wm.close(id, true); break;
-    case 'title': if (win) wm.setTitle(id, d.title || null); break;
+    case 'title': {                      // an isolated app keeps its name when the title is just its id
+      if (!win) break;
+      const pkg = win.args?.pkg ? getApp(win.args.appId) : null;
+      wm.setTitle(id, pkg && (!d.title || d.title === win.args.appId) ? (pkg.isolated ? appName(pkg) : pkg.name) : (d.title || null));
+      break;
+    }
     case 'geometry': {                     // la app cambió su tamaño por su cuenta
       if (!win || win.maximized) break;
       const c = win.args?.csd ? { w: 0, h: 0 } : windowChrome();

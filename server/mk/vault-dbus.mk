@@ -1,6 +1,6 @@
-# Secret Service (org.freedesktop.secrets) con D-Bus propio: src/vault/dbus.c y secretsvc.c
-# (docs/PASSWORDS.md). dbus-test corre en make test; secretsvc-demo se prueba con
-# tests/secretsvc/run-pw-116.sh contra el bus real y secret-tool.
+# Secret Service (org.freedesktop.secrets) with our own D-Bus: src/vault/dbus.c and secretsvc.c
+# (docs/PASSWORDS.md). dbus-test runs in make test; secretsvc-demo is tested with
+# tests/secretsvc/run-pw-116.sh against the real bus and secret-tool.
 SS_SRC := src/vault/dbus.c src/vault/secretsvc.c src/vault/smem.c src/vault/vcrypto.c src/pkg/crypto.c
 SS_HDR := src/vault/dbus.h src/vault/secretsvc.h src/vault/smem.h src/vault/vcrypto.h src/pkg/crypto.h
 SS_SAN := $(shell echo 'int main(void){return 0;}' | $(CC) -fsanitize=address,undefined -x c - -o /dev/null 2>/dev/null && echo -fsanitize=address,undefined -fno-omit-frame-pointer)

@@ -1,10 +1,10 @@
-/* fidodev.h — encontrar y abrir llaves FIDO2 (lado de lord-server, sin caja de arena).
+/* fidodev.h — find and open FIDO2 keys (lord-server side, outside the sandbox).
  *
- * Recorre /sys/class/hidraw/hidraw*: un dispositivo es FIDO si su descriptor de reportes HID
- * (device/report_descriptor) declara una colección de aplicación con Usage Page 0xF1D0 (FIDO
- * Alliance) y Usage 0x01 (CTAPHID). El nombre y vid:pid salen de device/uevent (HID_NAME,
- * HID_ID). lord-server abre el elegido (después del permiso del usuario) y le pasa el fd a
- * lord-vault; ni la app ni lord-vault abren /dev. */
+ * Walks /sys/class/hidraw/hidraw*: a device is FIDO if its HID report descriptor
+ * (device/report_descriptor) declares an application collection with Usage Page 0xF1D0 (FIDO
+ * Alliance) and Usage 0x01 (CTAPHID). The name and vid:pid come from device/uevent (HID_NAME,
+ * HID_ID). lord-server opens the chosen one (after the user's permission) and passes the fd to
+ * lord-vault; neither the app nor lord-vault opens /dev. */
 #ifndef LORD_VAULT_FIDODEV_H
 #define LORD_VAULT_FIDODEV_H
 
@@ -17,14 +17,14 @@ typedef struct {
     unsigned vid, pid;
 } FidoDev;
 
-/* Hasta max llaves; devuelve cuántas. */
+/* Up to max keys; returns how many. */
 int fidodev_list(FidoDev *out, int max);
-/* Abre path (tiene que ser /dev/hidrawN y una llave FIDO) con O_RDWR|O_CLOEXEC|O_NONBLOCK.
- * fd o -1 (errno). */
+/* Opens path (must be /dev/hidrawN and a FIDO key) with O_RDWR|O_CLOEXEC|O_NONBLOCK.
+ * fd or -1 (errno). */
 int fidodev_open(const char *path);
-/* 1 si el descriptor HID declara la colección FIDO (para pruebas y para fidodev_list). */
+/* 1 if the HID descriptor declares the FIDO collection (for tests and for fidodev_list). */
 int fidodev_desc_is_fido(const uint8_t *desc, size_t len);
-/* Para pruebas: otra raíz en vez de "/sys/class/hidraw" (NULL vuelve a la de siempre). */
+/* For tests: another root instead of "/sys/class/hidraw" (NULL restores the default). */
 void fidodev_set_sysroot(const char *dir);
 
 #endif

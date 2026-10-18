@@ -1,4 +1,4 @@
-/* vwire.c — mensajes del protocolo de lord-vault (ver vwire.h). */
+/* vwire.c — lord-vault protocol messages (see vwire.h). */
 #include "vwire.h"
 
 #include <errno.h>
@@ -34,7 +34,7 @@ int vw_send(int sock, uint32_t kind, uint32_t id, const char *json, size_t len, 
         ssize_t r;
         do r = sendmsg(sock, &mh, MSG_NOSIGNAL); while (r < 0 && errno == EINTR);
         if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-            /* socket lleno: esperar un poco (el otro lado lee en su hilo o su bucle) */
+            /* socket full: wait a bit (the other side reads in its thread or loop) */
             struct timespec ts = { 0, 2000000 };
             nanosleep(&ts, NULL);
             int tries = 0;
@@ -61,7 +61,7 @@ void vw_rx_free(VwRx *rx, const VwAlloc *a) {
     memset(rx, 0, sizeof *rx);
 }
 
-/* Lee un paquete. 1 paquete leído, 0 nada (EAGAIN), -1 cerrado/error */
+/* Reads one packet. 1 packet read, 0 nothing (EAGAIN), -1 closed/error */
 static int read_packet(int sock, VwRx *rx, const VwAlloc *a, int flags) {
     VHdr h;
     char buf[VW_CHUNK];
@@ -81,7 +81,7 @@ static int read_packet(int sock, VwRx *rx, const VwAlloc *a, int flags) {
     }
     int bad = (size_t)r < sizeof h || h.len != (size_t)r - sizeof h || (mh.msg_flags & (MSG_TRUNC | MSG_CTRUNC));
     if (!bad && rx->active && (h.id != rx->cur.id || h.kind != rx->cur.kind)) bad = 1;
-    if (!bad && rx->active && nf) bad = 1;                 /* los fds solo en el primero */
+    if (!bad && rx->active && nf) bad = 1;                 /* fds only in the first one */
     if (!bad && rx->cur.len + h.len > VW_MAX) bad = 1;
     if (bad) {
         for (int i = 0; i < nf; i++) close(fds[i]);

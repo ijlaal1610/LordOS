@@ -1,4 +1,4 @@
-/* csvp.c — lector de CSV (ver csvp.h). */
+/* csvp.c — CSV reader (see csvp.h). */
 #include "csvp.h"
 #include "smem.h"
 
@@ -44,7 +44,7 @@ int csv_next(Csv *c, CsvRow *row) {
     const char *s = c->s;
     for (;;) {
         if (c->p >= c->len) return 0;
-        /* fila vacía */
+        /* empty row */
         if (s[c->p] == '\n') { c->p++; continue; }
         if (s[c->p] == '\r') { c->p++; if (c->p < c->len && s[c->p] == '\n') c->p++; continue; }
         break;
@@ -63,7 +63,7 @@ int csv_next(Csv *c, CsvRow *row) {
             }
             if (push(row, s, a, p, 1)) { csv_row_free(row); return -1; }
             p++;
-            /* basura entre la comilla de cierre y el separador: se ignora (como los exportadores flojos) */
+            /* garbage between the closing quote and the separator: ignored (like sloppy exporters) */
             while (p < c->len && s[p] != ',' && s[p] != '\n' && s[p] != '\r') p++;
         } else {
             size_t a = p;

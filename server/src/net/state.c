@@ -67,10 +67,28 @@ static int ifupdown_manages_file(const char *path, const char *ifname, int depth
     return found;
 }
 
+/* NetworkManager (Raspberry Pi OS, most desktop distributions, netplan with renderer NetworkManager)
+ * writes one keyfile per device under /run/NetworkManager/devices/<ifindex> with "managed=true" while it
+ * drives it. Read without D-Bus; if NetworkManager isn't running the folder is gone (it lives in /run). */
+static int networkmanager_manages(int ifindex) {
+    char path[64], line[128];
+    snprintf(path, sizeof path, "/run/NetworkManager/devices/%d", ifindex);
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    int managed = 0;
+    while (fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\n")] = 0;
+        if (!strcmp(line, "managed=true")) managed = 1;
+    }
+    fclose(f);
+    return managed;
+}
+
 int managed_by_system(const char *ifname) {
     if (!strcmp(ifname, "lo")) return 1;
     int idx = (int)if_nametoindex(ifname);
     if (idx && networkd_manages(idx)) return 1;
+    if (idx && networkmanager_manages(idx)) return 1;
     /* /etc/network/interfaces only counts if ifupdown is installed (live-boot writes that
      * file even without ifupdown: the interface would be left with nobody configuring it) */
     if (access("/sbin/ifup", X_OK) && access("/usr/sbin/ifup", X_OK)) return 0;

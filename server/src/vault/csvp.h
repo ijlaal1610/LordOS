@@ -1,6 +1,6 @@
-/* csvp.h — lector de CSV (RFC 4180) para los importadores: campos entre comillas con "" adentro,
- * saltos de línea dentro de un campo, CRLF o LF, BOM de UTF-8 al principio. Los campos se copian
- * a la arena de secretos (smem.h): un CSV de contraseñas nunca pasa por el montón de la libc. */
+/* csvp.h — CSV reader (RFC 4180) for the importers: quoted fields with "" inside,
+ * line breaks inside a field, CRLF or LF, UTF-8 BOM at the start. Fields are copied
+ * into the secrets arena (smem.h): a password CSV never goes through the libc heap. */
 #ifndef LORD_VAULT_CSVP_H
 #define LORD_VAULT_CSVP_H
 
@@ -10,13 +10,13 @@ typedef struct { char **f; int n, cap; } CsvRow;
 typedef struct { const char *s; size_t len, p; int bad; } Csv;
 
 void csv_init(Csv *c, const char *s, size_t len);
-/* Próxima fila en row (se reusa: libera la anterior). 1 = hay fila, 0 = fin, -1 = comillas sin
- * cerrar o sin memoria. Las filas vacías se saltean. */
+/* Next row into row (reused: frees the previous one). 1 = row read, 0 = end, -1 = unclosed quote
+ * or out of memory. Empty rows are skipped. */
 int  csv_next(Csv *c, CsvRow *row);
 void csv_row_free(CsvRow *row);
-/* Columna del encabezado con ese nombre (sin distinguir mayúsculas, sin espacios alrededor), o -1. */
+/* Header column with that name (case-insensitive, ignoring surrounding spaces), or -1. */
 int  csv_col(const CsvRow *hdr, const char *name);
-/* Campo i de la fila, o "" si no existe. */
+/* Field i of the row, or "" if it does not exist. */
 const char *csv_get(const CsvRow *row, int i);
 
 #endif

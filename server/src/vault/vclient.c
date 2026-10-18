@@ -1,4 +1,4 @@
-/* vclient.c — lord-server habla con lord-vault (ver vclient.h). */
+/* vclient.c — lord-server talks to lord-vault (see vclient.h). */
 #include "vclient.h"
 #include "vwire.h"
 #include "fidodev.h"
@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/eventfd.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <sys/wait.h>
@@ -33,7 +34,21 @@ static int inflight;
 static Ev *qhead, *qtail;
 static char helper[PATH_MAX];
 static int helper_ok = -1;
-static char *pending_pass;              /* contraseña de la sesión que llegó antes que lord-vault */
+static char *pending_pass;              /* session password that arrived before lord-vault was running */
+
+/* Private requests (the broker's keyring op, src/sec/brokerkr.c): their replies go to their own
+ * queue, read by lord-server's C code (vc_take_private), never to the JS queue (vc_poll). */
+#define VC_PRIV_MAX 64
+static uint32_t priv_ids[VC_PRIV_MAX];
+static int npriv;
+static Ev *phead, *ptail;
+static int priv_efd = -1;
+
+static int priv_take_id(uint32_t id) {          /* with mu held: 1 if id was a private request */
+    for (int i = 0; i < npriv; i++) if (priv_ids[i] == id) { priv_ids[i] = priv_ids[--npriv]; return 1; }
+    return 0;
+}
+static void priv_wake(void) { if (priv_efd >= 0) { uint64_t one = 1; ssize_t r = write(priv_efd, &one, sizeof one); (void)r; } }
 
 int vc_available(void) {
     if (helper_ok < 0) {
@@ -47,7 +62,7 @@ int vc_available(void) {
                 *sl = 0;
                 snprintf(helper, sizeof helper, "%.*s/lord-vault", (int)(sizeof helper - 16), self);
                 struct stat st;
-                /* del usuario o de root, y que nadie más lo pueda reemplazar */
+                /* owned by the user or root, and nobody else can replace it */
                 if (stat(helper, &st) == 0 && S_ISREG(st.st_mode) && (st.st_mode & S_IXUSR) && !(st.st_mode & S_IWOTH) &&
                     (st.st_uid == 0 || st.st_uid == getuid())) helper_ok = 1;
             }
@@ -61,10 +76,12 @@ static void push(uint32_t id, uint32_t kind, char *json, size_t len) {
     if (!e) { explicit_bzero(json, len); free(json); return; }
     e->id = id; e->kind = kind; e->json = json; e->len = len;
     pthread_mutex_lock(&mu);
-    if (qtail) qtail->next = e; else qhead = e;
-    qtail = e;
+    int priv = kind == VW_REP && priv_take_id(id);
+    if (priv) { if (ptail) ptail->next = e; else phead = e; ptail = e; }
+    else { if (qtail) qtail->next = e; else qhead = e; qtail = e; }
     if (kind == VW_REP && inflight > 0) inflight--;
     pthread_mutex_unlock(&mu);
+    if (priv) priv_wake();
 }
 
 static void *read_loop(void *arg) {
@@ -76,12 +93,19 @@ static void *read_loop(void *arg) {
         for (int i = 0; i < m.nfds; i++) close(m.fds[i]);
         push(m.id, m.kind, m.json, m.len);
     }
-    /* se cayó: los pedidos sin respuesta terminan con error */
+    /* it went away: requests without a reply end with an error */
     pthread_mutex_lock(&mu);
     int lost = inflight;
     inflight = 0;
     if (sock == s) sock = -1;
+    uint32_t orphans[VC_PRIV_MAX];
+    int norph = npriv;
+    memcpy(orphans, priv_ids, sizeof(uint32_t) * (size_t)npriv);
     pthread_mutex_unlock(&mu);
+    for (int i = 0; i < norph; i++) {                   /* private requests get a "crash" reply */
+        char *cj = strdup("{\"error\":\"crash\"}");
+        if (cj) push(orphans[i], VW_REP, cj, strlen(cj));
+    }
     char *j = strdup("{\"ev\":\"crash\"}");
     if (j) push(0, VW_EVT, j, strlen(j));
     (void)lost;
@@ -89,7 +113,7 @@ static void *read_loop(void *arg) {
     return NULL;
 }
 
-/* el socket del bus de la sesión (sin autenticar: lo hace lord-vault) */
+/* the session bus socket (unauthenticated: lord-vault does that) */
 static int connect_bus(void) {
     const char *a = getenv("DBUS_SESSION_BUS_ADDRESS");
     struct sockaddr_un sa = { .sun_family = AF_UNIX };
@@ -136,7 +160,7 @@ int vc_start(void) {
     if (running) return 0;
     if (!vc_available() || is_greeter() || getuid() == 0) return -1;
     if (pid > 0) { waitpid(pid, NULL, WNOHANG); pid = 0; }
-    /* carpeta de las bóvedas */
+    /* vaults folder */
     const char *home = getenv("HOME");
     if (!home) return -1;
     char dir[PATH_MAX];
@@ -180,12 +204,12 @@ int vc_start(void) {
     if (vw_send(sv[0], VW_CTL, 0, "{\"op\":\"init\"}", 13, fds, nf)) { close(sv[0]); close(dfd); if (fds[1] >= 0) close(fds[1]); return -1; }
     close(dfd);
     if (fds[1] >= 0) close(fds[1]);
-    /* la respuesta del init también pasa por la cola (id 0) */
+    /* the init reply also goes through the queue (id 0) */
     pthread_mutex_lock(&mu);
     sock = sv[0];
     pthread_mutex_unlock(&mu);
     if (pthread_create(&reader, NULL, read_loop, (void *)(intptr_t)sv[0]) == 0) { pthread_detach(reader); reader_on = 1; }
-    fprintf(stderr, "lord-server: lord-vault lanzado (pid %d)\n", (int)p);
+    fprintf(stderr, "lord-server: lord-vault started (pid %d)\n", (int)p);
     if (pending_pass) {
         vc_session_password(pending_pass);
         explicit_bzero(pending_pass, strlen(pending_pass));
@@ -195,24 +219,67 @@ int vc_start(void) {
     return 0;
 }
 
-static int send_kind(uint32_t kind, const char *json, size_t len, int *fds, int nfds) {
+static int send_kind_p(uint32_t kind, const char *json, size_t len, int *fds, int nfds, int priv) {
     if (vc_start()) { for (int i = 0; i < nfds; i++) if (fds[i] >= 0) close(fds[i]); return -1; }
     pthread_mutex_lock(&mu);
+    if (priv && npriv >= VC_PRIV_MAX) { pthread_mutex_unlock(&mu); return -1; }
     uint32_t id = next_id++;
     if (next_id > 0x7fffffff) next_id = 1;
     int s = sock;
     inflight++;
+    if (priv) priv_ids[npriv++] = id;           /* registered before sending: the reply may come at once */
     pthread_mutex_unlock(&mu);
     int r = vw_send(s, kind, id, json, len, fds, nfds);
     for (int i = 0; i < nfds; i++) if (fds[i] >= 0) close(fds[i]);
-    if (r) { pthread_mutex_lock(&mu); if (inflight) inflight--; pthread_mutex_unlock(&mu); return -1; }
+    if (r) {
+        pthread_mutex_lock(&mu);
+        if (inflight) inflight--;
+        if (priv) priv_take_id(id);
+        pthread_mutex_unlock(&mu);
+        return -1;
+    }
     return (int)id;
 }
+static int send_kind(uint32_t kind, const char *json, size_t len, int *fds, int nfds) { return send_kind_p(kind, json, len, fds, nfds, 0); }
 
 int vc_request(const char *json, size_t len, int *fds, int nfds) { return send_kind(VW_REQ, json, len, fds, nfds); }
 static int ctl(const char *json, int *fds, int nfds) { return send_kind(VW_CTL, json, strlen(json), fds, nfds); }
 
-/* JSON del texto como cadena dentro de otra respuesta: data va tal cual (ya es JSON) */
+int vc_private_fd(void) {
+    pthread_mutex_lock(&mu);
+    if (priv_efd < 0) priv_efd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    int f = priv_efd;
+    pthread_mutex_unlock(&mu);
+    return f;
+}
+
+int vc_request_private(const char *json, size_t len) {
+    vc_private_fd();
+    return send_kind_p(VW_REQ, json, len, NULL, 0, 1);
+}
+
+char *vc_take_private(uint32_t *id, size_t *len) {
+    pthread_mutex_lock(&mu);
+    Ev *e = phead;
+    if (e) { phead = e->next; if (!phead) ptail = NULL; }
+    else if (priv_efd >= 0) { uint64_t v; ssize_t r = read(priv_efd, &v, sizeof v); (void)r; }   /* drained: re-arm */
+    pthread_mutex_unlock(&mu);
+    if (!e) return NULL;
+    char *j = e->json;
+    if (id) *id = e->id;
+    if (len) *len = e->len;
+    free(e);
+    return j;
+}
+
+int vc_private_pending(void) {
+    pthread_mutex_lock(&mu);
+    int n = npriv + (phead != NULL);
+    pthread_mutex_unlock(&mu);
+    return n;
+}
+
+/* JSON of the text as a string inside another reply: data goes as-is (it is already JSON) */
 char *vc_poll(void) {
     pthread_mutex_lock(&mu);
     Ev *list = qhead;
@@ -275,7 +342,7 @@ static void json_escape(char *out, size_t n, const char *s) {
 void vc_session_password(const char *pass) {
     if (!pass || !pass[0]) return;
     if (vc_start()) {
-        /* todavía no se pudo lanzar (lord-server recién arranca): se guarda para cuando ande */
+        /* it could not be launched yet (lord-server is just starting): saved for when it is running */
         if (!pending_pass && vc_available() && !is_greeter()) pending_pass = strdup(pass);
         return;
     }

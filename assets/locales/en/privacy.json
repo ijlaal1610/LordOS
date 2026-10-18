@@ -11,6 +11,8 @@
   "ask.listen": "“{app}” wants to accept network connections",
   "ask.usb": "“{app}” wants to use USB devices",
   "ask.bluetooth": "“{app}” wants to use Bluetooth",
+  "ask.keyring": "“{app}” wants to use a password that “{owner}” saved in the keyring",
+  "ask.keyringNote": "Only this item is shared, and only with this app.",
   "ask.where": "You can change this later in Settings → Privacy.",
   "allow": "Allow",
   "deny": "Don’t allow",

@@ -203,12 +203,22 @@ static JSValue f_broker_menu_click(JSContext *c, JSValueConst t, int argc, JSVal
     if (item) JS_FreeCString(c, item);
     return JS_UNDEFINED;
 }
+/* lord.broker.quit(app) → true if the isolated app is running and was asked to quit (❖Q, Dock →
+ * Quit). The app closes its own windows, so its close guards still apply. */
+static JSValue f_broker_quit(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    const char *app = argc > 0 && JS_IsString(argv[0]) ? JS_ToCString(c, argv[0]) : NULL;
+    int ok = app && lpk_valid_id(app) && brokersrv_quit(app) == 0;
+    if (app) JS_FreeCString(c, app);
+    return JS_NewBool(c, ok);
+}
 static const JSCFunctionListEntry broker_funcs[] = {
     JS_CFUNC_DEF("resolve", 2, f_broker_resolve),
     JS_CFUNC_DEF("publish", 2, f_broker_publish),
     JS_CFUNC_DEF("pickResult", 2, f_broker_pick_result),
     JS_CFUNC_DEF("menus", 1, f_broker_menus),
     JS_CFUNC_DEF("menuClick", 2, f_broker_menu_click),
+    JS_CFUNC_DEF("quit", 1, f_broker_quit),
 };
 
 void js_sec_register(JSContext *c, JSValue lord) {

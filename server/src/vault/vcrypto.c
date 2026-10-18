@@ -1,5 +1,5 @@
-/* vcrypto.c — AES, SHA-1, HMAC y HKDF propios (ver vcrypto.h). Código chico y directo: AES por
- * bytes (FIPS-197), SHA-1 (FIPS 180-4), HMAC (RFC 2104), HKDF (RFC 5869). */
+/* vcrypto.c — own AES, SHA-1, HMAC and HKDF (see vcrypto.h). Small, direct code: byte-wise
+ * AES (FIPS-197), SHA-1 (FIPS 180-4), HMAC (RFC 2104), HKDF (RFC 5869). */
 #include "vcrypto.h"
 #include "../pkg/crypto.h"
 
@@ -82,7 +82,7 @@ void aes_encrypt(const Aes *a, const uint8_t in[16], uint8_t out[16]) {
     add_rk(s, a->rk);
     for (int r = 1; r <= a->nr; r++) {
         for (int i = 0; i < 16; i++) s[i] = SB[s[i]];
-        /* ShiftRows: fila f se corre f lugares (estado en columnas de 4 bytes) */
+        /* ShiftRows: row f is shifted by f positions (state in 4-byte columns) */
         for (int c = 0; c < 4; c++) for (int f = 0; f < 4; f++) t[4 * c + f] = s[4 * ((c + f) & 3) + f];
         if (r != a->nr) {
             for (int c = 0; c < 4; c++) {
@@ -275,7 +275,7 @@ int hkdf_sha256(const uint8_t *salt, size_t slen, const uint8_t *ikm, size_t ile
     return 0;
 }
 
-/* ================= varios ================= */
+/* ================= misc ================= */
 
 int vc_random(void *buf, size_t n) {
     uint8_t *p = buf;

@@ -59,6 +59,9 @@ void display_resync_done(int ok, const DisplayPlan *applied);
 void display_attached(void);            /* the session got the monitor (or started on it) */
 void display_detached(void);
 void display_hotplug(void);             /* DRM uevent: connectors may have changed */
+/* Counts DRM uevents, also without a monitor: main.c retries a lent card that had nothing connected
+ * (a board booted headless, the monitor plugged in later). */
+unsigned display_hotplug_seq(void);
 
 /* JSON for lord.display.list(). Returns a malloc'd string. */
 char *display_list_json(void);

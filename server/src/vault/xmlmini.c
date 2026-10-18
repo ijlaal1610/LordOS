@@ -1,4 +1,4 @@
-/* xmlmini.c — lector de XML mínimo (ver xmlmini.h). */
+/* xmlmini.c — minimal XML reader (see xmlmini.h). */
 #include "xmlmini.h"
 #include "smem.h"
 
@@ -21,8 +21,8 @@ static size_t put_utf8(char *d, uint32_t cp) {
     return 4;
 }
 
-/* Agrega s[a..b) a *buf (con entidades si decode). El resultado nunca es más largo que la
- * entrada (una entidad ocupa al menos tanto como su UTF-8). */
+/* Appends s[a..b) to *buf (decoding entities if decode). The result is never longer than the
+ * input (an entity takes at least as much space as its UTF-8). */
 static int append(char **buf, size_t *n, const char *s, size_t a, size_t b, int decode) {
     char *d = sm_realloc(*buf, *n + (b - a) + 1);
     if (!d) return -1;
@@ -87,7 +87,7 @@ static int skip_to(X *x, const char *w) {
     return -1;
 }
 
-/* <nombre atributos> o </nombre>: x->p en '<' */
+/* <name attributes> or </name>: x->p en '<' */
 static int parse_tag(X *x, XNode **cur, XNode **root, int *depth) {
     const char *s = x->s;
     x->p++;
@@ -104,7 +104,7 @@ static int parse_tag(X *x, XNode **cur, XNode **root, int *depth) {
         (*depth)--;
         return 0;
     }
-    if (!*cur && *root) return -1;                 /* un segundo elemento raíz */
+    if (!*cur && *root) return -1;                 /* a second root element */
     size_t a = x->p;
     while (x->p < x->len && is_name(s[x->p])) x->p++;
     if (x->p == a) return -1;
@@ -120,7 +120,7 @@ static int parse_tag(X *x, XNode **cur, XNode **root, int *depth) {
         if (s[x->p] == '/') {
             if (x->p + 1 >= x->len || s[x->p + 1] != '>') return -1;
             x->p += 2;
-            return 0;                              /* vacío: no se entra */
+            return 0;                              /* empty: not entered */
         }
         size_t na = x->p;
         while (x->p < x->len && is_name(s[x->p])) x->p++;
@@ -169,10 +169,10 @@ XNode *xml_parse(const char *s, size_t len, const char **err) {
                 if (append(&cur->text, &cur->tlen, s, a, x.p - 3, 0)) goto bad;
                 continue;
             }
-            if (starts(&x, "<!")) { x.err = "doctype"; goto bad; }   /* DOCTYPE/ENTITY: nunca */
+            if (starts(&x, "<!")) { x.err = "doctype"; goto bad; }   /* DOCTYPE/ENTITY: never */
             if (parse_tag(&x, &cur, &root, &depth)) goto bad;
             if (root && !cur && depth == 0) {
-                /* se cerró la raíz: solo puede seguir espacio, comentarios o PI */
+                /* root closed: only whitespace, comments or PIs may follow */
                 while (x.p < len) {
                     if (is_ws(s[x.p])) { x.p++; continue; }
                     if (starts(&x, "<!--")) { if (skip_to(&x, "-->")) goto bad; continue; }
@@ -200,7 +200,7 @@ bad:
 
 void xml_free(XNode *n) {
     if (!n) return;
-    /* recursivo: la profundidad ya está acotada (MAX_DEPTH) */
+    /* recursive: depth is already bounded (MAX_DEPTH) */
     for (int i = 0; i < n->nkids; i++) xml_free(n->kids[i]);
     for (int i = 0; i < n->nattrs; i++) { sm_free(n->attrs[i].name); sm_free(n->attrs[i].value); }
     sm_free(n->attrs);

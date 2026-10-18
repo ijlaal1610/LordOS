@@ -214,7 +214,7 @@ static Prompt *prompt_new(void) {
 }
 static Prompt *prompt_by_id(unsigned id) { for (int i = 0; i < NPROMPT; i++) if (prompts[i].used && prompts[i].id == id) return &prompts[i]; return NULL; }
 
-/* ================= rutas ================= */
+/* ================= paths ================= */
 
 enum { O_NONE, O_NODE, O_SERVICE, O_COLL, O_ITEM, O_SESS, O_PROMPT };
 
@@ -295,7 +295,7 @@ static void write_paths(DBuf *w, char (*ids)[40], int n) {
     dw_arr_end(w, mk);
 }
 
-/* ================= secretos ================= */
+/* ================= secrets ================= */
 
 static void encode_secret(DBuf *w, Sess *s, const uint8_t *sec, size_t len, const char *ctype) {
     char sp[64];
@@ -444,7 +444,7 @@ static void introspect(const DMsg *m, int kind) {
     free(x);
 }
 
-/* ================= propiedades ================= */
+/* ================= properties ================= */
 
 static const char *item_type(const SsItemInfo *in) {
     for (int i = 0; in && i < in->nattrs; i++) if (in->attrs[i].name && !strcmp(in->attrs[i].name, "xdg:schema")) return in->attrs[i].value;
@@ -622,7 +622,7 @@ static void open_session(const DMsg *m) {
         LOG("OpenSession %s → %s (%s)\n", ALG_DH, path, m->sender ? m->sender : "?");
         dbus_reply(&C, m, "vo", &b);
     } else {
-        LOG("OpenSession %s: no soportado\n", alg);
+        LOG("OpenSession %s: not supported\n", alg);
         dbus_error(&C, m, E_NOTSUP, "algorithm not supported");
     }
     dw_free(&b);
@@ -658,7 +658,7 @@ static void search_items(const DMsg *m, int service) {
         write_paths(&b, ids, k);
         dbus_reply(&C, m, "ao", &b);
     }
-    LOG("SearchItems (%d atributos) → %d%s\n", n, k, lk ? " (bloqueado)" : "");
+    LOG("SearchItems (%d attributes) → %d%s\n", n, k, lk ? " (locked)" : "");
     dw_free(&b);
     free(ids);
 }
@@ -703,7 +703,7 @@ static void unlock(const DMsg *m) {
     p->nobj = n;
     char pp[64];
     prompt_path(p->id, pp);
-    LOG("Unlock → aviso %s\n", pp);
+    LOG("Unlock → prompt %s\n", pp);
     reply_objs_o(m, objs, 0, pp);
 }
 
@@ -818,7 +818,7 @@ static void create_item(const DMsg *m) {
     if (rc || !id_ok(id, strlen(id))) { dbus_error(&C, m, E_FAILED, "cannot create item"); return; }
     char p[128];
     item_path(id, p);
-    LOG("CreateItem «%s» (%d atributos) → %s\n", label, na, p);
+    LOG("CreateItem \"%s\" (%d attributes) → %s\n", label, na, p);
     reply_oo(m, p, "/");
     sig_path(COLL, I_COLL, "ItemCreated", p);
 }
@@ -893,7 +893,7 @@ static void prompt_complete(Prompt *p) {
     dw_arr_end(&b, mk);
     dbus_signal(&C, pp, I_PROMPT, "Completed", "bv", &b);
     dw_free(&b);
-    LOG("aviso %s: %s\n", pp, p->unlocked ? "desbloqueado" : "cancelado");
+    LOG("prompt %s: %s\n", pp, p->unlocked ? "unlocked" : "cancelled");
     p->used = 0;
 }
 
@@ -1003,7 +1003,7 @@ int ss_start(int busfd, const SsBackend *be, void *ud) {
     if (res != 1 && res != 4) { LOG("org.freedesktop.secrets already has an owner (%u)\n", res); dbus_close(&C); return 1; }
     created_at = (uint64_t)time(NULL);
     running = 1;
-    LOG("atendiendo org.freedesktop.secrets como %s\n", C.unique);
+    LOG("serving org.freedesktop.secrets as %s\n", C.unique);
     return 0;
 }
 

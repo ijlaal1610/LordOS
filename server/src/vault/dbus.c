@@ -1,4 +1,4 @@
-/* dbus.c — cliente D-Bus propio y mínimo (ver dbus.h). */
+/* dbus.c — own minimal D-Bus client (see dbus.h). */
 #include "dbus.h"
 
 #include <errno.h>
@@ -12,7 +12,7 @@
 #include <time.h>
 #include <unistd.h>
 
-/* ================= firmas ================= */
+/* ================= signatures ================= */
 
 static int align_of(char c) {
     switch (c) {
@@ -91,7 +91,7 @@ int dbus_name_valid(const char *n) {
     return dots >= 1 && !start;
 }
 
-/* ================= validación del cuerpo ================= */
+/* ================= body validation ================= */
 
 typedef struct { const uint8_t *b; size_t len, pos; int be; } V;
 
@@ -103,7 +103,7 @@ static uint32_t rd32(const uint8_t *p, int be) {
 static int v_align(V *v, int a) {
     size_t np = (v->pos + (size_t)a - 1) & ~((size_t)a - 1);
     if (np > v->len) return -1;
-    for (size_t i = v->pos; i < np; i++) if (v->b[i]) return -1;   /* relleno en cero */
+    for (size_t i = v->pos; i < np; i++) if (v->b[i]) return -1;   /* zero padding */
     v->pos = np;
     return 0;
 }
@@ -210,7 +210,7 @@ int dbus_body_valid(const char *sig, const uint8_t *body, size_t len, int big_en
     return v.pos == len;
 }
 
-/* ================= mensajes ================= */
+/* ================= messages ================= */
 
 long dbus_msg_size(const uint8_t *buf, size_t len) {
     if (len < 16) return 0;
@@ -246,14 +246,14 @@ int dbus_msg_parse(const uint8_t *buf, size_t len, DMsg *m) {
     m->serial = serial;
     uint32_t flen = rd32(buf + 12, be);
     size_t hend = 16 + flen;
-    /* validar a(yv) desde el byte 12 con la alineación del mensaje */
+    /* validate a(yv) from byte 12 with the message alignment */
     V v = { m->raw, hend, 12, be };
     size_t u;
     if (v_type(&v, "a(yv)", &u, 0) || v.pos != hend) goto bad;
-    /* relleno hasta 8 en cero */
+    /* zero padding up to 8 */
     size_t bstart = (hend + 7) & ~(size_t)7;
     for (size_t i = hend; i < bstart; i++) if (m->raw[i]) goto bad;
-    /* recorrer los campos */
+    /* walk the fields */
     size_t p = 16;
     uint32_t got_fds = 0;
     while (p < hend) {
@@ -288,14 +288,14 @@ int dbus_msg_parse(const uint8_t *buf, size_t len, DMsg *m) {
                 }
             }
         } else {
-            /* campo desconocido: saltearlo (ya validado) */
+            /* unknown field: skip it (already validated) */
             V w = { m->raw, hend, p, be };
             size_t k;
             if (v_type(&w, vs, &k, 1)) goto bad;
             p = w.pos;
         }
     }
-    if (got_fds) goto bad;                               /* no aceptamos fds */
+    if (got_fds) goto bad;                               /* we do not accept fds */
     switch (type) {
     case DBUS_CALL: if (!m->path || !m->member) goto bad; break;
     case DBUS_RETURN: if (!m->reply_serial) goto bad; break;
@@ -326,7 +326,7 @@ void dbus_msg_free(DMsg *m) {
     memset(m, 0, sizeof *m);
 }
 
-/* ================= lector tipado ================= */
+/* ================= typed reader ================= */
 
 void dr_init(DRd *r, const DMsg *m) { r->b = m->body; r->len = m->body_len; r->pos = 0; r->be = m->big_endian; r->err = 0; }
 
@@ -392,7 +392,7 @@ void dr_skip(DRd *r, const char *sig) {
     r->pos = v.pos;
 }
 
-/* ================= escritor ================= */
+/* ================= writer ================= */
 
 void dw_init(DBuf *w) { memset(w, 0, sizeof *w); }
 void dw_free(DBuf *w) { if (w->p) { explicit_bzero(w->p, w->cap); free(w->p); } memset(w, 0, sizeof *w); }
@@ -405,7 +405,7 @@ static int w_need(DBuf *w, size_t n) {
     while (nc < w->n + n) nc *= 2;
     uint8_t *p = malloc(nc);
     if (!p) { w->oom = 1; return -1; }
-    if (w->p) { memcpy(p, w->p, w->n); explicit_bzero(w->p, w->cap); free(w->p); }   /* sin realloc: lo viejo se borra */
+    if (w->p) { memcpy(p, w->p, w->n); explicit_bzero(w->p, w->cap); free(w->p); }   /* no realloc: the old data is wiped */
     w->p = p;
     w->cap = nc;
     return 0;
@@ -493,7 +493,7 @@ int dbus_build(const DHdr *h, const DBuf *body, DBuf *out) {
     return out->oom ? -1 : 0;
 }
 
-/* ================= conexión ================= */
+/* ================= connection ================= */
 
 int dbus_connect_session(void) {
     struct sockaddr_un a = { .sun_family = AF_UNIX };
@@ -503,7 +503,7 @@ int dbus_connect_session(void) {
     int abstract = 0;
     path[0] = 0;
     if (addr) {
-        /* varias direcciones separadas por ';': la primera unix: que sirva */
+        /* several addresses separated by ';': the first usable unix: one */
         const char *p = addr;
         while (p && *p && !path[0]) {
             const char *end = strchr(p, ';');
@@ -601,7 +601,7 @@ static int write_all(int fd, const void *buf, size_t n, double deadline) {
     return 0;
 }
 
-/* Una línea SASL ("...\r\n"), de a un byte para no comerse nada del protocolo binario. */
+/* One SASL line ("...\r\n"), one byte at a time so as not to swallow any of the binary protocol. */
 static int read_line(int fd, char *out, size_t cap, double deadline) {
     size_t n = 0;
     for (;;) {
@@ -713,7 +713,7 @@ static int take(DConn *c, DMsg *m) {
     memmove(c->in, c->in + sz, rest);
     explicit_bzero(c->in + rest, (size_t)sz);
     c->in_n = rest;
-    if (r) { c->dead = 1; return -1; }       /* el bus ya valida: algo inválido es un error grave */
+    if (r) { c->dead = 1; return -1; }       /* the bus already validates: something invalid is a serious error */
     return 1;
 }
 

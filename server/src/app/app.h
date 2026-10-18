@@ -1,15 +1,15 @@
-/* app.h — «modo app» de lord-server: correr una app .lpk como su propio proceso aislado y
- * cliente Wayland del compositor (ver appclient.c, docs/PRIVACY.md). */
+/* app.h — lord-server's "app mode": running an .lpk app as its own isolated process and a
+ * Wayland client of the compositor (see appclient.c, docs/PRIVACY.md). */
 #ifndef LORD_APP_H
 #define LORD_APP_H
 
 #include <stddef.h>
 
-/* `lord-server --app <id>`: corre la app instalada <id>. Devuelve el código de salida. */
+/* `lord-server --app <id>`: runs the installed app <id>. Returns the exit code. */
 int app_main(const char *id, const char *theme_bundle, const char *fonts);
 
-/* Desde lord-server (el compositor): lanza la app <id> como proceso aislado y registra su broker.
- * 0 si lanzó. El id tiene que ser de un paquete instalado (se valida). */
+/* From lord-server (the compositor): launches app <id> as an isolated process and registers its
+ * broker. 0 if it started. The id must be an installed package (it is validated). */
 int app_spawn(const char *id);
 
 /* Package folder of app <id>. A system app shipped with LordOS (<assets>/sysapps/<id>, owned by

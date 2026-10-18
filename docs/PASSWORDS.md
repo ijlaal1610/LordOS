@@ -259,13 +259,56 @@ await keyring.list('mail');                         // without secrets
   asking app itself.
 - **Trust boundary:** built-in apps run in the shell's JavaScript context, so for them the owner
   string is passed by trusted system code, not enforced by a process boundary. For isolated `.lpk`
-  apps the owner must be set by `lord-server` from the broker (the app id it already verifies);
-  that broker op is still to do. The Passwords app process manages the keyring over its own
-  vault channel, which only the system `passwords` package receives.
+  apps the owner is set by `lord-server` from the broker (see below). The Passwords app process
+  manages the keyring over its own vault channel, which only the system `passwords` package
+  receives.
 - **Settings → Network** now stores Wi-Fi passwords (`wifi:<ssid>`) and VPN credentials
   (`vpn:<name>`) in the keyring when you join or save, and offers them back with the 🔑 button.
   The root-owned copy that `wpa_supplicant`/the VPN daemons need to connect at boot is still
   written by the closed `admin.c` actions (as NetworkManager does with system connections).
+
+### Keyring for isolated .lpk apps
+
+An isolated app (`lord-server --app <id>`) has no `lord.vault`; the same SDK calls go through the
+broker instead, and the `app` argument is ignored:
+
+```js
+import { keyring } from '@lordos/sdk';
+await keyring.set(lord.appId, { service: 'sync.example.org', account: 'ana', secret: token, label: 'Sync' });
+const item = await keyring.get(lord.appId, { service: 'sync.example.org', account: 'ana' }); // { secret, … } | null
+await keyring.remove(lord.appId, { service: 'sync.example.org', account: 'ana' });
+await keyring.list(lord.appId);                     // own items and items shared with it, no secrets
+```
+
+How it works (`sec/brokerkr.c`, `ui/js_vault.c`):
+
+- The app calls `lord.keyring.request(op, service, account, label, secret)`, a broker request
+  (`BOP_KEYRING`, payload `op\0service\0account\0label\0secret`; op is `get`, `set`, `delete`
+  or `list`). Service, account and label are at most 255 bytes, the secret at most 64 KiB.
+- `lord-server` builds the `kr-*` request itself with **owner = `app.<id>`**, where `<id>` is the
+  app id it verified when it spawned the process. The app never sends an owner, and the `app.`
+  prefix keeps a package called `mail` away from the desktop's own `mail` items.
+- The request goes to `lord-vault` on lord-server's control-side channel as a *private request*
+  (`vc_request_private`): its reply goes to a queue that only lord-server's C code reads, never
+  to the desktop's JavaScript. lord-server does not use `vc_attach_app` for these apps, because an
+  attached channel is the Passwords app's and may manage every item. Nothing waits: the reply
+  wakes the main loop (an eventfd) and is sent back to the app; buffers that held a secret are
+  wiped.
+- An app sees only its own items. If it asks (`get`) for an item another app saved, lord-vault
+  answers `not-shared` and lord-server shows the **system consent prompt** («"Notes" wants to use a
+  password that "Sync" saved in the keyring», `privacy.ask.keyring`). If the user allows it,
+  lord-server records the share for that one item (`kr-share`) and asks again; if not, the app
+  gets `keyring.notShared`, and lord-server does not ask again for that app and item until the
+  session ends (an app cannot keep the prompt on screen by asking in a loop). A shared item can be read, never changed or deleted, by the other
+  app; for `set`, `delete` and `list` another app's items simply do not exist.
+- Errors are code lines (docs/LANGUAGES.md): `keyring.locked`, `keyring.noKeyring`,
+  `keyring.notFound`, `keyring.notShared`, `keyring.badRequest`, `keyring.saveFailed`,
+  `keyring.busy`, `keyring.failed`, `vault.unavailable`. The SDK keeps the short codes of the
+  shell (`e.code` = `locked`, `not-found`…, `e.errorCode` = the full code), so the same app code
+  works in both places.
+- Test: `make -C server build/brokerkr-e2e && server/build/brokerkr-e2e` (needs `build/lord-vault`;
+  isolation between two app ids, the prompt denied (and not asked again) and allowed, a desktop owner a package cannot
+  reach, a missing item, bad requests, a locked keyring and an app that closed mid-request).
 
 ### Autofill in native apps
 

@@ -1,4 +1,4 @@
-/* vfile.c — formato .lvault (ver vfile.h y docs/PASSWORDS.md). */
+/* vfile.c — .lvault format (see vfile.h and docs/PASSWORDS.md). */
 #include "vfile.h"
 #include "smem.h"
 #include "vcrypto.h"
@@ -39,7 +39,7 @@ static uint16_t get16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
 static uint32_t get32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 static uint64_t get64(const uint8_t *p) { uint64_t v = 0; for (int i = 7; i >= 0; i--) v = v << 8 | p[i]; return v; }
 
-/* ---- derivaciones ---- */
+/* ---- derivations ---- */
 
 static void blake_kdf(const uint8_t *key, size_t klen, const char *ctx, const uint8_t *salt, size_t slen, uint8_t out[32]) {
     crypto_blake2b_ctx c;
@@ -58,7 +58,7 @@ int vf_argon2id(const uint8_t *pass, size_t plen, const uint8_t salt[16], const 
     crypto_argon2_config cfg = { .algorithm = CRYPTO_ARGON2_ID, .nb_blocks = blocks, .nb_passes = p->t_cost, .nb_lanes = lanes };
     crypto_argon2_inputs in = { .pass = pass, .salt = salt, .pass_size = (uint32_t)plen, .salt_size = 16 };
     crypto_argon2(out, 32, work, cfg, in, crypto_argon2_no_extras);
-    sm_free(work);                         /* se borra (los bloques derivan de la contraseña) */
+    sm_free(work);                         /* wiped (the blocks derive from the password) */
     return 0;
 }
 
@@ -91,7 +91,7 @@ void vf_recovery_new(char out[48]) {
     sm_wipe(r, sizeof r);
 }
 
-/* normaliza lo escrito (minúsculas, O→0, I/L→1, sin guiones ni espacios) a 25 bytes */
+/* normalizes what was typed (lowercase, O→0, I/L→1, no dashes or spaces) to 25 bytes */
 static int recovery_bytes(const char *s, uint8_t out[25]) {
     uint32_t acc = 0;
     int bits = 0, n = 0;
@@ -110,7 +110,7 @@ static int recovery_bytes(const char *s, uint8_t out[25]) {
     return n == 25 ? 0 : -1;
 }
 
-/* KEK de una ranura con los factores; 0 bien, 1 si faltan factores para este tipo, -1 error */
+/* KEK of a slot from the factors; 0 ok, 1 if factors are missing for this type, -1 error */
 static int slot_kek(const VSlot *s, const VFactors *f, uint8_t kek[32]) {
     uint8_t a[32];
     switch (s->type) {
@@ -143,7 +143,7 @@ static int slot_kek(const VSlot *s, const VFactors *f, uint8_t kek[32]) {
     return -1;
 }
 
-/* ---- serialización de ranuras ---- */
+/* ---- slot serialization ---- */
 
 static size_t slot_body(const VSlot *s, uint8_t *p, int with_wrap) {
     size_t o = 0;
@@ -165,7 +165,7 @@ static size_t slot_body(const VSlot *s, uint8_t *p, int with_wrap) {
     return o;
 }
 
-/* AD de la envoltura: magia + versión + id de la bóveda + tipo/kdf + la ranura sin la envoltura */
+/* AD of the wrapper: magic + version + vault id + type/kdf + the slot without the wrapper */
 static size_t wrap_ad(const VHeader *h, const VSlot *s, uint8_t *ad) {
     size_t o = 0;
     memcpy(ad, VF_MAGIC, 8); o += 8;
@@ -266,7 +266,7 @@ int vf_parse(const uint8_t *d, size_t len, VHeader *h) {
     if (o != hlen) return VF_EFORMAT;
     h->nslots = ns;
     h->hlen = hlen;
-    /* cuerpo */
+    /* body */
     if (o + 32 > len) return VF_ETRUNC;
     uint64_t bl = get64(d + o + 24);
     if (bl > VF_MAX_BODY) return VF_EFORMAT;
@@ -274,7 +274,7 @@ int vf_parse(const uint8_t *d, size_t len, VHeader *h) {
     h->body_off = o;
     h->body_len = bl;
     o += 32 + bl + 16;
-    /* adjuntos */
+    /* attachments */
     if (o + 4 > len) return VF_ETRUNC;
     uint32_t na = get32(d + o);
     o += 4;
@@ -321,7 +321,7 @@ int vf_open_slot(const VHeader *h, int type, const VFactors *f, uint8_t vk[32], 
 }
 
 int vf_make_slot(const VHeader *h, VSlot *s, int type, const VFactors *f, const uint8_t vk[32], const VKdf *kdf, const char *label) {
-    VSlot keep = *s;                         /* conserva cred/hmac_salt/aaguid de FIDO2 si ya vienen */
+    VSlot keep = *s;                         /* keeps FIDO2 cred/hmac_salt/aaguid if already present */
     memset(s, 0, sizeof *s);
     s->type = (uint8_t)type;
     s->kdf = (type == VS_PASSWORD || type == VS_PASSKEY || type == VS_SESSION) ? VK_ARGON2ID : VK_BLAKE2B;
@@ -395,7 +395,7 @@ int vf_att_open(const uint8_t vk[32], const uint8_t vault_id[16], const uint8_t 
     return r ? VF_ECORRUPT : VF_OK;
 }
 
-/* ---- escribir ---- */
+/* ---- writing ---- */
 
 static int write_all(int fd, const void *buf, size_t n) {
     const uint8_t *p = buf;
@@ -473,8 +473,8 @@ int vf_save(int dirfd, const char *name, VHeader *h, const uint8_t vk[32], const
     int r = vf_write_fd(fd, h, vk, plain, plen, atts, natts);
     close(fd);
     if (r != VF_OK) { unlinkat(dirfd, tmp, 0); h->saved = saved.saved; h->counter = saved.counter; return r; }
-    /* la versión anterior queda como .bak: enlace duro (el archivo de ahora sigue entero) y
-     * reemplazo atómico del .bak viejo; recién después el nuevo toma el nombre */
+    /* the previous version stays as .bak: hard link (the current file remains intact) and
+     * atomic replacement of the old .bak; only then does the new one take the name */
     struct stat st;
     if (fstatat(dirfd, name, &st, 0) == 0) {
         unlinkat(dirfd, baknew, 0);
@@ -487,7 +487,7 @@ int vf_save(int dirfd, const char *name, VHeader *h, const uint8_t vk[32], const
     return VF_OK;
 }
 
-/* ---- calibrar ---- */
+/* ---- calibrate ---- */
 
 static double now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
 
@@ -497,9 +497,9 @@ void vf_calibrate(int target_ms, VKdf *out, int *measured_ms) {
     VKdf p = { 64 * 1024, 1, 1 };
     double t0 = now_ms();
     vf_argon2id((const uint8_t *)"calibrar", 8, salt, &p, o);
-    double t1 = now_ms() - t0;                      /* una pasada con 64 MiB */
+    double t1 = now_ms() - t0;                      /* one pass with 64 MiB */
     if (t1 < 1) t1 = 1;
-    /* tope de memoria: un octavo de la RAM, entre 19 MiB y 256 MiB */
+    /* memory cap: one eighth of RAM, between 19 MiB and 256 MiB */
     struct sysinfo si;
     uint64_t cap = 256 * 1024;
     if (sysinfo(&si) == 0) {
@@ -508,7 +508,7 @@ void vf_calibrate(int target_ms, VKdf *out, int *measured_ms) {
     }
     if (cap < 19 * 1024) cap = 19 * 1024;
     uint32_t m = 64 * 1024;
-    double per = t1;                                /* ms por pasada con m */
+    double per = t1;                                /* ms per pass with m */
     while (m * 2 <= cap && per * 2 * 3 <= target_ms) { m *= 2; per *= 2; }
     while (m / 2 >= 19 * 1024 && per * 2 > target_ms) { m /= 2; per /= 2; }
     if (m > cap) { per = per * cap / m; m = (uint32_t)cap; }

@@ -13,7 +13,7 @@ password_hash=$y$j9T$REEMPLAZAR$REEMPLAZAR
 #password=
 hostname=ana-pi
 # es, en or pt
-lang=es
+lang=en
 timezone=America/Argentina/Buenos_Aires
 keyboard=latam
 keyboard_variant=

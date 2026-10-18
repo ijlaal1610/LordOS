@@ -1,4 +1,4 @@
-/* smem.c — arena de memoria para secretos (ver smem.h). */
+/* smem.c — memory arena for secrets (see smem.h). */
 #include "smem.h"
 
 #include <pthread.h>
@@ -13,15 +13,15 @@
 #define MADV_WIPEONFORK 18
 #endif
 
-#define NCLASS 9                      /* 16, 32, …, 4096 bytes útiles */
-#define CHUNK  (256u * 1024)          /* los bloques chicos salen de trozos de 256 KB */
+#define NCLASS 9                      /* 16, 32, …, 4096 usable bytes */
+#define CHUNK  (256u * 1024)          /* small blocks come from 256 KB chunks */
 #define MAGIC_SMALL 0x534d454du
 #define MAGIC_BIG   0x534d4542u
 
-typedef struct Hdr { uint32_t magic, cls; size_t size; } Hdr;     /* 16 bytes antes del bloque */
+typedef struct Hdr { uint32_t magic, cls; size_t size; } Hdr;     /* 16 bytes before the block */
 typedef struct Free { struct Free *next; } Free;
 typedef struct Chunk { struct Chunk *next; size_t size, used; int locked; } Chunk;
-typedef struct Big { struct Big *next, *prev; size_t map; int locked; } Big;   /* + Hdr + datos */
+typedef struct Big { struct Big *next, *prev; size_t map; int locked; } Big;   /* + Hdr + data */
 
 static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
 static Chunk *chunks;
@@ -36,7 +36,7 @@ void sm_harden_process(void) {
     struct rlimit rl = { 0, 0 };
     setrlimit(RLIMIT_CORE, &rl);
     prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
-    /* usar todo el mlock que el sistema permita (el límite blando sube hasta el duro) */
+    /* use as much mlock as the system allows (the soft limit is raised up to the hard one) */
     if (getrlimit(RLIMIT_MEMLOCK, &rl) == 0 && rl.rlim_cur < rl.rlim_max) { rl.rlim_cur = rl.rlim_max; setrlimit(RLIMIT_MEMLOCK, &rl); }
 }
 
@@ -69,7 +69,7 @@ static void *alloc_small(int cls) {
     if (freel[cls]) {
         Free *f = freel[cls];
         freel[cls] = f->next;
-        f->next = NULL;                       /* ya estaba en cero salvo el enlace */
+        f->next = NULL;                       /* already zero except for the link */
         return f;
     }
     size_t need = sizeof(Hdr) + sz;

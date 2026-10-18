@@ -3,9 +3,13 @@
 Since M8, ARM64 is an official LordOS platform, with the **Raspberry Pi 5** as the reference board.
 This document gathers what's needed to build the image, write it, develop on the board and test it.
 
-> **Status (2026-10-16):** prepared in the code and tools, **not yet tested on a board**. The user's
-> 16 GB Pi 5 isn't on the network. Nothing below is verified on hardware: don't claim it works until
-> the test checklist below has been passed with screenshots.
+> **Status (2026-10-18):** first bring-up on a real **Raspberry Pi 5 (16 GB, SD card)** running
+> Raspberry Pi OS-style Debian 13 (kernel `6.18.50+rpt-rpi-2712`, 16K pages, no monitor attached).
+> Verified on the board: native build, the headless test suites, NEON, the arm64 `.deb`, lord-sessiond
+> and the login screen starting on vc4 without a monitor, and `build-img.sh` (see "Results on the
+> board"). **Not verified yet:** anything with a monitor on HDMI (KMS modeset, GPU composition on
+> screen, hardware cursor, FPS), the desktop session, remote-desktop screenshots, and booting the
+> image that `build-img.sh` produced.
 
 ## Models
 
@@ -65,14 +69,14 @@ SD card or an NVMe, and the same image boots on the Pi 5 and the Pi 4.
 
 Researched as of October 2026 (confirm on the board):
 
-- **Debian 13's kernel** (`linux-image-arm64`, 6.12) boots on the Pi 4 with Debian's
+- **Debian 13's kernel** (`linux-image-arm64`, 6.12 at release) boots on the Pi 4 with Debian's
   `raspi-firmware`. On the Pi 5 it lacks full board support: the RP1 chip (USB, Ethernet, GPIO) and
   the BCM2712's display part reached Linux after 6.12, so without keyboard, network or HDMI it's no
   use.
 
   Also, Debian's `raspi-firmware` regenerates `config.txt` and `cmdline.txt` with every kernel, and
   would overwrite LordOS's configuration.
-- **The Raspberry Pi kernel** (`linux-image-rpi-2712`, 6.12 with its patches) is the one from
+- **The Raspberry Pi kernel** (`linux-image-rpi-2712`; 6.18 with its patches as of October 2026, it was 6.12 at trixie's release) is the one from
   Raspberry Pi OS Trixie. It has everything: RP1, vc4 with HDMI 4K60, v3d, the HEVC decoder, PCIe
   gen 3 and the fan.
 
@@ -134,10 +138,17 @@ Variables:
 
 **Before the first build:** check the fingerprint of the Raspberry Pi archive key
 (`gpg --show-keys raspberrypi.gpg.key`) against an official source. The one in the script
-(`CF8A1AF5…7FA3303E`) was written down from memory and hasn't been verified.
+(`CF8A1AF5…7FA3303E`) was checked on 2026-10-18: it is the same fingerprint as the key in the signed
+`raspberrypi-archive-keyring` package (2025.1+rpt1) installed on a Raspberry Pi OS board.
 
-`build-img.sh` hasn't been run yet. Estimate: on x86-64 with qemu, 30–60 minutes the first time;
-natively on the Pi 5 with NVMe, about 10.
+The loose `raspberrypi.gpg.key` at the archive root still carries its 2012 SHA-1 binding signatures,
+and apt's `sqv` rejects them since 2026-02-01 ("SHA1 is not considered secure": `InRelease is not
+signed`). So `build-img.sh` takes the key from the archive's `raspberrypi-archive-keyring` package
+(re-signed with SHA-512), found through the `Packages` index; trust still comes only from the
+fingerprint check. `RPI_KEY_URL=<url>` uses another key file instead.
+
+Estimate: on x86-64 with qemu, 30–60 minutes the first time. Natively on the Pi 5 it was run on
+2026-10-18 from the SD card (see "Results on the board").
 
 ### Writing it
 
@@ -198,7 +209,7 @@ Options in `cmdline.txt` (a single line), as on the ISO:
 | Option | What it does |
 |---|---|
 | `lordos.gpu=0` | safe mode: everything on the CPU |
-| `lordos.lang=en` / `pt` | first-boot language |
+| `lordos.lang=es` / `pt` | first-boot language (English by default, like the ISO) |
 | `video=HDMI-A-1:1920x1080@60` | pins the mode, for example on a 4K monitor (on the CPU, 4K is heavy: see below) |
 
 ## Display and GPU on the Pi 5
@@ -392,10 +403,56 @@ Each item, with a screenshot or the pasted output, in this document.
 | 11 | Temperature | `vcgencmd measure_temp`, `vcgencmd get_throttled`, LordOS Monitor (`cpu_thermal` and the fan) | <75 °C with the Active Cooler under load; `throttled=0x0` |
 | 12 | NEON | `server/build/canvas-test` | "NEON matches C"; NEON faster than C |
 | 13 | Headless tests | `make -C server test` and each `build/*-test` | all pass, as on x86 (WASM: the full wg-2.0 suite) |
-| 14 | App isolation | open a `.lpk`; `sandbox[...]:` in the log; `cat /sys/kernel/security/lsm` | seccomp=1 and Landlock if the kernel has it (the Raspberry Pi one might not) |
+| 14 | App isolation | open a `.lpk`; `sandbox[...]:` in the log; `cat /sys/kernel/security/lsm` | seccomp=1. **The Raspberry Pi kernel has no Landlock** (`# CONFIG_SECURITY_LANDLOCK is not set` in 6.18.50+rpt): seccomp only |
 | 15 | Remote desktop | Settings → Sharing, `https://<ip>:5673` from the development machine | visible and controllable; screenshots for this document |
 | 16 | Network and sound | Wi-Fi (brcmfmac), Ethernet, HDMI audio via PipeWire | IP from our own DHCP; `wpctl status` shows HDMI |
 | 17 | Pi 4 | the same image | boots with `kernel8.img`; note what fails |
+
+## Results on the board (2026-10-18)
+
+Raspberry Pi 5, 16 GB, 32 GB SD card, no fan load, **no monitor on HDMI** (both HDMI connectors
+`disconnected`). Raspberry Pi OS-style Debian 13 with kernel `6.18.50+rpt-rpi-2712` (16K pages), GCC
+14.2, Mesa 26.2.2 from the Raspberry Pi archive, FFmpeg 7.1.5+rpt. Tree copied with rsync; themes built
+on the development machine.
+
+| What | Result |
+|---|---|
+| `make -C server -j4` (GPU=1, NEON=1) | ✅ every binary: lord-server, lord-sessiond, lord-netd, lord-netperm (BPF with clang), lord-doc, lord-media, lord-vault, lord-maild. 1 min 02 s. One GCC 14 `-Wformat-truncation` warning (`apps.c`), fixed: now 0 warnings |
+| `make -C server test` | ✅ `23 passed, 0 failed, 0 skipped` (with skkdic, rime-data-pinyin-simp, unicode-data and libthai-dev installed), plus engine-test 2642 checks, backup-test 220, vault-test 74, import-test 150 |
+| NEON (`build/canvas-test`) | ✅ "NEON matches C". blit 9.90 → 4.33 ms/screen, mask 11.09 → 5.49 ms/screen (2.0–2.3×) |
+| `make -C server test-full` | ⚠️ media-test probe/wave/sandbox ✅. `doc_evil.sh` 20/25: the 5 failures are the filesystem confinement checks (`~/.ssh`, home, `/tmp`), because **the Raspberry Pi kernel has no Landlock** (`# CONFIG_SECURITY_LANDLOCK is not set`, `/sys/kernel/security/lsm` = `capability`). seccomp works on aarch64 (`seccomp=1(tsync)`, no sockets, no fork). `sandbox-test` skipped for the same reason |
+| arm64 `.deb` (`DEB_ARCH=arm64 tools/iso/mkdeb.sh`) | ✅ 5.0 MB; dependencies resolve on Raspberry Pi OS (its `+rpt` FFmpeg keeps the Debian package names) |
+| lordos.service | ✅ `lord-sessiond: display: /dev/dri/card1` (vc4; v3d is card0, `drmcard.h` picks the right one). With nothing connected the login screen stays headless (`kms: no monitor connected`) instead of crash-looping. lord-server now keeps the lent card and retries on the next DRM uevent (`main.c`, parked fds): **compiled, not yet tried with a monitor** |
+| Idle (login screen, headless) | lord-server 36 MB RSS, 0.6 % CPU; lord-sessiond 4.4 + 2.5 MB; system total 450 MB used of 16 GB; 38–43 °C, `throttled=0x0`, 2.4 GHz |
+| EGL/GBM | `V3D 7.1.10.2`, OpenGL ES 3.1 (`eglinfo -p gbm`). LordOS's GPU path on screen not exercised (no monitor) |
+| Video (FFmpeg CLI) | HEVC 1080p30 through `rpi-hevc-dec` (`/dev/video19`, `-hwaccel drm -hwaccel_output_format drm_prime`): 300 frames in 0.54 s with 0.12 s of CPU. Software, 4 threads: HEVC 1080p 251 fps, H.264 1080p ~420 fps (synthetic `testsrc2` clip: real content is heavier). lord-media only knows VA-API, so inside LordOS HEVC is software for now |
+| `build-img.sh` natively on the Pi | ✅ after the key fix (above): 7 min 58 s from the SD card. `/var/tmp/lordos-rpi/out/lordos-0.7.0-rpi5-arm64.img.xz`, 500 MB (2651 MB uncompressed, system 1412 MB). Kernel 6.18.50+rpt, `kernel_2712.img`/`kernel8.img`, initramfs, 386 overlays. **The image hasn't been booted yet** (the board's only SD is the running system) |
+
+Found and fixed on the board:
+
+- **lord-netd vs NetworkManager.** Raspberry Pi OS uses NetworkManager (with netplan). lord-netd only
+  knew systemd-networkd and ifupdown, so it saw `eth0` and `wlan0` as free and started its own DHCP
+  client and a second `wpa_supplicant` on them, plus duplicate default routes. `managed_by_system()`
+  (`net/state.c`) now also reads `/run/NetworkManager/devices/<ifindex>` (`managed=true`); `net-test
+  state` shows both as `"managed":"system"`. The LordOS image has no NetworkManager, so there
+  lord-netd still owns the network.
+- **The Raspberry Pi archive key** (SHA-1 signatures rejected by apt; see "Building it").
+- **Default language** of the image and first boot: now English, like the ISO (it was Spanish).
+
+Notes for the image:
+
+- Raspberry Pi OS boots with `cgroup_disable=memory`; the image's `cmdline.txt` already has
+  `cgroup_enable=memory` (per-app memory limits need it).
+- `lsm=landlock,…` in the image's `cmdline.txt` does nothing on this kernel: Landlock isn't compiled
+  in. App and helper isolation on the Pi is seccomp + cgroups + no-new-privs only, until LordOS ships
+  a kernel with `CONFIG_SECURITY_LANDLOCK=y`.
+- The image takes Mesa (25.0.7) and FFmpeg (7.1.5) from Debian. Debian's FFmpeg has no V4L2-request
+  decoding, so the hardware HEVC seen above needs the Raspberry Pi FFmpeg pinned (option 1 in
+  "Video").
+
+Still to do on the board: everything in the checklist that needs a monitor (items 1, 2, 4–8, 10, 15
+with screenshots, 16 HDMI audio, 17), the desktop session, and booting the built image from a
+second SD card or an NVMe.
 
 ## Server portability audit (aarch64)
 

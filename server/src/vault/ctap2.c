@@ -1,8 +1,8 @@
-/* ctap2.c — cliente FIDO2 propio: CTAPHID sobre hidraw + CTAP2 con hmac-secret (ver ctap2.h).
+/* ctap2.c — our own FIDO2 client: CTAPHID over hidraw + CTAP2 with hmac-secret (see ctap2.h).
  *
- * Solo read/write/poll sobre el fd que llega abierto (corre encerrado en lord-vault). Un
- * reporte HID es de 64 bytes; al escribir va precedido por el número de reporte 0 (65 bytes),
- * como pide hidraw para los dispositivos sin ids de reporte. */
+ * Only read/write/poll on the fd that arrives already open (runs sandboxed in lord-vault). An
+ * HID report is 64 bytes; when writing it is prefixed by report number 0 (65 bytes),
+ * as hidraw requires for devices without report ids. */
 #include "ctap2.h"
 #include "cbor.h"
 #include "p256.h"
@@ -30,7 +30,7 @@
 #define CMD_GET_INFO 0x04
 #define CMD_CLIENT_PIN 0x06
 
-/* canal en uso (para fido_cancel desde otro hilo) */
+/* channel in use (for fido_cancel from another thread) */
 static volatile int cur_fd = -1;
 static volatile uint32_t cur_cid;
 static volatile int cancel_flag;
@@ -41,7 +41,7 @@ static long long now_ms(void) {
     return (long long)t.tv_sec * 1000 + t.tv_nsec / 1000000;
 }
 
-/* ---- reportes ---- */
+/* ---- reports ---- */
 
 static int pkt_write(int fd, const uint8_t pkt[PKT]) {
     uint8_t b[PKT + 1];
@@ -57,7 +57,7 @@ static int pkt_write(int fd, const uint8_t pkt[PKT]) {
     return FIDO_ERR_IO;
 }
 
-/* 0 bien, FIDO_ERR_TIMEOUT si no llegó nada en ms, FIDO_ERR_IO */
+/* 0 = ok, FIDO_ERR_TIMEOUT if nothing arrived within ms, FIDO_ERR_IO */
 static int pkt_read(int fd, uint8_t pkt[PKT], int ms) {
     struct pollfd p = { fd, POLLIN, 0 };
     int r = poll(&p, 1, ms < 0 ? 0 : ms);
@@ -68,7 +68,7 @@ static int pkt_read(int fd, uint8_t pkt[PKT], int ms) {
     ssize_t n = read(fd, b, sizeof b);
     if (n < 0) return errno == EAGAIN || errno == EINTR ? FIDO_ERR_TIMEOUT : FIDO_ERR_IO;
     if (n == PKT) { memcpy(pkt, b, PKT); return 0; }
-    if (n == PKT + 1 && b[0] == 0) { memcpy(pkt, b + 1, PKT); return 0; }   /* con número de reporte */
+    if (n == PKT + 1 && b[0] == 0) { memcpy(pkt, b + 1, PKT); return 0; }   /* with report number */
     return FIDO_ERR_IO;
 }
 
@@ -102,14 +102,14 @@ static int hid_send(int fd, uint32_t cid, uint8_t cmd, const uint8_t *data, size
 
 static int hid_err(uint8_t code) {
     switch (code) {
-    case 0x01: return FIDO_ERR_NO_HMAC;        /* ERR_INVALID_CMD: no habla CBOR */
+    case 0x01: return FIDO_ERR_NO_HMAC;        /* ERR_INVALID_CMD: does not speak CBOR */
     case 0x05: return FIDO_ERR_TIMEOUT;        /* ERR_MSG_TIMEOUT */
     case 0x06: return FIDO_ERR_IO;             /* ERR_CHANNEL_BUSY */
     default: return FIDO_ERR_PROTOCOL;
     }
 }
 
-/* Recibe la respuesta del canal cid. Ignora otros canales; KEEPALIVE avisa por cb. */
+/* Receives the response on channel cid. Ignores other channels; KEEPALIVE notifies via cb. */
 static int hid_recv(int fd, uint32_t cid, uint8_t *cmd, uint8_t *buf, size_t cap, size_t *len,
                     long long deadline, FidoStatusCb cb, void *ud) {
     uint8_t pkt[PKT];
@@ -137,7 +137,7 @@ static int hid_recv(int fd, uint32_t cid, uint8_t *cmd, uint8_t *buf, size_t cap
             got = k;
             seq = 0;
         } else {
-            if (seq < 0) continue;                 /* continuación suelta: se descarta */
+            if (seq < 0) continue;                 /* stray continuation: discarded */
             if (pkt[4] != seq) return FIDO_ERR_PROTOCOL;
             size_t k = total - got < PKT - 5 ? total - got : PKT - 5;
             memcpy(buf + got, pkt + 5, k);
@@ -148,12 +148,12 @@ static int hid_recv(int fd, uint32_t cid, uint8_t *cmd, uint8_t *buf, size_t cap
     }
 }
 
-/* CTAPHID_INIT por el canal de difusión: canal propio y capacidades. */
+/* CTAPHID_INIT on the broadcast channel: own channel and capabilities. */
 static int hid_init(int fd, uint32_t *cid, uint8_t *caps) {
     uint8_t nonce[8], resp[64];
-    if (fd != cur_fd) cancel_flag = 0;          /* un cancelar viejo no corta un pedido nuevo */
+    if (fd != cur_fd) cancel_flag = 0;          /* a stale cancel does not abort a new request */
     if (vc_random(nonce, sizeof nonce)) return FIDO_ERR_IO;
-    /* descartar lo que haya quedado de antes */
+    /* discard whatever is left over from before */
     uint8_t junk[PKT];
     for (int i = 0; i < 32 && pkt_read(fd, junk, 0) == 0; i++) {}
     int rc = hid_send(fd, 0xffffffffu, HID_INIT, nonce, sizeof nonce);
@@ -165,7 +165,7 @@ static int hid_init(int fd, uint32_t *cid, uint8_t *caps) {
         rc = hid_recv(fd, 0xffffffffu, &cmd, resp, sizeof resp, &len, deadline, NULL, NULL);
         if (rc) return rc;
         if (cmd != HID_INIT || len < 17) continue;
-        if (memcmp(resp, nonce, 8)) continue;          /* respuesta a otro INIT */
+        if (memcmp(resp, nonce, 8)) continue;          /* response to another INIT */
         *cid = get_cid(resp + 8);
         if (caps) *caps = resp[16];
         if (*cid == 0 || *cid == 0xffffffffu) return FIDO_ERR_PROTOCOL;
@@ -189,8 +189,8 @@ int ctaphid_command(int fd, uint8_t cmd, const uint8_t *data, size_t len,
 static int ctap_status(uint8_t s) {
     switch (s) {
     case 0x00: return FIDO_OK;
-    case 0x01: return FIDO_ERR_NO_HMAC;            /* comando inválido: no es CTAP2 */
-    case 0x2b: return FIDO_ERR_NO_HMAC;            /* extensión no soportada */
+    case 0x01: return FIDO_ERR_NO_HMAC;            /* invalid command: not CTAP2 */
+    case 0x2b: return FIDO_ERR_NO_HMAC;            /* unsupported extension */
     case 0x2d: return FIDO_ERR_CANCELLED;          /* KEEPALIVE_CANCEL */
     case 0x2e: return FIDO_ERR_NO_CREDENTIAL;
     case 0x2f: return FIDO_ERR_TIMEOUT;            /* USER_ACTION_TIMEOUT */
@@ -199,7 +199,7 @@ static int ctap_status(uint8_t s) {
     case 0x31: return FIDO_ERR_PIN_INVALID;
     case 0x32: return FIDO_ERR_PIN_BLOCKED;
     case 0x33: return FIDO_ERR_PIN_INVALID;        /* PIN_AUTH_INVALID */
-    case 0x34: return FIDO_ERR_PIN_BLOCKED;        /* PIN_AUTH_BLOCKED (hay que reconectar) */
+    case 0x34: return FIDO_ERR_PIN_BLOCKED;        /* PIN_AUTH_BLOCKED (must reconnect) */
     case 0x35: return FIDO_ERR_PIN_REQUIRED;       /* PIN_NOT_SET */
     case 0x36: return FIDO_ERR_PIN_REQUIRED;
     case 0x37: return FIDO_ERR_PIN_INVALID;        /* PIN_POLICY_VIOLATION */
@@ -213,11 +213,11 @@ static int dev_open(Dev *d, int fd) {
     d->fd = fd;
     int rc = hid_init(fd, &d->cid, &d->caps);
     if (rc) return rc;
-    if (!(d->caps & CAP_CBOR)) return FIDO_ERR_NO_HMAC;   /* solo U2F */
+    if (!(d->caps & CAP_CBOR)) return FIDO_ERR_NO_HMAC;   /* U2F only */
     return 0;
 }
 
-/* Comando CTAP2: req (CBOR) → resp (CBOR, sin el byte de estado). */
+/* CTAP2 command: req (CBOR) → resp (CBOR, without the status byte). */
 static int ctap_cmd(Dev *d, uint8_t c, const uint8_t *req, size_t reqlen, uint8_t *resp, size_t cap, size_t *resplen,
                     int timeout_ms, FidoStatusCb cb, void *ud) {
     uint8_t msg[MSG_MAX];
@@ -234,7 +234,7 @@ static int ctap_cmd(Dev *d, uint8_t c, const uint8_t *req, size_t reqlen, uint8_
     size_t len = 0;
     rc = hid_recv(d->fd, d->cid, &cmd, msg, sizeof msg, &len, now_ms() + timeout_ms, cb, ud);
     if (rc == FIDO_ERR_TIMEOUT || rc == FIDO_ERR_CANCELLED) {
-        /* cortar la espera en la llave y escuchar su respuesta un rato */
+        /* abort the wait on the key and listen to its response for a while */
         uint8_t pkt[PKT];
         memset(pkt, 0, PKT);
         put_cid(pkt, d->cid);
@@ -330,12 +330,12 @@ int fido_get_info(int fd, FidoInfo *info) {
     if (rc == FIDO_ERR_NO_HMAC) { memset(info, 0, sizeof *info); info->client_pin = -1; info->pin_retries = -1; return 0; }
     if (rc) return rc;
     rc = get_info(&d, info);
-    if (rc == FIDO_ERR_NO_HMAC) return 0;      /* llave U2F: hmac_secret queda en 0 */
+    if (rc == FIDO_ERR_NO_HMAC) return 0;      /* U2F key: hmac_secret stays 0 */
     if (rc == 0 && info->client_pin == 1) info->pin_retries = pin_retries(&d);
     return rc;
 }
 
-/* ---- protocolo de PIN 1 ---- */
+/* ---- PIN protocol 1 ---- */
 
 static void cose_key(CbW *w, const uint8_t x[32], const uint8_t y[32]) {
     cbw_map(w, 5);
@@ -346,7 +346,7 @@ static void cose_key(CbW *w, const uint8_t x[32], const uint8_t y[32]) {
     cbw_int(w, -3); cbw_bytes(w, y, 32);
 }
 
-/* Acuerdo de claves con la llave: shared = SHA-256(x de ECDH); mx/my = nuestra clave pública. */
+/* Key agreement with the key: shared = SHA-256(x of ECDH); mx/my = our public key. */
 static int key_agreement(Dev *d, uint8_t shared[32], uint8_t mx[32], uint8_t my[32]) {
     uint8_t req[16], resp[256];
     CbW w;
@@ -463,10 +463,10 @@ static int parse_authdata(const uint8_t *a, size_t n, AuthData *o) {
     if (n < 37) return FIDO_ERR_PROTOCOL;
     uint8_t rph[32];
     sha256(FIDO_RP_ID, strlen(FIDO_RP_ID), rph);
-    if (memcmp(a, rph, 32)) return FIDO_ERR_PROTOCOL;   /* no es de nuestro rp.id */
+    if (memcmp(a, rph, 32)) return FIDO_ERR_PROTOCOL;   /* not from our rp.id */
     o->flags = a[32];
     size_t p = 37;
-    if (o->flags & 0x40) {                               /* AT: datos de la credencial */
+    if (o->flags & 0x40) {                               /* AT: credential data */
         if (n < p + 18) return FIDO_ERR_PROTOCOL;
         p += 16;                                         /* aaguid */
         size_t cl = (size_t)a[p] << 8 | a[p + 1];
@@ -477,10 +477,10 @@ static int parse_authdata(const uint8_t *a, size_t n, AuthData *o) {
         p += cl;
         CbItem it[32];
         Cb c;
-        if (cb_parse(&c, a + p, n - p, it, 32, 1) || cb_type(&c, 0) != CB_MAP) return FIDO_ERR_PROTOCOL;   /* clave COSE */
+        if (cb_parse(&c, a + p, n - p, it, 32, 1) || cb_type(&c, 0) != CB_MAP) return FIDO_ERR_PROTOCOL;   /* COSE key */
         p += c.used;
     }
-    if (o->flags & 0x80) {                               /* ED: extensiones */
+    if (o->flags & 0x80) {                               /* ED: extensions */
         CbItem it[16];
         Cb c;
         if (cb_parse(&c, a + p, n - p, it, 16, 1) || cb_type(&c, 0) != CB_MAP) return FIDO_ERR_PROTOCOL;
@@ -498,7 +498,7 @@ static int prepare(int fd, Dev *d, const char *pin, int need_pin_for_make) {
     rc = get_info(d, &info);
     if (rc) return rc;
     if (!info.hmac_secret) return FIDO_ERR_NO_HMAC;
-    if (pin && info.client_pin != 1) return FIDO_ERR_PIN_INVALID;   /* PIN de más: la llave no tiene */
+    if (pin && info.client_pin != 1) return FIDO_ERR_PIN_INVALID;   /* extra PIN: the key has none */
     if (need_pin_for_make && info.client_pin == 1 && !pin) return FIDO_ERR_PIN_REQUIRED;
     return 0;
 }
@@ -545,7 +545,7 @@ int fido_make_credential(int fd, const char *pin, uint8_t *cred, size_t *cred_le
     AuthData a;
     if ((rc = parse_authdata(c.it[ad].ptr, c.it[ad].len, &a))) return rc;
     if (!a.cred) return FIDO_ERR_PROTOCOL;
-    /* la llave tiene que confirmar hmac-secret en las extensiones */
+    /* the key must confirm hmac-secret in the extensions */
     int ok = 0;
     if (a.ext) {
         CbItem e[16];

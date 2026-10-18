@@ -1,5 +1,5 @@
-/* broker_int.h — internals shared by the broker's server-side files (brokersrv.c and
- * brokercam.c). Not for the rest of lord-server: use broker.h. */
+/* broker_int.h — internals shared by the broker's server-side files (brokersrv.c,
+ * brokercam.c and brokerkr.c). Not for the rest of lord-server: use broker.h. */
 #ifndef LORD_SEC_BROKER_INT_H
 #define LORD_SEC_BROKER_INT_H
 
@@ -15,6 +15,16 @@ int  brokersrv_reply(int fd, uint32_t reqid, int status, const void *data, uint3
 void brokersrv_device(const char *app, const char *kind, int on);
 /* System save dialog (powerbox) for `app`; the answer comes back as brokersrv_pick_result(reqid). */
 void brokersrv_powerbox_save(uint32_t reqid, const char *app, const char *suggest);
+
+/* A system consent prompt (privacy.js draws it; the answer comes back as brokersrv_resolve). */
+void brokersrv_prompt_event(const char *json);
+
+/* ---- brokerkr.c: the session keyring of isolated apps (BOP_KEYRING) ---- */
+void brokerkr_handle(int conn, int fd, uint32_t reqid, const char *app, char *payload, uint32_t len);
+int  brokerkr_resolve(uint32_t prompt, int allow);             /* 1 if it was a keyring prompt */
+void brokerkr_conn_closed(int conn);
+void brokerkr_tick(void);
+int  brokerkr_pollfd(void);                                    /* lord-vault replies waiting, or -1 */
 
 /* ---- brokercam.c: the camera of isolated apps ---- */
 void brokercam_handle(int conn, int fd, uint32_t reqid, const char *payload, uint32_t len);

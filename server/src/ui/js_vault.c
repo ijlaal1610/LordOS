@@ -23,6 +23,7 @@
 #include "../vault/fidodev.h"
 #include "../vault/vwire.h"
 #include "js_broker.h"
+#include "../sec/broker.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -310,9 +311,62 @@ static const JSCFunctionListEntry vault_app_funcs[] = {
     JS_CFUNC_DEF("promptDone", 2, fa_noop),
 };
 
+/* ---- lord.keyring of an isolated .lpk app (any app without its own vault channel) ----
+ *   lord.keyring.request(op, service, account, label, secret) → JSON text of lord-vault's reply
+ *       op: 'get' | 'set' | 'delete' | 'list'. It goes through the broker (BOP_KEYRING); lord-server
+ *       sets the owner from the verified app id, so the app only reaches its own items (or those
+ *       the user agreed to share with it). Errors are thrown as codes (keyring.*, vault.unavailable).
+ * The reply buffer may hold a secret: it is wiped once it is a JS string. */
+
+static JSValue fk_request(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    const char *v[5] = { 0 };
+    size_t l[5] = { 0 }, total = 0;
+    for (int i = 0; i < 5; i++) {
+        if (i < argc && !JS_IsUndefined(argv[i]) && !JS_IsNull(argv[i])) {
+            v[i] = JS_ToCStringLen(c, &l[i], argv[i]);
+            if (!v[i]) { for (int k = 0; k < i; k++) if (v[k]) JS_FreeCString(c, v[k]); return JS_EXCEPTION; }
+        }
+        total += l[i] + 1;
+    }
+    char *p = total <= BROKER_MAX_MSG ? malloc(total) : NULL;
+    size_t o = 0;
+    for (int i = 0; i < 5 && p; i++) {
+        if (l[i] && memchr(v[i], 0, l[i])) { explicit_bzero(p, total); free(p); p = NULL; break; }   /* no NUL inside a field */
+        if (l[i]) memcpy(p + o, v[i], l[i]);
+        o += l[i];
+        if (i < 4) p[o++] = 0;
+    }
+    for (int i = 0; i < 5; i++) if (v[i]) JS_FreeCString(c, v[i]);
+    if (!p) return js_throw_code(c, "keyring.badRequest", NULL);
+    int st = BST_ERROR;
+    char *out = NULL;
+    uint32_t ol = 0;
+    int r = js_broker_rpc(BOP_KEYRING, p, (uint32_t)o, &st, &out, &ol);
+    explicit_bzero(p, total);
+    free(p);
+    if (r) { free(out); return js_throw_code(c, "vault.unavailable", NULL); }
+    JSValue res;
+    if (st == BST_OK) res = JS_NewStringLen(c, out ? out : "{}", out ? ol : 2);
+    else {
+        char line[128];
+        snprintf(line, sizeof line, "%.*s", (int)(out && ol < sizeof line ? ol : 0), out ? out : "");
+        res = js_throw_line(c, lerr_is(line) ? line : "keyring.failed");
+    }
+    if (out) { explicit_bzero(out, ol); free(out); }
+    return res;
+}
+
+static const JSCFunctionListEntry keyring_app_funcs[] = { JS_CFUNC_DEF("request", 5, fk_request) };
+
 void js_vault_register_app(JSContext *c, JSValue lord) {
     const char *s = getenv("LORD_VAULT_FD");
-    if (!s) return;                                      /* only the app spawned with a vault channel */
+    if (!s) {                                            /* a .lpk app: its own keyring items only */
+        JSValue k = JS_NewObject(c);
+        JS_SetPropertyFunctionList(c, k, keyring_app_funcs, sizeof keyring_app_funcs / sizeof keyring_app_funcs[0]);
+        JS_SetPropertyStr(c, lord, "keyring", k);
+        return;
+    }
     app_fd = atoi(s);
     if (app_fd <= 2) { app_fd = -1; return; }
     fcntl(app_fd, F_SETFD, FD_CLOEXEC);

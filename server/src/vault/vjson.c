@@ -1,4 +1,4 @@
-/* vjson.c — JSON en la arena de secretos (ver vjson.h). */
+/* vjson.c — JSON in the secrets arena (see vjson.h). */
 #include "vjson.h"
 #include "smem.h"
 
@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* ================= lector ================= */
+/* ================= reader ================= */
 
 typedef struct { Vj *j; size_t p; int depth; } P;
 
@@ -40,7 +40,7 @@ static int parse_value(P *q);
 static int parse_string(P *q) {
     const char *s = q->j->s;
     size_t len = q->j->len;
-    q->p++;                                   /* comilla */
+    q->p++;                                   /* quote */
     int k = tok_new(q, VJ_STR);
     if (k < 0) return -1;
     while (q->p < len) {
@@ -171,7 +171,7 @@ int vj_streq(const Vj *j, int tok, const char *s) {
     if (vj_type(j, tok) != VJ_STR) return 0;
     const VjTok *t = &j->t[tok];
     size_t n = strlen(s);
-    /* comparación rápida si no hay escapes */
+    /* fast comparison if there are no escapes */
     if (t->end - t->start == n && !memchr(j->s + t->start, '\\', n)) return !memcmp(j->s + t->start, s, n);
     char *d = vj_str(j, tok);
     int r = d && !strcmp(d, s);
@@ -201,7 +201,7 @@ static size_t put_utf8(char *d, unsigned cp) {
     return 4;
 }
 
-/* Saca los escapes de s[a..b) en d (que tiene lugar para b-a bytes: nunca crece). */
+/* Unescapes s[a..b) into d (which has room for b-a bytes: it never grows). */
 static size_t unescape(const char *s, size_t a, size_t b, char *d) {
     size_t o = 0;
     for (size_t i = a; i < b; i++) {
@@ -223,7 +223,7 @@ static size_t unescape(const char *s, size_t a, size_t b, char *d) {
                 if (lo >= 0xdc00 && lo < 0xe000) { cp = 0x10000 + ((cp - 0xd800) << 10) + (lo - 0xdc00); i += 6; }
                 else cp = 0xfffd;
             } else if (cp >= 0xd800 && cp < 0xe000) cp = 0xfffd;
-            if (cp == 0) cp = 0xfffd;                  /* sin NUL adentro de los textos */
+            if (cp == 0) cp = 0xfffd;                  /* no NUL inside texts */
             o += put_utf8(d + o, cp);
             break;
         }
@@ -248,7 +248,7 @@ size_t vj_strbuf(const Vj *j, int tok, char *buf, size_t n) {
     char *d = vj_str(j, tok);
     if (!d) return 0;
     size_t l = strlen(d);
-    if (l >= n) {                                    /* recortar sin partir un carácter UTF-8 */
+    if (l >= n) {                                    /* truncate without splitting a UTF-8 character */
         l = n - 1;
         while (l > 0 && ((unsigned char)d[l] & 0xc0) == 0x80) l--;
     }
@@ -283,7 +283,7 @@ size_t vj_getsbuf(const Vj *j, int obj, const char *key, char *buf, size_t n) {
 double vj_getn(const Vj *j, int obj, const char *key, double def) { return vj_num(j, vj_get(j, obj, key), def); }
 int vj_getb(const Vj *j, int obj, const char *key, int def) { return vj_bool(j, vj_get(j, obj, key), def); }
 
-/* ================= escritor ================= */
+/* ================= writer ================= */
 
 void vb_init(VjB *b) { memset(b, 0, sizeof *b); b->first[0] = 1; }
 void vb_free(VjB *b) { sm_free(b->p); memset(b, 0, sizeof *b); }
@@ -321,7 +321,7 @@ void vb_strn(VjB *b, const char *s, size_t n) {
         else if (c == '\t') { *d++ = '\\'; *d++ = 't'; }
         else if (c < 0x20 || c == 0x7f) { snprintf(d, 7, "\\u%04x", c); d += 6; }
         else if (c >= 0x80) {
-            /* UTF-8 válido pasa tal cual; un byte suelto se reemplaza por U+FFFD */
+            /* valid UTF-8 passes through as-is; a stray byte is replaced by U+FFFD */
             int len = c >= 0xf0 && c < 0xf5 ? 4 : c >= 0xe0 ? 3 : c >= 0xc2 && c < 0xe0 ? 2 : 0;
             int ok = len && i + (size_t)len <= n;
             for (int k = 1; ok && k < len; k++) if (((unsigned char)s[i + k] & 0xc0) != 0x80) ok = 0;

@@ -11,6 +11,7 @@
 #include "../keyboard.h"
 #include "js.h"
 #include "js_sys.h"
+#include "js_err.h"
 
 #include <dirent.h>
 
@@ -85,11 +86,17 @@ static int rpc(int op, const void *payload, uint32_t len, int *status, char **ou
 
 /* Un evento: "tipo\0json". El teclado se aplica acá (keyboard.c); el resto va a JS
  * (__lordBrokerEvent: tokens del tema, idioma, estado completo). */
+/* The layout itself comes from the compositor's keymap (wl_keyboard.keymap, appclient.c):
+ * kb_set() here would run inside the sandbox, where xkbcommon cannot read its rules. Only the
+ * active group is taken from the broker. */
+static void apply_kb_state(const JVal *kb) {
+    const char *l = json_str(kb, "layouts");
+    if (l && l[0]) kb_set_group((int)json_num(kb, "group", 0));
+}
 static void apply_keyboard(const char *json, size_t len) {
     JDoc d;
     if (json_parse(json, len, &d, NULL, 0)) return;
-    const char *l = json_str(d.root, "layouts"), *v = json_str(d.root, "variants");
-    if (l && l[0]) { kb_set(l, v ? v : ""); kb_set_group((int)json_num(d.root, "group", 0)); }
+    apply_kb_state(d.root);
     json_free(&d);
 }
 
@@ -104,10 +111,7 @@ static void dispatch_event(const char *buf, size_t n) {
         JDoc d;
         if (!json_parse(json, jl, &d, NULL, 0)) {
             const JVal *kb = json_get(d.root, "keyboard");
-            if (kb && kb->type == J_OBJ) {
-                const char *l = json_str(kb, "layouts"), *v = json_str(kb, "variants");
-                if (l && l[0]) { kb_set(l, v ? v : ""); kb_set_group((int)json_num(kb, "group", 0)); }
-            }
+            if (kb && kb->type == J_OBJ) apply_kb_state(kb);
             json_free(&d);
         }
     }
@@ -180,7 +184,7 @@ static JSValue f_fs_read(JSContext *c, JSValueConst t, int argc, JSValueConst *a
     int r = p ? rpc(BOP_FS_READ, p, (uint32_t)strlen(p), &st, &out, &len) : -1;
     if (p) JS_FreeCString(c, p);
     if (mode) JS_FreeCString(c, mode);
-    if (r || st != BST_OK) { free(out); return JS_ThrowTypeError(c, st == BST_DENIED ? "acceso denegado" : "no se pudo leer"); }
+    if (r || st != BST_OK) { free(out); return st == BST_DENIED ? js_throw_code(c, "app.outsideFolder", NULL) : js_throw_code(c, "app.readFailed", NULL); }
     JSValue v = binary ? JS_NewArrayBufferCopy(c, (uint8_t *)out, len) : JS_NewStringLen(c, out, len);
     free(out);
     return v;
@@ -203,7 +207,7 @@ static JSValue f_fs_write(JSContext *c, JSValueConst t, int argc, JSValueConst *
     free(buf);
     JS_FreeCString(c, p);
     if (dyn) JS_FreeCString(c, dyn);
-    if (r || st != BST_OK) return JS_ThrowTypeError(c, st == BST_DENIED ? "fuera de la carpeta de la app" : "no se pudo escribir");
+    if (r || st != BST_OK) return st == BST_DENIED ? js_throw_code(c, "app.outsideFolder", NULL) : js_throw_code(c, "app.writeFailed", NULL);
     return JS_UNDEFINED;
 }
 
@@ -224,7 +228,7 @@ static JSValue f_fs_list(JSContext *c, JSValueConst t, int argc, JSValueConst *a
 static JSValue f_clip_get(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc; (void)argv;
     int st = BST_ERROR; char *out = NULL; uint32_t len = 0;
-    if (rpc(BOP_CLIP_GET, NULL, 0, &st, &out, &len) || st != BST_OK) { free(out); return JS_ThrowTypeError(c, "sin permiso de portapapeles"); }
+    if (rpc(BOP_CLIP_GET, NULL, 0, &st, &out, &len) || st != BST_OK) { free(out); return js_throw_code(c, "app.clipboardDenied", NULL); }
     JSValue v = JS_NewStringLen(c, out, len);
     free(out);
     return v;
@@ -333,11 +337,11 @@ static JSValue f_fd_read(JSContext *c, JSValueConst t, int argc, JSValueConst *a
     (void)t; (void)argc;
     int32_t fd = -1;
     JS_ToInt32(c, &fd, argv[0]);
-    if (fd < 0) return JS_ThrowTypeError(c, "fd inválido");
+    if (fd < 0) return js_throw_code(c, "app.badFd", NULL);
     size_t cap = 1 << 20, len = 0;
     char *buf = malloc(cap);
     for (;;) {
-        if (len == cap) { cap *= 2; if (cap > 64u << 20) { free(buf); close(fd); return JS_ThrowRangeError(c, "archivo demasiado grande"); } char *nb = realloc(buf, cap); if (!nb) { free(buf); close(fd); return JS_ThrowOutOfMemory(c); } buf = nb; }
+        if (len == cap) { cap *= 2; if (cap > 64u << 20) { free(buf); close(fd); return js_throw_code(c, "fs.tooLarge", "max", "64 MB", NULL); } char *nb = realloc(buf, cap); if (!nb) { free(buf); close(fd); return JS_ThrowOutOfMemory(c); } buf = nb; }
         ssize_t r = read(fd, buf + len, cap - len);
         if (r < 0 && errno == EINTR) continue;
         if (r <= 0) break;
@@ -457,8 +461,7 @@ static JSValue f_broker_state(JSContext *c, JSValueConst t, int argc, JSValueCon
     JDoc d;
     if (!json_parse(out, len, &d, NULL, 0)) {
         const JVal *kb = json_get(d.root, "keyboard");
-        const char *l = json_str(kb, "layouts"), *v = json_str(kb, "variants");
-        if (l && l[0]) { kb_set(l, v ? v : ""); kb_set_group((int)json_num(kb, "group", 0)); }
+        if (kb && kb->type == J_OBJ) apply_kb_state(kb);
         json_free(&d);
     }
     JSValue r = JS_ParseJSON(c, out, len, "<estado>");
@@ -595,7 +598,7 @@ static JSValue f_pkg_file(JSContext *c, JSValueConst t, int argc, JSValueConst *
     size_t len = 0;
     char *buf = rel ? pkg_read(rel, 32u * 1024 * 1024, &len) : NULL;
     if (rel) JS_FreeCString(c, rel);
-    if (!buf) return JS_ThrowTypeError(c, "archivo inexistente en la app");
+    if (!buf) return js_throw_code(c, "app.noSuchFile", NULL);
     JSValue v = JS_NewArrayBufferCopy(c, (uint8_t *)buf, len);
     free(buf);
     return v;
@@ -606,7 +609,7 @@ static JSValue f_load_app(JSContext *c, JSValueConst t, int argc, JSValueConst *
     (void)t; (void)argc; (void)argv;
     size_t len = 0;
     char *src = pkg_read("app.js", 16u * 1024 * 1024, &len);
-    if (!src) return JS_ThrowTypeError(c, "no se pudo leer la app");
+    if (!src) return js_throw_code(c, "app.loadFailed", NULL);
     JSValue r = JS_Eval(c, src, len, "app.js", JS_EVAL_TYPE_GLOBAL);
     free(src);
     if (JS_IsException(r)) return r;

@@ -39,7 +39,7 @@ export { logs } from './logs.js';
 export { LordOSLogo } from './logo.js';
 export { DesktopWidgets, registerWidgetType, setWidgets, desktopWidgets } from './widgets.js';
 export { Markdown, markdownHeadings, parseMarkdown, parseInline, toggleTask } from './markdown.jsx';
-export { dock, useDockEntries, dockActivate, dockMenu, registerDockMenu, launcherIdOf, dockPrefs, DOCK_DEFAULTS } from './dock.js';
+export { dock, useDockEntries, dockActivate, dockMenu, registerDockMenu, launcherIdOf, dockPrefs, DOCK_DEFAULTS, quitApp } from './dock.js';
 export { sound, useSound, useSoundPeak, soundState, defaultSink, defaultSource, microphones } from './sound.js';
 export { monitor, useMonitor, monitorSamples, monitorProcesses, monitorConnections, monitorDevices, MONITOR_HISTORY, firewall, firewallState } from './monitor.js';
 export { packages, packageList, refreshPackages, packageFile, loadWasm } from './packages.js';

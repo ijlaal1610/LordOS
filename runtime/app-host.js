@@ -109,6 +109,11 @@ globalThis.__lordBrokerEvent = (kind, data) => {
     else if (data.type === 'focus') wm.focus(id);
   }
   else if (kind === 'window' && data && data.new) wm.open(APP, { new: true });   // Dock → «New window»
+  else if (kind === 'quit') {
+    // ❖Q or Dock → Quit: close every window; a close guard can still keep one open (unsaved
+    // changes). The process ends when the last window closes (appclient.c).
+    for (const w of [...windows.get()].reverse()) wm.close(w.id);
+  }
 };
 const revokeListeners = new Set();
 globalThis.__lordOnRevoke = (fn) => { revokeListeners.add(fn); return () => revokeListeners.delete(fn); };

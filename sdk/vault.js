@@ -6,7 +6,8 @@
 //   vaultRequest(op, args, { files })               → promise with the reply ({ ok, … }) or an error with .code
 //   onVaultEvent(fn)                                events: locked, unlocked, changed, touch, ss-prompt, keyring-mismatch, crash
 //   keyring.set(app, { service, account, secret, label }) / get(app, { service, account }) / remove / list
-//       the session keyring, per app: an app only sees its own items (unless the user shares them)
+//       the session keyring, per app: an app only sees its own items (unless the user shares them);
+//       inside an isolated .lpk app it goes through the broker and the owner is the app's own id
 //   autofill(app, { url | service })                → [{ id, title, username }] from Passwords (if it is unlocked)
 //   <KeyringPrompt />                               system prompt to unlock the keyring (mounted by startShell)
 //   <AutofillButton app service|url|ssid onFill />   "fill from Passwords" next to a login field
@@ -73,17 +74,38 @@ export function onVaultEvent(fn) {
 }
 
 // ---- the session keyring, per app ----
+// In an isolated .lpk app (lord-server --app <id>) there is no lord.vault: lord.keyring goes through
+// the broker, and lord-server sets the owner from the verified app id ("app.<id>"), so the `app`
+// argument is ignored there. Reading another app's item makes the system ask the user first.
+// Errors carry the same short codes in both cases (locked, no-keyring, not-found, not-shared,
+// unavailable); `errorCode` keeps the full code (keyring.locked…) and `message` is translated.
+
+const hasAppKeyring = () => typeof lord !== 'undefined' && !has() && lord.keyring && typeof lord.keyring.request === 'function';
+const KR_SHORT = { 'keyring.locked': 'locked', 'keyring.noKeyring': 'no-keyring', 'keyring.notFound': 'not-found',
+  'keyring.notShared': 'not-shared', 'keyring.badRequest': 'bad-request', 'keyring.saveFailed': 'save', 'vault.unavailable': 'unavailable' };
+
+function appKeyring(op, service = '', account = '', label = '', secret) {
+  return Promise.resolve().then(() => {
+    try { return JSON.parse(lord.keyring.request(op, String(service), String(account), String(label), secret == null ? '' : String(secret))); }
+    catch (e) { throw Object.assign(e, { errorCode: e.code, code: KR_SHORT[e.code] || 'error' }); }
+  });
+}
 
 export const keyring = {
-  set: (app, { service, account = '', secret, label = '' }) => vaultRequest('kr-set', { owner: app, service, account, secret: String(secret ?? ''), label }),
+  set: (app, { service, account = '', secret, label = '' }) => (hasAppKeyring()
+    ? appKeyring('set', service, account, label, String(secret ?? ''))
+    : vaultRequest('kr-set', { owner: app, service, account, secret: String(secret ?? ''), label })),
   get: async (app, { service, account = '' }) => {
-    try { const r = await vaultRequest('kr-get', { owner: app, service, account }); return r.item; }
+    try { const r = hasAppKeyring() ? await appKeyring('get', service, account) : await vaultRequest('kr-get', { owner: app, service, account }); return r.item; }
     catch (e) { if (e.code === 'not-found') return null; throw e; }
   },
-  remove: (app, { service, account = '' }) => vaultRequest('kr-del', { owner: app, service, account }),
-  list: async (app) => (await vaultRequest('kr-list', { owner: app })).items || [],
-  // the user agreed that `app` may use another app's item (the system asks, not the app)
-  share: (id, app, allow = true) => vaultRequest('kr-share', { admin: true, id, app, allow }),
+  remove: (app, { service, account = '' }) => (hasAppKeyring() ? appKeyring('delete', service, account) : vaultRequest('kr-del', { owner: app, service, account })),
+  list: async (app) => (hasAppKeyring() ? await appKeyring('list') : await vaultRequest('kr-list', { owner: app })).items || [],
+  // the user agreed that `app` may use another app's item (the system asks, not the app); not
+  // available inside an isolated app: there lord-server asks the user by itself on get
+  share: (id, app, allow = true) => (hasAppKeyring()
+    ? Promise.reject(Object.assign(new Error('denied'), { code: 'denied' }))
+    : vaultRequest('kr-share', { admin: true, id, app, allow })),
 };
 
 // ---- autofill in the login fields of native apps ----

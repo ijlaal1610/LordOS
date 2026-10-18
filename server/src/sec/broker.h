@@ -39,6 +39,9 @@ enum BrokerOp {
                          * "name"; the app never gets the device (docs/PASSWORDS.md) */
     BOP_CLIP_SECRET,    /* payload "seconds\0text": a secret to the clipboard, marked sensitive (out of
                          * the history, x-kde-passwordManagerHint) and cleared after `seconds` if unchanged */
+    BOP_KEYRING,        /* payload "op\0service\0account\0label\0secret" (op: get | set | delete | list) → the
+                         * app's own session-keyring items, owner = the verified app id (brokerkr.c,
+                         * docs/PASSWORDS.md). Error replies carry an error code line (keyring.*) */
     BOP_EVENT = 100,    /* server → app, unrequested (reqid 0): payload "type\0json" */
 };
 
@@ -72,6 +75,11 @@ int  brokersrv_count(void);
 void brokersrv_set_vault(int fd);
 /* The app <id> is running: ask it for a new window. 0 if sent, -1 if it is not running. */
 int  brokersrv_new_window(const char *id);
+/* Quit app <id> (❖Q, Dock → Quit): the app host closes all its windows, its close guards still
+ * apply, and the process ends when the last one closes. 0 if sent, -1 if it is not running. */
+int  brokersrv_quit(const char *id);
+/* The id of the isolated app whose process is `pid` (a Wayland client's pid), or NULL. */
+const char *brokersrv_app_of_pid(int pid);
 /* The theme publishes its state (type "theme" or "locale", JSON) and it's forwarded live to every
  * isolated app; it's also kept for the ones that start later (BOP_STATE). */
 int  brokersrv_publish(const char *kind, const char *json, size_t len);

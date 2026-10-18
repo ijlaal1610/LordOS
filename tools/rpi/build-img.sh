@@ -25,9 +25,12 @@ VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)
 WORK=${1:-/var/tmp/lordos-rpi}
 MIRROR=${MIRROR:-http://deb.debian.org/debian}
 RPI_MIRROR=${RPI_MIRROR:-http://archive.raspberrypi.com/debian}
-# Raspberry Pi archive key (raspberrypi.gpg.key). Verify it against
-# https://www.raspberrypi.com/documentation/ before the first build (see docs/RASPBERRY.md).
-RPI_KEY_URL=${RPI_KEY_URL:-$RPI_MIRROR/raspberrypi.gpg.key}
+# Raspberry Pi archive key. It is taken from the raspberrypi-archive-keyring package of the archive
+# (found through the Packages index; trust comes only from the fingerprint check below): the loose
+# raspberrypi.gpg.key at the archive root still carries its 2012 SHA-1 binding signatures, which apt's
+# sqv rejects since 2026-02-01 ("SHA1 is not considered secure"), while the package's copy is re-signed
+# with SHA-512. RPI_KEY_URL=<url> (an armored or binary key) skips the package. See docs/RASPBERRY.md.
+RPI_KEY_URL=${RPI_KEY_URL:-}
 RPI_KEY_FPR=${RPI_KEY_FPR:-CF8A1AF502A2AA2D763BAE7E82B129927FA3303E}
 IMG_EXTRA_MB=${IMG_EXTRA_MB:-512}
 SUITE=trixie
@@ -159,17 +162,32 @@ bootstrap "$CH" "$WORK/debootstrap.log"
 
 # Raspberry Pi archive: only kernel, firmware and utilities (preferences.d/raspberrypi)
 echo "== Raspberry Pi archive key"
-KEY="$WORK/raspberrypi.asc"
-curl -fsSL "$RPI_KEY_URL" -o "$KEY"
+KEY="$WORK/raspberrypi.pgp"
+rm -f "$KEY"
+if [ -n "$RPI_KEY_URL" ]; then
+    KEY_SRC=$RPI_KEY_URL
+    curl -fsSL "$RPI_KEY_URL" -o "$WORK/raspberrypi.key"
+else
+    KR=$(curl -fsSL "$RPI_MIRROR/dists/$SUITE/main/binary-$ARCH/Packages.gz" | gzip -dc |
+        awk '/^Package: raspberrypi-archive-keyring$/ { f = 1 } f && /^Filename:/ { print $2; exit }')
+    [ -n "$KR" ] || { echo "build-img.sh: raspberrypi-archive-keyring not found in $RPI_MIRROR ($SUITE)" >&2; exit 1; }
+    KEY_SRC="$RPI_MIRROR/$KR"
+    rm -rf "$WORK/rpi-keyring"; mkdir -p "$WORK/rpi-keyring"
+    curl -fsSL "$KEY_SRC" -o "$WORK/rpi-keyring.deb"
+    dpkg-deb -x "$WORK/rpi-keyring.deb" "$WORK/rpi-keyring"
+    cp "$WORK/rpi-keyring/usr/share/keyrings/raspberrypi-archive-keyring.pgp" "$WORK/raspberrypi.key"
+fi
+# always stored binary (dearmored): apt's sqv decides the format by the extension
+gpg --dearmor < "$WORK/raspberrypi.key" > "$KEY" 2>/dev/null && [ -s "$KEY" ] || cp "$WORK/raspberrypi.key" "$KEY"
 FPR=$(gpg --show-keys --with-colons "$KEY" 2>/dev/null | awk -F: '$1 == "fpr" { print $10; exit }')
 if [ "$FPR" != "$RPI_KEY_FPR" ] && [ "${RPI_KEY_NOCHECK:-0}" != 1 ]; then
-    echo "build-img.sh: the key at $RPI_KEY_URL has fingerprint $FPR (expected $RPI_KEY_FPR)" >&2
+    echo "build-img.sh: the key from $KEY_SRC has fingerprint $FPR (expected $RPI_KEY_FPR)" >&2
     echo "  verify it and pass RPI_KEY_FPR=<fingerprint> (see docs/RASPBERRY.md)" >&2
     exit 1
 fi
 install -d "$CH/etc/apt/keyrings"
-install -m 644 "$KEY" "$CH/etc/apt/keyrings/raspberrypi.asc"
-echo "deb [signed-by=/etc/apt/keyrings/raspberrypi.asc] $RPI_MIRROR $SUITE main" > "$CH/etc/apt/sources.list.d/raspberrypi.list"
+install -m 644 "$KEY" "$CH/etc/apt/keyrings/raspberrypi.pgp"
+echo "deb [signed-by=/etc/apt/keyrings/raspberrypi.pgp] $RPI_MIRROR $SUITE main" > "$CH/etc/apt/sources.list.d/raspberrypi.list"
 install -m 644 "$RPI/etc/apt/preferences.d/raspberrypi" "$CH/etc/apt/preferences.d/raspberrypi"
 
 echo lordos-pi > "$CH/etc/hostname"
@@ -202,7 +220,7 @@ en_US.UTF-8 UTF-8
 pt_BR.UTF-8 UTF-8
 EOF
 in_root "$CH" locale-gen > /dev/null
-echo 'LANG=es_ES.UTF-8' > "$CH/etc/default/locale"
+echo 'LANG=en_US.UTF-8' > "$CH/etc/default/locale"     # English by default, like the ISO
 ln -sf /usr/share/zoneinfo/UTC "$CH/etc/localtime"; echo UTC > "$CH/etc/timezone"
 echo 'net.ipv4.ping_group_range = 0 2147483647' > "$CH/etc/sysctl.d/50-lordos-ping.conf"
 
@@ -294,7 +312,7 @@ PARTUUID=$PARTUUID_BOOT  /boot/firmware vfat  defaults,umask=0077  0 2
 EOF
 # lordos.gpu=0 (safe mode, everything on the CPU) and lordos.lang=en|pt can be added here, as on the ISO.
 # lsm=: Landlock for app isolation (server/src/sec); those the kernel lacks are ignored.
-printf 'console=serial0,115200 console=tty3 root=PARTUUID=%s rootfstype=ext4 fsck.repair=yes rootwait quiet loglevel=3 cgroup_enable=memory lsm=landlock,lockdown,yama,integrity,apparmor,bpf lordos.lang=es\n' \
+printf 'console=serial0,115200 console=tty3 root=PARTUUID=%s rootfstype=ext4 fsck.repair=yes rootwait quiet loglevel=3 cgroup_enable=memory lsm=landlock,lockdown,yama,integrity,apparmor,bpf lordos.lang=en\n' \
     "$PARTUUID_ROOT" > "$WORK/mnt/boot/firmware/cmdline.txt"
 sync
 umount "$WORK/mnt/boot/firmware"

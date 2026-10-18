@@ -52,6 +52,7 @@
 #include <sys/ioctl.h>
 #include "../term/term.h"
 #include "../ui/ui.h"
+#include "../sec/broker.h"
 
 enum { R_NONE, R_TOPLEVEL, R_POPUP, R_SUB, R_CURSOR };
 
@@ -2136,16 +2137,7 @@ int wl_send_paste(void) {
     return 1;
 }
 
-int wl_key(int code, int value, const KeyInfo *k) {
-    if (!dpy) return 0;
-    if (k->meta && code == KEY_ESC && fs_surf) { if (value == 1) leave_fullscreen(fs_surf); return 1; }   /* ❖Esc exits */
-    if (fs_surf && fs_surf->content && key_focus != fs_surf) wl_set_focus(fs_surf->id);
-    if (!key_focus) return 0;
-    if (k->meta) return 0;                      /* ❖ + key: LordOS shortcuts */
-    /* media keys and Print Screen: always LordOS's (Player, Screenshots) */
-    if (code == KEY_PLAYPAUSE || code == KEY_NEXTSONG || code == KEY_PREVIOUSSONG || code == KEY_STOPCD || code == KEY_PLAYCD ||
-        code == KEY_PAUSECD || code == KEY_SYSRQ) return 0;
-    if (value == 2) return 1;                   /* apps repeat on their own (repeat_info) */
+static void send_key_to_focus(int code, int value) {
     unsigned t = now_ms();
     uint32_t d, l, lk, g;
     kb_mods(&d, &l, &lk, &g);
@@ -2157,6 +2149,52 @@ int wl_key(int code, int value, const KeyInfo *k) {
             wl_keyboard_send_modifiers(kb, wl_display_next_serial(dpy), d, l, lk, g);
     }
     mods_sent[0] = d; mods_sent[1] = l; mods_sent[2] = lk; mods_sent[3] = g;
+}
+
+/* The client with the keyboard is an isolated LordOS app (`lord-server --app`): its pid is the one
+ * lord-server registered when it spawned it (brokersrv). A Linux app never matches. */
+static int focus_is_lord_app(void) {
+    pid_t pid = 0;
+    uid_t uid;
+    gid_t gid;
+    if (!key_focus || !key_focus->client) return 0;
+    wl_client_get_credentials(key_focus->client, &pid, &uid, &gid);
+    return brokersrv_app_of_pid((int)pid) != NULL;
+}
+
+/* ❖ shortcuts that stay with LordOS even when an isolated app has the keyboard: lock (❖L, ❖⌃Q),
+ * quit (❖Q), search and keyboard layout (❖Space, ❖⌥Space), clipboard history (❖V, ❖⇧V), emoji
+ * (❖.), window switching (❖Tab, ❖`), screenshots (❖⇧3/4/5) and ❖Esc. */
+static int system_meta_key(int code, const KeyInfo *k) {
+    switch (code) {
+    case KEY_L: case KEY_Q: case KEY_SPACE: case KEY_V: case KEY_DOT: case KEY_TAB: case KEY_GRAVE: case KEY_ESC:
+        return 1;
+    case KEY_3: case KEY_4: case KEY_5:
+        return k->shift;
+    default:
+        return code >= KEY_F1 && code <= KEY_F12;
+    }
+}
+
+int wl_key(int code, int value, const KeyInfo *k) {
+    if (!dpy) return 0;
+    if (k->meta && code == KEY_ESC && fs_surf) { if (value == 1) leave_fullscreen(fs_surf); return 1; }   /* ❖Esc exits */
+    if (fs_surf && fs_surf->content && key_focus != fs_surf) wl_set_focus(fs_surf->id);
+    if (!key_focus) return 0;
+    int super = code == KEY_LEFTMETA || code == KEY_RIGHTMETA;
+    if (k->meta || super) {
+        /* ❖ + key: LordOS shortcuts. An isolated LordOS app also gets the ones that are not the
+         * system's (❖N, ❖C, ❖A, ❖W…), with the ❖ key itself so it knows the modifier, as an app in
+         * the theme would; the theme still sees them (it tracks ❖ pressed alone). A Linux app only
+         * gets the release of ❖, as before. */
+        if (value != 2 && (focus_is_lord_app() ? super || !system_meta_key(code, k) : super && !value)) send_key_to_focus(code, value);
+        return 0;
+    }
+    /* media keys and Print Screen: always LordOS's (Player, Screenshots) */
+    if (code == KEY_PLAYPAUSE || code == KEY_NEXTSONG || code == KEY_PREVIOUSSONG || code == KEY_STOPCD || code == KEY_PLAYCD ||
+        code == KEY_PAUSECD || code == KEY_SYSRQ) return 0;
+    if (value == 2) return 1;                   /* apps repeat on their own (repeat_info) */
+    send_key_to_focus(code, value);
     return 1;
 }
 
