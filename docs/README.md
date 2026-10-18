@@ -50,6 +50,7 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 | [PRIVACY.md](PRIVACY.md) | App isolation, permissions, and what is isolated today |
 | [FIREWALL.md](FIREWALL.md) | Per-app firewall, restrictions and domain rules |
 | [SIGNING.md](SIGNING.md) | Package signing, trust levels and release signing |
+| [SECURITY-REVIEW-0.8.0.md](SECURITY-REVIEW-0.8.0.md) | Security review before 0.8.0-beta: every finding and its status |
 | [PASSWORDS.md](PASSWORDS.md) | Passwords and the system keyring |
 | [COMPLIANCE.md](COMPLIANCE.md) | Licence compliance, the SBOM, and the standards our processes align with |
 | [../SECURITY.md](../SECURITY.md) | How to report a vulnerability |
