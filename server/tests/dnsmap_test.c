@@ -1,6 +1,6 @@
-/* dnsmap_test.c — IP → nombres por app (src/fw/dnsmap.c): lector de respuestas DNS (A, AAAA,
- * cadenas de CNAME, compresión) con paquetes rotos, cortados y con bucles de punteros; la LRU con
- * TTL; y el uso junto a las reglas de dominio. Termina con mutaciones al azar. */
+/* dnsmap_test.c — IP → names per app (src/fw/dnsmap.c): DNS answer reader (A, AAAA,
+ * CNAME chains, compression) with broken, truncated and pointer-loop packets; the LRU with
+ * TTL; and its use together with the domain rules. Ends with random mutations. */
 #ifndef _GNU_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -13,9 +13,9 @@
 #include <string.h>
 
 static int fails, checks;
-#define CHECK(c) do { checks++; if (!(c)) { fails++; fprintf(stderr, "%s:%d: falló: %s\n", __FILE__, __LINE__, #c); } } while (0)
+#define CHECK(c) do { checks++; if (!(c)) { fails++; fprintf(stderr, "%s:%d: failed: %s\n", __FILE__, __LINE__, #c); } } while (0)
 
-/* ---- armado de paquetes ------------------------------------------------------------------------ */
+/* ---- packet building ---------------------------------------------------------------------------- */
 
 typedef struct { uint8_t b[4096]; size_t n; } Pkt;
 
@@ -23,7 +23,7 @@ static void u8(Pkt *p, unsigned v) { p->b[p->n++] = (uint8_t)v; }
 static void u16(Pkt *p, unsigned v) { u8(p, v >> 8); u8(p, v & 255); }
 static void u32(Pkt *p, uint32_t v) { u16(p, v >> 16); u16(p, v & 0xffff); }
 
-/* Nombre en texto ("www.example.com"); "@N" al final = puntero a N (ej. "www@12"). */
+/* Name as text ("www.example.com"); "@N" at the end = pointer to N (e.g. "www@12"). */
 static void name(Pkt *p, const char *s) {
     while (*s) {
         if (*s == '@') { unsigned off = (unsigned)atoi(s + 1); u16(p, 0xc000 | off); return; }
@@ -86,7 +86,7 @@ static void test_parse(void) {
     DnsResponse *r = malloc(sizeof *r);
     Pkt p;
 
-    /* A simple, con el dueño comprimido a la pregunta (offset 12) */
+    /* simple A, with the owner compressed to the question (offset 12) */
     header(&p, 0x8180, 1, 2);
     question(&p, "WWW.Example.com", 1);
     rr_a(&p, "@12", "93.184.216.34", 300);
@@ -95,13 +95,13 @@ static void test_parse(void) {
     CHECK(!strcmp(r->qname, "www.example.com") && r->naddr == 2 && r->addr[0].fam == 4 && r->addr[1].ttl == 100);
     CHECK(!strcmp(r->addr[0].owner, "www.example.com"));
 
-    /* cortado en cualquier lugar: siempre -1 */
+    /* truncated anywhere: always -1 */
     size_t full = p.n;
     int all = 1;
     for (size_t n = 0; n < full; n++) if (dns_parse_response(p.b, n, r) != -1) all = 0;
     CHECK(all);
 
-    /* no es respuesta, otra operación, dos preguntas, ninguna */
+    /* not an answer, another opcode, two questions, none */
     p.b[2] = 0x01; CHECK(dns_parse_response(p.b, full, r) == -1);
     p.b[2] = 0x81 | (2 << 3); CHECK(dns_parse_response(p.b, full, r) == -1);
     p.b[2] = 0x81; p.b[5] = 2; CHECK(dns_parse_response(p.b, full, r) == -1);
@@ -109,12 +109,12 @@ static void test_parse(void) {
     p.b[5] = 1; CHECK(dns_parse_response(p.b, full, r) == 0);
     CHECK(dns_parse_response(NULL, 10, r) == -1);
 
-    /* NXDOMAIN: válido, sin datos */
+    /* NXDOMAIN: valid, no data */
     header(&p, 0x8183, 1, 0);
     question(&p, "nope.example", 1);
     CHECK(dns_parse_response(p.b, p.n, r) == 0 && r->rcode == 3 && r->naddr == 0);
 
-    /* bucles de compresión: a sí mismo, hacia adelante, dos que se apuntan, adentro del propio nombre */
+    /* compression loops: to itself, forward, two pointing at each other, inside its own name */
     header(&p, 0x8180, 1, 0);
     u16(&p, 0xc00c); u16(&p, 1); u16(&p, 1);
     CHECK(dns_parse_response(p.b, p.n, r) == -1);
@@ -124,7 +124,7 @@ static void test_parse(void) {
     header(&p, 0x8180, 1, 1);
     question(&p, "a.b", 1);                             /* 12..16 */
     size_t loop = p.n;
-    u8(&p, 1); u8(&p, 'x'); u16(&p, 0xc000 | (unsigned)(loop + 4));   /* x → (más adelante) */
+    u8(&p, 1); u8(&p, 'x'); u16(&p, 0xc000 | (unsigned)(loop + 4));   /* x → (further ahead) */
     u8(&p, 1); u8(&p, 'y'); u16(&p, 0xc000 | (unsigned)loop);         /* y → x */
     u16(&p, 1); u16(&p, 1); u32(&p, 60); u16(&p, 4); u32(&p, 0x01020304);
     CHECK(dns_parse_response(p.b, p.n, r) == -1);
@@ -135,7 +135,7 @@ static void test_parse(void) {
     u16(&p, 1); u16(&p, 1); u32(&p, 60); u16(&p, 4); u32(&p, 0x01020304);
     CHECK(dns_parse_response(p.b, p.n, r) == -1);
 
-    /* tipos de etiqueta 0x40/0x80, nombre de más de 255 bytes, puntero cortado */
+    /* label types 0x40/0x80, name longer than 255 bytes, truncated pointer */
     header(&p, 0x8180, 1, 0);
     u8(&p, 0x41); for (int i = 0; i < 0x41; i++) u8(&p, 'a'); u8(&p, 0); u16(&p, 1); u16(&p, 1);
     CHECK(dns_parse_response(p.b, p.n, r) == -1);
@@ -147,7 +147,7 @@ static void test_parse(void) {
     u8(&p, 0xc0);
     CHECK(dns_parse_response(p.b, p.n, r) == -1);
 
-    /* rdata con largo incorrecto: A de 5, CNAME que no ocupa justo su rdata, rdlen más allá */
+    /* rdata with a wrong length: A of 5, CNAME that doesn't fill exactly its rdata, rdlen past the end */
     header(&p, 0x8180, 1, 1);
     question(&p, "a.example", 1);
     name(&p, "@12"); u16(&p, 1); u16(&p, 1); u32(&p, 60); u16(&p, 5); u32(&p, 0x01020304); u8(&p, 0);
@@ -161,7 +161,7 @@ static void test_parse(void) {
     name(&p, "@12"); u16(&p, 1); u16(&p, 1); u32(&p, 60); u16(&p, 400); u32(&p, 0x01020304);
     CHECK(dns_parse_response(p.b, p.n, r) == -1);
 
-    /* nombres que no son de host y otras clases: el paquete vale, el registro no se usa */
+    /* names that aren't host names and other classes: the packet is valid, the record is not used */
     header(&p, 0x8180, 1, 2);
     question(&p, "ok.example", 1);
     rr_a(&p, "bad name.example", "1.1.1.1", 60);
@@ -172,7 +172,7 @@ static void test_parse(void) {
     rr_a(&p, "@12", "1.1.1.1", 60);
     CHECK(dns_parse_response(p.b, p.n, r) == 0 && r->qname[0] == 0 && r->naddr == 0);
 
-    /* TTL con el bit alto = 0; más de DNS_MAX_ADDRS registros: se toman los primeros */
+    /* TTL with the high bit = 0; more than DNS_MAX_ADDRS records: the first ones are taken */
     header(&p, 0x8180, 1, 70);
     question(&p, "many.example", 1);
     for (int i = 0; i < 70; i++) {
@@ -192,7 +192,7 @@ static void test_map(void) {
     Pkt p;
     const char *A = "desktop:org.chromium.Chromium";
 
-    /* cadena de CNAME con compresión, más un registro suelto que no sale de la pregunta */
+    /* CNAME chain with compression, plus a stray record that doesn't follow from the question */
     header(&p, 0x8180, 1, 5);
     question(&p, "www.example.com", 1);
     rr_cname(&p, "@12", "edge.cdn.net", 3600);
@@ -205,18 +205,18 @@ static void test_map(void) {
     int n = look(m, A, "203.0.113.10", 1000, out, 16);
     CHECK(n == 3 && has(out, n, "www.example.com") && has(out, n, "edge.cdn.net") && has(out, n, "a1.cdn.net"));
     CHECK(look(m, A, "2001:db8::10", 1000, out, 16) == 3);
-    CHECK(look(m, A, "203.0.113.66", 1000, out, 16) == 0);  /* el suelto se ignoró */
+    CHECK(look(m, A, "203.0.113.66", 1000, out, 16) == 0);  /* the stray one was ignored */
     CHECK(look(m, A, "::ffff:203.0.113.10", 1000, out, 16) == 3);   /* IPv4 mapeada */
     CHECK(look(m, "desktop:other", "203.0.113.10", 1000, out, 16) == 0);
     CHECK(look(m, "app-lordos-org.chromium.Chromium.scope", "203.0.113.10", 1000, out, 16) == 3);
     CHECK(look(m, A, "203.0.113.10", 1000, out, 1) == 1);
-    /* TTL: el más chico de la cadena (120) */
+    /* TTL: the smallest in the chain (120) */
     CHECK(look(m, A, "203.0.113.10", 1119, out, 16) == 3);
     CHECK(look(m, A, "203.0.113.10", 1120, out, 16) == 0);
     CHECK(look(m, A, "2001:db8::10", 1120, out, 16) == 0);
     CHECK(dnsmap_count(m) == 0);
 
-    /* CNAME en bucle: se corta sin colgarse; la dirección del final no está en la cadena */
+    /* looping CNAME: cut off without hanging; the final address is not in the chain */
     header(&p, 0x8180, 1, 3);
     question(&p, "loop.example", 1);
     rr_cname(&p, "@12", "b.example", 60);
@@ -225,7 +225,7 @@ static void test_map(void) {
     CHECK(dnsmap_learn(m, A, p.b, p.n, 2000) == 2);
     CHECK(look(m, A, "198.51.100.1", 2000, out, 16) == 2);
 
-    /* TTL 0 se lleva a DNSMAP_TTL_MIN; uno enorme a DNSMAP_TTL_MAX */
+    /* TTL 0 is raised to DNSMAP_TTL_MIN; a huge one lowered to DNSMAP_TTL_MAX */
     uint8_t a[16];
     int fam = ip("192.0.2.1", a);
     CHECK(!dnsmap_add(m, A, "zero.example", fam, a, 0, 5000));
@@ -234,13 +234,13 @@ static void test_map(void) {
     CHECK(!dnsmap_add(m, A, "big.example", fam, a, 0xffffffffu, 5000));
     CHECK(look(m, A, "192.0.2.1", 5000 + DNSMAP_TTL_MAX - 1, out, 16) == 1);
     CHECK(look(m, A, "192.0.2.1", 5000 + DNSMAP_TTL_MAX, out, 16) == 0);
-    /* entradas inválidas */
+    /* invalid input */
     CHECK(dnsmap_add(m, A, "bad name", fam, a, 60, 0) == -1);
     CHECK(dnsmap_add(m, "bad app", "x.example", fam, a, 60, 0) == -1);
     CHECK(dnsmap_add(m, A, "x.example", 5, a, 60, 0) == -1);
     CHECK(dnsmap_learn(m, A, (const uint8_t *)"junk", 4, 0) == -1);
 
-    /* nombres por IP: a lo sumo DNSMAP_PER_IP, quedan los más nuevos, del más reciente al más viejo */
+    /* names per IP: at most DNSMAP_PER_IP, the newest stay, from most recent to oldest */
     for (int i = 0; i < 20; i++) {
         char nm[32];
         snprintf(nm, sizeof nm, "n%d.example", i);
@@ -248,7 +248,7 @@ static void test_map(void) {
     }
     n = look(m, A, "192.0.2.1", 6000, out, 16);
     CHECK(n == DNSMAP_PER_IP && !strcmp(out[0], "n19.example") && !strcmp(out[DNSMAP_PER_IP - 1], "n12.example"));
-    /* volver a ver un nombre lo pone primero */
+    /* seeing a name again moves it to the front */
     CHECK(!dnsmap_add(m, A, "n14.example", fam, a, 600, 6001));
     CHECK(look(m, A, "192.0.2.1", 6001, out, 16) == DNSMAP_PER_IP && !strcmp(out[0], "n14.example"));
 
@@ -267,7 +267,7 @@ static void test_map(void) {
     }
     CHECK(look(m, "lpk:x", "10.0.0.99", 0, out, 16) == 1);
     CHECK(look(m, "lpk:y", "10.0.0.0", 0, out, 16) == 0);
-    /* lo que se consulta no se olvida primero */
+    /* what gets looked up is not evicted first */
     CHECK(look(m, "lpk:y", "10.0.0.84", 0, out, 16) == 1);
     for (int i = 100; i < 115; i++) {
         char addr[32];
@@ -289,7 +289,7 @@ static void test_map(void) {
     dnsmap_free(m);
 }
 
-/* ---- con las reglas ---------------------------------------------------------------------------- */
+/* ---- with the rules ---------------------------------------------------------------------------- */
 
 static void test_with_rules(void) {
     DnsMap *m = dnsmap_new(0);
@@ -328,7 +328,7 @@ static void test_with_rules(void) {
     q.fam = ip("2606:2800:220:1::1", q.addr);
     q.nhosts = dnsmap_lookup(m, A, q.fam, q.addr, 10, names, DNSMAP_PER_IP);
     CHECK(q.nhosts == 1 && fw_decide(s, &q).verdict == FW_V_ALLOW);
-    /* otra app no hereda los nombres que resolvió Chromium */
+    /* another app does not inherit the names Chromium resolved */
     q.app = "desktop:other";
     q.nhosts = dnsmap_lookup(m, q.app, q.fam, q.addr, 10, names, DNSMAP_PER_IP);
     CHECK(q.nhosts == 0 && fw_decide(s, &q).verdict == FW_V_ASK);
@@ -336,7 +336,7 @@ static void test_with_rules(void) {
     dnsmap_free(m);
 }
 
-/* ---- al azar ----------------------------------------------------------------------------------- */
+/* ---- random ------------------------------------------------------------------------------------ */
 
 static void fuzz(void) {
     DnsMap *m = dnsmap_new(256);
@@ -372,7 +372,7 @@ static void fuzz(void) {
                 }
             }
         }
-        /* copia exacta en el montón: ASan ve cualquier lectura de más */
+        /* exact copy on the heap: ASan sees any over-read */
         uint8_t *h = malloc(n ? n : 1);
         memcpy(h, buf, n);
         int res = dns_parse_response(h, n, r);
@@ -385,7 +385,7 @@ static void fuzz(void) {
         free(h);
         CHECK(dnsmap_count(m) <= 256);
     }
-    printf("  azar: 200000 paquetes, %ld válidos, %ld rechazados, %zu nombres en la tabla\n", ok, bad, dnsmap_count(m));
+    printf("  random: 200000 packets, %ld valid, %ld rejected, %zu names in the table\n", ok, bad, dnsmap_count(m));
     free(r);
     dnsmap_free(m);
 }
@@ -395,6 +395,6 @@ int main(void) {
     test_map();
     test_with_rules();
     fuzz();
-    printf("dnsmap-test: %d/%d bien\n", checks - fails, checks);
+    printf("dnsmap-test: %d/%d passed\n", checks - fails, checks);
     return fails ? 1 : 0;
 }

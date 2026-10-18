@@ -1,13 +1,13 @@
-/* map.c — mapa del mundo del Monitor, rellenado en vectores en un hilo propio (ver map.h).
+/* map.c — the Monitor's world map, filled from vectors on its own thread (see map.h).
  *
- * land.bin (tools/gen-monitor-data.py): por país, su caja y sus anillos en centésimos de grado.
- * Proyección equirectangular: x = (lon - lon0) * ppd, y = (lat0 - lat) * ppd.
+ * land.bin (tools/gen-monitor-data.py): per country, its box and its rings in hundredths of a degree.
+ * Equirectangular projection: x = (lon - lon0) * ppd, y = (lat0 - lat) * ppd.
  *
- * Relleno: tabla de aristas activas con 4 sub-líneas por fila y cobertura horizontal exacta
- * (antialias), par-impar sobre todos los países a la vez (no se superponen; los agujeros, como
- * Lesoto dentro de Sudáfrica, se resuelven solos). Después: bordes con líneas antialias, arcos
- * desde "este equipo" (curva cuadrática) y los puntos. Todo se recalcula solo cuando el hilo de
- * la pantalla pide otro cuadro (zoom, desplazamiento o datos nuevos). */
+ * Fill: active edge table with 4 sub-scanlines per row and exact horizontal coverage
+ * (antialiasing), even-odd over all countries at once (they don't overlap; holes, like
+ * Lesotho inside South Africa, resolve themselves). Then: borders with antialiased lines, arcs
+ * from "this machine" (quadratic curve) and the dots. Everything is recomputed only when the
+ * screen thread asks for another frame (zoom, panning or new data). */
 #include "map.h"
 #include "monpriv.h"
 
@@ -20,7 +20,7 @@
 #include <string.h>
 #include <time.h>
 
-#define SS 4                            /* sub-líneas por fila */
+#define SS 4                            /* sub-scanlines per row */
 #define LAND_MAX (8u << 20)
 
 typedef struct { int16_t bbox[4]; uint32_t ring0, nrings; } Country;
@@ -29,7 +29,7 @@ static struct {
     uint8_t *raw;                       /* land.bin */
     Country *c;
     uint32_t nc;
-    uint32_t *ring_off, *ring_n;        /* desplazamiento (en puntos) y largo de cada anillo */
+    uint32_t *ring_off, *ring_n;        /* offset (in points) and length of each ring */
     uint32_t nrings;
 } L;
 
@@ -46,7 +46,7 @@ static struct {
     char path[PATH_MAX];
 } M = { .mu = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER };
 
-/* ---- datos ------------------------------------------------------------------------------ */
+/* ---- data ------------------------------------------------------------------------------- */
 
 static void land_free(void) {
     free(L.raw); free(L.c); free(L.ring_off); free(L.ring_n);
@@ -56,7 +56,7 @@ static void land_free(void) {
 static uint32_t rd32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 static int16_t rd16(const uint8_t *p) { return (int16_t)(uint16_t)(p[0] | p[1] << 8); }
 
-/* Lee y verifica land.bin: todo lo que se usa después está dentro del archivo. */
+/* Reads and verifies land.bin: everything used afterwards is inside the file. */
 static int land_load(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
@@ -68,7 +68,7 @@ static int land_load(const char *path) {
     if (!ok) { free(b); return -1; }
     size_t n = (size_t)len, o = 12;
     uint32_t nc = rd32(b + 8), nrings = 0;
-    /* primera pasada: contar y verificar largos */
+    /* first pass: count and verify lengths */
     for (uint32_t i = 0; i < nc && ok; i++) {
         if (o + 12 > n) { ok = 0; break; }
         uint32_t nr = (uint32_t)(b[o + 10] | b[o + 11] << 8);
@@ -100,7 +100,7 @@ static int land_load(const char *path) {
         for (uint32_t r = 0; r < nr; r++, k++) {
             uint32_t np = rd32(b + o);
             o += 4;
-            L.ring_off[k] = (uint32_t)o;            /* en bytes */
+            L.ring_off[k] = (uint32_t)o;            /* in bytes */
             L.ring_n[k] = np;
             o += (size_t)np * 4;
         }
@@ -115,7 +115,7 @@ static inline void ring_pt(uint32_t ring, uint32_t i, double *lon, double *lat) 
     *lat = rd16(p + 2) / 100.0;
 }
 
-/* ---- dibujo ----------------------------------------------------------------------------- */
+/* ---- drawing ---------------------------------------------------------------------------- */
 
 typedef struct { float y0, y1, x, dx; } Edge;
 
@@ -157,7 +157,7 @@ static void fill_land(const MapReq *q, uint8_t *out) {
             for (uint32_t i = 0; i < np; i++) {
                 ring_pt(r, i, &lon, &lat);
                 float x = (float)((lon - q->lon0) * q->ppd), y = (float)((q->lat0 - lat) * q->ppd);
-                if (i + 1 < np && fabsf(x - px) + fabsf(y - py) < 1.0f) continue;   /* menos de 1 px: se salta */
+                if (i + 1 < np && fabsf(x - px) + fabsf(y - py) < 1.0f) continue;   /* less than 1 px: skipped */
                 if (y != py && !((y < 0 && py < 0) || (y > q->h && py > q->h))) {
                     if (n == cap) {
                         Edge *ne = realloc(e, cap * 2 * sizeof *e);
@@ -175,8 +175,8 @@ static void fill_land(const MapReq *q, uint8_t *out) {
             }
         }
     }
-    /* orden por sub-línea de comienzo (conteo, O(n)): la arista entra en la sub-línea k, la
-     * primera con k + 0.5 >= y0 * SS */
+    /* sort by starting sub-scanline (counting sort, O(n)): the edge enters at sub-scanline k, the
+     * first with k + 0.5 >= y0 * SS */
     size_t nk = (size_t)q->h * SS + 1;
     uint32_t *cnt = calloc(nk + 1, sizeof *cnt);
     Edge *sorted = malloc((n ? n : 1) * sizeof *sorted);
@@ -203,8 +203,8 @@ static void fill_land(const MapReq *q, uint8_t *out) {
             float sy = y + (s + 0.5f) / SS;
             size_t sub = (size_t)y * SS + (size_t)s;
             while (next < n && edge_key(&e[next], nk) <= sub) act[na++] = next++;
-            /* las aristas activas quedan ordenadas por x entre sub-líneas: casi no se mueven,
-             * así que la inserción es casi lineal */
+            /* the active edges stay sorted by x between sub-scanlines: they barely move,
+             * so insertion is almost linear */
             size_t k = 0;
             for (size_t i = 0; i < na; i++) {
                 Edge *d = &e[act[i]];
@@ -219,7 +219,7 @@ static void fill_land(const MapReq *q, uint8_t *out) {
                 }
             }
             na = k;
-            /* las que todavía no empiezan (y0 > sy) quedaron al comienzo con x = -1e9: se saltan */
+            /* the ones that haven't started yet (y0 > sy) were left at the start with x = -1e9: skipped */
             size_t first = 0;
             while (first < na && xs[first] < -1e8f) first++;
             float *xv = xs + first;
@@ -232,13 +232,13 @@ static void fill_land(const MapReq *q, uint8_t *out) {
                 any = 1;
                 if (ia == ib) { cov[ia] += u * (b - a); continue; }
                 cov[ia] += u * (ia + 1 - a);
-                run[ia + 1] += u;                   /* tramo entero: suma acumulada al final */
+                run[ia + 1] += u;                   /* whole span: accumulated sum at the end */
                 run[ib] -= u;
                 if (ib < q->w) cov[ib] += u * (b - ib);
             }
         }
         if (!any) continue;
-        /* la tierra se escribe directo, sin mezclar (abajo solo hay líneas de la grilla) */
+        /* land is written directly, without blending (below there are only grid lines) */
         uint8_t *row = out + (size_t)y * q->w * 4;
         float acc = 0;
         for (int x = 0; x < q->w; x++) {
@@ -254,7 +254,7 @@ static void fill_land(const MapReq *q, uint8_t *out) {
     free(cov); free(run); free(act); free(xs); free(e);
 }
 
-/* Línea antialias de ~1 px (Xiaolin Wu). */
+/* ~1 px antialiased line (Xiaolin Wu). */
 static void plot(const MapReq *q, uint8_t *out, int x, int y, uint32_t c, float a) {
     if (x >= 0 && y >= 0 && x < q->w && y < q->h) blend(out + ((size_t)y * q->w + x) * 4, c, a);
 }
@@ -296,7 +296,7 @@ static void borders(const MapReq *q, uint8_t *out) {
     }
 }
 
-/* Disco con borde suave. */
+/* Disc with a soft edge. */
 static void disc(const MapReq *q, uint8_t *out, float cx, float cy, float rad, uint32_t c, float alpha) {
     for (int y = (int)floorf(cy - rad - 1); y <= (int)ceilf(cy + rad + 1); y++)
         for (int x = (int)floorf(cx - rad - 1); x <= (int)ceilf(cx + rad + 1); x++) {
@@ -305,7 +305,7 @@ static void disc(const MapReq *q, uint8_t *out, float cx, float cy, float rad, u
         }
 }
 
-/* Arco: curva cuadrática que sube hacia el polo, más fuerte hacia el destino. */
+/* Arc: quadratic curve that rises towards the pole, stronger towards the destination. */
 static void arc(const MapReq *q, uint8_t *out, float x0, float y0, float x1, float y1, uint32_t c, float width, float alpha) {
     float len = hypotf(x1 - x0, y1 - y0);
     if (len < 2) return;
@@ -318,7 +318,7 @@ static void arc(const MapReq *q, uint8_t *out, float x0, float y0, float x1, flo
         float x = u * u * x0 + 2 * u * t * cx + t * t * x1, y = u * u * y0 + 2 * u * t * cy + t * t * y1;
         if (!((x < -width && px < -width) || (y < -width && py < -width) || (x > q->w + width && px > q->w + width) || (y > q->h + width && py > q->h + width))) {
             float a = alpha * (0.35f + 0.65f * t);
-            /* sello circular de radio width/2, solo donde el píxel todavía es más tenue */
+            /* circular stamp of radius width/2, only where the pixel is still fainter */
             for (int yy = (int)floorf(y - width); yy <= (int)ceilf(y + width); yy++)
                 for (int xx = (int)floorf(x - width); xx <= (int)ceilf(x + width); xx++) {
                     if (xx < 0 || yy < 0 || xx >= q->w || yy >= q->h) continue;
@@ -334,7 +334,7 @@ static void arc(const MapReq *q, uint8_t *out, float x0, float y0, float x1, flo
     }
 }
 
-/* Meridianos y paralelos cada 30° (cada 10° con zoom), muy tenues: el mar también es mapa. */
+/* Meridians and parallels every 30° (every 10° when zoomed), very faint: the sea is map too. */
 static void graticule(const MapReq *q, uint8_t *out) {
     uint32_t c = (q->border & 0xffffff00u) | ((q->border & 0xff) / 4);
     int step = q->ppd > 12 ? 10 : 30;
@@ -356,7 +356,7 @@ static void render(const MapReq *q, uint8_t *out) {
         borders(q, out);
     }
     float hx = (float)((q->hlon - q->lon0) * q->ppd), hy = (float)((q->lat0 - q->hlat) * q->ppd);
-    for (int pass = 0; pass < 2 && q->has_home; pass++)        /* elegidos al final, encima */
+    for (int pass = 0; pass < 2 && q->has_home; pass++)        /* selected ones last, on top */
         for (int i = 0; i < q->ndots; i++) {
             const MapDot *d = &q->dots[i];
             if (!!d->sel != pass) continue;
@@ -379,7 +379,7 @@ static void render(const MapReq *q, uint8_t *out) {
     }
 }
 
-/* ---- hilo -------------------------------------------------------------------------------- */
+/* ---- thread ------------------------------------------------------------------------------ */
 
 static void *worker(void *arg) {
     (void)arg;
@@ -391,7 +391,7 @@ static void *worker(void *arg) {
             struct timespec ts;
             clock_gettime(CLOCK_REALTIME, &ts);
             ts.tv_sec += 20;
-            /* 20 s sin pedidos (Monitor cerrado o en otra pestaña): se sueltan los datos */
+            /* 20 s without requests (Monitor closed or on another tab): the data is released */
             if (pthread_cond_timedwait(&M.cv, &M.mu, &ts) == ETIMEDOUT && !M.pending) {
                 land_free();
                 free(M.frame);
@@ -414,7 +414,7 @@ static void *worker(void *arg) {
         render(&q, buf);
         double ms = mon_now_ms() - t0;
         pthread_mutex_lock(&M.mu);
-        uint8_t *old = M.frame;             /* doble búfer: el cuadro anterior se reusa */
+        uint8_t *old = M.frame;             /* double buffer: the previous frame is reused */
         size_t old_cap = M.frame_cap;
         M.frame = buf;
         M.frame_cap = cap;

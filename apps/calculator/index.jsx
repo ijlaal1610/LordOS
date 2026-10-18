@@ -1,4 +1,4 @@
-// Calculadora — app nativa de ejemplo: botones y teclado (sin eval: parser propio).
+// Calculator — sample native app: buttons and keyboard (no eval: our own parser).
 import { View, Text, useTheme, useKeyboard, t as tr, formatNumber } from '@lordos/sdk';
 import { useState } from 'react';
 
@@ -18,7 +18,7 @@ export function Icon({ size: s }) {
   );
 }
 
-// Evalúa + - × ÷ con precedencia y paréntesis (descenso recursivo).
+// Evaluates + - × ÷ with precedence and parentheses (recursive descent).
 function evaluate(src) {
   const toks = src.replace(/×/g, '*').replace(/÷/g, '/').replace(/,/g, '.').match(/\d*\.?\d+|[-+*/()]/g) || [];
   let i = 0;
@@ -28,7 +28,7 @@ function evaluate(src) {
     if (tk === '-') return -factor();
     if (tk === '(') { const v = expr(); next(); return v; }
     const n = parseFloat(tk);
-    if (Number.isNaN(n)) throw new Error('sintaxis');
+    if (Number.isNaN(n)) throw new Error('syntax');
     return n;
   };
   const term = () => {
@@ -73,7 +73,7 @@ export default function Calculator() {
     if (KEYS.flat().includes(k)) press(k);
   });
 
-  // separador decimal de la región (1,5 o 1.5); internamente siempre '.'
+  // the region's decimal separator (1,5 or 1.5); internally always '.'
   const dec = formatNumber(1.5, 1)[1];
   // on screen, the typographic minus (−) instead of the hyphen
   const show = (x) => x.replace(/\./g, dec).replace(/-/g, '−');

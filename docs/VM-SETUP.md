@@ -286,7 +286,7 @@ con `WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000`).
 
 ## Paso 13 — M7: apps, paquetes y servicios del sistema
 
-**Sonido** (`SONIDO.md`):
+**Sonido** (`SOUND.md`):
 
 ```sh
 sudo apt-get install -y --no-install-recommends pipewire pipewire-pulse wireplumber pipewire-alsa
@@ -317,7 +317,7 @@ arranca, porque sus íconos son SVG.
 `sudo usermod -aG audio lord && sudo systemctl restart user@1000` (sin sesión con asiento,
 `/dev/snd` solo es del grupo `audio`).
 
-**Red y VPN** (`RED.md`):
+**Red y VPN** (`NETWORK.md`):
 
 ```sh
 sudo apt-get install -y --no-install-recommends wpasupplicant openvpn
@@ -329,11 +329,11 @@ LordOS lanza `wpa_supplicant` y `openvpn` con su ruta fija y una config generada
 pruebas de Wi-Fi usan el módulo `mac80211_hwsim` y las de VPN y DHCP, network namespaces: nunca
 tocan eth0.
 
-**Paquetes de Debian** (`PAQUETES.md`): no hace falta instalar nada. El motor propio usa las
+**Paquetes de Debian** (`PACKAGES.md`): no hace falta instalar nada. El motor propio usa las
 fuentes de apt que ya están y `dpkg`, y guarda su índice en `/var/lib/lordos/pkg`
 (~98 MB con trixie, updates, backports y security).
 
-**Escrituras de M5b** (`IDIOMAS.md`): `libthai-data` y `fonts-noto-core` ya estaban;
+**Escrituras de M5b** (`LANGUAGES.md`): `libthai-data` y `fonts-noto-core` ya estaban;
 `libthai-dev` solo para comparar el corte del tailandés contra libthai.
 
 ## VM 116 `lordos-gpu` (camino GPU)
@@ -408,7 +408,7 @@ las pruebas: `wl-clipboard` (`wl-copy`/`wl-paste`) y `tests/clip_secret.c`
 
 ## Paso 15 — M8: sesiones, pantalla de ingreso y escritorio remoto
 
-Ver `SESIONES.md` y `REMOTO.md`. En la VM 118 (172.17.0.53):
+Ver `SESSIONS.md` y `REMOTE.md`. En la VM 118 (172.17.0.53):
 
 ```sh
 sudo apt-get install -y --no-install-recommends libssl-dev      # para compilar lord-sessiond
@@ -446,7 +446,7 @@ No se abrió ningún puerto ni regla de firewall: las VMs están en la misma LAN
 
 ## Paso 16 — M8: privacidad, aislamiento y firma de apps
 
-Ver `PRIVACIDAD.md` y `FIRMA.md`. VM propia, clon completo de la 115:
+Ver `PRIVACY.md` y `SIGNING.md`. VM propia, clon completo de la 115:
 
 ```sh
 # en el host Proxmox
@@ -587,7 +587,7 @@ sudo install -m 755 tests/touchpad-sim/tpsim /usr/local/bin/tpsim
 En la **VM 116** (172.17.0.52), en una carpeta aparte, `~/LordOS-m9`: `~/LordOS-iso` y su entorno
 de armado no se tocaron.
 
-**Para compilar `lord-doc`** (el ayudante de documentos, `DOCUMENTOS.md`):
+**Para compilar `lord-doc`** (el ayudante de documentos, `DOCUMENTS.md`):
 
 ```sh
 sudo apt-get install -y --no-install-recommends libpoppler-glib-dev libarchive-dev pkg-config
@@ -600,7 +600,7 @@ sudo apt-get install -y --no-install-recommends libpoppler-glib-dev libarchive-d
 
 Sin esos `-dev`, `make -C server` arma todo lo demás y no arma `build/lord-doc` (`DOCHELPER=0`).
 
-**Para imprimir** (`IMPRESION.md`):
+**Para imprimir** (`PRINTING.md`):
 
 ```sh
 sudo apt-get install -y --no-install-recommends cups printer-driver-cups-pdf cups-ipp-utils avahi-daemon avahi-utils
@@ -655,7 +655,7 @@ procesos en su cgroup.
 
 ## Paso 19 — M9: medios (VM 119 `lordos-spot`)
 
-Ver `MEDIOS.md`. La VM 119 (172.17.0.54), clon de la de desarrollo, quedó para los medios.
+Ver `MEDIA.md`. La VM 119 (172.17.0.54), clon de la de desarrollo, quedó para los medios.
 
 **Compilar** (`lord-media`; sin estos `-dev`, `make` compila todo lo demás sin él):
 
@@ -705,7 +705,7 @@ y lo mismo con `lordos-test-micfeed`.
 
 ## Paso 18 — Ventanas fluidas, bordes, cursores y sonido (VM 118)
 
-Ver `VENTANAS.md` y `SONIDO.md` (Tiempo real). En la VM 118 (172.17.0.53):
+Ver `WINDOWS.md` y `SOUND.md` (Tiempo real). En la VM 118 (172.17.0.53):
 
 - **Escritorio remoto apagado** (`/etc/lordos/remote/config`: `enabled=0`), para que la sesión no
   componga por CPU por tener alguien mirando.
@@ -856,10 +856,23 @@ RAM and disappears on reboot.
 - **Screenshots:** a scratch-only harness (never in the repo) bundled into the test theme. F9/F8
   step through 30 scenarios (6 apps × dark, light, RTL, minimum size, large), F7 opens a Terminal
   and F6 shows a glyph test. Captured with `screendump` from the Proxmox monitor.
+- **Second pass (11 apps):** same workflow, with the server binaries rebuilt from the current tree
+  in the `debian:trixie` container and a second scratch harness (12 targets × dark, light, RTL,
+  minimum size; the emoji picker is opened with `emoji.open()`). Extra sample content in
+  `/home/lordos`: generated, tagged MP3 albums with covers in `Música` (three artists), three test
+  videos in `Videos` and three voice memos in `Música/Grabaciones` (renamed to `Recordings` for the
+  Arabic scenario, whose UI falls back to English). Nothing is installed with `apt`.
+- **Third pass (Settings page by page, Files, Terminal Preferences, Store):** same workflow, server
+  binaries rebuilt from the tree of 2026-10-18 in the `debian:trixie` container, and a third scratch
+  harness (122 scenarios; F10 skips one without opening it so a subset can be re-shot). The "after"
+  build is the "before" snapshot plus only this batch's files, so other agents' unfinished work
+  doesn't leak into the comparison. The live system has no Debian index, so the Store scenarios
+  replace `lord.pkg` in the harness with sample data (16 apps, 5 other packages). Extra sample
+  content: `Documentos/muestra.zip`. Nothing is installed with `apt`.
 
 ## Step 21 — M8 app isolation: root-owned scopes, camera, several windows (VM 122 `lordos-sandbox`)
 
-See `PRIVACIDAD.md` («Root-owned app scopes», «Camera for isolated apps», «Several windows per
+See `PRIVACY.md` («Root-owned app scopes», «Camera for isolated apps», «Several windows per
 isolated app»). On VM 122 (172.17.0.56):
 
 - **Packages:**
@@ -922,7 +935,7 @@ See `SETTINGS.md`. On VM 118 (172.17.0.53), which already had `lord-sessiond` wi
 
 ## Step 23 — M9 system apps and `lord-netd` (VM 119 `lordos-spot`)
 
-See `SYSTEM.md` (Disks, Backups, Logs, Clock, Help) and `RED.md` ("The network belongs to the
+See `SYSTEM.md` (Disks, Backups, Logs, Clock, Help) and `NETWORK.md` ("The network belongs to the
 system"). VM 119 still runs LordOS installed like the `.deb` (step 19). It was not reinstalled from
 the ISO.
 
@@ -937,7 +950,7 @@ new `lord-netd` are installed root-owned in `/usr/lib/lordos/bin`, with the them
 
 **Service:** `/etc/systemd/system/lordos.service.d/delegate.conf` now has
 `DelegateSubgroup=supervisor` next to `Delegate=yes` (without it `systemctl restart lordos` failed
-while processes survived; see `SESIONES.md`).
+while processes survived; see `SESSIONS.md`).
 
 **Packages:**
 
@@ -954,7 +967,7 @@ while processes survived; see `SESIONES.md`).
 |---|---|
 | `/usr/local/sbin/lordos-test-netns` + `lordos-test-netns.service` (enabled, `Before=lordos.service`) | netns `lnt` with `dnsmasq` (`10.77.0.50-99`, no router, `--leasefile-ro`) behind the veth `lnt0`, so `lord-netd` has a NIC of its own to bring up at boot; `eth0` (netplan) is never touched |
 | `/etc/lordos/net/if/lnt0.conf` (`method=dhcp`) | the saved profile `lord-netd` restores at boot |
-| `/etc/lordos/remote/config` `enabled=1` | remote desktop reachable before login (the test); set back to `enabled=0` after the tests if it isn't needed |
+| `/etc/lordos/remote/config` `enabled=1` | remote desktop reachable before login (the test); set back to `enabled=0` after the tests |
 | user `ana` ("Ana Prueba", created in Settings → Users, test password) | second user for the login/logout test and the home-folder check |
 | `dummy_hcd` + `g_mass_storage file=/var/tmp/usb-disk-sistema-119.img removable=1 stall=0` | a real USB mass-storage stick inside the VM (sdc, TRAN usb, RM 1) for Disks; remove with `sudo rmmod g_mass_storage dummy_hcd` |
 | `~/Descargas/lordos-prueba.img` (300 MB) | image for the bootable-USB test |
@@ -967,3 +980,68 @@ To undo the network test: `sudo systemctl disable --now lordos-test-netns`, `sud
 **Screenshots** with `qm monitor 119` (`screendump … -f png`) and the mouse through
 `/root/lord-qmp-input.py 119`, holding `flock /tmp/sistema-119-screen.lock` on the host while
 driving the screen.
+
+**Polish pass 4 (system apps, `docs/polish/{disks,backup,logs,clock,help}-*.png`):** a scratch-only
+harness theme (never in the repo) was installed as `/usr/lib/lordos/themes/polish4`, chosen once in
+Settings → Themes; it opened each app at a fixed frame in dark, light, Arabic (RTL) and minimum size
+from a JSON command file, with no code evaluation. Sample content: the same journal entries
+(`systemd-cat`) before each Logs capture, and a 3 GB ext4 image on a loop device mounted at
+`/media/lord/CopiasPrueba` with two snapshots for Backups (`backup.json` saved and restored). Nothing
+was installed. Afterwards the theme went back to `default` and the harness, the image, the loop
+device and the temporary locale files were removed.
+
+## Step 24 — M9 Mail, Calendar, Contacts and Reminders (VM 123 `lordos-monitor`)
+
+Local test servers only, all on 127.0.0.1 inside the VM; no real accounts. Details in `MAIL.md`.
+
+1. **Packages:** `dovecot-imapd dovecot-lmtpd postfix radicale apache2-utils python3-bcrypt openssl
+   ca-certificates` (and `gdb` for debugging). To build `lord-maild`: `libssl-dev`.
+2. **Names:** `127.0.0.1 mail.lordos.test dav.lordos.test lordos.test` in `/etc/hosts`.
+3. **Test CA:** in `/etc/lordos-test-mail/`, a CA (`ca.crt`) and a server certificate for those
+   three names (SAN, `extendedKeyUsage=serverAuth`), plus a self-signed `bad.crt` to try the
+   certificate warning. The CA goes to `/usr/local/share/ca-certificates/lordos-test-mail-ca.crt`
+   and `update-ca-certificates`. (It has no `keyUsage`: Python ≥ 3.13 clients need
+   `ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT`; OpenSSL in `lord-maild` accepts it.)
+4. **Dovecot 2.4** (`/etc/dovecot/local.conf`): `listen = 127.0.0.1`, `protocols = imap lmtp`,
+   virtual users from `/etc/dovecot/users` (passwd-file, SHA512-CRYPT, uid/gid 5000 `vmail`,
+   `mail_home = /var/vmail/%{user | username}`, Maildir), `ssl = required`,
+   `auth_allow_cleartext = no`, special-use mailboxes Drafts/Sent/Trash/Junk/Archive with
+   `auto = subscribe`, LMTP and auth sockets inside Postfix's spool, and
+   `protocol lmtp { auth_username_format = %{user | lower} }` (without it LMTP rejects
+   `user@domain`). Raise `mail_max_userip_connections` (Mail opens one connection per account
+   plus one per send).
+5. **Postfix:** `virtual_mailbox_domains = lordos.test`, `virtual_transport =
+   lmtp:unix:private/dovecot-lmtp`, `relay_transport = error:…` (nothing leaves the VM),
+   submission on 587 (STARTTLS) and 465 (TLS) with Dovecot SASL, the test certificate.
+6. **Radicale** (`/etc/radicale/config`): `127.0.0.1:5232`, `ssl = True` with the test
+   certificate, `htpasswd` with bcrypt (`/etc/radicale/users`), `owner_only`, and
+   `predefined_collections` for a calendar (VEVENT + VTODO) and an address book.
+7. **Test users:** `ana@lordos.test` and `beto@lordos.test`, password `prueba123` (test only).
+8. **Data:** scratch scripts (not in the repo) seed the conversations, a newsletter with remote
+   images and a tracking pixel, a phishing-style message, an invitation, a 10,000-message folder,
+   and Radicale events, to-dos and contacts with photos.
+9. **Accounts in the session:** add them in Mail (*Add Account* → *Set the servers by hand*:
+   `mail.lordos.test`, 993 / 465, and a CalDAV/CardDAV account
+   `https://dav.lordos.test:5232/`). With autologin there is no keyring: Mail shows ⚠ next to the
+   account; click it and type the password once per session.
+10. **Tests:** `make -C server test` (includes `mail-test`, `mailc-test` and, with `libssl-dev`,
+    `mailnet-test`); `make -C server mail-asan`.
+
+## Step — Several displays and HiDPI (VM 118 `lordos-notes`)
+
+See `DISPLAYS.md`.
+
+- **Second virtual monitor** (Proxmox host, VM 118 only; needs a power cycle):
+
+  ```
+  qm set 118 --args "-global virtio-vga.max_outputs=2 -vnc unix:/run/lord-vm118-head1.vnc,id=head1,display=vga,head=1"
+  ```
+
+  The second head (Virtual-2) starts disconnected. An RFB client that sends ExtendedDesktopSize
+  `SetDesktopSize W H` to `/run/lord-vm118-head1.vnc` plugs it in with that preferred mode; `0 0`
+  unplugs it (scratchpad `head-monitors-118.sh`). Screendump of each head:
+  `screendump file.ppm vga 0|1` in `qm monitor 118`.
+- **Package** (tests only): `wayland-utils` (`wayland-info`, to check `wl_output`, xdg-output and
+  fractional-scale).
+- The GPU path was tested by adding `Environment=LORD_GPU=1` to `lordos.service` in a temporary
+  drop-in, removed afterwards.

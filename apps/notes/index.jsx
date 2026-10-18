@@ -1,6 +1,6 @@
-// Notas — post-its avanzados: markdown con lectura e índice, imágenes, adjuntos, emojis y
-// notas que viven en el escritorio como widgets (se mueven, cambian de tamaño y vuelven al
-// iniciar sesión). Todo se guarda solo en ~/Notas/<nota>/nota.md (ver store.js y docs/NOTAS.md).
+// Notes — advanced sticky notes: markdown with reading view and outline, images, attachments, emojis and
+// notes that live on the desktop as widgets (they move, resize and come back on
+// login). Everything is saved automatically in ~/Notas/<note>/nota.md (see store.js and docs/NOTES.md).
 import {
   View, Text, useTheme, useLocale, useAppWindow, useStore, useKeyboard, Button, TextInput, ScrollView, ThemeProvider, Segmented,
   Toolbar, ToolbarButton, ToolbarSpacer, MenuButton, SearchField, EmptyState, textDirection,
@@ -14,7 +14,7 @@ import {
   absFolder, folder, COLORS, setupWidgets, isImage,
 } from './store.js';
 
-// ---- colores de los post-its (claros en los dos modos, con texto oscuro) ----
+// ---- sticky-note colors (light in both modes, with dark text) ----
 
 const PAPER = {
   yellow: ['#fff6a8', '#fde68a'], pink: ['#ffd9e8', '#ffc2db'], green: ['#d9f6cc', '#c1edab'],
@@ -24,19 +24,19 @@ const ink = {
   text: '#2a2a2a', dim: '#6b6b6b', heading: '#151515', code: '#5b3fa0', accent: '#0a5fd0',
   selection: 'rgba(10,95,208,0.22)', caret: '#0a5fd0', popupBg: '#ffffff', popupText: '#222', border: 'rgba(0,0,0,0.15)',
 };
-// tokens del SDK para dibujar markdown sobre papel claro
+// SDK tokens for drawing markdown on light paper
 const paperTokens = (th) => ({ ...th, mode: 'light', text: ink.text, textDim: ink.dim, accent: ink.accent, separator: 'rgba(0,0,0,0.14)',
   hover: 'rgba(0,0,0,0.06)', control: 'rgba(0,0,0,0.08)', inputBg: 'rgba(255,255,255,0.7)' });
 
 const noteBy = (slug) => notesStore.get().list.find((n) => n.slug === slug);
 
-// ---- ícono ----
+// ---- icon ----
 
 export function Icon({ size: s }) {
   return (
     <View style={{ width: s, height: s, borderRadius: s * 0.225, background: 'linear-gradient(160deg, #ffe066, #f7b733)',
       boxShadow: `0 ${s * 0.04}px ${s * 0.12}px rgba(0,0,0,0.35)`, overflow: 'hidden' }}>
-      {/* hoja con la esquina doblada y renglones */}
+      {/* sheet with a folded corner and ruled lines */}
       <View style={{ position: 'absolute', left: s * 0.2, top: s * 0.18, width: s * 0.6, height: s * 0.64, borderRadius: s * 0.05,
         backgroundColor: '#fffbe0', boxShadow: `0 ${s * 0.02}px ${s * 0.05}px rgba(0,0,0,0.25)` }} />
       {[0, 1, 2, 3].map((i) => (
@@ -49,7 +49,7 @@ export function Icon({ size: s }) {
   );
 }
 
-// ---- selector de emojis ----
+// ---- emoji picker ----
 
 function EmojiPicker({ onPick, onClose, x = 0, y = 0 }) {
   const th = useTheme();
@@ -83,7 +83,7 @@ function EmojiPicker({ onPick, onClose, x = 0, y = 0 }) {
   );
 }
 
-// ---- elegir un archivo de la carpeta personal (adjuntar, insertar imagen) ----
+// ---- pick a file from the home folder (attach, insert image) ----
 
 function FilePicker({ onPick, onClose, images }) {
   const th = useTheme();
@@ -115,16 +115,16 @@ function FilePicker({ onPick, onClose, images }) {
   );
 }
 
-// ---- abrir enlaces y adjuntos de una nota ----
+// ---- open a note's links and attachments ----
 
 function openLink(slug, url) {
-  if (/^https?:/i.test(url)) return;                     // todavía no hay navegador: se ve el enlace
+  if (/^https?:/i.test(url)) return;                     // there is no browser yet: the link is shown
   const rel = url.startsWith('/') ? url.replace(`${fs.home()}/`, '') : `${folder(slug)}/${url}`;
   if (/\.(txt|md|js|jsx|ts|json|c|h|py|sh|css|html|ya?ml|toml|ini|csv|log)$/i.test(rel)) wm.open('editor', { args: { path: `${fs.home()}/${rel}` } });
   else wm.open('files', { new: true, args: { path: `${fs.home()}/${rel.split('/').slice(0, -1).join('/')}` } });
 }
 
-// ---- cuerpo de una nota: lectura (con índice) o edición ----
+// ---- note body: reading (with outline) or editing ----
 
 function NoteBody({ note, mode, onMode, editorApi, compact, showToc, size = 14, onCommand }) {
   const th = useTheme();
@@ -179,7 +179,7 @@ function NoteBody({ note, mode, onMode, editorApi, compact, showToc, size = 14, 
   );
 }
 
-// ---- nota en el escritorio ----
+// ---- note on the desktop ----
 
 function Dot({ color, selected, onClick, size = 12 }) {
   return <View onClick={onClick} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: PAPER[color][0], border: `1.5px solid ${selected ? '#333' : 'rgba(0,0,0,0.25)'}` }} />;
@@ -200,7 +200,7 @@ function NoteCard({ widget }) {
   const note = useStore(notesStore, (s) => s.list.find((n) => n.slug === widget.id));
   const [hover, setHover] = useState(false);
   const [mode, setMode] = useState('read');
-  const [live, setLive] = useState(null);           // { x, y, w, h } mientras se arrastra
+  const [live, setLive] = useState(null);           // { x, y, w, h } while dragging
   const [emoji, setEmoji] = useState(false);
   const drag = useRef(null);
   const api = useRef(null);
@@ -254,10 +254,10 @@ function NoteCard({ widget }) {
 }
 setupWidgets(NoteCard);
 
-// las notas se leen al arrancar la sesión (y las del escritorio aparecen solas)
-queueMicrotask(() => { try { loadNotes(); } catch (e) { console.log(`notas: ${e.message}`); } });
+// notes are read when the session starts (and the desktop ones appear by themselves)
+queueMicrotask(() => { try { loadNotes(); } catch (e) { console.log(`notes: ${e.message}`); } });
 
-// ---- ventana ----
+// ---- window ----
 
 const fmtDate = (iso, formatDate) => { try { return formatDate(new Date(iso), 'short'); } catch (e) { return ''; } };
 
@@ -278,7 +278,7 @@ export default function Notes() {
   const needle = q.trim().toLowerCase();
   const shown = list.filter((n) => !needle || `${n.title}\n${n.body}`.toLowerCase().includes(needle));
   const note = list.find((n) => n.slug === sel) || shown[0] || null;
-  // block: imágenes y adjuntos van en su propio renglón
+  // block: images and attachments go on their own line
   const insert = (md, block = false) => {
     if (!md || !note) return;
     if (mode === 'edit' && api.current) api.current.insert(block ? `\n${md}\n` : md);

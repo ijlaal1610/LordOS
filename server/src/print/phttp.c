@@ -1,4 +1,4 @@
-/* phttp.c — ver phttp.h. */
+/* phttp.c — see phttp.h. */
 #include "phttp.h"
 
 #include <arpa/inet.h>
@@ -97,7 +97,7 @@ static int rd_line(Rd *r, char *out, size_t n) {
         char c = r->buf[r->a++];
         if (c == '\n') break;
         if (k + 1 < n) out[k++] = c;
-        else return -1;                              /* línea demasiado larga */
+        else return -1;                              /* line too long */
     }
     if (k && out[k - 1] == '\r') k--;
     out[k] = 0;
@@ -157,7 +157,7 @@ int phttp_request(int fd, const char *method, const char *host, const char *path
         while ((size_t)off < doclen) {
             ssize_t k = pread(docfd, buf, sizeof buf, off);
             if (k <= 0) return -1;
-            if (send_all(fd, buf, (size_t)k, deadline + 600000)) return -1;   /* los trabajos grandes tardan */
+            if (send_all(fd, buf, (size_t)k, deadline + 600000)) return -1;   /* big jobs take long */
             off += k;
         }
     }
@@ -167,7 +167,7 @@ int phttp_request(int fd, const char *method, const char *host, const char *path
     rd->a = rd->b = 0;
     rd->deadline = deadline + (docfd >= 0 ? 600000 : 0);
     char line[1024];
-    /* 100 Continue y otras respuestas 1xx se saltean */
+    /* 100 Continue and other 1xx replies are skipped */
     do {
         if (rd_line(rd, line, sizeof line) || strncmp(line, "HTTP/1.", 7) || strlen(line) < 12) { free(rd); return -1; }
         r->status = atoi(line + 9);
@@ -217,7 +217,7 @@ int phttp_request(int fd, const char *method, const char *host, const char *path
             clen -= (long long)k;
         }
     } else if (!ok && r->status != 204 && r->status != 304) {
-        /* hasta que cierre */
+        /* until it closes */
         for (;;) {
             if (rd_fill(rd)) break;
             size_t k = rd->b - rd->a;

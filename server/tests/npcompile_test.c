@@ -1,11 +1,11 @@
-/* npcompile_test.c — de reglas a mapas BPF (src/netperm/npcompile.c), sin kernel.
+/* npcompile_test.c — from rules to BPF maps (src/netperm/npcompile.c), without a kernel.
  *
- * Arma tiendas al azar (dominios, comodines, redes v4/v6 anidadas, lan/internet/any, puertos,
- * protocolos, direcciones, confiables, restringidas, modos) y nombres aprendidos del resolvedor,
- * compila cada app y decide cada conexión con lo mismo que corre en el kernel (np_decide de
- * np_shared.h, con un trie LPM simulado por búsqueda lineal). Lo compara contra fw_decide, la
- * referencia del paso 1: veredicto, motivo y regla tienen que coincidir siempre.
- * Además: casos fijos legibles, claves de los tries, el tope de las listas y una medición. */
+ * Builds random stores (domains, wildcards, nested v4/v6 networks, lan/internet/any, ports,
+ * protocols, directions, trusted, restricted, modes) and names learned from the resolver,
+ * compiles each app and decides each connection with the same code that runs in the kernel (np_decide from
+ * np_shared.h, with an LPM trie simulated by linear search). Compares it against fw_decide, the
+ * step-1 reference: verdict, reason and rule must always match.
+ * Also: readable fixed cases, trie keys, the list cap and a measurement. */
 #ifndef _GNU_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -19,9 +19,9 @@
 #include <time.h>
 
 static int fails, checks;
-#define CHECK(c) do { checks++; if (!(c)) { fails++; fprintf(stderr, "%s:%d: falló: %s\n", __FILE__, __LINE__, #c); } } while (0)
+#define CHECK(c) do { checks++; if (!(c)) { fails++; fprintf(stderr, "%s:%d: failed: %s\n", __FILE__, __LINE__, #c); } } while (0)
 
-#define NAMES_APP "lordos"      /* donde lord-netperm guarda lo que aprende del resolvedor */
+#define NAMES_APP "lordos"      /* where lord-netperm keeps what it learns from the resolver */
 
 static uint64_t rng = 0x9e3779b97f4a7c15ull;
 static uint32_t rnd(void) { rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17; return (uint32_t)(rng >> 16); }
@@ -29,7 +29,7 @@ static int pick(int n) { return (int)(rnd() % (uint32_t)n); }
 
 static int bit_at(const uint8_t *a, int i) { return a[i >> 3] >> (7 - (i & 7)) & 1; }
 
-/* El trie LPM del kernel, simulado: la entrada de prefijo más largo que contiene a la dirección. */
+/* The kernel's LPM trie, simulated: the longest-prefix entry that contains the address. */
 static const NpList *lpm(const NpCompiled *c, int fam, const uint8_t *addr) {
     const NpNode *best = NULL;
     for (int i = 0; i < c->nnodes; i++) {
@@ -42,7 +42,7 @@ static const NpList *lpm(const NpCompiled *c, int fam, const uint8_t *addr) {
     return best ? &best->list : NULL;
 }
 
-/* Lo que hace el programa BPF con una conexión (np.bpf.c), con la app ya compilada. */
+/* What the BPF program does with a connection (np.bpf.c), with the app already compiled. */
 static NpRes kernel(const NpCompiled *c, int dir, int proto, int fam, const uint8_t *in, int port) {
     uint8_t addr[16] = { 0 };
     static const uint8_t mapped[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
@@ -63,13 +63,13 @@ static FwRule mk(const char *app, FwDir dir, const char *dst, FwAction act) {
     snprintf(r.app, sizeof r.app, "%s", app);
     r.dir = dir;
     r.action = act;
-    if (fw_parse_dest(dst, &r)) { fprintf(stderr, "destino inválido en la prueba: %s\n", dst); exit(2); }
+    if (fw_parse_dest(dst, &r)) { fprintf(stderr, "invalid destination in the test: %s\n", dst); exit(2); }
     return r;
 }
 
 static uint32_t add(FwStore *s, FwRule r) {
     uint32_t id = 0;
-    if (fw_rule_add(s, &r, &id)) { fprintf(stderr, "no se pudo agregar %s\n", r.app); exit(2); }
+    if (fw_rule_add(s, &r, &id)) { fprintf(stderr, "could not add %s\n", r.app); exit(2); }
     return id;
 }
 
@@ -77,11 +77,11 @@ static int ip(const char *s, uint8_t *a) {
     memset(a, 0, 16);
     if (inet_pton(AF_INET, s, a) == 1) return 4;
     if (inet_pton(AF_INET6, s, a) == 1) return 6;
-    fprintf(stderr, "IP inválida en la prueba: %s\n", s);
+    fprintf(stderr, "invalid IP in the test: %s\n", s);
     exit(2);
 }
 
-/* Decide con las dos y compara. */
+/* Decide with both and compare. */
 static int same(FwStore *s, DnsMap *names, const NpCompiled *c, const char *app, FwDir dir, FwProto proto,
                 int fam, const uint8_t *addr, uint16_t port, long long now, FwDecision *ref, NpRes *got) {
     char hn[DNSMAP_PER_IP][FW_NAME_MAX];
@@ -95,7 +95,7 @@ static int same(FwStore *s, DnsMap *names, const NpCompiled *c, const char *app,
     q.hosts = hp; q.nhosts = nh;
     *ref = fw_decide(s, &q);
     *got = kernel(c, dir == FW_IN ? NP_D_IN : NP_D_OUT, proto == FW_PROTO_TCP ? NP_P_TCP : NP_P_UDP, fam, addr, port);
-    int rv = ref->verdict == FW_V_DENY ? NP_V_DENY : NP_V_ALLOW;   /* "preguntar" se compila como silencioso */
+    int rv = ref->verdict == FW_V_DENY ? NP_V_DENY : NP_V_ALLOW;   /* "ask" compiles as silent */
     int rr = ref->reason == FW_BY_RESTRICTED ? NP_BY_RESTRICTED : ref->reason == FW_BY_RULE ? NP_BY_RULE :
              ref->reason == FW_BY_TRUSTED ? NP_BY_TRUSTED : NP_BY_MODE;
     if (got->verdict != rv || got->reason != rr) return 0;
@@ -106,7 +106,7 @@ static int same(FwStore *s, DnsMap *names, const NpCompiled *c, const char *app,
 
 static NpCompiled compile(FwStore *s, const char *app, DnsMap *names, long long now) {
     NpCompiled c;
-    if (np_compile_app(s, app, 7, names, NAMES_APP, now, &c)) { fprintf(stderr, "compilar falló\n"); exit(2); }
+    if (np_compile_app(s, app, 7, names, NAMES_APP, now, &c)) { fprintf(stderr, "compile failed\n"); exit(2); }
     return c;
 }
 
@@ -119,7 +119,7 @@ static void fixed_cases(void) {
     NpRes got;
     const char *app = "desktop:curltest";
 
-    /* "denegar todo, salvo api.ejemplo.com" */
+    /* "deny all, except api.ejemplo.com" */
     add(s, mk(app, FW_OUT, "any", FW_DENY));
     add(s, mk(app, FW_OUT, "*.ejemplo.com", FW_DENY));
     uint32_t allow = add(s, mk(app, FW_OUT, "api.ejemplo.com", FW_ALLOW));
@@ -138,29 +138,29 @@ static void fixed_cases(void) {
     ip("198.51.100.1", other);
     CHECK(same(s, names, &c, app, FW_OUT, FW_PROTO_TCP, 4, other, 443, now, &ref, &got));
     CHECK(got.verdict == NP_V_DENY && got.reason == NP_BY_RULE);
-    /* una app con su propio DNS que dice que api.ejemplo.com es otra IP: esa IP no está en los
-     * mapas (solo se aprende del resolvedor del sistema), así que no se escapa */
+    /* an app with its own DNS claiming api.ejemplo.com is another IP: that IP is not in the
+     * maps (only the system resolver is learned from), so it does not get through */
     CHECK(kernel(&c, NP_D_OUT, NP_P_TCP, 4, other, 443).verdict == NP_V_DENY);
-    /* otra app no hereda la regla */
+    /* another app does not inherit the rule */
     NpCompiled c2 = compile(s, "desktop:otra", names, now);
     CHECK(c2.nnodes == 0 && c2.app.ngen == 0);
     CHECK(kernel(&c2, NP_D_OUT, NP_P_TCP, 4, other, 443).verdict == NP_V_ALLOW);
-    CHECK(kernel(&c2, NP_D_OUT, NP_P_TCP, 4, other, 443).record == 1);    /* silencioso: se anota */
+    CHECK(kernel(&c2, NP_D_OUT, NP_P_TCP, 4, other, 443).record == 1);    /* silent: gets recorded */
     np_compiled_free(&c);
     np_compiled_free(&c2);
 
-    /* "solo LAN": llega a la puerta de enlace, no a internet */
+    /* "LAN only": reaches the gateway, not the internet */
     fw_set_restricted(s, "desktop:lan", FW_R_NO_INTERNET);
     c = compile(s, "desktop:lan", names, now);
     ip("172.17.0.1", a);
     CHECK(kernel(&c, NP_D_OUT, NP_P_TCP, 4, a, 80).verdict == NP_V_ALLOW);
     CHECK(kernel(&c, NP_D_OUT, NP_P_TCP, 4, other, 80).verdict == NP_V_DENY);
     CHECK(kernel(&c, NP_D_OUT, NP_P_TCP, 4, other, 80).flag == NP_R_NO_INTERNET);
-    /* bind a una dirección que no es local: dirección desconocida = internet, como fw_decide */
+    /* bind to an address that is not local: unknown address = internet, like fw_decide */
     CHECK(same(s, names, &c, "desktop:lan", FW_IN, FW_PROTO_TCP, 0, a, 8080, now, &ref, &got) && got.verdict == NP_V_DENY);
     np_compiled_free(&c);
 
-    /* "sin conexiones entrantes" */
+    /* "no incoming connections" */
     fw_set_restricted(s, "desktop:noin", FW_R_NO_INCOMING);
     c = compile(s, "desktop:noin", names, now);
     CHECK(kernel(&c, NP_D_IN, NP_P_TCP, 0, a, 8080).verdict == NP_V_DENY);
@@ -179,7 +179,7 @@ static void fixed_cases(void) {
     CHECK(got.verdict == NP_V_ALLOW && got.reason == NP_BY_MODE && !got.record);
     np_compiled_free(&c);
 
-    /* redes anidadas e IPv4 mapeada en IPv6 */
+    /* nested networks and IPv4-mapped IPv6 */
     add(s, mk("desktop:redes", FW_OUT, "10.0.0.0/8", FW_DENY));
     uint32_t mid = add(s, mk("desktop:redes", FW_OUT, "10.1.0.0/16", FW_ALLOW));
     add(s, mk("desktop:redes", FW_OUT, "10.1.2.0/24", FW_DENY));
@@ -192,7 +192,7 @@ static void fixed_cases(void) {
     CHECK(same(s, names, &c, "desktop:redes", FW_OUT, FW_PROTO_TCP, 6, a, 22, now, &ref, &got) && got.verdict == NP_V_DENY);
     np_compiled_free(&c);
 
-    /* tope de una lista: más de NP_LIST_MAX reglas para la misma red se avisan */
+    /* list cap: more than NP_LIST_MAX rules for the same network are reported */
     for (int i = 0; i < NP_LIST_MAX + 4; i++) {
         FwRule r = mk("desktop:muchas", FW_OUT, "192.0.2.0/24", i & 1 ? FW_DENY : FW_ALLOW);
         r.port_lo = r.port_hi = (uint16_t)(1000 + i);
@@ -202,7 +202,7 @@ static void fixed_cases(void) {
     CHECK(c.truncated == 4 && c.nnodes == 1 && c.nodes[0].list.n == NP_LIST_MAX);
     np_compiled_free(&c);
 
-    /* claves de los tries: índice en big endian y después la dirección; prefijo = 32 + n */
+    /* trie keys: big-endian index followed by the address; prefix = 32 + n */
     NpNode n;
     memset(&n, 0, sizeof n);
     n.fam = 4; n.prefix = 24;
@@ -217,7 +217,7 @@ static void fixed_cases(void) {
     CHECK(k6.prefixlen == 64 && k6.data[3] == 5 && k6.data[4] == 0x20 && k6.data[7] == 0xb8);
     CHECK(sizeof(NpLpm4Key) == 12 && sizeof(NpLpm6Key) == 24 && sizeof(NpEnt) == 12);
 
-    /* np_compile_host (una respuesta DNS nueva) da el mismo nodo que la compilación completa */
+    /* np_compile_host (a new DNS answer) yields the same node as the full compilation */
     FwStore *s2 = fw_store_new();
     add(s2, mk("lpk:juego", FW_OUT, "*.cdn.ejemplo.net", FW_ALLOW));
     add(s2, mk("lpk:juego", FW_OUT, "any", FW_DENY));
@@ -236,7 +236,7 @@ static void fixed_cases(void) {
     fw_store_free(s);
 }
 
-/* ---- de dónde salen los nombres (npdns.c) ---------------------------------------------------- */
+/* ---- where the names come from (npdns.c) ----------------------------------------------------- */
 
 static DnsMap *learn_into;
 static int learned;
@@ -247,7 +247,7 @@ static void learn_cb(void *u, const uint8_t *pkt, size_t len) {
 
 static void dns_sources(void) {
     learn_into = dnsmap_new(0);
-    /* una respuesta real del monitor de systemd-resolved 257 (VM 122): www.wikipedia.org →
+    /* a real answer from the systemd-resolved 257 monitor (VM 122): www.wikipedia.org →
      * CNAME dyna.wikimedia.org → A/AAAA */
     static const char vl[] =
         "{\"parameters\":{\"state\":\"success\",\"question\":[{\"class\":1,\"type\":1,\"name\":\"www.wikipedia.org\"},"
@@ -264,7 +264,7 @@ static void dns_sources(void) {
     CHECK(n == 2);
     CHECK(n == 2 && ((!strcmp(nm[0], "www.wikipedia.org") && !strcmp(nm[1], "dyna.wikimedia.org")) ||
                      (!strcmp(nm[1], "www.wikipedia.org") && !strcmp(nm[0], "dyna.wikimedia.org"))));
-    /* lo que no es una respuesta exitosa o está mal no arma nada */
+    /* anything that isn't a successful answer, or is malformed, builds nothing */
     static const char *const bad[] = {
         "{\"parameters\":{\"ready\":true},\"continues\":true}",
         "{\"parameters\":{\"state\":\"errno\",\"question\":[],\"answer\":[]}}",
@@ -275,7 +275,7 @@ static void dns_sources(void) {
     };
     for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) CHECK(npdns_from_varlink(bad[i], strlen(bad[i]), learn_cb, NULL) <= 0);
     CHECK(learned == 1);
-    /* un registro que no sale de la pregunta (lo pondría un servidor mentiroso) no se aprende */
+    /* a record that doesn't follow from the question (a lying server would add it) is not learned */
     static const char lie[] =
         "{\"parameters\":{\"state\":\"success\",\"question\":[{\"name\":\"evil.example\"}],\"answer\":["
         "{\"raw\":\"BGR5bmEJd2lraW1lZGlhA29yZwAAHAABAAAAtAAQKgLsgAcA7RoAAAAAAAAAAg==\"}]}}";
@@ -283,7 +283,7 @@ static void dns_sources(void) {
     fam = ip("2a02:ec80:700:ed1a::2", a);
     CHECK(dnsmap_lookup(learn_into, NAMES_APP, fam, a, 100, nm, DNSMAP_PER_IP) == 0);
 
-    /* paquetes (sin resolved): solo UDP desde el puerto 53 de un servidor de resolv.conf */
+    /* packets (without resolved): only UDP from port 53 of a resolv.conf server */
     uint8_t p[64] = { 0x45, 0, 0, 40, 0, 0, 0x40, 0, 64, 17, 0, 0, 8, 8, 8, 8, 192, 168, 1, 5,
                       0, 53, 0x9c, 0x40, 0, 20, 0, 0 };
     for (int i = 28; i < 40; i++) p[i] = (uint8_t)i;
@@ -292,19 +292,19 @@ static void dns_sources(void) {
     size_t dl;
     CHECK(npdns_from_packet(p, 40, &srv, 1, &dns, &dl) == 0 && dl == 12 && dns == p + 28);
     NpAddr other = { 4, { 1, 1, 1, 1 } };
-    CHECK(npdns_from_packet(p, 40, &other, 1, &dns, &dl) == -1);          /* otro servidor */
+    CHECK(npdns_from_packet(p, 40, &other, 1, &dns, &dl) == -1);          /* another server */
     p[21] = 54;
-    CHECK(npdns_from_packet(p, 40, &srv, 1, &dns, &dl) == -1);            /* otro puerto */
+    CHECK(npdns_from_packet(p, 40, &srv, 1, &dns, &dl) == -1);            /* another port */
     p[21] = 53; p[6] = 0x20;
     CHECK(npdns_from_packet(p, 40, &srv, 1, &dns, &dl) == -1);            /* fragmento */
     p[6] = 0x40; p[25] = 200;
     CHECK(npdns_from_packet(p, 40, &srv, 1, &dns, &dl) == -1);            /* largo UDP mentiroso */
     p[25] = 20;
-    for (size_t cut = 0; cut < 40; cut++) npdns_from_packet(p, cut, &srv, 1, &dns, &dl);   /* cortado: no se cae */
+    for (size_t cut = 0; cut < 40; cut++) npdns_from_packet(p, cut, &srv, 1, &dns, &dl);   /* truncated: no crash */
     dnsmap_free(learn_into);
 }
 
-/* ---- al azar --------------------------------------------------------------------------------- */
+/* ---- random ---------------------------------------------------------------------------------- */
 
 static const char *const DOMS[] = { "ejemplo.com", "api.ejemplo.com", "www.ejemplo.com", "cdn.ejemplo.net",
                                     "a1.cdn.ejemplo.net", "x.y.ejemplo.com", "otro.org", "doubleclick.net",
@@ -365,7 +365,7 @@ static void random_round(int *diffs, int *queries) {
             uint8_t a[16];
             int fam = ip(IPS[pick(NIPS)], a);
             FwDir dir = pick(4) ? FW_OUT : FW_IN;
-            if (dir == FW_IN && pick(2)) fam = 0;   /* bind a una dirección cualquiera */
+            if (dir == FW_IN && pick(2)) fam = 0;   /* bind to any address */
             int port = pick(3) == 0 ? 443 : pick(2) ? 53 : 400 + pick(150);
             FwDecision ref;
             NpRes got;
@@ -409,7 +409,7 @@ static void bench(void) {
     NpCompiled c;
     np_compile_app(s, "desktop:grande", 1, names, NAMES_APP, 1, &c);
     double t1 = secs();
-    printf("npcompile-test: 401 reglas y 4000 direcciones aprendidas → %d nodos en %.1f ms\n", c.nnodes, (t1 - t0) * 1e3);
+    printf("npcompile-test: 401 rules and 4000 learned addresses → %d nodes in %.1f ms\n", c.nnodes, (t1 - t0) * 1e3);
     CHECK(c.nnodes == 200 + 2000 && !c.truncated);
     np_compiled_free(&c);
     dnsmap_free(names);
@@ -422,8 +422,8 @@ int main(void) {
     int diffs = 0, queries = 0;
     for (int r = 0; r < 3000; r++) random_round(&diffs, &queries);
     CHECK(diffs == 0);
-    printf("npcompile-test: %d conexiones al azar contra fw_decide, %d diferencias\n", queries, diffs);
+    printf("npcompile-test: %d random connections against fw_decide, %d differences\n", queries, diffs);
     bench();
-    printf("npcompile-test: %d/%d bien\n", checks - fails, checks);
+    printf("npcompile-test: %d/%d passed\n", checks - fails, checks);
     return fails ? 1 : 0;
 }

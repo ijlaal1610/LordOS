@@ -1,9 +1,9 @@
-/* bidi.c — algoritmo bidireccional de Unicode (UAX #9, revisión de Unicode 15.1), completo:
- * incrustaciones y anulaciones explícitas (LRE/RLE/LRO/RLO/PDF), aislamientos (LRI/RLI/FSI/PDI),
- * secuencias de ejecución aisladas, reglas W1–W7, pares de paréntesis (N0), N1–N2, I1–I2 y,
- * por línea, L1–L2. Se verifica con BidiCharacterTest.txt (server/tests/bidi_test.c).
+/* bidi.c — Unicode bidirectional algorithm (UAX #9, Unicode 15.1 revision), complete:
+ * explicit embeddings and overrides (LRE/RLE/LRO/RLO/PDF), isolates (LRI/RLI/FSI/PDI),
+ * isolating run sequences, rules W1–W7, bracket pairs (N0), N1–N2, I1–I2 and,
+ * per line, L1–L2. Verified with BidiCharacterTest.txt (server/tests/bidi_test.c).
  *
- * Las tablas salen de unicode.c (tools/gen-unicode.mjs). Sin fribidi ni ICU. */
+ * The tables come from unicode.c (tools/gen-unicode.mjs). No fribidi or ICU. */
 #include "bidi.h"
 
 #include <stdlib.h>
@@ -17,7 +17,7 @@
 int bidi_class(uint32_t cp) { return uc_bidi(cp); }
 uint32_t bidi_mirror(uint32_t cp) { return uc_mirror(cp); }
 
-/* Par de un paréntesis normalizado por equivalencia canónica (U+2329 = U+3008). */
+/* Pair of a bracket normalized by canonical equivalence (U+2329 = U+3008). */
 static uint32_t canon(uint32_t cp) { return cp == 0x2329 ? 0x3008 : cp == 0x232A ? 0x3009 : cp; }
 static uint32_t bracket(uint32_t cp, int *open) { uint32_t b = uc_bracket(cp, open); return b ? canon(b) : 0; }
 
@@ -28,14 +28,14 @@ static int is_removed(int t) {
 static int is_ni(int t) {
     return t == BIDI_B || t == BIDI_S || t == BIDI_WS || t == BIDI_ON || is_isolate_init(t) || t == BIDI_PDI;
 }
-/* Dirección fuerte para N0/N1: L, o R (EN y AN cuentan como R); -1 si es neutral. */
+/* Strong direction for N0/N1: L, or R (EN and AN count as R); -1 if neutral. */
 static int strong_dir(int t) {
     if (t == BIDI_L) return BIDI_L;
     if (t == BIDI_R || t == BIDI_AL || t == BIDI_EN || t == BIDI_AN) return BIDI_R;
     return -1;
 }
 
-/* P2/P3 sobre [start, end), saltando lo que está entre un aislamiento y su PDI. */
+/* P2/P3 over [start, end), skipping what lies between an isolate and its PDI. */
 static int first_strong(const uint8_t *t, const int *match, int start, int end) {
     for (int i = start; i < end; i++) {
         if (t[i] == BIDI_L) return 0;
@@ -49,7 +49,7 @@ static int first_strong(const uint8_t *t, const int *match, int start, int end) 
     return -1;
 }
 
-/* BD9: PDI que cierra cada aislamiento (-1 si no tiene). */
+/* BD9: PDI that closes each isolate (-1 if none). */
 static void match_isolates(const uint8_t *t, int n, int *match, int *stack) {
     int sp = 0;
     for (int i = 0; i < n; i++) {
@@ -75,14 +75,14 @@ int bidi_direction(const uint32_t *cp, int n) {
 
 typedef struct {
     const uint32_t *cp;
-    const uint8_t *orig;        /* clases originales */
-    uint8_t *t;                 /* clases que van cambiando */
+    const uint8_t *orig;        /* original classes */
+    uint8_t *t;                 /* classes that keep changing */
     uint8_t *levels;
-    const uint8_t *elev;        /* niveles de incrustación (X1–X8), antes de I1/I2 */
+    const uint8_t *elev;        /* embedding levels (X1–X8), before I1/I2 */
     int n, para;
 } Para;
 
-/* Resuelve una secuencia de ejecución aislada (W1–I2). idx: sus caracteres en orden. */
+/* Resolves an isolating run sequence (W1–I2). idx: its characters in order. */
 static void resolve_sequence(Para *p, const int *idx, int m, uint8_t *t, uint8_t *pre) {
     int level = p->elev[idx[0]];
     /* sos / eos */
@@ -96,23 +96,23 @@ static void resolve_sequence(Para *p, const int *idx, int m, uint8_t *t, uint8_t
 
     for (int k = 0; k < m; k++) pre[k] = t[k] = p->t[idx[k]];
 
-    /* W1: NSM toma la clase del anterior (ON después de un aislamiento o PDI). */
+    /* W1: NSM takes the class of the previous one (ON after an isolate or PDI). */
     for (int k = 0; k < m; k++)
         if (t[k] == BIDI_NSM) t[k] = k == 0 ? (uint8_t)sos : is_isolate_init(t[k - 1]) || t[k - 1] == BIDI_PDI ? BIDI_ON : t[k - 1];
-    /* W2: EN después de AL → AN.  W3: AL → R. */
+    /* W2: EN after AL → AN.  W3: AL → R. */
     int last_strong = sos;
     for (int k = 0; k < m; k++) {
         if (t[k] == BIDI_L || t[k] == BIDI_R || t[k] == BIDI_AL) last_strong = t[k];
         else if (t[k] == BIDI_EN && last_strong == BIDI_AL) t[k] = BIDI_AN;
     }
     for (int k = 0; k < m; k++) if (t[k] == BIDI_AL) t[k] = BIDI_R;
-    /* W4: un ES entre EN, un CS entre EN o entre AN. */
+    /* W4: an ES between ENs, a CS between ENs or between ANs. */
     for (int k = 1; k + 1 < m; k++) {
         if (t[k] == BIDI_ES && t[k - 1] == BIDI_EN && t[k + 1] == BIDI_EN) t[k] = BIDI_EN;
         else if (t[k] == BIDI_CS && t[k - 1] == BIDI_EN && t[k + 1] == BIDI_EN) t[k] = BIDI_EN;
         else if (t[k] == BIDI_CS && t[k - 1] == BIDI_AN && t[k + 1] == BIDI_AN) t[k] = BIDI_AN;
     }
-    /* W5: ET junto a EN → EN. */
+    /* W5: ET next to EN → EN. */
     for (int k = 0; k < m; k++) {
         if (t[k] != BIDI_ET) continue;
         int e = k;
@@ -121,7 +121,7 @@ static void resolve_sequence(Para *p, const int *idx, int m, uint8_t *t, uint8_t
             for (int j = k; j < e; j++) t[j] = BIDI_EN;
         k = e - 1;
     }
-    /* W6: los separadores que quedan → ON.  W7: EN después de L → L. */
+    /* W6: the remaining separators → ON.  W7: EN after L → L. */
     for (int k = 0; k < m; k++) if (t[k] == BIDI_ES || t[k] == BIDI_ET || t[k] == BIDI_CS) t[k] = BIDI_ON;
     last_strong = sos;
     for (int k = 0; k < m; k++) {
@@ -129,12 +129,12 @@ static void resolve_sequence(Para *p, const int *idx, int m, uint8_t *t, uint8_t
         else if (t[k] == BIDI_EN && last_strong == BIDI_L) t[k] = BIDI_L;
     }
 
-    /* N0: pares de paréntesis (BD16). */
+    /* N0: bracket pairs (BD16). */
     int e_dir = (level & 1) ? BIDI_R : BIDI_L;
     int stack_pos[MAX_BRACKETS];
     uint32_t stack_cp[MAX_BRACKETS];
     int sp = 0, npairs = 0, cap = 0;
-    int *pairs = NULL;              /* [abre, cierra] por par */
+    int *pairs = NULL;              /* [open, close] per pair */
     for (int k = 0; k < m; k++) {
         if (t[k] != BIDI_ON) continue;
         int open;
@@ -162,7 +162,7 @@ static void resolve_sequence(Para *p, const int *idx, int m, uint8_t *t, uint8_t
             }
         }
     }
-    /* ordenar por posición de apertura (inserción: suelen ser pocos) */
+    /* sort by opening position (insertion: there are usually few) */
     for (int a = 1; a < npairs; a++) {
         int o = pairs[2 * a], c = pairs[2 * a + 1], b = a - 1;
         while (b >= 0 && pairs[2 * b] > o) { pairs[2 * b + 2] = pairs[2 * b]; pairs[2 * b + 3] = pairs[2 * b + 1]; b--; }
@@ -191,7 +191,7 @@ static void resolve_sequence(Para *p, const int *idx, int m, uint8_t *t, uint8_t
     }
     free(pairs);
 
-    /* N1/N2: neutrales entre dos fuertes iguales toman esa dirección; si no, la del nivel. */
+    /* N1/N2: neutrals between two equal strong ones take that direction; otherwise, the level's. */
     for (int k = 0; k < m; k++) {
         if (!is_ni(t[k])) continue;
         int e = k;
@@ -214,7 +214,7 @@ static void resolve_sequence(Para *p, const int *idx, int m, uint8_t *t, uint8_t
 
 int bidi_levels(const uint32_t *cp, int n, int para, uint8_t *levels, uint8_t *removed) {
     if (n <= 0) return para > 0 ? 1 : 0;
-    /* un solo bloque: clases ×3, coincidencias, pila, índices de secuencia, ejecuciones */
+    /* a single block: classes ×3, matches, stack, sequence indices, runs */
     size_t ints = (size_t)n * 5;
     uint8_t *bytes = malloc((size_t)n * 5);
     int *mem = malloc(sizeof(int) * ints);
@@ -232,7 +232,7 @@ int bidi_levels(const uint32_t *cp, int n, int para, uint8_t *levels, uint8_t *r
     match_isolates(orig, n, match, stack);
     if (para < 0) para = first_strong(orig, match, 0, n) == 1 ? 1 : 0;
 
-    /* X1–X8: pila de niveles explícitos */
+    /* X1–X8: stack of explicit levels */
     struct { uint8_t level, override, isolate; } st[MAX_DEPTH + 2];
     int sp = 0, ovf_iso = 0, ovf_emb = 0, valid_iso = 0;
     st[sp].level = (uint8_t)para; st[sp].override = 0; st[sp].isolate = 0; sp++;
@@ -293,7 +293,7 @@ int bidi_levels(const uint32_t *cp, int n, int para, uint8_t *levels, uint8_t *r
         }
     }
 
-    /* X9/X10: ejecuciones de nivel (sin los caracteres quitados) y secuencias aisladas */
+    /* X9/X10: level runs (without the removed characters) and isolating sequences */
     int nruns = 0, prev = -1;
     for (int i = 0; i < n; i++) {
         run_of[i] = -1;
@@ -306,7 +306,7 @@ int bidi_levels(const uint32_t *cp, int n, int para, uint8_t *levels, uint8_t *r
     Para p = { cp, orig, t, levels, elev, n, para };
     for (int r = 0; r < nruns; r++) {
         int first = run_start[r];
-        /* las que empiezan con un PDI que cierra un aislamiento siguen a otra secuencia */
+        /* the ones that start with a PDI closing an isolate continue another sequence */
         if (orig[first] == BIDI_PDI) {
             int matched = 0;
             for (int j = first - 1; j >= 0 && !matched; j--) if (match[j] == first) matched = 1;
@@ -329,7 +329,7 @@ int bidi_levels(const uint32_t *cp, int n, int para, uint8_t *levels, uint8_t *r
         if (m) resolve_sequence(&p, idx, m, seq_t, seq_pre);
     }
 
-    /* los quitados toman el nivel del anterior (para dibujar y armar formas) */
+    /* the removed ones take the level of the previous one (for drawing and shaping) */
     for (int i = 0; i < n; i++) {
         int rm = is_removed(orig[i]);
         if (removed) removed[i] = (uint8_t)rm;
@@ -341,7 +341,7 @@ int bidi_levels(const uint32_t *cp, int n, int para, uint8_t *levels, uint8_t *r
 }
 
 void bidi_line(const uint32_t *cp, uint8_t *levels, int start, int end, int para, int *order) {
-    /* L1: separadores, y los espacios/aislamientos antes de ellos o al final, al nivel del párrafo */
+    /* L1: separators, and spaces/isolates before them or at the end, at the paragraph level */
     int trailing = 1;
     for (int i = end - 1; i >= start; i--) {
         int c = bidi_class(cp[i]);
@@ -349,7 +349,7 @@ void bidi_line(const uint32_t *cp, uint8_t *levels, int start, int end, int para
         if (trailing && (c == BIDI_WS || is_isolate_init(c) || c == BIDI_PDI || is_removed(c))) { levels[i] = (uint8_t)para; continue; }
         trailing = 0;
     }
-    /* L2: invertir desde el nivel más alto hasta el impar más bajo */
+    /* L2: reverse from the highest level down to the lowest odd one */
     int n = end - start, hi = 0, lo_odd = 255;
     for (int k = 0; k < n; k++) {
         order[k] = start + k;

@@ -1,9 +1,9 @@
-/* keyboard.c — teclado con libxkbcommon: todas las distribuciones de XKB (xkb-data), con
- * sus variantes, AltGr, teclas muertas y secuencias compose según la región del usuario.
+/* keyboard.c — keyboard with libxkbcommon: all XKB layouts (xkb-data), with
+ * their variants, AltGr, dead keys and compose sequences according to the user's region.
  *
- * Es la misma biblioteca que usan GNOME y KDE (y que las apps Wayland van a exigir), así que
- * "latam", "us", "br(abnt2)", "pt", "fr(oss)"… se comportan igual que en cualquier Linux.
- * Si xkb-data no está instalado, kb_ready() es 0 y la UI usa sus tablas de respaldo. */
+ * It is the same library GNOME and KDE use (and that Wayland apps will require), so
+ * "latam", "us", "br(abnt2)", "pt", "fr(oss)"… behave as on any Linux.
+ * If xkb-data is not installed, kb_ready() is 0 and the UI uses its fallback tables. */
 #include "keyboard.h"
 
 #include <stdio.h>
@@ -39,7 +39,7 @@ static void setup_compose(void) {
     if (compose_table) compose = xkb_compose_state_new(compose_table, XKB_COMPOSE_STATE_NO_FLAGS);
 }
 
-/* layouts: "latam" o "us,latam" (hasta 4); variants en el mismo orden ("", "abnt2"…). */
+/* layouts: "latam" or "us,latam" (up to 4); variants in the same order ("", "abnt2"…). */
 int kb_set(const char *layouts, const char *variants) {
     if (!valid(layouts) || !valid(variants) || !layouts[0]) return -1;
     if (!ctx && !(ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS))) return -1;
@@ -76,7 +76,7 @@ void kb_set_group(int g) {
     xkb_state_update_mask(state, dep, lat, lock, 0, 0, (xkb_layout_index_t)g);
 }
 
-/* Nombres de tecla como en la web (KeyboardEvent.key) para las que no escriben. */
+/* Key names as on the web (KeyboardEvent.key) for keys that do not type. */
 static const char *named(xkb_keysym_t s) {
     switch (s) {
     case XKB_KEY_Escape: return "Escape";
@@ -128,7 +128,7 @@ void kb_key(int code, int value, KeyInfo *k) {
     xkb_keysym_t sym = xkb_state_key_get_one_sym(state, kc);
     const char *name = named(sym);
     if (name) snprintf(k->key, sizeof k->key, "%s", name);
-    /* base: lo que produce la tecla con Shift/AltGr pero sin el efecto de Ctrl/Alt */
+    /* base: what the key produces with Shift/AltGr but without the effect of Ctrl/Alt */
     utf8(xkb_keysym_to_utf32(sym), k->base);
     if (k->ctrl || k->alt || k->meta || name) {
         if (!name) snprintf(k->key, sizeof k->key, "%s", k->base);
@@ -137,7 +137,7 @@ void kb_key(int code, int value, KeyInfo *k) {
     if (compose) {
         xkb_compose_state_feed(compose, sym);
         switch (xkb_compose_state_get_status(compose)) {
-        case XKB_COMPOSE_COMPOSING: k->dead = 1; return;             /* tecla muerta: espera la siguiente */
+        case XKB_COMPOSE_COMPOSING: k->dead = 1; return;             /* dead key: waits for the next one */
         case XKB_COMPOSE_COMPOSED:
             xkb_compose_state_get_utf8(compose, k->chr, sizeof k->chr);
             xkb_compose_state_reset(compose);

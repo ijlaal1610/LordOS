@@ -1,12 +1,12 @@
-/* conn.c — conexiones de red del usuario para el Monitor (ver docs/MONITOR.md).
+/* conn.c — the user's network connections for the Monitor (see docs/MONITOR.md).
  *
- * Igual que `ss`: se piden al kernel por sock_diag (NETLINK_SOCK_DIAG) todos los sockets TCP y
- * UDP, IPv4 e IPv6, con tcp_info para los bytes enviados y recibidos. sock_diag no necesita
- * privilegios. A cada socket del usuario se le busca el proceso dueño leyendo los fd de sus
- * propios procesos (/proc/<pid>/fd → "socket:[inodo]"), con una caché para no recorrerlos en
- * cada muestra. De los sockets de otros usuarios solo se cuenta cuántos hay.
+ * Same as `ss`: all TCP and UDP sockets, IPv4 and IPv6, are requested from the kernel via
+ * sock_diag (NETLINK_SOCK_DIAG), with tcp_info for bytes sent and received. sock_diag needs no
+ * privileges. For each of the user's sockets the owning process is found by reading the fds of
+ * the user's own processes (/proc/<pid>/fd → "socket:[inode]"), with a cache so they aren't walked
+ * on every sample. For other users' sockets only how many there are is counted.
  *
- * El país sale de la base local (mmdb.c). Ninguna dirección sale del equipo. */
+ * The country comes from the local database (mmdb.c). No address leaves the machine. */
 #include "monpriv.h"
 
 #include <arpa/inet.h>
@@ -29,7 +29,7 @@
 #include <unistd.h>
 
 #define MAX_SOCK 4096
-#define MAP_CAP 16384                   /* potencia de 2 */
+#define MAP_CAP 16384                   /* power of 2 */
 
 typedef struct {
     uint32_t inode, uid;
@@ -37,7 +37,7 @@ typedef struct {
     uint8_t src[16], dst[16];
     uint16_t sport, dport;
     uint64_t sent, recv;
-    int bytes;                          /* sent/recv válidos (TCP con tcp_info) */
+    int bytes;                          /* sent/recv valid (TCP with tcp_info) */
 } Sock;
 
 static Sock socks[MAX_SOCK];
@@ -81,7 +81,7 @@ static int dump(int fd, int fam, int proto) {
             s->dport = ntohs(m->id.idiag_dport);
             memcpy(s->src, m->id.idiag_src, 16);
             memcpy(s->dst, m->id.idiag_dst, 16);
-            /* atributos: tcp_info */
+            /* attributes: tcp_info */
             int alen = (int)(h->nlmsg_len - NLMSG_LENGTH(sizeof *m));
             for (struct rtattr *a = (struct rtattr *)(m + 1); RTA_OK(a, alen); a = RTA_NEXT(a, alen)) {
                 if (a->rta_type != INET_DIAG_INFO) continue;
@@ -110,10 +110,10 @@ static int sock_dump(void) {
     return ok ? 0 : -1;
 }
 
-/* ---- inodo → proceso ------------------------------------------------------------------------ */
+/* ---- inode → process ------------------------------------------------------------------------ */
 
 typedef struct { uint32_t inode; int pid; } Slot;
-static Slot map[MAP_CAP];                       /* inodo → pid (pid -1: buscado y no encontrado) */
+static Slot map[MAP_CAP];                       /* inode → pid (pid -1: looked up and not found) */
 static double map_t;
 
 static Slot *map_find(uint32_t ino, int add) {
@@ -132,7 +132,7 @@ static Slot *map_find(uint32_t ino, int add) {
 
 void conn_reset(void) { memset(map, 0, sizeof map); map_t = 0; }
 
-/* Recorre los fd de los procesos del usuario y rehace el mapa. */
+/* Walks the fds of the user's processes and rebuilds the map. */
 static void map_rebuild(void) {
     memset(map, 0, sizeof map);
     unsigned me = (unsigned)getuid();
@@ -159,7 +159,7 @@ static void map_rebuild(void) {
             target[k] = 0;
             uint32_t ino = (uint32_t)strtoul(target + 8, NULL, 10);
             Slot *s = ino ? map_find(ino, 1) : NULL;
-            if (s && s->pid < 0) s->pid = pid;      /* el primero (los hijos heredan fds) */
+            if (s && s->pid < 0) s->pid = pid;      /* the first one (children inherit fds) */
         }
         closedir(fdd);
     }
@@ -167,7 +167,7 @@ static void map_rebuild(void) {
     map_t = mon_now_ms();
 }
 
-/* ---- direcciones --------------------------------------------------------------------------- */
+/* ---- addresses ----------------------------------------------------------------------------- */
 
 static int is_mapped4(const uint8_t *a) {
     static const uint8_t pre[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
@@ -191,7 +191,7 @@ static const char *scope(int fam, const uint8_t *a) {
 static const char *const TCP_STATE[] = { "", "ESTABLISHED", "SYN_SENT", "SYN_RECV", "FIN_WAIT1", "FIN_WAIT2", "TIME_WAIT",
                                          "CLOSE", "CLOSE_WAIT", "LAST_ACK", "LISTEN", "CLOSING", "NEW_SYN_RECV" };
 
-/* Nombre y ejecutable de un pid (caché chica por muestra). */
+/* Name and executable of a pid (small per-sample cache). */
 static struct { int pid; char name[64], exe[PATH_MAX]; } pinfo[256];
 static int npinfo;
 
@@ -213,7 +213,7 @@ static int proc_info(int pid) {
 void conn_scan(Buf *b, const Mmdb *geo) {
     unsigned me = (unsigned)getuid();
     if (sock_dump()) { mon_buf_printf(b, "{\"t\":%.0f,\"ok\":false,\"others\":0,\"list\":[]}", mon_wall_ms()); return; }
-    /* puertos TCP en escucha (de cualquiera): una conexión a uno de ellos es entrante */
+    /* listening TCP ports (anyone's): a connection to one of them is inbound */
     static uint8_t listening_port[8192];
     memset(listening_port, 0, sizeof listening_port);
     int unknown = 0, others = 0;
@@ -225,10 +225,10 @@ void conn_scan(Buf *b, const Mmdb *geo) {
         Slot *sl = map_find(s->inode, 0);
         if (!sl) unknown = 1;
     }
-    /* rehacer el mapa solo si apareció un socket nuevo (y como mucho una vez por segundo) */
+    /* rebuild the map only if a new socket appeared (and at most once per second) */
     if (unknown && mon_now_ms() - map_t > 900) {
         map_rebuild();
-        for (int i = 0; i < nsock; i++)                     /* los que siguen sin dueño: -1 */
+        for (int i = 0; i < nsock; i++)                     /* those still without an owner: -1 */
             if (socks[i].uid == me && socks[i].inode) map_find(socks[i].inode, 1);
     }
     npinfo = 0;
@@ -253,7 +253,7 @@ void conn_scan(Buf *b, const Mmdb *geo) {
         int tcp = s->proto == IPPROTO_TCP;
         const char *dir;
         if (tcp && s->state == 10) dir = "listen";
-        else if (!tcp && !s->dport) dir = "listen";             /* UDP sin destino: escucha */
+        else if (!tcp && !s->dport) dir = "listen";             /* UDP without a destination: listening */
         else if (tcp && (listening_port[s->sport >> 3] & (1 << (s->sport & 7)))) dir = "in";
         else dir = "out";
         int listening = !strcmp(dir, "listen");

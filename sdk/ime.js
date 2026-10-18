@@ -1,13 +1,13 @@
-// ime.js — métodos de entrada (coreano, japonés, chino). El motor está en el servidor
-// (server/src/ime.c); acá se sabe quién tiene el foco y se dibuja la ventana de candidatos.
+// ime.js — input methods (Korean, Japanese, Chinese). The engine lives in the server
+// (server/src/ime.c); here we track who has focus and draw the candidate window.
 //
-//   ime.attach(token, caret, { inline })   un campo de texto o una terminal toma el foco;
-//                                          caret() → { x, y, h } en pantalla
-//   ime.detach(token)                      lo pierde (se descarta la composición)
+//   ime.attach(token, caret, { inline })   a text field or a terminal takes focus;
+//                                          caret() → { x, y, h } on screen
+//   ime.detach(token)                      loses it (the composition is discarded)
 //   useIme()                               { engine, preedit, candidates, selected, converting }
 //
-// Sin un foco de texto las teclas pasan tal cual (los atajos de las apps siguen andando).
-// <ImeOverlay /> lo monta startShell: todos los temas lo tienen sin hacer nada.
+// Without a text focus keys pass through as-is (app shortcuts keep working).
+// <ImeOverlay /> is mounted by startShell: every theme has it without doing anything.
 import { createElement as h } from 'react';
 import { View, Text } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
@@ -17,11 +17,11 @@ const EMPTY = { engine: '', preedit: '', candidates: [], selected: 0, converting
 export const imeState = createStore(EMPTY);
 globalThis.__lordIme = (s) => imeState.set({ ...EMPTY, ...s });
 
-// Pila de focos: el último que se adjunta recibe el texto (un campo de búsqueda encima de la
-// terminal); al soltarse vuelve el anterior.
+// Focus stack: the last one attached receives the text (a search field on top of the
+// terminal); when it is released the previous one comes back.
 let stack = [];
 const top = () => stack[stack.length - 1] || null;
-const native = (fn) => { try { fn(); } catch (e) { /* servidor sin lord.ime */ } };
+const native = (fn) => { try { fn(); } catch (e) { /* server without lord.ime */ } };
 const clear = () => imeState.set({ ...imeState.get(), preedit: '', candidates: [], converting: false });
 
 export const ime = {
@@ -35,7 +35,7 @@ export const ime = {
     const was = top();
     stack = stack.filter((e) => e.token !== token);
     if (was?.token !== token) return;
-    native(() => lord.ime.setContext(false));       // descarta la composición
+    native(() => lord.ime.setContext(false));       // discards the composition
     clear();
     if (stack.length) native(() => lord.ime.setContext(true));
   },
@@ -45,8 +45,8 @@ export const ime = {
 
 export const useIme = () => useStore(imeState);
 
-// Composición subrayada; en la conversión japonesa por frase, el segmento con foco resaltado
-// (←/→ cambian de segmento, Shift+←/→ lo achican o agrandan).
+// Underlined composition; in Japanese phrase conversion, the focused segment is highlighted
+// (←/→ change segment, Shift+←/→ shrink or grow it).
 export function Preedit({ st, size = 15, color, accent }) {
   const seg = st.segments;
   const part = (text, focus, key) => text ? h(View, { key, style: { backgroundColor: focus ? accent + '55' : 'transparent', borderRadius: 2 } },

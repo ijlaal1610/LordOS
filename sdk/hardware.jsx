@@ -13,7 +13,7 @@
 //
 // Everything arrives as __lordHw(kind, data) from lord-server (ui/js_hw.c): no polling.
 import { createElement as h, useEffect, useState } from 'react';
-import { View, Text } from '@lordos/runtime';
+import { View, Text, mainBox } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
 import { settings } from './settings.js';
 import { useTheme } from './theme.js';
@@ -140,11 +140,12 @@ export function previewNight(kelvin) { if (has('display')) call(() => lord.displ
 
 // Applies a mode live and starts the 15-second countdown; keepDisplay() saves it, revert brings back
 // the previous one (also when the countdown runs out with nobody answering).
-export function applyDisplay(out, { w, h: hh, refresh = 0, rotation = 0, scale = 1, conn = out.id }) {
+// scale is in percent (100–200, 25 % steps; docs/DISPLAYS.md).
+export function applyDisplay(out, { w, h: hh, refresh = 0, rotation = 0, scale = 100, conn = out.id }) {
   if (!has('display')) return false;
   const d = displays.get();
-  const cur = (d?.outputs || []).find((o) => o.current) || out;
-  const old = { conn: cur.id, w: cur.mode?.w || 0, h: cur.mode?.h || 0, refresh: cur.mode?.refresh || 0, rotation: d?.rotation || 0, scale: d?.scale || 1 };
+  const cur = (d?.outputs || []).find((o) => o.id === conn) || out;
+  const old = { conn: cur.id, w: cur.mode?.w || 0, h: cur.mode?.h || 0, refresh: cur.mode?.refresh || 0, rotation: cur.rotation || 0, scale: cur.scale || 100 };
   if (!lord.display.apply(conn, w, hh, refresh, rotation, scale)) return false;
   const prev = displayConfirm.get();
   displayConfirm.set({ conn, old: prev ? prev.old : old, deadline: Date.now() + 15000, left: 15 });
@@ -174,8 +175,29 @@ export function revertDisplay() {
   const c = displayConfirm.get();
   clearTimeout(confirmTimer);
   displayConfirm.set(null);
-  if (c && has('display')) lord.display.apply(c.old.conn, c.old.w, c.old.h, c.old.refresh, c.old.rotation, c.old.scale || 1);
+  if (c && has('display')) lord.display.apply(c.old.conn, c.old.w, c.old.h, c.old.refresh, c.old.rotation, c.old.scale || 100);
 }
+
+// Arrangement, mirror, main display, capture: applied and kept right away (nothing goes dark).
+export function arrangeDisplay(conn, x, y, apply = true) {
+  if (!has('display') || !lord.display.arrange) return null;
+  const r = lord.display.arrange(conn, Math.round(x), Math.round(y), apply);
+  if (r && apply) lord.display.save(conn);
+  return r;
+}
+export function setDisplayMirror(on) {
+  if (!has('display') || !lord.display.setMirror) return false;
+  const ok = lord.display.setMirror(on);
+  if (ok) setTimeout(() => lord.display.save(0), 0);
+  return ok;
+}
+export function setMainDisplay(conn) {
+  if (!has('display') || !lord.display.setMain) return false;
+  const ok = lord.display.setMain(conn);
+  if (ok) setTimeout(() => lord.display.save(conn), 0);
+  return ok;
+}
+export function setCaptureAllDisplays(on) { return has('display') && lord.display.setCaptureAll ? lord.display.setCaptureAll(on) : false; }
 
 // System dialogs are drawn outside the theme's provider: light or dark from the user's setting.
 function useSystemTokens() {
@@ -189,7 +211,7 @@ export function DisplayConfirm() {
   const c = useStore(displayConfirm);
   const th = useSystemTokens();
   if (!c) return null;
-  return h(View, { style: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center',
+  return h(View, { style: { position: 'absolute', ...mainBox(), alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.25)', zIndex: 100001 } },
   h(View, { style: { width: 340, borderRadius: 14, padding: 22, gap: 10, alignItems: 'center', backgroundColor: th.windowBg,
     border: `1px solid ${th.separator}`, boxShadow: '0 20px 60px rgba(0,0,0,0.45)' } },
@@ -281,7 +303,7 @@ export function BluetoothPrompt() {
   const shows = p.kind === 'confirm' || p.kind === 'display-pin' || p.kind === 'display-passkey';
   const answer = (ok) => lord.bt.answer(p.id, ok, typed ? value : null);
   const valid = !typed || (p.kind === 'pin' ? /^[A-Za-z0-9]{1,16}$/.test(value) : /^\d{1,6}$/.test(value));
-  return h(View, { style: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'flex-start',
+  return h(View, { style: { position: 'absolute', ...mainBox(), alignItems: 'center', justifyContent: 'flex-start',
     backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 100000 } },
   h(View, { style: { marginTop: 90, width: 340, borderRadius: 14, padding: 22, gap: 10, alignItems: 'center', backgroundColor: th.windowBg,
     border: `1px solid ${th.separator}`, boxShadow: '0 20px 60px rgba(0,0,0,0.45)' } },

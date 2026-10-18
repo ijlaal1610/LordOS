@@ -1,15 +1,15 @@
-/* wg.c — WireGuard con netlink genérico propio (sin wg-quick ni wireguard-tools), lado root.
+/* wg.c — WireGuard with our own generic netlink (no wg-quick or wireguard-tools), root side.
  *
- * Importa el .conf de siempre ([Interface]/[Peer]), lo guarda normalizado (solo las claves que
- * entendemos) en /etc/lordos/net/vpn/<nombre>.conf (0600) con sus metadatos públicos en
- * <nombre>.json (0644). Al conectar: crea la interfaz "wireguard", le pasa claves y pares
- * (WG_CMD_SET_DEVICE), direcciones, MTU, rutas de AllowedIPs y DNS. Con 0.0.0.0/0 o ::/0 hace
- * lo mismo que wg-quick: fwmark 51820 en el túnel, ruta por defecto en la tabla 51820 y las
- * reglas "not fwmark 51820 table 51820" y "table main suppress_prefixlength 0".
- * PostUp/PreDown y compañía (comandos) no se ejecutan nunca: se ignoran con un aviso. */
+ * It imports the usual .conf ([Interface]/[Peer]), saves it normalized (only the keys we
+ * understand) in /etc/lordos/net/vpn/<name>.conf (0600) with its public metadata in
+ * <name>.json (0644). On connect: creates the "wireguard" interface, passes it keys and peers
+ * (WG_CMD_SET_DEVICE), addresses, MTU, AllowedIPs routes and DNS. With 0.0.0.0/0 or ::/0 it does
+ * the same as wg-quick: fwmark 51820 on the tunnel, default route in table 51820 and the
+ * rules "not fwmark 51820 table 51820" and "table main suppress_prefixlength 0".
+ * PostUp/PreDown and friends (commands) are never executed: they're ignored with a warning. */
 #include "netpriv.h"
 
-#include <net/if.h>                 /* antes que los de linux/ */
+#include <net/if.h>                 /* before the linux/ ones */
 #include "../admin.h"
 
 #include <arpa/inet.h>
@@ -49,7 +49,7 @@ typedef struct {
     int naddr;
     char dns[8][64];            /* IPs */
     int ndns;
-    char search[8][64];         /* dominios */
+    char search[8][64];         /* domains */
     int nsearch;
     int mtu, listen;
     Peer peer[MAX_PEERS];
@@ -71,7 +71,7 @@ static int valid_domain(const char *s) {
     return 1;
 }
 
-/* host:puerto, [v6]:puerto o v6 sin corchetes no (ambiguo). */
+/* host:port, [v6]:port, or v6 without brackets not allowed (ambiguous). */
 static int valid_endpoint(const char *s) {
     size_t n = strlen(s);
     if (!n || n >= 200) return 0;
@@ -89,7 +89,7 @@ static int key32(const char *b64, uint8_t out[32]) {
     return strlen(b64) == 44 && b64_decode(b64, tmp, sizeof tmp) == 32 ? (memcpy(out, tmp, 32), 0) : -1;
 }
 
-/* Parsea el texto (el .conf del usuario o el guardado). err explica la primera línea mala. */
+/* Parses the text (the user's .conf or the saved one). err explains the first bad line. */
 static int wg_parse(const char *text, WgConf *c, char *err, size_t errn) {
     memset(c, 0, sizeof *c);
     char *copy = strdup(text);
@@ -179,7 +179,7 @@ static void cidr_str(const Cidr *c, char *out, size_t n) {
     snprintf(out, n, "%s/%d", ip, c->prefix);
 }
 
-/* Vuelve a escribir la config sin lo que no usamos (y con la clave generada). */
+/* Rewrites the config without what we don't use (and with the generated key). */
 static void wg_emit(const WgConf *c, Buf *b) {
     char k[64], s[80];
     b64_encode(c->priv, 32, k, sizeof k);
@@ -201,7 +201,7 @@ static void wg_emit(const WgConf *c, Buf *b) {
 }
 
 void vpn_ifname(const char *type, const char *name, char *out, size_t n) {
-    /* prefijo según el tipo; el total cabe en IFNAMSIZ - 1 = 15 */
+    /* prefix by type; the total fits in IFNAMSIZ - 1 = 15 */
     const char *pre = !strcmp(type, "wireguard") ? "wg" : !strcmp(type, "openvpn") ? "ovpn" : !strcmp(type, "ipsec") ? "ips"
                     : !strcmp(type, "pptp") ? "ppp" : !strcmp(type, "openconnect") ? "oc" : "fvpn";
     snprintf(out, n, "%s-%.*s", pre, (int)(14 - strlen(pre)), name);
@@ -224,7 +224,7 @@ int wg_import(const char *name, const char *text, char *pub_out, char *err, size
     if (b.p) memset(b.p, 0, b.len);
     buf_free(&b);
     memset(&c.priv, 0, sizeof c.priv);
-    /* metadatos públicos */
+    /* public metadata */
     char ifn[IFNAMSIZ], addr[80] = "";
     vpn_ifname("wireguard", name, ifn, sizeof ifn);
     if (c.naddr) cidr_str(&c.addr[0], addr, sizeof addr);
@@ -245,7 +245,7 @@ int wg_import(const char *name, const char *text, char *pub_out, char *err, size
     return 0;
 }
 
-/* ---- netlink genérico ---- */
+/* ---- generic netlink ---- */
 
 static void family_cb(const struct nlmsghdr *h, void *ud) {
     struct rtattr *tb[CTRL_ATTR_MAX + 1];
@@ -414,7 +414,7 @@ int wg_down(const char *name) {
     return r ? -1 : 0;
 }
 
-/* ---- estado ---- */
+/* ---- state ---- */
 
 typedef struct { Buf *b; int npeer; } StatusCtx;
 

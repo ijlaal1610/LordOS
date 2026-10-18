@@ -1,4 +1,4 @@
-/* vpn.h — piezas comunes de IPsec, PPTP, OpenConnect y Fortinet (ver vpn.c). */
+/* vpn.h — common pieces of IPsec, PPTP, OpenConnect and Fortinet (see vpn.c). */
 #ifndef LORD_NET_VPN_H
 #define LORD_NET_VPN_H
 
@@ -25,8 +25,8 @@ void vpn_kv_free(VpnKv *kv);
 int  vpn_kv_save(const char *name, const char *type, const VpnKv *kv);
 int  vpn_kv_load(const char *name, const char *type, VpnKv *kv);
 int  vpn_meta_save(const char *name, const char *json);
-int  vpn_text_ok(const char *s, size_t max);    /* sin caracteres de control */
-int  vpn_host_ok(const char *s);                /* nombre o IP (con :puerto o [v6]) */
+int  vpn_text_ok(const char *s, size_t max);    /* no control characters */
+int  vpn_host_ok(const char *s);                /* name or IP (with :port or [v6]) */
 int  vpn_routes_valid(const char *list);
 
 int  vpn_resolve(const char *host, int *family, uint8_t a[16]);
@@ -45,7 +45,7 @@ int  vpn_type_known(const char *type);
 int  vpn_type_available(const char *type);
 const char *vpn_type_package(const char *type);
 
-/* Cada tipo */
+/* Each type */
 int  ipsec_import(const char *name, const char *text, char *err, size_t errn);
 void ipsec_run(const char *name);
 int  pptp_import(const char *name, const char *text, char *err, size_t errn);

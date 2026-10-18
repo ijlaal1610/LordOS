@@ -1,10 +1,10 @@
-// Barra de menú superior: menú L, app activa, menú Ventana, distribución de teclado,
-// Centro de control y reloj.
+// Top menu bar: L menu, active app, Window menu, keyboard layout,
+// Control Center and clock.
 import { View, Text, useClock, wm, getApp, session, useAppMenus, t as tr, appName, formatDate, formatTime, keyboard, useSettings, direction, screen, windowTitle, LordOSLogo, spotlight, PrivacyIndicators, StatusItems, help, menuClock } from '@lordos/sdk';
 import { useRef, useState } from 'react';
 import { Menu } from './Menu.jsx';
 
-// Fecha y hora con el formato de la región (sdk/i18n.js).
+// Date and time with the region's format (sdk/i18n.js),
 // with the format chosen in Settings → Date & Time (sdk/hardware.jsx)
 const format = (d) => menuClock(d);
 
@@ -32,17 +32,18 @@ function ControlGlyph({ t }) {
   return <View style={{ width: 16, height: 14 }}>{bar(0, 9)}{bar(8, 2)}</View>;
 }
 
-export function MenuBar({ t, height, focused, onLaunchpad, onControlCenter, controlCenter }) {
+// area: the display it is on (global coordinates; the main one, or each one with "menu bar on all displays")
+export function MenuBar({ t, height, focused, onLaunchpad, onControlCenter, controlCenter, area = { x: 0, y: 0, w: screen.width, h: screen.height } }) {
   const clock = useClock(format, 1000);
-  useSettings();         // la distribución de teclado activa vive en los ajustes
+  useSettings();         // the active keyboard layout lives in the settings
   const [open, setOpen] = useState(null);
   const refs = { logo: useRef(null), window: useRef(null), help: useRef(null) };
   const appRefs = useRef({});
   const app = focused ? getApp(focused) : null;
   const extra = useAppMenus(focused) || [];
-  // Posición del menú: debajo del ítem que lo abrió (desde su borde derecho en árabe/hebreo).
+  // Menu position: below the item that opened it (from its right edge in Arabic/Hebrew).
   const anchorX = (ref) => {
-    if (!ref?.current) return direction() === 'rtl' ? screen.width - 6 : 6;
+    if (!ref?.current) return direction() === 'rtl' ? area.x + area.w - 6 : area.x + 6;
     const [x, , w] = lord.getLayout(ref.current.id);
     return direction() === 'rtl' ? x + w : x;
   };
@@ -79,9 +80,9 @@ export function MenuBar({ t, height, focused, onLaunchpad, onControlCenter, cont
   const cur = open && menus[open.name];
   const anchor = open && (refs[open.name] || { current: appRefs.current[open.name] });
   return (
-    <View style={{ position: 'absolute', left: 0, top: 0, right: 0, height }}>
+    <View style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0 }}>
       <View style={{
-        position: 'absolute', left: 0, top: 0, right: 0, height, flexDirection: 'row', alignItems: 'center',
+        position: 'absolute', left: area.x, top: area.y, width: area.w, height, flexDirection: 'row', alignItems: 'center',
         paddingHorizontal: 8, backgroundColor: t.menuBg, backdropFilter: `blur(${t.blur}px)`,
       }}>
         <BarItem t={t} active={open?.name === 'logo'} anchorRef={refs.logo} onClick={() => toggle('logo', refs.logo)}>
@@ -108,7 +109,7 @@ export function MenuBar({ t, height, focused, onLaunchpad, onControlCenter, cont
         <BarItem t={t} active={controlCenter} onClick={onControlCenter}><ControlGlyph t={t} /></BarItem>
         <BarItem t={t}><Label t={t}>{clock}</Label></BarItem>
       </View>
-      {cur && <Menu x={open.x} y={height + 2} items={cur.items} onClose={close} anchor={anchor} width={260} />}
+      {cur && <Menu x={open.x} y={area.y + height + 2} items={cur.items} onClose={close} anchor={anchor} width={260} />}
     </View>
   );
 }

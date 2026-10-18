@@ -1,26 +1,100 @@
-// ui.jsx — building blocks shared by the hardware pages of Settings (Displays, Bluetooth, Battery,
-// Notifications, Date & Time, Default Apps), on top of the SDK's GroupBox (docs/DESIGN.md): a row
-// with a hint, a pop-up button (macOS NSPopUpButton), a page header and a note.
-import { View, Text, useTheme, addListener, GroupBox, spacing, typeScale, createStore, useStore, screen, ScrollView } from '@lordos/sdk';
+// ui.jsx — the building blocks of every Settings page, on top of the SDK's GroupBox (docs/DESIGN.md,
+// "Settings"): a page column, titled sections (inset grouped boxes with hairlines between rows),
+// rows with the control or the value at the trailing edge, form rows, a pop-up button (macOS
+// NSPopUpButton), a page header, badges and notes.
+import { View, Text, useTheme, addListener, GroupBox as InsetBox, spacing, typeScale, createStore, useStore, screen, ScrollView } from '@lordos/sdk';
 import { createElement as h, useEffect, useRef, useState } from 'react';
 
-export { GroupBox };
+
+// Status colors used by the pages (macOS system colors).
+export const tint = { ok: '#30d158', warn: '#ff9f0a', error: '#ff453a', off: '#8e8e93' };
 
 // A row of a GroupBox: label (and an optional hint below it) at the start, the control at the end.
-export function SettingRow({ label, hint, children, icon, disabled, onClick, minHeight = 40 }) {
+// Rows are 28 px of content with 4 px above and below (36 px between hairlines), taller with a hint.
+// stack: the control goes under the label instead of at the trailing edge (wide segmented controls).
+export function SettingRow({ label, hint, children, icon, disabled, onClick, minHeight = 36, labelStyle, stack }) {
   const t = useTheme();
   return (
-    <View onClick={disabled ? undefined : onClick} style={{ minHeight, flexDirection: 'row', alignItems: 'center', gap: spacing.m, paddingVertical: 7,
+    <View onClick={disabled ? undefined : onClick} style={{ minHeight, flexDirection: 'row', alignItems: 'center', gap: spacing.m, paddingVertical: hint ? 7 : 4,
       opacity: disabled ? 0.45 : 1 }}>
       {icon || null}
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ fontSize: typeScale.body, color: t.text, textAlign: 'start' }}>{label}</Text>
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Text style={[{ fontSize: typeScale.body, color: t.text, textAlign: 'start' }, labelStyle]}>{label}</Text>
         {hint ? <Text style={{ fontSize: typeScale.caption, color: t.textDim, lineHeight: 1.35, textAlign: 'start' }}>{hint}</Text> : null}
+        {stack && children != null && children !== false ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.s, marginTop: spacing.xs }}>{children}</View>
+        ) : null}
       </View>
+      {!stack && children != null && children !== false ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s }}>{children}</View>
+      ) : null}
+    </View>
+  );
+}
+
+// A key/value row: the label at the start, the value right-aligned in the secondary color.
+export function ValueRow({ label, value, children, mono }) {
+  const t = useTheme();
+  return (
+    <View style={{ minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: spacing.m, paddingVertical: 4 }}>
+      <Text style={{ fontSize: typeScale.body, color: t.text, whiteSpace: 'nowrap', textAlign: 'start' }}>{label}</Text>
+      <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: spacing.s }}>
+        {value != null ? (
+          <Text style={{ flex: 1, minWidth: 0, fontSize: typeScale.body, color: t.textDim, textAlign: 'end', whiteSpace: 'nowrap', overflow: 'hidden',
+            ...(mono ? { fontFamily: 'monospace', fontSize: 12, direction: 'ltr' } : {}) }}>{String(value)}</Text>
+        ) : null}
+        {children}
+      </View>
+    </View>
+  );
+}
+
+// A form row: the label at the start and a field of a fixed width at the trailing edge (macOS forms
+// inside a grouped box). The field shrinks in narrow windows.
+export function FieldRow({ label, children, hint, width = 240 }) {
+  const t = useTheme();
+  return (
+    <View style={{ minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: spacing.m, paddingVertical: 4 }}>
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Text style={{ fontSize: typeScale.body, color: t.text, textAlign: 'start' }}>{label}</Text>
+        {hint ? <Text style={{ fontSize: typeScale.caption, color: t.textDim, textAlign: 'start' }}>{hint}</Text> : null}
+      </View>
+      <View style={{ width, flexShrink: 1, minWidth: 120, flexDirection: 'row', alignItems: 'center', gap: spacing.s, justifyContent: 'flex-end' }}>{children}</View>
+    </View>
+  );
+}
+
+// Buttons at the trailing edge, under a group or as the last row of one.
+export function Actions({ children, start, style }) {
+  return (
+    <View style={[{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.s, justifyContent: start ? 'flex-start' : 'flex-end' }, style]}>
       {children}
     </View>
   );
 }
+
+// A titled section: a 13/600 header, the inset box and an optional footer (macOS System Settings).
+// A section without rows (children) shows only its header and footer.
+export function Section({ title, footer, children, accessory, icon, style }) {
+  const t = useTheme();
+  const rows = (Array.isArray(children) ? children.flat() : [children]).filter((c) => c != null && c !== false && c !== '');
+  return (
+    <View style={[{ gap: 6 }, style]}>
+      {title || accessory ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s, minHeight: 22, paddingHorizontal: spacing.xs }}>
+          {icon || null}
+          <Text style={{ flex: 1, minWidth: 0, fontSize: typeScale.body, fontWeight: 600, color: t.text, textAlign: 'start' }}>{title || ''}</Text>
+          {accessory || null}
+        </View>
+      ) : null}
+      {rows.length ? <InsetBox>{rows}</InsetBox> : null}
+      {footer ? <Note>{footer}</Note> : null}
+    </View>
+  );
+}
+
+// The hardware pages call it GroupBox (same props as the SDK's: title, footer, rows).
+export const GroupBox = Section;
 
 // Page header: a big icon, the title and one line of explanation (like the top of a macOS pane).
 export function PageHeader({ icon, title, subtitle, children }) {
@@ -29,8 +103,8 @@ export function PageHeader({ icon, title, subtitle, children }) {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.l, padding: spacing.l, borderRadius: 10,
       backgroundColor: t.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.025)', border: `1px solid ${t.separator}` }}>
       {icon}
-      <View style={{ flex: 1, gap: 3 }}>
-        <Text style={{ fontSize: typeScale.headline, fontWeight: 700, color: t.text, textAlign: 'start' }}>{title}</Text>
+      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+        <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text, textAlign: 'start' }}>{title}</Text>
         {subtitle ? <Text style={{ fontSize: typeScale.callout, color: t.textDim, lineHeight: 1.4, textAlign: 'start' }}>{subtitle}</Text> : null}
       </View>
       {children}
@@ -38,23 +112,42 @@ export function PageHeader({ icon, title, subtitle, children }) {
   );
 }
 
-// A rounded square with a glyph, as in the sidebar (also used in rows).
-export function Badge({ glyph, color, size = 26 }) {
+// "#rrggbb" a bit lighter (f > 1) or darker (f < 1), for the badges' gradient.
+export function shade(hex, f) {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex;
+  const n = parseInt(hex.slice(1), 16);
+  const c = (v) => Math.max(0, Math.min(255, Math.round(f > 1 ? v + (255 - v) * (f - 1) : v * f)));
+  return `#${[n >> 16, (n >> 8) & 255, n & 255].map((v) => c(v).toString(16).padStart(2, '0')).join('')}`;
+}
+
+// A rounded square with a glyph and a soft top-to-bottom gradient, as in the sidebar (also used in rows).
+export function Badge({ glyph, color, size = 26, children }) {
   return (
-    <View style={{ width: size, height: size, borderRadius: size * 0.24, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ fontSize: size * 0.55, fontWeight: 700, color: '#fff', lineHeight: size }}>{glyph}</Text>
+    <View style={{ width: size, height: size, borderRadius: Math.round(size * 0.24), alignItems: 'center', justifyContent: 'center',
+      background: `linear-gradient(180deg, ${shade(color, 1.18)}, ${color})` }}>
+      {children || <Text style={{ fontSize: Math.round(size * 0.55), fontWeight: 600, color: '#fff', lineHeight: size, textAlign: 'center' }}>{glyph}</Text>}
     </View>
   );
 }
 
-// Informational text under a group, or a warning (tone 'warn').
-export function Note({ children, tone }) {
+// Informational text under a group, or a warning (tone 'warn') or an error/success message
+// (tone 'error' / 'ok').
+export function Note({ children, tone, style }) {
   const t = useTheme();
-  return <Text style={{ fontSize: typeScale.caption, color: tone === 'warn' ? '#ff9f0a' : t.textDim, lineHeight: 1.4, marginHorizontal: spacing.s, textAlign: 'start' }}>{children}</Text>;
+  const color = tone === 'warn' ? tint.warn : tone === 'error' ? tint.error : tone === 'ok' ? tint.ok : t.textDim;
+  return <Text style={[{ fontSize: typeScale.caption, color, lineHeight: 1.4, marginHorizontal: spacing.xs, textAlign: 'start' }, style]}>{children}</Text>;
 }
 
-// The page: a column of groups. It also hosts the open pop-up menu (PopUpLayer), drawn last so it
-// covers the rows below its button (zIndex only orders siblings).
+// A result message ({ ok, text }) under a group.
+export const Message = ({ msg }) => (msg ? <Note tone={msg.ok ? 'ok' : 'error'}>{msg.text}</Note> : null);
+
+// A short status line with a colored dot (connected, off…).
+export function StatusDot({ color, size = 8 }) {
+  return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }} />;
+}
+
+// The page: a column of sections 20 px apart. It also hosts the open pop-up menu (PopUpLayer), drawn
+// last so it covers the rows below its button (zIndex only orders siblings).
 export function Stack({ children, gap = 20 }) {
   return (
     <View style={{ gap, paddingBottom: 24 }}>

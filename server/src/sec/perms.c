@@ -1,4 +1,4 @@
-/* perms.c — permisos por app, estilo TCC (ver perms.h). Tabla en memoria + permisos.json. */
+/* perms.c — per-app permissions, TCC style (see perms.h). In-memory table + permisos.json. */
 #include "perms.h"
 #include "json.h"
 
@@ -47,7 +47,7 @@ static void load(void) {
     if (n <= 0) return;
     buf[n] = 0;
     JDoc d;
-    if (json_parse(buf, (size_t)n, &d, NULL, 0)) { fprintf(stderr, "permisos.json inválido: se ignora\n"); return; }
+    if (json_parse(buf, (size_t)n, &d, NULL, 0)) { fprintf(stderr, "permisos.json is invalid: ignored\n"); return; }
     const JVal *apps = json_get(d.root, "apps");
     for (const JVal *a = apps && apps->type == J_OBJ ? apps->kid : NULL; a; a = a->next) {
         if (a->type != J_OBJ) continue;

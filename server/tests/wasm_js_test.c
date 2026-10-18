@@ -1,4 +1,4 @@
-/* wasm_js_test.c — corre tests/wasm/api_test.js con QuickJS y el global WebAssembly. */
+/* wasm_js_test.c — runs tests/wasm/api_test.js with QuickJS and the WebAssembly global. */
 #include "ui/js_wasm.h"
 
 #include <quickjs.h>
@@ -36,7 +36,7 @@ static JSValue js_read(JSContext *c, JSValueConst this_val, int argc, JSValueCon
     size_t n;
     char *b = p ? slurp(p, &n) : NULL;
     if (p) JS_FreeCString(c, p);
-    if (!b) return JS_ThrowReferenceError(c, "no se pudo leer");
+    if (!b) return JS_ThrowReferenceError(c, "could not read");
     JSValue ab = JS_NewArrayBufferCopy(c, (uint8_t *)b, n);
     free(b);
     return ab;
@@ -53,13 +53,13 @@ int main(int argc, char **argv) {
     JS_FreeValue(c, g);
     size_t n;
     char *src = slurp(script, &n);
-    if (!src) { fprintf(stderr, "no se pudo leer %s\n", script); return 1; }
+    if (!src) { fprintf(stderr, "could not read %s\n", script); return 1; }
     JSValue r = JS_Eval(c, src, n, script, JS_EVAL_TYPE_GLOBAL);
     int fail = 0;
     if (JS_IsException(r)) {
         JSValue e = JS_GetException(c);
         const char *s = JS_ToCString(c, e);
-        fprintf(stderr, "excepción: %s\n", s ? s : "?");
+        fprintf(stderr, "exception: %s\n", s ? s : "?");
         if (s) JS_FreeCString(c, s);
         JS_FreeValue(c, e);
         fail = 1;
@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
     free(src);
     js_wasm_shutdown(c);
     JS_FreeContext(c);
-    JS_FreeRuntime(rt);                  /* con assert: no tiene que quedar nada vivo */
-    puts("contexto liberado sin pérdidas");
+    JS_FreeRuntime(rt);                  /* with assert: nothing may be left alive */
+    puts("context freed without leaks");
     return fail;
 }

@@ -1,19 +1,19 @@
-/* fsops.c — operaciones de archivos para lord.fs (la app Archivos).
+/* fsops.c — file operations for lord.fs (the Files app).
  *
- * Raíces: todo trabaja solo dentro de la carpeta personal y de los montajes del usuario
- * (/media/$USER/… y /run/media/$USER/…: pendrives y discos), y nunca escribe en las carpetas
- * protegidas (fsops_protected: las del lanzador, las apps instaladas y los ajustes).
+ * Roots: everything works only inside the home folder and the user's mounts
+ * (/media/$USER/… and /run/media/$USER/…: USB sticks and disks), and never writes in the
+ * protected folders (fsops_protected: the launcher's, the installed apps and the settings).
  *
- * - Copiar y mover: en un hilo propio por tarea (FsJob), así una copia grande no congela la
- *   interfaz; JS consulta el progreso con lord.fs.jobs(). Recursivo, conserva permisos y
- *   fechas, no pisa nada (O_EXCL) y copia los enlaces simbólicos como enlaces. Mover es un
- *   rename; entre discos distintos copia y después borra el original.
- * - Papelera: la especificación de freedesktop.org (la misma de GNOME y KDE): la de la carpeta
- *   personal en ~/.local/share/Trash y, para los discos montados, $montaje/.Trash-$uid. Cada
- *   elemento va en files/ con su .trashinfo (Path, DeletionDate) en info/. Borrar de verdad
- *   solo se puede adentro de una papelera: no hay un "borrar" general.
- * - Recorridos (tamaño de carpetas, búsqueda, recientes) acotados por tiempo, cantidad y
- *   profundidad, y sin seguir enlaces. */
+ * - Copy and move: in a dedicated thread per job (FsJob), so a large copy does not freeze the
+ *   interface; JS polls the progress with lord.fs.jobs(). Recursive, keeps permissions and
+ *   dates, never overwrites anything (O_EXCL) and copies symbolic links as links. Moving is a
+ *   rename; across different disks it copies and then deletes the original.
+ * - Trash: the freedesktop.org specification (the same as GNOME and KDE): the home folder's
+ *   in ~/.local/share/Trash and, for mounted disks, $mount/.Trash-$uid. Each
+ *   item goes in files/ with its .trashinfo (Path, DeletionDate) in info/. Deleting for real
+ *   is only possible inside a trash: there is no general "delete".
+ * - Walks (folder size, search, recents) bounded by time, count and
+ *   depth, and without following links. */
 
 #include "fsops.h"
 
@@ -33,7 +33,7 @@
 #include <stdarg.h>
 #include <unistd.h>
 
-/* snprintf para rutas: si no entra, deja la cadena vacía (y devuelve -1). */
+/* snprintf for paths: if it does not fit, leaves the string empty (and returns -1). */
 __attribute__((format(printf, 3, 4)))
 static int pathf(char *out, size_t n, const char *fmt, ...) {
     va_list ap;
@@ -63,7 +63,7 @@ int fsops_protected(const char *real) {
     static const char *const protect[] = { "/.local/share/applications", "/.config/autostart",
                                            "/.local/share/lordos/apps", "/.config/lordos/settings.json",
                                            "/.config/lordos/permisos.json",
-                                           "/.config/lordos/firewall.json", /* permisos de red: una app no escribe sus reglas */
+                                           "/.config/lordos/firewall.json", /* network permissions: an app does not write its own rules */
                                            "/.config/lordos/backup.json",   /* Backups: decides where the data goes */
                                            "/.config/lordos/mail",          /* Mail accounts and trusted certificates: only lord.mail.saveConfig (docs/MAIL.md) */
                                            "/.local/share/lordos/mail",     /* Mail cache: only lord-maild writes it */
@@ -81,7 +81,7 @@ static double now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &
 
 static void seterr(char *e, size_t n, const char *m) { if (e && n) pathf(e, n, "%s", m); }
 
-/* ---- borrar un árbol (solo lo usan mover entre discos y la papelera) ---- */
+/* ---- deleting a tree (only used by cross-disk move and the trash) ---- */
 
 static int rm_cb(const char *p, const struct stat *st, int flag, struct FTW *f) {
     (void)st; (void)f;
@@ -94,7 +94,7 @@ static int rm_tree(const char *p) {
     return nftw(p, rm_cb, 32, FTW_DEPTH | FTW_PHYS);
 }
 
-/* ---- copiar / mover ---- */
+/* ---- copy / move ---- */
 
 static FsJob jobs[FSJOB_MAX];
 static int next_job = 1;
@@ -161,7 +161,7 @@ static int copy_tree(const char *s, const char *d, FsJob *j, int depth) {
         return symlink(t, d);
     }
     if (S_ISREG(st.st_mode)) { j->files++; return copy_file(s, d, &st, j); }
-    if (!S_ISDIR(st.st_mode)) return 0;                 /* fifos, dispositivos: se saltean */
+    if (!S_ISDIR(st.st_mode)) return 0;                 /* fifos, devices: skipped */
     if (mkdir(d, 0700)) return -1;
     DIR *dir = opendir(s);
     if (!dir) return -1;
@@ -187,10 +187,10 @@ static void *job_main(void *arg) {
     int r = copy_tree(j->src, j->dst, j, 0);
     if (r) {
         pathf(j->error, sizeof j->error, "%s", strerror(errno));
-        rm_tree(j->dst);                                /* sin copias a medias */
+        rm_tree(j->dst);                                /* no half-done copies */
         j->failed = 1;
     } else if (j->move && rm_tree(j->src)) {
-        pathf(j->error, sizeof j->error, "copiado, pero no se pudo quitar el original: %s", strerror(errno));
+        pathf(j->error, sizeof j->error, "copied, but the original could not be removed: %s", strerror(errno));
         j->failed = 1;
     }
     __atomic_store_n(&j->done, 1, __ATOMIC_RELEASE);
@@ -200,25 +200,25 @@ static void *job_main(void *arg) {
 int fsjob_start(const char *src, const char *dst, int move, char *err, size_t errlen) {
     struct stat st;
     if (lstat(src, &st)) { seterr(err, errlen, strerror(errno)); return -1; }
-    if (!lstat(dst, &st)) { seterr(err, errlen, "ya existe"); return -1; }
+    if (!lstat(dst, &st)) { seterr(err, errlen, "already exists"); return -1; }
     size_t n = strlen(src);
-    if (!strncmp(dst, src, n) && dst[n] == '/') { seterr(err, errlen, "no se puede copiar una carpeta adentro de sí misma"); return -1; }
+    if (!strncmp(dst, src, n) && dst[n] == '/') { seterr(err, errlen, "cannot copy a folder into itself"); return -1; }
     FsJob *j = NULL;
     for (int i = 0; i < FSJOB_MAX; i++) if (!jobs[i].used) { j = &jobs[i]; break; }
-    if (!j) { seterr(err, errlen, "demasiadas copias en curso"); return -1; }
+    if (!j) { seterr(err, errlen, "too many copies in progress"); return -1; }
     memset(j, 0, sizeof *j);
     j->used = 1;
     j->id = next_job++;
     j->move = move;
     pathf(j->src, sizeof j->src, "%s", src);
     pathf(j->dst, sizeof j->dst, "%s", dst);
-    if (move && rename(src, dst) == 0) { j->done = 1; return j->id; }   /* mismo disco: al instante */
+    if (move && rename(src, dst) == 0) { j->done = 1; return j->id; }   /* same disk: instant */
     if (move && errno != EXDEV) { int e = errno; j->used = 0; seterr(err, errlen, strerror(e)); return -1; }
     pthread_t t;
     pthread_attr_t a;
     pthread_attr_init(&a);
     pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
-    if (pthread_create(&t, &a, job_main, j)) { j->used = 0; seterr(err, errlen, "no se pudo empezar la copia"); pthread_attr_destroy(&a); return -1; }
+    if (pthread_create(&t, &a, job_main, j)) { j->used = 0; seterr(err, errlen, "could not start the copy"); pthread_attr_destroy(&a); return -1; }
     pthread_attr_destroy(&a);
     return j->id;
 }
@@ -230,9 +230,9 @@ void fsjob_forget(int id) {
         if (jobs[i].used && jobs[i].id == id && __atomic_load_n(&jobs[i].done, __ATOMIC_ACQUIRE)) jobs[i].used = 0;
 }
 
-/* ---- Papelera (freedesktop.org Trash 1.0) ---- */
+/* ---- Trash (freedesktop.org Trash 1.0) ---- */
 
-/* Punto de montaje de una ruta: subiendo mientras no cambie el dispositivo. */
+/* Mount point of a path: going up while the device does not change. */
 static int mount_top(const char *real, char *out, size_t n) {
     struct stat st, up;
     if (lstat(real, &st)) return -1;
@@ -248,7 +248,7 @@ static int mount_top(const char *real, char *out, size_t n) {
     }
 }
 
-/* Carpeta de papelera para una ruta: la de home o $montaje/.Trash-$uid. rel = 1 si Path va relativo. */
+/* Trash folder for a path: the home one or $mount/.Trash-$uid. rel = 1 if Path is relative. */
 static int trash_dir_for(const char *real, char *dir, size_t n, char *top, size_t tn, int *rel) {
     struct stat a, b;
     if (under(real, home) && !lstat(home, &a) && !lstat(real, &b) && a.st_dev == b.st_dev) {
@@ -301,8 +301,8 @@ static void url_decode(const char *s, char *out, size_t n) {
 int fstrash_put(const char *real, char *err, size_t errlen) {
     char dir[PATH_MAX], top[PATH_MAX];
     int rel;
-    if (trash_dir_for(real, dir, sizeof dir, top, sizeof top, &rel) || mkdirs_trash(dir)) { seterr(err, errlen, "no hay papelera para esa ubicación"); return -1; }
-    if (!strncmp(real, dir, strlen(dir))) { seterr(err, errlen, "ya está en la Papelera"); return -1; }
+    if (trash_dir_for(real, dir, sizeof dir, top, sizeof top, &rel) || mkdirs_trash(dir)) { seterr(err, errlen, "there is no trash for that location"); return -1; }
+    if (!strncmp(real, dir, strlen(dir))) { seterr(err, errlen, "already in the Trash"); return -1; }
     const char *base = strrchr(real, '/');
     base = base ? base + 1 : real;
     char name[NAME_MAX + 16], info[PATH_MAX + 300], dest[PATH_MAX + 300];
@@ -317,7 +317,7 @@ int fstrash_put(const char *real, char *err, size_t errlen) {
         fd = open(info, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
         if (fd < 0 && errno != EEXIST) break;
     }
-    if (fd < 0) { seterr(err, errlen, "no se pudo crear la entrada en la Papelera"); return -1; }
+    if (fd < 0) { seterr(err, errlen, "could not create the Trash entry"); return -1; }
     char path[PATH_MAX * 3], enc[PATH_MAX * 3], when[32];
     pathf(path, sizeof path, "%s", rel ? real + strlen(top) + 1 : real);
     url_encode(path, enc, sizeof enc);
@@ -330,13 +330,13 @@ int fstrash_put(const char *real, char *err, size_t errlen) {
     if (rename(real, dest)) {
         int e = errno;
         unlink(info);
-        seterr(err, errlen, e == EXDEV ? "está en otro disco que su papelera" : strerror(e));
+        seterr(err, errlen, e == EXDEV ? "it is on a different disk than its trash" : strerror(e));
         return -1;
     }
     return 0;
 }
 
-/* Papeleras conocidas: la de home y las de los montajes del usuario. */
+/* Known trash folders: the home one and those of the user's mounts. */
 typedef struct { char dirs[17][PATH_MAX]; int n; } TrashDirs;
 static void vol_dir_cb(void *ud, const char *path, const char *fs, double total, double avail) {
     (void)fs; (void)total; (void)avail;
@@ -385,7 +385,7 @@ static int read_info(const char *dir, const char *name, char *orig, size_t on, c
     url_decode(raw, dec, sizeof dec);
     if (dec[0] == '/') pathf(orig, on, "%s", dec);
     else {
-        /* relativa al montaje: dir es $montaje/.Trash-uid */
+        /* relative to the mount: dir is $mount/.Trash-uid */
         char top[PATH_MAX];
         pathf(top, sizeof top, "%s", dir);
         char *sl = strrchr(top, '/');
@@ -416,7 +416,7 @@ void fstrash_list(FsTrashFn fn, void *ud) {
     }
 }
 
-/* id válido: un hijo directo de <papelera>/files. Devuelve la papelera y el nombre. */
+/* valid id: a direct child of <trash>/files. Returns the trash and the name. */
 static int trash_id(const char *id, char *dir, size_t dn, char *name, size_t nn) {
     TrashDirs *t = trash_dirs();
     for (int i = 0; i < t->n; i++) {
@@ -435,21 +435,21 @@ static int trash_id(const char *id, char *dir, size_t dn, char *name, size_t nn)
 int fstrash_restore(const char *id, char *err, size_t errlen) {
     char dir[PATH_MAX], name[NAME_MAX + 16], orig[PATH_MAX * 2], date[64];
     if (trash_id(id, dir, sizeof dir, name, sizeof name) || read_info(dir, name, orig, sizeof orig, date, sizeof date) || !orig[0]) {
-        seterr(err, errlen, "no está en la Papelera");
+        seterr(err, errlen, "not in the Trash");
         return -1;
     }
-    /* la carpeta original tiene que seguir existiendo, dentro de las raíces y sin protección */
+    /* the original folder must still exist, inside the roots and unprotected */
     char parent[PATH_MAX * 2], rparent[PATH_MAX];
     pathf(parent, sizeof parent, "%s", orig);
     char *sl = strrchr(parent, '/');
-    if (!sl) { seterr(err, errlen, "ubicación original inválida"); return -1; }
+    if (!sl) { seterr(err, errlen, "invalid original location"); return -1; }
     *sl = 0;
-    if (!realpath(parent[0] ? parent : "/", rparent) || !fsops_allowed(rparent)) { seterr(err, errlen, "la carpeta original ya no existe"); return -1; }
+    if (!realpath(parent[0] ? parent : "/", rparent) || !fsops_allowed(rparent)) { seterr(err, errlen, "the original folder no longer exists"); return -1; }
     char dest[PATH_MAX * 2];
     pathf(dest, sizeof dest, "%s/%s", rparent, sl + 1);
-    if (fsops_protected(dest)) { seterr(err, errlen, "esa carpeta está protegida"); return -1; }
+    if (fsops_protected(dest)) { seterr(err, errlen, "that folder is protected"); return -1; }
     struct stat st;
-    if (!lstat(dest, &st)) { seterr(err, errlen, "ya hay un archivo con ese nombre en la ubicación original"); return -1; }
+    if (!lstat(dest, &st)) { seterr(err, errlen, "there is already a file with that name in the original location"); return -1; }
     if (rename(id, dest)) { seterr(err, errlen, strerror(errno)); return -1; }
     char info[PATH_MAX * 2];
     pathf(info, sizeof info, "%s/info/%s.trashinfo", dir, name);
@@ -459,7 +459,7 @@ int fstrash_restore(const char *id, char *err, size_t errlen) {
 
 int fstrash_remove(const char *id, char *err, size_t errlen) {
     char dir[PATH_MAX], name[NAME_MAX + 16];
-    if (trash_id(id, dir, sizeof dir, name, sizeof name)) { seterr(err, errlen, "no está en la Papelera"); return -1; }
+    if (trash_id(id, dir, sizeof dir, name, sizeof name)) { seterr(err, errlen, "not in the Trash"); return -1; }
     if (rm_tree(id)) { seterr(err, errlen, strerror(errno)); return -1; }
     char info[PATH_MAX * 2];
     pathf(info, sizeof info, "%s/info/%s.trashinfo", dir, name);
@@ -495,7 +495,7 @@ int fstrash_empty(void) {
     return n;
 }
 
-/* ---- recorridos acotados ---- */
+/* ---- bounded walks ---- */
 
 static FsDu *du_out;
 static double du_deadline;
@@ -503,7 +503,7 @@ static int du_cb(const char *p, const struct stat *st, int flag, struct FTW *f) 
     (void)p; (void)f;
     if (flag == FTW_D) du_out->dirs++;
     else if (flag == FTW_F) { du_out->files++; du_out->size += (double)st->st_size; }
-    if (((du_out->files + du_out->dirs) & 1023) == 0 && now_ms() > du_deadline) return 1;   /* se acabó el tiempo */
+    if (((du_out->files + du_out->dirs) & 1023) == 0 && now_ms() > du_deadline) return 1;   /* time is up */
     return 0;
 }
 
@@ -530,7 +530,7 @@ static void search_dir(const char *p, Search *s, int depth) {
     DIR *d = opendir(p);
     struct dirent *e;
     while (d && (e = readdir(d)) && s->hits < s->limit) {
-        if (e->d_name[0] == '.') continue;                  /* ocultos y . .. */
+        if (e->d_name[0] == '.') continue;                  /* hidden ones and . .. */
         s->visited++;
         char c[PATH_MAX];
         if ((size_t)snprintf(c, sizeof c, "%s/%s", p, e->d_name) >= sizeof c) continue;
@@ -585,7 +585,7 @@ int fs_recent(int limit, int days, FsHitFn fn, void *ud) {
     return a.n;
 }
 
-/* /proc/mounts escapa espacios y otros como \040. */
+/* /proc/mounts escapes spaces and others as \040. */
 static void unescape_mount(char *s) {
     char *o = s;
     for (; *s; s++) {

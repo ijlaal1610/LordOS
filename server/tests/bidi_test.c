@@ -1,10 +1,10 @@
-/* bidi_test.c — corre la prueba de conformidad de Unicode sobre bidi.c.
+/* bidi_test.c — runs the Unicode conformance test against bidi.c.
  *
  *   build/bidi-test BidiCharacterTest.txt
  *
- * (https://www.unicode.org/Public/<versión>/ucd/BidiCharacterTest.txt). Cada línea trae los
- * caracteres, la dirección del párrafo, el nivel resuelto, los niveles por carácter después
- * de L1 ("x" = quitado por X9) y el orden visual. */
+ * (https://www.unicode.org/Public/<version>/ucd/BidiCharacterTest.txt). Each line holds the
+ * characters, the paragraph direction, the resolved level, the per-character levels after
+ * L1 ("x" = removed by X9) and the visual order. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,7 +14,7 @@
 #define MAXN 512
 
 int main(int argc, char **argv) {
-    if (argc < 2) { fprintf(stderr, "uso: bidi-test BidiCharacterTest.txt [-v]\n"); return 2; }
+    if (argc < 2) { fprintf(stderr, "usage: bidi-test BidiCharacterTest.txt [-v]\n"); return 2; }
     FILE *f = fopen(argv[1], "r");
     if (!f) { perror(argv[1]); return 2; }
     int verbose = argc > 2;
@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
         if (!ok) {
             bad++;
             if (verbose && bad <= 20) {
-                printf("FALLA: %s; dir %d; para %d (quiero %d)\n  niveles:", fld[0], dir, para, want_para);
+                printf("FAIL: %s; dir %d; para %d (want %d)\n  levels:", fld[0], dir, para, want_para);
                 for (int i = 0; i < n; i++) printf(" %s%d", rm[i] ? "x" : "", lv[i]);
                 printf("\n  quiero: ");
                 for (int i = 0; i < nl; i++) { if (want_lv[i] < 0) printf(" x"); else printf(" %d", want_lv[i]); }
@@ -71,6 +71,6 @@ int main(int argc, char **argv) {
         }
     }
     fclose(f);
-    printf("BidiCharacterTest: %ld casos, %ld bien, %ld fallan\n", total, total - bad, bad);
+    printf("BidiCharacterTest: %ld cases, %ld pass, %ld fail\n", total, total - bad, bad);
     return bad ? 1 : 0;
 }

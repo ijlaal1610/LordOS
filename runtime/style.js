@@ -1,5 +1,5 @@
-// style.js — convierte estilos estilo CSS/React en las propiedades nativas de lord-server.
-// Colores → número ARGB, atajos (margin, padding, border, boxShadow, background…) → propiedades simples.
+// style.js — converts CSS/React-style styles into lord-server's native properties.
+// Colors → ARGB number, shorthands (margin, padding, border, boxShadow, background…) → simple properties.
 
 const NAMED = {
   transparent: 0x00000000, white: 0xffffffff, black: 0xff000000, red: 0xffff0000,
@@ -29,7 +29,7 @@ export function color(v) {
   return 0;
 }
 
-// Separa por espacios/comas fuera de paréntesis: "0 8px 24px rgba(0,0,0,.4)".
+// Splits on spaces/commas outside parentheses: "0 8px 24px rgba(0,0,0,.4)".
 function tokens(s, sep = /\s/) {
   const out = [];
   let depth = 0, cur = '';
@@ -145,7 +145,7 @@ function expand(k, v, out) {
       out.fontWeight = typeof v === 'number' ? v : WEIGHTS[v] || parseFloat(v) || 400;
       return;
     case 'fontFamily':
-      // dos familias: Inter ('sans-serif') y JetBrains Mono ('monospace', o un nombre con "mono")
+      // two families: Inter ('sans-serif') and JetBrains Mono ('monospace', or a name containing "mono")
       out.fontFamily = /mono|courier|consol/i.test(String(v)) ? 'monospace' : 'sans-serif';
       return;
     default:
@@ -174,7 +174,7 @@ export function normalize(style) {
 
 const same = (a, b) => a === b || (Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]));
 
-// Envía al servidor solo las propiedades que cambiaron.
+// Sends the server only the properties that changed.
 export function applyStyle(id, prev, next) {
   for (const k in prev) if (!(k in next)) lord.setStyle(id, k, undefined);
   for (const k in next) if (!same(prev[k], next[k])) lord.setStyle(id, k, next[k]);

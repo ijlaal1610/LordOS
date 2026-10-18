@@ -1,313 +1,313 @@
 # Monitor
 
-App nativa preinstalada (`apps/monitor`) para ver el uso de este equipo: CPU, memoria, red,
-discos, procesos y las conexiones de red de cada app sobre un mapa del mundo. Copia el aspecto
-del Monitor de TangoOS (`tangoos/web/packages/app-monitor`): pestañas segmentadas, tarjetas
-oscuras con ícono, número grande y gráfico de área en vivo, fila de datos chicos y un pie con la
-frecuencia de muestreo. La pestaña Red toma la forma de Little Snitch (apps a la izquierda, mapa
-al centro, resumen a la derecha).
+Preinstalled native app (`apps/monitor`) to see how this machine is being used: CPU, memory,
+network, disks, processes and each app's network connections on a world map. It copies the look
+of TangoOS's Monitor (`tangoos/web/packages/app-monitor`): segmented tabs, dark cards with an icon,
+a big number and a live area chart, a row of small figures and a footer with the sampling rate.
+The Network tab takes the shape of Little Snitch (apps on the left, map in the middle, summary on
+the right).
 
-Fase 1 (esta): solo lectura. Sin daemon root, sin firewall, sin historial guardado y sin alertas.
+Phase 1 (this one): read-only. No root daemon, no firewall, no saved history and no alerts.
 
-## Pestañas
+## Tabs
 
-| Pestaña | Qué muestra |
+| Tab | What it shows |
 |---|---|
-| Resumen | CPU, Memoria, Red y Disco con gráfico de 60 s; abajo temperatura de CPU, ventilador, carga 1 min, carga 5/15 min y memoria en caché |
-| CPU | uso total (gráfico grande), un gráfico por núcleo, carga 1/5/15, temperatura y tareas |
-| Memoria | barra apilada (usada, caché de archivos, libre), intercambio y gráfico de 60 s |
-| Red | apps con conexiones, mapa, resumen o detalle de la app elegida (ver abajo) |
-| Discos | lectura y escritura totales y una fila por disco (modelo, `/dev`, tamaño, tasas) |
-| Procesos | tabla ordenable (CPU, memoria, hilos, PID, usuario), búsqueda, "Míos" / "Todos" |
+| Overview | CPU, Memory, Network and Disk with a 60 s chart; below, CPU temperature, fan, 1 min load, 5/15 min load and cached memory |
+| CPU | total usage (big chart), one chart per core, 1/5/15 load, temperature and tasks |
+| Memory | stacked bar (used, file cache, free), swap and a 60 s chart |
+| Network | apps with connections, map, summary or detail of the chosen app (see below) |
+| Disks | total read and write and one row per disk (model, `/dev`, size, rates) |
+| Processes | sortable table (CPU, memory, threads, PID, user), search, "Mine" / "All" |
 
-Los gráficos se pausan con el mouse encima y muestran una cruz con los valores del instante,
-como en TangoOS. El tiempo siempre corre de izquierda a derecha, también en árabe y hebreo; el
-resto de la ventana se espeja sola.
+Charts pause with the mouse over them and show a crosshair with the values at that instant, as in
+TangoOS. Time always runs left to right, also in Arabic and Hebrew; the rest of the window mirrors
+itself.
 
-### Red
+### Network
 
-- **Izquierda:** búsqueda (por app, dirección o país) y una fila por app con su ícono, cantidad de
-  conexiones, una barra de tráfico (recibido en verde, enviado en naranja, relativa a la app que
-  más movió), los bytes y la columna **Regla**, reservada para el firewall: hoy es un interruptor
-  de solo lectura en "permitir". Cada app se despliega con sus destinos (IP y país). Abajo, la
-  velocidad actual de bajada y subida y barras por segundo de los últimos 60 s.
-- **Centro:** el mapa ocupa toda la altura de la columna. Tiene un arco desde "Este equipo" hasta
-  cada país, un punto por país (más grande cuantas más conexiones) y etiquetas en píldora con el
-  nombre y la cantidad. Se maneja así:
-  - rueda: zoom hacia el cursor;
-  - touchpad: pellizcar hace zoom hacia el centro del gesto y dos dedos mueven el mapa (ver
-    `TRACKPAD.md`; con el escritorio remoto, el pellizco del trackpad del navegador también).
-    Capturas: [antes](trackpad-mapa-antes.png) y [después de pellizcar](trackpad-mapa-despues.png);
-  - arrastrar: mover;
-  - doble clic: acercar;
-  - botones `+`, `−` y "ver todo" en la esquina.
+- **Left:** search (by app, address or country) and one row per app with its icon, number of
+  connections, a traffic bar (received in green, sent in orange, relative to the app that moved
+  the most), the bytes and the **Rule** column, reserved for the firewall: today it is a read-only
+  switch set to "allow". Each app expands to show its destinations (IP and country). At the bottom,
+  the current download and upload speed and per-second bars for the last 60 s.
+- **Center:** the map fills the whole height of the column. It has an arc from "This computer" to
+  each country, one dot per country (bigger the more connections) and pill labels with the name
+  and the count. It's controlled like this:
+  - wheel: zoom toward the cursor;
+  - touchpad: pinching zooms toward the center of the gesture and two fingers move the map (see
+    `TRACKPAD.md`; with remote desktop, the browser's trackpad pinch works too).
+    Screenshots: [before](trackpad-mapa-antes.png) and [after pinching](trackpad-mapa-despues.png);
+  - drag: move;
+  - double click: zoom in;
+  - `+`, `−` and "show all" buttons in the corner.
 
-  Con zoom se ven los bordes y los nombres de los demás países. La base Lite no trae ciudades,
-  así que las etiquetas son siempre de países.
+  When zoomed in, the borders and names of the other countries show. The Lite base has no cities,
+  so labels are always countries.
 
-  Al elegir una app, el mapa muestra solo sus lugares y los encuadra. Un clic en un punto o en
-  un arco elige ese país: el panel derecho muestra sus apps, direcciones, puertos y bytes. Abajo,
-  una línea con la atribución de DB-IP y el enlace a los ajustes de privacidad.
-- **Derecha:**
-  - sin selección: tráfico (actual y desde el arranque), conexiones permitidas, denegadas (0:
-    todavía no hay reglas), entrantes, en escucha y de otros usuarios, y las apps y destinos con
-    más tráfico;
-  - con una app elegida: ruta del ejecutable, usuario, PIDs, regla, bytes y velocidad, puertos y
-    protocolos, puertos en escucha y direcciones;
-  - con un país elegido: bytes, apps y direcciones (con puertos y app).
+  When an app is chosen, the map shows only its places and frames them. A click on a dot or an arc
+  chooses that country: the right panel shows its apps, addresses, ports and bytes. At the bottom,
+  a line with the DB-IP attribution and the link to the privacy settings.
+- **Right:**
+  - no selection: traffic (current and since boot), allowed and denied connections (0: there are
+    no rules yet), incoming, listening and from other users, and the apps and destinations with the
+    most traffic;
+  - with an app chosen: executable path, user, PIDs, rule, bytes and speed, ports and protocols,
+    listening ports and addresses;
+  - with a country chosen: bytes, apps and addresses (with ports and app).
 
-Los hosts se muestran como IP. No se hace DNS inverso: preguntar el nombre de una IP se la manda
-al servidor DNS, y la regla de esta app es que ninguna dirección salga del equipo.
+Hosts are shown as IPs. There is no reverse DNS: asking for an IP's name sends it to the DNS
+server, and this app's rule is that no address leaves the machine.
 
-**"Este equipo"** se ubica por la zona horaria (`/etc/localtime` → coordenadas de
-`/usr/share/zoneinfo/zone1970.tab`), sin red.
+**"This computer"** is placed by the time zone (`/etc/localtime` → coordinates from
+`/usr/share/zoneinfo/zone1970.tab`), without the network.
 
-## Arquitectura
+## Architecture
 
 ```
-apps/monitor/            index.jsx (pestañas), Network.jsx (Red), MapView.jsx (mapa), Chart.jsx,
-                         draw.js (píxeles), icons.jsx, Privacy.jsx, countries.js (generado)
+apps/monitor/            index.jsx (tabs), Network.jsx (Network), MapView.jsx (map), Chart.jsx,
+                         draw.js (pixels), icons.jsx, Privacy.jsx, countries.js (generated)
 sdk/monitor.js           useMonitor(), stores monitorSamples / monitorProcesses / monitorConnections
-server/src/ui/js_monitor.c   lord.monitor (API de solo lectura, validada)
-server/src/monitor/mon.c     hilo de muestreo: /proc, /sys, procesos
-server/src/monitor/conn.c    conexiones por sock_diag + inodo → proceso
-server/src/monitor/mmdb.c    lector propio de MaxMind DB (IP → país)
-server/src/monitor/map.c     mapa vectorial, en su propio hilo
+server/src/ui/js_monitor.c   lord.monitor (read-only, validated API)
+server/src/monitor/mon.c     sampling thread: /proc, /sys, processes
+server/src/monitor/conn.c    connections via sock_diag + inode → process
+server/src/monitor/mmdb.c    our own MaxMind DB reader (IP → country)
+server/src/monitor/map.c     vector map, on its own thread
 assets/monitor/          land.bin (Natural Earth 1:50m), geoip-country.mmdb.xz (DB-IP Lite)
-tools/gen-monitor-data.py    genera esos datos, countries.js y los nombres de países
-tests/mmdb_test.c, tests/map_bench.c   prueba del lector y medición del mapa
+tools/gen-monitor-data.py    generates that data, countries.js and the country names
+tests/mmdb_test.c, tests/map_bench.c   reader test and map benchmark
 ```
 
 ### lord.monitor
 
-| Función | Qué hace |
+| Function | What it does |
 |---|---|
-| `start()` / `stop()` | suma o resta un interesado; con 0 o sin consultas por 3 s, el hilo se duerme |
-| `want(procesos, conexiones, países)` | qué listas arma el hilo además de la muestra |
-| `sample()` | la última muestra, o `null` si no hay una nueva |
-| `processes(idioma)` | `{ t, total, hz, list: [{ pid, ppid, uid, user, name, cmd, exe, state, threads, cpu, rss, start, self, app, appName, appIcon }] }` |
-| `connections(idioma)` | `{ t, ok, others, list: [{ id, proto, fam, state, dir, local, lport, remote, rport, scope, cc, pid, self, name, exe, sent, recv, app, appName, appIcon }] }` |
-| `info()` | `{ cpuModel, cores, geo, tick, home: { zone, cc, lat, lon } }`; `cpuModel` sale de `js_sys_cpu_name()`, el mismo de Acerca de (en ARM, el núcleo por "CPU part" y la placa) |
-| `map(vista)` | pide un cuadro del mapa: `{ width, height, lon, lat, ppd, land, border, accent, homeColor, selColor, home, dots: [{ lon, lat, r, sel }] }` (números validados, hasta 2048×2048 y 256 puntos) |
-| `mapFrame()` | el último cuadro listo `{ seq, width, height, lon, lat, ppd, ms, data }`, o `null` |
+| `start()` / `stop()` | adds or removes an interested party; at 0, or with no queries for 3 s, the thread goes to sleep |
+| `want(processes, connections, countries)` | which lists the thread builds besides the sample |
+| `sample()` | the latest sample, or `null` if there is no new one |
+| `processes(lang)` | `{ t, total, hz, list: [{ pid, ppid, uid, user, name, cmd, exe, state, threads, cpu, rss, start, self, app, appName, appIcon }] }` |
+| `connections(lang)` | `{ t, ok, others, list: [{ id, proto, fam, state, dir, local, lport, remote, rport, scope, cc, pid, self, name, exe, sent, recv, app, appName, appIcon }] }` |
+| `info()` | `{ cpuModel, cores, geo, tick, home: { zone, cc, lat, lon } }`; `cpuModel` comes from `js_sys_cpu_name()`, the same one About uses (on ARM, the core from "CPU part" and the board) |
+| `map(view)` | requests a map frame: `{ width, height, lon, lat, ppd, land, border, accent, homeColor, selColor, home, dots: [{ lon, lat, r, sel }] }` (validated numbers, up to 2048×2048 and 256 dots) |
+| `mapFrame()` | the latest ready frame `{ seq, width, height, lon, lat, ppd, ms, data }`, or `null` |
 
-Ninguna función recibe rutas ni comandos: los únicos argumentos son booleanos y un código de
-idioma (letras, dígitos, `-` y `_`, hasta 15). `lord-server` no ejecuta nada para el Monitor.
+No function takes paths or commands: the only arguments are booleans and a language code
+(letters, digits, `-` and `_`, up to 15). `lord-server` runs nothing for the Monitor.
 
-### Muestreo sin frenar la pantalla
+### Sampling without slowing the screen
 
-- Un hilo propio (`mon.c`) arma la muestra cada **250 ms** (4 Hz, como TangoOS): `/proc/stat`
-  (CPU total y por núcleo), `/proc/meminfo`, `/proc/loadavg`, `/proc/uptime`, `/proc/net/dev`,
-  `/proc/diskstats` (solo discos enteros de `/sys/block` con `device/`), y la temperatura y los
-  ventiladores de `/sys/class/hwmon` (chip `coretemp`, `k10temp`, `zenpower`, `cpu_thermal`…;
-  si no hay, `/sys/class/thermal`).
-- Procesos (`/proc/<pid>/stat`, `cmdline`, y `exe` de los propios) y conexiones: **una vez por
-  segundo**, y solo si la pestaña que las muestra está abierta.
-- El hilo deja el JSON listo; el hilo de la pantalla solo lo copia y lo convierte
-  (`JS_ParseJSON`). Nunca lee archivos durante un frame.
-- **Cero costo cerrado:** sin `start()` el hilo ni existe; después de `stop()` (o si nadie pide una
-  muestra por 3 s, por ejemplo al cambiar de tema) queda dormido en una variable de condición, y
-  suelta la base de países.
+- A dedicated thread (`mon.c`) builds the sample every **250 ms** (4 Hz, as TangoOS): `/proc/stat`
+  (total and per-core CPU), `/proc/meminfo`, `/proc/loadavg`, `/proc/uptime`, `/proc/net/dev`,
+  `/proc/diskstats` (only whole disks from `/sys/block` with `device/`), and the temperature and
+  fans from `/sys/class/hwmon` (chip `coretemp`, `k10temp`, `zenpower`, `cpu_thermal`…; if there
+  is none, `/sys/class/thermal`).
+- Processes (`/proc/<pid>/stat`, `cmdline`, and `exe` for the user's own) and connections: **once
+  per second**, and only if the tab that shows them is open.
+- The thread leaves the JSON ready; the screen thread only copies and converts it
+  (`JS_ParseJSON`). It never reads files during a frame.
+- **Zero cost when closed:** without `start()` the thread doesn't even exist; after `stop()` (or if
+  nobody asks for a sample for 3 s, for example when switching themes) it sleeps on a condition
+  variable, and releases the country database.
 
-### Conexiones
+### Connections
 
-`conn.c` hace lo mismo que `ss`: un volcado de `NETLINK_SOCK_DIAG` para TCP y UDP, IPv4 e IPv6,
-con `INET_DIAG_INFO` (de `tcp_info` salen `tcpi_bytes_acked` y `tcpi_bytes_received`). No hace
-falta root. De los sockets de otros usuarios solo se cuenta cuántos hay.
+`conn.c` does the same as `ss`: a `NETLINK_SOCK_DIAG` dump for TCP and UDP, IPv4 and IPv6, with
+`INET_DIAG_INFO` (`tcpi_bytes_acked` and `tcpi_bytes_received` come from `tcp_info`). No root
+needed. For other users' sockets, only how many there are is counted.
 
-El proceso dueño de cada socket del usuario sale de `/proc/<pid>/fd` (`socket:[inodo]`) de sus
-propios procesos. Ese recorrido es lo más caro, así que hay una caché inodo → pid que solo se
-rehace cuando aparece un socket desconocido, y como mucho una vez por segundo.
+The owning process of each of the user's sockets comes from `/proc/<pid>/fd` (`socket:[inode]`) of
+the user's own processes. That walk is the most expensive part, so there is an inode → pid cache
+that is only rebuilt when an unknown socket appears, and at most once per second.
 
-Dirección: `listen` (TCP en escucha o UDP sin destino), `in` (el puerto local es uno en escucha)
-u `out`. Alcance: `internet`, `lan` (privadas, CGNAT, link-local, ULA, multicast) o `local`.
+Direction: `listen` (TCP listening or UDP without a destination), `in` (the local port is a
+listening one) or `out`. Scope: `internet`, `lan` (private, CGNAT, link-local, ULA, multicast) or
+`local`.
 
-**De proceso a app** (`js_monitor.c`, en el hilo de la pantalla con la lista de `apps.c`):
+**From process to app** (`js_monitor.c`, on the screen thread with the list from `apps.c`):
 
-1. el propio `lord-server` es **LordOS** (las apps nativas y la Tienda corren adentro);
-2. si no, el `.desktop` cuyo programa de `Exec` (`DesktopApp.bin`) coincide con el ejecutable, el
-   `argv[0]` o el nombre del proceso;
-3. si no, `StartupWMClass` igual al nombre del proceso;
-4. si no, el nombre del proceso.
+1. `lord-server` itself is **LordOS** (native apps and the Store run inside it);
+2. otherwise, the `.desktop` whose `Exec` program (`DesktopApp.bin`) matches the executable,
+   `argv[0]` or the process name;
+3. otherwise, `StartupWMClass` equal to the process name;
+4. otherwise, the process name.
 
-### País de una IP
+### Country of an IP
 
-- **Base:** DB-IP Lite Country (CC BY 4.0, <https://db-ip.com>), convertida al formato MaxMind DB
-  por `tools/gen-monitor-data.py`. Para que quede chica:
-  - solo guarda `country.iso_code`;
-  - los bloques de IPv4 más chicos que /24 y los de IPv6 más chicos que /32 van al país con más
-    direcciones adentro;
-  - va comprimida con xz.
-- **Tamaño:** 854 KB en el paquete (4,2 MB en memoria). El original de DB-IP pesa 8,3 MB.
-- **Precisión:** contra el archivo completo de DB-IP, en 200 000 direcciones al azar, coincide el
-  **99,96 %** en IPv4 y el **99,78 %** en IPv6 (`build/mmdb-test <ours> <dbip.mmdb>`).
-- **El lector** (`mmdb.c`) es propio:
-  - todo acceso pasa por un control de límites;
-  - un puntero del decodificador se sigue una sola vez;
-  - la profundidad está acotada;
-  - un archivo roto da "sin datos".
-- **Prueba:** `build/mmdb-test` (en `make -C server test`) busca direcciones conocidas y abre 400
-  copias rotas (cortadas, con bytes al azar, metadatos falsos); en el desarrollo se corre también
-  con `-fsanitize=address,undefined`.
-- **Carga:** la base se descomprime en el hilo del Monitor la primera vez que se piden conexiones
-  con países. Se suelta al cerrar la app o al apagar la ubicación.
+- **Database:** DB-IP Lite Country (CC BY 4.0, <https://db-ip.com>), converted to the MaxMind DB
+  format by `tools/gen-monitor-data.py`. To keep it small:
+  - it only stores `country.iso_code`;
+  - IPv4 blocks smaller than /24 and IPv6 blocks smaller than /32 go to the country with the most
+    addresses inside;
+  - it's compressed with xz.
+- **Size:** 854 KB in the package (4.2 MB in memory). The DB-IP original is 8.3 MB.
+- **Accuracy:** against the full DB-IP file, over 200,000 random addresses, it matches
+  **99.96 %** for IPv4 and **99.78 %** for IPv6 (`build/mmdb-test <ours> <dbip.mmdb>`).
+- **The reader** (`mmdb.c`) is our own:
+  - every access goes through a bounds check;
+  - a decoder pointer is followed only once;
+  - depth is bounded;
+  - a broken file gives "no data".
+- **Test:** `build/mmdb-test` (in `make -C server test`) looks up known addresses and opens 400
+  broken copies (truncated, with random bytes, fake metadata); during development it is also run
+  with `-fsanitize=address,undefined`.
+- **Loading:** the database is decompressed on the Monitor thread the first time connections with
+  countries are requested. It is released when the app closes or when location is turned off.
 
-Ninguna dirección se envía a ningún servicio: ni geolocalización en línea ni DNS inverso.
+No address is sent to any service: neither online geolocation nor reverse DNS.
 
-### Mapa
+### Map
 
-El mapa se dibuja en vectores, nítido a cualquier zoom (sin escalar un PNG).
+The map is drawn as vectors, sharp at any zoom (no scaled PNG).
 
-- **Datos:** `assets/monitor/land.bin` (200 KB), de Natural Earth 1:50m, dominio público.
-  - Los contornos van simplificados (Douglas-Peucker, 0,02°) y en centésimos de grado.
-  - Sin la Antártida: el mapa va de 84° N a 56° S.
-  - `countries.js` tiene el punto de la etiqueta de cada país (`LABEL_X`/`LABEL_Y`).
-  - Los nombres de los países en `assets/locales/{es,en,pt}/countries.json` salen de
+- **Data:** `assets/monitor/land.bin` (200 KB), from Natural Earth 1:50m, public domain.
+  - The outlines are simplified (Douglas-Peucker, 0.02°) and in hundredths of a degree.
+  - No Antarctica: the map goes from 84° N to 56° S.
+  - `countries.js` has each country's label point (`LABEL_X`/`LABEL_Y`).
+  - The country names in `assets/locales/{es,en,pt}/countries.json` come from
     `NAME_ES`/`NAME_EN`/`NAME_PT`.
-- **Dibujo** (`map.c`, en un hilo propio, proyección equirectangular):
-  - relleno con tabla de aristas activas, 4 sub-líneas por fila y cobertura horizontal exacta
-    (antialias), par-impar sobre todos los países;
-  - bordes y grilla de 30° (10° con zoom) con líneas de Wu;
-  - arcos y puntos encima.
+- **Drawing** (`map.c`, on its own thread, equirectangular projection):
+  - fill with an active edge table, 4 sub-scanlines per row and exact horizontal coverage
+    (antialiasing), even-odd over all countries;
+  - borders and a 30° grid (10° when zoomed) with Wu lines;
+  - arcs and dots on top.
 
-  Los tramos de menos de un píxel se saltan, y las aristas se ordenan por sub-línea con un
-  conteo, en O(n).
-- **Sin trabarse:**
-  - el hilo de la pantalla pide un cuadro (`map`) y lo retira cuando está listo (`mapFrame`),
-    sin esperar; si llegan varios pedidos, se dibuja solo el último;
-  - mientras tanto, la app muestra el cuadro anterior corrido, y escalado si cambió el zoom, así
-    que arrastrar y acercar responden enseguida;
-  - las etiquetas son texto del motor, nítidas siempre, y se ubican sin pisarse.
-- **Memoria:** a los 20 s sin pedidos, el hilo suelta los contornos y los búferes.
+  Segments shorter than one pixel are skipped, and edges are sorted by sub-scanline with a
+  counting sort, in O(n).
+- **Without stalling:**
+  - the screen thread requests a frame (`map`) and picks it up when it's ready (`mapFrame`),
+    without waiting; if several requests arrive, only the last one is drawn;
+  - meanwhile, the app shows the previous frame shifted, and scaled if the zoom changed, so
+    dragging and zooming respond immediately;
+  - labels are engine text, always sharp, and are placed without overlapping.
+- **Memory:** after 20 s without requests, the thread releases the outlines and the buffers.
 
-### Gráficos
+### Charts
 
-`Chart.jsx` dibuja en píxeles al ancho real de la caja (`lord.getLayout`):
+`Chart.jsx` draws in pixels at the box's real width (`lord.getLayout`):
 
-- relleno degradado de 0,32 a 0,02 de opacidad y línea de 1,6 px, como TangoOS;
-- guías al 25/50/75 %;
-- eje con escala "linda" (1, 2, 2,5 o 5 × 10ⁿ).
+- gradient fill from 0.32 to 0.02 opacity and a 1.6 px line, as in TangoOS;
+- guides at 25/50/75 %;
+- axis with a "nice" scale (1, 2, 2.5 or 5 × 10ⁿ).
 
-Con `Uint32Array` cuesta un píxel por escritura.
+With `Uint32Array` it costs one pixel per write.
 
-## Privacidad
+## Privacy
 
-Ajustes → Privacidad → **Monitor** (registrado con `registerPrivacySection` si la página existe)
-tiene dos interruptores, guardados en `settings.monitor`:
+Settings → Privacy → **Monitor** (registered with `registerPrivacySection` if the page exists) has
+two switches, saved in `settings.monitor`:
 
-- `connections`: ver las conexiones de cada app. Apagado, el hilo no consulta sock_diag.
-- `geo`: ubicarlas en el mapa. Apagado, no se carga la base de países.
+- `connections`: see each app's connections. When off, the thread doesn't query sock_diag.
+- `geo`: place them on the map. When off, the country database isn't loaded.
 
-## Fase 2
+## Phase 2
 
-**Hecho (firewall, ver `FIREWALL.md`):**
+**Done (firewall, see `FIREWALL.md`):**
 
-- La columna **Regla** es un interruptor por app (`lord.fw.setAppRule`). `lord-netperm` lo aplica
-  en el kernel y una app denegada recibe EPERM.
-- Los contadores **permitidas** y **denegadas** del resumen y de cada app salen del kernel.
-- Una app sin conexiones abiertas pero con intentos denegados aparece igual en la lista.
-- Cada proceso se atribuye a la scope de la app en la que corre (`/proc/<pid>/cgroup`).
+- The **Rule** column is a per-app switch (`lord.fw.setAppRule`). `lord-netperm` applies it in the
+  kernel and a denied app gets EPERM.
+- The **allowed** and **denied** counters in the summary and for each app come from the kernel.
+- An app with no open connections but with denied attempts still shows up in the list.
+- Each process is attributed to the scope of the app it runs in (`/proc/<pid>/cgroup`).
 
-**Planeado:**
+**Planned:**
 
 
-- **Firewall** por app y por dominio, alertas de conexión y modo silencioso, en la misma
-  pantalla:
-  - cada conexión ya trae `verdict` (hoy siempre `'allow'`) y se agrupa por una clave estable
-    (`appKey`: `lordos`, `desktop:<id>` o la ruta del ejecutable);
-  - las reglas serían `{ appKey, host | país, puerto, protocolo, dirección, verdict }`;
-  - la columna Regla y los contadores de permitidas/denegadas ya están en la interfaz.
-- **Dispositivos:** `monitor.deviceUsers()` → `[{ kind: 'camera' | 'microphone', app, name, pid }]`
-  y el store `monitorDevices` (ya exportados, vacíos).
-- **Nombres de host** sin consultar a nadie: por ejemplo, los nombres que las propias apps
-  resolvieron (requiere un resolvedor local).
-- Historial guardado y alertas de uso.
+- **Firewall** per app and per domain, connection alerts and silent mode, on the same screen:
+  - each connection already carries `verdict` (always `'allow'` today) and is grouped by a stable
+    key (`appKey`: `lordos`, `desktop:<id>` or the executable path);
+  - rules would be `{ appKey, host | country, port, protocol, direction, verdict }`;
+  - the Rule column and the allowed/denied counters are already in the interface.
+- **Devices:** `monitor.deviceUsers()` → `[{ kind: 'camera' | 'microphone', app, name, pid }]` and
+  the `monitorDevices` store (already exported, empty).
+- **Host names** without asking anyone: for example, the names the apps themselves resolved
+  (requires a local resolver).
+- Saved history and usage alerts.
 
-## Mediciones
+## Measurements
 
-VM 123 (4 vCPU Xeon Silver 4108 a 1,8 GHz, `virtio_gpu` sin 3D, composición por CPU, 1280×800).
+VM 123 (4 vCPU Xeon Silver 4108 at 1.8 GHz, `virtio_gpu` without 3D, CPU compositing, 1280×800).
 
-### CPU de lord-server
+### lord-server CPU
 
-Porcentaje de un núcleo, promedio de 30 s (`~/thr.sh`, por hilo, desde `/proc/<pid>/task`).
-Durante la medición había 13 descargas en curso y Firefox abierto en la pestaña Red.
+Percentage of one core, 30 s average (`~/thr.sh`, per thread, from `/proc/<pid>/task`). During the
+measurement there were 13 downloads in progress and Firefox open on the Network tab.
 
-| Situación | Hilo principal | Hilo de muestreo | Hilo del mapa |
+| Situation | Main thread | Sampling thread | Map thread |
 |---|---|---|---|
-| Monitor cerrado | 0,4–0,5 % | (no existe / dormido) | (no existe / dormido) |
-| Resumen, al frente (4 gráficos a 4 Hz) | 10,4 % | 0,1–0,2 % | — |
-| Resumen, en segundo plano (se dibuja a 1 Hz) | 4,7 % | 0,2 % | — |
-| Procesos, al frente | 5,6 % | 0,7 % | — |
-| Red, mapa quieto | 5,1 % | 0,5 % | 0 % |
-| Red, arrastrando el mapa sin parar | 20,6 % | 0,6 % | 4,0 % |
-| Monitor cerrado otra vez | 0,4 % | 0 % | 0 % |
+| Monitor closed | 0.4–0.5 % | (doesn't exist / asleep) | (doesn't exist / asleep) |
+| Overview, in front (4 charts at 4 Hz) | 10.4 % | 0.1–0.2 % | — |
+| Overview, in the background (drawn at 1 Hz) | 4.7 % | 0.2 % | — |
+| Processes, in front | 5.6 % | 0.7 % | — |
+| Network, map still | 5.1 % | 0.5 % | 0 % |
+| Network, dragging the map nonstop | 20.6 % | 0.6 % | 4.0 % |
+| Monitor closed again | 0.4 % | 0 % | 0 % |
 
-- **Cerrado no cuesta nada:**
-  - sin `start()` el hilo de muestreo no existe;
-  - después, duerme en una variable de condición;
-  - el del mapa suelta todo a los 20 s.
-- **Muestreo:** leer `/proc` y `/sys` cuatro veces por segundo cuesta menos del 1 %.
-- **Dibujo de la interfaz:** es lo que cuesta.
-  - Cada pestaña se suscribe solo a lo que muestra y a su ritmo: gráficos a 4 Hz con la ventana
-    al frente y a 1 Hz detrás; Procesos y Red a 1 Hz.
-  - Antes de separarlo así, Procesos costaba 17 % y Red 14 %.
-  - En Resumen, la mayor parte es repintar la caja que une los cuatro gráficos (el motor usa una
-    sola región dañada por frame, unos 12 ms) y dibujar los gráficos en JS (alrededor de 1,5 %).
+- **Closed costs nothing:**
+  - without `start()` the sampling thread doesn't exist;
+  - afterwards, it sleeps on a condition variable;
+  - the map thread releases everything after 20 s.
+- **Sampling:** reading `/proc` and `/sys` four times per second costs less than 1 %.
+- **Drawing the interface:** this is what costs.
+  - Each tab subscribes only to what it shows and at its own rate: charts at 4 Hz with the window
+    in front and 1 Hz behind; Processes and Network at 1 Hz.
+  - Before splitting it this way, Processes cost 17 % and Network 14 %.
+  - In Overview, most of it is repainting the box that holds the four charts (the engine uses a
+    single damaged region per frame, about 12 ms) and drawing the charts in JS (around 1.5 %).
 
-### Mapa
+### Map
 
-Tiempo de un cuadro de 800×560 en el hilo del mapa (`build/map-bench`):
+Time for an 800×560 frame on the map thread (`build/map-bench`):
 
-| Vista | Promedio | Peor caso |
+| View | Average | Worst case |
 |---|---|---|
-| Mundo entero | 13,0 ms | 16,0 ms |
-| Europa con zoom | 6,7 ms | 8,1 ms |
-| Sudamérica con zoom | 4,4 ms | 5,2 ms |
+| Whole world | 13.0 ms | 16.0 ms |
+| Europe zoomed in | 6.7 ms | 8.1 ms |
+| South America zoomed in | 4.4 ms | 5.2 ms |
 
-Corre fuera del frame. Mientras dibuja, la pantalla muestra el cuadro anterior corrido.
+It runs outside the frame. While it draws, the screen shows the previous frame shifted.
 
-### País por IP
+### Country by IP
 
-- **Primera carga:** la base (854 KB → 4,2 MB) se descomprime una sola vez, en el hilo de
-  muestreo, fuera del frame.
-  - `build/mmdb-test` entero, que incluye esa carga y 400 archivos rotos, tarda 0,5 s en la VM.
-- **Búsqueda:** cada una recorre como mucho 128 nodos.
+- **First load:** the database (854 KB → 4.2 MB) is decompressed only once, on the sampling
+  thread, outside the frame.
+  - The whole `build/mmdb-test`, which includes that load and 400 broken files, takes 0.5 s in the
+    VM.
+- **Lookup:** each one walks at most 128 nodes.
 
-## Capturas (VM 123)
+## Screenshots (VM 123)
 
-- Resumen: ![Resumen](m8-monitor-resumen.png)
+- Overview: ![Overview](m8-monitor-resumen.png)
 - CPU: ![CPU](m8-monitor-cpu.png)
-- Memoria: ![Memoria](m8-monitor-memoria.png)
-- Discos: ![Discos](m8-monitor-discos.png)
-- Procesos: ![Procesos](m8-monitor-procesos.png)
-- Red, con curl desplegado: ![Red](m8-monitor-red.png)
-- Firefox elegido: ![App elegida](m8-monitor-red-app.png)
-- Mapa:
-  - el mundo: ![Mapa](m8-monitor-mapa-mundo.png)
-  - zoom en Europa: ![Europa](m8-monitor-mapa-europa.png)
-  - zoom en Sudamérica: ![Sudamérica](m8-monitor-mapa-sudamerica.png)
-  - Alemania elegida: ![Lugar elegido](m8-monitor-mapa-seleccion.png)
-- Ajustes → Privacidad → Monitor: ![Privacidad](m8-monitor-privacidad.png)
-- En árabe (RTL): ![RTL](m8-monitor-rtl.png)
+- Memory: ![Memory](m8-monitor-memoria.png)
+- Disks: ![Disks](m8-monitor-discos.png)
+- Network, with curl expanded: ![Network](m8-monitor-red.png)
+- Firefox chosen: ![Chosen app](m8-monitor-red-app.png)
+- Map:
+  - the world: ![Map](m8-monitor-mapa-mundo.png)
+  - zoomed in on Europe: ![Europe](m8-monitor-mapa-europa.png)
+  - zoomed in on South America: ![South America](m8-monitor-mapa-sudamerica.png)
+  - Germany chosen: ![Chosen place](m8-monitor-mapa-seleccion.png)
+- Settings → Privacy → Monitor: ![Privacy](m8-monitor-privacidad.png)
+- In Arabic (RTL): ![RTL](m8-monitor-rtl.png)
 
-## Pendiente
+## Pending
 
-- **Enlace a la privacidad:** con el tamaño por omisión de la ventana (1180×700 en 1280×800), el
-  enlace "Ajustes de privacidad del Monitor" del pie del mapa cae en la zona del Dock, que se
-  queda con el clic. Se llega igual por Ajustes → Privacidad.
-- **Árabe y otros idiomas:** los textos del Monitor existen en es/en/pt. En árabe la ventana se
-  espeja bien, pero los textos salen en inglés hasta que el paquete de idioma los traduzca.
-- **Sensores:** en la VM no hay `hwmon` de CPU ni ventiladores, así que temperatura y ventilador
-  muestran "—". Falta probar en hardware real (el código busca `coretemp`, `k10temp`,
-  `zenpower`, `cpu_thermal` y `pwmfan`).
-- **Fase 2:** lo de la sección "Fase 2".
+- **Privacy link:** with the window's default size (1180×700 on 1280×800), the "Monitor privacy
+  settings" link in the map footer falls in the Dock area, which takes the click. It can still be
+  reached through Settings → Privacy.
+- **Arabic and other languages:** the Monitor's texts exist in es/en/pt. In Arabic the window
+  mirrors correctly, but the texts show in English until the language pack translates them.
+- **Sensors:** the VM has no CPU `hwmon` or fans, so temperature and fan show "—". Still needs
+  testing on real hardware (the code looks for `coretemp`, `k10temp`, `zenpower`, `cpu_thermal`
+  and `pwmfan`).
+- **Phase 2:** what's in the "Phase 2" section.
 
-## Atribuciones
+## Attributions
 
-- **Países por IP:** DB-IP Lite Country © db-ip.com, licencia CC BY 4.0
+- **Countries by IP:** DB-IP Lite Country © db-ip.com, CC BY 4.0 license
   (<https://creativecommons.org/licenses/by/4.0/>).
-  - La atribución se muestra en Acerca de LordOS, al pie del mapa y en
+  - The attribution is shown in About LordOS, at the foot of the map and in
     `/usr/share/doc/lordos/copyright`.
-  - Fuente usada: `dbip-country-lite-2026-10`.
-- **Contornos y nombres de países:** Natural Earth (<https://www.naturalearthdata.com>), dominio
-  público.
+  - Source used: `dbip-country-lite-2026-10`.
+- **Country outlines and names:** Natural Earth (<https://www.naturalearthdata.com>), public
+  domain.

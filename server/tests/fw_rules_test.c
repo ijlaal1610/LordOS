@@ -1,6 +1,6 @@
-/* fw_rules_test.c — reglas de red por app (src/fw/rules.c, docs/FIREWALL.md): precedencia, redes
- * v4/v6, LAN, comodines, duraciones, restricciones, JSON (ida y vuelta y rechazo) y una prueba al
- * azar contra una versión lineal obvia del que decide. */
+/* fw_rules_test.c — per-app network rules (src/fw/rules.c, docs/FIREWALL.md): precedence, v4/v6
+ * networks, LAN, wildcards, durations, restrictions, JSON (round trip and rejection) and a random
+ * test against an obvious linear version of the decider. */
 #ifndef _GNU_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -14,7 +14,7 @@
 #include <unistd.h>
 
 static int fails, checks;
-#define CHECK(c) do { checks++; if (!(c)) { fails++; fprintf(stderr, "%s:%d: falló: %s\n", __FILE__, __LINE__, #c); } } while (0)
+#define CHECK(c) do { checks++; if (!(c)) { fails++; fprintf(stderr, "%s:%d: failed: %s\n", __FILE__, __LINE__, #c); } } while (0)
 
 static FwRule mk(const char *app, FwDir dir, const char *dst, FwAction act) {
     FwRule r;
@@ -22,14 +22,14 @@ static FwRule mk(const char *app, FwDir dir, const char *dst, FwAction act) {
     snprintf(r.app, sizeof r.app, "%s", app);
     r.dir = dir;
     r.action = act;
-    if (fw_parse_dest(dst, &r)) { fprintf(stderr, "destino inválido en la prueba: %s\n", dst); exit(2); }
+    if (fw_parse_dest(dst, &r)) { fprintf(stderr, "invalid destination in the test: %s\n", dst); exit(2); }
     return r;
 }
 
 static uint32_t add(FwStore *s, const char *app, FwDir dir, const char *dst, FwAction act) {
     FwRule r = mk(app, dir, dst, act);
     uint32_t id = 0;
-    if (fw_rule_add(s, &r, &id)) { fprintf(stderr, "no se pudo agregar %s %s\n", app, dst); exit(2); }
+    if (fw_rule_add(s, &r, &id)) { fprintf(stderr, "could not add %s %s\n", app, dst); exit(2); }
     return id;
 }
 
@@ -96,14 +96,14 @@ static void test_dest(void) {
         FwRule r;
         memset(&r, 0, sizeof r);
         int p = fw_parse_dest(bad[i], &r);
-        if (p != -1) fprintf(stderr, "  aceptó destino inválido: \"%s\"\n", bad[i]);
+        if (p != -1) fprintf(stderr, "  accepted invalid destination: \"%s\"\n", bad[i]);
         CHECK(p == -1);
     }
     char lab[80], name[400];
     memset(lab, 'a', 64); lab[64] = 0;
     snprintf(name, sizeof name, "%s.com", lab);
     FwRule r;
-    CHECK(fw_parse_dest(name, &r) == -1);      /* etiqueta de 64 */
+    CHECK(fw_parse_dest(name, &r) == -1);      /* 64-byte label */
     lab[63] = 0;
     snprintf(name, sizeof name, "%s.%s.%s.%s", lab, lab, lab, lab);   /* 255 > 253 */
     CHECK(fw_parse_dest(name, &r) == -1);
@@ -139,28 +139,28 @@ static void test_mode_and_trusted(void) {
     fw_set_mode(s, FW_MODE_OFF);
     d = dec(s, "desktop:a", "8.8.8.8", 443, NULL);
     CHECK(d.verdict == FW_V_ALLOW && d.reason == FW_BY_MODE && !d.record);
-    fw_set_mode(s, (FwMode)7);                 /* inválido: no cambia */
+    fw_set_mode(s, (FwMode)7);                 /* invalid: no change */
     CHECK(fw_mode(s) == FW_MODE_OFF);
 
     fw_set_mode(s, FW_MODE_ASK);
     CHECK(!fw_set_trusted(s, "desktop:a", 1));
     d = dec(s, "desktop:a", "8.8.8.8", 443, NULL);
     CHECK(d.verdict == FW_V_ALLOW && d.reason == FW_BY_TRUSTED && !d.record);
-    /* una regla explícita sigue valiendo para una app confiable */
+    /* an explicit rule still applies to a trusted app */
     add(s, "desktop:a", FW_OUT, "8.8.8.8", FW_DENY);
     d = dec(s, "desktop:a", "8.8.8.8", 443, NULL);
     CHECK(d.verdict == FW_V_DENY && d.reason == FW_BY_RULE);
-    /* confiar y restringir se excluyen */
+    /* trusting and restricting are mutually exclusive */
     CHECK(!fw_set_restricted(s, "desktop:a", FW_R_NO_CAMERA));
     CHECK(!fw_is_trusted(s, "desktop:a") && fw_restricted(s, "desktop:a") == FW_R_NO_CAMERA);
     CHECK(!fw_set_trusted(s, "desktop:a", 1));
     CHECK(fw_is_trusted(s, "desktop:a") && fw_restricted(s, "desktop:a") == 0);
     CHECK(fw_set_restricted(s, "desktop:a", 1u << 20) == -1);
     CHECK(fw_set_trusted(s, "bad id", 1) == -1);
-    /* sin app válida: se niega */
+    /* without a valid app: denied */
     d = dec(s, "", "8.8.8.8", 443, NULL);
     CHECK(d.verdict == FW_V_DENY);
-    /* la scope de cgroup es la misma app */
+    /* the cgroup scope is the same app */
     d = dec(s, "app-lordos-a.scope", "8.8.8.8", 443, NULL);
     CHECK(d.verdict == FW_V_DENY && d.reason == FW_BY_RULE);
     fw_store_free(s);
@@ -171,30 +171,30 @@ static void test_precedence(void) {
     fw_set_mode(s, FW_MODE_ASK);
     const char *A = "desktop:org.chromium.Chromium";
 
-    /* permitir y denegar del mismo destino: la última decisión reemplaza (mismo id) */
+    /* allow and deny for the same destination: the last decision replaces it (same id) */
     uint32_t i1 = add(s, A, FW_OUT, "any", FW_ALLOW);
     uint32_t i2 = add(s, A, FW_OUT, "any", FW_DENY);
     CHECK(i1 == i2 && fw_rule_count(s) == 1);
     CHECK(dec(s, A, "1.1.1.1", 80, NULL).verdict == FW_V_DENY);
 
-    /* lo más específico gana: dominio permitido sobre "denegar todo" */
+    /* the most specific wins: allowed domain over "deny all" */
     uint32_t dom = add(s, A, FW_OUT, "api.example.com", FW_ALLOW);
     FwDecision d = dec(s, A, "93.184.216.34", 443, "api.example.com");
     CHECK(d.verdict == FW_V_ALLOW && d.rule_id == dom);
     CHECK(dec(s, A, "93.184.216.34", 443, "www.example.com").verdict == FW_V_DENY);
 
-    /* dominio exacto le gana al comodín, y un sufijo más largo a uno más corto */
+    /* an exact domain beats the wildcard, and a longer suffix beats a shorter one */
     uint32_t w1 = add(s, A, FW_OUT, "*.example.com", FW_DENY);
     uint32_t w2 = add(s, A, FW_OUT, "*.cdn.example.com", FW_ALLOW);
     CHECK(dec(s, A, "93.184.216.34", 443, "api.example.com").rule_id == dom);
     CHECK(dec(s, A, "93.184.216.34", 443, "x.example.com").rule_id == w1);
-    CHECK(dec(s, A, "93.184.216.34", 443, "example.com").rule_id == w1);    /* el comodín cubre el sufijo */
+    CHECK(dec(s, A, "93.184.216.34", 443, "example.com").rule_id == w1);    /* the wildcard covers the suffix */
     CHECK(dec(s, A, "93.184.216.34", 443, "img.cdn.example.com").rule_id == w2);
     CHECK(dec(s, A, "93.184.216.34", 443, "API.Example.COM.").rule_id == dom);
     CHECK(dec(s, A, "93.184.216.34", 443, "notexample.com").verdict == FW_V_DENY);  /* "any" */
     CHECK(dec(s, A, "93.184.216.34", 443, "notexample.com").rule_id == i1);
 
-    /* redes: la más chica gana; con dominio y red a la vez, gana el dominio */
+    /* networks: the smallest wins; with a domain and a network at once, the domain wins */
     uint32_t c8 = add(s, A, FW_OUT, "10.0.0.0/8", FW_ALLOW);
     uint32_t c24 = add(s, A, FW_OUT, "10.1.2.0/24", FW_DENY);
     uint32_t c32 = add(s, A, FW_OUT, "10.1.2.3", FW_ALLOW);
@@ -211,15 +211,15 @@ static void test_precedence(void) {
     CHECK(dec(s, A, "2a00::1", 80, NULL).rule_id == v6c);
     CHECK(dec(s, A, "2a00::1", 80, NULL).verdict == FW_V_ALLOW);
 
-    /* LAN / internet entre la red y "any" */
+    /* LAN / internet sit between the network and "any" */
     uint32_t lan = add(s, A, FW_OUT, "lan", FW_ALLOW);
     uint32_t inet = add(s, A, FW_OUT, "internet", FW_DENY);
     CHECK(dec(s, A, "192.168.1.5", 80, NULL).rule_id == lan);
     CHECK(dec(s, A, "8.8.8.8", 80, NULL).rule_id == inet);
-    CHECK(dec(s, A, "10.9.9.9", 80, NULL).rule_id == c8);                   /* la red es más específica */
-    CHECK(dec(s, A, NULL, 80, NULL).rule_id == i1);                         /* sin dirección: solo "any" */
+    CHECK(dec(s, A, "10.9.9.9", 80, NULL).rule_id == c8);                   /* the network is more specific */
+    CHECK(dec(s, A, NULL, 80, NULL).rule_id == i1);                         /* no address: only "any" */
 
-    /* con la misma especificidad, denegar le gana a permitir: dos nombres de una misma IP */
+    /* at equal specificity, deny beats allow: two names for the same IP */
     FwStore *t = fw_store_new();
     uint32_t ok = add(t, A, FW_OUT, "good.example", FW_ALLOW);
     uint32_t no = add(t, A, FW_OUT, "evil.example", FW_DENY);
@@ -229,7 +229,7 @@ static void test_precedence(void) {
     d = fw_decide(t, &q);
     CHECK(d.verdict == FW_V_DENY && d.rule_id == no);
     (void)ok;
-    /* un puerto concreto le gana a cualquier puerto, y un protocolo concreto a "any" */
+    /* a specific port beats any port, and a specific protocol beats "any" */
     FwRule r = mk(A, FW_OUT, "203.0.113.5", FW_ALLOW);
     r.port_lo = r.port_hi = 443;
     uint32_t p443;
@@ -246,12 +246,12 @@ static void test_precedence(void) {
     CHECK(!fw_rule_add(t, &r, &pudp));
     q.proto = FW_PROTO_UDP; q.port = 53; CHECK(fw_decide(t, &q).rule_id == pudp);
     q.proto = FW_PROTO_TCP; q.port = 53; CHECK(fw_decide(t, &q).rule_id == pany);
-    /* la dirección (salida/entrada) separa las reglas */
+    /* direction (outbound/inbound) separates the rules */
     FwQuery qi = qry(A, FW_IN, "203.0.113.5", 443, NULL);
     CHECK(fw_decide(t, &qi).reason == FW_BY_MODE);
     fw_store_free(t);
 
-    /* otra app no ve estas reglas */
+    /* another app does not see these rules */
     CHECK(dec(s, "desktop:other", "10.1.2.3", 80, NULL).reason == FW_BY_MODE);
 
     /* sacar reglas */
@@ -283,7 +283,7 @@ static void test_restricted(void) {
     FwDecision d = dec(s, A, "8.8.8.8", 443, NULL);
     CHECK(d.verdict == FW_V_DENY && d.reason == FW_BY_RESTRICTED && d.flag == FW_R_NO_INTERNET);
     CHECK(dec(s, A, "192.168.0.10", 443, NULL).verdict == FW_V_ALLOW);
-    CHECK(dec(s, A, NULL, 443, "example.com").verdict == FW_V_DENY);       /* sin dirección = internet */
+    CHECK(dec(s, A, NULL, 443, "example.com").verdict == FW_V_DENY);       /* no address = internet */
 
     CHECK(!fw_set_restricted(s, A, FW_R_NO_LAN));
     CHECK(dec(s, A, "192.168.0.10", 443, NULL).flag == FW_R_NO_LAN);
@@ -305,7 +305,7 @@ static void test_restricted(void) {
     for (size_t i = 0; i < sizeof others / sizeof *others; i++) {
         CHECK(!fw_set_restricted(s, A, others[i]));
         CHECK(fw_blocks(s, A, others[i]));
-        CHECK(dec(s, A, "8.8.8.8", 443, NULL).verdict == FW_V_ALLOW);       /* no tocan la red */
+        CHECK(dec(s, A, "8.8.8.8", 443, NULL).verdict == FW_V_ALLOW);       /* they don't touch the network */
         CHECK(fw_flag_from_name(fw_flag_name(others[i])) == others[i]);
     }
     CHECK(!fw_set_restricted(s, A, 0));
@@ -337,7 +337,7 @@ static void test_lifetimes(void) {
     uint32_t qy;
     CHECK(!fw_rule_add(s, &r, &qy));
     CHECK(dec(s, A, "198.51.100.1", 443, NULL).rule_id == q1);
-    CHECK(dec(s, A, "198.51.100.1", 443, NULL).rule_id == q1);      /* no se gasta */
+    CHECK(dec(s, A, "198.51.100.1", 443, NULL).rule_id == q1);      /* not used up */
     char *json = fw_to_json(s, NULL);
     CHECK(json && !strstr(json, "198.51.100") && strstr(json, "\"lan\""));
     free(json);
@@ -355,7 +355,7 @@ static void test_lifetimes(void) {
     r.dir = FW_OUT; r.port_lo = 10; r.port_hi = 5;
     CHECK(fw_rule_add(s, &r, NULL) == -1);
     r.port_lo = 0; r.port_hi = 0; r.kind = FW_DST_CIDR; r.fam = 4; r.prefix = 8; r.addr[0] = 10; r.addr[3] = 1;
-    CHECK(fw_rule_add(s, &r, NULL) == -1);       /* bits de host */
+    CHECK(fw_rule_add(s, &r, NULL) == -1);       /* host bits */
     fw_store_free(s);
 }
 
@@ -395,7 +395,7 @@ static void test_json(void) {
     CHECK(dec(t, "lpk:game", "10.2.3.4", 443, NULL).verdict == FW_V_ALLOW);
     free(j2);
 
-    /* archivo */
+    /* file */
     char path[256];
     const char *tmpdir = getenv("TMPDIR");
     snprintf(path, sizeof path, "%s/fw_rules_test.%d.json", tmpdir && *tmpdir ? tmpdir : "/tmp", (int)getpid());
@@ -406,11 +406,11 @@ static void test_json(void) {
     CHECK(j3 && !strcmp(j1, j3));
     free(j3);
     unlink(path);
-    CHECK(fw_load(u, path, err, sizeof err) == 1);         /* sin archivo: queda igual */
+    CHECK(fw_load(u, path, err, sizeof err) == 1);         /* no file: stays the same */
     CHECK(fw_rule_count(u) == fw_rule_count(s));
     fw_store_free(u);
 
-    /* entradas malas: se rechazan y la tienda no cambia */
+    /* bad input: rejected, and the store does not change */
     const char *bad[] = {
         "", "[]", "null", "{", "{\"v\":2}", "{}", "{\"v\":\"1\"}", "{\"v\":1,\"x\":1}", "{\"v\":1}{}",
         "{\"v\":1,\"mode\":\"loud\"}", "{\"v\":1,\"mode\":1}",
@@ -439,18 +439,18 @@ static void test_json(void) {
     size_t before = fw_rule_count(t);
     for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
         int r = fw_from_json(t, bad[i], strlen(bad[i]), err, sizeof err);
-        if (r != -1) fprintf(stderr, "  aceptó JSON inválido %zu: %s\n", i, bad[i]);
+        if (r != -1) fprintf(stderr, "  accepted invalid JSON %zu: %s\n", i, bad[i]);
         CHECK(r == -1 && err[0]);
     }
     CHECK(fw_from_json(t, "{\"v\":1}\0", 8, err, sizeof err) == -1);
     CHECK(fw_rule_count(t) == before && fw_mode(t) == FW_MODE_ASK);
-    /* lo mínimo vale y deja todo vacío */
+    /* the minimum is valid and leaves everything empty */
     CHECK(!fw_from_json(t, "{\"v\":1}", 7, err, sizeof err) && fw_rule_count(t) == 0 && fw_mode(t) == FW_MODE_SILENT);
     const char *num = "{\"v\":1,\"rules\":[{\"app\":\"lordos\",\"dst\":\"any\",\"action\":\"deny\",\"port\":443}]}";
     CHECK(!fw_from_json(t, num, strlen(num), err, sizeof err) && fw_rule_count(t) == 1);
     CHECK(dec(t, "lordos", "1.2.3.4", 443, NULL).verdict == FW_V_DENY && dec(t, "lordos", "1.2.3.4", 80, NULL).reason == FW_BY_MODE);
 
-    /* mutaciones al azar del JSON bueno: nunca se cae; si lo acepta, lo vuelve a escribir y leer */
+    /* random mutations of the good JSON: never crashes; if accepted, it is written and read back */
     srand(1234);
     char *m = malloc(n1 + 1);
     int accepted = 0;
@@ -479,14 +479,14 @@ static void test_json(void) {
         }
         fw_store_free(f);
     }
-    printf("  JSON: 20000 mutaciones, %d aceptadas y consistentes\n", accepted);
+    printf("  JSON: 20000 mutations, %d accepted and consistent\n", accepted);
     free(m);
     free(j1);
     fw_store_free(t);
     fw_store_free(s);
 }
 
-/* ---- al azar contra una versión lineal ------------------------------------------------------- */
+/* ---- random against a linear version --------------------------------------------------------- */
 
 static int labels_of(const char *d) { int n = 1; for (; *d; d++) n += *d == '.'; return n; }
 
@@ -614,7 +614,7 @@ static void test_random(void) {
         }
     }
     CHECK(mism == 0);
-    printf("  azar: %ld decisiones contra la versión lineal, %ld distintas, %zu reglas al final\n", total, mism, fw_rule_count(s));
+    printf("  random: %ld decisions against the linear version, %ld different, %zu rules at the end\n", total, mism, fw_rule_count(s));
     free(all);
     fw_store_free(s);
 }
@@ -636,7 +636,7 @@ static void bench(void) {
     unsigned long sum = 0;
     for (int i = 0; i < 1000000; i++) sum += fw_decide(s, &q).rule_id;
     double ms = (double)(clock() - t0) * 1000.0 / CLOCKS_PER_SEC;
-    printf("  medición: 50000 reglas, 1e6 decisiones en %.0f ms (%.3f us cada una)\n", ms, ms / 1000.0);
+    printf("  measurement: 50000 rules, 1e6 decisions in %.0f ms (%.3f us each)\n", ms, ms / 1000.0);
     CHECK(sum == 1000000ul * fw_decide(s, &q).rule_id && sum);
     fw_store_free(s);
 }
@@ -652,6 +652,6 @@ int main(void) {
     test_json();
     test_random();
     bench();
-    printf("fw-rules-test: %d/%d bien\n", checks - fails, checks);
+    printf("fw-rules-test: %d/%d passed\n", checks - fails, checks);
     return fails ? 1 : 0;
 }

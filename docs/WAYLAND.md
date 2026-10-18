@@ -1,204 +1,209 @@
-# Apps Linux en LordOS (Wayland)
+# Linux apps in LordOS (Wayland)
 
-lord-server es también un **compositor Wayland**: las apps GTK, Qt y cualquier otra que hable
-Wayland se abren como ventanas de LordOS, dentro del tema, junto a las apps propias. No hay
-X11, Weston, wlroots ni Mutter: solo `libwayland-server` (serializa el protocolo; está en la
-política de dependencias desde M1) y el código que `wayland-scanner` genera desde los XML de
-`wayland-protocols`. El compositor está en `server/src/wl/wl.c`.
+lord-server is also a **Wayland compositor**: GTK, Qt and any other app that speaks Wayland open
+as LordOS windows, inside the theme, next to the native apps. There's no X11, Weston, wlroots or
+Mutter: only `libwayland-server` (it serializes the protocol; it's been in the dependency policy
+since M1) and the code `wayland-scanner` generates from the `wayland-protocols` XML files. The
+compositor lives in `server/src/wl/wl.c`.
 
-## Capturas (VM, lord-server real)
+## Screenshots (VM, real lord-server)
 
 | | |
 |---|---|
 | ![foot](m6-foot.png) | ![gtk](m6-gtk4-demo.png) |
-| foot (terminal Wayland) con el marco del tema: pide decoración del servidor | GTK Demo (GTK 4.18): dibuja su propio marco; LordOS recorta su sombra |
+| foot (Wayland terminal) with the theme's frame: it asks for server-side decoration | GTK Demo (GTK 4.18): draws its own frame; LordOS clips its shadow |
 | ![gtk-menu](m6-gtk-menu.png) | ![gtk-drag](m6-gtk-arrastre.png) |
-| Menú emergente de GTK (xdg_popup), ubicado con su posicionador | Arrastrada desde su propia barra (xdg_toplevel.move): sigue al puntero |
+| GTK popup menu (xdg_popup), placed with its positioner | Dragged from its own bar (xdg_toplevel.move): it follows the pointer |
 | ![qt](m6-featherpad-qt6.png) | ![qt-menu](m6-qt-menu.png) |
-| FeatherPad (Qt 6.8) abierto desde la Terminal de LordOS, con el marco del tema | Menú Archivo de Qt |
-| ![portapapeles](m6-portapapeles.png) | ![dock](m6-tres-apps-dock.png) |
-| Copiado en FeatherPad (Ctrl+C) y pegado en la Terminal de LordOS | Tres apps Linux abiertas; cada una con su ícono en el Dock |
+| FeatherPad (Qt 6.8) opened from the LordOS Terminal, with the theme's frame | Qt's File menu |
+| ![clipboard](m6-portapapeles.png) | ![dock](m6-tres-apps-dock.png) |
+| Copied in FeatherPad (Ctrl+C) and pasted in the LordOS Terminal | Three Linux apps open; each with its icon in the Dock |
 
-## Qué hay
+## What's there
 
-| Protocolo | Versión | Qué hace |
+| Protocol | Version | What it does |
 |---|---|---|
-| `wl_compositor`, `wl_region` | 6 | superficies; el búfer se copia al hacer commit y se suelta enseguida |
-| `wl_shm` | (libwayland) | memoria compartida ARGB8888/XRGB8888 |
-| `wl_subcompositor` | 1 | subsuperficies (se componen sobre su padre) |
-| `wl_output` | 4 | la pantalla, escala 1 |
-| `wl_seat` | 9 | puntero (entrar, salir, mover, botones, rueda con `axis_source` y `axis_value120`; scroll fino del touchpad con `axis_source finger`, `axis_stop` y `axis_relative_direction` para el desplazamiento natural), teclado con el mapa de XKB de LordOS (`keyboard.c`), modificadores y repetición, y `wl_touch` si hay una pantalla táctil |
-| `zwp_pointer_gestures_v1` | 3 | gestos del touchpad: pellizco (zoom en Chromium, GTK, Firefox), deslizar y mantener (`wl_input.c`, ver `TRACKPAD.md`) |
-| `wl_data_device_manager` | 3 | portapapeles compartido con el de LordOS en los dos sentidos (ver abajo) |
-| `xdg_wm_base` | 6 | ventanas (`xdg_toplevel`: título, mover, cambiar tamaño, maximizar, minimizar, cerrar) y menús emergentes (`xdg_popup` con `xdg_positioner`: ancla, gravedad, dar vuelta y deslizar dentro de la pantalla) |
-| `zxdg_decoration_manager_v1` | 1 | las apps que lo usan (Qt, foot, Kitty, Alacritty) dejan el marco al tema |
-| `wp_cursor_shape_manager_v1` | 1 | la app pide el cursor por nombre (Chromium, GTK 4, Qt 6) y LordOS dibuja el suyo (`cursor.c`, ver `VENTANAS.md`) |
+| `wl_compositor`, `wl_region` | 6 | surfaces; the buffer is copied on commit and released right away |
+| `wl_shm` | (libwayland) | ARGB8888/XRGB8888 shared memory |
+| `wl_subcompositor` | 1 | subsurfaces (composited on top of their parent) |
+| `wl_output` | 4 | one per display: logical position, physical mode, scale rounded up, name and description (`DISPLAYS.md`) |
+| `zxdg_output_manager_v1` | 3 | logical position and size of each display |
+| `wp_fractional_scale_v1` | 1 | the exact scale of the display(s) a surface is on (GTK 4, Qt 6, Chromium render sharp at 125–175 %) |
+| `wl_seat` | 9 | pointer (enter, leave, motion, buttons, wheel with `axis_source` and `axis_value120`; fine touchpad scrolling with `axis_source finger`, `axis_stop` and `axis_relative_direction` for natural scrolling), keyboard with LordOS's XKB keymap (`keyboard.c`), modifiers and repeat, and `wl_touch` if there's a touchscreen |
+| `zwp_pointer_gestures_v1` | 3 | touchpad gestures: pinch (zoom in Chromium, GTK, Firefox), swipe and hold (`wl_input.c`, see `TRACKPAD.md`) |
+| `wl_data_device_manager` | 3 | clipboard shared with LordOS's in both directions (see below) |
+| `xdg_wm_base` | 6 | windows (`xdg_toplevel`: title, move, resize, maximize, minimize, close) and popup menus (`xdg_popup` with `xdg_positioner`: anchor, gravity, flip and slide within the screen) |
+| `zxdg_decoration_manager_v1` | 1 | apps that use it (Qt, foot, Kitty, Alacritty) leave the frame to the theme |
+| `wp_cursor_shape_manager_v1` | 1 | the app asks for the cursor by name (Chromium, GTK 4, Qt 6) and LordOS draws its own (`cursor.c`, see `WINDOWS.md`) |
 
-Las ventanas entran al gestor de ventanas del SDK (`sdk/wayland.js`) con la app interna
-`linux` (id `linux#<superficie>`): el tema las ve como cualquier otra, con su título, foco,
-maximizar, minimizar y Dock. Las que dibujan su propio marco (GTK) llegan con `args.csd` y el
-tema muestra solo el contenido (los dos temas incluidos ya lo hacen). El teclado va a la app
-Linux del frente; las combinaciones con ❖ siguen siendo de LordOS.
+Windows enter the SDK's window manager (`sdk/wayland.js`) as the internal app `linux` (id
+`linux#<surface>`): the theme sees them like any other, with their title, focus, maximize,
+minimize and Dock. Those that draw their own frame (GTK) arrive with `args.csd` and the theme
+shows only the content (both bundled themes already do). The keyboard goes to the frontmost Linux
+app; ❖ combinations still belong to LordOS.
 
-## Cómo abrir una app
+## How to open an app
 
-Desde la Terminal de LordOS: cada pestaña nueva tiene `WAYLAND_DISPLAY`, `XDG_SESSION_TYPE=wayland`,
-`GDK_BACKEND=wayland` y `QT_QPA_PLATFORM=wayland`, así que alcanza con `featherpad &`,
-`gtk4-demo &` o `foot &`. Las apps reciben también el idioma y la región de LordOS (`LANG`,
-`LC_*`, ver `IDIOMAS.md`).
+From the LordOS Terminal: every new tab has `WAYLAND_DISPLAY`, `XDG_SESSION_TYPE=wayland`,
+`GDK_BACKEND=wayland` and `QT_QPA_PLATFORM=wayland`, so `featherpad &`, `gtk4-demo &` or
+`foot &` is enough. Apps also receive LordOS's language and region (`LANG`, `LC_*`, see
+`LANGUAGES.md`).
 
-También aparecen en el **Launchpad**, en el menú de inicio del tema Clásico y en la Tienda (ver
-`APPS-NATIVAS.md` y `PAQUETES.md`): son las apps con un `.desktop` en
-`/usr/share/applications` o `~/.local/share/applications`. Se abren con un clic, y su ventana
-lleva en el Dock el mismo ícono que en el Launchpad (se las reconoce por el app id de Wayland o
-por `StartupWMClass`).
+They also appear in the **Launchpad**, in the Classic theme's start menu and in the Store (see
+`NATIVE-APPS.md` and `PACKAGES.md`): they are the apps with a `.desktop` in
+`/usr/share/applications` or `~/.local/share/applications`. They open with one click, and their
+window carries the same icon in the Dock as in the Launchpad (they're recognized by the Wayland
+app id or by `StartupWMClass`).
 
 | | |
 |---|---|
-| ![launchpad](m7-launchpad-linux.png) | ![lanzada](m7-lanzada-desde-launchpad.png) |
-| El Launchpad con las apps Linux instaladas (foot con su PNG; las que solo traen SVG, con su inicial) | FeatherPad abierta con un clic; en el Dock lleva el mismo ícono |
-| ![clasico](m7-clasico-inicio.png) | ![clasico2](m7-clasico-featherpad.png) |
-| Tema Clásico: el menú de inicio con apps LordOS, Linux y Fractal (instalada como paquete) | FeatherPad lanzada desde ahí, con su ícono en la barra de tareas |
+| ![launchpad](m7-launchpad-linux.png) | ![launched](m7-lanzada-desde-launchpad.png) |
+| The Launchpad with the installed Linux apps (foot with its PNG; those that only ship SVG, with their initial) | FeatherPad opened with one click; it carries the same icon in the Dock |
+| ![classic](m7-clasico-inicio.png) | ![classic2](m7-clasico-featherpad.png) |
+| Classic theme: the start menu with LordOS apps, Linux apps and Fractal (installed as a package) | FeatherPad launched from there, with its icon in the taskbar |
 
-### El lanzador (`server/src/apps.c`)
+### The launcher (`server/src/apps.c`)
 
-Es la segunda excepción a "el servidor no ejecuta comandos"; la primera es el shell de la
-Terminal. La aprobó el usuario para M7. Límites:
+It's the second exception to "the server doesn't run commands"; the first is the Terminal's
+shell. The user approved it for M7. Limits:
 
-- `lord.apps.launch(id)` recibe solo el id de un `.desktop` de esas dos carpetas, que además
-  pase los filtros:
+- `lord.apps.launch(id)` only receives the id of a `.desktop` in those two folders, which must
+  also pass the filters:
   - `Type=Application`;
-  - sin `NoDisplay` ni `Hidden`;
-  - `OnlyShowIn`/`NotShowIn` con `LordOS`;
-  - el `TryExec` existe;
-  - no es una app de terminal.
-- El comando es la línea `Exec` de ese archivo, releída al lanzar:
-  - se arma `argv` según la especificación (comillas y escapes);
-  - se quitan los códigos de archivo (`%f %u %F %U`) y no se pasan argumentos del llamador;
-  - con `lord.apps.launchWith(id, ruta)` (el «Abrir con» de Archivos), la ruta va como un único
-    argumento en el primer `%f`/`%F` (o como `file://…` en `%u`/`%U`), y solo si la app declara
-    `MimeType` en su `.desktop`; la ruta se resuelve con realpath y tiene que estar en la carpeta
-    personal o en un disco montado del usuario (`/media/$USER`, `/run/media/$USER`);
-  - se ejecuta con `execve`, sin shell;
-  - el programa se busca en un PATH fijo (`/usr/local/bin`, `/usr/bin`, `/bin`, juegos, y
-    `~/.local/bin` solo para los `.desktop` del usuario).
-- La app arranca como nieta huérfana, en su propia sesión, con las señales normales y sin otros
-  descriptores. Su salida va a `~/.cache/lordos/apps.log`, que se recorta al pasar 1 MB.
-- Desde JS no se puede crear un `.desktop`:
-  - `lord.fs.write` rechaza `~/.local/share/applications` y `~/.config/autostart`, también a
-    través de un symlink (ver `EDITOR.md`);
-  - los paquetes `.lpk` se instalan en otra carpeta.
+  - no `NoDisplay` or `Hidden`;
+  - `OnlyShowIn`/`NotShowIn` with `LordOS`;
+  - the `TryExec` exists;
+  - it isn't a terminal app.
+- The command is that file's `Exec` line, re-read at launch time:
+  - `argv` is built according to the specification (quotes and escapes);
+  - file codes (`%f %u %F %U`) are removed and no caller arguments are passed;
+  - with `lord.apps.launchWith(id, path)` (Files' «Open With»), the path goes as a single
+    argument in the first `%f`/`%F` (or as `file://…` in `%u`/`%U`), and only if the app declares
+    `MimeType` in its `.desktop`; the path is resolved with realpath and must be in the home
+    folder or on a disk mounted by the user (`/media/$USER`, `/run/media/$USER`);
+  - it's run with `execve`, without a shell;
+  - the program is looked up in a fixed PATH (`/usr/local/bin`, `/usr/bin`, `/bin`, games, and
+    `~/.local/bin` only for the user's `.desktop` files).
+- The app starts as an orphaned grandchild, in its own session, with normal signals and no other
+  descriptors. Its output goes to `~/.cache/lordos/apps.log`, which is trimmed when it passes 1 MB.
+- A `.desktop` can't be created from JS:
+  - `lord.fs.write` rejects `~/.local/share/applications` and `~/.config/autostart`, also
+    through a symlink (see `EDITOR.md`);
+  - `.lpk` packages are installed in another folder.
 
-  Así, la interfaz no puede inventar un comando: solo puede elegir una app que ya está instalada.
+  So the interface can't invent a command: it can only pick an app that's already installed.
 
-Íconos: se usa el PNG de `hicolor` (64, 48, 128… px) o de `/usr/share/pixmaps`. Las apps que solo traen
-SVG (FeatherPad, GTK Demo) usan el PNG de 64 px que publica Debian en AppStream, que el motor de
-paquetes ya baja (`/var/lib/lordos/pkg/icons/64`, ver `PAQUETES.md`). Si tampoco está ahí, se
-muestra la inicial: LordOS todavía no dibuja SVG.
+Icons: the `hicolor` PNG (64, 48, 128… px) or the one in `/usr/share/pixmaps` is used. Apps that
+only ship SVG (FeatherPad, GTK Demo) use the 64 px PNG Debian publishes in AppStream, which the
+package engine already downloads (`/var/lib/lordos/pkg/icons/64`, see `PACKAGES.md`). If it's not
+there either, the initial is shown: LordOS doesn't draw SVG yet.
 
-## Portapapeles
+## Clipboard
 
-Hay uno solo para toda la sesión:
+There's a single one for the whole session:
 
-- **Texto.** Lo que se copia en una app Linux pasa a LordOS (Terminal, campos de texto), y lo
-  que se copia en LordOS lo recibe la app con foco.
-- **Otros formatos (imágenes, HTML…).** Mientras la app que copió sigue abierta, las otras apps
-  Linux reciben de ella cualquier formato que ofrezca (hasta 32).
-- **Imágenes.** Si lo copiado es solo una imagen (`image/png`), LordOS la guarda: sigue
-  disponible después de cerrar la app de origen y aparece en el historial.
-- **Sin bloqueos.** Las copias grandes (hasta 16 MB) se envían de a partes, sin que una app que
-  lee despacio frene al servidor.
+- **Text.** What's copied in a Linux app goes to LordOS (Terminal, text fields), and what's
+  copied in LordOS is received by the focused app.
+- **Other formats (images, HTML…).** While the app that copied is still open, the other Linux
+  apps receive from it any format it offers (up to 32).
+- **Images.** If what was copied is only an image (`image/png`), LordOS stores it: it stays
+  available after the source app is closed and shows up in the history.
+- **No blocking.** Large copies (up to 16 MB) are sent in chunks, without a slow-reading app
+  stalling the server.
 
 | | |
 |---|---|
-| ![historial](m7-historial-imagen.png) | ![pegar](m7-pegar-imagen.png) |
-| Imagen copiada en GTK Demo, ya cerrada: sigue en el historial (❖V) | GTK Demo abierta de nuevo: «Paste» la recibe de LordOS |
+| ![history](m7-historial-imagen.png) | ![paste](m7-pegar-imagen.png) |
+| Image copied in GTK Demo, now closed: it's still in the history (❖V) | GTK Demo opened again: «Paste» receives it from LordOS |
 
-**Historial (❖V rápido, ❖⇧V completo):** guarda todo lo copiado en cualquier lado: textos,
-enlaces, colores, código, rutas e imágenes, con el origen (el app_id de la app Linux que copió).
-Se guarda en la carpeta personal y sobrevive al reinicio. Las vistas previas de las imágenes se
-guardan primero en `$XDG_RUNTIME_DIR/lordos` (quedan las últimas 10) y el historial las copia a
-`~/.local/share/lordos/clipboard`. Lo que una app marca como secreto
-(`x-kde-passwordManagerHint`, como KeePassXC) se puede pegar, pero no se guarda. Detalle en
+**History (❖V quick, ❖⇧V full):** it keeps everything copied anywhere: text, links, colors,
+code, paths and images, with the source (the app_id of the Linux app that copied). It's stored in
+the home folder and survives reboots. Image previews are first stored in
+`$XDG_RUNTIME_DIR/lordos` (the last 10 are kept) and the history copies them to
+`~/.local/share/lordos/clipboard`. Whatever an app marks as secret
+(`x-kde-passwordManagerHint`, like KeePassXC) can be pasted, but isn't stored. Details in
 `SPOTLIGHT.md`.
 
-## Cómo funciona
+## How it works
 
-1. `wl_start()` (después de soltar privilegios) crea `$XDG_RUNTIME_DIR/wayland-0` y los
-   globales; el fd de la cola de eventos entra al `poll` de `main.c`.
-2. Primer commit de una ventana: se le manda `configure` (0×0: elige la app). Con el primer
-   búfer pasa a "mapeada" y JS recibe `map` con título, app id, tamaño y si dibuja su marco.
-3. La UI la dibuja como un nodo `surface` (`<Surface surface={id} />`): `paint.c` copia los
-   píxeles en la caja del nodo, recortando la sombra con la *window geometry*. Si el tema
-   cambia el tamaño del nodo (redimensionar, maximizar), se le manda un `configure` con el
-   tamaño nuevo y la app vuelve a dibujar.
-4. Los menús emergentes se dibujan después de todo el árbol, encima de cualquier ventana; un
-   clic afuera los cierra (`popup_done`).
-5. Después de presentar cada cuadro se responden los `frame` de las apps (así no dibujan más
-   rápido que la pantalla).
+1. `wl_start()` (after dropping privileges) creates `$XDG_RUNTIME_DIR/wayland-0` and the
+   globals; the event queue's fd joins `main.c`'s `poll`.
+2. A window's first commit: it gets a `configure` (0×0: the app chooses). With the first buffer
+   it becomes "mapped" and JS receives `map` with title, app id, size and whether it draws its
+   own frame.
+3. The UI draws it as a `surface` node (`<Surface surface={id} />`): `paint.c` copies the pixels
+   into the node's box, clipping the shadow with the *window geometry*. If the theme changes the
+   node's size (resize, maximize), it gets a `configure` with the new size and the app redraws.
+4. Popup menus are drawn after the whole tree, above any window; a click outside closes them
+   (`popup_done`).
+5. After each frame is presented, the apps' `frame` callbacks are answered (so they don't draw
+   faster than the screen).
 
-Memoria: con foot, FeatherPad y GTK Demo abiertos, lord-server pasa de ~51 a 53 MB de RSS
-(cada ventana guarda una copia de su búfer).
+Memory: with foot, FeatherPad and GTK Demo open, lord-server goes from ~51 to 53 MB of RSS
+(each window keeps a copy of its buffer).
 
-**Mover y agrandar** (`xdg_toplevel.move`/`resize`) lo sigue lord-server en C, sin JS por cuadro, igual que
-las ventanas de LordOS; mientras dura, la app no recibe el puntero. Todas las ventanas Linux, también las
-de marco propio, tienen los bordes invisibles del tema para agrandarlas (ver `VENTANAS.md`).
+**Moving and resizing** (`xdg_toplevel.move`/`resize`) is tracked by lord-server in C, with no JS
+per frame, just like LordOS windows; while it lasts, the app doesn't receive the pointer. All
+Linux windows, including those with their own frame, have the theme's invisible borders for
+resizing (see `WINDOWS.md`).
 
-## Marco y colores: Chromium, Firefox, GTK y GNOME
+## Frame and colors: Chromium, Firefox, GTK and GNOME
 
 | | |
 |---|---|
 | ![chromium](decoraciones-chromium.png) | ![firefox](decoraciones-firefox-oscuro.png) |
-| Chromium con el marco de LordOS (sin sus propios botones de ventana) | Firefox ESR con el marco de LordOS, oscuro |
-| ![gtk oscuro](decoraciones-gtk-oscuro.png) | ![gtk claro](decoraciones-gtk3-claro.png) |
-| Mousepad (GTK 3, tema «LordOS-dark») y GNOME Calculadora (GTK 4/libadwaita, acento verde y botones a la izquierda), oscuro | Lo mismo en claro: cambian en vivo al tocar el modo en Ajustes |
-| ![firefox claro](decoraciones-firefox-claro.png) | |
-| Firefox cambió a claro en vivo | |
+| Chromium with the LordOS frame (without its own window buttons) | Firefox ESR with the LordOS frame, dark |
+| ![gtk dark](decoraciones-gtk-oscuro.png) | ![gtk light](decoraciones-gtk3-claro.png) |
+| Mousepad (GTK 3, «LordOS-dark» theme) and GNOME Calculator (GTK 4/libadwaita, green accent and buttons on the left), dark | The same in light: they change live when the mode is switched in Settings |
+| ![firefox light](decoraciones-firefox-claro.png) | |
+| Firefox switched to light live | |
 
-- **Chromium.** Usa el marco del tema si pide decoración del servidor (`zxdg_decoration`). El ISO trae
-  `"browser": { "custom_chrome_frame": false }` en `/etc/chromium/master_preferences` («Usar la barra
-  de título y los bordes del sistema»), que vale para los perfiles nuevos. Se vuelve a su barra
-  propia en Configuración → Apariencia.
-- **Firefox ESR.** El ISO trae `/etc/firefox-esr/lordos.js` con `pref("browser.tabs.inTitlebar", 0)`.
-  Firefox dibuja con GTK 3, que no habla xdg-decoration: lord-server también anuncia
-  **`org_kde_kwin_server_decoration_manager`** (el de KDE) con el modo «servidor» por defecto. Así
-  GTK 3 le pide el marco a LordOS para las ventanas sin barra propia (Firefox, Mousepad). Las tablas
-  del protocolo están escritas a mano en `wl.c`, sin el XML de plasma-wayland-protocols. Se vuelve a
-  la barra de Firefox en Personalizar barra de herramientas → «Barra de título».
-- **GTK 4 / libadwaita (GNOME).** Leen el modo, el acento y el orden de los botones de
-  **`org.freedesktop.portal.Settings`**. Lo atiende lord-server mismo (`server/src/ui/portal.c`) en el
-  bus de la sesión, sin xdg-desktop-portal, con el cliente D-Bus propio de Contraseñas
-  (`server/src/vault/dbus.c`). Claves:
+- **Chromium.** It uses the theme's frame if it asks for server-side decoration
+  (`zxdg_decoration`). The ISO ships `"browser": { "custom_chrome_frame": false }` in
+  `/etc/chromium/master_preferences` («Use system title bar and borders»), which applies to new
+  profiles. It goes back to its own bar in Settings → Appearance.
+- **Firefox ESR.** The ISO ships `/etc/firefox-esr/lordos.js` with
+  `pref("browser.tabs.inTitlebar", 0)`. Firefox draws with GTK 3, which doesn't speak
+  xdg-decoration: lord-server also advertises **`org_kde_kwin_server_decoration_manager`**
+  (KDE's) with «server» mode as the default. So GTK 3 asks LordOS for the frame for windows
+  without their own bar (Firefox, Mousepad). The protocol tables are hand-written in `wl.c`,
+  without plasma-wayland-protocols' XML. Firefox's bar comes back in Customize Toolbar →
+  «Title Bar».
+- **GTK 4 / libadwaita (GNOME).** They read the mode, the accent and the button order from
+  **`org.freedesktop.portal.Settings`**. lord-server itself serves it (`server/src/ui/portal.c`)
+  on the session bus, without xdg-desktop-portal, with Passwords' own D-Bus client
+  (`server/src/vault/dbus.c`). Keys:
   - `org.freedesktop.appearance`: `color-scheme`, `accent-color`, `contrast`;
   - `org.gnome.desktop.interface`: `color-scheme`, `accent-color`, `gtk-theme`;
   - `org.gnome.desktop.wm.preferences`: `button-layout`.
 
-  Cuando cambian se manda `SettingChanged`. Si otro programa ya tiene el nombre
-  `org.freedesktop.portal.Desktop`, LordOS no lo pisa y lo dice en el registro.
-- **GTK 3.** Fuera de Flatpak no lee el portal: lee GSettings.
-  - lord-server les pasa a las apps `GSETTINGS_BACKEND=keyfile` y escribe las mismas claves en
-    `~/.config/glib-2.0/settings/keyfile`, sin borrar lo que guardan las apps. GLib vigila ese archivo,
-    así que GTK 3 también cambia en vivo.
-  - El tema `LordOS`/`LordOS-dark` (`assets/gtk/`, se instala en `/usr/share/themes`) es Adwaita con
-    los colores, la barra y los semáforos de LordOS.
-  - GTK 3 no tiene acento: el suyo queda azul.
-- **Los botones** van a la izquierda en el orden de los semáforos (`close,minimize,maximize:`). El
-  tema Clásico los pide a la derecha con el token `gtkButtons` (`:minimize,maximize,close`).
-- **Qt/KDE.** Usan el marco del tema (xdg-decoration). Qt 6 también lee `color-scheme` del portal; no
-  se probó.
-- **El JS.** `ThemeProvider` del SDK manda modo, acento y botones con `lord.portal.set` cuando cambian.
+  When they change, `SettingChanged` is sent. If another program already owns the name
+  `org.freedesktop.portal.Desktop`, LordOS doesn't take it over and says so in the log.
+- **GTK 3.** Outside Flatpak it doesn't read the portal: it reads GSettings.
+  - lord-server passes `GSETTINGS_BACKEND=keyfile` to the apps and writes the same keys to
+    `~/.config/glib-2.0/settings/keyfile`, without deleting what the apps store. GLib watches that
+    file, so GTK 3 also changes live.
+  - The `LordOS`/`LordOS-dark` theme (`assets/gtk/`, installed in `/usr/share/themes`) is Adwaita
+    with LordOS's colors, bar and traffic lights.
+  - GTK 3 has no accent: its own stays blue.
+- **The buttons** go on the left in traffic-light order (`close,minimize,maximize:`). The Classic
+  theme asks for them on the right with the `gtkButtons` token (`:minimize,maximize,close`).
+- **Qt/KDE.** They use the theme's frame (xdg-decoration). Qt 6 also reads `color-scheme` from the
+  portal; not tested.
+- **The JS.** The SDK's `ThemeProvider` sends mode, accent and buttons with `lord.portal.set` when
+  they change.
 
-En la VM 118 se probó con Chromium 155, Firefox ESR 153, Mousepad (GTK 3) y GNOME Calculadora
+Tested in VM 118 with Chromium 155, Firefox ESR 153, Mousepad (GTK 3) and GNOME Calculator
 (GTK 4, libadwaita).
 
-## Pendiente
+## Pending
 
-- Íconos SVG de las apps (la mayoría de las apps GTK/Qt modernas solo traen SVG).
-- Abrir archivos con una app Linux (`%f`/`%u`), acciones de los `.desktop` y apps de terminal.
-- Ya están (ver `GPU.md`): `linux-dmabuf` v4, composición por GPU (Mesa, opcional), scanout
-  directo a pantalla completa, `wp_presentation`, `wp_viewporter`, `relative-pointer`,
-  `pointer-constraints`, pantalla completa de verdad (❖Esc sale) y los cursores de las apps
-  (imagen u oculto).
-- Arrastrar y soltar, selección primaria (clic del medio), `text-input` (los métodos de entrada
-  de LordOS dentro de apps Wayland), escala fraccional, activación (`xdg-activation`).
-- Xwayland, para apps que solo hablan X11.
+- SVG app icons (most modern GTK/Qt apps only ship SVG).
+- Opening files with a Linux app (`%f`/`%u`), `.desktop` actions and terminal apps.
+- Already done (see `GPU.md`): `linux-dmabuf` v4, GPU composition (Mesa, optional), direct
+  fullscreen scanout, `wp_presentation`, `wp_viewporter`, `relative-pointer`,
+  `pointer-constraints`, real fullscreen (❖Esc exits) and app cursors (image or hidden).
+- Drag and drop, primary selection (middle click), `text-input` (LordOS input methods inside
+  Wayland apps), activation (`xdg-activation`). (Fractional scale and several outputs: done, see
+  `DISPLAYS.md`.)
+- Xwayland, for apps that only speak X11.

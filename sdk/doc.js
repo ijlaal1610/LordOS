@@ -1,14 +1,14 @@
-// doc.js — base de los documentos: habla con lord.doc (el ayudante encerrado lord-doc, ver
-// docs/DOCUMENTOS.md). Todo es asincrónico: los pedidos devuelven promesas y un temporizador lee
-// los resultados (lord.doc.poll) solo mientras hay algo pendiente, así el escritorio nunca espera.
+// doc.js — documents base: talks to lord.doc (the confined helper lord-doc, see
+// docs/DOCUMENTS.md). Everything is asynchronous: requests return promises and a timer reads
+// the results (lord.doc.poll) only while something is pending, so the desktop never waits.
 //
-//   docAvailable()                         ¿está el ayudante?
-//   <DocImage image={id} style />          muestra una imagen devuelta (página, muestra de fuente)
+//   docAvailable()                         is the helper there?
+//   <DocImage image={id} style />          shows a returned image (page, font sample)
 //   releaseImage(id)
-//   fonts: fontInfo(ruta), fontSample(ruta, { lines, width, fg, bg }), fontGrid(ruta, { cps, cell, cols, fg })
-//   imágenes: decodeImage(ruta, { maxw, maxh }), convertImage(ruta, salida, { format })
-//   PDF para imprimir: makeTextPdf({ text, title, mono, paper }), makeImagePdf(ruta, { paper }) → { blob, size }
-//   blobs: saveBlob(blob, ruta), releaseBlob(blob)
+//   fonts: fontInfo(path), fontSample(path, { lines, width, fg, bg }), fontGrid(path, { cps, cell, cols, fg })
+//   images: decodeImage(path, { maxw, maxh }), convertImage(path, output, { format })
+//   PDF for printing: makeTextPdf({ text, title, mono, paper }), makeImagePdf(path, { paper }) → { blob, size }
+//   blobs: saveBlob(blob, path), releaseBlob(blob)
 import { createElement as h, useEffect, useRef } from 'react';
 import { Image } from '@lordos/runtime';
 import { settings } from './settings.js';
@@ -22,14 +22,14 @@ let timer = null;
 function dispatch(e) {
   if (e.type === 'ready') return;
   if (e.type === 'crash') {
-    // los pedidos de esa sesión ya llegan como "err" desde el servidor; avisar a quien escuche
+    // that session's requests already arrive as "err" from the server; notify whoever is listening
     for (const fn of crashListeners.get(e.sid) || []) fn(e.data);
     return;
   }
   const k = `${e.sid}:${e.req}`;
   const w = waiting.get(k);
   if (!w) {
-    if (e.type === 'img') lord.doc.release(e.image);        // nadie la espera: se libera
+    if (e.type === 'img') lord.doc.release(e.image);        // nobody is waiting for it: release it
     else if (e.type === 'blob') lord.doc.blobRelease(e.blob);
     return;
   }
@@ -56,7 +56,7 @@ export function onSessionCrash(sid, fn) {
   return () => crashListeners.get(sid)?.delete(fn);
 }
 
-// Espera el resultado de un pedido ya hecho ({ sid, req } o los dos números).
+// Waits for the result of a request already made ({ sid, req } or both numbers).
 export function waitFor(sid, req, { onPart, onProgress } = {}) {
   if (req == null || req < 0) return Promise.reject(Object.assign(new Error('unavailable'), { code: 'unavailable' }));
   return new Promise((resolve, reject) => {
@@ -73,7 +73,7 @@ export function cancelRequest(sid, req) {
   }
 }
 
-// Pedido a una sesión PDF/comprimido (op: open render select find outline pageinfo setfield annot undo blob sizes list).
+// Request to a PDF/archive session (op: open render select find outline pageinfo setfield annot undo blob sizes list).
 export function request(sid, op, args, { prio = 0, timeout, onPart, onProgress } = {}) {
   let req;
   try { req = lord.doc.request(sid, op, args ? JSON.stringify(args) : '', prio, timeout ?? -1); } catch (e) { return Promise.reject(e); }
@@ -82,7 +82,7 @@ export function request(sid, op, args, { prio = 0, timeout, onPart, onProgress }
   return p;
 }
 
-// Pedido a la sesión de utilidades (fuentes, imágenes, PDF para imprimir, miniaturas).
+// Request to the utilities session (fonts, images, PDF for printing, thumbnails).
 function util(op, args, path, out) {
   let r;
   const t0 = Date.now();
@@ -103,12 +103,12 @@ export const decodeImage = (path, { maxw = 1600, maxh = 1600 } = {}) => util('de
 export const convertImage = (path, out, { format = 'png', quality = 90, paper, native, dpi } = {}) => util('convert', { format, quality, paper, native, dpi }, path, out);
 export const makeTextPdf = ({ text, title = '', mono = false, paper = 'a4', size }) => util('maketext', { text, title, mono, paper, size });
 export const makeImagePdf = (path, { paper = 'a4', fill = false } = {}) => util('makeimage', { paper, fill }, path);
-// Prepara la sesión de utilidades (Archivos la llama al abrirse: la primera Vista rápida no espera)
+// Prepares the utilities session (Files calls it when it opens: the first Quick Look doesn't wait)
 let warmed = false;
 export const warmDocs = () => { if (warmed || !docAvailable()) return; warmed = true; util('warm', {}).catch(() => { warmed = false; }); };
 export const pdfThumb = (path, { width = 400, height = 600, invert = false } = {}) => util('pdfthumb', { width, height, invert }, path);
 
-// <DocImage image={id} />: la imagen se copia al nodo (el id se puede liberar después).
+// <DocImage image={id} />: the image is copied into the node (the id can be released afterwards).
 export function DocImage({ image, style }) {
   const ref = useRef(null);
   useEffect(() => {

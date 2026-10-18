@@ -1,5 +1,5 @@
-/* pkgstate.c — original guardado, «Modificada por vos», restaurar, compartir y actualizaciones
- * (ver pkgstate.h y docs/FIRMA.md). */
+/* pkgstate.c — saved original, "Modified by you", restore, share and updates
+ * (see pkgstate.h and docs/SIGNING.md). */
 #include "pkgstate.h"
 #include "json.h"
 #include "../pkg/crypto.h"
@@ -81,7 +81,7 @@ void pkg_forget(const char *id) {
     for (int i = 0; i < ncache; i++) if (!strcmp(cache[i].id, id)) cache[i].id[0] = 0;
 }
 
-/* ---- archivos instalados ---- */
+/* ---- installed files ---- */
 
 typedef struct { char path[224]; long long size, mtime; } DirFile;
 static DirFile *walk_files;
@@ -164,10 +164,10 @@ int pkg_status(const char *id, PkgStatus *st) {
     struct stat ds, os;
     if (stat(dir, &ds) || !S_ISDIR(ds.st_mode)) return -1;
     st->installed = 1;
-    if (pkg_original_path(id, orig, sizeof orig) || stat(orig, &os)) return 0;      /* instalada antes de M8 */
+    if (pkg_original_path(id, orig, sizeof orig) || stat(orig, &os)) return 0;      /* installed before M8 */
     st->has_original = 1;
     if (list_dir(dir)) { seterr(st->error, sizeof st->error, "no se pudo leer la carpeta de la app"); return 0; }
-    /* huella barata: tamaños y fechas de todo, más el original */
+    /* cheap fingerprint: sizes and dates of everything, plus the original */
     unsigned long long fp = 1469598103934665603ULL;
     for (int i = 0; i < walk_n; i++) {
         for (const char *p = walk_files[i].path; *p; p++) fp = (fp ^ (unsigned char)*p) * 1099511628211ULL;
@@ -184,7 +184,7 @@ int pkg_status(const char *id, PkgStatus *st) {
     if (lpk_open(orig, &pk, err, sizeof err)) { snprintf(st->error, sizeof st->error, "%s", err); return 0; }
     manifest_version(&pk, st->version, sizeof st->version);
     if (sig_verify_package(&pk, id, st->version, &st->sig, err, sizeof err)) snprintf(st->error, sizeof st->error, "%s", err);
-    /* lo instalado contra el original, archivo por archivo */
+    /* the installed files against the original, file by file */
     for (int i = 0; i < pk.nfiles; i++) {
         const LpkFile *f = &pk.files[i];
         int found = -1;
@@ -213,7 +213,7 @@ int pkg_status(const char *id, PkgStatus *st) {
 int pkg_check_update(const char *id, const LpkSigInfo *next, char *err, size_t n) {
     char orig[PATH_MAX];
     struct stat st;
-    if (pkg_original_path(id, orig, sizeof orig) || stat(orig, &st)) return 0;     /* primera instalación */
+    if (pkg_original_path(id, orig, sizeof orig) || stat(orig, &st)) return 0;     /* first install */
     Lpk pk;
     char e2[160], ver[40];
     if (lpk_open(orig, &pk, e2, sizeof e2)) return 0;
@@ -221,7 +221,7 @@ int pkg_check_update(const char *id, const LpkSigInfo *next, char *err, size_t n
     LpkSigInfo old;
     int bad = sig_verify_package(&pk, id, ver, &old, e2, sizeof e2);
     lpk_free(&pk);
-    if (bad || !old.has_signature) return 0;           /* la instalada no tiene firma válida: no hay clave que exigir */
+    if (bad || !old.has_signature) return 0;           /* the installed one has no valid signature: no key to require */
     if (!next->has_signature) { seterr(err, n, "la versión instalada está firmada y esta actualización no"); return -1; }
     if (strcmp(old.key, next->key)) { seterr(err, n, "la actualización está firmada con otra clave que la versión instalada"); return -1; }
     return 0;
@@ -242,14 +242,14 @@ int pkg_restore(const char *id, char *err, size_t n) {
     return r;
 }
 
-/* ---- clave del usuario ---- */
+/* ---- the user's key ---- */
 
 int pkg_user_key(uint8_t seed[32], char pubhex[65], char name[128]) {
     const char *home = getenv("HOME");
     if (!home) return -1;
     char dir[PATH_MAX], path[PATH_MAX + 16];
     snprintf(dir, sizeof dir, "%s/.local/share/lordos/keys", home);
-    lpk_root();                                     /* crea ~/.local/share/lordos */
+    lpk_root();                                     /* creates ~/.local/share/lordos */
     if (mkdir(dir, 0700) && errno != EEXIST) return -1;
     snprintf(path, sizeof path, "%s/user.json", dir);
     size_t len = 0;
@@ -292,7 +292,7 @@ int pkg_user_key(uint8_t seed[32], char pubhex[65], char name[128]) {
     return r;
 }
 
-/* ---- compartir: un .lpk nuevo (tar sin comprimir) ---- */
+/* ---- share: a new .lpk (uncompressed tar) ---- */
 
 typedef struct { unsigned char *b; size_t len, cap; int fail; } Buf;
 
@@ -315,7 +315,7 @@ static void tar_add(Buf *o, const char *name, const void *data, size_t size) {
     memset(h, 0, sizeof h);
     const char *base = name;
     size_t nl = strlen(name);
-    if (nl > 100) {                                 /* ustar: prefijo/nombre */
+    if (nl > 100) {                                 /* ustar: prefix/name */
         const char *s = name + nl - 100;
         while (*s && *s != '/') s++;
         if (!*s || s - name > 155) { o->fail = 1; return; }

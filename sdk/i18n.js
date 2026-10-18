@@ -1,26 +1,26 @@
-// i18n.js — idioma y región de LordOS para temas y apps.
+// i18n.js — LordOS language and region for themes and apps.
 //
-//   t('terminal.menu.newTab')                 → "Nueva pestaña"
-//   t('files.items', { count: 3 })            → "3 elementos" (plural según el idioma)
-//   t('about.version', { v: '0.5.0' })        → "Versión 0.5.0"
+//   t('terminal.menu.newTab')                 → "New Tab"
+//   t('files.items', { count: 3 })            → "3 items" (plural according to the language)
+//   t('about.version', { v: '0.5.0' })        → "Version 0.5.0"
 //   formatDate(d, 'short') / formatTime(d) / formatNumber(1234.5)
 //   direction() → 'rtl' | 'ltr'      textDirection('مرحبا') → 'rtl'
 //
-// Los textos están en catálogos JSON que el servidor lee en tiempo de ejecución:
-//   assets/locales/<idioma>/<espacio>.json            (incluidos con LordOS)
-//   ~/.local/share/lordos/locales/<idioma>/<espacio>.json   (paquetes de idioma del usuario)
-// El espacio es la primera parte de la clave ('terminal', 'files', 'shell'…). Un idioma
-// nuevo es una carpeta con esos archivos y un meta.json; no hace falta tocar código.
-// Si falta una clave se usa el inglés y, si tampoco está, la clave misma.
+// Strings live in JSON catalogs that the server reads at runtime:
+//   assets/locales/<language>/<namespace>.json            (bundled with LordOS)
+//   ~/.local/share/lordos/locales/<language>/<namespace>.json   (the user's language packs)
+// The namespace is the first part of the key ('terminal', 'files', 'shell'…). A new
+// language is a folder with those files and a meta.json; no code changes are needed.
+// If a key is missing English is used and, if it isn't there either, the key itself.
 //
-// No hay Intl en QuickJS: plurales y formatos de fecha/número salen de reglas y datos
-// propios (format.json de cada idioma).
+// There is no Intl in QuickJS: plurals and date/number formats come from our own rules
+// and data (each language's format.json).
 import { createStore, useStore } from './store.js';
 import { settings } from './settings.js';
 
 export const FALLBACK = 'en';
 
-// Reglas de plural (CLDR, simplificadas a enteros). Un idioma elige la suya en meta.json.
+// Plural rules (CLDR, simplified to integers). A language picks its own in meta.json.
 const PLURALS = {
   'one-other': (n) => (n === 1 ? 'one' : 'other'),                   // en, es, de, it, nl, sv…
   'zero-one-other': (n) => (n === 0 || n === 1 ? 'one' : 'other'),   // pt, fr
@@ -49,7 +49,7 @@ const PLURALS = {
   },
 };
 
-const cache = new Map();          // 'es/terminal' → objeto plano
+const cache = new Map();          // 'es/terminal' → flat object
 const metas = new Map();          // 'es' → meta.json
 
 function catalog(lang, ns) {
@@ -59,12 +59,12 @@ function catalog(lang, ns) {
   try {
     const txt = lord.locale.catalog(lang, ns);
     obj = txt ? JSON.parse(txt) : null;
-  } catch (e) { console.warn(`i18n: catálogo ${k} inválido:`, e.message); }
+  } catch (e) { console.warn(`i18n: invalid catalog ${k}:`, e.message); }
   cache.set(k, obj);
   return obj;
 }
 
-// Idiomas disponibles: [{ id, name (en su idioma), english, plural, user }]
+// Available languages: [{ id, name (in its own language), english, plural, user }]
 export function languages() {
   const out = [];
   for (const l of lord.locale.languages()) {
@@ -81,7 +81,7 @@ function meta(lang) {
   return metas.get(lang) || {};
 }
 
-// Idioma inicial: el elegido en Ajustes, o el de la región del usuario (LANG=pt_BR.UTF-8 → pt).
+// Initial language: the one chosen in Settings, or the one from the user's region (LANG=pt_BR.UTF-8 → pt).
 function initial() {
   const s = settings.get().language;
   if (s) return s;
@@ -89,26 +89,26 @@ function initial() {
     const l = lord.locale.get();
     const lang = (l.user.LANG || l.system.LANG || '').split(/[_.@]/)[0];
     if (lang && lang !== 'C' && lord.locale.catalog(lang, 'shell')) return lang;
-  } catch (e) { /* sin región */ }
+  } catch (e) { /* no region */ }
   return 'es';
 }
 
 export const locale = createStore({ lang: initial(), region: settings.get().region || '' });
 
-// El servidor elige la fuente CJK según el idioma (un mismo ideograma se dibuja distinto en
-// chino, japonés y coreano) y, si el idioma es de derecha a izquierda (meta.json "direction": "rtl"),
-// da vuelta la interfaz: filas, alineación inicial, menús (como en macOS).
+// The server picks the CJK font according to the language (the same ideograph is drawn differently in
+// Chinese, Japanese and Korean) and, if the language is right-to-left (meta.json "direction": "rtl"),
+// mirrors the interface: rows, start alignment, menus (as on macOS).
 function applyNative({ lang }) {
   try {
     lord.text.setLanguage(lang);
     lord.text.setDirection(meta(lang).direction === 'rtl');
-  } catch (e) { /* servidor sin lord.text */ }
+  } catch (e) { /* server without lord.text */ }
 }
 applyNative(locale.get());
 locale.subscribe(() => applyNative(locale.get()));
 
-// Dirección de la interfaz ('rtl' en árabe, hebreo, persa…) y de un texto suelto (la de su
-// primer carácter fuerte: un nombre de archivo en árabe dentro de una interfaz en inglés).
+// Direction of the interface ('rtl' in Arabic, Hebrew, Persian…) and of a standalone text (that of its
+// first strong character: an Arabic file name inside an English interface).
 export const direction = () => (meta(locale.get().lang).direction === 'rtl' ? 'rtl' : 'ltr');
 export const textDirection = (s) => { try { return lord.text.direction(String(s ?? '')); } catch (e) { return 'ltr'; } };
 
@@ -141,22 +141,22 @@ export function t(key, vars) {
   return fill(v, vars);
 }
 
-// Traducción si existe, o null (para textos con respaldo propio, ej. theme.json).
+// Translation if it exists, or null (for strings with their own fallback, e.g. theme.json).
 export function tOptional(key, vars) {
   const { lang } = locale.get();
   const v = lookup(lang, key) ?? lookup(FALLBACK, key);
   return v === undefined ? null : t(key, vars);
 }
 
-// Nombre de una app (manifest.json → apps.<id> del catálogo, si existe).
+// Name of an app (manifest.json → apps.<id> in the catalog, if it exists).
 export const appName = (app) => (app ? (lookup(locale.get().lang, `apps.${app.id}`) ?? app.name) : '');
 
-// ---- formatos (fecha, hora, números) ----
+// ---- formats (date, time, numbers) ----
 
 const clock24 = () => settings.get().clock?.hour24 || 'auto';
 
-// Como en macOS: nombres de días y meses en el idioma de la interfaz; orden de la fecha,
-// separadores y reloj de 12/24 h según la región (es_AR, pt_BR, en_US…).
+// As on macOS: day and month names in the interface language; date order,
+// separators and 12/24 h clock according to the region (es_AR, pt_BR, en_US…).
 function formats() {
   const { lang, region } = locale.get();
   const names = catalog(lang, 'format') || catalog(FALLBACK, 'format') || {};
@@ -175,7 +175,7 @@ function formats() {
 
 const pad = (n) => String(n).padStart(2, '0');
 
-// estilo: 'short' (jue 15 oct), 'long' (jueves, 15 de octubre de 2026), 'numeric' (15/10/2026)
+// style: 'short' (Thu Oct 15), 'long' (Thursday, October 15, 2026), 'numeric' (10/15/2026)
 export function formatDate(d, style = 'short') {
   const f = formats();
   const day = d.getDate(), month = d.getMonth(), year = d.getFullYear(), wd = d.getDay();
@@ -184,6 +184,12 @@ export function formatDate(d, style = 'short') {
     weekday: f.weekdays?.[wd] ?? wd, wd: f.weekdaysShort?.[wd] ?? wd, day, dd: pad(day),
     month: f.months?.[month] ?? month + 1, mon: f.monthsShort?.[month] ?? month + 1, mm: pad(month + 1), yyyy: year,
   });
+}
+
+// Month name (0 = January) in the interface language: monthName(9) → "October", monthName(9, true) → "Oct".
+export function monthName(m, short = false) {
+  const f = formats();
+  return (short ? f.monthsShort : f.months)?.[m] ?? String(m + 1);
 }
 
 // Weekday name (0 = Sunday) in the interface language: weekdayName(1) → "Mon".
@@ -214,7 +220,7 @@ export function formatNumber(n, digits = null) {
   return `${neg ? '-' : ''}${int}${frac ? dec + frac : ''}`;
 }
 
-// Hook: re-renderiza cuando cambia el idioma o la región.
+// Hook: re-renders when the language or region changes.
 export function useLocale() {
   const l = useStore(locale);
   return { ...l, dir: direction(), t, formatDate, formatTime, formatNumber };
@@ -222,7 +228,7 @@ export function useLocale() {
 
 export const setLanguage = (lang) => settings.set({ language: lang });
 
-// Después de instalar o editar un paquete de idioma.
+// After installing or editing a language pack.
 export function reloadCatalogs() {
   cache.clear();
   metas.clear();

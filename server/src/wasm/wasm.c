@@ -1,10 +1,10 @@
-/* wasm.c — decodificador, validador y compilador de WebAssembly (ver wasm.h).
+/* wasm.c — WebAssembly decoder, validator and compiler (see wasm.h).
  *
- * Una sola pasada por cada función: valida los tipos con el algoritmo del apéndice de la
- * especificación y a la vez genera el código interno (wasm_int.h). Como el validador conoce la
- * altura exacta de la pila en cada punto, los saltos salen con su destino ya resuelto y con
- * cuántos valores mover, sin buscar etiquetas al ejecutar. El código inalcanzable se valida
- * pero no se genera. */
+ * A single pass per function: it validates the types with the algorithm from the
+ * specification's appendix and at the same time generates the internal code (wasm_int.h). Since the validator knows the
+ * exact stack height at every point, jumps come out with their target already resolved and with
+ * how many values to move, without looking up labels at run time. Unreachable code is validated
+ * but not generated. */
 #include "wasm_int.h"
 
 #include <setjmp.h>
@@ -22,7 +22,7 @@ void wasm_err(WasmError *err, WasmErrKind kind, const char *fmt, ...) {
     va_end(ap);
 }
 
-/* ---- tipos de función internados ---- */
+/* ---- interned function types ---- */
 
 typedef struct TypeNode { struct TypeNode *next; WasmFuncType t; uint8_t v[]; } TypeNode;
 static TypeNode *type_list[64];
@@ -45,17 +45,17 @@ const WasmFuncType *wasm_functype(const uint8_t *params, uint32_t np, const uint
     return &n->t;
 }
 
-/* ---- lectura ---- */
+/* ---- reading ---- */
 
 typedef struct {
-    uint8_t kind;                       /* 0 función, 1 block, 2 loop, 3 if, 4 else */
+    uint8_t kind;                       /* 0 function, 1 block, 2 loop, 3 if, 4 else */
     uint32_t np, nr;
     const uint8_t *params, *results;
-    uint32_t height;                    /* altura de la pila de tipos debajo de los parámetros */
+    uint32_t height;                    /* type stack height below the parameters */
     uint8_t unreachable, emit;
     size_t loop_pc;
-    size_t else_op;                     /* BR_UNLESS del if (SIZE_MAX si no se generó) */
-    int32_t patches;                    /* saltos hacia el final, por resolver */
+    size_t else_op;                     /* the if's BR_UNLESS (SIZE_MAX if not generated) */
+    int32_t patches;                    /* jumps to the end, still to be resolved */
 } Ctrl;
 
 typedef struct { size_t op, cell; int32_t next; } Patch;
@@ -65,14 +65,14 @@ typedef struct {
     WasmError *err;
     WasmModule *m;
     const uint8_t *p, *end;
-    /* función en compilación */
+    /* function being compiled */
     uint8_t *vals; uint32_t nvals, capvals, maxvals;
     Ctrl *ctrls; uint32_t nctrls, capctrls;
     Cell *code; size_t ncode, capcode;
     Patch *patches; uint32_t npatches, cappatches;
     uint8_t *locals; uint32_t nlocals;
     const WasmFuncType *ftype;
-    int uses_data;                      /* memory.init / data.drop (requieren datacount) */
+    int uses_data;                      /* memory.init / data.drop (require datacount) */
 } Dec;
 
 #define UNKNOWN 0
@@ -93,7 +93,7 @@ static void fail(Dec *d, WasmErrKind kind, const char *fmt, ...) {
 
 static void *xalloc(Dec *d, size_t n) {
     void *p = calloc(1, n ? n : 1);
-    if (!p) fail(d, WASM_ERR_NOMEM, "sin memoria");
+    if (!p) fail(d, WASM_ERR_NOMEM, "out of memory");
     return p;
 }
 
@@ -102,7 +102,7 @@ static void grow(Dec *d, void **p, uint32_t *cap, uint32_t need, size_t elem) {
     uint32_t c = *cap ? *cap : 16;
     while (c < need) c *= 2;
     void *n = realloc(*p, (size_t)c * elem);
-    if (!n) fail(d, WASM_ERR_NOMEM, "sin memoria");
+    if (!n) fail(d, WASM_ERR_NOMEM, "out of memory");
     *p = n;
     *cap = c;
 }
@@ -195,7 +195,7 @@ static uint8_t reftype(Dec *d) {
 
 static void limits(Dec *d, uint32_t *min, uint32_t *max, uint32_t cap, const char *what) {
     uint8_t f = u8(d);
-    if (f > 1) MALFORMED("integer too large");     /* compartidas o de 64 bits: no soportadas */
+    if (f > 1) MALFORMED("integer too large");     /* shared or 64-bit: not supported */
     *min = u32(d);
     *max = f ? u32(d) : WASM_NO_MAX;
     if (cap && *min > cap) INVALID("%s size must be at most %u pages (4GiB)", what, cap);
@@ -203,7 +203,7 @@ static void limits(Dec *d, uint32_t *min, uint32_t *max, uint32_t cap, const cha
     if (f && *max < *min) INVALID("size minimum must not be greater than maximum");
 }
 
-/* Expresión constante: valida y guarda sus bytes (se evalúa al instanciar). */
+/* Constant expression: validates and stores its bytes (evaluated at instantiation). */
 static ConstExpr const_expr(Dec *d, uint8_t want) {
     WasmModule *m = d->m;
     ConstExpr e = { d->p, 0 };
@@ -246,7 +246,7 @@ static ConstExpr const_expr(Dec *d, uint8_t want) {
     }
 }
 
-/* ---- compilación de funciones ---- */
+/* ---- function compilation ---- */
 
 static int emitting(Dec *d) { Ctrl *c = &d->ctrls[d->nctrls - 1]; return c->emit && !c->unreachable; }
 
@@ -254,7 +254,7 @@ static size_t emit_raw(Dec *d, uint64_t v) {
     if (d->ncode + 1 > d->capcode) {
         size_t c = d->capcode ? d->capcode * 2 : 256;
         Cell *n = realloc(d->code, c * sizeof *n);
-        if (!n) fail(d, WASM_ERR_NOMEM, "sin memoria");
+        if (!n) fail(d, WASM_ERR_NOMEM, "out of memory");
         d->code = n;
         d->capcode = c;
     }
@@ -330,7 +330,7 @@ static void resolve_patches(Dec *d, Ctrl *c, size_t target) {
     c->patches = -1;
 }
 
-/* Salto a la etiqueta `depth`: la pila de tipos ya tiene arriba los valores de la etiqueta. */
+/* Jump to label `depth`: the type stack already has the label's values on top. */
 static void emit_branch(Dec *d, uint32_t depth, int cond) {
     Ctrl *c = &d->ctrls[d->nctrls - 1 - depth];
     const uint8_t *ts;
@@ -372,7 +372,7 @@ static void blocktype(Dec *d, uint32_t *np, const uint8_t **params, uint32_t *nr
     *nr = t->nresults; *results = t->results;
 }
 
-/* Tipos de las instrucciones numéricas sin inmediatos (0x45..0xC4): entrada(s) y salida. */
+/* Types of the numeric instructions without immediates (0x45..0xC4): input(s) and output. */
 static void numsig(uint8_t op, uint8_t *a, uint8_t *b, uint8_t *r) {
     static const struct { uint8_t lo, hi, a, b, r; } ranges[] = {
         { 0x45, 0x45, WASM_I32, 0, WASM_I32 }, { 0x46, 0x4f, WASM_I32, WASM_I32, WASM_I32 },
@@ -427,7 +427,7 @@ static void compile_body(Dec *d, uint32_t fidx) {
     WasmModule *m = d->m;
     const WasmFuncType *ft = m->functypes[fidx];
     d->ftype = ft;
-    /* locales */
+    /* locals */
     uint32_t ngroups = u32(d);
     uint64_t total = ft->nparams;
     const uint8_t *save = d->p;
@@ -498,7 +498,7 @@ static void compile_body(Dec *d, uint32_t fidx) {
             Ctrl *c = &d->ctrls[d->nctrls - 1];
             pop_list(d, c->results, c->nr);
             if (d->nvals != c->height) INVALID("type mismatch");
-            if (c->kind == 3) {                          /* if sin else: los parámetros pasan tal cual */
+            if (c->kind == 3) {                          /* if without else: the parameters pass through as-is */
                 if (c->np != c->nr || memcmp(c->params, c->results, c->np)) INVALID("type mismatch");
                 if (c->else_op != SIZE_MAX) d->code[c->else_op + 1].i = (int64_t)d->ncode - (int64_t)c->else_op;
             }
@@ -541,7 +541,7 @@ static void compile_body(Dec *d, uint32_t fidx) {
                 uint32_t k;
                 label_types(c, &ts, &k);
                 if (k != arity) { free(labels); INVALID("type mismatch"); }
-                /* cada destino se valida contra los mismos valores */
+                /* each target is validated against the same values */
                 uint8_t tmp[64];
                 uint32_t got = 0;
                 for (uint32_t j = k; j-- > 0;) { uint8_t t = pop_t(d, ts[j]); if (got < 64) tmp[got++] = t; }
@@ -648,7 +648,7 @@ static void compile_body(Dec *d, uint32_t fidx) {
             break;
         }
         case 0x28: case 0x29: case 0x2a: case 0x2b: case 0x2c: case 0x2d: case 0x2e: case 0x2f:
-        case 0x30: case 0x31: case 0x32: case 0x33: case 0x34: case 0x35: {    /* cargas */
+        case 0x30: case 0x31: case 0x32: case 0x33: case 0x34: case 0x35: {    /* loads */
             static const uint8_t nat[] = { 4, 8, 4, 8, 1, 1, 2, 2, 1, 1, 2, 2, 4, 4 };
             static const uint8_t res[] = { WASM_I32, WASM_I64, WASM_F32, WASM_F64, WASM_I32, WASM_I32, WASM_I32,
                                            WASM_I32, WASM_I64, WASM_I64, WASM_I64, WASM_I64, WASM_I64, WASM_I64 };
@@ -676,7 +676,7 @@ static void compile_body(Dec *d, uint32_t fidx) {
             push(d, WASM_I32);
             if (em) emit_op(d, byte2op[op]);
             break;
-        case 0x41: case 0x42: case 0x43: case 0x44: {    /* constantes */
+        case 0x41: case 0x42: case 0x43: case 0x44: {    /* constants */
             uint64_t v = 0;
             uint8_t t;
             if (op == 0x41) { v = (uint64_t)(uint32_t)(int32_t)leb(d, 32, 1); t = WASM_I32; }
@@ -790,7 +790,7 @@ static void compile_body(Dec *d, uint32_t fidx) {
                 if (b) pop_t(d, b);
                 pop_t(d, a);
                 push(d, r);
-                /* i32.wrap_i64 y los reinterpret no cambian los bits guardados */
+                /* i32.wrap_i64 and the reinterprets don't change the stored bits */
                 int noop = op == 0xa7 || (op >= 0xbc && op <= 0xbf);
                 if (em && !noop) emit_op(d, byte2op[op]);
                 break;
@@ -801,7 +801,7 @@ static void compile_body(Dec *d, uint32_t fidx) {
     if (d->p != d->end) MALFORMED("section size mismatch");
 }
 
-/* ---- módulo ---- */
+/* ---- module ---- */
 
 static void module_free(WasmModule *m) {
     if (!m) return;
@@ -844,21 +844,21 @@ static void sec_types(Dec *d) {
         if (nr > 1000 || np + nr > sizeof tmp) MALFORMED("too many results");
         for (uint32_t k = 0; k < nr; k++) tmp[np + k] = valtype(d);
         m->types[i] = wasm_functype(tmp, np, tmp + np, nr);
-        if (!m->types[i]) fail(d, WASM_ERR_NOMEM, "sin memoria");
+        if (!m->types[i]) fail(d, WASM_ERR_NOMEM, "out of memory");
     }
 }
 
 static void add_func(Dec *d, uint32_t typeidx) {
     WasmModule *m = d->m;
     if (typeidx >= m->ntypes) INVALID("unknown type %u", typeidx);
-    uint32_t cap = m->nfuncs;      /* se reserva en bloques */
+    uint32_t cap = m->nfuncs;      /* allocated in blocks */
     if ((cap & (cap - 1)) == 0 || cap == 0) {
         uint32_t nc = cap ? cap * 2 : 16;
         void *a = realloc(m->functypes, nc * sizeof *m->functypes);
-        if (!a) fail(d, WASM_ERR_NOMEM, "sin memoria");
+        if (!a) fail(d, WASM_ERR_NOMEM, "out of memory");
         m->functypes = a;
         a = realloc(m->functypeidx, nc * sizeof *m->functypeidx);
-        if (!a) fail(d, WASM_ERR_NOMEM, "sin memoria");
+        if (!a) fail(d, WASM_ERR_NOMEM, "out of memory");
         m->functypeidx = a;
     }
     m->functypes[m->nfuncs] = m->types[typeidx];
@@ -868,7 +868,7 @@ static void add_func(Dec *d, uint32_t typeidx) {
 static void add_table(Dec *d, uint8_t type, uint32_t min, uint32_t max) {
     WasmModule *m = d->m;
     void *a = realloc(m->tables, (m->ntables + 1) * sizeof *m->tables);
-    if (!a) fail(d, WASM_ERR_NOMEM, "sin memoria");
+    if (!a) fail(d, WASM_ERR_NOMEM, "out of memory");
     m->tables = a;
     m->tables[m->ntables++] = (TableDef){ type, min, max };
 }
@@ -876,7 +876,7 @@ static void add_table(Dec *d, uint8_t type, uint32_t min, uint32_t max) {
 static void add_global(Dec *d, uint8_t type, uint8_t mut, ConstExpr init) {
     WasmModule *m = d->m;
     void *a = realloc(m->globals, (m->nglobals + 1) * sizeof *m->globals);
-    if (!a) fail(d, WASM_ERR_NOMEM, "sin memoria");
+    if (!a) fail(d, WASM_ERR_NOMEM, "out of memory");
     m->globals = a;
     m->globals[m->nglobals++] = (GlobalDef){ type, mut, init };
 }
@@ -1067,7 +1067,7 @@ static void sec_code(Dec *d) {
         c->nlocals = d->nlocals;
         c->max_stack = d->nlocals + d->maxvals + 4;
         c->code = malloc(d->ncode * sizeof *c->code);
-        if (!c->code) fail(d, WASM_ERR_NOMEM, "sin memoria");
+        if (!c->code) fail(d, WASM_ERR_NOMEM, "out of memory");
         memcpy(c->code, d->code, d->ncode * sizeof *c->code);
         c->ncode = d->ncode;
     }
@@ -1099,7 +1099,7 @@ static void sec_custom(Dec *d) {
     WasmModule *m = d->m;
     char *nm = name(d, NULL);
     void *a = realloc(m->custom, (m->ncustom + 1) * sizeof *m->custom);
-    if (!a) { free(nm); fail(d, WASM_ERR_NOMEM, "sin memoria"); }
+    if (!a) { free(nm); fail(d, WASM_ERR_NOMEM, "out of memory"); }
     m->custom = a;
     m->custom[m->ncustom++] = (Custom){ nm, d->p, (size_t)(d->end - d->p) };
     d->p = d->end;
@@ -1110,7 +1110,7 @@ static WasmModule *decode(const uint8_t *in, size_t len, WasmError *err) {
     init_byte2op();
     Dec *d = calloc(1, sizeof *d);
     WasmModule *m = calloc(1, sizeof *m);
-    if (!d || !m) { free(d); free(m); wasm_err(err, WASM_ERR_NOMEM, "sin memoria"); return NULL; }
+    if (!d || !m) { free(d); free(m); wasm_err(err, WASM_ERR_NOMEM, "out of memory"); return NULL; }
     if (err) err->kind = WASM_OK;
     m->rc = 1;
     m->start = -1;
@@ -1132,7 +1132,7 @@ static WasmModule *decode(const uint8_t *in, size_t len, WasmError *err) {
     if (len < 8 || memcmp(d->p, "\1\0\0\0", 4)) MALFORMED("unknown binary version");
     d->p += 4;
     int last = 0;
-    static const int order[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 10 };   /* datacount (12) va antes de code */
+    static const int order[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 10 };   /* datacount (12) goes before code */
     const uint8_t *file_end = d->end;
     int has_code = 0;
     while (d->p < file_end) {
@@ -1145,7 +1145,7 @@ static WasmModule *decode(const uint8_t *in, size_t len, WasmError *err) {
             if (order[id] <= last) MALFORMED("unexpected content after last section");
             last = order[id];
         }
-        /* funciones que ref.func puede nombrar: la lista de funciones ya está completa */
+        /* functions ref.func may name: the function list is already complete */
         if (id >= 4 && !m->declared) m->declared = xalloc(d, (size_t)m->nfuncs + 1);
         switch (id) {
         case 0: sec_custom(d); break;

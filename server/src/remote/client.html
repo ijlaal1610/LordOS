@@ -42,7 +42,7 @@ const $ = (id) => document.getElementById(id);
 const cv = $('c'), ctx = cv.getContext('2d', { alpha: false });
 $('fs').title = T.full; $('out').title = T.out; $('again').textContent = T.again;
 
-// KeyboardEvent.code → código evdev (linux/input-event-codes.h)
+// KeyboardEvent.code → evdev code (linux/input-event-codes.h)
 const K = { Escape: 1, Digit1: 2, Digit2: 3, Digit3: 4, Digit4: 5, Digit5: 6, Digit6: 7, Digit7: 8, Digit8: 9, Digit9: 10, Digit0: 11,
   Minus: 12, Equal: 13, Backspace: 14, Tab: 15, KeyQ: 16, KeyW: 17, KeyE: 18, KeyR: 19, KeyT: 20, KeyY: 21, KeyU: 22, KeyI: 23,
   KeyO: 24, KeyP: 25, BracketLeft: 26, BracketRight: 27, Enter: 28, ControlLeft: 29, KeyA: 30, KeyS: 31, KeyD: 32, KeyF: 33,
@@ -70,7 +70,7 @@ function fit() {
   ox = r.left; oy = r.top;
 }
 addEventListener('resize', fit);
-// La sesión toma el tamaño de la ventana (si la está viendo el monitor, manda el monitor).
+// The session takes the window's size (if the monitor is showing it, the monitor wins).
 let resizeTimer = 0;
 addEventListener('resize', () => {
   clearTimeout(resizeTimer);
@@ -86,7 +86,7 @@ function connect() {
   const w = Math.round(innerWidth * devicePixelRatio > 2560 ? innerWidth : innerWidth), h = Math.round(innerHeight);
   ws = new WebSocket(`wss://${location.host}/ws?w=${w}&h=${h}`);
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => send({ t: 'resize', w: w & ~1, h: h & ~1 });     // una sesión que ya existía toma este tamaño
+  ws.onopen = () => send({ t: 'resize', w: w & ~1, h: h & ~1 });     // an already existing session takes this size
   ws.onmessage = (e) => (typeof e.data === 'string' ? onText(JSON.parse(e.data)) : onBin(new Uint8Array(e.data)));
   ws.onclose = () => { ws = null; show(T.bye); };
 }
@@ -96,7 +96,7 @@ function onText(m) {
   else if (m.t === 'hello') $('who').textContent = `${m.user}@${location.hostname}`;
   else if (m.t === 'pong') $('lat').textContent = `${Math.max(0, Math.round(performance.now() - m.ts))} ms`;
   else if (m.t === 'cur') {
-    // cursor movido por otra persona (el monitor u otra conexión): se dibuja encima
+    // cursor moved by someone else (the monitor or another connection): drawn on top
     const rc = $('rcur');
     if (m.m === 2 || (Math.abs(m.x - mx) <= 2 && Math.abs(m.y - my) <= 2)) rc.style.display = 'none';
     else { rc.style.display = 'block'; rc.style.left = (ox + m.x * scale) + 'px'; rc.style.top = (oy + m.y * scale) + 'px'; }
@@ -105,20 +105,20 @@ function onText(m) {
   } else if (m.t === 'clip') {
     if (navigator.clipboard && document.hasFocus()) navigator.clipboard.writeText(m.text).catch(() => {});
     lastSent = m.text;
-  } else if (m.t === 'bye' && m.lock) location.href = '/?e=3';     // la sesión se bloqueó: a ingresar de nuevo
+  } else if (m.t === 'bye' && m.lock) location.href = '/?e=3';     // the session got locked: log in again
   else if (m.t === 'bye') show(T.bye);
 }
 
 function onBin(d) {
   const kind = d[0];
-  if (kind === 1) {                       // rectángulo
+  if (kind === 1) {                       // rectangle
     const x = d[1] << 8 | d[2], y = d[3] << 8 | d[4], w = d[5] << 8 | d[6], h = d[7] << 8 | d[8];
     const blob = new Blob([d.subarray(10)], { type: d[9] ? 'image/jpeg' : 'image/png' });
     const p = createImageBitmap(blob);
     queue = queue.then(() => p).then((bmp) => { ctx.drawImage(bmp, x, y, w, h); bmp.close(); }, () => {});
-  } else if (kind === 3) {                // fin de cuadro: se confirma cuando está dibujado
+  } else if (kind === 3) {                // end of frame: acknowledged once it's drawn
     queue = queue.then(() => send({ t: 'ack' }));
-  } else if (kind === 2) {                // imagen del cursor de una app
+  } else if (kind === 2) {                // an app's cursor image
     const w = d[1] << 8 | d[2], hx = d[5] << 8 | d[6], hy = d[7] << 8 | d[8];
     const url = URL.createObjectURL(new Blob([d.subarray(9)], { type: 'image/png' }));
     const k = scale === 1 ? 1 : scale;
@@ -144,9 +144,9 @@ cv.addEventListener('pointerdown', (e) => {
 });
 cv.addEventListener('pointerup', (e) => { pend = pos(e); flushMove(); if (e.button <= 2) send({ t: 'b', b: e.button, d: 0 }); });
 cv.addEventListener('contextmenu', (e) => e.preventDefault());
-// Rueda: un mouse manda pasos ('w'); un trackpad, píxeles con fase ('s': 1 empieza, 2 sigue, 3
-// termina) y el pellizco llega como rueda con ctrlKey (Chrome, Firefox) o gesturechange (Safari)
-// ('pz': escala relativa al comienzo). Los gestos terminan a los 150 ms sin eventos.
+// Wheel: a mouse sends steps ('w'); a trackpad, pixels with a phase ('s': 1 begins, 2 continues, 3
+// ends) and pinch arrives as a wheel with ctrlKey (Chrome, Firefox) or gesturechange (Safari)
+// ('pz': scale relative to the start). Gestures end after 150 ms without events.
 let scrollOn = false, scrollT = 0, pinchOn = false, pinchT = 0, pinchScale = 1, pinchRot = 0;
 function pinch(scale, rot) {
   if (!pinchOn) { pinchOn = true; pinchScale = 1; pinchRot = 0; send({ t: 'pz', p: 1, s: 65536, r: 0 }); }
@@ -157,7 +157,7 @@ function pinch(scale, rot) {
 }
 cv.addEventListener('wheel', (e) => {
   e.preventDefault();
-  const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? H : 1;           // a píxeles
+  const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? H : 1;           // to pixels
   if (e.ctrlKey) { pinch(pinchScale * Math.max(0.8, Math.min(1.25, Math.exp(-e.deltaY * k / 100))), pinchRot); return; }
   const wheelLike = e.deltaMode !== 0 || (!e.deltaX && Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 50 && !scrollOn);
   if (wheelLike) {
@@ -177,7 +177,7 @@ cv.addEventListener('gestureend', (e) => e.preventDefault());
 function key(e, down) {
   const c = K[e.code];
   if (!c) return;
-  // Ctrl/⌘+V: se deja que el navegador dispare "paste" (el portapapeles local va primero)
+  // Ctrl/⌘+V: let the browser fire "paste" (the local clipboard goes first)
   if (down && e.code === 'KeyV' && (e.ctrlKey || e.metaKey)) return;
   e.preventDefault();
   if (down) held.add(c); else held.delete(c);

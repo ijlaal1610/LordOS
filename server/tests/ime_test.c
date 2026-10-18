@@ -1,7 +1,7 @@
-/* ime_test.c — prueba de los métodos de entrada (ime.c) sin pantalla: simula teclas y
- * muestra lo confirmado, la composición y los candidatos.
- *   build/ime-test hangul|kana|pinyin "teclas"
- * En las teclas: _ = Espacio, ^ = Enter, < = Retroceso, ~ = Escape, el resto letra por letra. */
+/* ime_test.c — headless test of the input methods (ime.c): simulates keys and
+ * prints the committed text, the preedit and the candidates.
+ *   build/ime-test hangul|kana|pinyin "keys"
+ * In the keys: _ = Space, ^ = Enter, < = Backspace, ~ = Escape, everything else letter by letter. */
 #include <stdio.h>
 #include <string.h>
 
@@ -27,10 +27,10 @@ int main(int argc, char **argv) {
         int used = ime_key(&k, commit, sizeof commit);
         if (strlen(out) + strlen(commit) + 8 >= sizeof out) break;
         strcat(out, commit);
-        if (!used && k.chr[0]) strcat(out, k.chr);       /* la tecla pasó: escribe lo suyo */
+        if (!used && k.chr[0]) strcat(out, k.chr);       /* the key passed through: type its own text */
     }
     const ImeState *s = ime_state();
-    printf("confirmado: %s\ncomposición: %s\ncandidatos (%d):", out, s->preedit, s->ncand);
+    printf("committed: %s\npreedit: %s\ncandidates (%d):", out, s->preedit, s->ncand);
     for (int i = 0; i < s->ncand && i < 12; i++) printf(" %s%s", i == s->sel ? "*" : "", s->cand[i]);
     printf("\n");
     return 0;

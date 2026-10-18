@@ -1,14 +1,14 @@
 #!/bin/sh
-# lordos-live-prep — preparación del sistema live antes de lord-sessiond (ExecStartPre de
-# lordos.service). En un sistema instalado no hace nada. Ver docs/ISO.md y docs/SESIONES.md.
+# lordos-live-prep — prepares the live system before lord-sessiond (ExecStartPre of
+# lordos.service). On an installed system it does nothing. See docs/ISO.md and docs/SESSIONS.md.
 #
-# Opciones en la línea del kernel (menú de grub):
-#   lordos.lang=en   idioma de la interfaz (es por defecto): /etc/default/locale y los ajustes
-#                    del usuario live la primera vez
-#   lordos.gpu=0     modo seguro: todo por CPU. Lo lee lord-sessiond de /proc/cmdline y les pasa
-#                    LORD_GPU=0 a todas las sesiones (acá no hace falta nada).
+# Options on the kernel command line (grub menu):
+#   lordos.lang=en   interface language (es by default): /etc/default/locale and the live
+#                    user's settings the first time
+#   lordos.gpu=0     safe mode: everything on the CPU. lord-sessiond reads it from /proc/cmdline and
+#                    passes LORD_GPU=0 to every session (nothing is needed here).
 set -u
-[ -d /run/live ] || exit 0          # solo en el live (live-boot)
+[ -d /run/live ] || exit 0          # only on the live system (live-boot)
 USER_NAME=lordos
 getent passwd "$USER_NAME" >/dev/null || exit 0
 
@@ -24,7 +24,7 @@ case "$LANG_UI" in
     pt) LOC=pt_BR.UTF-8; DIRS="Área_de_trabalho Documentos Downloads Música Imagens Vídeos" ;;
     *)  LOC=es_ES.UTF-8; DIRS="Escritorio Documentos Descargas Música Imágenes Videos" ;;
 esac
-printf 'LANG=%s\n' "$LOC" > /etc/default/locale     # también el idioma de la pantalla de ingreso
+printf 'LANG=%s\n' "$LOC" > /etc/default/locale     # also the login screen language
 
 HOME_DIR=$(getent passwd "$USER_NAME" | cut -d: -f6)
 CFG="$HOME_DIR/.config/lordos"
@@ -39,8 +39,8 @@ if [ ! -e "$CFG/.dirs" ]; then
     : > "$CFG/.dirs"; chown "$USER_NAME:$USER_NAME" "$CFG/.dirs"
 fi
 
-# live-boot escribe /etc/network/interfaces con las placas por DHCP; sin ifupdown nadie lo usa y
-# LordOS lo tomaría como "red del sistema" y no la configuraría: se deja solo lo.
+# live-boot writes /etc/network/interfaces with the NICs on DHCP; without ifupdown nobody uses it and
+# LordOS would take it as "system networking" and not configure it: only lo is kept.
 if [ ! -x /sbin/ifup ] && [ -f /etc/network/interfaces ] && grep -qv '^\s*\(#\|$\|auto lo\|iface lo\)' /etc/network/interfaces; then
     printf 'auto lo\niface lo inet loopback\n' > /etc/network/interfaces
 fi

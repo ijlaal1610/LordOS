@@ -1,14 +1,14 @@
-// Tema "Clásico" — PLANTILLA para crear temas nuevos. Todo el escritorio en un archivo:
-//   1. tokens (colores que también usan las apps vía useTheme)
-//   2. marco de ventana
-//   3. barra de tareas + menú de inicio
-//   4. App: fondo + ventanas + barra
-// Copiá esta carpeta, cambiá theme.json y empezá a modificar.
+// "Classic" theme — TEMPLATE for creating new themes. The whole desktop in one file:
+//   1. tokens (colors that apps also use via useTheme)
+//   2. window frame
+//   3. taskbar + start menu
+//   4. App: wallpaper + windows + bar
+// Copy this folder, change theme.json and start modifying.
 import {
   startShell, settings, View, Text, screen, addListener, ThemeProvider, useSettings, useWindows, useClock,
   configureWindows, getApp, wm, AppHost, session, windowTitle, t as tr, formatTime,
   ScrollView, useLauncherApps, launchApp, windowIcon, APP_CATEGORIES, appCategory, useDockEntries, dockActivate, dockMenu,
-  DesktopWidgets, PrivacyIndicators, registerGestureActions, WindowShell, StatusItems, dockPrefs,
+  DesktopWidgets, PrivacyIndicators, registerGestureActions, WindowShell, StatusItems, dockPrefs, mainDisplay,
 } from '@lordos/sdk';
 import { apps } from '@lordos/apps';
 import { useEffect, useRef, useState } from 'react';
@@ -25,22 +25,25 @@ function makeTheme({ mode, accent }) {
     separator: dark ? '#2d323d' : '#d7dae1', hover: dark ? '#262b35' : '#e3e6ec',
     control: dark ? '#2d323d' : '#d7dae1', inputBg: dark ? '#14161c' : '#ffffff',
     desktop: dark ? '#0f2537' : '#3a7ca5', bar: dark ? '#14171d' : '#e9ecf1', titleBg: dark ? '#232833' : '#dfe3ea',
-    gtkButtons: ':minimize,maximize,close',     // apps GTK: botones a la derecha, como este marco
+    gtkButtons: ':minimize,maximize,close',     // GTK apps: buttons on the right, like this frame
   };
 }
 
-const BAR_H = 44;      // barra arriba o abajo
-const BAR_W = 64;      // barra a la izquierda o a la derecha (solo íconos)
-// Posición de la barra (Ajustes → Escritorio y Dock: taskbarPosition). Izquierda y derecha son lados
-// físicos de la pantalla, también en árabe o hebreo. side() da dónde se pega cada panel.
+const BAR_H = 44;      // bar at the top or bottom
+const BAR_W = 64;      // bar on the left or right (icons only)
+// Bar position (Settings → Desktop & Dock: taskbarPosition). Left and right are physical
+// sides of the screen, also in Arabic or Hebrew. side() gives where each panel attaches.
 const barSize = (pos) => (pos === 'left' || pos === 'right' ? BAR_W : BAR_H);
-function workAreaFor(pos) {
-  const a = { x: 0, y: 0, w: screen.width, h: screen.height };
+// Several displays (docs/DISPLAYS.md): the bar is on the main one; the others are all work area.
+function workAreaFor(pos, d = mainDisplay()) {
+  const a = { x: d.x, y: d.y, w: d.w, h: d.h };
+  if (!d.main) return a;
   const b = barSize(pos);
-  if (pos === 'top') { a.y = b; a.h -= b; } else if (pos === 'left') { a.x = b; a.w -= b; } else if (pos === 'right') a.w -= b; else a.h -= b;
+  if (pos === 'top') { a.y += b; a.h -= b; } else if (pos === 'left') { a.x += b; a.w -= b; } else if (pos === 'right') a.w -= b; else a.h -= b;
   return a;
 }
-// Estilo para pegar un panel junto a la barra (menú de inicio, lista de saltos).
+const areaFn = (d) => workAreaFor(dockPrefs(settings.get()).taskbarPosition, d);
+// Style to attach a panel next to the bar (start menu, jump list).
 function nextToBar(pos, along) {
   const b = barSize(pos) + 6;
   if (pos === 'top') return { left: along, top: b };
@@ -48,16 +51,17 @@ function nextToBar(pos, along) {
   if (pos === 'right') return { right: b, top: along };
   return { left: along, bottom: b };
 }
-// ¿El punto está sobre la barra? (un clic ahí no cierra el menú: el botón de inicio lo alterna)
+// Is the point over the bar? (a click there doesn't close the menu: the start button toggles it)
 function onBar(pos, x, y) {
-  const b = barSize(pos);
-  return pos === 'top' ? y < b : pos === 'left' ? x < b : pos === 'right' ? x >= screen.width - b : y >= screen.height - b;
+  const b = barSize(pos), m = mainDisplay();
+  x -= m.x; y -= m.y;
+  return pos === 'top' ? y < b : pos === 'left' ? x < b : pos === 'right' ? x >= m.w - b : y >= m.h - b;
 }
 
-// ---- 2. marco de ventana ----
-// <WindowShell> (SDK) pone bordes invisibles para cambiar el tamaño en los 4 lados y las 4 esquinas;
-// mover y agrandar lo hace lord-server en C (wm.beginMove/beginResize, docs/VENTANAS.md). El arrastre
-// en JS de abajo queda solo para una ventana maximizada.
+// ---- 2. window frame ----
+// <WindowShell> (SDK) adds invisible borders for resizing on all 4 sides and 4 corners;
+// moving and resizing is done by lord-server in C (wm.beginMove/beginResize, docs/WINDOWS.md). The
+// JS drag below is only kept for a maximized window.
 function Window({ win, t, focused }) {
   const drag = useRef(null);
   const geo = wm.frame(win);
@@ -75,7 +79,7 @@ function Window({ win, t, focused }) {
       <Text style={{ fontSize: 14, color: danger ? '#fff' : t.text }}>{label}</Text>
     </View>
   );
-  if (win.args?.csd) {     // app Linux con marco propio (GTK, Chromium)
+  if (win.args?.csd) {     // Linux app with its own frame (GTK, Chromium)
     return (
       <WindowShell win={win} onMouseDown={() => wm.focus(win.id)} style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
         <AppHost id={win.id} focused={focused} />
@@ -99,7 +103,7 @@ function Window({ win, t, focused }) {
   );
 }
 
-// ---- 3. barra de tareas + menú de inicio ----
+// ---- 3. taskbar + start menu ----
 
 function StartMenu({ t, onClose, pos }) {
   const ref = useRef(null);
@@ -138,8 +142,8 @@ function StartMenu({ t, onClose, pos }) {
   );
 }
 
-// Menú del clic derecho de la barra (como la lista de saltos de Windows). Usa los ítems del
-// SDK (dockMenu), con los submenús aplanados y los textos de una barra de tareas.
+// The bar's right-click menu (like Windows' jump list). Uses the SDK's
+// items (dockMenu), with submenus flattened and taskbar wording.
 function JumpList({ t, entry, x, onClose, pos }) {
   const ref = useRef(null);
   useEffect(() => addListener('pointerdown', (e) => {
@@ -170,8 +174,8 @@ function JumpList({ t, entry, x, onClose, pos }) {
   );
 }
 
-// Barra de tareas: apps ancladas y abiertas, una por app (las ventanas de la misma app van juntas).
-// Clic: abre la app o trae su ventana (si ya estaba al frente, la minimiza); clic derecho: JumpList.
+// Taskbar: pinned and open apps, one per app (windows of the same app are grouped).
+// Click: opens the app or brings its window (if it was already in front, minimizes it); right click: JumpList.
 function Taskbar({ t, onStart, pos }) {
   const clock = useClock((d) => formatTime(d, { seconds: !!settings.get().clock?.seconds }), 1000);   // Settings → Date & Time
   const entries = useDockEntries(['files', 'terminal', 'store']);
@@ -217,7 +221,7 @@ function Taskbar({ t, onStart, pos }) {
 }
 
 // ---- 4. App ----
-configureWindows({ apps, workArea: workAreaFor(dockPrefs().taskbarPosition), chrome: { w: 2, h: 32 } });
+configureWindows({ apps, workArea: areaFn, chrome: { w: 2, h: 32 } });
 wm.open('about');
 
 function App() {
@@ -226,19 +230,23 @@ function App() {
   const { windows, visible, focused } = useWindows();
   const [start, setStart] = useState(false);
   const pos = dockPrefs(s).taskbarPosition;
-  // el área de trabajo sigue a la barra en vivo
-  useEffect(() => { configureWindows({ apps, workArea: workAreaFor(pos) }); }, [pos, screen.width, screen.height]);
-  // trackpad: deslizar con 3 dedos arriba abre el menú de inicio, abajo lo cierra (docs/TRACKPAD.md)
+  // the work area follows the bar live
+  useEffect(() => { configureWindows({ apps, workArea: areaFn }); }, [pos, screen.width, screen.height]);
+  const m = mainDisplay();
+  // trackpad: a 3-finger swipe up opens the start menu, down closes it (docs/TRACKPAD.md)
   useEffect(() => registerGestureActions({ up: () => setStart(true), down: () => setStart(false) }), []);
   return (
     <ThemeProvider tokens={t}>
       <View style={{ width: '100%', height: '100%', backgroundColor: t.desktop }}>
-        <Text style={{ position: 'absolute', right: (pos === 'right' ? BAR_W : 0) + 24, bottom: (pos === 'bottom' ? BAR_H : 0) + 16, fontSize: 40, fontWeight: 700, color: 'rgba(255,255,255,0.12)' }}>LordOS</Text>
+        <Text style={{ position: 'absolute', left: m.x + m.w - (pos === 'right' ? BAR_W : 0) - 24 - 170, top: m.y + m.h - (pos === 'bottom' ? BAR_H : 0) - 16 - 50, fontSize: 40, fontWeight: 700, color: 'rgba(255,255,255,0.12)' }}>LordOS</Text>
         <DesktopWidgets layer="below" />
         {visible.map((w) => <Window key={w.id} win={w} t={t} focused={w.id === focused} />)}
         <DesktopWidgets layer="above" />
-        <Taskbar t={t} pos={pos} onStart={() => setStart((v) => !v)} />
-        {start && <StartMenu t={t} pos={pos} onClose={() => setStart(false)} />}
+        {/* the bar and the start menu on the main display */}
+        <View style={{ position: 'absolute', left: m.x, top: m.y, width: m.w, height: m.h }}>
+          <Taskbar t={t} pos={pos} onStart={() => setStart((v) => !v)} />
+          {start && <StartMenu t={t} pos={pos} onClose={() => setStart(false)} />}
+        </View>
       </View>
     </ThemeProvider>
   );

@@ -1,8 +1,8 @@
-/* mandel.c — conjunto de Mandelbrot para la app de ejemplo Fractal (compilado a WebAssembly).
+/* mandel.c — Mandelbrot set for the Fractal sample app (compiled to WebAssembly).
  * clang --target=wasm32 -O2 -nostdlib -Wl,--no-entry -Wl,--export-dynamic -o ../assets/mandel.wasm mandel.c
  *
- * render() escribe w×h píxeles RGBA en la memoria del módulo (desde pixels()) y devuelve la
- * cantidad total de iteraciones (para medir). */
+ * render() writes w×h RGBA pixels into the module's memory (from pixels()) and returns the
+ * total number of iterations (for measuring). */
 #define MAXW 1024
 #define MAXH 768
 

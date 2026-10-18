@@ -1,24 +1,26 @@
-// Registros — visor de registros estilo Consola de macOS (ver docs/SYSTEM.md, «Registros»).
+// Logs — a log viewer in the style of the macOS Console (see docs/SYSTEM.md, «Logs»).
 //
-// Fuentes (barra lateral):
-//   - LordOS: los registros de la sesión (~/.cache/lordos/*.log: session.log…);
-//   - Mis registros: el journal del usuario (user-<uid>.journal), leído por lord-server como el
-//     usuario con un lector propio (server/src/logs/journal.c);
-//   - Sistema y Kernel: el journal del sistema. Si el usuario está en systemd-journal o adm se lee
-//     directo; si no, un administrador lo pide por la acción cerrada logs-system del ayudante.
-// Filtros por nivel, tiempo, proceso o unidad y texto; en vivo con inotify (sin sondeo); exportar
-// la vista filtrada a Documentos. La lista dibuja solo los renglones que se ven.
+// Sources (sidebar):
+//   - LordOS: the session logs (~/.cache/lordos/<name>.log: session.log…);
+//   - My logs: the user's journal (user-<uid>.journal), read by lord-server as the user with our
+//     own reader (server/src/logs/journal.c);
+//   - System and Kernel: the system journal. If the user is in systemd-journal or adm it is read
+//     directly; otherwise an administrator asks for it via the helper's closed logs-system action.
+// Filters by level, time, process or unit, and text; live with inotify (no polling); exports the
+// filtered view to Documents. The list draws only the visible rows.
 import {
-  View, Text, TextInput, Segmented, Toggle, Button, SidebarItem, SectionTitle, useTheme, useLocale,
-  logs, fs, formatDate, formatNumber, getLayout, addListener, direction,
+  View, Text, TextInput, Segmented, SidebarItem, SectionTitle, useTheme, useLocale,
+  logs, fs, formatDate, formatNumber, addListener,
+  Toolbar, ToolbarButton, ToolbarSpacer, SearchField, EmptyState, Hairline, spacing, typeScale,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const ROW = 22;
-const MAX_ROWS = 10000;              // en vivo: más viejos que esto se descartan
+const COL_TIME = 92, COL_PROC = 140;     // list columns (px)
+const MAX_ROWS = 10000;              // live: anything older than this is dropped
 const LEVEL_COLOR = { error: '#ff453a', warning: '#ff9f0a', info: null, debug: null };
 
-// ---- ícono: una hoja oscura con renglones de registro (rojo, amarillo, gris) ----
+// ---- icon: a dark sheet with log lines (red, yellow, grey) ----
 export function Icon({ size: s = 32 }) {
   const lines = [['#ff453a', 0.42], ['#d0d0d6', 0.62], ['#ffd60a', 0.5], ['#d0d0d6', 0.68], ['#30d158', 0.36]];
   return (
@@ -37,12 +39,12 @@ export function Icon({ size: s = 32 }) {
   );
 }
 
-// ---- utilidades ----
+// ---- utilities ----
 const pad = (n, w = 2) => String(n).padStart(w, '0');
 export function levelOf(p) { return p == null || p < 0 ? 'info' : p <= 3 ? 'error' : p === 4 ? 'warning' : p === 7 ? 'debug' : 'info'; }
 function clock(ms) { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`; }
 
-// Renglones de un .log de LordOS (no tienen hora): nivel por palabras clave.
+// Lines of a LordOS .log (they have no timestamp): level by keywords.
 export function parseLordLog(text, file) {
   const out = [];
   const lines = text.split('\n');
@@ -57,18 +59,33 @@ export function parseLordLog(text, file) {
   return out;
 }
 
-// Documentos del usuario (xdg-user-dirs; si no, la carpeta con el nombre del idioma que exista)
+// The user's Documents (xdg-user-dirs; otherwise whichever localized folder name exists)
 function documentsDir() {
   const home = fs.home();
   try {
     const m = /^XDG_DOCUMENTS_DIR="\$HOME\/([^"]+)"/m.exec(fs.read('.config/user-dirs.dirs'));
     if (m) return `${home}/${m[1]}`;
-  } catch (e) { /* sin xdg-user-dirs */ }
-  for (const d of ['Documentos', 'Documents']) { try { if (fs.stat(`${home}/${d}`)) return `${home}/${d}`; } catch (e) { /* no está */ } }
+  } catch (e) { /* no xdg-user-dirs */ }
+  for (const d of ['Documentos', 'Documents']) { try { if (fs.stat(`${home}/${d}`)) return `${home}/${d}`; } catch (e) { /* not there */ } }
   return home;
 }
 
-// ---- lista virtual: dibuja solo lo que se ve ----
+// Size of a box after layout (re-measured on every render).
+function useSize(ref, initial) {
+  const [size, setSize] = useState(initial);
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (!ref.current) return;
+      const l = lord.getLayout(ref.current.id);
+      const w = Math.round(l[2]), h = Math.round(l[3]);
+      if (w > 0 && h > 0 && (Math.abs(w - size[0]) > 2 || Math.abs(h - size[1]) > 2)) setSize([w, h]);
+    }, 20);
+    return () => clearTimeout(id);
+  });
+  return size;
+}
+
+// ---- virtual list: draws only what is visible ----
 function VirtualList({ items, selected, onSelect, stick, onStick, renderRow }) {
   const t = useTheme();
   const box = useRef(null);
@@ -77,7 +94,7 @@ function VirtualList({ items, selected, onSelect, stick, onStick, renderRow }) {
   const total = items.length * ROW, max = Math.max(0, total - h);
   const y = stick ? max : Math.min(off, max);
   useEffect(() => {
-    const id = setTimeout(() => { if (box.current) { const v = getLayout(box.current.id)[3]; if (v && Math.abs(v - h) > 1) setH(v); } }, 30);
+    const id = setTimeout(() => { if (box.current) { const v = lord.getLayout(box.current.id)[3]; if (v > 0 && Math.abs(v - h) > 1) setH(v); } }, 30);
     return () => clearTimeout(id);
   });
   const scrollTo = (v) => {
@@ -85,7 +102,7 @@ function VirtualList({ items, selected, onSelect, stick, onStick, renderRow }) {
     setOff(c);
     onStick(c >= max - 2);
   };
-  // arrastrar la barra
+  // dragging the scrollbar
   const drag = useRef(null);
   useEffect(() => {
     const offMove = addListener('pointermove', (e) => { if (drag.current) scrollTo(drag.current.y0 + ((e.y - drag.current.py) * total) / Math.max(1, h)); });
@@ -113,11 +130,11 @@ function Dot({ p }) {
   return <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c || 'transparent', border: c ? 'none' : '1px solid rgba(128,128,128,0.5)' }} />;
 }
 
-// ---- detalle de una entrada ----
-function Detail({ e }) {
+// ---- entry details ----
+function Detail({ e, narrow }) {
   const t = useTheme();
   const { t: tr } = useLocale();
-  if (!e) return <Text style={{ color: t.textDim, fontSize: 12, padding: 12 }}>{tr('logs.pick')}</Text>;
+  if (!e) return <EmptyState title={null} hint={tr('logs.pick')} style={{ padding: spacing.l }} />;
   const rows = [
     [tr('logs.field.time'), e.t ? `${formatDate(new Date(e.t / 1000), 'long')} ${clock(e.t / 1000)}` : tr('logs.line', { n: e.line })],
     [tr('logs.field.level'), tr(`logs.level.${levelOf(e.p)}`) + (e.p >= 0 ? ` (${e.p})` : '')],
@@ -128,15 +145,19 @@ function Detail({ e }) {
     [tr('logs.field.boot'), e.b || '—'],
   ];
   return (
-    <View style={{ flexDirection: 'row', gap: 16, padding: 12, flex: 1 }}>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 12, color: t.text, fontFamily: 'monospace', lineHeight: 1.35, textAlign: 'start' }}>{e.m}</Text>
+    <View style={{ flexDirection: 'row', gap: spacing.l, paddingHorizontal: spacing.l, paddingVertical: spacing.m, flex: 1 }}>
+      <View style={{ flex: 1, minWidth: 0, gap: spacing.xs }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s }}>
+          <Dot p={e.p} />
+          <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{e.id || '—'}</Text>
+        </View>
+        <Text style={{ fontSize: typeScale.callout, color: t.text, fontFamily: 'monospace', lineHeight: 1.4, textAlign: 'start' }}>{e.m}</Text>
       </View>
-      <View style={{ width: 260, gap: 3 }}>
+      <View style={{ width: narrow ? 210 : 260, gap: 3 }}>
         {rows.map(([k, v]) => (
-          <View key={k} style={{ flexDirection: 'row', gap: 8 }}>
-            <Text style={{ width: 80, fontSize: 11, color: t.textDim, textAlign: 'end' }}>{k}</Text>
-            <Text style={{ flex: 1, fontSize: 11, color: t.text, textAlign: 'start' }}>{v}</Text>
+          <View key={k} style={{ flexDirection: 'row', gap: spacing.s }}>
+            <Text style={{ width: 76, fontSize: typeScale.caption, color: t.textDim, textAlign: 'end' }}>{k}</Text>
+            <Text style={{ flex: 1, fontSize: typeScale.caption, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{v}</Text>
           </View>
         ))}
       </View>
@@ -164,6 +185,8 @@ export default function Registros() {
   const sources = useMemo(() => { try { return logs.sources(); } catch (e) { return { user: 0, system: false }; } }, []);
   const files = useMemo(() => { try { return logs.files().sort((a, b) => b.mtime - a.mtime); } catch (e) { return []; } }, [src.kind]);
   const query = useRef({ seq: 0 });
+  const box = useRef(null);
+  const [width, height] = useSize(box, [820, 600]);
   const newest = useRef(0);
 
   const isJournal = src.kind !== 'lordos';
@@ -183,10 +206,10 @@ export default function Registros() {
   const runJournal = (q) => {
     if (src.kind === 'user') return logs.query({ ...q, scope: 'user' });
     if (sources.system) return logs.query({ ...q, scope: 'system' });
-    return logs.system(q);                    // administradores, por el ayudante
+    return logs.system(q);                    // administrators, through the helper
   };
 
-  // carga completa al cambiar la fuente o los filtros (el texto, con una pausa)
+  // full reload when the source or the filters change (text, after a short pause)
   useEffect(() => {
     const seq = ++query.current.seq;
     const id = setTimeout(async () => {
@@ -217,7 +240,7 @@ export default function Registros() {
     return () => clearTimeout(id);
   }, [src.kind, src.file, level, range, search, proc]);
 
-  // en vivo: inotify en lord-server avisa; se piden solo las entradas nuevas (a lo sumo ~1 por segundo)
+  // live: inotify in lord-server notifies; only new entries are requested (at most ~1 per second)
   useEffect(() => {
     if (!live) return undefined;
     let timer = null, busy = false;
@@ -240,14 +263,14 @@ export default function Registros() {
           newest.current = more[more.length - 1].t;
           setItems((old) => { const n = old.concat(more); return n.length > MAX_ROWS ? n.slice(n.length - MAX_ROWS) : n; });
         }
-      } catch (e) { /* se reintenta con el próximo aviso */ }
+      } catch (e) { /* retried on the next notification */ }
       busy = false;
     };
     const off = logs.onChange((kind, name) => {
       if (isJournal ? kind !== 'journal' : !(kind === 'file' && name === src.file)) return;
       if (!timer) timer = setTimeout(pull, 700);
     });
-    return () => { off(); if (timer) clearTimeout(timer); try { logs.follow(false); } catch (e) { /* ya no */ } };
+    return () => { off(); if (timer) clearTimeout(timer); try { logs.follow(false); } catch (e) { /* already gone */ } };
   }, [live, src.kind, src.file, level, range, search, proc]);
 
   const exportView = () => {
@@ -273,74 +296,85 @@ export default function Registros() {
     const lv = levelOf(e.p);
     const fg = on ? '#fff' : lv === 'debug' ? t.textDim : t.text;
     return (
-      <View key={`${e.t}-${e.s ?? e.line}-${i}`} onClick={pick} style={{ height: ROW, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10,
-        backgroundColor: on ? t.accent : i % 2 ? (t.mode === 'dark' ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.025)') : 'transparent' }}>
-        <Dot p={e.p} />
-        <Text style={{ width: 92, fontSize: 11, color: on ? '#fff' : t.textDim, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{e.t ? clock(e.t / 1000) : `#${e.line}`}</Text>
-        <Text style={{ width: 140, fontSize: 12, color: fg, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{e.id || '—'}</Text>
-        <Text style={{ flex: 1, fontSize: 12, color: fg, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{e.m.replace(/\n/g, ' ⏎ ')}</Text>
+      <View key={`${e.t}-${e.s ?? e.line}-${i}`} onClick={pick} style={{ height: ROW, flexDirection: 'row', alignItems: 'center', gap: spacing.s, paddingHorizontal: spacing.m,
+        backgroundColor: on ? t.accent : i % 2 ? (t.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)') : 'transparent' }}>
+        <View style={{ width: 10, alignItems: 'center' }}><Dot p={e.p} /></View>
+        <Text style={{ width: COL_TIME, fontSize: typeScale.caption, color: on ? '#fff' : t.textDim, fontFamily: 'monospace', whiteSpace: 'nowrap', direction: 'ltr', textAlign: 'start' }}>{e.t ? clock(e.t / 1000) : `#${e.line}`}</Text>
+        <Text style={{ width: COL_PROC, fontSize: typeScale.callout, color: fg, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{e.id || '—'}</Text>
+        <Text style={{ flex: 1, fontSize: typeScale.callout, color: fg, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{e.m.replace(/\n/g, ' ⏎ ')}</Text>
       </View>
     );
   };
 
-  const side = (kind, label, extra) => (
-    <SidebarItem key={kind + (extra?.file || '')} label={label} selected={src.kind === kind && (!extra || src.file === extra.file)}
+  const side = (kind, label, icon, extra) => (
+    <SidebarItem key={kind + (extra?.file || '')} label={label} icon={icon} selected={src.kind === kind && (!extra || src.file === extra.file)}
       onClick={() => setSrc({ kind, ...(extra || {}) })} />
   );
+  const narrow = width < 640;
+  const caption = { fontSize: typeScale.caption, fontWeight: 600, color: t.textDim, whiteSpace: 'nowrap', textAlign: 'start' };
 
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>
-      <View style={{ width: 200, backgroundColor: t.sidebarBg, paddingHorizontal: 8, paddingTop: 8, gap: 2 }}>
+      <View style={{ width: 210, backgroundColor: t.sidebarBg, paddingHorizontal: 10, paddingTop: spacing.xs, gap: 2 }}>
         <SectionTitle>{tr('logs.section.journal')}</SectionTitle>
-        {side('user', tr('logs.src.user'))}
-        {side('system', tr('logs.src.system'))}
-        {side('kernel', tr('logs.src.kernel'))}
+        {side('user', tr('logs.src.user'), '☺')}
+        {side('system', tr('logs.src.system'), '▣')}
+        {side('kernel', tr('logs.src.kernel'), '◐')}
         <SectionTitle>{tr('logs.section.lordos')}</SectionTitle>
-        {files.length ? files.map((f) => side('lordos', f.name.replace(/\.log$/, ''), { file: f.name })) :
-          <Text style={{ fontSize: 11, color: t.textDim, paddingHorizontal: 10, textAlign: 'start' }}>{tr('logs.noFiles')}</Text>}
+        {files.length ? files.map((f) => side('lordos', f.name.replace(/\.log$/, ''), '≡', { file: f.name })) :
+          <Text style={{ fontSize: typeScale.caption, color: t.textDim, paddingHorizontal: 10, textAlign: 'start' }}>{tr('logs.noFiles')}</Text>}
         <View style={{ flex: 1 }} />
-        <Text style={{ fontSize: 10, color: t.textDim, margin: 8, textAlign: 'start' }}>
+        <Text style={{ fontSize: typeScale.caption, color: t.textDim, lineHeight: 1.4, paddingHorizontal: spacing.s, paddingBottom: spacing.m, textAlign: 'start' }}>
           {src.kind === 'user' ? tr('logs.hint.user') : src.kind === 'lordos' ? tr('logs.hint.lordos') : sources.system ? tr('logs.hint.systemDirect') : tr('logs.hint.systemAdmin')}
         </Text>
+        <Hairline edge="end" />
       </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, borderBottom: `1px solid ${t.separator}`, flexWrap: 'wrap' }}>
-          <TextInput value={search} onChange={setSearch} placeholder={tr('logs.search')} style={{ width: 200 }} />
-          <TextInput value={proc} onChange={setProc} placeholder={tr('logs.process')} style={{ width: 150, ...(procValid ? {} : { border: '1px solid #ff453a' }) }} />
-          <Segmented value={level} onChange={setLevel} options={[['all', tr('logs.lv.all')], ['info', tr('logs.lv.info')], ['warning', tr('logs.lv.warning')], ['error', tr('logs.lv.error')]]} />
-          <Segmented value={range} onChange={setRange} options={[['15m', tr('logs.range.15m')], ['hour', tr('logs.range.hour')], ['day', tr('logs.range.day')], ['all', tr('logs.range.all')]]} />
-          <View style={{ flex: 1 }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontSize: 12, color: t.textDim }}>{tr('logs.live')}</Text>
-            <Toggle on={live} onChange={setLive} />
-          </View>
-          <Button label={tr('logs.export')} onClick={exportView} />
+      <View ref={box} style={{ flex: 1, minWidth: 0 }}>
+        <Toolbar>
+          <ToolbarButton icon="●" iconSize={9} label={tr('logs.live')} active={live} color={t.textDim} onClick={() => setLive(!live)} />
+          <ToolbarButton label={tr('logs.export')} onClick={exportView} />
+          <ToolbarSpacer />
+          <TextInput value={proc} onChange={setProc} placeholder={tr('logs.process')}
+            style={{ width: narrow ? 130 : 150, ...(procValid ? {} : { border: '1px solid #ff453a' }) }} />
+          <SearchField value={search} onChange={setSearch} placeholder={tr('logs.search')} width={narrow ? 190 : 220} />
+        </Toolbar>
+        <View style={{ height: 40, flexDirection: 'row', alignItems: 'center', gap: spacing.m, paddingHorizontal: spacing.m }}>
+          <Segmented small appearance="neutral" value={level} onChange={setLevel}
+            options={[['all', tr('logs.lv.all')], ['info', tr('logs.lv.info')], ['warning', tr('logs.lv.warning')], ['error', tr('logs.lv.error')]]} />
+          <Segmented small appearance="neutral" value={range} onChange={setRange}
+            options={[['15m', tr('logs.range.15m')], ['hour', tr('logs.range.hour')], ['day', tr('logs.range.day')], ['all', tr('logs.range.all')]]} />
+          <Hairline edge="bottom" />
+        </View>
+        <View style={{ height: 26, flexDirection: 'row', alignItems: 'center', gap: spacing.s, paddingHorizontal: spacing.m }}>
+          <View style={{ width: 10 }} />
+          <Text style={[caption, { width: COL_TIME }]}>{tr('logs.field.time')}</Text>
+          <Text style={[caption, { width: COL_PROC }]}>{tr('logs.field.process')}</Text>
+          <Text style={[caption, { flex: 1 }]}>{tr('logs.field.message')}</Text>
+          <Hairline edge="bottom" />
         </View>
         <View style={{ flex: 1, minHeight: 0 }}>
-          {state.error ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 6 }}>
-              <Text style={{ fontSize: 14, fontWeight: 600, color: t.text }}>{tr('logs.errorTitle')}</Text>
-              <Text style={{ fontSize: 12, color: t.textDim, textAlign: 'center' }}>{state.error}</Text>
-            </View>
-          ) : !items.length ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontSize: 13, color: t.textDim }}>{state.loading ? tr('logs.loading') : tr('logs.empty')}</Text>
-            </View>
-          ) : (
-            <VirtualList items={items} selected={sel} onSelect={(i) => { setSel(i); setStick(false); }} stick={stick && sel < 0} onStick={setStick} renderRow={renderRow} />
-          )}
+          {state.error ? <EmptyState icon={<Icon size={48} />} title={tr('logs.errorTitle')} hint={state.error} />
+            : !items.length ? <EmptyState title={null} hint={state.loading ? tr('logs.loading') : tr('logs.empty')} />
+            : <VirtualList items={items} selected={sel} onSelect={(i) => { setSel(i); setStick(false); }} stick={stick && sel < 0} onStick={setStick} renderRow={renderRow} />}
         </View>
-        <View style={{ height: 150, borderTop: `1px solid ${t.separator}`, backgroundColor: t.sidebarBg }}>
-          <Detail e={sel >= 0 ? items[sel] : null} />
+        <View style={{ height: height < 560 ? 112 : 156 }}>
+          <Hairline edge="top" />
+          <Detail e={sel >= 0 ? items[sel] : null} narrow={narrow} />
         </View>
-        <View style={{ height: 24, flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 10, borderTop: `1px solid ${t.separator}` }}>
-          <Text style={{ fontSize: 11, color: t.textDim }}>{tr('logs.count', { count: items.length, n: formatNumber(items.length, 0) })}</Text>
-          {counts.err ? <Text style={{ fontSize: 11, color: '#ff453a' }}>{tr('logs.errors', { count: counts.err, n: formatNumber(counts.err, 0) })}</Text> : null}
-          {counts.warn ? <Text style={{ fontSize: 11, color: '#ff9f0a' }}>{tr('logs.warnings', { count: counts.warn, n: formatNumber(counts.warn, 0) })}</Text> : null}
-          {state.ms ? <Text style={{ fontSize: 11, color: t.textDim }}>{tr('logs.took', { ms: formatNumber(state.ms, 0) })}</Text> : null}
+        <View style={{ height: 26, flexDirection: 'row', alignItems: 'center', gap: spacing.m, paddingHorizontal: spacing.m }}>
+          <Hairline edge="top" />
+          <Text style={{ fontSize: typeScale.caption, color: t.textDim }}>{tr('logs.count', { count: items.length, n: formatNumber(items.length, 0) })}</Text>
+          {counts.err ? <Text style={{ fontSize: typeScale.caption, color: '#ff453a' }}>{tr('logs.errors', { count: counts.err, n: formatNumber(counts.err, 0) })}</Text> : null}
+          {counts.warn ? <Text style={{ fontSize: typeScale.caption, color: '#ff9f0a' }}>{tr('logs.warnings', { count: counts.warn, n: formatNumber(counts.warn, 0) })}</Text> : null}
+          {state.ms && !narrow ? <Text style={{ fontSize: typeScale.caption, color: t.textDim }}>{tr('logs.took', { ms: formatNumber(state.ms, 0) })}</Text> : null}
           <View style={{ flex: 1 }} />
-          {notice ? <Text style={{ fontSize: 11, color: t.accent }}>{notice}</Text> : null}
-          {live ? <Text style={{ fontSize: 11, color: '#30d158' }}>{direction() === 'rtl' ? `${tr('logs.following')} ●` : `● ${tr('logs.following')}`}</Text> : null}
+          {notice ? <Text style={{ fontSize: typeScale.caption, color: t.accent, whiteSpace: 'nowrap', overflow: 'hidden' }}>{notice}</Text> : null}
+          {live && !notice ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#30d158' }} />
+              <Text style={{ fontSize: typeScale.caption, color: t.textDim }}>{tr('logs.following')}</Text>
+            </View>
+          ) : null}
         </View>
       </View>
     </View>

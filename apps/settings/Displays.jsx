@@ -1,8 +1,10 @@
-// Settings → Displays: resolution, refresh rate, rotation, the main display, brightness and Night
-// Shift (docs/SETTINGS.md, "Displays"). Changes apply live with the system's 15-second "Keep these
+// Settings → Displays: arrangement of several displays (extend or mirror), resolution, refresh rate,
+// rotation, scale (100–200 %, sharp), the main display, brightness and Night Shift (docs/SETTINGS.md,
+// "Displays", and docs/DISPLAYS.md). Changes apply live with the system's 15-second "Keep these
 // display settings?" countdown (sdk/hardware.jsx) and are saved per display (EDID identity).
 import {
-  View, Text, useTheme, useLocale, useSettings, Slider, Toggle, Segmented, Button, admin, useDisplays, applyDisplay, DisplayGlyph,
+  View, Text, useTheme, useLocale, useSettings, Slider, Toggle, Segmented, Button, admin, useDisplays, applyDisplay, DisplayGlyph, addListener,
+  arrangeDisplay, setDisplayMirror, setMainDisplay, setCaptureAllDisplays,
   nightPrefs, nightActive, setNightManual, previewNight, nightTick, sunTimes, formatTime,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
@@ -13,25 +15,55 @@ const hz = (mhz) => {
   return Math.abs(v - Math.round(v)) < 0.005 ? String(Math.round(v)) : v.toFixed(2);
 };
 
-// The display drawn in the arrangement area: proportional to its resolution, with its name.
-function Arrangement({ outs, current, onPick, t, tr }) {
-  const maxW = 150, maxH = 96;
+// The arrangement (docs/DISPLAYS.md): every active display at its place in the desktop, proportional to
+// its logical size. Drag one to move it next to the others (lord-server snaps it: edges touch, no
+// overlap); click one to choose it below. The white bar marks the main display (menu bar, Dock).
+function Arrangement({ outs, sel, onSelect, mirror, t, tr }) {
+  const act = outs.filter((o) => o.active && o.w);
+  const W = 520, H = 170;
+  const [drag, setDrag] = useState(null);       // { id, x, y } in logical px while dragging
+  const st = useRef(null);
+  useEffect(() => {
+    const offMove = addListener('pointermove', (e) => {
+      const d = st.current;
+      if (!d) return;
+      if (!d.moved && Math.hypot(e.x - d.px, e.y - d.py) < 4) return;
+      d.moved = true;
+      const r = arrangeDisplay(d.id, d.ox + (e.x - d.px) / d.k, d.oy + (e.y - d.py) / d.k, false);
+      if (r) setDrag({ id: d.id, x: r.x, y: r.y });
+    });
+    const offUp = addListener('pointerup', (e) => {
+      const d = st.current;
+      st.current = null;
+      if (!d) return;
+      if (d.moved) arrangeDisplay(d.id, d.ox + (e.x - d.px) / d.k, d.oy + (e.y - d.py) / d.k, true);
+      setTimeout(() => setDrag(null), 400);   // until the new list arrives
+    });
+    return () => { offMove(); offUp(); };
+  }, []);
+  if (!act.length) return null;
+  // mirror: the displays are drawn one behind the other; extend: at their place
+  const pos = (o, i) => (mirror ? { x: i * 18, y: i * 14 } : drag && drag.id === o.id ? drag : { x: o.x, y: o.y });
+  const boxes = act.map((o, i) => ({ o, ...pos(o, i) }));
+  const x0 = Math.min(...boxes.map((b) => b.x)), y0 = Math.min(...boxes.map((b) => b.y));
+  const x1 = Math.max(...boxes.map((b) => b.x + b.o.w)), y1 = Math.max(...boxes.map((b) => b.y + b.o.h));
+  const k = Math.min((W - 40) / Math.max(1, x1 - x0), (H - 30) / Math.max(1, y1 - y0));
+  const offX = (W - (x1 - x0) * k) / 2, offY = (H - (y1 - y0) * k) / 2;
   return (
-    <View style={{ height: 150, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 18,
+    <View style={{ height: H, borderRadius: 10, direction: 'ltr', overflow: 'hidden',
       backgroundColor: t.mode === 'dark' ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.05)', border: `1px solid ${t.separator}` }}>
-      {outs.map((o) => {
-        const w = o.mode?.w || o.preferred.w || 16, h = o.mode?.h || o.preferred.h || 10;
-        const k = Math.min(maxW / w, maxH / h);
-        const on = o.id === current?.id;
+      {boxes.map(({ o, x, y }) => {
+        const on = o.id === sel;
         return (
-          <View key={o.id} onClick={() => !on && onPick(o)} style={{ alignItems: 'center', gap: 6 }}>
-            <View style={{ width: Math.round(w * k), height: Math.round(h * k), borderRadius: 6, alignItems: 'center', justifyContent: 'center',
+          <View key={o.id}
+            onMouseDown={(e) => { onSelect(o.id); if (!mirror && act.length > 1) st.current = { id: o.id, px: e.x, py: e.y, ox: o.x, oy: o.y, k, moved: false }; }}
+            style={{ position: 'absolute', left: offX + (x - x0) * k, top: offY + (y - y0) * k, width: Math.max(24, o.w * k - 2), height: Math.max(16, o.h * k - 2),
+              borderRadius: 5, alignItems: 'center', justifyContent: 'center', cursor: !mirror && act.length > 1 ? 'grab' : 'pointer',
               background: on ? 'linear-gradient(135deg, #3b6fd8, #8f4fd1)' : 'linear-gradient(135deg, #5b5f6a, #3a3d45)',
               border: on ? `2px solid ${t.accent}` : `1px solid ${t.separator}`, boxShadow: '0 4px 14px rgba(0,0,0,0.3)' }}>
-              {on ? <View style={{ position: 'absolute', left: 3, right: 3, top: 3, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.75)' }} /> : null}
-              <Text style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>{o.mode ? `${o.mode.w}×${o.mode.h}` : tr('prefs.display.notInUse')}</Text>
-            </View>
-            <Text style={{ fontSize: 11, color: on ? t.text : t.textDim }}>{o.name}</Text>
+            {o.main ? <View style={{ position: 'absolute', left: 3, right: 3, top: 3, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.8)' }} /> : null}
+            <Text style={{ fontSize: 11, fontWeight: 700, color: '#fff', textAlign: 'center' }}>{o.name}</Text>
+            <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.8)', textAlign: 'center' }}>{`${o.mode.w}×${o.mode.h} · ${o.scale} %`}</Text>
           </View>
         );
       })}
@@ -117,10 +149,13 @@ export function DisplaysSettings() {
   const t = useTheme();
   const { t: tr } = useLocale();
   const d = useDisplays();
+  const [s, set] = useSettings();
   const [msg, setMsg] = useState('');
+  const [selId, setSel] = useState(null);
   if (!d) return <Note>{tr('prefs.display.unavailable')}</Note>;
   const outs = d.outputs || [];
-  const cur = outs.find((o) => o.current) || outs[0];
+  const act = outs.filter((o) => o.active);
+  const cur = outs.find((o) => o.id === selId && o.active) || outs.find((o) => o.main) || act[0] || outs[0];
   if (!d.onMonitor || !cur) {
     return (
       <Stack>
@@ -134,53 +169,64 @@ export function DisplaysSettings() {
   const curRes = res.find((r) => r.w === mode.w && r.h === mode.h) || res[0];
   const go = (o, x) => { if (!applyDisplay(o, x)) setMsg(tr('prefs.display.failed')); else setMsg(''); };
   const native = (r) => r.w === cur.preferred.w && r.h === cur.preferred.h;
-  const looks = d.scale === 2 ? tr('prefs.display.looksLike', { w: Math.floor(mode.w / 2), h: Math.floor(mode.h / 2) }) : '';
+  const scale = cur.scale || 100, rot = cur.rotation || 0, rec = cur.recommended || 100;
+  const looks = scale !== 100 && cur.w ? tr('prefs.display.looksLike', { w: cur.w, h: cur.h }) : '';
   const sizeLine = [cur.connector, cur.diagonal ? tr('prefs.display.inches', { n: (cur.diagonal / 10).toFixed(1) }) : '', `${mode.w} × ${mode.h}`, looks].filter(Boolean).join(' · ');
+  const scales = [100, 125, 150, 175, 200].map((n) => [n, n === rec ? tr('prefs.display.scaleRecommended', { n }) : tr('prefs.display.scaleN', { n })]);
+  const several = act.length > 1 || outs.length > 1;
   return (
     <Stack>
-      <Arrangement outs={outs} current={cur} t={t} tr={tr} onPick={(o) => go(o, { conn: o.id, w: 0, h: 0, refresh: 0, rotation: 0 })} />
+      <Arrangement outs={outs} sel={cur.id} onSelect={setSel} mirror={d.mirror} t={t} tr={tr} />
+      {act.length > 1 && !d.mirror ? <Text style={{ fontSize: 11, color: t.textDim, textAlign: 'start', marginTop: -12 }}>{tr('prefs.display.arrangeHint')}</Text> : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: -6 }}>
         <DisplayGlyph size={34} color={t.accent} />
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: 700, color: t.text, textAlign: 'start' }}>{cur.name}</Text>
+          <Text style={{ fontSize: 14, fontWeight: 700, color: t.text, textAlign: 'start' }}>{cur.name}{cur.main && several ? ` · ${tr('prefs.display.mainLabel')}` : ''}</Text>
           <Text style={{ fontSize: 11, color: t.textDim, textAlign: 'start' }}>{sizeLine}</Text>
         </View>
+        {several && !cur.main && cur.active ? <Button small label={tr('prefs.display.makeMain')} onClick={() => setMainDisplay(cur.id)} /> : null}
       </View>
       <GroupBox>
+        <SettingRow label={tr('prefs.display.scale')} hint={tr('prefs.display.scaleHint')}>
+          <PopUp value={scale} onChange={(sc) => go(cur, { w: mode.w, h: mode.h, refresh: mode.refresh, rotation: rot, scale: sc })} options={scales} />
+        </SettingRow>
         <SettingRow label={tr('prefs.display.resolution')}>
-          <PopUp width={230} value={`${curRes?.w}x${curRes?.h}`} onChange={(v) => { const [w, h] = v.split('x').map(Number); go(cur, { w, h, refresh: 0, rotation: d.rotation, scale: d.scale || 1 }); }}
+          <PopUp width={230} value={`${curRes?.w}x${curRes?.h}`} onChange={(v) => { const [w, h] = v.split('x').map(Number); go(cur, { w, h, refresh: 0, rotation: rot, scale }); }}
             options={res.map((r) => [`${r.w}x${r.h}`, native(r) ? tr('prefs.display.native', { w: r.w, h: r.h }) : `${r.w} × ${r.h}`])} />
         </SettingRow>
         <SettingRow label={tr('prefs.display.refresh')}>
-          <PopUp value={mode.refresh} onChange={(refresh) => go(cur, { w: mode.w, h: mode.h, refresh, rotation: d.rotation, scale: d.scale || 1 })}
+          <PopUp value={mode.refresh} onChange={(refresh) => go(cur, { w: mode.w, h: mode.h, refresh, rotation: rot, scale })}
             options={(curRes?.rates || []).map((r) => [r, tr('prefs.display.hz', { hz: hz(r) })])} disabled={(curRes?.rates || []).length < 2} />
         </SettingRow>
-        <SettingRow label={tr('prefs.display.rotation')} hint={d.rotation ? tr('prefs.display.rotationHint') : ''}>
-          <PopUp value={d.rotation} onChange={(rotation) => go(cur, { w: mode.w, h: mode.h, refresh: mode.refresh, rotation, scale: d.scale || 1 })}
+        <SettingRow label={tr('prefs.display.rotation')} hint={rot ? tr('prefs.display.rotationHint') : ''}>
+          <PopUp value={rot} onChange={(rotation) => go(cur, { w: mode.w, h: mode.h, refresh: mode.refresh, rotation, scale })}
             options={[[0, tr('prefs.display.rotStandard')], [1, '90°'], [2, '180°'], [3, '270°']]} />
-        </SettingRow>
-        <SettingRow label={tr('prefs.display.scale')} hint={tr(d.scale === 2 ? 'prefs.display.scale2Hint' : 'prefs.display.scaleHint')}>
-          <PopUp value={d.scale || 1} onChange={(scale) => go(cur, { w: mode.w, h: mode.h, refresh: mode.refresh, rotation: d.rotation, scale })}
-            options={[[1, tr('prefs.display.scale100')], [2, tr('prefs.display.scale200')]]} />
         </SettingRow>
       </GroupBox>
       {msg ? <Note tone="warn">{msg}</Note> : null}
+      {several ? (
+        <GroupBox title={tr('prefs.display.multiple')} footer={tr('prefs.display.multipleHint')}>
+          <SettingRow label={tr('prefs.display.useAs')} disabled={act.length < 2 && !d.mirror}>
+            <Segmented small value={d.mirror ? 'mirror' : 'extend'} onChange={(v) => setDisplayMirror(v === 'mirror')}
+              options={[['extend', tr('prefs.display.extend')], ['mirror', tr('prefs.display.mirror')]]} />
+          </SettingRow>
+          <SettingRow label={tr('prefs.display.menuBarAll')} disabled={d.mirror}>
+            <Toggle on={!!s.menuBarAllDisplays} onChange={(on) => set({ menuBarAllDisplays: on })} />
+          </SettingRow>
+          <SettingRow label={tr('prefs.display.capture')} hint={tr('prefs.display.captureHint')}>
+            <Segmented small value={d.captureAll ? 'all' : 'main'} onChange={(v) => setCaptureAllDisplays(v === 'all')}
+              options={[['main', tr('prefs.display.captureMain')], ['all', tr('prefs.display.captureAll')]]} />
+          </SettingRow>
+          {outs.filter((o) => !o.active).map((o) => (
+            <SettingRow key={o.id} label={o.name} hint={tr('prefs.display.noCrtc', { connector: o.connector })} disabled />
+          ))}
+        </GroupBox>
+      ) : null}
       <GroupBox>
         <Brightness list={d.backlight || []} />
       </GroupBox>
       <NightShift />
       {d.softTint ? <Note>{tr('prefs.night.software')}</Note> : null}
-      <GroupBox title={tr('prefs.display.multiple')} footer={tr('prefs.display.multipleHint')}>
-        <SettingRow label={tr('prefs.display.useAs')} disabled>
-          <Segmented small value="extend" onChange={() => {}} options={[['extend', tr('prefs.display.extend')], ['mirror', tr('prefs.display.mirror')]]} />
-        </SettingRow>
-        {outs.filter((o) => o.id !== cur.id).map((o) => (
-          <SettingRow key={o.id} label={o.name} hint={o.connector}>
-            <Button small label={tr('prefs.display.makeMain')} onClick={() => go(o, { conn: o.id, w: 0, h: 0, refresh: 0, rotation: 0 })} />
-          </SettingRow>
-        ))}
-        {outs.length < 2 ? <SettingRow label={tr('prefs.display.onlyOne')} /> : null}
-      </GroupBox>
     </Stack>
   );
 }

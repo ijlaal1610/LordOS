@@ -1,4 +1,4 @@
-/* wire.c — ver wire.h. */
+/* wire.c — see wire.h. */
 #include "wire.h"
 
 #include <errno.h>
@@ -94,7 +94,7 @@ int doc_recv(int sock, DocMsg *m) {
     struct msghdr msg = { .msg_iov = &iov, .msg_iovlen = 1, .msg_control = u.buf, .msg_controllen = sizeof u.buf };
     ssize_t r;
     do r = recvmsg(sock, &msg, MSG_CMSG_CLOEXEC); while (r < 0 && errno == EINTR);
-    /* fds primero: si el mensaje es inválido igual hay que cerrarlos */
+    /* fds first: if the message is invalid they still have to be closed */
     for (struct cmsghdr *c = CMSG_FIRSTHDR(&msg); c; c = CMSG_NXTHDR(&msg, c)) {
         if (c->cmsg_level != SOL_SOCKET || c->cmsg_type != SCM_RIGHTS) continue;
         int k = (int)((c->cmsg_len - CMSG_LEN(0)) / sizeof(int));
@@ -186,14 +186,14 @@ void jb_num(JBuf *b, double v) {
     else jb_printf(b, "%.4f", v);
 }
 
-/* Longitud de una secuencia UTF-8 válida en s (0 si no lo es). */
+/* Length of a valid UTF-8 sequence in s (0 if it isn't one). */
 static int utf8_len(const unsigned char *s, size_t n) {
     if (s[0] < 0x80) return 1;
     int k = s[0] >= 0xf0 && s[0] <= 0xf4 ? 4 : s[0] >= 0xe0 ? 3 : s[0] >= 0xc2 && s[0] < 0xe0 ? 2 : 0;
     if (!k || (size_t)k > n) return 0;
     for (int i = 1; i < k; i++) if ((s[i] & 0xc0) != 0x80) return 0;
     if (k == 3 && s[0] == 0xe0 && s[1] < 0xa0) return 0;
-    if (k == 3 && s[0] == 0xed && s[1] >= 0xa0) return 0;          /* sustitutos */
+    if (k == 3 && s[0] == 0xed && s[1] >= 0xa0) return 0;          /* surrogates */
     if (k == 4 && s[0] == 0xf0 && s[1] < 0x90) return 0;
     if (k == 4 && s[0] == 0xf4 && s[1] >= 0x90) return 0;
     return k;

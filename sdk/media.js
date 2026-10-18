@@ -1,15 +1,15 @@
-// media.js — video, música, fotos, capturas, cámara y grabadora (lord.media, ver docs/MEDIOS.md).
+// media.js — video, music, photos, screenshots, camera and recorder (lord.media, see docs/MEDIA.md).
 //
-// Decodificar y codificar lo hace lord-media, un ayudante aislado (sin red ni acceso a archivos)
-// que lord-server lanza a pedido; acá solo se piden cosas por id y llegan eventos.
+// Decoding and encoding is done by lord-media, an isolated helper (no network or file access)
+// that lord-server launches on demand; here we only request things by id and receive events.
 //
-//   const id = media.play('player', ruta, { loop: false });   // un reproductor
-//   <MediaView media={id} style={{ flex: 1 }} />              // donde se ve (C lo dibuja)
+//   const id = media.play('player', path, { loop: false });   // a player
+//   <MediaView media={id} style={{ flex: 1 }} />              // where it's shown (C draws it)
 //   const p = usePlayer(id);   // { info, pos, duration, playing, state, subs, stats }
 //   media.control(id, 'seek', 30000)
 //
-// Cámara, micrófono y pantalla piden permiso (requestPermission, el aviso del sistema) y el
-// servidor vuelve a verificarlo. Mientras se usan, los indicadores de la barra de menú se prenden.
+// Camera, microphone and screen ask for permission (requestPermission, the system prompt) and the
+// server checks it again. While in use, the menu bar indicators light up.
 import { createElement as h, useEffect, useState } from 'react';
 import { View, Text, Image, MediaView, addListener } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
@@ -20,8 +20,8 @@ import * as fs from './fs.js';
 
 const api = () => (typeof lord !== 'undefined' && lord.media) || null;
 const listeners = new Map();          // id → Set(fn(type, data))
-const pending = new Map();            // id de trabajo → resolve
-export const thumbRev = createStore(0);   // sube cuando llega una miniatura
+const pending = new Map();            // job id → resolve
+export const thumbRev = createStore(0);   // goes up when a thumbnail arrives
 
 globalThis.__lordMedia = (id, type, data) => {
   if (type === 'job') {
@@ -34,7 +34,7 @@ globalThis.__lordMedia = (id, type, data) => {
   if (set) for (const fn of [...set]) { try { fn(type, data); } catch (e) { console.error('media:', e?.message || e); } }
 };
 
-// Promesa para un trabajo (probe, miniaturas, edición, exportar…): resuelve con el evento "job".
+// Promise for a job (probe, thumbnails, editing, export…): resolves with the "job" event.
 function job(fn) {
   return new Promise((resolve) => {
     let id = 0;
@@ -54,23 +54,23 @@ export const media = {
     listeners.get(id).add(fn);
     return () => { const s = listeners.get(id); if (s) { s.delete(fn); if (!s.size) listeners.delete(id); } };
   },
-  // reproducir (video, música, GIF animado): devuelve el id
+  // play (video, music, animated GIF): returns the id
   play(app, path, opts = {}) { const id = call('play', app, path, opts); if (id) track(id); return id; },
   control: (id, cmd, value) => !!call('control', id, cmd, value),
   close(id) { if (id) { untrack(id); call('close', id); listeners.delete(id); states.delete(id); } },
   view: (id, opts) => call('view', id, opts),
   info: (id) => call('info', id),
-  // fotos: id de una imagen decodificada (evento "ready" con { width, height, orientation, animated })
+  // photos: id of a decoded image ("ready" event with { width, height, orientation, animated })
   image(app, path) { const id = call('image', app, path); if (id) track(id); return id; },
-  // miniatura en ~/.cache/lordos/thumbs (ruta) o null mientras se hace (llega thumbRev)
+  // thumbnail in ~/.cache/lordos/thumbs (path) or null while it's being made (thumbRev arrives)
   thumb: (path, size = 256) => { try { return call('thumb', path, size); } catch (e) { return null; } },
   probe: (path) => job(() => call('probe', path)).then((r) => (r.ok ? r.result : null)),
   waveform: (path, bars = 200) => job(() => call('waveform', path, bars)).then((r) => (r.ok ? r.result : null)),
-  // un cuadro del video o la carátula del audio, en píxeles RGBA para <Image pixels> (Vista rápida)
+  // a video frame or the audio cover art, in RGBA pixels for <Image pixels> (Quick Look)
   poster: (path, maxSize = 512) => job(() => call('poster', path, maxSize)).then((r) => (r.ok ? call('take', r.id) : null)),
   edit: (app, path, out, opts) => job(() => call('edit', app, path, out, opts)),
   transcode: (app, path, out, opts) => job(() => call('transcode', app, path, out, opts)),
-  // capturas (con las ventanas protegidas en negro)
+  // screenshots (with protected windows in black)
   async screenshot(app, rect) {
     if (!(await requestPermission(app, 'screen'))) return null;
     return call('screenshot', app, rect || {});
@@ -114,7 +114,7 @@ export const media = {
   protectedCount: () => call('protectedCount') || 0,
 };
 
-// Indicadores de cámara/micrófono mientras viva el origen.
+// Camera/microphone indicators while the source lives.
 const devices = new Map();            // id → { app, kind }
 function trackDevice(id, app, kind) {
   markDeviceUse(app, kind, true);
@@ -128,10 +128,10 @@ function untrack(id) {
   if (d) { devices.delete(id); markDeviceUse(d.app, d.kind, false); }
 }
 
-// Estado de un reproductor (o cámara, o grabación) para React. Se arma acá aunque ningún
-// componente lo esté mirando, así una app que se vuelve a montar lo encuentra igual.
+// State of a player (or camera, or recording) for React. It is built here even if no
+// component is watching it, so an app that remounts finds it just the same.
 const EMPTY = { info: null, pos: 0, duration: 0, playing: false, state: 'loading', subs: [], stats: null, error: null, level: 0, ms: 0, closed: false };
-const states = new Map();             // id → estado
+const states = new Map();             // id → state
 function reduce(s, type, d) {
   switch (type) {
     case 'info': return { ...s, info: d, duration: d.duration || s.duration };
@@ -170,17 +170,17 @@ export function mediaFormatTime(ms) {
   return hh ? `${hh}:${p(mm)}:${p(ss)}` : `${mm}:${p(ss)}`;
 }
 
-// Miniatura de un archivo (imagen, video o carátula): ruta o null; se actualiza sola.
+// Thumbnail of a file (image, video or cover art): path or null; updates itself.
 export const thumbFor = (path, size = 256) => (path ? media.thumb(path, size) : null);
 export function useThumb(path, size = 256) {
   useStore(thumbRev);
   return thumbFor(path, size);
 }
 
-// Carpetas del usuario (xdg-user-dirs; si no está, los nombres de LordOS).
+// User folders (xdg-user-dirs; if missing, the LordOS names).
 export function userDirs() {
   let conf = '';
-  try { conf = fs.read('.config/user-dirs.dirs'); } catch (e) { /* sin xdg-user-dirs */ }
+  try { conf = fs.read('.config/user-dirs.dirs'); } catch (e) { /* no xdg-user-dirs */ }
   const home = fs.home();
   const get = (key, def) => {
     const m = new RegExp(`^XDG_${key}_DIR="\\$HOME/([^"]+)"`, 'm').exec(conf);
@@ -189,14 +189,14 @@ export function userDirs() {
   return { home, pictures: get('PICTURES', 'Imágenes'), music: get('MUSIC', 'Música'), videos: get('VIDEOS', 'Videos'), desktop: get('DESKTOP', 'Escritorio') };
 }
 
-// ---- lo que suena ahora (Centro de control y teclas multimedia) ----
-// La app que reproduce publica { app, window, title, artist, album, cover, playing, pos, duration,
-// toggle(), next(), prev(), stop() }; null cuando no suena nada.
+// ---- what's playing now (Control Center and media keys) ----
+// The playing app publishes { app, window, title, artist, album, cover, playing, pos, duration,
+// toggle(), next(), prev(), stop() }; null when nothing is playing.
 export const nowPlaying = createStore(null);
 export const useNowPlaying = () => useStore(nowPlaying);
 
-// Teclas multimedia (evdev): funcionan aunque la ventana no esté al frente (también con una app
-// Linux enfocada: el compositor no se las pasa).
+// Media keys (evdev): they work even if the window is not in front (also with a Linux
+// app focused: the compositor doesn't pass them on).
 const KEY_NEXT = 163, KEY_PLAYPAUSE = 164, KEY_PREV = 165, KEY_STOP = 166, KEY_PLAY = 200, KEY_PAUSE = 201;
 addListener('keydown', (e) => {
   if (e.repeat) return;
@@ -213,7 +213,7 @@ function Btn({ glyph, onClick, size = 16, color }) {
     h(Text, { style: { fontSize: size, color } }, glyph));
 }
 
-// Tile para el Centro de control de un tema: carátula, título, artista y controles.
+// Tile for a theme's Control Center: cover art, title, artist and controls.
 export function NowPlayingTile({ style }) {
   const np = useNowPlaying();
   const th = useTheme();

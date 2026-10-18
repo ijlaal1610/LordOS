@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Voz en inglés con Kokoro-82M (Apache 2.0) vía kokoro-onnx, para demo.py.
-Uso: tts_kokoro.py <carpeta del modelo> <voz> <salida.wav> <texto>
-La carpeta tiene kokoro-v1.0.onnx y voices-v1.0.bin (releases de thewh1teagle/kokoro-onnx).
-Voces: af_heart, am_michael (EE.UU.), bf_emma (Reino Unido)… Necesita espeak-ng
-(ESPEAK_DATA_PATH apuntando a sus datos si el paquete no los encuentra)."""
+"""English voice with Kokoro-82M (Apache 2.0) via kokoro-onnx, for demo.py.
+Usage: tts_kokoro.py <model folder> <voice> <output.wav> <text>
+The folder holds kokoro-v1.0.onnx and voices-v1.0.bin (thewh1teagle/kokoro-onnx releases).
+Voices: af_heart, am_michael (US), bf_emma (UK)… Needs espeak-ng
+(ESPEAK_DATA_PATH pointing at its data if the package does not find it)."""
 import sys
 import soundfile as sf
 from kokoro_onnx import Kokoro

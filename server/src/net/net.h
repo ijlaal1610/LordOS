@@ -1,38 +1,38 @@
-/* net.h — red y VPN propias de LordOS (ver docs/RED.md).
+/* net.h — LordOS's own networking and VPN (see docs/NETWORK.md).
  *
- * Dos lados:
- *  - lord-server (sin root): lee el estado con rtnetlink (interfaces, direcciones, rutas,
- *    contadores) y escucha los cambios; lord.net (ui/js_net.c) lo expone a JS.
- *  - el ayudante privilegiado (admin.c, root): las acciones "net-*" de la tabla de abajo:
- *    configurar interfaces, cliente DHCP propio, Wi-Fi (wpa_supplicant), WireGuard (netlink
- *    propio) y OpenVPN. */
+ * Two sides:
+ *  - lord-server (no root): reads the state with rtnetlink (interfaces, addresses, routes,
+ *    counters) and listens for changes; lord.net (ui/js_net.c) exposes it to JS.
+ *  - the privileged helper (admin.c, root): the "net-*" actions in the table below:
+ *    configuring interfaces, our own DHCP client, Wi-Fi (wpa_supplicant), WireGuard (our own
+ *    netlink) and OpenVPN. */
 #ifndef LORD_NET_H
 #define LORD_NET_H
 
 #include <stddef.h>
 #include "../admin.h"
 
-/* ---- lado de lord-server ---- */
+/* ---- lord-server side ---- */
 
-int  net_open(void);                    /* socket de avisos de rtnetlink; 0 bien */
-int  net_fd(void);                      /* para poll; -1 si no está */
-/* Hubo avisos: los consume y, si algo cambió, llama a fn una vez (JS __lordNet). */
+int  net_open(void);                    /* rtnetlink notification socket; 0 ok */
+int  net_fd(void);                      /* for poll; -1 if not there */
+/* There were notifications: consumes them and, if something changed, calls fn once (JS __lordNet). */
 void net_dispatch(void (*fn)(const char *what));
 
-/* JSON (malloc; el que llama libera) para lord.net. NULL si falla. */
+/* JSON (malloc; the caller frees) for lord.net. NULL on failure. */
 char *net_interfaces_json(void);
 char *net_routes_json(void);
 char *net_dns_json(void);
-char *net_vpn_list_json(void);          /* metadatos públicos de /etc/lordos/net/vpn */
+char *net_vpn_list_json(void);          /* public metadata from /etc/lordos/net/vpn */
 char *net_wifi_known_json(void);
-/* [{type, available, optional, package, insecure}] de los tipos de VPN */
+/* [{type, available, optional, package, insecure}] of the VPN types */
 char *net_vpn_types_json(void);
 char *net_if_config_json(const char *ifname);
-/* Lee un .ovpn del usuario e incrusta los archivos que nombra (ca, cert, key, tls-auth...)
- * que estén en la misma carpeta. NULL + err si no se puede. */
+/* Reads a user's .ovpn and embeds the files it names (ca, cert, key, tls-auth...)
+ * that are in the same folder. NULL + err if it can't. */
 char *net_ovpn_inline(const char *path, char *err, size_t errn);
 
-/* ---- lado del ayudante (root): acciones ---- */
+/* ---- helper side (root): actions ---- */
 
 void net_act_restore(const AdminReq *r, const char *arg, size_t len);
 void net_act_up(const AdminReq *r, const char *arg, size_t len);
@@ -52,8 +52,8 @@ void net_act_vpn_delete(const AdminReq *r, const char *arg, size_t len);
 void net_act_vpn_status(const AdminReq *r, const char *arg, size_t len);
 void net_act_vpn_enable(const AdminReq *r, const char *arg, size_t len);
 
-/* Acciones del ayudante privilegiado (admin.c) que agrega este módulo. A_ANYONE: también un
- * usuario que no es administrador (conectarse a una red o a una VPN ya configurada). */
+/* Privileged helper (admin.c) actions this module adds. A_ANYONE: also a user who isn't
+ * an administrator (connecting to a network or to an already configured VPN). */
 #define NET_ADMIN_ACTIONS \
     { "net-restore", net_act_restore, A_ANYONE }, \
     { "net-up", net_act_up, 0 }, \

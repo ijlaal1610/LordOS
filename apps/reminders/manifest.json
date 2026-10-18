@@ -2,7 +2,7 @@
   "id": "reminders",
   "name": "Reminders",
   "description": "To-do lists with due dates, priorities and flags",
-  "size": [860, 580],
+  "size": [820, 560],
   "minSize": [600, 400],
   "dock": true,
   "category": "Office",

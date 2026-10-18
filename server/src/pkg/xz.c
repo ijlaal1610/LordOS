@@ -1,11 +1,11 @@
-/* xz.c — descompresores para los índices de Debian: xz (LZMA2) propio y gzip (el inflate de
- * stb_image, que ya está en lord-server para los PNG). Todo en memoria: los archivos de los
- * repositorios son de unas decenas de MB.
+/* xz.c — decompressors for Debian's indexes: our own xz (LZMA2) and gzip (stb_image's
+ * inflate, which is already in lord-server for PNGs). All in memory: repository files are
+ * a few tens of MB.
  *
- * xz: contenedor con uno o más streams, bloques con un solo filtro LZMA2 (lo que usan los
- * repositorios de Debian; BCJ y delta no). El control de cada bloque (CRC32 o CRC64) se
- * verifica, aunque el archivo comprimido ya venga verificado con el SHA-256 del InRelease
- * firmado. El decodificador LZMA sigue la especificación de LZMA (Igor Pavlov) y la estructura de xz-embedded (dominio público). */
+ * xz: container with one or more streams, blocks with a single LZMA2 filter (what Debian's
+ * repositories use; no BCJ or delta). Each block's check (CRC32 or CRC64) is verified, even
+ * though the compressed file already comes verified by the signed InRelease's SHA-256.
+ * The LZMA decoder follows the LZMA specification (Igor Pavlov) and the structure of xz-embedded (public domain). */
 #include "xz.h"
 #include "stb_image.h"
 
@@ -43,7 +43,7 @@ static inline uint32_t rc_tree(Rc *rc, uint16_t *p, uint32_t limit) {
     return s - limit;
 }
 
-/* Árbol invertido; p[off + s] con s desde 1 (off puede ser -1, como en dist_special). */
+/* Reverse tree; p[off + s] with s from 1 (off may be -1, as in dist_special). */
 static inline uint32_t rc_tree_rev(Rc *rc, uint16_t *p, long off, int bits) {
     uint32_t s = 1, r = 0;
     for (int i = 0; i < bits; i++) {
@@ -75,7 +75,7 @@ typedef struct {
     uint16_t is_match[12][16], is_rep[12], is_rep0[12], is_rep1[12], is_rep2[12], is_rep0_long[12][16];
     uint16_t slot[4][64], special[114], align[16];
     LenDec len, replen;
-    uint16_t lit[16][0x300];            /* lc + lp ≤ 4 en LZMA2 */
+    uint16_t lit[16][0x300];            /* lc + lp ≤ 4 in LZMA2 */
 } Lzma;
 
 static void lzma_reset(Lzma *z) {
@@ -106,7 +106,7 @@ static int out_reserve(Out *o, size_t more) {
     return 0;
 }
 
-/* Un chunk LZMA de LZMA2: decodifica exactamente `unpacked` bytes. */
+/* One LZMA chunk of LZMA2: decodes exactly `unpacked` bytes. */
 static int lzma_chunk(Lzma *z, Rc *rc, Out *o, size_t unpacked) {
     if (out_reserve(o, unpacked)) return -1;
     size_t end = o->len + unpacked;
@@ -152,7 +152,7 @@ static int lzma_chunk(Lzma *z, Rc *rc, Out *o, size_t unpacked) {
                     dist += rc_tree_rev(rc, z->align, 0, 4);
                 }
                 z->rep[0] = dist;
-                if (dist == 0xFFFFFFFFu) return -1;          /* marca de fin: no va en LZMA2 */
+                if (dist == 0xFFFFFFFFu) return -1;          /* end marker: not allowed in LZMA2 */
             }
         } else {
             if (!rc_bit(rc, &z->is_rep0[z->state])) {
@@ -271,7 +271,7 @@ int xz_decode(const uint8_t *in, size_t len, uint8_t **out, size_t *outlen, size
     const uint8_t *p = in, *end = in + len;
     int streams = 0;
     while (p < end) {
-        if (streams && !*p) {           /* relleno entre streams */
+        if (streams && !*p) {           /* padding between streams */
             if (end - p < 4 || p[1] || p[2] || p[3]) goto fail;
             p += 4;
             continue;
@@ -281,9 +281,9 @@ int xz_decode(const uint8_t *in, size_t len, uint8_t **out, size_t *outlen, size
         if (crc32(p + 6, 2) != ((uint32_t)p[8] | (uint32_t)p[9] << 8 | (uint32_t)p[10] << 16 | (uint32_t)p[11] << 24)) goto fail;
         size_t checklen = check == 0 ? 0 : check == 1 ? 4 : check == 4 ? 8 : check == 10 ? 32 : (size_t)4 << ((check - 1) / 3);
         p += 12;
-        for (;;) {                      /* bloques */
+        for (;;) {                      /* blocks */
             if (p >= end) goto fail;
-            if (*p == 0) break;         /* índice */
+            if (*p == 0) break;         /* index */
             const uint8_t *bstart = p;
             size_t hsize = ((size_t)*p + 1) * 4;
             if ((size_t)(end - p) < hsize) goto fail;
@@ -294,7 +294,7 @@ int xz_decode(const uint8_t *in, size_t len, uint8_t **out, size_t *outlen, size
             if (flags & 0x3c) goto fail;
             if ((flags & 0x40) && varint(&h, hend, &v)) goto fail;
             if ((flags & 0x80) && varint(&h, hend, &v)) goto fail;
-            if ((flags & 3) != 0) goto fail;                 /* un solo filtro */
+            if ((flags & 3) != 0) goto fail;                 /* a single filter */
             uint64_t id, psize;
             if (varint(&h, hend, &id) || varint(&h, hend, &psize) || id != 0x21 || psize != 1 || h >= hend) goto fail;
             p += hsize;
@@ -302,14 +302,14 @@ int xz_decode(const uint8_t *in, size_t len, uint8_t **out, size_t *outlen, size
             if (lzma2(&p, end, &o, z)) goto fail;
             while ((p - bstart) & 3) { if (p >= end || *p) goto fail; p++; }
             if ((size_t)(end - p) < checklen) goto fail;
-            if (check == 1 || check == 4) {             /* CRC32 o CRC64 (little-endian) */
+            if (check == 1 || check == 4) {             /* CRC32 or CRC64 (little-endian) */
                 uint64_t want = 0, got = check == 1 ? crc32(o.buf + ostart, o.len - ostart) : crc64(o.buf + ostart, o.len - ostart);
                 for (size_t i = 0; i < checklen; i++) want |= (uint64_t)p[i] << (8 * i);
                 if (want != got) goto fail;
             }
             p += checklen;
         }
-        /* índice: 0, cantidad, (tamaños)…, relleno, CRC32; después el pie de 12 bytes */
+        /* index: 0, count, (sizes)…, padding, CRC32; then the 12-byte footer */
         p++;
         const uint8_t *istart = p - 1;
         uint64_t nrec, a, b;
@@ -319,7 +319,7 @@ int xz_decode(const uint8_t *in, size_t len, uint8_t **out, size_t *outlen, size
         if (end - p < 4 + 12) goto fail;
         if (crc32(istart, (size_t)(p - istart)) != ((uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24)) goto fail;
         p += 4;
-        /* pie: CRC32, tamaño del índice, flags (iguales a los del encabezado), "YZ" */
+        /* footer: CRC32, index size, flags (same as the header's), "YZ" */
         if (p[10] != 'Y' || p[11] != 'Z' || p[8] != 0 || (p[9] & 0x0f) != check ||
             crc32(p + 4, 6) != ((uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24)) goto fail;
         p += 12;
@@ -345,7 +345,7 @@ int gz_decode(const uint8_t *in, size_t len, uint8_t **out, size_t *outlen, size
     if (flg & 16) { while (p < len && in[p]) p++; p++; }
     if (flg & 2) p += 2;
     if (p + 8 > len) return -1;
-    /* el tamaño original (mod 2^32) está al final: sirve de primera estimación */
+    /* the original size (mod 2^32) is at the end: it serves as a first estimate */
     uint32_t isize = (uint32_t)in[len - 4] | (uint32_t)in[len - 3] << 8 | (uint32_t)in[len - 2] << 16 | (uint32_t)in[len - 1] << 24;
     if (isize > max) return -1;
     int n = 0;

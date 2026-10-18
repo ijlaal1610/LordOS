@@ -1,5 +1,5 @@
-/* escl.c — ver escl.h. El XML del escáner se lee con un buscador de etiquetas propio y acotado
- * (sin libxml2): solo se toman los valores que importan y se ignoran los prefijos (scan:, pwg:). */
+/* escl.c — see escl.h. The scanner's XML is read with our own bounded tag finder
+ * (no libxml2): only the values that matter are taken and prefixes (scan:, pwg:) are ignored. */
 #include "escl.h"
 #include "phttp.h"
 
@@ -31,7 +31,7 @@ static void err(JBuf *out, const char *code, const char *detail) {
     jb_raw(out, "}");
 }
 
-/* Próxima aparición de <prefijo:tag> o <tag> desde *pos; copia el texto hasta '<'. */
+/* Next occurrence of <prefix:tag> or <tag> from *pos; copies the text up to '<'. */
 static int next_tag(const char *xml, size_t len, size_t *pos, const char *tag, char *out, size_t n) {
     size_t tl = strlen(tag);
     for (size_t i = *pos; i + tl + 2 < len; i++) {
@@ -76,7 +76,7 @@ int escl_caps(const char *ip, int port, const char *rs, JBuf *out) {
     jb_free(out);
     jb_raw(out, "{\"model\":");
     jb_str(out, next_tag(x, len, &pos, "MakeAndModel", v, sizeof v) ? v : "");
-    /* lo que hay en el vidrio (Platen) y el alimentador (Adf) */
+    /* what's on the glass (Platen) and the feeder (Adf) */
     jb_printf(out, ",\"platen\":%s,\"adf\":%s", strstr(x, "Platen>") || strstr(x, "PlatenInputCaps") ? "true" : "false",
               strstr(x, "AdfSimplexInputCaps") || strstr(x, "Adf>") ? "true" : "false");
     pos = 0;
@@ -87,7 +87,7 @@ int escl_caps(const char *ip, int port, const char *rs, JBuf *out) {
     if (maxw < 100 || maxw > 20000) maxw = 2550;
     if (maxh < 100 || maxh > 40000) maxh = 3508;
     jb_printf(out, ",\"maxW\":%ld,\"maxH\":%ld", maxw, maxh);
-    /* listas sin repetidos */
+    /* lists without duplicates */
     static const char *const lists[][2] = { { "colors", "ColorMode" }, { "formats", "DocumentFormatExt" }, { "formats2", "DocumentFormat" }, { "res", "XResolution" } };
     for (size_t k = 0; k < sizeof lists / sizeof lists[0]; k++) {
         jb_printf(out, ",\"%s\":[", lists[k][0]);
@@ -150,8 +150,8 @@ int escl_scan(const char *ip, int port, const char *rs, const JVal *s, const cha
     if (x2) { err(out, "unreachable", ""); return -1; }
     if (r.status == 503) { presp_free(&r); err(out, "busy", ""); return -1; }
     if (r.status != 201 || !r.location[0]) { char d[16]; snprintf(d, sizeof d, "%d", r.status); presp_free(&r); err(out, "http", d); return -1; }
-    /* Location: http://ip:port/eSCL/ScanJobs/uuid o solo el camino; se usa el camino, siempre con
-     * la misma dirección (no se sigue a otro equipo) */
+    /* Location: http://ip:port/eSCL/ScanJobs/uuid or just the path; the path is used, always with
+     * the same address (it doesn't follow to another machine) */
     char job[512];
     const char *loc = r.location;
     if (!strncmp(loc, "http://", 7)) { loc = strchr(loc + 7, '/'); if (!loc) loc = "/"; }
@@ -174,7 +174,7 @@ int escl_scan(const char *ip, int port, const char *rs, const JVal *s, const cha
     }
     if (!got) { err(out, "timeout", ""); return -1; }
     const char *ext = ext_of(d.content_type) ? ext_of(d.content_type) : ext_of(format);
-    /* archivo nuevo en la carpeta de la caché del escáner */
+    /* new file in the scanner's cache folder */
     char file[1024];
     int ofd = -1;
     for (int i = 0; i < 100 && ofd < 0; i++) {

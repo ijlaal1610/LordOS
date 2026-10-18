@@ -1,7 +1,7 @@
-/* h_make.c — armar PDF para imprimir (texto del Editor y de Notas, imágenes de Fotos y del
- * escáner) y decodificar o convertir imágenes que llegan de afuera (el escáner), todo adentro del
- * ayudante. El texto se compone con cairo y FreeType, con respaldo por carácter entre las fuentes
- * que conoce fontconfig (sin armado de escrituras complejas: ver docs/IMPRESION.md). */
+/* h_make.c — building PDFs for printing (text from the Editor and Notes, images from Photos and the
+ * scanner) and decoding or converting images that come from outside (the scanner), all inside the
+ * helper. Text is laid out with cairo and FreeType, with per-character fallback among the fonts
+ * fontconfig knows (no complex script shaping: see docs/PRINTING.md). */
 #include "helper.h"
 
 #include <cairo.h>
@@ -25,7 +25,7 @@
 
 #define IMG_FILE_MAX (128 << 20)
 
-/* ---- salida a un fd ---- */
+/* ---- output to an fd ---- */
 
 static cairo_status_t write_fd(void *closure, const unsigned char *data, unsigned int len) {
     int fd = *(int *)closure;
@@ -52,7 +52,7 @@ static void finish_blob(uint32_t id, int fd) {
     reply_blob(id, fd, (size_t)size);
 }
 
-/* ---- fuentes con respaldo ---- */
+/* ---- fonts with fallback ---- */
 
 #define MAXF 24
 static struct { FT_Face ft; cairo_font_face_t *cf; } fonts[2][MAXF];
@@ -102,7 +102,7 @@ static uint32_t utf8_next(const unsigned char **p) {
 
 typedef struct { uint32_t cp; int face; double adv; } Gl;
 
-/* avance de un carácter en la fuente dada, en puntos */
+/* advance of a character in the given font, in points */
 static double advance(cairo_t *cr, int mono, int face, uint32_t c, double size, unsigned long *glyph) {
     FT_Face f = fonts[mono][face].ft;
     FT_UInt g = FT_Get_Char_Index(f, c);
@@ -122,7 +122,7 @@ static void show_run(cairo_t *cr, int mono, int face, cairo_glyph_t *g, int n, d
     cairo_show_glyphs(cr, g, n);
 }
 
-/* encabezado (el título, gris) y número de página */
+/* header (the title, gray) and page number */
 static void header(cairo_t *cr, const char *title, int page, double pw, double ph, double margin) {
     cairo_glyph_t run[256];
     cairo_set_source_rgb(cr, 0.45, 0.45, 0.45);
@@ -180,10 +180,10 @@ static void op_text(uint32_t id, const JVal *a) {
     header(cr, title, page, pw, ph, margin);
     size_t total = 0;
     while (*p) {
-        /* un párrafo: hasta el fin de línea */
+        /* a paragraph: up to the end of the line */
         Gl gl[2048];
         int n = 0;
-        while (*p && *p != '\n' && n < 2040) {          /* una línea muy larga sigue en la vuelta siguiente */
+        while (*p && *p != '\n' && n < 2040) {          /* a very long line continues in the next round */
             uint32_t c = utf8_next(&p);
             if (c == '\r') continue;
             if (c == '\t') { for (int k = 0; k < 4 && n < 2048; k++) gl[n++] = (Gl){ ' ', face_for(mono, ' '), 0 }; continue; }
@@ -195,7 +195,7 @@ static void op_text(uint32_t id, const JVal *a) {
         for (int i = 0; i < n; i++) gl[i].adv = advance(cr, mono, gl[i].face, gl[i].cp, size, &gid[i]);
         int i = 0;
         do {
-            /* cuántos entran en la línea; cortar en el último espacio */
+            /* how many fit on the line; break at the last space */
             double w = 0;
             int j = i, brk = -1;
             while (j < n && w + gl[j].adv <= maxw) { if (gl[j].cp == ' ') brk = j; w += gl[j].adv; j++; }
@@ -231,7 +231,7 @@ static void op_text(uint32_t id, const JVal *a) {
     finish_blob(id, fd);
 }
 
-/* ---- imágenes ---- */
+/* ---- images ---- */
 
 static unsigned char *read_all(int fd, size_t *len) {
     struct stat st;
@@ -248,7 +248,7 @@ static unsigned char *read_all(int fd, size_t *len) {
     return buf;
 }
 
-/* decodifica a una superficie de cairo (ARGB premultiplicado) */
+/* decodes to a cairo surface (premultiplied ARGB) */
 static cairo_surface_t *decode(int fd) {
     size_t len;
     unsigned char *data = read_all(fd, &len);
@@ -279,7 +279,7 @@ static void op_image_pdf(const DocMsg *m, const JVal *a) {
     double pw, ph;
     paper_size(a, &pw, &ph);
     int iw = cairo_image_surface_get_width(img), ih = cairo_image_surface_get_height(img);
-    if (iw > ih && pw < ph) { double t = pw; pw = ph; ph = t; }      /* apaisada */
+    if (iw > ih && pw < ph) { double t = pw; pw = ph; ph = t; }      /* landscape */
     int fd = doc_memfd_new("lord-doc-pdf", 0);
     cairo_surface_t *s = cairo_pdf_surface_create_for_stream(write_fd, &fd, pw, ph);
     cairo_t *cr = cairo_create(s);
@@ -341,7 +341,7 @@ static void op_convert(const DocMsg *m, const JVal *a) {
         double pw, ph;
         paper_size(a, &pw, &ph);
         int iw = cairo_image_surface_get_width(img), ih = cairo_image_surface_get_height(img);
-        /* página del tamaño del escaneo si se pide "fit", si no al papel */
+        /* page the size of the scan if "fit" is requested, otherwise the paper's */
         if (json_bool(a, "native", 0)) { double dpi = json_num(a, "dpi", 150); if (!(dpi >= 50 && dpi <= 2400)) dpi = 150; pw = iw * 72 / dpi; ph = ih * 72 / dpi; }
         cairo_surface_t *s = cairo_pdf_surface_create_for_stream(write_fd, &out, pw, ph);
         cairo_t *cr = cairo_create(s);

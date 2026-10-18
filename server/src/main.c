@@ -44,6 +44,8 @@
 #include "ui/portal.h"
 #include "ui/js_logs.h"
 #include "hw/hw.h"
+#include "hw/modes.h"
+#include "outputs.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -71,7 +73,7 @@ extern int paint_profile;
 
 typedef struct { int down, button; } ButtonEvent;
 
-/* Medición de arrastres (docs/VENTANAS.md): con un botón apretado y el puntero en movimiento se
+/* Medición de arrastres (docs/WINDOWS.md): con un botón apretado y el puntero en movimiento se
  * cuentan los cuadros y el trabajo de cada uno (JS del puntero + layout + pintado + presentar). Al
  * soltar se escribe una línea "arrastre: …" en el registro de la sesión. */
 typedef struct {
@@ -81,11 +83,32 @@ typedef struct {
 } DragStats;
 static DragStats dstat;
 
+/* One display (docs/DISPLAYS.md): its KMS head, where it sits in the global logical space, and the
+ * frame the UI paints for it at its own resolution. out[0]'s head owns the card's fd; the main display
+ * (menu bar, Dock) is s->main_out. Without a monitor (headless) out[0] is a frame in memory. */
 typedef struct {
     Kms kms;
+    int on;
+    DisplayOut d;               /* its entry of the display plan (mode, rotation, scale) */
+    OutView v;                  /* logical rect → physical frame */
+    Canvas scene;               /* upright physical frame (pw × ph), without the cursor */
+    uint32_t *frame;            /* rotated displays and the capture view: scene + fullscreen + cursor */
+    Box pend;                   /* logical damage not painted on it yet (its flip was pending) */
+    int full;                   /* paint all of it next time */
+    int cdirty, cur_on;         /* the cursor moved since it was presented; it was drawn on it */
+    /* CPU path: each KMS buffer only gets what changed since it was last drawn into (what was
+     * repainted in the last two frames and where the cursor was), not the whole frame */
+    Rect stale[2], curs[2];
+    int full_copy, was_fs;
+    int gpu;                    /* its GPU output (gpu_frame), -1 = composed by the CPU */
+} Out;
+
+typedef struct {
+    Out out[OUT_MAX];
+    int main_out;               /* index of the main display */
+    Out cap;                    /* "all displays" for the remote desktop and recording (capture view) */
     Input input;
-    Canvas scene;           /* UI pintada, sin cursor */
-    int W, H;
+    int W, H;                   /* the global logical space */
     int cx, cy, ctrl, alt;
     int moved, wheel, cursor_dirty;
     ButtonEvent buttons[MAX_BUTTONS];
@@ -93,59 +116,146 @@ typedef struct {
     int quit, debug;
     long frames, renders;
     double layout_total, paint_total;
-    /* puntero: movimiento crudo (relative-pointer) y última posición (bloqueo) */
+    /* pointer: raw motion (relative-pointer) and last position (lock) */
     double rdx, rdy;
     int lx, ly;
-    /* cursor: el de la app (wl_cursor) y si va por el plano de cursor de KMS (camino GPU) */
+    /* cursor: the app's (wl_cursor) and whether it goes on the KMS cursor plane (GPU path) */
     unsigned cursor_gen;
     int cursor_mode, cursor_hx, cursor_hy, hw_cursor;
     GpuTex *cursor_tex;
     int cursor_tex_w, cursor_tex_h;
-    /* sesión sin monitor (la muestra lord-sessiond en el monitor o el escritorio remoto): se
-     * dibuja en memoria, sin DRM ni evdev; greeter = la pantalla de ingreso */
+    /* session without a monitor (lord-sessiond shows it on the monitor or the remote desktop): it is
+     * drawn in memory, without DRM or evdev; greeter = the login screen */
     int headless, greeter;
-    uint32_t *frame;
     double last_render;
-    /* GPU apagada porque alguien mira desde la red: vuelve cuando no queda nadie */
+    /* GPU paused because someone is watching over the network: it comes back when nobody is left */
     int gpu_paused;
-    /* movimiento del puntero juntado hasta el próximo cuadro; botones apretados (máscara); forma
-     * del cursor según el nodo bajo el puntero (estilo `cursor`, docs/VENTANAS.md) */
+    /* pointer motion gathered until the next frame; buttons held (mask); cursor shape from the
+     * node under the pointer (`cursor` style, docs/WINDOWS.md) */
     int motion_pending, held, shape, over_app;
-    /* camino CPU: cada búfer de KMS solo recibe lo que cambió desde la última vez que se dibujó en
-     * él (lo repintado en los dos últimos cuadros y donde estaba el cursor), no la escena entera */
-    Rect stale[2], curs[2];
-    int full_copy, was_fs;
 } Server;
+
+#define K0(s) (&(s)->out[0].kms)
 
 static Rect rect_join(Rect a, Rect b) {
     if (a.x1 <= a.x0 || a.y1 <= a.y0) return b;
     if (b.x1 <= b.x0 || b.y1 <= b.y0) return a;
     return (Rect){ a.x0 < b.x0 ? a.x0 : b.x0, a.y0 < b.y0 ? a.y0 : b.y0, a.x1 > b.x1 ? a.x1 : b.x1, a.y1 > b.y1 ? a.y1 : b.y1 };
 }
+static Box box_join(Box a, Box b) {
+    if (a.x1 <= a.x0 || a.y1 <= a.y0) return b;
+    if (b.x1 <= b.x0 || b.y1 <= b.y0) return a;
+    return (Box){ fminf(a.x0, b.x0), fminf(a.y0, b.y0), fmaxf(a.x1, b.x1), fmaxf(a.y1, b.y1) };
+}
+static int box_empty(Box b) { return b.x1 <= b.x0 || b.y1 <= b.y0; }
 
-/* Cursor que se ve: el de la app Linux bajo el puntero, o una forma propia (cursor.c).
- * mode 0 = la flecha de LordOS, 1 = imagen, 2 = oculto (como wl_cursor). */
+/* ---- the displays ---- */
+
+static int out_count(const Server *s) {
+    int n = 0;
+    for (int i = 0; i < OUT_MAX; i++) n += s->out[i].on;
+    return n;
+}
+static Out *main_out(Server *s) { return &s->out[s->out[s->main_out].on ? s->main_out : 0]; }
+static int any_flip_pending(const Server *s) {
+    for (int i = 0; i < OUT_MAX; i++) if (s->out[i].on && s->out[i].kms.flip_pending) return 1;
+    return 0;
+}
+/* every display is waiting for its flip: nothing can be presented now */
+static int all_busy(const Server *s) {
+    if (s->headless) return 0;
+    for (int i = 0; i < OUT_MAX; i++) if (s->out[i].on && !s->out[i].kms.flip_pending) return 0;
+    return 1;
+}
+static int out_rects(const Server *s, ORect *r, int *idx) {
+    int n = 0;
+    for (int i = 0; i < OUT_MAX; i++)
+        if (s->out[i].on) { const OutView *v = &s->out[i].v; idx[n] = i; r[n++] = (ORect){ v->x, v->y, v->w, v->h }; }
+    return n;
+}
+/* the display under the pointer (-1 headless or none) */
+static int out_at_pointer(const Server *s) {
+    ORect r[OUT_MAX];
+    int idx[OUT_MAX], n = out_rects(s, r, idx), k = out_at(r, n, s->cx, s->cy);
+    return k >= 0 ? idx[k] : -1;
+}
+/* The pointer never lands outside the displays (nor in the gap next to a shorter one). */
+static void clamp_pointer(Server *s) {
+    ORect r[OUT_MAX];
+    int idx[OUT_MAX], n = s->headless ? 0 : out_rects(s, r, idx);
+    if (n) out_clamp(r, n, &s->cx, &s->cy);
+    if (s->cx < 0) s->cx = 0;
+    if (s->cy < 0) s->cy = 0;
+    if (s->cx >= s->W) s->cx = s->W - 1;
+    if (s->cy >= s->H) s->cy = s->H - 1;
+}
+static int out_scale(const Out *o) { return o->d.scale ? o->d.scale : 100; }
+static void view_of(const Out *o, int index) {
+    paint_view = (PaintView){ (float)o->v.x, (float)o->v.y, (float)o->v.k, (float)o->v.dx, (float)o->v.dy, index };
+}
+static void view_reset(void) { paint_view = (PaintView){ 0, 0, 1, 0, 0, 0 }; }
+
+/* "text" for JSON (display names come from EDID: printable ASCII, but escaped anyway). */
+static void jquote(char *out, size_t n, const char *s) {
+    size_t k = 0;
+    if (n < 3) { if (n) out[0] = 0; return; }
+    out[k++] = '"';
+    for (; *s && k + 8 < n; s++) {
+        unsigned char ch = (unsigned char)*s;
+        if (ch == '"' || ch == '\\') { out[k++] = '\\'; out[k++] = (char)ch; }
+        else if (ch < 0x20) k += (size_t)snprintf(out + k, n - k, "\\u%04x", ch);
+        else out[k++] = (char)ch;
+    }
+    out[k++] = '"';
+    out[k] = 0;
+}
+
+/* Cursor that is shown: the Linux app's under the pointer, or a LordOS shape (cursor.c) at the
+ * display's scale (pct). mode 0 = the LordOS arrow, 1 = image, 2 = hidden (like wl_cursor). */
 typedef struct { int mode; const uint32_t *px; int w, h, hx, hy; unsigned gen; } Cur;
 
-static void cursor_now(const Server *s, Cur *c) {
+static void cursor_now(const Server *s, Cur *c, int pct) {
     c->mode = wl_cursor(&c->px, &c->w, &c->h, &c->hx, &c->hy, &c->gen);
     int grabbing = grab_active();
-    if (c->mode && !grabbing && (s->over_app || wl_pointer_locked())) return;   /* la app eligió el suyo (o lo ocultó) */
+    if (c->mode && !grabbing && (s->over_app || wl_pointer_locked())) return;   /* the app chose its own (or hid it) */
     int shape = grabbing ? grab_cursor() : s->shape;
     if (shape <= CUR_DEFAULT) { c->mode = 0; return; }
-    const CursorImage *ci = cursor_image(shape, cursor_scale_for(s->W, s->H));
+    const CursorImage *ci = cursor_image_pct(shape, pct);
     if (!ci) { c->mode = 0; return; }
-    *c = (Cur){ 1, ci->px, ci->w, ci->h, ci->hx, ci->hy, 0xf0000000u + (unsigned)shape };
+    *c = (Cur){ 1, ci->px, ci->w, ci->h, ci->hx, ci->hy, 0xf0000000u + (unsigned)shape * 8 + (unsigned)(pct / 25) };
 }
 
-/* Para dibujarlo acá (CPU, plano de cursor, textura): la flecha también es una imagen. */
-static void cursor_local(const Server *s, Cur *c) {
-    cursor_now(s, c);
+/* To draw it here (CPU, cursor plane, texture): the arrow is also an image. */
+static void cursor_local(const Server *s, Cur *c, int pct) {
+    cursor_now(s, c, pct);
     if (c->mode != 0) return;
-    const CursorImage *ci = cursor_image(CUR_DEFAULT, cursor_scale_for(s->W, s->H));
-    if (ci) *c = (Cur){ 1, ci->px, ci->w, ci->h, ci->hx, ci->hy, 0xf0000000u + CUR_DEFAULT };
+    const CursorImage *ci = cursor_image_pct(CUR_DEFAULT, pct);
+    if (ci) *c = (Cur){ 1, ci->px, ci->w, ci->h, ci->hx, ci->hy, 0xf0000000u + CUR_DEFAULT * 8 + (unsigned)(pct / 25) };
 }
 
+/* The pointer in a display's physical pixels. */
+static void pointer_phys(const Server *s, const Out *o, int *x, int *y) {
+    double px, py;
+    out_to_phys(&o->v, s->cx, s->cy, &px, &py);
+    *x = (int)lround(px);
+    *y = (int)lround(py);
+}
+
+/* GPU path, one display: the cursor plane follows the pointer. */
+static void hw_cursor_move(Server *s) {
+    if (!s->hw_cursor) return;
+    /* the plane of the display under the pointer shows it; the others hide theirs */
+    int at = out_at_pointer(s);
+    for (int i = 0; i < OUT_MAX; i++) {
+        Out *o = &s->out[i];
+        if (!o->on || o->gpu < 0) continue;
+        if (i != at || s->cursor_mode == 2) { kms_cursor_show(&o->kms, 0); continue; }
+        int x, y;
+        pointer_phys(s, o, &x, &y);
+        kms_cursor_show(&o->kms, 1);
+        kms_cursor_move(&o->kms, x - s->cursor_hx, y - s->cursor_hy);
+    }
+}
 static const char *const cursor_arrow[] = {
     "X", "XX", "XoX", "XooX", "XoooX", "XooooX", "XoooooX", "XooooooX", "XoooooooX",
     "XooooooooX", "XoooooooooX", "XooooooooooX", "XooooooXXXXX", "XoooXooX",
@@ -196,8 +306,14 @@ static int node_cursor(const Node *n) {
     return CUR_DEFAULT;
 }
 
+static int out_scale(const Out *o);
+static int out_at_pointer(const Server *s);
 static void dispatch_pointer(Server *s) {
     s->motion_pending = 0;
+    {   /* app cursors by name (cursor-shape-v1) at the scale of the display under the pointer */
+        int oi = out_at_pointer(s);
+        wl_set_pointer_scale(oi >= 0 ? out_scale(&s->out[oi]) : 100);
+    }
     float x = (float)s->cx, y = (float)s->cy;
     /* arrastre de una ventana (grab.c): lo sigue C, sin JS ni la app Linux por cuadro */
     int grabbing = grab_active();
@@ -254,26 +370,34 @@ static void dispatch_pointer(Server *s) {
     s->moved = s->wheel = s->nbuttons = 0;
 }
 
-/* ---- escritorio remoto: la entrada del navegador, como si fuera local (remote/mirror.c) ---- */
+/* ---- remote desktop: the browser's input, as if it were local (remote/mirror.c) ---- */
 
 static Server *remote_server;
 
+/* What the remote desktop and the screen recording see: the main display at its resolution, or
+ * every display (Settings → Displays, "capture all": the capture view, the global space at 100 %). */
+static Out *feed_out(Server *s) {
+    if (s->headless) return &s->out[0];
+    if (display_capture_all() && out_count(s) > 1) return &s->cap;
+    return main_out(s);
+}
+
 static void remote_settle(Server *s) {
     display_activity(now_ms());             /* idle timers (Settings → Battery) */
-    if (s->cx < 0) s->cx = 0;
-    if (s->cy < 0) s->cy = 0;
-    if (s->cx >= s->W) s->cx = s->W - 1;
-    if (s->cy >= s->H) s->cy = s->H - 1;
+    clamp_pointer(s);
     wl_pointer_confine(&s->cx, &s->cy);
     s->lx = s->cx;
     s->ly = s->cy;
-    if (s->hw_cursor) kms_cursor_move(&s->kms, s->cx - s->cursor_hx, s->cy - s->cursor_hy);
+    if (s->hw_cursor) hw_cursor_move(s);
     else s->cursor_dirty = 1;
     dispatch_pointer(s);
 }
 
-static void remote_pointer(int x, int y) {
+static void remote_pointer(int fx, int fy) {
     Server *s = remote_server;
+    double lx, ly;                          /* frame pixels of the feed → logical */
+    out_to_logical(&feed_out(s)->v, fx, fy, &lx, &ly);
+    int x = (int)lround(lx), y = (int)lround(ly);
     if (x == s->cx && y == s->cy) return;
     s->rdx += x - s->cx;
     s->rdy += y - s->cy;
@@ -305,35 +429,79 @@ static void remote_key(int code, int value) {
 }
 static void remote_clip(const char *text, unsigned len) { term_set_clipboard(text, len); }
 static void remote_clients(const char *json) { js_remote_event(json); }
-static void remote_refresh(void) {
-    damage_add((Box){ 0, 0, (float)remote_server->W, (float)remote_server->H });
+static void full_damage(Server *s) {
+    for (int i = 0; i < OUT_MAX; i++) if (s->out[i].on) { s->out[i].full = 1; s->out[i].full_copy = 2; }
+    s->cap.full = 1;
+    damage_add((Box){ 0, 0, (float)s->W, (float)s->H });
     ui.dirty = 1;
 }
+static void remote_refresh(void) { full_damage(remote_server); }
 
-/* Otro tamaño de pantalla: el del monitor al que pasa la sesión, o el de la ventana del navegador. */
+/* The displays for JS (lord.screen.displays) and the Wayland apps (one wl_output each). */
+static void publish_displays(Server *s) {
+    WlOutput wo[OUT_MAX];
+    char json[4096];
+    int n = 0, len = 0, main_i = 0;
+    const DisplayPlan *p = display_current();
+    len += snprintf(json + len, sizeof json - (size_t)len, "{\"mirror\":%s,\"displays\":[", !s->headless && p->mirror ? "true" : "false");
+    for (int i = 0; i < OUT_MAX; i++) {
+        const Out *o = &s->out[i];
+        if (!o->on) continue;
+        if (i == s->main_out) main_i = n;
+        WlOutput *w = &wo[n];
+        memset(w, 0, sizeof *w);
+        *w = (WlOutput){ o->v.x, o->v.y, o->v.w, o->v.h, o->v.pw, o->v.ph, s->headless ? 60000 : mode_refresh_mhz(&o->kms.mode),
+                         out_scale(o), o->d.mm_w, o->d.mm_h, "", "" };
+        if (s->headless) { snprintf(w->name, sizeof w->name, "LORD-1"); snprintf(w->desc, sizeof w->desc, "LordOS display"); }
+        else { snprintf(w->name, sizeof w->name, "%s", o->d.connector); snprintf(w->desc, sizeof w->desc, "%s", o->d.name); }
+        if (len < (int)sizeof json - 300) {
+            char name[140];
+            jquote(name, sizeof name, s->headless ? "LordOS" : o->d.name);
+            len += snprintf(json + len, sizeof json - (size_t)len, "%s{\"id\":%u,\"name\":%s,\"connector\":\"%s\",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,"
+                            "\"pw\":%d,\"ph\":%d,\"scale\":%d,\"main\":%s}", n ? "," : "", s->headless ? 0 : o->kms.conn_id, name, w->name,
+                            o->v.x, o->v.y, o->v.w, o->v.h, o->v.pw, o->v.ph, out_scale(o), i == s->main_out ? "true" : "false");
+        }
+        n++;
+    }
+    snprintf(json + len, sizeof json - (size_t)len, "]}");
+    wl_set_outputs(wo, n, main_i);
+    js_set_displays(json);
+}
+
+/* Another size of the global logical space: the arrangement changed, or the browser window's
+ * size (headless). Headless, out[0] is that frame in memory. */
 static void set_size(Server *s, int w, int h) {
-    if (w == s->W && h == s->H) return;
-    uint32_t *scene = malloc((size_t)w * h * 4), *frame = calloc((size_t)w * h, 4);
-    if (!scene || !frame) { free(scene); free(frame); return; }
-    free(s->scene.px);
-    free(s->frame);
-    canvas_init(&s->scene, scene, w, h, w);
-    s->frame = frame;
-    fprintf(stderr, "lord-server: pantalla %dx%d → %dx%d\n", s->W, s->H, w, h);
+    if (s->headless) {
+        Out *o = &s->out[0];
+        if (w != o->scene.w || h != o->scene.h || !o->scene.px) {
+            uint32_t *scene = malloc((size_t)w * h * 4), *frame = calloc((size_t)w * h, 4);
+            if (!scene || !frame) { free(scene); free(frame); return; }
+            free(o->scene.px);
+            free(o->frame);
+            canvas_init(&o->scene, scene, w, h, w);
+            o->frame = frame;
+        }
+        o->on = 1;
+        o->v = out_view(0, 0, w, h, 100);
+        o->d.scale = 100;
+        o->full = 1;
+        s->main_out = 0;
+    }
+    int changed = w != s->W || h != s->H;
+    if (changed) fprintf(stderr, "lord-server: desktop %dx%d → %dx%d\n", s->W, s->H, w, h);
     s->W = w;
     s->H = h;
     ui.width = (float)w;
     ui.height = (float)h;
-    if (s->cx >= w) s->cx = s->lx = w - 1;
-    if (s->cy >= h) s->cy = s->ly = h - 1;
-    wl_output_resized();
+    clamp_pointer(s);
+    s->lx = s->cx;
+    s->ly = s->cy;
+    publish_displays(s);
     js_screen_resized();
-    s->full_copy = 2;
-    damage_add((Box){ 0, 0, (float)w, (float)h });
-    ui.dirty = 1;
+    full_damage(s);
 }
 
-/* Pedido del navegador: solo si la sesión no está en el monitor (ahí manda el monitor). */
+/* Request from the browser: only if the session is not on the monitor (there the monitor rules). */
 static void remote_resize(int w, int h) {
     Server *s = remote_server;
     w &= ~1;
@@ -344,12 +512,187 @@ static void remote_resize(int w, int h) {
 
 static void remote_greeter(const char *json) { js_greeter_event(json); }
 
-/* ---- el monitor, prestado por lord-sessiond (docs/SESIONES.md) ----
- * fds[0] es la placa (lord-sessiond ya la hizo master), el resto teclados y mouses. La sesión
- * pasa a dibujar en la placa como un lord-server común: con GPU si hay, scanout directo de
- * pantalla completa y cursor por hardware. Al cambiar de usuario, lord-sessiond le saca el
- * master y revoca la entrada (EVIOCREVOKE); antes le avisa con RP_UNDISPLAY. */
-/* lord-sessiond: un teclado, mouse o touchpad enchufado mientras la sesión está en el monitor */
+/* ---- applying the display plan (Settings → Displays, hotplug; hw/display.c) ---- */
+
+static int gpu_start(Server *s);
+
+/* The GPU composes one display, upright; several displays or a rotated one go by the CPU. */
+static int gpu_allowed(const Server *s) {
+    return !s->headless && out_count(s) >= 1 && !display_cpu_only() && !mirror_clients() && !media_needs_cpu();
+}
+
+/* The GPU stopped: every display gets its dumb buffer back (CPU path). */
+static void cpu_takeover(Server *s) {
+    for (int i = 0; i < OUT_MAX; i++) {
+        Out *o = &s->out[i];
+        if (!o->on || o->gpu < 0) continue;
+        kms_cursor_show(&o->kms, 0);
+        kms_set_fb(&o->kms, o->kms.buf[o->kms.front].fb_id);
+        o->kms.custom = 0;
+        o->gpu = -1;
+        o->full_copy = 2;
+    }
+    s->hw_cursor = 0;
+}
+
+static void out_free(Out *o) {
+    free(o->scene.px);
+    free(o->frame);
+    o->scene.px = NULL;
+    o->frame = NULL;
+}
+
+/* (Re)size a display's frames for its view. */
+static int out_frames(Out *o, int need_frame) {
+    int w = o->v.pw, h = o->v.ph;
+    if (w <= 0 || h <= 0) return -1;
+    if (!o->scene.px || o->scene.w != w || o->scene.h != h) {
+        uint32_t *px = calloc((size_t)w * h, 4);
+        if (!px) return -1;
+        free(o->scene.px);
+        canvas_init(&o->scene, px, w, h, w);
+        free(o->frame);
+        o->frame = NULL;
+    }
+    if (need_frame && !o->frame) o->frame = calloc((size_t)w * h, 4);
+    if (!need_frame) { free(o->frame); o->frame = NULL; }
+    return need_frame && !o->frame ? -1 : 0;
+}
+
+static int same_mode(const struct drm_mode_modeinfo *a, const struct drm_mode_modeinfo *b) {
+    return a->hdisplay == b->hdisplay && a->vdisplay == b->vdisplay && a->clock == b->clock && a->htotal == b->htotal &&
+           a->vtotal == b->vtotal && a->flags == b->flags;
+}
+
+/* Drop entry j from a plan (no CRTC for it, or its modeset failed) and close the arrangement again. */
+static void plan_drop(DisplayPlan *p, int j) {
+    memmove(&p->o[j], &p->o[j + 1], sizeof p->o[0] * (size_t)(p->n - j - 1));
+    p->n--;
+    if (p->main == j) p->main = 0;
+    else if (p->main > j) p->main--;
+    if (p->mirror || p->n <= 0) { if (p->n < 2) p->mirror = 0; return; }
+    ORect r[OUT_MAX];
+    for (int i = 0; i < p->n; i++) r[i] = (ORect){ p->o[i].v.x, p->o[i].v.y, p->o[i].v.w, p->o[i].v.h };
+    if (p->main) { ORect t = r[0]; r[0] = r[p->main]; r[p->main] = t; }
+    out_fix(r, p->n);
+    if (p->main) { ORect t = r[0]; r[0] = r[p->main]; r[p->main] = t; }
+    out_normalize(r, p->n, &p->bw, &p->bh);
+    for (int i = 0; i < p->n; i++) { p->o[i].v.x = r[i].x; p->o[i].v.y = r[i].y; }
+}
+
+/* Between frames (no flip pending): open, move, modeset and close heads so the displays match
+ * the plan. out[0] keeps the card's fd: if its display went away it takes another one. */
+static void outputs_apply(Server *s) {
+    Kms *k0 = K0(s);
+    if (s->headless || k0->fd < 0) return;
+    KmsOutput ko[KMS_MAX_OUTPUTS];
+    int n = kms_outputs(k0->fd, ko, KMS_MAX_OUTPUTS);
+    DisplayPlan p;
+    display_plan(ko, n, &p);
+    kms_outputs_free(ko, n);
+    /* nothing changed (a backlight uevent, the same choice again): keep everything as it is */
+    const DisplayPlan *cur = display_current();
+    int same = p.n > 0 && p.n == cur->n && p.mirror == cur->mirror && p.main == cur->main && out_count(s) == p.n;
+    for (int j = 0; same && j < p.n; j++) {
+        const DisplayOut *a = &p.o[j], *b = &cur->o[j];
+        same = a->conn == b->conn && same_mode(&a->mode, &b->mode) && a->rot == b->rot && a->scale == b->scale &&
+               !memcmp(&a->v, &b->v, sizeof a->v) && !strcmp(a->id, b->id);
+    }
+    if (same) { display_resync_done(1, &p); return; }
+    if (gpu_active()) { gpu_tex_free(s->cursor_tex); s->cursor_tex = NULL; gpu_shutdown(); }
+    cpu_takeover(s);
+    kms_cursor_show(k0, 0);
+    int ok = p.n > 0, head[OUT_MAX];
+    for (int j = 0; j < OUT_MAX; j++) head[j] = -1;
+    for (int j = 0; j < p.n; j++)
+        for (int i = 0; i < OUT_MAX; i++)
+            if (s->out[i].on && s->out[i].kms.conn_id == p.o[j].conn) head[j] = i;
+    int has0 = 0;
+    for (int j = 0; j < p.n; j++) has0 |= head[j] == 0;
+    if (!has0 && p.n) {                     /* out[0]'s display is gone: it takes the main one (or another free one) */
+        int j0 = head[p.main] < 0 ? p.main : -1;
+        for (int j = 0; j < p.n && j0 < 0; j++) if (head[j] < 0) j0 = j;
+        if (j0 >= 0) head[j0] = 0;
+        else {                              /* every display already has a head: out[0] trades places */
+            int i = head[p.main];
+            kms_close(&s->out[i].kms);
+            s->out[i].on = 0;
+            out_free(&s->out[i]);
+            head[p.main] = 0;
+        }
+    }
+    /* heads whose display left the plan */
+    for (int i = 1; i < OUT_MAX; i++) {
+        if (!s->out[i].on) continue;
+        int used = 0;
+        for (int j = 0; j < p.n; j++) used |= head[j] == i;
+        if (used) continue;
+        fprintf(stderr, "displays: connector %u off\n", s->out[i].kms.conn_id);
+        kms_close(&s->out[i].kms);
+        out_free(&s->out[i]);
+        memset(&s->out[i], 0, sizeof s->out[i]);
+        s->out[i].kms.fd = -1;
+    }
+    /* modesets (out[0] first: another display may need the CRTC it frees) and new heads */
+    for (int pass = 0; pass < 2; pass++)
+        for (int j = 0; j < p.n; j++) {
+            int i = head[j];
+            if (pass == 0 ? i != 0 : i == 0) continue;
+            if (i >= 0) {
+                Kms *k = &s->out[i].kms;
+                if (k->conn_id == p.o[j].conn && same_mode(&k->mode, &p.o[j].mode)) continue;
+                if (kms_modeset(k, p.o[j].conn, &p.o[j].mode) == 0) { s->out[i].full_copy = 2; continue; }
+                fprintf(stderr, "displays: modeset of connector %u failed\n", p.o[j].conn);
+                ok = 0;
+                if (i == 0) continue;       /* out[0] keeps its previous mode */
+                kms_close(k);
+                out_free(&s->out[i]);
+                memset(&s->out[i], 0, sizeof s->out[i]);
+                s->out[i].kms.fd = -1;
+                head[j] = -1;
+            } else {
+                int slot = -1;
+                for (int q = 1; q < OUT_MAX && slot < 0; q++) if (!s->out[q].on) slot = q;
+                if (slot >= 0 && kms_head_open(&s->out[slot].kms, k0->fd, p.o[j].conn, &p.o[j].mode) == 0) {
+                    s->out[slot].on = 1;
+                    head[j] = slot;
+                } else fprintf(stderr, "displays: no CRTC for connector %u (the card drives %d)\n", p.o[j].conn, out_count(s));
+            }
+        }
+    for (int j = p.n - 1; j >= 0; j--) if (head[j] < 0) { memmove(&head[j], &head[j + 1], sizeof head[0] * (size_t)(OUT_MAX - j - 1)); plan_drop(&p, j); }
+    /* out[0] that kept a mode the plan did not get: its entry follows the real mode */
+    for (int j = 0; j < p.n; j++) {
+        Out *o = &s->out[head[j]];
+        o->on = 1;
+        if (o->kms.conn_id != p.o[j].conn || !same_mode(&o->kms.mode, &p.o[j].mode)) {
+            p.o[j].conn = o->kms.conn_id;
+            p.o[j].mode = o->kms.mode;
+        }
+        o->d = p.o[j];
+        o->v = p.o[j].v;
+        if (out_frames(o, o->d.rot != 0)) { fprintf(stderr, "displays: out of memory for a %dx%d frame\n", o->v.pw, o->v.ph); ok = 0; }
+        memset(o->stale, 0, sizeof o->stale);
+        memset(o->curs, 0, sizeof o->curs);
+        o->full = 1;
+        o->full_copy = 2;
+        o->pend = (Box){ 0, 0, 0, 0 };
+        if (j == p.main) s->main_out = head[j];
+        fprintf(stderr, "displays: %s (%s) %dx%d at %d%%, logical %dx%d at (%d, %d)%s%s\n", o->d.connector, o->d.name, o->v.pw, o->v.ph,
+                out_scale(o), o->v.w, o->v.h, o->v.x, o->v.y, j == p.main ? ", main" : "", p.mirror ? ", mirror" : "");
+    }
+    display_resync_done(ok, &p);
+    set_size(s, p.bw > 0 ? p.bw : (int)k0->width, p.bh > 0 ? p.bh : (int)k0->height);
+    for (int i = 0; i < OUT_MAX; i++) s->out[i].gpu = -1;     /* the GPU stopped above */
+    if (gpu_allowed(s) && !s->gpu_paused) gpu_start(s);
+    s->cursor_dirty = 1;
+}
+
+/* ---- the monitor, lent by lord-sessiond (docs/SESSIONS.md) ----
+ * fds[0] is the card (lord-sessiond already made it master), the rest keyboards and mice. The
+ * session draws on the card like a plain lord-server: with GPU if there is one, direct scanout of
+ * fullscreen and hardware cursor. When switching user, lord-sessiond takes the master away and
+ * revokes the input (EVIOCREVOKE); before that it sends RP_UNDISPLAY. */
+/* lord-sessiond: a keyboard, mouse or touchpad plugged in while the session is on the monitor */
 static void remote_input_add(const int *fds, int n) {
     Server *s = remote_server;
     if (s->headless) { for (int i = 0; i < n; i++) close(fds[i]); return; }
@@ -359,27 +702,31 @@ static void remote_input_add(const int *fds, int n) {
 static void display_attach(const int *fds, int n) {
     Server *s = remote_server;
     if (!s->headless || n < 1) { for (int i = 0; i < n; i++) close(fds[i]); return; }
-    if (kms_attach(&s->kms, fds[0])) {
-        fprintf(stderr, "monitor: no se pudo usar la placa\n");
-        s->kms.fd = -1;
+    Out *o0 = &s->out[0];
+    out_free(o0);
+    memset(o0, 0, sizeof *o0);
+    o0->gpu = -1;
+    if (kms_attach(&o0->kms, fds[0])) {
+        fprintf(stderr, "monitor: could not use the card\n");
+        o0->kms.fd = -1;
         for (int i = 1; i < n; i++) close(fds[i]);
+        set_size(s, s->W, s->H);            /* back to the frame in memory */
         return;
     }
-    if (input_open_fds(&s->input, fds + 1, n - 1)) fprintf(stderr, "monitor: sin teclado ni mouse\n");
-    wl_input_devices_changed();         /* ¿hay pantalla táctil? (wl_seat touch) */
-    {
-        int lw, lh;                         /* rotated by Settings → Displays: the logical size */
-        display_logical_size((int)s->kms.width, (int)s->kms.height, &lw, &lh);
-        set_size(s, lw & ~1, lh & ~1);
-    }
+    if (input_open_fds(&s->input, fds + 1, n - 1)) fprintf(stderr, "monitor: no keyboard or mouse\n");
+    wl_input_devices_changed();         /* is there a touch screen? (wl_seat touch) */
     s->headless = 0;
-    s->gpu_paused = 0;
+    s->gpu_paused = mirror_clients() > 0 || media_needs_cpu();
+    o0->on = 1;
     struct stat st;
-    if (fstat(s->kms.fd, &st) == 0) wl_set_drm_device(st.st_rdev);
-    if (display_cpu_only() || mirror_clients() || media_needs_cpu() || gpu_start(s)) s->gpu_paused = mirror_clients() > 0 || media_needs_cpu();
-    /* el puntero donde está (una tablet absoluta no avisa si no se mueve) o en el medio */
-    s->cx = s->W / 2;
-    s->cy = s->H / 2;
+    if (fstat(o0->kms.fd, &st) == 0) wl_set_drm_device(st.st_rdev);
+    display_attached();                 /* Night Shift, idle timers, the list in Settings; queues a resync */
+    display_take_resync();
+    outputs_apply(s);                   /* the other displays, saved modes, scales and arrangement */
+    /* the pointer where it is (an absolute tablet does not report if it does not move) or in the middle of the main display */
+    Out *m = main_out(s);
+    s->cx = m->v.x + m->v.w / 2;
+    s->cy = m->v.y + m->v.h / 2;
     for (int i = 0; i < s->input.count; i++) {
         const InputDevice *d = &s->input.dev[i];
         int rx = d->ax.maximum - d->ax.minimum, ry = d->ay.maximum - d->ay.minimum;
@@ -388,13 +735,11 @@ static void display_attach(const int *fds, int n) {
         s->cy = (int)((long)(d->ay.value - d->ay.minimum) * (s->H - 1) / ry);
         break;
     }
+    clamp_pointer(s);
     s->lx = s->cx;
     s->ly = s->cy;
-    s->full_copy = 2;
-    damage_add((Box){ 0, 0, (float)s->W, (float)s->H });
-    ui.dirty = 1;
-    fprintf(stderr, "monitor: la sesión se muestra (%dx%d, %s)\n", s->W, s->H, gpu_active() ? "GPU" : "CPU");
-    display_attached();                     /* Night Shift, idle timers, the list in Settings */
+    full_damage(s);
+    fprintf(stderr, "monitor: the session is shown (%d display(s), %dx%d, %s)\n", out_count(s), s->W, s->H, gpu_active() ? "GPU" : "CPU");
 }
 
 static void display_detach(void) {
@@ -403,18 +748,23 @@ static void display_detach(void) {
     gpu_tex_free(s->cursor_tex);
     s->cursor_tex = NULL;
     gpu_shutdown();
+    for (int i = 0; i < OUT_MAX; i++) s->out[i].gpu = -1;
     input_close(&s->input);
-    kms_close(&s->kms);
-    s->kms.fd = -1;
-    s->kms.flip_pending = 0;
+    for (int i = OUT_MAX - 1; i >= 0; i--) {        /* the second displays first: out[0] owns the fd */
+        Out *o = &s->out[i];
+        if (!o->on && i) continue;
+        kms_close(&o->kms);
+        out_free(o);
+        memset(o, 0, sizeof *o);
+        o->kms.fd = -1;
+        o->gpu = -1;
+    }
     s->hw_cursor = 0;
     s->gpu_paused = 0;
     s->headless = 1;
     display_detached();
-    if (!s->frame) s->frame = calloc((size_t)s->W * s->H, 4);
-    damage_add((Box){ 0, 0, (float)s->W, (float)s->H });
-    ui.dirty = 1;
-    fprintf(stderr, "monitor: la sesión deja la pantalla\n");
+    set_size(s, s->W & ~1, s->H & ~1);  /* a frame in memory of the same size */
+    fprintf(stderr, "monitor: the session leaves the screen\n");
 }
 
 static void on_input(void *ud, const InputDevice *d, const struct input_event *ev) {
@@ -441,12 +791,12 @@ static void on_input(void *ud, const InputDevice *d, const struct input_event *e
         const struct input_absinfo *a = ev->code == ABS_X ? &d->ax : ev->code == ABS_Y ? &d->ay : NULL;
         int range = a ? a->maximum - a->minimum : 0;
         if (range <= 0) break;
-        if (display_rotation()) {
+        if (out_count(s) == 1 && s->out[0].d.rot) {
             /* rotated screen: the tablet reports physical positions; both axes can change */
             static double nx, ny;
             if (ev->code == ABS_X) nx = (double)(ev->value - a->minimum) / range; else ny = (double)(ev->value - a->minimum) / range;
             double lx, ly;
-            display_unrotate_point(nx, ny, &lx, &ly);
+            display_unrotate_point(s->out[0].d.rot, nx, ny, &lx, &ly);
             int x = (int)(lx * (s->W - 1)), y = (int)(ly * (s->H - 1));
             s->rdx += x - s->lx; s->rdy += y - s->ly;
             s->cx = x; s->cy = y;
@@ -477,15 +827,12 @@ static void on_input(void *ud, const InputDevice *d, const struct input_event *e
             s->rdx = s->rdy = 0;
             if (wl_pointer_locked()) { s->cx = s->lx; s->cy = s->ly; }
         }
-        if (s->cx < 0) s->cx = 0;
-        if (s->cy < 0) s->cy = 0;
-        if (s->cx >= s->W) s->cx = s->W - 1;
-        if (s->cy >= s->H) s->cy = s->H - 1;
+        clamp_pointer(s);                   /* inside the displays (docs/DISPLAYS.md) */
         wl_pointer_confine(&s->cx, &s->cy);
         s->lx = s->cx;
         s->ly = s->cy;
         if (s->moved) {
-            if (s->hw_cursor) kms_cursor_move(&s->kms, s->cx - s->cursor_hx, s->cy - s->cursor_hy);
+            if (s->hw_cursor) hw_cursor_move(s);
             else s->cursor_dirty = 1;
         }
         /* el movimiento solo se junta: se manda una vez por cuadro (pointer_flush, al terminar el
@@ -549,40 +896,84 @@ static const TpHost tp_host = { tp_move, tp_warp, tp_button, tp_position, tp_flu
 static void remote_scroll(int phase, double dx, double dy) { tp_route_scroll(phase, dx, dy, TPR_FINGER); }
 static void remote_pinch(int phase, double scale, double rotation) { tp_route_pinch(phase, 2, 0, 0, scale, rotation); }
 
-/* Layout y pintado de la UI en el canvas (solo lo que cambió). Devuelve el rectángulo repintado. */
-static Rect paint_ui(Server *s) {
-    Rect r = { 0, 0, 0, 0 };
+/* Layout and damage of the UI (once per frame, logical px). The damage goes to every display; each
+ * one paints it when its flip is not pending (paint_out), at its own scale. */
+static Box paint_ui(Server *s) {
+    Box d = { 0, 0, 0, 0 };
     if (js_wants_frame()) js_frame(now_ms());
-    if (!ui.dirty) return r;
+    if (!ui.dirty) return d;
     ui.dirty = 0;
     double t0 = now_ms();
     layout_root(ui.root, (float)s->W, (float)s->H);
     double t1 = now_ms();
-    /* Solo se repinta la región que cambió (damage tracking). */
-    if (paint_damage(ui.root)) {
-        Box d = ui.damage;
-        canvas_push_clip(&s->scene, d.x0, d.y0, d.x1 - d.x0, d.y1 - d.y0);
-        r = s->scene.clip;
-        ui.damage_px = (double)(r.x1 - r.x0) * (r.y1 - r.y0);
-        canvas_clear(&s->scene, 0x000000);
-        paint_root(&s->scene, ui.root);
-        media_scene_painted(&s->scene);     /* grabación/escritorio remoto con ventanas protegidas */
-        canvas_set_clip(&s->scene, (Rect){0, 0, s->W, s->H});
-    } else ui.damage_px = 0;
-    ui.damage = (Box){0, 0, 0, 0};
-    double t2 = now_ms();
+    if (paint_damage(ui.root)) d = ui.damage;
+    ui.damage = (Box){ 0, 0, 0, 0 };
+    /* the window being dragged: its layer and what is below belong to the display with most of it */
+    int ln = paint_layer_node();
+    Node *lnode = ln ? node_get(ln) : NULL;
+    if (lnode && !s->headless) {
+        ORect r[OUT_MAX];
+        int idx[OUT_MAX], n = out_rects(s, r, idx);
+        int b = out_best(r, n, lnode->prev_box.x0, lnode->prev_box.y0, lnode->prev_box.x1, lnode->prev_box.y1);
+        paint_layer_view(b >= 0 ? idx[b] : 0);
+    }
+    if (!box_empty(d)) {
+        for (int i = 0; i < OUT_MAX; i++) if (s->out[i].on) s->out[i].pend = box_join(s->out[i].pend, d);
+        s->cap.pend = box_join(s->cap.pend, d);
+    }
     ui.layout_ms = t1 - t0;
-    ui.paint_ms = t2 - t1;
     s->layout_total += ui.layout_ms;
-    s->paint_total += ui.paint_ms;
     s->renders++;
+    return d;
+}
+
+/* Paints a display's pending damage into its frame at its scale. Returns the physical rect painted. */
+static Rect paint_out(Server *s, Out *o, int index, int feed) {
+    Rect r = { 0, 0, 0, 0 };
+    Box b = o->pend;
+    if (o->full) b = (Box){ (float)o->v.x, (float)o->v.y, (float)(o->v.x + o->v.w), (float)(o->v.y + o->v.h) };
+    int whole = o->full;
+    o->full = 0;
+    o->pend = (Box){ 0, 0, 0, 0 };
+    if (box_empty(b) || !o->scene.px) return r;
+    r = whole ? (Rect){ 0, 0, o->scene.w, o->scene.h } : out_phys_rect(&o->v, b.x0, b.y0, b.x1, b.y1);
+    if (r.x1 <= r.x0 || r.y1 <= r.y0) return (Rect){ 0, 0, 0, 0 };
+    double t0 = now_ms();
+    view_of(o, index);
+    float lx0, ly0, lx1, ly1;
+    out_logical_box(&o->v, r, &lx0, &ly0, &lx1, &ly1);
+    ui.damage = (Box){ lx0, ly0, lx1, ly1 };      /* paint_root skips what this region does not need */
+    canvas_set_clip(&o->scene, r);
+    canvas_clear(&o->scene, 0x000000);
+    paint_root(&o->scene, ui.root);
+    if (feed) media_scene_painted(&o->scene);     /* recording/remote desktop with protected windows */
+    canvas_set_clip(&o->scene, (Rect){ 0, 0, o->scene.w, o->scene.h });
+    ui.damage = (Box){ 0, 0, 0, 0 };
+    view_reset();
+    double ms = now_ms() - t0;
+    ui.paint_ms += ms;
+    s->paint_total += ms;
+    ui.damage_px += (double)(r.x1 - r.x0) * (r.y1 - r.y0);
     if (s->debug || paint_profile)
-        fprintf(stderr, "render %ld: layout %.2f ms, paint %.2f ms, repintado %.0f%%\n", s->renders,
-                ui.layout_ms, ui.paint_ms, 100.0 * ui.damage_px / ((double)s->W * s->H));
+        fprintf(stderr, "render %ld: display %d, layout %.2f ms, paint %.2f ms, repainted %.0f%%\n", s->renders, index, ui.layout_ms, ms,
+                100.0 * (r.x1 - r.x0) * (r.y1 - r.y0) / ((double)o->scene.w * o->scene.h));
     return r;
 }
 
-/* La flecha de LordOS en ARGB (para el plano de cursor o una textura). */
+/* The cursor rect on a display (physical), empty if the pointer is not on it. */
+static Rect cursor_rect(const Server *s, const Out *o, const Cur *k) {
+    if (k->mode != 1) return (Rect){ 0, 0, 0, 0 };
+    int x, y;
+    pointer_phys(s, o, &x, &y);
+    Rect r = { x - k->hx, y - k->hy, x - k->hx + k->w, y - k->hy + k->h };
+    if (r.x1 <= 0 || r.y1 <= 0 || r.x0 >= o->v.pw || r.y0 >= o->v.ph) return (Rect){ 0, 0, 0, 0 };
+    /* in a gap next to it the pointer belongs to another display */
+    ORect me = { o->v.x, o->v.y, o->v.w, o->v.h };
+    if (out_at(&me, 1, s->cx, s->cy) < 0 && !(o->v.dx || o->v.dy)) return (Rect){ 0, 0, 0, 0 };
+    return r;
+}
+
+/* The arrow of LordOS in ARGB (for the cursor plane or a texture). */
 static void arrow_argb(uint32_t *px, int w, int h) {
     memset(px, 0, (size_t)w * h * 4);
     Canvas c;
@@ -590,10 +981,10 @@ static void arrow_argb(uint32_t *px, int w, int h) {
     canvas_bitmap(&c, 0, 0, cursor_arrow, 0xff000000u, 0xffffffffu);
 }
 
-/* Cursor del camino GPU: cambia cuando la app pide otro (o lo oculta, o vuelve la flecha). */
+/* GPU path cursor: it changes when the app asks for another (or hides it, or the arrow is back). */
 static void update_cursor(Server *s) {
     Cur c;
-    cursor_local(s, &c);
+    cursor_local(s, &c, out_scale(&s->out[0]));
     const uint32_t *px = c.px;
     int w = c.w, h = c.h, hx = c.hx, hy = c.hy, mode = c.mode;
     unsigned gen = c.gen;
@@ -605,40 +996,48 @@ static void update_cursor(Server *s) {
     s->cursor_hx = hx;
     s->cursor_hy = hy;
     if (s->hw_cursor) {
-        if (mode == 2) kms_cursor_show(&s->kms, 0);
-        else {
-            kms_cursor_image(&s->kms, px, w, h, hx, hy);
-            kms_cursor_show(&s->kms, 1);
-            kms_cursor_move(&s->kms, s->cx - hx, s->cy - hy);
-        }
+        if (mode != 2)
+            for (int i = 0; i < OUT_MAX; i++)
+                if (s->out[i].on && s->out[i].gpu >= 0) kms_cursor_image(&s->out[i].kms, px, w, h, hx, hy);
+        hw_cursor_move(s);
     }
     s->cursor_tex = gpu_tex_pixels(s->cursor_tex, px, w, h, 0);
     s->cursor_tex_w = w;
     s->cursor_tex_h = h;
 }
 
-/* GPU (Mesa) sobre la placa de la sesión; si no hay una usable, sigue el camino por CPU. */
+/* GPU (Mesa) on the session's card; without a usable one, the CPU path goes on. */
 static int gpu_start(Server *s) {
-    if (gpu_init(&s->kms)) return -1;
+    if (!gpu_allowed(s) || gpu_init(K0(s))) return -1;
     static uint32_t arrow[64 * 64];
     arrow_argb(arrow, 64, 64);
-    s->hw_cursor = getenv("LORD_SW_CURSOR") == NULL && kms_cursor_image(&s->kms, arrow, 64, 64, 0, 0) == 0;
-    if (s->hw_cursor) kms_cursor_move(&s->kms, s->cx, s->cy);
+    for (int i = 0; i < OUT_MAX; i++) s->out[i].gpu = -1;
+    s->out[0].gpu = 0;
+    for (int i = 1; i < OUT_MAX; i++)           /* the other displays: their own surfaces on the same context */
+        if (s->out[i].on) s->out[i].gpu = gpu_add_output(&s->out[i].kms);
+    s->hw_cursor = getenv("LORD_SW_CURSOR") == NULL;
+    for (int i = 0; i < OUT_MAX && s->hw_cursor; i++)
+        if (s->out[i].on && s->out[i].gpu >= 0 && kms_cursor_image(&s->out[i].kms, arrow, 64, 64, 0, 0)) s->hw_cursor = 0;
+    hw_cursor_move(s);
     s->cursor_gen = 0;
     s->cursor_mode = -1;
-    fprintf(stderr, "gpu: cursor %s\n", s->hw_cursor ? "por hardware (plano de cursor)" : "dibujado en la composición");
-    damage_add((Box){ 0, 0, (float)s->W, (float)s->H });
-    ui.dirty = 1;
+    fprintf(stderr, "gpu: cursor %s\n", s->hw_cursor ? "by hardware (cursor plane)" : "drawn in the composition");
+    full_damage(s);
     return 0;
 }
 
 static Server *gpu_server;
+static Out *gpu_out;                    /* the display gpu_frame is drawing */
 static void gpu_layer(int layer) {
     wl_gpu_draw_layer(layer);
     Server *s = gpu_server;
-    if (layer == 1 && !s->hw_cursor && s->cursor_mode != 2 && s->cursor_tex)      /* cursor sin plano propio */
-        gpu_draw(s->cursor_tex, (float)(s->cx - s->cursor_hx), (float)(s->cy - s->cursor_hy), (float)s->cursor_tex_w,
-                 (float)s->cursor_tex_h, 0, 0, (float)s->cursor_tex_w, (float)s->cursor_tex_h, (Rect){ 0, 0, s->W, s->H }, 1);
+    Out *o = gpu_out;
+    if (layer == 1 && o && !s->hw_cursor && s->cursor_mode != 2 && s->cursor_tex) {     /* cursor without its own plane */
+        int x, y;
+        pointer_phys(s, o, &x, &y);
+        gpu_draw(s->cursor_tex, (float)(x - s->cursor_hx), (float)(y - s->cursor_hy), (float)s->cursor_tex_w,
+                 (float)s->cursor_tex_h, 0, 0, (float)s->cursor_tex_w, (float)s->cursor_tex_h, (Rect){ 0, 0, o->v.pw, o->v.ph }, 1);
+    }
 }
 
 static void render_frame(Server *s);
@@ -660,126 +1059,213 @@ static void render(Server *s) {
     }
 }
 
+/* Frame statistics per display count and scale (docs/DISPLAYS.md, "Measurements"): with
+ * LORD_FRAME_STATS=1 one line every 300 frames with the average work per frame. */
+static struct { long n; double work, paint, present; } fstat_;
+static void frame_stats(Server *s, double work, double paint) {
+    static int on = -1;
+    if (on < 0) on = getenv("LORD_FRAME_STATS") != NULL;
+    if (!on) return;
+    fstat_.n++;
+    fstat_.work += work;
+    fstat_.paint += paint;
+    fstat_.present += work - paint;
+    if (fstat_.n < 300) return;
+    char scales[64] = "";
+    int len = 0;
+    for (int i = 0; i < OUT_MAX; i++)
+        if (s->out[i].on) len += snprintf(scales + len, sizeof scales - (size_t)len, "%s%dx%d@%d%%", len ? "+" : "", s->out[i].v.pw, s->out[i].v.ph, out_scale(&s->out[i]));
+    fprintf(stderr, "frames: %d display(s) %s: %ld frames, per frame %.2f ms (layout+paint %.2f, present %.2f), %s\n", out_count(s), scales,
+            fstat_.n, fstat_.work / fstat_.n, fstat_.paint / fstat_.n, fstat_.present / fstat_.n, gpu_active() ? "GPU" : "CPU");
+    memset(&fstat_, 0, sizeof fstat_);
+}
+
+/* CPU path: what changed goes into the display's KMS buffer, then the cursor, then the flip. */
+static void present_cpu(Server *s, Out *o, int index, Rect r, int feed) {
+    KmsBuffer *b = kms_back(&o->kms);
+    Canvas out, phys;
+    /* rotated (Settings → Displays): composed upright in o->frame, copied rotated into the card's buffer */
+    int rot = o->d.rot & 3, xf = rot != 0 && o->frame;
+    int W = o->v.pw, H = o->v.ph;
+    canvas_init(&phys, b->map, (int)o->kms.width, (int)o->kms.height, (int)(b->pitch / 4));
+    if (xf) canvas_init(&out, o->frame, W, H, W);
+    else { out = phys; out.w = W < phys.w ? W : phys.w; out.h = H < phys.h ? H : phys.h; canvas_set_clip(&out, (Rect){ 0, 0, out.w, out.h }); }
+    int bi = o->kms.front ^ 1, fs = wl_fullscreen_active();
+    if (fs != o->was_fs) { o->was_fs = fs; o->full_copy = 2; }
+    Rect need = { 0, 0, W, H };             /* what this buffer gets now (also tinted) */
+    if (o->full_copy > 0 || fs) {
+        canvas_copy(&out, &o->scene);
+        if (o->full_copy > 0) o->full_copy--;
+    } else {
+        need = rect_join(rect_join(o->stale[bi], r), o->curs[bi]);
+        if (need.x0 < 0) need.x0 = 0;
+        if (need.y0 < 0) need.y0 = 0;
+        if (need.x1 > out.w) need.x1 = out.w;
+        if (need.y1 > out.h) need.y1 = out.h;
+        for (int y = need.y0; y < need.y1; y++)
+            memcpy(out.px + (size_t)y * out.stride + need.x0, o->scene.px + (size_t)y * o->scene.stride + need.x0, (size_t)(need.x1 - need.x0) * 4);
+    }
+    o->stale[bi] = (Rect){ 0, 0, 0, 0 };
+    o->stale[bi ^ 1] = rect_join(o->stale[bi ^ 1], r);
+    o->curs[bi] = (Rect){ 0, 0, 0, 0 };
+    view_of(o, index);
+    wl_paint_fullscreen(&out);
+    view_reset();
+    Cur k;
+    cursor_now(s, &k, out_scale(o));
+    int px_, py_;
+    pointer_phys(s, o, &px_, &py_);
+    if (feed) {
+        /* remote desktop (without the cursor) and recording: with protected windows in black */
+        MediaCursor mc = { px_, py_, k.mode, k.px, k.w, k.h, k.hx, k.hy };
+        view_of(o, index);
+        const Canvas *seen = media_composed(&out, mirror_clients() > 0, &mc);
+        view_reset();
+        mirror_frame(seen->px, seen->stride, W, H);
+        mirror_cursor(px_, py_, k.mode, k.px, k.w, k.h, k.hx, k.hy, k.gen);
+    }
+    cursor_local(s, &k, out_scale(o));      /* the arrow is also an image (cursor.c) */
+    Rect cr = cursor_rect(s, o, &k);
+    o->cur_on = cr.x1 > cr.x0;
+    if (!xf) {
+        display_tint(&out, need);           /* Night Shift without a gamma LUT (software) */
+        if (o->cur_on) {
+            canvas_blit(&out, k.px, k.w, k.h, cr.x0, cr.y0, 0, 1, 0);
+            o->curs[bi] = cr;
+        }
+    } else {
+        if (need.x1 > need.x0 && need.y1 > need.y0) {
+            display_rotate_copy(&out, need, &phys, rot);
+            display_tint(&phys, display_rotate_rect(need, W, H, rot));
+        }
+        /* the cursor is composited apart (o->frame stays clean) and copied rotated */
+        static uint32_t tmp[160 * 160];
+        Rect cc = cr;
+        if (cc.x0 < 0) cc.x0 = 0;
+        if (cc.y0 < 0) cc.y0 = 0;
+        if (cc.x1 > W) cc.x1 = W;
+        if (cc.y1 > H) cc.y1 = H;
+        int cw = cc.x1 - cc.x0, ch = cc.y1 - cc.y0;
+        if (o->cur_on && cw > 0 && ch > 0 && cw <= 160 && ch <= 160) {
+            for (int y = 0; y < ch; y++) memcpy(tmp + (size_t)y * cw, out.px + (size_t)(cc.y0 + y) * out.stride + cc.x0, (size_t)cw * 4);
+            Canvas t;
+            canvas_init(&t, tmp, cw, ch, cw);
+            canvas_blit(&t, k.px, k.w, k.h, cr.x0 - cc.x0, cr.y0 - cc.y0, 0, 1, 0);
+            display_rotate_copy_at(tmp, cw, cc.x0, cc.y0, cc, W, H, &phys, rot);
+            display_tint(&phys, display_rotate_rect(cc, W, H, rot));
+            o->curs[bi] = cc;
+        }
+    }
+    o->cdirty = 0;
+    kms_flip(&o->kms);
+}
+
+/* Memory frames (headless session, the capture view): scene + fullscreen, then the remote desktop. */
+static void present_memory(Server *s, Out *o, int index, int feed) {
+    if (!o->frame) return;
+    Canvas out;
+    canvas_init(&out, o->frame, o->scene.w, o->scene.h, o->scene.w);
+    canvas_copy(&out, &o->scene);
+    view_of(o, index);
+    wl_paint_fullscreen(&out);
+    Cur k;
+    cursor_now(s, &k, out_scale(o));
+    int x, y;
+    pointer_phys(s, o, &x, &y);
+    if (feed) {
+        /* what the browser sees and what is recorded: with the protected windows in black */
+        MediaCursor mc = { x, y, k.mode, k.px, k.w, k.h, k.hx, k.hy };
+        const Canvas *seen = media_composed(&out, mirror_clients() > 0, &mc);
+        mirror_frame(seen->px, seen->stride, o->scene.w, o->scene.h);
+        mirror_cursor(x, y, k.mode, k.px, k.w, k.h, k.hx, k.hy, k.gen);
+    }
+    view_reset();
+    o->cdirty = 0;
+}
+
+/* Does this display have something to show? (damage, a moved cursor on it, a fullscreen app) */
+static int out_needs(const Server *s, const Out *o) {
+    if (!o->on) return 0;
+    if (o->full || !box_empty(o->pend)) return 1;
+    if (!o->cdirty) return 0;
+    if (o->cur_on) return 1;
+    ORect me = { o->v.x, o->v.y, o->v.w, o->v.h };
+    return out_at(&me, 1, s->cx, s->cy) >= 0 || o->v.dx || o->v.dy;
+}
+static int outs_have_work(const Server *s) {
+    for (int i = 0; i < OUT_MAX; i++) if (!s->out[i].kms.flip_pending && out_needs(s, &s->out[i])) return 1;
+    return 0;
+}
+
 static void render_frame(Server *s) {
+    double t0 = now_ms();
     ui.layout_ms = ui.paint_ms = 0;
-    Rect r = paint_ui(s);
+    ui.damage_px = 0;
+    paint_ui(s);
     s->last_render = now_ms();
-    if (gpu_active() && (mirror_clients() || media_needs_cpu())) {    /* también al grabar la pantalla */
-        /* alguien mira la sesión desde la red: la pantalla tiene que estar en memoria (camino CPU) */
-        fprintf(stderr, "remoto: hay una conexión; se compone por CPU\n");
+    if (s->cursor_dirty) {
+        for (int i = 0; i < OUT_MAX; i++) s->out[i].cdirty = 1;
+        s->cap.cdirty = 1;
+        s->cursor_dirty = 0;
+    }
+    if (gpu_active() && (mirror_clients() || media_needs_cpu())) {     /* also when recording the screen */
+        /* someone watches the session over the network: the screen must be in memory (CPU path) */
+        fprintf(stderr, "remote: there is a connection; composing by CPU\n");
         gpu_tex_free(s->cursor_tex);
         s->cursor_tex = NULL;
         gpu_shutdown();
         s->gpu_paused = 1;
-        kms_cursor_show(&s->kms, 0);
-        s->hw_cursor = 0;
-        kms_set_fb(&s->kms, s->kms.buf[s->kms.front].fb_id); s->full_copy = 2;
-        s->kms.custom = 0;
-        damage_add((Box){ 0, 0, (float)s->W, (float)s->H });
-        ui.dirty = 1;
-        r = paint_ui(s);
+        cpu_takeover(s);
+        full_damage(s);
+        paint_ui(s);
     }
+    Out *feed = feed_out(s);
     if (s->headless) {
-        Canvas out;
-        canvas_init(&out, s->frame, s->W, s->H, s->W);
-        canvas_copy(&out, &s->scene);
-        wl_paint_fullscreen(&out);
-        Cur k;
-        cursor_now(s, &k);
-        const uint32_t *px = k.px;
-        int w = k.w, h = k.h, hx = k.hx, hy = k.hy, mode = k.mode;
-        unsigned gen = k.gen;
-        /* lo que ve el navegador y lo que se graba: con las ventanas protegidas en negro */
-        MediaCursor mc = { s->cx, s->cy, mode, px, w, h, hx, hy };
-        const Canvas *seen = media_composed(&out, mirror_clients() > 0, &mc);
-        mirror_frame(seen->px, seen->stride, s->W, s->H);
-        mirror_cursor(s->cx, s->cy, mode, px, w, h, hx, hy, gen);
-    } else if (gpu_active()) {
-        update_cursor(s);
-        gpu_server = s;
-        /* pantalla completa compatible: directo a la placa; si no, se compone */
-        if (!wl_try_scanout(s->hw_cursor || s->cursor_mode == 2) && gpu_frame(&s->scene, r, gpu_layer)) {
-            fprintf(stderr, "gpu: falló un cuadro; se sigue por CPU\n");
-            gpu_shutdown();
-            kms_set_fb(&s->kms, s->kms.buf[s->kms.front].fb_id); s->full_copy = 2;
-            s->kms.custom = 0;
-            damage_add((Box){ 0, 0, (float)s->W, (float)s->H });
-            ui.dirty = 1;
-        }
+        Out *o = &s->out[0];
+        paint_out(s, o, 0, 1);
+        present_memory(s, o, 0, 1);
     } else {
-        KmsBuffer *b = kms_back(&s->kms);
-        Canvas out, phys;
-        /* rotated or at 200 % (Settings → Displays): the frame is composed upright and at the logical size
-         * in s->frame and copied rotated/doubled into the card's buffer; otherwise straight into it */
-        int rot = display_rotation(), xf = display_cpu_only();     /* rotated or at 200 % */
-        canvas_init(&phys, b->map, xf ? (int)s->kms.width : s->W, xf ? (int)s->kms.height : s->H, (int)(b->pitch / 4));
-        if (xf) canvas_init(&out, s->frame, s->W, s->H, s->W);
-        else out = phys;
-        int bi = s->kms.front ^ 1, fs = wl_fullscreen_active();
-        if (fs != s->was_fs) { s->was_fs = fs; s->full_copy = 2; }
-        Rect need = { 0, 0, s->W, s->H };       /* what this buffer gets now (also tinted) */
-        if (s->full_copy > 0 || fs) {
-            canvas_copy(&out, &s->scene);
-            if (s->full_copy > 0) s->full_copy--;
-        } else {
-            need = rect_join(rect_join(s->stale[bi], r), s->curs[bi]);
-            if (need.x0 < 0) need.x0 = 0;
-            if (need.y0 < 0) need.y0 = 0;
-            if (need.x1 > s->W) need.x1 = s->W;
-            if (need.y1 > s->H) need.y1 = s->H;
-            for (int y = need.y0; y < need.y1; y++)
-                memcpy(out.px + (size_t)y * out.stride + need.x0, s->scene.px + (size_t)y * s->scene.stride + need.x0, (size_t)(need.x1 - need.x0) * 4);
+        for (int i = 0; i < OUT_MAX; i++) {
+            Out *o = &s->out[i];
+            /* a fullscreen app's new frame (render runs when something wants a frame) goes to every display */
+            if (!o->on || o->kms.flip_pending || !(out_needs(s, o) || wl_fullscreen_active())) continue;
+            Rect r = paint_out(s, o, i, o == feed);
+            if (gpu_active() && o->gpu >= 0) {      /* (the loop above skips what has nothing new) */
+                update_cursor(s);
+                gpu_server = s;
+                gpu_out = o;
+                view_of(o, i);
+                /* compatible fullscreen (one display): straight to the card; otherwise composed */
+                int failed = !(out_count(s) == 1 && wl_try_scanout(s->hw_cursor || s->cursor_mode == 2)) && gpu_frame(o->gpu, &o->scene, r, gpu_layer);
+                view_reset();
+                gpu_out = NULL;
+                o->cdirty = 0;
+                if (failed) {
+                    fprintf(stderr, "gpu: a frame failed; going on by CPU\n");
+                    gpu_shutdown();
+                    cpu_takeover(s);
+                    full_damage(s);
+                }
+            } else present_cpu(s, o, i, r, o == feed);
         }
-        s->stale[bi] = (Rect){ 0, 0, 0, 0 };
-        s->stale[bi ^ 1] = rect_join(s->stale[bi ^ 1], r);
-        s->curs[bi] = (Rect){ 0, 0, 0, 0 };
-        wl_paint_fullscreen(&out);
-        Cur k;
-        cursor_now(s, &k);
-        const uint32_t *px = k.px;
-        int w = k.w, h = k.h, hx = k.hx, hy = k.hy, mode = k.mode;
-        unsigned gen = k.gen;
-        /* escritorio remoto (sin el cursor) y grabación: con las ventanas protegidas en negro */
-        MediaCursor mc = { s->cx, s->cy, mode, px, w, h, hx, hy };
-        const Canvas *seen = media_composed(&out, mirror_clients() > 0, &mc);
-        mirror_frame(seen->px, seen->stride, s->W, s->H);
-        mirror_cursor(s->cx, s->cy, mode, px, w, h, hx, hy, gen);
-        cursor_local(s, &k);                    /* la flecha también es una imagen (cursor.c) */
-        Rect cr = { s->cx - k.hx, s->cy - k.hy, s->cx - k.hx + k.w, s->cy - k.hy + k.h };
-        if (!xf) {
-            display_tint(&out, need);           /* Night Shift without a gamma LUT (software) */
-            if (k.mode == 1) {
-                canvas_blit(&out, k.px, k.w, k.h, s->cx - k.hx, s->cy - k.hy, 0, 1, 0);
-                s->curs[bi] = cr;
+        /* every display in one frame for the remote desktop and recording (capture view) */
+        Out *c = &s->cap;
+        if (feed == c && (mirror_clients() || media_needs_cpu())) {
+            if (!c->on || c->v.w != s->W || c->v.h != s->H) {
+                c->on = 1;
+                c->v = out_view(0, 0, s->W, s->H, 100);
+                c->d.scale = 100;
+                c->full = out_frames(c, 1) == 0;
             }
-        } else {
-            if (need.x1 > need.x0 && need.y1 > need.y0) {
-                display_rotate_copy(&out, need, &phys, rot);
-                display_tint(&phys, display_rotate_rect(need, s->W, s->H, rot));
+            if (c->scene.px && (c->full || !box_empty(c->pend) || c->cdirty || wl_fullscreen_active())) {
+                paint_out(s, c, OUT_MAX, 1);
+                present_memory(s, c, OUT_MAX, 1);
             }
-            /* the cursor is composited apart (s->frame stays clean) and copied rotated */
-            static uint32_t tmp[128 * 128];
-            Rect cc = cr;
-            if (cc.x0 < 0) cc.x0 = 0;
-            if (cc.y0 < 0) cc.y0 = 0;
-            if (cc.x1 > s->W) cc.x1 = s->W;
-            if (cc.y1 > s->H) cc.y1 = s->H;
-            int cw = cc.x1 - cc.x0, ch = cc.y1 - cc.y0;
-            if (k.mode == 1 && cw > 0 && ch > 0 && cw <= 128 && ch <= 128) {
-                for (int y = 0; y < ch; y++) memcpy(tmp + (size_t)y * cw, out.px + (size_t)(cc.y0 + y) * out.stride + cc.x0, (size_t)cw * 4);
-                Canvas t;
-                canvas_init(&t, tmp, cw, ch, cw);
-                canvas_blit(&t, k.px, k.w, k.h, cr.x0 - cc.x0, cr.y0 - cc.y0, 0, 1, 0);
-                display_rotate_copy_at(tmp, cw, cc.x0, cc.y0, cc, s->W, s->H, &phys, rot);
-                display_tint(&phys, display_rotate_rect(cc, s->W, s->H, rot));
-                s->curs[bi] = cc;
-            }
-        }
-        kms_flip(&s->kms);
+        } else if (c->on) { out_free(c); c->on = 0; c->pend = (Box){ 0, 0, 0, 0 }; }
     }
-    s->cursor_dirty = 0;
     s->frames++;
     wl_frame_done((unsigned)now_ms());
+    frame_stats(s, now_ms() - t0, ui.layout_ms + ui.paint_ms);
 }
 
 /* Cambio de tema pedido desde JS (lord.themes.use): se descarta el contexto JS y el árbol. */
@@ -803,35 +1289,16 @@ static void switch_theme(const char *current) {
 /* ---- Settings → Displays and the other hardware pages (src/hw, docs/SETTINGS.md) ---- */
 
 static Server *hw_server;
-static Kms *hw_kms(void) { Server *s = hw_server; return s && !s->headless && s->kms.fd >= 0 ? &s->kms : NULL; }
-static void hw_redraw(void) {
+static Kms *hw_kms(void) { Server *s = hw_server; return s && !s->headless && K0(s)->fd >= 0 ? K0(s) : NULL; }
+static int hw_heads(Kms **out, int max) {
     Server *s = hw_server;
-    if (!s) return;
-    s->full_copy = 2;
-    damage_add((Box){ 0, 0, (float)s->W, (float)s->H });
-    ui.dirty = 1;
+    int n = 0;
+    if (!hw_kms()) return 0;
+    for (int i = 0; i < OUT_MAX && n < max; i++) if (s->out[i].on && s->out[i].kms.fd >= 0) out[n++] = &s->out[i].kms;
+    return n;
 }
-static const DisplayHost hw_host = { hw_kms, hw_redraw, js_hw_event };
-
-/* A modeset queued by Settings, run between frames: the GPU path stops (its surfaces have the old
- * size), kms.c changes the mode, the session takes the new (logical) size and the GPU comes back.
- * A rotated screen stays on the CPU path (the rotation is done while copying the frame). */
-static int gpu_was_on = 1;              /* try the GPU again after a modeset (fails quietly without one) */
-static void run_modeset(Server *s, uint32_t conn, const struct drm_mode_modeinfo *m) {
-    if (gpu_active()) { gpu_was_on = 1; gpu_tex_free(s->cursor_tex); s->cursor_tex = NULL; gpu_shutdown(); }
-    kms_cursor_show(&s->kms, 0);
-    s->hw_cursor = 0;
-    int ok = kms_modeset(&s->kms, conn, m) == 0;
-    int lw, lh;
-    display_logical_size((int)s->kms.width, (int)s->kms.height, &lw, &lh);
-    set_size(s, lw & ~1, lh & ~1);
-    memset(s->stale, 0, sizeof s->stale);
-    memset(s->curs, 0, sizeof s->curs);
-    s->full_copy = 2;
-    if (gpu_was_on && !display_cpu_only() && !mirror_clients() && !media_needs_cpu() && gpu_start(s) == 0) gpu_was_on = 0;
-    display_modeset_done(ok);
-    hw_redraw();
-}
+static void hw_redraw(void) { if (hw_server) full_damage(hw_server); }
+static const DisplayHost hw_host = { hw_kms, hw_redraw, js_hw_event, hw_heads };
 
 static void usage(const char *argv0) {
     fprintf(stderr, "uso: %s [--theme bundle.js] [--fonts dir] [--shell dir] [--user nombre] [--card /dev/dri/cardN]\n"
@@ -889,19 +1356,29 @@ int main(int argc, char **argv) {
     }
     term_init(fonts, shell);
     kb_set("latam", "");         /* la UI elige la del usuario al cargar sus ajustes */
-    s.kms.fd = -1;
-    if (s.headless) s.frame = calloc((size_t)s.W * s.H, 4);
+    for (int i = 0; i < OUT_MAX; i++) { s.out[i].kms.fd = -1; s.out[i].gpu = -1; }
+    s.cap.kms.fd = -1;
+    s.cap.gpu = -1;
+    if (s.headless) {
+        int w = s.W, h = s.H;
+        s.W = s.H = 0;
+        set_size(&s, w, h);                 /* out[0] = the frame in memory */
+    }
     else {
         char picked[64];
         if (!card) { drm_pick_card(picked, sizeof picked); card = picked; }
         kms_set_picker(display_pick);       /* the display saved in Settings (displays.json) */
-        if (kms_open(&s.kms, card)) return 1;
-        s.W = (int)s.kms.width;
-        s.H = (int)s.kms.height;
+        if (kms_open(K0(&s), card)) return 1;
+        /* one display until the plan (after dropping root: displays.json is the user's) opens the others */
+        s.W = (int)K0(&s)->width;
+        s.H = (int)K0(&s)->height;
+        s.out[0].on = 1;
+        s.out[0].v = out_view(0, 0, s.W, s.H, 100);
+        s.out[0].d.scale = 100;
+        out_frames(&s.out[0], 0);
     }
     ui.width = (float)s.W;
     ui.height = (float)s.H;
-    canvas_init(&s.scene, malloc((size_t)s.W * s.H * 4), s.W, s.H, s.W);
     s.cx = s.lx = s.W / 2;
     s.cy = s.ly = s.H / 2;
 
@@ -919,7 +1396,7 @@ int main(int argc, char **argv) {
     if (session_user && admin_start(session_user)) fprintf(stderr, "lord-server: sin ayudante de administración\n");
     /* LordOS networking: with lord-sessiond the network belongs to the system (lord-netd brings it
      * up at boot) and net-restore only confirms; without it (a standalone lord-server) this
-     * session's helper brings it up (see net_act_restore and docs/RED.md) */
+     * session's helper brings it up (see net_act_restore and docs/NETWORK.md) */
     else if (session_user) admin_send("net-restore", "", 0);
     int ok = drop_privileges(user) == 0;
     if (ok && s.headless && getenv("HOME")) {
@@ -938,12 +1415,13 @@ int main(int argc, char **argv) {
     kms_set_picker(display_pick);
     hw_server = &s;
     if (ok && !s.greeter) hw_start(&hw_host, 1);
-    if (ok && !s.headless && !display_cpu_only()) gpu_start(&s);
+    if (ok && !s.headless) { display_take_resync(); outputs_apply(&s); }   /* every display, the GPU if it can */
     {
         struct stat st;
-        if (s.kms.fd >= 0 && fstat(s.kms.fd, &st) == 0) wl_set_drm_device(st.st_rdev);
+        if (K0(&s)->fd >= 0 && fstat(K0(&s)->fd, &st) == 0) wl_set_drm_device(st.st_rdev);
     }
     if (ok && wl_start()) fprintf(stderr, "lord-server: sin Wayland (las apps Linux no van a poder abrirse)\n");
+    publish_displays(&s);                   /* one wl_output per display */
     if (ok && net_open()) fprintf(stderr, "lord-server: sin avisos de red (rtnetlink)\n");
     /* Backups: a thread running as the user, nice 19 and idle I/O (backup/backup.c) */
     if (ok && !s.greeter && getenv("HOME") && session_user) backup_start(getenv("HOME"), session_user);
@@ -963,7 +1441,7 @@ int main(int argc, char **argv) {
     }
     if (!ok) {
         input_close(&s.input);
-        if (!s.headless) kms_close(&s.kms);
+        if (!s.headless) kms_close(K0(&s));
         if (vt >= 0) { ioctl(vt, KDSETMODE, KD_TEXT); close(vt); }
         return 1;
     }
@@ -987,7 +1465,7 @@ int main(int argc, char **argv) {
         }
         /* El movimiento del puntero juntado: una vez por cuadro, cuando terminó el page flip. Así un
          * mouse de 1000 Hz no llama a JS (ni a las apps Linux) mil veces por segundo. */
-        if (s.motion_pending && !s.kms.flip_pending) {
+        if (s.motion_pending && !main_out(&s)->kms.flip_pending) {
             dispatch_pointer(&s);
             if (gpu_active()) update_cursor(&s);
         }
@@ -1008,24 +1486,21 @@ int main(int argc, char **argv) {
         display_tick(now_ms());             /* screen off, lock and sleep after N minutes (src/hw) */
         double hwd = display_timeout(now_ms());
         if (hwd >= 0 && (delay < 0 || hwd < delay)) delay = hwd;
-        if (!s.kms.flip_pending) {          /* a resolution/output chosen in Settings → Displays */
-            uint32_t mconn;
-            struct drm_mode_modeinfo mmode;
-            if (display_take_modeset(&mconn, &mmode)) run_modeset(&s, mconn, &mmode);
-        }
+        /* Settings → Displays or a hotplug: displays, modes, scales, arrangement (between frames) */
+        if (!s.headless && !any_flip_pending(&s) && display_take_resync()) outputs_apply(&s);
         double tpd = tp_timeout(now_ms());
         if (tpd >= 0 && (delay < 0 || tpd < delay)) delay = tpd;
         /* sin monitor y sin nadie mirando no se dibuja (al conectarse alguien llega un cuadro entero) */
         int unseen = s.headless && !mirror_clients() && !media_needs_cpu();   /* grabando la pantalla, sí */
         if (!s.headless && display_is_off()) unseen = 1;     /* screen off after idle (DPMS): nothing to draw */
-        int wants = !unseen && (ui.dirty || s.cursor_dirty || js_wants_frame() || wl_wants_frame() || media_wants_frame());
+        int wants = !unseen && (ui.dirty || s.cursor_dirty || js_wants_frame() || wl_wants_frame() || media_wants_frame() || outs_have_work(&s));
         /* sin monitor no hay vblank: a lo sumo 60 cuadros por segundo */
         double pace = s.headless ? s.last_render + 16.6 - now_ms() : 0;
-        if (wants && !s.kms.flip_pending && pace <= 0) { render(&s); wants = 0; }
+        if (wants && !all_busy(&s) && pace <= 0) { render(&s); wants = 0; }
         if (wants && pace > 0 && (delay < 0 || pace < delay)) delay = pace;
 
         int wait = delay < 0 ? -1 : (int)ceil(delay);
-        if ((wants && !s.kms.flip_pending && pace <= 0) || ui.theme_request[0] || ui.quit_requested) wait = 0;
+        if ((wants && !all_busy(&s) && pace <= 0) || ui.theme_request[0] || ui.quit_requested) wait = 0;
         if (timeout_ms > 0) {
             double left = start + timeout_ms - now_ms();
             if (left <= 0) break;
@@ -1037,7 +1512,7 @@ int main(int argc, char **argv) {
         struct pollfd pfd[128 + INPUT_MAX_DEVICES + TERM_MAX];     /* +32 para los brokers de apps aisladas, +40 medios */
         int term_ids[TERM_MAX];
         int n = 0;
-        pfd[n++] = (struct pollfd){ s.kms.fd, POLLIN, 0 };
+        pfd[n++] = (struct pollfd){ K0(&s)->fd, POLLIN, 0 };
         pfd[n++] = (struct pollfd){ sfd, POLLIN, 0 };
         for (int i = 0; i < s.input.count; i++) pfd[n++] = (struct pollfd){ s.input.dev[i].fd, POLLIN, 0 };
         int tbase = n, nterm = term_pollfds(pfd + n, TERM_MAX, term_ids);
@@ -1070,10 +1545,13 @@ int main(int argc, char **argv) {
         n += nhw;
         if (poll(pfd, n, wait) < 0 && errno != EINTR) { perror("poll"); break; }
         if (pfd[0].revents & POLLIN) {
-            int was = s.kms.flip_pending;
-            kms_dispatch(&s.kms);
-            if (was && !s.kms.flip_pending)
-                wl_presented(s.kms.flip_ns, s.kms.flip_seq, s.kms.mode.vrefresh ? 1000000000u / s.kms.mode.vrefresh : 16666667u);
+            Kms *heads[OUT_MAX], *mk = &main_out(&s)->kms;
+            int nh = 0, was = mk->flip_pending;
+            for (int i = 0; i < OUT_MAX; i++) if (s.out[i].on && s.out[i].kms.fd >= 0) heads[nh++] = &s.out[i].kms;
+            if (nh) kms_dispatch_heads(heads, nh);
+            /* wp_presentation follows the main display's vblank */
+            if (was && !mk->flip_pending)
+                wl_presented(mk->flip_ns, mk->flip_seq, mk->mode.vrefresh ? 1000000000u / mk->mode.vrefresh : 16666667u);
         }
         if (pfd[1].revents & POLLIN) break;
         int lost[INPUT_MAX_DEVICES], nlost = 0;
@@ -1086,7 +1564,7 @@ int main(int argc, char **argv) {
         for (int k = nlost - 1; k >= 0; k--) input_remove(&s.input, lost[k]);
         if (nlost) wl_input_devices_changed();
         /* la GPU vuelve cuando ya nadie mira desde la red */
-        if (s.gpu_paused && !s.headless && !mirror_clients() && !media_needs_cpu() && !s.kms.flip_pending && !display_cpu_only()) {
+        if (s.gpu_paused && !s.headless && !any_flip_pending(&s) && gpu_allowed(&s)) {
             s.gpu_paused = 0;
             gpu_start(&s);
         }
@@ -1122,7 +1600,7 @@ int main(int argc, char **argv) {
     mirror_stop();
     gpu_tex_free(s.cursor_tex);
     gpu_shutdown();
-    if (!s.headless) kms_close(&s.kms);
+    for (int i = OUT_MAX - 1; i >= 0; i--) if (!s.headless && (s.out[i].on || i == 0)) kms_close(&s.out[i].kms);   /* out[0] (the fd) last */
     /* Cerrar sesión (tema o Ctrl+Alt+Backspace) termina los shells; una señal o un reinicio
      * del servidor los deja vivos en sus guardianes para recuperarlos al volver. */
     term_shutdown(!(ui.quit_requested || s.quit));
@@ -1130,7 +1608,7 @@ int main(int argc, char **argv) {
     snd_stop();
     js_shutdown();
     if (vt >= 0) { ioctl(vt, KDSETMODE, KD_TEXT); close(vt); }
-    free(s.scene.px);
-    free(s.frame);
+    for (int i = 0; i < OUT_MAX; i++) out_free(&s.out[i]);
+    out_free(&s.cap);
     return 0;
 }

@@ -19,7 +19,7 @@
   "debian.noIndex": "The Debian package list has not been downloaded yet.",
   "debian.none": "Nothing found.",
   "debian.notFound": "Package {name} was not found.",
-  "debian.otherPackages": "OTHER PACKAGES",
+  "debian.otherPackages": "Other packages",
   "debian.results": "Results for “{q}”",
   "debian.unavailable": "The Debian package engine is not available in this lord-server build.",
   "debian.update": "Check for updates",
@@ -107,5 +107,14 @@
   "manage.noOriginal": "Installed before signing; no original kept",
   "restore.done": "“{name}” restored to the original.",
   "share.done": "Signed package written to {path} (your key {key}…)",
-  "debian.noIndexTitle": "The Debian catalog is missing"
+  "debian.noIndexTitle": "The Debian catalog is missing",
+  "info.title": "Information",
+  "info.description": "Description",
+  "info.package": "Package",
+  "info.version": "Version",
+  "info.installed": "Installed version",
+  "info.size": "Size on disk",
+  "info.suite": "Distribution",
+  "info.homepage": "Website",
+  "debian.noneHint": "Try another word, or the name of the Debian package."
 }

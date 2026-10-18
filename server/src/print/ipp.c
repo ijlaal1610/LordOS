@@ -1,4 +1,4 @@
-/* ipp.c — ver ipp.h. */
+/* ipp.c — see ipp.h. */
 #include "ipp.h"
 
 #include <stdlib.h>
@@ -8,7 +8,7 @@
 #define IPP_MAX_VALUES 60000
 #define IPP_MAX_DEPTH  8
 
-/* ---- codificar ---- */
+/* ---- encoding ---- */
 
 static void put(IppBuf *b, const void *d, size_t n) {
     if (b->err) return;
@@ -83,7 +83,7 @@ void ipp_std(IppBuf *b, const char *printer_uri, const char *user) {
     if (user) ipp_add_str(b, IPP_T_NAME, "requesting-user-name", user);
 }
 
-/* ---- decodificar ---- */
+/* ---- decoding ---- */
 
 typedef struct { const uint8_t *p; size_t n, i; int attrs, vals; } Rd;
 
@@ -117,14 +117,14 @@ static char *dupn(const uint8_t *p, size_t n) {
     if (!s) return NULL;
     memcpy(s, p, n);
     s[n] = 0;
-    /* un 0 en el medio cortaría el texto: se reemplaza */
+    /* a 0 in the middle would cut the text: it's replaced */
     for (size_t i = 0; i < n; i++) if (!s[i]) s[i] = '?';
     return s;
 }
 
 static int read_value(Rd *r, uint8_t tag, IppVal *v, int depth);
 
-/* Lee miembros de una colección hasta endCollection. */
+/* Reads members of a collection up to endCollection. */
 static int read_collection(Rd *r, IppVal *v, int depth) {
     if (depth > IPP_MAX_DEPTH) return -1;
     IppAttr **tail = &v->col, *cur = NULL;
@@ -133,7 +133,7 @@ static int read_collection(Rd *r, IppVal *v, int depth) {
         uint8_t tag = r->p[r->i++];
         uint16_t nl, vl;
         if (rd16(r, &nl) || r->i + nl > r->n) return -1;
-        r->i += nl;                                  /* en una colección el nombre va vacío */
+        r->i += nl;                                  /* in a collection the name is empty */
         if (rd16(r, &vl) || r->i + vl > r->n) return -1;
         if (tag == IPP_T_ENDCOL) { r->i += vl; return 0; }
         if (tag == IPP_T_MEMBERNAME) {
@@ -147,8 +147,8 @@ static int read_collection(Rd *r, IppVal *v, int depth) {
             if (!cur->name) return -1;
             continue;
         }
-        if (!cur) return -1;                         /* un valor sin nombre de miembro */
-        r->i -= 2;                                   /* read_value vuelve a leer el largo */
+        if (!cur) return -1;                         /* a value without a member name */
+        r->i -= 2;                                   /* read_value reads the length again */
         IppVal *nv = calloc(1, sizeof *nv);
         if (!nv) return -1;
         IppVal **vt = &cur->vals;
@@ -188,7 +188,7 @@ static int read_value(Rd *r, uint8_t tag, IppVal *v, int depth) {
     case IPP_T_BEGCOL:
         return read_collection(r, v, depth);
     case IPP_T_TEXTLANG: case IPP_T_NAMELANG: {
-        /* idioma (largo + texto) y el texto (largo + texto) */
+        /* language (length + text) and the text (length + text) */
         if (vl < 4) return -1;
         size_t ll = (size_t)(d[0] << 8 | d[1]);
         if (2 + ll + 2 > vl) return -1;
@@ -221,7 +221,7 @@ int ipp_parse(const uint8_t *data, size_t len, IppMsg *m) {
         if (r.i >= r.n) goto bad;
         uint8_t tag = data[r.i++];
         if (tag == IPP_G_END) break;
-        if (tag < 0x10) {                            /* etiqueta de grupo */
+        if (tag < 0x10) {                            /* group tag */
             if (tag == 0) goto bad;
             group = tag;
             gseq++;
@@ -229,7 +229,7 @@ int ipp_parse(const uint8_t *data, size_t len, IppMsg *m) {
             continue;
         }
         if (!group) goto bad;
-        if (tag == 0x7f) goto bad;                   /* etiquetas extendidas: no se usan */
+        if (tag == 0x7f) goto bad;                   /* extended tags: not used */
         uint16_t nl;
         if (rd16(&r, &nl) || r.i + nl > r.n) goto bad;
         if (nl) {
@@ -243,7 +243,7 @@ int ipp_parse(const uint8_t *data, size_t len, IppMsg *m) {
             cur->name = dupn(data + r.i, nl);
             if (!cur->name) goto bad;
             r.i += nl;
-        } else if (!cur) goto bad;                   /* valor extra sin atributo */
+        } else if (!cur) goto bad;                   /* extra value without an attribute */
         IppVal *v = calloc(1, sizeof *v);
         if (!v) goto bad;
         IppVal **vt = &cur->vals;
@@ -271,7 +271,7 @@ const IppAttr *ipp_find(const IppMsg *m, const IppAttr *from, uint8_t group, con
 }
 
 const IppAttr *ipp_find_in(const IppAttr *start, const char *name) {
-    /* hacia adelante dentro del mismo grupo (los atributos están en orden) */
+    /* forward within the same group (the attributes are in order) */
     for (const IppAttr *a = start; a && a->gseq == start->gseq; a = a->next)
         if (!strcmp(a->name, name)) return a;
     return NULL;

@@ -1,4 +1,4 @@
-/* style.c — tabla de propiedades CSS soportadas (nombres estilo React). */
+/* style.c — table of supported CSS properties (React-style names). */
 #include "ui.h"
 #include "../cursor.h"
 

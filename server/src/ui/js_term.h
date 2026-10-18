@@ -1,4 +1,4 @@
-/* js_term.h — lord.term.* (terminales) y lord.clipboard. */
+/* js_term.h — lord.term.* (terminals) and lord.clipboard. */
 #ifndef LORD_JS_TERM_H
 #define LORD_JS_TERM_H
 

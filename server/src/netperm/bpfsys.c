@@ -1,4 +1,4 @@
-/* bpfsys.c — syscall bpf() directo (ver bpfsys.h). */
+/* bpfsys.c — direct bpf() syscall (see bpfsys.h). */
 #include "netperm/bpfsys.h"
 
 #include <errno.h>
@@ -32,7 +32,7 @@ int bpfs_map_create(uint32_t type, uint32_t key, uint32_t val, uint32_t max, uin
     a.map_flags = flags;
     set_name(a.map_name, name);
     int fd = sys_bpf(BPF_MAP_CREATE, &a);
-    if (fd < 0 && errno == EINVAL) {                /* kernels sin nombres de mapa */
+    if (fd < 0 && errno == EINVAL) {                /* kernels without map names */
         memset(a.map_name, 0, sizeof a.map_name);
         fd = sys_bpf(BPF_MAP_CREATE, &a);
     }
@@ -163,7 +163,7 @@ uint64_t bpfs_cgroup_id(int dirfd, const char *name) {
         memcpy(&id, fh->f_handle, sizeof id);
         return id;
     }
-    struct stat st;                                  /* respaldo: en 64 bits el id es el inodo */
+    struct stat st;                                  /* fallback: on 64 bits the id is the inode */
     if (fstatat(dirfd, name, &st, AT_SYMLINK_NOFOLLOW) == 0 && S_ISDIR(st.st_mode)) return (uint64_t)st.st_ino;
     return 0;
 }

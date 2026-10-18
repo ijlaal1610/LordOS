@@ -1,8 +1,8 @@
-// Visor de PDF — al estilo de Vista Previa de macOS: desplazamiento continuo o de a una página,
-// miniaturas e índice, búsqueda con resaltado, zoom y ajuste, rotar, seleccionar y copiar texto,
-// ir a una página, enlaces, formularios, anotaciones (resaltar, nota y a mano alzada) guardadas como
-// copia, modo oscuro con la página invertida e imprimir con el diálogo del sistema.
-// Poppler corre en el ayudante encerrado lord-doc (ver docs/DOCUMENTOS.md); esta app solo pide.
+// PDF Viewer — in the style of macOS Preview: continuous or single-page scrolling,
+// thumbnails and outline, search with highlighting, zoom and fit, rotate, select and copy text,
+// go to a page, links, forms, annotations (highlight, note and freehand) saved as a
+// copy, dark mode with the page inverted and printing with the system dialog.
+// Poppler runs in the confined lord-doc helper (see docs/DOCUMENTS.md); this app only asks.
 import {
   View, Text, TextInput, Button, useTheme, useAppWindow, useKeyboard, addListener, wm, fs, clipboard, pdf, print, DocImage, releaseImage,
   formatNumber, direction, t as tr, Toolbar, ToolbarButton, ToolbarGroup, ToolbarSpacer, SearchField, EmptyState,
@@ -16,7 +16,7 @@ export function Icon({ size: s }) {
   return (
     <View style={{ width: s, height: s, borderRadius: s * 0.225, background: 'linear-gradient(160deg, #ff7a59, #c8102e)',
       boxShadow: `0 ${s * 0.04}px ${s * 0.12}px rgba(0,0,0,0.35)`, overflow: 'hidden' }}>
-      {/* dos hojas, la de adelante con renglones y uno resaltado */}
+      {/* two sheets, the front one with ruled lines and one highlighted */}
       <View style={{ position: 'absolute', left: s * 0.3, top: s * 0.12, width: s * 0.5, height: s * 0.64, borderRadius: s * 0.04, backgroundColor: 'rgba(255,255,255,0.55)' }} />
       <View style={{ position: 'absolute', left: s * 0.2, top: s * 0.2, width: s * 0.52, height: s * 0.66, borderRadius: s * 0.045, backgroundColor: '#ffffff',
         boxShadow: `0 ${s * 0.02}px ${s * 0.06}px rgba(0,0,0,0.3)` }} />
@@ -31,7 +31,7 @@ export function Icon({ size: s }) {
 
 const GAP = 14;
 const ZOOMS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
-const PX_PER_PT = 96 / 72;                        // 100 % = tamaño real en una pantalla de 96 ppp
+const PX_PER_PT = 96 / 72;                        // 100 % = real size on a 96 dpi screen
 const TOOL_COLORS = ['#ffd60a', '#30d158', '#64d2ff', '#ff6482', '#bf5af2'];
 const winStates = new Map();
 
@@ -50,7 +50,7 @@ function ToolBtn({ label, onClick, active, disabled, th, title }) {
   );
 }
 
-// Lista de PDF de la carpeta personal (pantalla sin documento)
+// List of PDFs in the home folder (no-document screen)
 function Welcome({ onOpen, th }) {
   const [list, setList] = useState(null);
   useEffect(() => { const id = setTimeout(() => { try { setList(fs.search(fs.home(), '.pdf', { limit: 40, depth: 6 }).filter((e) => /\.pdf$/i.test(e.name))); } catch (e) { setList([]); } }, 30); return () => clearTimeout(id); }, []);
@@ -95,8 +95,8 @@ export default function PdfViewer() {
   const [error, setError] = useState(null);
   const [needPass, setNeedPass] = useState(false);
   const [password, setPassword] = useState('');
-  const [rev, setRev] = useState(0);                  // algo llegó de lord-doc: redibujar
-  const [zoom, setZoom] = useState(saved?.zoom || 'width');   // número | 'width' | 'page'
+  const [rev, setRev] = useState(0);                  // something arrived from lord-doc: redraw
+  const [zoom, setZoom] = useState(saved?.zoom || 'width');   // number | 'width' | 'page'
   const [rot, setRot] = useState(0);
   const [mode, setMode] = useState(saved?.mode || 'continuous');   // 'continuous' | 'single'
   const [invert, setInvert] = useState(() => th.mode === 'dark' && !!saved?.invert);
@@ -109,12 +109,12 @@ export default function PdfViewer() {
   const [selection, setSelection] = useState(null);    // { page, rects, text }
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState(null);              // { list: [{ page, rect }], cur, done }
-  const [goto, setGoto] = useState(null);              // texto del campo «ir a página»
-  const [info, setInfo] = useState(() => new Map());   // página → { links, fields, notes }
-  const [ink, setInk] = useState(null);                // { page, strokes: [[x,y…]] } en puntos
+  const [goto, setGoto] = useState(null);              // text of the «go to page» field
+  const [info, setInfo] = useState(() => new Map());   // page → { links, fields, notes }
+  const [ink, setInk] = useState(null);                // { page, strokes: [[x,y…]] } in points
   const [noteAt, setNoteAt] = useState(null);          // { page, x, y, text }
   const [editField, setEditField] = useState(null);    // { page, f, r, value }
-  const [annotated, setAnnotated] = useState([]);      // páginas con anotaciones nuevas (para deshacer)
+  const [annotated, setAnnotated] = useState([]);      // pages with new annotations (for undo)
   const [msg, setMsg] = useState(null);
   const [view, setView] = useState({ w: 800, h: 600 });
   const area = useRef(null);
@@ -126,7 +126,7 @@ export default function PdfViewer() {
   useEffect(() => { const p = argPath(args); if (p && args?.nonce) setPath(p); }, [args?.nonce]);
   useEffect(() => { if (!msg) return undefined; const id = setTimeout(() => setMsg(null), 3500); return () => clearTimeout(id); }, [msg]);
 
-  // ---- abrir ----
+  // ---- open ----
   useEffect(() => {
     if (!path) return undefined;
     let alive = true, d = null;
@@ -141,7 +141,7 @@ export default function PdfViewer() {
       x.onCrash(() => { if (alive) setError(tr('pdf.crashed')); });
       setNeedPass(false);
       setDoc(x);
-      // los tamaños de todas las páginas llegan después, sin frenar la primera
+      // the sizes of all the pages arrive later, without holding up the first one
       if (x.info.pages > 1) {
         const all = await x.sizes().catch(() => null);
         if (alive && all?.sizes) { x.info.sizes = all.sizes; x.info.forms = all.forms; setRev((r) => r + 1); }
@@ -156,7 +156,7 @@ export default function PdfViewer() {
   }, [path, password]);
 
   const n = doc?.info.pages || 0;
-  // tamaños: hasta que llegan todos, se supone que todas son como la primera
+  // sizes: until they all arrive, all are assumed to be like the first one
   const sizes = useMemo(() => {
     if (!doc) return [];
     const s = doc.info.sizes || [];
@@ -164,7 +164,7 @@ export default function PdfViewer() {
     return Array.from({ length: n }, (_, i) => s[i] || s[0] || [595, 842]);
   }, [doc, rev, n]);
 
-  // ---- tamaño del área y escala ----
+  // ---- area size and scale ----
   useEffect(() => {
     const measure = () => { if (area.current) { const l = lord.getLayout(area.current.id); if (l[2] !== view.w || l[3] !== view.h) setView({ w: l[2], h: l[3] }); } };
     measure();
@@ -180,11 +180,11 @@ export default function PdfViewer() {
   const maxOffset = mode === 'single' ? 0 : Math.max(0, lay.height - view.h);
   const maxX = Math.max(0, lay.width + 2 * GAP - view.w);
 
-  // ---- qué se ve ----
+  // ---- what is visible ----
   const [first, last] = mode === 'single' ? [page, page] : visibleRange(lay.tops, sizes, rot, scale, offset, offset + view.h);
   useEffect(() => {
     if (mode !== 'continuous' || !lay.tops.length) return;
-    // la página «actual»: la que ocupa el centro
+    // the «current» page: the one in the center
     const mid = offset + view.h / 3;
     let p = first;
     while (p < last && lay.tops[p + 1] <= mid) p++;
@@ -198,10 +198,10 @@ export default function PdfViewer() {
         keep.add(p);
         cache.current.want(p, shown(sizes[p], rot)[0] * scale, rot, invert, 4);
       }
-      // las vecinas, con menos prioridad
+      // the neighbors, with lower priority
       for (const p of [last + 1, first - 1, last + 2]) if (p >= 0 && p < n) { keep.add(p); cache.current.want(p, shown(sizes[p], rot)[0] * scale, rot, invert, 2); }
       cache.current.drop(keep);
-      // enlaces y campos de lo que se ve
+      // links and fields of what is visible
       for (let p = first; p <= last; p++) {
         if (info.has(p)) continue;
         info.set(p, null);
@@ -210,26 +210,26 @@ export default function PdfViewer() {
     }, zoomAnim.current ? 120 : 0);
     zoomAnim.current = false;
     return () => clearTimeout(id);
-  }, [doc, first, last, scale, rot, invert, rev, sizes]);   // rev: llegó algo o una página cambió (anotación, formulario)
+  }, [doc, first, last, scale, rot, invert, rev, sizes]);   // rev: something arrived or a page changed (annotation, form)
   const zoomAnim = useRef(false);
 
-  // primer dibujo: se mide (lo pide docs/DOCUMENTOS.md)
+  // first draw: it is measured (docs/DOCUMENTS.md asks for it)
   useEffect(() => {
     const c = cache.current;
-    if (c && c.firstAt && !c.reported) { c.reported = true; console.log(`pdf: ${fs.basename(path)} primera página en ${c.firstAt - c.openedAt} ms (${n} páginas)`); }
+    if (c && c.firstAt && !c.reported) { c.reported = true; console.log(`pdf: ${fs.basename(path)} first page in ${c.firstAt - c.openedAt} ms (${n} pages)`); }
   }, [rev]);
 
-  // ---- navegación ----
+  // ---- navigation ----
   const goPage = (p, rect) => {
     const q = Math.max(0, Math.min(n - 1, p));
     setPage(q);
     if (mode !== 'continuous') return;
-    // con un rectángulo (un resultado de búsqueda), que quede a un tercio de la altura
+    // with a rectangle (a search result), keep it at a third of the height
     const y = rect ? lay.tops[q] + rectToView(rect, sizes[q], rot, scale).top - view.h / 3 : lay.tops[q] - GAP;
     setOffset(Math.max(0, Math.min(maxOffset, y)));
   };
   const setZoomTo = (z) => {
-    // mantener a la vista lo que está arriba
+    // keep in view what is at the top
     const top = page;
     zoomAnim.current = true;
     setZoom(z);
@@ -256,7 +256,7 @@ export default function PdfViewer() {
   };
   const wheelAt = useRef(0);
 
-  // ---- búsqueda ----
+  // ---- search ----
   const runFind = (q) => {
     if (!doc || !q.trim()) { setHits(null); return; }
     const acc = [];
@@ -274,7 +274,7 @@ export default function PdfViewer() {
     goPage(hits.list[cur].page, hits.list[cur].rect);
   };
 
-  // ---- coordenadas: evento → página y punto ----
+  // ---- coordinates: event → page and point ----
   const pageLeft = (p) => {
     const w = shown(sizes[p], rot)[0] * scale;
     return Math.max(GAP, (view.w - w) / 2) - offsetX;
@@ -305,11 +305,11 @@ export default function PdfViewer() {
     return inf.fields.find((k) => hp.x >= k.r[0] && hp.x <= k.r[0] + k.r[2] && hp.y >= k.r[1] && hp.y <= k.r[1] + k.r[3]) || null;
   };
 
-  // ---- mouse sobre las páginas ----
+  // ---- mouse over the pages ----
   const select = (d, style) => {
     if (!doc) return;
     const req = ++selReq.current;
-    doc.select(d.page, d.x0, d.y0, d.x1, d.y1, style)   /* inicio y fin, en el orden del arrastre */
+    doc.select(d.page, d.x0, d.y0, d.x1, d.y1, style)   /* start and end, in drag order */
       .then((r) => { if (req === selReq.current) setSelection({ page: d.page, rects: r.rects, text: r.text }); }).catch(() => {});
   };
   const selReq = useRef(0);
@@ -372,13 +372,13 @@ export default function PdfViewer() {
   }, [first, last, scale, rot, offset, offsetX, view.w, sizes, tool, doc]);
   const lastClick = useRef(0);
   const hlPending = useRef(false);
-  // resaltar: cuando llega la selección del arrastre
+  // highlight: when the drag selection arrives
   useEffect(() => {
     if (!hlPending.current || !selection || tool !== 'highlight') return;
     hlPending.current = false;
     if (!selection.rects.length) return;
     addAnnot({ page: selection.page, type: 'highlight', rects: selection.rects, color });
-    selReq.current++;                       // una selección que llegue tarde ya no se muestra
+    selReq.current++;                       // a selection that arrives late is no longer shown
     setSelection(null);
   }, [selection]);
 
@@ -400,7 +400,7 @@ export default function PdfViewer() {
     doc.undo(p).then(() => { cache.current.invalidate(p); thumbs.current.invalidate(p); setAnnotated((x) => x.slice(0, -1)); }).catch(() => {});
   };
 
-  // formularios
+  // forms
   const onField = (p, fm) => {
     const f = fm.f;
     if (f.type === 'check' || f.type === 'radio') {
@@ -418,7 +418,7 @@ export default function PdfViewer() {
     doc.setField(e.f.id, value).then(() => { refreshInfo(e.page); cache.current.invalidate(e.page); thumbs.current.invalidate(e.page); edited.current = true; setRev((r) => r + 1); }).catch(() => {});
   };
 
-  // guardar una copia (nunca pisa el original)
+  // save a copy (never overwrites the original)
   const saveCopy = () => {
     if (!doc) return;
     const dir = fs.parent(path), base = fs.basename(path).replace(/\.pdf$/i, '');
@@ -431,7 +431,7 @@ export default function PdfViewer() {
   const copySel = () => { if (selection?.text) { clipboard.set(selection.text); setMsg(tr('pdf.copied')); } };
   const rotate = (d) => setRot((r) => (r + d + 4) % 4);
 
-  // ---- teclado ----
+  // ---- keyboard ----
   useKeyboard((e) => {
     if (goto != null || noteAt || editField) return;
     const mod = e.meta || e.ctrl;
@@ -461,7 +461,7 @@ export default function PdfViewer() {
   });
   const findRef = useRef(false);
 
-  // ---- menús de la app ----
+  // ---- app menus ----
   useEffect(() => {
     wm.setMenus(wid, [
       { label: tr('pdf.menu.file'), items: [
@@ -496,7 +496,7 @@ export default function PdfViewer() {
     ]);
   }, [doc, mode, side, zoom, invert, annotated.length, selection?.text, path, page, n]);
 
-  // ---- dibujo ----
+  // ---- drawing ----
   const dark = th.mode === 'dark';
   const pagesShown = [];
   if (doc) {
@@ -510,19 +510,19 @@ export default function PdfViewer() {
         <View key={p} style={{ position: 'absolute', left: pageLeft(p), top: pageTop(p), width: W, height: H, backgroundColor: invert ? '#1b1b1f' : '#ffffff',
           boxShadow: '0 2px 10px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
           {e ? <DocImage image={e.image} style={{ position: 'absolute', left: 0, top: 0, width: W, height: H, objectFit: 'fill' }} /> : null}
-          {/* resultados de la búsqueda */}
+          {/* search results */}
           {pageHits.map((x) => { const r = rectToView(x.rect, sizes[p], rot, scale); return <View key={`h${x.i}`} style={{ position: 'absolute', ...r, borderRadius: 2, backgroundColor: x.i === hits.cur ? 'rgba(255,149,0,0.55)' : 'rgba(255,214,10,0.42)', pointerEvents: 'none' }} />; })}
-          {/* selección de texto */}
+          {/* text selection */}
           {selection?.page === p && selection.rects.map((r, i) => { const v = rectToView(r, sizes[p], rot, scale); return <View key={`s${i}`} style={{ position: 'absolute', ...v, backgroundColor: tool === 'highlight' ? `${color}88` : 'rgba(10,132,255,0.32)', pointerEvents: 'none' }} />; })}
-          {/* campos de formulario */}
+          {/* form fields */}
           {inf?.fields?.map((fm, i) => {
             const v = rectToView(fm.r, sizes[p], rot, scale);
             if (fm.f.type === 'other' || fm.f.type === 'push') return null;
             return <View key={`f${i}`} style={{ position: 'absolute', ...v, backgroundColor: fm.f.ro ? 'transparent' : 'rgba(10,132,255,0.10)', border: fm.f.ro ? '0 solid transparent' : '1px solid rgba(10,132,255,0.45)', pointerEvents: 'none' }} />;
           })}
-          {/* notas existentes */}
+          {/* existing notes */}
           {inf?.notes?.map((nt, i) => { const v = rectToView(nt.r, sizes[p], rot, scale); return <View key={`n${i}`} style={{ position: 'absolute', ...v }} />; })}
-          {/* trazo en curso */}
+          {/* stroke in progress */}
           {ink?.page === p && ink.strokes.map((s, si) => {
             const dots = [];
             for (let k = 0; k + 1 < s.length; k += 2) {
@@ -535,7 +535,7 @@ export default function PdfViewer() {
       );
     }
   }
-  // el editor de un campo de texto, encima de la página
+  // the editor for a text field, on top of the page
   let fieldEditor = null;
   if (editField && doc) {
     const v = rectToView(editField.r, sizes[editField.page], rot, scale);
@@ -638,14 +638,14 @@ export default function PdfViewer() {
               <Button label={tr('pdf.reopen')} onClick={() => { const p = path; setError(null); setPath(null); setTimeout(() => setPath(p), 0); }} />
             </View>
           )}
-          {/* barra de desplazamiento */}
+          {/* scrollbar */}
           {doc && mode === 'continuous' && maxOffset > 0 && (
             <View style={{ position: 'absolute', right: 3, width: 6, borderRadius: 3, top: (view.h - Math.max(30, view.h * view.h / lay.height)) * (offset / maxOffset),
               height: Math.max(30, view.h * view.h / lay.height), backgroundColor: dark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)' }} />
           )}
         </View>
       </View>
-      {/* barra de estado */}
+      {/* status bar */}
       <View style={{ height: 26, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, backgroundColor: barBg }}>
         <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 1, backgroundColor: th.separator }} />
         <Text style={{ flex: 1, fontSize: 11, color: msg ? th.accent : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>

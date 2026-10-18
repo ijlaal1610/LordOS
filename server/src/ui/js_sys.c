@@ -1,16 +1,16 @@
-/* js_sys.c — APIs de sistema para temas y apps: lord.fs, lord.system, lord.settings,
- * lord.themes, lord.quit y lord.measureText.
+/* js_sys.c — system APIs for themes and apps: lord.fs, lord.system, lord.settings,
+ * lord.themes, lord.quit and lord.measureText.
  *
- * Reglas de seguridad: el servidor ya corre como el usuario de la sesión (no root);
- * lord.fs trabaja solo dentro de la carpeta personal y de los discos montados del usuario
- * (/media/$USER, /run/media/$USER; fsops_allowed): lista y lee (hasta 8 MB), escribe (hasta
- * 32 MB), crea carpetas, renombra, copia y mueve (en un hilo, fsops.c), y manda a la Papelera de
- * freedesktop; borrar de verdad solo se puede adentro de la Papelera. La escritura es atómica (temporal + rename),
- * no sigue enlaces simbólicos en el archivo final y NO puede tocar ~/.local/share/applications,
- * ~/.config/autostart, ~/.local/share/lordos/apps ni ~/.config/lordos/settings.json: desde JS no
- * se puede crear un .desktop (lo único que lord.apps.launch ejecuta), ni instalar apps sin
- * lpk.c, ni pisar los ajustes. lord.settings solo escribe en ~/.config/lordos/settings.json;
- * lord.themes solo acepta nombres simples. */
+ * Security rules: the server already runs as the session user (not root);
+ * lord.fs works only inside the home folder and the user's mounted disks
+ * (/media/$USER, /run/media/$USER; fsops_allowed): it lists and reads (up to 8 MB), writes (up to
+ * 32 MB), creates folders, renames, copies and moves (in a thread, fsops.c), and sends to the freedesktop
+ * Trash; real deletion is only possible inside the Trash. Writing is atomic (temporary + rename),
+ * doesn't follow symbolic links in the final file and can NOT touch ~/.local/share/applications,
+ * ~/.config/autostart, ~/.local/share/lordos/apps or ~/.config/lordos/settings.json: from JS it is
+ * not possible to create a .desktop (the only thing lord.apps.launch runs), nor to install apps without
+ * lpk.c, nor to overwrite the settings. lord.settings only writes to ~/.config/lordos/settings.json;
+ * lord.themes only accepts simple names. */
 #include "js_sys.h"
 #include "ui.h"
 #include "fonts.h"
@@ -66,8 +66,8 @@ void js_sys_init(void) {
     apply_locale_conf();
 }
 
-/* Resuelve una ruta (relativa a la carpeta personal o absoluta) y verifica que no salga de las
- * raíces permitidas: la carpeta personal y los montajes del usuario (/media/$USER, /run/media/$USER). */
+/* Resolves a path (relative to the home folder or absolute) and checks that it doesn't leave the
+ * allowed roots: the home folder and the user's mounts (/media/$USER, /run/media/$USER). */
 static int resolve_in_home(const char *path, char *out) {
     char full[PATH_MAX * 2];
     if (path[0] == '/') snprintf(full, sizeof full, "%s", path);
@@ -88,7 +88,7 @@ static char *read_small(const char *path, size_t max, size_t *len) {
     return buf;
 }
 
-/* Valor de "clave: valor" / "clave=valor" en un archivo de texto de /proc o /etc. */
+/* Value of "key: value" / "key=value" in a text file from /proc or /etc. */
 static int field(const char *text, const char *key, char *out, size_t size) {
     size_t kl = strlen(key);
     for (const char *p = text; p && *p; p = strchr(p, '\n') ? strchr(p, '\n') + 1 : NULL) {
@@ -118,7 +118,7 @@ static JSValue f_fs_list(JSContext *c, JSValueConst this_val, int argc, JSValueC
     char dir[PATH_MAX];
     int bad = resolve_in_home(p, dir);
     JS_FreeCString(c, p);
-    if (bad) return JS_ThrowRangeError(c, "ruta fuera de la carpeta personal o inexistente");
+    if (bad) return JS_ThrowRangeError(c, "path outside the home folder or nonexistent");
     DIR *d = opendir(dir);
     if (!d) return JS_ThrowInternalError(c, "%s", strerror(errno));
     JSValue arr = JS_NewArray(c);
@@ -131,7 +131,7 @@ static JSValue f_fs_list(JSContext *c, JSValueConst this_val, int argc, JSValueC
         snprintf(fp, sizeof fp, "%s/%s", dir, e->d_name);
         struct stat lst;
         int link = !lstat(fp, &lst) && S_ISLNK(lst.st_mode);
-        if (stat(fp, &st)) { if (!link) continue; st = lst; }     /* enlace roto: se muestra igual */
+        if (stat(fp, &st)) { if (!link) continue; st = lst; }     /* broken link: shown anyway */
         JSValue o = JS_NewObject(c);
         JS_SetPropertyStr(c, o, "name", JS_NewString(c, e->d_name));
         JS_SetPropertyStr(c, o, "link", JS_NewBool(c, link));
@@ -144,8 +144,8 @@ static JSValue f_fs_list(JSContext *c, JSValueConst this_val, int argc, JSValueC
     return arr;
 }
 
-/* lord.fs.read(ruta, 'text' | 'binary') — contenido de un archivo regular de $HOME
- * (texto UTF-8 o ArrayBuffer). Lo usan, por ejemplo, el importador de perfiles de iTerm2. */
+/* lord.fs.read(path, 'text' | 'binary') — content of a regular file in $HOME
+ * (UTF-8 text or ArrayBuffer). Used, for example, by the iTerm2 profile importer. */
 static JSValue f_fs_read(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     const char *p = JS_ToCString(c, argv[0]);
@@ -156,10 +156,10 @@ static JSValue f_fs_read(JSContext *c, JSValueConst this_val, int argc, JSValueC
     char path[PATH_MAX];
     int bad = resolve_in_home(p, path);
     JS_FreeCString(c, p);
-    if (bad) return JS_ThrowRangeError(c, "ruta fuera de la carpeta personal o inexistente");
+    if (bad) return JS_ThrowRangeError(c, "path outside the home folder or nonexistent");
     struct stat st;
-    if (stat(path, &st) || !S_ISREG(st.st_mode)) return JS_ThrowTypeError(c, "no es un archivo");
-    if (st.st_size > FS_READ_MAX) return JS_ThrowRangeError(c, "archivo demasiado grande (máx. 8 MB)");
+    if (stat(path, &st) || !S_ISREG(st.st_mode)) return JS_ThrowTypeError(c, "not a file");
+    if (st.st_size > FS_READ_MAX) return JS_ThrowRangeError(c, "file too large (max. 8 MB)");
     size_t len;
     char *buf = read_small(path, FS_READ_MAX, &len);
     if (!buf) return JS_ThrowInternalError(c, "%s", strerror(errno));
@@ -170,8 +170,8 @@ static JSValue f_fs_read(JSContext *c, JSValueConst this_val, int argc, JSValueC
 
 /* ---- lord.system ---- */
 
-/* En ARM64 /proc/cpuinfo no tiene "model name": el núcleo sale de "CPU part" y la placa del device
- * tree ("Cortex-A76 · Raspberry Pi 5 Model B Rev 1.0"). Ver docs/RASPBERRY.md. */
+/* On ARM64 /proc/cpuinfo has no "model name": the core comes from "CPU part" and the board from the device
+ * tree ("Cortex-A76 · Raspberry Pi 5 Model B Rev 1.0"). See docs/RASPBERRY.md. */
 static void arm_cpu_name(const char *txt, char *out, size_t size) {
     static const struct { unsigned part; const char *name; } parts[] = {
         { 0xd03, "Cortex-A53" }, { 0xd04, "Cortex-A35" }, { 0xd05, "Cortex-A55" }, { 0xd07, "Cortex-A57" },
@@ -193,7 +193,7 @@ static void arm_cpu_name(const char *txt, char *out, size_t size) {
     free(board);
 }
 
-/* Nombre del procesador ("model name" en x86; en ARM, el núcleo por "CPU part" y la placa). */
+/* Processor name ("model name" on x86; on ARM, the core from "CPU part" and the board). */
 void js_sys_cpu_name(char *out, size_t size) {
     char *txt = read_small("/proc/cpuinfo", 1 << 20, NULL);
     if (!txt || field(txt, "model name", out, size)) arm_cpu_name(txt, out, size);
@@ -235,7 +235,7 @@ static JSValue f_sys_info(JSContext *c, JSValueConst this_val, int argc, JSValue
     JS_SetPropertyStr(c, o, "memAvailableKB", JS_NewFloat64(c, mem_avail));
     JS_SetPropertyStr(c, o, "uptime", JS_NewFloat64(c, uptime));
     JS_SetPropertyStr(c, o, "user", JS_NewString(c, getenv("USER") ? getenv("USER") : ""));
-    /* nombre completo (primer campo de GECOS) y si es administrador (sudo/admin/wheel) */
+    /* full name (first GECOS field) and whether they are an administrator (sudo/admin/wheel) */
     struct passwd *pw = getpwuid(getuid());
     char full[128] = "";
     if (pw && pw->pw_gecos) { snprintf(full, sizeof full, "%s", pw->pw_gecos); full[strcspn(full, ",")] = 0; }
@@ -248,9 +248,9 @@ static JSValue f_sys_info(JSContext *c, JSValueConst this_val, int argc, JSValue
         if (g && (!strcmp(g->gr_name, "sudo") || !strcmp(g->gr_name, "admin") || !strcmp(g->gr_name, "wheel"))) is_admin = 1;
     }
     JS_SetPropertyStr(c, o, "admin", JS_NewBool(c, is_admin));
-    /* sistema en vivo (ISO): ahí aparece el instalador */
+    /* live system (ISO): the installer shows up there */
     JS_SetPropertyStr(c, o, "live", JS_NewBool(c, access("/run/live/medium/live/filesystem.squashfs", F_OK) == 0));
-    struct statvfs vs;                      /* disco del sistema (/) */
+    struct statvfs vs;                      /* system disk (/) */
     if (!statvfs("/", &vs)) {
         JS_SetPropertyStr(c, o, "diskTotal", JS_NewFloat64(c, (double)vs.f_blocks * vs.f_frsize));
         JS_SetPropertyStr(c, o, "diskFree", JS_NewFloat64(c, (double)vs.f_bavail * vs.f_frsize));
@@ -258,7 +258,7 @@ static JSValue f_sys_info(JSContext *c, JSValueConst this_val, int argc, JSValue
     return o;
 }
 
-/* [total, ocioso] en jiffies; el uso de CPU se calcula con la diferencia entre dos lecturas. */
+/* [total, idle] in jiffies; CPU usage is computed from the difference between two reads. */
 static JSValue f_sys_cpu(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     double v[8] = {0}, total = 0;
@@ -298,7 +298,7 @@ static JSValue f_settings_save(JSContext *c, JSValueConst this_val, int argc, JS
     size_t len;
     const char *txt = JS_ToCStringLen(c, &len, argv[0]);
     if (!txt) return JS_EXCEPTION;
-    if (len > SETTINGS_MAX) { JS_FreeCString(c, txt); return JS_ThrowRangeError(c, "ajustes demasiado grandes"); }
+    if (len > SETTINGS_MAX) { JS_FreeCString(c, txt); return JS_ThrowRangeError(c, "settings too large"); }
     char dir[PATH_MAX + 64], tmp[PATH_MAX + 64], path[PATH_MAX + 64];
     snprintf(dir, sizeof dir, "%s/.config", home);
     mkdir(dir, 0700);
@@ -397,23 +397,23 @@ static JSValue f_fonts_list(JSContext *c, JSValueConst this_val, int argc, JSVal
         JS_SetPropertyStr(c, o, "italic", JS_NewBool(c, l[i].italic));
         JS_SetPropertyStr(c, o, "mono", JS_NewBool(c, l[i].mono));
         JS_SetPropertyStr(c, o, "color", JS_NewBool(c, l[i].color));
-        JS_SetPropertyStr(c, o, "path", JS_NewString(c, l[i].path));      /* Tipografías (M9) */
+        JS_SetPropertyStr(c, o, "path", JS_NewString(c, l[i].path));      /* Fonts (M9) */
         JS_SetPropertyStr(c, o, "index", JS_NewInt32(c, l[i].index));
         JS_SetPropertyUint32(c, arr, (uint32_t)i, o);
     }
     return arr;
 }
 
-/* ---- lord.admin: acciones del ayudante privilegiado (admin.c) ---- */
+/* ---- lord.admin: privileged helper actions (admin.c) ---- */
 
 static JSValue f_admin_available(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     return JS_NewBool(c, admin_fd() >= 0);
 }
 
-/* lord.admin.request(acción, argumento): devuelve el id del pedido (0 si no se pudo mandar);
- * las respuestas llegan a __lordAdmin(id, kind, texto). Solo acciones de la lista cerrada de
- * admin.c, que además valida cada argumento del lado root. */
+/* lord.admin.request(action, argument): returns the request id (0 if it couldn't be sent);
+ * responses arrive at __lordAdmin(id, kind, text). Only actions from admin.c's closed list,
+ * which also validates each argument on the root side. */
 static JSValue f_admin_request(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     size_t len = 0;
@@ -424,7 +424,7 @@ static JSValue f_admin_request(JSContext *c, JSValueConst this_val, int argc, JS
     return JS_NewInt32(c, id > 0 ? id : 0);
 }
 
-/* ---- lord.locale: región del usuario e idiomas de la interfaz ---- */
+/* ---- lord.locale: the user's region and interface languages ---- */
 
 static int valid_locale_name(const char *s) {
     size_t n = strlen(s);
@@ -438,7 +438,7 @@ static const char *const lc_vars[] = { "LANG", "LANGUAGE", "LC_CTYPE", "LC_NUMER
 
 static void locale_conf(char *out, size_t n) { snprintf(out, n, "%s/.config/locale.conf", home); }
 
-/* Valores de un archivo "VAR=valor" (locale.conf / /etc/default/locale) en el objeto. */
+/* Values from a "VAR=value" file (locale.conf / /etc/default/locale) into the object. */
 static void read_vars(JSContext *c, JSValue o, const char *path) {
     char *txt = read_small(path, 8192, NULL);
     for (char *line = txt ? strtok(txt, "\n") : NULL; line; line = strtok(NULL, "\n")) {
@@ -453,8 +453,8 @@ static void read_vars(JSContext *c, JSValue o, const char *path) {
     free(txt);
 }
 
-/* Al arrancar: la región del usuario (o la del sistema) pasa al entorno, para que la
- * hereden los shells de la Terminal y las apps que se lancen. */
+/* At startup: the user's region (or the system's) goes into the environment, so that
+ * the Terminal's shells and the launched apps inherit it. */
 static void apply_locale_conf(void) {
     char path[PATH_MAX + 32];
     locale_conf(path, sizeof path);
@@ -486,8 +486,8 @@ static JSValue f_locale_get(JSContext *c, JSValueConst this_val, int argc, JSVal
     return o;
 }
 
-/* lord.locale.set({ LANG, LC_TIME, … }) escribe ~/.config/locale.conf y lo aplica a los
- * procesos que se lancen desde ahora (shells de la Terminal, y apps en el futuro). */
+/* lord.locale.set({ LANG, LC_TIME, … }) writes ~/.config/locale.conf and applies it to the
+ * processes launched from now on (Terminal shells, and apps in the future). */
 static JSValue f_locale_set(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     if (!JS_IsObject(argv[0])) return JS_FALSE;
@@ -515,7 +515,7 @@ static JSValue f_locale_set(JSContext *c, JSValueConst this_val, int argc, JSVal
     return JS_NewBool(c, ok);
 }
 
-/* lord.locale.available() → [{ name: "es_AR.UTF-8", generated }] (UTF-8 de glibc) */
+/* lord.locale.available() → [{ name: "es_AR.UTF-8", generated }] (glibc UTF-8) */
 static JSValue f_locale_available(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     JSValue arr = JS_NewArray(c);
@@ -543,14 +543,14 @@ static int valid_id_dot(const char *s) {
     return 1;
 }
 
-/* Carpetas de catálogos: assets/locales (incluidos) y ~/.local/share/lordos/locales
- * (paquetes de idioma del usuario; ganan si existen los dos). */
+/* Catalog folders: assets/locales (bundled) and ~/.local/share/lordos/locales
+ * (the user's language packs; they win if both exist). */
 static void locale_root(int user, char *out, size_t n) {
     if (user) snprintf(out, n, "%s/.local/share/lordos/locales", home);
     else snprintf(out, n, "%s/locales", assets);
 }
 
-/* lord.locale.catalog(idioma, espacio) → texto JSON o null */
+/* lord.locale.catalog(language, namespace) → JSON text or null */
 static JSValue f_locale_catalog(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *lang = JS_ToCString(c, argv[0]), *ns = JS_ToCString(c, argv[1]);
@@ -564,7 +564,7 @@ static JSValue f_locale_catalog(JSContext *c, JSValueConst this_val, int argc, J
             char *txt = read_small(path, 1 << 20, &len);
             if (txt) { r = JS_NewStringLen(c, txt, len); free(txt); }
         }
-        /* textos de una app instalada como paquete: locales/<idioma>.json dentro de ella */
+        /* strings of an app installed as a package: locales/<language>.json inside it */
         if (JS_IsNull(r) && lpk_valid_id(ns) && !lpk_reserved(ns)) {
             char rel[64];
             snprintf(rel, sizeof rel, "locales/%s.json", lang);
@@ -578,7 +578,7 @@ static JSValue f_locale_catalog(JSContext *c, JSValueConst this_val, int argc, J
     return r;
 }
 
-/* lord.locale.languages() → [{ id, meta (texto de meta.json), user }] */
+/* lord.locale.languages() → [{ id, meta (text of meta.json), user }] */
 static JSValue f_locale_languages(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     JSValue arr = JS_NewArray(c);
@@ -606,8 +606,8 @@ static JSValue f_locale_languages(JSContext *c, JSValueConst this_val, int argc,
     return arr;
 }
 
-/* lord.locale.installPack(idioma, { espacio: textoJSON }) → copia un paquete de idioma de LordOS
- * a ~/.local/share/lordos/locales/<idioma>/ (no necesita root). */
+/* lord.locale.installPack(language, { namespace: JSONtext }) → copies a LordOS language pack
+ * to ~/.local/share/lordos/locales/<language>/ (doesn't need root). */
 static JSValue f_locale_install(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *lang = JS_ToCString(c, argv[0]);
@@ -646,7 +646,7 @@ static JSValue f_locale_install(JSContext *c, JSValueConst this_val, int argc, J
     return JS_NewBool(c, ok);
 }
 
-/* ---- lord.keyboard: distribuciones (libxkbcommon, keyboard.c) ---- */
+/* ---- lord.keyboard: layouts (libxkbcommon, keyboard.c) ---- */
 
 static JSValue f_kb_set(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
@@ -654,7 +654,7 @@ static JSValue f_kb_set(JSContext *c, JSValueConst this_val, int argc, JSValueCo
     int ok = l && v && kb_set(l, v) == 0;
     if (l) JS_FreeCString(c, l);
     if (v) JS_FreeCString(c, v);
-    if (ok) wl_keymap_changed();            /* las apps Wayland reciben el mapa nuevo */
+    if (ok) wl_keymap_changed();            /* Wayland apps receive the new keymap */
     return JS_NewBool(c, ok);
 }
 
@@ -676,7 +676,7 @@ static JSValue f_kb_group(JSContext *c, JSValueConst this_val, int argc, JSValue
     return JS_UNDEFINED;
 }
 
-/* ---- lord.ime: métodos de entrada (ime.c) ---- */
+/* ---- lord.ime: input methods (ime.c) ---- */
 
 static JSValue f_ime_set(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
@@ -713,7 +713,7 @@ static JSValue f_kb_compose(JSContext *c, JSValueConst this_val, int argc, JSVal
     return JS_UNDEFINED;
 }
 
-/* lord.keyboard.list() → [{ id, name, variants: [{ id, name }] }] de xkb-data (evdev.lst) */
+/* lord.keyboard.list() → [{ id, name, variants: [{ id, name }] }] from xkb-data (evdev.lst) */
 static JSValue f_kb_list(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     JSValue arr = JS_NewArray(c);
@@ -769,7 +769,7 @@ static JSValue f_kb_list(JSContext *c, JSValueConst this_val, int argc, JSValueC
     return arr;
 }
 
-/* ---- lord.time: zona horaria ---- */
+/* ---- lord.time: time zone ---- */
 
 static JSValue f_time_zone(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
@@ -780,7 +780,7 @@ static JSValue f_time_zone(JSContext *c, JSValueConst this_val, int argc, JSValu
     return JS_NewString(c, z ? z + 9 : "UTC");
 }
 
-/* lord.time.zones() → ["America/Argentina/Buenos_Aires", …] (zone1970.tab de tzdata) */
+/* lord.time.zones() → ["America/Argentina/Buenos_Aires", …] (tzdata's zone1970.tab) */
 static JSValue f_time_zones(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     JSValue arr = JS_NewArray(c);
@@ -797,7 +797,7 @@ static JSValue f_time_zones(JSContext *c, JSValueConst this_val, int argc, JSVal
     return arr;
 }
 
-/* Después de cambiar la zona: que localtime() (y Date de JS) la tomen. */
+/* After changing the zone: make localtime() (and JS Date) pick it up. */
 static JSValue f_time_reload(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)c; (void)this_val; (void)argc; (void)argv;
     unsetenv("TZ");
@@ -805,7 +805,7 @@ static JSValue f_time_reload(JSContext *c, JSValueConst this_val, int argc, JSVa
     return JS_UNDEFINED;
 }
 
-/* ---- varios ---- */
+/* ---- miscellaneous ---- */
 
 static JSValue f_quit(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)c; (void)this_val; (void)argc; (void)argv;
@@ -824,7 +824,7 @@ static JSValue f_measure_text(JSContext *c, JSValueConst this_val, int argc, JSV
     return JS_NewFloat64(c, w);
 }
 
-/* ---- lord.text: idioma (fuente CJK), dirección de la interfaz y de un texto ---- */
+/* ---- lord.text: language (CJK font), direction of the interface and of a text ---- */
 
 static JSValue f_text_language(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
@@ -844,7 +844,7 @@ static JSValue f_text_set_direction(JSContext *c, JSValueConst this_val, int arg
     return JS_UNDEFINED;
 }
 
-/* 'rtl' si el primer carácter fuerte es de derecha a izquierda, si no 'ltr'. */
+/* 'rtl' if the first strong character is right-to-left, otherwise 'ltr'. */
 static JSValue f_text_direction(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *s = JS_ToCString(c, argv[0]);
@@ -854,8 +854,8 @@ static JSValue f_text_direction(JSContext *c, JSValueConst this_val, int argc, J
     return JS_NewString(c, rtl ? "rtl" : "ltr");
 }
 
-/* lord.image.size(ruta) → { width, height } de un PNG/JPEG de la carpeta personal (o null).
- * Lo usa el markdown de las notas para no agrandar imágenes chicas. */
+/* lord.image.size(path) → { width, height } of a PNG/JPEG in the home folder (or null).
+ * Used by the notes' markdown to avoid enlarging small images. */
 static JSValue f_image_size(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *p = JS_ToCString(c, argv[0]);
@@ -883,13 +883,13 @@ static const JSCFunctionListEntry text_funcs[] = {
     JS_CFUNC_DEF("direction", 1, f_text_direction),
 };
 
-/* ---- lord.fs: escritura (ver las reglas al comienzo del archivo) ---- */
+/* ---- lord.fs: writing (see the rules at the top of the file) ---- */
 
 #define FS_WRITE_MAX (32 * 1024 * 1024)
 
-/* Ruta de destino dentro de la carpeta personal, aunque el archivo todavía no exista: se
- * resuelve la carpeta padre (realpath) y el último componente tiene que ser un nombre común.
- * Rechaza las carpetas protegidas. out = carpeta real + "/" + nombre. */
+/* Destination path inside the home folder, even if the file doesn't exist yet: the
+ * parent folder is resolved (realpath) and the last component must be a plain name.
+ * Rejects the protected folders. out = real folder + "/" + name. */
 static int resolve_target(const char *path, char *out, size_t n, char *dir, size_t dn) {
     char full[PATH_MAX * 2];
     if (path[0] == '/') snprintf(full, sizeof full, "%s", path);
@@ -913,10 +913,10 @@ static int resolve_target(const char *path, char *out, size_t n, char *dir, size
 int js_sys_resolve_target(const char *path, char *out, size_t n) { return resolve_target(path, out, n, NULL, 0); }
 
 static JSValue fs_path_error(JSContext *c, int r) {
-    return r == -2 ? JS_ThrowRangeError(c, "esa carpeta está protegida") : JS_ThrowRangeError(c, "ruta fuera de la carpeta personal o inválida");
+    return r == -2 ? JS_ThrowRangeError(c, "that folder is protected") : JS_ThrowRangeError(c, "path outside the home folder or invalid");
 }
 
-/* lord.fs.write(ruta, texto | ArrayBuffer): crea o reemplaza el archivo de forma atómica. */
+/* lord.fs.write(path, text | ArrayBuffer): creates or replaces the file atomically. */
 static JSValue f_fs_write(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *p = JS_ToCString(c, argv[0]);
@@ -934,11 +934,11 @@ static JSValue f_fs_write(JSContext *c, JSValueConst this_val, int argc, JSValue
         if (!text) return JS_EXCEPTION;
     }
     const uint8_t *data = bin ? bin : (const uint8_t *)text;
-    if (len > FS_WRITE_MAX) { if (text) JS_FreeCString(c, text); return JS_ThrowRangeError(c, "archivo demasiado grande (máx. 32 MB)"); }
+    if (len > FS_WRITE_MAX) { if (text) JS_FreeCString(c, text); return JS_ThrowRangeError(c, "file too large (max. 32 MB)"); }
     struct stat st;
     mode_t mode = 0644;
     if (!lstat(target, &st)) {
-        if (!S_ISREG(st.st_mode)) { if (text) JS_FreeCString(c, text); return JS_ThrowTypeError(c, "no es un archivo común (¿un enlace?)"); }
+        if (!S_ISREG(st.st_mode)) { if (text) JS_FreeCString(c, text); return JS_ThrowTypeError(c, "not a regular file (a link?)"); }
         mode = st.st_mode & 07777;
     }
     char tmp[PATH_MAX + 64];
@@ -963,7 +963,7 @@ static JSValue f_fs_write(JSContext *c, JSValueConst this_val, int argc, JSValue
     return JS_TRUE;
 }
 
-/* lord.fs.mkdir(ruta): una carpeta nueva (la de arriba tiene que existir). */
+/* lord.fs.mkdir(path): a new folder (the parent must exist). */
 static JSValue f_fs_mkdir(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *p = JS_ToCString(c, argv[0]);
@@ -976,8 +976,8 @@ static JSValue f_fs_mkdir(JSContext *c, JSValueConst this_val, int argc, JSValue
     return JS_TRUE;
 }
 
-/* lord.fs.rename(de, a): mover o renombrar dentro de la carpeta personal (el enlace mismo,
- * si es un enlace: rename no lo sigue). No pisa un destino existente. */
+/* lord.fs.rename(from, to): move or rename inside the home folder (the link itself,
+ * if it is a link: rename doesn't follow it). Doesn't overwrite an existing destination. */
 static JSValue f_fs_rename(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *a = JS_ToCString(c, argv[0]), *b = JS_ToCString(c, argv[1]);
@@ -989,22 +989,22 @@ static JSValue f_fs_rename(JSContext *c, JSValueConst this_val, int argc, JSValu
     if (r) return fs_path_error(c, r);
     struct stat st;
     if (lstat(from, &st)) return JS_ThrowInternalError(c, "%s", strerror(errno));
-    if (!lstat(to, &st)) return JS_ThrowRangeError(c, "ya existe");
+    if (!lstat(to, &st)) return JS_ThrowRangeError(c, "already exists");
     if (rename(from, to)) return JS_ThrowInternalError(c, "%s", strerror(errno));
     return JS_TRUE;
 }
 
-/* ---- lord.fs: copiar, mover, Papelera, información y búsquedas (fsops.c) ---- */
+/* ---- lord.fs: copy, move, Trash, info and searches (fsops.c) ---- */
 
-/* lord.fs.copy(de, a, mover) → id de la tarea (en un hilo; progreso con lord.fs.jobs()). */
+/* lord.fs.copy(from, to, move) → job id (in a thread; progress with lord.fs.jobs()). */
 static JSValue f_fs_copy(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     const char *a = JS_ToCString(c, argv[0]), *b = JS_ToCString(c, argv[1]);
     int move = argc > 2 && JS_ToBool(c, argv[2]);
     char from[PATH_MAX + 300], to[PATH_MAX + 300], err[256] = "";
-    /* el origen se resuelve como destino: el enlace mismo, no a lo que apunta */
+    /* the source is resolved like a destination: the link itself, not what it points to */
     int r = !a || !b ? -1 : resolve_target(a, from, sizeof from, NULL, 0);
-    if (r == -2 && !move) r = 0;                          /* copiar DESDE una carpeta protegida sí */
+    if (r == -2 && !move) r = 0;                          /* copying FROM a protected folder is allowed */
     if (!r) r = resolve_target(b, to, sizeof to, NULL, 0);
     if (a) JS_FreeCString(c, a);
     if (b) JS_FreeCString(c, b);
@@ -1055,7 +1055,7 @@ static JSValue f_fs_job_forget(JSContext *c, JSValueConst this_val, int argc, JS
     return JS_UNDEFINED;
 }
 
-/* lord.fs.trash(ruta): a la Papelera de freedesktop (la de home o la del disco montado). */
+/* lord.fs.trash(path): to the freedesktop Trash (the home one or the mounted disk's). */
 static JSValue f_fs_trash(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *p = JS_ToCString(c, argv[0]);
@@ -1112,7 +1112,7 @@ static JSValue f_fs_trash_empty(JSContext *c, JSValueConst this_val, int argc, J
     return JS_NewInt32(c, fstrash_empty());
 }
 
-/* lord.fs.stat(ruta) → { name, path, dir, link, target, size, mode, user, group, mtime, atime, ctime, btime } */
+/* lord.fs.stat(path) → { name, path, dir, link, target, size, mode, user, group, mtime, atime, ctime, btime } */
 static JSValue f_fs_stat(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *p = JS_ToCString(c, argv[0]);
@@ -1155,7 +1155,7 @@ static JSValue f_fs_stat(JSContext *c, JSValueConst this_val, int argc, JSValueC
     return o;
 }
 
-/* lord.fs.du(carpeta, ms) → { size, files, dirs, complete } (corta a los ms, por defecto 800) */
+/* lord.fs.du(folder, ms) → { size, files, dirs, complete } (stops after ms, 800 by default) */
 static JSValue f_fs_du(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     const char *p = JS_ToCString(c, argv[0]);
@@ -1177,7 +1177,7 @@ static JSValue f_fs_du(JSContext *c, JSValueConst this_val, int argc, JSValueCon
     return o;
 }
 
-/* lord.fs.free(ruta) → { total, free } del disco donde está */
+/* lord.fs.free(path) → { total, free } of the disk it is on */
 static JSValue f_fs_free(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *p = JS_ToCString(c, argv[0]);
@@ -1216,7 +1216,7 @@ static int32_t opt_int(JSContext *c, JSValueConst o, const char *k, int32_t def,
     return v < 1 ? 1 : v > max ? max : v;
 }
 
-/* lord.fs.search(carpeta, texto, { limit, depth }) → [{ path, name, dir, size, mtime }] (nombre, sin ocultos) */
+/* lord.fs.search(folder, text, { limit, depth }) → [{ path, name, dir, size, mtime }] (by name, no hidden files) */
 static JSValue f_fs_search(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     const char *p = JS_ToCString(c, argv[0]), *q = argc > 1 ? JS_ToCString(c, argv[1]) : NULL;
@@ -1231,7 +1231,7 @@ static JSValue f_fs_search(JSContext *c, JSValueConst this_val, int argc, JSValu
     return a.arr;
 }
 
-/* lord.fs.recent(limit, días) → los archivos de la carpeta personal modificados hace poco */
+/* lord.fs.recent(limit, days) → files in the home folder modified recently */
 static JSValue f_fs_recent(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     int32_t limit = 60, days = 30;
@@ -1256,7 +1256,7 @@ static void vol_cb(void *ud, const char *path, const char *fstype, double total,
     JS_SetPropertyUint32(a->c, a->arr, a->n++, o);
 }
 
-/* lord.fs.volumes() → discos y pendrives montados en /media/$USER o /run/media/$USER */
+/* lord.fs.volumes() → disks and USB sticks mounted in /media/$USER or /run/media/$USER */
 static JSValue f_fs_volumes(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     Acc a = { c, JS_NewArray(c), 0 };
@@ -1314,7 +1314,7 @@ static const JSCFunctionListEntry keyboard_funcs[] = {
     JS_CFUNC_DEF("reloadCompose", 0, f_kb_compose),
     JS_CFUNC_DEF("list", 0, f_kb_list),
 };
-/* ---- lord.wayland: ventanas de apps Linux (wl/wl.c) ---- */
+/* ---- lord.wayland: Linux app windows (wl/wl.c) ---- */
 
 static JSValue f_wl_focus(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
@@ -1348,7 +1348,7 @@ static JSValue f_wl_info(JSContext *c, JSValueConst this_val, int argc, JSValueC
     return o;
 }
 
-/* lord.wayland.paste(): Ctrl+V sintético a la app Linux con el teclado (solo a esa app). */
+/* lord.wayland.paste(): synthetic Ctrl+V to the Linux app with keyboard focus (only to that app). */
 static JSValue f_wl_paste(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     return JS_NewBool(c, wl_send_paste());
@@ -1367,9 +1367,9 @@ static const JSCFunctionListEntry wayland_funcs[] = {
     JS_CFUNC_DEF("info", 0, f_wl_info),
 };
 
-/* ---- lord.apps: apps Linux instaladas (.desktop, apps.c) ---- */
+/* ---- lord.apps: installed Linux apps (.desktop, apps.c) ---- */
 
-/* lord.apps.linux(idioma) → [{ id, name, genericName, comment, keywords, categories, wmClass, icon, user }] */
+/* lord.apps.linux(language) → [{ id, name, genericName, comment, keywords, categories, wmClass, icon, user }] */
 static JSValue f_apps_linux(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     const char *lang = argc > 0 && JS_IsString(argv[0]) ? JS_ToCString(c, argv[0]) : NULL;
@@ -1399,7 +1399,7 @@ static JSValue f_apps_linux(JSContext *c, JSValueConst this_val, int argc, JSVal
     return arr;
 }
 
-/* lord.apps.launch(id): solo el id de un .desktop de la lista (ver apps.c); sin argumentos. */
+/* lord.apps.launch(id): only the id of a .desktop from the list (see apps.c); no arguments. */
 static JSValue f_apps_launch(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *id = JS_ToCString(c, argv[0]);
@@ -1408,11 +1408,11 @@ static JSValue f_apps_launch(JSContext *c, JSValueConst this_val, int argc, JSVa
     return JS_NewBool(c, ok);
 }
 
-/* ---- lord.apps: paquetes de apps nativas LordOS (.lpk, lpk.c) ---- */
+/* ---- lord.apps: native LordOS app packages (.lpk, lpk.c) ---- */
 
 #define LPK_JS_MAX (16 * 1024 * 1024)
 
-/* Un id de paquete no puede pisar el espacio de textos de LordOS (shell, files, terminal…). */
+/* A package id cannot overwrite LordOS's string namespaces (shell, files, terminal…). */
 static int lpk_reserved(const char *id) {
     static const char *const fixed[] = { "shell", "apps", "common", "linux", "desktop", "lordos", "sdk", "store", NULL };
     for (int i = 0; fixed[i]; i++) if (!strcmp(id, fixed[i])) return 1;
@@ -1434,8 +1434,8 @@ static void copy_str(JSContext *c, JSValueConst v, char *out, size_t n) {
     if (s) { snprintf(out, n, "%s", s); JS_FreeCString(c, s); }
 }
 
-/* Texto del manifest; con tr, también un objeto por idioma ({ "es": "…", "en": "…" }): vale el
- * inglés o el primero. */
+/* Manifest text; with tr, also an object per language ({ "es": "…", "en": "…" }): English
+ * wins, otherwise the first one. */
 static const char *str_prop_tr(JSContext *c, JSValueConst o, const char *k, char *out, size_t n, int tr) {
     JSValue v = JS_GetPropertyStr(c, o, k);
     out[0] = 0;
@@ -1461,20 +1461,20 @@ static const char *str_prop_tr(JSContext *c, JSValueConst o, const char *k, char
 }
 #define str_prop(c, o, k, out, n) str_prop_tr(c, o, k, out, n, 0)
 
-/* Abre y valida un .lpk de la carpeta personal: devuelve { manifest (objeto), files, size } o
- * lanza un Error con el motivo. Con install = 1, además lo instala. */
+/* Opens and validates a .lpk from the home folder: returns { manifest (object), files, size } or
+ * throws an Error with the reason. With install = 1, it also installs it. */
 static JSValue lpk_check(JSContext *c, JSValueConst arg, int install) {
     const char *p = JS_ToCString(c, arg);
     if (!p) return JS_EXCEPTION;
     char path[PATH_MAX];
     int bad = resolve_in_home(p, path);
     JS_FreeCString(c, p);
-    if (bad) return JS_ThrowRangeError(c, "ruta fuera de la carpeta personal o inexistente");
+    if (bad) return JS_ThrowRangeError(c, "path outside the home folder or nonexistent");
     Lpk pk;
     char err[160];
     if (lpk_open(path, &pk, err, sizeof err)) return JS_ThrowTypeError(c, "%s", err);
     const LpkFile *mf = lpk_find(&pk, "manifest.json");
-    if (!mf || !lpk_find(&pk, "app.js")) { lpk_free(&pk); return JS_ThrowTypeError(c, "no es un paquete de LordOS (faltan manifest.json o app.js)"); }
+    if (!mf || !lpk_find(&pk, "app.js")) { lpk_free(&pk); return JS_ThrowTypeError(c, "not a LordOS package (manifest.json or app.js missing)"); }
     char *txt = malloc(mf->size + 1);
     if (!txt) { lpk_free(&pk); return JS_ThrowOutOfMemory(c); }
     memcpy(txt, mf->data, mf->size);
@@ -1485,26 +1485,26 @@ static JSValue lpk_check(JSContext *c, JSValueConst arg, int install) {
         JS_FreeValue(c, JS_GetException(c));
         JS_FreeValue(c, m);
         lpk_free(&pk);
-        return JS_ThrowTypeError(c, "manifest.json inválido");
+        return JS_ThrowTypeError(c, "invalid manifest.json");
     }
     char id[64], ver[48], name[128], icon[224];
     const char *why = NULL;
-    if (!str_prop(c, m, "id", id, sizeof id) || !lpk_valid_id(id)) why = "el id de la app es inválido (a-z, 0-9 y -)";
-    else if (lpk_reserved(id)) why = "el id de la app está reservado por LordOS";
-    else if (!str_prop_tr(c, m, "name", name, sizeof name, 1)) why = "falta el nombre de la app";
-    else if (!str_prop(c, m, "version", ver, sizeof ver) || !valid_version(ver)) why = "la versión es inválida";
+    if (!str_prop(c, m, "id", id, sizeof id) || !lpk_valid_id(id)) why = "the app id is invalid (a-z, 0-9 and -)";
+    else if (lpk_reserved(id)) why = "the app id is reserved by LordOS";
+    else if (!str_prop_tr(c, m, "name", name, sizeof name, 1)) why = "the app name is missing";
+    else if (!str_prop(c, m, "version", ver, sizeof ver) || !valid_version(ver)) why = "the version is invalid";
     else if (!str_prop(c, m, "icon", icon, sizeof icon) || !lpk_find(&pk, icon) || strlen(icon) < 5 || strcmp(icon + strlen(icon) - 4, ".png"))
-        why = "la app tiene que traer su ícono propio (un .png del paquete en \"icon\")";
+        why = "the app must ship its own icon (a .png from the package in \"icon\")";
     if (why) { JS_FreeValue(c, m); lpk_free(&pk); return JS_ThrowTypeError(c, "%s", why); }
-    /* Firma: verifica hashes y firma; rechaza un paquete alterado o revocado, y al instalar
-     * exige la regla de actualización (misma clave que la versión instalada). Ver docs/FIRMA.md. */
+    /* Signature: checks hashes and signature; rejects an altered or revoked package, and when installing
+     * requires the update rule (same key as the installed version). See docs/SIGNING.md. */
     LpkSigInfo si;
-    if (sig_verify_package(&pk, id, ver, &si, err, sizeof err)) { JS_FreeValue(c, m); lpk_free(&pk); return JS_ThrowTypeError(c, "el paquete está dañado o mal firmado: %s", err); }
+    if (sig_verify_package(&pk, id, ver, &si, err, sizeof err)) { JS_FreeValue(c, m); lpk_free(&pk); return JS_ThrowTypeError(c, "the package is damaged or badly signed: %s", err); }
     if (si.revoked) { JS_FreeValue(c, m); lpk_free(&pk); return JS_ThrowTypeError(c, "%s", si.revoked_why); }
     if (install) {
         if (pkg_check_update(id, &si, err, sizeof err)) { JS_FreeValue(c, m); lpk_free(&pk); return JS_ThrowTypeError(c, "%s", err); }
         if (lpk_install(&pk, id, err, sizeof err)) { JS_FreeValue(c, m); lpk_free(&pk); return JS_ThrowInternalError(c, "%s", err); }
-        pkg_keep_original(id, path);        /* el .lpk original, para «Restaurar» y detectar cambios */
+        pkg_keep_original(id, path);        /* the original .lpk, for "Restore" and to detect changes */
     }
     size_t total = 0;
     for (int i = 0; i < pk.nfiles; i++) total += pk.files[i].size;
@@ -1522,7 +1522,7 @@ static JSValue lpk_check(JSContext *c, JSValueConst arg, int install) {
     return o;
 }
 
-/* lord.apps.inspectPackage(ruta) / installPackage(ruta): ver lpk_check. */
+/* lord.apps.inspectPackage(path) / installPackage(path): see lpk_check. */
 static JSValue f_apps_inspect(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     return lpk_check(c, argv[0], 0);
@@ -1537,12 +1537,12 @@ static JSValue f_apps_remove(JSContext *c, JSValueConst this_val, int argc, JSVa
     (void)this_val; (void)argc;
     const char *id = JS_ToCString(c, argv[0]);
     int ok = id && lpk_remove(id) == 0;
-    if (ok) { pkg_forget(id); perm_forget(id); }       /* el original guardado y los permisos */
+    if (ok) { pkg_forget(id); perm_forget(id); }       /* the saved original and the permissions */
     if (id) JS_FreeCString(c, id);
     return JS_NewBool(c, ok);
 }
 
-/* lord.apps.packages() → [{ id, dir, manifest (texto) }] de las apps instaladas. */
+/* lord.apps.packages() → [{ id, dir, manifest (text) }] of the installed apps. */
 static JSValue f_apps_packages(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     JSValue arr = JS_NewArray(c);
@@ -1569,7 +1569,7 @@ static JSValue f_apps_packages(JSContext *c, JSValueConst this_val, int argc, JS
     return arr;
 }
 
-/* Archivo de una app instalada (rel validado, sin salir de su carpeta). */
+/* File of an installed app (rel validated, without leaving its folder). */
 static char *lpk_read(const char *id, const char *rel, size_t max, size_t *len) {
     const char *root = lpk_root();
     if (!root || !lpk_valid_id(id) || !lpk_valid_path(rel)) return NULL;
@@ -1581,8 +1581,8 @@ static char *lpk_read(const char *id, const char *rel, size_t max, size_t *len) 
     return read_small(real, max, len);
 }
 
-/* lord.apps.loadPackage(id): evalúa su app.js (que deja globalThis.__lordosApp) y devuelve
- * ese objeto { default, Icon }. Corre en el mismo contexto que el tema (ver APPS-NATIVAS.md). */
+/* lord.apps.loadPackage(id): evaluates its app.js (which leaves globalThis.__lordosApp) and returns
+ * that object { default, Icon }. Runs in the same context as the theme (see NATIVE-APPS.md). */
 static JSValue f_apps_load(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *id = JS_ToCString(c, argv[0]);
@@ -1592,7 +1592,7 @@ static JSValue f_apps_load(JSContext *c, JSValueConst this_val, int argc, JSValu
     char name[96];
     snprintf(name, sizeof name, "lpk:%s/app.js", id);
     JS_FreeCString(c, id);
-    if (!src) return JS_ThrowTypeError(c, "la app no está instalada");
+    if (!src) return JS_ThrowTypeError(c, "the app is not installed");
     JSValue r = JS_Eval(c, src, len, name, JS_EVAL_TYPE_GLOBAL);
     free(src);
     if (JS_IsException(r)) return r;
@@ -1606,7 +1606,7 @@ static JSValue f_apps_load(JSContext *c, JSValueConst this_val, int argc, JSValu
     return app;
 }
 
-/* lord.apps.packageFile(id, ruta) → ArrayBuffer (hasta 32 MB): los .wasm y datos de la app. */
+/* lord.apps.packageFile(id, path) → ArrayBuffer (up to 32 MB): the app's .wasm files and data. */
 static JSValue f_apps_file(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *id = JS_ToCString(c, argv[0]), *rel = JS_ToCString(c, argv[1]);
@@ -1614,13 +1614,13 @@ static JSValue f_apps_file(JSContext *c, JSValueConst this_val, int argc, JSValu
     char *buf = id && rel ? lpk_read(id, rel, 32 * 1024 * 1024, &len) : NULL;
     if (id) JS_FreeCString(c, id);
     if (rel) JS_FreeCString(c, rel);
-    if (!buf) return JS_ThrowTypeError(c, "archivo inexistente en la app");
+    if (!buf) return JS_ThrowTypeError(c, "file does not exist in the app");
     JSValue v = JS_NewArrayBufferCopy(c, (uint8_t *)buf, len);
     free(buf);
     return v;
 }
 
-/* lord.apps.launchWith(id, ruta): abre un archivo con una app Linux que lo declare (MimeType). */
+/* lord.apps.launchWith(id, path): opens a file with a Linux app that declares it (MimeType). */
 static JSValue f_apps_launch_with(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *id = JS_ToCString(c, argv[0]), *p = JS_ToCString(c, argv[1]);
@@ -1631,7 +1631,7 @@ static JSValue f_apps_launch_with(JSContext *c, JSValueConst this_val, int argc,
     return JS_NewBool(c, ok);
 }
 
-/* ---- lord.remote: estado de las sesiones y del escritorio remoto (lord-sessiond; solo lectura) ---- */
+/* ---- lord.remote: state of the sessions and of remote desktop (lord-sessiond; read-only) ---- */
 
 static JSValue text_or_null(JSContext *c, const char *path, size_t max) {
     size_t len;
@@ -1643,8 +1643,8 @@ static JSValue text_or_null(JSContext *c, const char *path, size_t max) {
     return v;
 }
 
-/* lord.remote.status() → { config (texto), fingerprint, status (JSON de lord-sessiond o null),
- *                          installed (corre lord-sessiond) } */
+/* lord.remote.status() → { config (text), fingerprint, status (lord-sessiond JSON or null),
+ *                          installed (lord-sessiond is running) } */
 static JSValue f_remote_status(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     JSValue o = JS_NewObject(c);
@@ -1661,7 +1661,7 @@ static const JSCFunctionListEntry remote_funcs[] = {
     JS_CFUNC_DEF("status", 0, f_remote_status),
 };
 
-/* ---- lord.users: cuentas de personas del equipo (Ajustes → Usuarios; solo lectura) ---- */
+/* ---- lord.users: accounts of the people on the machine (Settings → Users; read-only) ---- */
 
 static int user_in_group(const struct passwd *pw, const char *const *names) {
     gid_t groups[256];
@@ -1724,12 +1724,12 @@ static const JSCFunctionListEntry users_funcs[] = {
     JS_CFUNC_DEF("list", 0, f_users_list),
 };
 
-/* ---- lord.session: bloquear y cambiar de usuario (lord-sessiond, docs/SESIONES.md) ---- */
+/* ---- lord.session: lock and switch user (lord-sessiond, docs/SESSIONS.md) ---- */
 
 static int greeter_mode;
 void js_sys_set_greeter(int on) { greeter_mode = on; }
 
-/* ¿la sesión la maneja lord-sessiond (hay pantalla de ingreso a la que volver)? */
+/* is the session managed by lord-sessiond (is there a login screen to go back to)? */
 static JSValue f_session_managed(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     return JS_NewBool(c, getenv("LORDOS_SESSIOND") != NULL);
@@ -1753,8 +1753,8 @@ static const JSCFunctionListEntry session_funcs[] = {
     JS_CFUNC_DEF("switchUser", 0, f_session_switch),
 };
 
-/* ---- lord.greeter (solo el tema de la pantalla de ingreso): pedidos a lord-sessiond ----
- * La contraseña viaja de acá al proceso root, que la verifica; el JS nunca ve /etc/shadow. */
+/* ---- lord.greeter (only the login screen theme): requests to lord-sessiond ----
+ * The password travels from here to the root process, which verifies it; JS never sees /etc/shadow. */
 static JSValue f_greeter_send(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     size_t len;
@@ -1770,8 +1770,8 @@ static const JSCFunctionListEntry greeter_funcs[] = {
     JS_CFUNC_DEF("send", 1, f_greeter_send),
 };
 
-/* lord.apps.launchPackage(id): lanza una app .lpk como su propio proceso aislado (app_spawn,
- * la tercera excepción acotada; ver AGENTS.md y docs/PRIVACIDAD.md). */
+/* lord.apps.launchPackage(id): launches a .lpk app as its own isolated process (app_spawn,
+ * the third bounded exception; see AGENTS.md and docs/PRIVACY.md). */
 static JSValue f_apps_launch_package(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *id = JS_ToCString(c, argv[0]);

@@ -14,6 +14,7 @@
  * softpipe) el camino por CPU propio es más rápido. LORD_GPU=1 lo fuerza (pruebas), LORD_GPU=0
  * lo apaga, LORD_GPU_DEBUG=1 cuenta qué hace. Compilado sin Mesa (sin -DLORD_GPU) son stubs. */
 #include "gpu.h"
+#include "../outputs.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,7 +31,8 @@ int  gpu_device(dev_t *dev) { (void)dev; return -1; }
 GpuTex *gpu_tex_pixels(GpuTex *t, const uint32_t *px, int w, int h, int opaque) { (void)t; (void)px; (void)w; (void)h; (void)opaque; return NULL; }
 GpuTex *gpu_tex_dmabuf(const GpuDmabuf *d) { (void)d; return NULL; }
 void gpu_tex_free(GpuTex *t) { (void)t; }
-int  gpu_frame(const Canvas *s, Rect d, void (*f)(int)) { (void)s; (void)d; (void)f; return -1; }
+int  gpu_add_output(Kms *k) { (void)k; return -1; }
+int  gpu_frame(int out, const Canvas *s, Rect d, void (*f)(int)) { (void)out; (void)s; (void)d; (void)f; return -1; }
 void gpu_draw(GpuTex *t, float dx, float dy, float dw, float dh, float sx, float sy, float sw, float sh, Rect c, float o) {
     (void)t; (void)dx; (void)dy; (void)dw; (void)dh; (void)sx; (void)sy; (void)sw; (void)sh; (void)c; (void)o;
 }
@@ -92,20 +94,30 @@ typedef struct {
     void *data;
 } Shown;
 
-static struct {
-    int on, debug;
+/* One display (docs/DISPLAYS.md): its GBM surface and EGL window surface, the texture of its UI frame
+ * and what is on its screen. Every display shares the context, programs and app textures. */
+typedef struct {
+    int used, first;
     Kms *k;
     int W, H;
-    struct gbm_device *gbm;
     struct gbm_surface *gs;
+    EGLSurface surf;
+    GpuTex canvas;
+    Shown front, pending;
+} GOut;
+
+static struct {
+    int on, debug;
+    Kms *k;                             /* the first display's head (the card's fd) */
+    struct gbm_device *gbm;
     EGLDisplay dpy;
     EGLContext ctx;
-    EGLSurface surf;
+    EGLConfig cfg;
+    GOut out[OUT_MAX];
+    GOut *cur;                          /* the display being drawn (gpu_draw) */
     GLuint prog[2], vbo;                /* 0 = sampler2D, 1 = samplerExternalOES */
     GLint u_tex[2], u_op[2], u_opaque[2], u_swap[2];
-    GpuTex canvas;
-    int bgra, have_external, first;
-    Shown front, pending;
+    int bgra, have_external;
     char renderer[160];
     PFNEGLCREATEIMAGEKHRPROC create_image;
     PFNEGLDESTROYIMAGEKHRPROC destroy_image;
@@ -113,7 +125,7 @@ static struct {
     PFNEGLQUERYDMABUFFORMATSEXTPROC query_formats;
     PFNEGLQUERYDMABUFMODIFIERSEXTPROC query_modifiers;
     long frames, scanouts;
-    char render_node[64];               /* donde renderiza Mesa (en la Pi 5: v3d, no vc4) */
+    char render_node[64];               /* where Mesa renders (on the Pi 5: v3d, not vc4) */
 } G;
 
 static void dbg(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
@@ -217,8 +229,8 @@ static int make_prog(int i, const char *fs) {
 
 /* ---- flips ---- */
 
-static void release(Shown *s) {
-    if (s->kind == 1 && s->bo) gbm_surface_release_buffer(G.gs, s->bo);
+static void release(GOut *o, Shown *s) {
+    if (s->kind == 1 && s->bo) gbm_surface_release_buffer(o->gs, s->bo);
     if (s->kind == 2) {
         kms_rm_fb(G.k, s->fb);
         for (int i = 0; i < 4; i++) {
@@ -232,10 +244,11 @@ static void release(Shown *s) {
 }
 
 static void on_flip(void *data) {
-    (void)data;
-    release(&G.front);
-    G.front = G.pending;
-    memset(&G.pending, 0, sizeof G.pending);
+    GOut *o = data;
+    if (!o || o < G.out || o >= G.out + OUT_MAX || !o->used) return;
+    release(o, &o->front);
+    o->front = o->pending;
+    memset(&o->pending, 0, sizeof o->pending);
 }
 
 static void bo_fb_destroy(struct gbm_bo *bo, void *data) {
@@ -266,22 +279,83 @@ static uint32_t fb_for_bo(struct gbm_bo *bo) {
     return fb;
 }
 
-static int present(Shown next) {
-    if (G.first) {
-        if (kms_set_fb(G.k, next.fb)) { fprintf(stderr, "gpu: SETCRTC falló (%s)\n", strerror(errno)); release(&next); return -1; }
-        G.first = 0;
-        release(&G.front);
-        G.front = next;
+static int present(GOut *o, Shown next) {
+    if (o->first) {
+        if (kms_set_fb(o->k, next.fb)) { fprintf(stderr, "gpu: SETCRTC failed (%s)\n", strerror(errno)); release(o, &next); return -1; }
+        o->first = 0;
+        release(o, &o->front);
+        o->front = next;
         return 0;
     }
-    G.pending = next;
-    if (kms_flip_fb(G.k, next.fb, NULL)) {
-        fprintf(stderr, "gpu: page flip falló (%s)\n", strerror(errno));
-        memset(&G.pending, 0, sizeof G.pending);
-        release(&next);
+    o->pending = next;
+    if (kms_flip_fb(o->k, next.fb, o)) {
+        fprintf(stderr, "gpu: page flip failed (%s)\n", strerror(errno));
+        memset(&o->pending, 0, sizeof o->pending);
+        release(o, &next);
         return -1;
     }
     return 0;
+}
+
+/* A display's GBM surface, EGL surface and UI texture (the context already exists). */
+static int out_setup(GOut *o, Kms *k) {
+    memset(o, 0, sizeof *o);
+    o->k = k;
+    o->W = (int)k->width;
+    o->H = (int)k->height;
+    o->gs = gbm_surface_create(G.gbm, (uint32_t)o->W, (uint32_t)o->H, GBM_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+    if (!o->gs) return -1;
+    o->surf = eglCreateWindowSurface(G.dpy, G.cfg, (EGLNativeWindowType)o->gs, NULL);
+    if (o->surf == EGL_NO_SURFACE || !eglMakeCurrent(G.dpy, o->surf, o->surf, G.ctx)) {
+        if (o->surf != EGL_NO_SURFACE) eglDestroySurface(G.dpy, o->surf);
+        gbm_surface_destroy(o->gs);
+        memset(o, 0, sizeof *o);
+        return -1;
+    }
+    k->on_flip = on_flip;
+    o->first = 1;
+    o->used = 1;
+    G.cur = o;
+    return 0;
+}
+
+/* Its UI texture (after the GL extensions are known: BGRA or RGBA). */
+static void out_texture(GOut *o) {
+    glGenTextures(1, &o->canvas.id);
+    glBindTexture(GL_TEXTURE_2D, o->canvas.id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, G.bgra ? GL_BGRA_EXT : GL_RGBA, o->W, o->H, 0, G.bgra ? GL_BGRA_EXT : GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    o->canvas.w = o->W;
+    o->canvas.h = o->H;
+    o->canvas.swap = !G.bgra;
+}
+
+static void out_teardown(GOut *o) {
+    if (!o->used) return;
+    release(o, &o->pending);
+    release(o, &o->front);
+    if (o->surf && eglMakeCurrent(G.dpy, o->surf, o->surf, G.ctx)) glDeleteTextures(1, &o->canvas.id);
+    eglMakeCurrent(G.dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    if (o->surf) eglDestroySurface(G.dpy, o->surf);
+    if (o->gs) gbm_surface_destroy(o->gs);
+    if (o->k) { o->k->on_flip = NULL; o->k->custom = 0; }
+    memset(o, 0, sizeof *o);
+}
+
+int gpu_add_output(Kms *k) {
+    if (!G.on) return -1;
+    for (int i = 0; i < OUT_MAX; i++) {
+        if (G.out[i].used) continue;
+        if (out_setup(&G.out[i], k)) { fprintf(stderr, "gpu: no EGL surface for the display on connector %u\n", k->conn_id); return -1; }
+        out_texture(&G.out[i]);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        return i;
+    }
+    return -1;
 }
 
 /* ---- inicio ---- */
@@ -294,8 +368,6 @@ int gpu_init(Kms *k) {
     G.debug = getenv("LORD_GPU_DEBUG") != NULL;
     if (env && !strcmp(env, "0")) { fprintf(stderr, "gpu: apagado (LORD_GPU=0), composición por CPU\n"); return -1; }
     G.k = k;
-    G.W = (int)k->width;
-    G.H = (int)k->height;
     char drv[64];
     if (!drm_accelerated(k->fd, drv, sizeof drv) && !(env && !strcmp(env, "1"))) {
         fprintf(stderr, "gpu: la placa (%s) no tiene aceleración 3D: composición por CPU (LORD_GPU=1 lo fuerza)\n", drv);
@@ -322,10 +394,8 @@ int gpu_init(Kms *k) {
     if (!cfg) { fprintf(stderr, "gpu: sin configuración XRGB8888 de EGL, composición por CPU\n"); goto fail; }
     static const EGLint ctx_attr[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
     G.ctx = eglCreateContext(G.dpy, cfg, EGL_NO_CONTEXT, ctx_attr);
-    G.gs = gbm_surface_create(G.gbm, (uint32_t)G.W, (uint32_t)G.H, GBM_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
-    if (G.ctx == EGL_NO_CONTEXT || !G.gs) { fprintf(stderr, "gpu: no se pudo crear el contexto o la superficie, composición por CPU\n"); goto fail; }
-    G.surf = eglCreateWindowSurface(G.dpy, cfg, (EGLNativeWindowType)G.gs, NULL);
-    if (G.surf == EGL_NO_SURFACE || !eglMakeCurrent(G.dpy, G.surf, G.surf, G.ctx)) { fprintf(stderr, "gpu: eglMakeCurrent falló, composición por CPU\n"); goto fail; }
+    G.cfg = cfg;
+    if (G.ctx == EGL_NO_CONTEXT || out_setup(&G.out[0], k)) { fprintf(stderr, "gpu: could not create the context or the surface, composing by CPU\n"); goto fail; }
 
     const char *rend = (const char *)glGetString(GL_RENDERER), *gl_exts = (const char *)glGetString(GL_EXTENSIONS);
     snprintf(G.renderer, sizeof G.renderer, "%s", rend ? rend : "?");
@@ -348,23 +418,10 @@ int gpu_init(Kms *k) {
         G.query_modifiers = (PFNEGLQUERYDMABUFMODIFIERSEXTPROC)eglGetProcAddress("eglQueryDmaBufModifiersEXT");
     }
 
-    /* textura de la UI (pantalla completa) */
-    glGenTextures(1, &G.canvas.id);
-    glBindTexture(GL_TEXTURE_2D, G.canvas.id);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, G.bgra ? GL_BGRA_EXT : GL_RGBA, G.W, G.H, 0, G.bgra ? GL_BGRA_EXT : GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    G.canvas.w = G.W;
-    G.canvas.h = G.H;
-    G.canvas.swap = !G.bgra;
+    out_texture(&G.out[0]);
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    glViewport(0, 0, G.W, G.H);
 
-    k->on_flip = on_flip;
-    G.first = 1;
     G.on = 1;
     if (G.debug) {
         GpuFormat f[64];
@@ -382,23 +439,17 @@ fail:
 
 void gpu_shutdown(void) {
     if (G.dpy != EGL_NO_DISPLAY && G.dpy) {
-        if (G.on) {
-            release(&G.pending);
-            release(&G.front);
-        }
+        for (int i = OUT_MAX - 1; i >= 0; i--) out_teardown(&G.out[i]);
         eglMakeCurrent(G.dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        if (G.surf) eglDestroySurface(G.dpy, G.surf);
         if (G.ctx) eglDestroyContext(G.dpy, G.ctx);
         eglTerminate(G.dpy);
     }
-    if (G.gs) gbm_surface_destroy(G.gs);
     if (G.gbm) gbm_device_destroy(G.gbm);
     if (G.k) { G.k->on_flip = NULL; G.k->custom = 0; }
     int debug = G.debug;
     memset(&G, 0, sizeof G);
     G.debug = debug;
 }
-
 /* ---- formatos y dispositivo (linux-dmabuf) ---- */
 
 static const uint32_t known[] = { DRM_FORMAT_ARGB8888, DRM_FORMAT_XRGB8888, DRM_FORMAT_ABGR8888, DRM_FORMAT_XBGR8888 };
@@ -550,11 +601,12 @@ void gpu_tex_free(GpuTex *t) {
 /* ---- dibujo ---- */
 
 void gpu_draw(GpuTex *t, float dx, float dy, float dw, float dh, float sx, float sy, float sw, float sh, Rect clip, float op) {
-    if (!G.on || !t || dw <= 0 || dh <= 0 || op <= 0.004f) return;
+    if (!G.on || !G.cur || !t || dw <= 0 || dh <= 0 || op <= 0.004f) return;
+    const int W = G.cur->W, H = G.cur->H;           /* the display being drawn */
     if (clip.x0 < 0) clip.x0 = 0;
     if (clip.y0 < 0) clip.y0 = 0;
-    if (clip.x1 > G.W) clip.x1 = G.W;
-    if (clip.y1 > G.H) clip.y1 = G.H;
+    if (clip.x1 > W) clip.x1 = W;
+    if (clip.y1 > H) clip.y1 = H;
     if (clip.x1 <= clip.x0 || clip.y1 <= clip.y0) return;
     int p = t->external ? 1 : 0;
     glUseProgram(G.prog[p]);
@@ -565,9 +617,9 @@ void gpu_draw(GpuTex *t, float dx, float dy, float dw, float dh, float sx, float
     glUniform1f(G.u_opaque[p], t->opaque ? 1.0f : 0.0f);
     glUniform1f(G.u_swap[p], t->swap ? 1.0f : 0.0f);
     glEnable(GL_SCISSOR_TEST);
-    glScissor(clip.x0, G.H - clip.y1, clip.x1 - clip.x0, clip.y1 - clip.y0);
-    float x0 = dx / G.W * 2 - 1, x1 = (dx + dw) / G.W * 2 - 1;
-    float y0 = 1 - dy / G.H * 2, y1 = 1 - (dy + dh) / G.H * 2;
+    glScissor(clip.x0, H - clip.y1, clip.x1 - clip.x0, clip.y1 - clip.y0);
+    float x0 = dx / W * 2 - 1, x1 = (dx + dw) / W * 2 - 1;
+    float y0 = 1 - dy / H * 2, y1 = 1 - (dy + dh) / H * 2;
     float u0 = sx / t->w, u1 = (sx + sw) / t->w, v0 = sy / t->h, v1 = (sy + sh) / t->h;
     const GLfloat v[] = { x0, y0, u0, v0,  x1, y0, u1, v0,  x0, y1, u0, v1,  x1, y1, u1, v1 };
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, v);
@@ -578,11 +630,15 @@ void gpu_draw(GpuTex *t, float dx, float dy, float dw, float dh, float sx, float
     glDisable(GL_SCISSOR_TEST);
 }
 
-int gpu_frame(const Canvas *scene, Rect dmg, void (*draw_layer)(int layer)) {
-    if (!G.on) return -1;
-    /* lo que cambió de la UI */
+int gpu_frame(int out, const Canvas *scene, Rect dmg, void (*draw_layer)(int layer)) {
+    if (!G.on || out < 0 || out >= OUT_MAX || !G.out[out].used) return -1;
+    GOut *o = &G.out[out];
+    if (!eglMakeCurrent(G.dpy, o->surf, o->surf, G.ctx)) { fprintf(stderr, "gpu: eglMakeCurrent failed\n"); return -1; }
+    G.cur = o;
+    glViewport(0, 0, o->W, o->H);
+    /* what changed in the UI */
     if (dmg.x1 > dmg.x0 && dmg.y1 > dmg.y0) {
-        glBindTexture(GL_TEXTURE_2D, G.canvas.id);
+        glBindTexture(GL_TEXTURE_2D, o->canvas.id);
         GLenum fmt = G.bgra ? GL_BGRA_EXT : GL_RGBA;
         glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, scene->stride);
         glTexSubImage2D(GL_TEXTURE_2D, 0, dmg.x0, dmg.y0, dmg.x1 - dmg.x0, dmg.y1 - dmg.y0, fmt, GL_UNSIGNED_BYTE,
@@ -591,19 +647,18 @@ int gpu_frame(const Canvas *scene, Rect dmg, void (*draw_layer)(int layer)) {
     }
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
-    Rect all = { 0, 0, G.W, G.H };
+    Rect all = { 0, 0, o->W, o->H };
     if (draw_layer) draw_layer(0);
-    gpu_draw(&G.canvas, 0, 0, (float)G.W, (float)G.H, 0, 0, (float)G.W, (float)G.H, all, 1);
+    gpu_draw(&o->canvas, 0, 0, (float)o->W, (float)o->H, 0, 0, (float)o->W, (float)o->H, all, 1);
     if (draw_layer) draw_layer(1);
-    if (!eglSwapBuffers(G.dpy, G.surf)) { fprintf(stderr, "gpu: eglSwapBuffers falló\n"); return -1; }
-    struct gbm_bo *bo = gbm_surface_lock_front_buffer(G.gs);
-    if (!bo) { fprintf(stderr, "gpu: sin búfer de GBM\n"); return -1; }
+    if (!eglSwapBuffers(G.dpy, o->surf)) { fprintf(stderr, "gpu: eglSwapBuffers failed\n"); return -1; }
+    struct gbm_bo *bo = gbm_surface_lock_front_buffer(o->gs);
+    if (!bo) { fprintf(stderr, "gpu: no GBM buffer\n"); return -1; }
     uint32_t fb = fb_for_bo(bo);
-    if (!fb) { gbm_surface_release_buffer(G.gs, bo); return -1; }
+    if (!fb) { gbm_surface_release_buffer(o->gs, bo); return -1; }
     G.frames++;
-    return present((Shown){ .kind = 1, .bo = bo, .fb = fb });
+    return present(o, (Shown){ .kind = 1, .bo = bo, .fb = fb });
 }
-
 /* ---- scanout directo ---- */
 
 int gpu_can_scanout(const GpuDmabuf *d, int w, int h) {
@@ -614,7 +669,8 @@ int gpu_can_scanout(const GpuDmabuf *d, int w, int h) {
 }
 
 int gpu_scanout(const GpuDmabuf *d, void (*done)(void *), void *data) {
-    if (!G.on || G.first) return -1;
+    GOut *o = &G.out[0];                /* one display only (wl_try_scanout) */
+    if (!G.on || !o->used || o->first) return -1;
     Shown s = { .kind = 2, .done = done, .data = data };
     for (int i = 0; i < d->nplanes; i++)
         if (kms_prime_import(G.k, d->fd[i], &s.handles[i])) {
@@ -628,12 +684,12 @@ int gpu_scanout(const GpuDmabuf *d, void (*done)(void *), void *data) {
         dbg("scanout: ADDFB2 falló (%s)", strerror(errno));
         s.done = NULL;
         s.kind = 2;
-        release(&s);
+        release(o, &s);
         return -1;
     }
     G.scanouts++;
     if (G.debug && (G.scanouts == 1 || G.scanouts % 300 == 0)) dbg("scanout directo: %ld cuadros (compuestos %ld)", G.scanouts, G.frames);
-    return present(s);
+    return present(o, s);
 }
 
 #endif

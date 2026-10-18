@@ -1,5 +1,5 @@
-/* resolve.h — qué hay que instalar, actualizar o quitar para cumplir un pedido (como el
- * resolvedor de apt, más simple: goloso, con vuelta atrás acotada en las alternativas). */
+/* resolve.h — what has to be installed, upgraded or removed to satisfy a request (like
+ * apt's resolver, but simpler: greedy, with bounded backtracking over alternatives). */
 #ifndef LORD_PKG_RESOLVE_H
 #define LORD_PKG_RESOLVE_H
 
@@ -10,45 +10,45 @@ enum { PA_INSTALL = 1, PA_UPGRADE, PA_REMOVE };
 
 typedef struct {
     int action;
-    const char *name, *version, *old_version;   /* version: la que queda (install/upgrade) */
-    long rec;                           /* registro del índice a descargar, o -1 */
-    int requested;                      /* lo pidió el usuario (no es dependencia) */
-    int orphan;                         /* dependencia que quedó sin uso (reason "auto") */
-    char reason[200];                   /* por qué (dependencia de…, conflicto con…) */
+    const char *name, *version, *old_version;   /* version: the one that remains (install/upgrade) */
+    long rec;                           /* index record to download, or -1 */
+    int requested;                      /* requested by the user (not a dependency) */
+    int orphan;                         /* dependency left unused (reason "auto") */
+    char reason[200];                   /* why (dependency of…, conflict with…) */
 } PlanItem;
 
 typedef struct {
     PlanItem *items;
     int n;
-    char held[32][64];                  /* actualizaciones que no se pueden hacer ahora */
+    char held[32][64];                  /* upgrades that can't be done now */
     int nheld;
-    uint64_t download;                  /* bytes a descargar */
-    int64_t isize_delta;                /* KB que cambia lo instalado */
+    uint64_t download;                  /* bytes to download */
+    int64_t isize_delta;                /* KB by which what's installed changes */
     int ok;
     char err[512];
 } Plan;
 
 typedef struct {
-    int recommends;                     /* instalar también los recomendados */
-    int allow_remove;                   /* puede quitar paquetes para resolver conflictos */
-    int cascade;                        /* al quitar, quitar también lo que depende */
-    int upgrade_all;                    /* actualizar todo lo actualizable */
-    int orphans;                        /* quitar también lo instalado como dependencia que ya no hace falta */
-    const char *const *autos;           /* los instalados como dependencia (/var/lib/lordos/pkg/auto) */
+    int recommends;                     /* also install the recommends */
+    int allow_remove;                   /* may remove packages to resolve conflicts */
+    int cascade;                        /* when removing, also remove what depends on it */
+    int upgrade_all;                    /* upgrade everything upgradable */
+    int orphans;                        /* also remove what was installed as a dependency and is no longer needed */
+    const char *const *autos;           /* those installed as a dependency (/var/lib/lordos/pkg/auto) */
     int nautos;
 } PlanOpts;
 
-/* install/remove: nombres (de paquetes reales o virtuales para install). */
+/* install/remove: names (of real packages, or virtual ones for install). */
 int  plan_make(const Idx *x, const Status *st, const char *const *install, int ni,
                const char *const *remove, int nr, const PlanOpts *o, Plan *out);
 void plan_free(Plan *p);
 
-/* Orden para dpkg: índices de items (instalar/actualizar) en orden de dependencias, partidos en
- * tandas: cada tanda se instala con un dpkg --install (un Pre-Depends corta la tanda). group[i]
- * es la tanda del i-ésimo. Devuelve la cantidad, o -1. */
+/* Order for dpkg: indexes of items (install/upgrade) in dependency order, split into
+ * batches: each batch is installed with one dpkg --install (a Pre-Depends cuts the batch). group[i]
+ * is the batch of the i-th one. Returns the count, or -1. */
 int  plan_order(const Idx *x, const Plan *p, int *order, int *group);
 
-/* Versión candidata de un paquete (registro del índice), o -1. inst: la instalada (puede ser NULL). */
+/* Candidate version of a package (index record), or -1. inst: the installed one (may be NULL). */
 long pkg_candidate(const Idx *x, const char *name, size_t n, const StPkg *inst);
 
 #endif

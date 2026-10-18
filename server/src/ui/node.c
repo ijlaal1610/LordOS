@@ -1,4 +1,4 @@
-/* node.c — árbol de nodos nativos que React crea y modifica. */
+/* node.c — tree of native nodes that React creates and modifies. */
 #include "ui.h"
 
 #include <stdlib.h>
@@ -57,7 +57,7 @@ void damage_add(Box b) {
     if (b.y1 > d->y1) d->y1 = b.y1;
 }
 
-/* Un nodo que sale del árbol deja de verse: su área anterior hay que repintarla. */
+/* A node that leaves the tree stops being visible: its previous area must be repainted. */
 void damage_subtree(Node *n) {
     damage_add(n->prev_box);
     n->prev_box = (Box){0, 0, 0, 0};
@@ -105,7 +105,7 @@ void node_insert_before(Node *p, Node *c, Node *before) {
     invalidate_measure(p);
 }
 
-/* Destruye el nodo y los hijos que sigan colgados de él. */
+/* Destroys the node and the children still hanging from it. */
 void node_destroy(Node *n) {
     if (!n) return;
     node_detach(n);
@@ -124,7 +124,7 @@ void node_set_text(Node *n, const char *s) {
     node_invalidate(n);
 }
 
-/* Concatena el texto de los nodos RAW descendientes (<Text>hola {nombre}</Text>). */
+/* Concatenates the text of the descendant RAW nodes (<Text>hello {name}</Text>). */
 static int gather(const Node *n, char *buf, int size, int len) {
     for (const Node *c = n->first; c; c = c->next) {
         if (c->type == NODE_RAW && c->text) {
@@ -144,7 +144,7 @@ int node_gather_text(const Node *n, char *buf, int size) {
     return gather(n, buf, size, 0);
 }
 
-/* Hijos en orden de pintado: orden del árbol, estable por zIndex. */
+/* Children in paint order: tree order, stable by zIndex. */
 int node_children_ordered(Node *n, Node **out, int max) {
     int k = 0, sorted = 1;
     for (Node *c = n->first; c && k < max; c = c->next) {
@@ -161,7 +161,7 @@ int node_children_ordered(Node *n, Node **out, int max) {
     return k;
 }
 
-/* Borra todos los nodos (cambio de tema). La pantalla completa queda para repintar. */
+/* Deletes all nodes (theme change). The whole screen is left to repaint. */
 void ui_reset(void) {
     for (int i = 0; i < ui.cap; i++)
         if (ui.nodes[i]) { free(ui.nodes[i]->text); free(ui.nodes[i]); ui.nodes[i] = NULL; }

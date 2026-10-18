@@ -1,4 +1,4 @@
-/* arcpath.c — ver arcpath.h. */
+/* arcpath.c — see arcpath.h. */
 #include "arcpath.h"
 
 #include <string.h>
@@ -34,12 +34,12 @@ int arc_clean_path(const char *name, char *out, size_t n) {
 
 int arc_link_ok(const char *entry, const char *target) {
     if (!entry || !target || !target[0] || target[0] == '/' || strlen(target) > ARC_PATH_MAX) return 0;
-    /* profundidad de la carpeta que contiene la entrada */
+    /* depth of the folder that contains the entry */
     int depth = 0;
     for (const char *q = entry; *q; q++) if (*q == '/') depth++;
-    /* ".." solo al comienzo: subir desde la carpeta real de la entrada y después bajar por
-     * nombres. Así, aunque un tramo sea otro enlace del mismo comprimido (que a su vez quedó
-     * adentro), la resolución real tampoco sale de la raíz. "a/../.." no se acepta. */
+    /* ".." only at the start: go up from the entry's real folder and then down by
+     * names. That way, even if a component is another link of the same archive (which in turn
+     * stayed inside), the real resolution doesn't leave the root either. "a/../.." is not accepted. */
     const char *p = target;
     int down = 0;
     while (*p) {

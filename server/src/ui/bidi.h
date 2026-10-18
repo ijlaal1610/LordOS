@@ -1,25 +1,25 @@
-/* bidi.h — algoritmo bidireccional de Unicode (UAX #9) para texto que mezcla escrituras de
- * izquierda a derecha (latín, CJK) con las de derecha a izquierda (árabe, hebreo). Ver bidi.c. */
+/* bidi.h — Unicode bidirectional algorithm (UAX #9) for text that mixes
+ * left-to-right scripts (Latin, CJK) with right-to-left ones (Arabic, Hebrew). See bidi.c. */
 #ifndef LORD_BIDI_H
 #define LORD_BIDI_H
 
 #include <stdint.h>
 
-int bidi_class(uint32_t cp);                        /* BIDI_* de unidata.h */
-uint32_t bidi_mirror(uint32_t cp);                  /* "(" ↔ ")" en tramos RTL; 0 si no tiene */
+int bidi_class(uint32_t cp);                        /* BIDI_* from unidata.h */
+uint32_t bidi_mirror(uint32_t cp);                  /* "(" ↔ ")" in RTL runs; 0 if none */
 
-/* Dirección del primer carácter fuerte (reglas P2/P3): 0 izquierda a derecha, 1 derecha a
- * izquierda, -1 si no hay ninguno. */
+/* Direction of the first strong character (rules P2/P3): 0 left to right, 1 right to
+ * left, -1 if there is none. */
 int bidi_direction(const uint32_t *cp, int n);
 
-/* Niveles de un párrafo (reglas X1–I2). para: 0 LTR, 1 RTL, -1 automático (P2/P3, LTR si no
- * hay fuertes). Devuelve el nivel del párrafo. Los caracteres que X9 quita (marcas de
- * incrustación, BN) quedan con el nivel del anterior; removed[i] = 1 si se pasa. */
+/* Levels of a paragraph (rules X1–I2). para: 0 LTR, 1 RTL, -1 automatic (P2/P3, LTR if there are
+ * no strong ones). Returns the paragraph level. Characters removed by X9 (embedding
+ * marks, BN) get the level of the previous one; removed[i] = 1 if skipped. */
 int bidi_levels(const uint32_t *cp, int n, int para, uint8_t *levels, uint8_t *removed);
 
-/* Orden visual de la línea [start, end) del párrafo: aplica L1 (espacios del final y
- * separadores al nivel del párrafo) sobre levels y L2. order[k] = índice lógico del
- * carácter que va en la posición visual k (de izquierda a derecha). */
+/* Visual order of the line [start, end) of the paragraph: applies L1 (trailing spaces and
+ * separators at the paragraph level) on levels and L2. order[k] = logical index of the
+ * character that goes at visual position k (left to right). */
 void bidi_line(const uint32_t *cp, uint8_t *levels, int start, int end, int para, int *order);
 
 #endif

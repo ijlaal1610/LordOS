@@ -1,7 +1,7 @@
-/* cursor.c — cursores propios: cada forma es una unión de primitivas con distancia con signo
- * (polígonos, cápsulas, anillos) en un espacio de 32×32 unidades; se rasteriza con 4×4 muestras
- * por píxel a 1x (32 px) o 2x (64 px, lo que entra en el plano de cursor de KMS). Relleno negro,
- * contorno blanco y una sombra suave, como los de macOS. No se lee ningún tema del sistema. */
+/* cursor.c — our own cursors: each shape is a union of signed-distance primitives
+ * (polygons, capsules, rings) in a 32×32-unit space; rasterized with 4×4 samples
+ * per pixel at 1x (32 px) or 2x (64 px, what fits in the KMS cursor plane). Black fill,
+ * white outline and a soft shadow, like macOS's. No system theme is read. */
 #include "cursor.h"
 
 #include <math.h>
@@ -12,14 +12,14 @@
 enum { PR_POLY, PR_CAPSULE, PR_RING };
 typedef struct {
     int kind, n;
-    float p[MAXP][2];       /* polígono: vértices; cápsula: p[0], p[1]; anillo: centro p[0] */
-    float r, r2;            /* cápsula: radio; anillo: radio y medio grosor */
+    float p[MAXP][2];       /* polygon: vertices; capsule: p[0], p[1]; ring: center p[0] */
+    float r, r2;            /* capsule: radius; ring: radius and half thickness */
 } Prim;
 
 typedef struct {
     Prim prim[12];
     int n;
-    float hx, hy;           /* punto activo en unidades */
+    float hx, hy;           /* hotspot in units */
 } Shape;
 
 static float seg_dist(float px, float py, float ax, float ay, float bx, float by) {
@@ -53,7 +53,7 @@ static float shape_sdf(const Shape *s, float x, float y) {
     return d;
 }
 
-/* ---- construcción de las formas ---- */
+/* ---- building the shapes ---- */
 
 static Prim *add(Shape *s, int kind) {
     Prim *p = &s->prim[s->n++];
@@ -78,7 +78,7 @@ static void ring(Shape *s, float cx, float cy, float r, float half) {
     p->r2 = half;
 }
 
-/* Flecha doble horizontal centrada en (16,16), girada `deg` grados. */
+/* Horizontal double arrow centered at (16,16), rotated `deg` degrees. */
 static void double_arrow(Shape *s, float deg) {
     float a = deg * (float)M_PI / 180, c = cosf(a), sn = sinf(a);
     float pts[2][3][2] = { { { -10, 0 }, { -4.5f, -5 }, { -4.5f, 5 } }, { { 10, 0 }, { 4.5f, -5 }, { 4.5f, 5 } } };
@@ -103,16 +103,16 @@ static void arrow(Shape *s, float ox, float oy) {
     s->hy = oy;
 }
 
-/* Mano: índice arriba (pointer), dedos abiertos (grab) o cerrados (grabbing). */
+/* Hand: index finger up (pointer), fingers open (grab) or closed (grabbing). */
 static void hand(Shape *s, int kind) {
     static const float palm[6][2] = { { 8, 15 }, { 21, 15 }, { 22, 22 }, { 19, 28 }, { 11, 28 }, { 7.5f, 21 } };
     poly(s, 6, palm);
     if (kind == 0) {
-        capsule(s, 10, 5, 10, 17, 1.9f);         /* índice */
+        capsule(s, 10, 5, 10, 17, 1.9f);         /* index finger */
         capsule(s, 13.6f, 12, 13.6f, 17, 1.8f);
         capsule(s, 17, 12.6f, 17, 17, 1.8f);
         capsule(s, 20.2f, 13.6f, 20.2f, 18, 1.7f);
-        capsule(s, 4.6f, 16.5f, 8.5f, 21, 1.8f);  /* pulgar */
+        capsule(s, 4.6f, 16.5f, 8.5f, 21, 1.8f);  /* thumb */
         s->hx = 10; s->hy = 3;
     } else if (kind == 1) {
         capsule(s, 10, 8, 10, 17, 1.8f);
@@ -179,9 +179,9 @@ static void build(int shape, Shape *s) {
     }
 }
 
-/* ---- rasterizado ---- */
+/* ---- rasterization ---- */
 
-static CursorImage cache[2][CUR_COUNT];
+static CursorImage cache[5][CUR_COUNT];       /* 100, 125, 150, 175 and 200 % */
 
 static uint32_t pack(float a, float lum) {
     if (a <= 0) return 0;
@@ -191,27 +191,34 @@ static uint32_t pack(float a, float lum) {
     return A << 24 | c << 16 | c << 8 | c;
 }
 
-const CursorImage *cursor_image(int shape, int scale) {
+const CursorImage *cursor_image(int shape, int scale) { return cursor_image_pct(shape, scale >= 2 ? 200 : 100); }
+
+/* The cursor at a display's scale (docs/DISPLAYS.md): the same vector shapes rasterized at
+ * 32 px × scale, so a 150 % display gets a sharp 48 px arrow. */
+const CursorImage *cursor_image_pct(int shape, int pct) {
     if (shape <= CUR_AUTO || shape >= CUR_COUNT) shape = CUR_DEFAULT;
-    scale = scale >= 2 ? 2 : 1;
-    CursorImage *ci = &cache[scale - 1][shape];
+    if (pct < 100) pct = 100;
+    if (pct > 200) pct = 200;
+    pct = (pct + 12) / 25 * 25;
+    CursorImage *ci = &cache[(pct - 100) / 25][shape];
     if (ci->px) return ci;
+    float scale = pct / 100.0f;
     Shape s;
     build(shape, &s);
-    int size = 32 * scale;
+    int size = (int)(32 * scale + 0.5f);
     uint32_t *px = calloc((size_t)size * size, 4);
     if (!px) return NULL;
     const float outline = 1.25f, inv = 1.0f / scale;
     for (int y = 0; y < size; y++)
         for (int x = 0; x < size; x++) {
-            float a = 0, lum = 0;          /* sumas de alfa y de luz (premultiplicada) */
+            float a = 0, lum = 0;          /* alpha and light sums (premultiplied) */
             for (int sy = 0; sy < 4; sy++)
                 for (int sx = 0; sx < 4; sx++) {
                     float ux = (x + (sx + 0.5f) / 4) * inv, uy = (y + (sy + 0.5f) / 4) * inv;
                     float d = shape_sdf(&s, ux, uy);
-                    if (d < 0) { a += 1; }                          /* relleno negro */
-                    else if (d < outline) { a += 1; lum += 1; }     /* contorno blanco */
-                    else {                                          /* sombra: la forma corrida 1 unidad abajo */
+                    if (d < 0) { a += 1; }                          /* black fill */
+                    else if (d < outline) { a += 1; lum += 1; }     /* white outline */
+                    else {                                          /* shadow: the shape shifted 1 unit down */
                         float ds = shape_sdf(&s, ux - 0.4f, uy - 1.0f) - outline;
                         if (ds < 2.5f) a += 0.28f * (1 - (ds < 0 ? 0 : ds) / 2.5f);
                     }

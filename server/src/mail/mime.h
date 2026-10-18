@@ -81,4 +81,7 @@ char *mime_format_addr(const char *name, const char *email);
 /* Subject without repeated "Re:", "RE:", "Fwd:", "RV:", "AW:"…, for grouping conversations. */
 void mime_base_subject(const char *subj, char *out, size_t cap);
 
+/* A safe basename for an attacker-chosen file name (see mime.c). Never empty. */
+void mime_safe_filename(const char *in, char *out, size_t cap);
+
 #endif

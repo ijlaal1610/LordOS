@@ -1,20 +1,20 @@
-// clipboard.js — portapapeles de la sesión y su historial (avanzado).
+// clipboard.js — the session clipboard and its (advanced) history.
 //
-// Uno solo para toda la sesión: lo comparten la terminal, los campos de texto y las apps Linux
-// (Wayland; el compositor hace de puente en los dos sentidos). El historial guarda todo lo que
-// se copia en cualquiera de ellos —textos, enlaces, colores, código, rutas e imágenes— con su
-// origen y su hora. Se guarda en ~/.local/share/lordos/clipboard/ (history.json + img-*.png) y
-// sobrevive al reinicio; se apaga o se limita en Ajustes → Portapapeles.
+// A single one for the whole session: shared by the terminal, text fields and Linux apps
+// (Wayland; the compositor bridges both ways). The history keeps everything that gets
+// copied in any of them —text, links, colors, code, paths and images— with its
+// origin and time. It is stored in ~/.local/share/lordos/clipboard/ (history.json + img-*.png) and
+// survives a reboot; it is turned off or limited in Settings → Clipboard.
 //
-// Nunca entran: lo copiado desde un campo de contraseña (clipboard.set(t, { secure: true })), lo
-// que una app Linux marca como secreto (x-kde-passwordManagerHint, como los gestores de
-// contraseñas) y lo de las apps que el usuario excluyó.
+// Never stored: what was copied from a password field (clipboard.set(t, { secure: true })), what
+// a Linux app marks as secret (x-kde-passwordManagerHint, like password
+// managers do) and what comes from apps the user excluded.
 //
-//   clipboard.get() / clipboard.set(texto, { secure, origin })
+//   clipboard.get() / clipboard.set(text, { secure, origin })
 //   useStore(clipboardHistory) → [{ id, kind: 'text'|'image', type, text?, image?, origin, time, pinned }]
-//   <ClipboardPanel /> (❖V rápido, ❖⇧V completo) lo monta startShell: todos los temas lo tienen.
+//   <ClipboardPanel /> (❖V quick, ❖⇧V full) is mounted by startShell: every theme has it.
 import { createElement as h, useEffect, useRef, useState } from 'react';
-import { View, Text, Image, addListener, screen } from '@lordos/runtime';
+import { View, Text, Image, addListener, screen, mainBox } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
 import { useTheme } from './theme.js';
 import { t, formatDate } from './i18n.js';
@@ -30,7 +30,7 @@ const conf = () => ({ ...DEFAULTS, ...(settings.get().clipboard || {}) });
 
 export const clipboardHistory = createStore([]);
 
-// ---- tipo de cada entrada (para los filtros) ----
+// ---- kind of each entry (for the filters) ----
 
 export function clipboardKind(item) {
   if (item.image) return 'image';
@@ -44,13 +44,13 @@ export function clipboardKind(item) {
   return 'text';
 }
 
-// ---- persistencia ----
+// ---- persistence ----
 
 let loaded = false;
 let saveTimer = null;
 const ensureDir = () => {
   let cur = '';
-  for (const part of DIR.split('/')) { cur = cur ? `${cur}/${part}` : part; try { fs.mkdir(cur); } catch (e) { /* ya existe */ } }
+  for (const part of DIR.split('/')) { cur = cur ? `${cur}/${part}` : part; try { fs.mkdir(cur); } catch (e) { /* already exists */ } }
 };
 const imageName = (p) => String(p).split('/').pop();
 const ownImage = (p) => String(p).includes('/.local/share/lordos/clipboard/img-');
@@ -59,16 +59,16 @@ function prune(list) {
   const c = conf();
   const now = Date.now();
   let out = list.filter((x) => x.pinned || !c.expireDays || now - x.time < c.expireDays * 86400000);
-  // límite de cantidad (los fijados no cuentan) y de espacio de las imágenes
+  // limit on count (pinned ones don't count) and on image space
   const free = out.filter((x) => !x.pinned);
   if (free.length > c.max) { const drop = new Set(free.slice(c.max)); out = out.filter((x) => !drop.has(x)); }
   let bytes = out.reduce((a, x) => a + (x.bytes || 0), 0);
   for (let i = out.length - 1; i >= 0 && bytes > c.maxMB * 1048576; i--) {
     if (out[i].image && !out[i].pinned) { bytes -= out[i].bytes || 0; out.splice(i, 1); }
   }
-  // las imágenes que quedaron afuera se borran del disco
+  // images left out are deleted from disk
   const keep = new Set(out.filter((x) => x.image).map((x) => x.image));
-  for (const x of list) if (x.image && ownImage(x.image) && !keep.has(x.image)) { try { lord.clipboard.deleteSaved(imageName(x.image)); } catch (e) { /* ya no está */ } }
+  for (const x of list) if (x.image && ownImage(x.image) && !keep.has(x.image)) { try { lord.clipboard.deleteSaved(imageName(x.image)); } catch (e) { /* already gone */ } }
   return out;
 }
 
@@ -88,7 +88,7 @@ function load() {
   let items = [];
   try { items = JSON.parse(fs.read(FILE)).items || []; } catch (e) { items = []; }
   const exists = new Set();
-  try { for (const e of fs.list(DIR)) exists.add(e.name); } catch (e) { /* sin carpeta */ }
+  try { for (const e of fs.list(DIR)) exists.add(e.name); } catch (e) { /* no folder */ }
   items = items.filter((x) => x && (x.text != null || (x.image && exists.has(imageName(x.image)))));
   clipboardHistory.set(prune(items));
 }
@@ -116,7 +116,7 @@ const remember = (text, origin = 'lordos') => {
 
 function rememberImage(tmpPath, origin, gen) {
   if (!tmpPath || ignored(origin)) return;
-  // la vista previa del compositor vive en $XDG_RUNTIME_DIR (se pierde al reiniciar): se copia a home
+  // the compositor's preview lives in $XDG_RUNTIME_DIR (lost on reboot): copy it to home
   let path = tmpPath;
   let bytes = 0;
   if (conf().save && lord.clipboard.saveImage) {
@@ -127,17 +127,17 @@ function rememberImage(tmpPath, origin, gen) {
         path = `${fs.home()}/${DIR}/${name}`;
         try { bytes = fs.list(DIR).find((e) => e.name === name)?.size || 0; } catch (e) { bytes = 0; }
       }
-    } catch (e) { /* queda la temporal */ }
+    } catch (e) { /* keep the temporary one */ }
   }
   push({ kind: 'image', image: path, origin, bytes, src: tmpPath }, (x) => x.src === tmpPath && x.image);
 }
 
 const state = () => (lord.clipboard.state ? lord.clipboard.state() : { kind: 'text' });
-let skipNext = false;           // la próxima notificación la generamos nosotros (volver a copiar)
+let skipNext = false;           // we generate the next notification ourselves (re-copying)
 globalThis.__lordClipboard = () => {
   const s = state();
   if (skipNext) { skipNext = false; return; }
-  if (s.sensitive) return;                          // contraseña: no va al historial
+  if (s.sensitive) return;                          // password: not added to history
   if (s.kind === 'image') rememberImage(s.image, s.origin || 'linux', s.imageGen);
   else remember(lord.clipboard.get(), s.origin || 'lordos');
 };
@@ -146,14 +146,14 @@ globalThis.__lordClipboard = () => {
 
 export const clipboard = {
   get: () => lord.clipboard.get(),
-  // secure: viene de un campo de contraseña (no va al historial).
+  // secure: comes from a password field (not added to history).
   set(text, { secure = false, origin = 'lordos' } = {}) {
     const s = String(text);
     lord.clipboard.set(s, { secure, origin });
     if (!secure) remember(s, origin);
     else skipNext = true;
   },
-  // vuelve a copiar una entrada del historial (y la sube al primer lugar)
+  // re-copies a history entry (and moves it to the top)
   use(item) {
     if (item.image) { skipNext = true; lord.clipboard.useImage(item.image); }
     else if (item.text != null) { lord.clipboard.set(item.text, { origin: item.origin || 'lordos' }); skipNext = true; }
@@ -163,7 +163,7 @@ export const clipboard = {
   pin(item) { clipboardHistory.set((list) => list.map((x) => (x.id === item.id ? { ...x, pinned: !x.pinned } : x))); scheduleSave(); },
   remove(item) {
     clipboardHistory.set((list) => list.filter((x) => x.id !== item.id));
-    if (item.image && ownImage(item.image)) { try { lord.clipboard.deleteSaved(imageName(item.image)); } catch (e) { /* ya no está */ } }
+    if (item.image && ownImage(item.image)) { try { lord.clipboard.deleteSaved(imageName(item.image)); } catch (e) { /* already gone */ } }
     scheduleSave();
   },
   clear({ keepPinned = true } = {}) {
@@ -173,10 +173,10 @@ export const clipboard = {
     clipboardHistory.set(keep);
     scheduleSave();
   },
-  // Al cerrar sesión (session.quit): borra el historial si el usuario lo pidió.
+  // On logout (session.quit): clears the history if the user asked for it.
   beforeLogout() { if (conf().clearOnLogout) { clipboard.clear({ keepPinned: true }); if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; } try { fs.write(FILE, JSON.stringify({ version: 1, items: clipboardHistory.get() })); } catch (e) { /* */ } } },
-  // Vuelve a copiar y pega: en el campo de texto que tenía el foco o en la app Linux del frente
-  // (Ctrl+V sintético solo para esa app). Devuelve 'pasted' o 'copied'.
+  // Re-copies and pastes: into the text field that had focus or into the frontmost Linux app
+  // (synthetic Ctrl+V for that app only). Returns 'pasted' or 'copied'.
   paste(item, target) {
     clipboard.use(item);
     if (target?.text && (restoreFocus(target.text), pasteIntoFocused())) return 'pasted';
@@ -187,14 +187,14 @@ export const clipboard = {
   load,
 };
 
-// Lo que se guardó se lee al arrancar el tema; si se apaga el guardado, se borra el archivo.
+// What was saved is read when the theme starts; if saving is turned off, the file is cleared.
 settings.subscribe(() => { if (!conf().save) { try { fs.write(FILE, JSON.stringify({ version: 1, items: [] })); } catch (e) { /* */ } } });
 setTimeout(load, 0);
 
-// ---- panel (❖V rápido, ❖⇧V completo) ----
+// ---- panel (❖V quick, ❖⇧V full) ----
 
 export const clipboardPanel = createStore(false);       // false | 'quick' | 'full'
-let target = null;                                       // a dónde pegar al elegir
+let target = null;                                       // where to paste on choosing
 let superDown = false;
 function openPanel(mode) {
   if (!clipboardPanel.get()) {
@@ -261,7 +261,7 @@ function pick(item) {
 }
 export const toast = createStore(null);
 
-// Rápido (❖V): lo último, con búsqueda; 1–9 eligen.
+// Quick (❖V): the latest, with search; 1–9 choose.
 function QuickPanel() {
   const th = useTheme();
   useEffect(() => load(), []);
@@ -278,10 +278,10 @@ function QuickPanel() {
     if (/^[1-9]$/.test(e.char || '') && !q) { const it = shown[Number(e.char) - 1]; if (it) pick(it); return true; }
     return false;
   };
-  return h(View, { onClick: close, style: { position: 'absolute', left: 0, top: 0, width: screen.width, height: screen.height } },
+  return h(View, { onClick: close, style: { position: 'absolute', ...mainBox() } },
     h(View, {
       onClick: (e) => e.stopPropagation(),
-      style: { position: 'absolute', left: Math.round((screen.width - W) / 2), top: 70, width: W, padding: 10, gap: 4, borderRadius: 12,
+      style: { position: 'absolute', left: Math.round((mainBox().width - W) / 2), top: 70, width: W, padding: 10, gap: 4, borderRadius: 12,
         backgroundColor: th.windowBg, border: `1px solid ${th.separator}`, boxShadow: '0 16px 40px rgba(0,0,0,0.45)' },
     },
     h(View, { style: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 } },
@@ -298,7 +298,7 @@ function QuickPanel() {
 const match = (x, q) => !q || (x.text && x.text.toLowerCase().includes(q.toLowerCase())) || (x.origin && x.origin.toLowerCase().includes(q.toLowerCase()));
 const sortPinned = (list) => [...list.filter((x) => x.pinned), ...list.filter((x) => !x.pinned)];
 
-// Completo (❖⇧V): filtros, lista, vista previa y acciones.
+// Full (❖⇧V): filters, list, preview and actions.
 function FullPanel() {
   const th = useTheme();
   useEffect(() => load(), []);
@@ -310,7 +310,7 @@ function FullPanel() {
   const close = closeClipboardPanel;
   const shown = sortPinned(list.filter((x) => match(x, q) && (filter === 'all' || (filter === 'pinned' ? x.pinned : x.type === filter))));
   const cur = shown[Math.min(sel, shown.length - 1)] || null;
-  const W = Math.min(860, screen.width - 40), H = Math.min(540, screen.height - 120);
+  const W = Math.min(860, mainBox().width - 40), H = Math.min(540, mainBox().height - 120);
   const onKey = (e) => {
     if (e.key === 'ArrowDown') { setSel((s) => Math.min(shown.length - 1, s + 1)); return true; }
     if (e.key === 'ArrowUp') { setSel((s) => Math.max(0, s - 1)); return true; }
@@ -321,10 +321,10 @@ function FullPanel() {
   const btn = (label, onClick, danger) => h(View, { onClick, style: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, backgroundColor: danger ? '#ff453a' : th.control } },
     h(Text, { style: { fontSize: 11, fontWeight: 600, color: danger ? '#fff' : th.text } }, label));
   const count = (f) => (f === 'all' ? list.length : f === 'pinned' ? list.filter((x) => x.pinned).length : list.filter((x) => x.type === f).length);
-  return h(View, { onClick: close, style: { position: 'absolute', left: 0, top: 0, width: screen.width, height: screen.height, backgroundColor: 'rgba(0,0,0,0.25)' } },
+  return h(View, { onClick: close, style: { position: 'absolute', ...mainBox(), backgroundColor: 'rgba(0,0,0,0.25)' } },
     h(View, {
       onClick: (e) => e.stopPropagation(),
-      style: { position: 'absolute', left: Math.round((screen.width - W) / 2), top: Math.round((screen.height - H) / 2), width: W, height: H,
+      style: { position: 'absolute', left: Math.round((mainBox().width - W) / 2), top: Math.round((mainBox().height - H) / 2), width: W, height: H,
         borderRadius: 14, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', overflow: 'hidden' },
     },
     h(View, { style: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 } },
@@ -366,7 +366,7 @@ function FullPanel() {
       conf().save ? t('shell.clipboard.fullHint') : t('shell.clipboard.notSaved'))));
 }
 
-// Aviso corto (por ejemplo: "copiado; pegá con Ctrl+V").
+// Short notice (for example: "copied; paste with Ctrl+V").
 export function ClipboardToast() {
   const msg = useStore(toast);
   const th = useTheme();
@@ -378,7 +378,7 @@ export function ClipboardToast() {
     return () => clearTimeout(timer.current);
   }, [msg]);
   if (!msg) return null;
-  return h(View, { style: { position: 'absolute', left: Math.round(screen.width / 2 - 170), width: 340, bottom: 110, alignItems: 'center', pointerEvents: 'none' } },
+  return h(View, { style: { position: 'absolute', left: Math.round(mainBox().left + mainBox().width / 2 - 170), width: 340, top: mainBox().top + mainBox().height - 150, alignItems: 'center', pointerEvents: 'none' } },
     h(View, { style: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`, boxShadow: '0 8px 24px rgba(0,0,0,0.35)' } },
       h(Text, { style: { fontSize: 12, color: th.text } }, msg)));
 }

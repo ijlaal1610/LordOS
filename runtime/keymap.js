@@ -1,7 +1,7 @@
-// keymap.js — eventos de teclado para temas y apps.
-// Normalmente la traducción la hace el servidor con libxkbcommon (todas las distribuciones
-// de XKB, compose y teclas muertas) y acá solo se arma el evento (nativeKey). Las tablas de
-// abajo ('latam' y 'us') son el respaldo si el servidor no pudo cargar XKB.
+// keymap.js — keyboard events for themes and apps.
+// Normally the server does the translation with libxkbcommon (all XKB layouts,
+// compose and dead keys) and here we only build the event (nativeKey). The tables
+// below ('latam' and 'us') are the fallback if the server could not load XKB.
 
 const LETTERS = { 16: 'q', 17: 'w', 18: 'e', 19: 'r', 20: 't', 21: 'y', 22: 'u', 23: 'i', 24: 'o', 25: 'p',
   30: 'a', 31: 's', 32: 'd', 33: 'f', 34: 'g', 35: 'h', 36: 'j', 37: 'k', 38: 'l',
@@ -15,7 +15,7 @@ const NAMES = { 1: 'Escape', 14: 'Backspace', 15: 'Tab', 28: 'Enter', 96: 'Enter
   126: 'Meta', 104: 'PageUp', 109: 'PageDown', 110: 'Insert', 59: 'F1', 60: 'F2', 61: 'F3', 62: 'F4', 63: 'F5',
   64: 'F6', 65: 'F7', 66: 'F8', 67: 'F9', 68: 'F10', 87: 'F11', 88: 'F12' };
 
-// código → [normal, shift, altgr]; 'dead:x' = tecla muerta.
+// code → [normal, shift, altgr]; 'dead:x' = dead key.
 const LAYOUTS = {
   us: {
     2: ['1', '!'], 3: ['2', '@'], 4: ['3', '#'], 5: ['4', '$'], 6: ['5', '%'], 7: ['6', '^'], 8: ['7', '&'],
@@ -44,7 +44,7 @@ export const setLayout = (name) => { if (LAYOUTS[name]) layout = name; };
 export const getLayout = () => layout;
 export const layouts = Object.keys(LAYOUTS);
 
-// Evento a partir de lo que tradujo el servidor. flags: 1 Shift, 2 Ctrl, 4 Alt, 8 AltGr, 16 Super, 32 Bloq Mayús.
+// Event from what the server translated. flags: 1 Shift, 2 Ctrl, 4 Alt, 8 AltGr, 16 Super, 32 Caps Lock.
 export function nativeKey(code, value, key, chr, base, flags) {
   const down = value !== 0;
   mods.shift = !!(flags & 1); mods.ctrl = !!(flags & 2); mods.alt = !!(flags & 4);
@@ -53,11 +53,11 @@ export function nativeKey(code, value, key, chr, base, flags) {
     shift: mods.shift, ctrl: mods.ctrl, alt: mods.alt, altgr: mods.altgr, meta: mods.meta, mods: modifiers() };
 }
 
-// Modificadores en uso, como máscara: 1 Shift, 2 Alt, 4 Ctrl, 8 Super.
+// Modifiers in use, as a mask: 1 Shift, 2 Alt, 4 Ctrl, 8 Super.
 export const modifiers = () => (mods.shift ? 1 : 0) | (mods.alt ? 2 : 0) | (mods.ctrl ? 4 : 0) | (mods.meta ? 8 : 0);
 
-// Carácter que produce la tecla con Shift/AltGr/Bloq Mayús pero sin Ctrl/Alt (para atajos
-// y para que la terminal arme Ctrl+letra o Alt+letra).
+// Character the key produces with Shift/AltGr/Caps Lock but without Ctrl/Alt (for shortcuts
+// and so the terminal can build Ctrl+letter or Alt+letter).
 function baseChar(code) {
   const table = LAYOUTS[layout][code];
   if (mods.altgr && table?.[2]) return table[2];
@@ -67,7 +67,7 @@ function baseChar(code) {
   return code === 57 ? ' ' : '';
 }
 
-// Devuelve el evento de teclado listo para los temas y apps.
+// Returns the keyboard event ready for themes and apps.
 export function translate(code, value) {
   const down = value !== 0;
   switch (code) {

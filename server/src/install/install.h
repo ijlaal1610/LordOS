@@ -1,4 +1,4 @@
-/* install.h — instalador de LordOS al disco, solo desde el ISO live (ver install.c y docs/ISO.md). */
+/* install.h — LordOS installer to disk, only from the live ISO (see install.c and docs/ISO.md). */
 #ifndef LORD_INSTALL_H
 #define LORD_INSTALL_H
 
@@ -8,7 +8,7 @@ void install_act_disks(const AdminReq *r, const char *arg, size_t len);
 void install_act_run(const AdminReq *r, const char *arg, size_t len);
 void install_act_reboot(const AdminReq *r, const char *arg, size_t len);
 
-/* Acciones del ayudante privilegiado (admin.c). Todas responden ERR fuera del modo live. */
+/* Privileged helper actions (admin.c). They all answer ERR outside live mode. */
 #define INSTALL_ADMIN_ACTIONS \
     { "install-disks", install_act_disks, 0 }, \
     { "install-run", install_act_run, A_FORK }, \

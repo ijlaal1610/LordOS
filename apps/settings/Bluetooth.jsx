@@ -6,8 +6,9 @@ import { View, Text, useTheme, useLocale, Toggle, Button, admin, useBluetooth, o
 import { useEffect, useState } from 'react';
 import { GroupBox, SettingRow, PageHeader, Note, Stack } from './ui.jsx';
 
-const GLYPHS = [[/headset|headphones/, '🎧'], [/audio/, '🔊'], [/keyboard/, '⌨'], [/mouse|tablet/, '🖱'], [/gaming|joystick/, '🎮'],
-  [/phone/, '📱'], [/computer/, '💻'], [/camera/, '📷'], [/printer/, '⎙']];
+// Monochrome glyphs (the usual 🎧 🖱 📱 are color emoji on the system fonts).
+const GLYPHS = [[/headset|headphones/, '♪'], [/audio/, '♪'], [/keyboard/, '⌨'], [/mouse|tablet/, '◖'], [/gaming|joystick/, '✜'],
+  [/phone/, '▯'], [/computer/, '▭'], [/camera/, '◉'], [/printer/, '⎙']];
 const glyphOf = (icon) => (GLYPHS.find(([re]) => re.test(icon || '')) || [null, 'ᛒ'])[1];
 
 export function BtIcon({ size = 44 }) {
@@ -87,7 +88,7 @@ export function BluetoothSettings() {
     <Stack>
       <PageHeader icon={<BtIcon />} title={tr('prefs.bt.title')}
         subtitle={a.powered ? tr('prefs.bt.visibleAs', { name: a.name || a.address }) : tr('prefs.bt.offHint')}>
-        <Toggle on={a.powered} onChange={togglePower} />
+        <Toggle small on={a.powered} onChange={togglePower} />
       </PageHeader>
       {err === 'blocked' ? (
         <GroupBox>

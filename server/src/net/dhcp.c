@@ -1,19 +1,19 @@
-/* dhcp.c — cliente DHCPv4 propio (RFC 2131), como proceso residente del ayudante privilegiado
- * ("if:<interfaz>"): DISCOVER → OFFER → REQUEST → ACK, aplica dirección, ruta por defecto y DNS
- * con netlink, renueva en T1 (unicast al servidor) y re-pide en T2 (broadcast); si vence la
- * concesión o llega un NAK, vuelve a empezar. Sigue el enlace: sin portadora espera, y al
- * volver confirma la misma dirección (INIT-REBOOT). En Wi-Fi además traduce los avisos de
- * wpa_supplicant (conectado/desconectado) a EVENTs. SIGTERM: DHCPRELEASE y limpia. If the process that
+/* dhcp.c — our own DHCPv4 client (RFC 2131), as a resident process of the privileged helper
+ * ("if:<interface>"): DISCOVER → OFFER → REQUEST → ACK, applies address, default route and DNS
+ * with netlink, renews at T1 (unicast to the server) and re-requests at T2 (broadcast); if the
+ * lease expires or a NAK arrives, it starts over. It follows the link: without carrier it waits,
+ * and when it comes back it confirms the same address (INIT-REBOOT). On Wi-Fi it also translates
+ * wpa_supplicant's notices (connected/disconnected) into EVENTs. SIGTERM: DHCPRELEASE and cleanup. If the process that
  * started it dies (lord-netd, which lord-sessiond restarts right away) it gets SIGUSR1: it keeps
  * the address and leaves the lease in /run/lordos/dhcp/<if>.lease, and the new client confirms it
  * (INIT-REBOOT) without dropping connections.
  *
- * Envía y recibe por un socket AF_PACKET (no hace falta tener IP todavía); un socket UDP en
- * el puerto 68 atado a la interfaz evita que el kernel conteste "puerto inalcanzable" y sirve
- * para la renovación unicast. IPv6: el kernel hace SLAAC solo; DHCPv6 queda pendiente. */
+ * It sends and receives over an AF_PACKET socket (no IP needed yet); a UDP socket on
+ * port 68 bound to the interface keeps the kernel from answering "port unreachable" and serves
+ * for unicast renewal. IPv6: the kernel does SLAAC by itself; DHCPv6 is still pending. */
 #include "netpriv.h"
 
-#include <net/if.h>                 /* antes que los de linux/ */
+#include <net/if.h>                 /* before the linux/ ones */
 #include "../admin.h"
 
 #include <arpa/inet.h>
@@ -136,7 +136,7 @@ static int send_broadcast(Dhcp *d, struct dhcp_msg *m, size_t len) {
     ip->check = ip_sum(ip, sizeof *ip);
     udp->source = htons(68); udp->dest = htons(67);
     udp->len = htons((uint16_t)(sizeof *udp + len));
-    udp->check = 0;                         /* opcional en IPv4 */
+    udp->check = 0;                         /* optional in IPv4 */
     struct sockaddr_ll sa = { .sll_family = AF_PACKET, .sll_protocol = htons(ETH_P_IP), .sll_ifindex = d->ifindex, .sll_halen = 6 };
     memset(sa.sll_addr, 0xff, 6);
     return sendto(d->pkt, pkt, total, 0, (struct sockaddr *)&sa, sizeof sa) == (ssize_t)total ? 0 : -1;
@@ -147,7 +147,7 @@ static int send_unicast(Dhcp *d, struct dhcp_msg *m, size_t len, uint32_t server
     return sendto(d->udp, m, len, 0, (struct sockaddr *)&sa, sizeof sa) == (ssize_t)len ? 0 : -1;
 }
 
-/* Lee las opciones; devuelve el tipo de mensaje (o 0). */
+/* Reads the options; returns the message type (or 0). */
 static int parse(const struct dhcp_msg *m, size_t len, Lease *l) {
     memset(l, 0, sizeof *l);
     l->addr = m->yiaddr;
@@ -190,7 +190,7 @@ static int parse(const struct dhcp_msg *m, size_t len, Lease *l) {
     return type;
 }
 
-/* Un paquete del socket AF_PACKET: ¿es una respuesta DHCP para nosotros? */
+/* A packet from the AF_PACKET socket: is it a DHCP reply for us? */
 static int recv_reply(Dhcp *d, Lease *l, uint32_t *from_server) {
     uint8_t buf[2048];
     ssize_t r = recv(d->pkt, buf, sizeof buf, 0);
@@ -270,7 +270,7 @@ static void transmit(Dhcp *d) {
     case S_REBINDING: len = build(d, &m, REQUEST, d->lease.addr, 0, 0); send_broadcast(d, &m, len); break;
     default: return;
     }
-    /* reintentos: 4, 8, 16, 32, 64 s (RFC 2131 4.1), con ±1 s */
+    /* retries: 4, 8, 16, 32, 64 s (RFC 2131 4.1), with ±1 s */
     int wait = 4 << (d->tries < 4 ? d->tries : 4);
     uint8_t j;
     random_bytes(&j, 1);
@@ -354,7 +354,7 @@ static void drop_lease(Dhcp *d, const char *why) {
     admin_event("net dhcp %s %s", d->ifname, why);
 }
 
-/* ---- Wi-Fi: avisos de wpa_supplicant ---- */
+/* ---- Wi-Fi: wpa_supplicant notices ---- */
 
 static int wpa_attach(Dhcp *d) {
     int fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
@@ -436,7 +436,7 @@ void dhcp_run(const char *ifname, int wifi) {
         if (d.state == S_BOUND && t >= d.t1_at) { d.state = S_RENEWING; new_xid(&d); d.next_tx = t; }
         if (d.state == S_RENEWING && t >= d.t2_at) { d.state = S_REBINDING; new_xid(&d); d.next_tx = t; }
         if ((d.state == S_RENEWING || d.state == S_REBINDING) && t >= d.end_at) { drop_lease(&d, "expired"); enter(&d, S_SELECTING); }
-        /* hasta el próximo evento */
+        /* until the next event */
         double next = t + 30;
         if (d.state != S_WAIT_LINK && d.state != S_BOUND && d.next_tx < next) next = d.next_tx;
         if (d.state == S_BOUND && d.t1_at < next) next = d.t1_at;
@@ -454,7 +454,7 @@ void dhcp_run(const char *ifname, int wifi) {
             while (recv(d.mon, junk, sizeof junk, MSG_DONTWAIT) > 0) {}
             int up = link_carrier(d.ifindex);
             if (!up && d.state != S_WAIT_LINK) {
-                if (wifi) drop_lease(&d, "no-carrier");        /* otra red: otra dirección */
+                if (wifi) drop_lease(&d, "no-carrier");        /* another network: another address */
                 else admin_event("net dhcp %s no-carrier", ifname);
                 enter(&d, S_WAIT_LINK);
             }

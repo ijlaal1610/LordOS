@@ -1,17 +1,17 @@
-// settings.js — ajustes del usuario, guardados en ~/.config/lordos/settings.json.
+// settings.js — user settings, stored in ~/.config/lordos/settings.json.
 import { createStore, useStore } from './store.js';
 
 const DEFAULTS = {
   mode: 'dark',          // 'dark' | 'light'
   accent: 'azul',
-  effects: true,         // transparencias con blur
+  effects: true,         // transparency with blur
   wallpaper: 'aurora',
-  keyboard: 'latam',     // antes de M5; ahora keyboards (ver keyboard.js)
-  keyboards: null,       // [{ layout, variant }] de xkb-data
+  keyboard: 'latam',     // before M5; now keyboards (see keyboard.js)
+  keyboards: null,       // [{ layout, variant }] from xkb-data
   keyboardIndex: 0,
-  language: null,        // idioma de la interfaz ('es', 'en', 'pt'…); null = el de la región
-  region: '',            // región de formatos ('es_AR'…); '' = la del idioma
-  theme: null,           // id del tema elegido (carpeta en themes/)
+  language: null,        // interface language ('es', 'en', 'pt'…); null = the region's
+  region: '',            // formats region ('es_AR'…); '' = the language's
+  theme: null,           // id of the chosen theme (folder in themes/)
 };
 
 function load() {
@@ -19,7 +19,7 @@ function load() {
     const txt = lord.settings.load();
     return txt ? { ...DEFAULTS, ...JSON.parse(txt) } : { ...DEFAULTS };
   } catch (e) {
-    console.warn('ajustes ilegibles, se usan los valores por defecto:', e);
+    console.warn('unreadable settings, using the defaults:', e);
     return { ...DEFAULTS };
   }
 }

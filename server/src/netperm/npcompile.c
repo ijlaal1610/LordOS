@@ -1,11 +1,11 @@
-/* npcompile.c — reglas → entradas de los mapas BPF (ver npcompile.h). */
+/* npcompile.c — rules → entries of the BPF maps (see npcompile.h). */
 #include "netperm/npcompile.h"
 #include "fw/fwmap.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-/* ---- orden de precedencia (el mismo de consider() en fw/rules.c) ------------------------------ */
+/* ---- order of precedence (the same as consider() in fw/rules.c) ------------------------------ */
 
 static int nlabels(const char *d) {
     int n = 1;
@@ -23,8 +23,8 @@ static int dst_score(const FwRule *r) {
     }
 }
 
-/* < 0 si a va antes que b (gana): destino más específico, rango de puertos más chico, protocolo
- * concreto, denegar, y la más nueva. */
+/* < 0 if a goes before b (wins): more specific destination, smaller port range, concrete
+ * protocol, deny, and the newest. */
 static int cmp_prec(const void *x, const void *y) {
     const FwRule *a = *(const FwRule *const *)x, *b = *(const FwRule *const *)y;
     int da = dst_score(a), db = dst_score(b);
@@ -48,7 +48,7 @@ static void ent_of(const FwRule *r, NpEnt *e) {
     e->rule_id = r->id;
 }
 
-/* Ordena v[0..n) y lo copia en la lista (hasta max); devuelve cuántas quedaron afuera. */
+/* Sorts v[0..n) and copies it into the list (up to max); returns how many were left out. */
 static int fill(const FwRule **v, int n, NpEnt *out, np_u32 *count, int max) {
     qsort(v, (size_t)n, sizeof *v, cmp_prec);
     int k = n < max ? n : max;
@@ -57,7 +57,7 @@ static int fill(const FwRule **v, int n, NpEnt *out, np_u32 *count, int max) {
     return n - k;
 }
 
-/* ---- direcciones y dominios ------------------------------------------------------------------ */
+/* ---- addresses and domains ------------------------------------------------------------------- */
 
 static int bit_at(const uint8_t *a, int i) { return a[i >> 3] >> (7 - (i & 7)) & 1; }
 
@@ -75,7 +75,7 @@ static int domain_match(const FwRule *r, const char *name) {
     return nl > dl && name[nl - dl - 1] == '.' && !strcmp(name + nl - dl, r->domain);
 }
 
-/* ---- armado ---------------------------------------------------------------------------------- */
+/* ---- building -------------------------------------------------------------------------------- */
 
 typedef struct {
     FwRule *rules;
@@ -113,7 +113,7 @@ static NpNode *node_push(NpCompiled *c) {
     return n;
 }
 
-/* Lista de un nodo: las reglas de dominio dadas (ya elegidas) + las redes que lo contienen. */
+/* A node's list: the given domain rules (already picked) + the networks that contain it. */
 static int build_list(const Rules *R, const FwRule **dom, int ndom, NpNode *node, int *trunc) {
     const FwRule **v = malloc(((size_t)R->n + (size_t)ndom + 1) * sizeof *v);
     if (!v) return -1;
@@ -150,7 +150,7 @@ static void node_key(const NpNode *n, unsigned char *key, size_t *len) {
 typedef struct {
     const Rules *R;
     NpCompiled *c;
-    FwMap *seen;                /* clave del nodo → índice + 1 */
+    FwMap *seen;                /* node key → index + 1 */
     int err;
 } HostCtx;
 
@@ -173,7 +173,7 @@ static int host_cb(void *u, int fam, const uint8_t *addr, const char (*names)[FW
     node_key(&tmp, key, &kl);
     void **slot = fwmap_slot(h->seen, key, kl, 1);
     if (!slot) { h->err = 1; return 1; }
-    if (*slot) {                                /* había un /32 de una regla: este lo incluye */
+    if (*slot) {                                /* there was a /32 from a rule: this one includes it */
         h->c->nodes[(intptr_t)*slot - 1] = tmp;
         return 0;
     }
@@ -207,7 +207,7 @@ int np_compile_app(FwStore *s, const char *app, uint32_t idx, DnsMap *names, con
     }
     out->truncated += fill(v, k, a->gen, &a->ngen, NP_GEN_MAX);
 
-    /* un nodo por cada red distinta */
+    /* one node per distinct network */
     for (int i = 0; i < R.n; i++) {
         const FwRule *r = &R.rules[i];
         if (r->kind != FW_DST_CIDR) continue;
@@ -228,7 +228,7 @@ int np_compile_app(FwStore *s, const char *app, uint32_t idx, DnsMap *names, con
         *nn = tmp;
         *slot = (void *)(intptr_t)out->nnodes;
     }
-    /* un nodo por cada dirección con un nombre que coincide con una regla de dominio */
+    /* one node per address with a name that matches a domain rule */
     if (out->has_domains && names && names_app) {
         HostCtx h = { &R, out, &seen, 0 };
         dnsmap_each(names, names_app, now, host_cb, &h);

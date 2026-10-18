@@ -1,4 +1,4 @@
-/* cgsup.c — lord-sessiond's cgroup placement service (see sec/cgroup.h, docs/PRIVACIDAD.md).
+/* cgsup.c — lord-sessiond's cgroup placement service (see sec/cgroup.h, docs/PRIVACY.md).
  *
  * A small root child of lord-sessiond listens on /run/lordos/cgroup.sock. lord-server (and the
  * children it forks right before exec: Linux apps, .lpk apps, lord-media, lord-doc…) ask it to be
@@ -44,9 +44,9 @@ static void serve(void) {
     mode_t old = umask(0);
     int ok = lfd >= 0 && !bind(lfd, (struct sockaddr *)&a, sizeof a) && !listen(lfd, 32);
     umask(old);
-    if (!ok) { sd_log("cgroup: no se pudo escuchar en %s: %s", CGROUP_SOCK, strerror(errno)); _exit(1); }
+    if (!ok) { sd_log("cgroup: could not listen on %s: %s", CGROUP_SOCK, strerror(errno)); _exit(1); }
     chmod(CGROUP_SOCK, 0666);                   /* anyone may ask; SO_PEERCRED decides */
-    sd_log("cgroup: scopes de root (servicio en %s, binarios de %s)", CGROUP_SOCK, bindir);
+    sd_log("cgroup: root-owned scopes (service on %s, binaries from %s)", CGROUP_SOCK, bindir);
     for (;;) {
         int c = accept4(lfd, NULL, NULL, SOCK_CLOEXEC);
         if (c < 0) { if (errno == EINTR) continue; _exit(1); }

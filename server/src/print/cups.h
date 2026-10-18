@@ -1,13 +1,13 @@
-/* cups.h — cliente IPP propio para CUPS por su socket local (/run/cups/cups.sock), sin libcups.
+/* cups.h — our own IPP client for CUPS over its local socket (/run/cups/cups.sock), without libcups.
  *
- * CUPS administra la cola y los controladores; LordOS solo le habla IPP. Las operaciones de
- * administración (agregar, quitar, elegir la predeterminada) las autoriza la política del propio
- * CUPS: el usuario tiene que estar en el grupo lpadmin (los administradores de LordOS lo están) y
- * se identifica con «PeerCred» (CUPS mira las credenciales del socket). No hay acción de root en
- * admin.c para esto. Ver docs/IMPRESION.md.
+ * CUPS manages the queue and the drivers; LordOS only speaks IPP to it. Administration
+ * operations (add, remove, choose the default) are authorized by CUPS's own policy:
+ * the user has to be in the lpadmin group (LordOS administrators are) and
+ * identifies with «PeerCred» (CUPS looks at the socket credentials). There is no root action in
+ * admin.c for this. See docs/PRINTING.md.
  *
- * Cada función arma su resultado como JSON en *out (JBuf de doc/wire.h) y devuelve 0, o -1 con
- * {"error": "..."} en *out. Son bloqueantes: se llaman desde los hilos de print.c. */
+ * Each function builds its result as JSON in *out (JBuf from doc/wire.h) and returns 0, or -1 with
+ * {"error": "..."} in *out. They block: they're called from print.c's threads. */
 #ifndef LORD_PRINT_CUPS_H
 #define LORD_PRINT_CUPS_H
 
@@ -15,7 +15,7 @@
 #include "../doc/wire.h"
 #include "../sec/json.h"
 
-extern const char *cups_socket;            /* "/run/cups/cups.sock" (las pruebas lo cambian) */
+extern const char *cups_socket;            /* "/run/cups/cups.sock" (the tests change it) */
 
 int cups_printers(JBuf *out);
 int cups_jobs(JBuf *out);
@@ -26,11 +26,11 @@ int cups_add(const char *name, const char *uri, const char *info, const char *lo
 int cups_remove(const char *name, JBuf *out);
 int cups_set_default(const char *name, JBuf *out);
 
-/* validaciones (también las usa js_print.c) */
-int cups_valid_name(const char *s);         /* letras, dígitos, _ y -, hasta 127 */
-int cups_valid_uri(const char *s);          /* ipp:// ipps:// http:// https:// dnssd:// sin espacios */
+/* validations (js_print.c uses them too) */
+int cups_valid_name(const char *s);         /* letters, digits, _ and -, up to 127 */
+int cups_valid_uri(const char *s);          /* ipp:// ipps:// http:// https:// dnssd:// without spaces */
 int cups_valid_text(const char *s, size_t max);
-/* "1-3,5,8-9" → rangos; devuelve cuántos (máx. 32) o -1 */
+/* "1-3,5,8-9" → ranges; returns how many (max. 32) or -1 */
 int cups_page_ranges(const char *s, int lo[], int hi[], int max);
 
 #endif

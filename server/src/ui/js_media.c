@@ -1,14 +1,14 @@
-/* js_media.c — lord.media: video, música, fotos, capturas, cámara y grabadora (ver
- * server/src/media y docs/MEDIOS.md).
+/* js_media.c — lord.media: video, music, photos, screenshots, camera and recorder (see
+ * server/src/media and docs/MEDIA.md).
  *
- * Reglas:
- *   - todo archivo pasa por las mismas raíces que lord.fs (carpeta personal y montajes del
- *     usuario); las salidas nunca pisan nada (temporal + renombrar sin reemplazar) y no pueden ir
- *     a las carpetas protegidas;
- *   - cámara, micrófono y pantalla se verifican contra los permisos del sistema (sec/perms.c,
- *     estilo TCC) en C, no solo en el SDK: el aviso lo muestra el sistema (sdk/privacy.js) y acá
- *     se exige que la decisión guardada sea «permitir»;
- *   - el decodificador (lord-media) nunca recibe una ruta: lord-server abre y pasa el fd. */
+ * Rules:
+ *   - every file goes through the same roots as lord.fs (home folder and user
+ *     mounts); outputs never overwrite anything (temporary + rename without replacing) and cannot go
+ *     to the protected folders;
+ *   - camera, microphone and screen are checked against the system permissions (sec/perms.c,
+ *     TCC style) in C, not only in the SDK: the prompt is shown by the system (sdk/privacy.js) and here
+ *     the saved decision is required to be "allow";
+ *   - the decoder (lord-media) never receives a path: lord-server opens the file and passes the fd. */
 #include "js_media.h"
 #include "../media/media_int.h"
 #include "../media/proto.h"
@@ -25,7 +25,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-/* ---- validación ---- */
+/* ---- validation ---- */
 
 static int app_ok(const char *a) {
     size_t n = a ? strlen(a) : 0;
@@ -72,7 +72,7 @@ static double opt_num(JSContext *c, JSValueConst o, const char *k, double def) {
     return d == d ? d : def;
 }
 
-/* Cadena corta de un objeto de opciones (solo letras, números y -_.:/ espacio). */
+/* Short string from an options object (only letters, numbers and -_.:/ space). */
 static void opt_str(JSContext *c, JSValueConst o, const char *k, char *out, size_t n) {
     out[0] = 0;
     if (!JS_IsObject(o)) return;
@@ -97,31 +97,31 @@ static int arg_id(JSContext *c, JSValueConst v) {
 
 static int permitted(JSContext *c, const char *app, Perm p) {
     if (perm_get(app, p) == PERM_ALLOW) return 1;
-    JS_ThrowTypeError(c, "permiso de %s denegado para %s", perm_name(p), app);
+    JS_ThrowTypeError(c, "%s permission denied for %s", perm_name(p), app);
     return 0;
 }
 
 static JSValue path_error(JSContext *c, int r) {
-    return JS_ThrowRangeError(c, r == -2 ? "ya existe un archivo con ese nombre" : "ruta inválida o fuera de la carpeta personal");
+    return JS_ThrowRangeError(c, r == -2 ? "a file with that name already exists" : "invalid path or outside the home folder");
 }
 
 static const char *basename_of(const char *p) { const char *s = strrchr(p, '/'); return s ? s + 1 : p; }
 
-/* ---- reproducir ---- */
+/* ---- playback ---- */
 
-/* play(app, ruta, { loop, native, autoplay, audio, hw, volume, music, appName }) → id */
+/* play(app, path, { loop, native, autoplay, audio, hw, volume, music, appName }) → id */
 static JSValue f_play(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     if (argc < 2) return JS_EXCEPTION;
     const char *app = arg_app(c, argv[0]), *path = arg_path(c, argv[1]);
     JSValueConst o = argc > 2 ? argv[2] : JS_UNDEFINED;
     JSValue ret = JS_NULL;
-    if (!app || !path) { ret = JS_ThrowTypeError(c, "argumentos inválidos"); goto out; }
+    if (!app || !path) { ret = JS_ThrowTypeError(c, "invalid arguments"); goto out; }
     char real[PATH_MAX];
     int in = media_open_input(path, real, sizeof real);
     if (in < 0) { ret = path_error(c, -1); goto out; }
     MediaSrc *s = media_src_new(SK_PLAYER, app);
-    if (!s) { close(in); ret = JS_ThrowRangeError(c, "demasiados medios abiertos"); goto out; }
+    if (!s) { close(in); ret = JS_ThrowRangeError(c, "too many open media"); goto out; }
     int ring = -1, render = -1;
     char appname[64];
     opt_str(c, o, "appName", appname, sizeof appname);
@@ -136,7 +136,7 @@ static JSValue f_play(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     s->sock = media_spawn(MK_PLAY, params, fds, 3, &s->pid);
     close(in);
     if (render >= 0) close(render);
-    if (s->sock < 0) { media_src_close(s); ret = JS_ThrowRangeError(c, "no se pudo lanzar lord-media"); goto out; }
+    if (s->sock < 0) { media_src_close(s); ret = JS_ThrowRangeError(c, "could not launch lord-media"); goto out; }
     ret = JS_NewInt32(c, s->id);
 out:
     if (app) JS_FreeCString(c, app);
@@ -144,7 +144,7 @@ out:
     return ret;
 }
 
-/* control(id, 'play'|'pause'|'seek'|'volume'|'audioTrack'|'subTrack'|'loop', valor) */
+/* control(id, 'play'|'pause'|'seek'|'volume'|'audioTrack'|'subTrack'|'loop', value) */
 static JSValue f_control(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     MediaSrc *s = argc >= 2 ? media_src_get(arg_id(c, argv[0])) : NULL;
@@ -197,7 +197,7 @@ static JSValue f_view(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     v.gen = s->view.gen + 1;
     int resized = v.rot != s->view.rot || v.zoom != s->view.zoom || v.fit != s->view.fit;
     s->view = v;
-    if (resized) s->sent_w = s->sent_h = 0;            /* el ayudante vuelve a escalar */
+    if (resized) s->sent_w = s->sent_h = 0;            /* the helper rescales again */
     media_src_damage(s);
     return JS_TRUE;
 }
@@ -224,7 +224,7 @@ static JSValue f_info(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     return o;
 }
 
-/* ---- fotos, miniaturas y trabajos ---- */
+/* ---- photos, thumbnails and jobs ---- */
 
 static JSValue f_image(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
@@ -235,7 +235,7 @@ static JSValue f_image(JSContext *c, JSValueConst t, int argc, JSValueConst *arg
     if (in < 0) ret = path_error(c, -1);
     else {
         MediaSrc *s = media_src_new(SK_IMAGE, app);
-        if (!s) { close(in); ret = JS_ThrowRangeError(c, "demasiados medios abiertos"); }
+        if (!s) { close(in); ret = JS_ThrowRangeError(c, "too many open media"); }
         else {
             s->job = media_job(0, MW_IMAGE, JP_IMAGE, &in, 1, 0, 0, NULL, NULL, NULL, s->id);
             ret = JS_NewInt32(c, s->id);
@@ -258,17 +258,17 @@ static JSValue f_thumb(JSContext *c, JSValueConst t, int argc, JSValueConst *arg
     return r ? JS_NewString(c, r) : JS_NULL;
 }
 
-/* probe / waveform / poster: trabajo en segundo plano → evento "job" con el id */
+/* probe / waveform / poster: background job → "job" event with the id */
 static JSValue simple_job(JSContext *c, int argc, JSValueConst *argv, int kind, int purpose, int bg, int64_t def) {
     const char *path = argc ? arg_path(c, argv[0]) : NULL;
-    if (!path) return JS_ThrowTypeError(c, "ruta inválida");
+    if (!path) return JS_ThrowTypeError(c, "invalid path");
     int in = media_open_input(path, NULL, 0);
     JS_FreeCString(c, path);
     if (in < 0) return path_error(c, -1);
     int32_t a = (int32_t)def;
     if (argc > 1 && JS_IsNumber(argv[1])) JS_ToInt32(c, &a, argv[1]);
     int id = media_job(bg, kind, purpose, &in, 1, a, 0, NULL, NULL, NULL, 0);
-    return id > 0 ? JS_NewInt32(c, id) : JS_ThrowRangeError(c, "cola llena");
+    return id > 0 ? JS_NewInt32(c, id) : JS_ThrowRangeError(c, "queue full");
 }
 static JSValue f_probe(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) { (void)t; return simple_job(c, argc, argv, MW_PROBE, JP_EVENT, 1, 0); }
 static JSValue f_waveform(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) { (void)t; return simple_job(c, argc, argv, MW_WAVEFORM, JP_EVENT, 0, 200); }
@@ -288,7 +288,7 @@ static JSValue f_take(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     return o;
 }
 
-/* Trabajo con archivo de salida (editar, exportar audio). */
+/* Job with an output file (edit, export audio). */
 static JSValue file_job(JSContext *c, int argc, JSValueConst *argv, int kind, const char *params) {
     const char *app = argc > 0 ? arg_app(c, argv[0]) : NULL, *path = argc > 1 ? arg_path(c, argv[1]) : NULL, *out = argc > 2 ? arg_path(c, argv[2]) : NULL;
     JSValue ret;
@@ -299,7 +299,7 @@ static JSValue file_job(JSContext *c, int argc, JSValueConst *argv, int kind, co
     else {
         int fds[2] = { in, o };
         int id = media_job(0, kind, JP_FILE, fds, 2, 0, 0, params, tmp, dst, 0);
-        ret = id > 0 ? JS_NewInt32(c, id) : JS_ThrowRangeError(c, "cola llena");
+        ret = id > 0 ? JS_NewInt32(c, id) : JS_ThrowRangeError(c, "queue full");
         if (id <= 0) unlink(tmp);
     }
     if (app) JS_FreeCString(c, app);
@@ -308,7 +308,7 @@ static JSValue file_job(JSContext *c, int argc, JSValueConst *argv, int kind, co
     return ret;
 }
 
-/* edit(app, ruta, salida, { rotate, brightness, contrast, cx, cy, cw, ch, refw, format, quality }) */
+/* edit(app, path, output, { rotate, brightness, contrast, cx, cy, cw, ch, refw, format, quality }) */
 static JSValue f_edit(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     JSValueConst o = argc > 3 ? argv[3] : JS_UNDEFINED;
@@ -327,7 +327,7 @@ static JSValue f_edit(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     return file_job(c, argc, argv, MW_EDIT, params);
 }
 
-/* transcode(app, ruta, salida, { format: 'opus'|'mp3'|'wav', from, to }) */
+/* transcode(app, path, output, { format: 'opus'|'mp3'|'wav', from, to }) */
 static JSValue f_transcode(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     JSValueConst o = argc > 3 ? argv[3] : JS_UNDEFINED;
@@ -338,20 +338,20 @@ static JSValue f_transcode(JSContext *c, JSValueConst t, int argc, JSValueConst 
     return file_job(c, argc, argv, MW_TRANSCODE, params);
 }
 
-/* ---- capturas ---- */
+/* ---- screenshots ---- */
 
-/* screenshot(app, { x, y, width, height }?) → id (con las ventanas protegidas en negro) */
+/* screenshot(app, { x, y, width, height }?) → id (with protected windows in black) */
 static JSValue f_screenshot(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     const char *app = argc ? arg_app(c, argv[0]) : NULL;
-    if (!app) return JS_ThrowTypeError(c, "app inválida");
+    if (!app) return JS_ThrowTypeError(c, "invalid app");
     JSValue ret;
     if (!permitted(c, app, PERM_SCREEN)) ret = JS_EXCEPTION;
     else {
         JSValueConst o = argc > 1 ? argv[1] : JS_UNDEFINED;
         MediaSrc *s = media_screenshot(app, opt_int(c, o, "x", 0, -65536, 65536), opt_int(c, o, "y", 0, -65536, 65536),
                                        opt_int(c, o, "width", 0, 0, 65536), opt_int(c, o, "height", 0, 0, 65536));
-        ret = s ? JS_NewInt32(c, s->id) : JS_ThrowRangeError(c, "no se pudo capturar");
+        ret = s ? JS_NewInt32(c, s->id) : JS_ThrowRangeError(c, "could not capture");
     }
     JS_FreeCString(c, app);
     return ret;
@@ -380,7 +380,7 @@ static uint32_t color_of(JSContext *c, JSValueConst o) {
     return col;
 }
 
-/* annotate(base, [{ type, x1, y1, x2, y2, width, size, color, text }], destino?) → id */
+/* annotate(base, [{ type, x1, y1, x2, y2, width, size, color, text }], dest?) → id */
 static JSValue f_annotate(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     MediaSrc *base = argc >= 2 ? media_src_get(arg_id(c, argv[0])) : NULL;
@@ -429,12 +429,12 @@ static JSValue f_annotate(JSContext *c, JSValueConst t, int argc, JSValueConst *
     return JS_NewInt32(c, dst->id);
 }
 
-/* saveImage(id, salida, { format, quality }) → id de trabajo */
+/* saveImage(id, output, { format, quality }) → job id */
 static JSValue f_save_image(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     MediaSrc *s = argc >= 2 ? media_src_get(arg_id(c, argv[0])) : NULL;
     const char *out = argc >= 2 ? arg_path(c, argv[1]) : NULL;
-    if (!s || !s->px || !out) { if (out) JS_FreeCString(c, out); return JS_ThrowTypeError(c, "argumentos inválidos"); }
+    if (!s || !s->px || !out) { if (out) JS_FreeCString(c, out); return JS_ThrowTypeError(c, "invalid arguments"); }
     char tmp[PATH_MAX + 64], dst[PATH_MAX], fmt[8], params[64];
     opt_str(c, argc > 2 ? argv[2] : JS_UNDEFINED, "format", fmt, sizeof fmt);
     if (strcmp(fmt, "jpeg")) snprintf(fmt, sizeof fmt, "png");
@@ -443,19 +443,19 @@ static JSValue f_save_image(JSContext *c, JSValueConst t, int argc, JSValueConst
     JS_FreeCString(c, out);
     if (o < 0) return path_error(c, o);
     int mfd = media_memfd_from_pixels(s->px, s->w, s->h);
-    if (mfd < 0) { close(o); unlink(tmp); return JS_ThrowRangeError(c, "sin memoria"); }
+    if (mfd < 0) { close(o); unlink(tmp); return JS_ThrowRangeError(c, "out of memory"); }
     int fds[2] = { mfd, o };
     int id = media_job(0, MW_ENCODE, JP_FILE, fds, 2, s->w, s->h, params, tmp, dst, 0);
-    return id > 0 ? JS_NewInt32(c, id) : JS_ThrowRangeError(c, "cola llena");
+    return id > 0 ? JS_NewInt32(c, id) : JS_ThrowRangeError(c, "queue full");
 }
 
-/* copyImage(id) → id de trabajo: PNG al portapapeles (como una imagen copiada en una app) */
+/* copyImage(id) → job id: PNG to the clipboard (like an image copied in an app) */
 static JSValue f_copy_image(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     MediaSrc *s = argc ? media_src_get(arg_id(c, argv[0])) : NULL;
-    if (!s || !s->px) return JS_ThrowTypeError(c, "imagen inválida");
+    if (!s || !s->px) return JS_ThrowTypeError(c, "invalid image");
     const char *rt = getenv("XDG_RUNTIME_DIR");
-    if (!rt) return JS_ThrowRangeError(c, "sin XDG_RUNTIME_DIR");
+    if (!rt) return JS_ThrowRangeError(c, "no XDG_RUNTIME_DIR");
     static unsigned seq;
     char dir[PATH_MAX], dst[PATH_MAX + 64], tmp[PATH_MAX + 64];
     snprintf(dir, sizeof dir, "%s/lordos", rt);
@@ -463,15 +463,15 @@ static JSValue f_copy_image(JSContext *c, JSValueConst t, int argc, JSValueConst
     snprintf(dst, sizeof dst, "%s/clip-shot%d-%u.png", dir, (int)getpid(), ++seq);
     snprintf(tmp, sizeof tmp, "%s/.shot%d-%u.part", dir, (int)getpid(), seq);
     int o = open(tmp, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
-    if (o < 0) return JS_ThrowRangeError(c, "no se pudo crear el archivo");
+    if (o < 0) return JS_ThrowRangeError(c, "could not create the file");
     int mfd = media_memfd_from_pixels(s->px, s->w, s->h);
-    if (mfd < 0) { close(o); unlink(tmp); return JS_ThrowRangeError(c, "sin memoria"); }
+    if (mfd < 0) { close(o); unlink(tmp); return JS_ThrowRangeError(c, "out of memory"); }
     int fds[2] = { mfd, o };
     int id = media_job(0, MW_ENCODE, JP_CLIP, fds, 2, s->w, s->h, "format=png\n", tmp, dst, 0);
-    return id > 0 ? JS_NewInt32(c, id) : JS_ThrowRangeError(c, "cola llena");
+    return id > 0 ? JS_NewInt32(c, id) : JS_ThrowRangeError(c, "queue full");
 }
 
-/* ---- grabaciones ---- */
+/* ---- recordings ---- */
 
 /* screenRecord(app, salida.mp4, { mic, source, fps, hw }) → id */
 static JSValue f_screen_record(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
@@ -479,11 +479,11 @@ static JSValue f_screen_record(JSContext *c, JSValueConst t, int argc, JSValueCo
     const char *app = argc > 0 ? arg_app(c, argv[0]) : NULL, *out = argc > 1 ? arg_path(c, argv[1]) : NULL;
     JSValueConst o = argc > 2 ? argv[2] : JS_UNDEFINED;
     JSValue ret = JS_EXCEPTION;
-    if (!app || !out) { ret = JS_ThrowTypeError(c, "argumentos inválidos"); goto out; }
+    if (!app || !out) { ret = JS_ThrowTypeError(c, "invalid arguments"); goto out; }
     int mic = opt_int(c, o, "mic", 0, 0, 1);
     if (!permitted(c, app, PERM_SCREEN) || (mic && !permitted(c, app, PERM_MICROPHONE))) goto out;
     MediaSrc *s = media_src_new(SK_SCREENREC, app);
-    if (!s) { ret = JS_ThrowRangeError(c, "demasiados medios abiertos"); goto out; }
+    if (!s) { ret = JS_ThrowRangeError(c, "too many open media"); goto out; }
     int fd = media_open_output(out, s->tmp, sizeof s->tmp, s->dst, sizeof s->dst);
     if (fd < 0) { media_src_close(s); ret = path_error(c, fd); goto out; }
     int ring = -1;
@@ -493,7 +493,9 @@ static JSValue f_screen_record(JSContext *c, JSValueConst t, int argc, JSValueCo
     if (mic) s->mic = maudio_open(1, appname[0] ? appname : app, "Grabación de pantalla", src, &ring);
     int hw = opt_int(c, o, "hw", 1, 0, 1), render = hw ? media_render_fd() : -1;
     char params[160];
-    snprintf(params, sizeof params, "width=%d\nheight=%d\nfps=%d\nhw=%d\nhwaccel=%s\n", (int)ui.width & ~1, (int)ui.height & ~1,
+    int cw, chh;
+    media_capture_size(&cw, &chh);
+    snprintf(params, sizeof params, "width=%d\nheight=%d\nfps=%d\nhw=%d\nhwaccel=%s\n", cw, chh,
              opt_int(c, o, "fps", 30, 5, 60), render >= 0, media_hwaccel());
     int fds[3] = { fd, ring, render };
     s->sock = media_spawn(MK_SCREENREC, params, fds, 3, &s->pid);
@@ -501,7 +503,7 @@ static JSValue f_screen_record(JSContext *c, JSValueConst t, int argc, JSValueCo
     if (render >= 0) close(render);
     if (s->sock < 0 || media_screenrec_start(s, opt_int(c, o, "fps", 30, 5, 60))) {
         media_src_close(s);
-        ret = JS_ThrowRangeError(c, "no se pudo empezar a grabar (¿ya hay una grabación?)");
+        ret = JS_ThrowRangeError(c, "could not start recording (is a recording already running?)");
         goto out;
     }
     ret = JS_NewInt32(c, s->id);
@@ -517,10 +519,10 @@ static JSValue f_audio_record(JSContext *c, JSValueConst t, int argc, JSValueCon
     const char *app = argc > 0 ? arg_app(c, argv[0]) : NULL, *out = argc > 1 ? arg_path(c, argv[1]) : NULL;
     JSValueConst o = argc > 2 ? argv[2] : JS_UNDEFINED;
     JSValue ret = JS_EXCEPTION;
-    if (!app || !out) { ret = JS_ThrowTypeError(c, "argumentos inválidos"); goto out; }
+    if (!app || !out) { ret = JS_ThrowTypeError(c, "invalid arguments"); goto out; }
     if (!permitted(c, app, PERM_MICROPHONE)) goto out;
     MediaSrc *s = media_src_new(SK_AUDIOREC, app);
-    if (!s) { ret = JS_ThrowRangeError(c, "demasiados medios abiertos"); goto out; }
+    if (!s) { ret = JS_ThrowRangeError(c, "too many open media"); goto out; }
     int fd = media_open_output(out, s->tmp, sizeof s->tmp, s->dst, sizeof s->dst);
     if (fd < 0) { media_src_close(s); ret = path_error(c, fd); goto out; }
     char src[256], appname[64];
@@ -528,11 +530,11 @@ static JSValue f_audio_record(JSContext *c, JSValueConst t, int argc, JSValueCon
     opt_str(c, o, "appName", appname, sizeof appname);
     int ring = -1;
     s->mic = maudio_open(1, appname[0] ? appname : app, "Grabación", src, &ring);
-    if (!s->mic) { close(fd); media_src_close(s); ret = JS_ThrowRangeError(c, "sin micrófono"); goto out; }
+    if (!s->mic) { close(fd); media_src_close(s); ret = JS_ThrowRangeError(c, "no microphone"); goto out; }
     int fds[2] = { fd, ring };
     s->sock = media_spawn(MK_AUDIOREC, "", fds, 2, &s->pid);
     close(fd);
-    if (s->sock < 0) { media_src_close(s); ret = JS_ThrowRangeError(c, "no se pudo lanzar lord-media"); goto out; }
+    if (s->sock < 0) { media_src_close(s); ret = JS_ThrowRangeError(c, "could not launch lord-media"); goto out; }
     ret = JS_NewInt32(c, s->id);
 out:
     if (app) JS_FreeCString(c, app);
@@ -540,7 +542,7 @@ out:
     return ret;
 }
 
-/* stop(id): termina una grabación (el archivo queda bien cerrado; llega "done") */
+/* stop(id): ends a recording (the file is properly closed; "done" arrives) */
 static JSValue f_stop(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     MediaSrc *s = argc ? media_src_get(arg_id(c, argv[0])) : NULL;
@@ -548,7 +550,7 @@ static JSValue f_stop(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     return JS_NewBool(c, mp_sendv(s->sock, MM_STOP, 0, 0, 0, 0, 0) == 0);
 }
 
-/* ---- cámara ---- */
+/* ---- camera ---- */
 
 static JSValue f_cameras(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc; (void)argv;
@@ -571,12 +573,12 @@ static JSValue f_camera(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
     const char *app = argc > 0 ? arg_app(c, argv[0]) : NULL, *dev = argc > 1 ? JS_ToCString(c, argv[1]) : NULL;
     JSValueConst o = argc > 2 ? argv[2] : JS_UNDEFINED;
     JSValue ret = JS_EXCEPTION;
-    if (!app || !dev_ok(dev)) { ret = JS_ThrowTypeError(c, "cámara inválida"); goto out; }
+    if (!app || !dev_ok(dev)) { ret = JS_ThrowTypeError(c, "invalid camera"); goto out; }
     if (!permitted(c, app, PERM_CAMERA)) goto out;
     int fd = open(dev, O_RDWR | O_NONBLOCK | O_CLOEXEC);
-    if (fd < 0) { ret = JS_ThrowRangeError(c, "no se pudo abrir la cámara"); goto out; }
+    if (fd < 0) { ret = JS_ThrowRangeError(c, "could not open the camera"); goto out; }
     MediaSrc *s = media_src_new(SK_CAMERA, app);
-    if (!s) { close(fd); ret = JS_ThrowRangeError(c, "demasiados medios abiertos"); goto out; }
+    if (!s) { close(fd); ret = JS_ThrowRangeError(c, "too many open media"); goto out; }
     int render = media_render_fd();
     char params[96];
     snprintf(params, sizeof params, "width=%d\nheight=%d\nhw=%d\nhwaccel=%s\n", opt_int(c, o, "width", 1280, 160, 3840),
@@ -585,7 +587,7 @@ static JSValue f_camera(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
     s->sock = media_spawn(MK_CAMERA, params, fds, 2, &s->pid);
     close(fd);
     if (render >= 0) close(render);
-    if (s->sock < 0) { media_src_close(s); ret = JS_ThrowRangeError(c, "no se pudo lanzar lord-media"); goto out; }
+    if (s->sock < 0) { media_src_close(s); ret = JS_ThrowRangeError(c, "could not launch lord-media"); goto out; }
     ret = JS_NewInt32(c, s->id);
 out:
     if (app) JS_FreeCString(c, app);
@@ -593,14 +595,14 @@ out:
     return ret;
 }
 
-/* photo(id, salida.jpg, espejo) → true si se pidió; llega "photo" */
+/* photo(id, output.jpg, mirror) → true if requested; "photo" arrives */
 static JSValue f_photo(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     MediaSrc *s = argc >= 2 ? media_src_get(arg_id(c, argv[0])) : NULL;
     const char *out = s && s->kind == SK_CAMERA && s->sock >= 0 ? arg_path(c, argv[1]) : NULL;
     if (!out) return JS_FALSE;
     char *tmp = s->tmp, *dst = s->dst;
-    if (tmp[0]) { JS_FreeCString(c, out); return JS_FALSE; }        /* ya hay una foto en curso */
+    if (tmp[0]) { JS_FreeCString(c, out); return JS_FALSE; }        /* a photo is already in progress */
     int fd = media_open_output(out, tmp, 2048, dst, 2048);
     JS_FreeCString(c, out);
     if (fd < 0) { tmp[0] = 0; return path_error(c, fd); }
@@ -611,7 +613,7 @@ static JSValue f_photo(JSContext *c, JSValueConst t, int argc, JSValueConst *arg
     return JS_NewBool(c, r == 0);
 }
 
-/* cameraRecord(id, salida.mp4 | null, { mic, mirror, appName }) → true; null termina (llega "video") */
+/* cameraRecord(id, output.mp4 | null, { mic, mirror, appName }) → true; null stops it ("video" arrives) */
 static JSValue f_camera_record(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     MediaSrc *s = argc >= 2 ? media_src_get(arg_id(c, argv[0])) : NULL;
@@ -624,7 +626,7 @@ static JSValue f_camera_record(JSContext *c, JSValueConst t, int argc, JSValueCo
     if (tmp[0]) return JS_FALSE;
     JSValueConst o = argc > 2 ? argv[2] : JS_UNDEFINED;
     int mic = opt_int(c, o, "mic", 1, 0, 1);
-    if (mic && perm_get(s->app, PERM_MICROPHONE) != PERM_ALLOW) mic = 0;    /* sin permiso: video sin sonido */
+    if (mic && perm_get(s->app, PERM_MICROPHONE) != PERM_ALLOW) mic = 0;    /* no permission: video without sound */
     const char *out = arg_path(c, argv[1]);
     if (!out) return JS_FALSE;
     int fd = media_open_output(out, tmp, 2048, dst, 2048);
@@ -691,7 +693,7 @@ void js_media_register(JSContext *c, JSValue lord) {
     JS_SetPropertyStr(c, lord, "media", m);
 }
 
-/* Propiedad `media` de un nodo <MediaView>: qué origen dibuja. */
+/* `media` property of a <MediaView> node: which source it draws. */
 void js_media_node(Node *n, int id) {
     if (!n || n->type != NODE_MEDIA) return;
     n->term = id;

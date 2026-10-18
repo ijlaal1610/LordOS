@@ -1,11 +1,11 @@
-/* lm_rec.c — grabar la pantalla (MK_SCREENREC) y la grabadora de voz (MK_AUDIOREC).
+/* lm_rec.c — screen recording (MK_SCREENREC) and the voice recorder (MK_AUDIOREC).
  *
- * Pantalla: lord-server compone cada cuadro como siempre y, mientras se graba, copia el
- * resultado (con las ventanas protegidas en negro) en una ranura libre de un memfd que comparte
- * con lord-media (MM_INRING / MM_INFRAME). Acá se codifica a H.264 y se avisa MM_SLOTFREE. Si
- * no hay ranura libre, lord-server descarta ese cuadro: nunca espera.
- * Micrófono: lord-server tiene el stream de grabación de PipeWire (después del permiso) y lo
- * escribe en un anillo de memoria compartida (aring.h); acá solo se lee. s16 mono a 48 kHz. */
+ * Screen: lord-server composites each frame as always and, while recording, copies the
+ * result (with protected windows in black) into a free slot of a memfd it shares
+ * with lord-media (MM_INRING / MM_INFRAME). Here it's encoded to H.264 and MM_SLOTFREE is announced. If
+ * there's no free slot, lord-server drops that frame: it never waits.
+ * Microphone: lord-server owns the PipeWire capture stream (after the permission) and
+ * writes it into a shared-memory ring (aring.h); here it's only read. s16 mono at 48 kHz. */
 #include "lm.h"
 
 #include <errno.h>
@@ -22,9 +22,9 @@
 
 typedef struct {
     LmEnc *enc;
-    int out_fd;                     /* grabadora: WAV */
+    int out_fd;                     /* voice recorder: WAV */
     int64_t samples;
-    int peak;                       /* 0..1000 desde el último aviso */
+    int peak;                       /* 0..1000 since the last notification */
     int paused;
 } Rec;
 
@@ -36,7 +36,7 @@ static void on_mic(const int16_t *s, int k) {
     const uint8_t *d = (const uint8_t *)s;
     for (int i = 0; i < k; i++) { int v = abs(s[i]) * 1000 / 32768; if (v > R.peak) R.peak = v; }
     if (R.enc) lm_enc_audio(R.enc, s, k);
-    else if (R.out_fd >= 0 && lm_write_all(R.out_fd, d, n & ~(size_t)1)) LM_LOG("no se pudo escribir la grabación");
+    else if (R.out_fd >= 0 && lm_write_all(R.out_fd, d, n & ~(size_t)1)) LM_LOG("could not write the recording");
     R.samples += k;
 }
 
@@ -48,7 +48,7 @@ static void wav_header(int fd, uint32_t data_bytes) {
     memcpy(h + 16, &fmt_len, 4); memcpy(h + 20, &pcm, 2); memcpy(h + 22, &ch, 2); memcpy(h + 24, &rate, 4);
     memcpy(h + 28, &byte_rate, 4); memcpy(h + 32, &align, 2); memcpy(h + 34, &bits, 2);
     memcpy(h + 36, "data", 4); memcpy(h + 40, &data_bytes, 4);
-    if (pwrite(fd, h, sizeof h, 0) != (ssize_t)sizeof h) LM_LOG("no se pudo escribir la cabecera WAV");
+    if (pwrite(fd, h, sizeof h, 0) != (ssize_t)sizeof h) LM_LOG("could not write the WAV header");
 }
 
 void lm_audiorec(const char *params, int out, int pulse) {
@@ -108,7 +108,7 @@ void lm_screenrec(const char *params, int out, int pulse, int render) {
     void *ring = lm_mic_ring(pulse, &ring_len);
     if (pulse >= 0) close(pulse);
     int mic = ring != NULL;
-    if (!mic && pulse >= 0) LM_LOG("anillo del micrófono inválido: graba sin sonido");
+    if (!mic && pulse >= 0) LM_LOG("invalid microphone ring: recording without sound");
     char err[128];
     R.enc = lm_enc_open(out, w, h, fps, hw, mic ? RATE : 0, 1, err, sizeof err);
     if (!R.enc) { lm_error("%s", err); mp_sendv(LM_SOCK, MM_STATE, 0, MS_FAILED, 0, 0, 0); return; }

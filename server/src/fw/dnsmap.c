@@ -1,19 +1,19 @@
-/* dnsmap.c — IP → nombres por app, aprendidos del DNS (ver dnsmap.h). */
+/* dnsmap.c — IP → names per app, learned from DNS (see dnsmap.h). */
 #include "fw/dnsmap.h"
 #include "fw/fwmap.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-/* ---- lector de respuestas DNS ------------------------------------------------------------------ */
+/* ---- DNS response reader ---------------------------------------------------------------------- */
 
 #define MAX_HOPS 64
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] << 8 | p[1]); }
 static uint32_t rd32(const uint8_t *p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
 
-/* Nombre en off. *next: primer byte después del nombre en su lugar. *host: 1 si es un nombre de
- * host que se puede normalizar (si no, out queda vacío pero el paquete sigue siendo válido). */
+/* Name at off. *next: first byte after the name in place. *host: 1 if it is a host name that can
+ * be normalized (otherwise out stays empty but the packet is still valid). */
 static int read_name(const uint8_t *pkt, size_t len, size_t off, size_t *next, char *out, int *host) {
     size_t pos = off, seg = off, wire = 0, o = 0;
     int jumped = 0, hops = 0, ok = 1;
@@ -29,14 +29,14 @@ static int read_name(const uint8_t *pkt, size_t len, size_t off, size_t *next, c
         if ((c & 0xc0) == 0xc0) {
             if (pos + 1 >= len) return -1;
             size_t ptr = (size_t)(c & 0x3f) << 8 | pkt[pos + 1];
-            /* solo hacia atrás del tramo actual: cada salto baja seg, así que termina */
+            /* only backwards from the current span: each jump lowers seg, so it terminates */
             if (ptr >= seg || ++hops > MAX_HOPS) return -1;
             if (!jumped) *next = pos + 2;
             jumped = 1;
             pos = seg = ptr;
             continue;
         }
-        if (c & 0xc0) return -1;                    /* 0x40 y 0x80: tipos de etiqueta en desuso */
+        if (c & 0xc0) return -1;                    /* 0x40 and 0x80: obsolete label types */
         if (pos + 1 + c > len) return -1;
         wire += 1u + c;
         if (wire > 255) return -1;
@@ -81,7 +81,7 @@ int dns_parse_response(const uint8_t *pkt, size_t len, DnsResponse *out) {
         if (pos + 10 > len) return -1;
         uint16_t type = rd16(pkt + pos), cls = rd16(pkt + pos + 2), rdlen = rd16(pkt + pos + 8);
         uint32_t ttl = rd32(pkt + pos + 4);
-        if (ttl & 0x80000000u) ttl = 0;             /* RFC 2181: TTL con el bit alto = 0 */
+        if (ttl & 0x80000000u) ttl = 0;             /* RFC 2181: TTL with the high bit = 0 */
         pos += 10;
         if (pos + rdlen > len) return -1;
         size_t rd = pos;
@@ -99,7 +99,7 @@ int dns_parse_response(const uint8_t *pkt, size_t len, DnsResponse *out) {
             char to[FW_NAME_MAX];
             int thost;
             size_t tnext = 0;
-            /* el nombre tiene que ocupar justo rdata (sus punteros pueden ir más atrás) */
+            /* the name has to fill rdata exactly (its pointers may go further back) */
             if (read_name(pkt, pos, rd, &tnext, to, &thost) || tnext != pos) return -1;
             if (!usable || !ohost || !thost || out->ncname >= DNS_MAX_CNAMES) continue;
             DnsCname *c = &out->cname[out->ncname++];
@@ -111,14 +111,14 @@ int dns_parse_response(const uint8_t *pkt, size_t len, DnsResponse *out) {
     return 0;
 }
 
-/* ---- tabla ------------------------------------------------------------------------------------- */
+/* ---- table ------------------------------------------------------------------------------------- */
 
 typedef struct Group Group;
 typedef struct Entry Entry;
 
 struct Entry {
-    Entry *prev, *next;             /* LRU global: head = lo más reciente */
-    Entry *gnext;                   /* en su grupo */
+    Entry *prev, *next;             /* global LRU: head = most recent */
+    Entry *gnext;                   /* in its group */
     Group *g;
     long long expires;
     char name[FW_NAME_MAX];
@@ -175,7 +175,7 @@ static void lru_front(DnsMap *m, Entry *e) {
     m->head = e;
 }
 
-/* Saca e de todo. Si el grupo queda vacío y drop_group, lo libera también. */
+/* Removes e from everything. If the group ends up empty and drop_group, frees it too. */
 static void entry_del(DnsMap *m, Entry *e, int drop_group) {
     Group *g = e->g;
     for (Entry **pp = &g->head; *pp; pp = &(*pp)->gnext) if (*pp == e) { *pp = e->gnext; break; }
@@ -189,7 +189,7 @@ static void entry_del(DnsMap *m, Entry *e, int drop_group) {
     }
 }
 
-/* Clave app\0fam addr (IPv4 mapeada en IPv6 cuenta como IPv4). */
+/* Key app\0fam addr (IPv4 mapped into IPv6 counts as IPv4). */
 static int make_key(const char *app, int fam, const uint8_t *addr, unsigned char *key, size_t *klen) {
     char c[FW_APP_MAX];
     static const uint8_t mapped[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
@@ -204,7 +204,7 @@ static int make_key(const char *app, int fam, const uint8_t *addr, unsigned char
     return 0;
 }
 
-/* e pasa a ser el más reciente de su grupo y de toda la tabla. */
+/* e becomes the most recent of its group and of the whole table. */
 static void touch(DnsMap *m, Entry *e) {
     Group *g = e->g;
     if (g->head != e) {
@@ -228,18 +228,18 @@ int dnsmap_add(DnsMap *m, const char *app, const char *name, int fam, const uint
     Group *g = fwmap_get(&m->groups, key, klen);
     for (Entry *e = g ? g->head : NULL; e; e = e->gnext)
         if (!strcmp(e->name, nm)) {
-            e->expires = exp;               /* la respuesta más nueva manda */
+            e->expires = exp;               /* the newest answer wins */
             touch(m, e);
             return 0;
         }
-    /* tabla llena: se olvida lo usado hace más tiempo (puede ser de este mismo grupo, por eso
-     * el grupo se vuelve a buscar después) */
+    /* table full: forget what was used longest ago (it may belong to this same group, which is
+     * why the group is looked up again afterwards) */
     while (m->n >= m->max && m->tail) entry_del(m, m->tail, 1);
     g = fwmap_get(&m->groups, key, klen);
     if (g && g->n >= DNSMAP_PER_IP) {
         Entry *old = g->head;
-        while (old->gnext) old = old->gnext;    /* la cola del grupo es la menos usada */
-        entry_del(m, old, 0);                   /* quedan DNSMAP_PER_IP - 1: el grupo sigue */
+        while (old->gnext) old = old->gnext;    /* the group's tail is the least used */
+        entry_del(m, old, 0);                   /* DNSMAP_PER_IP - 1 remain: the group stays */
     }
     if (!g) {
         g = calloc(1, sizeof *g);
@@ -273,7 +273,7 @@ int dnsmap_learn(DnsMap *m, const char *app, const uint8_t *pkt, size_t len, lon
     if (dns_parse_response(pkt, len, r)) { free(r); return -1; }
     int added = 0;
     if (r->qname[0] && r->rcode == 0) {
-        /* la cadena desde la pregunta: qname → CNAME → ... (sin repetir, a lo sumo DNS_MAX_CNAMES) */
+        /* the chain from the question: qname → CNAME → ... (no repeats, at most DNS_MAX_CNAMES) */
         const char *chain[DNS_MAX_CNAMES + 1];
         int nc = 0;
         uint32_t cttl = UINT32_MAX;
@@ -284,7 +284,7 @@ int dnsmap_learn(DnsMap *m, const char *app, const uint8_t *pkt, size_t len, lon
             if (!found) break;
             int seen = 0;
             for (int k = 0; k < nc; k++) if (!strcmp(chain[k], found->to)) seen = 1;
-            if (seen) break;                /* CNAME en bucle */
+            if (seen) break;                /* CNAME loop */
             if (found->ttl < cttl) cttl = found->ttl;
             chain[nc++] = found->to;
         }
@@ -292,7 +292,7 @@ int dnsmap_learn(DnsMap *m, const char *app, const uint8_t *pkt, size_t len, lon
             const DnsAddrRec *a = &r->addr[i];
             int in_chain = 0;
             for (int k = 0; k < nc; k++) if (!strcmp(chain[k], a->owner)) in_chain = 1;
-            if (!in_chain) continue;        /* registros sueltos: no salen de la pregunta */
+            if (!in_chain) continue;        /* stray records: they don't come from the question */
             uint32_t ttl = a->ttl < cttl ? a->ttl : cttl;
             for (int k = 0; k < nc; k++) if (!dnsmap_add(m, app, chain[k], a->fam, a->addr, ttl, now)) added++;
         }
@@ -312,12 +312,12 @@ int dnsmap_lookup(DnsMap *m, const char *app, int fam, const uint8_t *addr, long
         if (e->expires <= now) entry_del(m, e, 0);
     }
     if (!g->head) { fwmap_take(&m->groups, g->key, g->klen); free(g); return 0; }
-    /* el grupo ya está del más reciente al más viejo */
+    /* the group is already ordered from most recent to oldest */
     Entry *v[DNSMAP_PER_IP];
     int k = 0, w = 0;
     for (Entry *e = g->head; e && k < DNSMAP_PER_IP; e = e->gnext) v[k++] = e;
     for (int i = 0; i < k && w < max; i++) memcpy(out[w++], v[i]->name, FW_NAME_MAX);
-    /* se usaron: al frente de la LRU, sin cambiar su orden */
+    /* they were used: to the front of the LRU, keeping their order */
     for (int i = k - 1; i >= 0; i--) { lru_unlink(m, v[i]); lru_front(m, v[i]); }
     return w;
 }

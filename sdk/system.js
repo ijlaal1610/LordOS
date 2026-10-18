@@ -1,4 +1,4 @@
-// system.js — información del sistema y del servidor, como hooks de React.
+// system.js — system and server information, as React hooks.
 import { useEffect, useState } from 'react';
 import { formatNumber } from './i18n.js';
 
@@ -16,7 +16,7 @@ function usePoll(read, intervalMs) {
 export const useSystemInfo = (intervalMs = 5000) => usePoll(systemInfo, intervalMs);
 export const useServerStats = (intervalMs = 2000) => usePoll(() => lord.stats(), intervalMs);
 
-// Uso de CPU (0..1) calculado entre lecturas de /proc/stat.
+// CPU usage (0..1) computed between reads of /proc/stat.
 export function useCpuUsage(intervalMs = 1500) {
   const [usage, setUsage] = useState(0);
   useEffect(() => {

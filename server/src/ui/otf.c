@@ -1,13 +1,13 @@
-/* otf.c — sustituciones (GSUB), posicionamiento (GPOS) y glifos a color (CBDT). Ver otf.h.
+/* otf.c — substitutions (GSUB), positioning (GPOS) and color glyphs (CBDT). See otf.h.
  *
- * GSUB: lookups 1 simple, 2 múltiple, 4 ligadura, 5 contextual, 6 contextual encadenada
- * (formatos 1, 2 y 3), 7 extensión y 8 encadenada inversa. GPOS: 1 ajuste simple, 2 pares
- * (kerning), 3 cursivo, 4 marca sobre base, 5 marca sobre ligadura, 6 marca sobre marca, 7/8
- * contextuales y 9 extensión. Se respetan los flags de lookup (ignorar bases, ligaduras,
- * marcas, clase de anclaje y conjuntos de marcas de GDEF).
+ * GSUB: lookups 1 single, 2 multiple, 4 ligature, 5 contextual, 6 chained contextual
+ * (formats 1, 2 and 3), 7 extension and 8 reverse chained. GPOS: 1 single adjustment, 2 pairs
+ * (kerning), 3 cursive, 4 mark-to-base, 5 mark-to-ligature, 6 mark-to-mark, 7/8
+ * contextual and 9 extension. Lookup flags are honored (ignore bases, ligatures,
+ * marks, mark attachment class and GDEF mark sets).
  *
- * La terminal usa dos grupos fijos de features (otf_shape); la interfaz, un plan por
- * escritura (otf_plan) con las formas del árabe por glifo y etapas como HarfBuzz. */
+ * The terminal uses two fixed feature groups (otf_shape); the interface, a plan per
+ * script (otf_plan) with Arabic forms per glyph and stages like HarfBuzz. */
 #include "otf.h"
 
 #include <stdlib.h>
@@ -42,7 +42,7 @@ static uint32_t find_table(const Otf *o, uint32_t font, const char *tag, uint32_
     return 0;
 }
 
-/* ---- coverage y classdef ---- */
+/* ---- coverage and classdef ---- */
 
 static int coverage(const Otf *o, uint32_t cov, unsigned g) {
     unsigned fmt = u16(o, cov), n = u16(o, cov + 2);
@@ -88,7 +88,7 @@ static unsigned class_of(const Otf *o, uint32_t cd, unsigned g) {
     return 0;
 }
 
-/* Marca en el bitset los glifos de un coverage. */
+/* Marks the glyphs of a coverage in the bitset. */
 static void coverage_bits(const Otf *o, uint32_t cov, uint8_t *bits, int nglyphs) {
     unsigned fmt = u16(o, cov), n = u16(o, cov + 2);
     if (fmt == 1)
@@ -118,20 +118,20 @@ static int in_mark_set(const Otf *o, unsigned set, unsigned g) {
     return coverage(o, cov, g) >= 0;
 }
 
-/* ---- contexto de aplicación ---- */
+/* ---- application context ---- */
 
 enum { T_GSUB = 0, T_GPOS = 1 };
 
 typedef struct {
     const Otf *o;
     GlyphRun *run;
-    OtfPos *pos;                /* solo GPOS */
+    OtfPos *pos;                /* GPOS only */
     int table, ops;
-    unsigned flag, mset;        /* flags del lookup en curso */
-    int per_syl;                /* índicas: la coincidencia no sale de la sílaba syl */
+    unsigned flag, mset;        /* flags of the current lookup */
+    int per_syl;                /* Indic: the match doesn't leave syllable syl */
     unsigned syl;
-    int rtl;                    /* GPOS: dirección del tramo (cursivo) */
-    const uint8_t *ign;         /* GPOS: invisibles (ZWJ, ZWNJ…) que se saltean al buscar pares */
+    int rtl;                    /* GPOS: direction of the run (cursive) */
+    const uint8_t *ign;         /* GPOS: invisibles (ZWJ, ZWNJ…) skipped when looking for pairs */
 } Ctx;
 
 static int ignored(const Ctx *c, unsigned g) {
@@ -159,7 +159,7 @@ static uint32_t lookup_at(const Otf *o, uint32_t tab, unsigned index) {
     return ll + u16(o, ll + 2 + 2 * index);
 }
 
-/* Subtabla k del lookup, resolviendo las de extensión (GSUB 7, GPOS 9). */
+/* Subtable k of the lookup, resolving extension ones (GSUB 7, GPOS 9). */
 static int subtable(const Otf *o, int table, uint32_t lk, unsigned k, uint32_t *sub) {
     unsigned type = u16(o, lk);
     uint32_t s = lk + u16(o, lk + 6 + 2 * k);
@@ -188,7 +188,7 @@ static int run_reserve(GlyphRun *r, int extra) {
     return 0;
 }
 
-/* Abre n-1 lugares después de i copiando cluster, máscara y componente de i. */
+/* Opens n-1 slots after i, copying cluster, mask and component from i. */
 static void run_expand(GlyphRun *r, int i, int n) {
     int tail = r->len - i - 1;
     memmove(r->g + i + n, r->g + i + 1, (size_t)tail * sizeof *r->g);
@@ -217,7 +217,7 @@ static void run_remove(GlyphRun *r, int i) {
 
 static int apply_at(Ctx *c, unsigned lookup, int i, int depth, int *next);
 
-/* Coincidencia de una secuencia (glifo, clase o coverage), saltando lo que el lookup ignora. */
+/* Match of a sequence (glyph, class or coverage), skipping what the lookup ignores. */
 typedef int (*MatchFn)(const Otf *o, uint32_t base, uint32_t arr, unsigned k, unsigned g);
 static int m_glyph(const Otf *o, uint32_t base, uint32_t arr, unsigned k, unsigned g) {
     (void)base; return u16(o, arr + 2 * k) == g;
@@ -229,7 +229,7 @@ static int m_cover(const Otf *o, uint32_t base, uint32_t arr, unsigned k, unsign
     return coverage(o, base + u16(o, arr + 2 * k), g) >= 0;
 }
 
-/* Desde p (incluido) en dirección dir; out[k] = posición de cada coincidencia. */
+/* From p (inclusive) in direction dir; out[k] = position of each match. */
 static int match_seq(const Ctx *c, int p, unsigned count, MatchFn fn, uint32_t base, uint32_t arr, int dir, int *out) {
     for (unsigned k = 0; k < count; k++) {
         p = dir > 0 ? skip_fwd(c, p) : skip_back(c, p);
@@ -242,7 +242,7 @@ static int match_seq(const Ctx *c, int p, unsigned count, MatchFn fn, uint32_t b
     return 1;
 }
 
-/* Registros (posición en la entrada, lookup) de una regla contextual que coincidió. */
+/* Records (input position, lookup) of a contextual rule that matched. */
 static void apply_records(Ctx *c, int *pos, int in_count, uint32_t rec, unsigned nrec, int depth, int *next) {
     int end = pos[in_count - 1] + 1, total = 0;
     for (unsigned k = 0; k < nrec; k++) {
@@ -254,13 +254,13 @@ static void apply_records(Ctx *c, int *pos, int in_count, uint32_t rec, unsigned
         total += delta;
         if (delta) for (int j = (int)seq + 1; j < in_count; j++) if (pos[j] > p) pos[j] += delta;
     }
-    /* sigue después de la entrada, contando lo que agregaron o borraron los lookups anidados
-     * (si no, una sustitución múltiple sobre el último glifo se volvería a aplicar) */
+    /* continue after the input, counting what the nested lookups added or deleted
+     * (otherwise a multiple substitution on the last glyph would be applied again) */
     end += total;
     *next = end > pos[0] ? end : pos[0] + 1;
 }
 
-/* Contextuales (GSUB 5/6, GPOS 7/8: mismo formato). type 5 = simple, 6 = encadenada. */
+/* Contextual (GSUB 5/6, GPOS 7/8: same format). type 5 = simple, 6 = chained. */
 static int apply_context(Ctx *c, int type, uint32_t s, int i, int depth, int *next) {
     const Otf *o = c->o;
     unsigned g = c->run->g[i], fmt = u16(o, s);
@@ -372,7 +372,7 @@ static int gsub_sub(Ctx *c, int type, uint32_t s, int i, int depth, int *next) {
         if (idx < 0 || fmt != 1 || (unsigned)idx >= u16(o, s + 4)) return 0;
         uint32_t seq = s + u16(o, s + 6 + 2 * (uint32_t)idx);
         unsigned n = u16(o, seq);
-        if (!n) {               /* secuencia vacía: borra el glifo */
+        if (!n) {               /* empty sequence: deletes the glyph */
             run_remove(r, i);
             *next = i;
             return 1;
@@ -400,8 +400,8 @@ static int gsub_sub(Ctx *c, int type, uint32_t s, int i, int depth, int *next) {
             pos[0] = i;
             r->g[i] = (uint16_t)u16(o, lig);
             if (r->aux) r->aux[i] |= OTF_AUX_SUBST | OTF_AUX_LIGATED;
-            /* las marcas que quedaron entre componentes siguen al glifo y recuerdan a cuál
-             * componente pertenecen (para GPOS marca sobre ligadura) */
+            /* the marks left between components follow the glyph and remember which
+             * component they belong to (for GPOS mark-to-ligature) */
             if (r->lig) {
                 r->lig[i] = (uint8_t)comp;
                 int cpos = 0;
@@ -454,7 +454,7 @@ static void vr_apply(const Otf *o, uint32_t at, unsigned fmt, OtfPos *p) {
 
 static void anchor(const Otf *o, uint32_t at, int *x, int *y) { *x = s16(o, at + 2); *y = s16(o, at + 4); }
 
-/* Anclar la marca i al glifo j: (dx, dy) desde el origen de j. */
+/* Anchor mark i to glyph j: (dx, dy) from j's origin. */
 static void attach(Ctx *c, int i, int j, uint32_t mark_anchor, uint32_t base_anchor) {
     int mx, my, bx, by;
     anchor(c->o, mark_anchor, &mx, &my);
@@ -464,7 +464,7 @@ static void attach(Ctx *c, int i, int j, uint32_t mark_anchor, uint32_t base_anc
     c->pos[i].att = j;
 }
 
-/* Base anterior a una marca: el glifo previo que no es marca (ignorando el resto según flags). */
+/* Base preceding a mark: the previous glyph that is not a mark (ignoring the rest according to flags). */
 static int prev_non_mark(const Ctx *c, int i) {
     for (int j = i - 1; j >= 0; j--) {
         unsigned g = c->run->g[j];
@@ -522,7 +522,7 @@ static int gpos_sub(Ctx *c, int type, uint32_t s, int i, int *next) {
         *next = vf2 ? j + 1 : j;
         return 1;
     }
-    case 3: {                   /* cursivo: la salida del anterior se une a la entrada de este */
+    case 3: {                   /* cursive: the previous one's exit joins this one's entry */
         if (fmt != 1) return 0;
         uint32_t cov = s + u16(o, s + 2);
         int ci = coverage(o, cov, g);
@@ -540,11 +540,11 @@ static int gpos_sub(Ctx *c, int type, uint32_t s, int i, int *next) {
         anchor(o, s + exitp, &ex, &ey);
         anchor(o, s + entry, &nx, &ny);
         OtfPos *P = c->pos;
-        int a = pi, b = i, d;            /* a: el anterior (salida), b: este (entrada) */
+        int a = pi, b = i, d;            /* a: the previous one (exit), b: this one (entry) */
         if (!c->rtl) { P[a].adv = ex + P[a].dx; d = nx + P[b].dx; P[b].adv -= d; P[b].dx -= d; }
         else { d = ex + P[a].dx; P[a].adv -= d; P[a].dx -= d; P[b].adv = nx + P[b].dx; }
         int child = a, parent = b, yoff = ny - ey;
-        if (!(c->flag & 1)) { child = b; parent = a; yoff = -yoff; }     /* sin RightToLeft */
+        if (!(c->flag & 1)) { child = b; parent = a; yoff = -yoff; }     /* without RightToLeft */
         P[child].dy = yoff;
         P[child].cur = parent;
         if (P[parent].cur == child) P[parent].cur = -1;
@@ -618,7 +618,7 @@ static int apply_sub(Ctx *c, int type, uint32_t s, int i, int depth, int *next) 
     return gsub_sub(c, type, s, i, depth, next);
 }
 
-/* Flags del lookup (y conjunto de marcas, si usa uno). */
+/* Lookup flags (and mark set, if it uses one). */
 static void lookup_flags(const Otf *o, uint32_t lk, unsigned *flag, unsigned *mset) {
     *flag = u16(o, lk + 2);
     *mset = (*flag & LF_MARK_SET) ? u16(o, lk + 6 + 2 * u16(o, lk + 4)) : 0;
@@ -643,7 +643,7 @@ static int apply_at(Ctx *c, unsigned lookup, int i, int depth, int *next) {
     return done;
 }
 
-/* Aplica un lookup a todo el run (de atrás hacia adelante si es GSUB tipo 8). */
+/* Applies a lookup to the whole run (back to front if it is GSUB type 8). */
 static void run_lookup(Ctx *c, unsigned lookup, uint32_t mask, const uint8_t *bits, int per_syl) {
     const Otf *o = c->o;
     uint32_t lk = lookup_at(o, table_base(c), lookup);
@@ -666,7 +666,7 @@ static void run_lookup(Ctx *c, unsigned lookup, uint32_t mask, const uint8_t *bi
                 uint32_t s;
                 int type = subtable(o, c->table, lk, k, &s);
                 done = apply_sub(c, type, s, i, 0, &next);
-                lookup_flags(o, lk, &c->flag, &c->mset);    /* los anidados los cambian */
+                lookup_flags(o, lk, &c->flag, &c->mset);    /* the nested ones change them */
             }
             if (!done) next = i + 1;
         }
@@ -677,7 +677,7 @@ static void run_lookup(Ctx *c, unsigned lookup, uint32_t mask, const uint8_t *bi
     c->per_syl = 0;
 }
 
-/* Primer glifo posible de cada subtabla → bitset del lookup (descarta rápido). */
+/* First possible glyph of each subtable → lookup bitset (fast rejection). */
 static void lookup_bits(const Otf *o, unsigned lookup, uint8_t *bits) {
     uint32_t lk = lookup_at(o, o->gsub, lookup);
     unsigned n = lk ? u16(o, lk + 4) : 0;
@@ -801,20 +801,20 @@ void otf_shape(const Otf *o, int group, GlyphRun *run) {
         run_lookup(&c, ls[j], 0, o->first[group] + (size_t)j * bytes, 0);
 }
 
-/* ---- planes por escritura (interfaz) ---- */
+/* ---- per-script plans (interface) ---- */
 
 typedef struct { const char *tag; uint8_t stage; uint32_t mask; uint8_t per_syl; } FeatureSpec;
 
-/* Etapas del árabe como en HarfBuzz: ccmp/locl, isol, fina, medi, init, rlig, calt, rclt, liga… */
+/* Arabic stages as in HarfBuzz: ccmp/locl, isol, fina, medi, init, rlig, calt, rclt, liga… */
 static const FeatureSpec gsub_features[] = {
     { "ccmp", 0, OTF_F_GLOBAL, 0 }, { "locl", 0, OTF_F_GLOBAL, 0 },
     { "isol", 1, OTF_F_ISOL, 0 }, { "fina", 2, OTF_F_FINA, 0 }, { "medi", 3, OTF_F_MEDI, 0 }, { "init", 4, OTF_F_INIT, 0 },
     { "rlig", 5, OTF_F_GLOBAL, 0 }, { "calt", 6, OTF_F_GLOBAL, 0 }, { "rclt", 7, OTF_F_GLOBAL, 0 },
     { "liga", 8, OTF_F_GLOBAL, 0 }, { "clig", 8, OTF_F_GLOBAL, 0 }, { "mset", 8, OTF_F_GLOBAL, 0 },
 };
-/* Índicas (como el shaper índico de HarfBuzz): locl/ccmp; reordenamiento inicial; nukt, akhn,
- * rphf, rkrf, pref, blwf, abvf, half, pstf, vatu, cjct cada una en su etapa; reordenamiento
- * final; y el resto juntas. Todas sin cruzar de sílaba salvo las horizontales comunes. */
+/* Indic (like HarfBuzz's Indic shaper): locl/ccmp; initial reordering; nukt, akhn,
+ * rphf, rkrf, pref, blwf, abvf, half, pstf, vatu, cjct each in its own stage; final
+ * reordering; and the rest together. None crosses syllables except the common horizontal ones. */
 static const FeatureSpec indic_features[] = {
     { "locl", 0, OTF_F_GLOBAL, 1 }, { "ccmp", 0, OTF_F_GLOBAL, 1 },
     { "nukt", 1, OTF_F_GLOBAL, 1 }, { "akhn", 2, OTF_F_GLOBAL, 1 }, { "rphf", 3, OTF_F_RPHF, 1 },
@@ -826,14 +826,14 @@ static const FeatureSpec indic_features[] = {
     { "rlig", 12, OTF_F_GLOBAL, 0 }, { "calt", 12, OTF_F_GLOBAL, 0 }, { "clig", 12, OTF_F_GLOBAL, 0 },
     { "liga", 12, OTF_F_GLOBAL, 0 }, { "rclt", 12, OTF_F_GLOBAL, 0 },
 };
-/* Jemer: sin pausas entre las básicas (como Uniscribe); clig en vez de liga. */
+/* Khmer: no pauses between the basic ones (like Uniscribe); clig instead of liga. */
 static const FeatureSpec khmer_features[] = {
     { "locl", 0, OTF_F_GLOBAL, 1 }, { "ccmp", 0, OTF_F_GLOBAL, 1 }, { "pref", 0, OTF_F_PREF, 1 }, { "blwf", 0, OTF_F_BLWF, 1 },
     { "abvf", 0, OTF_F_ABVF, 1 }, { "pstf", 0, OTF_F_PSTF, 1 }, { "cfar", 0, OTF_F_CFAR, 1 },
     { "pres", 1, OTF_F_GLOBAL, 0 }, { "abvs", 1, OTF_F_GLOBAL, 0 }, { "blws", 1, OTF_F_GLOBAL, 0 }, { "psts", 1, OTF_F_GLOBAL, 0 },
     { "rlig", 1, OTF_F_GLOBAL, 0 }, { "calt", 1, OTF_F_GLOBAL, 0 }, { "clig", 1, OTF_F_GLOBAL, 0 }, { "rclt", 1, OTF_F_GLOBAL, 0 },
 };
-/* Birmano: locl/ccmp; reordenamiento; rphf, pref, blwf, pstf de a una; el resto juntas. */
+/* Myanmar: locl/ccmp; reordering; rphf, pref, blwf, pstf one at a time; the rest together. */
 static const FeatureSpec myanmar_features[] = {
     { "locl", 0, OTF_F_GLOBAL, 1 }, { "ccmp", 0, OTF_F_GLOBAL, 1 },
     { "rphf", 1, OTF_F_GLOBAL, 1 }, { "pref", 2, OTF_F_GLOBAL, 1 }, { "blwf", 3, OTF_F_GLOBAL, 1 }, { "pstf", 4, OTF_F_GLOBAL, 1 },
@@ -841,8 +841,8 @@ static const FeatureSpec myanmar_features[] = {
     { "rlig", 5, OTF_F_GLOBAL, 0 }, { "calt", 5, OTF_F_GLOBAL, 0 }, { "clig", 5, OTF_F_GLOBAL, 0 }, { "liga", 5, OTF_F_GLOBAL, 0 },
     { "rclt", 5, OTF_F_GLOBAL, 0 },
 };
-/* Universal Shaping Engine: preproceso; rphf; pref; básicas; reordenamiento; formas de unión;
- * presentación. */
+/* Universal Shaping Engine: preprocessing; rphf; pref; basic; reordering; joining forms;
+ * presentation. */
 static const FeatureSpec use_features[] = {
     { "locl", 0, OTF_F_GLOBAL, 1 }, { "ccmp", 0, OTF_F_GLOBAL, 1 }, { "nukt", 0, OTF_F_GLOBAL, 1 }, { "akhn", 0, OTF_F_GLOBAL, 1 },
     { "rphf", 1, OTF_F_RPHF, 1 }, { "pref", 2, OTF_F_GLOBAL, 1 },
@@ -878,7 +878,7 @@ static int cmp_ref(const void *a, const void *b) {
     return (int)x->lookup - (int)y->lookup;
 }
 
-/* LangSys por defecto de la escritura (o DFLT, o latn). */
+/* Default LangSys of the script (or DFLT, or latn). */
 static uint32_t langsys(const Otf *o, uint32_t tab, const char *script) {
     uint32_t sl = tab + u16(o, tab + 4);
     unsigned n = u16(o, sl);
@@ -890,7 +890,7 @@ static uint32_t langsys(const Otf *o, uint32_t tab, const char *script) {
             uint32_t sc = sl + u16(o, rec + 4);
             unsigned dl = u16(o, sc);
             if (dl) return sc + dl;
-            if (u16(o, sc + 2)) return sc + u16(o, sc + 6);     /* sin default: el primer idioma */
+            if (u16(o, sc + 2)) return sc + u16(o, sc + 6);     /* no default: the first language */
             return 0;
         }
     return 0;
@@ -914,7 +914,7 @@ static int collect(const Otf *o, uint32_t tab, const char *script, const Feature
         uint32_t rec = fl + 2 + 6 * fi;
         const FeatureSpec *f = NULL;
         for (int s = 0; s < nspec; s++) if (tag_is(o, rec, spec[s].tag)) { f = &spec[s]; break; }
-        if (!f && k == cnt) f = &spec[0];       /* la feature requerida va siempre */
+        if (!f && k == cnt) f = &spec[0];       /* the required feature always applies */
         if (!f) continue;
         if (gpos_kern && !memcmp(f->tag, "kern", 4)) *gpos_kern = 1;
         uint32_t feat = fl + u16(o, rec + 4);
@@ -945,7 +945,7 @@ static int collect(const Otf *o, uint32_t tab, const char *script, const Feature
 
 const OtfPlan *otf_plan_kind(Otf *o, const char *script, int kind) {
     for (int i = 0; i < o->nplans; i++) if (!memcmp(o->plans[i].script, script, 4) && o->plans[i].kind == kind) return &o->plans[i];
-    if (o->nplans == OTF_MAX_PLANS) {           /* se reemplaza el más viejo */
+    if (o->nplans == OTF_MAX_PLANS) {           /* the oldest one is replaced */
         OtfPlan *old = &o->plans[0];
         free(old->gsub); free(old->gpos); free(old->first);
         memmove(o->plans, o->plans + 1, sizeof *o->plans * (OTF_MAX_PLANS - 1));
@@ -1005,7 +1005,7 @@ int otf_would_substitute(const Otf *o, const OtfPlan *p, int stage, const uint16
         Ctx c = { o, &r, NULL, T_GSUB, 0, 0, 0, 0, 0, 0, NULL };
         int next;
         if (apply_at(&c, p->gsub[k].lookup, 0, 0, &next) && next >= n) return 1;
-        if (r.len != n || memcmp(gg, g, sizeof *g * (size_t)n)) return 1;   /* cambió algo */
+        if (r.len != n || memcmp(gg, g, sizeof *g * (size_t)n)) return 1;   /* something changed */
     }
     return 0;
 }
@@ -1050,14 +1050,14 @@ void otf_position(const Otf *o, const OtfPlan *p, const GlyphRun *run, OtfPos *p
 void otf_position_ign(const Otf *o, const OtfPlan *p, const GlyphRun *run, OtfPos *pos, int rtl, const uint8_t *ign) {
     for (int i = 0; i < run->len; i++) { pos[i].adv = hadvance(o, run->g[i]); pos[i].dx = pos[i].dy = 0; pos[i].att = pos[i].cur = -1; }
     int zero = p ? p->zero_marks : OTF_ZERO_LATE;
-    /* marcas sin ancho por GDEF: antes de GPOS (birmano, USE), después (el resto) o nunca
-     * (índicas, jemer), como HarfBuzz */
+    /* marks zero-width by GDEF: before GPOS (Myanmar, USE), after (the rest) or never
+     * (Indic, Khmer), like HarfBuzz */
     if (o->glyph_class && zero == OTF_ZERO_EARLY)
         for (int i = 0; i < run->len; i++) if (glyph_class(o, run->g[i]) == GC_MARK) pos[i].adv = 0;
     if (p && p->ngpos) {
         Ctx c = { o, (GlyphRun *)run, pos, T_GPOS, 0, 0, 0, 0, 0, rtl, ign };
         for (int j = 0; j < p->ngpos && c.ops <= 400000; j++) run_lookup(&c, p->gpos[j].lookup, 0, NULL, 0);
-        for (int i = 0; i < run->len; i++) if (pos[i].cur >= 0) cursive_y(pos, i, 0);    /* cadenas cursivas */
+        for (int i = 0; i < run->len; i++) if (pos[i].cur >= 0) cursive_y(pos, i, 0);    /* cursive chains */
     }
     if (o->glyph_class && zero == OTF_ZERO_LATE)
         for (int i = 0; i < run->len; i++) if (glyph_class(o, run->g[i]) == GC_MARK) pos[i].adv = 0;

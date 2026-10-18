@@ -11,7 +11,7 @@
 //   <KeyringPrompt />                               aviso del sistema para abrir el llavero (lo monta startShell)
 //   <AutofillButton app service|url|ssid onFill />   "fill from Passwords" next to a login field
 import { createElement as h, useEffect, useState } from 'react';
-import { View, Text } from '@lordos/runtime';
+import { View, Text, mainBox } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
 import { useTheme } from './theme.js';
 import { t } from './i18n.js';
@@ -132,7 +132,7 @@ export function KeyringPrompt() {
     try { await vaultRequest('unlock', { v: 'login', method: 'session', password: pw }); setBusy(false); done(true); }
     catch (e) { setBusy(false); setErr(t('passwords.keyring.wrong')); }
   };
-  return h(View, { style: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center',
+  return h(View, { style: { position: 'absolute', ...mainBox(), alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.35)', zIndex: 100001 } },
   h(View, { style: { width: 380, padding: 18, gap: 10, borderRadius: 14, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`,
     boxShadow: '0 20px 60px rgba(0,0,0,0.5)' } },

@@ -1,8 +1,8 @@
-/* h_pdf.c — PDF en el ayudante (Poppler, interfaz de glib): abrir, dibujar páginas, seleccionar
- * y buscar texto, índice, enlaces, formularios y anotaciones, y guardar una copia.
+/* h_pdf.c — PDF in the helper (Poppler, glib interface): open, render pages, select
+ * and search text, outline, links, forms and annotations, and save a copy.
  *
- * Coordenadas: todo lo que sale de acá está en puntos de PDF con el origen arriba a la izquierda
- * de la página (como se dibuja), sin la rotación que elige el usuario (esa la aplica la app). */
+ * Coordinates: everything that leaves here is in PDF points with the origin at the top left
+ * of the page (as drawn), without the rotation the user chooses (the app applies that). */
 #include "helper.h"
 
 #include <cairo.h>
@@ -20,7 +20,7 @@ static PopplerDocument *doc;
 static int npages;
 static PopplerPage **pages;
 
-/* anotaciones agregadas en esta sesión, para deshacer (pila por página) */
+/* annotations added in this session, for undo (stack per page) */
 typedef struct Added { int page; PopplerAnnot *annot; struct Added *next; } Added;
 static Added *added;
 
@@ -47,7 +47,7 @@ static void put_rect(JBuf *b, double x, double y, double w, double h) {
     jb_num(b, h); jb_raw(b, "]");
 }
 
-/* rectángulo de PDF (origen abajo) → [x, y, w, h] con el origen arriba */
+/* PDF rectangle (origin at the bottom) → [x, y, w, h] with the origin at the top */
 static void put_pdf_rect(JBuf *b, const PopplerRectangle *r, double ph) {
     double x1 = fmin(r->x1, r->x2), x2 = fmax(r->x1, r->x2), y1 = fmin(r->y1, r->y2), y2 = fmax(r->y1, r->y2);
     put_rect(b, x1, ph - y2, x2 - x1, y2 - y1);
@@ -75,7 +75,7 @@ static void put_sizes(JBuf *b, int upto) {
             if (f) forms = 1;
             poppler_page_free_form_field_mapping(f);
         }
-        /* no guardar miles de páginas abiertas: se vuelven a pedir al dibujar */
+        /* don't keep thousands of pages open: they're requested again when drawing */
         if (i > 64 && p) { g_object_unref(p); pages[i] = NULL; }
     }
     jb_printf(b, "],\"forms\":%s", forms ? "true" : "false");
@@ -120,8 +120,8 @@ static void op_open(uint32_t id, const JVal *a) {
     PopplerIndexIter *it = poppler_index_iter_new(doc);
     jb_printf(&b, ",\"outline\":%s", it ? "true" : "false");
     if (it) poppler_index_iter_free(it);
-    /* tamaños: con "quick" solo la primera (los demás con DQ_PDF_SIZES, sin frenar el primer
-     * dibujo); si no, todos, para maquetar el desplazamiento continuo de entrada */
+    /* sizes: with "quick" only the first one (the rest with DQ_PDF_SIZES, without holding up the first
+     * render); otherwise all of them, to lay out continuous scrolling from the start */
     put_sizes(&b, json_bool(a, "quick", 0) ? 1 : npages);
     jb_raw(&b, "}");
     reply_json(DR_DONE, id, &b);
@@ -231,7 +231,7 @@ static void op_find(uint32_t id, const JVal *a) {
     reply_json(DR_DONE, id, &b);
 }
 
-/* número de página (0..n-1) de un destino, o -1 */
+/* page number (0..n-1) of a destination, or -1 */
 static int dest_page(PopplerDest *d) {
     if (!d) return -1;
     if (d->type == POPPLER_DEST_NAMED && d->named_dest) {
@@ -403,7 +403,7 @@ static void parse_color(const JVal *a, PopplerColor *c, double *alpha) {
     if (alpha) { *alpha = json_num(a, "opacity", 1); if (!(*alpha > 0 && *alpha <= 1)) *alpha = 1; }
 }
 
-/* [x, y, w, h] arriba-izquierda → PopplerRectangle de PDF */
+/* [x, y, w, h] top-left → PDF PopplerRectangle */
 static int get_rect(const JVal *v, double ph, PopplerRectangle *r) {
     if (!v || v->type != J_ARR || v->len != 4) return -1;
     double q[4];
@@ -458,8 +458,8 @@ static void op_annot(uint32_t id, const JVal *a) {
         if (an && text && strlen(text) < 65536) poppler_annot_set_contents(an, text);
         if (an) poppler_annot_text_set_icon(POPPLER_ANNOT_TEXT(an), POPPLER_ANNOT_TEXT_ICON_NOTE);
     } else if (type && !strcmp(type, "ink")) {
-        /* poppler-glib 25 no crea anotaciones de tinta: el trazo va como un sello con imagen
-         * propia (transparente), que cualquier lector de PDF muestra igual */
+        /* poppler-glib 25 doesn't create ink annotations: the stroke goes as a stamp with its own
+         * (transparent) image, which any PDF reader shows the same way */
         const JVal *strokes = json_get(a, "strokes");
         if (!strokes || strokes->type != J_ARR || !strokes->len || strokes->len > 500) { reply_err(id, "bad-request", "strokes"); return; }
         double width = json_num(a, "width", 2);
@@ -477,7 +477,7 @@ static void op_annot(uint32_t id, const JVal *a) {
         }
         if (!pts || pts > 200000 || x2 < x1) { reply_err(id, "bad-request", "strokes"); return; }
         x1 -= width; y1 -= width; x2 += width; y2 += width;
-        double sc = 3;                                  /* imagen a 216 ppp */
+        double sc = 3;                                  /* image at 216 dpi */
         int W = (int)ceil((x2 - x1) * sc), H = (int)ceil((y2 - y1) * sc);
         if (W < 1 || H < 1 || W > 4096 || H > 4096) { reply_err(id, "bad-request", "size"); return; }
         cairo_surface_t *img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, W, H);
@@ -536,13 +536,13 @@ static void op_undo(uint32_t id, const JVal *a) {
 }
 
 static void op_save(uint32_t id, const DocMsg *m, const JVal *a) {
-    int fd = m->nfds ? m->fds[0] : slot_fd(a, "slot");      /* archivo nuevo abierto por lord-server */
+    int fd = m->nfds ? m->fds[0] : slot_fd(a, "slot");      /* new file opened by lord-server */
     if (!doc || fd < 0) { reply_err(id, "bad-request", "slot"); return; }
     GError *err = NULL;
     int d = dup(fd);
     gboolean ok = d >= 0 && poppler_document_save_to_fd(doc, d, TRUE, &err);
-    /* poppler-glib hace fdopen(d) y no cierra ese FILE: lo último queda en el búfer de stdio
-     * hasta que el proceso termina. Se vacía acá y se cierra el fd (el FILE queda vacío). */
+    /* poppler-glib does fdopen(d) and doesn't close that FILE: the last part stays in the stdio buffer
+     * until the process exits. It's flushed here and the fd is closed (the FILE is left empty). */
     fflush(NULL);
     if (d >= 0) close(d);
     if (!ok) { reply_err(id, "save", err ? err->message : strerror(errno)); if (err) g_error_free(err); return; }
@@ -555,7 +555,7 @@ static void op_blob(uint32_t id) {
     GError *err = NULL;
     int d = fd >= 0 ? dup(fd) : -1;
     gboolean ok = d >= 0 && poppler_document_save_to_fd(doc, d, TRUE, &err);
-    fflush(NULL);                            /* ver op_save */
+    fflush(NULL);                            /* see op_save */
     if (d >= 0) close(d);
     if (!ok) {
         reply_err(id, "save", err ? err->message : "");
@@ -588,10 +588,10 @@ int pdf_handle(const DocMsg *m, const JVal *a) {
     }
 }
 
-/* Miniatura de la página 1 sin sesión propia (Vista rápida, miniaturas de Archivos): la sesión
- * de utilidades ya está caliente, así que no se paga el arranque del proceso. */
-/* Un PDF mínimo dibujado una vez: carga Poppler, cairo y fontconfig antes de la primera Vista
- * rápida (la sesión de utilidades la pide Archivos al abrirse). */
+/* Thumbnail of page 1 without its own session (Quick Look, Files thumbnails): the utilities
+ * session is already warm, so the process startup isn't paid. */
+/* A minimal PDF rendered once: loads Poppler, cairo and fontconfig before the first Quick
+ * Look (Files asks the utilities session for it when it opens). */
 void pdf_warm(uint32_t id) {
     static const char mini[] =
         "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"

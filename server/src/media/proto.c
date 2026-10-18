@@ -1,6 +1,6 @@
-/* proto.c — envío y recepción de mensajes entre lord-server y lord-media (ver proto.h). Lo
- * compilan los dos binarios. Valida largos y descriptores: un ayudante roto o comprometido no
- * puede hacer que lord-server lea fuera de un búfer. */
+/* proto.c — sending and receiving messages between lord-server and lord-media (see proto.h). Both
+ * binaries compile it. It validates lengths and descriptors: a broken or compromised helper can't
+ * make lord-server read outside a buffer. */
 #include "proto.h"
 
 #include <errno.h>

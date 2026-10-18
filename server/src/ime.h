@@ -1,4 +1,4 @@
-/* ime.h — métodos de entrada para coreano, japonés y chino (ver ime.c). */
+/* ime.h — input methods for Korean, Japanese and Chinese (see ime.c). */
 #ifndef LORD_IME_H
 #define LORD_IME_H
 
@@ -10,24 +10,24 @@
 #define IME_PAGE 9
 
 typedef struct {
-    char preedit[512];          /* texto en composición (UTF-8), "" si no hay */
-    int ncand, sel;             /* candidatos y el elegido */
+    char preedit[512];          /* text being composed (UTF-8), "" if none */
+    int ncand, sel;             /* candidates and the chosen one */
     char cand[IME_MAX_CAND][96];
-    int converting;             /* japonés: mostrando la conversión */
-    int focus_begin, focus_end; /* bytes del segmento con foco dentro de preedit (japonés) */
+    int converting;             /* Japanese: showing the conversion */
+    int focus_begin, focus_end; /* bytes of the focused segment within preedit (Japanese) */
 } ImeState;
 
-/* "" (ninguno), "hangul", "kana", "pinyin". 0 bien; 1 bien pero sin diccionario (kana sin
- * skkdic: solo hiragana/katakana; pinyin sin diccionario no sirve); -1 desconocido. */
+/* "" (none), "hangul", "kana", "pinyin". 0 ok; 1 ok but without dictionary (kana without
+ * skkdic: only hiragana/katakana; pinyin without dictionary is useless); -1 unknown. */
 int  ime_set(const char *name);
 const char *ime_current(void);
-/* Hay un campo de texto o una terminal con foco: si no, las teclas pasan tal cual. */
+/* A text field or a terminal has focus: otherwise keys pass through unchanged. */
 void ime_context(int on);
-/* Procesa una tecla. Devuelve 1 si la consumió. commit: texto terminado para entregar. */
+/* Processes a key. Returns 1 if it consumed it. commit: finished text to deliver. */
 int  ime_key(const KeyInfo *k, char *commit, size_t size);
-void ime_reset(void);                       /* descarta la composición */
+void ime_reset(void);                       /* discards the composition */
 const ImeState *ime_state(void);
-int  ime_changed(void);                     /* cambió el estado desde la última consulta */
-const char *ime_dict_path(void);            /* diccionario cargado ("" si ninguno) */
+int  ime_changed(void);                     /* the state changed since the last query */
+const char *ime_dict_path(void);            /* loaded dictionary ("" if none) */
 
 #endif

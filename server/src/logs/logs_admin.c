@@ -1,21 +1,21 @@
-/* logs_admin.c — logs-system: el journal del sistema para un administrador que no está en los
- * grupos systemd-journal/adm (app Registros, docs/SYSTEM.md).
+/* logs_admin.c — logs-system: the system journal for an administrator who is not in the
+ * systemd-journal/adm groups (Logs app, docs/SYSTEM.md).
  *
- *   logs-system <consulta>   líneas clave=valor: since, until (segundos o µs), prio (0..7),
- *                            kernel (0|1), match (unidad o identificador: [A-Za-z0-9@._:-]),
- *                            grep (texto sin caracteres de control), limit (1..5000)
+ *   logs-system <query>      key=value lines: since, until (seconds or µs), prio (0..7),
+ *                            kernel (0|1), match (unit or identifier: [A-Za-z0-9@._:-]),
+ *                            grep (text without control characters), limit (1..5000)
  *
- * Responde un LOG por entrada (JSON de jentry_json, con el mensaje cortado para que entre en una
- * línea del protocolo) y al final OK <cantidad>. Lee los archivos system*.journal* con el lector
- * propio (logs/journal.c): no ejecuta journalctl ni ningún otro programa. Las rutas no vienen del
- * usuario: salen de /etc/machine-id y de los nombres fijos de journald. */
+ * Replies with one LOG per entry (JSON from jentry_json, with the message cut so it fits in one
+ * protocol line) and finally OK <count>. Reads the system*.journal* files with our own reader
+ * (logs/journal.c): it runs neither journalctl nor any other program. The paths don't come from
+ * the user: they come from /etc/machine-id and journald's fixed names. */
 #include "logs_admin.h"
 #include "journal.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-#define LINE_MAX_JSON 1000              /* admin_say corta a 1024 */
+#define LINE_MAX_JSON 1000              /* admin_say cuts at 1024 */
 
 void logs_act_system(const AdminReq *r, const char *arg, size_t len) {
     (void)r; (void)len;

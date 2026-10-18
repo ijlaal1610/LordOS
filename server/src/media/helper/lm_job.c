@@ -1,6 +1,6 @@
-/* lm_job.c — el ayudante MK_WORKER: atiende trabajos cortos en cola, uno por mensaje MM_JOB
- * (MW_*), con los descriptores que pasa lord-server. Termina solo si pasa un rato sin trabajo.
- * Cada respuesta es un MM_RESULT con el id del trabajo. */
+/* lm_job.c — the MK_WORKER helper: handles short queued jobs, one per MM_JOB message
+ * (MW_*), with the descriptors lord-server passes. It exits on its own if a while passes without work.
+ * Each reply is an MM_RESULT with the job id. */
 #include "lm.h"
 
 #include <errno.h>
@@ -21,7 +21,7 @@
 
 static void closefds(int *fds) { for (int i = 0; i < MP_MAX_FDS; i++) if (fds[i] >= 0) { close(fds[i]); fds[i] = -1; } }
 
-/* Lado máximo para mostrar una imagen sin pasarse de memoria (~64 MB de BGRA). */
+/* Maximum side for showing an image without exceeding memory (~64 MB of BGRA). */
 static void fit_size(int w, int h, int max, int *ow, int *oh) {
     double s = 1;
     if (w > max || h > max) s = fmin((double)max / w, (double)max / h);
@@ -41,7 +41,7 @@ static void job_probe(uint32_t id, int in) {
     lm_close_input(&fmt);
 }
 
-/* Miniatura PNG (thumb) o los píxeles de un póster en un memfd (poster). */
+/* PNG thumbnail (thumb) or a poster's pixels in a memfd (poster). */
 static void job_thumb(uint32_t id, int in, int out, int size, int as_pixels) {
     char err[128];
     AVFormatContext *fmt = lm_open_input(in, err, sizeof err);
@@ -82,14 +82,14 @@ static void job_thumb(uint32_t id, int in, int out, int size, int as_pixels) {
     av_frame_free(&o);
 }
 
-/* Imagen completa (para Fotos): BGRA premultiplicado en un memfd sellado. */
+/* Full image (for Photos): premultiplied BGRA in a sealed memfd. */
 static void job_image(uint32_t id, int in) {
     char err[128];
     AVFormatContext *fmt = lm_open_input(in, err, sizeof err);
     if (!fmt) { lm_result(id, -1, err, -1); return; }
     int orient = 0;
     AVFrame *f = lm_decode_still(fmt, 0, &orient, 0);
-    /* ¿animada? (GIF, APNG): hay un segundo cuadro */
+    /* animated? (GIF, APNG): there's a second frame */
     int frames = 1;
     int vi = av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
     if (f && vi >= 0) {
@@ -130,8 +130,8 @@ static void job_image(uint32_t id, int in) {
 
 static uint8_t clamp8(double v) { return v < 0 ? 0 : v > 255 ? 255 : (uint8_t)lround(v); }
 
-/* Edición básica (se guarda como copia): recorte (en coordenadas de la imagen ya girada según
- * EXIF), giro de a 90°, brillo y contraste (-100..100). */
+/* Basic editing (saved as a copy): crop (in coordinates of the image already rotated per
+ * EXIF), rotation in 90° steps, brightness and contrast (-100..100). */
 static void job_edit(uint32_t id, int in, int out, const char *p) {
     char err[128], format[16];
     AVFormatContext *fmt = lm_open_input(in, err, sizeof err);
@@ -148,7 +148,7 @@ static void job_edit(uint32_t id, int in, int out, const char *p) {
     int rot = (((int)mp_param_int(p, "rotate", 0) + orient) % 360 + 360) % 360;
     int bright = (int)mp_param_int(p, "brightness", 0), contrast = (int)mp_param_int(p, "contrast", 0);
     if (mp_param(p, "format", format, sizeof format)) snprintf(format, sizeof format, "png");
-    /* giro: nueva imagen */
+    /* rotation: new image */
     int rw = (rot == 90 || rot == 270) ? h : w, rh = (rot == 90 || rot == 270) ? w : h;
     AVFrame *r = av_frame_alloc();
     r->format = AV_PIX_FMT_BGRA; r->width = rw; r->height = rh;
@@ -164,10 +164,10 @@ static void job_edit(uint32_t id, int in, int out, const char *p) {
         }
     }
     av_frame_free(&o);
-    /* recorte (si viene; si no, toda la imagen) */
+    /* crop (if given; otherwise, the whole image) */
     int cx = (int)mp_param_int(p, "cx", 0), cy = (int)mp_param_int(p, "cy", 0);
     int cw = (int)mp_param_int(p, "cw", rw), ch = (int)mp_param_int(p, "ch", rh);
-    /* el recorte viene en coordenadas de la vista previa (scale = ancho de referencia) */
+    /* the crop comes in preview coordinates (scale = reference width) */
     int ref = (int)mp_param_int(p, "refw", rw);
     if (ref > 0 && ref != rw) { double s = (double)rw / ref; cx = (int)(cx * s); cy = (int)(cy * s); cw = (int)(cw * s); ch = (int)(ch * s); }
     if (cx < 0) cx = 0;
@@ -178,7 +178,7 @@ static void job_edit(uint32_t id, int in, int out, const char *p) {
     AVFrame *c = av_frame_alloc();
     c->format = AV_PIX_FMT_BGRA; c->width = cw; c->height = ch;
     av_frame_get_buffer(c, 0);
-    double k = (100.0 + contrast) / 100.0;           /* contraste alrededor del gris medio */
+    double k = (100.0 + contrast) / 100.0;           /* contrast around mid gray */
     k = k * k;
     double bo = bright * 1.28;
     for (int y = 0; y < ch; y++) {
@@ -190,7 +190,7 @@ static void job_edit(uint32_t id, int in, int out, const char *p) {
         }
     }
     av_frame_free(&r);
-    /* lm_encode_image espera premultiplicado */
+    /* lm_encode_image expects premultiplied */
     for (int y = 0; y < ch; y++) {
         uint8_t *d = c->data[0] + (size_t)y * c->linesize[0];
         for (int x = 0; x < cw; x++, d += 4) if (d[3] < 255) for (int i = 0; i < 3; i++) d[i] = (uint8_t)(d[i] * d[3] / 255);
@@ -202,7 +202,7 @@ static void job_edit(uint32_t id, int in, int out, const char *p) {
     av_frame_free(&c);
 }
 
-/* Píxeles de lord-server (capturas) → PNG/JPEG. */
+/* Pixels from lord-server (screenshots) → PNG/JPEG. */
 static void job_encode(uint32_t id, int mfd, int out, int w, int h, const char *p) {
     struct stat st;
     if (w <= 0 || h <= 0 || w > MP_MAX_DIM || h > MP_MAX_DIM || fstat(mfd, &st) || st.st_size < (off_t)w * h * 4) {
@@ -223,7 +223,7 @@ static void job_encode(uint32_t id, int mfd, int out, int w, int h, const char *
     lm_result(id, r ? -1 : 0, r ? "no se pudo codificar" : "{}", -1);
 }
 
-/* ---- audio: decodificar todo (o un tramo) a float mono/estéreo ---- */
+/* ---- audio: decode everything (or a segment) to float mono/stereo ---- */
 
 typedef struct {
     AVFormatContext *fmt;
@@ -266,8 +266,8 @@ static void audio_close(AudioIn *a) {
     lm_close_input(&a->fmt);
 }
 
-/* Pide el siguiente bloque de muestras float intercaladas. Devuelve la cantidad (por canal),
- * 0 al final. buf: malloc que crece. */
+/* Requests the next block of interleaved float samples. Returns the count (per channel),
+ * 0 at the end. buf: malloc that grows. */
 static int audio_read(AudioIn *a, float **buf, int *cap) {
     for (;;) {
         int r = avcodec_receive_frame(a->dec, a->frame);
@@ -295,7 +295,7 @@ static void job_waveform(uint32_t id, int in, int bars) {
     if (bars > 2000) bars = 2000;
     if (audio_open(&a, in, 8000, 1, err, sizeof err)) { audio_close(&a); lm_result(id, -1, err, -1); return; }
     int64_t dur = a.fmt->duration > 0 ? a.fmt->duration / 1000 : 0;
-    int64_t total = dur > 0 ? dur * 8 : 8000 * 600;            /* muestras esperadas a 8 kHz */
+    int64_t total = dur > 0 ? dur * 8 : 8000 * 600;            /* expected samples at 8 kHz */
     float *peaks = calloc((size_t)bars, sizeof(float)), *buf = NULL;
     int cap = 0, n;
     int64_t pos = 0;
@@ -320,7 +320,7 @@ static void job_waveform(uint32_t id, int in, int bars) {
     audio_close(&a);
 }
 
-/* Exportar audio: Opus (Ogg), MP3 o WAV, con recorte opcional (desde/hasta en ms). */
+/* Export audio: Opus (Ogg), MP3 or WAV, with optional trimming (from/to in ms). */
 static void job_transcode(uint32_t id, int in, int out, const char *p) {
     char err[128], format[16];
     if (mp_param(p, "format", format, sizeof format)) snprintf(format, sizeof format, "opus");
@@ -331,9 +331,9 @@ static void job_transcode(uint32_t id, int in, int out, const char *p) {
     if (!codec && opus) codec = avcodec_find_encoder(AV_CODEC_ID_OPUS);
     if (!codec) { lm_result(id, -1, "sin codificador", -1); return; }
     AudioIn a;
-    int rate = mp3 ? 44100 : 48000;           /* MP3 a 44,1 kHz; Opus y WAV como la grabadora */
+    int rate = mp3 ? 44100 : 48000;           /* MP3 at 44.1 kHz; Opus and WAV like the recorder */
     if (audio_open(&a, in, rate, 1, err, sizeof err)) { audio_close(&a); lm_result(id, -1, err, -1); return; }
-    /* mono si la fuente es mono (la grabadora graba en mono); si no, estéreo */
+    /* mono if the source is mono (the recorder records in mono); otherwise, stereo */
     int ch = a.dec->ch_layout.nb_channels >= 2 ? 2 : 1;
     if (ch == 2) { audio_close(&a); if (audio_open(&a, in, rate, 2, err, sizeof err)) { audio_close(&a); lm_result(id, -1, err, -1); return; } }
     AVCodecContext *enc = avcodec_alloc_context3(codec);
@@ -355,7 +355,7 @@ static void job_transcode(uint32_t id, int in, int out, const char *p) {
     if (avformat_write_header(oc, NULL) < 0) { lm_close_output(oc, 0); avcodec_free_context(&enc); audio_close(&a); lm_result(id, -1, "no se pudo escribir", -1); return; }
     int64_t from = mp_param_int(p, "from", 0) * rate / 1000, to = mp_param_int(p, "to", -1);
     to = to < 0 ? INT64_MAX : to * rate / 1000;
-    /* float intercalado → formato del codificador, en cuadros de frame_size */
+    /* interleaved float → the encoder's format, in frames of frame_size */
     SwrContext *cv = NULL;
     swr_alloc_set_opts2(&cv, &enc->ch_layout, enc->sample_fmt, rate, &enc->ch_layout, AV_SAMPLE_FMT_FLT, rate, 0, NULL);
     swr_init(cv);
@@ -417,7 +417,7 @@ static void job_transcode(uint32_t id, int in, int out, const char *p) {
     audio_close(&a);
 }
 
-/* Prueba de la caja de arena (build/media-test sandbox): cada intento tiene que fallar. */
+/* Sandbox test (build/media-test sandbox): every attempt has to fail. */
 static void job_selftest(uint32_t id) {
     LmBuf b = { 0 };
     int fd = open("/etc/passwd", O_RDONLY | O_CLOEXEC);
@@ -449,7 +449,7 @@ void lm_worker(void) {
     for (;;) {
         struct pollfd p = { LM_SOCK, POLLIN, 0 };
         int r = poll(&p, 1, IDLE_MS);
-        if (r == 0) { LM_DBG("sin trabajo: termina"); return; }
+        if (r == 0) { LM_DBG("no work: exiting"); return; }
         if (r < 0 && errno == EINTR) continue;
         MediaMsg m;
         int fds[MP_MAX_FDS];

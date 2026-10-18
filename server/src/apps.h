@@ -1,30 +1,30 @@
-/* apps.h — apps Linux instaladas (archivos .desktop) y su lanzador (ver apps.c). */
+/* apps.h — installed Linux apps (.desktop files) and their launcher (see apps.c). */
 #ifndef LORD_APPS_H
 #define LORD_APPS_H
 
 #include <limits.h>
 
 typedef struct {
-    char id[160];                       /* "org.featherpad.FeatherPad" (nombre del .desktop sin la extensión) */
+    char id[160];                       /* "org.featherpad.FeatherPad" (.desktop name without the extension) */
     char name[160], generic[160], comment[320], keywords[320], categories[256];
-    char wmclass[160];                  /* StartupWMClass: para reconocer su ventana Wayland */
-    char mime[1024];                    /* MimeType: tipos de archivo que abre ("text/plain;…") */
-    char icon[PATH_MAX];                /* PNG encontrado, o "" */
-    char file[PATH_MAX];                /* el .desktop */
-    char bin[128];                      /* nombre del programa de Exec (para el Monitor: proceso → app) */
-    int user;                           /* de ~/.local/share/applications */
+    char wmclass[160];                  /* StartupWMClass: to recognize its Wayland window */
+    char mime[1024];                    /* MimeType: file types it opens ("text/plain;…") */
+    char icon[PATH_MAX];                /* PNG found, or "" */
+    char file[PATH_MAX];                /* the .desktop file */
+    char bin[128];                      /* program name from Exec (for the Monitor: process → app) */
+    int user;                           /* from ~/.local/share/applications */
 } DesktopApp;
 
-/* Lista las apps visibles para LordOS (Type=Application, sin NoDisplay/Hidden, OnlyShowIn y
- * NotShowIn, TryExec presente, no de terminal). lang = "es-AR": nombres traducidos.
- * Devuelve la cantidad; *out es un arreglo interno válido hasta la próxima llamada. */
+/* Lists the apps visible to LordOS (Type=Application, no NoDisplay/Hidden, OnlyShowIn and
+ * NotShowIn, TryExec present, not terminal apps). lang = "es-AR": translated names.
+ * Returns the count; *out is an internal array valid until the next call. */
 int apps_list(const char *lang, const DesktopApp **out);
 
-/* Lanza la app con ese id: solo una de la lista de arriba, con su línea Exec, sin argumentos
- * del llamador y sin shell. 0 si arrancó el proceso. */
+/* Launches the app with that id: only one from the list above, with its Exec line, without arguments
+ * from the caller and without a shell. 0 if the process started. */
 int apps_launch(const char *id);
-/* Igual, pero abriendo un archivo o carpeta (ver apps.c: solo apps con MimeType y rutas de la
- * carpeta personal o de los montajes del usuario, como un único argumento). */
+/* Same, but opening a file or folder (see apps.c: only apps with MimeType and paths in the
+ * home folder or the user's mounts, as a single argument). */
 int apps_launch_with(const char *id, const char *path);
 
 #endif

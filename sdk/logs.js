@@ -1,12 +1,12 @@
-// logs.js — registros para la app Registros (lord.logs, server/src/ui/js_logs.c; docs/SYSTEM.md).
+// logs.js — logs for the Logs app (lord.logs, server/src/ui/js_logs.c; docs/SYSTEM.md).
 //
 //   await logs.query({ scope: 'user'|'system', since, until, prio, kernel, match, grep, limit })
-//        → [{ t (µs), s, p, pid, uid, k, id, u, b, m }]  (lo lee un hilo de lord-server, como el
-//          usuario: su journal, y el del sistema solo si su grupo lo deja)
-//   await logs.system(consulta)   lo mismo para el journal del sistema por la acción logs-system
-//                                 del ayudante (solo administradores)
-//   logs.sources() → { user, system, uid }   logs.files() / logs.tail(nombre, bytes)
-//   logs.follow(on), logs.onChange((tipo, nombre) => …)   tipo: 'journal' | 'file'
+//        → [{ t (µs), s, p, pid, uid, k, id, u, b, m }]  (read by a lord-server thread, as the
+//          user: their journal, and the system one only if their group allows it)
+//   await logs.system(query)      the same for the system journal, through the helper's
+//                                 logs-system action (administrators only)
+//   logs.sources() → { user, system, uid }   logs.files() / logs.tail(name, bytes)
+//   logs.follow(on), logs.onChange((kind, name) => …)   kind: 'journal' | 'file'
 import { admin } from './admin.js';
 
 const pending = new Map();
@@ -15,7 +15,7 @@ const listeners = new Set();
 globalThis.__lordLogs = (kind, id, name) => {
   if (kind === 'result') {
     const p = pending.get(id);
-    if (!p) { try { lord.logs.take(id); } catch (e) { /* nadie lo pidió */ } return; }
+    if (!p) { try { lord.logs.take(id); } catch (e) { /* nobody asked for it */ } return; }
     pending.delete(id);
     let r = null;
     try { r = lord.logs.take(id); } catch (e) { p.reject(e); return; }
@@ -46,12 +46,12 @@ export const logs = {
       try { pending.set(lord.logs.query(q), { resolve, reject }); } catch (e) { reject(e); }
     });
   },
-  // nombres de unidad o proceso válidos para filtrar (lo mismo que valida el lado C)
+  // unit or process names valid for filtering (the same check as the C side)
   validMatch: (s) => /^[A-Za-z0-9@._:-]{1,95}$/.test(s),
   async system(q) {
     const out = [];
     await admin.run('logs-system', queryText({ ...q, limit: Math.min(q.limit || 1000, 5000) }), (line) => {
-      try { out.push(JSON.parse(line)); } catch (e) { /* línea cortada */ }
+      try { out.push(JSON.parse(line)); } catch (e) { /* truncated line */ }
     }, { quiet: true });
     return out;
   },

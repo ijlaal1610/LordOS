@@ -1,9 +1,9 @@
-/* state.c — estado de la red sin root, para lord-server: interfaces, direcciones, rutas,
- * contadores (volcados de rtnetlink), DNS, quién maneja cada interfaz, y los avisos de cambios. */
+/* state.c — network state without root, for lord-server: interfaces, addresses, routes,
+ * counters (rtnetlink dumps), DNS, who manages each interface, and change notifications. */
 #include "net.h"
 #include "netpriv.h"
 
-#include <net/if.h>                 /* antes que los de linux/ */
+#include <net/if.h>                 /* before the linux/ ones */
 
 #include <arpa/inet.h>
 #include <dirent.h>
@@ -20,12 +20,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-/* ---- quién maneja una interfaz ---- */
+/* ---- who manages an interface ---- */
 
-/* systemd-networkd la configura (su archivo de estado dice algo distinto de "unmanaged"), o
- * aparece en /etc/network/interfaces (ifupdown). El formato del estado de networkd no es
- * público, pero es estable desde hace años; si cambia, la interfaz se ve como libre y no
- * pasa nada malo (LordOS solo la toca si el usuario la configura). */
+/* systemd-networkd configures it (its state file says something other than "unmanaged"), or
+ * it appears in /etc/network/interfaces (ifupdown). networkd's state format isn't
+ * public, but it has been stable for years; if it changes, the interface shows as free and
+ * nothing bad happens (LordOS only touches it if the user configures it). */
 static int networkd_manages(int ifindex) {
     char path[64], line[128];
     snprintf(path, sizeof path, "/run/systemd/netif/links/%d", ifindex);
@@ -70,8 +70,8 @@ int managed_by_system(const char *ifname) {
     if (!strcmp(ifname, "lo")) return 1;
     int idx = (int)if_nametoindex(ifname);
     if (idx && networkd_manages(idx)) return 1;
-    /* /etc/network/interfaces solo cuenta si ifupdown está instalado (live-boot escribe ese
-     * archivo aunque no haya ifupdown: la interfaz quedaría sin nadie que la configure) */
+    /* /etc/network/interfaces only counts if ifupdown is installed (live-boot writes that
+     * file even without ifupdown: the interface would be left with nobody configuring it) */
     if (access("/sbin/ifup", X_OK) && access("/usr/sbin/ifup", X_OK)) return 0;
     return ifupdown_manages_file("/etc/network/interfaces", ifname, 0);
 }
@@ -84,7 +84,7 @@ int resolved_active(void) {
     return strstr(buf, "systemd/resolve") != NULL && access("/run/systemd/resolve/resolv.conf", R_OK) == 0;
 }
 
-/* ---- volcados ---- */
+/* ---- dumps ---- */
 
 typedef struct {
     int index, flags, arphrd, mtu, master;
@@ -240,7 +240,7 @@ char *net_interfaces_json(void) {
         snprintf(conf, sizeof conf, NET_IF_DIR "/%s.conf", k->name);
         const char *managed = managed_by_system(k->name) ? "system" : access(conf, F_OK) == 0 ? "lordos" : "none";
         if (!strcmp(type, "wireguard") || !strcmp(type, "tun")) {
-            /* las de las VPN de LordOS */
+            /* those of LordOS's VPNs */
             char meta[128];
             snprintf(meta, sizeof meta, NET_RUN_DIR "/vpn/%s", k->name);
             if (access(meta, F_OK) == 0) managed = "lordos";
@@ -352,7 +352,7 @@ char *net_dns_json(void) {
     return b.p;
 }
 
-/* Concatena los .json (públicos) de una carpeta en un arreglo. */
+/* Concatenates the (public) .json files of a folder into an array. */
 static char *dir_json_array(const char *dir) {
     Buf b = {0};
     buf_printf(&b, "[");
@@ -379,7 +379,7 @@ static char *dir_json_array(const char *dir) {
 char *net_vpn_list_json(void) { return dir_json_array(NET_VPN_DIR); }
 char *net_wifi_known_json(void) { return dir_json_array(NET_WIFI_DIR); }
 
-/* ---- .ovpn con archivos al lado ---- */
+/* ---- .ovpn with files next to it ---- */
 
 static const char *const inline_dirs[] = { "ca", "cert", "key", "tls-auth", "tls-crypt", "tls-crypt-v2", "extra-certs", "crl-verify", NULL };
 
@@ -418,7 +418,7 @@ char *net_ovpn_inline(const char *path, char *err, size_t errn) {
     return b.p;
 }
 
-/* ---- avisos ---- */
+/* ---- notifications ---- */
 
 static int mon_fd = -1;
 
@@ -437,7 +437,7 @@ void net_dispatch(void (*fn)(const char *what)) {
     for (;;) {
         ssize_t r = recv(mon_fd, buf, sizeof buf, 0);
         if (r < 0 && errno == EINTR) continue;
-        if (r < 0 && errno == ENOBUFS) { link = addr = route = 1; continue; }   /* se perdieron avisos */
+        if (r < 0 && errno == ENOBUFS) { link = addr = route = 1; continue; }   /* notifications were lost */
         if (r <= 0) break;
         for (struct nlmsghdr *h = (struct nlmsghdr *)buf; NLMSG_OK(h, (unsigned)r); h = NLMSG_NEXT(h, r)) {
             if (h->nlmsg_type == RTM_NEWLINK || h->nlmsg_type == RTM_DELLINK) link = 1;

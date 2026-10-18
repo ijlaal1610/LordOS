@@ -1,15 +1,15 @@
-/* textlayout.c — texto de la interfaz con escrituras complejas: árabe y hebreo (derecha a
- * izquierda, formas contextuales, marcas), CJK (sin espacios entre palabras), emoji y
- * cualquier escritura con una fuente Noto instalada.
+/* textlayout.c — interface text with complex scripts: Arabic and Hebrew (right to
+ * left, contextual forms, marks), CJK (no spaces between words), emoji and
+ * any script with an installed Noto font.
  *
- * Por cada texto: párrafos (\n) → bidi (bidi.c) → tramos de una fuente, escritura y nivel →
- * armado (shape.c) → cortes de línea (espacios y, en CJK, entre caracteres, respetando
- * 「」、。) → orden visual por línea (L1–L2). El resultado se guarda en una caché chica: la
- * misma etiqueta se mide en el layout y se dibuja en cada repintado.
+ * For each text: paragraphs (\n) → bidi (bidi.c) → runs of one font, script and level →
+ * shaping (shape.c) → line breaks (spaces and, in CJK, between characters, respecting
+ * 「」、。) → visual order per line (L1–L2). The result is kept in a small cache: the
+ * same label is measured in layout and drawn on every repaint.
  *
- * El texto latino, griego y cirílico que Inter cubre no pasa por acá (text.c, camino rápido).
- * La dirección del párrafo es la del primer carácter fuerte (como "natural" en macOS); la
- * alineación inicio/fin la resuelve paint.c con la dirección del nodo. */
+ * Latin, Greek and Cyrillic text that Inter covers doesn't come through here (text.c, fast path).
+ * The paragraph direction is that of the first strong character (like "natural" in macOS); the
+ * start/end alignment is resolved by paint.c with the node's direction. */
 #include "ui.h"
 
 #include <math.h>
@@ -23,7 +23,7 @@
 #include "thbrk.h"
 #include "unicode.h"
 
-/* ---- fuentes de respaldo ---- */
+/* ---- fallback fonts ---- */
 
 static char lang[16] = "es";
 static int script_fonts[SCRIPT_COUNT][2];
@@ -42,14 +42,14 @@ static int load_family(const char *fam, int bold) {
 }
 
 static int is_cjk(int sc) { return sc == SCRIPT_HANI || sc == SCRIPT_HIRA || sc == SCRIPT_KANA || sc == SCRIPT_HANG; }
-/* Puntuación y formas de ancho completo (escritura "Common") que se ven bien con la CJK. */
+/* Punctuation and full-width forms ("Common" script) that look good with the CJK font. */
 static int cjk_common(uint32_t cp) {
     return (cp >= 0x3000 && cp <= 0x303F) || (cp >= 0x3200 && cp <= 0x33FF) || (cp >= 0xFE30 && cp <= 0xFE4F) ||
            (cp >= 0xFF00 && cp <= 0xFFEF) || (cp >= 0x30FB && cp <= 0x30FC);
 }
 
-/* El mismo ideograma se dibuja distinto en chino, japonés y coreano: la fuente CJK sale del
- * idioma de la interfaz. mono: la variante monoespaciada (terminal). */
+/* The same ideograph is drawn differently in Chinese, Japanese and Korean: the CJK font comes from
+ * the interface language. mono: the monospaced variant (terminal). */
 static int cjk_font(int bold, int mono) {
     const char *pref = !strncmp(lang, "ja", 2) ? "JP" : !strncmp(lang, "ko", 2) ? "KR" :
                        (!strncmp(lang, "zh-TW", 5) || !strncmp(lang, "zh_TW", 5) || !strncmp(lang, "zh-HK", 5) || !strncmp(lang, "zh-Hant", 7)) ? "TC" : "SC";
@@ -87,7 +87,7 @@ static int script_font(int sc, int bold) {
         char fam[96];
         snprintf(fam, sizeof fam, "Noto Sans %s", uc_script_name(sc));
         f = load_family(fam, bold);
-        if (f < 0) { snprintf(fam, sizeof fam, "Noto Serif %s", uc_script_name(sc)); f = load_family(fam, bold); }   /* tibetano */
+        if (f < 0) { snprintf(fam, sizeof fam, "Noto Serif %s", uc_script_name(sc)); f = load_family(fam, bold); }   /* Tibetan */
         if (f < 0) {                    /* "Phags Pa" → "Noto Sans PhagsPa" */
             int k = snprintf(fam, sizeof fam, "Noto Sans ");
             for (const char *q = uc_script_name(sc); *q && k < (int)sizeof fam - 1; q++) if (*q != ' ') fam[k++] = *q;
@@ -131,8 +131,8 @@ void text_set_language(const char *l) {
     text_layout_flush();
 }
 
-/* Para la terminal: fuente de la escritura del carácter (CJK monoespaciada, árabe, hebreo,
- * Noto de cualquier otra escritura instalada), o -1. */
+/* For the terminal: font for the character's script (monospaced CJK, Arabic, Hebrew,
+ * Noto for any other installed script), or -1. */
 int text_script_fallback(uint32_t cp, int bold) {
     int sc = cjk_common(cp) ? SCRIPT_HANI : uc_script(cp);
     int f;
@@ -149,7 +149,7 @@ static int emoji_presentation(uint32_t cp, uint32_t next) {
     return next == 0xFE0F || (cp >= 0x1F000 && cp <= 0x1FAFF) || (cp >= 0x1F1E6 && cp <= 0x1F1FF);
 }
 
-/* Fuente para un carácter: la de la interfaz, la de su escritura, las genéricas y la de emoji. */
+/* Font for a character: the interface one, its script's, the generic ones and the emoji one. */
 static int font_for_cp(uint32_t cp, uint32_t next, int sc, int primary, int bold) {
     if (emoji_presentation(cp, next)) { int e = emoji_font(); if (e >= 0 && text_font_has(e, cp)) return e; }
     if (text_font_has(primary, cp)) return primary;
@@ -161,7 +161,7 @@ static int font_for_cp(uint32_t cp, uint32_t next, int sc, int primary, int bold
     return primary;
 }
 
-/* ---- ¿hace falta el camino complejo? ---- */
+/* ---- is the complex path needed? ---- */
 
 static uint32_t utf8_decode(const unsigned char **p) {
     const unsigned char *s = *p;
@@ -223,7 +223,7 @@ void text_layout_flush(void) { for (int i = 0; i < CACHE; i++) layout_free(&cach
 
 static int is_space(uint32_t cp) { return cp == ' ' || cp == 0x3000 || cp == '\t'; }
 
-/* No se corta antes de marcas, unidores ni selectores de variante. */
+/* No break before marks, joiners or variation selectors. */
 static int sticks_to_prev(uint32_t cp) {
     return uc_ccc(cp) || uc_ignorable(cp) || uc_bidi(cp) == BIDI_NSM || uc_join(cp) == JOIN_T || (cp >= 0x1F3FB && cp <= 0x1F3FF);
 }
@@ -248,7 +248,7 @@ static int grow(void **p, size_t elem, int *cap, int need) {
     return 0;
 }
 
-/* Arma un tramo [rs, re) y agrega sus glifos. */
+/* Shapes a run [rs, re) and appends its glyphs. */
 static int shape_span(Layout *L, int *gcap, int rs, int re, int font, int sc, int rtl, float size) {
     Otf *o = text_font_otf(font);
     if (!o) return 0;
@@ -275,8 +275,8 @@ static int shape_span(Layout *L, int *gcap, int rs, int re, int font, int sc, in
     return 0;
 }
 
-/* Orden visual de una línea: L1–L2 sobre los caracteres y, por cada uno, sus glifos (al revés
- * en los tramos RTL). */
+/* Visual order of a line: L1–L2 over the characters and, for each one, its glyphs (reversed
+ * in RTL runs). */
 static int line_visual(Layout *L, LLine *ln, int para, const int *gstart, const int *glist, int *vcap,
                        uint8_t **lvbuf, int **obuf, int *bcap) {
     int len = ln->end - ln->start;
@@ -309,7 +309,7 @@ static int build(Layout *L, const char *s, int font, float size, float max_w, in
     L->lv = malloc((size_t)n + 1);
     L->cpw = calloc((size_t)n + 1, sizeof *L->cpw);
     int *fnt = malloc(sizeof(int) * (size_t)(n + 1)), *scr = malloc(sizeof(int) * (size_t)(n + 1));
-    int *paras = malloc(sizeof(int) * (size_t)(n + 1));     /* nivel del párrafo de cada carácter */
+    int *paras = malloc(sizeof(int) * (size_t)(n + 1));     /* paragraph level of each character */
     int *gstart = NULL, *glist = NULL, *obuf = NULL;
     uint8_t *lvbuf = NULL, *bk = NULL;
     int gcap = 0, lcap = 0, vcap = 0, bcap = 0, ok = -1;
@@ -318,7 +318,7 @@ static int build(Layout *L, const char *s, int font, float size, float max_w, in
     for (const unsigned char *p = (const unsigned char *)s; *p;) L->cp[n++] = utf8_decode(&p);
     int bold = text_ui_font_bold(font);
 
-    /* 1. por párrafo: bidi, escritura, fuente, tramos y armado */
+    /* 1. per paragraph: bidi, script, font, runs and shaping */
     for (int ps = 0; ps <= n;) {
         int pe = ps;
         while (pe < n && L->cp[pe] != '\n') pe++;
@@ -326,7 +326,7 @@ static int build(Layout *L, const char *s, int font, float size, float max_w, in
         if (len > 0) {
             para = bidi_levels(L->cp + ps, len, -1, L->lv + ps, NULL);
             int last = SCRIPT_COMMON;
-            for (int i = ps; i < pe; i++) {         /* las comunes heredan la escritura vecina */
+            for (int i = ps; i < pe; i++) {         /* common ones inherit the neighboring script */
                 int sc = uc_script(L->cp[i]);
                 if (sc <= SCRIPT_INHERITED) sc = last; else last = sc;
                 scr[i] = sc;
@@ -337,7 +337,7 @@ static int build(Layout *L, const char *s, int font, float size, float max_w, in
             for (int i = ps; i < pe; i++) {
                 uint32_t c = L->cp[i], nx = i + 1 < pe ? L->cp[i + 1] : 0;
                 int common = uc_script(c) <= SCRIPT_INHERITED;
-                if (i > ps && sticks_to_prev(c)) fnt[i] = fnt[i - 1];     /* marcas y unidores con su base */
+                if (i > ps && sticks_to_prev(c)) fnt[i] = fnt[i - 1];     /* marks and joiners with their base */
                 else if (i > ps && common && !emoji_presentation(c, nx) && !text_font_is_color(fnt[i - 1]) && text_font_has(fnt[i - 1], c)) fnt[i] = fnt[i - 1];
                 else fnt[i] = font_for_cp(c, nx, scr[i], font, bold);
             }
@@ -349,12 +349,12 @@ static int build(Layout *L, const char *s, int font, float size, float max_w, in
             }
         }
         for (int i = ps; i <= pe && i <= n; i++) paras[i] = para;
-        if (pe < n) L->lv[pe] = (uint8_t)para;          /* el \n */
+        if (pe < n) L->lv[pe] = (uint8_t)para;          /* the \n */
         if (pe >= n) break;
         ps = pe + 1;
     }
 
-    /* 2. ancho de cada carácter y glifos agrupados por carácter */
+    /* 2. width of each character and glyphs grouped by character */
     gstart = calloc((size_t)n + 2, sizeof *gstart);
     glist = malloc(sizeof *glist * (size_t)(L->ng + 1));
     if (!gstart || !glist) goto out;
@@ -375,9 +375,9 @@ static int build(Layout *L, const char *s, int font, float size, float max_w, in
         free(fill);
     }
 
-    /* 3. cortes posibles de las escrituras sin espacios (SA): el tailandés por palabras con el
-     * diccionario de libthai-data (thbrk.c); el jemer y el birmano por sílaba (cada sílaba es
-     * un grupo de glifos). bk: 0 = la regla común, 1 = se puede, 2 = no. */
+    /* 3. possible breaks of scripts without spaces (SA): Thai by words with the
+     * libthai-data dictionary (thbrk.c); Khmer and Myanmar by syllable (each syllable is
+     * a glyph cluster). bk: 0 = the common rule, 1 = allowed, 2 = not allowed. */
     bk = calloc((size_t)n + 1, 1);
     if (!bk) goto out;
     thbrk_text(L->cp, n, bk);
@@ -386,8 +386,8 @@ static int build(Layout *L, const char *s, int font, float size, float max_w, in
         if (uc_linebreak(L->cp[i]) != LB_SA || (sc != SCRIPT_KHMR && sc != SCRIPT_MYMR)) { i++; continue; }
         int e = i + 1;
         while (e < n && ((uc_linebreak(L->cp[e]) == LB_SA && uc_script(L->cp[e]) == sc) || sticks_to_prev(L->cp[e]))) e++;
-        /* entre sílabas (el primer carácter de cada una tiene los glifos), salvo antes de una
-         * consonante final: con asat o virama en birmano (င်), con bantoc o viriam en jemer (ញ់) */
+        /* between syllables (the first character of each one holds the glyphs), except before a
+         * final consonant: with asat or virama in Myanmar (င်), with bantoc or viriam in Khmer (ញ់) */
         for (int k = i + 1; k < e; k++) {
             uint32_t nx = k + 1 < n ? L->cp[k + 1] : 0;
             int fin = nx == 0x103A || nx == 0x1039 || nx == 0x17CB || nx == 0x17D1;
@@ -396,7 +396,7 @@ static int build(Layout *L, const char *s, int font, float size, float max_w, in
         i = e;
     }
 
-    /* 4. líneas: cortes y orden visual */
+    /* 4. lines: breaks and visual order */
     for (int ps = 0; ps <= n;) {
         int pe = ps;
         while (pe < n && L->cp[pe] != '\n') pe++;
@@ -410,7 +410,7 @@ static int build(Layout *L, const char *s, int font, float size, float max_w, in
             }
             int wrapped = i < pe;
             int le = wrapped ? (brk > ls ? brk : i) : pe;
-            /* sin dónde cortar: por lo menos no partir un grupo de glifos (sílaba, marcas) */
+            /* nowhere to break: at least don't split a glyph cluster (syllable, marks) */
             if (wrapped && brk <= ls) {
                 int k = le;
                 while (k > ls + 1 && (gstart[k + 1] == gstart[k] || sticks_to_prev(L->cp[k]))) k--;
@@ -477,7 +477,9 @@ void text_layout_measure(const char *s, int font, float size, float line_h, floa
 
 void text_layout_draw(Canvas *c, const char *s, int font, float size, float line_h,
                       float x, float y, float box_w, int align, int nowrap, uint32_t argb) {
-    Layout *L = get(s, font, size, box_w, nowrap);
+    /* scaled display (text_paint_scale): shaped and broken at the logical size, positions scaled */
+    float sk = text_paint_scale > 0 ? text_paint_scale : 1;
+    Layout *L = get(s, font, size / sk, box_w / sk, nowrap);
     if (!L || !L->ng) return;
     float lh = text_line_height(size, line_h), asc, desc;
     text_font_vmetrics(font, size, &asc, &desc);
@@ -494,31 +496,31 @@ void text_layout_draw(Canvas *c, const char *s, int font, float size, float line
     for (int li = 0; li < L->nlines; li++) {
         const LLine *ln = &L->lines[li];
         float pen = x;
-        if (align == TEXT_CENTER) pen += (box_w - ln->width) / 2;
-        else if (align == TEXT_RIGHT) pen += box_w - ln->width;
+        if (align == TEXT_CENTER) pen += (box_w - ln->width * sk) / 2;
+        else if (align == TEXT_RIGHT) pen += box_w - ln->width * sk;
         float baseline = roundf(y + li * lh + (lh - (asc - desc)) / 2 + asc);
         if (baseline - asc > c->clip.y1 || baseline - desc < c->clip.y0) continue;
         const int *vis = L->vis + ln->vis0;
         for (int k = 0; k < ln->nvis; k++) {
             const LGlyph *g = &L->g[vis[k]];
             if (g->att >= 0) continue;
-            ox[vis[k]] = pen + g->dx;
-            oy[vis[k]] = g->dy;
-            pen += g->adv;
+            ox[vis[k]] = pen + g->dx * sk;
+            oy[vis[k]] = g->dy * sk;
+            pen += g->adv * sk;
         }
-        /* marcas ancladas: la base tiene índice menor (orden lógico) */
+        /* anchored marks: the base has a lower index (logical order) */
         for (int pass = 0; pass < 4; pass++)
             for (int k = 0; k < ln->nvis; k++) {
                 const LGlyph *g = &L->g[vis[k]];
                 if (g->att < 0) continue;
-                ox[vis[k]] = ox[g->att] + g->dx;
-                oy[vis[k]] = oy[g->att] + g->dy;
+                ox[vis[k]] = ox[g->att] + g->dx * sk;
+                oy[vis[k]] = oy[g->att] + g->dy * sk;
             }
         for (int k = 0; k < ln->nvis; k++) {
             const LGlyph *g = &L->g[vis[k]];
             float gx = ox[vis[k]], gy = baseline - oy[vis[k]];
             if (text_font_is_color(g->font)) {
-                int bw = (int)ceilf(g->adv > 0 ? g->adv : size), bh = (int)ceilf(asc - desc);
+                int bw = (int)ceilf(g->adv > 0 ? g->adv * sk : size), bh = (int)ceilf(asc - desc);
                 const Glyph *gl = text_glyph_color(g->font, g->gid, bw, bh);
                 if (gl->argb) canvas_blit(c, gl->argb, gl->w, gl->h, (int)roundf(gx), (int)roundf(baseline - asc + (bh - gl->h) / 2.0f), 0, opacity, 0);
                 continue;
@@ -536,7 +538,7 @@ int text_direction(const char *s) {
     return bidi_direction(buf, n) == 1;
 }
 
-/* Depuración (tests/text_test.c): glifos en orden visual, "fuente:glifo" por línea. */
+/* Debugging (tests/text_test.c): glyphs in visual order, "font:glyph" per line. */
 void text_layout_dump(const char *s, int font, float size) {
     Layout *L = get(s, font, size, 0, 1);
     if (!L) return;

@@ -1,8 +1,8 @@
-/* nl.c — netlink propio (sin libnl ni libmnl): mensajes, atributos, ACK y volcados; las
- * operaciones de rtnetlink que usa el módulo de red; y utilidades (JSON, direcciones, archivos). */
+/* nl.c — our own netlink (no libnl or libmnl): messages, attributes, ACK and dumps; the
+ * rtnetlink operations the network module uses; and utilities (JSON, addresses, files). */
 #include "netpriv.h"
 
-#include <net/if.h>                 /* antes que los de linux/ */
+#include <net/if.h>                 /* before the linux/ ones */
 
 #include <arpa/inet.h>
 #include <ctype.h>
@@ -58,7 +58,7 @@ void buf_json_str(Buf *b, const char *s) {
 
 void buf_free(Buf *b) { free(b->p); *b = (Buf){0}; }
 
-/* ---- mensajes ---- */
+/* ---- messages ---- */
 
 static uint32_t seq_counter;
 
@@ -137,7 +137,7 @@ static int nl_send(int fd, NlMsg *m) {
     return sendto(fd, m->p, m->len, 0, (struct sockaddr *)&sa, sizeof sa) == (ssize_t)m->len ? 0 : -errno;
 }
 
-/* Lee respuestas hasta el ACK/DONE del pedido seq. fn recibe los mensajes de datos. */
+/* Reads replies until the ACK/DONE of request seq. fn receives the data messages. */
 static int nl_wait(int fd, uint32_t seq, NlFn fn, void *ud) {
     char buf[32768];
     for (;;) {
@@ -251,7 +251,7 @@ static void addr_collect(const struct nlmsghdr *h, void *ud) {
     if (h->nlmsg_type != RTM_NEWADDR) return;
     struct ifaddrmsg *ifa = NLMSG_DATA(h);
     if ((int)ifa->ifa_index != l->ifindex || (l->family && ifa->ifa_family != l->family) || l->n >= 64) return;
-    if (ifa->ifa_family == AF_INET6 && ifa->ifa_scope == RT_SCOPE_LINK) return;   /* fe80:: queda */
+    if (ifa->ifa_family == AF_INET6 && ifa->ifa_scope == RT_SCOPE_LINK) return;   /* fe80:: stays */
     struct rtattr *tb[IFA_MAX + 1];
     nl_parse(tb, IFA_MAX, IFA_RTA(ifa), IFA_PAYLOAD(h));
     struct rtattr *a = tb[IFA_LOCAL] ? tb[IFA_LOCAL] : tb[IFA_ADDRESS];
@@ -339,7 +339,7 @@ static void proto_cb(const struct nlmsghdr *h, void *ud) {
     l->n++;
 }
 
-/* Borra las rutas con ese protocolo (las de LordOS: RTPROT_LORDOS) hacia dst, o todas si dst es NULL. */
+/* Deletes the routes with that protocol (LordOS's: RTPROT_LORDOS) towards dst, or all if dst is NULL. */
 int rt_flush_proto(int fd, int proto, int family, const void *dst) {
     ProtoList l = { .proto = proto };
     NlMsg m;
@@ -355,7 +355,7 @@ int rt_flush_proto(int fd, int proto, int family, const void *dst) {
     return n;
 }
 
-/* Interfaz XFRM (IPsec con if_id): el tráfico que se rutea por ella va al túnel. */
+/* XFRM interface (IPsec with if_id): traffic routed through it goes into the tunnel. */
 int rt_link_new_xfrm(int fd, const char *name, uint32_t if_id) {
     NlMsg m;
     nlm_init(&m, RTM_NEWLINK, NLM_F_CREATE | NLM_F_EXCL);
@@ -384,7 +384,7 @@ int rt_rule(int fd, int add, int family, uint32_t fwmark, int invert, uint32_t t
     return nl_talk(fd, &m);
 }
 
-/* ---- direcciones ---- */
+/* ---- addresses ---- */
 
 int parse_ip(const char *s, int *family, uint8_t a[16]) {
     memset(a, 0, 16);
@@ -413,7 +413,7 @@ void fmt_ip(int family, const void *a, char *out, size_t n) {
     if (!inet_ntop(family, a, out, (socklen_t)n)) snprintf(out, n, "?");
 }
 
-/* ---- nombres y archivos ---- */
+/* ---- names and files ---- */
 
 int valid_ifname(const char *s) {
     size_t n = strlen(s);

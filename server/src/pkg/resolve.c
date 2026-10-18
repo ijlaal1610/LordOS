@@ -1,14 +1,14 @@
-/* resolve.c — resolvedor de dependencias (ver resolve.h).
+/* resolve.c — dependency resolver (see resolve.h).
  *
- * Cada paquete que aparece es un nodo con su versión instalada (de dpkg), su candidata (del
- * índice) y su destino: quedarse como está, instalar/actualizar a un registro del índice, o no
- * estar. Los pedidos cambian destinos y encolan los grupos de dependencias de lo que cambia; la
- * cola se procesa hasta que todo grupo esté cumplido. Cuando un grupo se puede cumplir de varias
- * maneras (alternativas "a | b", paquetes virtuales) se prueba en orden con vuelta atrás, con un
- * presupuesto fijo. Los conflictos (Conflicts/Breaks, en los dos sentidos) se resuelven
- * actualizando al otro paquete si su versión nueva ya no choca, y si no quitándolo; las quitas
- * que no se pidieron necesitan confirmación (allow_remove/cascade). Al final se repasa todo lo
- * que cambió y lo que depende de ello hasta que no cambie nada más. */
+ * Each package that shows up is a node with its installed version (from dpkg), its candidate (from
+ * the index) and its target: stay as is, install/upgrade to an index record, or not
+ * be there. Requests change targets and queue the dependency groups of whatever changes; the
+ * queue is processed until every group is satisfied. When a group can be satisfied in several
+ * ways (alternatives "a | b", virtual packages) they're tried in order with backtracking, within
+ * a fixed budget. Conflicts (Conflicts/Breaks, in both directions) are resolved by
+ * upgrading the other package if its new version no longer clashes, and otherwise removing it;
+ * removals that weren't requested need confirmation (allow_remove/cascade). At the end everything
+ * that changed and whatever depends on it is reviewed until nothing else changes. */
 #include "resolve.h"
 #include "deb.h"
 
@@ -40,7 +40,7 @@ typedef struct {
     const Idx *x;
     const Status *st;
     const PlanOpts *o;
-    Node **blocks;                      /* bloques de 1024: los punteros a nodos no se mueven */
+    Node **blocks;                      /* blocks of 1024: pointers to nodes don't move */
     int nn, nblocks;
     int *ht;
     int htcap;
@@ -48,13 +48,13 @@ typedef struct {
     int nlog, caplog;
     Item *q;
     int nq, capq;
-    Ref *prov, *rdep, *conf;            /* de lo instalado: provee, depende de, choca con */
+    Ref *prov, *rdep, *conf;            /* from what's installed: provides, depends on, conflicts with */
     int nprov, nrdep, nconf;
     int budget, may_remove;
     char err[512];
 } S;
 
-/* ---- nodos ---- */
+/* ---- nodes ---- */
 
 static inline Node *nd(const S *s, int i) { return &s->blocks[i >> 10][i & 1023]; }
 
@@ -76,10 +76,10 @@ long pkg_candidate(const Idx *x, const char *name, size_t n, const StPkg *inst) 
         if (inst && prio >= 100 && prio < 500 && !strcmp(idx_s(x, x->pkg[i].version), inst->version)) inst_in_100 = 1;
     }
     if (!inst) return best500 >= 0 ? best500 : best100;
-    /* instalado desde backports (o más nuevo que lo normal): sigue con la versión más alta */
+    /* installed from backports (or newer than normal): stays on the highest version */
     long c = best500;
     if (inst_in_100 || c < 0 || ver_cmp(idx_s(x, x->pkg[c].version), inst->version) < 0) c = best100;
-    if (c >= 0 && ver_cmp(idx_s(x, x->pkg[c].version), inst->version) < 0) return -1;     /* nunca bajar */
+    if (c >= 0 && ver_cmp(idx_s(x, x->pkg[c].version), inst->version) < 0) return -1;     /* never downgrade */
     return c;
 }
 
@@ -114,7 +114,7 @@ static int node_get(S *s, const char *name, size_t n) {
     Node *e = nd(s, s->nn);
     memset(e, 0, sizeof *e);
     e->inst = status_find(s->st, name, n);
-    e->name = e->inst ? e->inst->name : name;          /* un puntero estable */
+    e->name = e->inst ? e->inst->name : name;          /* a stable pointer */
     e->nlen = n;
     if (!e->inst) {
         long f = idx_find(s->x, name, n);
@@ -150,7 +150,7 @@ static const char *field_of(const S *s, const Node *n, long target, int f) {
     return idx_s(s->x, o);
 }
 
-/* ---- tablas de lo instalado ---- */
+/* ---- tables of what's installed ---- */
 
 static int ref_cmp(const void *a, const void *b) {
     const Ref *x = a, *y = b;
@@ -202,7 +202,7 @@ static void refs_range(const Ref *v, int n, const char *name, size_t len, int *l
     *hi = e;
 }
 
-/* ---- registro para deshacer ---- */
+/* ---- undo log ---- */
 
 static int mark(S *s, int node) {
     if (s->nlog == s->caplog) {
@@ -257,9 +257,9 @@ static int enqueue_deps(S *s, int node) {
            (s->o->recommends && n->target >= 0 && enqueue(s, node, n->target, field_of(s, n, n->target, F_RECOMMENDS), 1));
 }
 
-/* ---- cumplimiento ---- */
+/* ---- satisfaction ---- */
 
-/* ¿El campo provides (de un paquete presente) provee name, con una versión que cumple r? */
+/* Does the provides field (of a present package) provide name, with a version that satisfies r? */
 static int provides_match(const char *provides, const DebRel *r) {
     const char *e = provides + strlen(provides);
     DebRel p[MAX_ALTS];
@@ -282,7 +282,7 @@ static int rel_by_node(const S *s, const Node *n, const DebRel *r) {
     return provides_match(field_of(s, n, n->target, F_PROVIDES), r);
 }
 
-/* ¿Algún paquete presente cumple r? exclude: nodo que no cuenta (para conflictos). */
+/* Does any present package satisfy r? exclude: node that doesn't count (for conflicts). */
 static int who_satisfies(S *s, const DebRel *r, int exclude, int *out, int max) {
     int found = 0;
     int ni = node_get(s, r->name, r->nlen);
@@ -321,7 +321,7 @@ static int group_ok(S *s, const DebRel *alts, int n) {
     return 0;
 }
 
-/* ---- aplicar cambios ---- */
+/* ---- applying changes ---- */
 
 static int apply_install(S *s, int ni, long rec, const char *why);
 
@@ -336,7 +336,7 @@ static int apply_remove(S *s, int ni, const char *why) {
     n->target = T_NONE;
     n->touched = 1;
     if (!n->remove_req) snprintf(n->reason, sizeof n->reason, "%s", why);
-    /* lo instalado que dependía de este paquete (o de algo que proveía) se vuelve a revisar */
+    /* what's installed that depended on this package (or on something it provided) is rechecked */
     const char *names[MAX_ALTS + 1];
     size_t lens[MAX_ALTS + 1];
     int nn = 0;
@@ -359,7 +359,7 @@ static int apply_remove(S *s, int ni, const char *why) {
     return 1;
 }
 
-/* ¿Chocan el registro rec (si fuera el destino de a) y el nodo b tal como está? */
+/* Do record rec (if it were a's target) and node b as it stands clash? */
 static int clash(S *s, int a, long rec, int b) {
     Node *na = nd(s, a), *nb = nd(s, b);
     if (!present(nb) || a == b) return 0;
@@ -369,7 +369,7 @@ static int clash(S *s, int a, long rec, int b) {
         int k;
         while ((k = deb_next_group(&p, e, r, MAX_ALTS)) > 0)
             for (int i = 0; i < k; i++) if (rel_by_node(s, nb, &r[i])) return 1;
-        /* y al revés: lo que b rechaza contra la versión rec de a */
+        /* and the other way around: what b rejects against a's version rec */
         p = field_of(s, nb, nb->target, f);
         e = p + strlen(p);
         while ((k = deb_next_group(&p, e, r, MAX_ALTS)) > 0)
@@ -411,7 +411,7 @@ static int apply_install(S *s, int ni, long rec, const char *why) {
     n->touched = 1;
     if (!n->requested && why) snprintf(n->reason, sizeof n->reason, "%s", why);
     if (enqueue_deps(s, ni)) return 0;
-    /* conflictos con todo lo presente que se nombra en sus Conflicts/Breaks */
+    /* conflicts with everything present named in its Conflicts/Breaks */
     for (int f = F_CONFLICTS; f <= F_BREAKS; f++) {
         const char *p = field_of(s, n, rec, f), *e = p + strlen(p);
         DebRel r[MAX_ALTS];
@@ -424,7 +424,7 @@ static int apply_install(S *s, int ni, long rec, const char *why) {
                     if (nd(s, ni)->target == rec && present(nd(s, who[w])) && clash(s, ni, rec, who[w]) && !fix_clash(s, ni, who[w])) return 0;
             }
     }
-    /* y lo instalado que rechaza a este paquete (por nombre o por lo que provee) */
+    /* and what's installed that rejects this package (by name or by what it provides) */
     const char *names[MAX_ALTS + 1];
     size_t lens[MAX_ALTS + 1];
     int nn = 0;
@@ -445,13 +445,13 @@ static int apply_install(S *s, int ni, long rec, const char *why) {
             if (nd(s, ni)->target == rec && clash(s, ni, rec, ti) && !fix_clash(s, ni, ti)) return 0;
         }
     }
-    /* lo nuevo de esta misma operación */
+    /* what's new in this same operation */
     for (int t = 0; t < s->nn; t++)
         if (t != ni && nd(s, t)->touched && nd(s, t)->target >= 0 && nd(s, ni)->target == rec && clash(s, ni, rec, t) && !fix_clash(s, ni, t)) return 0;
     return 1;
 }
 
-/* ---- búsqueda ---- */
+/* ---- search ---- */
 
 typedef struct { int node; long rec; } Opt;
 
@@ -466,7 +466,7 @@ static int gather(S *s, const DebRel *alts, int n, Opt *opt, int max) {
         int ni = node_get(s, alts[a].name, alts[a].nlen);
         if (ni < 0) continue;
         Node *an = nd(s, ni);
-        /* lo que esta misma operación quitó no se vuelve a instalar */
+        /* what this same operation removed isn't installed again */
         if (an->cand >= 0 && !an->remove_req && an->target != an->cand && !(an->inst && an->target == T_NONE) &&
             ver_satisfies(idx_s(s->x, s->x->pkg[an->cand].version), alts[a].op, alts[a].ver, alts[a].vlen))
             opt[k++] = (Opt){ ni, an->cand };
@@ -485,7 +485,7 @@ static int gather(S *s, const DebRel *alts, int n, Opt *opt, int max) {
             for (int j = 0; j < k; j++) if (opt[j].node == pi) dup = 1;
             if (!dup) opt[k++] = (Opt){ pi, rec };
         }
-        /* proveedores: primero los de más prioridad (required, important…), después por nombre */
+        /* providers: the highest priority first (required, important…), then by name */
         for (int i = first + 1; i < k; i++)
             for (int j = i; j > first; j--) {
                 int ra = prov_rank(s, opt[j - 1].rec), rb = prov_rank(s, opt[j].rec);
@@ -496,7 +496,7 @@ static int gather(S *s, const DebRel *alts, int n, Opt *opt, int max) {
     return k;
 }
 
-/* Largo del texto de un grupo sin la coma ni los espacios del final. */
+/* Length of a group's text without the comma or trailing spaces. */
 static int group_len(const char *g, const char *ge) {
     while (ge > g && (ge[-1] == ',' || ge[-1] == ' ' || ge[-1] == '\n')) ge--;
     return (int)(ge - g > 120 ? 120 : ge - g);
@@ -510,21 +510,21 @@ static int solve(S *s, int qpos) {
     while (qpos < s->nq) {
         Item it = s->q[qpos++];
         Node *owner = nd(s, it.node);
-        if (owner->target != it.expect) continue;           /* cambió: sus dependencias ya se encolaron */
+        if (owner->target != it.expect) continue;           /* it changed: its dependencies were already queued */
         DebRel alts[MAX_ALTS];
         const char *p = it.g;
         int na = deb_next_group(&p, it.ge, alts, MAX_ALTS);
         if (na <= 0 || group_ok(s, alts, na)) continue;
         Opt opt[MAX_ALTS + 1];
         int no = 0;
-        /* algo instalado que se quedó sin lo que pide: primero, actualizarlo a él */
+        /* something installed that was left without what it needs: first, upgrade it */
         if (owner->target == T_KEEP && owner->cand >= 0 && !owner->remove_req &&
             ver_cmp(idx_s(s->x, s->x->pkg[owner->cand].version), owner->inst->version) > 0)
             opt[no++] = (Opt){ it.node, owner->cand };
         no += gather(s, alts, na, opt + no, MAX_ALTS);
         char why[200];
         snprintf(why, sizeof why, "dependencia de %s", owner->name);
-        /* si nada sirve y es algo instalado, se quita también (con confirmación) */
+        /* if nothing works and it's something installed, it's removed too (with confirmation) */
         int can_drop = owner->target == T_KEEP && s->may_remove && !owner->requested && removable(owner);
         char w2[200];
         snprintf(w2, sizeof w2, "dependía de %.*s", group_len(it.g, it.ge), it.g);
@@ -534,8 +534,8 @@ static int solve(S *s, int qpos) {
             describe_missing(s, owner, it.g, it.ge);
             return 0;
         }
-        /* una sola opción y nada más que probar: sin vuelta atrás. Si quitar al dueño es otra
-         * salida, se prueba la opción con el resto de la cola y si falla se lo quita. */
+        /* a single option and nothing else to try: no backtracking. If removing the owner is another
+         * way out, the option is tried with the rest of the queue and if it fails the owner is removed. */
         if (no == 1 && !can_drop) {
             int lm = s->nlog, qm = s->nq;
             if (!apply_install(s, opt[0].node, opt[0].rec, opt[0].node == it.node ? "actualización" : why)) {
@@ -560,7 +560,7 @@ static int solve(S *s, int qpos) {
     return 1;
 }
 
-/* Repasa lo que cambió y lo que depende de ello hasta que no cambie nada más. */
+/* Reviews what changed and whatever depends on it until nothing else changes. */
 static int settle(S *s) {
     for (int round = 0; round < 8; round++) {
         int before = s->nlog, qstart = s->nq;
@@ -583,16 +583,16 @@ static int settle(S *s) {
     return 1;
 }
 
-/* ---- huérfanos (como apt autoremove) ---- */
+/* ---- orphans (like apt autoremove) ---- */
 
 static int is_auto(const PlanOpts *o, const char *name) {
     for (int i = 0; i < o->nautos; i++) if (!strcmp(o->autos[i], name)) return 1;
     return 0;
 }
 
-/* Marca desde las raíces (lo instalado a mano, lo esencial y lo que se instala ahora) todo lo
- * que hace falta por Pre-Depends, Depends o Recommends (como apt: los recomendados cuentan); lo
- * instalado como dependencia que quedó sin marcar se quita. */
+/* Marks from the roots (what was installed by hand, what's essential and what's being installed
+ * now) everything needed via Pre-Depends, Depends or Recommends (like apt: recommends count);
+ * whatever was installed as a dependency and is left unmarked gets removed. */
 static void mark_orphans(S *s) {
     int *stack = malloc(sizeof *stack * (size_t)(s->st->n + s->nn + 16)), sp = 0;
     if (!stack) return;
@@ -667,7 +667,7 @@ int plan_make(const Idx *x, const Status *st, const char *const *install, int ni
     s.st = st;
     s.o = o;
     s.budget = BUDGET;
-    s.may_remove = 1;                   /* las quitas extra se calculan y después se confirman */
+    s.may_remove = 1;                   /* the extra removals are computed and then confirmed */
     int ok = !build_tables(&s);
     if (!ok) snprintf(s.err, sizeof s.err, "sin memoria");
     if (!x->map && (ni || o->upgrade_all)) { ok = 0; snprintf(s.err, sizeof s.err, "no hay índice de paquetes: falta actualizar la lista"); }
@@ -686,7 +686,7 @@ int plan_make(const Idx *x, const Status *st, const char *const *install, int ni
         if (k < 0) { ok = 0; break; }
         Node *n = nd(&s, k);
         if (n->cand < 0 && !n->inst) {
-            /* ¿virtual? un único proveedor, o hay que elegir */
+            /* virtual? a single provider, or one has to be chosen */
             DebRel r = { install[i], NULL, strlen(install[i]), 0, REL_NONE };
             Opt opt[MAX_ALTS];
             int no = gather(&s, &r, 1, opt, MAX_ALTS);
@@ -700,7 +700,7 @@ int plan_make(const Idx *x, const Status *st, const char *const *install, int ni
         }
         n->requested = 1;
         if (n->remove_req) { ok = 0; snprintf(s.err, sizeof s.err, "%s está para instalar y para quitar a la vez", n->name); break; }
-        if (n->cand < 0 || (n->inst && !ver_cmp(idx_s(x, x->pkg[n->cand].version), n->inst->version))) continue;   /* ya está */
+        if (n->cand < 0 || (n->inst && !ver_cmp(idx_s(x, x->pkg[n->cand].version), n->inst->version))) continue;   /* already there */
         ok = apply_install(&s, k, n->cand, NULL);
     }
     if (ok) ok = solve(&s, 0);
@@ -726,7 +726,7 @@ int plan_make(const Idx *x, const Status *st, const char *const *install, int ni
     if (ok) ok = settle(&s);
     if (ok && o->orphans) mark_orphans(&s);
 
-    /* resultado */
+    /* result */
     int count = 0;
     for (int i = 0; i < s.nn; i++) {
         Node *n = nd(&s, i);
@@ -779,7 +779,7 @@ int plan_make(const Idx *x, const Status *st, const char *const *install, int ni
     return ok ? 0 : -1;
 }
 
-/* ---- orden para dpkg ---- */
+/* ---- order for dpkg ---- */
 
 typedef struct { const Idx *x; const Plan *p; int *state, *order, n; } Topo;
 
@@ -789,7 +789,7 @@ static int find_item(const Topo *t, const char *name, size_t n) {
         if (it->rec < 0) continue;
         if (strlen(it->name) == n && !memcmp(it->name, name, n)) return i;
     }
-    for (int i = 0; i < t->p->n; i++) {             /* o algo de la tanda que lo provee */
+    for (int i = 0; i < t->p->n; i++) {             /* or something in the batch that provides it */
         const PlanItem *it = &t->p->items[i];
         if (it->rec < 0) continue;
         DebRel r = { name, NULL, n, 0, REL_NONE };
@@ -799,7 +799,7 @@ static int find_item(const Topo *t, const char *name, size_t n) {
 }
 
 static void visit(Topo *t, int i) {
-    if (t->state[i]) return;                /* 1: en curso (ciclo: se corta), 2: listo */
+    if (t->state[i]) return;                /* 1: in progress (cycle: cut), 2: done */
     t->state[i] = 1;
     const IdxPkg *r = &t->x->pkg[t->p->items[i].rec];
     for (int f = 0; f < 2; f++) {
@@ -821,7 +821,7 @@ int plan_order(const Idx *x, const Plan *p, int *order, int *group) {
     if (!state) return -1;
     Topo t = { x, p, state, order, 0 };
     for (int i = 0; i < p->n; i++) if (p->items[i].rec >= 0) visit(&t, i);
-    /* tandas: un Pre-Depends sobre algo de la tanda actual obliga a configurarla antes */
+    /* batches: a Pre-Depends on something in the current batch forces configuring it first */
     int g = 0, start = 0;
     for (int k = 0; k < t.n; k++) {
         const IdxPkg *r = &x->pkg[p->items[order[k]].rec];

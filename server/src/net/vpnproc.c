@@ -1,24 +1,24 @@
-/* vpnproc.c — VPN que son un programa de Debian manejado por LordOS (lado root):
+/* vpnproc.c — VPNs that are a Debian program driven by LordOS (root side):
  *
- *   PPTP         pppd + pptp (pptp-linux). Incluido, pero obsoleto e inseguro (MS-CHAPv2/MPPE).
- *   OpenConnect  openconnect (opcional: net-vpn-enable openconnect). Cisco AnyConnect,
- *                GlobalProtect, Pulse/Ivanti y Fortinet por SSL.
- *   Fortinet     openfortivpn (opcional: net-vpn-enable fortinet).
+ *   PPTP         pppd + pptp (pptp-linux). Included, but obsolete and insecure (MS-CHAPv2/MPPE).
+ *   OpenConnect  openconnect (optional: net-vpn-enable openconnect). Cisco AnyConnect,
+ *                GlobalProtect, Pulse/Ivanti and Fortinet over SSL.
+ *   Fortinet     openfortivpn (optional: net-vpn-enable fortinet).
  *
- * Nunca hay opciones libres: la config del programa la escribe LordOS (0600) con solo los
- * valores validados de la importación; las contraseñas van por archivo 0600 o por stdin, nunca
- * en la línea de comandos. pppd no corre los scripts ip-up/ip-down (apuntan a un archivo que no
- * existe) y openconnect usa un script nuestro de contenido fijo que solo anota la configuración
- * que manda el servidor para que la aplique este proceso.
+ * There are never free-form options: the program's config is written by LordOS (0600) with only
+ * the validated values from the import; passwords go via a 0600 file or stdin, never
+ * on the command line. pppd doesn't run the ip-up/ip-down scripts (they point at a file that doesn't
+ * exist) and openconnect uses a fixed-content script of ours that only records the configuration
+ * the server sends so this process can apply it.
  *
- * Formatos de importación (clave=valor, ver vpn.c):
- *   pptp:         server, user, password, mppe=required|optional|off (required), routes (opcional)
+ * Import formats (key=value, see vpn.c):
+ *   pptp:         server, user, password, mppe=required|optional|off (required), routes (optional)
  *   openconnect:  server, protocol=anyconnect|gp|pulse|fortinet, user, password, usergroup?, servercert?
- *   fortinet:     host, port (443), user, password, trusted-cert (sha256 hex, varios con coma) */
+ *   fortinet:     host, port (443), user, password, trusted-cert (sha256 hex, several comma-separated) */
 #include "vpn.h"
 #include "../admin.h"
 
-#include <net/if.h>                 /* antes que los de linux/ */
+#include <net/if.h>                 /* before the linux/ ones */
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -56,7 +56,7 @@ static void meta(const char *name, const char *type, const char *server, const c
     buf_free(&m);
 }
 
-/* Lee líneas de fd; llama a fn por cada una. 0 si sigue abierto, -1 si terminó. */
+/* Reads lines from fd; calls fn for each one. 0 if still open, -1 if it ended. */
 typedef struct { char buf[8192]; size_t len; } LineBuf;
 static int read_lines(int fd, LineBuf *lb, void (*fn)(const char *line, void *ud), void *ud) {
     ssize_t r = read(fd, lb->buf + lb->len, sizeof lb->buf - 1 - lb->len);
@@ -75,7 +75,7 @@ static int read_lines(int fd, LineBuf *lb, void (*fn)(const char *line, void *ud
     return 0;
 }
 
-/* Estado común de los tres. */
+/* State common to the three. */
 typedef struct {
     const char *name, *type;
     char ifn[IFNAMSIZ], ip[64], dns[400], domains[400];
@@ -83,8 +83,8 @@ typedef struct {
     uint8_t sip[16];
     int connected, auth_failed, full;
     const char *routes;
-    double ip_at;                       /* cuándo llegó la IP (PPTP espera los DNS) */
-    char last[200];                     /* último error del programa: se avisa si no conectó */
+    double ip_at;                       /* when the IP arrived (PPTP waits for the DNS) */
+    char last[200];                     /* the program's last error: reported if it didn't connect */
 } Run;
 
 static double mono(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
@@ -113,7 +113,7 @@ static void add_dns(Run *r, const char *ip) {
     snprintf(r->dns + strlen(r->dns), sizeof r->dns - strlen(r->dns), "%s%s", r->dns[0] ? " " : "", ip);
 }
 
-/* Espera a que termine el proceso o llegue SIGTERM, leyendo su salida. tick() cada ~200 ms. */
+/* Waits for the process to end or SIGTERM to arrive, reading its output. tick() every ~200 ms. */
 static void supervise(Run *r, pid_t pid, int out, void (*line)(const char *, void *), void (*tick)(Run *)) {
     LineBuf lb = { .len = 0 };
     while (!vpn_stop) {
@@ -144,7 +144,7 @@ int pptp_import(const char *name, const char *text, char *err, size_t errn) {
     return rc;
 }
 
-/* Opción de pppd entre comillas: \ y " con barra. */
+/* pppd option in quotes: \ and " with a backslash. */
 static void pquote(const char *in, char *out, size_t n) {
     size_t o = 0;
     out[o++] = '"';
@@ -165,8 +165,8 @@ static void pptp_line(const char *l, void *ud) {
 }
 
 static void pptp_tick(Run *r) {
-    /* "remote IP address" llega justo después de "local": con la interfaz arriba, conectado */
-    if (!r->connected && r->ip[0] && rt_ifindex(r->ifn) && mono() - r->ip_at > 0.5) up(r);   /* los DNS llegan enseguida */
+    /* "remote IP address" arrives right after "local": with the interface up, connected */
+    if (!r->connected && r->ip[0] && rt_ifindex(r->ifn) && mono() - r->ip_at > 0.5) up(r);   /* the DNS servers arrive right away */
 }
 
 void pptp_run(const char *name) {
@@ -184,8 +184,8 @@ void pptp_run(const char *name) {
     pquote(vpn_kv(&kv, "password"), qp, sizeof qp);
     const char *mppe = vpn_kv(&kv, "mppe") ? vpn_kv(&kv, "mppe") : "required";
     Buf o = {0};
-    /* pty: el único comando, armado acá con la IP ya resuelta (sin texto del usuario) */
-    buf_printf(&o, "# Generado por LordOS (no editar)\npty \"" PPTP " %s --nolaunchpppd --loglevel 0\"\n", sip);
+    /* pty: the only command, built here with the already resolved IP (no user text) */
+    buf_printf(&o, "# Generated by LordOS (do not edit)\npty \"" PPTP " %s --nolaunchpppd --loglevel 0\"\n", sip);
     buf_printf(&o, "name %s\npassword %s\nremotename lordos-%s\nifname %s\n", qu, qp, name, r.ifn);
     buf_printf(&o, "noauth\nrefuse-pap\nrefuse-chap\nrefuse-mschap\nrefuse-eap\n%s\n",
                !strcmp(mppe, "required") ? "require-mppe-128" : !strcmp(mppe, "off") ? "nomppe" : "");
@@ -207,7 +207,7 @@ void pptp_run(const char *name) {
     int out;
     pid_t pid = vpn_spawn(argv, &out, NULL, NULL);
     if (pid < 0) { admin_event("net vpn %s error spawn", name); admin_event("net vpn %s disconnected", name); vpn_mark(r.ifn, name, 0); return; }
-    r.routes = NULL;                      /* kv ya liberado: se relee */
+    r.routes = NULL;                      /* kv already freed: reread */
     VpnKv k2;
     char routes[256] = "";
     if (!vpn_kv_load(name, "pptp", &k2)) { if (vpn_kv(&k2, "routes")) snprintf(routes, sizeof routes, "%s", vpn_kv(&k2, "routes")); vpn_kv_free(&k2); }
@@ -253,11 +253,11 @@ int oc_import(const char *name, const char *text, char *err, size_t errn) {
     return rc;
 }
 
-/* El script que llama openconnect (en vez de vpnc-script): contenido fijo, solo anota la
- * configuración que mandó el servidor para que la aplique LordOS. */
+/* The script openconnect calls (instead of vpnc-script): fixed content, it only records the
+ * configuration the server sent so LordOS can apply it. */
 static const char oc_script[] =
     "#!/bin/sh\n"
-    "# LordOS: openconnect llama a este script; solo anota la configuracion para LordOS.\n"
+    "# LordOS: openconnect calls this script; it only records the configuration for LordOS.\n"
     "umask 077\n"
     "case \"$TUNDEV\" in oc-*) ;; *) exit 0;; esac\n"
     "case \"$reason\" in connect|disconnect|reconnect) ;; *) exit 0;; esac\n"
@@ -275,7 +275,7 @@ static void oc_line(const char *l, void *ud) {
         snprintf(r->last, sizeof r->last, "%.190s", l);
 }
 
-/* Aplica el archivo connect que dejó el script. */
+/* Applies the connect file the script left. */
 static void oc_tick(Run *r) {
     char path[160];
     snprintf(path, sizeof path, OC_RUN "/%s.connect", r->ifn);
@@ -315,7 +315,7 @@ static void oc_tick(Run *r) {
     int ok_dom = 1;
     for (char *c = dom; *c; c++) if (!isalnum((unsigned char)*c) && !strchr(".- ", *c)) ok_dom = 0;
     if (ok_dom) snprintf(r->domains, sizeof r->domains, "%s", dom);
-    /* rutas: las que manda el servidor (split) o todo el tráfico */
+    /* routes: the ones the server sends (split) or all traffic */
     static char split[256];
     split[0] = 0;
     int ns = atoi(nsplit);
@@ -439,17 +439,17 @@ void forti_run(const char *name) {
     routes[0] = 0;
     if (vpn_kv(&kv, "routes")) snprintf(routes, sizeof routes, "%s", vpn_kv(&kv, "routes"));
     r.routes = routes[0] ? routes : NULL;
-    /* config de openfortivpn (0600): "clave = valor" hasta el fin de la línea */
+    /* openfortivpn config (0600): "key = value" up to the end of the line */
     Buf c = {0};
-    buf_printf(&c, "# Generado por LordOS (no editar)\nhost = %s\nport = %s\nusername = %s\npassword = %s\n",
+    buf_printf(&c, "# Generated by LordOS (do not edit)\nhost = %s\nport = %s\nusername = %s\npassword = %s\n",
                vpn_kv(&kv, "host"), vpn_kv(&kv, "port") ? vpn_kv(&kv, "port") : "443", vpn_kv(&kv, "user"), vpn_kv(&kv, "password"));
     if (vpn_kv(&kv, "trusted-cert")) {
         char copy[256];
         snprintf(copy, sizeof copy, "%s", vpn_kv(&kv, "trusted-cert"));
         for (char *t = strtok(copy, ", "); t; t = strtok(NULL, ", ")) buf_printf(&c, "trusted-cert = %s\n", t);
     }
-    /* rutas y DNS los aplica LordOS (openfortivpn con set-routes cambiaría la ruta por defecto
-     * del sistema): túnel completo como "def1" o las rutas de la importación */
+    /* routes and DNS are applied by LordOS (openfortivpn with set-routes would change the system's
+     * default route): full tunnel like "def1" or the import's routes */
     buf_printf(&c, "set-routes = 0\nset-dns = 0\npppd-use-peerdns = 0\n");
     vpn_kv_free(&kv);
     char path[200];

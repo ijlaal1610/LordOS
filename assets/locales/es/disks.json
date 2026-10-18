@@ -174,5 +174,6 @@
   "phase.write": "Copiando la imagen…",
   "phase.verify": "Verificando…",
   "progress": "{done} de {total} ({pct} %)",
-  "kindRemovable": "Unidad extraíble"
+  "kindRemovable": "Unidad extraíble",
+  "more": "Más acciones"
 }

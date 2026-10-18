@@ -1,14 +1,15 @@
-// Firewall.jsx — Ajustes → Privacidad → "Red de las apps" (se registra con registerPrivacySection,
-// como el ítem del Monitor). Ver docs/FIREWALL.md, paso 4.
-//   - estado de lord-netperm (el servicio que aplica las reglas en el kernel) y el modo;
-//   - Apps confiables: se permiten sin anotar (las denegaciones explícitas igual valen);
-//   - Apps restringidas: una casilla por restricción (sin internet = "solo LAN", sin LAN, sin red,
-//     sin conexiones entrantes, y las que no son de red: cámara, micrófono…).
-// Las reglas las guarda lord-server (lord.fw); esta pantalla no escribe archivos.
-import { View, Text, Button, Segmented, ScrollView, useTheme, useLocale, useStore, useLauncherApps, firewall, firewallState } from '@lordos/sdk';
+// Firewall.jsx — Settings → Privacy → "Apps' network" (registered with registerPrivacySection,
+// like the Monitor item). See docs/FIREWALL.md, step 4.
+//   - status of lord-netperm (the service that applies the rules in the kernel) and the mode;
+//   - Trusted apps: allowed without logging (explicit denials still apply);
+//   - Restricted apps: one checkbox per restriction (no internet = "LAN only", no LAN, no network,
+//     no incoming connections, and the non-network ones: camera, microphone…).
+// The rules are saved by lord-server (lord.fw); this screen writes no files. Drawn like the
+// Settings sections: 13/600 headers, inset GroupBoxes with hairlines, footers.
+import { View, Text, Button, Segmented, ScrollView, GroupBox, useTheme, useLocale, useStore, useLauncherApps, firewall, firewallState, spacing, typeScale } from '@lordos/sdk';
 import { useState } from 'react';
 
-// id de firewall de una app del lanzador: las internas corren dentro de LordOS.
+// Firewall id of a launcher app: the built-in ones run inside LordOS.
 const fwId = (a) => (a.kind === 'linux' ? a.id : a.kind === 'package' ? `lpk:${a.id}` : 'lordos');
 
 function useAppIndex() {
@@ -27,30 +28,30 @@ function AppLabel({ id, apps, tr }) {
   const Icon = a?.Icon;
   return (
     <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 }}>
-      {Icon ? <Icon size={20} /> : <View style={{ width: 20, height: 20, borderRadius: 5, backgroundColor: t.control }} />}
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 13, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{id === 'lordos' ? tr('monitor.lordos') : a?.name || id.replace(/^(desktop|lpk):/, '')}</Text>
-        <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden', fontFamily: 'monospace' }}>{id}</Text>
+      {Icon ? <Icon size={24} /> : <View style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: t.control }} />}
+      <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+        <Text style={{ fontSize: typeScale.body, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{id === 'lordos' ? tr('monitor.lordos') : a?.name || id.replace(/^(desktop|lpk):/, '')}</Text>
+        <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden', fontFamily: 'monospace', textAlign: 'start' }}>{id}</Text>
       </View>
     </View>
   );
 }
 
-// Lista desplegable para agregar una app que todavía no está en ninguna de las dos listas.
+// Drop-down list to add an app that is not in either list yet.
 function AddApp({ apps, exclude, onPick, tr }) {
   const t = useTheme();
   const [open, setOpen] = useState(false);
   const choices = ['lordos', ...apps.keys()].filter((id) => !exclude.has(id));
   return (
-    <View style={{ gap: 4 }}>
+    <View style={{ gap: spacing.s, paddingVertical: spacing.s }}>
       <View style={{ flexDirection: 'row' }}>
-        <Button label={open ? tr('firewall.close') : tr('firewall.add')} onClick={() => setOpen(!open)} />
+        <Button small label={open ? tr('firewall.close') : tr('firewall.add')} onClick={() => setOpen(!open)} />
       </View>
       {open && (
-        <View style={{ height: 180, borderRadius: 8, border: `1px solid ${t.separator}` }}>
-          <ScrollView style={{ flex: 1 }}>
+        <View style={{ height: 180, borderRadius: 8, border: `1px solid ${t.separator}`, backgroundColor: t.mode === 'dark' ? 'rgba(0,0,0,0.12)' : '#ffffff' }}>
+          <ScrollView style={{ flex: 1, padding: 4 }}>
             {choices.map((id) => (
-              <View key={id} onClick={() => { setOpen(false); onPick(id); }} style={{ flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 4 }}>
+              <View key={id} onClick={() => { setOpen(false); onPick(id); }} style={{ flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 5 }}>
                 <AppLabel id={id} apps={apps} tr={tr} />
               </View>
             ))}
@@ -65,7 +66,7 @@ function AddApp({ apps, exclude, onPick, tr }) {
 function Check({ on, label, onChange }) {
   const t = useTheme();
   return (
-    <View onClick={() => onChange(!on)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 2, paddingHorizontal: 6, borderRadius: 6,
+    <View onClick={() => onChange(!on)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 22, paddingHorizontal: 8, borderRadius: 6,
       backgroundColor: on ? 'rgba(255,69,58,0.18)' : t.control }}>
       <View style={{ width: 12, height: 12, borderRadius: 3, border: `1px solid ${on ? '#ff453a' : t.textDim}`, backgroundColor: on ? '#ff453a' : 'transparent',
         alignItems: 'center', justifyContent: 'center' }}>
@@ -79,7 +80,7 @@ function Check({ on, label, onChange }) {
 export function FirewallPrivacy() {
   const t = useTheme();
   const { t: tr } = useLocale();
-  useStore(firewallState);                        // se redibuja al cambiar una regla
+  useStore(firewallState);                        // redrawn when a rule changes
   const apps = useAppIndex();
   if (!firewall.available()) return null;
   const st = firewall.state();
@@ -94,50 +95,63 @@ export function FirewallPrivacy() {
     const next = on ? [...cur, flag] : cur.filter((f) => f !== flag);
     firewall.setRestricted(id, next.length ? next : []);
   };
+  const head = (text) => <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text, paddingHorizontal: spacing.xs, textAlign: 'start' }}>{text}</Text>;
+  const foot = (text, color) => <Text style={{ fontSize: typeScale.caption, color: color || t.textDim, lineHeight: 1.4, marginHorizontal: spacing.xs, textAlign: 'start' }}>{text}</Text>;
+  const empty = <Text style={{ fontSize: typeScale.body, color: t.textDim, paddingVertical: 9, textAlign: 'start' }}>{tr('firewall.none')}</Text>;
   return (
-    <View style={{ gap: 10, marginTop: 18 }}>
-      <Text style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{tr('firewall.title')}</Text>
-      <Text style={{ fontSize: 11, color: status.daemon && status.bpf ? t.textDim : '#ff9f0a', lineHeight: 1.4 }}>{statusText}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{tr('firewall.mode')}</Text>
-          <Text style={{ fontSize: 11, color: t.textDim, marginTop: 3, lineHeight: 1.35 }}>{tr(st.mode === 'off' ? 'firewall.mode.offHint' : 'firewall.mode.silentHint')}</Text>
-        </View>
-        <Segmented value={st.mode === 'off' ? 'off' : 'silent'} onChange={(m) => firewall.setMode(m)}
-          options={[['silent', tr('firewall.mode.silent')], ['off', tr('firewall.mode.off')]]} />
+    <View style={{ gap: 20 }}>
+      <View style={{ gap: 6 }}>
+        {head(tr('firewall.title'))}
+        <GroupBox>
+          <View style={{ minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: spacing.m, paddingVertical: 7 }}>
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <Text style={{ fontSize: typeScale.body, color: t.text, textAlign: 'start' }}>{tr('firewall.mode')}</Text>
+              <Text style={{ fontSize: typeScale.caption, color: t.textDim, lineHeight: 1.35, textAlign: 'start' }}>{tr(st.mode === 'off' ? 'firewall.mode.offHint' : 'firewall.mode.silentHint')}</Text>
+            </View>
+            <Segmented small value={st.mode === 'off' ? 'off' : 'silent'} onChange={(m) => firewall.setMode(m)}
+              options={[['silent', tr('firewall.mode.silent')], ['off', tr('firewall.mode.off')]]} />
+          </View>
+        </GroupBox>
+        {foot(statusText, status.daemon && status.bpf ? null : '#ff9f0a')}
       </View>
 
-      <View style={{ height: 1, backgroundColor: t.separator }} />
-      <Text style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{tr('firewall.trusted')}</Text>
-      <Text style={{ fontSize: 11, color: t.textDim, lineHeight: 1.35 }}>{tr('firewall.trustedHint')}</Text>
-      {trusted.map((id) => (
-        <View key={id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <AppLabel id={id} apps={apps} tr={tr} />
-          <Button label={tr('firewall.remove')} onClick={() => firewall.setTrusted(id, false)} />
-        </View>
-      ))}
-      {!trusted.length && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('firewall.none')}</Text>}
-      <AddApp apps={apps} exclude={inLists} tr={tr} onPick={(id) => firewall.setTrusted(id, true)} />
+      <View style={{ gap: 6 }}>
+        {head(tr('firewall.trusted'))}
+        <GroupBox>
+          {trusted.map((id) => (
+            <View key={id} style={{ minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: spacing.s, paddingVertical: 6 }}>
+              <AppLabel id={id} apps={apps} tr={tr} />
+              <Button small label={tr('firewall.remove')} onClick={() => firewall.setTrusted(id, false)} />
+            </View>
+          ))}
+          {!trusted.length && empty}
+          <AddApp apps={apps} exclude={inLists} tr={tr} onPick={(id) => firewall.setTrusted(id, true)} />
+        </GroupBox>
+        {foot(tr('firewall.trustedHint'))}
+      </View>
 
-      <View style={{ height: 1, backgroundColor: t.separator }} />
-      <Text style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{tr('firewall.restricted')}</Text>
-      <Text style={{ fontSize: 11, color: t.textDim, lineHeight: 1.35 }}>{tr('firewall.restrictedHint')}</Text>
-      {Object.keys(restricted).sort().map((id) => (
-        <View key={id} style={{ gap: 6, paddingVertical: 4 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <AppLabel id={id} apps={apps} tr={tr} />
-            <Button label={tr('firewall.remove')} onClick={() => firewall.setRestricted(id, [])} />
-          </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 28 }}>
-            {firewall.RESTRICTIONS.map((f) => (
-              <Check key={f} on={restricted[id].includes(f)} label={tr(`firewall.r.${f}`)} onChange={(on) => setFlag(id, f, on)} />
-            ))}
-          </View>
-        </View>
-      ))}
-      {!Object.keys(restricted).length && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('firewall.none')}</Text>}
-      <AddApp apps={apps} exclude={inLists} tr={tr} onPick={(id) => firewall.setRestricted(id, ['no-internet'])} />
-      <Text style={{ fontSize: 11, color: t.textDim, lineHeight: 1.45 }}>{tr('firewall.footer')}</Text>
+      <View style={{ gap: 6 }}>
+        {head(tr('firewall.restricted'))}
+        <GroupBox>
+          {Object.keys(restricted).sort().map((id) => (
+            <View key={id} style={{ gap: spacing.s, paddingVertical: spacing.s }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s }}>
+                <AppLabel id={id} apps={apps} tr={tr} />
+                <Button small label={tr('firewall.remove')} onClick={() => firewall.setRestricted(id, [])} />
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 32 }}>
+                {firewall.RESTRICTIONS.map((f) => (
+                  <Check key={f} on={restricted[id].includes(f)} label={tr(`firewall.r.${f}`)} onChange={(on) => setFlag(id, f, on)} />
+                ))}
+              </View>
+            </View>
+          ))}
+          {!Object.keys(restricted).length && empty}
+          <AddApp apps={apps} exclude={inLists} tr={tr} onPick={(id) => firewall.setRestricted(id, ['no-internet'])} />
+        </GroupBox>
+        {foot(tr('firewall.restrictedHint'))}
+      </View>
+      {foot(tr('firewall.footer'))}
     </View>
   );
 }

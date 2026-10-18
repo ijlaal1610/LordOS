@@ -1,4 +1,4 @@
-// @lordos/sdk — todo lo que necesita un tema o una app de LordOS.
+// @lordos/sdk — everything a LordOS theme or app needs.
 import { createElement, cloneElement, Fragment } from 'react';
 import { render, onScreenChange, addListener } from '@lordos/runtime';
 import { settings } from './settings.js';
@@ -6,9 +6,10 @@ import { createStore, useStore } from './store.js';
 import { locale, tOptional } from './i18n.js';
 
 export { View, Text, Image, Terminal, Surface, MediaView, screen, addListener, useClock, system, layouts, getLayout, modifiers } from '@lordos/runtime';
+export { displays as screenDisplays, mainDisplay, displayAt, displayFor, mainBox } from '@lordos/runtime';
 export { createStore, useStore } from './store.js';
 export { settings, useSettings } from './settings.js';
-export { t, tOptional, useLocale, locale, languages, appName, formatDate, formatTime, formatNumber, weekdayName, setLanguage, reloadCatalogs, direction, textDirection } from './i18n.js';
+export { t, tOptional, useLocale, locale, languages, appName, formatDate, formatTime, formatNumber, weekdayName, monthName, setLanguage, reloadCatalogs, direction, textDirection } from './i18n.js';
 export { keyboard } from './keyboard.js';
 export { trackpad, useTrackpads, hasTouchpad, registerGestureActions, lastSwipe, TRACKPAD_DEFAULTS, trackpadConfig, setTrackpad } from './trackpad.js';
 export { ime, useIme } from './ime.js';
@@ -24,7 +25,7 @@ export { perms, permsRev, requestPermission, markDeviceUse, useIndicators, Priva
 import { PermissionPrompt } from './privacy.js';
 import { Powerbox } from './powerbox.jsx';
 export { openFile, saveFile, Powerbox } from './powerbox.jsx';
-// documentos e impresión (M9): PDF, comprimidos, fuentes, diálogo de impresión y emojis
+// documents and printing (M9): PDF, archives, fonts, print dialog and emoji
 export { docAvailable, DocImage, releaseImage, releaseBlob, saveBlob, fontInfo, fontSample, fontGrid, decodeImage, convertImage, makeTextPdf, makeImagePdf, pdfThumb, warmDocs } from './doc.js';
 export { pdf } from './pdf.js';
 export { archive } from './archive.js';
@@ -43,7 +44,7 @@ export { monitor, useMonitor, monitorSamples, monitorProcesses, monitorConnectio
 export { packages, packageList, refreshPackages, packageFile, loadWasm } from './packages.js';
 import { refreshPackages } from './packages.js';
 export {
-  windows, wm, useWindows, configureWindows, getApp, listApps, isLiveSystem, appIdOf, workArea, appMenus, useAppMenus, windowTitle, appRegistry, appMenuClick,
+  windows, wm, useWindows, configureWindows, getApp, listApps, isLiveSystem, appIdOf, workArea, workAreaOf, pointerWorkArea, appMenus, useAppMenus, windowTitle, appRegistry, appMenuClick,
   registerBuiltinApp,
 } from './windows.js';
 export { WindowShell, WINDOW_EDGE } from './windowshell.jsx';
@@ -76,7 +77,7 @@ export {
 export { media, useMedia, usePlayer, nowPlaying, useNowPlaying, NowPlayingTile, mediaFormatTime, thumbFor, useThumb, userDirs } from './media.js';
 export { disks, useDisks } from './disks.js';
 export { backup, useBackup, backupStatus } from './backup.js';   // Backups (docs/SYSTEM.md)
-export { vaultAvailable, vaultRequest, onVaultEvent, keyring, autofill, autofillReveal, KeyringPrompt, AutofillButton } from './vault.js';   // Contraseñas y llavero (docs/CONTRASENAS.md)
+export { vaultAvailable, vaultRequest, onVaultEvent, keyring, autofill, autofillReveal, KeyringPrompt, AutofillButton } from './vault.js';   // Passwords and keyring (docs/PASSWORDS.md)
 import { KeyringPrompt } from './vault.js';
 // Mail, Calendar, Contacts and Reminders through the sandboxed helper lord-maild (docs/MAIL.md)
 export { mailAvailable, mailRequest, onMailEvent, mailConfig, mailAccounts, mailStatus, autoconfig, OAUTH_PROVIDERS } from './mail.js';
@@ -87,7 +88,7 @@ import { startMail } from './mail.js';
 import { startReminders } from './calendar.js';
 // Settings' hardware pages (docs/SETTINGS.md): displays, Night Shift, battery, Bluetooth, idle, clock
 export {
-  displays, useDisplays, applyDisplay, keepDisplay, revertDisplay, displayConfirm, DisplayGlyph, nightPrefs, NIGHT_DEFAULTS, nightWindow,
+  displays, useDisplays, applyDisplay, keepDisplay, revertDisplay, arrangeDisplay, setDisplayMirror, setMainDisplay, setCaptureAllDisplays, displayConfirm, DisplayGlyph, nightPrefs, NIGHT_DEFAULTS, nightWindow,
   nightActive, nightAmount, setNightManual, previewNight, nightTick, sunTimes, battery, useBattery, BatteryGlyph, powerPrefs, POWER_DEFAULTS,
   powerProfiles, usePowerProfiles, onPowerProfileResult, bluetooth, useBluetooth, onBluetoothResult, timedate, useTimedate, menuClock, clockPrefs,
   CLOCK_DEFAULTS, applyIdle,
@@ -96,18 +97,18 @@ import { DisplayConfirm, BluetoothPrompt, startHardware } from './hardware.jsx';
 export { DEFAULT_CATEGORIES, defaultFor, setDefaultFor, candidatesFor, defaultOpenerId, nativeOf } from './defaults.js';
 export { notifyPrefs, appNotifyPrefs, setAppNotifyPrefs, dndActive, NOTIFY_DEFAULTS } from './notify.js';
 
-// ---- temas instalados ----
+// ---- installed themes ----
 
 export const themes = {
   list: () => lord.themes.list().map((t) => {
     let meta = {};
-    try { meta = t.meta ? JSON.parse(t.meta) : {}; } catch (e) { /* theme.json inválido */ }
-    // nombre y descripción traducidos (shell.theme.<id>.*) o los de theme.json
+    try { meta = t.meta ? JSON.parse(t.meta) : {}; } catch (e) { /* invalid theme.json */ }
+    // translated name and description (shell.theme.<id>.*) or those from theme.json
     return { id: t.id, current: t.current, hidden: !!meta.hidden, name: tOptional(`shell.theme.${t.id}.name`) || meta.name || t.id,
       description: tOptional(`shell.theme.${t.id}.description`) || meta.description || '' };
-  }).filter((t) => !t.hidden),         // la pantalla de ingreso (themes/greeter) no se elige
+  }).filter((t) => !t.hidden),         // the login screen (themes/greeter) can't be chosen
   current: () => lord.themes.list().find((t) => t.current)?.id || null,
-  // Cambia de tema en vivo: el servidor descarta este contexto JS y carga el nuevo.
+  // Switches theme live: the server discards this JS context and loads the new one.
   use(id) {
     settings.set({ theme: id });
     lord.settings.save(JSON.stringify(settings.get(), null, 2));
@@ -115,10 +116,10 @@ export const themes = {
   },
 };
 
-// Sesión: cerrar, bloquear la pantalla o volver a la pantalla de ingreso para que entre otro
-// usuario sin cerrar esta (docs/SESIONES.md). Bloquear y cambiar de usuario necesitan
-// lord-sessiond (managed()); en una sesión vista solo desde el navegador, bloquear cierra el
-// acceso del navegador.
+// Session: log out, lock the screen or go back to the login screen so another
+// user can sign in without closing this one (docs/SESSIONS.md). Locking and switching user need
+// lord-sessiond (managed()); in a session viewed only from the browser, locking closes the
+// browser's access.
 export const session = {
   quit: () => { clipboardApi.beforeLogout(); lord.quit(); },
   managed: () => typeof lord.session !== 'undefined' && lord.session.managed(),
@@ -126,24 +127,24 @@ export const session = {
   switchUser: () => typeof lord.session !== 'undefined' && lord.session.switchUser(),
 };
 
-// ❖L o ❖Ctrl+Q bloquean la pantalla (como en macOS).
+// ❖L or ❖Ctrl+Q lock the screen (as on macOS).
 addListener('keydown', (e) => {
   const k = String(e.base || e.key || '').toLowerCase();
   if (e.meta && !e.alt && !e.repeat && ((k === 'l' && !e.ctrl && !e.shift) || (k === 'q' && e.ctrl)) && session.managed()) session.lock();
 });
 
-// Cambió el tamaño de la pantalla: se vuelve a dibujar todo con las medidas nuevas.
+// The screen size changed: everything is redrawn with the new measurements.
 const screenRev = createStore(0);
 onScreenChange(() => screenRev.set((v) => v + 1));
 
-// Punto de entrada de un tema: respeta el tema elegido por el usuario.
+// Entry point of a theme: respects the theme chosen by the user.
 export function startShell(element) {
   const wanted = settings.get().theme;
   const current = themes.current();
   if (wanted && current && wanted !== current && lord.themes.use(wanted)) return;
-  refreshPackages();                    // después de configureWindows del tema
+  refreshPackages();                    // after the theme's configureWindows
   render(createElement(LocaleRoot, null, element));
-  // ISO live: el asistente de instalación se abre solo, al frente
+  // live ISO: the installation assistant opens by itself, in front
   if (isLiveSystemOf() && getAppOf('installer')) setTimeout(() => wmOf.open('installer'), 300);
   startAlarms();                        // Clock alarms and timer, with the app closed
   startMail();                          // new-mail notifications and passwords on demand (docs/MAIL.md)
@@ -152,8 +153,8 @@ export function startShell(element) {
   startHardware();                      // Night Shift, idle timers, battery in the menu bar (hardware.jsx)
 }
 
-// Al cambiar el idioma se vuelve a montar toda la interfaz (las ventanas, pestañas y
-// sesiones viven en stores y no se pierden).
+// Changing the language remounts the whole interface (windows, tabs and
+// sessions live in stores and are not lost).
 function LocaleRoot({ children }) {
   const { lang, region } = useStore(locale);
   const rev = useStore(screenRev);

@@ -1,14 +1,14 @@
-/* sound_cli.c — prueba manual del cliente de sonido (sound/snd.c) contra el PipeWire real.
+/* sound_cli.c — manual test of the sound client (sound/snd.c) against the real PipeWire.
  *
- *   sound-cli list                     estado completo (JSON)
- *   sound-cli volume sink 36 0.5       volumen (también source, input, output; o una lista: 0.5,0.8)
+ *   sound-cli list                     full state (JSON)
+ *   sound-cli volume sink 36 0.5       volume (also source, input, output; or a list: 0.5,0.8)
  *   sound-cli mute input 51 1
- *   sound-cli default sink <nombre>
- *   sound-cli port sink 36 <puerto>
+ *   sound-cli default sink <name>
+ *   sound-cli port sink 36 <port>
  *   sound-cli move input 51 40
- *   sound-cli meter <entrada> [segundos]
+ *   sound-cli meter <input> [seconds]
  *   sound-cli play pop|notify|error
- *   sound-cli watch [segundos]         imprime cada "state" (para ver cambios hechos por otros) */
+ *   sound-cli watch [seconds]          prints every "state" (to see changes made by others) */
 #include "../src/sound/snd.h"
 
 #include <poll.h>
@@ -50,10 +50,10 @@ static int kind_of(const char *s) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 2) { fprintf(stderr, "uso: sound-cli list|volume|mute|default|port|move|meter|play|watch ...\n"); return 2; }
+    if (argc < 2) { fprintf(stderr, "usage: sound-cli list|volume|mute|default|port|move|meter|play|watch ...\n"); return 2; }
     snd_start();
     for (int i = 0; i < 60 && !states; i++) run_for(0.05);
-    if (!states) { fprintf(stderr, "sin estado (¿PipeWire corriendo?)\n"); return 1; }
+    if (!states) { fprintf(stderr, "no state (is PipeWire running?)\n"); return 1; }
     const char *cmd = argv[1];
     int r = 0;
     if (!strcmp(cmd, "list")) {
@@ -70,12 +70,12 @@ int main(int argc, char **argv) {
     else if (!strcmp(cmd, "meter") && argc >= 3) {
         r = snd_meter((uint32_t)atoi(argv[2]));
         run_for(argc >= 4 ? atof(argv[3]) : 2);
-        printf("picos: %d, máximo %.4f\n", peaks, peak_max);
+        printf("peaks: %d, max %.4f\n", peaks, peak_max);
         snd_meter(0xffffffffu);
     } else if (!strcmp(cmd, "play") && argc >= 3) { r = snd_play(argv[2]); run_for(1); }
     else if (!strcmp(cmd, "watch")) { watch = 1; run_for(argc >= 3 ? atof(argv[2]) : 10); }
-    else { fprintf(stderr, "orden inválida\n"); return 2; }
-    if (r) fprintf(stderr, "la orden falló (%d)\n", r);
+    else { fprintf(stderr, "invalid command\n"); return 2; }
+    if (r) fprintf(stderr, "the command failed (%d)\n", r);
     run_for(0.4);
     char *j = snd_state_json();
     printf("%s\n", j);

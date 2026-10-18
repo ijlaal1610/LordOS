@@ -6,8 +6,9 @@ import {
   View, Text, useTheme, useSettings, useStore, useAppWindow, t as tr, formatTime, weekdayName, formatNumber,
   Segmented, Toggle, Button, Stepper, TextInput, ScrollView, clockAlarms, clockTimer, timerStart, timerPause, timerResume,
   timerReset, timerLeft, stopwatch, swStart, swStop, swLap, swReset, swElapsed, nextFire,
+  Toolbar, ToolbarButton, EmptyState, Hairline, spacing, typeScale,
 } from '@lordos/sdk';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 // ---- analog face without rotations: the hands are dots along the radius ----
 
@@ -96,8 +97,8 @@ function ZonePicker({ onPick, onClose }) {
   const shown = (needle ? zones.filter((z) => z.toLowerCase().replace(/_/g, ' ').includes(needle)) : zones).slice(0, 200);
   return (
     <View style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ width: 380, height: 380, borderRadius: 12, backgroundColor: t.windowBg, border: `1px solid ${t.separator}`, padding: 12, gap: 8 }}>
-        <Text style={{ fontSize: 15, fontWeight: 700, color: t.text, textAlign: 'start' }}>{tr('clock.world.add')}</Text>
+      <View style={{ width: 380, height: 400, borderRadius: 12, backgroundColor: t.windowBg, border: `1px solid ${t.separator}`, boxShadow: '0 12px 40px rgba(0,0,0,0.45)', padding: spacing.xl, gap: spacing.m }}>
+        <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text, textAlign: 'start' }}>{tr('clock.world.add')}</Text>
         <TextInput value={q} onChange={setQ} autoFocus placeholder={tr('clock.world.search')} onCancel={onClose} onSubmit={() => shown[0] && onPick(shown[0])} />
         <View style={{ flex: 1, borderRadius: 8, border: `1px solid ${t.separator}` }}>
           <ScrollView style={{ padding: 4 }}>
@@ -127,24 +128,23 @@ function CityRow({ zone, now, local, onRemove }) {
   const day = dayDiff === 0 ? tr('clock.world.today') : dayDiff > 0 ? tr('clock.world.tomorrow') : tr('clock.world.yesterday');
   return (
     <View onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: hover ? t.hover : 'transparent' }}>
-      <Face size={46} h={d.getHours()} m={d.getMinutes()} s={d.getSeconds()} dark={t.mode === 'dark' && !(d.getHours() >= 7 && d.getHours() < 19)} accent={t.accent} />
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ fontSize: 15, fontWeight: 600, color: t.text, textAlign: 'start' }}>{local ? tr('clock.world.local') : cityName(zone)}</Text>
-        <Text style={{ fontSize: 11, color: t.textDim, textAlign: 'start' }}>{local ? `${cityName(local)}${z.abbr ? ` · ${z.abbr}` : ''}` : `${day}, ${diff}${z.abbr && !/^[+-]/.test(z.abbr) ? ` · ${z.abbr}` : ''}`}</Text>
+      style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.l, minHeight: 68, paddingHorizontal: spacing.m, borderRadius: 10, backgroundColor: hover ? t.hover : 'transparent' }}>
+      <Face size={44} h={d.getHours()} m={d.getMinutes()} s={d.getSeconds()} dark={t.mode === 'dark' && !(d.getHours() >= 7 && d.getHours() < 19)} accent={t.accent} />
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{local ? tr('clock.world.local') : cityName(zone)}</Text>
+        <Text style={{ fontSize: typeScale.callout, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{local ? `${cityName(local)}${z.abbr ? ` · ${z.abbr}` : ''}` : `${day}, ${diff}${z.abbr && !/^[+-]/.test(z.abbr) ? ` · ${z.abbr}` : ''}`}</Text>
       </View>
-      <Text style={{ fontSize: 26, fontWeight: 300, color: t.text }}>{formatTime(d)}</Text>
+      <Text style={{ fontSize: 28, fontWeight: 300, color: t.text, whiteSpace: 'nowrap', textAlign: 'end' }}>{formatTime(d)}</Text>
       <View onClick={onRemove} style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: hover && onRemove ? t.control : 'transparent' }}>
-        <Text style={{ fontSize: 13, color: hover && onRemove ? t.text : 'transparent' }}>×</Text>
+        <Text style={{ fontSize: 11, fontWeight: 600, color: hover && onRemove ? t.text : 'transparent' }}>✕</Text>
       </View>
     </View>
   );
 }
 
-function World() {
+function World({ picking, setPicking }) {
   const t = useTheme();
   const [s, set] = useSettings();
-  const [picking, setPicking] = useState(false);
   const now = useTick(1000);
   const cities = s.clock?.cities || [];
   let localZone = 'UTC';
@@ -152,15 +152,14 @@ function World() {
   const save = (list) => set({ clock: { ...(s.clock || {}), cities: list } });
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView style={{ paddingHorizontal: 12, paddingTop: 6 }}>
-        <CityRow zone={null} local={localZone} now={now} />
-        <View style={{ height: 1, backgroundColor: t.separator, marginVertical: 4 }} />
-        {cities.map((z) => <CityRow key={z} zone={z} now={now} onRemove={() => save(cities.filter((x) => x !== z))} />)}
-        {!cities.length && <Text style={{ fontSize: 12, color: t.textDim, padding: 12, textAlign: 'start' }}>{tr('clock.world.empty')}</Text>}
+      <ScrollView style={{ flex: 1 }}>
+        <View style={{ paddingHorizontal: spacing.s, paddingVertical: spacing.s }}>
+          <CityRow zone={null} local={localZone} now={now} />
+          <View style={{ height: 1, marginHorizontal: spacing.m, marginVertical: spacing.xs }}><Hairline edge="bottom" /></View>
+          {cities.map((z) => <CityRow key={z} zone={z} now={now} onRemove={() => save(cities.filter((x) => x !== z))} />)}
+        </View>
+        {!cities.length ? <Text style={{ fontSize: typeScale.callout, color: t.textDim, textAlign: 'center', lineHeight: 1.4, paddingHorizontal: spacing.xxl, paddingTop: spacing.l }}>{tr('clock.world.empty')}</Text> : null}
       </ScrollView>
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', padding: 12 }}>
-        <Button primary label={tr('clock.world.add')} onClick={() => setPicking(true)} />
-      </View>
       {picking && <ZonePicker onClose={() => setPicking(false)} onPick={(z) => { if (!cities.includes(z)) save([...cities, z]); setPicking(false); }} />}
     </View>
   );
@@ -194,8 +193,8 @@ function AlarmEditor({ alarm, onClose }) {
   const d = new Date(); d.setHours(h, m, 0, 0);
   return (
     <View style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ width: 380, borderRadius: 12, backgroundColor: t.windowBg, border: `1px solid ${t.separator}`, padding: 16, gap: 14 }}>
-        <Text style={{ fontSize: 15, fontWeight: 700, color: t.text, textAlign: 'start' }}>{alarm ? tr('clock.alarm.edit') : tr('clock.alarm.new')}</Text>
+      <View style={{ width: 380, borderRadius: 12, backgroundColor: t.windowBg, border: `1px solid ${t.separator}`, boxShadow: '0 12px 40px rgba(0,0,0,0.45)', padding: spacing.xl, gap: spacing.l }}>
+        <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text, textAlign: 'start' }}>{alarm ? tr('clock.alarm.edit') : tr('clock.alarm.new')}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, direction: 'ltr' }}>
           <Stepper value={h} onChange={setH} min={0} max={23} format={pad} />
           <Text style={{ fontSize: 22, color: t.text }}>:</Text>
@@ -229,37 +228,37 @@ function AlarmEditor({ alarm, onClose }) {
   );
 }
 
-function Alarms() {
+function Alarms({ editing, setEditing }) {
   const t = useTheme();
   const [s] = useSettings();
-  const [editing, setEditing] = useState(null);       // null | 'new' | alarm
   const now = useTick(30000);
   const alarms = (s.clock?.alarms || []).slice().sort((a, b) => a.h * 60 + a.m - (b.h * 60 + b.m));
   const next = alarms.map((a) => nextFire(a, now)).filter((x) => x != null).sort((a, b) => a - b)[0];
   return (
     <View style={{ flex: 1 }}>
-      <Text style={{ fontSize: 12, color: t.textDim, paddingHorizontal: 24, paddingTop: 6, textAlign: 'start' }}>
-        {next ? tr('clock.alarm.next', { when: inWords(next - now) }) : tr('clock.alarm.none')}</Text>
-      <ScrollView style={{ paddingHorizontal: 12, paddingTop: 6 }}>
-        {alarms.map((a) => {
-          const d = new Date(); d.setHours(a.h, a.m, 0, 0);
-          return (
-            <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 12, borderBottom: `1px solid ${t.separator}` }}>
-              <View onClick={() => setEditing(a)} style={{ flex: 1, gap: 2 }}>
-                <Text style={{ fontSize: 30, fontWeight: 300, color: a.on ? t.text : t.textDim, textAlign: 'start' }}>{formatTime(d)}</Text>
-                <Text style={{ fontSize: 12, color: t.textDim, textAlign: 'start' }}>
-                  {`${a.label || tr('clock.alarm.default')} · ${daysText(a.days)}${a.snooze && a.snooze > now ? ` · ${tr('clock.alarm.snoozed', { time: formatTime(new Date(a.snooze)) })}` : ''}`}</Text>
-              </View>
-              <Toggle on={!!a.on} onChange={(on) => clockAlarms.update(a.id, { on })} />
-            </View>
-          );
-        })}
-        {!alarms.length && <Text style={{ fontSize: 12, color: t.textDim, padding: 12, textAlign: 'start' }}>{tr('clock.alarm.empty')}</Text>}
-        <Text style={{ fontSize: 11, color: t.textDim, padding: 12, lineHeight: 1.4, textAlign: 'start' }}>{tr('clock.alarm.closedHint')}</Text>
-      </ScrollView>
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', padding: 12 }}>
-        <Button primary label={tr('clock.alarm.add')} onClick={() => setEditing('new')} />
-      </View>
+      {alarms.length ? (
+        <ScrollView style={{ flex: 1 }}>
+          <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.m, paddingBottom: spacing.xl }}>
+            <Text style={{ fontSize: typeScale.callout, color: t.textDim, paddingBottom: spacing.xs, textAlign: 'start' }}>
+              {next ? tr('clock.alarm.next', { when: inWords(next - now) }) : tr('clock.alarm.none')}</Text>
+            {alarms.map((a) => {
+              const d = new Date(); d.setHours(a.h, a.m, 0, 0);
+              return (
+                <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.m, minHeight: 72, paddingVertical: spacing.s }}>
+                  <View onClick={() => setEditing(a)} style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                    <Text style={{ fontSize: 34, fontWeight: 300, color: a.on ? t.text : t.textDim, textAlign: 'start' }}>{formatTime(d)}</Text>
+                    <Text style={{ fontSize: typeScale.callout, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>
+                      {`${a.label || tr('clock.alarm.default')} · ${daysText(a.days)}${a.snooze && a.snooze > now ? ` · ${tr('clock.alarm.snoozed', { time: formatTime(new Date(a.snooze)) })}` : ''}`}</Text>
+                  </View>
+                  <Toggle on={!!a.on} onChange={(on) => clockAlarms.update(a.id, { on })} />
+                  <Hairline edge="bottom" />
+                </View>
+              );
+            })}
+            <Text style={{ fontSize: typeScale.caption, color: t.textDim, paddingTop: spacing.m, lineHeight: 1.4, textAlign: 'start' }}>{tr('clock.alarm.closedHint')}</Text>
+          </View>
+        </ScrollView>
+      ) : <EmptyState icon={<Face size={56} h={7} m={0} s={null} dark={t.mode === 'dark'} accent={t.accent} />} title={tr('clock.alarm.empty')} hint={tr('clock.alarm.closedHint')} />}
       {editing && <AlarmEditor alarm={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
     </View>
   );
@@ -329,18 +328,19 @@ function Stopwatch() {
   const splits = laps.map((v, i) => v - (laps[i + 1] || 0));
   const best = splits.length > 1 ? Math.min(...splits) : null, worst = splits.length > 1 ? Math.max(...splits) : null;
   return (
-    <View style={{ flex: 1, alignItems: 'center', paddingTop: 30, gap: 18 }}>
+    <View style={{ flex: 1, alignItems: 'center', paddingTop: spacing.xxl, gap: spacing.xl }}>
       <Text style={{ fontSize: 60, fontWeight: 200, color: t.text, fontFamily: 'monospace' }}>{fmtDuration(total, true)}</Text>
       <View style={{ flexDirection: 'row', gap: 10 }}>
         {st.running ? <Button label={tr('clock.sw.lap')} onClick={swLap} /> : <Button label={tr('clock.sw.reset')} onClick={swReset} />}
         {st.running ? <Button primary label={tr('clock.sw.stop')} onClick={swStop} /> : <Button primary label={tr('clock.sw.start')} onClick={swStart} />}
       </View>
-      <ScrollView style={{ alignSelf: 'stretch', paddingHorizontal: 40 }}>
+      <ScrollView style={{ alignSelf: 'stretch', paddingHorizontal: spacing.xxl }}>
         {laps.map((v, i) => {
           const split = splits[i];
           const color = split === best ? '#30d158' : split === worst ? '#ff453a' : t.text;
           return (
-            <View key={laps.length - i} style={{ flexDirection: 'row', paddingVertical: 7, borderBottom: `1px solid ${t.separator}` }}>
+            <View key={laps.length - i} style={{ flexDirection: 'row', alignItems: 'center', minHeight: 32, paddingHorizontal: spacing.xs }}>
+              <Hairline edge="bottom" />
               <Text style={{ flex: 1, fontSize: 13, color, textAlign: 'start' }}>{tr('clock.sw.lapN', { n: laps.length - i })}</Text>
               <Text style={{ width: 120, fontSize: 13, color, fontFamily: 'monospace', textAlign: 'end' }}>{fmtDuration(split, true)}</Text>
               <Text style={{ width: 120, fontSize: 13, color: t.textDim, fontFamily: 'monospace', textAlign: 'end' }}>{fmtDuration(v, true)}</Text>
@@ -356,20 +356,43 @@ function Stopwatch() {
 
 let lastTab = 'world';
 
+// Width of a box after layout (re-measured on every render).
+function useWidth(ref, initial) {
+  const [w, setW] = useState(initial);
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (!ref.current) return;
+      const lw = Math.round(lord.getLayout(ref.current.id)[2]);
+      if (lw > 0 && Math.abs(lw - w) > 2) setW(lw);
+    }, 20);
+    return () => clearTimeout(id);
+  });
+  return w;
+}
+
 export default function Clock() {
-  const t = useTheme();
   const { args } = useAppWindow();
+  const box = useRef(null);
+  const width = useWidth(box, 560);
   const [tab, setTabState] = useState(lastTab);
+  const [picking, setPicking] = useState(false);            // World: the city picker is open
+  const [editing, setEditing] = useState(null);             // Alarms: null | 'new' | alarm
   const setTab = (x) => { lastTab = x; setTabState(x); };
   useEffect(() => { if (args?.tab && ['world', 'alarms', 'timer', 'stopwatch'].includes(args.tab)) setTab(args.tab); }, [args?.nonce]);
-  const Body = { world: World, alarms: Alarms, timer: Timer, stopwatch: Stopwatch }[tab] || World;
+  const add = tab === 'world' ? [tr('clock.world.add'), () => setPicking(true)] : tab === 'alarms' ? [tr('clock.alarm.add'), () => setEditing('new')] : null;
   return (
-    <View style={{ flex: 1 }}>
-      <View style={{ alignItems: 'center', paddingVertical: 10, borderBottom: `1px solid ${t.separator}` }}>
-        <Segmented value={tab} onChange={setTab} options={[['world', tr('clock.tab.world')], ['alarms', tr('clock.tab.alarms')],
+    <View ref={box} style={{ flex: 1 }}>
+      <Toolbar>
+        <View style={{ flex: 1 }} />
+        <Segmented appearance="neutral" small={width < 520} value={tab} onChange={setTab} options={[['world', tr('clock.tab.world')], ['alarms', tr('clock.tab.alarms')],
           ['timer', tr('clock.tab.timer')], ['stopwatch', tr('clock.tab.stopwatch')]]} />
-      </View>
-      <Body />
+        <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'flex-end' }}>
+          {add ? <ToolbarButton icon="+" iconSize={20} title={add[0]} onClick={add[1]} /> : null}
+        </View>
+      </Toolbar>
+      {tab === 'world' ? <World picking={picking} setPicking={setPicking} />
+        : tab === 'alarms' ? <Alarms editing={editing} setEditing={setEditing} />
+        : tab === 'timer' ? <Timer /> : <Stopwatch />}
     </View>
   );
 }

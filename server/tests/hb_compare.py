@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""hb_compare.py — compara el armado de LordOS (build/shape-test, otf.c + shape.c +
-shape_indic.c, shape_khmer.c, shape_myanmar.c, shape_use.c) con HarfBuzz, glifo por glifo y posición por posición.
+"""hb_compare.py — compares LordOS shaping (build/shape-test, otf.c + shape.c +
+shape_indic.c, shape_khmer.c, shape_myanmar.c, shape_use.c) with HarfBuzz, glyph by glyph and position by position.
 
-    python3 hb_compare.py <carpeta de fuentes> [shape-test] [-v]
+    python3 hb_compare.py <fonts folder> [shape-test] [-v]
 
-Necesita `pip install uharfbuzz` y las fuentes Noto de Debian (fonts-noto-core,
-fonts-noto-cjk) más Inter (assets/fonts) copiadas a la carpeta. Resultado esperado: todas
-iguales (ver docs/IDIOMAS.md)."""
+Needs `pip install uharfbuzz` and Debian's Noto fonts (fonts-noto-core,
+fonts-noto-cjk) plus Inter (assets/fonts) copied into the folder. Expected result: all
+identical (see docs/LANGUAGES.md)."""
 import os, subprocess, sys
 import uharfbuzz as hb
 
@@ -40,7 +40,7 @@ CASES = [('NotoSansArabic-Regular.ttf', 0, 'arab', ['مرحبا بالعالم',
     ('NotoSansOriya-Regular.ttf', 0, 'orya', ['ଓଡ଼ିଶା ରାଜ୍ୟ', 'କ୍ଷ', 'ର୍ଯ୍ୟ']),
     ('NotoSansThai-Regular.ttf', 0, 'thai', ['ประเทศไทยมีพระมหากษัตริย์', 'กิ่ง', 'ปั้น', 'ซ้ำ', 'น้ำใจ']),
     ('NotoNastaliqUrdu-Regular.ttf', 0, 'arab', ['اردو', 'پاکستان', 'السلام علیکم', 'میں ٹھیک ہوں', 'نستعلیق', 'شکریہ', 'خوش آمدید', 'کتاب', 'محبت']),
-    # jemer, birmano y Universal Shaping Engine (tibetano, cingalés, balinés, javanés, mongol…)
+    # Khmer, Myanmar and the Universal Shaping Engine (Tibetan, Sinhala, Balinese, Javanese, Mongolian…)
     ('NotoSansKhmer-Regular.ttf', 0, 'khmr', ['ភាសាខ្មែរ', 'សួស្តី', 'ព្រះរាជាណាចក្រកម្ពុជា', 'ស្ត្រី', 'កើត', 'ខ្ញុំស្រលាញ់អ្នក', 'អរគុណ', 'ក្រុង', 'ប្រទេស', 'ា', 'កៅ', 'ឿ', 'ក៏', 'ហ្វ្រ', 'គ្រឿង', 'ស្រ្តី']),
     ('NotoSerifKhmer-Regular.ttf', 0, 'khmr', ['ភាសាខ្មែរ', 'ព្រះរាជាណាចក្រកម្ពុជា', 'ស្ត្រី', 'កើត', 'គ្រឿង']),
     ('NotoSansMyanmar-Regular.ttf', 0, 'mymr', ['မြန်မာ', 'မင်္ဂလာပါ', 'ကျေးဇူးတင်ပါတယ်', 'မြန်မာစာ', 'နေကောင်းလား', 'ကြွ', 'သင်္ချိုင်း', 'ါ', 'ကြော', 'ပြည်ထောင်စု', 'ဦး', 'ဤ', 'ၵ', 'ၶၢၼ်']),
@@ -96,7 +96,7 @@ def main():
     for font, index, script, texts in CASES:
         path = os.path.join(fonts, font)
         if not os.path.exists(path):
-            print(f"(falta {font}: se saltea)")
+            print(f"({font} missing: skipped)")
             continue
         for t in texts:
             want, direction = harfbuzz(path, index, t)
@@ -105,11 +105,11 @@ def main():
             total += 1
             if got != want:
                 bad += 1
-                print('DISTINTO', font, t)
+                print('DIFFERENT', font, t)
                 if verbose:
                     print('  harfbuzz:', want)
                     print('  lordos  :', got)
-    print(f"{total - bad}/{total} iguales a HarfBuzz")
+    print(f"{total - bad}/{total} identical to HarfBuzz")
     sys.exit(1 if bad else 0)
 
 

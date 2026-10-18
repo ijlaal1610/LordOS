@@ -1,13 +1,13 @@
-/* shape_khmer.c — armado del jemer, como el shaper jemer de HarfBuzz:
+/* shape_khmer.c — Khmer shaping, like HarfBuzz's Khmer shaper:
  *
- *   1. normalización; las vocales partidas sin descomposición en Unicode (ើ ឿ ៀ ោ ៅ) se
- *      separan en េ + la vocal;
- *   2. sílabas (consonante con coeng, robat, vocales, signos);
- *   3. ◌ en las sílabas rotas; reordenamiento: coeng + ro va antes de la base (con pref y el
- *      resto con cfar) y la vocal que va a la izquierda ( េ ែ ៃ) al comienzo; máscaras
- *      blwf/abvf/pstf después de la base;
- *   4. locl, ccmp, pref, blwf, abvf, pstf, cfar juntas por sílaba; después pres, abvs, blws,
- *      psts, clig… y GPOS. */
+ *   1. normalization; split vowels without a Unicode decomposition (ើ ឿ ៀ ោ ៅ) are
+ *      separated into េ + the vowel;
+ *   2. syllables (consonant with coeng, robat, vowels, signs);
+ *   3. ◌ in broken syllables; reordering: coeng + ro goes before the base (with pref and the
+ *      rest with cfar) and the left-side vowel ( េ ែ ៃ) at the start; masks
+ *      blwf/abvf/pstf after the base;
+ *   4. locl, ccmp, pref, blwf, abvf, pstf together per syllable; then pres, abvs, blws,
+ *      psts, clig… and GPOS. */
 #include "shape_syl.h"
 
 #include <stdlib.h>
@@ -47,7 +47,7 @@ static void reorder(GlyphRun *r, int start, int end) {
     for (int i = start + 1; i < end; i++) {
         if (CAT(i) == SEA_H && coengs <= 2 && i + 1 < end) {
             coengs++;
-            if (CAT(i + 1) == SEA_Ra) {         /* coeng + ro: antes de la base, con pref */
+            if (CAT(i + 1) == SEA_Ra) {         /* coeng + ro: before the base, with pref */
                 r->mask[i] |= OTF_F_PREF;
                 r->mask[i + 1] |= OTF_F_PREF;
                 syl_move(r, i, start);
@@ -55,7 +55,7 @@ static void reorder(GlyphRun *r, int start, int end) {
                 for (int j = i + 2; j < end; j++) r->mask[j] |= OTF_F_CFAR;
                 coengs = 2;
             }
-        } else if (CAT(i) == SEA_VPre) syl_move(r, i, start);     /* vocal de la izquierda */
+        } else if (CAT(i) == SEA_VPre) syl_move(r, i, start);     /* left-side vowel */
     }
 }
 

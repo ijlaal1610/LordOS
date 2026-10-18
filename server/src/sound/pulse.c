@@ -1,9 +1,9 @@
-/* pulse.c — tagstruct y paquetes del protocolo nativo de PulseAudio (ver pulse.h).
+/* pulse.c — tagstruct and packets of the PulseAudio native protocol (see pulse.h).
  *
- * Un "tagstruct" es una secuencia de valores, cada uno precedido por un byte que dice su tipo
- * ('L' u32, 't' cadena, 'v' volumen por canal, 'P' lista de propiedades...). Los enteros van
- * en big endian. Cada paquete lleva un descriptor de 20 bytes: largo, canal (-1 = control),
- * offset de 64 bits y flags. */
+ * A "tagstruct" is a sequence of values, each one preceded by a byte saying its type
+ * ('L' u32, 't' string, 'v' per-channel volume, 'P' property list...). Integers are
+ * big endian. Each packet carries a 20-byte descriptor: length, channel (-1 = control),
+ * 64-bit offset and flags. */
 #include "pulse.h"
 
 #include <stdlib.h>
@@ -19,7 +19,7 @@ enum {
 static void put_be32(uint8_t *p, uint32_t v) { p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16); p[2] = (uint8_t)(v >> 8); p[3] = (uint8_t)v; }
 static uint32_t get_be32(const uint8_t *p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
 
-/* ---- escritura ---- */
+/* ---- writing ---- */
 
 static uint8_t *grow(TsOut *t, size_t n) {
     if (t->err) return NULL;
@@ -59,7 +59,7 @@ void ts_u64(TsOut *t, uint64_t v) {
     if (p) { p[0] = T_USEC; put_be32(p + 1, (uint32_t)(v >> 32)); put_be32(p + 5, (uint32_t)v); }
 }
 
-/* 'T': timeval (segundos y microsegundos), lo pide GET_PLAYBACK_LATENCY (lord-media). */
+/* 'T': timeval (seconds and microseconds), requested by GET_PLAYBACK_LATENCY (lord-media). */
 void ts_timeval(TsOut *t, uint32_t sec, uint32_t usec) {
     uint8_t *p = grow(t, 9);
     if (p) { p[0] = T_TIMEVAL; put_be32(p + 1, sec); put_be32(p + 5, usec); }
@@ -145,7 +145,7 @@ void pa_descriptor_read(const uint8_t *d, uint32_t *len, uint32_t *channel, uint
     *flags = get_be32(d + 16);
 }
 
-/* ---- lectura ---- */
+/* ---- reading ---- */
 
 void ts_in(TsIn *t, const uint8_t *d, size_t len) { t->d = d; t->len = len; t->pos = 0; t->err = 0; }
 int ts_eof(const TsIn *t) { return t->pos >= t->len; }
@@ -256,12 +256,12 @@ void ts_get_proplist(TsIn *t, TsPropFn fn, void *ud) {
     if (!expect(t, T_PROPLIST)) return;
     for (int guard = 0; guard < 4096 && !t->err; guard++) {
         const char *key = ts_get_str(t);
-        if (!key || t->err) return;                 /* 'N' termina la lista */
+        if (!key || t->err) return;                 /* 'N' ends the list */
         uint32_t n = ts_get_u32(t), got = 0;
         const uint8_t *val = ts_get_arb(t, &got);
         if (t->err || got != n) { t->err = 1; return; }
         if (fn) {
-            /* las cadenas vienen con su 0; si no, se copia para terminarla */
+            /* strings come with their 0; if not, it's copied to terminate it */
             char tmp[512];
             if (got && val[got - 1] == 0) fn(ud, key, (const char *)val, got - 1);
             else if (got < sizeof tmp) { memcpy(tmp, val, got); tmp[got] = 0; fn(ud, key, tmp, got); }

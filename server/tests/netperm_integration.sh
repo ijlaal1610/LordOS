@@ -1,15 +1,15 @@
 #!/bin/bash
-# netperm_integration.sh — prueba de lord-netperm con el kernel de verdad (docs/FIREWALL.md, paso 2).
-# Se corre en la VM de prueba como el usuario de la sesión (con sudo sin clave), con lord-sessiond
-# (Delegate=yes) y lord-netperm corriendo:
+# netperm_integration.sh — test of lord-netperm with the real kernel (docs/FIREWALL.md, step 2).
+# Run it in the test VM as the session user (with passwordless sudo), with lord-sessiond
+# (Delegate=yes) and lord-netperm running:
 #
-#   bash server/tests/netperm_integration.sh [puerta-de-enlace]
+#   bash server/tests/netperm_integration.sh [gateway]
 #
-# Arma una scope de app a mano (como lo hace el lanzador de lord-server), escribe reglas en
-# ~/.config/lordos/firewall.json, le pide a lord-netperm que las relea por su socket y prueba:
-# denegar y permitir, una regla de dominio que deja un solo sitio, "solo LAN", "sin conexiones
-# entrantes" y "sin red". Solo usa la puerta de enlace, el propio equipo y example.com/debian.org.
-# Al final deja el firewall.json como estaba.
+# Builds an app scope by hand (as the lord-server launcher does), writes rules to
+# ~/.config/lordos/firewall.json, asks lord-netperm to reload them over its socket and tests:
+# deny and allow, a domain rule that leaves a single site, "LAN only", "no incoming
+# connections" and "no network". It only uses the gateway, the machine itself and example.com/debian.org.
+# At the end it leaves firewall.json as it was.
 set -u
 GW=${1:-172.17.0.1}
 U=$(id -u)
@@ -17,10 +17,10 @@ SESS=/sys/fs/cgroup/system.slice/lordos.service/lordos-session-$U
 SC=$SESS/app-lordos-nptest.scope
 FW=~/.config/lordos/firewall.json
 pass=0; fail=0
-ok()  { pass=$((pass+1)); echo "  bien: $*"; }
-bad() { fail=$((fail+1)); echo "  MAL:  $*"; }
-[ -d "$SESS" ] || { echo "no hay sesión de LordOS para el uid $U ($SESS)"; exit 2; }
-[ -S /run/lordos/netperm.sock ] || { echo "lord-netperm no está corriendo"; exit 2; }
+ok()  { pass=$((pass+1)); echo "  ok:   $*"; }
+bad() { fail=$((fail+1)); echo "  BAD:  $*"; }
+[ -d "$SESS" ] || { echo "no LordOS session for uid $U ($SESS)"; exit 2; }
+[ -S /run/lordos/netperm.sock ] || { echo "lord-netperm is not running"; exit 2; }
 mkdir -p ~/.config/lordos
 BACKUP=$(mktemp); HAD=0
 [ -f "$FW" ] && { cp "$FW" "$BACKUP"; HAD=1; }
@@ -36,7 +36,7 @@ PY
 }
 rules() { echo "$1" > "$FW"; reload; }
 
-# corre python adentro de la scope, como el usuario
+# runs python inside the scope, as the user
 py() { sudo bash -c "echo \$\$ > $SC/cgroup.procs; exec setpriv --reuid=$U --regid=$(id -g) --init-groups python3 -c \"\$0\" \"\$@\"" "$@"; }
 TRY='
 import socket, sys, errno, ssl
@@ -60,59 +60,59 @@ except OSError as e:
     print(errno.errorcode.get(e.errno, str(e.errno)))
 '
 try() { py "$TRY" "$@" 2>&1 | tail -1; }
-expect() {      # expect <resultado> <tipo> <host> <puerto> <texto>
+expect() {      # expect <result> <kind> <host> <port> <text>
     local want=$1; shift; local what=$4; local got
     got=$(try "$1" "$2" "$3")
-    case "$got" in $want*) ok "$what → $got";; *) bad "$what → $got (se esperaba $want)";; esac
+    case "$got" in $want*) ok "$what → $got";; *) bad "$what → $got (expected $want)";; esac
 }
 APP=desktop:nptest
 R='{"v":1,"mode":"silent","trusted":[],"restricted":{},"rules":[]}'
 
-echo "1. sin reglas (silencioso): se permite"
+echo "1. no rules (silent): allowed"
 rules "$R"
-expect ok tcp "$GW" 53 "TCP a la puerta de enlace"
+expect ok tcp "$GW" 53 "TCP to the gateway"
 
-echo "2. denegar la app → EPERM; permitirla → anda"
+echo "2. deny the app → EPERM; allow it → works"
 rules '{"v":1,"mode":"silent","trusted":[],"restricted":{},"rules":[{"app":"'$APP'","dir":"out","dst":"any","action":"deny","when":0}]}'
 expect EPERM tcp "$GW" 53 "TCP denegado"
 expect EPERM udp "$GW" 53 "UDP (sendto) denegado"
-expect EPERM tcp ::1 22 "TCP por IPv6 denegado"
+expect EPERM tcp ::1 22 "TCP over IPv6 denied"
 rules '{"v":1,"mode":"silent","trusted":[],"restricted":{},"rules":[{"app":"'$APP'","dir":"out","dst":"any","action":"allow","when":0}]}'
-expect ok tcp "$GW" 53 "TCP permitido otra vez"
+expect ok tcp "$GW" 53 "TCP allowed again"
 
-echo "3. regla de dominio: solo example.com"
+echo "3. domain rule: example.com only"
 rules '{"v":1,"mode":"silent","trusted":[],"restricted":{},"rules":[{"app":"'$APP'","dir":"out","dst":"any","action":"deny","when":0},{"app":"'$APP'","dir":"out","dst":"example.com","action":"allow","when":0}]}'
-expect "ok HTTP" https example.com 443 "https://example.com (permitido por nombre)"
-expect EPERM https www.debian.org 443 "https://www.debian.org (no está en la regla)"
+expect "ok HTTP" https example.com 443 "https://example.com (allowed by name)"
+expect EPERM https www.debian.org 443 "https://www.debian.org (not in the rule)"
 IP=$(getent ahostsv4 example.com | awk 'NR==1{print $1}')
-expect ok tcp "$IP" 443 "la IP de example.com que dio el resolvedor"
-expect EPERM tcp 93.184.215.14 443 "una IP que el resolvedor no dio para example.com"
+expect ok tcp "$IP" 443 "the example.com IP the resolver returned"
+expect EPERM tcp 93.184.215.14 443 "an IP the resolver did not return for example.com"
 
-echo "4. solo LAN (sin internet)"
+echo "4. LAN only (no internet)"
 rules '{"v":1,"mode":"silent","trusted":[],"restricted":{"'$APP'":["no-internet"]},"rules":[]}'
-expect ok tcp "$GW" 53 "la puerta de enlace"
+expect ok tcp "$GW" 53 "the gateway"
 expect EPERM https example.com 443 "internet"
 
-echo "5. sin conexiones entrantes"
+echo "5. no incoming connections"
 rules '{"v":1,"mode":"silent","trusted":[],"restricted":{"'$APP'":["no-incoming"]},"rules":[]}'
-expect EPERM bind 0.0.0.0 18080 "bind/listen en 18080"
-expect ok bind 0.0.0.0 0 "bind a un puerto efímero (cliente)"
+expect EPERM bind 0.0.0.0 18080 "bind/listen on 18080"
+expect ok bind 0.0.0.0 0 "bind to an ephemeral port (client)"
 expect ok tcp "$GW" 53 "salir sigue andando"
 
-echo "6. sin red"
+echo "6. no network"
 rules '{"v":1,"mode":"silent","trusted":[],"restricted":{"'$APP'":["no-network"]},"rules":[]}'
-expect EPERM sock 0 0 "crear un socket"
+expect EPERM sock 0 0 "create a socket"
 
-echo "7. apagado: solo valen las denegaciones explícitas"
+echo "7. off: only explicit denials apply"
 rules '{"v":1,"mode":"off","trusted":[],"restricted":{},"rules":[{"app":"'$APP'","dir":"out","dst":"'$GW'","port":"53","proto":"tcp","action":"deny","when":0}]}'
-expect EPERM tcp "$GW" 53 "la denegación explícita"
-expect ok tcp "$GW" 22 "lo demás"
+expect EPERM tcp "$GW" 53 "the explicit denial"
+expect ok tcp "$GW" 22 "everything else"
 
-echo "8. otra app no hereda las reglas"
+echo "8. another app does not inherit the rules"
 rules '{"v":1,"mode":"silent","trusted":[],"restricted":{},"rules":[{"app":"'$APP'","dir":"out","dst":"any","action":"deny","when":0}]}'
 got=$(python3 -c 'import socket;socket.create_connection(("'$GW'",53),timeout=4);print("ok")' 2>&1 | tail -1)
-[ "$got" = ok ] && ok "fuera de la scope → ok" || bad "fuera de la scope → $got"
+[ "$got" = ok ] && ok "outside the scope → ok" || bad "outside the scope → $got"
 
-echo "netperm-integration: $pass bien, $fail mal"
+echo "netperm-integration: $pass passed, $fail failed"
 sudo rmdir "$SC" 2>/dev/null
 [ $fail = 0 ]

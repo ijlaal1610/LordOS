@@ -1,5 +1,5 @@
 /* brokercam.c — the camera for isolated .lpk apps, server side (see broker.h BOP_CAMERA and
- * docs/PRIVACIDAD.md, «Camera»).
+ * docs/PRIVACY.md, "Camera").
  *
  * After consent, lord-server opens /dev/videoN and hands it ONLY to lord-media (MK_CAMERA), which
  * decodes into its frame ring (MM_RING: a sealed memfd with MP_RING_SLOTS BGRA slots). The app

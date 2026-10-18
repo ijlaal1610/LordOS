@@ -1,4 +1,4 @@
-/* term_paint.c — dibuja una sesión de terminal dentro de su nodo (NODE_TERM). */
+/* term_paint.c — draws a terminal session inside its node (NODE_TERM). */
 #include "term.h"
 #include "../ui/ui.h"
 #include "../ui/bidi.h"
@@ -11,7 +11,7 @@
 #include <string.h>
 #include <time.h>
 
-/* ---- primitivas ---- */
+/* ---- primitives ---- */
 
 static void fill(Canvas *c, int x0, int y0, int x1, int y1, uint32_t argb) {
     uint32_t a = argb >> 24;
@@ -51,7 +51,7 @@ static float contrast(uint32_t a, uint32_t b) {
     return la > lb ? (la + 0.05f) / (lb + 0.05f) : (lb + 0.05f) / (la + 0.05f);
 }
 
-/* "Contraste mínimo" de iTerm2: acerca el texto a blanco o negro hasta el contraste pedido. */
+/* iTerm2's "Minimum contrast": moves the text towards white or black until the requested contrast. */
 static uint32_t min_contrast(uint32_t fg, uint32_t bg, float amount) {
     if (amount <= 0) return fg;
     float target = 1 + amount * 20;
@@ -65,9 +65,9 @@ static uint32_t min_contrast(uint32_t fg, uint32_t bg, float amount) {
     return mix(fg, to, hi);
 }
 
-/* ---- dibujo de cajas y bloques (U+2500–U+259F) para que empalmen entre celdas ---- */
+/* ---- box and block drawing (U+2500–U+259F) so they join across cells ---- */
 
-/* Pesos por dirección (izq, der, arriba, abajo): 1 fina, 2 gruesa, 3 doble. */
+/* Weights per direction (left, right, up, down): 1 light, 2 heavy, 3 double. */
 static const uint16_t box_lines[] = {
     /* 2500 */ 0x1100, 0x2200, 0x0011, 0x0022, 0x1100, 0x2200, 0x0011, 0x0022, 0x1100, 0x2200, 0x0011, 0x0022,
     /* 250C */ 0x0101, 0x0201, 0x0102, 0x0202, 0x1001, 0x2001, 0x1002, 0x2002,
@@ -91,7 +91,7 @@ static int box_draw(Canvas *c, uint32_t cp, int x, int y, int w, int h, uint32_t
     if (cp >= 0x2500 && cp <= 0x2570) {
         uint16_t v = box_lines[cp - 0x2500];
         int wl = v >> 12, wr = v >> 8 & 15, wu = v >> 4 & 15, wd = v & 15;
-        int dbl = lt + 1;   /* separación de las líneas dobles */
+        int dbl = lt + 1;   /* spacing of double lines */
         for (int dir = 0; dir < 4; dir++) {
             int wgt = dir == 0 ? wl : dir == 1 ? wr : dir == 2 ? wu : wd;
             if (!wgt) continue;
@@ -141,7 +141,7 @@ static int box_draw(Canvas *c, uint32_t cp, int x, int y, int w, int h, uint32_t
         }
         if (cp >= 0x2581 && cp <= 0x2587) { int k = (int)(cp - 0x2580); fill(c, x, y2 - h * k / 8, x2, y2, col); return 1; }
         if (cp >= 0x2589 && cp <= 0x258f) { int k = 8 - (int)(cp - 0x2588); fill(c, x, y, x + w * k / 8, y2, col); return 1; }
-        /* cuadrantes: bits UL, UR, LL, LR */
+        /* quadrants: bits UL, UR, LL, LR */
         static const uint8_t quad[] = { 0x4, 0x8, 0x1, 0xd, 0x9, 0x7, 0xb, 0x2, 0x6, 0xe };
         uint8_t q = quad[cp - 0x2596];
         if (q & 1) fill(c, x, y, mx, my, col);
@@ -150,7 +150,7 @@ static int box_draw(Canvas *c, uint32_t cp, int x, int y, int w, int h, uint32_t
         if (q & 8) fill(c, mx, my, x2, y2, col);
         return 1;
     }
-    if (cp == 0xe0b0 || cp == 0xe0b2) {     /* flechas de powerline */
+    if (cp == 0xe0b0 || cp == 0xe0b2) {     /* powerline arrows */
         for (int r = 0; r < h; r++) {
             float d = r < h / 2.0f ? r : h - 1 - r;
             int span = (int)roundf(d * 2 * w / h);
@@ -162,7 +162,7 @@ static int box_draw(Canvas *c, uint32_t cp, int x, int y, int w, int h, uint32_t
     return 0;
 }
 
-/* ---- imágenes ---- */
+/* ---- images ---- */
 
 static uint32_t *scale(const uint32_t *src, int sw, int sh, int dw, int dh) {
     uint32_t *out = malloc((size_t)dw * dh * 4);
@@ -208,7 +208,7 @@ static void draw_images(Canvas *c, Term *t, int ox, int oy, int cw, int ch, floa
     }
 }
 
-/* ---- sesión ---- */
+/* ---- session ---- */
 
 static void cell_colors(const Term *t, const TermProfile *p, Cell cell, long long line, int col,
                         uint32_t *fg, uint32_t *bg, int *bg_default) {
@@ -233,19 +233,19 @@ static void cell_colors(const Term *t, const TermProfile *p, Cell cell, long lon
     *bg_default = def;
 }
 
-/* ---- texto: elección de fuente, ligaduras, grafemas y emoji ---- */
+/* ---- text: font choice, ligatures, graphemes and emoji ---- */
 
 static int has_cp(int font, uint32_t cp) { return font >= 0 && text_font_has(font, cp); }
 
-/* ¿Se prefiere la fuente de emoji a color? (presentación emoji: con VS16, o anchos). */
+/* Is the color emoji font preferred? (emoji presentation: with VS16, or wide ones). */
 static int wants_emoji(uint32_t base, const uint32_t *seq, int n, uint16_t attr) {
     for (int i = 1; i < n; i++) { if (seq[i] == 0xfe0f) return 1; if (seq[i] == 0xfe0e) return 0; }
     if (!(attr & A_WIDE)) return 0;
     return base >= 0x1f000 || (base >= 0x2300 && base <= 0x2bff);
 }
 
-/* Fuente para un carácter: la del perfil (y la "no ASCII"), la incluida, las de respaldo y
- * la de emoji. *fallback = 1 si no es monoespaciada del perfil (se centra en la celda). */
+/* Font for a character: the profile's (and the "non-ASCII" one), the bundled one, the
+ * fallbacks and the emoji one. *fallback = 1 if it is not the profile's monospace (it is centered in the cell). */
 static int complex_script(uint32_t cp);
 
 static int pick_font(const TermProfile *p, uint32_t cp, uint16_t attr, int emoji, int *fallback) {
@@ -258,12 +258,12 @@ static int pick_font(const TermProfile *p, uint32_t cp, uint16_t attr, int emoji
     if (has_cp(f = term_profile_font(p, 0, bold, italic), cp)) return f;
     if (has_cp(f = term_profile_font(p, 0, 0, 0), cp)) return f;
     *fallback = 1;
-    /* árabe, hebreo, índicas, tailandés, tibetano, birmano, jemer…: la Noto de la escritura
-     * primero, para que una palabra no mezcle fuentes (DejaVu Sans Mono tiene algunas letras
-     * árabes y otras no) */
+    /* Arabic, Hebrew, Indic, Thai, Tibetan, Burmese, Khmer…: the Noto font for the script
+     * first, so that a word does not mix fonts (DejaVu Sans Mono has some Arabic letters
+     * and not others) */
     if (((cp >= 0x0590 && cp <= 0x0EFF) || complex_script(cp)) && (f = text_script_fallback(cp, bold)) >= 0) return f;
     for (int i = 0; (f = term_fallback_font(i)) >= 0; i++) if (has_cp(f, cp)) return f;
-    if ((f = text_script_fallback(cp, bold)) >= 0) return f;       /* CJK y el resto */
+    if ((f = text_script_fallback(cp, bold)) >= 0) return f;       /* CJK and the rest */
     if (color < 0) color = term_color_font();
     if (has_cp(color, cp)) { *fallback = 1; return color; }
     return -1;
@@ -276,7 +276,7 @@ static void tofu(Canvas *c, int x, int ry, int w, int ch, uint32_t fg) {
     fill(c, x + w - 3, ry + 3, x + w - 2, ry + ch - 3, fg);
 }
 
-/* Lo que se dibuja en una celda: fuente y glifos (después de las sustituciones). */
+/* What is drawn in a cell: font and glyphs (after substitutions). */
 typedef struct {
     int font, fallback, fake_bold, n;
     uint16_t g[CLUSTER_LEN];
@@ -299,16 +299,16 @@ static int run_set(int n) {
     return 0;
 }
 
-static int is_box(uint32_t cp) {     /* lo que box_draw() dibuja a mano */
+static int is_box(uint32_t cp) {     /* what box_draw() draws by hand */
     return (cp >= 0x2500 && cp <= 0x2570) || (cp >= 0x2574 && cp <= 0x259f) || cp == 0xe0b0 || cp == 0xe0b2;
 }
 
-/* ---- árabe y hebreo (bidi) ----
- * Una fila con texto de derecha a izquierda se muestra en orden visual (bidi de Unicode con
- * párrafo de izquierda a derecha, como Konsole y mlterm) y los tramos árabes con sus formas
- * unidas, dibujados con su ancho natural dentro de las celdas que ocupan. El contenido no
- * cambia (copiar, buscar y el programa ven el orden lógico). En pantalla alternativa (vim,
- * less, mc) no se aplica: esos programas acomodan su propia pantalla. */
+/* ---- Arabic and Hebrew (bidi) ----
+ * A row with right-to-left text is shown in visual order (Unicode bidi with a
+ * left-to-right paragraph, like Konsole and mlterm) and Arabic runs with their joined
+ * forms, drawn at their natural width inside the cells they occupy. The content does not
+ * change (copy, search and the program see the logical order). It is not applied on the
+ * alternate screen (vim, less, mc): those programs lay out their own screen. */
 
 static int row_bidi, rvis[TERM_MAX_COLS];
 static uint8_t rlv[TERM_MAX_COLS];
@@ -319,7 +319,7 @@ static int rtl_char(uint32_t cp) {
     return b == BIDI_R || b == BIDI_AL;
 }
 
-/* vis[col] = columna visual de la celda lógica col; 0 si la fila queda como está. */
+/* vis[col] = visual column of logical cell col; 0 if the row stays as it is. */
 int term_row_visual(const TermProfile *p, const Term *t, const Line *l, int cols, int *vis, uint8_t *lv) {
     if (!p->bidi || !l || t->buf == &t->alt) return 0;
     int n = l->len < cols ? l->len : cols, any = 0;
@@ -339,7 +339,7 @@ int term_row_visual(const TermProfile *p, const Term *t, const Line *l, int cols
     bidi_line(cps, lv, 0, n, para, order);
     for (int k = 0; k < n; k++) vis[order[k]] = k;
     for (int i = n; i < cols; i++) { vis[i] = i; lv[i] = 0; }
-    for (int i = 0; i + 1 < n; i++)          /* un carácter ancho ocupa sus dos celdas en orden */
+    for (int i = 0; i + 1 < n; i++)          /* a wide character occupies its two cells in order */
         if ((l->c[i].attr & A_WIDE) && (l->c[i + 1].attr & A_WIDE_TAIL) && vis[i + 1] < vis[i]) { int tmp = vis[i]; vis[i] = vis[i + 1]; vis[i + 1] = tmp; }
     return 1;
 }
@@ -351,18 +351,18 @@ static int nspans;
 static short span_of[TERM_MAX_COLS];
 static Shaper tshaper;
 
-/* Escrituras que se arman en tramos: las de derecha a izquierda que unen letras o llevan marcas
- * (árabe, hebreo…) y las que reordenan y combinan (índicas, cingalés, tailandés, laosiano,
- * tibetano, birmano, jemer, mongol, balinés, javanés y las demás del Universal Shaping Engine). */
+/* Scripts that are shaped in runs: right-to-left ones that join letters or carry marks
+ * (Arabic, Hebrew…) and those that reorder and combine (Indic, Sinhala, Thai, Lao,
+ * Tibetan, Burmese, Khmer, Mongolian, Balinese, Javanese and the rest of the Universal Shaping Engine). */
 static int rtl_span_script(int sc) { return sc == SCRIPT_ARAB || sc == SCRIPT_SYRC || sc == SCRIPT_NKOO || sc == SCRIPT_HEBR; }
 static int complex_script(uint32_t cp) {
     return (cp >= 0x0900 && cp <= 0x10FF) || (cp >= 0x1700 && cp <= 0x18AF) || (cp >= 0x1900 && cp <= 0x1CFF) ||
            (cp >= 0xA800 && cp <= 0xABFF) || (cp >= 0x11000 && cp <= 0x11FFF);
 }
 static int joining_script(uint32_t cp) { return rtl_span_script(uc_script(cp)) || complex_script(cp); }
-static int blank_cell(uint32_t cp) { return !(cp & CP_CLUSTER) && cp <= ' '; }   /* los grafemas guardan un índice */
+static int blank_cell(uint32_t cp) { return !(cp & CP_CLUSTER) && cp <= ' '; }   /* graphemes store an index */
 
-/* Fila con escrituras complejas de izquierda a derecha: orden identidad, pero con tramos. */
+/* Row with complex left-to-right scripts: identity order, but with runs. */
 static int row_complex(const Line *l, int cols) {
     int n = l && l->len < cols ? l->len : cols;
     for (int i = 0; l && i < n; i++) {
@@ -376,8 +376,8 @@ static int row_complex(const Line *l, int cols) {
     return 0;
 }
 
-/* Tramos de celdas árabes o hebreas (misma fuente y nivel): se arman juntos (formas
- * init/medi/fina, lam-alef, harakat, niqqud) y después se dibujan como una unidad. */
+/* Runs of Arabic or Hebrew cells (same font and level): they are shaped together (forms
+ * init/medi/fina, lam-alef, harakat, niqqud) and then drawn as one unit. */
 static void shape_spans(const TermProfile *p, const Line *l, int n) {
     nspans = 0;
     for (int i = 0; i < n; i++) span_of[i] = -1;
@@ -389,7 +389,7 @@ static void shape_spans(const TermProfile *p, const Line *l, int n) {
         if (!joining_script(seq[0]) || (rtl_span_script(uc_script(seq[0])) && !(rlv[col] & 1))) { col++; continue; }
         int font = rowt[col].font, end = col + 1;
         for (;;) {
-            /* los espacios entre palabras de la misma escritura quedan dentro del tramo */
+            /* spaces between words of the same script stay inside the run */
             int k = end;
             while (k < n && blank_cell(l->c[k].cp) && rlv[k] == rlv[col]) k++;
             if (k >= n || rowt[k].n <= 0 || rowt[k].font != font || rlv[k] != rlv[col] || (l->c[k].attr & (A_WIDE | A_WIDE_TAIL))) break;
@@ -411,7 +411,7 @@ static void shape_spans(const TermProfile *p, const Line *l, int n) {
         Span *sp = &spans[nspans];
         sp->c0 = col; sp->c1 = end; sp->font = font; sp->ng = ng; sp->drawn = 0; sp->rtl = rtl;
         float sc = text_font_scale(font, p->font_size), pen = 0;
-        for (int k = 0; k < ng; k++) {          /* orden visual: al revés si es RTL */
+        for (int k = 0; k < ng; k++) {          /* visual order: reversed if RTL */
             int v = rtl ? ng - 1 - k : k;
             const OtfPos *ps = &tshaper.pos[v];
             sp->g[v] = tshaper.run.g[v];
@@ -434,8 +434,8 @@ static void shape_spans(const TermProfile *p, const Line *l, int n) {
     }
 }
 
-/* Dibuja el tramo en sus celdas: alineado a la derecha si es RTL, a la izquierda si no; si es
- * más ancho que las celdas, se comprime. */
+/* Draws the run in its cells: right-aligned if RTL, left-aligned otherwise; if it is
+ * wider than the cells, it is compressed. */
 static void draw_span(Canvas *c, const TermProfile *p, Span *sp, int ox, int ry, int cw, int base, uint32_t fg) {
     int vmin = 1 << 30, vmax = -1;
     for (int i = sp->c0; i < sp->c1; i++) { if (rvis[i] < vmin) vmin = rvis[i]; if (rvis[i] > vmax) vmax = rvis[i]; }
@@ -448,8 +448,8 @@ static void draw_span(Canvas *c, const TermProfile *p, Span *sp, int ox, int ry,
     sp->drawn = 1;
 }
 
-/* Prepara la fila: elige fuentes, compone grafemas (ccmp) y aplica ligaduras (calt) sobre
- * corridas de celdas con la misma fuente. `brk` = columna que corta las ligaduras (cursor). */
+/* Prepares the row: chooses fonts, composes graphemes (ccmp) and applies ligatures (calt) over
+ * runs of cells with the same font. `brk` = column that breaks ligatures (cursor). */
 static void shape_row(const TermProfile *p, const Line *l, int cols, int brk) {
     int n = l->len < cols ? l->len : cols;
     for (int col = 0; col < n; col++) {
@@ -465,13 +465,13 @@ static void shape_row(const TermProfile *p, const Line *l, int cols, int brk) {
         ct->fake_bold = 0;
         if (ct->font < 0) { ct->n = -1; continue; }
         if ((cell.attr & A_BOLD) && p->use_bold && ct->font == term_profile_font(p, 0, 0, 0) && term_profile_font(p, 0, 1, 0) == ct->font)
-            ct->fake_bold = 1;      /* la familia no tiene negrita: se simula */
+            ct->fake_bold = 1;      /* the family has no bold: it is synthesized */
         int m = 0;
         for (int i = 0; i < k && m < CLUSTER_LEN; i++) {
             if (seq[i] == 0xfe0f || seq[i] == 0xfe0e) continue;
             uint32_t gid = text_font_glyph(ct->font, seq[i]);
             if (!gid && i > 0) {
-                /* combinante que la fuente no tiene: se busca en las de respaldo */
+                /* combining mark the font lacks: looked up in the fallbacks */
                 continue;
             }
             ct->g[m++] = (uint16_t)gid;
@@ -517,7 +517,7 @@ static void draw_cell_text(Canvas *c, const TermProfile *p, const CellText *ct, 
     if (ct->n == 0) return;
     float size = p->font_size;
     if (text_font_is_color(ct->font)) {
-        /* emoji: el bitmap se ajusta al lugar (2 celdas si es ancho); varios glifos lado a lado */
+        /* emoji: the bitmap is fitted to the slot (2 cells if wide); several glyphs side by side */
         int each = cw * width / ct->n;
         for (int i = 0; i < ct->n; i++) {
             const Glyph *g = text_glyph_color(ct->font, ct->g[i], each, ch);
@@ -529,8 +529,8 @@ static void draw_cell_text(Canvas *c, const TermProfile *p, const CellText *ct, 
     float base_x = 0, base_adv = 0;
     for (int i = 0; i < ct->n; i++) {
         const Glyph *g = text_glyph_id(ct->font, ct->g[i], size);
-        /* marcas combinantes: las de avance 0 (JetBrains Mono) se dibujan hacia atrás desde el
-         * final del carácter base; las que tienen ancho propio (Fira Code) desde su origen */
+        /* combining marks: zero-advance ones (JetBrains Mono) are drawn backwards from the
+         * end of the base character; those with their own width (Fira Code) from their origin */
         float pen = i == 0 ? 0 : g->adv < 0.5f ? base_x + base_adv : base_x;
         int gx = x + (int)pen + g->xoff;
         if (i == 0 && (ct->fallback || width == 2)) {
@@ -567,6 +567,11 @@ static int cursor_shape(const Term *t, const TermProfile *p, int *blink) {
     return p->cursor_style;
 }
 
+/* Cell corners: on a scaled display the logical grid times the scale, rounded per cell, so rows and
+ * columns land where the logical layout (mouse, damage) expects them. At 100 % exactly col * cw. */
+#define COLX(col) (ox + (int)lroundf((col) * colw))
+#define ROWY(row) (oy + (int)lroundf((row) * rowh))
+
 void term_paint(Canvas *c, int id, float x, float y, float w, float h, float op) {
     Session *s = term_get(id);
     Rect old = canvas_push_clip(c, x, y, w, h);
@@ -575,18 +580,33 @@ void term_paint(Canvas *c, int id, float x, float y, float w, float h, float op)
     TermProfile *p = &s->prof;
     float fcw, fch, fbase;
     term_metrics(p, &fcw, &fch, &fbase);
-    int cw = (int)fcw, ch = (int)fch, base = (int)fbase, pad = (int)p->padding;
+    /* rows and columns come from the logical cell (the same on every display); a scaled display
+     * (paint_view.k, docs/DISPLAYS.md) draws with the profile's font and padding at its size */
+    const float k = paint_view.k;
+    int lcw = (int)fcw, lch = (int)fch, lpad = (int)p->padding;
     t->cell_w = fcw;
     t->cell_h = fch;
-    int cols = (int)((w - 2 * pad) / cw), rows = (int)((h - 2 * pad) / ch);
+    int cols = (int)((w / k - 2 * lpad) / lcw), rows = (int)((h / k - 2 * lpad) / lch);
+    static TermProfile scaled;
+    if (k != 1) {
+        scaled = *p;
+        scaled.font_size = p->font_size * k;
+        scaled.padding = p->padding * k;
+        p = &scaled;
+        term_metrics(p, &fcw, &fch, &fbase);
+    }
+    int cw = (int)fcw, ch = (int)fch, base = (int)fbase, pad = (int)p->padding;
+    const float colw = k != 1 ? lcw * k : (float)cw, rowh = k != 1 ? lch * k : (float)ch;
+    if (k != 1) { cw = (int)lroundf(colw); ch = (int)ceilf(rowh); }
     if (cols < 2) cols = 2;
     if (rows < 1) rows = 1;
     if (cols != t->cols || rows != t->rows) {
         vt_resize(t, cols, rows);
-        if (s->gateway) t->events |= EV_RESIZE;      /* panel de tmux: la app avisa a tmux */
-        else if (s->alive) pty_resize(s->fd, t->cols, t->rows, t->cols * cw, t->rows * ch);
+        if (s->gateway) t->events |= EV_RESIZE;      /* tmux pane: the app notifies tmux */
+        else if (s->alive) pty_resize(s->fd, t->cols, t->rows, t->cols * lcw, t->rows * lch);
     }
-    s->gx = x; s->gy = y; s->gw = w; s->gh = h;
+    /* where the terminal is, for the mouse: logical */
+    s->gx = (x - paint_view.dx) / k + paint_view.x; s->gy = (y - paint_view.dy) / k + paint_view.y; s->gw = w / k; s->gh = h / k;
 
     uint32_t dbg = vt_resolve(t, 0, 0), dfg = vt_resolve(t, 0, 1);
     if (t->modes & M_REVERSE) { uint32_t tmp = dbg; dbg = dfg; dfg = tmp; }
@@ -596,14 +616,14 @@ void term_paint(Canvas *c, int id, float x, float y, float w, float h, float op)
     int ox = (int)x + pad, oy = (int)y + pad;
     int blink_cursor;
     int shape = cursor_shape(t, p, &blink_cursor);
-    /* Instant Replay: se dibuja un cuadro guardado en lugar de la pantalla en vivo. */
+    /* Instant Replay: a saved frame is drawn instead of the live screen. */
     const Frame *rf = s->replay >= 0 && s->replay < s->nframes ? &s->frames[(s->frame_head + s->replay) % REPLAY_FRAMES] : NULL;
     int crow = rf ? rf->cy : t->cy + t->view;
     int show_cursor = !(t->modes & M_HIDECURSOR) && !t->copy_active && crow < t->rows && (t->focused ? (!blink_cursor || s->blink_on) : 1);
     uint32_t ccolor = t->cursor_set ? t->cursor_color : (p->cursor | 0xff000000u);
 
     for (int row = 0; row < t->rows; row++) {
-        int ry = oy + row * ch;
+        int ry = ROWY(row), ch = ROWY(row + 1) - ry;
         if (ry >= c->clip.y1 || ry + ch <= c->clip.y0) continue;
         long long abs;
         Line fake, *l;
@@ -615,16 +635,16 @@ void term_paint(Canvas *c, int id, float x, float y, float w, float h, float op)
         if (p->cursor_guide && row == crow && t->focused)
             fill(c, (int)x, ry, (int)(x + w), ry + ch, 0x30000000u | (p->guide & 0xffffff));
         row_bidi = !rf && (term_row_visual(p, t, l, t->cols, rvis, rlv) || (p->bidi && t->buf != &t->alt && row_complex(l, t->cols)));
-        if (row_bidi) {                         /* fondo celda por celda, en su lugar visual */
+        if (row_bidi) {                         /* background cell by cell, at its visual position */
             for (int col = 0; col < t->cols; col++) {
                 Cell cell = col < l->len ? l->c[col] : (Cell){0};
                 uint32_t fg, bg;
                 int def;
                 cell_colors(t, p, cell, abs, col, &fg, &bg, &def);
-                if (!def) fill(c, ox + rvis[col] * cw, ry, ox + (rvis[col] + 1) * cw, ry + ch, bg | (uint32_t)(op * 255) << 24);
+                if (!def) fill(c, COLX(rvis[col]), ry, COLX(rvis[col] + 1), ry + ch, bg | (uint32_t)(op * 255) << 24);
             }
         }
-        /* fondo por celdas (corridas del mismo color) */
+        /* background by cells (runs of the same color) */
         for (int col = 0; !row_bidi && col < t->cols;) {
             Cell cell = l && col < l->len ? l->c[col] : (Cell){0};
             uint32_t fg, bg;
@@ -640,12 +660,12 @@ void term_paint(Canvas *c, int id, float x, float y, float w, float h, float op)
                 if (d2 || b2 != bg) break;
                 col++;
             }
-            int x1 = ox + col * cw;
+            int x1 = COLX(col);
             if (col == t->cols) x1 = (int)(x + w) - (pad > 2 ? pad - 2 : 0);
-            fill(c, ox + start * cw, ry, x1, ry + ch, bg | (uint32_t)(op * 255) << 24);
+            fill(c, COLX(start), ry, x1, ry + ch, bg | (uint32_t)(op * 255) << 24);
         }
         if (!l) continue;
-        /* texto */
+        /* text */
         int text_blink_off = p->blink_text && !s->blink_on;
         shape_row(p, l, t->cols, row == crow && show_cursor ? (rf ? rf->cx : t->cx) : -1);
         for (int col = 0; col < t->cols && col < l->len; col++) {
@@ -659,18 +679,18 @@ void term_paint(Canvas *c, int id, float x, float y, float w, float h, float op)
                 fg = p->has_cursor_text ? p->cursor_text | 0xff000000u : dbg;
             fg = (fg & 0xffffff) | (uint32_t)(op * 255) << 24;
             int vc = row_bidi ? rvis[col] : col;
-            int cx0 = ox + vc * cw, width = cell.attr & A_WIDE ? 2 : 1;
+            int cx0 = COLX(vc), width = cell.attr & A_WIDE ? 2 : 1;
             if (row == crow && col == ccol && show_cursor && shape == CURSOR_BLOCK && t->focused)
-                fill(c, cx0, ry, cx0 + cw * width, ry + ch, ccolor);
+                fill(c, cx0, ry, COLX(vc + width), ry + ch, ccolor);
             int visible = cell.cp > ' ' && !(cell.attr & A_HIDDEN) && !((cell.attr & A_BLINK) && text_blink_off);
             if (row_bidi && span_of[col] >= 0) {
                 if (visible && !spans[span_of[col]].drawn) draw_span(c, p, &spans[span_of[col]], ox, ry, cw, base, fg);
             } else if (visible)
                 draw_cell_text(c, p, &rowt[col], cell.cp, cell.attr, cx0, ry, cw, ch, base, fg, op);
             if (cell.attr & (A_UNDER | A_UNDER2 | A_CURLY | A_STRIKE | A_OVERLINE))
-                decorations(c, p, cell.attr, cx0, ry, cw * width, ch, base, fg);
+                decorations(c, p, cell.attr, cx0, ry, COLX(vc + width) - cx0, ch, base, fg);
         }
-        /* marcas del shell en el margen izquierdo (como iTerm2) */
+        /* shell marks in the left margin (like iTerm2) */
         if (l->flags & (LINE_PROMPT | LINE_MARK) && pad >= 4) {
             uint32_t mc = l->flags & LINE_FAIL ? 0xffff453a : l->flags & LINE_MARK && !(l->flags & LINE_PROMPT) ? 0xff8e8e93 : 0xff0a84ff;
             int mh = ch / 2, my = ry + (ch - mh) / 2;
@@ -681,42 +701,42 @@ void term_paint(Canvas *c, int id, float x, float y, float w, float h, float op)
         }
     }
 
-    /* cursor sin relleno: línea, barra o caja hueca (sin foco) */
+    /* unfilled cursor: underline, bar or hollow box (unfocused) */
     if (show_cursor && crow < t->rows) {
         int ccx = rf ? rf->cx : t->cx;
         Line *l = rf ? NULL : vt_view_line(t, crow, NULL);
         int vcx = ccx;
         if (l && ccx < t->cols && term_row_visual(p, t, l, t->cols, rvis, rlv)) vcx = rvis[ccx];
-        int cx0 = ox + vcx * cw, ry = oy + crow * ch;
+        int cx0 = COLX(vcx), ry = ROWY(crow);
         int width = l && ccx < l->len && (l->c[ccx].attr & A_WIDE) ? 2 : 1;
         if (!t->focused && shape == CURSOR_BLOCK) {
-            fill(c, cx0, ry, cx0 + cw * width, ry + 1, ccolor);
-            fill(c, cx0, ry + ch - 1, cx0 + cw * width, ry + ch, ccolor);
+            fill(c, cx0, ry, COLX(vcx + width), ry + 1, ccolor);
+            fill(c, cx0, ry + ch - 1, COLX(vcx + width), ry + ch, ccolor);
             fill(c, cx0, ry, cx0 + 1, ry + ch, ccolor);
-            fill(c, cx0 + cw * width - 1, ry, cx0 + cw * width, ry + ch, ccolor);
-        } else if (shape == CURSOR_UNDERLINE) fill(c, cx0, ry + ch - 2, cx0 + cw * width, ry + ch, ccolor);
+            fill(c, COLX(vcx + width) - 1, ry, COLX(vcx + width), ry + ch, ccolor);
+        } else if (shape == CURSOR_UNDERLINE) fill(c, cx0, ry + ch - 2, COLX(vcx + width), ry + ch, ccolor);
         else if (shape == CURSOR_BEAM) fill(c, cx0, ry, cx0 + 2, ry + ch, ccolor);
         else if (!l || ccx >= l->len) {
-            /* bloque sobre una celda vacía (el texto no la dibujó) */
-            if (t->focused) fill(c, cx0, ry, cx0 + cw, ry + ch, ccolor);
+            /* block over an empty cell (the text did not draw it) */
+            if (t->focused) fill(c, cx0, ry, COLX(vcx + 1), ry + ch, ccolor);
         }
     }
 
     if (!rf) draw_images(c, t, ox, oy, cw, ch, op);
 
-    /* cursor del modo copia */
+    /* copy mode cursor */
     if (t->copy_active) {
         long long top;
         vt_view_line(t, 0, &top);
         long long r = t->copy_line - top;
         if (r >= 0 && r < t->rows) {
-            int cx0 = ox + t->copy_col * cw, ry = oy + (int)r * ch;
-            fill(c, cx0, ry, cx0 + cw, ry + ch, 0x80ff9f0a);
-            fill(c, cx0, ry + ch - 2, cx0 + cw, ry + ch, 0xffff9f0a);
+            int cx0 = COLX(t->copy_col), ry = ROWY((int)r);
+            fill(c, cx0, ry, COLX(t->copy_col + 1), ry + ch, 0x80ff9f0a);
+            fill(c, cx0, ry + ch - 2, COLX(t->copy_col + 1), ry + ch, 0xffff9f0a);
         }
     }
 
-    /* marcas de tiempo a la derecha (Ver → Mostrar marcas de tiempo) */
+    /* timestamps on the right (View → Show timestamps) */
     if (p->timestamps && !rf) {
         for (int row = 0; row < t->rows; row++) {
             Line *l = vt_view_line(t, row, NULL);
@@ -728,13 +748,13 @@ void term_paint(Canvas *c, int id, float x, float y, float w, float h, float op)
             strftime(buf, sizeof buf, "%H:%M:%S", &tm);
             float tw, th;
             text_measure(buf, 400, 10, 0, 0, 1, &tw, &th);
-            int ry = oy + row * ch, tx = (int)(x + w) - pad - (int)tw - 6;
+            int ry = ROWY(row), tx = (int)(x + w) - pad - (int)tw - 6;
             fill(c, tx - 4, ry, (int)(x + w) - pad, ry + ch, 0xc0000000u | (dbg & 0xffffff));
             text_draw(c, buf, 400, 10, 0, (float)tx, (float)ry + (ch - th) / 2, 0, TEXT_LEFT, 1, 0xa0000000u | (dfg & 0xffffff));
         }
     }
 
-    /* barra de desplazamiento mientras se mira la historia */
+    /* scroll bar while looking at the history */
     int total = t->buf->count;
     if (t->view > 0 && total > t->rows) {
         float track = h - 8, bar = fmaxf(24, track * t->rows / total);
@@ -747,3 +767,5 @@ void term_paint(Canvas *c, int id, float x, float y, float w, float h, float op)
     s->drawn_cy = t->cy;
     canvas_set_clip(c, old);
 }
+#undef COLX
+#undef ROWY

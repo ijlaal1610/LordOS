@@ -1,8 +1,8 @@
 #!/bin/bash
-# netperm_measure.sh — connect() y caudal con lord-netperm apagado, prendido sin reglas y prendido
-# con 400 reglas (docs/FIREWALL.md, "Mediciones"). En la VM, como el usuario de la sesión:
+# netperm_measure.sh — connect() and throughput with lord-netperm off, on with no rules and on
+# with 400 rules (docs/FIREWALL.md, "Measurements"). In the VM, as the session user:
 #   bash server/tests/netperm_measure.sh
-# Todo es local (127.0.0.1): no baja nada de internet.
+# Everything is local (127.0.0.1): nothing is downloaded from the internet.
 set -u
 cd "$(dirname "$0")/.."
 cc -O2 -o /tmp/netperm-bench tests/netperm_bench.c || exit 1
@@ -16,7 +16,7 @@ finish() { if [ $HAD = 1 ]; then cp "$BACKUP" "$FW"; else rm -f "$FW"; fi; sudo 
 trap finish EXIT
 sudo mkdir -p "$SC"
 inscope() { sudo bash -c "echo \$\$ > $SC/cgroup.procs; exec setpriv --reuid=$U --regid=$(id -g) --init-groups $*"; }
-thru() {        # 3 GB por TCP en 127.0.0.1, adentro de la scope
+thru() {        # 3 GB over TCP on 127.0.0.1, inside the scope
     (dd if=/dev/zero bs=1M count=3072 status=none | nc -N -l 127.0.0.1 9107) &
     sleep 0.5
     inscope "bash -c 'nc 127.0.0.1 9107 | dd of=/dev/null bs=1M 2>&1 | tail -1'"
@@ -28,10 +28,10 @@ run() {
     thru
 }
 sudo systemctl stop lord-netperm; sleep 0.5
-run "lord-netperm apagado"
+run "lord-netperm off"
 sudo systemctl start lord-netperm; sleep 1.5
 echo '{"v":1,"mode":"silent","trusted":[],"restricted":{},"rules":[]}' > "$FW"; reload
-run "prendido, sin reglas (silencioso: se cuenta y se avisa cada conexión nueva)"
+run "on, no rules (silent: every new connection is counted and reported)"
 python3 - "$FW" <<'PY'
 import json, sys
 rules = [{"app": "desktop:npbench", "dir": "out", "dst": "any", "action": "deny", "when": 0},
@@ -42,4 +42,4 @@ for i in range(200):
 json.dump({"v": 1, "mode": "silent", "trusted": [], "restricted": {}, "rules": rules}, open(sys.argv[1], "w"), separators=(",", ":"))
 PY
 reload
-run "prendido, 402 reglas para la app (redes, comodines, denegar todo salvo 127/8)"
+run "on, 402 rules for the app (networks, wildcards, deny all except 127/8)"

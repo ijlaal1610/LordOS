@@ -7,6 +7,7 @@
   "field.unit": "Unidad",
   "field.uid": "UID",
   "field.boot": "Arranque",
+  "field.message": "Mensaje",
   "line": "Renglón {n}",
   "level.error": "Error",
   "level.warning": "Aviso",

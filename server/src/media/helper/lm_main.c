@@ -1,9 +1,9 @@
-/* lm_main.c — punto de entrada de lord-media (ver lm.h y docs/MEDIOS.md).
+/* lm_main.c — entry point of lord-media (see lm.h and docs/MEDIA.md).
  *
- * Lo lanza lord-server sin argumentos, con el socket en el fd 3. El primer mensaje (MM_JOB)
- * dice qué tipo de ayudante es y trae los descriptores. Antes de leer un solo byte del archivo
- * se aplica la caja de arena: Landlock (sin carpeta personal ni red) y, después de iniciar
- * VA-API si hace falta, seccomp. */
+ * lord-server launches it with no arguments, with the socket on fd 3. The first message (MM_JOB)
+ * says what type of helper it is and brings the descriptors. Before reading a single byte of the file
+ * the sandbox is applied: Landlock (no home folder or network) and, after initializing
+ * VA-API if needed, seccomp. */
 #include "lm.h"
 #include "../../sec/sandbox.h"
 
@@ -22,7 +22,7 @@ static void av_log_cb(void *avcl, int level, const char *fmt, va_list vl) {
     (void)avcl;
     if (level > (lm_debug ? AV_LOG_WARNING : AV_LOG_ERROR)) return;
     static int count;
-    if (++count > 200) return;                  /* un archivo roto no llena el registro */
+    if (++count > 200) return;                  /* a broken file doesn't flood the log */
     char line[512];
     vsnprintf(line, sizeof line, fmt, vl);
     fprintf(stderr, "lord-media[%d]: ffmpeg: %s", (int)getpid(), line);
@@ -30,33 +30,33 @@ static void av_log_cb(void *avcl, int level, const char *fmt, va_list vl) {
 
 int main(int argc, char **argv) {
     (void)argv;
-    if (argc != 1) { fprintf(stderr, "lord-media: lo lanza lord-server (sin argumentos)\n"); return 2; }
+    if (argc != 1) { fprintf(stderr, "lord-media: launched by lord-server (no arguments)\n"); return 2; }
     signal(SIGPIPE, SIG_IGN);
-    prctl(PR_SET_PDEATHSIG, SIGKILL);           /* si lord-server se va, este también */
+    prctl(PR_SET_PDEATHSIG, SIGKILL);           /* if lord-server goes away, so does this one */
     if (getppid() == 1) return 1;
     prctl(PR_SET_NAME, "lord-media");
     lm_debug = getenv("LORD_MEDIA_DEBUG") != NULL;
-    /* solo el socket: cualquier otro descriptor heredado se cierra */
+    /* only the socket: any other inherited descriptor is closed */
 #ifdef SYS_close_range
     syscall(SYS_close_range, LM_SOCK + 1, ~0U, 0);
 #endif
     struct rlimit core = { 0, 0 };
     setrlimit(RLIMIT_CORE, &core);
-    prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);         /* otro proceso del usuario no lo depura */
+    prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);         /* another process of the user can't debug it */
     av_log_set_callback(av_log_cb);
 
     static char payload[MP_PAYLOAD_MAX + 1];
     MediaMsg m;
     int fds[MP_MAX_FDS];
     if (mp_recv(LM_SOCK, &m, payload, sizeof payload, fds, 1) != 1 || m.type != MM_JOB) {
-        LM_LOG("no llegó el trabajo");
+        LM_LOG("the job didn't arrive");
         return 1;
     }
-    /* La caja de arena compartida (sec/sandbox.c, la misma de lord-doc), antes de leer un byte
-     * del archivo y antes de iniciar VA-API: sin red, sin abrir nada fuera de las bibliotecas y
-     * datos del sistema (solo lectura), sin /dev (los dispositivos llegan como fds) y con los
-     * ioctl de DRM/V4L2/dma-buf solo si el trabajo los necesita. El driver de VA-API se carga
-     * después, de /usr/lib, que queda de solo lectura. */
+    /* The shared sandbox (sec/sandbox.c, the same as lord-doc's), before reading a byte
+     * of the file and before initializing VA-API: no network, nothing opened outside the system's libraries and
+     * data (read-only), no /dev (devices arrive as fds) and with the
+     * DRM/V4L2/dma-buf ioctls only if the job needs them. The VA-API driver is loaded
+     * afterwards, from /usr/lib, which stays read-only. */
     static const char *const ro[] = { "/usr/lib", "/usr/lib64", "/lib", "/lib64", "/usr/share", "/etc/ld.so.cache",
                                       "/sys/dev/char", "/sys/devices", NULL };
     static const int extra[] = { SYS_getcpu, SYS_kcmp, SYS_membarrier, SYS_sched_getparam, SYS_sched_getscheduler,
@@ -73,7 +73,7 @@ int main(int argc, char **argv) {
     switch (m.v[0]) {
     case MK_PLAY: lm_player(payload, fds[0], fds[1], fds[2]); break;
     case MK_WORKER:
-        setpriority(PRIO_PROCESS, 0, 10);       /* miniaturas y probes: en segundo plano */
+        setpriority(PRIO_PROCESS, 0, 10);       /* thumbnails and probes: in the background */
         lm_worker();
         break;
     case MK_SCREENREC: lm_screenrec(payload, fds[0], fds[1], fds[2]); break;

@@ -256,6 +256,40 @@ static void test_mime(void) {
     CHECK(b64_decode(b64, el, dec) == 300 && !memcmp(dec, raw, 300));
     free(b64);
 
+    /* hostile attachment names: always a plain basename */
+    {
+        static const struct { const char *in, *out; } names[] = {
+            { "../x", "x" }, { "/etc/passwd", "passwd" }, { "..\\x", "x" }, { "..\\..\\.config\\autostart\\x.desktop", "x.desktop" },
+            { "../../.config/autostart/x.desktop", "x.desktop" }, { "...", "attachment" }, { ".", "attachment" }, { "", "attachment" },
+            { "evil\xe2\x80\xaegpj.exe", "evil_gpj.exe" }, { "a<b>c:d\"e|f?g*h", "a_b_c_d_e_f_g_h" }, { "tab\there", "tab_here" },
+            { ".bashrc", "bashrc" }, { "  spaced.pdf  ", "spaced.pdf" }, { "año 2026.pdf", "año 2026.pdf" }, { "x/", "attachment" },
+        };
+        for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
+            char o[256];
+            mime_safe_filename(names[i].in, o, sizeof o);
+            if (strcmp(o, names[i].out)) fprintf(stderr, "  name \"%s\" → \"%s\"\n", names[i].in, o);
+            CHECKS(o, names[i].out);
+            CHECK(!strchr(o, '/') && !strchr(o, '\\') && o[0] != '.');
+        }
+        char *big = malloc(10241);
+        for (int i = 0; i < 10240; i++) big[i] = i % 3 ? 'a' : "\xc3\xb1"[i % 2 ? 1 : 0];
+        memcpy(big, "\xc3\xb1", 2);
+        for (int i = 2; i < 10240; i++) big[i] = (i % 2) ? (char)0xb1 : (char)0xc3;
+        big[10240] = 0;
+        char o[256];
+        mime_safe_filename(big, o, sizeof o);
+        CHECK(strlen(o) <= 200 && strlen(o) % 2 == 0);
+        free(big);
+        /* through MIME: RFC 2231 percent-decoding happens first, then the sanitizer */
+        const char *hm = "Content-Type: multipart/mixed; boundary=b\r\n\r\n--b\r\nContent-Type: text/plain\r\n"
+                         "Content-Disposition: attachment; filename*=UTF-8''..%2F..%2F.config%2Fautostart%2Fx.desktop\r\n\r\nx\r\n--b--\r\n";
+        MimeMsg *hmm = malloc(sizeof *hmm);
+        mime_parse(hm, strlen(hm), hmm);
+        CHECK(hmm->nparts == 2);
+        if (hmm->nparts == 2) CHECKS(hmm->parts[1].filename, "x.desktop");
+        free(hmm);
+    }
+
     /* deep nesting is bounded */
     char *deep = malloc(64 * 1024);
     size_t dl = 0;
@@ -624,6 +658,14 @@ static void test_ical(void) {
     CHECK(be[0].start == 1792483200 && be[0].nalarms == 1 && be[0].alarms[0] == 10);
     ical_events_free(be, 1);
     free(built);
+    /* a completed to-do has exactly one STATUS (servers reject two) */
+    IcBuild tb = { 0 };
+    tb.is_todo = 1; tb.uid = "t"; tb.summary = "x"; tb.status = "NEEDS-ACTION"; tb.completed = 1792483200; tb.due = 1792483200;
+    char *tt = ical_build(&tb, &bl);
+    int nst = 0;
+    for (const char *p = tt; p && (p = strstr(p, "STATUS:")); p++) nst++;
+    CHECK(tt && nst == 1 && strstr(tt, "STATUS:COMPLETED"));
+    free(tt);
     ical_events_free(ev, n);
 
     /* hostile recurrence rules (RFC 5545 bounds BYDAY ordinals to ±53) */

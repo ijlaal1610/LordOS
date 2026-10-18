@@ -1,4 +1,4 @@
-/* print.c — ver print.h. */
+/* print.c — see print.h. */
 #include "print.h"
 #include "cups.h"
 #include "escl.h"
@@ -42,7 +42,7 @@ static void finish(Task *t, int ok, JBuf *res) {
     pthread_mutex_unlock(&mu);
 }
 
-/* ---- descubrir ---- */
+/* ---- discovery ---- */
 
 static void discover(JBuf *out) {
     static const char *const ptypes[] = { "_ipp._tcp", "_ipps._tcp" };
@@ -57,7 +57,7 @@ static void discover(JBuf *out) {
         MdnsSvc *s = &svc[i];
         if (strncmp(s->type, "_ipp", 4) || !s->addr[0]) continue;
         int tls = !strcmp(s->type, "_ipps._tcp");
-        /* la misma impresora suele anunciarse por ipp e ipps: se muestra una vez (ipp) */
+        /* the same printer usually announces itself over ipp and ipps: shown once (ipp) */
         int dup = 0;
         for (int j = 0; tls && j < n; j++) if (j != i && !strcmp(svc[j].type, "_ipp._tcp") && !strcmp(svc[j].name, s->name)) dup = 1;
         if (dup) continue;
@@ -106,7 +106,7 @@ static void discover(JBuf *out) {
     free(svc);
 }
 
-/* ~/.cache/lordos/scan: donde quedan los escaneos hasta que se guardan */
+/* ~/.cache/lordos/scan: where scans stay until they're saved */
 static int scan_dir(char *out, size_t n) {
     const char *home = getenv("HOME");
     if (!home || home[0] != '/') return -1;

@@ -1,7 +1,7 @@
 // archive.js — los comprimidos en Archivos: mirarlos por dentro como una carpeta, abrir o ver un
 // archivo de adentro (se extrae solo ese a la caché), «Extraer aquí» y «Comprimir». El trabajo lo
 // hace el ayudante encerrado lord-doc (libarchive), que nunca escribe fuera de la carpeta de
-// destino (ver docs/DOCUMENTOS.md).
+// destino (ver docs/DOCUMENTS.md).
 //   lugar: { type: 'archive', path: '/…/fotos.zip', inner: 'carpeta/sub' }
 import { archive, createStore, fs } from '@lordos/sdk';
 import { bump, freeName } from './ops.js';

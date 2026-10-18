@@ -34,7 +34,16 @@ export const contacts = {
   remove: (book, uid) => mailRequest('contact-delete', { book, uid }),
   importFile: (path, book) => mailRequest('contact-import', { book }, { files: [path] }),
   photo: async (book, uid, size = 128) => (await mailRequest('contact-photo', { book, uid, size })).image,
-  autocomplete: async (q) => (await mailRequest('autocomplete', { q })).items || [],
+  // Contacts come first; a person you wrote to who is also a contact appears once.
+  autocomplete: async (q) => {
+    const seen = new Set();
+    return ((await mailRequest('autocomplete', { q })).items || []).filter((x) => {
+      const k = (x.email || '').toLowerCase();
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  },
 };
 
 export function displayName(c) {

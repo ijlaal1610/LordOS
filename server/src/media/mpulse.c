@@ -1,8 +1,8 @@
-/* mpulse.c — streams de PipeWire de los medios, en lord-server (protocolo de PulseAudio, el
- * mismo tagstruct que server/src/sound/pulse.c). Una conexión por stream, para que cada uno
- * aparezca con su app en Ajustes → Sonido: reproducir (Reproductor, Fotos) con su latencia para el
- * reloj del video, o grabar (micrófono, después del permiso). Todo asíncrono: lord-server nunca
- * espera a PipeWire (ver aring.h y docs/MEDIOS.md). */
+/* mpulse.c — PipeWire streams for media, in lord-server (PulseAudio protocol, the
+ * same tagstruct as server/src/sound/pulse.c). One connection per stream, so that each one
+ * shows up with its app in Settings → Sound: playback (Player, Photos) with its latency for the
+ * video clock, or recording (microphone, after the permission). All asynchronous: lord-server never
+ * waits for PipeWire (see aring.h and docs/MEDIA.md). */
 #include "mpulse.h"
 #include "../sound/pulse.h"
 
@@ -92,14 +92,14 @@ static void on_packet(LmPulse *p, uint32_t ch, const uint8_t *d, size_t n) {
             uint64_t sink = ts_get_u64(&t);
             ts_get_u64(&t);                              /* source_usec */
             p->lat_playing = ts_get_bool(&t);
-            ts_skip(&t);                                 /* timeval local */
-            ts_skip(&t);                                 /* timeval remoto */
+            ts_skip(&t);                                 /* local timeval */
+            ts_skip(&t);                                 /* remote timeval */
             int64_t wi = (int64_t)ts_get_u64(&t), ri = (int64_t)ts_get_u64(&t);
             if (!t.err) {
                 p->sink_usec = sink;
                 p->write_index = wi;
                 p->read_index = ri;
-                p->lat_at_ms = (p->lat_sent_ms + lm_now_ms()) / 2;   /* el servidor contestó a mitad de camino */
+                p->lat_at_ms = (p->lat_sent_ms + lm_now_ms()) / 2;   /* the server answered halfway */
                 p->lat_valid = 1;
             }
         }
@@ -167,7 +167,7 @@ static int send_name(LmPulse *p) {
 static int send_playback(LmPulse *p);
 static int send_record(LmPulse *p);
 
-/* Paso siguiente del saludo: AUTH → nombre → crear el stream → listo. */
+/* Next step of the handshake: AUTH → name → create the stream → ready. */
 static void advance(LmPulse *p) {
     if (p->wait_done != 1) return;
     if (p->wait_what == W_AUTH) { if (send_name(p)) p->failed = 1; }
@@ -192,7 +192,7 @@ int lmp_connect(LmPulse *p, int fd, const char *app_name, const char *app_id) {
 }
 
 static void channel_map(TsOut *t, int ch) {
-    uint8_t pos[2] = { ch == 1 ? 0 : 1, 2 };            /* MONO o FRONT_LEFT, FRONT_RIGHT */
+    uint8_t pos[2] = { ch == 1 ? 0 : 1, 2 };            /* MONO or FRONT_LEFT, FRONT_RIGHT */
     ts_cmap(t, (uint8_t)ch, pos);
 }
 
@@ -214,13 +214,13 @@ static int send_playback(LmPulse *p) {
     uint32_t tag = begin(p, &t, PA_CMD_CREATE_PLAYBACK_STREAM);
     ts_ss(&t, PA_SAMPLE_S16LE, (uint8_t)ch, (uint32_t)rate);
     channel_map(&t, ch);
-    ts_u32(&t, PA_INVALID_INDEX);                    /* la salida predeterminada */
+    ts_u32(&t, PA_INVALID_INDEX);                    /* the default output */
     ts_str(&t, NULL);
     ts_u32(&t, 0xffffffffu);                         /* maxlength */
-    ts_bool(&t, 1);                                  /* corked: arranca cuando hay datos */
+    ts_bool(&t, 1);                                  /* corked: starts when there's data */
     uint32_t bps = (uint32_t)rate * p->frame_bytes;
     ts_u32(&t, bps / 5);                             /* tlength: 200 ms */
-    ts_u32(&t, 0xffffffffu);                         /* prebuf: el del servidor */
+    ts_u32(&t, 0xffffffffu);                         /* prebuf: the server's */
     ts_u32(&t, bps / 50);                            /* minreq: 20 ms */
     ts_u32(&t, 0);                                   /* syncid */
     uint32_t vol[2] = { PA_VOLUME_NORM, PA_VOLUME_NORM };
@@ -239,7 +239,7 @@ static int send_playback(LmPulse *p) {
     ts_bool(&t, 0);                                  /* fail_on_suspend */
     ts_bool(&t, 0);                                  /* relative_volume */
     ts_bool(&t, 0);                                  /* passthrough */
-    ts_u8(&t, 0);                                    /* formatos: usa el sample spec */
+    ts_u8(&t, 0);                                    /* formats: uses the sample spec */
     p->corked = 1;
     return sendcmd(p, &t, tag, W_PLAY);
 }
@@ -335,7 +335,7 @@ void lmp_volume(LmPulse *p, double v) {
     if (p->fd < 0 || !p->ready || p->play_ch == 0xffffffffu) return;
     if (v < 0) v = 0;
     if (v > 1.5) v = 1.5;
-    uint32_t vol = (uint32_t)(v * PA_VOLUME_NORM + 0.5);      /* lineal, igual que lord.sound */
+    uint32_t vol = (uint32_t)(v * PA_VOLUME_NORM + 0.5);      /* linear, same as lord.sound */
     uint32_t vv[2] = { vol, vol };
     TsOut t;
     uint32_t tag = begin(p, &t, PA_CMD_SET_SINK_INPUT_VOLUME);

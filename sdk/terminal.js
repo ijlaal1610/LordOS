@@ -1,7 +1,7 @@
-// terminal.js — sesiones de terminal para apps (lord.term) y portapapeles de la sesión.
-// La emulación y el dibujo están en C; acá solo se crean sesiones, se configuran y se
-// escuchan sus eventos: 'title', 'cwd', 'bell', 'badge', 'notify', 'profile', 'attention',
-// 'copy', 'command' (código de salida), 'output' (actividad, ~1/s) y 'exit'.
+// terminal.js — terminal sessions for apps (lord.term) and the session clipboard.
+// Emulation and drawing are in C; here sessions are only created, configured and
+// their events listened to: 'title', 'cwd', 'bell', 'badge', 'notify', 'profile', 'attention',
+// 'copy', 'command' (exit code), 'output' (activity, ~1/s) and 'exit'.
 import { createStore } from './store.js';
 
 const subs = new Map();

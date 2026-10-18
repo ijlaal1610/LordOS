@@ -1,17 +1,17 @@
-/* aring.h — audio entre lord-server y lord-media por memoria compartida (ver docs/MEDIOS.md).
+/* aring.h — audio between lord-server and lord-media over shared memory (see docs/MEDIA.md).
  *
- * lord-media no habla con PipeWire: el socket de PipeWire (protocolo de PulseAudio) es una
- * capacidad muy amplia (cargar módulos, grabar otros streams, cambiar la salida), y un
- * decodificador comprometido no debe tenerla. Entonces:
- *   - reproducir: lord-media escribe PCM (s16, 48 kHz, estéreo) en este anillo; lord-server tiene
- *     el stream de PipeWire y copia del anillo cuando PipeWire pide (REQUEST), sin esperar.
- *   - el reloj: lord-server escribe en la misma página qué byte del anillo se está oyendo ahora
- *     (read_index − latencia de la salida) y en qué instante, con un seqlock. lord-media lo lee
- *     sin bloqueos ni idas y vueltas para sincronizar el video.
- *   - grabar (micrófono): al revés; lord-server tiene el stream de grabación (después del
- *     permiso) y escribe; lord-media lee.
- * El memfd lo crea lord-server, sellado (no se puede achicar ni agrandar). Solo un escritor y un
- * lector por anillo; las posiciones son contadores de bytes que no vuelven a cero. */
+ * lord-media doesn't talk to PipeWire: the PipeWire socket (PulseAudio protocol) is a
+ * very broad capability (loading modules, recording other streams, changing the output), and a
+ * compromised decoder must not have it. So:
+ *   - playback: lord-media writes PCM (s16, 48 kHz, stereo) into this ring; lord-server owns
+ *     the PipeWire stream and copies from the ring when PipeWire asks (REQUEST), without waiting.
+ *   - the clock: lord-server writes in the same page which byte of the ring is being heard now
+ *     (read_index − output latency) and at what instant, with a seqlock. lord-media reads it
+ *     without locks or round trips to sync the video.
+ *   - recording (microphone): the other way around; lord-server owns the capture stream (after the
+ *     permission) and writes; lord-media reads.
+ * lord-server creates the memfd, sealed (it can't be shrunk or grown). Only one writer and one
+ * reader per ring; positions are byte counters that never wrap to zero. */
 #ifndef LORD_MEDIA_ARING_H
 #define LORD_MEDIA_ARING_H
 
@@ -22,36 +22,36 @@
 
 #define AR_MAGIC  0x474e5241u          /* "ARNG" */
 #define AR_RATE   48000
-#define AR_HDR    512                  /* la cabecera ocupa esto; los datos van después */
+#define AR_HDR    512                  /* the header takes this much; the data goes after */
 
 typedef struct {
-    uint32_t magic, rate, channels, size;       /* size: bytes de datos (potencia de 2) */
-    _Atomic uint64_t wpos;                      /* bytes escritos (escritor) */
-    _Atomic uint64_t rpos;                      /* bytes leídos (lector) */
-    /* reproducir: lord-media pide descartar lo anterior a discard_to (seek) subiendo serial */
+    uint32_t magic, rate, channels, size;       /* size: data bytes (power of 2) */
+    _Atomic uint64_t wpos;                      /* bytes written (writer) */
+    _Atomic uint64_t rpos;                      /* bytes read (reader) */
+    /* playback: lord-media asks to discard what's before discard_to (seek) by bumping serial */
     _Atomic uint64_t discard_to;
     _Atomic uint32_t serial;
-    _Atomic uint32_t overruns;                  /* grabar: bytes perdidos por anillo lleno (x1024) */
-    /* reloj (lo escribe lord-server, seqlock: impar = escribiendo) */
+    _Atomic uint32_t overruns;                  /* recording: bytes lost because the ring was full (x1024) */
+    /* clock (written by lord-server, seqlock: odd = writing) */
     _Atomic uint32_t clk_seq;
     _Atomic int32_t  clk_valid, clk_playing;
-    _Atomic int64_t  clk_pos;                   /* byte del anillo que se oye en clk_mono_us */
+    _Atomic int64_t  clk_pos;                   /* ring byte heard at clk_mono_us */
     _Atomic int64_t  clk_mono_us;               /* CLOCK_MONOTONIC */
-    _Atomic int64_t  clk_latency_us;            /* latencia de la salida (informativo) */
+    _Atomic int64_t  clk_latency_us;            /* output latency (informational) */
 } ARingHdr;
 
-_Static_assert(sizeof(ARingHdr) <= AR_HDR, "cabecera del anillo");
+_Static_assert(sizeof(ARingHdr) <= AR_HDR, "ring header");
 
 static inline uint8_t *ar_data(ARingHdr *h) { return (uint8_t *)h + AR_HDR; }
 static inline size_t ar_bytes(uint32_t size) { return AR_HDR + (size_t)size; }
 
-/* Bytes disponibles para leer / lugar libre para escribir. */
+/* Bytes available to read / free room to write. */
 static inline uint64_t ar_avail(ARingHdr *h) {
     return atomic_load_explicit(&h->wpos, memory_order_acquire) - atomic_load_explicit(&h->rpos, memory_order_acquire);
 }
 static inline uint64_t ar_space(ARingHdr *h) { return h->size - ar_avail(h); }
 
-/* Escribe hasta n bytes (lo que entre). Devuelve cuántos. */
+/* Writes up to n bytes (what fits). Returns how many. */
 static inline size_t ar_write(ARingHdr *h, const void *p, size_t n) {
     uint64_t w = atomic_load_explicit(&h->wpos, memory_order_relaxed);
     uint64_t space = h->size - (w - atomic_load_explicit(&h->rpos, memory_order_acquire));
@@ -63,11 +63,11 @@ static inline size_t ar_write(ARingHdr *h, const void *p, size_t n) {
     return n;
 }
 
-/* Copia hasta n bytes desde la posición de lectura sin avanzarla. */
+/* Copies up to n bytes from the read position without advancing it. */
 static inline size_t ar_peek(ARingHdr *h, void *p, size_t n) {
     uint64_t r = atomic_load_explicit(&h->rpos, memory_order_relaxed);
     uint64_t avail = atomic_load_explicit(&h->wpos, memory_order_acquire) - r;
-    if (avail > h->size) avail = h->size;       /* un escritor roto no hace leer de más */
+    if (avail > h->size) avail = h->size;       /* a broken writer can't cause over-reading */
     if (n > avail) n = (size_t)avail;
     size_t off = (size_t)(r & (h->size - 1)), first = h->size - off < n ? h->size - off : n;
     memcpy(p, ar_data(h) + off, first);
@@ -77,9 +77,9 @@ static inline size_t ar_peek(ARingHdr *h, void *p, size_t n) {
 static inline void ar_consume(ARingHdr *h, size_t n) { atomic_fetch_add_explicit(&h->rpos, n, memory_order_release); }
 static inline size_t ar_read(ARingHdr *h, void *p, size_t n) { n = ar_peek(h, p, n); ar_consume(h, n); return n; }
 
-/* Variantes para lord-server: el otro lado (lord-media, o una app) puede escribir la cabecera,
- * así que lord-server NO confía en size ni en las posiciones del otro: usa su propio tamaño y su
- * propio cursor, y acota todo. Lo peor que puede hacer el otro lado es perder o repetir audio. */
+/* Variants for lord-server: the other side (lord-media, or an app) can write the header,
+ * so lord-server does NOT trust the other side's size or positions: it uses its own size and its
+ * own cursor, and bounds everything. The worst the other side can do is lose or repeat audio. */
 static inline size_t ar_write_t(ARingHdr *h, uint32_t size, uint64_t *wpos, const void *p, size_t n) {
     uint64_t r = atomic_load_explicit(&h->rpos, memory_order_acquire), w = *wpos;
     uint64_t used = (r > w || w - r > size) ? size : w - r;
@@ -106,7 +106,7 @@ static inline size_t ar_read_t(ARingHdr *h, uint32_t size, uint64_t *rpos, void 
     return n;
 }
 
-/* Reloj: escribe (lord-server) y lee (lord-media). */
+/* Clock: written by lord-server and read by lord-media. */
 static inline void ar_clock_write(ARingHdr *h, int valid, int playing, int64_t pos, int64_t mono_us, int64_t lat_us) {
     uint32_t s = atomic_load_explicit(&h->clk_seq, memory_order_relaxed);
     atomic_store_explicit(&h->clk_seq, s + 1, memory_order_relaxed);

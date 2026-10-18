@@ -1,21 +1,21 @@
-/* thbrk.h — corte de palabras del tailandés con el diccionario de libthai-data (ver thbrk.c). */
+/* thbrk.h — Thai word breaking with the libthai-data dictionary (see thbrk.c). */
 #ifndef LORD_THBRK_H
 #define LORD_THBRK_H
 
 #include <stdint.h>
 
-int thbrk_available(void);              /* ¿está /usr/share/libthai/thbrk.tri? (lo carga la primera vez) */
-int thbrk_is_thai(uint32_t c);          /* letra o marca tailandesa (lo que va al diccionario) */
-/* Entre dos caracteres seguidos del bloque tailandés que no son los dos letras (ๆ, dígitos, ฿):
- * 1 se puede cortar, 0 no, -1 alguno no es del bloque. */
+int thbrk_available(void);              /* is /usr/share/libthai/thbrk.tri there? (loads it the first time) */
+int thbrk_is_thai(uint32_t c);          /* Thai letter or mark (what goes to the dictionary) */
+/* Between two consecutive characters of the Thai block that are not both letters (ๆ, digits, ฿):
+ * 1 can break, 0 cannot, -1 one of them is not in the block. */
 int thbrk_pair(uint32_t a, uint32_t b);
-/* Cortes dentro de un tramo tailandés ws[0..len): posiciones 1..len-1 en out (hasta max).
- * Sin diccionario, los comienzos de sílaba. */
+/* Breaks inside a Thai run ws[0..len): positions 1..len-1 into out (up to max).
+ * Without a dictionary, the syllable starts. */
 int thbrk_chunk(const uint32_t *ws, int len, int *out, int max);
 
-/* Un párrafo entero: para cada lugar que decide el tailandés, bk[i] = 1 (se puede cortar antes
- * de s[i]) o 2 (no); el resto queda como estaba (0). Tramos por diccionario, siglas con punto
- * y ๆ, dígitos y ฿ como libthai. */
+/* A whole paragraph: for each place Thai decides, bk[i] = 1 (may break before
+ * s[i]) or 2 (may not); the rest stays as it was (0). Runs by dictionary, abbreviations with a period
+ * and ๆ, digits and ฿ like libthai. */
 void thbrk_text(const uint32_t *s, int n, uint8_t *bk);
 
 #endif

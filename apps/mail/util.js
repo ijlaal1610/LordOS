@@ -1,6 +1,6 @@
 // util.js — small helpers for Mail: dates in the list, folder names, color categories, opening
 // an attachment the way Files would.
-import { t, formatDate, formatTime, wm, getApp, fs, defaultOpenerId, nativeOf, calendarEvents, contacts, addressBooks } from '@lordos/sdk';
+import { t, formatDate, formatTime, weekdayName, wm, getApp, fs, defaultOpenerId, nativeOf, calendarEvents, contacts, addressBooks } from '@lordos/sdk';
 
 export const CATEGORY_COLORS = ['#ff453a', '#ff9f0a', '#ffd60a', '#30d158', '#0a84ff', '#bf5af2'];
 // labels are built at render time (they follow the language)
@@ -11,11 +11,11 @@ export function listDate(ms) {
   if (d.toDateString() === now.toDateString()) return formatTime(d);
   const y = new Date(now); y.setDate(now.getDate() - 1);
   if (d.toDateString() === y.toDateString()) return t('mail.yesterday');
-  if (now - d < 6 * 86400000) return formatDate(d, { weekday: 'short' });
-  return formatDate(d, { day: 'numeric', month: 'short', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) });
+  if (now - d < 6 * 86400000) return weekdayName(d.getDay(), false);
+  return formatDate(d, d.getFullYear() === now.getFullYear() ? 'short' : 'numeric');
 }
 
-export const fullDate = (ms) => `${formatDate(new Date(ms), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} ${formatTime(new Date(ms))}`;
+export const fullDate = (ms) => `${formatDate(new Date(ms), 'long')} ${formatTime(new Date(ms))}`;
 
 const SPECIAL_ICONS = { inbox: '📥', drafts: '📝', sent: '📤', archive: '🗄️', junk: '⚠️', trash: '🗑️', all: '📚', flagged: '🚩' };
 export const folderIcon = (f) => SPECIAL_ICONS[f.special] || '📁';
@@ -54,3 +54,15 @@ export function openPath(path, name) {
 }
 
 export const revealPath = (path) => wm.open('files', { new: true, args: { path: fs.parent(path), select: fs.basename(path), nonce: Date.now() } });
+
+// The same rule as lord-maild (mime_safe_filename): a sender-chosen attachment name becomes a
+// plain basename: no path parts, no leading dots, no control, bidi-override or FAT-reserved
+// characters, at most 200 bytes. Never empty.
+export function safeName(name) {
+  let s = String(name || '').split(/[/\\]/).pop();
+  s = s.replace(/^[.\s]+/, '').replace(/[\u0000-\u001f\u007f-\u009f<>:"|?*\u200e\u200f\u061c\u202a-\u202e\u2066-\u2069\ufeff]/g, '_');
+  const bytes = (x) => { let n = 0; for (const ch of x) { const c = ch.codePointAt(0); n += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4; } return n; };
+  while (bytes(s) > 200) s = [...s].slice(0, -1).join('');
+  s = s.replace(/[.\s]+$/, '');
+  return s && !/^[._\s]+$/.test(s) ? s : 'attachment';
+}

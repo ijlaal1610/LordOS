@@ -1,17 +1,17 @@
-/* vpn.c — piezas comunes de las VPN que no son WireGuard ni OpenVPN (IPsec, PPTP, OpenConnect,
- * Fortinet): el formato de importación clave=valor, el guardado (0600) y los metadatos
- * públicos, las rutas (túnel completo como "def1" de OpenVPN o rutas sueltas) y el proceso que
- * lanza un programa de ruta fija y lee su salida.
+/* vpn.c — common pieces of the VPNs that aren't WireGuard or OpenVPN (IPsec, PPTP, OpenConnect,
+ * Fortinet): the key=value import format, saving (0600) and the public metadata, the routes
+ * (full tunnel like OpenVPN's "def1" or individual routes) and the process that launches a
+ * fixed-path program and reads its output.
  *
- * Formato de importación: una línea por "clave=valor"; las líneas vacías y las que empiezan
- * con # se ignoran. Un valor PEM ("-----BEGIN ...") sigue en las líneas siguientes hasta su
- * "-----END ...-----". Las claves permitidas las define cada tipo. */
+ * Import format: one "key=value" per line; empty lines and those starting with # are
+ * ignored. A PEM value ("-----BEGIN ...") continues on the following lines until its
+ * "-----END ...-----". Each type defines its allowed keys. */
 #include "netpriv.h"
 #include "vpn.h"
 #include "net.h"
 #include "../admin.h"
 
-#include <net/if.h>                 /* antes que los de linux/ */
+#include <net/if.h>                 /* before the linux/ ones */
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
@@ -32,7 +32,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-/* ---- clave=valor ---- */
+/* ---- key=value ---- */
 
 static int in_list(const char *const *l, const char *w) {
     for (int i = 0; l && l[i]; i++) if (!strcmp(l[i], w)) return 1;
@@ -126,8 +126,8 @@ void vpn_kv_free(VpnKv *kv) {
     memset(kv, 0, sizeof *kv);
 }
 
-/* Guarda la config (0600): /etc/lordos/net/vpn/<nombre>.<tipo> con las claves y
- * <nombre>.<clave>.pem con cada PEM. */
+/* Saves the config (0600): /etc/lordos/net/vpn/<name>.<type> with the keys and
+ * <name>.<key>.pem with each PEM. */
 int vpn_kv_save(const char *name, const char *type, const VpnKv *kv) {
     Buf b = {0};
     for (int i = 0; i < kv->n; i++) buf_printf(&b, "%s=%s\n", kv->key[i], kv->val[i]);
@@ -183,14 +183,14 @@ int vpn_meta_save(const char *name, const char *json) {
     return write_file_atomic(path, json, strlen(json), 0644);
 }
 
-/* ---- rutas ---- */
+/* ---- routes ---- */
 
 int vpn_resolve(const char *host, int *family, uint8_t a[16]) {
     char h[256];
     snprintf(h, sizeof h, "%s", host);
     char *colon = strrchr(h, ':');
     if (h[0] == '[') { memmove(h, h + 1, strlen(h)); char *e = strchr(h, ']'); if (e) *e = 0; }
-    else if (colon && strchr(h, ':') == colon) *colon = 0;     /* host:puerto */
+    else if (colon && strchr(h, ':') == colon) *colon = 0;     /* host:port */
     if (!parse_ip(h, family, a)) return 0;
     struct addrinfo hints = { .ai_socktype = SOCK_DGRAM }, *res = NULL;
     if (getaddrinfo(h, NULL, &hints, &res) || !res) return -1;
@@ -203,9 +203,9 @@ int vpn_resolve(const char *host, int *family, uint8_t a[16]) {
     return 0;
 }
 
-/* Túnel completo sin tocar la ruta por defecto del sistema (como "redirect-gateway def1"):
- * 0.0.0.0/1 y 128.0.0.0/1 por el túnel, y una ruta al servidor por donde iba antes. Todas
- * con protocolo RTPROT_LORDOS, para poder borrarlas siempre (también tras un corte). */
+/* Full tunnel without touching the system's default route (like "redirect-gateway def1"):
+ * 0.0.0.0/1 and 128.0.0.0/1 through the tunnel, and a route to the server via where it went
+ * before. All with protocol RTPROT_LORDOS, so they can always be deleted (also after a cut). */
 int vpn_routes_full(const char *ifn, int sfam, const uint8_t server[16]) {
     int fd = nl_open(NETLINK_ROUTE, 0);
     if (fd < 0) return -1;
@@ -222,7 +222,7 @@ int vpn_routes_full(const char *ifn, int sfam, const uint8_t server[16]) {
     return r ? -1 : 0;
 }
 
-/* Rutas sueltas por el túnel ("10.0.0.0/8,192.168.1.0/24"). */
+/* Individual routes through the tunnel ("10.0.0.0/8,192.168.1.0/24"). */
 int vpn_routes_list(const char *ifn, const char *list) {
     int fd = nl_open(NETLINK_ROUTE, 0);
     if (fd < 0) return -1;
@@ -237,7 +237,7 @@ int vpn_routes_list(const char *ifn, const char *list) {
     return n;
 }
 
-/* Saca la ruta al servidor (la única que no se va sola con la interfaz del túnel). */
+/* Removes the route to the server (the only one that doesn't go away by itself with the tunnel's interface). */
 void vpn_routes_clear(int sfam, const uint8_t server[16]) {
     int fd = nl_open(NETLINK_ROUTE, 0);
     if (fd < 0) return;
@@ -254,7 +254,7 @@ int vpn_routes_valid(const char *list) {
     return n > 0;
 }
 
-/* ---- proceso ---- */
+/* ---- process ---- */
 
 volatile sig_atomic_t vpn_stop;
 static void on_term(int s) { (void)s; vpn_stop = 1; }
@@ -310,7 +310,7 @@ void vpn_mark(const char *ifn, const char *name, int set) {
     write_file_atomic(mark, c, (size_t)n, 0644);
 }
 
-/* Estado genérico: el proceso residente y la interfaz. */
+/* Generic state: the resident process and the interface. */
 int vpn_status_json(const char *name, const char *type, Buf *out) {
     char ifn[IFNAMSIZ], d[40];
     vpn_ifname(type, name, ifn, sizeof ifn);
@@ -318,7 +318,7 @@ int vpn_status_json(const char *name, const char *type, Buf *out) {
     char ip[64] = "";
     int idx = rt_ifindex(ifn);
     if (idx) {
-        /* primera IPv4 de la interfaz */
+        /* first IPv4 of the interface */
         struct ifreq r = {0};
         int s = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
         snprintf(r.ifr_name, sizeof r.ifr_name, "%s", ifn);
@@ -332,7 +332,7 @@ int vpn_status_json(const char *name, const char *type, Buf *out) {
     return 0;
 }
 
-/* ---- tipos ---- */
+/* ---- types ---- */
 
 static const struct { const char *type, *package, *bins[3]; int optional, insecure; } types[] = {
     { "wireguard", "", { NULL }, 0, 0 },
@@ -353,7 +353,7 @@ int vpn_type_known(const char *type) {
 int vpn_type_available(const char *type) {
     for (size_t i = 0; i < NTYPES; i++) {
         if (strcmp(types[i].type, type)) continue;
-        if (!strcmp(type, "wireguard")) {           /* módulo del kernel (se carga solo al crear la interfaz) */
+        if (!strcmp(type, "wireguard")) {           /* kernel module (loaded automatically when creating the interface) */
             struct utsname u;
             char p[200];
             if (access("/sys/module/wireguard", F_OK) == 0) return 1;

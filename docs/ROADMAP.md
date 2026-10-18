@@ -92,7 +92,7 @@ Lo que queda fuera (imagen de fondo, emoji COLR/SVG, GPOS) está en `TERMINAL.md
 
 ## M5 — Idioma y región (todo el sistema) ✅ (2026-10-15)
 
-Detalle en `IDIOMAS.md`. Va antes de Wayland para que las apps GTK/Qt reciban el mismo idioma.
+Detalle en `LANGUAGES.md`. Va antes de Wayland para que las apps GTK/Qt reciban el mismo idioma.
 
 - [x] Región del sistema por usuario (`~/.config/locale.conf`) heredada por la sesión y los
       shells; mensajes de Debian (gettext) en el idioma elegido (verificado con `ls`, `date`, `printf`).
@@ -110,7 +110,7 @@ Detalle en `IDIOMAS.md`. Va antes de Wayland para que las apps GTK/Qt reciban el
 
 ## M5b — Escrituras complejas ✅ (2026-10-15)
 
-Detalle en `IDIOMAS.md` → "Escrituras complejas". Sin HarfBuzz, fribidi, ICU, ibus ni fcitx.
+Detalle en `LANGUAGES.md` → "Escrituras complejas". Sin HarfBuzz, fribidi, ICU, ibus ni fcitx.
 
 - [x] Bidi de Unicode completo (UAX #9): 91.707/91.707 casos de `BidiCharacterTest.txt`.
 - [x] Formas contextuales del árabe, ligaduras, marcas, cursivo (nastaliq), shaper índico
@@ -150,10 +150,10 @@ instalador propio, y red, VPN, sonido y portapapeles con interfaz propia.
 - [x] Lanzador de apps Linux instaladas (`.desktop`) en el Launchpad, el menú de inicio y el
       Dock, con la excepción `lord.apps.launch(id)` aprobada (`WAYLAND.md`, "El lanzador").
 - [x] Apps nativas instalables `.lpk` (sin root), con React y el SDK compartidos con el tema,
-      `<Image pixels>` y `loadWasm` (`APPS-NATIVAS.md`); ejemplo `examples/apps/fractal`.
+      `<Image pixels>` y `loadWasm` (`NATIVE-APPS.md`); ejemplo `examples/apps/fractal`.
 - [x] Intérprete WebAssembly propio y el global `WebAssembly` (`WASM.md`): 26.290/26.290
       aserciones de la suite oficial wg-2.0; 3–5× más rápido que el mismo código en JS.
-- [x] Motor de paquetes de Debian propio (`PAQUETES.md`): OpenPGP (RSA/Ed25519), xz, HTTP y
+- [x] Motor de paquetes de Debian propio (`PACKAGES.md`): OpenPGP (RSA/Ed25519), xz, HTTP y
       resolvedor propios, `dpkg` al final; planes idénticos a apt en 12 casos; huérfanos.
 - [x] Tienda: apps de Debian por categoría (AppStream), búsqueda, plan antes de instalar o
       quitar, actualizaciones, `.deb` y `.lpk` locales.
@@ -162,27 +162,27 @@ instalador propio, y red, VPN, sonido y portapapeles con interfaz propia.
 - [x] Ajustes agrupado como en macOS/TangoOS (buscador, usuario, General, Red, Sonido,
       Actualizaciones…).
 - [x] Portapapeles: imágenes entre apps Linux que sobreviven a la app de origen, historial (❖V).
-- [x] Sonido sobre PipeWire con cliente propio (`SONIDO.md`): Centro de control y Ajustes.
+- [x] Sonido sobre PipeWire con cliente propio (`SOUND.md`): Centro de control y Ajustes.
 - [x] Red propia (netlink, DHCP, Wi-Fi con wpa_supplicant) y VPN (WireGuard por netlink propio,
-      OpenVPN) en Ajustes → Red (`RED.md`).
+      OpenVPN) en Ajustes → Red (`NETWORK.md`).
 - [x] React 19.3.1 (`react-reconciler` 0.34): renderer adaptado (`runtime/index.js`), probado con
       los dos temas, cambio de tema en vivo, apps instaladas (.lpk) y apps Linux. lord-server: 34 MB de RSS.
-- [x] Archivos al estilo Finder (`ARCHIVOS.md`): pestañas, cuatro vistas, Papelera de
+- [x] Archivos al estilo Finder (`FILES.md`): pestañas, cuatro vistas, Papelera de
       freedesktop, Vista rápida, Ver información, copiar/mover en segundo plano (`fsops.c`),
       arrastrar y soltar, etiquetas, búsqueda, discos montados y «Abrir con» (`launchWith`).
 - [ ] Pendiente de M7: OpenConnect e IPsec (strongSwan), WPA3/Enterprise, permisos reales por
       app, repositorio de apps LordOS firmado.
 - [x] `flexWrap` en el motor de layout propio (`layout.c`).
 - [x] Notas: post-its en el escritorio (widgets), markdown con lectura e índice, imágenes,
-      adjuntos y emojis, guardadas solas en `~/Notas` (`NOTAS.md`).
+      adjuntos y emojis, guardadas solas en `~/Notas` (`NOTES.md`).
 
 ## M8 — Sesión y sistema
 
 - [x] Sesión propia: `lord-sessiond` con pantalla de ingreso, bloqueo (❖L), cambio rápido de
-  usuario, sesiones en paralelo y Ajustes → Usuarios (`SESIONES.md`).
+  usuario, sesiones en paralelo y Ajustes → Usuarios (`SESSIONS.md`).
 - [x] Escritorio remoto en la LAN desde el navegador (puerto 5673, apagado por defecto;
-  `REMOTO.md`). Pendiente: audio (etapa 2, diseñada).
-- [x] Privacidad y firma de apps `.lpk` (`PRIVACIDAD.md`, `FIRMA.md`):
+  `REMOTE.md`). Pendiente: audio (etapa 2, diseñada).
+- [x] Privacidad y firma de apps `.lpk` (`PRIVACY.md`, `SIGNING.md`):
   - [x] Caja de arena propia (`server/src/sec/sandbox.c`): Landlock (ABI≤6), seccomp-bpf (lista
     blanca), sin red sin permiso, `no_new_privs`, capacidades soltadas y cgroup v2 por app;
     probada en la VM (`build/sandbox-test`, 7/7). Sin bubblewrap/flatpak/firejail.
@@ -258,7 +258,7 @@ instalador propio, y red, VPN, sonido y portapapeles con interfaz propia.
 
 ## M9 — Documentos e impresión ✅ (2026-10-17)
 
-Detalle en `DOCUMENTOS.md` y `IMPRESION.md`. Probado en la VM 116 con capturas (`m9-docs-*.png`).
+Detalle en `DOCUMENTS.md` y `PRINTING.md`. Probado en la VM 116 con capturas (`m9-docs-*.png`).
 
 - [x] **`lord-doc`, el ayudante encerrado:**
   - es el único binario con Poppler (interfaz de glib) y libarchive;
@@ -306,7 +306,7 @@ Detalle en `DOCUMENTOS.md` y `IMPRESION.md`. Probado en la VM 116 con capturas (
 
 ## M9 — Apps nativas de medios ✅ (2026-10-17)
 
-Detalle en `MEDIOS.md`. Probado en la VM 119 con capturas (`m9-media-*.png`).
+Detalle en `MEDIA.md`. Probado en la VM 119 con capturas (`m9-media-*.png`).
 
 - [x] **`lord-media`, el ayudante encerrado:**
   - es el único binario con FFmpeg (libavcodec, libavformat, libswscale, libswresample) y libva;
@@ -353,7 +353,7 @@ Detalle en `MEDIOS.md`. Probado en la VM 119 con capturas (`m9-media-*.png`).
 
 ## M9 — System apps and system network ✅ (2026-10-18)
 
-Details in `SYSTEM.md` (apps), `RED.md` (network) and `SESIONES.md` (user folders). Tested on VM 119
+Details in `SYSTEM.md` (apps), `NETWORK.md` (network) and `SESSIONS.md` (user folders). Tested on VM 119
 with screenshots (`m9-sistema-*.png`).
 
 - [x] **The network belongs to the system (`lord-netd`):** a small root service started and
@@ -447,15 +447,43 @@ Details in `SETTINGS.md`. Tested on VM 118 (`ajustes-*.png`), Bluetooth with a v
   path without a LUT; real laptops (battery, backlight, lid) and real Bluetooth controllers;
   notifications on the lock screen and a notification center; Wayland idle inhibit.
 
+## M9 — Mail, Calendar, Contacts and Reminders ✅ (2026-10-18)
+
+Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radicale with a test CA
+(`m9-mail-*.png`, `m9-calendario-*.png`, `m9-contactos*.png`, `m9-recordatorio*.png`).
+
+- [x] **`lord-maild`**, sandboxed helper with no sockets of its own: `lord-server` connects only to
+  the configured servers (or public image hosts after *Load Images*) and passes the fd. OpenSSL,
+  certificates verified against the system CA store, explicit per-account trust otherwise.
+- [x] **IMAP** (IDLE, CONDSTORE, MOVE, UIDPLUS, SPECIAL-USE, modified UTF-7), **SMTP** 465/587,
+  local cache and offline prefix search; a 10,000-message folder syncs in ~2 s and opens from the
+  cache in ~20 ms; virtualized list.
+- [x] **Mail app:** three panes, toolbar, unified inbox, conversations, flags, six categories (IMAP
+  `$label1…6`), attachments through the system's default apps, signatures, rich text / markdown /
+  plain compose, server drafts, send later, new-mail notifications.
+- [x] **HTML** through our own sanitizer into native views (no web engine), remote images blocked
+  until asked, tracking pixels dropped, deceptive links flagged; plain-text fallback.
+- [x] **Accounts:** any IMAP/SMTP; Gmail, Outlook.com, Yahoo and iCloud from our own table; app
+  passwords in the keyring; OAuth prepared and disabled ("needs your client ID").
+- [x] **Calendar** (day / week / month, colored calendars, local and CalDAV, recurrence),
+  **invitations** from Mail (Accept / Maybe / Decline with iTIP REPLY), **Reminders** (lists, due
+  dates, priorities, flags, smart lists, VTODO over CalDAV), **Contacts** (local and CardDAV,
+  groups, photo; Mail autocompletes from it). Alarms ring with the apps closed.
+- [x] **Tests:** `mail-test` 30,953 checks (IMAP, MIME, charsets, HTML sanitizer, iCal, vCard, XML,
+  mutation fuzzing), `mailnet-test` 138, `mailc-test` 69; ASan/UBSan target.
+- [ ] Real providers (Gmail, Outlook.com, Yahoo, iCloud) and OAuth2 with a registered client ID.
+- [ ] Edit a single occurrence of a repeating event; create calendars/address books on the server.
+- [ ] CJK multibyte charsets; S/MIME and OpenPGP; QRESYNC.
+
 ## Pendiente antes del ISO final
 
-- [ ] **Mail, Calendario, Contactos y Recordatorios** (estilo Outlook; cuentas IMAP/SMTP, CalDAV y
-  CardDAV; usa el llavero de Contraseñas).
+- [x] **Mail, Calendario, Contactos y Recordatorios** (see "M9 — Mail, Calendar, Contacts and
+  Reminders" above and `MAIL.md`).
 - [x] **Secciones de Ajustes que faltan:** Pantallas, Bluetooth, Energía, Notificaciones, Fecha y
   hora, Apps por defecto (see "M9 — Settings: hardware pages" above and `SETTINGS.md`).
 - [ ] **Chromium y Firefox** preinstalados (apps Linux, no nativas).
 - [x] **Cámara en apps aisladas** (`.lpk`) y **varias ventanas por app aislada** (VM 122,
-  `PRIVACIDAD.md`): read-only frame ring from `lord-media` with validated ACKs, photo/video through
+  `PRIVACY.md`): read-only frame ring from `lord-media` with validated ACKs, photo/video through
   the powerbox, instant revoke; one Wayland toplevel per window, grouped in the Dock, «New
   window» from the app and the Dock.
 - [ ] **Pulido visual estilo Apple, app por app** (antes del ISO): revisar todas las apps nativas

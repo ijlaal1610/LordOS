@@ -1,15 +1,15 @@
-// i18n-pack.mjs — arma un paquete de idioma de LordOS (un solo archivo JSON).
+// i18n-pack.mjs — builds a LordOS language pack (a single JSON file).
 //
 //   node tools/i18n-pack.mjs new fr "Français" French one-other fr_FR
-//        → lordos-lang-fr.json con todas las claves en inglés para traducir
+//        → lordos-lang-fr.json with every key in English, to translate
 //   node tools/i18n-pack.mjs export pt
-//        → lordos-lang-pt.json con el idioma pt tal como está
+//        → lordos-lang-pt.json with the pt language as it is
 //
-// El paquete se instala en LordOS copiándolo a ~/Descargas y usando Ajustes → Idioma y
-// región → "Agregar"; queda en ~/.local/share/lordos/locales/<id>/. Reglas de plural
-// disponibles: one-other, zero-one-other, none, east-slavic, polish, czech-slovak, arabic
-// (ver sdk/i18n.js). La dirección ("rtl" para árabe, hebreo, persa, urdu…) sale del id.
-// Revisarlo con: node tools/i18n-check.mjs lordos-lang-fr.json
+// The pack is installed in LordOS by copying it to ~/Downloads and using Settings → Language and
+// region → "Add"; it ends up in ~/.local/share/lordos/locales/<id>/. Available plural
+// rules: one-other, zero-one-other, none, east-slavic, polish, czech-slovak, arabic
+// (see sdk/i18n.js). The direction ("rtl" for Arabic, Hebrew, Persian, Urdu…) comes from the id.
+// Check it with: node tools/i18n-check.mjs lordos-lang-fr.json
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,18 +28,18 @@ const read = (id) => {
 
 const [cmd, id, name, english, plural = 'one-other', region = ''] = process.argv.slice(2);
 if (!/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(id || '')) {
-  console.error('uso: i18n-pack.mjs new <id> "<nombre>" <nombre en inglés> [plural] [región]  |  export <id>');
+  console.error('usage: i18n-pack.mjs new <id> "<name>" <English name> [plural] [region]  |  export <id>');
   process.exit(2);
 }
 let pack;
 if (cmd === 'export') pack = read(id);
 else if (cmd === 'new') {
   const en = read('en');
-  // Idiomas que se escriben de derecha a izquierda: la interfaz se da vuelta entera.
+  // Languages written right to left: the whole interface is mirrored.
   const RTL = ['ar', 'he', 'fa', 'ur', 'yi', 'ps', 'dv', 'sd', 'ug', 'ckb', 'syr'];
   const direction = RTL.includes(id.split('-')[0]) ? 'rtl' : 'ltr';
   pack = { meta: { id, name: name || id, english: english || id, plural, region, direction }, catalogs: en.catalogs };
-} else { console.error('comando desconocido'); process.exit(2); }
+} else { console.error('unknown command'); process.exit(2); }
 const out = `lordos-lang-${id}.json`;
 fs.writeFileSync(out, `${JSON.stringify(pack, null, 2)}\n`);
-console.log(`${out}: ${Object.values(pack.catalogs).reduce((n, c) => n + Object.keys(c).length, 0)} textos`);
+console.log(`${out}: ${Object.values(pack.catalogs).reduce((n, c) => n + Object.keys(c).length, 0)} strings`);

@@ -1,19 +1,19 @@
-/* conn.c — una conexión del escritorio remoto, en un proceso hijo de lord-sessiond.
+/* conn.c — one remote desktop connection, in a child process of lord-sessiond.
  *
- *   1. TLS (OpenSSL) y una petición HTTP: la página de ingreso (/), el ingreso (POST /login),
- *      el escritorio (/desk), salir (/logout) o el WebSocket (/ws).
- *   2. Ingreso: usuario y contraseña del sistema, contra /etc/shadow con crypt(3). Solo cuentas
- *      comunes (uid >= 1000, con shell, sin bloquear; si la configuración lo pide, del grupo
- *      lordos-remote). Los fallos por IP esperan cada vez más (hasta 5 minutos). Una cookie
- *      aleatoria (Secure, HttpOnly, SameSite=Strict) dura 12 horas.
- *   3. WebSocket: busca la sesión del usuario (la misma que puede estar viéndose en el monitor) o
- *      la crea (sess.c, docs/SESIONES.md).
- *      Después este proceso SUELTA root y queda como el usuario: el resto (TLS, compresión,
- *      puente) corre sin privilegios.
- *   4. Puente: rectángulos de la sesión → PNG/JPEG → navegador; mouse, teclado y portapapeles
- *      del navegador → sesión. Control de flujo: el navegador confirma cada cuadro ("ack") y
- *      recién ahí la sesión arma el próximo, así una red lenta recibe menos cuadros.
- * Protocolo del navegador: docs/REMOTO.md. */
+ *   1. TLS (OpenSSL) and one HTTP request: the login page (/), the login itself (POST /login),
+ *      the desktop (/desk), logout (/logout) or the WebSocket (/ws).
+ *   2. Login: system user and password, checked against /etc/shadow with crypt(3). Only regular
+ *      accounts (uid >= 1000, with a shell, not locked; if the configuration asks for it, in the
+ *      lordos-remote group). Failures per IP wait longer each time (up to 5 minutes). A random
+ *      cookie (Secure, HttpOnly, SameSite=Strict) lasts 12 hours.
+ *   3. WebSocket: finds the user's session (the same one that may be showing on the monitor) or
+ *      creates it (sess.c, docs/SESSIONS.md).
+ *      After that this process DROPS root and stays as the user: the rest (TLS, compression,
+ *      bridge) runs unprivileged.
+ *   4. Bridge: session rectangles → PNG/JPEG → browser; mouse, keyboard and clipboard
+ *      from the browser → session. Flow control: the browser acknowledges each frame ("ack") and
+ *      only then does the session build the next one, so a slow network gets fewer frames.
+ * Browser protocol: docs/REMOTE.md. */
 #include "sessiond.h"
 #include "proto.h"
 
@@ -48,7 +48,7 @@ static int sock = -1;
 static char peer[48];
 
 
-/* ---- E/S TLS bloqueante (antes del puente) ---- */
+/* ---- blocking TLS I/O (before the bridge) ---- */
 
 static int tls_write_all(const void *p, size_t n) {
     const char *c = p;
@@ -86,7 +86,7 @@ static void redirect(const char *to, const char *extra) {
     respond(303, "See Other", "text/plain", h, "", 0);
 }
 
-/* ---- petición HTTP ---- */
+/* ---- HTTP request ---- */
 
 typedef struct {
     char method[8], path[256], query[256];
@@ -158,7 +158,7 @@ static int read_request(Req *r) {
     return 0;
 }
 
-/* application/x-www-form-urlencoded: valor de una clave (decodificado) */
+/* application/x-www-form-urlencoded: value of a key (decoded) */
 static int form_get(const char *body, const char *key, char *out, size_t n) {
     size_t kl = strlen(key);
     for (const char *p = body; p && *p; p = strchr(p, '&') ? strchr(p, '&') + 1 : NULL) {
@@ -185,7 +185,7 @@ static int query_int(const char *q, const char *key, int def) {
     return form_get(q, key, v, sizeof v) == 0 && v[0] ? atoi(v) : def;
 }
 
-/* ---- ingreso ---- */
+/* ---- login ---- */
 
 static int ct_equal(const char *a, const char *b) {
     size_t la = strlen(a), lb = strlen(b);
@@ -223,7 +223,7 @@ static int token_from_cookie(const char *cookie, char out[65]) {
     return 0;
 }
 
-/* usuario de la cookie, o -1 */
+/* user from the cookie, or -1 */
 static int session_user(const Req *r, char user[33], uid_t *uid) {
     char tok[65];
     if (token_from_cookie(r->cookie, tok)) return -1;
@@ -235,7 +235,7 @@ static int session_user(const Req *r, char user[33], uid_t *uid) {
         if (t->tok[0] && t->expires > now && ct_equal(t->tok, tok)) { snprintf(user, 33, "%s", t->user); *uid = t->uid; ok = 0; }
     }
     rd_unlock();
-    if (ok == 0) {     /* la cuenta pudo cambiar desde el ingreso */
+    if (ok == 0) {     /* the account may have changed since login */
         struct passwd *pw = getpwnam(user);
         if (!pw || pw->pw_uid != *uid || !sd_user_allowed(pw, 1)) ok = -1;
     }
@@ -249,14 +249,14 @@ static void token_drop_tok(const char *tok) {
     rd_unlock();
 }
 
-/* La página de ingreso, con un mensaje opcional (?e=1 contraseña, ?e=2 esperar). */
+/* The login page, with an optional message (?e=1 password, ?e=2 wait). */
 static void send_login(const Req *r) {
     respond(200, "OK", "text/html; charset=utf-8", NULL, _binary_src_remote_login_html_start,
             (size_t)(_binary_src_remote_login_html_end - _binary_src_remote_login_html_start));
     (void)r;
 }
 
-/* Mismo origen (protege el formulario de ingreso de otros sitios). */
+/* Same origin (protects the login form from other sites). */
 static int same_origin(const Req *r) {
     if (!r->origin[0]) return 1;
     const char *o = strstr(r->origin, "://");
@@ -302,7 +302,7 @@ static void ws_text(const char *fmt, ...) {
     if (n > 0 && (size_t)n < sizeof buf) ws_frame(1, buf, (size_t)n, NULL, 0);
 }
 
-/* texto como string JSON (para el portapapeles) */
+/* text as a JSON string (for the clipboard) */
 static void ws_clip(const char *t, size_t n) {
     size_t cap = n * 6 + 32, o = 0;
     char *j = malloc(cap);
@@ -348,10 +348,10 @@ static int ws_handshake(const Req *r) {
     return tls_write_all(head, (size_t)n);
 }
 
-/* ---- puente ---- */
+/* ---- bridge ---- */
 
-static int sess = -1;                  /* socket de la sesión */
-static uint32_t *fb;                   /* copia de la pantalla (para reponer en PNG) */
+static int sess = -1;                  /* session socket */
+static uint32_t *fb;                   /* copy of the screen (to replace with PNG) */
 static int W, H;
 typedef struct { uint16_t x, y, w, h; } Box16;
 static Box16 jpegs[512];
@@ -367,8 +367,8 @@ static void sess_send(int type, const void *a, size_t an) {
     if (an && write(sess, a, an) != (ssize_t)an) return;
 }
 
-static char my_token[65];              /* cookie de esta conexión (se borra al bloquear) */
-static int locked;                     /* la sesión se bloqueó: se corta */
+static char my_token[65];              /* this connection's cookie (wiped on lock) */
+static int locked;                     /* the session got locked: cut off */
 
 static void send_rect(int x, int y, int w, int h, int allow_jpeg) {
     int len = 0, jpeg = 0;
@@ -381,7 +381,7 @@ static void send_rect(int x, int y, int w, int h, int allow_jpeg) {
     if (jpeg && njpegs < 512) jpegs[njpegs++] = (Box16){ (uint16_t)x, (uint16_t)y, (uint16_t)w, (uint16_t)h };
 }
 
-/* Mensaje de la sesión → navegador. */
+/* Session message → browser. */
 static void from_session(int type, const unsigned char *d, uint32_t n) {
     switch (type) {
     case RP_SIZE:
@@ -403,10 +403,10 @@ static void from_session(int type, const unsigned char *d, uint32_t n) {
         memcpy(r, d, 8);
         if ((uint32_t)r[0] + r[2] > (uint32_t)W || (uint32_t)r[1] + r[3] > (uint32_t)H || n < 8 + (uint32_t)r[2] * r[3] * 4) break;
         for (int j = 0; j < r[3]; j++) memcpy(fb + (size_t)(r[1] + j) * W + r[0], d + 8 + (size_t)j * r[2] * 4, (size_t)r[2] * 4);
-        /* lo que se pisa deja de necesitar reposición */
+        /* whatever gets overwritten no longer needs replacing */
         for (int i = 0; i < njpegs; i++)
             if (jpegs[i].x >= r[0] && jpegs[i].y >= r[1] && jpegs[i].x + jpegs[i].w <= r[0] + r[2] && jpegs[i].y + jpegs[i].h <= r[1] + r[3]) jpegs[i--] = jpegs[--njpegs];
-        /* pantalla en movimiento (cuadros seguidos): JPEG directo, se repone en PNG al quedar quieta */
+        /* screen in motion (consecutive frames): straight JPEG, replaced with PNG once it's still */
         send_rect(r[0], r[1], r[2], r[3], rd_now() - last_frame < 0.25 ? 2 : 1);
         break;
     }
@@ -443,7 +443,7 @@ static void from_session(int type, const unsigned char *d, uint32_t n) {
         break;
     case RP_CLIP: ws_clip((const char *)d, n); break;
     case RP_SESSION:
-        /* el usuario bloqueó su sesión: este navegador también tiene que volver a ingresar */
+        /* the user locked their session: this browser has to log in again too */
         if (n >= 10 && memmem(d, n, "\"lock\"", 6)) {
             token_drop_tok(my_token);
             ws_text("{\"t\":\"bye\",\"lock\":1}");
@@ -454,7 +454,7 @@ static void from_session(int type, const unsigned char *d, uint32_t n) {
     }
 }
 
-/* JSON plano del navegador: {"t":"m","x":1,"y":2} — número o string de una clave */
+/* Flat JSON from the browser: {"t":"m","x":1,"y":2} — number or string of a key */
 static int jnum(const char *j, const char *key, long *out) {
     char k[24];
     snprintf(k, sizeof k, "\"%s\":", key);
@@ -512,8 +512,8 @@ static void from_browser(const char *j, size_t n) {
         signed char d = (signed char)(a > 10 ? 10 : a < -10 ? -10 : a);
         sess_send(RP_WHEEL, &d, 1);
     } else if ((!strcmp(t, "s") || !strcmp(t, "pz")) && !jnum(j, "p", &a) && a >= 1 && a <= 3) {
-        /* trackpad del navegador: scroll fino {t:'s', p, x, y} (1/256 px) o pellizco {t:'pz', p, s, r}
-         * (escala ×65536, giro en grados ×256) */
+        /* browser trackpad: fine scroll {t:'s', p, x, y} (1/256 px) or pinch {t:'pz', p, s, r}
+         * (scale ×65536, rotation in degrees ×256) */
         long v1 = 0, v2 = 0;
         int sc = !strcmp(t, "s");
         if (jnum(j, sc ? "x" : "s", &v1) || jnum(j, sc ? "y" : "r", &v2)) return;
@@ -536,7 +536,7 @@ static void from_browser(const char *j, size_t n) {
         sess_send(RP_KEY, p, 3);
     } else if (!strcmp(t, "ack")) sess_send(RP_READY, NULL, 0);
     else if (!strcmp(t, "resize") && !jnum(j, "w", &a) && !jnum(j, "h", &b) && a >= 640 && b >= 480 && a <= 3840 && b <= 2400) {
-        uint16_t sz[2] = { (uint16_t)(a & ~1), (uint16_t)(b & ~1) };      /* si la ve el monitor, manda él */
+        uint16_t sz[2] = { (uint16_t)(a & ~1), (uint16_t)(b & ~1) };      /* if the monitor shows it, the monitor wins */
         sess_send(RP_RESIZE, sz, 4);
     }
     else if (!strcmp(t, "ping") && !jnum(j, "ts", &a)) ws_text("{\"t\":\"pong\",\"ts\":%ld}", a);
@@ -550,7 +550,7 @@ static void from_browser(const char *j, size_t n) {
     }
 }
 
-/* Lee frames del navegador (con máscara). Devuelve -1 si se cerró. */
+/* Reads frames from the browser (masked). Returns -1 if it closed. */
 static unsigned char *win;
 static size_t win_len, win_cap;
 static int ws_read(void) {
@@ -623,7 +623,7 @@ static void bridge(const struct passwd *pw) {
     for (;;) {
         if (ws_flush()) return;
         struct pollfd p[2] = { { sock, (short)(POLLIN | (wout_len ? POLLOUT : 0)), 0 }, { sess, POLLIN, 0 } };
-        /* mientras haya algo para mandar no se lee más de la sesión (control de flujo) */
+        /* while there is something to send, nothing more is read from the session (flow control) */
         if (wout_len > (4u << 20)) p[1].events = 0;
         int timeout = njpegs ? 200 : 15000;
         int r = SSL_pending(ssl) ? 1 : poll(p, 2, timeout);
@@ -663,18 +663,18 @@ static void bridge(const struct passwd *pw) {
             sin_len -= off;
         }
         if (locked) { ws_flush(); return; }
-        /* pantalla quieta: lo que fue JPEG se repone en PNG (sin pérdida) */
+        /* screen is still: whatever was JPEG is replaced with PNG (lossless) */
         if (njpegs && rd_now() - last_frame > 0.4 && wout_len < (1u << 20)) {
             int k = njpegs;
             njpegs = 0;
             for (int i = 0; i < k; i++) send_rect(jpegs[i].x, jpegs[i].y, jpegs[i].w, jpegs[i].h, 0);
-            ws_frame(2, (unsigned char[]){ 4 }, 1, NULL, 0);    /* repuesto (sin ack) */
+            ws_frame(2, (unsigned char[]){ 4 }, 1, NULL, 0);    /* replacement (no ack) */
         }
-        if (rd_now() - last_input > 60) return;     /* el navegador manda ping cada 2 s */
+        if (rd_now() - last_input > 60) return;     /* the browser sends a ping every 2 s */
     }
 }
 
-/* ---- una conexión ---- */
+/* ---- one connection ---- */
 
 void rd_serve(SSL_CTX *ctx, int fd, const char *ip) {
     sock = fd;
@@ -712,7 +712,7 @@ void rd_serve(SSL_CTX *ctx, int fd, const char *ip) {
         explicit_bzero(r.body, sizeof r.body);
         if (!ok) {
             sd_fail_note(peer, 1);
-            sd_log("ingreso fallido para «%s»", sd_valid_username(u) ? u : "?");
+            sd_log("failed login for '%s'", sd_valid_username(u) ? u : "?");
             sleep(1);
             char to[64] = "/?e=1";
             if (sd_valid_username(u)) snprintf(to, sizeof to, "/?e=1&u=%.32s", u);
@@ -724,7 +724,7 @@ void rd_serve(SSL_CTX *ctx, int fd, const char *ip) {
         char tok[65], cookie[160];
         new_token(pw->pw_uid, u, tok);
         snprintf(cookie, sizeof cookie, "Set-Cookie: lordos_remote=%s; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=43200\r\n", tok);
-        sd_log("ingresó %s", u);
+        sd_log("%s logged in", u);
         redirect("/desk", cookie);
         return;
     }
@@ -738,7 +738,7 @@ void rd_serve(SSL_CTX *ctx, int fd, const char *ip) {
         if (logged) redirect("/desk", NULL); else send_login(&r);
         return;
     }
-    if (!strcmp(r.path, "/bg.png")) {             /* el fondo de la pantalla de ingreso */
+    if (!strcmp(r.path, "/bg.png")) {             /* the login screen background */
         char p[600];
         snprintf(p, sizeof p, "%s", rd_conf.greeter_theme);
         char *slash = strrchr(p, '/');
@@ -780,15 +780,15 @@ void rd_serve(SSL_CTX *ctx, int fd, const char *ip) {
         if (h > 1600) h = 1600;
         sess = sd_session_get(&me, w & ~1, h & ~1);
         token_from_cookie(r.cookie, my_token);
-        if (sess < 0) { respond(503, "Service Unavailable", "text/plain", NULL, "sin sesion", 10); return; }
+        if (sess < 0) { respond(503, "Service Unavailable", "text/plain", NULL, "no session", 10); return; }
         if (ws_handshake(&r)) return;
         conn_register(name);
-        /* de acá en adelante, sin root: TLS, compresión y puente como el usuario */
+        /* from here on, no root: TLS, compression and bridge as the user */
         if (initgroups(name, me.pw_gid) || setgid(me.pw_gid) || setuid(me.pw_uid) || setuid(0) == 0) {
-            sd_log("no se pudieron soltar privilegios");
+            sd_log("could not drop privileges");
             return;
         }
-        sd_log("conectado a la sesión de %s", name);
+        sd_log("connected to %s's session", name);
         bridge(&me);
         sd_log("desconectado");
         return;

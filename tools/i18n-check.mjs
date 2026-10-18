@@ -1,11 +1,11 @@
-// i18n-check.mjs — revisa los catálogos de idioma de LordOS.
+// i18n-check.mjs — checks the LordOS language catalogs.
 //
-//   node tools/i18n-check.mjs            todos los idiomas de assets/locales
-//   node tools/i18n-check.mjs pt         solo uno (o un paquete: ruta a lordos-lang-xx.json)
+//   node tools/i18n-check.mjs            every language in assets/locales
+//   node tools/i18n-check.mjs pt         just one (or a pack: path to lordos-lang-xx.json)
 //
-// Informa: claves que se usan en el código (t('espacio.clave')) y no están en el catálogo de
-// referencia (en), claves que le faltan o le sobran a cada idioma respecto de en, y
-// variables {x} que no coinciden. Sale con código 1 si falta algo.
+// Reports: keys used in the code (t('namespace.key')) that are not in the reference
+// catalog (en), keys each language is missing or has in excess compared to en, and
+// {x} variables that do not match. Exits with code 1 if something is missing.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,7 @@ const REF = 'en';
 function loadLang(id) {
   if (id.endsWith('.json') && fs.existsSync(id)) {
     const pack = JSON.parse(fs.readFileSync(id, 'utf8'));
-    const { format, ...cats } = pack.catalogs;      // format.json no son textos
+    const { format, ...cats } = pack.catalogs;      // format.json is not texts
     return { id: pack.meta.id, cats };
   }
   const cats = {};
@@ -30,7 +30,7 @@ function loadLang(id) {
 const flat = (cats) => Object.fromEntries(Object.entries(cats).flatMap(([ns, o]) => Object.entries(o).map(([k, v]) => [`${ns}.${k}`, v])));
 const vars = (v) => [...new Set((typeof v === 'object' ? Object.values(v).join(' ') : String(v)).match(/\{\w+\}/g) || [])].sort().join(',');
 
-// claves usadas en el código
+// keys used in the code
 function usedKeys() {
   const out = new Map();
   const walk = (d) => {
@@ -48,7 +48,7 @@ function usedKeys() {
 
 const ref = flat(loadLang(REF).cats);
 let bad = 0;
-for (const [k, file] of usedKeys()) if (!(k in ref)) { console.log(`✗ ${k} (usada en ${file}) no está en ${REF}`); bad++; }
+for (const [k, file] of usedKeys()) if (!(k in ref)) { console.log(`✗ ${k} (used in ${file}) is not in ${REF}`); bad++; }
 
 const langs = process.argv[2] ? [process.argv[2]] : fs.readdirSync(dir).filter((d) => d !== REF && fs.existsSync(path.join(dir, d, 'meta.json')));
 for (const id of langs) {
@@ -57,10 +57,10 @@ for (const id of langs) {
   const missing = Object.keys(ref).filter((k) => !(k in cur));
   const extra = Object.keys(cur).filter((k) => !(k in ref));
   const varDiff = Object.keys(ref).filter((k) => k in cur && vars(ref[k]) !== vars(cur[k]));
-  console.log(`${l.id}: ${Object.keys(cur).length}/${Object.keys(ref).length} claves` +
-    `${missing.length ? `, faltan ${missing.length}` : ''}${extra.length ? `, sobran ${extra.length}` : ''}${varDiff.length ? `, variables distintas en ${varDiff.length}` : ''}`);
-  for (const k of missing) console.log(`  falta   ${k}`);
-  for (const k of extra) console.log(`  sobra   ${k}`);
+  console.log(`${l.id}: ${Object.keys(cur).length}/${Object.keys(ref).length} keys` +
+    `${missing.length ? `, ${missing.length} missing` : ''}${extra.length ? `, ${extra.length} extra` : ''}${varDiff.length ? `, different variables in ${varDiff.length}` : ''}`);
+  for (const k of missing) console.log(`  missing ${k}`);
+  for (const k of extra) console.log(`  extra   ${k}`);
   for (const k of varDiff) console.log(`  vars    ${k}: ${vars(ref[k])} ≠ ${vars(cur[k])}`);
   bad += missing.length + varDiff.length;
 }

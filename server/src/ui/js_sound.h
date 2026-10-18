@@ -1,4 +1,4 @@
-/* js_sound.h — lord.sound (ver js_sound.c y docs/SONIDO.md). */
+/* js_sound.h — lord.sound (see js_sound.c and docs/SOUND.md). */
 #ifndef LORD_JS_SOUND_H
 #define LORD_JS_SOUND_H
 

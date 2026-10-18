@@ -1,18 +1,18 @@
-/* rules.c — tienda de reglas de red por app y el que decide (ver rules.h y docs/FIREWALL.md).
+/* rules.c — store of per-app network rules and the decider (see rules.h and docs/FIREWALL.md).
  *
- * Estructura en memoria:
- *   FwStore.apps   id de app → App
- *   FwStore.ids    id de regla (uint32) → RNode
- *   App.exact      dominio exacto → lista de RNode
- *   App.wild       sufijo de "*.sufijo" → lista de RNode
- *   App.trie[0|1]  trie binario de prefijos IPv4 / IPv6; cada nodo tiene su lista
- *   App.any/lan/inet  listas cortas de los destinos sin dirección
- * Cada lista junta las reglas del mismo destino (difieren en dirección, puertos o protocolo). */
+ * In-memory structure:
+ *   FwStore.apps   app id → App
+ *   FwStore.ids    rule id (uint32) → RNode
+ *   App.exact      exact domain → list of RNode
+ *   App.wild       suffix of "*.suffix" → list of RNode
+ *   App.trie[0|1]  binary prefix trie for IPv4 / IPv6; each node has its list
+ *   App.any/lan/inet  short lists for the destinations without an address
+ * Each list groups the rules with the same destination (they differ in direction, ports or protocol). */
 #ifndef _GNU_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
 #if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
-#define _DARWIN_C_SOURCE                /* O_NOFOLLOW con _POSIX_C_SOURCE en macOS (pruebas) */
+#define _DARWIN_C_SOURCE                /* O_NOFOLLOW with _POSIX_C_SOURCE on macOS (tests) */
 #endif
 #include "fw/rules.h"
 #include "fw/fwmap.h"
@@ -39,7 +39,7 @@ typedef struct TNode {
 
 struct RNode {
     FwRule r;
-    RNode *next;        /* en la lista de su destino */
+    RNode *next;        /* in its destination's list */
     App *app;
 };
 
@@ -60,7 +60,7 @@ struct FwStore {
     FwMode mode;
 };
 
-/* ---- textos y direcciones -------------------------------------------------------------------- */
+/* ---- text and addresses ---------------------------------------------------------------------- */
 
 static int id_char(unsigned char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
@@ -79,7 +79,7 @@ int fw_app_canon(const char *in, char *out, size_t n) {
     char buf[FW_APP_MAX];
     const char *pre = NULL, *mid = in;
     size_t mlen = len;
-    /* scopes de cgroup (sec/cgroup.h): primero la de .lpk, que es la más larga */
+    /* cgroup scopes (sec/cgroup.h): the .lpk one first, since it's the longest */
     if (ends_with(in, len, ".scope") && !strncmp(in, "app-lordos-lpk-", 15) && len > 15 + 6) {
         pre = "lpk:"; mid = in + 15; mlen = len - 15 - 6;
     } else if (ends_with(in, len, ".scope") && !strncmp(in, "app-lordos-", 11) && len > 11 + 6) {
@@ -90,7 +90,7 @@ int fw_app_canon(const char *in, char *out, size_t n) {
         int w = snprintf(buf, sizeof buf, "%s%.*s", pre, (int)mlen, mid);
         if (w < 0 || (size_t)w >= sizeof buf) return -1;
     } else if (in[0] == '/') {
-        /* ruta absoluta de un ejecutable (lo que usa el Monitor si no hay .desktop) */
+        /* absolute path of an executable (what the Monitor uses if there's no .desktop) */
         const char *seg = in + 1;
         for (size_t i = 1; i <= len; i++) {
             if (i == len || in[i] == '/') {
@@ -103,7 +103,7 @@ int fw_app_canon(const char *in, char *out, size_t n) {
     } else {
         for (size_t i = 0; i < len; i++) if (!id_char((unsigned char)in[i])) return -1;
         const char *c = memchr(in, ':', len);
-        if (c && (c == in || c == in + len - 1)) return -1;   /* "desktop:" sin id, ":x" */
+        if (c && (c == in || c == in + len - 1)) return -1;   /* "desktop:" without an id, ":x" */
         memcpy(buf, in, len + 1);
     }
     size_t bl = strlen(buf);
@@ -112,8 +112,8 @@ int fw_app_canon(const char *in, char *out, size_t n) {
     return 0;
 }
 
-/* Dominio: minúsculas ASCII, etiquetas de 1 a 63 de [a-z0-9-_], 253 en total, un punto final
- * opcional; la última etiqueta no puede ser solo números (eso es una IP mal escrita). */
+/* Domain: ASCII lowercase, labels of 1 to 63 from [a-z0-9-_], 253 in total, an optional trailing
+ * dot; the last label can't be only digits (that's a mistyped IP). */
 static int norm_domain(const char *in, char *out) {
     size_t len = strnlen(in, FW_NAME_MAX + 1);
     if (len && in[len - 1] == '.') len--;
@@ -166,7 +166,7 @@ int fw_addr_is_lan(int fam, const uint8_t *a) {
     }
     if (fam == 6) {
         static const uint8_t zero[16];
-        if (!memcmp(a, zero, 15) && (a[15] == 0 || a[15] == 1)) return 1;     /* :: y ::1 */
+        if (!memcmp(a, zero, 15) && (a[15] == 0 || a[15] == 1)) return 1;     /* :: and ::1 */
         return (a[0] & 0xfe) == 0xfc || (a[0] == 0xfe && (a[1] & 0xc0) == 0x80) || a[0] == 0xff;
     }
     return 0;
@@ -204,7 +204,7 @@ static int parse_cidr(const char *s, FwRule *r) {
     else { if (inet_pton(AF_INET, ip, a) != 1) return -1; fam = 4; }
     unsigned bits = fam == 4 ? 32 : 128, pfx = bits;
     if (slash && parse_uint(slash + 1, strlen(slash + 1), bits, &pfx)) return -1;
-    if (fam == 6 && is_mapped4(a) && pfx >= 96) {   /* ::ffff:a.b.c.d/n es IPv4 */
+    if (fam == 6 && is_mapped4(a) && pfx >= 96) {   /* ::ffff:a.b.c.d/n is IPv4 */
         memmove(a, a + 12, 4);
         memset(a + 4, 0, 12);
         fam = 4;
@@ -235,7 +235,7 @@ int fw_parse_dest(const char *s, FwRule *r) {
         r->wildcard = 1;
         return 0;
     }
-    /* "1.2.3.4" es una dirección; si no parsea como tal, norm_domain la rechaza igual */
+    /* "1.2.3.4" is an address; if it doesn't parse as one, norm_domain rejects it anyway */
     if (!parse_cidr(s, r)) return 0;
     if (norm_domain(s, r->domain)) return -1;
     r->kind = FW_DST_DOMAIN;
@@ -260,7 +260,7 @@ int fw_format_dest(const FwRule *r, char *out, size_t n) {
     return w < 0 || (size_t)w >= n ? -1 : 0;
 }
 
-/* ---- restricciones ---------------------------------------------------------------------------- */
+/* ---- restrictions ----------------------------------------------------------------------------- */
 
 static const char *const FLAG_NAMES[] = {
     "no-internet", "no-lan", "no-network", "no-incoming", "no-camera", "no-mic", "no-screen",
@@ -279,7 +279,7 @@ uint32_t fw_flag_from_name(const char *name) {
     return 0;
 }
 
-/* ---- tienda ------------------------------------------------------------------------------------ */
+/* ---- store ------------------------------------------------------------------------------------- */
 
 FwStore *fw_store_new(void) {
     FwStore *s = calloc(1, sizeof *s);
@@ -321,7 +321,7 @@ static void app_free(void *v) {
 
 void fw_store_free(FwStore *s) {
     if (!s) return;
-    fwmap_free(&s->ids, NULL);          /* los RNode los libera su App */
+    fwmap_free(&s->ids, NULL);          /* the RNodes are freed by their App */
     fwmap_free(&s->apps, app_free);
     free(s);
 }
@@ -341,7 +341,7 @@ static App *app_make(FwStore *s, const char *canon) {
     return a;
 }
 
-/* Suelta la App si ya no guarda nada. */
+/* Releases the App if it no longer holds anything. */
 static void app_prune(FwStore *s, App *a) {
     if (a->nrules || a->trusted || a->restricted) return;
     fwmap_take(&s->apps, a->id, strlen(a->id));
@@ -354,7 +354,7 @@ static App *app_find(const FwStore *s, const char *app) {
     return app_get(s, c);
 }
 
-/* Lugar de la lista del destino de r. create: crea lo que falte (nodos del trie, claves). */
+/* Slot of r's destination list. create: creates whatever is missing (trie nodes, keys). */
 static RNode **loc(App *a, const FwRule *r, int create, TNode **tnode) {
     if (tnode) *tnode = NULL;
     switch (r->kind) {
@@ -384,7 +384,7 @@ static RNode **loc(App *a, const FwRule *r, int create, TNode **tnode) {
     return NULL;
 }
 
-/* Borra lo que quedó vacío después de sacar una regla. */
+/* Deletes whatever was left empty after removing a rule. */
 static void loc_prune(App *a, const FwRule *r, TNode *t) {
     if (r->kind == FW_DST_DOMAIN) {
         FwMap *m = r->wildcard ? &a->wild : &a->exact;
@@ -405,7 +405,7 @@ static int same_match(const FwRule *x, const FwRule *y) {
     return x->dir == y->dir && x->port_lo == y->port_lo && x->port_hi == y->port_hi && x->proto == y->proto;
 }
 
-/* Valida y normaliza una regla en out. */
+/* Validates and normalizes a rule into out. */
 static int validate(const FwRule *in, FwRule *out) {
     memset(out, 0, sizeof *out);
     if (fw_app_canon(in->app, out->app, sizeof out->app)) return -1;
@@ -416,7 +416,7 @@ static int validate(const FwRule *in, FwRule *out) {
     if (in->port_lo > in->port_hi) return -1;
     out->dir = in->dir; out->proto = in->proto; out->action = in->action; out->life = in->life;
     out->port_lo = in->port_lo; out->port_hi = in->port_hi;
-    if (!in->port_lo && !in->port_hi) out->port_hi = 65535;     /* sin puertos = cualquiera */
+    if (!in->port_lo && !in->port_hi) out->port_hi = 65535;     /* no ports = any */
     out->when = in->when < 0 ? 0 : in->when;
     out->kind = in->kind;
     switch (in->kind) {
@@ -448,7 +448,7 @@ int fw_rule_add(FwStore *s, const FwRule *in, uint32_t *id_out) {
     for (RNode *n = *head; n; n = n->next) {
         if (!same_match(&n->r, &r)) continue;
         r.id = n->r.id;
-        n->r = r;               /* la decisión nueva reemplaza a la anterior */
+        n->r = r;               /* the new decision replaces the previous one */
         if (id_out) *id_out = r.id;
         return 0;
     }
@@ -506,7 +506,7 @@ static int cmp_rule_id(const void *x, const void *y) {
     return a < b ? -1 : a > b;
 }
 
-/* Las reglas (de una app o todas) ordenadas por id, en un arreglo de malloc. */
+/* The rules (of one app or all) sorted by id, in a malloc'd array. */
 static RNode **sorted_rules(const FwStore *s, const App *only, size_t *count) {
     *count = 0;
     RNode **v = malloc((s->nrules ? s->nrules : 1) * sizeof *v);
@@ -539,7 +539,7 @@ static void remove_where(FwStore *s, App *a, int only_until_quit) {
     if (!v) return;
     for (size_t i = 0; i < k; i++)
         if (!only_until_quit || v[i]->r.life == FW_LIFE_UNTIL_QUIT) {
-            /* el último fw_rule_remove puede liberar la App: no se la toca después */
+            /* the last fw_rule_remove may free the App: don't touch it afterwards */
             fw_rule_remove(s, v[i]->r.id);
         }
     free(v);
@@ -555,7 +555,7 @@ void fw_app_forget(FwStore *s, const char *app) {
     if (!a) return;
     a->trusted = 0;
     a->restricted = 0;
-    if (a->nrules) remove_where(s, a, 0);   /* la última regla suelta la App */
+    if (a->nrules) remove_where(s, a, 0);   /* the last rule releases the App */
     else app_prune(s, a);
 }
 
@@ -607,10 +607,10 @@ void fw_set_mode(FwStore *s, FwMode m) {
 
 FwMode fw_mode(const FwStore *s) { return s ? s->mode : FW_MODE_SILENT; }
 
-/* ---- decidir ----------------------------------------------------------------------------------- */
+/* ---- deciding ---------------------------------------------------------------------------------- */
 
-/* Puntaje del destino: dominio exacto > comodín (más etiquetas, más específico) > red (prefijo más
- * largo) > LAN/internet > cualquiera. Nunca compiten un /32 de IPv4 y un /128 de IPv6. */
+/* Destination score: exact domain > wildcard (more labels, more specific) > network (longest
+ * prefix) > LAN/internet > any. An IPv4 /32 and an IPv6 /128 never compete. */
 enum { SC_ANY = 0, SC_NET = 500, SC_CIDR = 1000, SC_WILD = 2000, SC_EXACT = 3000 };
 
 typedef struct {
@@ -619,8 +619,8 @@ typedef struct {
     int dst, port, proto;
 } Pick;
 
-/* ¿b es mejor que lo elegido? Destino, después rango de puertos más chico, protocolo concreto,
- * denegar antes que permitir y, por último, la decisión más nueva. */
+/* Is b better than the current pick? Destination, then smaller port range, concrete protocol,
+ * deny before allow and, last, the newest decision. */
 static void consider(Pick *p, RNode *list, int dst) {
     for (RNode *n = list; n; n = n->next) {
         const FwRule *r = &n->r;
@@ -643,7 +643,7 @@ static void consider(Pick *p, RNode *list, int dst) {
 FwDecision fw_decide(FwStore *s, const FwQuery *q) {
     FwDecision d = { FW_V_DENY, FW_BY_RESTRICTED, 0, FW_R_NO_NETWORK, 0 };
     char c[FW_APP_MAX];
-    if (!s || !q || fw_app_canon(q->app, c, sizeof c)) return d;   /* sin app válida: no */
+    if (!s || !q || fw_app_canon(q->app, c, sizeof c)) return d;   /* no valid app: no */
     App *a = app_get(s, c);
 
     int fam = q->fam;
@@ -653,19 +653,19 @@ FwDecision fw_decide(FwStore *s, const FwQuery *q) {
         memcpy(addr, q->addr, 16);
         if (is_mapped4(addr)) { memmove(addr, addr + 12, 4); memset(addr + 4, 0, 12); fam = 4; }
     } else fam = 0;
-    int lan = fam ? fw_addr_is_lan(fam, addr) : -1;   /* -1: dirección desconocida */
+    int lan = fam ? fw_addr_is_lan(fam, addr) : -1;   /* -1: unknown address */
 
-    /* 1. restricciones */
+    /* 1. restrictions */
     uint32_t rf = a ? a->restricted : 0;
     uint32_t hit = 0;
     if (rf & FW_R_NO_NETWORK) hit = FW_R_NO_NETWORK;
     else if (q->dir == FW_IN && (rf & FW_R_NO_INCOMING)) hit = FW_R_NO_INCOMING;
-    else if ((rf & FW_R_NO_INTERNET) && lan != 1) hit = FW_R_NO_INTERNET;   /* sin saber: internet */
+    else if ((rf & FW_R_NO_INTERNET) && lan != 1) hit = FW_R_NO_INTERNET;   /* unknown: internet */
     else if ((rf & FW_R_NO_LAN) && lan == 1) hit = FW_R_NO_LAN;
     if (hit) { d.flag = hit; d.record = 1; return d; }
     d.flag = 0;
 
-    /* 2. reglas explícitas */
+    /* 2. explicit rules */
     if (a && a->nrules) {
         Pick p = { q, NULL, 0, 0, 0 };
         for (int h = 0; h < q->nhosts && q->hosts; h++) {
@@ -674,7 +674,7 @@ FwDecision fw_decide(FwStore *s, const FwQuery *q) {
             int nl = labels(name);
             if (a->exact.n) consider(&p, fwmap_get(&a->exact, name, strlen(name)), SC_EXACT + nl);
             if (a->wild.n) {
-                /* etiquetas de derecha a izquierda: cada sufijo del nombre, del más largo al TLD */
+                /* labels from right to left: each suffix of the name, from the longest to the TLD */
                 for (const char *sfx = name; sfx; nl--) {
                     consider(&p, fwmap_get(&a->wild, sfx, strlen(sfx)), SC_WILD + nl);
                     sfx = strchr(sfx, '.');
@@ -703,10 +703,10 @@ FwDecision fw_decide(FwStore *s, const FwQuery *q) {
         }
     }
 
-    /* 3. confiable */
+    /* 3. trusted */
     if (a && a->trusted) { d.verdict = FW_V_ALLOW; d.reason = FW_BY_TRUSTED; return d; }
 
-    /* 4. modo */
+    /* 4. mode */
     d.reason = FW_BY_MODE;
     switch (s->mode) {
     case FW_MODE_SILENT: d.verdict = FW_V_ALLOW; d.record = 1; break;
@@ -792,7 +792,7 @@ char *fw_to_json(const FwStore *s, size_t *len) {
     first = 1;
     for (size_t i = 0; i < nr; i++) {
         const FwRule *r = &rules[i]->r;
-        if (r->life != FW_LIFE_FOREVER) continue;     /* las otras no sobreviven a la sesión */
+        if (r->life != FW_LIFE_FOREVER) continue;     /* the others don't survive the session */
         char dst[FW_NAME_MAX + 8];
         if (fw_format_dest(r, dst, sizeof dst)) { b.err = 1; break; }
         puts_(&b, first ? "{\"app\":" : ",{\"app\":");
@@ -834,7 +834,7 @@ static int only_keys(const JVal *o, const char *const *keys, const char **bad) {
     return 0;
 }
 
-/* Un texto JSON sin 0 adentro y de largo razonable. */
+/* A JSON text with no 0 inside and of reasonable length. */
 static const char *jstr(const JVal *v, size_t max) {
     if (!v || v->type != J_STR || v->len >= max || strlen(v->str) != v->len) return NULL;
     return v->str;
@@ -856,7 +856,7 @@ static int parse_ports(const JVal *v, FwRule *r) {
         if (parse_uint(s, strlen(s), 65535, &lo)) return -1;
         hi = lo;
     }
-    if (!lo) return -1;                     /* el puerto 0 no existe; "cualquiera" = sin "port" */
+    if (!lo) return -1;                     /* port 0 doesn't exist; "any" = no "port" */
     r->port_lo = (uint16_t)lo;
     r->port_hi = (uint16_t)hi;
     return 0;
@@ -865,93 +865,93 @@ static int parse_ports(const JVal *v, FwRule *r) {
 static int load_rule(FwStore *t, const JVal *o, int idx, char *err, size_t errlen) {
     static const char *const keys[] = { "app", "dir", "dst", "port", "proto", "action", "when", NULL };
     const char *bad;
-    if (o->type != J_OBJ) return jerr(err, errlen, "regla %d: no es un objeto", idx);
-    if (only_keys(o, keys, &bad)) return jerr(err, errlen, "regla %d: clave desconocida \"%.32s\"", idx, bad);
+    if (o->type != J_OBJ) return jerr(err, errlen, "rule %d: not an object", idx);
+    if (only_keys(o, keys, &bad)) return jerr(err, errlen, "rule %d: unknown key \"%.32s\"", idx, bad);
     FwRule r;
     memset(&r, 0, sizeof r);
     r.port_hi = 65535;
     const char *app = jstr(json_get(o, "app"), FW_APP_MAX);
     if (!app || fw_app_canon(app, r.app, sizeof r.app) || strcmp(app, r.app))
-        return jerr(err, errlen, "regla %d: app inválida", idx);
+        return jerr(err, errlen, "rule %d: invalid app", idx);
     const JVal *v;
     if ((v = json_get(o, "dir"))) {
         const char *d = jstr(v, 8);
         if (d && !strcmp(d, "out")) r.dir = FW_OUT;
         else if (d && !strcmp(d, "in")) r.dir = FW_IN;
-        else return jerr(err, errlen, "regla %d: dir inválida", idx);
+        else return jerr(err, errlen, "rule %d: invalid dir", idx);
     }
     const char *dst = jstr(json_get(o, "dst"), FW_NAME_MAX + 4);
-    if (!dst || fw_parse_dest(dst, &r)) return jerr(err, errlen, "regla %d: dst inválido", idx);
-    if ((v = json_get(o, "port")) && parse_ports(v, &r)) return jerr(err, errlen, "regla %d: port inválido", idx);
+    if (!dst || fw_parse_dest(dst, &r)) return jerr(err, errlen, "rule %d: invalid dst", idx);
+    if ((v = json_get(o, "port")) && parse_ports(v, &r)) return jerr(err, errlen, "rule %d: invalid port", idx);
     if ((v = json_get(o, "proto"))) {
         const char *p = jstr(v, 8);
         if (p && !strcmp(p, "tcp")) r.proto = FW_PROTO_TCP;
         else if (p && !strcmp(p, "udp")) r.proto = FW_PROTO_UDP;
         else if (p && !strcmp(p, "any")) r.proto = FW_PROTO_ANY;
-        else return jerr(err, errlen, "regla %d: proto inválido", idx);
+        else return jerr(err, errlen, "rule %d: invalid proto", idx);
     }
     const char *act = jstr(json_get(o, "action"), 8);
     if (act && !strcmp(act, "allow")) r.action = FW_ALLOW;
     else if (act && !strcmp(act, "deny")) r.action = FW_DENY;
-    else return jerr(err, errlen, "regla %d: action inválida", idx);
+    else return jerr(err, errlen, "rule %d: invalid action", idx);
     if ((v = json_get(o, "when"))) {
         if (v->type != J_NUM || v->num < 0 || v->num > 9007199254740992.0 || v->num != (double)(long long)v->num)
-            return jerr(err, errlen, "regla %d: when inválido", idx);
+            return jerr(err, errlen, "rule %d: invalid when", idx);
         r.when = (long long)v->num;
     }
     r.life = FW_LIFE_FOREVER;
-    if (fw_rule_add(t, &r, NULL)) return jerr(err, errlen, "regla %d: no entra", idx);
+    if (fw_rule_add(t, &r, NULL)) return jerr(err, errlen, "rule %d: doesn't fit", idx);
     return 0;
 }
 
 static int load_doc(FwStore *t, const JVal *root, char *err, size_t errlen) {
     static const char *const keys[] = { "v", "mode", "trusted", "restricted", "rules", NULL };
     const char *bad;
-    if (!root || root->type != J_OBJ) return jerr(err, errlen, "la raíz no es un objeto");
-    if (only_keys(root, keys, &bad)) return jerr(err, errlen, "clave desconocida \"%.32s\"", bad);
+    if (!root || root->type != J_OBJ) return jerr(err, errlen, "the root is not an object");
+    if (only_keys(root, keys, &bad)) return jerr(err, errlen, "unknown key \"%.32s\"", bad);
     const JVal *v = json_get(root, "v");
-    if (!v || v->type != J_NUM || v->num != 1) return jerr(err, errlen, "versión no soportada");
+    if (!v || v->type != J_NUM || v->num != 1) return jerr(err, errlen, "unsupported version");
 
     if ((v = json_get(root, "mode"))) {
         const char *m = jstr(v, 8);
         int k = -1;
         for (int i = 0; m && i < 3; i++) if (!strcmp(m, MODE_NAMES[i])) k = i;
-        if (k < 0) return jerr(err, errlen, "mode inválido");
+        if (k < 0) return jerr(err, errlen, "invalid mode");
         t->mode = (FwMode)k;
     }
     if ((v = json_get(root, "trusted"))) {
-        if (v->type != J_ARR) return jerr(err, errlen, "trusted no es una lista");
-        if (v->len > FW_MAX_APPS) return jerr(err, errlen, "trusted: demasiadas apps");
+        if (v->type != J_ARR) return jerr(err, errlen, "trusted is not a list");
+        if (v->len > FW_MAX_APPS) return jerr(err, errlen, "trusted: too many apps");
         int i = 0;
         for (const JVal *k = v->kid; k; k = k->next, i++) {
             const char *app = jstr(k, FW_APP_MAX);
             char c[FW_APP_MAX];
-            if (!app || fw_app_canon(app, c, sizeof c) || strcmp(app, c)) return jerr(err, errlen, "trusted %d: app inválida", i);
+            if (!app || fw_app_canon(app, c, sizeof c) || strcmp(app, c)) return jerr(err, errlen, "trusted %d: invalid app", i);
             if (fw_is_trusted(t, c)) return jerr(err, errlen, "trusted %d: repetida", i);
-            if (fw_set_trusted(t, c, 1)) return jerr(err, errlen, "trusted %d: no entra", i);
+            if (fw_set_trusted(t, c, 1)) return jerr(err, errlen, "trusted %d: doesn't fit", i);
         }
     }
     if ((v = json_get(root, "restricted"))) {
-        if (v->type != J_OBJ) return jerr(err, errlen, "restricted no es un objeto");
-        if (v->len > FW_MAX_APPS) return jerr(err, errlen, "restricted: demasiadas apps");
+        if (v->type != J_OBJ) return jerr(err, errlen, "restricted is not an object");
+        if (v->len > FW_MAX_APPS) return jerr(err, errlen, "restricted: too many apps");
         for (const JVal *k = v->kid; k; k = k->next) {
             char c[FW_APP_MAX];
             if (strlen(k->key) >= FW_APP_MAX || fw_app_canon(k->key, c, sizeof c) || strcmp(k->key, c))
-                return jerr(err, errlen, "restricted: app inválida");
-            if (fw_is_trusted(t, c)) return jerr(err, errlen, "restricted: %.64s también es confiable", c);
-            if (k->type != J_ARR || !k->len || k->len > NFLAGS) return jerr(err, errlen, "restricted %.64s: lista inválida", c);
+                return jerr(err, errlen, "restricted: invalid app");
+            if (fw_is_trusted(t, c)) return jerr(err, errlen, "restricted: %.64s is also trusted", c);
+            if (k->type != J_ARR || !k->len || k->len > NFLAGS) return jerr(err, errlen, "restricted %.64s: invalid list", c);
             uint32_t flags = 0;
             for (const JVal *f = k->kid; f; f = f->next) {
                 uint32_t bit = fw_flag_from_name(jstr(f, 32));
-                if (!bit || (flags & bit)) return jerr(err, errlen, "restricted %.64s: restricción inválida o repetida", c);
+                if (!bit || (flags & bit)) return jerr(err, errlen, "restricted %.64s: invalid or repeated restriction", c);
                 flags |= bit;
             }
-            if (fw_set_restricted(t, c, flags)) return jerr(err, errlen, "restricted %.64s: no entra", c);
+            if (fw_set_restricted(t, c, flags)) return jerr(err, errlen, "restricted %.64s: doesn't fit", c);
         }
     }
     if ((v = json_get(root, "rules"))) {
-        if (v->type != J_ARR) return jerr(err, errlen, "rules no es una lista");
-        if (v->len > FW_MAX_RULES) return jerr(err, errlen, "demasiadas reglas");
+        if (v->type != J_ARR) return jerr(err, errlen, "rules is not a list");
+        if (v->len > FW_MAX_RULES) return jerr(err, errlen, "too many rules");
         int i = 0;
         for (const JVal *k = v->kid; k; k = k->next, i++)
             if (load_rule(t, k, i, err, errlen)) return -1;
@@ -961,18 +961,18 @@ static int load_doc(FwStore *t, const JVal *root, char *err, size_t errlen) {
 
 int fw_from_json(FwStore *s, const char *text, size_t len, char *err, size_t errlen) {
     if (err && errlen) err[0] = 0;
-    if (!s || !text) return jerr(err, errlen, "sin datos");
-    if (len > FW_FILE_MAX) return jerr(err, errlen, "archivo demasiado grande");
-    if (memchr(text, 0, len)) return jerr(err, errlen, "byte 0 en el archivo");
+    if (!s || !text) return jerr(err, errlen, "no data");
+    if (len > FW_FILE_MAX) return jerr(err, errlen, "file too large");
+    if (memchr(text, 0, len)) return jerr(err, errlen, "byte 0 in the file");
     JDoc doc;
     char jmsg[128];
-    if (json_parse(text, len, &doc, jmsg, sizeof jmsg)) return jerr(err, errlen, "JSON inválido: %s", jmsg);
+    if (json_parse(text, len, &doc, jmsg, sizeof jmsg)) return jerr(err, errlen, "invalid JSON: %s", jmsg);
     FwStore *t = fw_store_new();
-    if (!t) { json_free(&doc); return jerr(err, errlen, "sin memoria"); }
+    if (!t) { json_free(&doc); return jerr(err, errlen, "out of memory"); }
     int r = load_doc(t, doc.root, err, errlen);
     json_free(&doc);
     if (r) { fw_store_free(t); return -1; }
-    /* todo validó: se cambia el contenido de una vez */
+    /* everything validated: the contents are swapped in one go */
     FwStore tmp = *s;
     *s = *t;
     *t = tmp;
@@ -1005,20 +1005,20 @@ int fw_save(const FwStore *s, const char *path) {
 
 int fw_load(FwStore *s, const char *path, char *err, size_t errlen) {
     if (err && errlen) err[0] = 0;
-    if (!s || !path) return jerr(err, errlen, "sin ruta");
+    if (!s || !path) return jerr(err, errlen, "no path");
     int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     if (fd < 0) {
-        if (errno == ENOENT) return 1;      /* todavía no hay archivo: s queda como está */
-        return jerr(err, errlen, "no se pudo abrir: %s", strerror(errno));
+        if (errno == ENOENT) return 1;      /* there's no file yet: s stays as it is */
+        return jerr(err, errlen, "could not open: %s", strerror(errno));
     }
     struct stat st;
     if (fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_size < 0 || (unsigned long long)st.st_size > FW_FILE_MAX) {
         close(fd);
-        return jerr(err, errlen, "no es un archivo común o es demasiado grande");
+        return jerr(err, errlen, "not a regular file or too large");
     }
     size_t want = (size_t)st.st_size, got = 0;
     char *buf = malloc(want + 1);
-    if (!buf) { close(fd); return jerr(err, errlen, "sin memoria"); }
+    if (!buf) { close(fd); return jerr(err, errlen, "out of memory"); }
     while (got < want) {
         ssize_t r = read(fd, buf + got, want - got);
         if (r < 0 && errno == EINTR) continue;
@@ -1026,7 +1026,7 @@ int fw_load(FwStore *s, const char *path, char *err, size_t errlen) {
         got += (size_t)r;
     }
     close(fd);
-    if (got != want) { free(buf); return jerr(err, errlen, "lectura incompleta"); }
+    if (got != want) { free(buf); return jerr(err, errlen, "incomplete read"); }
     int r = fw_from_json(s, buf, got, err, errlen);
     free(buf);
     return r;

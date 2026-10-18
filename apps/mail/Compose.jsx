@@ -70,12 +70,13 @@ function Recipients({ label, list, onChange, autoFocus }) {
 
 const Line = ({ th }) => <View style={{ height: 1, backgroundColor: th.separator }} />;
 
-function ToolButton({ label, onClick, hint, bold }) {
+function ToolButton({ label, onClick, hint, bold, strike }) {
   const th = useTheme();
   return (
     <View onClick={onClick} style={{ minWidth: 28, height: 26, paddingHorizontal: 6, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: th.control }}>
       <Text style={{ fontSize: 13, fontWeight: bold ? 700 : 500, color: th.text }}>{label}</Text>
-      {hint ? null : null}
+      {/* the engine has no strike-through style: a hairline across the letter */}
+      {strike ? <View style={{ position: 'absolute', left: 9, right: 9, top: 13, height: 1, backgroundColor: th.text }} /> : null}
     </View>
   );
 }
@@ -217,7 +218,7 @@ export function Compose({ draft: initial }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, height: 36 }}>
           <ToolButton label="B" bold onClick={() => wrapSel('**')} />
           <ToolButton label="I" onClick={() => wrapSel('*')} />
-          <ToolButton label="S̶" onClick={() => wrapSel('~~')} />
+          <ToolButton label="S" strike onClick={() => wrapSel('~~')} />
           <ToolButton label="• ≡" onClick={() => ed.current?.list?.('bullet')} />
           <ToolButton label="1. ≡" onClick={() => ed.current?.list?.('num')} />
           <ToolButton label="❝" onClick={() => ed.current?.quote?.()} />
@@ -229,7 +230,7 @@ export function Compose({ draft: initial }) {
       )}
       <View style={{ flex: 1, flexDirection: 'row' }}>
         <View style={{ flex: 1 }}>
-          <BodyEditor value={d.body} onChange={(body) => set({ body })} colors={colors} apiRef={ed} autoFocus={!!d.to.length} padding={14} />
+          <BodyEditor value={d.body} onChange={(body) => set({ body })} colors={colors} apiRef={ed} autoFocus={!!d.to.length} padding={14} caret={0} />
         </View>
         {d.format === 'rich' && preview && <View style={{ width: 1, backgroundColor: th.separator }} />}
         {d.format === 'rich' && preview && (

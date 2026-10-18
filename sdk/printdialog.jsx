@@ -1,8 +1,8 @@
-// printdialog.jsx — el diálogo de impresión del sistema (print.open en print.js). Lo monta
-// startShell, así cualquier app lo usa sin dibujar nada propio. La vista previa es el mismo
-// lector de PDF encerrado (lord-doc): lo que se ve es lo que se manda a CUPS.
+// printdialog.jsx — the system print dialog (print.open in print.js). It is mounted by
+// startShell, so any app uses it without drawing anything of its own. The preview is the same
+// confined PDF reader (lord-doc): what you see is what is sent to CUPS.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, addListener } from '@lordos/runtime';
+import { View, Text, addListener, mainBox } from '@lordos/runtime';
 import { useStore } from './store.js';
 import { useTheme } from './theme.js';
 import { t, locale } from './i18n.js';
@@ -13,8 +13,8 @@ import { DocImage, releaseImage, releaseBlob, saveBlob, makeTextPdf, makeImagePd
 
 const MEDIA = { a4: 'iso_a4_210x297mm', letter: 'na_letter_8.5x11in', legal: 'na_legal_8.5x14in', a5: 'iso_a5_148x210mm' };
 const PDF_DEST = '\u0000pdf';
-// países que usan papel carta
-const LETTER = new Set(['US', 'CA', 'MX', 'PH', 'CO', 'VE', 'CL', 'CR', 'GT', 'PR', 'SV', 'NI', 'PA', 'DO']);                 // «Guardar como PDF» (no es una cola de CUPS)
+// countries that use letter paper
+const LETTER = new Set(['US', 'CA', 'MX', 'PH', 'CO', 'VE', 'CL', 'CR', 'GT', 'PR', 'SV', 'NI', 'PA', 'DO']);                 // «Save as PDF» (not a CUPS queue)
 
 function parsePages(s, n) {
   const out = [];
@@ -99,7 +99,7 @@ function Dialog({ req }) {
     }).catch((e) => { setPrinters([]); setDest(PDF_DEST); setError(e.code === 'no-cups' ? t('print.noCups') : null); });
   }, []);
 
-  // el PDF que se va a imprimir (y la vista previa)
+  // the PDF that will be printed (and the preview)
   const needsPaper = !!(src.text != null || src.image);
   useEffect(() => {
     let alive = true;
@@ -161,7 +161,7 @@ function Dialog({ req }) {
 
   const destOptions = [...(printers || []).map((p) => ({ id: p.name, label: p.info || p.name, sub: stateLabel(p) })), { id: PDF_DEST, label: t('print.saveAsPdf'), sub: '' }];
   return (
-    <View style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ position: 'absolute', ...mainBox(), backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' }}>
       <View style={{ width: 720, borderRadius: 14, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`, boxShadow: '0 20px 50px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
         <View style={{ height: 40, justifyContent: 'center', paddingHorizontal: 16 }}>
           <Text style={{ fontSize: 14, fontWeight: 700, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{src.title ? t('print.titleOf', { title: src.title }) : t('print.title')}</Text>

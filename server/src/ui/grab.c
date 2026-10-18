@@ -1,18 +1,18 @@
-/* grab.c — arrastre de ventanas en C: mover y cambiar el tamaño sin JS por cuadro (grab.h). */
+/* grab.c — window dragging in C: move and resize without JS per frame (grab.h). */
 #include "grab.h"
 #include "../cursor.h"
 
 #include <math.h>
 #include <string.h>
 
-#define KEEP 48             /* px del marco que siempre quedan a la vista */
+#define KEEP 48             /* px of the frame that always stay visible */
 
 static struct {
     int active, node, edges;
-    float px0, py0;                 /* puntero al empezar */
-    float x0, y0, w0, h0;           /* left/top/width/height del nodo al empezar */
-    float x, y, w, h;               /* ahora */
-    float ox, oy;                   /* origen del padre en pantalla */
+    float px0, py0;                 /* pointer at start */
+    float x0, y0, w0, h0;           /* node's left/top/width/height at start */
+    float x, y, w, h;               /* now */
+    float ox, oy;                   /* parent's origin on screen */
     GrabLimits lim;
 } g;
 static float ptr_x, ptr_y;
@@ -59,10 +59,14 @@ void grab_motion(float px, float py) {
     if (!n) { grab_cancel(); return; }
     float dx = roundf(px - g.px0), dy = roundf(py - g.py0), in = g.lim.inset;
     float x = g.x0, y = g.y0, w = g.w0, h = g.h0;
-    /* límites del marco en coordenadas del nodo (el padre puede no estar en 0,0) */
+    /* frame bounds in node coordinates (the parent may not be at 0,0) */
     float top = g.lim.min_top - g.oy - in, sw = ui.width - g.ox, sh = ui.height - g.oy;
     if (!g.edges) {
         x = clampf(g.x0 + dx, KEEP - (g.w0 - in), sw - KEEP - in);
+        /* the work area of the display under the frame's center (its own menu bar, or none) */
+        float cx = g.ox + x + g.w0 / 2;
+        for (int i = 0; i < g.lim.nareas; i++)
+            if (cx >= g.lim.ax[i] && cx < g.lim.ax[i] + g.lim.aw[i]) { top = g.lim.ay[i] - g.oy - in; break; }
         y = clampf(g.y0 + dy, top, sh - KEEP - in);
     } else {
         float minw = g.lim.min_w + 2 * in, minh = g.lim.min_h + 2 * in;
@@ -86,9 +90,9 @@ void grab_motion(float px, float py) {
     if (sized) {
         n->s.width = (Dim){ w, UNIT_PX };
         n->s.height = (Dim){ h, UNIT_PX };
-        node_invalidate(n);         /* el contenido se vuelve a acomodar */
+        node_invalidate(n);         /* the content gets laid out again */
     }
-    ui.dirty = 1;                   /* mover: solo el layout de posición, sin repintar el contenido */
+    ui.dirty = 1;                   /* move: only the position layout, without repainting the content */
 }
 
 int grab_finish(int *node, int *edges, float *dx, float *dy, float *dw, float *dh) {

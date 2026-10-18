@@ -1,5 +1,5 @@
-// Tokens del tema "Lord Default". Las claves base (text, accent, windowBg…) son el contrato
-// con las apps (ver sdk/theme.js); el resto es propio de este tema.
+// Tokens of the "Lord Default" theme. The base keys (text, accent, windowBg…) are the contract
+// with apps (see sdk/theme.js); the rest belongs to this theme.
 export const accents = {
   azul: '#0a84ff',
   violeta: '#bf5af2',
@@ -32,7 +32,7 @@ export function makeTheme({ mode, accent, effects }) {
     hover: dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)',
     control: dark ? '#3a3a40' : '#e3e3e8',
     inputBg: dark ? '#2a2a2f' : '#ffffff',
-    // Propios del tema:
+    // This theme's own:
     menuBg: dark ? 'rgba(24,24,30,0.42)' : 'rgba(250,250,252,0.55)',
     menuText: dark ? '#f5f5f7' : '#1d1d1f',
     menuHover: dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.08)',

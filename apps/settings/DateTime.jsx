@@ -94,7 +94,7 @@ export function DateTimeSettings() {
       <GroupBox footer={isAdmin ? '' : tr('prefs.time.needAdmin')}>
         <SettingRow label={tr('prefs.time.auto')} hint={!td ? '' : !td.canNTP ? tr('prefs.time.noNtp') : ntp ? tr(td.synced ? 'prefs.time.synced' : 'prefs.time.syncing') : tr('prefs.time.manual')}
           disabled={!isAdmin || (td && !td.canNTP)}>
-          <Toggle on={ntp} onChange={setNtp} />
+          <Toggle small on={ntp} onChange={setNtp} />
         </SettingRow>
         <SettingRow label={tr('prefs.time.dateTime')} hint={clock}>
           <Button small label={tr('prefs.time.change')} disabled={ntp || !isAdmin} onClick={() => setEditing(!editing)} />
@@ -120,7 +120,7 @@ export function DateTimeSettings() {
             options={[['short', tr('prefs.time.dateFull')], ['weekday', tr('prefs.time.dateWeekday')], ['none', tr('prefs.time.dateNone')]]} />
         </SettingRow>
         <SettingRow label={tr('prefs.time.seconds')}>
-          <Toggle on={c.seconds} onChange={(seconds) => patch({ seconds })} />
+          <Toggle small on={c.seconds} onChange={(seconds) => patch({ seconds })} />
         </SettingRow>
         <SettingRow label={tr('prefs.time.preview')}>
           <View style={{ paddingHorizontal: 10, height: 24, borderRadius: 6, justifyContent: 'center', backgroundColor: t.mode === 'dark' ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.06)' }}>

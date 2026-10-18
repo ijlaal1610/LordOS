@@ -1,13 +1,13 @@
-/* journal_test.c — prueba del lector propio del journal (src/logs/journal.c, app Registros).
+/* journal_test.c — test for our own journal reader (src/logs/journal.c, Logs app).
  *
- * Arma archivos del journal sintéticos con un escritor chico (modo normal y compacto, campos
- * repetidos, LZ4, XZ y ZSTD marcado), los lee y compara; mezcla dos archivos con filtros; y
- * prueba archivos cortados, bytes cambiados al azar y una cadena de arreglos con un bucle: no
- * puede colgarse ni romperse.
+ * Builds synthetic journal files with a small writer (normal and compact mode, repeated fields,
+ * LZ4, XZ and flagged ZSTD), reads them back and compares; merges two files with filters; and
+ * tries truncated files, randomly changed bytes and an array chain with a loop: it must not hang
+ * or crash.
  *
- *   ./build/journal-test                  las pruebas
- *   ./build/journal-test dump <archivo>   una línea JSON por entrada (para comparar con journalctl)
- *   ./build/journal-test bench <archivo>  entradas por segundo */
+ *   ./build/journal-test                  the tests
+ *   ./build/journal-test dump <file>      one JSON line per entry (to compare with journalctl)
+ *   ./build/journal-test bench <file>     entries per second */
 #include "logs/journal.h"
 
 #include <stdio.h>
@@ -17,11 +17,11 @@
 #include <unistd.h>
 
 static int fails;
-#define CHECK(c) do { if (!(c)) { fprintf(stderr, "FALLA %s:%d: %s\n", __FILE__, __LINE__, #c); fails++; } } while (0)
+#define CHECK(c) do { if (!(c)) { fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); fails++; } } while (0)
 
 static const unsigned char xz_msg[] = { 0xfd,0x37,0x7a,0x58,0x5a,0x00,0x00,0x04,0xe6,0xd6,0xb4,0x46,0x04,0xc0,0x39,0x8b,0x03,0x21,0x01,0x1c,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xe8,0xf5,0x6f,0x6b,0xe0,0x01,0x8a,0x00,0x31,0x5d,0x00,0x26,0x91,0x46,0xc0,0xd1,0x94,0x57,0xe4,0x94,0x68,0xd5,0x3b,0x95,0x7d,0x5f,0xe8,0x9e,0x10,0x92,0x9b,0xc4,0x67,0x8a,0x11,0x25,0x86,0xca,0xeb,0xfd,0x90,0x33,0x36,0x6d,0x5b,0xa2,0xd5,0x29,0xca,0xe9,0x11,0x6a,0xb6,0x19,0xe5,0x6d,0x47,0x19,0x98,0x00,0x00,0x00,0x00,0x00,0x45,0x0a,0x87,0x3c,0xf0,0x17,0xce,0x19,0x00,0x01,0x55,0x8b,0x03,0x00,0x00,0x00,0xf4,0x63,0x95,0x4b,0xb1,0xc4,0x67,0xfb,0x02,0x00,0x00,0x00,0x00,0x04,0x59,0x5a };
 
-/* ---- escritor mínimo ---- */
+/* ---- minimal writer ---- */
 
 typedef struct { unsigned char *b; size_t n, cap; int compact; } W;
 
@@ -51,7 +51,7 @@ static Seen seen[256];
 static int nseen;
 
 static uint64_t data(W *w, const char *payload, size_t plen, int flags) {
-    for (int i = 0; i < nseen && !flags; i++) if (!strcmp(seen[i].text, payload)) return seen[i].off;   /* deduplicado */
+    for (int i = 0; i < nseen && !flags; i++) if (!strcmp(seen[i].text, payload)) return seen[i].off;   /* deduplicated */
     size_t fixed = w->compact ? 56 : 48;
     unsigned char body[1024] = { 0 };
     memcpy(body + fixed, payload, plen);
@@ -77,17 +77,17 @@ static uint64_t earray(W *w, const uint64_t *e, int ne, int cap) {
     return obj(w, 6, 0, body, 8 + isz * cap);
 }
 
-/* LZ4 a mano: "MESSAGE=" + "lz4 " literal, después un match de distancia 4 repetido */
+/* Hand-made LZ4: "MESSAGE=" + "lz4 " literal, then a repeated distance-4 match */
 static size_t lz4_blob(unsigned char *out) {
     const char *lit = "MESSAGE=lz4 ";
-    size_t ll = strlen(lit), ml = 40;           /* "lz4 " × 10 más */
+    size_t ll = strlen(lit), ml = 40;           /* "lz4 " × 10 more */
     size_t n = 0;
     put64(out, ll + ml); n = 8;
     out[n++] = (unsigned char)((ll << 4) | 15); /* ll < 15 */
     memcpy(out + n, lit, ll); n += ll;
-    out[n++] = 4; out[n++] = 0;                 /* distancia 4 */
-    out[n++] = (unsigned char)(ml - 4 - 15);    /* 15 + resto */
-    out[n++] = 0x10;                            /* última secuencia: un literal */
+    out[n++] = 4; out[n++] = 0;                 /* distance 4 */
+    out[n++] = (unsigned char)(ml - 4 - 15);    /* 15 + remainder */
+    out[n++] = 0x10;                            /* last sequence: one literal */
     out[n++] = '!';
     put64(out, ll + ml + 1);
     return n;
@@ -139,7 +139,7 @@ static const char *write_file(const char *path, int compact, uint64_t base) {
     uint64_t first = earray(&w, ents, 4, 4);
     uint64_t second = earray(&w, ents + 4, ne - 4, 16);
     put64(w.b + first + 16, second);            /* next_entry_array_offset */
-    /* cabecera */
+    /* header */
     memcpy(w.b, "LPKSHHRH", 8);
     put32(w.b + 12, (uint32_t)((compact ? 16 : 0) | 1 | 2 | 8));
     w.b[16] = 1;                                /* STATE_ONLINE */
@@ -174,7 +174,7 @@ static void spit(const char *p, const unsigned char *b, size_t n) {
     fclose(f);
 }
 
-/* Lee todo y se asegura de que nada se rompe (no compara contenido). */
+/* Reads everything and makes sure nothing breaks (doesn't compare content). */
 static long read_all(const char *p) {
     JFile *f = jf_open(p);
     if (!f) return -1;
@@ -209,7 +209,7 @@ static void check_file(const char *p, int compact, uint64_t base) {
     CHECK(!e.kernel);
     jentry_free(&e);
     CHECK(jf_entry(f, 3, &e) == 0);
-    CHECK(!strcmp(e.unit, "pipewire.service"));      /* la unidad del usuario manda */
+    CHECK(!strcmp(e.unit, "pipewire.service"));      /* the user unit wins */
     CHECK(!strcmp(e.ident, "impar") && e.priority == 3);
     jentry_free(&e);
     CHECK(jf_entry(f, 4, &e) == 0 && e.kernel);
@@ -222,7 +222,7 @@ static void check_file(const char *p, int compact, uint64_t base) {
     CHECK(!strncmp(e.message, "mensaje comprimido con xz: repetido repetido", 44));
     jentry_free(&e);
     CHECK(jf_entry(f, 8, &e) == 0);
-    CHECK(!strcmp(e.message, "[comprimido zstd]"));
+    CHECK(!strcmp(e.message, "[zstd-compressed]"));
     jentry_free(&e);
     CHECK(jf_realtime(f, 5) == base + 5000000);
     CHECK(jf_entry(f, 99, &e) == -1);
@@ -231,7 +231,7 @@ static void check_file(const char *p, int compact, uint64_t base) {
 
 static int dump(const char *p) {
     JFile *f = jf_open(p);
-    if (!f) { fprintf(stderr, "no es un journal: %s\n", p); return 1; }
+    if (!f) { fprintf(stderr, "not a journal: %s\n", p); return 1; }
     char *buf = malloc(JMSG_MAX * 6 + 512);
     for (size_t i = 0; i < jf_count(f); i++) {
         JEntry e;
@@ -263,7 +263,7 @@ static int bench(const char *p) {
     long nr = jq_run(paths, 1, &q, &r);
     double t4 = now();
     jq_free(r, nr);
-    printf("%zu entradas (%zu bien): abrir %.1f ms, todas %.1f ms (%.0f entradas/s); las últimas 1000: %.1f ms\n",
+    printf("%zu entries (%zu ok): open %.1f ms, all %.1f ms (%.0f entries/s); last 1000: %.1f ms\n",
            n, ok, (t1 - t0) * 1e3, (t2 - t1) * 1e3, ok / (t2 - t1 > 0 ? t2 - t1 : 1e-9), (t4 - t3) * 1e3);
     return 0;
 }
@@ -277,13 +277,13 @@ int main(int argc, char **argv) {
     check_file("build/jtest-normal.journal", 0, b1);
     check_file("build/jtest-compact.journal", 1, b2);
 
-    /* LZ4 directo: una distancia inválida no puede leer antes del comienzo */
+    /* LZ4 directly: an invalid distance must not read before the start */
     { unsigned char out[64]; const unsigned char bad[] = { 0x14, 'a', 9, 0 };
       CHECK(lz4_block_decode(bad, sizeof bad, out, sizeof out) == -1);
       const unsigned char big[] = { 0xf0, 0xff, 0xff };
       CHECK(lz4_block_decode(big, sizeof big, out, sizeof out) == -1); }
 
-    /* consultas sobre los dos archivos, mezclados por hora */
+    /* queries over both files, merged by time */
     char *paths[] = { "build/jtest-normal.journal", "build/jtest-compact.journal" };
     JQuery q;
     JEntry *r;
@@ -295,7 +295,7 @@ int main(int argc, char **argv) {
     jq_free(r, n);
     CHECK(jq_parse("prio=2\nlimit=100", &q, 5000) == 0);
     n = jq_run(paths, 2, &q, &r);
-    CHECK(n == 6);                               /* 0, 1, 2 de cada archivo */
+    CHECK(n == 6);                               /* 0, 1, 2 from each file */
     jq_free(r, n);
     CHECK(jq_parse("match=impar\n", &q, 5000) == 0);
     n = jq_run(paths, 2, &q, &r);
@@ -311,16 +311,16 @@ int main(int argc, char **argv) {
     jq_free(r, n);
     CHECK(jq_parse("limit=3", &q, 5000) == 0);
     n = jq_run(paths, 2, &q, &r);
-    CHECK(n == 3 && r[2].realtime == b2 + 8000000);   /* las más nuevas */
+    CHECK(n == 3 && r[2].realtime == b2 + 8000000);   /* the newest ones */
     jq_free(r, n);
     { char t[64]; snprintf(t, sizeof t, "since=%llu", (unsigned long long)(b1 + 6000000));
       CHECK(jq_parse(t, &q, 5000) == 0);
       n = jq_run(paths, 2, &q, &r);
-      CHECK(n == 5);                             /* 7 y 8 del normal, 6..8 del compacto */
+      CHECK(n == 5);                             /* 7 and 8 from normal, 6..8 from compact */
       jq_free(r, n); }
     CHECK(jq_parse("since=1790000000", &q, 5000) == 0 && q.since == 1790000000000000ull);
 
-    /* validación de la consulta */
+    /* query validation */
     CHECK(jq_parse("match=a;b", &q, 5000) == -1);
     CHECK(jq_parse("prio=9", &q, 5000) == -1);
     CHECK(jq_parse("otra=1", &q, 5000) == -1);
@@ -328,17 +328,17 @@ int main(int argc, char **argv) {
     CHECK(jq_parse("grep=a\x01", &q, 5000) == -1);
     CHECK(jq_parse("since=12a", &q, 5000) == -1);
 
-    /* JSON: control, comillas y UTF-8 inválido */
+    /* JSON: control chars, quotes and invalid UTF-8 */
     { JEntry e = { 0 }; char buf[256];
       e.message = strdup("a\x01" "b\"c\\" "\xff\xc3(\xe2\x82\xac");
       e.priority = 3; e.pid = -1; e.uid = 5;
       CHECK(jentry_json(&e, buf, sizeof buf, 100) > 0);
       CHECK(strstr(buf, "\"m\":\"a\\u0001b\\\"c\\\\\xef\xbf\xbd\xef\xbf\xbd(\xe2\x82\xac\"") != NULL);
       for (char *p = buf; *p; p++) CHECK((unsigned char)*p >= 32);
-      CHECK(jentry_json(&e, buf, 10, 100) == 0);         /* no entra: 0, sin escribir de más */
+      CHECK(jentry_json(&e, buf, 10, 100) == 0);         /* doesn't fit: 0, without overrunning */
       free(e.message); }
 
-    /* archivos cortados en todos los largos (de a 13 bytes) y bytes cambiados al azar */
+    /* files truncated at every length (in steps of 13 bytes) and randomly changed bytes */
     size_t len;
     unsigned char *orig = slurp("build/jtest-compact.journal", &len);
     CHECK(orig != NULL);
@@ -361,7 +361,7 @@ int main(int argc, char **argv) {
         read_all("build/jtest-fuzz.journal");
         free(m);
     }
-    /* cadena de arreglos con un bucle: el segundo apunta al primero */
+    /* array chain with a loop: the second points to the first */
     if (orig) {
         unsigned char *m = malloc(len);
         memcpy(m, orig, len);
@@ -370,7 +370,7 @@ int main(int argc, char **argv) {
         uint64_t second = 0;
         for (int i = 0; i < 8; i++) second |= (uint64_t)m[first + 16 + i] << (8 * i);
         put64(m + second + 16, first);
-        put64(m + 152, 1000000);                 /* y una cantidad de entradas mentirosa */
+        put64(m + 152, 1000000);                 /* and a lying entry count */
         spit("build/jtest-loop.journal", m, len);
         JFile *f = jf_open("build/jtest-loop.journal");
         CHECK(f && jf_count(f) == 9);
@@ -384,7 +384,7 @@ int main(int argc, char **argv) {
     unlink("build/jtest-cut.journal");
     unlink("build/jtest-fuzz.journal");
     unlink("build/jtest-loop.journal");
-    if (fails) { fprintf(stderr, "journal-test: %d fallas\n", fails); return 1; }
-    printf("journal-test: bien (normal, compacto, LZ4, XZ, ZSTD marcado, consultas, JSON, cortes, 3000 al azar, bucle)\n");
+    if (fails) { fprintf(stderr, "journal-test: %d failures\n", fails); return 1; }
+    printf("journal-test: ok (normal, compact, LZ4, XZ, flagged ZSTD, queries, JSON, truncation, 3000 random, loop)\n");
     return 0;
 }

@@ -117,10 +117,10 @@ export function PowerSettings() {
       {hasBattery && (
         <GroupBox title={tr('prefs.power.battery')}>
           <SettingRow label={tr('prefs.power.lowBattery')} hint={tr('prefs.power.lowBatteryHint')}>
-            <Toggle on={p.lowBattery} onChange={(lowBattery) => patch({ lowBattery })} />
+            <Toggle small on={p.lowBattery} onChange={(lowBattery) => patch({ lowBattery })} />
           </SettingRow>
           <SettingRow label={tr('prefs.power.menuPercent')}>
-            <Toggle on={p.menuPercent} onChange={(menuPercent) => patch({ menuPercent })} />
+            <Toggle small on={p.menuPercent} onChange={(menuPercent) => patch({ menuPercent })} />
           </SettingRow>
         </GroupBox>
       )}

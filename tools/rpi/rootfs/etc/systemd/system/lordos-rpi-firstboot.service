@@ -1,5 +1,5 @@
 [Unit]
-Description=LordOS en Raspberry Pi: primer arranque (agrandar la partición, usuario) y modo de configuración
+Description=LordOS on Raspberry Pi: first boot (grow the partition, user) and setup mode
 Documentation=file:///usr/share/doc/lordos/README.md
 DefaultDependencies=no
 After=local-fs.target systemd-remount-fs.service

@@ -1,4 +1,4 @@
-/* netsup.c — lord-sessiond supervises lord-netd, the system network (docs/RED.md, "The network
+/* netsup.c — lord-sessiond supervises lord-netd, the system network (docs/NETWORK.md, "The network
  * belongs to the system"; the process itself is admin.c built with LORD_NETD plus net/netd.c).
  *
  *   - Started at boot, before the greeter, so there is a network (and an IP) before anyone logs

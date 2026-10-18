@@ -6,8 +6,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LordOS · Escritorio remoto</title>
 <style>
-  /* Misma estética que la pantalla de ingreso del monitor (themes/greeter). Sin lista de
-     usuarios: desde la red no se muestra quién tiene cuenta en el equipo. */
+  /* Same look as the monitor's login screen (themes/greeter). No list of
+     users: from the network we don't reveal who has an account on the machine. */
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -102,7 +102,7 @@
     if (t.h12) { const ap = h < 12 ? 'AM' : 'PM'; h = h % 12 || 12; $('clock').textContent = `${h}:${m} ${ap}`; }
     else $('clock').textContent = `${String(h).padStart(2, '0')}:${m}`;
   }
-  // el avatar sigue al nombre que se escribe (iniciales y un color fijo por nombre)
+  // the avatar follows the name being typed (initials and a fixed color per name)
   $('user').addEventListener('input', () => {
     const u = $('user').value.trim().toLowerCase();
     $('who').textContent = u;
@@ -112,7 +112,7 @@
   });
   for (const b of document.querySelectorAll('.pill')) b.addEventListener('click', () => {
     lang = b.dataset.l;
-    try { localStorage.setItem('lordos-lang', lang); } catch (e) { /* sin almacenamiento */ }
+    try { localStorage.setItem('lordos-lang', lang); } catch (e) { /* no storage */ }
     apply();
   });
   $('host').textContent = location.hostname;

@@ -1,4 +1,4 @@
-/* cups.c — ver cups.h. */
+/* cups.c — see cups.h. */
 #include "cups.h"
 #include "ipp.h"
 #include "phttp.h"
@@ -32,7 +32,7 @@ static void err(JBuf *out, const char *code, const char *detail) {
     jb_raw(out, "}");
 }
 
-/* Manda un pedido IPP a CUPS y decodifica la respuesta. Con 401, reintenta con PeerCred. */
+/* Sends an IPP request to CUPS and decodes the reply. On 401, retries with PeerCred. */
 static int do_ipp(const char *path, IppBuf *req, int docfd, size_t doclen, IppMsg *res, PResp *raw, int timeout_ms, JBuf *out) {
     if (req->err) { err(out, "encode", ""); return -1; }
     for (int attempt = 0; attempt < 2; attempt++) {
@@ -84,7 +84,7 @@ static void add_requested(IppBuf *b, const char *const *names, int n) {
 }
 
 int cups_printers(JBuf *out) {
-    /* la predeterminada */
+    /* the default one */
     char def[128] = "";
     {
         IppBuf q;
@@ -120,7 +120,7 @@ int cups_printers(JBuf *out) {
     int r = do_ipp("/", &q, -1, 0, &m, &raw, 10000, out);
     ipp_free(&q);
     if (r) {
-        /* sin impresoras CUPS responde not-found: lista vacía */
+        /* with no printers CUPS answers not-found: empty list */
         if (out->p && strstr(out->p, "not-found")) { jb_free(out); jb_printf(out, "{\"printers\":[],\"default\":\"\"}"); return 0; }
         return -1;
     }
@@ -131,7 +131,7 @@ int cups_printers(JBuf *out) {
     int n = 0;
     for (const IppAttr *a = m.attrs; a; a = a->next) {
         if (a->group != IPP_G_PRINTER || strcmp(a->name, "printer-name")) continue;
-        /* el grupo de esta impresora: desde su primer atributo */
+        /* this printer's group: from its first attribute */
         const IppAttr *g = m.attrs;
         while (g && g->gseq != a->gseq) g = g->next;
         if (n++) jb_raw(out, ",");
@@ -348,7 +348,7 @@ typedef struct { const char *uri, *info, *location; } AddArgs;
 
 static void add_more(IppBuf *q, const void *ud) {
     const AddArgs *a = ud;
-    /* modelo "everywhere": CUPS arma la PPD preguntándole a la impresora (IPP Everywhere / AirPrint) */
+    /* "everywhere" model: CUPS builds the PPD by asking the printer (IPP Everywhere / AirPrint) */
     ipp_add_str(q, IPP_T_NAME, "ppd-name", "everywhere");
     ipp_group(q, IPP_G_PRINTER);
     ipp_add_str(q, IPP_T_URI, "device-uri", a->uri);

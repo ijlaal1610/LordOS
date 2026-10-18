@@ -1,91 +1,95 @@
-// Ajustes → Escritorio y Dock: posición del Dock (abajo, izquierda, derecha), tamaño, lupa, esconderse
-// solo y apps recientes; en el tema Clásico, la posición de la barra de tareas. Se guarda en
-// settings.json (sdk/dock.js: DOCK_DEFAULTS) y el tema lo aplica en vivo, también el área de trabajo.
-import { View, Text, useTheme, useLocale, useSettings, Segmented, Toggle, Slider, dockPrefs, themes } from '@lordos/sdk';
+// Settings → Desktop & Dock: Dock position (bottom, left, right), size, magnification, auto-hide
+// and recent apps; in the Classic theme, the taskbar position. Saved in
+// settings.json (sdk/dock.js: DOCK_DEFAULTS) and the theme applies it live, including the work area.
+import { View, Text, useTheme, useLocale, useSettings, Toggle, Slider, dockPrefs, themes, spacing, typeScale } from '@lordos/sdk';
+import { Stack, Section, SettingRow } from './ui.jsx';
 
-function Row({ label, hint, children }) {
-  const t = useTheme();
+// A small picture of the screen with the Dock (or the taskbar) on the chosen side.
+function Preview({ side, t }) {
+  const W = 96, H = 60, k = 6;
+  const bar = side === 'bottom' ? { left: 24, right: 24, bottom: 3, height: k }
+    : side === 'top' ? { left: 0, right: 0, top: 0, height: k }
+      : side === 'left' ? { left: 3, top: 14, bottom: 10, width: k } : { right: 3, top: 14, bottom: 10, width: k };
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 16 }}>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{label}</Text>
-        {hint ? <Text style={{ fontSize: 11, color: t.textDim, marginTop: 3, lineHeight: 1.35 }}>{hint}</Text> : null}
-      </View>
-      {children}
+    <View style={{ width: W, height: H, borderRadius: 7, overflow: 'hidden', background: 'linear-gradient(135deg, #4b3aa8, #c0457a)',
+      border: `1px solid ${t.separator}`, direction: 'ltr' }}>
+      <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 4, backgroundColor: 'rgba(0,0,0,0.35)' }} />
+      <View style={{ position: 'absolute', ...bar, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.8)' }} />
     </View>
   );
 }
 
-const Divider = () => <View style={{ height: 1, backgroundColor: useTheme().separator }} />;
-
-// Un dibujito de la pantalla con el Dock del lado elegido.
-function Preview({ side, t }) {
-  const W = 120, H = 76, k = 7;
-  const bar = side === 'bottom' ? { left: 30, right: 30, bottom: 4, height: k }
-    : side === 'top' ? { left: 0, right: 0, top: 0, height: k }
-      : side === 'left' ? { left: 4, top: 18, bottom: 14, width: k } : { right: 4, top: 18, bottom: 14, width: k };
+// The sides as picture tiles (like Appearance), the chosen one ringed in the accent color.
+function SidePicker({ value, sides, onChange }) {
+  const t = useTheme();
+  const { t: tr } = useLocale();
   return (
-    <View style={{ width: W, height: H, borderRadius: 8, overflow: 'hidden', background: 'linear-gradient(135deg, #4b3aa8, #c0457a)',
-      border: `1px solid ${t.separator}`, direction: 'ltr' }}>
-      <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 5, backgroundColor: 'rgba(0,0,0,0.35)' }} />
-      <View style={{ position: 'absolute', ...bar, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.75)' }} />
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.l, paddingVertical: spacing.m }}>
+      {sides.map((v) => (
+        <View key={v} onClick={() => onChange(v)} style={{ alignItems: 'center', gap: 6 }}>
+          <View style={{ padding: 2, borderRadius: 9, border: `2px solid ${value === v ? t.accent : 'transparent'}` }}>
+            <Preview side={v} t={t} />
+          </View>
+          <Text style={{ fontSize: typeScale.callout, fontWeight: value === v ? 600 : 400, color: t.text }}>{tr(`settings.dock.${v}`)}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function SizeSlider({ value, min, max, onChange }) {
+  const t = useTheme();
+  const { t: tr } = useLocale();
+  const cap = { fontSize: typeScale.caption, color: t.textDim };
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s }}>
+      <Text style={cap}>{tr('settings.dock.small')}</Text>
+      <Slider value={value} min={min} max={max} width={150} onChange={(v) => onChange(Math.round(v))} />
+      <Text style={cap}>{tr('settings.dock.large')}</Text>
     </View>
   );
 }
 
 export function DockSettings() {
-  const t = useTheme();
   const { t: tr } = useLocale();
   const [s, set] = useSettings();
   const p = dockPrefs(s);
   const classic = themes.current() === 'classic';
   if (classic) {
     return (
-      <View>
-        <Row label={tr('settings.dock.taskbar')} hint={`${tr('settings.dock.taskbarHint')} ${tr('settings.dock.sidesHint')}`}>
-          <Preview side={p.taskbarPosition} t={t} />
-        </Row>
-        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingBottom: 12 }}>
-          <Segmented value={p.taskbarPosition} onChange={(v) => set({ taskbarPosition: v })}
-            options={['bottom', 'top', 'left', 'right'].map((v) => [v, tr(`settings.dock.${v}`)])} />
-        </View>
-      </View>
+      <Stack>
+        <Section title={tr('settings.dock.taskbar')} footer={`${tr('settings.dock.taskbarHint')} ${tr('settings.dock.sidesHint')}`}>
+          <SidePicker value={p.taskbarPosition} sides={['bottom', 'top', 'left', 'right']} onChange={(v) => set({ taskbarPosition: v })} />
+        </Section>
+      </Stack>
     );
   }
   return (
-    <View>
-      <Row label={tr('settings.dock.position')} hint={tr('settings.dock.sidesHint')}>
-        <Preview side={p.dockPosition} t={t} />
-      </Row>
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingBottom: 12 }}>
-        <Segmented value={p.dockPosition} onChange={(v) => set({ dockPosition: v })}
-          options={['left', 'bottom', 'right'].map((v) => [v, tr(`settings.dock.${v}`)])} />
-      </View>
-      <Divider />
-      <Row label={tr('settings.dock.size')}>
-        <Text style={{ fontSize: 11, color: t.textDim }}>{tr('settings.dock.small')}</Text>
-        <Slider value={p.dockSize} min={36} max={80} onChange={(v) => set({ dockSize: Math.round(v) })} />
-        <Text style={{ fontSize: 11, color: t.textDim }}>{tr('settings.dock.large')}</Text>
-      </Row>
-      <Divider />
-      <Row label={tr('settings.dock.magnify')} hint={tr('settings.dock.magnifyHint')}>
-        <Toggle on={p.dockMagnify} onChange={(dockMagnify) => set({ dockMagnify })} />
-      </Row>
-      {p.dockMagnify && (
-        <Row label={tr('settings.dock.magnifySize')}>
-          <Text style={{ fontSize: 11, color: t.textDim }}>{tr('settings.dock.small')}</Text>
-          <Slider value={p.dockMagnifySize} min={p.dockSize} max={128} onChange={(v) => set({ dockMagnifySize: Math.round(v) })} />
-          <Text style={{ fontSize: 11, color: t.textDim }}>{tr('settings.dock.large')}</Text>
-        </Row>
-      )}
-      <Divider />
-      <Row label={tr('settings.dock.autohide')} hint={tr('settings.dock.autohideHint')}>
-        <Toggle on={p.dockAutohide} onChange={(dockAutohide) => set({ dockAutohide })} />
-      </Row>
-      <Divider />
-      <Row label={tr('settings.dock.recents')} hint={tr('settings.dock.recentsHint')}>
-        <Toggle on={p.dockRecents} onChange={(dockRecents) => set({ dockRecents })} />
-      </Row>
-    </View>
+    <Stack>
+      <Section title={tr('settings.dock.position')} footer={tr('settings.dock.sidesHint')}>
+        <SidePicker value={p.dockPosition} sides={['left', 'bottom', 'right']} onChange={(v) => set({ dockPosition: v })} />
+      </Section>
+      <Section>
+        <SettingRow label={tr('settings.dock.size')}>
+          <SizeSlider value={p.dockSize} min={36} max={80} onChange={(dockSize) => set({ dockSize })} />
+        </SettingRow>
+        <SettingRow label={tr('settings.dock.magnify')} hint={tr('settings.dock.magnifyHint')}>
+          <Toggle small on={p.dockMagnify} onChange={(dockMagnify) => set({ dockMagnify })} />
+        </SettingRow>
+        {p.dockMagnify && (
+          <SettingRow label={tr('settings.dock.magnifySize')}>
+            <SizeSlider value={p.dockMagnifySize} min={p.dockSize} max={128} onChange={(dockMagnifySize) => set({ dockMagnifySize })} />
+          </SettingRow>
+        )}
+      </Section>
+      <Section>
+        <SettingRow label={tr('settings.dock.autohide')} hint={tr('settings.dock.autohideHint')}>
+          <Toggle small on={p.dockAutohide} onChange={(dockAutohide) => set({ dockAutohide })} />
+        </SettingRow>
+        <SettingRow label={tr('settings.dock.recents')} hint={tr('settings.dock.recentsHint')}>
+          <Toggle small on={p.dockRecents} onChange={(dockRecents) => set({ dockRecents })} />
+        </SettingRow>
+      </Section>
+    </Stack>
   );
 }

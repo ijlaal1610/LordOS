@@ -1,17 +1,17 @@
-// events.js — eventos de mouse y teclado que manda lord-server, con burbujeo estilo DOM.
+// events.js — mouse and keyboard events sent by lord-server, with DOM-style bubbling.
 // Props: onMouseDown, onMouseUp, onClick, onDoubleClick, onContextMenu, onMouseMove,
 // onMouseEnter, onMouseLeave, onWheel, onPinch, onSwipe.
 import { DiscreteEventPriority, ContinuousEventPriority, DefaultEventPriority } from 'react-reconciler/constants';
 import { translate, nativeKey, modifiers } from './keymap.js';
 
-const instances = new Map();          // id nativo → instancia del reconciler
+const instances = new Map();          // native id → reconciler instance
 const listeners = { pointermove: new Set(), pointerdown: new Set(), pointerup: new Set(), keydown: new Set(), keyup: new Set(), swipe: new Set(), pinch: new Set() };
 
 export const register = (inst) => instances.set(inst.id, inst);
 export const unregister = (inst) => instances.delete(inst.id);
 
-// Prioridad de React para el evento en curso (la consulta resolveUpdatePriority): clics y
-// teclas son discretos, el movimiento y la rueda continuos; lo demás, la de siempre.
+// React priority for the event in progress (queried by resolveUpdatePriority): clicks and
+// keys are discrete, movement and wheel are continuous; everything else gets the default.
 let priority = DefaultEventPriority;
 export const currentPriority = () => priority;
 
@@ -44,7 +44,7 @@ function makeEvent(type, target, x, y, button, extra) {
     mods: m, shift: !!(m & 1), alt: !!(m & 2), ctrl: !!(m & 4), meta: !!(m & 8),
     stopped: false,
     stopPropagation() { this.stopped = true; },
-    // Coordenadas relativas a la caja de una instancia (ej. ev.local(ev.currentTarget)).
+    // Coordinates relative to an instance's box (e.g. ev.local(ev.currentTarget)).
     local(inst) { const [lx, ly] = lord.getLayout(inst.id); return { x: x - lx, y: y - ly }; },
   };
 }
@@ -99,25 +99,25 @@ globalThis.__lordEvent = (type, id, x, y, button) => {
   });
 };
 
-// Con libxkbcommon (server/src/keyboard.c) el servidor ya trae la tecla traducida; si no
-// hay distribución XKB cargada llegan solo código y valor y se usa keymap.js de respaldo.
+// With libxkbcommon (server/src/keyboard.c) the server already sends the translated key; if no
+// XKB layout is loaded only the code and value arrive and keymap.js is used as a fallback.
 globalThis.__lordKey = (code, value, key, chr, base, flags) => {
   const ev = key === undefined ? translate(code, value) : nativeKey(code, value, key, chr, base, flags);
   run(DiscreteEventPriority, () => { for (const fn of listeners[ev.down ? 'keydown' : 'keyup']) fn(ev); });
 };
 
-// Touchpad, pantalla táctil y trackpad del escritorio remoto (server/src/tp, docs/TRACKPAD.md):
-//   scroll: onWheel con deltaX/deltaY en píxeles exactos, precise: true y phase ('begin', 'update',
-//           'end', 'momentum' mientras sigue por inercia, 'momentum-end'). notches cuenta pasos
-//           enteros de 48 px (como una rueda) para las vistas que avanzan de a renglón.
-//   pinch:  onPinch({ scale, rotation, x, y, dx, dy, phase }), scale relativa al comienzo.
-//   swipe:  onSwipe({ dx, dy, fingers, phase, system }); system = deslizar del escritorio (lo atiende
-//           el SDK con las acciones del tema si nadie llama a stopPropagation()).
-// Durante un gesto el destino queda fijo (el nodo bajo el puntero al empezar), como en macOS.
+// Touchpad, touchscreen and remote-desktop trackpad (server/src/tp, docs/TRACKPAD.md):
+//   scroll: onWheel with deltaX/deltaY in exact pixels, precise: true and phase ('begin', 'update',
+//           'end', 'momentum' while it keeps going by inertia, 'momentum-end'). notches counts whole
+//           48 px steps (like a wheel) for views that advance one line at a time.
+//   pinch:  onPinch({ scale, rotation, x, y, dx, dy, phase }), scale relative to the start.
+//   swipe:  onSwipe({ dx, dy, fingers, phase, system }); system = desktop swipe (handled by
+//           the SDK with the theme's actions if nobody calls stopPropagation()).
+// During a gesture the target stays fixed (the node under the pointer when it started), as on macOS.
 const latched = { scroll: null, pinch: null, swipe: null };
 let wheelAcc = 0;
 globalThis.__lordGesture = (kind, phase, id, x, y, a, b, c, d) => run(ContinuousEventPriority, () => {
-  // una rueda (fuente 1) no tiene fases: cada evento va al nodo de ahora
+  // a wheel (source 1) has no phases: each event goes to the current node
   if (phase === 'begin' || !latched[kind] || (kind === 'scroll' && c === 1)) latched[kind] = chainOf(id);
   const chain = latched[kind];
   const target = chain[0] || null;

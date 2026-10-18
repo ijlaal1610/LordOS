@@ -1,4 +1,4 @@
-/* mdns.c — ver mdns.h. */
+/* mdns.c — see mdns.h. */
 #include "mdns.h"
 
 #include <arpa/inet.h>
@@ -21,8 +21,8 @@ static double now_ms(void) {
     return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
 }
 
-/* Nombre DNS con compresión → "a.b.c" (sin el punto final). first = primera etiqueta tal cual.
- * Devuelve la posición después del nombre (en el lugar original) o -1. */
+/* DNS name with compression → "a.b.c" (without the final dot). first = first label as is.
+ * Returns the position after the name (in the original place) or -1. */
 static int read_name(const uint8_t *p, size_t len, size_t off, char *out, size_t n, char *first, size_t fn) {
     size_t o = 0, pos = off;
     int jumps = 0, end = -1, labels = 0;
@@ -58,7 +58,7 @@ static int read_name(const uint8_t *p, size_t len, size_t off, char *out, size_t
 
 int mdns_parse(const uint8_t *p, size_t len, MdnsCache *c) {
     if (len < 12) return -1;
-    if (!(p[2] & 0x80)) return 0;                    /* una pregunta, no una respuesta */
+    if (!(p[2] & 0x80)) return 0;                    /* a question, not an answer */
     int qd = p[4] << 8 | p[5], an = p[6] << 8 | p[7], ns = p[8] << 8 | p[9], ar = p[10] << 8 | p[11];
     size_t off = 12;
     char name[256], tmp[256];
@@ -136,7 +136,7 @@ static int put_name(uint8_t *q, size_t cap, size_t *o, const char *name) {
     return 0;
 }
 
-/* pregunta (varias preguntas en un paquete) */
+/* question (several questions in one packet) */
 static size_t build_query(uint8_t *q, size_t cap, const char *const *names, const int *types, int n, uint16_t id) {
     if (cap < 12) return 0;
     memset(q, 0, 12);
@@ -231,7 +231,7 @@ int mdns_browse(const char *const *types, int ntypes, int ms, MdnsSvc *out, int 
             sends++;
             next_send = now_ms() + (sends == 1 ? 350 : 700);
         }
-        /* a la mitad: los que todavía no tienen SRV o dirección, se preguntan uno por uno */
+        /* halfway: the ones that still have no SRV or address are asked one by one */
         if (!followed && now_ms() - start > ms / 2) {
             followed = 1;
             const char *fn[16];

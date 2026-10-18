@@ -1,16 +1,16 @@
-/* lpk.c — paquetes de apps nativas LordOS (.lpk).
+/* lpk.c — LordOS native app packages (.lpk).
  *
- * Un .lpk es un tar (ustar), comprimido o no con gzip, con:
- *   manifest.json   id, nombre, versión, permisos… (ver docs/APPS-NATIVAS.md)
- *   app.js          la app ya empaquetada (tools/lpk.mjs), que usa React y el SDK del tema
- *   icon.png        opcional
- *   locales/<idioma>.json, *.wasm, imágenes…   opcionales
+ * An .lpk is a tar (ustar), gzip-compressed or not, with:
+ *   manifest.json   id, name, version, permissions… (see docs/NATIVE-APPS.md)
+ *   app.js          the already bundled app (tools/lpk.mjs), which uses React and the theme SDK
+ *   icon.png        optional
+ *   locales/<language>.json, *.wasm, images…   optional
  *
- * Se instala sin root, en ~/.local/share/lordos/apps/<id>/ (solo del usuario). Las reglas:
- * solo archivos y carpetas comunes (ni enlaces ni dispositivos), rutas relativas con letras,
- * números, '.', '-' y '_' (sin "..", sin componentes que empiecen con '.'), a lo sumo
- * LPK_MAX_FILES archivos y LPK_MAX_TOTAL bytes. Se descomprime en memoria con el inflate de
- * stb_image, se escribe en una carpeta nueva y se cambia por la anterior con rename. */
+ * It is installed without root, in ~/.local/share/lordos/apps/<id>/ (user-only). The rules:
+ * only regular files and folders (no links or devices), relative paths with letters,
+ * digits, '.', '-' and '_' (no "..", no components starting with '.'), at most
+ * LPK_MAX_FILES files and LPK_MAX_TOTAL bytes. It is decompressed in memory with stb_image's
+ * inflate, written to a new folder and swapped with the previous one via rename. */
 #include "lpk.h"
 #include "stb_image.h"
 
@@ -26,7 +26,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define LPK_MAX_ARCHIVE (96u * 1024 * 1024)   /* el archivo comprimido */
+#define LPK_MAX_ARCHIVE (96u * 1024 * 1024)   /* the compressed file */
 
 static void seterr(char *err, size_t n, const char *msg) { if (err && n) snprintf(err, n, "%s", msg); }
 
@@ -43,7 +43,7 @@ int lpk_valid_path(const char *rel) {
     int start = 1;
     for (const char *p = rel; *p; p++) {
         if (*p == '/') { if (start) return 0; start = 1; continue; }
-        if (start && *p == '.') return 0;                       /* ".", "..", ocultos */
+        if (start && *p == '.') return 0;                       /* ".", "..", hidden */
         if (!isalnum((unsigned char)*p) && !strchr("._-", *p)) return 0;
         start = 0;
     }
@@ -60,7 +60,7 @@ static unsigned long octal(const char *s, size_t n) {
     return v;
 }
 
-/* gzip (RFC 1952) → bytes crudos; NULL si no es gzip válido. */
+/* gzip (RFC 1952) → raw bytes; NULL if not valid gzip. */
 static unsigned char *gunzip(const unsigned char *in, size_t len, size_t *outlen) {
     if (len < 18 || in[0] != 0x1f || in[1] != 0x8b || in[2] != 8) return NULL;
     int flg = in[3];
@@ -86,7 +86,7 @@ int lpk_open(const char *path, Lpk *out, char *err, size_t errlen) {
     struct stat st;
     if (fd < 0 || fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_size <= 0 || (unsigned long long)st.st_size > LPK_MAX_ARCHIVE) {
         if (fd >= 0) close(fd);
-        seterr(err, errlen, "no se puede leer el archivo");
+        seterr(err, errlen, "cannot read the file");
         return -1;
     }
     size_t len = (size_t)st.st_size;
@@ -99,27 +99,27 @@ int lpk_open(const char *path, Lpk *out, char *err, size_t errlen) {
         got += (size_t)r;
     }
     close(fd);
-    if (!buf || got != len) { free(buf); seterr(err, errlen, "no se puede leer el archivo"); return -1; }
+    if (!buf || got != len) { free(buf); seterr(err, errlen, "cannot read the file"); return -1; }
     if (buf[0] == 0x1f && buf[1] == 0x8b) {
         size_t n = 0;
         unsigned char *raw = gunzip(buf, len, &n);
         free(buf);
-        if (!raw) { seterr(err, errlen, "el paquete está dañado (gzip)"); return -1; }
+        if (!raw) { seterr(err, errlen, "the package is corrupt (gzip)"); return -1; }
         buf = raw;
         len = n;
     }
     out->raw = buf;
     out->files = calloc(LPK_MAX_FILES, sizeof *out->files);
-    if (!out->files) { lpk_free(out); seterr(err, errlen, "sin memoria"); return -1; }
+    if (!out->files) { lpk_free(out); seterr(err, errlen, "out of memory"); return -1; }
     size_t total = 0;
     for (size_t off = 0; off + 512 <= len;) {
         const char *h = (const char *)buf + off;
         int empty = 1;
         for (int i = 0; i < 512 && empty; i++) if (h[i]) empty = 0;
-        if (empty) break;                                       /* fin del tar */
+        if (empty) break;                                       /* end of the tar */
         unsigned long sum = octal(h + 148, 8), calc = 0;
         for (int i = 0; i < 512; i++) calc += (i >= 148 && i < 156) ? ' ' : (unsigned char)h[i];
-        if (sum != calc) { lpk_free(out); seterr(err, errlen, "el paquete está dañado (tar)"); return -1; }
+        if (sum != calc) { lpk_free(out); seterr(err, errlen, "the package is corrupt (tar)"); return -1; }
         unsigned long size = octal(h + 124, 12);
         char type = h[156];
         char name[260];
@@ -128,23 +128,23 @@ int lpk_open(const char *path, Lpk *out, char *err, size_t errlen) {
         else snprintf(name, sizeof name, "%.100s", h);
         size_t data = off + 512;
         size_t next = data + ((size + 511) & ~511ul);
-        if (next > len || size > LPK_MAX_TOTAL) { lpk_free(out); seterr(err, errlen, "el paquete está dañado (tamaño)"); return -1; }
+        if (next > len || size > LPK_MAX_TOTAL) { lpk_free(out); seterr(err, errlen, "the package is corrupt (size)"); return -1; }
         size_t nl = strlen(name);
         while (nl && name[nl - 1] == '/') name[--nl] = 0;
         if (nl > 2 && name[0] == '.' && name[1] == '/') memmove(name, name + 2, (nl -= 2) + 1);
-        if (type == '5' || (type == 0 && nl == 0)) { off = next; continue; }    /* carpetas: se crean solas */
-        if (type == 'x' || type == 'g') { off = next; continue; }               /* encabezados pax: se ignoran */
-        if (type != '0' && type != 0) { lpk_free(out); seterr(err, errlen, "el paquete tiene enlaces o archivos especiales"); return -1; }
-        if (!lpk_valid_path(name)) { lpk_free(out); seterr(err, errlen, "el paquete tiene una ruta inválida"); return -1; }
-        if (out->nfiles >= LPK_MAX_FILES || (total += size) > LPK_MAX_TOTAL) { lpk_free(out); seterr(err, errlen, "el paquete es demasiado grande"); return -1; }
-        if (lpk_find(out, name)) { lpk_free(out); seterr(err, errlen, "el paquete tiene archivos repetidos"); return -1; }
+        if (type == '5' || (type == 0 && nl == 0)) { off = next; continue; }    /* folders: created on their own */
+        if (type == 'x' || type == 'g') { off = next; continue; }               /* pax headers: ignored */
+        if (type != '0' && type != 0) { lpk_free(out); seterr(err, errlen, "the package has links or special files"); return -1; }
+        if (!lpk_valid_path(name)) { lpk_free(out); seterr(err, errlen, "the package has an invalid path"); return -1; }
+        if (out->nfiles >= LPK_MAX_FILES || (total += size) > LPK_MAX_TOTAL) { lpk_free(out); seterr(err, errlen, "the package is too large"); return -1; }
+        if (lpk_find(out, name)) { lpk_free(out); seterr(err, errlen, "the package has duplicate files"); return -1; }
         LpkFile *f = &out->files[out->nfiles++];
         snprintf(f->path, sizeof f->path, "%s", name);
         f->data = buf + data;
         f->size = size;
         off = next;
     }
-    if (!out->nfiles) { lpk_free(out); seterr(err, errlen, "el paquete está vacío"); return -1; }
+    if (!out->nfiles) { lpk_free(out); seterr(err, errlen, "the package is empty"); return -1; }
     return 0;
 }
 
@@ -185,7 +185,7 @@ static int rm_tree(const char *path) {
     return nftw(path, rm_entry, 16, FTW_DEPTH | FTW_PHYS);
 }
 
-/* Crea las carpetas intermedias de rel dentro de base. */
+/* Creates the intermediate folders of rel inside base. */
 static int make_parents(const char *base, const char *rel) {
     char path[PATH_MAX];
     int n = snprintf(path, sizeof path, "%s/%s", base, rel);
@@ -203,14 +203,14 @@ static int make_parents(const char *base, const char *rel) {
 
 int lpk_install(const Lpk *p, const char *id, char *err, size_t errlen) {
     const char *root = lpk_root();
-    if (!root || !lpk_valid_id(id)) { seterr(err, errlen, "no se puede instalar en la carpeta personal"); return -1; }
+    if (!root || !lpk_valid_id(id)) { seterr(err, errlen, "cannot install in the home folder"); return -1; }
     char dst[PATH_MAX], tmp[PATH_MAX], old[PATH_MAX];
     snprintf(dst, sizeof dst, "%s/%s", root, id);
     snprintf(tmp, sizeof tmp, "%s/.%s.new", root, id);
     snprintf(old, sizeof old, "%s/.%s.old", root, id);
     rm_tree(tmp);
     rm_tree(old);
-    if (mkdir(tmp, 0755)) { seterr(err, errlen, "no se puede crear la carpeta de la app"); return -1; }
+    if (mkdir(tmp, 0755)) { seterr(err, errlen, "cannot create the app folder"); return -1; }
     for (int i = 0; i < p->nfiles; i++) {
         const LpkFile *f = &p->files[i];
         char path[PATH_MAX];
@@ -224,15 +224,15 @@ int lpk_install(const Lpk *p, const char *id, char *err, size_t errlen) {
             if (r <= 0) break;
             w += (size_t)r;
         }
-        if (fd < 0 || close(fd) || w != f->size) { rm_tree(tmp); seterr(err, errlen, "no se pudo escribir la app (¿disco lleno?)"); return -1; }
+        if (fd < 0 || close(fd) || w != f->size) { rm_tree(tmp); seterr(err, errlen, "could not write the app (disk full?)"); return -1; }
     }
     struct stat st;
     int had = !lstat(dst, &st);
-    if (had && rename(dst, old)) { rm_tree(tmp); seterr(err, errlen, "no se pudo reemplazar la versión instalada"); return -1; }
+    if (had && rename(dst, old)) { rm_tree(tmp); seterr(err, errlen, "could not replace the installed version"); return -1; }
     if (rename(tmp, dst)) {
         if (had) rename(old, dst);
         rm_tree(tmp);
-        seterr(err, errlen, "no se pudo instalar la app");
+        seterr(err, errlen, "could not install the app");
         return -1;
     }
     if (had) rm_tree(old);

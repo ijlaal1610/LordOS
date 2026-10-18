@@ -1,5 +1,7 @@
 {
+  "actions": "Acciones",
   "cancel": "Cancelar",
+  "close": "Cerrar",
   "col.date": "Modificado",
   "col.kind": "Tipo",
   "col.name": "Nombre",
@@ -40,6 +42,7 @@
   "groupBy.kind": "Tipo",
   "groupBy.none": "Sin agrupar",
   "groupBy.size": "Tamaño",
+  "groupSort": "Agrupar y ordenar",
   "info.calculating": "calculando…",
   "info.created": "Creado",
   "info.deleted": "Borrado",
@@ -110,6 +113,7 @@
   "menu.up": "Carpeta de arriba",
   "menu.view": "Visualización",
   "newFolder": "carpeta sin título",
+  "noSelection": "Seleccioná ítems para etiquetarlos",
   "noResults": "No se encontró nada.",
   "place.apps": "Aplicaciones",
   "place.desktop": "Escritorio",

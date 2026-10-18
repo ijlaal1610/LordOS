@@ -1,8 +1,8 @@
-/* sign.c — verificar paquetes .lpk firmados y el catálogo firmado (ver sign.h y docs/FIRMA.md).
+/* sign.c — verifying signed .lpk packages and the signed catalog (see sign.h and docs/SIGNING.md).
  *
- * SHA-256 y Ed25519 son los propios de server/src/pkg/crypto.c (Ed25519 con la aritmética de
- * TweetNaCl, dominio público; probados con los vectores de RFC 8032 y NIST en tests/sign_test.c).
- * Nada de OpenSSL: por política solo lo enlaza lord-sessiond. */
+ * SHA-256 and Ed25519 are our own from server/src/pkg/crypto.c (Ed25519 with TweetNaCl's
+ * arithmetic, public domain; tested with the RFC 8032 and NIST vectors in tests/sign_test.c).
+ * No OpenSSL: by policy only lord-sessiond links it. */
 #include "sign.h"
 #include "json.h"
 #include "keys.h"
@@ -32,7 +32,7 @@ static int is_hex(const char *s, size_t n) {
 }
 
 #ifdef LORD_SIGN_TEST
-/* solo en tests/sign_test.c: una clave de prueba hace de oficial (para el catálogo) */
+/* only in tests/sign_test.c: a test key acts as official (for the catalog) */
 static char test_official[65];
 void sig_test_official(const char *keyhex) { snprintf(test_official, sizeof test_official, "%s", keyhex); }
 #endif
@@ -71,8 +71,8 @@ int sig_make_detached(const uint8_t seed[32], const void *data, size_t len, char
     return n > 0 && (size_t)n < outlen ? 0 : -1;
 }
 
-/* contenido.json contra los archivos del paquete: cada archivo (salvo contenido.json y firma.json)
- * aparece una vez, con el mismo tamaño y SHA-256, y no sobra ni falta ninguno. */
+/* contenido.json against the package's files: each file (except contenido.json and firma.json)
+ * appears once, with the same size and SHA-256, and none is extra or missing. */
 static int check_contents(const Lpk *pk, const JVal *root, const char *id, const char *version, char *err, size_t errlen) {
     const char *cid = json_str(root, "id"), *cver = json_str(root, "version");
     const JVal *files = json_get(root, "files");
@@ -146,7 +146,7 @@ int sig_verify_package(const Lpk *pk, const char *id, const char *version, LpkSi
     return r;
 }
 
-/* ---- catálogo ---- */
+/* ---- catalog ---- */
 
 void catalog_free(Catalog *c) {
     free(c->authors);

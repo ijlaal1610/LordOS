@@ -1,15 +1,15 @@
-// admin.js — acciones de administración por medio del ayudante privilegiado del servidor
-// (server/src/admin.c). Lista cerrada: región, zona horaria, idiomas, paquetes, red y VPN (la
-// tabla `actions` de admin.c). Las que no son de red solo funcionan si el usuario de la sesión
-// es administrador (grupo sudo). Varias pueden correr a la vez.
+// admin.js — administration actions through the server's privileged helper
+// (server/src/admin.c). Closed list: region, time zone, languages, packages, network and VPN (the
+// `actions` table in admin.c). The non-network ones only work if the session user
+// is an administrator (sudo group). Several can run at once.
 //
-//   await admin.run('locale-gen', 'pt_BR.UTF-8', (linea) => mostrarProgreso(linea))
-//   const off = admin.onEvent((texto) => ...)    // avisos sin pedido: "net link eth0 up"...
+//   await admin.run('locale-gen', 'pt_BR.UTF-8', (line) => showProgress(line))
+//   const off = admin.onEvent((text) => ...)    // unsolicited notices: "net link eth0 up"...
 import { createStore } from './store.js';
 
 const pending = new Map();              // id → { action, arg, onLog, resolve, reject }
 const eventListeners = new Set();
-// La acción visible más reciente (para mostrar progreso): { action, arg, log: [] } o null.
+// The most recent visible action (to show progress): { action, arg, log: [] } or null.
 export const adminBusy = createStore(null);
 
 function refreshBusy() {
@@ -37,12 +37,12 @@ globalThis.__lordAdmin = (id, kind, text) => {
 
 export const admin = {
   available: () => lord.admin.available(),
-  // quiet: no se muestra como "en curso" (consultas rápidas, como el estado de la red).
+  // quiet: not shown as "in progress" (quick queries, such as the network state).
   run(action, arg = '', onLog, { quiet = false } = {}) {
     return new Promise((resolve, reject) => {
       const id = lord.admin.request(action, String(arg));
-      if (!id) { reject(new Error('el ayudante de administración no está disponible')); return; }
-      pending.set(id, { action, arg: quiet ? '' : arg, onLog, resolve, reject, quiet, log: [] });   // quiet: puede llevar una contraseña
+      if (!id) { reject(new Error('the administration helper is not available')); return; }
+      pending.set(id, { action, arg: quiet ? '' : arg, onLog, resolve, reject, quiet, log: [] });   // quiet: may carry a password
       if (!quiet) refreshBusy();
     });
   },

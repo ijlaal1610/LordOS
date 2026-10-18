@@ -1,12 +1,12 @@
-/* layout.c — flexbox propio (subconjunto: dirección, wrap, grow/shrink, justify, align, gap,
- * márgenes, padding, %, min/max, position:absolute). Con flexWrap: 'wrap' los hijos que no
- * entran pasan a otra línea (gap separa también las líneas; las líneas van al comienzo, como
- * align-content: flex-start). Semántica similar a React Native:
- * flexDirection por defecto "column", flexShrink por defecto 0.
+/* layout.c — our own flexbox (subset: direction, wrap, grow/shrink, justify, align, gap,
+ * margins, padding, %, min/max, position:absolute). With flexWrap: 'wrap' the children that don't
+ * fit move to another line (gap also separates the lines; lines go at the start, like
+ * align-content: flex-start). Semantics similar to React Native:
+ * flexDirection defaults to "column", flexShrink defaults to 0.
  *
- * `direction: 'rtl'` (heredada, como en CSS) da vuelta el eje principal de las filas y el
- * inicio del eje cruzado de las columnas; left/right, márgenes y paddings siguen siendo
- * físicos (como en CSS), así las posiciones absolutas —ventanas, menús— no cambian. */
+ * `direction: 'rtl'` (inherited, as in CSS) flips the main axis of rows and the
+ * cross-axis start of columns; left/right, margins and paddings remain
+ * physical (as in CSS), so absolute positions —windows, menus— don't change. */
 #include "ui.h"
 
 #include <math.h>
@@ -36,7 +36,7 @@ static float pad_v(const Style *s) { return s->padding[EDGE_T] + s->padding[EDGE
 
 static char text_buf[8192];
 
-/* Tamaño intrínseco (border-box) dado el espacio disponible del contenedor. */
+/* Intrinsic size (border-box) given the container's available space. */
 static void measure(Node *n, float aw, float ah, float *ow, float *oh) {
     const Style *s = &n->s;
     float ph = pad_h(s), pv = pad_v(s);
@@ -66,7 +66,7 @@ static void measure(Node *n, float aw, float ah, float *ow, float *oh) {
             float iaw = !isnan(w) ? w - ph : !isnan(aw) ? aw - ph : NAN;
             float iah = !isnan(h) ? h - pv : !isnan(ah) ? ah - pv : NAN;
             int count = 0;
-            float lim = s->row ? iaw : iah;                 /* con wrap: largo de una línea */
+            float lim = s->row ? iaw : iah;                 /* with wrap: length of one line */
             int wrap = s->wrap && !isnan(lim);
             float line_m = 0, line_c = 0, tot_m = 0, tot_c = 0;
             int in_line = 0;
@@ -131,8 +131,8 @@ static void layout_absolute(Node *n, Node *c, float w, float h) {
     layout_node(c, cw, ch);
 }
 
-/* Reparte y ubica una línea de hijos: kids[0..k) en el eje principal (main) y en una franja
- * del eje cruzado [cross_off, cross_off + line_cross) dentro del contenido (cross_total). */
+/* Distributes and places a line of children: kids[0..k) on the main axis (main) and in a band
+ * of the cross axis [cross_off, cross_off + line_cross) inside the content (cross_total). */
 static void layout_line(Node *n, Node **kids, float *size_main, const float *meas_cross, int k, float main,
                         float line_cross, float cross_off, float cross_total, float ix, float iy, float ih) {
     const Style *s = &n->s;
@@ -146,7 +146,7 @@ static void layout_line(Node *n, Node **kids, float *size_main, const float *mea
         shrink += cs->shrink * size_main[i];
     }
 
-    /* Repartir espacio libre (grow) o faltante (shrink). */
+    /* Distribute free space (grow) or missing space (shrink). */
     float free_space = main - used;
     if (free_space > 0 && grow > 0) {
         for (int i = 0; i < k; i++) size_main[i] += free_space * kids[i]->s.grow / grow;
@@ -159,7 +159,7 @@ static void layout_line(Node *n, Node **kids, float *size_main, const float *mea
         free_space = 0;
     }
     if (free_space != 0 || grow > 0) {
-        /* min/max en el eje principal y recálculo del espacio libre. */
+        /* min/max on the main axis and recomputation of free space. */
         float total = k > 1 ? s->gap * (k - 1) : 0;
         for (int i = 0; i < k; i++) {
             const Style *cs = &kids[i]->s;
@@ -179,7 +179,7 @@ static void layout_line(Node *n, Node **kids, float *size_main, const float *mea
         if (!isnan(ec)) sz = ec;
         else if (align == ALIGN_STRETCH) sz = line_cross - mc;
         else if (row) {
-            /* Alto del hijo para el ancho ya decidido (texto que envuelve). */
+            /* Child height for the width already decided (wrapping text). */
             float mw, mh;
             measure(c, size_main[i], ih - mc, &mw, &mh);
             sz = mh;
@@ -253,7 +253,7 @@ static void layout_node(Node *n, float w, float h) {
 
     if (!s->wrap) layout_line(n, kids, size_main, meas_cross, k, main, cross, 0, cross, ix, iy, ih);
     else {
-        /* líneas: se corta cuando el próximo hijo no entra en el eje principal */
+        /* lines: break when the next child doesn't fit on the main axis */
         int start = 0;
         float off = 0;
         while (start < k) {

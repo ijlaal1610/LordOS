@@ -1,6 +1,6 @@
-// Empaqueta un tema React (con el SDK y todas las apps de apps/) en un único .js que
-// lord-server carga con QuickJS.
-// Uso: node tools/build-theme.mjs [tema ...]   (sin argumentos: todos los temas)
+// Bundles a React theme (with the SDK and every app in apps/) into a single .js that
+// lord-server loads with QuickJS.
+// Usage: node tools/build-theme.mjs [theme ...]   (no arguments: every theme)
 import { build } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
@@ -8,7 +8,7 @@ import path from 'node:path';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
-// Módulo virtual '@lordos/apps': una entrada por cada apps/<id>/manifest.json.
+// Virtual module '@lordos/apps': one entry per apps/<id>/manifest.json.
 const appsPlugin = {
   name: 'lordos-apps',
   setup(b) {
@@ -54,12 +54,12 @@ async function buildTheme(name) {
     logLevel: 'warning',
   });
   const bytes = Object.values(result.metafile.outputs)[0].bytes;
-  console.log(`tema ${name}: ${(bytes / 1024).toFixed(0)} KB en ${Date.now() - t0} ms`);
+  console.log(`theme ${name}: ${(bytes / 1024).toFixed(0)} KB in ${Date.now() - t0} ms`);
 }
 
 const names = process.argv.slice(2);
-// El «app host»: React + runtime + SDK (broker) + el cargador de la app, para lord-server --app
-// (ver server/src/app/appclient.c). Un solo bundle en assets/app-host.bundle.js.
+// The «app host»: React + runtime + SDK (broker) + the app loader, for lord-server --app
+// (see server/src/app/appclient.c). A single bundle in assets/app-host.bundle.js.
 async function buildAppHost() {
   const t0 = Date.now();
   const result = await build({
@@ -70,7 +70,7 @@ async function buildAppHost() {
     define: { 'process.env.NODE_ENV': '"production"' }, metafile: true, logLevel: 'warning',
   });
   const bytes = Object.values(result.metafile.outputs)[0].bytes;
-  console.log(`app-host: ${(bytes / 1024).toFixed(0)} KB en ${Date.now() - t0} ms`);
+  console.log(`app-host: ${(bytes / 1024).toFixed(0)} KB in ${Date.now() - t0} ms`);
 }
 
 // Built-in apps with "process": "isolated" (Passwords): their app.js for `lord-server --app <id>`,

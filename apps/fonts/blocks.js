@@ -1,5 +1,5 @@
-// blocks.js — bloques de Unicode que muestra la tabla de caracteres (nombre en fonts.block.<id>).
-// [id, desde, hasta]
+// blocks.js — Unicode blocks shown by the character table (name in fonts.block.<id>).
+// [id, from, to]
 export const BLOCKS = [
   ['basicLatin', 0x20, 0x7e], ['latin1', 0xa0, 0xff], ['latinExtA', 0x100, 0x17f], ['latinExtB', 0x180, 0x24f], ['ipa', 0x250, 0x2af],
   ['spacing', 0x2b0, 0x2ff], ['diacritics', 0x300, 0x36f], ['greek', 0x370, 0x3ff], ['cyrillic', 0x400, 0x4ff], ['armenian', 0x530, 0x58f],

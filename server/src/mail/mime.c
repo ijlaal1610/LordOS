@@ -600,8 +600,8 @@ static void parse_ctype(const char *hdr, size_t hlen, MimePart *p, const MimePar
         while (l && (a[l - 1] == '>' || a[l - 1] == ' ')) l--;
         copy_trim(p->cid, sizeof p->cid, a, l);
     }
-    /* file names: no paths or control characters */
-    for (char *c = p->filename; *c; c++) if (*c == '/' || *c == '\\' || (unsigned char)*c < 0x20) *c = '_';
+    /* file names: decoded first (RFC 2231/2047 above), then reduced to a safe basename */
+    { char safe[256]; mime_safe_filename(p->filename, safe, sizeof safe); scpy(p->filename, sizeof p->filename, p->filename[0] ? safe : ""); }
 }
 
 /* Finds the next "--boundary" line starting at from. Returns the start of the line or (size_t)-1. */
@@ -911,4 +911,34 @@ void mime_base_subject(const char *subj, char *out, size_t cap) {
         if (!hit) break;
     }
     copy_trim(out, cap, s, strlen(s));
+}
+
+/* A safe basename for a file name chosen by whoever sent the message: the last path component
+ * (both / and \\), no leading dots or spaces, no control, bidi-override or FAT-reserved
+ * characters (<>:"|?*), at most 200 bytes without cutting a UTF-8 sequence. Never empty. */
+void mime_safe_filename(const char *in, char *out, size_t cap) {
+    if (!cap) return;
+    const char *s = in ? in : "";
+    for (const char *p = s; *p; p++) if (*p == '/' || *p == '\\') s = p + 1;
+    size_t o = 0, limit = cap - 1 < 200 ? cap - 1 : 200;
+    while (*s == '.' || *s == ' ' || *s == '\t') s++;
+    while (*s && o < limit) {
+        unsigned char c = (unsigned char)*s;
+        int k = utf8_len((const unsigned char *)s, strlen(s));
+        if (!k) { if (o + 1 > limit) break; out[o++] = '_'; s++; continue; }
+        uint32_t cp = c;
+        if (k == 2) cp = ((c & 0x1fu) << 6) | (s[1] & 0x3fu);
+        else if (k == 3) cp = ((c & 0x0fu) << 12) | ((s[1] & 0x3fu) << 6) | (s[2] & 0x3fu);
+        else if (k == 4) cp = ((c & 0x07u) << 18) | ((s[1] & 0x3fu) << 12) | ((s[2] & 0x3fu) << 6) | (s[3] & 0x3fu);
+        int bad = cp < 0x20 || cp == 0x7f || (cp >= 0x80 && cp < 0xa0) || strchr("<>:\"|?*", (int)(cp < 0x80 ? cp : 1)) != NULL ||
+                  (cp >= 0x202a && cp <= 0x202e) || (cp >= 0x2066 && cp <= 0x2069) || cp == 0x200e || cp == 0x200f || cp == 0x061c || cp == 0xfeff;
+        if (bad) { out[o++] = '_'; s += k; continue; }
+        if (o + (size_t)k > limit) break;
+        memcpy(out + o, s, (size_t)k);
+        o += (size_t)k;
+        s += k;
+    }
+    while (o && (out[o - 1] == ' ' || out[o - 1] == '.')) o--;      /* "name." / "name " are trouble on FAT */
+    out[o] = 0;
+    if (!o || strspn(out, "._ ") == o) snprintf(out, cap, "attachment");
 }

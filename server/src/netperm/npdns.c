@@ -1,4 +1,4 @@
-/* npdns.c — nombres desde el resolvedor del sistema (ver npdns.h). */
+/* npdns.c — names from the system resolver (see npdns.h). */
 #include "netperm/npdns.h"
 #include "fw/rules.h"
 #include "sec/json.h"
@@ -19,16 +19,16 @@
 #include <unistd.h>
 
 #define MONITOR_SOCK "/run/systemd/resolve/io.systemd.Resolve.Monitor"
-#define VL_MAX       (1u << 20)         /* un mensaje de varlink no pasa de 1 MB */
+#define VL_MAX       (1u << 20)         /* a varlink message doesn't exceed 1 MB */
 #define MAX_SERVERS  8
 
 struct NpDns {
     NpDnsCb cb;
     void *u;
-    int vfd;                    /* varlink con resolved */
+    int vfd;                    /* varlink with resolved */
     char *vbuf;
     size_t vlen;
-    int pfd;                    /* AF_PACKET (sin resolved) */
+    int pfd;                    /* AF_PACKET (without resolved) */
     NpAddr servers[MAX_SERVERS];
     int nservers;
     long long last_try, last_conf;
@@ -40,7 +40,7 @@ static long long mono(void) {
     return ts.tv_sec;
 }
 
-/* ---- armar un mensaje DNS con los registros "raw" de resolved ------------------------------- */
+/* ---- building a DNS message from resolved's "raw" records ---------------------------------- */
 
 static int b64v(int c) {
     if (c >= 'A' && c <= 'Z') return c - 'A';
@@ -51,7 +51,7 @@ static int b64v(int c) {
     return -1;
 }
 
-/* base64 estricto (con relleno). Devuelve los bytes o -1. */
+/* strict base64 (with padding). Returns the bytes or -1. */
 static long b64dec(const char *s, size_t n, uint8_t *out, size_t max) {
     if (n % 4) return -1;
     size_t w = 0;
@@ -106,20 +106,20 @@ int npdns_from_varlink(const char *json, size_t len, NpDnsCb cb, void *u) {
         for (int i = 0; i < ndone; i++) if (!strcmp(done[i], nm)) dup = 1;
         if (dup) continue;
         memcpy(done[ndone++], nm, sizeof nm);
-        /* cabecera: respuesta (QR, RD, RA), una pregunta */
+        /* header: response (QR, RD, RA), one question */
         memset(pkt, 0, 12);
         pkt[2] = 0x81; pkt[3] = 0x80; pkt[5] = 1;
         size_t w = 12;
         int nl = put_name(pkt + w, 65535 - w - 4, nm);
         if (nl < 0) continue;
         w += (size_t)nl;
-        pkt[w++] = 0; pkt[w++] = 1; pkt[w++] = 0; pkt[w++] = 1;      /* tipo A, clase IN (no se mira el tipo) */
+        pkt[w++] = 0; pkt[w++] = 1; pkt[w++] = 0; pkt[w++] = 1;      /* type A, class IN (the type isn't checked) */
         unsigned an = 0;
         for (const JVal *a = ans->kid; a && an < 512; a = a->next) {
             const JVal *raw = json_get(a, "raw");
             if (!raw || raw->type != J_STR || raw->len > 4 * 1024) continue;
             long n = b64dec(raw->str, raw->len, pkt + w, 65535 - w);
-            if (n < 11) continue;                       /* ni siquiera un registro */
+            if (n < 11) continue;                       /* not even one record */
             w += (size_t)n;
             an++;
         }
@@ -134,7 +134,7 @@ out:
     return made;
 }
 
-/* ---- paquetes (sin resolved) ----------------------------------------------------------------- */
+/* ---- packets (without resolved) -------------------------------------------------------------- */
 
 int npdns_from_packet(const uint8_t *p, size_t len, const NpAddr *servers, int nservers, const uint8_t **dns, size_t *dnslen) {
     if (len < 20) return -1;
@@ -144,12 +144,12 @@ int npdns_from_packet(const uint8_t *p, size_t len, const NpAddr *servers, int n
     if (p[0] >> 4 == 4) {
         size_t ihl = (size_t)(p[0] & 0xf) * 4, tot = (size_t)p[2] << 8 | p[3];
         if (ihl < 20 || tot < ihl || tot > len || p[9] != 17) return -1;
-        if (((p[6] << 8 | p[7]) & 0x3fff) != 0) return -1;      /* fragmentos: no */
+        if (((p[6] << 8 | p[7]) & 0x3fff) != 0) return -1;      /* fragments: no */
         fam = 4; src = p + 12; udp = p + ihl; rest = tot - ihl;
     } else if (p[0] >> 4 == 6) {
         if (len < 40) return -1;
         size_t pl = (size_t)p[4] << 8 | p[5];
-        if (p[6] != 17 || 40 + pl > len) return -1;              /* sin cabeceras de extensión */
+        if (p[6] != 17 || 40 + pl > len) return -1;              /* no extension headers */
         fam = 6; src = p + 8; udp = p + 40; rest = pl;
     } else return -1;
     if (rest < 8 || (udp[0] << 8 | udp[1]) != 53) return -1;
@@ -187,7 +187,7 @@ static void read_resolv(NpDns *d) {
 static int open_packet(void) {
     int fd = socket(AF_PACKET, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, htons(ETH_P_ALL));
     if (fd < 0) return -1;
-    /* desde la cabecera IP: IPv4 UDP sin fragmentar con puerto de origen 53, o IPv6 UDP con 53 */
+    /* from the IP header: unfragmented IPv4 UDP with source port 53, or IPv6 UDP with 53 */
     struct sock_filter code[] = {
         BPF_STMT(BPF_LD | BPF_B | BPF_ABS, 0),
         BPF_STMT(BPF_ALU | BPF_RSH | BPF_K, 4),
@@ -195,16 +195,16 @@ static int open_packet(void) {
         BPF_STMT(BPF_LD | BPF_B | BPF_ABS, 9),
         BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 17, 0, 11),         /* → no */
         BPF_STMT(BPF_LD | BPF_H | BPF_ABS, 6),
-        BPF_JUMP(BPF_JMP | BPF_JSET | BPF_K, 0x3fff, 9, 0),     /* fragmento → no */
+        BPF_JUMP(BPF_JMP | BPF_JSET | BPF_K, 0x3fff, 9, 0),     /* fragment → no */
         BPF_STMT(BPF_LDX | BPF_B | BPF_MSH, 0),
         BPF_STMT(BPF_LD | BPF_H | BPF_IND, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 53, 5, 6),          /* → sí / no */
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 53, 5, 6),          /* → yes / no */
         BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 6, 0, 5),           /* IPv6? */
         BPF_STMT(BPF_LD | BPF_B | BPF_ABS, 6),
         BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 17, 0, 3),
         BPF_STMT(BPF_LD | BPF_H | BPF_ABS, 40),
         BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 53, 0, 1),
-        BPF_STMT(BPF_RET | BPF_K, 0xffff),                      /* sí */
+        BPF_STMT(BPF_RET | BPF_K, 0xffff),                      /* yes */
         BPF_STMT(BPF_RET | BPF_K, 0),                           /* no */
     };
     struct sock_fprog prog = { (unsigned short)(sizeof code / sizeof code[0]), code };
@@ -258,7 +258,7 @@ void npdns_tick(NpDns *d) {
             d->last_try = now;
             d->vfd = open_varlink();
             d->vlen = 0;
-            if (d->vfd >= 0) fprintf(stderr, "lord-netperm: nombres desde systemd-resolved (monitor por varlink)\n");
+            if (d->vfd >= 0) fprintf(stderr, "lord-netperm: names from systemd-resolved (varlink monitor)\n");
         }
         if (d->vfd >= 0 && d->pfd >= 0) { close(d->pfd); d->pfd = -1; }
     } else {
@@ -266,7 +266,7 @@ void npdns_tick(NpDns *d) {
         if (d->pfd < 0 && now - d->last_try >= 5) {
             d->last_try = now;
             d->pfd = open_packet();
-            if (d->pfd >= 0) fprintf(stderr, "lord-netperm: sin systemd-resolved; nombres desde las respuestas de los servidores de /etc/resolv.conf\n");
+            if (d->pfd >= 0) fprintf(stderr, "lord-netperm: no systemd-resolved; names from the responses of the servers in /etc/resolv.conf\n");
             d->last_conf = -100;
         }
     }
@@ -276,10 +276,10 @@ void npdns_tick(NpDns *d) {
 static void varlink_read(NpDns *d) {
     if (!d->vbuf && !(d->vbuf = malloc(VL_MAX))) return;
     for (;;) {
-        if (d->vlen == VL_MAX) { d->vlen = 0; break; }         /* mensaje gigante: se descarta */
+        if (d->vlen == VL_MAX) { d->vlen = 0; break; }         /* giant message: discarded */
         ssize_t n = recv(d->vfd, d->vbuf + d->vlen, VL_MAX - d->vlen, 0);
         if (n == 0 || (n < 0 && errno != EAGAIN && errno != EINTR)) {
-            fprintf(stderr, "lord-netperm: se cortó el monitor de systemd-resolved\n");
+            fprintf(stderr, "lord-netperm: the systemd-resolved monitor was cut off\n");
             close(d->vfd);
             d->vfd = -1;
             d->vlen = 0;
@@ -305,7 +305,7 @@ static void packet_read(NpDns *d) {
         socklen_t sl = sizeof sll;
         ssize_t n = recvfrom(d->pfd, buf, sizeof buf, 0, (struct sockaddr *)&sll, &sl);
         if (n <= 0) return;
-        if (sll.sll_pkttype == PACKET_OUTGOING) continue;       /* en lo cada paquete se ve dos veces */
+        if (sll.sll_pkttype == PACKET_OUTGOING) continue;       /* on lo every packet is seen twice */
         const uint8_t *dns;
         size_t dl;
         if (!npdns_from_packet(buf, (size_t)n, d->servers, d->nservers, &dns, &dl)) d->cb(d->u, dns, dl);

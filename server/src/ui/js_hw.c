@@ -4,8 +4,11 @@
  * arrive in JS as __lordHw(kind, data).
  *
  *   lord.display.list()                         outputs, modes, Night Shift, backlight
- *   lord.display.apply(conn, w, h, mHz, rot, scale)   live (queued between frames); true if accepted
- *   lord.display.save(conn)                     keep the current mode for that display
+ *   lord.display.apply(conn, w, h, mHz, rot, scale)   live (queued between frames); scale in % (100–200,
+ *                                               25 % steps); true if accepted
+ *   lord.display.arrange(conn, x, y, apply)     drop a display at global logical (x, y): { x, y } snapped
+ *   lord.display.setMirror(on) / setMain(conn) / setCaptureAll(on)   (docs/DISPLAYS.md)
+ *   lord.display.save(conn)                     keep the current configuration of every display
  *   lord.display.setTemperature(K) / temperature()
  *   lord.display.sun(zone, y, m, d)             { rise, set } minutes UTC, or null
  *   lord.display.setIdle(offS, lockS, sleepS) / wake()
@@ -65,15 +68,46 @@ static JSValue f_display_apply(JSContext *c, JSValueConst t, int argc, JSValueCo
     (void)t;
     if (argc < 5) return JS_FALSE;
     int conn = arg_int(c, argv[0], 0), w = arg_int(c, argv[1], 0), h = arg_int(c, argv[2], 0);
-    int hz = arg_int(c, argv[3], 0), rot = arg_int(c, argv[4], 0), scale = argc > 5 ? arg_int(c, argv[5], 1) : 1;
-    if (conn <= 0 || w < 0 || h < 0 || w > 16384 || h > 16384 || hz < 0 || hz > 1000000 || rot < 0 || rot > 3 || (scale != 1 && scale != 2)) return JS_FALSE;
+    int hz = arg_int(c, argv[3], 0), rot = arg_int(c, argv[4], 0), scale = argc > 5 ? arg_int(c, argv[5], 100) : 100;
+    if (scale == 1 || scale == 2) scale *= 100;
+    if (conn <= 0 || w < 0 || h < 0 || w > 16384 || h > 16384 || hz < 0 || hz > 1000000 || rot < 0 || rot > 3 || !out_scale_valid(scale)) return JS_FALSE;
     return JS_NewBool(c, display_request((uint32_t)conn, w, h, hz, rot, scale) == 0);
+}
+
+static JSValue f_display_arrange(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    if (argc < 3) return JS_NULL;
+    int conn = arg_int(c, argv[0], 0), x = arg_int(c, argv[1], 0), y = arg_int(c, argv[2], 0);
+    int apply = argc > 3 && JS_ToBool(c, argv[3]) > 0, sx = 0, sy = 0;
+    if (conn <= 0 || x < -65536 || x > 65536 || y < -65536 || y > 65536) return JS_NULL;
+    if (display_arrange((uint32_t)conn, x, y, apply, &sx, &sy)) return JS_NULL;
+    JSValue o = JS_NewObject(c);
+    JS_SetPropertyStr(c, o, "x", JS_NewInt32(c, sx));
+    JS_SetPropertyStr(c, o, "y", JS_NewInt32(c, sy));
+    return o;
+}
+
+static JSValue f_display_mirror(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    return JS_NewBool(c, argc > 0 && display_set_mirror(JS_ToBool(c, argv[0]) > 0) == 0);
+}
+
+static JSValue f_display_main(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    int conn = argc ? arg_int(c, argv[0], 0) : 0;
+    return JS_NewBool(c, conn > 0 && display_set_main((uint32_t)conn) == 0);
+}
+
+static JSValue f_display_capture(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    if (argc > 0) display_set_capture_all(JS_ToBool(c, argv[0]) > 0);
+    return JS_NewBool(c, display_capture_all());
 }
 
 static JSValue f_display_save(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     int conn = argc ? arg_int(c, argv[0], 0) : 0;
-    return JS_NewBool(c, conn > 0 && display_save((uint32_t)conn) == 0);
+    return JS_NewBool(c, conn >= 0 && display_save((uint32_t)conn) == 0);
 }
 
 static JSValue f_display_set_temp(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
@@ -119,6 +153,10 @@ static const JSCFunctionListEntry display_funcs[] = {
     JS_CFUNC_DEF("list", 0, f_display_list),
     JS_CFUNC_DEF("apply", 6, f_display_apply),
     JS_CFUNC_DEF("save", 1, f_display_save),
+    JS_CFUNC_DEF("arrange", 4, f_display_arrange),
+    JS_CFUNC_DEF("setMirror", 1, f_display_mirror),
+    JS_CFUNC_DEF("setMain", 1, f_display_main),
+    JS_CFUNC_DEF("setCaptureAll", 1, f_display_capture),
     JS_CFUNC_DEF("setTemperature", 1, f_display_set_temp),
     JS_CFUNC_DEF("temperature", 0, f_display_temp),
     JS_CFUNC_DEF("sun", 4, f_display_sun),

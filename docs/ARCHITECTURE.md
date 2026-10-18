@@ -37,27 +37,29 @@ que React Native pero sobre nuestro servidor gráfico.
 | `server/src/term/` | **M4 hecho** | Terminal propia: emulador xterm, PTY, dibujo, guardianes de sesión (ver `TERMINAL.md`) |
 | `server/src/ui/otf.c`, `fonts.c` | **M4 hecho** | OpenType propio (sustituciones GSUB, emoji CBDT) y catálogo de fuentes instaladas: sin HarfBuzz ni fontconfig |
 | `apps/terminal/` | **M4 hecho** | App Terminal estilo iTerm2 (pestañas, paneles, perfiles…) |
-| `sdk/i18n.js`, `assets/locales/` | **M5 hecho** | Textos, plurales y formatos por idioma y región (ver `IDIOMAS.md`) |
+| `sdk/i18n.js`, `assets/locales/` | **M5 hecho** | Textos, plurales y formatos por idioma y región (ver `LANGUAGES.md`) |
 | `server/src/keyboard.c` | **M5 hecho** | Teclado con libxkbcommon: todas las distribuciones de XKB, compose |
 | `server/src/admin.c` | **M5 hecho** | Ayudante privilegiado con acciones cerradas (región, zona horaria, paquetes de idioma) |
 | `server/src/ui/bidi.c`, `unicode.c`, `shape.c`, `textlayout.c` | **M5b hecho** | Bidi de Unicode completo, formas del árabe y marcas (GSUB/GPOS), respaldo de fuentes por escritura, corte CJK, interfaz espejada (`direction`) |
 | `server/src/ime.c`, `sdk/ime.js` | **M5b hecho** | Métodos de entrada: coreano, japonés (SKK), chino (pinyin) |
-| `server/src/app/`, `ui/js_broker.c`, `runtime/app-host.js` | **M8 hecho** | Modo app: cada `.lpk` como proceso aislado (`lord-server --app <id>`), cliente Wayland del compositor, con broker de permisos (ver `PRIVACIDAD.md`) |
-| `server/src/sec/`, `ui/js_sec.c` | **M8 hecho** | Aislamiento de apps .lpk (Landlock+seccomp+cgroup), permisos TCC y firma Ed25519 (ver `PRIVACIDAD.md`, `FIRMA.md`) |
+| `server/src/app/`, `ui/js_broker.c`, `runtime/app-host.js` | **M8 hecho** | Modo app: cada `.lpk` como proceso aislado (`lord-server --app <id>`), cliente Wayland del compositor, con broker de permisos (ver `PRIVACY.md`) |
+| `server/src/sec/`, `ui/js_sec.c` | **M8 hecho** | Aislamiento de apps .lpk (Landlock+seccomp+cgroup), permisos TCC y firma Ed25519 (ver `PRIVACY.md`, `SIGNING.md`) |
 | `server/src/wl/`, `sdk/wayland.js` | **M6 hecho** | Compositor Wayland propio sobre libwayland-server: apps GTK y Qt como ventanas del tema (ver `WAYLAND.md`) |
 | `server/src/tp/`, `wl/wl_input.c`, `js_input.c`, `sdk/trackpad.js` | **hecho (VM, uinput)** | Driver propio de touchpads y pantallas táctiles sobre evdev (sin libinput): puntero con aceleración, tocar, clic con dedos, palmas, scroll con inercia, pellizco, deslizar; gestos y toques para las apps Wayland (ver `TRACKPAD.md`) |
-| `server/src/doc/`, `js_doc.c`, `apps/pdf`, `apps/fonts`, `apps/characters` | **M9** | Documentos: el ayudante encerrado `lord-doc` (Poppler, libarchive, FreeType) y sus apps: Visor de PDF, comprimidos y Vista rápida en Archivos, Tipografías, Emojis y símbolos (ver `DOCUMENTOS.md`) |
-| `server/src/print/`, `js_print.c`, `sdk/printdialog.jsx`, `apps/scanner` | **M9** | Impresión: cliente IPP propio contra CUPS, mDNS propio, escáneres eSCL, diálogo de impresión del sistema (ver `IMPRESION.md`) |
-| `server/src/media/`, `js_media.c`, `sdk/media.js`, `apps/{photos,player,screenshots,camera,recorder}` | **M9** | Medios: el ayudante encerrado `lord-media` (FFmpeg, libva) y las apps Fotos, Reproductor, Capturas, Cámara y Grabadora; nodo `media`, audio por memoria compartida con el stream de PipeWire en lord-server, ventanas protegidas en capturas, grabación y escritorio remoto (ver `MEDIOS.md`) |
+| `server/src/doc/`, `js_doc.c`, `apps/pdf`, `apps/fonts`, `apps/characters` | **M9** | Documentos: el ayudante encerrado `lord-doc` (Poppler, libarchive, FreeType) y sus apps: Visor de PDF, comprimidos y Vista rápida en Archivos, Tipografías, Emojis y símbolos (ver `DOCUMENTS.md`) |
+| `server/src/print/`, `js_print.c`, `sdk/printdialog.jsx`, `apps/scanner` | **M9** | Impresión: cliente IPP propio contra CUPS, mDNS propio, escáneres eSCL, diálogo de impresión del sistema (ver `PRINTING.md`) |
+| `server/src/media/`, `js_media.c`, `sdk/media.js`, `apps/{photos,player,screenshots,camera,recorder}` | **M9** | Medios: el ayudante encerrado `lord-media` (FFmpeg, libva) y las apps Fotos, Reproductor, Capturas, Cámara y Grabadora; nodo `media`, audio por memoria compartida con el stream de PipeWire en lord-server, ventanas protegidas en capturas, grabación y escritorio remoto (ver `MEDIA.md`) |
 | `server/src/netperm/`, `server/src/fw/`, `js_fw.c` | **M8** | Firewall por app: el servicio root `lord-netperm` aplica las reglas con BPF de cgroup en las sesiones; columna Regla del Monitor y Apps confiables / restringidas en Ajustes (ver `FIREWALL.md`) |
 | `server/src/monitor/`, `js_monitor.c`, `apps/monitor/` | **M8** | Monitor: CPU, memoria, red, discos, procesos y conexiones por app con mapa; hilo propio solo con la app abierta, sock_diag y país por IP con una base local (ver `MONITOR.md`) |
 | `server/src/vault/`, `js_vault.c`, `sdk/vault.js`, `apps/passwords` | **M9** | Passwords and the system keyring: the sandboxed helper `lord-vault` (Monocypher: XChaCha20-Poly1305, Argon2id), own `.lvault` format, FIDO2/CTAP2 client, session keyring opened at login, Secret Service on D-Bus with own code (see `PASSWORDS.md`) |
-| `server/src/net/netd.c`, `remote/netsup.c` | **M9** | `lord-netd`: the network belongs to the system. A root service started and supervised by `lord-sessiond` at boot, serving the `net-*` actions for every session (see `RED.md`) |
+| `server/src/net/netd.c`, `remote/netsup.c` | **M9** | `lord-netd`: the network belongs to the system. A root service started and supervised by `lord-sessiond` at boot, serving the `net-*` actions for every session (see `NETWORK.md`) |
 | `server/src/disk/`, `js_disk.c`, `sdk/disks.js`, `apps/disks` | **M9** | Disks: listing without root (sysfs, udev database, mountinfo), our own SMART reader (ATA PASS-THROUGH over SG_IO, NVMe health log), closed `disk-*` actions, bootable USB verified with SHA-256 (see `SYSTEM.md`) |
+| `server/src/mail/`, `js_mail.c`, `sdk/{mail,calendar,contacts}.js`, `apps/{mail,calendar,contacts,reminders}` | **M9** | Mail, Calendar, Contacts and Reminders: the sandboxed helper `lord-maild` (IMAP with IDLE/CONDSTORE, SMTP, CalDAV/CardDAV, OpenSSL) with no sockets of its own — `lord-server` connects only to configured servers and hands it the fd; own MIME, HTML sanitizer, iCalendar, vCard and XML parsers (see `MAIL.md`) |
 | `server/src/backup/`, `js_backup.c`, `sdk/backup.js`, `apps/backup` | **M9** | Backups: hard-link snapshots in a lord-server thread (nice 19, idle I/O), hourly/daily/weekly retention, optional encryption with the vendored Monocypher; no root and no `admin.c` actions (see `SYSTEM.md`) |
 | `server/src/logs/`, `js_logs.c`, `sdk/logs.js`, `apps/logs` | **M9** | Logs: our own systemd journal reader (no libsystemd), LordOS logs, system logs for admins through a closed action, live follow with inotify (see `SYSTEM.md`) |
 | `server/src/ui/tzif.c`, `js_help.c`, `sdk/{notify,alarms,statusitems,help}.js`, `apps/{clock,help}` | **M9** | Clock (our own TZif reader, session alarms with the app closed), session notifications, menu-bar status items, Help (markdown articles in es/en/pt, welcome tour, Spotlight source) (see `SYSTEM.md`) |
-| `server/src/ui/grab.c`, `cursor.c`, `sdk/windowshell.jsx` | **M8** | Ventanas: mover y agrandar en C (un evento por cuadro, sin JS), capa de la ventana que se mueve, bordes en los 4 lados y esquinas, cursores propios y `cursor-shape-v1` (ver `VENTANAS.md`) |
+| `server/src/ui/grab.c`, `cursor.c`, `sdk/windowshell.jsx` | **M8** | Ventanas: mover y agrandar en C (un evento por cuadro, sin JS), capa de la ventana que se mueve, bordes en los 4 lados y esquinas, cursores propios y `cursor-shape-v1` (ver `WINDOWS.md`) |
+| `server/src/outputs.c`, `kms.c`, `hw/display.c`, `ui/paint.c` (`paint_view`) | **M9** | Several displays (extend and mirror, arrangement by EDID identity, hotplug) and sharp HiDPI at 100–200 % per display: one logical space, each display painted at its own resolution; one `wl_output` per display, xdg-output, fractional-scale-v1 (see `DISPLAYS.md`) |
 | `server/src/hw/`, `ui/js_hw.c`, `sdk/hardware.jsx`, `sdk/defaults.js` | **M9** | Settings' hardware pages: displays (EDID, live modes with a 15 s revert, per-display persistence, software rotation and 200 % scale, Night Shift on the gamma LUT or by software), Bluetooth (BlueZ over our own D-Bus client, pairing agent), battery and power profiles, idle (DPMS, lock, sleep), date and time, notifications from Linux apps (`org.freedesktop.Notifications`) and default apps (`mimeapps.list`); kernel uevents and D-Bus signals, no polling (see `SETTINGS.md`) |
 
 ### Flujo de un frame
@@ -81,10 +83,10 @@ Solo se permite, además del kernel y la libc:
 | QuickJS              | motor JavaScript ES2023, ~1 MB, escrito en C                  | vendorizado|
 | `stb_truetype`, `stb_image` | fuentes e imágenes; dominio público, un solo header    | vendorizado|
 | `stb_image_write`    | PNG y JPEG del escritorio remoto (solo `lord-sessiond`); dominio público | vendorizado|
-| OpenSSL (`libssl`, `libcrypto`) | TLS del escritorio remoto en la LAN. **Solo lo enlaza `lord-sessiond`**, nunca `lord-server` (`REMOTO.md`) | sistema |
+| OpenSSL (`libssl`, `libcrypto`) | TLS. **Only two binaries link it**: `lord-sessiond` (remote desktop on the LAN, `REMOTE.md`) and `lord-maild` (IMAP/SMTP/CalDAV/CardDAV, certificates checked against the system CA store, `MAIL.md`). Never `lord-server` | sistema |
 | `libcrypt`           | verificar contraseñas contra `/etc/shadow` (`lord-sessiond`, `admin.c`) | sistema |
-| FFmpeg (`libavcodec`, `libavformat`, `libavutil`, `libswscale`, `libswresample`) y `libva` (+ `libva-drm`) | Decodificar y codificar video, audio e imágenes; VA-API para decodificar por hardware (M9, aprobados por el usuario). **Solo los enlaza `lord-media`**, el ayudante encerrado; el reproductor, la sincronización y la interfaz son propios. Nunca `lord-server` (`MEDIOS.md`) | sistema |
-| Poppler (`libpoppler-glib`) y libarchive | PDF y comprimidos (M9, aprobados por el usuario). **Solo los enlaza `lord-doc`**, el ayudante encerrado; con Poppler vienen cairo, FreeType y fontconfig, que `lord-doc` también usa para las muestras de fuentes y para armar PDF. Nunca `lord-server` (`DOCUMENTOS.md`) | sistema |
+| FFmpeg (`libavcodec`, `libavformat`, `libavutil`, `libswscale`, `libswresample`) y `libva` (+ `libva-drm`) | Decodificar y codificar video, audio e imágenes; VA-API para decodificar por hardware (M9, aprobados por el usuario). **Solo los enlaza `lord-media`**, el ayudante encerrado; el reproductor, la sincronización y la interfaz son propios. Nunca `lord-server` (`MEDIA.md`) | sistema |
+| Poppler (`libpoppler-glib`) y libarchive | PDF y comprimidos (M9, aprobados por el usuario). **Solo los enlaza `lord-doc`**, el ayudante encerrado; con Poppler vienen cairo, FreeType y fontconfig, que `lord-doc` también usa para las muestras de fuentes y para armar PDF. Nunca `lord-server` (`DOCUMENTS.md`) | sistema |
 | `clang` (solo al compilar) | los programas BPF de `lord-netperm` (`np.bpf.c`, `clang -target bpf`); van adentro del binario. Sin clang (`BPF=0`) el servicio corre sin BPF. No se usa libbpf ni bcc | máquina que compila |
 | Monocypher 4.0.2 | XChaCha20-Poly1305, Argon2id/Argon2d, BLAKE2b, ChaCha20 for the Passwords vault and the KeePass importer (approved by the user; CC0/BSD-2, one C file). **Only `lord-vault` links it**; its official test vectors run in `make test` (`PASSWORDS.md`) | vendorizado |
 | EFF word list, 10k common passwords | passphrase generator and the offline "breached" check (CC BY 3.0 US / MIT), embedded in `lord-vault` | `third_party/wordlists` |
@@ -98,10 +100,10 @@ usa en la máquina de desarrollo.
 Desde M8 hay dos programas, y desde M9 dos ayudantes:
 
 - **`lord-netd`** (M9, root): the system network, started and supervised by `lord-sessiond` at boot;
-  only the `net-*` actions of `admin.c`. libc only. See `RED.md`.
+  only the `net-*` actions of `admin.c`. libc only. See `NETWORK.md`.
 
 - **`lord-sessiond`** (root, `lordos.service`): la pantalla de ingreso, la lista de sesiones, el
-  monitor y el escritorio remoto. Ver `SESIONES.md` y `REMOTO.md`.
+  monitor y el escritorio remoto. Ver `SESSIONS.md` y `REMOTE.md`.
 - **`lord-server`**: una sesión por usuario, siempre sin monitor propio (`--headless`); el
   monitor y los navegadores la miran por su socket.
 - **`lord-netperm`** (root, `lord-netperm.service`): los permisos de red por app. Engancha sus
@@ -111,12 +113,12 @@ Desde M8 hay dos programas, y desde M9 dos ayudantes:
 - **`lord-doc`** (M9): el ayudante de documentos. Lo lanza `lord-server` cuando hace falta, con
   ruta fija (al lado de su binario) y sin argumentos. Corre como el usuario, sin red y encerrado
   (Landlock + seccomp), y trabaja solo con los fds que le pasa `lord-server`. Abre PDF,
-  comprimidos, fuentes e imágenes que llegan de afuera. Ver `DOCUMENTOS.md`.
+  comprimidos, fuentes e imágenes que llegan de afuera. Ver `DOCUMENTS.md`.
 - **`lord-media`** (M9): el ayudante de medios, igual que `lord-doc`: ruta fija, sin argumentos,
   como el usuario, sin red ni archivos (solo los fds que le pasa `lord-server`, incluidos la
   cámara y el render node), en `sandbox_apply_helper`. Decodifica y codifica con FFmpeg; los
   cuadros vuelven por memoria compartida sellada y el audio va a un anillo cuyo stream de
-  PipeWire es de `lord-server`. Ver `MEDIOS.md`.
+  PipeWire es de `lord-server`. Ver `MEDIA.md`.
 
 - **`lord-vault`** (M9): the Passwords and keyring helper. Same rules as `lord-doc`/`lord-media`
   (fixed path, no arguments, minimal environment, `sandbox_apply_helper`: no network, no new
@@ -124,6 +126,14 @@ Desde M8 hay dos programas, y desde M9 dos ayudantes:
   `mlock`/`MADV_DONTDUMP` arena, receives the vault folder, picked files, the FIDO2 hidraw device
   and the already-connected session D-Bus socket as fds, and serves the Secret Service. See
   `PASSWORDS.md`.
+
+- **`lord-maild`** (M9): the Mail, Calendar, Contacts and Reminders helper. Same rules as
+  `lord-doc` (fixed path, no arguments, minimal environment, `sandbox_apply_helper`), lives while
+  the session does (it sends mail later, keeps IMAP IDLE and computes alarms with the apps closed).
+  It speaks IMAP, SMTP, HTTP/WebDAV and TLS (OpenSSL) but **cannot create sockets**: it asks
+  `lord-server` (`mail/mailc.c`) for a connection, and `lord-server` connects only to the servers
+  of the accounts file (or, after *Load Images*, to public addresses for remote images) and passes
+  the connected fd. Its only writable folder is its cache. See `MAIL.md`.
 
 `lord-server` sigue pudiendo correr solo, con DRM y evdev propios, para el desarrollo.
 
@@ -149,7 +159,7 @@ Desde M7, lo que LordOS hace con código propio y lo que delega en un programa d
   - el cliente IPP de CUPS, mDNS/DNS-SD y eSCL (`server/src/print`, M9): sin libcups, avahi-client
     ni SANE.
 - **Servicios de Debian a los que se les habla por su protocolo:** CUPS (IPP por
-  `/run/cups/cups.sock`; administra la cola y los controladores, ver `IMPRESION.md`).
+  `/run/cups/cups.sock`; administra la cola y los controladores, ver `PRINTING.md`).
 - **D-Bus services (Settings, `SETTINGS.md`):** BlueZ (`bluetoothd`), power-profiles-daemon and
   systemd-timedated on the system bus, with our own D-Bus client (`vault/dbus.c`); lord-server also
   serves `org.freedesktop.Notifications` on the session bus. No libdbus, sd-bus or libbluetooth.
@@ -241,12 +251,12 @@ otro bundle; los ajustes persisten en disco.
 - Las apps Wayland externas (M5) solo verán sus propias superficies.
 - Los documentos que llegan de afuera (PDF, comprimidos, fuentes, imágenes del escáner) se abren
   solo en `lord-doc`, encerrado. Un archivo malicioso puede tirar abajo ese proceso, pero no
-  `lord-server`. Extraer nunca escribe fuera de la carpeta de destino (`DOCUMENTOS.md`, «Extraer
+  `lord-server`. Extraer nunca escribe fuera de la carpeta de destino (`DOCUMENTS.md`, «Extraer
   sin salir de la carpeta»).
 - Los medios (videos, música, fotos, la cámara) se decodifican solo en `lord-media`, encerrado y
   sin el socket de PipeWire. Pantalla, micrófono y cámara piden permiso (`sec/perms.c`, verificado
   en C), y las ventanas protegidas (`wm.setProtected`) salen negras en capturas, grabaciones y el
-  escritorio remoto (`MEDIOS.md`).
+  escritorio remoto (`MEDIA.md`).
 - Impresoras: administrar las colas (agregar, quitar, predeterminada) lo autoriza CUPS. Solo
   pueden los usuarios del grupo `lpadmin` (los administradores), identificados con PeerCred por
-  el socket unix. No hay ninguna acción de root nueva en `admin.c` (`IMPRESION.md`).
+  el socket unix. No hay ninguna acción de root nueva en `admin.c` (`PRINTING.md`).

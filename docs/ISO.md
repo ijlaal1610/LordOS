@@ -1,244 +1,245 @@
-# ISO live de LordOS
+# LordOS live ISO
 
-Una imagen para arrancar LordOS desde un pendrive o un CD en cualquier PC de 64 bits, sin
-instalar nada. Es Debian 13 mínimo con LordOS adentro y entra directo al escritorio. Sirve para
-probar el hardware real: la GPU (AMD o Nvidia), el sonido, el Wi-Fi y las pantallas. Es el
-primer paso de M8 (la imagen instalable).
+An image to boot LordOS from a USB stick or a CD on any 64-bit PC, without installing anything. It
+is a minimal Debian 13 with LordOS inside and it goes straight to the desktop. It's for testing real
+hardware: the GPU (AMD or Nvidia), sound, Wi-Fi and displays. It is the first step of M8 (the
+installable image).
 
 | | |
 |---|---|
 | ![bios](iso-bios-arranque.png) | ![uefi](iso-uefi-arranque.png) |
-| VM con SeaBIOS: arranca sola hasta LordOS | VM con OVMF (UEFI) |
+| VM with SeaBIOS: boots on its own into LordOS | VM with OVMF (UEFI) |
 | ![grub](iso-grub.png) | ![terminal](iso-terminal.png) |
-| Menú de arranque (captura anterior al arreglo de la fuente de grub: los bordes salían como «?») | Red por DHCP propio de LordOS, DNS, `ping` sin root, sonido (PipeWire) y arranque en 11,8 s |
+| Boot menu (screenshot from before the grub font fix: the borders showed up as "?") | Network via LordOS's own DHCP, DNS, `ping` without root, sound (PipeWire) and boot in 11.8 s |
 
-## Grabarlo en un USB
+## Writing it to a USB stick
 
-El ISO es **híbrido**: se graba tal cual, sin herramientas especiales. Ojo: se borra todo el
-pendrive.
+The ISO is **hybrid**: it is written as is, without special tools. Careful: the whole USB stick is
+erased.
 
-- **Linux o macOS:**
+- **Linux or macOS:**
   ```sh
   sha256sum -c lordos-live-0.7.0-amd64.iso.sha256      # macOS: shasum -a 256 -c …
   sudo dd if=lordos-live-0.7.0-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
   ```
-  `/dev/sdX` es el pendrive entero (no una partición). En macOS es `/dev/rdiskN`: buscalo con
-  `diskutil list` y desmontalo antes con `diskutil unmountDisk /dev/diskN`.
-- **Windows:** Rufus en modo **DD** (cuando pregunta "ISO o DD", elegir DD) o balenaEtcher.
-- **Ventoy** también funciona: se copia el `.iso` al pendrive.
+  `/dev/sdX` is the whole USB stick (not a partition). On macOS it is `/dev/rdiskN`: find it with
+  `diskutil list` and unmount it first with `diskutil unmountDisk /dev/diskN`.
+- **Windows:** Rufus in **DD** mode (when it asks "ISO or DD", choose DD) or balenaEtcher.
+- **Ventoy** also works: copy the `.iso` onto the stick.
 
-Después se arranca la PC desde el USB: suele ser F12, F11, F8 o Esc al prender, según la
-placa. Anda con **UEFI** y con **BIOS/Legacy**. **Secure Boot** tiene que estar apagado (ver
-"Pendiente").
+Then boot the PC from the USB stick: usually F12, F11, F8 or Esc at power-on, depending on the
+motherboard. It works with **UEFI** and with **BIOS/Legacy**. **Secure Boot** has to be off (see
+"Pending").
 
-## Menú de arranque
+## Boot menu
 
-| Entrada | Para qué |
+| Entry | What for |
 |---|---|
-| LordOS (en vivo) | normal, en español |
-| LordOS (modo seguro: sin GPU) | pasa `lordos.gpu=0` → `LORD_GPU=0`: lord-server no usa el camino de GPU y compone por CPU |
-| LordOS (English) | la interfaz en inglés la primera vez |
-| LordOS (copiar a la RAM) | `toram`: copia el sistema a la memoria (hacen falta ~1 GB libres) y se puede sacar el pendrive |
+| LordOS (en vivo) | normal, in Spanish |
+| LordOS (modo seguro: sin GPU) | passes `lordos.gpu=0` → `LORD_GPU=0`: lord-server doesn't use the GPU path and composites on the CPU |
+| LordOS (English) | the interface in English the first time |
+| LordOS (copiar a la RAM) | `toram`: copies the system to memory (~1 GB free is needed) and the USB stick can be removed |
 
-En la sesión live:
-- **Usuario:** `lordos`, sin contraseña, con `sudo` sin contraseña.
-- **root:** contraseña `lordos`, solo para la consola de emergencia.
-- **Cambios:** todo lo que se cambia queda en la RAM y se pierde al apagar. La Tienda y la
-  instalación de paquetes andan igual, pero en memoria.
+In the live session:
+- **User:** `lordos`, no password, with passwordless `sudo`.
+- **root:** password `lordos`, only for the emergency console.
+- **Changes:** everything you change stays in RAM and is lost on power-off. The Store and package
+  installation work the same, but in memory.
 
-## Instalar al disco
+## Installing to disk
 
-En el ISO live se abre solo el asistente **Instalar LordOS** (`apps/installer`). Solo existe
-en el live: el manifest tiene `"live": true` y el SDK lo oculta si no está
-`/run/live/medium/live/filesystem.squashfs`.
+On the live ISO the **Install LordOS** assistant (`apps/installer`) opens on its own. It only exists
+on the live system: the manifest has `"live": true` and the SDK hides it if
+`/run/live/medium/live/filesystem.squashfs` is not there.
 
 | | |
 |---|---|
-| ![bienvenida](iso-instalador-bienvenida.png) | ![disco](iso-instalador-disco.png) |
-| Bienvenida | Disco: modelo, tamaño, contenido y confirmación fuerte |
-| ![usuario](iso-instalador-usuario.png) | ![progreso](iso-instalador-progreso.png) |
-| Usuario, contraseña y nombre del equipo, con validaciones | Instalando: barra por fases |
-| ![instalado](iso-instalador-instalado.png) | ![terminal](iso-instalador-terminal.png) |
-| Arrancado desde el disco (UEFI), con el usuario creado | Grupos, fstab con UUID, es_AR, zona horaria, sin live-boot, red; sudo pide contraseña |
+| ![welcome](iso-instalador-bienvenida.png) | ![disk](iso-instalador-disco.png) |
+| Welcome | Disk: model, size, contents and a strong confirmation |
+| ![user](iso-instalador-usuario.png) | ![progress](iso-instalador-progreso.png) |
+| User, password and computer name, with validation | Installing: progress bar by phase |
+| ![installed](iso-instalador-instalado.png) | ![terminal](iso-instalador-terminal.png) |
+| Booted from the disk (UEFI), with the created user | Groups, fstab with UUIDs, es_AR, time zone, no live-boot, network; sudo asks for a password |
 | ![bios](iso-instalador-bios.png) | ![gpu](iso-live-gpu.png) |
-| El mismo disco arrancando por SeaBIOS (BIOS + GPT) | El ISO trae el camino por GPU (`GPU=1`); en la VM (virtio sin 3D) cae a CPU solo |
+| The same disk booting through SeaBIOS (BIOS + GPT) | The ISO ships the GPU path (`GPU=1`); in the VM (virtio without 3D) it falls back to the CPU on its own |
 
-Pasos del asistente:
+Assistant steps:
 
-1. **Bienvenida.**
-2. **Idioma, región y zona horaria.** El idioma cambia la interfaz en vivo.
-3. **Teclado.** La distribución se aplica en vivo y hay un campo para probarla.
-4. **Disco.** Lista los discos (modelo, tamaño, conexión y lo que tienen adentro), sin el disco
-   del que arrancó el live. Para seguir hay que marcar «Entiendo que se borra todo el disco» y
-   escribir el nombre del disco (`sda`). Opcional: swap como archivo, de 2, 4 u 8 GB.
-5. **Usuario.**
-   - El nombre de usuario se sugiere a partir del nombre completo.
-   - La contraseña se escribe dos veces.
-   - El nombre del equipo se sugiere como `<usuario>-pc`.
-   - Las mismas reglas se validan después, de nuevo, del lado root.
-6. **Resumen** y «Instalar».
-7. **Progreso**, en cuatro fases:
-   - particionar;
-   - copiar el sistema, con el porcentaje que informa `unsquashfs`;
-   - configurar;
-   - instalar el arranque.
+1. **Welcome.**
+2. **Language, region and time zone.** The language changes the interface live.
+3. **Keyboard.** The layout is applied live and there's a field to try it.
+4. **Disk.** Lists the disks (model, size, connection and what's on them), excluding the disk the
+   live system booted from. To continue you have to tick "I understand the whole disk will be
+   erased" and type the disk's name (`sda`). Optional: swap as a file, of 2, 4 or 8 GB.
+5. **User.**
+   - The user name is suggested from the full name.
+   - The password is typed twice.
+   - The computer name is suggested as `<user>-pc`.
+   - The same rules are validated again later, on the root side.
+6. **Summary** and "Install".
+7. **Progress**, in four phases:
+   - partitioning;
+   - copying the system, with the percentage reported by `unsquashfs`;
+   - configuring;
+   - installing the bootloader.
 
-   Al final aparece «Reiniciar».
+   At the end "Restart" appears.
 
-Cómo queda el disco:
+How the disk ends up:
 
-| Partición | Tamaño | Para qué |
+| Partition | Size | What for |
 |---|---|---|
-| 1 `biosboot` (EF02) | 1 MiB | grub para BIOS en un disco GPT |
-| 2 `EFI` (EF00) | 512 MiB, FAT32 | grub para UEFI, en la ruta removible (`EFI/BOOT/BOOTX64.EFI`: arranca en cualquier firmware sin entrada en la NVRAM) |
-| 3 `LordOS` (8304) | el resto, ext4 | el sistema; la swap es `/swapfile` |
+| 1 `biosboot` (EF02) | 1 MiB | grub for BIOS on a GPT disk |
+| 2 `EFI` (EF00) | 512 MiB, FAT32 | grub for UEFI, at the removable path (`EFI/BOOT/BOOTX64.EFI`: boots on any firmware without an NVRAM entry) |
+| 3 `LordOS` (8304) | the rest, ext4 | the system; swap is `/swapfile` |
 
-El sistema instalado es una copia del live con estos cambios:
+The installed system is a copy of the live system with these changes:
 
-- **Fuera lo del live:**
-  - se quitan `live-boot` y el usuario `lordos`, con su sudo sin contraseña;
-  - root queda bloqueado (`*`).
-- **El usuario nuevo** está en los grupos `sudo`, `audio`, `video`, `input` y `render`, y
-  tiene linger, así su PipeWire arranca con el sistema.
-- **Configuración** que se escribe:
-  - `fstab` con UUID;
-  - hostname y `/etc/hosts`;
-  - `/etc/default/locale`, `/etc/localtime` y `/etc/default/keyboard`;
-  - los ajustes de LordOS del usuario (idioma y teclado);
-  - un `machine-id` nuevo;
-  - el initramfs regenerado y `grub.cfg`.
-- **Inicio de sesión:**
-  - `lordos.service` arranca `lord-sessiond`, que muestra la pantalla de ingreso propia
-    (`SESIONES.md`): el instalador escribe `AUTOLOGIN=` vacío en `/etc/lordos/session.conf`;
-  - el inicio automático se prende en Ajustes → Usuarios;
-  - la contraseña sirve para `sudo` y para las acciones de administración.
+- **Live-only things removed:**
+  - `live-boot` and the `lordos` user are removed, along with its passwordless sudo;
+  - root is locked (`*`).
+- **The new user** is in the `sudo`, `audio`, `video`, `input` and `render` groups, and has
+  linger, so their PipeWire starts with the system.
+- **Configuration** that gets written:
+  - `fstab` with UUIDs;
+  - hostname and `/etc/hosts`;
+  - `/etc/default/locale`, `/etc/localtime` and `/etc/default/keyboard`;
+  - the user's LordOS settings (language and keyboard);
+  - a new `machine-id`;
+  - the regenerated initramfs and `grub.cfg`.
+- **Login:**
+  - `lordos.service` starts `lord-sessiond`, which shows LordOS's own login screen
+    (`SESSIONS.md`): the installer writes an empty `AUTOLOGIN=` to `/etc/lordos/session.conf`;
+  - automatic login is turned on in Settings → Users;
+  - the password is used for `sudo` and for administration actions.
 
-### Seguridad del instalador
+### Installer security
 
-Agrega tres acciones al ayudante privilegiado (`server/src/install/install.c`, macro
-`INSTALL_ADMIN_ACTIONS` en `admin.c`):
+It adds three actions to the privileged helper (`server/src/install/install.c`, macro
+`INSTALL_ADMIN_ACTIONS` in `admin.c`):
 
-| Acción | Quién | Qué hace |
+| Action | Who | What it does |
 |---|---|---|
-| `install-disks` | administrador | lista los discos instalables (JSON por `LOG`) |
-| `install-run <json>` | administrador, en un proceso aparte | instala |
-| `install-reboot` | administrador | `systemctl reboot` |
+| `install-disks` | administrator | lists the installable disks (JSON via `LOG`) |
+| `install-run <json>` | administrator, in a separate process | installs |
+| `install-reboot` | administrator | `systemctl reboot` |
 
-Las tres responden **ERR fuera del modo live**: tiene que existir
-`/run/live/medium/live/filesystem.squashfs`. En un sistema instalado, ese archivo no existe.
+All three answer **ERR outside live mode**: `/run/live/medium/live/filesystem.squashfs` has to
+exist. On an installed system that file doesn't exist.
 
-Qué valida `install-run` del lado root, sin confiar en la interfaz:
+What `install-run` validates on the root side, without trusting the interface:
 
-- **El disco:**
-  - tiene que estar en la misma lista de `install-disks` (de `/sys/block`, sin loop, ram,
-    zram, sr, dm, md ni nbd, sin los de solo lectura y sin el disco que contiene
+- **The disk:**
+  - it has to be in the same list as `install-disks` (from `/sys/block`, without loop, ram, zram,
+    sr, dm, md or nbd, without read-only ones and without the disk that contains
     `/run/live/medium`);
-  - tiene que tener al menos 8 GB;
-  - no puede tener nada montado ni swap activa.
-- **Usuario:**
+  - it has to be at least 8 GB;
+  - it can't have anything mounted or active swap.
+- **User:**
   - `^[a-z_][a-z0-9_-]{0,31}$`;
-  - no puede ser un nombre reservado ni un usuario que ya exista en el sistema.
-- **Nombre completo:** UTF-8, sin `:`, `,` ni caracteres de control.
-- **Nombre del equipo:** `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`.
-- **Región:** tiene que figurar en `/usr/share/i18n/SUPPORTED` con UTF-8.
-- **Zona horaria:** un archivo regular de `/usr/share/zoneinfo`, sin `..`.
-- **Teclado:** la distribución tiene que existir en `/usr/share/X11/xkb/symbols`; la variante,
+  - it can't be a reserved name or a user that already exists on the system.
+- **Full name:** UTF-8, without `:`, `,` or control characters.
+- **Computer name:** `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`.
+- **Region:** it has to appear in `/usr/share/i18n/SUPPORTED` with UTF-8.
+- **Time zone:** a regular file in `/usr/share/zoneinfo`, without `..`.
+- **Keyboard:** the layout has to exist in `/usr/share/X11/xkb/symbols`; the variant,
   `[A-Za-z0-9_-]`.
-- **Swap:** de 0 a 16384 MiB.
-- **La contraseña:**
-  - nunca va a un argv: llega por el socketpair del ayudante;
-  - se hashea con `crypt(3)` yescrypt (`$y$`, como Debian, con `crypt_gensalt_ra`);
-  - el hash se escribe directo en `/etc/shadow` del sistema nuevo;
-  - después se borra de la memoria (`explicit_bzero`), y la interfaz también la olvida al
-    empezar.
-- **Programas de ruta fija:** `wipefs`, `sgdisk`, `udevadm`, `mkfs.vfat`, `mkfs.ext4`,
-  `unsquashfs`, `blkid`, `fallocate`, `mkswap`, `chroot` (con `dpkg`, `userdel`, `useradd`,
-  `locale-gen`, `systemd-machine-id-setup`, `update-initramfs`, `grub-install` y `grub-mkconfig`
-  adentro) y `systemctl`. Los argumentos los arma `install.c` con los valores ya validados.
+- **Swap:** from 0 to 16384 MiB.
+- **The password:**
+  - never goes into an argv: it arrives through the helper's socketpair;
+  - it is hashed with `crypt(3)` yescrypt (`$y$`, like Debian, with `crypt_gensalt_ra`);
+  - the hash is written directly to the new system's `/etc/shadow`;
+  - afterwards it is wiped from memory (`explicit_bzero`), and the interface also forgets it when
+    starting.
+- **Fixed-path programs:** `wipefs`, `sgdisk`, `udevadm`, `mkfs.vfat`, `mkfs.ext4`, `unsquashfs`,
+  `blkid`, `fallocate`, `mkswap`, `chroot` (with `dpkg`, `userdel`, `useradd`, `locale-gen`,
+  `systemd-machine-id-setup`, `update-initramfs`, `grub-install` and `grub-mkconfig` inside) and
+  `systemctl`. `install.c` builds the arguments from the already validated values.
 
-## Qué trae
+## What it ships
 
-- **LordOS** como paquete propio, `lordos_<versión>_amd64.deb`, que arma `tools/iso/mkdeb.sh`:
-  - `/usr/lib/lordos/bin/lord-sessiond` (root: sesiones, pantalla de ingreso, escritorio remoto
-    apagado, puerto 5673) y `/usr/lib/lordos/bin/lord-server` (cada sesión);
-  - los temas ya construidos, en `/usr/lib/lordos/themes`;
-  - `assets/`: fuentes, textos, íconos y la integración del shell;
+- **LordOS** as its own package, `lordos_<version>_amd64.deb`, built by `tools/iso/mkdeb.sh`:
+  - `/usr/lib/lordos/bin/lord-sessiond` (root: sessions, login screen, remote desktop off, port
+    5673) and `/usr/lib/lordos/bin/lord-server` (each session);
+  - the prebuilt themes, in `/usr/lib/lordos/themes`;
+  - `assets/`: fonts, texts, icons and the shell integration;
   - `lordos.service`.
-- **Arranque:** `lordos.service` arranca `lord-sessiond` en tty1 como root.
-  - `/etc/lordos/session.conf` dice `AUTOLOGIN=lordos`: entra solo, como antes. El usuario no
-    tiene contraseña; después de bloquear la pantalla se vuelve con el campo vacío (solo en el
-    monitor).
-  - Antes, `lordos-live-prep` (`ExecStartPre`, solo si existe `/run/live`) aplica
-    `lordos.lang` (a `/etc/default/locale` y a los ajustes del usuario), crea sus carpetas y
-    deja `/etc/network/interfaces` solo con `lo`.
-  - `lordos.gpu=0` (modo seguro) sigue funcionando: lord-sessiond lo lee de `/proc/cmdline` y les
-    pasa `LORD_GPU=0` a todas las sesiones. Sin esa opción, la sesión que está en el monitor
-    compone por GPU como antes (Mesa: EGL, GBM, GLES2, linux-dmabuf y scanout directo).
-  - El usuario tiene linger, así su PipeWire arranca con el sistema.
-  - El usuario de sistema `lordos-greeter`, el de la pantalla de ingreso, se crea al armar el
-    ISO (lord-sessiond también lo crea si falta).
-- **Network:** LordOS's own DHCP, in `lord-netd` from boot (`RED.md`). No ifupdown,
+- **Boot:** `lordos.service` starts `lord-sessiond` on tty1 as root.
+  - `/etc/lordos/session.conf` says `AUTOLOGIN=lordos`: it logs in on its own, as before. The user
+    has no password; after locking the screen you get back in with the field empty (only on the
+    physical display).
+  - Before that, `lordos-live-prep` (`ExecStartPre`, only if `/run/live` exists) applies
+    `lordos.lang` (to `/etc/default/locale` and the user's settings), creates their folders and
+    leaves `/etc/network/interfaces` with only `lo`.
+  - `lordos.gpu=0` (safe mode) still works: lord-sessiond reads it from `/proc/cmdline` and passes
+    `LORD_GPU=0` to every session. Without that option, the session on the display composites on
+    the GPU as before (Mesa: EGL, GBM, GLES2, linux-dmabuf and direct scanout).
+  - The user has linger, so their PipeWire starts with the system.
+  - The system user `lordos-greeter`, the login screen's user, is created when building the ISO
+    (lord-sessiond also creates it if it's missing).
+- **Network:** LordOS's own DHCP, in `lord-netd` from boot (`NETWORK.md`). No ifupdown,
   systemd-networkd or NetworkManager.
-- **Sonido:** PipeWire, pipewire-pulse, WirePlumber, alsa-ucm-conf y el firmware SOF (audio de
-  las notebooks Intel).
-- **GPU:** Mesa (radeonsi, iris, nouveau, llvmpipe y RADV/ANV/NVK para Vulkan), `libgbm1`,
-  `libegl1`, `libgles2`, `firmware-amd-graphics` y `firmware-misc-nonfree`. Para probarla:
-  `glmark2-es2-wayland`, `eglinfo`/`glxinfo` (mesa-utils) y `vulkaninfo`.
-- **Wi-Fi:** wpa_supplicant y firmware Intel (iwlwifi), Realtek y Atheros.
-- **Fuentes:** Noto (core, CJK, emoji) y DejaVu; el resto de lo de M5b: libthai-data, skkdic y
-  rime-data-pinyin-simp.
-- **Apps Linux de ejemplo:** foot y FeatherPad.
+- **Sound:** PipeWire, pipewire-pulse, WirePlumber, alsa-ucm-conf and the SOF firmware (audio on
+  Intel laptops).
+- **GPU:** Mesa (radeonsi, iris, nouveau, llvmpipe and RADV/ANV/NVK for Vulkan), `libgbm1`,
+  `libegl1`, `libgles2`, `firmware-amd-graphics` and `firmware-misc-nonfree`. To test it:
+  `glmark2-es2-wayland`, `eglinfo`/`glxinfo` (mesa-utils) and `vulkaninfo`.
+- **Wi-Fi:** wpa_supplicant and Intel (iwlwifi), Realtek and Atheros firmware.
+- **Fonts:** Noto (core, CJK, emoji) and DejaVu; the rest of what M5b needs: libthai-data, skkdic
+  and rime-data-pinyin-simp.
+- **Sample Linux apps:** foot and FeatherPad.
 
-## Armarlo
+## Building it
 
-En un Debian 13, desde la raíz del repositorio ya compilado. Desde M8 se arma en la **VM 116**
-(`lordos-gpu`, 172.17.0.52, clon de la 115), en `~/LordOS-iso`: la 115 es la VM de desarrollo
-del usuario y no se usa para esto.
+On a Debian 13, from the root of an already compiled repository. Since M8 it is built on **VM 116**
+(`lordos-gpu`, 172.17.0.52, a clone of 115), in `~/LordOS-iso`: 115 is the user's development VM and
+is not used for this.
 
 ```sh
-# en el Mac: los temas (también la pantalla de ingreso, themes/greeter)
+# on the Mac: the themes (also the login screen, themes/greeter)
 npm run build
 COPYFILE_DISABLE=1 tar czf - --no-xattrs --exclude build --exclude node_modules \
   package.json README.md server third_party assets themes tools | \
   ssh lord@172.17.0.52 'rm -rf ~/LordOS-iso && mkdir ~/LordOS-iso && cd ~/LordOS-iso && tar xzf -'
-# en la VM 116
-make -C server -j4                            # lord-server (GPU=1) y lord-sessiond (necesita libssl-dev)
+# on VM 116
+make -C server -j4                            # lord-server (GPU=1) and lord-sessiond (needs libssl-dev)
 sudo tools/iso/build.sh /var/tmp/lordos-iso   # → /var/tmp/lordos-iso/out/
 ```
 
-El ISO se copia a Proxmox (`local:iso/lordos-live-<versión>-amd64.iso`). Antes de pisarlo, el
-anterior se guarda con su fecha: `lordos-live-0.7.0-amd64-20261016-1529.iso` es el último con
+The ISO is copied to Proxmox (`local:iso/lordos-live-<version>-amd64.iso`). Before overwriting it, the
+previous one is kept with its date: `lordos-live-0.7.0-amd64-20261016-1529.iso` is the last one with
 `lordos-session` (sha256 `d4a8b25f…4b4dc5`).
 
-Pasos de `build.sh`:
-1. `mkdeb.sh`: el paquete de LordOS.
-2. `debootstrap --variant=minbase` de trixie, con main, contrib, non-free y non-free-firmware.
-3. `apt-get install --no-install-recommends` de la lista de arriba y del paquete de LordOS.
-4. Configuración:
-   - regiones `es_ES`, `es_AR`, `es_MX`, `en_US` y `pt_BR`;
-   - el usuario `lordos`, con linger;
-   - `lordos.service` habilitado y `getty@tty1` enmascarado;
-   - `/etc/resolv.conf` como archivo común, para el DHCP de LordOS;
-   - `/etc/network/interfaces` solo con `lo`;
-   - `net.ipv4.ping_group_range`, para que `ping` funcione sin root.
-5. Limpieza: listas de apt, cachés y `machine-id`.
+`build.sh` steps:
+1. `mkdeb.sh`: the LordOS package.
+2. `debootstrap --variant=minbase` of trixie, with main, contrib, non-free and non-free-firmware.
+3. `apt-get install --no-install-recommends` of the list above and the LordOS package.
+4. Configuration:
+   - locales `es_ES`, `es_AR`, `es_MX`, `en_US` and `pt_BR`;
+   - the `lordos` user, with linger;
+   - `lordos.service` enabled and `getty@tty1` masked;
+   - `/etc/resolv.conf` as a regular file, for LordOS's DHCP;
+   - `/etc/network/interfaces` with only `lo`;
+   - `net.ipv4.ping_group_range`, so `ping` works without root.
+5. Cleanup: apt lists, caches and `machine-id`.
 6. `mksquashfs` (xz, BCJ x86).
-7. `grub-mkrescue`: un solo ISO con El Torito para BIOS y una imagen EFI (`efi.img`) para UEFI,
-   con el MBR híbrido para USB.
+7. `grub-mkrescue`: a single ISO with El Torito for BIOS and an EFI image (`efi.img`) for UEFI, with
+   the hybrid MBR for USB.
 
-lord-server se compila con `make -C server GPU=1` (hacen falta `libgbm-dev libegl-dev libgles-dev`) para que el ISO traiga la composición por GPU (Mesa; ver `GPU.md`).
+lord-server is compiled with `make -C server GPU=1` (it needs `libgbm-dev libegl-dev libgles-dev`) so
+the ISO ships GPU compositing (Mesa; see `GPU.md`).
 
-Medido en la VM 116 (4 núcleos Xeon Silver 4108, 4 GB): **~8 minutos**, casi todo en bajar e
-instalar paquetes y comprimir.
+Measured on VM 116 (4 Xeon Silver 4108 cores, 4 GB): **~8 minutes**, almost all of it downloading and
+installing packages and compressing.
 
 | | |
 |---|---|
-| ISO | 651 MB (650 809 344 bytes; con lord-sessiond, la pantalla de ingreso, el instalador y el camino por GPU) |
+| ISO | 651 MB (650 809 344 bytes; with lord-sessiond, the login screen, the installer and the GPU path) |
 | squashfs | 545 MB |
-| sistema descomprimido | 1,5 GB |
-| `lordos_0.7.0_amd64.deb` | 2,9 MB |
+| uncompressed system | 1.5 GB |
+| `lordos_0.7.0_amd64.deb` | 2.9 MB |
 
-### Paquetes de build
+### Build packages
 
 ```sh
 sudo apt-get install -y --no-install-recommends debootstrap squashfs-tools xorriso grub-pc-bin \
@@ -247,141 +248,138 @@ sudo apt-get install -y --no-install-recommends debootstrap squashfs-tools xorri
   libswresample-dev libva-dev clang
 ```
 
-| Paquete | Para qué |
+| Package | What for |
 |---|---|
-| `libssl-dev` | compilar `lord-sessiond` (TLS del escritorio remoto); sin él, `make` arma solo lord-server y `mkdeb.sh` se niega |
-| `libpoppler-glib-dev`, `libarchive-dev` | compilar `lord-doc` (PDF y comprimidos); sin ellos `make` lo omite y el paquete sale sin visor de PDF |
-| `libavcodec-dev`, `libavformat-dev`, `libavutil-dev`, `libswscale-dev`, `libswresample-dev` | compilar `lord-media` (video, fotos, cámara, grabadora); sin ellos `make` lo omite |
-| `libva-dev` | opcional: decodificación por GPU (VA-API) en `lord-media` |
-| `clang` | compilar los programas BPF de `lord-netperm` (permisos de red por app); sin él se arma igual, pero no aplica reglas |
-| `debootstrap` | el sistema base de Debian |
+| `libssl-dev` | compiling `lord-sessiond` (remote desktop TLS); without it, `make` builds only lord-server and `mkdeb.sh` refuses |
+| `libpoppler-glib-dev`, `libarchive-dev` | compiling `lord-doc` (PDF and archives); without them `make` skips it and the package ships without a PDF viewer |
+| `libavcodec-dev`, `libavformat-dev`, `libavutil-dev`, `libswscale-dev`, `libswresample-dev` | compiling `lord-media` (video, photos, camera, recorder); without them `make` skips it |
+| `libva-dev` | optional: GPU decoding (VA-API) in `lord-media` |
+| `clang` | compiling `lord-netperm`'s BPF programs (per-app network permissions); without it the build still works, but no rules are applied |
+| `debootstrap` | the Debian base system |
 | `squashfs-tools` | `mksquashfs` |
-| `xorriso`, `grub-pc-bin`, `grub-efi-amd64-bin`, `grub-common`, `mtools`, `dosfstools` | `grub-mkrescue`: el ISO híbrido BIOS + UEFI |
-| `lintian` | revisar el `.deb` |
+| `xorriso`, `grub-pc-bin`, `grub-efi-amd64-bin`, `grub-common`, `mtools`, `dosfstools` | `grub-mkrescue`: the hybrid BIOS + UEFI ISO |
+| `lintian` | checking the `.deb` |
 
 ### lintian
 
-`lintian lordos_0.7.0_amd64.deb` no da errores. Quedan dos avisos, a propósito:
+`lintian lordos_0.7.0_amd64.deb` reports no errors. Two warnings remain, on purpose:
 
-- **`duplicate-font-file`:** JetBrains Mono viene en `assets/fonts` porque la Terminal la
-  necesita aunque no esté `fonts-jetbrains-mono`.
-- **`uses-dpkg-database-directly`:** el motor de paquetes propio lee `/var/lib/dpkg/status`
-  (ver `PAQUETES.md`); no escribe la base de dpkg.
+- **`duplicate-font-file`:** JetBrains Mono ships in `assets/fonts` because the Terminal needs it even
+  when `fonts-jetbrains-mono` isn't installed.
+- **`uses-dpkg-database-directly`:** our own package engine reads `/var/lib/dpkg/status` (see
+  `PACKAGES.md`); it doesn't write the dpkg database.
 
-## Prueba con lord-sessiond (M8, 16 de octubre)
+## Test with lord-sessiond (M8, October 16)
 
-El ISO arranca `lord-sessiond` en lugar de `lordos-session`. ISO probado:
+The ISO starts `lord-sessiond` instead of `lordos-session`. ISO tested:
 `lordos-live-0.7.0-amd64.iso`, 650 817 536 bytes, sha256
 `7cf1c1b1d97ee040e74dcf8d93a6996f1ae369b457f51aba23cdd2bdd64e898c`.
 
 | | |
 |---|---|
-| ![grub](m8-iso-grub.png) | ![escritorio](m8-iso-escritorio.png) |
-| UEFI (OVMF): menú de grub | Entra solo al escritorio, sin pasar por la pantalla de ingreso |
-| ![terminal](m8-iso-terminal.png) | ![bloqueada](m8-iso-bloqueada.png) |
-| `lordos`, `AUTOLOGIN=lordos`, `/sys/firmware/efi`, red por DHCP, el puerto 5673 cerrado | ❖L: pantalla bloqueada, con la IP abajo |
-| ![desbloqueada](m8-iso-desbloqueada.png) | ![compartir](m8-iso-compartir.png) |
-| Enter con el campo vacío: vuelve a la misma sesión | Ajustes → Compartir: el escritorio remoto apagado (no hay `/etc/lordos/remote/config`) |
-| ![grub seguro](m8-iso-grub-modo-seguro.png) | ![modo seguro](m8-iso-modo-seguro.png) |
-| Entrada «modo seguro» | `lordos.gpu=0` → la sesión recibe `LORD_GPU=0` y compone por CPU |
-| ![english](m8-iso-english.png) | ![disco](m8-iso-instalador-disco.png) |
-| `lordos.lang=en`: la interfaz en inglés | Instalador, en una VM temporal con un disco vacío de 24 GB (OVMF) |
-| ![usuario](m8-iso-instalador-usuario.png) | ![resumen](m8-iso-instalador-resumen.png) |
-| Usuario `ana` / «Ana Prueba», equipo `ana-pc` | Resumen, con el texto nuevo del inicio de sesión |
-| ![progreso](m8-iso-instalador-progreso.png) | ![listo](m8-iso-instalador-listo.png) |
-| Instalando (~1 minuto) | Listo; «Reiniciar» con un clic |
-| ![greeter](m8-iso-instalado-greeter.png) | ![sesión](m8-iso-instalado-sesion.png) |
-| El sistema instalado arranca en la pantalla de ingreso | Se entra con `ana` y su contraseña |
-| ![terminal instalado](m8-iso-instalado-terminal.png) | |
-| `AUTOLOGIN=` vacío; sin `live-boot` ni el usuario `lordos`; grupos sudo, audio, video, render e input; red; UEFI | |
+| ![grub](m8-iso-grub.png) | ![desktop](m8-iso-escritorio.png) |
+| UEFI (OVMF): grub menu | Logs straight into the desktop, without going through the login screen |
+| ![terminal](m8-iso-terminal.png) | ![locked](m8-iso-bloqueada.png) |
+| `lordos`, `AUTOLOGIN=lordos`, `/sys/firmware/efi`, network via DHCP, port 5673 closed | ❖L: locked screen, with the IP at the bottom |
+| ![unlocked](m8-iso-desbloqueada.png) | ![sharing](m8-iso-compartir.png) |
+| Enter with the field empty: back to the same session | Settings → Sharing: remote desktop off (there's no `/etc/lordos/remote/config`) |
+| ![safe grub](m8-iso-grub-modo-seguro.png) | ![safe mode](m8-iso-modo-seguro.png) |
+| "Safe mode" entry | `lordos.gpu=0` → the session receives `LORD_GPU=0` and composites on the CPU |
+| ![english](m8-iso-english.png) | ![disk](m8-iso-instalador-disco.png) |
+| `lordos.lang=en`: the interface in English | Installer, in a temporary VM with an empty 24 GB disk (OVMF) |
+| ![user](m8-iso-instalador-usuario.png) | ![summary](m8-iso-instalador-resumen.png) |
+| User `ana` / «Ana Prueba», computer `ana-pc` | Summary, with the new login text |
+| ![progress](m8-iso-instalador-progreso.png) | ![done](m8-iso-instalador-listo.png) |
+| Installing (~1 minute) | Done; "Restart" with one click |
+| ![greeter](m8-iso-instalado-greeter.png) | ![session](m8-iso-instalado-sesion.png) |
+| The installed system boots to the login screen | Logging in with `ana` and her password |
+| ![installed terminal](m8-iso-instalado-terminal.png) | |
+| Empty `AUTOLOGIN=`; no `live-boot` or `lordos` user; groups sudo, audio, video, render and input; network; UEFI | |
 
-**Arreglos encontrados en esta prueba:**
+**Fixes found in this test:**
 
-- **La red no se levantaba.** Con lord-sessiond, todas las sesiones son `--headless`, también
-  la del monitor. `main.c` solo mandaba `net-restore` sin `--headless`, así que `ens18` quedaba
-  DOWN.
-  - Ahora toda sesión de usuario manda `net-restore`.
-  - `net_act_restore` (`server/src/net/actions.c`) anota en `/run/lordos/net-owner` el pid del
-    ayudante que levantó la red. Mientras ese ayudante viva, las otras sesiones no levantan otro
-    DHCP en la misma placa.
-- **El resumen del instalador decía** que el sistema entraba solo y que la pantalla de ingreso
-  llegaba "en una versión próxima". Se cambió `installer.summary.login` en es, en y pt.
+- **The network didn't come up.** With lord-sessiond, every session is `--headless`, including the
+  one on the display. `main.c` only sent `net-restore` without `--headless`, so `ens18` stayed DOWN.
+  - Now every user session sends `net-restore`.
+  - `net_act_restore` (`server/src/net/actions.c`) records in `/run/lordos/net-owner` the pid of the
+    helper that brought the network up. While that helper is alive, the other sessions don't start
+    another DHCP on the same interface.
+- **The installer summary said** the system logged in on its own and that the login screen would
+  come "in an upcoming version". `installer.summary.login` was changed in es, en and pt.
 
-Las capturas del instalador hasta «Listo» y las del sistema instalado son del ISO anterior a
-la corrección de ese texto (sha256 `daba6313…c8ec65`). Ese ISO tiene los mismos binarios; solo
-cambian esos textos. Con el ISO final se repitieron el arranque por UEFI, la red, ❖L/Enter y el
-resumen del instalador. En esa repetición no se instaló.
+The installer screenshots up to "Done" and those of the installed system are from the ISO before that
+text was fixed (sha256 `daba6313…c8ec65`). That ISO has the same binaries; only those texts change.
+With the final ISO, UEFI boot, the network, ❖L/Enter and the installer summary were repeated. Nothing
+was installed in that repeat.
 
-## Pruebas (VM 117 `lordos-live`, Proxmox)
+## Tests (VM 117 `lordos-live`, Proxmox)
 
-La VM 117 tiene 4 GB de RAM, 4 núcleos, q35, `vga: virtio`, placa de sonido HDA y el ISO como
-CD. También tiene un disco `scsi0` de 24 GB, que quedó de una prueba anterior del instalador y
-tiene una instalación vieja. Arranca primero del CD.
+VM 117 has 4 GB of RAM, 4 cores, q35, `vga: virtio`, an HDA sound card and the ISO as a CD. It also
+has a 24 GB `scsi0` disk, left over from an earlier installer test, with an old installation on it.
+It boots from the CD first.
 
-- **SeaBIOS:** arranca sola hasta LordOS; `systemd-analyze` da 11,8 s (4,3 s de kernel y 7,5 s de
-  userspace). Funcionan:
-  - la Terminal;
-  - PipeWire, que ve la placa HDA: `wpctl status` lista la salida y la entrada, y a LordOS
-    como cliente;
-  - Ajustes, Archivos y la Tienda;
-  - la red, con el DHCP propio de LordOS: IP, ruta, DNS y salida a internet.
-- **OVMF (UEFI)**, con el efidisk sin claves precargadas (Secure Boot apagado): arranca sola
-  hasta LordOS (`/sys/firmware/efi` presente) en 12,5 s, con la red y el resto igual que con
-  BIOS.
-- **Instalación al disco** (24 GB, OVMF): el asistente completo en ~3 minutos; después arranca desde el disco por **UEFI y por SeaBIOS**, entra solo con el usuario creado, con red (DHCP), sonido (HDA), swap de 2 GB, es_AR, America/Argentina/Buenos_Aires y teclado latinoamericano; `sudo` pide la contraseña elegida; `live-boot` y el usuario `lordos` ya no están.
-- **«Reiniciar» al terminar** (bug encontrado en la VM 120): después de instalar, el primer clic no hacía nada y el segundo dejaba la pantalla negra sin reiniciar. La causa era el `bind` recursivo de `/dev`, `/proc`, `/sys` y `/run` para el chroot: con systemd esos montajes son *shared*, así que al desmontar el destino también se desmontaba `/run/live/medium` del sistema en vivo. Desde ahí el live perdía archivos y la acción respondía «solo desde el sistema en vivo». Ahora los `bind` quedan como esclavos (`MS_SLAVE`). Además:
-  - `install-reboot` lanza `systemctl --no-block reboot` desde un proceso aparte y no espera. Si a los 20 s nada lo terminó, hace `sync` + `reboot(2)`;
-  - `lordos.service` tiene `TimeoutStopSec=5`;
-  - el botón muestra «Reiniciando…».
-  Medido en la VM 117 después del arreglo: un solo clic, el apagado termina y a los ~5 s ya está el firmware.
-- **Errores encontrados y arreglados en el camino:**
-  - **Red apagada:** `live-boot` escribe `/etc/network/interfaces` con la placa por DHCP.
-    LordOS lo lee como "manejada por ifupdown" (aunque ifupdown no está) y no la tocaba, así
-    que la red quedaba apagada. Ahora `lordos-live-prep` deja ese archivo solo con `lo` cuando no
-    hay ifupdown. Probé `ip=frommedia`, pero el initramfs de Debian lo toma como el nombre de una
-    placa y pierde unos segundos buscándola.
-  - **Sin `ping` para el usuario:** la capacidad `cap_net_raw` del ejecutable no sobrevive en el
-    live. Se agregó `ping_group_range`.
-  - **Bordes del menú como «?»:** faltaba `loadfont unicode` en `grub.cfg`.
-  - **PipeWire sin tiempo real:** faltaba `rtkit`.
-  - **El servicio no se reiniciaba:** `systemctl restart lordos` esperaba a las terminales,
-    que están pensadas para sobrevivir al servidor. Ahora usa `KillMode=process`.
-  - **Faltaban símbolos:** algunos íconos de Ajustes (◐ ▣ ◧) salían en blanco. Ahora el ISO
-    trae `fonts-dejavu-core`.
+- **SeaBIOS:** boots on its own into LordOS; `systemd-analyze` gives 11.8 s (4.3 s kernel and 7.5 s
+  userspace). Working:
+  - the Terminal;
+  - PipeWire, which sees the HDA card: `wpctl status` lists the output and the input, and LordOS as
+    a client;
+  - Settings, Files and the Store;
+  - the network, with LordOS's own DHCP: IP, route, DNS and internet access.
+- **OVMF (UEFI)**, with the efidisk without preloaded keys (Secure Boot off): boots on its own into
+  LordOS (`/sys/firmware/efi` present) in 12.5 s, with the network and the rest the same as with BIOS.
+- **Installation to disk** (24 GB, OVMF): the full assistant in ~3 minutes; afterwards it boots from the disk via **UEFI and SeaBIOS**, logs in on its own with the created user, with network (DHCP), sound (HDA), 2 GB swap, es_AR, America/Argentina/Buenos_Aires and the Latin American keyboard; `sudo` asks for the chosen password; `live-boot` and the `lordos` user are gone.
+- **"Restart" when finished** (bug found on VM 120): after installing, the first click did nothing and the second left a black screen without restarting. The cause was the recursive `bind` of `/dev`, `/proc`, `/sys` and `/run` for the chroot: with systemd those mounts are *shared*, so unmounting the target also unmounted the live system's `/run/live/medium`. From then on the live system lost files and the action answered "only from the live system". Now the `bind`s are slaves (`MS_SLAVE`). Also:
+  - `install-reboot` launches `systemctl --no-block reboot` from a separate process and doesn't wait. If nothing has ended it after 20 s, it does `sync` + `reboot(2)`;
+  - `lordos.service` has `TimeoutStopSec=5`;
+  - the button shows "Restarting…".
+  Measured on VM 117 after the fix: a single click, shutdown completes and after ~5 s the firmware is already up.
+- **Bugs found and fixed along the way:**
+  - **Network down:** `live-boot` writes `/etc/network/interfaces` with the interface on DHCP. LordOS
+    reads that as "managed by ifupdown" (even though ifupdown isn't there) and didn't touch it, so
+    the network stayed down. Now `lordos-live-prep` leaves that file with only `lo` when there's no
+    ifupdown. I tried `ip=frommedia`, but Debian's initramfs takes it as an interface name and wastes
+    a few seconds looking for it.
+  - **No `ping` for the user:** the executable's `cap_net_raw` capability doesn't survive on the live
+    system. `ping_group_range` was added.
+  - **Menu borders as "?":** `loadfont unicode` was missing from `grub.cfg`.
+  - **PipeWire without real time:** `rtkit` was missing.
+  - **The service didn't restart:** `systemctl restart lordos` waited for the terminals, which are
+    designed to outlive the server. Now it uses `KillMode=process`.
+  - **Missing symbols:** some Settings icons (◐ ▣ ◧) came out blank. Now the ISO ships
+    `fonts-dejavu-core`.
 
-## Pendiente
+## Pending
 
-- **Secure Boot:** firmar con shim y un MOK propio, o con el shim de Debian más un grub firmado.
-  Hoy hay que apagar Secure Boot.
-- **Cambiar de consola** (Ctrl+Alt+F2) mientras corre lord-server: es parte de la sesión propia
-  de M8.
-- **Instalador al disco** (M8) y persistencia opcional en el pendrive (`persistence` de live-boot).
-- **Teclado:** el ISO arranca con la distribución que elige LordOS para el idioma (en español,
-  latinoamericana) y se cambia en Ajustes → Teclado. Falta un selector en el primer arranque.
-- **GPU real (AMD/Nvidia):** se prueba con este ISO en hardware real. El camino de GPU lo hace
-  otro fork; el ISO ya trae Mesa y el firmware, y en la entrada «modo seguro» pasa `LORD_GPU=0`.
-- **Robustez de la red:** `net/state.c` toma `/etc/network/interfaces` como señal de ifupdown
-  aunque ifupdown no esté instalado. Convendría que también mire que exista `/sbin/ifup`. El ISO
-  hoy lo esquiva en `lordos-live-prep`.
-- Las herramientas de diagnóstico de audio (`pactl`) no vienen; `wpctl status` sí.
+- **Secure Boot:** sign with shim and our own MOK, or with Debian's shim plus a signed grub. Today
+  Secure Boot has to be turned off.
+- **Switching consoles** (Ctrl+Alt+F2) while lord-server runs: part of M8's own session work.
+- **Installer to disk** (M8) and optional persistence on the USB stick (live-boot's `persistence`).
+- **Keyboard:** the ISO boots with the layout LordOS chooses for the language (in Spanish, Latin
+  American) and it's changed in Settings → Keyboard. A selector on first boot is missing.
+- **Real GPU (AMD/Nvidia):** tested with this ISO on real hardware. The GPU path is done by another
+  fork; the ISO already ships Mesa and the firmware, and the "safe mode" entry passes `LORD_GPU=0`.
+- **Network robustness:** `net/state.c` takes `/etc/network/interfaces` as a sign of ifupdown even
+  when ifupdown isn't installed. It should also check that `/sbin/ifup` exists. Today the ISO works
+  around it in `lordos-live-prep`.
+- Audio diagnostic tools (`pactl`) aren't included; `wpctl status` is.
 - ~~**Network before the first login**~~ and ~~**folders of the installed user**~~: fixed in M9.
-  The network belongs to the system (`lord-netd`, started by `lord-sessiond` at boot; see `RED.md`)
-  and the installer creates Escritorio, Documentos, Descargas, Música, Imágenes and Videos in the
-  chosen language, with `~/.config/user-dirs.dirs` (`server/src/users/homedirs.c`, the same list as
-  Settings → Users and `lordos-live-prep`). Still to repeat with a new ISO installed to disk.
-- **Primer movimiento del mouse después de desbloquear:** en la VM 117, el primer evento
-  absoluto por QMP después de ❖L/Enter dejó el cursor arriba (y≈8). Los siguientes funcionaron
-  bien. No se investigó.
+  The network belongs to the system (`lord-netd`, started by `lord-sessiond` at boot; see `NETWORK.md`)
+  and the installer creates Desktop, Documents, Downloads, Music, Pictures and Videos in the chosen
+  language (in Spanish: Escritorio, Documentos, Descargas, Música, Imágenes, Videos), with
+  `~/.config/user-dirs.dirs` (`server/src/users/homedirs.c`, the same list as Settings → Users and
+  `lordos-live-prep`). Still to be repeated with a new ISO installed to disk.
+- **First mouse movement after unlocking:** on VM 117, the first absolute QMP event after ❖L/Enter
+  left the cursor at the top (y≈8). The following ones worked fine. Not investigated.
 
-## Para VM-SETUP.md
+## For VM-SETUP.md
 
-Paso de M8 (ISO live), en la VM de desarrollo:
+M8 step (live ISO), on the development VM:
 
 ```sh
 sudo apt-get install -y --no-install-recommends debootstrap squashfs-tools xorriso grub-pc-bin \
   grub-efi-amd64-bin grub-common mtools dosfstools lintian libssl-dev
 ```
 
-En Proxmox, la VM 117 `lordos-live` sirve para probar el ISO. Tiene 4 GB, 4 núcleos,
-q35, `vga: virtio`, `audio0: ich9-intel-hda`, OVMF con efidisk y el ISO en
-`local:iso/lordos-live-<versión>-amd64.iso`. Para BIOS: `qm set 117 --bios seabios`.
+In Proxmox, VM 117 `lordos-live` is used to test the ISO. It has 4 GB, 4 cores, q35, `vga: virtio`,
+`audio0: ich9-intel-hda`, OVMF with an efidisk and the ISO at
+`local:iso/lordos-live-<version>-amd64.iso`. For BIOS: `qm set 117 --bios seabios`.

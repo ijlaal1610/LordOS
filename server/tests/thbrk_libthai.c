@@ -1,5 +1,5 @@
-/* thbrk_libthai.c — lo mismo que thbrk_test.c pero con libthai (solo para comparar; no es
- * parte de LordOS). cc -o thbrk-libthai thbrk_libthai.c -lthai */
+/* thbrk_libthai.c — the same as thbrk_test.c but with libthai (only for comparison; not
+ * part of LordOS). cc -o thbrk-libthai thbrk_libthai.c -lthai */
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>

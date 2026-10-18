@@ -1,8 +1,8 @@
-/* canvas_test.c — las filas de canvas.c con SIMD (NEON en ARM64, NEON=1) tienen que dar lo mismo,
- * bit a bit, que las de C portable. En x86-64 (sin SIMD propio) compara C contra C y además
- * comprueba la división exacta por 255 que usa la versión NEON. Ver docs/RASPBERRY.md.
+/* canvas_test.c — the SIMD rows of canvas.c (NEON on ARM64, NEON=1) must give the same result,
+ * bit for bit, as the portable C ones. On x86-64 (no SIMD of its own) it compares C against C and also
+ * checks the exact division by 255 that the NEON version uses. See docs/RASPBERRY.md.
  *
- *   make -C server NEON=1 build/canvas-test && server/build/canvas-test   (en la Raspberry Pi)
+ *   make -C server NEON=1 build/canvas-test && server/build/canvas-test   (on the Raspberry Pi)
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -17,7 +17,7 @@ void canvas_test_mask_row(int simd, uint32_t *row, const uint8_t *m, int n, uint
 static uint32_t rng = 12345;
 static uint32_t rnd(void) { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng; }
 
-/* píxel premultiplicado válido (cada canal ≤ alfa); a veces opaco o transparente */
+/* valid premultiplied pixel (each channel ≤ alpha); sometimes opaque or transparent */
 static uint32_t premul(void) {
     uint32_t r = rnd() % 8, a = r == 0 ? 0 : r == 1 ? 255 : rnd() & 255;
     uint32_t c0 = a ? rnd() % (a + 1) : 0, c1 = a ? rnd() % (a + 1) : 0, c2 = a ? rnd() % (a + 1) : 0;
@@ -32,11 +32,11 @@ static double now(void) {
 
 int main(void) {
     int fails = 0;
-    /* (x·0x8081) >> 23 == x / 255 en todo el rango que usa mask_row (m·ca + 127 ≤ 65152) */
+    /* (x·0x8081) >> 23 == x / 255 over the whole range mask_row uses (m·ca + 127 ≤ 65152) */
     for (uint32_t x = 0; x < 65536; x++)
-        if ((x * 0x8081u) >> 23 != x / 255) { printf("división por 255: falla en %u\n", x); fails++; break; }
+        if ((x * 0x8081u) >> 23 != x / 255) { printf("division by 255: fails at %u\n", x); fails++; break; }
 
-    enum { N = 1037 };                      /* no múltiplo de 4: prueba también la cola */
+    enum { N = 1037 };                      /* not a multiple of 4: also tests the tail */
     static uint32_t src[N], dst[N], a[N], b[N];
     static uint8_t mask[N];
     for (int it = 0; it < 4000; it++) {
@@ -66,7 +66,7 @@ int main(void) {
             }
     }
 
-    /* tiempo de una pantalla 1920×1080 de cada una (no es una prueba: mide) */
+    /* time for one 1920×1080 screen with each (not a test: it measures) */
     static uint32_t big_s[1920], big_d[1920];
     static uint8_t big_m[1920];
     for (int i = 0; i < 1920; i++) { big_s[i] = premul(); big_d[i] = rnd(); big_m[i] = (uint8_t)rnd(); }
@@ -78,10 +78,10 @@ int main(void) {
         for (int f = 0; f < 20; f++)
             for (int y = 0; y < 1080; y++) canvas_test_mask_row(simd, big_d, big_m, 1920, 0x80336699u);
         double t2 = now();
-        printf("%s: blit %.2f ms/pantalla, máscara %.2f ms/pantalla\n", simd ? canvas_test_simd() : "C",
+        printf("%s: blit %.2f ms/screen, mask %.2f ms/screen\n", simd ? canvas_test_simd() : "C",
                (t1 - t0) * 1000 / 20, (t2 - t1) * 1000 / 20);
     }
-    if (fails) printf("canvas-test: %d diferencias\n", fails);
-    else printf("canvas-test: %s igual a C\n", canvas_test_simd());
+    if (fails) printf("canvas-test: %d differences\n", fails);
+    else printf("canvas-test: %s matches C\n", canvas_test_simd());
     return fails != 0;
 }

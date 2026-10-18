@@ -1,8 +1,8 @@
-/* text_test.c — dibuja textos con el motor de la interfaz (text.c + textlayout.c) en una
- * imagen PPM, sin pantalla. Sirve para revisar bidi, árabe, CJK y respaldo de fuentes.
- *   build/text-test salida.ppm "texto" ["texto"…]
- *   LORD_WRAP=220 build/text-test …   en vez de eso, cada texto en una caja de 220 px (cortes de línea)
- * Las fuentes de respaldo se buscan como en LordOS (/usr/share/fonts, ~/.fonts…). */
+/* text_test.c — renders text with the UI engine (text.c + textlayout.c) into a
+ * PPM image, headless. Useful for checking bidi, Arabic, CJK and font fallback.
+ *   build/text-test out.ppm "text" ["text"…]
+ *   LORD_WRAP=220 build/text-test …   instead, each text in a 220 px box (line breaking)
+ * Fallback fonts are looked up as in LordOS (/usr/share/fonts, ~/.fonts…). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,7 +14,7 @@ Ui ui;
 void text_layout_dump(const char *s, int font, float size);
 
 int main(int argc, char **argv) {
-    if (argc < 3) { fprintf(stderr, "uso: text-test salida.ppm \"texto\"…\n"); return 2; }
+    if (argc < 3) { fprintf(stderr, "usage: text-test out.ppm \"text\"…\n"); return 2; }
     const char *dir = getenv("LORD_FONTS") ? getenv("LORD_FONTS") : "../assets/fonts";
     fonts_set_builtin_dir(dir);
     if (text_init(dir)) return 1;

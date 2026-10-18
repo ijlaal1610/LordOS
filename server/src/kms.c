@@ -49,6 +49,10 @@ static void destroy_buffer(Kms *k, KmsBuffer *b) {
 
 /* ---- outputs (connectors), shared by the initial pick and Settings → Displays ---- */
 
+/* CRTCs (bit = index in GETRESOURCES) driven by a head of this process: a second display never
+ * takes the main one's CRTC (docs/DISPLAYS.md). */
+static uint32_t busy_crtcs;
+
 static KmsPicker picker;
 void kms_set_picker(KmsPicker fn) { picker = fn; }
 
@@ -131,8 +135,9 @@ void kms_outputs_free(KmsOutput *o, int n) {
 }
 
 /* CRTC id (and index) able to drive `conn`: the one it already has, else `prefer` if possible,
- * else the first free in possible_crtcs. 0 if none. */
-static uint32_t crtc_for(int fd, const KmsOutput *o, uint32_t prefer, int *index) {
+ * else the first free in possible_crtcs. CRTCs of other heads (busy_crtcs, except `mine`) are
+ * skipped. 0 if none. */
+static uint32_t crtc_for(int fd, const KmsOutput *o, uint32_t prefer, int *index, int mine) {
     struct drm_mode_card_res res = {0};
     if (xioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res) || !res.count_crtcs) return 0;
     uint32_t *crtcs = calloc(res.count_crtcs, 4);
@@ -142,11 +147,12 @@ static uint32_t crtc_for(int fd, const KmsOutput *o, uint32_t prefer, int *index
     if (!xioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &r2)) {
         uint32_t n = r2.count_crtcs < res.count_crtcs ? r2.count_crtcs : res.count_crtcs;
         uint32_t want[3] = { o->current_crtc, prefer, 0 };
+        uint32_t busy = busy_crtcs & ~(mine >= 0 ? 1u << mine : 0);
         for (int w = 0; w < 2 && !got; w++)
             for (uint32_t j = 0; j < n && j < 32 && want[w]; j++)
-                if (crtcs[j] == want[w] && (o->possible_crtcs >> j & 1)) { got = crtcs[j]; *index = (int)j; }
+                if (crtcs[j] == want[w] && (o->possible_crtcs >> j & 1) && !(busy >> j & 1)) { got = crtcs[j]; *index = (int)j; }
         for (uint32_t j = 0; j < n && j < 32 && !got; j++)
-            if (o->possible_crtcs >> j & 1) { got = crtcs[j]; *index = (int)j; }
+            if ((o->possible_crtcs >> j & 1) && !(busy >> j & 1)) { got = crtcs[j]; *index = (int)j; }
     }
     free(crtcs);
     return got;
@@ -171,7 +177,7 @@ static int pick_output(Kms *k) {
         }
     }
     int idx = 0;
-    uint32_t crtc = sel >= 0 ? crtc_for(k->fd, &outs[sel], 0, &idx) : 0;
+    uint32_t crtc = sel >= 0 ? crtc_for(k->fd, &outs[sel], 0, &idx, -1) : 0;
     if (crtc) {
         k->conn_id = outs[sel].id;
         k->crtc_id = crtc;
@@ -305,8 +311,38 @@ static int kms_setup(Kms *k) {
     };
     if (xioctl(k->fd, DRM_IOCTL_MODE_SETCRTC, &set)) { perror("SETCRTC"); return -1; }
     k->front = 0;
-    fprintf(stderr, "kms: %ux%u@%u en conector %u, crtc %u\n",
+    busy_crtcs |= 1u << k->crtc_index;
+    fprintf(stderr, "kms: %ux%u@%u on connector %u, crtc %u\n",
             k->width, k->height, k->mode.vrefresh, k->conn_id, k->crtc_id);
+    return 0;
+}
+
+int kms_head_open(Kms *k, int fd, uint32_t conn_id, const struct drm_mode_modeinfo *mode) {
+    memset(k, 0, sizeof *k);
+    k->fd = fd;
+    k->shared = 1;
+    k->borrowed = 1;
+    KmsOutput outs[KMS_MAX_OUTPUTS];
+    int n = kms_outputs(fd, outs, KMS_MAX_OUTPUTS), sel = -1, idx = 0;
+    for (int i = 0; i < n; i++) if (outs[i].id == conn_id && outs[i].connected) sel = i;
+    uint32_t crtc = sel >= 0 ? crtc_for(fd, &outs[sel], 0, &idx, -1) : 0;
+    kms_outputs_free(outs, n);
+    if (!crtc) { fprintf(stderr, "kms: no free CRTC for connector %u\n", conn_id); k->fd = -1; return -1; }
+    k->conn_id = conn_id;
+    k->crtc_id = crtc;
+    k->crtc_index = idx;
+    k->mode = *mode;
+    k->width = mode->hdisplay;
+    k->height = mode->vdisplay;
+    read_scanout_formats(k);
+    k->saved.crtc_id = k->crtc_id;
+    xioctl(fd, DRM_IOCTL_MODE_GETCRTC, &k->saved);
+    if (create_buffer(k, &k->buf[0]) || create_buffer(k, &k->buf[1])) { kms_close(k); return -1; }
+    struct drm_mode_crtc set = { .crtc_id = k->crtc_id, .fb_id = k->buf[0].fb_id,
+        .set_connectors_ptr = (uintptr_t)&k->conn_id, .count_connectors = 1, .mode = k->mode, .mode_valid = 1 };
+    if (xioctl(fd, DRM_IOCTL_MODE_SETCRTC, &set)) { perror("kms: SETCRTC (second display)"); kms_close(k); return -1; }
+    busy_crtcs |= 1u << k->crtc_index;
+    fprintf(stderr, "kms: display %ux%u@%u on connector %u, crtc %u\n", k->width, k->height, k->mode.vrefresh, conn_id, crtc);
     return 0;
 }
 
@@ -330,6 +366,7 @@ int kms_attach(Kms *k, int fd) {
 
 void kms_close(Kms *k) {
     if (k->fd <= 0) return;
+    if (k->crtc_id) busy_crtcs &= ~(1u << k->crtc_index);
     if (k->cursor_handle) {
         struct drm_mode_cursor2 c = { .flags = DRM_MODE_CURSOR_BO, .crtc_id = k->crtc_id };
         xioctl(k->fd, DRM_IOCTL_MODE_CURSOR2, &c);
@@ -346,8 +383,13 @@ void kms_close(Kms *k) {
     }
     /* prestado (kms_attach): el próximo en mostrarse pone su cuadro; el master lo maneja
      * lord-sessiond. Los dumb buffers se destruyen después de que otro tomó la pantalla. */
+    if (k->shared && k->crtc_id) {             /* a second display: its CRTC stops scanning out */
+        struct drm_mode_crtc off = { .crtc_id = k->crtc_id };
+        xioctl(k->fd, DRM_IOCTL_MODE_SETCRTC, &off);
+    }
     destroy_buffer(k, &k->buf[0]);
     destroy_buffer(k, &k->buf[1]);
+    if (k->shared) { k->fd = -1; return; }     /* the fd belongs to the main head */
     if (!k->borrowed) xioctl(k->fd, DRM_IOCTL_DROP_MASTER, NULL);
     close(k->fd);
     k->fd = -1;
@@ -376,12 +418,24 @@ int kms_flip(Kms *k) {
     return 0;
 }
 
-void kms_dispatch(Kms *k) {
+void kms_dispatch(Kms *k) { kms_dispatch_heads(&k, 1); }
+
+/* Flip events of every head on the card's fd, routed by CRTC (drm_event_vblank.crtc_id, Linux
+ * 4.12+; without it the first head waiting for a flip takes it). */
+void kms_dispatch_heads(Kms **heads, int nh) {
+    if (nh < 1 || heads[0]->fd < 0) return;
     /* alineado: los eventos llevan campos de 64 bits (user_data) y se leen con un cast */
     char buf[1024] __attribute__((aligned(8)));
-    ssize_t n = read(k->fd, buf, sizeof buf);
+    ssize_t n = read(heads[0]->fd, buf, sizeof buf);
     for (ssize_t off = 0; n > 0 && off + (ssize_t)sizeof(struct drm_event) <= n;) {
         struct drm_event *e = (struct drm_event *)(buf + off);
+        Kms *k = NULL;
+        if (e->type == DRM_EVENT_FLIP_COMPLETE && e->length >= sizeof(struct drm_event_vblank)) {
+            const struct drm_event_vblank *v = (const struct drm_event_vblank *)e;
+            for (int i = 0; i < nh && !k; i++) if (v->crtc_id && heads[i]->crtc_id == v->crtc_id) k = heads[i];
+            for (int i = 0; i < nh && !k; i++) if (heads[i]->flip_pending) k = heads[i];
+        }
+        if (!k) { if (e->length == 0) break; off += e->length; continue; }
         if (e->type == DRM_EVENT_FLIP_COMPLETE && e->length >= sizeof(struct drm_event_vblank)) {
             const struct drm_event_vblank *v = (const struct drm_event_vblank *)e;
             k->flip_ns = (uint64_t)v->tv_sec * 1000000000ull + (uint64_t)v->tv_usec * 1000ull;
@@ -508,7 +562,7 @@ int kms_modeset(Kms *k, uint32_t conn_id, const struct drm_mode_modeinfo *mode) 
     int n = kms_outputs(k->fd, outs, KMS_MAX_OUTPUTS), sel = -1;
     for (int i = 0; i < n; i++) if (outs[i].id == conn_id && outs[i].connected) sel = i;
     int idx = k->crtc_index;
-    uint32_t crtc = sel >= 0 ? crtc_for(k->fd, &outs[sel], k->crtc_id, &idx) : 0;
+    uint32_t crtc = sel >= 0 ? crtc_for(k->fd, &outs[sel], k->crtc_id, &idx, k->crtc_id ? k->crtc_index : -1) : 0;
     kms_outputs_free(outs, n);
     if (!crtc) return -1;
     Kms old = *k;
@@ -526,6 +580,7 @@ int kms_modeset(Kms *k, uint32_t conn_id, const struct drm_mode_modeinfo *mode) 
     if (ok && crtc != old.crtc_id) {           /* the old CRTC stops scanning out */
         struct drm_mode_crtc off = { .crtc_id = old.crtc_id };
         xioctl(k->fd, DRM_IOCTL_MODE_SETCRTC, &off);
+        busy_crtcs = (busy_crtcs & ~(1u << old.crtc_index)) | 1u << idx;
     }
     if (ok) {
         struct drm_mode_crtc set = { .crtc_id = k->crtc_id, .fb_id = k->buf[0].fb_id,

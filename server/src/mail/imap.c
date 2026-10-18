@@ -953,7 +953,9 @@ void *mail_worker(void *arg) {
                 uint64_t v;
                 if (read(a->wake, &v, sizeof v) < 0) { /* timeout */ }
                 if (r == -1 && backoff < 300) backoff *= 2;
-                if (!a->jobs) { Job *s = job_new(J_SYNC_ALL, 0, 1); if (s) job_push(a, s); }
+                /* offline: try again after the back-off; no password or a bad certificate: wait
+                 * until the user does something (a new password or config wakes us up) */
+                if (r == -1 && !a->jobs) { Job *s = job_new(J_SYNC_ALL, 0, 1); if (s) { pthread_mutex_lock(&a->qmu); s->next = a->jobs; a->jobs = s; pthread_mutex_unlock(&a->qmu); } }
                 continue;
             }
             backoff = 5;

@@ -1,5 +1,5 @@
-// emoji.js — emojis comunes con nombres en inglés y español (para el selector y ":nombre").
-// [carácter, nombres en inglés, nombres en español, categoría]
+// emoji.js — common emojis with English and Spanish names (for the picker and ":name").
+// [character, English names, Spanish names, category]
 const RAW = `
 😀 grinning,smile sonrisa,feliz caras
 😃 smiley,happy alegre caras
@@ -228,7 +228,7 @@ for (const e of EMOJIS) for (const n of e.names) if (!byName.has(n)) byName.set(
 
 export const emojiFor = (name) => byName.get(name) || null;
 
-// Búsqueda por nombre: primero los que empiezan así, después los que lo contienen.
+// Search by name: first the ones that start with it, then the ones that contain it.
 export function searchEmoji(q) {
   const s = q.toLowerCase();
   if (!s) return EMOJIS;

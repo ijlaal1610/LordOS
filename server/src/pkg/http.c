@@ -1,10 +1,10 @@
-/* http.c — cliente HTTP/1.1 y descargas con privilegios soltados (ver http.h).
+/* http.c — HTTP/1.1 client and downloads with dropped privileges (see http.h).
  *
- * El hijo (nobody) habla HTTP: GET con Host, keep-alive, redirecciones (hasta 5, solo a
- * http://), Content-Length, chunked o hasta que se cierra la conexión, If-Modified-Since, y
- * tiempo máximo sin datos de 30 s. Le manda al padre mensajes por el pipe:
- *   [tipo 1 byte][item 4][largo 4][datos]   tipo H = "estado fecha largo", D = datos, E = fin
- * (E con texto = error). */
+ * The child (nobody) speaks HTTP: GET with Host, keep-alive, redirects (up to 5, only to
+ * http://), Content-Length, chunked or until the connection closes, If-Modified-Since, and
+ * a 30 s maximum time without data. It sends the parent messages over the pipe:
+ *   [type 1 byte][item 4][length 4][data]   type H = "status date length", D = data, E = end
+ * (E with text = error). */
 #include "http.h"
 #include "crypto.h"
 
@@ -30,7 +30,7 @@
 
 #define TIMEOUT_MS 30000
 
-/* ---- fechas ---- */
+/* ---- dates ---- */
 
 int64_t http_parse_date(const char *s) {
     static const char mon[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
@@ -57,14 +57,14 @@ void http_format_date(int64_t t, char *out, size_t n) {
              tm.tm_year + 1900, tm.tm_hour, tm.tm_min, tm.tm_sec);
 }
 
-/* ---- hijo: HTTP ---- */
+/* ---- child: HTTP ---- */
 
 typedef struct {
     int fd;
     char host[256], port[8];
     char buf[16384];
     size_t pos, len;
-    int out;                            /* pipe al padre */
+    int out;                            /* pipe to the parent */
 } Conn;
 
 static int send_msg(int out, char type, uint32_t item, const void *data, uint32_t len) {
@@ -114,7 +114,7 @@ static int conn_open(Conn *c, const char *host, const char *port, char *err, siz
     return 0;
 }
 
-/* Lee al buffer (devuelve bytes nuevos, 0 = cerrado, -1 = error/tiempo). */
+/* Reads into the buffer (returns new bytes, 0 = closed, -1 = error/timeout). */
 static ssize_t conn_fill(Conn *c) {
     if (c->pos == c->len) c->pos = c->len = 0;
     if (c->pos > 0 && c->len == sizeof c->buf) {
@@ -147,7 +147,7 @@ static int conn_write(Conn *c, const char *s, size_t n) {
     return 0;
 }
 
-/* Una línea terminada en CRLF (sin él). */
+/* A CRLF-terminated line (without it). */
 static int conn_line(Conn *c, char *out, size_t cap) {
     for (;;) {
         char *nl = memchr(c->buf + c->pos, '\n', c->len - c->pos);
@@ -187,7 +187,7 @@ static int parse_url(const char *url, char *host, size_t hn, char *port, size_t 
     return 0;
 }
 
-/* Descarga un item: manda H, D… y E. */
+/* Downloads one item: sends H, D… and E. */
 static void get_one(Conn *c, const FetchItem *it, uint32_t idx) {
     char url[1100], err[200] = "", line[4096];
     snprintf(url, sizeof url, "%s", it->url);
@@ -198,7 +198,7 @@ static void get_one(Conn *c, const FetchItem *it, uint32_t idx) {
             snprintf(err, sizeof err, strncmp(url, "https://", 8) ? "dirección inválida" : "el servidor redirige a https, que LordOS no usa para paquetes");
             break;
         }
-        int retry = c->fd >= 0;             /* una conexión reusada puede haberse cerrado */
+        int retry = c->fd >= 0;             /* a reused connection may have been closed */
     again:
         if (conn_open(c, host, port, err, sizeof err)) break;
         char req[1600], ims[80] = "";
@@ -244,11 +244,11 @@ static void get_one(Conn *c, const FetchItem *it, uint32_t idx) {
         }
         uint64_t got = 0;
         if (has_body) {
-            /* cuerpo: se entrega (200) o se descarta (redirección, error) */
+            /* body: delivered (200) or discarded (redirect, error) */
             int64_t remaining = chunked ? 0 : clen;
             for (;;) {
                 if (chunked && remaining == 0) {
-                    if (got && conn_line(c, line, sizeof line)) goto broken;            /* CRLF del trozo anterior */
+                    if (got && conn_line(c, line, sizeof line)) goto broken;            /* CRLF of the previous chunk */
                     if (conn_line(c, line, sizeof line)) goto broken;
                     remaining = strtoll(line, NULL, 16);
                     if (remaining < 0) goto broken;
@@ -260,7 +260,7 @@ static void get_one(Conn *c, const FetchItem *it, uint32_t idx) {
                 if (!chunked && clen >= 0 && remaining == 0) break;
                 if (c->pos == c->len) {
                     ssize_t r = conn_fill(c);
-                    if (r == 0 && !chunked && clen < 0) break;                       /* hasta el cierre */
+                    if (r == 0 && !chunked && clen < 0) break;                       /* until close */
                     if (r <= 0) goto broken;
                 }
                 size_t n = c->len - c->pos;
@@ -296,7 +296,7 @@ out:
     send_msg(c->out, 'E', idx, err, (uint32_t)strlen(err));
 }
 
-/* Pasa a nobody: sin grupos, sin poder volver a root. */
+/* Switches to nobody: no groups, unable to go back to root. */
 static int drop_to_nobody(void) {
     struct passwd *pw = getpwnam("nobody");
     uid_t uid = pw ? pw->pw_uid : 65534;
@@ -308,7 +308,7 @@ static int drop_to_nobody(void) {
     return chdir("/");
 }
 
-/* ---- padre: escribe, cuenta, verifica ---- */
+/* ---- parent: writes, counts, verifies ---- */
 
 static int read_full(int fd, void *buf, size_t n) {
     uint8_t *p = buf;

@@ -1,4 +1,4 @@
-/* fwmap.c — tabla hash interna del firewall (ver fwmap.h). */
+/* fwmap.c — the firewall's internal hash table (see fwmap.h). */
 #include "fw/fwmap.h"
 
 #include <stdatomic.h>
@@ -8,13 +8,13 @@
 
 static _Atomic uint64_t seed;
 
-/* FNV-1a de 64 bits con semilla y mezcla final (fmix64 de MurmurHash3). La semilla sale de la
- * hora, el reloj de CPU y una dirección (ASLR): no es criptográfica, alcanza para que los baldes
- * no sean predecibles desde afuera. */
+/* 64-bit FNV-1a with a seed and a final mix (fmix64 from MurmurHash3). The seed comes from the
+ * time, the CPU clock and an address (ASLR): it isn't cryptographic, it's enough so the buckets
+ * can't be predicted from outside. */
 uint64_t fw_hash(const void *data, size_t len) {
     uint64_t k = atomic_load_explicit(&seed, memory_order_acquire);
     if (!k) {
-        /* el primero que llega la fija; los demás hilos usan esa misma */
+        /* the first one to arrive sets it; the other threads use that same one */
         uint64_t s = (uint64_t)time(NULL) * 0x9e3779b97f4a7c15ull;
         s ^= (uint64_t)clock() << 17;
         s ^= (uint64_t)(uintptr_t)&k;

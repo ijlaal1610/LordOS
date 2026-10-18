@@ -1,5 +1,5 @@
-/* js.c — QuickJS embebido. Expone el objeto global `lord` (crear/modificar nodos) y
- * provee setTimeout, requestAnimationFrame, console y performance, que React necesita. */
+/* js.c — embedded QuickJS. Exposes the global `lord` object (create/modify nodes) and
+ * provides setTimeout, requestAnimationFrame, console and performance, which React needs. */
 #include "js.h"
 #include "../ime.h"
 #include "../wl/wl.h"
@@ -40,8 +40,9 @@
 
 static JSRuntime *rt;
 static JSContext *ctx;
+static void set_screen_displays(JSValue screen);
 
-/* Polyfills mínimos: el event loop real es el de lord-server (main.c). */
+/* Minimal polyfills: the real event loop is lord-server's (main.c). */
 static const char prelude[] =
     "(function(){\n"
     "const g = globalThis;\n"
@@ -88,7 +89,7 @@ static double now_ms(void) {
 static void dump_exception(JSContext *c) {
     JSValue e = JS_GetException(c);
     const char *msg = JS_ToCString(c, e);
-    fprintf(stderr, "js: %s\n", msg ? msg : "(excepción)");
+    fprintf(stderr, "js: %s\n", msg ? msg : "(exception)");
     if (msg) JS_FreeCString(c, msg);
     if (JS_IsObject(e)) {
         JSValue st = JS_GetPropertyStr(c, e, "stack");
@@ -112,7 +113,7 @@ static Node *arg_node(JSContext *c, JSValueConst v) {
     return node_get(id);
 }
 
-/* ---- funciones nativas: lord.* ---- */
+/* ---- native functions: lord.* ---- */
 
 static JSValue f_create_node(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
@@ -167,9 +168,9 @@ static JSValue f_set_style(JSContext *c, JSValueConst this_val, int argc, JSValu
         err = s ? style_set_string(&n->s, key, s) : -1;
         if (s) JS_FreeCString(c, s);
     }
-    if (err) fprintf(stderr, "js: estilo no soportado '%s'\n", key);
+    if (err) fprintf(stderr, "js: unsupported style '%s'\n", key);
     JS_FreeCString(c, key);
-    /* el mismo valor (ej.: React confirma la posición que dejó un arrastre en C): nada que repintar */
+    /* the same value (e.g. React confirms the position left by a drag in C): nothing to repaint */
     if (memcmp(&before, &n->s, sizeof before)) node_invalidate(n);
     return JS_UNDEFINED;
 }
@@ -214,7 +215,7 @@ static JSValue f_set_prop(JSContext *c, JSValueConst this_val, int argc, JSValue
         if (data && w > 0 && h > 0 && w <= 4096 && h <= 4096 && len >= (size_t)w * h * 4) {
             Image *img = image_pixels(n->img, w, h, data);
             n->img = img;
-        } else if (!JS_IsUndefined(argv[2]) && !JS_IsNull(argv[2])) fprintf(stderr, "js: pixels inválidos (%dx%d, %zu bytes)\n", w, h, len);
+        } else if (!JS_IsUndefined(argv[2]) && !JS_IsNull(argv[2])) fprintf(stderr, "js: invalid pixels (%dx%d, %zu bytes)\n", w, h, len);
         JS_FreeValue(c, wv);
         JS_FreeValue(c, hv);
         JS_FreeValue(c, dv);
@@ -227,15 +228,15 @@ static JSValue f_set_prop(JSContext *c, JSValueConst this_val, int argc, JSValue
         if (s) s->node = n->id;
         node_invalidate(n);
     } else if (n && key && !strcmp(key, "media") && n->type == NODE_MEDIA) {
-        int32_t id = 0;                     /* origen de lord.media (video, foto, captura, cámara) */
+        int32_t id = 0;                     /* lord.media source (video, photo, screenshot, camera) */
         if (JS_IsNumber(argv[2])) JS_ToInt32(c, &id, argv[2]);
         js_media_node(n, id);
         node_invalidate(n);
     } else if (n && key && !strcmp(key, "protected")) {
-        n->protect = JS_ToBool(c, argv[2]) ? 1 : 0;     /* ventana protegida (wm.setProtected) */
+        n->protect = JS_ToBool(c, argv[2]) ? 1 : 0;     /* protected window (wm.setProtected) */
         node_invalidate(n);
     } else if (n && key && !strcmp(key, "surface") && n->type == NODE_SURFACE) {
-        int32_t id = 0;                     /* ventana de una app Wayland (wl/wl.c) */
+        int32_t id = 0;                     /* window of a Wayland app (wl/wl.c) */
         if (JS_IsNumber(argv[2])) JS_ToInt32(c, &id, argv[2]);
         n->term = id;
         node_invalidate(n);
@@ -304,7 +305,7 @@ static JSValue f_log(JSContext *c, JSValueConst this_val, int argc, JSValueConst
     return JS_UNDEFINED;
 }
 
-/* Métricas para el tema (ej.: ventana "Acerca de"). */
+/* Metrics for the theme (e.g. the "About" window). */
 static JSValue f_stats(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     long pages = 0, rss = 0;
@@ -337,8 +338,8 @@ static const JSCFunctionListEntry lord_funcs[] = {
     JS_CFUNC_DEF("stats", 0, f_stats),
 };
 
-/* Ejecuta código JS. Solo se usa con el prelude interno y con el bundle del tema que
- * se pasa por línea de comandos (archivo local de confianza); nunca con datos externos. */
+/* Runs JS code. Only used with the internal prelude and with the theme bundle that
+ * is passed on the command line (trusted local file); never with external data. */
 static int eval(const char *src, size_t len, const char *name) {
     JSValue r = JS_Eval(ctx, src, len, name, JS_EVAL_TYPE_GLOBAL);
     int ok = !JS_IsException(r);
@@ -385,6 +386,7 @@ int js_init(const char *bundle_path) {
     JSValue screen = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, screen, "width", JS_NewFloat64(ctx, ui.width));
     JS_SetPropertyStr(ctx, screen, "height", JS_NewFloat64(ctx, ui.height));
+    set_screen_displays(screen);
     JS_SetPropertyStr(ctx, lord, "screen", screen);
     JS_SetPropertyStr(ctx, lord, "version", JS_NewString(ctx, "0.7.0"));
     js_sys_init();
@@ -392,21 +394,21 @@ int js_init(const char *bundle_path) {
     js_term_register(ctx, lord);
     js_pkg_register(ctx, lord);
     js_sound_register(ctx, lord);
-    js_wasm_register(ctx, g);           /* el global WebAssembly (intérprete propio, src/wasm) */
+    js_wasm_register(ctx, g);           /* the WebAssembly global (our own interpreter, src/wasm) */
     js_net_register(ctx, lord);
     js_monitor_register(ctx, lord, js_sys_assets());   /* lord.monitor (app Monitor) */
-    js_sec_register(ctx, lord);        /* lord.perms y lord.sign (privacidad y firma) */
-    js_media_register(ctx, lord);      /* lord.media (video, fotos, capturas, cámara, grabadora) */
-    js_doc_register(ctx, lord);        /* lord.doc: PDF, comprimidos y fuentes por el ayudante lord-doc */
-    js_print_register(ctx, lord);      /* lord.print: CUPS por IPP y escáneres eSCL */
-    js_vault_register(ctx, lord);      /* lord.vault: Contraseñas y el llavero por el ayudante lord-vault */
+    js_sec_register(ctx, lord);        /* lord.perms and lord.sign (privacy and signing) */
+    js_media_register(ctx, lord);      /* lord.media (video, photos, screenshots, camera, recorder) */
+    js_doc_register(ctx, lord);        /* lord.doc: PDF, archives and fonts through the lord-doc helper */
+    js_print_register(ctx, lord);      /* lord.print: CUPS over IPP and eSCL scanners */
+    js_vault_register(ctx, lord);      /* lord.vault: Passwords and the keyring through the lord-vault helper */
     js_mail_register(ctx, lord);       /* lord.mail: Mail, Calendar, Contacts, Reminders via lord-maild (docs/MAIL.md) */
-    js_wm_register(ctx, lord);         /* lord.wm: mover y cambiar el tamaño de ventanas en C (grab.c) */
-    js_input_register(ctx, lord);      /* lord.input: touchpads y pantallas táctiles (tp/) */
-    js_fw_register(ctx, lord);         /* lord.fw: permisos de red por app (lord-netperm, docs/FIREWALL.md) */
+    js_wm_register(ctx, lord);         /* lord.wm: moving and resizing windows in C (grab.c) */
+    js_input_register(ctx, lord);      /* lord.input: touchpads and touchscreens (tp/) */
+    js_fw_register(ctx, lord);         /* lord.fw: per-app network permissions (lord-netperm, docs/FIREWALL.md) */
     js_disk_register(ctx, lord);       /* lord.disks: disks and partitions (Disks app) */
     js_backup_register(ctx, lord);     /* lord.backup: Backups (backup/) */
-    js_logs_register(ctx, lord);       /* lord.logs: journal y registros de LordOS (app Registros) */
+    js_logs_register(ctx, lord);       /* lord.logs: journal and LordOS logs (Logs app) */
     js_help_register(ctx, lord);       /* lord.help (Help) and lord.time.zoneOffset (Clock, tzif.c) */
     js_hw_register(ctx, lord);         /* lord.display/power/bt/mime/timedate (Settings, src/hw) */
     JS_SetPropertyStr(ctx, g, "lord", lord);
@@ -415,14 +417,14 @@ int js_init(const char *bundle_path) {
     double t0 = now_ms();
     int r = eval(prelude, sizeof prelude - 1, "<prelude>");
     if (!r) r = eval(src, (size_t)len, bundle_path);
-    fprintf(stderr, "js: tema %s cargado en %.1f ms (%ld KB)\n", bundle_path, now_ms() - t0, len / 1024);
+    fprintf(stderr, "js: theme %s loaded in %.1f ms (%ld KB)\n", bundle_path, now_ms() - t0, len / 1024);
     free(src);
     return r;
 }
 
-/* «Modo app» (lord-server --app <id>): el mismo motor JS, pero el objeto `lord` solo tiene las
- * primitivas de dibujo (locales) más el broker (fs/clipboard/perms por lord-server, que verifica
- * los permisos). Carga el «app host» (React + SDK + la app), ver app/appclient.c. */
+/* "App mode" (lord-server --app <id>): the same JS engine, but the `lord` object only has the
+ * drawing primitives (local) plus the broker (fs/clipboard/perms through lord-server, which checks
+ * the permissions). Loads the "app host" (React + SDK + the app), see app/appclient.c. */
 int js_init_app(const char *host_bundle, const char *app_id) {
     char dir[1024];
     snprintf(dir, sizeof dir, "%s", host_bundle);
@@ -449,23 +451,23 @@ int js_init_app(const char *host_bundle, const char *app_id) {
     JS_SetPropertyStr(ctx, screen, "height", JS_NewFloat64(ctx, ui.height));
     JS_SetPropertyStr(ctx, lord, "screen", screen);
     JS_SetPropertyStr(ctx, lord, "version", JS_NewString(ctx, "0.7.0"));
-    js_broker_register(ctx, lord, app_id);         /* fs/clipboard/perms por el broker + appId */
+    js_broker_register(ctx, lord, app_id);         /* fs/clipboard/perms through the broker + appId */
     js_vault_register_app(ctx, lord);              /* Passwords only: its own channel to lord-vault */
-    js_sys_register_app(ctx, lord);                /* lord.text (idioma, dirección) y lord.image */
-    js_wasm_register(ctx, g);                      /* WebAssembly para loadWasm de la app */
+    js_sys_register_app(ctx, lord);                /* lord.text (language, direction) and lord.image */
+    js_wasm_register(ctx, g);                      /* WebAssembly for the app's loadWasm */
     JS_SetPropertyStr(ctx, g, "lord", lord);
     JS_FreeValue(ctx, g);
 
     double t0 = now_ms();
     int r = eval(prelude, sizeof prelude - 1, "<prelude>");
     if (!r) r = eval(src, (size_t)len, host_bundle);
-    fprintf(stderr, "js: app %s cargada en %.1f ms\n", app_id, now_ms() - t0);
+    fprintf(stderr, "js: app %s loaded in %.1f ms\n", app_id, now_ms() - t0);
     free(src);
     return r;
 }
 
 void js_shutdown(void) {
-    media_shutdown();                   /* los ayudantes lord-media son de este contexto */
+    media_shutdown();                   /* the lord-media helpers belong to this context */
     if (ctx) js_wasm_shutdown(ctx);
     if (ctx) JS_FreeContext(ctx);
     if (rt) JS_FreeRuntime(rt);
@@ -518,7 +520,7 @@ void js_gesture(const char *kind, const char *phase, int target, float x, float 
     drain_jobs();
 }
 
-/* Estado del método de entrada → __lordIme({engine, preedit, candidates, selected, converting}). */
+/* Input method state → __lordIme({engine, preedit, candidates, selected, converting}). */
 static void ime_event(void) {
     const ImeState *st = ime_state();
     JSValue o = JS_NewObject(ctx), list = JS_NewArray(ctx);
@@ -528,7 +530,7 @@ static void ime_event(void) {
     JS_SetPropertyStr(ctx, o, "candidates", list);
     JS_SetPropertyStr(ctx, o, "selected", JS_NewInt32(ctx, st->sel));
     JS_SetPropertyStr(ctx, o, "converting", JS_NewBool(ctx, st->converting));
-    /* japonés: [antes, segmento con foco, después] para resaltarlo */
+    /* Japanese: [before, focused segment, after] to highlight it */
     int b = st->focus_begin, e = st->focus_end, len = (int)strlen(st->preedit);
     if (e > b && e <= len) {
         JSValue parts = JS_NewArray(ctx);
@@ -541,7 +543,7 @@ static void ime_event(void) {
     JS_FreeValue(ctx, o);
 }
 
-/* Texto que confirmó el método de entrada: llega como una tecla que escribe ese texto. */
+/* Text committed by the input method: arrives as a key that types that text. */
 static void ime_commit(const char *text) {
     JSValueConst args[6] = { JS_NewInt32(ctx, 0), JS_NewInt32(ctx, 1), JS_NewString(ctx, text),
                              JS_NewString(ctx, text), JS_NewString(ctx, ""), JS_NewInt32(ctx, 0) };
@@ -549,9 +551,9 @@ static void ime_commit(const char *text) {
     for (int i = 2; i < 5; i++) JS_FreeValue(ctx, args[i]);
 }
 
-/* Tecla → __lordKey(código, valor, key, texto, base, flags). Con libxkbcommon (keyboard.c)
- * la traducción la hace C; si no hay distribución cargada, solo código y valor. Si hay un
- * método de entrada activo (ime.c) y un campo de texto con foco, la tecla pasa primero por él. */
+/* Key → __lordKey(code, value, key, text, base, flags). With libxkbcommon (keyboard.c)
+ * C does the translation; if no layout is loaded, only code and value. If there is an
+ * active input method (ime.c) and a focused text field, the key goes through it first. */
 void js_key(int code, int value) {
     KeyInfo k;
     kb_key(code, value, &k);
@@ -561,7 +563,7 @@ void js_key(int code, int value) {
         drain_jobs();
         return;
     }
-    if (wl_key(code, value, &k)) { drain_jobs(); return; }      /* la app Wayland con foco */
+    if (wl_key(code, value, &k)) { drain_jobs(); return; }      /* the focused Wayland app */
     if (value) {
         char commit[512];
         int used = ime_key(&k, commit, sizeof commit);
@@ -577,7 +579,7 @@ void js_key(int code, int value) {
     drain_jobs();
 }
 
-/* Medios (media/) → __lordMedia(id, tipo, datos JSON). */
+/* Media (media/) → __lordMedia(id, type, JSON data). */
 void js_media_event(int id, const char *type, const char *json) {
     if (!ctx) return;
     JSValueConst args[3] = { JS_NewInt32(ctx, id), JS_NewString(ctx, type), JS_ParseJSON(ctx, json, strlen(json), "<media>") };
@@ -587,7 +589,7 @@ void js_media_event(int id, const char *type, const char *json) {
     drain_jobs();
 }
 
-/* Ventanas de apps Wayland (wl/wl.c) → __lordWayland(id, tipo, datos JSON). */
+/* Wayland app windows (wl/wl.c) → __lordWayland(id, type, JSON data). */
 void js_wl_event(int id, const char *type, const char *json) {
     if (!ctx) return;
     JSValueConst args[3] = { JS_NewInt32(ctx, id), JS_NewString(ctx, type), JS_ParseJSON(ctx, json, strlen(json), "<wayland>") };
@@ -597,7 +599,7 @@ void js_wl_event(int id, const char *type, const char *json) {
     drain_jobs();
 }
 
-/* Sonido (sound/snd.c): "state" con el estado completo, "peak" con el medidor → __lordSound(tipo, dato). */
+/* Sound (sound/snd.c): "state" with the full state, "peak" with the meter → __lordSound(type, data). */
 void js_sound_event(const char *type, const char *json) {
     if (!ctx) return;
     JSValueConst args[2] = { JS_NewString(ctx, type), JS_ParseJSON(ctx, json, strlen(json), "<sound>") };
@@ -616,7 +618,7 @@ void js_backup_event(const char *json) {
     drain_jobs();
 }
 
-/* Red (net/state.c): cambió algo de enlaces, direcciones o rutas → __lordNet("link"|"addr"|"route"). */
+/* Network (net/state.c): something changed in links, addresses or routes → __lordNet("link"|"addr"|"route"). */
 /* Disks (disk/disk.c): something was mounted, unmounted, plugged in or changed → __lordDisks(what). */
 void js_disk_event(const char *what) {
     if (!ctx) return;
@@ -634,9 +636,9 @@ void js_net_event(const char *what) {
     drain_jobs();
 }
 
-/* Eventos de las terminales (título, directorio, campana, fin...) → __lordTerm(id, tipo, dato). */
-/* Registros (js_logs.c): "result" (id de una consulta lista), "journal" o "file" (nombre)
- * → __lordLogs(tipo, id, nombre). */
+/* Terminal events (title, directory, bell, exit...) → __lordTerm(id, type, data). */
+/* Logs (js_logs.c): "result" (id of a finished query), "journal" or "file" (name)
+ * → __lordLogs(type, id, name). */
 void js_logs_event(const char *kind, int id, const char *name) {
     if (!ctx) return;
     JSValueConst args[3] = { JS_NewString(ctx, kind), JS_NewInt32(ctx, id), JS_NewString(ctx, name) };
@@ -658,7 +660,7 @@ void js_hw_event(const char *kind, const char *json) {
     drain_jobs();
 }
 
-/* Respuestas del ayudante privilegiado: kind = LOG | OK | ERR. */
+/* Privileged helper responses: kind = LOG | OK | ERR. */
 void js_admin_event(int id, const char *kind, const char *text) {
     if (!ctx) return;
     JSValueConst args[3] = { JS_NewInt32(ctx, id), JS_NewString(ctx, kind), JS_NewString(ctx, text) };
@@ -668,8 +670,8 @@ void js_admin_event(int id, const char *kind, const char *text) {
     drain_jobs();
 }
 
-/* El portapapeles cambió (copia en la terminal, en un campo, en una app Linux): avisa a JS
- * (historial). Se llama en cada vuelta del bucle; solo compara dos números. */
+/* The clipboard changed (copy in the terminal, in a field, in a Linux app): notifies JS
+ * (history). Called on every loop iteration; it only compares two numbers. */
 void js_clipboard_poll(void) {
     static unsigned seen_text, seen_img;
     unsigned g = term_clipboard_gen(), gi = wl_clip_image_gen();
@@ -680,7 +682,7 @@ void js_clipboard_poll(void) {
     drain_jobs();
 }
 
-/* Escritorio remoto: quién mira esta sesión desde la red (JSON [{ip, user}]). */
+/* Remote desktop: who is watching this session from the network (JSON [{ip, user}]). */
 void js_remote_event(const char *json) {
     if (!ctx) return;
     JSValueConst args[1] = { JS_NewString(ctx, json) };
@@ -689,8 +691,8 @@ void js_remote_event(const char *json) {
     drain_jobs();
 }
 
-/* Broker de las apps .lpk aisladas: "prompt" (pedir un permiso) o "device" (indicador) →
- * __lordBroker(kind, json). El tema lo maneja en sdk/privacy.js. */
+/* Broker of isolated .lpk apps: "prompt" (ask for a permission) or "device" (indicator) →
+ * __lordBroker(kind, json). The theme handles it in sdk/privacy.js. */
 void js_broker_event(const char *kind, const char *json) {
     if (!ctx) return;
     JSValueConst args[2] = { JS_NewString(ctx, kind), JS_ParseJSON(ctx, json, strlen(json), "<broker>") };
@@ -700,8 +702,8 @@ void js_broker_event(const char *kind, const char *json) {
     drain_jobs();
 }
 
-/* Proceso de una app aislada: eventos que manda lord-server por el broker (tema, idioma…) →
- * __lordBrokerEvent(tipo, datos). Ver runtime/app-host.js. */
+/* Process of an isolated app: events lord-server sends through the broker (theme, language…) →
+ * __lordBrokerEvent(type, data). See runtime/app-host.js. */
 void js_broker_app_event(const char *kind, const char *json, size_t len) {
     if (!ctx) return;
     JSValueConst args[2] = { JS_NewString(ctx, kind), JS_ParseJSON(ctx, json, len, "<broker>") };
@@ -712,7 +714,7 @@ void js_broker_app_event(const char *kind, const char *json, size_t len) {
     drain_jobs();
 }
 
-/* Pantalla de ingreso (tema greeter): avisos y respuestas de lord-sessiond. */
+/* Login screen (greeter theme): notices and responses from lord-sessiond. */
 void js_greeter_event(const char *json) {
     if (!ctx) return;
     JSValueConst args[1] = { JS_NewString(ctx, json) };
@@ -721,7 +723,18 @@ void js_greeter_event(const char *json) {
     drain_jobs();
 }
 
-/* La pantalla cambió de tamaño: se actualiza lord.screen y se avisa al tema (__lordScreen). */
+/* The screen changed size: lord.screen is updated and the theme is notified (__lordScreen). */
+/* The displays (docs/DISPLAYS.md): main.c keeps the JSON; lord.screen.displays and .mirror. */
+static char displays_json[4096] = "{\"mirror\":false,\"displays\":[]}";
+void js_set_displays(const char *json) { snprintf(displays_json, sizeof displays_json, "%s", json); }
+static void set_screen_displays(JSValue screen) {
+    JSValue d = JS_ParseJSON(ctx, displays_json, strlen(displays_json), "<displays>");
+    if (JS_IsException(d)) { JS_FreeValue(ctx, JS_GetException(ctx)); return; }
+    JS_SetPropertyStr(ctx, screen, "displays", JS_GetPropertyStr(ctx, d, "displays"));
+    JS_SetPropertyStr(ctx, screen, "mirror", JS_GetPropertyStr(ctx, d, "mirror"));
+    JS_FreeValue(ctx, d);
+}
+
 void js_screen_resized(void) {
     if (!ctx) return;
     JSValue g = JS_GetGlobalObject(ctx);
@@ -730,6 +743,7 @@ void js_screen_resized(void) {
     if (JS_IsObject(screen)) {
         JS_SetPropertyStr(ctx, screen, "width", JS_NewFloat64(ctx, ui.width));
         JS_SetPropertyStr(ctx, screen, "height", JS_NewFloat64(ctx, ui.height));
+        set_screen_displays(screen);
     }
     JS_FreeValue(ctx, screen);
     JS_FreeValue(ctx, lord);

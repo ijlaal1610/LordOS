@@ -1,8 +1,8 @@
-// remote.js — escritorio remoto: quién mira esta sesión desde la red y el aviso en pantalla.
+// remote.js — remote desktop: who is watching this session from the network, and the on-screen notice.
 //
-// lord-server avisa (__lordRemote) cada vez que se conecta o desconecta alguien por el
-// escritorio remoto (lord-sessiond, docs/REMOTO.md). <RemoteBadge /> lo monta startShell: un
-// aviso fijo arriba a la derecha mientras haya conexiones, en todos los temas.
+// lord-server notifies (__lordRemote) every time someone connects or disconnects through the
+// remote desktop (lord-sessiond, docs/REMOTE.md). <RemoteBadge /> is mounted by startShell: a
+// fixed notice at the top right while there are connections, in every theme.
 //
 //   useStore(remoteViewers) → [{ ip, user }]
 //   remote.status()         → { enabled, installed, port, allow, fingerprint, clients: [...], sessions: [...], monitor }

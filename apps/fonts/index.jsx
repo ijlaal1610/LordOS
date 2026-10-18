@@ -1,7 +1,7 @@
-// Tipografías — visor y administrador de fuentes: las instaladas por familia, muestra con texto y
-// tamaños a elección, tabla de caracteres por bloque e información; instalar un .ttf/.otf para el
-// usuario (~/.local/share/fonts) y quitarlo. Las fuentes se abren en el ayudante encerrado
-// lord-doc (FreeType), así una fuente rota o maliciosa no afecta al escritorio.
+// Fonts — font viewer and manager: installed fonts by family, a sample with text and
+// sizes of your choice, a character table by block and information; install a .ttf/.otf for the
+// user (~/.local/share/fonts) and remove it. Fonts are opened in the confined lord-doc
+// helper (FreeType), so a broken or malicious font does not affect the desktop.
 import {
   View, Text, TextInput, Slider, Button, Segmented, useTheme, useAppWindow, useKeyboard, wm, fs, clipboard, DocImage, releaseImage,
   fontInfo, fontSample, fontGrid, formatBytes, t as tr, SidebarItem, SectionTitle, SearchField, GroupBox, FormRow, EmptyState,
@@ -39,7 +39,7 @@ function loadFonts(rescan) {
   return [...fams.values()].sort((a, b) => a.family.localeCompare(b.family));
 }
 
-// Una muestra dibujada por el ayudante
+// A sample drawn by the helper
 function Sample({ font, text, size, width, th, extra }) {
   const [img, setImg] = useState(null);
   const [err, setErr] = useState(false);
@@ -130,7 +130,7 @@ export default function Fonts() {
   const [fams, setFams] = useState(() => loadFonts(false));
   const [coll, setColl] = useState('all');
   const [q, setQ] = useState('');
-  const [sel, setSel] = useState(null);           // familia o { file }
+  const [sel, setSel] = useState(null);           // family or { file }
   const [styleIdx, setStyleIdx] = useState(0);
   const [tab, setTab] = useState('sample');
   const [text, setText] = useState('');
@@ -146,7 +146,7 @@ export default function Fonts() {
 
   const visible = fams.filter((f) => (coll === 'all' || (coll === 'user' && f.user) || (coll === 'mono' && f.mono) || (coll === 'color' && f.color))
     && (!q || f.family.toLowerCase().includes(q.toLowerCase())));
-  // un archivo abierto desde Archivos (todavía no instalado) se muestra como una familia más
+  // a file opened from Files (not installed yet) is shown as one more family
   const [fileFont, setFileFont] = useState(null);
   useEffect(() => {
     if (!file) { setFileFont(null); return; }
@@ -165,17 +165,17 @@ export default function Fonts() {
 
   const sampleText = text || tr('fonts.pangram');
   const installed = fam && !fam.file;
-  // un archivo cuya familia y estilo ya están instalados (fonts.c no carga la misma fuente dos veces)
+  // a file whose family and style are already installed (fonts.c does not load the same font twice)
   const already = fam?.file && fams.some((f) => f.family === fam.family && f.styles.some((st) => st.style === fam.styles[0].style));
   const install = () => {
     if (!file) return;
     try {
-      try { fs.mkdir('.local/share'); } catch (e) { /* ya está */ }
-      try { fs.mkdir('.local/share/fonts'); } catch (e) { /* ya está */ }
+      try { fs.mkdir('.local/share'); } catch (e) { /* already there */ }
+      try { fs.mkdir('.local/share/fonts'); } catch (e) { /* already there */ }
       const dest = `${userDir()}/${fs.basename(file)}`;
-      try { fs.stat(dest); setMsg(tr('fonts.already')); return; } catch (e) { /* libre */ }
+      try { fs.stat(dest); setMsg(tr('fonts.already')); return; } catch (e) { /* free */ }
       fs.copy(file, dest);
-      // la copia corre en un hilo: se vuelve a escanear cuando termina
+      // the copy runs in a thread: rescan when it finishes
       const t0 = Date.now();
       const id = setInterval(() => {
         try { fs.stat(dest); } catch (e) { if (Date.now() - t0 < 5000) return; }
@@ -195,7 +195,7 @@ export default function Fonts() {
     if (n) { setFams(loadFonts(true)); setSel(null); setMsg(tr('fonts.removed', { name: fam.family })); }
   };
   useKeyboard((e) => {
-    if ((e.meta || e.ctrl) && (e.base || '').toLowerCase() === 'f') { /* la búsqueda ya está a la vista */ }
+    if ((e.meta || e.ctrl) && (e.base || '').toLowerCase() === 'f') { /* the search is already in view */ }
   });
 
   const colls = [['all', tr('fonts.coll.all')], ['user', tr('fonts.coll.user')], ['mono', tr('fonts.coll.mono')], ['color', tr('fonts.coll.color')]];

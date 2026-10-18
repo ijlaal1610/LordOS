@@ -1,18 +1,18 @@
-/* apps.c — apps Linux instaladas: lee los .desktop de /usr/share/applications y de
- * ~/.local/share/applications (Desktop Entry Specification 1.5), busca su ícono PNG y las lanza.
+/* apps.c — installed Linux apps: reads the .desktop files from /usr/share/applications and
+ * ~/.local/share/applications (Desktop Entry Specification 1.5), finds their PNG icon and launches them.
  *
- * Es la segunda excepción a "el servidor no ejecuta comandos" (aprobada para M7; la primera
- * es el shell de la Terminal). Límites:
- *   - solo se lanza una app por su id, y el id tiene que ser de un .desktop de esas dos
- *     carpetas que pase los filtros de apps_list();
- *   - el comando es la línea Exec de ese archivo; el llamador no agrega argumentos ni
- *     archivos (los códigos %f %u… se quitan) y no pasa por un shell: se arma argv según la
- *     especificación y se ejecuta con execv;
- *   - las apps de terminal (Terminal=true) no se listan ni se lanzan;
- *   - JS no puede crear .desktop: lord.fs solo lee y los paquetes de apps LordOS se instalan
- *     en otra carpeta (~/.local/share/lordos/apps), así que desde la interfaz no se puede
- *     inventar un comando.
- * La salida de las apps va a ~/.cache/lordos/apps.log (se recorta al pasar 1 MB). */
+ * It is the second exception to "the server does not run commands" (approved for M7; the first
+ * is the Terminal's shell). Limits:
+ *   - an app is only launched by its id, and the id must belong to a .desktop file in those two
+ *     folders that passes the apps_list() filters;
+ *   - the command is that file's Exec line; the caller adds no arguments or
+ *     files (the %f %u… codes are removed) and it does not go through a shell: argv is built per the
+ *     specification and run with execv;
+ *   - terminal apps (Terminal=true) are neither listed nor launched;
+ *   - JS cannot create .desktop files: lord.fs is read-only and LordOS app packages are installed
+ *     in another folder (~/.local/share/lordos/apps), so a command cannot be
+ *     invented from the UI.
+ * App output goes to ~/.cache/lordos/apps.log (trimmed when it exceeds 1 MB). */
 #include "apps.h"
 #include "hw/defaults.h"
 #include "fsops.h"
@@ -40,9 +40,9 @@ static int napps;
 static char cached_lang[32];
 static time_t cached_mtime[2];
 
-/* ---- lectura de un .desktop ---- */
+/* ---- reading a .desktop file ---- */
 
-/* Quita los escapes de un valor de tipo string (\s \n \t \r \\). */
+/* Removes the escapes of a string-type value (\s \n \t \r \\). */
 static void unescape(char *s) {
     char *o = s;
     for (; *s; s++) {
@@ -54,7 +54,7 @@ static void unescape(char *s) {
     *o = 0;
 }
 
-/* Prioridad de una clave traducida para el idioma: Name[es_AR] > Name[es] > Name. */
+/* Priority of a translated key for the language: Name[es_AR] > Name[es] > Name. */
 static int locale_rank(const char *loc, const char *lang) {
     if (!loc) return 1;
     char ll[8] = "", cc[8] = "";
@@ -70,7 +70,7 @@ typedef struct {
     DesktopApp a;
     char exec[1024], tryexec[256], icon_name[256], path[512];
     char only[256], not_[256];
-    int ranks[5];                       /* name generic comment keywords: prioridad de idioma */
+    int ranks[5];                       /* name generic comment keywords: language priority */
     int hidden, nodisplay, terminal, is_app, has_name;
 } Entry;
 
@@ -126,8 +126,8 @@ static int parse_desktop(const char *file, const char *lang, Entry *e) {
     return 0;
 }
 
-/* Nombre del programa de una línea Exec ("env VAR=1 /usr/bin/foo %u" → "foo"), solo para
- * reconocer sus procesos en el Monitor; no se usa para lanzar nada. */
+/* Program name of an Exec line ("env VAR=1 /usr/bin/foo %u" → "foo"), only to
+ * recognize its processes in the Monitor; never used to launch anything. */
 static void exec_bin(const char *exec, char *out, size_t n) {
     out[0] = 0;
     const char *p = exec;
@@ -162,7 +162,7 @@ static int list_has(const char *list, const char *item) {
     return 0;
 }
 
-/* Programa de la línea Exec en el PATH fijo (más ~/.local/bin para los .desktop del usuario). */
+/* Program of the Exec line in the fixed PATH (plus ~/.local/bin for the user's .desktop files). */
 static int find_program(const char *prog, int user, char *out, size_t n) {
     if (!prog[0]) return -1;
     if (strchr(prog, '/')) {
@@ -182,7 +182,7 @@ static int find_program(const char *prog, int user, char *out, size_t n) {
     return -1;
 }
 
-/* ---- íconos: PNG de hicolor (y del tema del usuario), o /usr/share/pixmaps ---- */
+/* ---- icons: hicolor PNGs (and from the user's theme), or /usr/share/pixmaps ---- */
 
 static int is_png(const char *path) {
     size_t n = strlen(path);
@@ -207,8 +207,8 @@ static void find_icon(const char *name, char *out, size_t n) {
         }
     int w = snprintf(out, n, "/usr/share/pixmaps/%s.png", name);
     if (w > 0 && (size_t)w < n && is_png(out)) return;
-    /* último recurso: el PNG de 64 px de AppStream que bajó el motor de paquetes
-     * (/var/lib/lordos/pkg/icons/64/<paquete>_<ícono>.png): sirve para las apps que solo traen SVG */
+    /* last resort: the 64 px AppStream PNG downloaded by the package engine
+     * (/var/lib/lordos/pkg/icons/64/<package>_<icon>.png): useful for apps that only ship SVG */
     out[0] = 0;
     DIR *d = opendir("/var/lib/lordos/pkg/icons/64");
     if (!d) return;
@@ -227,7 +227,7 @@ static void find_icon(const char *name, char *out, size_t n) {
     closedir(d);
 }
 
-/* ---- lista ---- */
+/* ---- list ---- */
 
 static int valid_id(const char *id) {
     size_t n = strlen(id);
@@ -246,7 +246,7 @@ static int cmp_name(const void *a, const void *b) {
     return strcasecmp(((const DesktopApp *)a)->name, ((const DesktopApp *)b)->name);
 }
 
-/* ¿Ya está el id? (las del usuario van primero y tapan a las del sistema) */
+/* Is the id already there? (the user's come first and shadow the system's) */
 static int seen(const char *id, char (*ids)[160], int n) {
     for (int i = 0; i < n; i++) if (!strcmp(ids[i], id)) return 1;
     return 0;
@@ -273,7 +273,7 @@ int apps_list(const char *lang, const DesktopApp **out) {
             char id[160];
             snprintf(id, sizeof id, "%.*s", (int)(len - 8), de->d_name);
             if (!valid_id(id) || seen(id, ids, nids)) continue;
-            if (nids < MAX_APPS * 2) snprintf(ids[nids++], sizeof ids[0], "%s", id);   /* también tapa si está oculta */
+            if (nids < MAX_APPS * 2) snprintf(ids[nids++], sizeof ids[0], "%s", id);   /* it also shadows if hidden */
             char file[PATH_MAX * 2];
             snprintf(file, sizeof file, "%s/%s", dirs[d], de->d_name);
             if (strlen(file) >= PATH_MAX || parse_desktop(file, lang, e)) continue;
@@ -305,12 +305,12 @@ int apps_list(const char *lang, const DesktopApp **out) {
     return napps;
 }
 
-/* ---- lanzar ---- */
+/* ---- launch ---- */
 
-/* Arma argv desde la línea Exec (especificación, "The Exec key"): argumentos separados por
- * espacios, comillas dobles con \" \` \$ \\, códigos de campo. Con file (apps_launch_with), el
- * primer %f/%F va como la ruta y el primer %u/%U como file://…; los demás códigos de archivo
- * se quitan. %i → --icon <ícono>; %c → nombre; %k → el .desktop; %% → %. *used dice si se usó file. */
+/* Builds argv from the Exec line (specification, "The Exec key"): arguments separated by
+ * spaces, double quotes with \" \` \$ \\, field codes. With file (apps_launch_with), the
+ * first %f/%F goes as the path and the first %u/%U as file://…; the other file codes
+ * are removed. %i → --icon <icon>; %c → name; %k → the .desktop file; %% → %. *used tells whether file was used. */
 #define MAX_ARGS 64
 static void file_uri(const char *path, char *out, size_t n) {
     size_t o = (size_t)snprintf(out, n, "file://");
@@ -352,12 +352,12 @@ static int split_exec(const char *exec, const Entry *e, char **argv, char *buf, 
                     *used = 1;
                     empty_ok = 1;
                 }
-                else field_only = 1;            /* los demás códigos de archivo y los obsoletos */
+                else field_only = 1;            /* the other file codes and the deprecated ones */
                 continue;
             }
             buf[o++] = *p++;
         }
-        if (quoted) return -1;                  /* comillas sin cerrar */
+        if (quoted) return -1;                  /* unclosed quotes */
         if (field_only == 2 && o == start) {
             argv[argc++] = "--icon";
             size_t l = strlen(e->icon_name);
@@ -367,7 +367,7 @@ static int split_exec(const char *exec, const Entry *e, char **argv, char *buf, 
             o += l + 1;
             continue;
         }
-        if (o == start && !empty_ok) continue;  /* era solo un código de campo */
+        if (o == start && !empty_ok) continue;  /* it was only a field code */
         buf[o++] = 0;
         argv[argc++] = buf + start;
     }
@@ -394,9 +394,9 @@ static void open_log(void) {
 static int launch(const char *id, const char *file);
 int apps_launch(const char *id) { return launch(id, NULL); }
 
-/* Abrir un archivo con una app: solo una app que declare MimeType (acepta archivos), una ruta
- * real dentro de la carpeta personal o de /media/$USER (fsops_allowed), un archivo o carpeta
- * común, y solo si su Exec tiene un código de archivo: la ruta va como UN argumento. */
+/* Opening a file with an app: only an app that declares MimeType (accepts files), a real
+ * path inside the home folder or /media/$USER (fsops_allowed), a regular file or folder,
+ * and only if its Exec has a file code: the path goes as ONE argument. */
 int apps_launch_with(const char *id, const char *path) {
     char real[PATH_MAX];
     struct stat st;
@@ -415,7 +415,7 @@ static int launch(const char *id, const char *file) {
     const DesktopApp *a = NULL;
     for (int i = 0; i < n; i++) if (!strcmp(list[i].id, id)) { a = &list[i]; break; }
     if (!a) return -1;
-    /* se vuelve a leer el archivo: lo que vale es lo que dice ahora */
+    /* the file is read again: what counts is what it says now */
     Entry *e = malloc(sizeof *e);
     char *buf = malloc(4096);
     char *argv[MAX_ARGS];
@@ -431,7 +431,7 @@ static int launch(const char *id, const char *file) {
 
     pid_t pid = fork();
     if (pid == 0) {
-        /* nieto huérfano: no queda como hijo de lord-server */
+        /* orphaned grandchild: it does not remain a child of lord-server */
         setsid();
         if (fork() != 0) _exit(0);
         sigset_t none;
@@ -444,7 +444,7 @@ static int launch(const char *id, const char *file) {
         syscall(SYS_close_range, 3, ~0u, 0);
         const char *home = getenv("HOME");
         if (!cwd[0] || chdir(cwd)) { if (home && chdir(home)) {} }
-        app_scope_enter(id);        /* su propio cgroup app-lordos-<id>.scope (el monitor lo atribuye) */
+        app_scope_enter(id);        /* its own app-lordos-<id>.scope cgroup (the monitor attributes it) */
         execve(prog, argv, environ);
         _exit(127);
     }

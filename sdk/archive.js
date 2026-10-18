@@ -1,22 +1,22 @@
-// archive.js — comprimidos por el ayudante encerrado (libarchive adentro de lord-doc). Extraer
-// nunca sale de la carpeta de destino: ni "..", ni rutas absolutas, ni enlaces que apunten afuera
-// (ver docs/DOCUMENTOS.md, "Extraer sin salir de la carpeta").
+// archive.js — archives through the confined helper (libarchive inside lord-doc). Extracting
+// never leaves the destination folder: no "..", no absolute paths, no links pointing outside
+// (see docs/DOCUMENTS.md, "Extracting without leaving the folder").
 //
-//   archive.isArchive(nombre)                      ¿.zip, .tar(.gz/.xz/.zst/.bz2), .7z, .gz…?
-//   archive.list(ruta) → { entries: [{ p, s, m, d, l, bad, enc }], format, raw, truncated, encrypted }
-//   archive.extract(ruta, carpeta, { only, existing, onProgress }) → { files, bytes, skipped, skips }
-//       crea la carpeta (salvo existing: true) y extrae adentro
-//   archive.create([rutas], destino.zip, { onProgress }) → { files, bytes }
-//   archive.tree(entries) → Map carpeta → [{ name, path, dir, size, mtime }]
+//   archive.isArchive(name)                        .zip, .tar(.gz/.xz/.zst/.bz2), .7z, .gz…?
+//   archive.list(path) → { entries: [{ p, s, m, d, l, bad, enc }], format, raw, truncated, encrypted }
+//   archive.extract(path, folder, { only, existing, onProgress }) → { files, bytes, skipped, skips }
+//       creates the folder (unless existing: true) and extracts inside it
+//   archive.create([paths], dest.zip, { onProgress }) → { files, bytes }
+//   archive.tree(entries) → Map folder → [{ name, path, dir, size, mtime }]
 import { waitFor } from './doc.js';
 
 const EXTS = /\.(zip|tar|tgz|tbz2?|txz|tzst|tar\.(gz|xz|zst|bz2|lz|lzma)|7z|gz|xz|zst|bz2|cpio|iso|ar|deb|rar|lha|lzh|cab|jar|apk|war|xpi)$/i;
-// lo que se ofrece «Extraer» (el resto se puede mirar adentro si libarchive lo lee)
+// what gets offered "Extract" (the rest can be browsed inside if libarchive reads it)
 export const isArchive = (name) => EXTS.test(String(name)) && !/\.(deb|apk)$/i.test(String(name));
-// .gz/.xz/.zst/.bz2 sueltos (no tar): un solo archivo con el nombre sin la extensión
+// bare .gz/.xz/.zst/.bz2 (not tar): a single file named without the extension
 export const isRawCompressed = (name) => /\.(gz|xz|zst|bz2)$/i.test(name) && !/\.tar\.[^.]+$/i.test(name);
 export const rawName = (name) => String(name).replace(/\.(gz|xz|zst|bz2)$/i, '');
-// nombre de la carpeta de destino: "fotos.tar.gz" → "fotos"
+// destination folder name: "photos.tar.gz" → "photos"
 export const stem = (name) => String(name).replace(/\.(tar\.(gz|xz|zst|bz2|lz|lzma)|tgz|tbz2?|txz|tzst|zip|tar|7z|gz|xz|zst|bz2|rar|cpio|iso)$/i, '') || name;
 
 function list(path) {
@@ -44,8 +44,8 @@ function create(paths, out, { onProgress } = {}) {
   return p;
 }
 
-// Árbol de carpetas a partir de la lista plana (las carpetas que no tienen entrada propia se
-// deducen de las rutas).
+// Folder tree from the flat list (folders without their own entry are
+// inferred from the paths).
 function tree(entries) {
   const dirs = new Map([['', []]]);
   const ensure = (d) => {

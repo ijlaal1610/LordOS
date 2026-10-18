@@ -1,16 +1,16 @@
-/* helper.c — lord-doc: ayudante de documentos de lord-server (ver proto.h y docs/DOCUMENTOS.md).
+/* helper.c — lord-doc: lord-server's document helper (see proto.h and docs/DOCUMENTS.md).
  *
- * Lo lanza lord-server (doc.c) con una ruta fija (al lado de su propio binario), sin argumentos y
- * con el canal en el fd 3. Corre como el usuario, y antes de leer un solo byte de un documento:
- *   - muere si muere lord-server (PR_SET_PDEATHSIG) y no deja core;
- *   - límite de memoria (RLIMIT_AS) y cgroup propio (lordos-doc.scope) si se puede;
- *   - recibe los fds que va a usar (DQ_INIT_FD) y se encierra (DQ_INIT_GO) con el módulo común
+ * lord-server (doc.c) launches it from a fixed path (next to its own binary), with no arguments and
+ * with the channel on fd 3. It runs as the user, and before reading a single byte of a document:
+ *   - it dies if lord-server dies (PR_SET_PDEATHSIG) and leaves no core;
+ *   - memory limit (RLIMIT_AS) and its own cgroup (lordos-doc.scope) if possible;
+ *   - it receives the fds it will use (DQ_INIT_FD) and locks itself down (DQ_INIT_GO) with the common module
  *     sandbox_apply_helper (server/src/sec/sandbox.c):
- *       Landlock: solo lectura de /usr y las fuentes; escritura solo debajo de la carpeta de
- *       destino de una extracción (rw_dir_fds); ninguna conexión TCP;
- *       seccomp: lista blanca sin socket, connect, bind, execve, ptrace, fork (solo hilos) ni mount;
- *       sin capacidades y con no_new_privs.
- * Si algo de eso falta en el kernel, sigue con lo que haya y lo dice en el registro.
+ *       Landlock: read-only access to /usr and the fonts; write access only below the destination
+ *       folder of an extraction (rw_dir_fds); no TCP connections;
+ *       seccomp: allowlist without socket, connect, bind, execve, ptrace, fork (threads only) or mount;
+ *       no capabilities and with no_new_privs.
+ * If any of that is missing in the kernel, it goes on with what there is and says so in the log.
  */
 #include "helper.h"
 #include "../sec/cgroup.h"
@@ -49,7 +49,7 @@ int slot_fd(const JVal *args, const char *key) {
     return hslots[(int)d].fd;
 }
 
-/* ---- respuestas ---- */
+/* ---- replies ---- */
 
 void reply_json(uint32_t kind, uint32_t id, JBuf *b) {
     if (b->oom) { jb_free(b); reply_err(id, "too-big", ""); return; }
@@ -103,15 +103,15 @@ void reply_blob(uint32_t id, int fd, size_t size) {
     close(fd);
 }
 
-/* Luminancia invertida con el mismo matiz: cada canal se corre (255 - 2Y). El blanco queda
- * negro, el negro blanco y un rojo sigue siendo rojo (más claro o más oscuro). */
+/* Inverted luminance with the same hue: each channel is shifted by (255 - 2Y). White becomes
+ * black, black becomes white and a red stays red (lighter or darker). */
 void invert_lightness(uint32_t *px, size_t n) {
     for (size_t i = 0; i < n; i++) {
         uint32_t p = px[i];
         int a = (int)(p >> 24), r = (int)(p >> 16 & 255), g = (int)(p >> 8 & 255), b = (int)(p & 255);
         if (!a) continue;
         int y = (r * 77 + g * 150 + b * 29) >> 8;
-        int d = a - 2 * y;                         /* premultiplicado: el máximo es a */
+        int d = a - 2 * y;                         /* premultiplied: the maximum is a */
         r += d; g += d; b += d;
         r = r < 0 ? 0 : r > a ? a : r;
         g = g < 0 ? 0 : g > a ? a : g;
@@ -120,14 +120,14 @@ void invert_lightness(uint32_t *px, size_t n) {
     }
 }
 
-/* Encierro con el módulo común de aislamiento (server/src/sec/sandbox.c): sin red, sin archivos
- * salvo los fds recibidos y las carpetas de solo lectura de abajo, lista blanca de syscalls por
- * arquitectura, sin capacidades y con tope de memoria. */
+/* Lockdown with the common isolation module (server/src/sec/sandbox.c): no network, no files
+ * except the received fds and the read-only folders below, syscall allowlist per
+ * architecture, no capabilities and with a memory cap. */
 static void lockdown(void) {
     static const char *ro[16];
     static char extra[3][1024];
     int n = 0;
-    ro[n++] = "/usr";                      /* bibliotecas, poppler-data, fuentes, locales */
+    ro[n++] = "/usr";                      /* libraries, poppler-data, fonts, locales */
     ro[n++] = "/etc/fonts";
     ro[n++] = "/var/cache/fontconfig";
     const char *home = getenv("HOME");
@@ -156,9 +156,9 @@ static void lockdown(void) {
     if (getenv("LORD_DOC_DEBUG")) fprintf(stderr, "lord-doc[%d]: modo=%s caja=%#x fds=%d\n", getpid(), mode, (unsigned)mask, hnslots);
 }
 
-/* ---- arranque y bucle ---- */
+/* ---- startup and loop ---- */
 
-/* Lo que el encierro tiene que impedir. Cada intento devuelve el errno (0 = se pudo: falla). */
+/* What the lockdown has to prevent. Each attempt returns the errno (0 = it worked: failure). */
 static void selftest(uint32_t id) {
     JBuf b;
     jb_init(&b);
@@ -226,7 +226,7 @@ static int handle(const DocMsg *m) {
 
 int main(int argc, char **argv) {
     (void)argv;
-    if (argc != 1) return 2;                         /* nunca recibe argumentos */
+    if (argc != 1) return 2;                         /* never receives arguments */
     prctl(PR_SET_PDEATHSIG, SIGKILL);
     if (getppid() == 1) return 1;
     prctl(PR_SET_DUMPABLE, 0);
@@ -238,10 +238,10 @@ int main(int argc, char **argv) {
     if (fstat(SOCK, &st) || !S_ISSOCK(st.st_mode)) { fprintf(stderr, "lord-doc: lo lanza lord-server\n"); return 2; }
     syscall(SYS_close_range, SOCK + 1, ~0U, 0);
     signal(SIGPIPE, SIG_IGN);
-    /* nombres de los comprimidos en UTF-8 (libarchive convierte según la región) */
+    /* archive names in UTF-8 (libarchive converts according to the locale) */
     if (!setlocale(LC_ALL, "C.UTF-8")) setlocale(LC_ALL, "");
 
-    /* fds de arranque */
+    /* startup fds */
     for (int guard = 0; guard < DOC_INIT_FDS + 4; guard++) {
         DocMsg m;
         int r = doc_recv(SOCK, &m);

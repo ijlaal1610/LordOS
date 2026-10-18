@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
-"""gen-monitor-data.py — datos de la app Monitor, generados una vez en la máquina de desarrollo.
+"""gen-monitor-data.py — data for the Monitor app, generated once on the development machine.
 
-Uso:
-  python3 tools/gen-monitor-data.py <ne_50m_admin_0_countries.geojson> <dbip-country-lite-AAAA-MM.csv>
+Usage:
+  python3 tools/gen-monitor-data.py <ne_50m_admin_0_countries.geojson> <dbip-country-lite-YYYY-MM.csv>
 
-Genera (solo con la biblioteca estándar de Python, sin red):
-  assets/monitor/land.bin             contornos de los países (Natural Earth 1:50m, dominio público),
-                                      simplificados y en centésimos de grado; lord-server los
-                                      rellena en vectores a cualquier zoom (server/src/monitor/map.c)
-  assets/monitor/geoip-country.mmdb.xz   IP → país (DB-IP Lite Country, CC BY 4.0), en formato
-                                      MaxMind DB mínimo (solo {"country": {"iso_code"}}), comprimido con xz
-  apps/monitor/countries.js           [longitud, latitud] de la etiqueta de cada país (LABEL_X/LABEL_Y)
-  assets/locales/{es,en,pt}/countries.json   nombres de los países (NAME_ES/EN/PT de Natural Earth)
+Generates (with the Python standard library only, no network):
+  assets/monitor/land.bin             country outlines (Natural Earth 1:50m, public domain),
+                                      simplified and in hundredths of a degree; lord-server
+                                      fills them as vectors at any zoom (server/src/monitor/map.c)
+  assets/monitor/geoip-country.mmdb.xz   IP → country (DB-IP Lite Country, CC BY 4.0), in a minimal
+                                      MaxMind DB format (only {"country": {"iso_code"}}), compressed with xz
+  apps/monitor/countries.js           [longitude, latitude] of each country's label (LABEL_X/LABEL_Y)
+  assets/locales/{es,en,pt}/countries.json   country names (Natural Earth's NAME_ES/EN/PT)
 
-Descargas (a mano, una vez):
+Downloads (by hand, once):
   https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson
-  https://download.db-ip.com/free/dbip-country-lite-AAAA-MM.csv.gz   (descomprimido)
+  https://download.db-ip.com/free/dbip-country-lite-YYYY-MM.csv.gz   (decompressed)
 
-Formato de land.bin (little-endian):
-  "LORDMAP1", u32 países; por país: 2 bytes ISO (o "--"), i16 bbox[4] (lon0 lat0 lon1 lat1),
-  u16 anillos; por anillo: u32 puntos y i16 (lon, lat) × puntos, en centésimos de grado.
-  Los anillos interiores (agujeros) van como anillos comunes: se rellena par-impar.
+land.bin format (little-endian):
+  "LORDMAP1", u32 countries; per country: 2 ISO bytes (or "--"), i16 bbox[4] (lon0 lat0 lon1 lat1),
+  u16 rings; per ring: u32 points and i16 (lon, lat) × points, in hundredths of a degree.
+  Inner rings (holes) are stored as regular rings: filled even-odd.
 """
 import csv
 import ipaddress
@@ -32,8 +32,8 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MAX4, MAX6 = 24, 32                 # precisión del archivo de países (ver build_mmdb)
-SIMPLIFY = 0.02                     # tolerancia de Douglas-Peucker, en grados (~2 km)
+MAX4, MAX6 = 24, 32                 # precision of the countries file (see build_mmdb)
+SIMPLIFY = 0.02                     # Douglas-Peucker tolerance, in degrees (~2 km)
 
 
 def iso_of(props):
@@ -52,10 +52,10 @@ def rings_of(geom):
     return []
 
 
-# ---- contornos (land.bin) -------------------------------------------------------------------
+# ---- outlines (land.bin) -------------------------------------------------------------------
 
 def simplify(pts, eps):
-    """Douglas-Peucker iterativo."""
+    """Iterative Douglas-Peucker."""
     if len(pts) < 4:
         return pts
     keep = [False] * len(pts)
@@ -83,7 +83,7 @@ def build_land(geojson, out):
     blob, count, npts = b'', 0, 0
     for feat in geojson['features']:
         cc = iso_of(feat['properties']) or '--'
-        if cc == 'AQ':                      # la Antártida queda fuera del mapa (corta en 56° S)
+        if cc == 'AQ':                      # Antarctica is left off the map (cut at 56° S)
             continue
         rings = []
         for poly in rings_of(feat['geometry']):
@@ -109,7 +109,7 @@ def build_land(geojson, out):
     return count, npts
 
 
-# ---- IP → país (MaxMind DB) -------------------------------------------------------------
+# ---- IP → country (MaxMind DB) -------------------------------------------------------------
 
 def mm_str(s):
     b = s.encode()
@@ -136,21 +136,21 @@ def build_mmdb(csv_path, out):
                 continue
             lo, hi = ipaddress.ip_address(a), ipaddress.ip_address(b)
             if lo.version == 4:
-                lo, hi = int(lo), int(hi)               # IPv4 en ::/96, como en GeoIP2
+                lo, hi = int(lo), int(hi)               # IPv4 in ::/96, as in GeoIP2
             else:
                 lo, hi = int(lo), int(hi)
-                if lo >> 32 == 0:                       # no pisar el subárbol de IPv4
+                if lo >> 32 == 0:                       # do not overwrite the IPv4 subtree
                     continue
             ranges.append((lo, hi, cc))
             codes.setdefault(cc, len(codes))
     ranges.sort()
     merged = []
-    for lo, hi, cc in ranges:                           # rangos contiguos del mismo país
+    for lo, hi, cc in ranges:                           # contiguous ranges of the same country
         if merged and merged[-1][2] == cc and merged[-1][1] + 1 == lo:
             merged[-1][1] = hi
         else:
             merged.append([lo, hi, cc])
-    # árbol binario de 128 bits: L/R = índice de nodo (>0), 0 = vacío, -(país+1) = hoja
+    # 128-bit binary tree: L/R = node index (>0), 0 = empty, -(country+1) = leaf
     L, R = [0], [0]
 
     def insert(net, plen, val):
@@ -171,13 +171,13 @@ def build_mmdb(csv_path, out):
                 arr[node] = nxt
             node = nxt
 
-    # Para que el archivo sea chico, los prefijos más largos que /24 (IPv4: el bloque más chico
-    # que se enruta en Internet) o /MAX6 (IPv6) no se guardan: el bloque entero va al país que
-    # tiene más direcciones adentro.
+    # To keep the file small, prefixes longer than /24 (IPv4: the smallest block
+    # routed on the Internet) or /MAX6 (IPv6) are not stored: the whole block goes to the country
+    # with the most addresses inside it.
     blocks = {}
     for lo, hi, cc in merged:
         val = -(codes[cc] + 1)
-        while lo <= hi:                                 # rango → prefijos CIDR
+        while lo <= hi:                                 # range → CIDR prefixes
             size = (lo & -lo).bit_length() - 1 if lo else 128
             while size > 0 and lo + (1 << size) - 1 > hi:
                 size -= 1
@@ -191,7 +191,7 @@ def build_mmdb(csv_path, out):
             lo += 1 << size
     for (net, lim), cnt in blocks.items():
         insert(net << (128 - lim), lim, max(cnt.items(), key=lambda kv: kv[1])[0])
-    # nodos que terminaron con dos hojas iguales se pliegan (de abajo hacia arriba)
+    # nodes that ended up with two equal leaves are folded (bottom-up)
     parent_val = {}
     changed = True
     while changed:
@@ -203,7 +203,7 @@ def build_mmdb(csv_path, out):
                     arr[i] = L[c]
                     L[c] = R[c] = 0
                     changed = True
-    # renumerar los nodos alcanzables en orden BFS
+    # renumber the reachable nodes in BFS order
     order, idx = [0], {0: 0}
     k = 0
     while k < len(order):
@@ -239,15 +239,15 @@ def build_mmdb(csv_path, out):
     meta += mm_str('binary_format_major_version') + mm_uint(2, 5)
     meta += mm_str('binary_format_minor_version') + mm_uint(0, 5)
     meta += mm_str('build_epoch') + mm_uint(int(time.time()), 9)
-    meta += mm_str('languages') + bytes([0x00, 0x04])   # arreglo vacío
+    meta += mm_str('languages') + bytes([0x00, 0x04])   # empty array
     db = bytes(tree) + b'\x00' * 16 + data + b'\xab\xcd\xefMaxMind.com' + meta
-    # comprimido con xz (solo LZMA2, CRC64): lord-server lo descomprime con su xz propio
+    # compressed with xz (LZMA2 only, CRC64): lord-server decompresses it with its own xz
     with open(out, 'wb') as f:
         f.write(lzma.compress(db, format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64, preset=9 | lzma.PRESET_EXTREME))
     return node_count, len(merged)
 
 
-# ---- países -----------------------------------------------------------------------------
+# ---- countries -----------------------------------------------------------------------------
 
 def countries(geojson):
     pos, names = {}, {'es': {}, 'en': {}, 'pt': {}}
@@ -274,15 +274,15 @@ def main():
     nc, npts = build_land(geo, os.path.join(ROOT, 'assets/monitor/land.bin'))
     pos, names = countries(geo)
     with open(os.path.join(ROOT, 'apps/monitor/countries.js'), 'w') as f:
-        f.write('// countries.js — generado por tools/gen-monitor-data.py (Natural Earth 1:50m, dominio público).\n')
-        f.write('// [longitud, latitud] del lugar de la etiqueta de cada país.\n')
+        f.write('// countries.js — generated by tools/gen-monitor-data.py (Natural Earth 1:50m, public domain).\n')
+        f.write('// [longitude, latitude] of the label position of each country.\n')
         f.write('export const COUNTRY_LL = ' + json.dumps(pos, separators=(',', ':'), sort_keys=True) + ';\n')
     for lang, obj in names.items():
         with open(os.path.join(ROOT, f'assets/locales/{lang}/countries.json'), 'w') as f:
             json.dump(dict(sorted(obj.items())), f, ensure_ascii=False, indent=2)
             f.write('\n')
     nodes, nranges = build_mmdb(dbip, os.path.join(ROOT, 'assets/monitor/geoip-country.mmdb.xz'))
-    print(f'contornos: {nc} países, {npts} puntos; {len(pos)} etiquetas; mmdb: {nranges} rangos, {nodes} nodos')
+    print(f'outlines: {nc} countries, {npts} points; {len(pos)} labels; mmdb: {nranges} ranges, {nodes} nodes')
 
 
 if __name__ == '__main__':

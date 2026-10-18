@@ -1,29 +1,29 @@
-// monitor.js — métricas del sistema para la app Monitor (lord.monitor, ver docs/MONITOR.md).
+// monitor.js — system metrics for the Monitor app (lord.monitor, see docs/MONITOR.md).
 //
-//   const samples = useMonitor({ procs: true, conns: false, geo: true });   // últimas 240 muestras (60 s)
+//   const samples = useMonitor({ procs: true, conns: false, geo: true });   // last 240 samples (60 s)
 //   const procs = useStore(monitorProcesses);    // { t, total, list: [{ pid, name, cpu, rss, app… }] }
 //   const conns = useStore(monitorConnections);  // { t, others, list: [{ id, proto, remote, cc, app… }] }
 //   monitor.info()                               // { cpuModel, cores, geo, home: { lat, lon, cc } }
 //
-// lord-server muestrea en un hilo propio solo mientras haya algún useMonitor montado (y lo
-// consulte): con la app cerrada no cuesta nada. Las listas de procesos y conexiones se arman
-// solo si algún useMonitor las pide, una vez por segundo.
+// lord-server samples in its own thread only while some useMonitor is mounted (and
+// polls it): with the app closed it costs nothing. The process and connection lists are built
+// only if some useMonitor asks for them, once per second.
 //
-// Fase 2 (no implementada todavía): monitor.deviceUsers() → [{ kind: 'camera' | 'microphone',
-// app, name, pid }] y el store monitorDevices; y el firewall con reglas por app y por dominio,
-// que se apoyan en los mismos registros de conexión (campo `verdict`, hoy siempre 'allow').
+// Phase 2 (not implemented yet): monitor.deviceUsers() → [{ kind: 'camera' | 'microphone',
+// app, name, pid }] and the monitorDevices store; and the firewall with per-app and per-domain rules,
+// which rely on the same connection records (the `verdict` field, always 'allow' today).
 import { useEffect, useRef, useState } from 'react';
 import { createStore, useStore } from './store.js';
 import { locale } from './i18n.js';
 
-export const MONITOR_HISTORY = 240;             // 60 s a 4 muestras por segundo
+export const MONITOR_HISTORY = 240;             // 60 s at 4 samples per second
 export const monitorSamples = createStore([]);
 export const monitorProcesses = createStore(null);
 export const monitorConnections = createStore(null);
-export const monitorDevices = createStore([]);  // fase 2
+export const monitorDevices = createStore([]);  // phase 2
 
 const available = () => typeof lord.monitor !== 'undefined';
-const wants = new Map();                        // useMonitor montado → { procs, conns }
+const wants = new Map();                        // mounted useMonitor → { procs, conns }
 let timer = null;
 let lastWant = '';
 
@@ -44,7 +44,7 @@ function poll() {
   if (w.conns) {
     const c = lord.monitor.connections(lang);
     if (c) {
-      for (const x of c.list) x.verdict = 'allow';           // un socket que existe ya pasó el firewall
+      for (const x of c.list) x.verdict = 'allow';           // a socket that exists already passed the firewall
       monitorConnections.set(() => c);
       fwPoll();
     }
@@ -67,15 +67,15 @@ function unsubscribe(token) {
   timer = null;
   lord.monitor.want(false, false, false);
   lord.monitor.stop();
-  monitorSamples.set([]);                       // la historia empieza de nuevo al volver a abrir
+  monitorSamples.set([]);                       // the history starts over when reopened
   monitorProcesses.set(() => null);
   monitorConnections.set(() => null);
 }
 
-// geo: buscar el país de cada conexión en la base local (assets/monitor, sin red).
-// everyMs: cada cuánto se vuelve a dibujar quien llama (la muestra sigue siendo cada 250 ms; con
-// la ventana en segundo plano conviene 1000: la historia no pierde puntos y se dibuja menos).
-// everyMs = 0: solo pide los datos, sin volver a dibujar (devuelve null).
+// geo: look up each connection's country in the local database (assets/monitor, no network).
+// everyMs: how often the caller is redrawn (sampling stays every 250 ms; with
+// the window in the background 1000 is better: the history loses no points and draws less).
+// everyMs = 0: only requests the data, without redrawing (returns null).
 export function useMonitor({ procs = false, conns = false, geo = true, everyMs = 250 } = {}) {
   const token = useRef(null);
   if (!token.current) token.current = {};
@@ -97,10 +97,10 @@ export function useMonitor({ procs = false, conns = false, geo = true, everyMs =
   return everyMs ? list : null;
 }
 
-// ---- firewall por app (lord.fw, docs/FIREWALL.md) ----
-// lord-netperm (root) aplica las reglas en el kernel y cuenta las conexiones nuevas de cada app;
-// lord-server se las pasa a JS. firewallState: { status, counts: { app: [permitidas, denegadas] },
-// events: [las últimas 200 conexiones nuevas], rev }. Sube rev al cambiar una regla.
+// ---- per-app firewall (lord.fw, docs/FIREWALL.md) ----
+// lord-netperm (root) applies the rules in the kernel and counts each app's new connections;
+// lord-server passes them to JS. firewallState: { status, counts: { app: [allowed, denied] },
+// events: [the last 200 new connections], rev }. rev goes up when a rule changes.
 const fwApi = () => (typeof lord !== 'undefined' && lord.fw) || null;
 export const firewallState = createStore({ status: null, counts: {}, events: [], rev: 0 });
 let fwLast = 0;
@@ -114,11 +114,11 @@ function fwPoll(force) {
     const p = api.poll();
     const status = api.status();
     firewallState.set((s) => ({ ...s, status, counts: p.counts || {}, events: p.events.length ? [...s.events, ...p.events].slice(-200) : s.events }));
-  } catch (e) { /* sin lord.fw */ }
+  } catch (e) { /* no lord.fw */ }
 }
 const fwBump = (r) => { firewallState.set((s) => ({ ...s, rev: s.rev + 1 })); fwPoll(true); return r; };
 const fwCall = (fn, dflt) => { try { const api = fwApi(); return api ? fn(api) : dflt; } catch (e) { return dflt; } };
-// Una regla solo se puede aplicar a una app con scope propia: LordOS, una app .desktop o una .lpk.
+// A rule can only be applied to an app with its own scope: LordOS, a .desktop app or an .lpk.
 const fwEnforceable = (app) => app === 'lordos' || /^(desktop|lpk):/.test(app || '');
 export const firewall = {
   available: () => !!fwApi(),
@@ -141,5 +141,5 @@ let infoCache = null;
 export const monitor = {
   available,
   info: () => (infoCache ||= available() ? lord.monitor.info() : null),
-  deviceUsers: () => [],                        // fase 2
+  deviceUsers: () => [],                        // phase 2
 };

@@ -1,16 +1,16 @@
-/* js_print.c — lord.print: impresoras (CUPS por IPP en su socket local, cliente propio) y
- * escáneres eSCL de la red (ver server/src/print y docs/IMPRESION.md). Todo asincrónico: cada
- * función devuelve un id y el resultado llega con poll() → [{ id, kind, ok, data }].
+/* js_print.c — lord.print: printers (CUPS over IPP on its local socket, our own client) and
+ * eSCL scanners on the network (see server/src/print and docs/PRINTING.md). All asynchronous: each
+ * function returns an id and the result arrives with poll() → [{ id, kind, ok, data }].
  *
- *   printers()                       impresoras de CUPS y la predeterminada
- *   jobs()                           trabajos sin terminar (de todos los usuarios)
+ *   printers()                       CUPS printers and the default one
+ *   jobs()                           unfinished jobs (from all users)
  *   cancel(job)
- *   submit(impresora, origen, opciones)   origen: un blob de lord.doc (PDF armado) o la ruta de un
- *                                    PDF; opciones { name, copies, pages, sides, color, media, orientation }
- *   add(nombre, uri, info, lugar)    impresora IPP Everywhere / AirPrint (sin controlador)
- *   remove(nombre), setDefault(nombre)
- *   discover()                       impresoras y escáneres de la red por mDNS
- *   scanCaps(ip, puerto, rs), scan(ip, puerto, rs, ajustes)
+ *   submit(printer, source, options)     source: a lord.doc blob (built PDF) or the path of a
+ *                                    PDF; options { name, copies, pages, sides, color, media, orientation }
+ *   add(name, uri, info, location)   IPP Everywhere / AirPrint printer (driverless)
+ *   remove(name), setDefault(name)
+ *   discover()                       printers and scanners on the network via mDNS
+ *   scanCaps(ip, port, rs), scan(ip, port, rs, settings)
  */
 #include "js_print.h"
 #include "../print/print.h"
@@ -48,18 +48,18 @@ static JSValue f_discover(JSContext *c, JSValueConst t, int argc, JSValueConst *
 static JSValue f_cancel(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     int32_t job = 0;
-    if (argc < 1 || JS_ToInt32(c, &job, argv[0]) || job <= 0) return JS_ThrowRangeError(c, "trabajo");
+    if (argc < 1 || JS_ToInt32(c, &job, argv[0]) || job <= 0) return JS_ThrowRangeError(c, "job");
     JBuf b;
     jb_init(&b);
     jb_printf(&b, "{\"job\":%d}", job);
     return task(c, "cancel", &b, -1, 0);
 }
 
-/* nombre de impresora + texto JSON de las opciones (de JSON.stringify) */
+/* printer name + JSON text of the options (from JSON.stringify) */
 static JSValue f_submit(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     const char *printer = str_arg(c, argc, argv, 0);
-    if (!printer || !cups_valid_name(printer)) { if (printer) JS_FreeCString(c, printer); return JS_ThrowRangeError(c, "impresora"); }
+    if (!printer || !cups_valid_name(printer)) { if (printer) JS_FreeCString(c, printer); return JS_ThrowRangeError(c, "printer"); }
     int fd = -1;
     size_t len = 0;
     if (argc > 1 && JS_IsNumber(argv[1])) {
@@ -82,14 +82,14 @@ static JSValue f_submit(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
             else if (fd >= 0) { len = (size_t)st.st_size; fcntl(fd, F_SETFL, 0); }
         }
     }
-    if (fd < 0) { JS_FreeCString(c, printer); return JS_ThrowRangeError(c, "documento (un PDF de la carpeta personal o un blob)"); }
+    if (fd < 0) { JS_FreeCString(c, printer); return JS_ThrowRangeError(c, "document (a PDF from the home folder or a blob)"); }
     const char *opts = str_arg(c, argc, argv, 2);
     JBuf b;
     jb_init(&b);
     jb_raw(&b, "{\"printer\":");
     jb_str(&b, printer);
     JS_FreeCString(c, printer);
-    /* las opciones se validan del todo en cups_submit; acá solo que sea un objeto JSON */
+    /* the options are fully validated in cups_submit; here only that it is a JSON object */
     JDoc d = { 0 };
     if (opts && !json_parse(opts, strlen(opts), &d, NULL, 0) && d.root->type == J_OBJ) { jb_raw(&b, ",\"options\":"); jb_raw(&b, opts); }
     json_free(&d);
@@ -100,7 +100,7 @@ static JSValue f_submit(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
 
 static JSValue name_task(JSContext *c, int argc, JSValueConst *argv, const char *kind) {
     const char *n = str_arg(c, argc, argv, 0);
-    if (!n || !cups_valid_name(n)) { if (n) JS_FreeCString(c, n); return JS_ThrowRangeError(c, "nombre"); }
+    if (!n || !cups_valid_name(n)) { if (n) JS_FreeCString(c, n); return JS_ThrowRangeError(c, "name"); }
     JBuf b;
     jb_init(&b);
     jb_raw(&b, "{\"name\":");
@@ -130,11 +130,11 @@ static JSValue f_add(JSContext *c, JSValueConst t, int argc, JSValueConst *argv)
     if (u) JS_FreeCString(c, u);
     if (i) JS_FreeCString(c, i);
     if (l) JS_FreeCString(c, l);
-    if (!ok) { jb_free(&b); return JS_ThrowRangeError(c, "nombre o dirección inválidos"); }
+    if (!ok) { jb_free(&b); return JS_ThrowRangeError(c, "invalid name or address"); }
     return task(c, "add", &b, -1, 0);
 }
 
-/* ip (IPv4 de la LAN), puerto, rs */
+/* ip (LAN IPv4), port, rs */
 static int scanner_args(JSContext *c, int argc, JSValueConst *argv, JBuf *b) {
     const char *ip = str_arg(c, argc, argv, 0), *rs = str_arg(c, argc, argv, 2);
     int32_t port = 0;
@@ -155,7 +155,7 @@ static JSValue f_scan_caps(JSContext *c, JSValueConst t, int argc, JSValueConst 
     (void)t;
     JBuf b;
     jb_init(&b);
-    if (scanner_args(c, argc, argv, &b)) { jb_free(&b); return JS_ThrowRangeError(c, "escáner (solo direcciones de la red local)"); }
+    if (scanner_args(c, argc, argv, &b)) { jb_free(&b); return JS_ThrowRangeError(c, "scanner (local network addresses only)"); }
     jb_raw(&b, "}");
     return task(c, "scancaps", &b, -1, 0);
 }
@@ -164,7 +164,7 @@ static JSValue f_scan(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     (void)t;
     JBuf b;
     jb_init(&b);
-    if (scanner_args(c, argc, argv, &b)) { jb_free(&b); return JS_ThrowRangeError(c, "escáner (solo direcciones de la red local)"); }
+    if (scanner_args(c, argc, argv, &b)) { jb_free(&b); return JS_ThrowRangeError(c, "scanner (local network addresses only)"); }
     const char *s = str_arg(c, argc, argv, 3);
     JDoc d = { 0 };
     if (s && !json_parse(s, strlen(s), &d, NULL, 0) && d.root->type == J_OBJ) { jb_raw(&b, ",\"settings\":"); jb_raw(&b, s); }

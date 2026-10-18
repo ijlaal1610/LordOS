@@ -1,11 +1,11 @@
-/* portal.c — org.freedesktop.portal.Settings propio (sin xdg-desktop-portal): las apps GTK, GNOME
- * (libadwaita) y Qt leen de acá el modo oscuro/claro, el color de acento, el orden de los botones de
- * la barra y el tema de GTK 3, y siguen los cambios de LordOS en vivo (SettingChanged).
- * Usa el cliente D-Bus propio de Contraseñas (vault/dbus.c). Ver docs/WAYLAND.md, «Apps GTK y GNOME».
+/* portal.c — our own org.freedesktop.portal.Settings (without xdg-desktop-portal): GTK, GNOME
+ * (libadwaita) and Qt apps read from here the dark/light mode, the accent color, the order of the
+ * title bar buttons and the GTK 3 theme, and follow LordOS's changes live (SettingChanged).
+ * Uses Passwords' own D-Bus client (vault/dbus.c). See docs/WAYLAND.md, "GTK and GNOME apps".
  *
- * GTK 3 fuera de Flatpak no lee el portal: lee GSettings. lord-server les pasa a las apps
- * GSETTINGS_BACKEND=keyfile y escribe esas mismas claves en ~/.config/glib-2.0/settings/keyfile, que
- * GLib vigila: GTK 3 también cambia en vivo (sin dconf ni ejecutar gsettings). */
+ * GTK 3 outside Flatpak doesn't read the portal: it reads GSettings. lord-server gives the apps
+ * GSETTINGS_BACKEND=keyfile and writes those same keys to ~/.config/glib-2.0/settings/keyfile, which
+ * GLib watches: GTK 3 also changes live (without dconf or running gsettings). */
 #include "portal.h"
 #include "../vault/dbus.h"
 
@@ -59,7 +59,7 @@ static void put_double(DBuf *w, double d) {
     dw_u64(w, u);
 }
 
-/* el valor (ya dentro de un variant) */
+/* the value (already inside a variant) */
 static void put_value(DBuf *w, int i) {
     switch (keys[i].type) {
     case V_U: dw_u32(w, i == 0 ? (dark ? 1 : 2) : 0); break;
@@ -78,7 +78,7 @@ static int find_key(const char *ns, const char *key) {
     return -1;
 }
 
-/* ReadAll(as namespaces) → a{sa{sv}}: cada patrón puede terminar en * (vacío = todos) */
+/* ReadAll(as namespaces) → a{sa{sv}}: each pattern may end in * (empty = all) */
 static void read_all(const DMsg *m) {
     DRd r;
     dr_init(&r, m);
@@ -116,13 +116,13 @@ static void read_all(const DMsg *m) {
     dw_free(&b);
 }
 
-/* Read (el viejo: v con otro v adentro) y ReadOne (v) */
+/* Read (the old one: v with another v inside) and ReadOne (v) */
 static void read_one(const DMsg *m, int nested) {
     DRd r;
     dr_init(&r, m);
     const char *ns = dr_str(&r, NULL), *key = dr_str(&r, NULL);
     int i = r.err ? -1 : find_key(ns, key);
-    if (i < 0) { dbus_error(&conn, m, "org.freedesktop.portal.Error.NotFound", "no existe esa clave"); return; }
+    if (i < 0) { dbus_error(&conn, m, "org.freedesktop.portal.Error.NotFound", "no such key"); return; }
     DBuf b;
     dw_init(&b);
     if (nested) dw_variant(&b, "v");
@@ -199,7 +199,7 @@ static void handle(const DMsg *m) {
             dw_u32(&b, 2);
             dw_arr_end(&b, a);
             dbus_reply(&conn, m, "a{sv}", &b);
-        } else dbus_error(&conn, m, "org.freedesktop.DBus.Error.PropertyReadOnly", "solo lectura");
+        } else dbus_error(&conn, m, "org.freedesktop.DBus.Error.PropertyReadOnly", "read-only");
         dw_free(&b);
         return;
     }
@@ -208,11 +208,11 @@ static void handle(const DMsg *m) {
         if (!strcmp(mem, "Read") && m->sig && !strcmp(m->sig, "ss")) { read_one(m, 1); return; }
         if (!strcmp(mem, "ReadOne") && m->sig && !strcmp(m->sig, "ss")) { read_one(m, 0); return; }
     }
-    dbus_error(&conn, m, "org.freedesktop.DBus.Error.UnknownMethod", "método desconocido");
+    dbus_error(&conn, m, "org.freedesktop.DBus.Error.UnknownMethod", "unknown method");
 }
 
 int portal_start(void) {
-    /* las apps que lance esta sesión (GTK 3) leen GSettings del keyfile que escribe portal_set */
+    /* apps launched by this session (GTK 3) read GSettings from the keyfile that portal_set writes */
     if (!getenv("GSETTINGS_BACKEND")) setenv("GSETTINGS_BACKEND", "keyfile", 1);
     int fd = dbus_connect_session();
     if (fd < 0 || dbus_open(&conn, fd, 2000)) { if (fd >= 0) dbus_close(&conn); return -1; }
@@ -229,13 +229,13 @@ int portal_start(void) {
     uint32_t res = 0;
     if (ok) { DRd r; dr_init(&r, &m); res = dr_u32(&r); }
     if (s) dbus_msg_free(&m);
-    if (!ok || (res != 1 && res != 4)) {     /* 1 dueño nuevo, 4 ya era nuestro */
-        fprintf(stderr, "portal: %s ya lo atiende otro programa (xdg-desktop-portal); no se sirve Settings\n", BUS_NAME);
+    if (!ok || (res != 1 && res != 4)) {     /* 1 new owner, 4 it was already ours */
+        fprintf(stderr, "portal: %s is already served by another program (xdg-desktop-portal); not serving Settings\n", BUS_NAME);
         dbus_close(&conn);
         return -1;
     }
     up = 1;
-    fprintf(stderr, "portal: org.freedesktop.portal.Settings en el bus de la sesión\n");
+    fprintf(stderr, "portal: org.freedesktop.portal.Settings on the session bus\n");
     return 0;
 }
 
@@ -248,7 +248,7 @@ void portal_dispatch(void) {
     int r;
     while ((r = dbus_next(&conn, &m)) == 1) { handle(&m); dbus_msg_free(&m); }
     if (r < 0 || dbus_flush(&conn) < 0) {
-        fprintf(stderr, "portal: se cortó el bus de la sesión\n");
+        fprintf(stderr, "portal: the session bus went away\n");
         dbus_close(&conn);
         up = 0;
     }
@@ -265,8 +265,8 @@ static void changed(int i) {
     dw_free(&b);
 }
 
-/* ---- ~/.config/glib-2.0/settings/keyfile: [grupo] clave=valor (texto de GVariant) ----
- * Se reemplazan solo nuestras claves y se deja lo que hayan guardado las apps. */
+/* ---- ~/.config/glib-2.0/settings/keyfile: [group] key=value (GVariant text) ----
+ * Only our keys are replaced and whatever the apps saved is kept. */
 static void keyfile_set(char **buf, const char *group, const char *key, const char *val) {
     char head[96], line[256];
     snprintf(head, sizeof head, "[%s]", group);
@@ -278,12 +278,12 @@ static void keyfile_set(char **buf, const char *group, const char *key, const ch
         if (!strncmp(p, head, strlen(head)) && (p[strlen(head)] == '\n' || !p[strlen(head)])) { g = p; break; }
     char *out = malloc(n + strlen(head) + strlen(line) + 4);
     if (!out) return;
-    if (!g) {                                   /* grupo nuevo al final */
+    if (!g) {                                   /* new group at the end */
         sprintf(out, "%s%s%s\n%s", b, n && b[n - 1] != '\n' ? "\n" : "", head, line);
     } else {
         char *body = strchr(g, '\n');
         body = body ? body + 1 : g + strlen(g);
-        char *end = body;                       /* hasta el próximo grupo */
+        char *end = body;                       /* up to the next group */
         while (*end && *end != '[') { char *nl = strchr(end, '\n'); end = nl ? nl + 1 : end + strlen(end); }
         size_t kl = strlen(key);
         char *k = NULL;
@@ -362,7 +362,7 @@ void portal_set(int is_dark, const double rgb[3], const char *accent_name, const
     for (int i = 0; i < 3; i++) acc[i] = rgb[i] < 0 ? 0 : rgb[i] > 1 ? 1 : rgb[i];
     if (accent_name) snprintf(acc_name, sizeof acc_name, "%s", accent_name);
     if (button_layout) snprintf(buttons, sizeof buttons, "%s", button_layout);
-    /* GTK 3: el tema propio si está instalado (assets/gtk), si no Adwaita */
+    /* GTK 3: our own theme if installed (assets/gtk), otherwise Adwaita */
     const char *t = dark ? "LordOS-dark" : "LordOS";
     snprintf(gtk_theme, sizeof gtk_theme, "%s", theme_installed(t) ? t : dark ? "Adwaita-dark" : "Adwaita");
     if (old_dark != dark) { changed(0); changed(3); }

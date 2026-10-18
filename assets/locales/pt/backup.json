@@ -54,6 +54,10 @@
   },
   "home": "Pasta pessoal",
   "openFiles": "Abrir em Arquivos",
+  "col.name": "Nome",
+  "col.size": "Tamanho",
+  "col.modified": "Modificado",
+  "more": "Mais ações",
   "emptyFolder": "Pasta vazia",
   "restoredInfo": {
     "one": "Restaurado: {count} arquivo ({both} mantidos ao lado, {replaced} substituídos)",

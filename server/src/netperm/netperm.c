@@ -1,19 +1,19 @@
-/* netperm.c — lord-netperm: el servicio root que aplica en el kernel los permisos de red por app
- * (docs/FIREWALL.md, paso 2). Cerrado y mínimo:
+/* netperm.c — lord-netperm: the root service that enforces per-app network permissions in the
+ * kernel (docs/FIREWALL.md, step 2). Closed and minimal:
  *
- *   - sin argumentos, sin ejecutar nada, sin red propia (no crea sockets AF_INET/AF_INET6: el
- *     servicio de systemd además se lo prohíbe con RestrictAddressFamilies);
- *   - carga los programas BPF que lleva adentro (np.bpf.c → build/gen/np_bpf.h) en la cgroup de
- *     lordos.service, que contiene los subárboles de todas las sesiones;
- *   - lee las reglas de cada usuario con sesión desde ~/.config/lordos/firewall.json (ruta fija,
- *     validada) y las compila a mapas (npcompile.c);
- *   - aprende los nombres solo del resolvedor del sistema (npdns.c);
- *   - le cuenta a cada lord-server las conexiones nuevas de sus apps por /run/lordos/netperm.sock
- *     (npproto.h). Lo único que acepta por ahí es "volvé a leer mis reglas".
+ *   - no arguments, executes nothing, no network of its own (it creates no AF_INET/AF_INET6
+ *     sockets: the systemd service also forbids it with RestrictAddressFamilies);
+ *   - loads the BPF programs it carries inside (np.bpf.c → build/gen/np_bpf.h) into the cgroup of
+ *     lordos.service, which contains the subtrees of all sessions;
+ *   - reads the rules of each user with a session from ~/.config/lordos/firewall.json (fixed,
+ *     validated path) and compiles them into maps (npcompile.c);
+ *   - learns names only from the system resolver (npdns.c);
+ *   - tells each lord-server about its apps' new connections over /run/lordos/netperm.sock
+ *     (npproto.h). The only thing it accepts there is "reload my rules".
  *
- * Si el kernel no tiene BPF de cgroup (o falta CAP_BPF), lo dice en el registro y sigue sin
- * hacer nada: el escritorio no se entera. Con el servicio parado, los programas se desenganchan
- * solos (bpf_link): todo queda permitido. */
+ * If the kernel has no cgroup BPF (or CAP_BPF is missing), it says so in the log and carries on
+ * doing nothing: the desktop doesn't notice. With the service stopped, the programs detach on
+ * their own (bpf_link): everything is allowed. */
 #include "netperm/bpfsys.h"
 #include "netperm/npcompile.h"
 #include "netperm/npdns.h"
@@ -51,7 +51,7 @@
 #define SVC_LEVEL    2                  /* system.slice/lordos.service */
 #define SCOPE_LEVEL  (SVC_LEVEL + 2)    /* lordos-session-<uid>/<scope> */
 #define USER_LEVEL   3                  /* user.slice/user-<uid>.slice/user@<uid>.service */
-#define NAMES_APP    "lordos"           /* clave de dnsmap para lo que dice el resolvedor */
+#define NAMES_APP    "lordos"           /* dnsmap key for what the resolver says */
 #define MAX_SESS     64
 #define MAX_CLIENTS  64
 #define CLIENT_OUT   (256u << 10)
@@ -61,10 +61,10 @@ typedef struct {
     char app[FW_APP_MAX];
     uint64_t cgid;
     uint32_t idx;
-    unsigned gen;                       /* generación de sus nodos instalados */
+    unsigned gen;                       /* generation of its installed nodes */
     int has_domains, seen;
-    NpApp app_v;                        /* lo último escrito en np_apps */
-    uint64_t allowed, denied;           /* contadores del kernel */
+    NpApp app_v;                        /* the last thing written to np_apps */
+    uint64_t allowed, denied;           /* kernel counters */
 } Scope;
 
 typedef struct {
@@ -75,8 +75,8 @@ typedef struct {
     Scope *sc;
     int nsc, cap;
     int dirty_counts;
-    uint64_t user_cg;                   /* id de user@<uid>.service, o 0 si no está (ni enganchado) */
-    int ulinks[16], nulinks;            /* los programas enganchados en user@<uid>.service */
+    uint64_t user_cg;                   /* id of user@<uid>.service, or 0 if it isn't there (nor attached) */
+    int ulinks[16], nulinks;            /* the programs attached to user@<uid>.service */
 } Session;
 
 typedef struct {
@@ -101,7 +101,7 @@ static struct {
     int links[16], nlinks;
     int progs[16], nprogs;
     uint32_t attach[16];
-    uint64_t attached_cg;               /* id de la cgroup de lordos.service enganchada */
+    uint64_t attached_cg;               /* id of the attached lordos.service cgroup */
     int sys_wd;
     BpfRing ring;
     int cgfd;
@@ -112,7 +112,7 @@ static struct {
     int ncl;
     FwMap idxmap;                       /* "uid:app" → idx */
     uint32_t next_idx;
-    FwMap installed;                    /* clave del nodo (idx, fam, prefijo, dirección) → Installed */
+    FwMap installed;                    /* node key (idx, fam, prefix, address) → Installed */
     DnsMap *names;
     NpDns *dns;
     FwStore *empty;
@@ -135,25 +135,25 @@ static long long mono(void) {
     return ts.tv_sec;
 }
 
-/* ---- leer las reglas de un usuario ---------------------------------------------------------- */
+/* ---- reading a user's rules ----------------------------------------------------------------- */
 
-/* ~/.config/lordos/firewall.json sin seguir enlaces: cada carpeta y el archivo tienen que ser del
- * usuario, el archivo común y de hasta FW_FILE_MAX. La carpeta personal sale de /etc/passwd. */
+/* ~/.config/lordos/firewall.json without following links: every folder and the file must belong
+ * to the user, the file must be regular and at most FW_FILE_MAX. The home folder comes from /etc/passwd. */
 static char *read_user_rules(unsigned uid, size_t *len, char *why, size_t wn) {
     struct passwd *pw = getpwuid(uid);
-    if (!pw || pw->pw_dir[0] != '/') { snprintf(why, wn, "usuario sin carpeta personal"); return NULL; }
+    if (!pw || pw->pw_dir[0] != '/') { snprintf(why, wn, "user without a home folder"); return NULL; }
     int fd = open(pw->pw_dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     static const char *const parts[] = { ".config", "lordos", "firewall.json" };
     struct stat st;
-    if (fd < 0 || fstat(fd, &st) || st.st_uid != uid) { snprintf(why, wn, "carpeta personal rara"); if (fd >= 0) close(fd); return NULL; }
+    if (fd < 0 || fstat(fd, &st) || st.st_uid != uid) { snprintf(why, wn, "odd home folder"); if (fd >= 0) close(fd); return NULL; }
     for (int i = 0; i < 3; i++) {
         int last = i == 2;
         int nfd = openat(fd, parts[i], O_RDONLY | O_NOFOLLOW | O_CLOEXEC | (last ? O_NONBLOCK : O_DIRECTORY));
         close(fd);
-        if (nfd < 0) { snprintf(why, wn, errno == ENOENT ? "sin reglas" : "%s: %s", parts[i], strerror(errno)); return NULL; }
+        if (nfd < 0) { snprintf(why, wn, errno == ENOENT ? "no rules" : "%s: %s", parts[i], strerror(errno)); return NULL; }
         fd = nfd;
         if (fstat(fd, &st) || st.st_uid != uid || (last && (!S_ISREG(st.st_mode) || st.st_size > (off_t)FW_FILE_MAX))) {
-            snprintf(why, wn, "%s no es del usuario o no es un archivo común", parts[i]);
+            snprintf(why, wn, "%s is not the user's or not a regular file", parts[i]);
             close(fd);
             return NULL;
         }
@@ -166,7 +166,7 @@ static char *read_user_rules(unsigned uid, size_t *len, char *why, size_t wn) {
         got += (size_t)n;
     }
     close(fd);
-    if (!buf || got != (size_t)st.st_size) { free(buf); snprintf(why, wn, "no se pudo leer"); return NULL; }
+    if (!buf || got != (size_t)st.st_size) { free(buf); snprintf(why, wn, "could not read"); return NULL; }
     buf[got] = 0;
     *len = got;
     return buf;
@@ -179,19 +179,19 @@ static void load_rules(Session *s) {
     FwStore *n = fw_store_new();
     if (!n) { free(text); return; }
     if (text && fw_from_json(n, text, len, err, sizeof err)) {
-        logf_("uid %u: firewall.json inválido (%s); se siguen usando las reglas anteriores", s->uid, err);
+        logf_("uid %u: invalid firewall.json (%s); the previous rules stay in use", s->uid, err);
         fw_store_free(n);
         free(text);
         return;
     }
-    if (!text && strcmp(why, "sin reglas")) logf_("uid %u: %s", s->uid, why);
+    if (!text && strcmp(why, "no rules")) logf_("uid %u: %s", s->uid, why);
     free(text);
     fw_store_free(s->store);
     s->store = n;
-    logf_("uid %u: %zu reglas, modo %d", s->uid, fw_rule_count(n), (int)fw_mode(n));
+    logf_("uid %u: %zu rules, mode %d", s->uid, fw_rule_count(n), (int)fw_mode(n));
 }
 
-/* ---- mapas ----------------------------------------------------------------------------------- */
+/* ---- maps ------------------------------------------------------------------------------------ */
 
 static int map_fd(const char *name) {
     if (!strcmp(name, "np_cfg")) return G.m_cfg;
@@ -237,7 +237,7 @@ static void lpm_del(uint32_t idx, const unsigned char *ik) {
     else { NpLpm6Key k; np_key6(idx, &n, &k); bpfs_map_delete(G.m_lpm6, &k); }
 }
 
-/* Instala un nodo si cambió. 0 bien. */
+/* Installs a node if it changed. 0 ok. */
 static int install(uint32_t idx, unsigned gen, const NpNode *n) {
     unsigned char k[22];
     size_t kl = inst_key(idx, n, k);
@@ -245,7 +245,7 @@ static int install(uint32_t idx, unsigned gen, const NpNode *n) {
     if (!slot) return -1;
     Installed *in = *slot;
     if (in && in->list.n == n->list.n && !memcmp(in->list.e, n->list.e, n->list.n * sizeof(NpEnt))) { in->gen = gen; return 0; }
-    if (lpm_put(idx, n)) { logf_("no entró una entrada en el trie: %s", strerror(errno)); return -1; }
+    if (lpm_put(idx, n)) { logf_("a trie entry didn't fit: %s", strerror(errno)); return -1; }
     if (!in && !(in = *slot = malloc(sizeof *in))) return -1;
     in->idx = idx;
     in->gen = gen;
@@ -253,7 +253,7 @@ static int install(uint32_t idx, unsigned gen, const NpNode *n) {
     return 0;
 }
 
-/* Borra los nodos de idx que no son de la generación gen (gen 0: todos). */
+/* Deletes idx's nodes that aren't from generation gen (gen 0: all). */
 static void prune(uint32_t idx, unsigned gen) {
     FWMAP_EACH(&G.installed, e) {
         Installed *in = e->val;
@@ -268,8 +268,8 @@ static FwStore *store_of(Session *s) { return s->store ? s->store : G.empty; }
 static void sync_scope(Session *s, Scope *sc) {
     if (!G.bpf_ok) return;
     NpCompiled c;
-    if (np_compile_app(store_of(s), sc->app, sc->idx, G.names, NAMES_APP, mono(), &c)) { logf_("sin memoria al compilar %s", sc->app); return; }
-    if (c.truncated) logf_("uid %u %s: %d reglas no entraron en los mapas (máximo %d por red)", s->uid, sc->app, c.truncated, NP_LIST_MAX);
+    if (np_compile_app(store_of(s), sc->app, sc->idx, G.names, NAMES_APP, mono(), &c)) { logf_("out of memory compiling %s", sc->app); return; }
+    if (c.truncated) logf_("uid %u %s: %d rules didn't fit in the maps (at most %d per network)", s->uid, sc->app, c.truncated, NP_LIST_MAX);
     unsigned gen = ++sc->gen ? sc->gen : ++sc->gen;
     for (int i = 0; i < c.nnodes; i++) install(sc->idx, gen, &c.nodes[i]);
     prune(sc->idx, gen);
@@ -286,26 +286,26 @@ static void drop_scope(Scope *sc) {
     prune(sc->idx, 0);
 }
 
-/* ---- user@<uid>.service: la fuga de systemd-run --------------------------------------------- */
+/* ---- user@<uid>.service: the systemd-run escape ------------------------------------------- */
 
-/* Una app sin caja de arena, corriendo como el usuario, puede pedirle a su gestor de systemd
- * (systemd-run --user, scope o servicio) que mueva un proceso a user@<uid>.service, fuera de
- * lordos.service, donde las scopes de las apps no llegan. Para cerrarlo se enganchan los mismos
- * programas también en user@<uid>.service de cada sesión y, cuando el proceso no está en la scope
- * de ninguna app, cae en np_union[user@]: la unión estricta (OR de las restricciones NP_R_*) de
- * las apps restringidas del usuario. Así un proceso escapado nunca es menos restrictivo que su
- * propia política; no otorga nada. Si no hay ninguna app restringida corriendo, no hay entrada y
- * user@ queda libre (el gestor de usuario y sus servicios no se tocan). */
+/* An app without a sandbox, running as the user, can ask its systemd manager
+ * (systemd-run --user, scope or service) to move a process into user@<uid>.service, outside
+ * lordos.service, where the apps' scopes don't reach. To close that, the same programs are also
+ * attached to each session's user@<uid>.service and, when the process isn't in any app's scope,
+ * it falls into np_union[user@]: the strict union (OR of the NP_R_* restrictions) of the user's
+ * restricted apps. That way an escaped process is never less restricted than its own policy; it
+ * grants nothing. If no restricted app is running, there's no entry and user@ stays free (the
+ * user manager and its services aren't touched). */
 
-/* Recompila la unión del usuario desde las flags de sus scopes y la escribe (o la borra si no hay
- * ninguna restricción). Solo tiene efecto con user@ enganchado. */
+/* Recompiles the user's union from the flags of their scopes and writes it (or deletes it if
+ * there's no restriction). Only takes effect with user@ attached. */
 static void sync_union(Session *s) {
     if (!G.bpf_ok || !s->user_cg) return;
     NpApp u;
     memset(&u, 0, sizeof u);
     for (int k = 0; k < s->nsc; k++) u.flags |= s->sc[k].app_v.flags;
     if (u.flags) {
-        u.trusted = 1;                  /* lo que la unión no restringe, se permite sin avisar */
+        u.trusted = 1;                  /* whatever the union doesn't restrict is allowed without notice */
         u.mode = NP_M_SILENT;
         if (bpfs_map_update(G.m_union, &s->user_cg, &u, BPF_ANY)) logf_("np_union: %s", strerror(errno));
     } else {
@@ -318,9 +318,9 @@ static void drop_user_links(Session *s) {
     s->nulinks = 0;
 }
 
-/* Engancha (o re-engancha) los programas en user@<uid>.service. systemd lo crea al ingresar y lo
- * borra y recrea con otro id al reiniciar el gestor de usuario, así que esto se llama en cada
- * repaso: si el id cambió (o desapareció), suelta los links viejos y la unión vieja. */
+/* Attaches (or re-attaches) the programs to user@<uid>.service. systemd creates it at login and
+ * deletes and recreates it with another id when the user manager restarts, so this is called on
+ * every pass: if the id changed (or disappeared), it drops the old links and the old union. */
 static void sync_user_scope(Session *s) {
     if (!G.bpf_ok) return;
     char path[200];
@@ -341,16 +341,16 @@ static void sync_user_scope(Session *s) {
     if (!id || ufd < 0) { if (ufd >= 0) close(ufd); return; }
     for (int i = 0; i < G.nprogs && s->nulinks < (int)(sizeof s->ulinks / sizeof s->ulinks[0]); i++) {
         int l = bpfs_link_create(G.progs[i], ufd, G.attach[i]);
-        if (l < 0) { logf_("uid %u: no se pudo enganchar en user@: %s", s->uid, strerror(errno)); drop_user_links(s); close(ufd); return; }
+        if (l < 0) { logf_("uid %u: could not attach to user@: %s", s->uid, strerror(errno)); drop_user_links(s); close(ufd); return; }
         s->ulinks[s->nulinks++] = l;
     }
     close(ufd);
     s->user_cg = id;
-    logf_("uid %u: %d programas enganchados en user@%u.service", s->uid, s->nulinks, s->uid);
+    logf_("uid %u: %d programs attached to user@%u.service", s->uid, s->nulinks, s->uid);
     sync_union(s);
 }
 
-/* ---- sesiones y scopes ----------------------------------------------------------------------- */
+/* ---- sessions and scopes --------------------------------------------------------------------- */
 
 static int scope_app(const char *name, char *app) {
     if (!strcmp(name, "server")) { snprintf(app, FW_APP_MAX, "lordos"); return 0; }
@@ -400,7 +400,7 @@ static void scan_session(Session *s) {
         drop_scope(&s->sc[i]);
         s->sc[i] = s->sc[--s->nsc];
     }
-    sync_user_scope(s);                 /* engancha/re-engancha user@ y recompila la unión */
+    sync_user_scope(s);                 /* attaches/re-attaches user@ and recompiles the union */
     sync_union(s);
 }
 
@@ -458,7 +458,7 @@ static Session *session_by_user_cg(uint64_t id) {
     return NULL;
 }
 
-/* ---- clientes -------------------------------------------------------------------------------- */
+/* ---- clients --------------------------------------------------------------------------------- */
 
 static void cl_drop(int k) {
     epoll_ctl(G.ep, EPOLL_CTL_DEL, G.cl[k].fd, NULL);
@@ -480,7 +480,7 @@ static void cl_flush(Client *c) {
 
 static void cl_send(Client *c, int type, const char *json, size_t n, int droppable) {
     if (!c->out && !(c->out = malloc(CLIENT_OUT))) return;
-    if (c->outlen + n + 5 > CLIENT_OUT) { (void)droppable; return; }   /* nadie lee: se pierden avisos (los contadores van otra vez al cambiar) */
+    if (c->outlen + n + 5 > CLIENT_OUT) { (void)droppable; return; }   /* nobody is reading: notices are lost (the counters go out again when they change) */
     uint32_t l = (uint32_t)n + 1;
     unsigned char h[5] = { (unsigned char)l, (unsigned char)(l >> 8), (unsigned char)(l >> 16), (unsigned char)(l >> 24), (unsigned char)type };
     memcpy(c->out + c->outlen, h, 5);
@@ -508,7 +508,7 @@ static void accept_client(void) {
         if (G.ncl == MAX_CLIENTS || getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cr, &cl)) { close(fd); continue; }
         int per = 0;
         for (int i = 0; i < G.ncl; i++) per += G.cl[i].uid == cr.uid;
-        if (per >= 4) { close(fd); continue; }               /* hasta 4 por usuario */
+        if (per >= 4) { close(fd); continue; }               /* up to 4 per user */
         Client *c = &G.cl[G.ncl++];
         memset(c, 0, sizeof *c);
         c->fd = fd;
@@ -540,7 +540,7 @@ static void client_read(int k) {
         c->inlen += (size_t)n;
         while (c->inlen >= 5) {
             uint32_t l = (uint32_t)c->in[0] | (uint32_t)c->in[1] << 8 | (uint32_t)c->in[2] << 16 | (uint32_t)c->in[3] << 24;
-            if (l != 1 || c->in[4] != NP_MSG_RELOAD) { cl_drop(k); return; }   /* lo único que se acepta */
+            if (l != 1 || c->in[4] != NP_MSG_RELOAD) { cl_drop(k); return; }   /* the only thing accepted */
             reload_uid(c->uid);
             memmove(c->in, c->in + 5, c->inlen - 5);
             c->inlen -= 5;
@@ -549,7 +549,7 @@ static void client_read(int k) {
     }
 }
 
-/* ---- avisos y contadores --------------------------------------------------------------------- */
+/* ---- notices and counters -------------------------------------------------------------------- */
 
 static const char *by_name(int r) {
     return r == NP_BY_RESTRICTED ? "restricted" : r == NP_BY_RULE ? "rule" : r == NP_BY_TRUSTED ? "trusted" : "mode";
@@ -566,11 +566,11 @@ static void on_event(void *u, const void *data, uint32_t len) {
     if (ev.fam == 4) inet_ntop(AF_INET, ev.addr, addr, sizeof addr);
     else if (ev.fam == 6) inet_ntop(AF_INET6, ev.addr, addr, sizeof addr);
     if (!sc) {
-        /* la unión de user@: un proceso que se escapó con systemd-run --user (sin scope de app) */
+        /* the user@ union: a process that escaped with systemd-run --user (no app scope) */
         Session *us = session_by_user_cg(ev.cgid);
         if (us && ev.verdict == NP_V_DENY)
-            logf_("uid %u user@: denegada %s %s %s:%u (unión de apps restringidas%s%s)", us->uid,
-                  ev.dir == NP_D_IN ? "entrada" : "salida", ev.proto == NP_P_TCP ? "tcp" : ev.proto == NP_P_UDP ? "udp" : "otro",
+            logf_("uid %u user@: denied %s %s %s:%u (union of restricted apps%s%s)", us->uid,
+                  ev.dir == NP_D_IN ? "in" : "out", ev.proto == NP_P_TCP ? "tcp" : ev.proto == NP_P_UDP ? "udp" : "other",
                   addr[0] ? addr : "?", ev.port, ev.flag ? " " : "", ev.flag ? fw_flag_name(ev.flag) : "");
         return;
     }
@@ -617,7 +617,7 @@ static void push_counts(void) {
     }
 }
 
-/* ---- nombres del resolvedor ------------------------------------------------------------------ */
+/* ---- names from the resolver ----------------------------------------------------------------- */
 
 static void on_dns(void *u, const uint8_t *pkt, size_t len) {
     (void)u;
@@ -625,8 +625,8 @@ static void on_dns(void *u, const uint8_t *pkt, size_t len) {
     if (dnsmap_learn(G.names, NAMES_APP, pkt, len, now) <= 0 || !G.bpf_ok) return;
     DnsResponse *r = malloc(sizeof *r);
     if (!r || dns_parse_response(pkt, len, r)) { free(r); return; }
-    /* solo los nodos de estas direcciones, para las apps con reglas de dominio (antes de que la
-     * app conecte: resolved avisa al monitor antes de contestarle a la app) */
+    /* only the nodes of these addresses, for the apps with domain rules (before the app connects:
+     * resolved notifies the monitor before answering the app) */
     for (int a = 0; a < r->naddr; a++) {
         char names[DNSMAP_PER_IP][FW_NAME_MAX];
         int n = dnsmap_lookup(G.names, NAMES_APP, r->addr[a].fam, r->addr[a].addr, now, names, DNSMAP_PER_IP);
@@ -652,7 +652,7 @@ static void on_dns(void *u, const uint8_t *pkt, size_t len) {
 
 static int bpf_setup(void) {
 #ifndef NP_HAVE_BPF
-    snprintf(G.bpf_err, sizeof G.bpf_err, "compilado sin los programas BPF (BPF=0: falta clang)");
+    snprintf(G.bpf_err, sizeof G.bpf_err, "built without the BPF programs (BPF=0: clang missing)");
     return -1;
 #else
     G.m_cfg = bpfs_map_create(BPF_MAP_TYPE_ARRAY, 4, sizeof(NpCfg), 1, 0, "np_cfg");
@@ -664,11 +664,11 @@ static int bpf_setup(void) {
     G.m_counts = bpfs_map_create(BPF_MAP_TYPE_HASH, 8, sizeof(NpCount), NP_MAX_APPS, 0, "np_counts");
     G.m_events = bpfs_map_create(BPF_MAP_TYPE_RINGBUF, 0, 0, NP_RINGBUF, 0, "np_events");
     if (G.m_cfg < 0 || G.m_apps < 0 || G.m_union < 0 || G.m_lpm4 < 0 || G.m_lpm6 < 0 || G.m_seen < 0 || G.m_counts < 0 || G.m_events < 0) {
-        snprintf(G.bpf_err, sizeof G.bpf_err, "no se pudieron crear los mapas BPF: %s", strerror(errno));
+        snprintf(G.bpf_err, sizeof G.bpf_err, "could not create the BPF maps: %s", strerror(errno));
         return -1;
     }
     if (bpfs_ring_open(&G.ring, G.m_events, NP_RINGBUF)) {
-        snprintf(G.bpf_err, sizeof G.bpf_err, "no se pudo mapear el anillo: %s", strerror(errno));
+        snprintf(G.bpf_err, sizeof G.bpf_err, "could not map the ring buffer: %s", strerror(errno));
         return -1;
     }
     static const struct { const char *sec; uint32_t type, attach; } want[] = {
@@ -685,13 +685,13 @@ static int bpf_setup(void) {
     for (size_t w = 0; w < sizeof want / sizeof want[0]; w++) {
         const NpProgDesc *d = NULL;
         for (int i = 0; i < NP_NPROGS; i++) if (!strcmp(np_progs[i].section, want[w].sec)) d = &np_progs[i];
-        if (!d) { snprintf(G.bpf_err, sizeof G.bpf_err, "falta el programa %s", want[w].sec); return -1; }
+        if (!d) { snprintf(G.bpf_err, sizeof G.bpf_err, "program %s is missing", want[w].sec); return -1; }
         int fd = bpfs_prog_load(want[w].type, want[w].attach, d, map_fd, log, sizeof log);
         if (fd < 0) {
             int e = errno;
             size_t ll = strlen(log);
             fprintf(stderr, "%s\n", ll > 3000 ? log + ll - 3000 : log);
-            snprintf(G.bpf_err, sizeof G.bpf_err, "el kernel no aceptó %s: %s", want[w].sec, strerror(e));
+            snprintf(G.bpf_err, sizeof G.bpf_err, "the kernel did not accept %s: %s", want[w].sec, strerror(e));
             return -1;
         }
         G.attach[np] = want[w].attach;
@@ -706,10 +706,10 @@ static int bpf_setup(void) {
 #endif
 }
 
-/* Engancha los programas en la cgroup de lordos.service. systemd la borra y la vuelve a crear
- * cada vez que el servicio reinicia (y puede no existir todavía al arrancar), así que esto se
- * llama al empezar, con cada aviso de inotify en system.slice y una vez por segundo: si la cgroup
- * es otra (otro id), se sueltan los links viejos y se enganchan de nuevo. */
+/* Attaches the programs to the lordos.service cgroup. systemd deletes and recreates it every
+ * time the service restarts (and it may not exist yet at startup), so this is called at start,
+ * on every inotify notice in system.slice and once per second: if the cgroup is a different one
+ * (another id), the old links are dropped and attached again. */
 static void attach_service(void) {
     if (!G.bpf_ok) return;
     int dfd = open(CG_ROOT "/system.slice", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
@@ -721,13 +721,13 @@ static void attach_service(void) {
     if (G.cgfd >= 0) close(G.cgfd);
     G.cgfd = -1;
     G.attached_cg = 0;
-    if (!id) { logf_("esperando a lordos.service (su cgroup no existe)"); return; }
+    if (!id) { logf_("waiting for lordos.service (its cgroup doesn't exist)"); return; }
     G.cgfd = open(CG_ROOT "/" CG_SERVICE, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (G.cgfd < 0) return;
     for (int i = 0; i < G.nprogs; i++) {
         int l = bpfs_link_create(G.progs[i], G.cgfd, G.attach[i]);
         if (l < 0) {
-            logf_("no se pudo enganchar un programa: %s", strerror(errno));
+            logf_("could not attach a program: %s", strerror(errno));
             for (int k = 0; k < G.nlinks; k++) close(G.links[k]);
             G.nlinks = 0;
             return;
@@ -737,10 +737,10 @@ static void attach_service(void) {
     G.attached_cg = id;
     if (G.root_wd >= 0) inotify_rm_watch(G.ifd, G.root_wd);
     G.root_wd = inotify_add_watch(G.ifd, CG_ROOT "/" CG_SERVICE, IN_CREATE | IN_DELETE | IN_ONLYDIR);
-    logf_("%d programas BPF enganchados en " CG_SERVICE " (scopes en el nivel %d)", G.nlinks, SCOPE_LEVEL);
+    logf_("%d BPF programs attached to " CG_SERVICE " (scopes at level %d)", G.nlinks, SCOPE_LEVEL);
 }
 
-/* ---- principal ------------------------------------------------------------------------------- */
+/* ---- main ------------------------------------------------------------------------------------ */
 
 static volatile sig_atomic_t quit;
 static void on_term(int s) { (void)s; quit = 1; }
@@ -748,14 +748,14 @@ static void on_term(int s) { (void)s; quit = 1; }
 static int listen_sock(void) {
     mkdir("/run/lordos", 0755);
     struct stat st;
-    if (lstat("/run/lordos", &st) || !S_ISDIR(st.st_mode) || st.st_uid != 0) { logf_("/run/lordos no es una carpeta de root"); return -1; }
+    if (lstat("/run/lordos", &st) || !S_ISDIR(st.st_mode) || st.st_uid != 0) { logf_("/run/lordos is not a root-owned folder"); return -1; }
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
     if (fd < 0) return -1;
     struct sockaddr_un sa = { .sun_family = AF_UNIX };
     snprintf(sa.sun_path, sizeof sa.sun_path, "%s", NP_SOCK_PATH);
     unlink(NP_SOCK_PATH);
     if (bind(fd, (struct sockaddr *)&sa, sizeof sa) || chmod(NP_SOCK_PATH, 0666) || listen(fd, 16)) {
-        logf_("no se pudo abrir %s: %s", NP_SOCK_PATH, strerror(errno));
+        logf_("could not open %s: %s", NP_SOCK_PATH, strerror(errno));
         close(fd);
         return -1;
     }
@@ -778,8 +778,8 @@ static void watch_dns(void) {
 
 int main(int argc, char **argv) {
     (void)argv;
-    if (argc != 1) { fprintf(stderr, "lord-netperm no recibe argumentos (ver docs/FIREWALL.md)\n"); return 2; }
-    if (geteuid() != 0) { fprintf(stderr, "lord-netperm: tiene que correr como root (lord-netperm.service)\n"); return 1; }
+    if (argc != 1) { fprintf(stderr, "lord-netperm takes no arguments (see docs/FIREWALL.md)\n"); return 2; }
+    if (geteuid() != 0) { fprintf(stderr, "lord-netperm: must run as root (lord-netperm.service)\n"); return 1; }
     setvbuf(stderr, NULL, _IOLBF, 0);
     signal(SIGPIPE, SIG_IGN);
     struct sigaction sa = { .sa_handler = on_term };
@@ -793,10 +793,10 @@ int main(int argc, char **argv) {
     G.ifd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
     G.tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     G.lfd = listen_sock();
-    if (!G.empty || !G.names || G.ep < 0 || G.ifd < 0 || G.tfd < 0 || G.lfd < 0) { logf_("no se pudo arrancar"); return 1; }
+    if (!G.empty || !G.names || G.ep < 0 || G.ifd < 0 || G.tfd < 0 || G.lfd < 0) { logf_("could not start"); return 1; }
 
     G.bpf_ok = bpf_setup() == 0;
-    if (!G.bpf_ok) logf_("BPF no disponible (%s): no se aplica ninguna regla; el escritorio sigue igual", G.bpf_err);
+    if (!G.bpf_ok) logf_("BPF not available (%s): no rule is enforced; the desktop carries on as usual", G.bpf_err);
     else G.dns = npdns_new(on_dns, NULL);
 
     struct itimerspec its = { { 1, 0 }, { 1, 0 } };
@@ -825,15 +825,15 @@ int main(int argc, char **argv) {
             else if (t == 2) {
                 char buf[4096];
                 while (read(G.ifd, buf, sizeof buf) > 0) {}
-                attach_service();                   /* ¿lordos.service volvió a empezar? */
-                scan_all();                         /* una scope o una sesión nueva o que se fue */
+                attach_service();                   /* did lordos.service start again? */
+                scan_all();                         /* a scope or a session that's new or gone */
             } else if (t == 3) {
                 uint64_t x;
                 if (read(G.tfd, &x, sizeof x) < 0) {}
                 G.tick++;
                 attach_service();
                 if (G.dns) { npdns_tick(G.dns); watch_dns(); }
-                if (G.tick % 5 == 0) scan_all();    /* por si se perdió un aviso de inotify */
+                if (G.tick % 5 == 0) scan_all();    /* in case an inotify notice was lost */
                 if (G.tick % 30 == 0) {
                     dnsmap_expire(G.names, mono());
                     for (int s = 0; s < G.nsess; s++)
@@ -855,7 +855,7 @@ int main(int argc, char **argv) {
             }
         }
     }
-    logf_("saliendo: los programas se desenganchan (todo queda permitido)");
+    logf_("exiting: the programs detach (everything is allowed)");
     unlink(NP_SOCK_PATH);
     return 0;
 }

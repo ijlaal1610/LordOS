@@ -1,7 +1,7 @@
-/* lm_cam.c — la cámara (MK_CAMERA): V4L2 propio (sin libv4l), MJPEG con libavcodec, la vista
- * previa por las mismas ranuras que el reproductor (lm_out.c), foto JPEG y video H.264 + AAC.
- * El /dev/videoN lo abre lord-server (después de verificar el permiso de cámara) y llega como
- * fd: lord-media no puede abrir otro dispositivo. */
+/* lm_cam.c — the camera (MK_CAMERA): our own V4L2 (no libv4l), MJPEG with libavcodec, the
+ * preview through the same slots as the player (lm_out.c), JPEG photo and H.264 + AAC video.
+ * lord-server opens the /dev/videoN (after checking the camera permission) and it arrives as an
+ * fd: lord-media can't open another device. */
 #include "lm.h"
 
 #include <errno.h>
@@ -36,7 +36,7 @@ static enum AVPixelFormat av_fmt(uint32_t v4l) {
     }
 }
 
-/* Elige formato: MJPEG (las webcams USB dan 720p a 30 cuadros así) o uno crudo conocido. */
+/* Picks a format: MJPEG (USB webcams give 720p at 30 frames that way) or a known raw one. */
 static int choose_format(int fd, struct v4l2_format *fmt, int want_w, int want_h) {
     uint32_t best = 0;
     struct v4l2_fmtdesc d;
@@ -54,7 +54,7 @@ static int choose_format(int fd, struct v4l2_format *fmt, int want_w, int want_h
     fmt->fmt.pix.width = (uint32_t)want_w;
     fmt->fmt.pix.height = (uint32_t)want_h;
     fmt->fmt.pix.field = V4L2_FIELD_ANY;
-    if (xioctl(fd, VIDIOC_S_FMT, fmt)) xioctl(fd, VIDIOC_G_FMT, fmt);     /* v4l2loopback: el formato lo fija quien escribe */
+    if (xioctl(fd, VIDIOC_S_FMT, fmt)) xioctl(fd, VIDIOC_G_FMT, fmt);     /* v4l2loopback: whoever writes sets the format */
     return (fmt->fmt.pix.pixelformat == V4L2_PIX_FMT_MJPEG || av_fmt(fmt->fmt.pix.pixelformat) != AV_PIX_FMT_NONE) ? 0 : -1;
 }
 
@@ -66,7 +66,7 @@ static void flip_h(AVFrame *f) {
 }
 
 static LmEnc *enc;
-static int enc_fd = -1;              /* la salida del video (es del codificador hasta cerrarlo) */
+static int enc_fd = -1;              /* the video output (belongs to the encoder until it's closed) */
 static int enc_mirror;
 static int64_t enc_t0;
 
@@ -100,7 +100,7 @@ void lm_camera(const char *params, int dev, int render) {
         struct v4l2_buffer b = { .index = (uint32_t)i, .type = V4L2_BUF_TYPE_VIDEO_CAPTURE, .memory = V4L2_MEMORY_MMAP };
         if (xioctl(dev, VIDIOC_QUERYBUF, &b)) continue;
         bufs[i].len = b.length;
-        bufs[i].p = mmap(NULL, b.length, PROT_READ | PROT_WRITE, MAP_SHARED, dev, b.m.offset);   /* tamaño y desplazamiento del driver */
+        bufs[i].p = mmap(NULL, b.length, PROT_READ | PROT_WRITE, MAP_SHARED, dev, b.m.offset);   /* the driver's size and offset */
         if (bufs[i].p == MAP_FAILED) { bufs[i].p = NULL; continue; }
         xioctl(dev, VIDIOC_QBUF, &b);
     }
@@ -159,7 +159,7 @@ void lm_camera(const char *params, int dev, int render) {
                     enc_t0 = (int64_t)lm_now_ms();
                     if (!enc) { lm_result(m.id, -1, err, -1); if (mic) { munmap(ring, ring_len); ring = NULL; mic = 0; } }
                     else { enc_fd = fds[0]; fds[0] = -1; mp_sendv(LM_SOCK, MM_STATE, 0, MS_RECORDING, 0, 0, 0); }
-                } else if (m.type == MM_RECORD && enc) {             /* sin fd: terminar el video */
+                } else if (m.type == MM_RECORD && enc) {             /* no fd: finish the video */
                     if (mic) { lm_mic_drain(ring, on_mic); munmap(ring, ring_len); ring = NULL; mic = 0; }
                     int64_t d = lm_enc_close(enc);
                     enc = NULL;
@@ -184,7 +184,7 @@ void lm_camera(const char *params, int dev, int render) {
                 pkt->size = (int)b.bytesused;
                 if (avcodec_send_packet(mj, pkt) >= 0) got = avcodec_receive_frame(mj, frame) >= 0;
             } else if (pixfmt != V4L2_PIX_FMT_MJPEG) {
-                /* crudo: se copia a un cuadro propio (el búfer vuelve enseguida al driver) */
+                /* raw: copied into our own frame (the buffer goes back to the driver right away) */
                 frame->format = av_fmt(pixfmt);
                 frame->width = W;
                 frame->height = H;
@@ -220,5 +220,5 @@ void lm_camera(const char *params, int dev, int render) {
     av_packet_free(&pkt);
     av_frame_free(&frame);
     avcodec_free_context(&mj);
-    LM_DBG("cámara: %ld cuadros", nframes);
+    LM_DBG("camera: %ld frames", nframes);
 }

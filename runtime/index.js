@@ -1,5 +1,5 @@
-// @lordos/runtime — renderer de React para lord-server (mismo modelo que React Native):
-// los componentes <View>, <Text> e <Image> son nodos nativos dibujados por el servidor en C.
+// @lordos/runtime — React renderer for lord-server (same model as React Native):
+// the <View>, <Text> and <Image> components are native nodes drawn by the server in C.
 import Reconciler from 'react-reconciler';
 import { ConcurrentRoot, DefaultEventPriority, NoEventPriority } from 'react-reconciler/constants';
 import { createContext, useEffect, useState } from 'react';
@@ -11,22 +11,56 @@ export { setLayout, getLayout, layouts, modifiers } from './keymap.js';
 export const View = 'view';
 export const Text = 'text';
 export const Image = 'image';
-// <Terminal session={id} />: grilla de una sesión de lord.term dibujada en C.
+// <Terminal session={id} />: grid of a lord.term session drawn in C.
 export const Terminal = 'terminal';
-// <Surface surface={id} />: ventana de una app Linux (Wayland) que compone lord-server.
+// <Surface surface={id} />: window of a Linux (Wayland) app composited by lord-server.
 export const Surface = 'surface';
-// <MediaView media={id} />: video, foto, captura o cámara de lord.media (docs/MEDIOS.md); lo dibuja C.
+// <MediaView media={id} />: video, photo, capture or camera from lord.media (docs/MEDIA.md); drawn by C.
 export const MediaView = 'media';
-export const screen = { width: lord.screen.width, height: lord.screen.height };
-// La pantalla puede cambiar de tamaño (sesión vista desde otro monitor o desde el navegador):
-// lord-server actualiza lord.screen y llama a __lordScreen.
+export const screen = { width: lord.screen.width, height: lord.screen.height, displays: [], mirror: false };
+// Displays (docs/DISPLAYS.md): the desktop is one logical space (screen.width × height) and every
+// display shows a rectangle of it: { id, name, x, y, w, h, scale, main }. The menu bar and the Dock
+// go on the main one; windows can be on any display or span two.
+function readDisplays() {
+  const d = lord.screen.displays;
+  screen.displays = Array.isArray(d) && d.length ? d.map((x) => ({ ...x }))
+    : [{ id: 0, name: '', x: 0, y: 0, w: screen.width, h: screen.height, scale: 100, main: true }];
+  screen.mirror = !!lord.screen.mirror;
+}
+readDisplays();
+export const displays = () => screen.displays;
+export const mainDisplay = () => screen.displays.find((d) => d.main) || screen.displays[0];
+// The display containing a point (else the nearest one).
+export function displayAt(x, y) {
+  let best = null, dist = Infinity;
+  for (const d of screen.displays) {
+    const dx = Math.max(d.x - x, 0, x - (d.x + d.w - 1)), dy = Math.max(d.y - y, 0, y - (d.y + d.h - 1));
+    const k = dx * dx + dy * dy;
+    if (k < dist) { dist = k; best = d; }
+  }
+  return best || mainDisplay();
+}
+// System dialogs and panels go on the main display: its box as absolute-position style.
+export function mainBox() { const m = mainDisplay(); return { left: m.x, top: m.y, width: m.w, height: m.h }; }
+// The display with most of a rectangle (a window spanning two belongs to the one with more of it).
+export function displayFor(r) {
+  let best = null, area = 0;
+  for (const d of screen.displays) {
+    const w = Math.min(r.x + r.w, d.x + d.w) - Math.max(r.x, d.x), h = Math.min(r.y + r.h, d.y + d.h) - Math.max(r.y, d.y);
+    if (w > 0 && h > 0 && w * h > area) { area = w * h; best = d; }
+  }
+  return best || displayAt(r.x + r.w / 2, r.y + r.h / 2);
+}
+// The screen can change size (session viewed from another monitor or from the browser):
+// lord-server updates lord.screen and calls __lordScreen.
 const screenListeners = new Set();
 let rootNode = 0;
 export function onScreenChange(fn) { screenListeners.add(fn); return () => screenListeners.delete(fn); }
 globalThis.__lordScreen = () => {
-  const old = { width: screen.width, height: screen.height };
+  const old = { width: screen.width, height: screen.height, displays: screen.displays, mirror: screen.mirror };
   screen.width = lord.screen.width;
   screen.height = lord.screen.height;
+  readDisplays();
   if (rootNode) { lord.setStyle(rootNode, 'width', screen.width); lord.setStyle(rootNode, 'height', screen.height); }
   for (const fn of screenListeners) { try { fn(screen, old); } catch (e) { console.error('pantalla:', e?.message || e); } }
 };
@@ -39,9 +73,9 @@ function applyProps(inst, prev, next) {
   if (prev.session !== next.session) lord.setProp(inst.id, 'session', next.session ?? 0);
   if (prev.surface !== next.surface) lord.setProp(inst.id, 'surface', next.surface ?? 0);
   if (prev.media !== next.media) lord.setProp(inst.id, 'media', next.media ?? 0);
-  // protected: el nodo (y lo de adentro) sale negro en capturas, grabaciones y escritorio remoto
+  // protected: the node (and what's inside) comes out black in screenshots, recordings and remote desktop
   if (!!prev.protected !== !!next.protected) lord.setProp(inst.id, 'protected', !!next.protected);
-  // <Image pixels={{ width, height, data }} />: lienzo RGBA (un objeto nuevo por cada cuadro)
+  // <Image pixels={{ width, height, data }} />: RGBA canvas (a new object for each frame)
   if (prev.pixels !== next.pixels && next.pixels) lord.setProp(inst.id, 'pixels', next.pixels);
 }
 
@@ -49,10 +83,10 @@ function attach(parent, child) {
   child.parent = parent.isContainer ? null : parent;
 }
 
-// Prioridad de la actualización en curso (React 19 la fija y la consulta por acá).
+// Priority of the update in progress (React 19 sets it and queries it here).
 let updatePriority = NoEventPriority;
 
-// Interfaz del host de react-reconciler 0.34 (React 19), modo mutación como React Native.
+// react-reconciler 0.34 host interface (React 19), mutation mode like React Native.
 const host = {
   rendererPackageName: '@lordos/runtime',
   rendererVersion: '0.7.0',
@@ -88,7 +122,7 @@ const host = {
   clearContainer() {},
 
   finalizeInitialChildren: () => false,
-  // React 19: sin prepareUpdate; commitUpdate recibe el tipo y las props vieja y nueva
+  // React 19: no prepareUpdate; commitUpdate receives the type and the old and new props
   commitUpdate(inst, _type, prev, next) { applyProps(inst, prev, next); inst.props = next; },
   commitTextUpdate(inst, _old, text) { lord.setText(inst.id, text); },
   resetTextContent() {},
@@ -112,7 +146,7 @@ const host = {
   trackSchedulerEvent() {},
   shouldAttemptEagerTransition: () => false,
   requestPostPaintCallback() {},
-  // nada suspende el commit (no hay hojas de estilo ni imágenes que esperar: se cargan en C)
+  // nothing suspends the commit (no stylesheets or images to wait for: they load in C)
   maySuspendCommit: () => false,
   maySuspendCommitOnUpdate: () => false,
   maySuspendCommitInSyncRender: () => false,
@@ -122,11 +156,11 @@ const host = {
   suspendOnActiveViewTransition() {},
   waitForCommitToBeReady: () => null,
   getSuspendedCommitReason: () => null,
-  // formularios y transiciones de <form> (no hay DOM)
+  // forms and <form> transitions (there is no DOM)
   NotPendingTransition: null,
   HostTransitionContext: createContext(null),
   resetFormInstance() {},
-  // refs de Fragment: un objeto vacío (no se usan)
+  // Fragment refs: an empty object (unused)
   createFragmentInstance: () => ({}),
   updateFragmentInstanceFiber() {},
   commitNewChildToFragmentInstance() {},
@@ -148,16 +182,16 @@ export function render(element) {
   lord.setRoot(rootId);
   const container = { id: rootId, isContainer: true };
   const report = (kind) => (e) => console.error(`react (${kind}):`, e?.message ? `${e.message}\n${e.stack || ''}` : e);
-  // React 19: errores sin capturar, capturados por un boundary y recuperables, por separado
+  // React 19: uncaught errors, errors caught by a boundary, and recoverable ones, separately
   const root = reconciler.createContainer(container, ConcurrentRoot, null, false, null, 'lord',
     report('error'), report('capturado'), report('recuperable'), null);
   reconciler.updateContainer(element, root, null, null);
   return root;
 }
 
-// ---- SDK mínimo para temas (crece en M3) ----
+// ---- Minimal SDK for themes (grows in M3) ----
 
-// Reloj formateado: React solo re-renderiza cuando cambia el texto (ej. una vez por minuto).
+// Formatted clock: React only re-renders when the text changes (e.g. once per minute).
 export function useClock(format = (d) => d.toISOString(), intervalMs = 1000) {
   const [text, setText] = useState(() => format(new Date()));
   useEffect(() => {

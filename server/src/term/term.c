@@ -1,5 +1,5 @@
-/* term.c — sesiones de terminal: PTY ↔ emulador, teclado, mouse, portapapeles, eventos
- * para la app (título, directorio, campana, fin del proceso) y parpadeo del cursor. */
+/* term.c — terminal sessions: PTY ↔ emulator, keyboard, mouse, clipboard, events
+ * for the app (title, directory, bell, process exit) and cursor blinking. */
 #include "term.h"
 #include "../ui/ui.h"
 #include "../ui/fonts.h"
@@ -18,9 +18,9 @@
 
 #define OUT_MAX (16u << 20)
 #define READ_CHUNK 65536
-#define READ_BUDGET (1u << 20)     /* bytes por sesión y vuelta del loop: el resto, en la próxima */
+#define READ_BUDGET (1u << 20)     /* bytes per session per loop iteration: the rest, on the next one */
 #define BLINK_MS 530.0
-#define REPLAY_BYTES (6u << 20)    /* memoria para Instant Replay por sesión */
+#define REPLAY_BYTES (6u << 20)    /* memory for Instant Replay per session */
 #define REPLAY_EVERY_MS 100.0
 
 static Session sessions[TERM_MAX];
@@ -36,7 +36,7 @@ static double now_ms(void) {
     return ts.tv_sec * 1e3 + ts.tv_nsec / 1e6;
 }
 
-/* ---- perfil por defecto: los colores de iTerm2 ("Default") ---- */
+/* ---- default profile: iTerm2's colors ("Default") ---- */
 
 void term_profile_defaults(TermProfile *p) {
     static const uint32_t pal[16] = {
@@ -72,10 +72,10 @@ void term_profile_defaults(TermProfile *p) {
     for (int i = 0; i < 4; i++) p->font[i] = p->font_na[i] = -1;
 }
 
-/* ---- fuentes ---- */
+/* ---- fonts ---- */
 
 void term_init(const char *fonts_dir, const char *shell_dir) {
-    setlocale(LC_CTYPE, "C.UTF-8");     /* wcwidth() y towlower() con Unicode */
+    setlocale(LC_CTYPE, "C.UTF-8");     /* wcwidth() and towlower() with Unicode */
     static const char *const files[4] = {
         "JetBrainsMono-Regular.ttf", "JetBrainsMono-Bold.ttf", "JetBrainsMono-Italic.ttf", "JetBrainsMono-BoldItalic.ttf",
     };
@@ -93,7 +93,7 @@ int term_mono_font(int bold, int italic) {
     return f >= 0 ? f : mono[0] >= 0 ? mono[0] : 0;
 }
 
-/* Fuente del perfil para el estilo pedido (con la incluida como respaldo). */
+/* Profile font for the requested style (with the bundled one as fallback). */
 int term_profile_font(const TermProfile *p, int non_ascii, int bold, int italic) {
     int i = (bold ? 1 : 0) + (italic ? 2 : 0);
     const int *set = non_ascii ? p->font_na : p->font;
@@ -117,7 +117,7 @@ static int load_family(const char *family, int out[4]) {
     return 0;
 }
 
-/* Fuente de la terminal y la "no ASCII" (por familia, ej. "Fira Code"; "" = la incluida). */
+/* Terminal font and the "non-ASCII" one (by family, e.g. "Fira Code"; "" = the bundled one). */
 int term_set_fonts(TermProfile *p, const char *family, const char *non_ascii) {
     int ok = 0;
     if (strcmp(family, p->font_family)) {
@@ -131,7 +131,7 @@ int term_set_fonts(TermProfile *p, const char *family, const char *non_ascii) {
     return ok;
 }
 
-/* Fuente de emoji a color: se busca y se mapea recién la primera vez que hace falta. */
+/* Color emoji font: looked up and mapped only the first time it is needed. */
 int term_color_font(void) {
     static int font = -2;
     if (font == -2) {
@@ -141,8 +141,8 @@ int term_color_font(void) {
     return font;
 }
 
-/* Respaldo para caracteres que la fuente no tiene: JetBrains Mono, DejaVu Sans Mono,
- * Noto Sans Mono, DejaVu Sans, Noto Sans Symbols y por último Inter. */
+/* Fallback for characters the font lacks: JetBrains Mono, DejaVu Sans Mono,
+ * Noto Sans Mono, DejaVu Sans, Noto Sans Symbols and finally Inter. */
 int term_fallback_font(int i) {
     static int list[8], n = -1;
     if (n < 0) {
@@ -171,12 +171,12 @@ void term_metrics(const TermProfile *p, float *cw, float *ch, float *baseline) {
     *baseline = roundf((*ch - nat) / 2 + asc);
 }
 
-/* ---- portapapeles de la sesión ---- */
+/* ---- session clipboard ---- */
 
 static unsigned clip_gen;
 
 const char *term_clipboard(void) { return clip ? clip : ""; }
-unsigned term_clipboard_gen(void) { return clip_gen; }      /* cambia con cada copia (Wayland) */
+unsigned term_clipboard_gen(void) { return clip_gen; }      /* changes with each copy (Wayland) */
 
 static char clip_origin[64] = "terminal";
 static int clip_sensitive;
@@ -201,7 +201,7 @@ void term_clipboard_mark(const char *origin, int sensitive) {
 const char *term_clipboard_origin(void) { return clip_origin; }
 int term_clipboard_sensitive(void) { return clip_sensitive; }
 
-/* ---- sesiones ---- */
+/* ---- sessions ---- */
 
 Session *term_get(int id) {
     for (int i = 0; i < TERM_MAX; i++)
@@ -250,13 +250,13 @@ static void child_exited(Session *s) {
     close(s->fd);
     s->fd = -1;
     s->alive = 0;
-    if (s->ctrl >= 0) { close(s->ctrl); s->ctrl = -1; }   /* el guardián termina solo (POLLHUP) */
+    if (s->ctrl >= 0) { close(s->ctrl); s->ctrl = -1; }   /* the holder exits on its own (POLLHUP) */
     s->t.events |= EV_EXIT;
 }
 
 void term_close(Session *s) {
     if (!s || !s->used) return;
-    if (s->ctrl >= 0) {         /* el guardián suelta el PTY y se va */
+    if (s->ctrl >= 0) {         /* the holder releases the PTY and leaves */
         if (write(s->ctrl, "q", 1) < 0) {}
         close(s->ctrl);
         s->ctrl = -1;
@@ -279,8 +279,8 @@ void term_close(Session *s) {
     memset(s, 0, sizeof *s);
 }
 
-/* Cambio de tema: los nodos desaparecen pero los shells siguen vivos; la app Terminal del
- * tema nuevo los recupera con lord.term.list(). */
+/* Theme change: the nodes go away but the shells stay alive; the new theme's Terminal
+ * app recovers them with lord.term.list(). */
 void term_detach_all(void) {
     for (int i = 0; i < TERM_MAX; i++) sessions[i].node = 0;
 }
@@ -291,7 +291,7 @@ int term_list(int *ids, int max) {
     return n;
 }
 
-/* Guarda pantalla e historia (hasta 5000 líneas) para recuperarlas en el próximo arranque. */
+/* Saves screen and history (up to 5000 lines) to recover them on the next startup. */
 static void save_state(Session *s) {
     char path[300], tmp[310];
     hold_state_path(s->key, path, sizeof path);
@@ -301,7 +301,7 @@ static void save_state(Session *s) {
     FILE *f = data ? fopen(tmp, "wb") : NULL;
     if (f) {
         fchmod(fileno(f), 0600);
-        /* cabecera: versión, tamaño, título y directorio */
+        /* header: version, size, title and directory */
         fprintf(f, "LORDSTATE 1 %d %d %d\n%s\n%s\n", s->t.cols, s->t.rows, s->tmux, s->t.title, s->t.cwd);
         int ok = fwrite(data, 1, n, f) == n;
         if (fclose(f) == 0 && ok) rename(tmp, path); else unlink(tmp);
@@ -309,8 +309,8 @@ static void save_state(Session *s) {
     free(data);
 }
 
-/* keep = 1 (reinicio, señal, caída controlada): los shells siguen en sus guardianes.
- * keep = 0 (cerrar sesión): se cierran todos. */
+/* keep = 1 (restart, signal, controlled crash): the shells stay in their holders.
+ * keep = 0 (log out): all of them are closed. */
 void term_shutdown(int keep) {
     for (int i = 0; i < TERM_MAX; i++) {
         Session *s = &sessions[i];
@@ -369,7 +369,7 @@ static void adopt(int fd, int ctrl, pid_t pid, const char *key) {
     if (cols < 2 || cols > TERM_MAX_COLS) cols = 80;
     if (rows < 1 || rows > TERM_MAX_ROWS) rows = 24;
     if (vt_init(&s->t, cols, rows, s->prof.scrollback, &s->prof)) { vt_free(&s->t); free(st); close(fd); close(ctrl); return; }
-    s->t.respond = NULL;        /* lo que se reproduce no debe responder al shell */
+    s->t.respond = NULL;        /* what is replayed must not reply to the shell */
     if (body) {
         vt_write(&s->t, (const uint8_t *)body, len - (size_t)(body - st));
         if (title) snprintf(s->t.title, sizeof s->t.title, "%s", title);
@@ -387,11 +387,11 @@ static void adopt(int fd, int ctrl, pid_t pid, const char *key) {
     s->used = 1;
     s->alive = 1;
     s->restored = 1;
-    /* seguía en tmux -CC: el parser vuelve al modo control y la app pide el estado de nuevo */
+    /* it was still in tmux -CC: the parser goes back to control mode and the app asks for the state again */
     if (tmux) { vt_enter_tmux(&s->t); s->tmux = 1; }
     s->blink_on = 1;
     s->replay = -1;
-    /* el programa en primer plano se redibuja con el tamaño que tenga la ventana nueva */
+    /* the foreground program redraws itself with whatever size the new window has */
     pty_resize(s->fd, cols, rows, 0, 0);
 }
 
@@ -456,7 +456,7 @@ void term_dispatch(int id, short revents) {
             continue;
         }
         if (r < 0 && (errno == EAGAIN || errno == EINTR)) break;
-        child_exited(s);     /* EIO o EOF: el shell terminó */
+        child_exited(s);     /* EIO or EOF: the shell exited */
         break;
     }
     if (total) {
@@ -469,13 +469,13 @@ void term_dispatch(int id, short revents) {
     }
 }
 
-/* ---- tmux -CC (modo control) ----
+/* ---- tmux -CC (control mode) ----
  *
- * La sesión donde se corre `tmux -CC` es la "puerta": por ella llegan las líneas del
- * protocolo. La salida de cada panel (%output %N …) va directo a su sesión virtual, sin
- * pasar por JS; el resto (%begin/%end, %layout-change, %window-add…) se junta y se entrega
- * como evento "tmux" para que la app arme pestañas y paneles. Lo que se escribe en una
- * sesión virtual vuelve a tmux como `send-keys -H`. */
+ * The session where `tmux -CC` runs is the "gateway": protocol lines arrive through it.
+ * The output of each pane (%output %N …) goes straight to its virtual session, without
+ * going through JS; the rest (%begin/%end, %layout-change, %window-add…) is collected and
+ * delivered as a "tmux" event so the app builds tabs and panes. What is written in a
+ * virtual session goes back to tmux as `send-keys -H`. */
 
 static void buf_add(char **b, size_t *n, size_t *cap, const char *d, size_t len) {
     if (*n + len + 1 > *cap) {
@@ -500,7 +500,7 @@ static Session *tmux_find(int gateway, int pane) {
 
 void term_tmux_send(Session *g, const char *cmd, size_t n) {
     if (!g || !g->tmux || !g->alive) return;
-    if (!g->out_len) {      /* directo al PTY de la puerta (tmux lee comandos por stdin) */
+    if (!g->out_len) {      /* straight to the gateway's PTY (tmux reads commands from stdin) */
         ssize_t w = write(g->fd, cmd, n);
         if (w > 0) { cmd += w; n -= (size_t)w; }
     }
@@ -519,7 +519,7 @@ static void tmux_keys(Session *v, const char *data, size_t n) {
     }
 }
 
-/* %output: los bytes < 0x20 y la barra vienen como \ooo (octal). */
+/* %output: bytes < 0x20 and the backslash come as \ooo (octal). */
 static size_t unescape(const char *in, size_t n, char *out) {
     size_t o = 0;
     for (size_t i = 0; i < n; i++) {
@@ -591,7 +591,7 @@ Session *term_tmux_pane(Session *g, int pane) {
     return s;
 }
 
-/* Contenido inicial (capture-pane) y después la salida que llegó mientras tanto. */
+/* Initial content (capture-pane) and then the output that arrived meanwhile. */
 void term_feed(Session *s, const char *data, size_t n) {
     if (!s || vt_in_tmux(&s->t)) return;
     vt_write(&s->t, (const uint8_t *)data, n);
@@ -607,7 +607,7 @@ void term_tmux_ready(Session *s) {
     s->pend_n = s->pend_cap = 0;
 }
 
-/* ---- daño: qué parte de la pantalla hay que repintar ---- */
+/* ---- damage: which part of the screen must be repainted ---- */
 
 static int cursor_blinks(const Session *s) {
     int shape = s->t.cursor_shape;
@@ -621,7 +621,7 @@ static double wall_ms(void) {
     return ts.tv_sec * 1e3 + ts.tv_nsec / 1e6;
 }
 
-/* Guarda la pantalla actual para Instant Replay (como mucho cada 100 ms). */
+/* Saves the current screen for Instant Replay (at most every 100 ms). */
 static void capture_frame(Session *s, double now) {
     Term *t = &s->t;
     if (s->replay >= 0 || !s->screen_changed || now - s->last_frame < REPLAY_EVERY_MS) return;
@@ -659,7 +659,7 @@ int term_replay(Session *s, int index) {
     return s->replay;
 }
 
-/* Registro de la sesión en ~/.local/share/lordos/terminal (salida cruda, como "Log" de iTerm2). */
+/* Session log in ~/.local/share/lordos/terminal (raw output, like iTerm2's "Log"). */
 const char *term_log(Session *s, int on) {
     if (!on) { if (s->log) fclose(s->log); s->log = NULL; return NULL; }
     if (s->log) return s->log_path;
@@ -680,8 +680,8 @@ const char *term_log(Session *s, int on) {
     return s->log ? s->log_path : NULL;
 }
 
-/* Carpeta de documentos del usuario: XDG_DOCUMENTS_DIR de ~/.config/user-dirs.dirs (con el
- * nombre en su idioma), o ~/Documentos / ~/Documents, o la carpeta personal. */
+/* User's documents folder: XDG_DOCUMENTS_DIR from ~/.config/user-dirs.dirs (with the
+ * name in their language), or ~/Documentos / ~/Documents, or the home folder. */
 static void documents_dir(const char *home, char *dir, size_t n) {
     struct stat st;
     char conf[400], line[512];
@@ -702,7 +702,7 @@ static void documents_dir(const char *home, char *dir, size_t n) {
     if (stat(dir, &st) || !S_ISDIR(st.st_mode)) snprintf(dir, n, "%s", home);
 }
 
-/* Guarda todo el texto (historia + pantalla) en la carpeta de documentos. */
+/* Saves all the text (history + screen) to the documents folder. */
 int term_export(Session *s, char *path, size_t size) {
     const char *home = getenv("HOME");
     if (!home) return -1;
@@ -786,10 +786,10 @@ void term_tick(double now) {
             s->t.modes &= ~(uint32_t)M_SYNC;
             s->t.all_dirty = 1;
         }
-        /* Último aviso de actividad de una ráfaga (los avisos van como mucho uno por segundo). */
+        /* Last activity notice of a burst (notices go out at most once per second). */
         if (s->last_output > s->last_event && now - s->last_event >= 1000) { s->t.events |= EV_OUTPUT; s->last_event = now; }
         if (!(cursor_blinks(s) || s->prof.blink_text)) { s->blink_on = 1; continue; }
-        /* Mientras llega salida el cursor queda encendido; después parpadea. */
+        /* While output arrives the cursor stays on; afterwards it blinks. */
         int on = ((long)((now - fmax(s->last_output, s->last_input)) / BLINK_MS) % 2) == 0;
         if (on != s->blink_on) {
             s->blink_on = on;
@@ -831,11 +831,11 @@ void term_events(TermEventFn fn) {
         if (e & EV_TMUX_END) fn(id, "tmux-end", "");
         if (e & EV_OUTPUT) fn(id, "output", "");
         if (e & EV_EXIT) { snprintf(code, sizeof code, "%d", s->exit_code); fn(id, "exit", code); }
-        if (!term_get(id)) continue;    /* JS pudo cerrar la sesión en un callback */
+        if (!term_get(id)) continue;    /* JS may have closed the session in a callback */
     }
 }
 
-/* ---- teclado ---- */
+/* ---- keyboard ---- */
 
 enum { MOD_SHIFT = 1, MOD_ALT = 2, MOD_CTRL = 4, MOD_META = 8 };
 
@@ -865,7 +865,7 @@ static int ctrl_code(int c) {
 void term_key(Session *s, const char *key, const char *chr, const char *base, int mods) {
     Term *t = &s->t;
     if (t->view) { t->view = 0; t->all_dirty = 1; }
-    s->last_input = now_ms();       /* el cursor deja de parpadear mientras se escribe */
+    s->last_input = now_ms();       /* the cursor stops blinking while typing */
     s->blink_on = 1;
     int m = 1 + (mods & MOD_SHIFT ? 1 : 0) + (mods & MOD_ALT ? 2 : 0) + (mods & MOD_CTRL ? 4 : 0);
     static const struct { const char *name; char fin; int num; } keys[] = {
@@ -948,7 +948,7 @@ void term_cell_at(Session *s, float lx, float ly, long long *line, int *col) {
     Line *ln = vt_view_line(t, r, line);
     static int vis[TERM_MAX_COLS];
     static uint8_t lv[TERM_MAX_COLS];
-    if (term_row_visual(&s->prof, t, ln, t->cols, vis, lv))     /* columna visual → celda lógica */
+    if (term_row_visual(&s->prof, t, ln, t->cols, vis, lv))     /* visual column → logical cell */
         for (int i = 0; i < t->cols; i++) if (vis[i] == *col) { *col = i; break; }
 }
 
@@ -973,8 +973,8 @@ static int reporting(const Session *s, int mods) {
     return (s->t.modes & M_MOUSE) && s->prof.mouse_reporting && !(mods & MOD_SHIFT);
 }
 
-/* type: "down" | "up" | "move". Devuelve 1 si lo usó la app de la terminal, 2 si cambió la
- * selección, 3 si además se copió al portapapeles. */
+/* type: "down" | "up" | "move". Returns 1 if the terminal app used it, 2 if the
+ * selection changed, 3 if it was also copied to the clipboard. */
 int term_mouse(Session *s, const char *type, float lx, float ly, int button, int mods) {
     Term *t = &s->t;
     long long line;

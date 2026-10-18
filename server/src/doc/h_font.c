@@ -1,7 +1,7 @@
-/* h_font.c — fuentes en el ayudante (FreeType + cairo): datos de un .ttf/.otf/.ttc, muestra con
- * un texto y tamaños, y la tabla de caracteres. La app Tipografías y la Vista rápida la usan: una
- * fuente rota o maliciosa (por ejemplo, una bajada de internet antes de instalarla) solo puede
- * tirar abajo este proceso. */
+/* h_font.c — fonts in the helper (FreeType + cairo): data of a .ttf/.otf/.ttc, a sample with
+ * a text and sizes, and the character table. The Fonts app and Quick Look use it: a
+ * broken or malicious font (for example, one downloaded from the internet before installing it) can only
+ * bring down this process. */
 #include "helper.h"
 
 #include <cairo.h>
@@ -29,7 +29,7 @@ static void holder_free(void *p) {
     free(h);
 }
 
-/* la última fuente abierta (Tipografías pide varias muestras seguidas de la misma) */
+/* the last font opened (Fonts asks for several samples in a row from the same one) */
 static struct { dev_t dev; ino_t ino; time_t mtime; off_t size; int index; FT_Face face; cairo_font_face_t *cf; } cur;
 
 static FT_Face load(int fd, int index, cairo_font_face_t **cf, const char **why) {
@@ -97,7 +97,7 @@ static void op_info(const DocMsg *m, const JVal *a) {
               (long)f->num_faces, (long)f->num_glyphs, FT_IS_FIXED_WIDTH(f) ? "true" : "false", FT_HAS_COLOR(f) ? "true" : "false",
               FT_IS_SCALABLE(f) ? "true" : "false", (f->style_flags & FT_STYLE_FLAG_BOLD) ? "true" : "false",
               (f->style_flags & FT_STYLE_FLAG_ITALIC) ? "true" : "false");
-    /* caracteres que tiene, como rangos [desde, hasta] */
+    /* characters it has, as ranges [from, to] */
     FT_UInt gi;
     FT_ULong c = FT_Get_First_Char(f, &gi), start = c, prev = c;
     long chars = 0;
@@ -117,7 +117,7 @@ static void op_info(const DocMsg *m, const JVal *a) {
     reply_json(DR_DONE, m->h.id, &b);
 }
 
-/* muestras: cada línea {text, size} (px), ajustadas al ancho; devuelve la imagen */
+/* samples: each line {text, size} (px), fitted to the width; returns the image */
 static void op_render(const DocMsg *m, const JVal *a) {
     cairo_font_face_t *cf;
     const char *why;
@@ -132,7 +132,7 @@ static void op_render(const DocMsg *m, const JVal *a) {
     color_of(a, "bg", bg, "#ffffff00");
     const JVal *lines = json_get(a, "lines");
     if (!lines || lines->type != J_ARR || lines->len > 64) { reply_err(m->h.id, "bad-request", "lines"); return; }
-    /* primera pasada: medir con una superficie chica */
+    /* first pass: measure with a small surface */
     cairo_surface_t *probe = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
     cairo_t *pc = cairo_create(probe);
     cairo_set_font_face(pc, cf);
@@ -172,7 +172,7 @@ static void op_render(const DocMsg *m, const JVal *a) {
         cairo_set_font_size(cr, size);
         cairo_font_extents_t fe;
         cairo_font_extents(cr, &fe);
-        /* cortar por palabras al ancho */
+        /* break by words at the width */
         const char *p = text;
         int rows = 0;
         while (*p && rows < 8) {
@@ -219,7 +219,7 @@ static int utf8_put(char *o, uint32_t c) {
     return 4;
 }
 
-/* tabla: cps[] en una grilla de cols columnas y celdas de cell px; dice cuáles tiene la fuente */
+/* table: cps[] in a grid of cols columns and cells of cell px; says which ones the font has */
 static void op_grid(const DocMsg *m, const JVal *a) {
     cairo_font_face_t *cf;
     const char *why;
@@ -276,6 +276,6 @@ int font_handle(const DocMsg *m, const JVal *a) {
     case DQ_FONT_GRID: op_grid(m, a); return 1;
     case DQ_PDF_THUMB: pdf_thumb(m, a); return 1;
     case DQ_WARM: pdf_warm(m->h.id); return 1;
-    default: return make_handle(m, a);        /* la misma sesión también decodifica imágenes */
+    default: return make_handle(m, a);        /* the same session also decodes images */
     }
 }

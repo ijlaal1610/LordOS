@@ -1,13 +1,13 @@
-/* js_wm.c — lord.wm: arrastre de ventanas en C (grab.c, docs/VENTANAS.md).
+/* js_wm.c — lord.wm: window dragging in C (grab.c, docs/WINDOWS.md).
  *
- *   lord.wm.grab(nodo, bordes, { inset, minW, minH, maxW, maxH, minTop }) → bool
- *       bordes 0 = mover; 1 arriba, 2 abajo, 4 izquierda, 8 derecha (como xdg_toplevel.resize).
- *       Solo con un botón apretado; lo sigue lord-server hasta que se suelta.
+ *   lord.wm.grab(node, edges, { inset, minW, minH, maxW, maxH, minTop }) → bool
+ *       edges 0 = move; 1 top, 2 bottom, 4 left, 8 right (like xdg_toplevel.resize).
+ *       Only with a button held down; lord-server tracks it until it is released.
  *   lord.wm.cancel()
- * Al soltar: __lordWm('end', { node, edges, dx, dy, dw, dh }) con el cambio del nodo.
+ * On release: __lordWm('end', { node, edges, dx, dy, dw, dh }) with the node's change.
  *
  *   lord.portal.set({ dark, accent: '#rrggbb', accentName, buttons })
- *       lo que leen las apps GTK, GNOME y Qt por org.freedesktop.portal.Settings (portal.c). */
+ *       what GTK, GNOME and Qt apps read through org.freedesktop.portal.Settings (portal.c). */
 #include "js_wm.h"
 #include "grab.h"
 #include "portal.h"
@@ -43,6 +43,18 @@ static JSValue f_grab(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
         .max_h = (float)num(c, o, "maxH", 0, 0, 16384),
         .min_top = (float)num(c, o, "minTop", 0, -100000, 100000),
     };
+    JSValue areas = JS_IsObject(o) ? JS_GetPropertyStr(c, o, "areas") : JS_UNDEFINED;
+    for (int i = 0; i < 4 && JS_IsArray(c, areas); i++) {
+        JSValue a = JS_GetPropertyUint32(c, areas, (uint32_t)i);
+        if (JS_IsObject(a)) {
+            lim.ax[lim.nareas] = (float)num(c, a, "x", 0, -100000, 100000);
+            lim.ay[lim.nareas] = (float)num(c, a, "y", 0, -100000, 100000);
+            lim.aw[lim.nareas] = (float)num(c, a, "w", 0, 0, 100000);
+            lim.nareas++;
+        }
+        JS_FreeValue(c, a);
+    }
+    JS_FreeValue(c, areas);
     return JS_NewBool(c, grab_begin(node, edges, &lim) == 0);
 }
 
@@ -52,7 +64,7 @@ static JSValue f_cancel(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
     return JS_UNDEFINED;
 }
 
-/* Texto corto y sin caracteres raros (nombre de acento, orden de botones de GTK). */
+/* Short text without odd characters (accent name, GTK button order). */
 static int get_word(JSContext *c, JSValueConst o, const char *k, char *out, size_t n, const char *allowed) {
     JSValue v = JS_GetPropertyStr(c, o, k);
     const char *s = JS_IsString(v) ? JS_ToCString(c, v) : NULL;
@@ -119,7 +131,7 @@ void js_wm_end(int node, int edges, float dx, float dy, float dw, float dh) {
         if (JS_IsException(r)) {
             JSValue e = JS_GetException(c);
             const char *m = JS_ToCString(c, e);
-            fprintf(stderr, "js: __lordWm: %s\n", m ? m : "(excepción)");
+            fprintf(stderr, "js: __lordWm: %s\n", m ? m : "(exception)");
             if (m) JS_FreeCString(c, m);
             JS_FreeValue(c, e);
         }

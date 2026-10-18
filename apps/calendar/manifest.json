@@ -2,7 +2,7 @@
   "id": "calendar",
   "name": "Calendar",
   "description": "Day, week and month views of your local and synced calendars",
-  "size": [980, 640],
+  "size": [960, 600],
   "minSize": [640, 440],
   "dock": true,
   "category": "Office",

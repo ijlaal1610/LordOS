@@ -1,5 +1,5 @@
-/* h_stb.c — stb_image y stb_image_write para el ayudante (las imágenes que llegan de afuera,
- * como las del escáner, se decodifican acá y no en lord-server). */
+/* h_stb.c — stb_image and stb_image_write for the helper (images that come from outside,
+ * like the scanner's, are decoded here and not in lord-server). */
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
 #define STBI_ONLY_JPEG

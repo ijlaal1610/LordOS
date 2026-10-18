@@ -1,7 +1,7 @@
 {
   "id": "logs",
-  "name": "Registros",
-  "description": "Registros del sistema, de tus apps y de LordOS, con filtros y en vivo",
+  "name": "Logs",
+  "description": "System, app and LordOS logs, with filters and live updates",
   "size": [1040, 640],
   "minSize": [760, 440],
   "dock": false,

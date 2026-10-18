@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Escribe texto en la VM con `sendkey` del monitor de QEMU (distribución US).
+"""Types text into the VM with the QEMU monitor's `sendkey` (US layout).
 
-Uso (en el host Proxmox):  python3 lord-type.py 115 'ls -la\n'
-Teclas especiales entre llaves: {ret} {tab} {esc} {up} {down} {left} {right} {f12}
-{ctrl-c} {meta_l-t} … (cualquier nombre de `sendkey`). Requiere que LordOS use la
-distribución US (botón ES/US de la barra de menú)."""
+Usage (on the Proxmox host):  python3 lord-type.py 115 'ls -la\n'
+Special keys in braces: {ret} {tab} {esc} {up} {down} {left} {right} {f12}
+{ctrl-c} {meta_l-t} … (any `sendkey` name). Requires LordOS to use the
+US layout (ES/US button in the menu bar)."""
 import subprocess
 import sys
 import time
@@ -40,7 +40,7 @@ def keys(text):
 def main():
     vmid, text = sys.argv[1], sys.argv[2].encode().decode('unicode_escape')
     ks = list(keys(text))
-    # En tandas: la cola de teclado de QEMU pierde teclas con ráfagas largas.
+    # In batches: QEMU's keyboard queue drops keys with long bursts.
     for i in range(0, len(ks), 40):
         cmds = ''.join(f'sendkey {k}\n' for k in ks[i:i + 40])
         subprocess.run(['qm', 'monitor', vmid], input=cmds.encode(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)

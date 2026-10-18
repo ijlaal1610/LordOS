@@ -1,5 +1,5 @@
-/* json.c — lector de JSON estricto (ver json.h). Descenso recursivo; los valores y los textos se
- * guardan en bloques encadenados que se liberan juntos con json_free. */
+/* json.c — strict JSON reader (see json.h). Recursive descent; values and strings are
+ * stored in chained blocks that are freed together with json_free. */
 #include "json.h"
 
 #include <stdint.h>
@@ -60,18 +60,18 @@ static size_t utf8_put(char *o, unsigned cp) {
     return 4;
 }
 
-/* Texto entre comillas (p->s apunta a la comilla de apertura). */
+/* Quoted string (p->s points at the opening quote). */
 static int string(P *p, const char **out, size_t *outlen) {
     const char *s = ++p->s;
     size_t raw = 0;
     while (s + raw < p->end && s[raw] != '"') { if (s[raw] == '\\') raw++; raw++; }
-    if (s + raw >= p->end) return fail(p, "texto sin cerrar");
+    if (s + raw >= p->end) return fail(p, "unterminated string");
     char *o = alloc(p, raw + 1);
-    if (!o) return fail(p, "sin memoria");
+    if (!o) return fail(p, "out of memory");
     size_t n = 0;
     while (*p->s != '"') {
         unsigned char c = (unsigned char)*p->s;
-        if (c < 0x20) return fail(p, "carácter de control en un texto");
+        if (c < 0x20) return fail(p, "control character in a string");
         if (c != '\\') { o[n++] = (char)c; p->s++; continue; }
         p->s++;
         switch (*p->s) {
@@ -85,19 +85,19 @@ static int string(P *p, const char **out, size_t *outlen) {
         case 't': o[n++] = '\t'; break;
         case 'u': {
             unsigned cp, lo;
-            if (p->end - p->s < 5 || hex4(p->s + 1, &cp)) return fail(p, "\\u inválido");
+            if (p->end - p->s < 5 || hex4(p->s + 1, &cp)) return fail(p, "invalid \\u");
             p->s += 4;
             if (cp >= 0xd800 && cp < 0xdc00) {
                 if (p->end - p->s < 7 || p->s[1] != '\\' || p->s[2] != 'u' || hex4(p->s + 3, &lo) || lo < 0xdc00 || lo > 0xdfff)
-                    return fail(p, "par sustituto inválido");
+                    return fail(p, "invalid surrogate pair");
                 cp = 0x10000 + ((cp - 0xd800) << 10) + (lo - 0xdc00);
                 p->s += 6;
-            } else if (cp >= 0xdc00 && cp < 0xe000) return fail(p, "par sustituto inválido");
-            if (!cp) return fail(p, "\\u0000 no se acepta");
+            } else if (cp >= 0xdc00 && cp < 0xe000) return fail(p, "invalid surrogate pair");
+            if (!cp) return fail(p, "\\u0000 is not accepted");
             n += utf8_put(o + n, cp);
             break;
         }
-        default: return fail(p, "escape inválido");
+        default: return fail(p, "invalid escape");
         }
         p->s++;
     }
@@ -111,24 +111,24 @@ static int string(P *p, const char **out, size_t *outlen) {
 static int number(P *p, double *out) {
     const char *s = p->s;
     if (s < p->end && *s == '-') s++;
-    if (s >= p->end) return fail(p, "número inválido");
+    if (s >= p->end) return fail(p, "invalid number");
     if (*s == '0') s++;
     else if (*s >= '1' && *s <= '9') while (s < p->end && *s >= '0' && *s <= '9') s++;
-    else return fail(p, "número inválido");
+    else return fail(p, "invalid number");
     if (s < p->end && *s == '.') {
         s++;
-        if (s >= p->end || *s < '0' || *s > '9') return fail(p, "número inválido");
+        if (s >= p->end || *s < '0' || *s > '9') return fail(p, "invalid number");
         while (s < p->end && *s >= '0' && *s <= '9') s++;
     }
     if (s < p->end && (*s == 'e' || *s == 'E')) {
         s++;
         if (s < p->end && (*s == '+' || *s == '-')) s++;
-        if (s >= p->end || *s < '0' || *s > '9') return fail(p, "número inválido");
+        if (s >= p->end || *s < '0' || *s > '9') return fail(p, "invalid number");
         while (s < p->end && *s >= '0' && *s <= '9') s++;
     }
     char buf[64];
     size_t n = (size_t)(s - p->s);
-    if (n >= sizeof buf) return fail(p, "número demasiado largo");
+    if (n >= sizeof buf) return fail(p, "number too long");
     memcpy(buf, p->s, n);
     buf[n] = 0;
     *out = strtod(buf, NULL);
@@ -138,7 +138,7 @@ static int number(P *p, double *out) {
 
 static int lit(P *p, const char *w) {
     size_t n = strlen(w);
-    if ((size_t)(p->end - p->s) < n || memcmp(p->s, w, n)) return fail(p, "valor inválido");
+    if ((size_t)(p->end - p->s) < n || memcmp(p->s, w, n)) return fail(p, "invalid value");
     p->s += n;
     return 0;
 }
@@ -147,7 +147,7 @@ static JVal *value(P *p);
 
 static JVal *container(P *p, int obj) {
     JVal *v = alloc(p, sizeof *v);
-    if (!v) { fail(p, "sin memoria"); return NULL; }
+    if (!v) { fail(p, "out of memory"); return NULL; }
     memset(v, 0, sizeof *v);
     v->type = obj ? J_OBJ : J_ARR;
     if (++p->depth > MAX_DEPTH) { fail(p, "demasiados niveles"); return NULL; }
@@ -160,12 +160,12 @@ static JVal *container(P *p, int obj) {
         size_t klen = 0;
         if (obj) {
             ws(p);
-            if (p->s >= p->end || *p->s != '"') { fail(p, "se esperaba una clave"); return NULL; }
+            if (p->s >= p->end || *p->s != '"') { fail(p, "expected a key"); return NULL; }
             if (string(p, &key, &klen)) return NULL;
-            if (strlen(key) != klen) { fail(p, "clave inválida"); return NULL; }
+            if (strlen(key) != klen) { fail(p, "invalid key"); return NULL; }
             for (JVal *k = v->kid; k; k = k->next) if (!strcmp(k->key, key)) { fail(p, "clave repetida"); return NULL; }
             ws(p);
-            if (p->s >= p->end || *p->s != ':') { fail(p, "se esperaba ':'"); return NULL; }
+            if (p->s >= p->end || *p->s != ':') { fail(p, "expected ':'"); return NULL; }
             p->s++;
         }
         JVal *k = value(p);
@@ -177,7 +177,7 @@ static JVal *container(P *p, int obj) {
         ws(p);
         if (p->s < p->end && *p->s == ',') { p->s++; continue; }
         if (p->s < p->end && *p->s == (obj ? '}' : ']')) { p->s++; break; }
-        fail(p, obj ? "se esperaba ',' o '}'" : "se esperaba ',' o ']'");
+        fail(p, obj ? "expected ',' or '}'" : "expected ',' or ']'");
         return NULL;
     }
     p->depth--;
@@ -186,11 +186,11 @@ static JVal *container(P *p, int obj) {
 
 static JVal *value(P *p) {
     ws(p);
-    if (p->s >= p->end) { fail(p, "falta un valor"); return NULL; }
+    if (p->s >= p->end) { fail(p, "missing value"); return NULL; }
     char c = *p->s;
     if (c == '{' || c == '[') return container(p, c == '{');
     JVal *v = alloc(p, sizeof *v);
-    if (!v) { fail(p, "sin memoria"); return NULL; }
+    if (!v) { fail(p, "out of memory"); return NULL; }
     memset(v, 0, sizeof *v);
     int r;
     if (c == '"') { v->type = J_STR; r = string(p, &v->str, &v->len); }
@@ -206,9 +206,9 @@ int json_parse(const char *text, size_t len, JDoc *doc, char *err, size_t errlen
     doc->root = NULL;
     doc->mem = NULL;
     JVal *v = value(&p);
-    if (v) { ws(&p); if (p.s != p.end) { fail(&p, "basura al final"); v = NULL; } }
+    if (v) { ws(&p); if (p.s != p.end) { fail(&p, "trailing garbage"); v = NULL; } }
     if (!v) {
-        if (err && errlen) snprintf(err, errlen, "%s (byte %ld)", p.why ? p.why : "JSON inválido", (long)(p.s - text));
+        if (err && errlen) snprintf(err, errlen, "%s (byte %ld)", p.why ? p.why : "invalid JSON", (long)(p.s - text));
         doc->mem = p.blocks;
         json_free(doc);
         return -1;

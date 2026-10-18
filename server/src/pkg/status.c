@@ -1,4 +1,4 @@
-/* status.c — lectura de /var/lib/dpkg/status (ver status.h). */
+/* status.c — reading /var/lib/dpkg/status (see status.h). */
 #include "status.h"
 #include "deb.h"
 #include "idx.h"
@@ -26,7 +26,7 @@ static const char *machine_arch(void) {
     return arch;
 }
 
-/* La arquitectura de dpkg es la del propio paquete dpkg (así lo hace también apt). */
+/* dpkg's architecture is that of the dpkg package itself (apt does it this way too). */
 const char *pkg_native_arch(void) {
     static char arch[16];
     if (arch[0]) return arch;
@@ -88,7 +88,7 @@ int status_load(Status *s, const char *path, const char *arch) {
 #define TAKE(field, member) else if (d822_is(&fl, field) && ns < 16) { set[ns].dst = &p.member; set[ns].v = fl.value; set[ns].n = fl.vlen; ns++; }
         while (d822_next_field(&it, &fl)) {
             if (d822_is(&fl, "Status")) {
-                /* "install ok installed": la tercera palabra es el estado */
+                /* "install ok installed": the third word is the status */
                 const char *sp = memchr(fl.value, ' ', fl.vlen);
                 sp = sp ? memchr(sp + 1, ' ', fl.vlen - (size_t)(sp + 1 - fl.value)) : NULL;
                 if (sp) {
@@ -125,7 +125,7 @@ int status_load(Status *s, const char *path, const char *arch) {
         }
 #undef TAKE
         if (!present) continue;
-        /* se terminan los valores en su lugar (el párrafo ya se recorrió) */
+        /* the values are terminated in place (the paragraph was already walked) */
         for (int i = 0; i < ns; i++) { *set[i].dst = set[i].v; ((char *)set[i].v)[set[i].n] = 0; }
         if (desc) {
             const char *nl = memchr(desc, '\n', desclen);

@@ -66,7 +66,7 @@ No gnome-keyring, kwallet, libsecret, libdbus or sd-bus is used by LordOS.
 **Why this split.** Everything that touches plaintext vault data, parses untrusted files (KDBX,
 CSV, JSON, images with QR codes) or talks to the security key runs in one small helper that cannot
 open the network, sockets or paths, the same model as `lord-doc` and `lord-media`
-(`docs/PRIVACIDAD.md`, "Ayudantes"). `lord-server` (the compositor) only relays: it never holds
+(`docs/PRIVACY.md`, "Ayudantes"). `lord-server` (the compositor) only relays: it never holds
 the vault key and never parses the vault. The UI gets just what it shows:
 
 - the list view gets titles, user names, URLs, tags and flags, **never** a secret;

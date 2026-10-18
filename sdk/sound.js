@@ -1,9 +1,9 @@
-// sound.js — sonido de la sesión (PipeWire; el cliente está en C, server/src/sound — ver
-// docs/SONIDO.md). Un store con el estado completo que se actualiza solo cuando cambia algo,
-// también si lo cambió otro programa.
+// sound.js — session sound (PipeWire; the client is in C, server/src/sound — see
+// docs/SOUND.md). A store with the full state that updates only when something changes,
+// also if another program changed it.
 //
 //   const s = useSound();          // { connected, sinks, sources, inputs, outputs, defaultSink… }
-//   const out = defaultSink(s);    // la salida predeterminada (o null)
+//   const out = defaultSink(s);    // the default output (or null)
 //   sound.setVolume('sink', out.index, 0.5); sound.setMute('sink', out.index, true)
 import { createStore, useStore } from './store.js';
 
@@ -32,6 +32,6 @@ export const sound = {
 export const useSound = () => useStore(soundState);
 export const useSoundPeak = () => useStore(soundPeak);
 export const defaultSink = (s) => s.sinks.find((x) => x.default) || s.sinks[0] || null;
-// Micrófonos de verdad (no los monitores de las salidas).
+// Real microphones (not the outputs' monitors).
 export const microphones = (s) => s.sources.filter((x) => x.monitorOf === -1);
 export const defaultSource = (s) => microphones(s).find((x) => x.default) || microphones(s)[0] || null;

@@ -1,50 +1,50 @@
-/* perms.h — permisos por app al estilo TCC de macOS (ver perms.c y docs/PRIVACIDAD.md).
+/* perms.h — per-app permissions in the style of macOS TCC (see perms.c and docs/PRIVACY.md).
  *
- * Cada permiso de cada app tiene un estado: preguntar (la primera vez), permitido o denegado.
- * Las decisiones se guardan por usuario en ~/.config/lordos/permisos.json, un archivo que las
- * apps NO pueden escribir (está en la lista de rechazo de lord.fs, como settings.json). El
- * broker (y, mientras las apps corren en el mismo contexto, el SDK del sistema) consulta acá:
- * la búsqueda es O(1) sobre una tabla en memoria. */
+ * Each permission of each app has a state: ask (the first time), allowed or denied.
+ * Decisions are stored per user in ~/.config/lordos/permisos.json, a file that
+ * apps can NOT write (it's on lord.fs's deny list, like settings.json). The
+ * broker (and, while apps run in the same context, the system SDK) looks it up here:
+ * the lookup is O(1) over an in-memory table. */
 #ifndef LORD_SEC_PERMS_H
 #define LORD_SEC_PERMS_H
 
 #include <stddef.h>
 
-/* Los permisos que una app puede declarar y pedir. El orden es el de perms.c. */
+/* The permissions an app can declare and request. The order is perms.c's. */
 typedef enum {
-    PERM_FILES = 0,     /* abrir/guardar por el diálogo del sistema (powerbox) */
-    PERM_CLIPBOARD,     /* leer el portapapeles */
+    PERM_FILES = 0,     /* open/save through the system dialog (powerbox) */
+    PERM_CLIPBOARD,     /* read the clipboard */
     PERM_NOTIFICATIONS,
     PERM_NETWORK,
     PERM_CAMERA,
     PERM_MICROPHONE,
-    PERM_SCREEN,        /* captura de pantalla */
-    PERM_LISTEN,        /* abrir puertos para escuchar */
+    PERM_SCREEN,        /* screen capture */
+    PERM_LISTEN,        /* open ports to listen on */
     PERM_USB,
     PERM_BLUETOOTH,
-    PERM_APPS,          /* lanzar otras apps */
+    PERM_APPS,          /* launch other apps */
     PERM_COUNT,
 } Perm;
 
 typedef enum { PERM_ASK = 0, PERM_ALLOW = 1, PERM_DENY = 2 } PermState;
 
 const char *perm_name(Perm p);              /* "microphone", "camera"... */
-int         perm_from_name(const char *s);  /* -1 si no existe */
-int         perm_declarable(const char *s); /* ¿se puede declarar en el manifest? */
+int         perm_from_name(const char *s);  /* -1 if it doesn't exist */
+int         perm_declarable(const char *s); /* can it be declared in the manifest? */
 
-/* Estado guardado (O(1)); PERM_ASK si no hay decisión. */
+/* Saved state (O(1)); PERM_ASK if there's no decision. */
 PermState perm_get(const char *app_id, Perm p);
-/* Guarda una decisión (y persiste en permisos.json). Revocar = PERM_ASK o PERM_DENY. */
+/* Saves a decision (and persists it in permisos.json). Revoking = PERM_ASK or PERM_DENY. */
 int perm_set(const char *app_id, Perm p, PermState state);
-/* Olvida todos los permisos de una app (al desinstalar). */
+/* Forgets all of an app's permissions (on uninstall). */
 void perm_forget(const char *app_id);
 
-/* Para la página Privacidad: recorre las decisiones guardadas. Devuelve la cantidad escrita. */
+/* For the Privacy page: walks the saved decisions. Returns the count written. */
 typedef struct { char app[48]; Perm perm; PermState state; long long when; } PermEntry;
 int perm_list(PermEntry *out, int max);
 
-/* Carga permisos.json (una vez). La ruta se agrega a la lista de rechazo de lord.fs. */
+/* Loads permisos.json (once). The path is added to lord.fs's deny list. */
 void perm_init(const char *home);
-const char *perm_file_suffix(void);         /* "/.config/lordos/permisos.json" para la lista de rechazo */
+const char *perm_file_suffix(void);         /* "/.config/lordos/permisos.json" for the deny list */
 
 #endif

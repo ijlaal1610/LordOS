@@ -1,5 +1,5 @@
-/* annot.c — anotaciones de Capturas sobre los píxeles de la imagen (a resolución completa):
- * flecha, línea, recuadro, texto y desenfoque. Lo mismo se ve en la vista previa y se guarda. */
+/* annot.c — Screenshots annotations over the image's pixels (at full resolution):
+ * arrow, line, box, text and blur. The same thing is seen in the preview and saved. */
 #include "media_int.h"
 #include "../ui/ui.h"
 
@@ -16,7 +16,7 @@ static inline uint32_t blend(uint32_t d, uint32_t argb, float cov) {
     return 0xff000000u | r << 16 | g << 8 | b;
 }
 
-/* Segmento grueso con bordes suaves (distancia al segmento). */
+/* Thick segment with soft edges (distance to the segment). */
 static void thick_line(uint32_t *px, int w, int h, float x1, float y1, float x2, float y2, float width, uint32_t color) {
     float hw = width / 2;
     int bx0 = (int)floorf(fminf(x1, x2) - hw - 1), by0 = (int)floorf(fminf(y1, y2) - hw - 1);
@@ -41,7 +41,7 @@ static void thick_line(uint32_t *px, int w, int h, float x1, float y1, float x2,
         }
 }
 
-/* Triángulo relleno con bordes suaves (para la punta de la flecha). */
+/* Filled triangle with soft edges (for the arrow head). */
 static void triangle(uint32_t *px, int w, int h, const float *vx, const float *vy, uint32_t color) {
     int bx0 = (int)floorf(fminf(vx[0], fminf(vx[1], vx[2]))) - 1, by0 = (int)floorf(fminf(vy[0], fminf(vy[1], vy[2]))) - 1;
     int bx1 = (int)ceilf(fmaxf(vx[0], fmaxf(vx[1], vx[2]))) + 1, by1 = (int)ceilf(fmaxf(vy[0], fmaxf(vy[1], vy[2]))) + 1;
@@ -58,7 +58,7 @@ static void triangle(uint32_t *px, int w, int h, const float *vx, const float *v
                 int a = e, b = (e + 1) % 3;
                 float ex = vx[b] - vx[a], ey = vy[b] - vy[a], el = sqrtf(ex * ex + ey * ey);
                 if (el <= 0) continue;
-                float d = sgn * ((cx - vx[a]) * ey - (cy - vy[a]) * ex) / el;   /* >0 afuera */
+                float d = sgn * ((cx - vx[a]) * ey - (cy - vy[a]) * ex) / el;   /* >0 outside */
                 float c = 0.5f - d;
                 if (c < cov) cov = c;
             }
@@ -96,7 +96,7 @@ void media_annotate(uint32_t *px, int w, int h, const MediaOp *ops, int n) {
         case 't': {
             if (!o->text[0]) break;
             float size = o->size > 6 ? o->size : 24;
-            /* borde oscuro para que se lea sobre cualquier fondo */
+            /* dark border so it reads over any background */
             for (int k = 0; k < 4; k++) {
                 float ox = (k & 1) ? 1.5f : -1.5f, oy = (k & 2) ? 1.5f : -1.5f;
                 text_draw(&c, o->text, 700, size, 0, o->x1 + ox, o->y1 + oy, (float)w - o->x1, TEXT_LEFT, 0, 0x99000000u);
@@ -105,7 +105,7 @@ void media_annotate(uint32_t *px, int w, int h, const MediaOp *ops, int n) {
             break;
         }
         case 'z': {
-            /* desenfoque fuerte (tres pasadas): para tapar datos, no se puede «desdesenfocar» a ojo */
+            /* strong blur (three passes): for hiding data, it can't be «unblurred» by eye */
             int r = (int)fmaxf(8, width * 3);
             for (int k = 0; k < 3; k++) canvas_backdrop_blur(&c, x0, y0, bw, bh, 0, r);
             break;

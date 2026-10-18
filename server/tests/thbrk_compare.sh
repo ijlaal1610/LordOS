@@ -1,9 +1,9 @@
 #!/bin/sh
-# thbrk_compare.sh — compara los cortes del tailandés de LordOS (build/thbrk-test) con los de
-# libthai, renglón por renglón. Solo cuentan los cortes entre dos caracteres del bloque
-# tailandés: los espacios, el latín y la puntuación los resuelve el corte común de la interfaz.
-# Necesita libthai-dev (solo para la prueba), libthai-data y python3.
-#   sh tests/thbrk_compare.sh [texto.txt]
+# thbrk_compare.sh — compares LordOS Thai word breaks (build/thbrk-test) with libthai's,
+# line by line. Only breaks between two characters of the Thai block count: spaces,
+# Latin and punctuation are handled by the UI's common line breaking.
+# Needs libthai-dev (for the test only), libthai-data and python3.
+#   sh tests/thbrk_compare.sh [text.txt]
 cd "$(dirname "$0")/.." || exit 1
 in=${1:-tests/th-break.txt}
 mkdir -p build
@@ -29,6 +29,6 @@ same = 0
 for x, y in zip(a, b):
     if norm(x) == norm(y): same += 1
     else: print('lordos :', norm(x)); print('libthai:', norm(y))
-print(f'{same}/{len(b)} iguales a libthai')
+print(f'{same}/{len(b)} identical to libthai')
 sys.exit(0 if same == len(b) else 1)
 PY

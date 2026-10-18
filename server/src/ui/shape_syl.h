@@ -1,5 +1,5 @@
-/* shape_syl.h — piezas comunes de los shapers por sílabas (jemer, birmano, USE): gramáticas
- * de sílabas, normalización como HarfBuzz y armado del run. Ver shape_syl.c. */
+/* shape_syl.h — common pieces of the syllable-based shapers (Khmer, Myanmar, USE): syllable
+ * grammars, HarfBuzz-style normalization and run assembly. See shape_syl.c. */
 #ifndef LORD_SHAPE_SYL_H
 #define LORD_SHAPE_SYL_H
 
@@ -7,47 +7,47 @@
 
 #include "shape.h"
 
-/* Gramática de sílabas: expresiones regulares sobre categorías, como las máquinas de Ragel de
- * HarfBuzz. defs = "nombre = expresión;" (pueden usar las anteriores); alts = las
- * alternativas de la máquina principal, en orden (gana la más larga; a igual largo, la
- * primera). Sintaxis: nombres de categoría o de defs, `any`, ( ) | * + ? y concatenación por
- * yuxtaposición o con `.`. */
+/* Syllable grammar: regular expressions over categories, like HarfBuzz's Ragel
+ * machines. defs = "name = expression;" (may use the previous ones); alts = the
+ * alternatives of the main machine, in order (the longest wins; on equal length, the
+ * first). Syntax: category or def names, `any`, ( ) | * + ? and concatenation by
+ * juxtaposition or with `.`. */
 typedef struct SylNfa SylNfa;
 typedef struct {
-    const char *const *cats;    /* nombres de las categorías (índice = valor) */
+    const char *const *cats;    /* category names (index = value) */
     int ncats;
     const char *defs;
     const char *const *alts;
     int nalts;
-    SylNfa *nfa;                /* compilado la primera vez */
+    SylNfa *nfa;                /* compiled the first time */
 } SylGrammar;
 
-/* Largo de la sílaba que empieza en cat[0] (al menos 1) y qué alternativa ganó (*alt). */
+/* Length of the syllable starting at cat[0] (at least 1) and which alternative won (*alt). */
 int syl_next(SylGrammar *g, const uint8_t *cat, int n, int *alt);
 
-/* Clase combinante con los cambios de HarfBuzz (hebreo, árabe, télugu, tailandés, tibetano). */
+/* Combining class with HarfBuzz's changes (Hebrew, Arabic, Telugu, Thai, Tibetan). */
 int syl_modified_ccc(uint32_t cp);
 
-/* Normalización de HarfBuzz para estos shapers ("composed diacritics, no short circuit"):
- * descompone lo que la fuente puede mostrar separado, ordena las marcas por clase y vuelve a
- * componer una marca con su base si la fuente tiene el compuesto y compose() lo permite.
- * split(cp, &a, &b) = descomposiciones propias del shaper (matras partidas del jemer).
- * Deja el resultado en s->cp / s->order; devuelve el largo o -1. */
+/* HarfBuzz normalization for these shapers ("composed diacritics, no short circuit"):
+ * decomposes what the font can show separately, sorts marks by class and recomposes
+ * a mark with its base if the font has the composite and compose() allows it.
+ * split(cp, &a, &b) = the shaper's own decompositions (Khmer split matras).
+ * Leaves the result in s->cp / s->order; returns the length or -1. */
 int syl_normalize(Shaper *s, Otf *o, const uint32_t *in, int n,
                   int (*split)(uint32_t, uint32_t *, uint32_t *), int compose_after_mark);
 
-/* aux: bits 28..31 = tipo de sílaba (los shapers de este grupo); bit 27 = parte que no es la
- * primera de una sustitución múltiple. */
+/* aux: bits 28..31 = syllable type (the shapers in this group); bit 27 = a part that is not the
+ * first of a multiple substitution. */
 #define SYL_TYPE(a) ((int)((a) >> 28 & 0xf))
 
-/* Inserta ◌ al comienzo de cada sílaba rota (después de las de categoría repha si repha >= 0).
- * cat_dc = categoría del ◌. Devuelve 1 si insertó alguno. */
+/* Inserts ◌ at the start of each broken syllable (after the repha-category ones if repha >= 0).
+ * cat_dc = category of ◌. Returns 1 if it inserted any. */
 int syl_dotted_circles(Shaper *s, Otf *o, int broken_type, int cat_dc, int repha, int (*reserve)(Shaper *, int));
 
-/* Al final: cada sílaba es un solo grupo (el dibujo no la separa ni la corta). */
+/* At the end: each syllable is a single cluster (drawing neither separates nor breaks it). */
 void syl_merge_clusters(GlyphRun *r);
 
-/* Mueve el glifo from a la posición to corriendo el resto (g, cl, mask, lig, aux). */
+/* Moves glyph from to position to, shifting the rest (g, cl, mask, lig, aux). */
 void syl_move(GlyphRun *r, int from, int to);
 
 #endif

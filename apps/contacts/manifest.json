@@ -2,7 +2,7 @@
   "id": "contacts",
   "name": "Contacts",
   "description": "Address books, groups and contact cards",
-  "size": [900, 580],
+  "size": [880, 560],
   "minSize": [700, 400],
   "dock": true,
   "category": "Office",

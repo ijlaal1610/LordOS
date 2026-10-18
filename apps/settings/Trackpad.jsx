@@ -1,15 +1,16 @@
-// Ajustes → Trackpad (solo si hay un touchpad): velocidad, tocar para hacer clic, clic secundario,
-// arrastrar con tres dedos, desplazamiento natural, inercia, pellizcar y deslizar. Cada fila trae
-// un dibujito del gesto que se anima al pasar el mouse. Se guarda en settings.trackpad y se aplica
-// en vivo (sdk/trackpad.js → lord.input.configure). Ver docs/TRACKPAD.md.
-import { View, Text, useTheme, useLocale, Toggle, Segmented, Slider, useSettings, useTrackpads, TRACKPAD_DEFAULTS, setTrackpad } from '@lordos/sdk';
+// Settings → Trackpad (only if there is a touchpad): speed, tap to click, secondary click,
+// three-finger drag, natural scrolling, inertia, pinch and swipe. Each row comes with
+// a small drawing of the gesture that animates on mouse hover. Saved in settings.trackpad and applied
+// live (sdk/trackpad.js → lord.input.configure). See docs/TRACKPAD.md.
+import { View, Text, useTheme, useLocale, Toggle, Segmented, Slider, useSettings, useTrackpads, TRACKPAD_DEFAULTS, setTrackpad, spacing, typeScale } from '@lordos/sdk';
+import { Stack, Section, SettingRow, Note } from './ui.jsx';
 import { useEffect, useState } from 'react';
 
 const PAD_W = 64, PAD_H = 44;
 
-// Posiciones de los dedos (0..1 dentro del touchpad) según la fase p del gesto (0..1).
+// Finger positions (0..1 inside the touchpad) according to the gesture phase p (0..1).
 function fingers(kind, p) {
-  const e = p < 0.5 ? p * 2 : 2 - p * 2;          // ida y vuelta
+  const e = p < 0.5 ? p * 2 : 2 - p * 2;          // there and back
   const row = (n, y, x0, dx = 0) => Array.from({ length: n }, (_, i) => [x0 + i * 0.16 + dx, y]);
   switch (kind) {
     case 'speed': return [[0.25 + 0.5 * e, 0.5]];
@@ -37,7 +38,7 @@ function GestureDemo({ kind, active }) {
     const id = setInterval(() => setP(((lord.now() - t0) / 1600) % 1), 50);
     return () => clearInterval(id);
   }, [active]);
-  // natural: una "página" que sube con los dedos; inercia: sigue sola un rato después
+  // natural: a "page" that moves up with the fingers; inertia: keeps going by itself for a while afterwards
   const page = kind === 'natural' || kind === 'kinetic';
   const pageY = kind === 'natural' ? 0.75 - 0.5 * (p < 0.5 ? p * 2 : 2 - p * 2) : 0.8 - Math.min(1, 1 - Math.pow(1 - p, 3)) * 0.65;
   return (
@@ -52,20 +53,13 @@ function GestureDemo({ kind, active }) {
   );
 }
 
-function Row({ kind, label, hint, children }) {
-  const t = useTheme();
+// A row of the page: the gesture drawing, the label and hint, and the control at the end. The drawing
+// plays while the pointer is over the row.
+function Row({ kind, label, hint, children, stack }) {
   const [hover, setHover] = useState(false);
   return (
     <View onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
-     <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 14 }}>
-      <GestureDemo kind={kind} active={hover} />
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{label}</Text>
-        {hint ? <Text style={{ fontSize: 11, color: t.textDim, marginTop: 3, lineHeight: 1.35 }}>{hint}</Text> : null}
-      </View>
-      {children}
-     </View>
-     <View style={{ height: 1, backgroundColor: t.separator }} />
+      <SettingRow icon={<GestureDemo kind={kind} active={hover} />} label={label} hint={hint} minHeight={56} stack={stack}>{children}</SettingRow>
     </View>
   );
 }
@@ -77,50 +71,48 @@ export function TrackpadSettings() {
   const devices = useTrackpads().filter((d) => d.kind === 'touchpad');
   const [tab, setTab] = useState('point');
   const c = { ...TRACKPAD_DEFAULTS, ...(s.trackpad || {}) };
-  const toggle = (key) => <Toggle on={!!c[key]} onChange={(v) => setTrackpad({ [key]: v })} />;
+  const toggle = (key) => <Toggle small on={!!c[key]} onChange={(v) => setTrackpad({ [key]: v })} />;
   return (
-    <View>
-      {devices.map((d, i) => (
-        <Text key={i} style={{ fontSize: 11, color: t.textDim, marginBottom: 6 }}>
-          {tr('trackpad.device', { name: d.name, w: d.width, h: d.height })}{d.clickpad ? ` · ${tr('trackpad.clickpad')}` : ''}
-        </Text>
-      ))}
-      <View style={{ alignItems: 'center', marginVertical: 8 }}>
-        <Segmented value={tab} onChange={setTab} options={[['point', tr('trackpad.tab.point')], ['scroll', tr('trackpad.tab.scroll')], ['more', tr('trackpad.tab.more')]]} />
+    <Stack>
+      <View style={{ alignItems: 'center' }}>
+        <Segmented appearance="neutral" value={tab} onChange={setTab} options={[['point', tr('trackpad.tab.point')], ['scroll', tr('trackpad.tab.scroll')], ['more', tr('trackpad.tab.more')]]} />
       </View>
       {tab === 'point' && (
-        <View>
+        <Section>
           <Row kind="speed" label={tr('trackpad.speed')} hint={tr('trackpad.speedHint')}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={{ fontSize: 11, color: t.textDim }}>{tr('trackpad.slow')}</Text>
-              <Slider value={c.speed} onChange={(v) => setTrackpad({ speed: Math.round(v * 100) / 100 })} width={140} />
-              <Text style={{ fontSize: 11, color: t.textDim }}>{tr('trackpad.fast')}</Text>
+              <Text style={{ fontSize: typeScale.caption, color: t.textDim }}>{tr('trackpad.slow')}</Text>
+              <Slider value={c.speed} onChange={(v) => setTrackpad({ speed: Math.round(v * 100) / 100 })} width={120} />
+              <Text style={{ fontSize: typeScale.caption, color: t.textDim }}>{tr('trackpad.fast')}</Text>
             </View>
           </Row>
           <Row kind="tap" label={tr('trackpad.tap')} hint={tr('trackpad.tapHint')}>{toggle('tap')}</Row>
           <Row kind="tapDrag" label={tr('trackpad.tapDrag')} hint={tr('trackpad.tapDragHint')}>{toggle('tapDrag')}</Row>
-          <Row kind="secondary" label={tr('trackpad.secondary')} hint={tr('trackpad.secondaryHint')}>
-            <Segmented value={c.secondary} onChange={(v) => setTrackpad({ secondary: v })}
+          <Row kind="secondary" label={tr('trackpad.secondary')} hint={tr('trackpad.secondaryHint')} stack>
+            <Segmented small value={c.secondary} onChange={(v) => setTrackpad({ secondary: v })}
               options={[['two-fingers', tr('trackpad.secondary.two')], ['bottom-right', tr('trackpad.secondary.right')], ['bottom-left', tr('trackpad.secondary.left')]]} />
           </Row>
           <Row kind="threeDrag" label={tr('trackpad.threeDrag')} hint={tr('trackpad.threeDragHint')}>{toggle('threeDrag')}</Row>
           <Row kind="dwt" label={tr('trackpad.dwt')} hint={tr('trackpad.dwtHint')}>{toggle('dwt')}</Row>
-        </View>
+        </Section>
       )}
       {tab === 'scroll' && (
-        <View>
+        <Section>
           <Row kind="natural" label={tr('trackpad.natural')} hint={tr('trackpad.naturalHint')}>{toggle('natural')}</Row>
           <Row kind="scroll" label={tr('trackpad.scroll')} hint={tr('trackpad.scrollHint')}>{toggle('scroll')}</Row>
           <Row kind="kinetic" label={tr('trackpad.kinetic')} hint={tr('trackpad.kineticHint')}>{toggle('kinetic')}</Row>
           <Row kind="pinch" label={tr('trackpad.pinch')} hint={tr('trackpad.pinchHint')}>{toggle('pinch')}</Row>
-        </View>
+        </Section>
       )}
       {tab === 'more' && (
-        <View>
+        <Section>
           <Row kind="swipe3" label={tr(c.threeDrag ? 'trackpad.swipe3Moved' : 'trackpad.swipe3')} hint={tr('trackpad.swipe3Hint')}>{toggle('swipe3')}</Row>
           <Row kind="swipe4" label={tr('trackpad.swipe4')} hint={tr('trackpad.swipe4Hint')}>{toggle('swipe4')}</Row>
-        </View>
+        </Section>
       )}
-    </View>
+      {devices.map((d, i) => (
+        <Note key={i}>{tr('trackpad.device', { name: d.name, w: d.width, h: d.height })}{d.clickpad ? ` · ${tr('trackpad.clickpad')}` : ''}</Note>
+      ))}
+    </Stack>
   );
 }

@@ -1,12 +1,12 @@
-// powerbox.jsx — el diálogo de abrir/guardar archivos lo dibuja lord-server (no la app), al
-// estilo del «powerbox» de macOS: la app aislada no ve la carpeta personal; recibe solo el fd
-// del archivo que el usuario elige acá. Ver docs/PRIVACIDAD.md y server/src/sec/brokersrv.c.
+// powerbox.jsx — the open/save file dialog is drawn by lord-server (not the app), in
+// the style of macOS's «powerbox»: the isolated app doesn't see the home folder; it only receives the fd
+// of the file the user picks here. See docs/PRIVACY.md and server/src/sec/brokersrv.c.
 //
-// En el proceso del tema (compositor): lord-server avisa con __lordBrokerPick(reqid, app, save,
-// suggest); se muestra el diálogo y, con la elección, se llama a lord.broker.pickResult(reqid,
-// ruta). En el proceso de la app: el SDK ofrece fs.openFile()/fs.saveFile().
+// In the theme (compositor) process: lord-server notifies with __lordBrokerPick(reqid, app, save,
+// suggest); the dialog is shown and, with the choice, lord.broker.pickResult(reqid,
+// path) is called. In the app process: the SDK offers fs.openFile()/fs.saveFile().
 import { createElement as h } from 'react';
-import { View, Text } from '@lordos/runtime';
+import { View, Text, mainBox } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
 import { useTheme } from './theme.js';
 import { useLocale } from './i18n.js';
@@ -27,13 +27,13 @@ if (typeof globalThis !== 'undefined') {
 
 function finish(item, path) {
   queue.set((q) => q.filter((x) => x.key !== item.key));
-  try { lord.broker.pickResult(item.reqid, path || ''); } catch (e) { /* servidor sin broker */ }
+  try { lord.broker.pickResult(item.reqid, path || ''); } catch (e) { /* server without broker */ }
 }
 
 function Picker({ item }) {
   const t = useTheme();
   const { t: tr } = useLocale();
-  const [dir, setDir] = useState('');            // relativa a la carpeta personal
+  const [dir, setDir] = useState('');            // relative to the home folder
   const [sel, setSel] = useState(null);
   const [name, setName] = useState(item.suggest || 'archivo.txt');
   const { entries, error } = fs.useDirectory(dir || '.');
@@ -46,7 +46,7 @@ function Picker({ item }) {
   const app = appName(getApp(item.app)) || item.app;
   const title = item.save ? tr('powerbox.saveTitle', { app }) : tr('powerbox.openTitle', { app });
   return (
-    h(View, { style: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center',
+    h(View, { style: { position: 'absolute', ...mainBox(), alignItems: 'center', justifyContent: 'center',
       backgroundColor: 'rgba(0,0,0,0.35)', zIndex: 100000 } },
     h(View, { style: { width: 460, height: 380, borderRadius: 14, backgroundColor: t.windowBg, border: `1px solid ${t.separator}`,
       boxShadow: '0 20px 60px rgba(0,0,0,0.5)', overflow: 'hidden' } },
@@ -69,19 +69,19 @@ function Picker({ item }) {
         h(Button, { primary: true, label: item.save ? tr('powerbox.save') : tr('powerbox.open'), onClick: open })))));
 }
 
-// Se monta en el shell (LocaleRoot). Muestra un diálogo por vez.
+// Mounted in the shell (LocaleRoot). Shows one dialog at a time.
 export function Powerbox() {
   const q = useStore(queue);
   if (!q.length) return null;
   return h(Picker, { item: q[0], key: q[0].key });
 }
 
-// ---- lado app: fs.openFile() / fs.saveFile() ----
+// ---- app side: fs.openFile() / fs.saveFile() ----
 const inApp = () => typeof lord !== 'undefined' && lord.broker && typeof lord.broker.pick === 'function';
 
 export async function openFile() {
-  if (!inApp()) throw new Error('el diálogo de archivos solo existe en una app aislada');
-  const r = lord.broker.pick(false, '');          // bloquea hasta que el usuario elige (modal del sistema)
+  if (!inApp()) throw new Error('the file dialog only exists in an isolated app');
+  const r = lord.broker.pick(false, '');          // blocks until the user chooses (system modal)
   if (!r) return null;
   const data = lord.broker.fdRead(r.fd);
   lord.broker.fdClose(r.fd);
@@ -89,7 +89,7 @@ export async function openFile() {
 }
 
 export async function saveFile(suggestedName, data) {
-  if (!inApp()) throw new Error('el diálogo de archivos solo existe en una app aislada');
+  if (!inApp()) throw new Error('the file dialog only exists in an isolated app');
   const r = lord.broker.pick(true, suggestedName || 'archivo.txt');
   if (!r) return false;
   const buf = typeof data === 'string' ? new TextEncoder().encode(data).buffer : data;

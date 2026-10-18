@@ -6,8 +6,9 @@
 import {
   View, Text, ScrollView, Segmented, Toggle, Button, TextInput, useTheme, useBackup, backup, fs, wm, t as tr, tOptional,
   formatBytes, formatDate, formatTime, formatNumber, direction,
+  Toolbar, ToolbarButton, ToolbarSpacer, MenuButton, SidebarItem, SectionTitle, EmptyState, GroupBox, FormRow, Hairline, spacing, typeScale,
 } from '@lordos/sdk';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 // ---- icon: a clock with a returning arrow (drawn with View) ----
 export function Icon({ size }) {
@@ -50,11 +51,6 @@ function Bar({ value }) {
   );
 }
 
-function Sep({ vertical }) {
-  const th = useTheme();
-  return <View style={vertical ? { width: 1, alignSelf: 'stretch', backgroundColor: th.separator } : { height: 1, backgroundColor: th.separator }} />;
-}
-
 function Row({ children, style }) {
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, ...style }}>{children}</View>;
 }
@@ -64,12 +60,36 @@ function Label({ children, dim, size = 13, weight = 400, style }) {
   return <Text style={{ fontSize: size, fontWeight: weight, color: dim ? th.textDim : th.text, textAlign: 'start', ...style }}>{children}</Text>;
 }
 
-function Card({ title, children }) {
-  const th = useTheme();
+// Width of a box after layout (re-measured on every render).
+function useWidth(ref, initial) {
+  const [w, setW] = useState(initial);
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (!ref.current) return;
+      const lw = Math.round(lord.getLayout(ref.current.id)[2]);
+      if (lw > 0 && Math.abs(lw - w) > 2) setW(lw);
+    }, 20);
+    return () => clearTimeout(id);
+  });
+  return w;
+}
+
+// Small drawn glyphs (no icon font): a folder, a document and an external drive.
+function FolderGlyph({ color = '#5ea7ff' }) {
   return (
-    <View style={{ borderRadius: 10, border: `1px solid ${th.separator}`, padding: 14, gap: 10, backgroundColor: th.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }}>
-      {title ? <Label weight={600}>{title}</Label> : null}
-      {children}
+    <View style={{ width: 16, height: 13, justifyContent: 'flex-end' }}>
+      <View style={{ position: 'absolute', top: 0, left: 0, width: 7, height: 4, borderRadius: 1.5, backgroundColor: color }} />
+      <View style={{ height: 11, borderRadius: 2.5, backgroundColor: color }} />
+    </View>
+  );
+}
+function FileGlyph({ color }) {
+  return <View style={{ width: 12, height: 15, marginHorizontal: 2, borderRadius: 2.5, border: `1.5px solid ${color}` }} />;
+}
+function DriveGlyph({ color }) {
+  return (
+    <View style={{ width: 26, height: 18, borderRadius: 4, backgroundColor: color, justifyContent: 'center', direction: 'ltr' }}>
+      <View style={{ position: 'absolute', right: 5, width: 4, height: 4, borderRadius: 2, backgroundColor: '#30d158' }} />
     </View>
   );
 }
@@ -78,10 +98,10 @@ function Confirm({ title, body, ok, onOk, onCancel, danger }) {
   const th = useTheme();
   return (
     <View style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ width: 420, padding: 18, gap: 12, borderRadius: 12, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`, boxShadow: '0 12px 40px rgba(0,0,0,0.45)' }}>
-        <Label size={15} weight={700}>{title}</Label>
+      <View style={{ width: 420, padding: spacing.xl, gap: spacing.m, borderRadius: 12, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`, boxShadow: '0 12px 40px rgba(0,0,0,0.45)' }}>
+        <Label size={typeScale.headline} weight={600}>{title}</Label>
         <Label dim style={{ lineHeight: 1.4 }}>{body}</Label>
-        <Row style={{ justifyContent: 'flex-end' }}>
+        <Row style={{ justifyContent: 'flex-end', gap: spacing.s, marginTop: spacing.xs }}>
           <Button label={tr('backup.cancel')} onClick={onCancel} />
           <Button label={ok} primary onClick={onOk} style={danger ? { backgroundColor: '#d9443b' } : null} />
         </Row>
@@ -110,19 +130,18 @@ function Header({ st }) {
   const next = st && st.next && !running && st.state !== 'restoring' ? tr('backup.next', { when: when(st.next) }) : '';
   const act = (fn) => { setErr(''); try { fn(); } catch (e) { setErr(String(e.message || e)); } };
   return (
-    <View>
-    <View style={{ padding: 18, paddingBottom: 12, gap: 10 }}>
-      <Row style={{ gap: 14 }}>
-        <Icon size={54} />
-        <View style={{ flex: 1, gap: 3 }}>
-          <Label size={18} weight={700}>{tr('backup.title')}</Label>
-          <Label dim>{line}</Label>
-          {next ? <Label dim size={12}>{next}</Label> : null}
-          {st && st.last && st.last.ok === 0 && st.last.error && !running ? <Label size={12} style={{ color: '#e5534b' }}>{tr('backup.lastError', { error: st.last.error })}</Label> : null}
-          {err ? <Label size={12} style={{ color: '#e5534b' }}>{err}</Label> : null}
+    <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.l, paddingBottom: spacing.m, gap: spacing.m }}>
+      <Row style={{ gap: spacing.l }}>
+        <Icon size={56} />
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <Label size={typeScale.title} weight={600}>{tr('backup.title')}</Label>
+          <Label dim size={typeScale.callout}>{line}</Label>
+          {next ? <Label dim size={typeScale.callout}>{next}</Label> : null}
+          {st && st.last && st.last.ok === 0 && st.last.error && !running ? <Label size={typeScale.callout} style={{ color: '#e5534b' }}>{tr('backup.lastError', { error: st.last.error })}</Label> : null}
+          {err ? <Label size={typeScale.callout} style={{ color: '#e5534b' }}>{err}</Label> : null}
         </View>
         {running ? (
-          <Row>
+          <Row style={{ gap: spacing.s }}>
             <Button label={st.userPause ? tr('backup.resume') : tr('backup.pause')} onClick={() => act(() => backup.pause(!st.userPause))} />
             <Button label={tr('backup.stop')} onClick={() => act(() => backup.cancel())} />
           </Row>
@@ -131,16 +150,14 @@ function Header({ st }) {
         )}
       </Row>
       {running ? (
-        <View style={{ gap: 5 }}>
+        <View style={{ gap: spacing.xs }}>
           <Bar value={pct(p.bytes || 0, p.totalBytes || 0)} />
           <Row>
-            <Label dim size={11} style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden' }}>{p.file || ''}</Label>
-            <Label dim size={11}>{tr('backup.bytes', { done: formatBytes(p.bytes || 0), total: formatBytes(p.totalBytes || 0) })}</Label>
+            <Label dim size={typeScale.caption} style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden' }}>{p.file || ''}</Label>
+            <Label dim size={typeScale.caption}>{tr('backup.bytes', { done: formatBytes(p.bytes || 0), total: formatBytes(p.totalBytes || 0) })}</Label>
           </Row>
         </View>
       ) : null}
-    </View>
-    <Sep />
     </View>
   );
 }
@@ -162,66 +179,69 @@ function Settings({ st }) {
   const short = (p) => (home && p.startsWith(home) ? `~${p.slice(home.length)}` : p);
   useEffect(() => { const id = setInterval(() => { try { setVols(fs.volumes()); } catch (e) { /* no disks */ } }, 5000); return () => clearInterval(id); }, []);
   const removable = vols.filter((v) => v.path !== home && v.path !== '/');
+  const addExclude = () => { const v = ex.trim().replace(/^~\/?/, '').replace(/\/+$/, ''); if (v) { save({ ...cfg, exclude: [...(cfg.exclude || []), v] }); setEx(''); } };
+  const useFolder = () => folder && save({ ...cfg, dest: expand(folder.trim()) });
   return (
     <ScrollView style={{ flex: 1 }}>
-      <View style={{ padding: 18, gap: 14 }}>
-        <Card title={tr('backup.dest')}>
-          <Label dim size={12}>{tr('backup.destHelp')}</Label>
-          {removable.map((v) => {
-            const on = cfg.dest === v.path;
-            return (
-              <View key={v.path} onClick={() => save({ ...cfg, dest: v.path })}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, borderRadius: 8, backgroundColor: on ? th.accent : th.control }}>
-                <Text style={{ fontSize: 16, color: on ? '#fff' : th.text }}>⛁</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, fontWeight: 600, color: on ? '#fff' : th.text, textAlign: 'start' }}>{v.name || v.path}</Text>
-                  <Text style={{ fontSize: 11, color: on ? 'rgba(255,255,255,0.8)' : th.textDim, textAlign: 'start' }}>
-                    {tr('backup.volFree', { free: formatBytes(v.free || 0), total: formatBytes(v.total || 0), fs: v.fs || '' })}
-                  </Text>
+      <View style={{ alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.l, paddingBottom: spacing.xxl }}>
+        <View style={{ width: '100%', maxWidth: 640, gap: spacing.xxl }}>
+          <GroupBox title={tr('backup.dest')} footer={tr('backup.destHelp')}>
+            {removable.map((v) => {
+              const on = cfg.dest === v.path;
+              return (
+                <View key={v.path} onClick={() => save({ ...cfg, dest: v.path })}
+                  style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: spacing.m, paddingVertical: spacing.s }}>
+                  <DriveGlyph color={th.mode === 'dark' ? '#8e8e93' : '#aeaeb2'} />
+                  <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                    <Label weight={500} style={{ whiteSpace: 'nowrap', overflow: 'hidden' }}>{v.name || v.path}</Label>
+                    <Label dim size={typeScale.caption}>{tr('backup.volFree', { free: formatBytes(v.free || 0), total: formatBytes(v.total || 0), fs: v.fs || '' })}</Label>
+                    {['vfat', 'exfat', 'msdos', 'ntfs', 'ntfs3', 'fuseblk'].includes(v.fs) ? <Label size={typeScale.caption} style={{ color: '#d29922' }}>{tr('backup.noLinks')}</Label> : null}
+                  </View>
+                  <Text style={{ width: 18, fontSize: 15, fontWeight: 600, color: th.accent, textAlign: 'center' }}>{on ? '✓' : ''}</Text>
                 </View>
-                {['vfat', 'exfat', 'msdos', 'ntfs', 'ntfs3', 'fuseblk'].includes(v.fs) ? <Text style={{ fontSize: 11, color: on ? '#fff' : '#d29922' }}>{tr('backup.noLinks')}</Text> : null}
+              );
+            })}
+            {!removable.length ? <View style={{ minHeight: 36, justifyContent: 'center' }}><Label dim size={typeScale.callout}>{tr('backup.noDisks')}</Label></View> : null}
+            <Row style={{ minHeight: 44, gap: spacing.s }}>
+              <TextInput value={folder} onChange={setFolder} placeholder={tr('backup.folderPlaceholder')} style={{ flex: 1 }} onSubmit={useFolder} />
+              <Button label={tr('backup.useFolder')} onClick={useFolder} />
+            </Row>
+            {cfg.dest ? (
+              <Row style={{ minHeight: 44, gap: spacing.s }}>
+                <Label size={typeScale.callout} style={{ flex: 1, minWidth: 0 }}>{tr('backup.current', { path: short(cfg.dest) })}{st && st.destTotal > 0 ? ` · ${tr('backup.free', { free: formatBytes(st.destFree), total: formatBytes(st.destTotal) })}` : ''}</Label>
+                <Button small label={tr('backup.stopUsing')} onClick={() => save({ ...cfg, dest: '' })} />
+              </Row>
+            ) : null}
+          </GroupBox>
+          <GroupBox title={tr('backup.schedule')} footer={tr('backup.retention')}>
+            <Row style={{ minHeight: 44 }}>
+              <Segmented appearance="neutral" fill style={{ flex: 1 }} value={cfg.interval} onChange={(v) => save({ ...cfg, interval: v })}
+                options={[['hourly', tr('backup.hourly')], ['daily', tr('backup.daily')], ['weekly', tr('backup.weekly')], ['manual', tr('backup.manual')]]} />
+            </Row>
+            <Row style={{ minHeight: 48, gap: spacing.m, paddingVertical: spacing.s }}>
+              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                <Label>{tr('backup.battery')}</Label>
+                <Label dim size={typeScale.caption} style={{ lineHeight: 1.35 }}>{tr('backup.priority')}</Label>
               </View>
-            );
-          })}
-          {!removable.length ? <Label dim size={12}>{tr('backup.noDisks')}</Label> : null}
-          <Row>
-            <TextInput value={folder} onChange={setFolder} placeholder={tr('backup.folderPlaceholder')} style={{ flex: 1 }}
-              onSubmit={() => folder && save({ ...cfg, dest: expand(folder.trim()) })} />
-            <Button label={tr('backup.useFolder')} onClick={() => folder && save({ ...cfg, dest: expand(folder.trim()) })} />
-          </Row>
-          {cfg.dest ? (
-            <Row>
-              <Label size={12} style={{ flex: 1 }}>{tr('backup.current', { path: short(cfg.dest) })}{st && st.destTotal > 0 ? ` · ${tr('backup.free', { free: formatBytes(st.destFree), total: formatBytes(st.destTotal) })}` : ''}</Label>
-              <Button label={tr('backup.stopUsing')} onClick={() => save({ ...cfg, dest: '' })} />
+              <Toggle small on={cfg.pauseOnBattery !== false} onChange={(v) => save({ ...cfg, pauseOnBattery: v })} />
             </Row>
-          ) : null}
-        </Card>
-        <Card title={tr('backup.schedule')}>
-          <Segmented value={cfg.interval} onChange={(v) => save({ ...cfg, interval: v })}
-            options={[['hourly', tr('backup.hourly')], ['daily', tr('backup.daily')], ['weekly', tr('backup.weekly')], ['manual', tr('backup.manual')]]} />
-          <Label dim size={12}>{tr('backup.retention')}</Label>
-          <Row>
-            <Label style={{ flex: 1 }}>{tr('backup.battery')}</Label>
-            <Toggle on={cfg.pauseOnBattery !== false} onChange={(v) => save({ ...cfg, pauseOnBattery: v })} />
-          </Row>
-          <Label dim size={12}>{tr('backup.priority')}</Label>
-        </Card>
-        <Card title={tr('backup.exclude')}>
-          <Label dim size={12}>{tr('backup.excludeHelp')}</Label>
-          {(cfg.exclude || []).map((x) => (
-            <Row key={x}>
-              <Label style={{ flex: 1 }}>~/{x}</Label>
-              <Button label={tr('backup.remove')} onClick={() => save({ ...cfg, exclude: cfg.exclude.filter((y) => y !== x) })} />
+          </GroupBox>
+          <GroupBox title={tr('backup.exclude')} footer={tr('backup.excludeHelp')}>
+            {(cfg.exclude || []).map((x) => (
+              <Row key={x} style={{ minHeight: 36 }}>
+                <FolderGlyph color={th.textDim} />
+                <Label style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden' }}>~/{x}</Label>
+                <Button small plain label={tr('backup.remove')} onClick={() => save({ ...cfg, exclude: cfg.exclude.filter((y) => y !== x) })} />
+              </Row>
+            ))}
+            <Row style={{ minHeight: 44, gap: spacing.s }}>
+              <TextInput value={ex} onChange={setEx} placeholder={tr('backup.excludePlaceholder')} style={{ flex: 1 }} onSubmit={addExclude} />
+              <Button label={tr('backup.add')} onClick={addExclude} />
             </Row>
-          ))}
-          <Row>
-            <TextInput value={ex} onChange={setEx} placeholder={tr('backup.excludePlaceholder')} style={{ flex: 1 }}
-              onSubmit={() => { const v = ex.trim().replace(/^~\/?/, '').replace(/\/+$/, ''); if (v) { save({ ...cfg, exclude: [...(cfg.exclude || []), v] }); setEx(''); } }} />
-            <Button label={tr('backup.add')} onClick={() => { const v = ex.trim().replace(/^~\/?/, '').replace(/\/+$/, ''); if (v) { save({ ...cfg, exclude: [...(cfg.exclude || []), v] }); setEx(''); } }} />
-          </Row>
-        </Card>
-        <Encryption st={st} cfg={cfg} save={save} />
-        {err ? <Label size={12} style={{ color: '#e5534b' }}>{err}</Label> : null}
+          </GroupBox>
+          <Encryption st={st} cfg={cfg} save={save} />
+          {err ? <Label size={typeScale.callout} style={{ color: '#e5534b' }}>{err}</Label> : null}
+        </View>
       </View>
     </ScrollView>
   );
@@ -248,41 +268,41 @@ function Encryption({ st, cfg, save }) {
   const setup = !destEnc && (wantOn || cfg.encrypt);
   const msg = busy ? tr('backup.encWorking') : u && u.done && !u.ok ? errText(u.error) : err;
   return (
-    <Card title={tr('backup.encryption')}>
+    <GroupBox title={tr('backup.encryption')}>
       {!destEnc && !setup ? (
-        <Row>
-          <Label dim style={{ flex: 1 }}>{tr('backup.encOffHelp')}</Label>
-          <Toggle on={false} onChange={() => (cfg.dest ? setWantOn(true) : setErr(tr('backup.noDest')))} />
+        <Row style={{ minHeight: 48, gap: spacing.m, paddingVertical: spacing.s }}>
+          <Label dim size={typeScale.callout} style={{ flex: 1, lineHeight: 1.35 }}>{tr('backup.encOffHelp')}</Label>
+          <Toggle small on={false} onChange={() => (cfg.dest ? setWantOn(true) : setErr(tr('backup.noDest')))} />
         </Row>
       ) : null}
       {setup ? (
-        <View style={{ gap: 8 }}>
-          <Label dim size={12}>{tr('backup.encWarn')}</Label>
+        <View style={{ gap: spacing.s, paddingVertical: spacing.m }}>
+          <Label dim size={typeScale.callout} style={{ lineHeight: 1.35 }}>{tr('backup.encWarn')}</Label>
           <TextInput secure value={p1} onChange={setP1} placeholder={tr('backup.encPass')} />
           <TextInput secure value={p2} onChange={setP2} placeholder={tr('backup.encPass2')} onSubmit={turnOn} />
-          <Row style={{ justifyContent: 'flex-end' }}>
+          <Row style={{ justifyContent: 'flex-end', gap: spacing.s, marginTop: spacing.xs }}>
             <Button label={tr('backup.encNo')} onClick={() => { setWantOn(false); setP1(''); setP2(''); if (cfg.encrypt) save({ ...cfg, encrypt: false }); }} />
             <Button label={tr('backup.encTurnOn')} primary onClick={turnOn} />
           </Row>
         </View>
       ) : null}
       {destEnc && locked ? (
-        <View style={{ gap: 8 }}>
-          <Label dim size={12}>{tr('backup.encLocked')}</Label>
-          <Row>
+        <View style={{ gap: spacing.s, paddingVertical: spacing.m }}>
+          <Label dim size={typeScale.callout} style={{ lineHeight: 1.35 }}>{tr('backup.encLocked')}</Label>
+          <Row style={{ gap: spacing.s }}>
             <TextInput secure value={p1} onChange={setP1} placeholder={tr('backup.encPass')} style={{ flex: 1 }} onSubmit={() => run(() => backup.unlock(p1, false))} />
             <Button label={tr('backup.encUnlock')} primary onClick={() => run(() => backup.unlock(p1, false))} />
           </Row>
         </View>
       ) : null}
       {destEnc && !locked ? (
-        <Row>
+        <Row style={{ minHeight: 44 }}>
           <Label style={{ flex: 1 }}>{tr('backup.encOn')}</Label>
-          <Button label={tr('backup.encLock')} onClick={() => run(() => backup.lock())} />
+          <Button small label={tr('backup.encLock')} onClick={() => run(() => backup.lock())} />
         </Row>
       ) : null}
-      {msg ? <Label size={12} style={{ color: busy ? th.textDim : '#e5534b' }}>{msg}</Label> : null}
-    </Card>
+      {msg ? <View style={{ minHeight: 32, justifyContent: 'center' }}><Label size={typeScale.callout} style={{ color: busy ? th.textDim : '#e5534b' }}>{msg}</Label></View> : null}
+    </GroupBox>
   );
 }
 
@@ -318,96 +338,112 @@ function Browser({ st }) {
   }
   const crumbs = rel ? rel.split('/') : [];
   const rr = st?.restore;
+  const box = useRef(null);
+  const width = useWidth(box, 760);
+  const narrow = width < 700;
   if (!list.length) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 30 }}>
-        <Label size={15} weight={600}>{tr('backup.emptyTitle')}</Label>
-        <Label dim style={{ textAlign: 'center' }}>{st?.dest ? tr('backup.emptyBody') : tr('backup.emptyNoDest')}</Label>
-      </View>
-    );
+    return <EmptyState icon={<Icon size={56} />} title={tr('backup.emptyTitle')} hint={st?.dest ? tr('backup.emptyBody') : tr('backup.emptyNoDest')} />;
   }
+  const whenSel = () => when(snaps.find((s) => s.id === sel)?.time);
+  const caption = { fontSize: typeScale.caption, fontWeight: 600, color: th.textDim, whiteSpace: 'nowrap' };
+  const restoreLabel = pick ? tr('backup.restoreItem', { name: pick }) : rel ? tr('backup.restoreFolder') : tr('backup.restorePick');
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>
       <View style={{ width: 220, backgroundColor: th.sidebarBg }}>
         <ScrollView style={{ flex: 1 }}>
-          <View style={{ padding: 10, gap: 2 }}>
+          <View style={{ paddingHorizontal: 10, paddingBottom: spacing.m, gap: 2 }}>
             {groups.map((g) => (
               <View key={g.key} style={{ gap: 2 }}>
-                <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, marginTop: 8, marginBottom: 2, textAlign: 'start' }}>{formatDate(g.date, 'dayMonth')}</Text>
+                <SectionTitle>{formatDate(g.date, 'dayMonth')}</SectionTitle>
                 {g.items.map((s) => (
-                  <View key={s.id} onClick={() => { setSel(s.id); setRel(''); }}
-                    style={{ height: 26, paddingHorizontal: 10, borderRadius: 6, justifyContent: 'center', backgroundColor: sel === s.id ? th.accent : 'transparent' }}>
-                    <Text style={{ fontSize: 13, color: sel === s.id ? '#fff' : th.text, textAlign: 'start' }}>{formatTime(new Date(s.time * 1000))}</Text>
-                  </View>
+                  <SidebarItem key={s.id} label={formatTime(new Date(s.time * 1000))} selected={sel === s.id} onClick={() => { setSel(s.id); setRel(''); }} />
                 ))}
               </View>
             ))}
           </View>
         </ScrollView>
-        <Sep />
-        <View style={{ padding: 10 }}>
-          <Label dim size={11}>{tr('backup.count', { count: list.length })}</Label>
+        <View style={{ height: 30, justifyContent: 'center', paddingHorizontal: spacing.l }}>
+          <Hairline edge="top" />
+          <Label dim size={typeScale.caption}>{tr('backup.count', { count: list.length })}</Label>
         </View>
+        <Hairline edge="end" />
       </View>
-      <Sep vertical />
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Row style={{ paddingHorizontal: 14, height: 40, gap: 4 }}>
-          <View onClick={() => setRel('')}><Text style={{ fontSize: 13, color: rel ? th.accent : th.text, fontWeight: 600 }}>{tr('backup.home')}</Text></View>
-          {crumbs.map((c, i) => (
-            <Row key={i} style={{ gap: 4 }}>
-              <Text style={{ fontSize: 13, color: th.textDim }}>{direction() === 'rtl' ? '‹' : '›'}</Text>
-              <View onClick={() => setRel(crumbs.slice(0, i + 1).join('/'))}>
-                <Text style={{ fontSize: 13, color: i === crumbs.length - 1 ? th.text : th.accent }}>{c}</Text>
-              </View>
-            </Row>
-          ))}
-          <View style={{ flex: 1 }} />
-          <Button label={tr('backup.openFiles')} onClick={() => { const p = backup.path(sel); if (p) wm.open('files', { new: true, args: { path: rel ? `${p}/${rel}` : p } }); }} />
-        </Row>
-        <Sep />
+      <View ref={box} style={{ flex: 1, minWidth: 0 }}>
+        <Toolbar>
+          <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: spacing.xs, overflow: 'hidden' }}>
+            <View onClick={() => setRel('')}><Text style={{ fontSize: typeScale.body, fontWeight: 600, color: rel ? th.accent : th.text, whiteSpace: 'nowrap' }}>{tr('backup.home')}</Text></View>
+            {crumbs.map((c, i) => (
+              <Row key={i} style={{ gap: spacing.xs }}>
+                <Text style={{ fontSize: typeScale.body, color: th.textDim }}>{direction() === 'rtl' ? '‹' : '›'}</Text>
+                <View onClick={() => setRel(crumbs.slice(0, i + 1).join('/'))}>
+                  <Text style={{ fontSize: typeScale.body, color: i === crumbs.length - 1 ? th.text : th.accent, whiteSpace: 'nowrap' }}>{c}</Text>
+                </View>
+              </Row>
+            ))}
+          </View>
+          <ToolbarButton label={tr('backup.openFiles')} onClick={() => { const p = backup.path(sel); if (p) wm.open('files', { new: true, args: { path: rel ? `${p}/${rel}` : p } }); }} />
+        </Toolbar>
+        <View style={{ height: 26, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: spacing.l }}>
+          <View style={{ width: 18 }} />
+          <Text style={[caption, { flex: 1, textAlign: 'start' }]}>{tr('backup.col.name')}</Text>
+          <Text style={[caption, { width: 90, textAlign: 'end' }]}>{tr('backup.col.size')}</Text>
+          {!narrow ? <Text style={[caption, { width: 150, textAlign: 'end' }]}>{tr('backup.col.modified')}</Text> : null}
+          <Hairline edge="bottom" />
+        </View>
         <ScrollView style={{ flex: 1 }}>
-          <View style={{ paddingVertical: 4 }}>
-            {items.map((it) => {
+          <View style={{ paddingVertical: spacing.xs, paddingHorizontal: spacing.s }}>
+            {items.map((it, i) => {
               const on = pick === it.name;
+              const dimFg = on ? 'rgba(255,255,255,0.85)' : th.textDim;
               return (
                 <View key={it.name} onClick={() => setPick(it.name)} onDoubleClick={() => it.dir && setRel(join(rel, it.name))}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 28, paddingHorizontal: 14, backgroundColor: on ? th.accent : 'transparent' }}>
-                  <Text style={{ width: 18, fontSize: 13, color: on ? '#fff' : it.dir ? '#5ea7ff' : th.textDim }}>{it.dir ? '▸' : it.link ? '↪' : '•'}</Text>
-                  <Text style={{ flex: 1, fontSize: 13, color: on ? '#fff' : th.text, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{it.name}</Text>
-                  <Text style={{ width: 90, fontSize: 12, color: on ? '#fff' : th.textDim, textAlign: 'end' }}>{it.dir ? '' : formatBytes(it.size)}</Text>
-                  <Text style={{ width: 150, fontSize: 12, color: on ? '#fff' : th.textDim, textAlign: 'end' }}>{when(it.mtime)}</Text>
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 28, paddingHorizontal: spacing.s, borderRadius: 6,
+                    backgroundColor: on ? th.accent : i % 2 ? (th.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)') : 'transparent' }}>
+                  <View style={{ width: 18, alignItems: 'center' }}>
+                    {it.dir ? <FolderGlyph color={on ? '#fff' : '#5ea7ff'} /> : it.link ? <Text style={{ fontSize: 13, color: dimFg }}>↪</Text> : <FileGlyph color={dimFg} />}
+                  </View>
+                  <Text style={{ flex: 1, fontSize: typeScale.body, color: on ? '#fff' : th.text, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{it.name}</Text>
+                  <Text style={{ width: 90, fontSize: typeScale.callout, color: dimFg, whiteSpace: 'nowrap', textAlign: 'end' }}>{it.dir ? '—' : formatBytes(it.size)}</Text>
+                  {!narrow ? <Text style={{ width: 150, fontSize: typeScale.callout, color: dimFg, whiteSpace: 'nowrap', textAlign: 'end' }}>{when(it.mtime)}</Text> : null}
                 </View>
               );
             })}
-            {!items.length ? <Label dim style={{ padding: 14 }}>{err || tr('backup.emptyFolder')}</Label> : null}
+            {!items.length ? <EmptyState title={null} hint={err || tr('backup.emptyFolder')} /> : null}
           </View>
         </ScrollView>
-        <Sep />
-        <View style={{ padding: 12, gap: 8 }}>
+        <View style={{ paddingHorizontal: spacing.l, paddingVertical: spacing.m, gap: spacing.s }}>
+          <Hairline edge="top" />
           {rr && rr.done && rr.id === sel ? (
-            <Label size={12} dim>{rr.ok ? tr('backup.restoredInfo', { count: rr.files, both: rr.keptBoth, replaced: rr.replaced })
+            <Label size={typeScale.callout} dim>{rr.ok ? tr('backup.restoredInfo', { count: rr.files, both: rr.keptBoth, replaced: rr.replaced })
               : tr('backup.restoreFailed', { error: errText(rr.error) || tr('backup.restoreErrors', { count: rr.errors }) })}</Label>
           ) : null}
-          {err && items.length ? <Label size={12} style={{ color: '#e5534b' }}>{err}</Label> : null}
-          <Row>
-            <Row style={{ flex: 1 }}>
-              <Toggle on={replace} onChange={setReplace} />
-              <Label size={12}>{tr('backup.replace')}</Label>
-            </Row>
-            <Button label={tr('backup.delete')} onClick={() => !busy && setAsk('delete')} />
-            <Button label={tr('backup.restoreAll')} onClick={() => !busy && setAsk('all')} />
-            <Button label={pick ? tr('backup.restoreItem', { name: pick }) : rel ? tr('backup.restoreFolder') : tr('backup.restorePick')} primary
-              onClick={() => !busy && (pick ? restore(join(rel, pick)) : rel ? restore(rel) : null)} />
+          {err && items.length ? <Label size={typeScale.callout} style={{ color: '#e5534b' }}>{err}</Label> : null}
+          <Row style={{ gap: spacing.s }}>
+            <Toggle small on={replace} onChange={setReplace} />
+            <Label size={typeScale.callout} style={{ whiteSpace: 'nowrap' }}>{tr('backup.replace')}</Label>
+            <ToolbarSpacer />
+            {narrow ? (
+              <MenuButton title={tr('backup.more')} items={[
+                { label: tr('backup.restoreAll'), disabled: busy, onClick: () => setAsk('all') },
+                '-',
+                { label: tr('backup.delete'), destructive: true, disabled: busy, onClick: () => setAsk('delete') },
+              ]} />
+            ) : [
+              <Button key="del" label={tr('backup.delete')} disabled={busy} onClick={() => setAsk('delete')} />,
+              <Button key="all" label={tr('backup.restoreAll')} disabled={busy} onClick={() => setAsk('all')} />,
+            ]}
+            <Button label={restoreLabel} primary disabled={busy || (!pick && !rel)} style={{ maxWidth: narrow ? 200 : 260, overflow: 'hidden' }}
+              onClick={() => (pick ? restore(join(rel, pick)) : rel ? restore(rel) : null)} />
           </Row>
         </View>
       </View>
       {ask === 'all' ? (
         <Confirm title={tr('backup.restoreAllTitle')} ok={tr('backup.restoreAll')}
-          body={replace ? tr('backup.restoreAllReplace', { when: when(snaps.find((s) => s.id === sel)?.time) }) : tr('backup.restoreAllKeep', { when: when(snaps.find((s) => s.id === sel)?.time) })}
+          body={replace ? tr('backup.restoreAllReplace', { when: whenSel() }) : tr('backup.restoreAllKeep', { when: whenSel() })}
           onCancel={() => setAsk(null)} onOk={() => { setAsk(null); restore(''); }} />
       ) : null}
       {ask === 'delete' ? (
-        <Confirm danger title={tr('backup.deleteTitle')} ok={tr('backup.delete')} body={tr('backup.deleteBody', { when: when(snaps.find((s) => s.id === sel)?.time) })}
+        <Confirm danger title={tr('backup.deleteTitle')} ok={tr('backup.delete')} body={tr('backup.deleteBody', { when: whenSel() })}
           onCancel={() => setAsk(null)} onOk={() => { setAsk(null); try { backup.remove(sel); } catch (e) { setErr(String(e.message || e)); } }} />
       ) : null}
     </View>
@@ -420,9 +456,10 @@ export default function Backup() {
   return (
     <View style={{ flex: 1 }}>
       <Header st={st} />
-      <Row style={{ paddingHorizontal: 18, paddingVertical: 10, justifyContent: 'center' }}>
-        <Segmented value={tab} onChange={setTab} options={[['snapshots', tr('backup.tabSnapshots')], ['settings', tr('backup.tabSettings')]]} />
-      </Row>
+      <View style={{ height: 44, alignItems: 'center', justifyContent: 'center' }}>
+        <Segmented appearance="neutral" value={tab} onChange={setTab} options={[['snapshots', tr('backup.tabSnapshots')], ['settings', tr('backup.tabSettings')]]} />
+        <Hairline edge="bottom" />
+      </View>
       {tab === 'snapshots' ? <Browser st={st} /> : <Settings st={st} />}
     </View>
   );

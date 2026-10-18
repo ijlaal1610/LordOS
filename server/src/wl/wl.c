@@ -1,19 +1,19 @@
-/* wl.c — compositor Wayland propio: las apps Linux (GTK, Qt, foot…) se abren como ventanas de
- * LordOS. Usa solo libwayland-server (serializa el protocolo; la política de dependencias lo
- * permite desde M1) y el código que genera wayland-scanner para xdg-shell y xdg-decoration.
+/* wl.c — LordOS's own Wayland compositor: Linux apps (GTK, Qt, foot…) open as LordOS
+ * windows. It only uses libwayland-server (it serializes the protocol; the dependency policy
+ * allows it since M1) and the code wayland-scanner generates for xdg-shell and xdg-decoration.
  *
- * Globales: wl_compositor 6, wl_subcompositor, wl_shm (de libwayland), wl_output 4, wl_seat 7
- * (puntero y teclado con el mapa de XKB de keyboard.c), wl_data_device_manager 3 (portapapeles
- * compartido con el de LordOS), xdg_wm_base 6 y zxdg_decoration_manager_v1.
+ * Globals: wl_compositor 6, wl_subcompositor, wl_shm (from libwayland), wl_output 4, wl_seat 7
+ * (pointer and keyboard with the XKB keymap from keyboard.c), wl_data_device_manager 3 (clipboard
+ * shared with LordOS's), xdg_wm_base 6 and zxdg_decoration_manager_v1.
  *
- * Cada superficie copia su búfer de memoria compartida al hacer commit (y lo suelta enseguida):
- * la UI la dibuja como un nodo más (NODE_SURFACE) dentro del marco de ventana del tema. Las
- * ventanas con decoración del servidor (Qt, foot) usan el marco del tema; las que dibujan la
- * suya (GTK) van sin marco y se recorta la sombra con su window geometry. Los menús emergentes
- * (xdg_popup) se dibujan encima de todo.
+ * Each surface copies its shared-memory buffer on commit (and releases it right away):
+ * the UI draws it as one more node (NODE_SURFACE) inside the theme's window frame. Windows
+ * with server-side decoration (Qt, foot) use the theme's frame; those that draw their
+ * own (GTK) go without a frame and the shadow is clipped with their window geometry. Popup
+ * menus (xdg_popup) are drawn on top of everything.
  *
- * No hay todavía: linux-dmabuf (las apps GL usan memoria compartida), arrastrar y soltar,
- * cursores de las apps, text-input (métodos de entrada de LordOS dentro de apps Wayland),
+ * Not there yet: linux-dmabuf (GL apps use shared memory), drag and drop,
+ * app cursors, text-input (LordOS input methods inside Wayland apps),
  * Xwayland. */
 #include "wl.h"
 
@@ -41,6 +41,9 @@
 #include "relative-pointer-unstable-v1-protocol.h"
 #include "pointer-constraints-unstable-v1-protocol.h"
 #include "cursor-shape-v1-protocol.h"
+#include "fractional-scale-v1-protocol.h"
+#include "xdg-output-unstable-v1-protocol.h"
+#include "../outputs.h"
 #include "../cursor.h"
 #include "wl_input.h"
 #include "../gpu/gpu.h"
@@ -52,14 +55,14 @@
 
 enum { R_NONE, R_TOPLEVEL, R_POPUP, R_SUB, R_CURSOR };
 
-/* Búfer dmabuf de una app (zwp_linux_dmabuf_v1). Se cuenta: 1 por el wl_buffer, 1 por la
- * superficie que lo muestra y 1 mientras está en pantalla por scanout directo. */
+/* An app's dmabuf buffer (zwp_linux_dmabuf_v1). Refcounted: 1 for the wl_buffer, 1 for the
+ * surface showing it and 1 while it is on screen via direct scanout. */
 typedef struct Dmabuf {
     GpuDmabuf d;
-    struct wl_resource *res;            /* NULL si la app ya lo destruyó */
-    GpuTex *tex;                        /* EGLImage (camino GPU) */
+    struct wl_resource *res;            /* NULL if the app already destroyed it */
+    GpuTex *tex;                        /* EGLImage (GPU path) */
     int refs, scanned;
-    int cpu;                            /* EGL no lo importa: se mapea y se copia (lineal) */
+    int cpu;                            /* EGL does not import it: it is mapped and copied (linear) */
 } Dmabuf;
 
 typedef struct Surf Surf;
@@ -67,12 +70,12 @@ struct Surf {
     struct wl_resource *res;
     struct wl_client *client;
     int id;
-    /* pendiente hasta el commit */
+    /* pending until commit */
     struct wl_resource *p_buf;
     struct wl_listener p_buf_destroy;
     int p_attached, p_gx, p_gy, p_gw, p_gh, p_geom;
     struct wl_list p_frames, frames;
-    /* actual */
+    /* current */
     uint32_t *px;
     int w, h, opaque;
     int role;
@@ -81,35 +84,43 @@ struct Surf {
     int gx, gy, gw, gh, has_geom;
     char title[256], app_id[128];
     int maximized, fullscreen, activated, csd;
-    int kde_ssd;                    /* pidió marco del servidor por org_kde_kwin_server_decoration (GTK 3) */
+    int kde_ssd;                    /* asked for a server frame via org_kde_kwin_server_decoration (GTK 3) */
     struct wl_resource *kde;
-    /* menú emergente */
+    /* popup menu */
     Surf *parent;
     int pop_x, pop_y, grab;
-    /* subsuperficie */
+    /* subsurface */
     int sx, sy, p_sx, p_sy;
     Surf *kids[16];
     int nkids;
-    int node;                   /* nodo de la UI que la muestra (ventanas) */
-    /* contenido: búfer shm copiado en px, o dmabuf en uso (camino GPU) */
+    int node;                   /* UI node that shows it (windows) */
+    /* content: shm buffer copied into px, or dmabuf in use (GPU path) */
     int content;
     Dmabuf *dmabuf;
-    GpuTex *tex;                /* px subido (camino GPU) */
+    GpuTex *tex;                /* uploaded px (GPU path) */
     int tex_dirty;
-    int lw, lh;                 /* tamaño lógico (viewporter; si no, el del búfer) */
-    /* wp_viewporter: pendiente y actual (vsw < 0 = sin recorte, vdw <= 0 = sin escala) */
+    int lw, lh;                 /* logical size (viewporter; otherwise the buffer's) */
+    /* wp_viewporter: pending and current (vsw < 0 = no crop, vdw <= 0 = no scaling) */
     struct wl_resource *viewport;
     float p_vsx, p_vsy, p_vsw, p_vsh, vsx, vsy, vsw, vsh;
     int p_vdw, p_vdh, vdw, vdh, p_vp;
     /* wp_presentation */
     struct wl_list p_feedback, feedback;
-    int cursor_hx, cursor_hy, p_hx, p_hy;   /* rol de cursor: punto activo */
-    unsigned hole_sig;          /* camino GPU: forma del hueco que dejó la UI la última vez */
-    struct wl_list sent_feedback;   /* presentation: ya en un cuadro, falta el flip */
-    int fs_saved_w, fs_saved_h;     /* tamaño antes de pantalla completa */
+    int cursor_hx, cursor_hy, p_hx, p_hy;   /* cursor role: hotspot */
+    unsigned hole_sig;          /* GPU path: shape of the hole the UI left last time */
+    struct wl_list sent_feedback;   /* presentation: already in a frame, flip pending */
+    int fs_saved_w, fs_saved_h;     /* size before fullscreen */
+    /* HiDPI (docs/DISPLAYS.md): wl_surface.set_buffer_scale, the displays it is on (wl_surface
+     * enter/leave, bit = output slot) and the scale it should render at (fractional-scale-v1,
+     * preferred_buffer_scale) */
+    int bscale, p_bscale;
+    struct wl_resource *frac;
+    unsigned outmask;
+    int pref_scale;
+    int logged_ratio;               /* buffer px per logical px ×100, last logged (docs/DISPLAYS.md) */
 };
 
-/* Forma del hueco de una superficie en la UI: si cambia, hay que repintar la UI. */
+/* Shape of a surface's hole in the UI: if it changes, the UI must be repainted. */
 static unsigned hole_sig(const Surf *s) {
     return (unsigned)s->lw * 2654435761u ^ (unsigned)s->lh * 40503u ^ (unsigned)(s->gx + 7 * s->gy) * 97u ^
            (unsigned)(s->gw * 13 + s->gh) * 31u ^ (unsigned)(s->sx * 5 + s->sy) ^ (unsigned)s->content << 30;
@@ -123,30 +134,39 @@ static struct wl_display *dpy;
 static struct wl_event_loop *loop;
 static char socket_name[64];
 
-/* recursos por cliente */
+/* per-client resources */
 static struct wl_list pointers, keyboards, data_devices, outputs;
 
 static Surf *pointer_focus, *key_focus;
 static int buttons_held;
-static float last_x, last_y, press_x, press_y;     /* dónde se apretó: base de mover/redimensionar */
+static float last_x, last_y, press_x, press_y;     /* where it was pressed: base for move/resize */
 static uint32_t mods_sent[4];
 
-/* menús emergentes visibles, de abajo hacia arriba */
+/* visible popup menus, bottom to top */
 static Surf *popups[32];
 static int npopups;
 
-/* camino GPU: lo que se dibuja debajo (capa 0) y encima (capa 1) de la UI, en orden */
+/* GPU path: what is drawn below (layer 0) and above (layer 1) the UI, in order */
 typedef struct { int sid; float x, y; Rect clip; float op; } Draw;
 static Draw draws[2][128];
 static int ndraws[2];
-static int need_frame;              /* una app cambió su contenido: hay que presentar */
-static Dmabuf *to_release[64];      /* reemplazados: se liberan después del próximo cuadro */
+static int need_frame;              /* an app changed its content: must present */
+static Dmabuf *to_release[64];      /* replaced: released after the next frame */
 static int nrelease;
 
-/* pantalla completa (la presenta el compositor, encima de todo) */
+/* fullscreen (presented by the compositor, on top of everything) */
+static int oslots_used(int slot);
+static void oslot_rect(int slot, float *x, float *y, float *w, float *h);
 static Surf *fs_surf;
+static int fs_slot = -1;                /* the display it covers (output slot), -1 = the whole space */
 
-/* cursor de la app con el puntero: 0 flecha de LordOS, 1 imagen de la app, 2 oculto */
+/* Logical rect of the display the fullscreen window covers. */
+static void fs_rect(float *x, float *y, float *w, float *h) {
+    if (fs_slot >= 0 && fs_slot < OUT_MAX && oslots_used(fs_slot)) { oslot_rect(fs_slot, x, y, w, h); return; }
+    *x = 0; *y = 0; *w = ui.width; *h = ui.height;
+}
+
+/* cursor of the app with the pointer: 0 LordOS arrow, 1 app image, 2 hidden */
 static Surf *cursor_surf;
 static int cursor_mode;
 static unsigned cursor_gen;
@@ -154,7 +174,7 @@ static unsigned cursor_gen;
 /* zwp_pointer_constraints / zwp_relative_pointer */
 static struct wl_list rel_pointers;
 typedef struct { struct wl_resource *res; Surf *surf; int lock, active, oneshot; } Constraint;
-static Constraint *constraint;      /* la única activa (o pendiente) */
+static Constraint *constraint;      /* the only active (or pending) one */
 static dev_t drm_dev;
 
 static unsigned now_ms(void) {
@@ -163,7 +183,7 @@ static unsigned now_ms(void) {
     return (unsigned)(t.tv_sec * 1000 + t.tv_nsec / 1000000);
 }
 
-/* ---- eventos para JS ---- */
+/* ---- events for JS ---- */
 
 typedef struct { int id; char type[16]; char json[600]; } Ev;
 static Ev evq[64];
@@ -197,7 +217,7 @@ void wl_events(WlEventFn fn) {
     nev = 0;
 }
 
-/* ---- utilidades ---- */
+/* ---- utilities ---- */
 
 static Surf *find(int id) {
     for (int i = 0; i < MAX_SURF; i++) if (surfs[i] && surfs[i]->id == id) return surfs[i];
@@ -207,16 +227,22 @@ static Surf *find(int id) {
 static void damage_node(Surf *s) {
     Surf *top = s;
     while (top->parent && top->role != R_TOPLEVEL) top = top->parent;
-    /* camino GPU: si solo cambió el contenido, alcanza con volver a presentar */
+    /* GPU path: if only the content changed, presenting again is enough */
     if (gpu_active() && (top->role == R_POPUP || top == fs_surf || hole_sig(s) == s->hole_sig)) { need_frame = 1; return; }
     Node *n = top->node ? node_get(top->node) : NULL;
     if (n && n->prev_box.x1 > n->prev_box.x0) damage_add(n->prev_box);
     ui.dirty = 1;
 }
 
-/* Origen en pantalla del búfer de una superficie (ventana o menú). 0 si no se sabe. */
+/* On-screen origin of a surface's buffer (window or menu). 0 if unknown. */
 static int origin(Surf *s, float *x, float *y) {
-    if (s == fs_surf) { *x = (float)-s->gx; *y = (float)-s->gy; return 1; }
+    if (s == fs_surf) {
+        float fx, fy, fw, fh;
+        fs_rect(&fx, &fy, &fw, &fh);
+        *x = fx - (float)s->gx;
+        *y = fy - (float)s->gy;
+        return 1;
+    }
     if (s->role == R_TOPLEVEL) {
         Node *n = s->node ? node_get(s->node) : NULL;
         if (!n || n->prev_box.x1 <= n->prev_box.x0) return 0;
@@ -243,12 +269,12 @@ static int origin(Surf *s, float *x, float *y) {
 
 static void popup_box_damage(Surf *s) {
     float x, y;
-    if (gpu_active()) { need_frame = 1; return; }          /* los menús van encima de la UI */
+    if (gpu_active()) { need_frame = 1; return; }          /* menus go above the UI */
     if (s->lw > 0 && origin(s, &x, &y)) damage_add((Box){ x - 2, y - 2, x + s->lw + 2, y + s->lh + 2 });
     ui.dirty = 1;
 }
 
-/* recurso del mismo cliente en una lista de recursos */
+/* resource of the same client in a resource list */
 #define FOR_CLIENT(list, client, r) wl_resource_for_each(r, list) if (wl_resource_get_client(r) == (client))
 
 /* ---- configure ---- */
@@ -272,7 +298,7 @@ static void send_toplevel_configure(Surf *s) {
     s->sent_configure = 1;
 }
 
-/* ---- wl_buffer → píxeles propios ---- */
+/* ---- wl_buffer → own pixels ---- */
 
 static void buffer_destroyed(struct wl_listener *l, void *data) {
     (void)data;
@@ -284,7 +310,7 @@ static void buffer_destroyed(struct wl_listener *l, void *data) {
 
 static void copy_buffer(Surf *s, struct wl_resource *buf) {
     struct wl_shm_buffer *b = buf ? wl_shm_buffer_get(buf) : NULL;
-    if (!b) {                               /* sin búfer (o uno que no es de memoria compartida) */
+    if (!b) {                               /* no buffer (or one that is not shared memory) */
         free(s->px);
         s->px = NULL;
         s->w = s->h = 0;
@@ -329,7 +355,7 @@ static Dmabuf *dmabuf_of(struct wl_resource *buf) {
     return buf && wl_resource_instance_of(buf, &wl_buffer_interface, &dmabuf_buffer_impl) ? wl_resource_get_user_data(buf) : NULL;
 }
 
-/* Camino CPU: un dmabuf lineal (ARGB/XRGB8888, un plano) se mapea y se copia a px. */
+/* CPU path: a linear dmabuf (ARGB/XRGB8888, one plane) is mapped and copied to px. */
 static int map_linear(Surf *s, Dmabuf *d) {
     const GpuDmabuf *g = &d->d;
     if (g->nplanes != 1 || (g->modifier != DRM_FORMAT_MOD_LINEAR && g->modifier != DRM_FORMAT_MOD_INVALID) ||
@@ -366,7 +392,7 @@ static void queue_release(Dmabuf *d) {
     dm_unref(d);
 }
 
-/* El búfer que la app acaba de mandar pasa a ser el contenido de la superficie. */
+/* The buffer the app just sent becomes the surface's content. */
 static void take_buffer(Surf *s, struct wl_resource *buf) {
     Dmabuf *dm = dmabuf_of(buf), *old = s->dmabuf;
     s->dmabuf = NULL;
@@ -391,7 +417,7 @@ static void take_buffer(Surf *s, struct wl_resource *buf) {
     if (old) queue_release(old);
 }
 
-/* Tamaño lógico: el destino del viewport, si no el recorte, si no el búfer. */
+/* Logical size: the viewport destination, else the crop, else the buffer. */
 static void apply_viewport(Surf *s) {
     if (s->p_vp) {
         s->vsx = s->p_vsx; s->vsy = s->p_vsy; s->vsw = s->p_vsw; s->vsh = s->p_vsh;
@@ -400,7 +426,7 @@ static void apply_viewport(Surf *s) {
     }
     if (s->viewport && s->vdw > 0 && s->vdh > 0) { s->lw = s->vdw; s->lh = s->vdh; }
     else if (s->viewport && s->vsw > 0 && s->vsh > 0) { s->lw = (int)s->vsw; s->lh = (int)s->vsh; }
-    else { s->lw = s->w; s->lh = s->h; }
+    else { int b = s->bscale > 0 ? s->bscale : 1; s->lw = s->w / b; s->lh = s->h / b; }
 }
 
 /* ---- wl_surface ---- */
@@ -448,6 +474,7 @@ static void srf_commit(struct wl_client *c, struct wl_resource *r) {
         s->p_buf = NULL;
         s->p_attached = 0;
     }
+    s->bscale = s->p_bscale;
     apply_viewport(s);
     wl_list_insert_list(s->frames.prev, &s->p_frames);
     wl_list_init(&s->p_frames);
@@ -469,7 +496,12 @@ static void srf_commit(struct wl_client *c, struct wl_resource *r) {
 }
 
 static void srf_transform(struct wl_client *c, struct wl_resource *r, int32_t t) { (void)c; (void)r; (void)t; }
-static void srf_scale(struct wl_client *c, struct wl_resource *r, int32_t sc) { (void)c; (void)r; (void)sc; }
+static void srf_scale(struct wl_client *c, struct wl_resource *r, int32_t sc) {
+    (void)c;
+    Surf *s = wl_resource_get_user_data(r);
+    if (sc < 1) { wl_resource_post_error(r, WL_SURFACE_ERROR_INVALID_SCALE, "buffer scale must be positive"); return; }
+    if (s) s->p_bscale = sc > 8 ? 8 : sc;
+}
 static void srf_offset(struct wl_client *c, struct wl_resource *r, int32_t x, int32_t y) { (void)c; (void)r; (void)x; (void)y; }
 
 static const struct wl_surface_interface surface_impl = {
@@ -513,6 +545,7 @@ static void surface_gone(struct wl_resource *r) {
     wl_resource_for_each_safe(cb, tmp, &s->feedback) { wp_presentation_feedback_send_discarded(cb); wl_resource_destroy(cb); }
     wl_resource_for_each_safe(cb, tmp, &s->sent_feedback) { wp_presentation_feedback_send_discarded(cb); wl_resource_destroy(cb); }
     if (s->viewport) wl_resource_set_user_data(s->viewport, NULL);
+    if (s->frac) wl_resource_set_user_data(s->frac, NULL);
     if (s->kde) wl_resource_set_user_data(s->kde, NULL);
     if (s->node) damage_node(s);
     if (fs_surf == s) { fs_surf = NULL; ui.dirty = 1; damage_add((Box){ 0, 0, ui.width, ui.height }); }
@@ -548,6 +581,7 @@ static void comp_create_surface(struct wl_client *c, struct wl_resource *r, uint
     wl_list_init(&s->sent_feedback);
     wl_list_init(&s->p_buf_destroy.link);
     s->vsw = s->p_vsw = -1;
+    s->bscale = s->p_bscale = 1;
     surfs[slot] = s;
     wl_resource_set_implementation(res, &surface_impl, s, surface_gone);
 }
@@ -617,30 +651,233 @@ static void bind_subcompositor(struct wl_client *c, void *data, uint32_t ver, ui
     wl_resource_set_implementation(r, &subcompositor_impl, NULL, NULL);
 }
 
-/* ---- wl_output ---- */
+/* ---- wl_output: one per display (docs/DISPLAYS.md) ----
+ * Each display is a slot with its own global. Resources keep the slot index + 1 as user data (0
+ * once the display is gone). Geometry and xdg-output carry the position in the global logical
+ * space; mode is the physical one; scale is the integer one for legacy clients (they render at it
+ * and LordOS downscales), and fractional-scale-v1 tells the others the exact one. */
+typedef struct {
+    WlOutput o;
+    struct wl_global *global;
+    struct wl_list res, xdg;            /* wl_output and zxdg_output_v1 resources */
+    int used;
+} OutSlot;
+static OutSlot oslots[OUT_MAX];
+static int out_main;
+
+static int int_scale(int pct) { return (pct + 99) / 100; }
 
 static void out_release(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
 static const struct wl_output_interface output_impl = { .release = out_release };
 static void out_gone(struct wl_resource *r) { wl_list_remove(wl_resource_get_link(r)); }
 
-static void bind_output(struct wl_client *c, void *data, uint32_t ver, uint32_t id) {
-    (void)data;
-    struct wl_resource *r = wl_resource_create(c, &wl_output_interface, (int)ver, id);
-    if (!r) { wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(r, &output_impl, NULL, out_gone);
-    wl_list_insert(&outputs, wl_resource_get_link(r));
-    int w = (int)ui.width, h = (int)ui.height;
-    wl_output_send_geometry(r, 0, 0, w * 254 / 960, h * 254 / 960, WL_OUTPUT_SUBPIXEL_UNKNOWN, "LordOS", "lord-server",
-                            WL_OUTPUT_TRANSFORM_NORMAL);
-    wl_output_send_mode(r, WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED, w, h, 60000);
-    if (ver >= 2) wl_output_send_scale(r, 1);
-    if (ver >= 4) { wl_output_send_name(r, "LORD-1"); wl_output_send_description(r, "Pantalla de LordOS"); }
-    if (ver >= 2) wl_output_send_done(r);
+static OutSlot *slot_of(struct wl_resource *r) {
+    intptr_t i = (intptr_t)wl_resource_get_user_data(r);
+    return i >= 1 && i <= OUT_MAX && oslots[i - 1].used ? &oslots[i - 1] : NULL;
 }
 
-/* ---- wl_seat: puntero y teclado ---- */
+static void send_output(struct wl_resource *r, const WlOutput *o) {
+    int ver = wl_resource_get_version(r);
+    wl_output_send_geometry(r, o->x, o->y, o->mm_w, o->mm_h, WL_OUTPUT_SUBPIXEL_UNKNOWN, "LordOS", o->desc[0] ? o->desc : "lord-server",
+                            WL_OUTPUT_TRANSFORM_NORMAL);
+    wl_output_send_mode(r, WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED, o->pw, o->ph, o->refresh > 0 ? o->refresh : 60000);
+    if (ver >= 2) wl_output_send_scale(r, int_scale(o->scale));
+    if (ver >= 4) { wl_output_send_name(r, o->name); wl_output_send_description(r, o->desc[0] ? o->desc : o->name); }
+}
 
-/* Cursor de la app: solo vale si el puntero está sobre una de sus superficies. */
+static void send_xdg_output(struct wl_resource *x, const WlOutput *o) {
+    zxdg_output_v1_send_logical_position(x, o->x, o->y);
+    zxdg_output_v1_send_logical_size(x, o->w, o->h);
+    int ver = wl_resource_get_version(x);
+    if (ver >= 2 && ver < 3) { zxdg_output_v1_send_name(x, o->name); zxdg_output_v1_send_description(x, o->desc[0] ? o->desc : o->name); }
+    if (ver < 3) zxdg_output_v1_send_done(x);
+}
+
+static void bind_output(struct wl_client *c, void *data, uint32_t ver, uint32_t id) {
+    intptr_t i = (intptr_t)data;
+    struct wl_resource *r = wl_resource_create(c, &wl_output_interface, (int)ver, id);
+    if (!r) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(r, &output_impl, (void *)i, out_gone);
+    OutSlot *o = i >= 1 && i <= OUT_MAX ? &oslots[i - 1] : NULL;
+    if (!o || !o->used) { wl_list_init(wl_resource_get_link(r)); return; }
+    wl_list_insert(&o->res, wl_resource_get_link(r));
+    send_output(r, &o->o);
+    if (ver >= 2) wl_output_send_done(r);
+    /* a surface of this client already on that display */
+    for (int k = 0; k < MAX_SURF; k++)
+        if (surfs[k] && surfs[k]->client == c && (surfs[k]->outmask >> (i - 1) & 1)) wl_surface_send_enter(surfs[k]->res, r);
+}
+
+/* xdg-output (zxdg_output_manager_v1 v3): logical position and size of each wl_output */
+static void xo_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
+static const struct zxdg_output_v1_interface xdg_output_impl = { .destroy = xo_destroy };
+static void xo_gone(struct wl_resource *r) { wl_list_remove(wl_resource_get_link(r)); }
+static void xom_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
+static void xom_get(struct wl_client *c, struct wl_resource *r, uint32_t id, struct wl_resource *output) {
+    struct wl_resource *x = wl_resource_create(c, &zxdg_output_v1_interface, wl_resource_get_version(r), id);
+    if (!x) { wl_client_post_no_memory(c); return; }
+    OutSlot *o = slot_of(output);
+    wl_resource_set_implementation(x, &xdg_output_impl, wl_resource_get_user_data(output), xo_gone);
+    if (!o) { wl_list_init(wl_resource_get_link(x)); return; }
+    wl_list_insert(&o->xdg, wl_resource_get_link(x));
+    send_xdg_output(x, &o->o);
+    if (wl_resource_get_version(x) >= 3 && wl_resource_get_version(output) >= 2) wl_output_send_done(output);
+}
+static const struct zxdg_output_manager_v1_interface xdg_output_mgr_impl = { .destroy = xom_destroy, .get_xdg_output = xom_get };
+static void bind_xdg_output_mgr(struct wl_client *c, void *data, uint32_t ver, uint32_t id) {
+    (void)data;
+    struct wl_resource *r = wl_resource_create(c, &zxdg_output_manager_v1_interface, (int)ver, id);
+    if (!r) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(r, &xdg_output_mgr_impl, NULL, NULL);
+}
+
+/* fractional-scale-v1: the exact scale (×120) for each surface */
+static void fs1_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
+static const struct wp_fractional_scale_v1_interface frac_impl = { .destroy = fs1_destroy };
+static void frac_gone(struct wl_resource *r) {
+    Surf *s = wl_resource_get_user_data(r);
+    if (s) s->frac = NULL;
+}
+static int pointer_scale = 100;         /* the display under the pointer: where a new window opens */
+static void fsm_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
+static void fsm_get(struct wl_client *c, struct wl_resource *r, uint32_t id, struct wl_resource *surface) {
+    Surf *s = wl_resource_get_user_data(surface);
+    if (s && s->frac) { wl_resource_post_error(r, WP_FRACTIONAL_SCALE_MANAGER_V1_ERROR_FRACTIONAL_SCALE_EXISTS, "already has one"); return; }
+    struct wl_resource *f = wl_resource_create(c, &wp_fractional_scale_v1_interface, wl_resource_get_version(r), id);
+    if (!f) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(f, &frac_impl, s, frac_gone);
+    if (!s) return;
+    s->frac = f;
+    int sc = s->pref_scale ? s->pref_scale : pointer_scale;
+    wp_fractional_scale_v1_send_preferred_scale(f, (uint32_t)(sc * 120 / 100));
+}
+static const struct wp_fractional_scale_manager_v1_interface frac_mgr_impl = { .destroy = fsm_destroy, .get_fractional_scale = fsm_get };
+static void bind_frac_mgr(struct wl_client *c, void *data, uint32_t ver, uint32_t id) {
+    (void)data;
+    struct wl_resource *r = wl_resource_create(c, &wp_fractional_scale_manager_v1_interface, (int)ver, id);
+    if (!r) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(r, &frac_mgr_impl, NULL, NULL);
+}
+
+static void surface_leave_slot(int slot);
+static void fs_follow_outputs(void);
+static int oslots_used(int slot) { return oslots[slot].used; }
+static void oslot_rect(int slot, float *x, float *y, float *w, float *h) {
+    const WlOutput *o = &oslots[slot].o;
+    *x = (float)o->x; *y = (float)o->y; *w = (float)o->w; *h = (float)o->h;
+}
+/* The display with most of a logical box (a window going fullscreen, a menu's parent). */
+static int slot_for_box(float x0, float y0, float x1, float y1) {
+    int best = -1;
+    float area = 0;
+    for (int i = 0; i < OUT_MAX; i++) {
+        if (!oslots[i].used) continue;
+        const WlOutput *o = &oslots[i].o;
+        float w = fminf(x1, (float)(o->x + o->w)) - fmaxf(x0, (float)o->x), h = fminf(y1, (float)(o->y + o->h)) - fmaxf(y0, (float)o->y);
+        if (w > 0 && h > 0 && w * h > area) { area = w * h; best = i; }
+    }
+    return best;
+}
+
+void wl_set_outputs(const WlOutput *list, int n, int main) {
+    if (!dpy) return;
+    int keep[OUT_MAX] = { 0 };
+    for (int j = 0; j < n && j < OUT_MAX; j++) {
+        int slot = -1;
+        for (int i = 0; i < OUT_MAX && slot < 0; i++) if (oslots[i].used && !strcmp(oslots[i].o.name, list[j].name)) slot = i;
+        if (slot >= 0 && keep[slot]) slot = -1;             /* two with the same name: a new slot */
+        if (slot < 0) for (int i = 0; i < OUT_MAX && slot < 0; i++) if (!oslots[i].used && !keep[i]) slot = i;
+        if (slot < 0) continue;
+        keep[slot] = 1;
+        OutSlot *o = &oslots[slot];
+        if (j == main) out_main = slot;
+        if (o->used && !memcmp(&o->o, &list[j], sizeof o->o)) continue;
+        o->o = list[j];
+        if (!o->used) {
+            o->used = 1;
+            wl_list_init(&o->res);
+            wl_list_init(&o->xdg);
+            o->global = wl_global_create(dpy, &wl_output_interface, 4, (void *)(intptr_t)(slot + 1), bind_output);
+            continue;
+        }
+        struct wl_resource *r;
+        wl_resource_for_each(r, &o->res) send_output(r, &o->o);
+        wl_resource_for_each(r, &o->xdg) send_xdg_output(r, &o->o);
+        wl_resource_for_each(r, &o->res) if (wl_resource_get_version(r) >= 2) wl_output_send_done(r);
+    }
+    for (int i = 0; i < OUT_MAX; i++) {
+        if (!oslots[i].used || keep[i]) continue;
+        surface_leave_slot(i);
+        struct wl_resource *r, *t;
+        wl_resource_for_each_safe(r, t, &oslots[i].res) { wl_resource_set_user_data(r, NULL); wl_list_remove(wl_resource_get_link(r)); wl_list_init(wl_resource_get_link(r)); }
+        wl_resource_for_each_safe(r, t, &oslots[i].xdg) { wl_resource_set_user_data(r, NULL); wl_list_remove(wl_resource_get_link(r)); wl_list_init(wl_resource_get_link(r)); }
+        if (oslots[i].global) wl_global_destroy(oslots[i].global);
+        memset(&oslots[i], 0, sizeof oslots[i]);
+    }
+    fs_follow_outputs();
+}
+
+/* ---- which displays a surface is on (enter/leave, preferred scale), once per frame ---- */
+
+static void send_enter_leave(Surf *s, unsigned mask) {
+    for (int i = 0; i < OUT_MAX; i++) {
+        unsigned bit = 1u << i;
+        if (!oslots[i].used || (mask & bit) == (s->outmask & bit)) continue;
+        struct wl_resource *r;
+        FOR_CLIENT(&oslots[i].res, s->client, r) {
+            if (mask & bit) wl_surface_send_enter(s->res, r);
+            else wl_surface_send_leave(s->res, r);
+        }
+    }
+    s->outmask = mask;
+}
+
+static void set_pref_scale(Surf *s, int pct) {
+    if (s->pref_scale == pct) return;
+    s->pref_scale = pct;
+    if (s->frac) wp_fractional_scale_v1_send_preferred_scale(s->frac, (uint32_t)(pct * 120 / 100));
+    if (wl_resource_get_version(s->res) >= 6) wl_surface_send_preferred_buffer_scale(s->res, int_scale(pct));
+}
+
+static void surface_outputs(Surf *s, float x, float y, int depth) {
+    if (depth > 8) return;
+    unsigned mask = 0;
+    int best = 0;
+    for (int i = 0; i < OUT_MAX; i++) {
+        const WlOutput *o = &oslots[i].o;
+        if (!oslots[i].used || s->lw <= 0) continue;
+        if (x < o->x + o->w && x + s->lw > o->x && y < o->y + o->h && y + s->lh > o->y) {
+            mask |= 1u << i;
+            if (o->scale > best) best = o->scale;           /* sharp on the densest display it touches */
+        }
+    }
+    if (mask != s->outmask) send_enter_leave(s, mask);
+    if (best) set_pref_scale(s, best);
+    else if (!s->pref_scale) set_pref_scale(s, pointer_scale);
+    for (int k = 0; k < s->nkids; k++) surface_outputs(s->kids[k], x + s->kids[k]->sx, y + s->kids[k]->sy, depth + 1);
+}
+
+static void update_surface_outputs(void) {
+    for (int i = 0; i < MAX_SURF; i++) {
+        Surf *s = surfs[i];
+        if (!s || s->parent || (s->role != R_TOPLEVEL && s->role != R_POPUP) || !s->content) continue;
+        float x, y;
+        if (origin(s, &x, &y)) surface_outputs(s, x, y, 0);
+    }
+    for (int i = 0; i < npopups; i++) {
+        float x, y;
+        if (origin(popups[i], &x, &y)) surface_outputs(popups[i], x, y, 0);
+    }
+}
+
+static void surface_leave_slot(int slot) {
+    for (int i = 0; i < MAX_SURF; i++)
+        if (surfs[i] && (surfs[i]->outmask >> slot & 1)) send_enter_leave(surfs[i], surfs[i]->outmask & ~(1u << slot));
+}
+
+/* ---- wl_seat: pointer and keyboard ---- */
+
+/* App cursor: only valid if the pointer is over one of its surfaces. */
 static void ptr_set_cursor(struct wl_client *c, struct wl_resource *r, uint32_t serial, struct wl_resource *surface, int32_t x, int32_t y) {
     (void)r; (void)serial;
     if (!pointer_focus || pointer_focus->client != c) return;
@@ -653,13 +890,13 @@ static void ptr_set_cursor(struct wl_client *c, struct wl_resource *r, uint32_t 
 }
 static void res_release(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
 
-/* cursor-shape-v1: la app pide una forma por nombre (Chromium, GTK 4, Qt 6) y LordOS dibuja la suya
- * (cursor.c); cursor_mode 3. Solo vale si el puntero está sobre una superficie de esa app. */
+/* cursor-shape-v1: the app asks for a shape by name (Chromium, GTK 4, Qt 6) and LordOS draws its own
+ * (cursor.c); cursor_mode 3. Only valid if the pointer is over a surface of that app. */
 static unsigned cursor_shape;
 static void csd_set_shape(struct wl_client *c, struct wl_resource *r, uint32_t serial, uint32_t shape) {
     (void)serial;
     if (shape < 1 || shape > 36) {
-        wl_resource_post_error(r, WP_CURSOR_SHAPE_DEVICE_V1_ERROR_INVALID_SHAPE, "forma inválida %u", shape);
+        wl_resource_post_error(r, WP_CURSOR_SHAPE_DEVICE_V1_ERROR_INVALID_SHAPE, "invalid shape %u", shape);
         return;
     }
     if (!pointer_focus || pointer_focus->client != c) return;
@@ -680,7 +917,7 @@ static void csm_get_pointer(struct wl_client *c, struct wl_resource *r, uint32_t
 }
 static void csm_get_tablet(struct wl_client *c, struct wl_resource *r, uint32_t id, struct wl_resource *tool) {
     (void)tool;
-    csm_device(c, r, id);               /* no hay tabletas: el dispositivo existe pero no se usa */
+    csm_device(c, r, id);               /* no tablets: the device exists but is unused */
 }
 static const struct wp_cursor_shape_manager_v1_interface csm_impl = {
     .destroy = res_release, .get_pointer = csm_get_pointer, .get_tablet_tool_v2 = csm_get_tablet,
@@ -743,7 +980,7 @@ static void seat_get_keyboard(struct wl_client *c, struct wl_resource *r, uint32
 
 static void seat_get_touch(struct wl_client *c, struct wl_resource *r, uint32_t id) {
     (void)touch_impl;
-    wl_input_get_touch(c, r, id);       /* pantallas táctiles: wl_input.c */
+    wl_input_get_touch(c, r, id);       /* touchscreens: wl_input.c */
 }
 
 static const struct wl_seat_interface seat_impl = {
@@ -755,7 +992,7 @@ static void bind_seat(struct wl_client *c, void *data, uint32_t ver, uint32_t id
     struct wl_resource *r = wl_resource_create(c, &wl_seat_interface, (int)ver, id);
     if (!r) { wl_client_post_no_memory(c); return; }
     wl_resource_set_implementation(r, &seat_impl, NULL, NULL);
-    wl_input_seat_caps(r);              /* puntero, teclado y tocar si hay pantalla táctil */
+    wl_input_seat_caps(r);              /* pointer, keyboard and touch if there is a touchscreen */
     if (ver >= 2) wl_seat_send_name(r, "seat0");
 }
 
@@ -765,22 +1002,22 @@ void wl_keymap_changed(void) {
     wl_resource_for_each(k, &keyboards) send_keymap(k);
 }
 
-/* ---- portapapeles (wl_data_device_manager) ----
- * La selección de una app con texto se lee entera (text/plain) y pasa al portapapeles de
- * LordOS; si es solo una imagen (image/png), se guarda acá, así sigue disponible cuando la app
- * se cierra y LordOS la muestra en el historial. Mientras la app dueña vive, las otras apps
- * reciben de ella cualquier formato que ofrezca (se les reenvía el pedido). La selección de
- * LordOS (terminal, campos de texto, una imagen del historial) se ofrece a la app con foco. */
+/* ---- clipboard (wl_data_device_manager) ----
+ * An app's text selection is read in full (text/plain) and goes to the LordOS
+ * clipboard; if it is only an image (image/png), it is kept here, so it stays available when the app
+ * closes and LordOS shows it in the history. While the owning app lives, the other apps
+ * receive from it any format it offers (the request is forwarded to it). The LordOS
+ * selection (terminal, text fields, an image from the history) is offered to the focused app. */
 
 #define MAX_MIMES 32
 #define CLIP_MAX (16u << 20)
 typedef struct { struct wl_resource *res; char mimes[MAX_MIMES][64]; int nmimes; } Source;
-static Source *selection;           /* fuente de la app dueña de la selección, o NULL (LordOS) */
-static unsigned clip_seen;          /* generación del portapapeles de LordOS ya ofrecida */
-static unsigned char *clip_png;     /* última imagen copiada */
+static Source *selection;           /* source of the app owning the selection, or NULL (LordOS) */
+static unsigned clip_seen;          /* LordOS clipboard generation already offered */
+static unsigned char *clip_png;     /* last copied image */
 static size_t clip_png_len;
 static unsigned clip_img_gen;
-static int clip_is_image;           /* lo último que se copió fue esa imagen (y no texto) */
+static int clip_is_image;           /* the last thing copied was that image (and not text) */
 static char clip_png_path[160];
 static char clip_img_origin[128] = "linux";
 static int clip_img_sensitive;
@@ -803,13 +1040,13 @@ static void src_gone(struct wl_resource *r) {
     Source *s = wl_resource_get_user_data(r);
     if (selection == s) {
         selection = NULL;
-        if (clip_is_image) offer_to_focus();    /* la imagen queda, ahora la ofrece LordOS */
+        if (clip_is_image) offer_to_focus();    /* the image stays, now LordOS offers it */
     }
     free(s);
 }
 
-/* La imagen se guarda también como archivo en $XDG_RUNTIME_DIR/lordos (solo del usuario),
- * para la vista previa del historial; quedan las últimas 10. */
+/* The image is also saved as a file in $XDG_RUNTIME_DIR/lordos (user-only),
+ * for the history preview; the last 10 are kept. */
 static void store_png(const unsigned char *png, size_t n) {
     unsigned char *copy = malloc(n);
     if (!copy) return;
@@ -833,7 +1070,7 @@ static void store_png(const unsigned char *png, size_t n) {
     if (fd < 0 || close(fd) || off != n) clip_png_path[0] = 0;
 }
 
-/* lectura de la selección de una app hacia LordOS */
+/* reading an app's selection into LordOS */
 typedef struct { int fd, image, sensitive; struct wl_event_source *ev; char *buf; size_t len, cap; char origin[128]; } Reader;
 
 static int reader_ready(int fd, uint32_t mask, void *data) {
@@ -851,7 +1088,7 @@ static int reader_ready(int fd, uint32_t mask, void *data) {
         ssize_t n = read(fd, rd->buf + rd->len, rd->cap - rd->len);
         if (n > 0) { rd->len += (size_t)n; continue; }
         if (n < 0 && (errno == EAGAIN || errno == EINTR)) return 0;
-        break;                              /* fin (o error): listo */
+        break;                              /* end (or error): done */
     }
     if (rd->len && rd->image) {
         if (rd->len > 8 && !memcmp(rd->buf, "\x89PNG\r\n\x1a\n", 8)) {
@@ -862,7 +1099,7 @@ static int reader_ready(int fd, uint32_t mask, void *data) {
     } else if (rd->len) {
         term_set_clipboard(rd->buf, rd->len);
         term_clipboard_mark(rd->origin, rd->sensitive);
-        clip_seen = term_clipboard_gen();       /* no es un cambio de LordOS */
+        clip_seen = term_clipboard_gen();       /* not a change from LordOS */
         clip_is_image = 0;
     }
     wl_event_source_remove(rd->ev);
@@ -873,7 +1110,7 @@ static int reader_ready(int fd, uint32_t mask, void *data) {
 }
 
 static void read_selection(Source *s) {
-    if (getenv("LORD_WL_DEBUG")) for (int i = 0; i < s->nmimes; i++) fprintf(stderr, "wayland: selección %s\n", s->mimes[i]);
+    if (getenv("LORD_WL_DEBUG")) for (int i = 0; i < s->nmimes; i++) fprintf(stderr, "wayland: selection %s\n", s->mimes[i]);
     const char *mime = NULL;
     int image = 0;
     for (int i = 0; i < s->nmimes && !mime; i++) if (!strcmp(s->mimes[i], "text/plain;charset=utf-8")) mime = s->mimes[i];
@@ -888,8 +1125,8 @@ static void read_selection(Source *s) {
     if (!rd) { close(p[0]); return; }
     rd->fd = p[0];
     rd->image = image;
-    /* origen: el app_id de una ventana de esa app; sensible si es un gestor de contraseñas
-     * (convención de KDE/GNOME: ofrece x-kde-passwordManagerHint = secret) */
+    /* origin: the app_id of a window of that app; sensitive if it is a password manager
+     * (KDE/GNOME convention: offers x-kde-passwordManagerHint = secret) */
     struct wl_client *cl = wl_resource_get_client(s->res);
     for (int i = 0; i < MAX_SURF && !rd->origin[0]; i++)
         if (surfs[i] && surfs[i]->client == cl && surfs[i]->app_id[0]) snprintf(rd->origin, sizeof rd->origin, "%s", surfs[i]->app_id);
@@ -899,7 +1136,7 @@ static void read_selection(Source *s) {
     if (!rd->ev) { close(p[0]); free(rd); }
 }
 
-/* escritura hacia una app, sin bloquear al servidor si la app lee despacio */
+/* writing to an app, without blocking the server if the app reads slowly */
 typedef struct { int fd; struct wl_event_source *ev; unsigned char *buf; size_t len, off; } Writer;
 
 static int writer_ready(int fd, uint32_t mask, void *data) {
@@ -931,7 +1168,7 @@ static void send_bytes(int fd, const void *data, size_t n) {
     if (!w->ev) { close(fd); free(w->buf); free(w); }
 }
 
-/* ofertas: de otra app (se reenvía) o del portapapeles de LordOS (se escribe) */
+/* offers: from another app (forwarded) or from the LordOS clipboard (written) */
 static void ofr_accept(struct wl_client *c, struct wl_resource *r, uint32_t serial, const char *mime) {
     (void)c; (void)r; (void)serial; (void)mime;
 }
@@ -954,7 +1191,7 @@ static const struct wl_data_offer_interface offer_impl = {
 
 static void offer_selection(struct wl_resource *dev) {
     struct wl_client *c = wl_resource_get_client(dev);
-    if (selection && wl_resource_get_client(selection->res) == c) return;     /* es suya */
+    if (selection && wl_resource_get_client(selection->res) == c) return;     /* it is its own */
     const char *t = term_clipboard();
     int image = !selection && clip_is_image && clip_png;
     if (!selection && !image && !t[0]) { wl_data_device_send_selection(dev, NULL); return; }
@@ -974,7 +1211,7 @@ static void offer_selection(struct wl_resource *dev) {
     wl_data_device_send_selection(dev, o);
 }
 
-/* Imagen del portapapeles para JS (historial) y volver a copiar una del historial. */
+/* Clipboard image for JS (history) and copying one from the history again. */
 unsigned wl_clip_image_gen(void) { return clip_img_gen; }
 const char *wl_clip_image_path(void) { return clip_is_image ? clip_png_path : ""; }
 int wl_clip_is_image(void) { return clip_is_image; }
@@ -985,8 +1222,8 @@ const unsigned char *wl_clip_png(size_t *len) {
 const char *wl_clip_image_origin(void) { return clip_img_origin; }
 int wl_clip_image_sensitive(void) { return clip_img_sensitive; }
 
-/* Solo dos lugares: las vistas previas del compositor ($XDG_RUNTIME_DIR/lordos/clip-N.png) y el
- * historial guardado (~/.local/share/lordos/clipboard/img-*.png). */
+/* Only two places: the compositor's previews ($XDG_RUNTIME_DIR/lordos/clip-N.png) and the
+ * saved history (~/.local/share/lordos/clipboard/img-*.png). */
 static int clip_path_ok(const char *path) {
     const char *rt = getenv("XDG_RUNTIME_DIR"), *home = getenv("HOME");
     char dir[PATH_MAX];
@@ -1030,7 +1267,7 @@ static void offer_to_focus(void) {
 static void dev_drag(struct wl_client *c, struct wl_resource *r, struct wl_resource *src, struct wl_resource *origin_,
                      struct wl_resource *icon, uint32_t serial) {
     (void)c; (void)r; (void)origin_; (void)icon; (void)serial;
-    if (src) wl_data_source_send_cancelled(src);     /* arrastrar y soltar: todavía no */
+    if (src) wl_data_source_send_cancelled(src);     /* drag and drop: not yet */
 }
 static void dev_set_selection(struct wl_client *c, struct wl_resource *r, struct wl_resource *src, uint32_t serial) {
     (void)c; (void)r; (void)serial;
@@ -1098,7 +1335,7 @@ static int has_left(int e) { return e == XDG_POSITIONER_ANCHOR_LEFT || e == XDG_
 static int has_right(int e) { return e == XDG_POSITIONER_ANCHOR_RIGHT || e == XDG_POSITIONER_ANCHOR_TOP_RIGHT || e == XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT; }
 static int has_top(int e) { return e == XDG_POSITIONER_ANCHOR_TOP || e == XDG_POSITIONER_ANCHOR_TOP_LEFT || e == XDG_POSITIONER_ANCHOR_TOP_RIGHT; }
 static int has_bottom(int e) { return e == XDG_POSITIONER_ANCHOR_BOTTOM || e == XDG_POSITIONER_ANCHOR_BOTTOM_LEFT || e == XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT; }
-/* (anchor y gravity usan los mismos valores) */
+/* (anchor and gravity use the same values) */
 static int flip_v(int e) {
     switch (e) {
     case XDG_POSITIONER_ANCHOR_TOP: return XDG_POSITIONER_ANCHOR_BOTTOM;
@@ -1129,7 +1366,7 @@ static void place(const Positioner *p, int anchor, int gravity, int *x, int *y) 
     *y = ay - (has_top(gravity) ? p->h : has_bottom(gravity) ? 0 : p->h / 2) + p->oy;
 }
 
-/* Posición del menú (relativa a la window geometry del padre), dentro de la pantalla. */
+/* Menu position (relative to the parent's window geometry), within the screen. */
 static void position_popup(Surf *s, const Positioner *p) {
     int x, y;
     place(p, p->anchor, p->gravity, &x, &y);
@@ -1137,7 +1374,11 @@ static void position_popup(Surf *s, const Positioner *p) {
     if (s->parent && origin(s->parent, &ox, &oy)) {
         ox += s->parent->gx;
         oy += s->parent->gy;
-        float W = ui.width, H = ui.height;
+        /* within the display the parent is on (its rect, in the parent's terms) */
+        float bx = 0, by = 0, W = ui.width, H = ui.height;
+        int pslot = slot_for_box(ox, oy, ox + 1, oy + 1);
+        if (pslot >= 0) { float rw, rh; oslot_rect(pslot, &bx, &by, &rw, &rh); W = bx + rw; H = by + rh; }
+        ox -= bx; oy -= by; W -= bx; H -= by;
         if ((oy + y + p->h > H || oy + y < 0) && (p->constraint & XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y)) {
             int fx, fy;
             place(p, flip_v(p->anchor), flip_v(p->gravity), &fx, &fy);
@@ -1148,7 +1389,7 @@ static void position_popup(Surf *s, const Positioner *p) {
             place(p, flip_h(p->anchor), flip_h(p->gravity), &fx, &fy);
             if (ox + fx >= 0 && ox + fx + p->w <= W) x = fx;
         }
-        if (ox + x + p->w > W) x = (int)(W - p->w - ox);       /* deslizar */
+        if (ox + x + p->w > W) x = (int)(W - p->w - ox);       /* swipe */
         if (oy + y + p->h > H) y = (int)(H - p->h - oy);
         if (ox + x < 0) x = (int)-ox;
         if (oy + y < 0) y = (int)-oy;
@@ -1197,7 +1438,7 @@ static void top_unmaximize(struct wl_client *c, struct wl_resource *r) {
     (void)c; Surf *s = wl_resource_get_user_data(r);
     if (s && s->mapped) emit(s, "unmaximize", "{}");
 }
-/* Pantalla completa: la presenta el compositor encima de todo (y directo a la placa si se puede). */
+/* Fullscreen: presented by the compositor on top of everything (and straight to the card if possible). */
 static void enter_fullscreen(Surf *s) {
     if (!s || !s->top || s == fs_surf) return;
     if (fs_surf) { fs_surf->fullscreen = 0; send_toplevel_configure(fs_surf); }
@@ -1205,8 +1446,13 @@ static void enter_fullscreen(Surf *s) {
     s->fullscreen = 1;
     s->fs_saved_w = s->conf_w;
     s->fs_saved_h = s->conf_h;
-    s->conf_w = (int)ui.width;
-    s->conf_h = (int)ui.height;
+    Node *fn = s->node ? node_get(s->node) : NULL;
+    fs_slot = fn ? slot_for_box(fn->ax, fn->ay, fn->ax + fn->w, fn->ay + fn->h) : out_main;
+    if (fs_slot < 0) fs_slot = out_main;
+    float fx, fy, fw, fh;
+    fs_rect(&fx, &fy, &fw, &fh);
+    s->conf_w = (int)fw;
+    s->conf_h = (int)fh;
     send_toplevel_configure(s);
     if (s->mapped) emit(s, "fullscreen", "{}");
     damage_add((Box){ 0, 0, ui.width, ui.height });
@@ -1289,7 +1535,7 @@ static void xs_toplevel(struct wl_client *c, struct wl_resource *r, uint32_t id)
     wl_resource_set_implementation(t, &toplevel_impl, s, top_gone);
     s->top = t;
     s->role = R_TOPLEVEL;
-    s->csd = !s->kde_ssd;                   /* hasta que pida decoración del servidor */
+    s->csd = !s->kde_ssd;                   /* until it asks for server decoration */
     if (wl_resource_get_version(t) >= 5) {
         struct wl_array caps;
         wl_array_init(&caps);
@@ -1352,7 +1598,7 @@ static void bind_wm_base(struct wl_client *c, void *data, uint32_t ver, uint32_t
     wl_resource_set_implementation(r, &wm_base_impl, NULL, NULL);
 }
 
-/* ---- xdg-decoration: se pide decoración del servidor (el marco del tema) ---- */
+/* ---- xdg-decoration: server decoration is requested (the theme's frame) ---- */
 
 static void deco_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
 static void deco_mode(struct wl_client *c, struct wl_resource *r, uint32_t mode) {
@@ -1384,11 +1630,11 @@ static void bind_decm(struct wl_client *c, void *data, uint32_t ver, uint32_t id
     wl_resource_set_implementation(r, &decm_impl, NULL, NULL);
 }
 
-/* ---- org_kde_kwin_server_decoration (KDE): el que usa GTK 3 ----
- * GTK 3 no habla xdg-decoration: si el compositor anuncia este protocolo con el modo «servidor» por
- * defecto, las ventanas sin barra propia (Firefox con la barra de título del sistema, apps GTK 3
- * sin headerbar) piden el marco del tema. Es un protocolo chico: las tablas de la interfaz se
- * escriben acá a mano (las de wayland-scanner, sin el XML de plasma-wayland-protocols). */
+/* ---- org_kde_kwin_server_decoration (KDE): the one GTK 3 uses ----
+ * GTK 3 does not speak xdg-decoration: if the compositor announces this protocol with «server» mode by
+ * default, windows without their own bar (Firefox with the system title bar, GTK 3 apps
+ * without a headerbar) ask for the theme's frame. It is a small protocol: the interface tables are
+ * written here by hand (the wayland-scanner ones, without the plasma-wayland-protocols XML). */
 enum { KDE_DECO_NONE = 0, KDE_DECO_CLIENT = 1, KDE_DECO_SERVER = 2 };
 static const struct wl_interface kde_deco_interface;
 static const struct wl_interface *kde_types[] = { NULL, &kde_deco_interface, &wl_surface_interface };
@@ -1440,7 +1686,7 @@ static void bind_kde_deco(struct wl_client *c, void *data, uint32_t ver, uint32_
     wl_resource_post_event(r, 0, KDE_DECO_SERVER);
 }
 
-/* ---- commit según el rol ---- */
+/* ---- commit by role ---- */
 
 static void geometry(Surf *s, int *w, int *h) {
     *w = s->has_geom && s->gw > 0 ? s->gw : s->lw;
@@ -1448,8 +1694,17 @@ static void geometry(Surf *s, int *w, int *h) {
 }
 
 static void surface_commit_role(Surf *s) {
+    if (s->role == R_TOPLEVEL && s->content && s->lw > 0) {   /* how the app renders for HiDPI: once per change */
+        int ratio = s->w * 100 / s->lw;
+        if (ratio != s->logged_ratio) {
+            s->logged_ratio = ratio;
+            fprintf(stderr, "wayland: %s: buffer %dx%d for %dx%d logical (%.2fx; buffer_scale %d, viewport %s, fractional %s, preferred %d%%)\n",
+                    s->app_id[0] ? s->app_id : "?", s->w, s->h, s->lw, s->lh, ratio / 100.0, s->bscale, s->viewport ? "yes" : "no",
+                    s->frac ? "yes" : "no", s->pref_scale);
+        }
+    }
     if (s->role == R_TOPLEVEL) {
-        if (!s->sent_configure) { send_toplevel_configure(s); return; }     /* primer commit: sin búfer */
+        if (!s->sent_configure) { send_toplevel_configure(s); return; }     /* first commit: no buffer */
         if (!s->has_geom) { s->gx = s->gy = 0; }
         int w, h;
         geometry(s, &w, &h);
@@ -1488,14 +1743,14 @@ static void surface_commit_role(Surf *s) {
     }
 }
 
-/* ---- dibujo ----
- * Camino CPU: los píxeles de cada superficie se copian en el canvas de la UI.
- * Camino GPU: la UI deja un hueco transparente donde va cada ventana y se anota la superficie;
- * al presentar se dibujan sus texturas debajo de la UI (capa 0). Los menús de las apps y la
- * pantalla completa van encima (capa 1). Así se respeta el orden entre ventanas de LordOS y de
- * apps, y el contenido de las apps no pasa por la CPU. */
+/* ---- drawing ----
+ * CPU path: each surface's pixels are copied into the UI canvas.
+ * GPU path: the UI leaves a transparent hole where each window goes and the surface is noted;
+ * when presenting, their textures are drawn below the UI (layer 0). App menus and
+ * fullscreen go on top (layer 1). This keeps the order between LordOS windows and
+ * app windows, and app content does not go through the CPU. */
 
-/* Recorte "estructural" de un nodo (overflow de sus ancestros), sin el damage del cuadro. */
+/* "Structural" clip of a node (overflow of its ancestors), without the frame's damage. */
 static Rect node_clip(int node) {
     Rect r = { 0, 0, (int)ui.width, (int)ui.height };
     for (Node *n = node ? node_get(node) : NULL; n; n = n->parent) {
@@ -1520,7 +1775,7 @@ static void add_draw(int layer, Surf *s, float x, float y, Rect clip, float op) 
     if (ndraws[layer] < 128) draws[layer][ndraws[layer]++] = (Draw){ s->id, x, y, clip, op };
 }
 
-/* ¿El nodo (o un ancestro) es una ventana protegida? (capturas, media/capture.c) */
+/* Is the node (or an ancestor) a protected window? (screenshots, media/capture.c) */
 static int node_protected(int node) {
     for (Node *n = node ? node_get(node) : NULL; n; n = n->parent) if (n->protect) return 1;
     return 0;
@@ -1531,30 +1786,58 @@ static Surf *toplevel_of(Surf *s) {
     return s;
 }
 
-static int holes_off;                   /* wl_paint_holes(0): solo anotar (la capa de ui/paint.c ya tiene el hueco) */
+static int holes_off;                   /* wl_paint_holes(0): only note it (the ui/paint.c layer already has the hole) */
 void wl_paint_holes(int on) { holes_off = !on; }
 
+/* The canvas is the display's physical frame (paint_view): logical → physical. */
+static inline float PVX(float x) { return (x - paint_view.x) * paint_view.k + paint_view.dx; }
+static inline float PVY(float y) { return (y - paint_view.y) * paint_view.k + paint_view.dy; }
+static Rect phys_rect(Rect r) {
+    return (Rect){ (int)floorf(PVX((float)r.x0)), (int)floorf(PVY((float)r.y0)), (int)ceilf(PVX((float)r.x1)), (int)ceilf(PVY((float)r.y1)) };
+}
+
+/* Source rect of a surface's buffer (the viewport crop is in surface coordinates: × buffer scale). */
+static void source_rect(const Surf *s, float *sx, float *sy, float *sw, float *sh) {
+    *sx = 0; *sy = 0; *sw = (float)s->w; *sh = (float)s->h;
+    if (s->viewport && s->vsw > 0) {
+        float b = (float)(s->bscale > 0 ? s->bscale : 1);
+        *sx = s->vsx * b; *sy = s->vsy * b; *sw = s->vsw * b; *sh = s->vsh * b;
+    }
+}
+
+/* CPU path: the buffer into its logical box (x, y, lw × lh) at the display's resolution. A client
+ * that rendered at exactly that size (fractional-scale) is copied 1:1; others are scaled. */
+static void blit_surface(Canvas *c, const Surf *s, float x, float y, float sxk, float syk, float op) {
+    float sx, sy, sw, sh;
+    source_rect(s, &sx, &sy, &sw, &sh);
+    float dx = PVX(x), dy = PVY(y), dw = s->lw * paint_view.k * sxk, dh = s->lh * paint_view.k * syk;
+    if (sx == 0 && sy == 0 && sw == (float)s->w && sh == (float)s->h && fabsf(dw - sw) < 0.5f && fabsf(dh - sh) < 0.5f)
+        canvas_blit(c, s->px, s->w, s->h, (int)lroundf(dx), (int)lroundf(dy), 0, op, s->opaque);
+    else canvas_blit_scaled(c, s->px, s->w, s->w, s->h, sx, sy, sw, sh, dx, dy, dw, dh, op, s->opaque);
+}
+
 static void paint_tree(Canvas *c, Surf *s, float x, float y, float op, Rect clip) {
-    if (gpu_active() && !paint_capture_mode) {          /* en una captura se copian siempre */
+    if (gpu_active() && !paint_capture_mode) {          /* in a screenshot they are always copied */
         if (s->content && holes_off) add_draw(0, s, x, y, clip, op);
         else if (s->content) {
             add_draw(0, s, x, y, clip, op);
-            /* hueco en la UI: lo que se pintó debajo deja ver la ventana */
+            /* hole in the UI: what was painted below shows the window */
             Rect old = c->clip;
-            Rect h = rect_and(rect_and(old, clip), (Rect){ (int)x, (int)y, (int)x + s->lw, (int)y + s->lh });
+            Rect h = rect_and(rect_and(old, phys_rect(clip)),
+                              (Rect){ (int)floorf(PVX(x)), (int)floorf(PVY(y)), (int)ceilf(PVX(x + s->lw)), (int)ceilf(PVY(y + s->lh)) });
             canvas_set_clip(c, h);
             canvas_clear(c, 0);
             canvas_set_clip(c, old);
         }
         s->hole_sig = hole_sig(s);
-    } else if (s->px) canvas_blit(c, s->px, s->w, s->h, (int)x, (int)y, 0, op, s->opaque);
+    } else if (s->px) blit_surface(c, s, x, y, 1, 1, op);
     for (int i = 0; i < s->nkids; i++) paint_tree(c, s->kids[i], x + s->kids[i]->sx, y + s->kids[i]->sy, op, clip);
 }
 
 void wl_paint_begin(void) { ndraws[0] = ndraws[1] = 0; }
 
-/* Lo de abajo de una ventana que se mueve (ui/paint.c) se pinta una vez: sus ventanas de apps (camino
- * GPU) se guardan y se vuelven a anotar en cada cuadro. */
+/* What is below a moving window (ui/paint.c) is painted once: its app windows (GPU
+ * path) are saved and noted again on every frame. */
 static Draw kept[128];
 static int nkept;
 void wl_paint_keep(void) {
@@ -1570,34 +1853,34 @@ void wl_paint(Canvas *c, int id, int node, float x, float y, float w, float h, f
     if (!s || s->role != R_TOPLEVEL) return;
     s->node = node;
     int iw = (int)(w + 0.5f), ih = (int)(h + 0.5f);
-    /* el marco del tema decide el tamaño: si cambió, se le pide a la app (salvo en pantalla completa) */
+    /* the theme's frame decides the size: if it changed, the app is asked (except in fullscreen) */
     if (s->mapped && s != fs_surf && iw > 16 && ih > 16 && (iw != s->conf_w || ih != s->conf_h)) {
         s->conf_w = iw;
         s->conf_h = ih;
         send_toplevel_configure(s);
     }
-    if (s == fs_surf) return;                   /* la presenta el compositor, encima de todo */
+    if (s == fs_surf) return;                   /* presented by the compositor, on top of everything */
     Rect clip = rect_and(node_clip(node), (Rect){ (int)floorf(x), (int)floorf(y), (int)ceilf(x + w), (int)ceilf(y + h) });
-    Rect old = canvas_push_clip(c, x, y, w, h);
+    Rect old = canvas_push_clip(c, PVX(x), PVY(y), w * paint_view.k, h * paint_view.k);
     paint_tree(c, s, x - s->gx, y - s->gy, op, clip);
     canvas_set_clip(c, old);
 }
 
 void wl_paint_popups(Canvas *c) {
-    if (gpu_active() && !paint_capture_mode) return;    /* camino GPU: van en la capa 1 */
+    if (gpu_active() && !paint_capture_mode) return;    /* GPU path: they go in layer 1 */
     for (int i = 0; i < npopups; i++) {
         float x, y;
         if (!origin(popups[i], &x, &y)) continue;
         Surf *top = toplevel_of(popups[i]);
-        if (paint_capture_mode && top && node_protected(top->node)) {   /* menú de una ventana protegida */
-            canvas_rrect(c, x, y, (float)popups[i]->lw, (float)popups[i]->lh, 0, 0xff000000u);
+        if (paint_capture_mode && top && node_protected(top->node)) {   /* menu of a protected window */
+            canvas_rrect(c, PVX(x), PVY(y), popups[i]->lw * paint_view.k, popups[i]->lh * paint_view.k, 0, 0xff000000u);
             continue;
         }
-        paint_tree(c, popups[i], x, y, 1, (Rect){ 0, 0, (int)ui.width, (int)ui.height });
+        paint_tree(c, popups[i], x, y, 1, (Rect){ -65536, -65536, 65536, 65536 });
     }
 }
 
-/* Textura con el contenido actual de una superficie (camino GPU). */
+/* Texture with a surface's current content (GPU path). */
 static GpuTex *surface_tex(Surf *s) {
     if (s->dmabuf) {
         if (!s->dmabuf->tex) s->dmabuf->tex = gpu_tex_dmabuf(&s->dmabuf->d);
@@ -1611,11 +1894,12 @@ static GpuTex *surface_tex(Surf *s) {
 }
 
 static void draw_surface(Surf *s, float x, float y, float dw, float dh, Rect clip, float op) {
+    /* x, y, dw, dh and clip are logical; the GPU draws in the display's physical pixels (paint_view) */
     GpuTex *t = s->content ? surface_tex(s) : NULL;
     if (!t) return;
-    float sx = 0, sy = 0, sw = (float)s->w, sh = (float)s->h;
-    if (s->viewport && s->vsw > 0) { sx = s->vsx; sy = s->vsy; sw = s->vsw; sh = s->vsh; }
-    gpu_draw(t, x, y, dw, dh, sx, sy, sw, sh, clip, op);
+    float sx, sy, sw, sh;
+    source_rect(s, &sx, &sy, &sw, &sh);
+    gpu_draw(t, PVX(x), PVY(y), dw * paint_view.k, dh * paint_view.k, sx, sy, sw, sh, phys_rect(clip), op);
 }
 
 static void draw_tree(Surf *s, float x, float y, float scale_x, float scale_y, Rect clip) {
@@ -1624,18 +1908,20 @@ static void draw_tree(Surf *s, float x, float y, float scale_x, float scale_y, R
         draw_tree(s->kids[i], x + s->kids[i]->sx * scale_x, y + s->kids[i]->sy * scale_y, scale_x, scale_y, clip);
 }
 
-/* La ventana a pantalla completa ocupa toda la salida (si su tamaño no coincide, se escala). */
+/* The fullscreen window takes the whole output (if its size does not match, it is scaled). */
 static void fs_box(float *x, float *y, float *sx, float *sy) {
     int w, h;
     geometry(fs_surf, &w, &h);
-    *sx = w > 0 ? ui.width / w : 1;
-    *sy = h > 0 ? ui.height / h : 1;
-    *x = -fs_surf->gx * *sx;
-    *y = -fs_surf->gy * *sy;
+    float fx, fy, fw, fh;
+    fs_rect(&fx, &fy, &fw, &fh);                /* its display */
+    *sx = w > 0 ? fw / w : 1;
+    *sy = h > 0 ? fh / h : 1;
+    *x = fx - fs_surf->gx * *sx;
+    *y = fy - fs_surf->gy * *sy;
 }
 
 void wl_gpu_draw_layer(int layer) {
-    Rect all = { 0, 0, (int)ui.width, (int)ui.height };
+    Rect all = { -65536, -65536, 65536, 65536 };
     if (layer == 0) {
         for (int i = 0; i < ndraws[0]; i++) {
             Draw *d = &draws[0][i];
@@ -1655,28 +1941,35 @@ void wl_gpu_draw_layer(int layer) {
     }
 }
 
-/* Camino CPU: la pantalla completa y sus menús se copian sobre el cuadro ya armado. */
+/* CPU path: fullscreen and its menus are copied over the already built frame. */
 void wl_paint_fullscreen(Canvas *out) {
     if (paint_capture_mode && fs_surf && fs_surf->content && node_protected(fs_surf->node)) {
         canvas_set_clip(out, (Rect){ 0, 0, out->w, out->h });
-        canvas_clear(out, 0x000000);                /* pantalla completa protegida: negra en la captura */
+        canvas_clear(out, 0x000000);                /* protected fullscreen: black in the capture */
         return;
     }
     if (!fs_surf || !fs_surf->content || !fs_surf->px) return;
-    float x, y, sx, sy;
+    float x, y, sx, sy, fx, fy, fw, fh;
     fs_box(&x, &y, &sx, &sy);
-    canvas_blit(out, fs_surf->px, fs_surf->w, fs_surf->h, (int)x, (int)y, 0, 1, 1);
+    fs_rect(&fx, &fy, &fw, &fh);
+    /* only on the display it covers (a mirror shows the same rect) */
+    double vx1 = paint_view.x + (out->w - paint_view.dx) / paint_view.k, vy1 = paint_view.y + (out->h - paint_view.dy) / paint_view.k;
+    if (fx >= vx1 || fy >= vy1 || fx + fw <= paint_view.x || fy + fh <= paint_view.y) return;
+    Rect oc = out->clip;
+    canvas_set_clip(out, rect_and(oc, (Rect){ (int)floorf(PVX(fx)), (int)floorf(PVY(fy)), (int)ceilf(PVX(fx + fw)), (int)ceilf(PVY(fy + fh)) }));
+    blit_surface(out, fs_surf, x, y, sx, sy, 1);
+    canvas_set_clip(out, oc);
     for (int i = 0; i < npopups; i++) {
         float px, py;
-        if (origin(popups[i], &px, &py)) paint_tree(out, popups[i], px, py, 1, (Rect){ 0, 0, (int)ui.width, (int)ui.height });
+        if (origin(popups[i], &px, &py)) paint_tree(out, popups[i], px, py, 1, (Rect){ -65536, -65536, 65536, 65536 });
     }
 }
 
 int wl_fullscreen_active(void) { return fs_surf && fs_surf->content; }
 int wl_wants_frame(void) { return need_frame; }
 
-/* Scanout directo: la ventana a pantalla completa tiene un dmabuf del tamaño de la salida, no hay
- * menús encima y el cursor no hace falta dibujarlo (plano de cursor u oculto). */
+/* Direct scanout: the fullscreen window has a dmabuf the size of the output, there are no
+ * menus on top and the cursor does not need to be drawn (cursor plane or hidden). */
 static void scanout_done(void *data) {
     Dmabuf *d = data;
     d->scanned = 0;
@@ -1689,7 +1982,9 @@ static void scanout_done(void *data) {
 int wl_try_scanout(int cursor_free) {
     if (!gpu_active() || !fs_surf || !fs_surf->dmabuf || npopups || fs_surf->nkids || !cursor_free) return 0;
     Dmabuf *d = fs_surf->dmabuf;
-    if (fs_surf->viewport || fs_surf->gx || fs_surf->gy || !gpu_can_scanout(&d->d, (int)ui.width, (int)ui.height)) return 0;
+    int pw = 0, ph = 0, nused = 0;              /* one display, at its physical size */
+    for (int i = 0; i < OUT_MAX; i++) if (oslots[i].used) { nused++; pw = oslots[i].o.pw; ph = oslots[i].o.ph; }
+    if (nused != 1 || fs_surf->viewport || fs_surf->gx || fs_surf->gy || !gpu_can_scanout(&d->d, pw, ph)) return 0;
     d->refs++;
     d->scanned = 1;
     if (gpu_scanout(&d->d, scanout_done, d)) { d->scanned = 0; dm_unref(d); return 0; }
@@ -1699,6 +1994,7 @@ int wl_try_scanout(int cursor_free) {
 void wl_frame_done(unsigned t) {
     if (!dpy) return;
     need_frame = 0;
+    update_surface_outputs();
     for (int i = 0; i < nrelease; i++) {
         Dmabuf *d = to_release[i];
         if (d->res && !d->scanned) wl_buffer_send_release(d->res);
@@ -1719,7 +2015,7 @@ void wl_frame_done(unsigned t) {
     wl_display_flush_clients(dpy);
 }
 
-/* ---- entrada ---- */
+/* ---- input ---- */
 
 static Surf *surface_at(Surf *s, float lx, float ly, float *ox, float *oy) {
     for (int i = s->nkids - 1; i >= 0; i--) {
@@ -1762,7 +2058,7 @@ int wl_pointer(float x, float y, Node *hit, int moved, int nbuttons, const int *
     last_y = y;
     Surf *target = NULL;
     float lx = 0, ly = 0;
-    if (buttons_held && pointer_focus) {        /* arrastre: sigue en la misma superficie */
+    if (buttons_held && pointer_focus) {        /* drag: stays on the same surface */
         float ox, oy;
         target = pointer_focus;
         if (origin(target, &ox, &oy)) { lx = x - ox; ly = y - oy; }
@@ -1780,7 +2076,7 @@ int wl_pointer(float x, float y, Node *hit, int moved, int nbuttons, const int *
             if (s && origin(s, &ox, &oy)) target = surface_at(s, x - ox, y - oy, &lx, &ly);
         }
     }
-    for (int i = 0; i < nbuttons; i++)          /* clic afuera de los menús: se cierran */
+    for (int i = 0; i < nbuttons; i++)          /* click outside the menus: they close */
         if (down[i] && npopups && (!target || target->role != R_POPUP)) {
             Surf *t = target;
             while (t && t->role == R_SUB) t = t->parent;
@@ -1808,7 +2104,7 @@ int wl_pointer(float x, float y, Node *hit, int moved, int nbuttons, const int *
     if (buttons_held < 0) buttons_held = 0;
     Surf *top = target;
     while (top && top->role == R_SUB) top = top->parent;
-    if (fs_surf && fs_surf->content) return 2;  /* pantalla completa: la UI no ve el puntero */
+    if (fs_surf && fs_surf->content) return 2;  /* fullscreen: the UI does not see the pointer */
     return top && top->role == R_POPUP ? 2 : 1;
 }
 
@@ -1819,9 +2115,9 @@ void wl_pointer_grab(int nbuttons, const int *down) {
     if (buttons_held < 0) buttons_held = 0;
 }
 
-/* Pega en la app Linux con el teclado: un Ctrl+V sintético solo para esa app (el panel del
- * portapapeles de LordOS lo usa después de volver a copiar algo). Control es el modificador
- * núcleo 2 de XKB en todos los mapas. 1 si había una app con el teclado. */
+/* Pastes into the Linux app with the keyboard: a synthetic Ctrl+V only for that app (the LordOS
+ * clipboard panel uses it after copying something again). Control is XKB core
+ * modifier 2 in all keymaps. 1 if there was an app with the keyboard. */
 int wl_has_key_focus(void) { return dpy && key_focus; }
 
 int wl_send_paste(void) {
@@ -1842,14 +2138,14 @@ int wl_send_paste(void) {
 
 int wl_key(int code, int value, const KeyInfo *k) {
     if (!dpy) return 0;
-    if (k->meta && code == KEY_ESC && fs_surf) { if (value == 1) leave_fullscreen(fs_surf); return 1; }   /* ❖Esc sale */
+    if (k->meta && code == KEY_ESC && fs_surf) { if (value == 1) leave_fullscreen(fs_surf); return 1; }   /* ❖Esc exits */
     if (fs_surf && fs_surf->content && key_focus != fs_surf) wl_set_focus(fs_surf->id);
     if (!key_focus) return 0;
-    if (k->meta) return 0;                      /* ❖ + tecla: atajos de LordOS */
-    /* teclas multimedia e Impr Pant: siempre de LordOS (Reproductor, Capturas) */
+    if (k->meta) return 0;                      /* ❖ + key: LordOS shortcuts */
+    /* media keys and Print Screen: always LordOS's (Player, Screenshots) */
     if (code == KEY_PLAYPAUSE || code == KEY_NEXTSONG || code == KEY_PREVIOUSSONG || code == KEY_STOPCD || code == KEY_PLAYCD ||
         code == KEY_PAUSECD || code == KEY_SYSRQ) return 0;
-    if (value == 2) return 1;                   /* las apps repiten solas (repeat_info) */
+    if (value == 2) return 1;                   /* apps repeat on their own (repeat_info) */
     unsigned t = now_ms();
     uint32_t d, l, lk, g;
     kb_mods(&d, &l, &lk, &g);
@@ -1864,7 +2160,7 @@ int wl_key(int code, int value, const KeyInfo *k) {
     return 1;
 }
 
-/* ---- zwp_linux_dmabuf_v1 (v4): búferes de GPU de las apps ---- */
+/* ---- zwp_linux_dmabuf_v1 (v4): apps' GPU buffers ---- */
 
 typedef struct { int fd[4]; uint32_t off[4], stride[4]; uint64_t mod; int set[4], used; } Params;
 
@@ -1889,9 +2185,9 @@ static void params_add(struct wl_client *c, struct wl_resource *r, int32_t fd, u
                        uint32_t mod_hi, uint32_t mod_lo) {
     (void)c;
     Params *p = wl_resource_get_user_data(r);
-    if (p->used) { close(fd); wl_resource_post_error(r, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_ALREADY_USED, "ya usado"); return; }
-    if (idx >= 4) { close(fd); wl_resource_post_error(r, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_PLANE_IDX, "plano inválido"); return; }
-    if (p->set[idx]) { close(fd); wl_resource_post_error(r, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_PLANE_SET, "plano repetido"); return; }
+    if (p->used) { close(fd); wl_resource_post_error(r, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_ALREADY_USED, "already used"); return; }
+    if (idx >= 4) { close(fd); wl_resource_post_error(r, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_PLANE_IDX, "invalid plane"); return; }
+    if (p->set[idx]) { close(fd); wl_resource_post_error(r, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_PLANE_SET, "repeated plane"); return; }
     p->fd[idx] = fd;
     p->off[idx] = off;
     p->stride[idx] = stride;
@@ -1899,11 +2195,11 @@ static void params_add(struct wl_client *c, struct wl_resource *r, int32_t fd, u
     p->set[idx] = 1;
 }
 
-/* ¿Lo podemos mostrar? En GPU, que se importe como EGLImage; en CPU, que sea lineal y mapeable. */
+/* Can we show it? On GPU, it must import as an EGLImage; on CPU, it must be linear and mappable. */
 static int dmabuf_usable(Dmabuf *d) {
     if (gpu_active() && (d->tex = gpu_tex_dmabuf(&d->d)) != NULL) return 1;
-    /* sin GPU, o un dmabuf que EGL no importa (por ejemplo udmabuf con un driver que no lo
-     * acepta): si es lineal se mapea y se copia, como en el camino por CPU */
+    /* no GPU, or a dmabuf EGL does not import (for example udmabuf with a driver that does not
+     * accept it): if it is linear it is mapped and copied, as in the CPU path */
     const GpuDmabuf *g = &d->d;
     d->cpu = g->nplanes == 1 && (g->modifier == DRM_FORMAT_MOD_LINEAR || g->modifier == DRM_FORMAT_MOD_INVALID) &&
              (g->fourcc == DRM_FORMAT_ARGB8888 || g->fourcc == DRM_FORMAT_XRGB8888);
@@ -1913,14 +2209,14 @@ static int dmabuf_usable(Dmabuf *d) {
 static void params_create_common(struct wl_client *c, struct wl_resource *r, uint32_t buffer_id, int32_t w, int32_t h,
                                  uint32_t format, uint32_t flags) {
     Params *p = wl_resource_get_user_data(r);
-    if (p->used) { wl_resource_post_error(r, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_ALREADY_USED, "ya usado"); return; }
+    if (p->used) { wl_resource_post_error(r, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_ALREADY_USED, "already used"); return; }
     p->used = 1;
     int n = 0;
     while (n < 4 && p->set[n]) n++;
     for (int i = n; i < 4; i++)
-        if (p->set[i]) { wl_resource_post_error(r, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INCOMPLETE, "planos salteados"); return; }
+        if (p->set[i]) { wl_resource_post_error(r, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INCOMPLETE, "skipped planes"); return; }
     if (!n || w <= 0 || h <= 0 || w > 16384 || h > 16384) {
-        wl_resource_post_error(r, n ? ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INVALID_DIMENSIONS : ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INCOMPLETE, "búfer inválido");
+        wl_resource_post_error(r, n ? ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INVALID_DIMENSIONS : ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INCOMPLETE, "invalid buffer");
         return;
     }
     Dmabuf *d = calloc(1, sizeof *d);
@@ -1931,12 +2227,12 @@ static void params_create_common(struct wl_client *c, struct wl_resource *r, uin
         d->d.fd[i] = p->fd[i];
         d->d.offset[i] = p->off[i];
         d->d.stride[i] = p->stride[i];
-        p->set[i] = 0;                          /* ahora son del Dmabuf */
+        p->set[i] = 0;                          /* now they belong to the Dmabuf */
     }
     d->refs = 1;
     if (flags || !dmabuf_usable(d)) {
         dm_unref(d);
-        if (buffer_id) wl_resource_post_error(r, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INVALID_WL_BUFFER, "no se pudo importar");
+        if (buffer_id) wl_resource_post_error(r, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INVALID_WL_BUFFER, "could not import");
         else zwp_linux_buffer_params_v1_send_failed(r);
         return;
     }
@@ -1957,7 +2253,7 @@ static const struct zwp_linux_buffer_params_v1_interface params_impl = {
     .destroy = params_destroy, .add = params_add, .create = params_create, .create_immed = params_create_immed,
 };
 
-/* Formatos que se anuncian: los que importa EGL (GPU) o los lineales que se pueden mapear (CPU). */
+/* Advertised formats: those EGL imports (GPU) or the linear ones that can be mapped (CPU). */
 static int dmabuf_formats(GpuFormat *out, int max) {
     int n = gpu_active() ? gpu_formats(out, max) : 0;
     if (n) return n;
@@ -2034,7 +2330,7 @@ static void bind_dmabuf(struct wl_client *c, void *data, uint32_t ver, uint32_t 
     struct wl_resource *r = wl_resource_create(c, &zwp_linux_dmabuf_v1_interface, (int)ver, id);
     if (!r) { wl_client_post_no_memory(c); return; }
     wl_resource_set_implementation(r, &dmabuf_impl, NULL, NULL);
-    if (ver >= 4) return;                       /* v4: los formatos van por el feedback */
+    if (ver >= 4) return;                       /* v4: formats go through the feedback */
     GpuFormat f[256];
     int n = dmabuf_formats(f, 256);
     for (int i = 0; i < n; i++) {
@@ -2047,7 +2343,7 @@ static void bind_dmabuf(struct wl_client *c, void *data, uint32_t ver, uint32_t 
 
 void wl_set_drm_device(dev_t dev) { drm_dev = dev; }
 
-/* ---- wp_presentation: cuándo se vio cada cuadro ---- */
+/* ---- wp_presentation: when each frame was seen ---- */
 
 static void pres_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
 static void feedback_link_gone(struct wl_resource *r) { wl_list_remove(wl_resource_get_link(r)); }
@@ -2068,7 +2364,7 @@ static void bind_presentation(struct wl_client *c, void *data, uint32_t ver, uin
     wp_presentation_send_clock_id(r, CLOCK_MONOTONIC);
 }
 
-/* El flip terminó (main.c, con la hora y el número de vblank de KMS). */
+/* The flip finished (main.c, with the KMS time and vblank number). */
 void wl_presented(uint64_t ns, unsigned seq, unsigned refresh_ns) {
     if (!dpy) return;
     for (int i = 0; i < MAX_SURF; i++) {
@@ -2077,7 +2373,9 @@ void wl_presented(uint64_t ns, unsigned seq, unsigned refresh_ns) {
         struct wl_resource *fb, *tmp;
         wl_resource_for_each_safe(fb, tmp, &s->sent_feedback) {
             struct wl_resource *o;
-            FOR_CLIENT(&outputs, s->client, o) wp_presentation_feedback_send_sync_output(fb, o);
+            for (int k = 0; k < OUT_MAX; k++)          /* the display it is on (the main one if none) */
+                if (oslots[k].used && ((s->outmask >> k & 1) || (!s->outmask && k == out_main)))
+                    FOR_CLIENT(&oslots[k].res, s->client, o) wp_presentation_feedback_send_sync_output(fb, o);
             uint64_t sec = ns / 1000000000ull;
             wp_presentation_feedback_send_presented(fb, (uint32_t)(sec >> 32), (uint32_t)sec, (uint32_t)(ns % 1000000000ull),
                                                     refresh_ns, 0, seq,
@@ -2088,7 +2386,7 @@ void wl_presented(uint64_t ns, unsigned seq, unsigned refresh_ns) {
     }
 }
 
-/* ---- wp_viewporter: recorte y escala de una superficie ---- */
+/* ---- wp_viewporter: crop and scale of a surface ---- */
 
 static void vp_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
 static void vp_gone(struct wl_resource *r) {
@@ -2102,9 +2400,9 @@ static void vp_gone(struct wl_resource *r) {
 static void vp_source(struct wl_client *c, struct wl_resource *r, wl_fixed_t x, wl_fixed_t y, wl_fixed_t w, wl_fixed_t h) {
     (void)c;
     Surf *s = wl_resource_get_user_data(r);
-    if (!s) { wl_resource_post_error(r, WP_VIEWPORT_ERROR_NO_SURFACE, "sin superficie"); return; }
+    if (!s) { wl_resource_post_error(r, WP_VIEWPORT_ERROR_NO_SURFACE, "no surface"); return; }
     if (w == wl_fixed_from_int(-1)) { s->p_vsw = -1; s->p_vp = 1; return; }
-    if (x < 0 || y < 0 || w <= 0 || h <= 0) { wl_resource_post_error(r, WP_VIEWPORT_ERROR_BAD_VALUE, "recorte inválido"); return; }
+    if (x < 0 || y < 0 || w <= 0 || h <= 0) { wl_resource_post_error(r, WP_VIEWPORT_ERROR_BAD_VALUE, "invalid source rectangle"); return; }
     s->p_vsx = (float)wl_fixed_to_double(x);
     s->p_vsy = (float)wl_fixed_to_double(y);
     s->p_vsw = (float)wl_fixed_to_double(w);
@@ -2114,9 +2412,9 @@ static void vp_source(struct wl_client *c, struct wl_resource *r, wl_fixed_t x, 
 static void vp_destination(struct wl_client *c, struct wl_resource *r, int32_t w, int32_t h) {
     (void)c;
     Surf *s = wl_resource_get_user_data(r);
-    if (!s) { wl_resource_post_error(r, WP_VIEWPORT_ERROR_NO_SURFACE, "sin superficie"); return; }
+    if (!s) { wl_resource_post_error(r, WP_VIEWPORT_ERROR_NO_SURFACE, "no surface"); return; }
     if ((w == -1 && h == -1)) { s->p_vdw = s->p_vdh = 0; s->p_vp = 1; return; }
-    if (w <= 0 || h <= 0) { wl_resource_post_error(r, WP_VIEWPORT_ERROR_BAD_VALUE, "destino inválido"); return; }
+    if (w <= 0 || h <= 0) { wl_resource_post_error(r, WP_VIEWPORT_ERROR_BAD_VALUE, "invalid destination"); return; }
     s->p_vdw = w;
     s->p_vdh = h;
     s->p_vp = 1;
@@ -2125,7 +2423,7 @@ static const struct wp_viewport_interface viewport_impl = { .destroy = vp_destro
 static void vpr_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
 static void vpr_get(struct wl_client *c, struct wl_resource *r, uint32_t id, struct wl_resource *surface) {
     Surf *s = wl_resource_get_user_data(surface);
-    if (s->viewport) { wl_resource_post_error(r, WP_VIEWPORTER_ERROR_VIEWPORT_EXISTS, "ya tiene viewport"); return; }
+    if (s->viewport) { wl_resource_post_error(r, WP_VIEWPORTER_ERROR_VIEWPORT_EXISTS, "already has a viewport"); return; }
     struct wl_resource *v = wl_resource_create(c, &wp_viewport_interface, 1, id);
     if (!v) { wl_client_post_no_memory(c); return; }
     wl_resource_set_implementation(v, &viewport_impl, s, vp_gone);
@@ -2139,7 +2437,7 @@ static void bind_viewporter(struct wl_client *c, void *data, uint32_t ver, uint3
     wl_resource_set_implementation(r, &viewporter_impl, NULL, NULL);
 }
 
-/* ---- zwp_relative_pointer_v1 y zwp_pointer_constraints_v1 (juegos con el mouse capturado) ---- */
+/* ---- zwp_relative_pointer_v1 and zwp_pointer_constraints_v1 (games with a captured mouse) ---- */
 
 static void relp_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
 static const struct zwp_relative_pointer_v1_interface relp_impl = { .destroy = relp_destroy };
@@ -2159,7 +2457,7 @@ static void bind_relm(struct wl_client *c, void *data, uint32_t ver, uint32_t id
     wl_resource_set_implementation(r, &relm_impl, NULL, NULL);
 }
 
-/* Movimiento relativo (sin aceleración ni bordes): main.c lo manda con cada movimiento. */
+/* Relative motion (no acceleration or edges): main.c sends it with every motion. */
 void wl_pointer_relative(double dx, double dy) {
     if (!dpy || !pointer_focus || (dx == 0 && dy == 0)) return;
     struct timespec t;
@@ -2181,7 +2479,7 @@ static void constraint_send(Constraint *k, int on) {
     else { if (on) zwp_confined_pointer_v1_send_confined(k->res); else zwp_confined_pointer_v1_send_unconfined(k->res); }
 }
 
-/* Se activa cuando el puntero entra en su superficie y se suelta cuando sale. */
+/* Activated when the pointer enters its surface and released when it leaves. */
 static void constraint_update(void) {
     Constraint *k = constraint;
     if (!k || !k->surf) return;
@@ -2191,7 +2489,7 @@ static void constraint_update(void) {
     else if (!want && k->active) {
         k->active = 0;
         constraint_send(k, 0);
-        if (k->oneshot) k->oneshot = -1;          /* oneshot: no vuelve a activarse */
+        if (k->oneshot) k->oneshot = -1;          /* oneshot: does not activate again */
         cursor_gen++;
     }
 }
@@ -2211,7 +2509,7 @@ static const struct zwp_confined_pointer_v1_interface confined_impl = { .destroy
 
 static void cons_new(struct wl_client *c, struct wl_resource *r, uint32_t id, struct wl_resource *surface, uint32_t lifetime, int lock) {
     Surf *s = wl_resource_get_user_data(surface);
-    if (constraint && constraint->surf == s) { wl_resource_post_error(r, ZWP_POINTER_CONSTRAINTS_V1_ERROR_ALREADY_CONSTRAINED, "ya tiene"); return; }
+    if (constraint && constraint->surf == s) { wl_resource_post_error(r, ZWP_POINTER_CONSTRAINTS_V1_ERROR_ALREADY_CONSTRAINED, "already constrained"); return; }
     Constraint *k = calloc(1, sizeof *k);
     struct wl_resource *res = k ? wl_resource_create(c, lock ? &zwp_locked_pointer_v1_interface : &zwp_confined_pointer_v1_interface, 1, id) : NULL;
     if (!res) { free(k); wl_client_post_no_memory(c); return; }
@@ -2244,7 +2542,7 @@ static void bind_consm(struct wl_client *c, void *data, uint32_t ver, uint32_t i
     wl_resource_set_implementation(r, &consm_impl, NULL, NULL);
 }
 
-/* Para main.c: puntero bloqueado (no se mueve) o confinado a la superficie (se recorta). */
+/* For main.c: pointer locked (does not move) or confined to the surface (clipped). */
 int wl_pointer_locked(void) { return constraint && constraint->active && constraint->lock; }
 void wl_pointer_confine(int *x, int *y) {
     if (!constraint || !constraint->active || constraint->lock || !constraint->surf) return;
@@ -2258,7 +2556,9 @@ void wl_pointer_confine(int *x, int *y) {
     if (*y > y1) *y = y1;
 }
 
-/* Cursor que pidió la app con el puntero: 0 = flecha de LordOS, 1 = imagen, 2 = oculto. */
+/* Cursor requested by the app with the pointer: 0 = LordOS arrow, 1 = image, 2 = hidden. */
+void wl_set_pointer_scale(int pct) { if (pct != pointer_scale) { pointer_scale = pct; cursor_gen++; } }
+
 int wl_cursor(const uint32_t **px, int *w, int *h, int *hx, int *hy, unsigned *gen) {
     *gen = cursor_gen;
     if (wl_pointer_locked()) return 2;
@@ -2270,20 +2570,20 @@ int wl_cursor(const uint32_t **px, int *w, int *h, int *hx, int *hy, unsigned *g
         *hy = cursor_surf->cursor_hy;
         return 1;
     }
-    if (cursor_mode == 3) {             /* cursor-shape-v1: una forma propia */
-        const CursorImage *ci = cursor_image(cursor_from_wayland_shape(cursor_shape), cursor_scale_for((int)ui.width, (int)ui.height));
+    if (cursor_mode == 3) {             /* cursor-shape-v1: an own shape */
+        const CursorImage *ci = cursor_image_pct(cursor_from_wayland_shape(cursor_shape), pointer_scale);
         if (ci) { *px = ci->px; *w = ci->w; *h = ci->h; *hx = ci->hx; *hy = ci->hy; return 1; }
     }
     return cursor_mode == 2 ? 2 : 0;
 }
 
-/* ---- desde JS ---- */
+/* ---- from JS ---- */
 
 void wl_set_focus(int id) {
     if (!dpy) return;
     Surf *s = id ? find(id) : NULL;
     if (s && s->role != R_TOPLEVEL) s = NULL;
-    if (fs_surf && fs_surf->content) s = fs_surf;      /* en pantalla completa el teclado es suyo */
+    if (fs_surf && fs_surf->content) s = fs_surf;      /* in fullscreen the keyboard is its own */
     if (s == key_focus) return;
     struct wl_resource *kb;
     if (key_focus) {
@@ -2311,27 +2611,33 @@ void wl_close(int id) {
 
 void wl_set_state(int id, int maximized, int fullscreen) {
     Surf *s = find(id);
-    (void)fullscreen;                           /* la pantalla completa la maneja el compositor */
+    (void)fullscreen;                           /* fullscreen is handled by the compositor */
     if (!s || !s->top || s->maximized == maximized) return;
     s->maximized = maximized;
     send_toplevel_configure(s);
 }
 
-/* La pantalla cambió de tamaño (sesión sin monitor, docs/SESIONES.md): nuevo modo para las apps
- * y la de pantalla completa se adapta. */
+/* The screen changed size (headless session, docs/SESSIONS.md): new mode for the apps
+ * and the fullscreen one adapts. */
 void wl_output_resized(void) {
     if (!dpy) return;
     int w = (int)ui.width, h = (int)ui.height;
-    struct wl_resource *r;
-    wl_resource_for_each(r, &outputs) {
-        wl_output_send_mode(r, WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED, w, h, 60000);
-        if (wl_resource_get_version(r) >= 2) wl_output_send_done(r);
-    }
-    if (fs_surf) {
-        fs_surf->conf_w = w;
-        fs_surf->conf_h = h;
-        send_toplevel_configure(fs_surf);
-    }
+    WlOutput o = { 0, 0, w, h, w, h, 60000, 100, w * 254 / 960, h * 254 / 960, "LORD-1", "LordOS display" };
+    wl_set_outputs(&o, 1, 0);
+}
+
+/* The fullscreen window follows its display (resized, or unplugged: the main one). */
+static void fs_follow_outputs(void) {
+    if (!fs_surf) return;
+    if (fs_slot < 0 || fs_slot >= OUT_MAX || !oslots[fs_slot].used) fs_slot = out_main;
+    float fx, fy, fw, fh;
+    fs_rect(&fx, &fy, &fw, &fh);
+    if ((int)fw == fs_surf->conf_w && (int)fh == fs_surf->conf_h) return;
+    fs_surf->conf_w = (int)fw;
+    fs_surf->conf_h = (int)fh;
+    send_toplevel_configure(fs_surf);
+    damage_add((Box){ 0, 0, ui.width, ui.height });
+    ui.dirty = 1;
 }
 
 int wl_count(void) {
@@ -2340,19 +2646,19 @@ int wl_count(void) {
     return n;
 }
 
-/* ---- arranque y bucle ---- */
+/* ---- startup and loop ---- */
 
 int wl_start(void) {
     if (!getenv("XDG_RUNTIME_DIR")) {
         char dir[64];
         snprintf(dir, sizeof dir, "/run/user/%d", (int)getuid());
-        if (access(dir, W_OK)) { fprintf(stderr, "wayland: sin XDG_RUNTIME_DIR\n"); return -1; }
+        if (access(dir, W_OK)) { fprintf(stderr, "wayland: no XDG_RUNTIME_DIR\n"); return -1; }
         setenv("XDG_RUNTIME_DIR", dir, 1);
     }
     dpy = wl_display_create();
     if (!dpy) return -1;
     const char *name = wl_display_add_socket_auto(dpy);
-    if (!name) { wl_display_destroy(dpy); dpy = NULL; fprintf(stderr, "wayland: no se pudo crear el socket\n"); return -1; }
+    if (!name) { wl_display_destroy(dpy); dpy = NULL; fprintf(stderr, "wayland: could not create the socket\n"); return -1; }
     snprintf(socket_name, sizeof socket_name, "%s", name);
     loop = wl_display_get_event_loop(dpy);
     wl_list_init(&pointers);
@@ -2362,7 +2668,8 @@ int wl_start(void) {
     wl_display_init_shm(dpy);
     wl_global_create(dpy, &wl_compositor_interface, 6, NULL, bind_compositor);
     wl_global_create(dpy, &wl_subcompositor_interface, 1, NULL, bind_subcompositor);
-    wl_global_create(dpy, &wl_output_interface, 4, NULL, bind_output);
+    wl_global_create(dpy, &zxdg_output_manager_v1_interface, 3, NULL, bind_xdg_output_mgr);
+    wl_global_create(dpy, &wp_fractional_scale_manager_v1_interface, 1, NULL, bind_frac_mgr);
     wl_global_create(dpy, &wl_seat_interface, 9, NULL, bind_seat);    /* 8: axis_value120, 9: relative_direction */
     wl_global_create(dpy, &wl_data_device_manager_interface, 3, NULL, bind_ddm);
     wl_global_create(dpy, &xdg_wm_base_interface, 6, NULL, bind_wm_base);
@@ -2373,10 +2680,10 @@ int wl_start(void) {
     wl_global_create(dpy, &wp_viewporter_interface, 1, NULL, bind_viewporter);
     wl_global_create(dpy, &zwp_relative_pointer_manager_v1_interface, 1, NULL, bind_relm);
     wl_global_create(dpy, &zwp_pointer_constraints_v1_interface, 1, NULL, bind_consm);
-    wl_global_create(dpy, &wp_cursor_shape_manager_v1_interface, 1, NULL, bind_csm);   /* cursores por nombre */
-    wl_global_create(dpy, &kde_mgr_interface, 1, NULL, bind_kde_deco);   /* marco del tema para GTK 3 (Firefox) */
+    wl_global_create(dpy, &wp_cursor_shape_manager_v1_interface, 1, NULL, bind_csm);   /* cursors by name */
+    wl_global_create(dpy, &kde_mgr_interface, 1, NULL, bind_kde_deco);   /* theme frame for GTK 3 (Firefox) */
     wl_input_globals(dpy);              /* zwp_pointer_gestures_v1 (wl_input.c) */
-    /* lo heredan las apps que se abran desde la terminal de LordOS */
+    /* inherited by apps opened from the LordOS terminal */
     setenv("WAYLAND_DISPLAY", socket_name, 1);
     setenv("XDG_SESSION_TYPE", "wayland", 1);
     setenv("XDG_CURRENT_DESKTOP", "LordOS", 1);
@@ -2402,7 +2709,7 @@ void wl_dispatch(void) { if (dpy) wl_event_loop_dispatch(loop, 0); }
 
 void wl_flush(void) {
     if (!dpy) return;
-    /* LordOS copió algo (terminal, campo de texto): la app con foco lo ve como selección */
+    /* LordOS copied something (terminal, text field): the focused app sees it as the selection */
     unsigned g = term_clipboard_gen();
     if (g != clip_seen) {
         clip_seen = g;
@@ -2413,12 +2720,12 @@ void wl_flush(void) {
     wl_display_flush_clients(dpy);
 }
 
-/* ---- para wl_input.c (gestos, scroll fino y toques) ---- */
+/* ---- for wl_input.c (gestures, fine scrolling and touches) ---- */
 struct wl_display *wl__display(void) { return dpy; }
 struct wl_resource *wl__pointer_focus(void) { return dpy && pointer_focus ? pointer_focus->res : NULL; }
 struct wl_list *wl__pointers(void) { return &pointers; }
 
-/* Superficie bajo un punto de la pantalla (menús, pantalla completa o la ventana del nodo). */
+/* Surface under a screen point (menus, fullscreen or the node's window). */
 struct wl_resource *wl__surface_at(float x, float y, float *lx, float *ly) {
     if (!dpy) return NULL;
     Surf *target = NULL;

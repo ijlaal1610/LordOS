@@ -58,11 +58,11 @@ function lineStyle(s, inCode) {
   return 'text';
 }
 
-export function BodyEditor({ value, onChange, size = 14, colors, onPasteImage, emojiSearch, onEscape, autoFocus, padding = 10, apiRef, onBlur, onCommand }) {
+export function BodyEditor({ value, onChange, size = 14, colors, onPasteImage, emojiSearch, onEscape, autoFocus, padding = 10, apiRef, onBlur, onCommand, caret = null }) {
   const area = useRef(null);
   const token = useRef({}).current;
   const st = useRef({ undo: [], redo: [], last: 0, w: 300, h: 200 });
-  const [sel, setSel] = useState({ a: value.length, b: value.length });
+  const [sel, setSel] = useState(() => { const c = caret == null ? value.length : Math.min(caret, value.length); return { a: c, b: c }; });
   const [scroll, setScroll] = useState(0);
   const [focus, setFocusState] = useState(false);
   const [blink, setBlink] = useState(true);

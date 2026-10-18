@@ -1,10 +1,10 @@
-/* vt.c — emulador de terminal compatible con xterm-256color.
+/* vt.c — xterm-256color compatible terminal emulator.
  *
- * Parser de secuencias (estados de la VT500), grilla con historia en un anillo, reflujo
- * del texto al cambiar el tamaño, pantalla alternativa, SGR con 256 colores y color
- * directo, modos de mouse, pegado entre corchetes, salida sincronizada, hipervínculos
- * (OSC 8), integración con el shell (OSC 133 / 7) y extensiones de iTerm2 (OSC 1337:
- * marcas, insignia, imágenes en línea, directorio actual). */
+ * Sequence parser (VT500 states), grid with history in a ring, text reflow
+ * on resize, alternate screen, SGR with 256 colors and direct color,
+ * mouse modes, bracketed paste, synchronized output, hyperlinks
+ * (OSC 8), shell integration (OSC 133 / 7) and iTerm2 extensions (OSC 1337:
+ * marks, badge, inline images, current directory). */
 #include "term.h"
 
 #include <ctype.h>
@@ -21,14 +21,14 @@
 enum { S_GROUND, S_ESC, S_ESC_INT, S_CSI, S_OSC, S_OSC_ESC, S_DCS, S_DCS_ESC, S_IGNORE, S_IGNORE_ESC, S_TMUX, S_TMUX_ESC };
 
 #define STR_MAX (64 * 1024)
-#define STR_MAX_FILE (48 * 1024 * 1024)    /* imágenes en línea (OSC 1337;File) */
+#define STR_MAX_FILE (48 * 1024 * 1024)    /* inline images (OSC 1337;File) */
 #define MAX_LINKS 4096
 #define MAX_IMAGES 64
 #define MAX_MATCHES 20000
 
 static uint32_t now_s;
 
-/* ---- líneas y buffers ---- */
+/* ---- lines and buffers ---- */
 
 static void line_reserve(Line *l, int n) {
     if (n <= l->cap) return;
@@ -48,7 +48,7 @@ static void line_reset(Line *l) {
 
 static int cell_blank(Cell c) { return !c.cp && !c.bg && !c.attr && !c.link; }
 
-/* Llena [from, to) con `b`. Si `b` es la celda vacía y llega al final, acorta la línea. */
+/* Fills [from, to) with `b`. If `b` is the empty cell and reaches the end, shortens the line. */
 static void line_fill(Line *l, int from, int to, Cell b) {
     if (from < 0) from = 0;
     if (to <= from) return;
@@ -81,7 +81,7 @@ static void buf_free(Buffer *b) {
     b->ring = NULL;
 }
 
-/* Agrega una línea vacía al final; si el anillo está lleno se descarta la más vieja. */
+/* Appends an empty line at the end; if the ring is full the oldest one is dropped. */
 static void buf_push(Buffer *b) {
     if (b->count < b->cap) { line_reset(bl(b, b->count)); b->count++; return; }
     line_reset(&b->ring[b->head]);
@@ -121,7 +121,7 @@ Line *vt_view_line(Term *t, int row, long long *abs) {
     return i >= 0 && i < t->buf->count ? bl(t->buf, i) : NULL;
 }
 
-/* ---- imágenes ---- */
+/* ---- images ---- */
 
 static void image_free(TermImage *im) { free(im->px); free(im->scaled); }
 
@@ -225,7 +225,7 @@ static void reset_tabs(Term *t, int from) {
     for (int i = from; i < t->cols; i++) t->tabs[i] = i % 8 == 0 && i;
 }
 
-/* ---- grafemas (tabla global interna) ---- */
+/* ---- graphemes (internal global table) ---- */
 
 #define CLUSTER_MAX 32768
 #define CLUSTER_HASH 65536
@@ -241,7 +241,7 @@ static uint32_t cluster_key(const uint32_t *cp, int n) {
     return h & (CLUSTER_HASH - 1);
 }
 
-/* Devuelve el cp que representa la secuencia (o 0 si la tabla se llenó). */
+/* Returns the cp that represents the sequence (or 0 if the table filled up). */
 static uint32_t cluster_intern(const uint32_t *cp, int n) {
     if (n == 1) return cp[0];
     if (!clusters) {
@@ -279,7 +279,7 @@ uint32_t vt_base_cp(uint32_t cp) {
     return clusters && i < (uint32_t)nclusters ? clusters[i].cp[0] : 0xfffd;
 }
 
-/* ---- escribir caracteres ---- */
+/* ---- writing characters ---- */
 
 static const uint16_t dec_graphics[31] = {
     0x25c6, 0x2592, 0x2409, 0x240c, 0x240d, 0x240a, 0x00b0, 0x00b1, 0x2424, 0x240b, 0x2518,
@@ -293,14 +293,14 @@ static int char_width(uint32_t cp) {
     return w < 0 ? 1 : w;
 }
 
-/* Al pisar media celda de un carácter ancho, se borra la otra mitad. */
+/* When overwriting half a cell of a wide character, the other half is erased. */
 static void clear_wide(Line *l, int x) {
     if (x < 0 || x >= l->len) return;
     if (l->c[x].attr & A_WIDE_TAIL && x > 0) { l->c[x - 1].cp = 0; l->c[x - 1].attr &= (uint16_t)~A_WIDE; }
     if (l->c[x].attr & A_WIDE && x + 1 < l->len) { l->c[x + 1].cp = 0; l->c[x + 1].attr &= (uint16_t)~A_WIDE_TAIL; }
 }
 
-/* Celda donde quedó el último carácter escrito (para pegarle combinantes). */
+/* Cell where the last written character ended up (to attach combining marks to it). */
 static Cell *prev_cell(Term *t, int *col) {
     int x = t->wrap_pending ? t->cx : t->cx - 1;
     if (x < 0) return NULL;
@@ -314,10 +314,10 @@ static Cell *prev_cell(Term *t, int *col) {
 
 static int is_ri(uint32_t cp) { return cp >= 0x1f1e6 && cp <= 0x1f1ff; }
 
-/* ¿El carácter se une al grafema anterior? Siempre los de ancho 0 (acentos combinantes,
- * ZWJ, selectores de variación). Con el modo 2027 (grapheme clusters, como contour,
- * wezterm o foot) también: lo que sigue a un ZWJ, modificadores de tono de piel y el
- * segundo indicador regional de una bandera. */
+/* Does the character join the previous grapheme? Always the zero-width ones (combining
+ * accents, ZWJ, variation selectors). With mode 2027 (grapheme clusters, like contour,
+ * wezterm or foot) also: what follows a ZWJ, skin tone modifiers and the
+ * second regional indicator of a flag. */
 static int joins(Term *t, uint32_t cp, int w, Cell *prev) {
     if (w == 0) return 1;
     if (!(t->modes & M_GRAPHEME) || !prev) return 0;
@@ -342,7 +342,7 @@ static void put_char(Term *t, uint32_t cp) {
         seq[n++] = cp;
         uint32_t id = cluster_intern(seq, n);
         if (id) prev->cp = id;
-        /* modo 2027: VS16 o una bandera completa ocupan dos celdas */
+        /* mode 2027: VS16 or a complete flag take two cells */
         if ((t->modes & M_GRAPHEME) && !(prev->attr & A_WIDE) && (cp == 0xfe0f || is_ri(cp)) && !t->wrap_pending &&
             pcol + 1 < t->cols && t->cx == pcol + 1) {
             Line *l = L(t, t->cy);
@@ -398,7 +398,7 @@ static void put_char(Term *t, uint32_t cp) {
     else t->cx += w;
 }
 
-/* ---- borrado y edición ---- */
+/* ---- erasing and editing ---- */
 
 static void erase_line(Term *t, int row, int from, int to) {
     Line *l = L(t, row);
@@ -450,7 +450,7 @@ static void delete_chars(Term *t, int n) {
     vt_mark_dirty(t, t->cy);
 }
 
-/* ---- pantalla alternativa ---- */
+/* ---- alternate screen ---- */
 
 static void use_alt(Term *t, int on, int clear) {
     if (on == (t->buf == &t->alt)) return;
@@ -468,7 +468,7 @@ static void use_alt(Term *t, int on, int clear) {
     dirty_all(t);
 }
 
-/* ---- paleta ---- */
+/* ---- palette ---- */
 
 void vt_apply_palette(Term *t) {
     static const int lv[6] = { 0, 95, 135, 175, 215, 255 };
@@ -565,7 +565,7 @@ static void sgr(Term *t) {
     }
 }
 
-/* ---- modos ---- */
+/* ---- modes ---- */
 
 static void set_flag(Term *t, uint32_t f, int on) {
     if (on) t->modes |= f; else t->modes &= ~f;
@@ -664,8 +664,8 @@ static void csi(Term *t, int f) {
         else if (f == 'K') {
             int m = prm0(t, 0, 0);
             erase_line(t, t->cy, m == 0 ? t->cx : 0, m == 1 ? t->cx + 1 : t->cols);
-        } else if (f == 's') save_cursor(t, &t->saved);    /* XTSAVE: aproximación */
-        else if (f == 'S') {                                /* XTSMGRAPHICS: capacidades sixel */
+        } else if (f == 's') save_cursor(t, &t->saved);    /* XTSAVE: approximation */
+        else if (f == 'S') {                                /* XTSMGRAPHICS: sixel capabilities */
             int item = prm0(t, 0, 0);
             if (item == 1) reply(t, "\033[?1;0;256S");
             else if (item == 2) reply(t, "\033[?2;0;%d;%dS", (int)(t->cols * t->cell_w), (int)(t->rows * t->cell_h));
@@ -771,7 +771,7 @@ static void csi(Term *t, int f) {
     }
 }
 
-/* ---- texto (para copiar, buscar y extraer comandos) ---- */
+/* ---- text (for copying, searching and extracting commands) ---- */
 
 typedef struct { char *s; size_t n, cap; } Str;
 
@@ -821,7 +821,7 @@ static int hexval(int c) {
     return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
 }
 
-/* "rgb:rr/gg/bb" (1 a 4 dígitos por canal) o "#rrggbb". */
+/* "rgb:rr/gg/bb" (1 to 4 digits per channel) or "#rrggbb". */
 static int parse_color(const char *s, uint32_t *out) {
     if (s[0] == '#' && strlen(s) == 7) {
         uint32_t v = 0;
@@ -860,7 +860,7 @@ static const int8_t b64[256] = {
     ['5'] = 58, ['6'] = 59, ['7'] = 60, ['8'] = 61, ['9'] = 62, ['+'] = 63, ['/'] = 64,
 };
 
-/* Decodifica base64 (ignora espacios y '='); `out` necesita n*3/4+3 bytes. */
+/* Decodes base64 (ignores spaces and '='); `out` needs n*3/4+3 bytes. */
 size_t base64_decode(const char *in, size_t n, uint8_t *out) {
     uint32_t acc = 0;
     int bits = 0;
@@ -887,7 +887,7 @@ static char *b64_text(const char *in, size_t max) {
 
 static void copy_str(char *dst, size_t size, const char *src) {
     size_t i = 0;
-    for (; src[i] && i + 1 < size; i++) dst[i] = (unsigned char)src[i] < 0x20 ? ' ' : src[i];   /* char es sin signo en ARM */
+    for (; src[i] && i + 1 < size; i++) dst[i] = (unsigned char)src[i] < 0x20 ? ' ' : src[i];   /* char is unsigned on ARM */
     dst[i] = 0;
 }
 
@@ -904,7 +904,7 @@ static int add_link(Term *t, const char *uri) {
     for (int i = 0; i < t->nlinks; i++) if (!strcmp(t->links[i], uri)) return i + 1;
     if (!t->links) t->links = calloc(MAX_LINKS, sizeof *t->links);
     if (!t->links) return 0;
-    if (t->nlinks >= MAX_LINKS) {   /* tabla llena: se recicla (los enlaces viejos pierden su URI) */
+    if (t->nlinks >= MAX_LINKS) {   /* table full: it is recycled (old links lose their URI) */
         for (int i = 0; i < t->nlinks; i++) free(t->links[i]);
         t->nlinks = 0;
     }
@@ -912,7 +912,7 @@ static int add_link(Term *t, const char *uri) {
     return t->links[t->nlinks] ? ++t->nlinks : 0;
 }
 
-/* Dimensión de imagen de iTerm2: "N" celdas, "Npx", "N%" o "auto". */
+/* iTerm2 image dimension: "N" cells, "Npx", "N%" or "auto". */
 static int image_dim(const char *v, int cell, int avail_cells, int *px) {
     *px = 0;
     if (!v || !*v || !strcmp(v, "auto")) return -1;
@@ -965,7 +965,7 @@ static void place_image(Term *t, const char *args, const char *data) {
     if (wc < 0 && hc < 0) { wc = (int)((w + cw - 1) / cw); hc = (int)((h + ch - 1) / ch); }
     else if (wc < 0) wc = keep ? (int)(hc * ch * w / h / cw + 0.999) : (int)((w + cw - 1) / cw);
     else if (hc < 0) hc = keep ? (int)(wc * cw * h / w / ch + 0.999) : (int)((h + ch - 1) / ch);
-    if (wc > t->cols - t->cx) {     /* no entra a lo ancho: se achica conservando proporción */
+    if (wc > t->cols - t->cx) {     /* does not fit horizontally: shrunk keeping the aspect ratio */
         int nw = t->cols - t->cx;
         if (keep && wc > 0) hc = hc * nw / wc;
         wc = nw;
@@ -977,12 +977,12 @@ static void place_image(Term *t, const char *args, const char *data) {
     add_image(t, px, w, h, wc, hc);
 }
 
-/* Imagen ya decodificada → anclada en el cursor, ocupando wc×hc celdas. */
+/* Already decoded image → anchored at the cursor, occupying wc×hc cells. */
 static void add_image(Term *t, uint32_t *px, int w, int h, int wc, int hc) {
     if (t->nimages >= MAX_IMAGES) { image_free(&t->images[0]); memmove(t->images, t->images + 1, (size_t)--t->nimages * sizeof *t->images); }
     if (!t->images) t->images = calloc(MAX_IMAGES, sizeof *t->images);
     if (!t->images) { free(px); return; }
-    /* Se reserva el espacio bajando el cursor; la imagen queda anclada a su primera línea. */
+    /* The space is reserved by moving the cursor down; the image stays anchored to its first line. */
     int col = t->cx;
     for (int i = 0; i < hc - 1; i++) index_down(t);
     long long line = vt_cursor_abs(t) - (hc - 1);
@@ -992,7 +992,7 @@ static void add_image(Term *t, uint32_t *px, int w, int h, int wc, int hc) {
     dirty_all(t);
 }
 
-/* ---- Sixel (DCS q): gráficos de la VT340 que usan img2sixel, chafa, gnuplot… ---- */
+/* ---- Sixel (DCS q): VT340 graphics used by img2sixel, chafa, gnuplot… ---- */
 
 static uint32_t hls(int h, int l, int sat) {
     float H = (float)((h + 240) % 360) / 360, L = l / 100.0f, S = sat / 100.0f;
@@ -1061,7 +1061,7 @@ static void sixel(Term *t, const char *s) {
             if (c == '!') { p++; rep = sixel_num(&p); if (rep < 1) rep = 1; c = *p; if (!(c >= '?' && c <= '~')) continue; }
             int bits = c - '?';
             p++;
-            if (x + rep > cw || y + 6 > ch) {      /* crece el lienzo */
+            if (x + rep > cw || y + 6 > ch) {      /* the canvas grows */
                 int nw = cw, nh = ch;
                 while (x + rep > nw) nw = nw ? nw * 2 : 256;
                 while (y + 6 > nh) nh = nh ? nh * 2 : 96;
@@ -1148,7 +1148,7 @@ static void osc(Term *t) {
         if (!strncmp(s, "file://", 7)) {
             const char *path = strchr(s + 7, '/');
             if (path) { url_decode(t->cwd, sizeof t->cwd, path); t->events |= EV_CWD; }
-            /* file://host/ruta: si el shell no informó usuario@host (OSC 1337), al menos el host */
+            /* file://host/path: if the shell did not report user@host (OSC 1337), at least the host */
             char host[256];
             size_t hl = path ? (size_t)(path - (s + 7)) : 0;
             if (hl && hl < sizeof host && !strchr(t->host, '@')) {
@@ -1184,7 +1184,7 @@ static void osc(Term *t) {
     }
     case 52: {
         char *semi = strchr(s, ';');
-        if (!semi || !strcmp(semi + 1, "?")) break;    /* leer el portapapeles no se permite */
+        if (!semi || !strcmp(semi + 1, "?")) break;    /* reading the clipboard is not allowed */
         char *b = b64_text(semi + 1, 1u << 20);
         if (b) { term_set_clipboard(b, strlen(b)); free(b); t->events |= EV_COPY; }
         break;
@@ -1205,7 +1205,7 @@ static void osc(Term *t) {
         if (s[0] == 'A') { l->flags |= LINE_PROMPT; l->flags &= (uint8_t)~(LINE_OK | LINE_FAIL); vt_mark_dirty(t, t->cy); }
         else if (s[0] == 'B') { t->cmd_line = vt_cursor_abs(t); t->cmd_col = t->cx; }
         else if (s[0] == 'C') {
-            /* El comando es lo escrito entre el fin del prompt y el comienzo de la salida. */
+            /* The command is what was typed between the end of the prompt and the start of the output. */
             long long end = vt_cursor_abs(t) - (t->cx == 0 ? 1 : 0);
             if (t->cmd_line >= vt_first_abs(t) && t->cmd_line <= end && end - t->cmd_line < 50) {
                 Str txt = {0};
@@ -1277,7 +1277,7 @@ static void str_begin(Term *t) {
 }
 
 static void str_end(Term *t) {
-    /* Libera buffers grandes (imágenes) para no retener memoria. */
+    /* Frees large buffers (images) so as not to retain memory. */
     if (t->str_cap > STR_MAX) { free(t->str); t->str = NULL; t->str_cap = 0; }
     t->str_len = 0;
 }
@@ -1341,7 +1341,7 @@ static void esc_int(Term *t, uint8_t b) {
     t->state = S_GROUND;
     char i0 = t->inter[0];
     if (i0 == '(' || i0 == ')') t->g[i0 == ')'] = b == '0';
-    else if (i0 == '#' && b == '8') {     /* DECALN: pantalla de E para alinear */
+    else if (i0 == '#' && b == '8') {     /* DECALN: screen of E's for alignment */
         for (int r = 0; r < t->rows; r++) {
             Line *l = L(t, r);
             line_fill(l, 0, t->cols, (Cell){ 'E', 0, 0, 0, 0 });
@@ -1389,7 +1389,7 @@ void vt_write(Term *t, const uint8_t *d, size_t n) {
             }
             if (b >= 0x20 && b < 0x7f) {
                 put_char(t, b);
-                /* Camino rápido: texto ASCII seguido. */
+                /* Fast path: contiguous ASCII text. */
                 while (i + 1 < n && d[i + 1] >= 0x20 && d[i + 1] < 0x7f) put_char(t, d[++i]);
             } else if (b < 0x20) control(t, b);
             else if (b == 0x7f) {}
@@ -1421,7 +1421,7 @@ void vt_write(Term *t, const uint8_t *d, size_t n) {
             if (b == 0x1b) t->state = S_DCS_ESC;
             else if (b == 0x18 || b == 0x1a) { str_end(t); t->state = S_GROUND; }
             else if (b == 'p' && t->tmux && t->str_len == 4 && !memcmp(t->str, "1000", 4)) {
-                /* tmux -CC: modo control. Todo lo que sigue son líneas del protocolo hasta ST. */
+                /* tmux -CC: control mode. Everything that follows is protocol lines until ST. */
                 str_end(t);
                 str_begin(t);
                 t->state = S_TMUX;
@@ -1458,7 +1458,7 @@ void vt_write(Term *t, const uint8_t *d, size_t n) {
     }
 }
 
-/* ---- ciclo de vida ---- */
+/* ---- life cycle ---- */
 
 int vt_init(Term *t, int cols, int rows, int scrollback, TermProfile *p) {
     memset(t, 0, sizeof *t);
@@ -1513,7 +1513,7 @@ void vt_free(Term *t) {
     memset(t, 0, sizeof *t);
 }
 
-/* ---- cambio de tamaño con reflujo (pantalla principal) ---- */
+/* ---- resize with reflow (main screen) ---- */
 
 typedef struct { Line *v; int n, cap; } LineVec;
 
@@ -1559,7 +1559,7 @@ static void reflow_main(Term *t, int ncols, int nrows, int *ccx, int *ccy) {
         for (int k = i; k <= j; k++) {
             Line *l = bl(b, k);
             int w = k < j ? ocols : l->len;
-            /* Celda de relleno que dejó un carácter ancho que no entraba al final: se omite. */
+            /* Padding cell left by a wide character that did not fit at the end: skipped. */
             if (k < j && (l->len < ocols || (!l->c[ocols - 1].cp && !l->c[ocols - 1].attr))) {
                 Line *nx = bl(b, k + 1);
                 if (nx->len && (nx->c[0].attr & A_WIDE)) w = ocols - 1;
@@ -1608,7 +1608,7 @@ static void reflow_main(Term *t, int ncols, int nrows, int *ccx, int *ccy) {
     }
     free(cells);
 
-    /* Las líneas que queden debajo del cursor y no entren en pantalla se descartan. */
+    /* Lines left below the cursor that do not fit on screen are dropped. */
     while (out.n - new_cur > nrows) { out.n--; free(out.v[out.n].c); }
     while (out.n < nrows) vec_push(&out);
 
@@ -1696,7 +1696,7 @@ void vt_resize(Term *t, int ncols, int nrows) {
     dirty_all(t);
 }
 
-/* ---- historia y vista ---- */
+/* ---- history and view ---- */
 
 void vt_scroll_view(Term *t, int delta) {
     int max = t->buf->count - t->rows;
@@ -1721,7 +1721,7 @@ void vt_clear_scrollback(Term *t) {
     dirty_all(t);
 }
 
-/* ---- selección ---- */
+/* ---- selection ---- */
 
 static int url_char(uint32_t cp);
 
@@ -1749,7 +1749,7 @@ static void sel_update(Term *t) {
     if (t->sel_mode == 1) {
         if (is_word(t, cell_cp(t, sl, sc))) while (sc > 0 && is_word(t, cell_cp(t, sl, sc - 1))) sc--;
         if (is_word(t, cell_cp(t, el, ec))) while (ec < t->cols - 1 && is_word(t, cell_cp(t, el, ec + 1))) ec++;
-    } else if (t->sel_mode == 3) {     /* selección inteligente: URL, ruta, correo… */
+    } else if (t->sel_mode == 3) {     /* smart selection: URL, path, email… */
         if (url_char(cell_cp(t, sl, sc))) while (sc > 0 && url_char(cell_cp(t, sl, sc - 1))) sc--;
         if (url_char(cell_cp(t, el, ec))) while (ec < t->cols - 1 && url_char(cell_cp(t, el, ec + 1))) ec++;
     } else if (t->sel_mode == 2) {
@@ -1829,7 +1829,7 @@ char *vt_text_range(Term *t, long long from, long long to) {
     return s.s;
 }
 
-/* Selecciona la salida del último comando terminado (entre OSC 133;C y el prompt siguiente). */
+/* Selects the output of the last finished command (between OSC 133;C and the next prompt). */
 int vt_select_last_output(Term *t) {
     long long first = vt_first_abs(t), a = vt_cursor_abs(t);
     while (a >= first) { Line *l = vt_abs_line(t, a); if (l && l->flags & LINE_PROMPT) break; a--; }
@@ -1842,7 +1842,7 @@ int vt_select_last_output(Term *t) {
     return 1;
 }
 
-/* ---- búsqueda ---- */
+/* ---- search ---- */
 
 void vt_search_clear(Term *t) {
     if (t->nmatches) dirty_all(t);
@@ -1864,8 +1864,8 @@ static void show_line(Term *t, long long abs) {
 
 static uint32_t fold(uint32_t cp, int cs) { return cs ? cp : (uint32_t)towlower((wint_t)cp); }
 
-/* Una línea lógica (las físicas unidas por el ajuste de línea) como códigos de carácter,
- * con la posición en la grilla de cada uno. */
+/* A logical line (the physical ones joined by line wrapping) as character codes,
+ * with the grid position of each one. */
 typedef struct { uint32_t *text; long long *pl; int *pc; size_t n, cap; } Gather;
 
 static int gather_push(Gather *g, uint32_t cp, long long line, int col) {
@@ -1887,7 +1887,7 @@ static int gather_push(Gather *g, uint32_t cp, long long line, int col) {
     return 0;
 }
 
-/* Junta la línea lógica que empieza en `a`; devuelve la primera línea de la siguiente. */
+/* Gathers the logical line that starts at `a`; returns the first line of the next one. */
 static long long gather_line(Term *t, long long a, Gather *g) {
     long long last = vt_first_abs(t) + t->buf->count - 1, b = a;
     g->n = 0;
@@ -1953,7 +1953,7 @@ int vt_search(Term *t, const char *query, int cs) {
     return t->nmatches;
 }
 
-/* ---- guardar y recuperar la pantalla (sesiones que sobreviven a un reinicio) ---- */
+/* ---- saving and restoring the screen (sessions that survive a restart) ---- */
 
 static void sgr_color(Str *s, uint32_t c, int fg) {
     char b[32];
@@ -1990,8 +1990,8 @@ static void serialize_line(Str *s, Line *l, Cell *pen) {
     }
 }
 
-/* Contenido como secuencias de escape (texto, colores, ajuste de línea, marcas del prompt,
- * cursor y pantalla alternativa). Al volver a pasarlo por vt_write() queda igual. */
+/* Content as escape sequences (text, colors, line wrapping, prompt marks,
+ * cursor and alternate screen). Feeding it back through vt_write() gives the same result. */
 void vt_enter_tmux(Term *t) { str_end(t); str_begin(t); t->state = S_TMUX; }
 int  vt_in_tmux(const Term *t) { return t->state == S_TMUX || t->state == S_TMUX_ESC; }
 
@@ -2026,8 +2026,8 @@ char *vt_serialize(Term *t, int max_lines, size_t *len) {
     return s.s;
 }
 
-/* Disparador "Resaltar" (iTerm2 Highlight Text): pinta la última aparición de `text` en la
- * pantalla con los colores dados (-1 = sin cambiar). Devuelve 1 si la encontró. */
+/* "Highlight" trigger (iTerm2 Highlight Text): paints the last occurrence of `text` on the
+ * screen with the given colors (-1 = unchanged). Returns 1 if it found it. */
 int vt_highlight(Term *t, const char *text, int64_t fg, int64_t bg) {
     uint32_t q[512];
     int qn = 0;
@@ -2054,7 +2054,7 @@ int vt_highlight(Term *t, const char *text, int64_t fg, int64_t bg) {
             hit_line = a;
             hit = i;
         }
-        if (hit_line == a) {     /* se guarda la línea lógica con la última coincidencia */
+        if (hit_line == a) {     /* the logical line with the last match is saved */
             gather_free(&best);
             best = g;
             g = (Gather){0};
@@ -2075,8 +2075,8 @@ int vt_highlight(Term *t, const char *text, int64_t fg, int64_t bg) {
     return 1;
 }
 
-/* Texto de todas las líneas lógicas separado por '\n', para buscar con expresiones
- * regulares en JS; las coincidencias vuelven con vt_set_matches. */
+/* Text of all logical lines separated by '\n', for searching with regular
+ * expressions in JS; the matches come back with vt_set_matches. */
 char *vt_logical_text(Term *t) {
     Gather g = {0};
     Str s = {0};
@@ -2091,7 +2091,7 @@ char *vt_logical_text(Term *t) {
     return s.s;
 }
 
-/* trip: ternas (línea lógica, primer carácter, cantidad), ordenadas. */
+/* trip: triples (logical line, first character, count), sorted. */
 int vt_set_matches(Term *t, const int *trip, int n) {
     vt_search_clear(t);
     if (n <= 0) { dirty_all(t); return 0; }
@@ -2136,7 +2136,7 @@ int vt_match_at(const Term *t, long long line, int col) {
     return 0;
 }
 
-/* ---- marcas ---- */
+/* ---- marks ---- */
 
 void vt_set_mark(Term *t) {
     L(t, t->cy)->flags |= LINE_MARK;
@@ -2159,7 +2159,7 @@ int vt_jump_mark(Term *t, int dir) {
     return 0;
 }
 
-/* ---- enlaces, palabras ---- */
+/* ---- links, words ---- */
 
 static int url_char(uint32_t cp) {
     return cp > ' ' && !strchr("<>\"'`|{}", (int)(cp < 128 ? cp : 'a'));
@@ -2198,7 +2198,7 @@ char *vt_cursor_word(Term *t) {
     return s.s;
 }
 
-/* Palabras de la pantalla e historia reciente que empiezan con `prefix` (autocompletar). */
+/* Words on the screen and recent history that start with `prefix` (autocomplete). */
 char *vt_words(Term *t, const char *prefix, int max) {
     size_t pn = strlen(prefix);
     Str out = {0};
@@ -2231,7 +2231,7 @@ char *vt_words(Term *t, const char *prefix, int max) {
     return out.s;
 }
 
-/* ---- modo copia (como el de iTerm2): mover un cursor propio con el teclado y copiar ---- */
+/* ---- copy mode (like iTerm2's): move an own cursor with the keyboard and copy ---- */
 
 int vt_copy_mode(Term *t, int on) {
     t->copy_active = on;
@@ -2255,7 +2255,7 @@ static void copy_move(Term *t, long long line, int col) {
     dirty_all(t);
 }
 
-/* Devuelve 0 si sigue en modo copia, 1 si salió y 2 si copió (texto en *yank). */
+/* Returns 0 if still in copy mode, 1 if it exited and 2 if it copied (text in *yank). */
 int vt_copy_key(Term *t, const char *k, int ctrl, char **yank) {
     long long l = t->copy_line;
     int c = t->copy_col, half = t->rows / 2;
@@ -2272,7 +2272,7 @@ int vt_copy_key(Term *t, const char *k, int ctrl, char **yank) {
     else if ((ctrl && !strcmp(k, "u")) || !strcmp(k, "PageUp")) copy_move(t, l - (ctrl ? half : t->rows), c);
     else if ((ctrl && !strcmp(k, "d")) || !strcmp(k, "PageDown")) copy_move(t, l + (ctrl ? half : t->rows), c);
     else if (!strcmp(k, "w") || !strcmp(k, "b")) {
-        /* comienzo de la palabra siguiente/anterior, pasando de línea si hace falta (como vi) */
+        /* start of the next/previous word, crossing lines if needed (like vi) */
         int dir = k[0] == 'w' ? 1 : -1;
         long long first = vt_first_abs(t), last = first + t->buf->count - 1;
         long long ln = l;
@@ -2303,7 +2303,7 @@ int vt_copy_key(Term *t, const char *k, int ctrl, char **yank) {
         if (t->copy_sel == mode) { t->copy_sel = 0; vt_select_clear(t); }
         else { t->copy_sel = mode; vt_select_start(t, l, c, mode == 2 ? 2 : 0, mode == 3); }
     } else if (!strcmp(k, "y") || !strcmp(k, "Enter")) {
-        if (!t->sel_active) vt_select_start(t, l, 0, 2, 0);    /* sin selección: copia la línea */
+        if (!t->sel_active) vt_select_start(t, l, 0, 2, 0);    /* no selection: copies the line */
         *yank = vt_selection_text(t);
         vt_copy_mode(t, 0);
         return 2;

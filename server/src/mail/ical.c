@@ -1002,7 +1002,7 @@ char *ical_build(const IcBuild *x, size_t *olen) {
     jb_raw(&b, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//LordOS//Calendar 1.0//EN\r\nCALSCALE:GREGORIAN\r\n");
     if (x->method && *x->method) jb_printf(&b, "METHOD:%s\r\n", x->method);
     const char *tz = x->tzid && *x->tzid && tz_zone_valid(x->tzid) ? x->tzid : NULL;
-    if (tz && !x->allday) { if (vtimezone(&b, tz)) tz = NULL; }
+    if (tz && !x->allday && (!x->is_todo || x->start)) { if (vtimezone(&b, tz)) tz = NULL; }
     jb_raw(&b, x->is_todo ? "BEGIN:VTODO\r\n" : "BEGIN:VEVENT\r\n");
     kv(&b, "UID", x->uid);
     char now[40];
@@ -1018,7 +1018,8 @@ char *ical_build(const IcBuild *x, size_t *olen) {
     kv(&b, "LOCATION", x->location);
     kv(&b, "DESCRIPTION", x->description);
     if (x->url && *x->url) { char line[600]; char u[520]; safe_param(x->url, u, sizeof u); snprintf(line, sizeof line, "URL:%s", u); ic_line(&b, line); }
-    if (x->status && *x->status) { char st[32]; safe_param(x->status, st, sizeof st); jb_printf(&b, "STATUS:%s\r\n", st); }
+    /* a to-do's STATUS follows "completed" (below): one STATUS only (RFC 5545) */
+    if (!x->is_todo && x->status && *x->status) { char st[32]; safe_param(x->status, st, sizeof st); jb_printf(&b, "STATUS:%s\r\n", st); }
     kv(&b, "CATEGORIES", x->categories);
     if (x->rrule && *x->rrule && safe_rrule(x->rrule)) { char line[600]; snprintf(line, sizeof line, "RRULE:%s", x->rrule); ic_line(&b, line); }
     for (int i = 0; i < x->nexdate; i++) time_line(&b, "EXDATE", x->exdate[i], x->allday, tz);
@@ -1032,7 +1033,7 @@ char *ical_build(const IcBuild *x, size_t *olen) {
             char c[40];
             fmt_utc(x->completed > 1 ? x->completed : (int64_t)time(NULL), c, sizeof c);
             jb_printf(&b, "STATUS:COMPLETED\r\nCOMPLETED:%s\r\nPERCENT-COMPLETE:100\r\n", c);
-        } else if (!x->status || !*x->status) jb_raw(&b, "STATUS:NEEDS-ACTION\r\n");
+        } else jb_raw(&b, "STATUS:NEEDS-ACTION\r\n");
         if (x->flagged) jb_raw(&b, "X-LORDOS-FLAGGED:1\r\n");
         kv(&b, "RELATED-TO", x->parent_uid);
     }

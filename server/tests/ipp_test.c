@@ -1,6 +1,6 @@
-/* ipp_test.c — codificador y decodificador IPP propios (src/print/ipp.c), lector de mDNS
- * (src/print/mdns.c) y rangos de páginas (src/print/cups.c). Incluye mensajes rotos: cortados en
- * cada byte y con bytes cambiados al azar, que tienen que rechazarse sin romper nada. */
+/* ipp_test.c — our own IPP encoder and decoder (src/print/ipp.c), mDNS reader
+ * (src/print/mdns.c) and page ranges (src/print/cups.c). Includes broken messages: truncated at
+ * every byte and with random byte changes, which must be rejected without breaking anything. */
 #include "print/ipp.h"
 #include "print/mdns.h"
 #include "print/cups.h"
@@ -10,7 +10,7 @@
 #include <string.h>
 
 static int fails, total;
-#define CHECK(c, ...) do { total++; if (!(c)) { fails++; printf("FALLA %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
+#define CHECK(c, ...) do { total++; if (!(c)) { fails++; printf("FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
 static void t_roundtrip(void) {
     IppBuf b;
@@ -27,7 +27,7 @@ static void t_roundtrip(void) {
     ipp_add_int(&b, IPP_T_ENUM, "orientation-requested", 4);
     ipp_end(&b);
     CHECK(!b.err, "codificar");
-    /* lo que sigue al mensaje son los datos del documento */
+    /* what follows the message is the document data */
     size_t n = b.n;
     uint8_t *buf = malloc(n + 4);
     memcpy(buf, b.p, n);
@@ -49,7 +49,7 @@ static void t_roundtrip(void) {
     ipp_free(&b);
 }
 
-/* Respuesta como la de CUPS-Get-Printers: dos impresoras, una colección y textWithLanguage. */
+/* A response like CUPS-Get-Printers': two printers, a collection and textWithLanguage. */
 static size_t build_response(uint8_t *out) {
     IppBuf b;
     ipp_init(&b, 0x0000, 7);
@@ -64,7 +64,7 @@ static size_t build_response(uint8_t *out) {
     ipp_add_str(&b, IPP_T_NAME, "printer-name", "Oficina");
     ipp_add_int(&b, IPP_T_ENUM, "printer-state", 5);
     ipp_end(&b);
-    /* colección a mano antes del fin: media-col = { media-size-name: "a4" } */
+    /* hand-built collection before the end: media-col = { media-size-name: "a4" } */
     size_t n = b.n - 1;
     memcpy(out, b.p, n);
     const uint8_t col[] = {
@@ -89,21 +89,21 @@ static void t_response(void) {
     const IppAttr *b = ipp_find(&m, a, IPP_G_PRINTER, "printer-name");
     CHECK(a && b && !strcmp(ipp_str(a), "PDF") && !strcmp(ipp_str(b), "Oficina"), "dos impresoras");
     CHECK(a && b && a->gseq != b->gseq, "grupos separados");
-    CHECK(ipp_int(ipp_find_in(a, "printer-state"), 0) == 3 && ipp_int(ipp_find_in(b, "printer-state"), 0) == 5, "estado por grupo");
+    CHECK(ipp_int(ipp_find_in(a, "printer-state"), 0) == 3 && ipp_int(ipp_find_in(b, "printer-state"), 0) == 5, "state per group");
     const IppAttr *ms = ipp_find_in(a, "media-supported");
     CHECK(ms && ms->nvals == 2 && !strcmp(ms->vals->next->str, "na_letter_8.5x11in"), "varios valores");
-    CHECK(!ipp_find_in(b, "media-supported"), "no mira el grupo de otra impresora");
+    CHECK(!ipp_find_in(b, "media-supported"), "does not look into another printer's group");
     const IppAttr *mc = ipp_find(&m, NULL, 0, "media-col");
     CHECK(mc && mc->vals->tag == IPP_T_BEGCOL && mc->vals->col && !strcmp(mc->vals->col->name, "size") &&
-          !strcmp(mc->vals->col->vals->str, "a4"), "colección");
+          !strcmp(mc->vals->col->vals->str, "a4"), "collection");
     CHECK(!strcmp(ipp_str(ipp_find(&m, NULL, 0, "info")) ? ipp_str(ipp_find(&m, NULL, 0, "info")) : "", "hola!!"), "textWithLanguage");
     ipp_msg_free(&m);
 
-    /* cortado en cada byte: siempre -1, nunca un acceso fuera */
+    /* truncated at every byte: always -1, never an out-of-bounds access */
     int bad = 0;
     for (size_t k = 0; k < n; k++) { if (ipp_parse(buf, k, &m) == 0) { bad++; ipp_msg_free(&m); } }
     CHECK(bad == 0, "%d cortes aceptados", bad);
-    /* bytes cambiados al azar: puede aceptar o rechazar, pero sin romperse (correr con ASAN) */
+    /* random byte changes: may accept or reject, but without breaking (run with ASAN) */
     srand(1234);
     int ok = 0;
     for (int it = 0; it < 20000; it++) {
@@ -113,14 +113,14 @@ static void t_response(void) {
         if (!ipp_parse(mut, n, &m)) { ok++; ipp_msg_free(&m); }
     }
     total++;
-    printf("ipp: 20000 mutaciones, %d aceptadas sin errores de memoria\n", ok);
+    printf("ipp: 20000 mutations, %d accepted without memory errors\n", ok);
     /* largos imposibles */
     const uint8_t huge[] = { 1, 1, 0, 0, 0, 0, 0, 1, 1, IPP_T_NAME, 0xff, 0xff, 'a' };
-    CHECK(ipp_parse(huge, sizeof huge, &m) == -1, "nombre más largo que el mensaje");
+    CHECK(ipp_parse(huge, sizeof huge, &m) == -1, "name longer than the message");
     const uint8_t noattr[] = { 1, 1, 0, 0, 0, 0, 0, 1, 1, IPP_T_NAME, 0, 0, 0, 1, 'x', 3 };
-    CHECK(ipp_parse(noattr, sizeof noattr, &m) == -1, "valor extra sin atributo");
+    CHECK(ipp_parse(noattr, sizeof noattr, &m) == -1, "extra value without an attribute");
     const uint8_t badint[] = { 1, 1, 0, 0, 0, 0, 0, 1, 1, IPP_T_INTEGER, 0, 1, 'n', 0, 2, 0, 1, 3 };
-    CHECK(ipp_parse(badint, sizeof badint, &m) == -1, "entero de 2 bytes");
+    CHECK(ipp_parse(badint, sizeof badint, &m) == -1, "2-byte integer");
     uint8_t deep[600];
     size_t d = 0;
     const uint8_t hdr[] = { 1, 1, 0, 0, 0, 0, 0, 1, 1 };
@@ -136,10 +136,10 @@ static void t_response(void) {
         d += sizeof mem;
     }
     deep[d++] = 3;
-    CHECK(ipp_parse(deep, d, &m) == -1, "colecciones anidadas de más");
+    CHECK(ipp_parse(deep, d, &m) == -1, "too deeply nested collections");
 }
 
-/* Respuesta mDNS armada a mano: PTR + SRV + TXT + A, con nombres comprimidos. */
+/* Hand-built mDNS response: PTR + SRV + TXT + A, with compressed names. */
 static size_t put_name(uint8_t *p, const char *name) {
     size_t o = 0;
     const char *s = name;
@@ -170,7 +170,7 @@ static void t_mdns(void) {
     p[o++] = 7; memcpy(p + o, "Oficina", 7); o += 7;
     p[o++] = 0xc0; p[o++] = (uint8_t)svc;          /* "Oficina" + puntero a _ipp._tcp.local */
     p[rl + 1] = (uint8_t)(o - rl - 2);
-    /* SRV: nombre = puntero a la instancia */
+    /* SRV: name = pointer to the instance */
     p[o++] = 0xc0; p[o++] = (uint8_t)inst;
     p[o + 1] = 33; p[o + 3] = 1; p[o + 7] = 120;
     rl = o + 8;
@@ -200,7 +200,7 @@ static void t_mdns(void) {
     const char *types[] = { "_ipp._tcp" };
     MdnsSvc s[4];
     int n = mdns_collect(c, types, 1, s, 4);
-    CHECK(n == 1, "un servicio (%d)", n);
+    CHECK(n == 1, "one service (%d)", n);
     if (n == 1) {
         char v[64];
         CHECK(!strcmp(s[0].name, "Oficina") && !strcmp(s[0].host, "impre.local") && s[0].port == 631 && !strcmp(s[0].addr, "192.168.1.20"),
@@ -208,23 +208,23 @@ static void t_mdns(void) {
         CHECK(!strcmp(mdns_txt(&s[0], "rp", v, sizeof v), "ipp/print") && !strcmp(mdns_txt(&s[0], "ty", v, sizeof v), "Impresora de prueba"), "txt");
         CHECK(!mdns_txt(&s[0], "nope", v, sizeof v)[0], "txt ausente");
     }
-    /* cortado en cada byte y un puntero que apunta a sí mismo */
+    /* truncated at every byte, and a pointer pointing at itself */
     for (size_t k = 0; k < o; k++) { memset(c, 0, sizeof *c); mdns_parse(p, k, c); }
     total++;
     uint8_t loop[] = { 0, 0, 0x84, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0xc0, 12, 0, 12, 0, 1, 0, 0, 0, 0, 0, 0 };
     memset(c, 0, sizeof *c);
-    CHECK(mdns_parse(loop, sizeof loop, c) == -1, "bucle de punteros");
+    CHECK(mdns_parse(loop, sizeof loop, c) == -1, "pointer loop");
     free(c);
 }
 
 static void t_ranges(void) {
     int lo[32], hi[32];
-    CHECK(cups_page_ranges("1-3,5, 8 - 9", lo, hi, 32) == 3 && lo[0] == 1 && hi[0] == 3 && lo[1] == 5 && hi[1] == 5 && lo[2] == 8 && hi[2] == 9, "rangos");
-    CHECK(cups_page_ranges("", lo, hi, 32) == 0, "vacío");
-    CHECK(cups_page_ranges("3-1", lo, hi, 32) == -1, "al revés");
-    CHECK(cups_page_ranges("0", lo, hi, 32) == -1, "cero");
-    CHECK(cups_page_ranges("1;2", lo, hi, 32) == -1, "separador");
-    CHECK(cups_page_ranges("a", lo, hi, 32) == -1, "letras");
+    CHECK(cups_page_ranges("1-3,5, 8 - 9", lo, hi, 32) == 3 && lo[0] == 1 && hi[0] == 3 && lo[1] == 5 && hi[1] == 5 && lo[2] == 8 && hi[2] == 9, "ranges");
+    CHECK(cups_page_ranges("", lo, hi, 32) == 0, "empty");
+    CHECK(cups_page_ranges("3-1", lo, hi, 32) == -1, "reversed");
+    CHECK(cups_page_ranges("0", lo, hi, 32) == -1, "zero");
+    CHECK(cups_page_ranges("1;2", lo, hi, 32) == -1, "separator");
+    CHECK(cups_page_ranges("a", lo, hi, 32) == -1, "letters");
     CHECK(cups_valid_name("Oficina_2-B") && !cups_valid_name("a b") && !cups_valid_name("../x") && !cups_valid_name(""), "nombres");
     CHECK(cups_valid_uri("ipp://192.168.1.20:631/ipp/print") && !cups_valid_uri("file:///etc/passwd") && !cups_valid_uri("ipp://a b") &&
           !cups_valid_uri("cups-pdf:/"), "uris");

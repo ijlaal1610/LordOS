@@ -1,7 +1,7 @@
-// Marco de ventana: barra de título arrastrable, semáforo, sombra. El contenido es la app
-// (AppHost del SDK); el tema solo decide cómo se ve el marco. Mover y cambiar el tamaño (bordes
-// invisibles en los 4 lados y las 4 esquinas, <WindowShell>) lo hace lord-server en C
-// (docs/VENTANAS.md); el arrastre en JS de abajo queda solo para una ventana maximizada.
+// Window frame: draggable title bar, traffic lights, shadow. The content is the app
+// (the SDK's AppHost); the theme only decides how the frame looks. Moving and resizing (invisible
+// borders on all 4 sides and 4 corners, <WindowShell>) is done by lord-server in C
+// (docs/WINDOWS.md); the JS drag below is only kept for a maximized window.
 import { View, Text, addListener, wm, AppHost, windowTitle, WindowShell } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 
@@ -25,7 +25,7 @@ export function Window({ win, app, t, focused }) {
     return () => { offMove(); offUp(); };
   }, [win.id]);
 
-  // App Linux que dibuja su propio marco (GTK, Chromium): solo el contenido, con la sombra del tema.
+  // Linux app that draws its own frame (GTK, Chromium): only the content, with the theme's shadow.
   if (win.args?.csd) {
     return (
       <WindowShell win={win} onMouseDown={() => wm.focus(win.id)}

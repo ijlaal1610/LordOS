@@ -1,38 +1,38 @@
-// gen-unicode.mjs — genera server/src/ui/unidata.h desde los archivos de la base de datos
-// de Unicode (UCD). Son tablas de rangos para:
-//   - clase bidi (UAX #9), pares espejados y pares de paréntesis → bidi.c
-//   - tipo de unión del árabe, siríaco, n'ko, mongol… (ArabicShaping) → formas init/medi/fina
-//   - escritura (Scripts.txt) → etiqueta OpenType y fuente de respaldo
-//   - clase combinante (orden canónico de marcas) y caracteres invisibles por defecto
-//   - categorías índicas (sílaba y posición, como las agrupa HarfBuzz), las de jemer y birmano,
-//     las del Universal Shaping Engine (tibetano, cingalés, balinés, javanés…), las marcas,
-//     descomposiciones canónicas de las escrituras complejas y exclusiones de composición
-//   - clases de corte de línea que importan para chino, japonés y coreano (UAX #14)
+// gen-unicode.mjs — generates server/src/ui/unidata.h from the Unicode Character Database
+// (UCD) files. These are range tables for:
+//   - bidi class (UAX #9), mirrored pairs and bracket pairs → bidi.c
+//   - joining type for Arabic, Syriac, N'Ko, Mongolian… (ArabicShaping) → init/medi/fina forms
+//   - script (Scripts.txt) → OpenType tag and fallback font
+//   - combining class (canonical mark order) and default-ignorable characters
+//   - Indic categories (syllabic and positional, grouped the way HarfBuzz does), the Khmer and
+//     Myanmar ones, the Universal Shaping Engine ones (Tibetan, Sinhala, Balinese, Javanese…), marks,
+//     canonical decompositions of the complex scripts and composition exclusions
+//   - line-break classes that matter for Chinese, Japanese and Korean (UAX #14)
 //
-//   node tools/gen-unicode.mjs <carpeta UCD>
-// La carpeta necesita (de https://www.unicode.org/Public/<versión>/ucd/):
+//   node tools/gen-unicode.mjs <UCD folder>
+// The folder needs (from https://www.unicode.org/Public/<version>/ucd/):
 //   extracted/DerivedBidiClass.txt  extracted/DerivedJoiningType.txt  BidiMirroring.txt
 //   BidiBrackets.txt  Scripts.txt  PropertyValueAliases.txt  LineBreak.txt
 //   extracted/DerivedCombiningClass.txt  DerivedCoreProperties.txt
 //   IndicSyllabicCategory.txt  IndicPositionalCategory.txt  UnicodeData.txt  CompositionExclusions.txt
-//   ArabicShaping.txt, y de HarfBuzz (src/ms-use/): IndicSyllabicCategory-Additional.txt
-//   IndicPositionalCategory-Additional.txt (categorías del Universal Shaping Engine)
-// (los de extracted/ pueden estar en la misma carpeta).
+//   ArabicShaping.txt, and from HarfBuzz (src/ms-use/): IndicSyllabicCategory-Additional.txt
+//   IndicPositionalCategory-Additional.txt (Universal Shaping Engine categories)
+// (the extracted/ ones may be in the same folder).
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const ucd = process.argv[2];
-if (!ucd) { console.error('uso: gen-unicode.mjs <carpeta UCD>'); process.exit(1); }
+if (!ucd) { console.error('usage: gen-unicode.mjs <UCD folder>'); process.exit(1); }
 const read = (name) => {
   for (const p of [path.join(ucd, name), path.join(ucd, 'extracted', name)])
     if (fs.existsSync(p)) return fs.readFileSync(p, 'utf8');
-  throw new Error(`falta ${name}`);
+  throw new Error(`missing ${name}`);
 };
 const version = (read('DerivedBidiClass.txt').match(/DerivedBidiClass-([\d.]+)\.txt/) || [])[1] || '?';
 
-// Líneas "XXXX..YYYY ; valor" (y las @missing, que dan los valores por defecto).
+// Lines "XXXX..YYYY ; value" (and the @missing ones, which give the default values).
 function parse(text, { missing = true } = {}) {
   const out = [];
   for (const line of text.split('\n')) {
@@ -47,8 +47,8 @@ function parse(text, { missing = true } = {}) {
   return out;
 }
 
-// Asigna valores a un mapa disperso por rangos: primero los @missing (del más general al más
-// específico, como están en el archivo), después los explícitos.
+// Assigns values to a sparse range map: first the @missing ones (from most general to most
+// specific, as they appear in the file), then the explicit ones.
 function ranges(entries, map, deflt) {
   const val = new Map();
   const set = (lo, hi, v) => { for (let c = lo; c <= hi; c++) val.set(c, v); };
@@ -66,7 +66,7 @@ function ranges(entries, map, deflt) {
 }
 
 const hex = (n) => `0x${n.toString(16).toUpperCase()}`;
-// Las enumeraciones van arriba; las tablas solo se compilan en unicode.c (UNIDATA_TABLES).
+// The enums go on top; the tables are only compiled in unicode.c (UNIDATA_TABLES).
 let enums = '';
 let h = '';
 
@@ -85,14 +85,14 @@ h += `static const UniPair uni_mirror[] = {\n${mirror.map((p) => `    { ${hex(p.
 const brackets = parse(read('BidiBrackets.txt'), { missing: false }).map((e) => ({ a: e.lo, b: parseInt(e.f[1], 16), open: e.f[2] === 'o' }));
 h += `static const UniBracket uni_brackets[] = {\n${brackets.map((p) => `    { ${hex(p.a)}, ${hex(p.b)}, ${p.open ? 1 : 0} },`).join('\n')}\n};\n\n`;
 
-// ---- unión (árabe y otras escrituras que se unen) ----
+// ---- joining (Arabic and other joining scripts) ----
 const JOIN = ['U', 'R', 'L', 'D', 'C', 'T'];
 const JOIN_LONG = { Non_Joining: 'U', Right_Joining: 'R', Left_Joining: 'L', Dual_Joining: 'D', Join_Causing: 'C', Transparent: 'T' };
 const join = ranges(parse(read('DerivedJoiningType.txt')), (v) => JOIN.indexOf(JOIN_LONG[v] || v), 0);
 enums += `enum { ${JOIN.map((c) => `JOIN_${c}`).join(', ')} };\n`;
 h += `static const UniRange uni_join[] = {\n${join.map((r) => `    { ${hex(r.lo)}, ${hex(r.hi)}, JOIN_${JOIN[r.v]} },`).join('\n')}\n};\n\n`;
 
-// ---- escrituras: código ISO 15924 y etiqueta OpenType ----
+// ---- scripts: ISO 15924 code and OpenType tag ----
 const alias = {}, longName = {};
 for (const line of read('PropertyValueAliases.txt').split('\n')) {
   const m = line.match(/^sc\s*;\s*(\w+)\s*;\s*(\w+)/);
@@ -107,7 +107,7 @@ const sidx = (name) => {
 };
 sidx('Inherited');                              // 1 = Inherited
 const script = ranges(parse(read('Scripts.txt'), { missing: false }), sidx, 0);
-// Etiquetas OpenType: el código en minúsculas, salvo las que la especificación define distinto.
+// OpenType tags: the lowercase code, except those the specification defines differently.
 const OT = { Zyyy: 'DFLT', Zinh: 'DFLT', Hira: 'kana', Kana: 'kana', Hrkt: 'kana', Hani: 'hani', Hang: 'hang', Laoo: 'lao ',
   Yiii: 'yi  ', Nkoo: 'nko ', Vaii: 'vai ' };
 enums += `#define SCRIPT_COMMON 0\n#define SCRIPT_INHERITED 1\n`;
@@ -115,16 +115,16 @@ for (const k of ['Latn', 'Grek', 'Cyrl', 'Arab', 'Hebr', 'Syrc', 'Thaa', 'Nkoo',
   enums += `#define SCRIPT_${k.toUpperCase()} ${scripts.indexOf(k)}\n`;
 enums += `#define SCRIPT_COUNT ${scripts.length}\n`;
 h += `static const char uni_script_tag[][5] = {\n${scripts.map((s) => `    "${OT[s] || s.toLowerCase()}",   /* ${s} */`).join('\n')}\n};\n\n`;
-// Nombre en inglés con espacios (para buscar la fuente "Noto Sans <nombre>").
+// English name with spaces (to look up the "Noto Sans <name>" font).
 h += `static const char *const uni_script_name[] = {\n${scripts.map((s) => `    "${(longName[s] || s).replace(/_/g, ' ')}",`).join('\n')}\n};\n\n`;
 h += `static const UniRange uni_script[] = {\n${script.map((r) => `    { ${hex(r.lo)}, ${hex(r.hi)}, ${r.v} },`).join('\n')}\n};\n\n`;
 
-// ---- corte de línea: solo lo necesario para escrituras sin espacios (UAX #14 simplificado) ----
-// ID: se puede cortar antes y después (ideogramas, kana, sílabas hangul).
-// CL: no se corta antes (cierres, 、。). OP: no se corta después (aperturas). NS: no se corta
-// antes (ー, ぁ pequeñas, ・). EX/IS: no se corta antes (！？ y separadores). SA: escrituras
-// sin espacios entre palabras del sudeste de Asia (tailandés, laosiano, jemer, birmano…): se
-// cortan con diccionario (tailandés) o por sílaba (textlayout.c).
+// ---- line breaking: only what scripts without spaces need (simplified UAX #14) ----
+// ID: can break before and after (ideographs, kana, hangul syllables).
+// CL: no break before (closing, 、。). OP: no break after (opening). NS: no break
+// before (ー, small ぁ, ・). EX/IS: no break before (！？ and separators). SA: Southeast Asian
+// scripts without spaces between words (Thai, Lao, Khmer, Myanmar…): broken
+// by dictionary (Thai) or by syllable (textlayout.c).
 const LB = ['XX', 'ID', 'CL', 'OP', 'NS', 'EX', 'IS', 'SA'];
 const LB_MAP = { ID: 'ID', H2: 'ID', H3: 'ID', JL: 'ID', JV: 'ID', JT: 'ID', CL: 'CL', CP: 'CL', OP: 'OP', NS: 'NS', CJ: 'NS',
   EX: 'EX', IS: 'IS', SA: 'SA' };
@@ -132,14 +132,14 @@ const lb = ranges(parse(read('LineBreak.txt')), (v) => LB.indexOf(LB_MAP[v] || '
 enums += `enum { ${LB.map((c) => `LB_${c}`).join(', ')} };\n`;
 h += `static const UniRange uni_linebreak[] = {\n${lb.map((r) => `    { ${hex(r.lo)}, ${hex(r.hi)}, LB_${LB[r.v]} },`).join('\n')}\n};\n\n`;
 
-// ---- marcas: clase combinante canónica; invisibles (ZWJ, marcas de dirección…) ----
+// ---- marks: canonical combining class; invisibles (ZWJ, direction marks…) ----
 const ccc = ranges(parse(read('DerivedCombiningClass.txt')), (v) => Number(v) || 0, 0);
 h += `static const UniRange uni_ccc[] = {\n${ccc.map((r) => `    { ${hex(r.lo)}, ${hex(r.hi)}, ${r.v} },`).join('\n')}\n};\n\n`;
 const ign = ranges(parse(read('DerivedCoreProperties.txt'), { missing: false }).filter((e) => e.v === 'Default_Ignorable_Code_Point'), () => 1, 0);
 h += `static const UniRange uni_ignorable[] = {\n${ign.map((r) => `    { ${hex(r.lo)}, ${hex(r.hi)}, 1 },`).join('\n')}\n};\n\n`;
 
 
-// ---- escrituras índicas (devanagari … malayalam): categoría y posición, como HarfBuzz ----
+// ---- Indic scripts (Devanagari … Malayalam): category and position, as in HarfBuzz ----
 const IC = ['X', 'C', 'V', 'N', 'H', 'ZWNJ', 'ZWJ', 'M', 'SM', 'A', 'PLACEHOLDER', 'DOTTEDCIRCLE', 'RS', 'Repha', 'Ra', 'CM', 'Symbol', 'CS'];
 const IC_MAP = { Avagraha: 'Symbol', Bindu: 'SM', Brahmi_Joining_Number: 'PLACEHOLDER', Cantillation_Mark: 'A',
   Consonant: 'C', Consonant_Dead: 'C', Consonant_Final: 'CM', Consonant_Head_Letter: 'C', Consonant_Initial_Postfixed: 'C',
@@ -182,9 +182,9 @@ enums += `enum { ${IP.map((c) => `IP_${c}`).join(', ')} };\n`;
 h += `static const UniRange uni_indic_cat[] = {\n${icR.map((r) => `    { ${hex(r.lo)}, ${hex(r.hi)}, IC_${IC[r.v]} },`).join('\n')}\n};\n\n`;
 h += `static const UniRange uni_indic_pos[] = {\n${ipR.map((r) => `    { ${hex(r.lo)}, ${hex(r.hi)}, IP_${IP[r.v]} },`).join('\n')}\n};\n\n`;
 
-// descomposiciones canónicas (no de compatibilidad) de dos partes de las escrituras complejas
-// (índicas, tibetano, birmano, jemer, balinés, brahmi y familia…), y cuáles no se vuelven a
-// componer (क़ = क + ़ queda separado). Ordenadas por carácter (búsqueda binaria).
+// two-part canonical (not compatibility) decompositions of the complex scripts
+// (Indic, Tibetan, Myanmar, Khmer, Balinese, Brahmi and family…), and which ones are not
+// recomposed (क़ = क + ़ stays separate). Sorted by character (binary search).
 const complexRange = (c) => (c >= 0x0900 && c <= 0x0DFF) || (c >= 0x0F00 && c <= 0x109F) || (c >= 0x1780 && c <= 0x17FF) ||
   (c >= 0x1B00 && c <= 0x1BFF) || (c >= 0xA800 && c <= 0xABFF) || (c >= 0x11000 && c <= 0x11FFF);
 const unicodeData = read('UnicodeData.txt').split('\n').filter(Boolean).map((line) => line.split(';'));
@@ -200,13 +200,13 @@ for (const line of read('CompositionExclusions.txt').split('\n')) {
   const m = line.match(/^([0-9A-F]+)/);
   if (m) excl.add(parseInt(m[1], 16));
 }
-// las que descomponen en algo que empieza con una marca (no iniciales) tampoco se componen
+// those that decompose into something starting with a mark (non-initial) are not composed either
 const cccOf = new Map(unicodeData.map((f) => [parseInt(f[0], 16), Number(f[3]) || 0]));
 for (const [c, a] of decomp) if (cccOf.get(a)) excl.add(c);
 h += `typedef struct { uint32_t cp, a, b; uint8_t excluded; } UniDecomp;\n`;
 h += `static const UniDecomp uni_decomp[] = {\n${decomp.map(([c, a, b]) => `    { ${hex(c)}, ${hex(a)}, ${hex(b)}, ${excl.has(c) ? 1 : 0} },`).join('\n')}\n};\n\n`;
 
-// ---- marcas (categoría general Mn, Mc, Me) ----
+// ---- marks (general category Mn, Mc, Me) ----
 const gcOf = new Map();
 for (const f of unicodeData) gcOf.set(parseInt(f[0], 16), f[2]);
 const markMap = new Map();
@@ -214,7 +214,7 @@ for (const [c, gc] of gcOf) if (gc === 'Mn' || gc === 'Mc' || gc === 'Me') markM
 const markR = toRanges(markMap);
 h += `static const UniRange uni_mark[] = {\n${markR.map((r) => `    { ${hex(r.lo)}, ${hex(r.hi)}, 1 },`).join('\n')}\n};\n\n`;
 
-// ---- jemer y birmano: categorías como las de la tabla índica de HarfBuzz (gen-indic-table.py) ----
+// ---- Khmer and Myanmar: categories like those in HarfBuzz's Indic table (gen-indic-table.py) ----
 const SEA = ['X', 'C', 'V', 'N', 'H', 'ZWNJ', 'ZWJ', 'M', 'SM', 'A', 'VD', 'PLACEHOLDER', 'DOTTEDCIRCLE', 'RS', 'MPst',
   'Repha', 'Ra', 'CM', 'Symbol', 'CS', 'SMPst', 'VAbv', 'VBlw', 'VPre', 'VPst', 'Robatic', 'Xgroup', 'Ygroup',
   'As', 'MH', 'MR', 'MW', 'MY', 'PT', 'VS', 'ML'];
@@ -252,9 +252,9 @@ const seaR = toRanges(seaVal);
 enums += `enum { ${SEA.map((c) => `SEA_${c}`).join(', ')} };\n#define SEA_NAMES ${SEA.map((c) => `"${c}"`).join(', ')}\n`;
 h += `static const UniRange uni_sea[] = {\n${seaR.map((r) => `    { ${hex(r.lo)}, ${hex(r.hi)}, SEA_${SEA[r.v]} },`).join('\n')}\n};\n\n`;
 
-// ---- Universal Shaping Engine: categorías como gen-use-table.py de HarfBuzz ----
-// Necesita además ArabicShaping.txt y los dos archivos de Microsoft que trae HarfBuzz
-// (src/ms-use/IndicSyllabicCategory-Additional.txt e IndicPositionalCategory-Additional.txt).
+// ---- Universal Shaping Engine: categories as in HarfBuzz's gen-use-table.py ----
+// Also needs ArabicShaping.txt and the two Microsoft files that ship with HarfBuzz
+// (src/ms-use/IndicSyllabicCategory-Additional.txt and IndicPositionalCategory-Additional.txt).
 const useIsc = new Map(iscAll), useIpc = new Map(ipcAll), ajt = new Map(), udi = new Set();
 const inUse = new Set([...iscAll.keys(), ...ipcAll.keys()]);
 for (const e of parse(read('ArabicShaping.txt'), { missing: false })) for (let c = e.lo; c <= e.hi; c++) { ajt.set(c, e.f[2]); inUse.add(c); }
@@ -291,7 +291,7 @@ const USE_RULES = [
   ['SB', (U, I) => I === 'Hieroglyph_Mark_Begin' || I === 'Hieroglyph_Segment_Begin'],
   ['SE', (U, I) => I === 'Hieroglyph_Mark_End' || I === 'Hieroglyph_Segment_End'],
   ['ZWNJ', (U, I) => I === 'Non_Joiner'],
-  ['O', null],                                  // abajo: depende de las demás
+  ['O', null],                                  // below: depends on the others
   ['RK', (U, I) => I === 'Reordering_Killer'],
   ['R', (U, I) => I === 'Consonant_Preceding_Repha' || I === 'Consonant_Prefixed'],
   ['Sk', (U) => U === 0x1A60],
@@ -324,7 +324,7 @@ for (const U of inUse) {
   const sc = scriptName.get(U) || 'Unknown';
   if (USE_DISABLED.has(sc)) continue;
   const G = gcOf.get(U) || 'Cn';
-  if (G === 'Cn') continue;                     // no asignado en esta versión de Unicode
+  if (G === 'Cn') continue;                     // unassigned in this Unicode version
   let I = useIsc.get(U) || 'Other', P = useIpc.get(U) || 'Not_Applicable';
   const D = udi.has(U), J = ajt.get(U) || 'X';
   if (U >= 0x1CE2 && U <= 0x1CE8) I = 'Cantillation_Mark';
@@ -346,9 +346,9 @@ const useR = toRanges(useVal);
 enums += `enum { ${USE.map((c) => `USE_${c}`).join(', ')}, USE_COUNT };\n#define USE_NAMES ${USE.map((c) => `"${c}"`).join(', ')}\n`;
 h += `static const UniRange uni_use[] = {\n${useR.map((r) => `    { ${hex(r.lo)}, ${hex(r.hi)}, USE_${USE[r.v]} },`).join('\n')}\n};\n\n`;
 
-h = `/* unidata.h — generado por tools/gen-unicode.mjs desde Unicode ${version}. No editar.
- * Tablas de rangos ordenadas; los valores ausentes son el valor por defecto (0). Las tablas
- * se compilan solo en unicode.c; el resto usa las funciones de unicode.h. */
+h = `/* unidata.h — generated by tools/gen-unicode.mjs from Unicode ${version}. Do not edit.
+ * Sorted range tables; absent values are the default value (0). The tables
+ * are only compiled in unicode.c; everything else uses the functions in unicode.h. */
 #ifndef LORD_UNIDATA_H
 #define LORD_UNIDATA_H
 
@@ -363,7 +363,7 @@ typedef struct { uint32_t lo, hi; uint8_t v; } UniRange;
 typedef struct { uint32_t a, b; } UniPair;
 typedef struct { uint32_t a, b; uint8_t open; } UniBracket;
 
-` + h + `/* Valor de cp en una tabla de rangos (0 si no está). */
+` + h + `/* Value of cp in a range table (0 if absent). */
 static inline uint8_t uni_lookup(const UniRange *t, int n, uint32_t cp) {
     int lo = 0, hi = n - 1;
     while (lo <= hi) {
@@ -381,4 +381,4 @@ static inline uint8_t uni_lookup(const UniRange *t, int n, uint32_t cp) {
 `;
 const out = path.join(root, 'server/src/ui/unidata.h');
 fs.writeFileSync(out, h);
-console.log(`${out}: Unicode ${version}, índicas ${icR.length}/${ipR.length}/${decomp.length}, jemer/birmano ${seaR.length}, USE ${useR.length} (${useConflicts} sin categoría única), marcas ${markR.length}, bidi ${bidi.length} rangos, ccc ${ccc.length}, invisibles ${ign.length}, unión ${join.length}, escrituras ${scripts.length}/${script.length}, corte ${lb.length}, espejos ${mirror.length}, paréntesis ${brackets.length}`);
+console.log(`${out}: Unicode ${version}, Indic ${icR.length}/${ipR.length}/${decomp.length}, Khmer/Myanmar ${seaR.length}, USE ${useR.length} (${useConflicts} without a unique category), marks ${markR.length}, bidi ${bidi.length} ranges, ccc ${ccc.length}, invisibles ${ign.length}, joining ${join.length}, scripts ${scripts.length}/${script.length}, line break ${lb.length}, mirrors ${mirror.length}, brackets ${brackets.length}`);

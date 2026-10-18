@@ -1,8 +1,8 @@
-/* pty.c — crea la pseudo-terminal y lanza el shell del usuario.
+/* pty.c — creates the pseudo-terminal and launches the user's shell.
  *
- * Es la única forma de ejecutar procesos que tiene lord-server, y solo lanza el shell de
- * login del propio usuario (el de /etc/passwd), igual que cualquier emulador de terminal.
- * El hijo no hereda capacidades, señales bloqueadas ni descriptores del servidor. */
+ * It is the only way lord-server has to run processes, and it only launches the user's own
+ * login shell (the one in /etc/passwd), just like any terminal emulator.
+ * The child inherits no capabilities, blocked signals or descriptors from the server. */
 #include "term.h"
 
 #include <errno.h>
@@ -19,7 +19,7 @@
 #include <termios.h>
 #include <unistd.h>
 
-static char integration[1024];      /* carpeta con lord-bash.sh, zsh/ y lord-fish.fish (ruta absoluta) */
+static char integration[1024];      /* folder with lord-bash.sh, zsh/ and lord-fish.fish (absolute path) */
 
 void pty_set_integration(const char *dir) {
     if (!dir || !realpath(dir, integration)) integration[0] = 0;
@@ -44,7 +44,7 @@ static void child(int fd, const char *cwd, int id) {
     sigprocmask(SIG_SETMASK, &none, NULL);
     for (int s = 1; s < 32; s++) signal(s, SIG_DFL);
 
-    /* Ninguna capacidad pasa al shell (el servidor conserva CAP_SYS_TTY_CONFIG). */
+    /* No capability is passed to the shell (the server keeps CAP_SYS_TTY_CONFIG). */
     struct __user_cap_header_struct hdr = { _LINUX_CAPABILITY_VERSION_3, 0 };
     struct __user_cap_data_struct caps[2];
     memset(caps, 0, sizeof caps);
@@ -75,13 +75,13 @@ static void child(int fd, const char *cwd, int id) {
 
     const char *base = strrchr(shell, '/') ? strrchr(shell, '/') + 1 : shell;
     char rc[1200], argv0[64];
-    snprintf(argv0, sizeof argv0, "-%s", base);   /* "-zsh": shell de login */
+    snprintf(argv0, sizeof argv0, "-%s", base);   /* "-zsh": login shell */
     if (integration[0] && !strcmp(base, "bash")) {
-        /* bash interactivo con integración: el rc emula un shell de login y agrega las marcas. */
+        /* interactive bash with integration: the rc emulates a login shell and adds the marks. */
         snprintf(rc, sizeof rc, "%s/lord-bash.sh", integration);
         if (access(rc, R_OK) == 0) execl(shell, "bash", "--rcfile", rc, "-i", (char *)NULL);
     } else if (integration[0] && !strcmp(base, "zsh")) {
-        /* zsh: ZDOTDIR apunta a nuestro .zshenv, que restaura el del usuario y carga la integración. */
+        /* zsh: ZDOTDIR points to our .zshenv, which restores the user's own and loads the integration. */
         snprintf(rc, sizeof rc, "%s/zsh/.zshenv", integration);
         if (access(rc, R_OK) == 0) {
             const char *orig = getenv("ZDOTDIR");
@@ -90,7 +90,7 @@ static void child(int fd, const char *cwd, int id) {
             setenv("ZDOTDIR", rc, 1);
         }
     } else if (integration[0] && !strcmp(base, "fish") && !strchr(integration, '\'') && !strchr(integration, '\\')) {
-        /* fish: --init-command corre después de la configuración del usuario. */
+        /* fish: --init-command runs after the user's configuration. */
         snprintf(rc, sizeof rc, "%s/lord-fish.fish", integration);
         if (access(rc, R_OK) == 0) {
             char cmd[1300];
@@ -109,8 +109,8 @@ pid_t pty_spawn(const char *cwd, int cols, int rows, int id, int *master) {
     char slave[128];
     if (grantpt(m) || unlockpt(m) || ptsname_r(m, slave, sizeof slave)) { close(m); return -1; }
     pty_resize(m, cols, rows, 0, 0);
-    /* El esclavo se abre antes del fork: si el servidor leyera el maestro antes de que el hijo
-     * lo abriera, Linux respondería EIO y la sesión se daría por terminada. */
+    /* The slave is opened before the fork: if the server read the master before the child
+     * opened it, Linux would answer EIO and the session would be considered finished. */
     int s = open(slave, O_RDWR | O_NOCTTY);
     if (s < 0) { close(m); return -1; }
     pid_t pid = fork();

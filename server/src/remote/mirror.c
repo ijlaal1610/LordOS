@@ -1,16 +1,16 @@
-/* mirror.c — la sesión de lord-server vista desde el escritorio remoto.
+/* mirror.c — the lord-server session as seen from the remote desktop.
  *
- * lord-server (ya como el usuario de la sesión) escucha en $XDG_RUNTIME_DIR/lordos/remote.sock;
- * solo acepta a root (lord-sessiond: el monitor y el puente de red) y al mismo usuario (SO_PEERCRED). Por ahí:
- *   - manda la pantalla por mosaicos de 64×64: en cada cuadro compara con la copia anterior y
- *     cada conexión acumula los mosaicos que cambiaron hasta que pide el próximo cuadro
- *     (RP_READY): así una red lenta recibe menos cuadros pero siempre el estado actual;
- *   - manda la posición y la imagen del cursor aparte, y el portapapeles de texto;
- *   - recibe mouse, teclado y portapapeles, que main.c inyecta como si fueran locales.
- * lord-sessiond (docs/SESIONES.md) se conecta como root y se marca con RP_SEAT: no recibe la
- * pantalla, solo los pedidos de la sesión (bloquear, cambiar de usuario, la pantalla de
- * ingreso), y le presta el monitor con RP_DISPLAY (la placa y la entrada como fds).
- * Protocolo: proto.h. */
+ * lord-server (already as the session's user) listens on $XDG_RUNTIME_DIR/lordos/remote.sock;
+ * it only accepts root (lord-sessiond: the monitor and the network bridge) and the same user (SO_PEERCRED). Through it:
+ *   - it sends the screen in 64×64 tiles: on each frame it compares with the previous copy and
+ *     each connection accumulates the tiles that changed until it asks for the next frame
+ *     (RP_READY): that way a slow network gets fewer frames but always the current state;
+ *   - it sends the cursor position and image separately, and the text clipboard;
+ *   - it receives mouse, keyboard and clipboard, which main.c injects as if they were local.
+ * lord-sessiond (docs/SESSIONS.md) connects as root and marks itself with RP_SEAT: it doesn't get the
+ * screen, only the session's requests (lock, switch user, the login
+ * screen), and it lends the monitor with RP_DISPLAY (the card and the input as fds).
+ * Protocol: proto.h. */
 #include "mirror.h"
 #include "proto.h"
 #include "../vault/vclient.h"
@@ -27,7 +27,7 @@
 
 #define TILE 64
 #define MAX_CLIENTS 8
-#define OUT_LIMIT (8u << 20)        /* con más pendiente que esto no se arma otro cuadro */
+#define OUT_LIMIT (8u << 20)        /* with more pending than this, no new frame is built */
 
 typedef struct {
     int fd;
@@ -35,18 +35,18 @@ typedef struct {
     size_t in_len, in_cap, out_len, out_off, out_cap;
     int ready, need_size, need_shape, cur_x, cur_y, cur_mode;
     unsigned clip_gen;
-    unsigned char *dirty;           /* un byte por mosaico */
-    char who[96];                   /* "ip usuario" (RP_HELLO) */
+    unsigned char *dirty;           /* one byte per tile */
+    char who[96];                   /* "ip user" (RP_HELLO) */
     int seat;                       /* lord-sessiond (RP_SEAT) */
-    uid_t uid;                      /* de la otra punta (SO_PEERCRED) */
-    int fds[40], nfds;              /* fds recibidos con el último mensaje (RP_DISPLAY) */
+    uid_t uid;                      /* of the other end (SO_PEERCRED) */
+    int fds[40], nfds;              /* fds received with the last message (RP_DISPLAY) */
 } Client;
 
 static int lfd = -1;
 static char sock_path[256];
 static Client cl[MAX_CLIENTS];
 static MirrorInput cb;
-static uint32_t *fb;                /* última pantalla enviada (copia) */
+static uint32_t *fb;                /* last screen sent (copy) */
 static int W, H, TW, TH;
 static int cur_x, cur_y, cur_mode;
 static uint32_t *shape;
@@ -86,7 +86,7 @@ static void flush(Client *c) {
         c->out_off += (size_t)w;
     }
     if (c->out_off == c->out_len) c->out_off = c->out_len = 0;
-    else if (c->out_off > (1u << 20)) {               /* compactar */
+    else if (c->out_off > (1u << 20)) {               /* compact */
         memmove(c->out, c->out + c->out_off, c->out_len - c->out_off);
         c->out_len -= c->out_off;
         c->out_off = 0;
@@ -133,10 +133,10 @@ static void all_dirty(Client *c) {
     if (c->dirty) memset(c->dirty, 1, (size_t)TW * TH);
 }
 
-/* Si la conexión pidió cuadro y hay mosaicos pendientes: los manda (corridas por fila) y RP_END. */
+/* If the connection asked for a frame and there are pending tiles: sends them (runs per row) and RP_END. */
 static void pump(Client *c) {
     if (c->fd < 0) return;
-    if (c->seat) { flush(c); return; }         /* lord-sessiond: solo los pedidos (send_json) */
+    if (c->seat) { flush(c); return; }         /* lord-sessiond: only the requests (send_json) */
     if (c->need_size && W) {
         uint16_t s[2] = { (uint16_t)W, (uint16_t)H };
         msg(c, RP_SIZE, s, 4, NULL, 0);
@@ -232,13 +232,13 @@ static void handle(Client *c, int type, const unsigned char *d, uint32_t n) {
         break;
     case RP_DISPLAY:
         if (c->seat && c->nfds > 0 && cb.display) {
-            cb.display(c->fds, c->nfds);            /* los fds pasan a ser de la sesión */
+            cb.display(c->fds, c->nfds);            /* the fds now belong to the session */
             c->nfds = 0;
         }
         break;
     case RP_INPUT_ADD:
         if (c->seat && c->nfds > 0 && cb.input_add) {
-            cb.input_add(c->fds, c->nfds);          /* los fds pasan a ser de la sesión */
+            cb.input_add(c->fds, c->nfds);          /* the fds now belong to the session */
             c->nfds = 0;
         }
         break;
@@ -253,7 +253,7 @@ static void handle(Client *c, int type, const unsigned char *d, uint32_t n) {
         }
         break;
     case RP_KEYRING:
-        /* lord-sessiond: la contraseña recién verificada abre el llavero de la sesión (lord-vault) */
+        /* lord-sessiond: the password just verified opens the session's keyring (lord-vault) */
         if (c->uid == 0 && n > 0 && n <= 1024) {
             char p[1025];
             memcpy(p, d, n);
@@ -294,7 +294,7 @@ static void read_client(Client *c) {
             for (int i = 0; i < k; i++) {
                 int f;
                 memcpy(&f, CMSG_DATA(cm) + i * sizeof(int), sizeof(int));
-                /* solo root (lord-sessiond) pasa fds; de otros se descartan */
+                /* only root (lord-sessiond) passes fds; from others they're discarded */
                 if (c->uid == 0 && c->nfds < 40) c->fds[c->nfds++] = f; else close(f);
             }
         }
@@ -312,7 +312,7 @@ static void read_client(Client *c) {
             if (c->fd < 0) return;
             off += 4 + len;
         }
-        close_fds(c);                       /* fds que no usó un RP_DISPLAY: fuera */
+        close_fds(c);                       /* fds a RP_DISPLAY didn't use: out */
         memmove(c->in, c->in + off, c->in_len - off);
         c->in_len -= off;
     }
@@ -383,7 +383,7 @@ static void send_json(int type, const char *json, int seat_only) {
 }
 
 void mirror_session(const char *json) {
-    /* bloquear la pantalla o cambiar de usuario cierra la bóveda de Contraseñas (no el llavero) */
+    /* locking the screen or switching user closes the Passwords vault (not the keyring) */
     if (strstr(json, "\"lock\"")) vc_lock_all("screen");
     else if (strstr(json, "\"switch\"")) vc_lock_all("switch");
     send_json(RP_SESSION, json, 0);
@@ -424,7 +424,7 @@ void mirror_dispatch(const struct pollfd *p, int n) {
             slot->cur_mode = -1;
             all_dirty(slot);
             pump(slot);
-            if (cb.refresh) cb.refresh();           /* que el próximo cuadro llegue entero */
+            if (cb.refresh) cb.refresh();           /* so the next frame arrives whole */
             continue;
         }
         Client *c = by_fd(p[i].fd);

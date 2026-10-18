@@ -1,6 +1,6 @@
-# LordOS en Raspberry Pi: del archivo de Raspberry Pi solo el kernel, el firmware y sus utilidades
-# (el kernel de Debian 13 no tiene RP1: sin USB, Ethernet ni HDMI en la Pi 5). Todo lo demás, Mesa
-# incluido, viene de Debian. Ver docs/RASPBERRY.md.
+# LordOS on Raspberry Pi: from the Raspberry Pi archive only the kernel, the firmware and their utilities
+# (the Debian 13 kernel lacks RP1: no USB, Ethernet or HDMI on the Pi 5). Everything else, Mesa
+# included, comes from Debian. See docs/RASPBERRY.md.
 Package: *
 Pin: origin archive.raspberrypi.com
 Pin-Priority: 100

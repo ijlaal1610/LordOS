@@ -73,17 +73,22 @@ static void put_field(JBuf *b, const char *s) {
     }
 }
 
+/* One field of a NUL-terminated line (lines are split before parsing), unescaped in place. */
 static char *get_field(char **p) {
     char *s = *p, *o = s, *r = s;
-    while (*s && *s != '\t' && *s != '\n') {
+    while (*s && *s != '\t') {
         if (*s == '\\' && s[1]) { s++; *o++ = *s == 't' ? '\t' : *s == 'n' ? '\n' : *s; s++; continue; }
         *o++ = *s++;
     }
-    char end = *s;
+    int tab = *s == '\t';
     *o = 0;
-    *p = end == '\t' ? s + 1 : s;
+    *p = tab ? s + 1 : s;
     return r;
 }
+
+/* Calls fn for every line of buf (modified in place). */
+#define FOR_LINES(buf, line) for (char *line##_n, *line = (buf); line && *line; line = line##_n) \
+    if ((line##_n = strchr(line, '\n')) ? (*line##_n++ = 0, 1) : 1)
 
 static void scopy(char *d, size_t cap, const char *s) { if (!cap) return; size_t n = s ? strlen(s) : 0; if (n >= cap) n = cap - 1; if (n) memcpy(d, s, n); d[n] = 0; }
 
@@ -279,12 +284,10 @@ static void load_coll(Coll *c) {
     size_t n;
     char *meta = fs_read(rel, &n, 64 << 20);
     if (!meta) return;
-    char *p = meta;
-    while (*p) {
+    FOR_LINES(meta, line) {
+        char *p = line;
         char *file = get_field(&p), *uid = get_field(&p), *href = get_field(&p), *etag = get_field(&p);
         int dirty = atoi(p);
-        char *nl = strchr(p, '\n');
-        p = nl ? nl + 1 : p + strlen(p);
         if (!file[0] || strchr(file, '/') || file[0] == '.') continue;
         Item *it = item_new(c, uid);
         if (!it) break;
@@ -307,14 +310,12 @@ void pim_init(void) {
     size_t n;
     char *list = fs_read("pim/colls", &n, 4 << 20);
     if (list) {
-        char *p = list;
-        while (*p) {
+        FOR_LINES(list, line) {
+            char *p = line;
             char *id = get_field(&p), *kind = get_field(&p), *acct = get_field(&p), *name = get_field(&p), *color = get_field(&p),
                  *href = get_field(&p), *ctag = get_field(&p);
             int todos = 0, events = 0, hidden = 0;
             sscanf(p, "%d\t%d\t%d", &todos, &events, &hidden);
-            char *nl = strchr(p, '\n');
-            p = nl ? nl + 1 : p + strlen(p);
             if (!id[0] || strchr(id, '/') || id[0] == '.' || (kind[0] != 'c' && kind[0] != 'b')) continue;
             Coll *c = coll_new(id, kind[0], acct, name, color);
             if (!c) break;
@@ -497,12 +498,11 @@ void pim_autocomplete(const char *q, JBuf *b, int *count, int max) {
             if (!it->emails || it->dirty == DIRTY_DEL) continue;
             char *dup = strdup(it->emails);
             if (!dup) continue;
-            char *p = dup;
-            while (*p && *count < max) {
+            FOR_LINES(dup, line) {
+                if (*count >= max) break;
+                char *p = line;
                 char *name = get_field(&p);
                 char *email = get_field(&p);
-                char *nl = strchr(p, '\n');
-                p = nl ? nl + 1 : p + strlen(p);
                 char fn[300], fe[300];
                 search_fold(name, fn, sizeof fn);
                 search_fold(email, fe, sizeof fe);
@@ -1196,6 +1196,18 @@ static void push_changes(Dav *d, Coll *c) {
             if (p->dirty == DIRTY_DEL && (ok || gone)) item_delete(cc, it);
             else if (ok) { it->dirty = CLEAN; scopy(it->etag, sizeof it->etag, r.etag); }
             else if (conflict) { it->dirty = CLEAN; it->etag[0] = 0; }     /* the server's version wins; refetched below */
+            else if (r.status >= 400 && r.status < 500) {
+                /* the server refuses this version for good (400, 403, 415…): keep the server's copy
+                 * instead of retrying forever, and say so */
+                it->dirty = CLEAN;
+                it->etag[0] = 0;
+                JBuf ev;
+                jb_init(&ev);
+                jb_printf(&ev, "{\"ev\":\"dav-rejected\",\"status\":%d,\"uid\":", r.status);
+                jb_str(&ev, p->uid);
+                jb_raw(&ev, "}");
+                send_event(&ev);
+            }
             else dbg("DAV %s %s: %d", p->dirty == DIRTY_DEL ? "DELETE" : "PUT", p->href, r.status);
             save_meta(cc);
         }

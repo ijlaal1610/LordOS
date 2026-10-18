@@ -4,7 +4,7 @@
 // through org.freedesktop.Notifications (server/src/hw/notifyd.c). See docs/SETTINGS.md.
 import {
   View, Text, useTheme, useLocale, useSettings, Toggle, Segmented, Button, useStore, permsRev, packages, getApp, appName, useLauncherApps,
-  notifyPrefs, appNotifyPrefs, setAppNotifyPrefs, dndActive, notify,
+  notifyPrefs, appNotifyPrefs, setAppNotifyPrefs, dndActive, notify, direction,
 } from '@lordos/sdk';
 import { useState } from 'react';
 import { GroupBox, SettingRow, PopUp, Note, Stack, TimeField } from './ui.jsx';
@@ -35,19 +35,19 @@ function AppRow({ id, name, app, linux, tr }) {
         <Text style={{ fontSize: 12, color: t.textDim }}>{open ? '⌃' : '⌄'}</Text>
       </SettingRow>
       {open && (
-        <View style={{ paddingBottom: 10, marginInlineStart: 40, gap: 2 }}>
+        <View style={{ paddingBottom: 10, [direction() === 'rtl' ? 'paddingRight' : 'paddingLeft']: 40, gap: 2 }}>
           <SettingRow label={tr('prefs.notif.allow')} hint={app?.package ? tr('prefs.notif.allowPackage') : ''}>
-            <Toggle on={p.allow} onChange={(allow) => set({ allow })} />
+            <Toggle small on={p.allow} onChange={(allow) => set({ allow })} />
           </SettingRow>
           <SettingRow label={tr('prefs.notif.styleLabel')} hint={tr(`prefs.notif.styleHint.${p.style}`)} disabled={!p.allow}>
             <Segmented small value={p.style} onChange={(style) => p.allow && set({ style })}
               options={['none', 'banner', 'alert'].map((x) => [x, tr(`prefs.notif.style.${x}`)])} />
           </SettingRow>
           <SettingRow label={tr('prefs.notif.playSound')} disabled={!p.allow}>
-            <Toggle on={p.sound} onChange={(sound) => p.allow && set({ sound })} />
+            <Toggle small on={p.sound} onChange={(sound) => p.allow && set({ sound })} />
           </SettingRow>
           <SettingRow label={tr('prefs.notif.lockScreen')} hint={tr('prefs.notif.lockScreenHint')} disabled>
-            <Toggle on={p.lock} onChange={() => {}} />
+            <Toggle small on={p.lock} onChange={() => {}} />
           </SettingRow>
         </View>
       )}
@@ -81,10 +81,10 @@ export function NotificationsSettings() {
         <SettingRow icon={<View style={{ width: 28, height: 28, borderRadius: 7, backgroundColor: '#5e5ce6', alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ fontSize: 15, color: '#fff' }}>☾</Text></View>}
           label={tr('prefs.notif.dnd')} hint={now ? tr('prefs.notif.dndOnHint') : tr('prefs.notif.dndOffHint')}>
-          <Toggle on={p.dnd === true} onChange={(on) => patch({ dnd: on })} />
+          <Toggle small on={p.dnd === true} onChange={(on) => patch({ dnd: on })} />
         </SettingRow>
         <SettingRow label={tr('prefs.notif.schedule')} hint={p.schedule.on ? tr('prefs.notif.scheduleHint', { from: fmt(p.schedule.from), to: fmt(p.schedule.to) }) : ''}>
-          <Toggle on={p.schedule.on} onChange={(on) => patch({ schedule: { ...p.schedule, on } })} />
+          <Toggle small on={p.schedule.on} onChange={(on) => patch({ schedule: { ...p.schedule, on } })} />
         </SettingRow>
         {p.schedule.on && (
           <SettingRow label={tr('prefs.notif.from')}>

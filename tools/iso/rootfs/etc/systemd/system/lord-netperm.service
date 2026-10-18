@@ -1,5 +1,5 @@
 [Unit]
-Description=LordOS: permisos de red por app (lord-netperm)
+Description=LordOS: per-app network permissions (lord-netperm)
 After=systemd-resolved.service
 Before=lordos.service
 

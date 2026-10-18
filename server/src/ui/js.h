@@ -1,4 +1,4 @@
-/* js.h — motor JavaScript (QuickJS) que ejecuta el tema React. */
+/* js.h — JavaScript engine (QuickJS) that runs the React theme. */
 #ifndef LORD_JS_H
 #define LORD_JS_H
 
@@ -7,12 +7,12 @@
 int    js_init(const char *bundle_path);
 int    js_init_app(const char *host_bundle, const char *app_id);   /* lord-server --app <id> */
 void   js_shutdown(void);
-double js_tick(double now);        /* corre timers vencidos; ms hasta el próximo o -1 */
-int    js_wants_frame(void);       /* hay requestAnimationFrame pendientes */
+double js_tick(double now);        /* runs expired timers; ms until the next one or -1 */
+int    js_wants_frame(void);       /* there are pending requestAnimationFrame callbacks */
 void   js_frame(double now);
 void   js_pointer(const char *type, int target, float x, float y, int button);
-/* Touchpad y escritorio remoto (tp/tp_route.c) → __lordGesture(kind, phase, id, x, y, a, b, c, d):
- * "scroll" (dx, dy, fuente), "pinch" (escala, giro, dx, dy), "swipe" (dx, dy, dedos, del sistema). */
+/* Touchpad and remote desktop (tp/tp_route.c) → __lordGesture(kind, phase, id, x, y, a, b, c, d):
+ * "scroll" (dx, dy, source), "pinch" (scale, rotation, dx, dy), "swipe" (dx, dy, fingers, system). */
 void   js_gesture(const char *kind, const char *phase, int target, float x, float y, double a, double b, double c, double d);
 void   js_key(int code, int value);
 void   js_wl_event(int id, const char *type, const char *json);
@@ -28,8 +28,10 @@ void   js_clipboard_poll(void);
 void   js_remote_event(const char *json);
 void   js_greeter_event(const char *json);
 void   js_screen_resized(void);
+/* lord.screen.displays / .mirror: {"mirror":…,"displays":[{id,name,x,y,w,h,pw,ph,scale,main}]} (main.c) */
+void   js_set_displays(const char *json);
 void   js_hw_event(const char *kind, const char *json);   /* Settings' hardware (src/hw) → __lordHw */
-void   js_broker_event(const char *kind, const char *json);   /* avisos del broker → tema */
-void   js_broker_app_event(const char *kind, const char *json, size_t len);   /* lord-server → app aislada */
+void   js_broker_event(const char *kind, const char *json);   /* broker notices → theme */
+void   js_broker_app_event(const char *kind, const char *json, size_t len);   /* lord-server → isolated app */
 
 #endif

@@ -78,3 +78,26 @@ export function TagDots({ tags, size = 8 }) {
     </View>
   );
 }
+
+// Small monochrome source-list glyphs drawn with nodes (🗑 and ⏏ would render as color emoji).
+export function TrashGlyph({ color, size = 14 }) {
+  const s = size;
+  return (
+    <View style={{ width: s, height: s, alignItems: 'center' }}>
+      <View style={{ width: s * 0.36, height: 2, borderRadius: 1, backgroundColor: color }} />
+      <View style={{ width: s * 0.9, height: 2, marginTop: 1, borderRadius: 1, backgroundColor: color }} />
+      <View style={{ width: s * 0.66, height: s * 0.66, marginTop: 1, borderRadius: 2, border: `2px solid ${color}` }} />
+    </View>
+  );
+}
+
+export function DriveGlyph({ color, size = 14 }) {
+  const s = size;
+  return (
+    <View style={{ width: s, height: s, justifyContent: 'center' }}>
+      <View style={{ width: s, height: Math.round(s * 0.62), borderRadius: 3, border: `2px solid ${color}`, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', paddingHorizontal: 2, direction: 'ltr' }}>
+        <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: color }} />
+      </View>
+    </View>
+  );
+}

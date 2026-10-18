@@ -1,17 +1,17 @@
-/* npcompile.h — de la tienda de reglas (fw/rules.c) a las entradas de los mapas BPF de
- * lord-netperm (np_shared.h). Es C puro, sin kernel: lo prueba tests/npcompile_test.c contra
- * fw_decide. Ver docs/FIREWALL.md, "Paso 2", "De reglas a mapas".
+/* npcompile.h — from the rule store (fw/rules.c) to the entries of lord-netperm's BPF maps
+ * (np_shared.h). It's pure C, no kernel: tests/npcompile_test.c tests it against
+ * fw_decide. See docs/FIREWALL.md, "Step 2", "From rules to maps".
  *
- * Por app sale:
- *   - un NpApp: restricciones, confiable, modo y la lista genérica (lan / internet / any);
- *   - nodos para los tries LPM: uno por cada red de una regla y uno por cada dirección que el
- *     resolvedor del sistema asoció con un nombre que coincide con una regla de dominio. La lista
- *     de cada nodo trae también las reglas de las redes que lo contienen, así la coincidencia más
- *     larga del trie alcanza: en el kernel gana la primera entrada que coincide en dirección,
- *     protocolo y puerto, en el mismo orden de precedencia que fw_decide.
+ * Per app it produces:
+ *   - one NpApp: restrictions, trusted, mode and the generic list (lan / internet / any);
+ *   - nodes for the LPM tries: one per network in a rule and one per address that the system
+ *     resolver associated with a name matching a domain rule. Each node's list also carries the
+ *     rules of the networks that contain it, so the trie's longest match is enough: in the kernel
+ *     the first entry matching address, protocol and port wins, in the same order of precedence
+ *     as fw_decide.
  *
- * Las reglas "una sola vez" no se compilan (no hay quien las borre en el kernel; sin el modo
- * preguntar no aparecen). El modo "preguntar" se compila como silencioso. */
+ * "Just once" rules aren't compiled (there's nobody to delete them in the kernel; without ask
+ * mode they don't appear). "Ask" mode is compiled as silent. */
 #ifndef LORD_NP_COMPILE_H
 #define LORD_NP_COMPILE_H
 
@@ -23,10 +23,10 @@
 #include "netperm/np_shared.h"
 
 typedef struct {
-    int fam;                    /* 4 o 6 */
-    int prefix;                 /* 0..32 o 0..128 */
+    int fam;                    /* 4 or 6 */
+    int prefix;                 /* 0..32 or 0..128 */
     uint8_t addr[16];
-    int host;                   /* 1: sale de una respuesta DNS (reglas de dominio) */
+    int host;                   /* 1: comes from a DNS response (domain rules) */
     NpList list;
 } NpNode;
 
@@ -34,26 +34,26 @@ typedef struct {
     NpApp app;
     NpNode *nodes;
     int nnodes, cap;
-    int truncated;              /* reglas que no entraron (NP_LIST_MAX / NP_GEN_MAX); se avisa */
-    int has_domains;            /* tiene reglas de dominio: hay que recompilar con cada respuesta DNS */
+    int truncated;              /* rules that didn't fit (NP_LIST_MAX / NP_GEN_MAX); reported */
+    int has_domains;            /* has domain rules: must be recompiled on every DNS response */
 } NpCompiled;
 
-/* Compila la app. names (puede ser NULL) son los nombres aprendidos del resolvedor del sistema,
- * guardados en dnsmap bajo la app names_app. 0 bien, -1 sin memoria. */
+/* Compiles the app. names (may be NULL) are the names learned from the system resolver,
+ * stored in dnsmap under the app names_app. 0 ok, -1 out of memory. */
 int  np_compile_app(FwStore *s, const char *app, uint32_t idx, DnsMap *names, const char *names_app,
                     long long now, NpCompiled *out);
 void np_compiled_free(NpCompiled *c);
 
-/* Solo el nodo de una dirección con sus nombres (una respuesta DNS nueva, sin recompilar todo).
- * 1 si hace falta un nodo (queda en *out), 0 si no, -1 error. */
+/* Only the node of one address with its names (a new DNS response, without recompiling everything).
+ * 1 if a node is needed (left in *out), 0 if not, -1 error. */
 int  np_compile_host(FwStore *s, const char *app, int fam, const uint8_t *addr,
                      const char (*names)[FW_NAME_MAX], int n, NpNode *out, int *truncated);
 
-/* Claves de los tries para un nodo. */
+/* Trie keys for a node. */
 void np_key4(uint32_t idx, const NpNode *n, NpLpm4Key *k);
 void np_key6(uint32_t idx, const NpNode *n, NpLpm6Key *k);
 
-/* Protocolo de una regla → NP_P_*; ¿la red de la regla contiene a la dirección/prefijo? */
+/* Protocol of a rule → NP_P_*; does the rule's network contain the address/prefix? */
 int  np_cidr_contains(const FwRule *r, int fam, const uint8_t *addr, int prefix);
 
 #endif

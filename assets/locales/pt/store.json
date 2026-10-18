@@ -19,7 +19,7 @@
   "debian.noIndex": "A lista de pacotes do Debian ainda não foi baixada.",
   "debian.none": "Nada encontrado.",
   "debian.notFound": "O pacote {name} não foi encontrado.",
-  "debian.otherPackages": "OUTROS PACOTES",
+  "debian.otherPackages": "Outros pacotes",
   "debian.results": "Resultados para “{q}”",
   "debian.unavailable": "O mecanismo de pacotes do Debian não está disponível nesta versão do lord-server.",
   "debian.update": "Procurar atualizações",
@@ -107,5 +107,14 @@
   "manage.noOriginal": "Instalada antes da assinatura; sem original guardado",
   "restore.done": "“{name}” restaurada ao original.",
   "share.done": "Pacote assinado escrito em {path} (sua chave {key}…)",
-  "debian.noIndexTitle": "Falta o catálogo do Debian"
+  "debian.noIndexTitle": "Falta o catálogo do Debian",
+  "info.title": "Informações",
+  "info.description": "Descrição",
+  "info.package": "Pacote",
+  "info.version": "Versão",
+  "info.installed": "Versão instalada",
+  "info.size": "Tamanho em disco",
+  "info.suite": "Distribuição",
+  "info.homepage": "Site",
+  "debian.noneHint": "Tente outra palavra ou o nome do pacote do Debian."
 }

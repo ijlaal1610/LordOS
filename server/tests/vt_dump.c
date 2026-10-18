@@ -1,7 +1,7 @@
-/* vt_dump.c — prueba del emulador sin pantalla: lee bytes de stdin, los pasa por vt.c y
- * muestra la grilla como texto. Uso:
+/* vt_dump.c — headless test of the emulator: reads bytes from stdin, feeds them through vt.c and
+ * prints the grid as text. Usage:
  *   printf 'hola\033[31m rojo' | build/vt-dump 20 5 [cols2 rows2]
- * Con cols2/rows2 redimensiona al final (prueba el reflujo). */
+ * With cols2/rows2 it resizes at the end (tests reflow). */
 #include "term/term.h"
 
 #include <locale.h>
@@ -9,19 +9,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Dependencias de term.c que vt.c usa. */
+/* term.c dependencies that vt.c uses. */
 static char clip[4096];
 void term_set_clipboard(const char *s, size_t n) { snprintf(clip, sizeof clip, "%.*s", (int)n, s); }
 
 static void respond(Term *t, const char *s, size_t n) {
     (void)t;
-    printf("<respuesta:");
+    printf("<reply:");
     for (size_t i = 0; i < n; i++) printf(s[i] == 033 ? "\\e" : "%c", s[i]);
     printf(">\n");
 }
 
 static void dump(Term *t) {
-    printf("--- %dx%d cursor %d,%d historia %d alt %d\n", t->cols, t->rows, t->cx, t->cy,
+    printf("--- %dx%d cursor %d,%d history %d alt %d\n", t->cols, t->rows, t->cx, t->cy,
            t->buf->count - t->rows, t->buf == &t->alt);
     for (int i = 0; i < t->buf->count; i++) {
         int row = i - (t->buf->count - t->rows);
@@ -43,11 +43,11 @@ static void dump(Term *t) {
             }
             if (n > 1) putchar(']');
         }
-        printf("|%s%s\n", l->flags & LINE_PROMPT ? " [prompt]" : "", l->flags & LINE_FAIL ? " [falló]" : l->flags & LINE_OK ? " [ok]" : "");
+        printf("|%s%s\n", l->flags & LINE_PROMPT ? " [prompt]" : "", l->flags & LINE_FAIL ? " [failed]" : l->flags & LINE_OK ? " [ok]" : "");
     }
-    if (t->title[0]) printf("título: %s\n", t->title);
+    if (t->title[0]) printf("title: %s\n", t->title);
     if (t->cwd[0]) printf("cwd: %s\n", t->cwd);
-    if (clip[0]) printf("portapapeles: %s\n", clip);
+    if (clip[0]) printf("clipboard: %s\n", clip);
 }
 
 int main(int argc, char **argv) {
@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
     while ((n = fread(buf, 1, sizeof buf, stdin)) > 0) vt_write(&t, buf, n);
     dump(&t);
     if (argc > 4) { vt_resize(&t, atoi(argv[3]), atoi(argv[4])); dump(&t); }
-    if (argc > 5) { vt_search(&t, argv[5], 0); printf("búsqueda '%s': %d coincidencias\n", argv[5], t.nmatches); }
+    if (argc > 5) { vt_search(&t, argv[5], 0); printf("search '%s': %d matches\n", argv[5], t.nmatches); }
     vt_free(&t);
     return 0;
 }

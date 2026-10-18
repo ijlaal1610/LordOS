@@ -1,11 +1,11 @@
-/* netperm_bench.c — cuánto le agrega lord-netperm a connect() (docs/FIREWALL.md, "Mediciones").
+/* netperm_bench.c — how much lord-netperm adds to connect() (docs/FIREWALL.md, "Measurements").
  *
  *   cc -O2 -o netperm-bench tests/netperm_bench.c
- *   ./netperm-bench [veces]            (corre adentro de la scope de una app, ver netperm_measure.sh)
+ *   ./netperm-bench [times]            (runs inside an app's scope, see netperm_measure.sh)
  *
- * Abre un servidor TCP en 127.0.0.1 y hace N veces socket + connect + close, y lo mismo con UDP
- * (socket + connect + close, que pasa por el gancho de connect pero no manda nada). Imprime la
- * mediana y el percentil 99 de cada connect() en microsegundos. */
+ * Opens a TCP server on 127.0.0.1 and does socket + connect + close N times, and the same with UDP
+ * (socket + connect + close, which goes through the connect hook but sends nothing). Prints the
+ * median and the 99th percentile of each connect() in microseconds. */
 #define _GNU_SOURCE
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -31,7 +31,7 @@ static void report(const char *what, double *v, int n) {
     qsort(v, (size_t)n, sizeof *v, cmp);
     double sum = 0;
     for (int i = 0; i < n; i++) sum += v[i];
-    printf("%s: mediana %.2f us, p99 %.2f us, promedio %.2f us (%d)\n", what, v[n / 2], v[n * 99 / 100], sum / n, n);
+    printf("%s: median %.2f us, p99 %.2f us, mean %.2f us (%d)\n", what, v[n / 2], v[n * 99 / 100], sum / n, n);
 }
 
 int main(int argc, char **argv) {

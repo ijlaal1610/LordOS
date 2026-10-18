@@ -1,5 +1,5 @@
 /* js_brokercam.c — `lord.media` inside an isolated .lpk app: the camera, through lord-server
- * (sec/brokercam.c, docs/PRIVACIDAD.md «Camera»).
+ * (sec/brokercam.c, docs/PRIVACY.md «Camera»).
  *
  * The app never opens /dev/video* nor runs lord-media. lord-server does, after consent, and gives
  * the app a READ-ONLY fd of lord-media's frame ring: mapped PROT_READ here and drawn by the same

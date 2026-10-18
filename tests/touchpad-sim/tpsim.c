@@ -1,20 +1,20 @@
-/* tpsim.c — touchpad simulado con uinput, para probar el driver de LordOS (server/src/tp) en una
- * VM sin touchpad. Crea un clickpad parecido a un Synaptics de notebook (gestures.h) y reproduce
- * gestos guionados con sus tiempos reales. Ver docs/TRACKPAD.md.
+/* tpsim.c — simulated touchpad via uinput, for testing the LordOS driver (server/src/tp) in a
+ * VM without a touchpad. Creates a clickpad similar to a laptop Synaptics (gestures.h) and replays
+ * scripted gestures with their real timing. See docs/TRACKPAD.md.
  *
- *   tpsim list                          los gestos
- *   tpsim dump GESTO...                 la secuencia evdev en texto ("ms tipo código valor")
- *   sudo tpsim play [--touchscreen] [--wait S] GESTO...
- *                                       crea el dispositivo, espera S segundos (2) y los reproduce
+ *   tpsim list                          the gestures
+ *   tpsim dump GESTURE...               the evdev sequence as text ("ms type code value")
+ *   sudo tpsim play [--touchscreen] [--wait S] GESTURE...
+ *                                       creates the device, waits S seconds (2) and replays them
  *   sudo tpsim serve [--touchscreen] FIFO
- *                                       crea el dispositivo y queda esperando nombres de gestos
- *                                       (uno o más por línea) en FIFO; "pause MS" espera, "quit" sale
+ *                                       creates the device and waits for gesture names
+ *                                       (one or more per line) on FIFO; "pause MS" waits, "quit" exits
  *   sudo tpsim play --mouse [--wait S] wheel-up|wheel-down|hwheel-left|hwheel-right|mouse-move...
- *                                       un mouse con rueda de alta resolución (y horizontal)
- *   sudo tpsim record /dev/input/eventN SEGUNDOS
- *                                       graba un dispositivo real (para tp-test --replay)
+ *                                       a mouse with a high-resolution wheel (and horizontal)
+ *   sudo tpsim record /dev/input/eventN SECONDS
+ *                                       records a real device (for tp-test --replay)
  *
- * Compilar: cc -O2 -Wall -Wextra -o tpsim tpsim.c gestures.c -lm */
+ * Build: cc -O2 -Wall -Wextra -o tpsim tpsim.c gestures.c -lm */
 #include "gestures.h"
 
 #include <errno.h>
@@ -72,7 +72,7 @@ static void abs_setup(int fd, int code, int min, int max, int res) {
 
 static int create(int touchscreen) {
     int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK | O_CLOEXEC);
-    if (fd < 0) { perror("tpsim: /dev/uinput (¿sudo?)"); return -1; }
+    if (fd < 0) { perror("tpsim: /dev/uinput (sudo?)"); return -1; }
     ioctl(fd, UI_SET_EVBIT, EV_SYN);
     ioctl(fd, UI_SET_EVBIT, EV_KEY);
     ioctl(fd, UI_SET_EVBIT, EV_ABS);
@@ -94,17 +94,17 @@ static int create(int touchscreen) {
     u.id.vendor = touchscreen ? 0x0eef : 0x0002;
     u.id.product = touchscreen ? 0x0001 : 0x0007;
     snprintf(u.name, sizeof u.name, "%s", touchscreen ? "LordOS Pantalla táctil (simulada)" : SIM_NAME);
-    if (ioctl(fd, UI_DEV_SETUP, &u) || ioctl(fd, UI_DEV_CREATE)) { perror("tpsim: crear dispositivo"); close(fd); return -1; }
+    if (ioctl(fd, UI_DEV_SETUP, &u) || ioctl(fd, UI_DEV_CREATE)) { perror("tpsim: create device"); close(fd); return -1; }
     char sys[64] = "";
-    if (ioctl(fd, UI_GET_SYSNAME(sizeof sys), sys) >= 0) fprintf(stderr, "tpsim: %s creado (/sys/devices/virtual/input/%s)\n", u.name, sys);
+    if (ioctl(fd, UI_GET_SYSNAME(sizeof sys), sys) >= 0) fprintf(stderr, "tpsim: %s created (/sys/devices/virtual/input/%s)\n", u.name, sys);
     return fd;
 }
 
-/* ---- mouse con rueda de alta resolución (REL_WHEEL_HI_RES, REL_HWHEEL_HI_RES) ---- */
+/* ---- mouse with a high-resolution wheel (REL_WHEEL_HI_RES, REL_HWHEEL_HI_RES) ---- */
 
 static int create_mouse(void) {
     int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK | O_CLOEXEC);
-    if (fd < 0) { perror("tpsim: /dev/uinput (¿sudo?)"); return -1; }
+    if (fd < 0) { perror("tpsim: /dev/uinput (sudo?)"); return -1; }
     ioctl(fd, UI_SET_EVBIT, EV_SYN);
     ioctl(fd, UI_SET_EVBIT, EV_KEY);
     ioctl(fd, UI_SET_EVBIT, EV_REL);
@@ -118,8 +118,8 @@ static int create_mouse(void) {
     u.id.vendor = 0x046d;
     u.id.product = 0x4082;
     snprintf(u.name, sizeof u.name, "LordOS mouse con rueda de alta resolución (simulado)");
-    if (ioctl(fd, UI_DEV_SETUP, &u) || ioctl(fd, UI_DEV_CREATE)) { perror("tpsim: crear mouse"); close(fd); return -1; }
-    fprintf(stderr, "tpsim: %s creado\n", u.name);
+    if (ioctl(fd, UI_DEV_SETUP, &u) || ioctl(fd, UI_DEV_CREATE)) { perror("tpsim: create mouse"); close(fd); return -1; }
+    fprintf(stderr, "tpsim: %s created\n", u.name);
     return fd;
 }
 
@@ -131,8 +131,8 @@ static void rel(int fd, int code, int value) {
     if (write(fd, ev, sizeof ev) != sizeof ev) perror("tpsim: write");
 }
 
-/* Una rueda "libre" de alta resolución: cada paso (120) llega en 4 de 30, y con el último el paso
- * entero de siempre (REL_WHEEL), como hace el kernel. */
+/* A "free-spinning" high-resolution wheel: each step (120) arrives as 4 of 30, and with the last one the
+ * usual whole step (REL_WHEEL), as the kernel does. */
 static void play_mouse(int fd, char **names, int n) {
     for (int i = 0; i < n; i++) {
         const char *g = names[i];
@@ -150,7 +150,7 @@ static void play_mouse(int fd, char **names, int n) {
                     if (write(fd, ev, sizeof ev[0] * (size_t)m) < 0) perror("tpsim: write");
                     sleep_ms(15);
                 }
-        } else { fprintf(stderr, "tpsim: gesto de mouse desconocido: %s\n", g); continue; }
+        } else { fprintf(stderr, "tpsim: unknown mouse gesture: %s\n", g); continue; }
         fprintf(stderr, "tpsim: %s\n", g);
     }
 }
@@ -158,14 +158,14 @@ static void play_mouse(int fd, char **names, int n) {
 static int play(int fd, char **names, int n) {
     for (int i = 0; i < n; i++) {
         const SimGesture *g = sim_find(names[i]);
-        if (!g) { fprintf(stderr, "tpsim: gesto desconocido: %s\n", names[i]); continue; }
+        if (!g) { fprintf(stderr, "tpsim: unknown gesture: %s\n", names[i]); continue; }
         Live l = { fd, mono() };
         SimGen gen;
         sim_init(&gen, live_emit, &l);
         double t0 = mono();
         g->play(&gen);
         sleep_ms(l.t0 + gen.t - mono());
-        fprintf(stderr, "tpsim: %s (%s) en %.0f ms\n", g->name, g->what, mono() - t0);
+        fprintf(stderr, "tpsim: %s (%s) at %.0f ms\n", g->name, g->what, mono() - t0);
     }
     return 0;
 }
@@ -175,7 +175,7 @@ static void on_sig(int s) { (void)s; stop = 1; }
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        fprintf(stderr, "uso: tpsim list | dump GESTO... | play [--touchscreen] [--wait S] GESTO... | serve [--touchscreen] FIFO | record DEV SEG\n");
+        fprintf(stderr, "usage: tpsim list | dump GESTURE... | play [--touchscreen] [--wait S] GESTURE... | serve [--touchscreen] FIFO | record DEV SECS\n");
         return 2;
     }
     if (!strcmp(argv[1], "list")) {
@@ -185,11 +185,11 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (!strcmp(argv[1], "dump")) {
-        printf("# tpsim %s: %.0f x %.0f mm, %d contactos, resolución %d\n", SIM_NAME, SIM_W_MM, SIM_H_MM, SIM_SLOTS, SIM_RES);
+        printf("# tpsim %s: %.0f x %.0f mm, %d contacts, resolution %d\n", SIM_NAME, SIM_W_MM, SIM_H_MM, SIM_SLOTS, SIM_RES);
         double t = 0;
         for (int i = 2; i < argc; i++) {
             const SimGesture *g = sim_find(argv[i]);
-            if (!g) { fprintf(stderr, "tpsim: gesto desconocido: %s\n", argv[i]); return 1; }
+            if (!g) { fprintf(stderr, "tpsim: unknown gesture: %s\n", argv[i]); return 1; }
             SimGen gen;
             sim_init(&gen, dump_emit, NULL);
             gen.t = t;
@@ -250,7 +250,7 @@ int main(int argc, char **argv) {
         signal(SIGINT, on_sig);
         signal(SIGTERM, on_sig);
         while (!stop) {
-            FILE *f = fopen(fifo, "r");             /* se bloquea hasta que alguien escribe */
+            FILE *f = fopen(fifo, "r");             /* blocks until someone writes */
             if (!f) break;
             char line[512];
             while (!stop && fgets(line, sizeof line, f)) {
@@ -270,6 +270,6 @@ int main(int argc, char **argv) {
         unlink(fifo);
         return 0;
     }
-    fprintf(stderr, "tpsim: orden desconocida\n");
+    fprintf(stderr, "tpsim: unknown command\n");
     return 2;
 }

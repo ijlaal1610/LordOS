@@ -3,8 +3,8 @@
 // from the sandboxed helper lord-maild (docs/MAIL.md): IMAP with IDLE, SMTP, a local cache with
 // an offline search index, and HTML turned into our own views without running anything.
 import {
-  View, Text, useTheme, useStore, useAppWindow, useKeyboard, Button, TextInput, ScrollView, t, wm, fs,
-  mailRequest, onMailEvent, mailStatus, mailConfig, mailAccounts, mailAvailable, contactName, getLayout, addListener, clipboard,
+  View, Text, useTheme, useStore, useAppWindow, useKeyboard, Button, TextInput, ScrollView, t, wm, fs, monthName, formatDate, formatTime,
+  mailRequest, onMailEvent, mailStatus, mailConfig, mailAccounts, mailAvailable, addListener, clipboard,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { HtmlView, TextView } from './HtmlView.jsx';
@@ -12,6 +12,7 @@ import { Compose } from './Compose.jsx';
 import { AccountSetup, AccountsPanel, CertDialog, PasswordPrompt, Sheet } from './Setup.jsx';
 import { CATEGORY_COLORS, categoryName, listDate, fullDate, folderIcon, folderName, addrShort, formatSize, openPath, revealPath } from './util.js';
 import { quote } from './md.js';
+import { safeName } from './util.js';
 
 const ROW = 76;
 
@@ -39,7 +40,7 @@ function useSize(ref, every = 250) {
   useEffect(() => {
     const id = setInterval(() => {
       if (!ref.current) return;
-      const [, , w, h] = getLayout(ref.current.id);
+      const [, , w, h] = lord.getLayout(ref.current.id);
       setSz((o) => (Math.abs(o.w - w) > 1 || Math.abs(o.h - h) > 1 ? { w, h } : o));
     }, every);
     return () => clearInterval(id);
@@ -86,8 +87,10 @@ function MessageList({ src, rev, selected, onSelect, onMenu, cfg }) {
   const [y, setY] = useState(0);
   const [data, setData] = useState({ total: 0, items: new Map(), ver: null, loading: true });
   const want = useRef(null);
+  const lastRev = useRef(rev);
   const srcKey = JSON.stringify(src);
-  useEffect(() => { setY(0); setData({ total: 0, items: new Map(), ver: null, loading: true }); }, [srcKey]);
+  const lastSrc = useRef('');
+  useEffect(() => { setY(0); }, [srcKey]);
   const first = Math.max(0, Math.floor(y / ROW) - 10), last = Math.ceil((y + h) / ROW) + 20;
   useEffect(() => {
     let live = true;
@@ -101,23 +104,25 @@ function MessageList({ src, rev, selected, onSelect, onMenu, cfg }) {
           offset: first, count: last - first, filter: src.filter || 'all', ...(src.label ? { label: src.label } : {}) });
         if (!live || want.current !== key) return;
         setData((old) => {
-          const items = src.kind === 'search' || old.ver !== r.version ? new Map() : new Map(old.items);
+          const items = src.kind === 'search' || old.ver !== r.version || old.src !== srcKey ? new Map() : new Map(old.items);
           const off = src.kind === 'search' ? 0 : first;
           r.items.forEach((it, k) => items.set(off + k, it));
-          return { total: r.total, items, ver: r.version, loading: false };
+          return { total: r.total, items, ver: r.version, loading: false, src: srcKey };
         });
       } catch (e) { if (live) setData((o) => ({ ...o, loading: false, error: e.code })); }
     };
-    const missing = (() => { for (let i = first; i < Math.min(last, data.total || last); i++) if (!data.items.has(i)) return true; return data.ver === null; })();
-    if (missing || rev !== data.rev) run();
+    const fresh = lastSrc.current !== srcKey;
+    lastSrc.current = srcKey;
+    const missing = fresh || data.src !== srcKey || (() => { for (let i = first; i < Math.min(last, data.total || last); i++) if (!data.items.has(i)) return true; return data.ver === null; })();
+    if (missing || rev !== lastRev.current) { lastRev.current = rev; run(); }
     return () => { live = false; };
   }, [srcKey, first, rev]);
-  const total = data.total;
+  const total = data.src === srcKey ? data.total : 0;
   const max = Math.max(0, total * ROW - h);
   const yy = Math.min(y, max);
   const rows = [];
   for (let i = Math.max(0, Math.floor(yy / ROW) - 2); i < Math.min(total, Math.ceil((yy + h) / ROW) + 2); i++) {
-    const it = data.items.get(i);
+    const it = data.src === srcKey ? data.items.get(i) : null;
     const key = it ? `${it.acct}|${it.folder}|${it.uid}` : `ph${i}`;
     rows.push(
       <View key={key} style={{ position: 'absolute', left: 0, right: 0, top: i * ROW - yy }}>
@@ -175,7 +180,7 @@ function Invite({ msg }) {
   }, [msg.uid, msg.folder]);
   if (!inv) return null;
   const ev = inv.event;
-  const when = ev.allDay ? fullDate(ev.start).split(' ').slice(0, -1).join(' ') : `${fullDate(ev.start)} – ${new Date(ev.end).toTimeString().slice(0, 5)}`;
+  const when = ev.allDay ? formatDate(new Date(ev.start), 'long') : `${fullDate(ev.start)} – ${formatTime(new Date(ev.end))}`;
   const answer = async (ps) => {
     setBusy(true);
     try { await mailRequest('invite-respond', { acct: msg.acct, folder: msg.folder, uid: msg.uid, partstat: ps }); setDone(ps); } catch (e) { setDone(`error:${e.message}`); }
@@ -188,7 +193,7 @@ function Invite({ msg }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <View style={{ width: 44, height: 48, borderRadius: 8, backgroundColor: '#fff', overflow: 'hidden', alignItems: 'center' }}>
           <View style={{ height: 14, alignSelf: 'stretch', backgroundColor: '#ff453a', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontSize: 9, color: '#fff', fontWeight: 700 }}>{new Date(ev.start).toLocaleDateString(undefined, { month: 'short' }).toUpperCase()}</Text>
+            <Text style={{ fontSize: 9, color: '#fff', fontWeight: 700 }}>{monthName(new Date(ev.start).getMonth(), true).toUpperCase()}</Text>
           </View>
           <Text style={{ fontSize: 20, fontWeight: 700, color: '#222' }}>{String(new Date(ev.start).getDate())}</Text>
         </View>
@@ -229,8 +234,10 @@ function Attachments({ msg }) {
     try {
       const p = await fetch(a);
       const dir = ['Descargas', 'Downloads', 'Transferências'].map((d) => `${fs.home()}/${d}`).find((d) => { try { return fs.stat(d); } catch (e) { return false; } }) || fs.home();
-      let dst = `${dir}/${a.name}`;
-      for (let k = 2; k < 100; k++) { let ex = false; try { ex = !!fs.stat(dst); } catch (e) { ex = false; } if (!ex) break; dst = `${dir}/${a.name.replace(/(\.[^.]*)?$/, ` (${k})$1`)}`; }
+      const name = safeName(a.name);
+      let dst = `${dir}/${name}`;
+      for (let k = 2; k < 100; k++) { let ex = false; try { ex = !!fs.stat(dst); } catch (e) { ex = false; } if (!ex) break; dst = `${dir}/${name.replace(/(\.[^.]*)?$/, ` (${k})$1`)}`; }
+      if (fs.parent(dst) !== dir) return;              /* never outside the downloads folder */
       fs.copy(p, dst);
       setTimeout(() => revealPath(dst), 300);
     } catch (e) { /* ignore */ }
@@ -242,7 +249,7 @@ function Attachments({ msg }) {
         <View key={a.idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, borderRadius: 8, backgroundColor: th.control, maxWidth: 300 }}>
           <Text style={{ fontSize: 20 }}>{/pdf/.test(a.type) ? '📕' : /^image/.test(a.type) ? '🖼️' : /calendar|ics/.test(a.type + a.name) ? '📅' : '📄'}</Text>
           <View style={{ flex: 1 }}>
-            <Text onClick={() => open(a)} style={{ fontSize: 12, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{a.name}</Text>
+            <Text onClick={() => open(a)} style={{ fontSize: 12, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{safeName(a.name)}</Text>
             <Text style={{ fontSize: 11, color: th.textDim }}>{busy === a.idx ? t('mail.working') : formatSize(a.size)}</Text>
           </View>
           <Button small plain label={t('mail.att.open')} onClick={() => open(a)} />
@@ -260,7 +267,10 @@ function MessageView({ msg, width, onLink, cfg, onTrustSender, collapsed, onExpa
   const trusted = (cfg.trustedSenders || []).includes(sender);
   useEffect(() => { setRemote(false); }, [msg.uid, msg.folder]);
   const showRemote = remote || trusted;
-  useEffect(() => { if (showRemote && msg.html?.remote?.length) lord.mail.allowImages(msg.html.remote); }, [showRemote, msg.uid]);
+  // the grant has to exist before the images ask for their hosts (children's effects run first)
+  const granted = useRef('');
+  const gkey = `${msg.acct}|${msg.folder}|${msg.uid}`;
+  if (showRemote && msg.html?.remote?.length && granted.current !== gkey) { lord.mail.allowImages(msg.html.remote); granted.current = gkey; }
   const from = msg.from?.[0] || {};
   const nRemote = msg.html?.stats?.remote || 0, nTrackers = msg.html?.stats?.trackers || 0;
   const warns = (msg.html?.links || []).filter((l) => l.w);
@@ -289,14 +299,14 @@ function MessageView({ msg, width, onLink, cfg, onTrustSender, collapsed, onExpa
       </View>
       {nRemote > 0 && !showRemote && (
         <Banner color={th.control}>
-          <Text style={{ fontSize: 12, color: th.text, flex: 1 }}>{t('mail.images.blocked', { n: nRemote })}{nTrackers ? ` ${t('mail.images.trackers', { n: nTrackers })}` : ''}</Text>
+          <Text style={{ fontSize: 12, color: th.text, flex: 1 }}>{t('mail.images.blocked', { count: nRemote })}{nTrackers ? ` ${t('mail.images.trackers', { count: nTrackers })}` : ''}</Text>
           <Button small label={t('mail.images.load')} onClick={() => setRemote(true)} />
           <Button small plain label={t('mail.images.always')} onClick={() => { onTrustSender(sender); setRemote(true); }} />
         </Banner>
       )}
       {warns.length > 0 && (
         <Banner color="#ff9f0a33">
-          <Text style={{ fontSize: 12, color: th.text, flex: 1 }}>{`⚠ ${t('mail.links.warning', { n: warns.length })}`}</Text>
+          <Text style={{ fontSize: 12, color: th.text, flex: 1 }}>{`⚠ ${t('mail.links.warning', { count: warns.length })}`}</Text>
         </Banner>
       )}
       {msg.invite ? <Invite msg={msg} /> : null}
@@ -356,6 +366,7 @@ function MailMain() {
   const { w: readW } = useSize(readingRef, 400);
   const accounts = cfg.accounts.filter((a) => a.kind === 'mail');
 
+  useEffect(() => { setLoadErr(''); }, [JSON.stringify(src)]);
   const loadFolders = () => mailRequest('folders').then((r) => setFolders(r.accounts || [])).catch(() => {});
   useEffect(() => {
     loadFolders();
@@ -534,6 +545,18 @@ function MailMain() {
               </View>
             );
           })}
+          {cfg.accounts.filter((a) => a.kind === 'dav').map((a) => {
+            const s2 = st.accounts[a.id]?.status;
+            const bad = st.authFailed[a.id] || s2 === 'auth' || s2 === 'cert' || s2 === 'offline';
+            return (
+              <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, margin: 6, marginTop: 10 }}>
+                <Text style={{ fontSize: 12 }}>📅</Text>
+                <Text style={{ flex: 1, fontSize: 11, fontWeight: 600, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{a.name}</Text>
+                {s2 === 'sync' ? <Text style={{ fontSize: 10, color: th.textDim }}>⟳</Text> : null}
+                {bad ? <Text onClick={() => setSheet(st.certs.find((c) => c.acct === a.id) ? { cert: st.certs.find((c) => c.acct === a.id) } : { password: a.id })} style={{ fontSize: 11, color: '#ff9f0a' }}>⚠</Text> : null}
+              </View>
+            );
+          })}
           <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, margin: 6, marginTop: 12 }}>{t('mail.categories')}</Text>
           {CATEGORY_COLORS.map((c, i) => (
             <SideRow key={c} icon={<View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c }} />} label={categoryName(i + 1, cfg)}
@@ -548,23 +571,32 @@ function MailMain() {
     </View>
   );
 
+  const TB = ({ icon, label, onClick, disabled, primary }) => (
+    <View onClick={disabled ? undefined : onClick} style={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, height: 40, borderRadius: 7, minWidth: 54,
+      backgroundColor: primary ? th.accent : 'transparent', opacity: disabled ? 0.4 : 1 }}>
+      <Text style={{ fontSize: 15, color: primary ? '#fff' : th.text }}>{icon}</Text>
+      <Text style={{ fontSize: 10, color: primary ? '#fff' : th.textDim, whiteSpace: 'nowrap' }}>{label}</Text>
+    </View>
+  );
   const toolbar = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, height: 46 }}>
-      <Button primary label={`✎ ${t('mail.new')}`} onClick={() => compose()} />
-      <View style={{ width: 8 }} />
-      <Button label={`↩ ${t('mail.reply')}`} disabled={!msg} onClick={act.reply} />
-      <Button label={`↩︎↩︎ ${t('mail.replyAll')}`} disabled={!msg} onClick={act.replyAll} />
-      <Button label={`↪ ${t('mail.forward')}`} disabled={!msg} onClick={act.forward} />
-      <View style={{ width: 8 }} />
-      <Button label={`🗄 ${t('mail.archive')}`} disabled={!sel} onClick={act.archive} />
-      <Button label={`🗑 ${t('mail.delete')}`} disabled={!sel} onClick={act.remove} />
-      <Button label={`⚑ ${t('mail.flag')}`} disabled={!sel} onClick={act.flag} />
-      <Button label={`● ${t('mail.category')}`} disabled={!sel} onClick={() => setSheet({ menu: 'labels' })} />
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 8, height: 50 }}>
+      <TB primary icon="✎" label={t('mail.new')} onClick={() => compose()} />
+      <View style={{ width: 10 }} />
+      <TB icon="↩" label={t('mail.reply')} disabled={!msg} onClick={act.reply} />
+      <TB icon="⇇" label={t('mail.replyAll')} disabled={!msg} onClick={act.replyAll} />
+      <TB icon="↪" label={t('mail.forward')} disabled={!msg} onClick={act.forward} />
+      <View style={{ width: 10 }} />
+      <TB icon="🗄" label={t('mail.archive')} disabled={!sel} onClick={act.archive} />
+      <TB icon="🗑" label={t('mail.delete')} disabled={!sel} onClick={act.remove} />
+      <TB icon="⚑" label={t('mail.flag')} disabled={!sel} onClick={act.flag} />
+      <TB icon="●" label={t('mail.category')} disabled={!sel} onClick={() => setSheet({ menu: 'labels' })} />
       <View style={{ flex: 1 }} />
-      <View style={{ width: 220 }}>
-        <TextInput value={q} onChange={(v) => { setQ(v); if (v.trim().length >= 2) setSrc({ kind: 'search', q: v.trim() }); else if (!v.trim() && src.kind === 'search') setSrc({ kind: 'unified' }); }}
-          placeholder={`🔍 ${t('mail.search.placeholder')}`} onCancel={() => { setQ(''); setSrc({ kind: 'unified' }); }} />
-      </View>
+    </View>
+  );
+  const search = (
+    <View style={{ paddingHorizontal: 10, paddingBottom: 8 }}>
+      <TextInput value={q} onChange={(v) => { setQ(v); if (v.trim().length >= 2) setSrc({ kind: 'search', q: v.trim() }); else if (!v.trim() && src.kind === 'search') setSrc({ kind: 'unified' }); }}
+        placeholder={`⌕ ${t('mail.search.placeholder')}`} onCancel={() => { setQ(''); setSrc({ kind: 'unified' }); }} />
     </View>
   );
 
@@ -585,6 +617,7 @@ function MailMain() {
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, height: 34 }}>
               <Text style={{ flex: 1, fontSize: 15, fontWeight: 700, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{listTitle}</Text>
             </View>
+            {search}
             <View style={{ height: 1, backgroundColor: th.separator }} />
             {!mailAvailable() ? <Text style={{ margin: 16, fontSize: 13, color: th.textDim }}>{t('mail.unavailable')}</Text>
               : noAccounts ? (
@@ -622,12 +655,12 @@ function MailMain() {
         </View>
       </View>
       {sheet === 'setup' && <AccountSetup onClose={() => { setSheet(null); setCfg(mailConfig.get()); loadFolders(); }} />}
-      {sheet === 'accounts' && <AccountsPanel onClose={() => { setSheet(null); setCfg(mailConfig.get()); loadFolders(); }} onAdd={() => setSheet('setup')} />}
-      {sheet?.cert && <CertDialog cert={sheet.cert} onClose={() => setSheet(null)} />}
+      {sheet === 'accounts' && <AccountsPanel onClose={() => { setSheet(null); setCfg(mailConfig.get()); loadFolders(); }} onAdd={() => setSheet('setup')} onPassword={(id) => setSheet({ password: id })} />}
+      {typeof sheet === 'object' && sheet?.cert && <CertDialog cert={sheet.cert} onClose={() => setSheet(null)} />}
       {!sheet && st.certs[0] && <CertDialog cert={st.certs[0]} onClose={() => mailStatus.set((s) => ({ ...s, certs: s.certs.slice(1) }))} />}
-      {sheet?.password && <PasswordPrompt acct={sheet.password} onClose={() => setSheet(null)} />}
-      {sheet?.link && <LinkSheet link={sheet.link} onClose={() => setSheet(null)} />}
-      {sheet?.menu === 'labels' && (
+      {typeof sheet === 'object' && sheet?.password && <PasswordPrompt acct={sheet.password} onClose={() => setSheet(null)} />}
+      {typeof sheet === 'object' && sheet?.link && <LinkSheet link={sheet.link} onClose={() => setSheet(null)} />}
+      {typeof sheet === 'object' && sheet?.menu === 'labels' && (
         <Sheet width={280}>
           <Text style={{ fontSize: 14, fontWeight: 700, color: th.text }}>{t('mail.category')}</Text>
           {CATEGORY_COLORS.map((c, i) => (
@@ -679,7 +712,7 @@ function LinkSheet({ link, onClose }) {
   return (
     <Sheet width={500}>
       <Text style={{ fontSize: 16, fontWeight: 700, color: link.w ? '#ff453a' : th.text }}>{link.w ? t('mail.links.deceptiveTitle') : t('mail.links.title')}</Text>
-      {link.w ? <Text style={{ fontSize: 13, color: th.text }}>{t('mail.links.deceptiveBody', { shown: link.txt || '', host })}</Text> : null}
+      {link.w ? <Text style={{ fontSize: 13, color: th.text }}>{t('mail.links.deceptiveBody', { shown: (link.txt || '').trim(), host })}</Text> : null}
       <View style={{ padding: 10, borderRadius: 8, backgroundColor: th.control }}><Text style={{ fontSize: 12, color: th.text, fontFamily: 'monospace' }}>{link.h}</Text></View>
       <Text style={{ fontSize: 12, color: th.textDim }}>{t('mail.links.noBrowser')}</Text>
       <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
@@ -690,4 +723,3 @@ function LinkSheet({ link, onClose }) {
   );
 }
 
-export { contactName };

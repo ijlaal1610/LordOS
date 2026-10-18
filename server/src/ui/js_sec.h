@@ -1,6 +1,6 @@
-/* js_sec.h — APIs de privacidad y firma para el tema y las apps del sistema:
- * lord.perms (permisos por app, estilo TCC) y lord.sign (firma, confianza, «Modificada por
- * vos», restaurar y compartir). Ver server/src/sec y docs/PRIVACIDAD.md, docs/FIRMA.md. */
+/* js_sec.h — privacy and signing APIs for the theme and the system apps:
+ * lord.perms (per-app permissions, TCC style) and lord.sign (signature, trust, "Modified by
+ * you", restore and share). See server/src/sec and docs/PRIVACY.md, docs/SIGNING.md. */
 #ifndef LORD_JS_SEC_H
 #define LORD_JS_SEC_H
 

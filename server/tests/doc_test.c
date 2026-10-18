@@ -1,13 +1,13 @@
-/* doc_test.c — cliente de prueba de lord-doc (el ayudante de documentos), sin lord-server.
+/* doc_test.c — test client for lord-doc (the document helper), without lord-server.
  *
- *   doc-test <lord-doc> selftest                    lo que el encierro impide (JSON con errno)
- *   doc-test <lord-doc> list <comprimido>
- *   doc-test <lord-doc> extract <comprimido> <carpeta>    (la carpeta tiene que existir)
- *   doc-test <lord-doc> zip <salida.zip> <rutas…>
- *   doc-test <lord-doc> pdf <archivo.pdf> [ancho]   abre, dibuja la página 1 y mide
- *   doc-test <lord-doc> font <archivo.ttf>
+ *   doc-test <lord-doc> selftest                    what the confinement blocks (JSON with errno)
+ *   doc-test <lord-doc> list <archive>
+ *   doc-test <lord-doc> extract <archive> <folder>    (the folder must exist)
+ *   doc-test <lord-doc> zip <out.zip> <paths…>
+ *   doc-test <lord-doc> pdf <file.pdf> [width]      opens, renders page 1 and measures
+ *   doc-test <lord-doc> font <file.ttf>
  *
- * tests/doc_evil.sh lo usa con comprimidos maliciosos armados por tests/make_evil_archives.py. */
+ * tests/doc_evil.sh uses it with malicious archives built by tests/make_evil_archives.py. */
 #include "doc/proto.h"
 #include "doc/wire.h"
 
@@ -53,11 +53,11 @@ static void start(const char *helper, const char *mode, const int *fds, const ch
     int l = snprintf(j, sizeof j, "{\"mode\":\"%s\"}", mode);
     doc_send(sock, DQ_INIT_GO, 0, j, (size_t)l, NULL, 0);
     DocMsg m;
-    if (doc_recv(sock, &m) || m.h.op != DR_DONE) { fprintf(stderr, "el ayudante no arrancó\n"); exit(2); }
+    if (doc_recv(sock, &m) || m.h.op != DR_DONE) { fprintf(stderr, "the helper did not start\n"); exit(2); }
     doc_msg_free(&m);
 }
 
-/* manda y muestra todo hasta la respuesta final; devuelve el tipo final */
+/* sends, and prints everything up to the final reply; returns the final type */
 static int call(uint32_t op, const char *json, const int *fds, int nfds, int quiet_prog) {
     static uint32_t id = 1;
     doc_send(sock, op, id, json, json ? strlen(json) : 0, fds, nfds);
@@ -75,14 +75,14 @@ static int call(uint32_t op, const char *json, const int *fds, int nfds, int qui
 }
 
 int main(int argc, char **argv) {
-    if (argc < 3) { fprintf(stderr, "uso: doc-test <lord-doc> selftest|list|extract|zip|pdf|font …\n"); return 2; }
+    if (argc < 3) { fprintf(stderr, "usage: doc-test <lord-doc> selftest|list|extract|zip|pdf|font …\n"); return 2; }
     const char *helper = argv[1], *cmd = argv[2];
     int st = 0;
     if (!strcmp(cmd, "selftest")) {
         start(helper, "pdf", NULL, NULL, 0);
         st = call(DQ_SELFTEST, NULL, NULL, 0, 0) == DR_DONE ? 0 : 1;
     } else if (!strcmp(cmd, "selftest-arc") && argc > 3) {
-        /* el modo de extracción, con una carpeta de escritura: igual no sale de ella */
+        /* extraction mode, with a writable folder: it still cannot leave it */
         int fd = open(argv[3], O_RDONLY | O_DIRECTORY | O_CLOEXEC);
         const char *roles[] = { "rw" };
         start(helper, "arc", &fd, roles, 1);
@@ -131,9 +131,9 @@ int main(int argc, char **argv) {
         double t3 = now_ms();
         call(DQ_PDF_OUTLINE, NULL, NULL, 0, 0);
         call(DQ_PDF_FIND, "{\"text\":\"the\"}", NULL, 0, 0);
-        printf("tiempos: arranque+encierro %.1f ms, abrir %.1f ms, página 1 %.1f ms, total hasta la imagen %.1f ms\n", t1 - t0, t2 - t1, t3 - t2, t3 - t0);
+        printf("times: start+confinement %.1f ms, open %.1f ms, page 1 %.1f ms, total until the image %.1f ms\n", t1 - t0, t2 - t1, t3 - t2, t3 - t0);
     } else if (!strcmp(cmd, "thumb") && argc > 3) {
-        /* Vista rápida: la sesión de utilidades ya caliente; se mide la segunda vez */
+        /* Quick Look: the utility session already warm; the second run is measured */
         start(helper, "util", NULL, NULL, 0);
         for (int i = 0; i < 3; i++) {
             int fd = open(argv[3], O_RDONLY | O_CLOEXEC);
@@ -143,12 +143,12 @@ int main(int argc, char **argv) {
             close(fd);
         }
     } else if (!strcmp(cmd, "save") && argc > 4) {
-        /* abre, agrega una nota y guarda una copia (como «Guardar una copia» del visor) */
+        /* opens, adds a note and saves a copy (like the viewer's "Save a copy") */
         int fd = open(argv[3], O_RDONLY | O_CLOEXEC);
         const char *roles[] = { "file" };
         start(helper, "pdf", &fd, roles, 1);
         call(DQ_PDF_OPEN, "{\"slot\":0,\"quick\":true}", NULL, 0, 1);
-        if (argc > 5) {                      /* como el visor: tamaños, dibujos, búsqueda y selección */
+        if (argc > 5) {                      /* like the viewer: sizes, renders, search and selection */
             call(DQ_PDF_SIZES, NULL, NULL, 0, 1);
             for (int p = 0; p < 10; p++) { char j[64]; snprintf(j, sizeof j, "{\"page\":%d,\"width\":800}", p); call(DQ_PDF_RENDER, j, NULL, 0, 1); }
             call(DQ_PDF_FIND, "{\"text\":\"linear memory\"}", NULL, 0, 1);
@@ -161,14 +161,14 @@ int main(int argc, char **argv) {
         int out = open(argv[4], O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);
         st = call(DQ_PDF_SAVE, "{}", &out, 1, 0) == DR_DONE ? 0 : 1;
         close(out);
-        /* el archivo tiene que estar completo ya, con el ayudante todavía vivo */
+        /* the file must already be complete, with the helper still alive */
         int chk = open(argv[4], O_RDONLY | O_CLOEXEC);
         char tail[16] = "";
         off_t end = lseek(chk, 0, SEEK_END);
         if (end > 8 && pread(chk, tail, 8, end - 8) == 8) tail[8] = 0;
         close(chk);
         int complete = strstr(tail, "%%EOF") != NULL;
-        printf("copia guardada: %lld bytes, %s\n", (long long)end, complete ? "completa" : "INCOMPLETA");
+        printf("copy saved: %lld bytes, %s\n", (long long)end, complete ? "complete" : "INCOMPLETE");
         if (!complete) st = 1;
     } else if (!strcmp(cmd, "font") && argc > 3) {
         start(helper, "util", NULL, NULL, 0);

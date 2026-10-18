@@ -1,4 +1,4 @@
-/* idx.c — construcción y lectura del índice de paquetes (ver idx.h). */
+/* idx.c — building and reading the package index (see idx.h). */
 #include "idx.h"
 #include "deb.h"
 #include "crypto.h"
@@ -13,7 +13,7 @@
 #include <time.h>
 #include <unistd.h>
 
-/* ---- lectura ---- */
+/* ---- reading ---- */
 
 int idx_open(Idx *x, const char *dir) {
     memset(x, 0, sizeof *x);
@@ -101,18 +101,18 @@ void idx_providers(const Idx *x, const char *name, size_t n, long *plo, long *ph
     *phi = e;
 }
 
-/* ---- construcción ---- */
+/* ---- building ---- */
 
 struct IdxBuilder {
     char *str;
     size_t slen, scap;
-    uint32_t *ht;                       /* textos internados (UINT32_MAX = libre) */
+    uint32_t *ht;                       /* interned strings (UINT32_MAX = free) */
     size_t htcap, htn;
     IdxPkg *pk;
     uint8_t (*md5)[16];
     uint8_t *hasmd5;
     size_t npk, cappk, capmd5;
-    int32_t *mnext, *mht;               /* md5 → paquetes */
+    int32_t *mnext, *mht;               /* md5 → packages */
     size_t mhtcap;
     IdxSrc src[64];
     int nsrc;
@@ -120,7 +120,7 @@ struct IdxBuilder {
     size_t dlen, dcap;
     IdxApp *app;
     size_t napp, capapp;
-    uint32_t *icons;                    /* conjunto de nombres de íconos */
+    uint32_t *icons;                    /* set of icon names */
     size_t iconcap, nicons;
 };
 
@@ -159,7 +159,7 @@ static int ht_rehash(IdxBuilder *b) {
     return 0;
 }
 
-/* Interna un texto (sin repetir); devuelve su desplazamiento o UINT32_MAX si no hay memoria. */
+/* Interns a string (without repeats); returns its offset or UINT32_MAX if out of memory. */
 static uint32_t intern(IdxBuilder *b, const char *s, size_t n) {
     if (!n) return 0;
     if ((b->htn + 1) * 2 > b->htcap && ht_rehash(b)) return UINT32_MAX;
@@ -217,7 +217,7 @@ int idxb_source(IdxBuilder *b, const char *uri, const char *suite, const char *c
 }
 
 static uint32_t put_desc(IdxBuilder *b, const char *s, size_t n, uint32_t *len) {
-    /* "Description" de Debian: líneas con un espacio adelante; " ." es un párrafo vacío */
+    /* Debian "Description": lines with a leading space; " ." is an empty paragraph */
     if (grow((void **)&b->desc, &b->dcap, b->dlen + n + 1, 1)) { *len = 0; return 0; }
     uint32_t start = (uint32_t)b->dlen;
     const char *p = s, *e = s + n;
@@ -323,7 +323,7 @@ int idxb_packages(IdxBuilder *b, int src, const char *buf, size_t len, const cha
             }
         }
         if (!name || !ok_arch || !p.version || !p.filename || !has_sha || !deb_valid_name(name, namelen)) continue;
-        /* nombres con barra o .. en Filename no: se descargan a un nombre fijo, pero igual */
+        /* names with a slash or .. in Filename are rejected: they're downloaded to a fixed name, but still */
         const char *fn = b->str + p.filename;
         if (strstr(fn, "..") || fn[0] == '/') continue;
         p.name = intern(b, name, namelen);
@@ -334,7 +334,7 @@ int idxb_packages(IdxBuilder *b, int src, const char *buf, size_t len, const cha
             if (nl) p.desc = put_desc(b, nl + 1, desclen - sl - 1, &p.desclen);
         }
         if (grow((void **)&b->pk, &b->cappk, b->npk + 1, sizeof *b->pk)) return -1;
-        if (b->cappk > b->capmd5) {         /* arreglos paralelos con la misma capacidad */
+        if (b->cappk > b->capmd5) {         /* parallel arrays with the same capacity */
             uint8_t (*nm)[16] = realloc(b->md5, b->cappk * 16);
             if (!nm) return -1;
             b->md5 = nm;
@@ -407,16 +407,16 @@ int idxb_translation(IdxBuilder *b, const char *buf, size_t len) {
 
 /* ---- DEP-11 (AppStream) ---- */
 
-/* Corta los espacios del final y deja exactamente n saltos de línea (si ya hay texto). */
+/* Trims trailing spaces and leaves exactly n line breaks (if there's already text). */
 static void line_break(char *out, size_t *o, int n) {
     while (*o && (out[*o - 1] == ' ' || out[*o - 1] == '\n')) (*o)--;
     if (*o) while (n--) out[(*o)++] = '\n';
 }
 
-/* HTML de AppStream (<p>, <ul><li>, <em>, <code>) a texto plano. */
+/* AppStream HTML (<p>, <ul><li>, <em>, <code>) to plain text. */
 static size_t html_text(const char *s, size_t n, char *out, size_t cap) {
     size_t o = 0;
-    int par = 0;                        /* hay que empezar un párrafo antes del próximo texto */
+    int par = 0;                        /* a paragraph has to be started before the next text */
     for (size_t i = 0; i < n && o + 8 < cap;) {
         if (s[i] == '<') {
             const char *gt = memchr(s + i, '>', n - i);
@@ -453,7 +453,7 @@ static size_t html_text(const char *s, size_t n, char *out, size_t cap) {
     return o;
 }
 
-/* Valor escalar de YAML en una línea: sin comillas o con '…' / "…". */
+/* YAML scalar value on one line: unquoted or with '…' / "…". */
 static size_t yaml_scalar(const char *v, size_t n, char *out, size_t cap) {
     size_t o = 0;
     if (n && v[0] == '\'') {
@@ -502,7 +502,7 @@ static void app_store(IdxBuilder *b, App *a) {
     x->categories = intern_z(b, a->cats);
     x->icon = intern_z(b, a->icon);
     x->desc = UINT32_MAX;
-    if (a->dlen) {                      /* en el bloque de descripciones, terminada en 0 */
+    if (a->dlen) {                      /* in the descriptions block, 0-terminated */
         char *t = malloc(a->dlen + 16);
         if (t) {
             size_t tl = html_text(a->desc, a->dlen, t, a->dlen + 16);
@@ -551,7 +551,7 @@ static int lang_slot(const char *k, size_t n) {
     if (n == 1 && k[0] == 'C') return 0;
     if (n == 2 && !strncmp(k, "es", 2)) return 1;
     if (n == 2 && !strncmp(k, "pt", 2)) return 2;
-    if (n == 5 && !strncmp(k, "pt-BR", 5)) return 3;       /* si no hay pt */
+    if (n == 5 && !strncmp(k, "pt-BR", 5)) return 3;       /* if there's no pt */
     return -1;
 }
 
@@ -569,7 +569,7 @@ int idxb_appstream(IdxBuilder *b, const char *buf, size_t len) {
         int doc_end = p >= end || (ll >= 3 && !strncmp(p, "---", 3));
         size_t ind = 0;
         while (ind < ll && p[ind] == ' ') ind++;
-        /* bloque literal (>- / |): líneas vacías o con sangría ≥ 4 */
+        /* literal block (>- / |): empty lines or with indentation ≥ 4 */
         if (block && !doc_end && (ind == ll || ind >= 4)) {
             if (block_desc) {
                 const char *t = p + (ind < 4 ? ind : 4);
@@ -583,7 +583,7 @@ int idxb_appstream(IdxBuilder *b, const char *buf, size_t len) {
             goto next;
         }
         block = block_desc = 0;
-        if (cont_slot >= 0 && !doc_end && ind >= 4 && ind < ll) {   /* escalar simple partido */
+        if (cont_slot >= 0 && !doc_end && ind >= 4 && ind < ll) {   /* split plain scalar */
             char *dst = cont_is_name ? a.name[cont_slot] : a.summary[cont_slot];
             size_t cap = cont_is_name ? sizeof a.name[0] : sizeof a.summary[0], dl = strlen(dst);
             snprintf(dst + dl, cap - dl, " %.*s", (int)(ll - ind), p + ind);
@@ -640,7 +640,7 @@ int idxb_appstream(IdxBuilder *b, const char *buf, size_t len) {
             }
             if (slot < 0 || !strcmp(top, "Description")) goto next;
             int is_name = !strcmp(top, "Name");
-            if (slot == 3) {                    /* pt-BR: solo si no hay pt */
+            if (slot == 3) {                    /* pt-BR: only if there's no pt */
                 char *dst = is_name ? a.name[2] : a.summary[2];
                 if (dst[0]) goto next;
                 slot = 2;
@@ -672,7 +672,7 @@ int idxb_appstream(IdxBuilder *b, const char *buf, size_t len) {
     return 0;
 }
 
-/* ---- escritura ---- */
+/* ---- writing ---- */
 
 static const IdxBuilder *sort_b;
 
@@ -680,7 +680,7 @@ static int pkg_order(const void *pa, const void *pb) {
     const IdxPkg *a = &sort_b->pk[*(const uint32_t *)pa], *b = &sort_b->pk[*(const uint32_t *)pb];
     int c = strcmp(sort_b->str + a->name, sort_b->str + b->name);
     if (c) return c;
-    c = ver_cmp(sort_b->str + b->version, sort_b->str + a->version);      /* más nueva primero */
+    c = ver_cmp(sort_b->str + b->version, sort_b->str + a->version);      /* newest first */
     if (c) return c;
     return (int)sort_b->src[b->src].prio - (int)sort_b->src[a->src].prio;
 }
@@ -744,13 +744,13 @@ int idxb_write(IdxBuilder *b, const char *dir, const char *arch, char *err, size
     sort_b = b;
     qsort(prov, nprov, sizeof *prov, prov_order);
 
-    /* apps → paquetes (todas las versiones con ese nombre) */
+    /* apps → packages (all versions with that name) */
     for (size_t a = 0; a < b->napp; a++) {
         const char *pn = b->str + b->app[a].package;
         size_t lo = 0, hi = b->npk;
         while (lo < hi) { size_t m = (lo + hi) / 2; if (strcmp(b->str + sorted[m].name, pn) < 0) lo = m + 1; else hi = m; }
         for (size_t i = lo; i < b->npk && !strcmp(b->str + sorted[i].name, pn); i++) {
-            /* si el paquete tiene varias, gana la primera aplicación de escritorio */
+            /* if the package has several, the first desktop application wins */
             if (sorted[i].app == UINT32_MAX || (strcmp(b->str + b->app[sorted[i].app].type, "desktop-application") &&
                                                !strcmp(b->str + b->app[a].type, "desktop-application")))
                 sorted[i].app = (uint32_t)a;

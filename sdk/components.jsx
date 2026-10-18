@@ -1,6 +1,6 @@
-// components.jsx — controles base para apps. Toman colores de useTheme(), así que se
-// adaptan a cualquier tema.
-import { View, Text, addListener } from '@lordos/runtime';
+// components.jsx — base controls for apps. They take colors from useTheme(), so they
+// adapt to any theme.
+import { View, Text, addListener, displayFor } from '@lordos/runtime';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useTheme } from './theme.js';
 import { getApp, windows } from './windows.js';
@@ -26,12 +26,15 @@ export function Button({ label, onClick, primary, style, small, plain, disabled,
   );
 }
 
-export function Toggle({ on, onChange }) {
+// small: the 36 × 20 switch of grouped forms (Settings rows) instead of 42 × 24. The knob moves
+// physically (direction: 'ltr'), as on macOS also in right-to-left languages.
+export function Toggle({ on, onChange, small }) {
   const t = useTheme();
+  const w = small ? 36 : 42, h = small ? 20 : 24, k = h - 4;
   return (
-    <View onClick={() => onChange(!on)} style={{ width: 42, height: 24, borderRadius: 12,
+    <View onClick={() => onChange(!on)} style={{ width: w, height: h, borderRadius: h / 2, direction: 'ltr',
       backgroundColor: on ? t.accent : t.control }}>
-      <View style={{ position: 'absolute', top: 2, left: on ? 20 : 2, width: 20, height: 20, borderRadius: 10,
+      <View style={{ position: 'absolute', top: 2, left: on ? w - k - 2 : 2, width: k, height: k, borderRadius: k / 2,
         backgroundColor: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.35)' }} />
     </View>
   );
@@ -82,8 +85,8 @@ export function SectionTitle({ children }) {
   return <Text style={{ fontSize: 11, fontWeight: 600, color: t.textDim, marginLeft: 10, marginTop: 10, marginBottom: 4 }}>{children}</Text>;
 }
 
-// Contenedor con desplazamiento por rueda del mouse y barra indicadora.
-// scrollRef (opcional): { scrollTo(y), offset(), inner } para saltar a una posición (un índice).
+// Container with mouse-wheel scrolling and an indicator bar.
+// scrollRef (optional): { scrollTo(y), offset(), inner } to jump to a position (an index).
 export function ScrollView({ style, children, scrollRef }) {
   const t = useTheme();
   const outer = useRef(null), inner = useRef(null);
@@ -114,10 +117,10 @@ export function ScrollView({ style, children, scrollRef }) {
   );
 }
 
-// ---- foco de teclado ----
+// ---- keyboard focus ----
 
-let focused = null;          // token del TextInput activo
-let focusedNow = false;      // se enfocó durante el evento de mouse en curso
+let focused = null;          // token of the active TextInput
+let focusedNow = false;      // it got focus during the mouse event in progress
 const handlers = new Map();
 const focusSubs = new Set();
 const setFocus = (tok) => { focused = tok; for (const fn of focusSubs) fn(); };
@@ -127,9 +130,9 @@ addListener('keydown', (e) => { if (focused && handlers.has(focused)) handlers.g
 
 export const hasTextFocus = () => focused !== null;
 
-// Para un campo de texto propio (por ejemplo, una nota editada en el escritorio): mientras tenga
-// el foco recibe las teclas, y useKeyboard/las apps no (como con un TextInput). Llamar desde el
-// onMouseDown del campo; se suelta con un clic en otro lado o con releaseTextFocus.
+// For a custom text field (for example, a note edited on the desktop): while it has
+// focus it receives the keys, and useKeyboard/the apps don't (as with a TextInput). Call from the
+// field's onMouseDown; it is released by a click elsewhere or with releaseTextFocus.
 export function takeTextFocus(token, handler, onChange) {
   handlers.set(token, handler);
   if (onChange) focusSubs.add(onChange);
@@ -142,8 +145,8 @@ export function releaseTextFocus(token, onChange) {
   if (focused === token) setFocus(null);
 }
 export const textFocusOwner = () => focused;
-// Para paneles que toman el teclado un momento (Spotlight, portapapeles): recordar el campo con
-// foco, devolvérselo al cerrar y pegarle el portapapeles como si fuera Ctrl+V.
+// For panels that take the keyboard for a moment (Spotlight, clipboard): remember the focused
+// field, give focus back on close and paste the clipboard into it as if it were Ctrl+V.
 export const focusToken = () => focused;
 export function restoreFocus(tok) { if (tok && handlers.has(tok)) setFocus(tok); }
 export function pasteIntoFocused() {
@@ -152,10 +155,10 @@ export function pasteIntoFocused() {
   return true;
 }
 
-// onKeyDown(e) opcional: devolver true si la tecla ya se manejó (ej.: Shift+Enter).
-// secure: campo de contraseña (muestra •, no pasa por el método de entrada ni se puede copiar).
-// selectAll: empieza con todo el texto seleccionado (la primera tecla lo reemplaza; las flechas
-// lo deseleccionan), como al renombrar en el Finder.
+// onKeyDown(e) optional: return true if the key was already handled (e.g. Shift+Enter).
+// secure: password field (shows •, does not go through the input method and cannot be copied).
+// selectAll: starts with all the text selected (the first key replaces it; the arrows
+// deselect it), as when renaming in the Finder.
 export function TextInput({ value, onChange, placeholder, onSubmit, onCancel, onKeyDown, autoFocus, style, secure, size = 13, selectAll = false }) {
   const t = useTheme();
   const token = useRef({}).current;
@@ -171,7 +174,7 @@ export function TextInput({ value, onChange, placeholder, onSubmit, onCancel, on
   latest.current = { value, onChange, onSubmit, onCancel, onKeyDown };
 
   useEffect(() => {
-    // con foco, las teclas pasan por el método de entrada (coreano, japonés, chino)
+    // with focus, keys go through the input method (Korean, Japanese, Chinese)
     const caretRect = () => { if (!caret.current) return null; const [x, y, , h] = lord.getLayout(caret.current.id); return { x, y, h }; };
     const sync = () => {
       setIsFocused(focused === token);
@@ -206,7 +209,7 @@ export function TextInput({ value, onChange, placeholder, onSubmit, onCancel, on
   return (
     <View onMouseDown={() => { focusedNow = true; setFocus(token); }}
       style={[{ height: Math.max(28, size + 15), paddingHorizontal: 10, borderRadius: 7, flexDirection: 'row', alignItems: 'center',
-        // el cursor va al final lógico: a la izquierda si el texto es árabe o hebreo
+        // the cursor goes to the logical end: on the left if the text is Arabic or Hebrew
         direction: secure ? 'ltr' : value ? textDirection(value) : 'inherit',
         backgroundColor: t.inputBg, border: `1px solid ${isFocused ? t.accent : t.separator}`, overflow: 'hidden' }, style]}>
       {value ? <Text style={{ fontSize: size, color: allSel && isFocused ? '#fff' : t.text, whiteSpace: 'nowrap',
@@ -218,7 +221,7 @@ export function TextInput({ value, onChange, placeholder, onSubmit, onCancel, on
   );
 }
 
-// Número con botones − y + (ej.: tamaño de fuente).
+// Number with − and + buttons (e.g. font size).
 export function Stepper({ value, onChange, min = -Infinity, max = Infinity, step = 1, format = (v) => String(v), width = 56 }) {
   const t = useTheme();
   const set = (v) => onChange(Math.max(min, Math.min(max, Math.round(v / step) * step)));
@@ -236,7 +239,7 @@ export function Stepper({ value, onChange, min = -Infinity, max = Infinity, step
   );
 }
 
-// Deslizador horizontal (arrastrar o hacer clic sobre la barra).
+// Horizontal slider (drag or click on the bar).
 export function Slider({ value, onChange, min = 0, max = 1, width = 160 }) {
   const t = useTheme();
   const ref = useRef(null);
@@ -265,14 +268,14 @@ export function Slider({ value, onChange, min = 0, max = 1, width = 160 }) {
   );
 }
 
-// ---- contexto de la ventana de cada app ----
+// ---- context of each app's window ----
 
 const AppWindowContext = createContext({ id: null, focused: false, args: null });
 export const useAppWindow = () => useContext(AppWindowContext);
 
-// Estado de una ventana que sobrevive a que la app se vuelva a montar (pasar a pantalla completa
-// o a imagen en imagen la cambia de lugar en el árbol). Se borra al cerrar la ventana.
-const winStates = new Map();          // id de ventana → Map(clave → valor)
+// State of a window that survives the app being remounted (going fullscreen
+// or picture-in-picture moves it in the tree). Cleared when the window closes.
+const winStates = new Map();          // window id → Map(key → value)
 windows.subscribe(() => {
   const ids = new Set(windows.get().map((w) => w.id));
   for (const k of [...winStates.keys()]) if (!ids.has(k)) winStates.delete(k);
@@ -288,7 +291,7 @@ export function useWindowState(key, initial) {
   return [v, set.current];
 }
 
-// El tema usa <AppHost id focused /> dentro de su marco de ventana.
+// The theme uses <AppHost id focused /> inside its window frame.
 export function AppHost({ id, focused }) {
   const app = getApp(id);
   const args = useStore(windows, (ws) => ws.find((w) => w.id === id)?.args || null);
@@ -296,7 +299,7 @@ export function AppHost({ id, focused }) {
   const mode = useStore(windows, (ws) => { const w = ws.find((x) => x.id === id); return w?.fullscreen ? 'fullscreen' : w?.pip ? 'pip' : 'window'; });
   if (!app) return null;
   const C = app.Component;
-  // el contenido va en un nodo propio: `protected` lo pinta negro en las capturas (wm.setProtected)
+  // the content goes in its own node: `protected` paints it black in screenshots (wm.setProtected)
   return (
     <AppWindowContext.Provider value={{ id, focused, args, mode }}>
       <View protected={prot} style={{ flex: 1, alignSelf: 'stretch' }}>
@@ -306,8 +309,8 @@ export function AppHost({ id, focused }) {
   );
 }
 
-// Ventanas a pantalla completa e imagen en imagen (wm.setFullscreen / wm.setPip): encima del
-// tema, sin su marco. Las pone startShell; el tema no tiene que hacer nada.
+// Fullscreen and picture-in-picture windows (wm.setFullscreen / wm.setPip): above the
+// theme, without its frame. startShell places them; the theme doesn't have to do anything.
 export function FloatingWindows() {
   const list = useStore(windows);
   const fs = list.filter((w) => w.fullscreen && !w.minimized);
@@ -341,16 +344,19 @@ export function FloatingWindows() {
             style={{ position: 'absolute', right: 0, bottom: 0, width: 18, height: 18 }} />
         </View>
       ))}
-      {fs.map((w) => (
-        <View key={w.id} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: '#000' }}>
+      {fs.map((w) => {
+        const d = displayFor(w);              // the display the window was on (docs/DISPLAYS.md)
+        return (
+        <View key={w.id} style={{ position: 'absolute', left: d.x, top: d.y, width: d.w, height: d.h, backgroundColor: '#000' }}>
           <AppHost id={w.id} focused />
         </View>
-      ))}
+        );
+      })}
     </>
   );
 }
 
-// Teclado para la app cuya ventana está al frente (y sin un TextInput activo).
+// Keyboard for the app whose window is in front (and with no active TextInput).
 export function useKeyboard(handler) {
   const { focused: active } = useAppWindow();
   const ref = useRef(handler);

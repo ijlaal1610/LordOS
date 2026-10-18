@@ -1,21 +1,21 @@
-// windowshell.jsx — <WindowShell>: el nodo de una ventana con bordes invisibles para cambiar el
-// tamaño en los 4 lados y las 4 esquinas, 6 px afuera del marco y 3 px adentro (como macOS), con el
-// cursor de cada dirección. Mover y agrandar lo hace lord-server en C (wm.beginMove/beginResize,
-// docs/VENTANAS.md): el tema no recibe un evento por cuadro.
+// windowshell.jsx — <WindowShell>: a window's node with invisible borders for resizing
+// on all 4 sides and 4 corners, 6 px outside the frame and 3 px inside (like macOS), with the
+// cursor for each direction. Moving and resizing is done by lord-server in C (wm.beginMove/beginResize,
+// docs/WINDOWS.md): the theme doesn't receive an event per frame.
 //
 //   <WindowShell win={w} style={{ borderRadius: 12, backgroundColor, overflow: 'hidden', boxShadow }}
 //                onMouseDown={() => wm.focus(w.id)}>
-//     <View onMouseDown={(e) => wm.beginMove(w.id)}>…barra de título…</View>
+//     <View onMouseDown={(e) => wm.beginMove(w.id)}>…title bar…</View>
 //     <AppHost id={w.id} focused={focused} />
 //   </WindowShell>
 import { View } from '@lordos/runtime';
 import { wm } from './windows.js';
 
-export const WINDOW_EDGE = 6;     // px de borde afuera del marco
-const INSIDE = 3;                 // y adentro
+export const WINDOW_EDGE = 6;     // px of border outside the frame
+const INSIDE = 3;                 // and inside
 const CORNER = 16;
 
-// [bordes de xdg, cursor, estilo]
+// [xdg edges, cursor, style]
 const GRIPS = [
   [1, 'ns-resize', (t) => ({ left: CORNER, right: CORNER, top: 0, height: t })],
   [2, 'ns-resize', (t) => ({ left: CORNER, right: CORNER, bottom: 0, height: t })],

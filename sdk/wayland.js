@@ -7,7 +7,7 @@
 // cambiar el tamaño desde la barra de una app GTK llega como pedido del compositor.
 import { createElement as h } from 'react';
 import { View, Text, Surface, addListener } from '@lordos/runtime';
-import { windows, wm, registerBuiltinApp, windowChrome, workArea, getApp } from './windows.js';
+import { windows, wm, registerBuiltinApp, windowChrome, pointerWorkArea, getApp } from './windows.js';
 import { useAppWindow } from './components.jsx';
 import { locale, appName } from './i18n.js';
 
@@ -53,7 +53,7 @@ globalThis.__lordWayland = (sid, type, d = {}) => {
   switch (type) {
     case 'map': {
       const c = d.csd ? { w: 0, h: 0 } : windowChrome();
-      const area = workArea();
+      const area = pointerWorkArea();         // on the display under the pointer (docs/DISPLAYS.md)
       const w = Math.min(area.w, d.width + c.w), hh = Math.min(area.h, d.height + c.h);
       const n = windows.get().length;
       wm.open('linux', {

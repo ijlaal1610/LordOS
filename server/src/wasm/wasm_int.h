@@ -1,5 +1,5 @@
-/* wasm_int.h — estructuras internas del intérprete (wasm.c decodifica/valida/compila,
- * wasm_run.c instancia y ejecuta). */
+/* wasm_int.h — internal structures of the interpreter (wasm.c decodes/validates/compiles,
+ * wasm_run.c instantiates and runs). */
 #ifndef LORD_WASM_INT_H
 #define LORD_WASM_INT_H
 
@@ -7,16 +7,16 @@
 
 #include <stdint.h>
 
-/* Código compilado: cada instrucción es la dirección de su manejador (computed goto) seguida
- * de sus inmediatos. Los saltos son relativos al comienzo de la instrucción. */
+/* Compiled code: each instruction is the address of its handler (computed goto) followed
+ * by its immediates. Jumps are relative to the start of the instruction. */
 typedef union Cell {
     const void *op;
     uint64_t u;
     int64_t i;
 } Cell;
 
-/* Instrucciones internas. Las que tienen byte >= 0 corresponden 1 a 1 con una instrucción de
- * WebAssembly del mismo significado (0x100 + n: prefijo 0xFC). */
+/* Internal instructions. Those with byte >= 0 map 1 to 1 to a WebAssembly
+ * instruction with the same meaning (0x100 + n: 0xFC prefix). */
 #define WASM_OPS(X) \
     X(UNREACHABLE, 0x00) X(BR, -1) X(BR_N, -1) X(BR_IF, -1) X(BR_IF_N, -1) X(BR_UNLESS, -1) \
     X(BR_TABLE, -1) X(RETURN, -1) X(RETURN0, -1) X(RETURN1, -1) X(CALL, -1) X(CALL_INDIRECT, -1) \
@@ -74,30 +74,30 @@ enum {
     OP__COUNT
 };
 
-/* Direcciones de los manejadores (las llena wasm_run.c). */
+/* Handler addresses (filled in by wasm_run.c). */
 extern const void *const *wasm_op_labels;
 void wasm_init_labels(void);
 
 typedef struct {
-    uint32_t nlocals;                   /* parámetros incluidos */
-    uint32_t max_stack;                 /* nlocals + altura máxima de la pila de operandos */
+    uint32_t nlocals;                   /* parameters included */
+    uint32_t max_stack;                 /* nlocals + maximum operand stack height */
     Cell *code;
     size_t ncode;
 } WasmCode;
 
 typedef struct {
-    const uint8_t *p;                   /* expresión constante (hasta su `end`) */
+    const uint8_t *p;                   /* constant expression (up to its `end`) */
     size_t len;
 } ConstExpr;
 
 typedef struct {
     uint8_t is_expr;
-    uint32_t func;                      /* si no es expresión */
+    uint32_t func;                      /* if not an expression */
     ConstExpr expr;
 } ElemItem;
 
 typedef struct {
-    uint8_t mode;                       /* 0 activo, 1 pasivo, 2 declarativo */
+    uint8_t mode;                       /* 0 active, 1 passive, 2 declarative */
     uint8_t type;                       /* funcref / externref */
     uint32_t table;
     ConstExpr offset;
@@ -114,7 +114,7 @@ typedef struct {
 
 typedef struct {
     char *module, *name;
-    uint32_t module_len, name_len;      /* los nombres pueden tener bytes 0 */
+    uint32_t module_len, name_len;      /* names may contain 0 bytes */
     WasmExternType type;
     uint32_t typeidx;
 } Import;
@@ -145,50 +145,50 @@ typedef struct {
 
 struct WasmModule {
     int rc;
-    uint8_t *bytes;                     /* copia del binario (los segmentos apuntan acá) */
+    uint8_t *bytes;                     /* copy of the binary (segments point here) */
     size_t len;
     uint32_t ntypes;
     const WasmFuncType **types;
     uint32_t nimports, nfunc_imports, ntable_imports, nmem_imports, nglobal_imports;
     Import *imports;
-    uint32_t nfuncs;                    /* imports incluidos */
-    const WasmFuncType **functypes;     /* por índice de función */
+    uint32_t nfuncs;                    /* imports included */
+    const WasmFuncType **functypes;     /* by function index */
     uint32_t *functypeidx;
-    WasmCode *code;                     /* de las definidas (nfuncs - nfunc_imports) */
+    WasmCode *code;                     /* of the defined ones (nfuncs - nfunc_imports) */
     uint32_t ntables;
-    TableDef *tables;                   /* imports incluidos */
+    TableDef *tables;                   /* imports included */
     uint32_t nmems;
     uint32_t mem_min, mem_max;
     uint32_t nglobals;
-    GlobalDef *globals;                 /* imports incluidos (init vacío) */
+    GlobalDef *globals;                 /* imports included (empty init) */
     uint32_t nexports;
     Export *exports;
-    int64_t start;                      /* -1 si no hay */
+    int64_t start;                      /* -1 if none */
     uint32_t nelems;
     ElemSeg *elems;
     uint32_t ndata;
     int has_datacount;
     DataSeg *data;
-    uint8_t *declared;                  /* funciones que ref.func puede nombrar */
+    uint8_t *declared;                  /* functions ref.func may name */
     uint32_t ncustom;
     Custom *custom;
 };
 
 struct WasmFunc {
     const WasmFuncType *type;
-    WasmInstance *inst;                 /* NULL si es del host */
+    WasmInstance *inst;                 /* NULL if it's the host's */
     const WasmCode *code;
     WasmHostFn host;
     void *ud;
     void (*free_ud)(void *);
-    int rc;                             /* solo las del host */
+    int rc;                             /* host ones only */
     void *slot;
 };
 
 struct WasmMemory {
     int rc;
-    uint8_t *data;                      /* reservado hasta max (PROT_NONE más allá de size) */
-    size_t size;                        /* bytes accesibles */
+    uint8_t *data;                      /* reserved up to max (PROT_NONE beyond size) */
+    size_t size;                        /* accessible bytes */
     size_t reserved;
     uint32_t max;
     void (*on_grow)(void *, WasmMemory *);
@@ -197,8 +197,8 @@ struct WasmMemory {
 };
 
 struct WasmTable {
-    int rc;                             /* referencias de afuera (JS, otras instancias) */
-    WasmInstance *owner;                /* la instancia que la definió (o NULL) */
+    int rc;                             /* outside references (JS, other instances) */
+    WasmInstance *owner;                /* the instance that defined it (or NULL) */
     uint8_t type;
     uint32_t size, max;
     WasmVal *elems;
@@ -217,8 +217,8 @@ struct WasmInstance {
     int rc;
     WasmModule *m;
     uint32_t nfuncs;
-    WasmFunc **funcs;                   /* por índice (los imports apuntan a funciones ajenas) */
-    WasmFunc *own;                      /* las definidas */
+    WasmFunc **funcs;                   /* by index (imports point to foreign functions) */
+    WasmFunc *own;                      /* the defined ones */
     WasmTable **tables;
     WasmMemory *mem;
     WasmGlobal **globals;
@@ -226,12 +226,12 @@ struct WasmInstance {
     WasmExtern *exports;
 };
 
-/* Retener / soltar un funcref guardado en un objeto (tabla o global) de `owner`: las funciones
- * de la misma instancia dueña no suman referencia (evita el ciclo instancia ↔ su tabla). */
+/* Retain / release a funcref stored in an object (table or global) of `owner`: functions
+ * of the same owning instance don't add a reference (avoids the instance ↔ its table cycle). */
 void wasm_ref_hold(WasmInstance *owner, uint8_t type, WasmVal v);
 void wasm_ref_release(WasmInstance *owner, uint8_t type, WasmVal v);
 
-/* Evalúa una expresión constante ya validada. */
+/* Evaluates an already validated constant expression. */
 WasmVal wasm_const_eval(const WasmInstance *inst, ConstExpr e);
 
 

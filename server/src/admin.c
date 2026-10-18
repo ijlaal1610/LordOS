@@ -1,31 +1,31 @@
-/* admin.c — ayudante privilegiado mínimo de LordOS (como polkit en GNOME, pero con una lista
- * cerrada de acciones).
+/* admin.c — minimal privileged helper of LordOS (like polkit in GNOME, but with a closed
+ * list of actions).
  *
- * lord-server arranca como root (para abrir DRM y evdev) y suelta privilegios enseguida.
- * Justo antes, crea este ayudante: un proceso hijo que sigue como root, sin pantalla, sin
- * input y sin ningún otro descriptor, conectado al servidor por un socketpair. Solo entiende
- * las acciones de la tabla `actions` (más abajo) y cada una valida su argumento por su cuenta,
- * sin confiar en nada que el usuario pueda editar. Acciones de este archivo:
+ * lord-server starts as root (to open DRM and evdev) and drops privileges right away.
+ * Just before that, it creates this helper: a child process that stays root, with no screen, no
+ * input and no other descriptor, connected to the server by a socketpair. It only understands
+ * the actions in the `actions` table (below) and each one validates its argument on its own,
+ * without trusting anything the user can edit. Actions in this file:
  *
- *   locale-gen <nombre>       genera una región que figure en /usr/share/i18n/SUPPORTED (UTF-8)
- *   system-locale <nombre>    región por defecto del sistema (/etc/default/locale), ya generada
- *   timezone <Zona/Ciudad>    zona horaria que exista en /usr/share/zoneinfo (timedatectl)
- *   langpack <ll[_CC]>        paquetes de Debian del idioma: manpages, hunspell, aspell,
- *                             hyphen, mythes (ll-cc o ll, ej. hunspell-pt-br), las fuentes de su
- *                             escritura y el diccionario del método de entrada (skkdic, pinyin)
- *                             (lista compilada acá, no leída de archivos)
+ *   locale-gen <name>         generates a region listed in /usr/share/i18n/SUPPORTED (UTF-8)
+ *   system-locale <name>      system default region (/etc/default/locale), already generated
+ *   timezone <Zone/City>      time zone that exists in /usr/share/zoneinfo (timedatectl)
+ *   langpack <ll[_CC]>        Debian packages for the language: manpages, hunspell, aspell,
+ *                             hyphen, mythes (ll-cc or ll, e.g. hunspell-pt-br), the fonts for its
+ *                             script and the input method dictionary (skkdic, pinyin)
+ *                             (list compiled in here, not read from files)
  *
- * Las de paquetes (pkg/), red y VPN (net/), instalador (install/), escritorio remoto (remote/)
- * y usuarios (users/) están en sus módulos; la tabla dice cuáles hay.
+ * The package (pkg/), network and VPN (net/), installer (install/), remote desktop (remote/)
+ * and users (users/) actions live in their modules; the table says which ones exist.
  *
- * Protocolo (socketpair): pedido "<id> <acción> <largo>\n" seguido de <largo> bytes de
- * argumento (hasta ADMIN_ARG_MAX; puede tener varias líneas, como una configuración de VPN).
- * Respuestas "<id> LOG texto" (progreso), y al final "<id> OK texto" o "<id> ERR texto". Los
- * avisos sin pedido van con id 0: "0 EVENT texto". Las acciones largas (instalar paquetes)
- * corren en un proceso hijo, así que varias pueden estar en curso a la vez. Solo atiende si el
- * usuario de la sesión es administrador (grupo sudo, admin o wheel), salvo las acciones
- * marcadas A_ANYONE (conectarse a una red, como en NetworkManager). Termina cuando lord-server
- * cierra la conexión, y con él los procesos residentes (wpa_supplicant, VPN, DHCP). */
+ * Protocol (socketpair): request "<id> <action> <length>\n" followed by <length> bytes of
+ * argument (up to ADMIN_ARG_MAX; it may have several lines, like a VPN configuration).
+ * Replies "<id> LOG text" (progress), and at the end "<id> OK text" or "<id> ERR text".
+ * Unsolicited notices go with id 0: "0 EVENT text". Long actions (installing packages)
+ * run in a child process, so several can be in progress at once. It only serves if the
+ * session user is an administrator (sudo, admin or wheel group), except for the actions
+ * marked A_ANYONE (connecting to a network, as in NetworkManager). It exits when lord-server
+ * closes the connection, and with it the resident processes (wpa_supplicant, VPN, DHCP). */
 #include "admin.h"
 #include "pkg/pkg.h"
 #include "net/net.h"
@@ -60,9 +60,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-/* ---- lado del ayudante (root) ---- */
+/* ---- helper side (root) ---- */
 
-static int out_fd = -1;                 /* socket, o el pipe hacia el ayudante en un hijo */
+static int out_fd = -1;                 /* socket, or the pipe to the helper in a child */
 static int cur_id;
 
 /* lord-netd (the system network, see below): in its main process, replies go to the client that
@@ -128,7 +128,7 @@ static int is_admin(const char *user) {
 
 static char *const clean_env[] = { "PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8", "DEBIAN_FRONTEND=noninteractive", NULL };
 
-/* Hijo con stdin en /dev/null, stdout (y stderr si err) al pipe, sin otros descriptores. */
+/* Child with stdin on /dev/null, stdout (and stderr if err) to the pipe, no other descriptors. */
 static pid_t spawn(const char *const argv[], char *const env[], int out, int err) {
     pid_t pid = fork();
     if (pid == 0) {
@@ -138,8 +138,8 @@ static pid_t spawn(const char *const argv[], char *const env[], int out, int err
         dup2(err ? (out >= 0 ? out : null) : null, 2);
         syscall(SYS_close_range, 3, ~0u, 0);
         signal(SIGPIPE, SIG_DFL);
-        /* si el ayudante muere (aunque sea por una señal), el programa también: no quedan
-         * wpa_supplicant ni openvpn huérfanos. Sobrevive a execve (los programas no son setuid). */
+        /* if the helper dies (even from a signal), the program does too: no orphaned
+         * wpa_supplicant or openvpn are left. It survives execve (the programs are not setuid). */
         prctl(PR_SET_PDEATHSIG, SIGTERM);
         if (getppid() == 1) _exit(127);
         execve(argv[0], (char *const *)argv, env ? env : clean_env);
@@ -217,7 +217,7 @@ int admin_run_capture(const char *const argv[], char *out, size_t cap) {
     for (ssize_t r; (r = read(p[0], out + n, cap - 1 - n)) != 0;) {
         if (r < 0) { if (errno == EINTR) continue; break; }
         n += (size_t)r;
-        if (n == cap - 1) {                 /* lleno: se descarta el resto */
+        if (n == cap - 1) {                 /* full: the rest is discarded */
             char junk[4096];
             while (read(p[0], junk, sizeof junk) > 0) {}
             break;
@@ -228,17 +228,17 @@ int admin_run_capture(const char *const argv[], char *out, size_t cap) {
     return wait_code(pid);
 }
 
-/* ---- procesos hijos: acciones largas y residentes ---- */
+/* ---- child processes: long and resident actions ---- */
 
 #define MAX_KIDS 32
 
 typedef struct {
     pid_t pid;
-    int fd;                             /* su salida */
-    int id;                             /* acción (0 si es residente) */
-    int done;                           /* ya mandó OK/ERR */
-    int raw;                            /* programa externo: cada línea se envuelve en un EVENT */
-    char name[32];                      /* residente */
+    int fd;                             /* its output */
+    int id;                             /* action (0 if resident) */
+    int done;                           /* already sent OK/ERR */
+    int raw;                            /* external program: each line is wrapped in an EVENT */
+    char name[32];                      /* resident */
     int client;                         /* lord-netd: client that requested the action (-1: none) */
     char buf[2048];
     size_t len;
@@ -313,7 +313,7 @@ int admin_daemon_stop(const char *name) {
 }
 
 static void kid_line(Kid *k, char *line) {
-    /* "<id> KIND texto": se reenvía tal cual; se anota si ya terminó */
+    /* "<id> KIND text": forwarded as is; noted if it already finished */
     char *sp = strchr(line, ' ');
     if (sp && (!strncmp(sp + 1, "OK", 2) || !strncmp(sp + 1, "ERR", 3))) k->done = 1;
     size_t n = strlen(line);
@@ -340,15 +340,15 @@ static void kid_read(Kid *k) {
             memmove(k->buf, nl + 1, k->len - used);
             k->len -= used;
         }
-        if (k->len >= sizeof k->buf - 1) k->len = 0;       /* línea demasiado larga */
+        if (k->len >= sizeof k->buf - 1) k->len = 0;       /* line too long */
         return;
     }
     if (r < 0 && (errno == EINTR || errno == EAGAIN)) return;
-    /* terminó */
+    /* finished */
     close(k->fd);
     int code = wait_code(k->pid);
     cur_client = k->client;
-    if (k->id && !k->done) put_line(k->id, "ERR", code == 0 ? "terminó sin respuesta" : "terminó con un error");
+    if (k->id && !k->done) put_line(k->id, "ERR", code == 0 ? "finished without a reply" : "finished with an error");
     if (!k->id) {
         char msg[96];
         snprintf(msg, sizeof msg, "daemon %s exit %d", k->name, code);
@@ -357,7 +357,7 @@ static void kid_read(Kid *k) {
     k->pid = 0;
 }
 
-/* ---- tabla de acciones ---- */
+/* ---- action table ---- */
 
 enum { A_FORK = 1, A_ANYONE = 2 };
 
@@ -377,7 +377,7 @@ static void a_langpack(const AdminReq *r, const char *a, size_t n) { (void)r; (v
 
 static const struct { const char *name; ActionFn fn; int flags; } actions[] = {
 #ifdef LORD_NETD
-    /* lord-netd: networking only (docs/RED.md, "The network belongs to the system") */
+    /* lord-netd: networking only (docs/NETWORK.md, "The network belongs to the system") */
     NET_ADMIN_ACTIONS
 #else
     { "locale-gen", a_locale_gen, A_FORK },
@@ -402,7 +402,7 @@ int admin_known(const char *action) {
 }
 
 #ifndef LORD_NETD
-/* Nombre de región válido y soportado por glibc: "es_AR.UTF-8". */
+/* Valid region name supported by glibc: "es_AR.UTF-8". */
 static int supported_locale(const char *name) {
     size_t n = strlen(name);
     if (!n || n > 64) return 0;
@@ -420,9 +420,9 @@ static int supported_locale(const char *name) {
     return ok;
 }
 
-/* ¿Ya está generada? glibc mapea el archivo de regiones una sola vez por proceso, así que
- * una región recién generada no se ve con newlocale() acá: se pregunta a `locale -a`, que
- * es un proceso nuevo. Compara normalizado ("es_AR.UTF-8" = "es_AR.utf8"). */
+/* Is it already generated? glibc maps the locale archive only once per process, so
+ * a freshly generated region is not visible with newlocale() here: `locale -a` is asked, which
+ * is a new process. Compares normalized ("es_AR.UTF-8" = "es_AR.utf8"). */
 static void norm(const char *in, char *out, size_t n) {
     size_t o = 0;
     for (; *in && o + 1 < n; in++) if (*in != '-') out[o++] = (char)tolower((unsigned char)*in);
@@ -458,9 +458,9 @@ static int locale_generated(const char *name) {
     return found;
 }
 
-/* Habilita la línea en /etc/locale.gen (descomenta o agrega) y corre locale-gen. */
+/* Enables the line in /etc/locale.gen (uncomments or adds it) and runs locale-gen. */
 static void act_locale_gen(const char *name) {
-    if (!supported_locale(name)) { admin_say("ERR", "región no soportada: %s", name); return; }
+    if (!supported_locale(name)) { admin_say("ERR", "unsupported region: %s", name); return; }
     char want[160];
     snprintf(want, sizeof want, "%s UTF-8", name);
     FILE *f = fopen("/etc/locale.gen", "r");
@@ -478,29 +478,29 @@ static void act_locale_gen(const char *name) {
         } else fputs(line, mem);
     }
     if (f) fclose(f);
-    if (!mem) { admin_say("ERR", "sin memoria"); return; }
+    if (!mem) { admin_say("ERR", "out of memory"); return; }
     if (!found) fprintf(mem, "%s\n", want);
     fclose(mem);
     int fd = open("/etc/locale.gen.lordos", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
     int ok = fd >= 0 && write(fd, buf, len) == (ssize_t)len;
     if (fd >= 0) ok = close(fd) == 0 && ok;
     free(buf);
-    if (!ok || rename("/etc/locale.gen.lordos", "/etc/locale.gen")) { admin_say("ERR", "no se pudo escribir /etc/locale.gen"); return; }
+    if (!ok || rename("/etc/locale.gen.lordos", "/etc/locale.gen")) { admin_say("ERR", "could not write /etc/locale.gen"); return; }
     const char *const argv[] = { "/usr/sbin/locale-gen", NULL };
     int r = admin_run(argv);
-    if (r == 0) admin_say("OK", "región %s generada", name);
-    else admin_say("ERR", "locale-gen terminó con código %d", r);
+    if (r == 0) admin_say("OK", "region %s generated", name);
+    else admin_say("ERR", "locale-gen exited with code %d", r);
 }
 
 static void act_system_locale(const char *name) {
-    if (!supported_locale(name) && strcmp(name, "C.UTF-8")) { admin_say("ERR", "región no soportada: %s", name); return; }
-    if (!locale_generated(name)) { admin_say("ERR", "la región %s no está generada", name); return; }
+    if (!supported_locale(name) && strcmp(name, "C.UTF-8")) { admin_say("ERR", "unsupported region: %s", name); return; }
+    if (!locale_generated(name)) { admin_say("ERR", "region %s is not generated", name); return; }
     int fd = open("/etc/default/locale.lordos", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
-    if (fd < 0) { admin_say("ERR", "no se pudo escribir /etc/default/locale"); return; }
+    if (fd < 0) { admin_say("ERR", "could not write /etc/default/locale"); return; }
     dprintf(fd, "LANG=%s\n", name);
     close(fd);
-    if (rename("/etc/default/locale.lordos", "/etc/default/locale")) { admin_say("ERR", "no se pudo escribir /etc/default/locale"); return; }
-    admin_say("OK", "región del sistema: %s", name);
+    if (rename("/etc/default/locale.lordos", "/etc/default/locale")) { admin_say("ERR", "could not write /etc/default/locale"); return; }
+    admin_say("OK", "system region: %s", name);
 }
 
 static void act_timezone(const char *zone) {
@@ -510,19 +510,19 @@ static void act_timezone(const char *zone) {
     char path[320];
     struct stat st;
     snprintf(path, sizeof path, "/usr/share/zoneinfo/%s", zone);
-    if (!ok || stat(path, &st) || !S_ISREG(st.st_mode)) { admin_say("ERR", "zona horaria desconocida: %s", zone); return; }
+    if (!ok || stat(path, &st) || !S_ISREG(st.st_mode)) { admin_say("ERR", "unknown time zone: %s", zone); return; }
     const char *const argv[] = { "/usr/bin/timedatectl", "set-timezone", zone, NULL };
-    if (access(argv[0], X_OK) == 0 && admin_run(argv) == 0) { admin_say("OK", "zona horaria: %s", zone); return; }
-    /* sin systemd: el enlace de /etc/localtime y /etc/timezone, como dpkg-reconfigure */
+    if (access(argv[0], X_OK) == 0 && admin_run(argv) == 0) { admin_say("OK", "time zone: %s", zone); return; }
+    /* without systemd: the /etc/localtime link and /etc/timezone, like dpkg-reconfigure */
     unlink("/etc/localtime.lordos");
-    if (symlink(path, "/etc/localtime.lordos") || rename("/etc/localtime.lordos", "/etc/localtime")) { admin_say("ERR", "no se pudo cambiar /etc/localtime"); return; }
+    if (symlink(path, "/etc/localtime.lordos") || rename("/etc/localtime.lordos", "/etc/localtime")) { admin_say("ERR", "could not change /etc/localtime"); return; }
     FILE *f = fopen("/etc/timezone", "w");
     if (f) { fprintf(f, "%s\n", zone); fclose(f); }
-    admin_say("OK", "zona horaria: %s", zone);
+    admin_say("OK", "time zone: %s", zone);
 }
 
-/* Fuentes según la escritura del idioma y diccionarios de los métodos de entrada (ime.c), de
- * Debian 13. Compilado: no se lee de ningún archivo. */
+/* Fonts for the language's script and dictionaries for the input methods (ime.c), from
+ * Debian 13. Compiled in: not read from any file. */
 static const struct { const char *lang, *pkgs; } script_fonts[] = {
     { "ja", "fonts-noto-cjk" }, { "zh", "fonts-noto-cjk" }, { "ko", "fonts-noto-cjk" },
     { "ja", "skkdic" }, { "zh", "rime-data-pinyin-simp" },
@@ -530,7 +530,7 @@ static const struct { const char *lang, *pkgs; } script_fonts[] = {
     { "hi", "fonts-noto-core" }, { "bn", "fonts-noto-core" }, { "ta", "fonts-noto-core" }, { "te", "fonts-noto-core" },
     { "th", "fonts-noto-core" }, { "el", "fonts-noto-core" }, { "ru", "fonts-noto-core" }, { "uk", "fonts-noto-core" },
     { "ka", "fonts-noto-core" }, { "hy", "fonts-noto-core" }, { "am", "fonts-noto-core" },
-    { "th", "libthai-data" },           /* diccionario del corte de palabras (ui/thbrk.c) */
+    { "th", "libthai-data" },           /* word-break dictionary (ui/thbrk.c) */
     { "lo", "fonts-noto-core" }, { "km", "fonts-noto-core" }, { "my", "fonts-noto-core" }, { "bo", "fonts-noto-core" },
     { "dz", "fonts-noto-core" }, { "si", "fonts-noto-core" }, { "mn", "fonts-noto-core" }, { "jv", "fonts-noto-core" },
     { "su", "fonts-noto-core" }, { "ml", "fonts-noto-core" }, { "kn", "fonts-noto-core" }, { "gu", "fonts-noto-core" },
@@ -557,7 +557,7 @@ static int package_exists(const char *pkg) {
     return pid > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0;
 }
 
-/* ll o ll_CC ("pt" o "pt_BR"): se prueban los paquetes con y sin región (hunspell-pt-br). */
+/* ll or ll_CC ("pt" or "pt_BR"): packages are tried with and without region (hunspell-pt-br). */
 static void act_langpack(const char *arg) {
     size_t n = strlen(arg);
     int ok = n >= 2 && n <= 6;
@@ -569,7 +569,7 @@ static void act_langpack(const char *arg) {
         if (n - i != 3 || arg[i + 1] < 'A' || arg[i + 1] > 'Z' || arg[i + 2] < 'A' || arg[i + 2] > 'Z') ok = 0;
         else { cc[0] = (char)(arg[i + 1] - 'A' + 'a'); cc[1] = (char)(arg[i + 2] - 'A' + 'a'); }
     }
-    if (!ok) { admin_say("ERR", "código de idioma inválido: %s", arg); return; }
+    if (!ok) { admin_say("ERR", "invalid language code: %s", arg); return; }
     static const char *const patterns[] = { "manpages-%s", "hunspell-%s", "aspell-%s", "hyphen-%s", "mythes-%s" };
     char names[24][48];
     int count = 0;
@@ -585,14 +585,14 @@ static void act_langpack(const char *arg) {
     }
     for (size_t i = 0; i < sizeof script_fonts / sizeof *script_fonts; i++)
         if (!strcmp(script_fonts[i].lang, ll) && count < 20) snprintf(names[count++], sizeof names[0], "%s", script_fonts[i].pkgs);
-    if (!count) { admin_say("OK", "no hay paquetes de Debian para «%s»: solo la región y los textos de LordOS", arg); return; }
+    if (!count) { admin_say("OK", "no Debian packages for «%s»: only the region and the LordOS texts", arg); return; }
     const char *argv[28] = { "/usr/bin/apt-get", "install", "-y", "--no-install-recommends" };
     int a = 4;
-    for (int i = 0; i < count; i++) { argv[a++] = names[i]; admin_say("LOG", "paquete: %s", names[i]); }
+    for (int i = 0; i < count; i++) { argv[a++] = names[i]; admin_say("LOG", "package: %s", names[i]); }
     argv[a] = NULL;
     int r = admin_run(argv);
-    if (r == 0) admin_say("OK", "%d paquete(s) instalado(s) para «%s»", count, arg);
-    else admin_say("ERR", "apt-get terminó con código %d", r);
+    if (r == 0) admin_say("OK", "%d package(s) installed for «%s»", count, arg);
+    else admin_say("ERR", "apt-get exited with code %d", r);
 }
 
 #endif /* LORD_NETD */
@@ -629,7 +629,7 @@ static void run_action(size_t a, AdminReq *req, int id, const char *arg, size_t 
     if (actions[a].flags & A_FORK) {
         Kid *k = kid_new();
         int p[2];
-        if (!k || pipe2(p, O_CLOEXEC)) { admin_say("ERR", "demasiadas acciones en curso"); return; }
+        if (!k || pipe2(p, O_CLOEXEC)) { admin_say("ERR", "too many actions in progress"); return; }
         pid_t pid = fork();
         if (pid == 0) {
             close(p[0]);
@@ -643,7 +643,7 @@ static void run_action(size_t a, AdminReq *req, int id, const char *arg, size_t 
             _exit(0);
         }
         close(p[1]);
-        if (pid < 0) { close(p[0]); admin_say("ERR", "no se pudo crear el proceso"); }
+        if (pid < 0) { close(p[0]); admin_say("ERR", "could not create the process"); }
         else *k = (Kid){ .pid = pid, .fd = p[0], .id = id, .client = client };
     } else actions[a].fn(req, arg, len);
 }
@@ -654,7 +654,7 @@ static size_t find_action(const char *name) {
     return a;
 }
 
-/* ---- the system network: lord-netd (docs/RED.md, "The network belongs to the system") ----
+/* ---- the system network: lord-netd (docs/NETWORK.md, "The network belongs to the system") ----
  *
  * The network doesn't belong to a session: lord-netd brings it up, a small root process that
  * lord-sessiond starts and supervises at boot (before anyone logs in). It serves only the net-*
@@ -699,7 +699,7 @@ static int netd_connect(void) {
 static void netd_lost(void) {
     if (netd_fd >= 0) close(netd_fd);
     netd_fd = -1;
-    for (int i = 0; i < netd_npending; i++) put_line(netd_pending[i], "ERR", "la red del sistema (lord-netd) se reinició: probá de nuevo");
+    for (int i = 0; i < netd_npending; i++) put_line(netd_pending[i], "ERR", "the system network (lord-netd) restarted: try again");
     netd_npending = 0;
 }
 
@@ -745,11 +745,11 @@ static void helper_request(int id, const char *action, char *arg, size_t len, vo
     h->req->id = id;
     size_t a = find_action(action);
     int fw = 1;
-    if (a == N_ACTIONS) admin_say("ERR", "acción desconocida");
-    else if (strlen(arg) != len) admin_say("ERR", "argumento inválido");
-    else if (!h->allowed && !(actions[a].flags & A_ANYONE)) admin_say("ERR", "el usuario %s no es administrador (grupo sudo)", h->user);
+    if (a == N_ACTIONS) admin_say("ERR", "unknown action");
+    else if (strlen(arg) != len) admin_say("ERR", "invalid argument");
+    else if (!h->allowed && !(actions[a].flags & A_ANYONE)) admin_say("ERR", "user %s is not an administrator (sudo group)", h->user);
     else if (!strncmp(action, "net-", 4) && (fw = netd_forward(id, action, arg, len)) <= 0) {
-        if (fw < 0) admin_say("ERR", "la red del sistema (lord-netd) no está disponible");
+        if (fw < 0) admin_say("ERR", "the system network (lord-netd) is not available");
     } else run_action(a, h->req, id, arg, len, -1);
     cur_id = 0;
 }
@@ -757,7 +757,7 @@ static void helper_request(int id, const char *action, char *arg, size_t len, vo
 static void helper(int fd, const char *user) {
     out_fd = fd;
     prctl(PR_SET_NAME, "lord-admin");
-    prctl(PR_SET_PDEATHSIG, SIGTERM);       /* si lord-server muere, el ayudante también */
+    prctl(PR_SET_PDEATHSIG, SIGTERM);       /* if lord-server dies, the helper does too */
     signal(SIGPIPE, SIG_IGN);
     umask(022);
     struct passwd *pw = getpwnam(user);
@@ -872,10 +872,10 @@ static void netd_request(int id, const char *action, char *arg, size_t len, void
     cur_id = id;
     c->req.id = id;
     size_t a = find_action(action);
-    if (a == N_ACTIONS || strncmp(action, "net-", 4)) admin_say("ERR", "acción desconocida");
-    else if (strlen(arg) != len) admin_say("ERR", "argumento inválido");
-    else if (!c->req.admin && !(actions[a].flags & A_ANYONE)) admin_say("ERR", "el usuario %s no es administrador (grupo sudo)", c->user);
-    else if (!strcmp(action, "net-restore")) admin_say("OK", "0 interfaz(es): la red es del sistema (lord-netd)");
+    if (a == N_ACTIONS || strncmp(action, "net-", 4)) admin_say("ERR", "unknown action");
+    else if (strlen(arg) != len) admin_say("ERR", "invalid argument");
+    else if (!c->req.admin && !(actions[a].flags & A_ANYONE)) admin_say("ERR", "user %s is not an administrator (sudo group)", c->user);
+    else if (!strcmp(action, "net-restore")) admin_say("OK", "0 interface(s): the network belongs to the system (lord-netd)");
     else {
         run_action(a, &c->req, id, arg, len, cur_client);
         if (!strcmp(action, "net-vpn-up")) netd_vpn_note(arg, 1);
@@ -986,7 +986,7 @@ int admin_netd_serve(void) {
 }
 #endif /* LORD_NETD */
 
-/* ---- lado del servidor ---- */
+/* ---- server side ---- */
 
 static int sock = -1;
 static int next_id = 1;

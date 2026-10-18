@@ -1,4 +1,4 @@
-/* input.h — teclado y mouse leídos directo de evdev (/dev/input/event*), sin libinput. */
+/* input.h — keyboard and mouse read straight from evdev (/dev/input/event*), without libinput. */
 #ifndef LORD_INPUT_H
 #define LORD_INPUT_H
 
@@ -8,11 +8,11 @@
 
 typedef struct {
     int fd;
-    int has_abs;                  /* tablet / touch: coordenadas absolutas */
+    int has_abs;                  /* tablet / touch: absolute coordinates */
     struct input_absinfo ax, ay;
     char name[80];
-    struct TpDevice *tp;          /* touchpad o pantalla táctil (tp/tp.c), o NULL */
-    int wheel_hires, hwheel_hires;  /* rueda de alta resolución (REL_*WHEEL_HI_RES): manda esa */
+    struct TpDevice *tp;          /* touchpad or touchscreen (tp/tp.c), or NULL */
+    int wheel_hires, hwheel_hires;  /* high-resolution wheel (REL_*WHEEL_HI_RES): that one is sent */
 } InputDevice;
 
 typedef struct {
@@ -22,13 +22,13 @@ typedef struct {
 
 typedef void (*InputHandler)(void *ud, const InputDevice *dev, const struct input_event *ev);
 
-int  input_open(Input *in);     /* abre y toma (EVIOCGRAB) los dispositivos útiles */
-/* Igual, con fds ya abiertos que pasó lord-sessiond (los que no sirven se cierran). */
+int  input_open(Input *in);     /* opens and grabs (EVIOCGRAB) the useful devices */
+/* Same, with fds already opened and passed by lord-sessiond (useless ones are closed). */
 int  input_open_fds(Input *in, const int *fds, int n);
 void input_close(Input *in);
-/* Enchufados después (lord-sessiond, RP_INPUT_ADD): se agregan a los que hay. Devuelve cuántos sirvieron. */
+/* Plugged in later (lord-sessiond, RP_INPUT_ADD): added to the existing ones. Returns how many were usable. */
 int  input_add_fds(Input *in, const int *fds, int n);
-/* Un dispositivo que desapareció (ENODEV, desenchufado): se cierra solo ese. */
+/* A device that disappeared (ENODEV, unplugged): only that one is closed. */
 void input_remove(Input *in, int idx);
 void input_dispatch(Input *in, int idx, InputHandler cb, void *ud);
 

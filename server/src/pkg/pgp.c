@@ -1,11 +1,11 @@
-/* pgp.c — llaveros y firmas OpenPGP v4 para verificar repositorios (ver pgp.h).
+/* pgp.c — OpenPGP v4 keyrings and signatures to verify repositories (see pgp.h).
  *
- * El llavero se toma como confiable (es un archivo de root instalado por el paquete
- * debian-archive-keyring, igual que hace gpgv): de él se leen las claves, sus subclaves, para
- * qué sirven (key flags), cuándo vencen y si están revocadas, según las firmas que la propia
- * clave hizo sobre sí misma. Lo que llega de la red (InRelease) sí se verifica: firma v4 sobre
- * el texto canónico, la clave tiene que existir, poder firmar, no estar revocada ni vencida, y
- * la firma no puede estar vencida ni venir del futuro. */
+ * The keyring is taken as trusted (it's a root file installed by the debian-archive-keyring
+ * package, just as gpgv does): from it we read the keys, their subkeys, what they're for
+ * (key flags), when they expire and whether they're revoked, according to the signatures the
+ * key itself made over itself. What arrives from the network (InRelease) is verified: a v4
+ * signature over the canonical text, the key has to exist, be able to sign, not be revoked or
+ * expired, and the signature can't be expired or come from the future. */
 #include "pgp.h"
 #include "crypto.h"
 
@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* ---- SHA-1 (solo para las huellas v4) ---- */
+/* ---- SHA-1 (only for v4 fingerprints) ---- */
 
 static void sha1(const uint8_t *const parts[], const size_t lens[], int nparts, uint8_t out[20]) {
     uint32_t h[5] = { 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0 };
@@ -57,7 +57,7 @@ static void sha1(const uint8_t *const parts[], const size_t lens[], int nparts, 
     for (int i = 0; i < 5; i++) for (int j = 0; j < 4; j++) out[4 * i + j] = (uint8_t)(h[i] >> (24 - 8 * j));
 }
 
-/* ---- paquetes ---- */
+/* ---- packets ---- */
 
 typedef struct { int tag; const uint8_t *body; size_t len; } Pkt;
 
@@ -74,7 +74,7 @@ static int next_packet(const uint8_t *d, size_t len, size_t *pos, Pkt *p) {
         if (a < 192) l = a;
         else if (a < 224) { if (i >= len) return -1; l = ((size_t)(a - 192) << 8) + d[i++] + 192; }
         else if (a == 255) { if (i + 4 > len) return -1; l = (size_t)d[i] << 24 | (size_t)d[i + 1] << 16 | (size_t)d[i + 2] << 8 | d[i + 3]; i += 4; }
-        else return -1;                 /* longitud parcial: no se usa en claves ni firmas */
+        else return -1;                 /* partial length: not used in keys or signatures */
     } else {
         p->tag = (h >> 2) & 0xf;
         int lt = h & 3;
@@ -92,7 +92,7 @@ static int next_packet(const uint8_t *d, size_t len, size_t *pos, Pkt *p) {
     return 1;
 }
 
-/* MPI: 2 bytes de bits + los bytes. */
+/* MPI: 2 bytes of bit count + the bytes. */
 static int read_mpi(const uint8_t **p, const uint8_t *end, const uint8_t **v, size_t *vlen) {
     if (end - *p < 2) return -1;
     size_t bits = (size_t)(*p)[0] << 8 | (*p)[1];
@@ -106,7 +106,7 @@ static int read_mpi(const uint8_t **p, const uint8_t *end, const uint8_t **v, si
 
 typedef struct {
     int type, pubalg, hashalg;
-    const uint8_t *head;                /* versión … subpaquetes con hash */
+    const uint8_t *head;                /* version … hashed subpackets */
     size_t headlen;
     uint8_t left16[2];
     const uint8_t *mpi, *end;
@@ -127,7 +127,7 @@ static void parse_subpackets(Sig *s, const uint8_t *p, const uint8_t *end, int h
         const uint8_t *v = p + 1;
         size_t vl = l - 1;
         uint32_t u32 = vl >= 4 ? (uint32_t)v[0] << 24 | (uint32_t)v[1] << 16 | (uint32_t)v[2] << 8 | v[3] : 0;
-        if (hashed) {                   /* lo que importa para la seguridad, solo del área con hash */
+        if (hashed) {                   /* what matters for security, only from the hashed area */
             if (type == 2 && vl >= 4) { s->created = u32; s->has_created = 1; }
             else if (type == 3 && vl >= 4) s->sig_expires = u32;
             else if (type == 9 && vl >= 4) s->key_expires = u32;
@@ -168,7 +168,7 @@ static int issued_by(const Sig *s, const PgpKey *k) {
     return 0;
 }
 
-/* ---- llavero ---- */
+/* ---- keyring ---- */
 
 static int parse_key(const uint8_t *b, size_t len, PgpKey *k) {
     memset(k, 0, sizeof *k);
@@ -195,7 +195,7 @@ static int parse_key(const uint8_t *b, size_t len, PgpKey *k) {
         memcpy(k->ed, v + 1, 32);
         return 0;
     }
-    return 1;                           /* otro algoritmo: se ignora */
+    return 1;                           /* another algorithm: ignored */
 }
 
 static long dearmor(const char *in, size_t len, uint8_t **out);
@@ -226,7 +226,7 @@ int pgp_keyring_add_mem(PgpKeyring *kr, const char *data, size_t len) {
             PgpKey k;
             if (p.tag == 6) primary = -1;
             cur = -1;
-            if (p.tag == 14 && primary < 0) continue;      /* subclave sin primaria válida */
+            if (p.tag == 14 && primary < 0) continue;      /* subkey without a valid primary */
             if (parse_key(p.body, p.len, &k)) continue;
             k.primary = p.tag == 6;
             k.can_sign = 1;
@@ -263,7 +263,7 @@ int pgp_keyring_add_mem(PgpKeyring *kr, const char *data, size_t len) {
                 }
             }
         }
-        /* las subclaves heredan la revocación de su primaria */
+        /* subkeys inherit their primary's revocation */
         if (primary >= 0 && kr->keys[primary].revoked)
             for (int i = primary; i < kr->n; i++) kr->keys[i].revoked = 1;
     }
@@ -300,7 +300,7 @@ void pgp_keyring_free(PgpKeyring *kr) {
     memset(kr, 0, sizeof *kr);
 }
 
-/* ---- armadura ---- */
+/* ---- armor ---- */
 
 long pgp_base64_decode(const char *in, size_t len, uint8_t *out, size_t cap) {
     uint32_t acc = 0;
@@ -337,12 +337,12 @@ static uint32_t crc24(const uint8_t *p, size_t n) {
     return crc & 0xFFFFFF;
 }
 
-/* Del "-----BEGIN ...-----" al "-----END": encabezados, línea vacía, base64 y "=CRC". */
+/* From "-----BEGIN ...-----" to "-----END": headers, empty line, base64 and "=CRC". */
 static long dearmor(const char *in, size_t len, uint8_t **out) {
     const char *end = in + len, *p = memchr(in, '\n', len);
     if (!p) return -1;
     p++;
-    /* encabezados "Clave: valor" hasta una línea vacía (puede no haber) */
+    /* "Key: value" headers up to an empty line (there may be none) */
     const char *q = p;
     int saw_header = 0;
     while (q < end) {
@@ -376,7 +376,7 @@ static long dearmor(const char *in, size_t len, uint8_t **out) {
     return n;
 }
 
-/* ---- verificación ---- */
+/* ---- verification ---- */
 
 static int verify_sig(const PgpKey *k, const Sig *s, const uint8_t *digest) {
     const uint8_t *p = s->mpi;
@@ -413,7 +413,7 @@ int pgp_verify_clearsigned(const PgpKeyring *kr, const char *msg, size_t len, in
         return -1;
     }
     p = memchr(msg, '\n', len) + 1;
-    /* encabezados Hash: hasta la línea vacía */
+    /* Hash: headers up to the empty line */
     for (;;) {
         const char *nl = memchr(p, '\n', (size_t)(end - p));
         if (!nl) { snprintf(err, errlen, "mensaje firmado incompleto"); return -1; }
@@ -422,7 +422,7 @@ int pgp_verify_clearsigned(const PgpKeyring *kr, const char *msg, size_t len, in
         p = nl + 1;
         if (!l) break;
     }
-    /* texto: hasta la armadura de la firma */
+    /* text: up to the signature's armor */
     char *text = malloc((size_t)(end - p) + 2), *canon = malloc((size_t)(end - p) * 2 + 2);
     if (!text || !canon) { free(text); free(canon); snprintf(err, errlen, "sin memoria"); return -1; }
     size_t tl = 0, cl = 0;
@@ -446,7 +446,7 @@ int pgp_verify_clearsigned(const PgpKeyring *kr, const char *msg, size_t len, in
         p = nl + 1;
     }
     if (!sig) { free(text); free(canon); snprintf(err, errlen, "falta la firma"); return -1; }
-    /* armadura de la firma; después del END solo puede haber espacios */
+    /* signature armor; after END there can only be whitespace */
     const char *endmark = NULL;
     for (const char *q = sig; q + 27 <= end; q++)
         if (!memcmp(q, "-----END PGP SIGNATURE-----", 27)) { endmark = q + 27; break; }
@@ -478,7 +478,7 @@ int pgp_verify_clearsigned(const PgpKeyring *kr, const char *msg, size_t len, in
         if (s.created > now + 86400) { snprintf(why, sizeof why, "firma con fecha futura (%s)", fpr); continue; }
         if (s.sig_expires && s.created + s.sig_expires <= now) { snprintf(why, sizeof why, "la firma de %s venció", fpr); continue; }
         if (s.created < k->created) { bad++; continue; }
-        /* hash: texto (canónico si es de texto) + encabezado de la firma + trailer v4 */
+        /* hash: text (canonical if it's a text signature) + signature header + v4 trailer */
         uint8_t dig[64], trailer[6] = { 4, 0xff, (uint8_t)(s.headlen >> 24), (uint8_t)(s.headlen >> 16), (uint8_t)(s.headlen >> 8), (uint8_t)s.headlen };
         const char *data = s.type == 0x01 ? canon : text;
         size_t dlen = s.type == 0x01 ? cl : tl;

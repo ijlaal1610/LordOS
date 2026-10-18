@@ -54,6 +54,10 @@
   },
   "home": "Carpeta personal",
   "openFiles": "Abrir en Archivos",
+  "col.name": "Nombre",
+  "col.size": "Tamaño",
+  "col.modified": "Modificado",
+  "more": "Más acciones",
   "emptyFolder": "Carpeta vacía",
   "restoredInfo": {
     "one": "Restaurado: {count} archivo ({both} guardados al lado, {replaced} reemplazados)",

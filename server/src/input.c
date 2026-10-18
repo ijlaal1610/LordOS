@@ -1,4 +1,4 @@
-/* input.c — detección de dispositivos evdev y lectura de eventos. */
+/* input.c — evdev device detection and event reading. */
 #include "input.h"
 #include "tp/tp.h"
 
@@ -13,7 +13,7 @@
 #define NLONGS(n) (((n) + LONG_BITS - 1) / LONG_BITS)
 #define HAS(bits, n) (((bits)[(n) / LONG_BITS] >> ((n) % LONG_BITS)) & 1UL)
 
-/* Agrega el dispositivo si es teclado, mouse o tablet (y lo toma); si no, lo cierra. */
+/* Adds the device if it is a keyboard, mouse or tablet (and grabs it); otherwise closes it. */
 static void add_device(Input *in, int fd, const char *path) {
     unsigned long ev[NLONGS(EV_MAX + 1)] = {0};
     unsigned long keys[NLONGS(KEY_MAX + 1)] = {0};
@@ -28,14 +28,14 @@ static void add_device(Input *in, int fd, const char *path) {
     if ((!keyboard && !mouse && !tablet) || in->count >= INPUT_MAX_DEVICES) { close(fd); return; }
 
     InputDevice *d = &in->dev[in->count++];
-    memset(d, 0, sizeof *d);                /* el lugar pudo ser de uno que se desenchufó */
+    memset(d, 0, sizeof *d);                /* the slot may have belonged to one that was unplugged */
     d->fd = fd;
     ioctl(fd, EVIOCGNAME(sizeof d->name), d->name);
     unsigned long rel[NLONGS(REL_MAX + 1)] = {0};
     ioctl(fd, EVIOCGBIT(EV_REL, sizeof rel), rel);
     d->wheel_hires = HAS(rel, REL_WHEEL_HI_RES);
     d->hwheel_hires = HAS(rel, REL_HWHEEL_HI_RES);
-    /* touchpad o pantalla táctil (multitouch): los maneja el driver propio (tp/tp.c) */
+    /* touchpad or touchscreen (multitouch): handled by our own driver (tp/tp.c) */
     d->tp = tp_open(fd, d->name);
     if (d->tp) tablet = 0;
     if (tablet) {
@@ -43,11 +43,11 @@ static void add_device(Input *in, int fd, const char *path) {
         ioctl(fd, EVIOCGABS(ABS_X), &d->ax);
         ioctl(fd, EVIOCGABS(ABS_Y), &d->ay);
     }
-    /* Exclusivo: las teclas no llegan a la consola de texto de abajo. */
+    /* Exclusive: keys do not reach the text console underneath. */
     if (ioctl(fd, EVIOCGRAB, 1))
-        fprintf(stderr, "input: no se pudo tomar %s: %s\n", d->name, strerror(errno));
+        fprintf(stderr, "input: could not grab %s: %s\n", d->name, strerror(errno));
     fprintf(stderr, "input: %s -> %s%s%s\n", path, d->name,
-            keyboard ? " [teclado]" : "", d->tp ? (tp_kind(d->tp) == TP_KIND_TOUCHSCREEN ? " [pantalla táctil]" : " [touchpad]")
+            keyboard ? " [keyboard]" : "", d->tp ? (tp_kind(d->tp) == TP_KIND_TOUCHSCREEN ? " [touchscreen]" : " [touchpad]")
             : mouse ? " [mouse]" : (tablet ? " [tablet]" : ""));
 }
 
@@ -83,7 +83,7 @@ int input_add_fds(Input *in, const int *fds, int n) {
 void input_remove(Input *in, int idx) {
     if (idx < 0 || idx >= in->count) return;
     InputDevice *d = &in->dev[idx];
-    fprintf(stderr, "input: %s ya no está; se cierra\n", d->name);
+    fprintf(stderr, "input: %s is gone; closing it\n", d->name);
     close(d->fd);
     tp_free(d->tp);
     memmove(&in->dev[idx], &in->dev[idx + 1], sizeof in->dev[0] * (size_t)(in->count - idx - 1));

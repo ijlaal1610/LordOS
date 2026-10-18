@@ -1,10 +1,10 @@
-/* wasm_test.c — pruebas del intérprete WebAssembly (src/wasm).
+/* wasm_test.c — tests of the WebAssembly interpreter (src/wasm).
  *
- *   build/wasm-test                      módulos de tests/wasm/ (C compilado con clang) con sus
- *                                        resultados esperados
- *   build/wasm-test spec a.json b.json   suite oficial: salida de wast2json (wabt) de los .wast
- *                                        de WebAssembly/spec (ver docs/WASM.md)
- *   build/wasm-test bench x.wasm f n     tiempo de f(n)
+ *   build/wasm-test                      modules in tests/wasm/ (C compiled with clang) with their
+ *                                        expected results
+ *   build/wasm-test spec a.json b.json   official suite: wast2json (wabt) output for the .wast files
+ *                                        of WebAssembly/spec (see docs/WASM.md)
+ *   build/wasm-test bench x.wasm f n     time of f(n)
  */
 #include "wasm/wasm.h"
 
@@ -29,12 +29,12 @@ static uint8_t *read_file(const char *path, size_t *len) {
     return b;
 }
 
-/* ---- JSON mínimo ---- */
+/* ---- minimal JSON ---- */
 
 typedef struct J {
-    int type;                           /* 'o' objeto, 'a' arreglo, 's' texto, 'n' número, 'l' literal */
+    int type;                           /* 'o' object, 'a' array, 's' string, 'n' number, 'l' literal */
     char *str;
-    size_t len;                         /* de str (puede tener bytes 0) */
+    size_t len;                         /* of str (may contain 0 bytes) */
     struct J **kids;
     char **keys;
     int n;
@@ -59,7 +59,7 @@ static char *jstring(void) {
                 unsigned v = 0;
                 sscanf(jp, "%4x", &v);
                 jp += 4;
-                /* UTF-8 (sin pares sustitutos: los nombres de la suite los traen escapados) */
+                /* UTF-8 (no surrogate pairs: the suite's names come escaped) */
                 char tmp[4];
                 int k = 0;
                 if (v < 0x80) tmp[k++] = (char)v;
@@ -122,7 +122,7 @@ static const char *jstr(const J *o, const char *key) {
     return v && v->str ? v->str : NULL;
 }
 
-/* ---- spectest y módulos registrados ---- */
+/* ---- spectest and registered modules ---- */
 
 typedef struct { char *name; WasmInstance *inst; } Reg;
 static Reg regs[256];
@@ -180,7 +180,7 @@ static WasmInstance *load(const char *dir, const char *file, WasmError *err, int
     size_t len;
     uint8_t *b = read_file(path, &len);
     *phase = 0;
-    if (!b) { snprintf(err->msg, sizeof err->msg, "no se pudo leer %.120s", path); err->kind = WASM_ERR_MALFORMED; return NULL; }
+    if (!b) { snprintf(err->msg, sizeof err->msg, "could not read %.120s", path); err->kind = WASM_ERR_MALFORMED; return NULL; }
     WasmModule *m = wasm_module_new(b, len, err);
     free(b);
     if (!m) return NULL;
@@ -194,7 +194,7 @@ static WasmInstance *load(const char *dir, const char *file, WasmError *err, int
         if (!strcmp(mod, "spectest")) im[i] = spectest_lookup(nm);
         else for (int r = nregs - 1; r >= 0; r--) if (!strcmp(regs[r].name, mod)) { im[i] = wasm_instance_export_find_len(regs[r].inst, nm, nl); break; }
         if (im[i].kind < 0) im[i].ptr = NULL;
-        if (im[i].kind < 0) im[i].kind = wasm_import_type(m, i).kind == 0 ? 1 : 0;   /* no existe: tipo que no corresponde */
+        if (im[i].kind < 0) im[i].kind = wasm_import_type(m, i).kind == 0 ? 1 : 0;   /* does not exist: a type that does not match */
     }
     *phase = 2;
     WasmInstance *inst = wasm_instantiate(m, im, n, err);
@@ -241,21 +241,21 @@ static int check_val(const J *v, WasmVal got) {
     }
 }
 
-/* Ejecuta la acción; devuelve 0, o -1 con err. */
+/* Runs the action; returns 0, or -1 with err. */
 static int action(const J *a, WasmVal *res, uint32_t *nres, WasmError *err) {
     const char *type = jstr(a, "type"), *field = jstr(a, "field"), *mod = jstr(a, "module");
     WasmInstance *inst = find_inst(mod);
     *nres = 0;
-    if (!inst) { snprintf(err->msg, sizeof err->msg, "no hay módulo"); err->kind = WASM_ERR_LINK; return -1; }
+    if (!inst) { snprintf(err->msg, sizeof err->msg, "no module"); err->kind = WASM_ERR_LINK; return -1; }
     J *fj = jget(a, "field");
     WasmExtern e = wasm_instance_export_find_len(inst, field, fj ? fj->len : 0);
     if (!strcmp(type, "get")) {
-        if (e.kind != WASM_EXT_GLOBAL) { snprintf(err->msg, sizeof err->msg, "no hay global %s", field); return -1; }
+        if (e.kind != WASM_EXT_GLOBAL) { snprintf(err->msg, sizeof err->msg, "no global %s", field); return -1; }
         res[0] = wasm_global_get(e.global);
         *nres = 1;
         return 0;
     }
-    if (e.kind != WASM_EXT_FUNC) { snprintf(err->msg, sizeof err->msg, "no hay función %s", field); err->kind = WASM_ERR_LINK; return -1; }
+    if (e.kind != WASM_EXT_FUNC) { snprintf(err->msg, sizeof err->msg, "no function %s", field); err->kind = WASM_ERR_LINK; return -1; }
     J *args = jget(a, "args");
     WasmVal av[64];
     uint8_t ty;
@@ -271,7 +271,7 @@ typedef struct { int pass, fail, skip; } Score;
 static void run_spec(const char *json, Score *total) {
     size_t len;
     char *text = (char *)read_file(json, &len);
-    if (!text) { fprintf(stderr, "no se pudo leer %s\n", json); return; }
+    if (!text) { fprintf(stderr, "could not read %s\n", json); return; }
     char dir[1024];
     snprintf(dir, sizeof dir, "%s", json);
     char *slash = strrchr(dir, '/');
@@ -280,7 +280,7 @@ static void run_spec(const char *json, Score *total) {
     J *root = jvalue();
     J *cmds = jget(root, "commands");
     Score sc = { 0, 0, 0 };
-    spectest_init();                     /* nuevo en cada archivo, como el intérprete de referencia */
+    spectest_init();                     /* fresh for each file, like the reference interpreter */
     current = NULL;
     nregs = nnamed = 0;
     for (int i = 0; cmds && i < cmds->n; i++) {
@@ -290,7 +290,7 @@ static void run_spec(const char *json, Score *total) {
         int phase;
         WasmVal res[64];
         uint32_t nres;
-        int ok = -1;                     /* 1 pasó, 0 falló, -1 no cuenta */
+        int ok = -1;                     /* 1 passed, 0 failed, -1 does not count */
         if (!strcmp(type, "module")) {
             current = load(dir, jstr(c, "filename"), &err, &phase);
             if (!current) { ok = 0; }
@@ -335,13 +335,13 @@ static void run_spec(const char *json, Score *total) {
             }
         } else if (!strcmp(type, "assert_malformed") || !strcmp(type, "assert_invalid")) {
             const char *mt = jstr(c, "module_type");
-            if (mt && strcmp(mt, "binary")) { /* texto: lo prueba wabt, no nosotros */ }
+            if (mt && strcmp(mt, "binary")) { /* text: wabt tests it, not us */ }
             else {
                 WasmInstance *in = load(dir, jstr(c, "filename"), &err, &phase);
                 int want = !strcmp(type, "assert_malformed") ? WASM_ERR_MALFORMED : WASM_ERR_INVALID;
                 ok = !in && phase == 0;
                 if (ok && (int)err.kind != want)
-                    fprintf(stderr, "  %s:%s %s pero dio %s: %s\n", json, line, type, err.kind == WASM_ERR_MALFORMED ? "malformed" : "invalid", err.msg);
+                    fprintf(stderr, "  %s:%s %s but got %s: %s\n", json, line, type, err.kind == WASM_ERR_MALFORMED ? "malformed" : "invalid", err.msg);
                 if (in) wasm_instance_unref(in);
             }
         } else if (!strcmp(type, "assert_unlinkable") || !strcmp(type, "assert_uninstantiable")) {
@@ -355,45 +355,45 @@ static void run_spec(const char *json, Score *total) {
         if (ok == 1) sc.pass++;
         else if (ok == 0) {
             sc.fail++;
-            fprintf(stderr, "  FALLA %s:%s %s %s\n", json, line, type, err.msg);
+            fprintf(stderr, "  FAIL %s:%s %s %s\n", json, line, type, err.msg);
         }
     }
-    printf("%-40s %5d bien %4d mal %4d omitidos\n", strrchr(json, '/') ? strrchr(json, '/') + 1 : json, sc.pass, sc.fail, sc.skip);
+    printf("%-40s %5d pass %4d fail %4d skipped\n", strrchr(json, '/') ? strrchr(json, '/') + 1 : json, sc.pass, sc.fail, sc.skip);
     total->pass += sc.pass;
     total->fail += sc.fail;
     total->skip += sc.skip;
     free(text);
 }
 
-/* ---- módulos de tests/wasm ---- */
+/* ---- tests/wasm modules ---- */
 
 static WasmInstance *load_simple(const char *path, WasmExtern *imports, uint32_t n) {
     size_t len;
     uint8_t *b = read_file(path, &len);
-    if (!b) { printf("FALLA: no se pudo leer %s\n", path); return NULL; }
+    if (!b) { printf("FAIL: could not read %s\n", path); return NULL; }
     WasmError err;
     WasmModule *m = wasm_module_new(b, len, &err);
     free(b);
-    if (!m) { printf("FALLA %s: %s\n", path, err.msg); return NULL; }
+    if (!m) { printf("FAIL %s: %s\n", path, err.msg); return NULL; }
     WasmInstance *i = wasm_instantiate(m, imports, n, &err);
     wasm_module_unref(m);
-    if (!i) printf("FALLA %s: %s\n", path, err.msg);
+    if (!i) printf("FAIL %s: %s\n", path, err.msg);
     return i;
 }
 
 static int fails;
 static void expect_i64(const char *what, int64_t got, int64_t want) {
-    if (got != want) { printf("FALLA %s: %lld (esperado %lld)\n", what, (long long)got, (long long)want); fails++; }
+    if (got != want) { printf("FAIL %s: %lld (expected %lld)\n", what, (long long)got, (long long)want); fails++; }
     else printf("ok   %s = %lld\n", what, (long long)got);
 }
 
 static int64_t call1(WasmInstance *inst, const char *name, int64_t arg, int is64) {
     WasmExtern e = wasm_instance_export_find(inst, name);
-    if (e.kind != WASM_EXT_FUNC) { printf("FALLA: no hay %s\n", name); fails++; return 0; }
+    if (e.kind != WASM_EXT_FUNC) { printf("FAIL: no %s\n", name); fails++; return 0; }
     WasmVal a = { .u64 = 0 }, r = { .u64 = 0 };
     if (is64) a.i64 = arg; else a.i32 = (int32_t)arg;
     WasmError err;
-    if (wasm_call(e.func, &a, &r, &err)) { printf("FALLA %s: %s\n", name, err.msg); fails++; return 0; }
+    if (wasm_call(e.func, &a, &r, &err)) { printf("FAIL %s: %s\n", name, err.msg); fails++; return 0; }
     const WasmFuncType *t = wasm_func_type(e.func);
     return t->nresults && t->results[0] == WASM_I64 ? r.i64 : r.i32;
 }
@@ -405,7 +405,7 @@ static int host_log(void *ud, const WasmVal *a, WasmVal *r, WasmError *e) {
     WasmExtern mem = wasm_instance_export_find(*inst, "memory");
     uint32_t p = a[0].u32, n = a[1].u32;
     if (mem.kind != WASM_EXT_MEMORY || (uint64_t)p + n > wasm_memory_size(mem.memory) || n >= sizeof log_buf) {
-        wasm_err(e, WASM_ERR_TRAP, "log fuera de la memoria");
+        wasm_err(e, WASM_ERR_TRAP, "log outside memory");
         return -1;
     }
     memcpy(log_buf, wasm_memory_data(mem.memory) + p, n);
@@ -428,38 +428,38 @@ static int builtin_tests(const char *dir) {
     expect_i64("fact64(20)", call1(demo, "fact64", 20, 1), 2432902008176640000ll);
     expect_i64("primes(10000)", call1(demo, "primes", 10000, 0), 1229);
     expect_i64("sort_check(1000)", call1(demo, "sort_check", 1000, 0), 1);
-    expect_i64("crc32 de 'LordOS'", call1(demo, "crc_demo", 0, 0), (int32_t)0xd951d347u);
+    expect_i64("crc32 of 'LordOS'", call1(demo, "crc_demo", 0, 0), (int32_t)0xd951d347u);
     expect_i64("dispatch(3) (call_indirect)", call1(demo, "dispatch", 3, 0), 9);
     expect_i64("fdemo(10) (float)", call1(demo, "fdemo", 10, 0), 3628800);
-    expect_i64("greet (import del host)", call1(demo, "greet", 0, 0), 13);
-    if (strcmp(log_buf, "hola desde C!")) { printf("FALLA greet: «%s»\n", log_buf); fails++; }
-    else printf("ok   log del host: «%s»\n", log_buf);
+    expect_i64("greet (host import)", call1(demo, "greet", 0, 0), 13);
+    if (strcmp(log_buf, "hola desde C!")) { printf("FAIL greet: «%s»\n", log_buf); fails++; }
+    else printf("ok   host log: «%s»\n", log_buf);
     expect_i64("grow (memory.grow)", call1(demo, "grow_test", 3, 0), 1);
     expect_i64("bulk (memory.copy/fill)", call1(demo, "bulk_test", 0, 0), 1);
-    /* trampa: división por cero */
+    /* trap: division by zero */
     WasmExtern e = wasm_instance_export_find(demo, "divide");
     WasmVal a[2] = { { .i32 = 7 }, { .i32 = 0 } }, r;
     WasmError err;
-    if (wasm_call(e.func, a, &r, &err) == 0 || err.kind != WASM_ERR_TRAP) { printf("FALLA divide: sin trampa\n"); fails++; }
-    else printf("ok   7/0 atrapa: %s\n", err.msg);
-    /* recursión infinita: pila agotada, sin romper */
+    if (wasm_call(e.func, a, &r, &err) == 0 || err.kind != WASM_ERR_TRAP) { printf("FAIL divide: no trap\n"); fails++; }
+    else printf("ok   7/0 traps: %s\n", err.msg);
+    /* infinite recursion: stack exhausted, without crashing */
     e = wasm_instance_export_find(demo, "recurse");
     a[0].i32 = 1;
-    if (wasm_call(e.func, a, &r, &err) == 0 || err.kind != WASM_ERR_EXHAUSTED) { printf("FALLA recurse: %s\n", err.msg); fails++; }
-    else printf("ok   recursión infinita: %s\n", err.msg);
-    expect_i64("fib(20) después de la trampa", call1(demo, "fib", 20, 0), 6765);
-    /* tiempos */
+    if (wasm_call(e.func, a, &r, &err) == 0 || err.kind != WASM_ERR_EXHAUSTED) { printf("FAIL recurse: %s\n", err.msg); fails++; }
+    else printf("ok   infinite recursion: %s\n", err.msg);
+    expect_i64("fib(20) after the trap", call1(demo, "fib", 20, 0), 6765);
+    /* timings */
     double t0 = now();
     int64_t v = call1(demo, "fib", 30, 0);
     double t1 = now();
-    printf("tiempo fib(30) = %lld: %.0f ms\n", (long long)v, (t1 - t0) * 1e3);
+    printf("time fib(30) = %lld: %.0f ms\n", (long long)v, (t1 - t0) * 1e3);
     t0 = now();
     v = call1(demo, "primes", 2000000, 0);
     t1 = now();
-    printf("tiempo primes(2000000) = %lld: %.0f ms\n", (long long)v, (t1 - t0) * 1e3);
+    printf("time primes(2000000) = %lld: %.0f ms\n", (long long)v, (t1 - t0) * 1e3);
     wasm_instance_unref(demo);
     wasm_func_unref(logf);
-    printf(fails ? "%d FALLAS\n" : "todo bien\n", fails);
+    printf(fails ? "%d FAILURES\n" : "all good\n", fails);
     return fails != 0;
 }
 
@@ -467,7 +467,7 @@ int main(int argc, char **argv) {
     if (argc > 1 && !strcmp(argv[1], "spec")) {
         Score total = { 0, 0, 0 };
         for (int i = 2; i < argc; i++) run_spec(argv[i], &total);
-        printf("TOTAL: %d bien, %d mal, %d omitidos\n", total.pass, total.fail, total.skip);
+        printf("TOTAL: %d pass, %d fail, %d skipped\n", total.pass, total.fail, total.skip);
         return total.fail != 0;
     }
     if (argc > 4 && !strcmp(argv[1], "bench")) {
@@ -475,7 +475,7 @@ int main(int argc, char **argv) {
         if (!i) return 1;
         double t0 = now();
         int64_t v = call1(i, argv[3], atoll(argv[4]), 0);
-        printf("%s(%s) = %lld en %.1f ms\n", argv[3], argv[4], (long long)v, (now() - t0) * 1e3);
+        printf("%s(%s) = %lld in %.1f ms\n", argv[3], argv[4], (long long)v, (now() - t0) * 1e3);
         return 0;
     }
     return builtin_tests(argc > 1 ? argv[1] : "tests/wasm");

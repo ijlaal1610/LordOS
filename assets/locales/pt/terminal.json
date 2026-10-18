@@ -184,7 +184,7 @@
   "prefs.import.doDefault": "Importar e usar o perfil ★ como padrão",
   "prefs.import.done": "Importados: {p} perfil(is), {s} esquema(s) e {k} atalho(s) global(is)",
   "prefs.import.failed": "Não foi possível importar: {error}",
-  "prefs.import.found": "ARQUIVOS ENCONTRADOS",
+  "prefs.import.found": "Arquivos encontrados",
   "prefs.import.intro": "No iTerm2: Settings → Profiles → Other Actions → \"Copy All Profiles as JSON\" (ou \"Save Profile as JSON\"), um esquema .itermcolors ou o arquivo ~/Library/Preferences/com.googlecode.iterm2.plist. Copie-o para a sua pasta pessoal do LordOS (por exemplo para Transferências).",
   "prefs.import.keys": {
     "one": "{count} tecla",
@@ -194,21 +194,21 @@
   "prefs.import.none": "Nenhum .json, .itermcolors ou .plist em Transferências, Documentos ou Área de Trabalho.",
   "prefs.import.open": "Abrir",
   "prefs.import.profiles": {
-    "one": "PERFIL ({count})",
-    "other": "PERFIS ({count})"
+    "one": "Perfil ({count})",
+    "other": "Perfis ({count})"
   },
   "prefs.import.schemes": {
-    "one": "ESQUEMA DE CORES ({count})",
-    "other": "ESQUEMAS DE CORES ({count})"
+    "one": "Esquema de cores ({count})",
+    "other": "Esquemas de cores ({count})"
   },
   "prefs.import.title": "Importar do iTerm2",
   "prefs.import.triggers": {
     "one": "{count} gatilho",
     "other": "{count} gatilhos"
   },
-  "prefs.import.warnings": "AVISOS",
+  "prefs.import.warnings": "Avisos",
   "prefs.importBtn": "Importar do iTerm2…",
-  "prefs.imported": "IMPORTADOS DO ITERM2",
+  "prefs.imported": "Importados do iTerm2",
   "prefs.initialText": "Enviar texto ao abrir",
   "prefs.initialTextPh": "ex.: ssh servidor\\n",
   "prefs.isDefault": "Este é o perfil padrão",
@@ -231,7 +231,7 @@
   "prefs.off": "Desativada",
   "prefs.padding": "Margem interna",
   "prefs.param": "parâmetro",
-  "prefs.profiles": "PERFIS",
+  "prefs.profiles": "Perfis",
   "prefs.reset": "Redefinir",
   "prefs.rows": "Janelas novas: linhas",
   "prefs.rules": "Troca automática de perfil",
@@ -305,5 +305,12 @@
   },
   "toast.saveFailed": "Não foi possível salvar",
   "toast.saved": "Salvo em {path}",
-  "find.close": "Fechar a busca"
+  "find.close": "Fechar a busca",
+  "prefs.remove": "Remover perfil",
+  "prefs.rulesHint": "Caminhos (~/prod/*, /srv/**), usuário@host, host ou usuário@, com * como curinga. O shell (integração bash/zsh/fish) ou o ssh informa o usuário e o host.",
+  "prefs.triggersHint": "Quando uma nova linha corresponde à expressão regular, a ação é executada. No parâmetro, \\1 \\2… são os grupos. Destacar: \"#texto,#fundo\" (ex. #ffffff,#ff453a). Título: o texto do título.",
+  "prefs.monoCount": {
+    "one": "{count} monoespaçada instalada",
+    "other": "{count} monoespaçadas instaladas"
+  }
 }

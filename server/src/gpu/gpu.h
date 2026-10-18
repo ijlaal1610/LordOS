@@ -38,7 +38,10 @@ void    gpu_tex_free(GpuTex *t);
 /* Un cuadro: se sube lo que cambió del canvas de la UI, se dibujan las capas y se hace el flip.
  * draw_layer(0) = ventanas de apps (debajo de la UI), draw_layer(1) = menús de las apps y
  * pantalla completa (encima). */
-int  gpu_frame(const Canvas *scene, Rect damage, void (*draw_layer)(int layer));
+int  gpu_frame(int out, const Canvas *scene, Rect damage, void (*draw_layer)(int layer));
+/* Another display (docs/DISPLAYS.md): its own GBM/EGL surface on the same context; gpu_init made
+ * output 0. Returns the output index for gpu_frame, or -1 (then that display goes by the CPU). */
+int  gpu_add_output(Kms *k);
 void gpu_draw(GpuTex *t, float dx, float dy, float dw, float dh,
               float sx, float sy, float sw, float sh, Rect clip, float opacity);
 

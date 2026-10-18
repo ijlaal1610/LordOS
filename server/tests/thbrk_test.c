@@ -1,6 +1,6 @@
-/* thbrk_test.c — cortes de palabras del tailandés (src/ui/thbrk.c, thbrk_text), una línea por
- * renglón de la entrada: "|" donde se puede cortar. Se compara con libthai en
- * tests/thbrk_compare.sh (solo los cortes entre caracteres del bloque tailandés). */
+/* thbrk_test.c — Thai word breaks (src/ui/thbrk.c, thbrk_text), one output line per
+ * input line: "|" where a break is allowed. Compared with libthai in
+ * tests/thbrk_compare.sh (only breaks between characters of the Thai block). */
 #include "ui/thbrk.h"
 
 #include <stdio.h>

@@ -1,19 +1,19 @@
-// Empaqueta y firma apps LordOS (.lpk = tar.gz; ver docs/APPS-NATIVAS.md y docs/FIRMA.md).
+// Packages and signs LordOS apps (.lpk = tar.gz; see docs/NATIVE-APPS.md and docs/SIGNING.md).
 //
-//   node tools/lpk.mjs <carpeta> [salida.lpk] [--key clave.json | --unsigned]
-//       empaqueta la app; la firma con --key, con $LPK_KEY o con ~/.config/lordos/lpk-key.json
-//       (si existe). Sin clave sale «Sin firma» (con contenido.json igual, para detectar daños).
-//   node tools/lpk.mjs keygen [--name "Nombre"] [--out archivo]
-//       crea un par de claves Ed25519 (por defecto ~/.config/lordos/lpk-key.json, permisos 600).
-//   node tools/lpk.mjs sign <paquete.lpk> --key clave.json [salida.lpk]
-//       vuelve a firmar un paquete (con contenido.json nuevo).
-//   node tools/lpk.mjs verify <paquete.lpk>
-//       muestra la firma, la clave y si los archivos corresponden.
-//   node tools/lpk.mjs catalog <fuente.json> --key oficial.json [carpeta]
-//       escribe catalog.json + catalog.sig firmados (solo vale con una clave oficial de LordOS).
+//   node tools/lpk.mjs <folder> [output.lpk] [--key key.json | --unsigned]
+//       packages the app; signs it with --key, with $LPK_KEY or with ~/.config/lordos/lpk-key.json
+//       (if it exists). Without a key the result is «Unsigned» (still with contenido.json, to detect damage).
+//   node tools/lpk.mjs keygen [--name "Name"] [--out file]
+//       creates an Ed25519 key pair (default ~/.config/lordos/lpk-key.json, mode 600).
+//   node tools/lpk.mjs sign <package.lpk> --key key.json [output.lpk]
+//       re-signs a package (with a new contenido.json).
+//   node tools/lpk.mjs verify <package.lpk>
+//       shows the signature, the key and whether the files match.
+//   node tools/lpk.mjs catalog <source.json> --key official.json [folder]
+//       writes signed catalog.json + catalog.sig (only valid with an official LordOS key).
 //
-// La carpeta de una app tiene manifest.json e index.jsx como las de apps/, y opcionalmente
-// icon.png, locales/<idioma>.json y assets/. React, @lordos/sdk y @lordos/runtime NO se incluyen.
+// An app folder has manifest.json and index.jsx like the ones in apps/, and optionally
+// icon.png, locales/<language>.json and assets/. React, @lordos/sdk and @lordos/runtime are NOT included.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,20 +26,20 @@ const bool = (name) => { const i = argv.indexOf(name); if (i < 0) return false; 
 const die = (msg) => { console.error(`lpk: ${msg}`); process.exit(1); };
 const DEFAULT_KEY = path.join(os.homedir(), '.config', 'lordos', 'lpk-key.json');
 
-// ---- claves Ed25519 (semilla de 32 bytes en hex, como pkgstate.c) ----
+// ---- Ed25519 keys (32-byte seed in hex, like pkgstate.c) ----
 const PKCS8 = Buffer.from('302e020100300506032b657004220420', 'hex');
 const privateKey = (seedHex) => crypto.createPrivateKey({ key: Buffer.concat([PKCS8, Buffer.from(seedHex, 'hex')]), format: 'der', type: 'pkcs8' });
 const publicHex = (key) => crypto.createPublicKey(key).export({ format: 'der', type: 'spki' }).subarray(12).toString('hex');
 function loadKey(file) {
   const k = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (k.alg !== 'ed25519' || !/^[0-9a-f]{64}$/.test(k.secret || '')) die(`${file} no es una clave de lpk.mjs`);
+  if (k.alg !== 'ed25519' || !/^[0-9a-f]{64}$/.test(k.secret || '')) die(`${file} is not an lpk.mjs key`);
   const priv = privateKey(k.secret);
-  if (publicHex(priv) !== k.public) die(`${file}: la clave pública no corresponde a la privada`);
+  if (publicHex(priv) !== k.public) die(`${file}: the public key does not match the private one`);
   return { name: String(k.name || ''), public: k.public, priv };
 }
 const sha256 = (b) => crypto.createHash('sha256').update(b).digest('hex');
 
-// ---- tar ustar mínimo: solo archivos regulares ----
+// ---- minimal ustar tar: regular files only ----
 function header(name, size) {
   const h = Buffer.alloc(512);
   let prefix = '';
@@ -82,7 +82,7 @@ function untar(buf) {
   return out;
 }
 
-// contenido.json + firma.json (ver server/src/sec/sign.c): la firma es sobre los bytes de contenido.json
+// contenido.json + firma.json (see server/src/sec/sign.c): the signature is over the bytes of contenido.json
 function seal(files, manifest, key) {
   const list = files.filter(([p]) => p !== 'contenido.json' && p !== 'firma.json');
   const contents = {
@@ -106,22 +106,22 @@ function pickKey() {
 }
 
 const write = (out, files) => fs.writeFileSync(out, zlib.gzipSync(tar(files), { level: 9 }));
-const trustLine = (key) => (key ? `firmado por «${key.name}» (${key.public.slice(0, 16)}…)` : 'sin firma');
+const trustLine = (key) => (key ? `signed by «${key.name}» (${key.public.slice(0, 16)}…)` : 'unsigned');
 
 async function pack() {
   const key = pickKey();
   const [dir, outArg] = argv;
-  if (!dir) die('uso: node tools/lpk.mjs <carpeta de la app> [salida.lpk] [--key clave.json | --unsigned]');
+  if (!dir) die('usage: node tools/lpk.mjs <app folder> [output.lpk] [--key key.json | --unsigned]');
   const { build } = await import('esbuild');
   const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
-  if (!/^[a-z][a-z0-9-]{1,39}$/.test(manifest.id || '')) die('manifest.id inválido: a-z, 0-9 y -, de 2 a 40');
-  if (!/^[0-9][0-9A-Za-z.+~-]{0,31}$/.test(String(manifest.version || ''))) die('manifest.version inválida');
+  if (!/^[a-z][a-z0-9-]{1,39}$/.test(manifest.id || '')) die('invalid manifest.id: a-z, 0-9 and -, 2 to 40 long');
+  if (!/^[0-9][0-9A-Za-z.+~-]{0,31}$/.test(String(manifest.version || ''))) die('invalid manifest.version');
   if (!manifest.name) die('falta manifest.name');
-  if (!manifest.icon || !/\.png$/.test(manifest.icon) || !fs.existsSync(path.join(dir, manifest.icon))) die('falta el ícono propio: manifest.icon tiene que apuntar a un .png de la app (se recomienda 128×128 o más)');
+  if (!manifest.icon || !/\.png$/.test(manifest.icon) || !fs.existsSync(path.join(dir, manifest.icon))) die('missing own icon: manifest.icon must point to a .png in the app (128×128 or larger recommended)');
   const KNOWN = ['files', 'clipboard', 'notifications', 'network', 'camera', 'microphone', 'screen', 'listen', 'usb', 'bluetooth', 'apps'];
-  for (const p of manifest.permissions || []) if (!KNOWN.includes(p)) die(`permiso desconocido en manifest.permissions: ${p} (válidos: ${KNOWN.join(', ')})`);
+  for (const p of manifest.permissions || []) if (!KNOWN.includes(p)) die(`unknown permission in manifest.permissions: ${p} (valid: ${KNOWN.join(', ')})`);
 
-  // Los módulos compartidos se toman del tema (o del proceso de la app) en tiempo de ejecución.
+  // Shared modules are taken from the theme (or from the app's process) at run time.
   const sharedPlugin = {
     name: 'lordos-shared',
     setup(b) {
@@ -148,70 +148,70 @@ async function pack() {
     }
   };
   for (const sub of ['locales', 'assets']) if (fs.existsSync(path.join(dir, sub))) walk(dir, sub);
-  for (const [p] of files) if (!/^([A-Za-z0-9_-][A-Za-z0-9._-]*\/)*[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(p)) die(`ruta inválida en el paquete: ${p}`);
+  for (const [p] of files) if (!/^([A-Za-z0-9_-][A-Za-z0-9._-]*\/)*[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(p)) die(`invalid path in the package: ${p}`);
   const out = outArg || `${manifest.id}-${manifest.version}.lpk`;
   const sealed = seal(files, manifest, key);
   write(out, sealed);
   const kb = (fs.statSync(out).size / 1024).toFixed(1);
-  console.log(`${out}: ${sealed.length} archivos, ${kb} KB (app.js ${(appJs.length / 1024).toFixed(1)} KB), ${trustLine(key)}`);
+  console.log(`${out}: ${sealed.length} files, ${kb} KB (app.js ${(appJs.length / 1024).toFixed(1)} KB), ${trustLine(key)}`);
 }
 
 function keygen() {
   const name = flag('--name') || os.userInfo().username;
   const out = flag('--out') || DEFAULT_KEY;
-  if (fs.existsSync(out)) die(`${out} ya existe (no se pisa una clave)`);
+  if (fs.existsSync(out)) die(`${out} already exists (a key is never overwritten)`);
   const { privateKey: priv, publicKey: pub } = crypto.generateKeyPairSync('ed25519');
   const secret = priv.export({ format: 'der', type: 'pkcs8' }).subarray(16).toString('hex');
   const pubHex = pub.export({ format: 'der', type: 'spki' }).subarray(12).toString('hex');
   fs.mkdirSync(path.dirname(out), { recursive: true, mode: 0o700 });
   fs.writeFileSync(out, JSON.stringify({ format: 1, alg: 'ed25519', name, public: pubHex, secret }, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
-  console.log(`${out}: clave de «${name}»\npública: ${pubHex}\n(la privada no se comparte ni se sube al repositorio)`);
+  console.log(`${out}: key of «${name}»\npublic: ${pubHex}\n(the private key is never shared or committed to the repository)`);
 }
 
 function sign() {
   const key = pickKey();
   const [inp, outArg] = argv.slice(1);
-  if (!inp || !key) die('uso: node tools/lpk.mjs sign <paquete.lpk> --key clave.json [salida.lpk]');
+  if (!inp || !key) die('usage: node tools/lpk.mjs sign <package.lpk> --key key.json [output.lpk]');
   const files = untar(fs.readFileSync(inp));
   const m = files.find(([p]) => p === 'manifest.json');
-  if (!m) die('no es un paquete de LordOS');
+  if (!m) die('not a LordOS package');
   const out = outArg || inp;
   write(out, seal(files, JSON.parse(m[1].toString('utf8')), key));
   console.log(`${out}: ${trustLine(key)}`);
 }
 
 function verify() {
-  const files = untar(fs.readFileSync(argv[1] || die('uso: node tools/lpk.mjs verify <paquete.lpk>')));
+  const files = untar(fs.readFileSync(argv[1] || die('usage: node tools/lpk.mjs verify <package.lpk>')));
   const get = (p) => files.find(([n]) => n === p)?.[1];
   const c = get('contenido.json'), s = get('firma.json');
-  if (!c) { console.log('sin contenido.json: «Sin firma» y sin hashes'); return; }
+  if (!c) { console.log('no contenido.json: «Unsigned» and no hashes'); return; }
   const contents = JSON.parse(c.toString('utf8'));
   let ok = true;
   for (const f of contents.files) {
     const d = get(f.path);
-    if (!d || d.length !== f.size || sha256(d) !== f.sha256) { console.log(`ALTERADO: ${f.path}`); ok = false; }
+    if (!d || d.length !== f.size || sha256(d) !== f.sha256) { console.log(`ALTERED: ${f.path}`); ok = false; }
   }
   const extra = files.filter(([p]) => p !== 'contenido.json' && p !== 'firma.json' && !contents.files.some((f) => f.path === p));
-  for (const [p] of extra) { console.log(`SOBRA: ${p}`); ok = false; }
+  for (const [p] of extra) { console.log(`EXTRA: ${p}`); ok = false; }
   if (s) {
     const sig = JSON.parse(s.toString('utf8'));
     const pub = crypto.createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(sig.key, 'hex')]), format: 'der', type: 'spki' });
     const good = crypto.verify(null, c, pub, Buffer.from(sig.sig, 'hex'));
-    console.log(`firma ${good ? 'válida' : 'INVÁLIDA'} de «${contents.signer?.name || '?'}», clave ${sig.key}`);
+    console.log(`signature ${good ? 'valid' : 'INVALID'} from «${contents.signer?.name || '?'}», key ${sig.key}`);
     ok = ok && good;
-  } else console.log('sin firma (solo hashes)');
-  console.log(ok ? 'los archivos corresponden' : 'el paquete NO corresponde a su contenido.json');
+  } else console.log('unsigned (hashes only)');
+  console.log(ok ? 'the files match' : 'the package does NOT match its contenido.json');
   process.exit(ok ? 0 : 1);
 }
 
 function catalog() {
   const key = pickKey();
   const [src, outDir = '.'] = argv.slice(1);
-  if (!src || !key) die('uso: node tools/lpk.mjs catalog <fuente.json> --key oficial.json [carpeta]');
+  if (!src || !key) die('usage: node tools/lpk.mjs catalog <source.json> --key official.json [folder]');
   const cat = JSON.parse(fs.readFileSync(src, 'utf8'));
   cat.format = 1;
   cat.date = cat.date || new Date().toISOString().slice(0, 10);
-  // tamaño y hash de cada paquete (si se da su archivo con "file")
+  // size and hash of each package (if its file is given with "file")
   for (const p of cat.packages || []) {
     if (!p.file) continue;
     const b = fs.readFileSync(path.resolve(path.dirname(src), p.file));
@@ -224,7 +224,7 @@ function catalog() {
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, 'catalog.json'), text);
   fs.writeFileSync(path.join(outDir, 'catalog.sig'), JSON.stringify({ format: 1, alg: 'ed25519', key: key.public, sig }, null, 2) + '\n');
-  console.log(`${outDir}/catalog.json (serial ${cat.serial}, ${(cat.packages || []).length} paquetes, ${(cat.authors || []).length} autores, ${(cat.revoked?.keys || []).length + (cat.revoked?.packages || []).length} revocados), firmado por «${key.name}»`);
+  console.log(`${outDir}/catalog.json (serial ${cat.serial}, ${(cat.packages || []).length} packages, ${(cat.authors || []).length} authors, ${(cat.revoked?.keys || []).length + (cat.revoked?.packages || []).length} revoked), signed by «${key.name}»`);
 }
 
 const cmd = argv[0];

@@ -1,18 +1,18 @@
-/* js_monitor.c — lord.monitor: métricas del sistema para la app Monitor (ver docs/MONITOR.md).
+/* js_monitor.c — lord.monitor: system metrics for the Monitor app (see docs/MONITOR.md).
  *
- * Todo es de solo lectura. Las lecturas de /proc, /sys y sock_diag las hace un hilo propio
- * (monitor/mon.c) solo mientras alguien llama a start() y consulta; estas funciones nunca
- * tocan archivos (salvo info() y /proc/<pid>/cgroup de cada proceso nuevo, con caché: scope_of), así
- * que no frenan el frame del compositor.
+ * Everything is read-only. Reads of /proc, /sys and sock_diag are done by a dedicated thread
+ * (monitor/mon.c) only while someone has called start() and is querying; these functions never
+ * touch files (except info() and /proc/<pid>/cgroup of each new process, cached: scope_of), so
+ * they don't stall the compositor's frame.
  *
- *   start() / stop()            cuenta de interesados (el hilo se duerme a los 3 s sin consultas)
- *   want(procesos, conexiones, países)  qué listas arma además de la muestra (países: base local)
- *   sample()                    última muestra, o null si no hay una nueva desde la anterior
- *   processes(idioma)           procesos, cada uno con su app (si se reconoce) — o null
- *   connections(idioma)         conexiones del usuario, con país y app — o null
- *   info()                      modelo de CPU, núcleos, ubicación por zona horaria, base de países
- *   map(vista)                  pide un cuadro del mapa vectorial (lo dibuja otro hilo; map.c)
- *   mapFrame()                  el último cuadro listo { seq, width, height, lon, lat, ppd, ms, data } o null
+ *   start() / stop()            interested-party count (the thread sleeps after 3 s without queries)
+ *   want(processes, connections, countries)  which lists it builds besides the sample (countries: local database)
+ *   sample()                    latest sample, or null if there is no new one since the previous
+ *   processes(language)         processes, each with its app (if recognized) — or null
+ *   connections(language)       the user's connections, with country and app — or null
+ *   info()                      CPU model, cores, location by time zone, country database
+ *   map(view)                   requests a frame of the vector map (another thread draws it; map.c)
+ *   mapFrame()                  the latest ready frame { seq, width, height, lon, lat, ppd, ms, data } or null
  */
 #include "js_monitor.h"
 #include "../monitor/mon.h"
@@ -63,14 +63,14 @@ static JSValue f_sample(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
 static JSValue f_info(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc; (void)argv;
     JSValue o = parse(c, mon_info_json(), "<monitor.info>");
-    /* el modelo de CPU sale del mismo lugar que Acerca de (en ARM no hay "model name") */
+    /* the CPU model comes from the same place as About (on ARM there is no "model name") */
     char cpu[160];
     js_sys_cpu_name(cpu, sizeof cpu);
     if (JS_IsObject(o) && cpu[0] && strcmp(cpu, "desconocido")) JS_SetPropertyStr(c, o, "cpuModel", JS_NewString(c, cpu));
     return o;
 }
 
-/* Idioma para los nombres de las apps: "es", "pt-BR"… (letras, dígitos, '-' y '_', máx. 15). */
+/* Language for app names: "es", "pt-BR"… (letters, digits, '-' and '_', max. 15). */
 static int arg_lang(JSContext *c, int argc, JSValueConst *argv, char *out, size_t n) {
     snprintf(out, n, "en");
     if (argc < 1 || !JS_IsString(argv[0])) return 0;
@@ -86,8 +86,8 @@ static int arg_lang(JSContext *c, int argc, JSValueConst *argv, char *out, size_
 
 static const char *base(const char *p) { const char *b = strrchr(p, '/'); return b ? b + 1 : p; }
 
-/* App de un proceso: el propio lord-server es LordOS; si no, la del .desktop cuyo programa
- * coincide con el ejecutable, el argv[0] o el nombre del proceso (comm, cortado a 15). */
+/* App of a process: lord-server itself is LordOS; otherwise, the one from the .desktop whose program
+ * matches the executable, argv[0] or the process name (comm, truncated to 15). */
 static const DesktopApp *match(const DesktopApp *apps, int n, const char *exe, const char *cmd, const char *name) {
     const char *eb = exe[0] ? base(exe) : "";
     for (int i = 0; i < n; i++) {
@@ -96,14 +96,14 @@ static const DesktopApp *match(const DesktopApp *apps, int n, const char *exe, c
         if ((eb[0] && !strcmp(b, eb)) || (cmd[0] && !strcmp(b, cmd)) || (name[0] && (strlen(name) >= 15 ? !strncmp(b, name, 15) : !strcmp(b, name))))
             return &apps[i];
     }
-    for (int i = 0; i < n; i++)                         /* StartupWMClass == nombre (sin mayúsculas) */
+    for (int i = 0; i < n; i++)                         /* StartupWMClass == name (case-insensitive) */
         if (apps[i].wmclass[0] && name[0] && !strcasecmp(apps[i].wmclass, name)) return &apps[i];
     return NULL;
 }
 
-/* La scope de cgroup de un proceso (app-lordos-<id>.scope / app-lordos-lpk-<id>.scope), la misma
- * identidad que usa el firewall en el kernel (docs/FIREWALL.md): así un curl corriendo dentro de
- * foot cuenta como foot. Una lectura chica de /proc por pid, con una caché de 64 pids. */
+/* The cgroup scope of a process (app-lordos-<id>.scope / app-lordos-lpk-<id>.scope), the same
+ * identity the firewall uses in the kernel (docs/FIREWALL.md): this way a curl running inside
+ * foot counts as foot. A small /proc read per pid, with a cache of 64 pids. */
 static int scope_of(int pid, char *kind, char *id, size_t n) {
     static struct { int pid; char kind; char id[160]; } cache[64];
     int slot = pid & 63;
@@ -145,7 +145,7 @@ static void str_prop(JSContext *c, JSValueConst o, const char *key, char *out, s
     JS_FreeValue(c, v);
 }
 
-/* Agrega app, appName y appIcon a cada elemento de obj.list. */
+/* Adds app, appName and appIcon to each element of obj.list. */
 static JSValue annotate(JSContext *c, JSValue obj, const char *lang) {
     if (!JS_IsObject(obj)) return obj;
     const DesktopApp *apps = NULL;
@@ -181,7 +181,7 @@ static JSValue annotate(JSContext *c, JSValue obj, const char *lang) {
                     continue;
                 }
                 for (int k = 0; k < napps && !a; k++) if (!strcmp(apps[k].id, sid)) a = &apps[k];
-                if (!a) {                               /* la scope manda aunque no se encuentre el .desktop */
+                if (!a) {                               /* the scope wins even if the .desktop is not found */
                     char id[200];
                     snprintf(id, sizeof id, "desktop:%s", sid);
                     JS_SetPropertyStr(c, e, "app", JS_NewString(c, id));
@@ -218,7 +218,7 @@ static JSValue f_connections(JSContext *c, JSValueConst t, int argc, JSValueCons
     return annotate(c, parse(c, mon_conns_json(&seq_conns), "<monitor.connections>"), lang);
 }
 
-/* ---- mapa ---- */
+/* ---- map ---- */
 
 static int num_prop(JSContext *c, JSValueConst o, const char *k, double lo, double hi, double *out) {
     JSValue v = JS_GetPropertyStr(c, o, k);
@@ -237,10 +237,10 @@ static int color_prop(JSContext *c, JSValueConst o, const char *k, uint32_t *out
 }
 
 /* map({ width, height, lon, lat, ppd, land, border, accent, homeColor, selColor,
- *       home: { lon, lat } | null, dots: [{ lon, lat, r, sel }] }) → número de pedido */
+ *       home: { lon, lat } | null, dots: [{ lon, lat, r, sel }] }) → request number */
 static JSValue f_map(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (argc < 1 || !JS_IsObject(argv[0])) return JS_ThrowTypeError(c, "falta la vista");
+    if (argc < 1 || !JS_IsObject(argv[0])) return JS_ThrowTypeError(c, "missing view");
     JSValueConst o = argv[0];
     static MapReq q;
     memset(&q, 0, sizeof q);
@@ -249,7 +249,7 @@ static JSValue f_map(JSContext *c, JSValueConst t, int argc, JSValueConst *argv)
         num_prop(c, o, "lon", -720, 720, &q.lon0) || num_prop(c, o, "lat", -360, 360, &q.lat0) || num_prop(c, o, "ppd", 0.1, 2000, &q.ppd) ||
         color_prop(c, o, "land", &q.land) || color_prop(c, o, "border", &q.border) || color_prop(c, o, "accent", &q.accent) ||
         color_prop(c, o, "homeColor", &q.home_color) || color_prop(c, o, "selColor", &q.sel_color))
-        return JS_ThrowRangeError(c, "vista inválida");
+        return JS_ThrowRangeError(c, "invalid view");
     q.w = (int)w;
     q.h = (int)h;
     JSValue home = JS_GetPropertyStr(c, o, "home");
@@ -316,7 +316,7 @@ static const JSCFunctionListEntry monitor_funcs[] = {
 void js_monitor_register(JSContext *c, JSValue lord, const char *assets_dir) {
     mon_init(assets_dir);
     map_init(assets_dir);
-    mon_reset();                       /* contexto nuevo: los start() del anterior no cuentan */
+    mon_reset();                       /* new context: the previous one's start() calls don't count */
     seq_sample = seq_procs = seq_conns = 0;
     JSValue o = JS_NewObject(c);
     JS_SetPropertyFunctionList(c, o, monitor_funcs, sizeof monitor_funcs / sizeof monitor_funcs[0]);

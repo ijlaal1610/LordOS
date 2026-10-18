@@ -1,4 +1,4 @@
-/* js_net.h — lord.net (estado de la red; ver js_net.c). */
+/* js_net.h — lord.net (network state; see js_net.c). */
 #ifndef LORD_JS_NET_H
 #define LORD_JS_NET_H
 

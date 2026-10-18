@@ -1,11 +1,11 @@
-/* tp_test.c — prueba del driver de touchpad (src/tp/tp.c) sin dispositivo: le pasa las mismas
- * secuencias evdev que reproduce el touchpad simulado (tests/touchpad-sim/gestures.c), con sus
- * tiempos, y revisa lo que reconoce (puntero, clics, scroll con inercia, pellizco, deslizar,
- * palmas, ignorar al escribir, pantalla táctil). También mide cuánto tarda en reconocer cada
- * gesto (en tiempo del gesto) y cuánto cuesta procesar un cuadro.
+/* tp_test.c — test of the touchpad driver (src/tp/tp.c) without a device: feeds it the same
+ * evdev sequences the simulated touchpad replays (tests/touchpad-sim/gestures.c), with their
+ * timing, and checks what it recognizes (pointer, clicks, scroll with momentum, pinch, swipe,
+ * palms, disable-while-typing, touchscreen). It also measures how long it takes to recognize each
+ * gesture (in gesture time) and how much processing a frame costs.
  *
- *   build/tp-test                 todas las pruebas
- *   build/tp-test --replay F.ev   reproduce una grabación (tpsim record/dump) y muestra lo que salió */
+ *   build/tp-test                 all tests
+ *   build/tp-test --replay F.ev   replays a recording (tpsim record/dump) and shows what came out */
 #include "../src/tp/tp.h"
 #include "../../tests/touchpad-sim/gestures.h"
 
@@ -46,7 +46,7 @@ static double ns_now(void) {
     return t.tv_sec * 1e9 + t.tv_nsec;
 }
 
-/* el bucle de lord-server: los temporizadores corren entre eventos */
+/* the lord-server loop: timers run between events */
 static void ticks_until(double t) {
     for (;;) {
         double w = tp_timeout(last_tick);
@@ -92,7 +92,7 @@ static TpConfig defaults(void) {
                        .kinetic = 1, .pinch = 1, .swipe3 = 1, .swipe4 = 0 };
 }
 
-static double base_t = 100000;      /* cada prueba empieza más tarde (lejos de la última tecla) */
+static double base_t = 100000;      /* each test starts later (far from the last key) */
 
 static void run(const char *name, int kind, const TpConfig *cfg) {
     TpConfig c = cfg ? *cfg : defaults();
@@ -105,7 +105,7 @@ static void run(const char *name, int kind, const TpConfig *cfg) {
     g.t = base_t;
     last_tick = base_t;
     const SimGesture *gs = sim_find(name);
-    if (!gs) { fprintf(stderr, "sin gesto %s\n", name); exit(2); }
+    if (!gs) { fprintf(stderr, "no gesture %s\n", name); exit(2); }
     gs->play(&g);
     ticks_until(g.t + 3000);
     base_t = g.t + 10000;
@@ -113,7 +113,7 @@ static void run(const char *name, int kind, const TpConfig *cfg) {
     dev = NULL;
 }
 
-/* ---- resúmenes ---- */
+/* ---- summaries ---- */
 
 typedef struct { double mx, my, sx, sy, wx, wy, scale, rot, swx, swy; int nmotion, nscroll, nmom, mom_end, pinch_b, pinch_e, swipe_b, swipe_e, fingers, holds;
                  int down[3], up[3]; char btns[64]; double t_first, t_scroll, t_pinch, t_swipe; } Sum;
@@ -156,10 +156,10 @@ static Sum summary(void) {
 }
 
 static int fails, checks;
-#define CHECK(cond, ...) do { checks++; if (!(cond)) { fails++; printf("  FALLA %s:%d: ", __func__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
+#define CHECK(cond, ...) do { checks++; if (!(cond)) { fails++; printf("  FAIL %s:%d: ", __func__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
 static void print_sum(const char *name, const Sum *s) {
-    printf("%-13s puntero %+6.0f,%+5.0f  botones %-8s scroll %+6.0f,%+6.0f (+inercia %+6.0f, %d)  pellizco %.2f %+4.0f°  deslizar %d dedos %+5.0f,%+5.0f\n",
+    printf("%-13s pointer %+6.0f,%+5.0f  buttons %-8s scroll %+6.0f,%+6.0f (+momentum %+6.0f, %d)  pinch %.2f %+4.0f°  swipe %d fingers %+5.0f,%+5.0f\n",
            name, s->mx, s->my, s->btns[0] ? s->btns : "-", s->sx, s->sy, s->wy, s->nmom, s->scale, s->rot, s->fingers, s->swx, s->swy);
 }
 
@@ -167,142 +167,142 @@ static Sum go(const char *name, const TpConfig *c) { run(name, TP_KIND_TOUCHPAD,
 
 static void t_pointer(void) {
     Sum s = go("move", NULL);
-    CHECK(s.mx > 150 && s.mx < 1200, "45 mm a la derecha: %.0f px", s.mx);
-    CHECK(fabs(s.my) < s.mx * 0.3, "casi horizontal: %.0f", s.my);
-    CHECK(!s.btns[0] && !s.nscroll, "sin clics ni scroll");
+    CHECK(s.mx > 150 && s.mx < 1200, "45 mm to the right: %.0f px", s.mx);
+    CHECK(fabs(s.my) < s.mx * 0.3, "almost horizontal: %.0f", s.my);
+    CHECK(!s.btns[0] && !s.nscroll, "no clicks or scroll");
     Sum b = go("move-back", NULL);
-    CHECK(b.mx < -150, "a la izquierda: %.0f", b.mx);
-    /* más velocidad en el ajuste = más píxeles */
+    CHECK(b.mx < -150, "to the left: %.0f", b.mx);
+    /* higher speed setting = more pixels */
     TpConfig fast = defaults();
     fast.speed = 1;
     Sum f = go("move", &fast);
-    CHECK(f.mx > s.mx * 1.5, "velocidad máxima mueve más: %.0f vs %.0f", f.mx, s.mx);
-    CHECK(tp_accel(5, 0.5) < tp_accel(100, 0.5) && tp_accel(100, 0.5) < tp_accel(300, 0.5) + 1e-9, "curva creciente");
+    CHECK(f.mx > s.mx * 1.5, "max speed moves more: %.0f vs %.0f", f.mx, s.mx);
+    CHECK(tp_accel(5, 0.5) < tp_accel(100, 0.5) && tp_accel(100, 0.5) < tp_accel(300, 0.5) + 1e-9, "increasing curve");
 }
 
 static void t_taps(void) {
     Sum s = go("tap", NULL);
-    CHECK(!strcmp(s.btns, "Ll"), "tocar = clic izquierdo (%s)", s.btns);
+    CHECK(!strcmp(s.btns, "Ll"), "tap = left click (%s)", s.btns);
     s = go("tap2", NULL);
-    CHECK(!strcmp(s.btns, "Rr"), "2 dedos = derecho (%s)", s.btns);
+    CHECK(!strcmp(s.btns, "Rr"), "2 fingers = right (%s)", s.btns);
     s = go("tap3", NULL);
-    CHECK(!strcmp(s.btns, "Mm"), "3 dedos = medio (%s)", s.btns);
+    CHECK(!strcmp(s.btns, "Mm"), "3 fingers = middle (%s)", s.btns);
     s = go("doubletap", NULL);
-    CHECK(!strcmp(s.btns, "LlLl"), "doble toque (%s)", s.btns);
+    CHECK(!strcmp(s.btns, "LlLl"), "double tap (%s)", s.btns);
     s = go("tapdrag", NULL);
-    CHECK(!strcmp(s.btns, "Ll") && s.mx > 100, "tocar y arrastrar: %s, %.0f px con el botón apretado", s.btns, s.mx);
-    /* el botón queda apretado durante el movimiento */
+    CHECK(!strcmp(s.btns, "Ll") && s.mx > 100, "tap and drag: %s, %.0f px with the button held", s.btns, s.mx);
+    /* the button stays held during the motion */
     int down_at = -1, up_at = -1, moved_between = 0;
     for (int i = 0; i < nout; i++) {
         if (outs[i].kind == O_BUTTON && outs[i].b && down_at < 0) down_at = i;
         else if (outs[i].kind == O_BUTTON && !outs[i].b) up_at = i;
         else if (outs[i].kind == O_MOTION && down_at >= 0 && up_at < 0) moved_between++;
     }
-    CHECK(moved_between > 10, "movimientos con el botón apretado: %d", moved_between);
+    CHECK(moved_between > 10, "motions with the button held: %d", moved_between);
     TpConfig off = defaults();
     off.tap = 0;
     s = go("tap", &off);
-    CHECK(!s.btns[0], "tocar apagado: sin clic (%s)", s.btns);
+    CHECK(!s.btns[0], "tap off: no click (%s)", s.btns);
 }
 
 static void t_clicks(void) {
     Sum s = go("click", NULL);
-    CHECK(!strcmp(s.btns, "Ll"), "clic físico con 1 dedo (%s)", s.btns);
+    CHECK(!strcmp(s.btns, "Ll"), "physical click with 1 finger (%s)", s.btns);
     s = go("click2", NULL);
-    CHECK(!strcmp(s.btns, "Rr"), "clic físico con 2 dedos = derecho (%s)", s.btns);
+    CHECK(!strcmp(s.btns, "Rr"), "physical click with 2 fingers = right (%s)", s.btns);
     s = go("click3", NULL);
-    CHECK(!strcmp(s.btns, "Mm"), "clic físico con 3 dedos = medio (%s)", s.btns);
+    CHECK(!strcmp(s.btns, "Mm"), "physical click with 3 fingers = middle (%s)", s.btns);
     s = go("thumbclick", NULL);
-    CHECK(!strcmp(s.btns, "Ll"), "pulgar apoyado + índice = izquierdo (%s)", s.btns);
+    CHECK(!strcmp(s.btns, "Ll"), "resting thumb + index = left (%s)", s.btns);
     TpConfig area = defaults();
     area.secondary = TP_CLICK_BOTTOM_RIGHT;
     s = go("click2", &area);
-    CHECK(!strcmp(s.btns, "Ll"), "modo esquina: 2 dedos arriba = izquierdo (%s)", s.btns);
+    CHECK(!strcmp(s.btns, "Ll"), "corner mode: 2 fingers up = left (%s)", s.btns);
 }
 
 static void t_scroll(void) {
     Sum s = go("scroll", NULL);
-    CHECK(s.nscroll > 5 && s.sy > 100, "dedos arriba + natural = bajar el contenido: %.0f px", s.sy);
-    CHECK(fabs(s.sx) < 10, "sin horizontal: %.0f", s.sx);
-    CHECK(s.nmom > 5 && s.wy > 50 && s.mom_end == 1, "inercia: %d eventos, %.0f px, fin %d", s.nmom, s.wy, s.mom_end);
-    CHECK(!s.nmotion && !s.btns[0], "no mueve el puntero ni hace clic");
-    printf("  scroll reconocido a los %.0f ms de apoyar\n", s.t_scroll - s.t_first);
+    CHECK(s.nscroll > 5 && s.sy > 100, "fingers up + natural = content scrolls down: %.0f px", s.sy);
+    CHECK(fabs(s.sx) < 10, "no horizontal: %.0f", s.sx);
+    CHECK(s.nmom > 5 && s.wy > 50 && s.mom_end == 1, "momentum: %d events, %.0f px, end %d", s.nmom, s.wy, s.mom_end);
+    CHECK(!s.nmotion && !s.btns[0], "does not move the pointer or click");
+    printf("  scroll recognized %.0f ms after touch-down\n", s.t_scroll - s.t_first);
     Sum d = go("scroll-down", NULL);
-    CHECK(d.sy < -100, "hacia abajo: %.0f", d.sy);
+    CHECK(d.sy < -100, "downwards: %.0f", d.sy);
     TpConfig trad = defaults();
     trad.natural = 0;
     Sum t = go("scroll", &trad);
-    CHECK(t.sy < -100, "sin natural: al revés (%.0f)", t.sy);
+    CHECK(t.sy < -100, "without natural: reversed (%.0f)", t.sy);
     Sum slow = go("scroll-slow", NULL);
-    CHECK(slow.sy > 30 && slow.nmom == 0, "despacio y frenado: sin inercia (%d)", slow.nmom);
+    CHECK(slow.sy > 30 && slow.nmom == 0, "slow and stopped: no momentum (%d)", slow.nmom);
     TpConfig nok = defaults();
     nok.kinetic = 0;
     Sum k = go("scroll", &nok);
-    CHECK(k.nmom == 0, "inercia apagada");
+    CHECK(k.nmom == 0, "momentum off");
 }
 
 static void t_pinch(void) {
     Sum s = go("pinch-out", NULL);
-    CHECK(s.pinch_b == 1 && s.pinch_e == 1, "pellizco begin/end: %d/%d", s.pinch_b, s.pinch_e);
-    CHECK(s.scale > 2.0, "separar: escala %.2f", s.scale);
-    CHECK(!s.nscroll && !s.nmotion, "no es scroll ni puntero");
-    printf("  pellizco reconocido a los %.0f ms de apoyar\n", s.t_pinch - s.t_first);
+    CHECK(s.pinch_b == 1 && s.pinch_e == 1, "pinch begin/end: %d/%d", s.pinch_b, s.pinch_e);
+    CHECK(s.scale > 2.0, "spread: scale %.2f", s.scale);
+    CHECK(!s.nscroll && !s.nmotion, "neither scroll nor pointer");
+    printf("  pinch recognized %.0f ms after touch-down\n", s.t_pinch - s.t_first);
     s = go("pinch-in", NULL);
-    CHECK(s.scale < 0.5, "juntar: escala %.2f", s.scale);
+    CHECK(s.scale < 0.5, "pinch in: scale %.2f", s.scale);
     s = go("rotate", NULL);
-    CHECK(s.pinch_b == 1 && s.rot > 45 && s.rot < 75, "girar 60°: %.0f°", s.rot);
-    CHECK(fabs(s.scale - 1) < 0.15, "girar no cambia la escala: %.2f", s.scale);
+    CHECK(s.pinch_b == 1 && s.rot > 45 && s.rot < 75, "rotate 60°: %.0f°", s.rot);
+    CHECK(fabs(s.scale - 1) < 0.15, "rotating does not change the scale: %.2f", s.scale);
     TpConfig off = defaults();
     off.pinch = 0;
     s = go("pinch-out", &off);
-    CHECK(s.pinch_b == 0, "pellizco apagado");
+    CHECK(s.pinch_b == 0, "pinch off");
 }
 
 static void t_swipe(void) {
     Sum s = go("swipe3-up", NULL);
-    CHECK(s.swipe_b == 1 && s.swipe_e == 1 && s.fingers == 3 && s.swy < -100, "3 dedos arriba: %d dedos, %.0f", s.fingers, s.swy);
-    CHECK(!s.btns[0] && !s.nmotion && !s.nscroll, "solo el gesto");
-    printf("  deslizar reconocido a los %.0f ms de apoyar\n", s.t_swipe - s.t_first);
+    CHECK(s.swipe_b == 1 && s.swipe_e == 1 && s.fingers == 3 && s.swy < -100, "3 fingers up: %d fingers, %.0f", s.fingers, s.swy);
+    CHECK(!s.btns[0] && !s.nmotion && !s.nscroll, "only the gesture");
+    printf("  swipe recognized %.0f ms after touch-down\n", s.t_swipe - s.t_first);
     s = go("swipe3-left", NULL);
-    CHECK(s.swx < -100 && fabs(s.swy) < fabs(s.swx) / 2, "3 dedos izquierda: %.0f", s.swx);
+    CHECK(s.swx < -100 && fabs(s.swy) < fabs(s.swx) / 2, "3 fingers left: %.0f", s.swx);
     s = go("swipe3-right", NULL);
-    CHECK(s.swx > 100, "3 dedos derecha: %.0f", s.swx);
+    CHECK(s.swx > 100, "3 fingers right: %.0f", s.swx);
     s = go("swipe3-down", NULL);
-    CHECK(s.swy > 100, "3 dedos abajo: %.0f", s.swy);
+    CHECK(s.swy > 100, "3 fingers down: %.0f", s.swy);
     s = go("swipe4-up", NULL);
-    CHECK(s.fingers == 4 && s.swy < -100, "4 dedos: %d", s.fingers);
+    CHECK(s.fingers == 4 && s.swy < -100, "4 fingers: %d", s.fingers);
     TpConfig td = defaults();
     td.three_drag = 1;
     s = go("threedrag", &td);
-    CHECK(!strcmp(s.btns, "Ll") && s.mx > 100 && !s.swipe_b, "arrastrar con 3 dedos: %s, %.0f px", s.btns, s.mx);
+    CHECK(!strcmp(s.btns, "Ll") && s.mx > 100 && !s.swipe_b, "3-finger drag: %s, %.0f px", s.btns, s.mx);
 }
 
 static void t_palm(void) {
     Sum s = go("palm", NULL);
-    CHECK(!s.nmotion && !s.btns[0], "palma ignorada: %d movimientos, %s", s.nmotion, s.btns);
+    CHECK(!s.nmotion && !s.btns[0], "palm ignored: %d motions, %s", s.nmotion, s.btns);
     s = go("edge", NULL);
-    CHECK(fabs(s.my) < 5 && !s.btns[0], "toque quieto en el borde ignorado: %.0f", s.my);
-    /* ignorar al escribir: una tecla justo antes */
+    CHECK(fabs(s.my) < 5 && !s.btns[0], "still touch on the edge ignored: %.0f", s.my);
+    /* disable while typing: a key just before */
     tp_key_activity(KEY_A, base_t - 100 + 0);
     double kt = base_t;
     tp_key_activity(KEY_A, kt);
     Sum d = go("move", NULL);
-    CHECK(!d.nmotion, "al escribir no se mueve: %d", d.nmotion);
-    tp_key_activity(KEY_LEFTCTRL, base_t);          /* los modificadores no cuentan */
+    CHECK(!d.nmotion, "does not move while typing: %d", d.nmotion);
+    tp_key_activity(KEY_LEFTCTRL, base_t);          /* modifiers do not count */
     d = go("move", NULL);
-    CHECK(d.nmotion > 0, "Ctrl no bloquea");
+    CHECK(d.nmotion > 0, "Ctrl does not block");
     TpConfig nodwt = defaults();
     nodwt.dwt = 0;
     tp_key_activity(KEY_A, base_t);
     d = go("move", &nodwt);
-    CHECK(d.nmotion > 0, "con dwt apagado sí se mueve");
+    CHECK(d.nmotion > 0, "with dwt off it does move");
 }
 
 static void t_hold(void) {
     go("scroll-slow", NULL);
     int b = 0, c = 0;
     for (int i = 0; i < nout; i++) if (outs[i].kind == O_HOLD) { if (outs[i].phase == TP_BEGIN) b++; else if (outs[i].phase == TP_CANCEL) c++; }
-    CHECK(b >= 1 && c >= 1, "mantener empieza al apoyar y se cancela al desplazar: %d/%d", b, c);
+    CHECK(b >= 1 && c >= 1, "hold starts on touch-down and is cancelled on scrolling: %d/%d", b, c);
 }
 
 static void t_touchscreen(void) {
@@ -310,25 +310,25 @@ static void t_touchscreen(void) {
     run("tap", TP_KIND_TOUCHSCREEN, NULL);
     Sum s = summary();
     print_sum("pantalla:tap", &s);
-    CHECK(!strcmp(s.btns, "Ll") && s.wx > 0.3 && s.wx < 0.5, "tocar = clic donde se toca (%s en %.2f)", s.btns, s.wx);
+    CHECK(!strcmp(s.btns, "Ll") && s.wx > 0.3 && s.wx < 0.5, "tap = click where touched (%s at %.2f)", s.btns, s.wx);
     run("move", TP_KIND_TOUCHSCREEN, NULL);
     s = summary();
     print_sum("pantalla:move", &s);
-    CHECK(!strcmp(s.btns, "Ll") && s.wx > 0.65, "arrastrar: botón apretado y el puntero sigue al dedo (%.2f)", s.wx);
+    CHECK(!strcmp(s.btns, "Ll") && s.wx > 0.65, "drag: button held and the pointer follows the finger (%.2f)", s.wx);
     run("scroll", TP_KIND_TOUCHSCREEN, NULL);
     s = summary();
     print_sum("pantalla:scroll", &s);
-    CHECK(s.sy > 100 && !s.btns[0], "dos dedos arriba = bajar el contenido: %.0f", s.sy);
+    CHECK(s.sy > 100 && !s.btns[0], "two fingers up = content scrolls down: %.0f", s.sy);
     run("pinch-out", TP_KIND_TOUCHSCREEN, NULL);
     s = summary();
     print_sum("pantalla:pinch", &s);
-    CHECK(s.scale > 2, "pellizco: %.2f", s.scale);
-    touch_consume = 1;                       /* hay una app Wayland con wl_touch debajo */
+    CHECK(s.scale > 2, "pinch: %.2f", s.scale);
+    touch_consume = 1;                       /* there is a Wayland app with wl_touch underneath */
     run("tap", TP_KIND_TOUCHSCREEN, NULL);
     s = summary();
     int down = 0, up = 0;
     for (int i = 0; i < nout; i++) if (outs[i].kind == O_TOUCH) { if (outs[i].phase == TP_BEGIN) down++; if (outs[i].phase == TP_END) up++; }
-    CHECK(down == 1 && up == 1 && !s.btns[0], "a la app: toque sin emular el puntero (%d/%d, %s)", down, up, s.btns);
+    CHECK(down == 1 && up == 1 && !s.btns[0], "to the app: touch without pointer emulation (%d/%d, %s)", down, up, s.btns);
     touch_consume = 0;
 }
 
@@ -376,7 +376,7 @@ int main(int argc, char **argv) {
     t_palm();
     t_hold();
     t_touchscreen();
-    printf("procesar un cuadro: %.2f µs (promedio de %.0f cuadros)\n", proc_ns / proc_frames / 1000, proc_frames);
-    printf("tp-test: %d/%d bien\n", checks - fails, checks);
+    printf("processing a frame: %.2f µs (average over %.0f frames)\n", proc_ns / proc_frames / 1000, proc_frames);
+    printf("tp-test: %d/%d passed\n", checks - fails, checks);
     return fails ? 1 : 0;
 }

@@ -1,13 +1,13 @@
-/* remote_admin.c — acciones de root del escritorio remoto, en el ayudante privilegiado (admin.c).
+/* remote_admin.c — root actions of the remote desktop, in the privileged helper (admin.c).
  *
- *   remote-enable            prende el escritorio remoto (enabled=1 y lord-sessiond relee)
- *   remote-disable           lo apaga; las sesiones siguen abiertas (se ven en el monitor)
- *   remote-config <líneas>   allow=all|group, port=1024..65535
- *   remote-member <u>\n1|0   suma o saca a un usuario del grupo lordos-remote
- *   remote-kick <pid>        corta una conexión (solo un pid de la lista de lord-sessiond)
+ *   remote-enable            turns the remote desktop on (enabled=1 and lord-sessiond rereads)
+ *   remote-disable           turns it off; sessions stay open (they show on the monitor)
+ *   remote-config <lines>    allow=all|group, port=1024..65535
+ *   remote-member <u>\n1|0   adds or removes a user from the lordos-remote group
+ *   remote-kick <pid>        cuts a connection (only a pid from lord-sessiond's list)
  *
- * El escritorio remoto es parte de lord-sessiond (lordos.service, docs/SESIONES.md): estas
- * acciones solo cambian /etc/lordos/remote/config y le avisan con SIGHUP. */
+ * The remote desktop is part of lord-sessiond (lordos.service, docs/SESSIONS.md): these
+ * actions only change /etc/lordos/remote/config and notify it with SIGHUP. */
 #include "remote_admin.h"
 
 #include <errno.h>
@@ -56,12 +56,12 @@ static int conf_write(const Conf *c) {
     mkdir("/etc/lordos", 0755);
     mkdir(CONF_DIR, 0755);
     char text[256];
-    snprintf(text, sizeof text, "# LordOS · escritorio remoto (Ajustes → Compartir). Ver docs/REMOTO.md\nenabled=%d\nport=%d\nallow=%s\ninsecure_dev=%d\n",
+    snprintf(text, sizeof text, "# LordOS · remote desktop (Settings → Sharing). See docs/REMOTE.md\nenabled=%d\nport=%d\nallow=%s\ninsecure_dev=%d\n",
              c->enabled, c->port, c->group_only ? "group" : "all", c->insecure_dev);
     return write_file(CONF_DIR "/config", text, 0644);
 }
 
-/* lord-sessiond que corre (el de lordos.service): relee la configuración con SIGHUP */
+/* the running lord-sessiond (the one from lordos.service): rereads the configuration on SIGHUP */
 static pid_t sessiond_pid(void) {
     const char *const a[] = { "/usr/bin/systemctl", "show", "--property=MainPID", "--value", "lordos.service", NULL };
     char out[64] = "";
@@ -86,7 +86,7 @@ static void set_enabled(int on) {
     if (conf_write(&c)) { admin_say("ERR", "no se pudo escribir %s/config", CONF_DIR); return; }
     kill(pid, SIGHUP);
     if (!on) { admin_say("OK", "escritorio remoto apagado"); return; }
-    /* espera a que escuche (status.json dice running) */
+    /* waits for it to listen (status.json says running) */
     for (int i = 0; i < 40; i++) {
         char st[512] = "";
         int fd = open("/run/lordos/status.json", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
@@ -154,7 +154,7 @@ void remote_act_kick(const AdminReq *r, const char *arg, size_t len) {
     char *end;
     long pid = strtol(arg, &end, 10);
     if (pid <= 1 || *end) { admin_say("ERR", "pid inválido"); return; }
-    /* solo una conexión que lord-sessiond (root) anotó en su lista */
+    /* only a connection that lord-sessiond (root) recorded in its list */
     char status[16384] = "", want[40];
     int fd = open("/run/lordos/status.json", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     struct stat st;

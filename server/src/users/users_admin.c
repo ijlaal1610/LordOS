@@ -1,20 +1,20 @@
-/* users_admin.c — usuarios del equipo, como root en el ayudante de administración (admin.c).
- * Las usa Ajustes → Usuarios (docs/SESIONES.md). Cada argumento son líneas:
+/* users_admin.c — the machine's users, as root in the administration helper (admin.c).
+ * Used by Settings → Users (docs/SESSIONS.md). Each argument is a set of lines:
  *
- *   user-add       nombre \n nombre completo \n contraseña \n admin (0|1)
- *   user-del       nombre \n conservar la carpeta personal (0|1)
- *   user-passwd    nombre \n contraseña nueva \n contraseña actual
- *                  (la propia: cualquiera, con la actual; la de otro: solo un administrador)
- *   user-admin     nombre \n 0|1                       (grupo sudo)
- *   user-avatar    nombre \n color (#rrggbb o vacío) \n imagen ("" igual, "-" quitar, o una ruta
- *                  de la carpeta personal de quien lo pide; PNG o JPEG de hasta 4 MB)
- *                  (el propio: cualquiera; el de otro: solo un administrador)
- *   user-autologin nombre o vacío                      (/etc/lordos/session.conf)
+ *   user-add       name \n full name \n password \n admin (0|1)
+ *   user-del       name \n keep the home folder (0|1)
+ *   user-passwd    name \n new password \n current password
+ *                  (your own: anyone, with the current one; someone else's: only an administrator)
+ *   user-admin     name \n 0|1                         (sudo group)
+ *   user-avatar    name \n color (#rrggbb or empty) \n image ("" unchanged, "-" remove, or a path
+ *                  in the requester's home folder; PNG or JPEG up to 4 MB)
+ *                  (your own: anyone; someone else's: only an administrator)
+ *   user-autologin name or empty                       (/etc/lordos/session.conf)
  *
- * Validación del lado root: nombres [a-z_][a-z0-9_-]*, solo cuentas de personas (uid 1000 a
- * 59999), nunca la propia cuenta al borrar ni el último administrador. Las contraseñas van por
- * la entrada estándar de chpasswd, nunca en argv. Los avatares quedan en /var/lib/lordos/users
- * (los lee la pantalla de ingreso, que no puede entrar a las carpetas personales). */
+ * Root-side validation: names [a-z_][a-z0-9_-]*, only people's accounts (uid 1000 to
+ * 59999), never your own account when deleting nor the last administrator. Passwords go through
+ * chpasswd's standard input, never in argv. Avatars live in /var/lib/lordos/users
+ * (read by the login screen, which can't get into home folders). */
 #include "users_admin.h"
 #include "homedirs.h"
 
@@ -35,9 +35,9 @@
 #define USERS_DIR "/var/lib/lordos/users"
 #define SESSION_CONF "/etc/lordos/session.conf"
 #define ADMIN_GROUP "sudo"
-/* Impresoras (M9, docs/IMPRESION.md): CUPS deja administrar impresoras al grupo lpadmin. Los
- * administradores de LordOS también lo tienen; si CUPS no está instalado el grupo no existe y se
- * saltea sin error. */
+/* Printers (M9, docs/PRINTING.md): CUPS lets the lpadmin group administer printers. LordOS
+ * administrators get it too; if CUPS isn't installed the group doesn't exist and it's
+ * skipped without error. */
 #define PRINT_GROUP "lpadmin"
 
 static int in_group(const char *user, const char *group);
@@ -48,7 +48,7 @@ static void print_group(const char *name, int on) {
     if (on != in_group(name, PRINT_GROUP)) admin_run(on ? add : del);
 }
 
-/* ---- validación ---- */
+/* ---- validation ---- */
 
 static int valid_name(const char *u) {
     size_t n = strlen(u);
@@ -57,7 +57,7 @@ static int valid_name(const char *u) {
     return 1;
 }
 
-/* nombre completo: hasta 64 bytes, sin controles ni los separadores de /etc/passwd (: ,) */
+/* full name: up to 64 bytes, no control chars nor the /etc/passwd separators (: ,) */
 static int valid_full(const char *s) {
     size_t n = strlen(s);
     if (n > 64) return 0;
@@ -72,14 +72,14 @@ static int valid_pass(const char *s) {
     return 1;
 }
 
-/* Cuenta de una persona (no de sistema) */
+/* A person's account (not a system one) */
 static struct passwd *person(const char *name) {
     if (!valid_name(name)) return NULL;
     struct passwd *pw = getpwnam(name);
     return pw && pw->pw_uid >= 1000 && pw->pw_uid < 60000 ? pw : NULL;
 }
 
-/* Parte el argumento en n líneas (la última puede faltar: queda ""). 0 si hay de más. */
+/* Splits the argument into n lines (the last one may be missing: it becomes ""). 0 if there are too many. */
 static int split(char *arg, char **f, int n) {
     for (int i = 0; i < n; i++) f[i] = "";
     char *p = arg;
@@ -164,14 +164,14 @@ static void autologin_get(char *out, size_t n) {
 static int autologin_set(const char *user) {
     mkdir("/etc/lordos", 0755);
     char text[256];
-    snprintf(text, sizeof text, "# Lo escribe LordOS (Ajustes → Usuarios). Ver docs/SESIONES.md\n"
-             "# AUTOLOGIN=usuario entra solo al arrancar; vacío: pantalla de ingreso\nAUTOLOGIN=%s\n", user);
+    snprintf(text, sizeof text, "# Written by LordOS (Settings → Users). See docs/SESSIONS.md\n"
+             "# AUTOLOGIN=user logs in automatically at boot; empty: login screen\nAUTOLOGIN=%s\n", user);
     return write_file(SESSION_CONF, text, strlen(text), 0644);
 }
 
-/* ---- acciones ---- */
+/* ---- actions ---- */
 
-/* Carpetas comunes en el idioma del sistema (las muestra Archivos) y su idioma. */
+/* Common folders in the system language (shown by Files) and their language. */
 static void prepare_home(const struct passwd *pw) {
     char lang[64] = "es_ES.UTF-8";
     FILE *f = fopen("/etc/default/locale", "r");
@@ -182,20 +182,20 @@ static void prepare_home(const struct passwd *pw) {
     /* Escritorio, Documentos… and ~/.config/user-dirs.dirs in the system language (homedirs.c) */
     if (homedirs_create(pw->pw_dir, pw->pw_uid, pw->pw_gid, lang)) admin_say("LOG", "aviso: no se pudieron crear todas las carpetas");
     snprintf(path, sizeof path, "%s/.config", pw->pw_dir);
-    if (!mkdir(path, 0755) && chown(path, pw->pw_uid, pw->pw_gid)) { /* sigue */ }
+    if (!mkdir(path, 0755) && chown(path, pw->pw_uid, pw->pw_gid)) { /* carry on */ }
     snprintf(path, sizeof path, "%s/.config/lordos", pw->pw_dir);
-    if (!mkdir(path, 0755) && chown(path, pw->pw_uid, pw->pw_gid)) { /* sigue */ }
+    if (!mkdir(path, 0755) && chown(path, pw->pw_uid, pw->pw_gid)) { /* carry on */ }
     char text[96];
     snprintf(path, sizeof path, "%s/.config/locale.conf", pw->pw_dir);
     snprintf(text, sizeof text, "LANG=%s\n", lang);
-    if (!write_file(path, text, strlen(text), 0644) && chown(path, pw->pw_uid, pw->pw_gid)) { /* sigue */ }
+    if (!write_file(path, text, strlen(text), 0644) && chown(path, pw->pw_uid, pw->pw_gid)) { /* carry on */ }
     snprintf(path, sizeof path, "%s/.config/lordos/settings.json", pw->pw_dir);
-    /* idioma de la interfaz: el del sistema si hay catálogo (es, en, pt); si no, español */
+    /* UI language: the system's if there's a catalog (es, en, pt); otherwise Spanish */
     const char *ui = homedirs_ui_lang(lang);
     snprintf(text, sizeof text, "{\n  \"language\": \"%s\"\n}\n", ui);
-    if (!write_file(path, text, strlen(text), 0644) && chown(path, pw->pw_uid, pw->pw_gid)) { /* sigue */ }
+    if (!write_file(path, text, strlen(text), 0644) && chown(path, pw->pw_uid, pw->pw_gid)) { /* carry on */ }
     snprintf(path, sizeof path, "%s/.config/lordos/.dirs", pw->pw_dir);
-    if (!write_file(path, "", 0, 0644) && chown(path, pw->pw_uid, pw->pw_gid)) { /* sigue */ }
+    if (!write_file(path, "", 0, 0644) && chown(path, pw->pw_uid, pw->pw_gid)) { /* carry on */ }
 }
 
 void users_act_add(const AdminReq *r, const char *arg, size_t len) {
@@ -213,7 +213,7 @@ void users_act_add(const AdminReq *r, const char *arg, size_t len) {
         else if (set_password(name, pass)) admin_say("ERR", "no se pudo poner la contraseña");
         else {
             if (adm) { const char *const g[] = { "/usr/sbin/usermod", "--append", "--groups", ADMIN_GROUP, name, NULL }; admin_run(g); print_group(name, 1); }
-            if (getgrnam("pipewire")) { const char *const g[] = { "/usr/sbin/usermod", "--append", "--groups", "pipewire", name, NULL }; admin_run(g); }   /* sonido en tiempo real (docs/SONIDO.md) */
+            if (getgrnam("pipewire")) { const char *const g[] = { "/usr/sbin/usermod", "--append", "--groups", "pipewire", name, NULL }; admin_run(g); }   /* real-time sound (docs/SOUND.md) */
             if (getgrnam("plugdev")) { const char *const g[] = { "/usr/sbin/usermod", "--append", "--groups", "plugdev", name, NULL }; admin_run(g); }   /* FIDO2 security keys (docs/PASSWORDS.md) */
             prepare_home(pw);
             admin_say("OK", "usuario %s creado", name);
@@ -233,7 +233,7 @@ void users_act_del(const AdminReq *r, const char *arg, size_t len) {
     else if (!strcmp(name, r->user)) admin_say("ERR", "no se puede borrar la cuenta con la que estás");
     else if (in_group(name, ADMIN_GROUP) && admins() <= 1) admin_say("ERR", "es el único administrador");
     else {
-        /* su sesión (y todo lo suyo) termina antes */
+        /* their session (and everything of theirs) ends first */
         const char *const k[] = { "/usr/bin/pkill", "--signal", "KILL", "--uid", name, NULL };
         admin_run(k);
         usleep(300000);
@@ -286,8 +286,8 @@ void users_act_admin(const AdminReq *r, const char *arg, size_t len) {
     free(buf);
 }
 
-/* Lee una imagen de la carpeta personal de quien lo pide, CON SUS PERMISOS (setfsuid): root no
- * lee nada que el usuario no pudiera leer. */
+/* Reads an image from the requester's home folder, WITH THEIR PERMISSIONS (setfsuid): root
+ * reads nothing the user couldn't read. */
 static unsigned char *read_user_image(const AdminReq *r, const char *path, size_t *n) {
     char real[PATH_MAX], home[PATH_MAX];
     if (path[0] != '/' || !realpath(r->home, home)) return NULL;

@@ -1,5 +1,5 @@
-# media_cpu.py — docs/MEDIOS.md, «Mediciones».
-# Uso: python3 cpu.py SEGUNDOS — CPU (% de un núcleo) de lord-server y de cada lord-media del usuario lord
+# media_cpu.py — docs/MEDIA.md, "Measurements".
+# Usage: python3 cpu.py SECONDS — CPU (% of one core) of lord-server and of each lord-media of user lord
 import os, sys, time
 def procs():
     out = {}
@@ -23,6 +23,6 @@ tot0 = sum(map(int, open('/proc/stat').readline().split()[1:8]))
 t0 = time.time(); time.sleep(secs); el = time.time() - t0
 tot1 = sum(map(int, open('/proc/stat').readline().split()[1:8]))
 for p, n in ps.items():
-    try: print(f'{n} {p}: {100.0 * (cpu(p) - a[p]) / hz / el:.1f} % de un núcleo')
-    except Exception: print(f'{n} {p}: terminó')
-print(f'muestreo {el:.1f} s')
+    try: print(f'{n} {p}: {100.0 * (cpu(p) - a[p]) / hz / el:.1f} % of one core')
+    except Exception: print(f'{n} {p}: exited')
+print(f'sampled {el:.1f} s')

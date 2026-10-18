@@ -4,8 +4,8 @@
 // installed, upgraded or removed, and how much is downloaded and used. See docs/PAQUETES.md.
 import { createElement as h, useEffect, useState } from 'react';
 import {
-  View, Text, Image, Button, EmptyState, useTheme, useStore, createStore, admin, formatBytes, formatDate,
-  refreshApps, launchApp, useLauncherApps, LetterIcon, typeScale, t, locale,
+  View, Text, Image, Button, EmptyState, GroupBox, useTheme, useStore, createStore, admin, formatBytes, formatDate,
+  refreshApps, launchApp, useLauncherApps, LetterIcon, typeScale, spacing, direction, t, locale,
 } from '@lordos/sdk';
 
 const available = () => typeof lord.pkg !== 'undefined';
@@ -43,7 +43,16 @@ export const useDebian = () => {
 // ---- pieces ----
 
 // A rounded inset box (plan, progress), like GroupBox without rows.
-const boxStyle = (th, extra) => ({ padding: 16, borderRadius: 10, backgroundColor: th.hover, border: `1px solid ${th.separator}`, gap: 8, ...extra });
+const boxStyle = (th, extra) => ({ padding: spacing.xl, borderRadius: 10, backgroundColor: th.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.025)',
+  border: `1px solid ${th.separator}`, gap: spacing.s, ...extra });
+
+// A key/value row of an info box: the label at the start, the value right-aligned and dim.
+const InfoRow = ({ th, label, value }) => h(View, { style: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: spacing.m, paddingVertical: 4 } },
+  h(Text, { style: { fontSize: typeScale.body, color: th.text, whiteSpace: 'nowrap', textAlign: 'start' } }, label),
+  h(Text, { style: { flex: 1, minWidth: 0, fontSize: typeScale.body, color: th.textDim, textAlign: 'end', whiteSpace: 'nowrap', overflow: 'hidden' } }, value));
+
+// A section header (13/600, sentence case) above an inset box.
+const Header = ({ th, children }) => h(Text, { style: { fontSize: typeScale.body, fontWeight: 600, color: th.text, paddingHorizontal: spacing.xs, marginBottom: 6, textAlign: 'start' } }, children);
 const titleStyle = (th) => ({ fontSize: typeScale.largeTitle, fontWeight: 600, color: th.text });
 
 function PkgIcon({ app, name, size = 48 }) {
@@ -108,32 +117,43 @@ function Details({ name, onBack }) {
     setPlan(null);
   };
   const desc = (info.appDescription || info.description || '').trim();
-  return h(View, { style: { gap: 16 } },
-    h(Button, { plain: true, small: true, label: `‹ ${t('store.back')}`, onClick: onBack, style: { alignSelf: 'flex-start' } }),
+  const busy = !!job;
+  const primary = !info.installed
+    ? h(Button, { primary: true, label: t('store.install'), disabled: !isAdmin || busy, onClick: () => isAdmin && !job && doInstall() })
+    : desk ? h(Button, { primary: true, label: t('store.open'), onClick: () => launchApp(desk.id) }) : null;
+  return h(View, { style: { gap: spacing.xl } },
+    h(Button, { plain: true, small: true, label: `‹ ${t('store.back')}`, onClick: onBack, style: { alignSelf: 'flex-start', [direction() === 'rtl' ? 'marginRight' : 'marginLeft']: -6 } }),
     h(Progress),
-    h(View, { style: { flexDirection: 'row', gap: 16, alignItems: 'center' } },
-      h(PkgIcon, { app, name, size: 72 }),
-      h(View, { style: { flex: 1, minWidth: 0, gap: 4 } },
-        h(Text, { style: titleStyle(th) }, app?.name || name),
-        h(Text, { style: { fontSize: 13, color: th.textDim } }, app?.summary || info.summary),
-        h(Text, { style: { fontSize: 11, color: th.textDim } }, t('store.debian.meta', {
-          name, version: info.version, size: formatBytes(info.installedSize), suite: info.suite || '',
-        }))),
-      h(View, { style: { gap: 8, alignItems: 'flex-end' } },
-        !info.installed && h(Button, { primary: true, label: t('store.install'), onClick: () => isAdmin && !job && doInstall() }),
-        info.installed && desk && h(Button, { primary: true, label: t('store.open'), onClick: () => launchApp(desk.id) }),
-        info.upgradable && h(Button, { label: t('store.upgrade'), onClick: () => isAdmin && !job && doInstall() }),
-        info.installed && !info.essential && h(Button, { label: t('store.remove'), onClick: () => isAdmin && !job && doRemove() }))),
-    !isAdmin && h(Text, { style: { fontSize: 11, color: '#ff9f0a' } }, t('store.debian.needAdmin')),
+    // header: icon, name, summary and the actions under them (App Store style)
+    h(View, { style: { flexDirection: 'row', gap: spacing.l, alignItems: 'flex-start' } },
+      h(View, { style: { borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.25)' } }, h(PkgIcon, { app, name, size: 72 })),
+      h(View, { style: { flex: 1, minWidth: 0, gap: spacing.xs } },
+        h(Text, { style: { ...titleStyle(th), textAlign: 'start' } }, app?.name || name),
+        h(Text, { style: { fontSize: typeScale.body, color: th.textDim, lineHeight: 1.35, textAlign: 'start' } }, app?.summary || info.summary),
+        h(View, { style: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.s, marginTop: spacing.s } },
+          primary,
+          info.upgradable && h(Button, { label: t('store.upgrade'), disabled: !isAdmin || busy, onClick: () => isAdmin && !job && doInstall() }),
+          info.installed && !info.essential && h(Button, { label: t('store.remove'), disabled: !isAdmin || busy, onClick: () => isAdmin && !job && doRemove() }),
+          info.installed ? h(Text, { style: { fontSize: typeScale.caption, fontWeight: 500, color: '#30d158', marginLeft: spacing.xs } }, t('store.installedBadge')) : null))),
+    !isAdmin && h(Text, { style: { fontSize: typeScale.caption, color: '#ff9f0a', textAlign: 'start' } }, t('store.debian.needAdmin')),
     plan && h(View, { style: boxStyle(th) },
-      h(Text, { style: { fontSize: typeScale.headline, fontWeight: 600, color: th.text } }, t(plan.kind === 'install' ? 'store.plan.titleInstall' : 'store.plan.titleRemove')),
+      h(Text, { style: { fontSize: typeScale.headline, fontWeight: 600, color: th.text, textAlign: 'start' } }, t(plan.kind === 'install' ? 'store.plan.titleInstall' : 'store.plan.titleRemove')),
       h(PlanView, { plan: plan.p }),
-      h(View, { style: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 4 } },
+      h(View, { style: { flexDirection: 'row', gap: spacing.s, justifyContent: 'flex-end', marginTop: spacing.m } },
         h(Button, { label: t('store.cancel'), onClick: () => setPlan(null) }),
         plan.p.ok && h(Button, { primary: true, label: t('store.plan.confirm'), onClick: confirm }))),
-    info.installed && h(Text, { style: { fontSize: 12, color: th.textDim } }, t('store.debian.installedVersion', { version: info.installed })),
-    desc ? h(Text, { style: { fontSize: 13, color: th.text, lineHeight: 1.45, maxWidth: 640 } }, desc.slice(0, 1600)) : null,
-    info.homepage ? h(Text, { style: { fontSize: 11, color: th.textDim } }, info.homepage) : null);
+    desc ? h(View, null,
+      h(Header, { th }, t('store.info.description')),
+      h(Text, { style: { fontSize: typeScale.body, color: th.text, lineHeight: 1.45, maxWidth: 620, paddingHorizontal: spacing.xs, textAlign: 'start' } }, desc.slice(0, 1600))) : null,
+    h(View, null,
+      h(Header, { th }, t('store.info.title')),
+      h(GroupBox, null,
+        h(InfoRow, { th, label: t('store.info.package'), value: name }),
+        h(InfoRow, { th, label: t('store.info.version'), value: info.version }),
+        info.installed ? h(InfoRow, { th, label: t('store.info.installed'), value: info.installed }) : null,
+        h(InfoRow, { th, label: t('store.info.size'), value: formatBytes(info.installedSize) }),
+        info.suite ? h(InfoRow, { th, label: t('store.info.suite'), value: `Debian ${info.suite}` }) : null,
+        info.homepage ? h(InfoRow, { th, label: t('store.info.homepage'), value: info.homepage }) : null)));
 }
 
 // ---- app grid ----
@@ -183,16 +203,20 @@ function Discover({ query }) {
   if (q) {
     const res = lord.pkg.search(q, { limit: 60, lang: lang2() });
     const apps = res.filter((r) => r.app), others = res.filter((r) => !r.app);
-    return h(View, { style: { gap: 12 } },
+    return h(View, { style: { gap: spacing.l } },
       h(Progress),
-      h(Text, { style: titleStyle(th) }, t('store.debian.results', { q })),
+      h(Text, { style: { ...titleStyle(th), textAlign: 'start' } }, t('store.debian.results', { q })),
       apps.length ? h(Grid, { items: apps.map((r) => ({ ...r, package: r.name })), onOpen: setOpen }) : null,
-      others.length ? h(Text, { style: { fontSize: 11, fontWeight: 600, color: th.textDim, marginTop: 12 } }, t('store.debian.otherPackages')) : null,
-      ...others.slice(0, 30).map((r) => h(View, { key: r.name, onClick: () => setOpen(r.name), style: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 28 } },
-        h(Text, { style: { width: 200, fontSize: 12, fontWeight: 600, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' } }, r.name),
-        h(Text, { style: { flex: 1, minWidth: 0, fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' } }, r.summary),
-        r.installed ? h(Text, { style: { fontSize: 11, color: '#30d158' } }, t('store.installedBadge')) : null)),
-      res.length === 0 ? h(EmptyState, { title: t('store.debian.none'), style: { minHeight: 240 } }) : null);
+      others.length ? h(View, { style: { marginTop: spacing.s } },
+        h(Header, { th }, t('store.debian.otherPackages')),
+        h(GroupBox, null, ...others.slice(0, 30).map((r) => h(View, { key: r.name, onClick: () => setOpen(r.name),
+          style: { flexDirection: 'row', alignItems: 'center', gap: spacing.m, minHeight: 44, paddingVertical: 6 } },
+          h(View, { style: { flex: 1, minWidth: 0, gap: 2 } },
+            h(Text, { style: { fontSize: typeScale.body, fontWeight: 600, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' } }, r.name),
+            h(Text, { style: { fontSize: typeScale.callout, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' } }, r.summary)),
+          r.installed ? h(Text, { style: { fontSize: typeScale.caption, fontWeight: 500, color: '#30d158' } }, t('store.installedBadge')) : null,
+          h(Text, { style: { fontSize: 15, color: th.textDim } }, direction() === 'rtl' ? '‹' : '›'))))) : null,
+      res.length === 0 ? h(EmptyState, { icon: h(StoreGlyph), title: t('store.debian.none'), hint: t('store.debian.noneHint'), style: { minHeight: 300 } }) : null);
   }
   const counts = lord.pkg.categories();
   const list = lord.pkg.apps({ category: cat, limit: 60, lang: lang2() });

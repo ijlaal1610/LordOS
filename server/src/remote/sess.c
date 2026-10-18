@@ -1,11 +1,11 @@
-/* sess.c — lo que comparten el monitor y el escritorio remoto en lord-sessiond: cuentas,
- * contraseñas, esperas por intentos fallidos y la lista de sesiones (un lord-server --headless
- * por usuario; ver docs/SESIONES.md).
+/* sess.c — what the monitor and the remote desktop share in lord-sessiond: accounts,
+ * passwords, waits after failed attempts and the session list (one lord-server --headless
+ * per user; see docs/SESSIONS.md).
  *
- * Una sesión es de un solo usuario y se ve desde donde sea: el monitor y los navegadores que
- * entren con ese usuario se conectan al mismo socket ($XDG_RUNTIME_DIR/lordos/remote.sock).
- * Para que dos lugares a la vez no creen dos sesiones del mismo usuario, la creación va con un
- * lock por usuario (/run/lordos/spawn-<uid>.lock). */
+ * A session belongs to a single user and can be viewed from anywhere: the monitor and the browsers that
+ * log in with that user connect to the same socket ($XDG_RUNTIME_DIR/lordos/remote.sock).
+ * So that two places at once don't create two sessions of the same user, creation goes through a
+ * per-user lock (/run/lordos/spawn-<uid>.lock). */
 #include "sessiond.h"
 #include "../sec/cgroup.h"
 
@@ -33,7 +33,7 @@ char sd_gpu_env[24];
 
 void sd_log_prefix(const char *prefix) { snprintf(log_prefix, sizeof log_prefix, "%s", prefix); }
 
-/* Una línea entera de una sola vez (varios procesos comparten el journal). */
+/* A whole line in one go (several processes share the journal). */
 void sd_log(const char *fmt, ...) {
     char line[1200];
     int n = snprintf(line, sizeof line, "%s: ", log_prefix);
@@ -44,10 +44,10 @@ void sd_log(const char *fmt, ...) {
     if (n < 0) return;
     if ((size_t)n >= sizeof line - 1) n = sizeof line - 2;
     line[n++] = '\n';
-    if (write(2, line, (size_t)n) < 0) { /* sin registro */ }
+    if (write(2, line, (size_t)n) < 0) { /* no logging */ }
 }
 
-/* ---- cuentas y contraseñas ---- */
+/* ---- accounts and passwords ---- */
 
 static int ct_equal(const char *a, const char *b) {
     size_t la = strlen(a), lb = strlen(b);
@@ -76,7 +76,7 @@ int sd_user_allowed(const struct passwd *pw, int remote) {
     return 0;
 }
 
-/* ¿es el usuario de inicio automático (/etc/lordos/session.conf)? */
+/* is it the autologin user (/etc/lordos/session.conf)? */
 static int is_autologin(const char *user) {
     FILE *f = fopen(SD_SESSION_CONF, "r");
     char line[128], u[40] = "";
@@ -90,8 +90,8 @@ int sd_check_password(const char *user, const char *pass, int remote) {
     struct passwd *pw = getpwnam(user);
     if (!sd_user_allowed(pw, remote)) return 0;
     struct spwd *sp = getspnam(user);
-    /* cuenta sin contraseña (el usuario del ISO live): solo en el monitor, solo si es el de inicio
-     * automático y con el campo vacío (para volver después de bloquear). Nunca desde la red. */
+    /* account without a password (the live ISO user): only on the monitor, only if it's the autologin
+     * user and with the field empty (to come back after locking). Never from the network. */
     if (!remote && sp && sp->sp_pwdp && !sp->sp_pwdp[0] && !pass[0] && is_autologin(user)) return 1;
     if (!sp || !sp->sp_pwdp || !sp->sp_pwdp[0] || sp->sp_pwdp[0] == '!' || sp->sp_pwdp[0] == '*') return 0;
     if (sp->sp_expire > 0 && sp->sp_expire <= (long)(time(NULL) / 86400)) return 0;
@@ -103,8 +103,8 @@ int sd_check_password(const char *user, const char *pass, int remote) {
     return ok;
 }
 
-/* Intentos fallidos (por IP en la red, por usuario en el monitor): los dos primeros no esperan;
- * después 1, 2, 4… segundos, hasta 5 minutos. */
+/* Failed attempts (per IP on the network, per user on the monitor): the first two don't wait;
+ * then 1, 2, 4… seconds, up to 5 minutes. */
 double sd_fail_wait(const char *key) {
     double w = 0, now = rd_now();
     rd_lock();
@@ -156,12 +156,12 @@ struct passwd *sd_system_user(const char *name, const char *home) {
                                   "--comment", "LordOS", name, NULL };
         sd_run_wait(a);
         pw = getpwnam(name);
-        if (pw) sd_log("usuario de sistema %s creado", name);
+        if (pw) sd_log("system user %s created", name);
     }
     return pw && pw->pw_uid != 0 ? pw : NULL;
 }
 
-/* ---- sesiones ---- */
+/* ---- sessions ---- */
 
 static int connect_path(const char *p) {
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -190,7 +190,7 @@ int sd_session_running(uid_t uid) {
     return r;
 }
 
-/* LANG de un archivo tipo locale.conf (validado) */
+/* LANG from a locale.conf-style file (validated) */
 static void read_lang(const char *path, char *out, size_t n) {
     int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     if (fd < 0) return;
@@ -211,14 +211,14 @@ static void read_lang(const char *path, char *out, size_t n) {
 static int binary_ok(void) {
     struct stat st;
     if (stat(rd_conf.server, &st) || (!rd_conf.insecure_dev && (st.st_uid != 0 || (st.st_mode & 022)))) {
-        sd_log("%s no existe o no es de root (ver insecure_dev en docs/SESIONES.md)", rd_conf.server);
+        sd_log("%s does not exist or is not owned by root (see insecure_dev in docs/SESSIONS.md)", rd_conf.server);
         return 0;
     }
     return 1;
 }
 
-/* lord-server --headless como ese usuario (arranca como root y suelta privilegios con --user,
- * igual que el del monitor). El nieto se anota en la lista compartida antes del exec. */
+/* lord-server --headless as that user (starts as root and drops privileges with --user,
+ * same as the monitor's). The grandchild records itself in the shared list before exec. */
 static void spawn(const struct passwd *pw, const char *rt, const char *lang, int w, int h, int greeter) {
     char size[32], xdg[128], user[40], home[600];
     snprintf(size, sizeof size, "%dx%d", w & ~1, h & ~1);
@@ -229,7 +229,7 @@ static void spawn(const struct passwd *pw, const char *rt, const char *lang, int
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
-        if (fork() != 0) _exit(0);         /* nieto: no queda como hijo de nadie de acá */
+        if (fork() != 0) _exit(0);         /* grandchild: not left as anyone's child here */
         signal(SIGTERM, SIG_DFL);
         signal(SIGHUP, SIG_DFL);
         if (!greeter) {
@@ -247,9 +247,9 @@ static void spawn(const struct passwd *pw, const char *rt, const char *lang, int
         int null = open("/dev/null", O_RDWR);
         dup2(null, 0); dup2(null, 1); dup2(null, 2);
         for (int fd = 3; fd < 1024; fd++) close(fd);
-        if (chdir(rd_conf.workdir)) { /* las rutas son absolutas */ }
-        /* GPU: la sesión la usa cuando está en el monitor; lordos.gpu=0 (o LORD_GPU del servicio)
-         * la apaga en todas */
+        if (chdir(rd_conf.workdir)) { /* paths are absolute */ }
+        /* GPU: the session uses it while it's on the monitor; lordos.gpu=0 (or the service's LORD_GPU)
+         * turns it off in all of them */
         char *env[8];
         int ne = 0;
         env[ne++] = "PATH=/usr/local/bin:/usr/bin:/bin:/usr/games";
@@ -259,7 +259,7 @@ static void spawn(const struct passwd *pw, const char *rt, const char *lang, int
         env[ne++] = "LORDOS_SESSIOND=1";
         if (sd_gpu_env[0]) env[ne++] = sd_gpu_env;
         env[ne] = NULL;
-        if (!greeter) cgroup_delegate_session(uid, pw->pw_gid);   /* subárbol de cgroup para las apps (docs/SESIONES.md) */
+        if (!greeter) cgroup_delegate_session(uid, pw->pw_gid);   /* cgroup subtree for the apps (docs/SESSIONS.md) */
         const char *const a_user[] = { rd_conf.server, "--headless", size, "--user", user, "--theme", rd_conf.theme,
                                        "--fonts", rd_conf.fonts, "--shell", rd_conf.shell, NULL };
         const char *const a_greeter[] = { rd_conf.server, "--headless", size, "--greeter", "--user", user, "--theme", rd_conf.greeter_theme,
@@ -271,7 +271,7 @@ static void spawn(const struct passwd *pw, const char *rt, const char *lang, int
 }
 
 static int wait_socket(const char *path, uid_t uid, int greeter) {
-    for (int i = 0; i < 200; i++) {               /* hasta 20 s mientras carga el tema */
+    for (int i = 0; i < 200; i++) {               /* up to 20 s while the theme loads */
         int fd = greeter ? connect_path(path) : sd_session_connect(uid);
         if (fd >= 0) return fd;
         usleep(100000);
@@ -291,24 +291,24 @@ int sd_session_get(const struct passwd *pw, int w, int h) {
         snprintf(rt, sizeof rt, "/run/user/%u", (unsigned)pw->pw_uid);
         struct stat st;
         if (stat(rt, &st)) {
-            /* sin sesión de logind: el administrador de servicios del usuario crea /run/user/<uid>
-             * (y arranca su PipeWire) */
+            /* no logind session: the user's service manager creates /run/user/<uid>
+             * (and starts its PipeWire) */
             char unit[64];
             snprintf(unit, sizeof unit, "user@%u.service", (unsigned)pw->pw_uid);
             const char *const a[] = { "/usr/bin/systemctl", "start", unit, NULL };
             sd_run_wait(a);
             for (int i = 0; i < 50 && stat(rt, &st); i++) usleep(100000);
         }
-        if (stat(rt, &st) || st.st_uid != pw->pw_uid) sd_log("sin %s", rt);
+        if (stat(rt, &st) || st.st_uid != pw->pw_uid) sd_log("no %s", rt);
         else {
             char lang[64] = "LANG=es_ES.UTF-8", p[600];
             read_lang("/etc/default/locale", lang, sizeof lang);
             snprintf(p, sizeof p, "%s/.config/locale.conf", pw->pw_dir);
             read_lang(p, lang, sizeof lang);
-            sd_log("sesión nueva para %s (%dx%d)", pw->pw_name, w, h);
+            sd_log("new session for %s (%dx%d)", pw->pw_name, w, h);
             spawn(pw, rt, lang, w, h, 0);
             fd = wait_socket(NULL, pw->pw_uid, 0);
-            if (fd < 0) sd_log("la sesión de %s no arrancó (ver ~/.cache/lordos/session.log)", pw->pw_name);
+            if (fd < 0) sd_log("%s's session did not start (see ~/.cache/lordos/session.log)", pw->pw_name);
         }
     }
     if (lk >= 0) close(lk);
@@ -320,25 +320,25 @@ int sd_greeter_get(int w, int h) {
     int fd = connect_path(sock);
     if (fd >= 0 || !binary_ok()) return fd;
     struct passwd *pw = sd_system_user(SD_GREETER_USER, "/var/lib/" SD_GREETER_USER);
-    if (!pw) { sd_log("no hay usuario %s", SD_GREETER_USER); return -1; }
+    if (!pw) { sd_log("no user %s", SD_GREETER_USER); return -1; }
     uid_t uid = pw->pw_uid;
     gid_t gid = pw->pw_gid;
     mkdir(SD_RUN_DIR, 0755);
     mkdir(SD_GREETER_RUN, 0700);
     struct stat st;
     if (lstat(SD_GREETER_RUN, &st) || !S_ISDIR(st.st_mode) || chown(SD_GREETER_RUN, uid, gid) || chmod(SD_GREETER_RUN, 0700)) {
-        sd_log("no se pudo preparar %s", SD_GREETER_RUN);
+        sd_log("could not prepare %s", SD_GREETER_RUN);
         return -1;
     }
     char lang[64] = "LANG=es_ES.UTF-8";
     read_lang("/etc/default/locale", lang, sizeof lang);
     spawn(pw, SD_GREETER_RUN, lang, w, h, 1);
     fd = wait_socket(sock, 0, 1);
-    if (fd < 0) sd_log("la pantalla de ingreso no arrancó (ver /var/lib/%s/.cache/lordos/greeter.log)", SD_GREETER_USER);
+    if (fd < 0) sd_log("the login screen did not start (see /var/lib/%s/.cache/lordos/greeter.log)", SD_GREETER_USER);
     return fd;
 }
 
-/* ---- mensajes entre el principal y el monitor ---- */
+/* ---- messages between the main process and the monitor ---- */
 
 int sd_ctl_send(int ctl, const char *text, int fd) {
     struct iovec iov = { (void *)text, strlen(text) };

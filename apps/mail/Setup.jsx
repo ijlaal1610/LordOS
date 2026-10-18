@@ -229,7 +229,7 @@ export function PasswordPrompt({ acct, onClose }) {
   );
 }
 
-export function AccountsPanel({ onClose, onAdd }) {
+export function AccountsPanel({ onClose, onAdd, onPassword }) {
   const th = useTheme();
   const st = useStore(mailStatus);
   const [list, setList] = useState(mailAccounts.list());
@@ -269,7 +269,7 @@ export function AccountsPanel({ onClose, onAdd }) {
               )}
               <View style={{ flex: 1 }} />
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <Button label={t('mail.accounts.password')} onClick={() => mailStatus.set((s) => ({ ...s, authFailed: { ...s.authFailed, [a.id]: true } }))} />
+                <Button label={t('mail.accounts.password')} onClick={() => onPassword(a.id)} />
                 <Button label={t('mail.accounts.remove')} onClick={async () => { await mailAccounts.remove(a.id); const l = mailAccounts.list(); setList(l); setSel(l[0]?.id || null); }} />
               </View>
             </>

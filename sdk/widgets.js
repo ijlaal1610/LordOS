@@ -1,17 +1,17 @@
-// widgets.js — la capa de widgets del escritorio (por ejemplo, las notas de la app Notas).
+// widgets.js — the desktop widget layer (for example, the Notes app's notes).
 //
-// Una app registra un tipo y publica sus widgets; el tema dibuja la capa con <DesktopWidgets />:
-// una vez entre el fondo y las ventanas (layer="below") y otra encima de las ventanas para los
-// fijados al frente (layer="above").
+// An app registers a type and publishes its widgets; the theme draws the layer with <DesktopWidgets />:
+// once between the wallpaper and the windows (layer="below") and again above the windows for those
+// pinned to the front (layer="above").
 //
-//   registerWidgetType('note', NoteCard)              // NoteCard({ widget }) dibuja uno
-//   setWidgets('note', [{ id, x, y, w, h, pinned }])  // reemplaza los de ese tipo
+//   registerWidgetType('note', NoteCard)              // NoteCard({ widget }) draws one
+//   setWidgets('note', [{ id, x, y, w, h, pinned }])  // replaces those of that type
 import { createElement as h } from 'react';
 import { View } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
 
 const types = new Map();
-export const desktopWidgets = createStore({});        // tipo → [widget]
+export const desktopWidgets = createStore({});        // type → [widget]
 
 export function registerWidgetType(type, Component) {
   types.set(type, Component);

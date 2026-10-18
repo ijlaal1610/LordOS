@@ -184,7 +184,7 @@
   "prefs.import.doDefault": "Import and use the ★ profile as default",
   "prefs.import.done": "Imported: {p} profile(s), {s} preset(s) and {k} global key(s)",
   "prefs.import.failed": "Could not import: {error}",
-  "prefs.import.found": "FILES FOUND",
+  "prefs.import.found": "Files found",
   "prefs.import.intro": "In iTerm2: Settings → Profiles → Other Actions → \"Copy All Profiles as JSON\" (or \"Save Profile as JSON\"), a .itermcolors preset or the file ~/Library/Preferences/com.googlecode.iterm2.plist. Copy it to your LordOS home folder (for example to Downloads).",
   "prefs.import.keys": {
     "one": "{count} key",
@@ -194,21 +194,21 @@
   "prefs.import.none": "No .json, .itermcolors or .plist files in Downloads, Documents or Desktop.",
   "prefs.import.open": "Open",
   "prefs.import.profiles": {
-    "one": "PROFILE ({count})",
-    "other": "PROFILES ({count})"
+    "one": "Profile ({count})",
+    "other": "Profiles ({count})"
   },
   "prefs.import.schemes": {
-    "one": "COLOR PRESET ({count})",
-    "other": "COLOR PRESETS ({count})"
+    "one": "Color preset ({count})",
+    "other": "Color presets ({count})"
   },
   "prefs.import.title": "Import from iTerm2",
   "prefs.import.triggers": {
     "one": "{count} trigger",
     "other": "{count} triggers"
   },
-  "prefs.import.warnings": "WARNINGS",
+  "prefs.import.warnings": "Warnings",
   "prefs.importBtn": "Import from iTerm2…",
-  "prefs.imported": "IMPORTED FROM ITERM2",
+  "prefs.imported": "Imported from iTerm2",
   "prefs.initialText": "Send text at start",
   "prefs.initialTextPh": "e.g. ssh server\\n",
   "prefs.isDefault": "This is the default profile",
@@ -231,7 +231,7 @@
   "prefs.off": "Off",
   "prefs.padding": "Padding",
   "prefs.param": "parameter",
-  "prefs.profiles": "PROFILES",
+  "prefs.profiles": "Profiles",
   "prefs.reset": "Reset",
   "prefs.rows": "New windows: rows",
   "prefs.rules": "Automatic profile switching",
@@ -305,5 +305,12 @@
   },
   "toast.saveFailed": "Could not save",
   "toast.saved": "Saved to {path}",
-  "find.close": "Close find"
+  "find.close": "Close find",
+  "prefs.remove": "Remove Profile",
+  "prefs.rulesHint": "Paths (~/prod/*, /srv/**), user@host, host or user@, with * as a wildcard. The shell (bash/zsh/fish integration) or ssh reports the user and host.",
+  "prefs.triggersHint": "When a new line matches the regular expression, the action runs. In the parameter, \\1 \\2… are the groups. Highlight: \"#text,#background\" (e.g. #ffffff,#ff453a). Title: the title text.",
+  "prefs.monoCount": {
+    "one": "{count} monospaced font installed",
+    "other": "{count} monospaced fonts installed"
+  }
 }

@@ -1,4 +1,4 @@
-/* js_input.h — lord.input: touchpads y pantallas táctiles (ver js_input.c y docs/TRACKPAD.md). */
+/* js_input.h — lord.input: touchpads and touchscreens (see js_input.c and docs/TRACKPAD.md). */
 #ifndef LORD_JS_INPUT_H
 #define LORD_JS_INPUT_H
 

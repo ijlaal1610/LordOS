@@ -1,5 +1,5 @@
-/* sound_test.c — serializado del protocolo de PulseAudio (sound/pulse.c) sin servidor:
- * ida y vuelta de cada tipo, listas de propiedades, descriptores y datos truncados. */
+/* sound_test.c — PulseAudio protocol serialization (sound/pulse.c) without a server:
+ * round trip of each type, property lists, descriptors and truncated data. */
 #include "../src/sound/pulse.h"
 
 #include <stdio.h>
@@ -7,7 +7,7 @@
 #include <string.h>
 
 static int fails;
-#define CHECK(c) do { if (!(c)) { printf("FALLA %s:%d: %s\n", __FILE__, __LINE__, #c); fails++; } } while (0)
+#define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); fails++; } } while (0)
 
 static int props_seen;
 static void on_prop(void *ud, const char *key, const char *val, uint32_t len) {
@@ -70,13 +70,13 @@ int main(void) {
     ts_skip_format(&t);
     CHECK(!t.err && ts_eof(&t));
 
-    /* ts_skip recorre todo igual que la lectura tipada */
+    /* ts_skip walks everything the same way as the typed read */
     ts_in(&t, o.d + PA_DESCRIPTOR_SIZE, len);
     int k = 0;
     while (!ts_eof(&t) && !t.err) { ts_skip(&t); k++; }
     CHECK(!t.err && k == 13);
 
-    /* truncado: cada prefijo falla sin leer fuera del búfer */
+    /* truncated: every prefix fails without reading outside the buffer */
     int errs = 0;
     for (size_t cut = 0; cut < len; cut++) {
         ts_in(&t, o.d + PA_DESCRIPTOR_SIZE, cut);
@@ -90,7 +90,7 @@ int main(void) {
     ts_get_str(&t);
     CHECK(t.err);
 
-    /* paquete de datos */
+    /* data packet */
     size_t total;
     uint8_t *p = ts_data_packet(5, "abcd", 4, &total);
     pa_descriptor_read(p, &len, &ch, &off, &flags);
@@ -98,6 +98,6 @@ int main(void) {
     free(p);
     ts_free(&o);
 
-    printf("%s (%d fallas)\n", fails ? "sound-test: MAL" : "sound-test: bien", fails);
+    printf("%s (%d failures)\n", fails ? "sound-test: FAIL" : "sound-test: ok", fails);
     return fails != 0;
 }

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Graba la pantalla de una VM de Proxmox como secuencia de PNG (para tools/demo/make-video.sh).
+"""Records the screen of a Proxmox VM as a PNG sequence (for tools/demo/make-video.sh).
 
-Uso (en el host Proxmox):  python3 record.py <vmid> <carpeta> [fps=5]
-Corre hasta que se crea <carpeta>/STOP, o 30 minutos como máximo. Por cada cuadro manda un `screendump` por el socket
-QMP de la VM y se desconecta enseguida: así no le bloquea el socket a Proxmox (`qm` lo usa).
-En <carpeta>/frames.txt anota el tiempo de cada cuadro para respetar la velocidad real."""
+Usage (on the Proxmox host):  python3 record.py <vmid> <folder> [fps=5]
+Runs until <folder>/STOP is created, or 30 minutes at most. For each frame it sends a `screendump` over the VM's QMP
+socket and disconnects right away: that way it does not block the socket for Proxmox (`qm` uses it).
+It records each frame's time in <folder>/frames.txt to keep the real speed."""
 import json, os, socket, sys, time
 
 vmid, out = sys.argv[1], sys.argv[2]
@@ -18,7 +18,7 @@ def qmp(cmd):
     s.settimeout(3)
     s.connect(sock_path)
     f = s.makefile('rwb')
-    f.readline()                                                  # saludo
+    f.readline()                                                  # greeting
     for c in ({'execute': 'qmp_capabilities'}, cmd):
         f.write((json.dumps(c) + '\n').encode()); f.flush()
         while True:
@@ -40,6 +40,6 @@ with open(os.path.join(out, 'frames.txt'), 'w') as log:
                 log.write(f'{start - t0:.3f} {name}\n'); log.flush()
                 n += 1
         except OSError:
-            time.sleep(0.2)                                       # la VM se está reiniciando
+            time.sleep(0.2)                                       # the VM is rebooting
         time.sleep(max(0.0, 1.0 / fps - (time.time() - start)))
-print(f'{n} cuadros en {time.time() - t0:.0f} s')
+print(f'{n} frames in {time.time() - t0:.0f} s')

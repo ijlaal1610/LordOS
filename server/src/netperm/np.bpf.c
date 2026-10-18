@@ -1,42 +1,42 @@
-/* np.bpf.c — los programas BPF de cgroup de lord-netperm (ver docs/FIREWALL.md, paso 2).
+/* np.bpf.c — lord-netperm's cgroup BPF programs (see docs/FIREWALL.md, step 2).
  *
- * C restringido para `clang -target bpf -O2` (Makefile, BPF=1). No usa libbpf ni sus cabeceras:
- * los ayudantes se declaran por número y los mapas son símbolos de la sección "maps" que
- * build/bpf2c convierte en reubicaciones; lord-netperm crea los mapas y pone sus fds.
+ * Restricted C for `clang -target bpf -O2` (Makefile, BPF=1). It doesn't use libbpf or its
+ * headers: helpers are declared by number and the maps are symbols of the "maps" section that
+ * build/bpf2c turns into relocations; lord-netperm creates the maps and fills in their fds.
  *
- * Programas (se enganchan en el subárbol de cgroup de las sesiones, lordos.service):
- *   cgroup/connect4, connect6   TCP y UDP conectado (también la UDP que usa getaddrinfo para ordenar)
- *   cgroup/sendmsg4, sendmsg6   UDP sin conectar (sendto con dirección)
- *   cgroup/bind4, bind6         "sin conexiones entrantes" y reglas de entrada (puerto local != 0)
- *   cgroup/sock_create          "sin red": ni siquiera crear un socket AF_INET/AF_INET6
+ * Programs (attached to the sessions' cgroup subtree, lordos.service):
+ *   cgroup/connect4, connect6   TCP and connected UDP (also the UDP getaddrinfo uses for sorting)
+ *   cgroup/sendmsg4, sendmsg6   unconnected UDP (sendto with an address)
+ *   cgroup/bind4, bind6         "no incoming connections" and inbound rules (local port != 0)
+ *   cgroup/sock_create          "no network": not even creating an AF_INET/AF_INET6 socket
  *
- * Los mismos programas se enganchan además en el user@<uid>.service de cada sesión de LordOS, para
- * cerrar la fuga de `systemd-run --user` (el proceso termina ahí, fuera de lordos.service). Un
- * proceso que no está en la scope de ninguna app (antepasado de nivel cfg.level) cae en la unión
- * estricta de las restricciones de las apps restringidas del usuario (np_union, con la clave del
- * user@<uid> en el nivel cfg.user_level): nunca es menos restrictivo que su propia política.
+ * The same programs are also attached to the user@<uid>.service of each LordOS session, to
+ * close the `systemd-run --user` escape (the process ends up there, outside lordos.service). A
+ * process that isn't in any app's scope (ancestor at level cfg.level) falls into the strict union
+ * of the restrictions of the user's restricted apps (np_union, keyed by the user@<uid> at level
+ * cfg.user_level): it's never less restricted than its own policy.
  *
- * Cada uno: busca la app por la scope del proceso (antepasado de nivel cfg.level) o, si no, por la
- * unión de user@ (nivel cfg.user_level), decide con
- * np_decide (np_shared.h, lo mismo que prueba tests/npcompile_test.c) y devuelve 1 (permitir) o
- * 0 (el kernel le devuelve EPERM a la app). Cuenta la conexión y avisa a lord-netperm por el anillo
- * solo si es nueva (np_seen, 5 s). Nada por paquete: solo por conexión, bind o sendto. Un connect()
- * de UDP cuenta solo la primera vez en 5 s, como un sendto: getaddrinfo hace uno por cada dirección
- * para ordenarlas (RFC 6724) y no son conexiones de verdad. */
+ * Each one: looks up the app by the process's scope (ancestor at level cfg.level) or, failing
+ * that, by the user@ union (level cfg.user_level), decides with
+ * np_decide (np_shared.h, the same thing tests/npcompile_test.c tests) and returns 1 (allow) or
+ * 0 (the kernel returns EPERM to the app). It counts the connection and notifies lord-netperm over
+ * the ring buffer only if it's new (np_seen, 5 s). Nothing per packet: only per connection, bind or
+ * sendto. A UDP connect() counts only the first time within 5 s, like a sendto: getaddrinfo does one
+ * per address to sort them (RFC 6724) and they aren't real connections. */
 #define NP_BPF 1
 #include <linux/bpf.h>
 #include "netperm/np_shared.h"
 
 #define SEC(n) __attribute__((section(n), used))
 
-/* ayudantes por número (include/uapi/linux/bpf.h, __BPF_FUNC_MAPPER) */
+/* helpers by number (include/uapi/linux/bpf.h, __BPF_FUNC_MAPPER) */
 static void *(*bpf_map_lookup_elem)(void *map, const void *key) = (void *)1;
 static long (*bpf_map_update_elem)(void *map, const void *key, const void *value, unsigned long long flags) = (void *)2;
 static unsigned long long (*bpf_ktime_get_ns)(void) = (void *)5;
 static unsigned long long (*bpf_get_current_ancestor_cgroup_id)(int level) = (void *)123;
 static long (*bpf_ringbuf_output)(void *ringbuf, void *data, unsigned long long size, unsigned long long flags) = (void *)130;
 
-/* los mapas: solo sus nombres (los define lord-netperm, netperm.c) */
+/* the maps: only their names (lord-netperm defines them, netperm.c) */
 char np_cfg[4] SEC("maps");
 char np_apps[4] SEC("maps");
 char np_union[4] SEC("maps");
@@ -55,10 +55,10 @@ NP_INLINE int proto_of(np_u32 p) {
     return p == IPPROTO_TCP ? NP_P_TCP : p == IPPROTO_UDP ? NP_P_UDP : NP_P_OTHER;
 }
 
-/* Busca la política del proceso actual: primero su scope de app (np_apps, antepasado de nivel
- * cfg->level); si no está (por ejemplo salió a user@<uid> con systemd-run), la unión estricta de
- * las apps restringidas del usuario (np_union, antepasado de nivel cfg->user_level). Devuelve la
- * NpApp y deja en *cgid la clave con la que contar y avisar (la scope o el user@). 0 si no aplica. */
+/* Looks up the current process's policy: first its app scope (np_apps, ancestor at level
+ * cfg->level); if it isn't there (e.g. it moved out to user@<uid> with systemd-run), the strict
+ * union of the user's restricted apps (np_union, ancestor at level cfg->user_level). Returns the
+ * NpApp and leaves in *cgid the key to count and report with (the scope or the user@). 0 if it doesn't apply. */
 NP_INLINE NpApp *find_app(NpCfg *cfg, np_u64 *cgid) {
     np_u64 id = bpf_get_current_ancestor_cgroup_id((int)cfg->level);
     if (id) {
@@ -87,15 +87,15 @@ NP_INLINE void count(np_u64 cgid, int deny) {
     else __sync_fetch_and_add(&c->allowed, 1);
 }
 
-/* fam 0: dirección desconocida. addr: 16 bytes (IPv4 en los 4 primeros). always_count: connect y
- * bind cuentan siempre; sendto solo la primera vez en NP_REPEAT_NS. */
+/* fam 0: unknown address. addr: 16 bytes (IPv4 in the first 4). always_count: connect and
+ * bind always count; sendto only the first time within NP_REPEAT_NS. */
 NP_INLINE int handle(int fam, np_u8 *addr, int port, int proto, int dir, int always_count) {
     np_u32 zero = 0;
     NpCfg *cfg = bpf_map_lookup_elem(&np_cfg, &zero);
     if (!cfg || !cfg->on) return 1;
     np_u64 cgid = 0;
     NpApp *app = find_app(cfg, &cgid);
-    if (!app) return 1;                                 /* ni una scope de app ni user@ restringido */
+    if (!app) return 1;                                 /* neither an app scope nor a restricted user@ */
 
     int lan = -1;
     NpList *l = 0;
@@ -151,15 +151,15 @@ NP_INLINE int handle(int fam, np_u8 *addr, int port, int proto, int dir, int alw
 }
 
 NP_INLINE int addr4(struct bpf_sock_addr *ctx, np_u8 *a) {
-    np_u32 v = ctx->user_ip4;                           /* orden de red: los bytes en memoria */
+    np_u32 v = ctx->user_ip4;                           /* network order: the bytes in memory */
     a[0] = (np_u8)v; a[1] = (np_u8)(v >> 8); a[2] = (np_u8)(v >> 16); a[3] = (np_u8)(v >> 24);
     return 4;
 }
 
-/* IPv6; una IPv4 mapeada (::ffff:a.b.c.d) vuelve como IPv4, igual que en fw_decide. */
+/* IPv6; a mapped IPv4 (::ffff:a.b.c.d) comes back as IPv4, same as in fw_decide. */
 NP_INLINE int addr6(struct bpf_sock_addr *ctx, np_u8 *a) {
     np_u32 w0 = ctx->user_ip6[0], w1 = ctx->user_ip6[1], w2 = ctx->user_ip6[2], w3 = ctx->user_ip6[3];
-    if (w0 == 0 && w1 == 0 && w2 == 0xffff0000u) {      /* 00 00 ff ff en memoria */
+    if (w0 == 0 && w1 == 0 && w2 == 0xffff0000u) {      /* 00 00 ff ff in memory */
         a[0] = (np_u8)w3; a[1] = (np_u8)(w3 >> 8); a[2] = (np_u8)(w3 >> 16); a[3] = (np_u8)(w3 >> 24);
         return 4;
     }
@@ -199,9 +199,9 @@ SEC("cgroup/sendmsg6") int np_sendmsg6(struct bpf_sock_addr *ctx) {
     return handle(fam, a, port_of(ctx), NP_P_UDP, NP_D_OUT, 0);
 }
 
-/* bind: la dirección remota no se sabe. Solo si es de loopback la conexión es seguro local
- * (como una consulta de fw_decide con esa dirección); si no, "desconocida" = internet. El puerto
- * 0 (efímero, lo usan los clientes) no se mira. */
+/* bind: the remote address isn't known. Only if it's loopback is the connection surely local
+ * (like a fw_decide query with that address); otherwise "unknown" = internet. Port 0
+ * (ephemeral, used by clients) isn't checked. */
 SEC("cgroup/bind4") int np_bind4(struct bpf_sock_addr *ctx) {
     int port = port_of(ctx);
     if (!port) return 1;
@@ -225,7 +225,7 @@ SEC("cgroup/bind6") int np_bind6(struct bpf_sock_addr *ctx) {
     return handle(fam, a, port, proto_of(ctx->protocol), NP_D_IN, 1);
 }
 
-/* "sin red": la app no puede crear sockets de internet (tampoco ICMP, que no pasa por connect). */
+/* "no network": the app can't create internet sockets (nor ICMP, which doesn't go through connect). */
 SEC("cgroup/sock_create") int np_sock_create(struct bpf_sock *sk) {
     np_u32 f = sk->family;
     if (f != AF_INET && f != AF_INET6) return 1;
@@ -237,6 +237,6 @@ SEC("cgroup/sock_create") int np_sock_create(struct bpf_sock *sk) {
     NpApp *app = bpf_map_lookup_elem(&np_apps, &cgid);
     if (!app || !(app->flags & NP_R_NO_NETWORK)) return 1;
     np_u8 a[16] = { 0 };
-    handle(0, a, 0, proto_of(sk->protocol), NP_D_OUT, 1);   /* cuenta y avisa (niega por la restricción) */
+    handle(0, a, 0, proto_of(sk->protocol), NP_D_OUT, 1);   /* counts and reports (denies because of the restriction) */
     return 0;
 }

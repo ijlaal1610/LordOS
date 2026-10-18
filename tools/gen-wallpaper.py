@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Genera el fondo por defecto de LordOS (PNG, solo biblioteca estándar).
+"""Generates the default LordOS wallpaper (PNG, standard library only).
 
-Uso: python3 tools/gen-wallpaper.py salida.png [ancho alto] [paleta]
-Paletas: aurora, ocean, sunset, graphite.
+Usage: python3 tools/gen-wallpaper.py output.png [width height] [palette]
+Palettes: aurora, ocean, sunset, graphite.
 """
 import math
 import struct
 import sys
 import zlib
 
-# Cada paleta: color base (r, g, b) y manchas de luz (x, y, radio, r, g, b), valores 0..1.
+# Each palette: base color (r, g, b) and light blobs (x, y, radius, r, g, b), values 0..1.
 PALETTES = {
     "aurora": ((0.06, 0.05, 0.20), [
         (0.18, 0.28, 0.55, 0.55, 0.22, 0.90),
@@ -64,7 +64,7 @@ def main():
         row = bytearray()
         for x in range(w):
             row.extend(pixel(x / w, y / h, aspect))
-        # Filtro "Up" de PNG: comprime mucho mejor los degradados.
+        # PNG "Up" filter: compresses gradients much better.
         raw.append(2)
         raw.extend(bytes((row[i] - prev[i]) & 255 for i in range(len(row))))
         prev = bytes(row)

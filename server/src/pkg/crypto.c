@@ -1,9 +1,9 @@
-/* crypto.c — SHA-256, SHA-512, verificación RSA PKCS#1 v1.5 y Ed25519 (ver crypto.h).
+/* crypto.c — SHA-256, SHA-512, RSA PKCS#1 v1.5 verification and Ed25519 (see crypto.h).
  *
- * Las constantes de SHA son las de FIPS 180-4 (generadas con tools: partes fraccionarias de las
- * raíces de los primeros primos). RSA usa multiplicación de Montgomery sobre palabras de 32
- * bits; Ed25519 sigue la aritmética de TweetNaCl (campo 2^255-19 en 16 palabras de 16 bits). La
- * verificación no maneja secretos, así que no necesita ser de tiempo constante. */
+ * The SHA constants are the FIPS 180-4 ones (generated with tools: fractional parts of the
+ * roots of the first primes). RSA uses Montgomery multiplication over 32-bit words; Ed25519
+ * follows TweetNaCl's arithmetic (field 2^255-19 in 16 words of 16 bits). Verification handles
+ * no secrets, so it doesn't need to be constant-time. */
 #include "crypto.h"
 
 #include <string.h>
@@ -171,7 +171,7 @@ void sha512_final(Sha512 *s, uint8_t out[64]) {
     uint64_t bits = s->len * 8;
     uint8_t pad[144] = { 0x80 };
     size_t padlen = (s->n < 112 ? 112 : 240) - s->n;
-    for (int i = 0; i < 8; i++) pad[padlen + 8 + i] = (uint8_t)(bits >> (56 - 8 * i));  /* longitud de 128 bits */
+    for (int i = 0; i < 8; i++) pad[padlen + 8 + i] = (uint8_t)(bits >> (56 - 8 * i));  /* 128-bit length */
     uint64_t keep = s->len;
     sha512_update(s, pad, padlen + 16);
     s->len = keep;
@@ -204,7 +204,7 @@ int hex_decode(const char *in, uint8_t *out, size_t n) {
 
 /* ---- RSA ---- */
 
-#define MAXL 256                        /* hasta 8192 bits */
+#define MAXL 256                        /* up to 8192 bits */
 
 static void from_be(uint32_t *a, int k, const uint8_t *p, size_t n) {
     memset(a, 0, sizeof(uint32_t) * (size_t)k);
@@ -228,7 +228,7 @@ static void sub_n(uint32_t *a, const uint32_t *b, int k) {
     }
 }
 
-/* r = a·b·R⁻¹ mod n (CIOS). r puede ser a o b. */
+/* r = a·b·R⁻¹ mod n (CIOS). r may be a or b. */
 static void mont_mul(uint32_t *r, const uint32_t *a, const uint32_t *b, const uint32_t *n, uint32_t n0, int k) {
     uint32_t t[MAXL + 2];
     memset(t, 0, sizeof(uint32_t) * (size_t)(k + 2));
@@ -265,16 +265,16 @@ int rsa_verify(const uint8_t *n_be, size_t nlen, const uint8_t *e_be, size_t ele
     size_t infolen = hash == HASH_SHA256 ? sizeof info256 : sizeof info512, dlen = hash == HASH_SHA256 ? 32 : 64;
     while (nlen && !*n_be) { n_be++; nlen--; }
     while (siglen && !*sig) { sig++; siglen--; }
-    if (!info || nlen < 128 || nlen > MAXL * 4 || siglen > nlen || !elen || elen > 8) return 0;   /* al menos 1024 bits */
+    if (!info || nlen < 128 || nlen > MAXL * 4 || siglen > nlen || !elen || elen > 8) return 0;   /* at least 1024 bits */
     int k = (int)((nlen + 3) / 4);
     uint32_t n[MAXL], s[MAXL], r2[MAXL], acc[MAXL], sm[MAXL], one[MAXL];
     from_be(n, k, n_be, nlen);
     from_be(s, k, sig, siglen);
     if (!(n[0] & 1) || cmp_n(s, n, k) >= 0) return 0;
-    uint32_t inv = n[0];                   /* n[0]⁻¹ mod 2^32 por Newton */
+    uint32_t inv = n[0];                   /* n[0]⁻¹ mod 2^32 via Newton */
     for (int i = 0; i < 5; i++) inv *= 2 - n[0] * inv;
     uint32_t n0 = (uint32_t)0 - inv;
-    /* R² mod n duplicando 2·32·k veces */
+    /* R² mod n by doubling 2·32·k times */
     memset(r2, 0, sizeof(uint32_t) * (size_t)k);
     r2[0] = 1;
     for (int i = 0; i < 64 * k; i++) {
@@ -285,7 +285,7 @@ int rsa_verify(const uint8_t *n_be, size_t nlen, const uint8_t *e_be, size_t ele
     memset(one, 0, sizeof(uint32_t) * (size_t)k);
     one[0] = 1;
     mont_mul(sm, s, r2, n, n0, k);
-    mont_mul(acc, one, r2, n, n0, k);      /* R mod n = 1 en Montgomery */
+    mont_mul(acc, one, r2, n, n0, k);      /* R mod n = 1 in Montgomery form */
     for (size_t i = 0; i < elen; i++)
         for (int b = 7; b >= 0; b--) {
             mont_mul(acc, acc, acc, n, n0, k);
@@ -490,7 +490,7 @@ static int unpackneg(gf r[4], const uint8_t p[32]) {
 }
 
 int ed25519_verify(const uint8_t pub[32], const uint8_t sig[64], const uint8_t *msg, size_t len) {
-    /* S < L (firmas maleables no) */
+    /* S < L (no malleable signatures) */
     for (int i = 31; i >= 0; i--) {
         if (sig[32 + i] < L[i]) break;
         if (sig[32 + i] > L[i] || i == 0) return 0;
@@ -512,8 +512,8 @@ int ed25519_verify(const uint8_t pub[32], const uint8_t sig[64], const uint8_t *
     return memcmp(sig, t, 32) == 0;
 }
 
-/* ---- Ed25519: firmar (las claves propias del usuario y la de desarrollo; ver docs/FIRMA.md) ----
- * Igual que crypto_sign de TweetNaCl (dominio público): clave privada = semilla de 32 bytes. */
+/* ---- Ed25519: signing (the user's own keys and the development one; see docs/SIGNING.md) ----
+ * Same as TweetNaCl's crypto_sign (public domain): private key = 32-byte seed. */
 
 static void ed25519_expand(const uint8_t seed[32], uint8_t d[64]) {
     Sha512 s;

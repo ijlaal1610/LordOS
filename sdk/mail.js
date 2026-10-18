@@ -107,7 +107,10 @@ export const mailAccounts = {
   // account: { id?, kind: 'mail'|'dav', name, email, fullName, user, imap, smtp, url, cal, card, sentSaved, signature, color }
   async add(account, password) {
     const acct = { kind: 'mail', auth: 'password', ...account, id: account.id || mailAccounts.newId(account.email || account.name || account.url) };
-    if (password) await keyring.set('mail', { service: service(acct.id), account: acct.user, secret: password, label: `${t('mail.keyring.label')} — ${acct.email || acct.user}` });
+    // the keyring may be locked or missing (no login password, e.g. autologin): the account still
+    // works for this session and Mail asks again next time
+    if (password) await keyring.set('mail', { service: service(acct.id), account: acct.user, secret: password, label: `${t('mail.keyring.label')} — ${acct.email || acct.user}` })
+      .catch((e) => { mailStatus.set((s) => ({ ...s, keyringError: e.code || 'error' })); });
     const cfg = mailConfig.get();
     cfg.accounts = [...cfg.accounts.filter((a) => a.id !== acct.id), acct];
     mailConfig.save(cfg);
@@ -130,7 +133,8 @@ export const mailAccounts = {
   async setPassword(id, password) {
     const a = mailAccounts.get(id);
     if (!a) return;
-    await keyring.set('mail', { service: service(id), account: a.user, secret: password, label: `${t('mail.keyring.label')} — ${a.email || a.user}` });
+    await keyring.set('mail', { service: service(id), account: a.user, secret: password, label: `${t('mail.keyring.label')} — ${a.email || a.user}` })
+      .catch((e) => { mailStatus.set((s) => ({ ...s, keyringError: e.code || 'error' })); });
     mailStatus.set((s) => ({ ...s, authFailed: { ...s.authFailed, [id]: false } }));
     await mailRequest('auth', { acct: id, password });
   },
@@ -219,13 +223,16 @@ export function startMail() {
         notify({ app: 'mail', title: one.from, body: one.subject || t('mail.noSubject'), timeout: 8000,
           actions: [{ id: 'open', label: t('mail.notify.open'), run: () => openMessage(ev.acct, ev.folder, one.uid) }] });
       } else if (ev.count > 1) {
-        notify({ app: 'mail', title: t('mail.notify.many', { n: ev.count }), body: ev.msgs.slice(0, 3).map((m) => `${m.from}: ${m.subject}`).join('\n'),
+        notify({ app: 'mail', title: t('mail.notify.many', { count: ev.count }), body: ev.msgs.slice(0, 3).map((m) => `${m.from}: ${m.subject}`).join('\n'),
           timeout: 8000, actions: [{ id: 'open', label: t('mail.notify.open'), run: () => openMessage(ev.acct, ev.folder) }] });
       }
     } else if (ev.ev === 'changed' || ev.ev === 'folders') {
       refreshCounts();
     } else if (ev.ev === 'send-failed') {
       notify({ app: 'mail', title: t('mail.notify.sendFailed'), body: `${ev.subject || ''}\n${ev.error || ''}`, sticky: true });
+    } else if (ev.ev === 'crash') {
+      // lord-maild went away (crash or update): start it again; lord-server waits 3 s between tries
+      setTimeout(() => { try { lord.mail.start(); } catch (e) { /* not available */ } }, 3500);
     } else if (ev.ev === 'ready') {
       refreshCounts();
     }

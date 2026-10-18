@@ -1,122 +1,122 @@
-# Temas de LordOS
+# LordOS themes
 
-Un tema es una app React que dibuja **todo el escritorio**: fondo, barras, dock o barra de
-tareas, menús y marcos de ventana. Las apps (`apps/`) van adentro de esas ventanas y se
-adaptan solas a los colores del tema. `lord-server` ejecuta el tema con QuickJS y lo pinta
-con su motor en C.
+A theme is a React app that draws **the whole desktop**: wallpaper, bars, dock or taskbar, menus
+and window frames. Apps (`apps/`) go inside those windows and adapt to the theme's colors on
+their own. `lord-server` runs the theme with QuickJS and paints it with its C engine.
 
-| Tema | Estilo |
+| Theme | Style |
 |---|---|
-| `default` | Lord Default: barra de menú, dock con magnificación, Launchpad, Centro de control |
-| `classic` | Clásico (**plantilla**): barra de tareas, menú de inicio, todo en un solo archivo |
+| `default` | Lord Default: menu bar, dock with magnification, Launchpad, Control Center |
+| `classic` | Classic (**template**): taskbar, start menu, everything in a single file |
 
 ```sh
-npm install           # una vez (React + esbuild)
-npm run build         # empaqueta todos los temas, con el SDK y todas las apps
+npm install           # once (React + esbuild)
+npm run build         # bundles every theme, with the SDK and every app
 ```
 
-El usuario cambia de tema en vivo desde **Ajustes → Temas** (sin reiniciar). La elección se
-guarda y se respeta al volver a iniciar.
+The user switches themes live from **Settings → Themes** (no restart). The choice is saved and
+respected on the next start.
 
-## Crear un tema nuevo
+## Creating a new theme
 
-1. Copiar `themes/classic` a `themes/mitema`.
-2. Editar `theme.json` (nombre y descripción que muestra Ajustes).
-3. Modificar `index.jsx`. Un tema debe:
-   - llamar a `configureWindows({ apps, workArea })` con el área libre para ventanas,
-   - envolver todo en `<ThemeProvider tokens={...}>`,
-   - dibujar cada ventana visible y adentro `<AppHost id={w.id} focused={...} />`,
-   - terminar con `startShell(<App />)`.
+1. Copy `themes/classic` to `themes/mytheme`.
+2. Edit `theme.json` (the name and description Settings shows).
+3. Modify `index.jsx`. A theme must:
+   - call `configureWindows({ apps, workArea })` with the free area for windows,
+   - wrap everything in `<ThemeProvider tokens={...}>`,
+   - draw each visible window and, inside it, `<AppHost id={w.id} focused={...} />`,
+   - end with `startShell(<App />)`.
 
-   Recomendado para que las apps se vean completas:
-   - título con `windowTitle(w)` (las apps pueden cambiarlo, ej. la Terminal),
-   - sin fondo bajo el contenido si `getApp(w.id).transparent`,
-   - menús de la app con `useAppMenus(ventanaEnfocada)` (ej.: Shell, Editar, Ver de la Terminal),
-   - el nodo de la ventana con `<WindowShell win={w} style={…marco…}>` del SDK: pone los bordes invisibles
-     para cambiar el tamaño (4 lados y 4 esquinas, con su cursor) y la barra de título llama a
-     `wm.beginMove(w.id)` en `onMouseDown`. Mover y agrandar lo hace lord-server en C, sin un evento por
-     cuadro (ver `docs/VENTANAS.md`),
-   - el punto de "app abierta" del dock comparando con `w.app` (una app puede tener varias ventanas).
-   - textos con `t('shell.…')` (ver `docs/IDIOMAS.md`), nombres de apps con `appName(app)` y
-     fecha y hora con `formatDate`/`formatTime` del SDK, para respetar idioma y región,
-   - la distribución de teclado activa con `keyboard.label(keyboard.active())` y `keyboard.next()`
-     (incluye los métodos de entrada: 한, あ, 拼),
-   - que funcione de derecha a izquierda: con un idioma RTL el motor da vuelta filas y alineación
-     solo; lo que posiciona con la x del mouse (una lupa tipo Dock) va con `direction: 'ltr'`, y
-     los menús desplegables se abren hacia la izquierda si `direction() === 'rtl'`
-     (ver el tema default y `docs/IDIOMAS.md`). La ventana de candidatos del método de entrada
-     la pone `startShell`: el tema no tiene que hacer nada.
-   - las ventanas de apps Linux (Wayland) llegan como ventanas de la app interna `linux`: si
-     `win.args.csd` es verdadero la app dibuja su propio marco y el tema muestra solo
-     `<AppHost>`; y `configureWindows({ chrome: { w, h } })` dice cuánto suma el marco del tema
-     (bordes + barra de título) para abrirlas con el tamaño que pidieron (ver `docs/WAYLAND.md`).
-4. `npm run build` y elegirlo en Ajustes → Temas.
+   Recommended so apps look complete:
+   - title with `windowTitle(w)` (apps can change it, e.g. the Terminal),
+   - no background under the content if `getApp(w.id).transparent`,
+   - the app's menus with `useAppMenus(focusedWindow)` (e.g. the Terminal's Shell, Edit, View),
+   - the window node with the SDK's `<WindowShell win={w} style={…frame…}>`: it adds the invisible
+     borders for resizing (4 sides and 4 corners, with their cursor) and the title bar calls
+     `wm.beginMove(w.id)` in `onMouseDown`. Moving and resizing are done by lord-server in C,
+     without one event per frame (see `docs/WINDOWS.md`),
+   - the dock's "app open" dot by comparing with `w.app` (an app can have several windows).
+   - texts with `t('shell.…')` (see `docs/LANGUAGES.md`), app names with `appName(app)` and date
+     and time with the SDK's `formatDate`/`formatTime`, to respect language and region,
+   - the active keyboard layout with `keyboard.label(keyboard.active())` and `keyboard.next()`
+     (it includes the input methods: 한, あ, 拼),
+   - working right-to-left: with an RTL language the engine flips rows and alignment on its own;
+     whatever is positioned with the mouse x (a Dock-style magnifier) uses `direction: 'ltr'`,
+     and drop-down menus open to the left if `direction() === 'rtl'` (see the default theme and
+     `docs/LANGUAGES.md`). The input method's candidate window is placed by `startShell`: the
+     theme doesn't need to do anything.
+   - Linux app windows (Wayland) arrive as windows of the internal app `linux`: if
+     `win.args.csd` is true the app draws its own frame and the theme shows only `<AppHost>`;
+     and `configureWindows({ chrome: { w, h } })` says how much the theme's frame adds (borders +
+     title bar) so they open at the size they asked for (see `docs/WAYLAND.md`).
+4. `npm run build` and pick it in Settings → Themes.
 
-Las imágenes (`<Image src="assets/...">`) se resuelven relativas a la carpeta del tema.
+Images (`<Image src="assets/...">`) are resolved relative to the theme's folder.
 
-## Tokens que el tema debe proveer (contrato con las apps)
+## Tokens the theme must provide (contract with the apps)
 
 `mode`, `accent`, `text`, `textDim`, `windowBg`, `sidebarBg`, `separator`, `hover`, `control`,
-`inputBg`. Opcionales: `gtkButtons` (orden de los botones de las apps GTK, ej. `':minimize,maximize,close'`; por defecto los semáforos a la izquierda, ver `docs/WAYLAND.md`), `accents` (mapa nombre → color, para Ajustes), `wallpapers`
-(`[{ id, name, src }]`). El tema puede agregar los tokens propios que quiera.
+`inputBg`. Optional: `gtkButtons` (order of the GTK apps' buttons, e.g. `':minimize,maximize,close'`; by default the traffic lights on the left, see `docs/WAYLAND.md`), `accents` (name → color map, for Settings), `wallpapers`
+(`[{ id, name, src }]`). The theme can add any tokens of its own.
 
-## Componentes nativos
+## Native components
 
-| Componente | Qué es |
+| Component | What it is |
 |---|---|
-| `<View>`  | caja con layout flexbox, fondo, borde, sombra, blur |
-| `<Text>`  | texto (fuente Inter 400/500/600/700), con ajuste de línea |
-| `<Terminal session={id}>` | grilla de una sesión de terminal (dibujada en C) |
-| `<Image src>` | PNG o JPEG, con `objectFit` |
+| `<View>`  | a box with flexbox layout, background, border, shadow, blur |
+| `<Text>`  | text (Inter font 400/500/600/700), with line wrapping |
+| `<Terminal session={id}>` | the grid of a terminal session (drawn in C) |
+| `<Image src>` | PNG or JPEG, with `objectFit` |
 
-Eventos: `onMouseDown`, `onMouseUp`, `onClick`, `onDoubleClick`, `onContextMenu` (clic derecho),
+Events: `onMouseDown`, `onMouseUp`, `onClick`, `onDoubleClick`, `onContextMenu` (right click),
 `onMouseMove`, `onMouseEnter`, `onMouseLeave`, `onWheel` (`e.deltaY`).
-Touchpad y pantalla táctil (`docs/TRACKPAD.md`):
-- `onWheel` también llega con `e.precise: true`, `e.deltaX`/`e.deltaY` en píxeles exactos y
-  `e.phase` (`'update'`, `'end'`, `'momentum'` mientras sigue por inercia, `'momentum-end'`);
-  `e.notches` cuenta pasos enteros de 48 px (para lo que avanza de a renglón).
-- `onPinch({ scale, rotation, x, y, dx, dy, phase })`: `scale` relativa al comienzo, `rotation`
-  acumulada en grados, `phase` `'begin'`/`'update'`/`'end'`.
+Touchpad and touchscreen (`docs/TRACKPAD.md`):
+- `onWheel` also arrives with `e.precise: true`, `e.deltaX`/`e.deltaY` in exact pixels and
+  `e.phase` (`'update'`, `'end'`, `'momentum'` while it keeps going by inertia, `'momentum-end'`);
+  `e.notches` counts whole 48 px steps (for things that advance line by line).
+- `onPinch({ scale, rotation, x, y, dx, dy, phase })`: `scale` relative to the start, `rotation`
+  accumulated in degrees, `phase` `'begin'`/`'update'`/`'end'`.
 - `onSwipe({ dx, dy, fingers, phase, system })`.
 
-Durante un gesto el destino queda fijo: el nodo que estaba bajo el puntero al empezar.
-Globales: `addListener('pointermove' | 'pointerup' | 'pointerdown' | 'keydown' | 'keyup' | 'swipe' | 'pinch', fn)`.
+During a gesture the target stays fixed: the node that was under the pointer when it started.
+Globals: `addListener('pointermove' | 'pointerup' | 'pointerdown' | 'keydown' | 'keyup' | 'swipe' | 'pinch', fn)`.
 
-Deslizar con tres dedos (o cuatro, según Ajustes → Trackpad) es del escritorio. El tema elige qué
-hace cada dirección con `registerGestureActions({ up, down, left, right })` del SDK, que devuelve
-la función para sacarlas (usarlo en un `useEffect`). Ejemplos:
-- `default`: arriba abre el Launchpad y abajo lo cierra;
-- `classic`: arriba abre el menú de inicio y abajo lo cierra.
+Three-finger swipes (or four, depending on Settings → Trackpad) belong to the desktop. The theme
+chooses what each direction does with the SDK's `registerGestureActions({ up, down, left, right })`,
+which returns the function to remove them (use it in a `useEffect`). Examples:
+- `default`: up opens the Launchpad and down closes it;
+- `classic`: up opens the start menu and down closes it.
 
-Sin acción del tema, izquierda y derecha cambian de ventana y arriba/abajo no hacen nada.
-Teclado: `e.key`, `e.char` (según distribución), `e.code` (evdev), `e.shift`, `e.ctrl`, `e.alt`.
+Without a theme action, left and right switch windows and up/down do nothing.
+Keyboard: `e.key`, `e.char` (depending on the layout), `e.code` (evdev), `e.shift`, `e.ctrl`, `e.alt`.
 
-## Widgets del escritorio
+## Desktop widgets
 
-Un tema dibuja `<DesktopWidgets layer="below" />` entre el fondo y las ventanas y
-`<DesktopWidgets layer="above" />` encima de ellas (las notas de la app Notas, por ejemplo; ver
-`docs/NOTAS.md`). Los dos temas incluidos ya lo hacen.
+A theme draws `<DesktopWidgets layer="below" />` between the wallpaper and the windows and
+`<DesktopWidgets layer="above" />` above them (the Notes app's notes, for example; see
+`docs/NOTES.md`). Both bundled themes already do it.
 
-## Estilos soportados (subconjunto de CSS)
+## Supported styles (a CSS subset)
 
 - **Layout:** `display` (`flex`/`none`), `position` (`relative`/`absolute`), `flexDirection`
-  (por defecto `column`, como React Native), `flexWrap` (`nowrap`/`wrap`: los hijos que no
-  entran pasan a otra línea; `gap` separa también las líneas, que van al comienzo: sin
-  `wrap-reverse` ni `alignContent`), `justifyContent`, `alignItems`, `alignSelf`, `flex`,
+  (`column` by default, like React Native), `flexWrap` (`nowrap`/`wrap`: children that don't fit
+  move to another line; `gap` also separates the lines, which go at the start: no
+  `wrap-reverse` or `alignContent`), `justifyContent`, `alignItems`, `alignSelf`, `flex`,
   `flexGrow`, `flexShrink`, `flexBasis`, `gap`, `width`/`height` (px, `%`, `auto`),
   `min*`/`max*`, `left`/`top`/`right`/`bottom`, `inset`, `margin*`, `padding*`, `overflow`, `zIndex`.
 - **Visual:** `backgroundColor`, `background: linear-gradient(...)`, `borderRadius`, `border`,
   `borderWidth`, `borderColor`, `opacity`, `boxShadow`, `backdropFilter: blur(px)`,
   `transform: translate(...)` / `translateX` / `translateY`, `pointerEvents`, `cursor` (`default`, `pointer`,
   `text`, `move`, `grab`, `grabbing`, `not-allowed`, `wait`, `progress`, `crosshair`, `n-resize`… `ew-resize`,
-  `ns-resize`, `nesw-resize`, `nwse-resize`; vale el del primer nodo hacia arriba que lo tenga).
-- **Texto:** `color`, `fontSize`, `fontWeight`, `lineHeight`, `textAlign`, `whiteSpace: nowrap`.
-- **Imagen:** `objectFit` (`cover`, `contain`, `fill`).
+  `ns-resize`, `nesw-resize`, `nwse-resize`; the one of the first node upwards that has it applies).
+- **Text:** `color`, `fontSize`, `fontWeight`, `lineHeight`, `textAlign`, `whiteSpace: nowrap`.
+- **Image:** `objectFit` (`cover`, `contain`, `fill`).
 
-Colores: `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()` y algunos nombres.
-Todavía no hay: `flexWrap`, bordes por lado, radios por esquina, `transform: scale/rotate`,
-animaciones CSS (se animan desde JS con estado y `requestAnimationFrame`).
+Colors: `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()` and some names.
+Not available yet: `flexWrap`, per-side borders, per-corner radii, `transform: scale/rotate`,
+CSS animations (animate from JS with state and `requestAnimationFrame`).
 
-El SDK completo está en `apps/README.md`.
+The full SDK is in `apps/README.md`.
 
-El Dock o la barra de tareas siguen `dockPrefs(settings)` del SDK (posición, tamaño, lupa, esconder solo): ver `docs/DOCK.md`.
+The Dock or the taskbar follow the SDK's `dockPrefs(settings)` (position, size, magnifier,
+auto-hide): see `docs/DOCK.md`.

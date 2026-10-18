@@ -1,21 +1,21 @@
-/* js_doc.c — lord.doc: PDF, comprimidos, fuentes e imágenes por el ayudante encerrado lord-doc
- * (server/src/doc, ver docs/DOCUMENTOS.md). Acá solo se validan rutas y argumentos y se abren
- * los archivos; ni Poppler ni libarchive se cargan en lord-server. Todo es asincrónico: cada
- * función devuelve ids y los resultados llegan con lord.doc.poll().
+/* js_doc.c — lord.doc: PDF, archives, fonts and images through the confined lord-doc helper
+ * (server/src/doc, see docs/DOCUMENTS.md). Here we only validate paths and arguments and open
+ * the files; neither Poppler nor libarchive is loaded into lord-server. Everything is asynchronous: each
+ * function returns ids and the results arrive with lord.doc.poll().
  *
- *   available()                              ¿está el ayudante?
- *   openPdf(ruta) / openBlob(blob)           → sid (sesión con el PDF; después request(sid, 'open'))
- *   request(sid, op, json, prio, plazoMs)    → id del pedido (op: open render select find outline
+ *   available()                              is the helper there?
+ *   openPdf(path) / openBlob(blob)           → sid (session with the PDF; then request(sid, 'open'))
+ *   request(sid, op, json, prio, timeoutMs)  → request id (op: open render select find outline
  *                                              pageinfo setfield annot undo blob list)
- *   savePdf(sid, ruta)                       → id (copia nueva, nunca pisa)
- *   arcList(ruta)                            → { sid, req }
- *   arcExtract(ruta, carpeta, json, existe)  → { sid, req } (carpeta nueva salvo existe=true)
- *   arcCreate([rutas], destino.zip)          → { sid, req }
- *   util(op, json, ruta?, salida?)           → id (fontinfo fontrender fontgrid maketext makeimage
- *                                              decode convert), en una sesión de utilidades
+ *   savePdf(sid, path)                       → id (new copy, never overwrites)
+ *   arcList(path)                            → { sid, req }
+ *   arcExtract(path, folder, json, exists)   → { sid, req } (new folder unless exists=true)
+ *   arcCreate([paths], dest.zip)             → { sid, req }
+ *   util(op, json, path?, output?)           → id (fontinfo fontrender fontgrid maketext makeimage
+ *                                              decode convert), in a utilities session
  *   cancel(sid, req), close(sid), poll(), pending()
- *   bind(nodo, imagen) / release(imagen)     una imagen devuelta en un <Image>
- *   blobRelease(blob), blobSave(blob, ruta)
+ *   bind(node, image) / release(image)       a returned image in an <Image>
+ *   blobRelease(blob), blobSave(blob, path)
  */
 #include "js_doc.h"
 #include "js_sys.h"
@@ -43,7 +43,7 @@ static int home_real(char *out) {
     return h && realpath(h, out) ? 0 : -1;
 }
 
-/* Ruta de lectura: relativa a la carpeta personal o absoluta, real y dentro de las raíces. */
+/* Read path: relative to the home folder or absolute, real and inside the roots. */
 static int resolve_read(const char *path, char *out) {
     char full[PATH_MAX * 2], home[PATH_MAX];
     if (!path || !path[0]) return -1;
@@ -54,7 +54,7 @@ static int resolve_read(const char *path, char *out) {
     return fsops_allowed(out) ? 0 : -1;
 }
 
-/* Además de la carpeta personal: las fuentes del sistema (Tipografías las muestra). */
+/* Besides the home folder: the system fonts (Fonts shows them). */
 static int resolve_font(const char *path, char *out) {
     if (!resolve_read(path, out)) return 0;
     char full[PATH_MAX];
@@ -81,14 +81,14 @@ static int open_file(const char *real) {
     return fd;
 }
 
-/* Archivo nuevo para escribir (nunca pisa: O_EXCL). */
+/* New file for writing (never overwrites: O_EXCL). */
 static int open_new(const char *path) {
     char target[PATH_MAX + 300];
     if (!path || js_sys_resolve_target(path, target, sizeof target)) return -1;
     return open(target, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0644);
 }
 
-static JSValue throw_path(JSContext *c) { return JS_ThrowRangeError(c, "ruta fuera de la carpeta personal o inválida"); }
+static JSValue throw_path(JSContext *c) { return JS_ThrowRangeError(c, "path outside the home folder or invalid"); }
 
 static const char *arg_str(JSContext *c, int argc, JSValueConst *argv, int i) {
     return i < argc && JS_IsString(argv[i]) ? JS_ToCString(c, argv[i]) : NULL;
@@ -100,7 +100,7 @@ static int arg_int(JSContext *c, int argc, JSValueConst *argv, int i, int def) {
     return v;
 }
 
-/* JSON de argumentos (texto que ya armó JS con JSON.stringify), con tope */
+/* JSON arguments (text JS already built with JSON.stringify), with a cap */
 static const char *arg_json(JSContext *c, int argc, JSValueConst *argv, int i, size_t *len) {
     *len = 0;
     if (i >= argc || !JS_IsString(argv[i])) return NULL;
@@ -122,7 +122,7 @@ static const struct { const char *name; uint32_t op; int timeout; int out; } uti
     { "convert", DQ_IMG_CONVERT, 60000, 1 }, { "pdfthumb", DQ_PDF_THUMB, 20000, 0 }, { "warm", DQ_WARM, 20000, 0 },
 };
 
-/* ---- funciones ---- */
+/* ---- functions ---- */
 
 static JSValue f_available(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc; (void)argv;
@@ -137,19 +137,19 @@ static JSValue f_open_pdf(JSContext *c, JSValueConst t, int argc, JSValueConst *
     if (p) JS_FreeCString(c, p);
     if (bad) return throw_path(c);
     int fd = open_file(real);
-    if (fd < 0) return JS_ThrowTypeError(c, "no se pudo abrir: %s", strerror(errno));
+    if (fd < 0) return JS_ThrowTypeError(c, "could not open: %s", strerror(errno));
     DocInitFd init = { fd, "file" };
     int sid = doc_session("pdf", &init, 1);
-    return sid > 0 ? JS_NewInt32(c, sid) : JS_ThrowInternalError(c, "sin ayudante de documentos");
+    return sid > 0 ? JS_NewInt32(c, sid) : JS_ThrowInternalError(c, "no document helper");
 }
 
 static JSValue f_open_blob(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     int fd = doc_blob_dup(arg_int(c, argc, argv, 0, 0), NULL);
-    if (fd < 0) return JS_ThrowRangeError(c, "blob inválido");
+    if (fd < 0) return JS_ThrowRangeError(c, "invalid blob");
     DocInitFd init = { fd, "file" };
     int sid = doc_session("pdf", &init, 1);
-    return sid > 0 ? JS_NewInt32(c, sid) : JS_ThrowInternalError(c, "sin ayudante de documentos");
+    return sid > 0 ? JS_NewInt32(c, sid) : JS_ThrowInternalError(c, "no document helper");
 }
 
 static JSValue f_request(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
@@ -162,7 +162,7 @@ static JSValue f_request(JSContext *c, JSValueConst t, int argc, JSValueConst *a
     for (size_t i = 0; i < sizeof pdf_ops / sizeof pdf_ops[0]; i++)
         if (!strcmp(op, pdf_ops[i].name)) { code = pdf_ops[i].op; timeout = pdf_ops[i].timeout; }
     JS_FreeCString(c, op);
-    if (!code) return JS_ThrowRangeError(c, "op desconocida");
+    if (!code) return JS_ThrowRangeError(c, "unknown op");
     size_t len;
     const char *json = arg_json(c, argc, argv, 2, &len);
     int prio = arg_int(c, argc, argv, 3, 0);
@@ -179,7 +179,7 @@ static JSValue f_save_pdf(JSContext *c, JSValueConst t, int argc, JSValueConst *
     const char *p = arg_str(c, argc, argv, 1);
     int fd = open_new(p);
     if (p) JS_FreeCString(c, p);
-    if (fd < 0) return errno == EEXIST ? JS_ThrowRangeError(c, "ya existe") : throw_path(c);
+    if (fd < 0) return errno == EEXIST ? JS_ThrowRangeError(c, "already exists") : throw_path(c);
     int id = doc_request(sid, DQ_PDF_SAVE, "{}", 2, &fd, 1, 5, 120000);
     return JS_NewInt32(c, id);
 }
@@ -199,15 +199,15 @@ static JSValue f_arc_list(JSContext *c, JSValueConst t, int argc, JSValueConst *
     if (p) JS_FreeCString(c, p);
     if (bad) return throw_path(c);
     int fd = open_file(real);
-    if (fd < 0) return JS_ThrowTypeError(c, "no se pudo abrir: %s", strerror(errno));
+    if (fd < 0) return JS_ThrowTypeError(c, "could not open: %s", strerror(errno));
     DocInitFd init = { fd, "file" };
     int sid = doc_session("arc", &init, 1);
-    if (sid < 0) return JS_ThrowInternalError(c, "sin ayudante de documentos");
+    if (sid < 0) return JS_ThrowInternalError(c, "no document helper");
     return pair(c, sid, doc_request(sid, DQ_ARC_LIST, "{\"slot\":0}", 10, NULL, 0, 0, 0));
 }
 
-/* arcExtract(comprimido, carpeta, json, existe): la carpeta se crea (falla si ya existe) salvo
- * existe=true (la caché de la Vista rápida); el json puede traer only y rawname. */
+/* arcExtract(archive, folder, json, exists): the folder is created (fails if it already exists) unless
+ * exists=true (the Quick Look cache); the json may carry only and rawname. */
 static JSValue f_arc_extract(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     const char *p = arg_str(c, argc, argv, 0), *d = arg_str(c, argc, argv, 1);
@@ -217,15 +217,15 @@ static JSValue f_arc_extract(JSContext *c, JSValueConst t, int argc, JSValueCons
     if (d) JS_FreeCString(c, d);
     if (bad) return throw_path(c);
     int existing = argc > 3 && JS_ToBool(c, argv[3]) > 0;
-    if (!existing && mkdir(target, 0755)) return errno == EEXIST ? JS_ThrowRangeError(c, "ya existe") : JS_ThrowTypeError(c, "%s", strerror(errno));
+    if (!existing && mkdir(target, 0755)) return errno == EEXIST ? JS_ThrowRangeError(c, "already exists") : JS_ThrowTypeError(c, "%s", strerror(errno));
     int dfd = open(target, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (dfd < 0) return JS_ThrowTypeError(c, "%s", strerror(errno));
     int fd = open_file(real);
-    if (fd < 0) { close(dfd); return JS_ThrowTypeError(c, "no se pudo abrir: %s", strerror(errno)); }
+    if (fd < 0) { close(dfd); return JS_ThrowTypeError(c, "could not open: %s", strerror(errno)); }
     DocInitFd init[2] = { { fd, "file" }, { dfd, "rw" } };
     int sid = doc_session("arc", init, 2);
-    if (sid < 0) return JS_ThrowInternalError(c, "sin ayudante de documentos");
-    /* {"slot":0,"dir":1, ...lo de JS} */
+    if (sid < 0) return JS_ThrowInternalError(c, "no document helper");
+    /* {"slot":0,"dir":1, ...what JS sent} */
     size_t len;
     const char *json = arg_json(c, argc, argv, 2, &len);
     char *full = malloc(len + 32);
@@ -247,7 +247,7 @@ static JSValue f_arc_create(JSContext *c, JSValueConst t, int argc, JSValueConst
     int32_t n = 0;
     JS_ToInt32(c, &n, lv);
     JS_FreeValue(c, lv);
-    if (n < 1 || n > DOC_INIT_FDS - 1) return JS_ThrowRangeError(c, "entre 1 y %d elementos", DOC_INIT_FDS - 1);
+    if (n < 1 || n > DOC_INIT_FDS - 1) return JS_ThrowRangeError(c, "between 1 and %d items", DOC_INIT_FDS - 1);
     DocInitFd *init = calloc((size_t)n + 1, sizeof *init);
     if (!init) return JS_ThrowOutOfMemory(c);
     JBuf items;
@@ -266,7 +266,7 @@ static JSValue f_arc_create(JSContext *c, JSValueConst t, int argc, JSValueConst
         if (fd < 0 || fstat(fd, &st) || !(S_ISREG(st.st_mode) || S_ISDIR(st.st_mode))) { if (fd >= 0) close(fd); bad = 1; break; }
         const char *base = strrchr(real, '/');
         base = base && base[1] ? base + 1 : "x";
-        /* casilla k: los fds van en este orden (doc.c conserva el orden al mandarlos) */
+        /* slot k: the fds go in this order (doc.c keeps the order when sending them) */
         init[k].fd = fd;
         init[k].role = S_ISDIR(st.st_mode) ? "ro" : "file";
         jb_printf(&items, "%s{\"slot\":%d,\"name\":", k ? "," : "", k);
@@ -282,7 +282,7 @@ static JSValue f_arc_create(JSContext *c, JSValueConst t, int argc, JSValueConst
         for (int i = 0; i < k; i++) close(init[i].fd);
         free(init);
         jb_free(&items);
-        return !bad && eexist ? JS_ThrowRangeError(c, "ya existe") : throw_path(c);
+        return !bad && eexist ? JS_ThrowRangeError(c, "already exists") : throw_path(c);
     }
     init[k].fd = ofd;
     init[k].role = "out";
@@ -296,7 +296,7 @@ static JSValue f_arc_create(JSContext *c, JSValueConst t, int argc, JSValueConst
     free(init);
     int req = sid > 0 && !j.oom ? doc_request(sid, DQ_ARC_CREATE, j.p, j.n, NULL, 0, 0, 0) : -1;
     jb_free(&j);
-    if (sid < 0) return JS_ThrowInternalError(c, "sin ayudante de documentos");
+    if (sid < 0) return JS_ThrowInternalError(c, "no document helper");
     return pair(c, sid, req);
 }
 
@@ -308,7 +308,7 @@ static JSValue f_util(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     for (size_t i = 0; i < sizeof util_ops / sizeof util_ops[0]; i++) if (!strcmp(op, util_ops[i].name)) k = (int)i;
     int font = !strncmp(op, "font", 4);
     JS_FreeCString(c, op);
-    if (k < 0) return JS_ThrowRangeError(c, "op desconocida");
+    if (k < 0) return JS_ThrowRangeError(c, "unknown op");
     int fds[2], nfds = 0;
     const char *p = arg_str(c, argc, argv, 2);
     if (p) {
@@ -317,19 +317,19 @@ static JSValue f_util(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
         JS_FreeCString(c, p);
         if (bad) return throw_path(c);
         int fd = open_file(real);
-        if (fd < 0) return JS_ThrowTypeError(c, "no se pudo abrir: %s", strerror(errno));
+        if (fd < 0) return JS_ThrowTypeError(c, "could not open: %s", strerror(errno));
         fds[nfds++] = fd;
     }
     if (util_ops[k].out) {
         const char *o = arg_str(c, argc, argv, 3);
         int ofd = open_new(o);
         if (o) JS_FreeCString(c, o);
-        if (ofd < 0) { for (int i = 0; i < nfds; i++) close(fds[i]); return errno == EEXIST ? JS_ThrowRangeError(c, "ya existe") : throw_path(c); }
+        if (ofd < 0) { for (int i = 0; i < nfds; i++) close(fds[i]); return errno == EEXIST ? JS_ThrowRangeError(c, "already exists") : throw_path(c); }
         fds[nfds++] = ofd;
     }
     size_t len;
     const char *json = arg_json(c, argc, argv, 1, &len);
-    /* una sola sesión de utilidades, larga; si se cayó, otra */
+    /* a single, long-lived utilities session; if it died, another one */
     if (util_sid <= 0 || !doc_alive(util_sid)) {
         if (util_sid > 0) doc_close(util_sid);
         util_sid = doc_session("util", NULL, 0);
@@ -337,7 +337,7 @@ static JSValue f_util(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     int id = util_sid > 0 ? doc_request(util_sid, util_ops[k].op, json, len, fds, nfds, 0, util_ops[k].timeout) : -1;
     if (util_sid <= 0) for (int i = 0; i < nfds; i++) close(fds[i]);
     if (json) JS_FreeCString(c, json);
-    if (id < 0) return JS_ThrowInternalError(c, "sin ayudante de documentos");
+    if (id < 0) return JS_ThrowInternalError(c, "no document helper");
     JSValue o = pair(c, util_sid, id);
     return o;
 }
@@ -368,7 +368,7 @@ static JSValue f_pending(JSContext *c, JSValueConst t, int argc, JSValueConst *a
     return JS_NewInt32(c, doc_pending());
 }
 
-/* bind(nodo, imagen): la imagen devuelta pasa a ser el contenido de un <Image> (copia). */
+/* bind(node, image): the returned image becomes the content of an <Image> (copy). */
 static JSValue f_bind(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     Node *n = node_get(arg_int(c, argc, argv, 0, -1));
@@ -408,7 +408,7 @@ static JSValue f_blob_save(JSContext *c, JSValueConst t, int argc, JSValueConst 
     const char *p = arg_str(c, argc, argv, 1);
     int fd = open_new(p);
     if (p) JS_FreeCString(c, p);
-    if (fd < 0) return errno == EEXIST ? JS_ThrowRangeError(c, "ya existe") : throw_path(c);
+    if (fd < 0) return errno == EEXIST ? JS_ThrowRangeError(c, "already exists") : throw_path(c);
     int r = doc_blob_copy(arg_int(c, argc, argv, 0, 0), fd);
     close(fd);
     return JS_NewBool(c, r == 0);
@@ -444,7 +444,7 @@ static const JSCFunctionListEntry doc_funcs[] = {
 };
 
 void js_doc_register(JSContext *c, JSValue lord) {
-    /* el ayudante lee las fuentes de LordOS para la Vista rápida y las muestras */
+    /* the helper reads LordOS's fonts for Quick Look and the samples */
     const char *assets = js_sys_assets();
     if (assets && !getenv("LORD_DOC_FONTS")) {
         char p[PATH_MAX];

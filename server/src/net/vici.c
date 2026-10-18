@@ -1,12 +1,12 @@
-/* vici.c — cliente propio del protocolo VICI de strongSwan (el que usa swanctl), lado root.
+/* vici.c — our own client for strongSwan's VICI protocol (the one swanctl uses), root side.
  *
- * Lo usamos en vez de swanctl porque el perfil de AppArmor de Debian para swanctl solo lo deja
- * hablar con /run/charon.vici y leer /etc/swanctl: con VICI propio, las claves y certificados
- * viajan por el socket y ningún programa tiene que leer nuestros archivos.
+ * We use it instead of swanctl because Debian's AppArmor profile for swanctl only lets it
+ * talk to /run/charon.vici and read /etc/swanctl: with our own VICI, keys and certificates
+ * travel over the socket and no program has to read our files.
  *
- * Paquete: largo (4 bytes, big endian) + tipo (1 byte) + [nombre (1 byte de largo + texto)] +
- * mensaje. Mensaje: elementos SECTION_START(nombre) / SECTION_END / KEY_VALUE(clave, valor de
- * 2 bytes de largo) / LIST_START(nombre) / LIST_ITEM(valor) / LIST_END. */
+ * Packet: length (4 bytes, big endian) + type (1 byte) + [name (1 length byte + text)] +
+ * message. Message: elements SECTION_START(name) / SECTION_END / KEY_VALUE(key, value with a
+ * 2-byte length) / LIST_START(name) / LIST_ITEM(value) / LIST_END. */
 #include "vici.h"
 
 #include <errno.h>
@@ -31,7 +31,7 @@ int vici_connect(const char *path) {
     return fd;
 }
 
-/* ---- construir ---- */
+/* ---- building ---- */
 
 static void put(ViciMsg *m, const void *p, size_t n) {
     if (m->oom) return;
@@ -73,7 +73,7 @@ void vici_item(ViciMsg *m, const char *val) {
 void vici_list_end(ViciMsg *m) { uint8_t t = LIST_END; put(m, &t, 1); }
 void vici_free(ViciMsg *m) { if (m->p) memset(m->p, 0, m->len); free(m->p); memset(m, 0, sizeof *m); }
 
-/* ---- enviar y recibir ---- */
+/* ---- sending and receiving ---- */
 
 static int send_packet(int fd, uint8_t type, const char *name, const ViciMsg *msg) {
     size_t nl = name ? strlen(name) : 0, body = 1 + (name ? 1 + nl : 0) + (msg ? msg->len : 0);
@@ -110,7 +110,7 @@ static int read_full(int fd, uint8_t *p, size_t n, int timeout_ms) {
     return 0;
 }
 
-/* Un paquete: devuelve su tipo, y en body y blen el resto (malloc). */
+/* One packet: returns its type, and the rest in body and blen (malloc). */
 static int recv_packet(int fd, uint8_t **body, size_t *blen, int timeout_ms) {
     uint8_t h[4];
     if (read_full(fd, h, 4, timeout_ms)) return -1;
@@ -123,8 +123,8 @@ static int recv_packet(int fd, uint8_t **body, size_t *blen, int timeout_ms) {
     return p[0];
 }
 
-/* Recorre un mensaje y llama a fn(sección actual, clave o nombre de lista, valor) por cada
- * KEY_VALUE y LIST_ITEM. La sección es la ruta "a/b/c" (secciones separadas por barras). */
+/* Walks a message and calls fn(current section, key or list name, value) for each
+ * KEY_VALUE and LIST_ITEM. The section is the path "a/b/c" (sections separated by slashes). */
 void vici_walk(const uint8_t *m, size_t n, ViciFn fn, void *ud) {
     char path[512] = "", list[256] = "";
     size_t i = 0;
@@ -213,7 +213,7 @@ int vici_call(int fd, const char *cmd, const ViciMsg *req, const char *event, Vi
     return rc;
 }
 
-/* ---- respuesta simple: success / errmsg ---- */
+/* ---- simple reply: success / errmsg ---- */
 
 static void ok_cb(const char *path, const char *key, const char *val, void *ud) {
     ViciResult *r = ud;

@@ -9,7 +9,7 @@ Screenshots, dark and light: Displays (`ajustes-pantallas-oscuro.png`, `-claro.p
 (`ajustes-bluetooth-*`), Energy (`ajustes-energia-*`), Notifications (`ajustes-notificaciones-*`,
 plus `ajustes-notificaciones-app-claro.png`), Date & Time (`ajustes-fecha-hora-*`), Default Apps
 (`ajustes-apps-por-defecto-*`); the revert countdown in both modes (`ajustes-pantallas-revertir.png`,
-`ajustes-pantallas-revertir-claro.png`), 200 % (`ajustes-pantallas-200.png`), rotation, Night Shift,
+`ajustes-pantallas-revertir-claro.png`), 200 % before sharp HiDPI (`ajustes-pantallas-200.png`; now see `DISPLAYS.md`), rotation, Night Shift,
 pairing, Sound with a Bluetooth headset, a Linux app's notification and Files' "Open With".
 
 | Page | Sidebar group | Code |
@@ -60,11 +60,12 @@ timer that sleeps until the next change (30 s steps only during the 30-minute fa
   timing) and `hw/modes.c` computes exact refresh rates (`clock·1000/(htotal·vtotal)`, interlace
   and double-scan aware), the list of resolutions (largest first, highest rate per size) and the
   best mode for a size and rate (progressive before interlaced; ties go to the preferred mode).
-- **Applying.** `lord.display.apply(conn, w, h, mHz, rotation, scale)` queues the change and
-  `main.c` runs it between frames (never with a page flip pending): the GPU path stops (its GBM
-  surfaces have the old size), `kms_modeset()` recreates the dumb buffers and calls `SETCRTC`, the
-  session takes the new size (`set_size`: work area, windows and Wayland outputs follow) and the GPU
-  starts again. If the driver refuses the mode, the previous one is restored.
+- **Applying.** `lord.display.apply(conn, w, h, mHz, rotation, scale)` changes that display's live
+  configuration and `main.c` applies the whole display plan between frames (never with a page flip
+  pending): the GPU path stops, heads are modeset, opened or closed (`outputs_apply`, see
+  `DISPLAYS.md`), the session takes the new logical space (work areas, windows and Wayland outputs
+  follow) and the GPU starts again. If the driver refuses a mode, the previous configuration is
+  restored.
 - **"Keep these display settings?"** The system draws the dialog (`DisplayConfirm`, mounted by
   `startShell`, so it works even if Settings is closed) and goes back to the previous mode after
   15 seconds without an answer, like macOS.
@@ -74,39 +75,36 @@ timer that sleeps until the next change (30 s steps only during the 30-minute fa
 - **Saved per display.** "Keep" writes `~/.config/lordos/displays.json`:
 
   ```json
-  { "main": "RHT-1234-QEMU_Monitor",
-    "displays": { "RHT-1234-QEMU_Monitor": { "w": 1920, "h": 1080, "refresh": 60000, "rotation": 0, "scale": 1 } } }
+  { "main": "RHT-1234-QEMU_Monitor", "mirror": false, "captureAll": false,
+    "displays": {
+      "RHT-1234-QEMU_Monitor": { "w": 1280, "h": 800, "refresh": 74994, "rotation": 0, "scale": 100, "x": 0, "y": 0 },
+      "RHT-1234-QEMU_Monitor@Virtual-2": { "w": 2560, "h": 1600, "refresh": 74999, "rotation": 0, "scale": 150, "x": 1280, "y": 0 } } }
   ```
 
-  The key is the EDID identity (`vendor-product-serial`, or the name when there is no serial).
-  `kms.c` asks `display_pick()` (registered with `kms_set_picker`) every time `lord-sessiond` lends
-  the monitor to the session, so the saved mode and main display are used from the first frame.
-  Two identical monitors without serial numbers share an identity. The greeter always uses the
-  preferred mode.
-- **Main display.** With several connected outputs, "Use as Main Display" moves the session to
-  another connector (and its preferred mode). Unplugging the display in use moves to another one
-  automatically (DRM uevent → `display_hotplug()`).
-- **Rotation (90°, 180°, 270°).** Done by software: the frame is composed upright at the logical
-  size in a staging buffer and copied rotated into the card's buffer, only the damaged rectangles.
-  The cursor is composited apart so the staging buffer stays clean. Tablets and touch screens report
-  physical positions, which are mapped back (`display_unrotate_point`). A rotated screen is always
-  composed by the CPU (the GPU path and direct scanout are off).
+  The key is the EDID identity (`vendor-product-serial`, or the name when there is no serial); two
+  connected monitors with the same identity get the connector appended. `scale` is in percent (0 =
+  follow the recommended one; files with 1 or 2 are read as 100 and 200 %); `x`, `y` place the display
+  relative to the main one. `kms.c` asks `display_pick()` (registered with `kms_set_picker`) every
+  time `lord-sessiond` lends the monitor to the session, so the main display's saved mode is used
+  from the first frame; the other displays open right after. The greeter always uses the preferred
+  mode.
+- **Main display.** "Use as Main Display" moves the menu bar and the Dock to another display (no
+  modeset; the arrangement stays). A plugged display is added and an unplugged one removed (DRM
+  uevent → `display_hotplug()` → resync); its windows go to the main display.
+- **Rotation (90°, 180°, 270°)**, per display. Done by software: the display's frame is composed
+  upright and copied rotated into the card's buffer, only the damaged rectangles. The cursor is
+  composited apart so the frame stays clean. Tablets and touch screens report physical positions,
+  which are mapped back (`display_unrotate_point`) when there is one display. A rotated display
+  turns the GPU path off.
 
   ![Rotated 90°](ajustes-pantallas-rotada.png)
-- **Scale.** The engine has no resolution-independent scale: styles, layout boxes, `getLayout`,
-  pointer coordinates, window grabs and Wayland surfaces are all in physical pixels. What exists
-  now is **200 %**: the session runs at half the size and every pixel is doubled while copying the
-  frame (CPU path, like rotation; both combine). Limits, documented in the page:
-  - text and icons are as sharp as on a screen of half the resolution (not Retina-sharp);
-  - no 125 % or 150 % (a fractional upscale would blur everything);
-  - Linux apps are doubled too (they see a 1× output).
+- **Scale** (100, 125, 150, 175, 200 %), per display, sharp: the UI is laid out in logical px and
+  rasterized at the display's resolution (text, vectors, images, the Terminal, the cursor). The
+  menu marks the **recommended** one, from the EDID size (about 110 logical px per inch, never
+  less than 1024×600 logical). Linux apps get the exact scale through fractional-scale-v1 (GTK 4,
+  Qt 6, Chromium render at it) and legacy ones `wl_output.scale`. See `DISPLAYS.md`.
 
-  ![200 %: the 1280×800 screen looks like 640×400](ajustes-pantallas-200.png)
-
-  Sharp HiDPI needs a scale factor applied when styles are parsed (`ui/style.c`: lengths and font
-  sizes), with `getLayout`, pointer and gesture coordinates divided by it in `ui/js.c`, window grabs
-  (`ui/grab.c`, `js_wm.c`) in logical units, `wl_output.scale` and `wl_surface.set_buffer_scale`
-  honored in `wl/wl.c`, and the Terminal's cell size scaled. That is pending.
+  ![100 % and 150 % side by side](displays-150.png)
 - **Brightness.** Read from `/sys/class/backlight` (anyone can), written through the closed admin
   action `display-brightness <name> <value>`: the name must be a real backlight under `/sys/devices`
   and the value within `0..max_brightness`. External monitors (DDC/CI) and virtual machines have
@@ -125,11 +123,12 @@ timer that sleeps until the next change (30 s steps only during the 30-minute fa
   for Computers algorithm (`night_sun_times`, within ±4 min of NOAA in the tests) at the
   coordinates of the **chosen time zone** in `/usr/share/zoneinfo/zone1970.tab`. The location is
   never looked up on the network.
-- **Multiple displays.** `kms.c` drives one CRTC: extending the desktop across two displays or
-  mirroring them is **not implemented**. The page shows the "Extend / Mirror" control disabled with
-  that explanation and lists the other connected displays with "Use as Main Display". Mirroring
-  needs a second CRTC flipped with the first one (or one CRTC with two connectors where the
-  encoders allow cloning); extending needs per-output scene regions and per-CRTC buffers and flips.
+- **Multiple displays** (`DISPLAYS.md`): extend or mirror, the arrangement edited by dragging the
+  displays (they snap next to each other), "Show menu bar on all displays", and what screenshots,
+  recording and the remote desktop see (main display or all). Each display has its own CRTC,
+  frame, page flips and scale.
+
+  ![Arrangement](displays-arrangement.png)
 
 ## Bluetooth
 
@@ -302,8 +301,7 @@ The validators are unit-tested in `build/settings-hw-test`.
 
 ## Not done or untested
 
-- Extending or mirroring across several displays (one CRTC).
-- Sharp HiDPI and fractional scales (only the doubled 200 %).
+- Several displays and HiDPI on real monitors (tested with two virtio-gpu heads; see `DISPLAYS.md`).
 - Night Shift on the GPU path when the card has no gamma LUT.
 - Brightness, battery, lid and power profiles on real laptops; Bluetooth with real controllers.
 - Notifications on the lock screen; a notification center listing the history.

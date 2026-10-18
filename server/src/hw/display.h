@@ -1,17 +1,17 @@
-/* display.h — Settings → Displays on the lord-server side (docs/SETTINGS.md, "Displays").
+/* display.h — Settings → Displays on the lord-server side (docs/SETTINGS.md, "Displays", and
+ * docs/DISPLAYS.md for several displays and HiDPI).
  *
- *   - lists the card's outputs with their EDID name, modes and the current one;
- *   - applies a resolution/refresh/output live (the modeset itself runs in main.c, between
- *     frames, through DisplayHost) and saves it per display (EDID identity) in
- *     ~/.config/lordos/displays.json, which the picker uses the next time the monitor is lent;
- *   - Night Shift: a color temperature on the CRTC gamma LUT, or a software LUT applied while
- *     copying the frame when the card has no gamma (virtio-gpu, some ARM boards);
- *   - idle: screen off (DPMS) after N seconds without input, plus "lock" and "sleep" notices for
- *     the theme. Deadlines go into the main loop's poll timeout: no polling;
- *   - hotplug: hw/uevent.c calls display_hotplug() on a DRM "change" uevent.
- *
- * One output at a time: kms.c drives a single CRTC. Mirroring and extending are not
- * implemented (see docs/SETTINGS.md). */
+ *   - lists the card's outputs with their EDID name, modes, scale and place in the arrangement;
+ *   - decides the configuration of every connected display (display_plan): mode, rotation, scale
+ *     (100–200 % in 25 % steps), position in the global logical space, extend or mirror, and the
+ *     main display (menu bar and Dock). main.c applies it between frames (display_take_resync);
+ *   - live changes are kept per display (EDID identity) and saved on "Keep" in
+ *     ~/.config/lordos/displays.json;
+ *   - Night Shift: a color temperature on every CRTC's gamma LUT, or a software LUT applied while
+ *     copying frames when a card has no gamma (virtio-gpu, some ARM boards);
+ *   - idle: screen off (DPMS on every display) after N seconds without input, plus "lock" and
+ *     "sleep" notices for the theme. Deadlines go into the main loop's poll timeout: no polling;
+ *   - hotplug: hw/uevent.c calls display_hotplug() on a DRM "change" uevent. */
 #ifndef LORD_HW_DISPLAY_H
 #define LORD_HW_DISPLAY_H
 
@@ -19,47 +19,74 @@
 #include <stdint.h>
 #include "../kms.h"
 #include "../canvas.h"
+#include "../outputs.h"
 
 typedef struct {
-    Kms *(*kms)(void);                  /* the card while the session is on the monitor, else NULL */
+    Kms *(*kms)(void);                  /* the main card head while the session is on the monitor, else NULL */
     void (*redraw)(void);               /* full damage (the software tint changed, screen back on) */
     void (*event)(const char *kind, const char *json);   /* → __lordHw(kind, data) */
+    int (*heads)(Kms **out, int max);   /* every display head in use (gamma, DPMS); NULL = only kms() */
 } DisplayHost;
 
+/* One display of the plan. */
+typedef struct {
+    uint32_t conn;
+    char id[96], name[64], connector[32];
+    struct drm_mode_modeinfo mode;
+    int rot;                            /* 0..3: ×90° clockwise, by software */
+    int scale;                          /* percent: 100, 125, 150, 175, 200 */
+    int recommended;
+    int mm_w, mm_h;
+    OutView v;                          /* its place in the global logical space */
+} DisplayOut;
+
+typedef struct {
+    int n, main, mirror;                /* main: index of the display with the menu bar and the Dock */
+    int bw, bh;                         /* size of the global logical space */
+    DisplayOut o[OUT_MAX];
+} DisplayPlan;
+
 void display_init(const DisplayHost *h);                /* after dropping root (needs $HOME) */
-/* For kms_set_picker: the saved mode and main display, by EDID identity. */
+/* For kms_set_picker: the display the session opens first (the main one), and its mode. */
 int  display_pick(const KmsOutput *o, int n, int *index, struct drm_mode_modeinfo *mode);
+/* The configuration for the connected outputs (o from kms_outputs). Returns plan->n. */
+int  display_plan(const KmsOutput *o, int n, DisplayPlan *plan);
+/* main.c: the configuration changed (Settings, hotplug): build a plan and apply it now (no flip
+ * pending). 1 if there is something to do. */
+int  display_take_resync(void);
+/* main.c after applying: ok = 0 → the previous configuration is restored (and applied again). */
+void display_resync_done(int ok, const DisplayPlan *applied);
 void display_attached(void);            /* the session got the monitor (or started on it) */
 void display_detached(void);
 void display_hotplug(void);             /* DRM uevent: connectors may have changed */
 
 /* JSON for lord.display.list(). Returns a malloc'd string. */
 char *display_list_json(void);
-/* Apply live (not saved): output id, w×h, refresh in mHz (0 = best), rotation 0..3 (×90°), scale
- * 1 or 2 (200 %: drawn at half the size and doubled while copying the frame, CPU path).
- * Queued; main.c runs it between frames (display_take_modeset). 0 if accepted. */
+/* Apply live (not saved): output id, w×h, refresh in mHz (0 = best), rotation 0..3 (×90°), scale in
+ * percent (100–200, 25 % steps; 1 and 2 are read as 100 and 200). 0 if accepted. */
 int  display_request(uint32_t conn, int w, int h, int refresh_mhz, int rotation, int scale);
-/* Save the current configuration of that output as its display's default (and as the main
- * display). 0 if written. */
+/* Arrangement (extend): drop display conn at logical (x, y) relative to the main display's top-left
+ * corner; it snaps next to the others (outputs.c). apply = 0 only computes. Returns 0 and the
+ * snapped position. */
+int  display_arrange(uint32_t conn, int x, int y, int apply, int *sx, int *sy);
+int  display_set_mirror(int on);        /* mirror every display to the main one, or extend */
+int  display_set_main(uint32_t conn);   /* the display with the menu bar and the Dock */
+/* Screenshots, recording and the remote desktop see the main display (0) or every one (1). */
+void display_set_capture_all(int all);
+int  display_capture_all(void);
+/* Save the current configuration (modes, scales, arrangement, mirror, main display). 0 if written. */
 int  display_save(uint32_t conn);
-/* main.c: a queued modeset to run now (no flip pending). 1 if there is one. */
-int  display_take_modeset(uint32_t *conn, struct drm_mode_modeinfo *mode);
-void display_modeset_done(int ok);      /* main.c after kms_modeset (+ set_size, GPU restart) */
-int  display_rotation(void);            /* 0..3: the frame is rotated by software (CPU path) */
-int  display_scale(void);               /* 1 or 2 */
-int  display_cpu_only(void);            /* rotated or scaled: composed by the CPU, no GPU path */
-/* Logical size for a physical one with the current rotation (90°/270° swap) and scale. */
-void display_logical_size(int pw, int ph, int *lw, int *lh);
+int  display_cpu_only(void);            /* a rotated display: composed by the CPU, no GPU path */
+const DisplayPlan *display_current(void);   /* the plan main.c applied last (n = 0 before any) */
 
-/* Software rotation and scale (CPU path): rect r of the logical frame (lw×lh) in physical
- * coordinates, and the copy of that rect from the logical canvas into the physical one. rot 1 =
- * 90° clockwise; with scale 2 every logical pixel becomes a 2×2 block. */
+/* Software rotation (CPU path): rect r of the upright frame (lw×lh) in physical coordinates of the
+ * card's buffer, and the copy of that rect into it. rot 1 = 90° clockwise. */
 Rect display_rotate_rect(Rect r, int lw, int lh, int rot);
 void display_rotate_copy(const Canvas *src, Rect r, Canvas *dst, int rot);
-/* Same, from a buffer whose first pixel is logical (ox, oy) (a cursor composited apart). */
+/* Same, from a buffer whose first pixel is (ox, oy) of the upright frame (a cursor composited apart). */
 void display_rotate_copy_at(const uint32_t *px, int stride, int ox, int oy, Rect r, int lw, int lh, Canvas *dst, int rot);
-/* Physical normalized position (0..1, as a tablet reports it) → logical normalized position. */
-void display_unrotate_point(double px, double py, double *lx, double *ly);
+/* Physical normalized position (0..1, as a tablet reports it) → upright normalized position. */
+void display_unrotate_point(int rot, double px, double py, double *lx, double *ly);
 
 /* Night Shift: kelvin (6500 = off). Hardware gamma when the CRTC has one, else software. */
 void display_set_temperature(int kelvin);

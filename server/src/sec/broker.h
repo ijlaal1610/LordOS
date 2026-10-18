@@ -1,12 +1,12 @@
-/* broker.h — el «broker»: el único canal entre una app .lpk aislada (lord-server --app) y
- * lord-server. El SDK dentro del proceso de la app proxyea las llamadas lord.* por este socket;
- * lord-server verifica el permiso de cada una (server/src/sec/perms.c) y, si hace falta, dibuja
- * el aviso del sistema. Ver appclient.c (lado app), brokersrv.c (lado servidor) y
- * docs/PRIVACIDAD.md.
+/* broker.h — the "broker": the only channel between an isolated .lpk app (lord-server --app) and
+ * lord-server. The SDK inside the app process proxies the lord.* calls over this socket;
+ * lord-server checks the permission for each one (server/src/sec/perms.c) and, if needed, draws
+ * the system prompt. See appclient.c (app side), brokersrv.c (server side) and
+ * docs/PRIVACY.md.
  *
- * Protocolo: mensajes SOCK_SEQPACKET. Cada mensaje = BrokerHdr + payload (texto/JSON). Las
- * respuestas llevan el mismo reqid. El picker de archivos (powerbox) y los dispositivos pasan
- * fds por SCM_RIGHTS. */
+ * Protocol: SOCK_SEQPACKET messages. Each message = BrokerHdr + payload (text/JSON). Replies
+ * carry the same reqid. The file picker (powerbox) and the devices pass
+ * fds via SCM_RIGHTS. */
 #ifndef LORD_SEC_BROKER_H
 #define LORD_SEC_BROKER_H
 
@@ -18,20 +18,20 @@
 #define BROKER_MAX_MSG (1024 * 1024)
 
 enum BrokerOp {
-    BOP_FS_HOME = 1,    /* → ruta de la carpeta de datos de la app */
-    BOP_FS_READ,        /* payload: ruta relativa a la carpeta de datos → contenido */
-    BOP_FS_WRITE,       /* payload: "ruta\0contenido" dentro de la carpeta de datos */
-    BOP_FS_LIST,        /* payload: ruta → JSON [{name,dir}] */
-    BOP_CLIP_GET,       /* (permiso clipboard) → texto del portapapeles */
-    BOP_CLIP_SET,       /* payload: texto → al portapapeles */
-    BOP_PERM,           /* payload: nombre del permiso → "1"/"0" (pregunta si hace falta) */
-    BOP_DEVICE,         /* payload: "camera on" | "microphone off" → marca el indicador */
-    BOP_PICK,           /* (powerbox) abre el diálogo del sistema → fd del archivo elegido */
-    BOP_THEME,          /* → JSON de los tokens del tema */
-    BOP_QUIT,           /* la app se cierra */
-    BOP_STATE,          /* → JSON { theme, locale, keyboard }: el estado actual, al arrancar */
-    BOP_MENU,           /* payload: JSON de los menús de la app (para la barra de menú del sistema) */
-    BOP_MIC,            /* payload "1"/"0": pedir/soltar el micrófono. Con permiso, → fd de solo lectura del anillo */
+    BOP_FS_HOME = 1,    /* → path of the app's data folder */
+    BOP_FS_READ,        /* payload: path relative to the data folder → contents */
+    BOP_FS_WRITE,       /* payload: "path\0contents" inside the data folder */
+    BOP_FS_LIST,        /* payload: path → JSON [{name,dir}] */
+    BOP_CLIP_GET,       /* (clipboard permission) → clipboard text */
+    BOP_CLIP_SET,       /* payload: text → to the clipboard */
+    BOP_PERM,           /* payload: permission name → "1"/"0" (asks if needed) */
+    BOP_DEVICE,         /* payload: "camera on" | "microphone off" → sets the indicator */
+    BOP_PICK,           /* (powerbox) opens the system dialog → fd of the chosen file */
+    BOP_THEME,          /* → JSON of the theme tokens */
+    BOP_QUIT,           /* the app is closing */
+    BOP_STATE,          /* → JSON { theme, locale, keyboard }: the current state, at startup */
+    BOP_MENU,           /* payload: JSON of the app's menus (for the system menu bar) */
+    BOP_MIC,            /* payload "1"/"0": request/release the microphone. With permission, → read-only fd of the ring */
     BOP_CAMERA,         /* payload "list" | "open dev w h" | "ring sid" (→ read-only ring fd) | "ack sid id" |
                          * "size sid w h" | "photo sid mirror name" | "record sid mirror mic name" |
                          * "recstop sid" | "close sid". See brokercam.c */
@@ -39,32 +39,32 @@ enum BrokerOp {
                          * "name"; the app never gets the device (docs/PASSWORDS.md) */
     BOP_CLIP_SECRET,    /* payload "seconds\0text": a secret to the clipboard, marked sensitive (out of
                          * the history, x-kde-passwordManagerHint) and cleared after `seconds` if unchanged */
-    BOP_EVENT = 100,    /* servidor → app, sin pedido (reqid 0): payload "tipo\0json" */
+    BOP_EVENT = 100,    /* server → app, unrequested (reqid 0): payload "type\0json" */
 };
 
 enum BrokerStatus { BST_OK = 0, BST_DENIED = 1, BST_ERROR = 2, BST_PENDING = 3 };
 
 typedef struct {
     uint32_t reqid;
-    uint16_t op;        /* BrokerOp (pedido) */
-    uint16_t status;    /* BrokerStatus (respuesta); 0xffff en un pedido */
-    uint32_t len;       /* bytes de payload que siguen */
+    uint16_t op;        /* BrokerOp (request) */
+    uint16_t status;    /* BrokerStatus (reply); 0xffff in a request */
+    uint32_t len;       /* payload bytes that follow */
 } BrokerHdr;
 
 #define BROKER_REQ 0xffff
 
-/* ---- lado servidor (lord-server, brokersrv.c) ---- */
+/* ---- server side (lord-server, brokersrv.c) ---- */
 
-/* Registra un broker nuevo para la app <id> (pid, para el cgroup/monitor). Devuelve -1 si no hay
- * lugar. El fd lo poll­ea main.c. */
+/* Registers a new broker for app <id> (pid, for the cgroup/monitor). Returns -1 if there is no
+ * room. main.c polls the fd. */
 int  brokersrv_add(int fd, const char *id, int pid);
-/* fds para poll(); devuelve cuántos escribió y sus índices. */
+/* fds for poll(); returns how many it wrote and their indices. */
 int  brokersrv_pollfds(struct pollfd *pfd, int max);
 void brokersrv_dispatch(struct pollfd *pfd, int n);
-/* Entrega a JS los avisos pendientes (prompts) y los cambios de indicador. */
+/* Delivers pending prompts and indicator changes to JS. */
 typedef void (*BrokerEventFn)(const char *kind, const char *json);
 void brokersrv_events(BrokerEventFn fn);
-/* Respuesta del usuario a un aviso (desde JS: lord.broker.resolve). */
+/* User's answer to a prompt (from JS: lord.broker.resolve). */
 void brokersrv_resolve(uint32_t reqid, int allow);
 int  brokersrv_count(void);
 /* The app on broker fd `fd` was spawned with a channel to lord-vault (system Passwords app): it may
@@ -72,25 +72,25 @@ int  brokersrv_count(void);
 void brokersrv_set_vault(int fd);
 /* The app <id> is running: ask it for a new window. 0 if sent, -1 if it is not running. */
 int  brokersrv_new_window(const char *id);
-/* El tema publica su estado (tipo "theme" o "locale", JSON) y se reenvía en vivo a todas las
- * apps aisladas; también se guarda para las que arranquen después (BOP_STATE). */
+/* The theme publishes its state (type "theme" or "locale", JSON) and it's forwarded live to every
+ * isolated app; it's also kept for the ones that start later (BOP_STATE). */
 int  brokersrv_publish(const char *kind, const char *json, size_t len);
-/* En cada vuelta del bucle: reenvía la distribución de teclado si cambió y reintenta los envíos
- * que no entraron (el servidor nunca se bloquea esperando a una app). */
+/* On every loop iteration: forwards the keyboard layout if it changed and retries the sends
+ * that didn't fit (the server never blocks waiting on an app). */
 void brokersrv_tick(void);
-/* El usuario revocó un permiso en Ajustes → Privacidad: se le avisa a la app (que suelta el
- * dispositivo) y se apaga su indicador. */
+/* The user revoked a permission in Settings → Privacy: the app is notified (it releases the
+ * device) and its indicator is turned off. */
 void brokersrv_revoke(const char *app, const char *perm);
-/* El usuario eligió un archivo en el diálogo del sistema (powerbox): lord-server lo abre y le pasa
- * el fd a la app. path vacío o NULL = canceló. */
+/* The user picked a file in the system dialog (powerbox): lord-server opens it and passes
+ * the fd to the app. Empty or NULL path = cancelled. */
 void brokersrv_pick_result(uint32_t reqid, const char *path);
-/* El usuario eligió un ítem del menú de una app (desde la barra de menú del sistema): se le avisa
- * a la app por el broker. */
+/* The user picked an item from an app's menu (from the system menu bar): the app is notified
+ * through the broker. */
 void brokersrv_menu_click(const char *app, const char *item);
-/* JSON de los menús que publicó una app (para la barra de menú del sistema); "[]" si no hay. */
+/* JSON of the menus an app published (for the system menu bar); "[]" if none. */
 const char *brokersrv_menus(const char *app);
-/* El micrófono (y después la cámara) corre en lord-server: hay que atender su socket de PipeWire
- * en el bucle principal. */
+/* The microphone (and later the camera) runs in lord-server: its PipeWire socket has to be
+ * serviced in the main loop. */
 int  brokersrv_audio_pollfds(struct pollfd *pfd, int max);
 void brokersrv_audio_dispatch(struct pollfd *pfd, int n);
 

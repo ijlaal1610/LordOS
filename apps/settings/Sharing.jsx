@@ -1,27 +1,14 @@
-// Ajustes → Compartir: escritorio remoto (lord-sessiond, docs/REMOTO.md). Apagado por defecto;
-// prenderlo, elegir quién puede entrar y ver o cortar las conexiones pasa por el ayudante de
-// administración (acciones remote-*).
+// Settings → Sharing: remote desktop (lord-sessiond, docs/REMOTE.md). Off by default;
+// turning it on, choosing who can log in and viewing or cutting connections goes through the
+// administration helper (remote-* actions).
 import {
-  View, Text, Button, Toggle, Segmented, useTheme, useLocale, useStore, admin, remote, remoteViewers, useSystemInfo,
+  View, Text, Button, Toggle, Segmented, useTheme, useLocale, useStore, admin, remote, remoteViewers, useSystemInfo, spacing, typeScale,
 } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
+import { Stack, Section, SettingRow, Note, Message, StatusDot, tint } from './ui.jsx';
 
-const Divider = () => <View style={{ height: 1, backgroundColor: useTheme().separator }} />;
 
-function Row({ label, hint, children }) {
-  const t = useTheme();
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 16 }}>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{label}</Text>
-        {hint ? <Text style={{ fontSize: 11, color: t.textDim, marginTop: 3, lineHeight: 1.35 }}>{hint}</Text> : null}
-      </View>
-      {children}
-    </View>
-  );
-}
-
-// Direcciones IPv4 de la LAN de este equipo (para armar la URL).
+// This machine's LAN IPv4 addresses (to build the URL).
 function lanAddresses() {
   if (typeof lord.net === 'undefined') return [];
   const out = [];
@@ -57,48 +44,40 @@ export function SharingSettings() {
   const ips = lanAddresses();
   const urls = ips.map((ip) => `https://${ip}:${st.port}`);
   return (
-    <View style={{ paddingBottom: 24 }}>
-      <Text style={{ fontSize: 14, fontWeight: 700, color: t.text, marginTop: 8 }}>{tr('settings.sharing.remote')}</Text>
-      <Row label={tr('settings.sharing.remoteToggle')} hint={tr('settings.sharing.remoteHint')}>
-        <Toggle on={st.enabled} onChange={(on) => !busy && isAdmin && act(on ? 'remote-enable' : 'remote-disable')} />
-      </Row>
-      {!isAdmin && <Text style={{ fontSize: 11, color: '#ff9f0a' }}>{tr('settings.admin.unavailable')}</Text>}
-      {!st.installed && <Text style={{ fontSize: 11, color: '#ff9f0a', lineHeight: 1.4 }}>{tr('settings.sharing.notInstalled')}</Text>}
-      {busy && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('settings.sharing.working')}</Text>}
-      {msg && <Text style={{ fontSize: 12, color: msg.ok ? '#30d158' : '#ff453a', marginTop: 4 }}>{msg.text}</Text>}
-      {st.enabled && (
-        <View style={{ marginTop: 6, padding: 12, borderRadius: 10, backgroundColor: t.hover, gap: 6 }}>
-          <Text style={{ fontSize: 12, color: t.textDim }}>{tr('settings.sharing.openFrom')}</Text>
-          {urls.map((u) => <Text key={u} style={{ fontSize: 15, fontWeight: 700, color: t.accent }}>{u}</Text>)}
-          {!urls.length && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('settings.sharing.noLan')}</Text>}
-          {st.fingerprint ? (
-            <View style={{ marginTop: 4 }}>
-              <Text style={{ fontSize: 11, color: t.textDim }}>{tr('settings.sharing.fingerprint')}</Text>
-              <Text style={{ fontSize: 10, color: t.text, fontFamily: 'monospace', lineHeight: 1.4 }}>{st.fingerprint}</Text>
-            </View>
-          ) : null}
-        </View>
-      )}
-      <Divider />
-      <Row label={tr('settings.sharing.who')} hint={tr(st.allow === 'group' ? 'settings.sharing.whoGroupHint' : 'settings.sharing.whoAllHint')}>
-        <Segmented value={st.allow} onChange={(allow) => isAdmin && act('remote-config', `allow=${allow}`)}
-          options={[['all', tr('settings.sharing.allUsers')], ['group', tr('settings.sharing.onlyGroup')]]} />
-      </Row>
-      <Divider />
-      <Text style={{ fontSize: 14, fontWeight: 700, color: t.text, marginTop: 14 }}>{tr('settings.sharing.connected')}</Text>
-      {!st.clients.length && <Text style={{ fontSize: 12, color: t.textDim, marginVertical: 8 }}>{tr('settings.sharing.nobody')}</Text>}
-      {st.clients.map((c) => (
-        <View key={c.pid} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 }}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#30d158' }} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{`${c.user} · ${c.ip}`}</Text>
-            <Text style={{ fontSize: 11, color: t.textDim }}>{
-              `${viewers.some((v) => v.ip === c.ip && v.user === c.user) ? tr('settings.sharing.thisSession') : tr('settings.sharing.ownSession')} · ${ago(c.since, tr)}`}</Text>
+    <Stack>
+      <Section title={tr('settings.sharing.remote')}>
+        <SettingRow label={tr('settings.sharing.remoteToggle')} hint={busy ? tr('settings.sharing.working') : tr('settings.sharing.remoteHint')}>
+          <Toggle small on={st.enabled} onChange={(on) => !busy && isAdmin && act(on ? 'remote-enable' : 'remote-disable')} />
+        </SettingRow>
+        {st.enabled && (
+          <View style={{ paddingVertical: spacing.m, gap: 6 }}>
+            <Text style={{ fontSize: typeScale.caption, color: t.textDim, textAlign: 'start' }}>{tr('settings.sharing.openFrom')}</Text>
+            {urls.map((u) => <Text key={u} style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.accent, direction: 'ltr', textAlign: 'start' }}>{u}</Text>)}
+            {!urls.length && <Text style={{ fontSize: typeScale.callout, color: t.textDim, textAlign: 'start' }}>{tr('settings.sharing.noLan')}</Text>}
+            {st.fingerprint ? (
+              <View style={{ marginTop: spacing.xs, gap: 2 }}>
+                <Text style={{ fontSize: typeScale.caption, color: t.textDim, textAlign: 'start' }}>{tr('settings.sharing.fingerprint')}</Text>
+                <Text style={{ fontSize: 10, color: t.text, fontFamily: 'monospace', lineHeight: 1.4, direction: 'ltr', textAlign: 'start' }}>{st.fingerprint}</Text>
+              </View>
+            ) : null}
           </View>
-          {isAdmin && <Button label={tr('settings.sharing.disconnect')} onClick={() => act('remote-kick', String(c.pid))} />}
-        </View>
-      ))}
-      <Text style={{ fontSize: 11, color: t.textDim, marginTop: 14, lineHeight: 1.45 }}>{tr('settings.sharing.security')}</Text>
-    </View>
+        )}
+        <SettingRow label={tr('settings.sharing.who')} hint={tr(st.allow === 'group' ? 'settings.sharing.whoGroupHint' : 'settings.sharing.whoAllHint')}>
+          <Segmented small value={st.allow} onChange={(allow) => isAdmin && act('remote-config', `allow=${allow}`)}
+            options={[['all', tr('settings.sharing.allUsers')], ['group', tr('settings.sharing.onlyGroup')]]} />
+        </SettingRow>
+      </Section>
+      {!isAdmin && <Note tone="warn">{tr('settings.admin.unavailable')}</Note>}
+      {!st.installed && <Note tone="warn">{tr('settings.sharing.notInstalled')}</Note>}
+      <Message msg={msg} />
+      <Section title={tr('settings.sharing.connected')} footer={tr('settings.sharing.security')}>
+        {!st.clients.length ? <SettingRow label={tr('settings.sharing.nobody')} labelStyle={{ color: t.textDim }} /> : st.clients.map((c) => (
+          <SettingRow key={c.pid} icon={<StatusDot color={tint.ok} />} label={`${c.user} · ${c.ip}`}
+            hint={`${viewers.some((v) => v.ip === c.ip && v.user === c.user) ? tr('settings.sharing.thisSession') : tr('settings.sharing.ownSession')} · ${ago(c.since, tr)}`}>
+            {isAdmin && <Button small label={tr('settings.sharing.disconnect')} onClick={() => act('remote-kick', String(c.pid))} />}
+          </SettingRow>
+        ))}
+      </Section>
+    </Stack>
   );
 }

@@ -1,4 +1,4 @@
-// store.js — estado global mínimo con suscripción, para usar desde React con useStore().
+// store.js — minimal global state with subscription, to use from React with useStore().
 import { useSyncExternalStore } from 'react';
 
 export function createStore(initial) {
@@ -7,7 +7,7 @@ export function createStore(initial) {
   return {
     get: () => state,
     set(patch) {
-      // función: nuevo estado; objeto sobre objeto: se combina; null u otro valor: reemplaza
+      // function: new state; object over object: merged; null or another value: replaces
       const next = typeof patch === 'function' ? patch(state)
         : patch !== null && typeof patch === 'object' && state !== null && typeof state === 'object' && !Array.isArray(patch) ? { ...state, ...patch }
           : patch;

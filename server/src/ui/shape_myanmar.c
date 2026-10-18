@@ -1,12 +1,12 @@
-/* shape_myanmar.c — armado del birmano (y mon, shan, karen…), como el shaper birmano de
- * HarfBuzz (fuentes con la etiqueta mym2; las viejas "mymr" van por el armado común):
+/* shape_myanmar.c — Myanmar shaping (and Mon, Shan, Karen…), like HarfBuzz's Myanmar shaper
+ * (fonts with the mym2 tag; the old "mymr" ones go through the common shaper):
  *
- *   1. normalización y sílabas (kinzi, consonante, mediales, vocales, tonos);
- *   2. locl y ccmp por sílaba;
- *   3. ◌ en las sílabas rotas; reordenamiento: kinzi después de la base, la medial ra (ြ) y la
- *      vocal ေ antes, las de abajo en su orden;
- *   4. rphf, pref, blwf, pstf de a una por sílaba; después pres, abvs, blws, psts… y GPOS
- *      (las marcas quedan sin ancho antes de GPOS). */
+ *   1. normalization and syllables (kinzi, consonant, medials, vowels, tones);
+ *   2. locl and ccmp per syllable;
+ *   3. ◌ in broken syllables; reordering: kinzi after the base, the medial ra (ြ) and the
+ *      vowel ေ before it, the below ones in their order;
+ *   4. rphf, pref, blwf, pstf one at a time per syllable; then pres, abvs, blws, psts… and GPOS
+ *      (marks are zero-width before GPOS). */
 #include "shape_syl.h"
 
 #include <stdlib.h>
@@ -16,7 +16,7 @@
 
 static const char *const cats[] = { SEA_NAMES };
 
-/* Las categorías IV, DB y GB de HarfBuzz son acá V, N y PLACEHOLDER. */
+/* HarfBuzz's IV, DB and GB categories are V, N and PLACEHOLDER here. */
 static SylGrammar grammar = {
     cats, (int)(sizeof cats / sizeof *cats),
     "j = ZWJ | ZWNJ;"
@@ -33,9 +33,9 @@ static SylGrammar grammar = {
     "broken_cluster = k? VS? syllable_tail;",
     (const char *const[]){ "consonant_syllable", "j | SMPst", "broken_cluster", "any" }, 4, NULL,
 };
-enum { A_CONSONANT, A_JOINER, A_BROKEN, A_OTHER };     /* alternativas (= tipo de sílaba) */
+enum { A_CONSONANT, A_JOINER, A_BROKEN, A_OTHER };     /* alternatives (= syllable type) */
 
-/* Posiciones como ot_position_t de HarfBuzz. */
+/* Positions like HarfBuzz's ot_position_t. */
 enum { P_START, P_RA_TO_BECOME_REPH, P_PRE_M, P_PRE_C, P_BASE_C, P_AFTER_MAIN, P_ABOVE_C, P_BEFORE_SUB, P_BELOW_C,
        P_AFTER_SUB, P_BEFORE_POST, P_POST_C, P_AFTER_POST, P_SMVD, P_END };
 
@@ -76,8 +76,8 @@ static void reorder(GlyphRun *r, int start, int end) {
     int pos = P_AFTER_MAIN;
     for (; i < end; i++) {
         int c = CAT(i);
-        if (c == SEA_MR) { set_pos(r, i, P_PRE_C); continue; }          /* medial ra: antes de la base */
-        if (c == SEA_VPre) { set_pos(r, i, P_PRE_M); continue; }        /* vocal de la izquierda */
+        if (c == SEA_MR) { set_pos(r, i, P_PRE_C); continue; }          /* medial ra: before the base */
+        if (c == SEA_VPre) { set_pos(r, i, P_PRE_M); continue; }        /* left-side vowel */
         if (c == SEA_VS) { set_pos(r, i, POS(i - 1)); continue; }
         if (pos == P_AFTER_MAIN && c == SEA_VBlw) { pos = P_BELOW_C; set_pos(r, i, pos); continue; }
         if (pos == P_BELOW_C && c == SEA_A) { set_pos(r, i, P_BEFORE_SUB); continue; }
@@ -85,13 +85,13 @@ static void reorder(GlyphRun *r, int start, int end) {
         if (pos == P_BELOW_C && c != SEA_A) { pos = P_AFTER_SUB; set_pos(r, i, pos); continue; }
         set_pos(r, i, pos);
     }
-    /* orden estable por posición */
+    /* stable order by position */
     for (int a = start + 1; a < end; a++) {
         int b = a;
         while (b > start && POS(b - 1) > POS(a)) b--;
         syl_move(r, a, b);
     }
-    /* las vocales izquierdas seguidas se dan vuelta (con sus selectores de variante) */
+    /* consecutive left vowels are reversed (with their variation selectors) */
     int first = end, last = end;
     for (int k = start; k < end; k++) if (POS(k) == P_PRE_M) { if (first == end) first = k; last = k; }
     if (first < last) {

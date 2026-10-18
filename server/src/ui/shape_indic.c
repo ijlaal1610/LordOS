@@ -1,19 +1,19 @@
-/* shape_indic.c — armado de las escrituras índicas (devanagari, bengalí, gurmukhi, gujarati,
- * oriya, tamil, telugu, kannada, malayalam), siguiendo el shaper índico de HarfBuzz:
+/* shape_indic.c — shaping of the Indic scripts (Devanagari, Bengali, Gurmukhi, Gujarati,
+ * Oriya, Tamil, Telugu, Kannada, Malayalam), following HarfBuzz's Indic shaper:
  *
- *   1. normalización: se separan las matras partidas (ো = ে + া) y las consonantes con nukta
- *      excluidas de la composición (क़ = क + ़); se recompone lo que la fuente tiene;
- *   2. categoría y posición de cada carácter (IndicSyllabicCategory/PositionalCategory) y la
- *      posición de cada consonante según la fuente (¿tiene forma bajo la base, después?);
- *   3. sílabas (consonante, vocal, independiente, rota: con círculo punteado ◌);
- *   4. locl, ccmp; reordenamiento inicial: base, reph, matras que van antes de la consonante,
- *      máscaras rphf/half/blwf/abvf/pstf/pref;
- *   5. nukt, akhn, rphf, rkrf, pref, blwf, abvf, half, pstf, vatu, cjct (cada una en su etapa);
- *   6. reordenamiento final: la matra pre-base va después de las medias formas, el reph a su
- *      lugar según la escritura, la consonante pref antes de la base, init al comienzo de palabra;
- *   7. pres, abvs, blws, psts, haln, calt, liga… y GPOS (abvm, blwm, dist, kern, mark, mkmk).
+ *   1. normalization: split matras are separated (ো = ে + া) and so are nukta consonants
+ *      excluded from composition (क़ = क + ़); whatever the font has is recomposed;
+ *   2. category and position of each character (IndicSyllabicCategory/PositionalCategory) and the
+ *      position of each consonant according to the font (does it have a below-base form, a post-base one?);
+ *   3. syllables (consonant, vowel, standalone, broken: with dotted circle ◌);
+ *   4. locl, ccmp; initial reordering: base, reph, matras that go before the consonant,
+ *      rphf/half/blwf/abvf/pstf/pref masks;
+ *   5. nukt, akhn, rphf, rkrf, pref, blwf, abvf, half, pstf, vatu, cjct (each in its own stage);
+ *   6. final reordering: the pre-base matra goes after the half forms, the reph to its
+ *      place according to the script, the pref consonant before the base, init at word start;
+ *   7. pres, abvs, blws, psts, haln, calt, liga… and GPOS (abvm, blwm, dist, kern, mark, mkmk).
  *
- * Se compara con HarfBuzz en server/tests/shape_test.c. */
+ * Compared against HarfBuzz in server/tests/shape_test.c. */
 #include "shape.h"
 
 #include <stdlib.h>
@@ -46,7 +46,7 @@ int shape_indic_script(uint32_t cp) {
     return -1;
 }
 
-/* Posición de una matra según su lado y la escritura (MATRA_POS_* de HarfBuzz). */
+/* Position of a matra according to its side and the script (HarfBuzz's MATRA_POS_*). */
 static int matra_pos(uint32_t u, int side, int sc) {
     switch (side) {
     case P_PRE_C: return P_PRE_M;
@@ -86,12 +86,12 @@ static void props(uint32_t u, int sc, int *cat, int *pos) {
     if (is_consonant_cat(c)) p = P_BASE_C;
     else if (c == IC_M) p = matra_pos(u, p, sc);
     else if (c == IC_SM || c == IC_A || c == IC_Symbol) p = P_SMVD;
-    if (u == 0x0B01) p = P_BEFORE_SUB;     /* bindu de oriya */
+    if (u == 0x0B01) p = P_BEFORE_SUB;     /* Oriya bindu */
     *cat = c;
     *pos = p;
 }
 
-/* ---- arreglos del run (g, cl, mask, lig, aux van juntos) ---- */
+/* ---- run arrays (g, cl, mask, lig, aux go together) ---- */
 
 typedef struct { uint16_t g; int cl; uint32_t mask; uint8_t lig; uint32_t aux; } Info;
 
@@ -107,7 +107,7 @@ static int is_joiner(const GlyphRun *r, int i) { return is_joiner_cat(CAT(i)); }
 static int is_halant(const GlyphRun *r, int i) { return CAT(i) == IC_H; }
 static int ligated_not_multiplied(const GlyphRun *r, int i) { return (r->aux[i] & OTF_AUX_LIGATED) && !(r->aux[i] & OTF_AUX_MULTIPLIED); }
 
-/* Mueve el elemento from a la posición to (corriendo el resto). */
+/* Moves the element from to position to (shifting the rest). */
 static void move(GlyphRun *r, int from, int to) {
     if (from == to) return;
     Info x = get(r, from);
@@ -120,7 +120,7 @@ static void reverse(GlyphRun *r, int a, int b) {      /* [a, b) */
     for (b--; a < b; a++, b--) { Info x = get(r, a); put(r, a, get(r, b)); put(r, b, x); }
 }
 
-/* ---- sílabas (la máquina de estados de HarfBuzz, escrita a mano) ---- */
+/* ---- syllables (HarfBuzz's state machine, written by hand) ---- */
 
 enum { SY_CONSONANT, SY_VOWEL, SY_STANDALONE, SY_SYMBOL, SY_BROKEN, SY_OTHER };
 
@@ -139,7 +139,7 @@ static int p_cn(const Cats *k, int j) {          /* cn = c ZWJ? n */
     if (C_(j) == IC_ZWJ) j++;
     return p_n(k, j);
 }
-static int p_halant_group(const Cats *k, int j) {   /* z? H (ZWJ N?)? ; -1 si no */
+static int p_halant_group(const Cats *k, int j) {   /* z? H (ZWJ N?)? ; -1 if not */
     int s = j;
     if (is_joiner_cat(C_(j)) && C_(j + 1) == IC_H) j++;
     if (C_(j) != IC_H) return -1;
@@ -148,7 +148,7 @@ static int p_halant_group(const Cats *k, int j) {   /* z? H (ZWJ N?)? ; -1 si no
     (void)s;
     return j;
 }
-static int p_matra_group(const Cats *k, int j) {    /* z* M N? H? ; -1 si no */
+static int p_matra_group(const Cats *k, int j) {    /* z* M N? H? ; -1 if not */
     int s = j;
     while (is_joiner_cat(C_(j))) j++;
     if (C_(j) != IC_M) return -1;
@@ -185,7 +185,7 @@ static int p_complex_tail(const Cats *k, int j) {
     return p_tail(k, j);
 }
 
-/* Largo de la sílaba que empieza en i y su tipo. */
+/* Length of the syllable starting at i and its type. */
 static int syllable(const Cats *k, int i, int *type) {
     int best = 0;
     *type = SY_OTHER;
@@ -219,14 +219,14 @@ static int syllable(const Cats *k, int i, int *type) {
         }
         if (ok) { j = p_complex_tail(k, p_n(k, j)); if (j - i > best) { best = j - i; *type = SY_STANDALONE; } }
     }
-    /* símbolo: Symbol N? tail */
+    /* symbol: Symbol N? tail */
     if (C_(i) == IC_Symbol) {
         int j = i + 1;
         if (C_(j) == IC_N) j++;
         j = p_tail(k, j);
         if (j - i > best) { best = j - i; *type = SY_SYMBOL; }
     }
-    /* rota: reph? n complex_tail (al menos un carácter) */
+    /* broken: reph? n complex_tail (at least one character) */
     if (!best) {
         int j = i;
         if (C_(j) == IC_Ra && C_(j + 1) == IC_H) j += 2;
@@ -238,7 +238,7 @@ static int syllable(const Cats *k, int i, int *type) {
     return best;
 }
 
-/* ---- reordenamientos ---- */
+/* ---- reorderings ---- */
 
 typedef struct {
     Otf *o;
@@ -263,7 +263,7 @@ static int consonant_position(const Indic *in, uint16_t g) {
 
 static void initial_reorder(const Indic *in, GlyphRun *r, int start, int end) {
     int base = end, has_reph = 0, limit = start;
-    /* kannada: Ra+H+ZWJ se comporta como Ra+ZWJ+H (compatibilidad con textos viejos) */
+    /* Kannada: Ra+H+ZWJ behaves like Ra+ZWJ+H (compatibility with old texts) */
     if (in->sc == S_KNDA && start + 3 <= end && CAT(start) == IC_Ra && CAT(start + 1) == IC_H && CAT(start + 2) == IC_ZWJ) {
         Info x = get(r, start + 1);
         put(r, start + 1, get(r, start + 2));
@@ -285,7 +285,7 @@ static void initial_reorder(const Indic *in, GlyphRun *r, int start, int end) {
         base = start;
         has_reph = 1;
     }
-    /* base: desde el final, la primera consonante sin forma bajo la base ni posterior */
+    /* base: from the end, the first consonant with neither a below-base nor a post-base form */
     {
         int i = end, seen_below = 0;
         do {
@@ -303,7 +303,7 @@ static void initial_reorder(const Indic *in, GlyphRun *r, int start, int end) {
     if (base < end) set_pos(r, base, P_BASE_C);
     if (has_reph) set_pos(r, start, P_RA_TO_BECOME_REPH);
 
-    /* las marcas, unidores y halants se mueven con lo anterior */
+    /* marks, joiners and halants move with what precedes them */
     int last_pos = P_START;
     for (int i = start; i < end; i++) {
         int c = CAT(i);
@@ -313,7 +313,7 @@ static void initial_reorder(const Indic *in, GlyphRun *r, int start, int end) {
                 for (int j = i; j > start; j--) if (POS(j - 1) != P_PRE_M) { set_pos(r, i, POS(j - 1)); break; }
         } else if (POS(i) != P_SMVD) last_pos = POS(i);
     }
-    /* las consonantes posteriores se llevan lo que tienen antes */
+    /* post-base consonants take along what comes before them */
     {
         int last = base;
         for (int i = base + 1; i < end; i++)
@@ -322,13 +322,13 @@ static void initial_reorder(const Indic *in, GlyphRun *r, int start, int end) {
                 last = i;
             } else if (CAT(i) == IC_M) last = i;
     }
-    /* orden estable por posición */
+    /* stable order by position */
     for (int i = start + 1; i < end; i++) {
         int j = i;
         while (j > start && POS(j - 1) > POS(i)) j--;
         move(r, i, j);
     }
-    /* base otra vez; las matras izquierdas seguidas se dan vuelta */
+    /* base again; consecutive left matras are reversed */
     int first_left = end, last_left = end;
     base = end;
     for (int i = start; i < end; i++) {
@@ -341,7 +341,7 @@ static void initial_reorder(const Indic *in, GlyphRun *r, int start, int end) {
         for (int j = i; j <= last_left; j++) if (CAT(j) == IC_M) { reverse(r, i, j + 1); i = j + 1; }
     }
 
-    /* máscaras */
+    /* masks */
     for (int i = start; i < end && POS(i) == P_RA_TO_BECOME_REPH; i++) r->mask[i] |= OTF_F_RPHF;
     uint32_t pre = OTF_F_HALF | (in->cfg->blwf_mode == BM_PRE_AND_POST ? OTF_F_BLWF : 0);
     for (int i = start; i < base && i < end; i++) r->mask[i] |= pre;
@@ -351,7 +351,7 @@ static void initial_reorder(const Indic *in, GlyphRun *r, int start, int end) {
             uint16_t g[2] = { r->g[i], r->g[i + 1] };
             if (would(in, OTF_ST_PREF, g, 2)) { r->mask[i] |= OTF_F_PREF; r->mask[i + 1] |= OTF_F_PREF; break; }
         }
-    /* ZWNJ corta las medias formas */
+    /* ZWNJ breaks the half forms */
     for (int i = base + 1; i < end; i++)
         if (is_joiner(r, i)) {
             int nonj = CAT(i) == IC_ZWNJ, j = i;
@@ -360,7 +360,7 @@ static void initial_reorder(const Indic *in, GlyphRun *r, int start, int end) {
 }
 
 static void final_reorder(const Indic *in, GlyphRun *r, int start, int end, const uint32_t *src) {
-    /* un halant que se ligó y se volvió a separar sigue siendo halant */
+    /* a halant that was ligated and split again is still a halant */
     if (in->virama)
         for (int i = start; i < end; i++)
             if (r->g[i] == in->virama && (r->aux[i] & OTF_AUX_LIGATED) && (r->aux[i] & OTF_AUX_MULTIPLIED)) {
@@ -397,7 +397,7 @@ static void final_reorder(const Indic *in, GlyphRun *r, int start, int end, cons
     if (base == end && start < base && CAT(base - 1) == IC_ZWJ) base--;
     if (base < end) while (start < base && (CAT(base) == IC_N || CAT(base) == IC_H)) base--;
 
-    /* matras pre-base: después de la última media forma (halant explícito) */
+    /* pre-base matras: after the last half form (explicit halant) */
     if (start + 1 < end && start < base) {
         int new_pos = base == end ? base - 2 : base - 1;
         if (in->sc != S_MLYM && in->sc != S_TAML) {
@@ -418,7 +418,7 @@ static void final_reorder(const Indic *in, GlyphRun *r, int start, int end, cons
         }
     }
 
-    /* reph a su lugar */
+    /* reph to its place */
     if (start + 1 < end && POS(start) == P_RA_TO_BECOME_REPH && ((CAT(start) == IC_Repha) ^ ligated_not_multiplied(r, start))) {
         int np, rp = in->cfg->reph_pos;
         if (rp == RP_AFTER_POST) goto step5;
@@ -469,7 +469,7 @@ static void final_reorder(const Indic *in, GlyphRun *r, int start, int end, cons
                 break;
             }
 
-    /* init: matra izquierda al comienzo de palabra */
+    /* init: left matra at word start */
     if (POS(start) == P_PRE_M) {
         int word_start = start == 0;
         if (!word_start) {
@@ -480,7 +480,7 @@ static void final_reorder(const Indic *in, GlyphRun *r, int start, int end, cons
     }
 }
 
-/* ---- normalización ---- */
+/* ---- normalization ---- */
 
 static int decompose(uint32_t cp, uint32_t *out, int max) {
     uint32_t a, b;
@@ -494,7 +494,7 @@ static int decompose(uint32_t cp, uint32_t *out, int max) {
     return 1;
 }
 
-/* in → s->cp (y s->order: de qué carácter de entrada salió cada uno). */
+/* in → s->cp (and s->order: which input character each one came from). */
 static int normalize(Shaper *s, Otf *o, const uint32_t *in, int n) {
     int cap = n * 3 + 8, m = 0;
     if (cap > s->cp_cap) {
@@ -511,7 +511,7 @@ static int normalize(Shaper *s, Otf *o, const uint32_t *in, int n) {
         int k = decompose(in[i], d, 4);
         for (int j = 0; j < k && m < cap; j++) { s->cp[m] = d[j]; s->order[m++] = i; }
     }
-    /* se recompone si el primero no es marca y la fuente tiene el compuesto */
+    /* recomposed if the first one is not a mark and the font has the composite */
     int w = 0;
     for (int i = 0; i < m; i++) {
         if (w > 0) {
@@ -525,7 +525,7 @@ static int normalize(Shaper *s, Otf *o, const uint32_t *in, int n) {
     return w;
 }
 
-/* ---- todo junto ---- */
+/* ---- all together ---- */
 
 int shape_indic(Shaper *s, Otf *o, const uint32_t *in, int n, int script, int (*reserve)(Shaper *, int)) {
     GlyphRun *r = &s->run;
@@ -543,7 +543,7 @@ int shape_indic(Shaper *s, Otf *o, const uint32_t *in, int n, int script, int (*
         if (ind.p->gsub[k].mask & OTF_F_RPHF) ind.has_rphf = 1;
         if (ind.p->gsub[k].mask & OTF_F_PREF) ind.has_pref = 1;
     }
-    /* categorías y sílabas sobre los caracteres */
+    /* categories and syllables over the characters */
     int *cats = malloc(sizeof(int) * (size_t)(m + 1)), *poss = malloc(sizeof(int) * (size_t)(m + 1));
     if (!cats || !poss) { free(cats); free(poss); return 0; }
     for (int i = 0; i < m; i++) props(s->cp[i], script, &cats[i], &poss[i]);
@@ -556,7 +556,7 @@ int shape_indic(Shaper *s, Otf *o, const uint32_t *in, int n, int script, int (*
         int dc = type == SY_BROKEN && dotted;
         int reph = dc ? (cats[i] == IC_Ra && i + 1 < m && cats[i + 1] == IC_H ? 2 : cats[i] == IC_Repha ? 1 : 0) : 0;
         for (int j = 0; j < l; j++) {
-            if (dc && j == reph) {          /* sílaba rota: ◌ donde iría la base */
+            if (dc && j == reph) {          /* broken syllable: ◌ where the base would go */
                 r->g[len] = dotted; r->cl[len] = s->order[i + j]; r->mask[len] = OTF_F_GLOBAL; r->lig[len] = 0;
                 r->aux[len] = IC_DOTTEDCIRCLE | (uint32_t)P_BASE_C << 8 | (uint32_t)(syl & 0xff) << 16;
                 len++;
@@ -575,18 +575,18 @@ int shape_indic(Shaper *s, Otf *o, const uint32_t *in, int n, int script, int (*
     r->len = len;
 
     otf_substitute_stages(o, ind.p, r, 0, 0);
-    for (int i = 0; i < r->len;) {               /* reordenamiento inicial por sílaba */
+    for (int i = 0; i < r->len;) {               /* initial reordering per syllable */
         int e = i + 1;
         while (e < r->len && OTF_AUX_SYL(r->aux[e]) == OTF_AUX_SYL(r->aux[i])) e++;
         if (!(r->aux[i] >> 31)) initial_reorder(&ind, r, i, e);
         i = e;
     }
     otf_substitute_stages(o, ind.p, r, 1, OTF_ST_CJCT);
-    for (int i = 0; i < r->len;) {               /* reordenamiento final */
+    for (int i = 0; i < r->len;) {               /* final reordering */
         int e = i + 1;
         while (e < r->len && OTF_AUX_SYL(r->aux[e]) == OTF_AUX_SYL(r->aux[i])) e++;
         if (!(r->aux[i] >> 31)) final_reorder(&ind, r, i, e, in);
-        /* la sílaba es un solo grupo: el dibujo no la vuelve a separar ni la corta */
+        /* the syllable is a single cluster: drawing neither separates nor breaks it again */
         int mn = r->cl[i];
         for (int j = i; j < e; j++) if (r->cl[j] < mn) mn = r->cl[j];
         for (int j = i; j < e; j++) r->cl[j] = mn;

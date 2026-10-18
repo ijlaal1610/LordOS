@@ -1,11 +1,11 @@
-// geometry.js — de puntos de la página (lo que devuelve lord-doc, origen arriba a la izquierda) a
-// píxeles de la vista con zoom y rotación, y al revés. Misma transformación que usa el ayudante
-// al dibujar (h_pdf.c, op_render).
+// geometry.js — from page points (what lord-doc returns, origin at the top left) to
+// view pixels with zoom and rotation, and back. Same transformation the helper uses
+// when drawing (h_pdf.c, op_render).
 
-// Tamaño mostrado de una página [w, h] en puntos con la rotación (0..3, en cuartos de vuelta).
+// Displayed size of a page [w, h] in points with the rotation (0..3, in quarter turns).
 export const shown = ([w, h], rot) => (rot % 2 ? [h, w] : [w, h]);
 
-// punto de la página → vista (s = píxeles por punto)
+// page point → view (s = pixels per point)
 export function toView(x, y, [pw, ph], rot, s) {
   switch (rot) {
     case 1: return [(ph - y) * s, x * s];
@@ -15,7 +15,7 @@ export function toView(x, y, [pw, ph], rot, s) {
   }
 }
 
-// vista → punto de la página
+// view → page point
 export function toPage(vx, vy, [pw, ph], rot, s) {
   const a = vx / s, b = vy / s;
   switch (rot) {
@@ -26,13 +26,13 @@ export function toPage(vx, vy, [pw, ph], rot, s) {
   }
 }
 
-// [x, y, w, h] de la página → { left, top, width, height } en la vista
+// page [x, y, w, h] → { left, top, width, height } in the view
 export function rectToView([x, y, w, h], size, rot, s) {
   const a = toView(x, y, size, rot, s), b = toView(x + w, y + h, size, rot, s);
   return { left: Math.min(a[0], b[0]), top: Math.min(a[1], b[1]), width: Math.abs(a[0] - b[0]), height: Math.abs(a[1] - b[1]) };
 }
 
-// Disposición continua: la posición vertical de cada página y el alto total.
+// Continuous layout: the vertical position of each page and the total height.
 export function layoutPages(sizes, rot, s, gap) {
   const tops = new Array(sizes.length);
   let y = gap, maxW = 0;
@@ -45,7 +45,7 @@ export function layoutPages(sizes, rot, s, gap) {
   return { tops, height: y, width: maxW };
 }
 
-// Páginas que se ven entre y0 e y1 (búsqueda binaria sobre las posiciones).
+// Pages visible between y0 and y1 (binary search over the positions).
 export function visibleRange(tops, sizes, rot, s, y0, y1) {
   if (!tops.length) return [0, -1];
   let lo = 0, hi = tops.length - 1;

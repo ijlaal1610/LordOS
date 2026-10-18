@@ -1,13 +1,13 @@
-/* canvas.c — primitivas con alpha, antialiasing por distancia con signo y clipping. */
+/* canvas.c — primitives with alpha, signed-distance antialiasing and clipping. */
 #include "canvas.h"
 
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* Alfa de salida de "over" (exacto: un destino opaco sigue en 255). El canvas guarda el alfa
- * premultiplicado: en la pantalla por CPU no importa (KMS es XRGB), y en el camino GPU marca
- * dónde se ven las ventanas de las apps debajo de la UI (src/gpu). */
+/* Output alpha of "over" (exact: an opaque destination stays at 255). The canvas stores
+ * premultiplied alpha: on the CPU screen it does not matter (KMS is XRGB), and on the GPU path it marks
+ * where the app windows below the UI show through (src/gpu). */
 static inline uint32_t over_alpha(uint32_t sa, uint32_t da) {
     return sa + (((da * (255 - sa) + 128) * 257) >> 16);
 }
@@ -26,17 +26,17 @@ static inline void put(uint32_t *p, uint32_t argb, uint32_t a) {
 
 static inline int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 
-/* ---- filas: C portable y, en ARM64 con NEON=1 (Makefile), NEON ----
- * Las dos versiones dan el mismo resultado bit a bit para orígenes premultiplicados válidos;
- * lo comprueba tests/canvas_test.c (make build/canvas-test). Ver docs/RASPBERRY.md. */
+/* ---- rows: portable C and, on ARM64 with NEON=1 (Makefile), NEON ----
+ * Both versions give the same bit-exact result for valid premultiplied sources;
+ * tests/canvas_test.c checks it (make build/canvas-test). See docs/RASPBERRY.md. */
 
-/* Una fila de canvas_blit sin esquinas: origen premultiplicado escalado por k (0..256), "over". */
+/* One canvas_blit row without corners: premultiplied source scaled by k (0..256), "over". */
 static void blit_row_c(uint32_t *row, const uint32_t *s, int n, uint32_t k) {
     if (!k) return;
     for (int i = 0; i < n; i++) {
         uint32_t p = s[i];
         if (!(p >> 24)) continue;
-        if (k >= 256 && p >= 0xff000000u) { row[i] = p; continue; }     /* opaco: se copia (mismo resultado) */
+        if (k >= 256 && p >= 0xff000000u) { row[i] = p; continue; }     /* opaque: copied (same result) */
         uint32_t sa = ((p >> 24) * k) >> 8;
         uint32_t srb = (((p & 0xff00ff) * k) >> 8) & 0xff00ff, sg = (((p & 0xff00) * k) >> 8) & 0xff00;
         uint32_t ia = 255 - sa, d = row[i];
@@ -45,7 +45,7 @@ static void blit_row_c(uint32_t *row, const uint32_t *s, int n, uint32_t k) {
     }
 }
 
-/* Una fila de canvas_alpha_mask: color argb con la cobertura m (0..255) por su alfa ca. */
+/* One canvas_alpha_mask row: argb color with coverage m (0..255) times its alpha ca. */
 static void mask_row_c(uint32_t *row, const uint8_t *m, int n, uint32_t argb, uint32_t ca) {
     for (int i = 0; i < n; i++)
         if (m[i]) put(&row[i], argb, (m[i] * ca + 127) / 255);
@@ -62,7 +62,7 @@ static void blit_row_neon(uint32_t *row, const uint32_t *s, int n, uint32_t k) {
     for (; i + 4 <= n; i += 4) {
         uint32x4_t p = vld1q_u32(s + i), d = vld1q_u32(row + i);
         uint8x16_t p8 = vreinterpretq_u8_u32(p), d8 = vreinterpretq_u8_u32(d);
-        /* (c·k) >> 8 en los cuatro canales (c·k ≤ 65280: entra en 16 bits) */
+        /* (c·k) >> 8 on all four channels (c·k ≤ 65280: fits in 16 bits) */
         uint16x8_t lo = vmulq_u16(vmovl_u8(vget_low_u8(p8)), kk), hi = vmulq_u16(vmovl_u8(vget_high_u8(p8)), kk);
         uint8x16_t s8 = vcombine_u8(vshrn_n_u16(lo, 8), vshrn_n_u16(hi, 8));
         uint32x4_t sa = vshrq_n_u32(vreinterpretq_u32_u8(s8), 24), ia = vsubq_u32(c255, sa);
@@ -70,11 +70,11 @@ static void blit_row_neon(uint32_t *row, const uint32_t *s, int n, uint32_t k) {
         uint16x8_t dl = vmull_u8(vget_low_u8(d8), vget_low_u8(ia8)), dh = vmull_u8(vget_high_u8(d8), vget_high_u8(ia8));
         uint8x16_t dd = vcombine_u8(vshrn_n_u16(dl, 8), vshrn_n_u16(dh, 8));
         uint32x4_t col = vandq_u32(vreinterpretq_u32_u8(vaddq_u8(s8, dd)), rgb);
-        /* alfa: over_alpha(sa, da) en 32 bits */
+        /* alpha: over_alpha(sa, da) in 32 bits */
         uint32x4_t x = vmlaq_u32(c128, vshrq_n_u32(d, 24), ia);
         uint32x4_t a = vaddq_u32(sa, vshrq_n_u32(vmulq_n_u32(x, 257), 16));
         uint32x4_t out = vorrq_u32(col, vshlq_n_u32(a, 24));
-        out = vbslq_u32(vceqq_u32(vshrq_n_u32(p, 24), zero), d, out);     /* origen transparente: igual */
+        out = vbslq_u32(vceqq_u32(vshrq_n_u32(p, 24), zero), d, out);     /* transparent source: unchanged */
         vst1q_u32(row + i, out);
     }
     blit_row_c(row + i, s + i, n - i, k);
@@ -90,7 +90,7 @@ static void mask_row_neon(uint32_t *row, const uint8_t *m, int n, uint32_t argb,
         memcpy(&mm, m + i, 4);
         if (!mm) continue;
         uint32x4_t mv = vmovl_u16(vget_low_u16(vmovl_u8(vreinterpret_u8_u32(vdup_n_u32(mm)))));
-        /* (m·ca + 127) / 255 exacto: x·0x8081 >> 23 para x < 65536 */
+        /* exact (m·ca + 127) / 255: x·0x8081 >> 23 for x < 65536 */
         uint32x4_t a = vshrq_n_u32(vmulq_n_u32(vmlaq_u32(c127, mv, vca), 0x8081u), 23), ia = vsubq_u32(c255, a);
         uint8x16_t a8 = vreinterpretq_u8_u32(vmulq_n_u32(a, 0x01010101u)), ia8 = vreinterpretq_u8_u32(vmulq_n_u32(ia, 0x01010101u));
         uint32x4_t d = vld1q_u32(row + i);
@@ -100,8 +100,8 @@ static void mask_row_neon(uint32_t *row, const uint8_t *m, int n, uint32_t argb,
         uint32x4_t col = vandq_u32(vreinterpretq_u32_u8(vcombine_u8(vshrn_n_u16(lo, 8), vshrn_n_u16(hi, 8))), rgb);
         uint32x4_t al = vaddq_u32(a, vshrq_n_u32(vmulq_n_u32(vmlaq_u32(c128, vshrq_n_u32(d, 24), ia), 257), 16));
         uint32x4_t out = vorrq_u32(col, vshlq_n_u32(al, 24));
-        out = vbslq_u32(vcgeq_u32(a, c255), full, out);                   /* cobertura total */
-        out = vbslq_u32(vceqq_u32(a, zero), d, out);                      /* nada */
+        out = vbslq_u32(vcgeq_u32(a, c255), full, out);                   /* full coverage */
+        out = vbslq_u32(vceqq_u32(a, zero), d, out);                      /* nothing */
         vst1q_u32(row + i, out);
     }
     mask_row_c(row + i, m + i, n - i, argb, ca);
@@ -125,7 +125,7 @@ void canvas_test_mask_row(int simd, uint32_t *row, const uint8_t *m, int n, uint
 }
 #endif
 
-/* Distancia con signo al rectángulo redondeado (negativa adentro). */
+/* Signed distance to the rounded rectangle (negative inside). */
 static inline float rr_sdf(float px, float py, float cx, float cy, float hw, float hh, float r) {
     float qx = fabsf(px - cx) - (hw - r), qy = fabsf(py - cy) - (hh - r);
     float ox = qx > 0 ? qx : 0, oy = qy > 0 ? qy : 0;
@@ -140,7 +140,7 @@ static float fix_radius(float r, float w, float h) {
     return r < 0 ? 0 : r > m ? m : r;
 }
 
-/* Recorta el bounding box [x, x+w) x [y, y+h) contra el clip. */
+/* Clips the bounding box [x, x+w) x [y, y+h) against the clip. */
 static int bounds(const Canvas *c, float x, float y, float w, float h, int *x0, int *y0, int *x1, int *y1) {
     *x0 = clampi((int)floorf(x), c->clip.x0, c->clip.x1);
     *y0 = clampi((int)floorf(y), c->clip.y0, c->clip.y1);
@@ -188,11 +188,11 @@ void canvas_rrect(Canvas *c, float x, float y, float w, float h, float r, uint32
     if (!a || w <= 0 || h <= 0 || !bounds(c, x, y, w, h, &x0, &y0, &x1, &y1)) return;
     r = fix_radius(r, w, h);
     float cx = x + w * 0.5f, cy = y + h * 0.5f, hw = w * 0.5f, hh = h * 0.5f;
-    int fx0 = (int)ceilf(x), fx1 = (int)floorf(x + w);   /* columnas totalmente cubiertas */
+    int fx0 = (int)ceilf(x), fx1 = (int)floorf(x + w);   /* fully covered columns */
     for (int j = y0; j < y1; j++) {
         uint32_t *row = c->px + (size_t)j * c->stride;
         if (j >= y + r && j + 1 <= y + h - r) {
-            /* Franja recta: solo los bordes izquierdo/derecho son parciales; el medio, de corrido. */
+            /* Straight band: only the left/right edges are partial; the middle, in one run. */
             int m0 = fx0 > x0 ? fx0 : x0, m1 = fx1 < x1 ? fx1 : x1;
             if (m1 < m0) m1 = m0;
             for (int i = x0; i < m0; i++) {
@@ -231,7 +231,7 @@ void canvas_rrect_gradient(Canvas *c, float x, float y, float w, float h, float 
     if (w <= 0 || h <= 0 || !bounds(c, x, y, w, h, &x0, &y0, &x1, &y1)) return;
     r = fix_radius(r, w, h);
     float cx = x + w * 0.5f, cy = y + h * 0.5f, hw = w * 0.5f, hh = h * 0.5f;
-    /* Igual que CSS: 180deg = de arriba hacia abajo. */
+    /* Same as CSS: 180deg = top to bottom. */
     float rad = angle_deg * 3.14159265f / 180.0f, dx = sinf(rad), dy = -cosf(rad);
     float len = fabsf(w * dx) + fabsf(h * dy);
     if (len <= 0) len = 1;
@@ -265,8 +265,8 @@ void canvas_rrect_stroke(Canvas *c, float x, float y, float w, float h, float r,
         for (int i = x0; i < x1; i++) {
             float px = i + 0.5f;
             if (middle && px > x + bw + 1 && px < x + w - bw - 1) {
-                /* saltea el centro: hasta el último píxel cuyo centro queda antes del borde
-                 * derecho (nunca hacia atrás: con coordenadas fraccionarias eso era un bucle) */
+                /* skips the middle: up to the last pixel whose center is before the right
+                 * edge (never backwards: with fractional coordinates that was a loop) */
                 int last = (int)ceilf(x + w - bw - 1 - 0.5f) - 1;
                 if (last > i) i = last;
                 continue;
@@ -279,7 +279,7 @@ void canvas_rrect_stroke(Canvas *c, float x, float y, float w, float h, float r,
     }
 }
 
-/* Máscaras de sombra cacheadas por tamaño: al mover una ventana la sombra no se recalcula. */
+/* Shadow masks cached by size: moving a window does not recompute the shadow. */
 typedef struct {
     int w, h, r, blur, dx, dy;
     int x0, y0, mw, mh;
@@ -334,11 +334,11 @@ void canvas_shadow(Canvas *c, float x, float y, float w, float h, float r,
     if (m) canvas_alpha_mask(c, (int)roundf(x) + m->x0, (int)roundf(y) + m->y0, m->a, m->mw, m->mh, m->mw, argb);
 }
 
-/* Box blur separable, 3 pasadas ≈ gaussiano. */
+/* Separable box blur, 3 passes ≈ Gaussian. */
 static void box_pass(uint32_t *buf, int n, int step, int rad, uint32_t *tmp) {
     for (int i = 0; i < n; i++) tmp[i] = buf[(size_t)i * step];
     int win = 2 * rad + 1;
-    int sa = 0, sr = 0, sg = 0, sb = 0;          /* con alfa: ver canvas_backdrop_blur */
+    int sa = 0, sr = 0, sg = 0, sb = 0;          /* with alpha: see canvas_backdrop_blur */
     for (int k = -rad; k <= rad; k++) {
         uint32_t p = tmp[clampi(k, 0, n - 1)];
         sa += p >> 24; sr += (p >> 16) & 255; sg += (p >> 8) & 255; sb += p & 255;
@@ -353,7 +353,7 @@ static void box_pass(uint32_t *buf, int n, int step, int rad, uint32_t *tmp) {
     }
 }
 
-/* Muestra bilineal de un buffer XRGB. */
+/* Bilinear sample of an XRGB buffer. */
 static uint32_t sample_rgb(const uint32_t *buf, int w, int h, float u, float v) {
     if (u < 0) u = 0;
     if (v < 0) v = 0;
@@ -375,11 +375,11 @@ static uint32_t sample_rgb(const uint32_t *buf, int w, int h, float u, float v) 
 void canvas_backdrop_blur(Canvas *c, float x, float y, float w, float h, float r, int radius) {
     int x0, y0, x1, y1;
     if (radius < 1 || w <= 0 || h <= 0 || !bounds(c, x, y, w, h, &x0, &y0, &x1, &y1)) return;
-    /* Margen para que el borde tome color de afuera, como en CSS. */
+    /* Margin so the edge takes color from outside, as in CSS. */
     int m = radius * 2;
     int bx0 = clampi(x0 - m, 0, c->w), by0 = clampi(y0 - m, 0, c->h);
     int bx1 = clampi(x1 + m, 0, c->w), by1 = clampi(y1 + m, 0, c->h);
-    /* Se desenfoca a resolución reducida: mismo resultado visual, mucho más barato. */
+    /* Blurred at reduced resolution: same visual result, much cheaper. */
     int f = radius >= 12 ? 4 : radius >= 6 ? 2 : 1;
     int sw = (bx1 - bx0 + f - 1) / f, sh = (by1 - by0 + f - 1) / f;
     uint32_t *buf = malloc((size_t)sw * sh * 4);
@@ -421,8 +421,8 @@ void canvas_backdrop_blur(Canvas *c, float x, float y, float w, float h, float r
                 if (cov <= 0) continue;
                 a = (uint32_t)(cov * 255 + 0.5f);
             }
-            /* premultiplicado con su alfa: sobre la UI opaca es igual que antes; sobre el hueco de
-             * una ventana de app (camino GPU) queda transparente y se ve la app debajo */
+            /* premultiplied with its alpha: over the opaque UI it is the same as before; over the hole of
+             * an app window (GPU path) it stays transparent and the app shows through */
             uint32_t p = sample_rgb(buf, sw, sh, (i - bx0 + 0.5f) * inv - 0.5f, v), d = row[i];
             if (a >= 255 && (p >> 24) >= 255) { row[i] = p; continue; }
             uint32_t pa = ((p >> 24) * a + 127) / 255;
@@ -502,7 +502,7 @@ void canvas_blit(Canvas *c, const uint32_t *src, int sw, int sh, int x, int y, f
         uint32_t *row = c->px + (size_t)j * c->stride;
         const uint32_t *s = src + (size_t)(j - y) * sw - x;
         int corner_row = j < y + r || j >= y + sh - r;
-        if (!corner_row || r <= 0) { blit_row(row + x0, s + x0, x1 - x0, k_op); continue; }   /* sin esquinas */
+        if (!corner_row || r <= 0) { blit_row(row + x0, s + x0, x1 - x0, k_op); continue; }   /* no corners */
         for (int i = x0; i < x1; i++) {
             uint32_t p = s[i];
             if (!(p >> 24)) continue;
@@ -510,7 +510,7 @@ void canvas_blit(Canvas *c, const uint32_t *src, int sw, int sh, int x, int y, f
             if (corner_row && r > 0 && (i < x + r || i >= x + sw - r))
                 k = (uint32_t)(k * cov_of(rr_sdf(i + 0.5f, j + 0.5f, cx, cy, hw, hh, r)));
             if (!k) continue;
-            /* src premultiplicado escalado por k, luego "over". */
+            /* src premultiplied scaled by k, then "over". */
             uint32_t sa = ((p >> 24) * k) >> 8;
             uint32_t srb = (((p & 0xff00ff) * k) >> 8) & 0xff00ff, sg = (((p & 0xff00) * k) >> 8) & 0xff00;
             uint32_t ia = 255 - sa, d = row[i];
@@ -530,6 +530,54 @@ void canvas_bitmap(Canvas *c, int x, int y, const char *const *rows, uint32_t fg
             char ch = rows[j][i];
             if (ch == 'X') c->px[(size_t)py * c->stride + px] = fg;
             else if (ch == 'o') c->px[(size_t)py * c->stride + px] = bg;
+        }
+    }
+}
+
+/* Scaled copy of the source rect (sx, sy, sw, sh) of a premultiplied image (stride in pixels) into
+ * the destination rect (dx, dy, dw, dh): bilinear when shrinking or growing by a fraction (a
+ * Wayland buffer at another scale, wp_viewporter), the same "over" as canvas_blit. Equal sizes at
+ * integer positions fall back to canvas_blit. */
+void canvas_blit_scaled(Canvas *c, const uint32_t *src, int stride, int sw_px, int sh_px, float sx, float sy, float sw, float sh,
+                        float dx, float dy, float dw, float dh, float opacity, int opaque) {
+    if (dw <= 0 || dh <= 0 || sw <= 0 || sh <= 0 || sw_px <= 0 || sh_px <= 0) return;
+    if (sx == 0 && sy == 0 && sw == sw_px && sh == sh_px && stride == sw_px && dw == sw && dh == sh && dx == floorf(dx) && dy == floorf(dy)) {
+        canvas_blit(c, src, sw_px, sh_px, (int)dx, (int)dy, 0, opacity, opaque);
+        return;
+    }
+    int x0 = clampi((int)floorf(dx), c->clip.x0, c->clip.x1), x1 = clampi((int)ceilf(dx + dw), c->clip.x0, c->clip.x1);
+    int y0 = clampi((int)floorf(dy), c->clip.y0, c->clip.y1), y1 = clampi((int)ceilf(dy + dh), c->clip.y0, c->clip.y1);
+    if (x0 >= x1 || y0 >= y1) return;
+    uint32_t k_op = (uint32_t)(opacity * 256 + 0.5f);
+    float ux = sw / dw, uy = sh / dh;
+    for (int j = y0; j < y1; j++) {
+        float fy = sy + (j + 0.5f - dy) * uy - 0.5f;
+        if (fy < 0) fy = 0;
+        if (fy > sh_px - 1) fy = (float)(sh_px - 1);
+        int iy = (int)fy, iy1 = iy + 1 < sh_px ? iy + 1 : iy;
+        uint32_t wy = (uint32_t)((fy - iy) * 256);
+        const uint32_t *r0 = src + (size_t)iy * stride, *r1 = src + (size_t)iy1 * stride;
+        uint32_t *row = c->px + (size_t)j * c->stride;
+        for (int i = x0; i < x1; i++) {
+            float fx = sx + (i + 0.5f - dx) * ux - 0.5f;
+            if (fx < 0) fx = 0;
+            if (fx > sw_px - 1) fx = (float)(sw_px - 1);
+            int ix = (int)fx, ix1 = ix + 1 < sw_px ? ix + 1 : ix;
+            uint32_t wx = (uint32_t)((fx - ix) * 256);
+            uint32_t a = r0[ix], b = r0[ix1], cc = r1[ix], d = r1[ix1], p = 0;
+            for (int sh8 = 0; sh8 < 32; sh8 += 8) {              /* each channel (premultiplied) */
+                uint32_t top = ((a >> sh8 & 255) * (256 - wx) + (b >> sh8 & 255) * wx) >> 8;
+                uint32_t bot = ((cc >> sh8 & 255) * (256 - wx) + (d >> sh8 & 255) * wx) >> 8;
+                p |= ((top * (256 - wy) + bot * wy) >> 8 & 255) << sh8;
+            }
+            if (opaque) p |= 0xff000000u;
+            if (k_op >= 256 && (p >> 24) == 255) { row[i] = p; continue; }
+            uint32_t sa = ((p >> 24) * k_op) >> 8;
+            if (!sa) continue;
+            uint32_t srb = (((p & 0xff00ff) * k_op) >> 8) & 0xff00ff, sg = (((p & 0xff00) * k_op) >> 8) & 0xff00;
+            uint32_t ia = 255 - sa, dd = row[i];
+            uint32_t drb = (((dd & 0xff00ff) * ia) >> 8) & 0xff00ff, dg = (((dd & 0xff00) * ia) >> 8) & 0xff00;
+            row[i] = over_alpha(sa, dd >> 24) << 24 | (srb + drb) | (sg + dg);
         }
     }
 }

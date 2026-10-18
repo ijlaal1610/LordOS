@@ -1,146 +1,147 @@
-# Editor de texto
+# Text Editor
 
-Editor de código propio, al estilo de TextMate (`apps/editor`). Es una app nativa de LordOS en
-React sobre el SDK: no usa CodeMirror ni Monaco, ni gramáticas de TextMate vendorizadas.
+LordOS's own code editor, TextMate-style (`apps/editor`). It is a native LordOS app in React on
+top of the SDK: it doesn't use CodeMirror or Monaco, nor vendored TextMate grammars.
 
 | | |
 |---|---|
 | ![proyecto](m7-editor-proyecto.png) | ![10000](m7-editor-10000-lineas.png) |
-| Proyecto a la izquierda, pestañas y resaltado (JavaScript) | Archivo de 10.001 líneas, al final y editando |
+| Project on the left, tabs and highlighting (JavaScript) | A 10,001-line file, at the end and editing |
 | ![cursores](m7-editor-varios-cursores.png) | ![reemplazar](m7-editor-reemplazar.png) |
-| Tres cursores con ❖D: «let» → «var» en las tres líneas a la vez | Buscar y reemplazar todo (con mayúsculas), «3 reemplazos» |
+| Three cursors with ❖D: «let» → «var» on the three lines at once | Find and replace all (case-sensitive), «3 replacements» |
 | ![ir](m7-editor-ir-a-archivo.png) | ![japones](m7-editor-japones.png) |
-| ❖T: abrir un archivo del proyecto por letras en orden («wjs» → windows.js) | Japonés con el método de entrada de LordOS: 日本語を書きます |
+| ❖T: open a project file by letters in order («wjs» → windows.js) | Japanese with LordOS's input method: 日本語を書きます |
 | ![python](m7-editor-python.png) | ![claro](m7-editor-claro.png) |
-| Python: comentar, duplicar y mover línea; las escrituras índicas van con el respaldo de fuentes | Modo claro (paleta tipo Xcode) |
+| Python: comment, duplicate and move line; Indic scripts use the font fallback | Light mode (Xcode-style palette) |
 | ![cerrar](m7-editor-guardar-cambios.png) | ![archivos](m7-editor-desde-archivos.png) |
-| Cerrar con cambios sin guardar | Doble clic en Archivos: lo abre el editor, con la carpeta como proyecto |
+| Closing with unsaved changes | Double click in Files: the editor opens it, with the folder as the project |
 
-## Qué tiene
+## What it has
 
-- **Ventana:**
-  - el proyecto a la izquierda: árbol de la carpeta (por defecto la carpeta personal, o la del
-    primer archivo que se abre); se elige otra con «…» o ❖⇧O; ❖\ lo oculta;
-  - pestañas con un punto cuando hay cambios sin guardar;
-  - la barra de estado: línea y columna, cantidad de cursores y de caracteres seleccionados, el
-    lenguaje (se cambia con un clic), espacios o tabs (clic para alternar) y el ancho (2, 4 u 8),
-    UTF-8 y fin de línea LF o CRLF (clic para alternar).
-- **Edición:**
-  - Enter mantiene la sangría y la agrega después de `{ [ ( :`; entre `{}` deja la llave de
-    cierre en su propia línea;
-  - Tab y ⇧Tab: sangran o desangran las líneas seleccionadas;
-  - borrar en una sangría de espacios va hasta la tabulación anterior;
-  - pares automáticos `() [] {} "" '' ```; al escribir el cierre, lo saltea; con una selección,
-    la envuelve;
-  - deshacer y rehacer agrupados por palabra, como TextMate; deshacer hasta lo guardado deja la
-    pestaña sin el punto.
-- **Varios cursores:** ⌥clic agrega uno; ❖D o Ctrl+D selecciona la palabra y después la próxima
-  aparición igual, cada una con su cursor; Esc vuelve a uno; ⌥arrastre selecciona por columnas.
-  Copiar y pegar con varios cursores reparte una línea por cursor.
-- **Buscar y reemplazar** (❖F): texto o regex (`.*`), mayúsculas sí o no (`Aa`), cantidad y
-  posición («2 de 7»), siguiente o anterior (Enter, ⇧Enter, ❖G, ❖⇧G), reemplazar y reemplazar
-  todo (un solo paso de deshacer). Con regex, el reemplazo entiende `$1`.
-- **Saltos:** ❖L ir a línea (`120` o `120:8`); ❖T abrir un archivo del proyecto por letras en
-  orden, como en TextMate (con ↑ y ↓ se elige).
-- **Archivos:** ❖N nuevo, ❖O abrir (diálogo propio), ❖S guardar, ❖⇧S guardar como, ❖W cerrar
-  pestaña. Desde Archivos, el doble clic en un archivo que no sea imagen, sonido, video ni
-  comprimido lo abre acá (`wm.open('editor', { args: { path } })`). Al cerrar la ventana o una
-  pestaña con cambios, pregunta. Rechaza archivos binarios y de más de 8 MB.
-- **Menús de la app** (en la barra del tema): Archivo, Edición, Ver e Ir, con sus atajos.
-- **Métodos de entrada:** el editor se registra con `ime.attach`, así que japonés, chino y
-  coreano escriben en el cursor (la composición y los candidatos aparecen ahí).
-- **Ícono propio:** una hoja con líneas de código de colores.
+- **Window:**
+  - the project on the left: the folder tree (by default the home folder, or the folder of the
+    first file opened); pick another with «…» or ❖⇧O; ❖\ hides it;
+  - tabs with a dot when there are unsaved changes;
+  - the status bar: line and column, number of cursors and of selected characters, the language
+    (changed with a click), spaces or tabs (click to toggle) and the width (2, 4 or 8), UTF-8 and
+    LF or CRLF line endings (click to toggle).
+- **Editing:**
+  - Enter keeps the indentation and adds one after `{ [ ( :`; between `{}` it puts the closing
+    brace on its own line;
+  - Tab and ⇧Tab: indent or outdent the selected lines;
+  - backspace in a space indentation goes back to the previous tab stop;
+  - automatic pairs `() [] {} "" '' ```; typing the closing one skips over it; with a selection,
+    it wraps it;
+  - undo and redo grouped by word, like TextMate; undoing back to the saved state removes the
+    tab's dot.
+- **Multiple cursors:** ⌥click adds one; ❖D or Ctrl+D selects the word and then the next equal
+  occurrence, each with its cursor; Esc goes back to one; ⌥drag selects by columns. Copying and
+  pasting with several cursors hands one line to each cursor.
+- **Find and replace** (❖F): text or regex (`.*`), case-sensitive or not (`Aa`), count and
+  position («2 of 7»), next or previous (Enter, ⇧Enter, ❖G, ❖⇧G), replace and replace all (a
+  single undo step). With regex, the replacement understands `$1`.
+- **Jumps:** ❖L go to line (`120` or `120:8`); ❖T open a project file by letters in order, as in
+  TextMate (↑ and ↓ choose).
+- **Files:** ❖N new, ❖O open (own dialog), ❖S save, ❖⇧S save as, ❖W close tab. From Files, a
+  double click on a file that isn't an image, sound, video or archive opens it here
+  (`wm.open('editor', { args: { path } })`). Closing the window or a tab with changes asks first.
+  It rejects binary files and files larger than 8 MB.
+- **App menus** (in the theme's bar): File, Edit, View and Go, with their shortcuts.
+- **Input methods:** the editor registers with `ime.attach`, so Japanese, Chinese and Korean
+  type at the cursor (the composition and the candidates show up there).
+- **Its own icon:** a sheet with colored lines of code.
 
-## Atajos
+## Shortcuts
 
-❖ es la tecla Super; casi todos funcionan también con Ctrl.
+❖ is the Super key; almost all of them also work with Ctrl.
 
-| Atajo | Qué hace |
+| Shortcut | What it does |
 |---|---|
-| ❖N / ❖O / ❖⇧O | nuevo, abrir archivo, abrir carpeta como proyecto |
-| ❖S / ❖⇧S / ❖W | guardar, guardar como, cerrar pestaña |
-| ❖Z / ❖⇧Z (Ctrl+Y) | deshacer, rehacer |
-| ❖X / ❖C / Ctrl+V | cortar, copiar, pegar (sin selección: la línea entera) |
-| ❖A / ❖⇧L | seleccionar todo, seleccionar línea |
-| ❖D / ⌥clic / Esc | próxima aparición con otro cursor, agregar cursor, un solo cursor |
-| ❖/ | comentar o descomentar (según el lenguaje: `//`, `#`, `--`, `<!-- -->`…) |
-| ❖⇧D | duplicar línea |
-| ⌥↑ / ⌥↓ | mover línea |
-| ❖] / ❖[ · Tab / ⇧Tab | sangrar, desangrar |
-| Ctrl+← / Ctrl+→ (también ⌥) | palabra anterior o siguiente (con ⇧, selecciona) |
-| Inicio / Fin | comienzo del texto de la línea (otra vez: columna 0), fin de línea |
-| Ctrl+Inicio / Ctrl+Fin, ❖↑ / ❖↓ | comienzo o fin del archivo |
-| RePág / AvPág | una pantalla |
-| ❖F / ❖G / ❖⇧G | buscar y reemplazar, siguiente, anterior |
-| ❖L / ❖T | ir a línea, ir a un archivo del proyecto |
-| ❖\ | mostrar u ocultar el proyecto |
-| Ctrl+Tab / Ctrl+⇧Tab | pestaña siguiente o anterior |
+| ❖N / ❖O / ❖⇧O | new, open file, open folder as project |
+| ❖S / ❖⇧S / ❖W | save, save as, close tab |
+| ❖Z / ❖⇧Z (Ctrl+Y) | undo, redo |
+| ❖X / ❖C / Ctrl+V | cut, copy, paste (without a selection: the whole line) |
+| ❖A / ❖⇧L | select all, select line |
+| ❖D / ⌥click / Esc | next occurrence with another cursor, add cursor, single cursor |
+| ❖/ | comment or uncomment (depending on the language: `//`, `#`, `--`, `<!-- -->`…) |
+| ❖⇧D | duplicate line |
+| ⌥↑ / ⌥↓ | move line |
+| ❖] / ❖[ · Tab / ⇧Tab | indent, outdent |
+| Ctrl+← / Ctrl+→ (also ⌥) | previous or next word (with ⇧, selects) |
+| Home / End | start of the line's text (again: column 0), end of line |
+| Ctrl+Home / Ctrl+End, ❖↑ / ❖↓ | start or end of the file |
+| PgUp / PgDn | one screen |
+| ❖F / ❖G / ❖⇧G | find and replace, next, previous |
+| ❖L / ❖T | go to line, go to a project file |
+| ❖\ | show or hide the project |
+| Ctrl+Tab / Ctrl+⇧Tab | next or previous tab |
 
-Mouse: clic ubica el cursor, arrastrar selecciona, doble clic selecciona la palabra (y arrastrar
-sigue por palabras), triple clic la línea, ⇧clic extiende, la rueda desplaza (con ⇧, de costado).
+Mouse: click places the cursor, dragging selects, double click selects the word (and dragging
+continues by words), triple click the line, ⇧click extends, the wheel scrolls (with ⇧,
+sideways).
 
-## Resaltado
+## Highlighting
 
-Es un tokenizador propio por estados (`apps/editor/syntax.js`):
-- cada lenguaje es una lista de reglas `[regex, tipo, siguiente estado]`;
-- se tokeniza línea por línea, y el estado al final de una línea (dentro de un comentario
-  `/* */`, de un `"""` de Python o de un template de JS) pasa a la siguiente;
-- al editar, se vuelve a tokenizar desde la primera línea que cambió y solo lo visible.
+It is our own state-based tokenizer (`apps/editor/syntax.js`):
+- each language is a list of rules `[regex, type, next state]`;
+- it tokenizes line by line, and the state at the end of a line (inside a `/* */` comment, a
+  Python `"""` or a JS template) carries over to the next;
+- when editing, it re-tokenizes from the first changed line and only what is visible.
 
-Lenguajes: JavaScript, JSX y TypeScript; C y C++; Python; Go; Rust; Shell (también Makefile y
-Dockerfile); JSON; Markdown; HTML, XML y SVG; CSS, SCSS y Less; YAML; PHP; SQL; INI, TOML y
-`.desktop`; diff y patch; texto. El lenguaje sale de la extensión, y también se elige en la barra
-de estado. Los colores son una paleta tipo TextMate/Xcode, oscura o clara según el modo del tema.
+Languages: JavaScript, JSX and TypeScript; C and C++; Python; Go; Rust; Shell (also Makefile and
+Dockerfile); JSON; Markdown; HTML, XML and SVG; CSS, SCSS and Less; YAML; PHP; SQL; INI, TOML and
+`.desktop`; diff and patch; plain text. The language comes from the extension, and can also be
+chosen in the status bar. The colors are a TextMate/Xcode-style palette, dark or light depending
+on the theme's mode.
 
-## Cómo está hecho
+## How it's built
 
-- `buffer.js` — el documento:
-  - el texto es un arreglo de líneas;
-  - los cursores son una cabeza y un ancla, con la columna deseada para subir y bajar;
-  - toda edición es una transacción de reemplazos ordenados que guarda su inversa: así deshacer
-    y rehacer son otra transacción, y varios cursores editan en una sola pasada.
-- `EditorView.jsx` — la vista:
-  - **líneas visibles:** dibuja solo las que se ven, más 6 arriba y 6 abajo; cada línea es un
-    componente memorizado que se vuelve a dibujar solo si cambian sus tokens;
-  - **fuente:** monoespaciada (JetBrains Mono, `fontFamily: 'monospace'`, nueva en el motor);
-  - **columnas:** se calculan con el ancho de una celda, medido con `lord.measureText`; los
-    caracteres anchos (CJK, emoji) se miden de verdad;
-  - **dirección:** el área de texto va con `direction: 'ltr'` aunque la interfaz esté en árabe o
-    hebreo.
-- `index.jsx` — la ventana: pestañas, proyecto, búsqueda, diálogos, menús y barra de estado.
+- `buffer.js` — the document:
+  - the text is an array of lines;
+  - cursors are a head and an anchor, with the desired column for moving up and down;
+  - every edit is a transaction of ordered replacements that stores its inverse: so undo and redo
+    are just another transaction, and several cursors edit in a single pass.
+- `EditorView.jsx` — the view:
+  - **visible lines:** it draws only the visible ones, plus 6 above and 6 below; each line is a
+    memoized component that redraws only if its tokens change;
+  - **font:** monospace (JetBrains Mono, `fontFamily: 'monospace'`, new in the engine);
+  - **columns:** computed with the width of one cell, measured with `lord.measureText`; wide
+    characters (CJK, emoji) are measured for real;
+  - **direction:** the text area uses `direction: 'ltr'` even when the UI is in Arabic or Hebrew.
+- `index.jsx` — the window: tabs, project, search, dialogs, menus and status bar.
 
-Para el editor se agregaron al sistema:
-- **`fontFamily: 'monospace'`** en el motor (`style.c` y `text.c`; JetBrains Mono se carga la
-  primera vez que se usa). El runtime antes descartaba `fontFamily`.
-- **`lord.fs.write`, `mkdir` y `rename`** (`server/src/ui/js_sys.c`):
-  - solo dentro de la carpeta personal, con la carpeta de destino resuelta con `realpath`;
-  - no siguen symlinks en el archivo final;
-  - la escritura es atómica (temporal en la misma carpeta + `fsync` + `rename`) y conserva los
-    permisos;
-  - hasta 32 MB;
-  - no pueden tocar `~/.local/share/applications`, `~/.config/autostart`,
-    `~/.local/share/lordos/apps` ni `~/.config/lordos/settings.json`, tampoco a través de un
-    symlink (probado): desde JS no se puede crear un `.desktop`, que es lo único que
-    `lord.apps.launch` ejecuta.
+For the editor, these were added to the system:
+- **`fontFamily: 'monospace'`** in the engine (`style.c` and `text.c`; JetBrains Mono is loaded
+  the first time it is used). The runtime used to drop `fontFamily`.
+- **`lord.fs.write`, `mkdir` and `rename`** (`server/src/ui/js_sys.c`):
+  - only inside the home folder, with the destination folder resolved with `realpath`;
+  - they don't follow symlinks on the final file;
+  - writing is atomic (temporary file in the same folder + `fsync` + `rename`) and keeps the
+    permissions;
+  - up to 32 MB;
+  - they can't touch `~/.local/share/applications`, `~/.config/autostart`,
+    `~/.local/share/lordos/apps` or `~/.config/lordos/settings.json`, not even through a symlink
+    (tested): JS can't create a `.desktop` file, which is the only thing `lord.apps.launch` runs.
 
-## Rendimiento (medido)
+## Performance (measured)
 
-- **Archivo de 10.001 líneas (448 KB, JavaScript):**
-  - se abre en menos de un segundo;
-  - con el cursor al final, una tecla tarda 4 ms de JS más 1 ms de layout y 1–2 ms de pintado
-    (1.640 nodos en pantalla);
-  - el primer salto al final del archivo tardó 67 ms, porque resalta lo que hay en el medio.
-- **Fuera de la interfaz (Node, mismo código):** tokenizar las 10.001 líneas tarda 76 ms; una
-  tecla en el documento, 0,004 ms.
-- **Pruebas de `buffer.js` y `syntax.js`:** 28/28 en Node y en QuickJS (el mismo motor de
-  lord-server; `/tmp/qjsrun` en la VM): varios cursores, deshacer agrupado, mapeo de posiciones, CRLF, «modificado»
-  después de deshacer, y los estados de los lenguajes.
+- **10,001-line file (448 KB, JavaScript):**
+  - it opens in under a second;
+  - with the cursor at the end, a keystroke takes 4 ms of JS plus 1 ms of layout and 1–2 ms of
+    painting (1,640 nodes on screen);
+  - the first jump to the end of the file took 67 ms, because it highlights everything in
+    between.
+- **Outside the UI (Node, same code):** tokenizing the 10,001 lines takes 76 ms; a keystroke in
+  the document, 0.004 ms.
+- **Tests of `buffer.js` and `syntax.js`:** 28/28 in Node and in QuickJS (the same engine as
+  lord-server; `/tmp/qjsrun` on the VM): multiple cursors, grouped undo, position mapping, CRLF,
+  «modified» after undo, and the language states.
 
-## Pendiente
+## Pending
 
-- Ajuste de línea (*soft wrap*), plegado de código y minimapa.
-- Gramáticas `.tmLanguage` de TextMate, *bundles* y *snippets* con tabulaciones.
-- Buscar en todo el proyecto (⌘⇧F de TextMate).
-- Codificaciones distintas de UTF-8.
-- Recordar los archivos abiertos entre sesiones.
-- Arrastrar y soltar texto.
+- Soft wrap, code folding and a minimap.
+- TextMate `.tmLanguage` grammars, bundles and snippets with tab stops.
+- Find in the whole project (TextMate's ⌘⇧F).
+- Encodings other than UTF-8.
+- Remembering open files between sessions.
+- Text drag and drop.

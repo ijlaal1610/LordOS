@@ -174,5 +174,6 @@
   "phase.write": "Copying the image…",
   "phase.verify": "Verifying…",
   "progress": "{done} of {total} ({pct}%)",
-  "kindRemovable": "Removable drive"
+  "kindRemovable": "Removable drive",
+  "more": "More actions"
 }

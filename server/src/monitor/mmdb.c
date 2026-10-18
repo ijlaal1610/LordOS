@@ -1,11 +1,11 @@
-/* mmdb.c — lector propio del formato MaxMind DB 2.0 (https://maxmind.github.io/MaxMind-DB/),
- * solo lo necesario para buscar country.iso_code. Sirve tanto para el archivo chico de LordOS
- * (assets/monitor/geoip-country.mmdb, armado por tools/gen-monitor-data.py) como para el
- * dbip-country-lite.mmdb original.
+/* mmdb.c — our own reader for the MaxMind DB 2.0 format (https://maxmind.github.io/MaxMind-DB/),
+ * only what's needed to look up country.iso_code. It works both for LordOS's small file
+ * (assets/monitor/geoip-country.mmdb, built by tools/gen-monitor-data.py) and for the original
+ * dbip-country-lite.mmdb.
  *
- * Todo acceso al búfer pasa por need(): nunca se lee fuera del archivo, los punteros del
- * decodificador se siguen una sola vez (el formato no permite punteros a punteros) y la
- * profundidad de mapas/arreglos está acotada. */
+ * Every buffer access goes through need(): nothing is ever read outside the file, decoder
+ * pointers are followed only once (the format doesn't allow pointers to pointers) and the
+ * depth of maps/arrays is bounded. */
 #include "mmdb.h"
 #include "pkg/xz.h"
 
@@ -18,12 +18,12 @@ static const uint8_t MARKER[] = { 0xAB, 0xCD, 0xEF, 'M', 'a', 'x', 'M', 'i', 'n'
 enum { T_EXT = 0, T_PTR = 1, T_STR = 2, T_DBL = 3, T_BYTES = 4, T_U16 = 5, T_U32 = 6, T_MAP = 7,
        T_I32 = 8, T_U64 = 9, T_U128 = 10, T_ARR = 11, T_CONT = 12, T_END = 13, T_BOOL = 14, T_FLT = 15 };
 
-/* Una sección decodificable: [base, base+len) dentro del archivo. */
+/* A decodable section: [base, base+len) inside the file. */
 typedef struct { const uint8_t *p; size_t len; } Sec;
 
 static int need(const Sec *s, size_t off, size_t n) { return off <= s->len && n <= s->len - off; }
 
-/* Lee el byte de control en *off: tipo y tamaño (o el destino, si es un puntero). */
+/* Reads the control byte at *off: type and size (or the target, if it's a pointer). */
 static int ctrl(const Sec *s, size_t *off, int *type, uint32_t *size) {
     if (!need(s, *off, 1)) return -1;
     uint8_t c = s->p[(*off)++];
@@ -62,7 +62,7 @@ static int ctrl(const Sec *s, size_t *off, int *type, uint32_t *size) {
     return 0;
 }
 
-/* Si el valor en *off es un puntero, *off pasa a su destino (una sola vez). */
+/* If the value at *off is a pointer, *off moves to its target (only once). */
 static int resolve(const Sec *s, size_t *off, int *type, uint32_t *size) {
     if (ctrl(s, off, type, size)) return -1;
     if (*type != T_PTR) return 0;
@@ -74,7 +74,7 @@ static int resolve(const Sec *s, size_t *off, int *type, uint32_t *size) {
 
 static int skip(const Sec *s, size_t *off, int depth);
 
-/* Saltea el cuerpo de un valor de tipo/tamaño ya leídos. */
+/* Skips the body of a value whose type/size were already read. */
 static int skip_body(const Sec *s, size_t *off, int type, uint32_t size, int depth) {
     if (depth > 16) return -1;
     switch (type) {
@@ -102,8 +102,8 @@ static int skip(const Sec *s, size_t *off, int depth) {
     return skip_body(s, off, t, sz, depth);
 }
 
-/* Valor escalar en *off (siguiendo un puntero): *body y *n son sus bytes, y *off pasa al
- * valor siguiente. */
+/* Scalar value at *off (following a pointer): *body and *n are its bytes, and *off moves to the
+ * next value. */
 static int scalar(const Sec *s, size_t *off, int *type, size_t *body, uint32_t *n) {
     size_t at = *off;
     if (ctrl(s, &at, type, n)) return -1;
@@ -119,7 +119,7 @@ static int scalar(const Sec *s, size_t *off, int *type, size_t *body, uint32_t *
     return 0;
 }
 
-/* Lee un string en out (NUL al final, recortado a n-1). */
+/* Reads a string into out (NUL-terminated, truncated to n-1). */
 static int read_str(const Sec *s, size_t *off, char *out, size_t n) {
     int t;
     size_t body;
@@ -142,7 +142,7 @@ static int read_uint(const Sec *s, size_t *off, uint64_t *v) {
     return 0;
 }
 
-/* Busca la clave en el mapa que empieza en off; deja *val en su valor. 1 = encontrada. */
+/* Looks up the key in the map starting at off; leaves *val at its value. 1 = found. */
 static int map_find(const Sec *s, size_t off, const char *key, size_t *val) {
     int t;
     uint32_t n;
@@ -175,7 +175,7 @@ int mmdb_open_mem(Mmdb *m, const uint8_t *buf, size_t len) {
     m->buf = (uint8_t *)buf;
     m->len = len;
     if (len < sizeof MARKER + 1) return -1;
-    /* el marcador de metadatos está en los últimos 128 KiB; se toma el último */
+    /* the metadata marker is in the last 128 KiB; the last one is taken */
     size_t lo = len > 131072 ? len - 131072 : 0, found = (size_t)-1;
     for (size_t i = len - sizeof MARKER + 1; i-- > lo;)
         if (buf[i] == MARKER[0] && !memcmp(buf + i, MARKER, sizeof MARKER)) { found = i; break; }
@@ -196,7 +196,7 @@ int mmdb_open_mem(Mmdb *m, const uint8_t *buf, size_t len) {
     m->tree_size = (size_t)tree;
     m->data_off = m->tree_size + 16;
     m->data_len = found - m->data_off;
-    /* nodo de ::/96 (IPv4 dentro de un árbol IPv6): 96 bits en cero */
+    /* node of ::/96 (IPv4 inside an IPv6 tree): 96 zero bits */
     m->ipv4_start = 0;
     if (m->ip_version == 6) {
         uint32_t node = 0;
@@ -217,7 +217,7 @@ int mmdb_open(Mmdb *m, const char *path) {
              fread(buf, 1, (size_t)len, f) == (size_t)len;
     fclose(f);
     size_t n = ok ? (size_t)len : 0;
-    /* .mmdb.xz (el de LordOS): se descomprime en memoria con el xz propio (src/pkg/xz.c) */
+    /* .mmdb.xz (LordOS's): decompressed in memory with our own xz (src/pkg/xz.c) */
     size_t pl = strlen(path);
     if (ok && pl > 3 && !strcmp(path + pl - 3, ".xz")) {
         uint8_t *raw = NULL;
@@ -251,7 +251,7 @@ int mmdb_country(const Mmdb *m, const uint8_t *addr, int family, char cc[3]) {
         if ((size_t)(node + 1) * (m->record_size / 4) > m->tree_size) return -1;
         node = record(m, node, (addr[i >> 3] >> (7 - (i & 7))) & 1);
     }
-    if (node <= m->node_count) return 0;                     /* == node_count: sin datos */
+    if (node <= m->node_count) return 0;                     /* == node_count: no data */
     uint64_t off = (uint64_t)node - m->node_count - 16;
     if (off >= m->data_len) return -1;
     Sec data = { m->buf + m->data_off, m->data_len };

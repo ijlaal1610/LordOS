@@ -1,176 +1,178 @@
-# GPU en LordOS: composición, dmabuf y juegos
+# GPU in LordOS: composition, dmabuf and games
 
-lord-server tiene dos caminos para armar la pantalla:
+lord-server has two paths for building the screen:
 
-- **CPU** (el de siempre): la UI y las ventanas de las apps se copian en el canvas y se manda
-  un dumb buffer con page flip. No necesita nada aparte del kernel.
-- **GPU** (nuevo, `server/src/gpu/gpu.c`): GBM + EGL + GLES2 de Mesa. Lo aprobó el usuario el
-  2026-10-16 para juegos y apps con GPU en AMD y Nvidia. Ver "Política de dependencias" en
+- **CPU** (the usual one): the UI and the app windows are copied into the canvas and a dumb
+  buffer is sent with a page flip. It needs nothing besides the kernel.
+- **GPU** (new, `server/src/gpu/gpu.c`): Mesa's GBM + EGL + GLES2. The user approved it on
+  2026-10-16 for games and GPU apps on AMD and Nvidia. See "Dependency policy" in
   `ARCHITECTURE.md`.
 
-El modesetting sigue siendo propio (`kms.c`, ioctls sin libdrm). GBM se crea sobre el mismo fd
-de la tarjeta, y sus búferes y los dmabuf de las apps pasan a framebuffers con
-`DRM_IOCTL_MODE_ADDFB2`.
+Modesetting is still our own (`kms.c`, ioctls without libdrm). GBM is created on the same card fd,
+and its buffers and the apps' dmabufs become framebuffers with `DRM_IOCTL_MODE_ADDFB2`.
 
-## Capturas (VM 116, Mesa llvmpipe forzado con `LORD_GPU=1`)
+## Screenshots (VM 116, Mesa llvmpipe forced with `LORD_GPU=1`)
 
 | | |
 |---|---|
 | ![ui](m7-gpu-ui.png) | ![gtk](m7-gpu-gtk.png) |
-| La UI de LordOS compuesta por EGL/GLES2 | GTK Demo (shm) debajo del Dock: el orden entre ventanas de apps y de LordOS se respeta |
+| The LordOS UI composited by EGL/GLES2 | GTK Demo (shm) under the Dock: the stacking order between app windows and LordOS windows is respected |
 | ![menu](m7-gpu-menu.png) | ![dmabuf](m7-gpu-dmabuf.png) |
-| Menú de GTK (xdg_popup) en la capa de arriba | `dmabuf-client`: búferes dmabuf de una app (udmabuf, lineal) a 72 FPS, 400/400 presentados |
+| GTK menu (xdg_popup) on the top layer | `dmabuf-client`: an app's dmabuf buffers (udmabuf, linear) at 72 FPS, 400/400 presented |
 | ![fs](m7-gpu-pantalla-completa.png) | |
-| Pantalla completa: la presenta el compositor encima de todo | |
+| Fullscreen: the compositor presents it on top of everything | |
 
-## Cómo se elige el camino
+## How the path is chosen
 
-1. `LORD_GPU=0`: siempre CPU.
-2. Se le pregunta al kernel qué driver tiene la placa (`DRM_IOCTL_VERSION`). Si es uno sin 3D
-   (simpledrm, bochs, cirrus, qxl, ast, mgag200, vkms, udl, virtio-gpu sin virgl…), se usa la
-   CPU **sin cargar Mesa**: lord-server sigue en ~32 MB.
-3. Si no, se arma GBM + EGL. Si `GL_RENDERER` es por software (llvmpipe, softpipe), se vuelve a
-   la CPU, porque componer con llvmpipe es más caro que el camino propio (ver mediciones).
-   `LORD_GPU=1` fuerza la GPU igual, para probar.
-4. Si un cuadro falla (eglSwapBuffers, ADDFB2, page flip), se apaga la GPU y se sigue por CPU.
+1. `LORD_GPU=0`: always CPU.
+2. The kernel is asked which driver the card has (`DRM_IOCTL_VERSION`). If it's one without 3D
+   (simpledrm, bochs, cirrus, qxl, ast, mgag200, vkms, udl, virtio-gpu without virgl…), the CPU
+   is used **without loading Mesa**: lord-server stays at ~32 MB.
+3. Otherwise, GBM + EGL are set up. If `GL_RENDERER` is a software one (llvmpipe, softpipe), it
+   falls back to the CPU, because compositing with llvmpipe costs more than our own path (see
+   measurements). `LORD_GPU=1` forces the GPU anyway, for testing.
+4. If a frame fails (eglSwapBuffers, ADDFB2, page flip), the GPU is turned off and the CPU path
+   takes over.
 
-Diagnóstico: `LORD_GPU_DEBUG=1` muestra los formatos dmabuf, los imports que fallan y los
-cuadros por scanout directo. El log dice `gpu: composición por GPU (renderer…)` o por qué no.
+Diagnostics: `LORD_GPU_DEBUG=1` shows the dmabuf formats, failing imports and the frames sent by
+direct scanout. The log says `gpu: composición por GPU (renderer…)` (GPU composition) or why not.
 
-## Cómo compone
+## How it composites
 
-- **La UI** (React → canvas por CPU) es una textura de pantalla completa. Por cuadro solo se sube
-  lo que cambió (el damage), con `GL_EXT_unpack_subimage`.
-- **Las ventanas de las apps** no pasan por el canvas. Donde va cada ventana, la UI deja un
-  **hueco transparente** (alfa 0) y se anota la superficie. Al presentar:
-  1. las texturas de las ventanas (capa 0);
-  2. encima, la UI con su alfa premultiplicado;
-  3. arriba de todo, los menús de las apps, la pantalla completa y el cursor (capa 1).
+- **The UI** (React → CPU canvas) is a fullscreen texture. Per frame only what changed (the
+  damage) is uploaded, with `GL_EXT_unpack_subimage`.
+- **App windows** don't go through the canvas. Wherever a window goes, the UI leaves a
+  **transparent hole** (alpha 0) and the surface is recorded. When presenting:
+  1. the window textures (layer 0);
+  2. on top, the UI with its premultiplied alpha;
+  3. on top of everything, the apps' menus, fullscreen and the cursor (layer 1).
 
-  Si una ventana de LordOS (o el Dock) tapa una de una app, la tapa de verdad. Si una app tapa a
-  otra, también: el hueco se abrió después.
-- **El canvas guarda alfa.** Las mezclas propias (`canvas.c`, `term_paint.c`) ahora calculan el
-  alfa de salida. En el camino por CPU no cambia nada (KMS es XRGB).
-- **El desenfoque de fondo** (Dock, Centro de control) también lleva alfa. Sobre una ventana de
-  app la tiñe pero no la desenfoca, porque la ventana no está en el canvas. Desenfocar el
-  contenido de las apps queda pendiente; necesita un pase de blur por GPU.
-- **Contenido:**
-  - shm: la copia de siempre, que se sube a la textura de la superficie cuando cambia;
-  - dmabuf: `EGL_EXT_image_dma_buf_import(_modifiers)` y `GL_OES_EGL_image_external`, sin
-    copias. Una EGLImage por búfer, que se reutiliza.
-- **Repintado:** cuando una app solo cambia su contenido, la UI no se repinta (no hay CPU por
-  cuadro de la app); solo se vuelve a presentar. Si cambia el tamaño o la geometría (la forma
-  del hueco), sí.
-- **Scanout directo:** si la ventana a pantalla completa tiene un dmabuf del tamaño de la salida
-  (XRGB/ARGB8888, un plano), no hay menús encima y el cursor va por el plano de cursor, su búfer
-  va directo al plano primario (`PRIME_FD_TO_HANDLE` + `ADDFB2` + page flip): cero copias. El
-  búfer se le devuelve a la app cuando deja de estar en pantalla.
-- **Cursor:** en el camino GPU va por el plano de cursor de KMS (`DRM_IOCTL_MODE_CURSOR2`), así
-  mover el mouse no compone nada. Si el driver no tiene plano de cursor, se dibuja como un quad
-  (`LORD_SW_CURSOR=1` lo fuerza).
+  If a LordOS window (or the Dock) covers an app's window, it really covers it. If one app covers
+  another, too: the hole was opened later.
+- **The canvas keeps alpha.** Our own blends (`canvas.c`, `term_paint.c`) now compute the output
+  alpha. Nothing changes on the CPU path (KMS is XRGB).
+- **Background blur** (Dock, Control Center) also carries alpha. Over an app window it tints but
+  doesn't blur, because the window isn't in the canvas. Blurring app content is pending; it needs
+  a GPU blur pass.
+- **Content:**
+  - shm: the usual copy, uploaded to the surface's texture when it changes;
+  - dmabuf: `EGL_EXT_image_dma_buf_import(_modifiers)` and `GL_OES_EGL_image_external`, with no
+    copies. One EGLImage per buffer, reused.
+- **Repainting:** when an app only changes its content, the UI isn't repainted (no CPU per app
+  frame); it's just presented again. If the size or geometry (the shape of the hole) changes, it
+  is.
+- **Direct scanout:** if the fullscreen window has a dmabuf the size of the output
+  (XRGB/ARGB8888, one plane), there are no menus on top and the cursor goes through the cursor
+  plane, its buffer goes straight to the primary plane (`PRIME_FD_TO_HANDLE` + `ADDFB2` + page
+  flip): zero copies. The buffer is returned to the app when it's no longer on screen.
+- **Cursor:** on the GPU path it goes through the KMS cursor plane (`DRM_IOCTL_MODE_CURSOR2`), so
+  moving the mouse composites nothing. If the driver has no cursor plane, it's drawn as a quad
+  (`LORD_SW_CURSOR=1` forces it).
 
-## Protocolos nuevos
+## New protocols
 
-| Protocolo | Versión | Qué hace |
+| Protocol | Version | What it does |
 |---|---|---|
-| `zwp_linux_dmabuf_v1` | 4 | Búferes de GPU de las apps, con feedback: tabla de formatos y modificadores, render node principal. Con GPU, lo que importa EGL; en el camino por CPU, solo ARGB/XRGB8888 lineal, que se mapea (`DMA_BUF_IOCTL_SYNC`) y se copia. Si EGL no puede importar un dmabuf lineal, se lo mapea igual |
-| `wp_presentation` | 1 | Hora y número de vblank del flip que mostró cada cuadro (`flip_ns`/`flip_seq` de KMS) |
-| `wp_viewporter` | 1 | Recorte y escala de una superficie (en el camino GPU; en el de CPU se dibuja sin escalar) |
-| `zwp_relative_pointer_manager_v1` | 1 | Movimiento crudo del mouse, sin bordes (juegos en primera persona) |
-| `zwp_pointer_constraints_v1` | 1 | Bloquear o confinar el puntero en la ventana; bloqueado: sin `motion`, cursor fijo |
-| `xdg_toplevel.set_fullscreen` | — | Ahora es pantalla completa de verdad: ocupa la salida, encima de todo, con el teclado; **❖Esc** sale |
-| `wl_pointer.set_cursor` | — | El cursor de la app (imagen o **oculto**, como hacen los juegos) mientras el puntero está sobre ella |
+| `zwp_linux_dmabuf_v1` | 4 | The apps' GPU buffers, with feedback: format and modifier table, main render node. With GPU, whatever EGL imports; on the CPU path, only linear ARGB/XRGB8888, which is mapped (`DMA_BUF_IOCTL_SYNC`) and copied. If EGL can't import a linear dmabuf, it's mapped anyway |
+| `wp_presentation` | 1 | Time and vblank number of the flip that showed each frame (KMS's `flip_ns`/`flip_seq`) |
+| `wp_viewporter` | 1 | Cropping and scaling of a surface (GPU path; the CPU path scales with a bilinear blit since `DISPLAYS.md`) |
+| `zwp_relative_pointer_manager_v1` | 1 | Raw mouse motion, without edges (first-person games) |
+| `zwp_pointer_constraints_v1` | 1 | Lock or confine the pointer to the window; locked: no `motion`, fixed cursor |
+| `xdg_toplevel.set_fullscreen` | — | Now real fullscreen: it takes the output, above everything, with the keyboard; **❖Esc** exits |
+| `wl_pointer.set_cursor` | — | The app's cursor (image or **hidden**, as games do) while the pointer is over it |
 
-No están: `xdg_activation`, escala fraccional y sincronización explícita
-(`linux-drm-syncobj`). Se usa la sincronización implícita de dma-resv.
+Several displays and HiDPI (`DISPLAYS.md`): one GBM/EGL surface and UI texture per display on a
+single context; app textures are shared and drawn at each display's scale; `wp_fractional_scale_v1`
+and `zxdg_output_manager_v1` are there. Direct scanout only with one display.
 
-## Probado (VM 116 `lordos-gpu`)
+Not there: `xdg_activation` and explicit sync (`linux-drm-syncobj`). dma-resv
+implicit sync is used.
 
-En la VM no hay GPU real: el host Proxmox solo tiene la placa ASPEED, sin render node, así que
-virgl no arranca. Se usó virtio-gpu 2D con Mesa por software adentro (llvmpipe sobre
-kms_swrast). Con eso se prueba de verdad el código de GBM/EGL/GLES/KMS, pero **no** los drivers
-de AMD ni de Nvidia.
+## Tested (VM 116 `lordos-gpu`)
 
-| Prueba | Resultado |
+There's no real GPU in the VM: the Proxmox host only has the ASPEED card, with no render node, so
+virgl doesn't start. virtio-gpu 2D was used with software Mesa inside (llvmpipe on kms_swrast).
+That really exercises the GBM/EGL/GLES/KMS code, but **not** the AMD or Nvidia drivers.
+
+| Test | Result |
 |---|---|
-| UI por EGL/GLES2 (llvmpipe, `LORD_GPU=1`) | se ve igual que por CPU (captura) |
-| GTK Demo (shm), menús, Dock encima | orden de capas bien; clics y menús funcionan |
-| `glmark2-es2-wayland` 640×400 | 75 FPS en GPU (sincronizado al vblank de 75 Hz); usa shm, porque llvmpipe en la app no usa dmabuf |
-| `vkcube` (lavapipe) | anda (300 cuadros), por shm |
-| `dmabuf-client` (udmabuf lineal) en ventana | GPU: 72 FPS, 400/400 presentados (wp_presentation); CPU: 131 FPS |
-| `dmabuf-client --fullscreen` 1280×800 | GPU: 42,9 FPS; CPU: 42,5 FPS; encima de todo y con teclado |
-| `dmabuf-client --lock` (bloqueo + relativo + cursor oculto) | bloqueado; relativos llegan; 0 absolutos mientras está bloqueado; cursor oculto; en GPU y en CPU |
-| neverball (SDL2 + OpenGL por Wayland) | GPU forzada: ~20 cuadros/s; CPU: ~24 cuadros/s (llvmpipe: el juego y la composición compiten por la misma CPU) |
-| Selección automática en la VM | "virtio_gpu sin 3D" → CPU sin cargar Mesa: 32 MB de RSS |
-| `LORD_GPU=0` | todo como antes |
+| UI via EGL/GLES2 (llvmpipe, `LORD_GPU=1`) | looks the same as via CPU (screenshot) |
+| GTK Demo (shm), menus, Dock on top | correct layer order; clicks and menus work |
+| `glmark2-es2-wayland` 640×400 | 75 FPS on GPU (synced to the 75 Hz vblank); uses shm, because llvmpipe in the app doesn't use dmabuf |
+| `vkcube` (lavapipe) | works (300 frames), via shm |
+| `dmabuf-client` (linear udmabuf) in a window | GPU: 72 FPS, 400/400 presented (wp_presentation); CPU: 131 FPS |
+| `dmabuf-client --fullscreen` 1280×800 | GPU: 42.9 FPS; CPU: 42.5 FPS; on top of everything and with keyboard |
+| `dmabuf-client --lock` (lock + relative + hidden cursor) | locked; relative events arrive; 0 absolute while locked; hidden cursor; on GPU and on CPU |
+| neverball (SDL2 + OpenGL over Wayland) | forced GPU: ~20 frames/s; CPU: ~24 frames/s (llvmpipe: the game and the compositor compete for the same CPU) |
+| Automatic selection in the VM | "virtio_gpu without 3D" → CPU without loading Mesa: 32 MB of RSS |
+| `LORD_GPU=0` | everything as before |
 
-CPU de lord-server con `glmark2-es2-wayland` en ventana durante 10 s:
+lord-server CPU with `glmark2-es2-wayland` in a window for 10 s:
 
-| Camino | CPU | RSS |
+| Path | CPU | RSS |
 |---|---|---|
-| GPU con llvmpipe (`LORD_GPU=1`) | ~300 % (llvmpipe compone 1280×800 por cuadro con varios hilos) | 158 MB |
+| GPU with llvmpipe (`LORD_GPU=1`) | ~300 % (llvmpipe composites 1280×800 per frame with several threads) | 158 MB |
 | CPU | ~100 % | 36 MB |
 
-Con llvmpipe la GPU no conviene; por eso es CPU por defecto. Con una placa real, componer es
-trabajo de la GPU, y la CPU solo sube lo que cambió de la UI.
+With llvmpipe the GPU isn't worth it; that's why CPU is the default. With a real card,
+compositing is the GPU's work, and the CPU only uploads what changed in the UI.
 
-**Sin probar:**
-- **AMD y Nvidia reales:** pendiente del ISO live en la PC del usuario (AMD).
-- **Importar un dmabuf de GPU por EGL:** virtio-gpu no acepta dmabuf de otro origen, así que en
-  la VM ese import falla (`EGL_BAD_ALLOC`) y los udmabuf se mapean.
-- **Scanout directo:** en la VM falla por lo mismo. El código está y vuelve a componer si falla.
+**Untested:**
+- **Real AMD and Nvidia:** pending the live ISO on the user's PC (AMD).
+- **Importing a GPU dmabuf via EGL:** virtio-gpu doesn't accept dmabufs from another source, so in
+  the VM that import fails (`EGL_BAD_ALLOC`) and udmabufs are mapped.
+- **Direct scanout:** in the VM it fails for the same reason. The code is there and falls back to
+  compositing if it fails.
 
-Para probarlo en la PC con AMD (ISO live):
-1. Arrancar.
-2. En la Terminal de LordOS, `grep gpu /tmp/lord.log` (o el log que use el ISO): tiene que
-   decir `composición por GPU (AMD Radeon …)` y `cursor por hardware`.
-3. `vkcube`, `glmark2-es2-wayland`, un juego (SuperTuxKart, 0 A.D.).
-4. Con `LORD_GPU_DEBUG=1`, a pantalla completa tiene que aparecer `scanout directo: N cuadros`.
+To test it on the AMD PC (live ISO):
+1. Boot.
+2. In the LordOS Terminal, `grep gpu /tmp/lord.log` (or whatever log the ISO uses): it must say
+   `composición por GPU (AMD Radeon …)` (GPU composition) and `cursor por hardware` (hardware cursor).
+3. `vkcube`, `glmark2-es2-wayland`, a game (SuperTuxKart, 0 A.D.).
+4. With `LORD_GPU_DEBUG=1`, in fullscreen `scanout directo: N cuadros` (direct scanout: N frames) must appear.
 
-## Cliente de prueba
+## Test client
 
-`server/tests/dmabuf_client.c` (`make -C server build/dmabuf-client`, necesita
-`libwayland-client` y `/dev/udmabuf`, que en Debian es del grupo `kvm`):
+`server/tests/dmabuf_client.c` (`make -C server build/dmabuf-client`, needs
+`libwayland-client` and `/dev/udmabuf`, which in Debian belongs to the `kvm` group):
 
 ```sh
 build/dmabuf-client [--fullscreen] [--lock] [--frames N] [--size 800x600]
 ```
 
-Imprime cuadros, FPS, presentados/descartados y, con `--lock`, los eventos de puntero.
+It prints frames, FPS, presented/discarded and, with `--lock`, the pointer events.
 
-## Paquetes
+## Packages
 
-Para compilar con GPU (si faltan, `make` compila sin GPU, `GPU=0`):
+To build with GPU (if they're missing, `make` builds without GPU, `GPU=0`):
 
 ```sh
 sudo apt-get install -y --no-install-recommends libgbm-dev libegl-dev libgles-dev
 ```
 
-En tiempo de ejecución: `libgbm1`, `libegl1`, `libgles2`, `libegl-mesa0` y el driver
-(`libgl1-mesa-dri`: radeonsi/AMD, iris/Intel, nouveau; Nvidia: su driver con GBM, o NVK).
+At runtime: `libgbm1`, `libegl1`, `libgles2`, `libegl-mesa0` and the driver
+(`libgl1-mesa-dri`: radeonsi/AMD, iris/Intel, nouveau; Nvidia: its driver with GBM, or NVK).
 
-Solo para probar en la VM 116: `mesa-utils`, `mesa-utils-bin`, `mesa-vulkan-drivers`,
-`vulkan-tools`, `glmark2-es2-wayland` y `neverball`. El usuario `lord` se agregó al grupo `kvm`
-para `/dev/udmabuf`.
+Only for testing in VM 116: `mesa-utils`, `mesa-utils-bin`, `mesa-vulkan-drivers`,
+`vulkan-tools`, `glmark2-es2-wayland` and `neverball`. The user `lord` was added to the `kvm`
+group for `/dev/udmabuf`.
 
-En el host Proxmox se instalaron `libgl1` y `libegl1` (los pide `vga: virtio-gl`). Igual virgl
-no anda sin un render node en el host, y la 116 quedó con `vga: virtio`.
+On the Proxmox host `libgl1` and `libegl1` were installed (`vga: virtio-gl` requires them). Still,
+virgl doesn't work without a render node on the host, and VM 116 was left with `vga: virtio`.
 
-## La VM 116 (`lordos-gpu`)
+## VM 116 (`lordos-gpu`)
 
-- Clon completo de la 115 (`qm clone 115 116 --name lordos-gpu --full`), con `vga: virtio`
+- Full clone of 115 (`qm clone 115 116 --name lordos-gpu --full`), with `vga: virtio`
   (2D).
-- IP 172.17.0.52 por cloud-init (`ipconfig0`), snippet `local:snippets/lordos-gpu.yaml` (igual
-  al de la 115 con otro hostname), MAC nueva.
-- Es para el camino GPU. La 115 sigue siendo la de desarrollo y no se tocó.
+- IP 172.17.0.52 via cloud-init (`ipconfig0`), snippet `local:snippets/lordos-gpu.yaml` (same as
+  115's with another hostname), new MAC.
+- It's for the GPU path. 115 is still the development VM and wasn't touched.
 
-## Pendiente
+## Pending
 
-- Probar en AMD real (ISO live) y en Nvidia.
-- Blur de la UI que incluya el contenido de las apps (pase por GPU).
-- `wp_viewporter` con escala en el camino por CPU.
-- Scanout directo de ventanas que no son de pantalla completa (planos overlay).
-- `linux-drm-syncobj` (sincronización explícita, la que prefiere Nvidia), `xdg_activation`,
-  escala fraccional, tearing control (`wp_tearing_control`) y VRR.
-- Que JS sepa que una ventana está en pantalla completa (hoy recibe el evento `fullscreen`, pero
-  los temas lo ignoran).
+- Test on real AMD (live ISO) and on Nvidia.
+- UI blur that includes app content (GPU pass).
+- Direct scanout of non-fullscreen windows (overlay planes).
+- `linux-drm-syncobj` (explicit sync, the one Nvidia prefers), `xdg_activation`, tearing control (`wp_tearing_control`) and VRR.
+- Letting JS know a window is fullscreen (today it receives the `fullscreen` event, but the themes
+  ignore it).

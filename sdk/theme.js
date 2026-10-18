@@ -1,9 +1,9 @@
-// theme.js — contrato entre temas y apps. El tema provee los tokens; las apps los usan
-// con useTheme() y así se ven bien con cualquier tema.
+// theme.js — contract between themes and apps. The theme provides the tokens; apps use them
+// with useTheme() and so look right with any theme.
 import { createContext, createElement, useContext, useEffect } from 'react';
 import { settings } from './settings.js';
 
-// Tokens mínimos que todo tema debe proveer (ver themes/README.md).
+// Minimal tokens every theme must provide (see themes/README.md).
 export const DEFAULT_TOKENS = {
   mode: 'dark',
   accent: '#0a84ff',
@@ -21,20 +21,20 @@ export const DEFAULT_TOKENS = {
 
 const ThemeContext = createContext(DEFAULT_TOKENS);
 
-// Las apps .lpk aisladas (otro proceso) reciben estos mismos tokens en vivo por el broker
-// (lord.broker.publish, ver docs/PRIVACIDAD.md). Solo lo publica el tema, no el app host.
+// Isolated .lpk apps (another process) receive these same tokens live through the broker
+// (lord.broker.publish, see docs/PRIVACY.md). Only the theme publishes them, not the app host.
 let published = '';
 function publishTokens(value) {
   try {
     if (typeof lord === 'undefined' || !lord.broker || typeof lord.broker.publish !== 'function') return;
     const json = JSON.stringify(value, (k, v) => (typeof v === 'function' ? undefined : v));
     if (json !== published) { published = json; lord.broker.publish('theme', json); }
-  } catch (e) { /* tokens no serializables */ }
+  } catch (e) { /* non-serializable tokens */ }
 }
 
-// Las apps Linux (GTK, GNOME, Qt) leen modo, acento y orden de los botones de la barra por
-// org.freedesktop.portal.Settings, que atiende lord-server (ui/portal.c). gtkButtons es el orden de
-// GTK: los semáforos a la izquierda, o los botones a la derecha en un tema estilo Windows.
+// Linux apps (GTK, GNOME, Qt) read the mode, accent and title-bar button order through
+// org.freedesktop.portal.Settings, served by lord-server (ui/portal.c). gtkButtons is the
+// GTK order: traffic lights on the left, or buttons on the right in a Windows-style theme.
 const GNOME_ACCENTS = { azul: 'blue', violeta: 'purple', rosa: 'pink', naranja: 'orange', verde: 'green', grafito: 'slate',
   rojo: 'red', amarillo: 'yellow', turquesa: 'teal', celeste: 'blue' };
 let portalSent = '';
@@ -46,7 +46,7 @@ function syncPortal(value) {
       accentName: GNOME_ACCENTS[name] || 'blue', buttons: value.gtkButtons || 'close,minimize,maximize:' };
     const json = JSON.stringify(msg);
     if (json !== portalSent) { portalSent = json; lord.portal.set(msg); }
-  } catch (e) { /* sin portal */ }
+  } catch (e) { /* no portal */ }
 }
 
 export function ThemeProvider({ tokens, children }) {

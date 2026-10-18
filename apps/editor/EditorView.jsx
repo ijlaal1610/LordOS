@@ -1,7 +1,7 @@
-// EditorView — el área de texto: dibuja solo las líneas visibles (más un margen), con resaltado,
-// selecciones, varios cursores y coincidencias de la búsqueda; y maneja teclado, mouse, rueda y
-// el método de entrada. La fuente es monoespaciada (JetBrains Mono): el ancho de una celda se
-// mide con lord.measureText y las posiciones con caracteres anchos (CJK, emoji) se miden de verdad.
+// EditorView — the text area: draws only the visible lines (plus a margin), with highlighting,
+// selections, multiple cursors and search matches; and handles keyboard, mouse, wheel and
+// the input method. The font is monospaced (JetBrains Mono): the width of a cell is
+// measured with lord.measureText and positions with wide characters (CJK, emoji) are measured for real.
 import { View, Text, useAppWindow, addListener, ime, clipboard, hasTextFocus } from '@lordos/sdk';
 import { memo, useEffect, useRef, useState } from 'react';
 import { cmp, head, anchor, hasSel, selStart, selEnd, cursorAt } from './buffer.js';
@@ -9,9 +9,9 @@ import { tokenizeLine } from './syntax.js';
 
 export const FONT = 13;
 export const LH = 20;
-const MONO = 1400;                   // peso 400 + monoespaciada (ver TEXT_MONO en server/src/ui/ui.h)
+const MONO = 1400;                   // weight 400 + monospaced (see TEXT_MONO in server/src/ui/ui.h)
 const PAD = 10;
-const MARGIN = 6;                    // líneas extra arriba y abajo de lo visible
+const MARGIN = 6;                    // extra lines above and below the visible ones
 const WORD = /[\p{L}\p{N}_$]/u;
 const PAIRS = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'", '`': '`' };
 const CLOSERS = new Set([')', ']', '}', '"', "'", '`']);
@@ -20,7 +20,7 @@ let cellW = 0;
 export const cell = () => cellW || (cellW = lord.measureText('0000000000', FONT, MONO) / 10 || 7.8);
 const ascii = (s) => /^[\x00-\x7f]*$/.test(s);
 
-// Expande tabs a espacios (columna visual).
+// Expands tabs to spaces (visual column).
 export function expand(s, tab) {
   if (s.indexOf('\t') < 0) return s;
   let out = '', col = 0;
@@ -32,7 +32,7 @@ export function expand(s, tab) {
 
 const measure = (s) => (ascii(s) ? s.length * cell() : lord.measureText(s, FONT, MONO));
 
-// Columna (índice en el string) más cercana a la x dada.
+// Column (index in the string) closest to the given x.
 function colAt(line, x, tab) {
   if (x <= 0) return 0;
   let w = 0, col = 0;
@@ -50,7 +50,7 @@ function colAt(line, x, tab) {
 
 const isWord = (ch) => !!ch && WORD.test(ch);
 
-// Salto por palabra: a la izquierda o a la derecha de p.
+// Word jump: to the left or to the right of p.
 function wordLeft(doc, p) {
   if (p.c === 0) return p.l > 0 ? { l: p.l - 1, c: doc.line(p.l - 1).length } : p;
   const s = doc.line(p.l);
@@ -81,7 +81,7 @@ export function wordAt(doc, p) {
 
 const lead = (s) => /^[ \t]*/.exec(s)[0];
 
-// ---- una línea (se vuelve a dibujar solo si cambia su texto o su estado de resaltado) ----
+// ---- one line (redrawn only if its text or its highlighting state changes) ----
 
 const Line = memo(function Line({ tokens, top, left, palette, tab }) {
   let col = 0;
@@ -100,7 +100,7 @@ const Line = memo(function Line({ tokens, top, left, palette, tab }) {
   );
 }, (a, b) => a.tokens === b.tokens && a.top === b.top && a.left === b.left && a.palette === b.palette && a.tab === b.tab);
 
-// ---- vista ----
+// ---- view ----
 
 export function EditorView({ doc, lang, t, palette, settings, matches, onChange, onCommand, apiRef, overlay }) {
   const { focused } = useAppWindow();
@@ -114,7 +114,7 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
   const tab = settings.tabSize;
   const unit = settings.useTabs ? '\t' : ' '.repeat(tab);
 
-  // ---- tamaño del área (no hay eventos de resize: se mira después de cada render y cada 500 ms) ----
+  // ---- area size (there are no resize events: checked after every render and every 500 ms) ----
   const readSize = () => {
     if (!area.current) return;
     const [, , w, h] = lord.getLayout(area.current.id);
@@ -126,20 +126,20 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
   const gutter = Math.round(digits * cell() + 22);
   const visLines = Math.ceil(size.h / LH) + 1;
 
-  // ---- resaltado incremental ----
+  // ---- incremental highlighting ----
   const c = cache.current;
   if (c.lang !== lang || c.doc !== doc) { c.lang = lang; c.doc = doc; c.states = ['root']; c.upTo = 0; c.lines = []; }
   if (doc.firstChanged < c.upTo) c.upTo = doc.firstChanged;
   if (doc.firstChanged <= c.lines.length) c.lines.length = Math.min(c.lines.length, doc.firstChanged);
   doc.firstChanged = Infinity;
   const tokensFor = (l) => {
-    // salto lejano (❖↓, ir a línea): se empieza 200 líneas antes con el estado inicial, en vez de
-    // resaltar todo lo anterior (un comentario de bloque muy largo puede verse mal un momento)
+    // far jump (❖↓, go to line): start 200 lines earlier with the initial state, instead of
+    // highlighting everything before it (a very long block comment may look wrong for a moment)
     if (l - c.upTo > 1500) {
       for (let i = c.upTo; i < l - 200; i++) c.states[i + 1] = 'root';
       c.upTo = l - 200;
     }
-    while (c.upTo < l) {           // estados hasta la línea l
+    while (c.upTo < l) {           // states up to line l
       const r = tokenizeLine(lang, doc.line(c.upTo), c.states[c.upTo] || 'root');
       c.states[c.upTo + 1] = r.state;
       c.lines[c.upTo] = r.tokens;
@@ -153,7 +153,7 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
     return c.lines[l];
   };
 
-  // ---- geometría ----
+  // ---- geometry ----
   const xOf = (p) => measure(expand(doc.line(p.l).slice(0, p.c), tab));
   const posAt = (x, y) => {
     const [ax, ay] = lord.getLayout(area.current.id);
@@ -168,7 +168,7 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
       const y = p.l * LH, h = st.current.h || size.h, w = (st.current.w || size.w) - gutter - PAD * 2;
       if (y < top) top = y;
       if (y + LH > top + h) top = y + LH - h;
-      // horizontal: con un solo cursor lo sigue; con varios, solo si ninguno queda a la vista
+      // horizontal: with a single cursor it follows it; with several, only if none is in view
       const xs = doc.cursors.length > 1 ? doc.cursors.map((k) => xOf(head(k))) : [xOf(p)];
       if (!xs.some((x) => x >= left && x <= left + w - 10)) {
         const x = xOf(p);
@@ -182,7 +182,7 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
 
   const changed = (seal = false) => { if (seal) doc.seal(); setBlink(true); ensureVisible(); onChange(); };
 
-  // ---- movimiento ----
+  // ---- movement ----
   const move = (fn, extend, { keepGoal = false } = {}) => {
     doc.cursors = doc.cursors.map((k) => {
       if (!extend && hasSel(k) && !keepGoal && (fn === left || fn === right)) {
@@ -208,16 +208,16 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
   const end = (p) => ({ l: p.l, c: doc.line(p.l).length });
   const page = () => Math.max(1, Math.floor((st.current.h || size.h) / LH) - 1);
 
-  // ---- edición ----
+  // ---- editing ----
   const typeText = (text) => {
-    // pares automáticos y saltar el de cierre
+    // automatic pairs and skipping the closing one
     if (text.length === 1 && CLOSERS.has(text) && doc.cursors.every((k) => !hasSel(k) && doc.line(k.l)[k.c] === text)) {
       move(right, false);
       return;
     }
     const close = PAIRS[text];
     if (close && doc.cursors.every((k) => hasSel(k))) {
-      // envolver la selección
+      // wrap the selection
       doc.normalize();
       const edits = doc.cursors.map((k) => ({ from: selStart(k), to: selEnd(k), text: text + doc.textIn(selStart(k), selEnd(k)) + close }));
       doc.transact(edits, (rs) => rs.map((r) => ({ l: r.end.l, c: r.end.c - 1, al: r.start.l, ac: r.start.c + 1, goal: -1 })));
@@ -259,14 +259,14 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
 
   const backspace = (byWord) => {
     if (doc.cursors.every((k) => !hasSel(k))) {
-      // entre un par vacío: borrar los dos
+      // inside an empty pair: delete both
       if (doc.cursors.every((k) => { const s = doc.line(k.l); return PAIRS[s[k.c - 1]] && PAIRS[s[k.c - 1]] === s[k.c]; })) {
         doc.deleteBy((p) => ({ l: p.l, c: p.c - 1 }));
         doc.deleteBy((p) => ({ l: p.l, c: p.c + 1 }));
         changed();
         return;
       }
-      // en la sangría con espacios: hasta la tabulación anterior
+      // in space indentation: back to the previous tab stop
       if (!byWord && !settings.useTabs && doc.cursors.every((k) => k.c > 0 && /^ +$/.test(doc.line(k.l).slice(0, k.c)))) {
         doc.deleteBy((p) => ({ l: p.l, c: Math.max(0, p.c - ((p.c - 1) % tab + 1)) }));
         changed();
@@ -379,7 +379,7 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
     if (txt) clipboard.set(txt);
   };
   const cut = () => {
-    if (!doc.cursors.some(hasSel)) {           // sin selección: la línea entera, como TextMate
+    if (!doc.cursors.some(hasSel)) {           // no selection: the whole line, like TextMate
       const l = doc.cursors[0].l;
       clipboard.set(`${doc.line(l)}\n`);
       doc.cursors = [{ l: Math.min(l + 1, doc.lineCount - 1), c: l + 1 < doc.lineCount ? 0 : doc.line(l).length, al: l, ac: 0, goal: -1 }];
@@ -433,7 +433,7 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
   };
   if (apiRef) apiRef.current = commands;
 
-  // ---- teclado ----
+  // ---- keyboard ----
   const onKey = (e) => {
     const prim = e.ctrl || e.meta;
     const k = e.key;
@@ -495,8 +495,8 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
     if (e.char && !e.ctrl && !e.meta && e.char >= ' ') typeText(e.char);
   };
 
-  // el manejador y la posición del cursor cambian en cada render: se leen por una referencia,
-  // así el foco del método de entrada no se suelta (y no se pierde la composición) al escribir
+  // the handler and the cursor position change on every render: they are read through a ref,
+  // so the input method focus is not released (and the composition is not lost) while typing
   st.current.onKey = onKey;
   st.current.caret = () => {
     if (!area.current) return null;
@@ -507,7 +507,7 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
   st.current.overlay = !!overlay;
   useEffect(() => {
     if (!focused) return undefined;
-    // con el foco, el editor recibe el texto del método de entrada (japonés, chino, coreano)
+    // with focus, the editor receives the input method's text (Japanese, Chinese, Korean)
     ime.attach(imeToken, () => st.current.caret());
     const off = addListener('keydown', (e) => { if (!e.down && e.down !== undefined) return; if (hasTextFocus() || st.current.overlay) return; st.current.onKey(e); });
     return () => { off(); ime.detach(imeToken); };
@@ -529,7 +529,7 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
     cl.n = now - cl.time < 400 && cl.p && cl.p.l === p.l && Math.abs(cl.p.c - p.c) < 2 ? cl.n + 1 : 1;
     cl.time = now;
     cl.p = p;
-    if (e.alt) {                               // ⌥clic: otro cursor; ⌥arrastre: selección por columnas
+    if (e.alt) {                               // ⌥click: another cursor; ⌥drag: column selection
       drag.current = { mode: 'column', start: p, startX: e.x, base: doc.cursors.slice() };
       doc.cursors = [...doc.cursors, cursorAt(p)];
       doc.normalize();
@@ -590,7 +590,7 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
     });
   };
 
-  // ---- dibujo ----
+  // ---- drawing ----
   const first = Math.max(0, Math.floor(scroll.top / LH) - MARGIN);
   const last = Math.min(doc.lineCount - 1, first + visLines + MARGIN * 2);
   const textLeft = gutter + PAD - scroll.left;
@@ -598,7 +598,7 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
   for (let l = first; l <= last; l++) rows.push(l);
   const primary = doc.cursors[doc.cursors.length - 1];
 
-  // rectángulos de selección por línea visible
+  // selection rectangles per visible line
   const selRects = [];
   for (const k of doc.cursors) {
     if (!hasSel(k)) continue;
@@ -618,7 +618,7 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
   return (
     <View ref={area} onMouseDown={onMouseDown} onWheel={onWheel}
       style={{ flex: 1, overflow: 'hidden', backgroundColor: t.editorBg, direction: 'ltr' }}>
-      {/* línea actual */}
+      {/* current line */}
       {!doc.cursors.some(hasSel) && primary.l >= first && primary.l <= last && (
         <View style={{ position: 'absolute', left: 0, right: 0, top: primary.l * LH - scroll.top, height: LH, backgroundColor: t.lineHighlight }} />
       )}
@@ -633,7 +633,7 @@ export function EditorView({ doc, lang, t, palette, settings, matches, onChange,
       {focused && blink && doc.cursors.map((k, i) => (k.l >= first && k.l <= last ? (
         <View key={`c${i}`} style={{ position: 'absolute', top: k.l * LH - scroll.top + 2, height: LH - 4, width: 2, left: textLeft + xOf(head(k)) - 1, backgroundColor: t.caret }} />
       ) : null))}
-      {/* números de línea */}
+      {/* line numbers */}
       <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: gutter, backgroundColor: t.gutterBg }}>
         {rows.map((l) => (
           <Text key={l} style={{ position: 'absolute', top: l * LH - scroll.top + 2, left: 0, width: gutter - 12, textAlign: 'right', fontFamily: 'monospace',

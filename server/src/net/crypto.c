@@ -1,6 +1,6 @@
-/* crypto.c — lo mínimo de criptografía que necesita la red: X25519 (claves de WireGuard),
- * base64, SHA-1 y PBKDF2-HMAC-SHA1 (la PSK de WPA2 a partir de la contraseña). Propio, sin
- * OpenSSL. X25519 sigue RFC 7748 con campos de 5 limbs de 51 bits (como curve25519-donna-c64). */
+/* crypto.c — the bare minimum of cryptography the network needs: X25519 (WireGuard keys),
+ * base64, SHA-1 and PBKDF2-HMAC-SHA1 (the WPA2 PSK from the password). Our own, no
+ * OpenSSL. X25519 follows RFC 7748 with fields of 5 51-bit limbs (like curve25519-donna-c64). */
 #include "netpriv.h"
 
 #include <string.h>
@@ -21,7 +21,7 @@ static void fe_frombytes(fe h, const uint8_t s[32]) {
     h[1] = (load64(s + 6) >> 3) & MASK51;
     h[2] = (load64(s + 12) >> 6) & MASK51;
     h[3] = (load64(s + 19) >> 1) & MASK51;
-    h[4] = (load64(s + 24) >> 12) & MASK51;     /* el bit 255 se ignora */
+    h[4] = (load64(s + 24) >> 12) & MASK51;     /* bit 255 is ignored */
 }
 
 static void fe_carry(fe h) {
@@ -39,7 +39,7 @@ static void fe_tobytes(uint8_t s[32], const fe in) {
     fe h;
     memcpy(h, in, sizeof h);
     fe_carry(h);
-    /* reducción final: h < 2^255 + algo; restar p si h >= p */
+    /* final reduction: h < 2^255 + something; subtract p if h >= p */
     uint64_t q = (h[0] + 19) >> 51;
     q = (h[1] + q) >> 51;
     q = (h[2] + q) >> 51;
@@ -64,7 +64,7 @@ static void fe_tobytes(uint8_t s[32], const fe in) {
 static void fe_add(fe h, const fe f, const fe g) { for (int i = 0; i < 5; i++) h[i] = f[i] + g[i]; }
 
 static void fe_sub(fe h, const fe f, const fe g) {
-    /* + 2p para que no haya negativos */
+    /* + 2p so there are no negatives */
     h[0] = f[0] + 0xFFFFFFFFFFFDAull - g[0];
     h[1] = f[1] + 0xFFFFFFFFFFFFEull - g[1];
     h[2] = f[2] + 0xFFFFFFFFFFFFEull - g[2];
@@ -107,7 +107,7 @@ static void fe_mul121666(fe h, const fe f) {
 }
 
 static void fe_inv(fe out, const fe z) {
-    /* z^(p-2) con la cadena de RFC 7748 / donna */
+    /* z^(p-2) with the RFC 7748 / donna chain */
     fe z2, z9, z11, z2_5_0, z2_10_0, z2_20_0, z2_50_0, z2_100_0, t;
     fe_sq(z2, z);
     fe_sq(t, z2); fe_sq(t, t);

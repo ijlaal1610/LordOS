@@ -1,9 +1,9 @@
-/* map_bench.c — tiempo de dibujo del mapa vectorial del Monitor (src/monitor/map.c).
+/* map_bench.c — render time of the Monitor's vector map (src/monitor/map.c).
  *
- *   build/map-bench [carpeta de assets] [ancho alto]
+ *   build/map-bench [assets folder] [width height]
  *
- * Pide cuadros como los de la app (mundo entero, Europa y Sudamérica con zoom) y mide cuánto
- * tarda el hilo del mapa en cada uno. Escribe además build/map-*.ppm para mirarlos. */
+ * Requests frames like the app's (whole world, Europe and South America zoomed in) and measures how
+ * long the map thread takes for each. It also writes build/map-*.ppm so you can look at them. */
 #include "monitor/map.h"
 
 #include <stdio.h>
@@ -53,20 +53,20 @@ int main(int argc, char **argv) {
     q.ndots = 9;
     for (int i = 0; i < 9; i++) { q.dots[i].lon = dots[i][0]; q.dots[i].lat = dots[i][1]; q.dots[i].r = 5; }
     q.dots[1].sel = 1;
-    if (getenv("NODOTS")) { q.ndots = 0; q.has_home = 0; }   /* solo la tierra */
+    if (getenv("NODOTS")) { q.ndots = 0; q.has_home = 0; }   /* land only */
     for (int vi = 0; vi < 3; vi++) {
         double sum = 0, worst = 0;
         int n = 12;
         for (int k = 0; k < n; k++) {
             q.ppd = views[vi].ppd;
-            q.lon0 = views[vi].lon - w / 2.0 / q.ppd + k * 0.3;        /* como al arrastrar */
+            q.lon0 = views[vi].lon - w / 2.0 / q.ppd + k * 0.3;        /* like dragging */
             q.lat0 = views[vi].lat + h / 2.0 / q.ppd;
             uint64_t s = map_request(&q);
             MapReq v;
             uint8_t *px;
             double ms;
             wait_frame(s, &v, &px, &ms);
-            if (k) { sum += ms; if (ms > worst) worst = ms; }         /* el primero incluye cargar land.bin */
+            if (k) { sum += ms; if (ms > worst) worst = ms; }         /* the first one includes loading land.bin */
             if (k == 0) { char f[64]; snprintf(f, sizeof f, "build/map-%s.ppm", views[vi].name); save(f, &v, px); }
             free(px);
         }

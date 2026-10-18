@@ -3,7 +3,7 @@
 // also tests language and direction (RTL) live inside the isolated process.
 // It also tests, inside the sandbox: several windows («New window» in its menu and in the Dock),
 // the camera through lord-media's read-only frame ring, and saving a photo/video through the
-// system's save dialog (powerbox). See docs/PRIVACIDAD.md.
+// system's save dialog (powerbox). See docs/PRIVACY.md.
 import { View, Text, Button, MediaView, useTheme, useLocale, useAppWindow, requestPermission, markDeviceUse, onPermissionRevoked, openFile, wm, micStart, micStop, micLevel, media, usePlayer } from '@lordos/sdk';
 import { useState, useEffect } from 'react';
 

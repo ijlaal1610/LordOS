@@ -1,11 +1,11 @@
-/* idx.h — índice compacto de paquetes de LordOS (/var/lib/lordos/pkg/index.bin).
+/* idx.h — LordOS's compact package index (/var/lib/lordos/pkg/index.bin).
  *
- * Lo arma el ayudante root en pkg-update a partir de los Packages, Translation-en y DEP-11 ya
- * verificados; lord-server (sin root) lo abre con mmap: nada se copia a memoria hasta que se
- * usa. Todo son enteros de 32 bits little-endian y desplazamientos dentro del bloque de textos
- * (el texto 0 es ""). Los paquetes van ordenados por nombre y, dentro de un nombre, de la
- * versión más nueva a la más vieja. Las descripciones largas van en su propio bloque al final,
- * en el mismo archivo (se reemplaza entero con rename: nunca hay medio índice). */
+ * The root helper builds it in pkg-update from the already verified Packages, Translation-en and
+ * DEP-11; lord-server (no root) opens it with mmap: nothing is copied into memory until it's
+ * used. Everything is 32-bit little-endian integers and offsets into the string block
+ * (string 0 is ""). Packages are sorted by name and, within a name, from the newest version
+ * to the oldest. Long descriptions go in their own block at the end, in the same file (it's
+ * replaced whole with rename: there's never half an index). */
 #ifndef LORD_PKG_IDX_H
 #define LORD_PKG_IDX_H
 
@@ -22,19 +22,19 @@ enum { PRIO_UNKNOWN, PRIO_REQUIRED, PRIO_IMPORTANT, PRIO_STANDARD, PRIO_OPTIONAL
 typedef struct {
     uint32_t name, version, arch, section, summary, filename, homepage, source;
     uint32_t depends, predepends, recommends, suggests, provides, conflicts, breaks, replaces;
-    uint32_t size, isize;               /* bytes del .deb, KB instalado */
-    uint32_t desc, desclen;             /* en el bloque de descripciones */
-    uint32_t app;                       /* índice en apps o UINT32_MAX */
-    uint16_t src;                       /* índice en srcs */
+    uint32_t size, isize;               /* bytes of the .deb, installed KB */
+    uint32_t desc, desclen;             /* in the descriptions block */
+    uint32_t app;                       /* index into apps or UINT32_MAX */
+    uint16_t src;                       /* index into srcs */
     uint8_t prio, flags;
     uint8_t sha256[32];
 } IdxPkg;                               /* 120 bytes */
 
-typedef struct { uint32_t name, version, pkg; } IdxProv;      /* name lo provee el paquete pkg */
+typedef struct { uint32_t name, version, pkg; } IdxProv;      /* name is provided by package pkg */
 
 typedef struct {
     uint32_t id, package, name, summary, name_es, summary_es, name_pt, summary_pt, icon, categories, type;
-    uint32_t desc;                      /* en el bloque de descripciones, terminada en 0; UINT32_MAX: no hay */
+    uint32_t desc;                      /* in the descriptions block, 0-terminated; UINT32_MAX: none */
 } IdxApp;
 
 typedef struct {
@@ -49,10 +49,10 @@ typedef struct {
     uint32_t off_pkg, off_prov, off_app, off_src, off_str, len_str;
     int64_t built;
     uint32_t off_desc, len_desc;
-    char arch[16];                      /* arquitectura nativa con la que se armó */
+    char arch[16];                      /* native architecture it was built with */
 } IdxHeader;
 
-/* ---- lectura (lord-server y el ayudante) ---- */
+/* ---- reading (lord-server and the helper) ---- */
 
 typedef struct {
     const IdxHeader *h;
@@ -66,28 +66,28 @@ typedef struct {
     long mtime, ino;
 } Idx;
 
-int  idx_open(Idx *x, const char *dir);          /* 0 bien */
+int  idx_open(Idx *x, const char *dir);          /* 0 ok */
 void idx_close(Idx *x);
-int  idx_refresh(Idx *x, const char *dir);       /* vuelve a abrir si cambió en disco; 1 si cambió */
+int  idx_refresh(Idx *x, const char *dir);       /* reopens if it changed on disk; 1 if it changed */
 static inline const char *idx_s(const Idx *x, uint32_t off) { return off < x->str_len ? x->str + off : ""; }
-/* Primer paquete con ese nombre (o -1); los siguientes con el mismo nombre están a continuación. */
+/* First package with that name (or -1); the next ones with the same name follow it. */
 long idx_find(const Idx *x, const char *name, size_t n);
-/* Rango [*lo, *hi) de quienes proveen name. */
+/* Range [*lo, *hi) of those that provide name. */
 void idx_providers(const Idx *x, const char *name, size_t n, long *lo, long *hi);
 
-/* ---- construcción (ayudante root) ---- */
+/* ---- building (root helper) ---- */
 
 typedef struct IdxBuilder IdxBuilder;
 IdxBuilder *idxb_new(void);
 int  idxb_source(IdxBuilder *b, const char *uri, const char *suite, const char *component, const char *codename,
                  const char *origin, const char *label, int64_t date, int64_t valid_until, int prio);
-/* Packages ya descomprimido de la fuente src (el índice devuelto por idxb_source). */
+/* Already decompressed Packages of source src (the index returned by idxb_source). */
 int  idxb_packages(IdxBuilder *b, int src, const char *buf, size_t len, const char *arch);
-/* Translation-en: descripciones largas por Description-md5. */
+/* Translation-en: long descriptions by Description-md5. */
 int  idxb_translation(IdxBuilder *b, const char *buf, size_t len);
-/* DEP-11 Components (YAML ya descomprimido). */
+/* DEP-11 Components (already decompressed YAML). */
 int  idxb_appstream(IdxBuilder *b, const char *buf, size_t len);
-/* ¿Alguna app usa este ícono (nombre de archivo de icons-64x64.tar)? */
+/* Does any app use this icon (file name in icons-64x64.tar)? */
 int  idxb_icon_wanted(IdxBuilder *b, const char *name);
 int  idxb_write(IdxBuilder *b, const char *dir, const char *arch, char *err, size_t errlen);
 void idxb_free(IdxBuilder *b);

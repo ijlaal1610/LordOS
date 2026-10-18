@@ -1,5 +1,7 @@
 {
+  "actions": "Actions",
   "cancel": "Cancel",
+  "close": "Close",
   "col.date": "Date Modified",
   "col.kind": "Kind",
   "col.name": "Name",
@@ -40,6 +42,7 @@
   "groupBy.kind": "Kind",
   "groupBy.none": "None",
   "groupBy.size": "Size",
+  "groupSort": "Group and sort",
   "info.calculating": "calculating…",
   "info.created": "Created",
   "info.deleted": "Deleted",
@@ -110,6 +113,7 @@
   "menu.up": "Enclosing folder",
   "menu.view": "View",
   "newFolder": "untitled folder",
+  "noSelection": "Select items to tag them",
   "noResults": "No results.",
   "place.apps": "Applications",
   "place.desktop": "Desktop",

@@ -55,7 +55,7 @@ function MailImage({ node, ctx }) {
 // ---- text ----
 
 function runStyle(s, ctx, link) {
-  const st = { fontSize: s?.fs || ctx.fs, color: link ? ctx.link : rgba(s?.c, ctx.fg) };
+  const st = { fontSize: s?.fs || ctx.fs, color: link ? (link.w ? '#e5383b' : ctx.link) : rgba(s?.c, ctx.fg) };
   if (s?.b) st.fontWeight = 700;
   if (s?.i && !s?.c && !link) st.color = ctx.italic;          // the engine has no italic face: a tint, like Notes
   if (s?.mono) st.fontFamily = 'monospace';
@@ -93,6 +93,7 @@ function Para({ items, ctx, align }) {
     if (n.t === 'img') { out.push(<MailImage key={`i${i}`} node={n} ctx={ctx} />); return; }
     const link = n.l >= 0 ? ctx.links[n.l] : null;
     const parts = words > MAX_WORDS ? [n.x] : n.x.split(/(?<= )/);
+    if (link?.w && (i === 0 || items[i - 1].l !== n.l)) out.push(<Text key={`w${i}`} style={{ fontSize: n.s?.fs || ctx.fs, color: '#e5383b' }}>⚠ </Text>);
     words += parts.length;
     parts.forEach((p, k) => out.push(<Word key={`${i}.${k}`} text={p} s={n.s} ctx={ctx} link={link} />));
   });
@@ -195,8 +196,17 @@ function Node({ n, ctx, align }) {
 }
 
 // doc: the sanitizer's JSON; msg: { acct, folder, uid }; remote: load remote images
-export function HtmlView({ doc, msg, remote, width, onLink }) {
+export function HtmlView({ doc, msg, remote, width: hint, onLink }) {
   const th = useTheme();
+  // our own width (the pane can change size): measured, not guessed
+  const box = useRef(null);
+  const [width, setWidth] = useState(hint);
+  useEffect(() => {
+    const read = () => { if (box.current) { const w = lord.getLayout(box.current.id)[2]; if (w > 40) setWidth((o) => (Math.abs(o - w) > 2 ? w : o)); } };
+    read();
+    const id = setInterval(read, 300);
+    return () => clearInterval(id);
+  }, []);
   // the sender chose colors: show it on its own paper (like other mail apps do in dark mode)
   const paper = !!doc.colors || !!doc.bg || th.mode === 'light';
   const ctx = {
@@ -208,7 +218,7 @@ export function HtmlView({ doc, msg, remote, width, onLink }) {
     italic: paper ? '#4b3b8f' : '#e9e3ff',
   };
   return (
-    <View style={{ backgroundColor: paper ? rgba(doc.bg, '#ffffff') : 'transparent', padding: 14, borderRadius: 10, direction: 'ltr' }}>
+    <View ref={box} style={{ backgroundColor: paper ? rgba(doc.bg, '#ffffff') : 'transparent', padding: 14, borderRadius: 10, direction: 'ltr' }}>
       <Children nodes={doc.blocks} ctx={ctx} />
     </View>
   );

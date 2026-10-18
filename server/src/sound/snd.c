@@ -1,14 +1,14 @@
-/* snd.c — cliente de sonido de LordOS.
+/* snd.c — LordOS sound client.
  *
- * Habla el protocolo nativo de PulseAudio con pipewire-pulse (la parte de PipeWire que lo
- * sirve en $XDG_RUNTIME_DIR/pulse/native): sin libpulse ni libpipewire. Mantiene una copia de
- * las salidas (sinks), entradas (sources), apps que suenan (sink inputs) y apps que graban
- * (source outputs); se suscribe a los cambios y le avisa a JS con "state" cuando algo cambió
- * y terminaron de llegar las respuestas. Si PipeWire se reinicia, reconecta cada 2 s.
+ * Speaks the PulseAudio native protocol with pipewire-pulse (the part of PipeWire that
+ * serves it at $XDG_RUNTIME_DIR/pulse/native): no libpulse or libpipewire. Keeps a copy of
+ * the outputs (sinks), inputs (sources), apps playing (sink inputs) and apps recording
+ * (source outputs); subscribes to changes and notifies JS with "state" when something changed
+ * and all replies have arrived. If PipeWire restarts, it reconnects every 2 s.
  *
- * Extras: medidor de pico de una entrada (un stream de grabación a 25 muestras por segundo con
- * PEAK_DETECT, como pavucontrol) y sonidos del sistema sintetizados acá (se suben una vez al
- * caché de muestras del servidor y después se tocan con PLAY_SAMPLE). */
+ * Extras: peak meter for an input (a recording stream at 25 samples per second with
+ * PEAK_DETECT, like pavucontrol) and system sounds synthesized here (uploaded once to the
+ * server's sample cache and then played with PLAY_SAMPLE). */
 #include "snd.h"
 #include "pulse.h"
 
@@ -25,7 +25,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-#define PROTOCOL_VERSION 32             /* puertos con "available", sin grupos de disponibilidad (v34) */
+#define PROTOCOL_VERSION 32             /* ports with "available", no availability groups (v34) */
 #define MAX_DEV 32
 #define MAX_STREAMS 64
 #define MAX_PORTS 16
@@ -34,7 +34,7 @@
 typedef struct { char name[128], desc[128]; uint32_t priority, available; } Port;
 
 typedef struct {
-    uint32_t index, monitor, card, state, base;      /* monitor: de un sink, su fuente; de una fuente, su sink */
+    uint32_t index, monitor, card, state, base;      /* monitor: for a sink, its source; for a source, its sink */
     char name[256], desc[256], icon[96], form[32], bus[32];
     uint8_t ch, map[PA_CHANNELS_MAX];
     uint32_t vol[PA_CHANNELS_MAX];
@@ -61,14 +61,14 @@ enum {
 typedef struct { uint32_t tag; int kind, what; uint32_t arg; } Pending;
 
 static struct {
-    int fd, timer;                      /* socket; temporizador de reconexión */
-    int connected;                      /* terminó el saludo */
+    int fd, timer;                      /* socket; reconnection timer */
+    int connected;                      /* handshake finished */
     uint32_t version, tag;
     Pending pend[MAX_PENDING];
     int info_pending, dirty;
-    uint8_t *in;                        /* paquete entrante */
+    uint8_t *in;                        /* incoming packet */
     size_t in_len, in_cap;
-    uint8_t *out;                       /* lo que falta escribir */
+    uint8_t *out;                       /* what's left to write */
     size_t out_len, out_cap;
     char server_name[64], server_version[32], default_sink[256], default_source[256];
     DevList sinks, sources;
@@ -77,7 +77,7 @@ static struct {
     int meter_pending;
     double peak;
     int peak_ready;
-    int debug;                          /* LORD_SND_DEBUG=1: cada paquete a stderr */
+    int debug;                          /* LORD_SND_DEBUG=1: every packet to stderr */
     int samples_uploaded, uploading, play_after;   /* bits: pop, notify, error */
     char last_error[128];
 } S = { .fd = -1, .timer = -1, .meter_source = PA_INVALID_INDEX, .meter_channel = PA_INVALID_INDEX };
@@ -113,7 +113,7 @@ static int queue_bytes(const uint8_t *p, size_t n) {
     }
     memcpy(S.out + S.out_len, p, n);
     S.out_len += n;
-    if (flush_out()) { disconnect("error al escribir"); return -1; }
+    if (flush_out()) { disconnect("write error"); return -1; }
     return 0;
 }
 
@@ -127,7 +127,7 @@ static Pending *pend_add(uint32_t tag, int kind, int what, uint32_t arg) {
     return NULL;
 }
 
-/* Arranca un comando: tagstruct con comando y tag. */
+/* Starts a command: tagstruct with command and tag. */
 static uint32_t cmd_begin(TsOut *t, uint32_t cmd) {
     ts_init(t);
     uint32_t tag = S.tag++;
@@ -144,7 +144,7 @@ static int cmd_send(TsOut *t, uint32_t tag, int kind, int what, uint32_t arg) {
     return r;
 }
 
-/* ---- modelo ---- */
+/* ---- model ---- */
 
 static void copy(char *dst, size_t cap, const char *src) { snprintf(dst, cap, "%s", src ? src : ""); }
 
@@ -169,19 +169,19 @@ static int parse_dev(TsIn *t, Dev *d, int source) {
     uint8_t f, c; uint32_t rate;
     ts_get_ss(t, &f, &c, &rate);
     ts_get_cmap(t, d->map);
-    ts_get_u32(t);                                  /* módulo */
+    ts_get_u32(t);                                  /* module */
     d->ch = ts_get_cvol(t, d->vol);
     d->mute = ts_get_bool(t);
     d->monitor = ts_get_u32(t);
-    ts_get_str(t);                                  /* nombre del monitor */
-    ts_get_u64(t);                                  /* latencia */
+    ts_get_str(t);                                  /* monitor name */
+    ts_get_u64(t);                                  /* latency */
     ts_get_str(t);                                  /* driver */
     ts_get_u32(t);                                  /* flags */
     ts_get_proplist(t, dev_prop, d);
-    ts_get_u64(t);                                  /* latencia pedida */
+    ts_get_u64(t);                                  /* requested latency */
     d->base = ts_get_vol(t);
     d->state = ts_get_u32(t);
-    ts_get_u32(t);                                  /* pasos de volumen */
+    ts_get_u32(t);                                  /* volume steps */
     d->card = ts_get_u32(t);
     uint32_t np = ts_get_u32(t);
     for (uint32_t i = 0; i < np && !t->err; i++) {
@@ -189,10 +189,10 @@ static int parse_dev(TsIn *t, Dev *d, int source) {
         copy(p->name, sizeof p->name, ts_get_str(t));
         copy(p->desc, sizeof p->desc, ts_get_str(t));
         p->priority = ts_get_u32(t);
-        p->available = ts_get_u32(t);               /* v24: 0 no se sabe, 1 no, 2 sí */
+        p->available = ts_get_u32(t);               /* v24: 0 unknown, 1 no, 2 yes */
     }
     copy(d->active, sizeof d->active, ts_get_str(t));
-    uint8_t nf = ts_get_u8(t);                      /* formatos (v21 sinks, v22 sources) */
+    uint8_t nf = ts_get_u8(t);                      /* formats (v21 sinks, v22 sources) */
     for (uint8_t i = 0; i < nf && !t->err; i++) ts_skip_format(t);
     (void)source;
     return t->err ? -1 : 0;
@@ -214,7 +214,7 @@ static int parse_stream(TsIn *t, Stream *s, int output) {
     memset(s, 0, sizeof *s);
     s->index = ts_get_u32(t);
     copy(s->name, sizeof s->name, ts_get_str(t));
-    ts_get_u32(t);                                  /* módulo */
+    ts_get_u32(t);                                  /* module */
     s->client = ts_get_u32(t);
     s->dev = ts_get_u32(t);
     uint8_t f, c, map[PA_CHANNELS_MAX]; uint32_t rate;
@@ -223,7 +223,7 @@ static int parse_stream(TsIn *t, Stream *s, int output) {
     if (!output) s->ch = ts_get_cvol(t, s->vol);
     ts_get_u64(t);
     ts_get_u64(t);
-    ts_get_str(t);                                  /* método de remuestreo */
+    ts_get_str(t);                                  /* resample method */
     ts_get_str(t);                                  /* driver */
     if (!output) s->mute = ts_get_bool(t);
     ts_get_proplist(t, stream_prop, s);
@@ -282,7 +282,7 @@ static void on_info(int what, TsIn *t) {
         Stream s;
         while (!ts_eof(t) && !t->err && parse_stream(t, &s, output) == 0) upsert_stream(l, &s);
     }
-    if (t->err) fprintf(stderr, "sonido: respuesta %d con formato inesperado\n", what);
+    if (t->err) fprintf(stderr, "sound: reply %d with unexpected format\n", what);
     S.dirty = 1;
 }
 
@@ -315,7 +315,7 @@ static void on_subscribe_event(uint32_t ev, uint32_t index) {
     int facility = (int)(ev & PA_SUB_FACILITY_MASK), type = (int)(ev & PA_SUB_TYPE_MASK);
     static const uint32_t get[] = { PA_CMD_GET_SINK_INFO, PA_CMD_GET_SOURCE_INFO, PA_CMD_GET_SINK_INPUT_INFO, PA_CMD_GET_SOURCE_OUTPUT_INFO };
     if (facility == PA_SUB_SERVER) { request_server(); return; }
-    if (facility == PA_SUB_CARD) {                  /* cambió el perfil: los puertos de sus sinks/sources */
+    if (facility == PA_SUB_CARD) {                  /* the profile changed: the ports of its sinks/sources */
         request_info(PA_CMD_GET_SINK_INFO_LIST, 0);
         request_info(PA_CMD_GET_SOURCE_INFO_LIST, 0);
         return;
@@ -325,7 +325,7 @@ static void on_subscribe_event(uint32_t ev, uint32_t index) {
     request_info(get[facility], index);
 }
 
-/* ---- saludo ---- */
+/* ---- handshake ---- */
 
 static void send_client_name(void) {
     TsOut t;
@@ -373,7 +373,7 @@ static int try_connect(void) {
     char path[sizeof ((struct sockaddr_un *)0)->sun_path];
     socket_path(path, sizeof path);
     struct stat st;
-    /* solo el servidor del propio usuario (el socket vive en su carpeta de ejecución) */
+    /* only the user's own server (the socket lives in their runtime folder) */
     if (stat(path, &st) || !S_ISSOCK(st.st_mode) || st.st_uid != getuid()) return -1;
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (fd < 0) return -1;
@@ -390,7 +390,7 @@ static int try_connect(void) {
     S.meter_channel = PA_INVALID_INDEX;
     S.meter_pending = 0;
 
-    /* cookie: la de PulseAudio si existe (pipewire-pulse no la exige) */
+    /* cookie: PulseAudio's if it exists (pipewire-pulse doesn't require it) */
     uint8_t cookie[256] = { 0 };
     const char *home = getenv("HOME");
     if (home) {
@@ -401,7 +401,7 @@ static int try_connect(void) {
     }
     TsOut t;
     uint32_t tag = cmd_begin(&t, PA_CMD_AUTH);
-    ts_u32(&t, PROTOCOL_VERSION);                   /* sin memoria compartida: los datos van en el socket */
+    ts_u32(&t, PROTOCOL_VERSION);                   /* no shared memory: data goes over the socket */
     ts_arb(&t, cookie, sizeof cookie);
     if (cmd_send(&t, tag, R_AUTH, 0, 0)) return -1;
     arm_timer(0);
@@ -412,7 +412,7 @@ static void disconnect(const char *why) {
     if (S.fd >= 0) {
         close(S.fd);
         S.fd = -1;
-        if (S.connected) fprintf(stderr, "sonido: desconectado de PipeWire (%s); reintentando\n", why);
+        if (S.connected) fprintf(stderr, "sound: disconnected from PipeWire (%s); retrying\n", why);
     }
     S.connected = 0;
     S.sinks.n = S.sources.n = S.inputs.n = S.outputs.n = 0;
@@ -423,7 +423,7 @@ static void disconnect(const char *why) {
 
 int snd_start(void) {
     S.debug = getenv("LORD_SND_DEBUG") != NULL;
-    if (try_connect()) { disconnect("sin servidor"); return -1; }
+    if (try_connect()) { disconnect("no server"); return -1; }
     return 0;
 }
 
@@ -438,14 +438,14 @@ void snd_stop(void) {
 
 int snd_fd(void) { return S.fd >= 0 ? S.fd : S.timer; }
 
-/* ---- paquetes entrantes ---- */
+/* ---- incoming packets ---- */
 
 static void on_reply(Pending p, TsIn *t) {
     switch (p.kind) {
     case R_AUTH: {
         S.version = ts_get_u32(t) & 0xffff;
         if (S.version > PROTOCOL_VERSION) S.version = PROTOCOL_VERSION;
-        if (S.version < PROTOCOL_VERSION) { disconnect("versión de protocolo vieja"); return; }
+        if (S.version < PROTOCOL_VERSION) { disconnect("old protocol version"); return; }
         send_client_name();
         break;
     }
@@ -458,7 +458,7 @@ static void on_reply(Pending p, TsIn *t) {
     case R_SERVER: {
         copy(S.server_name, sizeof S.server_name, ts_get_str(t));
         copy(S.server_version, sizeof S.server_version, ts_get_str(t));
-        ts_get_str(t); ts_get_str(t);                 /* usuario, host */
+        ts_get_str(t); ts_get_str(t);                 /* user, host */
         uint8_t f, c; uint32_t r;
         ts_get_ss(t, &f, &c, &r);
         copy(S.default_sink, sizeof S.default_sink, ts_get_str(t));
@@ -471,7 +471,7 @@ static void on_reply(Pending p, TsIn *t) {
         uint32_t ch = ts_get_u32(t);
         S.meter_pending = 0;
         if (t->err) break;
-        if (S.meter_source == PA_INVALID_INDEX || S.meter_source != p.arg) {   /* se apagó mientras tanto */
+        if (S.meter_source == PA_INVALID_INDEX || S.meter_source != p.arg) {   /* it was turned off in the meantime */
             TsOut o;
             uint32_t tag = cmd_begin(&o, PA_CMD_DELETE_RECORD_STREAM);
             ts_u32(&o, ch);
@@ -493,15 +493,15 @@ static void on_reply(Pending p, TsIn *t) {
 }
 
 static void on_error(Pending p, uint32_t code) {
-    if (p.kind == R_ONE) return;                    /* desapareció entre el aviso y el pedido */
+    if (p.kind == R_ONE) return;                    /* it disappeared between the notice and the request */
     if (p.kind == R_RECORD) S.meter_pending = 0;
     snprintf(S.last_error, sizeof S.last_error, "comando %d: error %u", p.what, code);
     fprintf(stderr, "sonido: %s\n", S.last_error);
-    if (p.kind == R_AUTH || p.kind == R_NAME) disconnect("rechazó la conexión");
+    if (p.kind == R_AUTH || p.kind == R_NAME) disconnect("connection refused");
 }
 
 static void on_packet(uint32_t channel, const uint8_t *d, size_t n) {
-    if (channel != 0xffffffffu) {                   /* datos: el medidor (float32, una muestra por pico) */
+    if (channel != 0xffffffffu) {                   /* data: the meter (float32, one sample per peak) */
         if (channel == S.meter_channel && n >= 4) {
             float v = 0, m = 0;
             for (size_t i = 0; i + 4 <= n; i += 4) { memcpy(&v, d + i, 4); v = fabsf(v); if (v > m) m = v; }
@@ -531,11 +531,11 @@ static void on_packet(uint32_t channel, const uint8_t *d, size_t n) {
         if (!t.err) on_subscribe_event(ev, idx);
         return;
     }
-    if (cmd == PA_CMD_RECORD_STREAM_KILLED) {       /* la fuente del medidor desapareció */
+    if (cmd == PA_CMD_RECORD_STREAM_KILLED) {       /* the meter's source disappeared */
         uint32_t ch = ts_get_u32(&t);
         if (ch == S.meter_channel) { S.meter_channel = PA_INVALID_INDEX; S.meter_source = PA_INVALID_INDEX; }
     }
-    /* REQUEST, STARTED, OVERFLOW...: no reproducimos streams propios (las muestras van al caché) */
+    /* REQUEST, STARTED, OVERFLOW...: we don't play our own streams (samples go to the cache) */
 }
 
 void snd_dispatch(void) {
@@ -550,21 +550,21 @@ void snd_dispatch(void) {
             while (cap - S.in_len < 65536) cap *= 2;
             if (cap > PA_FRAME_MAX + 65536) { disconnect("paquete demasiado grande"); return; }
             uint8_t *b = realloc(S.in, cap);
-            if (!b) { disconnect("sin memoria"); return; }
+            if (!b) { disconnect("out of memory"); return; }
             S.in = b;
             S.in_cap = cap;
         }
         ssize_t r = recv(S.fd, S.in + S.in_len, S.in_cap - S.in_len, 0);
         if (r < 0 && errno == EINTR) continue;
         if (r < 0 && errno == EAGAIN) break;
-        if (r <= 0) { disconnect(r == 0 ? "cerró la conexión" : "error al leer"); return; }
+        if (r <= 0) { disconnect(r == 0 ? "connection closed" : "read error"); return; }
         S.in_len += (size_t)r;
         size_t off = 0;
         while (S.in_len - off >= PA_DESCRIPTOR_SIZE) {
             uint32_t len, ch, flags;
             uint64_t offset;
             pa_descriptor_read(S.in + off, &len, &ch, &offset, &flags);
-            if (len > PA_FRAME_MAX) { disconnect("paquete inválido"); return; }
+            if (len > PA_FRAME_MAX) { disconnect("invalid packet"); return; }
             if (S.in_len - off < PA_DESCRIPTOR_SIZE + (size_t)len) break;
             on_packet(ch, S.in + off + PA_DESCRIPTOR_SIZE, len);
             if (S.fd < 0) return;
@@ -573,11 +573,11 @@ void snd_dispatch(void) {
         memmove(S.in, S.in + off, S.in_len - off);
         S.in_len -= off;
     }
-    if (flush_out()) disconnect("error al escribir");
+    if (flush_out()) disconnect("write error");
 }
 
 void snd_events(SndEventFn fn) {
-    if (S.fd >= 0 && S.out_len && flush_out()) disconnect("error al escribir");
+    if (S.fd >= 0 && S.out_len && flush_out()) disconnect("write error");
     if (S.dirty && S.info_pending <= 0) {
         S.dirty = 0;
         char *j = snd_state_json();
@@ -592,7 +592,7 @@ void snd_events(SndEventFn fn) {
     }
 }
 
-/* ---- estado en JSON ---- */
+/* ---- state as JSON ---- */
 
 typedef struct { char *d; size_t len, cap; } Buf;
 
@@ -677,8 +677,8 @@ static void bstreams(Buf *b, const StreamList *l, int output) {
     int first = 1;
     for (int i = 0; i < l->n; i++) {
         const Stream *s = &l->s[i];
-        /* los propios (medidor, sonidos del sistema) no se muestran: si no, el medidor del
-         * micrófono haría parecer que alguien está grabando */
+        /* our own streams (meter, system sounds) aren't shown: otherwise the microphone
+         * meter would make it look like someone is recording */
         if (!strcmp(s->appid, "org.lordos.Server")) continue;
         bput(b, "%s{\"index\":%u,\"name\":", first ? "" : ",", s->index);
         first = 0;
@@ -726,7 +726,7 @@ char *snd_state_json(void) {
     return b.d;
 }
 
-/* ---- órdenes ---- */
+/* ---- commands ---- */
 
 static const uint8_t *find_vol(int kind, uint32_t index, uint8_t *ch) {
     if (kind == SND_SINK || kind == SND_SOURCE) {
@@ -740,7 +740,7 @@ static const uint8_t *find_vol(int kind, uint32_t index, uint8_t *ch) {
 }
 
 static uint32_t to_vol(double x) {
-    if (!(x >= 0)) x = 0;                           /* también NaN */
+    if (!(x >= 0)) x = 0;                           /* NaN too */
     double v = x * PA_VOLUME_NORM + 0.5;
     if (v > PA_VOLUME_MAX) v = PA_VOLUME_MAX;
     return (uint32_t)v;
@@ -751,7 +751,7 @@ int snd_set_volume(int kind, uint32_t index, const double *v, int n) {
     uint8_t ch = 0;
     if (!find_vol(kind, index, &ch) || !ch) return -1;
     uint32_t vol[PA_CHANNELS_MAX];
-    for (int i = 0; i < ch; i++) vol[i] = to_vol(v[i < n ? i : n - 1]);   /* menos valores: se repite el último */
+    for (int i = 0; i < ch; i++) vol[i] = to_vol(v[i < n ? i : n - 1]);   /* fewer values: the last one is repeated */
     static const uint32_t cmd[] = { PA_CMD_SET_SINK_VOLUME, PA_CMD_SET_SOURCE_VOLUME, PA_CMD_SET_SINK_INPUT_VOLUME, PA_CMD_SET_SOURCE_OUTPUT_VOLUME };
     TsOut t;
     uint32_t tag = cmd_begin(&t, cmd[kind]);
@@ -828,8 +828,8 @@ int snd_move(int kind, uint32_t index, uint32_t device) {
     return cmd_send(&t, tag, R_ACK, (int)c, index);
 }
 
-/* Medidor: stream de grabación de 1 canal float a 25 Hz con PEAK_DETECT; el servidor manda un
- * pico por paquete (4 bytes). Lo mismo que hace pavucontrol. */
+/* Meter: 1-channel float recording stream at 25 Hz with PEAK_DETECT; the server sends one
+ * peak per packet (4 bytes). Same as pavucontrol does. */
 int snd_meter(uint32_t source) {
     if (S.meter_channel != PA_INVALID_INDEX && S.fd >= 0) {
         TsOut t;
@@ -841,7 +841,7 @@ int snd_meter(uint32_t source) {
     S.meter_source = source;
     S.peak = 0;
     if (source == PA_INVALID_INDEX) return 0;
-    if (!S.connected) return 0;                     /* se crea al conectar */
+    if (!S.connected) return 0;                     /* created on connect */
     if (!dev_exists(SND_SOURCE, NULL, source)) { S.meter_source = PA_INVALID_INDEX; return -1; }
     TsOut t;
     uint32_t tag = cmd_begin(&t, PA_CMD_CREATE_RECORD_STREAM);
@@ -850,21 +850,21 @@ int snd_meter(uint32_t source) {
     ts_cmap(&t, 1, &mono);
     ts_u32(&t, source);
     ts_str(&t, NULL);
-    ts_u32(&t, 0xffffffffu);                        /* maxlength: el del servidor */
+    ts_u32(&t, 0xffffffffu);                        /* maxlength: the server's */
     ts_bool(&t, 0);                                 /* corked */
-    ts_u32(&t, 4);                                  /* fragsize: una muestra */
+    ts_u32(&t, 4);                                  /* fragsize: one sample */
     ts_bool(&t, 0); ts_bool(&t, 0); ts_bool(&t, 0); ts_bool(&t, 0); ts_bool(&t, 0);   /* no_remap … fix_channels */
     ts_bool(&t, 1);                                 /* no_move */
     ts_bool(&t, 0);                                 /* variable_rate */
     ts_bool(&t, 1);                                 /* peak_detect */
     ts_bool(&t, 1);                                 /* adjust_latency */
-    const char *kv2[] = { "media.name", "LordOS: medidor de nivel", "application.id", "org.lordos.Server", "resample.peaks", "1" };
+    const char *kv2[] = { "media.name", "LordOS: level meter", "application.id", "org.lordos.Server", "resample.peaks", "1" };
     ts_proplist(&t, kv2, 3);
     ts_u32(&t, PA_INVALID_INDEX);                   /* direct_on_input */
     ts_bool(&t, 0);                                 /* early_requests */
     ts_bool(&t, 1);                                 /* dont_inhibit_auto_suspend */
     ts_bool(&t, 0);                                 /* fail_on_suspend */
-    ts_u8(&t, 1);                                   /* un formato: PCM */
+    ts_u8(&t, 1);                                   /* one format: PCM */
     ts_format_pcm(&t);
     uint32_t vol = PA_VOLUME_NORM;
     ts_cvol(&t, 1, &vol);
@@ -874,18 +874,18 @@ int snd_meter(uint32_t source) {
     return cmd_send(&t, tag, R_RECORD, PA_CMD_CREATE_RECORD_STREAM, source);
 }
 
-/* ---- sonidos del sistema ---- */
+/* ---- system sounds ---- */
 
 static const char *const sample_names[3] = { "lordos-pop", "lordos-notify", "lordos-error" };
 
 #define SR 44100
 
-/* Sintetiza el sonido: senos con envolvente (ataque corto, caída exponencial). s16le mono. */
+/* Synthesizes the sound: sines with an envelope (short attack, exponential decay). s16le mono. */
 static int16_t *synth(int which, uint32_t *bytes) {
     static const struct { double f1, f2, dur, split; } tone[3] = {
-        { 880, 0, 0.07, 0 },                        /* pop: un toque corto */
-        { 1046.5, 1568, 0.32, 0.12 },               /* aviso: do6 → sol6 */
-        { 311, 233, 0.30, 0.13 },                   /* error: dos notas graves */
+        { 880, 0, 0.07, 0 },                        /* pop: a short tap */
+        { 1046.5, 1568, 0.32, 0.12 },               /* notify: C6 → G6 */
+        { 311, 233, 0.30, 0.13 },                   /* error: two low notes */
     };
     int n = (int)(tone[which].dur * SR);
     int16_t *s = malloc((size_t)n * 2);
@@ -921,12 +921,12 @@ static void upload_data(int which, uint32_t channel) {
     if (S.play_after & 1 << which) { S.play_after &= ~(1 << which); play_sample(which); }
 }
 
-/* va detrás de la subida en el mismo socket: el servidor ya la tiene cuando llega esto */
+/* goes after the upload on the same socket: the server already has it when this arrives */
 static int play_sample(int which) {
     TsOut t;
     uint32_t tag = cmd_begin(&t, PA_CMD_PLAY_SAMPLE);
     ts_u32(&t, PA_INVALID_INDEX);
-    ts_str(&t, NULL);                               /* la salida predeterminada */
+    ts_str(&t, NULL);                               /* the default output */
     ts_u32(&t, PA_VOLUME_NORM);
     ts_str(&t, sample_names[which]);
     const char *kv[] = { "media.role", "event", "application.name", "LordOS", "application.id", "org.lordos.Server", "event.id", sample_names[which] };

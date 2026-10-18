@@ -1,10 +1,10 @@
-// syntax.js — resaltado de sintaxis propio: un tokenizador por estados con expresiones
-// regulares de JS. Se tokeniza línea por línea; el estado al final de una línea (dentro de un
-// comentario o de un string de varias líneas) es el estado inicial de la siguiente.
+// syntax.js — our own syntax highlighting: a state-based tokenizer with JS regular
+// expressions. Tokenizing goes line by line; the state at the end of a line (inside a
+// comment or a multi-line string) is the initial state of the next one.
 //
-// Un lenguaje: { id, name, exts, names?, comment ('//'), block (['/*','*/']), states }.
-// states: { root: [[regex, tipo, siguiente?], ...], ... }. 'siguiente' es otro estado,
-// o '@pop' para volver a root. Los tipos son los de colorFor() (keyword, string, comment…).
+// A language: { id, name, exts, names?, comment ('//'), block (['/*','*/']), states }.
+// states: { root: [[regex, type, next?], ...], ... }. 'next' is another state,
+// or '@pop' to go back to root. The types are those of colorFor() (keyword, string, comment…).
 
 const kw = (words) => new RegExp(`\\b(?:${words.split(' ').join('|')})\\b`, 'y');
 const R = (src, flags = '') => new RegExp(src, `y${flags}`);
@@ -17,7 +17,7 @@ const OP = R('[+\\-*/%=&|^!<>~?:]+');
 const PUNCT = R('[()[\\]{}.,;@]');
 const SPACE = R('\\s+');
 
-// Cadenas entre comillas (con escapes), en una sola línea.
+// Quoted strings (with escapes), on a single line.
 const str = (q) => R(`${q}(?:[^${q}\\\\]|\\\\.)*${q}?`);
 
 function cLike({ keywords, types = '', constants = 'true false null', extra = [], hashComment = false, templates = false }) {
@@ -139,8 +139,8 @@ export function languageFor(name) {
   return byId.get('plain');
 }
 
-// Tokeniza una línea desde un estado. Devuelve { tokens: [[texto, tipo], ...], state }.
-// Los estados se apilan ('a/b/c') para los anidados.
+// Tokenizes a line from a state. Returns { tokens: [[text, type], ...], state }.
+// States are stacked ('a/b/c') for nested ones.
 export function tokenizeLine(lang, line, state = 'root') {
   const tokens = [];
   let stack = state.split('/');
@@ -165,11 +165,11 @@ export function tokenizeLine(lang, line, state = 'root') {
     }
     if (!matched) { push(line[i], stack.length > 1 ? (rules[0]?.[1] || 'text') : 'text'); i++; }
   }
-  // un comentario de línea o un string de una línea no siguen en la próxima
+  // a line comment or a single-line string does not continue on the next line
   return { tokens, state: stack.join('/') };
 }
 
-// Paleta tipo TextMate / Xcode, oscura y clara.
+// TextMate / Xcode-style palette, dark and light.
 const DARK = {
   text: '#e4e4e7', comment: '#7f8c98', string: '#fc6a5d', keyword: '#fc5fa3', number: '#d0bf69', constant: '#d0bf69',
   type: '#5dd8ff', function: '#67b7a4', operator: '#e4e4e7', punct: '#a1a1aa', regexp: '#ff8170', variable: '#a167e6',

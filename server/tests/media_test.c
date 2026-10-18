@@ -1,16 +1,16 @@
-/* media_test.c — prueba de lord-media sin lord-server: lo lanza igual que el servidor (socket en
- * el fd 3, sin argumentos), le pasa los archivos como fds y mide.
+/* media_test.c — test of lord-media without lord-server: launches it the same way the server does
+ * (socket on fd 3, no arguments), passes it the files as fds and measures.
  *
- *   build/media-test probe   archivo
- *   build/media-test thumb   archivo salida.png [lado]
- *   build/media-test image   archivo
- *   build/media-test wave    archivo [barras]
- *   build/media-test export  archivo salida (opus|mp3|wav) [desde_ms hasta_ms]
- *   build/media-test edit    archivo salida.png "rotate=90\nbrightness=20"
- *   build/media-test play    archivo [segundos] [ancho alto] [hw 0|1] [audio 0|1]
- *        reproduce como lo haría el Reproductor (con PipeWire si hay) y cuenta cuadros
- *   build/media-test sandbox archivo
- *        el ayudante intenta abrir ~/.ssh y crear un socket: tiene que fallar
+ *   build/media-test probe   file
+ *   build/media-test thumb   file out.png [side]
+ *   build/media-test image   file
+ *   build/media-test wave    file [bars]
+ *   build/media-test export  file out (opus|mp3|wav) [from_ms to_ms]
+ *   build/media-test edit    file out.png "rotate=90\nbrightness=20"
+ *   build/media-test play    file [seconds] [width height] [hw 0|1] [audio 0|1]
+ *        plays the way the Player would (with PipeWire if present) and counts frames
+ *   build/media-test sandbox file
+ *        the helper tries to open ~/.ssh and create a socket: it must fail
  */
 #include "../src/media/proto.h"
 #include "../src/media/media_int.h"
@@ -70,7 +70,7 @@ int media_pulse_fd(void) {
     return fd;
 }
 
-/* Un trabajo del worker: devuelve el estado. */
+/* One worker job: returns the status. */
 static int job(int kind, const char *in, const char *out, int64_t a, int64_t b, const char *params) {
     pid_t pid;
     int s = spawn(&pid);
@@ -85,13 +85,13 @@ static int job(int kind, const char *in, const char *out, int64_t a, int64_t b, 
     int rf[MP_MAX_FDS];
     int r = wait_msg(s, &m, rf, 60000);
     double dt = now_ms() - t0;
-    if (r != 1 || m.type != MM_RESULT) { printf("sin respuesta (¿se cayó el ayudante?)\n"); return 1; }
-    printf("resultado %lld en %.1f ms: %s\n", (long long)m.v[0], dt, payload);
+    if (r != 1 || m.type != MM_RESULT) { printf("no reply (did the helper crash?)\n"); return 1; }
+    printf("result %lld in %.1f ms: %s\n", (long long)m.v[0], dt, payload);
     if (rf[0] >= 0) {
         struct stat st;
         fstat(rf[0], &st);
         int seals = fcntl(rf[0], F_GET_SEALS);
-        printf("memfd de %lld bytes, sellos %s\n", (long long)st.st_size, (seals & F_SEAL_SHRINK) ? "sin achicar (bien)" : "FALTAN");
+        printf("memfd of %lld bytes, seals %s\n", (long long)st.st_size, (seals & F_SEAL_SHRINK) ? "no-shrink (good)" : "MISSING");
     }
     mp_send(s, MM_STOP, 0, NULL, NULL, 0, NULL, 0);
     waitpid(pid, NULL, 0);
@@ -102,7 +102,7 @@ static int play(const char *in, double secs, int w, int h, int hw, int audio) {
     pid_t pid;
     int s = spawn(&pid);
     int render = hw ? open("/dev/dri/renderD128", O_RDWR | O_CLOEXEC) : -1;
-    /* el audio lo tiene este proceso, como lord-server (maudio.c): lord-media solo llena el anillo */
+    /* this process owns the audio, like lord-server (maudio.c): lord-media only fills the ring */
     int aring = -1;
     MAudio *au = audio ? maudio_open(0, "media-test", "media-test", "video", &aring) : NULL;
     int fds[3] = { open_in(in), aring, render };
@@ -133,7 +133,7 @@ static int play(const char *in, double secs, int w, int h, int hw, int audio) {
         if (pp[1].revents) maudio_service(au);
         if (!(pp[0].revents & (POLLIN | POLLHUP))) continue;
         int r = mp_recv(s, &m, payload, sizeof payload, rf, 0);
-        if (r == 0) { printf("el ayudante cerró\n"); break; }
+        if (r == 0) { printf("the helper closed\n"); break; }
         if (r < 0) continue;
         if (m.type == MM_INFO) printf("info: %.300s\n", payload);
         else if (m.type == MM_ERROR) printf("error: %s\n", payload);
@@ -156,7 +156,7 @@ static int play(const char *in, double secs, int w, int h, int hw, int audio) {
         } else if (m.type == MM_POS) pos = m.v[0];
         else if (m.type == MM_STATS) memcpy(stats, m.v, sizeof stats);
         else if (m.type == MM_AUDIO) maudio_service(au);
-        else if (m.type == MM_STATE) { maudio_playing(au, m.v[0] == MS_PLAYING); if (m.v[0] == MS_ENDED) { printf("terminó\n"); break; } }
+        else if (m.type == MM_STATE) { maudio_playing(au, m.v[0] == MS_PLAYING); if (m.v[0] == MS_ENDED) { printf("ended\n"); break; } }
         for (int i = 0; i < MP_MAX_FDS; i++) if (rf[i] >= 0 && m.type != MM_RING) close(rf[i]);
     }
     long long cpu1 = 0;
@@ -164,11 +164,11 @@ static int play(const char *in, double secs, int w, int h, int hw, int audio) {
     if (f) { long long ut, st; if (fscanf(f, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lld %lld", &ut, &st) == 2) cpu1 = ut + st; fclose(f); }
     double el = (now_ms() - t0) / 1000;
     double hz = (double)sysconf(_SC_CLK_TCK);
-    printf("cuadros recibidos %ld en %.1f s (%.1f/s desde el primero), mayor hueco %.0f ms, posición %lld ms\n", frames, el,
+    printf("frames received %ld in %.1f s (%.1f/s since the first), largest gap %.0f ms, position %lld ms\n", frames, el,
            frames / ((now_ms() - first) / 1000), max_gap, (long long)pos);
-    printf("ayudante: decodificados %lld, mostrados %lld, descartados %lld, hw %lld, desfase medio %.2f ms, máximo %lld ms\n",
+    printf("helper: decoded %lld, shown %lld, dropped %lld, hw %lld, mean offset %.2f ms, max %lld ms\n",
            (long long)stats[0], (long long)stats[1], (long long)stats[2], (long long)stats[3], stats[4] / 100.0, (long long)stats[5]);
-    printf("CPU del ayudante: %.0f %% de un núcleo\n", 100.0 * (cpu1 - cpu0) / hz / el);
+    printf("helper CPU: %.0f %% of one core\n", 100.0 * (cpu1 - cpu0) / hz / el);
     mp_send(s, MM_STOP, 0, NULL, NULL, 0, NULL, 0);
     waitpid(pid, NULL, 0);
     maudio_close(au);
@@ -178,7 +178,7 @@ static int play(const char *in, double secs, int w, int h, int hw, int audio) {
 
 int main(int argc, char **argv) {
     if (getenv("LORD_MEDIA")) helper = getenv("LORD_MEDIA");
-    if (argc < 3) { fprintf(stderr, "uso: ver el comentario de tests/media_test.c\n"); return 2; }
+    if (argc < 3) { fprintf(stderr, "usage: see the comment in tests/media_test.c\n"); return 2; }
     const char *cmd = argv[1], *in = argv[2];
     if (!strcmp(cmd, "sandbox")) return job(MW_SELFTEST, in, NULL, 0, 0, NULL);
     if (!strcmp(cmd, "probe")) return job(MW_PROBE, in, NULL, 0, 0, NULL);

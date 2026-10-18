@@ -1,5 +1,5 @@
-// Fractal — app de ejemplo instalable (.lpk): el conjunto de Mandelbrot calculado por un módulo
-// WebAssembly (src/mandel.c → assets/mandel.wasm) y dibujado con <Image pixels>.
+// Fractal — installable sample app (.lpk): the Mandelbrot set computed by a WebAssembly
+// module (src/mandel.c → assets/mandel.wasm) and drawn with <Image pixels>.
 import { View, Text, Image, Button, useTheme, t, loadWasm, formatNumber } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 
@@ -32,13 +32,13 @@ export default function Fractal() {
   }, [view]);
 
   const zoom = (e, f) => {
-    const [lx, ly] = lord.getLayout(img.current.id);    // posición dentro de la imagen
+    const [lx, ly] = lord.getLayout(img.current.id);    // position inside the image
     const x = e.x - lx, y = e.y - ly;
     setView((v) => ({ cx: v.cx + (x - W / 2) * v.scale, cy: v.cy + (y - H / 2) * v.scale, scale: v.scale * f }));
   };
 
-  // Trackpad (la app corre aislada: los gestos le llegan por zwp_pointer_gestures, docs/TRACKPAD.md):
-  // pellizcar amplía dejando fijo el punto bajo el puntero; dos dedos mueven la vista.
+  // Trackpad (the app runs isolated: gestures reach it through zwp_pointer_gestures, docs/TRACKPAD.md):
+  // pinching zooms keeping the point under the pointer fixed; two fingers pan the view.
   const pinchK = useRef(1);
   const onPinch = (e) => {
     if (e.phase === 'begin') { pinchK.current = 1; return; }

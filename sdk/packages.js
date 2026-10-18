@@ -1,13 +1,13 @@
-// packages.js — apps nativas LordOS instaladas como paquete (.lpk; ver docs/APPS-NATIVAS.md).
+// packages.js — native LordOS apps installed as a package (.lpk; see docs/NATIVE-APPS.md).
 //
-// Un paquete trae su app ya empaquetada (tools/lpk.mjs) sin React ni el SDK adentro: usa los
-// del tema, que se comparten acá por globalThis.__lordos.require(). La app se carga recién
-// cuando se abre su primera ventana.
+// A package brings its app already bundled (tools/lpk.mjs) without React or the SDK inside: it uses
+// the theme's, which are shared here through globalThis.__lordos.require(). The app is only loaded
+// when its first window opens.
 //
 //   packages.list()                 → [{ id, name, version, description, permissions, size… }]
-//   await packages.inspect(ruta)    → { manifest, files, size }   (antes de instalar, para confirmar)
-//   packages.install(ruta) / packages.remove(id)
-//   const { instance } = await loadWasm('fractal', 'mandel.wasm', imports)   // desde la app
+//   await packages.inspect(path)    → { manifest, files, size }   (before installing, to confirm)
+//   packages.install(path) / packages.remove(id)
+//   const { instance } = await loadWasm('fractal', 'mandel.wasm', imports)   // from the app
 import * as React from 'react';
 import * as jsxRuntime from 'react/jsx-runtime';
 import * as runtime from '@lordos/runtime';
@@ -23,7 +23,7 @@ const shared = {
 };
 globalThis.__lordos = {
   require(name) {
-    if (!(name in shared)) throw new Error(`módulo no disponible para apps instaladas: ${name}`);
+    if (!(name in shared)) throw new Error(`module not available to installed apps: ${name}`);
     return shared[name];
   },
 };
@@ -41,9 +41,9 @@ function load(id) {
   return loaded.get(id);
 }
 
-// Con modo app (lord-server --app), una app .lpk NUNCA se evalúa en el contexto del tema: si algo
-// abre su ventana en proceso (wm.open, «Nueva ventana» del Dock…), se lanza el proceso aislado y
-// se cierra esta ventana vacía. Ver docs/PRIVACIDAD.md.
+// With app mode (lord-server --app), an .lpk app is NEVER evaluated in the theme's context: if something
+// opens its window in-process (wm.open, the Dock's «New window»…), the isolated process is launched and
+// this empty window is closed. See docs/PRIVACY.md.
 const isolated = () => typeof lord.apps !== 'undefined' && typeof lord.apps.launchPackage === 'function';
 
 function Redirect({ id }) {
@@ -126,7 +126,7 @@ export const packages = {
   inspect: (path) => lord.apps.inspectPackage(path),
   install(path) {
     const r = lord.apps.installPackage(path);
-    loaded.delete(r.manifest.id);       // una versión nueva se vuelve a cargar al abrirla
+    loaded.delete(r.manifest.id);       // a new version is reloaded when opened
     for (const w of windows.get()) if (appIdOf(w.id) === r.manifest.id) wm.close(w.id, true);
     refreshPackages();
     return r;
@@ -140,10 +140,10 @@ export const packages = {
   },
 };
 
-// Archivo de una app instalada (ArrayBuffer) y su módulo WebAssembly ya instanciado.
+// File of an installed app (ArrayBuffer) and its already instantiated WebAssembly module.
 export const packageFile = (appId, path) => lord.apps.packageFile(appId, path);
 export function loadWasm(appId, path, imports = {}) {
-  if (typeof WebAssembly === 'undefined') return Promise.reject(new Error('WebAssembly no está disponible'));
+  if (typeof WebAssembly === 'undefined') return Promise.reject(new Error('WebAssembly is not available'));
   return WebAssembly.instantiate(packageFile(appId, path), imports);
 }
 

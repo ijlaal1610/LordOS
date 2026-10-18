@@ -1,7 +1,7 @@
-/* js_term.c — lord.term.* y lord.clipboard para la app Terminal.
+/* js_term.c — lord.term.* and lord.clipboard for the Terminal app.
  *
- * lord.term.create() es la única API que inicia un proceso: siempre el shell de login del
- * usuario que ya corre la sesión (ver term/pty.c). No acepta comandos ni argumentos. */
+ * lord.term.create() is the only API that starts a process: always the login shell of the
+ * user already running the session (see term/pty.c). It accepts no commands or arguments. */
 #include "js_term.h"
 #include "../wl/wl.h"
 #include "ui.h"
@@ -51,7 +51,7 @@ static JSValue str_or_null(JSContext *c, char *s) {
     return r;
 }
 
-/* ---- ciclo de vida ---- */
+/* ---- lifecycle ---- */
 
 static JSValue f_create(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
@@ -62,7 +62,7 @@ static JSValue f_create(JSContext *c, JSValueConst this_val, int argc, JSValueCo
         scrollback = (int)num(c, argv[0], "scrollback", 0);
     }
     Session *s = term_create(cwd[0] ? cwd : NULL, scrollback);
-    if (!s) return JS_ThrowInternalError(c, "no se pudo crear la terminal");
+    if (!s) return JS_ThrowInternalError(c, "could not create the terminal");
     return JS_NewInt32(c, s->id);
 }
 
@@ -81,7 +81,7 @@ static JSValue f_close(JSContext *c, JSValueConst this_val, int argc, JSValueCon
     return JS_UNDEFINED;
 }
 
-/* Colores: enteros 0xRRGGBB (la app los convierte desde '#rrggbb'). */
+/* Colors: 0xRRGGBB integers (the app converts them from '#rrggbb'). */
 static JSValue f_configure(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     Session *s = arg_session(c, argv[0]);
@@ -149,13 +149,13 @@ static JSValue f_configure(JSContext *c, JSValueConst this_val, int argc, JSValu
     return JS_UNDEFINED;
 }
 
-/* ---- entrada ---- */
+/* ---- input ---- */
 
 static JSValue f_write(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     Session *s = arg_session(c, argv[0]);
     size_t n;
-    uint8_t *raw = JS_GetArrayBuffer(c, &n, argv[1]);      /* bytes tal cual (asignaciones "hex") */
+    uint8_t *raw = JS_GetArrayBuffer(c, &n, argv[1]);      /* raw bytes as-is ("hex" mappings) */
     if (raw) { if (s) term_input(s, (const char *)raw, n); return JS_UNDEFINED; }
     JS_FreeValue(c, JS_GetException(c));
     const char *d = JS_ToCStringLen(c, &n, argv[1]);
@@ -221,7 +221,7 @@ static JSValue f_focus(JSContext *c, JSValueConst this_val, int argc, JSValueCon
     return JS_UNDEFINED;
 }
 
-/* ---- vista, historia, selección ---- */
+/* ---- view, history, selection ---- */
 
 static JSValue f_scroll(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
@@ -259,7 +259,7 @@ static JSValue f_select(JSContext *c, JSValueConst this_val, int argc, JSValueCo
     return JS_NewBool(c, r);
 }
 
-/* Texto de la terminal: "selection", "screen", "all" o "lastOutput". */
+/* Terminal text: "selection", "screen", "all" or "lastOutput". */
 static JSValue f_text(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     Session *s = arg_session(c, argv[0]);
@@ -279,7 +279,7 @@ static JSValue f_text(JSContext *c, JSValueConst this_val, int argc, JSValueCons
     return str_or_null(c, out);
 }
 
-/* lord.term.highlight(id, texto, fg, bg): colores 0xRRGGBB o -1 = sin cambiar. */
+/* lord.term.highlight(id, text, fg, bg): 0xRRGGBB colors or -1 = unchanged. */
 static JSValue f_highlight(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     Session *s = arg_session(c, argv[0]);
@@ -297,8 +297,8 @@ static JSValue f_highlight(JSContext *c, JSValueConst this_val, int argc, JSValu
     return JS_NewBool(c, ok);
 }
 
-/* lord.term.ackRestored(): la app ya avisó que hubo sesiones recuperadas tras un reinicio;
- * un cambio de tema posterior no debe repetir el aviso. */
+/* lord.term.ackRestored(): the app already announced that sessions were recovered after a restart;
+ * a later theme change must not repeat the notice. */
 static JSValue f_ack_restored(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)c; (void)this_val; (void)argc; (void)argv;
     int ids[TERM_MAX], n = term_list(ids, TERM_MAX);
@@ -308,7 +308,7 @@ static JSValue f_ack_restored(JSContext *c, JSValueConst this_val, int argc, JSV
 
 /* ---- tmux -CC ---- */
 
-/* lord.term.tmuxPane(puerta, n) → id de la sesión virtual del panel %n */
+/* lord.term.tmuxPane(gateway, n) → id of the virtual session of pane %n */
 static JSValue f_tmux_pane(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     Session *g = arg_session(c, argv[0]);
@@ -318,8 +318,8 @@ static JSValue f_tmux_pane(JSContext *c, JSValueConst this_val, int argc, JSValu
     return v ? JS_NewInt32(c, v->id) : JS_NULL;
 }
 
-/* lord.term.tmuxCommand(puerta, "comando de tmux"): una línea, sin saltos. Solo mientras la
- * sesión está en modo control: es lo mismo que el usuario escribiría en ese tmux. */
+/* lord.term.tmuxCommand(gateway, "tmux command"): one line, without newlines. Only while the
+ * session is in control mode: it's the same as what the user would type in that tmux. */
 static JSValue f_tmux_command(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     Session *g = arg_session(c, argv[0]);
@@ -334,7 +334,7 @@ static JSValue f_tmux_command(JSContext *c, JSValueConst this_val, int argc, JSV
     return JS_NewBool(c, ok);
 }
 
-/* lord.term.feed(id, texto): escribe en la pantalla (no en el shell). Para paneles de tmux. */
+/* lord.term.feed(id, text): writes to the screen (not to the shell). For tmux panes. */
 static JSValue f_feed(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     Session *s = arg_session(c, argv[0]);
@@ -367,7 +367,7 @@ static JSValue f_clear(JSContext *c, JSValueConst this_val, int argc, JSValueCon
     if (s && w) {
         if (!strcmp(w, "scrollback")) vt_clear_scrollback(&s->t);
         else if (!strcmp(w, "buffer")) {
-            /* Como Cmd+K de iTerm2: se borra todo y el shell redibuja el prompt. */
+            /* Like iTerm2's Cmd+K: everything is cleared and the shell redraws the prompt. */
             vt_clear_scrollback(&s->t);
             vt_write(&s->t, (const uint8_t *)"\033[H\033[2J", 7);
             term_input(s, "\f", 1);
@@ -377,7 +377,7 @@ static JSValue f_clear(JSContext *c, JSValueConst this_val, int argc, JSValueCon
     return JS_UNDEFINED;
 }
 
-/* ---- búsqueda y marcas ---- */
+/* ---- search and marks ---- */
 
 static JSValue search_state(JSContext *c, Session *s) {
     JSValue o = JS_NewObject(c);
@@ -449,7 +449,7 @@ static JSValue f_cursor_word(JSContext *c, JSValueConst this_val, int argc, JSVa
     return str_or_null(c, s ? vt_cursor_word(&s->t) : NULL);
 }
 
-/* ---- búsqueda con expresiones regulares (la regex corre en JS) ---- */
+/* ---- regular-expression search (the regex runs in JS) ---- */
 
 static JSValue f_logical_text(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
@@ -481,7 +481,7 @@ static JSValue f_set_matches(JSContext *c, JSValueConst this_val, int argc, JSVa
     return search_state(c, s);
 }
 
-/* ---- modo copia ---- */
+/* ---- copy mode ---- */
 
 static JSValue f_copy_mode(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
@@ -503,7 +503,7 @@ static JSValue f_copy_key(JSContext *c, JSValueConst this_val, int argc, JSValue
     return o;
 }
 
-/* ---- Instant Replay, registro y exportación ---- */
+/* ---- Instant Replay, logging and export ---- */
 
 static JSValue f_replay(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
@@ -601,7 +601,7 @@ static JSValue f_info(JSContext *c, JSValueConst this_val, int argc, JSValueCons
     JS_SetPropertyStr(c, o, "pane", JS_NewInt32(c, s->gateway ? s->pane : -1));
     JS_SetPropertyStr(c, o, "cellWidth", JS_NewFloat64(c, t->cell_w));
     JS_SetPropertyStr(c, o, "cellHeight", JS_NewFloat64(c, t->cell_h));
-    JS_SetPropertyStr(c, o, "cursorX", JS_NewInt32(c, t->cx));       /* celda del cursor (métodos de entrada) */
+    JS_SetPropertyStr(c, o, "cursorX", JS_NewInt32(c, t->cx));       /* cursor cell (input methods) */
     JS_SetPropertyStr(c, o, "cursorY", JS_NewInt32(c, t->cy));
     JS_SetPropertyStr(c, o, "padding", JS_NewFloat64(c, s->prof.padding));
     JS_SetPropertyStr(c, o, "copyMode", JS_NewBool(c, t->copy_active));
@@ -610,15 +610,15 @@ static JSValue f_info(JSContext *c, JSValueConst this_val, int argc, JSValueCons
     return o;
 }
 
-/* ---- portapapeles (de la sesión LordOS, en memoria) ---- */
+/* ---- clipboard (of the LordOS session, in memory) ---- */
 
 static JSValue f_clip_get(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     return JS_NewString(c, term_clipboard());
 }
 
-/* lord.clipboard.set(texto, { secure, origin }): secure marca la copia como sensible (una
- * contraseña: el historial no la guarda); origin es un nombre corto ("lordos", el id de la app). */
+/* lord.clipboard.set(text, { secure, origin }): secure marks the copy as sensitive (a
+ * password: the history doesn't keep it); origin is a short name ("lordos", the app's id). */
 static JSValue f_clip_set(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     size_t n;
@@ -684,7 +684,7 @@ static const JSCFunctionListEntry term_funcs[] = {
     JS_CFUNC_DEF("ackRestored", 0, f_ack_restored),
 };
 
-/* lord.clipboard.state() → { gen, kind: 'text' | 'image', image (vista previa PNG), imageGen } */
+/* lord.clipboard.state() → { gen, kind: 'text' | 'image', image (PNG preview), imageGen } */
 static JSValue f_clip_state(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     JSValue o = JS_NewObject(c);
@@ -698,9 +698,9 @@ static JSValue f_clip_state(JSContext *c, JSValueConst this_val, int argc, JSVal
     return o;
 }
 
-/* lord.clipboard.saveImage(ruta): guarda la imagen copiada (si lo último copiado es una
- * imagen) como PNG en una ruta de la carpeta personal (mismas reglas que lord.fs.write). Para el
- * historial persistente y para las notas. */
+/* lord.clipboard.saveImage(path): saves the copied image (if the last thing copied is an
+ * image) as PNG to a path in the home folder (same rules as lord.fs.write). For the
+ * persistent history and for notes. */
 static JSValue f_clip_save_image(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *src = wl_clip_image_path();
@@ -710,7 +710,7 @@ static JSValue f_clip_save_image(JSContext *c, JSValueConst this_val, int argc, 
     char dst[PATH_MAX + 300];
     int r = js_sys_resolve_target(p, dst, sizeof dst);
     JS_FreeCString(c, p);
-    if (r) return JS_ThrowRangeError(c, "ruta fuera de la carpeta personal o protegida");
+    if (r) return JS_ThrowRangeError(c, "path outside the home folder or protected");
     size_t n = 0;
     FILE *in = fopen(src, "rb");
     if (!in) return JS_FALSE;
@@ -729,8 +729,8 @@ static JSValue f_clip_save_image(JSContext *c, JSValueConst this_val, int argc, 
     return JS_NewBool(c, ok);
 }
 
-/* lord.clipboard.useImage(ruta): vuelve a copiar una imagen del historial (solo las vistas
- * previas que guardó el compositor en $XDG_RUNTIME_DIR/lordos). */
+/* lord.clipboard.useImage(path): copies an image from the history again (only the
+ * previews the compositor saved in $XDG_RUNTIME_DIR/lordos). */
 static JSValue f_clip_use_image(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *p = JS_ToCString(c, argv[0]);
@@ -739,8 +739,8 @@ static JSValue f_clip_use_image(JSContext *c, JSValueConst this_val, int argc, J
     return JS_NewBool(c, ok);
 }
 
-/* lord.clipboard.imageData() → ArrayBuffer con el PNG copiado (o null). Para guardarlo, la app
- * usa lord.fs.write, que tiene sus propias reglas (solo la carpeta personal). */
+/* lord.clipboard.imageData() → ArrayBuffer with the copied PNG (or null). To save it, the app
+ * uses lord.fs.write, which has its own rules (only the home folder). */
 static JSValue f_clip_image_data(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     size_t n = 0;
@@ -748,9 +748,9 @@ static JSValue f_clip_image_data(JSContext *c, JSValueConst this_val, int argc, 
     return png ? JS_NewArrayBufferCopy(c, png, n) : JS_NULL;
 }
 
-/* lord.clipboard.deleteSaved(nombre): borra una imagen del historial guardado. Solo nombres
- * img-<letras, números, guiones>.png dentro de ~/.local/share/lordos/clipboard (no hay un borrado
- * general de archivos). */
+/* lord.clipboard.deleteSaved(name): deletes an image from the saved history. Only names
+ * img-<letters, numbers, hyphens>.png inside ~/.local/share/lordos/clipboard (there is no general
+ * file deletion). */
 static JSValue f_clip_delete_saved(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc;
     const char *n = JS_ToCString(c, argv[0]);

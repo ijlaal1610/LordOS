@@ -1,8 +1,8 @@
 // Store: LordOS apps (.lpk packages, no root) and Debian apps (our own package engine,
 // server/src/pkg; install and remove go through the administration helper).
 import {
-  View, Text, Image, useTheme, useLocale, useAppWindow, useStore, Button, ScrollView, SidebarItem, SectionTitle, SearchField, Hairline, EmptyState,
-  packages, packageList, refreshPackages, useLauncherApps, launchApp, fs, formatBytes, wm, direction, typeScale,
+  View, Text, Image, useTheme, useLocale, useAppWindow, useStore, Button, ScrollView, SidebarItem, SectionTitle, SearchField, Hairline, EmptyState, GroupBox,
+  packages, packageList, refreshPackages, useLauncherApps, launchApp, fs, formatBytes, wm, direction, typeScale, spacing,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useState } from 'react';
 import { debian, useDebian } from './debian.js';
@@ -44,17 +44,39 @@ export function Icon({ size: s }) {
   );
 }
 
-// Hairline between list rows, inset to start at the text (after the icon), as macOS lists do.
-const Divider = ({ inset = 56 }) => <View style={{ height: 1, backgroundColor: useTheme().separator, [direction() === 'rtl' ? 'marginRight' : 'marginLeft']: inset }} />;
+// A section header (13/600, sentence case) above an inset list, with an optional count.
+function ListHeader({ title, count }) {
+  const t = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: spacing.s, paddingHorizontal: spacing.xs, marginBottom: 6 }}>
+      <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text, textAlign: 'start' }}>{title}</Text>
+      {count != null ? <Text style={{ fontSize: typeScale.caption, color: t.textDim }}>{count}</Text> : null}
+    </View>
+  );
+}
+
+// An inset list (GroupBox) with a section header; rows are AppRow.
+function List({ title, count, children, empty, style }) {
+  const t = useTheme();
+  const rows = (Array.isArray(children) ? children.flat() : [children]).filter(Boolean);
+  return (
+    <View style={[{ marginBottom: spacing.xl }, style]}>
+      {title ? <ListHeader title={title} count={count} /> : null}
+      <GroupBox>
+        {rows.length ? rows : <Text style={{ fontSize: typeScale.body, color: t.textDim, paddingVertical: 10, lineHeight: 1.4, textAlign: 'start' }}>{empty}</Text>}
+      </GroupBox>
+    </View>
+  );
+}
 
 // Page title (large title) with an optional subtitle.
 export function PageTitle({ title, subtitle, children }) {
   const t = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-      <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-        <Text style={{ fontSize: typeScale.largeTitle, fontWeight: 600, color: t.text }}>{title}</Text>
-        {subtitle ? <Text style={{ fontSize: typeScale.callout, color: t.textDim, lineHeight: 1.4 }}>{subtitle}</Text> : null}
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s, marginBottom: spacing.xl }}>
+      <View style={{ flex: 1, minWidth: 0, gap: spacing.xs }}>
+        <Text style={{ fontSize: typeScale.largeTitle, fontWeight: 600, color: t.text, textAlign: 'start' }}>{title}</Text>
+        {subtitle ? <Text style={{ fontSize: typeScale.callout, color: t.textDim, lineHeight: 1.4, textAlign: 'start' }}>{subtitle}</Text> : null}
       </View>
       {children}
     </View>
@@ -62,24 +84,27 @@ export function PageTitle({ title, subtitle, children }) {
 }
 
 // An app row: icon, name, detail and actions at the end.
-export function AppRow({ icon, name, detail, extra, children, onClick }) {
+export function AppRow({ icon, name, detail, extra, children, onClick, below }) {
   const t = useTheme();
   return (
-    <View onClick={onClick} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }}>
-      {icon}
-      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-        <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{name}</Text>
-        {detail ? <Text style={{ fontSize: typeScale.callout, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{detail}</Text> : null}
-        {extra ? <Text style={{ fontSize: typeScale.caption, color: t.textDim }}>{extra}</Text> : null}
+    <View onClick={onClick} style={{ paddingVertical: spacing.s + 2, gap: spacing.s }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.m }}>
+        {icon}
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{name}</Text>
+          {detail ? <Text style={{ fontSize: typeScale.callout, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{detail}</Text> : null}
+          {extra ? <Text style={{ fontSize: typeScale.caption, color: t.textDim, textAlign: 'start' }}>{extra}</Text> : null}
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s }}>{children}</View>
       </View>
-      <View style={{ flexDirection: 'row', gap: 8 }}>{children}</View>
+      {below || null}
     </View>
   );
 }
 
 export function Message({ msg }) {
   if (!msg) return null;
-  return <Text style={{ fontSize: typeScale.callout, color: msg.ok ? '#30d158' : '#ff453a', marginVertical: 8, lineHeight: 1.4 }}>{msg.text}</Text>;
+  return <Text style={{ fontSize: typeScale.callout, color: msg.ok ? '#30d158' : '#ff453a', marginBottom: spacing.m, lineHeight: 1.4, textAlign: 'start' }}>{msg.text}</Text>;
 }
 
 // ---- LordOS apps (.lpk) ----
@@ -126,23 +151,29 @@ function InstallFile({ path, onDone }) {
     } catch (e) { setMsg({ ok: false, text: e.message }); }
   };
   return (
-    <View style={{ padding: 16, borderRadius: 10, backgroundColor: t.hover, border: `1px solid ${t.separator}`, gap: 8, marginBottom: 20 }}>
-      <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text }}>{tr('store.file.title')}</Text>
-      <Text style={{ fontSize: 12, color: t.textDim }}>{path}</Text>
+    <View style={{ padding: spacing.xl, borderRadius: 12, backgroundColor: t.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#ffffff', border: `1px solid ${t.separator}`,
+      boxShadow: '0 6px 20px rgba(0,0,0,0.18)', gap: spacing.m, marginBottom: spacing.xl }}>
+      <View style={{ gap: 2 }}>
+        <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text, textAlign: 'start' }}>{tr('store.file.title')}</Text>
+        <Text style={{ fontSize: typeScale.caption, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden', direction: 'ltr', textAlign: 'start' }}>{path.replace(fs.home(), '~')}</Text>
+      </View>
       {m && (
-        <View style={{ gap: 4 }}>
-          <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text }}>{loc(m.name)} {m.version}</Text>
-          {m.description ? <Text style={{ fontSize: 12, color: t.text }}>{loc(m.description)}</Text> : null}
-          <Text style={{ fontSize: 12, color: t.textDim }}>{tr('store.file.size', { size: formatBytes(info.size), files: info.files })}</Text>
-          <Text style={{ fontSize: 12, color: t.textDim }}>
-            {tr('store.file.permissions', { list: (m.permissions || []).length ? m.permissions.join(', ') : tr('store.file.noPermissions') })}</Text>
-          <TrustBadge sig={info.signature} />
-          {installed && !msg?.ok && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('store.file.replaces', { version: installed.version })}</Text>}
+        <View style={{ flexDirection: 'row', gap: spacing.m, alignItems: 'flex-start' }}>
+          <Icon size={44} />
+          <View style={{ flex: 1, minWidth: 0, gap: spacing.xs }}>
+            <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text, textAlign: 'start' }}>{loc(m.name)} {m.version}</Text>
+            {m.description ? <Text style={{ fontSize: typeScale.callout, color: t.text, lineHeight: 1.4, textAlign: 'start' }}>{loc(m.description)}</Text> : null}
+            <Text style={{ fontSize: typeScale.callout, color: t.textDim, textAlign: 'start' }}>{tr('store.file.size', { size: formatBytes(info.size), files: info.files })}</Text>
+            <Text style={{ fontSize: typeScale.callout, color: t.textDim, lineHeight: 1.4, textAlign: 'start' }}>
+              {tr('store.file.permissions', { list: (m.permissions || []).length ? m.permissions.join(', ') : tr('store.file.noPermissions') })}</Text>
+            <TrustBadge sig={info.signature} />
+            {installed && !msg?.ok && <Text style={{ fontSize: typeScale.callout, color: t.textDim, textAlign: 'start' }}>{tr('store.file.replaces', { version: installed.version })}</Text>}
+          </View>
         </View>
       )}
-      {isDeb && <Text style={{ fontSize: 12, color: t.text }}>{tr('store.file.deb')}</Text>}
+      {isDeb && <Text style={{ fontSize: typeScale.callout, color: t.text, lineHeight: 1.4, textAlign: 'start' }}>{tr('store.file.deb')}</Text>}
       <Message msg={msg} />
-      <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+      <View style={{ flexDirection: 'row', gap: spacing.s, justifyContent: 'flex-end' }}>
         <Button label={tr('store.close')} onClick={() => onDone?.(true)} />
         {(m || isDeb) && !msg?.ok && <Button primary label={busy ? tr('store.working') : tr('store.install')} onClick={() => !busy && install()} />}
       </View>
@@ -164,25 +195,22 @@ function LordOSPage({ query }) {
       <PageTitle title={tr('store.lordos.title')} subtitle={tr('store.lordos.subtitle')} />
       {pick && <InstallFile path={pick} onDone={(cancel) => { if (cancel) setPick(null); setFiles(findPackageFiles().filter((f) => /\.lpk$/i.test(f.name))); }} />}
       <Message msg={msg} />
-      <SectionTitle>{tr('store.lordos.installedTitle')}</SectionTitle>
-      {shown.length === 0 && <Text style={{ fontSize: typeScale.callout, color: t.textDim, marginHorizontal: 10, marginVertical: 8 }}>{tr('store.lordos.none')}</Text>}
-      {shown.map((p, i) => (
-        <View key={p.id}>
-          {i > 0 && <Divider />}
-          <AppRow icon={<p.Icon size={44} />} name={p.name} detail={p.description} extra={tr('store.version', { version: p.version })}>
-            <Button primary label={tr('store.open')} onClick={() => launchApp(p.id)} />
-            <Button label={tr('store.remove')} onClick={() => { packages.remove(p.id); setMsg({ ok: true, text: tr('store.lordos.removed', { name: p.name }) }); }} />
+      <List title={tr('store.lordos.installedTitle')} count={shown.length || null} empty={tr('store.lordos.none')}>
+        {shown.map((p) => (
+          <AppRow key={p.id} icon={<p.Icon size={40} />} name={p.name} detail={p.description} extra={tr('store.version', { version: p.version })}
+            below={<PkgManage pkg={p} onMsg={setMsg} />}>
+            <Button small label={tr('store.remove')} onClick={() => { packages.remove(p.id); setMsg({ ok: true, text: tr('store.lordos.removed', { name: p.name }) }); }} />
+            <Button small label={tr('store.open')} onClick={() => launchApp(p.id)} />
           </AppRow>
-          <PkgManage pkg={p} onMsg={setMsg} />
-        </View>
-      ))}
-      <SectionTitle>{tr('store.lordos.filesTitle')}</SectionTitle>
-      {files.length === 0 && <Text style={{ fontSize: typeScale.callout, color: t.textDim, marginHorizontal: 10, marginVertical: 8 }}>{tr('store.lordos.noFiles')}</Text>}
-      {files.map((f) => (
-        <AppRow key={f.path} icon={<Icon size={32} />} name={f.name} detail={`${f.path.replace(fs.home(), '~')} · ${formatBytes(f.size)}`}>
-          <Button label={tr('store.install')} onClick={() => setPick(f.path)} />
-        </AppRow>
-      ))}
+        ))}
+      </List>
+      <List title={tr('store.lordos.filesTitle')} count={files.length || null} empty={tr('store.lordos.noFiles')}>
+        {files.map((f) => (
+          <AppRow key={f.path} icon={<Icon size={32} />} name={f.name} detail={`${f.path.replace(fs.home(), '~')} · ${formatBytes(f.size)}`}>
+            <Button small label={tr('store.install')} onClick={() => setPick(f.path)} />
+          </AppRow>
+        ))}
+      </List>
     </View>
   );
 }
@@ -209,7 +237,7 @@ function PkgManage({ pkg, onMsg }) {
     } catch (e) { onMsg({ ok: false, text: e.message }); }
   };
   return (
-    <View style={{ [direction() === 'rtl' ? 'marginRight' : 'marginLeft']: 56, marginBottom: 8, gap: 6 }}>
+    <View style={{ [direction() === 'rtl' ? 'marginRight' : 'marginLeft']: 52, gap: 6 }}>
       {st.hasOriginal ? <TrustBadge sig={st} /> : <Text style={{ fontSize: 11, color: t.textDim }}>{tr('store.manage.noOriginal')}</Text>}
       {st.modified && (
         <View style={{ gap: 4 }}>
@@ -219,9 +247,9 @@ function PkgManage({ pkg, onMsg }) {
               {tr(`store.manage.kind.${c.kind}`)} {c.path}
             </Text>
           ))}
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-            {st.hasOriginal && <Button label={tr('store.manage.restore')} onClick={restore} />}
-            <Button label={tr('store.manage.share')} onClick={share} />
+          <View style={{ flexDirection: 'row', gap: spacing.s, marginTop: spacing.xs }}>
+            {st.hasOriginal && <Button small label={tr('store.manage.restore')} onClick={restore} />}
+            <Button small label={tr('store.manage.share')} onClick={share} />
           </View>
         </View>
       )}
@@ -242,15 +270,14 @@ function InstalledPage({ query }) {
   return (
     <View>
       <PageTitle title={tr('store.installed.title')} />
-      {shown.map((a, i) => (
-        <View key={a.id}>
-          {i > 0 && <Divider inset={48} />}
-          <AppRow icon={<a.Icon size={36} />} name={a.name} detail={a.comment || a.genericName || ''} extra={kind(a)}>
-            <Button label={tr('store.open')} onClick={() => launchApp(a.id)} />
-            {a.kind === 'linux' && debian.canRemove(a) && <Button label={tr('store.remove')} onClick={() => debian.removeApp(a)} />}
+      <List count={null} empty={tr('store.debian.none')}>
+        {shown.map((a) => (
+          <AppRow key={a.id} icon={<a.Icon size={32} />} name={a.name} detail={a.comment || a.genericName || ''} extra={kind(a)}>
+            {a.kind === 'linux' && debian.canRemove(a) && <Button small label={tr('store.remove')} onClick={() => debian.removeApp(a)} />}
+            <Button small label={tr('store.open')} onClick={() => launchApp(a.id)} />
           </AppRow>
-        </View>
-      ))}
+        ))}
+      </List>
     </View>
   );
 }

@@ -1,4 +1,4 @@
-/* image.c — carga de PNG/JPEG (stb_image), escalado con caché y dibujo. */
+/* image.c — PNG/JPEG loading (stb_image), cached scaling and drawing. */
 #include "ui.h"
 
 #include <math.h>
@@ -11,10 +11,10 @@
 struct Image {
     char *path;
     int w, h, opaque;
-    uint32_t *px;                   /* ARGB premultiplicado */
-    uint32_t *scaled;               /* última versión escalada */
+    uint32_t *px;                   /* premultiplied ARGB */
+    uint32_t *scaled;               /* last scaled version */
     int sw, sh, sfit;
-    uint32_t *scaled2;              /* la anterior: un ícono a dos tamaños (Dock y barra) no se reescala en cada cuadro */
+    uint32_t *scaled2;              /* the previous one: an icon at two sizes (Dock and bar) is not rescaled every frame */
     int sw2, sh2, sfit2;
     struct Image *next;
 };
@@ -26,7 +26,7 @@ Image *image_get(const char *path) {
         if (!strcmp(i->path, path)) return i;
     int w, h, ch;
     unsigned char *rgba = stbi_load(path, &w, &h, &ch, 4);
-    if (!rgba) { fprintf(stderr, "image: no se pudo cargar %s\n", path); return NULL; }
+    if (!rgba) { fprintf(stderr, "image: could not load %s\n", path); return NULL; }
     Image *img = calloc(1, sizeof *img);
     img->path = strdup(path);
     img->w = w; img->h = h; img->opaque = 1;
@@ -44,8 +44,8 @@ Image *image_get(const char *path) {
 
 void image_size(const Image *img, int *w, int *h) { *w = img->w; *h = img->h; }
 
-/* Imagen propia de un nodo (prop `pixels`: lienzo de una app, por ejemplo dibujado desde WASM).
- * No entra en la caché por ruta; se reutiliza si no cambia el tamaño. rgba = w*h*4 bytes. */
+/* A node's own image (`pixels` prop: an app's canvas, e.g. drawn from WASM).
+ * It does not go into the path cache; it is reused if the size doesn't change. rgba = w*h*4 bytes. */
 Image *image_pixels(Image *img, int w, int h, const uint8_t *rgba) {
     if (img && (img->path || img->w != w || img->h != h)) { image_release(img); img = NULL; }
     if (!img) {
@@ -68,8 +68,8 @@ Image *image_pixels(Image *img, int w, int h, const uint8_t *rgba) {
     return img;
 }
 
-/* Igual que image_pixels pero con píxeles ARGB32 ya premultiplicados (los que devuelve el
- * ayudante de documentos, doc/doc.c: páginas de PDF, muestras de fuentes). */
+/* Same as image_pixels but with ARGB32 pixels already premultiplied (the ones returned by the
+ * document helper, doc/doc.c: PDF pages, font samples). */
 Image *image_argb(Image *img, int w, int h, const uint32_t *argb) {
     if (img && (img->path || img->w != w || img->h != h)) { image_release(img); img = NULL; }
     if (!img) {
@@ -89,7 +89,7 @@ Image *image_argb(Image *img, int w, int h, const uint32_t *argb) {
     return img;
 }
 
-/* Libera una imagen de image_pixels (las de archivo quedan en la caché). */
+/* Frees an image from image_pixels (file images stay in the cache). */
 void image_release(Image *img) {
     if (!img || img->path) return;
     free(img->px);
@@ -118,7 +118,7 @@ static uint32_t sample_bilinear(const Image *img, float u, float v) {
     return out;
 }
 
-/* Promedio de área para reducciones fuertes (íconos grandes → dock). */
+/* Area averaging for strong downscaling (large icons → dock). */
 static uint32_t sample_box(const Image *img, float u0, float v0, float u1, float v1) {
     int x0 = (int)floorf(u0), y0 = (int)floorf(v0), x1 = (int)ceilf(u1), y1 = (int)ceilf(v1);
     if (x0 < 0) x0 = 0;
@@ -138,7 +138,7 @@ static uint32_t sample_box(const Image *img, float u0, float v0, float u1, float
 
 static void rescale(Image *img, int bw, int bh, int fit) {
     if (img->scaled && img->sw == bw && img->sh == bh && img->sfit == fit) return;
-    /* la otra versión guardada: se intercambian */
+    /* the other saved version: they are swapped */
     uint32_t *t = img->scaled; img->scaled = img->scaled2; img->scaled2 = t;
     int tw = img->sw, th = img->sh, tf = img->sfit;
     img->sw = img->sw2; img->sh = img->sh2; img->sfit = img->sfit2;
@@ -159,7 +159,7 @@ static void rescale(Image *img, int bw, int bh, int fit) {
     for (int j = 0; j < bh; j++)
         for (int i = 0; i < bw; i++) {
             float u0 = (i - ox) / sx, v0 = (j - oy) / sy, u1 = (i + 1 - ox) / sx, v1 = (j + 1 - oy) / sy;
-            if (u1 <= 0 || v1 <= 0 || u0 >= img->w || v0 >= img->h) continue;   /* margen de contain */
+            if (u1 <= 0 || v1 <= 0 || u0 >= img->w || v0 >= img->h) continue;   /* contain margin */
             img->scaled[(size_t)j * bw + i] = box ? sample_box(img, u0, v0, u1, v1)
                                                   : sample_bilinear(img, (u0 + u1) / 2 - 0.5f, (v0 + v1) / 2 - 0.5f);
         }
@@ -168,10 +168,10 @@ static void rescale(Image *img, int bw, int bh, int fit) {
 void image_draw(Canvas *c, Image *img, float x, float y, float w, float h, float r, int fit, float opacity) {
     int bw = (int)roundf(w), bh = (int)roundf(h);
     if (bw <= 0 || bh <= 0) return;
-    /* afuera de lo que se repinta: nada (ni reescalar) */
+    /* outside what is being repainted: nothing (not even rescaling) */
     int ix = (int)roundf(x), iy = (int)roundf(y);
     if (ix >= c->clip.x1 || iy >= c->clip.y1 || ix + bw <= c->clip.x0 || iy + bh <= c->clip.y0) return;
-    if (bw == img->w && bh == img->h && img->px) {      /* 1:1 (un mapa corrido, un cuadro nuevo): sin reescalar */
+    if (bw == img->w && bh == img->h && img->px) {      /* 1:1 (a scrolled map, a new frame): no rescaling */
         canvas_blit(c, img->px, bw, bh, (int)roundf(x), (int)roundf(y), r, opacity, img->opaque);
         return;
     }

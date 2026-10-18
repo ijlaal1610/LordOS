@@ -1,4 +1,4 @@
-/* fonts.c — catálogo de fuentes instaladas. Ver fonts.h. */
+/* fonts.c — catalog of installed fonts. See fonts.h. */
 #include "fonts.h"
 
 #include <ctype.h>
@@ -44,7 +44,7 @@ static size_t table(Buf b, size_t font, const char *tag, size_t *len) {
     return 0;
 }
 
-/* Nombre `id` de la tabla name, en UTF-8 (Windows UTF-16BE preferido, si no Mac Roman). */
+/* Name `id` from the name table, in UTF-8 (Windows UTF-16BE preferred, otherwise Mac Roman). */
 static int name_of(Buf b, size_t name, size_t nlen, unsigned id, char *out, size_t size) {
     unsigned count = u16(b, name + 2), strs = u16(b, name + 4);
     int best = -1, best_score = -1;
@@ -76,8 +76,8 @@ static int name_of(Buf b, size_t name, size_t nlen, unsigned id, char *out, size
     return o > 0;
 }
 
-/* Monoespaciada: post.isFixedPitch o casi todos los avances iguales (las de ligaduras
- * como Fira Code tienen glifos de ancho 0, por eso se mira la mayoría). */
+/* Monospaced: post.isFixedPitch or almost all advances equal (ligature fonts
+ * like Fira Code have zero-width glyphs, so we look at the majority). */
 static int is_mono(Buf b, size_t font) {
     size_t len, post = table(b, font, "post", &len);
     if (post && u32(b, post + 12)) return 1;
@@ -115,7 +115,7 @@ static void add_face(Buf b, size_t font, const char *path, int index) {
     if (!table(b, font, "glyf", &len) && !table(b, font, "CFF ", &len) && !e.color) return;
     snprintf(e.path, sizeof e.path, "%s", path);
     e.index = index;
-    for (int i = 0; i < nentries; i++)     /* la misma fuente instalada dos veces */
+    for (int i = 0; i < nentries; i++)     /* the same font installed twice */
         if (!strcmp(entries[i].family, e.family) && !strcmp(entries[i].style, e.style)) return;
     entries[nentries++] = e;
 }
@@ -207,7 +207,7 @@ const FontEntry *fonts_by_ps(const char *ps) {
     int n;
     const FontEntry *l = fonts_list(0, &n);
     for (int i = 0; i < n; i++) if (!strcasecmp(l[i].ps, ps)) return &l[i];
-    /* iTerm2 a veces guarda el nombre sin guiones: "JetBrainsMonoNL-Regular" vs familia */
+    /* iTerm2 sometimes saves the name without hyphens: "JetBrainsMonoNL-Regular" vs family */
     char fam[64];
     snprintf(fam, sizeof fam, "%s", ps);
     char *dash = strchr(fam, '-');

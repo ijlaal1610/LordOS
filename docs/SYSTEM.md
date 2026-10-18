@@ -432,7 +432,114 @@ the thread not competing with the compositor for CPU (wakeup p99 of 2 ms at most
 - RTL was reviewed in code (rows the engine mirrors, text with `start`/`end`, the progress bar in
   `ltr`); there is no Arabic screenshot.
 
-<!-- SECCION:REGISTROS -->
+## Logs (`apps/logs`)
+
+LordOS's log viewer, like macOS Console.
+
+- **Sources** (sidebar):
+  - **My logs:** the user's own systemd journal (`user-<uid>.journal` and its archived files);
+  - **System:** the system journal. If the user can read it directly (group `systemd-journal` or
+    `adm`) it is read like the user's own; otherwise an administrator gets it through the closed
+    action `logs-system`; anyone else is told it needs an administrator;
+  - **Kernel:** the kernel's messages (`_TRANSPORT=kernel`) from the readable journal;
+  - **LordOS:** the session's own logs, `~/.cache/lordos/<name>.log` (`session.log`,
+    `greeter.log`…).
+- **Filters:** level (all, info and above, warnings and above, errors), time range (15 min, 1 hour,
+  24 h, everything), process or unit (`[A-Za-z0-9@._:-]`, the same check as the C side), and free-text
+  search in the message.
+- **Live:** follows new entries as they arrive (see below) and keeps the view pinned to the bottom
+  until the user scrolls up.
+- **Detail:** the selected entry with its time, level, process, PID, UID, unit and boot id.
+- **Export:** the filtered view as text, to the user's Documents folder (`userDirs()`, so
+  `~/Documentos` in Spanish) through `fs.write`.
+- A virtualized list (only the visible rows are drawn); at most 3000 entries per query and
+  10,000 kept while following (older ones are dropped). The status bar shows counts and query time.
+
+### Our own journal reader (`server/src/logs/journal.c`)
+
+No libsystemd and no `journalctl`. The files are read with `pread` and a small block cache, never
+`mmap`: journald can shrink or rewrite a file and `mmap` would turn that into `SIGBUS` inside
+lord-server.
+
+- **Format:** header `LPKSHHRH`, the entry-array chain, ENTRY and DATA objects, in both the regular
+  and the **compact** layout (Debian 13's systemd 257 writes compact files). Fields used: `MESSAGE`,
+  `PRIORITY`, `SYSLOG_IDENTIFIER`, `_COMM`, `_PID`, `_UID`, `_SYSTEMD_UNIT`, `_SYSTEMD_USER_UNIT`,
+  `_BOOT_ID`, `_TRANSPORT`; the time comes from the entry header.
+- **Compression:** XZ through our own decoder (`server/src/pkg/xz.c`) and LZ4 with a small block
+  decoder of its own. **ZSTD is not decoded yet:** those fields show as `[zstd-compressed]`. journald
+  compresses only fields over 512 bytes, so it is rare (8 of 39,504 entries on VM 119).
+- **Hostile input:** every offset and size is checked against the file size, the entry-array chain
+  must always move forward (no loops), and sizes are capped (1 MiB per object, 16 KiB per message).
+- **Several files:** active and archived (`*.journal~`, `@…`) files from `/var/log/journal` and
+  `/run/log/journal`, merged by time.
+
+### Permissions
+
+- **The user's own logs** are read by lord-server **as the user**: the kernel and journald's ACLs
+  decide. `user-<uid>.journal` is readable by its owner; the system journal only by
+  `systemd-journal`/`adm`.
+- **System logs for administrators** go through `logs-system` (`server/src/logs/logs_admin.c`,
+  `LOGS_ADMIN_ACTIONS`, administrators only, `A_FORK`):
+  - the argument is `key=value` lines validated as root (`jq_parse`): `since`/`until` (seconds or
+    µs), `prio` 0–7, `kernel` 0/1, `match` (`[A-Za-z0-9@._:-]`, up to 95), `grep` (no control
+    characters), `limit` 1–5000;
+  - the paths don't come from the user: `/var/log/journal/<machine-id>/system*.journal*`;
+  - it runs no program; it streams one JSON `LOG` line per entry and `OK <n>`.
+- `lord.logs.tail(name)` only reads `~/.cache/lordos/<name>.log` with a validated name.
+
+### Live follow without polling
+
+`lord.logs.follow(true)` adds inotify watches on the journal directories and `~/.cache/lordos`.
+Queries run in a lord-server thread; the thread and inotify share one epoll fd in the main loop
+(`logs_fd()`), so the compositor never waits for a read. When something changes, JS gets
+`__lordLogs('journal')` or `__lordLogs('file', name)` and asks only for the entries after the
+newest one it has (at most about once a second). With the app closed there is no watch and no
+thread work.
+
+### API (`lord.logs`, `sdk/logs.js`)
+
+| Call | Returns |
+|---|---|
+| `logs.sources()` | `{ user, system, uid }`: how many user files, whether the system journal is readable directly |
+| `logs.query({ scope: 'user'\|'system', since, until, prio, kernel, match, grep, limit })` | promise of `[{ t (µs), s, p, pid, uid, k, id, u, b, m }]`, oldest first |
+| `logs.system(query)` | the same through `logs-system` (administrators) |
+| `logs.files()`, `logs.tail(name, bytes)` | the LordOS logs and the end of one of them (up to 1 MB) |
+| `logs.follow(on)`, `logs.onChange(fn)` | live follow (`'journal'` or `'file'`, name) |
+
+### Tests and measurements
+
+- `make -C server test` → `build/journal-test`: synthetic journal files written by the test (regular
+  and compact, an LZ4 field and an XZ field, a ZSTD field that must show the marker), queries and
+  filters, JSON, every truncation of a file, 3000 random corruptions and an entry-array loop; none
+  may crash or read out of bounds.
+- **Against `journalctl`** on VM 119 (`build/journal-test dump <file>` vs `journalctl --file <file>
+  -o json`), all the real journal files: **39,504 entries, 0 differences** in count, time and
+  message; 8 messages compressed with ZSTD show the marker.
+
+  | File | Entries | Differences |
+  |---|---|---|
+  | `system.journal` + 2 archived | 12,394 + 7,733 + 10,361 | 0 (8 ZSTD) |
+  | `user-1000.journal` + 2 archived | 3,639 + 2,427 + 2,950 | 0 |
+- **Speed** (`build/journal-test bench`): `system.journal` with 12,403 entries opens in 0.6 ms,
+  decodes all in 14 ms (**~880,000 entries/s**) and returns the newest 1000 in 3.1 ms; the user
+  journal (3,655 entries) in 0.3 / 5.5 / 3.5 ms.
+
+### Screenshots (VM 119)
+
+| | |
+|---|---|
+| ![my logs](m9-sistema-registros.png) | ![system](m9-sistema-registros-sistema.png) |
+| My logs: the user's journal, read as the user (164 entries in 5 ms) | System, 24 h, through `logs-system` (lord is in `sudo` but not in `adm`): 3000 entries in 109 ms, with the detail of an entry |
+| ![search](m9-sistema-registros-buscar.png) | ![live](m9-sistema-registros-envivo.png) |
+| Search "lord-netd": its DHCP renewals every ~4.5 min (T1 of a 10 min lease) | Live: `logger` lines sent over ssh after the view opened (7 and 8) appear without reloading |
+
+Export of the "lord-netd" view: `~/Documentos/Registros-20261018-035235.txt`, 203 lines.
+
+### Pending
+
+- A ZSTD decoder of our own (or showing those fields in full).
+- RTL screenshot (the layout uses `start`/`end`; checked in code only).
+
 
 ## Clock (`apps/clock`)
 

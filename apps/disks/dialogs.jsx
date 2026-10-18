@@ -15,8 +15,8 @@ function Card({ title, children }) {
   return (
     <View style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' }}>
       <View style={{ width: 480, maxHeight: '90%', borderRadius: 12, backgroundColor: t.windowBg, border: `1px solid ${t.separator}`,
-        boxShadow: '0 12px 40px rgba(0,0,0,0.45)', padding: 18, gap: 12 }}>
-        <Text style={{ fontSize: 15, fontWeight: 700, color: t.text, textAlign: 'start' }}>{title}</Text>
+        boxShadow: '0 12px 40px rgba(0,0,0,0.45)', padding: 20, gap: 12 }}>
+        <Text style={{ fontSize: 15, fontWeight: 600, color: t.text, textAlign: 'start' }}>{title}</Text>
         {children}
       </View>
     </View>
@@ -65,7 +65,7 @@ function Confirm({ disk, part, action, onBack, onGo }) {
           <TextInput value={typed} onChange={setTyped} placeholder={disk.name} autoFocus onSubmit={() => ok && onGo()} />
         </View>
       ) : null}
-      <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+      <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
         <Button label={tr('disks.back')} onClick={onBack} />
         <Button label={action} onClick={() => ok && onGo()} style={{ backgroundColor: ok ? RED : t.control, opacity: ok ? 1 : 0.5 }} />
       </View>
@@ -120,7 +120,7 @@ function Result({ job, okText, onClose, onCancel }) {
       {job.running && !job.progress ? <Text style={{ fontSize: 12, color: t.textDim, textAlign: 'start' }}>{tr('disks.working')}</Text> : null}
       {job.error ? <Text style={{ fontSize: 12, color: RED, textAlign: 'start' }}>{job.error}</Text> : null}
       {job.result ? <Text style={{ fontSize: 12, color: '#30d158', textAlign: 'start' }}>{okText(job.result)}</Text> : null}
-      <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+      <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
         {job.running && onCancel ? <Button label={tr('disks.cancel')} onClick={onCancel} /> : null}
         {!job.running ? <Button primary label={tr('disks.done')} onClick={onClose} /> : null}
       </View>
@@ -154,7 +154,7 @@ function FormatDialog({ disk, part, tools, onClose }) {
               {!part ? <Text style={{ fontSize: 11, color: t.textDim, textAlign: 'start' }}>{tr('disks.formatWholeHint')}</Text> : null}
             </View>
           )}
-          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
             <Button label={tr('disks.cancel')} onClick={onClose} />
             {kinds.length ? <Button primary label={tr('disks.continue')} onClick={() => !badLabel && setStep('confirm')} /> : null}
           </View>
@@ -179,7 +179,7 @@ function EraseDialog({ disk, part, onClose }) {
         <View style={{ gap: 10 }}>
           <View style={{ flexDirection: 'row' }}><Segmented options={[['quick', tr('disks.eraseQuick')], ['zero', tr('disks.eraseZero')]]} value={mode} onChange={setMode} /></View>
           <Text style={{ fontSize: 11, color: t.textDim, textAlign: 'start' }}>{tr(`disks.eraseHint.${mode}`)}</Text>
-          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
             <Button label={tr('disks.cancel')} onClick={onClose} />
             <Button primary label={tr('disks.continue')} onClick={() => setStep('confirm')} />
           </View>
@@ -209,7 +209,7 @@ function LabelDialog({ part, onClose }) {
           <TextInput value={label} onChange={setLabel} autoFocus placeholder={tr('disks.labelPlaceholder', { n: max })} onSubmit={() => !bad && !needUnmount && (setStarted(true), start('disk-label', `${part.name}\n${clean}`))} />
           {bad ? <Text style={{ fontSize: 11, color: RED, textAlign: 'start' }}>{tr('disks.badLabel', { n: max })}</Text> : null}
           {needUnmount ? <Text style={{ fontSize: 11, color: t.textDim, textAlign: 'start' }}>{tr('disks.renameUnmount')}</Text> : null}
-          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
             <Button label={tr('disks.cancel')} onClick={onClose} />
             <Button primary label={tr('disks.rename')} onClick={() => !bad && !needUnmount && (setStarted(true), start('disk-label', `${part.name}\n${clean}`))} />
           </View>
@@ -259,7 +259,7 @@ function ImageDialog({ disk, onClose }) {
           ) : <Text style={{ fontSize: 11, color: t.textDim, textAlign: 'start' }}>{tr('disks.imageNone')}</Text>}
           {st && tooBig ? <Text style={{ fontSize: 11, color: RED, textAlign: 'start' }}>{tr('disks.imageTooBig', { size: formatBytes(st.size), disk: formatBytes(disk.size) })}</Text> : null}
           {full && !st ? <Text style={{ fontSize: 11, color: RED, textAlign: 'start' }}>{tr('disks.imageMissing')}</Text> : null}
-          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
             <Button label={tr('disks.cancel')} onClick={onClose} />
             <Button primary label={tr('disks.continue')} onClick={() => okFile && setStep('confirm')} style={{ opacity: okFile ? 1 : 0.5 }} />
           </View>

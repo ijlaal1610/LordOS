@@ -1,25 +1,25 @@
-/* install.c — instalador de LordOS al disco (acciones del ayudante privilegiado, admin.c).
+/* install.c — LordOS installer to disk (privileged helper actions, admin.c).
  *
- * Solo funciona en el ISO live (existe /run/live/medium); en un sistema instalado todas las
- * acciones responden ERR. Acciones:
+ * It only works on the live ISO (/run/live/medium exists); on an installed system every
+ * action answers ERR. Actions:
  *
- *   install-disks           un LOG con JSON por disco instalable y al final OK <n>:
+ *   install-disks           one LOG with JSON per installable disk and finally OK <n>:
  *                           { name, path, size, model, vendor, transport, removable, parts: [...] }
- *                           (sin loop, ram, zram, sr, dm ni md, y sin el disco del que arrancó el live)
- *   install-run <json>      instala (en un proceso aparte): borra el disco, GPT con BIOS boot
- *                           (1 MiB), ESP (512 MiB, FAT32) y raíz ext4; copia el sistema del live
- *                           (unsquashfs), lo configura y le instala grub para UEFI y BIOS.
- *                           Progreso: "LOG progress <fase> <hecho> <total>", fases partition,
+ *                           (no loop, ram, zram, sr, dm or md, and not the disk the live system booted from)
+ *   install-run <json>      installs (in a separate process): wipes the disk, GPT with BIOS boot
+ *                           (1 MiB), ESP (512 MiB, FAT32) and ext4 root; copies the live system
+ *                           (unsquashfs), configures it and installs grub for UEFI and BIOS.
+ *                           Progress: "LOG progress <phase> <done> <total>", phases partition,
  *                           copy, configure, bootloader.
- *   install-reboot          reinicia (solo en el live, para terminar el asistente)
+ *   install-reboot          reboots (only on the live system, to finish the wizard)
  *
- * El JSON de install-run: { disk, user, fullname, password, hostname, lang, locale, timezone,
- * kblayout, kbvariant, swap (MiB, 0 = sin swap) }. Cada campo se valida acá (root), sin
- * confiar en la interfaz: el disco tiene que estar en la lista de install-disks, los nombres
- * pasan expresiones estrictas, la región tiene que figurar en SUPPORTED, la zona en zoneinfo y
- * la distribución en xkb. La contraseña nunca va a un argv: se hashea acá con crypt(3)
- * (yescrypt, como Debian) y se escribe en /etc/shadow del sistema nuevo. Todos los programas
- * tienen ruta fija y sus argumentos los arma este archivo. */
+ * The install-run JSON: { disk, user, fullname, password, hostname, lang, locale, timezone,
+ * kblayout, kbvariant, swap (MiB, 0 = no swap) }. Every field is validated here (root), without
+ * trusting the UI: the disk has to be in the install-disks list, names
+ * pass strict expressions, the region has to be in SUPPORTED, the zone in zoneinfo and
+ * the layout in xkb. The password never goes into an argv: it's hashed here with crypt(3)
+ * (yescrypt, like Debian) and written to the new system's /etc/shadow. Every program
+ * has a fixed path and its arguments are built by this file. */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -54,9 +54,9 @@
 
 static int is_live(void) { return access(SQUASHFS, R_OK) == 0; }
 
-/* ---- utilidades ---- */
+/* ---- utilities ---- */
 
-/* Copia con recorte (sin snprintf("%s"), que gcc marca con -Wformat-truncation). */
+/* Bounded copy (without snprintf("%s"), which gcc flags with -Wformat-truncation). */
 static void cpy(char *d, size_t n, const char *s) {
     size_t l = strnlen(s, n - 1);
     memcpy(d, s, l);
@@ -70,7 +70,7 @@ static int read_line(const char *path, char *out, size_t n) {
     if (!fgets(out, (int)n, f)) out[0] = 0;
     fclose(f);
     out[strcspn(out, "\n")] = 0;
-    size_t l = strlen(out);                     /* sin espacios al final (model de /sys) */
+    size_t l = strlen(out);                     /* no trailing spaces (model from /sys) */
     while (l && out[l - 1] == ' ') out[--l] = 0;
     return 0;
 }
@@ -111,7 +111,7 @@ static int writef(const char *path, mode_t mode, const char *fmt, ...) {
     return r;
 }
 
-/* Disco (sda, nvme0n1…) que contiene el medio del live, o "". */
+/* Disk (sda, nvme0n1…) holding the live medium, or "". */
 static void live_disk(char *out, size_t n) {
     out[0] = 0;
     FILE *f = fopen("/proc/self/mounts", "r");
@@ -144,7 +144,7 @@ static int disk_name_ok(const char *d) {
 
 typedef struct { char name[32], model[96], vendor[64], transport[16]; unsigned long long size; int removable; } Disk;
 
-/* Discos instalables, con el medio del live afuera. */
+/* Installable disks, with the live medium left out. */
 static int list_disks(Disk *out, int max) {
     char live[32];
     live_disk(live, sizeof live);
@@ -155,7 +155,7 @@ static int list_disks(Disk *out, int max) {
         if (!disk_name_ok(e->d_name) || !strcmp(e->d_name, live)) continue;
         char p[PATH_MAX], v[128], real[PATH_MAX];
         snprintf(p, sizeof p, "/sys/block/%s/device", e->d_name);
-        if (access(p, F_OK)) continue;                          /* sin dispositivo real */
+        if (access(p, F_OK)) continue;                          /* no real device */
         Disk *k = &out[n];
         memset(k, 0, sizeof *k);
         cpy(k->name, sizeof k->name, e->d_name);
@@ -165,7 +165,7 @@ static int list_disks(Disk *out, int max) {
         if (!k->size) continue;
         snprintf(p, sizeof p, "/sys/block/%s/ro", e->d_name);
         read_line(p, v, sizeof v);
-        if (v[0] == '1') continue;                              /* solo lectura */
+        if (v[0] == '1') continue;                              /* read-only */
         snprintf(p, sizeof p, "/sys/block/%s/removable", e->d_name);
         read_line(p, v, sizeof v);
         k->removable = v[0] == '1';
@@ -195,7 +195,7 @@ static void part_path(const char *disk, int num, char *out, size_t n) {
 
 /* ---- install-disks ---- */
 
-/* Valor de KEY="…" en una línea de lsblk -P. */
+/* Value of KEY="…" in an lsblk -P line. */
 static void pair(const char *line, const char *key, char *out, size_t n) {
     out[0] = 0;
     char k[40];
@@ -253,11 +253,11 @@ void install_act_disks(const AdminReq *r, const char *arg, size_t len) {
     admin_say("OK", "%d", n);
 }
 
-/* ---- JSON plano de install-run ---- */
+/* ---- flat JSON of install-run ---- */
 
 typedef struct { char disk[32], user[33], fullname[128], password[257], hostname[64], lang[16], locale[64], timezone[64], kblayout[24], kbvariant[40]; long swap; } Plan;
 
-/* Lee un string JSON (con escapes y \uXXXX → UTF-8). Devuelve el puntero después de la comilla. */
+/* Reads a JSON string (with escapes and \uXXXX → UTF-8). Returns the pointer past the closing quote. */
 static const char *jstring(const char *p, char *out, size_t n, int *ok) {
     size_t o = 0;
     if (*p != '"') { *ok = 0; return p; }
@@ -273,7 +273,7 @@ static const char *jstring(const char *p, char *out, size_t n, int *ok) {
                 for (int i = 0; i < 4; i++) { if (!isxdigit((unsigned char)p[1 + i])) { *ok = 0; return p; } h[i] = p[1 + i]; }
                 cp = (unsigned)strtoul(h, NULL, 16);
                 p += 4;
-                if (cp >= 0xd800 && cp < 0xe000) { *ok = 0; return p; }      /* sin pares sustitutos */
+                if (cp >= 0xd800 && cp < 0xe000) { *ok = 0; return p; }      /* no surrogate pairs */
                 break;
             }
             case 0: *ok = 0; return p;
@@ -282,7 +282,7 @@ static const char *jstring(const char *p, char *out, size_t n, int *ok) {
         }
         char u[4];
         int ul = 1;
-        if (cp < 0x80 || (unsigned char)p[0] >= 0x80) u[0] = (char)cp;          /* bytes UTF-8 tal cual */
+        if (cp < 0x80 || (unsigned char)p[0] >= 0x80) u[0] = (char)cp;          /* UTF-8 bytes as-is */
         else if (cp < 0x800) { u[0] = (char)(0xc0 | cp >> 6); u[1] = (char)(0x80 | (cp & 63)); ul = 2; }
         else { u[0] = (char)(0xe0 | cp >> 12); u[1] = (char)(0x80 | ((cp >> 6) & 63)); u[2] = (char)(0x80 | (cp & 63)); ul = 3; }
         if (o + (size_t)ul >= n) { *ok = 0; return p; }
@@ -394,7 +394,7 @@ static const char *validate(Plan *pl) {
     return NULL;
 }
 
-/* ---- pasos de install-run ---- */
+/* ---- install-run steps ---- */
 
 static void progress(const char *phase, int done, int total) { admin_say("LOG", "progress %s %d %d", phase, done, total); }
 
@@ -404,7 +404,7 @@ static int run(const char *const argv[]) {
     return r;
 }
 
-/* Programa dentro del sistema nuevo: chroot TARGET argv... */
+/* Program inside the new system: chroot TARGET argv... */
 static int in_target(const char *const argv[]) {
     const char *full[24] = { "/usr/sbin/chroot", TARGET };
     int i = 0;
@@ -413,7 +413,7 @@ static int in_target(const char *const argv[]) {
     return run(full);
 }
 
-/* unsquashfs con su porcentaje como progreso de la fase copy. */
+/* unsquashfs with its percentage as progress of the copy phase. */
 static int copy_system(void) {
     const char *const argv[] = { "/usr/bin/unsquashfs", "-f", "-percentage", "-d", TARGET, SQUASHFS, NULL };
     int p[2];
@@ -453,7 +453,7 @@ static int uuid_of(const char *dev, char *out, size_t n) {
     return 0;
 }
 
-/* Cambia el hash de un usuario en etc/shadow del sistema nuevo (sin pasar por argv). */
+/* Changes a user's hash in the new system's etc/shadow (without going through argv). */
 static int set_shadow(const char *user, const char *hash) {
     const char *path = TARGET "/etc/shadow";
     FILE *f = fopen(path, "r");
@@ -484,7 +484,7 @@ static int set_shadow(const char *user, const char *hash) {
     return r;
 }
 
-/* uid y gid del usuario en etc/passwd del sistema nuevo. */
+/* User's uid and gid in the new system's etc/passwd. */
 static int target_ids(const char *user, uid_t *uid, gid_t *gid) {
     FILE *f = fopen(TARGET "/etc/passwd", "r");
     char line[1024];
@@ -514,8 +514,8 @@ static int bind(const char *what) {
     snprintf(p, sizeof p, TARGET "%s", what);
     mkdir(p, 0755);
     if (mount(what, p, NULL, MS_BIND | MS_REC, NULL)) return -1;
-    /* esclavo: lo que se desmonte acá adentro no se propaga al sistema en vivo (en systemd /run,
-     * /dev y /sys son "shared": desmontar TARGET/run desmontaba /run/live/medium) */
+    /* slave: whatever gets unmounted in here doesn't propagate to the live system (under systemd /run,
+     * /dev and /sys are "shared": unmounting TARGET/run used to unmount /run/live/medium) */
     return mount(NULL, p, NULL, MS_REC | MS_SLAVE, NULL);
 }
 
@@ -551,7 +551,7 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
     part_path(pl.disk, 3, root, sizeof root);
     admin_say("LOG", "instalando en %s", dev);
 
-    /* 1. particionar: GPT con BIOS boot (1 MiB), ESP (512 MiB) y raíz */
+    /* 1. partition: GPT with BIOS boot (1 MiB), ESP (512 MiB) and root */
     progress("partition", 0, 4);
     { const char *const a[] = { "/usr/sbin/wipefs", "-a", dev, NULL }; if (run(a)) FAIL("no se pudo borrar el disco"); }
     { const char *const a[] = { "/usr/sbin/sgdisk", "--zap-all", dev, NULL }; run(a); }
@@ -573,7 +573,7 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
     if (mount(root, TARGET, "ext4", 0, NULL)) FAIL("no se pudo montar %s: %s", root, strerror(errno));
     progress("partition", 4, 4);
 
-    /* 2. copiar el sistema del live */
+    /* 2. copy the live system */
     progress("copy", 0, 100);
     if (copy_system()) FAIL("no se pudo copiar el sistema");
     progress("copy", 100, 100);
@@ -581,7 +581,7 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
     if (mount(esp, TARGET "/boot/efi", "vfat", 0, "umask=0077")) FAIL("no se pudo montar la partición EFI");
     if (bind("/dev") || bind("/proc") || bind("/sys") || bind("/run")) FAIL("no se pudo preparar el sistema nuevo");
 
-    /* 3. configurar */
+    /* 3. configure */
     const int steps = 9;
     int step = 0;
     progress("configure", step, steps);
@@ -590,14 +590,14 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
     char swapline[64] = "";
     if (pl.swap > 0) snprintf(swapline, sizeof swapline, "/swapfile none swap sw 0 0\n");
     if (writef(TARGET "/etc/fstab", 0644,
-               "# /etc/fstab — generado por el instalador de LordOS\n"
+               "# /etc/fstab — generated by the LordOS installer\n"
                "UUID=%s / ext4 errors=remount-ro 0 1\nUUID=%s /boot/efi vfat umask=0077 0 1\n%s", ru, eu, swapline))
         FAIL("no se pudo escribir /etc/fstab");
     writef(TARGET "/etc/hostname", 0644, "%s\n", pl.hostname);
     writef(TARGET "/etc/hosts", 0644, "127.0.0.1\tlocalhost\n127.0.1.1\t%s\n::1\tlocalhost ip6-localhost ip6-loopback\n", pl.hostname);
     progress("configure", ++step, steps);
 
-    /* sin lo del live: live-boot, el usuario de prueba y su sudo sin contraseña */
+    /* drop the live-only bits: live-boot, the test user and its passwordless sudo */
     unlink(TARGET "/etc/sudoers.d/lordos-live");
     unlink(TARGET "/var/lib/systemd/linger/lordos");
     unlink(TARGET "/etc/sysctl.d/50-lordos-ping.conf.dpkg-old");
@@ -605,12 +605,12 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
     { const char *const a[] = { "/usr/sbin/userdel", "-r", "lordos", NULL }; in_target(a); }
     progress("configure", ++step, steps);
 
-    /* el usuario, con su contraseña hasheada acá (yescrypt) */
+    /* the user, with their password hashed here (yescrypt) */
     { const char *const a[] = { "/usr/sbin/useradd", "-m", "-s", "/bin/bash", "-c", pl.fullname, "-G", "sudo,audio,video,input,render,pipewire", pl.user, NULL };
       if (in_target(a)) FAIL("no se pudo crear el usuario"); }
-    /* administrador de impresoras de CUPS (grupo lpadmin, docs/IMPRESION.md); si CUPS no vino en
-     * la imagen, el grupo no existe y no pasa nada */
-    { const char *const a[] = { "/usr/sbin/usermod", "--append", "--groups", "lpadmin", pl.user, NULL }; if (in_target(a)) { /* sin CUPS */ } }
+    /* CUPS printer administrator (lpadmin group, docs/PRINTING.md); if CUPS didn't come in
+     * the image, the group doesn't exist and nothing happens */
+    { const char *const a[] = { "/usr/sbin/usermod", "--append", "--groups", "lpadmin", pl.user, NULL }; if (in_target(a)) { /* no CUPS */ } }
     { const char *const a[] = { "/usr/sbin/usermod", "--append", "--groups", "plugdev", pl.user, NULL }; if (in_target(a)) { /* no plugdev group */ } }   /* FIDO2 keys (docs/PASSWORDS.md) */
     char *salt = crypt_gensalt_ra("$y$", 0, NULL, 0);
     struct crypt_data cd;
@@ -624,14 +624,14 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
     mkdir(TARGET "/var/lib/systemd/linger", 0755);
     { char p[PATH_MAX]; snprintf(p, sizeof p, TARGET "/var/lib/systemd/linger/%s", pl.user); write_file(p, "", 0644); }
     mkdir(TARGET "/etc/lordos", 0755);
-    /* lord-sessiond (docs/SESIONES.md): el usuario entra por la pantalla de ingreso; el inicio
-     * automático se prende en Ajustes → Usuarios (AUTOLOGIN=). USER= es para el lordos-session
-     * de antes de M8. */
-    writef(TARGET "/etc/lordos/session.conf", 0644, "# Lo escribe el instalador de LordOS. Ver docs/SESIONES.md\n"
-           "# AUTOLOGIN=usuario entra solo al arrancar; vacío: pantalla de ingreso\nAUTOLOGIN=\nUSER=%s\n", pl.user);
+    /* lord-sessiond (docs/SESSIONS.md): the user logs in through the login screen; autologin
+     * is turned on in Settings → Users (AUTOLOGIN=). USER= is for the pre-M8
+     * lordos-session. */
+    writef(TARGET "/etc/lordos/session.conf", 0644, "# Written by the LordOS installer. See docs/SESSIONS.md\n"
+           "# AUTOLOGIN=user logs in automatically at boot; empty: login screen\nAUTOLOGIN=\nUSER=%s\n", pl.user);
     progress("configure", ++step, steps);
 
-    /* idioma, región, zona horaria y teclado */
+    /* language, region, time zone and keyboard */
     { char p[PATH_MAX], line[256]; snprintf(p, sizeof p, TARGET "/etc/locale.gen");
       FILE *f = fopen(p, "r"); int has = 0; size_t ll = strlen(pl.locale);
       while (f && fgets(line, sizeof line, f)) if (!strncmp(line, pl.locale, ll) && line[ll] == ' ') has = 1;
@@ -645,7 +645,7 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
     writef(TARGET "/etc/default/keyboard", 0644, "XKBMODEL=\"pc105\"\nXKBLAYOUT=\"%s\"\nXKBVARIANT=\"%s\"\nXKBOPTIONS=\"\"\nBACKSPACE=\"guess\"\n", pl.kblayout, pl.kbvariant);
     progress("configure", ++step, steps);
 
-    /* ajustes de LordOS del usuario: idioma y teclado elegidos */
+    /* the user's LordOS settings: chosen language and keyboard */
     uid_t uid; gid_t gid;
     if (target_ids(pl.user, &uid, &gid)) FAIL("no se encontró el usuario nuevo");
     { char p[PATH_MAX];
@@ -662,7 +662,7 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
       if (homedirs_create(p, uid, gid, pl.locale)) admin_say("LOG", "aviso: no se pudieron crear las carpetas del usuario"); }
     progress("configure", ++step, steps);
 
-    /* swap como archivo */
+    /* swap as a file */
     if (pl.swap > 0) {
         char sz[24]; snprintf(sz, sizeof sz, "%ldM", pl.swap);
         const char *const a[] = { "/usr/bin/fallocate", "-l", sz, TARGET "/swapfile", NULL };
@@ -670,18 +670,18 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
     }
     progress("configure", ++step, steps);
 
-    /* identidad de la máquina y arranque */
+    /* machine identity and boot */
     unlink(TARGET "/etc/machine-id");
     { const char *const a[] = { "/usr/bin/systemd-machine-id-setup", NULL }; in_target(a); }
     writef(TARGET "/etc/default/grub", 0644,
-           "# generado por el instalador de LordOS\nGRUB_DEFAULT=0\nGRUB_TIMEOUT=2\nGRUB_DISTRIBUTOR=LordOS\n"
+           "# generated by the LordOS installer\nGRUB_DEFAULT=0\nGRUB_TIMEOUT=2\nGRUB_DISTRIBUTOR=LordOS\n"
            "GRUB_CMDLINE_LINUX_DEFAULT=\"quiet loglevel=3\"\nGRUB_CMDLINE_LINUX=\"\"\nGRUB_DISABLE_OS_PROBER=true\n");
     progress("configure", ++step, steps);
     { const char *const a[] = { "/usr/sbin/update-initramfs", "-u", "-k", "all", NULL }; if (in_target(a)) FAIL("no se pudo generar el initramfs"); }
     progress("configure", ++step, steps);
     progress("configure", steps, steps);
 
-    /* 4. arranque: grub para UEFI (ruta removible, sirve en cualquier firmware) y para BIOS */
+    /* 4. boot: grub for UEFI (removable path, works on any firmware) and for BIOS */
     progress("bootloader", 0, 3);
     { const char *const a[] = { "/usr/sbin/grub-install", "--target=x86_64-efi", "--efi-directory=/boot/efi", "--removable", "--no-nvram", NULL };
       if (in_target(a)) FAIL("no se pudo instalar grub (UEFI)"); }
@@ -697,9 +697,9 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
     admin_say("OK", "LordOS quedó instalado en %s", dev);
 }
 
-/* Reinicia sin quedarse esperando: un proceso aparte (sobrevive al ayudante, que muere con
- * lord-server al apagarse la sesión) pide el reinicio a systemd sin bloquear (--no-block) y, si
- * a los 20 s el sistema sigue vivo y nadie lo terminó, hace sync + reboot(2). */
+/* Reboots without waiting around: a separate process (outlives the helper, which dies with
+ * lord-server when the session shuts down) asks systemd to reboot without blocking (--no-block) and, if
+ * after 20 s the system is still alive and nobody killed it, does sync + reboot(2). */
 void install_act_reboot(const AdminReq *r, const char *arg, size_t len) {
     (void)r; (void)arg; (void)len;
     if (!is_live() && access("/run/live", F_OK)) { admin_say("ERR", "solo desde el sistema en vivo"); return; }
@@ -708,7 +708,7 @@ void install_act_reboot(const AdminReq *r, const char *arg, size_t len) {
     if (pid == 0) {
         setsid();
         if (fork() != 0) _exit(0);
-        signal(SIGHUP, SIG_IGN);            /* SIGTERM queda normal: si systemd lo manda, el apagado ya está en marcha */
+        signal(SIGHUP, SIG_IGN);            /* SIGTERM stays default: if systemd sends it, shutdown is already underway */
         prctl(PR_SET_NAME, "lordos-reboot");
         int null = open("/dev/null", O_RDWR);
         if (null >= 0) { dup2(null, 0); dup2(null, 1); dup2(null, 2); }

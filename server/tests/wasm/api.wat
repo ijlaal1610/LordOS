@@ -1,4 +1,4 @@
-;; api.wat — módulo para probar el global WebAssembly desde JS (tests/wasm/api_test.js).
+;; api.wat — module for testing the WebAssembly global from JS (tests/wasm/api_test.js).
 (module
   (import "js" "throws" (func $throws))
   (import "js" "add3" (func $add3 (param i32) (result i32)))

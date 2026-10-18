@@ -1,4 +1,4 @@
-// Centro de control: modo, transparencias, acento, fondo y uso de CPU/RAM en vivo.
+// Control Center: mode, transparency, accent, wallpaper and live CPU/RAM usage.
 import {
   View, Text, Image, Toggle, Slider, useSettings, useCpuUsage, useSystemInfo, formatBytes, wm, session, addListener, t as tr,
   useSound, defaultSink, sound, NowPlayingTile,
@@ -23,7 +23,7 @@ function Meter({ t, label, value, detail }) {
   );
 }
 
-// Volumen de la salida predeterminada (PipeWire). Clic en el parlante: silencio.
+// Volume of the default output (PipeWire). Click on the speaker: mute.
 function SoundTile({ t }) {
   const st = useSound();
   const out = defaultSink(st);
@@ -46,10 +46,10 @@ function SoundTile({ t }) {
   );
 }
 
-// Interfaces de VPN (WireGuard, OpenVPN, IPsec, PPTP, OpenConnect, Fortinet).
+// VPN interfaces (WireGuard, OpenVPN, IPsec, PPTP, OpenConnect, Fortinet).
 const isVpnIf = (i) => ['wireguard', 'tun', 'xfrm', 'ppp'].includes(i.type) || /^(wg|ovpn|ips|ppp|oc|fvpn)-/.test(i.name);
 
-// Estado de la red (y VPN activas); un clic abre Ajustes → Red.
+// Network state (and active VPNs); a click opens Settings → Network.
 function NetTile({ t, onClose }) {
   if (typeof lord.net === 'undefined') return null;
   const ifs = lord.net.interfaces();
@@ -72,17 +72,19 @@ function NetTile({ t, onClose }) {
 
 const inside = (inst, ref) => { for (let n = inst; n; n = n.parent) if (n === ref.current) return true; return false; };
 
-export function ControlCenter({ t, top, onClose }) {
+// area: the display of the menu bar it opened from (global coordinates)
+export function ControlCenter({ t, top, onClose, area = null }) {
+  const ax = area ? area.x + area.w : null, ay = area ? area.y : 0;
   const [s, set] = useSettings();
   const cpu = useCpuUsage(1500);
   const info = useSystemInfo(3000);
   const ref = useRef(null);
   const used = (info.memTotalKB - info.memAvailableKB) / info.memTotalKB;
-  useEffect(() => addListener('pointerdown', (e) => { if (!inside(e.target, ref) && e.y > top) onClose(); }), [onClose]);
+  useEffect(() => addListener('pointerdown', (e) => { if (!inside(e.target, ref) && e.y > ay + top) onClose(); }), [onClose, ay]);
 
   return (
     <View ref={ref} style={{
-      position: 'absolute', right: 10, top: top + 6, width: 320, padding: 12, gap: 10, borderRadius: 16,
+      position: 'absolute', ...(ax == null ? { right: 10 } : { left: ax - 330 }), top: ay + top + 6, width: 320, padding: 12, gap: 10, borderRadius: 16,
       backgroundColor: t.panelBg, backdropFilter: `blur(${t.blur}px)`, border: `1px solid ${t.windowBorder}`,
       boxShadow: '0 16px 40px rgba(0,0,0,0.4)',
     }}>

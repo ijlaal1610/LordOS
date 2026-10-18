@@ -13,6 +13,7 @@
 #include "maild.h"
 #include "proto.h"
 #include "ical.h"
+#include "mime.h"
 #include "../doc/proto.h"
 #include "../sec/sandbox.h"
 
@@ -253,17 +254,7 @@ int fs_rmtree(const char *rel) {
     return 0;
 }
 
-void fs_safe_name(const char *in, char *out, size_t cap) {
-    size_t o = 0;
-    for (const char *s = in ? in : ""; *s && o + 1 < cap; s++) {
-        unsigned char c = (unsigned char)*s;
-        if (c == '/' || c == '\\' || c < 0x20 || c == 0x7f) c = '_';
-        out[o++] = (char)c;
-    }
-    out[o] = 0;
-    while (out[0] == '.') out[0] = '_';
-    if (!out[0]) snprintf(out, cap, "file");
-}
+void fs_safe_name(const char *in, char *out, size_t cap) { mime_safe_filename(in, out, cap); }
 
 void fs_hash(const char *s, char *out) {
     uint64_t h = 1469598103934665603ull;
@@ -474,6 +465,19 @@ static uint32_t *uids_of(const JVal *args, int *n) {
     return out;
 }
 
+/* Requests that may wait on the network run on their own thread: the main thread is the one
+ * that receives lord-server's answers (connections included), so it must never block. */
+typedef struct { uint32_t id; char *json; size_t len; } Bg;
+static void *bg_image(void *arg) {
+    Bg *b = arg;
+    JDoc d;
+    if (!json_parse(b->json, b->len, &d, NULL, 0)) { msg_image(b->id, d.root); json_free(&d); }
+    else reply_err(b->id, "bad-json", "");
+    free(b->json);
+    free(b);
+    return NULL;
+}
+
 static void handle_request(uint32_t id, const char *json, size_t len, int *fds, int nfds) {
     JDoc d;
     char perr[96];
@@ -496,7 +500,16 @@ static void handle_request(uint32_t id, const char *json, size_t len, int *fds, 
     else if (!strcmp(op, "search")) { pthread_mutex_lock(&G); store_search_json(&b, args); pthread_mutex_unlock(&G); reply_done(id, &b); }
     else if (!strcmp(op, "open")) msg_open_json(id, args);
     else if (!strcmp(op, "attachment")) msg_attachment(id, args);
-    else if (!strcmp(op, "image")) msg_image(id, args);
+    else if (!strcmp(op, "image")) {
+        Bg *bg = malloc(sizeof *bg);
+        pthread_t th;
+        if (bg && (bg->json = strndup(json, len))) {
+            bg->id = id;
+            bg->len = len;
+            if (!pthread_create(&th, NULL, bg_image, bg)) pthread_detach(th);
+            else { free(bg->json); free(bg); reply_err(id, "busy", ""); }
+        } else { free(bg); reply_err(id, "memory", ""); }
+    }
     else if (!strcmp(op, "invite")) msg_invite(id, args);
     else if (!strcmp(op, "invite-respond")) msg_invite_respond(id, args);
     else if (!strcmp(op, "autocomplete")) {
@@ -603,7 +616,7 @@ static void enter_sandbox(void) {
     static const char *ro[] = { "/usr/share/zoneinfo", NULL };
     int rw[] = { cache_fd, -1 };
     SandboxHelperCfg cfg = {
-        .name = "lord-maild",
+        .name = "lordos-maild",          /* cgroup scope lordos-maild.scope (lord-sessiond creates it) */
         .ro_paths = ro,
         .extra_syscalls = (int[]){ SYS_getcpu, SYS_membarrier, -1 },
         .allow_ioctl_classes = 0,

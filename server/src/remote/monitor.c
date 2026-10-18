@@ -1,15 +1,15 @@
-/* monitor.c — el monitor en lord-sessiond: le presta la pantalla a UNA sesión a la vez.
+/* monitor.c — the monitor in lord-sessiond: lends the screen to ONE session at a time.
  *
- * Como logind con los "session devices": lord-sessiond (root) abre la placa de video y el
- * teclado y el mouse, y le pasa los fds a la sesión que se tiene que ver (RP_DISPLAY por el
- * socket de la sesión, con SCM_RIGHTS). La sesión dibuja directo en la placa, como un
- * lord-server de siempre: composición por GPU si hay (Mesa), scanout directo de pantalla
- * completa y cursor por hardware. Para cambiar de sesión:
- *   1. a la que se va se le avisa (RP_UNDISPLAY);
- *   2. se revocan sus dispositivos de entrada (EVIOCREVOKE: sus fds dejan de servir);
- *   3. se le saca el DRM master (DROP_MASTER en nuestra copia del mismo archivo abierto);
- *   4. la nueva recibe una placa abierta de nuevo, ya master, y entrada nueva.
- * Las sesiones nunca abren dispositivos ni son root. Ver docs/SESIONES.md. */
+ * Like logind with "session devices": lord-sessiond (root) opens the video card and the
+ * keyboard and mouse, and passes the fds to the session that has to be shown (RP_DISPLAY over the
+ * session socket, with SCM_RIGHTS). The session draws straight on the card, like a
+ * regular lord-server: GPU composition if available (Mesa), direct full-screen scanout
+ * and hardware cursor. To switch sessions:
+ *   1. the one leaving is notified (RP_UNDISPLAY);
+ *   2. its input devices are revoked (EVIOCREVOKE: its fds stop working);
+ *   3. its DRM master is dropped (DROP_MASTER on our copy of the same open file);
+ *   4. the new one gets a freshly opened card, already master, and new input.
+ * Sessions never open devices nor run as root. See docs/SESSIONS.md. */
 #include "sessiond.h"
 #include "proto.h"
 #include "../drmcard.h"
@@ -27,23 +27,23 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-/* la tarjeta con pantalla (en la Pi 5 suele ser card1: card0 es v3d, sin conectores; drmcard.h) */
+/* the card with a display (on the Pi 5 it's usually card1: card0 is v3d, without connectors; drmcard.h) */
 static char card[64] = "/dev/dri/card0";
 #define CARD card
 #define MAX_IN 32
 
 static int vt = -1, conn = -1, drm = -1;
 static int ins[MAX_IN], nin;
-static char inname[MAX_IN][16];        /* "eventN" de cada uno (para saber cuál se desenchufó) */
-static int hp = -1;                    /* inotify de /dev/input (enchufar en caliente) */
+static char inname[MAX_IN][16];        /* "eventN" of each one (to know which one was unplugged) */
+static int hp = -1;                    /* inotify on /dev/input (hotplug) */
 static unsigned char *rb;
-static size_t rlen, rcap, skip;        /* skip: bytes de un mensaje grande que se descarta */
+static size_t rlen, rcap, skip;        /* skip: bytes of a large message being discarded */
 
 #define LONG_BITS (8 * sizeof(long))
 #define NLONGS(n) (((n) + LONG_BITS - 1) / LONG_BITS)
 #define HAS(bits, n) (((bits)[(n) / LONG_BITS] >> ((n) % LONG_BITS)) & 1UL)
 
-/* teclado, mouse o tablet (lo mismo que input.c) */
+/* keyboard, mouse or tablet (same as input.c) */
 static int useful(int fd) {
     unsigned long ev[NLONGS(EV_MAX + 1)] = {0}, keys[NLONGS(KEY_MAX + 1)] = {0}, abs[NLONGS(ABS_MAX + 1)] = {0};
     ioctl(fd, EVIOCGBIT(0, sizeof ev), ev);
@@ -54,15 +54,15 @@ static int useful(int fd) {
 }
 
 int sd_mon_open(void) {
-    if (drm_pick_card(card, sizeof card)) sd_log("ninguna tarjeta con KMS; se prueba %s", card);
-    else sd_log("pantalla: %s", card);
+    if (drm_pick_card(card, sizeof card)) sd_log("no card with KMS; trying %s", card);
+    else sd_log("display: %s", card);
     int fd = open(CARD, O_RDWR | O_CLOEXEC);
-    if (fd < 0) { sd_log("sin monitor (%s: %s)", CARD, strerror(errno)); return -1; }
+    if (fd < 0) { sd_log("no monitor (%s: %s)", CARD, strerror(errno)); return -1; }
     close(fd);
     hp = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
     if (hp >= 0 && inotify_add_watch(hp, "/dev/input", IN_CREATE | IN_ATTRIB | IN_DELETE) < 0) { close(hp); hp = -1; }
-    if (hp < 0) sd_log("sin inotify en /dev/input: los dispositivos nuevos se verán al cambiar de sesión");
-    /* la consola de texto deja de dibujar encima */
+    if (hp < 0) sd_log("no inotify on /dev/input: new devices will show up on the next session switch");
+    /* the text console stops drawing on top */
     vt = open("/dev/tty0", O_RDWR | O_CLOEXEC);
     if (vt >= 0 && ioctl(vt, KDSETMODE, KD_GRAPHICS)) { close(vt); vt = -1; }
     return 0;
@@ -92,7 +92,7 @@ static int send_msg(int type, const void *d, size_t n, const int *fds, int nfds)
     return r == (ssize_t)(5 + n) ? 0 : -1;
 }
 
-/* Le saca el monitor a la sesión que lo tiene. */
+/* Takes the monitor away from the session that has it. */
 static void take_back(void) {
     if (conn >= 0) send_msg(RP_UNDISPLAY, NULL, 0, NULL, 0);
     for (int i = 0; i < nin; i++) {
@@ -139,7 +139,7 @@ int sd_mon_show(int fd, const char *who) {
     unsigned char count = (unsigned char)(nin + 1);
     if (send_msg(RP_SEAT, NULL, 0, NULL, 0) || send_msg(RP_HELLO, hello, strlen(hello), NULL, 0) ||
         send_msg(RP_DISPLAY, &count, 1, fds, nin + 1)) {
-        sd_log("la sesión no recibió el monitor");
+        sd_log("the session did not get the monitor");
         return -1;
     }
     return 0;
@@ -147,8 +147,8 @@ int sd_mon_show(int fd, const char *who) {
 
 void sd_mon_greeter(const char *json) { send_msg(RP_GREETER_IN, json, strlen(json), NULL, 0); }
 
-/* Pedidos de la sesión que se ve (RP_SESSION, RP_GREETER: JSON de hasta 4 KB). Lo demás se
- * descarta sin mirarlo. -1 si la sesión se cerró. */
+/* Requests from the session being shown (RP_SESSION, RP_GREETER: JSON up to 4 KB). Everything else is
+ * discarded without looking at it. -1 if the session closed. */
 int sd_mon_read(void (*fn)(int type, const char *json)) {
     for (;;) {
         if (rcap - rlen < 8192) {
@@ -165,7 +165,7 @@ int sd_mon_read(void (*fn)(int type, const char *json)) {
         if (n <= 0) return -1;
         rlen += (size_t)n;
         size_t off = 0;
-        if (skip) {                         /* resto de un mensaje que no interesa */
+        if (skip) {                         /* rest of a message we don't care about */
             size_t k = skip < rlen ? skip : rlen;
             skip -= k;
             off = k;
@@ -174,7 +174,7 @@ int sd_mon_read(void (*fn)(int type, const char *json)) {
             uint32_t len;
             memcpy(&len, rb + off, 4);
             if (!len || len > RP_MAX_MSG) return -1;
-            if (len > 8192) {               /* pantalla (antes de que la sesión lea RP_SEAT): se salta */
+            if (len > 8192) {               /* screen (before the session reads RP_SEAT): skipped */
                 size_t have = rlen - off;
                 if (have >= 4 + (size_t)len) { off += 4 + len; continue; }
                 skip = 4 + (size_t)len - have;
@@ -201,11 +201,11 @@ int sd_mon_read(void (*fn)(int type, const char *json)) {
 
 void sd_mon_lost(void) { take_back(); }
 
-/* ---- enchufar en caliente ----
- * Un teclado, mouse o touchpad nuevo se abre acá (root) y se le pasa SOLO a la sesión que está en
- * el monitor (RP_INPUT_ADD); las de segundo plano no reciben nada y lo ven al volver al monitor
- * (sd_mon_show abre todo de nuevo). Al desenchufarlo se cierra nuestra copia; la sesión ve
- * ENODEV en la suya y la cierra sola, sin dejar el monitor. */
+/* ---- hotplug ----
+ * A new keyboard, mouse or touchpad is opened here (root) and passed ONLY to the session that is on
+ * the monitor (RP_INPUT_ADD); background ones get nothing and see it when they return to the monitor
+ * (sd_mon_show opens everything again). When it's unplugged our copy is closed; the session sees
+ * ENODEV on its own and closes it by itself, without leaving the monitor. */
 int sd_mon_hotplug_fd(void) { return hp; }
 
 static int is_event(const char *n) {
@@ -215,8 +215,8 @@ static int is_event(const char *n) {
 }
 
 static void plug(const char *name) {
-    for (int i = 0; i < nin; i++) if (!strcmp(inname[i], name)) return;     /* ya está */
-    if (conn < 0 || drm < 0 || nin >= MAX_IN) return;                         /* nadie en el monitor */
+    for (int i = 0; i < nin; i++) if (!strcmp(inname[i], name)) return;     /* already there */
+    if (conn < 0 || drm < 0 || nin >= MAX_IN) return;                         /* nobody on the monitor */
     char p[40];
     snprintf(p, sizeof p, "/dev/input/%s", name);
     int f = open(p, O_RDWR | O_NONBLOCK | O_CLOEXEC);
@@ -259,8 +259,8 @@ void sd_mon_hotplug(void) {
     }
 }
 
-/* En un proceso hijo (conexión web, trabajador): suelta las copias de la placa, la entrada y el
- * socket del monitor sin tocarlos (nunca quedan en un proceso que después deja de ser root). */
+/* In a child process (web connection, worker): drops the copies of the card, the input and the
+ * monitor socket without touching them (they never stay in a process that later stops being root). */
 void sd_mon_child(void) {
     for (int i = 0; i < nin; i++) close(ins[i]);
     nin = 0;

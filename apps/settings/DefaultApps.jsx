@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { GroupBox, SettingRow, PopUp, Note, Stack, Badge } from './ui.jsx';
 
 const LOOK = {
-  browser: ['🌐', '#0a84ff'], mail: ['✉', '#30a0ff'], music: ['♪', '#ff375f'], video: ['▶', '#bf5af2'], images: ['▣', '#ff9f0a'],
+  browser: ['◎', '#0a84ff'], mail: ['✉', '#30a0ff'], music: ['♪', '#ff375f'], video: ['▶', '#bf5af2'], images: ['▣', '#ff9f0a'],
   pdf: ['⎙', '#ff453a'], text: ['✎', '#8e8e93'], terminal: ['>_', '#2c2c2e'],
 };
 

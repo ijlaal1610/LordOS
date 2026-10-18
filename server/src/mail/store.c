@@ -65,16 +65,17 @@ static void put_field(JBuf *b, const char *s) {
     }
 }
 
+/* One field of a line (the line already NUL-terminated): unescapes in place and moves *p past
+ * the tab. Writing the terminator over the tab is fine: lines are split before parsing. */
 static char *get_field(char **p) {
     char *s = *p, *o = s, *r = s;
-    while (*s && *s != '\t' && *s != '\n') {
+    while (*s && *s != '\t') {
         if (*s == '\\' && s[1]) { s++; *o++ = *s == 't' ? '\t' : *s == 'n' ? '\n' : *s; s++; continue; }
         *o++ = *s++;
     }
-    char end = *s;
+    int tab = *s == '\t';
     *o = 0;
-    *p = end ? s + 1 : s;
-    if (end == '\n') *p = s;        /* leave the newline for the caller */
+    *p = tab ? s + 1 : s;
     return r;
 }
 
@@ -270,21 +271,22 @@ static void load_folder(Account *a, Folder *f) {
     folder_path(a, f, "index", rel, sizeof rel);
     char *ix = fs_read(rel, &n, (size_t)512 << 20);
     if (!ix) return;
-    char *p = ix;
-    while (*p) {
+    for (char *line = ix; line && *line;) {
+        char *nl = strchr(line, '\n');
+        if (nl) *nl = 0;
+        char *p = line;
+        line = nl ? nl + 1 : NULL;
         Msg m;
         memset(&m, 0, sizeof m);
-        char *line_end = strchr(p, '\n');
-        if (!line_end) break;
         unsigned long long date;
         unsigned uid, flags, size, att, body;
-        if (sscanf(p, "%u\t%u\t%llu\t%u\t%u\t%u\t", &uid, &flags, &date, &size, &att, &body) != 6) { p = line_end + 1; continue; }
-        for (int k = 0; k < 6; k++) { char *t = strchr(p, '\t'); if (!t || t > line_end) { p = line_end; break; } p = t + 1; }
-        if (p >= line_end) { p = line_end + 1; continue; }
+        if (sscanf(p, "%u\t%u\t%llu\t%u\t%u\t%u\t", &uid, &flags, &date, &size, &att, &body) != 6) continue;
+        int bad = 0;
+        for (int k = 0; k < 6; k++) { char *t = strchr(p, '\t'); if (!t) { bad = 1; break; } p = t + 1; }
+        if (bad) continue;
         m.uid = uid; m.flags = flags; m.date = (int64_t)date; m.size = size; m.att = (uint16_t)att; m.body = (uint16_t)body;
         m.from_name = get_field(&p); m.from_email = get_field(&p); m.to = get_field(&p); m.cc = get_field(&p);
         m.subject = get_field(&p); m.msgid = get_field(&p); m.inreplyto = get_field(&p); m.refs = get_field(&p); m.preview = get_field(&p);
-        p = strchr(p, '\n') ? strchr(p, '\n') + 1 : p + strlen(p);
         if (uid) store_add(a, f, &m);
     }
     free(ix);
@@ -308,13 +310,14 @@ void store_load(Account *a) {
     size_t n;
     char *list = fs_read(rel, &n, 4 << 20);
     if (!list) return;
-    char *p = list;
-    while (*p) {
+    for (char *line = list; line && *line;) {
+        char *nl = strchr(line, '\n');
+        if (nl) *nl = 0;
+        char *p = line;
+        line = nl ? nl + 1 : NULL;
         char *name = get_field(&p), *disp = get_field(&p), *sp = get_field(&p);
         int delim = 0, nosel = 0;
         sscanf(p, "%d\t%d", &delim, &nosel);
-        char *nl = strchr(p, '\n');
-        p = nl ? nl + 1 : p + strlen(p);
         if (!*name) continue;
         Folder *f = store_folder(a, name, 1);
         if (!f) continue;

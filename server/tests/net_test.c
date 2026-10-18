@@ -1,16 +1,16 @@
-/* net_test.c — pruebas del módulo de red sin lord-server (ver docs/RED.md).
+/* net_test.c — tests of the network module without lord-server (see docs/NETWORK.md).
  *
- *   net-test crypto                  X25519 (RFC 7748), PBKDF2 de WPA (IEEE 802.11i), base64
- *   net-test state                   lo que ve lord.net sin root (interfaces, rutas, DNS, VPN)
- *   net-test monitor <segundos>      avisos de rtnetlink
- *   net-test ovpn-inline <ruta>      el .ovpn con sus archivos incrustados (lord.net.prepareOvpn)
- *   sudo net-test act <acción> <arg> corre una acción "net-*" como lo haría el ayudante;
- *                                    "\n" en arg es un salto de línea, "@archivo" lo lee
- *   sudo net-test daemons            los procesos residentes de las pruebas
+ *   net-test crypto                  X25519 (RFC 7748), WPA PBKDF2 (IEEE 802.11i), base64
+ *   net-test state                   what lord.net sees without root (interfaces, routes, DNS, VPN)
+ *   net-test monitor <seconds>       rtnetlink notifications
+ *   net-test ovpn-inline <path>      the .ovpn with its files embedded (lord.net.prepareOvpn)
+ *   sudo net-test act <action> <arg> runs a "net-*" action the way the helper would;
+ *                                    "\n" in arg is a newline, "@file" reads it
+ *   sudo net-test daemons            the tests' resident processes
  *
- * Reemplaza las funciones del ayudante (admin_say, admin_daemon_*...) por unas propias: los
- * procesos residentes quedan en segundo plano, con su salida en /run/lordos/test/<nombre>.log,
- * para poder correr una acción tras otra desde la línea de comandos. */
+ * Replaces the helper's functions (admin_say, admin_daemon_*...) with its own: the
+ * resident processes stay in the background, with their output in /run/lordos/test/<name>.log,
+ * so one action after another can be run from the command line. */
 #define LORD_NET_ACTIONS
 #include "net/net.h"
 #include "net/netpriv.h"
@@ -31,7 +31,7 @@
 
 #define TEST_DIR "/run/lordos/test"
 
-/* ---- reemplazo del ayudante ---- */
+/* ---- helper replacement ---- */
 
 void admin_say(const char *kind, const char *fmt, ...) {
     va_list ap;
@@ -184,13 +184,13 @@ static int test_crypto(void) {
     unhex("e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c", u);
     x25519(out, k, u);
     int ok = hexeq(out, 32, "c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552");
-    printf("x25519 vector 1: %s\n", ok ? "ok" : "MAL"); fails += !ok;
+    printf("x25519 vector 1: %s\n", ok ? "ok" : "BAD"); fails += !ok;
     unhex("4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d", k);
     unhex("e5210f12786811d3f4b7959d0538ae2c31dbe7106fc03c3efc4cd549c715a493", u);
     x25519(out, k, u);
     ok = hexeq(out, 32, "95cbde9476e8907d7aade45cb4b873f88b595a68799fa152e6f8f7647aac7957");
-    printf("x25519 vector 2: %s\n", ok ? "ok" : "MAL"); fails += !ok;
-    /* RFC 7748 6.1: claves de Alice y Bob */
+    printf("x25519 vector 2: %s\n", ok ? "ok" : "BAD"); fails += !ok;
+    /* RFC 7748 6.1: Alice's and Bob's keys */
     uint8_t a[32], b[32], ap[32], bp[32], s1[32], s2[32];
     unhex("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", a);
     unhex("5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb", b);
@@ -201,20 +201,20 @@ static int test_crypto(void) {
     x25519(s1, a, bp);
     x25519(s2, b, ap);
     ok = ok && !memcmp(s1, s2, 32) && hexeq(s1, 32, "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742");
-    printf("x25519 Alice/Bob: %s\n", ok ? "ok" : "MAL"); fails += !ok;
+    printf("x25519 Alice/Bob: %s\n", ok ? "ok" : "BAD"); fails += !ok;
     /* IEEE 802.11i H.4.1 */
     uint8_t psk[32];
     pbkdf2_sha1((const uint8_t *)"password", 8, (const uint8_t *)"IEEE", 4, 4096, psk, 32);
     ok = hexeq(psk, 32, "f42c6fc52df0ebef9ebb4b90b38a5f902e83fe1b135a70e23aed762e9710a12e");
-    printf("pbkdf2 WPA: %s\n", ok ? "ok" : "MAL"); fails += !ok;
+    printf("pbkdf2 WPA: %s\n", ok ? "ok" : "BAD"); fails += !ok;
     pbkdf2_sha1((const uint8_t *)"ThisIsAPassword", 15, (const uint8_t *)"ThisIsASSID", 11, 4096, psk, 32);
     ok = hexeq(psk, 32, "0dc0d6eb90555ed6419756b9a15ec3e3209b63df707dd508d14581f8982721af");
-    printf("pbkdf2 WPA 2: %s\n", ok ? "ok" : "MAL"); fails += !ok;
+    printf("pbkdf2 WPA 2: %s\n", ok ? "ok" : "BAD"); fails += !ok;
     char enc[64];
     uint8_t dec[40];
     b64_encode(ap, 32, enc, sizeof enc);
     ok = b64_decode(enc, dec, sizeof dec) == 32 && !memcmp(dec, ap, 32) && strlen(enc) == 44;
-    printf("base64: %s (%s)\n", ok ? "ok" : "MAL", enc); fails += !ok;
+    printf("base64: %s (%s)\n", ok ? "ok" : "BAD", enc); fails += !ok;
     return fails;
 }
 
@@ -226,7 +226,7 @@ static void print_json(const char *what, char *j) {
 static void on_change(const char *what) { printf("cambio: %s\n", what); fflush(stdout); }
 
 int main(int argc, char **argv) {
-    if (argc < 2) { fprintf(stderr, "uso: net-test crypto | state | monitor <s> | act <acción> <arg> | daemons\n"); return 2; }
+    if (argc < 2) { fprintf(stderr, "usage: net-test crypto | state | monitor <s> | act <action> <arg> | daemons\n"); return 2; }
     if (!strcmp(argv[1], "crypto")) return test_crypto() ? 1 : 0;
     if (!strcmp(argv[1], "state")) {
         print_json("interfaces", net_interfaces_json());
@@ -273,7 +273,7 @@ int main(int argc, char **argv) {
         const char *src = argc > 3 ? argv[3] : "";
         char *arg;
         if (src[0] == '@') {
-            /* "@archivo" o "prefijo\n@archivo": el archivo se agrega al final */
+            /* "@file" or "prefix\n@file": the file is appended at the end */
             arg = read_file(src + 1, ADMIN_ARG_MAX, NULL);
         } else {
             arg = malloc(strlen(src) + 1);
@@ -286,7 +286,7 @@ int main(int argc, char **argv) {
             char *at = strstr(arg, "\n@");
             if (at) {
                 char *f = read_file(at + 2, ADMIN_ARG_MAX, NULL);
-                if (!f) { fprintf(stderr, "no se pudo leer %s\n", at + 2); return 1; }
+                if (!f) { fprintf(stderr, "could not read %s\n", at + 2); return 1; }
                 *at = 0;
                 char *joined = malloc(strlen(arg) + strlen(f) + 2);
                 sprintf(joined, "%s\n%s", arg, f);
@@ -298,7 +298,7 @@ int main(int argc, char **argv) {
         AdminReq req = { .id = 1, .user = "root", .home = "/root" };
         for (size_t i = 0; i < sizeof actions / sizeof actions[0]; i++)
             if (!strcmp(actions[i].name, argv[2])) { actions[i].fn(&req, arg, strlen(arg)); free(arg); return 0; }
-        fprintf(stderr, "acción desconocida\n");
+        fprintf(stderr, "unknown action\n");
         return 2;
     }
     fprintf(stderr, "comando desconocido\n");

@@ -1,15 +1,15 @@
-/* ovpn.c — OpenVPN (el programa de Debian, ruta fija), lado root.
+/* ovpn.c — OpenVPN (Debian's program, fixed path), root side.
  *
- * Importar: el .ovpn se lee línea por línea y solo pasan las opciones de cliente de la lista
- * `allowed` (con los certificados y claves incrustados <ca>…</ca>); cualquier otra (up, down,
- * script-security, plugin, route-up, management, log, config, cd, setenv…) rechaza el archivo.
- * Se guarda en /etc/lordos/net/vpn/<nombre>.ovpn (0600) y los metadatos en <nombre>.json.
+ * Import: the .ovpn is read line by line and only the client options in the `allowed` list pass
+ * (with the certificates and keys embedded <ca>…</ca>); any other one (up, down,
+ * script-security, plugin, route-up, management, log, config, cd, setenv…) rejects the file.
+ * It's saved in /etc/lordos/net/vpn/<name>.ovpn (0600) and the metadata in <name>.json.
  *
- * Conectar: un proceso residente "vpn:<nombre>" escribe la config final (la guardada + las
- * opciones que fija LordOS: interfaz, interfaz de administración por socket Unix, verb 3,
- * script-security 1), lanza openvpn y lo maneja por la management interface: responde usuario
- * y contraseña (de <nombre>.auth, 0600), sigue los estados y aplica los DNS que empuja el
- * servidor (OpenVPN en Linux no los aplica sin scripts; acá se leen del PUSH_REPLY). */
+ * Connect: a resident process "vpn:<name>" writes the final config (the saved one + the
+ * options LordOS sets: interface, management interface over a Unix socket, verb 3,
+ * script-security 1), launches openvpn and drives it through the management interface: answers
+ * user and password (from <name>.auth, 0600), follows the states and applies the DNS the
+ * server pushes (OpenVPN on Linux doesn't apply them without scripts; here they're read from PUSH_REPLY). */
 #include "netpriv.h"
 #include "../admin.h"
 
@@ -33,8 +33,8 @@
 #define OVPN_BIN "/usr/sbin/openvpn"
 #define OVPN_RUN NET_RUN_DIR "/ovpn"
 
-/* Opciones de cliente permitidas. 0 = sin argumentos de archivo; las de certificados solo
- * incrustadas. */
+/* Allowed client options. 0 = no file arguments; the certificate ones only
+ * embedded. */
 static const char *const allowed[] = {
     "client", "tls-client", "pull", "nobind", "float", "persist-key", "persist-tun", "resolv-retry",
     "dev", "dev-type", "proto", "remote", "remote-random", "remote-random-hostname", "port", "rport",
@@ -52,9 +52,9 @@ static const char *const allowed[] = {
     NULL,
 };
 static const char *const blocks[] = { "ca", "cert", "key", "tls-auth", "tls-crypt", "tls-crypt-v2", "extra-certs", "peer-fingerprint", NULL };
-/* Las fija LordOS: se sacan del archivo. */
+/* LordOS sets these: they're removed from the file. */
 static const char *const replaced[] = { "dev", "verb", "auth-retry", NULL };
-/* Solo valen en Windows: se ignoran. */
+/* Only valid on Windows: ignored. */
 static const char *const windows_only[] = { "block-outside-dns", "register-dns", "route-method", "ip-win32", "tap-sleep", NULL };
 
 static int in_list(const char *const *l, const char *w) {
@@ -85,7 +85,7 @@ int ovpn_import(const char *name, const char *text, char *err, size_t errn) {
             char *t = l;
             while (isspace((unsigned char)*t)) t++;
             if (!strncmp(t, close_tag, strlen(close_tag))) { buf_printf(&out, "%s\n", close_tag); block[0] = 0; continue; }
-            /* contenido de certificados/claves: base64, guiones, encabezados PEM, hex */
+            /* certificate/key contents: base64, dashes, PEM headers, hex */
             for (char *p = l; *p; p++) if (!isalnum((unsigned char)*p) && !strchr("+/=- :\t.#,()", *p)) { snprintf(err, errn, "línea %d: carácter inválido en <%s>", lineno, block); rc = -1; break; }
             if (!rc) buf_printf(&out, "%s\n", l);
             continue;
@@ -110,7 +110,7 @@ int ovpn_import(const char *name, const char *text, char *err, size_t errn) {
         while (isspace((unsigned char)*args)) args++;
         if (in_list(windows_only, w)) { ignored++; continue; }
         if (in_list(blocks, w)) {
-            /* "ca archivo": tiene que venir incrustado (lord.net.prepareOvpn lo hace) */
+            /* "ca file": it has to come embedded (lord.net.prepareOvpn does that) */
             if (strncmp(args, "[inline]", 8)) { snprintf(err, errn, "línea %d: %s tiene que estar incrustado (<%s>)", lineno, w, w); rc = -1; break; }
             continue;
         }
@@ -161,7 +161,7 @@ int ovpn_set_credentials(const char *name, const char *user, const char *pass) {
     snprintf(path, sizeof path, NET_VPN_DIR "/%s.auth", name);
     int r = write_file_atomic(path, buf, (size_t)n, 0600);
     memset(buf, 0, sizeof buf);
-    /* actualizar hasCredentials en los metadatos */
+    /* update hasCredentials in the metadata */
     snprintf(path, sizeof path, NET_VPN_DIR "/%s.json", name);
     char *t = read_file(path, 8192, NULL);
     if (t) {
@@ -172,12 +172,12 @@ int ovpn_set_credentials(const char *name, const char *user, const char *pass) {
     return r;
 }
 
-/* ---- el proceso residente ---- */
+/* ---- the resident process ---- */
 
 static volatile sig_atomic_t stop_flag;
 static void on_term(int s) { (void)s; stop_flag = 1; }
 
-/* Comillas de la management interface: \ y " con barra. */
+/* Management interface quoting: \ and " with a backslash. */
 static void mquote(const char *in, char *out, size_t n) {
     size_t o = 0;
     for (const char *p = in; *p && o + 3 < n; p++) {
@@ -287,7 +287,7 @@ void ovpn_run(const char *name) {
         if (poll(pf, 2, mfd < 0 ? 200 : 2000) < 0) continue;
         if (pf[0].revents) {
             ssize_t r = read(p[0], lbuf + llen, sizeof lbuf - 1 - llen);
-            if (r <= 0) break;                          /* openvpn terminó */
+            if (r <= 0) break;                          /* openvpn exited */
             llen += (size_t)r;
             char *nl;
             while ((nl = memchr(lbuf, '\n', llen))) {
@@ -330,7 +330,7 @@ void ovpn_run(const char *name) {
                     admin_event("net vpn %s auth-failed", name);
                     stop_flag = 1;
                 } else if (!strncmp(mbuf, ">STATE:", 7)) {
-                    /* >STATE:tiempo,ESTADO,detalle,ip_local,ip_remota,... */
+                    /* >STATE:time,STATE,detail,local_ip,remote_ip,... */
                     char st[32] = "", rest[256] = "";
                     sscanf(mbuf + 7, "%*[^,],%31[^,],%255[^\n]", st, rest);
                     if (!strcmp(st, "CONNECTED")) {
@@ -355,7 +355,7 @@ void ovpn_run(const char *name) {
             if (mlen >= sizeof mbuf - 1) mlen = 0;
         }
     }
-    dns_revert(ifn);                        /* mientras la interfaz existe */
+    dns_revert(ifn);                        /* while the interface exists */
     if (mfd >= 0) { msend(mfd, "signal SIGTERM\n"); close(mfd); }
     kill(pid, SIGTERM);
     for (int i = 0; i < 50; i++) { if (waitpid(pid, NULL, WNOHANG) == pid) { pid = 0; break; } usleep(100000); }

@@ -1,15 +1,15 @@
-/* js_wasm.c — el global estándar `WebAssembly` sobre el intérprete propio (src/wasm).
+/* js_wasm.c — the standard `WebAssembly` global on top of our own interpreter (src/wasm).
  *
- * Lo mismo que en los navegadores: validate, compile, instantiate (con un Module o con bytes),
- * Module (exports, imports, customSections), Instance, Memory, Table, Global y los errores
- * CompileError, LinkError y RuntimeError. Las funciones exportadas son funciones de JS de
- * verdad (typeof "function", call/apply/bind) y la misma función wasm da siempre el mismo
- * objeto. i64 ↔ BigInt. Memory.buffer es un ArrayBuffer sobre la memoria real (sin copiar);
- * al crecer, el anterior queda desvinculado (como pide la especificación).
+ * The same as in browsers: validate, compile, instantiate (with a Module or with bytes),
+ * Module (exports, imports, customSections), Instance, Memory, Table, Global and the errors
+ * CompileError, LinkError and RuntimeError. Exported functions are real JS functions
+ * (typeof "function", call/apply/bind) and the same wasm function always yields the same
+ * object. i64 ↔ BigInt. Memory.buffer is an ArrayBuffer over the real memory (no copy);
+ * on growth, the previous one becomes detached (as the specification requires).
  *
- * Límite conocido: el recolector de QuickJS no ve las referencias que el intérprete guarda
- * hacia funciones de JS (imports) ni hacia valores externref; un ciclo que pase por ahí vive
- * hasta que se cierra el contexto (js_wasm_shutdown las corta antes de liberarlo). */
+ * Known limitation: the QuickJS collector doesn't see the references the interpreter keeps
+ * to JS functions (imports) or to externref values; a cycle that goes through there lives
+ * until the context is closed (js_wasm_shutdown cuts them before freeing it). */
 #include "js_wasm.h"
 
 #include "../wasm/wasm.h"
@@ -20,16 +20,16 @@
 
 static JSContext *wctx;
 static JSClassID cls_module, cls_instance, cls_memory, cls_table, cls_global, cls_func;
-static JSValue ns = { 0 };              /* el objeto WebAssembly */
+static JSValue ns = { 0 };              /* the WebAssembly object */
 static JSValue err_compile, err_link, err_runtime;
 static JSValue fn_freeze, fn_proto;
-static JSValue ext_map;                 /* externref: valor → índice */
+static JSValue ext_map;                 /* externref: value → index */
 static JSValue *ext_vals;
 static uint32_t next_ext, ext_cap;
-static JSValue pending;                 /* excepción de JS dentro de una función importada */
+static JSValue pending;                 /* JS exception inside an imported function */
 static int have_pending, alive;
 
-/* ---- funciones importadas desde JS ---- */
+/* ---- functions imported from JS ---- */
 
 typedef struct HostFn {
     JSValue fn;
@@ -113,7 +113,7 @@ static JSValue ext_to_js(JSContext *c, uint64_t v) {
     return JS_DupValue(c, ext_vals[v - 1]);
 }
 
-/* ToWebAssemblyValue. -1 con excepción. */
+/* ToWebAssemblyValue. -1 with an exception. */
 static int to_wasm(JSContext *c, JSValueConst v, uint8_t type, WasmVal *out) {
     out->u64 = 0;
     switch (type) {
@@ -125,12 +125,12 @@ static int to_wasm(JSContext *c, JSValueConst v, uint8_t type, WasmVal *out) {
     case WASM_FUNCREF: {
         if (JS_IsNull(v)) return 0;
         WasmFunc *f = JS_GetOpaque(v, cls_func);
-        if (!f) { JS_ThrowTypeError(c, "se esperaba una función exportada de WebAssembly o null"); return -1; }
+        if (!f) { JS_ThrowTypeError(c, "expected an exported WebAssembly function or null"); return -1; }
         out->ref = f;
         return 0;
     }
     }
-    JS_ThrowTypeError(c, "tipo de valor no soportado");
+    JS_ThrowTypeError(c, "unsupported value type");
     return -1;
 }
 
@@ -157,8 +157,8 @@ static int valtype_from_str(const char *s, uint8_t *t) {
     return 0;
 }
 
-/* Valor por defecto de un tipo cuando el argumento falta (DefaultValue de la especificación):
- * 0 para los números, null para funcref y undefined para externref. */
+/* Default value of a type when the argument is missing (DefaultValue in the specification):
+ * 0 for numbers, null for funcref and undefined for externref. */
 static int default_or(JSContext *c, int argc, JSValueConst *argv, int i, uint8_t type, WasmVal *out) {
     if (i >= argc || JS_IsUndefined(argv[i])) {
         out->u64 = 0;
@@ -168,7 +168,7 @@ static int default_or(JSContext *c, int argc, JSValueConst *argv, int i, uint8_t
     return to_wasm(c, argv[i], type, out);
 }
 
-/* ---- llamar a wasm desde JS ---- */
+/* ---- calling wasm from JS ---- */
 
 static JSValue call_wasm(JSContext *c, WasmFunc *f, int argc, JSValueConst *argv) {
     const WasmFuncType *t = wasm_func_type(f);
@@ -195,7 +195,7 @@ out:
 static JSValue fn_call(JSContext *c, JSValueConst func_obj, JSValueConst this_val, int argc, JSValueConst *argv, int flags) {
     (void)this_val; (void)flags;
     WasmFunc *f = JS_GetOpaque(func_obj, cls_func);
-    if (!f) return JS_ThrowTypeError(c, "no es una función de WebAssembly");
+    if (!f) return JS_ThrowTypeError(c, "not a WebAssembly function");
     return call_wasm(c, f, argc, argv);
 }
 
@@ -224,16 +224,16 @@ static JSValue func_to_js(JSContext *c, WasmFunc *f) {
     return o;
 }
 
-/* ---- llamar a JS desde wasm (imports) ---- */
+/* ---- calling JS from wasm (imports) ---- */
 
 static int host_call(void *ud, const WasmVal *args, WasmVal *results, WasmError *err) {
     HostFn *h = ud;
     JSContext *c = wctx;
     const WasmFuncType *t = h->type;
-    if (!c || JS_IsUndefined(h->fn)) { wasm_err(err, WASM_ERR_HOST, "la función de JS ya no existe"); return -1; }
+    if (!c || JS_IsUndefined(h->fn)) { wasm_err(err, WASM_ERR_HOST, "the JS function no longer exists"); return -1; }
     JSValue sv[16];
     JSValue *jv = t->nparams > 16 ? calloc(t->nparams, sizeof *jv) : sv;
-    if (!jv) { wasm_err(err, WASM_ERR_NOMEM, "sin memoria"); return -1; }
+    if (!jv) { wasm_err(err, WASM_ERR_NOMEM, "out of memory"); return -1; }
     for (uint32_t i = 0; i < t->nparams; i++) jv[i] = from_wasm(c, t->params[i], args[i]);
     JSValue r = JS_Call(c, h->fn, JS_UNDEFINED, (int)t->nparams, (JSValueConst *)jv);
     for (uint32_t i = 0; i < t->nparams; i++) JS_FreeValue(c, jv[i]);
@@ -248,7 +248,7 @@ static int host_call(void *ud, const WasmVal *args, WasmVal *results, WasmError 
         }
     }
     JS_FreeValue(c, r);
-    if (fail) { set_pending(c); wasm_err(err, WASM_ERR_HOST, "excepción de JS"); return -1; }
+    if (fail) { set_pending(c); wasm_err(err, WASM_ERR_HOST, "JS exception"); return -1; }
     return 0;
 }
 
@@ -266,7 +266,7 @@ static WasmFunc *host_func(JSContext *c, JSValueConst fn, const WasmFuncType *t)
     return f;
 }
 
-/* ---- bytes de un BufferSource ---- */
+/* ---- bytes of a BufferSource ---- */
 
 static uint8_t *get_bytes(JSContext *c, JSValueConst v, size_t *len) {
     size_t n;
@@ -277,7 +277,7 @@ static uint8_t *get_bytes(JSContext *c, JSValueConst v, size_t *len) {
     JSValue buf = JS_GetTypedArrayBuffer(c, v, &off, &blen, &per);
     if (JS_IsException(buf)) {
         JS_FreeValue(c, JS_GetException(c));
-        JS_ThrowTypeError(c, "se esperaba un ArrayBuffer o una vista (Uint8Array...)");
+        JS_ThrowTypeError(c, "expected an ArrayBuffer or a view (Uint8Array...)");
         return NULL;
     }
     p = JS_GetArrayBuffer(c, &n, buf);
@@ -325,7 +325,7 @@ static const char *kind_name(int k) {
 static JSValue module_exports(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     WasmModule *m = argc ? JS_GetOpaque(argv[0], cls_module) : NULL;
-    if (!m) return JS_ThrowTypeError(c, "se esperaba un WebAssembly.Module");
+    if (!m) return JS_ThrowTypeError(c, "expected a WebAssembly.Module");
     JSValue arr = JS_NewArray(c);
     for (uint32_t i = 0; i < wasm_module_num_exports(m); i++) {
         size_t len;
@@ -341,7 +341,7 @@ static JSValue module_exports(JSContext *c, JSValueConst this_val, int argc, JSV
 static JSValue module_imports(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     WasmModule *m = argc ? JS_GetOpaque(argv[0], cls_module) : NULL;
-    if (!m) return JS_ThrowTypeError(c, "se esperaba un WebAssembly.Module");
+    if (!m) return JS_ThrowTypeError(c, "expected a WebAssembly.Module");
     JSValue arr = JS_NewArray(c);
     for (uint32_t i = 0; i < wasm_module_num_imports(m); i++) {
         size_t ml, nl;
@@ -358,7 +358,7 @@ static JSValue module_imports(JSContext *c, JSValueConst this_val, int argc, JSV
 static JSValue module_custom(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     WasmModule *m = argc ? JS_GetOpaque(argv[0], cls_module) : NULL;
-    if (!m) return JS_ThrowTypeError(c, "se esperaba un WebAssembly.Module");
+    if (!m) return JS_ThrowTypeError(c, "expected a WebAssembly.Module");
     const char *nm = JS_ToCString(c, argc > 1 ? argv[1] : JS_UNDEFINED);
     if (!nm) return JS_EXCEPTION;
     JSValue arr = JS_NewArray(c);
@@ -374,7 +374,7 @@ static JSValue module_custom(JSContext *c, JSValueConst this_val, int argc, JSVa
 
 static void buf_free(JSRuntime *rt, void *opaque, void *ptr) {
     (void)rt;
-    if (!ptr) return;                   /* ya desvinculado */
+    if (!ptr) return;                   /* already detached */
     WasmMemory *m = opaque;
     wasm_memory_slots(m)[1] = NULL;
     wasm_memory_unref(m);
@@ -411,7 +411,7 @@ static JSValue memory_obj(JSContext *c, WasmMemory *m) {
     return o;
 }
 
-/* Entero de un descriptor ({initial, maximum}); -1 con excepción, 1 si falta. */
+/* Integer from a descriptor ({initial, maximum}); -1 with an exception, 1 if missing. */
 static int desc_u32(JSContext *c, JSValueConst d, const char *key, uint32_t lim, uint32_t *out) {
     JSValue v = JS_GetPropertyStr(c, d, key);
     if (JS_IsException(v)) return -1;
@@ -420,20 +420,20 @@ static int desc_u32(JSContext *c, JSValueConst d, const char *key, uint32_t lim,
     int r = JS_ToFloat64(c, &x, v);
     JS_FreeValue(c, v);
     if (r) return -1;
-    if (x != x || x < 0 || x > lim || isinf(x)) { JS_ThrowTypeError(c, "%s fuera de rango", key); return -1; }
+    if (x != x || x < 0 || x > lim || isinf(x)) { JS_ThrowTypeError(c, "%s out of range", key); return -1; }
     *out = (uint32_t)x;
     return 0;
 }
 
 static int limits_desc(JSContext *c, JSValueConst d, uint32_t lim, uint32_t *min, uint32_t *max) {
-    if (!JS_IsObject(d)) { JS_ThrowTypeError(c, "se esperaba un descriptor"); return -1; }
+    if (!JS_IsObject(d)) { JS_ThrowTypeError(c, "expected a descriptor"); return -1; }
     int r = desc_u32(c, d, "initial", lim, min);
     if (r == 1) r = desc_u32(c, d, "minimum", lim, min);
-    if (r) { if (r == 1) JS_ThrowTypeError(c, "falta initial"); return -1; }
+    if (r) { if (r == 1) JS_ThrowTypeError(c, "missing initial"); return -1; }
     *max = WASM_NO_MAX;
     r = desc_u32(c, d, "maximum", lim, max);
     if (r < 0) return -1;
-    if (*max != WASM_NO_MAX && *max < *min) { JS_ThrowRangeError(c, "maximum menor que initial"); return -1; }
+    if (*max != WASM_NO_MAX && *max < *min) { JS_ThrowRangeError(c, "maximum less than initial"); return -1; }
     return 0;
 }
 
@@ -467,9 +467,9 @@ static JSValue memory_grow(JSContext *c, JSValueConst this_val, int argc, JSValu
     if (!m) return JS_EXCEPTION;
     double d;
     if (JS_ToFloat64(c, &d, argc ? argv[0] : JS_UNDEFINED)) return JS_EXCEPTION;
-    if (d != d || d < 0 || d > 65536) return JS_ThrowTypeError(c, "delta fuera de rango");
+    if (d != d || d < 0 || d > 65536) return JS_ThrowTypeError(c, "delta out of range");
     int64_t r = wasm_memory_grow(m, (uint32_t)d);
-    if (r < 0) return JS_ThrowRangeError(c, "no se pudo agrandar la memoria");
+    if (r < 0) return JS_ThrowRangeError(c, "could not grow the memory");
     return JS_NewInt64(c, r);
 }
 
@@ -498,7 +498,7 @@ static JSValue table_obj(JSContext *c, WasmTable *t) {
 static JSValue table_ctor(JSContext *c, JSValueConst new_target, int argc, JSValueConst *argv) {
     (void)new_target;
     JSValueConst d = argc ? argv[0] : JS_UNDEFINED;
-    if (!JS_IsObject(d)) return JS_ThrowTypeError(c, "se esperaba un descriptor");
+    if (!JS_IsObject(d)) return JS_ThrowTypeError(c, "expected a descriptor");
     JSValue ev = JS_GetPropertyStr(c, d, "element");
     const char *es = JS_ToCString(c, ev);
     JS_FreeValue(c, ev);
@@ -506,7 +506,7 @@ static JSValue table_ctor(JSContext *c, JSValueConst new_target, int argc, JSVal
     uint8_t type;
     int bad = valtype_from_str(es, &type) || (type != WASM_FUNCREF && type != WASM_EXTERNREF);
     JS_FreeCString(c, es);
-    if (bad) return JS_ThrowTypeError(c, "element tiene que ser 'anyfunc' o 'externref'");
+    if (bad) return JS_ThrowTypeError(c, "element must be 'anyfunc' or 'externref'");
     uint32_t min, max;
     if (limits_desc(c, d, 10000000, &min, &max)) return JS_EXCEPTION;
     WasmVal init;
@@ -528,7 +528,7 @@ static JSValue table_length(JSContext *c, JSValueConst this_val) {
 static int index_arg(JSContext *c, int argc, JSValueConst *argv, int i, uint32_t *out) {
     double d;
     if (JS_ToFloat64(c, &d, i < argc ? argv[i] : JS_UNDEFINED)) return -1;
-    if (d != d || d < 0 || d > 4294967295.0) { JS_ThrowTypeError(c, "índice fuera de rango"); return -1; }
+    if (d != d || d < 0 || d > 4294967295.0) { JS_ThrowTypeError(c, "index out of range"); return -1; }
     *out = (uint32_t)d;
     return 0;
 }
@@ -538,7 +538,7 @@ static JSValue table_get(JSContext *c, JSValueConst this_val, int argc, JSValueC
     uint32_t i;
     if (!t || index_arg(c, argc, argv, 0, &i)) return JS_EXCEPTION;
     WasmVal v;
-    if (wasm_table_get(t, i, &v)) return JS_ThrowRangeError(c, "índice fuera de la tabla");
+    if (wasm_table_get(t, i, &v)) return JS_ThrowRangeError(c, "index outside the table");
     return from_wasm(c, wasm_table_elemtype(t), v);
 }
 
@@ -548,7 +548,7 @@ static JSValue table_set(JSContext *c, JSValueConst this_val, int argc, JSValueC
     if (!t || index_arg(c, argc, argv, 0, &i)) return JS_EXCEPTION;
     WasmVal v;
     if (default_or(c, argc, argv, 1, wasm_table_elemtype(t), &v)) return JS_EXCEPTION;
-    if (wasm_table_set(t, i, v)) return JS_ThrowRangeError(c, "índice fuera de la tabla");
+    if (wasm_table_set(t, i, v)) return JS_ThrowRangeError(c, "index outside the table");
     return JS_UNDEFINED;
 }
 
@@ -559,7 +559,7 @@ static JSValue table_grow(JSContext *c, JSValueConst this_val, int argc, JSValue
     WasmVal v;
     if (default_or(c, argc, argv, 1, wasm_table_elemtype(t), &v)) return JS_EXCEPTION;
     int64_t r = wasm_table_grow(t, n, v);
-    if (r < 0) return JS_ThrowRangeError(c, "no se pudo agrandar la tabla");
+    if (r < 0) return JS_ThrowRangeError(c, "could not grow the table");
     return JS_NewInt64(c, r);
 }
 
@@ -588,7 +588,7 @@ static JSValue global_obj(JSContext *c, WasmGlobal *g) {
 static JSValue global_ctor(JSContext *c, JSValueConst new_target, int argc, JSValueConst *argv) {
     (void)new_target;
     JSValueConst d = argc ? argv[0] : JS_UNDEFINED;
-    if (!JS_IsObject(d)) return JS_ThrowTypeError(c, "se esperaba un descriptor");
+    if (!JS_IsObject(d)) return JS_ThrowTypeError(c, "expected a descriptor");
     JSValue tv = JS_GetPropertyStr(c, d, "value"), mv = JS_GetPropertyStr(c, d, "mutable");
     const char *ts = JS_ToCString(c, tv);
     int mut = JS_ToBool(c, mv);
@@ -598,7 +598,7 @@ static JSValue global_ctor(JSContext *c, JSValueConst new_target, int argc, JSVa
     uint8_t type;
     int bad = valtype_from_str(ts, &type);
     JS_FreeCString(c, ts);
-    if (bad) return JS_ThrowTypeError(c, "tipo de global desconocido");
+    if (bad) return JS_ThrowTypeError(c, "unknown global type");
     WasmVal v;
     if (default_or(c, argc, argv, 1, type, &v)) return JS_EXCEPTION;
     WasmGlobal *g = wasm_global_new(type, mut, v);
@@ -617,7 +617,7 @@ static JSValue global_value(JSContext *c, JSValueConst this_val) {
 static JSValue global_set_value(JSContext *c, JSValueConst this_val, JSValueConst val) {
     WasmGlobal *g = JS_GetOpaque2(c, this_val, cls_global);
     if (!g) return JS_EXCEPTION;
-    if (!wasm_global_mut(g)) return JS_ThrowTypeError(c, "la global no es mutable");
+    if (!wasm_global_mut(g)) return JS_ThrowTypeError(c, "the global is not mutable");
     WasmVal v;
     if (to_wasm(c, val, wasm_global_type(g), &v)) return JS_EXCEPTION;
     wasm_global_set(g, v);
@@ -660,12 +660,12 @@ static JSValue link_error(JSContext *c, const char *mod, const char *name, const
     return throw_cls(c, err_link, msg);
 }
 
-/* Instancia m con el objeto de imports: el Instance de JS, o una excepción. */
+/* Instantiates m with the imports object: the JS Instance, or an exception. */
 static JSValue instantiate(JSContext *c, WasmModule *m, JSValueConst imports) {
     uint32_t n = wasm_module_num_imports(m);
-    if (n && !JS_IsObject(imports)) return JS_ThrowTypeError(c, "el módulo tiene imports: falta el objeto de imports");
+    if (n && !JS_IsObject(imports)) return JS_ThrowTypeError(c, "the module has imports: the imports object is missing");
     WasmExtern *ext = calloc(n + 1, sizeof *ext);
-    uint8_t *temp = calloc(n + 1, 1);           /* creados acá (hay que soltarlos) */
+    uint8_t *temp = calloc(n + 1, 1);           /* created here (they must be released) */
     JSValue ret = JS_EXCEPTION;
     if (!ext || !temp) { ret = JS_ThrowOutOfMemory(c); goto out; }
     for (uint32_t i = 0; i < n; i++) {
@@ -674,7 +674,7 @@ static JSValue instantiate(JSContext *c, WasmModule *m, JSValueConst imports) {
         WasmExternType t = wasm_import_type(m, i);
         JSValue o = get_prop_len(c, imports, mod, ml);
         if (JS_IsException(o)) goto out;
-        if (!JS_IsObject(o)) { JS_FreeValue(c, o); ret = JS_ThrowTypeError(c, "import %s: no es un objeto", mod); goto out; }
+        if (!JS_IsObject(o)) { JS_FreeValue(c, o); ret = JS_ThrowTypeError(c, "import %s: not an object", mod); goto out; }
         JSValue v = get_prop_len(c, o, nm, nl);
         JS_FreeValue(c, o);
         if (JS_IsException(v)) goto out;
@@ -682,20 +682,20 @@ static JSValue instantiate(JSContext *c, WasmModule *m, JSValueConst imports) {
         ext[i].kind = t.kind;
         switch (t.kind) {
         case WASM_EXT_FUNC:
-            if (!JS_IsFunction(c, v)) { why = "no es una función"; break; }
+            if (!JS_IsFunction(c, v)) { why = "not a function"; break; }
             ext[i].func = JS_GetOpaque(v, cls_func);
             if (!ext[i].func) {
                 ext[i].func = host_func(c, v, t.func);
-                if (!ext[i].func) why = "sin memoria";
+                if (!ext[i].func) why = "out of memory";
                 temp[i] = 1;
             }
             break;
         case WASM_EXT_GLOBAL:
             ext[i].global = JS_GetOpaque(v, cls_global);
             if (ext[i].global) break;
-            if (t.mut) { why = "una global mutable tiene que ser un WebAssembly.Global"; break; }
+            if (t.mut) { why = "a mutable global must be a WebAssembly.Global"; break; }
             if (t.valtype == WASM_I64 ? !JS_IsBigInt(c, v) : (t.valtype != WASM_EXTERNREF && t.valtype != WASM_FUNCREF && !JS_IsNumber(v))) {
-                why = "valor de tipo incorrecto";
+                why = "value of the wrong type";
                 break;
             }
             {
@@ -707,11 +707,11 @@ static JSValue instantiate(JSContext *c, WasmModule *m, JSValueConst imports) {
             break;
         case WASM_EXT_MEMORY:
             ext[i].memory = JS_GetOpaque(v, cls_memory);
-            if (!ext[i].memory) why = "no es un WebAssembly.Memory";
+            if (!ext[i].memory) why = "not a WebAssembly.Memory";
             break;
         case WASM_EXT_TABLE:
             ext[i].table = JS_GetOpaque(v, cls_table);
-            if (!ext[i].table) why = "no es un WebAssembly.Table";
+            if (!ext[i].table) why = "not a WebAssembly.Table";
             break;
         }
         JS_FreeValue(c, v);
@@ -744,11 +744,11 @@ out:
 static JSValue instance_ctor(JSContext *c, JSValueConst new_target, int argc, JSValueConst *argv) {
     (void)new_target;
     WasmModule *m = argc ? JS_GetOpaque(argv[0], cls_module) : NULL;
-    if (!m) return JS_ThrowTypeError(c, "se esperaba un WebAssembly.Module");
+    if (!m) return JS_ThrowTypeError(c, "expected a WebAssembly.Module");
     return instantiate(c, m, argc > 1 ? argv[1] : JS_UNDEFINED);
 }
 
-/* ---- funciones del espacio de nombres ---- */
+/* ---- namespace functions ---- */
 
 static JSValue settle(JSContext *c, JSValue v) {
     JSValue fns[2];
@@ -794,7 +794,7 @@ static JSValue ns_instantiate(JSContext *c, JSValueConst this_val, int argc, JSV
     return settle(c, r);
 }
 
-/* ---- registro ---- */
+/* ---- registration ---- */
 
 static const JSCFunctionListEntry ns_funcs[] = {
     JS_CFUNC_DEF("validate", 1, ns_validate),
@@ -845,7 +845,7 @@ void js_wasm_register(JSContext *c, JSValueConst global) {
     alive = 1;
     ns = JS_NewObject(c);
     JS_SetPropertyFunctionList(c, ns, ns_funcs, sizeof ns_funcs / sizeof *ns_funcs);
-    /* errores: subclases de Error, como en los navegadores */
+    /* errors: subclasses of Error, as in browsers */
     static const char errs[] =
         "(() => { const mk = (n) => { const C = class extends Error { constructor(m) { super(m); } };"
         " Object.defineProperty(C, 'name', { value: n }); C.prototype.name = n; return C; };"
@@ -872,8 +872,8 @@ void js_wasm_register(JSContext *c, JSValueConst global) {
     JS_SetPropertyStr(c, global, "WebAssembly", JS_DupValue(c, ns));
 }
 
-/* Antes de liberar el contexto: corta las referencias que el intérprete tiene hacia JS (las
- * funciones importadas y los externref), así el recolector puede liberar todo. */
+/* Before freeing the context: cuts the references the interpreter holds to JS (the
+ * imported functions and the externrefs), so the collector can free everything. */
 void js_wasm_shutdown(JSContext *c) {
     if (!alive) return;
     alive = 0;

@@ -1,8 +1,8 @@
-// NoteEditor — editor de una nota: markdown con ajuste de línea, un cursor con selección,
-// deshacer, atajos de markdown y sugerencias de emoji con ":". La fuente es monoespaciada
-// (JetBrains Mono): el ancho de cada carácter se mide con lord.measureText (una vez por carácter
-// no ASCII) y las líneas se cortan en palabras según el ancho del área. Toma el foco de texto
-// del SDK (takeTextFocus), así funciona igual en la ventana y en una nota del escritorio.
+// NoteEditor — a note's editor: markdown with line wrapping, one cursor with selection,
+// undo, markdown shortcuts and emoji suggestions with ":". The font is monospaced
+// (JetBrains Mono): each character's width is measured with lord.measureText (once per non-ASCII
+// character) and lines are wrapped at words according to the area's width. It takes the SDK text
+// focus (takeTextFocus), so it works the same in the window and in a desktop note.
 import { View, Text, ime, clipboard, takeTextFocus, releaseTextFocus, textFocusOwner, addListener } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 
@@ -15,7 +15,7 @@ const cw = (ch, size) => {
 };
 const WORD = /[\p{L}\p{N}_]/u;
 
-// Líneas visuales: [{ start, end, line }] (end sin el salto de línea).
+// Visual lines: [{ start, end, line }] (end without the line break).
 function wrapRows(text, width, size) {
   const rows = [];
   let off = 0;
@@ -48,7 +48,7 @@ function wrapRows(text, width, size) {
 
 const widthOf = (s, size) => { let w = 0; for (const ch of s) w += cw(ch, size); return w; };
 
-// Estilo de una línea según su markdown (el editor no resalta dentro de la línea).
+// Style of a line according to its markdown (the editor does not highlight inside the line).
 function lineStyle(s, inCode) {
   if (inCode || /^(`{3,}|~{3,})/.test(s)) return 'code';
   const h = /^(#{1,6})\s/.exec(s);
@@ -106,7 +106,7 @@ export function NoteEditor({ value, onChange, size = 14, colors, onPasteImage, e
     return row.end;
   };
 
-  // ---- edición ----
+  // ---- editing ----
   const lo = Math.min(sel.a, sel.b), hi = Math.max(sel.a, sel.b);
   const pushUndo = (kind) => {
     const now = Date.now(), s = st.current;
@@ -126,7 +126,7 @@ export function NoteEditor({ value, onChange, size = 14, colors, onPasteImage, e
     setSel({ a, b });
     setBlink(true);
     setTimeout(() => ensureVisible(b), 0);
-    // sugerencias de emoji: ":" + nombre justo antes del cursor
+    // emoji suggestions: ":" + name right before the cursor
     const m = /(^|[\s(])(:[a-z0-9_+-]{2,24})$/.exec(next.slice(Math.max(0, b - 26), b));
     if (m && emojiSearch) {
       const items = emojiSearch(m[2].slice(1)).slice(0, 6);
@@ -147,7 +147,7 @@ export function NoteEditor({ value, onChange, size = 14, colors, onPasteImage, e
   const lineStart = (o) => text.lastIndexOf('\n', o - 1) + 1;
   const lineEnd = (o) => { const i = text.indexOf('\n', o); return i < 0 ? text.length : i; };
 
-  // envuelve la selección (o la palabra) con marcas: **negrita**, *cursiva*…
+  // wraps the selection (or the word) with marks: **bold**, *italic*…
   const wrap = (before, after = before) => {
     if (lo === hi) { replace(lo, hi, before + after, 'edit', lo + before.length); return; }
     const inner = text.slice(lo, hi);
@@ -159,7 +159,7 @@ export function NoteEditor({ value, onChange, size = 14, colors, onPasteImage, e
     const next = text.slice(0, lo) + before + inner + after + text.slice(hi);
     commit(next, lo + before.length, hi + before.length);
   };
-  // cambia el prefijo de las líneas elegidas (títulos, listas, casillas)
+  // changes the prefix of the chosen lines (headings, lists, checkboxes)
   const linePrefix = (make) => {
     const a = lineStart(lo), b = lineEnd(hi);
     const lines = text.slice(a, b).split('\n');
@@ -189,7 +189,7 @@ export function NoteEditor({ value, onChange, size = 14, colors, onPasteImage, e
     const line = text.slice(ls, lo);
     const m = /^(\s*)([-*+]\s+\[[ xX]\]\s+|[-*+]\s+|(\d+)([.)])\s+|>\s?)/.exec(line);
     if (m) {
-      if (line.trim() === m[0].trim() && lo === hi && lineEnd(lo) === lo) { replace(ls, lo, '', 'edit'); return; }   // ítem vacío: termina la lista
+      if (line.trim() === m[0].trim() && lo === hi && lineEnd(lo) === lo) { replace(ls, lo, '', 'edit'); return; }   // empty item: ends the list
       let mk = m[2];
       if (/\[[ xX]\]/.test(mk)) mk = mk.replace(/\[[xX]\]/, '[ ]');
       if (m[3]) mk = `${Number(m[3]) + 1}${m[4]} `;
@@ -280,7 +280,7 @@ export function NoteEditor({ value, onChange, size = 14, colors, onPasteImage, e
     return undefined;
   };
 
-  // el manejador cambia en cada render: el foco de texto llama a la versión actual
+  // the handler changes on every render: the text focus calls the current version
   st.current.onKey = onKey;
   const caretRect = () => {
     if (!area.current) return null;
@@ -318,7 +318,7 @@ export function NoteEditor({ value, onChange, size = 14, colors, onPasteImage, e
     c.n = now - c.t < 400 ? c.n + 1 : 1;
     c.t = now;
     setSugg(null);
-    if (c.n === 2) {                                 // palabra
+    if (c.n === 2) {                                 // word
       let a = p, b2 = p;
       while (a > 0 && WORD.test(text[a - 1])) a--;
       while (b2 < text.length && WORD.test(text[b2])) b2++;
@@ -340,7 +340,7 @@ export function NoteEditor({ value, onChange, size = 14, colors, onPasteImage, e
 
   const onWheel = (e) => setScroll((s) => Math.max(0, Math.min(Math.max(0, rows.length * LH - st.current.h + padding * 2 + LH), s + e.deltaY)));
 
-  // ---- dibujo ----
+  // ---- drawing ----
   const first = Math.max(0, Math.floor(scroll / LH) - 2);
   const last = Math.min(rows.length - 1, first + Math.ceil(dims.h / LH) + 4);
   const lineKinds = [];
@@ -369,7 +369,7 @@ export function NoteEditor({ value, onChange, size = 14, colors, onPasteImage, e
       const x1 = widthOf(text.slice(row.start, b2), size) + (hi > row.end ? size * 0.4 : 0);
       if (x1 > x0) selRects.push(<View key={`s${r}`} style={{ position: 'absolute', left: padding + x0, top: y, width: x1 - x0, height: LH, backgroundColor: colors.selection }} />);
     }
-    // los títulos se dibujan un poco más grandes, pero en la misma grilla (el cursor sigue la fuente base)
+    // headings are drawn a bit larger, but on the same grid (the cursor follows the base font)
     out.push(<Text key={r} style={{ position: 'absolute', left: padding, top: y + (LH - size * 1.3) / 2, fontFamily: 'monospace', fontSize: size, whiteSpace: 'nowrap', ...kindStyle(kind) }}>{text.slice(row.start, row.end)}</Text>);
   }
   const caretRow = rowOf(sel.b);

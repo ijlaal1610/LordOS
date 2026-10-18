@@ -1,4 +1,4 @@
-/* js_pkg.h — lord.pkg (consultas de paquetes de Debian, ver js_pkg.c). */
+/* js_pkg.h — lord.pkg (Debian package queries, see js_pkg.c). */
 #ifndef LORD_JS_PKG_H
 #define LORD_JS_PKG_H
 

@@ -1,9 +1,9 @@
-// Fotos — visor y biblioteca de imágenes (diseño propio, al estilo de los visores de escritorio).
+// Photos — image viewer and library (our own design, in the style of desktop viewers).
 //
-// La biblioteca es ~/Imágenes (y sus carpetas), con miniaturas en ~/.cache/lordos/thumbs. El
-// visor decodifica con lord-media (PNG, JPEG, GIF animado, WebP, BMP; HEIC/AVIF si FFmpeg puede)
-// y lo dibuja C: zoom, desplazamiento, giro, pantalla completa y presentación. Las ediciones
-// (recorte, giro, brillo y contraste) se guardan como una copia: el original no se toca.
+// The library is ~/Imágenes (and its folders), with thumbnails in ~/.cache/lordos/thumbs. The
+// viewer decodes with lord-media (PNG, JPEG, animated GIF, WebP, BMP; HEIC/AVIF if FFmpeg can)
+// and C draws it: zoom, panning, rotation, full screen and slideshow. Edits
+// (crop, rotation, brightness and contrast) are saved as a copy: the original is left untouched.
 import {
   View, Text, Image, MediaView, ScrollView, SidebarItem, SectionTitle, Button, Slider, useTheme, useAppWindow, useKeyboard, useWindowState, wm,
   t as tr, media, useThumb, userDirs, fs, addListener, direction, print, ThemeProvider, ToolbarButton, ToolbarGroup, EmptyState, useStore, windows,
@@ -11,7 +11,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 
 const APP = 'photos';
-const handledNonce = new Map();      // «Abrir con» ya atendido por ventana
+const handledNonce = new Map();      // «Open with» already handled, per window
 const IMAGE = /\.(png|jpe?g|gif|webp|bmp|heic|heif|avif|tiff?)$/i;
 const baseName = (p) => String(p || '').split('/').pop();
 const dirOf = (p) => String(p || '').split('/').slice(0, -1).join('/');
@@ -20,7 +20,7 @@ export function Icon({ size: s }) {
   const petal = (c, x, y) => <View style={{ position: 'absolute', left: s * x, top: s * y, width: s * 0.3, height: s * 0.3, borderRadius: s * 0.15, backgroundColor: c, opacity: 0.88 }} />;
   return (
     <View style={{ width: s, height: s, borderRadius: s * 0.225, backgroundColor: '#fbfbfd', boxShadow: `0 ${s * 0.04}px ${s * 0.12}px rgba(0,0,0,0.35)`, overflow: 'hidden' }}>
-      {/* una flor de seis pétalos de colores, propia */}
+      {/* a flower with six colored petals, our own */}
       {petal('#ffb340', 0.35, 0.16)}{petal('#ff5f57', 0.55, 0.27)}{petal('#c86dd7', 0.55, 0.47)}
       {petal('#4c8dff', 0.35, 0.58)}{petal('#33c7a8', 0.15, 0.47)}{petal('#9bd44a', 0.15, 0.27)}
       <View style={{ position: 'absolute', left: s * 0.42, top: s * 0.4, width: s * 0.16, height: s * 0.16, borderRadius: s * 0.08, backgroundColor: '#fff' }} />
@@ -69,7 +69,7 @@ function ToolBtn({ glyph, label, onClick, active, dark }) {
   );
 }
 
-// ---- visor ----
+// ---- viewer ----
 
 function Viewer({ list, index, setIndex, onClose, winId, mode }) {
   const th = useTheme();
@@ -77,18 +77,18 @@ function Viewer({ list, index, setIndex, onClose, winId, mode }) {
   const [id, setId] = useState(0);
   const [info, setInfo] = useState(null);
   const [error, setError] = useState(null);
-  const [zoom, setZoom] = useState(0);          // 0 = encajar
+  const [zoom, setZoom] = useState(0);          // 0 = fit
   const [center, setCenter] = useState({ cx: 0.5, cy: 0.5 });
-  const [rot, setRot] = useState(0);            // giro del usuario (además del EXIF)
+  const [rot, setRot] = useState(0);            // user rotation (on top of EXIF)
   const [slide, setSlide] = useState(false);
-  const [edit, setEdit] = useState(null);        // { bright, contrast, crop: {x,y,w,h} en px de la vista, dragging }
+  const [edit, setEdit] = useState(null);        // { bright, contrast, crop: {x,y,w,h} in view px, dragging }
   const [toast, setToast] = useState(null);
   const box = useRef(null);
   const drag = useRef(null);
-  const pinchK = useRef(1);           // pellizco del trackpad: escala ya aplicada
+  const pinchK = useRef(1);           // trackpad pinch: scale already applied
   const idRef = useRef(0);
 
-  // menú Archivo → Imprimir (el diálogo es del sistema, de lord-doc)
+  // File → Print menu (the dialog belongs to the system, to lord-doc)
   useEffect(() => {
     if (!path) return;
     wm.setMenus(winId, [{ label: tr('photos.menu.file'), items: [
@@ -100,7 +100,7 @@ function Viewer({ list, index, setIndex, onClose, winId, mode }) {
   useEffect(() => {
     if (!path) return undefined;
     setInfo(null); setError(null); setZoom(0); setCenter({ cx: 0.5, cy: 0.5 }); setRot(0); setEdit(null);
-    // GIF animado: con el reproductor (en su tamaño original, en bucle, sin sonido)
+    // animated GIF: with the player (at its original size, looping, muted)
     const nid = /\.gif$/i.test(path) ? media.play(APP, path, { native: true, loop: true, audio: false }) : media.image(APP, path);
     setId(nid || 0);
     idRef.current = nid;
@@ -124,7 +124,7 @@ function Viewer({ list, index, setIndex, onClose, winId, mode }) {
       brightness: edit?.bright || 0, contrast: edit?.contrast || 0 });
   }, [id, zoom, center, totalRot, edit?.bright, edit?.contrast]);
 
-  // presentación
+  // slideshow
   useEffect(() => {
     if (!slide) return undefined;
     const tmr = setInterval(() => setIndex((i) => (i + 1) % list.length), 4000);
@@ -134,7 +134,7 @@ function Viewer({ list, index, setIndex, onClose, winId, mode }) {
   useEffect(() => { if (mode !== 'fullscreen') setSlide(false); }, [mode]);
 
   const layout = () => (box.current ? lord.getLayout(box.current.id) : [0, 0, 1, 1]);
-  // tamaño de la imagen (girada) y escala actual
+  // size of the (rotated) image and current scale
   const dims = () => {
     const w0 = info?.width || 1, h0 = info?.height || 1;
     const rw = totalRot % 180 ? h0 : w0, rh = totalRot % 180 ? w0 : h0;
@@ -166,7 +166,7 @@ function Viewer({ list, index, setIndex, onClose, winId, mode }) {
     else if (e.key === 'Escape' && mode !== 'fullscreen') { if (edit) setEdit(null); else onClose(); }
   });
 
-  // arrastrar: desplazar con zoom, o marcar el recorte al editar
+  // dragging: pan when zoomed, or mark the crop while editing
   useEffect(() => {
     const offMove = addListener('pointermove', (e) => {
       const d = drag.current;
@@ -321,7 +321,7 @@ export default function Photos() {
   const [all, setAll] = useState(true);
   const [items, setItems] = useState([]);
   const [sel, setSel] = useState(null);
-  const [viewer, setViewer] = useWindowState('viewer', null);    // { list, index } (sobrevive a la pantalla completa)
+  const [viewer, setViewer] = useWindowState('viewer', null);    // { list, index } (survives full screen)
   const [size, setSize] = useState(132);
   const [rev, setRev] = useState(0);
   const winW = useStore(windows, (ws) => ws.find((w) => w.id === win.id)?.w || 980);
@@ -333,7 +333,7 @@ export default function Photos() {
     setItems(out);
   }, [folder, all, rev]);
 
-  // abrir lo que mandó Archivos: la imagen y sus vecinas de la misma carpeta
+  // open what Files sent: the image and its neighbors in the same folder
   useEffect(() => {
     const p = win.args?.path;
     if (!p || handledNonce.get(win.id) === win.args.nonce) return;
@@ -353,7 +353,7 @@ export default function Photos() {
 
   // narrow window (close to minSize): a smaller title so it is not clipped
   const narrow = winW < 700;
-  // agrupado por mes, como una fototeca
+  // grouped by month, like a photo library
   const groups = [];
   for (const e of items) {
     const d = new Date(e.mtime || 0);

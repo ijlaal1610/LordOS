@@ -1,9 +1,9 @@
-/* gestures.h — gestos de prueba para el touchpad simulado (tpsim.c) y para la prueba del
- * reconocedor (server/tests/tp_test.c). Cada gesto genera la secuencia evdev (protocolo B) que
- * mandaría un clickpad real, cuadro por cuadro a 80 Hz.
+/* gestures.h — test gestures for the simulated touchpad (tpsim.c) and for the recognizer
+ * test (server/tests/tp_test.c). Each gesture generates the evdev sequence (protocol B) that
+ * a real clickpad would send, frame by frame at 80 Hz.
  *
- * El dispositivo imita un clickpad Synaptics de notebook (SynPS/2, 105 × 87 mm, 5 contactos,
- * resolución 42 unidades/mm, presión 0..255, INPUT_PROP_BUTTONPAD). */
+ * The device imitates a laptop Synaptics clickpad (SynPS/2, 105 × 87 mm, 5 contacts,
+ * resolution 42 units/mm, pressure 0..255, INPUT_PROP_BUTTONPAD). */
 #ifndef TPSIM_GESTURES_H
 #define TPSIM_GESTURES_H
 
@@ -18,13 +18,13 @@
 #define SIM_W_MM   ((SIM_X_MAX - SIM_X_MIN) / (double)SIM_RES)
 #define SIM_H_MM   ((SIM_Y_MAX - SIM_Y_MIN) / (double)SIM_RES)
 
-/* type, code, value a la hora t (ms desde el comienzo) */
+/* type, code, value at time t (ms since the start) */
 typedef void (*SimEmit)(void *ud, double t, int type, int code, int value);
 
 typedef struct {
     SimEmit emit;
     void *ud;
-    double t;                       /* hora actual (ms) */
+    double t;                       /* current time (ms) */
     int down[SIM_SLOTS], id[SIM_SLOTS], x[SIM_SLOTS], y[SIM_SLOTS], p[SIM_SLOTS];
     int next_id, tool, button;
     double frame_ms;

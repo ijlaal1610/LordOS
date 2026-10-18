@@ -1,10 +1,10 @@
-/* lm_out.c — salida de cuadros de lord-media hacia lord-server (reproductor y cámara).
+/* lm_out.c — frame output from lord-media to lord-server (player and camera).
  *
- * Tres ranuras en un memfd sellado (MM_RING). Cada cuadro se escala una sola vez al tamaño en
- * que se muestra (la caja que avisa lord-server con MM_SIZE, encajada sin deformar) y se
- * escribe en una ranura libre; MM_FRAME avisa cuál. lord-server contesta MM_ACK cuando pasa a
- * mostrarla: desde ese momento las mandadas antes quedan libres. Si no hay ranura libre
- * (lord-server atrasado), el cuadro se descarta en vez de esperar. */
+ * Three slots in a sealed memfd (MM_RING). Each frame is scaled only once to the size at
+ * which it's shown (the box lord-server announces with MM_SIZE, fitted without distortion) and
+ * written into a free slot; MM_FRAME says which one. lord-server answers MM_ACK when it starts
+ * showing it: from that moment the ones sent before are free. If there's no free slot
+ * (lord-server behind), the frame is dropped instead of waiting. */
 #include "lm.h"
 
 #include <math.h>
@@ -19,13 +19,13 @@ typedef struct {
     int gen, w, h, fd;
     uint8_t *map;
     size_t slot_bytes;
-    int server_cur;                 /* ranura que lord-server muestra (ACK) */
-    int64_t pending[MP_RING_SLOTS]; /* orden de envío de las mandadas sin ACK (0 = libre) */
+    int server_cur;                 /* slot lord-server is showing (ACK) */
+    int64_t pending[MP_RING_SLOTS]; /* send order of the ones sent without ACK (0 = free) */
     int64_t seq;
     struct SwsContext *sws;
     int sw, sh, sfmt, sws_dw, sws_dh;
     int box_w, box_h, native;
-    AVFrame *last;                  /* último cuadro presentado (para redibujar al cambiar de tamaño) */
+    AVFrame *last;                  /* last presented frame (to redraw when the size changes) */
     int64_t last_pts;
 } Out;
 
@@ -139,7 +139,7 @@ int lm_out_present(AVFrame *f, int64_t pts) {
     return 0;
 }
 
-/* Cambió la caja: 1 si cambió de verdad. */
+/* The box changed: 1 if it really changed. */
 int lm_out_box(int w, int h) {
     if (w <= 0 || h <= 0 || w > MP_MAX_DIM || h > MP_MAX_DIM || (w == O.box_w && h == O.box_h)) return 0;
     O.box_w = w;
@@ -147,7 +147,7 @@ int lm_out_box(int w, int h) {
     return 1;
 }
 
-/* Vuelve a presentar el último cuadro (con el tamaño nuevo). 0 si había uno. */
+/* Presents the last frame again (with the new size). 0 if there was one. */
 int lm_out_redraw(void) {
     if (!O.last) return -1;
     AVFrame *f = av_frame_clone(O.last);

@@ -1,13 +1,13 @@
-/* mon.c — muestreo de métricas del sistema en un hilo propio (ver mon.h y docs/MONITOR.md).
+/* mon.c — sampling of system metrics on its own thread (see mon.h and docs/MONITOR.md).
  *
- * Fuentes, todas de solo lectura y legibles por el usuario de la sesión:
- *   /proc/stat (CPU total y por núcleo), /proc/meminfo, /proc/loadavg, /proc/uptime,
- *   /proc/net/dev (tráfico por interfaz), /proc/diskstats + /sys/block (lectura y escritura por
- *   disco), /sys/class/hwmon y /sys/class/thermal (temperatura y ventiladores),
- *   /proc/<pid>/{stat,cmdline,exe} (procesos) y sock_diag (conexiones, en conn.c).
+ * Sources, all read-only and readable by the session user:
+ *   /proc/stat (total and per-core CPU), /proc/meminfo, /proc/loadavg, /proc/uptime,
+ *   /proc/net/dev (traffic per interface), /proc/diskstats + /sys/block (reads and writes per
+ *   disk), /sys/class/hwmon and /sys/class/thermal (temperature and fans),
+ *   /proc/<pid>/{stat,cmdline,exe} (processes) and sock_diag (connections, in conn.c).
  *
- * El hilo arma JSON ya listo; el hilo de la pantalla solo copia el último (mon_*_json). No se
- * ejecuta ningún programa. */
+ * The thread builds ready-made JSON; the screen thread only copies the latest (mon_*_json). No
+ * program is executed. */
 #include "mon.h"
 #include "monpriv.h"
 
@@ -26,14 +26,14 @@
 #include <time.h>
 #include <unistd.h>
 
-#define TICK_MS 250                     /* 4 muestras por segundo, como el Monitor de TangoOS */
-#define IDLE_MS 3000                    /* sin consultas por 3 s → el hilo se duerme */
+#define TICK_MS 250                     /* 4 samples per second, like TangoOS's Monitor */
+#define IDLE_MS 3000                    /* no queries for 3 s → the thread goes to sleep */
 #define MAX_CPU 256
 #define MAX_IF 32
 #define MAX_DISK 32
 #define MAX_PROC 8192
 
-/* ---- utilidades ----------------------------------------------------------------------- */
+/* ---- utilities ------------------------------------------------------------------------ */
 
 double mon_now_ms(void) {
     struct timespec ts;
@@ -90,7 +90,7 @@ void mon_buf_printf(Buf *b, const char *fmt, ...) {
     b->n += (size_t)k;
 }
 
-/* Largo de una secuencia UTF-8 válida en s (0 si no es válida). */
+/* Length of a valid UTF-8 sequence at s (0 if invalid). */
 static int utf8_len(const unsigned char *s) {
     if (s[0] < 0x80) return 1;
     int n = s[0] >= 0xf0 && s[0] <= 0xf4 ? 4 : s[0] >= 0xe0 ? 3 : s[0] >= 0xc2 && s[0] < 0xe0 ? 2 : 0;
@@ -119,7 +119,7 @@ void mon_buf_str(Buf *b, const char *s) {
 
 void mon_buf_free(Buf *b) { free(b->p); memset(b, 0, sizeof *b); }
 
-/* ---- estado del hilo ------------------------------------------------------------------- */
+/* ---- thread state ---------------------------------------------------------------------- */
 
 static struct {
     pthread_mutex_t mu;
@@ -131,12 +131,12 @@ static struct {
     char geo_path[PATH_MAX];
 } M = { .mu = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER };
 
-/* ---- CPU, memoria, carga ----------------------------------------------------------------- */
+/* ---- CPU, memory, load ------------------------------------------------------------------- */
 
 typedef struct { unsigned long long total, busy; } CpuT;
 
 static struct {
-    double t;                           /* mon_now_ms de la muestra anterior (0 = no hay) */
+    double t;                           /* mon_now_ms of the previous sample (0 = none) */
     CpuT cpu[MAX_CPU + 1];
     int ncpu;
     struct { char name[32]; unsigned long long rx, tx; } ifs[MAX_IF];
@@ -145,11 +145,11 @@ static struct {
     int ndisk;
 } prev;
 
-/* Discos: modelo y tamaño (se leen una vez por arranque del hilo). */
+/* Disks: model and size (read once per thread start). */
 static struct { char name[32], model[96]; unsigned long long size; } dinfo[MAX_DISK];
 static int ndinfo;
 
-/* Sensores: rutas encontradas al arrancar. */
+/* Sensors: paths found at startup. */
 static char temp_path[8][PATH_MAX], fan_path[8][PATH_MAX];
 static int ntemp, nfan;
 
@@ -167,7 +167,7 @@ static void cpu_sample(Buf *b, double dt) {
         while (*p && *p != ' ') p++;
         for (int i = 0; i < 10; i++) v[i] = strtoull(p, &p, 10);
         unsigned long long idle = v[3] + v[4], total = 0;
-        for (int i = 0; i < 8; i++) total += v[i];              /* guest ya está en user */
+        for (int i = 0; i < 8; i++) total += v[i];              /* guest is already included in user */
         now[n].total = total;
         now[n].busy = total - idle;
         n++;
@@ -227,7 +227,7 @@ static void load_sample(Buf *b) {
     mon_buf_printf(b, ",\"load\":[%.2f,%.2f,%.2f],\"tasks\":{\"running\":%d,\"total\":%d},\"uptime\":%.0f", l1, l5, l15, run, all, up);
 }
 
-/* ---- red ---------------------------------------------------------------------------------- */
+/* ---- network ------------------------------------------------------------------------------ */
 
 static double rate(unsigned long long now, unsigned long long before, double dt) {
     return prev.t > 0 && dt > 0 && now >= before ? (double)(now - before) * 1000.0 / dt : 0;
@@ -270,9 +270,9 @@ static void net_sample(Buf *b, double dt) {
     mon_buf_free(&ifs);
 }
 
-/* ---- discos ------------------------------------------------------------------------------- */
+/* ---- disks -------------------------------------------------------------------------------- */
 
-/* Disco entero (no partición, ni loop/ram/zram/device-mapper): está en /sys/block y tiene device/. */
+/* Whole disk (not a partition, nor loop/ram/zram/device-mapper): it's in /sys/block and has device/. */
 static int whole_disk(const char *name) {
     if (!strncmp(name, "loop", 4) || !strncmp(name, "ram", 3) || !strncmp(name, "zram", 4) || !strncmp(name, "dm-", 3)) return 0;
     char p[PATH_MAX];
@@ -317,8 +317,8 @@ static void disk_sample(Buf *b, double dt) {
             for (int i = 0; i < ndinfo; i++) if (!strcmp(dinfo[i].name, name)) known = 1;
             if (!known) continue;
             snprintf(cur[n].name, sizeof cur[n].name, "%.31s", name);
-            cur[n].rd = f[2] * 512;                 /* sectores leídos */
-            cur[n].wr = f[6] * 512;                 /* sectores escritos */
+            cur[n].rd = f[2] * 512;                 /* sectors read */
+            cur[n].wr = f[6] * 512;                 /* sectors written */
             n++;
         }
     }
@@ -345,11 +345,11 @@ static void disk_sample(Buf *b, double dt) {
     mon_buf_free(&list);
 }
 
-/* ---- sensores ----------------------------------------------------------------------------- */
+/* ---- sensors ------------------------------------------------------------------------------ */
 
 static int cpu_chip(const char *name) {
     static const char *const chips[] = { "coretemp", "k10temp", "zenpower", "cpu_thermal", "soc_thermal", "acpitz" };
-    for (int i = 0; i < 6; i++) if (!strcmp(name, chips[i])) return 6 - i;   /* más alto = mejor */
+    for (int i = 0; i < 6; i++) if (!strcmp(name, chips[i])) return 6 - i;   /* higher = better */
     return 0;
 }
 
@@ -384,7 +384,7 @@ static void sensors_scan(void) {
             if (!stat(p, &st)) snprintf(temp_path[ntemp++], PATH_MAX, "%s", p);
         }
     }
-    if (!ntemp) {                                   /* respaldo: zona térmica del paquete */
+    if (!ntemp) {                                   /* fallback: the package's thermal zone */
         for (int i = 0; i < 16; i++) {
             char p[PATH_MAX], type[64];
             snprintf(p, sizeof p, "/sys/class/thermal/thermal_zone%d/type", i);
@@ -400,7 +400,7 @@ static void sensors_scan(void) {
 static void sensors_sample(Buf *b) {
     double temp = -1;
     long fan = -1;
-    for (int i = 0; i < ntemp; i++) {         /* la más alta del chip de la CPU (paquete o núcleo) */
+    for (int i = 0; i < ntemp; i++) {         /* the highest from the CPU chip (package or core) */
         char t[32];
         if (mon_read_small(temp_path[i], t, sizeof t) > 0) { double v = strtol(t, NULL, 10) / 1000.0; if (v > temp && v < 150) temp = v; }
     }
@@ -412,7 +412,7 @@ static void sensors_sample(Buf *b) {
     if (fan >= 0) mon_buf_printf(b, ",\"fan\":%ld", fan); else mon_buf_printf(b, ",\"fan\":null");
 }
 
-/* ---- procesos ----------------------------------------------------------------------------- */
+/* ---- processes ---------------------------------------------------------------------------- */
 
 typedef struct { int pid; unsigned long long start, ticks; } ProcPrev;
 static ProcPrev *pprev, *pcur;
@@ -457,7 +457,7 @@ static void procs_scan(Buf *b) {
         if (!lp || !rp || rp < lp || rp[1] != ' ') continue;
         char comm[64];
         snprintf(comm, sizeof comm, "%.*s", (int)(rp - lp - 1 < 63 ? rp - lp - 1 : 63), lp + 1);
-        /* campos desde el 3 (estado) */
+        /* fields from 3 (state) onward */
         char *f = rp + 2, state = *f;
         unsigned long long v[24] = { 0 };
         char *q = f + 1;
@@ -508,7 +508,7 @@ static void procs_scan(Buf *b) {
     mon_buf_printf(b, "],\"total\":%d,\"hz\":%ld}", n, hz);
 }
 
-/* ---- hilo -------------------------------------------------------------------------------- */
+/* ---- thread ------------------------------------------------------------------------------ */
 
 static void publish(char **slot, uint64_t *seq, Buf *b) {
     if (b->bad || !b->p) { mon_buf_free(b); return; }
@@ -534,7 +534,7 @@ static void *worker(void *arg) {
         }
         int wp = M.want_procs, wc = M.want_conns, wg = M.want_geo;
         pthread_mutex_unlock(&M.mu);
-        if (slept || !tick) {                       /* (re)arranque: nada de tasas viejas */
+        if (slept || !tick) {                       /* (re)start: no stale rates */
             memset(&prev, 0, sizeof prev);
             npprev = 0;
             pprev_t = 0;
@@ -567,7 +567,7 @@ static void *worker(void *arg) {
             publish(&M.conns, &M.cseq, &c);
         }
         tick++;
-        /* la base de países (~4 MB en memoria) se suelta si nadie mira las conexiones */
+        /* the country database (~4 MB in memory) is released if nobody is looking at connections */
         if ((!wc || !wg) && geo_open) { mmdb_close(&geo); geo_open = 0; geo_tried = 0; }
         double wait = TICK_MS - (mon_now_ms() - t0);
         if (wait > 0) {
@@ -640,9 +640,9 @@ char *mon_sample_json(uint64_t *seq) { return take(M.sample, M.sseq, seq); }
 char *mon_procs_json(uint64_t *seq) { return take(M.procs, M.pseq, seq); }
 char *mon_conns_json(uint64_t *seq) { return take(M.conns, M.cseq, seq); }
 
-/* ---- datos fijos ---------------------------------------------------------------------- */
+/* ---- fixed data ----------------------------------------------------------------------- */
 
-/* "+DDMM" / "+DDDMM" / con segundos → grados */
+/* "+DDMM" / "+DDDMM" / with seconds → degrees */
 static double coord(const char *s, int deg_digits, int len) {
     if (len < 1 + deg_digits + 2) return 0;
     double sign = s[0] == '-' ? -1 : 1, v = 0;
@@ -655,7 +655,7 @@ static double coord(const char *s, int deg_digits, int len) {
     return sign * v;
 }
 
-/* Ubicación aproximada de este equipo: la de su zona horaria (zone1970.tab de tzdata). Sin red. */
+/* Approximate location of this machine: that of its time zone (tzdata's zone1970.tab). No network. */
 static void home_json(Buf *b) {
     char zone[256] = "", link[PATH_MAX];
     const char *tz = getenv("TZ");

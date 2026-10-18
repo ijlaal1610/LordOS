@@ -1,8 +1,8 @@
-/* js_net.c — lord.net: estado de la red para la app de Red y VPN (ver docs/RED.md).
+/* js_net.c — lord.net: network state for the Network and VPN app (see docs/NETWORK.md).
  *
- * Todo es de solo lectura y sin root (rtnetlink y archivos públicos de /etc/lordos/net). Lo que
- * cambia algo va por el ayudante privilegiado: admin.run('net-…') del SDK. Los cambios del
- * kernel (enlaces, direcciones, rutas) llegan a __lordNet(qué), con qué = link | addr | route. */
+ * Everything is read-only and without root (rtnetlink and public files in /etc/lordos/net). Anything
+ * that changes something goes through the privileged helper: the SDK's admin.run('net-…'). Kernel
+ * changes (links, addresses, routes) arrive at __lordNet(what), with what = link | addr | route. */
 #include "js_net.h"
 #include "../net/net.h"
 
@@ -43,7 +43,7 @@ static JSValue f_wifi_known(JSContext *c, JSValueConst t, int argc, JSValueConst
     return json_or_null(c, net_wifi_known_json(), "<net.wifiKnown>");
 }
 
-/* lord.net.config(interfaz): la configuración guardada por LordOS, o null. */
+/* lord.net.config(interface): the configuration saved by LordOS, or null. */
 static JSValue f_config(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     if (argc < 1) return JS_NULL;
@@ -54,11 +54,11 @@ static JSValue f_config(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
     return json_or_null(c, j, "<net.config>");
 }
 
-/* lord.net.prepareOvpn(ruta): el .ovpn (dentro de $HOME) con sus archivos incrustados, listo
- * para admin.run('net-vpn-import', 'openvpn\n<nombre>\n' + texto). Lanza un error si falta algo. */
+/* lord.net.prepareOvpn(path): the .ovpn (inside $HOME) with its files embedded, ready
+ * for admin.run('net-vpn-import', 'openvpn\n<name>\n' + text). Throws an error if something is missing. */
 static JSValue f_prepare_ovpn(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (argc < 1) return JS_ThrowTypeError(c, "falta la ruta");
+    if (argc < 1) return JS_ThrowTypeError(c, "missing path");
     const char *p = JS_ToCString(c, argv[0]);
     if (!p) return JS_EXCEPTION;
     char real[PATH_MAX], home[PATH_MAX];
@@ -67,7 +67,7 @@ static JSValue f_prepare_ovpn(JSContext *c, JSValueConst t, int argc, JSValueCon
     size_t hl = ok ? strlen(home) : 0;
     ok = ok && !strncmp(real, home, hl) && real[hl] == '/';
     JS_FreeCString(c, p);
-    if (!ok) return JS_ThrowTypeError(c, "el archivo tiene que estar en la carpeta personal");
+    if (!ok) return JS_ThrowTypeError(c, "the file must be in the home folder");
     char err[256] = "";
     char *txt = net_ovpn_inline(real, err, sizeof err);
     if (!txt) return JS_ThrowTypeError(c, "%s", err);
@@ -76,8 +76,8 @@ static JSValue f_prepare_ovpn(JSContext *c, JSValueConst t, int argc, JSValueCon
     return v;
 }
 
-/* lord.net.vpnTypes(): [{type, available, optional, package, insecure}] — los opcionales se
- * activan con admin.run('net-vpn-enable', 'openconnect'|'fortinet'). */
+/* lord.net.vpnTypes(): [{type, available, optional, package, insecure}] — the optional ones are
+ * enabled with admin.run('net-vpn-enable', 'openconnect'|'fortinet'). */
 static JSValue f_vpn_types(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc; (void)argv;
     return json_or_null(c, net_vpn_types_json(), "<net.vpnTypes>");

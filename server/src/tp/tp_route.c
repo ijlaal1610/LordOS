@@ -1,15 +1,15 @@
-/* tp_route.c — a dónde va cada cosa que produce el touchpad:
+/* tp_route.c — where each thing the touchpad produces goes:
  *
- * - movimiento y botones: al puntero de siempre (main.c), así pasan por dispatch_pointer como un
- *   mouse (arrastres, menús, apps Wayland);
- * - scroll, pellizco y deslizar: a la app Wayland que tiene el puntero al empezar el gesto
- *   (zwp_pointer_gestures, axis finger) o, si no hay, al nodo de la interfaz debajo del puntero
- *   (__lordGesture → onWheel / onPinch / onSwipe del SDK). El destino queda fijo hasta que
- *   termina el gesto, como en macOS;
- * - deslizar con 3 dedos (o 4, según los ajustes) es del escritorio: va siempre a JS, que decide
- *   la acción del tema;
- * - la inercia del scroll es solo para la interfaz (las apps Wayland hacen la suya);
- * - toques de la pantalla táctil: a la app Wayland debajo (wl_touch) o puntero emulado. */
+ * - motion and buttons: to the usual pointer (main.c), so they go through dispatch_pointer like a
+ *   mouse (drags, menus, Wayland apps);
+ * - scroll, pinch and swipe: to the Wayland app that has the pointer when the gesture starts
+ *   (zwp_pointer_gestures, axis finger) or, if there is none, to the UI node under the pointer
+ *   (__lordGesture → the SDK's onWheel / onPinch / onSwipe). The target stays fixed until the
+ *   gesture ends, as on macOS;
+ * - 3-finger swipe (or 4, depending on the settings) belongs to the desktop: it always goes to JS, which decides
+ *   the theme's action;
+ * - scroll inertia is only for the UI (Wayland apps do their own);
+ * - touchscreen touches: to the Wayland app underneath (wl_touch) or an emulated pointer. */
 #include "tp_route.h"
 #include "tp.h"
 #include "../wl/wl_input.h"
@@ -44,7 +44,7 @@ static int node_at(double x, double y) {
     return n ? n->id : 0;
 }
 
-/* destino fijo de cada gesto: 1 = app Wayland, 0 = interfaz (con su nodo) */
+/* fixed target of each gesture: 1 = Wayland app, 0 = UI (with its node) */
 typedef struct { int active, wayland, node; } Latch;
 static Latch l_scroll, l_pinch, l_swipe;
 
@@ -59,7 +59,7 @@ void tp_route_scroll(int phase, double dx, double dy, int source) {
     int w, h;
     where(&x, &y, &w, &h);
     if (phase == TP_MOMENTUM || phase == TP_MOMENTUM_END) {
-        if (l_scroll.wayland) return;                   /* la app ya tuvo axis_stop: hace su inercia */
+        if (l_scroll.wayland) return;                   /* the app already got axis_stop: it does its own inertia */
         js_gesture("scroll", phase_name(phase), l_scroll.node, (float)x, (float)y, dx, dy, source, 0);
         return;
     }
@@ -87,7 +87,7 @@ void tp_route_pinch(int phase, int fingers, double dx, double dy, double scale, 
 static int system_swipe(int fingers) {
     const TpConfig *c = tp_config();
     if (fingers == 3) return c->swipe3 && !c->three_drag;
-    if (fingers == 4) return c->swipe4 || (c->three_drag && c->swipe3);   /* con arrastre de 3 dedos, pasa a 4 */
+    if (fingers == 4) return c->swipe4 || (c->three_drag && c->swipe3);   /* with three-finger drag, it moves to 4 */
     return 0;
 }
 
@@ -103,7 +103,7 @@ static void route_swipe(int phase, int fingers, double dx, double dy) {
     if (phase == TP_END || phase == TP_CANCEL) l_swipe.active = 0;
 }
 
-/* ---- ruedas del mouse de alta resolución y horizontal ---- */
+/* ---- high-resolution and horizontal mouse wheels ---- */
 
 static int acc_v, acc_h;
 void tp_route_wheel120(int v120, int h120) { acc_v += v120; acc_h += h120; }
@@ -116,12 +116,12 @@ void tp_route_wheel_flush(void) {
     int w, hh;
     where(&x, &y, &w, &hh);
     if (wl_input_has_focus()) { wl_input_wheel120(v, h); return; }
-    /* un evento suelto: el destino es el nodo de ahora (sin fase, como una rueda) */
+    /* a lone event: the target is the current node (no phase, like a wheel) */
     l_scroll.active = 0;
     js_gesture("scroll", "update", node_at(x, y), (float)x, (float)y, h * 48.0 / 120, -v * 48.0 / 120, TPR_WHEEL, 0);
 }
 
-/* ---- el sumidero del driver ---- */
+/* ---- the driver's sink ---- */
 
 static void s_motion(void *ud, double dx, double dy, double rx, double ry) { (void)ud; if (host.move) host.move(dx, dy, rx, ry); }
 static void s_button(void *ud, int b, int down) { (void)ud; if (host.button) host.button(b, down); }

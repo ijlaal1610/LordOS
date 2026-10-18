@@ -1,14 +1,14 @@
-/* js_sound.c — lord.sound: salidas, entradas y volumen por app (cliente de PipeWire en
- * sound/snd.c). No lanza nada ni toca archivos: solo le habla al servidor de sonido del usuario.
- * Cada orden valida su tipo e índice; los cambios llegan después como evento "state" a
- * __lordSound (ver docs/SONIDO.md). */
+/* js_sound.c — lord.sound: outputs, inputs and per-app volume (PipeWire client in
+ * sound/snd.c). It launches nothing and touches no files: it only talks to the user's sound server.
+ * Each command validates its type and index; changes arrive later as a "state" event to
+ * __lordSound (see docs/SOUND.md). */
 #include "js_sound.h"
 #include "../sound/snd.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-/* "sink" | "source" | "input" | "output" → SND_* (-1 si no) */
+/* "sink" | "source" | "input" | "output" → SND_* (-1 otherwise) */
 static int arg_kind(JSContext *c, JSValueConst v) {
     const char *s = JS_ToCString(c, v);
     int k = -1;
@@ -29,7 +29,7 @@ static int arg_index(JSContext *c, JSValueConst v, uint32_t *out) {
     return 0;
 }
 
-/* Cadena corta sin caracteres de control (nombres de dispositivos y puertos). */
+/* Short string without control characters (device and port names). */
 static const char *arg_name(JSContext *c, JSValueConst v) {
     const char *s = JS_ToCString(c, v);
     if (!s) return NULL;
@@ -49,7 +49,7 @@ static JSValue f_state(JSContext *c, JSValueConst this_val, int argc, JSValueCon
     return v;
 }
 
-/* setVolume(kind, index, nivel | [por canal]): 1 = 100 %, hasta 1.5. */
+/* setVolume(kind, index, level | [per channel]): 1 = 100 %, up to 1.5. */
 static JSValue f_set_volume(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     uint32_t idx;
@@ -108,7 +108,7 @@ static JSValue f_set_port(JSContext *c, JSValueConst this_val, int argc, JSValue
     return JS_NewBool(c, ok);
 }
 
-/* move("input", app, salida) o move("output", app, entrada) */
+/* move("input", app, output) or move("output", app, input) */
 static JSValue f_move(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     uint32_t idx, dev;
@@ -117,7 +117,7 @@ static JSValue f_move(JSContext *c, JSValueConst this_val, int argc, JSValueCons
     return JS_NewBool(c, snd_move(kind, idx, dev) == 0);
 }
 
-/* meter(índice de entrada) prende el medidor (eventos "peak"); meter(-1) o meter() lo apaga. */
+/* meter(input index) turns the meter on ("peak" events); meter(-1) or meter() turns it off. */
 static JSValue f_meter(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     uint32_t idx = 0xffffffffu;

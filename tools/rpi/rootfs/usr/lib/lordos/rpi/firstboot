@@ -1,19 +1,19 @@
 #!/bin/sh
-# firstboot — LordOS en Raspberry Pi, antes de lord-sessiond (lordos-rpi-firstboot.service).
-# Ver docs/RASPBERRY.md, "Primer arranque".
+# firstboot — LordOS on Raspberry Pi, before lord-sessiond (lordos-rpi-firstboot.service).
+# See docs/RASPBERRY.md, "First boot".
 #
-# 1. Primer arranque: agranda la partición del sistema (la 2) hasta el final de la tarjeta o el NVMe.
-# 2. Primer arranque: el usuario.
-#    a) Si en la partición de arranque (/boot/firmware) hay un lordos-user.txt (o el userconf.txt
-#       de Raspberry Pi Imager / Raspberry Pi OS: «usuario:hash»), se crea ese usuario con las mismas
-#       reglas que el paso «Usuario» del instalador (docs/ISO.md, install.c) y se borra el archivo.
-#       Entra por la pantalla de ingreso (AUTOLOGIN= vacío), como un sistema instalado.
-#    b) Si no, modo de configuración: entra solo con el usuario `lordos` (sin contraseña, sudo sin
-#       contraseña, igual que el ISO live) y hay que crear la cuenta propia en Ajustes → Usuarios
-#       (como administrador). Mientras dure, el escritorio remoto tiene que seguir apagado.
-# 3. En cada arranque en modo de configuración: si ya hay una cuenta de persona administradora
-#    además de `lordos`, se borra `lordos` (y su sudo sin contraseña) y se pasa a la pantalla de
-#    ingreso.
+# 1. First boot: grows the system partition (number 2) to the end of the SD card or NVMe.
+# 2. First boot: the user.
+#    a) If the boot partition (/boot/firmware) has a lordos-user.txt (or the userconf.txt
+#       from Raspberry Pi Imager / Raspberry Pi OS: «user:hash»), that user is created with the same
+#       rules as the installer's «User» step (docs/ISO.md, install.c) and the file is deleted.
+#       Login goes through the login screen (empty AUTOLOGIN=), like an installed system.
+#    b) Otherwise, setup mode: logs in automatically as the `lordos` user (no password, passwordless
+#       sudo, same as the live ISO) and the person's own account must be created in Settings → Users
+#       (as administrator). While it lasts, remote desktop must stay off.
+# 3. On every boot in setup mode: if there is already a person administrator account
+#    besides `lordos`, `lordos` (and its passwordless sudo) is removed and the system switches to the
+#    login screen.
 set -u
 STATE=/var/lib/lordos/rpi
 BOOT=/boot/firmware
@@ -23,27 +23,27 @@ log() { echo "lordos-rpi: $*"; }
 
 mkdir -p "$STATE"
 
-# ---- 1. agrandar la partición del sistema ----
+# ---- 1. grow the system partition ----
 if [ -e "$STATE/resize-pending" ]; then
     ROOTDEV=$(findmnt -n -o SOURCE /)
     DISK=/dev/$(lsblk -n -o PKNAME "$ROOTDEV" | head -1)
     PART=$(cat "/sys/class/block/$(basename "$ROOTDEV")/partition" 2>/dev/null || echo 2)
     if [ -b "$DISK" ] && [ "$PART" = 2 ]; then
-        log "agrandando $ROOTDEV hasta el final de $DISK"
-        echo ", +" | sfdisk --force --no-reread --no-tell-kernel -N 2 "$DISK" >/dev/null 2>&1 || log "sfdisk falló"
+        log "growing $ROOTDEV to the end of $DISK"
+        echo ", +" | sfdisk --force --no-reread --no-tell-kernel -N 2 "$DISK" >/dev/null 2>&1 || log "sfdisk failed"
         partx -u -n 2 "$DISK" 2>/dev/null || true
-        resize2fs "$ROOTDEV" >/dev/null 2>&1 || log "resize2fs falló (se reintenta en el próximo arranque)"
-        # recién cuando el sistema de archivos ocupa la partición
+        resize2fs "$ROOTDEV" >/dev/null 2>&1 || log "resize2fs failed (retrying on next boot)"
+        # only once the file system fills the partition
         PSIZE=$(blockdev --getsize64 "$ROOTDEV" 2>/dev/null || echo 0)
         FSIZE=$(df -B1 --output=size / | tail -1 | tr -d ' ')
         [ "$PSIZE" -gt 0 ] && [ $((FSIZE * 100 / PSIZE)) -ge 90 ] && rm -f "$STATE/resize-pending"
     else
-        log "no se reconoce la partición del sistema ($ROOTDEV), no se agranda"
+        log "system partition not recognized ($ROOTDEV), not growing it"
         rm -f "$STATE/resize-pending"
     fi
 fi
 
-# ---- validación (las mismas reglas que install.c) ----
+# ---- validation (same rules as install.c) ----
 valid_user() {
     echo "$1" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$' || return 1
     case "$1" in root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|nobody|lordos|lordos-greeter|systemd-*|messagebus|polkitd|sshd) return 1 ;; esac
@@ -56,14 +56,14 @@ valid_layout() { echo "$1" | grep -Eq '^[a-z]{2,10}$' && [ -f "/usr/share/X11/xk
 valid_variant() { echo "$1" | grep -Eq '^[A-Za-z0-9_-]{0,32}$'; }
 kv() { sed -n "s/^$1=//p" "$2" | head -1 | tr -d '\r'; }
 
-person_admins() {     # cuentas de personas (uid 1000–59999) en el grupo sudo, sin el de configuración
+person_admins() {     # person accounts (uid 1000–59999) in the sudo group, excluding the setup one
     getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 { print $1 }' | while read -r u; do
         [ "$u" = "$SETUP_USER" ] && continue
         id -nG "$u" 2>/dev/null | tr ' ' '\n' | grep -qx sudo && echo "$u"
     done
 }
 
-set_conf() {          # AUTOLOGIN=<valor> en session.conf, sin tocar otras líneas
+set_conf() {          # AUTOLOGIN=<value> in session.conf, without touching other lines
     mkdir -p /etc/lordos
     if [ -f "$CONF" ] && grep -q '^AUTOLOGIN=' "$CONF"; then sed -i "s/^AUTOLOGIN=.*/AUTOLOGIN=$1/" "$CONF"
     else echo "AUTOLOGIN=$1" >> "$CONF"; fi
@@ -71,13 +71,13 @@ set_conf() {          # AUTOLOGIN=<valor> en session.conf, sin tocar otras líne
 
 drop_setup_user() {
     getent passwd "$SETUP_USER" >/dev/null || return 0
-    log "se quita el usuario de configuración $SETUP_USER"
+    log "removing the setup user $SETUP_USER"
     pkill -KILL -u "$SETUP_USER" 2>/dev/null || true
     rm -f /etc/sudoers.d/lordos-setup "/var/lib/systemd/linger/$SETUP_USER"
     userdel -r "$SETUP_USER" 2>/dev/null || userdel "$SETUP_USER" 2>/dev/null || true
 }
 
-user_dirs() {         # carpetas del usuario según el idioma, como user-add de Ajustes
+user_dirs() {         # user folders by language, like Settings' user-add
     case "$2" in
         en) set -- "$1" Desktop Documents Downloads Music Pictures Videos ;;
         pt) set -- "$1" "Área de trabalho" Documentos Downloads Música Imagens Vídeos ;;
@@ -88,7 +88,7 @@ user_dirs() {         # carpetas del usuario según el idioma, como user-add de 
     for d in "$@"; do install -d -o "$u" -g "$u" "$h/$d"; done
 }
 
-# ---- 2. primer arranque: el usuario ----
+# ---- 2. first boot: the user ----
 if [ -e "$STATE/firstboot-pending" ]; then
     F=""
     [ -f "$BOOT/lordos-user.txt" ] && F="$BOOT/lordos-user.txt"
@@ -107,16 +107,16 @@ if [ -e "$STATE/firstboot-pending" ]; then
     fi
     OK=0
     if [ -n "$F" ]; then
-        if ! valid_user "$U"; then log "$F: usuario no válido o ya existe ($U)"
-        elif [ -n "$HASH" ] && ! valid_hash "$HASH"; then log "$F: password_hash no es un hash de crypt(3) (\$y\$, \$6\$…)"
-        elif [ -z "$HASH" ] && [ -z "$PASS" ]; then log "$F: falta la contraseña"
+        if ! valid_user "$U"; then log "$F: invalid user or already exists ($U)"
+        elif [ -n "$HASH" ] && ! valid_hash "$HASH"; then log "$F: password_hash is not a crypt(3) hash (\$y\$, \$6\$…)"
+        elif [ -z "$HASH" ] && [ -z "$PASS" ]; then log "$F: missing password"
         else OK=1; fi
     fi
     if [ "$OK" = 1 ]; then
-        log "creando el usuario $U (desde $(basename "$F"))"
+        log "creating user $U (from $(basename "$F"))"
         useradd --create-home --shell /bin/bash --user-group --comment "${FULL:-$U}" -G sudo,audio,video,input,render "$U"
         if [ -n "$HASH" ]; then usermod -p "$HASH" "$U"
-        else printf '%s:%s\n' "$U" "$PASS" | chpasswd; fi       # chpasswd: yescrypt, como Debian
+        else printf '%s:%s\n' "$U" "$PASS" | chpasswd; fi       # chpasswd: yescrypt, like Debian
         : > "/var/lib/systemd/linger/$U"
         user_dirs "$U" "$LANG_UI"
         case "$LANG_UI" in en) LOC=en_US.UTF-8 ;; pt) LOC=pt_BR.UTF-8 ;; *) LOC=es_ES.UTF-8 ;; esac
@@ -140,11 +140,11 @@ if [ -e "$STATE/firstboot-pending" ]; then
         set_conf ""
         rm -f "$STATE/setup-mode"
     else
-        log "sin lordos-user.txt ni userconf.txt válido: modo de configuración (entra $SETUP_USER; crear la cuenta en Ajustes → Usuarios)"
+        log "no valid lordos-user.txt or userconf.txt: setup mode (logs in as $SETUP_USER; create the account in Settings → Users)"
         set_conf "$SETUP_USER"
         : > "$STATE/setup-mode"
     fi
-    # la contraseña no queda en la partición FAT (que lee cualquiera que tenga la tarjeta)
+    # the password does not stay on the FAT partition (readable by anyone holding the card)
     if [ -n "$F" ]; then
         dd if=/dev/zero of="$F" bs=1 count="$(stat -c %s "$F")" conv=notrunc 2>/dev/null || true
         rm -f "$F"
@@ -153,13 +153,13 @@ if [ -e "$STATE/firstboot-pending" ]; then
     sync
 fi
 
-# ---- 3. salir del modo de configuración ----
+# ---- 3. leave setup mode ----
 if [ -e "$STATE/setup-mode" ]; then
     A=$(person_admins | head -1)
     if [ -n "$A" ]; then
-        log "ya existe el administrador $A: fin del modo de configuración"
+        log "administrator $A already exists: end of setup mode"
         drop_setup_user
-        # si en Ajustes → Usuarios se eligió entrar solo con otra cuenta, se respeta
+        # if Settings → Users chose automatic login with another account, keep it
         grep -q "^AUTOLOGIN=$SETUP_USER\$" "$CONF" 2>/dev/null && set_conf ""
         rm -f "$STATE/setup-mode"
     fi

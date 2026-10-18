@@ -1,10 +1,10 @@
-/* proto.h — protocolo entre lord-server y su ayudante lord-media (ver docs/MEDIOS.md).
+/* proto.h — protocol between lord-server and its helper lord-media (see docs/MEDIA.md).
  *
- * Un socket SOCK_SEQPACKET por ayudante: cada paquete es un MediaMsg más una carga opcional
- * (texto "clave=valor" por línea o JSON corto) y hasta MP_MAX_FDS descriptores (SCM_RIGHTS).
- * lord-media nunca abre rutas: todo archivo, dispositivo o socket le llega ya abierto por acá.
- * Los cuadros de video viajan por memoria compartida (memfd sellado contra achicarse), no por
- * el socket. */
+ * One SOCK_SEQPACKET socket per helper: each packet is a MediaMsg plus an optional payload
+ * ("key=value" text per line or short JSON) and up to MP_MAX_FDS descriptors (SCM_RIGHTS).
+ * lord-media never opens paths: every file, device or socket reaches it already open through here.
+ * Video frames travel over shared memory (memfd sealed against shrinking), not over
+ * the socket. */
 #ifndef LORD_MEDIA_PROTO_H
 #define LORD_MEDIA_PROTO_H
 
@@ -13,84 +13,84 @@
 
 #define MP_MAX_FDS     4
 #define MP_PAYLOAD_MAX 60000
-#define MP_RING_SLOTS  3              /* triple búfer de cuadros */
-#define MP_MAX_DIM     8192           /* lado máximo de un cuadro o una imagen */
+#define MP_RING_SLOTS  3              /* triple frame buffer */
+#define MP_MAX_DIM     8192           /* maximum side of a frame or an image */
 
 typedef struct {
     uint32_t type;                    /* MM_* */
-    uint32_t id;                      /* trabajo, cuadro (gen << 8 | ranura) o pista */
-    int64_t  v[6];                    /* argumentos numéricos */
-    uint32_t len;                     /* bytes de carga que siguen */
+    uint32_t id;                      /* job, frame (gen << 8 | slot) or track */
+    int64_t  v[6];                    /* numeric arguments */
+    uint32_t len;                     /* payload bytes that follow */
     uint32_t pad;
 } MediaMsg;
 
-/* Tipos de ayudante (primer mensaje, MM_JOB con v[0] = MK_*). */
+/* Helper types (first message, MM_JOB with v[0] = MK_*). */
 enum {
-    MK_PLAY = 1,        /* reproductor: fds = archivo, anillo de audio (aring.h, o -1), render node (o -1) */
-    MK_WORKER,          /* trabajos sueltos en cola (MW_*), uno por mensaje MM_JOB */
-    MK_SCREENREC,       /* grabación de pantalla: fds = salida mp4, anillo del micrófono (o -1), render node */
-    MK_CAMERA,          /* cámara V4L2: fds = /dev/videoN, render node */
-    MK_AUDIOREC,        /* grabadora: fds = salida wav, anillo del micrófono */
+    MK_PLAY = 1,        /* player: fds = file, audio ring (aring.h, or -1), render node (or -1) */
+    MK_WORKER,          /* standalone queued jobs (MW_*), one per MM_JOB message */
+    MK_SCREENREC,       /* screen recording: fds = mp4 output, microphone ring (or -1), render node */
+    MK_CAMERA,          /* V4L2 camera: fds = /dev/videoN, render node */
+    MK_AUDIOREC,        /* audio recorder: fds = wav output, microphone ring */
 };
 
-/* Trabajos del ayudante MK_WORKER (MM_JOB con v[0] = MW_*). */
+/* Jobs of the MK_WORKER helper (MM_JOB with v[0] = MW_*). */
 enum {
-    MW_PROBE = 1,       /* fds = archivo → JSON: duración, pistas, etiquetas */
-    MW_THUMB,           /* fds = archivo, salida png; v[1] = lado máximo */
-    MW_IMAGE,           /* fds = archivo → memfd BGRA premultiplicado (v: ancho, alto) */
-    MW_EDIT,            /* fds = archivo, salida; params: recorte, giro, brillo, contraste, formato */
-    MW_ENCODE,          /* fds = memfd BGRA, salida; v[1] = ancho, v[2] = alto; params: formato */
-    MW_TRANSCODE,       /* fds = archivo, salida; params: formato (opus|mp3|wav), desde, hasta */
-    MW_WAVEFORM,        /* fds = archivo; v[1] = cantidad de barras → JSON con picos 0..1000 */
-    MW_SELFTEST,        /* prueba la caja de arena (abrir, red, procesos): todo tiene que fallar */
+    MW_PROBE = 1,       /* fds = file → JSON: duration, tracks, tags */
+    MW_THUMB,           /* fds = file, png output; v[1] = maximum side */
+    MW_IMAGE,           /* fds = file → premultiplied BGRA memfd (v: width, height) */
+    MW_EDIT,            /* fds = file, output; params: crop, rotation, brightness, contrast, format */
+    MW_ENCODE,          /* fds = BGRA memfd, output; v[1] = width, v[2] = height; params: format */
+    MW_TRANSCODE,       /* fds = file, output; params: format (opus|mp3|wav), from, to */
+    MW_WAVEFORM,        /* fds = file; v[1] = number of bars → JSON with peaks 0..1000 */
+    MW_SELFTEST,        /* tests the sandbox (open, network, processes): everything has to fail */
 };
 
 enum {
     /* lord-server → lord-media */
-    MM_JOB = 1,         /* v[0] = MK_* o MW_*; carga = parámetros clave=valor */
-    MM_SIZE,            /* v[0], v[1]: tamaño de la caja donde se muestra (px) */
+    MM_JOB = 1,         /* v[0] = MK_* or MW_*; payload = key=value parameters */
+    MM_SIZE,            /* v[0], v[1]: size of the box where it's shown (px) */
     MM_PLAY,
     MM_PAUSE,
     MM_SEEK,            /* v[0] = ms */
     MM_VOLUME,          /* v[0] = 0..150 (%) */
-    MM_TRACK,           /* v[0] = 'a' audio | 's' subtítulos, v[1] = índice de la pista (-1 ninguna) */
-    MM_STOP,            /* terminar (grabaciones: cerrar el archivo bien) */
-    MM_ACK,             /* id = cuadro que pasó a mostrarse: las otras ranuras quedan libres */
-    MM_INRING,          /* fd = memfd de cuadros de entrada; v: ranuras, ancho, alto */
-    MM_INFRAME,         /* id = ranura con un cuadro nuevo; v[0] = ms desde el inicio */
-    MM_PHOTO,           /* cámara: fd = salida jpeg; v[0] = espejado */
-    MM_RECORD,          /* cámara: fds = salida mp4, anillo del micrófono (o sin fd); sin fds: terminar */
-    MM_LOOP,            /* v[0] = 1: volver a empezar al terminar */
+    MM_TRACK,           /* v[0] = 'a' audio | 's' subtitles, v[1] = track index (-1 none) */
+    MM_STOP,            /* finish (recordings: close the file properly) */
+    MM_ACK,             /* id = frame that became shown: the other slots are free */
+    MM_INRING,          /* fd = memfd of input frames; v: slots, width, height */
+    MM_INFRAME,         /* id = slot with a new frame; v[0] = ms since the start */
+    MM_PHOTO,           /* camera: fd = jpeg output; v[0] = mirrored */
+    MM_RECORD,          /* camera: fds = mp4 output, microphone ring (or no fd); no fds: finish */
+    MM_LOOP,            /* v[0] = 1: start over when it ends */
 
     /* lord-media → lord-server */
-    MM_INFO = 64,       /* carga = JSON con la información del archivo */
-    MM_RING,            /* fd = memfd de cuadros; v[0] = gen, v[1] = ancho, v[2] = alto, v[3] = ranuras */
-    MM_FRAME,           /* id = gen << 8 | ranura; v[0] = pts ms */
-    MM_POS,             /* v[0] = posición ms, v[1] = duración ms, v[2] = reproduciendo */
+    MM_INFO = 64,       /* payload = JSON with the file's information */
+    MM_RING,            /* fd = frames memfd; v[0] = gen, v[1] = width, v[2] = height, v[3] = slots */
+    MM_FRAME,           /* id = gen << 8 | slot; v[0] = pts ms */
+    MM_POS,             /* v[0] = position ms, v[1] = duration ms, v[2] = playing */
     MM_STATE,           /* v[0] = MS_* */
-    MM_SUB,             /* v[0] = desde ms, v[1] = hasta ms; carga = texto */
-    MM_LEVEL,           /* v[0] = nivel 0..1000, v[1] = ms grabados */
-    MM_STATS,           /* v: decodificados, mostrados, descartados, por hardware, ms de decodificación (x100) */
-    MM_RESULT,          /* id = trabajo; v[0] = 0 bien / <0 error; carga = JSON o mensaje; fd opcional */
-    MM_SLOTFREE,        /* id = ranura de entrada ya procesada */
-    MM_ERROR,           /* carga = mensaje */
-    MM_AUDIO,           /* hay PCM nuevo en el anillo de audio (o un seek: discard_to/serial) */
+    MM_SUB,             /* v[0] = from ms, v[1] = to ms; payload = text */
+    MM_LEVEL,           /* v[0] = level 0..1000, v[1] = ms recorded */
+    MM_STATS,           /* v: decoded, shown, dropped, by hardware, decoding ms (x100) */
+    MM_RESULT,          /* id = job; v[0] = 0 ok / <0 error; payload = JSON or message; optional fd */
+    MM_SLOTFREE,        /* id = input slot already processed */
+    MM_ERROR,           /* payload = message */
+    MM_AUDIO,           /* there's new PCM in the audio ring (or a seek: discard_to/serial) */
 };
 
 enum { MS_LOADING = 0, MS_PLAYING, MS_PAUSED, MS_ENDED, MS_RECORDING, MS_DONE, MS_FAILED };
 
-/* Envía un mensaje (no bloquea: MSG_DONTWAIT). 0 bien, -1 error (EAGAIN incluido). */
+/* Sends a message (doesn't block: MSG_DONTWAIT). 0 on success, -1 error (EAGAIN included). */
 int mp_send(int sock, uint32_t type, uint32_t id, const int64_t v[6], const void *payload, size_t len,
             const int *fds, int nfds);
-/* Atajo sin carga ni descriptores. */
+/* Shortcut without payload or descriptors. */
 int mp_sendv(int sock, uint32_t type, uint32_t id, int64_t a, int64_t b, int64_t c, int64_t d);
-/* Recibe un mensaje. payload recibe la carga terminada en 0 (cap >= MP_PAYLOAD_MAX + 1).
- * fds: hasta MP_MAX_FDS (con O_CLOEXEC), -1 en los que no llegaron. Devuelve 1 si llegó un
- * mensaje válido, 0 si el otro lado cerró, -1 si no hay nada (EAGAIN) o el mensaje es inválido
- * (en ese caso ya cerró los descriptores que hubieran llegado). block: espera. */
+/* Receives a message. payload receives the NUL-terminated payload (cap >= MP_PAYLOAD_MAX + 1).
+ * fds: up to MP_MAX_FDS (with O_CLOEXEC), -1 in the ones that didn't arrive. Returns 1 if a
+ * valid message arrived, 0 if the other side closed, -1 if there's nothing (EAGAIN) or the message is invalid
+ * (in that case it already closed any descriptors that arrived). block: waits. */
 int mp_recv(int sock, MediaMsg *m, char *payload, size_t cap, int fds[MP_MAX_FDS], int block);
 
-/* Parámetros "clave=valor\n": copia el valor de clave en out (0 si está). */
+/* "key=value\n" parameters: copies the value of key into out (0 if present). */
 int mp_param(const char *params, const char *key, char *out, size_t n);
 long long mp_param_int(const char *params, const char *key, long long def);
 double mp_param_num(const char *params, const char *key, double def);

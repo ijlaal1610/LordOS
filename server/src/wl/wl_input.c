@@ -1,13 +1,13 @@
-/* wl_input.c — lo que el touchpad y la pantalla táctil les dan a las apps Wayland:
+/* wl_input.c — what the touchpad and the touchscreen give Wayland apps:
  *
- * - zwp_pointer_gestures_v1 (v3): pellizco (zoom de Chromium, GTK, Firefox), deslizar y mantener
- *   (GTK frena su inercia al apoyar los dedos);
- * - scroll fino: axis con axis_source finger y axis_stop al levantar los dedos (la app hace su
- *   propia inercia), axis_relative_direction con el desplazamiento natural, y axis_value120 para
- *   la rueda (wl_seat 8+);
- * - wl_touch: los toques directos a la superficie que está debajo.
+ * - zwp_pointer_gestures_v1 (v3): pinch (Chromium, GTK, Firefox zoom), swipe and hold
+ *   (GTK stops its inertia when the fingers rest);
+ * - fine scrolling: axis with axis_source finger and axis_stop when the fingers lift (the app does its
+ *   own inertia), axis_relative_direction with natural scrolling, and axis_value120 for
+ *   the wheel (wl_seat 8+);
+ * - wl_touch: direct touches to the surface underneath.
  *
- * Los gestos van a la app que tenía el puntero cuando empezaron (aunque el puntero se salga). */
+ * Gestures go to the app that had the pointer when they started (even if the pointer leaves it). */
 #include "wl_input.h"
 #include "../tp/tp.h"
 
@@ -87,10 +87,10 @@ void wl_input_wheel(struct wl_resource *p, uint32_t t, int steps) {
 void wl_input_wheel120(int v120, int h120) {
     struct wl_resource *focus = ready ? wl__pointer_focus() : NULL;
     if (!focus) return;
-    static int rest[2];                 /* clientes viejos (v5–7): pasos enteros con axis_discrete */
+    static int rest[2];                 /* old clients (v5–7): whole steps with axis_discrete */
     uint32_t t = now_ms();
     struct wl_resource *p;
-    int vals[2] = { -v120, h120 };      /* axis: + = bajar / derecha */
+    int vals[2] = { -v120, h120 };      /* axis: + = down / right */
     int disc[2];
     for (int a = 0; a < 2; a++) { rest[a] += vals[a]; disc[a] = rest[a] / 120; rest[a] -= disc[a] * 120; }
     FOR_CLIENT(wl__pointers(), wl_resource_get_client(focus), p) {
@@ -110,9 +110,9 @@ void wl_input_wheel120(int v120, int h120) {
     }
 }
 
-/* ---- gestos ---- */
+/* ---- gestures ---- */
 
-static struct wl_client *g_client[3];      /* app que recibe el gesto en curso: deslizar, pellizco, mantener */
+static struct wl_client *g_client[3];      /* app receiving the gesture in progress: swipe, pinch, hold */
 static double g_last_rot;
 
 static struct wl_client *gesture_target(int kind, int phase) {
@@ -263,7 +263,7 @@ void wl_input_touch_frame(void) {
     nframe = 0;
 }
 
-/* ---- wl_seat: capacidades (tocar, si hay una pantalla táctil) ---- */
+/* ---- wl_seat: capabilities (touch, if there is a touchscreen) ---- */
 
 typedef struct { struct wl_listener l; struct wl_resource *seat; struct wl_list link; } SeatRef;
 
@@ -288,7 +288,7 @@ void wl_input_seat_caps(struct wl_resource *seat) {
     wl_list_insert(&seats, &s->link);
 }
 
-/* se prestó otro monitor con otra entrada: las apps ya abiertas se enteran si hay pantalla táctil */
+/* another monitor with another input was lent: already open apps learn whether there is a touchscreen */
 void wl_input_devices_changed(void) {
     if (!ready) return;
     SeatRef *s;

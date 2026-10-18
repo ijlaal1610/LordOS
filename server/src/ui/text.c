@@ -1,8 +1,8 @@
-/* text.c — fuentes TrueType/OpenType (stb_truetype + otf.c), caché de glifos, medición y
- * ajuste de línea. Las fuentes se mapean con mmap (no se copian a RAM).
+/* text.c — TrueType/OpenType fonts (stb_truetype + otf.c), glyph cache, measuring and
+ * line wrapping. Fonts are mapped with mmap (not copied to RAM).
  *
- * El texto que Inter cubre (latín, griego, cirílico) va por el camino rápido de acá; el resto
- * (árabe, hebreo, CJK, emoji, marcas combinantes…) por textlayout.c. */
+ * Text that Inter covers (Latin, Greek, Cyrillic) goes through the fast path here; the rest
+ * (Arabic, Hebrew, CJK, emoji, combining marks…) through textlayout.c. */
 #include "ui.h"
 
 #include <fcntl.h>
@@ -22,7 +22,7 @@ typedef struct {
     unsigned char *data;
     size_t size;
     int ascent, descent, gap, upem;
-    int color;                  /* solo bitmaps CBDT (stb_truetype no la abre) */
+    int color;                  /* CBDT bitmaps only (stb_truetype doesn't open it) */
     Otf otf;
     char path[512];
     int index;
@@ -31,13 +31,13 @@ typedef struct {
 static const char *const font_files[] = {
     "Inter-Regular.ttf", "Inter-Medium.ttf", "Inter-SemiBold.ttf", "Inter-Bold.ttf",
 };
-#define NFONTS 4            /* Inter: las fuentes de la interfaz */
+#define NFONTS 4            /* Inter: the interface fonts */
 #define MAX_FONTS 64
-#define GID_BIT 0x80000000u /* en la caché: cp = GID_BIT | (ancho máx << 16) | glifo */
+#define GID_BIT 0x80000000u /* in the cache: cp = GID_BIT | (max width << 16) | glyph */
 static Font fonts[MAX_FONTS];
 static int nfonts;
 static char font_dir[1024];
-static int mono_font[2] = { -2, -2 };   /* JetBrains Mono regular y bold: -2 sin cargar, -1 no está */
+static int mono_font[2] = { -2, -2 };   /* JetBrains Mono regular and bold: -2 not loaded, -1 absent */
 
 static Glyph *cache;
 static size_t cache_cap, cache_used;
@@ -68,7 +68,7 @@ static int load(Font *f, const char *path, int index) {
         stbtt_GetFontVMetrics(&f->info, &f->ascent, &f->descent, &f->gap);
         f->upem = be16(f->data, f->size, (size_t)f->info.head + 18);
     } else if (f->otf.cbdt) {
-        /* fuente solo de bitmaps a color: cmap y métricas con otf.c */
+        /* color-bitmap-only font: cmap and metrics with otf.c */
         f->color = 1;
         f->upem = 2048;
         f->ascent = 1900;
@@ -90,7 +90,7 @@ int text_init(const char *dir) {
         char path[1200];
         snprintf(path, sizeof path, "%s/%s", dir, font_files[i]);
         if (load(&fonts[i], path, 0)) {
-            fprintf(stderr, "text: no se pudo cargar %s\n", path);
+            fprintf(stderr, "text: could not load %s\n", path);
             return -1;
         }
     }
@@ -100,13 +100,13 @@ int text_init(const char *dir) {
     return cache ? 0 : -1;
 }
 
-/* Fuentes adicionales (la de la terminal, la de emoji...). Si ya estaba cargada devuelve
- * el mismo índice. -1 si no se pudo. */
+/* Additional fonts (the terminal's, the emoji one...). If it was already loaded it returns
+ * the same index. -1 if it couldn't. */
 int text_font_load(const char *path, int index) {
     for (int i = 0; i < nfonts; i++) if (fonts[i].data && fonts[i].index == index && !strcmp(fonts[i].path, path)) return i;
     if (nfonts >= MAX_FONTS) return -1;
     if (load(&fonts[nfonts], path, index)) {
-        fprintf(stderr, "text: no se pudo cargar %s\n", path);
+        fprintf(stderr, "text: could not load %s\n", path);
         return -1;
     }
     return nfonts++;
@@ -207,7 +207,7 @@ const Glyph *text_glyph(uint32_t cp, int font, float size) {
     return g;
 }
 
-/* Glifo por índice (resultado de text_font_shape). */
+/* Glyph by index (result of text_font_shape). */
 const Glyph *text_glyph_id(int font, uint32_t gid, float size) {
     int size_q = (int)(size * 2 + 0.5f);
     uint32_t key = GID_BIT | (gid & 0xffff);
@@ -225,7 +225,7 @@ const Glyph *text_glyph_id(int font, uint32_t gid, float size) {
     return g;
 }
 
-/* Reduce (o agranda) un bitmap ARGB premultiplicado promediando áreas. */
+/* Shrinks (or enlarges) a premultiplied ARGB bitmap by area averaging. */
 static uint32_t *resample(const uint32_t *src, int sw, int sh, int dw, int dh) {
     uint32_t *out = malloc((size_t)dw * dh * 4);
     if (!out) return NULL;
@@ -247,8 +247,8 @@ static uint32_t *resample(const uint32_t *src, int sw, int sh, int dw, int dh) {
     return out;
 }
 
-/* Glifo a color (CBDT) escalado para entrar en max_w × max_h píxeles. argb = NULL si la
- * fuente no tiene bitmap para ese glifo. */
+/* Color glyph (CBDT) scaled to fit in max_w × max_h pixels. argb = NULL if the
+ * font has no bitmap for that glyph. */
 const Glyph *text_glyph_color(int font, uint32_t gid, int max_w, int max_h) {
     if (max_w < 1) max_w = 1;
     if (max_h < 1) max_h = 1;
@@ -307,12 +307,12 @@ static float kern(int font, float size, uint32_t a, uint32_t b) {
 
 float text_line_height(float size, float lh) {
     if (lh <= 0) return roundf(size * 1.25f);
-    return lh <= 4 ? roundf(size * lh) : lh;   /* <= 4: multiplicador, como CSS sin unidad */
+    return lh <= 4 ? roundf(size * lh) : lh;   /* <= 4: multiplier, like unitless CSS */
 }
 
 typedef struct { const char *start, *end; float width; } Line;
 
-/* Divide en líneas por '\n' y por ancho máximo, cortando en espacios. */
+/* Splits into lines on '\n' and on maximum width, breaking at spaces. */
 static int wrap(const char *s, int font, float size, float max_w, int nowrap, Line *out, int max) {
     int n = 0;
     const char *ls = s;
@@ -348,9 +348,9 @@ static int wrap(const char *s, int font, float size, float max_w, int nowrap, Li
 #define MAX_LINES 256
 static Line lines[MAX_LINES];
 
-/* Las medidas se recuerdan: el layout se rehace entero con cualquier cambio (un mapa que se mueve,
- * una lista que se desplaza) y volver a medir cada texto con el kerning era lo más caro. Clave:
- * hash de 64 bits del texto y todos los parámetros; tabla de acceso directo. */
+/* Measurements are remembered: the layout is redone entirely on any change (a map that moves,
+ * a list that scrolls) and re-measuring every text with kerning was the most expensive part. Key:
+ * 64-bit hash of the text and all parameters; direct-access table. */
 #define TM_SETS 4096
 #define TM_WAYS 4
 static struct { uint64_t key; float w, h; } tm_cache[TM_SETS][TM_WAYS];
@@ -364,7 +364,7 @@ static uint64_t tm_key(const char *s, float weight, float size, float line_h, fl
     for (size_t i = 0; i < sizeof f; i++) { h ^= b[i]; h *= 1099511628211ull; }
     h ^= (uint64_t)(nowrap + 1);
     h *= 1099511628211ull;
-    return h | 1;                               /* 0 = lugar vacío */
+    return h | 1;                               /* 0 = empty slot */
 }
 
 static void text_measure_raw(const char *s, float weight, float size, float line_h, float max_w, int nowrap, float *w, float *h) {
@@ -389,11 +389,16 @@ void text_measure(const char *s, float weight, float size, float line_h, float m
     tm_cache[set][i].h = *h;
 }
 
+float text_paint_scale = 1;
+
 void text_draw(Canvas *c, const char *s, float weight, float size, float line_h,
                float x, float y, float box_w, int align, int nowrap, uint32_t argb) {
     int font = font_for(weight);
     if (text_needs_layout(s, font)) { text_layout_draw(c, s, font, size, line_h, x, y, box_w, align, nowrap, argb); return; }
-    int n = wrap(s, font, size, box_w, nowrap, lines, MAX_LINES);
+    /* scaled display: break lines with the logical metrics (what layout measured), draw at `size` */
+    float k = text_paint_scale > 0 ? text_paint_scale : 1;
+    int n = wrap(s, font, size / k, box_w / k, nowrap, lines, MAX_LINES);
+    if (k != 1) for (int i = 0; i < n; i++) lines[i].width *= k;
     float lh = text_line_height(size, line_h);
     Font *f = &fonts[font];
     float scale = stbtt_ScaleForMappingEmToPixels(&f->info, size);

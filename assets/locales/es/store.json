@@ -19,7 +19,7 @@
   "debian.noIndex": "Todavía no se bajó la lista de paquetes de Debian.",
   "debian.none": "No se encontró nada.",
   "debian.notFound": "No se encontró el paquete {name}.",
-  "debian.otherPackages": "OTROS PAQUETES",
+  "debian.otherPackages": "Otros paquetes",
   "debian.results": "Resultados para «{q}»",
   "debian.unavailable": "El motor de paquetes de Debian no está disponible en esta versión de lord-server.",
   "debian.update": "Buscar actualizaciones",
@@ -107,5 +107,14 @@
   "manage.noOriginal": "Instalada antes de la firma; no se guardó el original",
   "restore.done": "«{name}» restaurada al original.",
   "share.done": "Paquete firmado escrito en {path} (tu clave {key}…)",
-  "debian.noIndexTitle": "Falta el catálogo de Debian"
+  "debian.noIndexTitle": "Falta el catálogo de Debian",
+  "info.title": "Información",
+  "info.description": "Descripción",
+  "info.package": "Paquete",
+  "info.version": "Versión",
+  "info.installed": "Versión instalada",
+  "info.size": "Tamaño en disco",
+  "info.suite": "Distribución",
+  "info.homepage": "Sitio web",
+  "debian.noneHint": "Probá con otra palabra o con el nombre del paquete de Debian."
 }

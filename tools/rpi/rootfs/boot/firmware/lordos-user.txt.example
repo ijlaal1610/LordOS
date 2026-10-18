@@ -1,18 +1,18 @@
-# lordos-user.txt — el usuario del primer arranque de LordOS en la Raspberry Pi (docs/RASPBERRY.md).
-# Copiar este archivo como «lordos-user.txt» en esta misma partición (bootfs) antes del primer
-# arranque. Se lee una sola vez, se valida con las reglas del instalador y se BORRA.
-# Sin este archivo (ni un userconf.txt de Raspberry Pi Imager), LordOS entra en modo de
-# configuración: crear la cuenta en Ajustes → Usuarios y reiniciar.
+# lordos-user.txt — the first-boot user of LordOS on the Raspberry Pi (docs/RASPBERRY.md).
+# Copy this file as «lordos-user.txt» onto this same partition (bootfs) before the first
+# boot. It is read only once, validated with the installer's rules and DELETED.
+# Without this file (or a userconf.txt from Raspberry Pi Imager), LordOS enters setup
+# mode: create the account in Settings → Users and reboot.
 #
-# Usuario: minúsculas, números, _ y -, empezando con letra o _ (máximo 32).
+# User: lowercase letters, digits, _ and -, starting with a letter or _ (32 max).
 user=ana
 fullname=Ana Pérez
-# Mejor un hash que la contraseña en texto. En Linux: `mkpasswd -m yescrypt` (paquete whois) u
-# `openssl passwd -6`. Si se usa password=, va en texto en la tarjeta hasta el primer arranque.
+# A hash is better than the plain-text password. On Linux: `mkpasswd -m yescrypt` (whois package) or
+# `openssl passwd -6`. If password= is used, it sits in plain text on the card until first boot.
 password_hash=$y$j9T$REEMPLAZAR$REEMPLAZAR
 #password=
 hostname=ana-pi
-# es, en o pt
+# es, en or pt
 lang=es
 timezone=America/Argentina/Buenos_Aires
 keyboard=latam

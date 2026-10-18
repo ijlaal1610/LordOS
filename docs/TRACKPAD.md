@@ -1,424 +1,425 @@
-# Touchpad, gestos y pantallas táctiles
+# Touchpad, gestures and touchscreens
 
-LordOS maneja los touchpads y las pantallas táctiles con un **driver propio** que lee evdev
-directo (multitouch, protocolo B). No usa libinput: la política de dependencias lo prohíbe (ver
-`ARCHITECTURE.md`). El driver hace lo que se espera de una notebook, al estilo de macOS:
+LordOS handles touchpads and touchscreens with its **own driver** that reads evdev directly
+(multitouch, protocol B). It doesn't use libinput: the dependency policy forbids it (see
+`ARCHITECTURE.md`). The driver does what you expect from a laptop, macOS style:
 
-- puntero con aceleración;
-- tocar para hacer clic y clic con dos dedos;
-- scroll con inercia y desplazamiento natural;
-- pellizcar para hacer zoom;
-- deslizar con tres dedos para las acciones del escritorio.
+- pointer with acceleration;
+- tap to click and two-finger click;
+- scrolling with inertia and natural scrolling;
+- pinch to zoom;
+- three-finger swipe for desktop actions.
 
-Los gestos llegan a la interfaz de LordOS (eventos nuevos del SDK) y a las apps Linux, por los
-protocolos de Wayland. Así funciona, por ejemplo, el zoom de Chromium con el pellizco.
+Gestures reach the LordOS interface (new SDK events) and Linux apps, through the Wayland protocols.
+That's how, for example, Chromium's pinch zoom works.
 
-## Antes
+## Before
 
-Hasta ahora no había nada para multitouch:
+Until now there was nothing for multitouch:
 
-- `input.c` tomaba un touchpad por una **tablet**, porque tiene `ABS_X/ABS_Y`;
-- el puntero saltaba a la posición absoluta del dedo (la esquina del touchpad era la esquina de
-  la pantalla);
-- no había scroll, ni tocar para hacer clic, ni gestos.
+- `input.c` took a touchpad for a **tablet**, because it has `ABS_X/ABS_Y`;
+- the pointer jumped to the finger's absolute position (the touchpad's corner was the screen's
+  corner);
+- there was no scrolling, no tap to click, and no gestures.
 
-El botón físico del clickpad sí andaba, porque es un `BTN_LEFT`. En una notebook se podía usar,
-pero mal.
+The clickpad's physical button did work, because it is a `BTN_LEFT`. On a laptop it was usable,
+but badly.
 
-## Capturas (VM 123, touchpad simulado con uinput)
+## Screenshots (VM 123, touchpad simulated with uinput)
 
 | | |
 |---|---|
-| ![antes](trackpad-mapa-antes.png) | ![después](trackpad-mapa-despues.png) |
-| Monitor → Red: el mapa antes del pellizco, con el puntero sobre el Atlántico Norte | Después de `pinch-out` (escala ×6): zoom hacia el puntero; las islas Feroe quedaron bajo el cursor |
-| ![ajustes](trackpad-ajustes.png) | ![launchpad](trackpad-deslizar-launchpad.png) |
-| Ajustes → Trackpad (solo aparece si hay un touchpad) | Deslizar con tres dedos hacia arriba abre el Launchpad del tema |
-| ![chromium antes](trackpad-chromium-antes.png) | ![chromium](trackpad-chromium-pellizco.png) |
-| Chromium 155 (Wayland) antes | Pellizco: Chromium amplía la página por `zwp_pointer_gestures_v1` |
-| ![ventanas](trackpad-deslizar-ventanas.png) | ![remoto](trackpad-remoto-pellizco.png) |
-| Tres dedos a la izquierda: la ventana de atrás (Archivos) pasa al frente | Pellizco del escritorio remoto (`RP_PINCH`, como lo manda el navegador): zoom ×3 en el mapa |
+| ![before](trackpad-mapa-antes.png) | ![after](trackpad-mapa-despues.png) |
+| Monitor → Network: the map before the pinch, with the pointer over the North Atlantic | After `pinch-out` (scale ×6): zoom toward the pointer; the Faroe Islands ended up under the cursor |
+| ![settings](trackpad-ajustes.png) | ![launchpad](trackpad-deslizar-launchpad.png) |
+| Settings → Trackpad (only appears if there is a touchpad) | Swiping up with three fingers opens the theme's Launchpad |
+| ![chromium before](trackpad-chromium-antes.png) | ![chromium](trackpad-chromium-pellizco.png) |
+| Chromium 155 (Wayland) before | Pinch: Chromium zooms the page via `zwp_pointer_gestures_v1` |
+| ![windows](trackpad-deslizar-ventanas.png) | ![remote](trackpad-remoto-pellizco.png) |
+| Three fingers to the left: the window behind (Files) comes to the front | Remote desktop pinch (`RP_PINCH`, as the browser sends it): ×3 zoom on the map |
 
-## Piezas
+## Pieces
 
-| Archivo | Qué hace |
+| File | What it does |
 |---|---|
-| `server/src/tp/tp.c`, `tp.h` | El driver: contactos, palmas, puntero, tocar, clics, scroll, inercia, gestos, pantalla táctil. Lógica pura: recibe eventos con su hora y produce salida. Lo prueba `tests/tp_test.c` |
-| `server/src/tp/tp_route.c` | Reparte la salida: el movimiento y los botones van al puntero de siempre (`dispatch_pointer`); el scroll y los gestos van a la app Wayland con el puntero o al nodo de la interfaz |
-| `server/src/wl/wl_input.c` | Para las apps Wayland: `zwp_pointer_gestures_v1`, el scroll fino de `wl_pointer` y `wl_touch` |
-| `server/src/input.c` | Detecta el dispositivo y le crea su `TpDevice` |
-| `server/src/main.c` | Mínimo: los eventos del touchpad van al driver, y los temporizadores al bucle |
+| `server/src/tp/tp.c`, `tp.h` | The driver: contacts, palms, pointer, tap, clicks, scroll, inertia, gestures, touchscreen. Pure logic: it receives timestamped events and produces output. Tested by `tests/tp_test.c` |
+| `server/src/tp/tp_route.c` | Distributes the output: motion and buttons go to the usual pointer (`dispatch_pointer`); scroll and gestures go to the Wayland app under the pointer or to the interface node |
+| `server/src/wl/wl_input.c` | For Wayland apps: `zwp_pointer_gestures_v1`, `wl_pointer` fine scrolling and `wl_touch` |
+| `server/src/input.c` | Detects the device and creates its `TpDevice` |
+| `server/src/main.c` | Minimal: touchpad events go to the driver, and timers to the loop |
 | `server/src/ui/js_input.c` | `lord.input.devices()`, `config()`, `configure(obj)` |
-| `runtime/events.js` | `__lordGesture` → `onWheel` fino, `onPinch`, `onSwipe` |
-| `sdk/trackpad.js` | Aplica los ajustes en vivo, y las acciones del escritorio al deslizar |
-| `apps/settings/Trackpad.jsx` | Ajustes → Trackpad |
-| `tests/touchpad-sim/` | Touchpad simulado con uinput y los gestos guionados |
+| `runtime/events.js` | `__lordGesture` → fine `onWheel`, `onPinch`, `onSwipe` |
+| `sdk/trackpad.js` | Applies settings live, and the desktop actions on swipe |
+| `apps/settings/Trackpad.jsx` | Settings → Trackpad |
+| `tests/touchpad-sim/` | Touchpad simulated with uinput, and the scripted gestures |
 
-## Detección
+## Detection
 
 - **Touchpad:**
-  - `ABS_MT_POSITION_X/Y`, `ABS_MT_SLOT` y `BTN_TOOL_FINGER`;
-  - además, `INPUT_PROP_POINTER`, un `BTN_LEFT` o `INPUT_PROP_BUTTONPAD`.
-- **Clickpad:** `INPUT_PROP_BUTTONPAD` (todo el touchpad es el botón).
-- **Pantalla táctil:** `ABS_MT_*` con `INPUT_PROP_DIRECT`.
-- **Tamaño en mm:** sale de `resolution` en absinfo, en unidades por mm. Si no viene, se supone
-  un touchpad de 100 mm de ancho (300 mm una pantalla).
-- **Reloj:** se pide `CLOCK_MONOTONIC` para los eventos (`EVIOCSCLOCKID`), así los tiempos se
-  comparan con los del bucle.
-- **Más dedos que contactos:** si el dispositivo informa más dedos que contactos (`BTN_TOOL_TRIPLETAP`
-  con 2 slots), se cuenta por `BTN_TOOL_*`.
+  - `ABS_MT_POSITION_X/Y`, `ABS_MT_SLOT` and `BTN_TOOL_FINGER`;
+  - in addition, `INPUT_PROP_POINTER`, a `BTN_LEFT` or `INPUT_PROP_BUTTONPAD`.
+- **Clickpad:** `INPUT_PROP_BUTTONPAD` (the whole touchpad is the button).
+- **Touchscreen:** `ABS_MT_*` with `INPUT_PROP_DIRECT`.
+- **Size in mm:** comes from `resolution` in absinfo, in units per mm. If it's missing, a touchpad
+  100 mm wide is assumed (300 mm for a screen).
+- **Clock:** `CLOCK_MONOTONIC` is requested for the events (`EVIOCSCLOCKID`), so times can be
+  compared with the loop's.
+- **More fingers than contacts:** if the device reports more fingers than contacts
+  (`BTN_TOOL_TRIPLETAP` with 2 slots), counting goes by `BTN_TOOL_*`.
 
-Los presta `lord-sessiond` igual que los mouses (ver `SESIONES.md`). El registro de la sesión
-(`~/.cache/lordos/session.log`) dice qué encontró:
+`lord-sessiond` lends them just like mice (see `SESSIONS.md`). The session log
+(`~/.cache/lordos/session.log`) says what it found:
 
 ```
-tp: LordOS SynPS/2 Synaptics TouchPad (simulado): touchpad (clickpad), 105×87 mm, 5 contactos
+tp: LordOS SynPS/2 Synaptics TouchPad (simulado): touchpad (clickpad), 105×87 mm, 5 contacts
 ```
 
-## Cómo reconoce cada cosa
+## How it recognizes each thing
 
-En cada `SYN_REPORT` el driver mira los contactos en milímetros.
+On every `SYN_REPORT` the driver looks at the contacts in millimeters.
 
-**Contactos que no cuentan:**
+**Contacts that don't count:**
 
-- **Palmas:**
-  - contacto de más de 22 mm (`ABS_MT_TOUCH_MAJOR`);
-  - presión por encima del 85 % del rango en los primeros 150 ms;
-  - un toque que empieza en el borde izquierdo o derecho (7 mm, o el 7 % del ancho) y no sale
-    del borde en 300 ms.
-- **Pulgar de un clickpad:** un contacto que empieza en la franja de abajo (12 mm, o el 15 %
-  del alto) no cuenta mientras haya otros dedos, hasta que se mueve más de 4 mm. Así, apretar con
-  el pulgar mientras el índice está apoyado da clic izquierdo.
-- **Ignorar al escribir:** los toques que empiezan hasta 500 ms después de una tecla no cuentan.
-  Las teclas modificadoras no cuentan como escritura, así Ctrl+clic sigue andando.
+- **Palms:**
+  - a contact larger than 22 mm (`ABS_MT_TOUCH_MAJOR`);
+  - pressure above 85 % of the range during the first 150 ms;
+  - a touch that starts at the left or right edge (7 mm, or 7 % of the width) and doesn't leave
+    the edge within 300 ms.
+- **Clickpad thumb:** a contact that starts in the bottom strip (12 mm, or 15 % of the height)
+  doesn't count while there are other fingers, until it moves more than 4 mm. That way, pressing with
+  the thumb while the index finger is resting gives a left click.
+- **Disable while typing:** touches that start up to 500 ms after a key don't count. Modifier keys
+  don't count as typing, so Ctrl+click still works.
 
-**Según cuántos dedos hay:**
+**Depending on how many fingers there are:**
 
-| Dedos | Estado | Qué produce |
+| Fingers | State | What it produces |
 |---|---|---|
-| 1 | puntero | movimiento suavizado (media móvil exponencial) con `tp_accel` |
-| 2 | sin decidir → scroll o pellizco | **scroll** si los dedos van juntos (coseno > 0,3); **pellizco** si van opuestos o cruzados (separar, juntar, girar). Con un dedo quieto: pellizco si cambia la distancia |
-| 3 | deslizar (o arrastrar) | deslizar después de 3 mm; con «Arrastrar con tres dedos», botón apretado y puntero |
-| 4 | deslizar | igual, con 4 dedos |
+| 1 | pointer | smoothed motion (exponential moving average) with `tp_accel` |
+| 2 | undecided → scroll or pinch | **scroll** if the fingers move together (cosine > 0.3); **pinch** if they move in opposite or crossed directions (spread, pinch, rotate). With one finger still: pinch if the distance changes |
+| 3 | swipe (or drag) | swipe after 3 mm; with "Three-finger drag", button pressed and pointer |
+| 4 | swipe | same, with 4 fingers |
 
-Al apoyar 1 o 2 dedos empieza un **mantener** (`hold`), que se cancela al moverlos. GTK lo usa
-para frenar su propia inercia.
+Resting 1 or 2 fingers starts a **hold** (`hold`), which is cancelled when they move. GTK uses it to
+stop its own inertia.
 
-**Aceleración** (`tp_accel`, en px por mm según la velocidad del dedo):
+**Acceleration** (`tp_accel`, in px per mm depending on finger speed):
 
-- a menos de 12 mm/s, 2,4 px/mm: un píxel cada 0,4 mm;
-- a 170 mm/s o más, 15 px/mm;
-- en el medio, una curva suave;
-- el ajuste de velocidad multiplica todo entre ×0,5 y ×2.
+- below 12 mm/s, 2.4 px/mm: one pixel every 0.4 mm;
+- at 170 mm/s or more, 15 px/mm;
+- in between, a smooth curve;
+- the speed setting multiplies everything by ×0.5 to ×2.
 
 **Scroll:**
 
-- ~5 px por mm, hasta ×3 si los dedos van rápido;
-- natural por defecto (como macOS): subir los dedos baja en el documento;
-- si va casi derecho, se traba a un eje.
+- ~5 px per mm, up to ×3 if the fingers move fast;
+- natural by default (like macOS): moving the fingers up moves down in the document;
+- if it goes almost straight, it locks to one axis.
 
-**Inercia:**
+**Inertia:**
 
-- al soltar, con la velocidad de los últimos 80 ms (si los dedos no estaban quietos);
-- arranca si pasa de 200 px/s;
-- sigue a ~60 Hz y frena con una constante de 325 ms;
-- termina debajo de 25 px/s;
-- la cancela apoyar un dedo.
+- on release, with the velocity of the last 80 ms (if the fingers weren't still);
+- starts if it exceeds 200 px/s;
+- runs at ~60 Hz and slows down with a 325 ms time constant;
+- ends below 25 px/s;
+- resting a finger cancels it.
 
-**Tocar:**
+**Tap:**
 
-| Gesto | Resultado |
+| Gesture | Result |
 |---|---|
-| Tocar 1, 2 o 3 dedos | izquierdo, derecho o medio. Hasta 200 ms y sin moverse más de 1,5 mm |
-| Tocar y arrastrar | tocar, y volver a apoyar antes de 180 ms: el botón queda apretado hasta levantar |
-| Doble toque | dos clics |
+| Tap with 1, 2 or 3 fingers | left, right or middle. Up to 200 ms and without moving more than 1.5 mm |
+| Tap and drag | tap, and touch again within 180 ms: the button stays pressed until lifting |
+| Double tap | two clicks |
 
-El clic de un toque se suelta a los 180 ms (por si sigue un arrastre), como en libinput. Con
-«Tocar y arrastrar» apagado se suelta enseguida.
+A tap's click is released after 180 ms (in case a drag follows), as in libinput. With "Tap and
+drag" off it's released immediately.
 
-**Clic físico (clickpad):**
+**Physical click (clickpad):**
 
-- se cuentan los dedos: 1 izquierdo, 2 derecho, 3 medio (como macOS);
-- o, según el ajuste, la esquina de abajo a la derecha (o a la izquierda) es el clic derecho;
-- mientras está apretado solo se mueve el puntero (con el dedo que más se mueve).
+- fingers are counted: 1 left, 2 right, 3 middle (like macOS);
+- or, depending on the setting, the bottom-right (or bottom-left) corner is the right click;
+- while it's pressed only the pointer moves (with the finger that moves the most).
 
-## La interfaz de LordOS (SDK)
+## The LordOS interface (SDK)
 
-Los eventos nuevos de `View` están en `apps/README.md` y `themes/README.md`:
+The new `View` events are in `apps/README.md` and `themes/README.md`:
 
-- **`onWheel`** con `e.precise: true`:
-  - `e.deltaX/deltaY` en píxeles exactos;
-  - `e.phase`: `'update'`, `'end'`, `'momentum'` (la inercia), `'momentum-end'`;
-  - `e.notches`, para lo que avanza de a renglón: la Terminal, y el zoom de Fotos y del Visor
-    de PDF.
+- **`onWheel`** with `e.precise: true`:
+  - `e.deltaX/deltaY` in exact pixels;
+  - `e.phase`: `'update'`, `'end'`, `'momentum'` (inertia), `'momentum-end'`;
+  - `e.notches`, for things that advance line by line: the Terminal, and the zoom in Photos and in
+    the PDF Viewer.
 - **`onPinch({ scale, rotation, x, y, dx, dy, phase })`**:
-  - `scale` es relativa al comienzo;
-  - el destino queda fijo durante el gesto, y el zoom se hace hacia la posición del puntero.
+  - `scale` is relative to the start;
+  - the target stays fixed during the gesture, and the zoom goes toward the pointer's position.
 - **`onSwipe({ dx, dy, fingers, phase, system })`**.
 
-Usos en las apps:
+Uses in the apps:
 
-| App | Qué hace |
+| App | What it does |
 |---|---|
-| Monitor | el mapa amplía con el pellizco hacia el centro del gesto, y dos dedos lo mueven |
-| Fotos | el pellizco amplía |
-| `ScrollView` y las vistas con `deltaY` (Editor, Notas, PDF, Tipografías) | scroll con píxeles exactos e inercia |
+| Monitor | the map zooms with the pinch toward the gesture's center, and two fingers pan it |
+| Photos | the pinch zooms |
+| `ScrollView` and views with `deltaY` (Editor, Notes, PDF, Fonts) | scrolling with exact pixels and inertia |
 
-**Acciones del escritorio** (deslizar con 3 dedos; con 4 si está «Arrastrar con tres dedos» o
-«Deslizar con cuatro dedos»):
+**Desktop actions** (three-finger swipe; with 4 if "Three-finger drag" or "Four-finger swipe" is
+on):
 
-- el tema elige con `registerGestureActions({ up, down, left, right })`:
-  - tema `default`: arriba abre el Launchpad, abajo lo cierra;
-  - tema `classic`: lo mismo con el menú de inicio;
-- sin acción del tema, izquierda y derecha cambian de ventana (la de más atrás pasa al frente,
-  o la del frente va atrás).
+- the theme chooses with `registerGestureActions({ up, down, left, right })`:
+  - `default` theme: up opens the Launchpad, down closes it;
+  - `classic` theme: the same with the start menu;
+- without a theme action, left and right switch windows (the rearmost comes to the front, or the
+  front one goes to the back).
 
-## Ajustes → Trackpad
+## Settings → Trackpad
 
-Está en el grupo de Idioma y Teclado, y solo aparece si hay un touchpad. Se guarda en
-`settings.trackpad` (`~/.config/lordos/settings.json`) y se aplica en vivo:
-`sdk/trackpad.js` llama a `lord.input.configure`.
+It's in the Language & Keyboard group, and only appears if there is a touchpad. It's saved in
+`settings.trackpad` (`~/.config/lordos/settings.json`) and applied live:
+`sdk/trackpad.js` calls `lord.input.configure`.
 
-Cada fila trae un dibujito del gesto que se anima al pasar el mouse.
+Each row has a small drawing of the gesture that animates on mouse hover.
 
-| Pestaña | Ajuste (clave) | Por defecto |
+| Tab | Setting (key) | Default |
 |---|---|---|
-| Señalar y hacer clic | Velocidad del puntero (`speed`, 0..1) | 0,5 |
-| | Tocar para hacer clic (`tap`) | sí |
-| | Tocar y arrastrar (`tapDrag`) | sí |
-| | Clic secundario (`secondary`: `two-fingers`, `bottom-right`, `bottom-left`) | dos dedos |
-| | Arrastrar con tres dedos (`threeDrag`) | no |
-| | Ignorar al escribir (`dwt`) | sí |
-| Desplazar y ampliar | Desplazamiento natural (`natural`) | sí |
-| | Desplazar con dos dedos (`scroll`) | sí |
-| | Inercia (`kinetic`) | sí |
-| | Pellizcar para ampliar (`pinch`) | sí |
-| Más gestos | Deslizar con tres dedos (`swipe3`) | sí |
-| | Deslizar con cuatro dedos para el escritorio (`swipe4`; apagado, van a las apps) | no |
+| Point & Click | Pointer speed (`speed`, 0..1) | 0.5 |
+| | Tap to click (`tap`) | yes |
+| | Tap and drag (`tapDrag`) | yes |
+| | Secondary click (`secondary`: `two-fingers`, `bottom-right`, `bottom-left`) | two fingers |
+| | Three-finger drag (`threeDrag`) | no |
+| | Disable while typing (`dwt`) | yes |
+| Scroll & Zoom | Natural scrolling (`natural`) | yes |
+| | Two-finger scrolling (`scroll`) | yes |
+| | Inertia (`kinetic`) | yes |
+| | Pinch to zoom (`pinch`) | yes |
+| More Gestures | Three-finger swipe (`swipe3`) | yes |
+| | Four-finger swipe for the desktop (`swipe4`; when off, they go to the apps) | no |
 
-## Apps Linux (Wayland)
+## Linux apps (Wayland)
 
-Los protocolos están en `WAYLAND.md`.
+The protocols are in `WAYLAND.md`.
 
 - **`zwp_pointer_gestures_v1` v3:**
-  - pellizco (con `scale`, giro y centro), deslizar y mantener;
-  - van a la app que tenía el puntero al empezar el gesto.
-  - Chromium amplía la página (ver la captura); GTK lo usa en mapas, visores e inercia.
+  - pinch (with `scale`, rotation and center), swipe and hold;
+  - they go to the app that had the pointer when the gesture started.
+  - Chromium zooms the page (see the screenshot); GTK uses it in maps, viewers and inertia.
 - **`wl_pointer`** (seat v9):
-  - el scroll fino del touchpad va con `axis_source(finger)` y valores fraccionarios, y
-    `axis_stop` en los dos ejes al levantar los dedos (la app hace su propia inercia, así que la
-    de LordOS no le llega);
-  - `axis_relative_direction` dice si el desplazamiento es natural;
-  - la rueda del mouse manda `axis_source(wheel)` y `axis_value120` (v8+), o `axis_discrete`
+  - touchpad fine scrolling goes with `axis_source(finger)` and fractional values, and `axis_stop`
+    on both axes when the fingers lift (the app does its own inertia, so LordOS's doesn't reach
+    it);
+  - `axis_relative_direction` says whether scrolling is natural;
+  - the mouse wheel sends `axis_source(wheel)` and `axis_value120` (v8+), or `axis_discrete`
     (v5–7).
-- **`wl_touch`:** la capacidad se anuncia solo si hay una pantalla táctil. Los toques van a la
-  superficie que está debajo del primer dedo, y si la app no escucha `wl_touch`, se emula el
-  puntero.
+- **`wl_touch`:** the capability is only announced if there is a touchscreen. Touches go to the
+  surface under the first finger, and if the app doesn't listen to `wl_touch`, the pointer is
+  emulated.
 
-Verificado en la VM con `WAYLAND_DEBUG=1 foot`:
+Verified in the VM with `WAYLAND_DEBUG=1 foot`:
 
-- touchpad: `axis_source(1)`, `axis(…, -19.578125)`, `axis_stop` en los dos ejes y
-  `axis_value120(0, -120)` de la rueda;
-- pantalla táctil: `wl_seat.capabilities(7)` y `wl_touch.down/motion/up/frame`.
+- touchpad: `axis_source(1)`, `axis(…, -19.578125)`, `axis_stop` on both axes and
+  `axis_value120(0, -120)` from the wheel;
+- touchscreen: `wl_seat.capabilities(7)` and `wl_touch.down/motion/up/frame`.
 
-## Pantallas táctiles
+## Touchscreens
 
-- Con una app Wayland debajo que escucha `wl_touch`, recibe los toques.
-- Si no, se emula el puntero:
-  - el puntero va adonde se toca;
-  - tocar es un clic;
-  - arrastrar es arrastrar: el botón se aprieta si el dedo se mueve 2 mm o se queda 90 ms;
-  - dos dedos hacen scroll directo (el contenido sigue al dedo, siempre) y pellizco, con el
-    puntero en el centro del gesto.
-- Se usa una sola pantalla: la posición de 0 a 1 se lleva a toda la pantalla de LordOS.
+- With a Wayland app underneath that listens to `wl_touch`, it receives the touches.
+- Otherwise, the pointer is emulated:
+  - the pointer goes where you touch;
+  - a tap is a click;
+  - dragging is dragging: the button is pressed if the finger moves 2 mm or stays 90 ms;
+  - two fingers do direct scrolling (the content follows the finger, always) and pinch, with the
+    pointer at the gesture's center.
+- A single screen is used: the position from 0 to 1 is mapped to the whole LordOS screen.
 
-## Escritorio remoto
+## Remote desktop
 
-El navegador manda el trackpad como scroll fino y pellizco (`REMOTO.md`). Chrome y Firefox
-entregan el pellizco como rueda con `ctrlKey`, Safari como `gesturechange`, y Ctrl+rueda de un
-mouse también es pellizco. La sesión los trata igual que los del touchpad local, por
-`tp_route_scroll` y `tp_route_pinch`.
+The browser sends the trackpad as fine scrolling and pinch (`REMOTE.md`). Chrome and Firefox deliver
+the pinch as a wheel with `ctrlKey`, Safari as `gesturechange`, and Ctrl+wheel on a mouse is also a
+pinch. The session treats them the same as the local touchpad's, via `tp_route_scroll` and
+`tp_route_pinch`.
 
-## Pruebas
+## Tests
 
 ### `make -C server test` → `build/tp-test`
 
-Le pasa al driver las mismas secuencias evdev que reproduce el touchpad simulado, con sus
-tiempos, y revisa lo que reconoce. Hay 51 comprobaciones:
+It feeds the driver the same evdev sequences the simulated touchpad replays, with their timing, and
+checks what it recognizes. There are 51 checks:
 
-- puntero y curva;
-- tocar con 1, 2 y 3 dedos, doble toque, tocar y arrastrar;
-- clic físico con 1, 2 y 3 dedos, pulgar, esquina;
-- scroll en los dos sentidos, natural o no, con y sin inercia;
-- pellizco hacia afuera y adentro, giro de 60°;
-- deslizar con 3 dedos (4 direcciones) y con 4, arrastrar con tres dedos;
-- palma, borde, ignorar al escribir (Ctrl no bloquea), mantener;
-- pantalla táctil: tocar, arrastrar, scroll, pellizco y toque a una app.
+- pointer and curve;
+- tap with 1, 2 and 3 fingers, double tap, tap and drag;
+- physical click with 1, 2 and 3 fingers, thumb, corner;
+- scrolling in both directions, natural or not, with and without inertia;
+- pinch out and in, 60° rotation;
+- three-finger swipe (4 directions) and four-finger, three-finger drag;
+- palm, edge, disable while typing (Ctrl doesn't block), hold;
+- touchscreen: tap, drag, scroll, pinch and touch to an app.
 
-`build/tp-test --replay archivo.ev` reproduce una grabación (por ejemplo, de un touchpad real con
-`tpsim record`) y muestra qué salió.
+`build/tp-test --replay archivo.ev` replays a recording (for example, of a real touchpad with
+`tpsim record`) and shows what came out.
 
-### Touchpad simulado (`tests/touchpad-sim/tpsim`)
+### Simulated touchpad (`tests/touchpad-sim/tpsim`)
 
 ```sh
 cc -O2 -Wall -Wextra -o tpsim tests/touchpad-sim/tpsim.c tests/touchpad-sim/gestures.c -lm
-./tpsim list                                     # gestos: move, tap, tap2, tap3, doubletap, tapdrag,
+./tpsim list                                     # gestures: move, tap, tap2, tap3, doubletap, tapdrag,
                                                  # click, click2, click3, thumbclick, scroll, scroll-down,
                                                  # scroll-slow, pinch-out, pinch-in, rotate, swipe3-up/
                                                  # down/left/right, swipe4-up, palm, edge, threedrag
-./tpsim dump pinch-out > pinch.ev                # la secuencia en texto
-sudo ./tpsim play --wait 2 move tap              # crea el dispositivo y reproduce
-sudo ./tpsim serve /run/tpsim.fifo &             # queda esperando: echo pinch-out > /run/tpsim.fifo
-sudo ./tpsim serve --touchscreen /run/tpsim-ts.fifo &   # una pantalla táctil
-sudo ./tpsim record /dev/input/event5 20 > real.ev       # grabar un touchpad real 20 s
+./tpsim dump pinch-out > pinch.ev                # the sequence as text
+sudo ./tpsim play --wait 2 move tap              # creates the device and replays
+sudo ./tpsim serve /run/tpsim.fifo &             # keeps waiting: echo pinch-out > /run/tpsim.fifo
+sudo ./tpsim serve --touchscreen /run/tpsim-ts.fifo &   # a touchscreen
+sudo ./tpsim record /dev/input/event5 20 > real.ev       # record a real touchpad for 20 s
 ```
 
-El dispositivo imita un clickpad Synaptics de notebook:
+The device imitates a laptop Synaptics clickpad:
 
-- 105 × 87 mm, con resolución 42 unidades/mm;
-- 5 contactos y presión de 0 a 255;
-- `INPUT_PROP_POINTER` y `INPUT_PROP_BUTTONPAD`;
-- emula un solo dedo (`ABS_X/Y`) y manda `BTN_TOOL_*`.
+- 105 × 87 mm, with a resolution of 42 units/mm;
+- 5 contacts and pressure from 0 to 255;
+- `INPUT_PROP_POINTER` and `INPUT_PROP_BUTTONPAD`;
+- emulates a single finger (`ABS_X/Y`) and sends `BTN_TOOL_*`.
 
-Los gestos van a 80 Hz.
+Gestures run at 80 Hz.
 
-Como `lord-sessiond` presta los dispositivos al mostrar la sesión, el simulado tiene que existir
-antes. En la VM 123 lo crea un servicio de prueba antes de `lordos.service` (ver `VM-SETUP.md`).
+Since `lord-sessiond` lends the devices when showing the session, the simulated one has to exist
+beforehand. In VM 123 a test service creates it before `lordos.service` (see `VM-SETUP.md`).
 
-## Enchufar en caliente, ruedas y apps aisladas
+## Hotplug, wheels and isolated apps
 
-- **Enchufar y desenchufar:** un touchpad, teclado o mouse enchufado con la sesión en el monitor
-  anda enseguida (`lord-sessiond` lo detecta con inotify y le pasa el fd, ver `SESIONES.md`).
-  Desenchufarlo cierra solo ese dispositivo; la sesión no deja la pantalla.
-- **Rueda de alta resolución y horizontal:**
-  - `REL_WHEEL_HI_RES` y `REL_HWHEEL_HI_RES` (o `REL_HWHEEL`) van como scroll fino;
-  - a las apps Wayland les llega `axis_source(wheel)`, `axis_value120` y el valor fraccionario
-    (de cada 120, 10 unidades);
-  - la interfaz recibe `deltaX/deltaY` con `precise` (120 = 48 px, sin fases);
-  - en los mouses que la tienen, el paso entero (`REL_WHEEL`) se ignora para no contar dos veces.
+- **Plugging and unplugging:** a touchpad, keyboard or mouse plugged in while the session is on the
+  display works right away (`lord-sessiond` detects it with inotify and passes it the fd, see
+  `SESSIONS.md`). Unplugging it closes only that device; the session doesn't leave the screen.
+- **High-resolution and horizontal wheel:**
+  - `REL_WHEEL_HI_RES` and `REL_HWHEEL_HI_RES` (or `REL_HWHEEL`) go as fine scrolling;
+  - Wayland apps get `axis_source(wheel)`, `axis_value120` and the fractional value (10 units per
+    120);
+  - the interface receives `deltaX/deltaY` with `precise` (120 = 48 px, no phases);
+  - on mice that have it, the whole step (`REL_WHEEL`) is ignored so it isn't counted twice.
 
-  Probado con `tpsim play --mouse wheel-up hwheel-right`: foot recibió `axis_value120` ±30 en los
-  dos ejes.
-- **Apps `.lpk` aisladas:** el proceso de la app (`app/appclient.c`):
-  - pide `zwp_pointer_gestures_v1` y entrega `onPinch` y `onSwipe` a su JS;
-  - recibe el scroll del touchpad con fases (`axis_source finger` / `axis_stop`).
+  Tested with `tpsim play --mouse wheel-up hwheel-right`: foot received `axis_value120` ±30 on both
+  axes.
+- **Isolated `.lpk` apps:** the app process (`app/appclient.c`):
+  - requests `zwp_pointer_gestures_v1` and delivers `onPinch` and `onSwipe` to its JS;
+  - receives touchpad scrolling with phases (`axis_source finger` / `axis_stop`).
 
-  Fractal (`examples/apps/fractal`, 1.1.0) amplía con el pellizco y se mueve con dos dedos.
+  Fractal (`examples/apps/fractal`, 1.1.0) zooms with the pinch and pans with two fingers.
 
 | | |
 |---|---|
-| ![fractal](trackpad-lpk-antes.png) | ![fractal pellizco](trackpad-lpk-pellizco.png) |
-| Fractal, app instalada y aislada | Pellizco: amplía hacia el puntero |
+| ![fractal](trackpad-lpk-antes.png) | ![fractal pinch](trackpad-lpk-pellizco.png) |
+| Fractal, an installed and isolated app | Pinch: zooms toward the pointer |
 
-## Mover el mapa del Monitor con dos dedos
+## Panning the Monitor map with two fingers
 
-Al principio costaba 57,5 % de CPU. Los cambios:
+At first it cost 57.5 % CPU. The changes:
 
-- **La app:**
-  - mientras se mueve, corre la imagen del último cuadro con `lord.setStyle`, sin pasar por
-    React, como mucho 30 veces por segundo;
-  - pide un cuadro nuevo cada 100 ms (a media resolución si cambió el zoom) y el bueno al quedar
-    quieto;
-  - esconde las etiquetas mientras se mueve.
-- **El motor**, que también ayuda al scroll de cualquier lista:
-  - el área dañada se recorta con los ancestros `overflow: hidden`;
-  - se empieza a pintar desde el nodo opaco que tapa todo lo que cambió (no se pinta el fondo de
-    pantalla ni lo que está atrás);
-  - las medidas de los textos se recuerdan;
-  - una imagen a dos tamaños (el ícono de LordOS en el Dock y en la barra) ya no se reescala en
-    cada cuadro;
-  - las imágenes que caen afuera no se reescalan;
-  - una imagen 1:1 se copia directo;
-  - la franja recta de un rectángulo redondeado se pinta de corrido.
+- **The app:**
+  - while moving, it shifts the last frame's image with `lord.setStyle`, without going through
+    React, at most 30 times per second;
+  - it asks for a new frame every 100 ms (at half resolution if the zoom changed) and the good one
+    once it's still;
+  - it hides the labels while moving.
+- **The engine**, which also helps scrolling any list:
+  - the damaged area is clipped by `overflow: hidden` ancestors;
+  - painting starts from the opaque node that covers everything that changed (the wallpaper and
+    whatever is behind aren't painted);
+  - text measurements are cached;
+  - an image at two sizes (the LordOS icon in the Dock and in the bar) is no longer rescaled every
+    frame;
+  - images that fall outside aren't rescaled;
+  - a 1:1 image is copied directly;
+  - the straight strip of a rounded rectangle is painted in one run.
 
-Con eso, mover el mapa ampliado sin parar durante 10 s (dos dedos con inercia) cuesta 19–21 %
-(15,9 % el hilo principal, 3 % el del mapa), contra 4 % quieto. Lo que queda más grande es copiar
-la pantalla entera en cada cuadro (`canvas_copy`, en `main.c`).
+With that, panning the zoomed map nonstop for 10 s (two fingers with inertia) costs 19–21 %
+(15.9 % the main thread, 3 % the map's), versus 4 % when still. The biggest remaining cost is copying
+the whole screen every frame (`canvas_copy`, in `main.c`).
 
-![mapa movido](trackpad-mapa-moviendo.png)
+![map panned](trackpad-mapa-moviendo.png)
 
-## Mediciones (VM 123: Xeon Silver 4108 a 1,8 GHz, 4 núcleos, sin GPU, 1280×800, composición por CPU)
+## Measurements (VM 123: Xeon Silver 4108 at 1.8 GHz, 4 cores, no GPU, 1280×800, CPU compositing)
 
 **Driver:**
 
-| Qué | Resultado |
+| What | Result |
 |---|---|
-| Procesar un cuadro (`tp-test`) | 0,25–0,41 µs |
-| Reconocer el scroll | en el primer cuadro con los dos dedos moviéndose (12 ms de gesto) |
-| Reconocer el pellizco y el deslizar | ~62 ms de gesto (5 cuadros: hasta que cada dedo se movió 1 mm, o el centro 3 mm) |
+| Processing a frame (`tp-test`) | 0.25–0.41 µs |
+| Recognizing scroll | on the first frame with both fingers moving (12 ms of gesture) |
+| Recognizing pinch and swipe | ~62 ms of gesture (5 frames: until each finger moved 1 mm, or the center 3 mm) |
 
-**Latencia**, desde la hora del evento del kernel hasta que lo recibió JS o la app Wayland. La
-sesión la escribe en su registro, una línea por gesto:
+**Latency**, from the kernel event's timestamp until JS or the Wayland app received it. The session
+writes it to its log, one line per gesture:
 
 ```
-tp: scroll: 19 cuadros, latencia media 2.94 ms, máx 30.17 ms (lectura → JS/Wayland)
+tp: scroll: 19 frames, average latency 2.94 ms, max 30.17 ms (read → JS/Wayland)
 ```
 
-| Qué | Media | Máxima |
+| What | Average | Maximum |
 |---|---|---|
-| Scroll sobre Ajustes (`ScrollView`) | 3–9 ms | 17–30 ms |
-| Scroll sobre el mapa del Monitor (cada cuadro vuelve a dibujar el mapa) | 9–14 ms | 28–35 ms |
-| Pellizco sobre el mapa | 7–15 ms | 20–37 ms |
+| Scrolling over Settings (`ScrollView`) | 3–9 ms | 17–30 ms |
+| Scrolling over the Monitor map (each frame redraws the map) | 9–14 ms | 28–35 ms |
+| Pinch over the map | 7–15 ms | 20–37 ms |
 
-La máxima es un cuadro que justo se estaba dibujando por CPU.
+The maximum is a frame that was being drawn on the CPU at that exact moment.
 
-**CPU de `lord-server`** (`~/cpu.sh`, % de un núcleo, con el Monitor abierto):
+**`lord-server` CPU** (`~/cpu.sh`, % of one core, with the Monitor open):
 
-| Qué | CPU |
+| What | CPU |
 |---|---|
-| Quieto | 4,2–4,6 % |
-| Scroll con dos dedos sin parar sobre Ajustes, con inercia (10 s) | 13,8 % |
-| Mover el mapa ampliado con dos dedos sin parar (10 s) | 57,5 % al principio; 19–21 % ahora (ver «Mover el mapa del Monitor») |
+| Idle | 4.2–4.6 % |
+| Nonstop two-finger scrolling over Settings, with inertia (10 s) | 13.8 % |
+| Nonstop two-finger panning of the zoomed map (10 s) | 57.5 % at first; 19–21 % now (see "Panning the Monitor map") |
 
-## Lista para probar en hardware real (notebook, Raspberry Pi 5 con touchpad USB o pantalla táctil)
+## Checklist for real hardware (laptop, Raspberry Pi 5 with a USB touchpad or touchscreen)
 
-1. `session.log` muestra `tp: … touchpad (clickpad), N×M mm` con medidas reales. Si dice `0×0` o
-   medidas raras, falta resolución en el absinfo: grabar con `tpsim record` y mandarlo.
-2. **Puntero:**
-   - lento es preciso (se puede apuntar a un botón de la barra de menú);
-   - rápido cruza la pantalla con un movimiento;
-   - el control de velocidad de Ajustes cambia en vivo.
-3. **Sin saltos:** el puntero no salta al apoyar ni al levantar un dedo, ni cuando se apoya un
-   segundo dedo.
-4. **Tocar:**
-   - 1, 2 y 3 dedos dan clic izquierdo, derecho y medio;
-   - el doble toque abre una carpeta en Archivos;
-   - tocar y arrastrar mueve una ventana.
-5. **Clic físico:**
-   - con un dedo, izquierdo; con dos, derecho; con el pulgar abajo y el índice apoyado,
-     izquierdo;
-   - el modo «Abajo a la derecha» funciona.
-6. **Scroll con dos dedos:**
-   - en Ajustes, Archivos, Editor y el Visor de PDF;
-   - natural y al revés;
-   - la inercia se corta al apoyar un dedo;
-   - en Firefox y Chromium (Wayland), su propia inercia;
-   - en la Terminal, de a renglón.
-7. **Pellizco:**
-   - el mapa del Monitor, Fotos, Chromium (zoom de página);
-   - un visor GTK 4, si hay.
-8. **Deslizar con 3 dedos:** arriba abre el Launchpad (default) o el menú de inicio (clásico);
-   izquierda y derecha cambian de ventana.
-9. **Arrastrar con tres dedos:** mueve una ventana; el deslizar pasa a 4 dedos.
-10. **Palmas:** al escribir en el Editor con la palma sobre el touchpad, el puntero no se mueve ni
-    hay clics. Mirar también la palma apoyada en el borde.
-11. **Pantalla táctil, si hay:**
-    - tocar es clic, arrastrar mueve, dos dedos hacen scroll y pellizco;
-    - en una app GTK, los toques le llegan como `wl_touch`.
-12. **Si algo anda mal:** grabar el gesto (`sudo tpsim record /dev/input/eventN 10 > g.ev`) y
-    reproducirlo con `build/tp-test --replay g.ev`.
+1. `session.log` shows `tp: … touchpad (clickpad), N×M mm` with real dimensions. If it says `0×0` or
+   odd dimensions, the absinfo lacks a resolution: record with `tpsim record` and send it.
+2. **Pointer:**
+   - slow is precise (you can aim at a menu bar button);
+   - fast crosses the screen in one movement;
+   - the speed control in Settings changes live.
+3. **No jumps:** the pointer doesn't jump when resting or lifting a finger, or when a second finger
+   rests.
+4. **Tap:**
+   - 1, 2 and 3 fingers give left, right and middle click;
+   - double tap opens a folder in Files;
+   - tap and drag moves a window.
+5. **Physical click:**
+   - with one finger, left; with two, right; with the thumb at the bottom and the index resting,
+     left;
+   - the "Bottom right" mode works.
+6. **Two-finger scrolling:**
+   - in Settings, Files, Editor and the PDF Viewer;
+   - natural and reversed;
+   - inertia stops when a finger rests;
+   - in Firefox and Chromium (Wayland), their own inertia;
+   - in the Terminal, line by line.
+7. **Pinch:**
+   - the Monitor map, Photos, Chromium (page zoom);
+   - a GTK 4 viewer, if there is one.
+8. **Three-finger swipe:** up opens the Launchpad (default) or the start menu (classic); left and
+   right switch windows.
+9. **Three-finger drag:** moves a window; swiping moves to 4 fingers.
+10. **Palms:** while typing in the Editor with the palm on the touchpad, the pointer doesn't move and
+    there are no clicks. Also check a palm resting on the edge.
+11. **Touchscreen, if there is one:**
+    - tap is a click, dragging moves, two fingers scroll and pinch;
+    - in a GTK app, touches arrive as `wl_touch`.
+12. **If something goes wrong:** record the gesture (`sudo tpsim record /dev/input/eventN 10 > g.ev`)
+    and replay it with `build/tp-test --replay g.ev`.
 
-## Pendiente
+## Pending
 
-- **Apps aisladas:** no tienen inercia propia en el scroll fino (las apps Wayland la hacen solas;
-  la de LordOS es para la interfaz del tema).
-- **Composición por CPU:** cada cuadro copia la pantalla entera al búfer de la placa
-  (`canvas_copy` en `main.c`). Copiar solo lo que cambió bajaría más el costo de mover el mapa.
-- **Gestos que faltan:**
-  - bloqueo del arrastre (tocar y arrastrar que sigue al levantar el dedo un momento);
-  - scroll por el borde para touchpads de un solo dedo;
-  - pellizco con 4 o 5 dedos (Launchpad de macOS);
-  - clic derecho por mantener apretado en la pantalla táctil.
-- **Palma por tamaño:** solo funciona en los dispositivos que informan `TOUCH_MAJOR` en las mismas
-  unidades que la posición. Los demás dependen de la presión y los bordes.
-- **Probado solo en la VM**, con el touchpad y la pantalla simulados. Falta hardware real (la
-  lista de arriba).
+- **Isolated apps:** they don't have their own inertia for fine scrolling (Wayland apps do it
+  themselves; LordOS's is for the theme's interface).
+- **CPU compositing:** each frame copies the whole screen to the graphics card's buffer
+  (`canvas_copy` in `main.c`). Copying only what changed would further lower the cost of panning the
+  map.
+- **Missing gestures:**
+  - drag lock (tap and drag that continues when the finger lifts for a moment);
+  - edge scrolling for single-finger touchpads;
+  - 4- or 5-finger pinch (macOS Launchpad);
+  - right click by long press on the touchscreen.
+- **Palm by size:** only works on devices that report `TOUCH_MAJOR` in the same units as the
+  position. The others rely on pressure and edges.
+- **Tested only in the VM**, with the simulated touchpad and screen. Real hardware is still missing
+  (the checklist above).

@@ -1,5 +1,5 @@
-/* gestures.c — gestos guionados del touchpad simulado (ver gestures.h). Las posiciones están en
- * mm desde la esquina de arriba a la izquierda del touchpad; cada cuadro dura 12,5 ms (80 Hz). */
+/* gestures.c — scripted gestures for the simulated touchpad (see gestures.h). Positions are in
+ * mm from the touchpad's top-left corner; each frame lasts 12.5 ms (80 Hz). */
 #include "gestures.h"
 
 #include <linux/input.h>
@@ -27,7 +27,7 @@ void sim_wait(SimGen *g, double ms) { g->t += ms; }
 static int ux(double mm) { int v = (int)lround(SIM_X_MIN + mm * SIM_RES); return v < SIM_X_MIN ? SIM_X_MIN : v > SIM_X_MAX ? SIM_X_MAX : v; }
 static int uy(double mm) { int v = (int)lround(SIM_Y_MIN + mm * SIM_RES); return v < SIM_Y_MIN ? SIM_Y_MIN : v > SIM_Y_MAX ? SIM_Y_MAX : v; }
 
-/* Un cuadro con n contactos (en los slots 0..n-1) y el botón del clickpad. */
+/* One frame with n contacts (in slots 0..n-1) and the clickpad button. */
 static void frame(SimGen *g, int n, const Pt *pts, int button) {
     static const int tools[] = { 0, BTN_TOOL_FINGER, BTN_TOOL_DOUBLETAP, BTN_TOOL_TRIPLETAP, BTN_TOOL_QUADTAP, BTN_TOOL_QUINTTAP };
     for (int i = 0; i < SIM_SLOTS; i++) {
@@ -58,7 +58,7 @@ static void frame(SimGen *g, int n, const Pt *pts, int button) {
             g->id[i] = -1;
         }
     }
-    /* emulación de un solo dedo (como el kernel): el primer contacto */
+    /* single-finger emulation (like the kernel): the first contact */
     if (n > 0) {
         ev(g, EV_ABS, ABS_X, g->x[0]);
         ev(g, EV_ABS, ABS_Y, g->y[0]);
@@ -79,7 +79,7 @@ static void frame(SimGen *g, int n, const Pt *pts, int button) {
 
 static double ease(double u) { return u * u * (3 - 2 * u); }
 
-/* n dedos de from[] a to[] en ms (con aceleración y frenado suaves). */
+/* n fingers from from[] to to[] in ms (with smooth acceleration and deceleration). */
 static void stroke(SimGen *g, int n, const Pt *from, const Pt *to, double ms, int button) {
     int frames = (int)(ms / g->frame_ms);
     if (frames < 1) frames = 1;
@@ -95,7 +95,7 @@ static void stroke(SimGen *g, int n, const Pt *from, const Pt *to, double ms, in
     }
 }
 
-/* lo mismo pero a velocidad constante (para un scroll que se suelta en movimiento) */
+/* the same but at constant speed (for a scroll released while moving) */
 static void stroke_linear(SimGen *g, int n, const Pt *from, const Pt *to, double ms) {
     int frames = (int)(ms / g->frame_ms);
     Pt p[SIM_SLOTS];
@@ -113,7 +113,7 @@ static void stroke_linear(SimGen *g, int n, const Pt *from, const Pt *to, double
 static void hold(SimGen *g, int n, const Pt *at, double ms, int button) { stroke(g, n, at, at, ms, button); }
 static void lift(SimGen *g) { frame(g, 0, NULL, g->button); }
 
-/* ---- gestos ---- */
+/* ---- gestures ---- */
 
 static void g_move(SimGen *g) {
     Pt a[] = { { 30, 45, P_FINGER } }, b[] = { { 75, 52, P_FINGER } };
@@ -152,14 +152,14 @@ static void clickn(SimGen *g, int n) {
 static void g_click(SimGen *g) { clickn(g, 1); }
 static void g_click2(SimGen *g) { clickn(g, 2); }
 static void g_click3(SimGen *g) { clickn(g, 3); }
-static void g_thumbclick(SimGen *g) {          /* pulgar apoyado abajo + índice: clic izquierdo */
+static void g_thumbclick(SimGen *g) {          /* thumb resting at the bottom + index: left click */
     Pt a[] = { { 50, 82, P_FINGER }, { 45, 40, P_FINGER } };
     hold(g, 2, a, 60, 0);
     hold(g, 2, a, 80, 1);
     hold(g, 2, a, 30, 0);
     lift(g);
 }
-static void g_scroll(SimGen *g) {             /* dos dedos hacia arriba, rápido, y se sueltan en movimiento */
+static void g_scroll(SimGen *g) {             /* two fingers up, fast, released while moving */
     Pt a[] = { { 45, 65, P_FINGER }, { 60, 66, P_FINGER } }, b[] = { { 45, 30, P_FINGER }, { 60, 31, P_FINGER } };
     stroke_linear(g, 2, a, b, 220);
     lift(g);
@@ -171,7 +171,7 @@ static void g_scroll_down(SimGen *g) {
     lift(g);
     sim_wait(g, 1500);
 }
-static void g_scroll_slow(SimGen *g) {        /* despacio y se frena antes de soltar: sin inercia */
+static void g_scroll_slow(SimGen *g) {        /* slow, stopping before release: no momentum */
     Pt a[] = { { 45, 60, P_FINGER }, { 60, 61, P_FINGER } }, b[] = { { 45, 40, P_FINGER }, { 60, 41, P_FINGER } };
     stroke(g, 2, a, b, 800, 0);
     hold(g, 2, b, 200, 0);
@@ -190,7 +190,7 @@ static void g_pinch_in(SimGen *g) {
     lift(g);
     sim_wait(g, 200);
 }
-static void g_rotate(SimGen *g) {             /* dos dedos girando 60° alrededor del centro */
+static void g_rotate(SimGen *g) {             /* two fingers rotating 60° around the center */
     int frames = 40;
     for (int k = 0; k <= frames; k++) {
         double ang = (-20 + 60.0 * ease((double)k / frames)) * M_PI / 180;
@@ -212,20 +212,20 @@ static void g_swipe3_down(SimGen *g) { swipe(g, 3, 0, 30); }
 static void g_swipe3_left(SimGen *g) { swipe(g, 3, -28, 0); }
 static void g_swipe3_right(SimGen *g) { swipe(g, 3, 28, 0); }
 static void g_swipe4_up(SimGen *g) { swipe(g, 4, 0, -35); }
-static void g_palm(SimGen *g) {               /* palma: contacto con mucha presión en el borde */
+static void g_palm(SimGen *g) {               /* palm: high-pressure contact on the edge */
     Pt a[] = { { 101, 40, P_PALM } }, b[] = { { 100, 70, P_PALM } };
     stroke(g, 1, a, b, 600, 0);
     lift(g);
     sim_wait(g, 300);
 }
-static void g_edge(SimGen *g) {               /* un toque que se queda en el borde izquierdo */
+static void g_edge(SimGen *g) {               /* a touch that stays on the left edge */
     Pt a[] = { { 3, 25, P_FINGER } }, b[] = { { 3, 65, P_FINGER } };
     hold(g, 1, a, 320, 0);
     stroke(g, 1, a, b, 500, 0);
     lift(g);
     sim_wait(g, 300);
 }
-static void g_threedrag(SimGen *g) {          /* con «arrastrar con tres dedos» */
+static void g_threedrag(SimGen *g) {          /* with "three-finger drag" */
     Pt a[] = { { 40, 50, P_FINGER }, { 54, 47, P_FINGER }, { 68, 50, P_FINGER } }, b[3];
     for (int i = 0; i < 3; i++) { b[i] = a[i]; b[i].x += 30; b[i].y -= 10; }
     stroke(g, 3, a, b, 500, 0);
@@ -234,31 +234,31 @@ static void g_threedrag(SimGen *g) {          /* con «arrastrar con tres dedos�
 }
 
 static const SimGesture list[] = {
-    { "move", "1 dedo: mover el puntero a la derecha", g_move },
-    { "move-back", "1 dedo: mover el puntero a la izquierda", g_move_back },
-    { "tap", "tocar con 1 dedo (clic)", g_tap },
-    { "tap2", "tocar con 2 dedos (clic secundario)", g_tap2 },
-    { "tap3", "tocar con 3 dedos (clic del medio)", g_tap3 },
-    { "doubletap", "doble toque", g_doubletap },
-    { "tapdrag", "tocar y arrastrar", g_tapdrag },
-    { "click", "clic físico con 1 dedo", g_click },
-    { "click2", "clic físico con 2 dedos (secundario)", g_click2 },
-    { "click3", "clic físico con 3 dedos (medio)", g_click3 },
-    { "thumbclick", "pulgar apoyado abajo + índice: clic izquierdo", g_thumbclick },
-    { "scroll", "2 dedos hacia arriba, rápido (inercia)", g_scroll },
-    { "scroll-down", "2 dedos hacia abajo, rápido", g_scroll_down },
-    { "scroll-slow", "2 dedos despacio, sin inercia", g_scroll_slow },
-    { "pinch-out", "separar 2 dedos (ampliar)", g_pinch_out },
-    { "pinch-in", "juntar 2 dedos (reducir)", g_pinch_in },
-    { "rotate", "girar 2 dedos 60°", g_rotate },
-    { "swipe3-up", "3 dedos hacia arriba", g_swipe3_up },
-    { "swipe3-down", "3 dedos hacia abajo", g_swipe3_down },
-    { "swipe3-left", "3 dedos a la izquierda", g_swipe3_left },
-    { "swipe3-right", "3 dedos a la derecha", g_swipe3_right },
-    { "swipe4-up", "4 dedos hacia arriba", g_swipe4_up },
-    { "palm", "palma en el borde derecho (se ignora)", g_palm },
-    { "edge", "toque quieto en el borde izquierdo (se ignora)", g_edge },
-    { "threedrag", "arrastrar con 3 dedos", g_threedrag },
+    { "move", "1 finger: move the pointer right", g_move },
+    { "move-back", "1 finger: move the pointer left", g_move_back },
+    { "tap", "tap with 1 finger (click)", g_tap },
+    { "tap2", "tap with 2 fingers (secondary click)", g_tap2 },
+    { "tap3", "tap with 3 fingers (middle click)", g_tap3 },
+    { "doubletap", "double tap", g_doubletap },
+    { "tapdrag", "tap and drag", g_tapdrag },
+    { "click", "physical click with 1 finger", g_click },
+    { "click2", "physical click with 2 fingers (secondary)", g_click2 },
+    { "click3", "physical click with 3 fingers (middle)", g_click3 },
+    { "thumbclick", "thumb resting at the bottom + index: left click", g_thumbclick },
+    { "scroll", "2 fingers up, fast (momentum)", g_scroll },
+    { "scroll-down", "2 fingers down, fast", g_scroll_down },
+    { "scroll-slow", "2 fingers slowly, no momentum", g_scroll_slow },
+    { "pinch-out", "spread 2 fingers (zoom in)", g_pinch_out },
+    { "pinch-in", "pinch 2 fingers (zoom out)", g_pinch_in },
+    { "rotate", "rotate 2 fingers 60°", g_rotate },
+    { "swipe3-up", "3 fingers up", g_swipe3_up },
+    { "swipe3-down", "3 fingers down", g_swipe3_down },
+    { "swipe3-left", "3 fingers left", g_swipe3_left },
+    { "swipe3-right", "3 fingers right", g_swipe3_right },
+    { "swipe4-up", "4 fingers up", g_swipe4_up },
+    { "palm", "palm on the right edge (ignored)", g_palm },
+    { "edge", "still touch on the left edge (ignored)", g_edge },
+    { "threedrag", "3-finger drag", g_threedrag },
 };
 
 const SimGesture *sim_gestures(int *n) { *n = (int)(sizeof list / sizeof list[0]); return list; }

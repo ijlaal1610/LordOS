@@ -1,17 +1,17 @@
-/* lm_play.c — el reproductor de lord-media (MK_PLAY).
+/* lm_play.c — lord-media's player (MK_PLAY).
  *
- * FFmpeg solo demultiplexa y decodifica; el resto es propio:
- *   - un hilo de decodificación con colas por pista (paquetes) y colas de salida acotadas
- *     (cuadros de video, PCM), como ffplay pero más chico;
- *   - el hilo principal atiende a lord-server, le da el audio a PipeWire a medida que lo pide
- *     y presenta cada cuadro cuando le toca según el reloj del audio (lo que PipeWire ya
- *     reprodujo, con su latencia: GET_PLAYBACK_LATENCY). Sin audio, el reloj es el del sistema.
- *   - un cuadro que llega tarde se descarta (se cuenta), para no atrasar el audio;
- *   - cada cuadro se escala una sola vez al tamaño en que se muestra y se escribe en una de
- *     tres ranuras de memoria compartida con lord-server (memfd sellado). lord-server lo copia
- *     una vez al componer: no hay más copias.
- *   - VA-API (si lord-server pasó el render node y hay driver): decodifica la GPU y se baja el
- *     cuadro (NV12) para escalarlo. */
+ * FFmpeg only demuxes and decodes; the rest is our own:
+ *   - a decoding thread with per-track queues (packets) and bounded output queues
+ *     (video frames, PCM), like ffplay but smaller;
+ *   - the main thread serves lord-server, gives the audio to PipeWire as it asks for it
+ *     and presents each frame when it's due according to the audio clock (what PipeWire has already
+ *     played, with its latency: GET_PLAYBACK_LATENCY). Without audio, the clock is the system's.
+ *   - a frame that arrives late is dropped (and counted), so as not to delay the audio;
+ *   - each frame is scaled only once to the size at which it's shown and written into one of
+ *     three shared-memory slots with lord-server (sealed memfd). lord-server copies it
+ *     once when compositing: there are no more copies.
+ *   - VA-API (if lord-server passed the render node and there's a driver): the GPU decodes and the
+ *     frame (NV12) is downloaded to scale it. */
 #include "lm.h"
 #include "../aring.h"
 
@@ -34,12 +34,12 @@
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
 
-#define VQ_MAX   6                   /* cuadros decodificados en espera */
-#define AQ_MS    1000                /* PCM decodificado en espera */
-#define PKTQ_MAX (24u << 20)         /* bytes de paquetes sin decodificar */
+#define VQ_MAX   6                   /* decoded frames waiting */
+#define AQ_MS    1000                /* decoded PCM waiting */
+#define PKTQ_MAX (24u << 20)         /* bytes of undecoded packets */
 #define OUT_RATE 48000
 
-/* ---- colas ---- */
+/* ---- queues ---- */
 
 typedef struct PktNode { AVPacket *pkt; struct PktNode *next; } PktNode;
 typedef struct { PktNode *head, *tail; int n; size_t bytes; } PktQ;
@@ -73,8 +73,8 @@ typedef struct { int64_t start, end; char text[1024]; int serial; } SubEv;
 
 typedef struct {
     AVFormatContext *fmt;
-    int vi, ai, si;                 /* pistas elegidas (-1 ninguna) */
-    int cover;                      /* la pista de video es una carátula (attached_pic) */
+    int vi, ai, si;                 /* chosen tracks (-1 none) */
+    int cover;                      /* the video track is cover art (attached_pic) */
     AVCodecContext *vdec, *adec, *sdec;
     AVBufferRef *hw;
     int hw_active;
@@ -88,7 +88,7 @@ typedef struct {
     int quit;
     int seek_req, serial;
     int64_t seek_ms;
-    int track_req_a, track_req_s;   /* cambio de pista pedido (-2 = nada) */
+    int track_req_a, track_req_s;   /* requested track change (-2 = none) */
     int eof;
     PktQ vq_pkt, aq_pkt, sq_pkt;
     VFrame vq[VQ_MAX];
@@ -98,12 +98,12 @@ typedef struct {
     int64_t aq_ms;
     SubEv subs[32];
     int sub_n;
-    int64_t skip_before;            /* después de un seek: descartar lo anterior (ms) */
+    int64_t skip_before;            /* after a seek: discard what's before (ms) */
 
-    /* estadísticas (las escribe el hilo de decodificación) */
+    /* statistics (written by the decoding thread) */
     long decoded, shown, dropped;
     double dec_ms;
-    double sync_sum, sync_max;      /* |pts del cuadro - reloj| al presentarlo (ms) */
+    double sync_sum, sync_max;      /* |frame pts - clock| when presenting it (ms) */
     long sync_n;
 } Player;
 
@@ -115,12 +115,12 @@ static int64_t frame_ms(AVStream *st, const AVFrame *f) {
     return av_rescale_q(ts, st->time_base, (AVRational){ 1, 1000 }) - P.start_ms;
 }
 
-/* ---- decodificadores ---- */
+/* ---- decoders ---- */
 
 static enum AVPixelFormat get_hw_format(AVCodecContext *c, const enum AVPixelFormat *fmts) {
     (void)c;
     for (const enum AVPixelFormat *p = fmts; *p != AV_PIX_FMT_NONE; p++) if (*p == AV_PIX_FMT_VAAPI) return *p;
-    P.hw_active = 0;                /* el decodificador no puede por VA-API: software */
+    P.hw_active = 0;                /* the decoder can't use VA-API: software */
     return fmts[0];
 }
 
@@ -160,7 +160,7 @@ static int open_audio(int ai) {
     if (ai < 0) return 0;
     P.adec = open_dec(ai, 0);
     if (!P.adec) { P.ai = -1; return -1; }
-    P.out_ch = 2;                    /* el anillo es siempre estéreo */
+    P.out_ch = 2;                    /* the ring is always stereo */
     AVChannelLayout out;
     av_channel_layout_default(&out, P.out_ch);
     if (swr_alloc_set_opts2(&P.swr, &out, AV_SAMPLE_FMT_S16, OUT_RATE, &P.adec->ch_layout, P.adec->sample_fmt,
@@ -173,7 +173,7 @@ static int open_audio(int ai) {
     return 0;
 }
 
-/* ---- hilo de decodificación ---- */
+/* ---- decoding thread ---- */
 
 static void clear_outputs(void) {
     for (int i = 0; i < P.vq_n; i++) av_frame_free(&P.vq[i].f);
@@ -200,9 +200,9 @@ static void ass_to_text(const char *ass, char *out, size_t n) {
     out[o] = 0;
 }
 
-/* Video: primero se sacan del decodificador los cuadros que ya tenga, solo mientras haya lugar
- * en la cola (los demás esperan adentro del decodificador: al vaciarlo al final salen varios
- * juntos); después, un paquete más. Al final del archivo se manda NULL una sola vez. */
+/* Video: first the frames the decoder already has are taken out, only while there's room
+ * in the queue (the rest wait inside the decoder: when it's drained at the end several come out
+ * together); then, one more packet. At the end of the file NULL is sent only once. */
 static int vflushed;
 
 static void pq_push_front(PktQ *q, AVPacket *p) {
@@ -242,7 +242,7 @@ static int decode_video(void) {
     AVPacket *pkt = pq_pop(&P.vq_pkt);
     if (!pkt) {
         if (!P.eof || vflushed) return progress;
-        vflushed = 1;                             /* fin del archivo: vaciar el decodificador */
+        vflushed = 1;                             /* end of file: drain the decoder */
         pthread_mutex_unlock(&P.mu);
         avcodec_send_packet(P.vdec, NULL);
         pthread_mutex_lock(&P.mu);
@@ -254,7 +254,7 @@ static int decode_video(void) {
     double dt = lm_now_ms() - t0;
     pthread_mutex_lock(&P.mu);
     P.dec_ms += dt;
-    if (r == AVERROR(EAGAIN) && serial == P.serial) pq_push_front(&P.vq_pkt, pkt);   /* vuelve después */
+    if (r == AVERROR(EAGAIN) && serial == P.serial) pq_push_front(&P.vq_pkt, pkt);   /* comes back later */
     else av_packet_free(&pkt);
     return 1;
 }
@@ -278,7 +278,7 @@ static int decode_audio(void) {
         av_frame_unref(f);
         if (got <= 0) { free(pcm); continue; }
         int bytes = got * P.out_ch * 2, off = 0;
-        /* después de un seek: recortar lo anterior al destino */
+        /* after a seek: trim what's before the target */
         if (pts != AV_NOPTS_VALUE && pts < P.skip_before) {
             int64_t skip = (P.skip_before - pts) * OUT_RATE / 1000;
             if (skip >= got) { free(pcm); continue; }
@@ -409,21 +409,21 @@ static void *decode_thread(void *arg) {
     return NULL;
 }
 
-/* ---- el reloj ---- */
+/* ---- the clock ---- */
 
 typedef struct {
-    int audio;                      /* hay salida de audio */
+    int audio;                      /* there's audio output */
     int playing;
-    int64_t anchor_pts;             /* pts del primer byte mandado después del último seek */
-    int64_t anchor_byte;            /* written de PipeWire en ese momento (-1: todavía no) */
-    int64_t base_pts;               /* reloj del sistema: pts al arrancar/pausar */
+    int64_t anchor_pts;             /* pts of the first byte sent after the last seek */
+    int64_t anchor_byte;            /* PipeWire's written at that moment (-1: not yet) */
+    int64_t base_pts;               /* system clock: pts when starting/pausing */
     double base_ms;
-    int64_t audio_end;              /* pts del final de lo mandado */
+    int64_t audio_end;              /* pts of the end of what was sent */
 } Clock;
 
 static Clock C;
-static ARingHdr *AR;                /* anillo de audio de lord-server (o NULL: sin audio) */
-#define FRAME_BYTES 4                /* s16 estéreo */
+static ARingHdr *AR;                /* lord-server's audio ring (or NULL: no audio) */
+#define FRAME_BYTES 4                /* s16 stereo */
 
 static int64_t clock_ms(void) {
     if (!C.playing) return C.base_pts;
@@ -462,7 +462,7 @@ static void feed_audio(void) {
     }
     pthread_cond_broadcast(&P.cv);
     pthread_mutex_unlock(&P.mu);
-    if (wrote) mp_sendv(LM_SOCK, MM_AUDIO, 0, 0, 0, 0, 0);       /* lord-server le pasa a PipeWire */
+    if (wrote) mp_sendv(LM_SOCK, MM_AUDIO, 0, 0, 0, 0, 0);       /* lord-server passes it to PipeWire */
 }
 
 static void set_playing(int on) {
@@ -485,7 +485,7 @@ static void seek_to(int64_t ms) {
     pthread_cond_broadcast(&P.cv);
     pthread_mutex_unlock(&P.mu);
     if (C.audio) {
-        /* lord-server descarta lo que quedó en el anillo y en PipeWire (FLUSH) */
+        /* lord-server discards what was left in the ring and in PipeWire (FLUSH) */
         atomic_store(&AR->discard_to, atomic_load(&AR->wpos));
         atomic_fetch_add(&AR->serial, 1);
         C.anchor_byte = -1;
@@ -515,10 +515,10 @@ void lm_player(const char *params, int fd, int pulse, int render) {
     int autoplay = (int)mp_param_int(params, "autoplay", 1);
     int want_audio = (int)mp_param_int(params, "audio", 1);
 
-    /* VA-API antes de seccomp (carga el driver de /usr/lib) */
+    /* VA-API before seccomp (it loads the driver from /usr/lib) */
     char accel[24];
     P.hw = lm_hw_device(lm_hw_accel(params, accel, sizeof accel), render);
-    /* el anillo de audio lo crea lord-server (sellado); se valida antes de usarlo */
+    /* lord-server creates the audio ring (sealed); it's validated before using it */
     if (pulse >= 0 && want_audio) {
         struct stat st;
         void *m = MAP_FAILED;
@@ -529,7 +529,7 @@ void lm_player(const char *params, int fd, int pulse, int render) {
             if (h->magic == AR_MAGIC && h->rate == OUT_RATE && h->channels == 2 && h->size && !(h->size & (h->size - 1)) && ar_bytes(h->size) <= (size_t)st.st_size) AR = h;
             else munmap(m, (size_t)st.st_size);
         }
-        if (!AR) LM_LOG("anillo de audio inválido: sin sonido");
+        if (!AR) LM_LOG("invalid audio ring: no sound");
     }
     close(pulse);
 
@@ -546,12 +546,12 @@ void lm_player(const char *params, int fd, int pulse, int render) {
     if (P.vi >= 0) {
         P.fmt->streams[P.vi]->discard = AVDISCARD_DEFAULT;
         P.vdec = open_dec(P.vi, 1);
-        if (!P.vdec && P.hw) { av_buffer_unref(&P.hw); P.vdec = open_dec(P.vi, 1); }   /* sin VA-API */
+        if (!P.vdec && P.hw) { av_buffer_unref(&P.hw); P.vdec = open_dec(P.vi, 1); }   /* without VA-API */
         if (!P.vdec) P.vi = -1;
     }
-    if (ai >= 0) { P.fmt->streams[ai]->discard = AVDISCARD_DEFAULT; if (open_audio(ai)) LM_LOG("sin decodificador de audio"); }
+    if (ai >= 0) { P.fmt->streams[ai]->discard = AVDISCARD_DEFAULT; if (open_audio(ai)) LM_LOG("no audio decoder"); }
     else P.ai = -1;
-    /* todas las pistas de audio y subtítulos se leen (para poder cambiar sin reabrir) */
+    /* all audio and subtitle tracks are read (to be able to switch without reopening) */
     for (unsigned i = 0; i < P.fmt->nb_streams; i++) {
         enum AVMediaType t = P.fmt->streams[i]->codecpar->codec_type;
         if (t == AVMEDIA_TYPE_AUDIO || t == AVMEDIA_TYPE_SUBTITLE) P.fmt->streams[i]->discard = AVDISCARD_DEFAULT;
@@ -563,7 +563,7 @@ void lm_player(const char *params, int fd, int pulse, int render) {
 
     pthread_mutex_init(&P.mu, NULL);
     pthread_cond_init(&P.cv, NULL);
-    /* carátula: un solo cuadro, se presenta enseguida */
+    /* cover art: a single frame, presented right away */
     AVFrame *cover = P.cover ? lm_decode_still(P.fmt, 0, NULL, 1) : NULL;
     if (P.cover) { avcodec_free_context(&P.vdec); av_seek_frame(P.fmt, -1, 0, AVSEEK_FLAG_BACKWARD); }
     if (pthread_create(&P.th, NULL, decode_thread, NULL)) { lm_error("sin hilos"); return; }
@@ -574,7 +574,7 @@ void lm_player(const char *params, int fd, int pulse, int render) {
     int ended = 0;
     if (autoplay) set_playing(1); else mp_sendv(LM_SOCK, MM_STATE, 0, MS_PAUSED, 0, 0, 0);
     for (;;) {
-        /* cuándo hay que volver a mirar: el próximo cuadro o 20 ms */
+        /* when to look again: the next frame or 20 ms */
         int timeout = 20;
         pthread_mutex_lock(&P.mu);
         if (P.vq_n && C.playing) {
@@ -582,7 +582,7 @@ void lm_player(const char *params, int fd, int pulse, int render) {
             if (d < timeout) timeout = d < 1 ? 1 : (int)d;
         }
         pthread_mutex_unlock(&P.mu);
-        if (C.audio && P.aq_n && timeout > 10) timeout = 10;          /* seguir llenando el anillo */
+        if (C.audio && P.aq_n && timeout > 10) timeout = 10;          /* keep filling the ring */
         struct pollfd pf[1] = { { LM_SOCK, POLLIN, 0 } };
         if (poll(pf, 1, timeout) < 0 && errno != EINTR) break;
         if (pf[0].revents & (POLLHUP | POLLERR)) break;
@@ -625,9 +625,9 @@ void lm_player(const char *params, int fd, int pulse, int render) {
         }
         if (C.audio) {
             feed_audio();
-            /* lord-server dejó de consumir (PipeWire se fue): sigue con el reloj del sistema */
-            /* lo normal es que el anillo esté casi lleno (se decodifica ~1 s adelante): lo que
-             * indica el corte es que la posición de lectura de lord-server no se mueva */
+            /* lord-server stopped consuming (PipeWire went away): continue with the system clock */
+            /* normally the ring is almost full (decoding runs ~1 s ahead): what
+             * indicates the cut is that lord-server's read position doesn't move */
             static double full_since;
             static uint64_t last_r;
             uint64_t r = atomic_load(&AR->rpos);
@@ -635,7 +635,7 @@ void lm_player(const char *params, int fd, int pulse, int render) {
                 if (!full_since) full_since = lm_now_ms();
                 else if (lm_now_ms() - full_since > 2000) {
                     int64_t now = clock_ms();
-                    LM_LOG("el audio no avanza: sigue sin sonido");
+                    LM_LOG("the audio isn't advancing: continuing without sound");
                     C.audio = 0;
                     C.base_pts = now;
                     C.base_ms = lm_now_ms();
@@ -644,7 +644,7 @@ void lm_player(const char *params, int fd, int pulse, int render) {
             last_r = r;
         }
         if (cover && lm_out_has_box() && !lm_out_has_last()) lm_out_present(cover, 0);
-        /* video: el cuadro que corresponde al reloj */
+        /* video: the frame that matches the clock */
         int64_t now = clock_ms();
         for (;;) {
             pthread_mutex_lock(&P.mu);
@@ -656,7 +656,7 @@ void lm_player(const char *params, int fd, int pulse, int render) {
                 pthread_mutex_unlock(&P.mu);
                 continue;
             }
-            /* después de un seek, el primer cuadro se muestra aunque esté en pausa */
+            /* after a seek, the first frame is shown even while paused */
             int show_paused = seek_wait && !C.playing;
             if (!show_paused && (!C.playing || vf.pts > now + 4)) { pthread_mutex_unlock(&P.mu); break; }
             int late = P.vq_n > 1 && P.vq[1].pts <= now && lm_now_ms() - last_shown_ms < 250;
@@ -677,7 +677,7 @@ void lm_player(const char *params, int fd, int pulse, int render) {
             av_frame_free(&vf.f);
             if (!C.playing) break;
         }
-        /* subtítulos: se mandan apenas se decodifican (el reloj de JS los muestra) */
+        /* subtitles: sent as soon as they're decoded (the JS clock shows them) */
         pthread_mutex_lock(&P.mu);
         for (int i = 0; i < P.sub_n; i++) {
             if (P.subs[i].serial != P.serial) continue;
@@ -687,7 +687,7 @@ void lm_player(const char *params, int fd, int pulse, int render) {
         P.sub_n = 0;
         int drained = P.eof && !P.vq_n && !P.aq_n && !P.vq_pkt.n && !P.aq_pkt.n;
         pthread_mutex_unlock(&P.mu);
-        /* fin: no queda nada y el audio ya sonó */
+        /* end: nothing left and the audio has already played */
         if (drained && C.playing && !ended && (!C.audio || clock_ms() >= C.audio_end - 30 || !ar_avail(AR))) {
             if (loop) seek_to(0);
             else {

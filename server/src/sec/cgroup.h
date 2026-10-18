@@ -1,46 +1,46 @@
-/* cgroup.h — cada app va a su propio cgroup v2 (una «scope»), para que el agente de monitoreo
- * atribuya el tráfico y el hardware por ese nombre y para ponerle límites de memoria y CPU.
+/* cgroup.h — each app goes into its own cgroup v2 (a "scope"), so the monitoring agent
+ * attributes traffic and hardware by that name and so memory and CPU limits can be set on it.
  *
- *   app-lordos-lpk-<id>.scope   apps nativas .lpk aisladas (sandbox.c)
- *   app-lordos-<id>.scope       apps Linux (.desktop) lanzadas por apps.c
+ *   app-lordos-lpk-<id>.scope   isolated native .lpk apps (sandbox.c)
+ *   app-lordos-<id>.scope       Linux apps (.desktop) launched by apps.c
  *
- * Reutilizable: se llama en el hijo recién bifurcado, justo antes del execve. lord-server corre
- * sin root; necesita que su subárbol de cgroup esté delegado (lord-sessiond lo prepara, ver
- * docs/SESIONES.md y docs/PRIVACIDAD.md). Si no se puede (sin delegación, controlador faltante,
- * kernel viejo), avisa por el registro y sigue sin cgroup: la app corre igual, sin límites. */
+ * Reusable: called in the freshly forked child, right before execve. lord-server runs
+ * without root; it needs its cgroup subtree to be delegated (lord-sessiond prepares it, see
+ * docs/SESSIONS.md and docs/PRIVACY.md). If that's not possible (no delegation, missing controller,
+ * old kernel), it warns in the log and goes on without a cgroup: the app runs anyway, without limits. */
 #ifndef LORD_SEC_CGROUP_H
 #define LORD_SEC_CGROUP_H
 
 #include <stddef.h>
 
 typedef struct {
-    long mem_high_mb;       /* memory.high en MB (0 = sin límite) */
-    long mem_max_mb;        /* memory.max en MB (0 = sin límite) */
-    int  cpu_percent;       /* cpu.max como % de un núcleo (0 = sin límite; 100 = un núcleo) */
+    long mem_high_mb;       /* memory.high in MB (0 = no limit) */
+    long mem_max_mb;        /* memory.max in MB (0 = no limit) */
+    int  cpu_percent;       /* cpu.max as % of one core (0 = no limit; 100 = one core) */
 } CgroupLimits;
 
-/* Mueve el proceso actual a la scope `name` dentro del subárbol delegado de la sesión y le
- * aplica los límites. 0 si quedó en la scope; -1 si no se pudo (ya avisó, el llamador sigue). */
+/* Moves the current process into scope `name` inside the session's delegated subtree and
+ * applies the limits. 0 if it ended up in the scope; -1 if it couldn't (already warned, the caller goes on). */
 int cgroup_enter(const char *name, const CgroupLimits *lim);
 
-/* Atajo para el hijo antes de execve: entra a app-lordos-<id>.scope con límites holgados. Solo
- * registra un aviso si falla. */
+/* Shortcut for the child before execve: enters app-lordos-<id>.scope with loose limits. Only
+ * logs a warning if it fails. */
 void app_scope_enter(const char *id);
 
-/* La ruta de cgroup v2 del proceso actual, relativa a /sys/fs/cgroup (ej. ".../app.slice/..."),
- * para que el monitor sepa en qué scope está. "" si no se pudo leer. */
+/* The cgroup v2 path of the current process, relative to /sys/fs/cgroup (e.g. ".../app.slice/..."),
+ * so the monitor knows which scope it's in. "" if it couldn't be read. */
 const char *cgroup_self(void);
 
 /* Called by lord-sessiond (root) in a session's child, before lord-server's execve: creates the
  * session's cgroup subtree with memory/CPU/pids enabled and moves the process into its «server»
  * leaf. The subtree stays root-owned (cgroup_harden_session); app scopes are created later by
  * lord-sessiond on request (cgroup_place_serve). Best effort: without delegation (Delegate=yes in
- * lordos.service) it warns and goes on. Returns 0 on success. See docs/SESIONES.md. */
+ * lordos.service) it warns and goes on. Returns 0 on success. See docs/SESSIONS.md. */
 int cgroup_delegate_session(unsigned uid, unsigned gid);
 
-/* Lo llama lord-sessiond al arrancar (root, lordos.service con Delegate=yes): se mueve a la hoja
- * «supervisor» para que la raíz del servicio pueda habilitar memoria/CPU/pids para los
- * subárboles de las sesiones (regla «sin procesos internos» de cgroup v2). 0 si quedó. */
+/* Called by lord-sessiond at startup (root, lordos.service with Delegate=yes): moves itself to the
+ * "supervisor" leaf so the service root can enable memory/CPU/pids for the
+ * sessions' subtrees (cgroup v2's "no internal processes" rule). 0 if it did. */
 int cgroup_service_init(void);
 
 /* ---- Root-owned app scopes (lord-sessiond) ----

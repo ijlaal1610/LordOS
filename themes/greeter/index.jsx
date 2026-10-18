@@ -1,13 +1,13 @@
-// Tema "greeter": la pantalla de ingreso de LordOS (docs/SESIONES.md).
+// "greeter" theme: the LordOS login screen (docs/SESSIONS.md).
 //
-// No es un tema que se elija en Ajustes: lo carga lord-sessiond con `lord-server --greeter`,
-// como el usuario de sistema lordos-greeter, sin ayudante de administración. Muestra la fecha,
-// un reloj grande, los usuarios y el campo de contraseña. Todo lo que necesita root (verificar la
-// contraseña, abrir la sesión, reiniciar, apagar) lo pide con lord.greeter.send() y la respuesta
-// llega por __lordGreeter: este JS nunca ve /etc/shadow.
+// It is not a theme you choose in Settings: lord-sessiond loads it with `lord-server --greeter`,
+// as the system user lordos-greeter, without the administration helper. It shows the date,
+// a big clock, the users and the password field. Everything that needs root (verifying the
+// password, opening the session, rebooting, powering off) is requested with lord.greeter.send() and the answer
+// arrives through __lordGreeter: this JS never sees /etc/shadow.
 //
-// Pedidos:  {t:'hello'} · {t:'login', user, pass} · {t:'power', a:'reboot'|'poweroff'}
-// Avisos:   {t:'hello', mode, user, host, layouts, variants, lang, users:[{name, full, color, image, admin, open}]}
+// Requests: {t:'hello'} · {t:'login', user, pass} · {t:'power', a:'reboot'|'poweroff'}
+// Notices:  {t:'hello', mode, user, host, layouts, variants, lang, users:[{name, full, color, image, admin, open}]}
 //           {t:'mode', mode:'login'|'lock'|'switch', user} · {t:'ok'} · {t:'fail', wait} · {t:'error'} · {t:'busy'}
 import { render, screen } from '@lordos/runtime';
 import {
@@ -60,7 +60,7 @@ function Avatar({ user, size, dim, onClick }) {
   );
 }
 
-// Ícono de apagado dibujado (no depende de que la fuente tenga ⏻)
+// Drawn power icon (doesn't depend on the font having ⏻)
 function PowerIcon({ color }) {
   return (
     <View style={{ width: 14, height: 14 }}>
@@ -114,7 +114,7 @@ function lanAddress() {
       if (i.type === 'loopback' || /^(wg|ovpn|ips|ppp|oc|fvpn)-/.test(i.name)) continue;
       for (const a of i.addresses) if (a.family === 4 && a.scope === 'global') return a.address;
     }
-  } catch (e) { /* sin red */ }
+  } catch (e) { /* no network */ }
   return '';
 }
 
@@ -135,7 +135,7 @@ function Greeter() {
   const [ip, setIp] = useState(lanAddress());
   const timers = useRef([]);
   const reselect = useRef(true);
-  const [focusRev, setFocusRev] = useState(0);      // al volver a mostrarse, el foco vuelve al campo
+  const [focusRev, setFocusRev] = useState(0);      // when shown again, focus goes back to the field
 
   const doShake = () => {
     timers.current.forEach(clearTimeout);
@@ -146,18 +146,18 @@ function Greeter() {
     const on = (m) => {
       if (m.t === 'hello') {
         setInfo((old) => ({ ...old, ...m }));
-        // teclado y idioma del sistema (/etc/default/keyboard y /etc/default/locale)
+        // system keyboard and language (/etc/default/keyboard and /etc/default/locale)
         const layouts = String(m.layouts || 'latam').split(',').filter(Boolean);
         const variants = String(m.variants || '').split(',');
         const kbs = layouts.map((l, i) => ({ layout: l, variant: variants[i] || '' }));
         if (JSON.stringify(settings.get().keyboards) !== JSON.stringify(kbs)) keyboard.set(kbs);
-        // idioma: el elegido acá antes o el del sistema (si no hay catálogo, español)
+        // language: the one chosen here before or the system's (if there is no catalog, Spanish)
         if (!['es', 'en', 'pt'].includes(settings.get().language)) {
           const sys = String(m.lang || '').slice(0, 2);
           setLanguage(['es', 'en', 'pt'].includes(sys) ? sys : 'es');
         }
-        // el usuario elegido: el de la pantalla bloqueada, otro (cambiar de usuario) o el primero;
-        // solo al cambiar de modo, así la lista que se refresca no pisa lo que eligió la persona
+        // the selected user: the one from the locked screen, another (switch user) or the first;
+        // only when the mode changes, so the refreshed list doesn't override what the person chose
         const pick = reselect.current;
         reselect.current = false;
         setSel((cur) => {
@@ -170,7 +170,7 @@ function Greeter() {
         setPass(''); setMsg(''); setBusy(false); setMenu(null); setConfirm(null); setFocusRev((v) => v + 1);
         setInfo((old) => ({ ...old, mode: m.mode, user: m.user }));
         reselect.current = true;
-        send({ t: 'hello' });                       // quién tiene sesión abierta, de nuevo
+        send({ t: 'hello' });                       // who has an open session, again
         setIp(lanAddress());
       } else if (m.t === 'ok') { setPass(''); setMsg(''); setBusy(false); }
       else if (m.t === 'fail') {
@@ -181,7 +181,7 @@ function Greeter() {
     };
     listeners.add(on);
     send({ t: 'hello' });
-    // cada 10 s: la dirección de red y la lista de usuarios (se pueden crear o borrar mientras tanto)
+    // every 10 s: the network address and the user list (users can be created or deleted meanwhile)
     const id = setInterval(() => { setIp(lanAddress()); send({ t: 'hello' }); }, 10000);
     const tick = setInterval(() => setNow(new Date()), 1000);
     return () => { listeners.delete(on); clearInterval(id); clearInterval(tick); };
@@ -190,7 +190,7 @@ function Greeter() {
   const user = info.users.find((u) => u.name === sel);
   const others = info.users.filter((u) => u.name !== sel);
   const submit = () => {
-    if (!user || busy) return;     // vacía: solo vale para el usuario del ISO live (lo decide lord-sessiond)
+    if (!user || busy) return;     // empty: only valid for the live ISO user (lord-sessiond decides)
     setBusy(true);
     setMsg('');
     if (!send({ t: 'login', user: user.name, pass })) { setBusy(false); setMsg(t('greeter.error')); }
@@ -213,7 +213,7 @@ function Greeter() {
       <View style={{ width: W, height: H, direction: 'ltr' }}>
         <Image src="assets/background.png" style={{ position: 'absolute', left: 0, top: 0, width: W, height: H, objectFit: 'cover' }} />
 
-        {/* fecha y reloj */}
+        {/* date and clock */}
         <View style={{ position: 'absolute', left: 0, top: Math.round(H * 0.085), width: W, alignItems: 'center' }}>
           <Text style={{ fontSize: Math.round(clockSize * 0.16), fontWeight: 500, color: 'rgba(255,255,255,0.88)' }}>
             {capitalize(formatDate(now, 'dayMonth'))}</Text>
@@ -221,7 +221,7 @@ function Greeter() {
             letterSpacing: -Math.round(clockSize * 0.03) }}>{formatTime(now)}</Text>
         </View>
 
-        {/* usuario elegido y contraseña */}
+        {/* selected user and password */}
         <View style={{ position: 'absolute', left: 0, top: Math.round(H * 0.6) - avatarSize, width: W, alignItems: 'center' }}>
           {user ? <Avatar user={user} size={avatarSize} /> : null}
           <Text style={{ marginTop: 14, fontSize: 16, fontWeight: 600, color: '#fff', textShadow: '0 1px 6px rgba(0,0,0,0.4)' }}>
@@ -253,7 +253,7 @@ function Greeter() {
           ) : null}
         </View>
 
-        {/* abajo: dirección del equipo; idioma, teclado, reiniciar y apagar */}
+        {/* bottom: the machine's address; language, keyboard, reboot and power off */}
         <View style={{ position: 'absolute', left: 20, bottom: 20, height: 32, flexDirection: 'row', alignItems: 'center', gap: 7 }}>
           <View style={{ width: 13, height: 9, borderRadius: 2, border: '1.4px solid rgba(255,255,255,0.75)' }} />
           <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>{ip || info.host}</Text>
@@ -285,7 +285,7 @@ function Greeter() {
   );
 }
 
-// Al cambiar el idioma se vuelve a montar todo (los textos salen de los catálogos).
+// Changing the language remounts everything (the strings come from the catalogs).
 function Root() {
   const { lang } = useStore(locale);
   return createElement(Greeter, { key: lang });

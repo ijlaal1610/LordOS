@@ -1,5 +1,5 @@
-// sidebar.jsx — barra lateral del Visor de PDF: miniaturas (solo se dibujan las que se ven, con
-// prioridad baja) o el índice del documento (marcadores del PDF, plegables).
+// sidebar.jsx — PDF Viewer sidebar: thumbnails (only the visible ones are drawn, at
+// low priority) or the document outline (PDF bookmarks, collapsible).
 import { View, Text, Segmented, DocImage, t as tr } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { shown } from './geometry.js';
@@ -11,14 +11,14 @@ function Thumbs({ doc, sizes, page, onPage, cache, rot, invert, th }) {
   const [h, setH] = useState(500);
   const box = useRef(null);
   const n = sizes.length;
-  // alto de cada miniatura (con su número)
+  // height of each thumbnail (with its number)
   const heights = sizes.map((s) => { const [w, hh] = shown(s, rot); return Math.round(TW * hh / w) + 28; });
   const tops = [];
   let y = 8;
   for (const hh of heights) { tops.push(y); y += hh; }
   const total = y + 8;
   useEffect(() => { const id = setInterval(() => { if (box.current) { const l = lord.getLayout(box.current.id); if (l[3] !== h) setH(l[3]); } }, 300); return () => clearInterval(id); }, [h]);
-  // seguir a la página actual
+  // follow the current page
   useEffect(() => {
     if (tops[page] == null) return;
     if (tops[page] < offset) setOffset(Math.max(0, tops[page] - 8));

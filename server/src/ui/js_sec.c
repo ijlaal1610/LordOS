@@ -1,5 +1,5 @@
-/* js_sec.c — lord.perms y lord.sign (ver js_sec.h). Validación estricta de entradas; el estado
- * de permisos vive en perms.c (un archivo que las apps no pueden escribir). */
+/* js_sec.c — lord.perms and lord.sign (see js_sec.h). Strict input validation; the permission
+ * state lives in perms.c (a file the apps cannot write). */
 #include "js_sec.h"
 #include "js_sys.h"
 #include "../sec/perms.h"
@@ -31,7 +31,7 @@ static JSValue f_perm_set(JSContext *c, JSValueConst t, int argc, JSValueConst *
     int p = app && pn ? perm_from_name(pn) : -1;
     PermState ns = state_from(st);
     int ok = app && lpk_valid_id(app) && p >= 0 && perm_set(app, (Perm)p, ns) == 0;
-    if (ok && ns != PERM_ALLOW) brokersrv_revoke(app, pn);      /* la app aislada suelta el dispositivo al instante */
+    if (ok && ns != PERM_ALLOW) brokersrv_revoke(app, pn);      /* the isolated app releases the device instantly */
     if (app) JS_FreeCString(c, app);
     if (pn) JS_FreeCString(c, pn);
     if (st) JS_FreeCString(c, st);
@@ -101,7 +101,7 @@ static JSValue f_sign_status(JSContext *c, JSValueConst t, int argc, JSValueCons
         JSValue e = JS_NewObject(c);
         JS_SetPropertyStr(c, e, "path", JS_NewString(c, st.changed[i]));
         char k[2] = { st.change_kind[i], 0 };
-        JS_SetPropertyStr(c, e, "kind", JS_NewString(c, k));   /* m modificado, a agregado, r borrado */
+        JS_SetPropertyStr(c, e, "kind", JS_NewString(c, k));   /* m modified, a added, r deleted */
         JS_SetPropertyUint32(c, arr, (uint32_t)i, e);
     }
     JS_SetPropertyStr(c, o, "changed", arr);
@@ -115,12 +115,12 @@ static JSValue f_sign_restore(JSContext *c, JSValueConst t, int argc, JSValueCon
     char err[160] = "";
     int ok = id && lpk_valid_id(id) && pkg_restore(id, err, sizeof err) == 0;
     if (id) JS_FreeCString(c, id);
-    if (!ok) return JS_ThrowInternalError(c, "%s", err[0] ? err : "no se pudo restaurar");
+    if (!ok) return JS_ThrowInternalError(c, "%s", err[0] ? err : "could not restore");
     return JS_TRUE;
 }
 
-/* lord.sign.share(id, manifestTexto, salidaRelativa) → ruta del .lpk creado (en la carpeta
- * personal; la UI elige dónde con el powerbox, pero acá se arma en una ruta validada). */
+/* lord.sign.share(id, manifestText, relativeOutput) → path of the created .lpk (in the home
+ * folder; the UI picks where with the powerbox, but here it is built at a validated path). */
 static JSValue f_sign_share(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc;
     const char *id = JS_ToCString(c, argv[0]);
@@ -130,7 +130,7 @@ static JSValue f_sign_share(JSContext *c, JSValueConst t, int argc, JSValueConst
     char out[1024], err[160] = "";
     int ok = id && manifest && rel && lpk_valid_id(id) && !js_sys_resolve_target(rel, out, sizeof out) &&
              pkg_share(id, manifest, mlen, out, err, sizeof err) == 0;
-    JSValue r = ok ? JS_NewString(c, out) : JS_ThrowInternalError(c, "%s", err[0] ? err : "no se pudo compartir");
+    JSValue r = ok ? JS_NewString(c, out) : JS_ThrowInternalError(c, "%s", err[0] ? err : "could not share");
     if (id) JS_FreeCString(c, id);
     if (manifest) JS_FreeCString(c, manifest);
     if (rel) JS_FreeCString(c, rel);
@@ -141,7 +141,7 @@ static JSValue f_sign_userkey(JSContext *c, JSValueConst t, int argc, JSValueCon
     (void)t; (void)argc; (void)argv;
     uint8_t seed[32];
     char pub[65], name[128];
-    if (pkg_user_key(seed, pub, name)) return JS_ThrowInternalError(c, "no se pudo obtener la clave propia");
+    if (pkg_user_key(seed, pub, name)) return JS_ThrowInternalError(c, "could not get our own key");
     memset(seed, 0, sizeof seed);
     JSValue o = JS_NewObject(c);
     JS_SetPropertyStr(c, o, "public", JS_NewString(c, pub));
@@ -156,8 +156,8 @@ static const JSCFunctionListEntry sign_funcs[] = {
     JS_CFUNC_DEF("userKey", 0, f_sign_userkey),
 };
 
-/* lord.broker.resolve(reqid, allow): la respuesta del usuario a un aviso de permiso de una app
- * aislada (desde sdk/privacy.js). Solo existe en el proceso del compositor. */
+/* lord.broker.resolve(reqid, allow): the user's answer to a permission prompt from an isolated
+ * app (from sdk/privacy.js). It only exists in the compositor process. */
 static JSValue f_broker_resolve(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc;
     int64_t reqid = 0;
@@ -165,8 +165,8 @@ static JSValue f_broker_resolve(JSContext *c, JSValueConst t, int argc, JSValueC
     brokersrv_resolve((uint32_t)reqid, JS_ToBool(c, argv[1]));
     return JS_UNDEFINED;
 }
-/* lord.broker.publish(tipo, json): el tema publica sus tokens ("theme") o el idioma ("locale") y
- * lord-server los reenvía en vivo a las apps aisladas. */
+/* lord.broker.publish(type, json): the theme publishes its tokens ("theme") or the language ("locale") and
+ * lord-server forwards them live to the isolated apps. */
 static JSValue f_broker_publish(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc;
     const char *kind = JS_ToCString(c, argv[0]);

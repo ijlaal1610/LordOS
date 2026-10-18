@@ -1,12 +1,12 @@
-/* pkg_test.c — pruebas del motor de paquetes (server/src/pkg) sin root ni red, y herramienta
- * para correr las acciones del ayudante a mano.
+/* pkg_test.c — tests of the package engine (server/src/pkg) without root or network, and a tool
+ * to run the helper's actions by hand.
  *
- *   build/pkg-test                       pruebas unitarias (versiones, deb822, relaciones, SHA,
- *                                        RSA, Ed25519, xz/gzip, índice y resolvedor)
- *   build/pkg-test pgp <llavero> <InRelease>        verifica una firma real
- *   build/pkg-test plan <dir> <status> [-rquitar] [instalar…] [--up] [--rec] [--yes]
- *   sudo build/pkg-test run <acción> [argumento]    pkg-update, pkg-install "a b", pkg-autoremove…, como
- *                                        las corre admin.c (el progreso sale por stdout) */
+ *   build/pkg-test                       unit tests (versions, deb822, relations, SHA,
+ *                                        RSA, Ed25519, xz/gzip, index and resolver)
+ *   build/pkg-test pgp <keyring> <InRelease>        verifies a real signature
+ *   build/pkg-test plan <dir> <status> [-r<to-remove>] [to-install…] [--up] [--rec] [--yes]
+ *   sudo build/pkg-test run <action> [argument]     pkg-update, pkg-install "a b", pkg-autoremove…, as
+ *                                        admin.c runs them (progress goes to stdout) */
 #include "pkg/crypto.h"
 #include "pkg/deb.h"
 #include "pkg/idx.h"
@@ -26,7 +26,7 @@
 #include <time.h>
 #include <unistd.h>
 
-/* lo que admin.c le da a las acciones */
+/* what admin.c gives the actions */
 void admin_say(const char *kind, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
@@ -47,7 +47,7 @@ void admin_event(const char *fmt, ...) {
 }
 
 static int fails, checks;
-#define CHECK(cond, ...) do { checks++; if (!(cond)) { fails++; printf("FALLA %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
+#define CHECK(cond, ...) do { checks++; if (!(cond)) { fails++; printf("FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
 static const uint8_t rsa_n[] = {
     0x70, 0xd2, 0xb9, 0x14, 0x94, 0x74, 0x1a, 0xa6, 0xd7, 0x9e, 0xd0, 0x90, 0x57, 0x3e, 0xf8, 0x2a, 0xeb,
@@ -140,14 +140,14 @@ static void test_deb822(void) {
                 CHECK(k == 1 && r[0].nlen == 1 && r[0].name[0] == 'd', "d:any");
                 k = deb_next_group(&p, e, r, 8);
                 CHECK(k == 1 && r[0].name[0] == 'e' && r[0].op == REL_LT, "e (<< 2) [amd64]: op %d", r[0].op);
-                CHECK(deb_next_group(&p, e, r, 8) == 0, "fin de grupos");
+                CHECK(deb_next_group(&p, e, r, 8) == 0, "end of groups");
             }
-            if (d822_is(&f, "Description")) CHECK(f.vlen == strlen("corto\n largo\n .\n fin"), "continuación %zu", f.vlen);
+            if (d822_is(&f, "Description")) CHECK(f.vlen == strlen("corto\n largo\n .\n fin"), "continuation %zu", f.vlen);
         }
         CHECK(fields == (n ? 1 : 3), "campos %d", fields);
         n++;
     }
-    CHECK(n == 2, "párrafos %d", n);
+    CHECK(n == 2, "paragraphs %d", n);
 }
 
 static void test_crypto(void) {
@@ -162,20 +162,20 @@ static void test_crypto(void) {
     sha512_final(&s, o);
     hex_encode(o, 64, h);
     CHECK(!strncmp(h, "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a", 64), "sha512 %s", h);
-    /* RFC 8032, prueba 1 */
+    /* RFC 8032, test 1 */
     uint8_t pk[32], sg[64];
     hex_decode("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", pk, 32);
     hex_decode("e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b", sg, 64);
-    CHECK(ed25519_verify(pk, sg, (const uint8_t *)"", 0) == 1, "ed25519 válida");
+    CHECK(ed25519_verify(pk, sg, (const uint8_t *)"", 0) == 1, "ed25519 valid");
     sg[10] ^= 1;
     CHECK(ed25519_verify(pk, sg, (const uint8_t *)"", 0) == 0, "ed25519 alterada");
-    /* RSA-2048 generada para la prueba (tests: e = 65537, mensaje "LordOS pkg test") */
+    /* RSA-2048 generated for the test (tests: e = 65537, message "LordOS pkg test") */
     static const uint8_t e[] = { 1, 0, 1 };
     uint8_t dig[32];
     sha256("LordOS pkg test", 15, dig);
-    CHECK(rsa_verify(rsa_n, sizeof rsa_n, e, 3, rsa_sig, sizeof rsa_sig, HASH_SHA256, dig) == 1, "rsa válida");
+    CHECK(rsa_verify(rsa_n, sizeof rsa_n, e, 3, rsa_sig, sizeof rsa_sig, HASH_SHA256, dig) == 1, "rsa valid");
     dig[0] ^= 1;
-    CHECK(rsa_verify(rsa_n, sizeof rsa_n, e, 3, rsa_sig, sizeof rsa_sig, HASH_SHA256, dig) == 0, "rsa con otro hash");
+    CHECK(rsa_verify(rsa_n, sizeof rsa_n, e, 3, rsa_sig, sizeof rsa_sig, HASH_SHA256, dig) == 0, "rsa with another hash");
 }
 
 static void test_compress(void) {
@@ -192,11 +192,11 @@ static void test_compress(void) {
     bad[30] ^= 0x55;
     o = NULL;
     int r = xz_decode(bad, sizeof bad, &o, &ol, 1 << 20);
-    CHECK(r != 0 || ol != strlen(want) || memcmp(o, want, ol), "xz dañado no da el mismo texto");
+    CHECK(r != 0 || ol != strlen(want) || memcmp(o, want, ol), "damaged xz does not yield the same text");
     if (!r) free(o);
 }
 
-/* Un repositorio chico de mentira para el resolvedor. */
+/* A small fake repository for the resolver. */
 static const char *REPO =
     "Package: app\nVersion: 2.0\nArchitecture: amd64\nDepends: libfoo (>= 1.5), web-browser | firefox-esr\nRecommends: extra\nFilename: pool/a/app.deb\nSize: 100\nSHA256: 0000000000000000000000000000000000000000000000000000000000000000\nDescription: app\n\n"
     "Package: libfoo\nVersion: 1.6\nArchitecture: amd64\nBreaks: oldtool (<< 3)\nFilename: pool/l/libfoo.deb\nSize: 10\nSHA256: 0000000000000000000000000000000000000000000000000000000000000000\nDescription: lib\n\n"
@@ -231,7 +231,7 @@ static void test_resolver(const char *dir) {
     int s = idxb_source(b, "http://x", "test", "main", "test", "T", "T", 0, 0, 500);
     idxb_packages(b, s, REPO, strlen(REPO), "amd64");
     char err[200];
-    CHECK(!idxb_write(b, dir, "amd64", err, sizeof err), "escribir índice: %s", err);
+    CHECK(!idxb_write(b, dir, "amd64", err, sizeof err), "write index: %s", err);
     idxb_free(b);
     char sp[600];
     snprintf(sp, sizeof sp, "%s/status", dir);
@@ -240,28 +240,28 @@ static void test_resolver(const char *dir) {
     fclose(f);
     Idx x;
     Status st = { 0 };
-    CHECK(!idx_open(&x, dir) && x.h->npkg == 7, "índice abierto (la de arm64 no entra): %u", x.map ? x.h->npkg : 0);
+    CHECK(!idx_open(&x, dir) && x.h->npkg == 7, "index opened (the arm64 one is left out): %u", x.map ? x.h->npkg : 0);
     CHECK(!status_load(&st, sp, "amd64") && st.n == 11, "status: %d instalados", st.n);
     Plan p;
     PlanOpts o = { 0 };
     const char *app[] = { "app" };
     plan_make(&x, &st, app, 1, NULL, 0, &o, &p);
-    /* libfoo sube a 1.6, que rompe oldtool (<< 3): oldtool se actualiza a 3.0; el navegador
-     * virtual lo provee uno de los dos (el primero por prioridad y nombre) */
+    /* libfoo goes up to 1.6, which breaks oldtool (<< 3): oldtool is upgraded to 3.0; the virtual
+     * browser is provided by one of the two (the first by priority and name) */
     CHECK(p.ok, "plan app: %s", p.err);
     CHECK(has(&p, PA_INSTALL, "app") && has(&p, PA_UPGRADE, "libfoo") && has(&p, PA_UPGRADE, "oldtool"), "app + libfoo + oldtool");
-    CHECK(has(&p, PA_INSTALL, "lynx") ^ has(&p, PA_INSTALL, "firefox-esr"), "un navegador");
-    CHECK(!has(&p, PA_INSTALL, "extra"), "sin recomendados");
+    CHECK(has(&p, PA_INSTALL, "lynx") ^ has(&p, PA_INSTALL, "firefox-esr"), "one browser");
+    CHECK(!has(&p, PA_INSTALL, "extra"), "no recommends");
     plan_free(&p);
     o.recommends = 1;
     plan_make(&x, &st, app, 1, NULL, 0, &o, &p);
-    CHECK(p.ok && has(&p, PA_INSTALL, "extra"), "con recomendados");
+    CHECK(p.ok && has(&p, PA_INSTALL, "extra"), "with recommends");
     plan_free(&p);
-    /* quitar libfoo: hay que quitar oldtool y user (cascada) */
+    /* removing libfoo: oldtool and user must go too (cascade) */
     o = (PlanOpts){ 0 };
     const char *rm[] = { "libfoo" };
     plan_make(&x, &st, NULL, 0, rm, 1, &o, &p);
-    CHECK(!p.ok && strstr(p.err, "también hay que quitar") && has(&p, PA_REMOVE, "oldtool") && has(&p, PA_REMOVE, "user"), "cascada pide confirmación: %s", p.err);
+    CHECK(!p.ok && strstr(p.err, "también hay que quitar") && has(&p, PA_REMOVE, "oldtool") && has(&p, PA_REMOVE, "user"), "cascade asks for confirmation: %s", p.err);
     plan_free(&p);
     o.cascade = 1;
     plan_make(&x, &st, NULL, 0, rm, 1, &o, &p);
@@ -269,46 +269,46 @@ static void test_resolver(const char *dir) {
     plan_free(&p);
     const char *ess[] = { "dpkg" };
     plan_make(&x, &st, NULL, 0, ess, 1, &o, &p);
-    CHECK(!p.ok && strstr(p.err, "esencial"), "dpkg no se quita: %s", p.err);
+    CHECK(!p.ok && strstr(p.err, "esencial"), "dpkg is not removed: %s", p.err);
     plan_free(&p);
-    /* dos MTA: instalar mta-a quita mta-b (con confirmación) */
+    /* two MTAs: installing mta-a removes mta-b (with confirmation) */
     o = (PlanOpts){ 0 };
     const char *mta[] = { "mta-a" };
     plan_make(&x, &st, mta, 1, NULL, 0, &o, &p);
-    CHECK(!p.ok && has(&p, PA_REMOVE, "mta-b"), "conflicto con mta-b pide confirmación: %s", p.err);
+    CHECK(!p.ok && has(&p, PA_REMOVE, "mta-b"), "conflict with mta-b asks for confirmation: %s", p.err);
     plan_free(&p);
     o.allow_remove = 1;
     plan_make(&x, &st, mta, 1, NULL, 0, &o, &p);
     CHECK(p.ok && has(&p, PA_REMOVE, "mta-b") && has(&p, PA_INSTALL, "mta-a"), "mta-a reemplaza a mta-b: %s", p.err);
     plan_free(&p);
-    /* virtual con varios proveedores */
+    /* virtual with several providers */
     const char *wb[] = { "web-browser" };
     plan_make(&x, &st, wb, 1, NULL, 0, &o, &p);
     CHECK(!p.ok && strstr(p.err, "virtual"), "virtual: %s", p.err);
     plan_free(&p);
-    /* huérfanos: libdep, libdeep y librec son dependencias automáticas de user2; libold no la usa
-     * nadie; libmanual no es automática */
+    /* orphans: libdep, libdeep and librec are automatic dependencies of user2; libold is used by
+     * nobody; libmanual is not automatic */
     static const char *const autos[] = { "libdep", "libdeep", "librec", "libold" };
     o = (PlanOpts){ .orphans = 1, .autos = autos, .nautos = 4 };
     plan_make(&x, &st, NULL, 0, NULL, 0, &o, &p);
-    CHECK(p.ok && p.n == 1 && has(&p, PA_REMOVE, "libold") && !strcmp(p.items[0].reason, "auto") && p.items[0].orphan, "autoremove: solo libold (%d)", p.n);
+    CHECK(p.ok && p.n == 1 && has(&p, PA_REMOVE, "libold") && !strcmp(p.items[0].reason, "auto") && p.items[0].orphan, "autoremove: only libold (%d)", p.n);
     plan_free(&p);
     const char *u2[] = { "user2" };
     plan_make(&x, &st, NULL, 0, u2, 1, &o, &p);
     CHECK(p.ok && p.n == 5 && has(&p, PA_REMOVE, "libdep") && has(&p, PA_REMOVE, "libdeep") && has(&p, PA_REMOVE, "librec") &&
-          has(&p, PA_REMOVE, "libold") && !has(&p, PA_REMOVE, "libmanual"), "quitar user2 se lleva sus dependencias, sin --cascade: %d %s", p.n, p.err);
+          has(&p, PA_REMOVE, "libold") && !has(&p, PA_REMOVE, "libmanual"), "removing user2 takes its dependencies, without --cascade: %d %s", p.n, p.err);
     plan_free(&p);
     o.orphans = 0;
     plan_make(&x, &st, NULL, 0, u2, 1, &o, &p);
     CHECK(p.ok && p.n == 1, "--keep-orphans: %d", p.n);
     plan_free(&p);
-    /* actualizar todo */
+    /* upgrade everything */
     o = (PlanOpts){ .upgrade_all = 1 };
     plan_make(&x, &st, NULL, 0, NULL, 0, &o, &p);
     CHECK(p.ok && has(&p, PA_UPGRADE, "libfoo") && has(&p, PA_UPGRADE, "oldtool"), "upgrade: %s", p.err);
     int ord[16], grp[16];
     int n = plan_order(&x, &p, ord, grp);
-    CHECK(n == 2 && !strcmp(p.items[ord[0]].name, "libfoo"), "orden: libfoo antes que oldtool");
+    CHECK(n == 2 && !strcmp(p.items[ord[0]].name, "libfoo"), "order: libfoo before oldtool");
     plan_free(&p);
     status_free(&st);
     idx_close(&x);
@@ -317,7 +317,7 @@ static void test_resolver(const char *dir) {
 static int cmd_plan(int argc, char **argv) {
     Idx x;
     Status st = { 0 };
-    if (idx_open(&x, argv[2]) || status_load(&st, argv[3], "amd64")) { fprintf(stderr, "no se pudo abrir\n"); return 1; }
+    if (idx_open(&x, argv[2]) || status_load(&st, argv[3], "amd64")) { fprintf(stderr, "could not open\n"); return 1; }
     const char *ins[64], *rem[64];
     int ni = 0, nr = 0;
     PlanOpts o = { 0 };
@@ -350,7 +350,7 @@ int main(int argc, char **argv) {
         char *body, err[256];
         size_t bl;
         int g = pgp_verify_clearsigned(&kr, buf, n, (int64_t)time(NULL), &body, &bl, err, sizeof err);
-        printf("%d claves, %d firmas válidas %s\n", kr.n, g, err);
+        printf("%d keys, %d valid signatures %s\n", kr.n, g, err);
         return g > 0 ? 0 : 1;
     }
     if (argc >= 4 && !strcmp(argv[1], "plan")) return cmd_plan(argc, argv);
@@ -366,10 +366,10 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[2], "pkg-upgrade")) pkg_act_upgrade(&r, arg, len);
         else if (!strcmp(argv[2], "pkg-autoremove")) pkg_act_autoremove(&r, arg, len);
         else if (!strcmp(argv[2], "pkg-install-file")) pkg_act_install_file(&r, arg, len);
-        else { printf("acción desconocida\n"); return 2; }
+        else { printf("unknown action\n"); return 2; }
         struct rusage ru;
         getrusage(RUSAGE_SELF, &ru);
-        printf("memoria máxima: %ld KB\n", ru.ru_maxrss);
+        printf("peak memory: %ld KB\n", ru.ru_maxrss);
         return 0;
     }
     char dir[] = "/tmp/pkg-test-XXXXXX";
@@ -382,6 +382,6 @@ int main(int argc, char **argv) {
     char cmd[256];
     snprintf(cmd, sizeof cmd, "rm -rf %s", dir);
     if (system(cmd)) {}
-    printf("pkg-test: %d/%d bien\n", checks - fails, checks);
+    printf("pkg-test: %d/%d passed\n", checks - fails, checks);
     return fails ? 1 : 0;
 }

@@ -1,7 +1,7 @@
-// Editor de texto — editor de código propio al estilo de TextMate: proyecto a la izquierda,
-// pestañas, varios cursores, buscar y reemplazar (texto o regex), ir a línea (❖L), abrir
-// archivo del proyecto (❖T), resaltado de sintaxis propio y métodos de entrada.
-// Ver docs/EDITOR.md.
+// Text Editor — our own TextMate-style code editor: project on the left,
+// tabs, multiple cursors, find and replace (text or regex), go to line (❖L), open
+// project file (❖T), our own syntax highlighting and input methods.
+// See docs/EDITOR.md.
 import {
   View, Text, TextInput, Button, ScrollView, ToolbarButton, direction, useTheme, useLocale, useAppWindow, useKeyboard, wm, fs, formatBytes, addListener, hasTextFocus, print,
 } from '@lordos/sdk';
@@ -43,7 +43,7 @@ function newTab(path, text) {
     useTabs: /\t/.test(text.slice(0, 20000).split('\n').find((l) => /^\s/.test(l)) || '') || /Makefile$|\.go$/.test(path || '') };
 }
 
-// Puntaje difuso (como ⌘T de TextMate): letras en orden; vale más al comienzo de palabra.
+// Fuzzy score (like TextMate's ⌘T): letters in order; worth more at the start of a word.
 function fuzzy(q, s) {
   const a = q.toLowerCase(), b = s.toLowerCase();
   let score = 0, j = 0, prev = -2;
@@ -74,7 +74,7 @@ function listFiles(root, limit = 4000) {
   return out;
 }
 
-// ---- panel del proyecto ----
+// ---- project panel ----
 
 function Tree({ t, root, open, expanded, onToggle, active }) {
   const rows = [];
@@ -99,7 +99,7 @@ function Tree({ t, root, open, expanded, onToggle, active }) {
   ));
 }
 
-// ---- diálogo de archivos (abrir, abrir carpeta, guardar como) ----
+// ---- file dialog (open, open folder, save as) ----
 
 function FileDialog({ t, tr, mode, start, initialName, onPick, onCancel }) {
   const [dir, setDir] = useState(start || '');
@@ -143,7 +143,7 @@ function FileDialog({ t, tr, mode, start, initialName, onPick, onCancel }) {
   );
 }
 
-// Lista con búsqueda (ir a archivo, elegir lenguaje).
+// List with search (go to file, choose language).
 function Picker({ t, title, placeholder, items, onPick, onCancel, render = (x) => x.label }) {
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);
@@ -176,7 +176,7 @@ function Picker({ t, title, placeholder, items, onPick, onCancel, render = (x) =
   );
 }
 
-// ---- búsqueda ----
+// ---- search ----
 
 function findMatches(doc, q, { regex, caseSensitive }) {
   if (!q) return { list: [], error: null };
@@ -224,7 +224,7 @@ function FindBar({ t, tr, find, setFind, count, current, error, onNext, onPrev, 
   );
 }
 
-// ---- ventana ----
+// ---- window ----
 
 export default function Editor() {
   const th = useTheme();
@@ -246,9 +246,9 @@ export default function Editor() {
   const palette = paletteFor(th.mode);
   const t = { ...th, ...tokensFor(th.mode) };
 
-  // ---- archivos ----
-  // setRoot: al abrir desde Archivos o el diálogo (no desde el árbol), el proyecto pasa a ser la
-  // carpeta del archivo si todavía no había uno elegido
+  // ---- files ----
+  // setRoot: when opening from Files or the dialog (not from the tree), the project becomes the
+  // file's folder if none had been chosen yet
   const openPath = (abs, { fromTree = false } = {}) => {
     const existing = tabs.find((x) => x.path === abs);
     if (existing) { setActiveId(existing.id); setOverlay(null); return; }
@@ -259,7 +259,7 @@ export default function Editor() {
       if (text.indexOf('\u0000') >= 0) throw new Error(tr('editor.binary'));
       const nt = newTab(abs, text);
       setTabs((ts) => {
-        // una pestaña "Sin título" vacía se reemplaza
+        // an empty "Untitled" tab is replaced
         const only = ts.length === 1 && !ts[0].path && !ts[0].doc.dirty && ts[0].doc.text() === '';
         return only ? [nt] : [...ts, nt];
       });
@@ -295,10 +295,10 @@ export default function Editor() {
     });
   };
 
-  // abrir desde Archivos: wm.open('editor', { args: { path } })
+  // open from Files: wm.open('editor', { args: { path } })
   useEffect(() => { if (args?.path) openPath(args.path); }, [args?.nonce]);
 
-  // cerrar la ventana con cambios sin guardar: preguntar
+  // closing the window with unsaved changes: ask
   useEffect(() => wm.setCloseGuard(wid, () => {
     const d = tabs.find((x) => x.doc.dirty);
     if (!d) return true;
@@ -307,10 +307,10 @@ export default function Editor() {
     return false;
   }), [tabs]);
 
-  // título de la ventana
+  // window title
   useEffect(() => { wm.setTitle(wid, `${tab.path ? baseName(tab.path) : tr('editor.untitled')}${doc.dirty ? ' •' : ''}`); });
 
-  // ---- búsqueda ----
+  // ---- search ----
   const found = useMemo(() => (find.open ? findMatches(doc, find.query, find) : { list: [] }), [find, doc.version, doc]);
   const primary = doc.cursors[doc.cursors.length - 1];
   const current = Math.max(0, found.list.findIndex((m) => m.l > primary.l || (m.l === primary.l && m.c + m.len >= primary.c)));
@@ -347,7 +347,7 @@ export default function Editor() {
     bump();
   };
 
-  // ---- comandos (teclado y menús) ----
+  // ---- commands (keyboard and menus) ----
   const run = (name) => {
     const a = api.current;
     switch (name) {
@@ -363,7 +363,7 @@ export default function Editor() {
       case 'gotoLine': setLineQuery(''); setOverlay('gotoLine'); break;
       case 'gotoFile': setOverlay('gotoFile'); break;
       case 'language': setOverlay('lang'); break;
-      // imprimir con el diálogo del sistema (M9): el texto se arma como PDF en lord-doc
+      // print with the system dialog (M9): the text is laid out as a PDF in lord-doc
       case 'print': print.open({ title: tab.path ? baseName(tab.path) : tr('editor.untitled'), text: doc.text(), mono: true }); break;
       case 'toggleProject': setRoot((r) => (r === null ? '' : null)); break;
       case 'nextTab': { const i = tabs.findIndex((x) => x.id === tab.id); setActiveId(tabs[(i + 1) % tabs.length].id); break; }
@@ -371,15 +371,15 @@ export default function Editor() {
       default: if (a && a[name]) a[name]();
     }
   };
-  // atajos con ❖ o Ctrl que no son de edición (los de edición los maneja EditorView)
+  // ❖ or Ctrl shortcuts that are not editing ones (EditorView handles the editing ones)
   const onCommand = (b, shift) => {
     const map = { s: shift ? 'saveAs' : 'save', o: shift ? 'openFolder' : 'open', n: 'new', w: 'close', f: 'find', g: shift ? 'findPrev' : 'findNext',
       l: 'gotoLine', t: 'gotoFile', '\\': 'toggleProject', p: 'print' };
     if (b === 'escape') { if (find.open) setFind((f) => ({ ...f, open: false })); return; }
     if (map[b]) run(map[b]);
   };
-  // Ctrl+Tab cambia de pestaña; con el foco en un campo (buscar, reemplazar), los atajos de la
-  // ventana (guardar, abrir, ir a…) siguen andando: EditorView no los recibe en ese caso
+  // Ctrl+Tab switches tabs; with focus in a field (find, replace), the window
+  // shortcuts (save, open, go to…) keep working: EditorView does not receive them in that case
   const latest = useRef(null);
   latest.current = { onCommand, run };
   useKeyboard((e) => { if ((e.ctrl || e.meta) && e.key === 'Tab') latest.current.run(e.shift ? 'prevTab' : 'nextTab'); });
@@ -392,13 +392,13 @@ export default function Editor() {
     });
   }, [focused]);
 
-  // ---- menús de la app ----
+  // ---- app menus ----
   useEffect(() => {
     const it = (label, action, hint, extra = {}) => ({ label: tr(label), hint, onClick: () => run(action), ...extra });
     wm.setMenus(wid, [
       { label: tr('editor.menu.file'), items: [it('editor.cmd.new', 'new', '❖N'), it('editor.cmd.open', 'open', '❖O'), it('editor.cmd.openFolder', 'openFolder', '❖⇧O'), '-',
         it('editor.cmd.save', 'save', '❖S'), it('editor.cmd.saveAs', 'saveAs', '❖⇧S'), '-',
-        // imprimir con el diálogo del sistema (M9): el texto se arma como PDF en lord-doc
+        // print with the system dialog (M9): the text is laid out as a PDF in lord-doc
         it('editor.cmd.print', 'print', '❖P'), '-',
         it('editor.cmd.close', 'close', '❖W')] },
       { label: tr('editor.menu.edit'), items: [it('editor.cmd.undo', 'undo', '❖Z'), it('editor.cmd.redo', 'redo', '❖⇧Z'), '-', it('editor.cmd.cut', 'cut', '❖X'),
@@ -436,7 +436,7 @@ export default function Editor() {
         </View>
       )}
       <View style={{ flex: 1 }}>
-        {/* pestañas */}
+        {/* tabs */}
         <View style={{ height: 34, flexDirection: 'row', backgroundColor: t.sidebarBg, direction: 'ltr' }}>
           <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: t.separator }} />
           {tabs.map((x) => {
@@ -458,7 +458,7 @@ export default function Editor() {
           onChange={bump} onCommand={onCommand} apiRef={api} overlay={editorOverlay} />
         {find.open && <FindBar t={t} tr={tr} find={find} setFind={setFind} count={found.list.length} current={current} error={found.error}
           onNext={nextMatch} onPrev={prevMatch} onReplace={replaceOne} onReplaceAll={replaceAll} onClose={() => setFind((f) => ({ ...f, open: false }))} />}
-        {/* barra de estado */}
+        {/* status bar */}
         <View style={{ height: 26, flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 14, backgroundColor: t.sidebarBg,
           direction: 'ltr' }}>
           <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 1, backgroundColor: t.separator }} />

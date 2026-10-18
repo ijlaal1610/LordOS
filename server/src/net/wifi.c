@@ -1,14 +1,14 @@
-/* wifi.c — Wi-Fi con wpa_supplicant (de Debian, ruta fija), lado root.
+/* wifi.c — Wi-Fi with wpa_supplicant (Debian's, fixed path), root side.
  *
- * Por cada interfaz Wi-Fi que maneja LordOS corre un wpa_supplicant ("wpa:<if>", proceso
- * residente del ayudante) con una configuración mínima que escribimos nosotros (solo el socket
- * de control) y un cliente DHCP ("if:<if>", dhcp.c) que además traduce sus avisos. Las redes
- * se cargan por el socket de control: el SSID va en hexadecimal y la clave WPA2 como PSK ya
- * calculada (PBKDF2), así que ningún texto del usuario llega crudo a wpa_supplicant salvo la
- * contraseña de WPA3 (sae_password), que se valida (sin saltos de línea ni caracteres de control).
+ * For each Wi-Fi interface LordOS manages it runs a wpa_supplicant ("wpa:<if>", a resident
+ * process of the helper) with a minimal configuration we write ourselves (only the control
+ * socket) and a DHCP client ("if:<if>", dhcp.c) that also translates its notices. Networks
+ * are loaded over the control socket: the SSID goes in hexadecimal and the WPA2 key as an
+ * already computed PSK (PBKDF2), so no user text reaches wpa_supplicant raw except the
+ * WPA3 password (sae_password), which is validated (no line breaks or control characters).
  *
- * Redes guardadas: /etc/lordos/net/wifi/<ssid en hex>.json (público: ssid y seguridad) y
- * <ssid en hex>.key (0600: la contraseña). */
+ * Saved networks: /etc/lordos/net/wifi/<ssid in hex>.json (public: ssid and security) and
+ * <ssid in hex>.key (0600: the password). */
 #include "netpriv.h"
 #include "../admin.h"
 
@@ -45,7 +45,7 @@ static int ctrl_open(const char *ifname, char *mypath, size_t n) {
     return fd;
 }
 
-/* Recibe la respuesta a un comando, salteando avisos ("<3>CTRL-EVENT-..."). */
+/* Receives the reply to a command, skipping notices ("<3>CTRL-EVENT-..."). */
 static int ctrl_recv(int fd, char *reply, size_t n, int timeout_ms) {
     for (;;) {
         struct pollfd pf = { fd, POLLIN, 0 };
@@ -78,7 +78,7 @@ static void hex(const uint8_t *in, size_t n, char *out) {
     out[2 * n] = 0;
 }
 
-/* SSID: 1–32 bytes, sin 0. */
+/* SSID: 1–32 bytes, no 0. */
 static int valid_ssid(const char *s) { size_t n = strlen(s); return n >= 1 && n <= 32; }
 
 static int valid_pass(const char *p) {
@@ -88,11 +88,11 @@ static int valid_pass(const char *p) {
     return 1;
 }
 
-/* ID de la red en wpa_supplicant que tiene id_str = hex del SSID, o -1. */
+/* ID of the network in wpa_supplicant whose id_str = hex of the SSID, or -1. */
 static int find_network(const char *ifname, const char *ssidhex) {
     char list[4096];
     if (wifi_ctrl(ifname, "LIST_NETWORKS", list, sizeof list) <= 0) return -1;
-    char *l = strchr(list, '\n');                 /* la primera línea es el encabezado */
+    char *l = strchr(list, '\n');                 /* the first line is the header */
     while (l && *++l) {
         int id = atoi(l);
         char cmd[64], v[128];
@@ -108,7 +108,7 @@ static int find_network(const char *ifname, const char *ssidhex) {
     return -1;
 }
 
-/* Carga (o reemplaza) una red en wpa_supplicant. pass vacío = abierta. Devuelve el id. */
+/* Loads (or replaces) a network in wpa_supplicant. Empty pass = open. Returns the id. */
 static int load_network(const char *ifname, const char *ssid, const char *pass) {
     char sh[72], cmd[400], r[64];
     hex((const uint8_t *)ssid, strlen(ssid), sh);
@@ -139,7 +139,7 @@ static int load_network(const char *ifname, const char *ssid, const char *pass) 
             ok = ok && ctrl_ok(ifname, cmd) == 0;
         }
         snprintf(cmd, sizeof cmd, "SET_NETWORK %d sae_password \"%s\"", id, pass);
-        if (ctrl_ok(ifname, cmd)) admin_event("net wifi %s no-sae", ifname);   /* wpa_supplicant sin SAE: queda WPA2 */
+        if (ctrl_ok(ifname, cmd)) admin_event("net wifi %s no-sae", ifname);   /* wpa_supplicant without SAE: stays WPA2 */
         snprintf(cmd, sizeof cmd, "SET_NETWORK %d ieee80211w 1", id);
         ctrl_ok(ifname, cmd);
     }
@@ -182,7 +182,7 @@ int wifi_start(const char *ifname) {
     mkdir(WPA_DIR, 0700);
     if (!admin_daemon_running(wname)) {
         if (access(WPA_BIN, X_OK)) return -1;
-        /* uno que quedó de una sesión anterior (el ayudante murió sin poder pararlo) */
+        /* one left over from a previous session (the helper died without being able to stop it) */
         char pidf[128];
         snprintf(pidf, sizeof pidf, WPA_DIR "/%s.pid", ifname);
         char *pt = read_file(pidf, 32, NULL);
@@ -218,7 +218,7 @@ int wifi_start(const char *ifname) {
     return 0;
 }
 
-/* ---- acciones ---- */
+/* ---- actions ---- */
 
 static int security_of(const char *flags, char *out, size_t n) {
     if (strstr(flags, "EAP")) snprintf(out, n, "enterprise");
@@ -231,7 +231,7 @@ static int security_of(const char *flags, char *out, size_t n) {
     return 0;
 }
 
-/* wpa_supplicant escribe el SSID con escapes de printf (\\, \", \xNN). */
+/* wpa_supplicant writes the SSID with printf escapes (\\, \", \xNN). */
 static void unescape_ssid(const char *in, char *out, size_t n) {
     size_t o = 0;
     for (const char *p = in; *p && o + 1 < n; p++) {
@@ -265,11 +265,11 @@ void wifi_act_scan(const char *ifname) {
     }
     close(fd);
     unlink(me);
-    (void)got;                                   /* si no llegó el aviso, se usan los resultados que haya */
+    (void)got;                                   /* if the notice didn't arrive, whatever results there are get used */
     char *res = malloc(65536);
     if (!res) { admin_say("ERR", "sin memoria"); return; }
     if (wifi_ctrl(ifname, "SCAN_RESULTS", res, 65536) <= 0) { free(res); admin_say("ERR", "wpa_supplicant no respondió"); return; }
-    /* bssid / frecuencia / señal / flags / ssid; una entrada por SSID (la de mejor señal) */
+    /* bssid / frequency / signal / flags / ssid; one entry per SSID (the one with the best signal) */
     struct { char ssid[40], bssid[20], sec[16]; int freq, signal; } nets[96];
     int n = 0;
     char *l = strchr(res, '\n');
@@ -319,7 +319,7 @@ void wifi_act_connect(const char *ifname, const char *ssid, const char *pass) {
     if (!valid_pass(pass) || (pass[0] && strlen(pass) < 8)) { admin_say("ERR", "contraseña inválida"); return; }
     char sh[72], path[160];
     hex((const uint8_t *)ssid, strlen(ssid), sh);
-    /* se guarda: pública (ssid, seguridad) y secreta (contraseña) */
+    /* it's saved: public part (ssid, security) and secret part (password) */
     Buf meta = {0};
     buf_printf(&meta, "{\"ssid\":");
     buf_json_str(&meta, ssid);
@@ -342,7 +342,7 @@ void wifi_act_connect(const char *ifname, const char *ssid, const char *pass) {
     char cmd[48];
     snprintf(cmd, sizeof cmd, "SELECT_NETWORK %d", id);
     if (ctrl_ok(ifname, cmd)) { admin_say("ERR", "wpa_supplicant no pudo elegir la red"); return; }
-    ctrl_ok(ifname, "ENABLE_NETWORK all");        /* las otras guardadas siguen disponibles */
+    ctrl_ok(ifname, "ENABLE_NETWORK all");        /* the other saved ones stay available */
     admin_say("OK", "conectando a %s", ssid);
 }
 
@@ -359,7 +359,7 @@ void wifi_act_forget(const char *ssid) {
     int had = unlink(path) == 0;
     snprintf(path, sizeof path, NET_WIFI_DIR "/%s.json", sh);
     had = (unlink(path) == 0) || had;
-    /* sacarla de los wpa_supplicant que estén corriendo */
+    /* remove it from the wpa_supplicants that are running */
     DIR *d = opendir(WPA_DIR);
     struct dirent *e;
     while (d && (e = readdir(d))) {

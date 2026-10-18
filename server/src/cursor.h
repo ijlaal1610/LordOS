@@ -1,10 +1,10 @@
-/* cursor.h — formas del cursor de LordOS (dibujo propio, vectorial, a 1x y 2x). Ver docs/VENTANAS.md. */
+/* cursor.h — LordOS cursor shapes (own vector drawing, at 1x and 2x). See docs/WINDOWS.md. */
 #ifndef LORD_CURSOR_H
 #define LORD_CURSOR_H
 
 #include <stdint.h>
 
-/* El orden coincide con CURSOR_CSS_NAMES (estilo `cursor` de los nodos, ui/style.c). */
+/* The order matches CURSOR_CSS_NAMES (the nodes' `cursor` style, ui/style.c). */
 enum {
     CUR_AUTO = 0, CUR_DEFAULT, CUR_POINTER, CUR_TEXT, CUR_MOVE, CUR_GRAB, CUR_GRABBING, CUR_NOT_ALLOWED,
     CUR_WAIT, CUR_PROGRESS, CUR_CROSSHAIR,
@@ -16,17 +16,19 @@ enum {
     "sw-resize", "ew-resize", "ns-resize", "nesw-resize", "nwse-resize"
 
 typedef struct {
-    const uint32_t *px;     /* ARGB premultiplicado */
-    int w, h, hx, hy;       /* tamaño y punto activo */
+    const uint32_t *px;     /* premultiplied ARGB */
+    int w, h, hx, hy;       /* size and hotspot */
 } CursorImage;
 
-/* Imagen de una forma (se dibuja la primera vez y queda guardada). scale: 1 o 2. */
+/* Image of a shape (drawn the first time and kept). scale: 1 or 2. */
 const CursorImage *cursor_image(int shape, int scale);
-/* Escala de los cursores para una pantalla de W×H (2 en 4K/HiDPI). */
+/* Cursor scale for a W×H screen (2 on 4K/HiDPI). */
 int cursor_scale_for(int W, int H);
-/* Bordes de xdg_toplevel.resize (1 arriba, 2 abajo, 4 izquierda, 8 derecha) → forma. */
+/* The same at a display's scale in percent (100–200). */
+const CursorImage *cursor_image_pct(int shape, int pct);
+/* xdg_toplevel.resize edges (1 top, 2 bottom, 4 left, 8 right) → shape. */
 int cursor_for_edges(int edges);
-/* Forma de cursor-shape-v1 (wp_cursor_shape_device_v1.shape) → forma propia; 0 si no hay. */
+/* cursor-shape-v1 shape (wp_cursor_shape_device_v1.shape) → own shape; 0 if none. */
 int cursor_from_wayland_shape(unsigned shape);
 
 #endif

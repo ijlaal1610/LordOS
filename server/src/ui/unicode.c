@@ -1,4 +1,4 @@
-/* unicode.c — único lugar donde se compilan las tablas de unidata.h. */
+/* unicode.c — the only place where the unidata.h tables are compiled. */
 #define UNIDATA_TABLES
 #include "unicode.h"
 

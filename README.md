@@ -1,45 +1,45 @@
 # LordOS
 
-Entorno de escritorio propio para Linux (Debian 13), con un servidor gráfico real
-escrito **desde cero en C** y una interfaz que se construye con **React**.
-Liviano, pensado para máquinas de poco rendimiento.
+A desktop environment of its own for Linux (Debian 13), with a real graphics server written
+**from scratch in C** and a user interface built with **React**.
+Lightweight, designed for low-end machines.
 
-- `server/`: `lord-server`, el servidor gráfico. Usa DRM/KMS y evdev directo del kernel,
-  sin X11, Wayland, libdrm ni libinput.
-- `docs/ARCHITECTURE.md`: capas, política de dependencias y modelo de temas.
-- `docs/ROADMAP.md`: hitos y estado.
-- `docs/VM-SETUP.md`: VM de desarrollo en Proxmox, paso a paso.
-- `docs/TERMINAL.md`: la terminal nativa (estilo iTerm2), atajos y paridad con iTerm2.
-- `docs/WAYLAND.md`: apps Linux (GTK, Qt) como ventanas de LordOS con el compositor Wayland propio.
-- `docs/IDIOMAS.md`: idioma y región en todo el sistema (es, en, pt y paquetes de idioma),
-  escrituras complejas (árabe, hebreo, CJK, interfaz espejada) y métodos de entrada.
+- `server/`: `lord-server`, the graphics server. It uses DRM/KMS and evdev straight from the
+  kernel, without X11, Wayland, libdrm or libinput.
+- `docs/ARCHITECTURE.md`: layers, dependency policy and theme model.
+- `docs/ROADMAP.md`: milestones and status.
+- `docs/VM-SETUP.md`: development VM on Proxmox, step by step.
+- `docs/TERMINAL.md`: the native terminal (iTerm2-style), shortcuts and parity with iTerm2.
+- `docs/WAYLAND.md`: Linux apps (GTK, Qt) as LordOS windows with our own Wayland compositor.
+- `docs/LANGUAGES.md`: language and region across the whole system (es, en, pt and language
+  packs), complex scripts (Arabic, Hebrew, CJK, mirrored UI) and input methods.
 
-- `runtime/`: `@lordos/runtime`, el renderer de React para lord-server.
-- `sdk/`: `@lordos/sdk`, la API para temas y apps (ventanas, ajustes, archivos, sistema).
-- `apps/`: apps nativas como paquetes. Ver `apps/README.md`.
-- `themes/`: temas (escritorios completos) en React, intercambiables en vivo. Ver `themes/README.md`.
-- `third_party/`: QuickJS y stb, vendorizados. `assets/fonts/`: Inter y JetBrains Mono (OFL).
-- `assets/locales/`: textos de la interfaz por idioma. `tools/i18n-check.mjs` y `tools/i18n-pack.mjs`.
-- `server/src/term/`: terminal propia (emulador xterm, PTY, dibujo); la app está en `apps/terminal/`.
+- `runtime/`: `@lordos/runtime`, the React renderer for lord-server.
+- `sdk/`: `@lordos/sdk`, the API for themes and apps (windows, settings, files, system).
+- `apps/`: native apps as packages. See `apps/README.md`.
+- `themes/`: themes (complete desktops) in React, swappable live. See `themes/README.md`.
+- `third_party/`: QuickJS and stb, vendored. `assets/fonts/`: Inter and JetBrains Mono (OFL).
+- `assets/locales/`: UI texts per language. `tools/i18n-check.mjs` and `tools/i18n-pack.mjs`.
+- `server/src/term/`: our own terminal (xterm emulator, PTY, drawing); the app is in `apps/terminal/`.
 
-## Probar
+## Trying it
 
-En la máquina de desarrollo (necesita Node.js):
+On the development machine (needs Node.js):
 
 ```sh
-npm install && npm run build        # empaqueta todos los temas con el SDK y las apps
+npm install && npm run build        # bundles every theme with the SDK and the apps
 ```
 
-En Debian 13 con kernel genérico (ver `docs/VM-SETUP.md` para copiar el código):
+On Debian 13 with a generic kernel (see `docs/VM-SETUP.md` for copying the code):
 
 ```sh
 sudo apt-get install -y --no-install-recommends build-essential
 make -C server -j4
-cd server && sudo ./build/lord-server     # suelta root al arrancar; salir: Ctrl+Alt+Backspace
+cd server && sudo ./build/lord-server     # drops root on startup; quit: Ctrl+Alt+Backspace
 ```
 
-Debe correr desde una consola de texto, sin otro entorno gráfico activo.
+It must run from a text console, with no other graphical environment active.
 
-## Licencia
+## License
 
-MIT para el código de LordOS. Cada dependencia vendorizada mantiene su licencia.
+MIT for LordOS's code. Each vendored dependency keeps its own license.

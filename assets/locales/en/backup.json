@@ -54,6 +54,10 @@
   },
   "home": "Home",
   "openFiles": "Open in Files",
+  "col.name": "Name",
+  "col.size": "Size",
+  "col.modified": "Modified",
+  "more": "More actions",
   "emptyFolder": "Empty folder",
   "restoredInfo": {
     "one": "Restored: {count} file ({both} kept alongside, {replaced} replaced)",

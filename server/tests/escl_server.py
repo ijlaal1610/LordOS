@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""escl_server.py — escáner eSCL (AirScan) de prueba para el Escáner de LordOS (docs/IMPRESION.md).
+"""escl_server.py — test eSCL (AirScan) scanner for the LordOS Scanner (docs/PRINTING.md).
 
-No hay un escáner real en la VM: este servidor contesta como uno. Devuelve capacidades,
-acepta trabajos (POST /eSCL/ScanJobs) y entrega una «hoja escaneada» armada acá: un PNG con
-encabezado, renglones, un círculo y un marco, del área y la resolución pedidas. Solo biblioteca
-estándar (sin PIL), así que el único formato que entrega es PNG; LordOS lo convierte a PDF o JPEG
-en su ayudante encerrado.
+There is no real scanner in the VM: this server answers like one. It returns capabilities,
+accepts jobs (POST /eSCL/ScanJobs) and delivers a "scanned page" built here: a PNG with a
+header, ruled lines, a circle and a frame, at the requested area and resolution. Standard
+library only (no PIL), so the only format it delivers is PNG; LordOS converts it to PDF or JPEG
+in its confined helper.
 
-Uso:  python3 -I escl_server.py [puerto]          (por defecto 8090)
-y anunciarlo por mDNS, por ejemplo con avahi:
+Usage:  python3 -I escl_server.py [port]          (default 8090)
+and announce it over mDNS, for example with avahi:
       avahi-publish -s "Escáner de prueba" _uscan._tcp 8090 "rs=eSCL" "ty=Escáner de prueba LordOS"
 """
 import http.server, socketserver, struct, sys, uuid, zlib, re
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8090
-MAXW, MAXH = 2550, 3508          # A4 en 1/300 de pulgada
+MAXW, MAXH = 2550, 3508          # A4 in 1/300 inch
 JOBS = {}
 
 CAPS = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -42,12 +42,12 @@ def tag(xml, name, default):
     return m.group(1) if m else default
 
 def png(w, h, gray, x0, y0, dpi):
-    """La hoja: coordenadas de la página entera en 1/300", recortada al área pedida. Cada fila se
-    arma por tramos (rápido aunque sea Python puro)."""
+    """The page: whole-page coordinates in 1/300", cropped to the requested area. Each row is
+    built from spans (fast even in pure Python)."""
     s = dpi / 300.0
     px = lambda c: bytes([int(0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2])]) if gray else bytes(c)
     W, BLUE, GREY, RED, BLACK = px((255, 255, 255)), px((40, 110, 220)), px((90, 90, 90)), px((220, 40, 60)), px((0, 0, 0))
-    def col(xpage): return max(0, min(w, int(round((xpage - x0) * s))))   # columna de la imagen
+    def col(xpage): return max(0, min(w, int(round((xpage - x0) * s))))   # image column
     rows = []
     for j in range(h):
         py = y0 + j / s
@@ -103,7 +103,7 @@ class H(http.server.BaseHTTPRequestHandler):
         x0, y0 = int(tag(body, "XOffset", "0")), int(tag(body, "YOffset", "0"))
         gray = tag(body, "ColorMode", "RGB24") != "RGB24"
         pw, ph = max(1, w * dpi // 300), max(1, h * dpi // 300)
-        print(f"trabajo: {pw}x{ph} a {dpi} ppp, {'grises' if gray else 'color'}, desde ({x0},{y0})", flush=True)
+        print(f"job: {pw}x{ph} at {dpi} dpi, {'grayscale' if gray else 'color'}, from ({x0},{y0})", flush=True)
         jid = str(uuid.uuid4())
         JOBS[jid] = png(pw, ph, gray, x0, y0, dpi)
         self.send(201, b"", extra={"Location": f"http://{self.headers.get('Host', 'localhost')}/eSCL/ScanJobs/{jid}"})
@@ -113,5 +113,5 @@ class H(http.server.BaseHTTPRequestHandler):
 class S(socketserver.ThreadingMixIn, http.server.HTTPServer): daemon_threads = True
 
 if __name__ == "__main__":
-    print(f"escáner eSCL de prueba en el puerto {PORT}", flush=True)
+    print(f"test eSCL scanner on port {PORT}", flush=True)
     S(("", PORT), H).serve_forever()

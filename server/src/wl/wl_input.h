@@ -1,6 +1,6 @@
-/* wl_input.h — gestos y toques para las apps Wayland (wl_input.c): zwp_pointer_gestures_v1
- * (pellizco, deslizar, mantener), scroll fino del touchpad (axis_source finger, axis_stop,
- * axis_value120) y wl_touch para las pantallas táctiles. Lo usa tp/tp_route.c. */
+/* wl_input.h — gestures and touches for Wayland apps (wl_input.c): zwp_pointer_gestures_v1
+ * (pinch, swipe, hold), fine touchpad scrolling (axis_source finger, axis_stop,
+ * axis_value120) and wl_touch for touchscreens. Used by tp/tp_route.c. */
 #ifndef LORD_WL_INPUT_H
 #define LORD_WL_INPUT_H
 
@@ -10,33 +10,33 @@ struct wl_display;
 struct wl_client;
 struct wl_resource;
 
-/* fuentes de scroll */
+/* scroll sources */
 enum { WLI_FINGER = 0, WLI_WHEEL = 1, WLI_CONTINUOUS = 2 };
 
-int  wl_input_has_focus(void);          /* ¿el puntero está sobre una app Wayland? */
-/* scroll en píxeles (positivo = bajar el contenido); stop: terminó (axis_stop) */
+int  wl_input_has_focus(void);          /* is the pointer over a Wayland app? */
+/* scroll in pixels (positive = move the content down); stop: finished (axis_stop) */
 void wl_input_axis(int source, double dx, double dy, int stop, int natural);
 void wl_input_pinch(int phase, int fingers, double dx, double dy, double scale, double rotation_delta);
 void wl_input_swipe(int phase, int fingers, double dx, double dy);
 void wl_input_hold(int phase, int fingers);
-/* pantalla táctil (x, y en píxeles de pantalla). En TP_BEGIN devuelve 1 si hay una app debajo
- * que escucha wl_touch. */
+/* touchscreen (x, y in screen pixels). On TP_BEGIN returns 1 if there is an app underneath
+ * listening to wl_touch. */
 int  wl_input_touch(int phase, int id, double x, double y);
 void wl_input_touch_frame(void);
-void wl_input_devices_changed(void);    /* se conectó o quitó una pantalla táctil: capacidades */
+void wl_input_devices_changed(void);    /* a touchscreen was connected or removed: capabilities */
 
-/* lo llama wl.c */
+/* called by wl.c */
 void wl_input_globals(struct wl_display *dpy);
 void wl_input_get_touch(struct wl_client *c, struct wl_resource *seat, uint32_t id);
 void wl_input_seat_caps(struct wl_resource *seat);
-/* rueda del mouse de siempre (wl_pointer en wl.c): axis + axis_source wheel + value120 */
+/* regular mouse wheel (wl_pointer in wl.c): axis + axis_source wheel + value120 */
 void wl_input_wheel(struct wl_resource *pointer, uint32_t time, int steps);
-/* rueda de alta resolución o horizontal: 1/120 de paso (+ arriba, + derecha), a la app con el puntero */
+/* high-resolution or horizontal wheel: 1/120 of a step (+ up, + right), to the app with the pointer */
 void wl_input_wheel120(int v120, int h120);
 
-/* de wl.c, solo para wl_input.c */
+/* from wl.c, only for wl_input.c */
 struct wl_display  *wl__display(void);
-struct wl_resource *wl__pointer_focus(void);          /* wl_surface bajo el puntero, o NULL */
+struct wl_resource *wl__pointer_focus(void);          /* wl_surface under the pointer, or NULL */
 struct wl_list     *wl__pointers(void);
 struct wl_resource *wl__surface_at(float x, float y, float *lx, float *ly);
 

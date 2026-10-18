@@ -1,6 +1,6 @@
-// cache.js — páginas ya dibujadas por lord-doc, con un tope de memoria. Mientras llega la versión
-// con el zoom nuevo se muestra la que haya de esa página (más chica o más grande, escalada):
-// así el dibujo es progresivo y nunca queda un hueco.
+// cache.js — pages already rendered by lord-doc, with a memory cap. While the version
+// at the new zoom arrives, whatever exists for that page is shown (smaller or larger, scaled):
+// so drawing is progressive and there is never a gap.
 import { releaseImage } from '@lordos/sdk';
 
 const quant = (w) => Math.max(32, Math.round(w / 32) * 32);
@@ -10,11 +10,11 @@ export class PageCache {
     this.doc = doc;
     this.onChange = onChange;
     this.budget = budget;
-    this.map = new Map();          // clave → { image, w, h, page, width, rot, inv, bytes, used }
-    this.pending = new Map();      // clave → promesa
+    this.map = new Map();          // key → { image, w, h, page, width, rot, inv, bytes, used }
+    this.pending = new Map();      // key → promise
     this.bytes = 0;
     this.tick = 0;
-    this.gen = new Map();          // página → generación (sube al cambiar un formulario o una anotación)
+    this.gen = new Map();          // page → generation (bumped when a form or an annotation changes)
     this.firstAt = 0;
   }
   key(page, width, rot, inv) { return `${page}|${quant(width)}|${rot}|${inv ? 1 : 0}|${this.gen.get(page) || 0}`; }
@@ -23,7 +23,7 @@ export class PageCache {
     if (e) e.used = ++this.tick;
     return e || null;
   }
-  // la mejor que haya de la página (para mostrar mientras llega la buena)
+  // the best one available for the page (to show while the good one arrives)
   best(page, rot, inv, width) {
     let best = null;
     const g = this.gen.get(page) || 0;
@@ -53,7 +53,7 @@ export class PageCache {
       this.onChange();
     }).catch(() => { this.pending.delete(k); });
   }
-  // pedidos que ya no hacen falta (la página salió de la vista antes de empezar)
+  // requests no longer needed (the page left the view before starting)
   drop(keep) {
     for (const [k, p] of this.pending) if (!keep.has(Number(k.split('|')[0]))) { this.doc.cancel(p); }
   }
@@ -67,8 +67,8 @@ export class PageCache {
       this.map.delete(k);
     }
   }
-  // la página cambió (formulario, anotación): las versiones viejas se siguen mostrando hasta que
-  // llegue la nueva, y después se descartan
+  // the page changed (form, annotation): the old versions keep being shown until
+  // the new one arrives, and are discarded afterwards
   invalidate(page) {
     const g = (this.gen.get(page) || 0) + 1;
     this.gen.set(page, g);

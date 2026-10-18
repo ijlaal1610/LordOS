@@ -1,4 +1,4 @@
-/* remote_admin.h — acciones de root del escritorio remoto (ver remote_admin.c y docs/REMOTO.md). */
+/* remote_admin.h — root actions of the remote desktop (see remote_admin.c and docs/REMOTE.md). */
 #ifndef LORD_REMOTE_ADMIN_H
 #define LORD_REMOTE_ADMIN_H
 

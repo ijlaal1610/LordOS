@@ -1,15 +1,15 @@
-# lord-server — libc + headers del kernel + libxkbcommon + libwayland-server + QuickJS y stb vendorizados.
-# Sin libdrm, libinput, X11 ni WebKit; el compositor Wayland (src/wl) y la terminal (src/term) son propios.
+# lord-server — libc + kernel headers + libxkbcommon + libwayland-server + vendored QuickJS and stb.
+# No libdrm, libinput, X11 or WebKit; the Wayland compositor (src/wl) and the terminal (src/term) are our own.
 CC      ?= cc
 CFLAGS  ?= -O2 -g
 WARN    := -Wall -Wextra
 CPPFLAGS += -D_GNU_SOURCE -Isrc -Ibuild/gen -isystem ../third_party/quickjs -isystem ../third_party/stb
 LDLIBS  += -lm -lpthread -lxkbcommon -lwayland-server -lwayland-client -lcrypt
 
-# Arquitectura: x86_64 (PC) o aarch64 (Raspberry Pi 5/4 y otras ARM64, ver docs/RASPBERRY.md). Nunca
-# -march=native: el .deb tiene que andar en cualquier CPU de la arquitectura. En aarch64 NEON es
-# parte de ARMv8-A (no hace falta -mfpu) y se usan los bucles NEON de canvas.c (NEON=0 los apaga;
-# tests/canvas_test.c los compara con los de C).
+# Architecture: x86_64 (PC) or aarch64 (Raspberry Pi 5/4 and other ARM64, see docs/RASPBERRY.md). Never
+# -march=native: the .deb has to run on any CPU of the architecture. On aarch64 NEON is
+# part of ARMv8-A (no -mfpu needed) and canvas.c's NEON loops are used (NEON=0 turns them off;
+# tests/canvas_test.c compares them with the C ones).
 ARCH ?= $(shell $(CC) -dumpmachine 2>/dev/null | cut -d- -f1)
 ifeq ($(ARCH),aarch64)
 NEON ?= 1
@@ -18,40 +18,41 @@ CPPFLAGS += -DLORD_NEON
 endif
 endif
 
-# Protocolos Wayland: wayland-scanner genera el código desde los XML de wayland-protocols.
+# Wayland protocols: wayland-scanner generates the code from the wayland-protocols XML files.
 WLPROTO := /usr/share/wayland-protocols
 WL_XML  := $(WLPROTO)/stable/xdg-shell/xdg-shell.xml $(WLPROTO)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
 WL_GEN  := build/gen/xdg-shell-protocol.h build/gen/xdg-decoration-unstable-v1-protocol.h
 WL_OBJ  := build/gen/xdg-shell-protocol.o build/gen/xdg-decoration-unstable-v1-protocol.o
-# dmabuf, presentación, viewporter y mouse para juegos (M7/GPU): también sirven en el camino por CPU
+# dmabuf, presentation, viewporter and mouse for games (M7/GPU): they also work on the CPU path
 WL_MORE := stable/linux-dmabuf/linux-dmabuf-v1 stable/presentation-time/presentation-time stable/viewporter/viewporter \
            unstable/relative-pointer/relative-pointer-unstable-v1 unstable/pointer-constraints/pointer-constraints-unstable-v1 \
            unstable/pointer-gestures/pointer-gestures-unstable-v1 \
-           staging/cursor-shape/cursor-shape-v1 unstable/tablet/tablet-unstable-v2
+           staging/cursor-shape/cursor-shape-v1 unstable/tablet/tablet-unstable-v2 \
+           staging/fractional-scale/fractional-scale-v1 unstable/xdg-output/xdg-output-unstable-v1
 WL_GEN  += $(foreach p,$(WL_MORE),build/gen/$(notdir $(p))-protocol.h)
 WL_OBJ  += $(foreach p,$(WL_MORE),build/gen/$(notdir $(p))-protocol.o)
 
-# Composición por GPU (src/gpu): Mesa (GBM + EGL + GLES2) si están sus -dev; si no (o con
-# GPU=0) se compila sin GPU y lord-server compone siempre por CPU. Ver docs/GPU.md.
+# GPU compositing (src/gpu): Mesa (GBM + EGL + GLES2) if its -dev packages are present; otherwise (or with
+# GPU=0) it's built without GPU and lord-server always composites on the CPU. See docs/GPU.md.
 GPU ?= $(shell pkg-config --exists gbm egl glesv2 2>/dev/null && echo 1 || echo 0)
 ifeq ($(GPU),1)
 CPPFLAGS += -DLORD_GPU $(shell pkg-config --cflags gbm egl glesv2)
 LDLIBS   += $(shell pkg-config --libs gbm egl glesv2)
 endif
 
-# Cabeceras de cliente Wayland para el modo app (ver CLIENT_PROTO; las interfaces las define el servidor)
+# Wayland client headers for app mode (see CLIENT_PROTO; the server defines the interfaces)
 APP_CLIENT_HDR := build/gen/client/xdg-shell-client-protocol.h build/gen/client/xdg-decoration-unstable-v1-client-protocol.h \
                   build/gen/client/pointer-gestures-unstable-v1-client-protocol.h
 QJS_DIR := ../third_party/quickjs
 QJS_OBJ := $(patsubst %,build/qjs/%.o,quickjs libregexp libunicode cutils dtoa)
 
-# Aislamiento de apps .lpk, permisos y firma (src/sec, ver docs/PRIVACIDAD.md y docs/FIRMA.md)
-# Monitor: métricas, conexiones y país de una IP (src/monitor, ver docs/MONITOR.md)
+# .lpk app isolation, permissions and signing (src/sec, see docs/PRIVACY.md and docs/SIGNING.md)
+# Monitor: metrics, connections and the country of an IP (src/monitor, see docs/MONITOR.md)
 MON_SRC := src/monitor/mon.c src/monitor/conn.c src/monitor/mmdb.c src/monitor/map.c src/ui/js_monitor.c
-# Medios (src/media, docs/MEDIOS.md): solo el lado de lord-server. FFmpeg lo enlaza solo lord-media.
+# Media (src/media, docs/MEDIA.md): only the lord-server side. Only lord-media links FFmpeg.
 MEDIA_SRC := src/media/media.c src/media/mview.c src/media/capture.c src/media/annot.c src/media/maudio.c src/media/mpulse.c src/media/proto.c src/ui/js_media.c
 SEC_SRC := src/sec/json.c src/sec/sign.c src/sec/pkgstate.c src/sec/perms.c src/sec/cgroup.c src/sec/sandbox.c src/sec/brokersrv.c src/sec/brokercam.c
-# Modo app: lord-server --app <id> corre una app .lpk como cliente Wayland aislado (src/app)
+# App mode: lord-server --app <id> runs an .lpk app as an isolated Wayland client (src/app)
 APP_SRC := src/app/appclient.c src/app/appspawn.c src/ui/js_broker.c src/ui/js_brokercam.c
 SRC := src/main.c src/kms.c src/gpu/gpu.c src/input.c src/canvas.c src/admin.c src/install/install.c src/apps.c src/lpk.c src/fsops.c src/remote/mirror.c src/remote/remote_admin.c src/users/users_admin.c src/users/homedirs.c src/keyboard.c src/ime.c src/wl/wl.c \
        src/ui/node.c src/ui/style.c src/ui/layout.c src/ui/text.c src/ui/image.c \
@@ -61,31 +62,31 @@ SRC := src/main.c src/kms.c src/gpu/gpu.c src/input.c src/canvas.c src/admin.c s
        src/net/nl.c src/net/crypto.c src/net/state.c src/net/sys.c src/net/dhcp.c src/net/wifi.c src/net/wg.c src/net/ovpn.c src/net/vpn.c src/net/vici.c src/net/ipsec.c src/net/vpnproc.c src/net/actions.c \
        src/pkg/crypto.c src/pkg/pgp.c src/pkg/xz.c src/pkg/deb.c src/pkg/idx.c src/pkg/status.c src/pkg/resolve.c src/pkg/http.c src/pkg/pkg.c src/ui/js_pkg.c src/ui/js_sec.c \
        $(SEC_SRC) $(APP_SRC) $(MON_SRC) $(MEDIA_SRC)
-# Documentos e impresión (M9): sesiones del ayudante lord-doc y cliente IPP/mDNS/eSCL propios
-# (src/doc, src/print; ver docs/DOCUMENTOS.md y docs/IMPRESION.md). Sin Poppler ni libarchive acá.
+# Documents and printing (M9): lord-doc helper sessions and our own IPP/mDNS/eSCL client
+# (src/doc, src/print; see docs/DOCUMENTS.md and docs/PRINTING.md). No Poppler or libarchive here.
 DOC_SRC := src/doc/doc.c src/doc/wire.c src/ui/js_doc.c src/print/ipp.c src/print/phttp.c src/print/mdns.c src/print/cups.c \
            src/print/escl.c src/print/print.c src/ui/js_print.c
 SRC += $(DOC_SRC)
-# Firewall por app (src/fw, docs/FIREWALL.md): reglas, decisión y nombres aprendidos del DNS
+# Per-app firewall (src/fw, docs/FIREWALL.md): rules, decision and names learned from DNS
 FW_SRC := src/fw/rules.c src/fw/dnsmap.c src/fw/fwmap.c src/ui/js_fw.c
 SRC += $(FW_SRC)
 OBJ := $(SRC:src/%.c=build/obj/%.o)
 HDR := $(wildcard src/*.h src/gpu/*.h src/ui/*.h src/term/*.h src/wl/*.h src/wasm/*.h src/sound/*.h src/pkg/*.h src/net/*.h src/install/*.h src/remote/*.h src/users/*.h src/sec/*.h src/monitor/*.h src/media/*.h src/app/*.h src/doc/*.h src/print/*.h) $(WL_GEN) $(APP_CLIENT_HDR)
 HDR += $(wildcard src/fw/*.h)
-# Touchpad y pantallas táctiles: driver propio (src/tp, sin libinput), gestos y toques para las apps
-# Wayland (src/wl/wl_input.c) y lord.input (src/ui/js_input.c). Ver docs/TRACKPAD.md.
+# Touchpad and touchscreens: our own driver (src/tp, no libinput), gestures and touches for the
+# Wayland apps (src/wl/wl_input.c) and lord.input (src/ui/js_input.c). See docs/TRACKPAD.md.
 TP_SRC := src/tp/tp.c src/tp/tp_route.c src/wl/wl_input.c src/ui/js_input.c
 SRC += $(TP_SRC)
-# Ventanas: arrastre en C, capa de la ventana que se mueve y cursores propios (docs/VENTANAS.md).
-# cursor-shape-v1 necesita las interfaces de tablet-v2 (solo se enlazan, no se anuncian).
-# Apps GTK/GNOME/Qt: org.freedesktop.portal.Settings propio (src/ui/portal.c) con el cliente D-Bus de
-# Contraseñas (src/vault/dbus.c, docs/CONTRASENAS.md).
+# Windows: dragging in C, a layer for the window being moved and our own cursors (docs/WINDOWS.md).
+# cursor-shape-v1 needs the tablet-v2 interfaces (they're only linked, not advertised).
+# GTK/GNOME/Qt apps: our own org.freedesktop.portal.Settings (src/ui/portal.c) with the D-Bus client from
+# Passwords (src/vault/dbus.c, docs/PASSWORDS.md).
 WM_SRC := src/cursor.c src/ui/grab.c src/ui/js_wm.c src/ui/portal.c src/vault/dbus.c
 SRC += $(WM_SRC)
 # Clock and Help (docs/SYSTEM.md): time zones with our own TZif reader, and the help articles
 CLOCK_SRC := src/ui/tzif.c src/ui/js_help.c
 SRC += $(CLOCK_SRC)
-# Registros (docs/SYSTEM.md): lector propio del journal de systemd, la acción logs-system y lord.logs
+# Logs (docs/SYSTEM.md): our own systemd journal reader, the logs-system action and lord.logs
 LOGS_SRC := src/logs/journal.c src/logs/logs_admin.c src/ui/js_logs.c
 SRC += $(LOGS_SRC)
 HDR += $(wildcard src/logs/*.h)
@@ -103,29 +104,29 @@ OBJ := $(SRC:src/%.c=build/obj/%.o)
 HDR += $(wildcard src/tp/*.h)
 
 .PHONY: all clean test
-# lord-sessiond: sesiones, pantalla de ingreso y escritorio remoto (docs/SESIONES.md). Es el
-# único que enlaza OpenSSL (TLS); si no está libssl-dev, se compila solo lord-server.
+# lord-sessiond: sessions, login screen and remote desktop (docs/SESSIONS.md). It's the
+# only one that links OpenSSL (TLS); without libssl-dev, only lord-server is built.
 SESSIOND ?= $(shell pkg-config --exists openssl 2>/dev/null && echo 1 || echo 0)
 ALL := build/lord-server
 ifeq ($(SESSIOND),1)
 ALL += build/lord-sessiond
 endif
-# lord-media: el ayudante de medios (docs/MEDIOS.md). Es el único que enlaza FFmpeg (y libva);
-# lord-server nunca. Si faltan los -dev de FFmpeg, se compila todo lo demás sin él.
+# lord-media: the media helper (docs/MEDIA.md). It's the only one that links FFmpeg (and libva);
+# lord-server never does. If FFmpeg's -dev packages are missing, everything else is built without it.
 MEDIA ?= $(shell pkg-config --exists libavcodec libavformat libavutil libswscale libswresample 2>/dev/null && echo 1 || echo 0)
 ifeq ($(MEDIA),1)
 ALL += build/lord-media
 endif
-# lord-doc: el ayudante de documentos (docs/DOCUMENTOS.md). Es el único que enlaza Poppler y
-# libarchive (y cairo, FreeType y fontconfig, que vienen con Poppler); lord-server nunca.
+# lord-doc: the document helper (docs/DOCUMENTS.md). It's the only one that links Poppler and
+# libarchive (and cairo, FreeType and fontconfig, which come with Poppler); lord-server never does.
 DOCHELPER ?= $(shell pkg-config --exists poppler-glib libarchive cairo-pdf cairo-ft freetype2 fontconfig 2>/dev/null && echo 1 || echo 0)
 ifeq ($(DOCHELPER),1)
 ALL += build/lord-doc
 endif
-# lord-netperm (src/netperm, docs/FIREWALL.md paso 2): el servicio root que aplica los permisos de
-# red por app con programas BPF de cgroup. Los programas se compilan con clang -target bpf (BPF=1,
-# si hay clang) y van adentro del binario (build/bpf2c → build/gen/np_bpf.h). Sin clang se compila
-# igual y el servicio avisa que no tiene BPF. Sin libbpf ni bcc.
+# lord-netperm (src/netperm, docs/FIREWALL.md step 2): the root service that applies per-app network
+# permissions with cgroup BPF programs. The programs are compiled with clang -target bpf (BPF=1,
+# if clang is available) and go inside the binary (build/bpf2c → build/gen/np_bpf.h). Without clang it still
+# builds and the service warns that it has no BPF. No libbpf or bcc.
 .DEFAULT_GOAL := all
 BPF ?= $(shell command -v clang >/dev/null 2>&1 && echo 1 || echo 0)
 NP_SRC := src/netperm/netperm.c src/netperm/bpfsys.c src/netperm/npcompile.c src/netperm/npdns.c \
@@ -154,10 +155,10 @@ build/npcompile-test: tests/npcompile_test.c src/netperm/npcompile.c src/netperm
 	./$@ || { rm -f $@; exit 1; }
 all: $(ALL)
 
-# Pruebas sin pantalla: emulador de terminal (tests/vt_dump.c), armado OpenType contra
-# HarfBuzz (tests/shape_test.c), bidi contra BidiCharacterTest.txt (tests/bidi_test.c) y
-# métodos de entrada (tests/ime_test.c); cortes del tailandés (tests/thbrk_test.c, contra libthai
-# con tests/thbrk_compare.sh).
+# Headless tests: terminal emulator (tests/vt_dump.c), OpenType shaping against
+# HarfBuzz (tests/shape_test.c), bidi against BidiCharacterTest.txt (tests/bidi_test.c) and
+# input methods (tests/ime_test.c); Thai line breaking (tests/thbrk_test.c, against libthai
+# with tests/thbrk_compare.sh).
 test: build/vt-dump build/shape-test build/bidi-test build/ime-test build/thbrk-test build/sound-test build/wasm-test build/net-test build/wasm-js-test build/pkg-test build/fsops-test build/sign-test build/mmdb-test build/canvas-test build/arcpath-test build/ipp-test build/tp-test build/media-test
 SHAPE_SRC := src/ui/otf.c src/ui/shape.c src/ui/shape_indic.c src/ui/shape_syl.c src/ui/shape_khmer.c src/ui/shape_myanmar.c src/ui/shape_use.c src/ui/unicode.c
 build/shape-test: tests/shape_test.c $(SHAPE_SRC) $(HDR)
@@ -178,7 +179,7 @@ build/pkg-js-test: tests/pkg_js_test.c src/ui/js_pkg.c $(PKG_READ_SRC) $(QJS_OBJ
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/pkg_js_test.c src/ui/js_pkg.c $(PKG_READ_SRC) $(QJS_OBJ) -lm -lpthread
 build/thbrk-test: tests/thbrk_test.c src/ui/thbrk.c src/ui/thbrk.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/thbrk_test.c src/ui/thbrk.c
-# firma de paquetes: SHA-256 (NIST), Ed25519 (RFC 8032), JSON, contenido.json y catálogo
+# package signing: SHA-256 (NIST), Ed25519 (RFC 8032), JSON, contenido.json and catalog
 build/pkgstate-test: tests/pkgstate_test.c src/sec/pkgstate.c src/sec/sign.c src/sec/json.c src/lpk.c src/pkg/crypto.c build/obj/ui/stb.o $(wildcard src/sec/*.h)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/pkgstate_test.c src/sec/pkgstate.c src/sec/sign.c src/sec/json.c src/lpk.c src/pkg/crypto.c build/obj/ui/stb.o -lm
 build/sandbox-test: tests/sandbox_test.c src/sec/sandbox.c src/sec/cgroup.c src/sec/sandbox.h src/sec/cgroup.h
@@ -191,14 +192,14 @@ build/tzif-test: tests/tzif_test.c src/ui/tzif.c src/ui/tzif.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/tzif_test.c src/ui/tzif.c
 	./$@ || { rm -f $@; exit 1; }
-# lector del journal (Registros): archivos sintéticos normales y compactos, LZ4 y XZ, archivos
-# rotos y cortados; `build/journal-test dump <archivo>` vuelca JSON para comparar con journalctl
+# journal reader (Logs): normal and compact synthetic files, LZ4 and XZ, broken and
+# truncated files; `build/journal-test dump <file>` dumps JSON to compare with journalctl
 test: build/journal-test
 build/journal-test: tests/journal_test.c src/logs/journal.c src/logs/journal.h src/pkg/xz.c build/obj/ui/stb.o
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/journal_test.c src/logs/journal.c src/pkg/xz.c build/obj/ui/stb.o -lm
 	./$@ || { rm -f $@; exit 1; }
-# firewall por app: reglas (precedencia, redes, JSON) y nombres del DNS (paquetes rotos, LRU)
+# per-app firewall: rules (precedence, networks, JSON) and DNS names (broken packets, LRU)
 test: build/fw-rules-test build/dnsmap-test
 build/fw-rules-test: tests/fw_rules_test.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c $(wildcard src/fw/*.h) src/sec/json.h
 	@mkdir -p build
@@ -215,19 +216,19 @@ build/backup-test: tests/backup_test.c src/backup/engine.c src/backup/crypt.c sr
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) -isystem ../third_party/monocypher $(CFLAGS) $(WARN) -std=c11 -o $@ tests/backup_test.c src/backup/engine.c src/backup/crypt.c src/fsops.c build/obj/vault/monocypher.o -lpthread
 	./$@ || { rm -f $@; exit 1; }
-# lector de MaxMind DB del Monitor (país de una IP): búsquedas conocidas y archivos rotos
+# Monitor's MaxMind DB reader (country of an IP): known lookups and broken files
 build/mmdb-test: tests/mmdb_test.c src/monitor/mmdb.c src/monitor/mmdb.h src/pkg/xz.c build/obj/ui/stb.o
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/mmdb_test.c src/monitor/mmdb.c src/pkg/xz.c build/obj/ui/stb.o -lm
-# tiempo de dibujo del mapa vectorial del Monitor (no es una prueba: mide; ver docs/MONITOR.md)
+# drawing time of the Monitor's vector map (not a test: it measures; see docs/MONITOR.md)
 build/map-bench: tests/map_bench.c src/monitor/map.c src/monitor/map.h src/monitor/mon.c src/monitor/conn.c src/monitor/mmdb.c src/pkg/xz.c build/obj/ui/stb.o
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/map_bench.c src/monitor/map.c src/monitor/mon.c src/monitor/conn.c src/monitor/mmdb.c src/pkg/xz.c build/obj/ui/stb.o -lm -lpthread
-# filas de canvas.c: SIMD (NEON en aarch64) contra C, bit a bit, y cuánto tarda cada una
+# canvas.c rows: SIMD (NEON on aarch64) against C, bit for bit, and how long each one takes
 build/canvas-test: tests/canvas_test.c src/canvas.c src/canvas.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -DLORD_CANVAS_TEST -o $@ tests/canvas_test.c src/canvas.c -lm
 build/fsops-test: tests/fsops_test.c src/fsops.c src/fsops.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/fsops_test.c src/fsops.c -lpthread
-# driver de touchpad (src/tp): gestos del touchpad simulado (../tests/touchpad-sim) → lo reconocido
+# touchpad driver (src/tp): gestures of the simulated touchpad (../tests/touchpad-sim) → what's recognized
 build/tp-test: tests/tp_test.c src/tp/tp.c src/tp/tp.h ../tests/touchpad-sim/gestures.c ../tests/touchpad-sim/gestures.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/tp_test.c src/tp/tp.c ../tests/touchpad-sim/gestures.c -lm
@@ -243,7 +244,7 @@ NET_SRC := src/net/nl.c src/net/crypto.c src/net/state.c src/net/sys.c src/net/d
 build/net-test: tests/net_test.c $(NET_SRC) $(PKG_SRC) build/obj/ui/stb.o src/net/net.h src/net/netpriv.h src/net/vpn.h src/admin.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/net_test.c $(NET_SRC) $(PKG_SRC) build/obj/ui/stb.o -lm
-# App Wayland de prueba con dmabuf (udmabuf): ver docs/GPU.md. Necesita libwayland-client.
+# Test Wayland app with dmabuf (udmabuf): see docs/GPU.md. Needs libwayland-client.
 CLIENT_PROTO := stable/xdg-shell/xdg-shell unstable/xdg-decoration/xdg-decoration-unstable-v1 stable/linux-dmabuf/linux-dmabuf-v1 stable/presentation-time/presentation-time \
                 unstable/relative-pointer/relative-pointer-unstable-v1 unstable/pointer-constraints/pointer-constraints-unstable-v1 \
                 unstable/pointer-gestures/pointer-gestures-unstable-v1
@@ -318,7 +319,7 @@ build/obj/%.o: src/%.c $(HDR)
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -c -o $@ $<
 
-# Código de terceros: se compila tal cual, sin nuestros warnings.
+# Third-party code: compiled as is, without our warnings.
 build/obj/ui/stb.o: src/ui/stb.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -w -c -o $@ $<
@@ -330,7 +331,7 @@ build/qjs/%.o: $(QJS_DIR)/%.c
 clean:
 	rm -rf build
 
-# ---- documentos (M9) ----
+# ---- documents (M9) ----
 LD_SRC := src/doc/helper.c src/doc/h_pdf.c src/doc/h_arc.c src/doc/h_font.c src/doc/h_make.c src/doc/wire.c src/doc/arcpath.c \
           src/sec/json.c src/sec/sandbox.c src/sec/cgroup.c
 LD_PKGS := poppler-glib libarchive cairo-pdf cairo-ft freetype2 fontconfig
@@ -339,23 +340,23 @@ build/obj/doc/h_stb.o: src/doc/h_stb.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -w -c -o $@ $<
 build/lord-doc: $(LD_SRC) build/obj/doc/h_stb.o $(wildcard src/doc/*.h) src/sec/sandbox.h src/sec/cgroup.h src/sec/json.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 $(shell pkg-config --cflags $(LD_PKGS)) -o $@ $(LD_SRC) build/obj/doc/h_stb.o $(shell pkg-config --libs $(LD_PKGS)) -lm
-# reglas para extraer sin salir de la carpeta (tests/arcpath_test.c)
+# rules for extracting without leaving the folder (tests/arcpath_test.c)
 build/arcpath-test: tests/arcpath_test.c src/doc/arcpath.c src/doc/arcpath.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/arcpath_test.c src/doc/arcpath.c
-# codificador/decodificador IPP, mDNS y rangos de páginas (tests/ipp_test.c)
+# IPP encoder/decoder, mDNS and page ranges (tests/ipp_test.c)
 build/ipp-test: tests/ipp_test.c src/print/ipp.c src/print/mdns.c src/print/cups.c src/print/phttp.c src/doc/wire.c src/sec/json.c $(wildcard src/print/*.h)
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/ipp_test.c src/print/ipp.c src/print/mdns.c src/print/cups.c src/print/phttp.c src/doc/wire.c src/sec/json.c
-# lord-doc de punta a punta: comprimidos maliciosos, PDF y el encierro (necesita build/lord-doc)
+# lord-doc end to end: malicious archives, PDF and the lockdown (needs build/lord-doc)
 build/doc-test: tests/doc_test.c src/doc/wire.c src/sec/json.c $(wildcard src/doc/*.h)
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/doc_test.c src/doc/wire.c src/sec/json.c
 
-# Contraseñas y llavero del sistema (docs/CONTRASENAS.md): reglas en mk/vault*.mk
+# Passwords and the system keyring (docs/PASSWORDS.md): rules in mk/vault*.mk
 include $(sort $(wildcard mk/*.mk))
 
-# lord-netd (docs/RED.md, "The network belongs to the system"): admin.c with LORD_NETD (net-* actions
+# lord-netd (docs/NETWORK.md, "The network belongs to the system"): admin.c with LORD_NETD (net-* actions
 # only) plus networking and the package engine (net-vpn-enable). libc only; lord-sessiond runs it.
 all: build/lord-netd
 NETD_OBJ := build/obj/netd/admin.o build/obj/netd/netd.o $(NET_SRC:src/%.c=build/obj/%.o) $(PKG_SRC:src/%.c=build/obj/%.o) build/obj/ui/stb.o

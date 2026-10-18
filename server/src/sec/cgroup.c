@@ -1,5 +1,5 @@
-/* cgroup.c — scope de cgroup v2 por app (ver cgroup.h). Todo con archivos de /sys/fs/cgroup:
- * sin libsystemd ni D-Bus. Degrada con un aviso si falta la delegación o un controlador. */
+/* cgroup.c — per-app cgroup v2 scope (see cgroup.h). All through files in /sys/fs/cgroup:
+ * no libsystemd or D-Bus. Degrades with a warning if delegation or a controller is missing. */
 #include "cgroup.h"
 
 #include <dirent.h>
@@ -31,7 +31,7 @@ static int write_file(const char *path, const char *val) {
     return w == (ssize_t)n ? 0 : -1;
 }
 
-/* Ruta del cgroup v2 del proceso (línea "0::<ruta>" de /proc/self/cgroup). */
+/* cgroup v2 path of the process (the "0::<path>" line of /proc/self/cgroup). */
 const char *cgroup_self(void) {
     static char path[PATH_MAX];
     if (path[0]) return path;
@@ -49,10 +49,10 @@ const char *cgroup_self(void) {
     return path;
 }
 
-/* Directorio donde crear la scope de la app. En la sesión delegada, lord-server corre en la hoja
- * «.../lordos-session-<uid>/server»: las scopes van como hermanas, en el directorio padre (que
- * tiene los controladores habilitados). Si el padre no es escribible, se prueba el cgroup propio
- * (sirve si no tiene controladores). Si ninguno, no hay subárbol delegado. */
+/* Directory where the app scope is created. In the delegated session, lord-server runs in the leaf
+ * ".../lordos-session-<uid>/server": scopes go as siblings, in the parent directory (which
+ * has the controllers enabled). If the parent isn't writable, its own cgroup is tried
+ * (works if it has no controllers). If neither, there's no delegated subtree. */
 static int base_dir(char *out, size_t n) {
     const char *rel = cgroup_self();
     if (!rel[0]) return -1;
@@ -69,15 +69,15 @@ static int base_dir(char *out, size_t n) {
     return -1;
 }
 
-/* Asegura que el controlador esté en cgroup.subtree_control del directorio base (para poder
- * limitar memoria y CPU en las scopes hijas). Mejor esfuerzo. */
+/* Makes sure the controller is in the base directory's cgroup.subtree_control (so memory and
+ * CPU can be limited in the child scopes). Best effort. */
 static void enable_controllers(const char *base) {
     char path[PATH_MAX];
     if ((size_t)snprintf(path, sizeof path, "%s/cgroup.subtree_control", base) < sizeof path)
         write_file(path, "+memory +cpu +pids");
 }
 
-/* Escribe val en el archivo `leaf` dentro del directorio dirfd (openat evita armar rutas largas). */
+/* Writes val into file `leaf` inside directory dirfd (openat avoids building long paths). */
 static int write_at(int dirfd, const char *leaf, const char *val) {
     int fd = openat(dirfd, leaf, O_WRONLY | O_CLOEXEC);
     if (fd < 0) return -1;
@@ -138,19 +138,19 @@ int cgroup_enter(const char *name, const CgroupLimits *lim) {
     char base[PATH_MAX], scope[PATH_MAX], val[64];
     for (const char *p = name; *p; p++)
         if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '-' || *p == '.' || *p == '_' || *p == '@'))
-            { fprintf(stderr, "cgroup: nombre inválido %s\n", name); return -1; }
+            { fprintf(stderr, "cgroup: invalid name %s\n", name); return -1; }
     /* With lord-sessiond the scopes belong to root (root-owned cgroup.procs): it creates them and
      * moves us, so an app cannot migrate to another cgroup of the session. Without it
      * (development) we fall back to the old self-migration. */
     int via = enter_via_sessiond(name, lim);
     if (via != -2) return via;
-    if (base_dir(base, sizeof base)) { fprintf(stderr, "cgroup: sin subárbol delegado (%s); la app corre sin scope\n", errno == EACCES ? "no escribible" : strerror(errno)); return -1; }
+    if (base_dir(base, sizeof base)) { fprintf(stderr, "cgroup: no delegated subtree (%s); the app runs without a scope\n", errno == EACCES ? "not writable" : strerror(errno)); return -1; }
     enable_controllers(base);
     if ((size_t)snprintf(scope, sizeof scope, "%s/%s", base, name) >= sizeof scope) return -1;
-    if (mkdir(scope, 0755) && errno != EEXIST) { fprintf(stderr, "cgroup: no se pudo crear %s: %s\n", name, strerror(errno)); return -1; }
+    if (mkdir(scope, 0755) && errno != EEXIST) { fprintf(stderr, "cgroup: could not create %s: %s\n", name, strerror(errno)); return -1; }
     int dir = open(scope, O_PATH | O_DIRECTORY | O_CLOEXEC);
-    if (dir < 0) { fprintf(stderr, "cgroup: no se pudo abrir %s: %s\n", name, strerror(errno)); return -1; }
-    /* límites antes de mover el proceso (mejor esfuerzo: puede faltar el controlador) */
+    if (dir < 0) { fprintf(stderr, "cgroup: could not open %s: %s\n", name, strerror(errno)); return -1; }
+    /* limits before moving the process (best effort: the controller may be missing) */
     if (lim) {
         if (lim->mem_high_mb) { snprintf(val, sizeof val, "%ld", lim->mem_high_mb * 1024L * 1024L); write_at(dir, "memory.high", val); }
         if (lim->mem_max_mb) { snprintf(val, sizeof val, "%ld", lim->mem_max_mb * 1024L * 1024L); write_at(dir, "memory.max", val); }
@@ -158,7 +158,7 @@ int cgroup_enter(const char *name, const CgroupLimits *lim) {
     }
     int r = write_at(dir, "cgroup.procs", "0");
     close(dir);
-    if (r) { fprintf(stderr, "cgroup: no se pudo entrar a %s: %s\n", name, strerror(errno)); return -1; }
+    if (r) { fprintf(stderr, "cgroup: could not enter %s: %s\n", name, strerror(errno)); return -1; }
     return 0;
 }
 
@@ -188,7 +188,7 @@ void cgroup_harden_session(int sessfd) {
     closedir(dir);
 }
 
-/* Raíz del servicio: el cgroup propio, o su padre si estamos en la hoja «supervisor» que crea
+/* Service root: its own cgroup, or its parent if we're in the "supervisor" leaf created by
  * cgroup_service_init(). */
 static int service_root(char *out, size_t n) {
     const char *rel = cgroup_self();
@@ -210,8 +210,8 @@ int cgroup_service_init(void) {
     int r = lfd >= 0 ? write_at(lfd, "cgroup.procs", "0") : -1;
     if (lfd >= 0) close(lfd);
     close(fd);
-    if (r) { fprintf(stderr, "cgroup: lordos.service sin Delegate=yes (no se pudo usar la hoja supervisor)\n"); return -1; }
-    enable_controllers(svc);        /* ahora la raíz no tiene procesos: puede habilitar controladores */
+    if (r) { fprintf(stderr, "cgroup: lordos.service without Delegate=yes (could not use the supervisor leaf)\n"); return -1; }
+    enable_controllers(svc);        /* now the root has no processes: it can enable controllers */
     /* sessions that survived a restart (or were delegated by an older lord-sessiond): back to root */
     DIR *dir = opendir(svc);
     struct dirent *e;
@@ -230,19 +230,19 @@ int cgroup_delegate_session(unsigned uid, unsigned gid) {
     char svc[PATH_MAX], sess[PATH_MAX];
     (void)gid;
     if (service_root(svc, sizeof svc)) return -1;
-    if (access(svc, W_OK)) { fprintf(stderr, "cgroup: lordos.service sin Delegate=yes; la sesión de %u corre sin subárbol\n", uid); return -1; }
+    if (access(svc, W_OK)) { fprintf(stderr, "cgroup: lordos.service without Delegate=yes; session %u runs without a subtree\n", uid); return -1; }
     enable_controllers(svc);
     if ((size_t)snprintf(sess, sizeof sess, "%s/lordos-session-%u", svc, uid) >= sizeof sess) return -1;
-    if (mkdir(sess, 0755) && errno != EEXIST) { fprintf(stderr, "cgroup: no se pudo crear el subárbol de la sesión %u: %s\n", uid, strerror(errno)); return -1; }
+    if (mkdir(sess, 0755) && errno != EEXIST) { fprintf(stderr, "cgroup: could not create the subtree of session %u: %s\n", uid, strerror(errno)); return -1; }
     enable_controllers(sess);
     int sfd = open(sess, O_PATH | O_DIRECTORY | O_CLOEXEC);
     if (sfd < 0) return -1;
     if (mkdirat(sfd, "server", 0755) && errno != EEXIST) { close(sfd); return -1; }
     int lfd = openat(sfd, "server", O_DIRECTORY | O_CLOEXEC);
-    if (lfd < 0 || write_at(lfd, "cgroup.procs", "0")) { fprintf(stderr, "cgroup: no se pudo mover la sesión %u a su hoja: %s\n", uid, strerror(errno)); if (lfd >= 0) close(lfd); close(sfd); return -1; }
+    if (lfd < 0 || write_at(lfd, "cgroup.procs", "0")) { fprintf(stderr, "cgroup: could not move session %u to its leaf: %s\n", uid, strerror(errno)); if (lfd >= 0) close(lfd); close(sfd); return -1; }
     /* The subtree stays root-owned (it used to be chowned to the user). lord-sessiond creates the
      * app scopes on request (cgroup_place_serve) with a root-owned cgroup.procs, so no user
-     * process can migrate to another cgroup of the session (see docs/PRIVACIDAD.md). */
+     * process can migrate to another cgroup of the session (see docs/PRIVACY.md). */
     close(lfd);
     cgroup_harden_session(sfd);
     close(sfd);
@@ -253,7 +253,7 @@ int cgroup_delegate_session(unsigned uid, unsigned gid) {
 void app_scope_enter(const char *id) {
     char name[80];
     if (snprintf(name, sizeof name, "app-lordos-%s.scope", id) >= (int)sizeof name) return;
-    CgroupLimits lim = { .mem_high_mb = 0, .mem_max_mb = 0, .cpu_percent = 0 };   /* Linux apps: sin límite, solo atribución */
+    CgroupLimits lim = { .mem_high_mb = 0, .mem_max_mb = 0, .cpu_percent = 0 };   /* Linux apps: no limit, attribution only */
     cgroup_enter(name, &lim);
 }
 

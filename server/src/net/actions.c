@@ -1,26 +1,26 @@
-/* actions.c — las acciones "net-*" del ayudante privilegiado (admin.c). Cada una valida su
- * argumento acá; ninguna pasa texto del usuario a un shell ni como argumentos libres.
+/* actions.c — the "net-*" actions of the privileged helper (admin.c). Each one validates its
+ * argument here; none passes user text to a shell or as free-form arguments.
  *
- *   net-restore                 al arrancar: aplica las configs de /etc/lordos/net/if y levanta DHCP
- *                               (y Wi-Fi) en las interfaces libres. With lord-netd it runs it itself
+ *   net-restore                 at startup: applies the configs in /etc/lordos/net/if and brings up DHCP
+ *                               (and Wi-Fi) on the free interfaces. With lord-netd it runs it itself
  *                               at boot ("system"); see admin.c
  *   net-up / net-down <if>
- *   net-config <if>\n<líneas>   method=dhcp|static|off, address=ip/prefijo (varias),
- *                               gateway=ip, dns=ip (varias)
- *   net-manage / net-unmanage <if>   pasar una interfaz de systemd-networkd a LordOS y volver
- *   net-wifi-scan <if>          LOG por red (JSON) y OK <cantidad>
- *   net-wifi-connect <if>\n<ssid>\n<contraseña>
+ *   net-config <if>\n<lines>    method=dhcp|static|off, address=ip/prefix (several),
+ *                               gateway=ip, dns=ip (several)
+ *   net-manage / net-unmanage <if>   hand an interface from systemd-networkd to LordOS and back
+ *   net-wifi-scan <if>          LOG per network (JSON) and OK <count>
+ *   net-wifi-connect <if>\n<ssid>\n<password>
  *   net-wifi-disconnect <if> / net-wifi-forget <ssid>
- *   net-vpn-import <tipo>\n<nombre>\n<config>   tipo wireguard | openvpn
- *   net-vpn-credentials <nombre>\n<usuario>\n<contraseña>
- *   net-vpn-up / net-vpn-down / net-vpn-delete <nombre>
- *   net-vpn-status [nombre]     LOG por VPN (JSON) y OK */
+ *   net-vpn-import <type>\n<name>\n<config>   type wireguard | openvpn
+ *   net-vpn-credentials <name>\n<user>\n<password>
+ *   net-vpn-up / net-vpn-down / net-vpn-delete <name>
+ *   net-vpn-status [name]       LOG per VPN (JSON) and OK */
 #include "net.h"
 #include "netpriv.h"
 #include "vpn.h"
 #include "../pkg/pkg.h"
 
-#include <net/if.h>                 /* antes que los de linux/ */
+#include <net/if.h>                 /* before the linux/ ones */
 
 #include <dirent.h>
 #include <signal.h>
@@ -35,7 +35,7 @@
 
 #define NETWORKCTL "/usr/bin/networkctl"
 
-/* Divide el argumento en hasta n líneas (in-place sobre una copia). */
+/* Splits the argument into up to n lines (in place, on a copy). */
 static int split_lines(char *s, char **out, int n) {
     int k = 0;
     while (s && k < n) {
@@ -44,7 +44,7 @@ static int split_lines(char *s, char **out, int n) {
         if (!nl) break;
         *nl = 0;
         s = nl + 1;
-        if (k == n - 1) { out[k++] = s; break; }    /* el último se lleva el resto */
+        if (k == n - 1) { out[k++] = s; break; }    /* the last one takes the rest */
     }
     return k;
 }
@@ -57,7 +57,7 @@ static int is_wifi(const char *ifname) {
     return access(p, F_OK) == 0;
 }
 
-/* Interfaz física (ethernet o wifi) existente, por sysfs: /sys/class/net/<if>/device. */
+/* Existing physical interface (ethernet or wifi), via sysfs: /sys/class/net/<if>/device. */
 static int is_physical(const char *ifname) {
     char p[96];
     snprintf(p, sizeof p, "/sys/class/net/%s/device", ifname);
@@ -92,7 +92,7 @@ static int start_dhcp(const char *ifname) {
     return admin_daemon_fork(d, dhcp_entry, name_arg);
 }
 
-/* Aplica la config guardada (texto clave=valor). */
+/* Applies the saved config (key=value text). */
 static int apply_config(const char *ifname, const char *t) {
     char method[16];
     kv_get(t, "method", 0, method, sizeof method);
@@ -129,11 +129,11 @@ static int apply_config(const char *ifname, const char *t) {
             snprintf(servers + strlen(servers), sizeof servers - strlen(servers), "%s%s", i ? " " : "", v);
         if (servers[0]) dns_set(ifname, servers, NULL, DNS_PLAIN); else dns_revert(ifname);
         close(fd);
-        if (is_wifi(ifname)) wifi_start(ifname);        /* asociarse sigue siendo de wpa_supplicant */
+        if (is_wifi(ifname)) wifi_start(ifname);        /* associating is still wpa_supplicant's job */
         return 0;
     }
     close(fd);
-    if (strcmp(method, "dhcp")) return 0;               /* sin configurar: solo levantada */
+    if (strcmp(method, "dhcp")) return 0;               /* not configured: just brought up */
     if (is_wifi(ifname)) return wifi_start(ifname);
     return start_dhcp(ifname);
 }
@@ -161,7 +161,7 @@ void net_act_restore(const AdminReq *r, const char *arg, size_t len) {
         FILE *of = fopen(NET_RUN_DIR "/net-owner", "w");
         if (of) { fprintf(of, "%d\n", (int)getpid()); fclose(of); }
     } else unlink(NET_RUN_DIR "/net-owner");
-    /* rutas de VPN que quedaron de una sesión que se cortó (protocolo RTPROT_LORDOS) */
+    /* VPN routes left over from a session that was cut off (protocol RTPROT_LORDOS) */
     int rfd = nl_open(NETLINK_ROUTE, 0);
     if (rfd >= 0) { rt_flush_proto(rfd, RTPROT_LORDOS, AF_INET, NULL); rt_flush_proto(rfd, RTPROT_LORDOS, AF_INET6, NULL); close(rfd); }
     struct if_nameindex *ifs = if_nameindex();
@@ -171,7 +171,7 @@ void net_act_restore(const AdminReq *r, const char *arg, size_t len) {
         if (!valid_ifname(name) || managed_by_system(name)) continue;
         char *t = load_if_conf(name);
         if (t) { if (!apply_config(name, t)) n++; free(t); continue; }
-        /* sin config: las físicas libres van por DHCP, como NetworkManager */
+        /* no config: the free physical ones use DHCP, like NetworkManager */
         if (is_physical(name)) { if (!apply_config(name, "method=dhcp\n")) n++; }
     }
     if (ifs) if_freenameindex(ifs);
@@ -208,7 +208,7 @@ void net_act_config(const AdminReq *r, const char *arg, size_t len) {
     char *body = nl ? nl + 1 : (char *)"";
     if (nl) *nl = 0;
     if (check_if(copy, 1)) { free(copy); return; }
-    /* se rearma la config solo con lo validado */
+    /* the config is rebuilt only from what was validated */
     Buf b = {0};
     char method[16] = "";
     int naddr = 0, ok = 1;
@@ -248,7 +248,7 @@ void net_act_config(const AdminReq *r, const char *arg, size_t len) {
     free(copy);
 }
 
-/* systemd-networkd deja de manejarla con un .network que la marca Unmanaged. */
+/* systemd-networkd stops managing it with a .network that marks it Unmanaged. */
 void net_act_manage(const AdminReq *r, const char *arg, size_t len) {
     (void)r; (void)len;
     if (check_if(arg, 0)) return;
@@ -256,7 +256,7 @@ void net_act_manage(const AdminReq *r, const char *arg, size_t len) {
     char path[160];
     snprintf(path, sizeof path, "/etc/systemd/network/00-lordos-%s.network", arg);
     char body[200];
-    int n = snprintf(body, sizeof body, "# LordOS maneja esta interfaz (net-manage)\n[Match]\nName=%s\n\n[Link]\nUnmanaged=yes\n", arg);
+    int n = snprintf(body, sizeof body, "# LordOS manages this interface (net-manage)\n[Match]\nName=%s\n\n[Link]\nUnmanaged=yes\n", arg);
     if (write_file_atomic(path, body, (size_t)n, 0644)) { admin_say("ERR", "no se pudo escribir %s", path); return; }
     char out[256];
     const char *argv[] = { NETWORKCTL, "reload", NULL };
@@ -368,7 +368,7 @@ void net_act_vpn_import(const AdminReq *r, const char *arg, size_t len) {
     else if (!strcmp(l[0], "wireguard")) {
         char pub[64];
         if (wg_import(l[1], l[2], pub, err, sizeof err)) admin_say("ERR", "%s", err);
-        else admin_say("OK", "%s", pub);                 /* la clave pública, para darla al servidor */
+        else admin_say("OK", "%s", pub);                 /* the public key, to give to the server */
     } else if (!strcmp(l[0], "openvpn")) {
         if (access("/usr/sbin/openvpn", X_OK)) admin_say("ERR", "falta openvpn (paquete openvpn)");
         else if (ovpn_import(l[1], l[2], err, sizeof err)) admin_say("ERR", "%s", err);
@@ -424,7 +424,7 @@ void net_act_vpn_up(const AdminReq *r, const char *arg, size_t len) {
     void (*fn)(void *) = !strcmp(type, "openvpn") ? ovpn_entry : !strcmp(type, "ipsec") ? ipsec_entry : !strcmp(type, "pptp") ? pptp_entry
                        : !strcmp(type, "openconnect") ? oc_entry : forti_entry;
     if (!strcmp(type, "ipsec") && access("/run/charon.pid", F_OK) == 0) {
-        /* charon usa un único /run/charon.pid: un IPsec a la vez */
+        /* charon uses a single /run/charon.pid: one IPsec at a time */
         char *t = read_file("/run/charon.pid", 32, NULL);
         int busy = t && atoi(t) > 1 && kill(atoi(t), 0) == 0;
         free(t);
@@ -441,7 +441,7 @@ void net_act_vpn_down(const AdminReq *r, const char *arg, size_t len) {
     if (!strcmp(type, "wireguard")) {
         if (wg_down(arg)) admin_say("ERR", "no estaba conectada");
         else { admin_say("OK", "desconectada"); admin_event("net vpn %s disconnected", arg); }
-    } else if (ovpn_down(arg)) admin_say("ERR", "no estaba conectada");      /* "vpn:<nombre>", cualquier tipo */
+    } else if (ovpn_down(arg)) admin_say("ERR", "no estaba conectada");      /* "vpn:<name>", any type */
     else admin_say("OK", "desconectando");
 }
 
@@ -456,7 +456,7 @@ void net_act_vpn_delete(const AdminReq *r, const char *arg, size_t len) {
         snprintf(p, sizeof p, NET_VPN_DIR "/%s.%s", arg, ext[i]);
         unlink(p);
     }
-    /* configs generadas */
+    /* generated configs */
     static const char *const gen[] = { NET_DIR "/ppp/%s.options", NET_DIR "/fortinet/%s.conf", "/etc/strongswan.d/lordos/%s.conf" };
     for (size_t i = 0; i < sizeof gen / sizeof gen[0]; i++) {
         char p[200];
@@ -496,8 +496,8 @@ void net_act_vpn_status(const AdminReq *r, const char *arg, size_t len) {
     admin_say("OK", "%d", n);
 }
 
-/* net-vpn-enable openconnect|fortinet: instala el programa (opcional) con el motor de paquetes
- * de LordOS (pkg-install, ver pkg/pkg.c). Corre en un proceso aparte (A_FORK). */
+/* net-vpn-enable openconnect|fortinet: installs the (optional) program with LordOS's package
+ * engine (pkg-install, see pkg/pkg.c). Runs in a separate process (A_FORK). */
 void net_act_vpn_enable(const AdminReq *r, const char *arg, size_t len) {
     (void)len;
     const char *pkgs = !strcmp(arg, "openconnect") ? "openconnect" : !strcmp(arg, "fortinet") ? "openfortivpn" : NULL;

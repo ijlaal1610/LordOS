@@ -1,5 +1,5 @@
 [Unit]
-Description=LordOS (lord-sessiond: pantalla de ingreso, sesiones y escritorio remoto)
+Description=LordOS (lord-sessiond: login screen, sessions and remote desktop)
 Documentation=file:///usr/share/doc/lordos/README.md
 After=systemd-user-sessions.service systemd-logind.service systemd-udev-settle.service
 Wants=systemd-udev-settle.service
@@ -8,10 +8,10 @@ After=getty@tty1.service
 
 [Service]
 Type=simple
-# solo en el live: idioma de grub (lordos.lang) y carpetas del usuario lordos
+# live only: grub language (lordos.lang) and the lordos user's folders
 ExecStartPre=-/usr/lib/lordos/lordos-live-prep
 ExecStart=/usr/lib/lordos/bin/lord-sessiond
-# SIGHUP: vuelve a leer /etc/lordos/remote/config (Ajustes → Compartir)
+# SIGHUP: rereads /etc/lordos/remote/config (Settings → Sharing)
 ExecReload=/bin/kill -HUP $MAINPID
 TTYPath=/dev/tty1
 TTYReset=yes
@@ -19,14 +19,14 @@ TTYVHangup=yes
 StandardInput=null
 StandardOutput=journal
 StandardError=journal
-# las sesiones de los usuarios (lord-server) y sus terminales sobreviven a un reinicio del
-# servicio: solo se para el principal (al volver, se entra por la pantalla de ingreso)
+# user sessions (lord-server) and their terminals survive a restart of the
+# service: only the main process is stopped (on return, login goes through the login screen)
 KillMode=process
-# lord-sessiond reparte el árbol de cgroups: una rama por sesión y un scope por app (ver docs/PRIVACIDAD.md)
+# lord-sessiond splits up the cgroup tree: one branch per session and one scope per app (see docs/PRIVACY.md)
 Delegate=yes
-# el principal entra directo a la hoja «supervisor»: un reinicio con procesos vivos (pantalla de ingreso, lord-netd, sesiones) no choca con la regla de cgroup v2
+# the main process goes straight into the «supervisor» leaf: a restart with live processes (login screen, lord-netd, sessions) does not clash with the cgroup v2 rule
 DelegateSubgroup=supervisor
-# al apagar: si algo no termina, a los 5 s se mata (no los 90 s por defecto)
+# on shutdown: if something does not exit, it is killed after 5 s (not the default 90 s)
 TimeoutStopSec=5
 Restart=always
 RestartSec=1

@@ -6,8 +6,12 @@ for every polish pass, so all apps share the same spacing, type and controls. Th
 blocks are in `sdk/controls.jsx` and `sdk/components.jsx`, and the tokens below are exported from
 the SDK as `spacing`, `typeScale` and `controlSize`.
 
-The first pass (Calculator, Text Editor, Notes, Photos, PDF Viewer and Fonts) is documented with
-before/after screenshots in [`docs/polish/`](polish/).
+The first pass (Calculator, Text Editor, Notes, Photos, PDF Viewer and Fonts) and the second one
+(Terminal, Store, Monitor, Player, Screenshots, Camera, Voice Recorder, Scanner, Emoji & Symbols
+with the system emoji picker, About and the Installer) are documented with before/after
+screenshots in [`docs/polish/`](polish/), as is the third (Settings page by page, Files, Terminal
+Preferences and the Store's remaining pages), and the fourth (the system apps: Disks, Backups, Logs,
+Clock and Help).
 
 ## Spacing: an 8 px grid
 
@@ -57,11 +61,16 @@ not "CONTENTS").
 | `Toolbar` | 44 | — | 12 px side insets, 8 px gap, hairline at the bottom |
 | `SidebarItem` | 28 | 6 | source list row; string `icon` is drawn in the accent color; optional `detail` |
 | `MenuButton` | 28 | 8 | "⋯" or "⊕" button that opens a small menu (checked, disabled and destructive items) |
+| `Toggle` | 24 (20 `small`) | — | `small` = the 36 × 20 switch of grouped forms (Settings rows) |
+| `Hairline` | 1 | — | `edge="top" \| "bottom" \| "start" \| "end"`: a 1 px separator on that edge of its parent; start/end follow RTL |
 
 Icons are monochrome Unicode glyphs from the fallback fonts (Inter, DejaVu Sans, Noto Sans
 Symbols 1/2), not color emoji. Verified on the VM:
 `✎ ⧉ ⊕ ⋯ ◫ ⛶ ⤢ ⟲ ⟳ ↻ ⎙ ⌕ ✕ ◐ ▬ ▤ ▦ ▶ ⓘ ☺ ‹ ›`. Color emoji (🗑 📎 🖼 🗨) and some
 symbols (🗀) don't render as icons: draw a small shape instead (see `FolderGlyph` in Photos).
+The media symbols (⏮ ⏸ ⏭ 🔁 🔊 💬 🎙 📷) are color emoji too: the Player draws its transport
+glyphs (`PlayGlyph`, `PauseGlyph`, `SkipGlyph`, `SpeakerGlyph`, `CaptionsGlyph`), the Camera and
+the Recorder draw their empty-state icons. `↻ ⤮ ♪ ◫ ▣ ☺ ≡` render monochrome.
 
 ## Layout patterns
 
@@ -80,6 +89,45 @@ symbols (🗀) don't render as icons: draw a small shape instead (see `FolderGly
 - **Dialogs and sheets:** 20 px padding, title 15/600, body 13 with `lineHeight: 1.4`, buttons at
   the end of the last row with 12 px above them. The default action is `primary`.
 - **Hierarchy:** one primary (accent) action per view. Everything else is plain or neutral.
+- **Inspector / detail pane:** a fixed-width pane (200–280 px, `sidebarBg`, `Hairline edge="start"`)
+  shows an `EmptyState` until something is selected, never a blank column (Emoji & Symbols).
+- **Media bar:** the Player's now-playing bar spans the whole window: cover and title at the
+  start, the transport (buttons above a progress row) in a 380 px center column, the volume at
+  the end. Under 720 px it keeps only the cover and the transport. Measure the box after layout
+  (`lord.getLayout(ref.current.id)[2]`) to adapt columns and widths (Player, Recorder waveform).
+- **Viewfinder apps (Camera):** always dark, whatever the theme; mode switch as two words with
+  the current one in yellow, a 60 px shutter centered between two `flex: 1` columns.
+- **Wizards (Installer):** step list in the sidebar (numbered circles, the current row
+  highlighted), `largeTitle` step title, fields with 16 px between them, a footer with a hairline
+  and Back / Next (`disabled` instead of a faded look).
+- **Utility (Disks):** the actions for the selection are labelled `ToolbarButton`s over the detail
+  pane (the ones that don't fit go into "⋯"), the details are a `GroupBox` of `FormRow`s with a
+  right-aligned label column, and the selection title is `largeTitle`.
+- **Console (Logs):** one 44 px toolbar (live, export, process field, `SearchField`), a 40 px scope bar
+  with small neutral `Segmented` filters, column captions over the list, a detail pane and a status
+  bar, each separated by a `Hairline`.
+- **Settings plus browser (Backups):** a header with the app icon, status and the one primary action;
+  a neutral `Segmented` centered in a 44 px bar; settings as `GroupBox`es in a 640 px centered
+  column; the browser as a dated source list plus a file list with column captions.
+- **Tabbed utility (Clock):** the tabs in the toolbar, centered, and the "add" action as a "+"
+  toolbar button at the trailing edge, never a button floating at the bottom.
+- **Reader (Help):** a centered reading column up to 680 px; the article keeps its own direction
+  (`textDirection(body)`), so an English article in an Arabic interface still reads left to right.
+- **Settings (System Settings):** a 220 px sidebar (search field, the user card, groups of
+  `SidebarItem` rows 12 px apart with 20 px colored badges: a soft vertical gradient and a white
+  glyph, or a drawn shape where the glyph is a color emoji), a 48 px title bar over the page with a
+  hairline, and the page in a scroll view (20 px from the top, 24 px side insets, at most 680 px wide,
+  centered). Pages are built only from `apps/settings/ui.jsx`: `Stack` (sections 20 px apart),
+  `Section` (13/600 header, an inset `GroupBox`, an 11 px footer), `SettingRow` (28 px of content
+  with 4 px above and below, so 36 px between hairlines; the control at the trailing edge),
+  `ValueRow` (value right-aligned in `textDim`), `FieldRow` (a field of a fixed width at the trailing
+  edge), `Actions` (buttons under a group, trailing), `Note`/`Message`. Buttons inside rows are
+  `small` (22 px); switches are `<Toggle small>` (36 × 20). Pickers between a few pictures (light/dark,
+  Dock side) are thumbnail tiles with a 2 px accent ring.
+- **Preferences panes (Terminal):** sections as sidebar rows (not a long tab bar that cannot fit),
+  a header with the section and profile names and the `Done` button, and a form with a 170 px
+  right-aligned label column. Measure the pane: under 480 px the labels go above their controls.
+  Lists of editable items (key mappings, triggers, shortcuts) are inset `GroupBox` rows.
 
 ## Robustness checklist
 
@@ -93,6 +141,20 @@ Check every pass on the VM with:
 - the **minimum window size** (`minSize` in the manifest) and a **large/maximized** window;
 - no overlapping or clipped controls, and no toolbar that wraps. Text that can be long uses
   `whiteSpace: 'nowrap'` and `overflow: 'hidden'` inside a `flex: 1` box.
+
+## Engine notes
+
+- `left`/`right` and `margin*` on absolute boxes are physical, and `marginInlineStart`/`insetInline*`
+  are not supported: use `Hairline` or `[direction() === 'rtl' ? 'right' : 'left']`.
+- `flex: 0` means a zero flex basis, so a box with `flex: 0` and a `width` collapses to nothing.
+  Pass `flex: 1` or `width`, not both (`style={[base, narrow ? { flex: 1 } : { width: 380 }]}`).
+- `getLayout` exported by the SDK is the **keyboard** layout. A box's size after layout is
+  `lord.getLayout(ref.current.id)` → `[x, y, w, h]` (Logs measured its list with the wrong one).
+- A `flex: 1` box with wrapped word rows inside a row (a Markdown list item next to its bullet) can be
+  measured shorter than it is drawn, and the next row overlaps it. Give it an explicit `width`
+  (`<Markdown fitWidth width={exact} />`, as Help does).
+- A toolbar must not wrap: measure its width and move the actions that don't fit into a `MenuButton`
+  (Disks' toolbar, the Backups browser) or narrow its fields (Logs).
 
 ## Pending (engine)
 

@@ -13,6 +13,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+static struct timespec t_start;
+static double since_start(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (t.tv_sec - t_start.tv_sec) + (t.tv_nsec - t_start.tv_nsec) / 1e9; }
+
 static int wait_for(int id, double seconds) {
     struct timespec t0, t;
     clock_gettime(CLOCK_MONOTONIC, &t0);
@@ -20,7 +23,7 @@ static int wait_for(int id, double seconds) {
     for (;;) {
         char *s = mail_poll();
         if (s) {
-            printf("%s\n", s);
+            printf("[%.2f s] %s\n", since_start(), s);
             char key[32];
             snprintf(key, sizeof key, "{\"id\":%d,", id);
             if (id > 0 && strstr(s, key)) got = 1;
@@ -35,6 +38,7 @@ static int wait_for(int id, double seconds) {
 }
 
 int main(int argc, char **argv) {
+    clock_gettime(CLOCK_MONOTONIC, &t_start);
     if (mail_start()) { fprintf(stderr, "lord-maild did not start (is it next to this binary?)\n"); return 1; }
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--wait") && i + 1 < argc) { wait_for(0, atof(argv[++i])); continue; }

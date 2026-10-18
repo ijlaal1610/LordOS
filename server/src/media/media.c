@@ -1,17 +1,17 @@
-/* media.c — los ayudantes lord-media desde lord-server (ver media.h y docs/MEDIOS.md).
+/* media.c — the lord-media helpers from lord-server (see media.h and docs/MEDIA.md).
  *
- * Reglas:
- *   - lord-media se lanza solo desde acá, con la ruta fija <carpeta de lord-server>/lord-media,
- *     sin argumentos y con un entorno mínimo. El binario tiene que ser del usuario o de root y no
- *     escribible por otros.
- *   - Nunca recibe una ruta: lord-server valida cada ruta (carpeta personal o montajes del
- *     usuario, como lord.fs), abre el archivo y le pasa el fd. Las salidas se crean como
- *     temporales al lado del destino y se renombran al terminar bien, sin pisar nada.
- *   - El socket es SOCK_SEQPACKET no bloqueante: lord-server nunca espera al ayudante. Si el
- *     ayudante se cae o se cuelga, se lo mata y solo esa ventana se entera (evento "closed").
- *   - La memoria compartida que manda el ayudante tiene que venir sellada contra achicarse
- *     (F_SEAL_SHRINK): si no, un ayudante comprometido podría hacer caer a lord-server con
- *     SIGBUS al truncarla. */
+ * Rules:
+ *   - lord-media is launched only from here, with the fixed path <lord-server folder>/lord-media,
+ *     no arguments and a minimal environment. The binary has to be owned by the user or by root and not
+ *     writable by others.
+ *   - It never receives a path: lord-server validates each path (home folder or the user's
+ *     mounts, like lord.fs), opens the file and passes it the fd. Outputs are created as
+ *     temporaries next to the destination and renamed when they finish well, without overwriting anything.
+ *   - The socket is a non-blocking SOCK_SEQPACKET: lord-server never waits for the helper. If the
+ *     helper crashes or hangs, it's killed and only that window finds out ("closed" event).
+ *   - The shared memory the helper sends has to come sealed against shrinking
+ *     (F_SEAL_SHRINK): otherwise, a compromised helper could bring down lord-server with
+ *     SIGBUS by truncating it. */
 #include "media_int.h"
 #include "../fsops.h"
 #include "../pkg/crypto.h"
@@ -54,7 +54,7 @@ const char *media_home(void) {
     return h ? h : "/";
 }
 
-/* ---- eventos para JS ---- */
+/* ---- events for JS ---- */
 
 typedef struct { int id; char type[16]; char *json; } Ev;
 static Ev *evq;
@@ -76,7 +76,7 @@ void media_json_str(char *out, size_t n, const char *s) {
 }
 
 void media_event(int id, const char *type, const char *fmt, ...) {
-    if (nev >= 2048) return;                         /* JS no atiende: se pierden (no crece sin límite) */
+    if (nev >= 2048) return;                         /* JS isn't listening: they're lost (doesn't grow without bound) */
     if (nev == evcap) {
         int cap = evcap ? evcap * 2 : 64;
         Ev *q = realloc(evq, (size_t)cap * sizeof *q);
@@ -97,7 +97,7 @@ void media_event(int id, const char *type, const char *fmt, ...) {
 }
 
 void media_events(MediaEventFn fn) {
-    /* fn puede generar más eventos (JS llama a lord.media): se procesan en la próxima vuelta */
+    /* fn can generate more events (JS calls lord.media): they're processed in the next round */
     int n = nev;
     Ev *q = evq;
     evq = NULL;
@@ -106,7 +106,7 @@ void media_events(MediaEventFn fn) {
     free(q);
 }
 
-/* ---- lanzar el ayudante ---- */
+/* ---- launching the helper ---- */
 
 static int helper_path(char *out, size_t n) {
     char self[PATH_MAX];
@@ -119,9 +119,9 @@ static int helper_path(char *out, size_t n) {
     if ((size_t)snprintf(out, n, "%.*s/lord-media", (int)(n > 16 ? n - 16 : 0), self) >= n) return -1;
     struct stat st;
     if (stat(out, &st) || !S_ISREG(st.st_mode) || !(st.st_mode & S_IXUSR)) return -1;
-    /* del usuario o de root, y que nadie más pueda cambiarlo */
+    /* owned by the user or by root, and nobody else can change it */
     if ((st.st_uid != 0 && st.st_uid != getuid()) || (st.st_mode & (S_IWGRP | S_IWOTH))) {
-        fprintf(stderr, "medios: %s no es confiable (dueño o permisos)\n", out);
+        fprintf(stderr, "media: %s is not trusted (owner or permissions)\n", out);
         return -1;
     }
     return 0;
@@ -130,11 +130,11 @@ static int helper_path(char *out, size_t n) {
 int media_spawn(int kind, const char *params, const int *fds, int nfds, pid_t *pid) {
     static char path[PATH_MAX];
     static int checked;
-    if (!checked) { checked = helper_path(path, sizeof path) ? -1 : 1; if (checked < 0) fprintf(stderr, "medios: no está lord-media (sin video, música ni cámara)\n"); }
+    if (!checked) { checked = helper_path(path, sizeof path) ? -1 : 1; if (checked < 0) fprintf(stderr, "media: lord-media is missing (no video, music or camera)\n"); }
     if (checked < 0) return -1;
     int sv[2];
     if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sv)) return -1;
-    /* buffers holgados: los mensajes son chicos, pero los avisos de cuadros no tienen que trabarse */
+    /* roomy buffers: messages are small, but frame notifications must not get stuck */
     int sz = 1 << 18;
     setsockopt(sv[0], SOL_SOCKET, SO_SNDBUF, &sz, sizeof sz);
     setsockopt(sv[0], SOL_SOCKET, SO_RCVBUF, &sz, sizeof sz);
@@ -143,7 +143,7 @@ int media_spawn(int kind, const char *params, const int *fds, int nfds, pid_t *p
     if (p == 0) {
         sigset_t all;
         sigemptyset(&all);
-        sigprocmask(SIG_SETMASK, &all, NULL);        /* lord-server bloquea SIGTERM/SIGINT (signalfd) */
+        sigprocmask(SIG_SETMASK, &all, NULL);        /* lord-server blocks SIGTERM/SIGINT (signalfd) */
         for (int sig = 1; sig < 32; sig++) if (sig != SIGKILL && sig != SIGSTOP) signal(sig, SIG_DFL);
         if (dup2(sv[1], 3) < 0) _exit(127);
 #ifdef SYS_close_range
@@ -174,7 +174,7 @@ int media_spawn(int kind, const char *params, const int *fds, int nfds, pid_t *p
     return sv[0];
 }
 
-/* Procesos que ya no tienen socket: se esperan (y se matan si tardan). */
+/* Processes that no longer have a socket: they're waited for (and killed if they take too long). */
 typedef struct { pid_t pid; double deadline; } Zombie;
 static Zombie zombies[64];
 static int nzombies;
@@ -197,7 +197,7 @@ static void reap(void) {
     nzombies = k;
 }
 
-/* ---- descriptores que se pasan ---- */
+/* ---- descriptors that are passed ---- */
 
 int media_pulse_fd(void) {
     char path[sizeof ((struct sockaddr_un *)0)->sun_path];
@@ -236,7 +236,7 @@ int media_render_fd(void) {
     return -1;
 }
 
-/* ---- rutas ---- */
+/* ---- paths ---- */
 
 int media_open_input(const char *path, char *real, size_t n) {
     char full[PATH_MAX * 2], r[PATH_MAX];
@@ -255,7 +255,7 @@ int media_open_input(const char *path, char *real, size_t n) {
 int media_open_output(const char *path, char *tmp, size_t tn, char *dst, size_t dn) {
     if (!path || js_sys_resolve_target(path, dst, dn)) return -1;
     struct stat st;
-    if (!lstat(dst, &st)) { errno = EEXIST; return -2; }          /* nunca se pisa un archivo */
+    if (!lstat(dst, &st)) { errno = EEXIST; return -2; }          /* a file is never overwritten */
     char dir[PATH_MAX];
     snprintf(dir, sizeof dir, "%s", dst);
     char *slash = strrchr(dir, '/');
@@ -275,14 +275,14 @@ int media_finish_output(const char *tmp, const char *dst, int ok) {
     if (!tmp || !tmp[0]) return -1;
     if (!ok) { unlink(tmp); return -1; }
     if (syscall(SYS_renameat2, AT_FDCWD, tmp, AT_FDCWD, dst, 1 /* RENAME_NOREPLACE */)) {
-        if (errno == EINVAL && link(tmp, dst) == 0) { unlink(tmp); return 0; }     /* fs sin renameat2 */
+        if (errno == EINVAL && link(tmp, dst) == 0) { unlink(tmp); return 0; }     /* fs without renameat2 */
         unlink(tmp);
         return -1;
     }
     return 0;
 }
 
-/* ---- orígenes ---- */
+/* ---- sources ---- */
 
 MediaSrc *media_src_new(int kind, const char *app) {
     for (int i = 0; i < MEDIA_MAX_SRC; i++) {
@@ -310,7 +310,7 @@ MediaSrc *media_src_get(int id) {
 
 void media_src_damage(MediaSrc *s) {
     Node *n = s->node ? node_get(s->node) : NULL;
-    /* solo la caja del nodo (no el margen de sombra): así un cuadro nuevo cae adentro de él (media_cover_node) */
+    /* only the node's box (not the shadow margin): that way a new frame falls inside it (media_cover_node) */
     if (n && n->type == NODE_MEDIA && n->term == s->id && n->prev_box.x1 > n->prev_box.x0)
         damage_add((Box){ floorf(n->ax), floorf(n->ay), ceilf(n->ax + n->w), ceilf(n->ay + n->h) });
     else s->node = 0;
@@ -338,7 +338,7 @@ static void drop_helper(MediaSrc *s, int grace) {
 
 void media_src_close(MediaSrc *s) {
     if (!s || !s->used) return;
-    /* una grabación en curso se cierra bien: se le pide terminar y se espera el final */
+    /* a recording in progress is closed properly: it's asked to finish and the end is waited for */
     if ((s->kind == SK_SCREENREC || s->kind == SK_AUDIOREC) && s->sock >= 0 && s->state == MS_RECORDING) {
         mp_sendv(s->sock, MM_STOP, 0, 0, 0, 0, 0);
         s->closing = 1;
@@ -346,7 +346,7 @@ void media_src_close(MediaSrc *s) {
     }
     if (s->kind == SK_SCREENREC) media_capture_src_closed(s);
     if (s->kind == SK_PLAYER && s->stats[0])
-        fprintf(stderr, "medios: reproducción (%s): %lld cuadros decodificados, %lld mostrados, %lld descartados, %s, desfase A/V medio %.2f ms (máx. %lld)\n",
+        fprintf(stderr, "media: playback (%s): %lld frames decoded, %lld shown, %lld dropped, %s, average A/V offset %.2f ms (max. %lld)\n",
                 s->app, (long long)s->stats[0], (long long)s->stats[1], (long long)s->stats[2], s->stats[3] ? "VA-API" : "software",
                 s->stats[4] / 100.0, (long long)s->stats[5]);
     drop_helper(s, 2000);
@@ -366,12 +366,12 @@ static const char *state_name(int st) {
     return st >= 0 && st <= MS_FAILED ? n[st] : "?";
 }
 
-/* Memoria compartida del ayudante: tiene que estar sellada contra achicarse y alcanzar. */
+/* Helper's shared memory: it has to be sealed against shrinking and be large enough. */
 static uint8_t *map_sealed(int fd, size_t need) {
     struct stat st;
     int seals = fcntl(fd, F_GET_SEALS);
     if (need == 0 || fstat(fd, &st) || (size_t)st.st_size < need || seals < 0 || !(seals & F_SEAL_SHRINK)) {
-        fprintf(stderr, "medios: memoria compartida inválida (sin sellar o chica)\n");
+        fprintf(stderr, "media: invalid shared memory (unsealed or too small)\n");
         return NULL;
     }
     void *m = mmap(NULL, need, PROT_READ, MAP_SHARED, fd, 0);
@@ -455,7 +455,7 @@ static void on_src_msg(MediaSrc *s, const MediaMsg *m, int *fds) {
         if (m->id < 4) s->in_busy[m->id] = 0;
         break;
     case MM_RESULT: {
-        /* cámara: foto o video terminados (id = 1 foto, 2 video) */
+        /* camera: photo or video finished (id = 1 photo, 2 video) */
         if (s->kind == SK_CAMERA) {
             char *tmp = m->id == 1 ? s->tmp : s->tmp + 2048, *dst = m->id == 1 ? s->dst : s->dst + 2048;
             int ok = m->v[0] == 0 && !media_finish_output(tmp, dst, 1);
@@ -490,7 +490,7 @@ static void src_dispatch(MediaSrc *s) {
             else bury(pid, 500), s->pid = 0;
             if (s->tmp[0]) { media_finish_output(s->tmp, s->dst, 0); s->tmp[0] = 0; }
             if (s->kind == SK_SCREENREC) media_capture_src_closed(s);
-            if (crashed) fprintf(stderr, "medios: lord-media (%s) terminó de golpe; la ventana sigue\n", s->app);
+            if (crashed) fprintf(stderr, "media: lord-media (%s) terminated abruptly; the window stays\n", s->app);
             media_event(s->id, "closed", "{\"crashed\":%s}", crashed ? "true" : "false");
             if (s->closing) { s->closing = 0; s->state = MS_DONE; media_src_close(s); }
             return;
@@ -501,7 +501,7 @@ static void src_dispatch(MediaSrc *s) {
     }
 }
 
-/* ---- workers: trabajos cortos en cola ---- */
+/* ---- workers: short queued jobs ---- */
 
 typedef struct Job {
     int id, bg, kind, purpose, src, nfds;
@@ -517,7 +517,7 @@ static Job *queue[2], *queue_tail[2];
 static int queued[2];
 static int next_job = 1;
 
-/* píxeles listos para lord.media.take (pósters) */
+/* pixels ready for lord.media.take (posters) */
 typedef struct { int job, w, h; uint8_t *rgba; double at; } Pixels;
 static Pixels pix[16];
 
@@ -592,7 +592,7 @@ static void job_finish(Job *j, int status, int fd) {
             free(pix[slot].rgba);
             pix[slot] = (Pixels){ j->id, w, h, malloc((size_t)w * h * 4), now_ms() };
             if (pix[slot].rgba) {
-                /* BGRA premultiplicado → RGBA (lo que espera <Image pixels>) */
+                /* premultiplied BGRA → RGBA (what <Image pixels> expects) */
                 const uint8_t *p = map;
                 uint8_t *o = pix[slot].rgba;
                 for (size_t i = 0; i < (size_t)w * h; i++, p += 4, o += 4) {
@@ -635,7 +635,7 @@ static void worker_kick(int bg) {
     if (wk->sock < 0) {
         wk->sock = media_spawn(MK_WORKER, NULL, NULL, 0, &wk->pid);
         if (wk->sock < 0) {
-            /* sin lord-media: todos los trabajos fallan */
+            /* no lord-media: all jobs fail */
             while (queue[bg]) { Job *j = queue[bg]; queue[bg] = j->next; queued[bg]--; payload[0] = 0; snprintf(payload, sizeof payload, "sin lord-media"); job_finish(j, -1, -1); job_free(j); }
             queue_tail[bg] = NULL;
             return;
@@ -653,7 +653,7 @@ static void worker_kick(int bg) {
         job_free(j);
         return;
     }
-    /* el ayudante ya tiene los fds */
+    /* the helper already has the fds */
     for (int i = 0; i < j->nfds; i++) if (j->fds[i] >= 0) { close(j->fds[i]); j->fds[i] = -1; }
     wk->cur = j;
 }
@@ -696,7 +696,7 @@ static void worker_dispatch(int bg) {
             bury(wk->pid, 500);
             wk->pid = 0;
             if (wk->cur) {
-                fprintf(stderr, "medios: lord-media se cayó con un trabajo (%d); sigue con el próximo\n", wk->cur->kind);
+                fprintf(stderr, "media: lord-media crashed during a job (%d); moving on to the next\n", wk->cur->kind);
                 snprintf(payload, sizeof payload, "el ayudante se cayó");
                 job_finish(wk->cur, -1, -1);
                 job_free(wk->cur);
@@ -716,10 +716,10 @@ static void worker_dispatch(int bg) {
     worker_kick(bg);
 }
 
-/* ---- miniaturas: ~/.cache/lordos/thumbs/<sha256>.png ---- */
+/* ---- thumbnails: ~/.cache/lordos/thumbs/<sha256>.png ---- */
 
 #define THUMB_TRACK 4096
-static uint64_t thumb_keys[THUMB_TRACK];        /* pedidas o fallidas (no se reintentan) */
+static uint64_t thumb_keys[THUMB_TRACK];        /* requested or failed (not retried) */
 static int thumb_n;
 
 static uint64_t key64(const char *s) { uint64_t h = 1469598103934665603ull; for (; *s; s++) h = (h ^ (uint8_t)*s) * 1099511628211ull; return h; }
@@ -757,7 +757,7 @@ const char *media_thumb(const char *path, int size, char *out, size_t n) {
     snprintf(out, n, "%s/%s.png", dir, hex);
     if (!access(out, R_OK)) return out;
     uint64_t k = key64(out);
-    for (int i = 0; i < thumb_n; i++) if (thumb_keys[i] == k) return NULL;     /* pedida o fallida */
+    for (int i = 0; i < thumb_n; i++) if (thumb_keys[i] == k) return NULL;     /* requested or failed */
     if (thumb_n >= THUMB_TRACK) return NULL;
     mkdirs(dir);
     int in = media_open_input(real, NULL, 0);
@@ -768,12 +768,12 @@ const char *media_thumb(const char *path, int size, char *out, size_t n) {
     if (o < 0) { close(in); return NULL; }
     thumb_keys[thumb_n++] = k;
     int fds[2] = { in, o };
-    /* params lleva la ruta de origen solo para el evento (no se manda al ayudante) */
+    /* params carries the source path only for the event (it's not sent to the helper) */
     media_job(1, MW_THUMB, JP_THUMB, fds, 2, size, 0, real, tmp, out, 0);
     return NULL;
 }
 
-/* ---- cámaras ---- */
+/* ---- cameras ---- */
 
 int media_cameras(char *json, size_t n) {
     size_t o = 0;
@@ -802,7 +802,7 @@ int media_cameras(char *json, size_t n) {
     return 0;
 }
 
-/* ---- bucle principal ---- */
+/* ---- main loop ---- */
 
 int media_pollfds(struct pollfd *p, int max) {
     int n = 0;

@@ -1,6 +1,6 @@
-/* pkgstate.h — estado de las apps .lpk instaladas: el paquete original que se guarda al instalar,
- * «Modificada por vos» (comparando con los hashes del original), «Restaurar original»,
- * «Compartir mi versión» y la regla de las actualizaciones (misma clave). Ver docs/FIRMA.md. */
+/* pkgstate.h — state of installed .lpk apps: the original package kept at install time,
+ * "Modified by you" (comparing with the original's hashes), "Restore original",
+ * "Share my version" and the update rule (same key). See docs/SIGNING.md. */
 #ifndef LORD_SEC_PKGSTATE_H
 #define LORD_SEC_PKGSTATE_H
 
@@ -12,34 +12,34 @@
 
 typedef struct {
     int installed, has_original, modified, nchanged;
-    LpkSigInfo sig;                     /* del original guardado */
+    LpkSigInfo sig;                     /* of the saved original */
     char version[40];
     char changed[PKG_MAX_CHANGED][224];
-    char change_kind[PKG_MAX_CHANGED];  /* 'm' modificado, 'a' agregado, 'r' borrado */
-    char error[160];                    /* el original no verifica (no debería pasar) */
+    char change_kind[PKG_MAX_CHANGED];  /* 'm' modified, 'a' added, 'r' deleted */
+    char error[160];                    /* the original doesn't verify (shouldn't happen) */
 } PkgStatus;
 
 /* ~/.local/share/lordos/apps/.orig/<id>.lpk */
 int pkg_original_path(const char *id, char *out, size_t n);
-/* Copia el .lpk recién instalado como original (atómico). */
+/* Copies the freshly installed .lpk as the original (atomically). */
 int pkg_keep_original(const char *id, const char *lpk_path);
-void pkg_forget(const char *id);        /* al desinstalar */
+void pkg_forget(const char *id);        /* on uninstall */
 
-/* Estado de una app instalada (cacheado: se recalcula si cambió algún archivo). */
+/* State of an installed app (cached: recomputed if any file changed). */
 int pkg_status(const char *id, PkgStatus *st);
 
-/* Regla de las actualizaciones (como Android): si la versión instalada está firmada, la nueva
- * tiene que estar firmada con la misma clave. 0 = se puede instalar. */
+/* Update rule (like Android): if the installed version is signed, the new one
+ * has to be signed with the same key. 0 = can be installed. */
 int pkg_check_update(const char *id, const LpkSigInfo *next, char *err, size_t n);
 
-/* Vuelve a instalar exactamente el original. */
+/* Reinstalls exactly the original. */
 int pkg_restore(const char *id, char *err, size_t n);
 
-/* Arma un .lpk nuevo con los archivos instalados (la versión del usuario) y el manifest dado
- * (con basedOn), firmado con la clave propia del usuario, en out_path (no pisa). */
+/* Builds a new .lpk with the installed files (the user's version) and the given manifest
+ * (with basedOn), signed with the user's own key, into out_path (doesn't overwrite). */
 int pkg_share(const char *id, const char *manifest, size_t mlen, const char *out_path, char *err, size_t n);
 
-/* Clave propia del usuario (~/.local/share/lordos/keys/user.json, 0600): se crea la primera vez. */
+/* The user's own key (~/.local/share/lordos/keys/user.json, 0600): created the first time. */
 int pkg_user_key(uint8_t seed[32], char pubhex[65], char name[128]);
 
 #endif

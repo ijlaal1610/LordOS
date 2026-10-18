@@ -1,9 +1,9 @@
-/* map.h — mapa del mundo del Monitor dibujado en vectores (ver map.c y docs/MONITOR.md).
+/* map.h — the Monitor's world map drawn from vectors (see map.c and docs/MONITOR.md).
  *
- * Los contornos de los países (assets/monitor/land.bin, Natural Earth 1:50m) se rellenan con
- * antialias a cualquier zoom, con bordes, arcos desde "este equipo" y un punto por lugar. Todo en
- * un hilo propio: el hilo de la pantalla pide un cuadro (map_request) y después lo retira
- * (map_take) cuando está listo, sin esperar. */
+ * Country outlines (assets/monitor/land.bin, Natural Earth 1:50m) are filled with
+ * antialiasing at any zoom, with borders, arcs from "this machine" and one dot per place. All on
+ * its own thread: the screen thread requests a frame (map_request) and later collects it
+ * (map_take) when it's ready, without waiting. */
 #ifndef LORD_MAP_H
 #define LORD_MAP_H
 
@@ -17,7 +17,7 @@ typedef struct { float lon, lat, r; int sel; } MapDot;
 
 typedef struct {
     int w, h;
-    double lon0, lat0, ppd;             /* esquina superior izquierda y píxeles por grado */
+    double lon0, lat0, ppd;             /* top-left corner and pixels per degree */
     uint32_t land, border, accent, home_color, sel_color;   /* 0xRRGGBBAA */
     int has_home;
     double hlon, hlat;
@@ -26,9 +26,9 @@ typedef struct {
 } MapReq;
 
 void map_init(const char *assets_dir);
-/* Pide un cuadro (reemplaza al pedido anterior si todavía no empezó). Devuelve su número. */
+/* Requests a frame (replaces the previous request if it hasn't started yet). Returns its number. */
 uint64_t map_request(const MapReq *r);
-/* El último cuadro terminado, si es más nuevo que *seq: copia (malloc) en *rgba; 1 si hay. */
+/* The last finished frame, if newer than *seq: a copy (malloc) in *rgba; 1 if there is one. */
 int map_take(uint64_t *seq, uint8_t **rgba, MapReq *view, double *ms);
 
 #endif

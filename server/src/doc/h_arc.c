@@ -1,12 +1,12 @@
-/* h_arc.c — comprimidos en el ayudante (libarchive): listar, extraer y crear .zip.
+/* h_arc.c — archives in the helper (libarchive): list, extract and create .zip.
  *
- * Extraer nunca sale de la carpeta de destino (fd "dir"), con tres capas:
- *   1. arcpath.c limpia cada nombre (sin "..", sin absolutas) y solo acepta enlaces simbólicos
- *      relativos que quedan adentro; no se crean dispositivos, FIFOs ni setuid;
- *   2. cada carpeta se abre desde el fd de destino tramo por tramo con O_NOFOLLOW (un enlace
- *      del propio comprimido no se puede usar para salir) y los archivos con O_EXCL (no pisa);
- *   3. Landlock: el proceso solo puede escribir debajo de esa carpeta.
- * Contra bombas: tope de entradas, de bytes escritos y de espacio libre del disco. */
+ * Extracting never leaves the destination folder (fd "dir"), with three layers:
+ *   1. arcpath.c cleans each name (no "..", no absolute paths) and only accepts relative symbolic
+ *      links that stay inside; no devices, FIFOs or setuid are created;
+ *   2. each folder is opened from the destination fd component by component with O_NOFOLLOW (a link
+ *      of the archive itself can't be used to escape) and files with O_EXCL (no overwriting);
+ *   3. Landlock: the process can only write below that folder.
+ * Against bombs: caps on entries, on bytes written and on free disk space. */
 #include "helper.h"
 #include "arcpath.h"
 
@@ -40,19 +40,19 @@ static struct archive *open_reader(int fd) {
     struct archive *a = archive_read_new();
     archive_read_support_filter_all(a);
     archive_read_support_format_all(a);
-    archive_read_support_format_raw(a);           /* un .gz/.xz/.zst suelto: un solo archivo */
+    archive_read_support_format_raw(a);           /* a bare .gz/.xz/.zst: a single file */
     if (archive_read_open_fd(a, fd, 1 << 16) != ARCHIVE_OK) { archive_read_free(a); return NULL; }
     return a;
 }
 
-/* "." o "./": la carpeta raíz del comprimido (tar -C x .); no es un problema, se ignora */
+/* "." or "./": the archive's root folder (tar -C x .); not a problem, ignored */
 static int is_root(const char *n) {
     if (!n) return 0;
     for (; *n; n++) if (*n != '.' && *n != '/') return 0;
     return 1;
 }
 
-/* "raw" sin compresión = cualquier archivo: no es un comprimido */
+/* "raw" without compression = any file: not an archive */
 static int raw_plain(struct archive *a) {
     return archive_format(a) == ARCHIVE_FORMAT_RAW && archive_filter_code(a, 0) == ARCHIVE_FILTER_NONE;
 }
@@ -101,8 +101,8 @@ static void op_list(uint32_t id, const JVal *args) {
     reply_json(DR_DONE, id, &b);
 }
 
-/* Abre la carpeta que contiene `path` (limpia) desde root, tramo por tramo, sin seguir enlaces;
- * con create, crea las que falten. Devuelve el fd y *leaf apunta al último tramo. */
+/* Opens the folder that contains `path` (clean) from root, component by component, without following links;
+ * with create, creates the missing ones. Returns the fd and *leaf points to the last component. */
 static int open_parent(int root, char *path, int create, const char **leaf) {
     int cur = dup(root);
     char *p = path;
@@ -189,7 +189,7 @@ static int write_file(Ex *x, struct archive *a, struct archive_entry *e, int dir
         progress(x, a, name, 0);
     }
     if (r == ARCHIVE_FATAL || r == ARCHIVE_FAILED) { ok = 0; if (!x->err) x->err = "corrupt"; }
-    /* tamaño final (los huecos al final de un archivo disperso) */
+    /* final size (the holes at the end of a sparse file) */
     la_int64_t want = archive_entry_size_is_set(e) ? archive_entry_size(e) : -1;
     if (ok && want > 0) { struct stat st; if (!fstat(fd, &st) && st.st_size < want && ftruncate(fd, want)) ok = 0; }
     fchmod(fd, arc_file_mode(archive_entry_perm(e)));
@@ -236,7 +236,7 @@ static void op_extract(uint32_t id, const JVal *args) {
         char work[ARC_PATH_MAX + 1];
         memcpy(work, clean, strlen(clean) + 1);
         if (type == AE_IFDIR) {
-            /* la carpeta en sí: open_parent crea las de arriba; esta se crea acá */
+            /* the folder itself: open_parent creates the ones above; this one is created here */
             int d = open_parent(root, work, 1, &leaf);
             if (d < 0) { skip(&x, clean, "unsafe-path"); continue; }
             if (mkdirat(d, leaf, arc_dir_mode(archive_entry_perm(e))) && errno != EEXIST) skip(&x, clean, "mkdir");
@@ -279,7 +279,7 @@ static void op_extract(uint32_t id, const JVal *args) {
     reply_json(x.err ? DR_ERR : DR_DONE, id, &b);
 }
 
-/* ---- crear .zip ---- */
+/* ---- create .zip ---- */
 
 typedef struct { uint32_t id; struct archive *w; long files; unsigned long long bytes; double last; int fail; } Cr;
 
@@ -315,7 +315,7 @@ static void add_entry(Cr *c, int fd, const char *name, const struct stat *st, in
             if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
             int k = openat(fd, de->d_name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
             if (k < 0 && errno == ELOOP) {
-                /* enlace simbólico: se guarda como enlace */
+                /* symbolic link: stored as a link */
                 char target[4096];
                 ssize_t tl = readlinkat(fd, de->d_name, target, sizeof target - 1);
                 if (tl > 0) {
@@ -341,7 +341,7 @@ static void add_entry(Cr *c, int fd, const char *name, const struct stat *st, in
         closedir(d);
         return;
     }
-    if (!S_ISREG(st->st_mode)) { archive_entry_free(e); return; }       /* FIFOs, dispositivos: no */
+    if (!S_ISREG(st->st_mode)) { archive_entry_free(e); return; }       /* FIFOs, devices: no */
     archive_entry_set_filetype(e, AE_IFREG);
     archive_entry_set_perm(e, st->st_mode & 0755);
     archive_entry_set_size(e, st->st_size);

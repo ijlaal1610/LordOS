@@ -1,8 +1,8 @@
-/* shape_test.c — prueba del armado OpenType (otf.c, shape.c) sin pantalla. Imprime los
- * glifos resultantes para comparar con HarfBuzz. Uso:
- *   build/shape-test fuente.ttf liga|ccmp "texto"        terminal: solo GSUB, ids de glifo
- *   build/shape-test fuente.ttf ui <escritura> <rtl> "texto" [índice .ttc]
- *        interfaz: GSUB + GPOS; "glifo@x,y|…" en orden visual y unidades de la fuente */
+/* shape_test.c — headless test of OpenType shaping (otf.c, shape.c). Prints the
+ * resulting glyphs for comparison with HarfBuzz. Usage:
+ *   build/shape-test font.ttf liga|ccmp "text"        terminal: GSUB only, glyph ids
+ *   build/shape-test font.ttf ui <script> <rtl> "text" [.ttc index]
+ *        UI: GSUB + GPOS; "glyph@x,y|…" in visual order and font units */
 #include "ui/otf.h"
 #include "ui/shape.h"
 
@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
         memcpy(script, argv[3], strlen(argv[3]) < 4 ? strlen(argv[3]) : 4);
         int len = shape_run(&sh, &o, cp, n, script, rtl);
         int x[1024], y[1024], pen = 0;
-        for (int k = 0; k < len; k++) {             /* primero los que no van anclados */
+        for (int k = 0; k < len; k++) {             /* first the ones that are not anchored */
             int i = rtl ? len - 1 - k : k;
             if (sh.pos[i].att >= 0) continue;
             x[i] = pen + sh.pos[i].dx; y[i] = sh.pos[i].dy;

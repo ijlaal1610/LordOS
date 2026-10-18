@@ -1,22 +1,22 @@
-/* journal.c — lector propio de los archivos del journal de systemd (formato de
- * systemd/src/libsystemd/sd-journal/journal-def.h, versiones 187 a 257). Lo usan la app
- * Registros (lord.logs, como el usuario: lee solo los archivos que el kernel y las ACL de journald
- * le dejan leer) y la acción logs-system del ayudante (root, para los administradores).
+/* journal.c — our own reader for systemd journal files (format from
+ * systemd/src/libsystemd/sd-journal/journal-def.h, versions 187 to 257). Used by the Logs app
+ * (lord.logs, as the user: it reads only the files that the kernel and journald's ACLs let it
+ * read) and by the helper's logs-system action (root, for administrators).
  *
- * Formato, en pocas palabras (todo little-endian, objetos alineados a 8):
- *   cabecera "LPKSHHRH" con banderas incompatibles (XZ=1, LZ4=2, KEYED_HASH=4, ZSTD=8, COMPACT=16),
- *   n_entries y entry_array_offset;
- *   ENTRY_ARRAY: [cabecera 16][siguiente arreglo 8][desplazamientos de entradas 8 (o 4 en compacto)];
- *   ENTRY: [cabecera 16][seqnum][realtime][monotonic][boot_id 16][xor_hash] + ítems: desplazamiento
- *          del DATA (+ hash) — 16 bytes por ítem, o 4 en modo compacto;
- *   DATA:  [cabecera 16][hash][next_hash][next_field][entry][entry_array][n_entries]
- *          (+ tail_entry_array_offset y n en compacto) y la carga "CAMPO=valor", quizás comprimida
- *          (XZ, LZ4 con el tamaño en los primeros 8 bytes, o ZSTD).
+ * The format, in short (all little-endian, objects aligned to 8):
+ *   "LPKSHHRH" header with incompatible flags (XZ=1, LZ4=2, KEYED_HASH=4, ZSTD=8, COMPACT=16),
+ *   n_entries and entry_array_offset;
+ *   ENTRY_ARRAY: [header 16][next array 8][entry offsets 8 (or 4 in compact mode)];
+ *   ENTRY: [header 16][seqnum][realtime][monotonic][boot_id 16][xor_hash] + items: offset of
+ *          the DATA (+ hash) — 16 bytes per item, or 4 in compact mode;
+ *   DATA:  [header 16][hash][next_hash][next_field][entry][entry_array][n_entries]
+ *          (+ tail_entry_array_offset and n in compact mode) and the "FIELD=value" payload,
+ *          possibly compressed (XZ, LZ4 with the size in the first 8 bytes, or ZSTD).
  *
- * Seguridad: nunca mmap (si journald achica el archivo, mmap daría SIGBUS): pread con un caché
- * de bloques chico. Todo desplazamiento se valida contra el tamaño del archivo, la cadena de
- * arreglos tiene que avanzar siempre (sin bucles) y los tamaños tienen tope. ZSTD no tiene
- * decodificador propio todavía: esos campos se muestran como «[comprimido zstd]». */
+ * Safety: never mmap (if journald shrinks the file, mmap would raise SIGBUS): pread with a small
+ * block cache. Every offset is checked against the file size, the array chain must always move
+ * forward (no loops) and sizes are capped. ZSTD has no decoder of our own yet: those fields are
+ * shown as «[zstd-compressed]». */
 #include "journal.h"
 #include "../pkg/xz.h"
 
@@ -31,12 +31,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define BS 65536u                       /* bloque del caché */
-#define NB 32                           /* bloques (2 MB por archivo abierto) */
-#define DC 8192                         /* caché de campos cortos por desplazamiento */
-#define HDR_MIN 208                     /* cabeceras de systemd ≥ 187 */
+#define BS 65536u                       /* cache block */
+#define NB 32                           /* blocks (2 MB per open file) */
+#define DC 8192                         /* cache of short fields by offset */
+#define HDR_MIN 208                     /* systemd ≥ 187 headers */
 #define MAX_ENTRY_SIZE (1u << 20)
-#define MAX_PAYLOAD (1u << 20)          /* comprimido o no: más grande no se lee */
+#define MAX_PAYLOAD (1u << 20)          /* compressed or not: anything bigger is not read */
 
 enum { INC_XZ = 1, INC_LZ4 = 2, INC_KEYED = 4, INC_ZSTD = 8, INC_COMPACT = 16, INC_KNOWN = 31 };
 enum { OBJ_DATA = 1, OBJ_ENTRY = 3, OBJ_ENTRY_ARRAY = 6 };
@@ -50,7 +50,7 @@ struct JFile {
     int fd;
     uint64_t size;
     int compact;
-    uint64_t *ent;                      /* desplazamientos de las entradas, en orden */
+    uint64_t *ent;                      /* entry offsets, in order */
     size_t nent;
     Blk blk[NB];
     DCache *dc;
@@ -70,7 +70,7 @@ static int pread_all(int fd, void *buf, size_t len, uint64_t off) {
     return 0;
 }
 
-/* Lee len bytes en off, por el caché si es chico. -1 si se sale del archivo (o se achicó). */
+/* Reads len bytes at off, via the cache if small. -1 if it runs past the file (or it shrank). */
 static int rd(JFile *f, uint64_t off, size_t len, void *out) {
     if (off > f->size || len > f->size - off) return -1;
     if (len > BS / 4) return pread_all(f->fd, out, len, off);
@@ -119,11 +119,11 @@ JFile *jf_open(const char *path) {
     memset(h, 0, sizeof h);
     if (pread_all(f->fd, h, f->size < sizeof h ? (size_t)f->size : sizeof h, 0) || memcmp(h, "LPKSHHRH", 8)) goto bad;
     uint32_t inc = le32(h + 12);
-    if (inc & ~(uint32_t)INC_KNOWN) goto bad;           /* algo que no conocemos: no adivinar */
+    if (inc & ~(uint32_t)INC_KNOWN) goto bad;           /* something we don't know: don't guess */
     f->compact = (inc & INC_COMPACT) != 0;
     uint64_t hsize = le64(h + 88), n_entries = le64(h + 152), arr = le64(h + 176);
     if (hsize < HDR_MIN || hsize > f->size) goto bad;
-    /* tope: no más entradas que las que entran en el archivo (64 bytes mínimo cada una) */
+    /* cap: no more entries than fit in the file (64 bytes minimum each) */
     uint64_t cap = f->size / 64;
     if (n_entries > cap) n_entries = cap;
     if (!(f->dc = calloc(DC, sizeof *f->dc))) goto bad;
@@ -145,7 +145,7 @@ JFile *jf_open(const char *path) {
         int end = 0;
         for (size_t i = 0; i < n && f->nent < n_entries; i++) {
             uint64_t e = f->compact ? le32(items + i * 4) : le64(items + i * 8);
-            if (!e) { end = 1; break; }             /* arreglo preasignado: el resto vacío */
+            if (!e) { end = 1; break; }             /* preallocated array: the rest is empty */
             if ((e & 7) || e < hsize || e > f->size - 64) continue;
             f->ent[f->nent++] = e;
         }
@@ -176,7 +176,7 @@ uint64_t jf_realtime(JFile *f, size_t idx) {
     return le64(eh + 24);
 }
 
-/* ---- LZ4 en bloque ---- */
+/* ---- LZ4 block ---- */
 
 long lz4_block_decode(const uint8_t *in, size_t len, uint8_t *out, size_t cap) {
     const uint8_t *ip = in, *ie = in + len;
@@ -192,7 +192,7 @@ long lz4_block_decode(const uint8_t *in, size_t len, uint8_t *out, size_t cap) {
         memcpy(out + op, ip, lit);
         ip += lit;
         op += lit;
-        if (ip >= ie) break;                 /* la última secuencia tiene solo literales */
+        if (ip >= ie) break;                 /* the last sequence has only literals */
         if (ie - ip < 2) return -1;
         size_t dist = (size_t)ip[0] | (size_t)ip[1] << 8;
         ip += 2;
@@ -204,12 +204,12 @@ long lz4_block_decode(const uint8_t *in, size_t len, uint8_t *out, size_t cap) {
         }
         ml += 4;
         if (ml > cap - op) return -1;
-        for (size_t i = 0; i < ml; i++, op++) out[op] = out[op - dist];   /* puede solaparse */
+        for (size_t i = 0; i < ml; i++, op++) out[op] = out[op - dist];   /* may overlap */
     }
     return (long)op;
 }
 
-/* ---- campos ---- */
+/* ---- fields ---- */
 
 static int field_id(const char *p, size_t n, size_t *eq) {
     static const struct { const char *name; int id; } names[] = {
@@ -244,7 +244,7 @@ static void set_field(JEntry *e, int id, const char *v) {
     case F_IDENT: snprintf(e->ident, sizeof e->ident, "%s", v); break;
     case F_COMM: snprintf(e->comm, sizeof e->comm, "%s", v); break;
     case F_UNIT: if (!e->unit[0]) snprintf(e->unit, sizeof e->unit, "%s", v); break;
-    case F_UUNIT: snprintf(e->unit, sizeof e->unit, "%s", v); break;   /* la del usuario manda */
+    case F_UUNIT: snprintf(e->unit, sizeof e->unit, "%s", v); break;   /* the user unit wins */
     case F_PID: e->pid = parse_int(v); break;
     case F_UID: e->uid = parse_int(v); break;
     case F_BOOT: snprintf(e->boot, sizeof e->boot, "%s", v); break;
@@ -264,7 +264,7 @@ static void set_message(JEntry *e, const char *v, size_t n) {
     e->message = m;
 }
 
-/* Un campo comprimido: se descomprime entero (con tope) y se interpreta. */
+/* A compressed field: it is decompressed whole (capped) and parsed. */
 static void compressed_field(JFile *f, JEntry *e, uint64_t poff, uint64_t plen, int flags, int *zstd) {
     if (flags & OF_ZSTD) { (*zstd)++; return; }
     if (plen > MAX_PAYLOAD) return;
@@ -338,7 +338,7 @@ int jf_entry(JFile *f, size_t idx, JEntry *out) {
         }
     }
     free(items);
-    if (!out->message) out->message = strdup(zstd ? "[comprimido zstd]" : "");
+    if (!out->message) out->message = strdup(zstd ? "[zstd-compressed]" : "");
     return out->message ? 0 : -1;
 }
 
@@ -354,7 +354,7 @@ static void oput(Out *o, const char *s, size_t n) {
     o->n += n;
 }
 
-/* Texto como string JSON: caracteres de control escapados y UTF-8 inválido → U+FFFD. */
+/* Text as a JSON string: control characters escaped and invalid UTF-8 → U+FFFD. */
 static void oesc(Out *o, const char *s, size_t max) {
     const unsigned char *p = (const unsigned char *)s;
     size_t used = 0;
@@ -399,7 +399,7 @@ size_t jentry_json(const JEntry *e, char *buf, size_t cap, size_t msgmax) {
     return o.n;
 }
 
-/* ---- consultas ---- */
+/* ---- queries ---- */
 
 int jq_valid_match(const char *s) {
     size_t n = strlen(s);
@@ -444,7 +444,7 @@ int jq_parse(const char *text, JQuery *q, size_t max_limit) {
         uint64_t u;
         if (!strcmp(k, "since") || !strcmp(k, "until")) {
             if (parse_u64(v, &u)) return -1;
-            if (u && u < 1000000000000ull) u *= 1000000ull;       /* segundos → µs */
+            if (u && u < 1000000000000ull) u *= 1000000ull;       /* seconds → µs */
             if (!strcmp(k, "since")) q->since = u; else q->until = u;
         } else if (!strcmp(k, "prio")) {
             if (strlen(v) != 1 || v[0] < '0' || v[0] > '7') return -1;
@@ -467,7 +467,7 @@ int jq_parse(const char *text, JQuery *q, size_t max_limit) {
 }
 
 static int matches(const JQuery *q, const JEntry *e) {
-    if (q->prio >= 0 && (e->priority < 0 || e->priority > q->prio)) return 0;   /* sin prioridad: no */
+    if (q->prio >= 0 && (e->priority < 0 || e->priority > q->prio)) return 0;   /* no priority: no match */
     if (q->kernel && !e->kernel) return 0;
     if (q->match[0]) {
         size_t ml = strlen(q->match);
@@ -518,7 +518,7 @@ long jq_run(char *const *paths, int npaths, const JQuery *q, JEntry **out) {
         jf_close(f);
     }
     if (n > 1) qsort(all, n, sizeof *all, cmp_entry);
-    if (n > limit) {                         /* las más nuevas */
+    if (n > limit) {                         /* the newest ones */
         for (size_t i = 0; i < n - limit; i++) free(all[i].message);
         memmove(all, all + (n - limit), limit * sizeof *all);
         n = limit;
@@ -527,7 +527,7 @@ long jq_run(char *const *paths, int npaths, const JQuery *q, JEntry **out) {
     return (long)n;
 }
 
-/* ---- archivos ---- */
+/* ---- files ---- */
 
 static int name_ok(const char *name, const char *prefix) {
     size_t pl = strlen(prefix), nl = strlen(name);

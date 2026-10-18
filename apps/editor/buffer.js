@@ -1,12 +1,12 @@
-// buffer.js — el documento del editor: líneas, varios cursores, ediciones y deshacer.
+// buffer.js — the editor document: lines, multiple cursors, edits and undo.
 //
-// Una posición es { l, c }: línea y columna en unidades de JS (UTF-16), como String.slice.
-// Un cursor es { l, c, al, ac, goal }: la cabeza (l, c), el ancla de la selección (al, ac) y la
-// columna visual deseada para subir y bajar (goal). Sin selección, ancla = cabeza.
+// A position is { l, c }: line and column in JS units (UTF-16), like String.slice.
+// A cursor is { l, c, al, ac, goal }: the head (l, c), the selection anchor (al, ac) and the
+// desired visual column for moving up and down (goal). Without a selection, anchor = head.
 //
-// Toda modificación pasa por apply(edits): reemplazos ordenados y sin solaparse, que se aplican
-// de atrás para adelante y devuelven dónde quedó cada uno. Cada transacción guarda su inversa,
-// así deshacer y rehacer son otra transacción. Las teclas seguidas se agrupan en un solo paso.
+// Every change goes through apply(edits): sorted, non-overlapping replacements, applied
+// back to front, that return where each one ended up. Each transaction stores its inverse,
+// so undo and redo are just another transaction. Consecutive keystrokes are grouped into a single step.
 
 export const cmp = (a, b) => (a.l - b.l) || (a.c - b.c);
 export const head = (k) => ({ l: k.l, c: k.c });
@@ -25,17 +25,17 @@ export class Doc {
     this.cursors = [cursorAt({ l: 0, c: 0 })];
     this.undoStack = [];
     this.redoStack = [];
-    this.version = 0;          // cambia con cada edición
-    this.serial = 0;           // número de estado: deshacer y rehacer vuelven a estados anteriores
-    this.savedSerial = 0;      // estado guardado en disco (para "modificado")
+    this.version = 0;          // changes with every edit
+    this.serial = 0;           // state number: undo and redo go back to earlier states
+    this.savedSerial = 0;      // state saved to disk (for "modified")
     this.nextSerial = 1;
-    this.firstChanged = 0;     // primera línea tocada desde la última consulta (resaltado)
-    this.sealed = true;        // el próximo cambio empieza un paso nuevo de deshacer
+    this.firstChanged = 0;     // first line touched since the last query (highlighting)
+    this.sealed = true;        // the next change starts a new undo step
   }
 
   get dirty() { return this.serial !== this.savedSerial; }
   markSaved() { this.savedSerial = this.serial; }
-  touch() { this.serial = this.nextSerial++; this.version++; }   // cambio sin historial (fin de línea)
+  touch() { this.serial = this.nextSerial++; this.version++; }   // change without history (line ending)
   text() { return this.lines.join(this.eol); }
   line(l) { return this.lines[l] ?? ''; }
   get lineCount() { return this.lines.length; }
@@ -53,7 +53,7 @@ export class Doc {
     return out.join('\n');
   }
 
-  // Ordena los cursores y junta los que se tocan.
+  // Sorts the cursors and merges the ones that touch.
   normalize() {
     const ks = this.cursors.map((k) => ({ ...k })).sort((a, b) => cmp(selStart(a), selStart(b)));
     const out = [];
@@ -69,8 +69,8 @@ export class Doc {
     this.cursors = out;
   }
 
-  // edits: [{ from, to, text }] ordenados, sin solaparse. Devuelve [{ start, end }] en
-  // coordenadas nuevas, uno por edición, y la inversa (para deshacer).
+  // edits: [{ from, to, text }] sorted, non-overlapping. Returns [{ start, end }] in
+  // new coordinates, one per edit, and the inverse (for undo).
   rawApply(edits) {
     const removed = edits.map((e) => this.textIn(e.from, e.to));
     for (let i = edits.length - 1; i >= 0; i--) {
@@ -99,7 +99,7 @@ export class Doc {
     return { results, inverse };
   }
 
-  // Lleva una posición del documento viejo al nuevo a través de las ediciones.
+  // Maps a position in the old document to the new one through the edits.
   static mapPos(p, edits, results) {
     let dl = 0, dc = 0, lastLine = -1;
     for (let i = 0; i < edits.length; i++) {
@@ -113,7 +113,7 @@ export class Doc {
     return { l: p.l + dl, c: p.c + (p.l === lastLine ? dc : 0) };
   }
 
-  // Una transacción: aplica, guarda la inversa y deja los cursores que diga place(results).
+  // A transaction: applies, stores the inverse and leaves the cursors that place(results) says.
   transact(edits, place, kind = 'edit') {
     edits = edits.filter((e) => e.text !== '' || cmp(e.from, e.to) !== 0);
     if (!edits.length) return false;
@@ -127,7 +127,7 @@ export class Doc {
     const now = Date.now();
     const last = this.undoStack[this.undoStack.length - 1];
     if (!this.sealed && last && last.kind === kind && kind !== 'edit' && now - last.time < GROUP_MS) {
-      // el grupo pasa a ser un solo estado
+      // the group becomes a single state
       tx.serialBefore = last.txs[0].serialBefore;
       last.txs.push(tx);
       last.time = now;
@@ -159,16 +159,16 @@ export class Doc {
     return true;
   }
 
-  // ---- ediciones de alto nivel (para todos los cursores) ----
+  // ---- high-level edits (for every cursor) ----
 
-  // Reemplaza cada selección por text (o por textFor(cursor)); el cursor queda al final.
+  // Replaces each selection with text (or with textFor(cursor)); the cursor ends up at the end.
   insert(text, kind = 'type') {
     this.normalize();
     const edits = this.cursors.map((k) => ({ from: selStart(k), to: selEnd(k), text: typeof text === 'function' ? text(k) : text }));
     return this.transact(edits, (rs) => rs.map((r) => cursorAt(r.end)), kind);
   }
 
-  // Borra la selección, o desde el cursor hasta to(cursor) si no hay.
+  // Deletes the selection, or from the cursor to to(cursor) if there is none.
   deleteBy(to, kind = 'delete') {
     this.normalize();
     const edits = this.cursors.map((k) => {
@@ -176,7 +176,7 @@ export class Doc {
       const t = this.clamp(to(head(k)));
       return cmp(t, head(k)) < 0 ? { from: t, to: head(k), text: '' } : { from: head(k), to: t, text: '' };
     });
-    // dos cursores que borran lo mismo: sin solaparse
+    // two cursors deleting the same thing: without overlapping
     const clean = [];
     for (const e of edits) {
       const prev = clean[clean.length - 1];
@@ -185,7 +185,7 @@ export class Doc {
     return this.transact(clean, (rs) => rs.map((r) => cursorAt(r.start)), kind);
   }
 
-  // Líneas tocadas por los cursores (sin repetir, ordenadas).
+  // Lines touched by the cursors (no repeats, sorted).
   cursorLines() {
     const set = new Set();
     for (const k of this.cursors) {
@@ -196,7 +196,7 @@ export class Doc {
     return [...set].sort((a, b) => a - b);
   }
 
-  // Cambia líneas enteras (sangría, comentario) manteniendo las selecciones.
+  // Changes whole lines (indentation, comment) keeping the selections.
   mapLines(fn, kind = 'edit') {
     const edits = [];
     for (const l of this.cursorLines()) {

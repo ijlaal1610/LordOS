@@ -1,8 +1,8 @@
-// store.js — las notas en disco: ~/Notas/<slug>/nota.md (markdown con un encabezado YAML
-// mínimo) y sus adjuntos al lado. Se guardan solas, unos 600 ms después del último cambio.
+// store.js — the notes on disk: ~/Notas/<slug>/nota.md (markdown with a minimal YAML
+// header) and its attachments next to it. They save themselves, about 600 ms after the last change.
 //
 //   ---
-//   title: Compras
+//   title: Groceries
 //   color: yellow
 //   x: 120
 //   y: 90
@@ -13,8 +13,8 @@
 //   created: 2026-10-16T10:12:00.000Z
 //   updated: 2026-10-16T10:20:31.000Z
 //   ---
-//   # Compras
-//   - [ ] yerba
+//   # Groceries
+//   - [ ] yerba mate
 import { createStore, fs, screen, registerWidgetType, setWidgets } from '@lordos/sdk';
 
 export const DIR = 'Notas';
@@ -50,7 +50,7 @@ export function serialize(n) {
   return `---\n${head}\n---\n${n.body}`;
 }
 
-// Título: la primera línea con texto, sin las marcas de markdown.
+// Title: the first line with text, without the markdown marks.
 export function titleOf(body) {
   const line = body.split('\n').find((l) => l.trim() && !/^(`{3,}|---)/.test(l.trim())) || '';
   return line.replace(/^\s*(#{1,6}\s+|>\s*|[-*+]\s+(\[[ xX]\]\s+)?|\d+[.)]\s+)/, '').replace(/[*_`~]|!\[[^\]]*\]\([^)]*\)/g, '').trim().slice(0, 60);
@@ -60,7 +60,7 @@ export const folder = (slug) => `${DIR}/${slug}`;
 export const absFolder = (slug) => `${fs.home()}/${DIR}/${slug}`;
 
 function ensureDir() {
-  try { fs.list(DIR); } catch (e) { try { fs.mkdir(DIR); } catch (e2) { /* sin carpeta personal */ } }
+  try { fs.list(DIR); } catch (e) { try { fs.mkdir(DIR); } catch (e2) { /* no home folder */ } }
 }
 
 export function loadNotes() {
@@ -82,14 +82,14 @@ export function loadNotes() {
   notesStore.set({ loaded: true, list });
 }
 
-// ---- guardado ----
+// ---- saving ----
 
 const timers = new Map();
 function writeNow(slug) {
   timers.delete(slug);
   const n = notesStore.get().list.find((x) => x.slug === slug);
   if (!n) return;
-  try { fs.write(`${folder(slug)}/nota.md`, serialize(n)); } catch (e) { console.log(`notas: no se pudo guardar ${slug}: ${e.message}`); }
+  try { fs.write(`${folder(slug)}/nota.md`, serialize(n)); } catch (e) { console.log(`notes: could not save ${slug}: ${e.message}`); }
 }
 function saveSoon(slug) {
   clearTimeout(timers.get(slug));
@@ -135,28 +135,28 @@ export function duplicateNote(slug) {
   const n = notesStore.get().list.find((x) => x.slug === slug);
   if (!n) return null;
   const copy = createNote({ body: n.body, color: n.color, desktop: n.desktop, x: n.x + 30, y: n.y + 30 });
-  // adjuntos: se copian al lado (en segundo plano)
+  // attachments: copied next to it (in the background)
   try {
     for (const e of fs.list(folder(slug))) if (e.name !== 'nota.md') fs.copy(`${folder(slug)}/${e.name}`, `${folder(copy)}/${e.name}`);
-  } catch (e) { /* sin adjuntos */ }
+  } catch (e) { /* no attachments */ }
   return copy;
 }
 
-// Borrar: a la Papelera si existe; si no, a ~/Notas/.papelera (se puede recuperar a mano).
+// Delete: to the Trash if it exists; otherwise, to ~/Notas/.papelera (can be recovered by hand).
 export function deleteNote(slug) {
   clearTimeout(timers.get(slug));
   timers.delete(slug);
   let ok = false;
   try { if (fs.trash) { fs.trash(folder(slug)); ok = true; } } catch (e) { ok = false; }
   if (!ok) {
-    try { fs.mkdir(`${DIR}/.papelera`); } catch (e) { /* ya está */ }
+    try { fs.mkdir(`${DIR}/.papelera`); } catch (e) { /* already there */ }
     try { fs.rename(folder(slug), `${DIR}/.papelera/${slug}`); ok = true; } catch (e) { ok = false; }
   }
   if (ok) patchList((list) => list.filter((n) => n.slug !== slug));
   return ok;
 }
 
-// ---- adjuntos ----
+// ---- attachments ----
 
 function freeName(slug, name) {
   let names;
@@ -171,7 +171,7 @@ function freeName(slug, name) {
 const IMG = /\.(png|jpe?g)$/i;
 export const isImage = (name) => IMG.test(name);
 
-// Copia un archivo de la carpeta personal a la nota y devuelve el markdown que lo muestra.
+// Copies a file from the home folder into the note and returns the markdown that shows it.
 export function attachFile(slug, path) {
   const rel = path.replace(`${fs.home()}/`, '');
   const name = freeName(slug, rel.split('/').pop());
@@ -183,7 +183,7 @@ export function attachFile(slug, path) {
   return isImage(name) ? `![${name}](${name})` : `[📎 ${name}](${name})`;
 }
 
-// La imagen del portapapeles (copiada en cualquier app) como imagen-N.png de la nota.
+// The clipboard image (copied in any app) as the note's imagen-N.png.
 export function pasteClipboardImage(slug) {
   const data = lord.clipboard.imageData ? lord.clipboard.imageData() : null;
   if (!data) return null;
@@ -196,7 +196,7 @@ export function pasteClipboardImage(slug) {
   return `![${name}](${name})`;
 }
 
-// ---- notas en el escritorio (widgets) ----
+// ---- notes on the desktop (widgets) ----
 
 export function publishWidgets() {
   const list = notesStore.get().list.filter((n) => n.desktop);

@@ -1,11 +1,11 @@
-/* thbrk.c — corte de palabras del tailandés, como libthai (brk-maximal.c) pero sin enlazarla:
- * lee el diccionario de libthai-data (/usr/share/libthai/thbrk.tri, un trie doble de
- * libdatrie) con un lector propio y busca la segmentación por "maximal matching": entre los
- * caminos posibles de palabras del diccionario, el que llega más lejos con menos caracteres
- * fuera de palabras y menos cortes. Si el diccionario no está, se corta donde puede empezar
- * una sílaba (las mismas pistas que usa libthai).
+/* thbrk.c — Thai word breaking, like libthai (brk-maximal.c) but without linking it:
+ * reads the libthai-data dictionary (/usr/share/libthai/thbrk.tri, a libdatrie double-array
+ * trie) with our own reader and looks for the segmentation by "maximal matching": among the
+ * possible paths of dictionary words, the one that reaches farthest with the fewest characters
+ * outside words and the fewest breaks. If the dictionary is not there, it breaks where a
+ * syllable can start (the same hints libthai uses).
  *
- * El archivo viene del sistema, pero igual se valida todo: tamaños, firmas e índices. */
+ * The file comes from the system, but everything is still validated: sizes, signatures and indices. */
 #include "thbrk.h"
 
 #include <fcntl.h>
@@ -18,12 +18,12 @@
 #define MAX_FILE (32u << 20)
 
 typedef struct { int32_t base, check; } Cell;
-typedef struct { int32_t data; uint8_t *suffix; } TailBlock;    /* suffix termina en 0 */
+typedef struct { int32_t data; uint8_t *suffix; } TailBlock;    /* suffix ends in 0 */
 
 static struct {
-    int state;                  /* 0 sin cargar, 1 cargado, -1 no hay */
+    int state;                  /* 0 not loaded, 1 loaded, -1 absent */
     uint32_t alpha_begin, alpha_end;
-    int32_t *alpha_to_trie;     /* -1 = no está en el alfabeto */
+    int32_t *alpha_to_trie;     /* -1 = not in the alphabet */
     Cell *cells;
     int32_t ncells;
     TailBlock *tails;
@@ -50,7 +50,7 @@ static int load(void) {
     if (!f) return -1;
     size_t p = 0;
 #define NEED(k) do { if (n - p < (size_t)(k)) goto bad; } while (0)
-    /* alfabeto: rangos de caracteres → caracteres del trie (1, 2, …; 0 es el fin de palabra) */
+    /* alphabet: character ranges → trie characters (1, 2, …; 0 is end of word) */
     NEED(8);
     if (rd32(f) != 0xD9FCD9FCu) goto bad;
     uint32_t nranges = rd32(f + 4);
@@ -71,7 +71,7 @@ static int load(void) {
     if (!D.alpha_to_trie) goto bad;
     for (uint32_t c = 0; c <= hi - lo; c++) D.alpha_to_trie[c] = -1;
     int32_t tc = 0;
-    for (uint32_t i = 0; i < nranges; i++) {         /* en el orden del archivo, como libdatrie */
+    for (uint32_t i = 0; i < nranges; i++) {         /* in file order, like libdatrie */
         uint32_t b = rd32(f + p + 8 * i), e = rd32(f + p + 8 * i + 4);
         for (uint32_t a = b; a <= e; a++) {
             if (tc == 0) tc++;
@@ -79,7 +79,7 @@ static int load(void) {
         }
     }
     p += (size_t)nranges * 8;
-    /* arreglo doble: celda 0 = firma y cantidad de celdas; la raíz es la 2 */
+    /* double array: cell 0 = signature and number of cells; the root is cell 2 */
     NEED(8);
     if (rd32(f + p) != 0xDAFCDAFCu) goto bad;
     D.ncells = (int32_t)rd32(f + p + 4);
@@ -94,7 +94,7 @@ static int load(void) {
         D.cells[i].check = (int32_t)rd32(f + p + 4);
         p += 8;
     }
-    /* colas: el resto de cada palabra cuando ya no se ramifica */
+    /* tails: the rest of each word once it no longer branches */
     NEED(12);
     if (rd32(f + p) != 0xDFFCDFFCu) goto bad;
     D.ntails = (int32_t)rd32(f + p + 8);
@@ -132,7 +132,7 @@ int thbrk_available(void) {
     return D.state > 0;
 }
 
-/* ---- recorrido del trie (trie_state_* de libdatrie) ---- */
+/* ---- trie traversal (libdatrie's trie_state_*) ---- */
 
 typedef struct { int32_t index; int16_t suffix_idx; uint8_t is_suffix; } TState;
 
@@ -168,7 +168,7 @@ static int terminal(const TState *s) {
 
 static TState root(void) { return (TState){ 2, 0, 0 }; }
 
-/* ---- pistas: dónde puede empezar una sílaba (brk_brkpos_hints de libthai) ---- */
+/* ---- hints: where a syllable can start (libthai's brk_brkpos_hints) ---- */
 
 enum { KO_KAI = 0x0E01, RU = 0x0E24, LU = 0x0E26, WO_WAEN = 0x0E27, O_ANG = 0x0E2D, SARA_A = 0x0E30, MAI_HAN_AKAT = 0x0E31,
        SARA_AA = 0x0E32, SARA_UEE = 0x0E37, SARA_E = 0x0E40, SARA_AE = 0x0E41, MAITAIKHU = 0x0E47, THANTHAKHAT = 0x0E4C };
@@ -205,7 +205,7 @@ static void hints(const uint32_t *s, int len, char *h) {
     }
 }
 
-/* ---- maximal matching (brk_maximal_do_impl de libthai) ---- */
+/* ---- maximal matching (libthai's brk_maximal_do_impl) ---- */
 
 typedef struct Shot {
     struct Shot *next;
@@ -242,7 +242,7 @@ static Shot *pool_delete(Env *e, Shot *pool, Shot *node) {
     return pool;
 }
 static void pool_free(Env *e, Shot *pool) { while (pool) { Shot *n = pool->next; shot_free(e, pool); pool = n; } }
-static Shot *pool_get(Shot *pool) {             /* el que menos avanzó */
+static Shot *pool_get(Shot *pool) {             /* the one that advanced least */
     Shot *chosen = NULL;
     int min = 0x7fffffff;
     for (; pool; pool = pool->next) {
@@ -252,7 +252,7 @@ static Shot *pool_get(Shot *pool) {             /* el que menos avanzó */
     }
     return chosen;
 }
-static Shot *pool_match(Shot *pool, const Shot *node) {    /* otro que cortó en el mismo lugar */
+static Shot *pool_match(Shot *pool, const Shot *node) {    /* another one that broke at the same place */
     for (; pool; pool = pool->next) {
         if (pool == node) continue;
         if (!node->cur ? !pool->cur : pool->cur > 0 && pool->brk[pool->cur - 1] == node->brk[node->cur - 1]) return pool;
@@ -305,8 +305,8 @@ done:
 
 typedef struct { int pos, recov; } Hist;
 
-/* Desde dónde se puede volver a reconocer palabras (RECOVERED_WORDS seguidas) después de un
- * tramo que no está en el diccionario. */
+/* From where words can be recognized again (RECOVERED_WORDS in a row) after a
+ * run that is not in the dictionary. */
 static int recover(const uint32_t *ws, int len, int pos, const char *h, Hist *rh, Env *e) {
     int last = 0;
     while (pos < len && !h[pos]) pos++;
@@ -314,7 +314,7 @@ static int recover(const uint32_t *ws, int len, int pos, const char *h, Hist *rh
     for (int p = pos; p < len; p++)
         if (h[p]) {
             int n = recover_try(ws + p, len - p, h + p, RECOVERED_WORDS, &last, e);
-            /* libthai compara ws[last] (last es relativo a p) con el fin del texto: se respeta */
+            /* libthai compares ws[last] (last is relative to p) with the end of the text: we keep that */
             if (n == RECOVERED_WORDS || (n > 0 && last >= len)) { rh->pos = pos; rh->recov = p; return p; }
         }
     return -1;
@@ -325,7 +325,7 @@ int thbrk_chunk(const uint32_t *ws, int len, int *out, int max) {
     char *h = malloc((size_t)len + 1);
     if (!h) return 0;
     hints(ws, len, h);
-    if (!thbrk_available()) {                   /* sin diccionario: comienzos de sílaba */
+    if (!thbrk_available()) {                   /* without a dictionary: syllable starts */
         int k = 0;
         for (int i = 1; i < len && k < max; i++) if (h[i]) out[k++] = i;
         free(h);
@@ -368,7 +368,7 @@ int thbrk_chunk(const uint32_t *ws, int len, int *out, int max) {
         node->str_pos = sp;
         if (keep && (term || recovered)) {
             if (node->str_pos < len && term && !node->st.is_suffix) {
-                Shot *nn = shot_new(&e, node);  /* también el camino que sigue la palabra más larga */
+                Shot *nn = shot_new(&e, node);  /* also the path that follows the longest word */
                 if (nn) { nn->next = pool; pool = nn; node = nn; }
             }
             node->st = root();
@@ -406,9 +406,9 @@ int thbrk_chunk(const uint32_t *ws, int len, int *out, int max) {
     return k;
 }
 
-/* Clases de corte de libthai (brk-ctype.c) para el bloque tailandés: solo las letras y marcas
- * (THAI) van al diccionario; ๆ y ฯ no se separan de lo anterior; los dígitos y ฿ siguen las
- * reglas de números. */
+/* libthai's break classes (brk-ctype.c) for the Thai block: only letters and marks
+ * (THAI) go to the dictionary; ๆ and ฯ are not separated from what precedes them; digits and ฿ follow the
+ * number rules. */
 enum { C_THAI, C_ALPHA, C_NUM, C_NBB, C_NUM_CUR, C_TERM, C_OTHER };
 static int th_class(uint32_t c) {
     if (c == 0x0E2F || c == 0x0E46) return C_NBB;
@@ -425,7 +425,7 @@ int thbrk_is_thai(uint32_t c) { return th_class(c) == C_THAI; }
 int thbrk_pair(uint32_t a, uint32_t b) {
     int x = th_class(a), y = th_class(b);
     if (x == C_OTHER || y == C_OTHER) return -1;
-    /* _break_table de libthai, solo estas filas y columnas (I = indirecto: sin espacio, no) */
+    /* libthai's _break_table, only these rows and columns (I = indirect: without a space, no) */
     static const uint8_t t[6][6] = {
         /*            THAI ALPHA NUM NBB NUM_CUR TERM */
         /* THAI */    { 0,  1,    0,  0,  1,      0 },
@@ -450,14 +450,14 @@ static void chunk_breaks(const uint32_t *s, int a, int b, uint8_t *bk) {
 }
 
 void thbrk_text(const uint32_t *s, int n, uint8_t *bk) {
-    /* entre letras y ๆ, dígitos o ฿: la tabla de libthai */
+    /* between letters and ๆ, digits or ฿: libthai's table */
     for (int i = 1; i < n; i++) {
         int pr = thbrk_pair(s[i - 1], s[i]);
         if (pr >= 0 && !(thbrk_is_thai(s[i - 1]) && thbrk_is_thai(s[i]))) bk[i] = pr ? 1 : 2;
     }
     for (int i = 0; i < n;) {
         if (!thbrk_is_thai(s[i])) { i++; continue; }
-        /* siglas como libthai: hasta 3 letras seguidas de punto ("พ.ศ.", "กอ.รมน.") no se cortan */
+        /* abbreviations like libthai: up to 3 letters followed by a period ("พ.ศ.", "กอ.รมน.") are not broken */
         int chunk = i, ae = i, p = i;
         while (p < n) {
             if (thbrk_is_thai(s[p])) {
@@ -468,7 +468,7 @@ void thbrk_text(const uint32_t *s, int n, uint8_t *bk) {
         }
         if (ae > chunk) {
             for (int k = chunk + 1; k < ae; k++) bk[k] = 2;
-            if (ae < n && thbrk_is_thai(s[ae])) bk[ae] = 1;     /* después del punto se puede */
+            if (ae < n && thbrk_is_thai(s[ae])) bk[ae] = 1;     /* after the period it can break */
             i = ae;
             continue;
         }

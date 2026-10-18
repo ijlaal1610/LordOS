@@ -1,466 +1,463 @@
-# LordOS en Raspberry Pi (ARM64)
+# LordOS on Raspberry Pi (ARM64)
 
-Desde M8, ARM64 es una plataforma oficial de LordOS, con la **Raspberry Pi 5** como placa de
-referencia. Este documento junta lo que hace falta para armar la imagen, grabarla, desarrollar
-en la placa y probarla.
+Since M8, ARM64 is an official LordOS platform, with the **Raspberry Pi 5** as the reference board.
+This document gathers what's needed to build the image, write it, develop on the board and test it.
 
-> **Estado (2026-10-16):** preparado en el código y en las herramientas, **sin probar en una
-> placa todavía**. La Pi 5 de 16 GB del usuario no está en la red. Nada de lo que sigue está
-> verificado en hardware: no decir que anda hasta pasar la lista de pruebas de abajo con
-> capturas.
+> **Status (2026-10-16):** prepared in the code and tools, **not yet tested on a board**. The user's
+> 16 GB Pi 5 isn't on the network. Nothing below is verified on hardware: don't claim it works until
+> the test checklist below has been passed with screenshots.
 
-## Modelos
+## Models
 
-| Placa | Estado | Notas |
+| Board | Status | Notes |
 |---|---|---|
-| **Raspberry Pi 5** (4, 8 o 16 GB) | **objetivo principal** | BCM2712, 4× Cortex-A76 a 2,4 GHz, V3D 7.1 (OpenGL ES 3.1, Vulkan 1.3), kernel con páginas de 16K |
-| Raspberry Pi 500 / CM5 | debería andar igual | el mismo SoC; sin probar |
-| Raspberry Pi 4 / 400 / CM4 | mejor esfuerzo | BCM2711, 4× Cortex-A72, V3D 4.2 (GLES 3.1), kernel `rpi-v8` con páginas de 4K; con 2 GB queda justo |
-| Pi 3 y anteriores, Zero 2 | no | poca RAM y GPU vc4 vieja (GLES 2 sin dmabuf moderno) |
+| **Raspberry Pi 5** (4, 8 or 16 GB) | **main target** | BCM2712, 4× Cortex-A76 at 2.4 GHz, V3D 7.1 (OpenGL ES 3.1, Vulkan 1.3), kernel with 16K pages |
+| Raspberry Pi 500 / CM5 | should work the same | same SoC; untested |
+| Raspberry Pi 4 / 400 / CM4 | best effort | BCM2711, 4× Cortex-A72, V3D 4.2 (GLES 3.1), `rpi-v8` kernel with 4K pages; with 2 GB it's tight |
+| Pi 3 and earlier, Zero 2 | no | too little RAM and an old vc4 GPU (GLES 2 without modern dmabuf) |
 
-## Equipo recomendado
+## Recommended equipment
 
-- **Raspberry Pi 5 de 8 o 16 GB.** Con 4 GB anda, pero las apps GTK/Qt y Firefox ocupan bastante.
-- **NVMe con el M.2 HAT+** (o cualquier base PCIe para M.2 2230/2242). Es varias veces más rápido
-  que una SD, y se nota al arrancar y al abrir apps. La imagen trae `dtparam=pciex1_gen=3`; si el
-  disco da errores, se comenta esa línea en `config.txt` y queda en gen 2.
-- **Active Cooler** oficial, o un disipador con ventilador. Sin ventilador, la Pi 5 baja la
-  frecuencia en pocos minutos de carga (video, compilar). El kernel maneja el ventilador solo.
-- **Fuente oficial de 27 W (5 V, 5 A).** Con una de 3 A, la placa limita el USB a 600 mA y avisa.
-- Monitor HDMI (micro-HDMI en la placa) y teclado y mouse USB.
+- **Raspberry Pi 5 with 8 or 16 GB.** It works with 4 GB, but GTK/Qt apps and Firefox take quite a
+  lot.
+- **NVMe with the M.2 HAT+** (or any PCIe base for M.2 2230/2242). It's several times faster than an
+  SD card, and it shows when booting and opening apps. The image ships `dtparam=pciex1_gen=3`; if the
+  disk gives errors, comment that line out in `config.txt` and it stays at gen 2.
+- The official **Active Cooler**, or a heatsink with a fan. Without a fan, the Pi 5 throttles within
+  a few minutes of load (video, compiling). The kernel drives the fan on its own.
+- **Official 27 W power supply (5 V, 5 A).** With a 3 A one, the board limits USB to 600 mA and warns
+  about it.
+- HDMI monitor (micro-HDMI on the board) and a USB keyboard and mouse.
 
-## La imagen
+## The image
 
-`tools/rpi/build-img.sh` arma `lordos-<versión>-rpi5-arm64.img.xz`. Se graba igual en una SD o en un
-NVMe, y la misma imagen arranca en la Pi 5 y en la Pi 4.
+`tools/rpi/build-img.sh` builds `lordos-<version>-rpi5-arm64.img.xz`. It is written the same way to an
+SD card or an NVMe, and the same image boots on the Pi 5 and the Pi 4.
 
-### Qué trae
+### What it ships
 
-- **Debian 13 (trixie) arm64**, minbase, con los mismos paquetes de LordOS que el ISO: PipeWire,
+- **Debian 13 (trixie) arm64**, minbase, with the same LordOS packages as the ISO: PipeWire,
   wpa_supplicant, OpenVPN, Noto, foot, FeatherPad.
-- **Kernel y firmware del archivo de Raspberry Pi** (`archive.raspberrypi.com/debian`, suite
-  trixie), solo estos paquetes (`/etc/apt/preferences.d/raspberrypi`):
-  - `linux-image-rpi-2712`: el de la Pi 5, con páginas de 16K;
-  - `linux-image-rpi-v8`: el de la Pi 4/400/CM4, con páginas de 4K. La Pi 5 también lo puede
-    usar, con `kernel=kernel8.img` en `config.txt`;
-  - `raspi-firmware`: el arranque, los device trees y los overlays en `/boot/firmware`;
-  - `firmware-brcm80211`: Wi-Fi y Bluetooth (CYW43455);
-  - `rpi-eeprom` y `raspi-utils` (`vcgencmd`, `pinctrl`), si están.
+- **Kernel and firmware from the Raspberry Pi archive** (`archive.raspberrypi.com/debian`, suite
+  trixie), only these packages (`/etc/apt/preferences.d/raspberrypi`):
+  - `linux-image-rpi-2712`: the Pi 5 one, with 16K pages;
+  - `linux-image-rpi-v8`: the Pi 4/400/CM4 one, with 4K pages. The Pi 5 can also use it, with
+    `kernel=kernel8.img` in `config.txt`;
+  - `raspi-firmware`: the boot files, device trees and overlays in `/boot/firmware`;
+  - `firmware-brcm80211`: Wi-Fi and Bluetooth (CYW43455);
+  - `rpi-eeprom` and `raspi-utils` (`vcgencmd`, `pinctrl`), if available.
 
-  Todo lo demás viene de Debian, también Mesa.
-- **Mesa de Debian 13:** v3d (GLES 3.1), v3dv (Vulkan) y kmsro (vc4 para la pantalla, v3d para
-  dibujar). lord-server se compila con `GPU=1`.
-- **El mismo paquete de LordOS que el ISO.** Lo arma `tools/iso/mkdeb.sh` con
-  `DEB_ARCH=arm64`.
-- **Particiones:** MBR, con el formato que esperan Raspberry Pi Imager y el firmware:
+  Everything else comes from Debian, Mesa included.
+- **Debian 13's Mesa:** v3d (GLES 3.1), v3dv (Vulkan) and kmsro (vc4 for the display, v3d for
+  rendering). lord-server is compiled with `GPU=1`.
+- **The same LordOS package as the ISO.** Built by `tools/iso/mkdeb.sh` with `DEB_ARCH=arm64`.
+- **Partitions:** MBR, in the layout Raspberry Pi Imager and the firmware expect:
 
-  | Partición | Tamaño | Qué tiene |
+  | Partition | Size | What it holds |
   |---|---|---|
   | 1 `bootfs` | 512 MiB, FAT32 | firmware, kernels (`kernel_2712.img`, `kernel8.img`), initramfs, device trees, `config.txt`, `cmdline.txt` |
-  | 2 `rootfs` | el resto, ext4 | el sistema; se agranda solo en el primer arranque |
+  | 2 `rootfs` | the rest, ext4 | the system; it grows on its own at first boot |
 
-  `fstab` y `cmdline.txt` usan PARTUUID, así la misma imagen sirve para SD (`mmcblk0`) y NVMe
+  `fstab` and `cmdline.txt` use PARTUUIDs, so the same image works for SD (`mmcblk0`) and NVMe
   (`nvme0n1`).
 
-### Kernel: por qué el de Raspberry Pi y no el de Debian
+### Kernel: why Raspberry Pi's and not Debian's
 
-Investigado a octubre de 2026 (confirmarlo en la placa):
+Researched as of October 2026 (confirm on the board):
 
-- **El kernel de Debian 13** (`linux-image-arm64`, 6.12) arranca en la Pi 4 con el
-  `raspi-firmware` de Debian. En la Pi 5 le falta el soporte completo de la placa: el chip RP1
-  (USB, Ethernet, GPIO) y la parte de pantalla de la BCM2712 llegaron a Linux después de la 6.12,
-  así que sin teclado, red ni HDMI no sirve.
+- **Debian 13's kernel** (`linux-image-arm64`, 6.12) boots on the Pi 4 with Debian's
+  `raspi-firmware`. On the Pi 5 it lacks full board support: the RP1 chip (USB, Ethernet, GPIO) and
+  the BCM2712's display part reached Linux after 6.12, so without keyboard, network or HDMI it's no
+  use.
 
-  Además, el `raspi-firmware` de Debian regenera `config.txt` y `cmdline.txt` con cada kernel, y
-  pisaría la configuración de LordOS.
-- **El kernel de Raspberry Pi** (`linux-image-rpi-2712`, 6.12 con sus parches) es el de Raspberry Pi
-  OS Trixie. Tiene todo: RP1, vc4 con HDMI 4K60, v3d, el decodificador HEVC, PCIe gen 3 y el
-  ventilador.
+  Also, Debian's `raspi-firmware` regenerates `config.txt` and `cmdline.txt` with every kernel, and
+  would overwrite LordOS's configuration.
+- **The Raspberry Pi kernel** (`linux-image-rpi-2712`, 6.12 with its patches) is the one from
+  Raspberry Pi OS Trixie. It has everything: RP1, vc4 with HDMI 4K60, v3d, the HEVC decoder, PCIe
+  gen 3 and the fan.
 
-  Sus hooks copian el kernel a `/boot/firmware` con el nombre que busca el firmware
-  (`kernel_2712.img`). Si no lo hacen, `build-img.sh` lo copia a mano. **Elegido.**
+  Its hooks copy the kernel to `/boot/firmware` under the name the firmware looks for
+  (`kernel_2712.img`). If they don't, `build-img.sh` copies it by hand. **Chosen.**
 
-Con el pinning, `apt upgrade` del sistema instalado sigue trayendo el kernel y el firmware de
-Raspberry Pi, y todo lo demás de Debian.
+With the pinning, `apt upgrade` on the installed system keeps bringing the kernel and firmware from
+Raspberry Pi, and everything else from Debian.
 
-### Paquetes para armarla
+### Packages to build it
 
-En un Debian 13 (x86-64 o arm64):
+On a Debian 13 (x86-64 or arm64):
 
 ```sh
 sudo apt-get install -y --no-install-recommends debootstrap fdisk dosfstools e2fsprogs xz-utils curl gpg \
   util-linux dpkg-dev
-# solo en un host x86-64: emulación de aarch64 para debootstrap, apt y la compilación
+# only on an x86-64 host: aarch64 emulation for debootstrap, apt and compiling
 sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support
 ```
 
-### Armarla
+### Building it
 
 ```sh
-# en el Mac: los temas (son JS, iguales en todas las arquitecturas)
+# on the Mac: the themes (they are JS, the same on every architecture)
 npm run build
-# en el Debian donde se arma (la VM 116 o la propia Pi), desde la raíz del repositorio
+# on the Debian where it's built (VM 116 or the Pi itself), from the repository root
 sudo tools/rpi/build-img.sh /var/tmp/lordos-rpi     # → /var/tmp/lordos-rpi/out/
 ```
 
-Pasos:
+Steps:
 
-1. **lord-server y lord-sessiond para aarch64.**
-   - Si `server/build/` ya es aarch64 (`make -C server` en la Pi), se usa.
-   - Si no, se arma un chroot arm64 aparte (`buildroot/`, se reutiliza) y se compila adentro con
+1. **lord-server and lord-sessiond for aarch64.**
+   - If `server/build/` is already aarch64 (`make -C server` on the Pi), it is used.
+   - If not, a separate arm64 chroot is built (`buildroot/`, reused) and it's compiled inside with
      `GPU=1`.
-   - Después corre `build/canvas-test`, que compara NEON con C. Si da distinto, el build se para.
-2. **El paquete:** `DEB_ARCH=arm64 tools/iso/mkdeb.sh`.
-3. **debootstrap arm64:** nativo en un host arm64. En x86-64 son dos etapas, con qemu.
-4. **El archivo de Raspberry Pi.** Se verifica la huella de su clave (`RPI_KEY_FPR`). Después se
-   instalan los paquetes y el `.deb`.
-5. **Configuración:** la misma que el ISO (regiones, `ping` sin root, lordos.service en tty1,
-   PipeWire con linger, el usuario `lordos-greeter`), más:
-   - el primer arranque (`lordos-rpi-firstboot.service`);
-   - la espera de vc4 (`lordos.service.d/rpi.conf`).
+   - Then `build/canvas-test` runs, which compares NEON with C. If they differ, the build stops.
+2. **The package:** `DEB_ARCH=arm64 tools/iso/mkdeb.sh`.
+3. **debootstrap arm64:** native on an arm64 host. On x86-64 it's two stages, with qemu.
+4. **The Raspberry Pi archive.** Its key's fingerprint is verified (`RPI_KEY_FPR`). Then the packages
+   and the `.deb` are installed.
+5. **Configuration:** the same as the ISO (locales, `ping` without root, lordos.service on tty1,
+   PipeWire with linger, the `lordos-greeter` user), plus:
+   - the first boot (`lordos-rpi-firstboot.service`);
+   - waiting for vc4 (`lordos.service.d/rpi.conf`).
 
-   root queda bloqueado.
-6. **La imagen:** `sfdisk` (MBR), FAT32 y ext4. Después se copia el sistema y se escriben `fstab`
-   y `cmdline.txt` con los PARTUUID.
-7. **`xz -T0 -6`** y el `.sha256`.
+   root is locked.
+6. **The image:** `sfdisk` (MBR), FAT32 and ext4. Then the system is copied and `fstab` and
+   `cmdline.txt` are written with the PARTUUIDs.
+7. **`xz -T0 -6`** and the `.sha256`.
 
 Variables:
 
-| Variable | Para qué |
+| Variable | What for |
 |---|---|
-| `RPI_SSH=1` | agrega `openssh-server` (para desarrollar) |
-| `IMG_EXTRA_MB` | espacio libre en la imagen, 512 por defecto |
-| `MIRROR`, `RPI_MIRROR` | espejos de Debian y de Raspberry Pi |
-| `RPI_KEY_FPR`, `RPI_KEY_NOCHECK=1` | la clave de Raspberry Pi |
+| `RPI_SSH=1` | adds `openssh-server` (for development) |
+| `IMG_EXTRA_MB` | free space in the image, 512 by default |
+| `MIRROR`, `RPI_MIRROR` | Debian and Raspberry Pi mirrors |
+| `RPI_KEY_FPR`, `RPI_KEY_NOCHECK=1` | the Raspberry Pi key |
 
-**Antes del primer build:** comprobar la huella de la clave del archivo de Raspberry Pi
-(`gpg --show-keys raspberrypi.gpg.key`) contra una fuente oficial. La del script
-(`CF8A1AF5…7FA3303E`) se anotó de memoria y no se verificó.
+**Before the first build:** check the fingerprint of the Raspberry Pi archive key
+(`gpg --show-keys raspberrypi.gpg.key`) against an official source. The one in the script
+(`CF8A1AF5…7FA3303E`) was written down from memory and hasn't been verified.
 
-`build-img.sh` todavía no se corrió. Estimado: en x86-64 con qemu, 30–60 minutos la primera vez;
-nativo en la Pi 5 con NVMe, unos 10.
+`build-img.sh` hasn't been run yet. Estimate: on x86-64 with qemu, 30–60 minutes the first time;
+natively on the Pi 5 with NVMe, about 10.
 
-### Grabarla
+### Writing it
 
-- **Raspberry Pi Imager:** «Elegir SO» → «Usar personalizado» → el `.img.xz`, y después la tarjeta
-  o el NVMe.
-  - La personalización del SO de Imager (usuario, Wi-Fi, SSH) está pensada para Raspberry Pi OS.
-    Si deja un `userconf.txt` en la partición de arranque, LordOS lo usa (ver abajo).
-  - El resto (Wi-Fi, SSH, teclado) no se aplica.
-- **dd** (Linux o macOS):
+- **Raspberry Pi Imager:** "Choose OS" → "Use custom" → the `.img.xz`, and then the card or the
+  NVMe.
+  - Imager's OS customization (user, Wi-Fi, SSH) is designed for Raspberry Pi OS. If it leaves a
+    `userconf.txt` on the boot partition, LordOS uses it (see below).
+  - The rest (Wi-Fi, SSH, keyboard) isn't applied.
+- **dd** (Linux or macOS):
   ```sh
-  shasum -a 256 -c lordos-<versión>-rpi5-arm64.img.xz.sha256
-  xz -dc lordos-<versión>-rpi5-arm64.img.xz | sudo dd of=/dev/rdiskN bs=4m   # Linux: of=/dev/sdX bs=4M conv=fsync
+  shasum -a 256 -c lordos-<version>-rpi5-arm64.img.xz.sha256
+  xz -dc lordos-<version>-rpi5-arm64.img.xz | sudo dd of=/dev/rdiskN bs=4m   # Linux: of=/dev/sdX bs=4M conv=fsync
   ```
-- **balenaEtcher:** abre el `.img.xz` directo.
+- **balenaEtcher:** opens the `.img.xz` directly.
 - **NVMe:**
-  - se puede grabar con un adaptador USB-NVMe desde otra máquina;
-  - o arrancar la Pi desde una SD con LordOS (o Raspberry Pi OS) y grabarlo con `dd` en
+  - it can be written with a USB-NVMe adapter from another machine;
+  - or boot the Pi from an SD card with LordOS (or Raspberry Pi OS) and write it with `dd` to
     `/dev/nvme0n1`.
 
-  Para que la Pi 5 arranque primero del NVMe:
+  To make the Pi 5 boot from NVMe first:
   ```sh
   sudo rpi-eeprom-config --edit
-  # BOOT_ORDER=0xf416   (NVMe, después SD, después USB)
+  # BOOT_ORDER=0xf416   (NVMe, then SD, then USB)
   ```
 
-### Primer arranque
+### First boot
 
-`lordos-rpi-firstboot.service` corre antes de lord-sessiond (`/usr/lib/lordos/rpi/firstboot`) y
-hace dos cosas.
+`lordos-rpi-firstboot.service` runs before lord-sessiond (`/usr/lib/lordos/rpi/firstboot`) and does
+two things.
 
-1. **Agranda la partición 2** hasta el final de la tarjeta o del disco (`sfdisk -N 2`,
-   `partx -u` y `resize2fs` en caliente).
-2. **El usuario**, como el paso «Usuario» del instalador (`docs/ISO.md`).
-   - **Con `lordos-user.txt`** en la partición `bootfs`: se copia de `lordos-user.txt.example`, que
-     viene en la imagen. Tiene usuario, nombre, `password_hash` (o `password`), equipo, idioma,
-     zona horaria y teclado.
-     - Se valida con las reglas de `install.c`: el nombre, los reservados, el equipo, la zona y el
-       teclado.
-     - Se crea el usuario: grupos `sudo`, `audio`, `video`, `input` y `render`, linger y las
-       carpetas del idioma.
-     - El archivo se pisa con ceros y se borra.
-     - Arranca en la **pantalla de ingreso**, como un sistema instalado (`AUTOLOGIN=` vacío).
-     - También sirve el `userconf.txt` de Raspberry Pi OS / Imager (`usuario:hash`).
-   - **Sin archivo: modo de configuración.**
-     - Entra solo con el usuario `lordos`, sin contraseña y con sudo sin contraseña, como el ISO
-       live.
-     - En **Ajustes → Usuarios** se crea la cuenta propia, como administrador. En el próximo
-       arranque `firstboot` ve que hay un administrador, borra `lordos` y su sudo y pasa a la
-       pantalla de ingreso.
-     - Mientras tanto, **no prender el escritorio remoto** y no dejar la placa expuesta en la red.
+1. **Grows partition 2** to the end of the card or disk (`sfdisk -N 2`, `partx -u` and an online
+   `resize2fs`).
+2. **The user**, like the installer's "User" step (`docs/ISO.md`).
+   - **With `lordos-user.txt`** on the `bootfs` partition: it's copied from
+     `lordos-user.txt.example`, which ships in the image. It has user, name, `password_hash` (or
+     `password`), computer name, language, time zone and keyboard.
+     - It's validated with `install.c`'s rules: the name, reserved names, the computer name, the
+       zone and the keyboard.
+     - The user is created: groups `sudo`, `audio`, `video`, `input` and `render`, linger and the
+       language's folders.
+     - The file is overwritten with zeros and deleted.
+     - It boots to the **login screen**, like an installed system (empty `AUTOLOGIN=`).
+     - The `userconf.txt` from Raspberry Pi OS / Imager (`user:hash`) also works.
+   - **Without the file: setup mode.**
+     - It logs in on its own with the `lordos` user, without a password and with passwordless sudo,
+       like the live ISO.
+     - In **Settings → Users** you create your own account, as an administrator. On the next boot
+       `firstboot` sees there's an administrator, deletes `lordos` and its sudo and switches to the
+       login screen.
+     - In the meantime, **don't turn on remote desktop** and don't leave the board exposed on the
+       network.
 
-Pendiente: un paso de «crear usuario» propio en la pantalla de ingreso, así no hace falta el modo
-de configuración (ver ROADMAP, M8).
+Pending: a "create user" step of our own on the login screen, so setup mode isn't needed (see
+ROADMAP, M8).
 
-Opciones en `cmdline.txt` (una sola línea), como en el ISO:
+Options in `cmdline.txt` (a single line), as on the ISO:
 
-| Opción | Qué hace |
+| Option | What it does |
 |---|---|
-| `lordos.gpu=0` | modo seguro: todo por CPU |
-| `lordos.lang=en` / `pt` | idioma del primer arranque |
-| `video=HDMI-A-1:1920x1080@60` | fija el modo, por ejemplo en un monitor 4K (con CPU, 4K pesa: ver abajo) |
+| `lordos.gpu=0` | safe mode: everything on the CPU |
+| `lordos.lang=en` / `pt` | first-boot language |
+| `video=HDMI-A-1:1920x1080@60` | pins the mode, for example on a 4K monitor (on the CPU, 4K is heavy: see below) |
 
-## Pantalla y GPU en la Pi 5
+## Display and GPU on the Pi 5
 
-### Dos dispositivos DRM
+### Two DRM devices
 
-| Nodo | Driver | Qué es |
+| Node | Driver | What it is |
 |---|---|---|
-| `/dev/dri/cardN` (suele ser `card1`) | `vc4` | la pantalla: HVS, HDMI ×2, planos, cursor. No tiene render node |
-| `/dev/dri/cardM` (suele ser `card0`) | `v3d` | la GPU 3D, sin conectores |
-| `/dev/dri/renderD128` | `v3d` | donde dibuja Mesa |
+| `/dev/dri/cardN` (usually `card1`) | `vc4` | the display: HVS, HDMI ×2, planes, cursor. It has no render node |
+| `/dev/dri/cardM` (usually `card0`) | `v3d` | the 3D GPU, without connectors |
+| `/dev/dri/renderD128` | `v3d` | where Mesa renders |
 
-El orden de `card0` y `card1` depende de qué driver carga primero.
+The order of `card0` and `card1` depends on which driver loads first.
 
-- **`server/src/drmcard.h`**, nuevo, lo usan lord-server (`main.c`) y lord-sessiond
-  (`remote/monitor.c`). Elige la primera tarjeta que tiene conectores y CRTCs, y prefiere la que
-  tiene un monitor enchufado (`GETRESOURCES` + `GETCONNECTOR`).
-  - Ya no se asume `card0`. Esto también arregla las PC donde simpledrm deja la placa real en
+- **`server/src/drmcard.h`**, new, is used by lord-server (`main.c`) and lord-sessiond
+  (`remote/monitor.c`). It picks the first card that has connectors and CRTCs, and prefers the one
+  with a monitor plugged in (`GETRESOURCES` + `GETCONNECTOR`).
+  - `card0` is no longer assumed. This also fixes PCs where simpledrm leaves the real card at
     `card1`.
-  - `LORD_CARD=/dev/dri/cardN` la fija, y `--card` de lord-server sigue funcionando.
-- **`lordos.service.d/rpi.conf`** espera hasta 10 s a que aparezca un conector en `/sys/class/drm`
-  (`wait-kms`). Si lord-sessiond arranca antes de que se cargue vc4, sin esto solo vería v3d.
-- **GBM y EGL** se crean sobre la tarjeta de la pantalla (vc4), como siempre. Mesa la reconoce
-  (kmsro) y dibuja con v3d. Los búferes de pantalla se crean en vc4 y v3d los importa. lord-server
-  no necesita saber nada de esto.
-- **El feedback de linux-dmabuf** anuncia el render node donde dibuja Mesa: `gpu_device()` en
-  `gpu/gpu.c`. Así las apps (GTK, Qt, juegos) piden sus búferes a v3d y no a vc4, que no tiene
-  render node. Lo busca así:
+  - `LORD_CARD=/dev/dri/cardN` pins it, and lord-server's `--card` still works.
+- **`lordos.service.d/rpi.conf`** waits up to 10 s for a connector to appear in `/sys/class/drm`
+  (`wait-kms`). If lord-sessiond starts before vc4 is loaded, without this it would only see v3d.
+- **GBM and EGL** are created on the display card (vc4), as always. Mesa recognizes it (kmsro) and
+  renders with v3d. Scanout buffers are created on vc4 and v3d imports them. lord-server doesn't need
+  to know anything about this.
+- **The linux-dmabuf feedback** announces the render node where Mesa renders: `gpu_device()` in
+  `gpu/gpu.c`. That way apps (GTK, Qt, games) ask v3d for their buffers and not vc4, which has no
+  render node. It looks it up like this:
   1. EGL (`EGL_EXT_device_query` + `EGL_EXT_device_drm_render_node`);
-  2. el render node de la misma placa;
-  3. si la placa de la pantalla no tiene, el primer render node que haya (v3d).
+  2. the same card's render node;
+  3. if the display card has none, the first render node there is (v3d).
 
-  El log dice `gpu: composición por GPU (V3D 7.1…, render /dev/dri/renderD128, pantalla vc4)`.
+  The log says `gpu: composición por GPU (V3D 7.1…, render /dev/dri/renderD128, pantalla vc4)`.
 
-### Modificadores
+### Modifiers
 
-- **El plano primario de vc4** muestra RGB solo **lineal**. También acepta `BROADCOM_VC4_T_TILED`,
-  que v3d no dibuja, y `BROADCOM_SAND64/128/256` solo para YUV (NV12/P030, video). v3d dibuja en
-  **UIF** (`DRM_FORMAT_MOD_BROADCOM_UIF`), que vc4 no puede mostrar.
-- **kms.c** ahora lee la propiedad `IN_FORMATS` del plano primario del CRTC (con
-  `DRM_CLIENT_CAP_UNIVERSAL_PLANES`) y anota los pares formato/modificador de RGB de 32 bits. El
-  log dice:
+- **vc4's primary plane** shows RGB only as **linear**. It also accepts `BROADCOM_VC4_T_TILED`, which
+  v3d doesn't render, and `BROADCOM_SAND64/128/256` only for YUV (NV12/P030, video). v3d renders in
+  **UIF** (`DRM_FORMAT_MOD_BROADCOM_UIF`), which vc4 can't display.
+- **kms.c** now reads the `IN_FORMATS` property of the CRTC's primary plane (with
+  `DRM_CLIENT_CAP_UNIVERSAL_PLANES`) and records the 32-bit RGB format/modifier pairs. The log says:
 
   ```
   kms: placa vc4, XRGB8888 en el plano primario con modificadores: 0x0 …
   ```
-- **El scanout directo** de una app a pantalla completa (`gpu_can_scanout`) ahora exige que el
-  plano acepte el modificador del búfer (`kms_scanout_ok`). Un búfer UIF de v3d no se manda a la
-  pantalla (antes se probaba ADDFB2 y, si el driver lo aceptaba igual, se veía basura).
-  - El modificador implícito (`INVALID`) cuenta como lineal.
-  - Si el driver no informa `IN_FORMATS`, todo queda como antes.
-- **La superficie de la UI** (`gbm_surface_create` con `SCANOUT | RENDERING`, sin modificadores):
-  con kmsro, Mesa la crea en vc4, lineal. Así se muestra siempre.
-- **Los dmabuf de las apps** se importan por EGL con su modificador. UIF para texturas está bien: se
-  componen, no van a la pantalla.
+- **Direct scanout** of a fullscreen app (`gpu_can_scanout`) now requires the plane to accept the
+  buffer's modifier (`kms_scanout_ok`). A v3d UIF buffer isn't sent to the display (before, ADDFB2 was
+  tried and, if the driver accepted it anyway, garbage showed up).
+  - The implicit modifier (`INVALID`) counts as linear.
+  - If the driver doesn't report `IN_FORMATS`, everything stays as before.
+- **The UI surface** (`gbm_surface_create` with `SCANOUT | RENDERING`, without modifiers): with
+  kmsro, Mesa creates it on vc4, linear. So it always displays.
+- **Apps' dmabufs** are imported via EGL with their modifier. UIF is fine for textures: they're
+  composited, they don't go to the display.
 
-### Qué verificar en la placa
+### What to verify on the board
 
-1. `grep -E 'kms:|gpu:' ~/.cache/lordos/session.log` (o el log de la sesión). Tiene que mostrar:
-   - la tarjeta elegida, con la placa `vc4`;
-   - los modificadores del plano (que esté `0x0`, lineal);
+1. `grep -E 'kms:|gpu:' ~/.cache/lordos/session.log` (or the session log). It has to show:
+   - the chosen card, with the `vc4` driver;
+   - the plane's modifiers (with `0x0`, linear, present);
    - `composición por GPU (V3D 7.1…)`;
    - `render /dev/dri/renderD128`;
    - `cursor por hardware`.
-2. `journalctl -u lordos` muestra `lord-sessiond: pantalla: /dev/dri/card1` (o la que sea).
+2. `journalctl -u lordos` shows `lord-sessiond: display: /dev/dri/card1` (or whichever).
 3. `LORD_GPU_DEBUG=1`:
-   - la lista de formatos dmabuf que anuncia EGL (tiene que incluir UIF `0x0700000000000006` y
-     lineal);
-   - si un juego a pantalla completa pasa por scanout directo o se compone.
-4. `glmark2-es2-wayland` y `vkcube` en ventana y a pantalla completa, con capturas.
-5. GTK4 (gtk4-demo) por dmabuf:
-   - `WAYLAND_DEBUG=1` muestra que pide el render node de v3d;
-   - la ventana se ve bien (sin franjas de un tiling mal interpretado).
-6. El cursor por hardware de vc4 (`CURSOR2`, 64×64).
-7. Dos monitores: hoy LordOS usa el primer conector conectado (HDMI-A-1); el segundo queda apagado.
-8. Monitor 4K. Por CPU, el lienzo de 3840×2160 son 33 MB por búfer y copiarlo cuesta. Con GPU
-   debería andar bien. Si no, `video=HDMI-A-1:1920x1080@60`.
+   - the list of dmabuf formats EGL announces (it has to include UIF `0x0700000000000006` and
+     linear);
+   - whether a fullscreen game goes through direct scanout or is composited.
+4. `glmark2-es2-wayland` and `vkcube` windowed and fullscreen, with screenshots.
+5. GTK4 (gtk4-demo) over dmabuf:
+   - `WAYLAND_DEBUG=1` shows it requests v3d's render node;
+   - the window looks right (no stripes from misinterpreted tiling).
+6. vc4's hardware cursor (`CURSOR2`, 64×64).
+7. Two monitors: today LordOS uses the first connected connector (HDMI-A-1); the second stays off.
+8. 4K monitor. On the CPU, the 3840×2160 canvas is 33 MB per buffer and copying it is costly. With
+   the GPU it should work well. If not, `video=HDMI-A-1:1920x1080@60`.
 
-## Video (para el ayudante `lord-media`)
+## Video (for the `lord-media` helper)
 
-Esta parte es para el agente de medios: es lo que la Pi 5 necesita además de VA-API, que es el
-camino de las PC. No se tocaron sus archivos.
+This part is for the media agent: it's what the Pi 5 needs besides VA-API, which is the PC path. Its
+files weren't touched.
 
-- **La Pi 5 no tiene decodificador de H.264 por hardware** (la Pi 4 sí, y ya no se usa). Tiene solo
-  **HEVC/H.265 por hardware** (`rpi-hevc-dec`), hasta 4Kp60 de 8 y 10 bits.
-  - Es un decodificador **V4L2 stateless** (API «request»), en `/dev/video19` y un
-    `/dev/mediaN`.
-  - No hay VA-API ni VDPAU en la Pi.
+- **The Pi 5 has no hardware H.264 decoder** (the Pi 4 does, and it's no longer used). It only has
+  **hardware HEVC/H.265** (`rpi-hevc-dec`), up to 4Kp60 at 8 and 10 bits.
+  - It's a **V4L2 stateless** decoder ("request" API), at `/dev/video19` and a `/dev/mediaN`.
+  - There's no VA-API or VDPAU on the Pi.
 - **FFmpeg:**
-  - El de Debian 13 (7.1) **no trae** el hwaccel V4L2-request; el de upstream todavía no lo tiene.
-  - El de Raspberry Pi (`archive.raspberrypi.com`, versiones `+rpt`) sí: `-hwaccel drm`, con el
-    decodificador `hevc` y salida `drm_prime`. Algunas versiones lo exponen como
-    `hevc_v4l2request`.
+  - Debian 13's (7.1) **doesn't include** the V4L2-request hwaccel; upstream doesn't have it yet.
+  - Raspberry Pi's (`archive.raspberrypi.com`, `+rpt` versions) does: `-hwaccel drm`, with the
+    `hevc` decoder and `drm_prime` output. Some versions expose it as `hevc_v4l2request`.
 
-  Opciones:
-  1. pinear `ffmpeg` y las `libav*` de Raspberry Pi a 990, como el kernel, solo en la imagen de la
-     Pi;
-  2. que `lord-media` cargue una `libavcodec` alternativa;
-  3. hablar V4L2-request directamente desde C (mucho trabajo).
+  Options:
+  1. pin `ffmpeg` and the Raspberry Pi `libav*` at 990, like the kernel, only in the Pi image;
+  2. have `lord-media` load an alternative `libavcodec`;
+  3. speak V4L2-request directly from C (a lot of work).
 
-  Recomendado: la 1. Agregar
-  `ffmpeg libavcodec61 libavformat61 libavutil59 libswscale8 libswresample5 libavfilter10` a
-  `/etc/apt/preferences.d/raspberrypi` (verificar los nombres con `apt-cache policy` en la placa).
-- **Los cuadros decodificados** son DRM PRIME:
-  - **NV12 o P030 con modificador `BROADCOM_SAND128`**: el formato «en columnas» de la Pi;
-  - `av_hwframe_map` / `AVDRMFrameDescriptor` dan el fd, el offset, el pitch y el modificador.
+  Recommended: option 1. Add
+  `ffmpeg libavcodec61 libavformat61 libavutil59 libswscale8 libswresample5 libavfilter10` to
+  `/etc/apt/preferences.d/raspberrypi` (verify the names with `apt-cache policy` on the board).
+- **Decoded frames** are DRM PRIME:
+  - **NV12 or P030 with the `BROADCOM_SAND128` modifier**: the Pi's "column" format;
+  - `av_hwframe_map` / `AVDRMFrameDescriptor` give the fd, offset, pitch and modifier.
 
-  Para mostrarlos:
-  - **Por GPU (lo mejor):** importarlos por EGL con el modificador SAND128 y
-    `GL_OES_EGL_image_external`. Mesa v3d tiene que aceptar SAND128 (se cree que lo convierte con
-    la TFU): **verificar** con `LORD_GPU_DEBUG=1`. lord-server ya importa dmabuf multiplano con
-    modificador (`gpu_tex_dmabuf`) si el formato está en el feedback. Hoy `gpu_formats()` solo
-    anuncia RGB de 32 bits (`known[]` en `gpu.c`): para el video hay que agregar NV12/P030.
-  - **Por un plano overlay de vc4:** el HVS muestra SAND128 directo (es lo que hace Kodi). LordOS
-    todavía no usa planos overlay (GPU.md, Pendiente).
-  - **Por CPU:** `av_hwframe_transfer_data` a NV12 lineal y convertir. Sirve para 1080p; para 4K es
-    caro.
-- **H.264, VP9 y AV1 por software,** en los 4 Cortex-A76 (FFmpeg y dav1d tienen NEON):
-  - H.264 1080p30/60 debería andar con 2–3 hilos;
-  - 4K H.264 no es realista;
-  - AV1 1080p con dav1d, al límite.
+  To display them:
+  - **On the GPU (best):** import them via EGL with the SAND128 modifier and
+    `GL_OES_EGL_image_external`. Mesa v3d has to accept SAND128 (it is believed to convert it with
+    the TFU): **verify** with `LORD_GPU_DEBUG=1`. lord-server already imports multiplanar dmabufs
+    with modifiers (`gpu_tex_dmabuf`) if the format is in the feedback. Today `gpu_formats()` only
+    announces 32-bit RGB (`known[]` in `gpu.c`): for video NV12/P030 have to be added.
+  - **Through a vc4 overlay plane:** the HVS displays SAND128 directly (that's what Kodi does).
+    LordOS doesn't use overlay planes yet (GPU.md, Pending).
+  - **On the CPU:** `av_hwframe_transfer_data` to linear NV12 and convert. Good for 1080p; for 4K
+    it's expensive.
+- **H.264, VP9 and AV1 in software,** on the 4 Cortex-A76 cores (FFmpeg and dav1d have NEON):
+  - H.264 1080p30/60 should work with 2–3 threads;
+  - 4K H.264 isn't realistic;
+  - AV1 1080p with dav1d, at the limit.
 
-  Usar `thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE` y `threads = 4`. Con el Active Cooler, para
-  que no baje la frecuencia.
-- **En la Pi 4:** H.264 por hardware (`h264_v4l2m2m`, V4L2 stateful, `/dev/video10`, en el FFmpeg de
-  Debian) y HEVC por `rpi-hevc-dec` como en la Pi 5.
-- **Lo que tiene que medir el agente de medios en la placa:**
-  - CPU y cuadros perdidos con 1080p H.264, 1080p HEVC y 4K HEVC;
-  - la temperatura (`vcgencmd measure_temp`);
-  - el throttling (`vcgencmd get_throttled`, tiene que dar `0x0`).
+  Use `thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE` and `threads = 4`. With the Active Cooler,
+  so it doesn't throttle.
+- **On the Pi 4:** hardware H.264 (`h264_v4l2m2m`, V4L2 stateful, `/dev/video10`, in Debian's FFmpeg)
+  and HEVC via `rpi-hevc-dec` as on the Pi 5.
+- **What the media agent has to measure on the board:**
+  - CPU and dropped frames with 1080p H.264, 1080p HEVC and 4K HEVC;
+  - temperature (`vcgencmd measure_temp`);
+  - throttling (`vcgencmd get_throttled`, it has to give `0x0`).
 
-## Desarrollar en la placa
+## Developing on the board
 
-En la placa hay dos sistemas posibles:
+There are two possible systems on the board:
 
-- **Raspberry Pi OS Lite 64-bit (Trixie):** el kernel y el firmware ya están, y Mesa viene del
-  archivo de Raspberry Pi. Lo más simple para empezar.
-- **La imagen de LordOS**, armada con `RPI_SSH=1`.
+- **Raspberry Pi OS Lite 64-bit (Trixie):** the kernel and firmware are already there, and Mesa
+  comes from the Raspberry Pi archive. The simplest way to start.
+- **The LordOS image**, built with `RPI_SSH=1`.
 
-### Pasos
+### Steps
 
 1. **SSH:**
-   - con Raspberry Pi OS, se habilita en Imager;
-   - con LordOS, se arma con `RPI_SSH=1` y se usa la cuenta creada en el primer arranque;
-   - `ssh usuario@<ip>`; la IP aparece en la pantalla de ingreso o con `ip -4 addr`.
-2. **Paquetes para compilar** (los mismos de `VM-SETUP.md` más Mesa):
+   - with Raspberry Pi OS, enable it in Imager;
+   - with LordOS, build with `RPI_SSH=1` and use the account created at first boot;
+   - `ssh user@<ip>`; the IP shows up on the login screen or with `ip -4 addr`.
+2. **Packages for compiling** (the same as in `VM-SETUP.md` plus Mesa):
    ```sh
    sudo apt-get install -y --no-install-recommends build-essential pkg-config libxkbcommon-dev libwayland-dev \
      wayland-protocols libgbm-dev libegl-dev libgles-dev libssl-dev libcrypt-dev xkb-data \
      libgl1-mesa-dri libegl1 libgles2 libgbm1 mesa-utils glmark2-es2-wayland
    ```
-3. **El árbol,** desde el Mac (como para la VM; los temas se construyen en el Mac):
+3. **The tree,** from the Mac (as for the VM; the themes are built on the Mac):
    ```sh
    npm run build
    COPYFILE_DISABLE=1 tar czf - --no-xattrs --exclude build --exclude node_modules \
      package.json README.md server third_party assets themes tools | \
-     ssh usuario@<ip-de-la-pi> 'rm -rf ~/LordOS && mkdir ~/LordOS && cd ~/LordOS && tar xzf -'
+     ssh user@<pi-ip> 'rm -rf ~/LordOS && mkdir ~/LordOS && cd ~/LordOS && tar xzf -'
    ```
-4. **Compilar en la placa,** nativo y sin cruzar:
+4. **Compile on the board,** natively, no cross-compiling:
    ```sh
    cd ~/LordOS
-   make -C server -j4           # ARCH=aarch64 sale solo: NEON=1 y GPU=1 si están los -dev
-   make -C server test          # todas las pruebas sin pantalla, incluida build/canvas-test
-   server/build/canvas-test     # NEON = C, y cuánto tarda cada uno
+   make -C server -j4           # ARCH=aarch64 is detected: NEON=1 and GPU=1 if the -dev packages are there
+   make -C server test          # all headless tests, including build/canvas-test
+   server/build/canvas-test     # NEON = C, and how long each one takes
    ```
-5. **Probar lord-server solo,** desde una consola (Ctrl+Alt+F2, con lordos.service parado):
+5. **Test lord-server alone,** from a console (Ctrl+Alt+F2, with lordos.service stopped):
    ```sh
    cd ~/LordOS/server && sudo build/lord-server --user "$USER" 2> /tmp/lord.log
    ```
-6. **Instalarlo en la imagen de LordOS:** `sh tools/iso/mkdeb.sh /tmp/lordos.deb` (en la placa
-   toma `arm64` de `dpkg --print-architecture`) y `sudo apt install /tmp/lordos.deb`.
-7. **Capturas:**
-   - el escritorio remoto de LordOS (Ajustes → Compartir, puerto 5673; `REMOTO.md`) desde el
-     navegador del Mac, solo en la LAN y apagándolo después;
-   - o `grim` dentro de una sesión Wayland.
+6. **Install it on the LordOS image:** `sh tools/iso/mkdeb.sh /tmp/lordos.deb` (on the board it takes
+   `arm64` from `dpkg --print-architecture`) and `sudo apt install /tmp/lordos.deb`.
+7. **Screenshots:**
+   - LordOS's remote desktop (Settings → Sharing, port 5673; `REMOTE.md`) from the Mac's browser,
+     only on the LAN and turning it off afterward;
+   - or `grim` inside a Wayland session.
 
-   No hay `screendump` de QEMU: es una placa.
+   There's no QEMU `screendump`: it's a board.
 
-## Lista de pruebas en la placa
+## Test checklist on the board
 
-Cada punto, con una captura o la salida pegada, en este documento.
+Each item, with a screenshot or the pasted output, in this document.
 
-| # | Prueba | Cómo | Esperado |
+| # | Test | How | Expected |
 |---|---|---|---|
-| 1 | Arranque | `systemd-analyze`, `systemd-analyze blame \| head` | SD: <25 s; NVMe: <12 s hasta la pantalla de ingreso |
-| 2 | Primer arranque | imagen recién grabada, con y sin `lordos-user.txt` | partición agrandada (`df -h /`); pantalla de ingreso o modo de configuración; el archivo borrado |
-| 3 | RAM | `free -m`, RSS de lord-server (`ps -o rss`) | escritorio en reposo <400 MB en total; lord-server ~35–60 MB (con 16K de página el RSS sube un poco) |
-| 4 | Tarjeta y GPU | el log (ver «Qué verificar») | `vc4`, `V3D 7.1`, `renderD128`, cursor por hardware |
-| 5 | FPS de la composición por GPU | `glmark2-es2-wayland` en ventana y a pantalla completa; arrastrar ventanas; Launchpad | 60 FPS sincronizados al vblank |
-| 6 | Camino por CPU | `lordos.gpu=0` | usable a 1080p; anotar ms por cuadro con `--profile` |
-| 7 | Modificadores | `LORD_GPU_DEBUG=1`, `kms:` en el log | lineal en el plano; UIF solo para texturas; sin basura en pantalla |
-| 8 | dmabuf de las apps | gtk4-demo, foot, FeatherPad (Qt6), `vkcube` | se ven bien; `WAYLAND_DEBUG` muestra renderD128 |
-| 9 | Video 1080p | H.264 y HEVC (cuando esté `lord-media`) | sin cuadros perdidos; CPU anotada |
-| 10 | Video 4K | HEVC 4Kp60 por hardware | fluido; temperatura anotada |
-| 11 | Temperatura | `vcgencmd measure_temp`, `vcgencmd get_throttled`, Monitor de LordOS (`cpu_thermal` y el ventilador) | <75 °C con el Active Cooler en carga; `throttled=0x0` |
-| 12 | NEON | `server/build/canvas-test` | «NEON igual a C»; NEON más rápido que C |
-| 13 | Pruebas sin pantalla | `make -C server test` y cada `build/*-test` | todas pasan, como en x86 (WASM: la suite wg-2.0 completa) |
-| 14 | Aislamiento de apps | abrir un `.lpk`; `sandbox[...]:` en el log; `cat /sys/kernel/security/lsm` | seccomp=1 y Landlock si el kernel lo trae (el de Raspberry Pi podría no tenerlo) |
-| 15 | Escritorio remoto | Ajustes → Compartir, `https://<ip>:5673` desde el Mac | se ve y se maneja; capturas para este documento |
-| 16 | Red y sonido | Wi-Fi (brcmfmac), Ethernet, HDMI audio por PipeWire | IP por el DHCP propio; `wpctl status` muestra HDMI |
-| 17 | Pi 4 | la misma imagen | arranca con `kernel8.img`; anotar qué falla |
+| 1 | Boot | `systemd-analyze`, `systemd-analyze blame \| head` | SD: <25 s; NVMe: <12 s to the login screen |
+| 2 | First boot | freshly written image, with and without `lordos-user.txt` | partition grown (`df -h /`); login screen or setup mode; the file deleted |
+| 3 | RAM | `free -m`, lord-server RSS (`ps -o rss`) | idle desktop <400 MB total; lord-server ~35–60 MB (with 16K pages RSS goes up a bit) |
+| 4 | Card and GPU | the log (see "What to verify") | `vc4`, `V3D 7.1`, `renderD128`, hardware cursor |
+| 5 | GPU compositing FPS | `glmark2-es2-wayland` windowed and fullscreen; dragging windows; Launchpad | 60 FPS synced to vblank |
+| 6 | CPU path | `lordos.gpu=0` | usable at 1080p; note ms per frame with `--profile` |
+| 7 | Modifiers | `LORD_GPU_DEBUG=1`, `kms:` in the log | linear on the plane; UIF only for textures; no garbage on screen |
+| 8 | Apps' dmabuf | gtk4-demo, foot, FeatherPad (Qt6), `vkcube` | they look right; `WAYLAND_DEBUG` shows renderD128 |
+| 9 | 1080p video | H.264 and HEVC (once `lord-media` is there) | no dropped frames; CPU noted |
+| 10 | 4K video | hardware HEVC 4Kp60 | smooth; temperature noted |
+| 11 | Temperature | `vcgencmd measure_temp`, `vcgencmd get_throttled`, LordOS Monitor (`cpu_thermal` and the fan) | <75 °C with the Active Cooler under load; `throttled=0x0` |
+| 12 | NEON | `server/build/canvas-test` | "NEON matches C"; NEON faster than C |
+| 13 | Headless tests | `make -C server test` and each `build/*-test` | all pass, as on x86 (WASM: the full wg-2.0 suite) |
+| 14 | App isolation | open a `.lpk`; `sandbox[...]:` in the log; `cat /sys/kernel/security/lsm` | seccomp=1 and Landlock if the kernel has it (the Raspberry Pi one might not) |
+| 15 | Remote desktop | Settings → Sharing, `https://<ip>:5673` from the Mac | visible and controllable; screenshots for this document |
+| 16 | Network and sound | Wi-Fi (brcmfmac), Ethernet, HDMI audio via PipeWire | IP from our own DHCP; `wpctl status` shows HDMI |
+| 17 | Pi 4 | the same image | boots with `kernel8.img`; note what fails |
 
-## Auditoría de portabilidad del servidor (aarch64)
+## Server portability audit (aarch64)
 
-Revisión de `server/` en el Mac, sin compilar para Linux ARM. Los archivos cambiados se revisaron
-con `clang -arch arm64 -fsyntax-only -Wall -Wextra` contra los headers DRM de Linux 6.12 y los de
-EGL/GLES/GBM. Lo que sigue es el resultado.
+A review of `server/` on the Mac, without compiling for Linux ARM. The changed files were checked
+with `clang -arch arm64 -fsyntax-only -Wall -Wextra` against the Linux 6.12 DRM headers and the
+EGL/GLES/GBM ones. What follows is the result.
 
-**No había nada específico de x86:**
-- ni intrinsics SSE/AVX ni asm en `server/src` (el blending, el blur y el escalado son C portable,
-  con SWAR de 32 bits);
-- ni `-march=native` en el Makefile.
+**There was nothing x86-specific:**
+- no SSE/AVX intrinsics or asm in `server/src` (blending, blur and scaling are portable C, with
+  32-bit SWAR);
+- no `-march=native` in the Makefile.
 
-**Arreglado:**
+**Fixed:**
 
-| Dónde | Qué |
+| Where | What |
 |---|---|
-| `server/Makefile` | `ARCH` (de `$(CC) -dumpmachine`). En aarch64, `NEON=1` por defecto (`-DLORD_NEON`; `NEON=0` lo apaga). QuickJS con `-ffp-contract=off`: GCC en modo GNU fusiona `a*b+c` en FMA en ARM y cambiaría resultados numéricos de JS; nuestro código usa `-std=c11`, que ya lo apaga. `$(LD)` en vez de `ld` para `pages.o` (compilación cruzada). Nueva prueba `build/canvas-test` |
-| `server/src/canvas.c` | Las filas de `canvas_blit` (sin esquinas) y de `canvas_alpha_mask` (texto, sombras) son funciones aparte, con versión NEON (4 píxeles por vuelta) bajo `LORD_NEON && __ARM_NEON`. Bit a bit iguales a C con orígenes premultiplicados válidos: comprobado con `tests/canvas_test.c` bajo emulación (SIMDe) en el Mac, 4000 filas al azar. Falta en la placa |
-| `server/src/ui/stb.c` | `STBI_NEON` en aarch64: el JPEG de stb usa NEON (en x86 ya usaba SSE2) |
-| `server/src/term/vt.c:890` | `src[i] >= 0 && …` con `char`: en ARM `char` no tiene signo y `-Wextra` avisa (`-Wtype-limits`). Ahora `(unsigned char)src[i] < 0x20`, igual en las dos arquitecturas |
-| `server/src/kms.c` `kms_dispatch` | el búfer de eventos DRM alineado a 8 (se lee con cast a `drm_event_vblank`, que tiene campos de 64 bits) |
-| `server/src/drmcard.h` (nuevo), `main.c`, `remote/monitor.c` | elegir la tarjeta con conectores en vez de `card0` (ver arriba) |
-| `server/src/kms.c`/`kms.h`, `gpu/gpu.c` | `IN_FORMATS` del plano primario, `kms_scanout_ok`, el render node de EGL para el feedback de dmabuf (ver arriba) |
-| `server/src/ui/js_sys.c` | `lord.system.info().cpu`: en ARM64 `/proc/cpuinfo` no tiene «model name». Ahora sale de «CPU part» y `/proc/device-tree/model`: «Cortex-A76 · Raspberry Pi 5 Model B Rev 1.0» |
-| `server/src/sec/sandbox.c` (lo arregló el agente de sandbox, a pedido) | `SYS_epoll_wait` sin `#ifdef`: en aarch64 no existe y no compilaba. Se quitó el `SYS_read` repetido |
+| `server/Makefile` | `ARCH` (from `$(CC) -dumpmachine`). On aarch64, `NEON=1` by default (`-DLORD_NEON`; `NEON=0` turns it off). QuickJS with `-ffp-contract=off`: GCC in GNU mode fuses `a*b+c` into FMA on ARM and would change JS numeric results; our code uses `-std=c11`, which already turns it off. `$(LD)` instead of `ld` for `pages.o` (cross-compiling). New test `build/canvas-test` |
+| `server/src/canvas.c` | The rows of `canvas_blit` (without corners) and of `canvas_alpha_mask` (text, shadows) are separate functions, with a NEON version (4 pixels per iteration) under `LORD_NEON && __ARM_NEON`. Bit-for-bit identical to C with valid premultiplied sources: checked with `tests/canvas_test.c` under emulation (SIMDe) on the Mac, 4000 random rows. Still to do on the board |
+| `server/src/ui/stb.c` | `STBI_NEON` on aarch64: stb's JPEG uses NEON (on x86 it already used SSE2) |
+| `server/src/term/vt.c:890` | `src[i] >= 0 && …` with `char`: on ARM `char` is unsigned and `-Wextra` warns (`-Wtype-limits`). Now `(unsigned char)src[i] < 0x20`, the same on both architectures |
+| `server/src/kms.c` `kms_dispatch` | the DRM event buffer aligned to 8 (it's read with a cast to `drm_event_vblank`, which has 64-bit fields) |
+| `server/src/drmcard.h` (new), `main.c`, `remote/monitor.c` | pick the card with connectors instead of `card0` (see above) |
+| `server/src/kms.c`/`kms.h`, `gpu/gpu.c` | the primary plane's `IN_FORMATS`, `kms_scanout_ok`, EGL's render node for the dmabuf feedback (see above) |
+| `server/src/ui/js_sys.c` | `lord.system.info().cpu`: on ARM64 `/proc/cpuinfo` has no "model name". Now it comes from "CPU part" and `/proc/device-tree/model`: «Cortex-A76 · Raspberry Pi 5 Model B Rev 1.0» |
+| `server/src/sec/sandbox.c` (fixed by the sandbox agent, on request) | `SYS_epoll_wait` without `#ifdef`: on aarch64 it doesn't exist and didn't compile. The repeated `SYS_read` was removed |
 
-**Revisado, sin cambios:**
-- **Tamaño de página (16K en la Pi 5):** no hay 4096 fijo en `mmap`, shm ni búferes.
-  - Los dumb buffers usan `size` y `pitch` de `CREATE_DUMB`.
-  - La memoria de WASM reserva y protege en múltiplos de 64 KiB (múltiplo de 16K).
-  - El Monitor usa `sysconf(_SC_PAGESIZE)` (`monitor/mon.c:443`).
-  - El feedback de dmabuf hace `memfd` + `mmap` de un tamaño cualquiera, que es válido.
-- **Lecturas desalineadas y endianness:**
-  - los lectores de OpenType, MaxMind DB, xz, PNG/JPEG (stb), thbrk e IME leen byte por byte en
-    big-endian o con `memcpy`;
-  - los atributos de netlink (`net/state.c`, `nl.c`, `wg.c`) están alineados a 4 por el formato.
-  - Todo es little-endian, como x86.
-- **`char` sin signo:** los decodificadores UTF-8 y los escapes JSON ya usan `unsigned char`
-  (`mon.c`, `nl.c`, `snd.c`, `textlayout.c`, `json.c`, `wl.c`, `conn.c`); los demás `char` solo
-  se comparan con ASCII.
-- **Estructuras e ioctls:** `input_event` (24 bytes), `drm_mode_*` y `EVIOCG*` son iguales en LP64
-  (x86-64 y aarch64). No hay código de fbdev.
-- **`SYS_close_range` y `SYS_capset`** existen en aarch64.
-- **WASM:** las conversiones float→int verifican el rango antes del cast, los NaN se tratan a mano
-  (`QNAN32/64`) y las cargas usan `memcpy`. Correr `build/wasm-test` en la placa.
-- **QuickJS 2025-04-26** soporta aarch64.
-- **`pkg/status.c`** ya mapea `aarch64` → `arm64` para dpkg y la Tienda.
-- **Hilos:** `PTHREAD_STACK_MIN` es 128 KiB en aarch64; los hilos del Monitor piden 512 KiB, alcanza.
+**Reviewed, no changes:**
+- **Page size (16K on the Pi 5):** there's no hardcoded 4096 in `mmap`, shm or buffers.
+  - Dumb buffers use `CREATE_DUMB`'s `size` and `pitch`.
+  - WASM memory reserves and protects in multiples of 64 KiB (a multiple of 16K).
+  - The Monitor uses `sysconf(_SC_PAGESIZE)` (`monitor/mon.c:443`).
+  - The dmabuf feedback does `memfd` + `mmap` of an arbitrary size, which is valid.
+- **Unaligned reads and endianness:**
+  - the OpenType, MaxMind DB, xz, PNG/JPEG (stb), thbrk and IME readers read byte by byte in
+    big-endian or with `memcpy`;
+  - netlink attributes (`net/state.c`, `nl.c`, `wg.c`) are 4-aligned by the format.
+  - Everything is little-endian, like x86.
+- **Unsigned `char`:** the UTF-8 decoders and JSON escapes already use `unsigned char` (`mon.c`,
+  `nl.c`, `snd.c`, `textlayout.c`, `json.c`, `wl.c`, `conn.c`); the other `char`s are only compared
+  with ASCII.
+- **Structures and ioctls:** `input_event` (24 bytes), `drm_mode_*` and `EVIOCG*` are the same on LP64
+  (x86-64 and aarch64). There's no fbdev code.
+- **`SYS_close_range` and `SYS_capset`** exist on aarch64.
+- **WASM:** float→int conversions check the range before the cast, NaNs are handled by hand
+  (`QNAN32/64`) and loads use `memcpy`. Run `build/wasm-test` on the board.
+- **QuickJS 2025-04-26** supports aarch64.
+- **`pkg/status.c`** already maps `aarch64` → `arm64` for dpkg and the Store.
+- **Threads:** `PTHREAD_STACK_MIN` is 128 KiB on aarch64; the Monitor threads ask for 512 KiB, which
+  is enough.
 
-**Pendiente para la etapa en la placa** (riesgos, con archivo:línea):
+**Pending for the on-board stage** (risks, with file:line):
 
-| Dónde | Riesgo |
+| Where | Risk |
 |---|---|
-| `server/src/main.c:488` (`mirror_frame(out.px…)` en el camino por CPU) | Con el escritorio remoto abierto, se lee desde el dumb buffer mapeado. En ARM esa memoria es write-combined/uncached y leerla es muy lento; en x86 también, pero menos. Mejor espejar desde `s->scene` + `wl_paint_fullscreen` a un búfer en RAM. Medir antes de tocar |
-| `server/src/main.c:484–498` (`canvas_copy`, línea 486) | El camino por CPU copia el lienzo entero al dumb buffer (`canvas_copy`) en cada cuadro. A 4K son 33 MB por cuadro, demasiado para la memoria de la Pi. Copiar solo el daño |
-| `server/src/canvas.c` `box_pass`/`canvas_backdrop_blur` | La pasada vertical recorre por columnas (`step = sw`), que es lento con la caché de la A76. Candidato a NEON (4 columnas a la vez) o a transponer; medir con `--profile` |
-| `server/src/gpu/gpu.c` `gpu_formats` (`known[]`) | Solo anuncia RGB de 32 bits: el video SAND128/NV12 de la Pi no se anuncia (ver Video) |
-| `server/src/gpu/gpu.c` `gpu_device` | Que EGL devuelva el render node con kmsro está sin verificar. Si devuelve nada, cae al primer render node, que en la Pi es v3d |
-| `server/src/kms.c` `read_scanout_formats` | `IN_FORMATS` con `UNIVERSAL_PLANES` sin probar en vc4. Si falla, queda como antes |
-| `server/src/drmcard.h` | `GETCONNECTOR` fuerza una lectura del EDID por tarjeta al arrancar (~50 ms). Hotplug: si el HDMI se enchufa después del arranque, lord-sessiond ya eligió la tarjeta (vc4 igual, porque tiene conectores) |
-| `server/src/sec/sandbox.c` | seccomp: revisar en la placa que ninguna app `.lpk` muera por un syscall que glibc de arm64 usa y x86 no. Landlock: el kernel de Raspberry Pi podría no traerlo; `cmdline.txt` pide `lsm=landlock,…`. El perfil compartido de ayudantes (`sandbox_apply_helper`) usa la misma lista y está bien en arm64, pero no tiene `ioctl`: el video por hardware (V4L2 en la Pi, VA-API en la PC) dentro de la caja de arena lo necesita (se avisó al agente de sandbox) |
-| `server/src/monitor/mon.c:703` | El «model name» del Monitor queda vacío en ARM. Se avisó al agente del Monitor (sirve el `arm_cpu_name` de `js_sys.c`) |
-| `server/src/install/install.c:677` | El instalador usa `grub-install --target=x86_64-efi`. En la Pi no aplica (no es live, el instalador no aparece), pero es lo que habría que cambiar para un instalador ARM64/UEFI |
-| tamaño de página | Algún programa de terceros (no LordOS) asume 4K: Widevine, box64, jemalloc viejo. Si hace falta, `kernel=kernel8.img` en `config.txt` (4K, un poco más lento) |
+| `server/src/main.c:488` (`mirror_frame(out.px…)` on the CPU path) | With remote desktop open, it reads from the mapped dumb buffer. On ARM that memory is write-combined/uncached and reading it is very slow; on x86 too, but less so. Better to mirror from `s->scene` + `wl_paint_fullscreen` to a buffer in RAM. Measure before touching |
+| `server/src/main.c:484–498` (`canvas_copy`, line 486) | The CPU path copies the whole canvas to the dumb buffer (`canvas_copy`) every frame. At 4K that's 33 MB per frame, too much for the Pi's memory. Copy only the damage |
+| `server/src/canvas.c` `box_pass`/`canvas_backdrop_blur` | The vertical pass walks by columns (`step = sw`), which is slow with the A76's cache. Candidate for NEON (4 columns at a time) or transposing; measure with `--profile` |
+| `server/src/gpu/gpu.c` `gpu_formats` (`known[]`) | Only announces 32-bit RGB: the Pi's SAND128/NV12 video isn't announced (see Video) |
+| `server/src/gpu/gpu.c` `gpu_device` | That EGL returns the render node with kmsro is unverified. If it returns nothing, it falls back to the first render node, which on the Pi is v3d |
+| `server/src/kms.c` `read_scanout_formats` | `IN_FORMATS` with `UNIVERSAL_PLANES` untested on vc4. If it fails, it stays as before |
+| `server/src/drmcard.h` | `GETCONNECTOR` forces an EDID read per card at startup (~50 ms). Hotplug: if HDMI is plugged in after boot, lord-sessiond has already chosen the card (vc4 anyway, because it has connectors) |
+| `server/src/sec/sandbox.c` | seccomp: check on the board that no `.lpk` app dies from a syscall that arm64 glibc uses and x86 doesn't. Landlock: the Raspberry Pi kernel might not have it; `cmdline.txt` asks for `lsm=landlock,…`. The shared helper profile (`sandbox_apply_helper`) uses the same list and is fine on arm64, but has no `ioctl`: hardware video (V4L2 on the Pi, VA-API on the PC) inside the sandbox needs it (the sandbox agent was told) |
+| `server/src/monitor/mon.c:703` | The Monitor's "model name" stays empty on ARM. The Monitor agent was told (`js_sys.c`'s `arm_cpu_name` would do) |
+| `server/src/install/install.c:677` | The installer uses `grub-install --target=x86_64-efi`. On the Pi it doesn't apply (it's not live, the installer doesn't appear), but it's what would have to change for an ARM64/UEFI installer |
+| page size | Some third-party program (not LordOS) assumes 4K: Widevine, box64, old jemalloc. If needed, `kernel=kernel8.img` in `config.txt` (4K, a bit slower) |

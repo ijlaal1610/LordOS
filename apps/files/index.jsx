@@ -1,13 +1,13 @@
 // Archivos — explorador al estilo Finder: pestañas, cuatro vistas (íconos, lista, columnas y
 // galería), barra lateral con Favoritos, Ubicaciones y Etiquetas, Papelera de freedesktop,
 // Vista rápida, Ver información, copiar/cortar/pegar, arrastrar y soltar, y búsqueda.
-// Las operaciones de disco van por lord.fs (server/src/fsops.c); ver docs/ARCHIVOS.md.
+// Las operaciones de disco van por lord.fs (server/src/fsops.c); ver docs/FILES.md.
 import {
-  View, Text, TextInput, useTheme, useAppWindow, useKeyboard, useStore, useLauncherApps, addListener, wm, fs, clipboard, archive, warmDocs,
-  formatBytes, t as tr,
+  View, Text, useTheme, useAppWindow, useKeyboard, useStore, useLauncherApps, addListener, wm, fs, clipboard, archive, warmDocs,
+  formatBytes, t as tr, ScrollView, Toolbar, ToolbarButton, ToolbarGroup, SearchField, Hairline, direction, spacing, typeScale,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FolderGlyph, DocGlyph, TAG_COLORS } from './glyphs.jsx';
+import { FolderGlyph, DocGlyph, TAG_COLORS, TrashGlyph, DriveGlyph } from './glyphs.jsx';
 import { IconView, ListView, ColumnView, GalleryView } from './views.jsx';
 import { ContextMenu, QuickLook, InfoPanel, Confirm } from './panels.jsx';
 import { loadEntries, sortEntries, groupEntries, sameLoc, userDirs } from './locations.js';
@@ -30,7 +30,8 @@ export function Icon({ size: s }) {
 }
 
 const VIEWS = ['icons', 'list', 'columns', 'gallery'];
-const VIEW_GLYPH = { icons: '▦', list: '☰', columns: '▥', gallery: '▭' };
+const VIEW_GLYPH = { icons: '▦', list: '≡', columns: '◫', gallery: '▣' };
+const SIDEBAR_W = 200;
 let tabSeq = 1;
 const newTab = (loc, from) => ({ id: tabSeq++, loc, back: [], fwd: [], view: from?.view || 'icons', sort: from?.sort || { by: 'name', desc: false }, group: from?.group || 'none', chain: [] });
 // Estado de cada ventana: sobrevive a que la interfaz se vuelva a montar (cambio de idioma).
@@ -41,8 +42,13 @@ function argLoc(args) {
   if (!args?.path) return null;
   const home = fs.home();
   const p = String(args.path).replace(/^~(?=\/|$)/, home);
-  return { type: 'dir', path: p.startsWith('/') ? p.replace(/\/+$/, '') || '/' : `${home}/${p}` };
+  const path = p.startsWith('/') ? p.replace(/\/+$/, '') || '/' : `${home}/${p}`;
+  // an archive opens browsed, like double-clicking it
+  if (archive.isArchive(fs.basename(path))) { try { if (!fs.stat(path).dir) return { type: 'archive', path, inner: '' }; } catch (e) { /* not there */ } }
+  return { type: 'dir', path };
 }
+// args.view ('icons' | 'list' | 'columns' | 'gallery') picks the view of the opened folder
+const argView = (args) => (VIEWS.includes(args?.view) ? args.view : null);
 
 function locTitle(loc, dirs) {
   switch (loc.type) {
@@ -60,32 +66,49 @@ function locTitle(loc, dirs) {
   }
 }
 
-// ---- piezas de la ventana ----
+// ---- window pieces ----
 
-function ToolButton({ label, onClick, disabled, active, t }) {
-  return (
-    <View onClick={() => !disabled && onClick()} style={{ minWidth: 28, height: 26, paddingHorizontal: 7, borderRadius: 6, alignItems: 'center', justifyContent: 'center',
-      backgroundColor: active ? t.accent : 'transparent', opacity: disabled ? 0.35 : 1 }}>
-      <Text style={{ fontSize: 14, fontWeight: 600, color: active ? '#fff' : t.text }}>{label}</Text>
-    </View>
-  );
-}
-
+// Source-list row (Finder): 28 px, accent-colored icon, a soft highlight when selected and the
+// accent when something is dragged over it.
 function SideItem({ label, icon, selected, onClick, t, drop, hot }) {
+  const [hover, setHover] = useState(false);
   return (
-    <View onClick={onClick} {...drop}
-      style={{ height: 26, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, borderRadius: 6,
-        backgroundColor: hot ? t.accent : selected ? (t.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)') : 'transparent' }}>
-      <View style={{ width: 18, alignItems: 'center' }}>{icon}</View>
-      <Text style={{ flex: 1, fontSize: 13, color: hot ? '#fff' : t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</Text>
+    <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} {...drop}
+      style={{ height: 28, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, borderRadius: 6,
+        backgroundColor: hot ? t.accent : selected ? (t.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)') : hover ? t.hover : 'transparent' }}>
+      <View style={{ width: 18, alignItems: 'center', justifyContent: 'center' }}>{icon}</View>
+      <Text style={{ flex: 1, fontSize: typeScale.body, color: hot ? '#fff' : t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</Text>
     </View>
   );
 }
 
-const SideTitle = ({ children, t }) => <Text style={{ fontSize: 11, fontWeight: 700, color: t.textDim, marginLeft: 8, marginTop: 12, marginBottom: 2 }}>{children}</Text>;
+const SideTitle = ({ children, t, first }) => (
+  <Text style={{ fontSize: typeScale.caption, fontWeight: 600, color: t.textDim, marginHorizontal: 8, marginTop: first ? 6 : 14, marginBottom: 2 }}>{children}</Text>
+);
 const Dot = ({ color }) => <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: color }} />;
-const Line = ({ t }) => <View style={{ height: 1, backgroundColor: t.separator }} />;
-const Glyph = ({ ch, t }) => <Text style={{ fontSize: 13, color: t.accent }}>{ch}</Text>;
+const Glyph = ({ ch, t }) => <Text style={{ fontSize: 14, color: t.accent, textAlign: 'center' }}>{ch}</Text>;
+
+// Width of a box after layout, re-measured while the window is resized.
+function useWidth(ref, initial) {
+  const [w, setW] = useState(initial);
+  useEffect(() => {
+    const measure = () => { if (!ref.current) return; const lw = Math.round(lord.getLayout(ref.current.id)[2]); if (lw > 0) setW((x) => (Math.abs(x - lw) > 2 ? lw : x)); };
+    measure();
+    const id = setInterval(measure, 300);
+    return () => clearInterval(id);
+  }, []);
+  return w;
+}
+
+// Search scope chip ("Search: Home | “Folder”"), as in the Finder's scope bar.
+function ScopeChip({ label, on, onClick, t }) {
+  return (
+    <View onClick={onClick} style={{ paddingHorizontal: 10, height: 22, borderRadius: 6, justifyContent: 'center',
+      backgroundColor: on ? (t.mode === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)') : 'transparent' }}>
+      <Text style={{ fontSize: typeScale.callout, fontWeight: on ? 600 : 400, color: on ? t.text : t.textDim, whiteSpace: 'nowrap' }}>{label}</Text>
+    </View>
+  );
+}
 
 // ---- la ventana ----
 
@@ -100,7 +123,7 @@ export default function Files() {
   const jobs = useStore(jobState);
   const errs = useStore(jobErrors);
   const saved = winStates.get(wid);
-  const [tabs, setTabs] = useState(() => saved?.tabs || [newTab(argLoc(args) || homeLoc())]);
+  const [tabs, setTabs] = useState(() => saved?.tabs || [{ ...newTab(argLoc(args) || homeLoc()), view: argView(args) || 'icons' }]);
   const [active, setActive] = useState(() => saved?.active || 0);
   const tab = tabs[Math.min(active, tabs.length - 1)];
   useEffect(() => { winStates.set(wid, { tabs, active }); }, [tabs, active]);
@@ -156,7 +179,7 @@ export default function Files() {
   };
 
   // otras apps abren una carpeta: wm.open('files', { args: { path } })
-  useEffect(() => { const l = argLoc(args); if (l && args?.nonce && saved) navigate(l); }, [args?.nonce]);
+  useEffect(() => { const l = argLoc(args); if (l && args?.nonce && saved) navigate(l); if (args?.nonce && saved && argView(args)) patchTab({ view: argView(args) }); }, [args?.nonce]);
   useEffect(() => { const id = setInterval(() => setVolumes(fs.volumes()), 4000); return () => clearInterval(id); }, []);
   useEffect(() => { const id = setTimeout(() => setDebounced(query.trim()), 280); return () => clearTimeout(id); }, [query]);
   useEffect(() => { if (!msg) return undefined; const id = setTimeout(() => setMsg(null), 4000); return () => clearTimeout(id); }, [msg]);
@@ -326,7 +349,7 @@ export default function Files() {
   const onBgContext = (ev) => { setSelected(new Set()); const p = local(ev); setMenu({ x: p.x, y: p.y, items: bgMenu() }); };
 
   // ---- teclado ----
-  const cols = () => { const w = root.current ? lord.getLayout(root.current.id)[2] - 196 : 600; return Math.max(1, Math.floor((w - 16) / 108)); };
+  const cols = () => { const w = root.current ? lord.getLayout(root.current.id)[2] - SIDEBAR_W : 600; return Math.max(1, Math.floor((w - 24 + 8) / 108)); };
   const moveSel = (d, ev) => {
     if (!flat.length) return;
     const i = first ? flat.findIndex((x) => x.path === (anchor.current && selected.has(anchor.current) ? anchor.current : first.path)) : -1;
@@ -456,11 +479,32 @@ export default function Files() {
   const dragLocal = drag && root.current ? (() => { const [lx, ly] = lord.getLayout(root.current.id); return { x: drag.x - lx, y: drag.y - ly }; })() : null;
   const dragEntry = drag ? byPath.get(drag.paths[0]) : null;
 
-  return (
-    <View ref={root} style={{ flex: 1, flexDirection: 'row' }}>
-      {/* barra lateral */}
-      <View style={{ width: 196, backgroundColor: t.sidebarBg, paddingHorizontal: 8, paddingTop: 4 }}>
-        <SideTitle t={t}>{tr('files.favorites')}</SideTitle>
+  // toolbar menus open under their button, aligned to its trailing edge
+  const menuUnder = (ref, items) => {
+    if (!ref.current || !root.current) return;
+    const [bx, by, bw, bh] = lord.getLayout(ref.current.id);
+    const [rx, ry] = lord.getLayout(root.current.id);
+    const rtl = direction() === 'rtl';
+    setMenu({ x: rtl ? bx - rx : bx - rx + bw - 220, y: by - ry + bh + 4, items });
+  };
+  const groupSortItems = () => [
+    { header: tr('files.menu.groupBy') }, ...['none', 'kind', 'date', 'size'].map((k) => ({ label: tr(`files.groupBy.${k}`), checked: tab.group === k, onClick: () => patchTab({ group: k }) })), '-',
+    { header: tr('files.menu.sortBy') }, ...['name', 'kind', 'date', 'size'].map((k) => ({ label: tr(`files.sort.${k}`), checked: tab.sort.by === k, onClick: () => setSort(k) })),
+    { label: tab.sort.desc ? tr('files.sort.desc') : tr('files.sort.asc'), onClick: () => patchTab((x) => ({ sort: { ...x.sort, desc: !x.sort.desc } })) },
+  ];
+  const viewMenuItems = () => VIEWS.map((v, i) => ({ label: tr(`files.view.${v}`), hint: `❖${i + 1}`, checked: tab.view === v, onClick: () => setView(v) }));
+  const tagItems = () => (sel.length ? [{ header: tr('files.menu.tags') }, tagSwatches(selPaths)] : [{ header: tr('files.menu.tags') }, { label: tr('files.noSelection'), disabled: true }]);
+  const actionItems = () => (sel.length && first ? itemMenu(first) : bgMenu());
+  // narrow windows: one view button with a menu, tags inside "⋯", a shorter search field
+  const width = useWidth(root, 960);
+  const content = width - SIDEBAR_W;
+  const narrow = content < 600;
+  const tight = content < 470;
+  const viewBtn = useRef(null), sortBtn = useRef(null), tagBtn = useRef(null), moreBtn = useRef(null);
+  const sideScroll = (
+    <ScrollView style={{ flex: 1 }}>
+      <View style={{ paddingHorizontal: 10, paddingBottom: 12 }}>
+        <SideTitle t={t} first>{tr('files.favorites')}</SideTitle>
         <SideItem t={t} label={tr('files.place.recent')} icon={<Glyph ch="◷" t={t} />} selected={sideSel({ type: 'recent' })} onClick={() => navigate({ type: 'recent' })} />
         <SideItem t={t} label={tr('files.place.apps')} icon={<Glyph ch="⌘" t={t} />} selected={sideSel({ type: 'apps' })} onClick={() => navigate({ type: 'apps' })} />
         {dirs.map((d) => (
@@ -471,70 +515,82 @@ export default function Files() {
         <SideItem t={t} label={tr('files.place.home')} icon={<Glyph ch="⌂" t={t} />} selected={sideSel(homeLoc())} onClick={() => navigate(homeLoc())}
           drop={{ dropPath: fs.home() }} hot={dropTarget === fs.home()} />
         {volumes.map((v) => (
-          <SideItem key={v.path} t={t} label={v.name} icon={<Glyph ch="⏏" t={t} />} selected={sideSel(dirLoc(v.path))} onClick={() => navigate(dirLoc(v.path))}
+          <SideItem key={v.path} t={t} label={v.name} icon={<DriveGlyph color={t.accent} />} selected={sideSel(dirLoc(v.path))} onClick={() => navigate(dirLoc(v.path))}
             drop={{ dropPath: v.path }} hot={dropTarget === v.path} />
         ))}
-        <SideItem t={t} label={tr('files.place.trash')} icon={<Glyph ch="🗑" t={t} />} selected={sideSel({ type: 'trash' })} onClick={() => navigate({ type: 'trash' })}
+        <SideItem t={t} label={tr('files.place.trash')} icon={<TrashGlyph color={t.accent} />} selected={sideSel({ type: 'trash' })} onClick={() => navigate({ type: 'trash' })}
           drop={{ dropTrash: true }} hot={dropTarget === 'trash:'} />
         <SideTitle t={t}>{tr('files.tags')}</SideTitle>
         {Object.entries(TAG_COLORS).map(([color, hex]) => (
           <SideItem key={color} t={t} label={tr(`files.tag.${color}`)} icon={<Dot color={hex} />} selected={sideSel({ type: 'tag', color })} onClick={() => navigate({ type: 'tag', color })} />
         ))}
       </View>
+    </ScrollView>
+  );
+
+  return (
+    <View ref={root} style={{ flex: 1, flexDirection: 'row' }}>
+      {/* sidebar (source list) */}
+      <View style={{ width: SIDEBAR_W, backgroundColor: t.sidebarBg }}>
+        <Hairline edge="end" />
+        {sideScroll}
+      </View>
 
       <View style={{ flex: 1 }}>
-        {/* barra de herramientas */}
-        <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10 }}>
-          <View style={{ flexDirection: 'row', direction: 'ltr' }}>
-            <ToolButton t={t} label="‹" onClick={goBack} disabled={!tab.back.length} />
-            <ToolButton t={t} label="›" onClick={goForward} disabled={!tab.fwd.length} />
+        {/* toolbar */}
+        <Toolbar>
+          <ToolbarGroup>
+            <ToolbarButton icon={direction() === 'rtl' ? '›' : '‹'} iconSize={20} small title={tr('files.menu.back')} onClick={goBack} disabled={!tab.back.length} />
+            <ToolbarButton icon={direction() === 'rtl' ? '‹' : '›'} iconSize={20} small title={tr('files.menu.forward')} onClick={goForward} disabled={!tab.fwd.length} />
+          </ToolbarGroup>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{tight ? '' : title}</Text>
           </View>
-          <Text style={{ flex: 1, fontSize: 15, fontWeight: 700, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', marginLeft: 4 }}>{title}</Text>
-          <View style={{ flexDirection: 'row', backgroundColor: t.control, borderRadius: 7, padding: 2, direction: 'ltr' }}>
-            {VIEWS.map((v) => <ToolButton key={v} t={t} label={VIEW_GLYPH[v]} active={tab.view === v} onClick={() => setView(v)} />)}
-          </View>
-          <View onClick={(ev) => { const p = local(ev); setMenu({ x: p.x - 120, y: 40, items: [
-            { header: tr('files.menu.groupBy') }, ...['none', 'kind', 'date', 'size'].map((k) => ({ label: tr(`files.groupBy.${k}`), checked: tab.group === k, onClick: () => patchTab({ group: k }) })), '-',
-            { header: tr('files.menu.sortBy') }, ...['name', 'kind', 'date', 'size'].map((k) => ({ label: tr(`files.sort.${k}`), checked: tab.sort.by === k, onClick: () => setSort(k) })),
-            { label: tab.sort.desc ? tr('files.sort.desc') : tr('files.sort.asc'), onClick: () => patchTab((x) => ({ sort: { ...x.sort, desc: !x.sort.desc } })) },
-          ] }); }} style={{ height: 26, paddingHorizontal: 9, borderRadius: 6, justifyContent: 'center', backgroundColor: t.control }}>
-            <Text style={{ fontSize: 13, color: t.text }}>⇅</Text>
-          </View>
-          <View onClick={(ev) => { const p = local(ev); setMenu({ x: p.x - 150, y: 40, items: sel.length && first ? itemMenu(first) : bgMenu() }); }}
-            style={{ height: 26, width: 30, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: t.control }}>
-            <Text style={{ fontSize: 14, color: t.text }}>⋯</Text>
-          </View>
-          <TextInput value={query} onChange={setQuery} placeholder={tr('files.search')} onCancel={() => setQuery('')} style={{ width: 170, height: 26 }} />
-        </View>
-        <Line t={t} />
+          {narrow ? (
+            <View ref={viewBtn}><ToolbarButton icon={VIEW_GLYPH[tab.view]} title={tr('files.menu.view')} onClick={() => menuUnder(viewBtn, viewMenuItems())} /></View>
+          ) : (
+            <ToolbarGroup style={{ direction: 'ltr' }}>
+              {VIEWS.map((v) => <ToolbarButton key={v} small icon={VIEW_GLYPH[v]} iconSize={14} title={tr(`files.view.${v}`)} active={tab.view === v} onClick={() => setView(v)} />)}
+            </ToolbarGroup>
+          )}
+          <View ref={sortBtn}><ToolbarButton icon="⇅" title={tr('files.groupSort')} onClick={() => menuUnder(sortBtn, groupSortItems())} /></View>
+          {!narrow && <View ref={tagBtn}><ToolbarButton icon="●" iconSize={11} color={t.textDim} title={tr('files.menu.tags')} disabled={!sel.length} onClick={() => menuUnder(tagBtn, tagItems())} /></View>}
+          <View ref={moreBtn}><ToolbarButton icon="⋯" title={tr('files.actions')} onClick={() => menuUnder(moreBtn, actionItems())} /></View>
+          <SearchField value={query} onChange={setQuery} placeholder={tr('files.search')} width={tight ? 120 : narrow ? 150 : 180} />
+        </Toolbar>
         {query.trim() !== '' && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, height: 30 }}>
-            <Text style={{ fontSize: 12, color: t.textDim }}>{tr('files.searchIn')}</Text>
-            {(baseLoc.type === 'dir' ? ['here', 'home'] : ['home']).map((s) => (
-              <View key={s} onClick={() => setScope(s)} style={{ paddingHorizontal: 10, height: 22, borderRadius: 11, justifyContent: 'center',
-                backgroundColor: scope === s || baseLoc.type !== 'dir' ? t.accent : t.control }}>
-                <Text style={{ fontSize: 12, color: scope === s || baseLoc.type !== 'dir' ? '#fff' : t.text }}>{s === 'here' ? `«${locTitle(baseLoc, dirs)}»` : tr('files.place.home')}</Text>
-              </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.m, height: 32 }}>
+            <Hairline edge="bottom" />
+            <Text style={{ fontSize: typeScale.callout, color: t.textDim, marginHorizontal: spacing.xs }}>{tr('files.searchIn')}</Text>
+            {(baseLoc.type === 'dir' ? ['home', 'here'] : ['home']).map((sc) => (
+              <ScopeChip key={sc} t={t} on={scope === sc || baseLoc.type !== 'dir'} onClick={() => setScope(sc)}
+                label={sc === 'here' ? `“${locTitle(baseLoc, dirs)}”` : tr('files.place.home')} />
             ))}
           </View>
         )}
-        {query.trim() !== '' && <Line t={t} />}
-        {/* pestañas */}
+        {/* tabs */}
         {tabs.length > 1 && (
-          <View style={{ flexDirection: 'row', height: 28, backgroundColor: t.mode === 'dark' ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.04)' }}>
+          <View style={{ flexDirection: 'row', height: 28, backgroundColor: t.mode === 'dark' ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.045)' }}>
+            <Hairline edge="bottom" />
             {tabs.map((x, i) => (
               <View key={x.id} onClick={() => { setActive(i); setSelected(new Set()); }} {...(x.loc.type === 'dir' ? { dropPath: x.loc.path } : {})}
-                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 6, border: `1px solid ${t.separator}`,
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.s, gap: 6,
                   backgroundColor: dropTarget && x.loc.path === dropTarget && i !== active ? t.accent : i === active ? t.windowBg : 'transparent' }}>
-                <View onClick={(ev) => { ev.stopPropagation(); closeTab(i); }} style={{ width: 16, alignItems: 'center' }}><Text style={{ fontSize: 10, color: t.textDim }}>✕</Text></View>
-                <Text style={{ flex: 1, fontSize: 12, fontWeight: i === active ? 600 : 400, color: i === active ? t.text : t.textDim, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden' }}>{locTitle(x.loc, dirs)}</Text>
+                {i > 0 && <Hairline edge="start" />}
+                <View onClick={(ev) => { ev.stopPropagation(); closeTab(i); }} style={{ width: 16, height: 16, borderRadius: 4, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 9, color: t.textDim }}>✕</Text>
+                </View>
+                <Text style={{ flex: 1, fontSize: typeScale.callout, fontWeight: i === active ? 600 : 400, color: i === active ? t.text : t.textDim, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden' }}>{locTitle(x.loc, dirs)}</Text>
+                <View style={{ width: 16 }} />
               </View>
             ))}
-            <View onClick={() => newTabAt()} style={{ width: 30, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 15, color: t.textDim }}>+</Text></View>
+            <View onClick={() => newTabAt()} style={{ width: 32, alignItems: 'center', justifyContent: 'center' }}>
+              <Hairline edge="start" />
+              <Text style={{ fontSize: 15, color: t.textDim }}>+</Text>
+            </View>
           </View>
         )}
-        {tabs.length > 1 && <Line t={t} />}
-        {/* contenido */}
+        {/* content */}
         <View style={{ flex: 1 }} onMouseDown={() => { if (renaming) commitRename(); setSelected(new Set()); }} onContextMenu={onBgContext}
           {...(curDir ? { dropPath: curDir } : {})}>
           {view === 'icons' && <IconView groups={groups} ctx={viewCtx} />}
@@ -542,30 +598,33 @@ export default function Files() {
           {view === 'columns' && <ColumnView root={curDir || fs.home()} chain={tab.chain} setChain={(chain) => patchTab({ chain })} entriesOf={entriesOf} ctx={viewCtx} sort={tab.sort} />}
           {view === 'gallery' && <GalleryView entries={flat} ctx={viewCtx} />}
         </View>
-        {/* barra de ruta y de estado */}
-        <Line t={t} />
-        <View style={{ height: 24, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10 }}>
+        {/* path bar and status bar */}
+        <View style={{ height: 26, flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.m, overflow: 'hidden' }}>
+          <Hairline edge="top" />
           {crumbs.map((c, i) => (
-            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              {i > 0 && <Text style={{ fontSize: 10, color: t.textDim }}>›</Text>}
-              <View onClick={() => navigate(c.loc)} {...(c.loc.type === 'dir' ? { dropPath: c.loc.path } : {})}>
-                <Text style={{ fontSize: 11, color: i === crumbs.length - 1 ? t.text : t.textDim, whiteSpace: 'nowrap' }}>{c.label}</Text>
+            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+              {i > 0 && <Text style={{ fontSize: 11, color: t.textDim }}>{direction() === 'rtl' ? '‹' : '›'}</Text>}
+              <View onClick={() => navigate(c.loc)} {...(c.loc.type === 'dir' ? { dropPath: c.loc.path } : {})}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 20, paddingHorizontal: 4, borderRadius: 4 }}>
+                {c.loc.type === 'dir' ? <FolderGlyph size={13} /> : null}
+                <Text style={{ fontSize: typeScale.caption, color: i === crumbs.length - 1 ? t.text : t.textDim, whiteSpace: 'nowrap' }}>{c.label}</Text>
               </View>
             </View>
           ))}
         </View>
-        <View style={{ height: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 10,
-          backgroundColor: t.mode === 'dark' ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.03)' }}>
+        <View style={{ height: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: spacing.m,
+          backgroundColor: t.mode === 'dark' ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.025)' }}>
+          <Hairline edge="top" />
           {job ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={{ fontSize: 11, color: t.textDim }}>{tr(job.move ? 'files.job.moving' : 'files.job.copying', { name: fs.basename(job.src) })}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s }}>
+              <Text style={{ fontSize: typeScale.caption, color: t.textDim, whiteSpace: 'nowrap' }}>{tr(job.move ? 'files.job.moving' : 'files.job.copying', { name: fs.basename(job.src) })}</Text>
               <View style={{ width: 120, height: 5, borderRadius: 3, backgroundColor: t.control, direction: 'ltr' }}>
                 <View style={{ width: Math.round(120 * (job.total ? Math.min(1, job.bytes / job.total) : 0)), height: 5, borderRadius: 3, backgroundColor: t.accent }} />
               </View>
-              <View onClick={() => fs.cancelJob(job.id)}><Text style={{ fontSize: 11, color: t.textDim }}>✕</Text></View>
+              <View onClick={() => fs.cancelJob(job.id)} style={{ width: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 10, color: t.textDim }}>✕</Text></View>
             </View>
           ) : (
-            <Text style={{ fontSize: 11, color: msg ? t.accent : t.textDim }}>
+            <Text style={{ fontSize: typeScale.caption, color: msg ? t.accent : t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>
               {msg || [sel.length ? tr('files.status.selected', { count: sel.length, total: flat.length }) : tr('files.items', { count: flat.length }),
                 freeSpace ? tr('files.status.free', { free: formatBytes(freeSpace.free) }) : ''].filter(Boolean).join(', ')}
             </Text>

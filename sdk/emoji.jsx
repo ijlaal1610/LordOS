@@ -1,15 +1,15 @@
-// emoji.jsx — emojis y símbolos para todo el sistema.
+// emoji.jsx — emoji and symbols for the whole system.
 //
-//   ❖. (o Ctrl+❖Espacio) abre un selector chico donde está el cursor: búsqueda por palabras en
-//   español, inglés y portugués (CLDR), categorías, recientes y tono de piel. Elegir uno lo escribe
-//   en el campo con foco por el mismo camino que el método de entrada (una tecla que escribe ese
-//   texto); en una app Linux lo pega con el portapapeles; si no hay campo, lo copia.
-//   La app «Emojis y símbolos» (apps/characters) muestra lo mismo en una ventana, más los bloques de
-//   símbolos de Unicode.
+//   ❖. (or Ctrl+❖Space) opens a small picker where the cursor is: search by words in
+//   Spanish, English and Portuguese (CLDR), categories, recents and skin tone. Choosing one types it
+//   into the focused field the same way the input method does (a key that types that
+//   text); in a Linux app it pastes it through the clipboard; if there is no field, it copies it.
+//   The "Emoji & Symbols" app (apps/characters) shows the same thing in a window, plus the Unicode
+//   symbol blocks.
 //
-//   emoji.groups() → [{ id, list: [carácter…] }]   emoji.search(texto) → [carácter…]
-//   emoji.name(carácter) → nombre en el idioma de la interfaz
-//   emoji.withTone(carácter, tono 0..5)             emoji.insert(texto)   emoji.open() / close()
+//   emoji.groups() → [{ id, list: [character…] }]   emoji.search(text) → [character…]
+//   emoji.name(character) → name in the UI language
+//   emoji.withTone(character, tone 0..5)             emoji.insert(text)   emoji.open() / close()
 import { createElement as h, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, addListener, screen } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
@@ -28,7 +28,7 @@ let groupsCache = null;
 const groups = () => groupsCache || (groupsCache = EMOJI_GROUPS.map(([id, s]) => ({ id, list: s.split(' ') })));
 const keyOf = (ch) => [...ch].map((c) => c.codePointAt(0).toString(16)).filter((x) => x !== 'fe0f').join('_');
 
-// palabras clave: las del idioma de la interfaz primero, y las de los otros dos para buscar
+// keywords: the UI language's first, and those of the other two for searching
 const kwCache = new Map();
 function keywords(lang) {
   if (!kwCache.has(lang)) {
@@ -41,7 +41,7 @@ function keywords(lang) {
   return kwCache.get(lang);
 }
 const fold = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-let index = null;              // [{ ch, text }] con todas las palabras plegadas
+let index = null;              // [{ ch, text }] with all words folded
 function buildIndex() {
   if (index) return index;
   const langs = ['es', 'en', 'pt'];
@@ -59,7 +59,7 @@ const uiLang = () => String(locale.get().lang || 'es').split(/[-_]/)[0];
 export const emoji = {
   groups,
   name(ch) {
-    const k = keyOf(ch.replace(/[\u{1F3FB}-\u{1F3FF}]/gu, ''));      // sin el tono de piel
+    const k = keyOf(ch.replace(/[\u{1F3FB}-\u{1F3FF}]/gu, ''));      // without the skin tone
     const own = keywords(uiLang())[k] || keywords('en')[k] || '';
     return own.split(' | ')[0];
   },
@@ -67,7 +67,7 @@ export const emoji = {
     const words = fold(q).split(/\s+/).filter(Boolean);
     if (!words.length) return [];
     const out = [];
-    // primero los que empiezan una palabra con lo escrito, después los que lo contienen
+    // first those that start a word with what was typed, then those that contain it
     const scored = [];
     for (const e of buildIndex()) {
       if (!words.every((w) => e.text.includes(w))) continue;
@@ -92,13 +92,13 @@ export const emoji = {
   },
   tone: () => settings.get().emojiTone || 0,
   setTone: (n) => settings.set({ emojiTone: n }),
-  // Escribe el texto donde estaba el foco antes de abrir el selector.
+  // Types the text where the focus was before opening the picker.
   insert(text, to = target) {
     const tok = to?.text;
     if (tok) restoreFocus(tok);
     setTimeout(() => {
       if (to?.text || to?.ime) {
-        // igual que lo que confirma un método de entrada (js.c ime_commit): una tecla con ese texto
+        // same as what an input method commits (js.c ime_commit): a key with that text
         globalThis.__lordKey(0, 1, text, text, '', 0);
         globalThis.__lordKey(0, 0, text, text, '', 0);
         return;
@@ -115,7 +115,7 @@ export const emoji = {
   close: () => panel.set(false),
 };
 
-// ---- el selector ----
+// ---- the picker ----
 
 export const panel = createStore(false);
 let target = null;
@@ -191,7 +191,7 @@ function Panel() {
     }
     return false;
   };
-  // donde está el cursor del campo; si no, al medio de la pantalla
+  // where the field's cursor is; otherwise, in the middle of the screen
   const W = COLS * CELL + 24, H = 404;
   const c = target?.caret;
   const left = Math.max(8, Math.min(screen.width - W - 8, c ? c.x - 20 : screen.width / 2 - W / 2));
@@ -229,7 +229,7 @@ export function EmojiPanel() {
   useEffect(() => {
     if (!on) return undefined;
     const off = addListener('pointerdown', (e) => {
-      // un clic afuera lo cierra (el panel es lo último que se dibuja)
+      // a click outside closes it (the panel is the last thing drawn)
       let n = e.target;
       while (n && !n.props?.emojiPanel) n = n.parent;
       if (!n) panel.set(false);

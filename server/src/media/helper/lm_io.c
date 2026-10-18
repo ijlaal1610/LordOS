@@ -1,6 +1,6 @@
-/* lm_io.c — E/S de lord-media sin rutas: FFmpeg lee y escribe por los descriptores que pasó
- * lord-server (AVIOContext propio), memfd sellados para los cuadros, VA-API sobre el render
- * node recibido y un JSON mínimo para las respuestas. */
+/* lm_io.c — lord-media I/O without paths: FFmpeg reads and writes through the descriptors that
+ * lord-server passed (our own AVIOContext), sealed memfds for the frames, VA-API over the received render
+ * node and a minimal JSON for the replies. */
 #include "lm.h"
 #include "../aring.h"
 
@@ -27,7 +27,7 @@ double lm_now_ms(void) {
     return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
 }
 
-/* ---- entrada ---- */
+/* ---- input ---- */
 
 typedef struct { int fd; int64_t pos, size; } FdIo;
 
@@ -79,7 +79,7 @@ AVFormatContext *lm_open_input(int fd, char *err, size_t errlen) {
     if (!io || !fmt) { snprintf(err, errlen, "sin memoria"); return NULL; }
     fmt->pb = io;
     fmt->flags |= AVFMT_FLAG_CUSTOM_IO;
-    /* nada de red ni de archivos auxiliares (listas m3u8, concat, imágenes "%d"): solo este fd */
+    /* no network nor auxiliary files (m3u8 lists, concat, "%d" images): only this fd */
     fmt->protocol_whitelist = av_strdup("none");
     fmt->format_whitelist = NULL;
     int r = avformat_open_input(&fmt, NULL, NULL, NULL);
@@ -105,7 +105,7 @@ void lm_close_input(AVFormatContext **fmt) {
     av_free(op);
 }
 
-/* ---- salida ---- */
+/* ---- output ---- */
 
 AVFormatContext *lm_open_output(int fd, const char *format) {
     AVFormatContext *oc = NULL;
@@ -130,7 +130,7 @@ int lm_close_output(AVFormatContext *oc, int write_trailer) {
     if (io) {
         avio_flush(io);
         FdIo *f = io->opaque;
-        if (f && f->fd >= 0) { if (ftruncate(f->fd, f->size)) { /* el archivo ya tiene su largo */ } fsync(f->fd); }
+        if (f && f->fd >= 0) { if (ftruncate(f->fd, f->size)) { /* the file already has its length */ } fsync(f->fd); }
         av_free(f);
         av_freep(&io->buffer);
         avio_context_free(&io);
@@ -171,20 +171,20 @@ static void va_free(AVHWDeviceContext *dc) {
 }
 #endif
 
-/* Aceleración elegible: "vaapi" (Intel/AMD, render node), "v4l2request" (Raspberry Pi 5, HEVC
- * por V4L2 stateless; ver docs/RASPBERRY.md) o "none". Si no se puede, NULL: software. */
+/* Eligible acceleration: "vaapi" (Intel/AMD, render node), "v4l2request" (Raspberry Pi 5, HEVC
+ * over V4L2 stateless; see docs/RASPBERRY.md) or "none". If it's not possible, NULL: software. */
 AVBufferRef *lm_hw_device(const char *accel, int fd) {
     if (!accel || !*accel || !strcmp(accel, "none") || fd < 0) return NULL;
     if (!strcmp(accel, "vaapi")) return lm_vaapi_device(fd);
     if (!strcmp(accel, "v4l2request")) {
-        /* TODO(RPi5): el hwaccel v4l2-request solo existe en el FFmpeg de Raspberry Pi (+rpt) y su
-         * dispositivo abre /dev/media* por ruta; lord-media no abre /dev: hace falta crearlo sobre
-         * los fds que pase lord-server (DRM PRIME NV12/SAND128). Mientras tanto, software. */
+        /* TODO(RPi5): the v4l2-request hwaccel only exists in Raspberry Pi's FFmpeg (+rpt) and its
+         * device opens /dev/media* by path; lord-media doesn't open /dev: it has to be created over
+         * the fds lord-server passes (DRM PRIME NV12/SAND128). Meanwhile, software. */
         if (av_hwdevice_find_type_by_name("v4l2request") == AV_HWDEVICE_TYPE_NONE) LM_LOG("este FFmpeg no tiene v4l2request: software");
-        else LM_LOG("v4l2request todavía no se crea sobre fds: software");
+        else LM_LOG("v4l2request can't be created over fds yet: software");
         return NULL;
     }
-    LM_LOG("aceleración desconocida '%s': software", accel);
+    LM_LOG("unknown acceleration '%s': software", accel);
     return NULL;
 }
 
@@ -196,7 +196,7 @@ AVBufferRef *lm_vaapi_device(int render_fd) {
     vaSetErrorCallback(d, va_quiet, NULL);
     vaSetInfoCallback(d, va_quiet, NULL);
     int maj = 0, min = 0;
-    if (vaInitialize(d, &maj, &min) != VA_STATUS_SUCCESS) { LM_DBG("VA-API: no hay driver para esta placa"); vaTerminate(d); return NULL; }
+    if (vaInitialize(d, &maj, &min) != VA_STATUS_SUCCESS) { LM_DBG("VA-API: no driver for this card"); vaTerminate(d); return NULL; }
     AVBufferRef *ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_VAAPI);
     if (!ref) { vaTerminate(d); return NULL; }
     AVHWDeviceContext *dc = (AVHWDeviceContext *)ref->data;

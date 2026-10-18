@@ -1,5 +1,5 @@
-// logo.js — el logo de LordOS: una corona blanca sobre violeta (el ícono de "Acerca de", de
-// Ajustes → General y del menú del tema). La corona es assets/icons/lordos-crown.png
+// logo.js — the LordOS logo: a white crown on violet (the icon of "About", of
+// Settings → General and of the theme menu). The crown is assets/icons/lordos-crown.png
 // (tools/gen-logo.py).
 import { createElement as h } from 'react';
 import { View, Image } from '@lordos/runtime';

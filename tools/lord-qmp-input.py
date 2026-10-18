@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Envía mouse absoluto a una VM Proxmox vía QMP. Uso: vmid W H cmd... (move X Y | down | up | rdown | rup | wheelup | wheeldown | sleep S)"""
+"""Sends absolute mouse input to a Proxmox VM via QMP. Usage: vmid W H cmd... (move X Y | down | up | rdown | rup | wheelup | wheeldown | sleep S)"""
 import json, socket, sys, time
 vmid, W, H, cmds = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4:]
 s = socket.socket(socket.AF_UNIX); s.connect(f"/var/run/qemu-server/{vmid}.qmp"); f = s.makefile("rw")

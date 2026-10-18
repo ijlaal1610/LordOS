@@ -1,5 +1,5 @@
-/* demo.c — módulo de prueba del intérprete WebAssembly (tests/wasm_test.c).
- * Compilar (en la VM): ver tests/wasm/build.sh. Sin libc: solo el compilador. */
+/* demo.c — test module for the WebAssembly interpreter (tests/wasm_test.c).
+ * Build (in the VM): see tests/wasm/build.sh. No libc: just the compiler. */
 typedef unsigned int u32;
 typedef unsigned long long u64;
 
@@ -41,7 +41,7 @@ static void qsort_int(int *a, int lo, int hi, cmpfn cmp) {
         else { qsort_int(a, i, hi, cmp); hi = j; }
     }
 }
-static volatile cmpfn the_cmp = cmp_int;       /* fuerza call_indirect */
+static volatile cmpfn the_cmp = cmp_int;       /* forces call_indirect */
 EXPORT(sort_check) int sort_check(int n) {
     if (n > 4096) n = 4096;
     for (int i = 0; i < n; i++) data[i] = (int)(rnd() % 100000) - 50000;

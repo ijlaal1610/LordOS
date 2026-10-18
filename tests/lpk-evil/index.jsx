@@ -1,11 +1,11 @@
-// App maliciosa de prueba (tests/lpk-evil). Declara CERO permisos e intenta, al abrirse, todo lo
-// que una app aislada no debería poder hacer. Muestra el resultado de cada intento: con la caja
-// de arena de LordOS (server/src/sec/sandbox.c) todos tienen que fallar. Ver docs/PRIVACIDAD.md.
+// Malicious test app (tests/lpk-evil). Declares ZERO permissions and, when opened, tries everything
+// an isolated app should not be able to do. Shows the result of each attempt: with the LordOS
+// sandbox (server/src/sec/sandbox.c) all of them must fail. See docs/PRIVACY.md.
 //
-// Cuando las apps corren como su propio proceso (lord-server --app <id>) estos intentos pegan
-// contra Landlock/seccomp. Mientras tanto, los que pasan por el SDK (lord.fs, portapapeles) ya
-// chocan con las restricciones del servidor; los nativos (socket, exec, ptrace) los cubre
-// sandbox-test. La app sirve de testigo visible del aislamiento.
+// When apps run as their own process (lord-server --app <id>) these attempts hit
+// Landlock/seccomp. Meanwhile, the ones going through the SDK (lord.fs, clipboard) already
+// run into the server's restrictions; the native ones (socket, exec, ptrace) are covered by
+// sandbox-test. The app serves as a visible witness of the isolation.
 import { View, Text, ScrollView, useTheme, clipboard, fs } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 

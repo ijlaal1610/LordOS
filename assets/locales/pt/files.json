@@ -1,5 +1,7 @@
 {
+  "actions": "Ações",
   "cancel": "Cancelar",
+  "close": "Fechar",
   "col.date": "Modificado",
   "col.kind": "Tipo",
   "col.name": "Nome",
@@ -40,6 +42,7 @@
   "groupBy.kind": "Tipo",
   "groupBy.none": "Nenhum",
   "groupBy.size": "Tamanho",
+  "groupSort": "Agrupar e ordenar",
   "info.calculating": "calculando…",
   "info.created": "Criado",
   "info.deleted": "Apagado",
@@ -110,6 +113,7 @@
   "menu.up": "Pasta acima",
   "menu.view": "Visualizar",
   "newFolder": "pasta sem título",
+  "noSelection": "Selecione itens para etiquetá-los",
   "noResults": "Nada encontrado.",
   "place.apps": "Aplicativos",
   "place.desktop": "Área de Trabalho",

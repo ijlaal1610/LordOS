@@ -1,6 +1,6 @@
-/* lm_enc.c — codificador de lord-media para grabar pantalla y cámara: H.264 (VA-API si hay;
- * si no, libx264; último recurso MPEG-4) y AAC del micrófono, en MP4. Tiempos en ms desde el
- * comienzo (cuadros de ritmo variable: solo se codifica cuando cambió algo). */
+/* lm_enc.c — lord-media's encoder for recording the screen and the camera: H.264 (VA-API if available;
+ * otherwise, libx264; last resort MPEG-4) and AAC from the microphone, in MP4. Times in ms since the
+ * start (variable frame rate: it only encodes when something changed). */
 #include "lm.h"
 
 #include <stdlib.h>
@@ -16,7 +16,7 @@ struct LmEnc {
     AVFormatContext *oc;
     AVCodecContext *v, *a;
     AVStream *vs, *as;
-    AVBufferRef *frames;            /* VA-API: superficies */
+    AVBufferRef *frames;            /* VA-API: surfaces */
     struct SwsContext *sws;
     int sw, sh, sfmt;
     AVFrame *yuv, *af;
@@ -132,7 +132,7 @@ LmEnc *lm_enc_open(int out_fd, int w, int h, int fps, AVBufferRef *hw, int audio
             e->as->time_base = e->a->time_base;
             swr_alloc_set_opts2(&e->swr, &e->a->ch_layout, AV_SAMPLE_FMT_FLTP, audio_rate, &e->a->ch_layout, AV_SAMPLE_FMT_S16, audio_rate, 0, NULL);
             swr_init(e->swr);
-        } else LM_LOG("sin AAC: la grabación queda sin sonido");
+        } else LM_LOG("no AAC: the recording has no sound");
     }
     if (avformat_write_header(e->oc, NULL) < 0) { snprintf(err, errlen, "no se pudo escribir el archivo"); lm_enc_close(e); return NULL; }
     e->header = 1;
@@ -141,7 +141,7 @@ LmEnc *lm_enc_open(int out_fd, int w, int h, int fps, AVBufferRef *hw, int audio
     e->yuv->width = e->w;
     e->yuv->height = e->h;
     av_frame_get_buffer(e->yuv, 0);
-    LM_LOG("grabando %dx%d con %s%s", e->w, e->h, e->name, e->a ? " + AAC" : "");
+    LM_LOG("recording %dx%d with %s%s", e->w, e->h, e->name, e->a ? " + AAC" : "");
     return e;
 }
 

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Compila los módulos de prueba (necesita clang y lld; ver docs/WASM.md, "Paquetes en la VM").
+# Builds the test modules (needs clang and lld; see docs/WASM.md, "Packages in the VM").
 set -e
 cd "$(dirname "$0")"
 clang --target=wasm32 -O2 -nostdlib -mbulk-memory -msign-ext -mnontrapping-fptoint \

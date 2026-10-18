@@ -1,12 +1,12 @@
-// spotlight.js — búsqueda global (como Spotlight de macOS). ❖Espacio o Ctrl+Espacio la abren
-// desde cualquier lado; <SpotlightPanel /> lo monta startShell, así que todos los temas la tienen.
+// spotlight.js — global search (like macOS Spotlight). ❖Space or Ctrl+Space open it
+// from anywhere; <SpotlightPanel /> is mounted by startShell, so every theme has it.
 //
-// Busca en apps, archivos de la carpeta personal, secciones de Ajustes, notas, el historial del
-// portapapeles y la Tienda; además calcula (2*(3+4), 15% de 2400, sqrt(2)) y convierte unidades
-// (10 km a mi, 72 f a c, 1,5 gb a mb). ↑↓ eligen, Enter abre, ❖Enter muestra en Archivos, Esc cierra.
-// Lo que se abre seguido sube en los resultados (~/.local/share/lordos/spotlight.json).
+// Searches apps, files in the home folder, Settings sections, notes, the clipboard
+// history and the Store; it also calculates (2*(3+4), 15% of 2400, sqrt(2)) and converts units
+// (10 km to mi, 72 f to c, 1,5 gb to mb). ↑↓ choose, Enter opens, ❖Enter shows in Files, Esc closes.
+// What is opened often rises in the results (~/.local/share/lordos/spotlight.json).
 import { createElement as h, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Image, addListener, screen } from '@lordos/runtime';
+import { View, Text, Image, addListener, screen, mainBox } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
 import { useTheme } from './theme.js';
 import { t, tOptional, formatNumber, formatDate, locale } from './i18n.js';
@@ -25,9 +25,9 @@ export const spotlight = {
   toggle() { if (spotlightOpen.get()) spotlight.close(); else spotlight.open(); },
 };
 
-// ❖Espacio (como ⌘Espacio en macOS) y Ctrl+Espacio. Con la Terminal al frente, Ctrl+Espacio
-// queda para el programa (en emacs marca el comienzo de una selección). Cambiar de teclado o
-// método de entrada pasó a ❖⌥Espacio / Ctrl+⌥Espacio (sdk/keyboard.js), como en macOS.
+// ❖Space (like ⌘Space on macOS) and Ctrl+Space. With the Terminal in front, Ctrl+Space
+// is left to the program (in emacs it marks the start of a selection). Switching keyboard or
+// input method moved to ❖⌥Space / Ctrl+⌥Space (sdk/keyboard.js), as on macOS.
 addListener('keydown', (e) => {
   if (e.key !== ' ' || e.repeat || e.alt || e.shift) return;
   if (e.meta && !e.ctrl) spotlight.toggle();
@@ -38,7 +38,7 @@ addListener('keydown', (e) => {
   }
 });
 
-// ---- uso reciente (para ordenar) ----
+// ---- recent use (for ranking) ----
 
 const USE_FILE = '.local/share/lordos/spotlight.json';
 let usage = null;
@@ -50,14 +50,14 @@ function loadUsage() {
 }
 function ensureDir(rel) {
   let cur = '';
-  for (const part of rel.split('/')) { cur = cur ? `${cur}/${part}` : part; try { fs.mkdir(cur); } catch (e) { /* ya existe */ } }
+  for (const part of rel.split('/')) { cur = cur ? `${cur}/${part}` : part; try { fs.mkdir(cur); } catch (e) { /* already exists */ } }
 }
 function noteUse(key) {
   const u = loadUsage();
   u[key] = { n: (u[key]?.n || 0) + 1, at: Date.now() };
   const keys = Object.keys(u);
   if (keys.length > 300) for (const k of keys.sort((a, b) => u[a].at - u[b].at).slice(0, keys.length - 300)) delete u[k];
-  try { ensureDir('.local/share/lordos'); fs.write(USE_FILE, JSON.stringify(u)); } catch (e) { /* sin disco: solo en memoria */ }
+  try { ensureDir('.local/share/lordos'); fs.write(USE_FILE, JSON.stringify(u)); } catch (e) { /* no disk: memory only */ }
 }
 function usageBoost(key) {
   const u = loadUsage()[key];
@@ -66,7 +66,7 @@ function usageBoost(key) {
   return Math.min(30, u.n * 4) * Math.max(0.2, 1 - days / 30);
 }
 
-// ---- coincidencia: prefijo > palabra > subcadena > difuso ----
+// ---- matching: prefix > word > substring > fuzzy ----
 
 const fold = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 function score(text, q, fuzzy = true) {
@@ -81,11 +81,11 @@ function score(text, q, fuzzy = true) {
   for (const ch of a) if (ch === q[i]) i++;
   return i === q.length && q.length >= 2 ? 15 : 0;
 }
-// El primer texto es el nombre (también vale la coincidencia difusa); los otros solo cuentan si
-// el texto aparece de verdad (palabra o subcadena), y valen menos.
+// The first text is the name (fuzzy matching also counts); the others only count if
+// the text really appears (word or substring), and they weigh less.
 const best = (q, ...texts) => Math.max(0, ...texts.map((x, i) => (i === 0 ? score(x, q) : score(x, q, false) * 0.7)));
 
-// ---- calculadora (parser propio, sin eval) ----
+// ---- calculator (our own parser, no eval) ----
 
 const FUNCS = { sqrt: Math.sqrt, raiz: Math.sqrt, sin: Math.sin, sen: Math.sin, cos: Math.cos, tan: Math.tan, log: Math.log10, ln: Math.log,
   abs: Math.abs, round: Math.round, redondear: Math.round, floor: Math.floor, ceil: Math.ceil, exp: Math.exp };
@@ -99,7 +99,7 @@ export function calc(input) {
   if (pct) { const a = val(pct[1]), b = val(pct[2]); return a == null || b == null || Number.isNaN(a) || Number.isNaN(b) ? null : (a / 100) * b; }
   const hasOp = /[-+*/^%()]/.test(s.replace(/^-/, '')) || /\b(sqrt|raiz|sin|sen|cos|tan|log|ln|abs|round|redondear|floor|ceil|exp)\b/.test(s);
   if (!/\d|\bpi\b/.test(s) || !hasOp) return null;
-  // coma decimal: "1,5" (si no hay puntos ni separadores de miles ambiguos)
+  // decimal comma: "1,5" (if there are no dots or ambiguous thousands separators)
   if (!s.includes('.') && /\d,\d/.test(s)) s = s.replace(/(\d),(\d)/g, '$1.$2');
   let i = 0;
   const peek = () => s[i];
@@ -117,7 +117,7 @@ export function calc(input) {
       if (id[0] in CONSTS) return CONSTS[id[0]];
       if (id[0] in FUNCS) { skip(); return FUNCS[id[0]](primary()); }
     }
-    throw new Error('expresión');
+    throw new Error('expression');
   }
   function factor() {
     let v = primary();
@@ -144,7 +144,7 @@ export function calc(input) {
   } catch (e) { return null; }
 }
 
-// ---- conversión de unidades ----
+// ---- unit conversion ----
 
 const UNITS = {
   length: { mm: 0.001, cm: 0.01, m: 1, km: 1000, in: 0.0254, pulgada: 0.0254, pulgadas: 0.0254, ft: 0.3048, pie: 0.3048, pies: 0.3048,
@@ -173,7 +173,7 @@ export function convert(input) {
   return { value: (v * UNITS[ga][a]) / UNITS[ga][b], from: m[2], to: m[3], input: v };
 }
 
-// ---- índice de archivos (si el servidor no trae lord.fs.search) ----
+// ---- file index (if the server doesn't provide lord.fs.search) ----
 
 let fileIndex = { at: 0, list: [], building: false };
 function buildFileIndex() {
@@ -204,7 +204,7 @@ const resultsVersion = createStore(0);
 function searchFiles(q) {
   if (q.length < 2) return [];
   if (typeof lord.fs.search === 'function') {
-    try { return lord.fs.search(fs.home(), q, { limit: 60, depth: 6 }); } catch (e) { /* cae al índice */ }
+    try { return lord.fs.search(fs.home(), q, { limit: 60, depth: 6 }); } catch (e) { /* fall back to the index */ }
   }
   buildFileIndex();
   return fileIndex.list.filter((f) => fold(f.name).includes(q)).slice(0, 60);
@@ -224,7 +224,7 @@ function revealFile(f) {
   wm.open('files', { new: true, args: { path: parent, select: f.name } });
 }
 
-// ---- notas (app Notas: ~/Notas/<nota>/nota.md) ----
+// ---- notes (Notes app: ~/Notas/<note>/nota.md) ----
 
 let notesCache = { at: 0, list: [] };
 function loadNotes() {
@@ -236,7 +236,7 @@ function loadNotes() {
   for (const d of dirs.filter((x) => x.dir).slice(0, 400)) {
     let text = '';
     try { text = fs.read(`Notas/${d.name}/nota.md`).slice(0, 65536); } catch (e) { continue; }
-    // encabezado YAML de la app Notas (title: …) y el cuerpo en markdown
+    // the Notes app's YAML header (title: …) and the markdown body
     const head = /^---\n([\s\S]*?)\n---\n?/.exec(text);
     const body = head ? text.slice(head[0].length) : text;
     const title = (/^title:\s*(.+)$/m.exec(head?.[1] || '')?.[1] || /^#\s+(.+)$/m.exec(body)?.[1] || body.split('\n').find((l) => l.trim()) || d.name).trim();
@@ -246,7 +246,7 @@ function loadNotes() {
   return list;
 }
 
-// ---- secciones de Ajustes ----
+// ---- Settings sections ----
 
 // ---- other sources (Help articles, …) ----
 // registerSpotlightSource('help', (q, query, { fold, best }) => [{ key, score, title, subtitle, glyph, preview, run }])
@@ -257,7 +257,7 @@ export function registerSpotlightSource(id, fn) { sources.set(id, fn); return ()
 
 const SETTINGS = ['general', 'appearance', 'wallpaper', 'network', 'sound', 'clipboard', 'sharing', 'language', 'keyboard', 'users', 'updates', 'themes', 'session'];
 
-// ---- armado de resultados ----
+// ---- building the results ----
 
 function buildResults(raw, apps) {
   const query = raw.trim();
@@ -266,7 +266,7 @@ function buildResults(raw, apps) {
   const sections = [];
   const add = (id, items, top) => { if (items.length) sections.push({ id, items, top: top ?? Math.max(...items.map((x) => x.score || 0)) }); };
 
-  // calculadora y conversiones
+  // calculator and conversions
   const conv = convert(query);
   if (conv) {
     const res = `${fmtNum(conv.value, Math.abs(conv.value) < 1 ? 6 : 3)} ${conv.to}`;
@@ -287,13 +287,13 @@ function buildResults(raw, apps) {
     .map(({ a, s }) => ({ key: `app:${a.id}`, score: s, title: a.name, subtitle: a.comment || a.genericName || t(`store.kind.${a.kind}`),
       Icon: a.Icon, preview: { kind: 'app', app: a }, run: () => launchApp(a.id) })));
 
-  // ajustes
+  // settings
   add('settings', SETTINGS.map((id) => ({ id, name: tOptional(`settings.section.${id}`), kw: tOptional(`settings.keywords.${id}`) }))
     .filter((x) => x.name).map((x) => ({ ...x, s: best(q, x.name, x.kw) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s).slice(0, 4)
     .map((x) => ({ key: `settings:${x.id}`, score: x.s + usageBoost(`settings:${x.id}`), title: x.name, subtitle: t('shell.spotlight.inSettings'), glyph: '⚙',
       run: () => wm.open('settings', { args: { section: x.id } }) })));
 
-  // acciones del sistema
+  // system actions
   const actions = [
     { id: 'dark', name: t('shell.spotlight.action.dark'), run: () => settings.set({ mode: settings.get().mode === 'dark' ? 'light' : 'dark' }) },
     { id: 'logout', name: t('shell.menu.logout'), run: () => lord.quit() },
@@ -301,7 +301,7 @@ function buildResults(raw, apps) {
   add('actions', actions.map((x) => ({ ...x, s: best(q, x.name) })).filter((x) => x.s >= 40)
     .map((x) => ({ key: `action:${x.id}`, score: x.s + 5, title: x.name, subtitle: t('shell.spotlight.action.hint'), glyph: '⏎', run: x.run })));
 
-  // archivos
+  // files
   const stem = (n) => n.replace(/\.[^.]+$/, '');
   add('files', searchFiles(q).map((f) => ({ f, s: Math.max(score(stem(f.name), q), score(f.name, q, false) * 0.3) }))
     .filter((x) => x.s > 15).map((x) => ({ ...x, s: x.s + usageBoost(`file:${x.f.path}`) - (x.f.dir ? 0 : 1) }))
@@ -309,13 +309,13 @@ function buildResults(raw, apps) {
     .map(({ f, s: sc }) => ({ key: `file:${f.path}`, score: sc * 0.8, title: f.name, subtitle: f.path.replace(fs.home(), '~'), glyph: f.dir ? '📁' : IMG.test(f.name) ? '🖼' : '📄',
       preview: { kind: 'file', file: f }, run: () => openFile(f), reveal: () => revealFile(f) })));
 
-  // notas
+  // notes
   add('notes', loadNotes().map((n) => ({ n, s: Math.max(best(q, n.title), fold(n.text).includes(q) ? 30 : 0) })).filter((x) => x.s > 0)
     .sort((a, b) => b.s - a.s).slice(0, 5)
     .map(({ n, s: sc }) => ({ key: `note:${n.id}`, score: sc, title: n.title, subtitle: formatDate(new Date(n.mtime), 'short'), glyph: '🗒',
       preview: { kind: 'note', note: n }, run: () => wm.open('notes', { args: { slug: n.id } }) })));
 
-  // portapapeles
+  // clipboard
   add('clipboard', clipboardHistory.get().filter((c) => c.text && fold(c.text).includes(q)).slice(0, 4)
     .map((c) => ({ key: `clip:${c.id || c.time}`, score: 20, title: c.text.replace(/\s+/g, ' ').slice(0, 80), subtitle: t('shell.spotlight.fromClipboard'), glyph: '📋',
       preview: { kind: 'text', text: c.text }, run: () => clipboard.use(c), hint: t('shell.spotlight.copy') })));
@@ -327,18 +327,18 @@ function buildResults(raw, apps) {
     add(id, items.slice(0, 6));
   }
 
-  // Tienda (apps de AppStream)
+  // Store (AppStream apps)
   if (q.length >= 3 && typeof lord.pkg !== 'undefined' && lord.pkg.available()) {
     let res = [];
     try { res = lord.pkg.search(query, { limit: 20, lang: locale.get().lang.split('-')[0] }).filter((r) => r.app && !r.installed).slice(0, 5); } catch (e) { res = []; }
     add('store', res.map((r) => ({ key: `store:${r.name}`, score: 10, title: r.app.name, subtitle: r.app.summary || r.summary, image: r.app.icon,
       preview: { kind: 'pkg', pkg: r }, run: () => wm.open('store', { args: { search: query, package: r.name } }) })));
   }
-  // las secciones van por su mejor resultado (la calculadora siempre arriba)
+  // sections are ordered by their best result (the calculator always on top)
   return sections.sort((a, b) => b.top - a.top);
 }
 
-// ---- vista previa ----
+// ---- preview ----
 
 const previewCache = new Map();
 function filePreview(f) {
@@ -386,7 +386,7 @@ function Preview({ item, th }) {
   return box(title(item.title), dim(item.subtitle || ''));
 }
 
-// Número legible: sin ceros de más ni notación exponencial para valores comunes.
+// Readable number: no extra zeros or exponential notation for common values.
 function fmtNum(v, max = 10) {
   const r = Number(v.toFixed(max));
   if (Math.abs(r) >= 1e15 || (r !== 0 && Math.abs(r) < 1e-9)) return String(v.toPrecision(8));
@@ -397,7 +397,7 @@ function fmtNum(v, max = 10) {
 
 const fmtSize = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${formatNumber(n / 1024, 1)} KB` : n < 1073741824 ? `${formatNumber(n / 1048576, 1)} MB` : `${formatNumber(n / 1073741824, 1)} GB`);
 
-// Filas que entran (encabezados de sección e ítems), en una ventana que sigue a la selección.
+// Rows that fit (section headers and items), in a window that follows the selection.
 const ROWS_PX = 420, ROW_H = 34, HEAD_H = 22;
 function visibleRows(sections, cur) {
   const rows = [];
@@ -407,7 +407,7 @@ function visibleRows(sections, cur) {
   let start = 0, used = 0;
   for (let i = 0; i <= at; i++) used += rows[i].h;
   while (used > ROWS_PX - ROW_H && start < at) used -= rows[start++].h;
-  if (start > 0 && rows[start - 1].header) start--;           // que se vea el título de la sección
+  if (start > 0 && rows[start - 1].header) start--;           // keep the section title visible
   const out = [];
   used = 0;
   for (let i = start; i < rows.length && used + rows[i].h <= ROWS_PX; i++) { out.push(rows[i]); used += rows[i].h; }
@@ -447,13 +447,13 @@ function Panel() {
     if (e.key === 'Tab') { const i = sections.findIndex((s) => s.items.includes(cur)); const next = sections[(i + 1) % sections.length]; if (next) setSel(flat.indexOf(next.items[0])); return true; }
     return false;
   };
-  const W = Math.min(720, screen.width - 40);
+  const W = Math.min(720, mainBox().width - 40);
   const listW = cur && query.trim() ? W - 260 : W;
-  return h(View, { onClick: () => spotlight.close(), style: { position: 'absolute', left: 0, top: 0, width: screen.width, height: screen.height } },
+  return h(View, { onClick: () => spotlight.close(), style: { position: 'absolute', ...mainBox() } },
     h(View, {
       onClick: (e) => e.stopPropagation(),
       style: {
-        position: 'absolute', left: Math.round((screen.width - W) / 2), top: Math.round(screen.height * 0.16), width: W,
+        position: 'absolute', left: Math.round((mainBox().width - W) / 2), top: Math.round(mainBox().height * 0.16), width: W,
         borderRadius: 14, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', overflow: 'hidden',
       },
     },

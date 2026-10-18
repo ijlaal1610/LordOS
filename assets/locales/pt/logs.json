@@ -7,6 +7,7 @@
   "field.unit": "Unidade",
   "field.uid": "UID",
   "field.boot": "Inicialização",
+  "field.message": "Mensagem",
   "line": "Linha {n}",
   "level.error": "Erro",
   "level.warning": "Aviso",

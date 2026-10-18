@@ -24,6 +24,13 @@ static double clk(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
 
 static char text_buf[8192];
 
+/* The display being painted (docs/DISPLAYS.md): layout is in logical px, the canvas is that display's
+ * physical frame. Every coordinate, radius, border, shadow, blur and font size goes through it, so
+ * text and vectors are rasterized at the display's resolution (150 % is sharp, not upscaled). */
+PaintView paint_view = { 0, 0, 1, 0, 0, 0 };
+static inline float VX(float x) { return (x - paint_view.x) * paint_view.k + paint_view.dx; }
+static inline float VY(float y) { return (y - paint_view.y) * paint_view.k + paint_view.dy; }
+
 static uint32_t with_opacity(uint32_t argb, float op) {
     uint32_t a = (uint32_t)((argb >> 24) * op + 0.5f);
     return a << 24 | (argb & 0xffffff);
@@ -41,45 +48,51 @@ static void paint_node(Canvas *c, Node *n, float opacity) {
     const Style *s = &n->s;
     float op = opacity * s->opacity;
     if (op < 0.004f) return;
-    float x = n->ax, y = n->ay, w = n->w, h = n->h;
+    const float k = paint_view.k;
+    float x = VX(n->ax), y = VY(n->ay), w = n->w * k, h = n->h * k, rad = s->radius * k;
     if (paint_capture_mode && n->protect) {     /* ventana protegida: negra en cualquier captura */
-        canvas_rrect(c, x, y, w, h, s->radius, 0xff000000u);
+        canvas_rrect(c, x, y, w, h, rad, 0xff000000u);
         return;
     }
     if (skip_until && n->id == skip_until) skip_reached = 1;
     int own = !skip_until || skip_reached;     /* ¿se pinta este nodo (o solo sus hijos)? */
 
     if (own && (s->shadow_color >> 24) && (s->shadow_blur > 0 || s->shadow_x || s->shadow_y))
-        PROF(0, canvas_shadow(c, x, y, w, h, s->radius, s->shadow_x, s->shadow_y, s->shadow_blur,
+        PROF(0, canvas_shadow(c, x, y, w, h, rad, s->shadow_x * k, s->shadow_y * k, s->shadow_blur * k,
                               with_opacity(s->shadow_color, op)));
 
     Corners corners = {0};
     int round_clip = s->overflow_hidden && s->radius > 0;
-    if (round_clip) canvas_corners_save(c, &corners, x, y, w, h, s->radius);
+    if (round_clip) canvas_corners_save(c, &corners, x, y, w, h, rad);
 
-    if (own && s->backdrop_blur >= 1) PROF(1, canvas_backdrop_blur(c, x, y, w, h, s->radius, (int)s->backdrop_blur));
-    if (own && s->bg >> 24) PROF(2, canvas_rrect(c, x, y, w, h, s->radius, with_opacity(s->bg, op)));
-    if (own && s->has_gradient) PROF(2, canvas_rrect_gradient(c, x, y, w, h, s->radius, s->grad_from, s->grad_to, s->grad_angle, op));
+    if (own && s->backdrop_blur >= 1) PROF(1, canvas_backdrop_blur(c, x, y, w, h, rad, (int)(s->backdrop_blur * k + 0.5f)));
+    if (own && s->bg >> 24) PROF(2, canvas_rrect(c, x, y, w, h, rad, with_opacity(s->bg, op)));
+    if (own && s->has_gradient) PROF(2, canvas_rrect_gradient(c, x, y, w, h, rad, s->grad_from, s->grad_to, s->grad_angle, op));
 
     float bw = s->border_width;
-    float ix = x + s->padding[EDGE_L] + bw, iy = y + s->padding[EDGE_T] + bw;
-    float iw = w - s->padding[EDGE_L] - s->padding[EDGE_R] - 2 * bw;
-    float ih = h - s->padding[EDGE_T] - s->padding[EDGE_B] - 2 * bw;
+    /* content box: logical (Wayland surfaces take logical coordinates and scale themselves) and physical */
+    float lix = n->ax + s->padding[EDGE_L] + bw, liy = n->ay + s->padding[EDGE_T] + bw;
+    float liw = n->w - s->padding[EDGE_L] - s->padding[EDGE_R] - 2 * bw;
+    float lih = n->h - s->padding[EDGE_T] - s->padding[EDGE_B] - 2 * bw;
+    float ix = VX(lix), iy = VY(liy), iw = liw * k, ih = lih * k;
 
     if (!own) goto children;
     if (n->type == NODE_IMAGE && n->img)
-        PROF(3, image_draw(c, n->img, ix, iy, iw, ih, s->radius - bw, s->object_fit, op));
+        PROF(3, image_draw(c, n->img, ix, iy, iw, ih, (s->radius - bw) * k, s->object_fit, op));
     if (n->type == NODE_TERM) term_paint(c, n->term, ix, iy, iw, ih, op);
-    if (n->type == NODE_SURFACE) wl_paint(c, n->term, n->id, ix, iy, iw, ih, op);
-    if (n->type == NODE_MEDIA) media_paint(c, n->term, n->id, ix, iy, iw, ih, s->radius - bw, op);
+    if (n->type == NODE_SURFACE) wl_paint(c, n->term, n->id, lix, liy, liw, lih, op);
+    if (n->type == NODE_MEDIA) media_paint(c, n->term, n->id, ix, iy, iw, ih, (s->radius - bw) * k, op);
     if (n->type == NODE_TEXT && (s->color >> 24)) {
         node_gather_text(n, text_buf, sizeof text_buf);
         Rect old = canvas_push_clip(c, x, y, w, h);
         int al = s->text_align;
         if (al == TEXT_START) al = n->rtl ? TEXT_RIGHT : TEXT_LEFT;
         else if (al == TEXT_END) al = n->rtl ? TEXT_LEFT : TEXT_RIGHT;
-        PROF(4, text_draw(c, text_buf, TEXT_WEIGHT(s), s->font_size, s->line_height, ix, iy, iw,
-                          al, s->nowrap, with_opacity(s->color, op)));
+        /* line breaks come from the logical metrics (the ones layout measured), glyphs at the display's size */
+        text_paint_scale = k;
+        PROF(4, text_draw(c, text_buf, TEXT_WEIGHT(s), s->font_size * k, s->line_height > 4 ? s->line_height * k : s->line_height,
+                          ix, iy, iw, al, s->nowrap, with_opacity(s->color, op)));
+        text_paint_scale = 1;
         canvas_set_clip(c, old);
     }
 
@@ -94,8 +107,8 @@ children:;
     canvas_set_clip(c, old_clip);
 
     if (own && bw > 0 && (s->border_color >> 24))
-        PROF(5, canvas_rrect_stroke(c, x, y, w, h, s->radius, bw, with_opacity(s->border_color, op)));
-    if (round_clip) canvas_corners_restore(c, &corners, x, y, w, h, s->radius);
+        PROF(5, canvas_rrect_stroke(c, x, y, w, h, rad, bw * k, with_opacity(s->border_color, op)));
+    if (round_clip) canvas_corners_restore(c, &corners, x, y, w, h, rad);
 }
 
 /* Área que ocupa un nodo en pantalla, incluida su sombra. */
@@ -126,7 +139,10 @@ static struct {
     int node, want, valid, rendering;
     uint32_t *px;
     int w, h, cap;
-    float ox, oy;               /* esquina de la capa respecto del nodo */
+    float ox, oy;               /* esquina de la capa respecto del nodo (logical px) */
+    float pox, poy;             /* the same in physical px of the view it was painted for */
+    int view;                   /* paint_view.index of the display that uses the layer (paint_layer_view) */
+    float k;                    /* that display's scale when the layer was painted */
     float op;                   /* opacidad con la que se pintó */
     float gdx, gdy;             /* corrimiento del último cuadro (damage_walk) */
     Box at;                     /* dónde estaba en pantalla al pintarla */
@@ -159,6 +175,17 @@ void paint_layer_end(void) {
 }
 
 void paint_layer_external_damage(void) { layer.valid = 0; }
+
+/* Several displays: only the one with most of the window uses the layer and the copy of what is
+ * below; the others paint the window as usual. Moving to another display rebuilds both. */
+int paint_layer_node(void) { return layer.want ? layer.node : 0; }
+
+void paint_layer_view(int index) {
+    if (layer.view == index) return;
+    layer.view = index;
+    layer.valid = 0;
+    layer.below_valid = 0;
+}
 
 static long layer_renders, layer_blits, below_renders;
 void paint_layer_stats(long *renders, long *blits) {
@@ -219,7 +246,9 @@ static int layer_render(Node *n, float opacity) {
     Box b = visual_box(n);
     int ok = 1;
     subtree_box(n, &b, &ok);
-    int w = (int)(b.x1 - b.x0), h = (int)(b.y1 - b.y0);
+    /* the layer's pixels are the view's physical ones */
+    int x0 = (int)floorf(VX(b.x0)), y0 = (int)floorf(VY(b.y0));
+    int w = (int)ceilf(VX(b.x1)) - x0, h = (int)ceilf(VY(b.y1)) - y0;
     if (!ok || w <= 0 || h <= 0 || (size_t)w * h > 4096u * 4096u) { layer.want = 0; return 0; }
     if ((size_t)w * h > (size_t)layer.cap) {
         uint32_t *px = realloc(layer.px, (size_t)w * h * 4);
@@ -234,12 +263,14 @@ static int layer_render(Node *n, float opacity) {
     layer_fill(0, 0, w, h);
     layer.ox = b.x0 - n->ax;
     layer.oy = b.y0 - n->ay;
+    layer.pox = x0 - VX(n->ax);
+    layer.poy = y0 - VY(n->ay);
+    layer.k = paint_view.k;
     layer.op = opacity;
     layer.at = b;
     layer.part = (Box){ 0, 0, 0, 0 };
     /* canvas con el origen corrido: el árbol se pinta en sus coordenadas de pantalla (así la terminal
      * y las apps Linux siguen anotando dónde están), pero cae en el búfer de la capa */
-    int x0 = (int)b.x0, y0 = (int)b.y0;
     Canvas lc;
     canvas_init(&lc, layer.px - ((ptrdiff_t)y0 * w + x0), x0 + w, y0 + h, w);
     canvas_set_clip(&lc, (Rect){ x0, y0, x0 + w, y0 + h });
@@ -258,7 +289,7 @@ static int layer_render(Node *n, float opacity) {
 
 /* Repinta solo layer.part (lo que cambió adentro: una línea de la terminal, el cursor que parpadea). */
 static void layer_render_part(Node *n, float opacity) {
-    int x0 = (int)lroundf(n->ax + layer.ox), y0 = (int)lroundf(n->ay + layer.oy);
+    int x0 = (int)lroundf(VX(n->ax) + layer.pox), y0 = (int)lroundf(VY(n->ay) + layer.poy);
     Box p = layer.part;
     layer.part = (Box){ 0, 0, 0, 0 };
     int px0 = (int)fmaxf(0, floorf(p.x0)), py0 = (int)fmaxf(0, floorf(p.y0));
@@ -276,19 +307,20 @@ static void layer_render_part(Node *n, float opacity) {
     skip_until = skip;
     layer_holes(px0, py0, px1, py1);
     layer.painted = 1;
-    layer.at = (Box){ (float)x0, (float)y0, (float)(x0 + layer.w), (float)(y0 + layer.h) };
+    float k = paint_view.k, lx = (x0 - paint_view.dx) / k + paint_view.x, ly = (y0 - paint_view.dy) / k + paint_view.y;
+    layer.at = (Box){ lx, ly, lx + layer.w / k, ly + layer.h / k };
     layer_renders++;
 }
 
 static int layer_paint(Canvas *c, Node *n, float opacity) {
     if (layer.stop && n->id == layer.stop) layer.stopped = 1;     /* armando lo de abajo: hasta acá */
     if (layer.stopped) return 1;
-    if (!layer.want || layer.rendering || n->id != layer.node || paint_capture_mode || layer.resize) return 0;
+    if (!layer.want || layer.rendering || n->id != layer.node || paint_capture_mode || layer.resize || paint_view.index != layer.view) return 0;
     if (skip_until && !skip_reached && skip_until != layer.node) return 0;   /* lo tapa un video */
     if ((!layer.valid || layer.op != opacity) && !layer_render(n, opacity)) return 0;
     if (layer.part.x1 > layer.part.x0) layer_render_part(n, opacity);
     if (skip_until == layer.node) skip_reached = 1;
-    int bx = (int)lroundf(n->ax + layer.ox), by = (int)lroundf(n->ay + layer.oy);
+    int bx = (int)lroundf(VX(n->ax) + layer.pox), by = (int)lroundf(VY(n->ay) + layer.poy);
     canvas_blit(c, layer.px, layer.w, layer.h, bx, by, 0, 1, 0);
     if (gpu_active()) {
         /* los huecos de las apps: alfa 0 de verdad (la mezcla no los abre) y la app anotada donde está ahora */
@@ -313,7 +345,7 @@ static int layer_paint(Canvas *c, Node *n, float opacity) {
 /* Lo de abajo de la ventana, en pantalla completa: se pinta el árbol hasta llegar a ella. En el camino
  * GPU sus ventanas de apps (huecos en la UI) se guardan y se vuelven a anotar en cada cuadro. */
 static int below_ready(const Canvas *c, Node *root) {
-    if (!layer.want || layer.rendering || paint_capture_mode) return 0;
+    if (!layer.want || layer.rendering || paint_capture_mode || paint_view.index != layer.view) return 0;
     layer.since++;
     if (layer.no_below) return 0;
     if (layer.below_valid && layer.bw == c->w && layer.bh == c->h) { wl_paint_kept(); return 1; }
@@ -389,7 +421,9 @@ int paint_damage(Node *root) {
         Node *n = node_get(layer.node);
         Box now = n ? n->prev_box : layer.at;
         if (box_inside(ext, layer.at)) {        /* adentro, donde se pintó: solo esa parte */
-            Box q = { ext.x0 - layer.at.x0, ext.y0 - layer.at.y0, ext.x1 - layer.at.x0, ext.y1 - layer.at.y0 };
+            float k = layer.k > 0 ? layer.k : 1, e = k != 1 ? 1 : 0;      /* layer coordinates are physical */
+            Box q = { floorf((ext.x0 - layer.at.x0) * k) - e, floorf((ext.y0 - layer.at.y0) * k) - e,
+                      ceilf((ext.x1 - layer.at.x0) * k) + e, ceilf((ext.y1 - layer.at.y0) * k) + e };
             Box *p = &layer.part;
             if (p->x1 <= p->x0) *p = q;
             else { p->x0 = fminf(p->x0, q.x0); p->y0 = fminf(p->y0, q.y0); p->x1 = fmaxf(p->x1, q.x1); p->y1 = fmaxf(p->y1, q.y1); }
@@ -400,8 +434,8 @@ int paint_damage(Node *root) {
     if (layer.want && layer.valid && layer.part.x1 > layer.part.x0) {     /* esa parte, donde está ahora la ventana */
         Node *n = node_get(layer.node);
         if (n) {
-            float x0 = roundf(n->ax + layer.ox), y0 = roundf(n->ay + layer.oy);
-            damage_add((Box){ x0 + layer.part.x0, y0 + layer.part.y0, x0 + layer.part.x1, y0 + layer.part.y1 });
+            float x0 = roundf(n->ax + layer.ox), y0 = roundf(n->ay + layer.oy), k = layer.k > 0 ? layer.k : 1;
+            damage_add((Box){ floorf(x0 + layer.part.x0 / k), floorf(y0 + layer.part.y0 / k), ceilf(x0 + layer.part.x1 / k), ceilf(y0 + layer.part.y1 / k) });
         }
     }
     Box *d = &ui.damage;

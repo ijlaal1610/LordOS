@@ -1,2 +1,2 @@
-# ISO live: el usuario de prueba usa sudo sin contraseña.
+# Live ISO: the test user has passwordless sudo.
 lordos ALL=(ALL) NOPASSWD: ALL

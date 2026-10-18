@@ -1,13 +1,13 @@
-/* drmcard.h — qué /dev/dri/cardN es la pantalla (lord-server y lord-sessiond).
+/* drmcard.h — which /dev/dri/cardN is the display (lord-server and lord-sessiond).
  *
- * En una PC suele ser card0, pero no siempre: con simpledrm al arrancar, amdgpu/i915 aparecen
- * como card1. En las placas ARM (Raspberry Pi 4/5 y muchas otras) la pantalla y la GPU 3D son
- * dos dispositivos: en la Pi 5, v3d (solo render, sin conectores) puede quedar en card0 y vc4
- * (la que tiene HDMI) en card1. Por eso se elige la primera tarjeta que tiene conectores y
- * CRTCs, y entre esas, la que tiene un monitor enchufado. LORD_CARD=/dev/dri/cardN la fija.
+ * On a PC it is usually card0, but not always: with simpledrm at boot, amdgpu/i915 show up
+ * as card1. On ARM boards (Raspberry Pi 4/5 and many others) the display and the 3D GPU are
+ * two devices: on the Pi 5, v3d (render only, no connectors) may end up as card0 and vc4
+ * (the one with HDMI) as card1. That is why the first card with connectors and
+ * CRTCs is chosen, and among those, the one with a monitor plugged in. LORD_CARD=/dev/dri/cardN forces it.
  *
- * Solo ioctls del kernel (sin libdrm); header sin dependencias para que lo use también
- * lord-sessiond, que no enlaza kms.c. Ver docs/RASPBERRY.md. */
+ * Only kernel ioctls (no libdrm); a dependency-free header so that lord-sessiond can use it
+ * too, since it does not link kms.c. See docs/RASPBERRY.md. */
 #ifndef LORD_DRMCARD_H
 #define LORD_DRMCARD_H
 
@@ -22,7 +22,7 @@
 #include <drm/drm.h>
 #include <drm/drm_mode.h>
 
-/* 2 = tiene un conector conectado, 1 = tiene conectores (ninguno conectado), 0 = no es KMS. */
+/* 2 = has a connected connector, 1 = has connectors (none connected), 0 = not KMS. */
 static inline int drm_card_score(int fd) {
     struct drm_mode_card_res res;
     memset(&res, 0, sizeof res);
@@ -44,8 +44,8 @@ static inline int drm_card_score(int fd) {
     return 1;
 }
 
-/* Escribe en out la ruta de la tarjeta de la pantalla. 0 si encontró una con KMS; -1 si no
- * (out queda en /dev/dri/card0, como antes). */
+/* Writes the display card's path to out. 0 if it found one with KMS; -1 otherwise
+ * (out stays /dev/dri/card0, as before). */
 static inline int drm_pick_card(char *out, size_t size) {
     const char *env = getenv("LORD_CARD");
     if (env && !strncmp(env, "/dev/dri/card", 13) && !strstr(env, "..")) {

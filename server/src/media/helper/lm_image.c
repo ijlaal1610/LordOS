@@ -1,5 +1,5 @@
-/* lm_image.c — imágenes en lord-media: decodificar un cuadro (foto, carátula o un cuadro de un
- * video), pasarlo a BGRA, codificar PNG/JPEG y describir un archivo en JSON (probe). */
+/* lm_image.c — images in lord-media: decode a frame (photo, cover art or a frame of a
+ * video), convert it to BGRA, encode PNG/JPEG and describe a file in JSON (probe). */
 #include "lm.h"
 
 #include <math.h>
@@ -25,7 +25,7 @@ static int open_decoder(AVStream *st, AVCodecContext **out, int threads) {
 }
 
 static int orientation_of(const AVFrame *f, const AVStream *st) {
-    /* EXIF de JPEG: FFmpeg lo deja en los metadatos del cuadro; videos: matriz de rotación */
+    /* JPEG EXIF: FFmpeg leaves it in the frame's metadata; videos: rotation matrix */
     const AVDictionaryEntry *e = av_dict_get(f->metadata, "Orientation", NULL, 0);
     if (e) {
         int o = atoi(e->value);
@@ -124,13 +124,13 @@ int lm_encode_image(const AVFrame *bgra, const char *format, int quality, int ou
     c->color_range = AVCOL_RANGE_JPEG;
     if (jpeg) {
         int q = quality <= 0 ? 90 : quality > 100 ? 100 : quality;
-        int qs = 2 + (100 - q) * 29 / 100;                 /* calidad 100 → q 2, 0 → q 31 */
+        int qs = 2 + (100 - q) * 29 / 100;                 /* quality 100 → q 2, 0 → q 31 */
         c->flags |= AV_CODEC_FLAG_QSCALE;
         c->global_quality = FF_QP2LAMBDA * qs;
         c->qmin = c->qmax = qs;
     }
     if (avcodec_open2(c, codec, NULL) < 0) { avcodec_free_context(&c); return -1; }
-    /* BGRA premultiplicado → sin premultiplicar → formato del codificador */
+    /* premultiplied BGRA → unpremultiplied → the encoder's format */
     AVFrame *straight = av_frame_alloc();
     straight->format = AV_PIX_FMT_BGRA;
     straight->width = bgra->width;
@@ -170,7 +170,7 @@ int lm_encode_image(const AVFrame *bgra, const char *format, int quality, int ou
     return r;
 }
 
-/* Etiquetas que interesan (en el contenedor o, en Ogg/Opus/FLAC, en la pista de audio). */
+/* Tags of interest (in the container or, in Ogg/Opus/FLAC, in the audio track). */
 static void tags_json(AVFormatContext *fmt, LmBuf *b) {
     static const char *const keys[] = { "title", "artist", "album", "album_artist", "date", "genre", "track", "disc", "comment", "composer", NULL };
     AVDictionary *dicts[2] = { fmt->metadata, NULL };

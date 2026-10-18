@@ -1,11 +1,11 @@
-/* maudio.c — el audio de los medios en lord-server (ver aring.h y docs/MEDIOS.md).
+/* maudio.c — media audio in lord-server (see aring.h and docs/MEDIA.md).
  *
- * Reproducir: lord-media escribe PCM en un anillo de memoria compartida que crea lord-server;
- * acá se tiene el stream de PipeWire y, cuando PipeWire pide bytes (REQUEST), se copian del
- * anillo, sin esperar a nadie. Después de cada respuesta de GET_PLAYBACK_LATENCY se escribe en
- * el anillo qué byte se está oyendo y cuándo (seqlock): el reloj del video en lord-media.
- * Grabar: el stream de grabación es de lord-server (después del permiso de micrófono) y se
- * escribe en un anillo que lee lord-media. Así lord-media nunca tiene el socket de PipeWire. */
+ * Playback: lord-media writes PCM into a shared-memory ring that lord-server creates;
+ * here we own the PipeWire stream and, when PipeWire asks for bytes (REQUEST), they're copied from the
+ * ring, without waiting for anyone. After each GET_PLAYBACK_LATENCY reply, which byte is being heard
+ * and when is written to the ring (seqlock): the video clock in lord-media.
+ * Recording: the capture stream belongs to lord-server (after the microphone permission) and it's
+ * written into a ring that lord-media reads. That way lord-media never has the PipeWire socket. */
 #include "media_int.h"
 #include "aring.h"
 #include "mpulse.h"
@@ -19,18 +19,18 @@
 #include <unistd.h>
 
 struct MAudio {
-    int rec;                        /* 0 reproducir, 1 grabar */
+    int rec;                        /* 0 playback, 1 recording */
     int ring_fd;
     ARingHdr *ring;
     size_t ring_len;
-    uint32_t size;                  /* tamaño de datos propio (no el de la cabecera compartida) */
-    uint64_t pos;                   /* cursor propio: escritura (grabar) o lectura (reproducir) */
+    uint32_t size;                  /* own data size (not the one in the shared header) */
+    uint64_t pos;                   /* own cursor: write (recording) or read (playback) */
     LmPulse pa;
     int started, want_play;
     double volume;
     int volume_sent;
     uint32_t serial_seen;
-    int64_t delta;                  /* byte del anillo = byte del stream + delta */
+    int64_t delta;                  /* ring byte = stream byte + delta */
     double flush_ms, last_lat_req, last_lat_at;
     char app[64], title[128], role[16], source[256];
 };
@@ -71,7 +71,7 @@ static int start(MAudio *a) {
     a->started = 1;
     int fd = media_pulse_fd();
     if (fd < 0 || lmp_connect(&a->pa, fd, a->app, "org.lordos.Media")) {
-        fprintf(stderr, "medios: sin PipeWire para %s\n", a->rec ? "grabar" : "reproducir");
+        fprintf(stderr, "media: no PipeWire to %s\n", a->rec ? "record" : "play");
         a->pa.failed = 1;
         return -1;
     }
@@ -94,7 +94,7 @@ MAudio *maudio_open(int rec, const char *app, const char *title, const char *rol
     snprintf(a->title, sizeof a->title, "%s", title && *title ? title : a->app);
     if (rec) snprintf(a->source, sizeof a->source, "%s", role_or_source ? role_or_source : "");
     else snprintf(a->role, sizeof a->role, "%s", role_or_source && *role_or_source ? role_or_source : "video");
-    /* reproducir: 1,4 s de estéreo; grabar: 2,7 s de mono */
+    /* playback: 1.4 s of stereo; recording: 2.7 s of mono */
     if (make_ring(a, rec ? 1 : 2, 1u << 18)) { free(a); return NULL; }
     if (rec) start(a);
     *ring_fd = a->ring_fd;
@@ -119,13 +119,13 @@ static void publish_clock(MAudio *a) {
     LmPulse *p = &a->pa;
     if (!p->lat_valid || p->lat_at_ms == a->last_lat_at) return;
     a->last_lat_at = p->lat_at_ms;
-    if (p->lat_sent_ms < a->flush_ms) return;           /* respuesta de antes del seek */
-    double bps = AR_RATE * 4 / 1e6;                     /* bytes por microsegundo */
+    if (p->lat_sent_ms < a->flush_ms) return;           /* reply from before the seek */
+    double bps = AR_RATE * 4 / 1e6;                     /* bytes per microsecond */
     int64_t heard = p->read_index - (int64_t)(p->sink_usec * bps);
     ar_clock_write(a->ring, 1, p->lat_playing && !p->corked, heard + a->delta, (int64_t)(p->lat_at_ms * 1000), (int64_t)p->sink_usec);
 }
 
-/* Lo que se puede hacer ahora: saludo, seek, volumen, pasar PCM, pedir latencia. */
+/* What can be done now: handshake, seek, volume, pass PCM, ask for latency. */
 void maudio_service(MAudio *a) {
     if (!a) return;
     if (!a->started) {
@@ -133,9 +133,9 @@ void maudio_service(MAudio *a) {
         start(a);
     }
     LmPulse *p = &a->pa;
-    if (p->fd >= 0 && lmp_dispatch(p)) { fprintf(stderr, "medios: se cortó PipeWire\n"); p->failed = 1; }
+    if (p->fd >= 0 && lmp_dispatch(p)) { fprintf(stderr, "media: PipeWire connection dropped\n"); p->failed = 1; }
     if (a->rec || p->failed || !p->ready) return;
-    /* seek: lo de antes de discard_to no se oye; PipeWire descarta lo que tenía */
+    /* seek: what's before discard_to isn't heard; PipeWire discards what it had */
     uint32_t serial = atomic_load(&a->ring->serial);
     if (serial != a->serial_seen) {
         a->serial_seen = serial;
@@ -168,7 +168,7 @@ void maudio_playing(MAudio *a, int on) {
     a->want_play = on;
     maudio_service(a);
     if (!on && a->ring) {
-        /* en pausa el reloj queda quieto donde estaba */
+        /* while paused the clock stays still where it was */
         int playing;
         int64_t pos, mono;
         if (ar_clock_read(a->ring, &playing, &pos, &mono)) {

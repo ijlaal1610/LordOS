@@ -1,19 +1,20 @@
-/* capture.c — capturas de pantalla, grabación y lo que ve el escritorio remoto, con las ventanas
- * protegidas en negro (ver docs/MEDIOS.md, «Ventanas protegidas»).
+/* capture.c — screenshots, recording and what the remote desktop sees, with the protected
+ * windows in black (see docs/MEDIA.md, «Protected windows»).
  *
- * Una ventana se marca protegida con wm.setProtected(id, true) (el SDK pone `protected` en el
- * nodo de su contenido). En la pantalla local se ve normal; en cualquier captura se pinta
- * negra:
- *   - captura de pantalla: se vuelve a pintar todo el árbol en un lienzo aparte en «modo
- *     captura» (paint_capture), donde un nodo protegido es un rectángulo negro. Respeta el orden
- *     de las ventanas: lo que esté encima de la protegida se ve.
- *   - grabación y escritorio remoto: si hay alguna ventana protegida, se mantiene un segundo
- *     lienzo en modo captura, repintado solo en la región que cambió en cada cuadro; si no
- *     hay ninguna, se usa el cuadro tal cual (sin costo extra).
- * Grabar (como el escritorio remoto) compone por CPU, así el cuadro está en memoria. */
+ * A window is marked protected with wm.setProtected(id, true) (the SDK sets `protected` on the
+ * node of its content). On the local screen it looks normal; in any capture it's painted
+ * black:
+ *   - screenshot: the whole tree is repainted onto a separate canvas in «capture
+ *     mode» (paint_capture), where a protected node is a black rectangle. It respects the order
+ *     of the windows: whatever is above the protected one is visible.
+ *   - recording and remote desktop: if there is any protected window, a second
+ *     canvas in capture mode is kept, repainted only in the region that changed in each frame; if there
+ *     is none, the frame is used as is (no extra cost).
+ * Recording (like the remote desktop) composites on the CPU, so the frame is in memory. */
 #include "media_int.h"
 #include "../ui/ui.h"
 #include "../wl/wl.h"
+#include "../hw/display.h"
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -23,11 +24,11 @@
 #include <time.h>
 #include <unistd.h>
 
-static Canvas cap;                  /* escena en modo captura (persistente) */
+static Canvas cap;                  /* scene in capture mode (persistent) */
 static int cap_valid, last_remote;
-static uint32_t *fs_px;             /* cap + pantalla completa (temporal) */
+static uint32_t *fs_px;             /* cap + full screen (temporary) */
 static size_t fs_cap;
-static MediaSrc *rec;               /* grabación de pantalla en curso (una a la vez) */
+static MediaSrc *rec;               /* screen recording in progress (one at a time) */
 static int rec_pending;
 
 static double now_ms(void) {
@@ -70,7 +71,7 @@ void media_scene_painted(const Canvas *scene) {
     else repaint_cap(scene->clip);
 }
 
-/* ---- cursor en la grabación (la flecha de LordOS o la imagen de la app) ---- */
+/* ---- cursor in the recording (the LordOS arrow or the app's image) ---- */
 static const char *const arrow[] = {
     "X", "XX", "XoX", "XooX", "XoooX", "XooooX", "XoooooX", "XooooooX", "XoooooooX",
     "XooooooooX", "XoooooooooX", "XooooooooooX", "XooooooXXXXX", "XoooXooX",
@@ -83,10 +84,10 @@ static void feed_recording(const Canvas *src, const MediaCursor *cur) {
     double t = now_ms();
     double gap = 1000.0 / (s->rec_fps > 0 ? s->rec_fps : 30);
     if (t - s->rec_last < gap - 2) { rec_pending = 1; return; }
-    if (src->w != s->in_w || src->h != s->in_h) { s->rec_dropped++; return; }    /* cambió la pantalla: se saltea */
+    if (src->w != s->in_w || src->h != s->in_h) { s->rec_dropped++; return; }    /* the screen changed: skipped */
     int slot = -1;
     for (int i = 0; i < s->in_slots; i++) if (!s->in_busy[i]) { slot = i; break; }
-    if (slot < 0) { s->rec_dropped++; rec_pending = 1; return; }              /* el codificador va atrasado */
+    if (slot < 0) { s->rec_dropped++; rec_pending = 1; return; }              /* the encoder is behind */
     uint32_t *dst = (uint32_t *)(s->in_map + (size_t)slot * s->in_w * s->in_h * 4);
     for (int y = 0; y < src->h; y++) memcpy(dst + (size_t)y * s->in_w, src->px + (size_t)y * src->stride, (size_t)src->w * 4);
     if (cur) {
@@ -145,20 +146,40 @@ int media_memfd_from_pixels(const uint32_t *px, int w, int h) {
     return fd;
 }
 
-/* ---- captura de pantalla ---- */
+/* ---- screenshot ---- */
+
+/* The whole screen is the main display at its own resolution (sharp at 150 %), or every display
+ * (Settings → Displays, "capture all": the global space at 100 %). A region (x, y, w, h) is logical. */
+static const DisplayOut *capture_main(void) {
+    const DisplayPlan *p = display_current();
+    if (p->n < 1 || (display_capture_all() && p->n > 1 && !p->mirror)) return NULL;
+    return &p->o[p->main];
+}
+
+/* Size of the frames main.c feeds the recording and the remote desktop (main display or all). */
+void media_capture_size(int *w, int *h) {
+    const DisplayOut *m = capture_main();
+    *w = (m ? m->v.pw : (int)ui.width) & ~1;
+    *h = (m ? m->v.ph : (int)ui.height) & ~1;
+}
 
 MediaSrc *media_screenshot(const char *app, int x, int y, int w, int h) {
     int W = (int)ui.width, H = (int)ui.height;
     if (W <= 0 || H <= 0 || !ui.root) return NULL;
+    const DisplayOut *m = w <= 0 || h <= 0 ? capture_main() : NULL;
+    if (m) { W = m->v.pw; H = m->v.ph; }
     uint32_t *full = malloc((size_t)W * H * 4);
     if (!full) return NULL;
     Canvas c;
     canvas_init(&c, full, W, H, W);
     canvas_clear(&c, 0x000000);
+    PaintView keep = paint_view;
+    if (m) paint_view = (PaintView){ (float)m->v.x, (float)m->v.y, (float)m->v.k, (float)m->v.dx, (float)m->v.dy, -1 };
     paint_capture(&c, ui.root);
     paint_capture_mode = 1;
     wl_paint_fullscreen(&c);
     paint_capture_mode = 0;
+    paint_view = keep;
     if (w <= 0 || h <= 0) { x = 0; y = 0; w = W; h = H; }
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
@@ -177,7 +198,7 @@ MediaSrc *media_screenshot(const char *app, int x, int y, int w, int h) {
     s->w = w;
     s->h = h;
     s->opaque = 1;
-    for (size_t i = 0; i < (size_t)w * h; i++) s->px[i] |= 0xff000000u;      /* sin huecos (camino GPU) */
+    for (size_t i = 0; i < (size_t)w * h; i++) s->px[i] |= 0xff000000u;      /* no holes (GPU path) */
     s->frame_seq = 1;
     return s;
 }
@@ -201,11 +222,12 @@ MediaSrc *media_crop(MediaSrc *src, int x, int y, int w, int h) {
     return s;
 }
 
-/* ---- grabación de pantalla ---- */
+/* ---- screen recording ---- */
 
 int media_screenrec_start(MediaSrc *s, int fps) {
     if (rec) return -1;
-    int W = (int)ui.width & ~1, H = (int)ui.height & ~1;
+    int W, H;
+    media_capture_size(&W, &H);
     int slots = 3;
     size_t n = (size_t)W * H * 4 * slots;
     int fd = memfd_create("lordos-screen", MFD_CLOEXEC | MFD_ALLOW_SEALING);
@@ -227,7 +249,7 @@ int media_screenrec_start(MediaSrc *s, int fps) {
     rec = s;
     rec_pending = 1;
     cap_valid = 0;
-    /* el próximo cuadro entero (y por CPU: main.c apaga la GPU mientras se graba) */
+    /* the next full frame (and on the CPU: main.c turns off the GPU while recording) */
     damage_add((Box){ 0, 0, ui.width, ui.height });
     ui.dirty = 1;
     return 0;
@@ -237,5 +259,5 @@ void media_capture_src_closed(MediaSrc *s) {
     if (rec != s) return;
     rec = NULL;
     rec_pending = 0;
-    fprintf(stderr, "medios: grabación de pantalla: %ld cuadros, %ld descartados\n", s->rec_frames, s->rec_dropped);
+    fprintf(stderr, "media: screen recording: %ld frames, %ld dropped\n", s->rec_frames, s->rec_dropped);
 }

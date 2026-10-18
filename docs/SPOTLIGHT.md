@@ -1,7 +1,7 @@
-# Spotlight y portapapeles avanzado
+# Spotlight and the advanced clipboard
 
-Los dos los monta el SDK, así que **todos los temas los tienen** sin hacer nada:
-`startShell` agrega `<SpotlightPanel />` y `<ClipboardPanel />`. Código: `sdk/spotlight.js` y
+Both are mounted by the SDK, so **every theme has them** without doing anything:
+`startShell` adds `<SpotlightPanel />` and `<ClipboardPanel />`. Code: `sdk/spotlight.js` and
 `sdk/clipboard.js`.
 
 ## Spotlight
@@ -9,147 +9,148 @@ Los dos los monta el SDK, así que **todos los temas los tienen** sin hacer nada
 | | |
 |---|---|
 | ![apps](m7-spotlight-apps.png) | ![archivos](m7-spotlight-archivos.png) |
-| «term»: apps primero, después carpetas | «roadmap»: archivo con vista previa del texto; Enter lo abre en el Editor |
+| «term»: apps first, then folders | «roadmap»: a file with a text preview; Enter opens it in the Editor |
 | ![calc](m7-spotlight-calculadora.png) | ![tienda](m7-spotlight-tienda.png) |
-| «15% de 2400» → 360 (Enter lo copia) | «gimp»: apps de la Tienda que no están instaladas |
+| «15% de 2400» → 360 (Enter copies it) | «gimp»: Store apps that aren't installed |
 | ![notas](m7-spotlight-notas.png) | |
-| «yerba» encuentra la nota por su contenido | |
+| «yerba» finds the note by its content | |
 
-Se abre con **❖Espacio** o **Ctrl+Espacio**, o con la lupa ⌕ de la barra de menú del tema Lord
-Default. Con la Terminal al frente, Ctrl+Espacio queda para el programa (en emacs marca una
-selección); ❖Espacio funciona igual.
+It opens with **❖Space** or **Ctrl+Space**, or with the ⌕ magnifier in the Lord Default theme's
+menu bar. With the Terminal in front, Ctrl+Space is left to the program (in emacs it sets a
+mark); ❖Space works the same.
 
-**Cambio de atajo:** antes ❖Espacio cambiaba de teclado o método de entrada. Ahora eso es
-**❖⌥Espacio** o **Ctrl+⌥Espacio**, como ⌃⌥Espacio en macOS (`sdk/keyboard.js`).
+**Shortcut change:** ❖Space used to switch the keyboard or input method. Now that is
+**❖⌥Space** or **Ctrl+⌥Space**, like ⌃⌥Space on macOS (`sdk/keyboard.js`).
 
-| Tecla | Qué hace |
+| Key | What it does |
 |---|---|
-| ↑ ↓ | elegir |
-| Enter | abrir (en la calculadora y en el portapapeles: copiar) |
-| ❖Enter | mostrar en Archivos (archivos y carpetas) |
-| Tab | ir a la sección siguiente |
-| Esc | cerrar; el foco vuelve al campo de texto que lo tenía antes |
+| ↑ ↓ | choose |
+| Enter | open (in the calculator and the clipboard: copy) |
+| ❖Enter | show in Files (files and folders) |
+| Tab | go to the next section |
+| Esc | close; focus returns to the text field that had it before |
 
-### Qué busca
+### What it searches
 
-Las secciones se ordenan por su mejor resultado; la calculadora va siempre arriba.
+Sections are ordered by their best result; the calculator always goes on top.
 
-| Sección | De dónde | Al abrir |
+| Section | Source | On open |
 |---|---|---|
-| Calculadora | expresiones (`2*(3+4)`, `2^10`, `sqrt(2)`, `pi*2`, `15% de 2400`, coma decimal) con un parser propio, sin `eval`; conversiones (`10 km a mi`, `72 f a c`, `1,5 gb a mb`, `5 lb to kg`, `3 h en min`) | copia el resultado |
-| Apps | `useLauncherApps()`: LordOS, paquetes `.lpk` y apps Linux | `launchApp` |
-| Ajustes | las secciones de Ajustes y sus palabras clave traducidas (`settings.keywords.*`) | `wm.open('settings', { args: { section } })` |
-| Acciones | modo oscuro o claro; cerrar sesión | la acción |
-| Archivos | nombre en la carpeta personal: `lord.fs.search` del servidor (hasta 6 niveles); si no está, un recorrido propio por partes (4 niveles, 5000 entradas, sin ocultos) | carpetas en Archivos, texto en el Editor, el resto en Archivos con el archivo elegido |
-| Notas | `~/Notas/*/nota.md` (título del encabezado YAML de la app Notas y el contenido); la sección solo aparece si está la app Notas | `wm.open('notes', { args: { slug } })` |
-| Portapapeles | textos del historial | vuelve a copiar |
-| Tienda | `lord.pkg.search`: solo apps de AppStream que no están instaladas, hasta 5 | `wm.open('store', { args: { search } })` |
+| Calculator | expressions (`2*(3+4)`, `2^10`, `sqrt(2)`, `pi*2`, `15% de 2400`, decimal comma) with our own parser, no `eval`; conversions (`10 km a mi`, `72 f a c`, `1,5 gb a mb`, `5 lb to kg`, `3 h en min`) | copies the result |
+| Apps | `useLauncherApps()`: LordOS, `.lpk` packages and Linux apps | `launchApp` |
+| Settings | the Settings sections and their translated keywords (`settings.keywords.*`) | `wm.open('settings', { args: { section } })` |
+| Actions | dark or light mode; log out | the action |
+| Files | name in the home folder: the server's `lord.fs.search` (up to 6 levels); if unavailable, our own walk in chunks (4 levels, 5000 entries, no hidden files) | folders in Files, text in the Editor, the rest in Files with the file selected |
+| Notes | `~/Notas/*/nota.md` (title from the Notes app's YAML header, and the content); the section only appears if the Notes app is present | `wm.open('notes', { args: { slug } })` |
+| Clipboard | texts from the history | copies again |
+| Store | `lord.pkg.search`: only AppStream apps that aren't installed, up to 5 | `wm.open('store', { args: { search } })` |
 
-**Relevancia:**
-- Para el nombre: prefijo > palabra > subcadena > difuso (las letras en orden).
-- La descripción y las palabras clave solo cuentan si el texto aparece de verdad, y valen menos.
-- En los archivos se compara sin la extensión.
-- Lo que se abre seguido sube, y el uso pierde peso a los 30 días. Se guarda en
-  `~/.local/share/lordos/spotlight.json` (las últimas 300 entradas).
+**Relevance:**
+- For the name: prefix > word > substring > fuzzy (the letters in order).
+- The description and the keywords only count if the text really appears, and they weigh less.
+- Files are compared without the extension.
+- What is opened often moves up, and usage loses weight after 30 days. It is stored in
+  `~/.local/share/lordos/spotlight.json` (the last 300 entries).
 
-**Vista previa (a la derecha):**
-- el ícono de la app;
-- la imagen;
-- las primeras líneas de un archivo de texto;
-- el contenido de una carpeta;
-- la nota;
-- el resultado grande de la calculadora.
+**Preview (on the right):**
+- the app's icon;
+- the image;
+- the first lines of a text file;
+- the contents of a folder;
+- the note;
+- the calculator's result, large.
 
-## Portapapeles avanzado
+## Advanced clipboard
 
 | | |
 |---|---|
 | ![completo](m7-portapapeles-completo.png) | ![rápido](m7-portapapeles-rapido.png) |
-| ❖⇧V: filtros con contadores, muestra de color, código en monoespaciada, vista previa de la imagen y acciones | ❖V: lo último, después de reiniciar lord-server (el enlace fijado va arriba) |
+| ❖⇧V: filters with counters, color swatch, code in monospace, image preview and actions | ❖V: the latest items, after restarting lord-server (the pinned link is on top) |
 | ![pegar](m7-portapapeles-pegar.png) | ![ajustes](m7-portapapeles-ajustes.png) |
-| Elegido con ❖V y la tecla 8: «360» se pegó en el buscador de Ajustes, que tenía el foco | Ajustes → Portapapeles |
+| Chosen with ❖V and the 8 key: «360» was pasted into the Settings search box, which had focus | Settings → Clipboard |
 
-Hay uno solo para toda la sesión: la Terminal, los campos de texto de LordOS y las apps Linux (el
-compositor hace de puente; ver `WAYLAND.md`). El historial guarda todo lo que se copia en
-cualquiera de ellos: textos, enlaces, colores, código, rutas e imágenes. Para cada entrada guarda
-el origen y la hora.
+There is a single one for the whole session: the Terminal, LordOS's text fields and Linux apps
+(the compositor acts as the bridge; see `WAYLAND.md`). The history stores everything copied in
+any of them: texts, links, colors, code, paths and images. For each entry it stores the origin
+and the time.
 
-- **❖V, panel rápido:** lo último, con búsqueda. Enter, clic o 1–9 eligen.
-- **❖⇧V, panel completo:**
-  - filtros: Todo, Texto, Enlaces, Imágenes, Código, Colores, Archivos, Fijados;
-  - vista previa, origen, fecha y largo;
-  - Pegar, Fijar y Borrar; Supr borra; «Borrar todo» respeta lo fijado.
-- **Pegar.** Elegir algo lo vuelve a copiar y lo pega donde estabas:
-  - en el campo de texto de LordOS que tenía el foco;
-  - o en la app Linux del frente, con un Ctrl+V que el compositor manda solo a esa app
+- **❖V, quick panel:** the latest items, with search. Enter, click or 1–9 choose.
+- **❖⇧V, full panel:**
+  - filters: All, Text, Links, Images, Code, Colors, Files, Pinned;
+  - preview, origin, date and length;
+  - Paste, Pin and Delete; Del deletes; «Delete all» keeps the pinned items.
+- **Paste.** Choosing something copies it again and pastes it where you were:
+  - into the LordOS text field that had focus;
+  - or into the frontmost Linux app, with a Ctrl+V that the compositor sends only to that app
     (`lord.wayland.paste`).
 
-  Si no había dónde pegar, queda copiado y lo avisa.
-- **Tipo de cada entrada** (`clipboardKind`):
-  - enlace: `http(s)://`, `www.`, `mailto:`;
+  If there was nowhere to paste, it stays copied and says so.
+- **Kind of each entry** (`clipboardKind`):
+  - link: `http(s)://`, `www.`, `mailto:`;
   - color: `#rgb`, `#rrggbb`, `rgb()`, `hsl()`;
-  - archivo: una ruta absoluta o `~/…`;
-  - código: varias líneas con sintaxis de código o sangría;
-  - imagen o texto.
+  - file: an absolute path or `~/…`;
+  - code: several lines with code syntax or indentation;
+  - image or text.
 
-### Dónde se guarda
+### Where it is stored
 
-- **Archivos:**
-  - `~/.local/share/lordos/clipboard/history.json`, con las entradas;
-  - `img-*.png` al lado, con las imágenes.
-- **Cómo se guardan las imágenes:** el compositor deja la última imagen en
-  `$XDG_RUNTIME_DIR/lordos/clip-N.png`, que se pierde al reiniciar. Por eso
-  `lord.clipboard.saveImage(ruta)` la copia a la carpeta personal. Valida la ruta con las mismas
-  reglas que `lord.fs.write`: dentro de la carpeta personal y nunca en las carpetas protegidas.
-- **Volver a copiar una imagen:** `lord.clipboard.useImage(ruta)` acepta solo esos dos lugares,
-  las vistas previas del compositor y las imágenes del historial.
-- **Borrar:** `lord.clipboard.deleteSaved(nombre)` borra solo nombres `img-*.png` de esa carpeta.
-  No hay un borrado general de archivos.
-- **Ajustes → Portapapeles:**
+- **Files:**
+  - `~/.local/share/lordos/clipboard/history.json`, with the entries;
+  - `img-*.png` next to it, with the images.
+- **How images are stored:** the compositor leaves the latest image in
+  `$XDG_RUNTIME_DIR/lordos/clip-N.png`, which is lost on reboot. That's why
+  `lord.clipboard.saveImage(path)` copies it to the home folder. It validates the path with the
+  same rules as `lord.fs.write`: inside the home folder and never in the protected folders.
+- **Copying an image again:** `lord.clipboard.useImage(path)` only accepts those two places, the
+  compositor's previews and the history's images.
+- **Deleting:** `lord.clipboard.deleteSaved(name)` deletes only `img-*.png` names in that folder.
+  There is no general file deletion.
+- **Settings → Clipboard:**
 
-  | Opción | Por defecto |
+  | Option | Default |
   |---|---|
-  | Guardar o no el historial (si se apaga, queda solo en memoria) | activado |
-  | Máximo de elementos | 500 |
-  | Espacio para imágenes | 200 MB |
-  | Borrar lo viejo (lo fijado no caduca) | a los 30 días |
-  | Borrar al cerrar sesión | apagado |
-  | No guardar lo que copien ciertas apps (por su app_id de Wayland) | ninguna |
+  | Save the history or not (if off, it stays in memory only) | on |
+  | Maximum number of items | 500 |
+  | Space for images | 200 MB |
+  | Delete old items (pinned ones don't expire) | after 30 days |
+  | Clear on log out | off |
+  | Don't save what certain apps copy (by their Wayland app_id) | none |
 
-  Se guardan en `settings.clipboard`.
+  They are stored in `settings.clipboard`.
 
-### Privacidad
+### Privacy
 
-Lo sensible nunca entra al historial, pero se puede pegar igual:
+Sensitive content never enters the history, but it can still be pasted:
 
-- **Apps Linux que marcan la copia como secreta.** Ofrecen el formato
-  `x-kde-passwordManagerHint`, que es la convención de KDE y GNOME que usan KeePassXC y otros
-  gestores de contraseñas. El compositor lo detecta (`wl.c`), y `lord.clipboard.state()` responde
-  `sensitive: true`.
-- **LordOS.** `clipboard.set(texto, { secure: true })` copia sin guardar. Los campos `secure`
-  (contraseñas) de `TextInput` no permiten copiar.
-- **Apps excluidas en Ajustes.** No quedan en el historial.
+- **Linux apps that mark the copy as secret.** They offer the `x-kde-passwordManagerHint`
+  format, the KDE and GNOME convention used by KeePassXC and other password managers. The
+  compositor detects it (`wl.c`), and `lord.clipboard.state()` answers `sensitive: true`.
+- **LordOS.** `clipboard.set(text, { secure: true })` copies without saving. `TextInput`'s
+  `secure` fields (passwords) don't allow copying.
+- **Apps excluded in Settings.** They don't end up in the history.
 
-`lord.clipboard.state()` también devuelve `origin`: el app_id de la app Linux que copió,
-`terminal` o `lordos`.
+`lord.clipboard.state()` also returns `origin`: the app_id of the Linux app that copied,
+`terminal` or `lordos`.
 
-### Probado (VM 119 `lordos-spot`)
+### Tested (VM 119 `lordos-spot`)
 
-- **Copias desde una app Wayland** con `wl-copy` (`wl-clipboard`, solo para las pruebas): un
-  enlace, un color, una ruta, código, texto y dos imágenes PNG. Cada una quedó con su tipo, y las
-  imágenes se guardaron como `img-*.png`.
-- **Secreto:** `tests/clip_secret.c` ofrece texto + `x-kde-passwordManagerHint`, como KeePassXC.
-  El texto se pudo pegar con `wl-paste` y no quedó en `history.json`.
-- **Reinicio:** después de reiniciar lord-server, el historial siguió ahí, con lo fijado arriba.
-- **Panel completo:** los filtros, fijar y borrar funcionan.
-- **Pegar:** ❖V y la tecla 8 pegaron en un campo de texto de LordOS.
-- **Spotlight:** apps, ajustes, archivos (que se abrieron en el Editor), notas, la Tienda, la
-  calculadora y las conversiones.
+- **Copies from a Wayland app** with `wl-copy` (`wl-clipboard`, for the tests only): a link, a
+  color, a path, code, text and two PNG images. Each one got its kind, and the images were saved
+  as `img-*.png`.
+- **Secret:** `tests/clip_secret.c` offers text + `x-kde-passwordManagerHint`, like KeePassXC.
+  The text could be pasted with `wl-paste` and didn't end up in `history.json`.
+- **Restart:** after restarting lord-server, the history was still there, with the pinned items
+  on top.
+- **Full panel:** filters, pin and delete work.
+- **Paste:** ❖V and the 8 key pasted into a LordOS text field.
+- **Spotlight:** apps, settings, files (which opened in the Editor), notes, the Store, the
+  calculator and the conversions.
 
-### Pendiente
+### Pending
 
-- Pegar en una app Linux solo se probó por código: falta una captura con una app GTK al frente.
-- Formatos que no son texto ni PNG (HTML, `text/uri-list` con archivos): hoy pasan entre apps
-  Linux mientras la app de origen sigue abierta, pero no van al historial.
-- Spotlight: buscar por el contenido de los archivos (hoy, solo por el nombre), contactos y
-  correo, que no existen todavía, y «Bloquear pantalla», que no hay (M8).
+- Pasting into a Linux app was only tested through code: a screenshot with a GTK app in front is
+  still missing.
+- Formats that aren't text or PNG (HTML, `text/uri-list` with files): today they pass between
+  Linux apps while the source app stays open, but they don't go into the history.
+- Spotlight: searching file contents (today, names only), contacts and mail, which don't exist
+  yet, and «Lock screen», which doesn't exist (M8).

@@ -1,86 +1,86 @@
-# Dock y barra de tareas
+# Dock and taskbar
 
-En **Ajustes → Escritorio y Dock** se elige, como en macOS:
+In **Settings → Desktop & Dock** you choose, as in macOS:
 
-- dónde va el Dock (abajo, a la izquierda o a la derecha);
-- su tamaño, la lupa y cuánto amplía;
-- si se esconde solo;
-- si muestra las apps recientes.
+- where the Dock goes (bottom, left or right);
+- its size, magnification and how much it magnifies;
+- whether it hides automatically;
+- whether it shows recent apps.
 
-En el tema Clásico, la misma sección elige la posición de la barra de tareas: abajo, arriba, a la
-izquierda o a la derecha. Todo se aplica en vivo, sin reiniciar, y se guarda en
+In the Classic theme, the same section chooses the taskbar position: bottom, top, left or right.
+Everything is applied live, without restarting, and is saved in
 `~/.config/lordos/settings.json`.
 
 | | |
 |---|---|
-| ![ajustes](dock-ajustes.png) | ![abajo](dock-abajo.png) |
-| Ajustes → Escritorio y Dock | Abajo (como siempre), con la lupa |
-| ![izquierda](dock-izquierda.png) | ![derecha](dock-derecha.png) |
-| A la izquierda: lupa sobre el eje vertical, nombre al costado | A la derecha: los puntos de app abierta van del lado de afuera |
-| ![menú](dock-derecha-menu.png) | ![revelado](dock-oculto-revelado.png) |
-| Clic derecho con el Dock a la derecha: el menú se abre hacia adentro | Esconder solo: aparece al llevar el puntero al borde (sin el Dock: [`dock-oculto.png`](dock-oculto.png)) |
-| ![clásico](dock-clasico-izquierda-barra.png) | ![clásico, inicio](dock-clasico-izquierda.png) |
-| Tema Clásico con la barra a la izquierda (solo íconos y la hora abajo) | Su menú de inicio se abre al lado de la barra |
+| ![settings](dock-ajustes.png) | ![bottom](dock-abajo.png) |
+| Settings → Desktop & Dock | Bottom (as always), with magnification |
+| ![left](dock-izquierda.png) | ![right](dock-derecha.png) |
+| On the left: magnification along the vertical axis, name to the side | On the right: the open-app dots go on the outer side |
+| ![menu](dock-derecha-menu.png) | ![revealed](dock-oculto-revelado.png) |
+| Right click with the Dock on the right: the menu opens inward | Auto-hide: it appears when the pointer reaches the edge (without the Dock: [`dock-oculto.png`](dock-oculto.png)) |
+| ![classic](dock-clasico-izquierda-barra.png) | ![classic, start](dock-clasico-izquierda.png) |
+| Classic theme with the bar on the left (only icons, and the time at the bottom) | Its start menu opens next to the bar |
 
-## Ajustes (`sdk/dock.js`: `DOCK_DEFAULTS`, `dockPrefs(settings)`)
+## Settings (`sdk/dock.js`: `DOCK_DEFAULTS`, `dockPrefs(settings)`)
 
-| Clave | Valores | Por defecto |
+| Key | Values | Default |
 |---|---|---|
 | `dockPosition` | `bottom`, `left`, `right` | `bottom` |
-| `dockSize` | 36–80 (px de cada ícono) | 54 |
+| `dockSize` | 36–80 (px per icon) | 54 |
 | `dockMagnify` | `true`/`false` | `true` |
-| `dockMagnifySize` | del tamaño a 128 (px del ícono más grande) | 86 |
+| `dockMagnifySize` | from the size up to 128 (px of the largest icon) | 86 |
 | `dockAutohide` | `true`/`false` | `false` |
-| `dockRecents` | `true`/`false`: las últimas 3 apps usadas que no están fijadas, después de una línea | `false` |
-| `taskbarPosition` | `bottom`, `top`, `left`, `right` (tema Clásico) | `bottom` |
+| `dockRecents` | `true`/`false`: the last 3 used apps that are not pinned, after a separator line | `false` |
+| `taskbarPosition` | `bottom`, `top`, `left`, `right` (Classic theme) | `bottom` |
 
-Las apps recientes las anota el SDK en `dockRecentApps`, cada vez que una app abre una ventana
+The SDK records recent apps in `dockRecentApps` every time an app opens a window
 (`useDockEntries(fijadas, { recents: 3 })`).
 
-## Área de trabajo
+## Work area
 
-Cada tema vuelve a llamar a `configureWindows({ apps, workArea })` cuando cambia la posición, el
-tamaño, «esconder solo» o la pantalla. El área deja afuera el lado del Dock o de la barra. Así:
+Each theme calls `configureWindows({ apps, workArea })` again when the position, the size,
+"auto-hide" or the screen changes. The area leaves out the side taken by the Dock or the bar. That way:
 
-- las ventanas maximizadas y las nuevas no quedan debajo;
-- los avisos (`NotificationBanner`) se acomodan solos.
+- maximized and new windows don't end up underneath it;
+- notifications (`NotificationBanner`) adjust on their own.
 
-Con «esconder solo» el área es toda la pantalla, menos la barra de menú, como en macOS. Las ventanas
-que ya estaban abiertas no se mueven.
+With "auto-hide" the area is the whole screen minus the menu bar, as in macOS. Windows that were
+already open don't move.
 
-Si hay muchas apps, los íconos se achican para que el Dock entre en la pantalla, contando lo que crece
-con la lupa.
+If there are many apps, the icons shrink so the Dock fits on the screen, counting how much it grows
+with magnification.
 
-## Esconder solo, sin costo
+## Auto-hide, at no cost
 
-El Dock no se dibuja mientras está escondido. Un oyente del puntero (`useAutohide` en
-`themes/default/components/Dock.jsx`) solo mira si el puntero tocó el borde del lado elegido:
+The Dock is not drawn while it is hidden. A pointer listener (`useAutohide` in
+`themes/default/components/Dock.jsx`) only checks whether the pointer touched the edge of the chosen side:
 
-1. al tocarlo, espera 120 ms y muestra el Dock con una animación de 180 ms;
-2. si el puntero sale del Dock (con 8 px de margen), espera 500 ms y lo esconde;
-3. con el menú del clic derecho abierto o el puntero sobre un ícono, se queda.
+1. when it does, it waits 120 ms and shows the Dock with a 180 ms animation;
+2. if the pointer leaves the Dock (with an 8 px margin), it waits 500 ms and hides it;
+3. with the right-click menu open or the pointer over an icon, it stays.
 
-Solo cambia el estado al cruzar esos límites. Mover el mouse por el resto de la pantalla no vuelve a
-dibujar nada, y la animación vuelve a dibujar solo el Dock, no el escritorio. La lupa ya era así: su
-estado es del componente Dock.
+The state only changes when crossing those limits. Moving the mouse over the rest of the screen
+doesn't redraw anything, and the animation redraws only the Dock, not the desktop. Magnification
+already worked this way: its state belongs to the Dock component.
 
-## Derecha a izquierda (árabe, hebreo)
+## Right to left (Arabic, Hebrew)
 
-**Izquierda y derecha son lados físicos de la pantalla**, como en macOS: con un idioma RTL el Dock a
-la izquierda sigue a la izquierda.
+**Left and right are physical sides of the screen**, as in macOS: with an RTL language a Dock on the
+left stays on the left.
 
-- El Dock se maqueta con `direction: 'ltr'`.
-- Abajo, el orden de los íconos se invierte en RTL, como antes.
-- De costado, el orden es siempre de arriba abajo.
-- Los menús del Dock se abren hacia adentro de la pantalla con `side` (en `Menu.jsx`), sin la vuelta
-  que hacen en RTL los otros menús.
-- En el tema Clásico la barra también es física; el menú de inicio y la lista de saltos se pegan al
-  lado de la barra.
+- The Dock is laid out with `direction: 'ltr'`.
+- At the bottom, the icon order is reversed in RTL, as before.
+- On the sides, the order is always top to bottom.
+- The Dock's menus open toward the inside of the screen with `side` (in `Menu.jsx`), without the
+  flip that other menus do in RTL.
+- In the Classic theme the bar is also physical; the start menu and the jump list stick to the
+  side of the bar.
 
-Ajustes lo dice debajo de «Posición en la pantalla».
+Settings says so below "Position on screen".
 
-## Pendiente
+## Pending
 
-- Efecto al minimizar (genio o escala): el motor todavía no tiene `transform: scale`.
-- Que la barra del tema Clásico se esconda sola.
-- Arrastrar el Dock a otro borde con el mouse, como macOS con ⇧ en el separador.
+- Minimize effect (genie or scale): the engine doesn't have `transform: scale` yet.
+- Auto-hide for the Classic theme's bar.
+- Dragging the Dock to another edge with the mouse, like macOS with ⇧ on the separator.

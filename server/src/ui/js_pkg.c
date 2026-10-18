@@ -1,9 +1,9 @@
-/* js_pkg.c — lord.pkg: consultas sobre los paquetes de Debian (solo lectura).
+/* js_pkg.c — lord.pkg: queries about Debian packages (read-only).
  *
- * Lee el índice que arma el ayudante (/var/lib/lordos/pkg/index.bin, con mmap) y la base de
- * dpkg (/var/lib/dpkg/status). Nada de esto modifica el sistema: instalar, quitar y actualizar
- * son acciones del ayudante privilegiado (admin.run('pkg-install', …) en el SDK). Ver
- * docs/PAQUETES.md. */
+ * Reads the index built by the helper (/var/lib/lordos/pkg/index.bin, via mmap) and the dpkg
+ * database (/var/lib/dpkg/status). None of this modifies the system: installing, removing and upgrading
+ * are actions of the privileged helper (admin.run('pkg-install', …) in the SDK). See
+ * docs/PACKAGES.md. */
 #include "js_pkg.h"
 #include "../pkg/deb.h"
 #include "../pkg/idx.h"
@@ -22,7 +22,7 @@
 
 static Idx X;
 static Status ST;
-static char **autos;                    /* instalados como dependencia (ordenados) */
+static char **autos;                    /* installed as a dependency (sorted) */
 static int nautos;
 static long auto_mtime = -1;
 
@@ -56,7 +56,7 @@ static int is_auto(const char *name) {
     return nautos && bsearch(&name, autos, (size_t)nautos, sizeof *autos, cmp_str) != NULL;
 }
 
-/* ---- opciones ---- */
+/* ---- options ---- */
 
 static int opt_int(JSContext *c, JSValueConst o, const char *k, int def, int lo, int hi) {
     if (!JS_IsObject(o)) return def;
@@ -90,7 +90,7 @@ static void set_s(JSContext *c, JSValue o, const char *k, const char *v) {
     JS_SetPropertyStr(c, o, k, v && v[0] ? JS_NewString(c, v) : JS_NULL);
 }
 
-/* ---- objetos ---- */
+/* ---- objects ---- */
 
 static int lang_of(const char *lang) {
     if (!strncmp(lang, "es", 2)) return 1;
@@ -131,7 +131,7 @@ static JSValue app_obj(JSContext *c, const IdxApp *a, int l) {
     return o;
 }
 
-/* Resumen de un paquete: rec = primer registro con ese nombre (o -1 si solo está instalado). */
+/* Summary of a package: rec = first record with that name (or -1 if it is only installed). */
 static JSValue summary_obj(JSContext *c, const char *name, long rec, const StPkg *inst, int l) {
     JSValue o = JS_NewObject(c);
     long cand = rec >= 0 ? pkg_candidate(&X, name, strlen(name), inst) : -1;
@@ -150,7 +150,7 @@ static JSValue summary_obj(JSContext *c, const char *name, long rec, const StPkg
     return o;
 }
 
-/* ---- búsqueda ---- */
+/* ---- search ---- */
 
 static const char *ci_find(const char *hay, const char *needle, size_t nl) {
     if (!nl) return hay;
@@ -189,13 +189,13 @@ static JSValue f_search(JSContext *c, JSValueConst this_val, int argc, JSValueCo
     Hit *hits = calloc((size_t)limit + 1, sizeof *hits);
     int nh = 0;
     for (long i = 0; hits && X.map && i < (long)X.h->npkg; i++) {
-        if (i && X.pkg[i].name == X.pkg[i - 1].name) continue;        /* una vez por nombre */
+        if (i && X.pkg[i].name == X.pkg[i - 1].name) continue;        /* once per name */
         const IdxPkg *p = &X.pkg[i];
         const IdxApp *a = p->app != UINT32_MAX && p->app < X.h->napp ? &X.app[p->app] : NULL;
         if (apps_only && (!a || strcmp(idx_s(&X, a->type), "desktop-application"))) continue;
         if (section[0] && strcmp(idx_s(&X, p->section), section)) continue;
         const char *name = idx_s(&X, p->name);
-        int score = a ? 300 : 0, all = 1;            /* las aplicaciones primero */
+        int score = a ? 300 : 0, all = 1;            /* applications first */
         for (int t = 0; t < nt && all; t++) {
             size_t tl = strlen(terms[t]);
             int s = 0;
@@ -213,8 +213,8 @@ static JSValue f_search(JSContext *c, JSValueConst this_val, int argc, JSValueCo
             score += s;
         }
         if (!all) continue;
-        if (!nt && !a) continue;        /* sin texto: solo las aplicaciones */
-        /* top-k por inserción */
+        if (!nt && !a) continue;        /* no text: only the applications */
+        /* top-k by insertion */
         int pos = nh;
         while (pos > 0 && (hits[pos - 1].score < score || (hits[pos - 1].score == score && strcmp(idx_s(&X, X.pkg[hits[pos - 1].rec].name), name) > 0))) pos--;
         if (pos >= limit) continue;
@@ -341,7 +341,7 @@ static int names_of(JSContext *c, JSValueConst o, const char *k, char names[][12
         for (int32_t i = 0; i < len && n < max; i++) {
             JSValue v = JS_GetPropertyUint32(c, a, (uint32_t)i);
             if (!arg_name(c, v, names[n], 129)) n++;
-            else n = -1000;             /* nombre inválido: todo el pedido es inválido */
+            else n = -1000;             /* invalid name: the whole request is invalid */
             JS_FreeValue(c, v);
             if (n < 0) break;
         }
@@ -358,7 +358,7 @@ static JSValue f_plan(JSContext *c, JSValueConst this_val, int argc, JSValueCons
     JSValue r = JS_NewObject(c);
     if (ni < 0 || nr < 0) {
         JS_SetPropertyStr(c, r, "ok", JS_FALSE);
-        set_s(c, r, "error", "nombre de paquete inválido");
+        set_s(c, r, "error", "invalid package name");
         return r;
     }
     refresh();
@@ -394,7 +394,7 @@ static JSValue f_plan(JSContext *c, JSValueConst this_val, int argc, JSValueCons
     return r;
 }
 
-/* Aplicaciones de escritorio (AppStream), por categoría, ordenadas por nombre. */
+/* Desktop applications (AppStream), by category, sorted by name. */
 static int app_lang;
 static int app_cmp(const void *a, const void *b) {
     return strcasecmp(app_name(&X.app[*(const uint32_t *)a], app_lang), app_name(&X.app[*(const uint32_t *)b], app_lang));
@@ -431,7 +431,7 @@ static JSValue f_apps(JSContext *c, JSValueConst this_val, int argc, JSValueCons
         if (strcmp(idx_s(&X, a->type), type) || (cat[0] && !has_category(a, cat))) continue;
         const char *pn = idx_s(&X, a->package);
         long rec = idx_find(&X, pn, strlen(pn));
-        if (rec < 0 || X.pkg[rec].app != i) continue;         /* el paquete tiene otra app principal */
+        if (rec < 0 || X.pkg[rec].app != i) continue;         /* the package has another main app */
         v[n++] = i;
     }
     app_lang = lang_of(lang);
@@ -454,7 +454,7 @@ static JSValue f_apps(JSContext *c, JSValueConst this_val, int argc, JSValueCons
     return arr;
 }
 
-/* Dependencias instaladas por LordOS que ya no usa nadie (lo que quitaría pkg-autoremove). */
+/* Dependencies installed by LordOS that nobody uses anymore (what pkg-autoremove would remove). */
 static JSValue f_orphans(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     refresh();
@@ -525,7 +525,7 @@ static JSValue f_sources(JSContext *c, JSValueConst this_val, int argc, JSValueC
 static JSValue f_last_update(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     refresh();
-    return JS_NewFloat64(c, X.map ? (double)X.mtime : 0);      /* la última vez que se comprobó */
+    return JS_NewFloat64(c, X.map ? (double)X.mtime : 0);      /* the last time it was checked */
 }
 
 static JSValue f_available(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {

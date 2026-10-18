@@ -1,19 +1,19 @@
-/* pkg.c — acciones de paquetes del ayudante privilegiado (ver pkg.h y docs/PAQUETES.md).
+/* pkg.c — package actions of the privileged helper (see pkg.h and docs/PACKAGES.md).
  *
- *   pkg-update                      lee las fuentes de apt, baja los InRelease, verifica las
- *                                   firmas, baja Packages/Translation/DEP-11 verificados por
- *                                   SHA-256 y arma /var/lib/lordos/pkg/index.bin
+ *   pkg-update                      reads apt's sources, downloads the InRelease files, verifies the
+ *                                   signatures, downloads Packages/Translation/DEP-11 verified by
+ *                                   SHA-256 and builds /var/lib/lordos/pkg/index.bin
  *   pkg-install a b [--recommends] [--allow-remove]
  *   pkg-remove a b [--cascade] [--purge] [--keep-orphans]
- *   pkg-autoremove                  quita las dependencias que quedaron sin uso
+ *   pkg-autoremove                  removes the dependencies left unused
  *   pkg-upgrade [--allow-remove]
- *   pkg-install-file <ruta.deb en la carpeta del usuario> [--allow-remove]
+ *   pkg-install-file <path.deb in the user's folder> [--allow-remove]
  *
- * Instalar = resolver (resolve.c), bajar los .deb (http.c, como nobody) a /var/cache/lordos/pkg,
- * verificar su SHA-256 contra el índice firmado y recién ahí darle los archivos a dpkg (el único
- * que toca /var/lib/dpkg). Progreso para la interfaz: líneas LOG "progress <fase> <hecho> <total>"
- * (fases: lists, index, download, unpack, configure, remove) y "plan <acción> <paquete>
- * <versión> <bytes>" antes de empezar; el resto de los LOG son texto para mostrar. */
+ * Install = resolve (resolve.c), download the .debs (http.c, as nobody) to /var/cache/lordos/pkg,
+ * verify their SHA-256 against the signed index and only then hand the files to dpkg (the only
+ * one that touches /var/lib/dpkg). Progress for the interface: LOG lines "progress <phase> <done> <total>"
+ * (phases: lists, index, download, unpack, configure, remove) and "plan <action> <package>
+ * <version> <bytes>" before starting; the rest of the LOGs are text to display. */
 #include "pkg.h"
 #include "crypto.h"
 #include "deb.h"
@@ -46,9 +46,9 @@
 #define LISTS PKG_DIR "/lists"
 #define ICONS PKG_DIR "/icons/64"
 #define MAX_SOURCES 32
-#define MAX_INDEX (512u << 20)          /* un Packages descomprimido no puede pasar de esto */
+#define MAX_INDEX (512u << 20)          /* a decompressed Packages can't exceed this */
 
-/* ---- utilidades ---- */
+/* ---- utilities ---- */
 
 static int mkdirs(const char *path, mode_t mode) {
     char p[PATH_MAX];
@@ -100,7 +100,7 @@ static void sanitize(const char *in, char *out, size_t n) {
     out[o] = 0;
 }
 
-/* ---- fuentes (deb822 .sources y sources.list de una línea) ---- */
+/* ---- sources (deb822 .sources and one-line sources.list) ---- */
 
 typedef struct {
     char uri[512], suite[96];
@@ -112,7 +112,7 @@ typedef struct {
 } Source;
 
 static void mirror_uri(const char *in, char *out, size_t n) {
-    /* mirror+file:/etc/apt/mirrors/debian.list: el primer espejo de la lista */
+    /* mirror+file:/etc/apt/mirrors/debian.list: the first mirror in the list */
     out[0] = 0;
     if (!strncmp(in, "mirror+file:", 12)) {
         FILE *f = fopen(in + 12, "r");
@@ -125,7 +125,7 @@ static void mirror_uri(const char *in, char *out, size_t n) {
         return;
     }
     if (!strncmp(in, "mirror+", 7)) in += 7;
-    /* sin TLS propio: https se baja por http (la seguridad la da la firma, como en apt) */
+    /* no TLS of our own: https is downloaded over http (security comes from the signature, as in apt) */
     if (!strncmp(in, "https://", 8)) snprintf(out, n, "http://%s", in + 8);
     else if (!strncmp(in, "http://", 7)) snprintf(out, n, "%s", in);
     size_t l = strlen(out);
@@ -156,7 +156,7 @@ static void add_source(Source *src, int *ns, const char *uri, const char *suite,
     for (int i = 0; i < nc && i < 16; i++) snprintf(s->comps[s->ncomp++], sizeof s->comps[0], "%s", comps[i]);
     if (sblen) {
         if (memchr(signed_by, '\n', sblen) || (sblen > 5 && !strncmp(signed_by, "-----", 5))) {
-            /* clave en línea (deb822): sacar el espacio de cada renglón y " ." = renglón vacío */
+            /* inline key (deb822): strip each line's leading space and " ." = empty line */
             s->inline_key = malloc(sblen + 2);
             size_t o = 0;
             if (s->inline_key) {
@@ -274,7 +274,7 @@ static int load_keyring(const Source *s, PgpKeyring *kr) {
         for (int i = 0; i < s->nkeys; i++) if (pgp_keyring_add_file(kr, s->keys[i])) admin_say("LOG", "no se pudo leer la clave %s", s->keys[i]);
         return kr->n ? 0 : -1;
     }
-    /* sin Signed-By: las claves de confianza de apt */
+    /* no Signed-By: apt's trusted keys */
     glob_t g;
     if (!glob("/etc/apt/trusted.gpg.d/*.gpg", 0, NULL, &g)) { for (size_t i = 0; i < g.gl_pathc; i++) pgp_keyring_add_file(kr, g.gl_pathv[i]); globfree(&g); }
     if (!glob("/etc/apt/trusted.gpg.d/*.asc", 0, NULL, &g)) { for (size_t i = 0; i < g.gl_pathc; i++) pgp_keyring_add_file(kr, g.gl_pathv[i]); globfree(&g); }
@@ -347,7 +347,7 @@ static const RelFile *rel_find(const Release *r, const char *path) {
     return NULL;
 }
 
-/* Elige la mejor compresión disponible: .xz, .gz o sin comprimir. */
+/* Picks the best available compression: .xz, .gz or uncompressed. */
 static const RelFile *rel_pick(const Release *r, const char *base, const char **ext) {
     static const char *const exts[] = { ".xz", ".gz", "" };
     for (int i = 0; i < 3; i++) {
@@ -359,7 +359,7 @@ static const RelFile *rel_pick(const Release *r, const char *base, const char **
     return NULL;
 }
 
-/* ---- descompresión según extensión ---- */
+/* ---- decompression by extension ---- */
 
 static uint8_t *load_index_file(const char *path, const char *ext, size_t *out_len) {
     size_t len;
@@ -372,7 +372,7 @@ static uint8_t *load_index_file(const char *path, const char *ext, size_t *out_l
     return r ? NULL : out;
 }
 
-/* ---- tar (íconos) ---- */
+/* ---- tar (icons) ---- */
 
 typedef int (*TarFn)(const char *name, const uint8_t *data, size_t len, void *ud);
 
@@ -433,7 +433,7 @@ static void icons_cleanup(IdxBuilder *b) {
 
 /* ---- pkg-update ---- */
 
-typedef struct { char path[PATH_MAX]; char ext[4]; int kind, src; char comp[48]; } Wanted;   /* kind 0 Packages, 1 Translation, 2 DEP-11, 3 íconos */
+typedef struct { char path[PATH_MAX]; char ext[4]; int kind, src; char comp[48]; } Wanted;   /* kind 0 Packages, 1 Translation, 2 DEP-11, 3 icons */
 
 static int file_ok(const char *path, uint64_t size) {
     struct stat st;
@@ -474,7 +474,7 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     int ns = load_sources(src, arch);
     if (!ns) { admin_say("ERR", "no hay fuentes de paquetes (/etc/apt/sources.list.d)"); free(src); return; }
 
-    /* 1. InRelease de cada fuente */
+    /* 1. InRelease of each source */
     FetchItem *rel = calloc((size_t)ns, sizeof *rel);
     char (*final)[PATH_MAX] = calloc((size_t)ns, PATH_MAX);
     if (!rel || !final) { admin_say("ERR", "sin memoria"); return; }
@@ -520,7 +520,7 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
         if (ok && strcmp(R[i].suite, src[i].suite) && strcmp(R[i].codename, src[i].suite)) { ok = 0; snprintf(err, sizeof err, "la lista es de %s, no de %s", R[i].codename, src[i].suite); }
         free(body);
         if (ok && rel[i].status == 200) {
-            /* no aceptar una lista más vieja que la que ya teníamos (ataque de repetición) */
+            /* don't accept a list older than the one we already had (replay attack) */
             size_t ol;
             uint8_t *old = read_file(final[i], &ol, 64u << 20);
             if (old) {
@@ -539,7 +539,7 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
         if (!ok) { admin_say("LOG", "%s %s: %s", src[i].uri, src[i].suite, err); unlink(rel[i].dest); failures++; continue; }
         good[i] = 1;
         admin_say("LOG", "%s %s: firma verificada (%s)", src[i].uri, src[i].suite, R[i].label[0] ? R[i].label : R[i].origin);
-        /* qué archivos bajar */
+        /* which files to download */
         for (int c = 0; c < src[i].ncomp; c++) {
             char base[200];
             const char *ext;
@@ -549,7 +549,7 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
                 else if (k == 2) snprintf(base, sizeof base, "%s/dep11/Components-%s.yml", src[i].comps[c], arch);
                 else snprintf(base, sizeof base, "%s/dep11/icons-64x64.tar", src[i].comps[c]);
                 const RelFile *f = rel_pick(&R[i], base, &ext);
-                if (k == 2 && f && !strcmp(ext, "")) f = NULL;     /* el YAML sin comprimir es enorme */
+                if (k == 2 && f && !strcmp(ext, "")) f = NULL;     /* the uncompressed YAML is huge */
                 if (!f) { if (k == 0) admin_say("LOG", "%s %s: no hay %s", src[i].uri, src[i].suite, base); continue; }
                 Wanted *nwp = realloc(w, sizeof *w * (size_t)(nw + 2));
                 if (!nwp) continue;
@@ -563,7 +563,7 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
                 x->kind = k;
                 x->src = i;
                 snprintf(x->comp, sizeof x->comp, "%s", src[i].comps[c]);
-                if (k == 0 && !R[i].no_all) {           /* Packages de "all" aparte */
+                if (k == 0 && !R[i].no_all) {           /* "all" Packages separately */
                     snprintf(base, sizeof base, "%s/binary-all/Packages", src[i].comps[c]);
                     const RelFile *fa = rel_pick(&R[i], base, &ext);
                     if (fa) {
@@ -586,12 +586,12 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     progress("lists", (uint64_t)ns, (uint64_t)ns);
     Idx cur;
     if (!changed && !failures && !idx_open(&cur, PKG_DIR)) {
-        /* ninguna lista cambió desde la última vez: el índice ya está al día */
+        /* no list changed since last time: the index is already up to date */
         uint32_t n = cur.h->npkg;
         idx_close(&cur);
         for (int i = 0; i < ns; i++) { free(R[i].files); free(src[i].inline_key); }
         free(R); free(good); free(w); free(src); free(final);
-        utimensat(AT_FDCWD, PKG_DIR "/index.bin", NULL, 0);       /* "última actualización": ahora */
+        utimensat(AT_FDCWD, PKG_DIR "/index.bin", NULL, 0);       /* "last update": now */
         close(lk);
         admin_say("OK", "la lista ya estaba al día (%u paquetes)", n);
         return;
@@ -600,14 +600,14 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     for (int i = 0; good && i < ns; i++) ngood += good[i];
     if (!ngood) { admin_say("ERR", "no se pudo verificar ninguna fuente"); return; }
 
-    /* 2. índices que falten (por su SHA-256: lo que ya está no se vuelve a bajar) */
+    /* 2. missing indexes (by their SHA-256: what's already there isn't downloaded again) */
     FetchItem *fi = calloc((size_t)(nw ? nw : 1), sizeof *fi);
     int nf = 0;
     uint64_t total = 0;
     for (int k = 0; fi && k < nw; k++) {
         Wanted *x = &w[k];
         const char *hexname = strrchr(x->path, '/') + 1;
-        /* buscar el RelFile de nuevo para el tamaño y la URL */
+        /* look up the RelFile again for the size and the URL */
         const RelFile *f = NULL;
         for (int j = 0; j < R[x->src].nfiles && !f; j++) {
             char hex[65];
@@ -631,7 +631,7 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
         it->max = f->size;
         it->expect = f->size;
         total += f->size;
-        memcpy(it->sha256, f->sha, 32);            /* lo esperado; fetch_batch lo pisa con lo calculado */
+        memcpy(it->sha256, f->sha, 32);            /* the expected value; fetch_batch overwrites it with the computed one */
     }
     uint8_t (*expect)[32] = calloc((size_t)(nf ? nf : 1), 32);
     for (int k = 0; expect && k < nf; k++) memcpy(expect[k], fi[k].sha256, 32);
@@ -649,7 +649,7 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     free(fi);
     free(expect);
 
-    /* 3. índice: Packages, Translation, DEP-11, íconos */
+    /* 3. index: Packages, Translation, DEP-11, icons */
     IdxBuilder *b = idxb_new();
     int *srcid = calloc((size_t)ns, sizeof *srcid);
     if (!b || !srcid) { admin_say("ERR", "sin memoria"); return; }
@@ -705,7 +705,7 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
 
 typedef struct { int unpack, configure, remove, total; } DpkgProgress;
 
-/* Corre dpkg (ruta fija) con el lock del frontend tomado por nosotros; reenvía su salida. */
+/* Runs dpkg (fixed path) with the frontend lock held by us; forwards its output. */
 static int run_dpkg(const char *const argv[], DpkgProgress *pr) {
     int p[2];
     if (pipe2(p, O_CLOEXEC)) return -1;
@@ -750,7 +750,7 @@ static int lock_dpkg(void) {
     return fd;
 }
 
-/* Si una instalación anterior quedó cortada, dpkg no acepta nada nuevo hasta terminarla. */
+/* If a previous installation was cut short, dpkg accepts nothing new until it's finished. */
 static void dpkg_pending(void) {
     DIR *d = opendir("/var/lib/dpkg/updates");
     struct dirent *e;
@@ -763,7 +763,7 @@ static void dpkg_pending(void) {
     run_dpkg(argv, NULL);
 }
 
-/* ---- lista de lo instalado como dependencia ---- */
+/* ---- list of what's installed as a dependency ---- */
 
 static void auto_update(const Plan *p) {
     size_t len = 0;
@@ -787,7 +787,7 @@ static void auto_update(const Plan *p) {
     if (ok) rename(PKG_DIR "/auto.new", PKG_DIR "/auto"); else unlink(PKG_DIR "/auto.new");
 }
 
-/* ---- aplicar un plan ---- */
+/* ---- applying a plan ---- */
 
 static int parse_names(const char *arg, size_t len, char names[][129], int max, int *nn, int *flags) {
     *nn = 0;
@@ -847,14 +847,14 @@ static int file_sha_ok(const char *path, const uint8_t *sha, uint64_t size) {
     return r == 0 && !memcmp(out, sha, 32);
 }
 
-/* Baja, verifica e instala lo del plan; extra: .deb local para agregar al final (o NULL). */
+/* Downloads, verifies and installs the plan's contents; extra: local .deb to add at the end (or NULL). */
 static int apply_plan(const Idx *x, const Plan *p, int purge, const char *extra_deb) {
     int ninst = 0, nrem = 0;
     for (int i = 0; i < p->n; i++) { if (p->items[i].rec >= 0) ninst++; else if (p->items[i].action == PA_REMOVE) nrem++; }
     if (!ninst && !nrem && !extra_deb) { admin_say("OK", "nada para hacer: ya está todo instalado"); return 0; }
     if (mkdirs(PKG_CACHE, 0755)) { admin_say("ERR", "no se pudo crear %s", PKG_CACHE); return -1; }
 
-    /* descarga */
+    /* download */
     char (*files)[PATH_MAX] = calloc((size_t)(p->n ? p->n : 1), PATH_MAX);
     FetchItem *fi = calloc((size_t)(ninst ? ninst : 1), sizeof *fi);
     int *fitem = calloc((size_t)(ninst ? ninst : 1), sizeof *fitem);
@@ -942,7 +942,7 @@ static int apply_plan(const Idx *x, const Plan *p, int purge, const char *extra_
         return -1;
     }
     auto_update(p);
-    for (int i = 0; i < p->n; i++) if (p->items[i].rec >= 0) unlink(files[i]);   /* el caché no se guarda */
+    for (int i = 0; i < p->n; i++) if (p->items[i].rec >= 0) unlink(files[i]);   /* the cache isn't kept */
     free(files);
     int ni = 0, nu = 0, nr = 0;
     for (int i = 0; i < p->n; i++) {
@@ -963,7 +963,7 @@ static int open_db(Idx *x, Status *st, int need_index) {
     return 0;
 }
 
-/* Lista de lo instalado como dependencia (para los huérfanos). */
+/* List of what's installed as a dependency (for orphans). */
 typedef struct { char *buf; const char **v; int n; } AutoList;
 
 static void auto_load(AutoList *a) {
@@ -1036,7 +1036,7 @@ void pkg_act_remove(const AdminReq *r, const char *arg, size_t len) {
     run_plan_action(NULL, 0, rem, n, &o, (flags & 8) != 0);
 }
 
-/* Quita lo instalado como dependencia que ya no usa nadie (apt autoremove). */
+/* Removes what was installed as a dependency that nobody uses anymore (apt autoremove). */
 void pkg_act_autoremove(const AdminReq *r, const char *arg, size_t len) {
     (void)r;
     if (len) { admin_say("ERR", "pkg-autoremove no lleva argumentos"); (void)arg; return; }
@@ -1053,11 +1053,11 @@ void pkg_act_upgrade(const AdminReq *r, const char *arg, size_t len) {
     run_plan_action(NULL, 0, NULL, 0, &o, 0);
 }
 
-/* ---- .deb local ---- */
+/* ---- local .deb ---- */
 
 typedef struct { char name[129], version[129], arch[32]; char *depends, *predepends, *conflicts, *breaks; } DebControl;
 
-/* ar: "!<arch>\n" + miembros de 60 bytes de encabezado */
+/* ar: "!<arch>\n" + members with 60-byte headers */
 static int ar_member(const uint8_t *d, size_t len, const char *prefix, const uint8_t **out, size_t *olen, char *name, size_t nn) {
     if (len < 8 || memcmp(d, "!<arch>\n", 8)) return -1;
     size_t p = 8;
@@ -1129,8 +1129,8 @@ static int read_control(const uint8_t *deb, size_t len, DebControl *dc, char *er
 
 static void control_free(DebControl *dc) { free(dc->depends); free(dc->predepends); free(dc->conflicts); free(dc->breaks); }
 
-/* Copia el archivo del usuario sin seguir enlaces y con sus permisos (setfsuid), a un archivo
- * nuevo de root. Así no hay carrera: lo que se verifica e instala es la copia. */
+/* Copies the user's file without following links and with their permissions (setfsuid), into a
+ * new root-owned file. That way there's no race: what gets verified and installed is the copy. */
 static int copy_user_file(const AdminReq *r, const char *path, const char *dest, char *err, size_t errlen) {
     char home[PATH_MAX];
     if (!realpath(r->home, home)) { snprintf(err, errlen, "carpeta personal inválida"); return -1; }
@@ -1216,7 +1216,7 @@ void pkg_act_install_file(const AdminReq *r, const char *arg, size_t len) {
     Idx x;
     Status st;
     if (open_db(&x, &st, 0)) { control_free(&dc); unlink(dest); close(lk); return; }
-    /* dependencias del .deb: por cada grupo sin cumplir, la primera alternativa instalable */
+    /* the .deb's dependencies: for each unmet group, the first installable alternative */
     const char *ins[64];
     char names[64][129];
     int ni = 0, missing = 0;
@@ -1231,7 +1231,7 @@ void pkg_act_install_file(const AdminReq *r, const char *arg, size_t len) {
             for (int j = 0; j < k && !ok; j++) {
                 const StPkg *ip = status_find(&st, a[j].name, a[j].nlen);
                 if (ip && ver_satisfies(ip->version, a[j].op, a[j].ver, a[j].vlen)) ok = 1;
-                for (int q = 0; q < st.n && !ok; q++) {          /* provisto por algo instalado */
+                for (int q = 0; q < st.n && !ok; q++) {          /* provided by something installed */
                     if (!st.p[q].native || !st.p[q].provides || a[j].op != REL_NONE) continue;
                     const char *pp = st.p[q].provides, *pe = pp + strlen(pp);
                     DebRel pr[16];

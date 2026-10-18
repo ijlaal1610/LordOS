@@ -1,15 +1,15 @@
-// Dock con magnificación según la posición del mouse, tooltip y punto de app abierta. Puede ir abajo,
-// a la izquierda o a la derecha (Ajustes → Escritorio y Dock), esconderse solo y mostrar las apps
-// recientes. Izquierda y derecha son lados físicos de la pantalla, también en árabe o hebreo (como
-// macOS): el Dock se maqueta con direction: 'ltr' y solo la fila de abajo invierte el orden en RTL.
+// Dock with magnification by mouse position, tooltip and open-app dot. It can go at the bottom,
+// on the left or on the right (Settings → Desktop & Dock), auto-hide and show recent
+// apps. Left and right are physical sides of the screen, also in Arabic or Hebrew (like
+// macOS): the Dock is laid out with direction: 'ltr' and only the bottom row reverses its order in RTL.
 import { View, Text, screen, appName, useLocale, addListener } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 
 const GAP = 8, PAD = 9, MARGIN = 6;
-const SEP = GAP + 1;          // separador antes de las apps recientes
+const SEP = GAP + 1;          // separator before the recent apps
 const SLIDE_MS = 180;
 
-// Lo que ocupa el Dock desde su borde de la pantalla (para el área de trabajo).
+// What the Dock takes up from its screen edge (for the work area).
 export const dockThickness = (size) => size + PAD * 2 + MARGIN + 4;
 
 export function LaunchpadIcon({ size: s }) {
@@ -26,11 +26,11 @@ export function LaunchpadIcon({ size: s }) {
   );
 }
 
-// Esconder solo: se muestra cuando el puntero toca el borde (con una pequeña espera) y se esconde
-// cuando sale del Dock. Solo cambia el estado al cruzar esos límites: mover el mouse por el resto de la
-// pantalla no vuelve a dibujar nada. La animación es de este componente, no del escritorio.
-function useAutohide(enabled, position, rectRef, keepOpen) {
-  const [p, setP] = useState(enabled ? 0 : 1);     // 0 escondido … 1 a la vista
+// Auto-hide: shows when the pointer touches the edge (after a short delay) and hides
+// when it leaves the Dock. State only changes when crossing those boundaries: moving the mouse around the rest of the
+// screen doesn't redraw anything. The animation belongs to this component, not the desktop.
+function useAutohide(enabled, position, rectRef, keepOpen, areaRef) {
+  const [p, setP] = useState(enabled ? 0 : 1);     // 0 hidden … 1 in view
   const want = useRef(!enabled);
   const keep = useRef(keepOpen);
   keep.current = keepOpen;
@@ -57,7 +57,9 @@ function useAutohide(enabled, position, rectRef, keepOpen) {
       animate(on ? 1 : 0);
     };
     const off = addListener('pointermove', (e) => {
-      const edge = position === 'bottom' ? e.y >= screen.height - 2 : position === 'left' ? e.x <= 1 : e.x >= screen.width - 2;
+      // the edge of the display the Dock is on (the main one: docs/DISPLAYS.md)
+      const A = areaRef.current, inX = e.x >= A.x && e.x < A.x + A.w, inY = e.y >= A.y && e.y < A.y + A.h;
+      const edge = position === 'bottom' ? inX && e.y >= A.y + A.h - 2 : position === 'left' ? inY && e.x <= A.x + 1 : inY && e.x >= A.x + A.w - 2;
       const r = rectRef.current;
       const over = r && e.x >= r.x0 - 8 && e.x < r.x1 + 8 && e.y >= r.y0 - 8 && e.y < r.y1 + 8;
       if (!want.current) {
@@ -73,19 +75,21 @@ function useAutohide(enabled, position, rectRef, keepOpen) {
 }
 
 export function Dock({ t, items: list, running, onOpen, onContext, position = 'bottom', size = 54, magnify = true, maxSize = 86,
-  autohide = false, top = 0, keepOpen = false }) {
+  autohide = false, top = 0, keepOpen = false, area = { x: 0, y: 0, w: screen.width, h: screen.height } }) {
+  // area: the display it is on (global coordinates); everything below is placed inside it
   const vert = position !== 'bottom';
-  const [m, setM] = useState(null);             // posición del mouse sobre el eje del Dock
+  const [m, setM] = useState(null);             // mouse position along the Dock's axis
   const { dir } = useLocale();
-  // La lupa calcula posiciones con la coordenada del mouse: en árabe/hebreo la fila de abajo invierte
-  // la lista (mismo resultado visual que macOS); de costado el orden es de arriba abajo en todos.
+  // The magnifier computes positions with the mouse coordinate: in Arabic/Hebrew the bottom row reverses
+  // the list (same visual result as macOS); on the side the order is top to bottom in all of them.
   const items = !vert && dir === 'rtl' ? [...list].reverse() : list;
   const n = items.length;
   const sepAt = items.findIndex((it) => it.recent);
   const sep = sepAt > 0 ? SEP : 0;
-  const origin = vert ? top : 0, avail = vert ? screen.height - top : screen.width;
-  // con muchas apps los íconos se achican para que el Dock entre en la pantalla (como macOS)
-  // (cuenta lo que crece con la lupa: unos 2,6 íconos de más en total)
+  const origin = vert ? area.y + top : area.x, avail = vert ? area.h - top : area.w;
+  const AX = area.x, AY = area.y, AR = area.x + area.w, AB = area.y + area.h;
+  // with many apps the icons shrink so the Dock fits on screen (like macOS)
+  // (it accounts for magnifier growth: about 2.6 extra icons in total)
   const grow = magnify ? 2.6 * Math.max(0, maxSize / size - 1) : 0;
   const fit = Math.floor((avail - 2 * PAD - 16 - (n - 1) * GAP - sep) / (Math.max(1, n) + grow));
   const BASE = Math.max(20, Math.min(size, fit));
@@ -105,18 +109,21 @@ export function Dock({ t, items: list, running, onOpen, onContext, position = 'b
   const iconC = sizes.map((s, i) => { if (i === sepAt && sep) x += sep; const c = x + s / 2; x += s + GAP; return c; });
   const bar = BASE + PAD * 2;
 
-  // dónde está la barra en pantalla (para esconderse solo) y cuánto se corre al esconderse
+  // where the bar is on screen (for auto-hide) and how far it moves when hiding
   const rect = useRef(null);
-  rect.current = position === 'bottom' ? { x0: start, x1: start + len, y0: screen.height - MARGIN - bar, y1: screen.height }
-    : position === 'left' ? { x0: 0, x1: MARGIN + bar, y0: start, y1: start + len }
-      : { x0: screen.width - MARGIN - bar, x1: screen.width, y0: start, y1: start + len };
-  const shown = useAutohide(autohide, position, rect, keepOpen || hovered >= 0);
+  rect.current = position === 'bottom' ? { x0: start, x1: start + len, y0: AB - MARGIN - bar, y1: AB }
+    : position === 'left' ? { x0: AX, x1: AX + MARGIN + bar, y0: start, y1: start + len }
+      : { x0: AR - MARGIN - bar, x1: AR, y0: start, y1: start + len };
+  const areaRef = useRef(area);
+  areaRef.current = area;
+  const shown = useAutohide(autohide, position, rect, keepOpen || hovered >= 0, areaRef);
   const hide = Math.round((1 - shown) * (bar + MARGIN + 2));
   if (autohide && shown <= 0) return null;
 
-  const box = position === 'bottom' ? { left: start, bottom: MARGIN - hide, width: len, height: MAX + PAD * 2 + 34 }
-    : position === 'left' ? { left: MARGIN - hide, top: start, width: MAX + PAD * 2, height: len }
-      : { right: MARGIN - hide, top: start, width: MAX + PAD * 2, height: len };
+  const BH = MAX + PAD * 2 + 34, BW = MAX + PAD * 2;
+  const box = position === 'bottom' ? { left: start, top: AB - (MARGIN - hide) - BH, width: len, height: BH }
+    : position === 'left' ? { left: AX + MARGIN - hide, top: start, width: BW, height: len }
+      : { left: AR - (MARGIN - hide) - BW, top: start, width: BW, height: len };
   const back = position === 'bottom' ? { left: 0, right: 0, bottom: 0, height: bar }
     : position === 'left' ? { left: 0, top: 0, bottom: 0, width: bar } : { right: 0, top: 0, bottom: 0, width: bar };
   const strip = position === 'bottom' ? { left: PAD, bottom: PAD, flexDirection: 'row', alignItems: 'flex-end' }
@@ -124,9 +131,9 @@ export function Dock({ t, items: list, running, onOpen, onContext, position = 'b
       : { right: PAD, top: PAD, flexDirection: 'column', alignItems: 'flex-end' };
   const dot = (s) => (position === 'bottom' ? { left: s / 2 - 2, bottom: -7 } : position === 'left' ? { top: s / 2 - 2, left: -7 } : { top: s / 2 - 2, right: -7 });
   const dotColor = t.mode === 'dark' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)';
-  // dónde abrir el menú del clic derecho y el tooltip: al costado del ícono, del lado de adentro
-  const anchor = (i) => (position === 'bottom' ? { x: start + iconC[i], y: screen.height - MARGIN - bar - 6 }
-    : position === 'left' ? { x: MARGIN + bar + 8, y: start + iconC[i] } : { x: screen.width - MARGIN - bar - 8, y: start + iconC[i] });
+  // where to open the right-click menu and the tooltip: beside the icon, on the inner side
+  const anchor = (i) => (position === 'bottom' ? { x: start + iconC[i], y: AB - MARGIN - bar - 6 }
+    : position === 'left' ? { x: AX + MARGIN + bar + 8, y: start + iconC[i] } : { x: AR - MARGIN - bar - 8, y: start + iconC[i] });
   const label = hovered >= 0 ? (items[hovered].id === 'launchpad' ? 'Launchpad' : appName(items[hovered])) : '';
   const tip = (
     <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 7, backgroundColor: t.panelBg,
@@ -163,7 +170,7 @@ export function Dock({ t, items: list, running, onOpen, onContext, position = 'b
       </View>
       {hovered >= 0 && vert && (
         <View style={{ position: 'absolute', top: start + iconC[hovered] - 13, pointerEvents: 'none', direction: 'ltr',
-          ...(position === 'left' ? { left: MARGIN - hide + PAD + sizes[hovered] + 14 } : { right: MARGIN - hide + PAD + sizes[hovered] + 14 }) }}>{tip}</View>
+          ...(position === 'left' ? { left: AX + MARGIN - hide + PAD + sizes[hovered] + 14 } : { right: screen.width - AR + MARGIN - hide + PAD + sizes[hovered] + 14 }) }}>{tip}</View>
       )}
     </>
   );

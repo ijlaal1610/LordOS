@@ -35,6 +35,7 @@ typedef struct {
     uint64_t cursor_size;
     int cursor_ok, cursor_visible;
     int borrowed;       /* el fd lo pasó lord-sessiond (master y modo previo los maneja él) */
+    int shared;         /* a second display (kms_head_open): the fd belongs to the main head */
     /* plano primario del CRTC: formato y modificadores que acepta (propiedad IN_FORMATS). En la
      * Raspberry Pi (vc4) el RGB solo se muestra lineal: los búferes con tiling UIF de v3d no van
      * directo a la pantalla. scan_known = 0: el driver no lo dice (se prueba con ADDFB2). */
@@ -53,6 +54,11 @@ KmsBuffer *kms_back(Kms *k);
 int  kms_flip(Kms *k);
 /* Procesa eventos del fd DRM (fin de page flip). */
 void kms_dispatch(Kms *k);
+/* Several displays on one card: the events go to the head whose CRTC flipped. */
+void kms_dispatch_heads(Kms **heads, int n);
+/* A second display on the main head's fd: connector, mode, a free CRTC and its own dumb buffers.
+ * kms_close turns its CRTC off and leaves the fd open. 0 if it shows. */
+int  kms_head_open(Kms *k, int fd, uint32_t conn_id, const struct drm_mode_modeinfo *mode);
 
 /* Framebuffer desde handles GEM del fd de KMS (BO de GBM, o un dmabuf importado). Con modifier
  * != DRM_FORMAT_MOD_INVALID se usa DRM_MODE_FB_MODIFIERS. 0 bien. */

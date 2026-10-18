@@ -1,9 +1,9 @@
-/* wasm_run.c — instancias, memorias, tablas, globales y el intérprete (ver wasm.h).
+/* wasm_run.c — instances, memories, tables, globals and the interpreter (see wasm.h).
  *
- * El intérprete es un bucle con "computed goto" (GCC/clang): cada instrucción compilada lleva
- * la dirección de su manejador. Una sola pila de valores (64 bits por valor) y una pila de
- * marcos, reservadas con mmap: la memoria real se usa a medida que se toca. Las llamadas
- * wasm → wasm no recursan en C; las del host (JS) sí pueden volver a entrar. */
+ * The interpreter is a "computed goto" loop (GCC/clang): each compiled instruction carries
+ * the address of its handler. A single value stack (64 bits per value) and a frame
+ * stack, reserved with mmap: real memory is used as it gets touched. Calls
+ * wasm → wasm don't recurse in C; host (JS) calls can re-enter. */
 #include "wasm_int.h"
 
 #include <math.h>
@@ -14,11 +14,11 @@
 uint32_t wasm_max_call_depth = 20000;
 uint32_t wasm_max_memory_pages = 65536;
 
-#define VSTACK_SLOTS (1u << 20)         /* 8 MiB de valores */
+#define VSTACK_SLOTS (1u << 20)         /* 8 MiB of values */
 
 const void *const *wasm_op_labels;
 
-/* ---- referencias ---- */
+/* ---- references ---- */
 
 static void instance_free(WasmInstance *inst);
 
@@ -68,25 +68,25 @@ int wasm_func_is_host(const WasmFunc *f) { return f->host != NULL; }
 void *wasm_func_host_data(const WasmFunc *f) { return f->ud; }
 void **wasm_func_slot(WasmFunc *f) { return &f->slot; }
 
-/* ---- memorias ---- */
+/* ---- memories ---- */
 
 WasmMemory *wasm_memory_new(uint32_t min, uint32_t max, WasmError *err) {
     uint32_t cap = wasm_max_memory_pages;
-    if (min > cap) { wasm_err(err, WASM_ERR_NOMEM, "memoria demasiado grande (%u páginas)", min); return NULL; }
+    if (min > cap) { wasm_err(err, WASM_ERR_NOMEM, "memory too large (%u pages)", min); return NULL; }
     uint32_t top = max == WASM_NO_MAX || max > cap ? cap : max;
     WasmMemory *m = calloc(1, sizeof *m);
-    if (!m) { wasm_err(err, WASM_ERR_NOMEM, "sin memoria"); return NULL; }
+    if (!m) { wasm_err(err, WASM_ERR_NOMEM, "out of memory"); return NULL; }
     m->rc = 1;
     m->max = max;
     m->reserved = (size_t)(top ? top : 1) * WASM_PAGE;
     void *p = mmap(NULL, m->reserved, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
-    if (p == MAP_FAILED) { free(m); wasm_err(err, WASM_ERR_NOMEM, "no se pudo reservar la memoria"); return NULL; }
+    if (p == MAP_FAILED) { free(m); wasm_err(err, WASM_ERR_NOMEM, "could not reserve the memory"); return NULL; }
     m->data = p;
     m->size = (size_t)min * WASM_PAGE;
     if (m->size && mprotect(p, m->size, PROT_READ | PROT_WRITE)) {
         munmap(p, m->reserved);
         free(m);
-        wasm_err(err, WASM_ERR_NOMEM, "sin memoria");
+        wasm_err(err, WASM_ERR_NOMEM, "out of memory");
         return NULL;
     }
     return m;
@@ -121,13 +121,13 @@ int64_t wasm_memory_grow(WasmMemory *m, uint32_t delta) {
     return (int64_t)old;
 }
 
-/* ---- tablas ---- */
+/* ---- tables ---- */
 
 static WasmTable *table_alloc(WasmInstance *owner, uint8_t type, uint32_t min, uint32_t max, WasmVal init, WasmError *err) {
-    if (min > 10000000) { wasm_err(err, WASM_ERR_NOMEM, "tabla demasiado grande"); return NULL; }
+    if (min > 10000000) { wasm_err(err, WASM_ERR_NOMEM, "table too large"); return NULL; }
     WasmTable *t = calloc(1, sizeof *t);
     if (t) t->elems = calloc(min ? min : 1, sizeof *t->elems);
-    if (!t || !t->elems) { free(t); wasm_err(err, WASM_ERR_NOMEM, "sin memoria"); return NULL; }
+    if (!t || !t->elems) { free(t); wasm_err(err, WASM_ERR_NOMEM, "out of memory"); return NULL; }
     t->owner = owner;
     t->type = type;
     t->size = min;
@@ -192,7 +192,7 @@ int64_t wasm_table_grow(WasmTable *t, uint32_t delta, WasmVal init) {
     return old;
 }
 
-/* ---- globales ---- */
+/* ---- globals ---- */
 
 static WasmGlobal *global_alloc(WasmInstance *owner, uint8_t type, int mut, WasmVal v) {
     WasmGlobal *g = calloc(1, sizeof *g);
@@ -255,7 +255,7 @@ void wasm_extern_unref(WasmExtern e) {
     }
 }
 
-/* ---- expresiones constantes ---- */
+/* ---- constant expressions ---- */
 
 static uint64_t rd_leb(const uint8_t **pp, int sign) {
     const uint8_t *p = *pp;
@@ -291,13 +291,13 @@ WasmVal wasm_const_eval(const WasmInstance *inst, ConstExpr e) {
     }
 }
 
-/* ---- pilas de ejecución ---- */
+/* ---- execution stacks ---- */
 
 typedef struct {
-    const Cell *ip;                     /* NULL: volver al host */
+    const Cell *ip;                     /* NULL: return to the host */
     WasmVal *fp;
     WasmInstance *inst;
-    uint8_t crossed;                    /* se entró a otra instancia (hay que soltarla) */
+    uint8_t crossed;                    /* entered another instance (it has to be released) */
 } Frame;
 
 static WasmVal *vstack, *vstack_end, *cur_sp;
@@ -318,7 +318,7 @@ static int stacks_init(void) {
     return 0;
 }
 
-/* ---- aritmética ---- */
+/* ---- arithmetic ---- */
 
 static inline float fmin32(float a, float b) {
     if (a != a || b != b) return a + b;
@@ -341,7 +341,7 @@ static inline double fmax64(double a, double b) {
     return a > b ? a : b;
 }
 
-/* Conversión con saturación (trunc_sat): NaN → 0, fuera de rango → el extremo. */
+/* Saturating conversion (trunc_sat): NaN → 0, out of range → the extreme. */
 static inline int32_t sat_i32(double x) {
     if (x != x) return 0;
     if (x <= -2147483649.0) return INT32_MIN;
@@ -365,7 +365,7 @@ static inline uint64_t sat_u64(double x) {
     return (uint64_t)x;
 }
 
-/* ---- intérprete ---- */
+/* ---- interpreter ---- */
 
 static int exec(WasmFunc *entry, WasmVal *base, WasmError *err) {
     static const void *const labels[OP__COUNT] = {
@@ -477,7 +477,7 @@ do_call: {
         int r = callee->host(callee->ud, sp - np, sp, &herr);
         if (r) {
             if (err) *err = herr;
-            if (herr.kind == WASM_OK && err) wasm_err(err, WASM_ERR_HOST, "error del host");
+            if (herr.kind == WASM_OK && err) wasm_err(err, WASM_ERR_HOST, "host error");
             goto unwind;
         }
         memmove(sp - np, sp, nr * sizeof *sp);
@@ -633,7 +633,7 @@ BIN64(I64_ROTR, (a >> (b & 63)) | (a << ((64 - (b & 63)) & 63)))
 
 L_F32_ABS: sp[-1].u32 &= 0x7fffffffu; NEXT(1);
 L_F32_NEG: sp[-1].u32 ^= 0x80000000u; NEXT(1);
-/* redondeos: glibc devuelve un NaN señalizador tal cual; wasm pide uno silencioso */
+/* rounding: glibc returns a signaling NaN as-is; wasm requires a quiet one */
 #define QNAN32(x, e) ((x) != (x) ? (x) + (x) : (e))
 #define QNAN64(x, e) ((x) != (x) ? (x) + (x) : (e))
 L_F32_CEIL: sp[-1].f32 = QNAN32(sp[-1].f32, ceilf(sp[-1].f32)); NEXT(1);
@@ -799,7 +799,7 @@ void wasm_init_labels(void) {
 
 int wasm_call(WasmFunc *f, const WasmVal *args, WasmVal *results, WasmError *err) {
     if (err) err->kind = WASM_OK;
-    if (stacks_init()) { wasm_err(err, WASM_ERR_NOMEM, "sin memoria para la pila"); return -1; }
+    if (stacks_init()) { wasm_err(err, WASM_ERR_NOMEM, "out of memory for the stack"); return -1; }
     const WasmFuncType *t = f->type;
     WasmVal *base = cur_sp;
     if (base + t->nparams + t->nresults + 16 > vstack_end) { wasm_err(err, WASM_ERR_EXHAUSTED, "call stack exhausted"); return -1; }
@@ -822,7 +822,7 @@ int wasm_call(WasmFunc *f, const WasmVal *args, WasmVal *results, WasmError *err
     return r;
 }
 
-/* ---- instanciación ---- */
+/* ---- instantiation ---- */
 
 static int limits_match(uint32_t min, uint32_t max, uint32_t want_min, uint32_t want_max) {
     if (min < want_min) return 0;
@@ -887,7 +887,7 @@ WasmInstance *wasm_instantiate(WasmModule *m, const WasmExtern *imports, uint32_
     }
 
     WasmInstance *inst = calloc(1, sizeof *inst);
-    if (!inst) { wasm_err(err, WASM_ERR_NOMEM, "sin memoria"); return NULL; }
+    if (!inst) { wasm_err(err, WASM_ERR_NOMEM, "out of memory"); return NULL; }
     inst->rc = 1;
     inst->m = m;
     wasm_module_ref(m);
@@ -901,7 +901,7 @@ WasmInstance *wasm_instantiate(WasmModule *m, const WasmExtern *imports, uint32_
     inst->data_dropped = calloc(m->ndata + 1, 1);
     inst->exports = calloc(m->nexports + 1, sizeof *inst->exports);
     if (!inst->funcs || !inst->own || !inst->tables || !inst->globals || !inst->elem_dropped || !inst->data_dropped || !inst->exports) {
-        wasm_err(err, WASM_ERR_NOMEM, "sin memoria");
+        wasm_err(err, WASM_ERR_NOMEM, "out of memory");
         goto fail;
     }
     /* imports */
@@ -933,7 +933,7 @@ WasmInstance *wasm_instantiate(WasmModule *m, const WasmExtern *imports, uint32_
     for (uint32_t i = m->nglobal_imports; i < m->nglobals; i++) {
         WasmVal v = wasm_const_eval(inst, m->globals[i].init);
         inst->globals[i] = global_alloc(inst, m->globals[i].type, m->globals[i].mut, v);
-        if (!inst->globals[i]) { wasm_err(err, WASM_ERR_NOMEM, "sin memoria"); goto fail; }
+        if (!inst->globals[i]) { wasm_err(err, WASM_ERR_NOMEM, "out of memory"); goto fail; }
     }
     for (uint32_t i = 0; i < m->nexports; i++) {
         const Export *x = &m->exports[i];
@@ -946,7 +946,7 @@ WasmInstance *wasm_instantiate(WasmModule *m, const WasmExtern *imports, uint32_
         case WASM_EXT_GLOBAL: e->global = inst->globals[x->idx]; break;
         }
     }
-    /* segmentos de elementos: activos en orden; los declarativos se descartan */
+    /* element segments: active ones in order; declarative ones are discarded */
     for (uint32_t i = 0; i < m->nelems; i++) {
         const ElemSeg *s = &m->elems[i];
         if (s->mode == 1) continue;

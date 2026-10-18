@@ -1,22 +1,22 @@
-/* js_logs.c — lord.logs: los registros para la app Registros (docs/SYSTEM.md).
+/* js_logs.c — lord.logs: logs for the Logs app (docs/SYSTEM.md).
  *
- * Todo es de solo lectura y como el usuario de la sesión: los archivos del journal que el kernel y
- * las ACL de journald le dejan leer (su user-<uid>.journal; el del sistema solo si está en
- * systemd-journal o adm) y sus registros de LordOS (~/.cache/lordos/<nombre>.log). El journal del
- * sistema para un administrador va por la acción logs-system del ayudante (logs/logs_admin.c).
+ * Everything is read-only and runs as the session user: the journal files that the kernel and
+ * journald's ACLs let them read (their user-<uid>.journal; the system one only if they are in
+ * systemd-journal or adm) and their LordOS logs (~/.cache/lordos/<name>.log). The system journal
+ * for an administrator goes through the helper's logs-system action (logs/logs_admin.c).
  *
- *   sources()                  { user: n archivos, system: bool (se puede leer directo), uid }
+ *   sources()                  { user: n files, system: bool (readable directly), uid }
  *   query({ scope, since, until, prio, kernel, match, grep, limit })  → id (>0)
- *                              la lectura la hace un hilo propio; al terminar llega
- *                              __lordLogs('result', id) y el resultado se pide con take(id)
- *   take(id)                   [{ t, s, p, pid, uid, k, id, u, b, m }] (t en µs) o null
- *   files()                    [{ name, size, mtime }] de ~/.cache/lordos/<nombre>.log
- *   tail(nombre, bytes)        el final de uno de esos archivos (máx. 1 MB), desde un renglón
- *   follow(on)                 inotify sobre las carpetas del journal y ~/.cache/lordos:
- *                              __lordLogs('journal') o __lordLogs('file', nombre) al cambiar
+ *                              a thread of its own does the reading; when done,
+ *                              __lordLogs('result', id) arrives; fetch the result with take(id)
+ *   take(id)                   [{ t, s, p, pid, uid, k, id, u, b, m }] (t in µs) or null
+ *   files()                    [{ name, size, mtime }] of ~/.cache/lordos/<name>.log
+ *   tail(name, bytes)          the end of one of those files (max. 1 MB), from a line start
+ *   follow(on)                 inotify on the journal folders and ~/.cache/lordos:
+ *                              __lordLogs('journal') or __lordLogs('file', name) on change
  *
- * El hilo y inotify van por un solo fd de epoll que mira el bucle principal (logs_fd()), así el
- * compositor nunca espera una lectura y no hay sondeo. */
+ * The thread and inotify go through a single epoll fd that the main loop watches (logs_fd()), so
+ * the compositor never waits on a read and there is no polling. */
 #include "js_logs.h"
 #include "../logs/journal.h"
 
@@ -53,7 +53,7 @@ int logs_fd(void) { return ep; }
 
 static const char *home(void) { const char *h = getenv("HOME"); return h && *h == '/' ? h : NULL; }
 
-/* ---- hilo de lectura ---- */
+/* ---- reader thread ---- */
 
 static char *run_query(int scope, const JQuery *q) {
     char **paths;
@@ -101,11 +101,11 @@ static void *worker(void *arg) {
         pthread_mutex_lock(&mu);
         int slot = -1;
         for (int i = 0; i < QMAX; i++) if (!done[i].id) { slot = i; break; }
-        if (slot < 0) { free(done[0].json); slot = 0; }     /* nadie lo pidió: el más viejo se pierde */
+        if (slot < 0) { free(done[0].json); slot = 0; }     /* nobody took it: the oldest is dropped */
         done[slot] = (Res){ r.id, json };
         pthread_mutex_unlock(&mu);
         char c = 1;
-        if (write(wake_w, &c, 1) < 0) { /* el bucle ya tiene algo para leer */ }
+        if (write(wake_w, &c, 1) < 0) { /* the loop already has something to read */ }
     }
     return NULL;
 }
@@ -165,7 +165,7 @@ void logs_dispatch(void (*fn)(const char *kind, int id, const char *name)) {
             pthread_mutex_unlock(&mu);
             for (int j = 0; j < k; j++) fn("result", ids[j], "");
         } else if (ino >= 0 && evs[i].data.fd == ino) {
-            /* se juntan todos los avisos de esta vuelta: uno por tipo (y por archivo de LordOS) */
+            /* coalesce all events of this round: one per kind (and per LordOS file) */
             char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
             int journal = 0;
             char files[4][72];
@@ -217,13 +217,13 @@ static int get_str(JSContext *c, JSValueConst o, const char *k, char *out, size_
 
 static JSValue f_query(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (argc < 1 || !JS_IsObject(argv[0])) return JS_ThrowTypeError(c, "logs.query: falta la consulta");
+    if (argc < 1 || !JS_IsObject(argv[0])) return JS_ThrowTypeError(c, "logs.query: missing query");
     JSValueConst o = argv[0];
     Req r = { 0 };
     char scope[16], tmp[160];
     get_str(c, o, "scope", scope, sizeof scope);
     r.scope = !strcmp(scope, "system") ? JSCOPE_SYSTEM : JSCOPE_USER;
-    /* la consulta se arma como texto y pasa por el mismo validador que la acción del ayudante */
+    /* the query is built as text and goes through the same validator as the helper's action */
     char text[600];
     size_t n = 0;
     uint64_t u;
@@ -236,16 +236,16 @@ static JSValue f_query(JSContext *c, JSValueConst t, int argc, JSValueConst *arg
     JS_FreeValue(c, k);
     if (get_str(c, o, "match", tmp, 97) == 1 && tmp[0]) n += (size_t)snprintf(text + n, sizeof text - n, "match=%s\n", tmp);
     if (get_str(c, o, "grep", tmp, 128) == 1 && tmp[0] && !strchr(tmp, '\n')) n += (size_t)snprintf(text + n, sizeof text - n, "grep=%s\n", tmp);
-    if (n >= sizeof text || jq_parse(text, &r.q, 20000)) return JS_ThrowRangeError(c, "logs.query: consulta inválida");
+    if (n >= sizeof text || jq_parse(text, &r.q, 20000)) return JS_ThrowRangeError(c, "logs.query: invalid query");
     pthread_mutex_lock(&mu);
-    if (nq == QMAX) { pthread_mutex_unlock(&mu); return JS_ThrowRangeError(c, "logs.query: demasiadas consultas en curso"); }
+    if (nq == QMAX) { pthread_mutex_unlock(&mu); return JS_ThrowRangeError(c, "logs.query: too many queries in progress"); }
     if (!th_started) {
         pthread_attr_t a;
         pthread_attr_init(&a);
         pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
         th_started = pthread_create(&th, &a, worker, NULL) == 0;
         pthread_attr_destroy(&a);
-        if (!th_started) { pthread_mutex_unlock(&mu); return JS_ThrowInternalError(c, "logs.query: sin hilo"); }
+        if (!th_started) { pthread_mutex_unlock(&mu); return JS_ThrowInternalError(c, "logs.query: no thread"); }
     }
     r.id = next_id++;
     if (next_id > 1 << 30) next_id = 1;
@@ -320,7 +320,7 @@ static JSValue f_tail(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     char p[1024];
     snprintf(p, sizeof p, "%s/.cache/lordos/%s", home(), name);
     JS_FreeCString(c, name);
-    if (!ok) return JS_ThrowRangeError(c, "logs.tail: nombre inválido");
+    if (!ok) return JS_ThrowRangeError(c, "logs.tail: invalid name");
     double want = 262144;
     if (argc > 1) JS_ToFloat64(c, &want, argv[1]);
     size_t max = want < 1024 ? 1024 : want > 1048576 ? 1048576 : (size_t)want;
@@ -366,7 +366,7 @@ void js_logs_register(JSContext *c, JSValue lord) {
             epoll_ctl(ep, EPOLL_CTL_ADD, wake_r, &ev);
         }
     }
-    unfollow();                         /* contexto nuevo (cambio de tema): nadie sigue mirando */
+    unfollow();                         /* new context (theme change): nobody is watching anymore */
     JSValue o = JS_NewObject(c);
     JS_SetPropertyFunctionList(c, o, logs_funcs, sizeof logs_funcs / sizeof logs_funcs[0]);
     JS_SetPropertyStr(c, lord, "logs", o);

@@ -1,12 +1,12 @@
-/* shape_syl.c — lo común de los shapers por sílabas (shape_khmer.c, shape_myanmar.c,
+/* shape_syl.c — what the syllable-based shapers have in common (shape_khmer.c, shape_myanmar.c,
  * shape_use.c):
  *
- *   - gramáticas de sílabas: HarfBuzz las escribe en Ragel y las compila a autómatas; acá se
- *     escriben igual (como texto) y se compilan al primer uso a un autómata no determinista
- *     (Thompson) que se recorre con conjuntos de estados. Las entradas son sílabas cortas, así
- *     que alcanza y sobra;
- *   - normalización (descomponer, ordenar marcas, recomponer) como hb-ot-shape-normalize.cc;
- *   - ◌ en las sílabas rotas y la unión de cada sílaba en un solo grupo. */
+ *   - syllable grammars: HarfBuzz writes them in Ragel and compiles them to automata; here they're
+ *     written the same way (as text) and compiled on first use to a nondeterministic automaton
+ *     (Thompson) that is walked with state sets. Inputs are short syllables, so
+ *     that is more than enough;
+ *   - normalization (decompose, reorder marks, recompose) like hb-ot-shape-normalize.cc;
+ *   - ◌ in broken syllables and merging each syllable into a single cluster. */
 #include "shape_syl.h"
 
 #include <stdlib.h>
@@ -14,7 +14,7 @@
 
 #include "unicode.h"
 
-/* ---- autómata ---- */
+/* ---- automaton ---- */
 
 #define MAX_ALTS 12
 
@@ -54,7 +54,7 @@ static int is_name_char(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && 
 
 static Frag parse_alt(Parser *ps);
 
-/* Expresión de la def `name` (o NULL); *len = su largo. */
+/* Expression of the def `name` (or NULL); *len = its length. */
 static const char *find_def(const char *defs, const char *name, int nlen, int *len) {
     for (const char *p = defs; p && *p;) {
         while (*p == ' ' || *p == '\n' || *p == '\t') p++;
@@ -180,7 +180,7 @@ static SylNfa *compile(SylGrammar *g) {
     return a;
 }
 
-/* Agrega el estado y su clausura épsilon; los que consumen van a list. Devuelve 1 si llegó a acc. */
+/* Adds the state and its epsilon closure; the consuming ones go to list. Returns 1 if it reached acc. */
 static int add(SylNfa *a, int s, int acc, int *list, int *nl) {
     int hit = 0, stack[512], sp = 0;
     stack[sp++] = s;
@@ -227,7 +227,7 @@ int syl_next(SylGrammar *g, const uint8_t *cat, int n, int *alt) {
     return best ? best : 1;
 }
 
-/* ---- normalización ---- */
+/* ---- normalization ---- */
 
 int syl_modified_ccc(uint32_t cp) {
     static const uint8_t hebrew[17] = { 22, 15, 16, 17, 23, 18, 19, 20, 21, 14, 24, 12, 25, 13, 10, 11, 26 };   /* 10..26 */
@@ -277,7 +277,7 @@ int syl_normalize(Shaper *s, Otf *o, const uint32_t *in, int n, int (*split)(uin
     for (int i = 0; i < n; i++) if (!decompose(o, in[i], split, &out, i, 0)) emit(&out, in[i], i);
     uint32_t *cp = s->cp;
     int *ord = s->order, m = out.n;
-    /* marcas seguidas en orden de clase (estable) */
+    /* consecutive marks in class order (stable) */
     for (int i = 0; i < m; i++) {
         if (!syl_modified_ccc(cp[i])) continue;
         int e = i;
@@ -292,7 +292,7 @@ int syl_normalize(Shaper *s, Otf *o, const uint32_t *in, int n, int (*split)(uin
             }
         i = e - 1;
     }
-    /* recomposición: una marca con la base de antes, si nada en el medio la bloquea */
+    /* recomposition: a mark with the preceding base, if nothing in between blocks it */
     if (m <= 1) return m;
     int w = 1, starter = 0;
     for (int i = 1; i < m; i++) {
@@ -335,7 +335,7 @@ int syl_dotted_circles(Shaper *s, Otf *o, int broken_type, int cat_dc, int repha
     if (!count || reserve(s, r->len + count + 8)) return 0;
     for (int i = 0; i < r->len; i++) {
         if (SYL_TYPE(r->aux[i]) != broken_type || (i > 0 && OTF_AUX_SYL(r->aux[i - 1]) == OTF_AUX_SYL(r->aux[i]))) continue;
-        uint32_t syl = r->aux[i] & 0xf0ff0000u;            /* sílaba y tipo */
+        uint32_t syl = r->aux[i] & 0xf0ff0000u;            /* syllable and type */
         int cl = r->cl[i];
         uint32_t mask = r->mask[i];
         int at = i;

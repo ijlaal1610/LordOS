@@ -1,4 +1,4 @@
-/* doc.c — sesiones de lord-doc del lado de lord-server (ver doc.h y proto.h). */
+/* doc.c — lord-doc sessions on the lord-server side (see doc.h and proto.h). */
 #include "doc.h"
 #include "proto.h"
 #include "wire.h"
@@ -27,8 +27,8 @@ extern char **environ;
 #define MAX_SESS   32
 #define MAX_IMG    768
 #define MAX_BLOB   32
-#define IMG_BUDGET ((size_t)160 << 20)      /* tope de memoria de imágenes devueltas (todas las sesiones) */
-#define IDLE_MS    60000                    /* sin plazo: se mata si pasa esto sin progreso */
+#define IMG_BUDGET ((size_t)160 << 20)      /* memory cap for returned images (all sessions) */
+#define IDLE_MS    60000                    /* no deadline: killed if this passes without progress */
 #define SPAWN_MS   15000
 
 enum { S_FREE, S_NEW, S_INIT, S_READY, S_DEAD };
@@ -82,10 +82,10 @@ static double now_ms(void) {
 
 static void wake(void) {
     uint64_t one = 1;
-    if (wakefd >= 0 && write(wakefd, &one, sizeof one) < 0) { /* ya hay un aviso pendiente */ }
+    if (wakefd >= 0 && write(wakefd, &one, sizeof one) < 0) { /* a wakeup is already pending */ }
 }
 
-/* Mediciones en el registro: LORD_DOC_TRACE=1 o el archivo ~/.cache/lordos/doc-trace */
+/* Measurements in the log: LORD_DOC_TRACE=1 or the file ~/.cache/lordos/doc-trace */
 static int trace(void) {
     static int t = -1;
     if (t < 0) {
@@ -97,7 +97,7 @@ static int trace(void) {
     return t;
 }
 
-/* ---- ruta fija del ayudante ---- */
+/* ---- fixed path of the helper ---- */
 
 int doc_available(void) {
     if (!helper[0]) {
@@ -114,12 +114,12 @@ int doc_available(void) {
     }
     struct stat st, me;
     if (stat(helper, &st) || !S_ISREG(st.st_mode) || !(st.st_mode & S_IXUSR)) return -1;
-    /* del mismo dueño que lord-server (o de root) y que nadie más pueda escribirlo */
+    /* owned by the same user as lord-server (or by root) and writable by nobody else */
     if (stat("/proc/self/exe", &me) || (st.st_uid != 0 && st.st_uid != me.st_uid) || (st.st_mode & 022)) return -1;
     return 0;
 }
 
-/* ---- eventos ---- */
+/* ---- events ---- */
 
 static void ev_begin(int sid, int req, const char *type) {
     if (events.n) jb_raw(&events, ",");
@@ -139,7 +139,7 @@ static void req_free(Req *r) {
     free(r);
 }
 
-/* La sesión terminó (cerrada, caída o muerta por plazo): sus pedidos fallan. */
+/* The session ended (closed, crashed or killed by deadline): its requests fail. */
 static void sess_kill(Sess *s, const char *why) {
     if (s->pid > 0) {
         kill(s->pid, SIGKILL);
@@ -164,7 +164,7 @@ static Sess *sess_get(int sid) {
     return NULL;
 }
 
-/* ---- arrancar un ayudante ---- */
+/* ---- starting a helper ---- */
 
 static int spawn(Sess *s) {
     int sv[2];
@@ -180,7 +180,7 @@ static int spawn(Sess *s) {
     posix_spawnattr_setsigmask(&at, &none);
     posix_spawnattr_setsigdefault(&at, &all);
     posix_spawnattr_setflags(&at, POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF);
-    /* entorno mínimo: nada del llamador */
+    /* minimal environment: nothing from the caller */
     char henv[PATH_MAX + 8], fenv[PATH_MAX + 20], *envp[8];
     int ne = 0;
     const char *home = getenv("HOME");
@@ -199,7 +199,7 @@ static int spawn(Sess *s) {
     if (r) { close(sv[0]); errno = r; return -1; }
     s->pid = pid;
     s->sock = sv[0];
-    /* fds de arranque, agrupados por papel, y la orden de encerrarse */
+    /* startup fds, grouped by role, and the order to lock itself down */
     for (int i = 0; i < s->ninit;) {
         int fds[DOC_MAX_FDS - 1], k = 0;
         const char *role = s->roles[i];
@@ -239,7 +239,7 @@ static void send_next(Sess *s) {
     s->deadline = r->sent + (r->timeout > 0 ? r->timeout : IDLE_MS);
 }
 
-/* ---- imágenes y blobs ---- */
+/* ---- images and blobs ---- */
 
 static void img_evict(size_t need) {
     while (img_bytes + need > IMG_BUDGET) {
@@ -261,7 +261,7 @@ static int img_add(int fd, int w, int h) {
     img_evict(len);
     Img *slot = NULL;
     for (int i = 0; i < MAX_IMG && !slot; i++) if (!imgs[i].px) slot = &imgs[i];
-    if (!slot) {                                     /* sin lugar: la más vieja */
+    if (!slot) {                                     /* no room: the oldest */
         for (int i = 0; i < MAX_IMG; i++) if (!slot || imgs[i].seq < slot->seq) slot = &imgs[i];
         img_bytes -= (size_t)slot->w * slot->h * 4;
         free(slot->px);
@@ -285,7 +285,7 @@ static int blob_add(int fd) {
     if (size < 0) return -1;
     Blob *slot = NULL;
     for (int i = 0; i < MAX_BLOB && !slot; i++) if (!blobs[i].handle) slot = &blobs[i];
-    if (!slot) {                                     /* el más viejo */
+    if (!slot) {                                     /* the oldest */
         slot = &blobs[0];
         for (int i = 1; i < MAX_BLOB; i++) if (blobs[i].handle < slot->handle) slot = &blobs[i];
         close(slot->fd);
@@ -297,14 +297,14 @@ static int blob_add(int fd) {
     return slot->handle;
 }
 
-/* ---- lo que llega de un ayudante ---- */
+/* ---- what arrives from a helper ---- */
 
 static void on_message(Sess *s) {
     DocMsg m;
     int r = doc_recv(s->sock, &m);
     if (r) { sess_kill(s, r > 0 ? "crash" : "protocol"); return; }
-    /* el JSON viene de un proceso que pudo haber leído un documento malicioso: se valida antes de
-     * pegarlo en la cola de eventos */
+    /* the JSON comes from a process that may have read a malicious document: it is validated before
+     * being put into the event queue */
     JDoc d = { 0 };
     if (m.json && json_parse(m.json, m.len, &d, NULL, 0)) { doc_msg_free(&m); sess_kill(s, "protocol"); return; }
     if (s->state == S_INIT) {
@@ -361,7 +361,7 @@ static void on_message(Sess *s) {
     json_free(&d);
     doc_msg_free(&m);
     if (trace())
-        fprintf(stderr, "lord-doc: pedido %u: cola %.1f ms, ayudante %.1f ms\n", q->op, q->sent - q->queued, now_ms() - q->sent);
+        fprintf(stderr, "lord-doc: request %u: queue %.1f ms, helper %.1f ms\n", q->op, q->sent - q->queued, now_ms() - q->sent);
     req_free(q);
     s->inflight = NULL;
     pending--;
@@ -384,7 +384,7 @@ static void *manager(void *arg) {
             Sess *s = &sess[i];
             if (s->state == S_NEW && spawn(s)) sess_kill(s, "spawn");
             if (s->state == S_READY && s->closing && !s->inflight) {
-                /* cerrar: el ayudante lee el fin del canal y termina solo */
+                /* close: the helper reads the end of the channel and exits on its own */
                 if (s->sock >= 0) close(s->sock);
                 s->sock = -1;
                 if (s->pid > 0 && nreap < 64) reap[nreap++] = s->pid;
@@ -406,7 +406,7 @@ static void *manager(void *arg) {
         int wait = next < 0 ? -1 : (int)next + 1;
         if (poll(pfd, (nfds_t)n, wait) < 0 && errno != EINTR) continue;
         pthread_mutex_lock(&mu);
-        if (pfd[0].revents & POLLIN) { uint64_t v; if (read(wakefd, &v, sizeof v) < 0) { /* nada */ } }
+        if (pfd[0].revents & POLLIN) { uint64_t v; if (read(wakefd, &v, sizeof v) < 0) { /* nothing */ } }
         for (int k = 1; k < n; k++) {
             Sess *s = &sess[idx[k]];
             if (s->sock != pfd[k].fd || (s->state != S_INIT && s->state != S_READY)) continue;
@@ -425,7 +425,7 @@ static int ensure_started(void) {
     if (wakefd < 0) return -1;
     sigset_t all, old;
     sigfillset(&all);
-    pthread_sigmask(SIG_BLOCK, &all, &old);          /* el hilo no recibe señales del servidor */
+    pthread_sigmask(SIG_BLOCK, &all, &old);          /* the thread doesn't receive the server's signals */
     int r = pthread_create(&thread, NULL, manager, NULL);
     pthread_sigmask(SIG_SETMASK, &old, NULL);
     if (r) { close(wakefd); wakefd = -1; return -1; }
@@ -440,7 +440,7 @@ int doc_session(const char *mode, DocInitFd *fds, int n) {
     pthread_mutex_lock(&mu);
     Sess *s = NULL;
     for (int i = 0; i < MAX_SESS && !s; i++) if (sess[i].state == S_FREE) s = &sess[i];
-    /* las sesiones caídas que nadie cerró liberan su lugar */
+    /* crashed sessions that nobody closed free their slot */
     for (int i = 0; i < MAX_SESS && !s; i++) if (sess[i].state == S_DEAD) { sess[i].state = S_FREE; s = &sess[i]; }
     if (!s || n > DOC_INIT_FDS || ensure_started()) {
         pthread_mutex_unlock(&mu);
@@ -484,7 +484,7 @@ int doc_request(int sid, uint32_t op, const char *json, size_t len, int *fds, in
     Sess *s = sess_get(sid);
     if (!s || s->state == S_DEAD || s->closing) { pthread_mutex_unlock(&mu); req_free(r); return -1; }
     r->id = next_req++;
-    /* al final de la cola (la prioridad la elige send_next) */
+    /* at the end of the queue (send_next picks the priority) */
     Req **pp = &s->queue;
     while (*pp) pp = &(*pp)->next;
     *pp = r;
@@ -520,10 +520,10 @@ void doc_close(int sid) {
     if (s) {
         s->closing = 1;
         if (s->state == S_DEAD) s->state = S_FREE;
-        else if (s->state != S_READY) sess_kill(s, "closed");   /* arrancando: se mata */
+        else if (s->state != S_READY) sess_kill(s, "closed");   /* starting up: killed */
         else {
             while (s->queue) { Req *r = s->queue; s->queue = r->next; req_free(r); pending--; }
-            if (s->inflight) sess_kill(s, "closed");          /* algo largo en curso: se corta */
+            if (s->inflight) sess_kill(s, "closed");          /* something long in progress: cut off */
         }
     }
     pthread_mutex_unlock(&mu);

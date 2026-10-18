@@ -1,10 +1,10 @@
-# Apps de LordOS
+# LordOS apps
 
-Cada app es una carpeta `apps/<id>/` con dos archivos. Las apps no dependen del tema:
-cualquier tema las muestra con sus propios colores (vía `useTheme()`).
+Each app is a folder `apps/<id>/` with two files. Apps don't depend on the theme: any theme shows
+them with its own colors (via `useTheme()`).
 
 ```
-apps/notas/
+apps/quicknotes/
 ├── manifest.json
 └── index.jsx
 ```
@@ -13,17 +13,17 @@ apps/notas/
 
 ```json
 {
-  "id": "notas",
-  "name": "Notas",
-  "description": "Notas rápidas",
+  "id": "quicknotes",
+  "name": "Quick Notes",
+  "description": "Quick notes",
   "size": [500, 400],
   "dock": true,
   "permissions": []
 }
 ```
 
-Campos opcionales: `"transparent": true` (el tema no pinta fondo bajo el contenido; la app
-dibuja el suyo, ej. la Terminal con transparencia) y `"minSize": [ancho, alto]`.
+Optional fields: `"transparent": true` (the theme paints no background under the content; the
+app draws its own, e.g. the Terminal with transparency) and `"minSize": [width, height]`.
 
 **index.jsx**
 
@@ -31,77 +31,79 @@ dibuja el suyo, ej. la Terminal con transparencia) y `"minSize": [ancho, alto]`.
 import { View, Text, useTheme, TextInput } from '@lordos/sdk';
 import { useState } from 'react';
 
-export function Icon({ size }) {          // ícono para dock, Launchpad, barra de tareas
+export function Icon({ size }) {          // icon for the dock, Launchpad, taskbar
   return <View style={{ width: size, height: size, borderRadius: size * 0.22, backgroundColor: '#ffd60a' }} />;
 }
 
-export default function Notas() {         // contenido de la ventana
+export default function QuickNotes() {    // the window's content
   const t = useTheme();
-  const [texto, setTexto] = useState('');
+  const [text, setText] = useState('');
   return (
     <View style={{ flex: 1, padding: 16, gap: 10 }}>
-      <Text style={{ fontSize: 18, fontWeight: 700, color: t.text }}>Notas</Text>
-      <TextInput value={texto} onChange={setTexto} placeholder="Escribí…" />
+      <Text style={{ fontSize: 18, fontWeight: 700, color: t.text }}>Quick Notes</Text>
+      <TextInput value={text} onChange={setText} placeholder="Write…" />
     </View>
   );
 }
 ```
 
-`npm run build` vuelve a empaquetar todos los temas con todas las apps. Para distribuir una app
-sin tocar los temas, se empaqueta como `.lpk` con `node tools/lpk.mjs <carpeta>` y se instala
-desde la Tienda (ver `docs/APPS-NATIVAS.md`).
+(Real apps don't hard-code visible text like this: see "Texts and languages" below.)
 
-## API disponible (`@lordos/sdk`)
+`npm run build` rebundles every theme with every app. To distribute an app without touching the
+themes, it is packaged as an `.lpk` with `node tools/lpk.mjs <folder>` and installed from the
+Store (see `docs/NATIVE-APPS.md`).
 
-| Área | API |
+## Available API (`@lordos/sdk`)
+
+| Area | API |
 |---|---|
-| UI | `View`, `Text` (con `fontFamily: 'monospace'` para JetBrains Mono), `Image`, `ScrollView`, `TextInput` (con `onKeyDown`), `Button`, `Toggle`, `Segmented`, `Stepper`, `Slider`, `SidebarItem`, `SectionTitle`, `Terminal` |
-| Tema | `useTheme()` → `text`, `textDim`, `accent`, `windowBg`, `sidebarBg`, `separator`, `hover`, `control`, `inputBg`, `mode` |
-| Ventanas | `wm.open(app, { new, instance, frame, args })`, `wm.close(id)`, `wm.focus(id)`, `wm.setTitle(id, t)`, `wm.setMenus(id, menús)`, `wm.setCloseGuard(id, fn)`, `useAppWindow()` → `{ id, focused, args }` |
-| Terminal | `term.create/close/configure/key/paste/search/...` (ver `docs/TERMINAL.md`), `clipboard.get/set`, `clipboardHistory` |
-| Teclado | `useKeyboard(fn)` (solo con la ventana al frente), `TextInput`; `keyboard.list/configured/active/next/set` (distribuciones de XKB) |
-| Idioma | `t('espacio.clave', vars)`, `useLocale()`, `appName(app)`, `formatDate`, `formatTime`, `formatNumber`, `languages()`, `setLanguage(id)`, `direction()`, `textDirection(texto)` — ver `docs/IDIOMAS.md` |
-| Métodos de entrada | `TextInput` ya los usa; para un campo propio, `ime.attach(token, caret)` / `ime.detach(token)` y `useIme()` |
-| Administración | `admin.run('locale-gen' \| 'system-locale' \| 'timezone' \| 'langpack', arg, onLog)` → promesa; `admin.busy` (progreso) |
-| Archivos | `useDirectory(ruta)`, `fs.list`, `fs.read(ruta, { binary })` (máx. 8 MB), `fs.write(ruta, texto \| ArrayBuffer)` (atómico, máx. 32 MB), `fs.mkdir`, `fs.rename`, `fs.copy`/`fs.move` (en segundo plano: `fs.jobs()`), `fs.trash`/`trashList`/`restore`/`removeFromTrash`/`emptyTrash` (Papelera freedesktop), `fs.stat`, `fs.du`, `fs.free`, `fs.search`, `fs.recent`, `fs.volumes`, `fs.join`, `fs.parent`, `fs.basename` — solo en la carpeta personal y en los discos montados del usuario (`/media/$USER`, `/run/media/$USER`); no se puede escribir en `~/.local/share/applications`, `~/.config/autostart`, `~/.local/share/lordos/apps` ni en los ajustes, y borrar solo se puede adentro de la Papelera (ver `docs/ARCHIVOS.md`) |
-| Fuentes | `lord.fonts.list({ rescan })` → `{ family, style, ps, weight, italic, mono, color }` de las fuentes instaladas |
-| Touchpad | `onWheel` con `e.precise`, `e.deltaX/deltaY` en píxeles y `e.phase` (`'momentum'` = inercia); `onPinch({ scale, rotation, x, y, phase })`; `onSwipe({ dx, dy, fingers, phase, system })`; `useTrackpads()`, `trackpad.config()/set(cambios)`, `registerGestureActions({ up, down, left, right })` (temas) — ver `docs/TRACKPAD.md` |
-| Sistema | `useSystemInfo()`, `useCpuUsage()`, `useServerStats()`, `formatBytes`, `formatDuration` |
-| Ajustes | `useSettings()` → `[ajustes, actualizar]`, guardados en `~/.config/lordos/settings.json` |
-| Sesión | `session.quit()`, `themes.list()`, `themes.use(id)` |
-| Apps | `useLauncherApps()` (LordOS, paquetes y apps Linux), `launchApp(id)`, `packages.*`, `windowIcon(w)` — ver `docs/APPS-NATIVAS.md` |
-| Portapapeles | `clipboard.get/set(texto, { secure })/use/pin/remove/clear`, `clipboardHistory` y `clipboardKind` (historial guardado; panel ❖V y ❖⇧V) — ver `docs/SPOTLIGHT.md` |
-| Spotlight | `spotlight.open/close/toggle` (❖Espacio); `spotlightCalc(texto)` y `spotlightConvert(texto)` |
-| Sonido | `useSound()`, `sound.setVolume/setMute/setDefault/setPort/move/meter/play`, `defaultSink(s)`, `microphones(s)` — ver `docs/SONIDO.md` |
-| WebAssembly | el global `WebAssembly` estándar (`docs/WASM.md`); en apps instaladas, `loadWasm(id, ruta)` |
-| Lienzo | `<Image pixels={{ width, height, data }} />`: píxeles RGBA (por ejemplo, calculados en WASM) |
-| Medios | `media.play/image/thumb/probe/poster/edit/transcode/screenshot/annotate/saveImage/copyImage/screenRecord/audioRecord/camera/photo/cameraRecord`, `usePlayer(id)`, `<MediaView media={id} />`, `nowPlaying`, `NowPlayingTile`, `useThumb(ruta)`, `userDirs()` — decodifica `lord-media`, aislado (ver `docs/MEDIOS.md`) |
-| Ventanas (medios) | `wm.setProtected(id, on)` (negra en capturas, grabaciones y escritorio remoto), `wm.setFullscreen(id, on)`, `wm.setPip(id, frame)`, `useWindowState(clave, inicial)`, `useAppWindow().mode` (`'window'`, `'fullscreen'` o `'pip'`) |
-| Markdown | `<Markdown source base width onLink onToggleTask />`, `markdownHeadings(texto)`, `toggleTask` — ver `docs/NOTAS.md` |
-| Escritorio | `registerWidgetType(tipo, Componente)`, `setWidgets(tipo, [{ id, x, y, w, h, pinned }])`: widgets entre el fondo y las ventanas |
+| UI | `View`, `Text` (with `fontFamily: 'monospace'` for JetBrains Mono), `Image`, `ScrollView`, `TextInput` (with `onKeyDown`), `Button`, `Toggle`, `Segmented`, `Stepper`, `Slider`, `SidebarItem`, `SectionTitle`, `Terminal` |
+| Theme | `useTheme()` → `text`, `textDim`, `accent`, `windowBg`, `sidebarBg`, `separator`, `hover`, `control`, `inputBg`, `mode` |
+| Windows | `wm.open(app, { new, instance, frame, args })`, `wm.close(id)`, `wm.focus(id)`, `wm.setTitle(id, t)`, `wm.setMenus(id, menus)`, `wm.setCloseGuard(id, fn)`, `useAppWindow()` → `{ id, focused, args }` |
+| Terminal | `term.create/close/configure/key/paste/search/...` (see `docs/TERMINAL.md`), `clipboard.get/set`, `clipboardHistory` |
+| Keyboard | `useKeyboard(fn)` (only with the window in front), `TextInput`; `keyboard.list/configured/active/next/set` (XKB layouts) |
+| Language | `t('namespace.key', vars)`, `useLocale()`, `appName(app)`, `formatDate`, `formatTime`, `formatNumber`, `languages()`, `setLanguage(id)`, `direction()`, `textDirection(text)` — see `docs/LANGUAGES.md` |
+| Input methods | `TextInput` already uses them; for a custom field, `ime.attach(token, caret)` / `ime.detach(token)` and `useIme()` |
+| Administration | `admin.run('locale-gen' \| 'system-locale' \| 'timezone' \| 'langpack', arg, onLog)` → promise; `admin.busy` (progress) |
+| Files | `useDirectory(path)`, `fs.list`, `fs.read(path, { binary })` (max. 8 MB), `fs.write(path, text \| ArrayBuffer)` (atomic, max. 32 MB), `fs.mkdir`, `fs.rename`, `fs.copy`/`fs.move` (in the background: `fs.jobs()`), `fs.trash`/`trashList`/`restore`/`removeFromTrash`/`emptyTrash` (freedesktop Trash), `fs.stat`, `fs.du`, `fs.free`, `fs.search`, `fs.recent`, `fs.volumes`, `fs.join`, `fs.parent`, `fs.basename` — only in the home folder and on the user's mounted disks (`/media/$USER`, `/run/media/$USER`); writing to `~/.local/share/applications`, `~/.config/autostart`, `~/.local/share/lordos/apps` or the settings is not allowed, and deleting is only possible inside the Trash (see `docs/FILES.md`) |
+| Fonts | `lord.fonts.list({ rescan })` → `{ family, style, ps, weight, italic, mono, color }` of the installed fonts |
+| Touchpad | `onWheel` with `e.precise`, `e.deltaX/deltaY` in pixels and `e.phase` (`'momentum'` = inertia); `onPinch({ scale, rotation, x, y, phase })`; `onSwipe({ dx, dy, fingers, phase, system })`; `useTrackpads()`, `trackpad.config()/set(changes)`, `registerGestureActions({ up, down, left, right })` (themes) — see `docs/TRACKPAD.md` |
+| System | `useSystemInfo()`, `useCpuUsage()`, `useServerStats()`, `formatBytes`, `formatDuration` |
+| Settings | `useSettings()` → `[settings, update]`, stored in `~/.config/lordos/settings.json` |
+| Session | `session.quit()`, `themes.list()`, `themes.use(id)` |
+| Apps | `useLauncherApps()` (LordOS, packages and Linux apps), `launchApp(id)`, `packages.*`, `windowIcon(w)` — see `docs/NATIVE-APPS.md` |
+| Clipboard | `clipboard.get/set(text, { secure })/use/pin/remove/clear`, `clipboardHistory` and `clipboardKind` (saved history; ❖V and ❖⇧V panels) — see `docs/SPOTLIGHT.md` |
+| Spotlight | `spotlight.open/close/toggle` (❖Space); `spotlightCalc(text)` and `spotlightConvert(text)` |
+| Sound | `useSound()`, `sound.setVolume/setMute/setDefault/setPort/move/meter/play`, `defaultSink(s)`, `microphones(s)` — see `docs/SOUND.md` |
+| WebAssembly | the standard `WebAssembly` global (`docs/WASM.md`); in installed apps, `loadWasm(id, path)` |
+| Canvas | `<Image pixels={{ width, height, data }} />`: RGBA pixels (for example, computed in WASM) |
+| Media | `media.play/image/thumb/probe/poster/edit/transcode/screenshot/annotate/saveImage/copyImage/screenRecord/audioRecord/camera/photo/cameraRecord`, `usePlayer(id)`, `<MediaView media={id} />`, `nowPlaying`, `NowPlayingTile`, `useThumb(path)`, `userDirs()` — decoded by `lord-media`, sandboxed (see `docs/MEDIA.md`) |
+| Windows (media) | `wm.setProtected(id, on)` (black in screenshots, recordings and remote desktop), `wm.setFullscreen(id, on)`, `wm.setPip(id, frame)`, `useWindowState(key, initial)`, `useAppWindow().mode` (`'window'`, `'fullscreen'` or `'pip'`) |
+| Markdown | `<Markdown source base width onLink onToggleTask />`, `markdownHeadings(text)`, `toggleTask` — see `docs/NOTES.md` |
+| Desktop | `registerWidgetType(type, Component)`, `setWidgets(type, [{ id, x, y, w, h, pinned }])`: widgets between the wallpaper and the windows |
 | Notifications (M9) | `notify({ app, title, body, actions: [{ id, label, primary, run }], sound, sticky, timeout, onClose })` → id, `dismissNotification(id)`, `useNotifications()`, `notifyHistory`; `registerStatusItem(id, Component)` (status icons in the theme's bar) — see `docs/SYSTEM.md` |
 | Clock and Help (M9) | `clockAlarms`, `clockTimer`/`timerStart…`, `stopwatch`/`swStart…` (keep running with the app closed); `lord.time.zoneOffset(zone, t)`; `help.list/read/search/open/startTour`; `registerSpotlightSource(id, fn)`; `weekdayName(d)` |
-| Documentos (M9) | `pdf.open(ruta \| { blob })` (página, búsqueda, índice, enlaces, formularios, anotaciones, guardar copia), `<DocImage image>`, `archive.list/extract/create`, `fontInfo/fontSample/fontGrid`, `pdfThumb`, `makeTextPdf`/`makeImagePdf`: todo en el ayudante encerrado `lord-doc` — ver `docs/DOCUMENTOS.md` |
-| Imprimir (M9) | `print.open({ title, path \| doc \| text \| image })` abre el diálogo del sistema; `print.printers/jobs/cancel/add/remove/setDefault/discover/scanCaps/scan` — ver `docs/IMPRESION.md` |
-| Emojis (M9) | `emoji.open()` (❖.), `emoji.search/name/withTone/insert`, `EmojiGrid`, `EmojiToneBar` |
-| Foco de texto propio | `takeTextFocus(token, onKey, onChange)` / `releaseTextFocus(token)`: un campo propio recibe las teclas como un TextInput |
+| Documents (M9) | `pdf.open(path \| { blob })` (page, search, outline, links, forms, annotations, save a copy), `<DocImage image>`, `archive.list/extract/create`, `fontInfo/fontSample/fontGrid`, `pdfThumb`, `makeTextPdf`/`makeImagePdf`: all in the sandboxed helper `lord-doc` — see `docs/DOCUMENTS.md` |
+| Printing (M9) | `print.open({ title, path \| doc \| text \| image })` opens the system dialog; `print.printers/jobs/cancel/add/remove/setDefault/discover/scanCaps/scan` — see `docs/PRINTING.md` |
+| Emoji (M9) | `emoji.open()` (❖.), `emoji.search/name/withTone/insert`, `EmojiGrid`, `EmojiToneBar` |
+| Custom text focus | `takeTextFocus(token, onKey, onChange)` / `releaseTextFocus(token)`: a custom field receives keys like a TextInput |
 
-## Textos e idiomas
+## Texts and languages
 
-Los textos visibles no se escriben en el código: van con `t('miapp.clave')` y sus traducciones
-en `assets/locales/{es,en,pt}/miapp.json` (`{ "clave": "Texto" }`). El nombre de la app se
-traduce en `apps.json` (`"miapp": "Mi app"`). Las listas con textos se arman al dibujar,
-no como constantes de módulo, porque al cambiar el idioma la interfaz se vuelve a montar.
-`node tools/i18n-check.mjs` avisa si falta alguna clave.
+Visible texts aren't written in the code: they go through `t('myapp.key')` with their
+translations in `assets/locales/{es,en,pt}/myapp.json` (`{ "key": "Text" }`). The app's name is
+translated in `apps.json` (`"myapp": "My app"`). Lists containing texts are built at render
+time, not as module constants, because the UI is remounted when the language changes.
+`node tools/i18n-check.mjs` warns if any key is missing.
 
-## Permisos
+## Permissions
 
-`permissions` en el manifest es **declarativo** por ahora: documenta qué usa la app, pero
-todas las apps corren en el mismo contexto JS que el tema. El aislamiento real (un contexto
-o proceso por app, con permisos verificados por el servidor) es trabajo pendiente. Lo que sí
-es real hoy: el servidor corre sin root, `fs` no sale de la carpeta personal y no existe
-ninguna API para ejecutar comandos (la terminal solo puede abrir el shell del usuario).
+`permissions` in the manifest is **declarative** for now: it documents what the app uses, but
+all apps run in the same JS context as the theme. Real isolation (one context or process per
+app, with permissions checked by the server) is pending work. What is real today: the server
+runs without root, `fs` doesn't leave the home folder and there is no API to run commands (the
+terminal can only open the user's shell).
 
-`fs` solo escribe dentro de la carpeta personal y nunca en las carpetas que el sistema usa para
-lanzar o instalar cosas (`.desktop`, autostart, apps instaladas), así que una app no puede
-convertir una escritura en la ejecución de un comando.
+`fs` only writes inside the home folder and never to the folders the system uses to launch or
+install things (`.desktop`, autostart, installed apps), so an app can't turn a write into
+running a command.

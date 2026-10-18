@@ -1,16 +1,15 @@
-/* hold.c — sesiones que sobreviven a un reinicio de lord-server (como el "session server"
- * de iTerm2).
+/* hold.c — sessions that survive a lord-server restart (like iTerm2's "session server").
  *
- * Por cada sesión se lanza un guardián: el mismo binario re-ejecutado con --term-holder,
- * sin privilegios ni memoria del servidor. Solo conserva abierto el maestro del PTY (así el
- * shell no recibe SIGHUP si el servidor se cae o se reinicia) y escucha en un socket unix
- * de la carpeta privada del usuario. Al arrancar, el servidor se conecta a cada socket y
- * recibe el maestro por SCM_RIGHTS; el contenido de la pantalla se guarda al salir en un
- * archivo .state al lado del socket.
+ * For each session a holder is launched: the same binary re-executed with --term-holder,
+ * with no privileges and none of the server's memory. It only keeps the PTY master open (so
+ * the shell does not get SIGHUP if the server crashes or restarts) and listens on a unix
+ * socket in the user's private folder. On startup, the server connects to each socket and
+ * receives the master via SCM_RIGHTS; the screen contents are saved on exit to a .state
+ * file next to the socket.
  *
- * El guardián nunca lee ni escribe en el PTY y no ejecuta nada: termina cuando el shell
- * cierra la terminal (POLLHUP) o cuando el servidor le pide cerrar la sesión ('q').
- * Solo acepta conexiones del mismo usuario (SO_PEERCRED). */
+ * The holder never reads or writes the PTY and runs nothing: it exits when the shell
+ * closes the terminal (POLLHUP) or when the server asks it to close the session ('q').
+ * It only accepts connections from the same user (SO_PEERCRED). */
 #include "term.h"
 
 #include <dirent.h>
@@ -29,8 +28,8 @@
 
 static char dir[256];
 
-/* /run/user/<uid>/lordos-term (tmpfs, se borra al reiniciar la máquina) o, si no existe,
- * ~/.cache/lordos/term. Siempre 0700. */
+/* /run/user/<uid>/lordos-term (tmpfs, wiped when the machine reboots) or, if it does not
+ * exist, ~/.cache/lordos/term. Always 0700. */
 const char *hold_dir(void) {
     if (dir[0]) return dir;
     char run[64];
@@ -72,7 +71,7 @@ static int valid_key(const char *k) {
     return 1;
 }
 
-/* ---- guardián ---- */
+/* ---- holder ---- */
 
 static int send_fd(int sock, int fd, const char *msg) {
     struct iovec iov = { (void *)msg, strlen(msg) };
@@ -91,7 +90,7 @@ static int send_fd(int sock, int fd, const char *msg) {
     return sendmsg(sock, &m, MSG_NOSIGNAL) < 0 ? -1 : 0;
 }
 
-/* argv: --term-holder <clave> <pid del shell>; fds: 3 maestro, 4 socket de escucha, 5 control. */
+/* argv: --term-holder <key> <shell pid>; fds: 3 master, 4 listening socket, 5 control. */
 int hold_main(int argc, char **argv) {
     if (argc < 4 || !valid_key(argv[2])) return 2;
     setsid();
@@ -106,12 +105,12 @@ int hold_main(int argc, char **argv) {
     for (;;) {
         struct pollfd p[3] = { { master, 0, 0 }, { lsock, POLLIN, 0 }, { ctrl, POLLIN, 0 } };
         if (poll(p, ctrl >= 0 ? 3 : 2, -1) < 0) { if (errno == EINTR) continue; break; }
-        if (p[0].revents & (POLLHUP | POLLERR | POLLNVAL)) break;           /* el shell terminó */
+        if (p[0].revents & (POLLHUP | POLLERR | POLLNVAL)) break;           /* the shell exited */
         if (ctrl >= 0 && p[2].revents) {
             char c = 0;
             ssize_t r = read(ctrl, &c, 1);
-            if (r == 1 && c == 'q') break;                                   /* cerrar la sesión */
-            if (r <= 0) { close(ctrl); ctrl = -1; }                          /* el servidor se fue */
+            if (r == 1 && c == 'q') break;                                   /* close the session */
+            if (r <= 0) { close(ctrl); ctrl = -1; }                          /* the server went away */
         }
         if (p[1].revents & POLLIN) {
             int s = accept4(lsock, NULL, NULL, SOCK_CLOEXEC);
@@ -130,9 +129,9 @@ int hold_main(int argc, char **argv) {
     return 0;
 }
 
-/* ---- servidor ---- */
+/* ---- server ---- */
 
-/* Lanza el guardián de una sesión recién creada. Devuelve el fd de control (o -1) y la clave. */
+/* Launches the holder for a newly created session. Returns the control fd (or -1) and the key. */
 int hold_spawn(int master, pid_t pid, char *key, size_t keylen) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
@@ -152,7 +151,7 @@ int hold_spawn(int master, pid_t pid, char *key, size_t keylen) {
     chmod(addr.sun_path, 0600);
     pid_t h = fork();
     if (h == 0) {
-        /* fds 3, 4 y 5 para el guardián; el resto (DRM, input, otros PTY) se cierra */
+        /* fds 3, 4 and 5 for the holder; the rest (DRM, input, other PTYs) are closed */
         int fds[3] = { fcntl(master, F_DUPFD, 10), fcntl(ls, F_DUPFD, 10), fcntl(pair[1], F_DUPFD, 10) };
         for (int i = 0; i < 3; i++) { dup2(fds[i], 3 + i); }
         int null = open("/dev/null", O_RDWR);
@@ -170,8 +169,8 @@ int hold_spawn(int master, pid_t pid, char *key, size_t keylen) {
     return pair[0];
 }
 
-/* Al arrancar: se conecta a cada guardián vivo y recupera su sesión. Los sockets sin
- * guardián (máquina reiniciada, proceso muerto) se borran. */
+/* On startup: connects to each live holder and recovers its session. Sockets without a
+ * holder (machine rebooted, dead process) are deleted. */
 void hold_restore(void (*fn)(int fd, int ctrl, pid_t pid, const char *key)) {
     const char *d = hold_dir();
     DIR *dd = d ? opendir(d) : NULL;

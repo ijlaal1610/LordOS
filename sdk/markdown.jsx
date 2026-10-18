@@ -1,20 +1,21 @@
-// markdown.jsx — <Markdown source /> propio: lectura de markdown con los nodos de LordOS.
+// markdown.jsx — our own <Markdown source />: renders markdown with LordOS nodes.
 //
-//   <Markdown source={texto} base="/home/lord/Notas/x" width={420}
-//     onToggleTask={(linea) => …} onLink={(url) => …} onHeadingRef={(id, nodo) => …} />
-//   markdownHeadings(texto) → [{ level, text, id, line }]   (para un índice)
+//   <Markdown source={text} base="/home/lord/Notes/x" width={420}
+//     onToggleTask={(line) => …} onLink={(url) => …} onHeadingRef={(id, node) => …} />
+//   fitWidth (optional): width is the exact width of the column (lays list items out at it)
+//   markdownHeadings(text) → [{ level, text, id, line }]   (for a table of contents)
 //
-// Bloques: títulos, párrafos, citas, listas (con niveles), listas numeradas, casillas (- [ ] / - [x]),
-// bloques de código, tablas, separadores. En línea: **negrita**, *cursiva*, ~~tachado~~, `código`,
-// [enlaces](url), ![imágenes](archivo.png) (relativas a base) y :emoji: (con el mapa emoji).
+// Blocks: headings, paragraphs, quotes, lists (with levels), numbered lists, checkboxes (- [ ] / - [x]),
+// code blocks, tables, separators. Inline: **bold**, *italic*, ~~strikethrough~~, `code`,
+// [links](url), ![images](file.png) (relative to base) and :emoji: (with the emoji map).
 //
-// El motor no tiene tramos con estilos distintos dentro de un mismo <Text>: un párrafo es una
-// fila con flexWrap y un <Text> por palabra (el espacio va pegado a la palabra), así corta líneas
-// entre palabras y cada palabra lleva su estilo.
+// The engine has no runs with different styles inside a single <Text>: a paragraph is a
+// row with flexWrap and one <Text> per word (the space sticks to the word), so it breaks lines
+// between words and each word carries its own style.
 import { View, Text, Image } from '@lordos/runtime';
 import { useTheme } from './theme.js';
 
-// ---- bloques ----
+// ---- blocks ----
 
 const slug = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'titulo';
 
@@ -29,7 +30,7 @@ export function parseMarkdown(src) {
     const s = lines[i];
     if (!s.trim()) { i++; continue; }
     let m;
-    if ((m = /^(`{3,}|~{3,})\s*([\w+-]*)/.exec(s))) {             // bloque de código
+    if ((m = /^(`{3,}|~{3,})\s*([\w+-]*)/.exec(s))) {             // code block
       const fence = m[1], start = i;
       const body = [];
       i++;
@@ -44,14 +45,14 @@ export function parseMarkdown(src) {
       continue;
     }
     if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(s)) { blocks.push({ type: 'hr', line: i }); i++; continue; }
-    if (/^\s*>/.test(s)) {                                         // cita
+    if (/^\s*>/.test(s)) {                                         // quote
       const start = i;
       const body = [];
       while (i < lines.length && /^\s*>/.test(lines[i])) body.push(lines[i++].replace(/^\s*>\s?/, ''));
       blocks.push({ type: 'quote', blocks: parseMarkdown(body.join('\n')), line: start });
       continue;
     }
-    if (/^\s*\|.*\|\s*$/.test(s) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {   // tabla
+    if (/^\s*\|.*\|\s*$/.test(s) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {   // table
       const cells = (row) => row.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
       const header = cells(s);
       const align = cells(lines[i + 1]).map((c) => (/^:-+:$/.test(c) ? 'center' : /-:$/.test(c) ? 'end' : 'start'));
@@ -62,7 +63,7 @@ export function parseMarkdown(src) {
       blocks.push({ type: 'table', header, align, rows, line: start });
       continue;
     }
-    if (isListLine(s)) {                                           // listas (con sangría = nivel)
+    if (isListLine(s)) {                                           // lists (indentation = level)
       const items = [];
       const start = i;
       while (i < lines.length && (isListLine(lines[i]) || (lines[i].trim() && /^\s{2,}/.test(lines[i]) && items.length))) {
@@ -71,13 +72,13 @@ export function parseMarkdown(src) {
         if (lm) {
           items.push({ depth: Math.floor(lm[1].replace(/\t/g, '  ').length / 2), ordered: !!lm[3], num: lm[3] ? Number(lm[3]) : 0,
             task: lm[4] ? lm[5] !== ' ' : null, text: lm[6], line: i });
-        } else items[items.length - 1].text += ` ${li.trim()}`;     // continuación
+        } else items[items.length - 1].text += ` ${li.trim()}`;     // continuation
         i++;
       }
       blocks.push({ type: 'list', items, line: start });
       continue;
     }
-    const start = i;                                              // párrafo
+    const start = i;                                              // paragraph
     const body = [];
     while (i < lines.length && lines[i].trim() && !/^(#{1,6}\s|>|`{3,}|~{3,})/.test(lines[i]) && !isListLine(lines[i])) body.push(lines[i++].trim());
     blocks.push({ type: 'paragraph', text: body.join(' '), line: start });
@@ -92,7 +93,7 @@ export function markdownHeadings(src) {
   return out;
 }
 
-// ---- en línea ----
+// ---- inline ----
 
 const INLINE = [
   ['code', /`([^`]+)`/y],
@@ -140,7 +141,7 @@ export function parseInline(text, style = {}, emoji = null) {
 
 export const stripInline = (s) => parseInline(s).map((x) => x.text || x.alt || '').join('');
 
-// ---- dibujo ----
+// ---- drawing ----
 
 const join = (base, p) => (p.startsWith('/') ? p : `${base}/${p}`.replace(/\/+/g, '/'));
 
@@ -169,8 +170,17 @@ function Inline({ text, size, color, weight = 400, width, base, onLink, emoji, m
     const words = sg.code ? [sg.text] : sg.text.split(/(?<=\s)/);
     words.forEach((w, wi) => {
       if (!w) return;
-      out.push(<Text key={`${si}.${wi}`} onClick={sg.link ? (e) => { e.stopPropagation?.(); onLink?.(sg.link); } : undefined}
-        style={st}>{sg.strike ? w.replace(/\S/g, (c) => `${c}̶`) : w}</Text>);
+      const click = sg.link ? (e) => { e.stopPropagation?.(); onLink?.(sg.link); } : undefined;
+      // Combining U+0336 is missing from most fonts (it drew boxes): strike-through is a hairline
+      // across the word instead.
+      if (sg.strike) {
+        out.push(<View key={`${si}.${wi}`}>
+          <Text onClick={click} style={st}>{w}</Text>
+          {w.trim() ? <View style={{ position: 'absolute', left: 0, right: w.endsWith(' ') ? st.fontSize * 0.28 : 0, top: Math.round(st.fontSize * 0.68), height: 1, backgroundColor: st.color, opacity: 0.55 }} /> : null}
+        </View>);
+        return;
+      }
+      out.push(<Text key={`${si}.${wi}`} onClick={click} style={st}>{w}</Text>);
     });
   });
   return <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end' }}>{out}</View>;
@@ -180,7 +190,7 @@ const H_SIZE = [0, 22, 18, 16, 14, 13, 13];
 
 function Block({ b, props }) {
   const t = useTheme();
-  const { size = 14, color = t.text, width, base, onLink, onToggleTask, onHeadingRef, emoji } = props;
+  const { size = 14, color = t.text, width, base, onLink, onToggleTask, onHeadingRef, emoji, fitWidth } = props;
   const inl = (text, extra = {}) => <Inline text={text} size={size} color={color} width={width} base={base} onLink={onLink} emoji={emoji} {...extra} />;
   switch (b.type) {
     case 'heading':
@@ -225,7 +235,9 @@ function Block({ b, props }) {
                     {it.task && <Text style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>✓</Text>}
                   </View>
                 ) : <Text style={{ width: 18, fontSize: size, color: t.textDim }}>{mark}</Text>}
-                <View style={{ flex: 1, opacity: it.task ? 0.6 : 1 }}>{inl(it.text)}</View>
+                {/* fitWidth: the text of a list item gets an explicit width, so the engine measures its wrapped
+                    height at the width it is drawn at (a long item no longer overlaps the next one) */}
+                <View style={[fitWidth && width ? { width: width - 18 * (it.depth + 1) } : { flex: 1 }, { opacity: it.task ? 0.6 : 1 }]}>{inl(it.text)}</View>
               </View>
             );
           })}
@@ -256,7 +268,7 @@ export function Markdown(props) {
   return <View style={[{ gap: 2 }, props.style]}>{blocks.map((b, i) => <Block key={`${b.line}:${i}`} b={b} props={props} />)}</View>;
 }
 
-// Cambia [ ] ↔ [x] en la línea dada del texto (para las casillas que se tildan desde la lectura).
+// Toggles [ ] ↔ [x] on the given line of the text (for checkboxes ticked from reading view).
 export function toggleTask(src, line) {
   const lines = String(src).split('\n');
   if (line >= 0 && line < lines.length) lines[line] = lines[line].replace(/^(\s*([-*+]|\d+[.)])\s+)\[([ xX])\]/, (m, a, b, c) => `${a}[${c === ' ' ? 'x' : ' '}]`);

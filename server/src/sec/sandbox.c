@@ -1,12 +1,12 @@
-/* sandbox.c — caja de arena de las apps .lpk (ver sandbox.h y docs/PRIVACIDAD.md).
+/* sandbox.c — sandbox for .lpk apps (see sandbox.h and docs/PRIVACY.md).
  *
- * Decisión sobre la red: lord-server corre sin root, así que no puede crear un network namespace
- * (unshare(CLONE_NEWNET) pide CAP_SYS_ADMIN). En vez de eso, una app sin el permiso `network`
- * se queda en el netns del equipo pero no puede abrir sockets de red: seccomp rechaza
- * socket(AF_INET/AF_INET6/AF_PACKET) y Landlock (ABI ≥ 4) le niega bind/connect de TCP. El
- * agente de monitoreo pone, además, reglas de nftables por cgroup (defensa en capas). Los
- * sockets AF_UNIX siguen permitidos: los necesitan Wayland y el broker (que llega como fd ya
- * conectado, sin connect). */
+ * Network decision: lord-server runs without root, so it can't create a network namespace
+ * (unshare(CLONE_NEWNET) requires CAP_SYS_ADMIN). Instead, an app without the `network` permission
+ * stays in the machine's netns but can't open network sockets: seccomp rejects
+ * socket(AF_INET/AF_INET6/AF_PACKET) and Landlock (ABI ≥ 4) denies it TCP bind/connect. The
+ * monitoring agent also sets per-cgroup nftables rules (defense in depth). AF_UNIX
+ * sockets remain allowed: Wayland and the broker need them (the broker arrives as an already
+ * connected fd, no connect). */
 #include "sandbox.h"
 #include "cgroup.h"
 
@@ -37,14 +37,14 @@
 
 void sandbox_scope_name(const char *id, char *out, size_t n) { snprintf(out, n, "app-lordos-lpk-%s.scope", id); }
 
-/* ---- no_new_privs y capacidades ---- */
+/* ---- no_new_privs and capabilities ---- */
 
 static int apply_nopriv(void) { return prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == 0 ? 0 : -1; }
 
 static int drop_caps(void) {
     struct __user_cap_header_struct hdr = { 0x20080522 /* _LINUX_CAPABILITY_VERSION_3 */, 0 };
     struct __user_cap_data_struct data[2] = { { 0, 0, 0 }, { 0, 0, 0 } };
-    /* soltar también el bounding set y los ambientes (mejor esfuerzo) */
+    /* also drop the bounding set and the ambient ones (best effort) */
     for (int c = 0; c <= 40; c++) prctl(PR_CAPBSET_DROP, c, 0, 0, 0);
     prctl(PR_SET_SECUREBITS, 0, 0, 0, 0);
     return syscall(SYS_capset, &hdr, data) == 0 ? 0 : -1;
@@ -67,7 +67,7 @@ static int ll_path(int rs, const char *path, uint64_t allow) {
     return r;
 }
 
-/* Regla sobre una carpeta que ya está abierta (fd de lord-server). */
+/* Rule on a folder that's already open (an fd from lord-server). */
 static int ll_fd(int rs, int fd, uint64_t allow) {
     struct landlock_path_beneath_attr pb = { .allowed_access = allow, .parent_fd = fd };
     return ll_add(rs, LANDLOCK_RULE_PATH_BENEATH, &pb);
@@ -75,26 +75,26 @@ static int ll_fd(int rs, int fd, uint64_t allow) {
 #endif
 
 
-/* ro_fds / rw_fds: carpetas ya abiertas (ayudantes); NULL para las apps. */
+/* ro_fds / rw_fds: already open folders (helpers); NULL for apps. */
 static int apply_landlock(const SandboxConfig *cfg, const int *ro_fds, const int *rw_fds, int *fs_ok, int *net_ok) {
     *fs_ok = *net_ok = 0;
 #ifdef HAVE_LANDLOCK
     int abi = ll_abi();
-    if (abi < 1) { fprintf(stderr, "sandbox: sin Landlock (ABI %d); solo seccomp\n", abi); return -1; }
+    if (abi < 1) { fprintf(stderr, "sandbox: no Landlock (ABI %d); seccomp only\n", abi); return -1; }
 
     uint64_t ro = LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR | LANDLOCK_ACCESS_FS_EXECUTE;
     uint64_t rw = ro | LANDLOCK_ACCESS_FS_WRITE_FILE | LANDLOCK_ACCESS_FS_MAKE_DIR | LANDLOCK_ACCESS_FS_MAKE_REG |
                   LANDLOCK_ACCESS_FS_REMOVE_FILE | LANDLOCK_ACCESS_FS_REMOVE_DIR | LANDLOCK_ACCESS_FS_MAKE_SYM |
                   LANDLOCK_ACCESS_FS_TRUNCATE;
     uint64_t fs_handled = ro | rw;
-    /* accesos que un ABI viejo no conoce: se quitan de "handled" para no fallar al crear el set */
+    /* accesses an old ABI doesn't know: removed from "handled" so creating the set doesn't fail */
     if (abi < 2) fs_handled &= ~(uint64_t)LANDLOCK_ACCESS_FS_REFER;
     if (abi < 3) fs_handled &= ~(uint64_t)LANDLOCK_ACCESS_FS_TRUNCATE;
 #ifdef LANDLOCK_ACCESS_FS_IOCTL_DEV
     if (abi >= 5) fs_handled |= LANDLOCK_ACCESS_FS_IOCTL_DEV;
 #endif
     rw &= fs_handled; ro &= fs_handled;
-    /* carpetas rw de los ayudantes: escribir, crear y borrar archivos, pero NO truncar */
+    /* helpers' rw folders: write, create and delete files, but NOT truncate */
     uint64_t rwfd = (ro | LANDLOCK_ACCESS_FS_WRITE_FILE | LANDLOCK_ACCESS_FS_MAKE_DIR | LANDLOCK_ACCESS_FS_MAKE_REG |
                      LANDLOCK_ACCESS_FS_MAKE_SYM | LANDLOCK_ACCESS_FS_REMOVE_FILE) & fs_handled;
 
@@ -109,27 +109,27 @@ static int apply_landlock(const SandboxConfig *cfg, const int *ro_fds, const int
     if (abi >= 6) attr.scoped = LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET | LANDLOCK_SCOPE_SIGNAL;
 #endif
     int rs = ll_create(&attr, sizeof attr);
-    if (rs < 0) { fprintf(stderr, "sandbox: Landlock no se pudo crear: %s\n", strerror(errno)); return -1; }
+    if (rs < 0) { fprintf(stderr, "sandbox: could not create Landlock ruleset: %s\n", strerror(errno)); return -1; }
 
-    /* solo lectura: runtime (fuentes, assets) y la carpeta del paquete */
+    /* read-only: runtime (fonts, assets) and the package folder */
     if (cfg->pkg_dir) ll_path(rs, cfg->pkg_dir, ro);
     for (const char *const *p = cfg->ro_extra; p && *p; p++) ll_path(rs, *p, ro);
-    /* lectura y escritura: solo la carpeta de datos de la app */
+    /* read and write: only the app's data folder */
     if (cfg->data_dir) ll_path(rs, cfg->data_dir, rw);
-    /* carpetas pasadas como fds ya abiertos (ayudantes) */
+    /* folders passed as already open fds (helpers) */
     for (const int *p = ro_fds; p && *p >= 0; p++) ll_fd(rs, *p, ro);
     for (const int *p = rw_fds; p && *p >= 0; p++) ll_fd(rs, *p, rwfd);
-    /* el socket de Wayland y el del broker viven en XDG_RUNTIME_DIR: lectura (conexión por fd ya abierto) */
+    /* the Wayland socket and the broker's live in XDG_RUNTIME_DIR: read (connection via an already open fd) */
     if (cfg->runtime_dir) ll_path(rs, cfg->runtime_dir, LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR);
-    /* /dev/null, /dev/urandom y las bibliotecas del sistema: solo lectura y ejecución */
+    /* /dev/null, /dev/urandom and the system libraries: read and execute only */
     ll_path(rs, "/dev/null", LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_WRITE_FILE);
     ll_path(rs, "/dev/urandom", LANDLOCK_ACCESS_FS_READ_FILE);
     ll_path(rs, "/usr/lib", ro);
     ll_path(rs, "/lib", ro);
 
     *fs_ok = 1;
-    /* red: si la app NO tiene el permiso, no se agrega ninguna regla de red → todo TCP queda
-     * prohibido. Si lo tiene, se permiten bind y connect a cualquier puerto. */
+    /* network: if the app does NOT have the permission, no network rule is added → all TCP stays
+     * forbidden. If it has it, bind and connect to any port are allowed. */
 #ifdef LANDLOCK_ACCESS_NET_CONNECT_TCP
     if (net_handled) {
         if (cfg->network) {
@@ -139,19 +139,19 @@ static int apply_landlock(const SandboxConfig *cfg, const int *ro_fds, const int
         *net_ok = 1;
     }
 #endif
-    if (apply_nopriv()) { close(rs); return -1; }     /* Landlock exige no_new_privs */
+    if (apply_nopriv()) { close(rs); return -1; }     /* Landlock requires no_new_privs */
     int r = ll_enforce(rs);
     close(rs);
-    if (r) { fprintf(stderr, "sandbox: Landlock no se pudo aplicar: %s\n", strerror(errno)); *fs_ok = *net_ok = 0; return -1; }
+    if (r) { fprintf(stderr, "sandbox: could not apply Landlock: %s\n", strerror(errno)); *fs_ok = *net_ok = 0; return -1; }
     return 0;
 #else
     (void)cfg; (void)ro_fds; (void)rw_fds;
-    fprintf(stderr, "sandbox: compilado sin Landlock\n");
+    fprintf(stderr, "sandbox: built without Landlock\n");
     return -1;
 #endif
 }
 
-/* ---- seccomp-bpf: lista blanca ---- */
+/* ---- seccomp-bpf: allowlist ---- */
 
 #if defined(__x86_64__)
 #  define SB_AUDIT_ARCH AUDIT_ARCH_X86_64
@@ -163,9 +163,9 @@ static int apply_landlock(const SandboxConfig *cfg, const int *ro_fds, const int
 
 #define NR(x) (int)(x)
 
-/* Syscalls comunes a las apps y a los ayudantes. Todo lo que no esté acá (ni en las listas de
- * abajo) devuelve EPERM. Los peligrosos (ptrace, mount, kexec, bpf, perf_event_open, keyctl,
- * add_key, init_module, execve…) quedan afuera por definición. */
+/* Syscalls common to apps and helpers. Everything not here (nor in the lists
+ * below) returns EPERM. The dangerous ones (ptrace, mount, kexec, bpf, perf_event_open, keyctl,
+ * add_key, init_module, execve…) are left out by definition. */
 static const int allow[] = {
     NR(SYS_read), NR(SYS_write), NR(SYS_readv), NR(SYS_writev), NR(SYS_pread64), NR(SYS_pwrite64),
     NR(SYS_close), NR(SYS_lseek), NR(SYS_fstat),
@@ -175,11 +175,11 @@ static const int allow[] = {
     NR(SYS_newfstatat), NR(SYS_statx), NR(SYS_fstatfs), NR(SYS_statfs),
     NR(SYS_openat), NR(SYS_openat2), NR(SYS_getdents64), NR(SYS_readlinkat), NR(SYS_faccessat),
 #ifdef SYS_access
-    NR(SYS_access), NR(SYS_readlink), NR(SYS_open),          /* solo x86-64 */
+    NR(SYS_access), NR(SYS_readlink), NR(SYS_open),          /* x86-64 only */
 #endif
     NR(SYS_faccessat2), NR(SYS_fcntl), NR(SYS_dup), NR(SYS_dup3),
 #ifdef SYS_dup2
-    NR(SYS_dup2), NR(SYS_pipe), NR(SYS_poll), NR(SYS_epoll_create), NR(SYS_eventfd),    /* solo x86-64 */
+    NR(SYS_dup2), NR(SYS_pipe), NR(SYS_poll), NR(SYS_epoll_create), NR(SYS_eventfd),    /* x86-64 only */
 #endif
     NR(SYS_pipe2), NR(SYS_ppoll), NR(SYS_pselect6), NR(SYS_epoll_create1), NR(SYS_epoll_ctl), NR(SYS_epoll_pwait), NR(SYS_eventfd2),
     NR(SYS_mmap), NR(SYS_munmap), NR(SYS_mremap), NR(SYS_mprotect), NR(SYS_madvise), NR(SYS_brk),
@@ -204,42 +204,42 @@ static const int allow[] = {
     NR(SYS_prctl), NR(SYS_prlimit64), NR(SYS_getrlimit),
     NR(SYS_rt_sigtimedwait), NR(SYS_wait4), NR(SYS_setpriority), NR(SYS_getpriority),
 #ifdef SYS_epoll_wait
-    NR(SYS_epoll_wait),      /* x86-64: existe; aarch64 solo tiene epoll_pwait (ya está arriba) */
+    NR(SYS_epoll_wait),      /* x86-64: exists; aarch64 only has epoll_pwait (already above) */
 #endif
 };
 
-/* Solo para las apps (no para los ayudantes): connect/bind (sockets de red con el permiso),
- * y clone/clone3 sin restricción. Nunca socketpair. */
+/* Only for apps (not for helpers): connect/bind (network sockets with the permission),
+ * and unrestricted clone/clone3. Never socketpair. */
 static const int allow_app[] = { NR(SYS_bind), NR(SYS_connect), NR(SYS_clone), NR(SYS_clone3) };
 
-/* helper = 1: perfil endurecido de los ayudantes. self = getpid() (para kcmp). */
+/* helper = 1: hardened helper profile. self = getpid() (for kcmp). */
 static int build_filter(struct sock_filter *f, int cap, int net, const int *extra, int ioctl_classes, int helper, unsigned self) {
     int n = 0;
 #define EMIT(stmt) do { if (n < cap) f[n] = (struct sock_filter)stmt; n++; } while (0)
 #define RELOAD_NR() EMIT(BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)))
-    /* arquitectura correcta o se mata el proceso */
+    /* correct architecture or the process is killed */
     EMIT(BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, arch)));
     EMIT(BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SB_AUDIT_ARCH, 1, 0));
     EMIT(BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS));
     RELOAD_NR();
-    /* ioctl(2): solo para los ayudantes de decodificación, y solo por clase de dispositivo
-     * (byte de tipo _IOC_TYPE = (request >> 8) & 0xff). Nunca un ioctl genérico ni TIOCSTI. */
+    /* ioctl(2): only for decoding helpers, and only by device class
+     * (type byte _IOC_TYPE = (request >> 8) & 0xff). Never a generic ioctl nor TIOCSTI. */
     if (ioctl_classes) {
         int types[3], nt = 0;
         if (ioctl_classes & SANDBOX_IOCTL_DRM) types[nt++] = 'd';      /* DRM / VA-API */
         if (ioctl_classes & SANDBOX_IOCTL_V4L2) types[nt++] = 'V';     /* V4L2 (Pi 5) */
         if (ioctl_classes & SANDBOX_IOCTL_DMABUF) types[nt++] = 'b';   /* DMA-BUF sync */
         EMIT(BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR(SYS_ioctl), 0, (unsigned char)(nt + 4)));
-        EMIT(BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[1])));   /* request (32 bits bajos) */
+        EMIT(BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[1])));   /* request (low 32 bits) */
         EMIT(BPF_STMT(BPF_ALU | BPF_AND | BPF_K, 0x0000ff00u));                             /* _IOC_TYPE << 8 */
         for (int i = 0; i < nt; i++)
             EMIT(BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (unsigned)(types[i] << 8), (unsigned char)(nt - i), 0));
-        EMIT(BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)));    /* tipo no permitido */
-        EMIT(BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW));                                 /* tipo permitido */
+        EMIT(BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)));    /* type not allowed */
+        EMIT(BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW));                                 /* type allowed */
         RELOAD_NR();
     }
     if (helper) {
-        /* clone: solo hilos ([0]ld flags [1]and [2]jeq [3]EPERM [4]ALLOW) */
+        /* clone: threads only ([0]ld flags [1]and [2]jeq [3]EPERM [4]ALLOW) */
         EMIT(BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR(SYS_clone), 0, 5));
         EMIT(BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0])));
         EMIT(BPF_STMT(BPF_ALU | BPF_AND | BPF_K, (unsigned)CLONE_THREAD));
@@ -247,12 +247,12 @@ static int build_filter(struct sock_filter *f, int cap, int net, const int *extr
         EMIT(BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)));
         EMIT(BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW));
         RELOAD_NR();
-        /* clone3: ENOSYS, así glibc cae a clone (que sí se puede filtrar por flags) */
+        /* clone3: ENOSYS, so glibc falls back to clone (which can be filtered by flags) */
         EMIT(BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR(SYS_clone3), 0, 1));
         EMIT(BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (ENOSYS & SECCOMP_RET_DATA)));
 #ifdef SYS_kcmp
-        /* kcmp: solo si el ayudante lo pide, y solo para sí mismo (pid1 == pid2 == getpid()).
-         * Mesa lo usa (os_same_file_description) para saber si dos fds DRM son el mismo. */
+        /* kcmp: only if the helper asks for it, and only on itself (pid1 == pid2 == getpid()).
+         * Mesa uses it (os_same_file_description) to tell whether two DRM fds are the same. */
         int want_kcmp = 0;
         for (const int *e = extra; e && *e >= 0; e++) if (*e == NR(SYS_kcmp)) want_kcmp = 1;
         if (want_kcmp) {
@@ -266,12 +266,12 @@ static int build_filter(struct sock_filter *f, int cap, int net, const int *extr
             RELOAD_NR();
         }
 #endif
-        /* socket, socketpair, connect, bind, listen, accept, execve y execveat: ninguno está en
-         * las listas, así que caen en EPERM */
+        /* socket, socketpair, connect, bind, listen, accept, execve and execveat: none is in
+         * the lists, so they fall into EPERM */
     } else {
-        /* socket(2) de las apps: solo red (con el permiso). AF_UNIX tampoco: Wayland y el broker
-         * ya están conectados antes de la caja de arena, y un socket unix nuevo podría llegar al
-         * bus de sesión o a otros sockets con nombre (Landlock ≤ 6 no filtra connect unix).
+        /* apps' socket(2): network only (with the permission). Not AF_UNIX either: Wayland and the broker
+         * are already connected before the sandbox, and a new unix socket could reach the
+         * session bus or other named sockets (Landlock ≤ 6 doesn't filter unix connect).
          * [0]ld domain [1]jeq inet [2]jeq inet6 [3]EACCES [4]ALLOW */
         EMIT(BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR(SYS_socket), 0, 5));
         EMIT(BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0])));
@@ -281,7 +281,7 @@ static int build_filter(struct sock_filter *f, int cap, int net, const int *extr
         EMIT(BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW));
         RELOAD_NR();
     }
-    /* lista blanca */
+    /* allowlist */
     for (size_t i = 0; i < sizeof allow / sizeof allow[0]; i++) {
         EMIT(BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (unsigned)allow[i], 0, 1));
         EMIT(BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW));
@@ -292,24 +292,24 @@ static int build_filter(struct sock_filter *f, int cap, int net, const int *extr
     }
     for (const int *e = extra; e && *e >= 0; e++) {
 #ifdef SYS_kcmp
-        if (helper && *e == NR(SYS_kcmp)) continue;      /* ya filtrado arriba */
+        if (helper && *e == NR(SYS_kcmp)) continue;      /* already filtered above */
 #endif
-        /* nunca se agregan por esta vía los que el perfil prohíbe */
+        /* the ones the profile forbids are never added this way */
         if (helper && (*e == NR(SYS_clone) || *e == NR(SYS_clone3) || *e == NR(SYS_socket) || *e == NR(SYS_connect) ||
                        *e == NR(SYS_bind) || *e == NR(SYS_execve) || *e == NR(SYS_execveat) || *e == NR(SYS_ioctl))) continue;
         EMIT(BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (unsigned)*e, 0, 1));
         EMIT(BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW));
     }
-    /* el resto: EPERM (no mata, así una libc que tantea un syscall nuevo no muere) */
+    /* the rest: EPERM (doesn't kill, so a libc probing a new syscall doesn't die) */
     EMIT(BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)));
 #undef RELOAD_NR
 #undef EMIT
     return n;
 }
 
-/* Aplica el filtro a todos los hilos (TSYNC). Devuelve 0 bien. */
+/* Applies the filter to all threads (TSYNC). Returns 0 on success. */
 static int apply_seccomp_extra(int net, const int *extra, int ioctl_classes, int helper) {
-    if (!SB_AUDIT_ARCH) { fprintf(stderr, "sandbox: seccomp no soportado en esta arquitectura\n"); return -1; }
+    if (!SB_AUDIT_ARCH) { fprintf(stderr, "sandbox: seccomp not supported on this architecture\n"); return -1; }
     static struct sock_filter filt[1024];
     int n = build_filter(filt, (int)(sizeof filt / sizeof filt[0]), net, extra, ioctl_classes, helper, (unsigned)getpid());
     if (n > (int)(sizeof filt / sizeof filt[0])) { fprintf(stderr, "sandbox: filtro seccomp demasiado grande (%d)\n", n); return -1; }
@@ -317,10 +317,10 @@ static int apply_seccomp_extra(int net, const int *extra, int ioctl_classes, int
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) return -1;
     long r = syscall(SYS_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);
     if (r == 0) return 0;
-    fprintf(stderr, "sandbox: seccomp con TSYNC falló (%s)\n", r > 0 ? "un hilo no se pudo sincronizar" : strerror(errno));
-    if (helper) return -1;                     /* el ayudante falla cerrado (ver sandbox_apply_helper) */
-    /* app: al aplicarse todavía tiene un solo hilo; se reintenta sin TSYNC */
-    if (syscall(SYS_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog)) { fprintf(stderr, "sandbox: seccomp no se pudo aplicar: %s\n", strerror(errno)); return -1; }
+    fprintf(stderr, "sandbox: seccomp with TSYNC failed (%s)\n", r > 0 ? "a thread could not be synchronized" : strerror(errno));
+    if (helper) return -1;                     /* the helper fails closed (see sandbox_apply_helper) */
+    /* app: when applied it still has a single thread; retried without TSYNC */
+    if (syscall(SYS_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog)) { fprintf(stderr, "sandbox: could not apply seccomp: %s\n", strerror(errno)); return -1; }
     return 0;
 }
 
@@ -331,19 +331,19 @@ int sandbox_apply(const SandboxConfig *cfg) {
     CgroupLimits lim = { .mem_high_mb = 192, .mem_max_mb = 512, .cpu_percent = 100 };
     if (!cgroup_enter(scope, &lim)) mask |= SB_CGROUP;
 
-    /* no_new_privs y soltar capacidades antes de seccomp (capset no está en la lista blanca) */
+    /* no_new_privs and dropping capabilities before seccomp (capset is not on the allowlist) */
     if (!apply_nopriv()) mask |= SB_NOPRIV;
     if (!drop_caps()) mask |= SB_NOCAPS;
 
     int fs_ok = 0, net_ok = 0;
     if (!apply_landlock(cfg, NULL, NULL, &fs_ok, &net_ok)) { if (fs_ok) mask |= SB_LANDLOCK_FS; if (net_ok) mask |= SB_LANDLOCK_NET; }
 
-    /* seccomp al final: una vez puesto, ya no se abren carpetas para Landlock */
+    /* seccomp last: once in place, no more folders are opened for Landlock */
     if (!apply_seccomp_extra(cfg->network, NULL, 0, 0)) mask |= SB_SECCOMP;
 
-    fprintf(stderr, "sandbox[%s]: cgroup=%d landlock-fs=%d landlock-net=%d seccomp=%d nopriv=%d nocaps=%d red=%s\n",
+    fprintf(stderr, "sandbox[%s]: cgroup=%d landlock-fs=%d landlock-net=%d seccomp=%d nopriv=%d nocaps=%d net=%s\n",
             cfg->id, !!(mask & SB_CGROUP), !!(mask & SB_LANDLOCK_FS), !!(mask & SB_LANDLOCK_NET),
-            !!(mask & SB_SECCOMP), !!(mask & SB_NOPRIV), !!(mask & SB_NOCAPS), cfg->network ? "sí" : "no");
+            !!(mask & SB_SECCOMP), !!(mask & SB_NOPRIV), !!(mask & SB_NOCAPS), cfg->network ? "yes" : "no");
     return mask;
 }
 
@@ -357,18 +357,18 @@ int sandbox_apply_helper(const SandboxHelperCfg *cfg) {
     }
     if (!apply_nopriv()) mask |= SB_NOPRIV;
     if (!drop_caps()) mask |= SB_NOCAPS;
-    /* sin red; solo lectura de las carpetas declaradas, más las carpetas que llegan como fds */
+    /* no network; read-only access to the declared folders, plus the folders that arrive as fds */
     SandboxConfig ro = { .id = cfg->name ? cfg->name : "helper", .pkg_dir = NULL, .data_dir = NULL,
                          .runtime_dir = NULL, .ro_extra = cfg->ro_paths, .network = 0 };
     int fs_ok = 0, net_ok = 0;
     if (!apply_landlock(&ro, cfg->ro_dir_fds, cfg->rw_dir_fds, &fs_ok, &net_ok)) { if (fs_ok) mask |= SB_LANDLOCK_FS; if (net_ok) mask |= SB_LANDLOCK_NET; }
     if (apply_seccomp_extra(0, cfg->extra_syscalls, cfg->allow_ioctl_classes, 1)) {
-        /* falla cerrado: un ayudante que decodifica datos ajenos no corre sin seccomp */
-        fprintf(stderr, "sandbox-helper[%s]: sin seccomp; el ayudante termina\n", ro.id);
+        /* fails closed: a helper decoding foreign data doesn't run without seccomp */
+        fprintf(stderr, "sandbox-helper[%s]: no seccomp; the helper exits\n", ro.id);
         _exit(70);
     }
     mask |= SB_SECCOMP;
-    fprintf(stderr, "sandbox-helper[%s]: cgroup=%d landlock-fs=%d seccomp=1(tsync) nopriv=%d nocaps=%d (sin red ni sockets nuevos, sin exec, solo hilos)\n",
+    fprintf(stderr, "sandbox-helper[%s]: cgroup=%d landlock-fs=%d seccomp=1(tsync) nopriv=%d nocaps=%d (no network or new sockets, no exec, threads only)\n",
             ro.id, !!(mask & SB_CGROUP), !!(mask & SB_LANDLOCK_FS), !!(mask & SB_NOPRIV), !!(mask & SB_NOCAPS));
     return mask;
 }

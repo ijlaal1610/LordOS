@@ -1,72 +1,72 @@
-/* sandbox.h — caja de arena propia para las apps nativas .lpk (ver sandbox.c y docs/PRIVACIDAD.md).
+/* sandbox.h — our own sandbox for native .lpk apps (see sandbox.c and docs/PRIVACY.md).
  *
- * Código propio: sin bubblewrap, flatpak ni firejail. Usa lo del kernel 6.12 directo:
- *   - Landlock (ABI hasta 6): solo lectura de la carpeta del paquete, la runtime y las fuentes;
- *     lectura y escritura de ~/.local/share/lordos/appdata/<id>; nada más de $HOME. Reglas de
- *     TCP y aislamiento de sockets unix abstractos.
- *   - seccomp-bpf: una lista blanca de syscalls; sin ptrace, mount, kexec, bpf, perf, keyctl ni
- *     carga de módulos. Sin el permiso `network`, además bloquea los sockets de red.
- *   - no_new_privs y todas las capacidades soltadas.
- *   - cgroup v2 propio (cgroup.c) con memoria y CPU acotadas.
- * Si falta algo en el kernel, avisa por el registro y sigue sin esa parte (no deja la app sin
- * arrancar). Se aplica en el proceso de la app (lord-server --app <id>), después de soltar
- * privilegios y antes de cargar el código de la app. */
+ * Our own code: no bubblewrap, flatpak or firejail. Uses kernel 6.12 features directly:
+ *   - Landlock (ABI up to 6): read-only access to the package folder, the runtime and the fonts;
+ *     read and write of ~/.local/share/lordos/appdata/<id>; nothing else from $HOME. TCP
+ *     rules and abstract unix socket scoping.
+ *   - seccomp-bpf: a syscall allowlist; no ptrace, mount, kexec, bpf, perf, keyctl or
+ *     module loading. Without the `network` permission, it also blocks network sockets.
+ *   - no_new_privs and all capabilities dropped.
+ *   - its own cgroup v2 (cgroup.c) with bounded memory and CPU.
+ * If something is missing in the kernel, it warns in the log and goes on without that part (it doesn't keep the app from
+ * starting). Applied in the app process (lord-server --app <id>), after dropping
+ * privileges and before loading the app's code. */
 #ifndef LORD_SEC_SANDBOX_H
 #define LORD_SEC_SANDBOX_H
 
 #include <stddef.h>
 
 typedef struct {
-    const char *id;             /* id del paquete (ya validado) */
-    const char *pkg_dir;        /* ~/.local/share/lordos/apps/<id>  (solo lectura) */
-    const char *data_dir;       /* ~/.local/share/lordos/appdata/<id> (lectura y escritura) */
-    const char *runtime_dir;    /* XDG_RUNTIME_DIR (para el socket de Wayland; solo lo justo) */
-    const char *const *ro_extra;/* carpetas de solo lectura extra (fuentes, assets); NULL al final */
-    int network;                /* 1 si la app declaró y tiene el permiso `network` */
+    const char *id;             /* package id (already validated) */
+    const char *pkg_dir;        /* ~/.local/share/lordos/apps/<id>  (read-only) */
+    const char *data_dir;       /* ~/.local/share/lordos/appdata/<id> (read and write) */
+    const char *runtime_dir;    /* XDG_RUNTIME_DIR (for the Wayland socket; just what's needed) */
+    const char *const *ro_extra;/* extra read-only folders (fonts, assets); NULL-terminated */
+    int network;                /* 1 if the app declared and has the `network` permission */
 } SandboxConfig;
 
-/* Aplica todo lo posible. Devuelve una máscara de lo que quedó activo (SB_*). Nunca falla de
- * forma que impida arrancar: lo que no se pudo, se saltea con un aviso. */
+/* Applies everything possible. Returns a mask of what ended up active (SB_*). Never fails in
+ * a way that prevents startup: whatever couldn't be done is skipped with a warning. */
 enum { SB_CGROUP = 1, SB_LANDLOCK_FS = 2, SB_LANDLOCK_NET = 4, SB_SECCOMP = 8, SB_NOPRIV = 16, SB_NOCAPS = 32 };
 int sandbox_apply(const SandboxConfig *cfg);
 
-/* Nombre de la scope de cgroup de una app .lpk: "app-lordos-lpk-<id>.scope". */
+/* cgroup scope name of a .lpk app: "app-lordos-lpk-<id>.scope". */
 void sandbox_scope_name(const char *id, char *out, size_t n);
 
-/* ---- variante para ayudantes de decodificación (lord-media, lord-doc) ----
- * Un ayudante que decodifica datos que no son de confianza (video, PDF, archivos comprimidos)
- * no necesita ni red ni acceso al sistema de archivos: recibe los fds ya abiertos y escribe en
- * otro fd. Esta variante aplica: sin red, sin archivos salvo las carpetas de solo lectura que se
- * le pasen (fuentes, las bibliotecas que la lib carga al iniciar), la lista blanca de syscalls
- * más las que el ayudante declare, un tope de memoria, no_new_privs y sin capacidades. Misma
- * caja de arena que las apps .lpk, sin forks. */
-/* Clases de ioctl que un ayudante puede necesitar para decodificar por hardware. Se filtra por el
- * byte de tipo del número de ioctl (_IOC_TYPE): solo esos tipos; nunca un ioctl genérico ni
- * TIOCSTI. El ayudante NO puede abrir /dev (Landlock): recibe los fds de los dispositivos ya
- * abiertos por lord-server. */
+/* ---- variant for decoding helpers (lord-media, lord-doc) ----
+ * A helper that decodes untrusted data (video, PDF, archives)
+ * needs neither network nor filesystem access: it gets fds already open and writes to
+ * another fd. This variant applies: no network, no files except the read-only folders
+ * passed to it (fonts, the libraries the lib loads at startup), the syscall allowlist
+ * plus the ones the helper declares, a memory cap, no_new_privs and no capabilities. Same
+ * sandbox as .lpk apps, without forks. */
+/* ioctl classes a helper may need for hardware decoding. Filtered by the
+ * type byte of the ioctl number (_IOC_TYPE): only those types; never a generic ioctl nor
+ * TIOCSTI. The helper can NOT open /dev (Landlock): it gets the device fds already
+ * opened by lord-server. */
 enum { SANDBOX_IOCTL_DRM = 1, SANDBOX_IOCTL_V4L2 = 2, SANDBOX_IOCTL_DMABUF = 4 };
 
 typedef struct {
-    const char *name;               /* nombre de la scope de cgroup (ej. "lord-media") */
-    const char *const *ro_paths;    /* carpetas de solo lectura (fuentes, /usr/lib…); NULL al final */
-    const int *extra_syscalls;      /* syscalls extra permitidas; -1 al final */
-    int  allow_ioctl_classes;       /* OR de SANDBOX_IOCTL_* (decodificación por hardware) */
-    long mem_max_mb;                /* tope de memoria (0 = sin tope) */
-    /* carpetas ya abiertas por lord-server (fds de directorio), -1 al final; NULL = ninguna.
-     * ro: lectura; rw: lectura + escribir/crear archivos, carpetas y enlaces simbólicos y borrar
-     * archivos (sin truncar). Así el ayudante no necesita ninguna ruta. */
+    const char *name;               /* cgroup scope name (e.g. "lord-media") */
+    const char *const *ro_paths;    /* read-only folders (fonts, /usr/lib…); NULL-terminated */
+    const int *extra_syscalls;      /* extra allowed syscalls; -1-terminated */
+    int  allow_ioctl_classes;       /* OR of SANDBOX_IOCTL_* (hardware decoding) */
+    long mem_max_mb;                /* memory cap (0 = no cap) */
+    /* folders already opened by lord-server (directory fds), -1-terminated; NULL = none.
+     * ro: read; rw: read + write/create files, folders and symlinks and delete
+     * files (no truncation). That way the helper needs no path at all. */
     const int *ro_dir_fds;
     const int *rw_dir_fds;
 } SandboxHelperCfg;
 
-/* Los llamadores pueden detectar los campos ro_dir_fds/rw_dir_fds. */
+/* Callers can detect the ro_dir_fds/rw_dir_fds fields. */
 #define SANDBOX_HELPER_DIR_FDS 1
 
-/* Endurecida respecto de las apps: sin socket/socketpair/connect/bind/listen/accept (el canal
- * llega heredado; sendmsg/recvmsg siguen), clone solo con CLONE_THREAD, clone3 → ENOSYS (glibc
- * cae a clone), sin execve/execveat, y el filtro se aplica a TODOS los hilos (TSYNC). Si seccomp
- * no se puede aplicar, el proceso termina (falla cerrado). kcmp, si se pide en extra_syscalls,
- * solo vale para comparar fds del propio proceso (pid1 == pid2 == getpid()). */
+/* Hardened compared to apps: no socket/socketpair/connect/bind/listen/accept (the channel
+ * is inherited; sendmsg/recvmsg still work), clone only with CLONE_THREAD, clone3 → ENOSYS (glibc
+ * falls back to clone), no execve/execveat, and the filter applies to ALL threads (TSYNC). If seccomp
+ * can't be applied, the process exits (fails closed). kcmp, if requested in extra_syscalls,
+ * only works for comparing fds of the process itself (pid1 == pid2 == getpid()). */
 int sandbox_apply_helper(const SandboxHelperCfg *cfg);
 
 #endif

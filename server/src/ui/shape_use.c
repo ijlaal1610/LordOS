@@ -1,17 +1,17 @@
-/* shape_use.c — Universal Shaping Engine (el de Microsoft, como lo implementa HarfBuzz): el
- * armado de las escrituras del sur y sudeste de Asia que no tienen shaper propio (tibetano,
- * cingalés, balinés, javanés, sundanés, buginés, tai tham, chakma, brahmi, limbu, lepcha…) y de
- * algunas que se unen (mongol, n'ko, adlam):
+/* shape_use.c — Universal Shaping Engine (Microsoft's, as HarfBuzz implements it): the
+ * shaping of the South and Southeast Asian scripts that have no shaper of their own (Tibetan,
+ * Sinhala, Balinese, Javanese, Sundanese, Buginese, Tai Tham, Chakma, Brahmi, Limbu, Lepcha…) and of
+ * some joining ones (Mongolian, N'Ko, Adlam):
  *
- *   1. normalización; categorías USE (tools/gen-unicode.mjs); sílabas con la gramática del
- *      USE (sin ver CGJ ni el ZWNJ que va antes de una marca);
- *   2. máscaras: rphf en el comienzo de cada sílaba; formas de unión por sílaba (o las del
- *      árabe en las escrituras que se unen);
- *   3. locl, ccmp, nukt, akhn; rphf (un reph sustituido pasa a ser R); pref (la sustituida
- *      pasa a VPre); rkrf, abvf, blwf, half, pstf, vatu, cjct;
- *   4. ◌ en las sílabas rotas; reordenamiento: el reph antes del primer glifo post-base y las
- *      vocales pre-base al comienzo (o después del último halant);
- *   5. isol/init/medi/fina; abvs, blws, haln, pres, psts… y GPOS (marcas sin ancho antes). */
+ *   1. normalization; USE categories (tools/gen-unicode.mjs); syllables with the
+ *      USE grammar (without seeing CGJ or the ZWNJ that goes before a mark);
+ *   2. masks: rphf at the start of each syllable; joining forms per syllable (or the
+ *      Arabic ones in the joining scripts);
+ *   3. locl, ccmp, nukt, akhn; rphf (a substituted reph becomes R); pref (the substituted one
+ *      becomes VPre); rkrf, abvf, blwf, half, pstf, vatu, cjct;
+ *   4. ◌ in broken syllables; reordering: the reph before the first post-base glyph and the
+ *      pre-base vowels at the start (or after the last halant);
+ *   5. isol/init/medi/fina; abvs, blws, haln, pres, psts… and GPOS (marks zero-width before). */
 #include "shape_syl.h"
 
 #include <stdlib.h>
@@ -52,11 +52,11 @@ static SylGrammar grammar = {
         "number_joiner_terminated_cluster ZWNJ?", "numeral_cluster ZWNJ?", "symbol_cluster ZWNJ?",
         "hieroglyph_cluster ZWNJ?", "FMPst", "broken_cluster ZWNJ?", "any" }, 10, NULL,
 };
-/* Tipos de sílaba (como use_syllable_type_t) y de qué alternativa sale cada uno. */
+/* Syllable types (like use_syllable_type_t) and which alternative each one comes from. */
 enum { T_VIRAMA, T_SAKOT, T_STANDARD, T_NUMBER_JOINER, T_NUMERAL, T_SYMBOL, T_HIEROGLYPH, T_BROKEN, T_NON };
 static const uint8_t alt_type[10] = { T_VIRAMA, T_SAKOT, T_STANDARD, T_NUMBER_JOINER, T_NUMERAL, T_SYMBOL, T_HIEROGLYPH, T_NON, T_BROKEN, T_NON };
 
-/* Escrituras que van por el USE (las de hb_ot_shaper_categorize con etiqueta propia en la fuente). */
+/* Scripts that go through the USE (those in hb_ot_shaper_categorize with their own tag in the font). */
 static const char use_tags[][5] = {
     "tibt", "mong", "sinh", "buhd", "hano", "tglg", "tagb", "limb", "tale", "bugi", "khar", "sylo", "tfng", "bali", "nko ",
     "phag", "cham", "kali", "lepc", "rjng", "saur", "sund", "egyp", "java", "kthi", "mtei", "lana", "tavt", "batk", "brah",
@@ -71,7 +71,7 @@ int shape_use_script(const char *tag) {
     return 0;
 }
 
-/* Las que se unen como el árabe (has_arabic_joining de HarfBuzz). */
+/* The ones that join like Arabic (HarfBuzz's has_arabic_joining). */
 static int arabic_joining(const char *tag) {
     static const char j[][5] = { "mong", "nko ", "phag", "mand", "mani", "phlp", "adlm", "rohg", "sogd", "chrs", "ougr" };
     for (size_t i = 0; i < sizeof j / sizeof *j; i++) if (!memcmp(j[i], tag, 4)) return 1;
@@ -108,7 +108,7 @@ static int post_base(int c) {
 static void reorder(GlyphRun *r, int start, int end) {
     int t = SYL_TYPE(r->aux[start]);
     if (!(t == T_VIRAMA || t == T_SAKOT || t == T_STANDARD || t == T_SYMBOL || t == T_BROKEN)) return;
-    /* el reph va antes del primer glifo post-base (o al final) */
+    /* the reph goes before the first post-base glyph (or at the end) */
     if (CAT(start) == USE_R && end - start > 1)
         for (int i = start + 1; i < end; i++) {
             int pb = post_base(CAT(i)) || is_halant(r, i);
@@ -118,7 +118,7 @@ static void reorder(GlyphRun *r, int start, int end) {
                 break;
             }
         }
-    /* las vocales pre-base, al comienzo o después del último halant */
+    /* the pre-base vowels, at the start or after the last halant */
     for (int i = start, j = start; i < end; i++) {
         int c = CAT(i);
         if (is_halant(r, i)) j = i + 1;
@@ -136,7 +136,7 @@ int shape_use(Shaper *s, Otf *o, const uint32_t *in, int n, const char *tag, int
     if (!cat || !idx) { free(cat); free(idx); return 0; }
     uint8_t *fc = cat + m + 1;
     for (int i = 0; i < m; i++) cat[i] = (uint8_t)uc_use_cat(s->cp[i]);
-    /* la gramática no ve CGJ (ni ZWJ ni selectores) ni el ZWNJ antes de una marca */
+    /* the grammar doesn't see CGJ (nor ZWJ nor selectors) nor the ZWNJ before a mark */
     int nf = 0;
     for (int i = 0; i < m; i++) {
         if (cat[i] == USE_CGJ) continue;
@@ -169,13 +169,13 @@ int shape_use(Shaper *s, Otf *o, const uint32_t *in, int n, const char *tag, int
 
     const OtfPlan *p = otf_plan_kind(o, tag, OTF_KIND_USE);
     s->plan = p;
-    /* rphf: el primer glifo si es R; si no, hasta los tres primeros */
+    /* rphf: the first glyph if it is R; otherwise, up to the first three */
     for (int i = 0; i < r->len;) {
         int e = syl_end(r, i), lim = CAT(i) == USE_R ? 1 : (e - i < 3 ? e - i : 3);
         for (int j = i; j < i + lim; j++) r->mask[j] |= OTF_F_RPHF;
         i = e;
     }
-    /* formas de unión */
+    /* joining forms */
     if (arabic_joining(tag)) shape_joining_masks(s->cp, m, r->mask);
     else {
         int last_start = 0, last_form = -1;     /* 0 isol, 1 init, 2 medi, 3 fina */
@@ -202,7 +202,7 @@ int shape_use(Shaper *s, Otf *o, const uint32_t *in, int n, const char *tag, int
     otf_substitute_stages(o, p, r, 0, 0);
     clear_subst(r);
     otf_substitute_stages(o, p, r, 1, 1);
-    for (int i = 0; i < r->len;) {               /* un reph sustituido es R */
+    for (int i = 0; i < r->len;) {               /* a substituted reph is R */
         int e = syl_end(r, i);
         for (int j = i; j < e && (r->mask[j] & OTF_F_RPHF); j++)
             if (r->aux[j] & OTF_AUX_SUBST) { set_cat(r, j, USE_R); break; }
@@ -210,7 +210,7 @@ int shape_use(Shaper *s, Otf *o, const uint32_t *in, int n, const char *tag, int
     }
     clear_subst(r);
     otf_substitute_stages(o, p, r, 2, 2);
-    for (int i = 0; i < r->len;) {               /* un pref sustituido se mueve como VPre */
+    for (int i = 0; i < r->len;) {               /* a substituted pref moves like VPre */
         int e = syl_end(r, i);
         for (int j = i; j < e; j++) if (r->aux[j] & OTF_AUX_SUBST) { set_cat(r, j, USE_VPre); break; }
         i = e;

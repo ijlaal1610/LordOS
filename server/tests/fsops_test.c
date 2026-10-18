@@ -1,6 +1,6 @@
-/* fsops_test.c — prueba de fsops.c sobre una carpeta personal temporal: raíces y carpetas
- * protegidas, copiar (recursivo, enlaces, permisos), mover, Papelera (poner, listar, restaurar,
- * borrar, vaciar), tamaño, búsqueda y recientes. */
+/* fsops_test.c — test of fsops.c on a temporary home folder: roots and protected
+ * folders, copy (recursive, links, permissions), move, Trash (put, list, restore,
+ * delete, empty), size, search and recents. */
 #include "fsops.h"
 
 #include <errno.h>
@@ -13,7 +13,7 @@
 #include <unistd.h>
 
 static int fails, checks;
-#define CHECK(c) do { checks++; if (!(c)) { fails++; fprintf(stderr, "FALLA %s:%d: %s\n", __FILE__, __LINE__, #c); } } while (0)
+#define CHECK(c) do { checks++; if (!(c)) { fails++; fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); } } while (0)
 
 static char H[256];
 
@@ -39,7 +39,7 @@ static void wait_job(int id) {
         }
         usleep(5000);
     }
-    CHECK(!"la tarea no terminó");
+    CHECK(!"the task did not finish");
 }
 
 static int trash_n;
@@ -59,7 +59,7 @@ int main(void) {
     fsops_init(H, "nadie");
     char a[512], b[512], err[256];
 
-    /* raíces y protegidas */
+    /* roots and protected folders */
     CHECK(fsops_allowed(H));
     CHECK(!fsops_allowed("/etc/passwd"));
     CHECK(!fsops_allowed("/tmp"));
@@ -68,7 +68,7 @@ int main(void) {
     path(a, "Documentos/x.txt");
     CHECK(!fsops_protected(a));
 
-    /* copiar un árbol con un enlace y permisos */
+    /* copy a tree with a link and permissions */
     mkdir(strcat(strcpy(a, H), "/src"), 0750);
     mkdir(strcat(strcpy(a, H), "/src/sub"), 0700);
     put("src/a.txt", "hola");
@@ -88,15 +88,15 @@ int main(void) {
     CHECK(!lstat(a, &st) && S_ISLNK(st.st_mode));
     path(a, "copia/a.txt");
     CHECK(!stat(a, &st) && (st.st_mode & 0777) == 0640);
-    /* no pisa */
+    /* does not overwrite */
     path(a, "src");
     path(b, "copia");
     CHECK(fsjob_start(a, b, 0, err, sizeof err) < 0);
-    /* no adentro de sí misma */
+    /* not into itself */
     path(b, "src/sub/otra");
     CHECK(fsjob_start(a, b, 0, err, sizeof err) < 0);
 
-    /* mover (mismo disco: rename al instante) */
+    /* move (same disk: instant rename) */
     path(a, "copia");
     path(b, "movida");
     id = fsjob_start(a, b, 1, err, sizeof err);
@@ -120,13 +120,13 @@ int main(void) {
     path(a, ".local/share/Trash/files/movida");
     CHECK(fstrash_restore(a, err, sizeof err) == 0);
     CHECK(exists("movida/a.txt") && !exists(".local/share/Trash/info/movida.trashinfo"));
-    /* restaurar no pisa */
+    /* restoring does not overwrite */
     put("doble.txt", "3");
     path(a, ".local/share/Trash/files/doble.txt");
     CHECK(fstrash_restore(a, err, sizeof err) != 0);
     CHECK(fstrash_remove(a, err, sizeof err) == 0);
     CHECK(!exists(".local/share/Trash/files/doble.txt"));
-    /* borrar solo adentro de la Papelera */
+    /* delete only inside the Trash */
     path(a, "movida");
     CHECK(fstrash_remove(a, err, sizeof err) != 0 && exists("movida"));
     path(a, ".local/share/Trash/files/../../../../movida");
@@ -136,14 +136,14 @@ int main(void) {
     fstrash_list(count_cb, NULL);
     CHECK(trash_n == 0);
 
-    /* tamaño, búsqueda, recientes */
+    /* size, search, recents */
     FsDu d;
     path(a, "src");
     fs_du(a, 500, &d);
     CHECK(d.complete && d.files >= 2 && d.size >= 8);
     hits = 0;
     fs_search(H, "B.TXT", 50, 8, hit_cb, NULL);
-    CHECK(hits == 2);                       /* src/sub/b.txt y movida/sub/b.txt */
+    CHECK(hits == 2);                       /* src/sub/b.txt and movida/sub/b.txt */
     hits = 0;
     fs_recent(10, 1, hit_cb, NULL);
     CHECK(hits >= 3);
@@ -151,6 +151,6 @@ int main(void) {
     char cmd[300];
     snprintf(cmd, sizeof cmd, "rm -rf '%s'", H);
     if (system(cmd)) {}
-    printf("fsops-test: %d/%d bien\n", checks - fails, checks);
+    printf("fsops-test: %d/%d passed\n", checks - fails, checks);
     return fails ? 1 : 0;
 }

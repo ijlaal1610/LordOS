@@ -1,25 +1,25 @@
-/* tp.c — touchpads y pantallas táctiles leídos de evdev (multitouch, protocolo B), sin libinput.
+/* tp.c — touchpads and touchscreens read from evdev (multitouch, protocol B), without libinput.
  *
- * Por cada SYN_REPORT se mira el estado de los contactos (slots) en milímetros (con la
- * resolución de absinfo) y una máquina de estados decide qué es:
+ * On each SYN_REPORT the state of the contacts (slots) is looked at in millimeters (with the
+ * absinfo resolution) and a state machine decides what it is:
  *
- *   1 dedo           mover el puntero (suavizado y con la curva de aceleración de tp_accel)
- *   2 dedos          scroll (si se mueven juntos) o pellizco (si se separan, acercan o giran)
- *   3 dedos          deslizar (acciones del escritorio) o arrastrar con tres dedos
- *   4 dedos          deslizar (escritorio o apps, según el ajuste)
- *   tocar            clic (1 dedo izquierdo, 2 derecho, 3 medio), tocar y arrastrar
- *   clic físico      clickpad: según cuántos dedos hay (estilo macOS) o la esquina de abajo
+ *   1 finger         move the pointer (smoothed and with tp_accel's acceleration curve)
+ *   2 fingers        scroll (if they move together) or pinch (if they spread, close or rotate)
+ *   3 fingers        swipe (desktop actions) or three-finger drag
+ *   4 fingers        swipe (desktop or apps, depending on the setting)
+ *   tap              click (1 finger left, 2 right, 3 middle), tap and drag
+ *   physical click   clickpad: depending on how many fingers there are (macOS style) or the bottom corner
  *
- * Se descartan palmas (contacto grande, presión alta, toques que empiezan en los bordes y no
- * salen de ahí) y los toques que empiezan mientras se escribe. En un clickpad, un dedo que
- * descansa abajo (el pulgar que aprieta) no cuenta mientras haya otros.
+ * Palms are discarded (large contact, high pressure, touches that start at the edges and don't
+ * leave them) as are touches that start while typing. On a clickpad, a finger that
+ * rests at the bottom (the thumb that presses) doesn't count while there are others.
  *
- * Al soltar un scroll rápido sigue solo (inercia) con fase TP_MOMENTUM; las apps Wayland hacen su
- * propia inercia (reciben axis_stop), así que la de acá es para la interfaz de LordOS.
+ * When released, a fast scroll keeps going on its own (inertia) with phase TP_MOMENTUM; Wayland apps do their
+ * own inertia (they receive axis_stop), so the one here is for the LordOS UI.
  *
- * Una pantalla táctil (INPUT_PROP_DIRECT) manda los toques a la app Wayland que esté debajo
- * (wl_touch); si no hay, emula el puntero: tocar = clic, arrastrar = arrastrar, dos dedos =
- * scroll y pellizco. */
+ * A touchscreen (INPUT_PROP_DIRECT) sends touches to the Wayland app underneath
+ * (wl_touch); if there is none, it emulates the pointer: tap = click, drag = drag, two fingers =
+ * scroll and pinch. */
 #include "tp.h"
 
 #include <math.h>
@@ -32,19 +32,19 @@
 #define MAX_SLOTS 10
 #define MAX_DEVS 16
 
-/* tiempos (ms) y distancias (mm) */
+/* times (ms) and distances (mm) */
 #define TAP_TIME        200.0
 #define TAP_DRAG_TIME   180.0
 #define TAP_MOVE        1.5
 #define EDGE_TIME       300.0
 #define DWT_TIME        500.0
 #define DRAG3_RELEASE   500.0
-#define DECIDE_MOVE     1.0      /* cada dedo, para decidir scroll o pellizco */
+#define DECIDE_MOVE     1.0      /* each finger, to decide scroll or pinch */
 #define SWIPE_START     3.0
 #define KINETIC_MIN     200.0    /* px/s */
 #define KINETIC_STOP    25.0
-#define KINETIC_TAU     325.0    /* ms: constante de la desaceleración */
-#define TS_PRESS_TIME   90.0     /* pantalla táctil: el botón se aprieta si el dedo se queda */
+#define KINETIC_TAU     325.0    /* ms: deceleration constant */
+#define TS_PRESS_TIME   90.0     /* touchscreen: the button is pressed if the finger stays */
 
 typedef struct {
     int id, x, y, major, pressure;
@@ -59,17 +59,17 @@ enum { T_IDLE, T_TOUCH, T_TAPPED, T_DRAG_OR_DOUBLE, T_DRAGGING, T_DEAD };
 struct TpDevice {
     TpCaps c;
     int fd;
-    double rx, ry, wmm, hmm;        /* unidades por mm, tamaño en mm */
+    double rx, ry, wmm, hmm;        /* units per mm, size in mm */
     Slot s[MAX_SLOTS];
     int cur, tool, dropped;
-    int phys, phys_prev, phys_btn;  /* clic físico del clickpad y el botón que se mandó */
-    int btn_pending[3], btn_state[3];   /* botones físicos de un touchpad con botones */
+    int phys, phys_prev, phys_btn;  /* clickpad physical click and the button that was sent */
+    int btn_pending[3], btn_state[3];   /* physical buttons of a touchpad with buttons */
     double now, prev_t;
-    /* gestos */
+    /* gestures */
     int g, gn;
     double g_t0;
     int bi, bj;
-    double b1x, b1y, b2x, b2y, ccx, ccy;    /* comienzo del gesto (mm) */
+    double b1x, b1y, b2x, b2y, ccx, ccy;    /* start of the gesture (mm) */
     double dist0, last_ang, rot, pscale;
     double vel, sdx, sdy;
     int hold;
@@ -80,13 +80,13 @@ struct TpDevice {
     double kvx, kvy, kt;
     int d3_down;
     double d3_release;
-    /* tocar */
+    /* tap */
     int tap, tap_max, tap_down;
     double tap_t, tap_deadline;
-    /* latencia */
+    /* latency */
     int lat_n, lat_kind;
     double lat_sum, lat_max;
-    /* pantalla táctil */
+    /* touchscreen */
     int ts_app, ts_multi, ts_pending, ts_btn, ts_prev_n;
     double ts_t0;
 };
@@ -116,7 +116,7 @@ static double mono_ms(void) {
     return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
 }
 
-/* ---- salida ---- */
+/* ---- output ---- */
 
 static void out_motion(double dx, double dy, double rx, double ry) { if (sink && sink->motion) sink->motion(sink_ud, dx, dy, rx, ry); }
 static void out_button(int b, int down) { if (sink && sink->button) sink->button(sink_ud, b, down); }
@@ -128,11 +128,11 @@ static int  out_touch(int ph, int id, double x, double y) { return sink && sink-
 static void out_touch_frame(void) { if (sink && sink->touch_frame) sink->touch_frame(sink_ud); }
 static void out_warp(double x, double y) { if (sink && sink->warp) sink->warp(sink_ud, x, y); }
 
-/* ---- curvas ---- */
+/* ---- curves ---- */
 
-/* px por mm. Lento (< 12 mm/s) es preciso: ~2,4 px/mm (un píxel cada 0,4 mm); rápido (≥ 170 mm/s)
- * llega a ~15 px/mm, así 8 cm del touchpad cruzan una pantalla de 1920. El ajuste multiplica todo
- * entre ×0,5 y ×2 (0,5 = ×1). */
+/* px per mm. Slow (< 12 mm/s) is precise: ~2.4 px/mm (one pixel every 0.4 mm); fast (≥ 170 mm/s)
+ * reaches ~15 px/mm, so 8 cm of touchpad cross a 1920 screen. The setting multiplies everything
+ * between ×0.5 and ×2 (0.5 = ×1). */
 double tp_accel(double v, double setting) {
     double factor = 0.5 * pow(4.0, setting < 0 ? 0 : setting > 1 ? 1 : setting);
     double lo = 2.4, hi = 15.0, v0 = 12.0, v1 = 170.0;
@@ -143,14 +143,14 @@ double tp_accel(double v, double setting) {
     return factor * (lo + (hi - lo) * t);
 }
 
-/* scroll: ~5 px por mm, un poco más rápido si los dedos van rápido (hasta ×3) */
+/* scroll: ~5 px per mm, a bit faster if the fingers move fast (up to ×3) */
 static double scroll_gain(TpDevice *d, double v) {
     if (d->c.kind == TP_KIND_TOUCHSCREEN) return (double)scr_h / (d->hmm > 1 ? d->hmm : 1);
     double k = 1 + v / 180.0;
     return 5.0 * (k > 3 ? 3 : k);
 }
 
-/* ---- dispositivos ---- */
+/* ---- devices ---- */
 
 TpDevice *tp_new(const TpCaps *caps) {
     if (ndevs >= MAX_DEVS) return NULL;
@@ -163,7 +163,7 @@ TpDevice *tp_new(const TpCaps *caps) {
     double w = d->c.x.maximum - d->c.x.minimum, h = d->c.y.maximum - d->c.y.minimum;
     if (w <= 0) w = 1;
     if (h <= 0) h = 1;
-    /* sin resolución: se supone un touchpad de 100 mm de ancho (o 300 mm una pantalla) */
+    /* no resolution: a 100 mm wide touchpad is assumed (or 300 mm for a screen) */
     d->rx = d->c.x.resolution > 0 ? d->c.x.resolution : w / (d->c.kind == TP_KIND_TOUCHSCREEN ? 300.0 : 100.0);
     d->ry = d->c.y.resolution > 0 ? d->c.y.resolution : d->rx;
     d->wmm = w / d->rx;
@@ -220,7 +220,7 @@ TpDevice *tp_open(int fd, const char *name) {
     d->fd = fd;
     int clk = CLOCK_MONOTONIC;
     ioctl(fd, EVIOCSCLOCKID, &clk);
-    fprintf(stderr, "tp: %s: %s%s, %.0f×%.0f mm, %d contactos\n", c.name, c.kind == TP_KIND_TOUCHSCREEN ? "pantalla táctil" : "touchpad",
+    fprintf(stderr, "tp: %s: %s%s, %.0f×%.0f mm, %d contacts\n", c.name, c.kind == TP_KIND_TOUCHSCREEN ? "touchscreen" : "touchpad",
             c.clickpad ? " (clickpad)" : "", d->wmm, d->hmm, c.nslots);
     return d;
 }
@@ -255,7 +255,7 @@ void tp_key_activity(int code, double now) {
     last_key = now;
 }
 
-/* ---- contactos ---- */
+/* ---- contacts ---- */
 
 static void slot_mm(TpDevice *d, Slot *s) {
     s->mx = (s->x - d->c.x.minimum) / d->rx;
@@ -291,13 +291,13 @@ static void update_touch(TpDevice *d, Slot *s) {
     if (d->c.kind != TP_KIND_TOUCHPAD) return;
     if (!s->palm && is_palm_size(d, s) && d->now - s->t0 < 150) s->palm = 1;
     if (s->edge) {
-        if (!in_edge(d, s) && d->now - s->t0 < EDGE_TIME) s->edge = 0;        /* salió del borde enseguida: dedo */
-        else if (d->now - s->t0 >= EDGE_TIME) { s->edge = 0; s->palm = 1; }  /* se quedó en el borde: palma */
+        if (!in_edge(d, s) && d->now - s->t0 < EDGE_TIME) s->edge = 0;        /* left the edge right away: finger */
+        else if (d->now - s->t0 >= EDGE_TIME) { s->edge = 0; s->palm = 1; }  /* stayed on the edge: palm */
     }
     if (s->thumb && hypot(s->mx - s->sx, s->my - s->sy) > 4.0) s->thumb = 0;
 }
 
-/* Dedos activos (sin palmas ni toques al escribir); los pulgares de abajo cuentan solo si no hay otros. */
+/* Active fingers (without palms or touches while typing); bottom thumbs count only if there are no others. */
 static int active(TpDevice *d, int *idx) {
     int n = 0, nt = 0, th[MAX_SLOTS];
     for (int i = 0; i < d->c.nslots; i++) {
@@ -316,13 +316,13 @@ static int count_down(TpDevice *d) {
     return n;
 }
 
-/* ---- puntero ---- */
+/* ---- pointer ---- */
 
 static void pointer_move(TpDevice *d, double dx, double dy, double dt) {
     double dist = hypot(dx, dy);
     double v = dist / dt;
     d->vel = d->vel <= 0 ? v : d->vel * 0.6 + v * 0.4;
-    /* suavizado (media móvil exponencial) contra el temblor del sensor */
+    /* smoothing (exponential moving average) against sensor jitter */
     d->sdx = 0.7 * dx + 0.3 * d->sdx;
     d->sdy = 0.7 * dy + 0.3 * d->sdy;
     double g = tp_accel(d->vel, cfg.speed);
@@ -330,7 +330,7 @@ static void pointer_move(TpDevice *d, double dx, double dy, double dt) {
     out_motion(d->sdx * g, d->sdy * g, dx * 4.0, dy * 4.0);
 }
 
-/* promedio de lo que se movió cada dedo desde el cuadro anterior */
+/* average of how much each finger moved since the previous frame */
 static void mean_delta(TpDevice *d, const int *idx, int n, double *dx, double *dy) {
     *dx = *dy = 0;
     for (int i = 0; i < n; i++) { *dx += d->s[idx[i]].mx - d->s[idx[i]].pmx; *dy += d->s[idx[i]].my - d->s[idx[i]].pmy; }
@@ -345,24 +345,24 @@ static void centroid(TpDevice *d, const int *idx, int n, double *x, double *y) {
 
 static int direct(TpDevice *d) { return d->c.kind == TP_KIND_TOUCHSCREEN; }
 
-/* mm de pantalla táctil → posición 0..1 */
+/* touchscreen mm → position 0..1 */
 static void ts_pos(TpDevice *d, double mx, double my, double *x, double *y) {
     *x = mx / (d->wmm > 0 ? d->wmm : 1);
     *y = my / (d->hmm > 0 ? d->hmm : 1);
 }
 
-/* ---- scroll e inercia ---- */
+/* ---- scroll and inertia ---- */
 
 static void scroll_out(TpDevice *d, double dx, double dy, double dt, int phase) {
     double v = hypot(dx, dy) / dt;
     double g = scroll_gain(d, v);
     double px = dx * g, py = dy * g;
     if (direct(d)) { px = dx * (double)scr_w / (d->wmm > 1 ? d->wmm : 1); py = dy * g; }
-    /* scroll: positivo = bajar el contenido (como deltaY del DOM y axis de Wayland). Natural: el
-     * contenido sigue a los dedos (subir los dedos = bajar en el documento) */
+    /* scroll: positive = move the content down (like the DOM's deltaY and Wayland's axis). Natural: the
+     * content follows the fingers (fingers up = move down in the document) */
     int nat = direct(d) || cfg.natural;
     if (nat) { px = -px; py = -py; }
-    /* trabado suave a un eje: un poco de costado mientras se va derecho no corre la vista */
+    /* soft lock to an axis: a bit of sideways motion while going straight doesn't shift the view */
     if (fabs(px) < 0.15 * fabs(py)) px = 0;
     else if (fabs(py) < 0.15 * fabs(px)) py = 0;
     if (phase == TP_UPDATE && px == 0 && py == 0) return;
@@ -384,8 +384,8 @@ static void kinetic_start(TpDevice *d) {
         if (d->ht[i] < first) first = d->ht[i];
         if (d->ht[i] > last) last = d->ht[i];
     }
-    if (last < 0 || d->now - last > 60) return;          /* los dedos ya estaban quietos */
-    double span = (last - first) + 12.0;                   /* + un cuadro */
+    if (last < 0 || d->now - last > 60) return;          /* the fingers were already still */
+    double span = (last - first) + 12.0;                   /* + one frame */
     double vx = sx / span * 1000, vy = sy / span * 1000;   /* px/s */
     if (hypot(vx, vy) < KINETIC_MIN) return;
     double vmax = 9000;
@@ -402,7 +402,7 @@ static void kinetic_stop(TpDevice *d) {
     out_scroll(TP_MOMENTUM_END, 0, 0);
 }
 
-/* ---- gestos ---- */
+/* ---- gestures ---- */
 
 static void hold_end(TpDevice *d, int cancel) {
     if (!d->hold) return;
@@ -420,7 +420,7 @@ static void gesture_end(TpDevice *d, int next) {
     case G_SWIPE: out_swipe(TP_END, d->gn, 0, 0); break;
     case G_DRAG3:
         if (!d->d3_down) break;
-        if (next == 0) d->d3_release = d->now + DRAG3_RELEASE;     /* se puede volver a apoyar y seguir */
+        if (next == 0) d->d3_release = d->now + DRAG3_RELEASE;     /* the fingers can be put down again to continue */
         else { out_button(0, 0); d->d3_down = 0; }
         break;
     }
@@ -451,10 +451,10 @@ static void gesture_begin(TpDevice *d, int n, const int *idx, int npos) {
         if (!direct(d) && (cfg.scroll || cfg.pinch)) { d->hold = 1; out_hold(TP_BEGIN, 2); }
         return;
     }
-    if (direct(d)) { d->g = G_NONE; return; }               /* pantalla táctil: 3+ dedos no hacen nada */
+    if (direct(d)) { d->g = G_NONE; return; }               /* touchscreen: 3+ fingers do nothing */
     if (n == 3 && cfg.three_drag) {
         d->g = G_DRAG3;
-        if (d->d3_down) d->d3_release = 0;                   /* volvió a apoyar: sigue el arrastre */
+        if (d->d3_down) d->d3_release = 0;                   /* put down again: the drag continues */
         return;
     }
     d->g = G_UNDN;
@@ -492,9 +492,9 @@ static void decide2(TpDevice *d, double dt) {
     if (l1 > DECIDE_MOVE && l2 > DECIDE_MOVE) {
         double cosang = (v1x * v2x + v1y * v2y) / (l1 * l2);
         if (cosang > 0.3) scroll = 1;
-        else pinch = 1;                         /* opuestos (separar/juntar) o cruzados (girar) */
+        else pinch = 1;                         /* opposite (spread/close) or crossed (rotate) */
     } else if ((l1 > 3 * DECIDE_MOVE || l2 > 3 * DECIDE_MOVE)) {
-        /* un dedo quieto y el otro se mueve: pellizco si cambia la distancia, si no scroll */
+        /* one finger still and the other moving: pinch if the distance changes, otherwise scroll */
         if (dd > 0.7 * (l1 > l2 ? l1 : l2)) pinch = 1;
         else scroll = 1;
     } else if (d->now - d->g_t0 > 400 && cm > 1.5) scroll = 1;
@@ -529,7 +529,7 @@ static void gesture_frame(TpDevice *d, const int *idx, int n, double dt) {
     switch (d->g) {
     case G_POINTER: {
         int k = idx[0];
-        if (d->phys && n > 1) {                  /* clic apretado con un dedo y moviendo otro */
+        if (d->phys && n > 1) {                  /* click held with one finger while moving another */
             double best = -1;
             for (int i = 0; i < n; i++) {
                 Slot *s = &d->s[idx[i]];
@@ -580,7 +580,7 @@ static void gesture_frame(TpDevice *d, const int *idx, int n, double dt) {
     }
 }
 
-/* ---- tocar para hacer clic ---- */
+/* ---- tap to click ---- */
 
 static int tap_moved(TpDevice *d) {
     for (int i = 0; i < d->c.nslots; i++) {
@@ -625,7 +625,7 @@ static void tap_frame(TpDevice *d, int nf) {
         break;
     case T_DRAG_OR_DOUBLE:
         if (nf > 1) { tap_release(d); d->tap = T_DEAD; }
-        else if (nf == 0) {                      /* doble toque: suelta y vuelve a hacer clic */
+        else if (nf == 0) {                      /* double tap: releases and clicks again */
             tap_release(d);
             out_button(0, 1);
             d->tap_down = 1;
@@ -642,7 +642,7 @@ static void tap_frame(TpDevice *d, int nf) {
     }
 }
 
-/* ---- clic físico ---- */
+/* ---- physical click ---- */
 
 static int click_button(TpDevice *d) {
     if (!d->c.clickpad) return 0;
@@ -661,19 +661,19 @@ static int click_button(TpDevice *d) {
     return n >= 3 ? 1 : n == 2 ? 2 : 0;
 }
 
-/* ---- cuadro completo ---- */
+/* ---- complete frame ---- */
 
 static void touchpad_frame(TpDevice *d, double dt) {
     int idx[MAX_SLOTS];
     int n = active(d, idx);
-    /* dispositivos con menos contactos que dedos (BTN_TOOL_TRIPLETAP con 2 slots) */
+    /* devices with fewer contacts than fingers (BTN_TOOL_TRIPLETAP with 2 slots) */
     if (d->tool > d->c.nslots && count_down(d) >= d->c.nslots && n == count_down(d)) n = d->tool;
-    int npos = n > count_down(d) ? count_down(d) : n;      /* dedos con posición */
+    int npos = n > count_down(d) ? count_down(d) : n;      /* fingers with a position */
 
     if (n > 0 && d->kin) kinetic_stop(d);
     if (n > 0 && d->d3_down && d->d3_release > 0 && n != 3) { out_button(0, 0); d->d3_down = 0; d->d3_release = 0; }
 
-    /* clic físico */
+    /* physical click */
     if (d->phys != d->phys_prev) {
         if (d->phys) {
             if (d->tap_down) tap_release(d);
@@ -699,7 +699,7 @@ static void touchscreen_frame(TpDevice *d, double dt) {
     int idx[MAX_SLOTS], n = 0;
     for (int i = 0; i < d->c.nslots; i++) if (d->s[i].down) idx[n++] = i;
     double x, y;
-    /* una secuencia nueva: ¿la toma una app Wayland? */
+    /* a new sequence: does a Wayland app take it? */
     if (d->ts_prev_n == 0 && n > 0) {
         Slot *s = &d->s[idx[0]];
         ts_pos(d, s->mx, s->my, &x, &y);
@@ -725,7 +725,7 @@ static void touchscreen_frame(TpDevice *d, double dt) {
         d->ts_prev_n = n;
         return;
     }
-    /* emulación del puntero */
+    /* pointer emulation */
     if (n >= 2 && !d->ts_multi) {
         d->ts_multi = 1;
         if (d->ts_btn) { out_button(0, 0); d->ts_btn = 0; }
@@ -833,10 +833,10 @@ void tp_event(TpDevice *d, const struct input_event *ev) {
     tp_event_at(d, ev, t);
 }
 
-/* ---- latencia (registro) ---- */
+/* ---- latency (log) ---- */
 
 void tp_latency(TpDevice *d, const struct input_event *syn) {
-    static const char *const names[] = { "toque", "puntero", "dos dedos", "scroll", "pellizco", "varios dedos", "deslizar", "arrastre de 3 dedos" };
+    static const char *const names[] = { "tap", "pointer", "two fingers", "scroll", "pinch", "several fingers", "swipe", "3-finger drag" };
     double t = syn->input_event_sec * 1e3 + syn->input_event_usec / 1e3;
     double lat = mono_ms() - t;
     if (t > 0 && lat >= 0 && lat < 1000) {
@@ -844,9 +844,9 @@ void tp_latency(TpDevice *d, const struct input_event *syn) {
         if (lat > d->lat_max) d->lat_max = lat;
         d->lat_n++;
     }
-    if (d->g > G_NONE && d->g > d->lat_kind) d->lat_kind = d->g;      /* el gesto "más alto" de la secuencia */
+    if (d->g > G_NONE && d->g > d->lat_kind) d->lat_kind = d->g;      /* the "highest" gesture of the sequence */
     if (count_down(d) == 0 && d->lat_n > 0) {
-        fprintf(stderr, "tp: %s: %d cuadros, latencia media %.2f ms, máx %.2f ms (lectura → JS/Wayland)\n",
+        fprintf(stderr, "tp: %s: %d frames, average latency %.2f ms, max %.2f ms (read → JS/Wayland)\n",
                 names[d->lat_kind], d->lat_n, d->lat_sum / d->lat_n, d->lat_max);
         d->lat_n = 0;
         d->lat_sum = d->lat_max = 0;
@@ -854,7 +854,7 @@ void tp_latency(TpDevice *d, const struct input_event *syn) {
     }
 }
 
-/* ---- temporizadores ---- */
+/* ---- timers ---- */
 
 double tp_timeout(double now) {
     double best = -1;
@@ -893,7 +893,7 @@ void tp_tick(double now) {
         if (d->tap == T_TOUCH && now - d->tap_t > TAP_TIME) d->tap = T_DEAD;
         if (d->d3_down && d->d3_release > 0 && now >= d->d3_release) { out_button(0, 0); d->d3_down = 0; d->d3_release = 0; out = 1; }
         if (d->ts_pending && now - d->ts_t0 > TS_PRESS_TIME) { d->ts_pending = 0; d->ts_btn = 1; out_button(0, 1); out = 1; }
-        for (int k = 0; k < d->c.nslots; k++) {     /* un toque quieto en el borde: palma */
+        for (int k = 0; k < d->c.nslots; k++) {     /* a still touch on the edge: palm */
             Slot *s = &d->s[k];
             if (s->down && s->edge && now - s->t0 >= EDGE_TIME) { s->edge = 0; s->palm = 1; }
         }

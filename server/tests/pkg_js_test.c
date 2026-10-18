@@ -1,5 +1,5 @@
-/* pkg_js_test.c — prueba lord.pkg (js_pkg.c) con QuickJS contra el índice real del sistema:
- *   build/pkg-js-test 'código JS'   (lord.pkg y print() disponibles; mide el tiempo) */
+/* pkg_js_test.c — tests lord.pkg (js_pkg.c) with QuickJS against the system's real index:
+ *   build/pkg-js-test 'JS code'   (lord.pkg and print() available; measures the time) */
 #include "ui/js_pkg.h"
 
 #include <quickjs.h>
@@ -27,7 +27,7 @@ static JSValue js_now(JSContext *c, JSValueConst this_val, int argc, JSValueCons
 }
 
 int main(int argc, char **argv) {
-    if (argc < 2) { fprintf(stderr, "uso: pkg-js-test 'código'\n"); return 2; }
+    if (argc < 2) { fprintf(stderr, "usage: pkg-js-test 'code'\n"); return 2; }
     JSRuntime *rt = JS_NewRuntime();
     JSContext *c = JS_NewContext(rt);
     JSValue g = JS_GetGlobalObject(c), lord = JS_NewObject(c);
@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
     JS_FreeValue(c, r);
     struct rusage ru;
     getrusage(RUSAGE_SELF, &ru);
-    printf("memoria máxima: %ld KB\n", ru.ru_maxrss);
+    printf("peak memory: %ld KB\n", ru.ru_maxrss);
     JS_FreeContext(c);
     JS_FreeRuntime(rt);
     return bad;

@@ -1,4 +1,4 @@
-/* js_wm.h — lord.wm: arrastre de ventanas en C (ver js_wm.c y grab.h). */
+/* js_wm.h — lord.wm: window dragging in C (see js_wm.c and grab.h). */
 #ifndef LORD_JS_WM_H
 #define LORD_JS_WM_H
 

@@ -1,4 +1,4 @@
-/* js_monitor.h — lord.monitor (métricas para la app Monitor; ver js_monitor.c). */
+/* js_monitor.h — lord.monitor (metrics for the Monitor app; see js_monitor.c). */
 #ifndef LORD_JS_MONITOR_H
 #define LORD_JS_MONITOR_H
 

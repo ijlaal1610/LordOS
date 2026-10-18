@@ -1,23 +1,23 @@
-/* js_fw.c — lord.fw: los permisos de red por app para el Monitor y Ajustes → Privacidad
- * (docs/FIREWALL.md, pasos 2 a 4).
+/* js_fw.c — lord.fw: per-app network permissions for the Monitor and Settings → Privacy
+ * (docs/FIREWALL.md, steps 2 to 4).
  *
- * lord-server es el dueño de las reglas del usuario (~/.config/lordos/firewall.json, la tienda de
- * fw/rules.c): las lee al arrancar, las cambia con estas llamadas y las guarda. Después le avisa a
- * lord-netperm (el servicio root que las aplica en el kernel) con un único mensaje sin datos,
- * "volvé a leer" (netperm/npproto.h); lord-netperm lee el archivo él mismo. De vuelta llegan el
- * estado, las conexiones nuevas y los contadores. Ninguna llamada recibe rutas: la del archivo la
- * fija el servidor, y firewall.json está en la lista de rechazo de lord.fs (fsops.c).
+ * lord-server owns the user's rules (~/.config/lordos/firewall.json, the store in
+ * fw/rules.c): it reads them at startup, changes them with these calls and saves them. Then it notifies
+ * lord-netperm (the root service that applies them in the kernel) with a single message without data,
+ * "read again" (netperm/npproto.h); lord-netperm reads the file itself. Back come the
+ * state, new connections and counters. No call takes paths: the file's path is
+ * fixed by the server, and firewall.json is on lord.fs's deny list (fsops.c).
  *
  *   status()                     { daemon, bpf, dns, error }
- *   state()                      { mode, trusted: [app], restricted: { app: [restricción] } }
- *   appRule(app)                 'allow' | 'deny' | null   (la regla {app, out, any})
- *   setAppRule(app, v)           v: 'allow' | 'deny' | null (la saca); el interruptor del Monitor
- *   setTrusted(app, on) / setRestricted(app, [restricción]) / setMode('silent'|'ask'|'off')
+ *   state()                      { mode, trusted: [app], restricted: { app: [restriction] } }
+ *   appRule(app)                 'allow' | 'deny' | null   (the {app, out, any} rule)
+ *   setAppRule(app, v)           v: 'allow' | 'deny' | null (removes it); the Monitor's switch
+ *   setTrusted(app, on) / setRestricted(app, [restriction]) / setMode('silent'|'ask'|'off')
  *   rules(app)                   [{ id, dir, dst, port, proto, action }]
  *   addRule({ app, dir, dst, port, proto, action }) → id    removeRule(id)
- *   poll()                       { counts: { app: [permitidas, denegadas] }, events: [...] }
+ *   poll()                       { counts: { app: [allowed, denied] }, events: [...] }
  *
- * Todas validan: ids de app con fw_app_canon, destinos con fw_parse_dest, puertos 1–65535. */
+ * All of them validate: app ids with fw_app_canon, destinations with fw_parse_dest, ports 1–65535. */
 #include "js_fw.h"
 #include "../fw/rules.h"
 #include "../netperm/npproto.h"
@@ -65,7 +65,7 @@ static void send_reload(void) {
     if (sock >= 0 && send(sock, msg, sizeof msg, MSG_NOSIGNAL | MSG_DONTWAIT) != (ssize_t)sizeof msg) sock_close();
 }
 
-/* Se conecta (como mucho un intento cada 2 s) y pide que lea las reglas. */
+/* Connects (at most one attempt every 2 s) and asks it to read the rules. */
 static void ensure(void) {
     if (sock >= 0) return;
     long long t = now_s();
@@ -89,7 +89,7 @@ static void keep(char **slot, const unsigned char *p, size_t n) {
     *slot = s;
 }
 
-/* Lee lo que haya llegado, sin esperar. */
+/* Reads whatever has arrived, without waiting. */
 static void pump(void) {
     ensure();
     if (sock < 0) return;
@@ -128,13 +128,13 @@ static int save(void) {
     char *sl = strrchr(dir, '/');
     if (sl) { *sl = 0; mkdir(dir, 0700); }
     int r = fw_save(store, path);
-    if (r) fprintf(stderr, "lord.fw: no se pudo guardar %s\n", path);
+    if (r) fprintf(stderr, "lord.fw: could not save %s\n", path);
     ensure();
     send_reload();
     return r;
 }
 
-/* ---- validación de argumentos ---------------------------------------------------------------- */
+/* ---- argument validation ---------------------------------------------------------------- */
 
 static int arg_app(JSContext *c, JSValueConst v, char *out) {
     if (!JS_IsString(v)) return -1;
@@ -159,7 +159,7 @@ static int str_prop(JSContext *c, JSValueConst o, const char *k, char *out, size
     return r;
 }
 
-/* La regla {app, out, any, cualquier puerto y protocolo}: el interruptor del Monitor. */
+/* The rule {app, out, any, any port and protocol}: the Monitor's switch. */
 static const FwRule *app_rule(const char *app, FwRule *buf, int max) {
     int n = fw_rule_list(store, app, buf, max);
     for (int i = 0; i < n && i < max; i++)
@@ -168,7 +168,7 @@ static const FwRule *app_rule(const char *app, FwRule *buf, int max) {
     return NULL;
 }
 
-/* ---- funciones ------------------------------------------------------------------------------- */
+/* ---- functions ------------------------------------------------------------------------------- */
 
 static JSValue f_status(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc; (void)argv;
@@ -210,7 +210,7 @@ static JSValue f_state(JSContext *c, JSValueConst t, int argc, JSValueConst *arg
 static JSValue f_app_rule(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     char app[FW_APP_MAX];
-    if (argc < 1 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "app inválida");
+    if (argc < 1 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "invalid app");
     FwRule buf[256];
     const FwRule *r = app_rule(app, buf, 256);
     return r ? JS_NewString(c, r->action == FW_DENY ? "deny" : "allow") : JS_NULL;
@@ -219,12 +219,12 @@ static JSValue f_app_rule(JSContext *c, JSValueConst t, int argc, JSValueConst *
 static JSValue f_set_app_rule(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     char app[FW_APP_MAX];
-    if (argc < 2 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "app inválida");
+    if (argc < 2 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "invalid app");
     char v[8];
     if (JS_IsNull(argv[1])) v[0] = 0;
     else {
         const char *s = JS_IsString(argv[1]) ? JS_ToCString(c, argv[1]) : NULL;
-        if (!s || (strcmp(s, "allow") && strcmp(s, "deny"))) { if (s) JS_FreeCString(c, s); return JS_ThrowTypeError(c, "'allow', 'deny' o null"); }
+        if (!s || (strcmp(s, "allow") && strcmp(s, "deny"))) { if (s) JS_FreeCString(c, s); return JS_ThrowTypeError(c, "'allow', 'deny' or null"); }
         snprintf(v, sizeof v, "%s", s);
         JS_FreeCString(c, s);
     }
@@ -251,7 +251,7 @@ static JSValue f_set_app_rule(JSContext *c, JSValueConst t, int argc, JSValueCon
 static JSValue f_set_trusted(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     char app[FW_APP_MAX];
-    if (argc < 2 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "app inválida");
+    if (argc < 2 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "invalid app");
     if (fw_set_trusted(store, app, JS_ToBool(c, argv[1]) > 0)) return JS_FALSE;
     return JS_NewBool(c, save() == 0);
 }
@@ -259,20 +259,20 @@ static JSValue f_set_trusted(JSContext *c, JSValueConst t, int argc, JSValueCons
 static JSValue f_set_restricted(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     char app[FW_APP_MAX];
-    if (argc < 2 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "app inválida");
+    if (argc < 2 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "invalid app");
     uint32_t flags = 0, len = 0;
-    if (!JS_IsArray(c, argv[1])) return JS_ThrowTypeError(c, "lista de restricciones");
+    if (!JS_IsArray(c, argv[1])) return JS_ThrowTypeError(c, "list of restrictions");
     JSValue lv = JS_GetPropertyStr(c, argv[1], "length");
     JS_ToUint32(c, &len, lv);
     JS_FreeValue(c, lv);
-    if (len > 32) return JS_ThrowRangeError(c, "demasiadas restricciones");
+    if (len > 32) return JS_ThrowRangeError(c, "too many restrictions");
     for (uint32_t i = 0; i < len; i++) {
         JSValue e = JS_GetPropertyUint32(c, argv[1], i);
         const char *s = JS_IsString(e) ? JS_ToCString(c, e) : NULL;
         uint32_t f = s ? fw_flag_from_name(s) : 0;
         if (s) JS_FreeCString(c, s);
         JS_FreeValue(c, e);
-        if (!f) return JS_ThrowTypeError(c, "restricción desconocida");
+        if (!f) return JS_ThrowTypeError(c, "unknown restriction");
         flags |= f;
     }
     if (fw_set_restricted(store, app, flags)) return JS_FALSE;
@@ -282,7 +282,7 @@ static JSValue f_set_restricted(JSContext *c, JSValueConst t, int argc, JSValueC
 static JSValue f_set_mode(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     char m[16];
-    if (argc < 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(c, "modo");
+    if (argc < 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(c, "mode");
     const char *s = JS_ToCString(c, argv[0]);
     snprintf(m, sizeof m, "%s", s ? s : "");
     if (s) JS_FreeCString(c, s);
@@ -313,7 +313,7 @@ static JSValue rule_obj(JSContext *c, const FwRule *r) {
 static JSValue f_rules(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     char app[FW_APP_MAX];
-    if (argc < 1 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "app inválida");
+    if (argc < 1 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "invalid app");
     JSValue arr = JS_NewArray(c);
     int n = fw_rule_list(store, app, NULL, 0);
     if (n <= 0) return arr;
@@ -343,28 +343,28 @@ static int parse_port(const char *s, FwRule *r) {
 
 static JSValue f_add_rule(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (argc < 1 || !JS_IsObject(argv[0])) return JS_ThrowTypeError(c, "regla");
+    if (argc < 1 || !JS_IsObject(argv[0])) return JS_ThrowTypeError(c, "rule");
     char app[FW_APP_MAX], canon[FW_APP_MAX], dir[8], dst[300], port[16], proto[8], action[8];
-    if (str_prop(c, argv[0], "app", app, sizeof app) || fw_app_canon(app, canon, sizeof canon)) return JS_ThrowTypeError(c, "app inválida");
-    if (str_prop(c, argv[0], "dst", dst, sizeof dst)) return JS_ThrowTypeError(c, "destino");
+    if (str_prop(c, argv[0], "app", app, sizeof app) || fw_app_canon(app, canon, sizeof canon)) return JS_ThrowTypeError(c, "invalid app");
+    if (str_prop(c, argv[0], "dst", dst, sizeof dst)) return JS_ThrowTypeError(c, "destination");
     if (str_prop(c, argv[0], "dir", dir, sizeof dir) < 0 || str_prop(c, argv[0], "port", port, sizeof port) < 0 ||
         str_prop(c, argv[0], "proto", proto, sizeof proto) < 0 || str_prop(c, argv[0], "action", action, sizeof action))
-        return JS_ThrowTypeError(c, "regla");
+        return JS_ThrowTypeError(c, "rule");
     FwRule r;
     memset(&r, 0, sizeof r);
     snprintf(r.app, sizeof r.app, "%s", canon);
-    if (fw_parse_dest(dst, &r)) return JS_ThrowTypeError(c, "destino inválido");
+    if (fw_parse_dest(dst, &r)) return JS_ThrowTypeError(c, "invalid destination");
     if (!dir[0] || !strcmp(dir, "out")) r.dir = FW_OUT;
     else if (!strcmp(dir, "in")) r.dir = FW_IN;
-    else return JS_ThrowTypeError(c, "dirección");
-    if (parse_port(port, &r)) return JS_ThrowTypeError(c, "puerto");
+    else return JS_ThrowTypeError(c, "direction");
+    if (parse_port(port, &r)) return JS_ThrowTypeError(c, "port");
     if (!proto[0]) r.proto = FW_PROTO_ANY;
     else if (!strcmp(proto, "tcp")) r.proto = FW_PROTO_TCP;
     else if (!strcmp(proto, "udp")) r.proto = FW_PROTO_UDP;
-    else return JS_ThrowTypeError(c, "protocolo");
+    else return JS_ThrowTypeError(c, "protocol");
     if (!strcmp(action, "allow")) r.action = FW_ALLOW;
     else if (!strcmp(action, "deny")) r.action = FW_DENY;
-    else return JS_ThrowTypeError(c, "acción");
+    else return JS_ThrowTypeError(c, "action");
     r.life = FW_LIFE_FOREVER;
     r.when = (long long)time(NULL);
     uint32_t id = 0;
@@ -424,8 +424,8 @@ void js_fw_register(JSContext *c, JSValue lord) {
         snprintf(path, sizeof path, "%s/.config/lordos/firewall.json", real);
         char err[200] = "";
         int r = store ? fw_load(store, path, err, sizeof err) : -1;
-        if (r < 0) fprintf(stderr, "lord.fw: %s inválido (%s): se empieza sin reglas\n", path, err);
-        ensure();                                   /* lord-netperm lee las reglas de esta sesión */
+        if (r < 0) fprintf(stderr, "lord.fw: %s invalid (%s): starting without rules\n", path, err);
+        ensure();                                   /* lord-netperm reads this session's rules */
     }
     if (!store) return;
     JSValue fw = JS_NewObject(c);

@@ -1,6 +1,6 @@
-/* deb.c — versiones, deb822 y relaciones (ver deb.h). La comparación de versiones es la de
- * dpkg (lib/dpkg/version.c): época numérica, después la versión y la revisión comparadas por
- * tramos de no dígitos (letras antes que símbolos, ~ antes que el final) y de números. */
+/* deb.c — versions, deb822 and relationships (see deb.h). Version comparison is dpkg's
+ * (lib/dpkg/version.c): numeric epoch, then the version and the revision compared by
+ * runs of non-digits (letters before symbols, ~ before the end) and of numbers. */
 #include "deb.h"
 
 #include <ctype.h>
@@ -15,7 +15,7 @@ static int order(int c) {
     return 0;
 }
 
-/* verrevcmp de dpkg sobre (puntero, largo) */
+/* dpkg's verrevcmp over (pointer, length) */
 static int verrev(const char *a, const char *ae, const char *b, const char *be) {
     while (a < ae || b < be) {
         int first_diff = 0;
@@ -112,7 +112,7 @@ int d822_next_field(D822 *it, D822Field *f) {
     const char *p = it->p, *end = it->end;
     for (;;) {
         if (p >= end) return 0;
-        if (*p == '#' || *p == ' ' || *p == '\t') {        /* comentario o continuación suelta */
+        if (*p == '#' || *p == ' ' || *p == '\t') {        /* comment or stray continuation */
             const char *nl = memchr(p, '\n', (size_t)(end - p));
             p = nl ? nl + 1 : end;
             continue;
@@ -126,7 +126,7 @@ int d822_next_field(D822 *it, D822Field *f) {
     f->nlen = (size_t)(colon - p);
     const char *v = colon + 1;
     while (v < nl && (*v == ' ' || *v == '\t')) v++;
-    /* continuaciones: líneas que empiezan con espacio */
+    /* continuations: lines starting with a space */
     const char *ve = nl;
     while (ve < end && ve + 1 < end && (ve[1] == ' ' || ve[1] == '\t')) {
         const char *n2 = memchr(ve + 1, '\n', (size_t)(end - ve - 1));
@@ -153,7 +153,7 @@ int deb_next_group(const char **pp, const char *end, DebRel *alts, int max) {
         while (p < end && (is_space(*p) || *p == ',')) p++;
         if (p >= end) { *pp = end; return 0; }
         const char *ge = p;
-        /* hasta la coma, sin contar las que estén dentro de (), [] o <> */
+        /* up to the comma, not counting those inside (), [] or <> */
         int paren = 0, brack = 0, angle = 0;
         while (ge < end) {
             char c = *ge;
@@ -188,7 +188,7 @@ int deb_next_group(const char **pp, const char *end, DebRel *alts, int max) {
                 else if (a + 1 < ge && a[0] == '>' && a[1] == '>') { r->op = REL_GT; a += 2; }
                 else if (a + 1 < ge && a[0] == '>' && a[1] == '=') { r->op = REL_GE; a += 2; }
                 else if (a < ge && a[0] == '=') { r->op = REL_EQ; a++; }
-                else if (a < ge && a[0] == '<') { r->op = REL_LE; a++; }          /* obsoletos */
+                else if (a < ge && a[0] == '<') { r->op = REL_LE; a++; }          /* obsolete */
                 else if (a < ge && a[0] == '>') { r->op = REL_GE; a++; }
                 while (a < ge && is_space(*a)) a++;
                 r->ver = a;
@@ -198,7 +198,7 @@ int deb_next_group(const char **pp, const char *end, DebRel *alts, int max) {
                 if (a < ge) a++;
                 if (!r->vlen) r->op = REL_NONE;
             }
-            /* [arquitecturas] y <perfiles>: solo existen en paquetes fuente; se saltean */
+            /* [architectures] and <profiles>: only exist in source packages; skipped */
             while (a < ge && *a != '|') a++;
             if (r->nlen) n++;
         }

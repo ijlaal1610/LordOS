@@ -1,27 +1,27 @@
-/* sessiond.c — lord-sessiond: el administrador de sesiones de LordOS (docs/SESIONES.md).
+/* sessiond.c — lord-sessiond: the LordOS session manager (docs/SESSIONS.md).
  *
- * Lo arranca lordos.service como root en el arranque, en lugar del viejo inicio automático. Hace
- * de "display manager" propio:
- *   - el monitor (monitor.c): le presta la placa de video y la entrada a la sesión que se ve
- *     (la sesión dibuja directo, con GPU si hay);
- *   - la pantalla de ingreso: un lord-server --greeter (tema themes/greeter) que corre como el
- *     usuario de sistema lordos-greeter; sus pedidos (ingresar, reiniciar, apagar) llegan acá y
- *     las contraseñas se verifican acá, contra /etc/shadow;
- *   - las sesiones: un lord-server --headless por usuario, que sigue vivo en segundo plano
- *     cuando otro usuario usa el monitor (cambio rápido de usuario) y que se ve igual desde el
- *     monitor y desde el navegador (sess.c);
- *   - el escritorio remoto en la LAN (conn.c), solo si está prendido en Ajustes → Compartir:
- *     un hijo por conexión que suelta root ni bien sabe de quién es la sesión.
+ * lordos.service starts it as root at boot, replacing the old autostart. It acts as
+ * our own "display manager":
+ *   - the monitor (monitor.c): lends the video card and the input to the session being shown
+ *     (the session draws directly, with GPU if available);
+ *   - the login screen: a lord-server --greeter (theme themes/greeter) running as the
+ *     system user lordos-greeter; its requests (log in, restart, shut down) arrive here and
+ *     passwords are verified here, against /etc/shadow;
+ *   - the sessions: one lord-server --headless per user, which stays alive in the background
+ *     when another user is using the monitor (fast user switching) and looks the same from the
+ *     monitor and from the browser (sess.c);
+ *   - the LAN remote desktop (conn.c), only if enabled in Settings → Sharing:
+ *     one child per connection that drops root as soon as it knows whose session it is.
  *
- *   /etc/lordos/session.conf         AUTOLOGIN=usuario (vacío o sin la línea: pantalla de ingreso)
+ *   /etc/lordos/session.conf         AUTOLOGIN=user (empty or missing line: login screen)
  *   /etc/lordos/remote/config        enabled=0|1, port=5673, allow=all|group, insecure_dev=0 (0644)
- *   /etc/lordos/remote/cert.pem      certificado autofirmado (se crea al prender el remoto)
- *   /etc/lordos/remote/key.pem       su clave (0600)
- *   /etc/lordos/remote/fingerprint   huella SHA-256 del certificado (la muestra Ajustes)
- *   /run/lordos/status.json          sesiones, quién está en el monitor y quién conectado (Ajustes)
+ *   /etc/lordos/remote/cert.pem      self-signed certificate (created when remote is turned on)
+ *   /etc/lordos/remote/key.pem       its key (0600)
+ *   /etc/lordos/remote/fingerprint   SHA-256 fingerprint of the certificate (shown by Settings)
+ *   /run/lordos/status.json          sessions, who is on the monitor and who is connected (Settings)
  *
- * SIGHUP vuelve a leer la configuración (prende o apaga el remoto sin tocar las sesiones).
- * Es el único programa de LordOS que enlaza OpenSSL (TLS): lord-server no. */
+ * SIGHUP rereads the configuration (turns remote on or off without touching the sessions).
+ * It's the only LordOS program that links OpenSSL (TLS): lord-server doesn't. */
 #include "sessiond.h"
 #include "../sec/cgroup.h"
 #include "proto.h"
@@ -67,11 +67,11 @@ void rd_unlock(void) { pthread_mutex_unlock(&rd_shared->lock); }
 
 static int path_ok(const char *p) { struct stat st; return stat(p, &st) == 0; }
 
-/* snprintf que, si no entra, deja el destino vacío (las rutas cortadas no sirven) */
+/* snprintf that, if it doesn't fit, leaves the destination empty (truncated paths are useless) */
 #define SP(dst, ...) do { int r_ = snprintf(dst, sizeof dst, __VA_ARGS__); if (r_ < 0 || (size_t)r_ >= sizeof dst) dst[0] = 0; } while (0)
 
-/* Rutas de lord-server y de los datos: al lado de este binario (instalado: /usr/lib/lordos/bin,
- * datos en /usr/lib/lordos; desarrollo: server/build, datos en la raíz del repositorio). */
+/* Paths of lord-server and of the data: next to this binary (installed: /usr/lib/lordos/bin,
+ * data in /usr/lib/lordos; development: server/build, data at the repository root). */
 static void find_paths(void) {
     char exe[PATH_MAX];
     ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
@@ -109,7 +109,7 @@ static void load_config(void) {
     if (f) fclose(f);
 }
 
-/* Certificado autofirmado P-256 por 10 años (CN = nombre del equipo). */
+/* Self-signed P-256 certificate for 10 years (CN = host name). */
 static int ensure_cert(void) {
     if (path_ok(RD_CONF_DIR "/cert.pem") && path_ok(RD_CONF_DIR "/key.pem")) return 0;
     mkdir("/etc/lordos", 0755);
@@ -154,7 +154,7 @@ static int ensure_cert(void) {
     if (ok) ok = !rename(RD_CONF_DIR "/key.pem.new", RD_CONF_DIR "/key.pem") && !rename(RD_CONF_DIR "/cert.pem.new", RD_CONF_DIR "/cert.pem");
     X509_free(x);
     EVP_PKEY_free(key);
-    fprintf(stderr, "lord-sessiond: certificado nuevo para %s\n", host);
+    fprintf(stderr, "lord-sessiond: new certificate for %s\n", host);
     return ok ? 0 : -1;
 }
 
@@ -197,7 +197,7 @@ static void sput(Str *s, const char *fmt, ...) {
     }
 }
 
-/* texto como string JSON (sin comillas alrededor; control y comillas escapados) */
+/* text as a JSON string (without surrounding quotes; control chars and quotes escaped) */
 static void sput_esc(Str *s, const char *t, size_t max) {
     for (size_t i = 0; t[i] && i < max; i++) {
         unsigned char c = (unsigned char)t[i];
@@ -207,7 +207,7 @@ static void sput_esc(Str *s, const char *t, size_t max) {
     }
 }
 
-/* Valor de "clave":"…" en un JSON plano de la pantalla de ingreso (sin escapes salvo \" y \\). */
+/* Value of "key":"…" in a flat JSON from the login screen (no escapes except \" and \\). */
 static int jstr(const char *j, const char *key, char *out, size_t n) {
     char k[40];
     snprintf(k, sizeof k, "\"%s\":\"", key);
@@ -223,7 +223,7 @@ static int jstr(const char *j, const char *key, char *out, size_t n) {
     return 0;
 }
 
-/* ---- estado (Ajustes lo lee) ---- */
+/* ---- state (Settings reads it) ---- */
 
 static int listening, lfd = -1;
 
@@ -263,7 +263,7 @@ static void write_status(void) {
 
 static void bump(void) { rd_lock(); rd_shared->version++; rd_unlock(); }
 
-/* ---- pantalla de ingreso: usuarios y equipo ---- */
+/* ---- login screen: users and host ---- */
 
 static int is_admin(const struct passwd *pw) {
     gid_t groups[256];
@@ -277,7 +277,7 @@ static int is_admin(const struct passwd *pw) {
     return 0;
 }
 
-/* "#rrggbb" del avatar (/var/lib/lordos/users/<u>.json), validado */
+/* "#rrggbb" of the avatar (/var/lib/lordos/users/<u>.json), validated */
 static void avatar_color(const char *user, char out[8]) {
     out[0] = 0;
     char p[128], buf[512];
@@ -350,14 +350,14 @@ static void greeter_reply_hello(void) {
     free(s.p);
 }
 
-/* ---- el monitor ---- */
+/* ---- the monitor ---- */
 
 static pid_t worker_pid = -1;
-static int wk_r = -1, wk_w = -1;        /* trabajadores → principal (SOCK_SEQPACKET, con fds) */
+static int wk_r = -1, wk_w = -1;        /* workers → main (SOCK_SEQPACKET, with fds) */
 static int has_monitor;
 static char shown = '-', shown_user[33];
 
-/* Acción pendiente mientras trabaja otro hijo (crear una sesión puede tardar unos segundos). */
+/* Pending action while another child works (creating a session can take a few seconds). */
 typedef enum { W_NONE, W_GREETER, W_LOGIN, W_AUTOLOGIN } WorkKind;
 static WorkKind pending;
 static char pending_user[33];
@@ -367,9 +367,9 @@ static void set_mode(const char *mode, const char *user) {
     snprintf(greeter_user, sizeof greeter_user, "%s", user ? user : "");
 }
 
-/* En un hijo: la pantalla de ingreso (la crea si hace falta) al monitor. */
+/* In a child: the login screen (creates it if needed) to the monitor. */
 static void work_greeter(void) {
-    int fd = sd_greeter_get(1280, 800);         /* toma el tamaño del monitor al mostrarse */
+    int fd = sd_greeter_get(1280, 800);         /* takes the monitor's size when shown */
     if (fd < 0) _exit(1);
     char msg[160];
     snprintf(msg, sizeof msg, "greeter-in {\"t\":\"mode\",\"mode\":\"%s\",\"user\":\"%s\"}", greeter_mode, greeter_user);
@@ -378,9 +378,9 @@ static void work_greeter(void) {
     _exit(0);
 }
 
-/* En un hijo: la sesión de un usuario (ya verificado) al monitor. */
-/* La contraseña recién verificada abre el llavero de la sesión (docs/CONTRASENAS.md): se manda
- * una sola vez por el socket de la sesión (RP_KEYRING, solo root) y se borra. */
+/* In a child: a user's (already verified) session to the monitor. */
+/* The password just verified opens the session's keyring (docs/PASSWORDS.md): it's sent
+ * only once over the session socket (RP_KEYRING, root only) and wiped. */
 static void send_keyring(int fd, char *pass) {
     size_t n = pass ? strlen(pass) : 0;
     if (!n || n > 1024) return;
@@ -409,7 +409,7 @@ static void work_user_pw(const char *user, char *pass) {
 
 static void work_user(const char *user) { work_user_pw(user, NULL); }
 
-/* En un hijo: verifica la contraseña escrita en el monitor y entra. */
+/* In a child: verifies the password typed on the monitor and logs in. */
 static void work_login(const char *user, char *pass) {
     char key[56];
     snprintf(key, sizeof key, "monitor:%.32s", user);
@@ -425,7 +425,7 @@ static void work_login(const char *user, char *pass) {
     if (!ok) {
         explicit_bzero(pass, strlen(pass));
         sd_fail_note(key, 1);
-        sd_log("ingreso fallido en el monitor para «%s»", sd_valid_username(user) ? user : "?");
+        sd_log("failed login on the monitor for '%s'", sd_valid_username(user) ? user : "?");
         sleep(1);
         double w2 = sd_fail_wait(key);
         char msg[96];
@@ -434,8 +434,8 @@ static void work_login(const char *user, char *pass) {
         _exit(1);
     }
     sd_fail_note(key, 0);
-    sd_log("ingresó %s en el monitor", user);
-    work_user_pw(user, pass);          /* abre también el llavero de la sesión */
+    sd_log("%s logged in on the monitor", user);
+    work_user_pw(user, pass);          /* also opens the session's keyring */
 }
 
 static int start_worker(WorkKind kind, const char *user, char *pass) {
@@ -446,7 +446,7 @@ static int start_worker(WorkKind kind, const char *user, char *pass) {
         signal(SIGHUP, SIG_DFL);
         prctl(PR_SET_PDEATHSIG, SIGTERM);
         if (lfd >= 0) close(lfd);
-        sd_mon_child();                 /* sin la placa ni la entrada del monitor */
+        sd_mon_child();                 /* without the monitor's card or input */
         if (wk_r >= 0) close(wk_r);
         if (kind == W_GREETER) work_greeter();
         else if (kind == W_LOGIN) work_login(user, pass);
@@ -465,7 +465,7 @@ static void show_greeter(const char *mode, const char *user) {
 static void power(const char *what) {
     const char *verb = !strcmp(what, "reboot") ? "reboot" : !strcmp(what, "poweroff") ? "poweroff" : NULL;
     if (!verb) return;
-    sd_log("%s pedido desde la pantalla de ingreso", verb);
+    sd_log("%s requested from the login screen", verb);
     pid_t pid = fork();
     if (pid == 0) {
         const char *const a[] = { "/usr/bin/systemctl", verb, NULL };
@@ -483,9 +483,9 @@ static void autologin_user(char *out, size_t n) {
     if (pw && sd_user_allowed(pw, 0)) snprintf(out, n, "%.32s", u);
 }
 
-/* Al arrancar: el inicio automático (si está elegido) o la pantalla de ingreso. Solo una vez
- * por arranque del equipo (/run se vacía al reiniciar): si el servicio se reinicia, se vuelve
- * por la pantalla de ingreso aunque la sesión hubiera estado bloqueada. */
+/* At startup: autologin (if chosen) or the login screen. Only once
+ * per machine boot (/run is emptied on reboot): if the service restarts, it goes back
+ * through the login screen even if the session had been locked. */
 static void boot_monitor(void) {
     char au[40];
     autologin_user(au, sizeof au);
@@ -493,7 +493,7 @@ static void boot_monitor(void) {
     int first = stat(SD_RUN_DIR "/autologin-done", &st) != 0;
     if (first) close(open(SD_RUN_DIR "/autologin-done", O_WRONLY | O_CREAT | O_CLOEXEC, 0644));
     if (first && au[0]) {
-        sd_log("inicio automático: %s", au);
+        sd_log("autologin: %s", au);
         snprintf(pending_user, sizeof pending_user, "%s", au);
         if (start_worker(W_AUTOLOGIN, au, NULL)) pending = W_AUTOLOGIN;
     } else show_greeter("login", NULL);
@@ -508,7 +508,7 @@ static void set_shown(char k, const char *user) {
     rd_unlock();
 }
 
-/* Lo que mandan los trabajadores: qué sesión mostrar y mensajes para la pantalla de ingreso. */
+/* What the workers send: which session to show and messages for the login screen. */
 static void from_worker(void) {
     char buf[4200];
     int fd;
@@ -521,7 +521,7 @@ static void from_worker(void) {
         return;
     }
     if (sscanf(buf, "show u %32s", user) == 1 && fd >= 0 && sd_valid_username(user)) {
-        sd_log("monitor: sesión de %s", user);
+        sd_log("monitor: %s's session", user);
         set_shown('u', user);
         if (sd_mon_show(fd, user)) { sd_mon_lost(); set_shown('-', NULL); show_greeter("login", NULL); }
         return;
@@ -530,12 +530,12 @@ static void from_worker(void) {
     if (!strncmp(buf, "greeter-in ", 11) && shown == 'g') sd_mon_greeter(buf + 11);
 }
 
-/* Pedidos de la sesión que se ve: bloquear o cambiar de usuario; de la pantalla de ingreso:
- * ingresar, reiniciar o apagar. */
+/* Requests from the session being shown: lock or switch user; from the login screen:
+ * log in, restart or shut down. */
 static void from_shown(int type, const char *j) {
     if (type == RP_SESSION && shown == 'u') {
-        if (strstr(j, "\"lock\"")) { sd_log("%s bloqueó la pantalla", shown_user); show_greeter("lock", shown_user); }
-        else if (strstr(j, "\"switch\"")) { sd_log("%s cambia de usuario", shown_user); show_greeter("switch", shown_user); }
+        if (strstr(j, "\"lock\"")) { sd_log("%s locked the screen", shown_user); show_greeter("lock", shown_user); }
+        else if (strstr(j, "\"switch\"")) { sd_log("%s is switching user", shown_user); show_greeter("switch", shown_user); }
         return;
     }
     if (type != RP_GREETER || shown != 'g') return;
@@ -557,15 +557,15 @@ static void from_shown(int type, const char *j) {
 
 static void monitor_event(void) {
     if (sd_mon_read(from_shown) == 0) return;
-    /* la sesión que se veía terminó: cerró su sesión, o se cayó la pantalla de ingreso */
+    /* the session being shown ended: it logged out, or the login screen crashed */
     char was = shown;
     sd_mon_lost();
     set_shown('-', NULL);
-    if (was == 'u') { sd_log("la sesión del monitor terminó"); show_greeter("login", NULL); }
+    if (was == 'u') { sd_log("the monitor's session ended"); show_greeter("login", NULL); }
     else show_greeter(greeter_mode, greeter_user);
 }
 
-/* ---- escritorio remoto ---- */
+/* ---- remote desktop ---- */
 
 static SSL_CTX *tls;
 
@@ -581,7 +581,7 @@ static void stop_remote(void) {
 }
 
 static void start_remote(void) {
-    if (ensure_cert()) { sd_log("no se pudo crear el certificado"); return; }
+    if (ensure_cert()) { sd_log("could not create the certificate"); return; }
     write_fingerprint();
     tls = SSL_CTX_new(TLS_server_method());
     if (!tls || SSL_CTX_set_min_proto_version(tls, TLS1_2_VERSION) != 1 ||
@@ -598,13 +598,13 @@ static void start_remote(void) {
     setsockopt(lfd, IPPROTO_IPV6, IPV6_V6ONLY, &zero, sizeof zero);
     struct sockaddr_in6 a = { .sin6_family = AF_INET6, .sin6_port = htons((uint16_t)rd_conf.port), .sin6_addr = in6addr_any };
     if (lfd < 0 || bind(lfd, (struct sockaddr *)&a, sizeof a) || listen(lfd, 16)) {
-        sd_log("no se pudo escuchar en el puerto %d: %s", rd_conf.port, strerror(errno));
+        sd_log("could not listen on port %d: %s", rd_conf.port, strerror(errno));
         if (lfd >= 0) close(lfd);
         lfd = -1;
         return;
     }
     listening = 1;
-    sd_log("escritorio remoto en https://*:%d", rd_conf.port);
+    sd_log("remote desktop on https://*:%d", rd_conf.port);
 }
 
 static void accept_remote(void) {
@@ -623,7 +623,7 @@ static void accept_remote(void) {
     pid_t c = fork();
     if (c == 0) {
         close(lfd);
-        sd_mon_child();                 /* sin la placa ni la entrada del monitor */
+        sd_mon_child();                 /* without the monitor's card or input */
         if (wk_r >= 0) close(wk_r);
         if (wk_w >= 0) close(wk_w);
         prctl(PR_SET_PDEATHSIG, SIGTERM);
@@ -635,7 +635,7 @@ static void accept_remote(void) {
     close(fd);
 }
 
-/* ---- principal ---- */
+/* ---- main ---- */
 
 static volatile sig_atomic_t stop, reload;
 static void on_term(int s) { (void)s; stop = 1; }
@@ -644,10 +644,10 @@ static void on_hup(int s) { (void)s; reload = 1; }
 int main(int argc, char **argv) {
     int no_monitor = 0;
     for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "--no-monitor")) no_monitor = 1;   /* solo el escritorio remoto (pruebas) */
-        else { fprintf(stderr, "uso: lord-sessiond [--no-monitor]\n"); return 2; }
+        if (!strcmp(argv[i], "--no-monitor")) no_monitor = 1;   /* remote desktop only (testing) */
+        else { fprintf(stderr, "usage: lord-sessiond [--no-monitor]\n"); return 2; }
     }
-    if (geteuid() != 0) { fprintf(stderr, "lord-sessiond: tiene que correr como root (lordos.service)\n"); return 1; }
+    if (geteuid() != 0) { fprintf(stderr, "lord-sessiond: must run as root (lordos.service)\n"); return 1; }
     char prefix[64];
     snprintf(prefix, sizeof prefix, "lord-sessiond[%d]", (int)getpid());
     sd_log_prefix(prefix);
@@ -660,10 +660,10 @@ int main(int argc, char **argv) {
     find_paths();
     load_config();
     mkdir("/run/lordos", 0755);
-    /* cgroup delegado (Delegate=yes): sessiond pasa a la hoja «supervisor» y cada sesión recibe
-     * su subárbol (cgroup_delegate_session en sess.c). Sin delegación sigue igual que antes. */
+    /* delegated cgroup (Delegate=yes): sessiond moves into the "supervisor" leaf and each session gets
+     * its own subtree (cgroup_delegate_session in sess.c). Without delegation it works as before. */
     if (!cgroup_service_init()) {
-        sd_log("cgroup: servicio delegado; cada sesión tendrá su subárbol");
+        sd_log("cgroup: delegated service; each session will get its own subtree");
         sd_cgroup_start();          /* app scopes are root's: placed on request (cgsup.c) */
     }
 
@@ -675,7 +675,7 @@ int main(int argc, char **argv) {
     pthread_mutexattr_setpshared(&ma, PTHREAD_PROCESS_SHARED);
     pthread_mutexattr_setrobust(&ma, PTHREAD_MUTEX_ROBUST);
     pthread_mutex_init(&rd_shared->lock, &ma);
-    /* sesiones que siguieron vivas desde antes de un reinicio del servicio */
+    /* sessions that stayed alive from before a service restart */
     for (uid_t u = 1000; u < 1100; u++) {
         int fd = sd_session_connect(u);
         if (fd < 0) continue;
@@ -689,13 +689,13 @@ int main(int argc, char **argv) {
                 snprintf(rd_shared->sessions[i].user, sizeof rd_shared->sessions[i].user, "%s", pw->pw_name);
                 break;
             }
-            sd_log("la sesión de %s sigue abierta", pw->pw_name);
+            sd_log("%s's session is still open", pw->pw_name);
         }
         close(fd);
     }
 
-    /* GPU de las sesiones: lordos.gpu=0 en la línea del kernel (modo seguro) o el LORD_GPU del
-     * servicio; si no, cada sesión la usa cuando está en el monitor */
+    /* session GPU: lordos.gpu=0 on the kernel command line (safe mode) or the service's LORD_GPU;
+     * otherwise each session uses it while it's on the monitor */
     {
         char cmd[2048] = "";
         FILE *f = fopen("/proc/cmdline", "r");
@@ -704,7 +704,7 @@ int main(int argc, char **argv) {
         if (strstr(cmd, "lordos.gpu=0")) snprintf(sd_gpu_env, sizeof sd_gpu_env, "LORD_GPU=0");
         else if (g && (!strcmp(g, "0") || !strcmp(g, "1"))) snprintf(sd_gpu_env, sizeof sd_gpu_env, "LORD_GPU=%s", g);
     }
-    sd_log("sesiones con %s%s%s", rd_conf.server, sd_gpu_env[0] ? ", " : "", sd_gpu_env);
+    sd_log("sessions with %s%s%s", rd_conf.server, sd_gpu_env[0] ? ", " : "", sd_gpu_env);
     int wk[2];
     if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, wk) == 0) { wk_r = wk[0]; wk_w = wk[1]; }
     /* the network belongs to the system: lord-netd brings it up before the greeter (netsup.c) */
@@ -720,7 +720,7 @@ int main(int argc, char **argv) {
             reload = 0;
             int was = rd_conf.enabled, port = rd_conf.port;
             load_config();
-            sd_log("configuración: remoto %s, puerto %d", rd_conf.enabled ? "prendido" : "apagado", rd_conf.port);
+            sd_log("configuration: remote %s, port %d", rd_conf.enabled ? "on" : "off", rd_conf.port);
             if (listening && (!rd_conf.enabled || port != rd_conf.port)) stop_remote();
             if (rd_conf.enabled && (!listening || !was)) start_remote();
             bump();
@@ -753,15 +753,15 @@ int main(int argc, char **argv) {
         if (r > 0 && (p[0].revents & POLLIN)) from_worker();
         if (r > 0 && lfd >= 0 && (p[1].revents & POLLIN)) accept_remote();
         if (r > 0 && p[2].fd >= 0 && p[2].fd == sd_mon_fd() && p[2].revents) monitor_event();
-        if (r > 0 && p[3].fd >= 0 && (p[3].revents & POLLIN)) sd_mon_hotplug();     /* enchufar en caliente */
+        if (r > 0 && p[3].fd >= 0 && (p[3].revents & POLLIN)) sd_mon_hotplug();     /* hotplug */
         if (rd_shared->version != seen) { seen = rd_shared->version; write_status(); }
         else {
             static double last;
-            if (rd_now() - last > 5) { last = rd_now(); write_status(); }   /* sesiones que terminaron */
+            if (rd_now() - last > 5) { last = rd_now(); write_status(); }   /* sessions that ended */
         }
     }
-    /* al apagarse: corta el remoto y suelta el monitor; las sesiones siguen vivas (al volver se
-     * entra de nuevo por la pantalla de ingreso) */
+    /* on shutdown: cuts remote and releases the monitor; sessions stay alive (on return
+     * you log in again through the login screen) */
     stop_remote();
     if (has_monitor) sd_mon_close();
     if (worker_pid > 0) kill(worker_pid, SIGTERM);

@@ -1,6 +1,6 @@
 // health.jsx — disk health (SMART). Read only on request (disk-smart action), never in the
 // background, so the disk is not woken up and nothing stalls.
-import { View, Text, Button, useTheme, useLocale, admin, formatBytes, formatNumber } from '@lordos/sdk';
+import { View, Text, Button, useTheme, useLocale, admin, formatBytes, formatNumber, GroupBox, FormRow, spacing, typeScale } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 
 const cache = new Map();          // disk → last result (while the app is open)
@@ -33,70 +33,68 @@ export function HealthCard({ disk }) {
   };
   const s = st && st.summary;
   const line = (label, value) => (value == null || value === -1 ? null : (
-    <View key={label} style={{ flexDirection: 'row', paddingVertical: 4, gap: 12 }}>
-      <Text style={{ width: 170, fontSize: 12, color: t.textDim, textAlign: 'start' }}>{label}</Text>
-      <Text style={{ flex: 1, fontSize: 12, color: t.text, textAlign: 'start' }}>{value}</Text>
-    </View>));
-  return (
-    <View style={{ borderRadius: 10, backgroundColor: t.hover, padding: 14, gap: 10 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <Text style={{ flex: 1, fontSize: 13, fontWeight: 600, color: t.text, textAlign: 'start' }}>{tr('disks.health')}</Text>
-        {supported ? <Button label={st && !st.loading ? tr('disks.checkAgain') : tr('disks.checkHealth')} onClick={() => !(st && st.loading) && check()} /> : null}
+    <FormRow key={label} label={label} labelWidth={170} minHeight={30}>
+      <Text style={{ fontSize: typeScale.body, color: t.text, textAlign: 'start' }}>{value}</Text>
+    </FormRow>));
+  const dim = (text, color) => <Text style={{ fontSize: typeScale.callout, color: color || t.textDim, lineHeight: 1.4, textAlign: 'start' }}>{text}</Text>;
+  // first row: the state (or what to do) and the check button
+  const head = (
+    <View key="head" style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.m, paddingVertical: spacing.s }}>
+      {s ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: HEALTH_COLOR[s.health] || HEALTH_COLOR.unknown }} /> : null}
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text, textAlign: 'start' }}>{s ? tr(`disks.healthState.${s.health}`) : tr('disks.health')}</Text>
+        {s ? dim(tr(`disks.healthHint.${s.health}`))
+          : !supported ? dim(tr('disks.noSmart'))
+          : st && st.loading ? dim(tr('disks.reading'))
+          : st && st.error ? dim(st.error, '#ff9f0a') : null}
       </View>
-      {!supported ? <Text style={{ fontSize: 12, color: t.textDim, textAlign: 'start' }}>{tr('disks.noSmart')}</Text> : null}
-      {st && st.loading ? <Text style={{ fontSize: 12, color: t.textDim, textAlign: 'start' }}>{tr('disks.reading')}</Text> : null}
-      {st && st.error ? <Text style={{ fontSize: 12, color: '#ff9f0a', textAlign: 'start' }}>{st.error}</Text> : null}
-      {s ? (
-        <View style={{ gap: 4 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: HEALTH_COLOR[s.health] || HEALTH_COLOR.unknown }} />
-            <Text style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{tr(`disks.healthState.${s.health}`)}</Text>
+      {supported ? <Button small label={st && !st.loading ? tr('disks.checkAgain') : tr('disks.checkHealth')} disabled={!!(st && st.loading)} onClick={check} /> : null}
+    </View>
+  );
+  const rows = !s ? [] : [
+    line(tr('disks.temperature'), s.temp >= 0 ? tr('disks.celsius', { v: s.temp }) : null),
+    line(tr('disks.powerOn'), s.hours >= 0 ? tr('disks.hours', { count: s.hours, v: formatNumber(s.hours, 0), d: formatNumber(s.hours / 24, 0) }) : null),
+    line(tr('disks.powerCycles'), s.cycles >= 0 ? formatNumber(s.cycles, 0) : null),
+    ...(s.kind === 'ata' ? [
+      line(tr('disks.reallocated'), s.reallocated >= 0 ? formatNumber(s.reallocated, 0) : null),
+      line(tr('disks.pending'), s.pending >= 0 ? formatNumber(s.pending, 0) : null),
+      line(tr('disks.uncorrectable'), s.uncorrectable >= 0 ? formatNumber(s.uncorrectable, 0) : null),
+      line(tr('disks.selfStatus'), s.status === 1 ? tr('disks.statusOk') : s.status === 0 ? tr('disks.statusFail') : null),
+    ] : [
+      line(tr('disks.lifeUsed'), tr('disks.pctValue', { v: s.used })),
+      line(tr('disks.spare'), tr('disks.spareValue', { v: s.spare, min: s.spareThreshold })),
+      line(tr('disks.dataRead'), formatBytes(s.read)),
+      line(tr('disks.dataWritten'), formatBytes(s.written)),
+      line(tr('disks.mediaErrors'), formatNumber(s.mediaErrors, 0)),
+      line(tr('disks.unsafeShutdowns'), formatNumber(s.unsafeShutdowns, 0)),
+    ]),
+  ].filter(Boolean);
+  const cols = [['disks.attrName', 2], ['disks.attrValue', 1], ['disks.attrWorst', 1], ['disks.attrThresh', 1], ['disks.attrRaw', 1.4]];
+  const attrs = s && st.attrs.length ? (
+    <View key="attrs" style={{ paddingVertical: spacing.s, gap: 2 }}>
+      <View onClick={() => setShowAll(!showAll)} style={{ alignSelf: 'flex-start' }}>
+        <Text style={{ fontSize: typeScale.callout, color: t.accent, textAlign: 'start' }}>{showAll ? tr('disks.hideAttrs') : tr('disks.showAttrs', { n: st.attrs.length })}</Text>
+      </View>
+      {showAll ? (
+        <View style={{ marginTop: spacing.xs }}>
+          <View style={{ flexDirection: 'row', gap: spacing.s, paddingVertical: 4 }}>
+            {cols.map(([k, f]) => <Text key={k} style={{ flex: f, fontSize: typeScale.caption, fontWeight: 600, color: t.textDim, textAlign: 'start' }}>{tr(k)}</Text>)}
           </View>
-          <Text style={{ fontSize: 11, color: t.textDim, textAlign: 'start' }}>{tr(`disks.healthHint.${s.health}`)}</Text>
-          {line(tr('disks.temperature'), s.temp >= 0 ? tr('disks.celsius', { v: s.temp }) : null)}
-          {line(tr('disks.powerOn'), s.hours >= 0 ? tr('disks.hours', { count: s.hours, v: formatNumber(s.hours, 0), d: formatNumber(s.hours / 24, 0) }) : null)}
-          {line(tr('disks.powerCycles'), s.cycles >= 0 ? formatNumber(s.cycles, 0) : null)}
-          {s.kind === 'ata' ? [
-            line(tr('disks.reallocated'), s.reallocated >= 0 ? formatNumber(s.reallocated, 0) : null),
-            line(tr('disks.pending'), s.pending >= 0 ? formatNumber(s.pending, 0) : null),
-            line(tr('disks.uncorrectable'), s.uncorrectable >= 0 ? formatNumber(s.uncorrectable, 0) : null),
-            line(tr('disks.selfStatus'), s.status === 1 ? tr('disks.statusOk') : s.status === 0 ? tr('disks.statusFail') : null),
-          ] : [
-            line(tr('disks.lifeUsed'), tr('disks.pctValue', { v: s.used })),
-            line(tr('disks.spare'), tr('disks.spareValue', { v: s.spare, min: s.spareThreshold })),
-            line(tr('disks.dataRead'), formatBytes(s.read)),
-            line(tr('disks.dataWritten'), formatBytes(s.written)),
-            line(tr('disks.mediaErrors'), formatNumber(s.mediaErrors, 0)),
-            line(tr('disks.unsafeShutdowns'), formatNumber(s.unsafeShutdowns, 0)),
-          ]}
-          {st.attrs.length ? (
-            <View style={{ marginTop: 6, gap: 2 }}>
-              <View onClick={() => setShowAll(!showAll)}>
-                <Text style={{ fontSize: 12, color: t.accent, textAlign: 'start' }}>{showAll ? tr('disks.hideAttrs') : tr('disks.showAttrs', { n: st.attrs.length })}</Text>
-              </View>
-              {showAll ? (
-                <View style={{ marginTop: 4 }}>
-                  <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 3 }}>
-                    {[['disks.attrName', 2], ['disks.attrValue', 1], ['disks.attrWorst', 1], ['disks.attrThresh', 1], ['disks.attrRaw', 1.4]].map(([k, f]) => (
-                      <Text key={k} style={{ flex: f, fontSize: 11, fontWeight: 600, color: t.textDim, textAlign: 'start' }}>{tr(k)}</Text>))}
-                  </View>
-                  {st.attrs.map((a) => (
-                    <View key={a.id} style={{ flexDirection: 'row', gap: 8, paddingVertical: 2 }}>
-                      <Text style={{ flex: 2, fontSize: 11, color: a.failing ? '#ff453a' : t.text, textAlign: 'start' }}>{`${a.id} · ${attrName(tr, a.id)}${a.prefail ? ' *' : ''}`}</Text>
-                      <Text style={{ flex: 1, fontSize: 11, color: t.text, textAlign: 'start' }}>{String(a.value)}</Text>
-                      <Text style={{ flex: 1, fontSize: 11, color: t.text, textAlign: 'start' }}>{String(a.worst)}</Text>
-                      <Text style={{ flex: 1, fontSize: 11, color: t.text, textAlign: 'start' }}>{String(a.thresh)}</Text>
-                      <Text style={{ flex: 1.4, fontSize: 11, color: t.text, textAlign: 'start' }}>{String(a.raw)}</Text>
-                    </View>
-                  ))}
-                  <Text style={{ fontSize: 10, color: t.textDim, marginTop: 4, textAlign: 'start' }}>{tr('disks.prefailNote')}</Text>
-                </View>
-              ) : null}
+          {st.attrs.map((a) => (
+            <View key={a.id} style={{ flexDirection: 'row', gap: spacing.s, paddingVertical: 3 }}>
+              <Text style={{ flex: 2, fontSize: typeScale.caption, color: a.failing ? '#ff453a' : t.text, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{`${a.id} · ${attrName(tr, a.id)}${a.prefail ? ' *' : ''}`}</Text>
+              {[a.value, a.worst, a.thresh].map((v, i) => <Text key={i} style={{ flex: 1, fontSize: typeScale.caption, color: t.text, textAlign: 'start' }}>{String(v)}</Text>)}
+              <Text style={{ flex: 1.4, fontSize: typeScale.caption, color: t.text, textAlign: 'start' }}>{String(a.raw)}</Text>
             </View>
-          ) : null}
-          <Text style={{ fontSize: 10, color: t.textDim, marginTop: 4, textAlign: 'start' }}>{tr('disks.readIn', { ms: st.ms })}</Text>
+          ))}
+          <Text style={{ fontSize: typeScale.caption, color: t.textDim, marginTop: spacing.xs, textAlign: 'start' }}>{tr('disks.prefailNote')}</Text>
         </View>
       ) : null}
     </View>
+  ) : null;
+  return (
+    <GroupBox footer={s ? tr('disks.readIn', { ms: st.ms }) : null}>
+      {[head, ...rows, attrs].filter(Boolean)}
+    </GroupBox>
   );
 }

@@ -1,4 +1,4 @@
-/* netd.c — lord-netd: LordOS networking belongs to the system, not to a session (docs/RED.md,
+/* netd.c — lord-netd: LordOS networking belongs to the system, not to a session (docs/NETWORK.md,
  * "The network belongs to the system").
  *
  * lord-sessiond starts it at boot (fixed path next to its own binary, root-owned and not writable

@@ -1,10 +1,10 @@
-/* enc.c — compresión de los rectángulos de pantalla para el navegador (lord-sessiond).
+/* enc.c — compression of screen rectangles for the browser (lord-sessiond).
  *
- * PNG (sin pérdida, ideal para texto e interfaz) o JPEG (fotos, videos, degradés grandes),
- * con stb_image_write vendorizado. Se elige solo: si el PNG de un rectángulo grande sale pesado
- * (más de 1 byte por píxel) o la pantalla está en movimiento (allow_jpeg 2: va JPEG directo,
- * sin probar PNG), se manda JPEG y el puente lo repone en PNG cuando la pantalla se queda
- * quieta (conn.c). */
+ * PNG (lossless, ideal for text and UI) or JPEG (photos, videos, large gradients),
+ * with vendored stb_image_write. It picks on its own: if the PNG of a large rectangle comes out heavy
+ * (more than 1 byte per pixel) or the screen is in motion (allow_jpeg 2: straight to JPEG,
+ * without trying PNG), JPEG is sent and the bridge replaces it with PNG once the screen stays
+ * still (conn.c). */
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBI_WRITE_NO_STDIO
 #pragma GCC diagnostic push
@@ -94,7 +94,7 @@ unsigned char *rd_encode_rgba(const uint32_t *px, int w, int h, int *len) {
     for (int i = 0; i < w * h; i++) {
         uint32_t v = px[i];
         unsigned a = v >> 24;
-        /* la imagen del cursor viene premultiplicada: se vuelve al color real */
+        /* the cursor image comes premultiplied: convert back to the real color */
         unsigned r = (v >> 16) & 255, g = (v >> 8) & 255, bl = v & 255;
         if (a && a < 255) { r = r * 255 / a; g = g * 255 / a; bl = bl * 255 / a; }
         rgba[i * 4] = (unsigned char)(r > 255 ? 255 : r);

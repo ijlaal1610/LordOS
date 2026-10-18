@@ -1,18 +1,18 @@
-/* ime.c — métodos de entrada para escrituras que no se tipean letra por letra. Sin ibus, fcitx
- * ni D-Bus: el teclado base es latino (us) y acá se arma el texto.
+/* ime.c — input methods for scripts that are not typed letter by letter. Without ibus, fcitx
+ * or D-Bus: the base keyboard is Latin (us) and the text is composed here.
  *
- *   hangul  coreano, teclado de 2 juegos (dubeolsik, el de Corea): las jamo se juntan en
- *           sílabas (ㅎ+ㅏ+ㄴ → 한) con vocales y finales compuestas; Retroceso deshace la última.
- *   kana    japonés: romaji → hiragana (Hepburn y kunrei: shi/si, tsu/tu, kya, っ por doble
- *           consonante, nn/n' → ん). Espacio convierte con el diccionario SKK (paquete skkdic,
- *           EUC-JP, búsqueda binaria sobre el archivo mapeado) y siempre ofrece hiragana y
- *           katakana. Convierte la lectura entera: no separa frases como Mozc o Anthy.
- *   pinyin  chino simplificado: letras → candidatos del diccionario de Rime
- *           (rime-data-pinyin-simp: 65 000 caracteres y frases con frecuencia). Si la frase
- *           entera no está, se ofrecen las que cubren el comienzo y el resto sigue en
- *           composición. 1–9 eligen, Espacio toma el primero, - y = pasan de página.
+ *   hangul  Korean, 2-set keyboard (dubeolsik, the Korean standard): jamo are combined into
+ *           syllables (ㅎ+ㅏ+ㄴ → 한) with compound vowels and finals; Backspace undoes the last one.
+ *   kana    Japanese: romaji → hiragana (Hepburn and kunrei: shi/si, tsu/tu, kya, っ for a double
+ *           consonant, nn/n' → ん). Space converts with the SKK dictionary (skkdic package,
+ *           EUC-JP, binary search over the mapped file) and always offers hiragana and
+ *           katakana. It converts the whole reading: it does not split phrases like Mozc or Anthy.
+ *   pinyin  Simplified Chinese: letters → candidates from the Rime dictionary
+ *           (rime-data-pinyin-simp: 65,000 characters and phrases with frequency). If the whole
+ *           phrase is not there, those covering the beginning are offered and the rest stays in
+ *           composition. 1–9 choose, Space takes the first, - and = page.
  *
- * Los diccionarios se cargan recién al activar el método y se buscan también en
+ * Dictionaries are only loaded when the method is activated and are also looked up in
  * ~/.local/share/lordos/ime/. */
 #include "ime.h"
 
@@ -33,7 +33,7 @@ static int engine, context, changed;
 static ImeState st;
 static char dict_path[512];
 
-/* ---- utilidades UTF-8 ---- */
+/* ---- UTF-8 utilities ---- */
 
 static size_t put_cp(char *out, uint32_t cp) {
     if (cp < 0x80) { out[0] = (char)cp; return 1; }
@@ -69,7 +69,7 @@ static int is_letter(const KeyInfo *k) { return k->chr[0] && !k->chr[1] && isalp
 static void set_preedit(const char *s) {
     size_t n = strlen(s);
     if (n >= sizeof st.preedit) n = sizeof st.preedit - 1;
-    memmove(st.preedit, s, n);              /* s puede ser un candidato de st */
+    memmove(st.preedit, s, n);              /* s may be a candidate from st */
     st.preedit[n] = 0;
     changed = 1;
 }
@@ -93,7 +93,7 @@ static int map_file(const char *path, const uint8_t **data, size_t *size) {
     return 0;
 }
 
-/* Diccionario del usuario (~/.local/share/lordos/ime/<nombre>) o el del sistema. */
+/* User dictionary (~/.local/share/lordos/ime/<name>) or the system one. */
 static int find_dict(const char *const *names, int n, char *out, size_t size) {
     const char *home = getenv("HOME");
     for (int i = 0; i < n; i++) {
@@ -110,9 +110,9 @@ static int find_dict(const char *const *names, int n, char *out, size_t size) {
     return -1;
 }
 
-/* ================= coreano ================= */
+/* ================= Korean ================= */
 
-/* Jamo de compatibilidad (U+3131…) según la tecla del teclado de 2 juegos. */
+/* Compatibility jamo (U+3131…) for the 2-set keyboard key. */
 static uint32_t hangul_jamo(char c) {
     switch (c) {
     case 'q': return 0x3142; case 'Q': return 0x3143; case 'w': return 0x3148; case 'W': return 0x3149;
@@ -192,12 +192,12 @@ static int hangul_key(const KeyInfo *k, char *out, size_t size) {
         return 1;
     }
     uint32_t j = is_letter(k) ? hangul_jamo(k->chr[0]) : 0;
-    if (!j) {                                   /* espacio, números, Enter…: termina la sílaba */
+    if (!j) {                                   /* space, digits, Enter…: ends the syllable */
         if (!empty) hangul_commit(out, size);
         return 0;
     }
     if (is_vowel(j)) {
-        if (syl.t) {                            /* la final pasa a ser inicial de la sílaba nueva */
+        if (syl.t) {                            /* the final becomes the initial of the new syllable */
             uint32_t keep = 0, move = syl.t;
             for (size_t i = 0; i < sizeof final_pairs / sizeof *final_pairs; i++)
                 if (final_pairs[i][2] == syl.t) { keep = final_pairs[i][0]; move = final_pairs[i][1]; }
@@ -225,7 +225,7 @@ static int hangul_key(const KeyInfo *k, char *out, size_t size) {
     return 1;
 }
 
-/* ================= japonés ================= */
+/* ================= Japanese ================= */
 
 static const char *const romaji[][2] = {
     { "a", "あ" }, { "i", "い" }, { "u", "う" }, { "e", "え" }, { "o", "お" },
@@ -271,26 +271,26 @@ static int romaji_prefix(const char *s) {
     return 0;
 }
 
-/* Resuelve lo pendiente de romaji hacia kana. final = ya no viene nada más (n → ん). */
+/* Resolves pending romaji into kana. final = nothing else is coming (n → ん). */
 static void kana_flush(int final) {
     while (pend[0]) {
         size_t n = strlen(pend);
         if (n >= 2 && pend[0] == pend[1] && pend[0] != 'n' && isalpha((unsigned char)pend[0]) && !strchr("aeiou", pend[0])) {
-            append(kana, sizeof kana, "っ");            /* kk, tt, ss… → っ + consonante */
+            append(kana, sizeof kana, "っ");            /* kk, tt, ss… → っ + consonant */
             memmove(pend, pend + 1, n);
             continue;
         }
         if (pend[0] == 'n' && n >= 2 && !strchr("aeiouyn'", pend[1])) {
-            append(kana, sizeof kana, "ん");            /* n antes de otra consonante */
+            append(kana, sizeof kana, "ん");            /* n before another consonant */
             memmove(pend, pend + 1, n);
             continue;
         }
         int e = romaji_exact(pend), more = romaji_prefix(pend);
         if (e >= 0 && !more) { append(kana, sizeof kana, romaji[e][1]); pend[0] = 0; return; }
-        if (more && !final) return;                     /* puede seguir: "s" → "sh" → "shi" */
+        if (more && !final) return;                     /* may continue: "s" → "sh" → "shi" */
         if (e >= 0) { append(kana, sizeof kana, romaji[e][1]); pend[0] = 0; return; }
         if (pend[0] == 'n') append(kana, sizeof kana, "ん");
-        else { char one[2] = { pend[0], 0 }; append(kana, sizeof kana, one); }   /* no forma nada */
+        else { char one[2] = { pend[0], 0 }; append(kana, sizeof kana, one); }   /* forms nothing */
         memmove(pend, pend + 1, n);
     }
 }
@@ -318,7 +318,7 @@ static void to_katakana(const char *in, char *out, size_t size) {
     }
 }
 
-/* --- diccionario SKK (EUC-JP): entradas okuri-ari (orden descendente) y okuri-nasi (ascendente) --- */
+/* --- SKK dictionary (EUC-JP): okuri-ari entries (descending order) and okuri-nasi (ascending) --- */
 static const uint8_t *skk;
 static size_t skk_size;
 static uint32_t *skk_lines;
@@ -364,7 +364,7 @@ static void add_to(char (*list)[96], int *n, int max, const char *s) {
 
 static void add_cand(const char *s) { add_to(st.cand, &st.ncand, IME_MAX_CAND, s); }
 
-/* Busca la lectura (UTF-8; okuri = la tabla con okurigana, "かk"). Devuelve la línea o NULL. */
+/* Looks up the reading (UTF-8; okuri = the table with okurigana, "かk"). Returns the line or NULL. */
 static const uint8_t *skk_line(const char *reading, int okuri, size_t *keylen) {
     skk_load();
     if (!skk || !skk_n) return NULL;
@@ -380,13 +380,13 @@ static const uint8_t *skk_line(const char *reading, int okuri, size_t *keylen) {
         int c = memcmp(l, key, ll < kl ? ll : kl);
         if (!c) c = ll < kl ? -1 : ll > kl ? 1 : 0;
         if (!c) { *keylen = kl; return l; }
-        if (okuri) c = -c;                      /* okuri-ari está en orden descendente */
+        if (okuri) c = -c;                      /* okuri-ari is in descending order */
         if (c < 0) lo = mid + 1; else hi = mid - 1;
     }
     return NULL;
 }
 
-/* Candidatos de una línea " /候補;注釈/…/" (+ sufijo, para la okurigana). */
+/* Candidates from a line " /候補;注釈/…/" (+ suffix, for the okurigana). */
 static int skk_cands(const uint8_t *l, size_t kl, const char *suffix, char (*list)[96], int *n, int max) {
     const uint8_t *end = memchr(l, '\n', skk_size - (size_t)(l - skk));
     if (!end) end = skk + skk_size;
@@ -410,7 +410,7 @@ static int skk_cands(const uint8_t *l, size_t kl, const char *suffix, char (*lis
     return *n - before;
 }
 
-/* --- conversión por frase: la lectura se parte en palabras --- */
+/* --- phrase conversion: the reading is split into words --- */
 
 #define MAX_SEG 24
 #define SEG_CAND 24
@@ -425,10 +425,10 @@ static void kana_sub(int i, int n, char *out, size_t size) {
     for (int k = i; k < i + n && k < nk; k++) append_cp(out, size, kcp[k]);
 }
 
-/* Consonante con la que SKK escribe la okurigana: か→k, し→s, ち/つ/っ→t, あ→a… */
+/* Consonant SKK uses to write the okurigana: か→k, し→s, ち/つ/っ→t, あ→a… */
 static char okuri_letter(uint32_t cp) {
     if (cp == 0x3063) return 't';
-    if (cp == 0x3093) return 0;                 /* ん no empieza una okurigana */
+    if (cp == 0x3093) return 0;                 /* ん does not start an okurigana */
     char s[5];
     s[put_cp(s, cp)] = 0;
     for (int i = 0; i < NROMAJI; i++) if (!strcmp(romaji[i][1], s) && isalpha((unsigned char)romaji[i][0][0])) return romaji[i][0][0];
@@ -441,8 +441,8 @@ static int is_particle(uint32_t cp) {
     return 0;
 }
 
-/* Terminaciones, auxiliares y partículas que quedan en hiragana (sin esto, "います" se
- * "convertiría" en 今す). */
+/* Endings, auxiliaries and particles that stay in hiragana (without this, "います" would be
+ * "converted" to 今す). */
 static const char *const function_words[] = {
     "です", "でした", "ですね", "ですか", "ます", "ました", "ません", "ませんでした", "ましょう", "でしょう",
     "だ", "だった", "である", "ない", "なかった", "たい", "たかった", "ている", "ています", "ていました",
@@ -461,14 +461,14 @@ static int is_function_word(const char *r) {
     return 0;
 }
 
-/* Costo de la palabra [i, i+n): diccionario o terminación 10 (de un kana 14), con okurigana 10,
- * partícula 7, kana suelto 15, menos el cuadrado del largo (a igual cantidad de palabras gana
- * la partición con palabras más largas); -1 si no es palabra. kind: 1 okurigana, W_PLAIN
- * terminación que queda en hiragana. */
+/* Cost of the word [i, i+n): dictionary or ending 10 (single kana 14), with okurigana 10,
+ * particle 7, lone kana 15, minus the square of the length (with the same number of words the
+ * partition with longer words wins); -1 if it is not a word. kind: 1 okurigana, W_PLAIN
+ * ending that stays in hiragana. */
 static int word_cost_(int i, int n, int *kind);
 static int word_cost(int i, int n, int *kind) {
     int c = word_cost_(i, n, kind);
-    if (c >= 0 && n >= 2 && kcp[i + n - 1] == 0x3092) c += 1200;     /* を casi nunca termina una palabra */
+    if (c >= 0 && n >= 2 && kcp[i + n - 1] == 0x3092) c += 1200;     /* を almost never ends a word */
     return c;
 }
 
@@ -479,8 +479,8 @@ static int word_cost_(int i, int n, int *kind) {
     kana_sub(i, n, r, sizeof r);
     int sq = n * n;
     if (is_function_word(r)) { *kind = W_PLAIN; return 1000 - sq; }
-    if (n == 1 && is_particle(kcp[i])) return 700 - sq;          /* partícula: más barata que una palabra */
-    /* con okurigana (書く, 行き): se prefiere antes de ます/ました/ません ("いきます" → 行きます) */
+    if (n == 1 && is_particle(kcp[i])) return 700 - sq;          /* particle: cheaper than a word */
+    /* with okurigana (書く, 行き): preferred before ます/ました/ません ("いきます" → 行きます) */
     int okuri = 0;
     if (n >= 2) {
         char stem[256];
@@ -491,16 +491,16 @@ static int word_cost_(int i, int n, int *kind) {
     }
     uint32_t n1 = i + n < nk ? kcp[i + n] : 0, n2 = i + n + 1 < nk ? kcp[i + n + 1] : 0;
     int verb_follows = n1 == 0x307E && (n2 == 0x3059 || n2 == 0x3057 || n2 == 0x305B);     /* ます まし ませ */
-    /* a mitad de frase, una palabra que empieza con partícula y cuyo resto es un verbo o una
-     * terminación ("はいい" = は + いい, "へいき" = へ + 行き) suele ser partícula + palabra;
-     * "にほん" (日本: el resto es un sustantivo) no */
+    /* mid-phrase, a word that starts with a particle and whose rest is a verb or an
+     * ending ("はいい" = は + いい, "へいき" = へ + 行き) is usually particle + word;
+     * "にほん" (日本: the rest is a noun) is not */
     int starts_particle = 0, tie = 0;
     if (i > 0 && n >= 2 && n <= 4 && is_particle(kcp[i])) {
         char rem[256], rk[256];
         kana_sub(i + 1, n - 1, rem, sizeof rem);
         starts_particle = is_function_word(rem);
-        tie = 5;                                /* a igual costo, gana partícula + palabra */
-        uint32_t p0 = kcp[i];                   /* を へ に で が + verbo (は, と, の… empiezan muchas palabras) */
+        tie = 5;                                /* at equal cost, particle + word wins */
+        uint32_t p0 = kcp[i];                   /* を へ に で が + verb (は, と, の… start many words) */
         int verbish = p0 == 0x3092 || p0 == 0x3078 || p0 == 0x306B || p0 == 0x3067 || p0 == 0x304C;
         if (!starts_particle && verbish && n >= 3) {
             kana_sub(i + 1, n - 2, rk, sizeof rk);
@@ -511,7 +511,7 @@ static int word_cost_(int i, int n, int *kind) {
     }
     int pen = starts_particle ? 1100 : tie;
     if (okuri && verb_follows) { *kind = 1; return 1000 - sq - 30 + pen; }
-    /* verbos ichidan antes de ます: "み" + ます → 見ます (en SKK: みr /見/) */
+    /* ichidan verbs before ます: "み" + ます → 見ます (in SKK: みr /見/) */
     if (verb_follows && !okuri) {
         char ich[256];
         kana_sub(i, n, ich, sizeof ich);
@@ -520,7 +520,7 @@ static int word_cost_(int i, int n, int *kind) {
     }
     if (skk_line(r, 0, &kl)) {
         int c = (n == 1 ? 1400 : 1000) - sq + pen;
-        /* "きょうは" (教派) pierde contra きょう + は: palabra que termina en は o を (con が no:
+        /* "きょうは" (教派) loses against きょう + は: word ending in は or を (not with が:
          * 映画, 漫画) */
         if (n >= 3 && kcp[i + n - 1] == 0x306F) {
             char pre[256];
@@ -533,7 +533,7 @@ static int word_cost_(int i, int n, int *kind) {
     return n == 1 ? 1500 - sq : -1;
 }
 
-/* Programación dinámica: menor costo total de [from, nk) partido en palabras. */
+/* Dynamic programming: lowest total cost of [from, nk) split into words. */
 static void segment_from(int from) {
     int best[161], prev[161], ok[161];
     for (int i = from; i <= nk; i++) best[i] = 1 << 28;
@@ -543,7 +543,7 @@ static void segment_from(int from) {
         for (int n = 1; n <= 10 && i + n <= nk; n++) {
             int okr, c = word_cost(i, n, &okr);
             if (c < 0) continue;
-            /* a igual costo gana la que deja la palabra anterior más larga (やまだ|さん) */
+            /* at equal cost the one that leaves the previous word longer wins (やまだ|さん) */
             if (best[i] + c < best[i + n] || (best[i] + c == best[i + n] && i > prev[i + n])) {
                 best[i + n] = best[i] + c;
                 prev[i + n] = i;
@@ -565,8 +565,8 @@ static void segment_from(int from) {
     if (nseg == MAX_SEG && segs[nseg - 1].start + segs[nseg - 1].len < nk) segs[nseg - 1].len = nk - segs[nseg - 1].start;
 }
 
-/* Candidatos: las terminaciones y partículas quedan primero en hiragana; el resto, con el
- * primer candidato del diccionario. */
+/* Candidates: endings and particles stay first in hiragana; the rest, with the
+ * dictionary's first candidate. */
 static void seg_cands(Seg *s) {
     char r[384], kata[768];
     size_t kl;
@@ -577,7 +577,7 @@ static void seg_cands(Seg *s) {
     if (plain_first) add_to(s->cand, &s->ncand, SEG_CAND, r);
     const uint8_t *l = s->okuri == 1 || s->okuri == 3 ? NULL : skk_line(r, 0, &kl);
     if (l) skk_cands(l, kl, "", s->cand, &s->ncand, SEG_CAND - 2);
-    if (s->okuri == 3) {                        /* ichidan: candidatos de "<lectura>r" sin sufijo */
+    if (s->okuri == 3) {                        /* ichidan: candidates of "<reading>r" without suffix */
         char key[384];
         kana_sub(s->start, s->len, key, sizeof key);
         size_t kl2 = strlen(key);
@@ -639,7 +639,7 @@ static void kana_convert(void) {
     conv_show();
 }
 
-/* Shift+→/←: el segmento con foco toma o devuelve un kana; lo que sigue se vuelve a partir. */
+/* Shift+→/←: the focused segment takes or gives back a kana; what follows is split again. */
 static void conv_resize(int delta) {
     Seg *f = &segs[fseg];
     int len = f->len + delta;
@@ -677,7 +677,7 @@ static int kana_key(const KeyInfo *k, char *out, size_t size) {
     if (st.converting) {
         Seg *f = &segs[fseg];
         int d = digit_pick(k);
-        if (d >= 0) {                           /* elige y pasa al segmento siguiente */
+        if (d >= 0) {                           /* chooses and moves to the next segment */
             f->sel = d;
             if (fseg + 1 < nseg) { fseg++; conv_show(); } else kana_commit(out, size);
             return 1;
@@ -690,7 +690,7 @@ static int kana_key(const KeyInfo *k, char *out, size_t size) {
         if (!strcmp(k->key, "Escape") || !strcmp(k->key, "Backspace")) {
             clear_cand(); nseg = 0; st.focus_begin = st.focus_end = 0; kana_show(); return 1;
         }
-        kana_commit(out, size);                 /* seguir escribiendo confirma la conversión */
+        kana_commit(out, size);                 /* typing on confirms the conversion */
         empty = 1;
     }
     if (!strcmp(k->key, "Backspace")) {
@@ -704,7 +704,7 @@ static int kana_key(const KeyInfo *k, char *out, size_t size) {
     if (!strcmp(k->key, " ")) { if (empty) return 0; kana_convert(); return 1; }
     char c = k->chr[0] && !k->chr[1] ? k->chr[0] : 0;
     int roman = c && (isalpha((unsigned char)c) || c == '\'' || (strchr("-,.[]/?!", c) && c));
-    if (!roman) {                               /* números, flechas, Tab…: confirma y pasa */
+    if (!roman) {                               /* digits, arrows, Tab…: confirms and passes through */
         if (!empty) kana_commit(out, size);
         return 0;
     }
@@ -715,10 +715,10 @@ static int kana_key(const KeyInfo *k, char *out, size_t size) {
     return 1;
 }
 
-/* ================= chino (pinyin) ================= */
+/* ================= Chinese (pinyin) ================= */
 
 typedef struct { uint32_t text, key, weight, pin; uint16_t tlen, klen, plen; } PyEntry;
-/* Abreviaturas: iniciales de cada sílaba ("zg" → zhong guo) de las frases de 2 o más. */
+/* Abbreviations: initials of each syllable ("zg" → zhong guo) of phrases of 2 or more. */
 typedef struct { char ini[12]; int ent; } PyAbbr;
 static PyAbbr *py_abbr;
 static int py_nabbr;
@@ -799,7 +799,7 @@ static void py_load(void) {
     snprintf(dict_path, sizeof dict_path, "%s", path);
 }
 
-/* Primera entrada con esa clave exacta (búsqueda binaria), o -1. */
+/* First entry with that exact key (binary search), or -1. */
 static int py_find(const char *key, size_t kl) {
     int lo = 0, hi = py_n - 1, found = -1;
     while (lo <= hi) {
@@ -833,7 +833,7 @@ static void py_exact(size_t len) {
     }
 }
 
-/* Cada sílaba escrita como su inicial (zh, ch, sh o una letra) o entera. */
+/* Each syllable written as its initial (zh, ch, sh or one letter) or in full. */
 static int abbr_match(const PyEntry *e, const char *const *tok, const int *tl, int nt) {
     int t = 0;
     for (int j = 0; j < e->plen && t < nt; j++) {
@@ -856,7 +856,7 @@ static void py_abbrev(void) {
         p += l;
     }
     if (nt < 2 || nt > 10 || !py_abbr) return;
-    for (int t = 0; t < nt; t++) if (strchr("aeiouv", ini[t])) return;     /* con vocales no es abreviatura */
+    for (int t = 0; t < nt; t++) if (strchr("aeiouv", ini[t])) return;     /* with vowels it is not an abbreviation */
     ini[nt] = 0;
     int lo = 0, hi = py_nabbr - 1, f = -1;
     while (lo <= hi) {
@@ -868,11 +868,11 @@ static void py_abbrev(void) {
         if (abbr_match(&py_ent[py_abbr[i].ent], tok, tl, nt)) { py_add(py_abbr[i].ent, (int)strlen(raw)); added++; }
 }
 
-/* Frases más largas que empiezan con lo escrito: las 8 más frecuentes. */
+/* Longer phrases starting with what was typed: the 8 most frequent. */
 static void py_complete(void) {
     size_t rl = strlen(raw);
     int lo = 0, hi = py_n - 1, f = py_n;
-    while (lo <= hi) {                      /* primera clave >= raw */
+    while (lo <= hi) {                      /* first key >= raw */
         int mid = (lo + hi) / 2;
         const PyEntry *e = &py_ent[mid];
         int c = memcmp(py_keys + e->key, raw, e->klen < rl ? e->klen : rl);
@@ -901,13 +901,13 @@ static void py_update(void) {
     set_preedit(tmp);
     if (!raw[0] || !py) return;
     size_t rl = strlen(raw);
-    /* 1. la frase entera */
+    /* 1. the whole phrase */
     py_exact(rl);
-    /* 2. abreviatura por iniciales: "zg", "zhg", "bjdx" (北京大学) */
+    /* 2. abbreviation by initials: "zg", "zhg", "bjdx" (北京大学) */
     py_abbrev();
-    /* 3. frases que empiezan con lo escrito ("zhongg" → 中国) */
+    /* 3. phrases starting with what was typed ("zhongg" → 中国) */
     if (rl >= 3) py_complete();
-    /* 4. las que cubren el comienzo, de la más larga a la más corta (el resto sigue) */
+    /* 4. those covering the beginning, longest to shortest (the rest remains) */
     for (size_t len = rl - 1; len > 0 && st.ncand < IME_MAX_CAND; len--) py_exact(len);
     changed = 1;
 }
@@ -948,13 +948,13 @@ static int pinyin_key(const KeyInfo *k, char *out, size_t size) {
     if (!strcmp(k->key, "ArrowUp") || !strcmp(k->key, "ArrowLeft")) { if (st.ncand) { st.sel = (st.sel + st.ncand - 1) % st.ncand; changed = 1; } return 1; }
     if (c == '=' || !strcmp(k->key, "PageDown")) { if (st.sel + IME_PAGE < st.ncand) { st.sel = (st.sel / IME_PAGE + 1) * IME_PAGE; changed = 1; } return 1; }
     if (c == '-' || !strcmp(k->key, "PageUp")) { if (st.sel >= IME_PAGE) { st.sel = (st.sel / IME_PAGE - 1) * IME_PAGE; changed = 1; } return 1; }
-    append(out, size, acc);                     /* otra cosa: confirma lo escrito y pasa */
+    append(out, size, acc);                     /* something else: confirms what was typed and passes through */
     append(out, size, raw);
     py_clear();
     return 0;
 }
 
-/* ================= común ================= */
+/* ================= common ================= */
 
 void ime_reset(void) {
     memset(&syl, 0, sizeof syl);
@@ -990,7 +990,7 @@ void ime_context(int on) {
 int ime_key(const KeyInfo *k, char *out, size_t size) {
     out[0] = 0;
     if (!engine || !context) return 0;
-    if (k->ctrl || k->alt || k->meta) {         /* atajos: confirma lo que haya y pasa */
+    if (k->ctrl || k->alt || k->meta) {         /* shortcuts: confirms whatever there is and passes through */
         if (engine == E_HANGUL) { if (syl.l || syl.v || syl.t) hangul_commit(out, size); }
         else if (engine == E_KANA) { if (kana[0] || pend[0]) kana_commit(out, size); }
         else if (raw[0] || acc[0]) { append(out, size, acc); append(out, size, raw); py_clear(); }

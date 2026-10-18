@@ -1,11 +1,11 @@
-/* mview.c — cómo se dibuja un nodo `media` (<MediaView media={id} />, ver docs/MEDIOS.md).
+/* mview.c — how a `media` node is drawn (<MediaView media={id} />, see docs/MEDIA.md).
  *
- * El origen puede ser un cuadro de video (ranura de memoria compartida con lord-media), una foto
- * decodificada o una captura. Caso común (video): lord-media ya escaló el cuadro al tamaño de
- * la caja, así que se copia tal cual (una sola copia, la de componer). Con zoom, giro o espejo
- * (Fotos, Cámara) se arma una imagen intermedia del tamaño visible, con interpolación bilineal
- * y reducciones a la mitad (mipmaps) para las fotos grandes; se reutiliza mientras no cambie
- * nada (mover el puntero no la recalcula). */
+ * The source can be a video frame (shared-memory slot with lord-media), a decoded
+ * photo or a capture. Common case (video): lord-media already scaled the frame to the size of
+ * the box, so it's copied as is (a single copy, the compositing one). With zoom, rotation or mirror
+ * (Photos, Camera) an intermediate image of the visible size is built, with bilinear interpolation
+ * and halvings (mipmaps) for large photos; it's reused as long as nothing
+ * changes (moving the pointer doesn't recompute it). */
 #include "media_int.h"
 #include "../ui/ui.h"
 
@@ -37,7 +37,7 @@ static uint32_t with_opacity(uint32_t argb, float op) {
     return a << 24 | (argb & 0xffffff);
 }
 
-/* Reducciones a la mitad (promedio 2x2) para fotos: mip[0] = 1/2, mip[1] = 1/4… */
+/* Halvings (2x2 average) for photos: mip[0] = 1/2, mip[1] = 1/4… */
 static unsigned mip_seq_of[MEDIA_MAX_SRC];
 static void build_mips(MediaSrc *s, const uint32_t *px, int w, int h) {
     for (int i = 0; i < s->nmip; i++) free(s->mip[i]);
@@ -93,10 +93,10 @@ void media_paint(Canvas *c, int handle, int node, float x, float y, float w, flo
     int bw = (int)lroundf(w), bh = (int)lroundf(h);
     s->box_w = bw;
     s->box_h = bh;
-    /* el ayudante escala al tamaño de la caja: se le avisa cuando cambia */
+    /* the helper scales to the box size: it's notified when it changes */
     if ((s->kind == SK_PLAYER || s->kind == SK_CAMERA) && s->sock >= 0 && (bw != s->sent_w || bh != s->sent_h)) {
         int rw = (s->view.rot % 180) ? bh : bw, rh = (s->view.rot % 180) ? bw : bh;
-        if (s->view.zoom > 0 || s->view.fit) { rw = 0; rh = 0; }      /* con zoom: tamaño original */
+        if (s->view.zoom > 0 || s->view.fit) { rw = 0; rh = 0; }      /* with zoom: original size */
         if (rw > 0 && mp_sendv(s->sock, MM_SIZE, 0, rw, rh, 0, 0) == 0) { s->sent_w = bw; s->sent_h = bh; }
     }
     Rect old = canvas_push_clip(c, x, y, w, h);
@@ -113,14 +113,14 @@ void media_paint(Canvas *c, int handle, int node, float x, float y, float w, flo
     if (s->view.zoom > 0) sc = s->view.zoom;
     else if (s->view.fit == 1) sc = fmaxf(w / rw, h / rh);
     else sc = fminf(w / rw, h / rh);
-    /* video: el cuadro ya viene a la medida; si difiere en un píxel por redondeo, se copia igual */
+    /* video: the frame already comes at the right size; if it differs by one pixel from rounding, it's copied anyway */
     int ring = s->map && s->ring_slots;
     if (ring && !rot && s->view.zoom <= 0 && !s->view.fit && (abs(sw - bw) <= 2 || abs(sh - bh) <= 2) && sw <= bw + 2 && sh <= bh + 2) sc = 1;
     float dw = rw * sc, dh = rh * sc, dx, dy;
     if (s->view.zoom > 0) { dx = x + w / 2 - s->view.cx * dw; dy = y + h / 2 - s->view.cy * dh; }
     else { dx = x + (w - dw) / 2; dy = y + (h - dh) / 2; }
     int opaque = ring || s->kind == SK_CAPTURE || s->opaque;
-    /* fondo: solo las bandas que la imagen no tapa (un cuadro de video no repinta debajo de sí) */
+    /* background: only the bands the image doesn't cover (a video frame doesn't repaint beneath itself) */
     if (s->view.bg >> 24) {
         uint32_t bg = with_opacity(s->view.bg, op);
         int covers = opaque && op >= 0.999f;
@@ -141,7 +141,7 @@ void media_paint(Canvas *c, int handle, int node, float x, float y, float w, flo
         canvas_set_clip(c, old);
         return;
     }
-    /* parte visible de la imagen dentro de la caja */
+    /* visible part of the image inside the box */
     int vx0 = (int)floorf(fmaxf(dx, x)), vy0 = (int)floorf(fmaxf(dy, y));
     int vx1 = (int)ceilf(fminf(dx + dw, x + w)), vy1 = (int)ceilf(fminf(dy + dh, y + h));
     int vw = vx1 - vx0, vh = vy1 - vy0;
@@ -156,7 +156,7 @@ void media_paint(Canvas *c, int handle, int node, float x, float y, float w, flo
         s->cache_seq = s->frame_seq;
         s->cache_gen = s->view.gen;
         memcpy(s->cache_box, key, sizeof key);
-        /* fotos reducidas: el nivel de mipmap que corresponde */
+        /* reduced photos: the matching mipmap level */
         const uint32_t *lp = px;
         int lw = sw, lh = sh;
         float lf = 1;
@@ -167,7 +167,7 @@ void media_paint(Canvas *c, int handle, int node, float x, float y, float w, flo
         float inv = 1.0f / sc;
         for (int j = 0; j < vh; j++) {
             uint32_t *o = s->cache + (size_t)j * vw;
-            float vp = (vy0 + j + 0.5f - dy) * inv;               /* coordenada en la imagen girada */
+            float vp = (vy0 + j + 0.5f - dy) * inv;               /* coordinate in the rotated image */
             for (int i = 0; i < vw; i++) {
                 float up = (vx0 + i + 0.5f - dx) * inv;
                 if (s->view.mirror) up = rw - up;
@@ -182,7 +182,7 @@ void media_paint(Canvas *c, int handle, int node, float x, float y, float w, flo
             }
         }
         if (s->view.bright || s->view.contrast) {
-            /* mismo cálculo que la edición de lord-media (lm_job.c): contraste alrededor del gris medio */
+            /* same calculation as lord-media's editing (lm_job.c): contrast around mid gray */
             uint8_t lut[256];
             double k = (100.0 + s->view.contrast) / 100.0, bo = s->view.bright * 1.28;
             k *= k;
@@ -197,8 +197,8 @@ void media_paint(Canvas *c, int handle, int node, float x, float y, float w, flo
     canvas_set_clip(c, old);
 }
 
-/* El cuadro de un video o de la cámara tapa su caja entera (las bandas se pintan opacas): si todo
- * lo que cambió está adentro, lo anterior a ese nodo no se ve. */
+/* The frame of a video or of the camera covers its whole box (the bands are painted opaque): if everything
+ * that changed is inside, what's beneath that node isn't visible. */
 int media_cover_node(float x0, float y0, float x1, float y1) {
     if (x1 <= x0 || y1 <= y0) return 0;
     for (int i = 0; i < MEDIA_MAX_SRC; i++) {
@@ -207,7 +207,7 @@ int media_cover_node(float x0, float y0, float x1, float y1) {
         if (!s->node || (s->kind != SK_PLAYER && s->kind != SK_CAMERA) || (s->view.bg >> 24) != 255 || !s->map) continue;
         Node *n = node_get(s->node);
         if (!n || n->type != NODE_MEDIA || n->term != s->id || n->s.opacity < 1 || n->s.radius > 0) continue;
-        /* la caja debe estar visible y sin transparencia en los ancestros */
+        /* the box must be visible and without transparency in the ancestors */
         int ok = 1;
         for (Node *p = n; p && ok; p = p->parent) if (p->s.display_none || p->s.opacity < 1) ok = 0;
         if (!ok) continue;

@@ -1,11 +1,11 @@
-/* js_input.c — lord.input: qué touchpads y pantallas táctiles hay y los ajustes del driver
- * (tp/tp.c). Solo lee y cambia la configuración en memoria del driver: no abre dispositivos ni
- * toca archivos (los ajustes se guardan en settings.json desde el SDK, sdk/trackpad.js).
+/* js_input.c — lord.input: which touchpads and touchscreens exist and the driver settings
+ * (tp/tp.c). It only reads and changes the driver's in-memory configuration: it opens no devices and
+ * touches no files (settings are saved to settings.json from the SDK, sdk/trackpad.js).
  *
  *   lord.input.devices()      → [{ name, kind: 'touchpad'|'touchscreen', clickpad, width, height, fingers }]
  *   lord.input.config()       → { speed, tap, tapDrag, natural, secondary, threeDrag, dwt, scroll,
  *                                 kinetic, pinch, swipe3, swipe4 }
- *   lord.input.configure(obj) → aplica los campos válidos (los demás quedan); true */
+ *   lord.input.configure(obj) → applies the valid fields (the rest stay as they are); true */
 #include "js_input.h"
 #include "../tp/tp.h"
 

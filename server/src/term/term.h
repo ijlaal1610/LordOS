@@ -1,9 +1,9 @@
-/* term.h — motor de terminal de LordOS: emulador xterm (vt.c), PTY (pty.c),
- * sesiones y eventos (term.c) y dibujo de la grilla (term_paint.c).
+/* term.h — LordOS terminal engine: xterm emulator (vt.c), PTY (pty.c),
+ * sessions and events (term.c) and grid drawing (term_paint.c).
  *
- * La emulación y el dibujo están en C para que `cat` de archivos grandes o `htop` no
- * pasen por JavaScript; la app Terminal (React) solo maneja pestañas, paneles, perfiles
- * y atajos, y habla con este módulo a través de lord.term.* (ui/js_term.c). */
+ * Emulation and drawing are in C so that `cat` of large files or `htop` do not
+ * go through JavaScript; the Terminal app (React) only handles tabs, panes, profiles
+ * and shortcuts, and talks to this module through lord.term.* (ui/js_term.c). */
 #ifndef LORD_TERM_H
 #define LORD_TERM_H
 
@@ -17,56 +17,56 @@
 #define TERM_MAX 64
 #define TERM_MAX_COLS 1000
 #define TERM_MAX_ROWS 500
-#define REPLAY_FRAMES 1200      /* cuadros de Instant Replay por sesión */
+#define REPLAY_FRAMES 1200      /* Instant Replay frames per session */
 
-/* Atributos de celda. */
+/* Cell attributes. */
 enum {
     A_BOLD = 1 << 0, A_DIM = 1 << 1, A_ITALIC = 1 << 2, A_UNDER = 1 << 3, A_UNDER2 = 1 << 4,
     A_CURLY = 1 << 5, A_BLINK = 1 << 6, A_INVERSE = 1 << 7, A_HIDDEN = 1 << 8, A_STRIKE = 1 << 9,
     A_WIDE = 1 << 10, A_WIDE_TAIL = 1 << 11, A_OVERLINE = 1 << 12,
 };
 
-/* Colores de celda: 0 = el del perfil; 0x01000000|índice = paleta; 0x02RRGGBB = color directo. */
+/* Cell colors: 0 = the profile's; 0x01000000|index = palette; 0x02RRGGBB = direct color. */
 #define COLOR_DEFAULT 0u
 #define COLOR_IDX(i) (0x01000000u | (uint32_t)(i))
 #define COLOR_RGB(c) (0x02000000u | ((uint32_t)(c) & 0xffffffu))
 
 typedef struct { uint32_t cp, fg, bg; uint16_t attr, link; } Cell;
 
-/* Grafemas de más de un carácter (e + acento combinante, 👍🏽, 👨‍👩‍👧, banderas): cp =
- * CP_CLUSTER | índice en una tabla global interna (vt.c), compartida por todas las sesiones. */
+/* Graphemes of more than one character (e + combining accent, 👍🏽, 👨‍👩‍👧, flags): cp =
+ * CP_CLUSTER | index into an internal global table (vt.c), shared by all sessions. */
 #define CP_CLUSTER 0x80000000u
 #define CLUSTER_LEN 12
 
-/* Marcas por línea (integración con el shell, OSC 133 / 1337). */
+/* Per-line marks (shell integration, OSC 133 / 1337). */
 enum { LINE_WRAPPED = 1, LINE_PROMPT = 2, LINE_OUTPUT = 4, LINE_MARK = 8, LINE_FAIL = 16, LINE_OK = 32 };
 
 typedef struct {
     Cell *c;
-    uint16_t len, cap;          /* celdas con contenido / reservadas */
+    uint16_t len, cap;          /* cells with content / allocated */
     uint8_t flags;
-    uint32_t time;              /* segundos desde la época, cuando se escribió por primera vez */
+    uint32_t time;              /* seconds since the epoch, when it was first written */
 } Line;
 
-/* Historia + pantalla en un anillo: la pantalla son las últimas `rows` líneas. */
+/* History + screen in a ring: the screen is the last `rows` lines. */
 typedef struct {
     Line *ring;
     int cap, count, head;
-    long long dropped;          /* líneas descartadas por el límite de historia */
+    long long dropped;          /* lines dropped by the history limit */
 } Buffer;
 
 typedef struct {
-    long long line;             /* número absoluto de línea */
-    int col, wc, hc;            /* posición y tamaño en celdas */
-    int pw, ph;                 /* píxeles originales */
-    uint32_t *px;               /* ARGB premultiplicado */
+    long long line;             /* absolute line number */
+    int col, wc, hc;            /* position and size in cells */
+    int pw, ph;                 /* original pixels */
+    uint32_t *px;               /* premultiplied ARGB */
     uint32_t *scaled;
     int sw, sh;
 } TermImage;
 
 typedef struct { long long l0, l1; int c0, c1; } Match;   /* inclusive */
 
-/* Perfil: lo que el usuario configura en la app (colores, fuente, cursor...). */
+/* Profile: what the user configures in the app (colors, font, cursor...). */
 typedef struct {
     float font_size, line_spacing, padding;
     uint32_t palette[16];
@@ -76,15 +76,15 @@ typedef struct {
     int blink_text, alt_esc, scrollback, mouse_reporting, timestamps, copy_on_select;
     int alt_scroll, has_sel_fg, has_cursor_text;
     char word_chars[64];
-    int font[4], font_na[4];    /* fuente elegida y "no ASCII" (iTerm2): regular, negrita, itálica, ambas; -1 = la incluida */
-    int ligatures;              /* aplicar calt/liga (JetBrains Mono, Fira Code...) */
-    int bidi;                   /* árabe/hebreo en orden visual y con formas unidas (no en pantalla alternativa) */
+    int font[4], font_na[4];    /* chosen font and "non-ASCII" one (iTerm2): regular, bold, italic, both; -1 = the bundled one */
+    int ligatures;              /* apply calt/liga (JetBrains Mono, Fira Code...) */
+    int bidi;                   /* Arabic/Hebrew in visual order and with joined forms (not on the alternate screen) */
     char font_family[64], na_family[64];
 } TermProfile;
 
 enum { CURSOR_BLOCK, CURSOR_UNDERLINE, CURSOR_BEAM };
 
-/* Modos del terminal. */
+/* Terminal modes. */
 enum {
     M_ORIGIN = 1 << 0, M_AUTOWRAP = 1 << 1, M_INSERT = 1 << 2, M_APPCURSOR = 1 << 3,
     M_APPKEYPAD = 1 << 4, M_HIDECURSOR = 1 << 5, M_BRACKETED = 1 << 6, M_FOCUS = 1 << 7,
@@ -94,7 +94,7 @@ enum {
 };
 #define M_MOUSE (M_MOUSE_X10 | M_MOUSE_BTN | M_MOUSE_DRAG | M_MOUSE_ANY)
 
-/* Eventos pendientes para JS. */
+/* Pending events for JS. */
 enum {
     EV_TITLE = 1 << 0, EV_CWD = 1 << 1, EV_BELL = 1 << 2, EV_EXIT = 1 << 3, EV_BADGE = 1 << 4,
     EV_NOTIFY = 1 << 5, EV_OUTPUT = 1 << 6, EV_PROFILE = 1 << 7, EV_ATTENTION = 1 << 8,
@@ -115,8 +115,8 @@ typedef struct Term {
     int top, bot;
     uint32_t modes;
     uint8_t *tabs;
-    int g[2], gl;               /* juegos de caracteres: 0 ASCII, 1 gráficos DEC */
-    int cursor_shape;           /* DECSCUSR: 0 = el del perfil */
+    int g[2], gl;               /* character sets: 0 ASCII, 1 DEC graphics */
+    int cursor_shape;           /* DECSCUSR: 0 = the profile's */
     SavedCursor saved, saved_alt;
     uint32_t last_cp;
 
@@ -130,10 +130,10 @@ typedef struct Term {
     uint32_t utf8_cp;
     int utf8_left;
 
-    /* estado visible */
+    /* visible state */
     char title[256], icon_title[256], cwd[1024], badge[256], notify[512], profile_req[128];
     char command[512];
-    char host[256];             /* usuario@host informado por el shell (OSC 1337 RemoteHost / OSC 7) */
+    char host[256];             /* user@host reported by the shell (OSC 1337 RemoteHost / OSC 7) */
     uint32_t palette[256];
     uint32_t fg, bg, cursor_color;
     int fg_set, bg_set, cursor_set;
@@ -141,28 +141,28 @@ typedef struct Term {
     int nlinks;
     TermImage *images;
     int nimages;
-    long long cmd_prompt;       /* línea del prompt del comando en curso (OSC 133;C) */
-    long long cmd_line;         /* dónde terminó el prompt (OSC 133;B): ahí empieza el comando */
+    long long cmd_prompt;       /* prompt line of the running command (OSC 133;C) */
+    long long cmd_line;         /* where the prompt ended (OSC 133;B): the command starts there */
     int cmd_col;
-    char run_cmd[1024];         /* texto del último comando ejecutado */
+    char run_cmd[1024];         /* text of the last executed command */
 
-    /* modo copia: cursor propio movido con el teclado (estilo vi) */
+    /* copy mode: own cursor moved with the keyboard (vi style) */
     int copy_active, copy_col, copy_sel;
     long long copy_line;
 
-    /* selección (líneas absolutas del buffer activo) */
+    /* selection (absolute lines of the active buffer) */
     int sel_active, sel_mode, sel_rect;
-    long long sel_al, sel_bl;   /* ancla y extremo, tal como los marcó el mouse */
+    long long sel_al, sel_bl;   /* anchor and end, as marked by the mouse */
     int sel_ac, sel_bc;
-    long long sel_sl, sel_el;   /* rango normalizado y expandido (palabra/línea) */
+    long long sel_sl, sel_el;   /* normalized and expanded range (word/line) */
     int sel_sc, sel_ec;
 
-    /* búsqueda */
+    /* search */
     Match *matches;
     int nmatches, match_cur;
 
-    /* vista y daño */
-    int view;                   /* líneas desplazadas hacia atrás (0 = en vivo) */
+    /* view and damage */
+    int view;                   /* lines scrolled back (0 = live) */
     uint8_t *dirty;
     int all_dirty;
     uint32_t events;
@@ -172,14 +172,14 @@ typedef struct Term {
     TermProfile *prof;
     float cell_w, cell_h;
     void (*respond)(struct Term *t, const char *s, size_t n);
-    /* tmux -CC: kind 1 = empieza el modo control, 0 = una línea del protocolo, 2 = terminó */
+    /* tmux -CC: kind 1 = control mode starts, 0 = a protocol line, 2 = finished */
     void (*tmux)(struct Term *t, int kind, const char *line, size_t n);
     void *user;
 } Term;
 
 /* vt.c */
-uint32_t vt_base_cp(uint32_t cp);                        /* primer carácter del grafema */
-int   vt_cluster_cps(uint32_t cp, uint32_t *out, int max); /* todos sus caracteres */
+uint32_t vt_base_cp(uint32_t cp);                        /* first character of the grapheme */
+int   vt_cluster_cps(uint32_t cp, uint32_t *out, int max); /* all its characters */
 int   vt_init(Term *t, int cols, int rows, int scrollback, TermProfile *p);
 void  vt_free(Term *t);
 void  vt_write(Term *t, const uint8_t *data, size_t n);
@@ -195,7 +195,7 @@ uint32_t vt_resolve(const Term *t, uint32_t color, int is_fg);
 void  vt_scroll_view(Term *t, int delta);
 void  vt_clear_scrollback(Term *t);
 void  vt_mark_dirty(Term *t, int row);
-/* selección */
+/* selection */
 void  vt_select_start(Term *t, long long line, int col, int mode, int rect);
 void  vt_select_extend(Term *t, long long line, int col);
 void  vt_select_all(Term *t);
@@ -204,11 +204,11 @@ int   vt_selected(const Term *t, long long line, int col);
 char *vt_selection_text(Term *t);
 char *vt_text_range(Term *t, long long from, long long to);
 int   vt_select_last_output(Term *t);
-/* búsqueda y marcas */
+/* search and marks */
 int   vt_search(Term *t, const char *query, int case_sensitive);
 int   vt_search_move(Term *t, int dir);
 void  vt_search_clear(Term *t);
-int   vt_match_at(const Term *t, long long line, int col);   /* 0 no, 1 sí, 2 actual */
+int   vt_match_at(const Term *t, long long line, int col);   /* 0 no, 1 yes, 2 current */
 int   vt_jump_mark(Term *t, int dir);
 void  vt_set_mark(Term *t);
 char *vt_url_at(Term *t, long long line, int col);
@@ -223,7 +223,7 @@ int   vt_in_tmux(const Term *t);
 int   vt_copy_mode(Term *t, int on);
 int   vt_copy_key(Term *t, const char *key, int ctrl, char **yank);
 
-/* hold.c: guardianes que mantienen vivos los shells si lord-server se reinicia */
+/* hold.c: holders that keep the shells alive if lord-server restarts */
 int   hold_main(int argc, char **argv);
 int   hold_spawn(int master, pid_t pid, char *key, size_t keylen);
 void  hold_restore(void (*fn)(int fd, int ctrl, pid_t pid, const char *key));
@@ -234,9 +234,9 @@ pid_t pty_spawn(const char *cwd, int cols, int rows, int id, int *master);
 void  pty_resize(int fd, int cols, int rows, int pw, int ph);
 void  pty_set_integration(const char *dir);
 
-/* term.c: sesiones */
-typedef struct {                /* cuadro de Instant Replay */
-    double time;                /* ms de reloj de pared */
+/* term.c: sessions */
+typedef struct {                /* Instant Replay frame */
+    double time;                /* wall-clock ms */
     int cols, rows, cx, cy;
     Cell *cells;
 } Frame;
@@ -246,31 +246,31 @@ typedef struct {
     pid_t pid;
     Term t;
     TermProfile prof;
-    char *out;                  /* escritura pendiente hacia el shell */
+    char *out;                  /* pending write to the shell */
     size_t out_len, out_cap;
     double last_output, last_input, last_event, last_click;
     int clicks, click_col;
     long long click_line;
     int dragging, mouse_btn;
-    float gx, gy, gw, gh;       /* geometría del último dibujo */
+    float gx, gy, gw, gh;       /* geometry of the last draw */
     int drawn_cx, drawn_cy, blink_on;
     int pending_render;
-    Frame *frames;              /* Instant Replay: anillo de pantallas pasadas */
+    Frame *frames;              /* Instant Replay: ring of past screens */
     int nframes, frame_head, replay;
     size_t frame_bytes;
     double last_frame;
     int screen_changed;
-    FILE *log;                  /* registro de la sesión (salida cruda) */
+    FILE *log;                  /* session log (raw output) */
     char log_path[512];
-    char key[48];               /* nombre del guardián (hold.c); "" si no tiene */
-    int ctrl;                   /* conexión de control con el guardián, -1 = ninguna */
-    int restored;               /* recuperada de un lord-server anterior */
+    char key[48];               /* holder name (hold.c); "" if it has none */
+    int ctrl;                   /* control connection to the holder, -1 = none */
+    int restored;               /* recovered from a previous lord-server */
     /* tmux -CC */
-    int tmux;                   /* esta sesión es la "puerta" de un tmux en modo control */
-    char *tlines;               /* líneas del protocolo pendientes para JS */
+    int tmux;                   /* this session is the "gateway" of a tmux in control mode */
+    char *tlines;               /* protocol lines pending for JS */
     size_t tl_n, tl_cap;
-    int gateway, pane;          /* sesión virtual: id de la puerta y número de panel (%N) */
-    int paused;                 /* virtual: la salida espera a que JS cargue el contenido */
+    int gateway, pane;          /* virtual session: gateway id and pane number (%N) */
+    int paused;                 /* virtual: output waits until JS loads the content */
     char *pend;
     size_t pend_n, pend_cap;
 } Session;
@@ -285,23 +285,23 @@ void     term_paste(Session *s, const char *text);
 void     term_focus(Session *s, int on);
 int      term_mouse(Session *s, const char *type, float lx, float ly, int button, int mods);
 void     term_wheel(Session *s, int lines, float lx, float ly, int mods);
-int      term_replay(Session *s, int index);            /* -1 sale; devuelve el índice */
+int      term_replay(Session *s, int index);            /* -1 exits; returns the index */
 const char *term_log(Session *s, int on);
 int      term_export(Session *s, char *path, size_t size);
 int      term_pollfds(struct pollfd *p, int max, int *ids);
 void     term_dispatch(int id, short revents);
-int      term_damage(void);                      /* agrega el daño a ui.damage; 1 si hay */
-double   term_timeout(double now);               /* ms hasta el próximo parpadeo, -1 nunca */
+int      term_damage(void);                      /* adds the damage to ui.damage; 1 if there is any */
+double   term_timeout(double now);               /* ms until the next blink, -1 never */
 void     term_tick(double now);
 typedef void (*TermEventFn)(int id, const char *type, const char *data);
 void     term_events(TermEventFn fn);
 void     term_paint(Canvas *c, int id, float x, float y, float w, float h, float opacity);
-/* Orden visual de una fila con árabe/hebreo (term_paint.c); 0 si queda como está. */
+/* Visual order of a row with Arabic/Hebrew (term_paint.c); 0 if it stays as it is. */
 int      term_row_visual(const TermProfile *p, const Term *t, const Line *l, int cols, int *vis, uint8_t *lv);
 void     term_cell_at(Session *s, float lx, float ly, long long *line, int *col);
-void     term_shutdown(int keep);                 /* keep: los shells siguen vivos para el próximo arranque */
-void     term_restore(void);                       /* recupera las sesiones de los guardianes */
-Session *term_tmux_pane(Session *gateway, int pane);  /* sesión virtual para un panel de tmux */
+void     term_shutdown(int keep);                 /* keep: the shells stay alive for the next startup */
+void     term_restore(void);                       /* recovers the sessions from the holders */
+Session *term_tmux_pane(Session *gateway, int pane);  /* virtual session for a tmux pane */
 void     term_tmux_send(Session *gateway, const char *cmd, size_t n);
 void     term_feed(Session *s, const char *data, size_t n);
 void     term_tmux_ready(Session *s);
@@ -310,8 +310,8 @@ int      term_list(int *ids, int max);
 const char *term_clipboard(void);
 void     term_set_clipboard(const char *s, size_t n);
 unsigned term_clipboard_gen(void);
-/* De dónde vino lo último copiado ("terminal", "lordos" o el app_id de una app Wayland) y si es
- * sensible (contraseña: no va al historial). term_set_clipboard lo deja en "terminal", 0. */
+/* Where the last copied thing came from ("terminal", "lordos" or a Wayland app's app_id) and
+ * whether it is sensitive (password: it does not go to the history). term_set_clipboard sets it to "terminal", 0. */
 void        term_clipboard_mark(const char *origin, int sensitive);
 const char *term_clipboard_origin(void);
 int         term_clipboard_sensitive(void);
@@ -319,7 +319,7 @@ int      term_mono_font(int bold, int italic);
 int      term_profile_font(const TermProfile *p, int non_ascii, int bold, int italic);
 int      term_set_fonts(TermProfile *p, const char *family, const char *non_ascii);
 int      term_color_font(void);
-int      term_fallback_font(int i);                 /* -1 al terminar la lista */
+int      term_fallback_font(int i);                 /* -1 at the end of the list */
 void     term_metrics(const TermProfile *p, float *cw, float *ch, float *baseline);
 void     term_profile_defaults(TermProfile *p);
 size_t   base64_decode(const char *in, size_t n, uint8_t *out);

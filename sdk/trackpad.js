@@ -1,9 +1,9 @@
-// trackpad.js — touchpad y pantallas táctiles: ajustes (settings.trackpad → lord.input.configure,
-// en vivo) y acciones del escritorio al deslizar con 3 dedos (o 4). Ver docs/TRACKPAD.md.
+// trackpad.js — touchpad and touchscreens: settings (settings.trackpad → lord.input.configure,
+// live) and desktop actions when swiping with 3 fingers (or 4). See docs/TRACKPAD.md.
 //
-// El tema elige qué hace cada dirección con registerGestureActions({ up, down, left, right }):
-// el tema por defecto abre el Launchpad hacia arriba. Sin acción del tema, izquierda/derecha
-// cambian de ventana (la de atrás pasa al frente) y arriba/abajo no hacen nada.
+// The theme chooses what each direction does with registerGestureActions({ up, down, left, right }):
+// the default theme opens the Launchpad upwards. Without a theme action, left/right
+// switch windows (the one behind comes to the front) and up/down do nothing.
 import { useEffect } from 'react';
 import { addListener } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
@@ -11,18 +11,18 @@ import { settings } from './settings.js';
 import { windows } from './windows.js';
 
 export const TRACKPAD_DEFAULTS = {
-  speed: 0.5,               // velocidad del puntero (0..1)
-  tap: true,                // tocar para hacer clic
-  tapDrag: true,            // tocar y arrastrar
-  natural: true,            // desplazamiento natural (como macOS)
-  secondary: 'two-fingers', // clic secundario: 'two-fingers' | 'bottom-right' | 'bottom-left'
-  threeDrag: false,         // arrastrar con tres dedos (deslizar pasa a 4 dedos)
-  dwt: true,                // ignorar mientras se escribe
-  scroll: true,             // scroll con dos dedos
-  kinetic: true,            // inercia
-  pinch: true,              // pellizcar para hacer zoom
-  swipe3: true,             // deslizar con 3 dedos: acciones del escritorio
-  swipe4: false,            // deslizar con 4 dedos: acciones del escritorio (si no, van a las apps)
+  speed: 0.5,               // pointer speed (0..1)
+  tap: true,                // tap to click
+  tapDrag: true,            // tap and drag
+  natural: true,            // natural scrolling (like macOS)
+  secondary: 'two-fingers', // secondary click: 'two-fingers' | 'bottom-right' | 'bottom-left'
+  threeDrag: false,         // three-finger drag (swiping moves to 4 fingers)
+  dwt: true,                // ignore while typing
+  scroll: true,             // two-finger scrolling
+  kinetic: true,            // inertia
+  pinch: true,              // pinch to zoom
+  swipe3: true,             // 3-finger swipe: desktop actions
+  swipe4: false,            // 4-finger swipe: desktop actions (otherwise they go to the apps)
 };
 
 const native = () => typeof lord !== 'undefined' && lord.input;
@@ -36,7 +36,7 @@ settings.subscribe(() => {
   if (now !== applied) { applied = now; apply(); }
 });
 
-// Dispositivos (los presta lord-sessiond al mostrar la sesión en el monitor: se vuelven a mirar).
+// Devices (lord-sessiond lends them when showing the session on the monitor: they are re-scanned).
 export const trackpadDevices = createStore(native() ? lord.input.devices() : []);
 export function refreshTrackpads() {
   if (!native()) return;
@@ -51,7 +51,7 @@ export const hasTouchpad = () => trackpadDevices.get().some((d) => d.kind === 't
 
 export const setTrackpad = (patch) => settings.set((s) => ({ ...s, trackpad: { ...(s.trackpad || {}), ...patch } }));
 
-// ---- deslizar del escritorio ----
+// ---- desktop swipe ----
 
 const actions = { up: null, down: null, left: null, right: null };
 export function registerGestureActions(map) {
@@ -59,7 +59,7 @@ export function registerGestureActions(map) {
   return () => { for (const k of Object.keys(map)) if (actions[k] === map[k]) actions[k] = null; };
 }
 
-// Cambiar de ventana: izquierda trae la de más atrás; derecha manda la del frente atrás de todo.
+// Switch windows: left brings the rearmost one; right sends the front one behind all the others.
 function cycle(dir) {
   windows.set((ws) => {
     const vis = ws.filter((w) => !w.minimized && !w.fullscreen && !w.pip);
@@ -71,7 +71,7 @@ function cycle(dir) {
 }
 const DEFAULTS = { left: () => cycle('left'), right: () => cycle('right') };
 
-// Último deslizar reconocido (para la interfaz o las pruebas).
+// Last recognized swipe (for the interface or tests).
 export const lastSwipe = createStore(null);
 
 let acc = null;
