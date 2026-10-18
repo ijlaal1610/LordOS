@@ -1414,6 +1414,45 @@ static JSValue f_apps_launch(JSContext *c, JSValueConst this_val, int argc, JSVa
     return JS_NewBool(c, ok);
 }
 
+/* lord.apps.actions(id, language) → [{ id, name }]: the desktop actions of an installed .desktop
+ * (apps.c, apps_actions); [] for an unknown id. */
+static JSValue f_apps_actions(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
+    (void)this_val;
+    JSValue arr = JS_NewArray(c);
+    const char *id = argc > 0 && JS_IsString(argv[0]) ? JS_ToCString(c, argv[0]) : NULL;
+    if (!id) return arr;
+    const char *lang = argc > 1 && JS_IsString(argv[1]) ? JS_ToCString(c, argv[1]) : NULL;
+    char l[32] = "en";
+    if (lang) {
+        if (strlen(lang) < sizeof l && valid_id_dot(lang)) snprintf(l, sizeof l, "%s", lang);
+        JS_FreeCString(c, lang);
+    }
+    AppAction acts[APPS_MAX_ACTIONS];
+    int n = apps_actions(id, l, acts, APPS_MAX_ACTIONS);
+    JS_FreeCString(c, id);
+    for (int i = 0; i < n; i++) {
+        JSValue o = JS_NewObject(c);
+        JS_SetPropertyStr(c, o, "id", JS_NewString(c, acts[i].name));
+        JS_SetPropertyStr(c, o, "name", JS_NewString(c, acts[i].label));
+        JS_SetPropertyUint32(c, arr, (uint32_t)i, o);
+    }
+    return arr;
+}
+
+/* lord.apps.launchAction(id, action): runs one desktop action of an installed .desktop, through
+ * the same launcher as lord.apps.launch (apps_launch_action): only an action the file lists,
+ * never caller arguments or commands. */
+static JSValue f_apps_launch_action(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2 || !JS_IsString(argv[0]) || !JS_IsString(argv[1])) return JS_FALSE;
+    const char *id = JS_ToCString(c, argv[0]);
+    const char *act = JS_ToCString(c, argv[1]);
+    int ok = id && act && apps_launch_action(id, act) == 0;
+    if (id) JS_FreeCString(c, id);
+    if (act) JS_FreeCString(c, act);
+    return JS_NewBool(c, ok);
+}
+
 /* lord.apps.lastError(): the error code of the last refused launch ("" if none), no arguments */
 static JSValue f_apps_last_error(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
@@ -1796,6 +1835,8 @@ static const JSCFunctionListEntry apps_funcs[] = {
     JS_CFUNC_DEF("linux", 1, f_apps_linux),
     JS_CFUNC_DEF("launch", 1, f_apps_launch),
     JS_CFUNC_DEF("launchWith", 2, f_apps_launch_with),
+    JS_CFUNC_DEF("actions", 2, f_apps_actions),
+    JS_CFUNC_DEF("launchAction", 2, f_apps_launch_action),
     JS_CFUNC_DEF("lastError", 0, f_apps_last_error),
     JS_CFUNC_DEF("packages", 0, f_apps_packages),
     JS_CFUNC_DEF("inspectPackage", 1, f_apps_inspect),

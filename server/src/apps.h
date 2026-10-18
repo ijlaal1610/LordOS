@@ -26,6 +26,20 @@ int apps_launch(const char *id);
 /* Same, but opening a file or folder (see apps.c: only apps with MimeType and paths in the
  * home folder or the user's mounts, as a single argument). */
 int apps_launch_with(const char *id, const char *path);
+/* Desktop actions ("Actions=" + "[Desktop Action <name>]", e.g. a browser's "New Private Window"):
+ * only those listed in Actions=, with a [A-Za-z0-9-] name, a Name and an Exec line. */
+#define APPS_MAX_ACTIONS 16
+#define APPS_ACTION_NAME_MAX 64
+typedef struct {
+    char name[APPS_ACTION_NAME_MAX];    /* the action's identifier */
+    char label[160];                    /* its Name, translated for lang */
+} AppAction;
+/* Lists the desktop actions of the listed app with that id (up to max). Returns the count. */
+int apps_actions(const char *id, const char *lang, AppAction *out, int max);
+/* Launches one of them: the same launcher as apps_launch (same id rules, scope, restrictions, no
+ * shell, no caller arguments), with that action's Exec line instead of the main one. The action
+ * must be listed by apps_actions. 0 if the process started. */
+int apps_launch_action(const char *id, const char *action);
 /* Why the last apps_launch/apps_launch_with refused, as an error code ("" = no specific reason). */
 const char *apps_last_error(void);
 
