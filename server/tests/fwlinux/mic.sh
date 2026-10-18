@@ -130,6 +130,23 @@ else bad "a module's capture stream stayed open"; fi
 [ -n "$LOOPMOD" ] && pactl unload-module "$LOOPMOD" 2>/dev/null
 [ -n "$NULLMOD" ] && pactl unload-module "$NULLMOD" 2>/dev/null
 
+echo "9. escaped to the user manager while an app is restricted, posing as the sound server's unit"
+UM=/sys/fs/cgroup/user.slice/user-$U.slice/user@$U.service/app.slice
+if command -v systemd-run >/dev/null && [ -d "$UM" ]; then
+    f=$OUTD/fakeunit.raw
+    for leaf in "fwfake.scope/session.slice/pipewire.service" "fwfake.scope/session.slice/wireplumber.service"; do
+        rm -f "$f"
+        timeout 10 systemd-run --user --scope -q bash -c 'mkdir -p "$1/$2" && echo $$ > "$1/$2/cgroup.procs" && exec timeout 3 pw-record --rate 48000 --channels 1 --format s16 "$3"' _ "$UM" "$leaf" "$f" >/dev/null 2>&1
+        n=$(stat -c %s "$f" 2>/dev/null || echo 0)
+        [ "$n" -lt 4096 ] && ok "a recorder in user@…/$leaf: $n bytes" || bad "a nested $leaf recorded $n bytes"
+    done
+    for d in session.slice/pipewire.service session.slice/wireplumber.service session.slice ""; do rmdir "$UM/fwfake.scope/$d" 2>/dev/null; done
+    rm -f "$f"
+    f=$OUTD/um.raw
+    timeout 10 systemd-run --user --scope -q timeout 3 pw-record --rate 48000 --channels 1 --format s16 "$f" >/dev/null 2>&1
+    n=$(stat -c %s "$f" 2>/dev/null || echo 0)
+    [ "$n" -lt 4096 ] && ok "systemd-run --user pw-record: $n bytes" || bad "systemd-run --user recorded $n bytes"
+fi
 kill $GPID 2>/dev/null; wait $GPID 2>/dev/null
 rm -rf "$OUTD"
 fwlinux_done

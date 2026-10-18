@@ -346,28 +346,45 @@ static void evaluate(PgClient *c) {
 
 /* ---- who a client really is ---------------------------------------------------------------- */
 
+/* Is pid running the root-owned executable at path (same inode, not a copy)? */
+static int runs_exe(int pid, const char *path) {
+    char p[64];
+    struct stat st, want;
+    snprintf(p, sizeof p, "/proc/%d/exe", pid);
+    if (stat(p, &st) || stat(path, &want) || want.st_uid != 0 || (want.st_mode & 022)) return 0;
+    if (st.st_dev != want.st_dev || st.st_ino != want.st_ino) return 0;
+    snprintf(p, sizeof p, "/proc/%d", pid);
+    return !stat(p, &st) && st.st_uid == getuid();
+}
+
+/* Is pid exactly in the user manager's session.slice/<unit>, alone? The whole path is compared:
+ * the user owns the user@ subtree and can make a nested cgroup that merely ends in the same names. */
+static int in_user_unit(int pid, const char *unit) {
+    char p[64], line[1024], want[256];
+    unsigned u = (unsigned)getuid();
+    snprintf(want, sizeof want, "0::/user.slice/user-%u.slice/user@%u.service/session.slice/%s\n", u, u, unit);
+    snprintf(p, sizeof p, "/proc/%d/cgroup", pid);
+    FILE *f = fopen(p, "re");
+    int ok = 0;
+    while (f && fgets(line, sizeof line, f))
+        if (!strncmp(line, "0::", 3)) { ok = !strcmp(line, want); break; }
+    if (f) fclose(f);
+    if (!ok) return 0;
+    /* and the only process there: the user can also write that unit's own cgroup.procs (the
+     * subtree is theirs), so a second process moved in makes neither count (fail closed) */
+    snprintf(want, sizeof want, "/sys/fs/cgroup/user.slice/user-%u.slice/user@%u.service/session.slice/%s/cgroup.procs", u, u, unit);
+    f = fopen(want, "re");
+    int n = 0, first = -1;
+    while (f && fgets(line, sizeof line, f)) { if (!n) first = atoi(line); n++; }
+    if (f) fclose(f);
+    return n == 1 && first == pid;
+}
+
 /* Is pid the session's real pipewire-pulse? Never from a property: the executable is the root-owned
  * /usr/bin/pipewire (pipewire-pulse is a link to it), the process is ours, and it runs in the user
  * manager's pipewire-pulse.service. */
 static int is_pulse_daemon(int pid) {
-    char p[64], line[512];
-    snprintf(p, sizeof p, "/proc/%d/exe", pid);
-    struct stat st, want;
-    if (stat(p, &st) || stat("/usr/bin/pipewire", &want) || st.st_dev != want.st_dev || st.st_ino != want.st_ino || want.st_uid != 0) return 0;
-    snprintf(p, sizeof p, "/proc/%d", pid);
-    if (stat(p, &st) || st.st_uid != getuid()) return 0;
-    snprintf(p, sizeof p, "/proc/%d/cgroup", pid);
-    FILE *f = fopen(p, "re");
-    int ok = 0;
-    char unit[96];
-    snprintf(unit, sizeof unit, "/user@%u.service/session.slice/pipewire-pulse.service\n", (unsigned)getuid());
-    while (f && fgets(line, sizeof line, f)) {
-        if (strncmp(line, "0::", 3)) continue;
-        size_t l = strlen(line), ul = strlen(unit);
-        ok = l > ul && !strcmp(line + l - ul, unit);
-    }
-    if (f) fclose(f);
-    return ok;
+    return runs_exe(pid, "/usr/bin/pipewire") && in_user_unit(pid, "pipewire-pulse.service");
 }
 
 /* The unix sockets of the system and their peers (sock_diag), to see who is really connected to
@@ -464,19 +481,14 @@ static int in_user_manager(int pid) {
     FILE *f = fopen(p, "re");
     int r = 0;
     snprintf(unit, sizeof unit, "/user@%u.service/", (unsigned)getuid());
-    while (f && fgets(line, sizeof line, f)) {
-        if (strncmp(line, "0::", 3)) continue;
-        line[strcspn(line, "\n")] = 0;
-        if (!strstr(line, unit)) break;
-        static const char *const sound[] = { "/session.slice/pipewire.service", "/session.slice/wireplumber.service",
-                                             "/session.slice/pipewire-pulse.service", NULL };
-        r = 1;
-        size_t l = strlen(line);
-        for (int i = 0; sound[i]; i++) { size_t k = strlen(sound[i]); if (l > k && !strcmp(line + l - k, sound[i])) r = 0; }
-        break;
-    }
+    while (f && fgets(line, sizeof line, f))
+        if (!strncmp(line, "0::", 3)) { r = strstr(line, unit) != NULL; break; }
     if (f) fclose(f);
-    return r;
+    if (!r) return 0;
+    /* the sound services: their exact unit AND their root-owned executable */
+    if (runs_exe(pid, "/usr/bin/pipewire") && (in_user_unit(pid, "pipewire.service") || in_user_unit(pid, "pipewire-pulse.service"))) return 0;
+    if (runs_exe(pid, "/usr/bin/wireplumber") && in_user_unit(pid, "wireplumber.service")) return 0;
+    return 1;
 }
 
 static void resolve(PgClient *c) {
