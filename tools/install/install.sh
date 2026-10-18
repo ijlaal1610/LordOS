@@ -245,6 +245,13 @@ pick_user() {
 
 # ---------------------------------------------------------------- download and verification
 
+cleanup_tmp() {
+    rm -rf "$TMP"
+    if [ -n "$ROOT_TMP" ]; then
+        if [ "$(id -u)" -eq 0 ]; then rm -rf "$ROOT_TMP"; else sudo -n rm -rf "$ROOT_TMP" 2>/dev/null || true; fi
+    fi
+}
+
 resolve_tag() {
     if [ -n "$WANT_VERSION" ]; then
         TAG="v${WANT_VERSION#v}"
@@ -278,11 +285,11 @@ verify_signature() {
         pem=$(cat "$LORDOS_PUBKEY_FILE")
         warn "using the release key from LORDOS_PUBKEY_FILE (testing)"
     fi
-    if [ -z "$pem" ]; then
-        SIG_NOTE="not checked: LordOS has no release-signing key yet, so only the SHA-256 checksum is verified (it protects against corrupted downloads, not against a compromised release page)"
-        warn "signature $SIG_NOTE."
-        return
-    fi
+    # never skip the check: an empty or non-PEM key (e.g. a test override) is an error
+    case "$pem" in
+        "-----BEGIN PUBLIC KEY-----"*"-----END PUBLIC KEY-----"*) ;;
+        *) die "the release-signing key is missing or not a PEM public key: refusing to install" ;;
+    esac
     [ -s "$2" ] || die "the release has no SHA256SUMS.sig signature: refusing to install"
     if ! command -v openssl >/dev/null 2>&1; then
         say "  Installing openssl to check the signature..."
@@ -310,6 +317,7 @@ check_deb_file() {
 
 get_package() {
     SIG_NOTE=""
+    EXPECT_SHA=""
     # apt reads the file as the _apt user: a world-readable copy in our private-but-traversable dir
     chmod 755 "$TMP"
     if [ -n "$LOCAL_DEB" ]; then
@@ -322,6 +330,7 @@ get_package() {
             want=$(sum_for "$sums" "$base")
             [ -n "$want" ] || die "$sums has no entry for $base"
             [ "$(sha256_of "$DEB_PATH")" = "$want" ] || die "SHA-256 mismatch for $base: the file is corrupted or not the released one"
+            EXPECT_SHA=$want
             ok "SHA-256 matches $sums"
             verify_signature "$sums" "$sums.sig"
         else
@@ -344,11 +353,25 @@ get_package() {
         say "  Downloading $base..."
         fetch "$base_url/$base" "$TMP/$base" || die "could not download $base"
         DEB_PATH="$TMP/$base"
-        [ "$(sha256_of "$DEB_PATH")" = "$(sum_for "$TMP/SHA256SUMS" "$base")" ] \
+        EXPECT_SHA=$(sum_for "$TMP/SHA256SUMS" "$base")
+        [ "$(sha256_of "$DEB_PATH")" = "$EXPECT_SHA" ] \
             || die "SHA-256 mismatch for $base: the download is corrupted. Nothing was installed."
         ok "SHA-256 of $base matches SHA256SUMS"
     fi
     chmod 644 "$DEB_PATH"
+    # Everything above ran on a file this user owns: any other process of the user could swap
+    # it between the checks and apt (root would then run its maintainer scripts). Give root its
+    # own copy in a root-owned folder and check that copy again; apt installs only that one.
+    if [ "$(id -u)" -ne 0 ]; then
+        ROOT_TMP=$(as_root mktemp -d) || die "could not create a temporary folder as root"
+        as_root chmod 755 "$ROOT_TMP" || die "could not prepare $ROOT_TMP"
+        as_root install -m 644 "$DEB_PATH" "$ROOT_TMP/$base" || die "could not copy $base for installation"
+        DEB_PATH="$ROOT_TMP/$base"
+    fi
+    if [ -n "$EXPECT_SHA" ]; then
+        [ "$(sha256_of "$DEB_PATH")" = "$EXPECT_SHA" ] \
+            || die "SHA-256 mismatch for $base after copying it: refusing to install"
+    fi
     check_deb_file "$DEB_PATH"
     ok "package: lordos $DEB_VERSION ($ARCH)"
 }
@@ -371,6 +394,11 @@ install_package() {
         done
     fi
     was=$(dpkg-query -W -f '${Version}' lordos 2>/dev/null || true)
+    # an old (validly signed) release served as "latest" must not downgrade a newer install
+    if [ -n "$was" ] && [ -z "$WANT_VERSION" ] && [ -z "$LOCAL_DEB" ] \
+        && dpkg --compare-versions "$DEB_VERSION" lt "$was"; then
+        die "the release offered ($DEB_VERSION) is older than the installed LordOS ($was): refusing to downgrade (use --version X to choose a version)"
+    fi
     # shellcheck disable=SC2086 # $extras is a list of package names
     apt_install "$DEB_PATH" $extras || die "apt-get could not install LordOS (see the messages above). Nothing else was changed."
     if [ -n "$was" ]; then changed "package lordos $was replaced by $DEB_VERSION"
@@ -645,7 +673,8 @@ do_install() {
     ask "Continue?" 0 || die "cancelled; nothing was changed"
 
     TMP=$(mktemp -d)
-    trap 'rm -rf "$TMP"' EXIT INT TERM
+    ROOT_TMP=""
+    trap cleanup_tmp EXIT INT TERM
     step "Getting the package"
     get_package
     install_package

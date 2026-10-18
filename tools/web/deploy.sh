@@ -19,6 +19,8 @@ DISTRIBUTION=E35DXDFJ83X7Z8
 [ -f "$DIST/index.html" ] || { echo "no build in $DIST: run node web/build.mjs" >&2; exit 1; }
 [ -f "$DIST/install.sh" ] || { echo "missing $DIST/install.sh" >&2; exit 1; }
 cmp -s "$ROOT/tools/install/install.sh" "$DIST/install.sh" || { echo "dist/install.sh differs from tools/install/install.sh" >&2; exit 1; }
+[ -f "$DIST/lordos-release.pub.pem" ] || { echo "missing $DIST/lordos-release.pub.pem" >&2; exit 1; }
+cmp -s "$ROOT/tools/release/lordos-release.pub.pem" "$DIST/lordos-release.pub.pem" || { echo "dist/lordos-release.pub.pem differs from tools/release/lordos-release.pub.pem" >&2; exit 1; }
 if find "$DIST" -name '*.map' | grep -q .; then echo "source maps in $DIST" >&2; exit 1; fi
 
 aws() { command aws --profile "$PROFILE" "$@"; }

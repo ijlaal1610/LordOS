@@ -18,6 +18,10 @@ cd "$dir"
 rm -f SHA256SUMS SHA256SUMS.sig
 files=$(find . -maxdepth 1 -type f ! -name 'SHA256SUMS*' ! -name '.*' | sed 's|^\./||' | LC_ALL=C sort)
 [ -n "$files" ] || { echo "no files in $dir" >&2; exit 1; }
+# the list is word-split below: only plain release file names (no spaces, globs or leading '-')
+for f in $files; do
+    case "$f" in -*|*[!A-Za-z0-9._+~-]*) echo "unexpected file name in $dir: $f" >&2; exit 1 ;; esac
+done
 if command -v sha256sum >/dev/null; then sum() { sha256sum "$@"; }; else sum() { shasum -a 256 "$@"; }; fi
 # shellcheck disable=SC2086
 sum $files > SHA256SUMS
