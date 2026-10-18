@@ -133,7 +133,7 @@ main_id = "SPDXRef-Package-lordos"
 packages = [pkg(main_id, "lordos", version, "MIT", "Organization: IPERFEX",
                 purl=f"pkg:deb/lordos/lordos@{version}?arch={arch}",
                 checksums=[E["SBOM_DEB_SHA"]],
-                copyright="Copyright (c) 2026 Federico Pereira and the LordOS contributors",
+                copyright="Copyright (c) 2026 iPERFEX and the LordOS contributors",
                 comment=f"The LordOS package ({debname}); source: {REPO}")]
 packages[0]["downloadLocation"] = f"{REPO}/releases/download/{tag}/{debname}"
 packages[0]["homepage"] = "https://lordos.org"

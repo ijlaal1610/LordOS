@@ -109,7 +109,7 @@ Upstream-Name: LordOS
 Source: https://github.com/lordbasex/LordOS
 
 Files: *
-Copyright: 2026 Federico Pereira and the LordOS contributors
+Copyright: 2026 iPERFEX and the LordOS contributors
 License: Expat
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal

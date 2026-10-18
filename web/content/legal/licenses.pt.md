@@ -2,7 +2,7 @@
 
 O código próprio do LordOS (o ambiente de desktop, o servidor gráfico e compositor Wayland, os apps nativos, o SDK, os temas, as ferramentas e este site) é publicado sob a **licença MIT**:
 
-> Copyright (c) 2026 Federico Pereira e os colaboradores do LordOS.
+> Copyright (c) 2026 iPERFEX e os colaboradores do LordOS.
 >
 > É concedida permissão, gratuitamente, a qualquer pessoa que obtenha uma cópia deste software e dos arquivos de documentação associados, para lidar com o software sem restrições, incluindo, sem limitação, os direitos de usar, copiar, modificar, mesclar, publicar, distribuir, sublicenciar e/ou vender cópias dele, desde que o aviso de copyright e este aviso de permissão sejam incluídos em todas as cópias ou partes substanciais do software. O software é fornecido "no estado em que se encontra", sem garantia de nenhum tipo.
 
