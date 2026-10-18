@@ -60,7 +60,7 @@ export default function Scanner() {
       if (c.res.length) setRes(c.res.includes(300) ? 300 : c.res.includes(150) ? 150 : c.res[0]);
       if (c.colors.length && !c.colors.includes('RGB24')) setColor(c.colors[0]);
       if (!c.platen && c.adf) setSource('Feeder');
-    }).catch((e) => setError(tr('scanner.unreachable', { error: e.code || e.message })));
+    }).catch((e) => setError(tr('scanner.unreachable', { error: e.message })));
   }, [scanner]);
   useEffect(() => () => { if (preview) releaseImage(preview.image); }, [preview]);
 
@@ -80,7 +80,7 @@ export default function Scanner() {
       const img = await decodeImage(r.file, { maxw: 520, maxh: 560 });
       setPreview(img);
       setArea(null);
-    } catch (e) { setError(tr('scanner.failed', { error: e.code || e.message })); }
+    } catch (e) { setError(tr('scanner.failed', { error: e.message })); }
     setBusy(null);
   };
 
@@ -101,7 +101,7 @@ export default function Scanner() {
       else await convertImage(r.file, out, { format: format === 'jpeg' ? 'jpeg' : format, native: true, dpi: res });
       setMsg(tr('scanner.saved', { name }));
       lastSaved.current = out;
-    } catch (e) { setError(tr('scanner.failed', { error: e.code || e.message })); }
+    } catch (e) { setError(tr('scanner.failed', { error: e.message })); }
     setBusy(null);
   };
   const lastSaved = useRef(null);

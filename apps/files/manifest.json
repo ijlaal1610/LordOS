@@ -1,7 +1,7 @@
 {
   "id": "files",
-  "name": "Archivos",
-  "description": "Explorador de archivos al estilo Finder: pestañas, vistas, Papelera y Vista rápida",
+  "name": "Files",
+  "description": "Finder-style file browser: tabs, views, Trash and Quick Look",
   "size": [
     960,
     600

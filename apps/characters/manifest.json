@@ -1,7 +1,7 @@
 {
   "id": "characters",
-  "name": "Emojis y símbolos",
-  "description": "Emojis por categoría con búsqueda y tonos de piel, y símbolos de Unicode por bloque (selector rápido con ❖.)",
+  "name": "Emoji & Symbols",
+  "description": "Emoji by category with search and skin tones, and Unicode symbols by block (quick picker with ❖.)",
   "size": [860, 560],
   "minSize": [600, 380],
   "dock": false,

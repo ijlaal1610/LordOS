@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="es" translate="no">
+<html lang="en" translate="no">
 <head>
 <meta charset="utf-8">
 <meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LordOS · Escritorio remoto</title>
+<title>LordOS · Remote desktop</title>
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: #0b0a14; overflow: hidden; font: 13px system-ui, -apple-system, "Segoe UI", sans-serif; color: #eee; }
@@ -33,11 +33,11 @@
 <script>
 'use strict';
 const L = {
-  es: { full: 'Pantalla completa', out: 'Desconectar', bye: 'La sesión terminó o se cortó la conexión.', again: 'Reconectar', conn: 'Conectando…' },
   en: { full: 'Full screen', out: 'Disconnect', bye: 'The session ended or the connection was lost.', again: 'Reconnect', conn: 'Connecting…' },
+  es: { full: 'Pantalla completa', out: 'Desconectar', bye: 'La sesión terminó o se cortó la conexión.', again: 'Reconectar', conn: 'Conectando…' },
   pt: { full: 'Tela cheia', out: 'Desconectar', bye: 'A sessão terminou ou a conexão caiu.', again: 'Reconectar', conn: 'Conectando…' },
 };
-const T = L[(navigator.language || 'es').slice(0, 2)] || L.en;
+const T = L[(navigator.language || 'en').slice(0, 2)] || L.en;
 const $ = (id) => document.getElementById(id);
 const cv = $('c'), ctx = cv.getContext('2d', { alpha: false });
 $('fs').title = T.full; $('out').title = T.out; $('again').textContent = T.again;

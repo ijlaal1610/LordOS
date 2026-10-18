@@ -144,12 +144,12 @@ Continuous 6 s drag in circles with a virtual tablet (uinput, 125 events/s). lor
 line per drag to `~/.cache/lordos/session.log`:
 
 ```
-arrastre: 464 cuadros en 6011 ms = 77.2 FPS (464 movimientos); por cuadro: trabajo 12.80 ms (máx 36.83;
-JS 0.20, layout 0.56, pintado 11.43, presentar 0.61), intervalo máx 36.9 ms; capa: 1023 pintadas, 467 copiadas (CPU)
+drag: 464 frames in 6011 ms = 77.2 FPS (464 moves); per frame: work 12.80 ms (max 36.83;
+JS 0.20, layout 0.56, paint 11.43, present 0.61), max gap 36.9 ms; layer: 1023 painted, 467 copied (CPU)
 ```
 
-"trabajo" (work) is what lord-server spends per frame: the pointer and timer JS, layout, painting
-("pintado") and presentation ("presentar").
+"work" is what lord-server spends per frame: the pointer and timer JS, layout, painting
+("paint") and presentation ("present").
 
 | Path | Window | Before | After |
 |---|---|---|---|

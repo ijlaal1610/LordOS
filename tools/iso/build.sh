@@ -115,7 +115,7 @@ en_US.UTF-8 UTF-8
 pt_BR.UTF-8 UTF-8
 EOF
 in_ch locale-gen > /dev/null
-echo 'LANG=es_ES.UTF-8' > "$CH/etc/default/locale"
+echo 'LANG=en_US.UTF-8' > "$CH/etc/default/locale"     # English by default (lordos-live-prep switches it)
 ln -sf /usr/share/zoneinfo/UTC "$CH/etc/localtime"; echo UTC > "$CH/etc/timezone"
 
 # ping without root (in the live system the executable's cap_net_raw capability does not survive)
@@ -158,7 +158,8 @@ cp "$CH/boot/initrd.img-$KVER" "$IMG/live/initrd.img"
 rm -f "$IMG/live/filesystem.squashfs"
 mksquashfs "$CH" "$IMG/live/filesystem.squashfs" -comp xz -Xbcj x86 -b 1M -noappend -quiet > /dev/null
 
-# 5. grub (BIOS + UEFI in the same hybrid ISO)
+# 5. grub (BIOS + UEFI in the same hybrid ISO). GRUB menus are English; the entries with a
+# language name pass lordos.lang to lordos-live-prep (English is the default).
 cat > "$IMG/boot/grub/grub.cfg" <<EOF
 set default=0
 set timeout=5
@@ -166,20 +167,24 @@ insmod all_video
 insmod gfxterm
 loadfont unicode
 terminal_output gfxterm
-menuentry "LordOS $VERSION (en vivo)" {
-    linux /live/vmlinuz boot=live components quiet loglevel=3 splash lordos.lang=es
-    initrd /live/initrd.img
-}
-menuentry "LordOS $VERSION (modo seguro: sin GPU)" {
-    linux /live/vmlinuz boot=live components quiet loglevel=3 lordos.gpu=0 lordos.lang=es
-    initrd /live/initrd.img
-}
-menuentry "LordOS $VERSION (English)" {
+menuentry "LordOS $VERSION (live)" {
     linux /live/vmlinuz boot=live components quiet loglevel=3 splash lordos.lang=en
     initrd /live/initrd.img
 }
-menuentry "LordOS $VERSION (copiar a la RAM: se puede sacar el USB)" {
-    linux /live/vmlinuz boot=live components quiet loglevel=3 splash toram lordos.lang=es
+menuentry "LordOS $VERSION (safe mode: no GPU)" {
+    linux /live/vmlinuz boot=live components quiet loglevel=3 lordos.gpu=0 lordos.lang=en
+    initrd /live/initrd.img
+}
+menuentry "LordOS $VERSION (Español)" {
+    linux /live/vmlinuz boot=live components quiet loglevel=3 splash lordos.lang=es
+    initrd /live/initrd.img
+}
+menuentry "LordOS $VERSION (Português)" {
+    linux /live/vmlinuz boot=live components quiet loglevel=3 splash lordos.lang=pt
+    initrd /live/initrd.img
+}
+menuentry "LordOS $VERSION (copy to RAM: the USB drive can be removed)" {
+    linux /live/vmlinuz boot=live components quiet loglevel=3 splash toram lordos.lang=en
     initrd /live/initrd.img
 }
 EOF

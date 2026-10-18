@@ -367,22 +367,34 @@ static uint64_t tm_key(const char *s, float weight, float size, float line_h, fl
     return h | 1;                               /* 0 = empty slot */
 }
 
-static void text_measure_raw(const char *s, float weight, float size, float line_h, float max_w, int nowrap, float *w, float *h) {
+/* max_lines > 0: only the first max_lines lines count; if there is more text, the last one is cut
+ * with "…" and may take the whole width. */
+static void text_measure_raw(const char *s, float weight, float size, float line_h, float max_w, int nowrap, int max_lines,
+                             float *w, float *h) {
     int font = font_for(weight);
-    if (text_needs_layout(s, font)) { text_layout_measure(s, font, size, line_h, max_w, nowrap, w, h); return; }
+    if (text_needs_layout(s, font)) { text_layout_measure_ex(s, font, size, line_h, max_w, nowrap, max_lines, w, h); return; }
     int n = wrap(s, font, size, max_w, nowrap, lines, MAX_LINES);
+    int vis = max_lines > 0 && n > max_lines ? max_lines : n;
     float mw = 0;
-    for (int i = 0; i < n; i++) if (lines[i].width > mw) mw = lines[i].width;
+    for (int i = 0; i < vis; i++) if (lines[i].width > mw) mw = lines[i].width;
+    if (vis < n && max_w > 0 && mw < max_w) mw = max_w;
     *w = ceilf(mw);
-    *h = n * text_line_height(size, line_h);
+    *h = vis * text_line_height(size, line_h);
 }
 
 void text_measure(const char *s, float weight, float size, float line_h, float max_w, int nowrap, float *w, float *h) {
-    uint64_t k = tm_key(s, weight, size, line_h, max_w, nowrap);
+    text_measure_ex(s, weight, size, line_h, max_w, nowrap, 0, w, h);
+}
+
+void text_measure_ex(const char *s, float weight, float size, float line_h, float max_w, int nowrap, int max_lines,
+                     float *w, float *h) {
+    if (max_lines < 0) max_lines = 0;
+    /* the line limit goes in the same key as nowrap (0 lines = the key of plain text_measure) */
+    uint64_t k = tm_key(s, weight, size, line_h, max_w, nowrap | max_lines << 1);
     unsigned set = (unsigned)(k >> 20) & (TM_SETS - 1);
     for (int i = 0; i < TM_WAYS; i++)
         if (tm_cache[set][i].key == k) { *w = tm_cache[set][i].w; *h = tm_cache[set][i].h; return; }
-    text_measure_raw(s, weight, size, line_h, max_w, nowrap, w, h);
+    text_measure_raw(s, weight, size, line_h, max_w, nowrap, max_lines, w, h);
     int i = tm_next[set]++ % TM_WAYS;
     tm_cache[set][i].key = k;
     tm_cache[set][i].w = *w;
@@ -391,13 +403,13 @@ void text_measure(const char *s, float weight, float size, float line_h, float m
 
 float text_paint_scale = 1;
 
-void text_draw(Canvas *c, const char *s, float weight, float size, float line_h,
-               float x, float y, float box_w, int align, int nowrap, uint32_t argb) {
-    int font = font_for(weight);
-    if (text_needs_layout(s, font)) { text_layout_draw(c, s, font, size, line_h, x, y, box_w, align, nowrap, argb); return; }
+/* Fast path (Inter only): at most max_lines lines (0 = all). */
+static void draw_fast(Canvas *c, const char *s, int font, float size, float line_h,
+                      float x, float y, float box_w, int align, int nowrap, int max_lines, uint32_t argb) {
     /* scaled display: break lines with the logical metrics (what layout measured), draw at `size` */
     float k = text_paint_scale > 0 ? text_paint_scale : 1;
     int n = wrap(s, font, size / k, box_w / k, nowrap, lines, MAX_LINES);
+    if (max_lines > 0 && n > max_lines) n = max_lines;
     if (k != 1) for (int i = 0; i < n; i++) lines[i].width *= k;
     float lh = text_line_height(size, line_h);
     Font *f = &fonts[font];
@@ -419,5 +431,145 @@ void text_draw(Canvas *c, const char *s, float weight, float size, float line_h,
             pen += g->adv;
             prev = cp;
         }
+    }
+}
+
+void text_draw(Canvas *c, const char *s, float weight, float size, float line_h,
+               float x, float y, float box_w, int align, int nowrap, uint32_t argb) {
+    int font = font_for(weight);
+    if (text_needs_layout(s, font)) { text_layout_draw(c, s, font, size, line_h, x, y, box_w, align, nowrap, argb); return; }
+    draw_fast(c, s, font, size, line_h, x, y, box_w, align, nowrap, 0, argb);
+}
+
+/* ---- truncation with an ellipsis ---- */
+
+#define ELLIPSIS "\xe2\x80\xa6"           /* U+2026 */
+
+static int copy_str(char *out, int out_size, const char *s, int len) {
+    if (out_size <= 0) return 0;
+    if (len > out_size - 1) len = out_size - 1;
+    memcpy(out, s, (size_t)len);
+    out[len] = 0;
+    return len;
+}
+
+/* prefix (len bytes, trailing spaces dropped) + "…" */
+int text_ellipsis_join(char *out, int out_size, const char *s, int len) {
+    while (len > 0 && (s[len - 1] == ' ' || s[len - 1] == '\t')) len--;
+    if (len > out_size - 4) {               /* keep whole UTF-8 sequences */
+        len = out_size - 4;
+        while (len > 0 && ((unsigned char)s[len] & 0xc0) == 0x80) len--;
+    }
+    if (len < 0) len = 0;
+    int k = copy_str(out, out_size, s, len);
+    if (k + 3 < out_size) { memcpy(out + k, ELLIPSIS, 4); k += 3; }
+    return k;
+}
+
+static float ellipsize_raw(const char *s, float weight, float size, float box_w, int force, char *out, int out_size) {
+    int font = font_for(weight);
+    if (text_needs_layout(s, font)) return text_layout_ellipsize(s, font, size, box_w, force, out, out_size);
+    /* Inter covers the whole text, and it has no marks or joiners (those go through textlayout.c):
+     * every code point is a cluster */
+    float ell = text_glyph(0x2026, font, size)->adv;
+    float w = 0, best_w = 0;
+    uint32_t prev = 0;
+    int best = 0;
+    const char *p = s;
+    for (;;) {
+        const char *q = p;
+        uint32_t cp = utf8_next(&q);
+        if (!cp || cp == '\n') break;
+        float adv = text_glyph(cp, font, size)->adv + kern(font, size, prev, cp);
+        if (w + adv + ell <= box_w + 0.5f) { best = (int)(q - s); best_w = w + adv; }
+        w += adv;
+        prev = cp;
+        p = q;
+    }
+    if (!force && w <= box_w + 0.5f) { copy_str(out, out_size, s, (int)(p - s)); return -1; }
+    text_ellipsis_join(out, out_size, s, best);
+    return best_w + ell;
+}
+
+/* Byte ranges of the lines (logical metrics). */
+/* Cut positions are remembered like measurements (a list repaints the same labels every frame):
+ * key = text and parameters, value = the prefix length in bytes (-1: it fits) and the width. */
+#define EC_SETS 2048
+static struct { uint64_t key; int cut; float w; } ec_cache[EC_SETS];
+
+float text_ellipsize(const char *s, float weight, float size, float box_w, int force, char *out, int out_size) {
+    uint64_t k = tm_key(s, weight, size, 0, box_w, 2 + force);
+    unsigned slot = (unsigned)(k >> 17) & (EC_SETS - 1);
+    if (ec_cache[slot].key == k) {
+        int cut = ec_cache[slot].cut;
+        if (cut < 0) copy_str(out, out_size, s, (int)strlen(s));
+        else text_ellipsis_join(out, out_size, s, cut);
+        return ec_cache[slot].w;
+    }
+    float w = ellipsize_raw(s, weight, size, box_w, force, out, out_size);
+    int len = (int)strlen(out);
+    if (w >= 0 && out_size > 4 && len < out_size - 1) {          /* only if out wasn't truncated by its size */
+        ec_cache[slot].key = k;
+        ec_cache[slot].cut = len >= 3 ? len - 3 : 0;
+        ec_cache[slot].w = w;
+    } else if (w < 0) {
+        ec_cache[slot].key = k;
+        ec_cache[slot].cut = -1;
+        ec_cache[slot].w = w;
+    }
+    return w;
+}
+
+static int line_ranges(const char *s, int font, float size, float box_w, int nowrap, int *bs, int *be, int max) {
+    if (text_needs_layout(s, font)) return text_layout_line_bytes(s, font, size, box_w, nowrap, bs, be, max);
+    int n = wrap(s, font, size, box_w, nowrap, lines, MAX_LINES);
+    if (n > max) n = max;
+    for (int i = 0; i < n; i++) { bs[i] = (int)(lines[i].start - s); be[i] = (int)(lines[i].end - s); }
+    return n;
+}
+
+static void draw_lines(Canvas *c, const char *s, int font, float size, float line_h,
+                       float x, float y, float box_w, int align, int nowrap, int max_lines, uint32_t argb) {
+    if (text_needs_layout(s, font)) text_layout_draw_n(c, s, font, size, line_h, x, y, box_w, align, nowrap, max_lines, argb);
+    else draw_fast(c, s, font, size, line_h, x, y, box_w, align, nowrap, max_lines, argb);
+}
+
+void text_draw_ex(Canvas *c, const char *s, float weight, float size, float line_h,
+                  float x, float y, float box_w, int align, int nowrap, int max_lines, int ellipsis, uint32_t argb) {
+    if (max_lines < 0) max_lines = 0;
+    if (!ellipsis && !max_lines) { text_draw(c, s, weight, size, line_h, x, y, box_w, align, nowrap, argb); return; }
+    int font = font_for(weight);
+    float k = text_paint_scale > 0 ? text_paint_scale : 1;
+    float ls = size / k, lw = box_w / k, lh = text_line_height(size, line_h);
+    static char buf[8192], cut[8200];
+    if (nowrap && !strchr(s, '\n')) {          /* the common case: one line (a file name, a title) */
+        const char *t = text_ellipsize(s, weight, ls, lw, 0, cut, sizeof cut) < 0 ? s : cut;
+        draw_lines(c, t, font, size, line_h, x, y, box_w, align, 1, 1, argb);
+        return;
+    }
+    static int bs[MAX_LINES], be[MAX_LINES];
+    int n = line_ranges(s, font, ls, lw, nowrap, bs, be, MAX_LINES);
+    int vis = max_lines && n > max_lines ? max_lines : n;
+    int more = vis < n;
+    /* nothing is cut: the usual path */
+    if (!more && !nowrap) { draw_lines(c, s, font, size, line_h, x, y, box_w, align, nowrap, 0, argb); return; }
+    if (!more && nowrap) {
+        float w, h;
+        text_measure_ex(s, weight, ls, 0, 0, 1, 0, &w, &h);
+        if (w <= lw + 0.5f) { draw_lines(c, s, font, size, line_h, x, y, box_w, align, nowrap, 0, argb); return; }
+    }
+    /* lines before the last visible one, as usual (wrapped text); nowrap lines each on their own */
+    int first_cut = nowrap ? 0 : vis - 1;
+    if (first_cut > 0) draw_lines(c, s, font, size, line_h, x, y, box_w, align, nowrap, first_cut, argb);
+    for (int i = first_cut; i < vis; i++) {
+        float ly = y + i * lh;
+        if (ly > c->clip.y1 || ly + lh < c->clip.y0) continue;
+        /* the last visible line of wrapped text carries the rest of its paragraph */
+        int a = bs[i], b = be[i];
+        if (!nowrap && i == vis - 1) { b = a; while (s[b] && s[b] != '\n') b++; }
+        copy_str(buf, sizeof buf, s + a, b - a);
+        int force = i == vis - 1 && more;
+        text_ellipsize(buf, weight, ls, lw, force, cut, sizeof cut);
+        draw_lines(c, cut, font_for(weight), size, line_h, x, ly, box_w, align, 1, 1, argb);
     }
 }

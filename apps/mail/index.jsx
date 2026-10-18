@@ -4,17 +4,18 @@
 // an offline search index, and HTML turned into our own views without running anything.
 import {
   View, Text, useTheme, useStore, useAppWindow, useKeyboard, Button, TextInput, ScrollView, t, wm, fs, monthName, formatDate, formatTime,
+  Toolbar, ToolbarButton, ToolbarSpacer, ToolbarDivider, SearchField, Hairline, direction, textDirection,
   mailRequest, onMailEvent, mailStatus, mailConfig, mailAccounts, mailAvailable, addListener, clipboard,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { HtmlView, TextView } from './HtmlView.jsx';
 import { Compose } from './Compose.jsx';
 import { AccountSetup, AccountsPanel, CertDialog, PasswordPrompt, Sheet } from './Setup.jsx';
-import { CATEGORY_COLORS, categoryName, listDate, fullDate, folderIcon, folderName, addrShort, formatSize, openPath, revealPath } from './util.js';
+import { CATEGORY_COLORS, categoryName, listDate, fullDate, folderName, addrShort, formatSize, openPath, revealPath } from './util.js';
 import { quote } from './md.js';
 import { safeName } from './util.js';
 
-const ROW = 76;
+const ROW = 86;                 // sender, subject and two lines of preview, with room to breathe
 
 // ---- icon: an envelope on a blue tile (our own drawing) ----
 
@@ -31,6 +32,76 @@ export function Icon({ size: s }) {
       ))}
     </View>
   );
+}
+
+// ---- monochrome glyphs (the folder emoji are in color and ignore the theme) ----
+
+// Shapes drawn with views: an inbox tray, an archive box, a trash can and a folder.
+export function Glyph({ kind, size = 16, color }) {
+  const th = useTheme();
+  const c = color || th.accent;
+  const s = size, line = 1.5;
+  if (kind === 'tray') {
+    return (
+      <View style={{ width: s, height: s, justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ width: s * 0.86, height: s * 0.62, borderRadius: s * 0.14, border: `${line}px solid ${c}` }}>
+          <View style={{ position: 'absolute', left: 0, right: 0, top: s * 0.22, height: line, backgroundColor: c }} />
+        </View>
+      </View>
+    );
+  }
+  if (kind === 'archive') {
+    return (
+      <View style={{ width: s, height: s, justifyContent: 'center', alignItems: 'center', gap: 1 }}>
+        <View style={{ width: s * 0.9, height: s * 0.2, borderRadius: 1.5, backgroundColor: c }} />
+        <View style={{ width: s * 0.76, height: s * 0.48, borderBottomLeftRadius: s * 0.1, borderBottomRightRadius: s * 0.1, border: `${line}px solid ${c}`, alignItems: 'center' }}>
+          <View style={{ marginTop: s * 0.1, width: s * 0.28, height: line, backgroundColor: c }} />
+        </View>
+      </View>
+    );
+  }
+  if (kind === 'trash') {
+    return (
+      <View style={{ width: s, height: s, justifyContent: 'center', alignItems: 'center', gap: 1 }}>
+        <View style={{ width: s * 0.3, height: s * 0.1, borderTopLeftRadius: 1.5, borderTopRightRadius: 1.5, backgroundColor: c }} />
+        <View style={{ width: s * 0.8, height: line, backgroundColor: c }} />
+        <View style={{ width: s * 0.6, height: s * 0.54, borderBottomLeftRadius: s * 0.1, borderBottomRightRadius: s * 0.1, border: `${line}px solid ${c}` }} />
+      </View>
+    );
+  }
+  if (kind === 'folder') {
+    return (
+      <View style={{ width: s, height: s, justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ width: s * 0.86, height: s * 0.66 }}>
+          <View style={{ width: s * 0.36, height: s * 0.16, borderTopLeftRadius: s * 0.08, borderTopRightRadius: s * 0.08, backgroundColor: c }} />
+          <View style={{ flex: 1, borderRadius: s * 0.1, borderTopLeftRadius: 0, border: `${line}px solid ${c}` }} />
+        </View>
+      </View>
+    );
+  }
+  if (kind === 'calendar') {
+    return (
+      <View style={{ width: s, height: s, justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ width: s * 0.8, height: s * 0.74, borderRadius: s * 0.14, border: `${line}px solid ${c}`, overflow: 'hidden' }}>
+          <View style={{ height: s * 0.18, backgroundColor: c }} />
+        </View>
+      </View>
+    );
+  }
+  return null;
+}
+
+// The icon of a folder: a drawn shape or a monochrome glyph.
+const FOLDER_GLYPHS = { inbox: 'tray', archive: 'archive', trash: 'trash' };
+const FOLDER_CHARS = { drafts: '✎', sent: '➤', junk: '⚠', all: '≡', flagged: '⚑' };
+function FolderIcon({ f, color }) {
+  const th = useTheme();
+  const c = color || th.accent;
+  const g = FOLDER_GLYPHS[f.special];
+  if (g) return <Glyph kind={g} size={16} color={c} />;
+  const ch = FOLDER_CHARS[f.special];
+  if (ch) return <Text style={{ fontSize: f.special === 'sent' ? 12 : 13, color: c, textAlign: 'center' }}>{ch}</Text>;
+  return <Glyph kind="folder" size={16} color={c} />;
 }
 
 // ---- the list ----
@@ -52,27 +123,29 @@ function Row({ it, selected, onClick, onRightClick, cfg }) {
   const th = useTheme();
   if (!it) return <View style={{ height: ROW }} />;
   const unread = it.unreadN !== undefined ? it.unreadN > 0 : !it.seen;
-  const fg = selected ? '#fff' : th.text, dim = selected ? '#ffffffcc' : th.textDim;
+  const fg = selected ? '#fff' : th.text, dim = selected ? 'rgba(255,255,255,0.8)' : th.textDim;
   return (
-    <View onClick={onClick} onContextMenu={onRightClick} style={{ height: ROW, flexDirection: 'row', paddingHorizontal: 10, paddingVertical: 8, gap: 8,
-      backgroundColor: selected ? th.accent : 'transparent' }}>
-      <View style={{ width: 8, alignItems: 'center', paddingTop: 5 }}>
-        {unread ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: selected ? '#fff' : th.accent }} /> : null}
-      </View>
-      <View style={{ flex: 1, gap: 2, overflow: 'hidden' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={{ flex: 1, fontSize: 13, fontWeight: unread ? 700 : 500, color: fg, whiteSpace: 'nowrap', overflow: 'hidden' }}>{it.from || it.email || t('mail.unknownSender')}</Text>
-          {it.n > 1 ? <View style={{ paddingHorizontal: 5, borderRadius: 7, backgroundColor: selected ? '#ffffff33' : th.control }}><Text style={{ fontSize: 10, color: fg }}>{String(it.n)}</Text></View> : null}
-          {it.att ? <Text style={{ fontSize: 11, color: dim }}>📎</Text> : null}
-          {(it.anyFlag || it.flagged) ? <Text style={{ fontSize: 11, color: selected ? '#fff' : '#ff9f0a' }}>⚑</Text> : null}
-          <Text style={{ fontSize: 11, color: dim }}>{listDate(it.date)}</Text>
+    <View onClick={onClick} onContextMenu={onRightClick} style={{ height: ROW, paddingHorizontal: 6, paddingVertical: 2 }}>
+      <View style={{ flex: 1, flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 8, gap: 6, borderRadius: 7,
+        backgroundColor: selected ? th.accent : 'transparent' }}>
+        <View style={{ width: 10, alignItems: 'center', paddingTop: 5 }}>
+          {unread ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: selected ? '#fff' : th.accent }} /> : null}
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          {(it.labels || []).map((l) => <View key={l} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: CATEGORY_COLORS[l - 1] }} />)}
-          {it.answered ? <Text style={{ fontSize: 11, color: dim }}>↩</Text> : null}
-          <Text style={{ flex: 1, fontSize: 12, fontWeight: unread ? 600 : 400, color: fg, whiteSpace: 'nowrap', overflow: 'hidden' }}>{it.subject || t('mail.noSubject')}</Text>
+        <View style={{ flex: 1, gap: 1, overflow: 'hidden' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 18 }}>
+            <Text style={{ flex: 1, fontSize: 13, fontWeight: unread ? 600 : 500, color: fg, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.from || it.email || t('mail.unknownSender')}</Text>
+            {it.n > 1 ? <View style={{ minWidth: 18, height: 15, paddingHorizontal: 5, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? 'rgba(255,255,255,0.22)' : th.control }}><Text style={{ fontSize: 10, fontWeight: 600, color: fg }}>{String(it.n)}</Text></View> : null}
+            {it.att ? <Text style={{ fontSize: 12, color: dim }}>⧉</Text> : null}
+            {(it.anyFlag || it.flagged) ? <Text style={{ fontSize: 11, color: selected ? '#fff' : '#ff9f0a' }}>⚑</Text> : null}
+            <Text style={{ fontSize: 11, color: dim, whiteSpace: 'nowrap' }}>{listDate(it.date)}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, height: 17 }}>
+            {(it.labels || []).map((l) => <View key={l} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: CATEGORY_COLORS[l - 1], border: selected ? '1px solid #fff' : 'none' }} />)}
+            {it.answered ? <Text style={{ fontSize: 11, color: dim }}>↩</Text> : null}
+            <Text style={{ flex: 1, fontSize: 12, fontWeight: unread ? 600 : 400, color: fg, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.subject || t('mail.noSubject')}</Text>
+          </View>
+          <Text style={{ fontSize: 12, color: dim, overflow: 'hidden', height: 32, lineHeight: 16, numberOfLines: 2 }}>{it.preview}</Text>
         </View>
-        <Text style={{ fontSize: 12, color: dim, overflow: 'hidden', height: 30, lineHeight: 15 }}>{it.preview}</Text>
       </View>
       {cfg ? null : null}
     </View>
@@ -127,7 +200,7 @@ function MessageList({ src, rev, selected, onSelect, onMenu, cfg }) {
     rows.push(
       <View key={key} style={{ position: 'absolute', left: 0, right: 0, top: i * ROW - yy }}>
         <Row it={it} cfg={cfg} selected={!!it && selected === key} onClick={() => it && onSelect(it, i)} onRightClick={(e) => it && onMenu(it, e)} />
-        <View style={{ height: 1, marginLeft: 26, backgroundColor: th.separator, marginTop: -1 }} />
+        <View style={{ position: 'absolute', bottom: 0, height: 1, [direction() === 'rtl' ? 'right' : 'left']: 30, [direction() === 'rtl' ? 'left' : 'right']: 14, backgroundColor: th.separator }} />
       </View>,
     );
   }
@@ -155,7 +228,7 @@ function MessageList({ src, rev, selected, onSelect, onMenu, cfg }) {
           <Text style={{ fontSize: 13, color: th.textDim, textAlign: 'center' }}>{src.kind === 'search' ? t('mail.search.none') : t('mail.empty')}</Text>
         </View>
       ) : null}
-      {bar > 0 && <View onMouseDown={(e) => { drag.current = { py: e.y, y0: yy }; }} style={{ position: 'absolute', right: 2, width: 6, borderRadius: 3, height: bar,
+      {bar > 0 && <View onMouseDown={(e) => { drag.current = { py: e.y, y0: yy }; }} style={{ position: 'absolute', [direction() === 'rtl' ? 'left' : 'right']: 2, width: 6, borderRadius: 3, height: bar,
         top: (h - bar) * (yy / (max || 1)), backgroundColor: th.mode === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.28)' }} />}
     </View>
   );
@@ -198,9 +271,9 @@ function Invite({ msg }) {
           <Text style={{ fontSize: 20, fontWeight: 700, color: '#222' }}>{String(new Date(ev.start).getDate())}</Text>
         </View>
         <View style={{ flex: 1, gap: 2 }}>
-          <Text style={{ fontSize: 14, fontWeight: 700, color: th.text }}>{ev.title || t('mail.invite.untitled')}</Text>
+          <Text style={{ fontSize: 14, fontWeight: 600, color: th.text }}>{ev.title || t('mail.invite.untitled')}</Text>
           <Text style={{ fontSize: 12, color: th.textDim }}>{when}</Text>
-          {ev.loc ? <Text style={{ fontSize: 12, color: th.textDim }}>{`📍 ${ev.loc}`}</Text> : null}
+          {ev.loc ? <Text style={{ fontSize: 12, color: th.textDim }}>{ev.loc}</Text> : null}
           {ev.org ? <Text style={{ fontSize: 12, color: th.textDim }}>{t('mail.invite.organizer', { name: ev.org.name || ev.org.email })}</Text> : null}
         </View>
       </View>
@@ -246,16 +319,30 @@ function Attachments({ msg }) {
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
       {atts.map((a) => (
-        <View key={a.idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, borderRadius: 8, backgroundColor: th.control, maxWidth: 300 }}>
-          <Text style={{ fontSize: 20 }}>{/pdf/.test(a.type) ? '📕' : /^image/.test(a.type) ? '🖼️' : /calendar|ics/.test(a.type + a.name) ? '📅' : '📄'}</Text>
-          <View style={{ flex: 1 }}>
-            <Text onClick={() => open(a)} style={{ fontSize: 12, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{safeName(a.name)}</Text>
+        <View key={a.idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, backgroundColor: th.control,
+          border: `1px solid ${th.separator}`, maxWidth: 360, flexShrink: 1, minWidth: 0 }}>
+          <DocGlyph name={a.name} type={a.type} />
+          <View style={{ flex: 1, minWidth: 40 }}>
+            <Text onClick={() => open(a)} style={{ fontSize: 12, fontWeight: 500, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{safeName(a.name)}</Text>
             <Text style={{ fontSize: 11, color: th.textDim }}>{busy === a.idx ? t('mail.working') : formatSize(a.size)}</Text>
           </View>
           <Button small plain label={t('mail.att.open')} onClick={() => open(a)} />
           <Button small plain label={t('mail.att.save')} onClick={() => save(a)} />
         </View>
       ))}
+    </View>
+  );
+}
+
+// A document page with its extension on a colored band (instead of the color emoji).
+function DocGlyph({ name, type }) {
+  const ext = (/\.([a-z0-9]{1,4})$/i.exec(name || '') || [])[1] || '';
+  const color = /pdf/.test(type) ? '#e5483f' : /^image/.test(type) ? '#30a46c' : /calendar|ics/.test(`${type}${name}`) ? '#f2463d' : /zip|compress/.test(type) ? '#8e8e93' : '#2f7cf6';
+  return (
+    <View style={{ width: 24, height: 30, borderRadius: 3, backgroundColor: '#ffffff', border: '1px solid rgba(0,0,0,0.15)', justifyContent: 'flex-end', overflow: 'hidden' }}>
+      <View style={{ height: 11, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 7, fontWeight: 700, color: '#fff' }}>{ext.toUpperCase()}</Text>
+      </View>
     </View>
   );
 }
@@ -276,27 +363,31 @@ function MessageView({ msg, width, onLink, cfg, onTrustSender, collapsed, onExpa
   const warns = (msg.html?.links || []).filter((l) => l.w);
   if (collapsed) {
     return (
-      <View onClick={onExpand} style={{ padding: 10, borderRadius: 8, backgroundColor: th.control, flexDirection: 'row', gap: 8 }}>
-        <Text style={{ fontSize: 13, fontWeight: 600, color: th.text }}>{from.name || from.email}</Text>
-        <Text style={{ flex: 1, fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{(msg.text || '').slice(0, 140).replace(/\s+/g, ' ')}</Text>
+      <View onClick={onExpand} style={{ paddingVertical: 9, paddingHorizontal: 12, borderRadius: 8, backgroundColor: th.control, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Text style={{ fontSize: 13, fontWeight: 600, color: th.text, whiteSpace: 'nowrap' }}>{from.name || from.email}</Text>
+        <Text style={{ flex: 1, fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden', direction: textDirection(msg.text || '') }}>{(msg.text || '').slice(0, 140).replace(/\s+/g, ' ')}</Text>
         <Text style={{ fontSize: 11, color: th.textDim }}>{listDate(msg.date)}</Text>
       </View>
     );
   }
   return (
-    <View style={{ gap: 10 }}>
-      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
-        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: th.accent, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>{([...(from.name || from.email || '?')][0] || '?').toUpperCase()}</Text>
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+        <View style={{ width: 40, height: 40, borderRadius: 20, background: 'linear-gradient(180deg, #a5a5ad, #85858d)', alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 16, fontWeight: 600, color: '#fff' }}>{([...(from.name || from.email || '?')][0] || '?').toUpperCase()}</Text>
         </View>
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={{ fontSize: 14, fontWeight: 700, color: th.text }}>{from.name || from.email}</Text>
-          {from.name ? <Text style={{ fontSize: 11, color: th.textDim }}>{from.email}</Text> : null}
+        <View style={{ flex: 1, gap: 2, overflow: 'hidden' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Text style={{ flex: 1, fontSize: 14, fontWeight: 600, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{from.name || from.email}</Text>
+            {width > 420 ? <Text style={{ fontSize: 11, color: th.textDim, whiteSpace: 'nowrap' }}>{fullDate(msg.date)}</Text> : null}
+          </View>
+          {from.name ? <Text style={{ fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{from.email}</Text> : null}
           <Text style={{ fontSize: 12, color: th.textDim }}>{`${t('mail.to')}: ${(msg.to || []).map(addrShort).join(', ')}`}</Text>
           {msg.cc?.length ? <Text style={{ fontSize: 12, color: th.textDim }}>{`${t('mail.cc')}: ${msg.cc.map(addrShort).join(', ')}`}</Text> : null}
+          {width > 420 ? null : <Text style={{ fontSize: 11, color: th.textDim }}>{fullDate(msg.date)}</Text>}
         </View>
-        <Text style={{ fontSize: 11, color: th.textDim }}>{fullDate(msg.date)}</Text>
       </View>
+      <View style={{ height: 1, backgroundColor: th.separator }} />
       {nRemote > 0 && !showRemote && (
         <Banner color={th.control}>
           <Text style={{ fontSize: 12, color: th.text, flex: 1 }}>{t('mail.images.blocked', { count: nRemote })}{nTrackers ? ` ${t('mail.images.trackers', { count: nTrackers })}` : ''}</Text>
@@ -364,6 +455,10 @@ function MailMain() {
   const [cfg, setCfg] = useState(mailConfig.get());
   const readingRef = useRef(null);
   const { w: readW } = useSize(readingRef, 400);
+  const rootRef = useRef(null);
+  const { w: rootW } = useSize(rootRef, 400);
+  const compact = rootW > 100 && rootW < 1000;      // narrower panes in small windows
+  const sideW = compact ? 200 : 220, listW = compact ? 290 : 330;
   const accounts = cfg.accounts.filter((a) => a.kind === 'mail');
 
   useEffect(() => { setLoadErr(''); }, [JSON.stringify(src)]);
@@ -519,26 +614,27 @@ function MailMain() {
 
   // ---- sidebar ----
   const sidebar = (
-    <View style={{ width: 220, backgroundColor: th.sidebarBg }}>
+    <View style={{ width: sideW, backgroundColor: th.sidebarBg }}>
+      <Hairline edge="end" />
       <ScrollView style={{ flex: 1 }}>
-        <View style={{ padding: 8, gap: 1 }}>
-          <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, margin: 6 }}>{t('mail.favorites')}</Text>
-          <SideRow icon="📥" label={t('mail.unifiedInbox')} count={st.unread} selected={src.kind === 'unified' && !src.filter} onClick={() => { setSrc({ kind: 'unified' }); setQ(''); }} />
-          <SideRow icon="🔵" label={t('mail.unread')} selected={src.kind === 'unified' && src.filter === 'unread'} onClick={() => setSrc({ kind: 'unified', filter: 'unread' })} />
+        <View style={{ paddingHorizontal: 10, paddingTop: 10, paddingBottom: 10, gap: 1 }}>
+          <Caption first>{t('mail.favorites')}</Caption>
+          <SideRow icon={{ kind: 'tray' }} label={t('mail.unifiedInboxShort')} count={st.unread} selected={src.kind === 'unified' && !src.filter && !src.label} onClick={() => { setSrc({ kind: 'unified' }); setQ(''); }} />
+          <SideRow icon="●" label={t('mail.unread')} selected={src.kind === 'unified' && src.filter === 'unread'} onClick={() => setSrc({ kind: 'unified', filter: 'unread' })} />
           <SideRow icon="⚑" label={t('mail.flagged')} selected={src.kind === 'unified' && src.filter === 'flagged'} onClick={() => setSrc({ kind: 'unified', filter: 'flagged' })} />
           {folders.map((a) => {
             const status = st.accounts[a.id]?.status || a.status;
             const bad = st.authFailed[a.id] || status === 'auth' || status === 'cert' || status === 'offline';
             return (
-              <View key={a.id} style={{ marginTop: 10, gap: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', margin: 6, gap: 6 }}>
+              <View key={a.id} style={{ gap: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: 8, marginTop: 16, marginBottom: 4, gap: 6 }}>
                   <Text style={{ flex: 1, fontSize: 11, fontWeight: 600, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{a.name}</Text>
                   {status === 'sync' || status === 'connecting' ? <Text style={{ fontSize: 10, color: th.textDim }}>⟳</Text> : null}
                   {bad ? <Text onClick={() => setSheet(st.authFailed[a.id] || status === 'auth' ? { password: a.id } : st.certs.find((c) => c.acct === a.id) ? { cert: st.certs.find((c) => c.acct === a.id) } : 'accounts')}
                     style={{ fontSize: 11, color: '#ff9f0a' }}>⚠</Text> : null}
                 </View>
                 {a.folders.filter((f) => !f.noselect).map((f) => (
-                  <SideRow key={f.name} icon={folderIcon(f)} label={folderName(f)} count={f.special === 'drafts' ? f.total : f.special === 'sent' || f.special === 'trash' ? 0 : f.unread}
+                  <SideRow key={f.name} icon={{ folder: f }} label={folderName(f)} count={f.special === 'drafts' ? f.total : f.special === 'sent' || f.special === 'trash' ? 0 : f.unread}
                     indent={f.delim && f.name.split(f.delim).length > 1 && f.special === '' ? 1 : 0}
                     selected={src.kind === 'folder' && src.acct === a.id && src.folder === f.name} onClick={() => { setSrc({ kind: 'folder', acct: a.id, folder: f.name }); setQ(''); }} />
                 ))}
@@ -549,54 +645,52 @@ function MailMain() {
             const s2 = st.accounts[a.id]?.status;
             const bad = st.authFailed[a.id] || s2 === 'auth' || s2 === 'cert' || s2 === 'offline';
             return (
-              <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, margin: 6, marginTop: 10 }}>
-                <Text style={{ fontSize: 12 }}>📅</Text>
+              <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: 8, marginTop: 16, marginBottom: 4 }}>
+                <Glyph kind="calendar" size={12} color={th.textDim} />
                 <Text style={{ flex: 1, fontSize: 11, fontWeight: 600, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{a.name}</Text>
                 {s2 === 'sync' ? <Text style={{ fontSize: 10, color: th.textDim }}>⟳</Text> : null}
                 {bad ? <Text onClick={() => setSheet(st.certs.find((c) => c.acct === a.id) ? { cert: st.certs.find((c) => c.acct === a.id) } : { password: a.id })} style={{ fontSize: 11, color: '#ff9f0a' }}>⚠</Text> : null}
               </View>
             );
           })}
-          <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, margin: 6, marginTop: 12 }}>{t('mail.categories')}</Text>
+          <Caption>{t('mail.categories')}</Caption>
           {CATEGORY_COLORS.map((c, i) => (
             <SideRow key={c} icon={<View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c }} />} label={categoryName(i + 1, cfg)}
               selected={src.kind === 'unified' && src.label === i + 1} onClick={() => setSrc({ kind: 'unified', label: i + 1 })} />
           ))}
         </View>
       </ScrollView>
-      <View style={{ flexDirection: 'row', gap: 6, padding: 8 }}>
-        <Button small label={`＋ ${t('mail.addAccount')}`} onClick={() => setSheet('setup')} />
-        <Button small plain label="⚙" onClick={() => setSheet('accounts')} />
+      <View style={{ height: 40, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8 }}>
+        <Hairline edge="top" />
+        <Hairline edge="end" />
+        <Button small plain icon="⊕" label={t('mail.addAccount')} onClick={() => setSheet('setup')} />
+        <View style={{ flex: 1 }} />
+        <ToolbarButton small icon="⚙" title={t('mail.menu.accounts')} onClick={() => setSheet('accounts')} />
       </View>
     </View>
   );
 
-  const TB = ({ icon, label, onClick, disabled, primary }) => (
-    <View onClick={disabled ? undefined : onClick} style={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, height: 40, borderRadius: 7, minWidth: 54,
-      backgroundColor: primary ? th.accent : 'transparent', opacity: disabled ? 0.4 : 1 }}>
-      <Text style={{ fontSize: 15, color: primary ? '#fff' : th.text }}>{icon}</Text>
-      <Text style={{ fontSize: 10, color: primary ? '#fff' : th.textDim, whiteSpace: 'nowrap' }}>{label}</Text>
-    </View>
-  );
+  // toolbar: icon-only items with tooltips, as in Mail; the ones that need a message are dimmed
+  const glyphColor = () => th.text;            // ToolbarButton dims disabled items itself
   const toolbar = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 8, height: 50 }}>
-      <TB primary icon="✎" label={t('mail.new')} onClick={() => compose()} />
-      <View style={{ width: 10 }} />
-      <TB icon="↩" label={t('mail.reply')} disabled={!msg} onClick={act.reply} />
-      <TB icon="⇇" label={t('mail.replyAll')} disabled={!msg} onClick={act.replyAll} />
-      <TB icon="↪" label={t('mail.forward')} disabled={!msg} onClick={act.forward} />
-      <View style={{ width: 10 }} />
-      <TB icon="🗄" label={t('mail.archive')} disabled={!sel} onClick={act.archive} />
-      <TB icon="🗑" label={t('mail.delete')} disabled={!sel} onClick={act.remove} />
-      <TB icon="⚑" label={t('mail.flag')} disabled={!sel} onClick={act.flag} />
-      <TB icon="●" label={t('mail.category')} disabled={!sel} onClick={() => setSheet({ menu: 'labels' })} />
-      <View style={{ flex: 1 }} />
-    </View>
+    <Toolbar>
+      <ToolbarButton icon="✎" title={t('mail.new')} onClick={() => compose()} />
+      <ToolbarDivider />
+      <ToolbarButton icon="↩" title={t('mail.reply')} disabled={!msg} onClick={act.reply} />
+      <ToolbarButton icon="⇇" title={t('mail.replyAll')} disabled={!msg} onClick={act.replyAll} />
+      <ToolbarButton icon="↪" title={t('mail.forward')} disabled={!msg} onClick={act.forward} />
+      <ToolbarDivider />
+      <ToolbarButton icon={<Glyph kind="archive" size={16} color={glyphColor(sel)} />} title={t('mail.archive')} disabled={!sel} onClick={act.archive} />
+      <ToolbarButton icon={<Glyph kind="trash" size={16} color={glyphColor(sel)} />} title={t('mail.delete')} disabled={!sel} onClick={act.remove} />
+      <ToolbarButton icon="⚑" title={t('mail.flag')} disabled={!sel} onClick={act.flag} />
+      <ToolbarButton icon={<CategoryDots />} title={t('mail.category')} disabled={!sel} onClick={() => setSheet({ menu: 'labels' })} />
+      <ToolbarSpacer />
+    </Toolbar>
   );
   const search = (
-    <View style={{ paddingHorizontal: 10, paddingBottom: 8 }}>
-      <TextInput value={q} onChange={(v) => { setQ(v); if (v.trim().length >= 2) setSrc({ kind: 'search', q: v.trim() }); else if (!v.trim() && src.kind === 'search') setSrc({ kind: 'unified' }); }}
-        placeholder={`⌕ ${t('mail.search.placeholder')}`} onCancel={() => { setQ(''); setSrc({ kind: 'unified' }); }} />
+    <View style={{ paddingHorizontal: 12, paddingBottom: 10 }}>
+      <SearchField value={q} onChange={(v) => { setQ(v); if (v.trim().length >= 2) setSrc({ kind: 'search', q: v.trim() }); else if (!v.trim() && src.kind === 'search') setSrc({ kind: 'unified' }); }}
+        placeholder={t('mail.search.placeholder')} onCancel={() => { setQ(''); setSrc({ kind: 'unified' }); }} />
     </View>
   );
 
@@ -606,16 +700,15 @@ function MailMain() {
 
   const noAccounts = !accounts.length;
   return (
-    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: th.windowBg }}>
+    <View ref={rootRef} style={{ flex: 1, flexDirection: 'row', backgroundColor: th.windowBg }}>
       {sidebar}
-      <View style={{ width: 1, backgroundColor: th.separator }} />
       <View style={{ flex: 1 }}>
         {toolbar}
-        <View style={{ height: 1, backgroundColor: th.separator }} />
         <View style={{ flex: 1, flexDirection: 'row' }}>
-          <View style={{ width: 330 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, height: 34 }}>
-              <Text style={{ flex: 1, fontSize: 15, fontWeight: 700, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{listTitle}</Text>
+          <View style={{ width: listW }}>
+            <Hairline edge="end" />
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 10, height: 40 }}>
+              <Text style={{ flex: 1, fontSize: 15, fontWeight: 600, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{listTitle}</Text>
             </View>
             {search}
             <View style={{ height: 1, backgroundColor: th.separator }} />
@@ -627,12 +720,11 @@ function MailMain() {
                 </View>
               ) : <MessageList src={src} rev={listRev} selected={selKey} onSelect={openItem} onMenu={() => setSheet({ menu: 'labels' })} cfg={cfg} />}
           </View>
-          <View style={{ width: 1, backgroundColor: th.separator }} />
           <View ref={readingRef} style={{ flex: 1 }}>
             {msg ? (
               <ScrollView key={`${msg.acct}|${msg.folder}|${msg.uid}`} style={{ flex: 1 }}>
-                <View style={{ padding: 18, gap: 12 }}>
-                  <Text style={{ fontSize: 19, fontWeight: 700, color: th.text }}>{msg.subject || t('mail.noSubject')}</Text>
+                <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24, gap: 12 }}>
+                  <Text style={{ fontSize: 20, fontWeight: 600, color: th.text, lineHeight: 26, direction: textDirection(msg.subject || '') }}>{msg.subject || t('mail.noSubject')}</Text>
                   {(sel?.labels || []).length ? (
                     <View style={{ flexDirection: 'row', gap: 6 }}>
                       {sel.labels.map((l) => <View key={l} style={{ paddingHorizontal: 8, height: 18, borderRadius: 9, justifyContent: 'center', backgroundColor: `${CATEGORY_COLORS[l - 1]}44` }}><Text style={{ fontSize: 11, color: th.text }}>{categoryName(l, cfg)}</Text></View>)}
@@ -640,15 +732,15 @@ function MailMain() {
                   ) : null}
                   {thread.length > 1 ? thread.filter((x) => !(x.folder === msg.folder && x.uid === msg.uid)).map((x) => (
                     <ThreadItem key={`${x.folder}|${x.uid}`} it={x} expanded={expanded[`${x.folder}|${x.uid}`]} onToggle={() => setExpanded((e) => ({ ...e, [`${x.folder}|${x.uid}`]: !e[`${x.folder}|${x.uid}`] }))}
-                      width={readW - 36} onLink={onLink} cfg={cfg} onTrustSender={trustSender} />
+                      width={readW - 40} onLink={onLink} cfg={cfg} onTrustSender={trustSender} />
                   )) : null}
-                  <MessageView msg={msg} width={readW - 36} onLink={onLink} cfg={cfg} onTrustSender={trustSender} />
+                  <MessageView msg={msg} width={readW - 40} onLink={onLink} cfg={cfg} onTrustSender={trustSender} />
                 </View>
               </ScrollView>
             ) : (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 40, opacity: 0.3 }}>✉</Text>
-                <Text style={{ fontSize: 13, color: th.textDim }}>{loadErr || t('mail.noSelection')}</Text>
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 }}>
+                <Text style={{ fontSize: 40, color: th.textDim, opacity: 0.6 }}>✉</Text>
+                <Text style={{ fontSize: 13, color: th.textDim, textAlign: 'center' }}>{loadErr || t('mail.noSelection')}</Text>
               </View>
             )}
           </View>
@@ -677,14 +769,43 @@ function MailMain() {
   );
 }
 
+function Caption({ children, first }) {
+  const th = useTheme();
+  return <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, marginHorizontal: 8, marginTop: first ? 4 : 16, marginBottom: 4 }}>{children}</Text>;
+}
+
+// Three small dots in the category colors: the toolbar item for categories.
+function CategoryDots() {
+  return (
+    <View style={{ width: 16, height: 16, alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: CATEGORY_COLORS[0] }} />
+      <View style={{ flexDirection: 'row', gap: 1 }}>
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: CATEGORY_COLORS[3] }} />
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: CATEGORY_COLORS[4] }} />
+      </View>
+    </View>
+  );
+}
+
+// Source-list row. icon: a glyph (drawn in the accent color), { kind } for a drawn shape,
+// { folder } for a mail folder, or an element.
 function SideRow({ icon, label, count, selected, onClick, indent = 0 }) {
   const th = useTheme();
+  const [hover, setHover] = useState(false);
+  const c = selected ? '#fff' : th.accent;
+  let ic;
+  if (typeof icon === 'string') ic = <Text style={{ fontSize: icon === '●' ? 10 : 13, color: c, textAlign: 'center' }}>{icon}</Text>;
+  else if (icon && icon.kind) ic = <Glyph kind={icon.kind} size={16} color={c} />;
+  else if (icon && icon.folder) ic = <FolderIcon f={icon.folder} color={c} />;
+  else ic = icon;
+  const rtl = direction() === 'rtl';
   return (
-    <View onClick={onClick} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 26, paddingLeft: 8 + indent * 14, paddingRight: 8, borderRadius: 6,
-      backgroundColor: selected ? th.accent : 'transparent' }}>
-      {typeof icon === 'string' ? <Text style={{ fontSize: 13, width: 18, textAlign: 'center' }}>{icon}</Text> : <View style={{ width: 18, alignItems: 'center' }}>{icon}</View>}
+    <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 28, [rtl ? 'paddingRight' : 'paddingLeft']: 8 + indent * 14, [rtl ? 'paddingLeft' : 'paddingRight']: 8, borderRadius: 6,
+        backgroundColor: selected ? th.accent : hover ? th.hover : 'transparent' }}>
+      <View style={{ width: 18, alignItems: 'center', justifyContent: 'center' }}>{ic}</View>
       <Text style={{ flex: 1, fontSize: 13, color: selected ? '#fff' : th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</Text>
-      {count ? <Text style={{ fontSize: 11, fontWeight: 600, color: selected ? '#fff' : th.textDim }}>{String(count)}</Text> : null}
+      {count ? <Text style={{ fontSize: 11, fontWeight: 500, color: selected ? 'rgba(255,255,255,0.85)' : th.textDim }}>{String(count)}</Text> : null}
     </View>
   );
 }
@@ -695,9 +816,9 @@ function ThreadItem({ it, expanded, onToggle, width, onLink, cfg, onTrustSender 
   useEffect(() => { if (expanded && !m) mailRequest('open', { acct: it.acct, folder: it.folder, uid: it.uid }).then(setM).catch(() => {}); }, [expanded]);
   if (expanded && m) return <View style={{ gap: 6 }}><Text onClick={onToggle} style={{ fontSize: 11, color: th.accent }}>{t('mail.thread.collapse')}</Text><MessageView msg={m} width={width} onLink={onLink} cfg={cfg} onTrustSender={onTrustSender} /></View>;
   return (
-    <View onClick={onToggle} style={{ padding: 10, borderRadius: 8, backgroundColor: th.control, flexDirection: 'row', gap: 8 }}>
-      <Text style={{ fontSize: 13, fontWeight: 600, color: th.text }}>{it.from || it.email}</Text>
-      <Text style={{ flex: 1, fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{it.preview}</Text>
+    <View onClick={onToggle} style={{ paddingVertical: 9, paddingHorizontal: 12, borderRadius: 8, backgroundColor: th.control, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <Text style={{ fontSize: 13, fontWeight: 600, color: th.text, whiteSpace: 'nowrap' }}>{it.from || it.email}</Text>
+      <Text style={{ flex: 1, fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden', direction: textDirection(it.preview || '') }}>{it.preview}</Text>
       <Text style={{ fontSize: 11, color: th.textDim }}>{listDate(it.date)}</Text>
     </View>
   );

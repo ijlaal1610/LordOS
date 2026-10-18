@@ -108,12 +108,5 @@
   "encLock": "Bloquear",
   "encWorking": "Comprobando la frase…",
   "notify.lockedTitle": "Las copias de seguridad están cifradas",
-  "notify.lockedBody": "Escribí la frase para que sigan las copias programadas.",
-  "err.wrong-passphrase": "Frase incorrecta",
-  "err.not-encrypted": "Este destino no está cifrado",
-  "err.plain-backups-exist": "Ya hay copias sin cifrar en este destino: elegí otro",
-  "err.setup-failed": "No se pudo activar el cifrado",
-  "err.no-destination": "Elegí un destino primero",
-  "err.locked": "Las copias están cifradas: desbloquealas primero",
-  "err.interrupted": "Se interrumpió"
+  "notify.lockedBody": "Escribí la frase para que sigan las copias programadas."
 }

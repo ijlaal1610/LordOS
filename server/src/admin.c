@@ -348,7 +348,7 @@ static void kid_read(Kid *k) {
     close(k->fd);
     int code = wait_code(k->pid);
     cur_client = k->client;
-    if (k->id && !k->done) put_line(k->id, "ERR", code == 0 ? "finished without a reply" : "finished with an error");
+    if (k->id && !k->done) put_line(k->id, "ERR", code == 0 ? "admin.noReply" : "admin.actionFailed");
     if (!k->id) {
         char msg[96];
         snprintf(msg, sizeof msg, "daemon %s exit %d", k->name, code);
@@ -460,7 +460,7 @@ static int locale_generated(const char *name) {
 
 /* Enables the line in /etc/locale.gen (uncomments or adds it) and runs locale-gen. */
 static void act_locale_gen(const char *name) {
-    if (!supported_locale(name)) { admin_say("ERR", "unsupported region: %s", name); return; }
+    if (!supported_locale(name)) { admin_err("locale.unsupported", "name", name, NULL); return; }
     char want[160];
     snprintf(want, sizeof want, "%s UTF-8", name);
     FILE *f = fopen("/etc/locale.gen", "r");
@@ -478,29 +478,29 @@ static void act_locale_gen(const char *name) {
         } else fputs(line, mem);
     }
     if (f) fclose(f);
-    if (!mem) { admin_say("ERR", "out of memory"); return; }
+    if (!mem) { admin_err("sys.outOfMemory", NULL); return; }
     if (!found) fprintf(mem, "%s\n", want);
     fclose(mem);
     int fd = open("/etc/locale.gen.lordos", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
     int ok = fd >= 0 && write(fd, buf, len) == (ssize_t)len;
     if (fd >= 0) ok = close(fd) == 0 && ok;
     free(buf);
-    if (!ok || rename("/etc/locale.gen.lordos", "/etc/locale.gen")) { admin_say("ERR", "could not write /etc/locale.gen"); return; }
+    if (!ok || rename("/etc/locale.gen.lordos", "/etc/locale.gen")) { admin_err("sys.writeFailed", "path", "/etc/locale.gen", NULL); return; }
     const char *const argv[] = { "/usr/sbin/locale-gen", NULL };
     int r = admin_run(argv);
-    if (r == 0) admin_say("OK", "region %s generated", name);
-    else admin_say("ERR", "locale-gen exited with code %d", r);
+    if (r == 0) admin_ok("locale.generated", "name", name, NULL);
+    else admin_err("sys.programFailed", "program", "locale-gen", "code", lerr_int(r), NULL);
 }
 
 static void act_system_locale(const char *name) {
-    if (!supported_locale(name) && strcmp(name, "C.UTF-8")) { admin_say("ERR", "unsupported region: %s", name); return; }
-    if (!locale_generated(name)) { admin_say("ERR", "region %s is not generated", name); return; }
+    if (!supported_locale(name) && strcmp(name, "C.UTF-8")) { admin_err("locale.unsupported", "name", name, NULL); return; }
+    if (!locale_generated(name)) { admin_err("locale.notGenerated", "name", name, NULL); return; }
     int fd = open("/etc/default/locale.lordos", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
-    if (fd < 0) { admin_say("ERR", "could not write /etc/default/locale"); return; }
+    if (fd < 0) { admin_err("sys.writeFailed", "path", "/etc/default/locale", NULL); return; }
     dprintf(fd, "LANG=%s\n", name);
     close(fd);
-    if (rename("/etc/default/locale.lordos", "/etc/default/locale")) { admin_say("ERR", "could not write /etc/default/locale"); return; }
-    admin_say("OK", "system region: %s", name);
+    if (rename("/etc/default/locale.lordos", "/etc/default/locale")) { admin_err("sys.writeFailed", "path", "/etc/default/locale", NULL); return; }
+    admin_ok("locale.systemSet", "name", name, NULL);
 }
 
 static void act_timezone(const char *zone) {
@@ -510,15 +510,15 @@ static void act_timezone(const char *zone) {
     char path[320];
     struct stat st;
     snprintf(path, sizeof path, "/usr/share/zoneinfo/%s", zone);
-    if (!ok || stat(path, &st) || !S_ISREG(st.st_mode)) { admin_say("ERR", "unknown time zone: %s", zone); return; }
+    if (!ok || stat(path, &st) || !S_ISREG(st.st_mode)) { admin_err("tz.unknown", "zone", zone, NULL); return; }
     const char *const argv[] = { "/usr/bin/timedatectl", "set-timezone", zone, NULL };
-    if (access(argv[0], X_OK) == 0 && admin_run(argv) == 0) { admin_say("OK", "time zone: %s", zone); return; }
+    if (access(argv[0], X_OK) == 0 && admin_run(argv) == 0) { admin_ok("tz.set", "zone", zone, NULL); return; }
     /* without systemd: the /etc/localtime link and /etc/timezone, like dpkg-reconfigure */
     unlink("/etc/localtime.lordos");
-    if (symlink(path, "/etc/localtime.lordos") || rename("/etc/localtime.lordos", "/etc/localtime")) { admin_say("ERR", "could not change /etc/localtime"); return; }
+    if (symlink(path, "/etc/localtime.lordos") || rename("/etc/localtime.lordos", "/etc/localtime")) { admin_err("sys.writeFailed", "path", "/etc/localtime", NULL); return; }
     FILE *f = fopen("/etc/timezone", "w");
     if (f) { fprintf(f, "%s\n", zone); fclose(f); }
-    admin_say("OK", "time zone: %s", zone);
+    admin_ok("tz.set", "zone", zone, NULL);
 }
 
 /* Fonts for the language's script and dictionaries for the input methods (ime.c), from
@@ -569,7 +569,7 @@ static void act_langpack(const char *arg) {
         if (n - i != 3 || arg[i + 1] < 'A' || arg[i + 1] > 'Z' || arg[i + 2] < 'A' || arg[i + 2] > 'Z') ok = 0;
         else { cc[0] = (char)(arg[i + 1] - 'A' + 'a'); cc[1] = (char)(arg[i + 2] - 'A' + 'a'); }
     }
-    if (!ok) { admin_say("ERR", "invalid language code: %s", arg); return; }
+    if (!ok) { admin_err("lang.invalidCode", "code", arg, NULL); return; }
     static const char *const patterns[] = { "manpages-%s", "hunspell-%s", "aspell-%s", "hyphen-%s", "mythes-%s" };
     char names[24][48];
     int count = 0;
@@ -585,14 +585,14 @@ static void act_langpack(const char *arg) {
     }
     for (size_t i = 0; i < sizeof script_fonts / sizeof *script_fonts; i++)
         if (!strcmp(script_fonts[i].lang, ll) && count < 20) snprintf(names[count++], sizeof names[0], "%s", script_fonts[i].pkgs);
-    if (!count) { admin_say("OK", "no Debian packages for «%s»: only the region and the LordOS texts", arg); return; }
+    if (!count) { admin_ok("lang.noDebianPackages", "lang", arg, NULL); return; }
     const char *argv[28] = { "/usr/bin/apt-get", "install", "-y", "--no-install-recommends" };
     int a = 4;
-    for (int i = 0; i < count; i++) { argv[a++] = names[i]; admin_say("LOG", "package: %s", names[i]); }
+    for (int i = 0; i < count; i++) { argv[a++] = names[i]; admin_log("lang.package", "name", names[i], NULL); }
     argv[a] = NULL;
     int r = admin_run(argv);
-    if (r == 0) admin_say("OK", "%d package(s) installed for «%s»", count, arg);
-    else admin_say("ERR", "apt-get exited with code %d", r);
+    if (r == 0) admin_ok("lang.installed", "count", lerr_int(count), "lang", arg, NULL);
+    else admin_err("sys.programFailed", "program", "apt-get", "code", lerr_int(r), NULL);
 }
 
 #endif /* LORD_NETD */
@@ -629,7 +629,7 @@ static void run_action(size_t a, AdminReq *req, int id, const char *arg, size_t 
     if (actions[a].flags & A_FORK) {
         Kid *k = kid_new();
         int p[2];
-        if (!k || pipe2(p, O_CLOEXEC)) { admin_say("ERR", "too many actions in progress"); return; }
+        if (!k || pipe2(p, O_CLOEXEC)) { admin_err("admin.tooMany", NULL); return; }
         pid_t pid = fork();
         if (pid == 0) {
             close(p[0]);
@@ -643,7 +643,7 @@ static void run_action(size_t a, AdminReq *req, int id, const char *arg, size_t 
             _exit(0);
         }
         close(p[1]);
-        if (pid < 0) { close(p[0]); admin_say("ERR", "could not create the process"); }
+        if (pid < 0) { close(p[0]); admin_err("admin.forkFailed", NULL); }
         else *k = (Kid){ .pid = pid, .fd = p[0], .id = id, .client = client };
     } else actions[a].fn(req, arg, len);
 }
@@ -699,7 +699,7 @@ static int netd_connect(void) {
 static void netd_lost(void) {
     if (netd_fd >= 0) close(netd_fd);
     netd_fd = -1;
-    for (int i = 0; i < netd_npending; i++) put_line(netd_pending[i], "ERR", "the system network (lord-netd) restarted: try again");
+    for (int i = 0; i < netd_npending; i++) put_line(netd_pending[i], "ERR", "netd.restarted");
     netd_npending = 0;
 }
 
@@ -745,11 +745,11 @@ static void helper_request(int id, const char *action, char *arg, size_t len, vo
     h->req->id = id;
     size_t a = find_action(action);
     int fw = 1;
-    if (a == N_ACTIONS) admin_say("ERR", "unknown action");
-    else if (strlen(arg) != len) admin_say("ERR", "invalid argument");
-    else if (!h->allowed && !(actions[a].flags & A_ANYONE)) admin_say("ERR", "user %s is not an administrator (sudo group)", h->user);
+    if (a == N_ACTIONS) admin_err("admin.unknownAction", NULL);
+    else if (strlen(arg) != len) admin_err("admin.invalidArgument", NULL);
+    else if (!h->allowed && !(actions[a].flags & A_ANYONE)) admin_err("admin.notAdmin", "user", h->user, NULL);
     else if (!strncmp(action, "net-", 4) && (fw = netd_forward(id, action, arg, len)) <= 0) {
-        if (fw < 0) admin_say("ERR", "the system network (lord-netd) is not available");
+        if (fw < 0) admin_err("netd.unavailable", NULL);
     } else run_action(a, h->req, id, arg, len, -1);
     cur_id = 0;
 }
@@ -872,10 +872,10 @@ static void netd_request(int id, const char *action, char *arg, size_t len, void
     cur_id = id;
     c->req.id = id;
     size_t a = find_action(action);
-    if (a == N_ACTIONS || strncmp(action, "net-", 4)) admin_say("ERR", "unknown action");
-    else if (strlen(arg) != len) admin_say("ERR", "invalid argument");
-    else if (!c->req.admin && !(actions[a].flags & A_ANYONE)) admin_say("ERR", "user %s is not an administrator (sudo group)", c->user);
-    else if (!strcmp(action, "net-restore")) admin_say("OK", "0 interface(s): the network belongs to the system (lord-netd)");
+    if (a == N_ACTIONS || strncmp(action, "net-", 4)) admin_err("admin.unknownAction", NULL);
+    else if (strlen(arg) != len) admin_err("admin.invalidArgument", NULL);
+    else if (!c->req.admin && !(actions[a].flags & A_ANYONE)) admin_err("admin.notAdmin", "user", c->user, NULL);
+    else if (!strcmp(action, "net-restore")) admin_ok("net.restoreSystem", NULL);
     else {
         run_action(a, &c->req, id, arg, len, cur_client);
         if (!strcmp(action, "net-vpn-up")) netd_vpn_note(arg, 1);

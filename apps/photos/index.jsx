@@ -6,7 +6,7 @@
 // (crop, rotation, brightness and contrast) are saved as a copy: the original is left untouched.
 import {
   View, Text, Image, MediaView, ScrollView, SidebarItem, SectionTitle, Button, Slider, useTheme, useAppWindow, useKeyboard, useWindowState, wm,
-  t as tr, media, useThumb, userDirs, fs, addListener, direction, print, ThemeProvider, ToolbarButton, ToolbarGroup, EmptyState, useStore, windows,
+  t as tr, errorText, media, useThumb, userDirs, fs, addListener, direction, print, ThemeProvider, ToolbarButton, ToolbarGroup, EmptyState, useStore, windows,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 
@@ -245,7 +245,7 @@ function Viewer({ list, index, setIndex, onClose, winId, mode }) {
         <MediaView media={id} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }} />
         {error && <View style={{ position: 'absolute', left: 0, right: 0, top: '45%', alignItems: 'center', gap: 4 }}>
           <Text style={{ fontSize: 13, color: '#ffb0b0' }}>{tr('photos.cantOpen')}</Text>
-          <Text style={{ fontSize: 11, color: '#999' }}>{error}</Text>
+          <Text style={{ fontSize: 11, color: '#999' }}>{errorText(error)}</Text>
         </View>}
         {edit?.crop && edit.crop.w > 2 && (() => {
           const c = edit.crop, dim = 'rgba(0,0,0,0.5)';

@@ -16,6 +16,7 @@
  *   depth, and without following links. */
 
 #include "fsops.h"
+#include "errcode.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -79,7 +80,9 @@ int fsops_protected(const char *real) {
 
 static double now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
 
-static void seterr(char *e, size_t n, const char *m) { if (e && n) pathf(e, n, "%s", m); }
+/* err buffers carry code lines (errcode.h): lord.fs throws them translated */
+static void seterr(char *e, size_t n, const char *code) { if (e && n) lerr_set(e, n, code, NULL); }
+static void seterrno(char *e, size_t n, int no) { if (e && n) lerr_set(e, n, "sys.errno", "errno", lerr_errno(no), NULL); }
 
 /* ---- deleting a tree (only used by cross-disk move and the trash) ---- */
 
@@ -186,11 +189,11 @@ static void *job_main(void *arg) {
     walk_total(j->src, j, 0);
     int r = copy_tree(j->src, j->dst, j, 0);
     if (r) {
-        pathf(j->error, sizeof j->error, "%s", strerror(errno));
+        seterrno(j->error, sizeof j->error, errno);
         rm_tree(j->dst);                                /* no half-done copies */
         j->failed = 1;
     } else if (j->move && rm_tree(j->src)) {
-        pathf(j->error, sizeof j->error, "copied, but the original could not be removed: %s", strerror(errno));
+        lerr_set(j->error, sizeof j->error, "fs.moveRemoveFailed", "errno", lerr_errno(errno), NULL);
         j->failed = 1;
     }
     __atomic_store_n(&j->done, 1, __ATOMIC_RELEASE);
@@ -199,13 +202,13 @@ static void *job_main(void *arg) {
 
 int fsjob_start(const char *src, const char *dst, int move, char *err, size_t errlen) {
     struct stat st;
-    if (lstat(src, &st)) { seterr(err, errlen, strerror(errno)); return -1; }
-    if (!lstat(dst, &st)) { seterr(err, errlen, "already exists"); return -1; }
+    if (lstat(src, &st)) { seterrno(err, errlen, errno); return -1; }
+    if (!lstat(dst, &st)) { seterr(err, errlen, "fs.exists"); return -1; }
     size_t n = strlen(src);
-    if (!strncmp(dst, src, n) && dst[n] == '/') { seterr(err, errlen, "cannot copy a folder into itself"); return -1; }
+    if (!strncmp(dst, src, n) && dst[n] == '/') { seterr(err, errlen, "fs.copyIntoItself"); return -1; }
     FsJob *j = NULL;
     for (int i = 0; i < FSJOB_MAX; i++) if (!jobs[i].used) { j = &jobs[i]; break; }
-    if (!j) { seterr(err, errlen, "too many copies in progress"); return -1; }
+    if (!j) { seterr(err, errlen, "fs.tooManyCopies"); return -1; }
     memset(j, 0, sizeof *j);
     j->used = 1;
     j->id = next_job++;
@@ -213,12 +216,12 @@ int fsjob_start(const char *src, const char *dst, int move, char *err, size_t er
     pathf(j->src, sizeof j->src, "%s", src);
     pathf(j->dst, sizeof j->dst, "%s", dst);
     if (move && rename(src, dst) == 0) { j->done = 1; return j->id; }   /* same disk: instant */
-    if (move && errno != EXDEV) { int e = errno; j->used = 0; seterr(err, errlen, strerror(e)); return -1; }
+    if (move && errno != EXDEV) { int e = errno; j->used = 0; seterrno(err, errlen, e); return -1; }
     pthread_t t;
     pthread_attr_t a;
     pthread_attr_init(&a);
     pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
-    if (pthread_create(&t, &a, job_main, j)) { j->used = 0; seterr(err, errlen, "could not start the copy"); pthread_attr_destroy(&a); return -1; }
+    if (pthread_create(&t, &a, job_main, j)) { j->used = 0; seterr(err, errlen, "fs.copyStartFailed"); pthread_attr_destroy(&a); return -1; }
     pthread_attr_destroy(&a);
     return j->id;
 }
@@ -301,8 +304,8 @@ static void url_decode(const char *s, char *out, size_t n) {
 int fstrash_put(const char *real, char *err, size_t errlen) {
     char dir[PATH_MAX], top[PATH_MAX];
     int rel;
-    if (trash_dir_for(real, dir, sizeof dir, top, sizeof top, &rel) || mkdirs_trash(dir)) { seterr(err, errlen, "there is no trash for that location"); return -1; }
-    if (!strncmp(real, dir, strlen(dir))) { seterr(err, errlen, "already in the Trash"); return -1; }
+    if (trash_dir_for(real, dir, sizeof dir, top, sizeof top, &rel) || mkdirs_trash(dir)) { seterr(err, errlen, "fs.noTrash"); return -1; }
+    if (!strncmp(real, dir, strlen(dir))) { seterr(err, errlen, "fs.alreadyInTrash"); return -1; }
     const char *base = strrchr(real, '/');
     base = base ? base + 1 : real;
     char name[NAME_MAX + 16], info[PATH_MAX + 300], dest[PATH_MAX + 300];
@@ -317,7 +320,7 @@ int fstrash_put(const char *real, char *err, size_t errlen) {
         fd = open(info, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
         if (fd < 0 && errno != EEXIST) break;
     }
-    if (fd < 0) { seterr(err, errlen, "could not create the Trash entry"); return -1; }
+    if (fd < 0) { seterr(err, errlen, "fs.trashEntryFailed"); return -1; }
     char path[PATH_MAX * 3], enc[PATH_MAX * 3], when[32];
     pathf(path, sizeof path, "%s", rel ? real + strlen(top) + 1 : real);
     url_encode(path, enc, sizeof enc);
@@ -330,7 +333,8 @@ int fstrash_put(const char *real, char *err, size_t errlen) {
     if (rename(real, dest)) {
         int e = errno;
         unlink(info);
-        seterr(err, errlen, e == EXDEV ? "it is on a different disk than its trash" : strerror(e));
+        seterr(err, errlen, e == EXDEV ? "fs.trashOtherDisk" : "sys.errno");
+        if (e != EXDEV) seterrno(err, errlen, e);
         return -1;
     }
     return 0;
@@ -435,22 +439,22 @@ static int trash_id(const char *id, char *dir, size_t dn, char *name, size_t nn)
 int fstrash_restore(const char *id, char *err, size_t errlen) {
     char dir[PATH_MAX], name[NAME_MAX + 16], orig[PATH_MAX * 2], date[64];
     if (trash_id(id, dir, sizeof dir, name, sizeof name) || read_info(dir, name, orig, sizeof orig, date, sizeof date) || !orig[0]) {
-        seterr(err, errlen, "not in the Trash");
+        seterr(err, errlen, "fs.notInTrash");
         return -1;
     }
     /* the original folder must still exist, inside the roots and unprotected */
     char parent[PATH_MAX * 2], rparent[PATH_MAX];
     pathf(parent, sizeof parent, "%s", orig);
     char *sl = strrchr(parent, '/');
-    if (!sl) { seterr(err, errlen, "invalid original location"); return -1; }
+    if (!sl) { seterr(err, errlen, "fs.trashBadOrigin"); return -1; }
     *sl = 0;
-    if (!realpath(parent[0] ? parent : "/", rparent) || !fsops_allowed(rparent)) { seterr(err, errlen, "the original folder no longer exists"); return -1; }
+    if (!realpath(parent[0] ? parent : "/", rparent) || !fsops_allowed(rparent)) { seterr(err, errlen, "fs.trashOriginGone"); return -1; }
     char dest[PATH_MAX * 2];
     pathf(dest, sizeof dest, "%s/%s", rparent, sl + 1);
-    if (fsops_protected(dest)) { seterr(err, errlen, "that folder is protected"); return -1; }
+    if (fsops_protected(dest)) { seterr(err, errlen, "fs.protected"); return -1; }
     struct stat st;
-    if (!lstat(dest, &st)) { seterr(err, errlen, "there is already a file with that name in the original location"); return -1; }
-    if (rename(id, dest)) { seterr(err, errlen, strerror(errno)); return -1; }
+    if (!lstat(dest, &st)) { seterr(err, errlen, "fs.trashRestoreExists"); return -1; }
+    if (rename(id, dest)) { seterrno(err, errlen, errno); return -1; }
     char info[PATH_MAX * 2];
     pathf(info, sizeof info, "%s/info/%s.trashinfo", dir, name);
     unlink(info);
@@ -459,8 +463,8 @@ int fstrash_restore(const char *id, char *err, size_t errlen) {
 
 int fstrash_remove(const char *id, char *err, size_t errlen) {
     char dir[PATH_MAX], name[NAME_MAX + 16];
-    if (trash_id(id, dir, sizeof dir, name, sizeof name)) { seterr(err, errlen, "not in the Trash"); return -1; }
-    if (rm_tree(id)) { seterr(err, errlen, strerror(errno)); return -1; }
+    if (trash_id(id, dir, sizeof dir, name, sizeof name)) { seterr(err, errlen, "fs.notInTrash"); return -1; }
+    if (rm_tree(id)) { seterrno(err, errlen, errno); return -1; }
     char info[PATH_MAX * 2];
     pathf(info, sizeof info, "%s/info/%s.trashinfo", dir, name);
     unlink(info);

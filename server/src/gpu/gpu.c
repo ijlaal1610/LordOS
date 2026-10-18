@@ -1,18 +1,18 @@
-/* gpu.c — composición por GPU de lord-server: GBM + EGL + GLES2 de Mesa (aprobado por el
- * usuario el 2026-10-16; ver docs/GPU.md).
+/* gpu.c — lord-server's GPU composition: Mesa's GBM + EGL + GLES2 (approved by the
+ * user on 2026-10-16; see docs/GPU.md).
  *
- * El modesetting sigue siendo el propio (kms.c, ioctls sin libdrm): GBM se crea sobre el mismo
- * fd de la tarjeta y sus búferes pasan a framebuffers con DRM_IOCTL_MODE_ADDFB2.
+ * Modesetting is still our own (kms.c, ioctls without libdrm): GBM is created on the same
+ * card fd and its buffers become framebuffers with DRM_IOCTL_MODE_ADDFB2.
  *
- * Cada cuadro: la UI de LordOS (el canvas que pinta la CPU) es una textura de pantalla completa a
- * la que solo se le sube lo que cambió. Debajo se dibujan las ventanas de las apps (texturas de
- * sus búferes shm o dmabuf, sin pasar por la CPU) y encima los menús de las apps; donde hay una
- * ventana de app, la UI deja un hueco transparente (alfa 0). Una app a pantalla completa con un
- * búfer compatible va directo al plano primario: cero copias (gpu_scanout).
+ * Each frame: the LordOS UI (the canvas the CPU paints) is a fullscreen texture to which
+ * only what changed is uploaded. App windows are drawn below it (textures of their shm or
+ * dmabuf buffers, without going through the CPU) and app menus on top; where there is an
+ * app window, the UI leaves a transparent hole (alpha 0). A fullscreen app with a compatible
+ * buffer goes straight to the primary plane: zero copies (gpu_scanout).
  *
- * Por defecto se activa solo con una GPU de verdad: con un renderer por software (llvmpipe,
- * softpipe) el camino por CPU propio es más rápido. LORD_GPU=1 lo fuerza (pruebas), LORD_GPU=0
- * lo apaga, LORD_GPU_DEBUG=1 cuenta qué hace. Compilado sin Mesa (sin -DLORD_GPU) son stubs. */
+ * By default it only turns on with a real GPU: with a software renderer (llvmpipe,
+ * softpipe) our own CPU path is faster. LORD_GPU=1 forces it (tests), LORD_GPU=0
+ * turns it off, LORD_GPU_DEBUG=1 reports what it does. Built without Mesa (no -DLORD_GPU) these are stubs. */
 #include "gpu.h"
 #include "../outputs.h"
 
@@ -58,8 +58,8 @@ int  gpu_can_scanout(const GpuDmabuf *d, int w, int h) { (void)d; (void)w; (void
 #include <drm/virtgpu_drm.h>
 #include <sys/ioctl.h>
 
-/* ¿La placa tiene aceleración 3D? Se pregunta al kernel antes de cargar Mesa, así una máquina
- * sin GPU (o una VM sin virgl) no carga llvmpipe para nada. */
+/* Does the card have 3D acceleration? The kernel is asked before loading Mesa, so a machine
+ * without a GPU (or a VM without virgl) does not load llvmpipe for nothing. */
 static int drm_accelerated(int fd, char *name, size_t n) {
     struct drm_version v;
     memset(&v, 0, sizeof v);
@@ -85,9 +85,9 @@ struct GpuTex {
     EGLImageKHR image;
 };
 
-/* Qué hay en pantalla (o en camino): un BO del gbm_surface o un dmabuf de una app. */
+/* What is on screen (or on its way): a BO of the gbm_surface or an app's dmabuf. */
 typedef struct {
-    int kind;                           /* 0 nada, 1 BO de GBM, 2 scanout directo */
+    int kind;                           /* 0 nothing, 1 GBM BO, 2 direct scanout */
     struct gbm_bo *bo;
     uint32_t fb, handles[4];
     void (*done)(void *);
@@ -146,9 +146,9 @@ static int has_ext(const char *list, const char *ext) {
     return 0;
 }
 
-/* El render node que usa EGL (EGL_EXT_device_query + EGL_EXT_device_drm_render_node). En las
- * placas con pantalla y GPU separadas (Raspberry Pi 4/5: vc4 + v3d; muchos ARM con kmsro) no es
- * el de la tarjeta de la pantalla, y es el que las apps tienen que usar para sus búferes. */
+/* The render node EGL uses (EGL_EXT_device_query + EGL_EXT_device_drm_render_node). On
+ * boards with separate display and GPU (Raspberry Pi 4/5: vc4 + v3d; many ARM boards with kmsro) it is
+ * not the display card's, and it is the one apps have to use for their buffers. */
 #ifndef EGL_DRM_RENDER_NODE_FILE_EXT
 #  define EGL_DRM_RENDER_NODE_FILE_EXT 0x3377
 #endif
@@ -272,7 +272,7 @@ static uint32_t fb_for_bo(struct gbm_bo *bo) {
                     mod, &fb) &&
         kms_add_fb2(G.k, gbm_bo_get_width(bo), gbm_bo_get_height(bo), gbm_bo_get_format(bo), handles, pitches, offsets,
                     DRM_FORMAT_MOD_INVALID, &fb)) {
-        fprintf(stderr, "gpu: ADDFB2 del BO falló (%s)\n", strerror(errno));
+        fprintf(stderr, "gpu: ADDFB2 of the BO failed (%s)\n", strerror(errno));
         return 0;
     }
     gbm_bo_set_user_data(bo, (void *)(uintptr_t)fb, bo_fb_destroy);
@@ -358,7 +358,7 @@ int gpu_add_output(Kms *k) {
     return -1;
 }
 
-/* ---- inicio ---- */
+/* ---- startup ---- */
 
 int gpu_active(void) { return G.on; }
 const char *gpu_renderer(void) { return G.renderer; }
@@ -366,19 +366,19 @@ const char *gpu_renderer(void) { return G.renderer; }
 int gpu_init(Kms *k) {
     const char *env = getenv("LORD_GPU");
     G.debug = getenv("LORD_GPU_DEBUG") != NULL;
-    if (env && !strcmp(env, "0")) { fprintf(stderr, "gpu: apagado (LORD_GPU=0), composición por CPU\n"); return -1; }
+    if (env && !strcmp(env, "0")) { fprintf(stderr, "gpu: off (LORD_GPU=0), CPU composition\n"); return -1; }
     G.k = k;
     char drv[64];
     if (!drm_accelerated(k->fd, drv, sizeof drv) && !(env && !strcmp(env, "1"))) {
-        fprintf(stderr, "gpu: la placa (%s) no tiene aceleración 3D: composición por CPU (LORD_GPU=1 lo fuerza)\n", drv);
+        fprintf(stderr, "gpu: the card (%s) has no 3D acceleration: CPU composition (LORD_GPU=1 forces it)\n", drv);
         return -1;
     }
     G.gbm = gbm_create_device(k->fd);
-    if (!G.gbm) { fprintf(stderr, "gpu: sin GBM en la tarjeta, composición por CPU\n"); return -1; }
+    if (!G.gbm) { fprintf(stderr, "gpu: no GBM on the card, CPU composition\n"); return -1; }
     PFNEGLGETPLATFORMDISPLAYEXTPROC get_display = (PFNEGLGETPLATFORMDISPLAYEXTPROC)eglGetProcAddress("eglGetPlatformDisplayEXT");
     G.dpy = get_display ? get_display(EGL_PLATFORM_GBM_KHR, G.gbm, NULL) : eglGetDisplay((EGLNativeDisplayType)G.gbm);
     EGLint maj, min;
-    if (G.dpy == EGL_NO_DISPLAY || !eglInitialize(G.dpy, &maj, &min)) { fprintf(stderr, "gpu: EGL no arrancó, composición por CPU\n"); goto fail; }
+    if (G.dpy == EGL_NO_DISPLAY || !eglInitialize(G.dpy, &maj, &min)) { fprintf(stderr, "gpu: EGL did not start, CPU composition\n"); goto fail; }
     const char *exts = eglQueryString(G.dpy, EGL_EXTENSIONS);
     query_render_node();
     eglBindAPI(EGL_OPENGL_ES_API);
@@ -391,23 +391,23 @@ int gpu_init(Kms *k) {
         EGLint vid = 0;
         if (eglGetConfigAttrib(G.dpy, cfgs[i], EGL_NATIVE_VISUAL_ID, &vid) && vid == GBM_FORMAT_XRGB8888) cfg = cfgs[i];
     }
-    if (!cfg) { fprintf(stderr, "gpu: sin configuración XRGB8888 de EGL, composición por CPU\n"); goto fail; }
+    if (!cfg) { fprintf(stderr, "gpu: no XRGB8888 EGL config, CPU composition\n"); goto fail; }
     static const EGLint ctx_attr[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
     G.ctx = eglCreateContext(G.dpy, cfg, EGL_NO_CONTEXT, ctx_attr);
     G.cfg = cfg;
-    if (G.ctx == EGL_NO_CONTEXT || out_setup(&G.out[0], k)) { fprintf(stderr, "gpu: could not create the context or the surface, composing by CPU\n"); goto fail; }
+    if (G.ctx == EGL_NO_CONTEXT || out_setup(&G.out[0], k)) { fprintf(stderr, "gpu: could not create the context or the surface, CPU composition\n"); goto fail; }
 
     const char *rend = (const char *)glGetString(GL_RENDERER), *gl_exts = (const char *)glGetString(GL_EXTENSIONS);
     snprintf(G.renderer, sizeof G.renderer, "%s", rend ? rend : "?");
     int software = strstr(G.renderer, "llvmpipe") || strstr(G.renderer, "softpipe") || strstr(G.renderer, "swrast");
     if (software && !(env && !strcmp(env, "1"))) {
-        fprintf(stderr, "gpu: el renderer es por software (%s): composición por CPU (LORD_GPU=1 lo fuerza)\n", G.renderer);
+        fprintf(stderr, "gpu: the renderer is software (%s): CPU composition (LORD_GPU=1 forces it)\n", G.renderer);
         goto fail;
     }
     G.bgra = has_ext(gl_exts, "GL_EXT_texture_format_BGRA8888");
     G.have_external = has_ext(gl_exts, "GL_OES_EGL_image_external");
-    if (!has_ext(gl_exts, "GL_EXT_unpack_subimage")) dbg("sin GL_EXT_unpack_subimage: se sube el canvas entero");
-    if (make_prog(0, fs_2d) || (G.have_external && make_prog(1, fs_ext))) { fprintf(stderr, "gpu: shaders, composición por CPU\n"); goto fail; }
+    if (!has_ext(gl_exts, "GL_EXT_unpack_subimage")) dbg("no GL_EXT_unpack_subimage: the whole canvas is uploaded");
+    if (make_prog(0, fs_2d) || (G.have_external && make_prog(1, fs_ext))) { fprintf(stderr, "gpu: shaders failed, CPU composition\n"); goto fail; }
     if (has_ext(exts, "EGL_EXT_image_dma_buf_import")) {
         G.create_image = (PFNEGLCREATEIMAGEKHRPROC)eglGetProcAddress("eglCreateImageKHR");
         G.destroy_image = (PFNEGLDESTROYIMAGEKHRPROC)eglGetProcAddress("eglDestroyImageKHR");
@@ -426,11 +426,11 @@ int gpu_init(Kms *k) {
     if (G.debug) {
         GpuFormat f[64];
         int nf = gpu_formats(f, 64);
-        for (int i = 0; i < nf; i++) dbg("formato dmabuf %08x mod %llx", f[i].fourcc, (unsigned long long)f[i].modifier);
+        for (int i = 0; i < nf; i++) dbg("dmabuf format %08x mod %llx", f[i].fourcc, (unsigned long long)f[i].modifier);
     }
-    fprintf(stderr, "gpu: composición por GPU (%s, EGL %d.%d, dmabuf %s, render %s, pantalla %s)\n", G.renderer, maj, min,
-            G.create_image ? (G.query_modifiers ? "con modificadores" : "sí") : "no",
-            G.render_node[0] ? G.render_node : "el de la tarjeta", k->driver[0] ? k->driver : drv);
+    fprintf(stderr, "gpu: GPU composition (%s, EGL %d.%d, dmabuf %s, render %s, display %s)\n", G.renderer, maj, min,
+            G.create_image ? (G.query_modifiers ? "with modifiers" : "yes") : "no",
+            G.render_node[0] ? G.render_node : "the card's", k->driver[0] ? k->driver : drv);
     return 0;
 fail:
     gpu_shutdown();
@@ -450,7 +450,7 @@ void gpu_shutdown(void) {
     memset(&G, 0, sizeof G);
     G.debug = debug;
 }
-/* ---- formatos y dispositivo (linux-dmabuf) ---- */
+/* ---- formats and device (linux-dmabuf) ---- */
 
 static const uint32_t known[] = { DRM_FORMAT_ARGB8888, DRM_FORMAT_XRGB8888, DRM_FORMAT_ABGR8888, DRM_FORMAT_XBGR8888 };
 
@@ -463,14 +463,14 @@ int gpu_formats(GpuFormat *out, int max) {
         EGLint nm = 0;
         if (G.query_modifiers) G.query_modifiers(G.dpy, (EGLint)known[f], 64, mods, ext, &nm);
         for (int i = 0; i < nm && n < max; i++) out[n++] = (GpuFormat){ known[f], mods[i] };
-        if (n < max) out[n++] = (GpuFormat){ known[f], DRM_FORMAT_MOD_INVALID };   /* implícito */
+        if (n < max) out[n++] = (GpuFormat){ known[f], DRM_FORMAT_MOD_INVALID };   /* implicit */
     }
     return n;
 }
 
-/* El render node para el feedback de linux-dmabuf: el que usa EGL; si EGL no lo dice, el de la
- * misma placa que la tarjeta de la salida; y si esa placa no tiene (pantalla sin GPU, como vc4 en
- * la Pi 5), el primer render node que haya, que en esas placas es la GPU (v3d, panfrost…). */
+/* The render node for linux-dmabuf feedback: the one EGL uses; if EGL does not say, the one on
+ * the same device as the output's card; and if that device has none (a display without a GPU, like vc4 on
+ * the Pi 5), the first render node there is, which on those boards is the GPU (v3d, panfrost…). */
 int gpu_device(dev_t *dev) {
     if (!G.k) return -1;
     struct stat st;
@@ -490,7 +490,7 @@ int gpu_device(dev_t *dev) {
         snprintf(sys, sizeof sys, "/sys/dev/char/%u:%u/device", major(rs.st_rdev), minor(rs.st_rdev));
         if (realpath(sys, real) && !strcmp(real, want)) { *dev = rs.st_rdev; closedir(d); return 0; }
     }
-    /* ninguno es de la misma placa: pantalla y GPU separadas */
+    /* none is on the same device: separate display and GPU */
     int found = 0;
     dev_t other = 0;
     if (d) rewinddir(d);
@@ -500,7 +500,7 @@ int gpu_device(dev_t *dev) {
         struct stat rs;
         snprintf(path, sizeof path, "/dev/dri/%s", e->d_name);
         if (stat(path, &rs) || !S_ISCHR(rs.st_mode)) continue;
-        if (!found || rs.st_rdev < other) other = rs.st_rdev;       /* el de número más bajo */
+        if (!found || rs.st_rdev < other) other = rs.st_rdev;       /* the lowest-numbered one */
         found = 1;
     }
     if (d) closedir(d);
@@ -508,7 +508,7 @@ int gpu_device(dev_t *dev) {
     return 0;
 }
 
-/* ---- texturas ---- */
+/* ---- textures ---- */
 
 static void tex_params(GLenum target) {
     glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -543,10 +543,10 @@ static EGLImageKHR import_image(const GpuDmabuf *d, int with_mod);
 GpuTex *gpu_tex_dmabuf(const GpuDmabuf *d) {
     if (!G.on || !G.create_image || !G.have_external || d->nplanes < 1 || d->nplanes > 4) return NULL;
     EGLImageKHR img = import_image(d, 1);
-    /* lineal sin modificador explícito: hay drivers que solo aceptan el implícito */
+    /* linear without an explicit modifier: some drivers only accept the implicit one */
     if (img == EGL_NO_IMAGE_KHR && d->modifier == DRM_FORMAT_MOD_LINEAR) img = import_image(d, 0);
     if (img == EGL_NO_IMAGE_KHR) {
-        dbg("no se pudo importar un dmabuf %dx%d fourcc %08x mod %llx (EGL 0x%x)", d->width, d->height, d->fourcc,
+        dbg("could not import a dmabuf %dx%d fourcc %08x mod %llx (EGL 0x%x)", d->width, d->height, d->fourcc,
             (unsigned long long)d->modifier, eglGetError());
         return NULL;
     }
@@ -598,7 +598,7 @@ void gpu_tex_free(GpuTex *t) {
     free(t);
 }
 
-/* ---- dibujo ---- */
+/* ---- drawing ---- */
 
 void gpu_draw(GpuTex *t, float dx, float dy, float dw, float dh, float sx, float sy, float sw, float sh, Rect clip, float op) {
     if (!G.on || !G.cur || !t || dw <= 0 || dh <= 0 || op <= 0.004f) return;
@@ -659,10 +659,10 @@ int gpu_frame(int out, const Canvas *scene, Rect dmg, void (*draw_layer)(int lay
     G.frames++;
     return present(o, (Shown){ .kind = 1, .bo = bo, .fb = fb });
 }
-/* ---- scanout directo ---- */
+/* ---- direct scanout ---- */
 
 int gpu_can_scanout(const GpuDmabuf *d, int w, int h) {
-    /* y que el plano primario acepte el modificador (vc4: solo lineal; UIF de v3d no) */
+    /* and that the primary plane accepts the modifier (vc4: linear only; not v3d's UIF) */
     return G.on && d->width == w && d->height == h && d->nplanes == 1 &&
            (d->fourcc == DRM_FORMAT_XRGB8888 || d->fourcc == DRM_FORMAT_ARGB8888) &&
            kms_scanout_ok(G.k, DRM_FORMAT_XRGB8888, d->modifier);
@@ -675,20 +675,20 @@ int gpu_scanout(const GpuDmabuf *d, void (*done)(void *), void *data) {
     for (int i = 0; i < d->nplanes; i++)
         if (kms_prime_import(G.k, d->fd[i], &s.handles[i])) {
             for (int j = 0; j < i; j++) kms_close_handle(G.k, s.handles[j]);
-            dbg("scanout: PRIME import falló (%s)", strerror(errno));
+            dbg("scanout: PRIME import failed (%s)", strerror(errno));
             return -1;
         }
-    /* ARGB en el plano primario se muestra como XRGB (la salida no tiene nada debajo) */
+    /* ARGB on the primary plane is shown as XRGB (the output has nothing below it) */
     uint32_t fourcc = d->fourcc == DRM_FORMAT_ARGB8888 ? DRM_FORMAT_XRGB8888 : d->fourcc;
     if (kms_add_fb2(G.k, (uint32_t)d->width, (uint32_t)d->height, fourcc, s.handles, d->stride, d->offset, d->modifier, &s.fb)) {
-        dbg("scanout: ADDFB2 falló (%s)", strerror(errno));
+        dbg("scanout: ADDFB2 failed (%s)", strerror(errno));
         s.done = NULL;
         s.kind = 2;
         release(o, &s);
         return -1;
     }
     G.scanouts++;
-    if (G.debug && (G.scanouts == 1 || G.scanouts % 300 == 0)) dbg("scanout directo: %ld cuadros (compuestos %ld)", G.scanouts, G.frames);
+    if (G.debug && (G.scanouts == 1 || G.scanouts % 300 == 0)) dbg("direct scanout: %ld frames (composed %ld)", G.scanouts, G.frames);
     return present(o, s);
 }
 

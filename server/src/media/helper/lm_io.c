@@ -68,15 +68,15 @@ static int64_t io_seek(void *op, int64_t off, int whence) {
 
 AVFormatContext *lm_open_input(int fd, char *err, size_t errlen) {
     struct stat st;
-    if (fd < 0 || fstat(fd, &st) || !S_ISREG(st.st_mode)) { snprintf(err, errlen, "no es un archivo"); return NULL; }
+    if (fd < 0 || fstat(fd, &st) || !S_ISREG(st.st_mode)) { lerr_set(err, errlen, "media.notAFile", NULL); return NULL; }
     FdIo *f = av_mallocz(sizeof *f);
     unsigned char *buf = av_malloc(65536);
-    if (!f || !buf) { av_free(f); av_free(buf); snprintf(err, errlen, "sin memoria"); return NULL; }
+    if (!f || !buf) { av_free(f); av_free(buf); lerr_set(err, errlen, "sys.outOfMemory", NULL); return NULL; }
     f->fd = fd;
     f->size = st.st_size;
     AVIOContext *io = avio_alloc_context(buf, 65536, 0, f, io_read, NULL, io_seek);
     AVFormatContext *fmt = avformat_alloc_context();
-    if (!io || !fmt) { snprintf(err, errlen, "sin memoria"); return NULL; }
+    if (!io || !fmt) { lerr_set(err, errlen, "sys.outOfMemory", NULL); return NULL; }
     fmt->pb = io;
     fmt->flags |= AVFMT_FLAG_CUSTOM_IO;
     /* no network nor auxiliary files (m3u8 lists, concat, "%d" images): only this fd */
@@ -84,7 +84,10 @@ AVFormatContext *lm_open_input(int fd, char *err, size_t errlen) {
     fmt->format_whitelist = NULL;
     int r = avformat_open_input(&fmt, NULL, NULL, NULL);
     if (r < 0) {
-        av_strerror(r, err, errlen);
+        char why[128];
+        av_strerror(r, why, sizeof why);
+        LM_LOG("could not open the input: %s", why);
+        lerr_set(err, errlen, "media.cannotOpen", NULL);
         av_free(io->buffer);
         avio_context_free(&io);
         av_free(f);

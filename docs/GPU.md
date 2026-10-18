@@ -35,7 +35,7 @@ and its buffers and the apps' dmabufs become framebuffers with `DRM_IOCTL_MODE_A
    takes over.
 
 Diagnostics: `LORD_GPU_DEBUG=1` shows the dmabuf formats, failing imports and the frames sent by
-direct scanout. The log says `gpu: composición por GPU (renderer…)` (GPU composition) or why not.
+direct scanout. The log says `gpu: GPU composition (renderer…)` or why not.
 
 ## How it composites
 
@@ -127,9 +127,9 @@ compositing is the GPU's work, and the CPU only uploads what changed in the UI.
 To test it on the AMD PC (live ISO):
 1. Boot.
 2. In the LordOS Terminal, `grep gpu /tmp/lord.log` (or whatever log the ISO uses): it must say
-   `composición por GPU (AMD Radeon …)` (GPU composition) and `cursor por hardware` (hardware cursor).
+   `GPU composition (AMD Radeon …)` and `cursor by hardware (cursor plane)`.
 3. `vkcube`, `glmark2-es2-wayland`, a game (SuperTuxKart, 0 A.D.).
-4. With `LORD_GPU_DEBUG=1`, in fullscreen `scanout directo: N cuadros` (direct scanout: N frames) must appear.
+4. With `LORD_GPU_DEBUG=1`, in fullscreen `direct scanout: N frames` must appear.
 
 ## Test client
 

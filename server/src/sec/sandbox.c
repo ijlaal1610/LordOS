@@ -312,7 +312,7 @@ static int apply_seccomp_extra(int net, const int *extra, int ioctl_classes, int
     if (!SB_AUDIT_ARCH) { fprintf(stderr, "sandbox: seccomp not supported on this architecture\n"); return -1; }
     static struct sock_filter filt[1024];
     int n = build_filter(filt, (int)(sizeof filt / sizeof filt[0]), net, extra, ioctl_classes, helper, (unsigned)getpid());
-    if (n > (int)(sizeof filt / sizeof filt[0])) { fprintf(stderr, "sandbox: filtro seccomp demasiado grande (%d)\n", n); return -1; }
+    if (n > (int)(sizeof filt / sizeof filt[0])) { fprintf(stderr, "sandbox: seccomp filter too large (%d)\n", n); return -1; }
     struct sock_fprog prog = { .len = (unsigned short)n, .filter = filt };
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) return -1;
     long r = syscall(SYS_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);

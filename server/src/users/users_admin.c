@@ -173,14 +173,14 @@ static int autologin_set(const char *user) {
 
 /* Common folders in the system language (shown by Files) and their language. */
 static void prepare_home(const struct passwd *pw) {
-    char lang[64] = "es_ES.UTF-8";
+    char lang[64] = "en_US.UTF-8";
     FILE *f = fopen("/etc/default/locale", "r");
     char line[128];
     while (f && fgets(line, sizeof line, f)) if (sscanf(line, "LANG=%63[A-Za-z_.@0-9-]", lang) == 1) break;
     if (f) fclose(f);
     char path[PATH_MAX];
     /* Escritorio, Documentos… and ~/.config/user-dirs.dirs in the system language (homedirs.c) */
-    if (homedirs_create(pw->pw_dir, pw->pw_uid, pw->pw_gid, lang)) admin_say("LOG", "aviso: no se pudieron crear todas las carpetas");
+    if (homedirs_create(pw->pw_dir, pw->pw_uid, pw->pw_gid, lang)) admin_log("users.homedirsWarning", NULL);
     snprintf(path, sizeof path, "%s/.config", pw->pw_dir);
     if (!mkdir(path, 0755) && chown(path, pw->pw_uid, pw->pw_gid)) { /* carry on */ }
     snprintf(path, sizeof path, "%s/.config/lordos", pw->pw_dir);
@@ -190,7 +190,7 @@ static void prepare_home(const struct passwd *pw) {
     snprintf(text, sizeof text, "LANG=%s\n", lang);
     if (!write_file(path, text, strlen(text), 0644) && chown(path, pw->pw_uid, pw->pw_gid)) { /* carry on */ }
     snprintf(path, sizeof path, "%s/.config/lordos/settings.json", pw->pw_dir);
-    /* UI language: the system's if there's a catalog (es, en, pt); otherwise Spanish */
+    /* UI language: the system's if there's a catalog (es, en, pt); otherwise English */
     const char *ui = homedirs_ui_lang(lang);
     snprintf(text, sizeof text, "{\n  \"language\": \"%s\"\n}\n", ui);
     if (!write_file(path, text, strlen(text), 0644) && chown(path, pw->pw_uid, pw->pw_gid)) { /* carry on */ }
@@ -201,22 +201,22 @@ static void prepare_home(const struct passwd *pw) {
 void users_act_add(const AdminReq *r, const char *arg, size_t len) {
     (void)r;
     char *buf = strndup(arg, len), *f[4];
-    if (!buf || !split(buf, f, 4)) { admin_say("ERR", "argumento inválido"); free(buf); return; }
+    if (!buf || !split(buf, f, 4)) { admin_err("admin.invalidArgument", NULL); free(buf); return; }
     const char *name = f[0], *full = f[1], *pass = f[2];
     int adm = !strcmp(f[3], "1");
-    if (!valid_name(name) || !valid_full(full) || !valid_pass(pass)) admin_say("ERR", "nombre o contraseña inválidos");
-    else if (getpwnam(name) || getgrnam(name)) admin_say("ERR", "ya existe «%s»", name);
+    if (!valid_name(name) || !valid_full(full) || !valid_pass(pass)) admin_err("users.badNameOrPassword", NULL);
+    else if (getpwnam(name) || getgrnam(name)) admin_err("users.exists", "name", name, NULL);
     else {
         const char *const a[] = { "/usr/sbin/useradd", "--create-home", "--shell", "/bin/bash", "--user-group", "--comment", full, name, NULL };
         struct passwd *pw;
-        if (admin_run(a) || !(pw = getpwnam(name))) admin_say("ERR", "useradd falló");
-        else if (set_password(name, pass)) admin_say("ERR", "no se pudo poner la contraseña");
+        if (admin_run(a) || !(pw = getpwnam(name))) admin_err("sys.programError", "program", "useradd", NULL);
+        else if (set_password(name, pass)) admin_err("users.setPasswordFailed", NULL);
         else {
             if (adm) { const char *const g[] = { "/usr/sbin/usermod", "--append", "--groups", ADMIN_GROUP, name, NULL }; admin_run(g); print_group(name, 1); }
             if (getgrnam("pipewire")) { const char *const g[] = { "/usr/sbin/usermod", "--append", "--groups", "pipewire", name, NULL }; admin_run(g); }   /* real-time sound (docs/SOUND.md) */
             if (getgrnam("plugdev")) { const char *const g[] = { "/usr/sbin/usermod", "--append", "--groups", "plugdev", name, NULL }; admin_run(g); }   /* FIDO2 security keys (docs/PASSWORDS.md) */
             prepare_home(pw);
-            admin_say("OK", "usuario %s creado", name);
+            admin_ok("users.created", "name", name, NULL);
         }
     }
     explicit_bzero(buf, len);
@@ -225,13 +225,13 @@ void users_act_add(const AdminReq *r, const char *arg, size_t len) {
 
 void users_act_del(const AdminReq *r, const char *arg, size_t len) {
     char *buf = strndup(arg, len), *f[2];
-    if (!buf || !split(buf, f, 2)) { admin_say("ERR", "argumento inválido"); free(buf); return; }
+    if (!buf || !split(buf, f, 2)) { admin_err("admin.invalidArgument", NULL); free(buf); return; }
     const char *name = f[0];
     int keep = !strcmp(f[1], "1");
     struct passwd *pw = person(name);
-    if (!pw) admin_say("ERR", "usuario inválido");
-    else if (!strcmp(name, r->user)) admin_say("ERR", "no se puede borrar la cuenta con la que estás");
-    else if (in_group(name, ADMIN_GROUP) && admins() <= 1) admin_say("ERR", "es el único administrador");
+    if (!pw) admin_err("users.invalid", NULL);
+    else if (!strcmp(name, r->user)) admin_err("users.deleteSelf", NULL);
+    else if (in_group(name, ADMIN_GROUP) && admins() <= 1) admin_err("users.lastAdmin", NULL);
     else {
         /* their session (and everything of theirs) ends first */
         const char *const k[] = { "/usr/bin/pkill", "--signal", "KILL", "--uid", name, NULL };
@@ -239,7 +239,7 @@ void users_act_del(const AdminReq *r, const char *arg, size_t len) {
         usleep(300000);
         const char *const a_keep[] = { "/usr/sbin/userdel", name, NULL };
         const char *const a_rm[] = { "/usr/sbin/userdel", "--remove", name, NULL };
-        if (admin_run(keep ? a_keep : a_rm)) admin_say("ERR", "userdel falló");
+        if (admin_run(keep ? a_keep : a_rm)) admin_err("sys.programError", "program", "userdel", NULL);
         else {
             char p[128], au[40];
             snprintf(p, sizeof p, USERS_DIR "/%s.json", name);
@@ -248,7 +248,7 @@ void users_act_del(const AdminReq *r, const char *arg, size_t len) {
             unlink(p);
             autologin_get(au, sizeof au);
             if (!strcmp(au, name)) autologin_set("");
-            admin_say("OK", "usuario %s borrado", name);
+            admin_ok("users.deleted", "name", name, NULL);
         }
     }
     free(buf);
@@ -256,32 +256,32 @@ void users_act_del(const AdminReq *r, const char *arg, size_t len) {
 
 void users_act_passwd(const AdminReq *r, const char *arg, size_t len) {
     char *buf = strndup(arg, len), *f[3];
-    if (!buf || !split(buf, f, 3)) { admin_say("ERR", "argumento inválido"); free(buf); return; }
+    if (!buf || !split(buf, f, 3)) { admin_err("admin.invalidArgument", NULL); free(buf); return; }
     const char *name = f[0], *pass = f[1], *old = f[2];
     int self = !strcmp(name, r->user);
-    if (!person(name) || !valid_pass(pass)) admin_say("ERR", "usuario o contraseña inválidos");
-    else if (!self && !r->admin) admin_say("ERR", "solo un administrador cambia la contraseña de otro usuario");
-    else if (self && !check_password(name, old)) { sleep(1); admin_say("ERR", "la contraseña actual no es correcta"); }
-    else if (set_password(name, pass)) admin_say("ERR", "no se pudo cambiar la contraseña");
-    else admin_say("OK", "contraseña cambiada");
+    if (!person(name) || !valid_pass(pass)) admin_err("users.badNameOrPassword", NULL);
+    else if (!self && !r->admin) admin_err("users.passwordNotAllowed", NULL);
+    else if (self && !check_password(name, old)) { sleep(1); admin_err("users.wrongPassword", NULL); }
+    else if (set_password(name, pass)) admin_err("users.setPasswordFailed", NULL);
+    else admin_ok("users.passwordChanged", NULL);
     explicit_bzero(buf, len);
     free(buf);
 }
 
 void users_act_admin(const AdminReq *r, const char *arg, size_t len) {
     char *buf = strndup(arg, len), *f[2];
-    if (!buf || !split(buf, f, 2)) { admin_say("ERR", "argumento inválido"); free(buf); return; }
+    if (!buf || !split(buf, f, 2)) { admin_err("admin.invalidArgument", NULL); free(buf); return; }
     const char *name = f[0];
     int on = !strcmp(f[1], "1");
     (void)r;
-    if (!person(name) || (strcmp(f[1], "0") && strcmp(f[1], "1"))) admin_say("ERR", "argumento inválido");
-    else if (!on && in_group(name, ADMIN_GROUP) && admins() <= 1) admin_say("ERR", "es el único administrador");
+    if (!person(name) || (strcmp(f[1], "0") && strcmp(f[1], "1"))) admin_err("admin.invalidArgument", NULL);
+    else if (!on && in_group(name, ADMIN_GROUP) && admins() <= 1) admin_err("users.lastAdmin", NULL);
     else {
         const char *const add[] = { "/usr/sbin/usermod", "--append", "--groups", ADMIN_GROUP, name, NULL };
         const char *const del[] = { "/usr/bin/gpasswd", "--delete", name, ADMIN_GROUP, NULL };
-        if (on == in_group(name, ADMIN_GROUP)) admin_say("OK", "sin cambios");
-        else if (admin_run(on ? add : del)) admin_say("ERR", "no se pudo cambiar el grupo");
-        else { print_group(name, on); admin_say("OK", "%s", on ? "ahora es administrador" : "ya no es administrador"); }
+        if (on == in_group(name, ADMIN_GROUP)) admin_ok("users.unchanged", NULL);
+        else if (admin_run(on ? add : del)) admin_err("users.groupFailed", NULL);
+        else { print_group(name, on); admin_ok(on ? "users.nowAdmin" : "users.noLongerAdmin", "name", name, NULL); }
     }
     free(buf);
 }
@@ -312,11 +312,11 @@ static unsigned char *read_user_image(const AdminReq *r, const char *path, size_
 
 void users_act_avatar(const AdminReq *r, const char *arg, size_t len) {
     char *buf = strndup(arg, len), *f[3];
-    if (!buf || !split(buf, f, 3)) { admin_say("ERR", "argumento inválido"); free(buf); return; }
+    if (!buf || !split(buf, f, 3)) { admin_err("admin.invalidArgument", NULL); free(buf); return; }
     const char *name = f[0], *color = f[1], *img = f[2];
     int ok_color = !color[0] || (strlen(color) == 7 && color[0] == '#' && strspn(color + 1, "0123456789abcdefABCDEF") == 6);
-    if (!person(name) || !ok_color) admin_say("ERR", "argumento inválido");
-    else if (strcmp(name, r->user) && !r->admin) admin_say("ERR", "solo un administrador cambia el avatar de otro usuario");
+    if (!person(name) || !ok_color) admin_err("admin.invalidArgument", NULL);
+    else if (strcmp(name, r->user) && !r->admin) admin_err("users.avatarNotAllowed", NULL);
     else {
         mkdir("/var/lib/lordos", 0755);
         mkdir(USERS_DIR, 0755);
@@ -329,12 +329,12 @@ void users_act_avatar(const AdminReq *r, const char *arg, size_t len) {
         else if (img[0]) {
             size_t n = 0;
             unsigned char *data = read_user_image(r, img, &n);
-            if (!data) { admin_say("ERR", "la imagen tiene que ser PNG o JPEG de tu carpeta personal (hasta 4 MB)"); free(buf); return; }
+            if (!data) { admin_err("users.badAvatarImage", NULL); free(buf); return; }
             bad |= write_file(p, data, n, 0644);
             free(data);
         }
-        if (bad) admin_say("ERR", "no se pudo guardar el avatar");
-        else admin_say("OK", "avatar guardado");
+        if (bad) admin_err("users.avatarFailed", NULL);
+        else admin_ok("users.avatarSaved", NULL);
     }
     free(buf);
 }
@@ -342,7 +342,7 @@ void users_act_avatar(const AdminReq *r, const char *arg, size_t len) {
 void users_act_autologin(const AdminReq *r, const char *arg, size_t len) {
     (void)r;
     (void)len;
-    if (arg[0] && !person(arg)) { admin_say("ERR", "usuario inválido"); return; }
-    if (autologin_set(arg)) admin_say("ERR", "no se pudo escribir %s", SESSION_CONF);
-    else admin_say("OK", "%s", arg[0] ? "inicio automático prendido" : "inicio automático apagado");
+    if (arg[0] && !person(arg)) { admin_err("users.invalid", NULL); return; }
+    if (autologin_set(arg)) admin_err("sys.writeFailed", "path", SESSION_CONF, NULL);
+    else admin_ok(arg[0] ? "users.autologinOn" : "users.autologinOff", NULL);
 }

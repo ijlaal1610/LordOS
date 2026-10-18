@@ -534,7 +534,7 @@ void lm_player(const char *params, int fd, int pulse, int render) {
     close(pulse);
 
     P.fmt = lm_open_input(fd, err, sizeof err);
-    if (!P.fmt) { lm_error("no se pudo abrir: %s", err); return; }
+    if (!P.fmt) { lm_error("%s", err); return; }
     P.start_ms = P.fmt->start_time != AV_NOPTS_VALUE ? P.fmt->start_time / 1000 : 0;
     P.dur_ms = P.fmt->duration > 0 ? P.fmt->duration / 1000 : 0;
     P.vi = av_find_best_stream(P.fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
@@ -556,7 +556,7 @@ void lm_player(const char *params, int fd, int pulse, int render) {
         enum AVMediaType t = P.fmt->streams[i]->codecpar->codec_type;
         if (t == AVMEDIA_TYPE_AUDIO || t == AVMEDIA_TYPE_SUBTITLE) P.fmt->streams[i]->discard = AVDISCARD_DEFAULT;
     }
-    if (P.vi < 0 && P.ai < 0) { lm_error("no hay audio ni video que se pueda reproducir"); lm_close_input(&P.fmt); return; }
+    if (P.vi < 0 && P.ai < 0) { lm_error("media.nothingToPlay"); lm_close_input(&P.fmt); return; }
     C.audio = P.ai >= 0 && AR != NULL;
     C.anchor_byte = -1;
     send_info(render);
@@ -566,7 +566,7 @@ void lm_player(const char *params, int fd, int pulse, int render) {
     /* cover art: a single frame, presented right away */
     AVFrame *cover = P.cover ? lm_decode_still(P.fmt, 0, NULL, 1) : NULL;
     if (P.cover) { avcodec_free_context(&P.vdec); av_seek_frame(P.fmt, -1, 0, AVSEEK_FLAG_BACKWARD); }
-    if (pthread_create(&P.th, NULL, decode_thread, NULL)) { lm_error("sin hilos"); return; }
+    if (pthread_create(&P.th, NULL, decode_thread, NULL)) { lm_error("media.threadFailed"); return; }
 
     static char payload[MP_PAYLOAD_MAX + 1];
     double last_pos = 0, last_stats = 0, last_shown_ms = lm_now_ms();

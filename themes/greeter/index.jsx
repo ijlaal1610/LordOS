@@ -151,10 +151,10 @@ function Greeter() {
         const variants = String(m.variants || '').split(',');
         const kbs = layouts.map((l, i) => ({ layout: l, variant: variants[i] || '' }));
         if (JSON.stringify(settings.get().keyboards) !== JSON.stringify(kbs)) keyboard.set(kbs);
-        // language: the one chosen here before or the system's (if there is no catalog, Spanish)
+        // language: the one chosen here before or the system's (if there is no catalog, English)
         if (!['es', 'en', 'pt'].includes(settings.get().language)) {
           const sys = String(m.lang || '').slice(0, 2);
-          setLanguage(['es', 'en', 'pt'].includes(sys) ? sys : 'es');
+          setLanguage(['es', 'en', 'pt'].includes(sys) ? sys : 'en');
         }
         // the selected user: the one from the locked screen, another (switch user) or the first;
         // only when the mode changes, so the refreshed list doesn't override what the person chose

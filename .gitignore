@@ -14,3 +14,4 @@ assets/app-host.bundle.js
 .vscode/
 .idea/
 assets/sysapps/
+assets/locales/*.tgz

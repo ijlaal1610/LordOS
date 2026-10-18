@@ -7,6 +7,7 @@
  * signature over the canonical text, the key has to exist, be able to sign, not be revoked or
  * expired, and the signature can't be expired or come from the future. */
 #include "pgp.h"
+#include "../errcode.h"
 #include "crypto.h"
 
 #include <stdio.h>
@@ -409,14 +410,14 @@ int pgp_verify_clearsigned(const PgpKeyring *kr, const char *msg, size_t len, in
     err[0] = 0;
     const char *end = msg + len, *p = msg;
     if (len < sizeof head || memcmp(msg, head, sizeof head - 1) || (msg[sizeof head - 1] != '\n' && msg[sizeof head - 1] != '\r')) {
-        snprintf(err, errlen, "no es un mensaje firmado en claro");
+        lerr_set(err, errlen, "pkg.pgp.notClearsigned", NULL);
         return -1;
     }
     p = memchr(msg, '\n', len) + 1;
     /* Hash: headers up to the empty line */
     for (;;) {
         const char *nl = memchr(p, '\n', (size_t)(end - p));
-        if (!nl) { snprintf(err, errlen, "mensaje firmado incompleto"); return -1; }
+        if (!nl) { lerr_set(err, errlen, "pkg.pgp.incomplete", NULL); return -1; }
         size_t l = (size_t)(nl - p);
         if (l && p[l - 1] == '\r') l--;
         p = nl + 1;
@@ -424,7 +425,7 @@ int pgp_verify_clearsigned(const PgpKeyring *kr, const char *msg, size_t len, in
     }
     /* text: up to the signature's armor */
     char *text = malloc((size_t)(end - p) + 2), *canon = malloc((size_t)(end - p) * 2 + 2);
-    if (!text || !canon) { free(text); free(canon); snprintf(err, errlen, "sin memoria"); return -1; }
+    if (!text || !canon) { free(text); free(canon); lerr_set(err, errlen, "sys.outOfMemory", NULL); return -1; }
     size_t tl = 0, cl = 0;
     const char *sig = NULL;
     int first = 1;
@@ -435,7 +436,7 @@ int pgp_verify_clearsigned(const PgpKeyring *kr, const char *msg, size_t len, in
         if (l >= sizeof sighead - 1 && !memcmp(p, sighead, sizeof sighead - 1)) { sig = p; break; }
         const char *s = p;
         if (l >= 2 && s[0] == '-' && s[1] == ' ') { s += 2; l -= 2; }
-        else if (l && s[0] == '-') { free(text); free(canon); snprintf(err, errlen, "línea con guion sin escapar"); return -1; }
+        else if (l && s[0] == '-') { free(text); free(canon); lerr_set(err, errlen, "pkg.pgp.unescapedDash", NULL); return -1; }
         while (l && (s[l - 1] == ' ' || s[l - 1] == '\t' || s[l - 1] == '\r')) l--;
         if (!first) { canon[cl++] = '\r'; canon[cl++] = '\n'; }
         first = 0;
@@ -445,17 +446,17 @@ int pgp_verify_clearsigned(const PgpKeyring *kr, const char *msg, size_t len, in
         if (!nl) break;
         p = nl + 1;
     }
-    if (!sig) { free(text); free(canon); snprintf(err, errlen, "falta la firma"); return -1; }
+    if (!sig) { free(text); free(canon); lerr_set(err, errlen, "pkg.pgp.noSignature", NULL); return -1; }
     /* signature armor; after END there can only be whitespace */
     const char *endmark = NULL;
     for (const char *q = sig; q + 27 <= end; q++)
         if (!memcmp(q, "-----END PGP SIGNATURE-----", 27)) { endmark = q + 27; break; }
-    if (!endmark) { free(text); free(canon); snprintf(err, errlen, "firma incompleta"); return -1; }
+    if (!endmark) { free(text); free(canon); lerr_set(err, errlen, "pkg.pgp.signatureIncomplete", NULL); return -1; }
     for (const char *q = endmark; q < end; q++)
-        if (*q != '\n' && *q != '\r' && *q != ' ' && *q != '\t') { free(text); free(canon); snprintf(err, errlen, "datos después de la firma"); return -1; }
+        if (*q != '\n' && *q != '\r' && *q != ' ' && *q != '\t') { free(text); free(canon); lerr_set(err, errlen, "pkg.pgp.trailingData", NULL); return -1; }
     uint8_t *raw;
     long rawlen = dearmor(sig, (size_t)(endmark - sig), &raw);
-    if (rawlen < 0) { free(text); free(canon); snprintf(err, errlen, "firma mal codificada"); return -1; }
+    if (rawlen < 0) { free(text); free(canon); lerr_set(err, errlen, "pkg.pgp.badEncoding", NULL); return -1; }
 
     int good = 0, bad = 0, unknown = 0;
     size_t pos = 0;
@@ -472,11 +473,11 @@ int pgp_verify_clearsigned(const PgpKeyring *kr, const char *msg, size_t len, in
         if (!k) { unknown++; continue; }
         char fpr[41];
         hex_fpr(k->fpr, fpr);
-        if (k->revoked) { snprintf(why, sizeof why, "la clave %s está revocada", fpr); continue; }
-        if (k->expires && k->expires <= now) { snprintf(why, sizeof why, "la clave %s venció", fpr); continue; }
-        if (!k->can_sign) { snprintf(why, sizeof why, "la clave %s no es de firma", fpr); continue; }
-        if (s.created > now + 86400) { snprintf(why, sizeof why, "firma con fecha futura (%s)", fpr); continue; }
-        if (s.sig_expires && s.created + s.sig_expires <= now) { snprintf(why, sizeof why, "la firma de %s venció", fpr); continue; }
+        if (k->revoked) { lerr_set(why, sizeof why, "pkg.pgp.keyRevoked", "key", fpr, NULL); continue; }
+        if (k->expires && k->expires <= now) { lerr_set(why, sizeof why, "pkg.pgp.keyExpired", "key", fpr, NULL); continue; }
+        if (!k->can_sign) { lerr_set(why, sizeof why, "pkg.pgp.keyNotSigning", "key", fpr, NULL); continue; }
+        if (s.created > now + 86400) { lerr_set(why, sizeof why, "pkg.pgp.futureSignature", "key", fpr, NULL); continue; }
+        if (s.sig_expires && s.created + s.sig_expires <= now) { lerr_set(why, sizeof why, "pkg.pgp.signatureExpired", "key", fpr, NULL); continue; }
         if (s.created < k->created) { bad++; continue; }
         /* hash: text (canonical if it's a text signature) + signature header + v4 trailer */
         uint8_t dig[64], trailer[6] = { 4, 0xff, (uint8_t)(s.headlen >> 24), (uint8_t)(s.headlen >> 16), (uint8_t)(s.headlen >> 8), (uint8_t)s.headlen };
@@ -499,19 +500,19 @@ int pgp_verify_clearsigned(const PgpKeyring *kr, const char *msg, size_t len, in
         }
         if (dig[0] != s.left16[0] || dig[1] != s.left16[1] || !verify_sig(k, &s, dig)) {
             bad++;
-            snprintf(why, sizeof why, "firma inválida de la clave %s", fpr);
+            lerr_set(why, sizeof why, "pkg.pgp.badSignature", "key", fpr, NULL);
             continue;
         }
         good++;
     }
     free(raw);
     free(canon);
-    if (r < 0) { free(text); snprintf(err, errlen, "firma mal formada"); return -1; }
+    if (r < 0) { free(text); lerr_set(err, errlen, "pkg.pgp.malformed", NULL); return -1; }
     if (bad) { free(text); snprintf(err, errlen, "%s", why); return -1; }
     if (!good) {
         free(text);
         if (why[0]) snprintf(err, errlen, "%s", why);
-        else snprintf(err, errlen, "ninguna firma es de una clave conocida (%d desconocidas)", unknown);
+        else lerr_set(err, errlen, "pkg.pgp.unknownKeys", "count", lerr_int(unknown), NULL);
         return 0;
     }
     *body = text;

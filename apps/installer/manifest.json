@@ -1,7 +1,7 @@
 {
   "id": "installer",
-  "name": "Instalar LordOS",
-  "description": "Instala LordOS en el disco desde el sistema en vivo",
+  "name": "Install LordOS",
+  "description": "Installs LordOS to the disk from the live system",
   "size": [760, 560],
   "minSize": [640, 480],
   "dock": false,

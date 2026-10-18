@@ -93,7 +93,7 @@ async function passwordFor(acct) {
   catch (e) { return null; }
 }
 
-const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'cuenta';
+const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'account';
 
 export const mailAccounts = {
   list: () => mailConfig.get().accounts,

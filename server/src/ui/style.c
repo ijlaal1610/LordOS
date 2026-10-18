@@ -6,13 +6,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef enum { ST_DIM, ST_FLOAT, ST_COLOR, ST_ENUM } StyleType;
+typedef enum { ST_DIM, ST_FLOAT, ST_COLOR, ST_ENUM, ST_U8 } StyleType;
 
 typedef struct {
     const char *name;
     StyleType type;
     size_t off;
     const char *const *values;   /* ST_ENUM */
+    uint32_t bit;                /* ES_* bit in Style.edge_set: the value overrides the shorthand */
+    uint8_t ext;                 /* the field is in Style.x (StyleExt), off is relative to it */
 } StyleProp;
 
 static const char *const E_DISPLAY[]  = {"flex", "none", NULL};
@@ -30,8 +32,11 @@ static const char *const E_WSPACE[]   = {"normal", "nowrap", NULL};
 static const char *const E_WRAP[]     = {"nowrap", "wrap", NULL};
 static const char *const E_FAMILY[]   = {"sans-serif", "monospace", NULL};
 static const char *const E_CURSOR[]   = {CURSOR_CSS_NAMES, NULL};
+static const char *const E_TOVERFLOW[] = {"clip", "ellipsis", NULL};
 
-#define P(n, t, f, e) { n, t, offsetof(Style, f), e }
+#define P(n, t, f, e) { n, t, offsetof(Style, f), e, 0, 0 }
+#define PB(n, t, f, b) { n, t, offsetof(StyleExt, f), NULL, b, 1 }
+#define PX(n, t, f) { n, t, offsetof(StyleExt, f), NULL, 0, 1 }
 
 static const StyleProp props[] = {
     P("display", ST_ENUM, display_none, E_DISPLAY),
@@ -88,6 +93,44 @@ static const StyleProp props[] = {
     P("translateX", ST_FLOAT, translate_x, NULL),
     P("translateY", ST_FLOAT, translate_y, NULL),
     P("zIndex", ST_FLOAT, z_index, NULL),
+    /* text truncation */
+    P("textOverflow", ST_ENUM, text_overflow, E_TOVERFLOW),
+    P("numberOfLines", ST_U8, line_clamp, NULL),
+    /* per-side borders (physical, then start/end that follow the direction) */
+    PB("borderLeftWidth", ST_FLOAT, border_side[EDGE_L], ES_BW(EDGE_L)),
+    PB("borderTopWidth", ST_FLOAT, border_side[EDGE_T], ES_BW(EDGE_T)),
+    PB("borderRightWidth", ST_FLOAT, border_side[EDGE_R], ES_BW(EDGE_R)),
+    PB("borderBottomWidth", ST_FLOAT, border_side[EDGE_B], ES_BW(EDGE_B)),
+    PB("borderStartWidth", ST_FLOAT, border_side[SIDE_START], ES_BW(SIDE_START)),
+    PB("borderEndWidth", ST_FLOAT, border_side[SIDE_END], ES_BW(SIDE_END)),
+    PB("borderLeftColor", ST_COLOR, border_side_color[EDGE_L], ES_BC(EDGE_L)),
+    PB("borderTopColor", ST_COLOR, border_side_color[EDGE_T], ES_BC(EDGE_T)),
+    PB("borderRightColor", ST_COLOR, border_side_color[EDGE_R], ES_BC(EDGE_R)),
+    PB("borderBottomColor", ST_COLOR, border_side_color[EDGE_B], ES_BC(EDGE_B)),
+    PB("borderStartColor", ST_COLOR, border_side_color[SIDE_START], ES_BC(SIDE_START)),
+    PB("borderEndColor", ST_COLOR, border_side_color[SIDE_END], ES_BC(SIDE_END)),
+    /* per-corner radii */
+    PB("borderTopLeftRadius", ST_FLOAT, radius_corner[0], ES_RADIUS(0)),
+    PB("borderTopRightRadius", ST_FLOAT, radius_corner[1], ES_RADIUS(1)),
+    PB("borderBottomRightRadius", ST_FLOAT, radius_corner[2], ES_RADIUS(2)),
+    PB("borderBottomLeftRadius", ST_FLOAT, radius_corner[3], ES_RADIUS(3)),
+    PB("borderTopStartRadius", ST_FLOAT, radius_corner[4], ES_RADIUS(4)),
+    PB("borderTopEndRadius", ST_FLOAT, radius_corner[5], ES_RADIUS(5)),
+    PB("borderBottomStartRadius", ST_FLOAT, radius_corner[6], ES_RADIUS(6)),
+    PB("borderBottomEndRadius", ST_FLOAT, radius_corner[7], ES_RADIUS(7)),
+    /* logical margins, paddings and insets */
+    PB("marginStart", ST_FLOAT, margin_inline[0], ES_MARGIN(0)),
+    PB("marginEnd", ST_FLOAT, margin_inline[1], ES_MARGIN(1)),
+    PB("paddingStart", ST_FLOAT, padding_inline[0], ES_PADDING(0)),
+    PB("paddingEnd", ST_FLOAT, padding_inline[1], ES_PADDING(1)),
+    PX("start", ST_DIM, inset_inline[0]),
+    PX("end", ST_DIM, inset_inline[1]),
+    /* transform */
+    PX("scaleX", ST_FLOAT, scale_x),
+    PX("scaleY", ST_FLOAT, scale_y),
+    PX("rotate", ST_FLOAT, rotate),
+    PX("transformOriginX", ST_DIM, origin_x),
+    PX("transformOriginY", ST_DIM, origin_y),
 };
 
 static const StyleProp *find(const char *key) {
@@ -96,15 +139,35 @@ static const StyleProp *find(const char *key) {
     return NULL;
 }
 
+static void ext_defaults(StyleExt *x) {
+    memset(x, 0, sizeof *x);
+    x->scale_x = x->scale_y = 1;
+    x->origin_x = x->origin_y = (Dim){ 50, UNIT_PCT };
+}
+
+/* The field's address; the StyleExt is created on the first rare property. */
+static char *field(Style *s, const StyleProp *p) {
+    if (!p->ext) return (char *)s + p->off;
+    if (!s->ext) {
+        if (!(s->ext = malloc(sizeof *s->ext))) return NULL;
+        ext_defaults(s->ext);
+    }
+    s->ext->r.ok = 0;
+    return (char *)s->ext + p->off;
+}
+
 static size_t type_size(StyleType t) {
-    return t == ST_DIM ? sizeof(Dim) : t == ST_ENUM ? 1 : 4;
+    return t == ST_DIM ? sizeof(Dim) : t == ST_ENUM || t == ST_U8 ? 1 : 4;
 }
 
 int style_set_number(Style *s, const char *key, double v) {
     const StyleProp *p = find(key);
     if (!p) return -1;
-    char *f = (char *)s + p->off;
+    char *f = field(s, p);
+    if (!f) return -1;
+    if (p->bit) s->ext->edge_set |= p->bit;
     switch (p->type) {
+    case ST_U8:    *(uint8_t *)f = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v); return 0;
     case ST_DIM:   *(Dim *)f = (Dim){ (float)v, UNIT_PX }; return 0;
     case ST_FLOAT: *(float *)f = (float)v; return 0;
     case ST_COLOR: *(uint32_t *)f = (uint32_t)(int64_t)v; return 0;
@@ -116,7 +179,10 @@ int style_set_number(Style *s, const char *key, double v) {
 int style_set_string(Style *s, const char *key, const char *v) {
     const StyleProp *p = find(key);
     if (!p) return -1;
-    char *f = (char *)s + p->off;
+    char *f = field(s, p);
+    if (!f) return -1;
+    if (p->bit && p->type != ST_ENUM) s->ext->edge_set |= p->bit;
+    if (p->type == ST_U8) { long n = strtol(v, NULL, 10); *(uint8_t *)f = (uint8_t)(n < 0 ? 0 : n > 255 ? 255 : n); return 0; }
     if (p->type == ST_ENUM) {
         for (int i = 0; p->values[i]; i++)
             if (!strcmp(p->values[i], v)) { *(uint8_t *)f = (uint8_t)i; return 0; }
@@ -137,6 +203,15 @@ int style_set_string(Style *s, const char *key, const char *v) {
 int style_reset(Style *s, const char *key) {
     const StyleProp *p = find(key);
     if (!p) return -1;
+    if (p->ext) {
+        if (!s->ext) return 0;
+        s->ext->edge_set &= ~p->bit;
+        StyleExt d;
+        ext_defaults(&d);
+        memcpy((char *)s->ext + p->off, (char *)&d + p->off, type_size(p->type));
+        s->ext->r.ok = 0;
+        return 0;
+    }
     Style d;
     style_defaults(&d);
     memcpy((char *)s + p->off, (char *)&d + p->off, type_size(p->type));

@@ -5,7 +5,12 @@
 //
 //   await admin.run('locale-gen', 'pt_BR.UTF-8', (line) => showProgress(line))
 //   const off = admin.onEvent((text) => ...)    // unsolicited notices: "net link eth0 up"...
+//
+// An ERR reply is a code line (server/src/errcode.h): the promise rejects with an Error whose
+// message is already translated (t('errors.<code>')) and that carries .code and .params. OK and
+// LOG texts arrive as sent; show a status code line with statusText() (sdk/errors.js).
 import { createStore } from './store.js';
+import { codeError } from './errors.js';
 
 const pending = new Map();              // id → { action, arg, onLog, resolve, reject }
 const eventListeners = new Set();
@@ -32,7 +37,7 @@ globalThis.__lordAdmin = (id, kind, text) => {
   }
   pending.delete(id);
   refreshBusy();
-  if (kind === 'OK') p.resolve(text); else p.reject(new Error(text));
+  if (kind === 'OK') p.resolve(text); else p.reject(codeError(text));
 };
 
 export const admin = {
@@ -41,7 +46,7 @@ export const admin = {
   run(action, arg = '', onLog, { quiet = false } = {}) {
     return new Promise((resolve, reject) => {
       const id = lord.admin.request(action, String(arg));
-      if (!id) { reject(new Error('the administration helper is not available')); return; }
+      if (!id) { reject(codeError('admin.unavailable')); return; }
       pending.set(id, { action, arg: quiet ? '' : arg, onLog, resolve, reject, quiet, log: [] });   // quiet: may carry a password
       if (!quiet) refreshBusy();
     });

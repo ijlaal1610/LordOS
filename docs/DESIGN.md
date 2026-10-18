@@ -11,7 +11,7 @@ The first pass (Calculator, Text Editor, Notes, Photos, PDF Viewer and Fonts) an
 with the system emoji picker, About and the Installer) are documented with before/after
 screenshots in [`docs/polish/`](polish/), as is the third (Settings page by page, Files, Terminal
 Preferences and the Store's remaining pages), and the fourth (the system apps: Disks, Backups, Logs,
-Clock and Help).
+Clock and Help), as is the fifth (Mail, Calendar, Contacts and Reminders).
 
 ## Spacing: an 8 px grid
 
@@ -113,6 +113,16 @@ the Recorder draw their empty-state icons. `↻ ⤮ ♪ ◫ ▣ ☺ ≡` render 
   toolbar button at the trailing edge, never a button floating at the bottom.
 - **Reader (Help):** a centered reading column up to 680 px; the article keeps its own direction
   (`textDirection(body)`), so an English article in an Arabic interface still reads left to right.
+- **Mail / Calendar / Contacts / Reminders:** source lists use monochrome glyphs in the accent
+  color; where the glyph would be a color emoji (tray, archive, trash, folder, person) it is drawn
+  with views (`Glyph` in `apps/mail`, `PersonGlyph` in `apps/contacts`). Mail keeps three panes with
+  an icon-only toolbar over the list and the message; list rows are 86 px (sender, subject, two lines
+  of preview) with a rounded selection, and under 1000 px the panes shrink to 200 / 290 px.
+  Calendar centers the Day/Week/Month switch, puts the period title (22/700) over the grid with
+  ‹ Today › at its trailing edge, and hides the sidebar below 760 px unless asked for. Bottom bars
+  of adjacent columns share one height (40 px) so their hairlines line up. Text that belongs to the
+  user (event titles, previews) keeps its own direction (`textDirection`) in an RTL UI.
+  `ToolbarButton`'s `icon` may also be an element (a drawn glyph).
 - **Settings (System Settings):** a 220 px sidebar (search field, the user card, groups of
   `SidebarItem` rows 12 px apart with 20 px colored badges: a soft vertical gradient and a white
   glyph, or a drawn shape where the glyph is a color emoji), a 48 px title bar over the page with a

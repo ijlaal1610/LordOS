@@ -1,14 +1,14 @@
-// vault.js — Contraseñas y el llavero del sistema: habla con lord.vault (el ayudante encerrado
-// lord-vault, ver docs/CONTRASENAS.md). Todo es asincrónico: los pedidos devuelven promesas y un
-// temporizador lee las respuestas (lord.vault.poll); el escritorio nunca espera.
+// vault.js — Passwords and the system keyring: talks to lord.vault (the confined helper
+// lord-vault, see docs/PASSWORDS.md). Everything is asynchronous: requests return promises and a
+// timer reads the replies (lord.vault.poll); the desktop never waits.
 //
-//   vaultAvailable()                                ¿está lord-vault?
-//   vaultRequest(op, args, { files })               → promesa con la respuesta ({ ok, … }) o error con .code
-//   onVaultEvent(fn)                                eventos: locked, unlocked, changed, touch, ss-prompt, keyring-mismatch, crash
+//   vaultAvailable()                                is lord-vault there?
+//   vaultRequest(op, args, { files })               → promise with the reply ({ ok, … }) or an error with .code
+//   onVaultEvent(fn)                                events: locked, unlocked, changed, touch, ss-prompt, keyring-mismatch, crash
 //   keyring.set(app, { service, account, secret, label }) / get(app, { service, account }) / remove / list
-//       el llavero de la sesión, por app: una app ve solo lo suyo (salvo que el usuario lo comparta)
-//   autofill(app, { url | service })                → [{ id, title, username }] de Contraseñas (si está abierta)
-//   <KeyringPrompt />                               aviso del sistema para abrir el llavero (lo monta startShell)
+//       the session keyring, per app: an app only sees its own items (unless the user shares them)
+//   autofill(app, { url | service })                → [{ id, title, username }] from Passwords (if it is unlocked)
+//   <KeyringPrompt />                               system prompt to unlock the keyring (mounted by startShell)
 //   <AutofillButton app service|url|ssid onFill />   "fill from Passwords" next to a login field
 import { createElement as h, useEffect, useState } from 'react';
 import { View, Text, mainBox } from '@lordos/runtime';
@@ -49,7 +49,7 @@ function pump() {
   if (!waiting.size && fast) { clearInterval(fast); fast = null; }
 }
 
-// Los eventos (bloqueo automático, avisos de Secret Service) llegan aunque nadie espere nada.
+// Events (auto-lock, Secret Service notices) arrive even when nobody is waiting for anything.
 function startSlow() { if (!slow && has()) slow = setInterval(pump, 600); }
 
 export function vaultRequest(op, args = {}, { files, fds } = {}) {
@@ -57,7 +57,8 @@ export function vaultRequest(op, args = {}, { files, fds } = {}) {
   let id;
   // files: paths opened by lord-server (shell); fds: files picked in the system dialog (app process)
   try { id = lord.vault.request(JSON.stringify({ op, ...args }), files || fds ? { files, fds } : undefined); }
-  catch (e) { return Promise.reject(Object.assign(new Error(e.message), { code: 'file' })); }
+  // lord.vault.request throws translated errors with a code (server/src/ui/js_err.h)
+  catch (e) { return Promise.reject(Object.assign(new Error(e.message), { code: e.code === 'vault.unavailable' ? 'unavailable' : 'file' })); }
   startSlow();
   return new Promise((resolve, reject) => {
     waiting.set(id, { resolve, reject });
@@ -71,7 +72,7 @@ export function onVaultEvent(fn) {
   return () => listeners.delete(fn);
 }
 
-// ---- llavero de la sesión, por app ----
+// ---- the session keyring, per app ----
 
 export const keyring = {
   set: (app, { service, account = '', secret, label = '' }) => vaultRequest('kr-set', { owner: app, service, account, secret: String(secret ?? ''), label }),
@@ -81,11 +82,11 @@ export const keyring = {
   },
   remove: (app, { service, account = '' }) => vaultRequest('kr-del', { owner: app, service, account }),
   list: async (app) => (await vaultRequest('kr-list', { owner: app })).items || [],
-  // el usuario aceptó que `app` use un ítem de otra app (lo pregunta el sistema, no la app)
+  // the user agreed that `app` may use another app's item (the system asks, not the app)
   share: (id, app, allow = true) => vaultRequest('kr-share', { admin: true, id, app, allow }),
 };
 
-// ---- autocompletar en los campos de inicio de sesión de las apps nativas ----
+// ---- autofill in the login fields of native apps ----
 
 const hostOf = (u) => String(u || '').replace(/^[a-z]+:\/\//i, '').split(/[/:?#]/)[0].toLowerCase().replace(/^www\./, '');
 
@@ -101,14 +102,14 @@ export async function autofill(app, { url, service, ssid } = {}) {
   return list.filter((e) => !e.trash && hit(e)).map((e) => ({ id: e.id, title: e.title, username: e.sub || '' }));
 }
 
-// El usuario eligió una: usuario y contraseña (la contraseña sale de lord-vault solo ahora).
+// The user picked one: username and password (the password leaves lord-vault only now).
 export async function autofillReveal(id) {
   const e = (await vaultRequest('get', { id, reveal: true })).entry;
   const f = (k) => e.f.find((x) => x.k === k)?.v || '';
   return { username: f('username') || f('email'), password: f('password') };
 }
 
-// ---- aviso del sistema: abrir el llavero (Secret Service lo pidió) ----
+// ---- system prompt: unlock the keyring (Secret Service asked for it) ----
 
 const prompts = createStore([]);          // [{ prompt }]
 if (has()) {

@@ -118,5 +118,9 @@
   "spotlight.inHelp": "Artigo de ajuda",
   "picker.cancel": "Cancelar",
   "picker.choose": "Escolher ({n})",
-  "picker.empty": "Não há arquivos aqui."
+  "picker.empty": "Não há arquivos aqui.",
+  "wallpaper.aurora": "Aurora",
+  "wallpaper.ocean": "Oceano",
+  "wallpaper.sunset": "Pôr do sol",
+  "wallpaper.graphite": "Grafite"
 }

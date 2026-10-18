@@ -19,6 +19,7 @@
 #include "../monitor/map.h"
 #include "../apps.h"
 #include "js_sys.h"
+#include "js_err.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -66,7 +67,7 @@ static JSValue f_info(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     /* the CPU model comes from the same place as About (on ARM there is no "model name") */
     char cpu[160];
     js_sys_cpu_name(cpu, sizeof cpu);
-    if (JS_IsObject(o) && cpu[0] && strcmp(cpu, "desconocido")) JS_SetPropertyStr(c, o, "cpuModel", JS_NewString(c, cpu));
+    if (JS_IsObject(o) && cpu[0]) JS_SetPropertyStr(c, o, "cpuModel", JS_NewString(c, cpu));
     return o;
 }
 
@@ -240,7 +241,7 @@ static int color_prop(JSContext *c, JSValueConst o, const char *k, uint32_t *out
  *       home: { lon, lat } | null, dots: [{ lon, lat, r, sel }] }) → request number */
 static JSValue f_map(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (argc < 1 || !JS_IsObject(argv[0])) return JS_ThrowTypeError(c, "missing view");
+    if (argc < 1 || !JS_IsObject(argv[0])) return js_throw_code(c, "sys.badArgument", NULL);
     JSValueConst o = argv[0];
     static MapReq q;
     memset(&q, 0, sizeof q);
@@ -249,7 +250,7 @@ static JSValue f_map(JSContext *c, JSValueConst t, int argc, JSValueConst *argv)
         num_prop(c, o, "lon", -720, 720, &q.lon0) || num_prop(c, o, "lat", -360, 360, &q.lat0) || num_prop(c, o, "ppd", 0.1, 2000, &q.ppd) ||
         color_prop(c, o, "land", &q.land) || color_prop(c, o, "border", &q.border) || color_prop(c, o, "accent", &q.accent) ||
         color_prop(c, o, "homeColor", &q.home_color) || color_prop(c, o, "selColor", &q.sel_color))
-        return JS_ThrowRangeError(c, "invalid view");
+        return js_throw_code(c, "sys.badArgument", NULL);
     q.w = (int)w;
     q.h = (int)h;
     JSValue home = JS_GetPropertyStr(c, o, "home");

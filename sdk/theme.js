@@ -16,7 +16,7 @@ export const DEFAULT_TOKENS = {
   control: '#3a3a40',
   inputBg: '#2c2c31',
   radius: 8,
-  wallpapers: [],
+  wallpapers: [],        // [{ id, nameKey (locale key), name (English fallback), src }]
 };
 
 const ThemeContext = createContext(DEFAULT_TOKENS);

@@ -6,7 +6,7 @@
 // and the media keys (nowPlaying).
 import {
   View, Text, Image, MediaView, ScrollView, SidebarItem, SectionTitle, Hairline, EmptyState, ToolbarButton, useTheme, useAppWindow, useKeyboard,
-  useStore, useWindowState, wm, typeScale, t as tr, media, usePlayer, nowPlaying, mediaFormatTime, useThumb, fs, addListener, direction,
+  useStore, useWindowState, wm, typeScale, t as tr, errorText, media, usePlayer, nowPlaying, mediaFormatTime, useThumb, fs, addListener, direction,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { library, scan, albumsOf, artistsOf, parseSrt, AUDIO, VIDEO } from './library.js';
@@ -367,7 +367,7 @@ export default function Player() {
       <View style={{ flex: 1, backgroundColor: '#000' }} onMouseMove={poke} onMouseDown={() => setMenu(null)}>
         <MediaView media={id} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }} />
         {p.error && <View style={{ position: 'absolute', left: 0, right: 0, top: '45%', alignItems: 'center' }}>
-          <Text style={{ fontSize: 13, color: '#ff9f9f' }}>{p.error === 'crash' ? tr('player.crashed') : tr('player.error', { error: p.error })}</Text>
+          <Text style={{ fontSize: 13, color: '#ff9f9f' }}>{p.error === 'crash' ? tr('player.crashed') : tr('player.error', { error: errorText(p.error) })}</Text>
         </View>}
         {cue ? (
           <View style={{ position: 'absolute', left: 24, right: 24, bottom: controls && !small ? 96 : 28, alignItems: 'center' }}>
@@ -408,7 +408,7 @@ export default function Player() {
   const contentW = width - 200;
   const showArtist = contentW >= 380, showAlbum = contentW >= 560;
   const narrow = width < 720;
-  const col = (flex, extra) => ({ flex, minWidth: 0, fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden', ...extra });
+  const col = (flex, extra) => ({ flex, minWidth: 0, fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...extra });
   const header = (
     <View style={{ height: 26, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 10 }}>
       <Hairline edge="bottom" />
@@ -458,8 +458,8 @@ export default function Player() {
           {list.map((a) => (
             <View key={a.key} onClick={() => { setView('albums'); setSel(a.key); }} style={{ width: 150, gap: 2 }}>
               <Cover path={a.tracks[0].path} size={150} radius={8} />
-              <Text style={{ fontSize: 13, fontWeight: 500, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden', marginTop: 6 }}>{a.album || tr('player.unknownAlbum')}</Text>
-              <Text style={{ fontSize: typeScale.callout, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{a.artist || tr('player.unknownArtist')}</Text>
+              <Text style={{ fontSize: 13, fontWeight: 500, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 6 }}>{a.album || tr('player.unknownAlbum')}</Text>
+              <Text style={{ fontSize: typeScale.callout, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.artist || tr('player.unknownArtist')}</Text>
             </View>
           ))}
         </View>
@@ -527,8 +527,8 @@ export default function Player() {
             <View onClick={() => isVideo(current) && setShowVideo(true)}><Cover path={current} size={48} /></View>
             {!narrow && (
               <View style={{ flex: 1, minWidth: 0, gap: 2, overflow: 'hidden' }}>
-                <Text style={{ fontSize: 13, fontWeight: 600, color: th.text, whiteSpace: 'nowrap' }}>{meta?.title || p.info?.tags?.title || baseName(current)}</Text>
-                <Text style={{ fontSize: typeScale.callout, color: th.textDim, whiteSpace: 'nowrap' }}>{meta?.artist || p.info?.tags?.artist || ''}</Text>
+                <Text style={{ fontSize: 13, fontWeight: 600, color: th.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{meta?.title || p.info?.tags?.title || baseName(current)}</Text>
+                <Text style={{ fontSize: typeScale.callout, color: th.textDim, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{meta?.artist || p.info?.tags?.artist || ''}</Text>
               </View>
             )}
           </View>

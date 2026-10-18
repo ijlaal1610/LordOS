@@ -64,17 +64,17 @@ int ipsec_import(const char *name, const char *text, char *err, size_t errn) {
     if (vpn_kv_parse(text, keys, pems, &kv, err, errn)) return -1;
     const char *server = vpn_kv(&kv, "server"), *auth = vpn_kv(&kv, "auth");
     int rc = 0;
-    if (!server || !vpn_host_ok(server)) { snprintf(err, errn, "falta server o es inválido"); rc = -1; }
-    else if (!auth || (strcmp(auth, "eap") && strcmp(auth, "psk") && strcmp(auth, "cert"))) { snprintf(err, errn, "auth tiene que ser eap, psk o cert"); rc = -1; }
-    else if (!strcmp(auth, "eap") && (!vpn_kv(&kv, "user") || !id_ok(vpn_kv(&kv, "user")) || !vpn_kv(&kv, "password"))) { snprintf(err, errn, "eap necesita user y password"); rc = -1; }
-    else if (!strcmp(auth, "psk") && (!vpn_kv(&kv, "psk") || strlen(vpn_kv(&kv, "psk")) < 8)) { snprintf(err, errn, "psk necesita una clave de al menos 8 caracteres"); rc = -1; }
-    else if (!strcmp(auth, "cert") && (!vpn_kv_pem(&kv, "cert") || !vpn_kv_pem(&kv, "key"))) { snprintf(err, errn, "cert necesita cert y key (PEM)"); rc = -1; }
-    else if (vpn_kv(&kv, "remote_id") && !id_ok(vpn_kv(&kv, "remote_id"))) { snprintf(err, errn, "remote_id inválido"); rc = -1; }
-    else if (vpn_kv(&kv, "local_id") && !id_ok(vpn_kv(&kv, "local_id"))) { snprintf(err, errn, "local_id inválido"); rc = -1; }
-    else if (vpn_kv(&kv, "ike") && !proposal_ok(vpn_kv(&kv, "ike"))) { snprintf(err, errn, "ike inválido"); rc = -1; }
-    else if (vpn_kv(&kv, "esp") && !proposal_ok(vpn_kv(&kv, "esp"))) { snprintf(err, errn, "esp inválido"); rc = -1; }
-    else if (vpn_kv(&kv, "routes") && !vpn_routes_valid(vpn_kv(&kv, "routes"))) { snprintf(err, errn, "routes inválido"); rc = -1; }
-    if (!rc && vpn_kv_save(name, "ipsec", &kv)) { snprintf(err, errn, "no se pudo guardar"); rc = -1; }
+    if (!server || !vpn_host_ok(server)) { lerr_set(err, errn, "vpn.missingKey", "key", "server", NULL); rc = -1; }
+    else if (!auth || (strcmp(auth, "eap") && strcmp(auth, "psk") && strcmp(auth, "cert"))) { lerr_set(err, errn, "vpn.invalidValue", "key", "auth", NULL); rc = -1; }
+    else if (!strcmp(auth, "eap") && (!vpn_kv(&kv, "user") || !id_ok(vpn_kv(&kv, "user")) || !vpn_kv(&kv, "password"))) { lerr_set(err, errn, "ipsec.eapNeedsUser", NULL); rc = -1; }
+    else if (!strcmp(auth, "psk") && (!vpn_kv(&kv, "psk") || strlen(vpn_kv(&kv, "psk")) < 8)) { lerr_set(err, errn, "ipsec.pskShort", NULL); rc = -1; }
+    else if (!strcmp(auth, "cert") && (!vpn_kv_pem(&kv, "cert") || !vpn_kv_pem(&kv, "key"))) { lerr_set(err, errn, "ipsec.certNeedsKey", NULL); rc = -1; }
+    else if (vpn_kv(&kv, "remote_id") && !id_ok(vpn_kv(&kv, "remote_id"))) { lerr_set(err, errn, "vpn.invalidValue", "key", "remote_id", NULL); rc = -1; }
+    else if (vpn_kv(&kv, "local_id") && !id_ok(vpn_kv(&kv, "local_id"))) { lerr_set(err, errn, "vpn.invalidValue", "key", "local_id", NULL); rc = -1; }
+    else if (vpn_kv(&kv, "ike") && !proposal_ok(vpn_kv(&kv, "ike"))) { lerr_set(err, errn, "vpn.invalidValue", "key", "ike", NULL); rc = -1; }
+    else if (vpn_kv(&kv, "esp") && !proposal_ok(vpn_kv(&kv, "esp"))) { lerr_set(err, errn, "vpn.invalidValue", "key", "esp", NULL); rc = -1; }
+    else if (vpn_kv(&kv, "routes") && !vpn_routes_valid(vpn_kv(&kv, "routes"))) { lerr_set(err, errn, "vpn.invalidValue", "key", "routes", NULL); rc = -1; }
+    if (!rc && vpn_kv_save(name, "ipsec", &kv)) { lerr_set(err, errn, "net.saveFailed", NULL); rc = -1; }
     if (!rc) {
         char ifn[IFNAMSIZ];
         vpn_ifname("ipsec", name, ifn, sizeof ifn);
@@ -86,7 +86,7 @@ int ipsec_import(const char *name, const char *text, char *err, size_t errn) {
         buf_printf(&m, ",\"auth\":\"%s\",\"user\":", auth);
         buf_json_str(&m, vpn_kv(&kv, "user") ? vpn_kv(&kv, "user") : "");
         buf_printf(&m, ",\"fullTunnel\":%s,\"insecure\":false}\n", vpn_kv(&kv, "routes") ? "false" : "true");
-        if (!m.p || vpn_meta_save(name, m.p)) { snprintf(err, errn, "no se pudo guardar"); rc = -1; }
+        if (!m.p || vpn_meta_save(name, m.p)) { lerr_set(err, errn, "net.saveFailed", NULL); rc = -1; }
         buf_free(&m);
     }
     vpn_kv_free(&kv);
@@ -123,7 +123,7 @@ static int load_pem(int fd, const char *cmd, const char *type, const char *flag,
     ViciResult r;
     int rc = vici_simple(fd, cmd, &m, &r, 5000);
     vici_free(&m);
-    if (rc && err) snprintf(err, errn, "%s: %s", cmd, r.errmsg);
+    if (rc && err) lerr_set(err, errn, "ipsec.viciFailed", "cmd", cmd, "detail", r.errmsg, NULL);
     return rc;
 }
 
@@ -160,7 +160,7 @@ static int vici_load(int fd, const VpnKv *kv, uint32_t if_id, char *err, size_t 
     const char *rid = vpn_kv(kv, "remote_id") ? vpn_kv(kv, "remote_id") : server;
     const char *lid = vpn_kv(kv, "local_id"), *routes = vpn_kv(kv, "routes");
     ViciResult r;
-    if (!vpn_kv_pem(kv, "ca") && load_system_cas(fd) == 0 && strcmp(auth, "psk")) { snprintf(err, errn, "no hay autoridades en /etc/ssl/certs"); return -1; }
+    if (!vpn_kv_pem(kv, "ca") && load_system_cas(fd) == 0 && strcmp(auth, "psk")) { lerr_set(err, errn, "ipsec.noCas", NULL); return -1; }
     if (!strcmp(auth, "cert") && load_pem(fd, "load-key", "any", NULL, vpn_kv_pem(kv, "key"), err, errn)) return -1;
     if (!strcmp(auth, "eap") || !strcmp(auth, "psk")) {
         ViciMsg m = {0};
@@ -172,7 +172,7 @@ static int vici_load(int fd, const VpnKv *kv, uint32_t if_id, char *err, size_t 
         vici_list_end(&m);
         int rc = vici_simple(fd, "load-shared", &m, &r, 5000);
         vici_free(&m);
-        if (rc) { snprintf(err, errn, "load-shared: %s", r.errmsg); return -1; }
+        if (rc) { lerr_set(err, errn, "ipsec.viciFailed", "cmd", "load-shared", "detail", r.errmsg, NULL); return -1; }
     }
     char hex[16];
     snprintf(hex, sizeof hex, "0x%x", if_id);
@@ -218,7 +218,7 @@ static int vici_load(int fd, const VpnKv *kv, uint32_t if_id, char *err, size_t 
     vici_end(&m);
     int rc = vici_simple(fd, "load-conn", &m, &r, 5000);
     vici_free(&m);
-    if (rc) { snprintf(err, errn, "load-conn: %s", r.errmsg); return -1; }
+    if (rc) { lerr_set(err, errn, "ipsec.viciFailed", "cmd", "load-conn", "detail", r.errmsg, NULL); return -1; }
     return 0;
 }
 
@@ -254,7 +254,7 @@ static int list_sas(int fd, SaCtx *s) {
 void ipsec_run(const char *name) {
     vpn_signals();
     VpnKv kv;
-    if (vpn_kv_load(name, "ipsec", &kv)) { admin_event("net vpn %s error no-config", name); admin_event("net vpn %s disconnected", name); return; }
+    if (vpn_kv_load(name, "ipsec", &kv)) { admin_event("net vpn %s error vpn.noConfig", name); admin_event("net vpn %s disconnected", name); return; }
     char ifn[IFNAMSIZ], sconf[200], sock[160], dnsf[160], err[300] = "";
     vpn_ifname("ipsec", name, ifn, sizeof ifn);
     snprintf(sconf, sizeof sconf, SCONF_DIR "/%s.conf", name);
@@ -267,7 +267,7 @@ void ipsec_run(const char *name) {
     admin_event("net vpn %s connecting", name);
     int sfam = 0;
     uint8_t sip[16];
-    if (vpn_resolve(vpn_kv(&kv, "server"), &sfam, sip)) { admin_event("net vpn %s error no-resolve", name); admin_event("net vpn %s disconnected", name); vpn_kv_free(&kv); return; }
+    if (vpn_resolve(vpn_kv(&kv, "server"), &sfam, sip)) { admin_event("net vpn %s error vpn.serverUnresolved", name); admin_event("net vpn %s disconnected", name); vpn_kv_free(&kv); return; }
     /* if_id: from the name, never 0 */
     uint32_t if_id = 0x4c000000u;
     for (const char *p = name; *p; p++) if_id = (if_id * 31 + (unsigned char)*p) | 0x4c000000u;
@@ -276,20 +276,20 @@ void ipsec_run(const char *name) {
     if (fd < 0) { vpn_kv_free(&kv); return; }
     if (rt_ifindex(ifn)) rt_link_del(fd, rt_ifindex(ifn));
     int r = rt_link_new_xfrm(fd, ifn, if_id);
-    if (r) { close(fd); admin_event("net vpn %s error xfrm %s", name, strerror(-r)); admin_event("net vpn %s disconnected", name); vpn_kv_free(&kv); return; }
+    if (r) { close(fd); admin_event("net vpn %s error vpn.xfrmFailed errno=%s", name, lerr_errno(-r)); admin_event("net vpn %s disconnected", name); vpn_kv_free(&kv); return; }
     rt_link_set(fd, rt_ifindex(ifn), 1);
     close(fd);
     vpn_mark(ifn, name, 1);
     pid_t charon = -1;
     int cout = -1, vfd = -1, connected = 0;
-    if (write_sconf(name, ifn, sconf)) { admin_event("net vpn %s error write", name); goto out; }
+    if (write_sconf(name, ifn, sconf)) { admin_event("net vpn %s error vpn.writeFailed", name); goto out; }
     char envs[300];
     snprintf(envs, sizeof envs, "STRONGSWAN_CONF=%s", sconf);
     const char *cargv[] = { CHARON, NULL };
     charon = vpn_spawn(cargv, &cout, NULL, envs);
-    if (charon < 0) { admin_event("net vpn %s error charon", name); goto out; }
+    if (charon < 0) { admin_event("net vpn %s error ipsec.charonFailed", name); goto out; }
     for (int i = 0; i < 100 && (vfd = vici_connect(sock)) < 0; i++) usleep(100000);
-    if (vfd < 0) { admin_event("net vpn %s error charon-no-vici", name); goto out; }
+    if (vfd < 0) { admin_event("net vpn %s error ipsec.noVici", name); goto out; }
     if (vici_load(vfd, &kv, if_id, err, sizeof err)) { admin_event("net vpn %s error %.200s", name, err); goto out; }
     InitCtx ic = { .log = "" };
     ViciMsg m = {0};
@@ -342,11 +342,11 @@ void ipsec_run(const char *name) {
         struct pollfd pf = { cout, POLLIN, 0 };
         if (poll(&pf, 1, 1000) > 0) {
             char junk[4096];
-            if (read(cout, junk, sizeof junk) <= 0) { admin_event("net vpn %s error charon-exit", name); break; }
+            if (read(cout, junk, sizeof junk) <= 0) { admin_event("net vpn %s error ipsec.charonExited", name); break; }
         }
         if (time(NULL) >= next) {
             next = time(NULL) + 10;
-            if (list_sas(vfd, &sa) || !sa.established) { admin_event("net vpn %s error lost", name); break; }
+            if (list_sas(vfd, &sa) || !sa.established) { admin_event("net vpn %s error vpn.lost", name); break; }
         }
     }
     {

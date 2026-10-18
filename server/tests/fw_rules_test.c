@@ -610,7 +610,7 @@ static void test_random(void) {
             FwDecision d = fw_decide(s, &q);
             uint32_t got = d.reason == FW_BY_RULE ? d.rule_id : 0;
             total++;
-            if (want != got) { mism++; if (mism < 5) fprintf(stderr, "  azar: esperaba regla %u, dio %u\n", want, got); }
+            if (want != got) { mism++; if (mism < 5) fprintf(stderr, "  random: expected rule %u, got %u\n", want, got); }
         }
     }
     CHECK(mism == 0);

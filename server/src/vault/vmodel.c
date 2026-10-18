@@ -1,4 +1,4 @@
-/* vmodel.c — contenido de una bóveda abierta (ver vmodel.h). Todo en la arena de secretos. */
+/* vmodel.c — contents of an open vault (see vmodel.h). Everything lives in the secrets arena. */
 #include "vmodel.h"
 #include "smem.h"
 #include "vcrypto.h"
@@ -45,10 +45,10 @@ static int valid_id(const char *s) {
     return 1;
 }
 
-/* ---- plegado para buscar: minúsculas y sin tildes (latín) ---- */
+/* ---- folding for search: lowercase and without accents (Latin) ---- */
 
 static const char *fold_cp(unsigned cp, char *tmp) {
-    /* U+00C0–U+00FF y algunas de Latin Extended-A */
+    /* U+00C0–U+00FF and some of Latin Extended-A */
     static const char *lat1[64] = {
         "a","a","a","a","a","a","ae","c","e","e","e","e","i","i","i","i",
         "d","n","o","o","o","o","o","x","o","u","u","u","u","y","th","ss",
@@ -118,7 +118,7 @@ void vm_refresh(VEntry *e) {
     if (pw && pw[0]) crypto_blake2b_keyed(e->pwhash, 16, (const uint8_t *)"lordos-vault:reuse", 18, (const uint8_t *)pw, strlen(pw));
 }
 
-/* ---- cargar ---- */
+/* ---- load ---- */
 
 static char *raw_of(const Vj *j, int tok, const char *def) {
     if (tok < 0) return sm_strdup(def);
@@ -182,7 +182,7 @@ static int load_atts(VEntry *e, const Vj *j, int arr) {
         if (hex16(buf, a->mac, 16)) continue;
         a->name = vj_gets(j, k, "name");
         a->mime = vj_gets(j, k, "mime");
-        if (!a->name) a->name = sm_strdup("archivo");
+        if (!a->name) a->name = sm_strdup("file");
         if (!a->mime) a->mime = sm_strdup("application/octet-stream");
         a->size = (uint64_t)vj_getn(j, k, "size", 0);
         e->natt++;
@@ -254,7 +254,7 @@ int vm_load(VModel *m, const char *json, size_t len) {
     return 0;
 }
 
-/* ---- guardar ---- */
+/* ---- save ---- */
 
 static void hexs(VjB *b, const uint8_t *p, size_t n) {
     char h[130];
@@ -347,9 +347,9 @@ char *vm_dump(const VModel *m, size_t *len) {
     return b.p;
 }
 
-/* ---- para la interfaz ---- */
+/* ---- for the interface ---- */
 
-/* El historial guarda los valores ocultos; sin reveal se sacan (se reescribe el JSON). */
+/* The history keeps the hidden values; without reveal they are removed (the JSON is rewritten). */
 static void hist_json(VjB *b, const char *hist, int reveal) {
     if (reveal || !hist) { vb_raw(b, hist ? hist : "[]"); return; }
     Vj j;
@@ -393,7 +393,7 @@ void vm_entry_json(VjB *b, const VEntry *e, int reveal, int hist) {
     vb_close(b, '}');
 }
 
-/* subtítulo de la lista: usuario, correo, o los últimos 4 de una tarjeta */
+/* list subtitle: username, email, or the last 4 digits of a card */
 static const char *subtitle(const VEntry *e, char *tmp, size_t n) {
     const char *u = vm_field(e, "username");
     if (u && u[0]) return u;
@@ -408,7 +408,7 @@ static const char *subtitle(const VEntry *e, char *tmp, size_t n) {
         snprintf(tmp, n, "•••• %s", k >= 4 ? d + k - 4 : d);
         return tmp;
     }
-    /* documentos: el número (si no es oculto) */
+    /* documents: the number (if it is not hidden) */
     for (int i = 0; i < e->nf; i++)
         if (!strcmp(e->f[i].k, "number") && !strcmp(e->f[i].t, "text") && e->f[i].v[0]) return e->f[i].v;
     for (const char *key = "ssid"; key; key = !strcmp(key, "ssid") ? "host" : !strcmp(key, "host") ? "product" : !strcmp(key, "product") ? "service" : !strcmp(key, "service") ? "account" : NULL) {
@@ -495,7 +495,7 @@ int vm_remove(VModel *m, const char *id) {
     return 0;
 }
 
-/* ---- crear/actualizar desde la interfaz ---- */
+/* ---- create/update from the interface ---- */
 
 static int str_eq(const char *a, const char *b) { return !strcmp(a ? a : "", b ? b : ""); }
 
@@ -512,7 +512,7 @@ static int valid_ftype(const char *t) {
     return 0;
 }
 
-/* entrada nueva armada desde el JSON; old (si hay) para los "keep" */
+/* new entry built from the JSON; old (if any) for the "keep" fields */
 static VEntry *entry_from_ui(const Vj *j, int o, const VEntry *old, char *err, size_t errn) {
     VEntry *e = sm_alloc(sizeof *e);
     if (!e) { snprintf(err, errn, "memory"); return NULL; }
@@ -540,7 +540,7 @@ static VEntry *entry_from_ui(const Vj *j, int o, const VEntry *old, char *err, s
         if (!d->k || !d->k[0] || strlen(d->k) > 64) { sm_free(d->k); d->k = sm_strdup("field"); }
         if (!d->t || !valid_ftype(d->t)) { sm_free(d->t); d->t = sm_strdup("text"); }
         if (vj_getb(j, k, "keep", 0) && old) {
-            /* conservar el valor anterior del campo con la misma clave (y la misma posición si se repite) */
+            /* keep the previous value of the field with the same key (and the same position if it repeats) */
             const char *pv = NULL;
             int seen = 0;
             for (int q = 0; q < i; q++) if (e->f[q].k && !strcmp(e->f[q].k, d->k)) seen++;
@@ -568,7 +568,7 @@ static void add_history(VEntry *e, const VEntry *old, int64_t now) {
     vb_ks(&b, "title", old->title);
     fields_json(&b, old, 1);
     vb_close(&b, '}');
-    /* las anteriores, hasta HIST_MAX */
+    /* the previous ones, up to HIST_MAX */
     Vj j;
     if (old->hist && !vj_parse(&j, old->hist, strlen(old->hist)) && vj_type(&j, 0) == VJ_ARR) {
         for (int i = 0, k = 1; i < j.t[0].count && i < HIST_MAX - 1; i++, k = j.t[k].next) {
@@ -598,7 +598,7 @@ int vm_upsert(VModel *m, const Vj *j, int tok, VEntry **out, char *err, size_t e
         e->created = old->created;
         e->trash = (int64_t)vj_getn(j, tok, "trash", (double)old->trash);
         e->pwch = old->pwch;
-        /* adjuntos: los conserva (se agregan y sacan con sus propios pedidos) */
+        /* attachments: kept (they are added and removed with their own requests) */
         e->att = old->att; e->natt = old->natt;
         VEntry *o2 = old;
         o2->att = NULL; o2->natt = 0;

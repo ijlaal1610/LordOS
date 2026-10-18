@@ -65,12 +65,19 @@ void damage_subtree(Node *n) {
 }
 
 static void invalidate_measure(Node *n) {
-    for (; n; n = n->parent) n->measure_valid = 0;
+    for (; n; n = n->parent) n->measure_valid = n->layout_ok = 0;
+    ui.dirty = 1;
+}
+
+/* Only its insets changed (grab.c): its parent places it again, its own subtree is kept. */
+void node_moved(Node *n) {
+    for (Node *p = n->parent; p; p = p->parent) p->layout_ok = 0;
     ui.dirty = 1;
 }
 
 void node_invalidate(Node *n) {
     n->paint_dirty = 1;
+    if (n->s.ext) n->s.ext->r.ok = 0;
     if (n->type == NODE_RAW && n->parent) n->parent->paint_dirty = 1;
     invalidate_measure(n);
 }
@@ -114,6 +121,8 @@ void node_destroy(Node *n) {
     ui.nodes[n->id] = NULL;
     image_release(n->img);
     free(n->text);
+    free(n->tf);
+    free(n->s.ext);
     free(n);
     ui.dirty = 1;
 }
@@ -164,7 +173,7 @@ int node_children_ordered(Node *n, Node **out, int max) {
 /* Deletes all nodes (theme change). The whole screen is left to repaint. */
 void ui_reset(void) {
     for (int i = 0; i < ui.cap; i++)
-        if (ui.nodes[i]) { free(ui.nodes[i]->text); free(ui.nodes[i]); ui.nodes[i] = NULL; }
+        if (ui.nodes[i]) { free(ui.nodes[i]->text); free(ui.nodes[i]->tf); free(ui.nodes[i]->s.ext); free(ui.nodes[i]); ui.nodes[i] = NULL; }
     ui.root = NULL;
     ui.damage = (Box){0, 0, ui.width, ui.height};
     ui.dirty = 1;

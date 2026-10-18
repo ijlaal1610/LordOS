@@ -1,7 +1,7 @@
 {
   "id": "scanner",
-  "name": "Escáner",
-  "description": "Escáneres de la red sin controlador (eSCL): vista previa, área, resolución y guardar como PDF, PNG o JPEG",
+  "name": "Scanner",
+  "description": "Driverless network scanners (eSCL): preview, area, resolution and save as PDF, PNG or JPEG",
   "size": [860, 620],
   "minSize": [640, 460],
   "dock": false,

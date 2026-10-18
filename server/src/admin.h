@@ -34,8 +34,26 @@ typedef struct {
 
 /* Replies of the running action: "LOG", "OK" or "ERR" (one line; \n become spaces). */
 void admin_say(const char *kind, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
-/* Unsolicited notice (id 0, EVENT): "net link eth0 up", "vpn wg0 conectada"... */
+/* Unsolicited notice (id 0, EVENT): "net link eth0 up", "vpn wg0 connected"... */
 void admin_event(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+
+/* What reaches the UI is a code line, never prose (see errcode.h): the UI translates it with
+ * t('errors.<code>') for ERR and t('status.<code>') for OK/LOG. Pairs (key, value) end in NULL:
+ *   admin_err("pkg.removeEssential", "name", n, NULL);   →  "<id> ERR pkg.removeEssential name=dpkg" */
+#include "errcode.h"
+__attribute__((sentinel))
+static inline void admin_code(const char *kind, const char *code, ...)
+{
+    char line[2048];
+    va_list ap;
+    va_start(ap, code);
+    lerr_vset(line, sizeof line, code, ap);
+    va_end(ap);
+    admin_say(kind, "%s", line);
+}
+#define admin_err(...) admin_code("ERR", __VA_ARGS__)
+#define admin_ok(...)  admin_code("OK", __VA_ARGS__)
+#define admin_log(...) admin_code("LOG", __VA_ARGS__)
 
 /* Fixed-path program with a clean environment; its output goes as LOG. Returns the exit code. */
 int  admin_run(const char *const argv[]);

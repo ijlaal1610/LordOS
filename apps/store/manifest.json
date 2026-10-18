@@ -1,7 +1,7 @@
 {
   "id": "store",
-  "name": "Tienda",
-  "description": "Apps de LordOS y de Debian: buscar, instalar, actualizar y quitar",
+  "name": "Store",
+  "description": "LordOS and Debian apps: search, install, update and remove",
   "size": [
     880,
     580

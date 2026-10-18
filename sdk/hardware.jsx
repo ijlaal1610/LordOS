@@ -207,20 +207,25 @@ function useSystemTokens() {
     separator: 'rgba(0,0,0,0.12)', control: '#e2e2e7' } : th;
 }
 
+// The "Keep these display settings?" alert, drawn like a macOS alert: a 260 px panel with the icon on
+// top, a 13/700 title, an 11 px body with the countdown and two equal buttons (the default one in the
+// accent color).
 export function DisplayConfirm() {
   const c = useStore(displayConfirm);
   const th = useSystemTokens();
   if (!c) return null;
+  const dark = th.mode !== 'light';
   return h(View, { style: { position: 'absolute', ...mainBox(), alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.25)', zIndex: 100001 } },
-  h(View, { style: { width: 340, borderRadius: 14, padding: 22, gap: 10, alignItems: 'center', backgroundColor: th.windowBg,
-    border: `1px solid ${th.separator}`, boxShadow: '0 20px 60px rgba(0,0,0,0.45)' } },
-  h(DisplayGlyph, { size: 48, color: th.accent }),
-  h(Text, { style: { fontSize: 14, fontWeight: 700, color: th.text, textAlign: 'center' } }, t('prefs.display.keepTitle')),
-  h(Text, { style: { fontSize: 12, color: th.textDim, textAlign: 'center', lineHeight: 1.4 } }, t('prefs.display.keepBody', { count: c.left })),
-  h(View, { style: { flexDirection: 'row', gap: 10, marginTop: 8, alignSelf: 'stretch' } },
-    h(DialogButton, { label: t('prefs.display.revert'), onClick: revertDisplay, th }),
-    h(DialogButton, { label: t('prefs.display.keep'), onClick: keepDisplay, primary: true, th }))));
+    backgroundColor: 'rgba(0,0,0,0.12)', zIndex: 100001 } },
+  h(View, { style: { width: 260, borderRadius: 12, paddingTop: 20, paddingHorizontal: 16, paddingBottom: 16, alignItems: 'center',
+    backgroundColor: dark ? '#2b2b2f' : '#ececee', border: `1px solid ${dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'}`,
+    boxShadow: '0 18px 50px rgba(0,0,0,0.4)' } },
+  h(DisplayGlyph, { size: 56, color: th.accent }),
+  h(Text, { style: { width: 228, marginTop: 10, fontSize: 13, fontWeight: 700, color: th.text, textAlign: 'center', lineHeight: 1.3 } }, t('prefs.display.keepTitle')),
+  h(Text, { style: { width: 228, marginTop: 6, fontSize: 11, color: th.text, opacity: 0.8, textAlign: 'center', lineHeight: 1.4 } }, t('prefs.display.keepBody', { count: c.left })),
+  h(View, { style: { flexDirection: 'row', gap: 8, marginTop: 16, alignSelf: 'stretch' } },
+    h(DialogButton, { label: t('prefs.display.revert'), onClick: revertDisplay, th, dark }),
+    h(DialogButton, { label: t('prefs.display.keep'), onClick: keepDisplay, primary: true, th, dark }))));
 }
 
 export function DisplayGlyph({ size = 40, color = '#0a84ff' }) {
@@ -231,12 +236,13 @@ export function DisplayGlyph({ size = 40, color = '#0a84ff' }) {
     h(View, { style: { width: size * 0.42, height: Math.max(2, size / 18), borderRadius: 2, backgroundColor: color } }));
 }
 
-function DialogButton({ label, onClick, primary, th }) {
+function DialogButton({ label, onClick, primary, th, dark = th.mode !== 'light' }) {
   const [hover, setHover] = useState(false);
   return h(View, { onClick, onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false),
-    style: { flex: 1, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
-      backgroundColor: primary ? th.accent : th.control, opacity: hover ? 0.85 : 1 } },
-  h(Text, { style: { fontSize: 13, fontWeight: 600, color: primary ? '#fff' : th.text } }, label));
+    style: { flex: 1, height: 28, borderRadius: 7, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: primary ? th.accent : dark ? 'rgba(255,255,255,0.14)' : '#ffffff',
+      boxShadow: primary ? 'none' : '0 0.5px 1.5px rgba(0,0,0,0.25)', opacity: hover ? 0.88 : 1 } },
+  h(Text, { style: { fontSize: 13, fontWeight: 500, color: primary ? '#fff' : th.text } }, label));
 }
 
 // ---- idle: screen off, lock, sleep ----

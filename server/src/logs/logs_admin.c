@@ -20,14 +20,14 @@
 void logs_act_system(const AdminReq *r, const char *arg, size_t len) {
     (void)r; (void)len;
     JQuery q;
-    if (jq_parse(arg, &q, 5000)) { admin_say("ERR", "consulta inválida"); return; }
+    if (jq_parse(arg, &q, 5000)) { admin_err("logs.badQuery", NULL); return; }
     char **paths;
     int np = jq_files(JSCOPE_SYSTEM, 0, &paths);
-    if (np <= 0) { admin_say("ERR", "no hay journal del sistema"); return; }
+    if (np <= 0) { admin_err("logs.noSystemJournal", NULL); return; }
     JEntry *e = NULL;
     long n = jq_run(paths, np, &q, &e);
     jq_files_free(paths, np);
-    if (n < 0) { admin_say("ERR", "no se pudo leer el journal"); return; }
+    if (n < 0) { admin_err("logs.readFailed", NULL); return; }
     char buf[LINE_MAX_JSON];
     long sent = 0;
     for (long i = 0; i < n; i++) {
@@ -36,5 +36,5 @@ void logs_act_system(const AdminReq *r, const char *arg, size_t len) {
             if (jentry_json(&e[i], buf, sizeof buf, tries[k])) { admin_say("LOG", "%s", buf); sent++; break; }
     }
     jq_free(e, n);
-    admin_say("OK", "%ld", sent);
+    admin_say("OK", "%ld", sent);   /* i18n-ok */
 }

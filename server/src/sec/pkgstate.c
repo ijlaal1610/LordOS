@@ -166,7 +166,7 @@ int pkg_status(const char *id, PkgStatus *st) {
     st->installed = 1;
     if (pkg_original_path(id, orig, sizeof orig) || stat(orig, &os)) return 0;      /* installed before M8 */
     st->has_original = 1;
-    if (list_dir(dir)) { seterr(st->error, sizeof st->error, "no se pudo leer la carpeta de la app"); return 0; }
+    if (list_dir(dir)) { seterr(st->error, sizeof st->error, "pkgstate.readFailed"); return 0; }
     /* cheap fingerprint: sizes and dates of everything, plus the original */
     unsigned long long fp = 1469598103934665603ULL;
     for (int i = 0; i < walk_n; i++) {
@@ -222,14 +222,14 @@ int pkg_check_update(const char *id, const LpkSigInfo *next, char *err, size_t n
     int bad = sig_verify_package(&pk, id, ver, &old, e2, sizeof e2);
     lpk_free(&pk);
     if (bad || !old.has_signature) return 0;           /* the installed one has no valid signature: no key to require */
-    if (!next->has_signature) { seterr(err, n, "la versión instalada está firmada y esta actualización no"); return -1; }
-    if (strcmp(old.key, next->key)) { seterr(err, n, "la actualización está firmada con otra clave que la versión instalada"); return -1; }
+    if (!next->has_signature) { seterr(err, n, "pkgstate.updateUnsigned"); return -1; }
+    if (strcmp(old.key, next->key)) { seterr(err, n, "pkgstate.updateOtherKey"); return -1; }
     return 0;
 }
 
 int pkg_restore(const char *id, char *err, size_t n) {
     char orig[PATH_MAX];
-    if (pkg_original_path(id, orig, sizeof orig)) { seterr(err, n, "app inválida"); return -1; }
+    if (pkg_original_path(id, orig, sizeof orig)) { seterr(err, n, "pkgstate.invalidApp"); return -1; }
     Lpk pk;
     if (lpk_open(orig, &pk, err, n)) return -1;
     char ver[40];
@@ -277,7 +277,7 @@ int pkg_user_key(uint8_t seed[32], char pubhex[65], char name[128]) {
     struct passwd *pw = getpwuid(getuid());
     char full[128] = "";
     if (pw && pw->pw_gecos && pw->pw_gecos[0]) { snprintf(full, sizeof full, "%s", pw->pw_gecos); char *c = strchr(full, ','); if (c) *c = 0; }
-    if (!full[0]) snprintf(full, sizeof full, "%s", pw ? pw->pw_name : "usuario");
+    if (!full[0]) snprintf(full, sizeof full, "%s", pw ? pw->pw_name : "user");
     snprintf(name, 128, "%s", full);
     char sh[65], qn[300], out[600];
     hex_encode(seed, 32, sh);
@@ -288,7 +288,7 @@ int pkg_user_key(uint8_t seed[32], char pubhex[65], char name[128]) {
     int r = fd >= 0 && n > 0 && !write_all(fd, out, (size_t)n) ? 0 : -1;
     if (fd >= 0) close(fd);
     explicit_bzero(out, sizeof out);
-    if (!r) fprintf(stderr, "firma: clave propia creada (%s)\n", pubhex);
+    if (!r) fprintf(stderr, "sign: own key created (%s)\n", pubhex);
     return r;
 }
 
@@ -344,21 +344,21 @@ static void tar_add(Buf *o, const char *name, const void *data, size_t size) {
 
 int pkg_share(const char *id, const char *manifest, size_t mlen, const char *out_path, char *err, size_t n) {
     const char *root = lpk_root();
-    if (!root || !lpk_valid_id(id)) { seterr(err, n, "app inválida"); return -1; }
+    if (!root || !lpk_valid_id(id)) { seterr(err, n, "pkgstate.invalidApp"); return -1; }
     JDoc md;
-    if (json_parse(manifest, mlen, &md, NULL, 0)) { seterr(err, n, "manifest inválido"); return -1; }
+    if (json_parse(manifest, mlen, &md, NULL, 0)) { seterr(err, n, "pkgstate.badManifest"); return -1; }
     const char *mid = json_str(md.root, "id"), *ver = json_str(md.root, "version"), *based = json_str(md.root, "basedOn");
     int bad = !mid || strcmp(mid, id) || !ver || !based;
     char version[40];
     snprintf(version, sizeof version, "%s", ver ? ver : "");
     json_free(&md);
-    if (bad) { seterr(err, n, "el manifest tiene que ser de la misma app y traer basedOn"); return -1; }
+    if (bad) { seterr(err, n, "pkgstate.manifestNotBasedOn"); return -1; }
     uint8_t seed[32];
     char pub[65], name[128];
-    if (pkg_user_key(seed, pub, name)) { seterr(err, n, "no se pudo crear la clave propia"); return -1; }
+    if (pkg_user_key(seed, pub, name)) { seterr(err, n, "pkgstate.keyFailed"); return -1; }
     char dir[PATH_MAX];
     snprintf(dir, sizeof dir, "%s/%s", root, id);
-    if (list_dir(dir) || walk_bad) { explicit_bzero(seed, 32); seterr(err, n, "la carpeta de la app tiene enlaces o nombres inválidos"); return -1; }
+    if (list_dir(dir) || walk_bad) { explicit_bzero(seed, 32); seterr(err, n, "pkgstate.badFolder"); return -1; }
     Buf tar = { 0 }, contents = { 0 };
     char line[600], q[300];
     json_quote(q, sizeof q, name);
@@ -398,8 +398,8 @@ int pkg_share(const char *id, const char *manifest, size_t mlen, const char *out
         put(&tar, end, sizeof end);
         int fd = tar.fail ? -1 : open(out_path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0644);
         if (fd >= 0 && !write_all(fd, tar.b, tar.len) && !close(fd)) r = 0;
-        else { if (fd >= 0) { close(fd); unlink(out_path); } seterr(err, n, errno == EEXIST ? "ya existe un archivo con ese nombre" : "no se pudo escribir el paquete"); }
-    } else seterr(err, n, "no se pudo armar el paquete");
+        else { if (fd >= 0) { close(fd); unlink(out_path); } seterr(err, n, errno == EEXIST ? "pkgstate.exists" : "pkgstate.writeFailed"); }
+    } else seterr(err, n, "pkgstate.buildFailed");
     explicit_bzero(seed, sizeof seed);
     free(tar.b);
     free(contents.b);

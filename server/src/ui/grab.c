@@ -87,6 +87,7 @@ void grab_motion(float px, float py) {
     g.x = x; g.y = y; g.w = w; g.h = h;
     n->s.pos[EDGE_L] = (Dim){ x, UNIT_PX };
     n->s.pos[EDGE_T] = (Dim){ y, UNIT_PX };
+    node_moved(n);
     if (sized) {
         n->s.width = (Dim){ w, UNIT_PX };
         n->s.height = (Dim){ h, UNIT_PX };

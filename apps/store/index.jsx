@@ -7,7 +7,20 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { debian, useDebian } from './debian.js';
 
-// Trust level of a package from its signature (see docs/FIRMA.md).
+// The user's Downloads folder relative to home ("Downloads/"), from xdg-user-dirs; without it, the
+// first of the usual names that exists, or the home folder itself.
+function downloadsDir() {
+  let conf = '';
+  try { conf = fs.read('.config/user-dirs.dirs'); } catch (e) { /* no xdg-user-dirs */ }
+  const m = /^XDG_DOWNLOAD_DIR="\$HOME\/([^"]+)"/m.exec(conf);
+  if (m) return `${m[1]}/`;
+  for (const d of ['Downloads', 'Descargas', 'Transferências']) {
+    try { fs.list(d); return `${d}/`; } catch (e) { /* not there */ }
+  }
+  return '';
+}
+
+// Trust level of a package from its signature (see docs/SIGNING.md).
 const TRUST = {
   lordos: { color: '#30d158', glyph: '◆' },
   verified: { color: '#0a84ff', glyph: '✓' },
@@ -215,7 +228,7 @@ function LordOSPage({ query }) {
   );
 }
 
-// Trust, "Modified by you", Restore original and Share my version (docs/FIRMA.md).
+// Trust, "Modified by you", Restore original and Share my version (docs/SIGNING.md).
 function PkgManage({ pkg, onMsg }) {
   const t = useTheme();
   const { t: tr } = useLocale();
@@ -231,8 +244,8 @@ function PkgManage({ pkg, onMsg }) {
     try {
       const key = lord.sign.userKey();
       const base = `${pkg.id}@${st.version} by ${st.signer || tr('store.trust.unknownAuthor')}`;
-      const manifest = { ...pkgManifest(pkg), id: pkg.id, version: `${st.version}+mia`, basedOn: base };
-      const out = lord.sign.share(pkg.id, JSON.stringify(manifest, null, 2), `Descargas/${pkg.id}-mia.lpk`);
+      const manifest = { ...pkgManifest(pkg), id: pkg.id, version: `${st.version}+mine`, basedOn: base };
+      const out = lord.sign.share(pkg.id, JSON.stringify(manifest, null, 2), `${downloadsDir()}${pkg.id}-mine.lpk`);
       onMsg({ ok: true, text: tr('store.share.done', { path: out.replace(fs.home(), '~'), key: key.public.slice(0, 16) }) });
     } catch (e) { onMsg({ ok: false, text: e.message }); }
   };

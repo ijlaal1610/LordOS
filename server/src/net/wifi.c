@@ -245,7 +245,7 @@ static void unescape_ssid(const char *in, char *out, size_t n) {
 void wifi_act_scan(const char *ifname) {
     char me[108];
     int fd = ctrl_open(ifname, me, sizeof me);
-    if (fd < 0) { admin_say("ERR", "la interfaz %s no tiene wpa_supplicant", ifname); return; }
+    if (fd < 0) { admin_err("wifi.noSupplicant", "name", ifname, NULL); return; }
     char r[256];
     int got = 0;
     if (send(fd, "ATTACH", 6, 0) == 6 && ctrl_recv(fd, r, sizeof r, 3000) > 0 && send(fd, "SCAN", 4, 0) == 4) {
@@ -267,8 +267,8 @@ void wifi_act_scan(const char *ifname) {
     unlink(me);
     (void)got;                                   /* if the notice didn't arrive, whatever results there are get used */
     char *res = malloc(65536);
-    if (!res) { admin_say("ERR", "sin memoria"); return; }
-    if (wifi_ctrl(ifname, "SCAN_RESULTS", res, 65536) <= 0) { free(res); admin_say("ERR", "wpa_supplicant no respondió"); return; }
+    if (!res) { admin_err("sys.outOfMemory", NULL); return; }
+    if (wifi_ctrl(ifname, "SCAN_RESULTS", res, 65536) <= 0) { free(res); admin_err("wifi.noAnswer", NULL); return; }
     /* bssid / frequency / signal / flags / ssid; one entry per SSID (the one with the best signal) */
     struct { char ssid[40], bssid[20], sec[16]; int freq, signal; } nets[96];
     int n = 0;
@@ -311,12 +311,12 @@ void wifi_act_scan(const char *ifname) {
         if (b.p) admin_say("LOG", "%s", b.p);
         buf_free(&b);
     }
-    admin_say("OK", "%d", n);
+    admin_say("OK", "%d", n); /* i18n-ok: a count (data) */
 }
 
 void wifi_act_connect(const char *ifname, const char *ssid, const char *pass) {
-    if (!valid_ssid(ssid)) { admin_say("ERR", "SSID inválido"); return; }
-    if (!valid_pass(pass) || (pass[0] && strlen(pass) < 8)) { admin_say("ERR", "contraseña inválida"); return; }
+    if (!valid_ssid(ssid)) { admin_err("wifi.invalidSsid", NULL); return; }
+    if (!valid_pass(pass) || (pass[0] && strlen(pass) < 8)) { admin_err("wifi.invalidPassword", NULL); return; }
     char sh[72], path[160];
     hex((const uint8_t *)ssid, strlen(ssid), sh);
     /* it's saved: public part (ssid, security) and secret part (password) */
@@ -332,27 +332,27 @@ void wifi_act_connect(const char *ifname, const char *ssid, const char *pass) {
     snprintf(path, sizeof path, NET_WIFI_DIR "/%s.key", sh);
     ok = ok && write_file_atomic(path, sec, (size_t)sl, 0600) == 0;
     memset(sec, 0, sizeof sec);
-    if (!ok) { admin_say("ERR", "no se pudo guardar la red"); return; }
+    if (!ok) { admin_err("wifi.saveFailed", NULL); return; }
     char wname[40];
     snprintf(wname, sizeof wname, "wpa:%s", ifname);
     int fresh = !admin_daemon_running(wname);
-    if (wifi_start(ifname)) { admin_say("ERR", "no se pudo iniciar wpa_supplicant en %s", ifname); return; }
+    if (wifi_start(ifname)) { admin_err("wifi.startFailed", "name", ifname, NULL); return; }
     int id = fresh ? find_network(ifname, sh) : load_network(ifname, ssid, pass);
-    if (id < 0) { admin_say("ERR", "wpa_supplicant no aceptó la red"); return; }
+    if (id < 0) { admin_err("wifi.rejected", NULL); return; }
     char cmd[48];
     snprintf(cmd, sizeof cmd, "SELECT_NETWORK %d", id);
-    if (ctrl_ok(ifname, cmd)) { admin_say("ERR", "wpa_supplicant no pudo elegir la red"); return; }
+    if (ctrl_ok(ifname, cmd)) { admin_err("wifi.selectFailed", NULL); return; }
     ctrl_ok(ifname, "ENABLE_NETWORK all");        /* the other saved ones stay available */
-    admin_say("OK", "conectando a %s", ssid);
+    admin_ok("wifi.connecting", "ssid", ssid, NULL);
 }
 
 void wifi_act_disconnect(const char *ifname) {
-    if (ctrl_ok(ifname, "DISCONNECT")) { admin_say("ERR", "la interfaz %s no tiene wpa_supplicant", ifname); return; }
-    admin_say("OK", "desconectado");
+    if (ctrl_ok(ifname, "DISCONNECT")) { admin_err("wifi.noSupplicant", "name", ifname, NULL); return; }
+    admin_ok("wifi.disconnected", NULL);
 }
 
 void wifi_act_forget(const char *ssid) {
-    if (!valid_ssid(ssid)) { admin_say("ERR", "SSID inválido"); return; }
+    if (!valid_ssid(ssid)) { admin_err("wifi.invalidSsid", NULL); return; }
     char sh[72], path[160];
     hex((const uint8_t *)ssid, strlen(ssid), sh);
     snprintf(path, sizeof path, NET_WIFI_DIR "/%s.key", sh);
@@ -369,5 +369,5 @@ void wifi_act_forget(const char *ssid) {
         if (id >= 0) { char cmd[48]; snprintf(cmd, sizeof cmd, "REMOVE_NETWORK %d", id); ctrl_ok(e->d_name, cmd); }
     }
     if (d) closedir(d);
-    if (had) admin_say("OK", "red olvidada"); else admin_say("ERR", "no estaba guardada");
+    if (had) admin_ok("wifi.forgotten", NULL); else admin_err("wifi.notSaved", NULL);
 }

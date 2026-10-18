@@ -1,5 +1,6 @@
 {
   "cpu": "Processor",
+  "cpuUnknown": "Unknown",
   "cpuValue": {
     "one": "{cpu} · {count} core",
     "other": "{cpu} · {count} cores"

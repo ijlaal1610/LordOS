@@ -1,7 +1,7 @@
-// Archivos — explorador al estilo Finder: pestañas, cuatro vistas (íconos, lista, columnas y
-// galería), barra lateral con Favoritos, Ubicaciones y Etiquetas, Papelera de freedesktop,
-// Vista rápida, Ver información, copiar/cortar/pegar, arrastrar y soltar, y búsqueda.
-// Las operaciones de disco van por lord.fs (server/src/fsops.c); ver docs/FILES.md.
+// Files — a Finder-style browser: tabs, four views (icons, list, columns and gallery), a sidebar
+// with Favorites, Locations and Tags, the freedesktop Trash, Quick Look, Get Info,
+// copy/cut/paste, drag and drop, and search.
+// Disk operations go through lord.fs (server/src/fsops.c); see docs/FILES.md.
 import {
   View, Text, useTheme, useAppWindow, useKeyboard, useStore, useLauncherApps, addListener, wm, fs, clipboard, archive, warmDocs,
   formatBytes, t as tr, ScrollView, Toolbar, ToolbarButton, ToolbarGroup, SearchField, Hairline, direction, spacing, typeScale,
@@ -34,7 +34,7 @@ const VIEW_GLYPH = { icons: '▦', list: '≡', columns: '◫', gallery: '▣' }
 const SIDEBAR_W = 200;
 let tabSeq = 1;
 const newTab = (loc, from) => ({ id: tabSeq++, loc, back: [], fwd: [], view: from?.view || 'icons', sort: from?.sort || { by: 'name', desc: false }, group: from?.group || 'none', chain: [] });
-// Estado de cada ventana: sobrevive a que la interfaz se vuelva a montar (cambio de idioma).
+// State of each window: it survives the interface being remounted (a language change).
 const winStates = new Map();
 
 const homeLoc = () => ({ type: 'dir', path: fs.home() });
@@ -110,7 +110,7 @@ function ScopeChip({ label, on, onClick, t }) {
   );
 }
 
-// ---- la ventana ----
+// ---- the window ----
 
 export default function Files() {
   const t = useTheme();
@@ -145,7 +145,7 @@ export default function Files() {
   const [drag, setDrag] = useState(null);                 // { paths, x, y, alt }
   const [dropTarget, setDropTarget] = useState(null);
   const [volumes, setVolumes] = useState(() => fs.volumes());
-  useEffect(() => { setTimeout(warmDocs, 800); }, []);             // Vista rápida de PDF sin esperar al ayudante
+  useEffect(() => { setTimeout(warmDocs, 800); }, []);             // PDF Quick Look without waiting for the helper
   const [msg, setMsg] = useState(null);
   const root = useRef(null);
   const press = useRef(null);
@@ -157,7 +157,7 @@ export default function Files() {
   const [entries, error] = useMemo(() => {
     try { return [loadEntries(loc, { hidden, launcherApps }), null]; } catch (e) { return [[], e.message]; }
   }, [loc.type, loc.path, loc.color, loc.query, loc.root, loc.inner, hidden, version, tags, launcherApps, arcVer]);
-  // Recientes y la Papelera van por fecha (lo más nuevo arriba), como en el Finder, salvo que se elija otro orden
+  // Recents and the Trash go by date (newest first), as in the Finder, unless another order is chosen
   const sortBy = (loc.type === 'recent' || loc.type === 'trash') && !tab.sortChosen ? { by: 'date', desc: true } : tab.sort;
   const sorted = useMemo(() => sortEntries(entries, sortBy), [entries, sortBy.by, sortBy.desc]);
   const groups = useMemo(() => groupEntries(sorted, tab.group, tr), [sorted, tab.group]);
@@ -178,7 +178,7 @@ export default function Files() {
     if (curDir && curDir !== '/' && curDir !== fs.home()) navigate({ type: 'dir', path: fs.parent(curDir) || '/' });
   };
 
-  // otras apps abren una carpeta: wm.open('files', { args: { path } })
+  // other apps open a folder: wm.open('files', { args: { path } })
   useEffect(() => { const l = argLoc(args); if (l && args?.nonce && saved) navigate(l); if (args?.nonce && saved && argView(args)) patchTab({ view: argView(args) }); }, [args?.nonce]);
   useEffect(() => { const id = setInterval(() => setVolumes(fs.volumes()), 4000); return () => clearInterval(id); }, []);
   useEffect(() => { const id = setTimeout(() => setDebounced(query.trim()), 280); return () => clearTimeout(id); }, [query]);
@@ -192,8 +192,8 @@ export default function Files() {
   const local = (ev) => (root.current ? ev.local(root.current) : { x: ev.x, y: ev.y });
   const bounds = () => { const l = root.current ? lord.getLayout(root.current.id) : [0, 0, 800, 600]; return { w: l[2], h: l[3] }; };
 
-  // ---- acciones ----
-  const report = (e) => { console.log(`archivos: ${e?.message || e}`); setMsg(String(e?.message || e)); };
+  // ---- actions ----
+  const report = (e) => { console.log(`files: ${e?.message || e}`); setMsg(String(e?.message || e)); };
   const newFolder = (withPaths) => {
     if (!curDir) return;
     const name = freeName(curDir, tr('files.newFolder'));
@@ -215,8 +215,8 @@ export default function Files() {
     const to = `${fs.parent(r.path)}/${name}`;
     try { fs.rename(r.path, to); moveTags(r.path, to); bump(); setSelected(new Set([to])); } catch (e) { report(e); }
   };
-  // las acciones reciben las rutas a usar (el menú contextual las fija al abrirse: la selección
-  // de ese momento, o el elemento del clic derecho si no estaba seleccionado)
+  // actions receive the paths to use (the context menu fixes them when it opens: the selection
+  // at that moment, or the right-clicked item if it was not selected)
   const askDelete = (paths = selPaths) => setConfirm({ text: tr('files.confirm.delete', { count: paths.length }), detail: tr('files.confirm.cantUndo'), ok: tr('files.menu.deleteNow'),
     run: () => { for (const p of paths) { try { fs.removeFromTrash(p); } catch (err) { report(err); } } bump(); } });
   const askEmpty = () => setConfirm({ text: tr('files.confirm.empty'), detail: tr('files.confirm.cantUndo'), ok: tr('files.menu.emptyTrash'),
@@ -232,7 +232,7 @@ export default function Files() {
   const duplicate = (paths = selPaths) => { if (curDir && paths.length) transfer(paths, curDir, false); };
   const doPaste = () => { if (curDir) paste(curDir); };
   const ctx = { navigate, linuxApps: launcherApps, t: tr, quickLook: (e) => { setSelected(new Set([e.path])); setQuick(true); },
-    openArc: (e) => { setMsg(tr('docs.opening', { name: e.name })); extractEntry(e).then((real) => openEntry({ name: e.name, path: real, size: e.size, mtime: e.mtime }, ctx)).catch((err) => setMsg(tr('docs.extractError', { name: e.name, error: err.code || err.message }))); } };
+    openArc: (e) => { setMsg(tr('docs.opening', { name: e.name })); extractEntry(e).then((real) => openEntry({ name: e.name, path: real, size: e.size, mtime: e.mtime }, ctx)).catch((err) => setMsg(tr('docs.extractError', { name: e.name, error: err.message }))); } };
   const arcReport = (m) => setMsg(m);
   const open = (e) => { if (e.trash) { setSelected(new Set([e.path])); setQuick(true); return; } openEntry(e, ctx); };
   const openSel = (list = sel) => { for (const e of list.slice(0, 8)) open(e); };
@@ -245,7 +245,7 @@ export default function Files() {
   const setView = (view) => patchTab({ view });
   const setSort = (by) => patchTab((x) => ({ sortChosen: true, sort: { by, desc: x.sort.by === by ? !x.sort.desc : by === 'date' || by === 'size' } }));
 
-  // ---- selección ----
+  // ---- selection ----
   const onItemDown = (e, ev) => {
     if (renaming && renaming.path !== e.path) commitRename();
     if (ev.button === 2) return;
@@ -259,7 +259,7 @@ export default function Files() {
     if (!e.app && loc.type !== 'trash') press.current = { paths: next.has(e.path) ? [...next] : [e.path], x: ev.x, y: ev.y };
   };
 
-  // ---- arrastrar y soltar (⌥ copia; si no, mueve) ----
+  // ---- drag and drop (⌥ copies; otherwise it moves) ----
   const dropOf = (inst) => { for (let n = inst; n; n = n.parent) { if (n.props?.dropPath) return n.props.dropPath; if (n.props?.dropTrash) return 'trash:'; } return null; };
   useEffect(() => {
     const mv = addListener('pointermove', (e) => {
@@ -284,7 +284,7 @@ export default function Files() {
     return () => { mv(); up(); };
   }, []);
 
-  // ---- menús contextuales ----
+  // ---- context menus ----
   const tagSwatches = (paths) => ({ swatches: Object.entries(TAG_COLORS).map(([color, hex]) => ({ color, hex, on: paths.every((p) => (tags[p] || []).includes(color)), onClick: () => toggleTag(paths, color) })) });
   function itemMenu(e) {
     const paths = selected.has(e.path) ? selPaths : [e.path];
@@ -295,11 +295,11 @@ export default function Files() {
     }
     if (e.app) return [{ label: tr('files.menu.open'), onClick: () => open(e) }];
     if (e.arc) {
-      // adentro de un comprimido: abrir, ver y extraer (no se puede modificar)
+      // inside an archive: open, view and extract (it cannot be modified)
       return [{ label: tr('files.menu.open'), onClick: () => open(e) }, { label: tr('files.menu.quickLook'), hint: '␣', onClick: () => setQuick(true) }, '-',
         { label: tr('docs.extractSelected', { count: list.length }), onClick: () => { const dir = fs.parent(e.arc.file); const name = freeName(dir, archive.stem(fs.basename(e.arc.file)));
           setMsg(tr('docs.extracting', { name: fs.basename(e.arc.file) }));
-          archive.extract(e.arc.file, `${dir}/${name}`, { only: list.map((x) => x.arc.inner) }).then((r) => { bump(); setMsg(tr('docs.extracted', { name, count: r.files })); }).catch((err) => setMsg(tr('docs.extractError', { name, error: err.code || err.message }))); } }];
+          archive.extract(e.arc.file, `${dir}/${name}`, { only: list.map((x) => x.arc.inner) }).then((r) => { bump(); setMsg(tr('docs.extracted', { name, count: r.files })); }).catch((err) => setMsg(tr('docs.extractError', { name, error: err.message }))); } }];
     }
     const openers = openersFor(e, launcherApps, tr);
     return [
@@ -309,7 +309,7 @@ export default function Files() {
       '-',
       { label: tr('files.menu.trash'), hint: '❖⌫', onClick: () => toTrash(paths) },
       '-',
-      // comprimir y extraer (M9, lord-doc)
+      // compress and extract (M9, lord-doc)
       ...(curDir && list.length === 1 && isArchiveFile(e) ? [{ label: tr('docs.extractHere'), onClick: () => extractHere(e, arcReport, tr) }] : []),
       ...(curDir ? [{ label: list.length === 1 ? tr('docs.compressOne', { name: e.name }) : tr('docs.compressMany', { count: list.length }), onClick: () => compress(paths, curDir, arcReport, tr) }] : []),
       '-',
@@ -348,7 +348,7 @@ export default function Files() {
   };
   const onBgContext = (ev) => { setSelected(new Set()); const p = local(ev); setMenu({ x: p.x, y: p.y, items: bgMenu() }); };
 
-  // ---- teclado ----
+  // ---- keyboard ----
   const cols = () => { const w = root.current ? lord.getLayout(root.current.id)[2] - SIDEBAR_W : 600; return Math.max(1, Math.floor((w - 24 + 8) / 108)); };
   const moveSel = (d, ev) => {
     if (!flat.length) return;
@@ -398,7 +398,7 @@ export default function Files() {
     if (e.key === 'ArrowUp') { moveSel(-grid, e); return; }
     if (e.key === 'Home') { if (flat[0]) setSelected(new Set([flat[0].path])); return; }
     if (e.key === 'End') { if (flat.length) setSelected(new Set([flat[flat.length - 1].path])); return; }
-    // escribir el comienzo de un nombre lo selecciona
+    // typing the start of a name selects it
     if (e.char && !mod && e.char.trim()) {
       const now = Date.now();
       const txt = (now - typed.current.at < 900 ? typed.current.text : '') + e.char.toLowerCase();
@@ -408,7 +408,7 @@ export default function Files() {
     }
   });
 
-  // ---- menús de la app (barra de menú del tema) ----
+  // ---- app menus (the theme's menu bar) ----
   useEffect(() => {
     wm.setMenus(wid, [
       { label: tr('files.menu.file'), items: [
@@ -445,7 +445,7 @@ export default function Files() {
     ]);
   }, [tab.view, tab.back.length, tab.fwd.length, tab.loc, hidden, sel.length, clip, curDir, active, tabs.length]);
 
-  // ---- vista ----
+  // ---- view ----
   const cut = new Set(clip?.mode === 'cut' ? clip.paths : []);
   const viewCtx = {
     selected, cut, renaming, dropTarget, hidden, expanded, showFolder: loc.type === 'search' || loc.type === 'recent' || loc.type === 'tag',
@@ -456,7 +456,7 @@ export default function Files() {
     isDir: (p) => { const e = byPath.get(p); if (e) return e.dir; try { return lord.fs.stat(p).dir; } catch (err) { return false; } },
     entryAt: (p) => byPath.get(p) || (() => { try { const s = lord.fs.stat(p); return { name: s.name, path: s.path, dir: s.dir, size: s.size, mtime: s.mtime }; } catch (err) { return null; } })(),
   };
-  // columnas solo en carpetas; en los demás lugares, la lista
+  // columns only in folders; elsewhere, the list
   const view = tab.view === 'columns' && loc.type !== 'dir' ? 'list' : tab.view;
   const entriesOf = (dir) => { try { return lord.fs.list(dir).filter((x) => hidden || !x.name.startsWith('.')).map((x) => ({ ...x, path: `${dir}/${x.name}` })); } catch (e) { return []; } };
   const freeSpace = useMemo(() => { try { return curDir ? fs.free(curDir) : null; } catch (e) { return null; } }, [curDir, version]);
@@ -632,7 +632,7 @@ export default function Files() {
         </View>
       </View>
 
-      {/* lo que se arrastra */}
+      {/* what is being dragged */}
       {dragLocal && (
         <View style={{ position: 'absolute', left: dragLocal.x - 20, top: dragLocal.y - 20, pointerEvents: 'none', opacity: 0.85 }}>
           {dragEntry?.dir ? <FolderGlyph size={40} /> : <DocGlyph size={40} kind="other" ext="" dark={t.mode === 'dark'} />}

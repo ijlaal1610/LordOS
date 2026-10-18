@@ -2,6 +2,7 @@
  * counters (rtnetlink dumps), DNS, who manages each interface, and change notifications. */
 #include "net.h"
 #include "netpriv.h"
+#include "../errcode.h"
 
 #include <net/if.h>                 /* before the linux/ ones */
 
@@ -386,7 +387,7 @@ static const char *const inline_dirs[] = { "ca", "cert", "key", "tls-auth", "tls
 char *net_ovpn_inline(const char *path, char *err, size_t errn) {
     size_t len;
     char *t = read_file(path, 256 * 1024, &len);
-    if (!t) { snprintf(err, errn, "no se pudo leer %s", path); return NULL; }
+    if (!t) { lerr_set(err, errn, "sys.readFailed", "path", path, NULL); return NULL; }
     char dir[512];
     snprintf(dir, sizeof dir, "%s", path);
     char *slash = strrchr(dir, '/');
@@ -403,7 +404,7 @@ char *net_ovpn_inline(const char *path, char *err, size_t errn) {
             char p[1024];
             if (a1[0] == '/') snprintf(p, sizeof p, "%s", a1); else snprintf(p, sizeof p, "%s/%s", dir, a1);
             char *f = read_file(p, 64 * 1024, NULL);
-            if (!f) { snprintf(err, errn, "falta el archivo %s", a1); free(t); buf_free(&b); return NULL; }
+            if (!f) { lerr_set(err, errn, "ovpn.missingFile", "file", a1, NULL); free(t); buf_free(&b); return NULL; }
             buf_printf(&b, "<%s>\n%s%s</%s>\n", w, f, f[0] && f[strlen(f) - 1] == '\n' ? "" : "\n", w);
             if (!strcmp(w, "tls-auth") && k == 3) buf_printf(&b, "key-direction %s\n", a2);
             free(f);
@@ -414,7 +415,7 @@ char *net_ovpn_inline(const char *path, char *err, size_t errn) {
         l = e ? e + 1 : NULL;
     }
     free(t);
-    if (b.oom || !b.p) { buf_free(&b); snprintf(err, errn, "sin memoria"); return NULL; }
+    if (b.oom || !b.p) { buf_free(&b); lerr_set(err, errn, "sys.outOfMemory", NULL); return NULL; }
     return b.p;
 }
 

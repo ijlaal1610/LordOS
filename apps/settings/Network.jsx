@@ -2,7 +2,7 @@
 // (lord.net, netlink) and makes changes through the administration helper (net-* actions). See docs/NETWORK.md.
 import {
   View, Text, useTheme, useLocale, Button, Toggle, Segmented, TextInput,
-  admin, fs, formatBytes, keyring, AutofillButton, spacing, typeScale,
+  admin, fs, formatBytes, keyring, AutofillButton, spacing, typeScale, errorText, statusText,
 } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 import { Stack, Section, SettingRow, ValueRow, FieldRow, Badge, Note, Message, Actions, StatusDot, tint } from './ui.jsx';
@@ -26,7 +26,9 @@ function useNet(intervalMs = 2000) {
   return has() ? { ifs: lord.net.interfaces(), routes: lord.net.routes(), dns: lord.net.dns() } : { ifs: [], routes: [], dns: { servers: [] } };
 }
 
-// Notices from the network processes (DHCP, Wi-Fi, VPN) to show status.
+// Notices from the network processes (DHCP, Wi-Fi, VPN) to show status. The tokens are English and
+// stable ("net vpn <name> connected"); an "error" carries a code line (server/src/errcode.h) or a
+// program's own output, both shown with errorText().
 const events = [];
 const eventSubs = new Set();
 admin.onEvent((text) => {
@@ -37,8 +39,9 @@ admin.onEvent((text) => {
 });
 function useNetEvent(fn) { useEffect(() => { eventSubs.add(fn); return () => eventSubs.delete(fn); }, []); }
 
+// The OK reply is a status code line (t('status.<code>')) unless the caller has its own text.
 const run = (setMsg, action, arg, okText) => admin.run(action, arg, undefined, { quiet: true }).then(
-  (r) => { setMsg({ ok: true, text: okText || r }); return r; },
+  (r) => { setMsg({ ok: true, text: okText || statusText(r) }); return r; },
   (e) => { setMsg({ ok: false, text: e.message }); return null; });
 
 const TYPES = ['ethernet', 'wifi', 'wireguard', 'tun', 'bridge', 'veth', 'vlan', 'bond', 'dummy'];
@@ -345,7 +348,10 @@ function VpnPage({ net }) {
     if (m[2] === 'connected') setMsg({ ok: true, text: tr('network.vpn.connectedMsg', { name: m[1] }) });
     else if (m[2] === 'need-auth') setAuth({ name: m[1], user: '', pass: '' });
     else if (m[2] === 'auth-failed') setMsg({ ok: false, text: tr('network.vpn.authFailed', { name: m[1] }) });
-    else if (m[2] === 'error' || m[2] === 'log') setMsg({ ok: false, text: `${m[1]}: ${m[3] || tr('network.vpn.error')}` });
+    else if (m[2] === 'error' || m[2] === 'log') {
+      const why = m[3] ? errorText(m[3]) : tr('network.vpn.error');
+      setMsg({ ok: false, text: m[1] === '-' ? why : `${m[1]}: ${why}` });
+    }
     refresh();
     setTick((x) => x + 1);
   });

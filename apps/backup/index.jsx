@@ -4,7 +4,7 @@
 // schedule and exclusions, shows progress, and lets you browse backups by date and restore a
 // file, a folder or everything.
 import {
-  View, Text, ScrollView, Segmented, Toggle, Button, TextInput, useTheme, useBackup, backup, fs, wm, t as tr, tOptional,
+  View, Text, ScrollView, Segmented, Toggle, Button, TextInput, useTheme, useBackup, backup, fs, wm, t as tr, errorText,
   formatBytes, formatDate, formatTime, formatNumber, direction,
   Toolbar, ToolbarButton, ToolbarSpacer, MenuButton, SidebarItem, SectionTitle, EmptyState, GroupBox, FormRow, Hairline, spacing, typeScale,
 } from '@lordos/sdk';
@@ -37,8 +37,8 @@ const when = (sec) => {
   const same = d.toDateString() === now.toDateString();
   return same ? tr('backup.todayAt', { time: formatTime(d) }) : `${formatDate(d, 'short')} ${formatTime(d)}`;
 };
-// error codes from C (backup.c) → translated text; anything else is shown as is
-const errText = (e) => (e ? tOptional(`backup.err.${e}`) || e : '');
+// code lines from C (backup.c, errcode.h) → translated text; anything else is shown as is
+const errText = (e) => (e ? errorText(e) : '');
 const pct = (a, b) => (b > 0 ? Math.min(1, a / b) : 0);
 const join = (a, b) => (a ? `${a}/${b}` : b);
 
@@ -137,7 +137,7 @@ function Header({ st }) {
           <Label size={typeScale.title} weight={600}>{tr('backup.title')}</Label>
           <Label dim size={typeScale.callout}>{line}</Label>
           {next ? <Label dim size={typeScale.callout}>{next}</Label> : null}
-          {st && st.last && st.last.ok === 0 && st.last.error && !running ? <Label size={typeScale.callout} style={{ color: '#e5534b' }}>{tr('backup.lastError', { error: st.last.error })}</Label> : null}
+          {st && st.last && st.last.ok === 0 && st.last.error && !running ? <Label size={typeScale.callout} style={{ color: '#e5534b' }}>{tr('backup.lastError', { error: errText(st.last.error) })}</Label> : null}
           {err ? <Label size={typeScale.callout} style={{ color: '#e5534b' }}>{err}</Label> : null}
         </View>
         {running ? (

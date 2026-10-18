@@ -211,7 +211,7 @@ static void pair(const char *line, const char *key, char *out, size_t n) {
 
 void install_act_disks(const AdminReq *r, const char *arg, size_t len) {
     (void)r; (void)arg; (void)len;
-    if (!is_live()) { admin_say("ERR", "el instalador solo funciona desde el sistema en vivo"); return; }
+    if (!is_live()) { admin_err("install.liveOnly", NULL); return; }
     Disk disks[32];
     int n = list_disks(disks, 32);
     for (int i = 0; i < n; i++) {
@@ -250,7 +250,7 @@ void install_act_disks(const AdminReq *r, const char *arg, size_t len) {
         admin_say("LOG", "%s", js);
         free(js);
     }
-    admin_say("OK", "%d", n);
+    admin_say("OK", "%d", n);   /* i18n-ok */
 }
 
 /* ---- flat JSON of install-run ---- */
@@ -368,39 +368,39 @@ static int locale_supported(const char *name) {
 static const char *validate(Plan *pl) {
     Disk disks[32];
     int n = list_disks(disks, 32), found = 0;
-    for (int i = 0; i < n; i++) if (!strcmp(disks[i].name, pl->disk)) { found = 1; if (disks[i].size < MIN_DISK) return "el disco es demasiado chico (mínimo 8 GB)"; }
-    if (!found) return "el disco no está en la lista de discos instalables";
+    for (int i = 0; i < n; i++) if (!strcmp(disks[i].name, pl->disk)) { found = 1; if (disks[i].size < MIN_DISK) return "install.diskTooSmall"; }
+    if (!found) return "install.diskNotListed";
     static const char *const reserved[] = { "root", "daemon", "bin", "sys", "sync", "games", "man", "lp", "mail", "news", "uucp",
         "proxy", "www-data", "backup", "list", "irc", "nobody", "systemd-network", "messagebus", "pipewire", "sudo", "admin", NULL };
-    if (!re_user(pl->user)) return "el nombre de usuario es inválido (minúsculas, números, - y _)";
-    for (int i = 0; reserved[i]; i++) if (!strcmp(pl->user, reserved[i])) return "ese nombre de usuario está reservado";
+    if (!re_user(pl->user)) return "install.badUser";
+    for (int i = 0; reserved[i]; i++) if (!strcmp(pl->user, reserved[i])) return "install.userReserved";
     struct passwd *pw = getpwnam(pl->user);
-    if (pw && strcmp(pl->user, "lordos")) return "ese nombre de usuario ya lo usa el sistema";
-    for (const unsigned char *p = (const unsigned char *)pl->fullname; *p; p++) if (*p < 0x20 || *p == ':' || *p == ',' || *p == 0x7f) return "el nombre completo tiene caracteres inválidos";
-    if (!pl->password[0]) return "falta la contraseña";
-    if (!re_host(pl->hostname)) return "el nombre del equipo es inválido (minúsculas, números y -)";
-    if (!re_simple(pl->lang, 10, "-", 0)) return "idioma inválido";
-    if (!locale_supported(pl->locale)) return "región no soportada";
+    if (pw && strcmp(pl->user, "lordos")) return "install.userTaken";
+    for (const unsigned char *p = (const unsigned char *)pl->fullname; *p; p++) if (*p < 0x20 || *p == ':' || *p == ',' || *p == 0x7f) return "install.badFullName";
+    if (!pl->password[0]) return "install.noPassword";
+    if (!re_host(pl->hostname)) return "install.badHostname";
+    if (!re_simple(pl->lang, 10, "-", 0)) return "install.badLanguage";
+    if (!locale_supported(pl->locale)) return "install.badRegion";
     char p[PATH_MAX];
     struct stat st;
-    if (!re_simple(pl->timezone, 60, "/_+-", 0) || strstr(pl->timezone, "..") || pl->timezone[0] == '/') return "zona horaria inválida";
+    if (!re_simple(pl->timezone, 60, "/_+-", 0) || strstr(pl->timezone, "..") || pl->timezone[0] == '/') return "install.badTimezone";
     snprintf(p, sizeof p, "/usr/share/zoneinfo/%s", pl->timezone);
-    if (stat(p, &st) || !S_ISREG(st.st_mode)) return "zona horaria desconocida";
-    if (!re_simple(pl->kblayout, 20, "_", 0)) return "distribución de teclado inválida";
+    if (stat(p, &st) || !S_ISREG(st.st_mode)) return "install.unknownTimezone";
+    if (!re_simple(pl->kblayout, 20, "_", 0)) return "install.badKbLayout";
     snprintf(p, sizeof p, "/usr/share/X11/xkb/symbols/%s", pl->kblayout);
-    if (access(p, R_OK)) return "distribución de teclado desconocida";
-    if (!re_simple(pl->kbvariant, 36, "_-", 1)) return "variante de teclado inválida";
-    if (pl->swap < 0 || pl->swap > 16384) return "tamaño de swap inválido (0 a 16384 MB)";
+    if (access(p, R_OK)) return "install.unknownKbLayout";
+    if (!re_simple(pl->kbvariant, 36, "_-", 1)) return "install.badKbVariant";
+    if (pl->swap < 0 || pl->swap > 16384) return "install.badSwap";
     return NULL;
 }
 
 /* ---- install-run steps ---- */
 
-static void progress(const char *phase, int done, int total) { admin_say("LOG", "progress %s %d %d", phase, done, total); }
+static void progress(const char *phase, int done, int total) { admin_say("LOG", "progress %s %d %d", phase, done, total); }   /* i18n-ok */
 
 static int run(const char *const argv[]) {
     int r = admin_run(argv);
-    if (r) admin_say("LOG", "falló %s (código %d)", argv[0], r);
+    if (r) admin_log("install.stepFailed", "program", argv[0], "code", lerr_int(r), NULL);
     return r;
 }
 
@@ -478,7 +478,7 @@ static int set_shadow(const char *user, const char *hash) {
     struct stat st;
     stat(path, &st);
     int r = done ? write_file(path, out, st.st_mode & 07777) : -1;
-    if (!r) if (chown(path, st.st_uid, st.st_gid)) admin_say("LOG", "aviso: no se pudo cambiar el dueño");
+    if (!r) if (chown(path, st.st_uid, st.st_gid)) admin_log("install.chownWarning", NULL);
     explicit_bzero(out, ol);
     free(out);
     return r;
@@ -533,66 +533,66 @@ static int disk_busy(const char *disk) {
     return busy;
 }
 
-#define FAIL(...) do { admin_say("ERR", __VA_ARGS__); umount_target(); explicit_bzero(&pl, sizeof pl); return; } while (0)
+#define FAIL(...) do { admin_err(__VA_ARGS__, NULL); umount_target(); explicit_bzero(&pl, sizeof pl); return; } while (0)
 
 void install_act_run(const AdminReq *r, const char *arg, size_t len) {
     (void)r; (void)len;
     Plan pl;
-    if (!is_live()) { admin_say("ERR", "el instalador solo funciona desde el sistema en vivo"); return; }
-    if (parse_plan(arg, &pl)) { admin_say("ERR", "datos de instalación inválidos"); return; }
+    if (!is_live()) { admin_err("install.liveOnly", NULL); return; }
+    if (parse_plan(arg, &pl)) { admin_err("install.badPlan", NULL); return; }
     const char *why = validate(&pl);
-    if (why) { explicit_bzero(&pl, sizeof pl); admin_say("ERR", "%s", why); return; }
-    if (disk_busy(pl.disk)) { admin_say("ERR", "el disco /dev/%s está en uso (montado o con swap)", pl.disk); explicit_bzero(&pl, sizeof pl); return; }
+    if (why) { explicit_bzero(&pl, sizeof pl); admin_err(why, NULL); return; }
+    if (disk_busy(pl.disk)) { admin_err("install.diskBusy", "disk", pl.disk, NULL); explicit_bzero(&pl, sizeof pl); return; }
 
     char dev[48], bios[48], esp[48], root[48];
     snprintf(dev, sizeof dev, "/dev/%s", pl.disk);
     part_path(pl.disk, 1, bios, sizeof bios);
     part_path(pl.disk, 2, esp, sizeof esp);
     part_path(pl.disk, 3, root, sizeof root);
-    admin_say("LOG", "instalando en %s", dev);
+    admin_log("install.installingTo", "dev", dev, NULL);
 
     /* 1. partition: GPT with BIOS boot (1 MiB), ESP (512 MiB) and root */
     progress("partition", 0, 4);
-    { const char *const a[] = { "/usr/sbin/wipefs", "-a", dev, NULL }; if (run(a)) FAIL("no se pudo borrar el disco"); }
+    { const char *const a[] = { "/usr/sbin/wipefs", "-a", dev, NULL }; if (run(a)) FAIL("install.wipeFailed"); }
     { const char *const a[] = { "/usr/sbin/sgdisk", "--zap-all", dev, NULL }; run(a); }
     { const char *const a[] = { "/usr/sbin/sgdisk", "-n", "1:0:+1M", "-t", "1:ef02", "-c", "1:biosboot",
                                 "-n", "2:0:+512M", "-t", "2:ef00", "-c", "2:EFI",
                                 "-n", "3:0:0", "-t", "3:8304", "-c", "3:LordOS", dev, NULL };
-      if (run(a)) FAIL("no se pudo particionar el disco"); }
+      if (run(a)) FAIL("install.partitionFailed"); }
     progress("partition", 1, 4);
     { const char *const a[] = { "/usr/bin/udevadm", "settle", "--timeout=10", NULL }; run(a); }
     for (int i = 0; i < 50 && (access(esp, F_OK) || access(root, F_OK)); i++) usleep(200000);
-    if (access(esp, F_OK) || access(root, F_OK)) FAIL("no aparecieron las particiones nuevas");
-    { const char *const a[] = { "/usr/sbin/mkfs.vfat", "-F", "32", "-n", "EFI", esp, NULL }; if (run(a)) FAIL("no se pudo formatear la partición EFI"); }
+    if (access(esp, F_OK) || access(root, F_OK)) FAIL("install.noPartitions");
+    { const char *const a[] = { "/usr/sbin/mkfs.vfat", "-F", "32", "-n", "EFI", esp, NULL }; if (run(a)) FAIL("install.formatEfiFailed"); }
     progress("partition", 2, 4);
-    { const char *const a[] = { "/usr/sbin/mkfs.ext4", "-F", "-q", "-L", "LordOS", root, NULL }; if (run(a)) FAIL("no se pudo formatear la partición del sistema"); }
+    { const char *const a[] = { "/usr/sbin/mkfs.ext4", "-F", "-q", "-L", "LordOS", root, NULL }; if (run(a)) FAIL("install.formatRootFailed"); }
     progress("partition", 3, 4);
     mkdir("/run/lordos-install", 0700);
     mkdir(TARGET, 0755);
     umount_target();
-    if (mount(root, TARGET, "ext4", 0, NULL)) FAIL("no se pudo montar %s: %s", root, strerror(errno));
+    if (mount(root, TARGET, "ext4", 0, NULL)) FAIL("install.mountFailed", "path", root, "errno", lerr_errno(errno));
     progress("partition", 4, 4);
 
     /* 2. copy the live system */
     progress("copy", 0, 100);
-    if (copy_system()) FAIL("no se pudo copiar el sistema");
+    if (copy_system()) FAIL("install.copyFailed");
     progress("copy", 100, 100);
     mkdir(TARGET "/boot/efi", 0755);
-    if (mount(esp, TARGET "/boot/efi", "vfat", 0, "umask=0077")) FAIL("no se pudo montar la partición EFI");
-    if (bind("/dev") || bind("/proc") || bind("/sys") || bind("/run")) FAIL("no se pudo preparar el sistema nuevo");
+    if (mount(esp, TARGET "/boot/efi", "vfat", 0, "umask=0077")) FAIL("install.mountEfiFailed");
+    if (bind("/dev") || bind("/proc") || bind("/sys") || bind("/run")) FAIL("install.prepareFailed");
 
     /* 3. configure */
     const int steps = 9;
     int step = 0;
     progress("configure", step, steps);
     char ru[80], eu[80];
-    if (uuid_of(root, ru, sizeof ru) || uuid_of(esp, eu, sizeof eu)) FAIL("no se pudo leer el UUID de las particiones");
+    if (uuid_of(root, ru, sizeof ru) || uuid_of(esp, eu, sizeof eu)) FAIL("install.uuidFailed");
     char swapline[64] = "";
     if (pl.swap > 0) snprintf(swapline, sizeof swapline, "/swapfile none swap sw 0 0\n");
     if (writef(TARGET "/etc/fstab", 0644,
                "# /etc/fstab — generated by the LordOS installer\n"
                "UUID=%s / ext4 errors=remount-ro 0 1\nUUID=%s /boot/efi vfat umask=0077 0 1\n%s", ru, eu, swapline))
-        FAIL("no se pudo escribir /etc/fstab");
+        FAIL("sys.writeFailed", "path", "/etc/fstab");
     writef(TARGET "/etc/hostname", 0644, "%s\n", pl.hostname);
     writef(TARGET "/etc/hosts", 0644, "127.0.0.1\tlocalhost\n127.0.1.1\t%s\n::1\tlocalhost ip6-localhost ip6-loopback\n", pl.hostname);
     progress("configure", ++step, steps);
@@ -607,7 +607,7 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
 
     /* the user, with their password hashed here (yescrypt) */
     { const char *const a[] = { "/usr/sbin/useradd", "-m", "-s", "/bin/bash", "-c", pl.fullname, "-G", "sudo,audio,video,input,render,pipewire", pl.user, NULL };
-      if (in_target(a)) FAIL("no se pudo crear el usuario"); }
+      if (in_target(a)) FAIL("install.userFailed"); }
     /* CUPS printer administrator (lpadmin group, docs/PRINTING.md); if CUPS didn't come in
      * the image, the group doesn't exist and nothing happens */
     { const char *const a[] = { "/usr/sbin/usermod", "--append", "--groups", "lpadmin", pl.user, NULL }; if (in_target(a)) { /* no CUPS */ } }
@@ -617,8 +617,8 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
     memset(&cd, 0, sizeof cd);
     const char *hash = salt ? crypt_r(pl.password, salt, &cd) : NULL;
     free(salt);
-    if (!hash || hash[0] == '*') FAIL("no se pudo cifrar la contraseña");
-    if (set_shadow(pl.user, hash) || set_shadow("root", "*")) { explicit_bzero(&cd, sizeof cd); FAIL("no se pudo guardar la contraseña"); }
+    if (!hash || hash[0] == '*') FAIL("install.hashFailed");
+    if (set_shadow(pl.user, hash) || set_shadow("root", "*")) { explicit_bzero(&cd, sizeof cd); FAIL("install.passwordFailed"); }
     explicit_bzero(&cd, sizeof cd);
     explicit_bzero(pl.password, sizeof pl.password);
     mkdir(TARGET "/var/lib/systemd/linger", 0755);
@@ -640,26 +640,26 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
                   const char *const a[] = { "/usr/sbin/locale-gen", NULL }; in_target(a); } }
     writef(TARGET "/etc/default/locale", 0644, "LANG=%s\n", pl.locale);
     { char zp[PATH_MAX]; snprintf(zp, sizeof zp, "/usr/share/zoneinfo/%s", pl.timezone);
-      unlink(TARGET "/etc/localtime"); if (symlink(zp, TARGET "/etc/localtime")) admin_say("LOG", "aviso: /etc/localtime");
+      unlink(TARGET "/etc/localtime"); if (symlink(zp, TARGET "/etc/localtime")) admin_log("install.timezoneWarning", NULL);
       writef(TARGET "/etc/timezone", 0644, "%s\n", pl.timezone); }
     writef(TARGET "/etc/default/keyboard", 0644, "XKBMODEL=\"pc105\"\nXKBLAYOUT=\"%s\"\nXKBVARIANT=\"%s\"\nXKBOPTIONS=\"\"\nBACKSPACE=\"guess\"\n", pl.kblayout, pl.kbvariant);
     progress("configure", ++step, steps);
 
     /* the user's LordOS settings: chosen language and keyboard */
     uid_t uid; gid_t gid;
-    if (target_ids(pl.user, &uid, &gid)) FAIL("no se encontró el usuario nuevo");
+    if (target_ids(pl.user, &uid, &gid)) FAIL("install.userMissing");
     { char p[PATH_MAX];
-      snprintf(p, sizeof p, TARGET "/home/%s/.config", pl.user); mkdir(p, 0755); if (chown(p, uid, gid)) admin_say("LOG", "aviso: no se pudo cambiar el dueño");
-      snprintf(p, sizeof p, TARGET "/home/%s/.config/lordos", pl.user); mkdir(p, 0755); if (chown(p, uid, gid)) admin_say("LOG", "aviso: no se pudo cambiar el dueño");
+      snprintf(p, sizeof p, TARGET "/home/%s/.config", pl.user); mkdir(p, 0755); if (chown(p, uid, gid)) admin_log("install.chownWarning", NULL);
+      snprintf(p, sizeof p, TARGET "/home/%s/.config/lordos", pl.user); mkdir(p, 0755); if (chown(p, uid, gid)) admin_log("install.chownWarning", NULL);
       snprintf(p, sizeof p, TARGET "/home/%s/.config/lordos/settings.json", pl.user);
       writef(p, 0644, "{\n  \"language\": \"%s\",\n  \"keyboards\": [{ \"layout\": \"%s\", \"variant\": \"%s\" }],\n  \"keyboardIndex\": 0\n}\n", pl.lang, pl.kblayout, pl.kbvariant);
-      if (chown(p, uid, gid)) admin_say("LOG", "aviso: no se pudo cambiar el dueño");
+      if (chown(p, uid, gid)) admin_log("install.chownWarning", NULL);
       snprintf(p, sizeof p, TARGET "/home/%s/.config/locale.conf", pl.user);
-      writef(p, 0644, "LANG=%s\n", pl.locale); if (chown(p, uid, gid)) admin_say("LOG", "aviso: no se pudo cambiar el dueño"); }
+      writef(p, 0644, "LANG=%s\n", pl.locale); if (chown(p, uid, gid)) admin_log("install.chownWarning", NULL); }
     /* Escritorio, Documentos, Descargas… in the chosen language and ~/.config/user-dirs.dirs (the
      * same list as Settings → Users and the live system: users/homedirs.c) */
     { char p[PATH_MAX]; snprintf(p, sizeof p, TARGET "/home/%s", pl.user);
-      if (homedirs_create(p, uid, gid, pl.locale)) admin_say("LOG", "aviso: no se pudieron crear las carpetas del usuario"); }
+      if (homedirs_create(p, uid, gid, pl.locale)) admin_log("install.homedirsWarning", NULL); }
     progress("configure", ++step, steps);
 
     /* swap as a file */
@@ -677,24 +677,24 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
            "# generated by the LordOS installer\nGRUB_DEFAULT=0\nGRUB_TIMEOUT=2\nGRUB_DISTRIBUTOR=LordOS\n"
            "GRUB_CMDLINE_LINUX_DEFAULT=\"quiet loglevel=3\"\nGRUB_CMDLINE_LINUX=\"\"\nGRUB_DISABLE_OS_PROBER=true\n");
     progress("configure", ++step, steps);
-    { const char *const a[] = { "/usr/sbin/update-initramfs", "-u", "-k", "all", NULL }; if (in_target(a)) FAIL("no se pudo generar el initramfs"); }
+    { const char *const a[] = { "/usr/sbin/update-initramfs", "-u", "-k", "all", NULL }; if (in_target(a)) FAIL("install.initramfsFailed"); }
     progress("configure", ++step, steps);
     progress("configure", steps, steps);
 
     /* 4. boot: grub for UEFI (removable path, works on any firmware) and for BIOS */
     progress("bootloader", 0, 3);
     { const char *const a[] = { "/usr/sbin/grub-install", "--target=x86_64-efi", "--efi-directory=/boot/efi", "--removable", "--no-nvram", NULL };
-      if (in_target(a)) FAIL("no se pudo instalar grub (UEFI)"); }
+      if (in_target(a)) FAIL("install.grubEfiFailed"); }
     progress("bootloader", 1, 3);
     { const char *const a[] = { "/usr/sbin/grub-install", "--target=i386-pc", dev, NULL };
-      if (in_target(a)) FAIL("no se pudo instalar grub (BIOS)"); }
+      if (in_target(a)) FAIL("install.grubBiosFailed"); }
     progress("bootloader", 2, 3);
     { const char *const a[] = { "/usr/sbin/grub-mkconfig", "-o", "/boot/grub/grub.cfg", NULL };
-      if (in_target(a)) FAIL("no se pudo generar la configuración de grub"); }
+      if (in_target(a)) FAIL("install.grubConfigFailed"); }
     progress("bootloader", 3, 3);
     umount_target();
     explicit_bzero(&pl, sizeof pl);
-    admin_say("OK", "LordOS quedó instalado en %s", dev);
+    admin_ok("install.done", "dev", dev, NULL);
 }
 
 /* Reboots without waiting around: a separate process (outlives the helper, which dies with
@@ -702,7 +702,7 @@ void install_act_run(const AdminReq *r, const char *arg, size_t len) {
  * after 20 s the system is still alive and nobody killed it, does sync + reboot(2). */
 void install_act_reboot(const AdminReq *r, const char *arg, size_t len) {
     (void)r; (void)arg; (void)len;
-    if (!is_live() && access("/run/live", F_OK)) { admin_say("ERR", "solo desde el sistema en vivo"); return; }
+    if (!is_live() && access("/run/live", F_OK)) { admin_err("install.liveOnly", NULL); return; }
     sync();
     pid_t pid = fork();
     if (pid == 0) {
@@ -726,7 +726,7 @@ void install_act_reboot(const AdminReq *r, const char *arg, size_t len) {
         reboot(RB_AUTOBOOT);
         _exit(0);
     }
-    if (pid < 0) { admin_say("ERR", "no se pudo reiniciar"); return; }
+    if (pid < 0) { admin_err("install.rebootFailed", NULL); return; }
     waitpid(pid, NULL, 0);
-    admin_say("OK", "reiniciando");
+    admin_ok("install.rebooting", NULL);
 }

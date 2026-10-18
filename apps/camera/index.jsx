@@ -6,7 +6,7 @@
 // light theme.
 import {
   View, Text, Image, MediaView, Toggle, useTheme, useKeyboard, wm,
-  t as tr, media, usePlayer, useThumb, userDirs, fs, mediaFormatTime, useSettings,
+  t as tr, errorText, media, usePlayer, useThumb, userDirs, fs, mediaFormatTime, useSettings,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 
@@ -154,7 +154,7 @@ export default function Camera() {
         <MediaView media={id} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }} />
         {(!cams.length || denied || p.error) && (
           !cams.length ? <NoCamera title={tr('camera.none')} hint={tr('camera.noneHint')} />
-            : <NoCamera title={denied ? tr('camera.deniedTitle') : tr('camera.errorTitle')} hint={denied ? tr('camera.denied') : tr('camera.error', { error: p.error })} />
+            : <NoCamera title={denied ? tr('camera.deniedTitle') : tr('camera.errorTitle')} hint={denied ? tr('camera.denied') : tr('camera.error', { error: errorText(p.error) })} />
         )}
         {flash && <View style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.85)' }} />}
         {recStart > 0 && (

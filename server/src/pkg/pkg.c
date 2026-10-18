@@ -89,7 +89,7 @@ static int lock_pkg(void) {
 }
 
 static void progress(const char *phase, uint64_t done, uint64_t total) {
-    admin_say("LOG", "progress %s %llu %llu", phase, (unsigned long long)done, (unsigned long long)total);
+    admin_say("LOG", "progress %s %llu %llu", phase, (unsigned long long)done, (unsigned long long)total);   /* i18n-ok: protocol line parsed by apps/store */
 }
 
 static void fetch_progress(uint64_t done, uint64_t total, void *ud) { progress((const char *)ud, done, total); }
@@ -150,8 +150,8 @@ static void add_source(Source *src, int *ns, const char *uri, const char *suite,
     Source *s = &src[*ns];
     memset(s, 0, sizeof *s);
     mirror_uri(uri, s->uri, sizeof s->uri);
-    if (!s->uri[0]) { admin_say("LOG", "fuente salteada (solo http/https): %s", uri); return; }
-    if (strchr(suite, '/') || !suite[0]) { admin_say("LOG", "repositorio plano no soportado: %s %s", uri, suite); return; }
+    if (!s->uri[0]) { admin_log("pkg.sourceSkipped", "uri", uri, NULL); return; }
+    if (strchr(suite, '/') || !suite[0]) { admin_log("pkg.flatRepo", "uri", uri, "suite", suite, NULL); return; }
     snprintf(s->suite, sizeof s->suite, "%s", suite);
     for (int i = 0; i < nc && i < 16; i++) snprintf(s->comps[s->ncomp++], sizeof s->comps[0], "%s", comps[i]);
     if (sblen) {
@@ -271,7 +271,7 @@ static int load_keyring(const Source *s, PgpKeyring *kr) {
     memset(kr, 0, sizeof *kr);
     if (s->inline_key) return pgp_keyring_add_mem(kr, s->inline_key, strlen(s->inline_key));
     if (s->nkeys) {
-        for (int i = 0; i < s->nkeys; i++) if (pgp_keyring_add_file(kr, s->keys[i])) admin_say("LOG", "no se pudo leer la clave %s", s->keys[i]);
+        for (int i = 0; i < s->nkeys; i++) if (pgp_keyring_add_file(kr, s->keys[i])) admin_log("pkg.keyUnreadable", "path", s->keys[i], NULL);
         return kr->n ? 0 : -1;
     }
     /* no Signed-By: apt's trusted keys */
@@ -466,18 +466,18 @@ static void gc_lists(Wanted *w, int nw, Source *src, int ns) {
 void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     (void)r; (void)arg; (void)len;
     int lk = lock_pkg();
-    if (lk == -2) { admin_say("ERR", "otra operación de paquetes está en curso"); return; }
-    if (lk < 0 || mkdirs(LISTS, 0755) || mkdirs(LISTS "/partial", 0755) || mkdirs(ICONS, 0755)) { admin_say("ERR", "no se pudo preparar %s", PKG_DIR); return; }
+    if (lk == -2) { admin_err("pkg.busy", NULL); return; }
+    if (lk < 0 || mkdirs(LISTS, 0755) || mkdirs(LISTS "/partial", 0755) || mkdirs(ICONS, 0755)) { admin_err("pkg.prepareFailed", "path", PKG_DIR, NULL); return; }
     const char *arch = pkg_native_arch();
     Source *src = calloc(MAX_SOURCES, sizeof *src);
-    if (!src) { admin_say("ERR", "sin memoria"); return; }
+    if (!src) { admin_err("sys.outOfMemory", NULL); return; }
     int ns = load_sources(src, arch);
-    if (!ns) { admin_say("ERR", "no hay fuentes de paquetes (/etc/apt/sources.list.d)"); free(src); return; }
+    if (!ns) { admin_err("pkg.noSources", NULL); free(src); return; }
 
     /* 1. InRelease of each source */
     FetchItem *rel = calloc((size_t)ns, sizeof *rel);
     char (*final)[PATH_MAX] = calloc((size_t)ns, PATH_MAX);
-    if (!rel || !final) { admin_say("ERR", "sin memoria"); return; }
+    if (!rel || !final) { admin_err("sys.outOfMemory", NULL); return; }
     for (int i = 0; i < ns; i++) {
         char name[700], san[700];
         snprintf(name, sizeof name, "%s_%s", src[i].uri, src[i].suite);
@@ -488,7 +488,7 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
         rel[i].max = 64u << 20;
         struct stat st;
         if (!stat(final[i], &st)) rel[i].ims = (int64_t)st.st_mtime;
-        admin_say("LOG", "fuente: %s %s %s", src[i].uri, src[i].suite, src[i].comps[0]);
+        admin_log("pkg.source", "uri", src[i].uri, "suite", src[i].suite, "component", src[i].comps[0], NULL);
     }
     progress("lists", 0, (uint64_t)ns);
     fetch_batch(rel, ns, NULL, NULL);
@@ -500,24 +500,24 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     int64_t now = (int64_t)time(NULL);
     for (int i = 0; R && good && i < ns; i++) {
         const char *path = rel[i].status == 200 ? rel[i].dest : rel[i].status == 304 ? final[i] : NULL;
-        if (!path) { admin_say("LOG", "%s %s: %s", src[i].uri, src[i].suite, rel[i].err); failures++; continue; }
+        if (!path) { admin_log("pkg.sourceFailed", "uri", src[i].uri, "suite", src[i].suite, "reason", rel[i].err, NULL); failures++; continue; }
         size_t blen;
         uint8_t *b = read_file(path, &blen, 64u << 20);
         PgpKeyring kr;
         char *body = NULL, err[256];
         size_t bodylen = 0;
         int ok = b && !load_keyring(&src[i], &kr);
-        if (!ok) snprintf(err, sizeof err, b ? "no hay claves para verificar" : "no se pudo leer");
+        if (!ok) lerr_set(err, sizeof err, b ? "pkg.release.noKeys" : "pkg.release.unreadable", NULL);
         else {
             int g = pgp_verify_clearsigned(&kr, (char *)b, blen, now, &body, &bodylen, err, sizeof err);
             pgp_keyring_free(&kr);
             ok = g > 0;
         }
         free(b);
-        if (ok && parse_release(body, bodylen, &R[i])) { ok = 0; snprintf(err, sizeof err, "Release mal formado"); }
-        if (ok && R[i].valid_until && R[i].valid_until < now) { ok = 0; snprintf(err, sizeof err, "la lista venció (Valid-Until)"); }
-        if (ok && R[i].date > now + 86400) { ok = 0; snprintf(err, sizeof err, "la lista tiene fecha futura (¿hora del sistema?)"); }
-        if (ok && strcmp(R[i].suite, src[i].suite) && strcmp(R[i].codename, src[i].suite)) { ok = 0; snprintf(err, sizeof err, "la lista es de %s, no de %s", R[i].codename, src[i].suite); }
+        if (ok && parse_release(body, bodylen, &R[i])) { ok = 0; lerr_set(err, sizeof err, "pkg.release.malformed", NULL); }
+        if (ok && R[i].valid_until && R[i].valid_until < now) { ok = 0; lerr_set(err, sizeof err, "pkg.release.expired", NULL); }
+        if (ok && R[i].date > now + 86400) { ok = 0; lerr_set(err, sizeof err, "pkg.release.future", NULL); }
+        if (ok && strcmp(R[i].suite, src[i].suite) && strcmp(R[i].codename, src[i].suite)) { ok = 0; lerr_set(err, sizeof err, "pkg.release.wrongSuite", "got", R[i].codename, "want", src[i].suite, NULL); }
         free(body);
         if (ok && rel[i].status == 200) {
             /* don't accept a list older than the one we already had (replay attack) */
@@ -525,20 +525,20 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
             uint8_t *old = read_file(final[i], &ol, 64u << 20);
             if (old) {
                 const char *d = strstr((char *)old, "\nDate: ");
-                if (d && http_parse_date(d + 7) > R[i].date) { ok = 0; snprintf(err, sizeof err, "la lista nueva es más vieja que la guardada"); }
+                if (d && http_parse_date(d + 7) > R[i].date) { ok = 0; lerr_set(err, sizeof err, "pkg.release.older", NULL); }
                 free(old);
             }
             if (ok) {
-                if (rename(rel[i].dest, final[i])) { ok = 0; snprintf(err, sizeof err, "no se pudo guardar"); }
+                if (rename(rel[i].dest, final[i])) { ok = 0; lerr_set(err, sizeof err, "pkg.release.saveFailed", NULL); }
                 else if (rel[i].last_modified) {
                     struct timespec ts[2] = { { (time_t)rel[i].last_modified, 0 }, { (time_t)rel[i].last_modified, 0 } };
                     utimensat(AT_FDCWD, final[i], ts, 0);
                 }
             }
         }
-        if (!ok) { admin_say("LOG", "%s %s: %s", src[i].uri, src[i].suite, err); unlink(rel[i].dest); failures++; continue; }
+        if (!ok) { admin_log("pkg.sourceFailed", "uri", src[i].uri, "suite", src[i].suite, "reason", err, NULL); unlink(rel[i].dest); failures++; continue; }
         good[i] = 1;
-        admin_say("LOG", "%s %s: firma verificada (%s)", src[i].uri, src[i].suite, R[i].label[0] ? R[i].label : R[i].origin);
+        admin_log("pkg.sourceVerified", "uri", src[i].uri, "suite", src[i].suite, "label", R[i].label[0] ? R[i].label : R[i].origin, NULL);
         /* which files to download */
         for (int c = 0; c < src[i].ncomp; c++) {
             char base[200];
@@ -550,7 +550,7 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
                 else snprintf(base, sizeof base, "%s/dep11/icons-64x64.tar", src[i].comps[c]);
                 const RelFile *f = rel_pick(&R[i], base, &ext);
                 if (k == 2 && f && !strcmp(ext, "")) f = NULL;     /* the uncompressed YAML is huge */
-                if (!f) { if (k == 0) admin_say("LOG", "%s %s: no hay %s", src[i].uri, src[i].suite, base); continue; }
+                if (!f) { if (k == 0) admin_log("pkg.sourceMissingFile", "uri", src[i].uri, "suite", src[i].suite, "file", base, NULL); continue; }
                 Wanted *nwp = realloc(w, sizeof *w * (size_t)(nw + 2));
                 if (!nwp) continue;
                 w = nwp;
@@ -593,12 +593,12 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
         free(R); free(good); free(w); free(src); free(final);
         utimensat(AT_FDCWD, PKG_DIR "/index.bin", NULL, 0);       /* "last update": now */
         close(lk);
-        admin_say("OK", "la lista ya estaba al día (%u paquetes)", n);
+        admin_ok("pkg.upToDate", "count", lerr_int(n), NULL);
         return;
     }
     int ngood = 0;
     for (int i = 0; good && i < ns; i++) ngood += good[i];
-    if (!ngood) { admin_say("ERR", "no se pudo verificar ninguna fuente"); return; }
+    if (!ngood) { admin_err("pkg.noVerifiedSource", NULL); return; }
 
     /* 2. missing indexes (by their SHA-256: what's already there isn't downloaded again) */
     FetchItem *fi = calloc((size_t)(nw ? nw : 1), sizeof *fi);
@@ -636,13 +636,13 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     uint8_t (*expect)[32] = calloc((size_t)(nf ? nf : 1), 32);
     for (int k = 0; expect && k < nf; k++) memcpy(expect[k], fi[k].sha256, 32);
     if (nf) {
-        admin_say("LOG", "bajando %d archivos de índice (%llu KB)", nf, (unsigned long long)(total / 1024));
+        admin_log("pkg.downloadingIndex", "count", lerr_int(nf), "kb", lerr_int((long long)(total / 1024)), NULL);
         fetch_batch(fi, nf, fetch_progress, "download");
     }
     for (int k = 0; fi && expect && k < nf; k++) {
         if (fi[k].status != 200 || fi[k].size != fi[k].expect || memcmp(fi[k].sha256, expect[k], 32)) {
-            if (fi[k].status == 200) snprintf(fi[k].err, sizeof fi[k].err, "el SHA-256 no coincide con el InRelease firmado");
-            admin_say("LOG", "%s: %s", fi[k].url, fi[k].err);
+            if (fi[k].status == 200) lerr_set(fi[k].err, sizeof fi[k].err, "pkg.hashMismatchRelease", NULL);
+            admin_log("pkg.fileFailed", "url", fi[k].url, "reason", fi[k].err, NULL);
             unlink(fi[k].dest);
         }
     }
@@ -652,7 +652,7 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     /* 3. index: Packages, Translation, DEP-11, icons */
     IdxBuilder *b = idxb_new();
     int *srcid = calloc((size_t)ns, sizeof *srcid);
-    if (!b || !srcid) { admin_say("ERR", "sin memoria"); return; }
+    if (!b || !srcid) { admin_err("sys.outOfMemory", NULL); return; }
     for (int i = 0; i < ns; i++) srcid[i] = -1;
     int pk_files = 0, pk_missing = 0;
     for (int pass = 0; pass < 4; pass++)
@@ -677,7 +677,7 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
             size_t dl;
             uint8_t *d = load_index_file(x->path, x->ext, &dl);
             if (!d) {
-                if (pass == 0) { pk_missing++; admin_say("LOG", "falta %s (%s)", x->comp, src[x->src].suite); }
+                if (pass == 0) { pk_missing++; admin_log("pkg.componentMissing", "component", x->comp, "suite", src[x->src].suite, NULL); }
                 continue;
             }
             if (pass == 0) { idxb_packages(b, srcid[x->src], (char *)d, dl, arch); pk_files++; }
@@ -695,10 +695,10 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     for (int i = 0; i < ns; i++) { free(R[i].files); free(src[i].inline_key); }
     free(R); free(good); free(w); free(src); free(final); free(srcid);
     close(lk);
-    if (!wrote) { admin_say("ERR", "no se pudo armar el índice: %s", pk_files ? err : "no se bajó ningún Packages"); return; }
+    if (!wrote) { admin_err("pkg.indexFailed", "reason", pk_files ? err : "pkg.noPackagesFile", NULL); return; }
     admin_event("pkg index");
-    if (failures || pk_missing) admin_say("OK", "%u paquetes de %d fuentes (%d con problemas: ver el registro)", count, ngood, failures + pk_missing);
-    else admin_say("OK", "%u paquetes de %d fuentes", count, ngood);
+    if (failures || pk_missing) admin_ok("pkg.updatedWithProblems", "count", lerr_int(count), "sources", lerr_int(ngood), "problems", lerr_int(failures + pk_missing), NULL);
+    else admin_ok("pkg.updated", "count", lerr_int(count), "sources", lerr_int(ngood), NULL);
 }
 
 /* ---- dpkg ---- */
@@ -758,7 +758,7 @@ static void dpkg_pending(void) {
     while (d && (e = readdir(d))) if (e->d_name[0] != '.') pending = 1;
     if (d) closedir(d);
     if (!pending) return;
-    admin_say("LOG", "dpkg quedó a medio terminar: dpkg --configure -a");
+    admin_log("pkg.dpkgInterrupted", NULL);
     const char *const argv[] = { "/usr/bin/dpkg", "--force-confdef", "--force-confold", "--configure", "-a", NULL };
     run_dpkg(argv, NULL);
 }
@@ -803,7 +803,7 @@ static int parse_names(const char *arg, size_t len, char names[][129], int max, 
         else if (!strcmp(tok, "--purge")) *flags |= 8;
         else if (!strcmp(tok, "--keep-orphans")) *flags |= 16;
         else if (deb_valid_name(tok, strlen(tok)) && *nn < max) snprintf(names[(*nn)++], 129, "%s", tok);
-        else { admin_say("ERR", "nombre de paquete inválido: %.60s", tok); return -1; }
+        else { { char nm[64]; snprintf(nm, sizeof nm, "%.60s", tok); admin_err("pkg.invalidName", "name", nm, NULL); } return -1; }
     }
     return 0;
 }
@@ -812,9 +812,9 @@ static void say_plan(const Plan *p, const Idx *x) {
     for (int i = 0; i < p->n; i++) {
         const PlanItem *it = &p->items[i];
         const char *a = it->action == PA_INSTALL ? "install" : it->action == PA_UPGRADE ? "upgrade" : "remove";
-        admin_say("LOG", "plan %s %s %s %u", a, it->name, it->version ? it->version : "", it->rec >= 0 ? x->pkg[it->rec].size : 0);
+        admin_say("LOG", "plan %s %s %s %u", a, it->name, it->version ? it->version : "", it->rec >= 0 ? x->pkg[it->rec].size : 0);   /* i18n-ok: protocol line parsed by apps/store */
     }
-    for (int i = 0; i < p->nheld; i++) admin_say("LOG", "plan held %s", p->held[i]);
+    for (int i = 0; i < p->nheld; i++) admin_say("LOG", "plan held %s", p->held[i]);   /* i18n-ok: protocol line parsed by apps/store */
 }
 
 static void deb_cache_name(const Idx *x, long rec, char *out, size_t n) {
@@ -851,14 +851,14 @@ static int file_sha_ok(const char *path, const uint8_t *sha, uint64_t size) {
 static int apply_plan(const Idx *x, const Plan *p, int purge, const char *extra_deb) {
     int ninst = 0, nrem = 0;
     for (int i = 0; i < p->n; i++) { if (p->items[i].rec >= 0) ninst++; else if (p->items[i].action == PA_REMOVE) nrem++; }
-    if (!ninst && !nrem && !extra_deb) { admin_say("OK", "nada para hacer: ya está todo instalado"); return 0; }
-    if (mkdirs(PKG_CACHE, 0755)) { admin_say("ERR", "no se pudo crear %s", PKG_CACHE); return -1; }
+    if (!ninst && !nrem && !extra_deb) { admin_ok("pkg.nothingToDo", NULL); return 0; }
+    if (mkdirs(PKG_CACHE, 0755)) { admin_err("pkg.prepareFailed", "path", PKG_CACHE, NULL); return -1; }
 
     /* download */
     char (*files)[PATH_MAX] = calloc((size_t)(p->n ? p->n : 1), PATH_MAX);
     FetchItem *fi = calloc((size_t)(ninst ? ninst : 1), sizeof *fi);
     int *fitem = calloc((size_t)(ninst ? ninst : 1), sizeof *fitem);
-    if (!files || !fi || !fitem) { admin_say("ERR", "sin memoria"); return -1; }
+    if (!files || !fi || !fitem) { admin_err("sys.outOfMemory", NULL); return -1; }
     int nf = 0;
     uint64_t total = 0;
     for (int i = 0; i < p->n; i++) {
@@ -876,13 +876,13 @@ static int apply_plan(const Idx *x, const Plan *p, int purge, const char *extra_
         total += k->size;
     }
     if (nf) {
-        admin_say("LOG", "bajando %d paquetes (%llu KB)", nf, (unsigned long long)(total / 1024));
+        admin_log("pkg.downloadingPackages", "count", lerr_int(nf), "kb", lerr_int((long long)(total / 1024)), NULL);
         progress("download", 0, total);
         fetch_batch(fi, nf, fetch_progress, "download");
         for (int k = 0; k < nf; k++) {
             const IdxPkg *pk = &x->pkg[p->items[fitem[k]].rec];
             if (fi[k].status != 200 || fi[k].size != pk->size || memcmp(fi[k].sha256, pk->sha256, 32)) {
-                admin_say("ERR", "%s: %s", idx_s(x, pk->name), fi[k].status == 200 ? "el SHA-256 no coincide con el índice firmado" : fi[k].err);
+                admin_err("pkg.downloadFailed", "name", idx_s(x, pk->name), "reason", fi[k].status == 200 ? "pkg.hashMismatchIndex" : fi[k].err, NULL);
                 unlink(fi[k].dest);
                 free(files); free(fi); free(fitem);
                 return -1;
@@ -893,7 +893,7 @@ static int apply_plan(const Idx *x, const Plan *p, int purge, const char *extra_
     free(fitem);
 
     int lk = lock_dpkg();
-    if (lk < 0) { admin_say("ERR", lk == -2 ? "dpkg está ocupado (¿apt u otro instalador corriendo?)" : "no se pudo tomar el lock de dpkg"); free(files); return -1; }
+    if (lk < 0) { admin_err(lk == -2 ? "pkg.dpkgBusy" : "pkg.dpkgLockFailed", NULL); free(files); return -1; }
     dpkg_pending();
     DpkgProgress pr = { 0, 0, 0, ninst + (extra_deb ? 1 : 0) };
     int rc = 0;
@@ -907,7 +907,7 @@ static int apply_plan(const Idx *x, const Plan *p, int purge, const char *extra_
         DpkgProgress rp = { 0, 0, 0, nrem };
         rc = run_dpkg(argv, &rp);
         free(argv);
-        if (rc) admin_say("LOG", "dpkg --remove terminó con código %d", rc);
+        if (rc) admin_log("pkg.dpkgRemoveExit", "code", lerr_int(rc), NULL);
     }
     if (!rc && (ninst || extra_deb)) {
         int *order = calloc((size_t)(p->n ? p->n : 1), sizeof *order), *group = calloc((size_t)(p->n ? p->n : 1), sizeof *group);
@@ -937,7 +937,7 @@ static int apply_plan(const Idx *x, const Plan *p, int purge, const char *extra_
     }
     close(lk);
     if (rc) {
-        admin_say("ERR", "dpkg terminó con código %d (ver el registro)", rc);
+        admin_err("pkg.dpkgFailed", "code", lerr_int(rc), NULL);
         free(files);
         return -1;
     }
@@ -952,14 +952,14 @@ static int apply_plan(const Idx *x, const Plan *p, int purge, const char *extra_
     }
     admin_event("pkg changed");
     if (extra_deb) ni++;
-    admin_say("OK", "%d instalado(s), %d actualizado(s), %d quitado(s)", ni, nu, nr);
+    admin_ok("pkg.done", "installed", lerr_int(ni), "upgraded", lerr_int(nu), "removed", lerr_int(nr), NULL);
     return 0;
 }
 
 static int open_db(Idx *x, Status *st, int need_index) {
     memset(st, 0, sizeof *st);
-    if (idx_open(x, PKG_DIR) && need_index) { admin_say("ERR", "no hay lista de paquetes: primero hay que actualizarla"); return -1; }
-    if (status_load(st, DPKG_STATUS, pkg_native_arch())) { admin_say("ERR", "no se pudo leer la base de dpkg"); idx_close(x); return -1; }
+    if (idx_open(x, PKG_DIR) && need_index) { admin_err("pkg.noIndex", NULL); return -1; }
+    if (status_load(st, DPKG_STATUS, pkg_native_arch())) { admin_err("pkg.dpkgStatusUnreadable", NULL); idx_close(x); return -1; }
     return 0;
 }
 
@@ -986,8 +986,8 @@ static void auto_free(AutoList *a) { free(a->buf); free(a->v); }
 
 static void run_plan_action(const char *const *ins, int ni, const char *const *rem, int nr, const PlanOpts *o, int purge) {
     int lk = lock_pkg();
-    if (lk == -2) { admin_say("ERR", "otra operación de paquetes está en curso"); return; }
-    if (lk < 0) { admin_say("ERR", "no se pudo preparar %s", PKG_DIR); return; }
+    if (lk == -2) { admin_err("pkg.busy", NULL); return; }
+    if (lk < 0) { admin_err("pkg.prepareFailed", "path", PKG_DIR, NULL); return; }
     Idx x;
     Status st;
     if (open_db(&x, &st, ni > 0 || o->upgrade_all)) { close(lk); return; }
@@ -1000,10 +1000,10 @@ static void run_plan_action(const char *const *ins, int ni, const char *const *r
     plan_make(&x, &st, ins, ni, rem, nr, &po, &p);
     auto_free(&al);
     say_plan(&p, &x);
-    if (!p.ok) admin_say("ERR", "%s", p.err);
-    else if (!p.n && o->orphans && !ni && !nr) admin_say("OK", "no hay nada para quitar");
+    if (!p.ok) admin_say("ERR", "%s", p.err);   /* i18n-ok: already a code line */
+    else if (!p.n && o->orphans && !ni && !nr) admin_ok("pkg.nothingToRemove", NULL);
     else {
-        admin_say("LOG", "plan total %llu %lld", (unsigned long long)p.download, (long long)p.isize_delta);
+        admin_say("LOG", "plan total %llu %lld", (unsigned long long)p.download, (long long)p.isize_delta);   /* i18n-ok: protocol line parsed by apps/store */
         apply_plan(&x, &p, purge, NULL);
     }
     plan_free(&p);
@@ -1017,7 +1017,7 @@ void pkg_act_install(const AdminReq *r, const char *arg, size_t len) {
     char names[64][129];
     int n, flags;
     if (parse_names(arg, len, names, 64, &n, &flags)) return;
-    if (!n) { admin_say("ERR", "falta el nombre del paquete"); return; }
+    if (!n) { admin_err("pkg.missingName", NULL); return; }
     const char *ins[64];
     for (int i = 0; i < n; i++) ins[i] = names[i];
     PlanOpts o = { .recommends = flags & 1, .allow_remove = (flags & 2) != 0 };
@@ -1029,7 +1029,7 @@ void pkg_act_remove(const AdminReq *r, const char *arg, size_t len) {
     char names[64][129];
     int n, flags;
     if (parse_names(arg, len, names, 64, &n, &flags)) return;
-    if (!n) { admin_say("ERR", "falta el nombre del paquete"); return; }
+    if (!n) { admin_err("pkg.missingName", NULL); return; }
     const char *rem[64];
     for (int i = 0; i < n; i++) rem[i] = names[i];
     PlanOpts o = { .cascade = (flags & 4) != 0, .allow_remove = (flags & 6) != 0, .orphans = !(flags & 16) };
@@ -1039,7 +1039,7 @@ void pkg_act_remove(const AdminReq *r, const char *arg, size_t len) {
 /* Removes what was installed as a dependency that nobody uses anymore (apt autoremove). */
 void pkg_act_autoremove(const AdminReq *r, const char *arg, size_t len) {
     (void)r;
-    if (len) { admin_say("ERR", "pkg-autoremove no lleva argumentos"); (void)arg; return; }
+    if (len) { admin_err("admin.invalidArgument", NULL); (void)arg; return; }
     PlanOpts o = { .orphans = 1 };
     run_plan_action(NULL, 0, NULL, 0, &o, 0);
 }
@@ -1096,19 +1096,19 @@ static int read_control(const uint8_t *deb, size_t len, DebControl *dc, char *er
     const uint8_t *m;
     size_t ml;
     char name[32];
-    if (ar_member(deb, len, "debian-binary", &m, &ml, name, sizeof name) || ml < 3 || m[0] != '2') { snprintf(err, errlen, "no es un paquete .deb"); return -1; }
-    if (ar_member(deb, len, "control.tar", &m, &ml, name, sizeof name)) { snprintf(err, errlen, "el .deb no tiene control.tar"); return -1; }
+    if (ar_member(deb, len, "debian-binary", &m, &ml, name, sizeof name) || ml < 3 || m[0] != '2') { lerr_set(err, errlen, "pkg.deb.notDeb", NULL); return -1; }
+    if (ar_member(deb, len, "control.tar", &m, &ml, name, sizeof name)) { lerr_set(err, errlen, "pkg.deb.noControlTar", NULL); return -1; }
     uint8_t *tar = NULL;
     size_t tl = 0;
     if (!strcmp(name, "control.tar.xz")) { if (xz_decode(m, ml, &tar, &tl, 64u << 20)) tar = NULL; }
     else if (!strcmp(name, "control.tar.gz")) { if (gz_decode(m, ml, &tar, &tl, 64u << 20)) tar = NULL; }
     else if (!strcmp(name, "control.tar")) { tar = malloc(ml); if (tar) { memcpy(tar, m, ml); tl = ml; } }
-    else { snprintf(err, errlen, "%s no está soportado (se usa xz o gzip)", name); return -1; }
-    if (!tar) { snprintf(err, errlen, "control.tar dañado"); return -1; }
+    else { lerr_set(err, errlen, "pkg.deb.compression", "name", name, NULL); return -1; }
+    if (!tar) { lerr_set(err, errlen, "pkg.deb.controlDamaged", NULL); return -1; }
     CtlCtx c = { NULL, 0 };
     tar_walk(tar, tl, control_entry, &c);
     free(tar);
-    if (!c.control) { snprintf(err, errlen, "el .deb no tiene control"); return -1; }
+    if (!c.control) { lerr_set(err, errlen, "pkg.deb.noControl", NULL); return -1; }
     D822 it = { c.control, c.control + c.len };
     D822Field f;
     while (d822_next_field(&it, &f)) {
@@ -1123,7 +1123,7 @@ static int read_control(const uint8_t *deb, size_t len, DebControl *dc, char *er
         if (dst && !*dst && (*dst = malloc(f.vlen + 1))) { memcpy(*dst, f.value, f.vlen); (*dst)[f.vlen] = 0; }
     }
     free(c.control);
-    if (!deb_valid_name(dc->name, strlen(dc->name)) || !deb_valid_version(dc->version, strlen(dc->version))) { snprintf(err, errlen, "control inválido"); return -1; }
+    if (!deb_valid_name(dc->name, strlen(dc->name)) || !deb_valid_version(dc->version, strlen(dc->version))) { lerr_set(err, errlen, "pkg.deb.badControl", NULL); return -1; }
     return 0;
 }
 
@@ -1133,10 +1133,10 @@ static void control_free(DebControl *dc) { free(dc->depends); free(dc->predepend
  * new root-owned file. That way there's no race: what gets verified and installed is the copy. */
 static int copy_user_file(const AdminReq *r, const char *path, const char *dest, char *err, size_t errlen) {
     char home[PATH_MAX];
-    if (!realpath(r->home, home)) { snprintf(err, errlen, "carpeta personal inválida"); return -1; }
+    if (!realpath(r->home, home)) { lerr_set(err, errlen, "pkg.file.badHome", NULL); return -1; }
     size_t hl = strlen(home);
     if (strncmp(path, home, hl) || path[hl] != '/' || strstr(path, "/../") || strstr(path, "/./") || strlen(path) > 1000) {
-        snprintf(err, errlen, "el archivo tiene que estar en la carpeta personal");
+        lerr_set(err, errlen, "pkg.file.outsideHome", NULL);
         return -1;
     }
     setfsgid(r->gid);
@@ -1160,12 +1160,12 @@ static int copy_user_file(const AdminReq *r, const char *path, const char *dest,
     struct stat st;
     if (fd < 0 || fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_size > (off_t)(2048u << 20)) {
         if (fd >= 0) close(fd);
-        snprintf(err, errlen, "no se pudo abrir el archivo (¿enlace, permisos o no es un archivo?)");
+        lerr_set(err, errlen, "pkg.file.openFailed", NULL);
         return -1;
     }
     unlink(dest);
     int out = open(dest, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0644);
-    if (out < 0) { close(fd); snprintf(err, errlen, "no se pudo copiar"); return -1; }
+    if (out < 0) { close(fd); lerr_set(err, errlen, "pkg.file.copyFailed", NULL); return -1; }
     uint8_t buf[65536];
     ssize_t n;
     int ok = 1;
@@ -1175,44 +1175,44 @@ static int copy_user_file(const AdminReq *r, const char *path, const char *dest,
     }
     close(fd);
     if (close(out)) ok = 0;
-    if (!ok) { unlink(dest); snprintf(err, errlen, "no se pudo copiar"); return -1; }
+    if (!ok) { unlink(dest); lerr_set(err, errlen, "pkg.file.copyFailed", NULL); return -1; }
     return 0;
 }
 
 void pkg_act_install_file(const AdminReq *r, const char *arg, size_t len) {
     char buf[1100];
-    if (len >= sizeof buf) { admin_say("ERR", "ruta demasiado larga"); return; }
+    if (len >= sizeof buf) { admin_err("pkg.file.pathTooLong", NULL); return; }
     memcpy(buf, arg, len);
     buf[len] = 0;
     int allow_remove = 0;
     char *flag = strstr(buf, " --allow-remove");
     if (flag && !flag[15]) { *flag = 0; allow_remove = 1; }
     size_t pl = strlen(buf);
-    if (buf[0] != '/' || pl < 5 || strcmp(buf + pl - 4, ".deb") || strchr(buf, '\n')) { admin_say("ERR", "hace falta la ruta completa de un archivo .deb"); return; }
+    if (buf[0] != '/' || pl < 5 || strcmp(buf + pl - 4, ".deb") || strchr(buf, '\n')) { admin_err("pkg.file.needDebPath", NULL); return; }
     int lk = lock_pkg();
-    if (lk == -2) { admin_say("ERR", "otra operación de paquetes está en curso"); return; }
-    if (lk < 0 || mkdirs(PKG_CACHE, 0755)) { admin_say("ERR", "no se pudo preparar %s", PKG_CACHE); return; }
+    if (lk == -2) { admin_err("pkg.busy", NULL); return; }
+    if (lk < 0 || mkdirs(PKG_CACHE, 0755)) { admin_err("pkg.prepareFailed", "path", PKG_CACHE, NULL); return; }
     char dest[PATH_MAX], err[256];
     snprintf(dest, sizeof dest, PKG_CACHE "/local-%d.deb", (int)getpid());
-    if (copy_user_file(r, buf, dest, err, sizeof err)) { admin_say("ERR", "%s", err); close(lk); return; }
+    if (copy_user_file(r, buf, dest, err, sizeof err)) { admin_say("ERR", "%s", err); close(lk); return; }   /* i18n-ok: already a code line */
     size_t dl;
     uint8_t *deb = read_file(dest, &dl, 2048u << 20);
     DebControl dc;
     if (!deb || read_control(deb, dl, &dc, err, sizeof err)) {
         free(deb);
         unlink(dest);
-        admin_say("ERR", "%s", deb ? err : "no se pudo leer");
+        admin_say("ERR", "%s", deb ? err : "pkg.file.unreadable");   /* i18n-ok: already a code line */
         close(lk);
         return;
     }
     free(deb);
     const char *arch = pkg_native_arch();
     if (strcmp(dc.arch, arch) && strcmp(dc.arch, "all")) {
-        admin_say("ERR", "%s es para %s y este sistema es %s", dc.name, dc.arch, arch);
+        admin_err("pkg.deb.wrongArch", "name", dc.name, "arch", dc.arch, "system", arch, NULL);
         control_free(&dc); unlink(dest); close(lk);
         return;
     }
-    admin_say("LOG", "paquete local: %s %s (%s)", dc.name, dc.version, dc.arch);
+    admin_log("pkg.localPackage", "name", dc.name, "version", dc.version, "arch", dc.arch, NULL);
     Idx x;
     Status st;
     if (open_db(&x, &st, 0)) { control_free(&dc); unlink(dest); close(lk); return; }
@@ -1251,18 +1251,18 @@ void pkg_act_install_file(const AdminReq *r, const char *arg, size_t len) {
                     ok = 1;
                 }
             }
-            if (!ok) { missing++; admin_say("LOG", "dependencia sin resolver: %.*s", (int)a[0].nlen, a[0].name); }
+            if (!ok) { missing++; { char dn[130]; snprintf(dn, sizeof dn, "%.*s", (int)a[0].nlen, a[0].name); admin_log("pkg.unresolvedDep", "name", dn, NULL); } }
         }
     }
     if (missing) {
-        admin_say("ERR", "%s necesita paquetes que no están en las fuentes", dc.name);
+        admin_err("pkg.deb.missingDeps", "name", dc.name, NULL);
     } else {
         PlanOpts o = { .allow_remove = allow_remove };
         Plan p;
         plan_make(&x, &st, ins, ni, NULL, 0, &o, &p);
         say_plan(&p, &x);
-        admin_say("LOG", "plan install %s %s %llu", dc.name, dc.version, (unsigned long long)dl);
-        if (!p.ok) admin_say("ERR", "%s", p.err);
+        admin_say("LOG", "plan install %s %s %llu", dc.name, dc.version, (unsigned long long)dl);   /* i18n-ok: protocol line parsed by apps/store */
+        if (!p.ok) admin_say("ERR", "%s", p.err);   /* i18n-ok: already a code line */
         else apply_plan(&x, &p, 0, dest);
         plan_free(&p);
     }

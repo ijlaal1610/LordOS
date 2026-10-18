@@ -89,28 +89,28 @@ static int known_kind(const char *n) {
  * also allowed on the system disk and for any user. */
 static int target(const AdminReq *r, const char *name, int want, int allow_system, Target *t) {
     memset(t, 0, sizeof *t);
-    if (!disk_valid_name(name) || !known_kind(name)) { admin_say("ERR", "dispositivo inválido"); return -1; }
+    if (!disk_valid_name(name) || !known_kind(name)) { admin_err("disk.badDevice", NULL); return -1; }
     char p[PATH_MAX], devno[32];
     snprintf(p, sizeof p, "/sys/class/block/%s/dev", name);
     FILE *f = fopen(p, "re");
     unsigned ma = 0, mi = 0;
     int ok = f && fgets(devno, sizeof devno, f) && sscanf(devno, "%u:%u", &ma, &mi) == 2;
     if (f) fclose(f);
-    if (!ok) { admin_say("ERR", "no existe el dispositivo %s", name); return -1; }
+    if (!ok) { admin_err("disk.noDevice", "name", name, NULL); return -1; }
     snprintf(t->name, sizeof t->name, "%s", name);
     t->part = disk_parent(name, t->disk, sizeof t->disk);
     if (!t->part) snprintf(t->disk, sizeof t->disk, "%s", name);
-    if (want == 1 && t->part) { admin_say("ERR", "%s es una partición: hace falta el disco entero", name); return -1; }
-    if (want == 2 && !t->part) { admin_say("ERR", "%s no es una partición", name); return -1; }
+    if (want == 1 && t->part) { admin_err("disk.isPartition", "name", name, NULL); return -1; }
+    if (want == 2 && !t->part) { admin_err("disk.notPartition", "name", name, NULL); return -1; }
     snprintf(t->dev, sizeof t->dev, "/dev/%s", name);
     struct stat st;
     if (lstat(t->dev, &st) || !S_ISBLK(st.st_mode) || major(st.st_rdev) != ma || minor(st.st_rdev) != mi) {
-        admin_say("ERR", "%s no es un dispositivo de bloque", t->dev);
+        admin_err("disk.notBlock", "name", t->dev, NULL);
         return -1;
     }
-    if (!allow_system && disk_is_system(t->disk)) { admin_say("ERR", "%s es el disco del sistema: no se toca", t->disk); return -1; }
+    if (!allow_system && disk_is_system(t->disk)) { admin_err("disk.systemDisk", "name", t->disk, NULL); return -1; }
     t->removable = disk_is_removable(t->disk);
-    if (!allow_system && !t->removable && !r->admin) { admin_say("ERR", "los discos internos los maneja un administrador (grupo sudo)"); return -1; }
+    if (!allow_system && !t->removable && !r->admin) { admin_err("disk.internalNeedsAdmin", NULL); return -1; }
     t->size = disk_size(name);
     return 0;
 }
@@ -143,7 +143,7 @@ static void job_end(const char *disk) {
 
 void disk_act_cancel(const AdminReq *r, const char *arg, size_t len) {
     (void)len;
-    if (!disk_valid_name(arg)) { admin_say("ERR", "dispositivo inválido"); return; }
+    if (!disk_valid_name(arg)) { admin_err("disk.badDevice", NULL); return; }
     char p[96];
     job_path(arg, p, sizeof p);
     FILE *f = fopen(p, "re");
@@ -151,16 +151,16 @@ void disk_act_cancel(const AdminReq *r, const char *arg, size_t len) {
     unsigned uid = 0;
     int ok = f && fscanf(f, "%d %u", &pid, &uid) == 2;
     if (f) fclose(f);
-    if (!ok || pid <= 1) { admin_say("ERR", "no hay nada en curso en %s", arg); return; }
-    if (uid != r->uid && !r->admin) { admin_say("ERR", "lo empezó otro usuario"); return; }
+    if (!ok || pid <= 1) { admin_err("disk.nothingRunning", "name", arg, NULL); return; }
+    if (uid != r->uid && !r->admin) { admin_err("disk.otherUser", NULL); return; }
     /* it must really be a helper child (lord-admin), not a recycled pid */
     char cp[64], comm[32] = "";
     snprintf(cp, sizeof cp, "/proc/%d/comm", pid);
     FILE *c = fopen(cp, "re");
     if (c) { if (!fgets(comm, sizeof comm, c)) comm[0] = 0; fclose(c); }
-    if (strncmp(comm, "lord-admin", 10)) { unlink(p); admin_say("ERR", "no hay nada en curso en %s", arg); return; }
+    if (strncmp(comm, "lord-admin", 10)) { unlink(p); admin_err("disk.nothingRunning", "name", arg, NULL); return; }
     kill(pid, SIGTERM);
-    admin_say("OK", "cancelando");
+    admin_ok("disk.cancelling", NULL);
 }
 
 /* ---- mounts ---- */
@@ -174,13 +174,13 @@ static int unmount_dev(const char *name) {
     char mounts[4096];
     if (!disk_mounts(name, mounts, sizeof mounts)) return 0;
     for (char *m = strtok(mounts, "\n"); m; m = strtok(NULL, "\n")) {
-        if (!in_media(m)) { admin_say("ERR", "%s está montado en %s: desmontalo a mano", name, m); return -1; }
+        if (!in_media(m)) { admin_err("disk.mountedElsewhere", "name", name, "path", m, NULL); return -1; }
         sync();
         if (umount2(m, UMOUNT_NOFOLLOW)) {
-            admin_say("ERR", errno == EBUSY ? "%s está en uso (hay archivos abiertos en %s)" : "no se pudo desmontar %s (%s)", name, m);
+            { if (errno == EBUSY) admin_err("disk.busyFiles", "name", name, "path", m, NULL); else admin_err("disk.unmountFailed", "name", name, "errno", lerr_errno(errno), NULL); }
             return -1;
         }
-        admin_say("LOG", "desmontado %s", m);
+        admin_log("disk.unmountedPath", "path", m, NULL);
         rmdir(m);
     }
     return 0;
@@ -212,7 +212,7 @@ void disk_act_mount(const AdminReq *r, const char *arg, size_t len) {
     (void)len;
     Target t;
     if (target(r, arg, 0, 0, &t)) return;
-    if (disk_mounts(t.name, NULL, 0)) { admin_say("ERR", "%s ya está montado", t.name); return; }
+    if (disk_mounts(t.name, NULL, 0)) { admin_err("disk.alreadyMounted", "name", t.name, NULL); return; }
     char fs[32], label[256], uuid[96];
     disk_udev_prop(t.name, "ID_FS_TYPE", fs, sizeof fs);
     disk_fs_label(t.name, label, sizeof label);                      /* sanitize_dir removes / and control characters */
@@ -224,7 +224,7 @@ void disk_act_mount(const AdminReq *r, const char *arg, size_t len) {
     };
     int k = -1;
     for (size_t i = 0; i < sizeof kinds / sizeof *kinds; i++) if (!strcmp(fs, kinds[i].udev)) k = (int)i;
-    if (k < 0) { admin_say("ERR", fs[0] ? "no se sabe montar «%s»" : "%s no tiene un sistema de archivos conocido", fs[0] ? fs : t.name); return; }
+    if (k < 0) { { if (fs[0]) admin_err("disk.cannotMountFs", "fs", fs, NULL); else admin_err("disk.unknownFs", "name", t.name, NULL); } return; }
     char base[96], dir[PATH_MAX], leaf[200];
     mkdir("/media", 0755);
     snprintf(base, sizeof base, "/media/%.64s", r->user);
@@ -249,19 +249,19 @@ void disk_act_mount(const AdminReq *r, const char *arg, size_t len) {
     if (mount(t.dev, dir, kinds[k].kernel, flags, opts[0] ? opts : NULL)) {
         int e = errno;
         rmdir(dir);
-        admin_say("ERR", "no se pudo montar %s (%s)", t.name, strerror(e));
+        admin_err("disk.mountFailed", "name", t.name, "errno", lerr_errno(e), NULL);
         return;
     }
-    admin_say("OK", "%s", dir);
+    admin_say("OK", "%s", dir);   /* i18n-ok */
 }
 
 void disk_act_unmount(const AdminReq *r, const char *arg, size_t len) {
     (void)len;
     Target t;
     if (target(r, arg, 0, 0, &t)) return;
-    if (t.part && !disk_mounts(t.name, NULL, 0)) { admin_say("ERR", "%s no está montado", t.name); return; }
+    if (t.part && !disk_mounts(t.name, NULL, 0)) { admin_err("disk.notMounted", "name", t.name, NULL); return; }
     if (t.part ? unmount_dev(t.name) : unmount_disk(&t)) return;
-    admin_say("OK", "desmontado");
+    admin_ok("disk.unmounted", NULL);
 }
 
 /* ---- SCSI / ATA ---- */
@@ -312,12 +312,12 @@ void disk_act_smart(const AdminReq *r, const char *arg, size_t len) {
     Target t;
     if (target(r, arg, 1, 1, &t)) return;     /* the system disk too: read only */
     if (strncmp(t.name, "sd", 2) && strncmp(t.name, "nvme", 4) && strncmp(t.name, "hd", 2)) {
-        admin_say("ERR", "este disco no informa SMART (%s)", t.name);
+        admin_err("disk.noSmart", "name", t.name, NULL);
         return;
     }
     double t0 = now_s();
     int fd = open(t.dev, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-    if (fd < 0) { admin_say("ERR", "no se pudo abrir %s (%s)", t.dev, strerror(errno)); return; }
+    if (fd < 0) { admin_err("disk.openFailed", "name", t.dev, "errno", lerr_errno(errno), NULL); return; }
     SmartReport rep;
     int ok;
     if (!strncmp(t.name, "nvme", 4)) {
@@ -339,11 +339,11 @@ void disk_act_smart(const AdminReq *r, const char *arg, size_t len) {
         if (ok && !has_data) rep.nattr = 0;
     }
     close(fd);
-    if (!ok) { admin_say("ERR", "el disco no respondió a SMART (puede no tenerlo, o estar detrás de un adaptador USB que no lo deja pasar)"); return; }
+    if (!ok) { admin_err("disk.smartNoReply", NULL); return; }
     char j[1024];
-    if (!smart_summary_json(&rep, j, sizeof j)) admin_say("LOG", "smart %s", j);
-    for (int i = 0; i < rep.nattr; i++) if (!smart_attr_json(&rep.attr[i], j, sizeof j)) admin_say("LOG", "attr %s", j);
-    admin_say("OK", "%.1f ms", (now_s() - t0) * 1000);
+    if (!smart_summary_json(&rep, j, sizeof j)) admin_say("LOG", "smart %s", j);   /* i18n-ok */
+    for (int i = 0; i < rep.nattr; i++) if (!smart_attr_json(&rep.attr[i], j, sizeof j)) admin_say("LOG", "attr %s", j);   /* i18n-ok */
+    admin_say("OK", "%.1f ms", (now_s() - t0) * 1000);   /* i18n-ok */
 }
 
 /* ---- writing to the device ---- */
@@ -384,7 +384,7 @@ static int wipe_ends(int fd, uint64_t size) {
 
 static int open_excl(const Target *t, int extra) {
     int fd = open(t->dev, O_RDWR | O_EXCL | O_CLOEXEC | extra);
-    if (fd < 0) admin_say("ERR", errno == EBUSY ? "%s está en uso (montado o abierto por otro programa)" : "no se pudo abrir %s (%s)", t->name, strerror(errno));
+    if (fd < 0) { if (errno == EBUSY) admin_err("disk.busy", "name", t->name, NULL); else admin_err("disk.openFailed", "name", t->name, "errno", lerr_errno(errno), NULL); }
     return fd;
 }
 
@@ -450,9 +450,9 @@ void disk_act_format(const AdminReq *r, const char *arg, size_t len) {
         s = nl ? nl + 1 : NULL;
         if (nf == 2 && nl) { nf = -1; break; }      /* too many lines */
     }
-    if (!buf || nf < 2) { admin_say("ERR", "argumento inválido"); free(buf); return; }
+    if (!buf || nf < 2) { admin_err("admin.invalidArgument", NULL); free(buf); return; }
     char *name = f[0], fsname[16], lab[64];
-    if (strlen(f[1]) >= sizeof fsname || (f[2] && strlen(f[2]) >= sizeof lab)) { admin_say("ERR", "argumento inválido"); free(buf); return; }
+    if (strlen(f[1]) >= sizeof fsname || (f[2] && strlen(f[2]) >= sizeof lab)) { admin_err("admin.invalidArgument", NULL); free(buf); return; }
     snprintf(fsname, sizeof fsname, "%s", f[1]);
     snprintf(lab, sizeof lab, "%s", f[2] ? f[2] : "");
     struct { const char *id, *prog; uint8_t type; } kinds[] = {
@@ -461,9 +461,9 @@ void disk_act_format(const AdminReq *r, const char *arg, size_t len) {
     };
     int k = -1;
     for (int i = 0; i < 4; i++) if (!strcmp(fsname, kinds[i].id)) k = i;
-    if (k < 0) { admin_say("ERR", "sistema de archivos desconocido: %s", fsname); free(buf); return; }
-    if (access(kinds[k].prog, X_OK)) { admin_say("ERR", "falta %s", kinds[k].prog); free(buf); return; }
-    if (!valid_label(fsname, lab)) { admin_say("ERR", "etiqueta inválida para %s", fsname); free(buf); return; }
+    if (k < 0) { admin_err("disk.unknownFsName", "fs", fsname, NULL); free(buf); return; }
+    if (access(kinds[k].prog, X_OK)) { admin_err("disk.missingTool", "program", kinds[k].prog, NULL); free(buf); return; }
+    if (!valid_label(fsname, lab)) { admin_err("disk.badLabelFor", "fs", fsname, NULL); free(buf); return; }
     Target t;
     if (target(r, name, 0, 0, &t)) { free(buf); return; }
     free(buf);
@@ -473,12 +473,12 @@ void disk_act_format(const AdminReq *r, const char *arg, size_t len) {
     char dev[48];
     snprintf(dev, sizeof dev, "%s", t.dev);
     if (!t.part) {
-        admin_say("LOG", "progress phase=table");
+        admin_say("LOG", "progress phase=table");   /* i18n-ok */
         int e = wipe_ends(fd, t.size);
         if (!e) e = write_mbr(fd, t.size, kinds[k].type);
         if (e) {
             close(fd);
-            admin_say("ERR", e == -2 ? "discos de más de 2 TiB: todavía no (hace falta GPT)" : e == -3 ? "el disco es demasiado chico" : "no se pudo escribir la tabla de particiones");
+            admin_err(e == -2 ? "disk.tooLargeForMbr" : e == -3 ? "disk.tooSmall" : "disk.tableFailed", NULL);
             return;
         }
         fsync(fd);
@@ -489,7 +489,7 @@ void disk_act_format(const AdminReq *r, const char *arg, size_t len) {
                 ioctl(fd, LOOP_SET_STATUS64, &li);
             }
         }
-        if (ioctl(fd, BLKRRPART) && errno != EINVAL) admin_say("LOG", "aviso: el kernel no releyó la tabla (%s)", strerror(errno));
+        if (ioctl(fd, BLKRRPART) && errno != EINVAL) admin_log("disk.rereadWarning", "errno", lerr_errno(errno), NULL);
         close(fd);
         settle();
         char pn[32], sp[PATH_MAX];
@@ -499,15 +499,15 @@ void disk_act_format(const AdminReq *r, const char *arg, size_t len) {
         snprintf(dev, sizeof dev, "/dev/%s", pn);
         struct stat st;
         for (int i = 0; i < 50 && (stat(dev, &st) || !S_ISBLK(st.st_mode)); i++) usleep(100000);
-        if (stat(dev, &st) || !S_ISBLK(st.st_mode)) { admin_say("ERR", "no apareció la partición nueva %s", dev); return; }
+        if (stat(dev, &st) || !S_ISBLK(st.st_mode)) { admin_err("disk.noNewPartition", "name", dev, NULL); return; }
         snprintf(t.name, sizeof t.name, "%s", pn);
     } else {
         int e = zero_range(fd, 0, t.size < MIB ? t.size : MIB);    /* old signatures at the start */
         fsync(fd);
         close(fd);
-        if (e) { admin_say("ERR", "no se pudo escribir en %s", t.name); return; }
+        if (e) { admin_err("disk.writeFailed", "name", t.name, NULL); return; }
     }
-    admin_say("LOG", "progress phase=mkfs");
+    admin_say("LOG", "progress phase=mkfs");   /* i18n-ok */
     char owner[48];
     snprintf(owner, sizeof owner, "root_owner=%u:%u", (unsigned)r->uid, (unsigned)r->gid);
     int rc;
@@ -527,39 +527,39 @@ void disk_act_format(const AdminReq *r, const char *arg, size_t len) {
     }
     uevent_change(t.name);
     settle();
-    if (rc) admin_say("ERR", "%s terminó con código %d", kinds[k].prog, rc);
-    else admin_say("OK", "%s", t.name);
+    if (rc) admin_err("sys.programFailed", "program", kinds[k].prog, "code", lerr_int(rc), NULL);
+    else admin_say("OK", "%s", t.name);   /* i18n-ok */
 }
 
 void disk_act_label(const AdminReq *r, const char *arg, size_t len) {
     char *buf = strndup(arg, len), *name, *lab;
-    if (!buf || split2(buf, &name, &lab)) { admin_say("ERR", "argumento inválido"); free(buf); return; }
+    if (!buf || split2(buf, &name, &lab)) { admin_err("admin.invalidArgument", NULL); free(buf); return; }
     Target t;
     if (target(r, name, 0, 0, &t)) { free(buf); return; }
     char fs[32], label[64];
     disk_udev_prop(t.name, "ID_FS_TYPE", fs, sizeof fs);
-    if (strlen(lab) >= sizeof label) { admin_say("ERR", "etiqueta inválida"); free(buf); return; }
+    if (strlen(lab) >= sizeof label) { admin_err("disk.badLabel", NULL); free(buf); return; }
     snprintf(label, sizeof label, "%s", lab);
     free(buf);
     const char *prog = !strcmp(fs, "vfat") ? "/usr/sbin/fatlabel" : !strcmp(fs, "exfat") ? "/usr/sbin/exfatlabel"
                      : !strncmp(fs, "ext", 3) && strlen(fs) == 4 ? "/usr/sbin/e2label" : !strcmp(fs, "ntfs") ? "/usr/sbin/ntfslabel" : NULL;
-    if (!prog) { admin_say("ERR", "no se sabe renombrar «%s»", fs); return; }
-    if (access(prog, X_OK)) { admin_say("ERR", "falta %s", prog); return; }
-    if (!valid_label(fs, label)) { admin_say("ERR", "etiqueta inválida para %s", fs); return; }
-    if (strncmp(fs, "ext", 3) && disk_mounts(t.name, NULL, 0)) { admin_say("ERR", "desmontalo primero"); return; }
+    if (!prog) { admin_err("disk.cannotRenameFs", "fs", fs, NULL); return; }
+    if (access(prog, X_OK)) { admin_err("disk.missingTool", "program", prog, NULL); return; }
+    if (!valid_label(fs, label)) { admin_err("disk.badLabelFor", "fs", fs, NULL); return; }
+    if (strncmp(fs, "ext", 3) && disk_mounts(t.name, NULL, 0)) { admin_err("disk.unmountFirst", NULL); return; }
     const char *a[] = { prog, t.dev, label, NULL };
     int rc = admin_run(a);
     uevent_change(t.name);
     settle();
-    if (rc) admin_say("ERR", "%s terminó con código %d", prog, rc);
-    else admin_say("OK", "%s", label);
+    if (rc) admin_err("sys.programFailed", "program", prog, "code", lerr_int(rc), NULL);
+    else admin_say("OK", "%s", label);   /* i18n-ok */
 }
 
 void disk_act_erase(const AdminReq *r, const char *arg, size_t len) {
     char *buf = strndup(arg, len), *name, *mode;
-    if (!buf || split2(buf, &name, &mode)) { admin_say("ERR", "argumento inválido"); free(buf); return; }
+    if (!buf || split2(buf, &name, &mode)) { admin_err("admin.invalidArgument", NULL); free(buf); return; }
     int full = !strcmp(mode, "zero");
-    if (!full && strcmp(mode, "quick")) { admin_say("ERR", "modo inválido"); free(buf); return; }
+    if (!full && strcmp(mode, "quick")) { admin_err("admin.invalidArgument", NULL); free(buf); return; }
     Target t;
     if (target(r, name, 0, 0, &t)) { free(buf); return; }
     free(buf);
@@ -580,7 +580,7 @@ void disk_act_erase(const AdminReq *r, const char *arg, size_t len) {
             if (now_s() - last > 0.5 || off == t.size) {
                 last = now_s();
                 fdatasync(fd);          /* real progress, and don't fill the page cache */
-                admin_say("LOG", "progress phase=erase done=%llu total=%llu", (unsigned long long)off, (unsigned long long)t.size);
+                admin_say("LOG", "progress phase=erase done=%llu total=%llu", (unsigned long long)off, (unsigned long long)t.size);   /* i18n-ok */
             }
         }
         job_end(t.disk);
@@ -590,9 +590,9 @@ void disk_act_erase(const AdminReq *r, const char *arg, size_t len) {
     close(fd);
     uevent_change(t.name);
     settle();
-    if (cancelled) admin_say("ERR", "cancelado");
-    else if (e) admin_say("ERR", "no se pudo escribir en %s (%s)", t.name, strerror(errno));
-    else admin_say("OK", "borrado");
+    if (cancelled) admin_err("disk.cancelled", NULL);
+    else if (e) admin_err("disk.writeFailed", "name", t.name, "errno", lerr_errno(errno), NULL);
+    else admin_ok("disk.erased", NULL);
 }
 
 /* ---- image → disk ---- */
@@ -634,22 +634,22 @@ static ssize_t read_full(int fd, uint8_t *b, size_t n) {
 
 void disk_act_write_image(const AdminReq *r, const char *arg, size_t len) {
     char *buf = strndup(arg, len), *name, *path;
-    if (!buf || split2(buf, &name, &path)) { admin_say("ERR", "argumento inválido"); free(buf); return; }
+    if (!buf || split2(buf, &name, &path)) { admin_err("admin.invalidArgument", NULL); free(buf); return; }
     Target t;
     if (target(r, name, 1, 0, &t)) { free(buf); return; }
     struct stat st;
     int in = open_image(r, path, &st);
     free(buf);
-    if (in < 0) { admin_say("ERR", "no se pudo abrir la imagen (tiene que ser un archivo de tu carpeta o de tus discos)"); return; }
+    if (in < 0) { admin_err("disk.imageOpenFailed", NULL); return; }
     uint64_t total = (uint64_t)st.st_size;
-    if (total > t.size) { close(in); admin_say("ERR", "la imagen (%llu bytes) no entra en %s (%llu bytes)", (unsigned long long)total, t.name, (unsigned long long)t.size); return; }
+    if (total > t.size) { close(in); admin_err("disk.imageTooLarge", "name", t.name, "size", lerr_int((long long)total), "capacity", lerr_int((long long)t.size), NULL); return; }
     {   /* the image cannot be on the same disk */
         char dn[32] = "", base[32] = "";
         char p[64], real[PATH_MAX];
         snprintf(p, sizeof p, "/sys/dev/block/%u:%u", major(st.st_dev), minor(st.st_dev));
         if (realpath(p, real) && strrchr(real, '/')) snprintf(dn, sizeof dn, "%s", strrchr(real, '/') + 1);
         if (dn[0] && !disk_parent(dn, base, sizeof base)) snprintf(base, sizeof base, "%s", dn);
-        if (base[0] && !strcmp(base, t.disk)) { close(in); admin_say("ERR", "la imagen está en el mismo disco que se va a borrar"); return; }
+        if (base[0] && !strcmp(base, t.disk)) { close(in); admin_err("disk.imageOnTarget", NULL); return; }
     }
     if (unmount_disk(&t)) { close(in); return; }
     int out = open_excl(&t, O_DIRECT);
@@ -660,7 +660,7 @@ void disk_act_write_image(const AdminReq *r, const char *arg, size_t len) {
     posix_fadvise(in, 0, 0, POSIX_FADV_SEQUENTIAL);
     const size_t CH = 4 * MIB;
     uint8_t *b = NULL;
-    if (posix_memalign((void **)&b, 4096, CH)) { close(in); close(out); job_end(t.disk); admin_say("ERR", "sin memoria"); return; }
+    if (posix_memalign((void **)&b, 4096, CH)) { close(in); close(out); job_end(t.disk); admin_err("sys.outOfMemory", NULL); return; }
     Sha256 hs;
     sha256_init(&hs);
     uint64_t off = 0;
@@ -683,7 +683,7 @@ void disk_act_write_image(const AdminReq *r, const char *arg, size_t len) {
         off += (uint64_t)k;
         if (now_s() - last > 0.5 || off == total) {
             last = now_s();
-            admin_say("LOG", "progress phase=write done=%llu total=%llu", (unsigned long long)off, (unsigned long long)total);
+            admin_say("LOG", "progress phase=write done=%llu total=%llu", (unsigned long long)off, (unsigned long long)total);   /* i18n-ok */
         }
     }
     close(in);
@@ -709,7 +709,7 @@ void disk_act_write_image(const AdminReq *r, const char *arg, size_t len) {
             o += want_n;
             if (now_s() - last > 0.5 || o == total) {
                 last = now_s();
-                admin_say("LOG", "progress phase=verify done=%llu total=%llu", (unsigned long long)o, (unsigned long long)total);
+                admin_say("LOG", "progress phase=verify done=%llu total=%llu", (unsigned long long)o, (unsigned long long)total);   /* i18n-ok */
             }
         }
         sha256_final(&hv, got);
@@ -721,12 +721,17 @@ void disk_act_write_image(const AdminReq *r, const char *arg, size_t len) {
     settle();
     char hex[65];
     hex_encode(want, 32, hex);
-    if (cancelled) admin_say("ERR", "cancelado: el disco quedó a medio escribir");
-    else if (err == 1) admin_say("ERR", "no se pudo leer la imagen");
-    else if (err == 2) admin_say("ERR", "no se pudo escribir en %s (%s)", t.name, strerror(errno));
-    else if (err == 3) admin_say("ERR", "no se pudo releer %s para verificar", t.name);
-    else if (memcmp(want, got, 32)) admin_say("ERR", "la verificación falló: lo que quedó en el disco no es igual a la imagen");
-    else admin_say("OK", "verificado sha256=%s ms=%.0f mbps=%.1f", hex, tw * 1000, tw > 0 ? total / tw / 1e6 : 0);
+    if (cancelled) admin_err("disk.cancelledPartial", NULL);
+    else if (err == 1) admin_err("disk.imageReadFailed", NULL);
+    else if (err == 2) admin_err("disk.writeFailed", "name", t.name, "errno", lerr_errno(errno), NULL);
+    else if (err == 3) admin_err("disk.verifyReadFailed", "name", t.name, NULL);
+    else if (memcmp(want, got, 32)) admin_err("disk.verifyMismatch", NULL);
+    else {
+        char ms[24], mbps[24];
+        snprintf(ms, sizeof ms, "%.0f", tw * 1000);
+        snprintf(mbps, sizeof mbps, "%.1f", tw > 0 ? total / tw / 1e6 : 0);
+        admin_ok("disk.verified", "sha256", hex, "ms", ms, "mbps", mbps, NULL);
+    }
 }
 
 /* ---- eject ---- */
@@ -739,7 +744,7 @@ void disk_act_eject(const AdminReq *r, const char *arg, size_t len) {
     sync();
     /* nobody else holds it exclusively (an erase or a copy in progress) */
     int ex = open(t.dev, O_RDONLY | O_EXCL | O_NONBLOCK | O_CLOEXEC);
-    if (ex < 0 && errno == EBUSY) { admin_say("ERR", "%s está en uso: esperá a que termine lo que está haciendo", t.name); return; }
+    if (ex < 0 && errno == EBUSY) { admin_err("disk.busyWait", "name", t.name, NULL); return; }
     if (ex >= 0) close(ex);
     int fd = open(t.dev, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
     if (fd >= 0) {
@@ -761,5 +766,5 @@ void disk_act_eject(const AdminReq *r, const char *arg, size_t len) {
         int d = open(p, O_WRONLY | O_CLOEXEC);
         if (d >= 0) { if (write(d, "1", 1) < 0) { /* keep going */ } close(d); }
     }
-    admin_say("OK", "expulsado");
+    admin_ok("disk.ejected", NULL);
 }

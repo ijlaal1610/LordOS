@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="es" translate="no">
+<html lang="en" translate="no">
 <head>
 <meta charset="utf-8">
 <meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LordOS · Escritorio remoto</title>
+<title>LordOS · Remote desktop</title>
 <style>
   /* Same look as the monitor's login screen (themes/greeter). No list of
      users: from the network we don't reveal who has an account on the machine. */
@@ -58,18 +58,18 @@
 <div class="br"><button type="button" class="pill" data-l="es">ES</button><button type="button" class="pill" data-l="en">EN</button><button type="button" class="pill" data-l="pt">PT</button></div>
 <script>
   const L = {
-    es: { user: 'Usuario', pass: 'Contraseña', e1: 'Usuario o contraseña incorrectos.', e2: 'Demasiados intentos. Esperá un rato y probá de nuevo.',
-          e3: 'La sesión se bloqueó. Volvé a ingresar.',
-          foot: 'Escritorio remoto de LordOS · conexión cifrada. Si el navegador avisa del certificado, compará su huella con la de Ajustes → Compartir.',
-          days: ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'],
-          months: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
-          date: (w, d, m) => `${w}, ${d} de ${m}`, h12: false },
     en: { user: 'Username', pass: 'Password', e1: 'Wrong username or password.', e2: 'Too many attempts. Wait a while and try again.',
           e3: 'The session was locked. Sign in again.',
           foot: 'LordOS remote desktop · encrypted connection. If your browser warns about the certificate, compare its fingerprint with Settings → Sharing.',
           days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
           months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
           date: (w, d, m) => `${w}, ${m} ${d}`, h12: true },
+    es: { user: 'Usuario', pass: 'Contraseña', e1: 'Usuario o contraseña incorrectos.', e2: 'Demasiados intentos. Esperá un rato y probá de nuevo.',
+          e3: 'La sesión se bloqueó. Volvé a ingresar.',
+          foot: 'Escritorio remoto de LordOS · conexión cifrada. Si el navegador avisa del certificado, compará su huella con la de Ajustes → Compartir.',
+          days: ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'],
+          months: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
+          date: (w, d, m) => `${w}, ${d} de ${m}`, h12: false },
     pt: { user: 'Usuário', pass: 'Senha', e1: 'Usuário ou senha incorretos.', e2: 'Muitas tentativas. Espere um pouco e tente de novo.',
           e3: 'A sessão foi bloqueada. Entre de novo.',
           foot: 'Área de trabalho remota do LordOS · conexão criptografada. Se o navegador avisar do certificado, compare a impressão digital com Ajustes → Compartilhar.',
@@ -78,7 +78,7 @@
           date: (w, d, m) => `${w}, ${d} de ${m}`, h12: false },
   };
   const $ = (id) => document.getElementById(id);
-  let lang = (() => { try { return localStorage.getItem('lordos-lang'); } catch (e) { return null; } })() || (navigator.language || 'es').slice(0, 2);
+  let lang = (() => { try { return localStorage.getItem('lordos-lang'); } catch (e) { return null; } })() || (navigator.language || 'en').slice(0, 2);
   if (!L[lang]) lang = 'en';
   const PAL = [['#5b9cff', '#2f6fe0'], ['#f0915a', '#d0602b'], ['#4cc37a', '#269653'], ['#e0609d', '#b83574'], ['#a77bf3', '#7a4fd6'], ['#4cc4d3', '#2391a3'], ['#f2c14e', '#d0961d']];
   const hash = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.codePointAt(0)) >>> 0; return h; };

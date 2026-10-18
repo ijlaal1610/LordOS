@@ -19,6 +19,7 @@
 #include "netperm/npdns.h"
 #include "netperm/npproto.h"
 #include "fw/fwmap.h"
+#include "errcode.h"
 #include "sec/json.h"
 
 #include <arpa/inet.h>
@@ -96,7 +97,7 @@ typedef struct {
 
 static struct {
     int bpf_ok;
-    char bpf_err[200];
+    char bpf_err[200];                  /* a code line (errcode.h): the firewall page shows it translated */
     int m_cfg, m_apps, m_union, m_lpm4, m_lpm6, m_seen, m_counts, m_events;
     int links[16], nlinks;
     int progs[16], nprogs;
@@ -652,7 +653,7 @@ static void on_dns(void *u, const uint8_t *pkt, size_t len) {
 
 static int bpf_setup(void) {
 #ifndef NP_HAVE_BPF
-    snprintf(G.bpf_err, sizeof G.bpf_err, "built without the BPF programs (BPF=0: clang missing)");
+    lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfNotBuilt", NULL);
     return -1;
 #else
     G.m_cfg = bpfs_map_create(BPF_MAP_TYPE_ARRAY, 4, sizeof(NpCfg), 1, 0, "np_cfg");
@@ -664,11 +665,11 @@ static int bpf_setup(void) {
     G.m_counts = bpfs_map_create(BPF_MAP_TYPE_HASH, 8, sizeof(NpCount), NP_MAX_APPS, 0, "np_counts");
     G.m_events = bpfs_map_create(BPF_MAP_TYPE_RINGBUF, 0, 0, NP_RINGBUF, 0, "np_events");
     if (G.m_cfg < 0 || G.m_apps < 0 || G.m_union < 0 || G.m_lpm4 < 0 || G.m_lpm6 < 0 || G.m_seen < 0 || G.m_counts < 0 || G.m_events < 0) {
-        snprintf(G.bpf_err, sizeof G.bpf_err, "could not create the BPF maps: %s", strerror(errno));
+        lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfMaps", "errno", lerr_errno(errno), NULL);
         return -1;
     }
     if (bpfs_ring_open(&G.ring, G.m_events, NP_RINGBUF)) {
-        snprintf(G.bpf_err, sizeof G.bpf_err, "could not map the ring buffer: %s", strerror(errno));
+        lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfRing", "errno", lerr_errno(errno), NULL);
         return -1;
     }
     static const struct { const char *sec; uint32_t type, attach; } want[] = {
@@ -685,13 +686,13 @@ static int bpf_setup(void) {
     for (size_t w = 0; w < sizeof want / sizeof want[0]; w++) {
         const NpProgDesc *d = NULL;
         for (int i = 0; i < NP_NPROGS; i++) if (!strcmp(np_progs[i].section, want[w].sec)) d = &np_progs[i];
-        if (!d) { snprintf(G.bpf_err, sizeof G.bpf_err, "program %s is missing", want[w].sec); return -1; }
+        if (!d) { lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfMissing", "program", want[w].sec, NULL); return -1; }
         int fd = bpfs_prog_load(want[w].type, want[w].attach, d, map_fd, log, sizeof log);
         if (fd < 0) {
             int e = errno;
             size_t ll = strlen(log);
             fprintf(stderr, "%s\n", ll > 3000 ? log + ll - 3000 : log);
-            snprintf(G.bpf_err, sizeof G.bpf_err, "the kernel did not accept %s: %s", want[w].sec, strerror(e));
+            lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfRejected", "program", want[w].sec, "errno", lerr_errno(e), NULL);
             return -1;
         }
         G.attach[np] = want[w].attach;
@@ -700,7 +701,7 @@ static int bpf_setup(void) {
     G.nprogs = np;
     NpCfg cfg = { SCOPE_LEVEL, 1, USER_LEVEL };
     uint32_t zero = 0;
-    if (bpfs_map_update(G.m_cfg, &zero, &cfg, BPF_ANY)) { snprintf(G.bpf_err, sizeof G.bpf_err, "np_cfg: %s", strerror(errno)); return -1; }
+    if (bpfs_map_update(G.m_cfg, &zero, &cfg, BPF_ANY)) { lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfConfig", "errno", lerr_errno(errno), NULL); return -1; }
     logf_("%d programas BPF cargados", np);
     return 0;
 #endif

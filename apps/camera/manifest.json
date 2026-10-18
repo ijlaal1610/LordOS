@@ -1,7 +1,7 @@
 {
   "id": "camera",
-  "name": "Cámara",
-  "description": "Vista previa de la webcam, fotos y videos, con espejo y elección de cámara",
+  "name": "Camera",
+  "description": "Webcam preview, photos and videos, with mirroring and camera choice",
   "size": [820, 560],
   "minSize": [480, 360],
   "dock": true,

@@ -1,7 +1,7 @@
 {
   "id": "notes",
-  "name": "Notas",
-  "description": "Notas y post-its en el escritorio, con markdown, imágenes y adjuntos",
+  "name": "Notes",
+  "description": "Notes and sticky notes on the desktop, with markdown, images and attachments",
   "size": [860, 560],
   "minSize": [560, 360],
   "dock": true,

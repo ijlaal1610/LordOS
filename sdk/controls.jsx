@@ -45,7 +45,8 @@ function TooltipBubble({ text, end, top }) {
   );
 }
 
-// Toolbar item: an icon (a glyph) and/or a short label, borderless until hovered.
+// Toolbar item: an icon (a glyph, or an element such as a drawn shape) and/or a short label,
+// borderless until hovered.
 // title: tooltip text (required for icon-only buttons). active: a toggled-on state.
 export function ToolbarButton({ icon, label, title, onClick, active, disabled, small, iconSize, color, style }) {
   const t = useTheme();
@@ -61,7 +62,9 @@ export function ToolbarButton({ icon, label, title, onClick, active, disabled, s
       style={[{ height: h, minWidth: h, paddingHorizontal: label ? 8 : 0, borderRadius: controlSize.radiusSmall, flexDirection: 'row', gap: 6,
         alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.45 : 1, zIndex: tip ? 1000 : 0,
         backgroundColor: active ? (t.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)') : hover && !disabled ? t.hover : 'transparent' }, style]}>
-      {icon != null ? <Text style={{ fontSize: iconSize || (small ? 13 : 15), color: fg, textAlign: 'center' }}>{icon}</Text> : null}
+      {icon == null ? null : typeof icon === 'string' || typeof icon === 'number'
+        ? <Text style={{ fontSize: iconSize || (small ? 13 : 15), color: fg, textAlign: 'center' }}>{icon}</Text>
+        : icon /* an element: a drawn glyph */}
       {label ? <Text style={{ fontSize: small ? 12 : 13, fontWeight: 500, color: fg, whiteSpace: 'nowrap' }}>{label}</Text> : null}
       {tip && title ? <TooltipBubble text={title} end={nearEnd(winId, ref.current)} top={h + 6} /> : null}
     </View>

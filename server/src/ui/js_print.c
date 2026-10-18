@@ -13,6 +13,7 @@
  *   scanCaps(ip, port, rs), scan(ip, port, rs, settings)
  */
 #include "js_print.h"
+#include "js_err.h"
 #include "../print/print.h"
 #include "../print/cups.h"
 #include "../print/escl.h"
@@ -48,7 +49,7 @@ static JSValue f_discover(JSContext *c, JSValueConst t, int argc, JSValueConst *
 static JSValue f_cancel(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     int32_t job = 0;
-    if (argc < 1 || JS_ToInt32(c, &job, argv[0]) || job <= 0) return JS_ThrowRangeError(c, "job");
+    if (argc < 1 || JS_ToInt32(c, &job, argv[0]) || job <= 0) return js_throw_code(c, "sys.badArgument", NULL);
     JBuf b;
     jb_init(&b);
     jb_printf(&b, "{\"job\":%d}", job);
@@ -59,7 +60,7 @@ static JSValue f_cancel(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
 static JSValue f_submit(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     const char *printer = str_arg(c, argc, argv, 0);
-    if (!printer || !cups_valid_name(printer)) { if (printer) JS_FreeCString(c, printer); return JS_ThrowRangeError(c, "printer"); }
+    if (!printer || !cups_valid_name(printer)) { if (printer) JS_FreeCString(c, printer); return js_throw_code(c, "print.badPrinter", NULL); }
     int fd = -1;
     size_t len = 0;
     if (argc > 1 && JS_IsNumber(argv[1])) {
@@ -82,7 +83,7 @@ static JSValue f_submit(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
             else if (fd >= 0) { len = (size_t)st.st_size; fcntl(fd, F_SETFL, 0); }
         }
     }
-    if (fd < 0) { JS_FreeCString(c, printer); return JS_ThrowRangeError(c, "document (a PDF from the home folder or a blob)"); }
+    if (fd < 0) { JS_FreeCString(c, printer); return js_throw_code(c, "print.badDocument", NULL); }
     const char *opts = str_arg(c, argc, argv, 2);
     JBuf b;
     jb_init(&b);
@@ -100,7 +101,7 @@ static JSValue f_submit(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
 
 static JSValue name_task(JSContext *c, int argc, JSValueConst *argv, const char *kind) {
     const char *n = str_arg(c, argc, argv, 0);
-    if (!n || !cups_valid_name(n)) { if (n) JS_FreeCString(c, n); return JS_ThrowRangeError(c, "name"); }
+    if (!n || !cups_valid_name(n)) { if (n) JS_FreeCString(c, n); return js_throw_code(c, "print.badPrinter", NULL); }
     JBuf b;
     jb_init(&b);
     jb_raw(&b, "{\"name\":");
@@ -130,7 +131,7 @@ static JSValue f_add(JSContext *c, JSValueConst t, int argc, JSValueConst *argv)
     if (u) JS_FreeCString(c, u);
     if (i) JS_FreeCString(c, i);
     if (l) JS_FreeCString(c, l);
-    if (!ok) { jb_free(&b); return JS_ThrowRangeError(c, "invalid name or address"); }
+    if (!ok) { jb_free(&b); return js_throw_code(c, "print.badAddress", NULL); }
     return task(c, "add", &b, -1, 0);
 }
 
@@ -155,7 +156,7 @@ static JSValue f_scan_caps(JSContext *c, JSValueConst t, int argc, JSValueConst 
     (void)t;
     JBuf b;
     jb_init(&b);
-    if (scanner_args(c, argc, argv, &b)) { jb_free(&b); return JS_ThrowRangeError(c, "scanner (local network addresses only)"); }
+    if (scanner_args(c, argc, argv, &b)) { jb_free(&b); return js_throw_code(c, "print.badScanner", NULL); }
     jb_raw(&b, "}");
     return task(c, "scancaps", &b, -1, 0);
 }
@@ -164,7 +165,7 @@ static JSValue f_scan(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     (void)t;
     JBuf b;
     jb_init(&b);
-    if (scanner_args(c, argc, argv, &b)) { jb_free(&b); return JS_ThrowRangeError(c, "scanner (local network addresses only)"); }
+    if (scanner_args(c, argc, argv, &b)) { jb_free(&b); return js_throw_code(c, "print.badScanner", NULL); }
     const char *s = str_arg(c, argc, argv, 3);
     JDoc d = { 0 };
     if (s && !json_parse(s, strlen(s), &d, NULL, 0) && d.root->type == J_OBJ) { jb_raw(&b, ",\"settings\":"); jb_raw(&b, s); }

@@ -144,6 +144,8 @@ static JSValue f_set_style(JSContext *c, JSValueConst this_val, int argc, JSValu
     JSValueConst v = argv[2];
     int err = 0;
     Style before = n->s;
+    StyleExt ext_before;
+    if (n->s.ext) memcpy(&ext_before, n->s.ext, STYLE_EXT_VALUES);
     if (!strcmp(key, "gradient")) {
         if (JS_IsArray(c, v)) {
             double a[3] = {180, 0, 0};
@@ -171,7 +173,8 @@ static JSValue f_set_style(JSContext *c, JSValueConst this_val, int argc, JSValu
     if (err) fprintf(stderr, "js: unsupported style '%s'\n", key);
     JS_FreeCString(c, key);
     /* the same value (e.g. React confirms the position left by a drag in C): nothing to repaint */
-    if (memcmp(&before, &n->s, sizeof before)) node_invalidate(n);
+    if (memcmp(&before, &n->s, sizeof before) || (n->s.ext && (!before.ext || memcmp(&ext_before, n->s.ext, STYLE_EXT_VALUES))))
+        node_invalidate(n);
     return JS_UNDEFINED;
 }
 

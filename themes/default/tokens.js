@@ -9,11 +9,12 @@ export const accents = {
   grafito: '#8e8e93',
 };
 
+// name: English fallback; the shown name is the translation of nameKey (assets/locales/*/shell.json).
 export const wallpapers = [
-  { id: 'aurora', name: 'Aurora', src: 'assets/aurora.png' },
-  { id: 'ocean', name: 'Océano', src: 'assets/ocean.png' },
-  { id: 'sunset', name: 'Atardecer', src: 'assets/sunset.png' },
-  { id: 'graphite', name: 'Grafito', src: 'assets/graphite.png' },
+  { id: 'aurora', nameKey: 'shell.wallpaper.aurora', name: 'Aurora', src: 'assets/aurora.png' },
+  { id: 'ocean', nameKey: 'shell.wallpaper.ocean', name: 'Ocean', src: 'assets/ocean.png' },
+  { id: 'sunset', nameKey: 'shell.wallpaper.sunset', name: 'Sunset', src: 'assets/sunset.png' },
+  { id: 'graphite', nameKey: 'shell.wallpaper.graphite', name: 'Graphite', src: 'assets/graphite.png' },
 ];
 
 export function makeTheme({ mode, accent, effects }) {

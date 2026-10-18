@@ -134,11 +134,11 @@ int pptp_import(const char *name, const char *text, char *err, size_t errn) {
     if (vpn_kv_parse(text, pptp_keys, NULL, &kv, err, errn)) return -1;
     const char *server = vpn_kv(&kv, "server"), *user = vpn_kv(&kv, "user"), *pw = vpn_kv(&kv, "password"), *mppe = vpn_kv(&kv, "mppe");
     int rc = 0;
-    if (!server || !vpn_host_ok(server) || strchr(server, ':')) { snprintf(err, errn, "falta server o es inválido"); rc = -1; }
-    else if (!user || !*user || !pw) { snprintf(err, errn, "faltan user y password"); rc = -1; }
-    else if (mppe && strcmp(mppe, "required") && strcmp(mppe, "optional") && strcmp(mppe, "off")) { snprintf(err, errn, "mppe: required, optional u off"); rc = -1; }
-    else if (vpn_kv(&kv, "routes") && !vpn_routes_valid(vpn_kv(&kv, "routes"))) { snprintf(err, errn, "routes inválido"); rc = -1; }
-    if (!rc && vpn_kv_save(name, "pptp", &kv)) { snprintf(err, errn, "no se pudo guardar"); rc = -1; }
+    if (!server || !vpn_host_ok(server) || strchr(server, ':')) { lerr_set(err, errn, "vpn.missingKey", "key", "server", NULL); rc = -1; }
+    else if (!user || !*user || !pw) { lerr_set(err, errn, "vpn.missingCredentials", NULL); rc = -1; }
+    else if (mppe && strcmp(mppe, "required") && strcmp(mppe, "optional") && strcmp(mppe, "off")) { lerr_set(err, errn, "vpn.invalidValue", "key", "mppe", NULL); rc = -1; }
+    else if (vpn_kv(&kv, "routes") && !vpn_routes_valid(vpn_kv(&kv, "routes"))) { lerr_set(err, errn, "vpn.invalidValue", "key", "routes", NULL); rc = -1; }
+    if (!rc && vpn_kv_save(name, "pptp", &kv)) { lerr_set(err, errn, "net.saveFailed", NULL); rc = -1; }
     if (!rc) meta(name, "pptp", server, user, !vpn_kv(&kv, "routes"), 1);
     vpn_kv_free(&kv);
     return rc;
@@ -172,12 +172,12 @@ static void pptp_tick(Run *r) {
 void pptp_run(const char *name) {
     vpn_signals();
     VpnKv kv;
-    if (vpn_kv_load(name, "pptp", &kv)) { admin_event("net vpn %s error no-config", name); admin_event("net vpn %s disconnected", name); return; }
+    if (vpn_kv_load(name, "pptp", &kv)) { admin_event("net vpn %s error vpn.noConfig", name); admin_event("net vpn %s disconnected", name); return; }
     Run r = { .name = name, .type = "pptp", .routes = vpn_kv(&kv, "routes") };
     r.full = !r.routes;
     vpn_ifname("pptp", name, r.ifn, sizeof r.ifn);
     admin_event("net vpn %s connecting", name);
-    if (vpn_resolve(vpn_kv(&kv, "server"), &r.sfam, r.sip) || r.sfam != AF_INET) { admin_event("net vpn %s error no-resolve", name); admin_event("net vpn %s disconnected", name); vpn_kv_free(&kv); return; }
+    if (vpn_resolve(vpn_kv(&kv, "server"), &r.sfam, r.sip) || r.sfam != AF_INET) { admin_event("net vpn %s error vpn.serverUnresolved", name); admin_event("net vpn %s disconnected", name); vpn_kv_free(&kv); return; }
     char sip[64], qu[300], qp[600], path[200];
     fmt_ip(AF_INET, r.sip, sip, sizeof sip);
     pquote(vpn_kv(&kv, "user"), qu, sizeof qu);
@@ -201,12 +201,12 @@ void pptp_run(const char *name) {
     if (o.p) memset(o.p, 0, o.len);
     buf_free(&o);
     vpn_kv_free(&kv);
-    if (!ok) { admin_event("net vpn %s error write", name); admin_event("net vpn %s disconnected", name); return; }
+    if (!ok) { admin_event("net vpn %s error vpn.writeFailed", name); admin_event("net vpn %s disconnected", name); return; }
     vpn_mark(r.ifn, name, 1);
     const char *argv[] = { PPPD, "file", path, NULL };
     int out;
     pid_t pid = vpn_spawn(argv, &out, NULL, NULL);
-    if (pid < 0) { admin_event("net vpn %s error spawn", name); admin_event("net vpn %s disconnected", name); vpn_mark(r.ifn, name, 0); return; }
+    if (pid < 0) { admin_event("net vpn %s error vpn.startFailed", name); admin_event("net vpn %s disconnected", name); vpn_mark(r.ifn, name, 0); return; }
     r.routes = NULL;                      /* kv already freed: reread */
     VpnKv k2;
     char routes[256] = "";
@@ -243,11 +243,11 @@ int oc_import(const char *name, const char *text, char *err, size_t errn) {
     if (vpn_kv_parse(text, oc_keys, NULL, &kv, err, errn)) return -1;
     const char *server = vpn_kv(&kv, "server"), *proto = vpn_kv(&kv, "protocol"), *user = vpn_kv(&kv, "user");
     int rc = 0;
-    if (!server || !oc_server_ok(server)) { snprintf(err, errn, "falta server o es inválido"); rc = -1; }
-    else if (proto && strcmp(proto, "anyconnect") && strcmp(proto, "gp") && strcmp(proto, "pulse") && strcmp(proto, "fortinet")) { snprintf(err, errn, "protocol: anyconnect, gp, pulse o fortinet"); rc = -1; }
-    else if (!user || !*user || !vpn_kv(&kv, "password")) { snprintf(err, errn, "faltan user y password"); rc = -1; }
-    else if (vpn_kv(&kv, "servercert") && !pin_ok(vpn_kv(&kv, "servercert"))) { snprintf(err, errn, "servercert: pin-sha256:… o la huella en hex"); rc = -1; }
-    if (!rc && vpn_kv_save(name, "openconnect", &kv)) { snprintf(err, errn, "no se pudo guardar"); rc = -1; }
+    if (!server || !oc_server_ok(server)) { lerr_set(err, errn, "vpn.missingKey", "key", "server", NULL); rc = -1; }
+    else if (proto && strcmp(proto, "anyconnect") && strcmp(proto, "gp") && strcmp(proto, "pulse") && strcmp(proto, "fortinet")) { lerr_set(err, errn, "vpn.invalidValue", "key", "protocol", NULL); rc = -1; }
+    else if (!user || !*user || !vpn_kv(&kv, "password")) { lerr_set(err, errn, "vpn.missingCredentials", NULL); rc = -1; }
+    else if (vpn_kv(&kv, "servercert") && !pin_ok(vpn_kv(&kv, "servercert"))) { lerr_set(err, errn, "vpn.invalidValue", "key", "servercert", NULL); rc = -1; }
+    if (!rc && vpn_kv_save(name, "openconnect", &kv)) { lerr_set(err, errn, "net.saveFailed", NULL); rc = -1; }
     if (!rc) meta(name, "openconnect", server, user, 1, 0);
     vpn_kv_free(&kv);
     return rc;
@@ -293,7 +293,7 @@ static void oc_tick(Run *r) {
     kv_get(t, "CISCO_SPLIT_INC", 0, nsplit, sizeof nsplit);
     int fam;
     uint8_t a[16];
-    if (parse_ip(addr, &fam, a) || fam != AF_INET) { free(t); admin_event("net vpn %s error no-address", r->name); return; }
+    if (parse_ip(addr, &fam, a) || fam != AF_INET) { free(t); admin_event("net vpn %s error vpn.noAddress", r->name); return; }
     int prefix = masklen[0] ? atoi(masklen) : 32;
     if (!masklen[0] && mask[0]) {
         uint8_t m[16];
@@ -338,14 +338,14 @@ static void oc_tick(Run *r) {
 void oc_run(const char *name) {
     vpn_signals();
     VpnKv kv;
-    if (vpn_kv_load(name, "openconnect", &kv)) { admin_event("net vpn %s error no-config", name); admin_event("net vpn %s disconnected", name); return; }
+    if (vpn_kv_load(name, "openconnect", &kv)) { admin_event("net vpn %s error vpn.noConfig", name); admin_event("net vpn %s disconnected", name); return; }
     Run r = { .name = name, .type = "openconnect" };
     vpn_ifname("openconnect", name, r.ifn, sizeof r.ifn);
     admin_event("net vpn %s connecting", name);
     mkdir(NET_DIR, 0755);
     mkdir(NET_RUN_DIR, 0755);
     mkdir(OC_RUN, 0700);
-    if (write_file_atomic(OC_SCRIPT, oc_script, sizeof oc_script - 1, 0755)) { admin_event("net vpn %s error script", name); admin_event("net vpn %s disconnected", name); vpn_kv_free(&kv); return; }
+    if (write_file_atomic(OC_SCRIPT, oc_script, sizeof oc_script - 1, 0755)) { admin_event("net vpn %s error vpn.writeFailed", name); admin_event("net vpn %s disconnected", name); vpn_kv_free(&kv); return; }
     char proto[40], user[300], group[300] = "", cert[300] = "", iface[40];
     snprintf(proto, sizeof proto, "--protocol=%s", vpn_kv(&kv, "protocol") ? vpn_kv(&kv, "protocol") : "anyconnect");
     snprintf(user, sizeof user, "--user=%s", vpn_kv(&kv, "user"));
@@ -368,7 +368,7 @@ void oc_run(const char *name) {
         close(in);
     }
     vpn_kv_free(&kv);
-    if (pid < 0) { admin_event("net vpn %s error spawn", name); admin_event("net vpn %s disconnected", name); vpn_mark(r.ifn, name, 0); return; }
+    if (pid < 0) { admin_event("net vpn %s error vpn.startFailed", name); admin_event("net vpn %s disconnected", name); vpn_mark(r.ifn, name, 0); return; }
     supervise(&r, pid, out, oc_line, oc_tick);
     close(out);
     char path[160];
@@ -388,17 +388,17 @@ int forti_import(const char *name, const char *text, char *err, size_t errn) {
     if (vpn_kv_parse(text, forti_keys, NULL, &kv, err, errn)) return -1;
     const char *host = vpn_kv(&kv, "host"), *port = vpn_kv(&kv, "port"), *user = vpn_kv(&kv, "user"), *tc = vpn_kv(&kv, "trusted-cert");
     int rc = 0;
-    if (!host || !vpn_host_ok(host) || strchr(host, ':')) { snprintf(err, errn, "falta host o es inválido"); rc = -1; }
-    else if (port && (atoi(port) < 1 || atoi(port) > 65535 || strspn(port, "0123456789") != strlen(port))) { snprintf(err, errn, "port inválido"); rc = -1; }
-    else if (!user || !*user || !vpn_kv(&kv, "password")) { snprintf(err, errn, "faltan user y password"); rc = -1; }
+    if (!host || !vpn_host_ok(host) || strchr(host, ':')) { lerr_set(err, errn, "vpn.missingKey", "key", "host", NULL); rc = -1; }
+    else if (port && (atoi(port) < 1 || atoi(port) > 65535 || strspn(port, "0123456789") != strlen(port))) { lerr_set(err, errn, "vpn.invalidValue", "key", "port", NULL); rc = -1; }
+    else if (!user || !*user || !vpn_kv(&kv, "password")) { lerr_set(err, errn, "vpn.missingCredentials", NULL); rc = -1; }
     else if (tc) {
         char copy[256];
         snprintf(copy, sizeof copy, "%s", tc);
         for (char *t = strtok(copy, ", "); t && !rc; t = strtok(NULL, ", "))
-            if (strlen(t) != 64 || strspn(t, "0123456789abcdefABCDEF") != 64) { snprintf(err, errn, "trusted-cert: huella sha256 en hex (64)"); rc = -1; }
+            if (strlen(t) != 64 || strspn(t, "0123456789abcdefABCDEF") != 64) { lerr_set(err, errn, "vpn.invalidValue", "key", "trusted-cert", NULL); rc = -1; }
     }
-    if (!rc && vpn_kv(&kv, "routes") && !vpn_routes_valid(vpn_kv(&kv, "routes"))) { snprintf(err, errn, "routes inválido"); rc = -1; }
-    if (!rc && vpn_kv_save(name, "fortinet", &kv)) { snprintf(err, errn, "no se pudo guardar"); rc = -1; }
+    if (!rc && vpn_kv(&kv, "routes") && !vpn_routes_valid(vpn_kv(&kv, "routes"))) { lerr_set(err, errn, "vpn.invalidValue", "key", "routes", NULL); rc = -1; }
+    if (!rc && vpn_kv_save(name, "fortinet", &kv)) { lerr_set(err, errn, "net.saveFailed", NULL); rc = -1; }
     if (!rc) meta(name, "fortinet", host, user, 1, 0);
     vpn_kv_free(&kv);
     return rc;
@@ -430,11 +430,11 @@ static void forti_line(const char *l, void *ud) {
 void forti_run(const char *name) {
     vpn_signals();
     VpnKv kv;
-    if (vpn_kv_load(name, "fortinet", &kv)) { admin_event("net vpn %s error no-config", name); admin_event("net vpn %s disconnected", name); return; }
+    if (vpn_kv_load(name, "fortinet", &kv)) { admin_event("net vpn %s error vpn.noConfig", name); admin_event("net vpn %s disconnected", name); return; }
     Run r = { .name = name, .type = "fortinet" };
     vpn_ifname("fortinet", name, r.ifn, sizeof r.ifn);
     admin_event("net vpn %s connecting", name);
-    if (vpn_resolve(vpn_kv(&kv, "host"), &r.sfam, r.sip)) { admin_event("net vpn %s error no-resolve", name); admin_event("net vpn %s disconnected", name); vpn_kv_free(&kv); return; }
+    if (vpn_resolve(vpn_kv(&kv, "host"), &r.sfam, r.sip)) { admin_event("net vpn %s error vpn.serverUnresolved", name); admin_event("net vpn %s disconnected", name); vpn_kv_free(&kv); return; }
     static char routes[256];
     routes[0] = 0;
     if (vpn_kv(&kv, "routes")) snprintf(routes, sizeof routes, "%s", vpn_kv(&kv, "routes"));
@@ -459,14 +459,14 @@ void forti_run(const char *name) {
     int ok = !c.oom && write_file_atomic(path, c.p, c.len, 0600) == 0;
     if (c.p) memset(c.p, 0, c.len);
     buf_free(&c);
-    if (!ok) { admin_event("net vpn %s error write", name); admin_event("net vpn %s disconnected", name); return; }
+    if (!ok) { admin_event("net vpn %s error vpn.writeFailed", name); admin_event("net vpn %s disconnected", name); return; }
     char ifarg[48];
     snprintf(ifarg, sizeof ifarg, "--pppd-ifname=%s", r.ifn);
     const char *argv[] = { OPENFORTIVPN, "-c", path, ifarg, "--pppd-no-peerdns", NULL };
     vpn_mark(r.ifn, name, 1);
     int out;
     pid_t pid = vpn_spawn(argv, &out, NULL, NULL);
-    if (pid < 0) { admin_event("net vpn %s error spawn", name); admin_event("net vpn %s disconnected", name); vpn_mark(r.ifn, name, 0); return; }
+    if (pid < 0) { admin_event("net vpn %s error vpn.startFailed", name); admin_event("net vpn %s disconnected", name); vpn_mark(r.ifn, name, 0); return; }
     supervise(&r, pid, out, forti_line, NULL);
     close(out);
     down(&r);

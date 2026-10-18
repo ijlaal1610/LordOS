@@ -11,6 +11,7 @@
  * that changed and whatever depends on it is reviewed until nothing else changes. */
 #include "resolve.h"
 #include "deb.h"
+#include "../errcode.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -331,7 +332,7 @@ static int removable(const Node *n) {
 
 static int apply_remove(S *s, int ni, const char *why) {
     Node *n = nd(s, ni);
-    if (!removable(n)) { snprintf(s->err, sizeof s->err, "%s es esencial para el sistema y no se puede quitar", n->name); return 0; }
+    if (!removable(n)) { lerr_set(s->err, sizeof s->err, "pkg.removeEssential", "name", n->name, NULL); return 0; }
     if (mark(s, ni)) return 0;
     n->target = T_NONE;
     n->touched = 1;
@@ -389,23 +390,23 @@ static int fix_clash(S *s, int ni, int ti) {
     char why[200];
     if (t->target == T_KEEP) {
         if (t->cand >= 0 && ver_cmp(idx_s(s->x, s->x->pkg[t->cand].version), t->inst->version) > 0 && !clash(s, ti, t->cand, ni)) {
-            snprintf(why, sizeof why, "se actualiza para %s", n->name);
+            lerr_set(why, sizeof why, "pkg.why.upgradedFor", "name", n->name, NULL);
             return apply_install(s, ti, t->cand, why);
         }
         if (s->may_remove && removable(t) && !t->requested) {
-            snprintf(why, sizeof why, "choca con %s", n->name);
+            lerr_set(why, sizeof why, "pkg.why.conflictsWith", "name", n->name, NULL);
             return apply_remove(s, ti, why);
         }
-        snprintf(s->err, sizeof s->err, "%s choca con %s, que está instalado", n->name, t->name);
+        lerr_set(s->err, sizeof s->err, "pkg.conflictInstalled", "name", n->name, "other", t->name, NULL);
         return 0;
     }
-    snprintf(s->err, sizeof s->err, "%s y %s no se pueden instalar juntos", n->name, t->name);
+    lerr_set(s->err, sizeof s->err, "pkg.conflict", "name", n->name, "other", t->name, NULL);
     return 0;
 }
 
 static int apply_install(S *s, int ni, long rec, const char *why) {
     Node *n = nd(s, ni);
-    if (n->remove_req) { snprintf(s->err, sizeof s->err, "%s hace falta, pero se pidió quitarlo", n->name); return 0; }
+    if (n->remove_req) { lerr_set(s->err, sizeof s->err, "pkg.neededButRemoved", "name", n->name, NULL); return 0; }
     if (mark(s, ni)) return 0;
     n->target = rec;
     n->touched = 1;
@@ -503,7 +504,9 @@ static int group_len(const char *g, const char *ge) {
 }
 
 static void describe_missing(S *s, const Node *owner, const char *g, const char *ge) {
-    snprintf(s->err, sizeof s->err, "%s depende de %.*s, que no se puede instalar", owner->name, group_len(g, ge), g);
+    char dep[128];
+    snprintf(dep, sizeof dep, "%.*s", group_len(g, ge), g);
+    lerr_set(s->err, sizeof s->err, "pkg.dependencyUninstallable", "name", owner->name, "dep", dep, NULL);
 }
 
 static int solve(S *s, int qpos) {
@@ -523,11 +526,11 @@ static int solve(S *s, int qpos) {
             opt[no++] = (Opt){ it.node, owner->cand };
         no += gather(s, alts, na, opt + no, MAX_ALTS);
         char why[200];
-        snprintf(why, sizeof why, "dependencia de %s", owner->name);
+        lerr_set(why, sizeof why, "pkg.why.dependencyOf", "name", owner->name, NULL);
         /* if nothing works and it's something installed, it's removed too (with confirmation) */
         int can_drop = owner->target == T_KEEP && s->may_remove && !owner->requested && removable(owner);
         char w2[200];
-        snprintf(w2, sizeof w2, "dependía de %.*s", group_len(it.g, it.ge), it.g);
+        { char dep[128]; snprintf(dep, sizeof dep, "%.*s", group_len(it.g, it.ge), it.g); lerr_set(w2, sizeof w2, "pkg.why.lostDependency", "dep", dep, NULL); }
         if (!no) {
             if (it.optional) continue;
             if (can_drop) { if (!apply_remove(s, it.node, w2)) return 0; continue; }
@@ -538,7 +541,7 @@ static int solve(S *s, int qpos) {
          * way out, the option is tried with the rest of the queue and if it fails the owner is removed. */
         if (no == 1 && !can_drop) {
             int lm = s->nlog, qm = s->nq;
-            if (!apply_install(s, opt[0].node, opt[0].rec, opt[0].node == it.node ? "actualización" : why)) {
+            if (!apply_install(s, opt[0].node, opt[0].rec, opt[0].node == it.node ? "pkg.why.upgrade" : why)) {
                 undo_to(s, lm);
                 s->nq = qm;
                 if (it.optional) continue;
@@ -547,9 +550,9 @@ static int solve(S *s, int qpos) {
             continue;
         }
         for (int k = 0; k < no; k++) {
-            if (--s->budget <= 0) { snprintf(s->err, sizeof s->err, "demasiadas combinaciones posibles; pedí los paquetes de a uno"); return 0; }
+            if (--s->budget <= 0) { lerr_set(s->err, sizeof s->err, "pkg.tooManyCombinations", NULL); return 0; }
             int lm = s->nlog, qm = s->nq;
-            if (apply_install(s, opt[k].node, opt[k].rec, opt[k].node == it.node ? "actualización" : why) && solve(s, qpos)) return 1;
+            if (apply_install(s, opt[k].node, opt[k].rec, opt[k].node == it.node ? "pkg.why.upgrade" : why) && solve(s, qpos)) return 1;
             undo_to(s, lm);
             s->nq = qm;
         }
@@ -669,17 +672,17 @@ int plan_make(const Idx *x, const Status *st, const char *const *install, int ni
     s.budget = BUDGET;
     s.may_remove = 1;                   /* the extra removals are computed and then confirmed */
     int ok = !build_tables(&s);
-    if (!ok) snprintf(s.err, sizeof s.err, "sin memoria");
-    if (!x->map && (ni || o->upgrade_all)) { ok = 0; snprintf(s.err, sizeof s.err, "no hay índice de paquetes: falta actualizar la lista"); }
+    if (!ok) lerr_set(s.err, sizeof s.err, "sys.outOfMemory", NULL);
+    if (!x->map && (ni || o->upgrade_all)) { ok = 0; lerr_set(s.err, sizeof s.err, "pkg.noIndex", NULL); }
 
     for (int i = 0; ok && i < nr; i++) {
         int k = node_get(&s, remove[i], strlen(remove[i]));
         if (k < 0) { ok = 0; break; }
         Node *n = nd(&s, k);
-        if (!n->inst) { ok = 0; snprintf(s.err, sizeof s.err, "%s no está instalado", remove[i]); break; }
+        if (!n->inst) { ok = 0; lerr_set(s.err, sizeof s.err, "pkg.notInstalled", "name", remove[i], NULL); break; }
         n->remove_req = 1;
         n->requested = 1;
-        ok = apply_remove(&s, k, "pedido");
+        ok = apply_remove(&s, k, "pkg.why.requested");
     }
     for (int i = 0; ok && i < ni; i++) {
         int k = node_get(&s, install[i], strlen(install[i]));
@@ -692,14 +695,16 @@ int plan_make(const Idx *x, const Status *st, const char *const *install, int ni
             int no = gather(&s, &r, 1, opt, MAX_ALTS);
             if (no == 1) { k = opt[0].node; n = nd(&s, k); }
             else if (no > 1) {
-                int l = snprintf(s.err, sizeof s.err, "%s es virtual; hay que elegir uno:", install[i]);
-                for (int j = 0; j < no && l < (int)sizeof s.err - 40; j++) l += snprintf(s.err + l, sizeof s.err - (size_t)l, " %s", nd(&s, opt[j].node)->name);
+                char names[300] = "";
+                for (int j = 0; j < no && strlen(names) < sizeof names - 70; j++)
+                    snprintf(names + strlen(names), sizeof names - strlen(names), "%s%s", j ? ", " : "", nd(&s, opt[j].node)->name);
+                lerr_set(s.err, sizeof s.err, "pkg.virtual", "name", install[i], "options", names, NULL);
                 ok = 0;
                 break;
-            } else { ok = 0; snprintf(s.err, sizeof s.err, "no hay ningún paquete llamado %s", install[i]); break; }
+            } else { ok = 0; lerr_set(s.err, sizeof s.err, "pkg.notFound", "name", install[i], NULL); break; }
         }
         n->requested = 1;
-        if (n->remove_req) { ok = 0; snprintf(s.err, sizeof s.err, "%s está para instalar y para quitar a la vez", n->name); break; }
+        if (n->remove_req) { ok = 0; lerr_set(s.err, sizeof s.err, "pkg.installAndRemove", "name", n->name, NULL); break; }
         if (n->cand < 0 || (n->inst && !ver_cmp(idx_s(x, x->pkg[n->cand].version), n->inst->version))) continue;   /* already there */
         ok = apply_install(&s, k, n->cand, NULL);
     }
@@ -715,7 +720,7 @@ int plan_make(const Idx *x, const Status *st, const char *const *install, int ni
             if (n->target != T_KEEP || n->cand < 0 || ver_cmp(idx_s(x, x->pkg[n->cand].version), p->version) <= 0) continue;
             int lm = s.nlog, qm = s.nq;
             s.budget = BUDGET;
-            if (apply_install(&s, k, n->cand, "actualización") && solve(&s, qm)) continue;
+            if (apply_install(&s, k, n->cand, "pkg.why.upgrade") && solve(&s, qm)) continue;
             undo_to(&s, lm);
             s.nq = qm;
             if (out->nheld < 32) snprintf(out->held[out->nheld++], sizeof out->held[0], "%s", p->name);
@@ -735,7 +740,7 @@ int plan_make(const Idx *x, const Status *st, const char *const *install, int ni
         if (changed) count++;
     }
     out->items = calloc((size_t)(count ? count : 1), sizeof *out->items);
-    if (!out->items) { ok = 0; snprintf(s.err, sizeof s.err, "sin memoria"); }
+    if (!out->items) { ok = 0; lerr_set(s.err, sizeof s.err, "sys.outOfMemory", NULL); }
     int extra_removals = 0;
     char extra[300] = "";
     for (int i = 0; out->items && i < s.nn; i++) {
@@ -764,16 +769,16 @@ int plan_make(const Idx *x, const Status *st, const char *const *install, int ni
         it.name = n->name;
         it.requested = n->requested;
         it.orphan = n->orphan;
-        snprintf(it.reason, sizeof it.reason, "%s", n->requested ? "pedido" : n->orphan ? "auto" : n->reason);
+        snprintf(it.reason, sizeof it.reason, "%s", n->requested ? "pkg.why.requested" : n->orphan ? "pkg.why.auto" : n->reason);
         out->items[out->n++] = it;
     }
     if (out->items) qsort(out->items, (size_t)out->n, sizeof *out->items, item_cmp);
     if (ok && extra_removals && !o->allow_remove && !o->cascade) {
         ok = 0;
-        snprintf(s.err, sizeof s.err, "también hay que quitar: %s", extra);
+        lerr_set(s.err, sizeof s.err, "pkg.removeAlso", "names", extra, NULL);
     }
     out->ok = ok;
-    snprintf(out->err, sizeof out->err, "%s", ok ? "" : s.err[0] ? s.err : "no se pudo resolver");
+    snprintf(out->err, sizeof out->err, "%s", ok ? "" : s.err[0] ? s.err : "pkg.unresolvable");
     for (int i = 0; i < s.nblocks; i++) free(s.blocks[i]);
     free(s.blocks); free(s.ht); free(s.log); free(s.q); free(s.prov); free(s.rdep); free(s.conf);
     return ok ? 0 : -1;

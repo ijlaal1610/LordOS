@@ -6,7 +6,7 @@
 //     no incoming connections, and the non-network ones: camera, microphone…).
 // The rules are saved by lord-server (lord.fw); this screen writes no files. Drawn like the
 // Settings sections: 13/600 headers, inset GroupBoxes with hairlines, footers.
-import { View, Text, Button, Segmented, ScrollView, GroupBox, useTheme, useLocale, useStore, useLauncherApps, firewall, firewallState, spacing, typeScale } from '@lordos/sdk';
+import { View, Text, Button, Segmented, ScrollView, GroupBox, useTheme, useLocale, useStore, useLauncherApps, firewall, firewallState, spacing, typeScale, errorText } from '@lordos/sdk';
 import { useState } from 'react';
 
 // Firewall id of a launcher app: the built-in ones run inside LordOS.
@@ -88,7 +88,7 @@ export function FirewallPrivacy() {
   const trusted = st.trusted || [];
   const restricted = st.restricted || {};
   const inLists = new Set([...trusted, ...Object.keys(restricted)]);
-  const statusText = !status.daemon ? tr('firewall.status.noDaemon') : !status.bpf ? tr('firewall.status.noBpf', { error: status.error || '' }) :
+  const statusText = !status.daemon ? tr('firewall.status.noDaemon') : !status.bpf ? tr('firewall.status.noBpf', { error: errorText(status.error || '') }) :
     tr('firewall.status.on', { dns: tr(`firewall.dns.${status.dns || 'none'}`) });
   const setFlag = (id, flag, on) => {
     const cur = restricted[id] || [];

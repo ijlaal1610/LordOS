@@ -77,15 +77,15 @@ static void on_mic(const int16_t *pcm, int samples) {
 void lm_camera(const char *params, int dev, int render) {
     struct v4l2_capability cap;
     memset(&cap, 0, sizeof cap);
-    if (dev < 0 || xioctl(dev, VIDIOC_QUERYCAP, &cap)) { lm_error("no es una cámara"); mp_sendv(LM_SOCK, MM_STATE, 0, MS_FAILED, 0, 0, 0); return; }
+    if (dev < 0 || xioctl(dev, VIDIOC_QUERYCAP, &cap)) { lm_error("camera.notACamera"); mp_sendv(LM_SOCK, MM_STATE, 0, MS_FAILED, 0, 0, 0); return; }
     uint32_t caps = (cap.capabilities & V4L2_CAP_DEVICE_CAPS) ? cap.device_caps : cap.capabilities;
-    if (!(caps & V4L2_CAP_VIDEO_CAPTURE) || !(caps & V4L2_CAP_STREAMING)) { lm_error("la cámara no captura video"); mp_sendv(LM_SOCK, MM_STATE, 0, MS_FAILED, 0, 0, 0); return; }
+    if (!(caps & V4L2_CAP_VIDEO_CAPTURE) || !(caps & V4L2_CAP_STREAMING)) { lm_error("camera.noVideo"); mp_sendv(LM_SOCK, MM_STATE, 0, MS_FAILED, 0, 0, 0); return; }
     char accel[24];
     AVBufferRef *hw = lm_hw_device(lm_hw_accel(params, accel, sizeof accel), render);
     lm_out_init(0);
     struct v4l2_format fmt;
     if (choose_format(dev, &fmt, (int)mp_param_int(params, "width", 1280), (int)mp_param_int(params, "height", 720))) {
-        lm_error("formato de cámara no soportado");
+        lm_error("camera.unsupportedFormat");
         mp_sendv(LM_SOCK, MM_STATE, 0, MS_FAILED, 0, 0, 0);
         return;
     }
@@ -94,7 +94,7 @@ void lm_camera(const char *params, int dev, int render) {
     struct v4l2_requestbuffers rb = { .count = NBUF, .type = V4L2_BUF_TYPE_VIDEO_CAPTURE, .memory = V4L2_MEMORY_MMAP };
     Buf bufs[NBUF];
     memset(bufs, 0, sizeof bufs);
-    if (xioctl(dev, VIDIOC_REQBUFS, &rb) || rb.count < 2) { lm_error("la cámara está ocupada"); mp_sendv(LM_SOCK, MM_STATE, 0, MS_FAILED, 0, 0, 0); return; }
+    if (xioctl(dev, VIDIOC_REQBUFS, &rb) || rb.count < 2) { lm_error("camera.busy"); mp_sendv(LM_SOCK, MM_STATE, 0, MS_FAILED, 0, 0, 0); return; }
     int nb = rb.count > NBUF ? NBUF : (int)rb.count;
     for (int i = 0; i < nb; i++) {
         struct v4l2_buffer b = { .index = (uint32_t)i, .type = V4L2_BUF_TYPE_VIDEO_CAPTURE, .memory = V4L2_MEMORY_MMAP };
@@ -105,7 +105,7 @@ void lm_camera(const char *params, int dev, int render) {
         xioctl(dev, VIDIOC_QBUF, &b);
     }
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    if (xioctl(dev, VIDIOC_STREAMON, &type)) { lm_error("no se pudo encender la cámara"); mp_sendv(LM_SOCK, MM_STATE, 0, MS_FAILED, 0, 0, 0); return; }
+    if (xioctl(dev, VIDIOC_STREAMON, &type)) { lm_error("camera.startFailed"); mp_sendv(LM_SOCK, MM_STATE, 0, MS_FAILED, 0, 0, 0); return; }
     AVCodecContext *mj = NULL;
     if (pixfmt == V4L2_PIX_FMT_MJPEG) {
         const AVCodec *c = avcodec_find_decoder(AV_CODEC_ID_MJPEG);
@@ -149,7 +149,7 @@ void lm_camera(const char *params, int dev, int render) {
                     }
                     char j[64];
                     snprintf(j, sizeof j, "{\"width\":%d,\"height\":%d}", last ? last->width : 0, last ? last->height : 0);
-                    lm_result(m.id, ok ? -1 : 0, ok ? "no se pudo sacar la foto" : j, -1);
+                    lm_result(m.id, ok ? -1 : 0, ok ? "camera.photoFailed" : j, -1);
                 } else if (m.type == MM_RECORD && fds[0] >= 0 && !enc) {
                     char err[128];
                     ring = lm_mic_ring(fds[1], &ring_len);

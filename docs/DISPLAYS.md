@@ -147,7 +147,7 @@ Settings → Displays → "Screenshots and sharing": **main display** (default) 
 ## Measurements (VM 118, CPU path, 4 vCPU)
 
 Window drag (the About window, 6 s circles at 125 events/s with a uinput tablet; lord-server's
-`arrastre:` line). "Work" is lord-server's time per rendered frame (JS of the pointer + layout +
+`drag:` line). "Work" is lord-server's time per rendered frame (JS of the pointer + layout +
 paint + present).
 
 | Setup | Work per frame | Paint | Present | Frames/s |

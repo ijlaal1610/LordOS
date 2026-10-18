@@ -48,12 +48,45 @@ formatNumber(1234.5, 2)            // "1.234,50" (es_AR) / "1,234.50" (en_US)
   `few`/`many`/`two`/`zero` depending on the language). Variables: `{name}`.
 - If a key is missing in the chosen language, English is used; if it's missing there too, the key itself.
 - App names come from `apps.json` (`appName(app)`); if there is no translation, from
-  `manifest.json`.
+  `manifest.json` (whose `name` and `description` are English).
+- **English is the default language** and the fallback: a new user, the greeter, the live system
+  (unless GRUB's Español/Português entry passes `lordos.lang`) and the installer start in English.
+  A language saved in `settings.json` is always kept.
 - Changing the language remounts the whole interface. Windows, tabs and sessions live in stores
   and are kept. That's why lists containing text can't be module-level constants: they are built
   in a function or at render time.
 - QuickJS has no `Intl`: the plural rules (`sdk/i18n.js`) and the formats (`format.json`) are our
   own.
+
+### Error and status messages
+
+The server never sends prose to the interface. Every error that can reach the UI (an `ERR` line of
+the privileged helper, a `lord.*` exception, an error field of an event) is a **code line**
+(`server/src/errcode.h`):
+
+```
+pkg.removeEssential name=dpkg
+sys.writeFailed path=/etc/locale.gen
+fs.readFailed path=/home/ana/a%20b.txt errno=ENOENT
+```
+
+`code` is `module.camelCase`; parameter values are percent-encoded (space, `%`, `=`, `"`, control
+characters). The UI shows `t('errors.<code>', params)` (`assets/locales/<lang>/errors.json`);
+statuses (`OK`/`LOG` lines) use `status.json`. Two parameters are special: `errno=ENOENT` becomes
+the translated description (`errors.errno.ENOENT`) and `reason=<code line>` is a nested code.
+
+- C: `admin_err("pkg.x", "name", n, NULL)` / `admin_ok(…)` / `admin_log(…)` in the helper,
+  `lerr_set(err, sizeof err, "pkg.x", "name", n, NULL)` for error buffers, and
+  `js_throw_code(c, "fs.x", "path", p, NULL)` / `js_throw_line(c, err)` (`server/src/ui/js_err.h`)
+  for exceptions. Numbers with `lerr_int(n)`, errno with `lerr_errno(errno)`.
+- JS (`sdk/errors.js`): `admin.run()` rejects with an `Error` whose message is already translated
+  and that has `.code` and `.params`; `lord.*` exceptions too (the SDK registers
+  `globalThis.__lordErrorText`). For other channels, `errorText(lineOrError)` and
+  `statusText(line)`. Code that needs to react to an error compares `e.code`, never the text.
+- Logs and the journal stay English prose, for developers.
+- Tests match codes (`lerr_has(err, "pkg.removeAlso")`), not text.
+- `node tools/i18n-check.mjs` fails if a code used in C has no English string, or if an `ERR`
+  line or a JS exception is written as prose.
 
 ### Formats
 

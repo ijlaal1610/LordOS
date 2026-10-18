@@ -74,12 +74,53 @@ function gradient(v) {
   return [angle, stop(parts[0]), stop(parts[parts.length - 1])];
 }
 
-const COLOR_KEYS = new Set(['backgroundColor', 'borderColor', 'color', 'shadowColor']);
+const SIDES = ['Left', 'Top', 'Right', 'Bottom', 'Start', 'End'];
+const COLOR_KEYS = new Set(['backgroundColor', 'borderColor', 'color', 'shadowColor', ...SIDES.map((s) => `border${s}Color`)]);
 const DIM_KEYS = new Set(['width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight',
-  'left', 'top', 'right', 'bottom', 'flexBasis']);
+  'left', 'top', 'right', 'bottom', 'flexBasis', 'start', 'end']);
+// CSS logical names → the engine's (React Native) names
+const ALIASES = {
+  marginInlineStart: 'marginStart', marginInlineEnd: 'marginEnd',
+  paddingInlineStart: 'paddingStart', paddingInlineEnd: 'paddingEnd',
+  insetInlineStart: 'start', insetInlineEnd: 'end',
+  borderInlineStartWidth: 'borderStartWidth', borderInlineEndWidth: 'borderEndWidth',
+  borderInlineStartColor: 'borderStartColor', borderInlineEndColor: 'borderEndColor',
+  borderStartStartRadius: 'borderTopStartRadius', borderStartEndRadius: 'borderTopEndRadius',
+  borderEndStartRadius: 'borderBottomStartRadius', borderEndEndRadius: 'borderBottomEndRadius',
+  lineClamp: 'numberOfLines', WebkitLineClamp: 'numberOfLines',
+};
+
+// "1px solid #ccc" → [width, color]; "none" → [0, transparent]
+function borderParts(v) {
+  if (typeof v === 'number') return [v, null];
+  if (v === 'none' || v === 0) return [0, 0];
+  const p = tokens(v);
+  const w = p.find((t) => /^-?[\d.]/.test(t));
+  const c = p.find((t) => !/^-?[\d.]/.test(t) && !/^(solid|dashed|dotted|double|none)$/.test(t));
+  return [w !== undefined ? num(w) : 1, c !== undefined ? color(c) : null];
+}
+
+function angle(v) {
+  if (typeof v === 'number') return v;
+  const s = String(v).trim(), n = parseFloat(s) || 0;
+  if (s.endsWith('rad')) return n * 180 / Math.PI;
+  if (s.endsWith('turn')) return n * 360;
+  return n;                                          // deg (default)
+}
+
+const ORIGIN_WORDS = { left: '0%', top: '0%', center: '50%', right: '100%', bottom: '100%' };
+function origin(v, out) {
+  const p = Array.isArray(v) ? v : tokens(String(v));
+  let x = p[0] ?? '50%', y = p[1] ?? '50%';
+  if (p.length === 1 && (x === 'top' || x === 'bottom')) { y = x; x = '50%'; }
+  if (x === 'top' || x === 'bottom' || y === 'left' || y === 'right') [x, y] = [y, x];
+  out.transformOriginX = dim(ORIGIN_WORDS[x] ?? x);
+  out.transformOriginY = dim(ORIGIN_WORDS[y] ?? y);
+}
 const WEIGHTS = { normal: 400, medium: 500, semibold: 600, bold: 700 };
 
 function expand(k, v, out) {
+  if (k in ALIASES) k = ALIASES[k];
   switch (k) {
     case 'margin': case 'padding': {
       const [t, r, b, l] = box(v);
@@ -101,8 +142,38 @@ function expand(k, v, out) {
       out.top = t; out.right = r; out.bottom = b; out.left = l;
       return;
     }
-    case 'flex':
-      out.flexGrow = num(v); out.flexShrink = 1; out.flexBasis = 0;
+    case 'marginInline': case 'paddingInline': {
+      const base = k.replace('Inline', ''), p = tokens(String(v)).map(num);
+      out[base + 'Start'] = p[0] || 0; out[base + 'End'] = p.length > 1 ? p[1] : p[0] || 0;
+      return;
+    }
+    case 'insetInline': {
+      const p = tokens(String(v)).map(dim);
+      out.start = p[0]; out.end = p.length > 1 ? p[1] : p[0];
+      return;
+    }
+    case 'flex': {
+      // React Native: flex > 0 grows and shrinks from a zero basis; flex: 0 is sized by its
+      // width/height and inflexible; flex < 0 only shrinks (down to minWidth/minHeight)
+      const f = num(v);
+      if (f > 0) { out.flexGrow = f; out.flexShrink = 1; out.flexBasis = 0; }
+      else if (f === 0) { out.flexGrow = 0; out.flexShrink = 0; out.flexBasis = 'auto'; }
+      else { out.flexGrow = 0; out.flexShrink = -f; out.flexBasis = 'auto'; }
+      return;
+    }
+    case 'borderTop': case 'borderRight': case 'borderBottom': case 'borderLeft':
+    case 'borderStart': case 'borderEnd': case 'borderInlineStart': case 'borderInlineEnd': {
+      const side = k.replace('Inline', '');
+      const [w, c] = borderParts(v);
+      out[side + 'Width'] = w;
+      if (c !== null) out[side + 'Color'] = c;
+      return;
+    }
+    case 'textOverflow':
+      out.textOverflow = v === 'ellipsis' ? 'ellipsis' : 'clip';
+      return;
+    case 'transformOrigin':
+      origin(v, out);
       return;
     case 'border': {
       const p = tokens(v);
@@ -130,14 +201,31 @@ function expand(k, v, out) {
       return;
     }
     case 'transform': {
+      // translate moves the box (and what layout reports); scale and rotate only paint (as in CSS)
       const list = Array.isArray(v) ? v : [];
       for (const t of list) {
         if ('translateX' in t) out.translateX = num(t.translateX);
         if ('translateY' in t) out.translateY = num(t.translateY);
+        if ('scale' in t) out.scaleX = out.scaleY = num(t.scale);
+        if ('scaleX' in t) out.scaleX = num(t.scaleX);
+        if ('scaleY' in t) out.scaleY = num(t.scaleY);
+        if ('rotate' in t) out.rotate = angle(t.rotate);
+        if ('rotateZ' in t) out.rotate = angle(t.rotateZ);
       }
-      if (typeof v === 'string') {
-        const m = v.match(/translate\(\s*([-\d.]+)px?\s*,\s*([-\d.]+)/);
-        if (m) { out.translateX = +m[1]; out.translateY = +m[2]; }
+      if (typeof v === 'string' && v !== 'none') {
+        for (const m of v.matchAll(/(\w+)\(([^)]*)\)/g)) {
+          const a = m[2].split(/[\s,]+/).filter(Boolean);
+          switch (m[1]) {
+            case 'translate': out.translateX = num(a[0]); out.translateY = num(a[1] ?? 0); break;
+            case 'translateX': out.translateX = num(a[0]); break;
+            case 'translateY': out.translateY = num(a[0]); break;
+            case 'scale': out.scaleX = num(a[0]); out.scaleY = num(a[1] ?? a[0]); break;
+            case 'scaleX': out.scaleX = num(a[0]); break;
+            case 'scaleY': out.scaleY = num(a[0]); break;
+            case 'rotate': case 'rotateZ': out.rotate = angle(a[0]); break;
+            default: break;
+          }
+        }
       }
       return;
     }

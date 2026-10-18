@@ -52,7 +52,8 @@ export function parseLordLog(text, file) {
     const m = lines[i];
     if (!m) continue;
     const low = m.toLowerCase();
-    const p = /\b(error|err|falla|fallo|failed|abort|crash|segfault)\b/.test(low) ? 3 : /\b(aviso|warning|warn|sin |no se pudo)\b/.test(low) ? 4 : 6;
+    // the Spanish words match lines written by older LordOS builds, which logged in Spanish
+    const p = /\b(error|err|fail|failed|falla|fallo|abort|crash|segfault)\b/.test(low) ? 3 : /\b(warning|warn|could not|cannot|aviso|sin |no se pudo)\b/.test(low) ? 4 : 6;
     const src = /^([a-z][\w.-]{1,30})(\[\d+\])?:/i.exec(m);
     out.push({ t: 0, line: i + 1, p, id: src ? src[1] : file.replace(/\.log$/, ''), u: '', pid: -1, uid: -1, k: 0, b: '', m });
   }

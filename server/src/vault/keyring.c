@@ -1,15 +1,15 @@
-/* keyring.c — el llavero del sistema (ver docs/CONTRASENAS.md, «El llavero de la sesión»).
+/* keyring.c — the system keyring (see docs/PASSWORDS.md, "The session keyring").
  *
- * Es una bóveda aparte, login.lvault, como el llavero «inicio de sesión» de macOS: se abre sola
- * al ingresar, con la contraseña de la sesión (lord-sessiond la verifica y se la pasa a la sesión
- * una sola vez; lord-server la reenvía acá y la borra), y queda abierta hasta cerrar la sesión.
- * Bloquear la pantalla no la cierra (la bóveda de Contraseñas sí).
+ * It is a separate vault, login.lvault, like macOS's "login" keyring: it unlocks by itself at
+ * login with the session password (lord-sessiond verifies it and hands it to the session
+ * only once; lord-server forwards it here and wipes it), and stays open until logout.
+ * Locking the screen does not lock it (the Passwords vault does lock).
  *
- * Guarda dos clases de ítems (entradas de la bóveda con un "x" que dice de quién son):
- *   - del llavero de LordOS (lord.keyring / sdk keyring): x.kr = {owner, service, account, shared};
- *     una app ve solo los suyos, salvo que el usuario se los comparta (shared);
- *   - de Secret Service (D-Bus, apps Linux): x.ss = {attrs, ctype}; como en gnome-keyring,
- *     cualquier app de la sesión que hable D-Bus puede leerlos con el llavero abierto. */
+ * It stores two kinds of items (vault entries with an "x" that says whose they are):
+ *   - from the LordOS keyring (lord.keyring / sdk keyring): x.kr = {owner, service, account, shared};
+ *     an app only sees its own, unless the user shares them with it (shared);
+ *   - from Secret Service (D-Bus, Linux apps): x.ss = {attrs, ctype}; as in gnome-keyring,
+ *     any app of the session that speaks D-Bus can read them while the keyring is open. */
 #include "vault_int.h"
 #include "smem.h"
 #include "secretsvc.h"
@@ -29,7 +29,7 @@ static int valid_owner(const char *s) {
     return 1;
 }
 
-/* x.kr de una entrada: owner/service/account (los copia acotados) y si ve el pedido de `who` */
+/* x.kr of an entry: owner/service/account (copied, bounded) and whether `who`'s request can see it */
 typedef struct { char owner[72], service[256], account[256]; int shared_with; } KrInfo;
 
 static int kr_info(const VEntry *e, const char *who, KrInfo *k) {
@@ -66,7 +66,7 @@ static void kr_item_json(VjB *b, const VEntry *e, const KrInfo *k, int with_secr
     vb_close(b, '}');
 }
 
-/* arma el JSON de una entrada del llavero y la guarda con vm_upsert */
+/* builds the JSON of a keyring entry and stores it with vm_upsert */
 static int kr_store(const char *id, const char *owner, const char *service, const char *account, const char *label, const char *secret, const char *shared_json) {
     VjB b;
     vb_init(&b);
@@ -107,7 +107,7 @@ int keyring_handle(Chan *c, uint32_t id, const char *op, const Vj *j) {
     vj_getsbuf(j, 0, "owner", owner, sizeof owner);
     vj_getsbuf(j, 0, "service", service, sizeof service);
     vj_getsbuf(j, 0, "account", account, sizeof account);
-    /* la app Contraseñas administra todo el llavero; el resto pasa por lord-server, que pone el owner */
+    /* the Passwords app manages the whole keyring; everything else goes through lord-server, which sets the owner */
     int admin = c->role == ROLE_APP || (c->role == ROLE_SYSTEM && vj_getb(j, 0, "admin", 0));
     if (!admin && !valid_owner(owner)) { reply_err(c, id, "bad-owner"); return 1; }
     if (!strcmp(op, "kr-set")) {
@@ -135,7 +135,7 @@ int keyring_handle(Chan *c, uint32_t id, const char *op, const Vj *j) {
         }
         if (!found) {
             if (other) {
-                /* existe pero es de otra app: la interfaz puede preguntarle al usuario si compartirlo */
+                /* it exists but belongs to another app: the interface can ask the user whether to share it */
                 KrInfo ok;
                 kr_info(other, NULL, &ok);
                 VjB b; vb_init(&b); vb_open(&b, '{'); vb_ks(&b, "error", "not-shared"); vb_ks(&b, "item", other->id); vb_ks(&b, "itemOwner", ok.owner); vb_close(&b, '}');
@@ -166,7 +166,7 @@ int keyring_handle(Chan *c, uint32_t id, const char *op, const Vj *j) {
         return 1;
     }
     if (!strcmp(op, "kr-share")) {
-        /* solo lord-server (después de preguntarle al usuario) o la app Contraseñas */
+        /* only lord-server (after asking the user) or the Passwords app */
         if (c->role != ROLE_APP && !vj_getb(j, 0, "admin", 0)) { reply_err(c, id, "denied"); return 1; }
         char eid[40] = "", app[72] = "";
         vj_getsbuf(j, 0, "id", eid, sizeof eid);
@@ -175,7 +175,7 @@ int keyring_handle(Chan *c, uint32_t id, const char *op, const Vj *j) {
         VEntry *e = vm_find(&v->m, eid);
         KrInfo k;
         if (!e || !kr_info(e, NULL, &k) || (!valid_owner(app) && strcmp(app, "*"))) { reply_err(c, id, "not-found"); return 1; }
-        /* lista nueva de compartidos */
+        /* new list of shares */
         VjB sh; vb_init(&sh); vb_open(&sh, '[');
         Vj xj;
         if (!vj_parse(&xj, e->x, strlen(e->x))) {
@@ -198,14 +198,14 @@ int keyring_handle(Chan *c, uint32_t id, const char *op, const Vj *j) {
     return 1;
 }
 
-/* ---- abrir con la contraseña de la sesión ---- */
+/* ---- unlock with the session password ---- */
 
 void keyring_session_password(const char *pass) {
     Vault *v = LOGIN;
     if (v->unlocked) return;
     char err[64];
     VFactors f = { .password = pass };
-    /* ¿existe? */
+    /* does it exist? */
     if (v->exists != 1) {
         int fd = -1;
         (void)fd;
@@ -213,14 +213,14 @@ void keyring_session_password(const char *pass) {
     if (vault_unlock_with(v, VS_SESSION, &f, err, sizeof err) == 0) return;
     if (!strcmp(err, "not-found")) {
         VKdf kdf;
-        vf_calibrate(400, &kdf, NULL);               /* el ingreso no tiene que esperar mucho */
+        vf_calibrate(400, &kdf, NULL);               /* login must not wait long */
         if (vault_create(v, VS_SESSION, &f, &kdf, "", "{\"autolock\":0}", NULL) == VF_OK) {
-            fprintf(stderr, "lord-vault: llavero de la sesión creado\n");
+            fprintf(stderr, "lord-vault: session keyring created\n");
             keyring_lock_changed();
         }
         return;
     }
-    /* la contraseña de la sesión cambió por fuera (passwd): la interfaz pide la anterior */
+    /* the session password changed outside LordOS (passwd): the interface asks for the old one */
     char ev[160];
     snprintf(ev, sizeof ev, "{\"ev\":\"keyring-mismatch\",\"error\":\"%s\"}", err);
     broadcast_event(ev);
@@ -230,7 +230,7 @@ void keyring_session_password(const char *pass) {
 
 static int ss_active;
 
-/* x.ss → atributos (en smem) */
+/* x.ss → attributes (in smem) */
 static int ss_attrs(const VEntry *e, SsAttr **out, int *n, char *ctype, size_t cn) {
     *out = NULL;
     *n = 0;
@@ -352,7 +352,7 @@ static int utf8_ok(const uint8_t *s, size_t n) {
     return 1;
 }
 
-/* guarda un ítem de Secret Service (id NULL = nuevo) */
+/* stores a Secret Service item (id NULL = new) */
 static int ss_store(const char *id, const char *label, const SsAttr *attrs, int nattrs, const uint8_t *secret, size_t len, const char *ctype, char out_id[40]) {
     VjB b;
     vb_init(&b);
@@ -407,7 +407,7 @@ static int be_create(void *ud, const char *label, const SsAttr *attrs, int nattr
     const char *existing = NULL;
     if (replace) {
         char ids[1][40];
-        /* el mismo conjunto exacto de atributos */
+        /* the exact same set of attributes */
         for (int i = 0; i < LOGIN->m.n && !existing; i++) {
             SsAttr *a;
             int na;
@@ -474,7 +474,7 @@ static int be_remove(void *ud, const char *id) {
 
 static void be_caller(void *ud, const char *sender, uint32_t pid) {
     (void)ud;
-    if (getenv("LORD_VAULT_DEBUG")) fprintf(stderr, "lord-vault: Secret Service: pedido de %s (pid %u)\n", sender, pid);
+    if (getenv("LORD_VAULT_DEBUG")) fprintf(stderr, "lord-vault: Secret Service: request from %s (pid %u)\n", sender, pid);
 }
 
 static const SsBackend backend = {
@@ -486,9 +486,9 @@ static const SsBackend backend = {
 void keyring_start_bus(int busfd) {
     int r = ss_start(busfd, &backend, NULL);
     ss_active = r == 0;
-    if (r == 1) fprintf(stderr, "lord-vault: org.freedesktop.secrets ya tiene dueño (¿gnome-keyring?): no se atiende\n");
-    else if (r < 0) fprintf(stderr, "lord-vault: no se pudo hablar con el bus de la sesión\n");
-    else if (getenv("LORD_VAULT_DEBUG")) fprintf(stderr, "lord-vault: Secret Service en el bus (%s)\n", ss_unique_name());
+    if (r == 1) fprintf(stderr, "lord-vault: org.freedesktop.secrets already has an owner (gnome-keyring?): not serving it\n");
+    else if (r < 0) fprintf(stderr, "lord-vault: could not talk to the session bus\n");
+    else if (getenv("LORD_VAULT_DEBUG")) fprintf(stderr, "lord-vault: Secret Service on the bus (%s)\n", ss_unique_name());
     if (r) close(busfd);
 }
 

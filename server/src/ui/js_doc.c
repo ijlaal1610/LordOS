@@ -19,6 +19,7 @@
  */
 #include "js_doc.h"
 #include "js_sys.h"
+#include "js_err.h"
 #include "ui.h"
 #include "../doc/doc.h"
 #include "../doc/proto.h"
@@ -88,7 +89,7 @@ static int open_new(const char *path) {
     return open(target, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0644);
 }
 
-static JSValue throw_path(JSContext *c) { return JS_ThrowRangeError(c, "path outside the home folder or invalid"); }
+static JSValue throw_path(JSContext *c) { return js_throw_code(c, "fs.outsideHome", NULL); }
 
 static const char *arg_str(JSContext *c, int argc, JSValueConst *argv, int i) {
     return i < argc && JS_IsString(argv[i]) ? JS_ToCString(c, argv[i]) : NULL;
@@ -137,32 +138,32 @@ static JSValue f_open_pdf(JSContext *c, JSValueConst t, int argc, JSValueConst *
     if (p) JS_FreeCString(c, p);
     if (bad) return throw_path(c);
     int fd = open_file(real);
-    if (fd < 0) return JS_ThrowTypeError(c, "could not open: %s", strerror(errno));
+    if (fd < 0) return js_throw_code(c, "fs.openFailed", "errno", lerr_errno(errno), NULL);
     DocInitFd init = { fd, "file" };
     int sid = doc_session("pdf", &init, 1);
-    return sid > 0 ? JS_NewInt32(c, sid) : JS_ThrowInternalError(c, "no document helper");
+    return sid > 0 ? JS_NewInt32(c, sid) : js_throw_code(c, "doc.noHelper", NULL);
 }
 
 static JSValue f_open_blob(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     int fd = doc_blob_dup(arg_int(c, argc, argv, 0, 0), NULL);
-    if (fd < 0) return JS_ThrowRangeError(c, "invalid blob");
+    if (fd < 0) return js_throw_code(c, "doc.badBlob", NULL);
     DocInitFd init = { fd, "file" };
     int sid = doc_session("pdf", &init, 1);
-    return sid > 0 ? JS_NewInt32(c, sid) : JS_ThrowInternalError(c, "no document helper");
+    return sid > 0 ? JS_NewInt32(c, sid) : js_throw_code(c, "doc.noHelper", NULL);
 }
 
 static JSValue f_request(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     int sid = arg_int(c, argc, argv, 0, 0);
     const char *op = arg_str(c, argc, argv, 1);
-    if (!op) return JS_ThrowTypeError(c, "op");
+    if (!op) return js_throw_code(c, "sys.badArgument", NULL);
     uint32_t code = 0;
     int timeout = 0;
     for (size_t i = 0; i < sizeof pdf_ops / sizeof pdf_ops[0]; i++)
         if (!strcmp(op, pdf_ops[i].name)) { code = pdf_ops[i].op; timeout = pdf_ops[i].timeout; }
     JS_FreeCString(c, op);
-    if (!code) return JS_ThrowRangeError(c, "unknown op");
+    if (!code) return js_throw_code(c, "sys.badArgument", NULL);
     size_t len;
     const char *json = arg_json(c, argc, argv, 2, &len);
     int prio = arg_int(c, argc, argv, 3, 0);
@@ -179,7 +180,7 @@ static JSValue f_save_pdf(JSContext *c, JSValueConst t, int argc, JSValueConst *
     const char *p = arg_str(c, argc, argv, 1);
     int fd = open_new(p);
     if (p) JS_FreeCString(c, p);
-    if (fd < 0) return errno == EEXIST ? JS_ThrowRangeError(c, "already exists") : throw_path(c);
+    if (fd < 0) return errno == EEXIST ? js_throw_code(c, "fs.exists", NULL) : throw_path(c);
     int id = doc_request(sid, DQ_PDF_SAVE, "{}", 2, &fd, 1, 5, 120000);
     return JS_NewInt32(c, id);
 }
@@ -199,10 +200,10 @@ static JSValue f_arc_list(JSContext *c, JSValueConst t, int argc, JSValueConst *
     if (p) JS_FreeCString(c, p);
     if (bad) return throw_path(c);
     int fd = open_file(real);
-    if (fd < 0) return JS_ThrowTypeError(c, "could not open: %s", strerror(errno));
+    if (fd < 0) return js_throw_code(c, "fs.openFailed", "errno", lerr_errno(errno), NULL);
     DocInitFd init = { fd, "file" };
     int sid = doc_session("arc", &init, 1);
-    if (sid < 0) return JS_ThrowInternalError(c, "no document helper");
+    if (sid < 0) return js_throw_code(c, "doc.noHelper", NULL);
     return pair(c, sid, doc_request(sid, DQ_ARC_LIST, "{\"slot\":0}", 10, NULL, 0, 0, 0));
 }
 
@@ -217,14 +218,14 @@ static JSValue f_arc_extract(JSContext *c, JSValueConst t, int argc, JSValueCons
     if (d) JS_FreeCString(c, d);
     if (bad) return throw_path(c);
     int existing = argc > 3 && JS_ToBool(c, argv[3]) > 0;
-    if (!existing && mkdir(target, 0755)) return errno == EEXIST ? JS_ThrowRangeError(c, "already exists") : JS_ThrowTypeError(c, "%s", strerror(errno));
+    if (!existing && mkdir(target, 0755)) return errno == EEXIST ? js_throw_code(c, "fs.exists", NULL) : js_throw_code(c, "sys.errno", "errno", lerr_errno(errno), NULL);
     int dfd = open(target, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-    if (dfd < 0) return JS_ThrowTypeError(c, "%s", strerror(errno));
+    if (dfd < 0) return js_throw_code(c, "sys.errno", "errno", lerr_errno(errno), NULL);
     int fd = open_file(real);
-    if (fd < 0) { close(dfd); return JS_ThrowTypeError(c, "could not open: %s", strerror(errno)); }
+    if (fd < 0) { close(dfd); return js_throw_code(c, "fs.openFailed", "errno", lerr_errno(errno), NULL); }
     DocInitFd init[2] = { { fd, "file" }, { dfd, "rw" } };
     int sid = doc_session("arc", init, 2);
-    if (sid < 0) return JS_ThrowInternalError(c, "no document helper");
+    if (sid < 0) return js_throw_code(c, "doc.noHelper", NULL);
     /* {"slot":0,"dir":1, ...what JS sent} */
     size_t len;
     const char *json = arg_json(c, argc, argv, 2, &len);
@@ -242,12 +243,12 @@ static JSValue f_arc_extract(JSContext *c, JSValueConst t, int argc, JSValueCons
 
 static JSValue f_arc_create(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (argc < 2 || !JS_IsArray(c, argv[0])) return JS_ThrowTypeError(c, "rutas");
+    if (argc < 2 || !JS_IsArray(c, argv[0])) return js_throw_code(c, "sys.badArgument", NULL);
     JSValue lv = JS_GetPropertyStr(c, argv[0], "length");
     int32_t n = 0;
     JS_ToInt32(c, &n, lv);
     JS_FreeValue(c, lv);
-    if (n < 1 || n > DOC_INIT_FDS - 1) return JS_ThrowRangeError(c, "between 1 and %d items", DOC_INIT_FDS - 1);
+    if (n < 1 || n > DOC_INIT_FDS - 1) return js_throw_code(c, "doc.itemCount", "max", lerr_int(DOC_INIT_FDS - 1), NULL);
     DocInitFd *init = calloc((size_t)n + 1, sizeof *init);
     if (!init) return JS_ThrowOutOfMemory(c);
     JBuf items;
@@ -282,7 +283,7 @@ static JSValue f_arc_create(JSContext *c, JSValueConst t, int argc, JSValueConst
         for (int i = 0; i < k; i++) close(init[i].fd);
         free(init);
         jb_free(&items);
-        return !bad && eexist ? JS_ThrowRangeError(c, "already exists") : throw_path(c);
+        return !bad && eexist ? js_throw_code(c, "fs.exists", NULL) : throw_path(c);
     }
     init[k].fd = ofd;
     init[k].role = "out";
@@ -296,19 +297,19 @@ static JSValue f_arc_create(JSContext *c, JSValueConst t, int argc, JSValueConst
     free(init);
     int req = sid > 0 && !j.oom ? doc_request(sid, DQ_ARC_CREATE, j.p, j.n, NULL, 0, 0, 0) : -1;
     jb_free(&j);
-    if (sid < 0) return JS_ThrowInternalError(c, "no document helper");
+    if (sid < 0) return js_throw_code(c, "doc.noHelper", NULL);
     return pair(c, sid, req);
 }
 
 static JSValue f_util(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     const char *op = arg_str(c, argc, argv, 0);
-    if (!op) return JS_ThrowTypeError(c, "op");
+    if (!op) return js_throw_code(c, "sys.badArgument", NULL);
     int k = -1;
     for (size_t i = 0; i < sizeof util_ops / sizeof util_ops[0]; i++) if (!strcmp(op, util_ops[i].name)) k = (int)i;
     int font = !strncmp(op, "font", 4);
     JS_FreeCString(c, op);
-    if (k < 0) return JS_ThrowRangeError(c, "unknown op");
+    if (k < 0) return js_throw_code(c, "sys.badArgument", NULL);
     int fds[2], nfds = 0;
     const char *p = arg_str(c, argc, argv, 2);
     if (p) {
@@ -317,14 +318,14 @@ static JSValue f_util(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
         JS_FreeCString(c, p);
         if (bad) return throw_path(c);
         int fd = open_file(real);
-        if (fd < 0) return JS_ThrowTypeError(c, "could not open: %s", strerror(errno));
+        if (fd < 0) return js_throw_code(c, "fs.openFailed", "errno", lerr_errno(errno), NULL);
         fds[nfds++] = fd;
     }
     if (util_ops[k].out) {
         const char *o = arg_str(c, argc, argv, 3);
         int ofd = open_new(o);
         if (o) JS_FreeCString(c, o);
-        if (ofd < 0) { for (int i = 0; i < nfds; i++) close(fds[i]); return errno == EEXIST ? JS_ThrowRangeError(c, "already exists") : throw_path(c); }
+        if (ofd < 0) { for (int i = 0; i < nfds; i++) close(fds[i]); return errno == EEXIST ? js_throw_code(c, "fs.exists", NULL) : throw_path(c); }
         fds[nfds++] = ofd;
     }
     size_t len;
@@ -337,7 +338,7 @@ static JSValue f_util(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     int id = util_sid > 0 ? doc_request(util_sid, util_ops[k].op, json, len, fds, nfds, 0, util_ops[k].timeout) : -1;
     if (util_sid <= 0) for (int i = 0; i < nfds; i++) close(fds[i]);
     if (json) JS_FreeCString(c, json);
-    if (id < 0) return JS_ThrowInternalError(c, "no document helper");
+    if (id < 0) return js_throw_code(c, "doc.noHelper", NULL);
     JSValue o = pair(c, util_sid, id);
     return o;
 }
@@ -408,7 +409,7 @@ static JSValue f_blob_save(JSContext *c, JSValueConst t, int argc, JSValueConst 
     const char *p = arg_str(c, argc, argv, 1);
     int fd = open_new(p);
     if (p) JS_FreeCString(c, p);
-    if (fd < 0) return errno == EEXIST ? JS_ThrowRangeError(c, "already exists") : throw_path(c);
+    if (fd < 0) return errno == EEXIST ? js_throw_code(c, "fs.exists", NULL) : throw_path(c);
     int r = doc_blob_copy(arg_int(c, argc, argv, 0, 0), fd);
     close(fd);
     return JS_NewBool(c, r == 0);

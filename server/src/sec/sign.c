@@ -6,6 +6,7 @@
 #include "sign.h"
 #include "json.h"
 #include "keys.h"
+#include "../errcode.h"
 #include "../pkg/crypto.h"
 
 #include <errno.h>
@@ -48,13 +49,13 @@ int sig_official(const char *keyhex) {
 int sig_verify_detached(const char *sig_json, size_t siglen, const void *data, size_t len, char key[65], char *err, size_t errlen) {
     JDoc d;
     char why[96];
-    if (json_parse(sig_json, siglen, &d, why, sizeof why)) { seterr(err, errlen, "firma.json inválido"); return -1; }
+    if (json_parse(sig_json, siglen, &d, why, sizeof why)) { seterr(err, errlen, "sig.badSignatureFile"); return -1; }
     const char *alg = json_str(d.root, "alg"), *k = json_str(d.root, "key"), *s = json_str(d.root, "sig");
     int r = -1;
     uint8_t pub[32], sig[64];
-    if (json_num(d.root, "format", 0) != 1 || !alg || strcmp(alg, "ed25519")) seterr(err, errlen, "firma de un formato desconocido");
-    else if (!is_hex(k, 64) || !is_hex(s, 128) || hex_decode(k, pub, 32) || hex_decode(s, sig, 64)) seterr(err, errlen, "firma.json inválido");
-    else if (!ed25519_verify(pub, sig, data, len)) seterr(err, errlen, "la firma no corresponde al contenido");
+    if (json_num(d.root, "format", 0) != 1 || !alg || strcmp(alg, "ed25519")) seterr(err, errlen, "sig.unknownFormat");
+    else if (!is_hex(k, 64) || !is_hex(s, 128) || hex_decode(k, pub, 32) || hex_decode(s, sig, 64)) seterr(err, errlen, "sig.badSignatureFile");
+    else if (!ed25519_verify(pub, sig, data, len)) seterr(err, errlen, "sig.mismatch");
     else { snprintf(key, 65, "%s", k); r = 0; }
     json_free(&d);
     return r;
@@ -76,32 +77,32 @@ int sig_make_detached(const uint8_t seed[32], const void *data, size_t len, char
 static int check_contents(const Lpk *pk, const JVal *root, const char *id, const char *version, char *err, size_t errlen) {
     const char *cid = json_str(root, "id"), *cver = json_str(root, "version");
     const JVal *files = json_get(root, "files");
-    if (json_num(root, "format", 0) != 1) { seterr(err, errlen, "contenido.json de un formato desconocido"); return -1; }
-    if (!cid || strcmp(cid, id) || !cver || strcmp(cver, version)) { seterr(err, errlen, "contenido.json es de otra app o de otra versión"); return -1; }
-    if (!files || files->type != J_ARR) { seterr(err, errlen, "contenido.json no tiene la lista de archivos"); return -1; }
+    if (json_num(root, "format", 0) != 1) { seterr(err, errlen, "sig.contents.unknownFormat"); return -1; }
+    if (!cid || strcmp(cid, id) || !cver || strcmp(cver, version)) { seterr(err, errlen, "sig.contents.otherApp"); return -1; }
+    if (!files || files->type != J_ARR) { seterr(err, errlen, "sig.contents.noFiles"); return -1; }
     int listed = 0;
     for (const JVal *f = files->kid; f; f = f->next) {
         const char *path = json_str(f, "path"), *sha = json_str(f, "sha256");
         double size = json_num(f, "size", -1);
         if (!path || !lpk_valid_path(path) || !strcmp(path, SIG_CONTENTS) || !strcmp(path, SIG_SIGNATURE) || !is_hex(sha, 64) || size < 0) {
-            seterr(err, errlen, "contenido.json tiene una entrada inválida");
+            seterr(err, errlen, "sig.contents.badEntry");
             return -1;
         }
         for (const JVal *g = files->kid; g != f; g = g->next)
-            if (!strcmp(json_str(g, "path"), path)) { seterr(err, errlen, "contenido.json repite un archivo"); return -1; }
+            if (!strcmp(json_str(g, "path"), path)) { seterr(err, errlen, "sig.contents.duplicate"); return -1; }
         const LpkFile *lf = lpk_find(pk, path);
-        if (!lf) { if (err && errlen) snprintf(err, errlen, "falta un archivo del paquete: %s", path); return -1; }
+        if (!lf) { if (err && errlen) lerr_set(err, errlen, "sig.fileMissing", "path", path, NULL); return -1; }
         uint8_t h[32];
         char hx[65];
         sha256(lf->data, lf->size, h);
         hex_encode(h, 32, hx);
-        if ((double)lf->size != size || strcmp(hx, sha)) { if (err && errlen) snprintf(err, errlen, "el archivo %s fue modificado", path); return -1; }
+        if ((double)lf->size != size || strcmp(hx, sha)) { if (err && errlen) lerr_set(err, errlen, "sig.fileModified", "path", path, NULL); return -1; }
         listed++;
     }
     int real = 0;
     for (int i = 0; i < pk->nfiles; i++)
         if (strcmp(pk->files[i].path, SIG_CONTENTS) && strcmp(pk->files[i].path, SIG_SIGNATURE)) real++;
-    if (real != listed) { seterr(err, errlen, "el paquete trae archivos que no están en contenido.json"); return -1; }
+    if (real != listed) { seterr(err, errlen, "sig.extraFiles"); return -1; }
     return 0;
 }
 
@@ -111,7 +112,7 @@ int sig_verify_package(const Lpk *pk, const char *id, const char *version, LpkSi
     out->has_contents = c != NULL;
     out->has_signature = s != NULL;
     if (!c) {
-        if (s) { seterr(err, errlen, "el paquete tiene firma pero no contenido.json"); return -1; }
+        if (s) { seterr(err, errlen, "sig.contents.missing"); return -1; }
         out->trust = LPK_UNSIGNED;
         if (catalog_revoked("", id, version, "", out->revoked_why, sizeof out->revoked_why)) out->revoked = 1;
         return 0;
@@ -122,7 +123,7 @@ int sig_verify_package(const Lpk *pk, const char *id, const char *version, LpkSi
     JDoc d;
     char why[96];
     if (json_parse((const char *)c->data, c->size, &d, why, sizeof why)) {
-        if (err && errlen) snprintf(err, errlen, "contenido.json inválido: %s", why);
+        if (err && errlen) lerr_set(err, errlen, "sig.contents.invalid", NULL);
         return -1;
     }
     int r = check_contents(pk, d.root, id, version, err, errlen);
@@ -130,7 +131,7 @@ int sig_verify_package(const Lpk *pk, const char *id, const char *version, LpkSi
     const char *sname = json_str(signer, "name"), *skey = json_str(signer, "key");
     if (!r && s) {
         r = sig_verify_detached((const char *)s->data, s->size, c->data, c->size, out->key, err, errlen);
-        if (!r && (!skey || strcmp(skey, out->key))) { seterr(err, errlen, "contenido.json nombra otra clave que la de la firma"); r = -1; }
+        if (!r && (!skey || strcmp(skey, out->key))) { seterr(err, errlen, "sig.contents.otherKey"); r = -1; }
     }
     if (!r) {
         if (!s) out->trust = LPK_UNSIGNED;
@@ -162,12 +163,12 @@ int catalog_parse(const char *json, size_t len, const char *sig, size_t siglen, 
     memset(out, 0, sizeof *out);
     char key[65];
     if (sig_verify_detached(sig, siglen, json, len, key, err, errlen)) return -1;
-    if (!sig_official(key)) { seterr(err, errlen, "el catálogo no está firmado por LordOS"); return -1; }
+    if (!sig_official(key)) { seterr(err, errlen, "sig.catalog.unofficial"); return -1; }
     JDoc d;
     char why[96];
-    if (json_parse(json, len, &d, why, sizeof why)) { if (err && errlen) snprintf(err, errlen, "catalog.json inválido: %s", why); return -1; }
+    if (json_parse(json, len, &d, why, sizeof why)) { if (err && errlen) lerr_set(err, errlen, "sig.catalog.invalid", NULL); return -1; }
     const JVal *r = d.root;
-    if (json_num(r, "format", 0) != 1) { json_free(&d); seterr(err, errlen, "catálogo de un formato desconocido"); return -1; }
+    if (json_num(r, "format", 0) != 1) { json_free(&d); seterr(err, errlen, "sig.catalog.unknownFormat"); return -1; }
     out->serial = json_num(r, "serial", 0);
     cpy(out->date, sizeof out->date, json_str(r, "date"));
     const JVal *a = json_get(r, "authors"), *rv = json_get(r, "revoked"), *p = json_get(r, "packages");
@@ -178,7 +179,7 @@ int catalog_parse(const char *json, size_t len, const char *sig, size_t siglen, 
     out->revoked_keys = calloc(nk + 1, sizeof *out->revoked_keys);
     out->revoked = calloc(nr + 1, sizeof *out->revoked);
     out->packages = calloc(np + 1, sizeof *out->packages);
-    if (!out->authors || !out->revoked_keys || !out->revoked || !out->packages) { json_free(&d); catalog_free(out); seterr(err, errlen, "sin memoria"); return -1; }
+    if (!out->authors || !out->revoked_keys || !out->revoked || !out->packages) { json_free(&d); catalog_free(out); seterr(err, errlen, "sys.outOfMemory"); return -1; }
     for (const JVal *x = na ? a->kid : NULL; x; x = x->next) {
         const char *k = json_str(x, "key"), *n = json_str(x, "name");
         if (!is_hex(k, 64) || !n) continue;
@@ -286,12 +287,12 @@ int catalog_revoked(const char *key, const char *id, const char *version, const 
     const Catalog *c = catalog_current();
     if (!c) return 0;
     for (int i = 0; key && key[0] && i < c->nrevoked_keys; i++)
-        if (!strcmp(c->revoked_keys[i], key)) { seterr(why, n, "LordOS revocó la clave con la que se firmó esta app"); return 1; }
+        if (!strcmp(c->revoked_keys[i], key)) { seterr(why, n, "sig.revokedKey"); return 1; }
     for (int i = 0; i < c->nrevoked; i++) {
         const CatRevoked *r = &c->revoked[i];
         int hit = r->sha[0] ? contents_sha && !strcmp(r->sha, contents_sha)
                             : id && !strcmp(r->id, id) && (!strcmp(r->version, "*") || (version && !strcmp(r->version, version)));
-        if (hit) { seterr(why, n, "LordOS revocó esta versión de la app"); return 1; }
+        if (hit) { seterr(why, n, "sig.revokedVersion"); return 1; }
     }
     return 0;
 }

@@ -58,7 +58,7 @@ void lm_audiorec(const char *params, int out, int pulse) {
     close(pulse);
     R.out_fd = out;
     if (out < 0 || !ring) {
-        lm_error("no hay micrófono (PipeWire)");
+        lm_error("rec.noMicrophone");
         mp_sendv(LM_SOCK, MM_STATE, 0, MS_FAILED, 0, 0, 0);
         return;
     }

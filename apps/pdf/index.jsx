@@ -387,7 +387,7 @@ export default function PdfViewer() {
       cache.current.invalidate(a.page);
       thumbs.current.invalidate(a.page);
       setAnnotated((x) => [...x, a.page]);
-    }).catch((e) => setMsg(tr('pdf.annotError', { error: e.code || e.message })));
+    }).catch((e) => setMsg(tr('pdf.annotError', { error: e.message })));
   };
   const finishInk = () => {
     if (ink && ink.strokes.some((s) => s.length >= 2)) addAnnot({ page: ink.page, type: 'ink', strokes: ink.strokes, color, width: 2.2 });
@@ -425,7 +425,7 @@ export default function PdfViewer() {
     let name = tr('pdf.copyName', { name: base });
     for (let i = 2; i < 200; i++) { try { fs.stat(`${dir}/${name}.pdf`); name = `${tr('pdf.copyName', { name: base })} ${i}`; } catch (e) { break; } }
     const out = `${dir}/${name}.pdf`;
-    doc.save(out).then(() => setMsg(tr('pdf.saved', { name: `${name}.pdf` }))).catch((e) => setMsg(tr('pdf.saveError', { error: e.code || e.message })));
+    doc.save(out).then(() => setMsg(tr('pdf.saved', { name: `${name}.pdf` }))).catch((e) => setMsg(tr('pdf.saveError', { error: e.message })));
   };
   const doPrint = () => { if (doc) print.open({ title: fs.basename(path), doc }); };
   const copySel = () => { if (selection?.text) { clipboard.set(selection.text); setMsg(tr('pdf.copied')); } };

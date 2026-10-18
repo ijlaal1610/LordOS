@@ -10,6 +10,7 @@
  *     complete file (which is what makes resuming an interrupted run possible);
  *   - deletion only happens inside the machine folder and with validated names. */
 #include "engine.h"
+#include "../errcode.h"
 #include "../fsops.h"
 #include "crypt.h"
 
@@ -380,7 +381,7 @@ static void entry(Walk *w, const char *rel, int depth) {
             /* out of space: delete old snapshots (never the newest) and retry once */
             if (bk_prune(w->r->machine, time(NULL), (uint64_t)st.st_size + (w->r->min_free ? w->r->min_free : (512u << 20))) > 0)
                 r = copy_file(w, src, dst, &st);
-            if (r == -2) { w->fatal = 1; snprintf(w->r->error, sizeof w->r->error, "no space left on the destination"); return; }
+            if (r == -2) { w->fatal = 1; lerr_set(w->r->error, sizeof w->r->error, "backup.noSpace", NULL); return; }
         }
         if (r == 0) w->r->copied++;
         else if (r < 0) w->r->errors++;
@@ -447,7 +448,7 @@ int bk_snapshot(BkRun *r, time_t now) {
     w.r = r;
     struct stat hs;
     if (pathf(w.src, sizeof w.src, "%s", r->home) || lstat(w.src, &hs) || !S_ISDIR(hs.st_mode)) {
-        snprintf(r->error, sizeof r->error, "cannot read the source folder");
+        lerr_set(r->error, sizeof r->error, "backup.sourceUnreadable", NULL);
         return -1;
     }
     w.home_dev = hs.st_dev;
@@ -455,7 +456,7 @@ int bk_snapshot(BkRun *r, time_t now) {
         struct stat ss;
         if (!stat(r->skip_real, &ss)) { w.has_skip = 1; w.skip_dev = ss.st_dev; w.skip_ino = ss.st_ino; }
     }
-    if (mkdir_p(r->machine, 0700)) { snprintf(r->error, sizeof r->error, "could not create %s: %s", r->machine, strerror(errno)); return -1; }
+    if (mkdir_p(r->machine, 0700)) { lerr_set(r->error, sizeof r->error, "backup.createFailed", "path", r->machine, "errno", lerr_errno(errno), NULL); return -1; }
 
     static char ids[BK_MAX_SNAPS][BK_ID_LEN];
     int n = bk_list(r->machine, ids, BK_MAX_SNAPS);
@@ -507,7 +508,7 @@ int bk_snapshot(BkRun *r, time_t now) {
     if (w.stop) return 1;
 
     if (pathf(w.dst, sizeof w.dst, "%s/.inprogress-%s", r->machine, r->id) || mkdir(w.dst, 0700)) {
-        snprintf(r->error, sizeof r->error, "cannot write to the destination: %s", strerror(errno));
+        lerr_set(r->error, sizeof r->error, "backup.destUnwritable", "errno", lerr_errno(errno), NULL);
         return -1;
     }
     walk(&w, "", 0);
@@ -521,7 +522,7 @@ int bk_snapshot(BkRun *r, time_t now) {
     if (dfd >= 0) { syncfs(dfd); close(dfd); }
     char final[PATH_MAX];
     if (pathf(final, sizeof final, "%s/%s", r->machine, r->id) || rename(w.dst, final)) {
-        snprintf(r->error, sizeof r->error, "could not finish the snapshot: %s", strerror(errno));
+        lerr_set(r->error, sizeof r->error, "backup.snapshotFailed", "errno", lerr_errno(errno), NULL);
         return -1;
     }
     int mfd = open(r->machine, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
@@ -588,7 +589,7 @@ static int restore_file(Rest *x, const char *src, const char *dst, const struct 
     int r = 0;
     if (x->o->key) {
         r = bkc_decrypt_fd(in, out, x->o->key, rest_tick, x);
-        if (r == -3) snprintf(x->o->error, sizeof x->o->error, "a backup file failed verification (tampered with or wrong key)");
+        if (r == -3) lerr_set(x->o->error, sizeof x->o->error, "backup.verifyFailed", NULL);
         if (r < 0) r = -1;
     } else {
         char *buf = malloc(1 << 20);
@@ -694,14 +695,14 @@ int bk_restore(const char *machine, const char *id, const char *rel, const char 
                int replace, const char *suffix, BkRestore *out) {
     out->files = out->bytes = out->kept_both = out->replaced = out->skipped = out->errors = 0;
     out->error[0] = 0;
-    if (!bk_id_valid(id) || !bk_rel_valid(rel)) { snprintf(out->error, sizeof out->error, "invalid path"); return -1; }
+    if (!bk_id_valid(id) || !bk_rel_valid(rel)) { lerr_set(out->error, sizeof out->error, "backup.badPath", NULL); return -1; }
     size_t sl = strlen(suffix);
-    if (!sl || sl > 64 || strchr(suffix, '/')) { snprintf(out->error, sizeof out->error, "invalid suffix"); return -1; }
-    for (const char *p = suffix; *p; p++) if ((unsigned char)*p < 0x20) { snprintf(out->error, sizeof out->error, "invalid suffix"); return -1; }
+    if (!sl || sl > 64 || strchr(suffix, '/')) { lerr_set(out->error, sizeof out->error, "backup.badSuffix", NULL); return -1; }
+    for (const char *p = suffix; *p; p++) if ((unsigned char)*p < 0x20) { lerr_set(out->error, sizeof out->error, "backup.badSuffix", NULL); return -1; }
     Rest x = { .o = out, .suffix = suffix, .replace = replace };
     char snap[PATH_MAX], src[PATH_MAX], breal[PATH_MAX], dst[PATH_MAX];
     if (pathf(snap, sizeof snap, "%s/%s", machine, id) || !realpath(snap, x.snapreal)) {
-        snprintf(out->error, sizeof out->error, "backup %s does not exist", id);
+        lerr_set(out->error, sizeof out->error, "backup.noSuchBackup", "id", id, NULL);
         return -1;
     }
     if (pathf(src, sizeof src, "%s%s%s", x.snapreal, rel[0] ? "/" : "", rel)) return -1;
@@ -710,9 +711,9 @@ int bk_restore(const char *machine, const char *id, const char *rel, const char 
         char parent[PATH_MAX], preal[PATH_MAX];
         snprintf(parent, sizeof parent, "%s", src);
         *strrchr(parent, '/') = 0;
-        if (!realpath(parent, preal) || !under(preal, x.snapreal)) { snprintf(out->error, sizeof out->error, "invalid path"); return -1; }
+        if (!realpath(parent, preal) || !under(preal, x.snapreal)) { lerr_set(out->error, sizeof out->error, "backup.badPath", NULL); return -1; }
     }
-    if (!realpath(base, breal) || !fsops_allowed(breal)) { snprintf(out->error, sizeof out->error, "destination not allowed"); return -1; }
+    if (!realpath(base, breal) || !fsops_allowed(breal)) { lerr_set(out->error, sizeof out->error, "backup.destNotAllowed", NULL); return -1; }
     if (!rel[0]) {
         /* everything: the snapshot's contents, inside base */
         DIR *d = opendir(src);
@@ -737,9 +738,9 @@ int bk_restore(const char *machine, const char *id, const char *rel, const char 
             char p[PATH_MAX];
             if (pathf(p, sizeof p, "%s/%s", cur, tok)) return -1;
             struct stat st;
-            if (lstat(p, &st) && mkdir(p, 0700)) { snprintf(out->error, sizeof out->error, "could not create %.200s", p); return -1; }
+            if (lstat(p, &st) && mkdir(p, 0700)) { lerr_set(out->error, sizeof out->error, "backup.createFailed", "path", p, "errno", lerr_errno(errno), NULL); return -1; }
             char pr[PATH_MAX];
-            if (!realpath(p, pr) || !fsops_allowed(pr) || fsops_protected(pr)) { snprintf(out->error, sizeof out->error, "destination not allowed"); return -1; }
+            if (!realpath(p, pr) || !fsops_allowed(pr) || fsops_protected(pr)) { lerr_set(out->error, sizeof out->error, "backup.destNotAllowed", NULL); return -1; }
             snprintf(cur, sizeof cur, "%s", pr);
             tok = next;
         }

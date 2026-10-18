@@ -81,7 +81,8 @@ function meta(lang) {
   return metas.get(lang) || {};
 }
 
-// Initial language: the one chosen in Settings, or the one from the user's region (LANG=pt_BR.UTF-8 → pt).
+// Initial language: the one chosen in Settings, or the one from the user's region (LANG=pt_BR.UTF-8 → pt),
+// or English (FALLBACK). A saved choice always wins.
 function initial() {
   const s = settings.get().language;
   if (s) return s;
@@ -90,7 +91,7 @@ function initial() {
     const lang = (l.user.LANG || l.system.LANG || '').split(/[_.@]/)[0];
     if (lang && lang !== 'C' && lord.locale.catalog(lang, 'shell')) return lang;
   } catch (e) { /* no region */ }
-  return 'es';
+  return FALLBACK;
 }
 
 export const locale = createStore({ lang: initial(), region: settings.get().region || '' });
@@ -148,8 +149,9 @@ export function tOptional(key, vars) {
   return v === undefined ? null : t(key, vars);
 }
 
-// Name of an app (manifest.json → apps.<id> in the catalog, if it exists).
-export const appName = (app) => (app ? (lookup(locale.get().lang, `apps.${app.id}`) ?? app.name) : '');
+// Name of an app: apps.<id> in the catalog (the user's language, then English), else manifest.json's
+// name (English).
+export const appName = (app) => (app ? (lookup(locale.get().lang, `apps.${app.id}`) ?? lookup(FALLBACK, `apps.${app.id}`) ?? app.name) : '');
 
 // ---- formats (date, time, numbers) ----
 

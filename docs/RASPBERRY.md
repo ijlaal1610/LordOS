@@ -231,7 +231,7 @@ The order of `card0` and `card1` depends on which driver loads first.
   2. the same card's render node;
   3. if the display card has none, the first render node there is (v3d).
 
-  The log says `gpu: composición por GPU (V3D 7.1…, render /dev/dri/renderD128, pantalla vc4)`.
+  The log says `gpu: GPU composition (V3D 7.1…, render /dev/dri/renderD128, display vc4)`.
 
 ### Modifiers
 
@@ -242,7 +242,7 @@ The order of `card0` and `card1` depends on which driver loads first.
   `DRM_CLIENT_CAP_UNIVERSAL_PLANES`) and records the 32-bit RGB format/modifier pairs. The log says:
 
   ```
-  kms: placa vc4, XRGB8888 en el plano primario con modificadores: 0x0 …
+  kms: card vc4, XRGB8888 on the primary plane with modifiers: 0x0 …
   ```
 - **Direct scanout** of a fullscreen app (`gpu_can_scanout`) now requires the plane to accept the
   buffer's modifier (`kms_scanout_ok`). A v3d UIF buffer isn't sent to the display (before, ADDFB2 was
@@ -259,9 +259,9 @@ The order of `card0` and `card1` depends on which driver loads first.
 1. `grep -E 'kms:|gpu:' ~/.cache/lordos/session.log` (or the session log). It has to show:
    - the chosen card, with the `vc4` driver;
    - the plane's modifiers (with `0x0`, linear, present);
-   - `composición por GPU (V3D 7.1…)`;
+   - `GPU composition (V3D 7.1…)`;
    - `render /dev/dri/renderD128`;
-   - `cursor por hardware`.
+   - `cursor by hardware (cursor plane)`.
 2. `journalctl -u lordos` shows `lord-sessiond: display: /dev/dri/card1` (or whichever).
 3. `LORD_GPU_DEBUG=1`:
    - the list of dmabuf formats EGL announces (it has to include UIF `0x0700000000000006` and

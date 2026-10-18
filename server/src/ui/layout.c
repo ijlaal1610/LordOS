@@ -6,11 +6,51 @@
  *
  * `direction: 'rtl'` (inherited, as in CSS) flips the main axis of rows and the
  * cross-axis start of columns; left/right, margins and paddings remain
- * physical (as in CSS), so absolute positions —windows, menus— don't change. */
+ * physical (as in CSS), so absolute positions —windows, menus— don't change. The logical ones
+ * (marginStart/End, paddingStart/End, start/end, borderStart/End…) are mapped to a physical side
+ * by the node's own direction (node_resolve_edges) and win over the physical one, as in React Native. */
 #include "ui.h"
 
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
+
+/* The node's effective direction (its own, or inherited) and, if it has per-side or logical edges,
+ * those edges for that direction. The parent is always prepared first (layout and measure go from
+ * the root down). */
+static inline void prepare(Node *n) {
+    n->rtl = n->s.dir == DIR_RTL ? 1 : n->s.dir == DIR_LTR ? 0 : n->parent ? n->parent->rtl : ui.rtl;
+    StyleExt *x = n->s.ext;
+    if (x && (!x->r.ok || x->r.rtl != n->rtl)) node_resolve_edges(n);
+}
+
+void node_resolve_edges(Node *n) {
+    const Style *s = &n->s;
+    StyleExt *x = s->ext;
+    if (!x) return;
+    uint32_t m = x->edge_set;
+    memcpy(x->r.mg, s->margin, sizeof x->r.mg);
+    memcpy(x->r.pd, s->padding, sizeof x->r.pd);
+    for (int i = 0; i < 4; i++) { x->r.bw[i] = s->border_width; x->r.bc[i] = s->border_color; x->r.rad[i] = s->radius; }
+    int st = n->rtl ? EDGE_R : EDGE_L, en = n->rtl ? EDGE_L : EDGE_R;
+    int side[6] = { EDGE_L, EDGE_T, EDGE_R, EDGE_B, st, en };
+    for (int i = 0; i < 6; i++) {
+        if (m & ES_BW(i)) x->r.bw[side[i]] = x->border_side[i];
+        if (m & ES_BC(i)) x->r.bc[side[i]] = x->border_side_color[i];
+    }
+    if (m & ES_MARGIN(0)) x->r.mg[st] = x->margin_inline[0];
+    if (m & ES_MARGIN(1)) x->r.mg[en] = x->margin_inline[1];
+    if (m & ES_PADDING(0)) x->r.pd[st] = x->padding_inline[0];
+    if (m & ES_PADDING(1)) x->r.pd[en] = x->padding_inline[1];
+    /* corners: 0 TL, 1 TR, 2 BR, 3 BL; logical TS, TE, BS, BE */
+    int corner[8] = { 0, 1, 2, 3, n->rtl ? 1 : 0, n->rtl ? 0 : 1, n->rtl ? 2 : 3, n->rtl ? 3 : 2 };
+    for (int i = 0; i < 8; i++) if (m & ES_RADIUS(i)) x->r.rad[corner[i]] = x->radius_corner[i];
+    x->r.plain = 1;
+    for (int i = 1; i < 4; i++)
+        if (x->r.bw[i] != x->r.bw[0] || x->r.bc[i] != x->r.bc[0] || x->r.rad[i] != x->r.rad[0]) x->r.plain = 0;
+    x->r.rtl = n->rtl;
+    x->r.ok = 1;
+}
 
 #define MAX_KIDS 1024
 
@@ -31,15 +71,15 @@ static int in_flow(const Node *c) {
     return c->type != NODE_RAW && !c->s.display_none && !c->s.absolute;
 }
 
-static float pad_h(const Style *s) { return s->padding[EDGE_L] + s->padding[EDGE_R] + 2 * s->border_width; }
-static float pad_v(const Style *s) { return s->padding[EDGE_T] + s->padding[EDGE_B] + 2 * s->border_width; }
+static float pad_h(const Node *n) { const float *p = node_padding(n); return p[EDGE_L] + p[EDGE_R] + node_border(n, EDGE_L) + node_border(n, EDGE_R); }
+static float pad_v(const Node *n) { const float *p = node_padding(n); return p[EDGE_T] + p[EDGE_B] + node_border(n, EDGE_T) + node_border(n, EDGE_B); }
 
 static char text_buf[8192];
 
 /* Intrinsic size (border-box) given the container's available space. */
 static void measure(Node *n, float aw, float ah, float *ow, float *oh) {
-    const Style *s = &n->s;
-    float ph = pad_h(s), pv = pad_v(s);
+    const Style *s = &n->s;           /* the caller ran prepare(n) */
+    float ph = pad_h(n), pv = pad_v(n);
     float w = res(s->width, aw), h = res(s->height, ah);
     if (isnan(w) || isnan(h)) {
         float cw = 0, ch = 0;
@@ -50,12 +90,14 @@ static void measure(Node *n, float aw, float ah, float *ow, float *oh) {
             if (maxw < 0) maxw = 0;
             if (!n->measure_valid || fabsf(n->measure_maxw - maxw) > 0.5f) {
                 node_gather_text(n, text_buf, sizeof text_buf);
-                text_measure(text_buf, TEXT_WEIGHT(s), s->font_size, s->line_height, maxw, s->nowrap,
-                             &n->measure_w, &n->measure_h);
+                text_measure_ex(text_buf, TEXT_WEIGHT(s), s->font_size, s->line_height, maxw, s->nowrap,
+                                s->line_clamp, &n->measure_w, &n->measure_h);
                 n->measure_maxw = maxw;
                 n->measure_valid = 1;
             }
             cw = n->measure_w; ch = n->measure_h;
+            /* truncated text never asks for more than the space it has (it ends in "…") */
+            if ((s->text_overflow || s->line_clamp) && maxw > 0 && cw > maxw) cw = maxw;
         } else if (n->type == NODE_IMAGE && n->img) {
             int iw, ih;
             image_size(n->img, &iw, &ih);
@@ -72,8 +114,9 @@ static void measure(Node *n, float aw, float ah, float *ow, float *oh) {
             int in_line = 0;
             for (Node *c = n->first; c; c = c->next) {
                 if (!in_flow(c)) continue;
-                const Style *cs = &c->s;
-                float mh = cs->margin[EDGE_L] + cs->margin[EDGE_R], mv = cs->margin[EDGE_T] + cs->margin[EDGE_B];
+                prepare(c);
+                const float *cm = node_margin(c);
+                float mh = cm[EDGE_L] + cm[EDGE_R], mv = cm[EDGE_T] + cm[EDGE_B];
                 float c_w, c_h;
                 measure(c, isnan(iaw) ? NAN : iaw - mh, isnan(iah) ? NAN : iah - mv, &c_w, &c_h);
                 c_w += mh; c_h += mv;
@@ -110,10 +153,18 @@ static void measure(Node *n, float aw, float ah, float *ow, float *oh) {
 static void layout_node(Node *n, float w, float h);
 
 static void layout_absolute(Node *n, Node *c, float w, float h) {
-    const Style *s = &n->s, *cs = &c->s;
-    float bw = s->border_width, cbw = w - 2 * bw, cbh = h - 2 * bw;
-    float l = res(cs->pos[EDGE_L], cbw), t = res(cs->pos[EDGE_T], cbh);
-    float r = res(cs->pos[EDGE_R], cbw), b = res(cs->pos[EDGE_B], cbh);
+    const Style *cs = &c->s;
+    prepare(c);
+    float bl = node_border(n, EDGE_L), bt = node_border(n, EDGE_T);
+    float cbw = w - bl - node_border(n, EDGE_R), cbh = h - bt - node_border(n, EDGE_B);
+    const float *pd = node_padding(n), *cm = node_margin(c);
+    /* insets straight from the style (grab.c moves a window through them without node_invalidate),
+     * with the logical ones on top */
+    Dim in[4] = { cs->pos[0], cs->pos[1], cs->pos[2], cs->pos[3] };
+    if (cs->ext && cs->ext->inset_inline[0].unit != UNIT_AUTO) in[c->rtl ? EDGE_R : EDGE_L] = cs->ext->inset_inline[0];
+    if (cs->ext && cs->ext->inset_inline[1].unit != UNIT_AUTO) in[c->rtl ? EDGE_L : EDGE_R] = cs->ext->inset_inline[1];
+    float l = res(in[EDGE_L], cbw), t = res(in[EDGE_T], cbh);
+    float r = res(in[EDGE_R], cbw), b = res(in[EDGE_B], cbh);
     float cw = res(cs->width, cbw), ch = res(cs->height, cbh);
     if (isnan(cw) && !isnan(l) && !isnan(r)) cw = cbw - l - r;
     if (isnan(ch) && !isnan(t) && !isnan(b)) ch = cbh - t - b;
@@ -125,9 +176,9 @@ static void layout_absolute(Node *n, Node *c, float w, float h) {
     }
     cw = clamp_dim(cw, cs->min_w, cs->max_w, cbw);
     ch = clamp_dim(ch, cs->min_h, cs->max_h, cbh);
-    float sx = n->rtl ? cbw - s->padding[EDGE_R] - cw - cs->margin[EDGE_R] - cs->margin[EDGE_L] : s->padding[EDGE_L];
-    c->x = bw + (!isnan(l) ? l : !isnan(r) ? cbw - r - cw : sx) + cs->margin[EDGE_L];
-    c->y = bw + (!isnan(t) ? t : !isnan(b) ? cbh - b - ch : s->padding[EDGE_T]) + cs->margin[EDGE_T];
+    float sx = n->rtl ? cbw - pd[EDGE_R] - cw - cm[EDGE_R] - cm[EDGE_L] : pd[EDGE_L];
+    c->x = bl + (!isnan(l) ? l : !isnan(r) ? cbw - r - cw : sx) + cm[EDGE_L];
+    c->y = bt + (!isnan(t) ? t : !isnan(b) ? cbh - b - ch : pd[EDGE_T]) + cm[EDGE_T];
     layout_node(c, cw, ch);
 }
 
@@ -141,7 +192,8 @@ static void layout_line(Node *n, Node **kids, float *size_main, const float *mea
     float used = k > 1 ? s->gap * (k - 1) : 0, grow = 0, shrink = 0;
     for (int i = 0; i < k; i++) {
         const Style *cs = &kids[i]->s;
-        used += size_main[i] + (row ? cs->margin[EDGE_L] + cs->margin[EDGE_R] : cs->margin[EDGE_T] + cs->margin[EDGE_B]);
+        const float *mg = node_margin(kids[i]);
+        used += size_main[i] + (row ? mg[EDGE_L] + mg[EDGE_R] : mg[EDGE_T] + mg[EDGE_B]);
         grow += cs->grow;
         shrink += cs->shrink * size_main[i];
     }
@@ -163,8 +215,9 @@ static void layout_line(Node *n, Node **kids, float *size_main, const float *mea
         float total = k > 1 ? s->gap * (k - 1) : 0;
         for (int i = 0; i < k; i++) {
             const Style *cs = &kids[i]->s;
+            const float *mg = node_margin(kids[i]);
             size_main[i] = clamp_dim(size_main[i], row ? cs->min_w : cs->min_h, row ? cs->max_w : cs->max_h, main);
-            total += size_main[i] + (row ? cs->margin[EDGE_L] + cs->margin[EDGE_R] : cs->margin[EDGE_T] + cs->margin[EDGE_B]);
+            total += size_main[i] + (row ? mg[EDGE_L] + mg[EDGE_R] : mg[EDGE_T] + mg[EDGE_B]);
         }
         free_space = main - total;
     }
@@ -172,7 +225,8 @@ static void layout_line(Node *n, Node **kids, float *size_main, const float *mea
     for (int i = 0; i < k; i++) {
         Node *c = kids[i];
         const Style *cs = &c->s;
-        float mc = row ? cs->margin[EDGE_T] + cs->margin[EDGE_B] : cs->margin[EDGE_L] + cs->margin[EDGE_R];
+        const float *cm = node_margin(c);
+        float mc = row ? cm[EDGE_T] + cm[EDGE_B] : cm[EDGE_L] + cm[EDGE_R];
         int align = cs->align_self != ALIGN_AUTO ? cs->align_self : s->align_items;
         float ec = res(row ? cs->height : cs->width, line_cross);
         float sz;
@@ -201,11 +255,12 @@ static void layout_line(Node *n, Node **kids, float *size_main, const float *mea
     for (int i = 0; i < k; i++) {
         Node *c = kids[i];
         const Style *cs = &c->s;
-        float ml = cs->margin[rtl ? EDGE_R : EDGE_L], mr = cs->margin[rtl ? EDGE_L : EDGE_R];
-        float m_start = row ? ml : cs->margin[EDGE_T];
-        float m_end   = row ? mr : cs->margin[EDGE_B];
-        float c_start = row ? cs->margin[EDGE_T] : ml;
-        float c_end   = row ? cs->margin[EDGE_B] : mr;
+        const float *cm = node_margin(c);
+        float ml = cm[rtl ? EDGE_R : EDGE_L], mr = cm[rtl ? EDGE_L : EDGE_R];
+        float m_start = row ? ml : cm[EDGE_T];
+        float m_end   = row ? mr : cm[EDGE_B];
+        float c_start = row ? cm[EDGE_T] : ml;
+        float c_end   = row ? cm[EDGE_B] : mr;
         int align = cs->align_self != ALIGN_AUTO ? cs->align_self : s->align_items;
         float cpos = c_start;
         if (align == ALIGN_CENTER) cpos = (line_cross - size_cross[i] - c_start - c_end) / 2 + c_start;
@@ -219,13 +274,18 @@ static void layout_line(Node *n, Node **kids, float *size_main, const float *mea
 }
 
 static void layout_node(Node *n, float w, float h) {
-    n->w = w; n->h = h;
-    n->rtl = n->s.dir == DIR_RTL ? 1 : n->s.dir == DIR_LTR ? 0 : n->parent ? n->parent->rtl : ui.rtl;
+    /* nothing changed inside since the last layout and it has the same box (a window being moved):
+     * its children keep their positions, only place() runs */
+    if (n->layout_ok && n->w == w && n->h == h && n->layout_rtl == n->rtl) return;
+    n->w = w; n->h = h;                 /* prepare(n) ran in the parent's loop (layout_root for the root) */
+    n->layout_ok = 1;
+    n->layout_rtl = n->rtl;
     if (n->type == NODE_RAW || n->type == NODE_TEXT) return;
     const Style *s = &n->s;
     int row = s->row;
-    float ix = s->padding[EDGE_L] + s->border_width, iy = s->padding[EDGE_T] + s->border_width;
-    float iw = w - pad_h(s), ih = h - pad_v(s);
+    const float *pd = node_padding(n);
+    float ix = pd[EDGE_L] + node_border(n, EDGE_L), iy = pd[EDGE_T] + node_border(n, EDGE_T);
+    float iw = w - pad_h(n), ih = h - pad_v(n);
     if (iw < 0) iw = 0;
     if (ih < 0) ih = 0;
     float main = row ? iw : ih, cross = row ? ih : iw;
@@ -236,7 +296,9 @@ static void layout_node(Node *n, float w, float h) {
     for (Node *c = n->first; c && k < MAX_KIDS; c = c->next) {
         if (!in_flow(c)) continue;
         const Style *cs = &c->s;
-        float mc = row ? cs->margin[EDGE_T] + cs->margin[EDGE_B] : cs->margin[EDGE_L] + cs->margin[EDGE_R];
+        prepare(c);
+        const float *cm = node_margin(c);
+        float mc = row ? cm[EDGE_T] + cm[EDGE_B] : cm[EDGE_L] + cm[EDGE_R];
         float basis = res(cs->basis, main);
         float em = res(row ? cs->width : cs->height, main);
         float mw = 0, mh = 0;
@@ -260,8 +322,8 @@ static void layout_node(Node *n, float w, float h) {
             int end = start;
             float len = 0, lc = 0;
             while (end < k) {
-                const Style *cs = &kids[end]->s;
-                float mm = row ? cs->margin[EDGE_L] + cs->margin[EDGE_R] : cs->margin[EDGE_T] + cs->margin[EDGE_B];
+                const float *mg = node_margin(kids[end]);
+                float mm = row ? mg[EDGE_L] + mg[EDGE_R] : mg[EDGE_T] + mg[EDGE_B];
                 float add = (end > start ? s->gap : 0) + size_main[end] + mm;
                 if (end > start && len + add > main + 0.5f) break;
                 len += add;
@@ -278,15 +340,41 @@ static void layout_node(Node *n, float w, float h) {
         if (c->type != NODE_RAW && !c->s.display_none && c->s.absolute) layout_absolute(n, c, w, h);
 }
 
-static void place(Node *n, float px, float py) {
+/* Absolute positions and transforms: world = parent's world · own (scale/rotate around the
+ * origin). Without transforms (almost always) only the flags are cleared. */
+static void place(Node *n, float px, float py, const Affine *world) {
     n->ax = px + n->x + n->s.translate_x;
     n->ay = py + n->y + n->s.translate_y;
-    for (Node *c = n->first; c; c = c->next) place(c, n->ax, n->ay);
+    n->own_tf = n->type != NODE_RAW && style_has_transform(&n->s);
+    const Affine *cw = world;
+    if (n->own_tf || world) {
+        if (!n->tf && !(n->tf = calloc(1, sizeof *n->tf))) { n->own_tf = n->has_tf = 0; cw = NULL; goto kids; }
+        NodeTf *t = n->tf;
+        if (n->own_tf) {
+            t->own = style_transform(&n->s, n->ax, n->ay, n->w, n->h);
+            t->world = world ? affine_mul(*world, t->own) : t->own;
+        } else t->world = *world;
+        if (!affine_invert(t->world, &t->inv)) t->inv = (Affine){ 0, 0, 0, 0, -1e9f, -1e9f };   /* scale 0: never hit */
+        cw = &t->world;
+    }
+    n->has_tf = cw != NULL;
+kids:
+    for (Node *c = n->first; c; c = c->next) place(c, n->ax, n->ay, cw);
+}
+
+static void layout_forget(Node *n) {
+    n->layout_ok = 0;
+    for (Node *c = n->first; c; c = c->next) layout_forget(c);
 }
 
 void layout_root(Node *root, float w, float h) {
     if (!root) return;
+    /* the language changed (fonts, direction): every text may measure differently */
+    static unsigned gen;
+    static int rtl = -1;
+    if (gen != text_generation() || rtl != ui.rtl) { layout_forget(root); gen = text_generation(); rtl = ui.rtl; }
     root->x = root->y = 0;
+    prepare(root);
     layout_node(root, w, h);
-    place(root, 0, 0);
+    place(root, 0, 0, NULL);
 }

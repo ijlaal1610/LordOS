@@ -86,7 +86,7 @@ int lpk_open(const char *path, Lpk *out, char *err, size_t errlen) {
     struct stat st;
     if (fd < 0 || fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_size <= 0 || (unsigned long long)st.st_size > LPK_MAX_ARCHIVE) {
         if (fd >= 0) close(fd);
-        seterr(err, errlen, "cannot read the file");
+        seterr(err, errlen, "lpk.readFailed");
         return -1;
     }
     size_t len = (size_t)st.st_size;
@@ -99,18 +99,18 @@ int lpk_open(const char *path, Lpk *out, char *err, size_t errlen) {
         got += (size_t)r;
     }
     close(fd);
-    if (!buf || got != len) { free(buf); seterr(err, errlen, "cannot read the file"); return -1; }
+    if (!buf || got != len) { free(buf); seterr(err, errlen, "lpk.readFailed"); return -1; }
     if (buf[0] == 0x1f && buf[1] == 0x8b) {
         size_t n = 0;
         unsigned char *raw = gunzip(buf, len, &n);
         free(buf);
-        if (!raw) { seterr(err, errlen, "the package is corrupt (gzip)"); return -1; }
+        if (!raw) { seterr(err, errlen, "lpk.corruptGzip"); return -1; }
         buf = raw;
         len = n;
     }
     out->raw = buf;
     out->files = calloc(LPK_MAX_FILES, sizeof *out->files);
-    if (!out->files) { lpk_free(out); seterr(err, errlen, "out of memory"); return -1; }
+    if (!out->files) { lpk_free(out); seterr(err, errlen, "sys.outOfMemory"); return -1; }
     size_t total = 0;
     for (size_t off = 0; off + 512 <= len;) {
         const char *h = (const char *)buf + off;
@@ -119,7 +119,7 @@ int lpk_open(const char *path, Lpk *out, char *err, size_t errlen) {
         if (empty) break;                                       /* end of the tar */
         unsigned long sum = octal(h + 148, 8), calc = 0;
         for (int i = 0; i < 512; i++) calc += (i >= 148 && i < 156) ? ' ' : (unsigned char)h[i];
-        if (sum != calc) { lpk_free(out); seterr(err, errlen, "the package is corrupt (tar)"); return -1; }
+        if (sum != calc) { lpk_free(out); seterr(err, errlen, "lpk.corruptTar"); return -1; }
         unsigned long size = octal(h + 124, 12);
         char type = h[156];
         char name[260];
@@ -128,23 +128,23 @@ int lpk_open(const char *path, Lpk *out, char *err, size_t errlen) {
         else snprintf(name, sizeof name, "%.100s", h);
         size_t data = off + 512;
         size_t next = data + ((size + 511) & ~511ul);
-        if (next > len || size > LPK_MAX_TOTAL) { lpk_free(out); seterr(err, errlen, "the package is corrupt (size)"); return -1; }
+        if (next > len || size > LPK_MAX_TOTAL) { lpk_free(out); seterr(err, errlen, "lpk.corruptSize"); return -1; }
         size_t nl = strlen(name);
         while (nl && name[nl - 1] == '/') name[--nl] = 0;
         if (nl > 2 && name[0] == '.' && name[1] == '/') memmove(name, name + 2, (nl -= 2) + 1);
         if (type == '5' || (type == 0 && nl == 0)) { off = next; continue; }    /* folders: created on their own */
         if (type == 'x' || type == 'g') { off = next; continue; }               /* pax headers: ignored */
-        if (type != '0' && type != 0) { lpk_free(out); seterr(err, errlen, "the package has links or special files"); return -1; }
-        if (!lpk_valid_path(name)) { lpk_free(out); seterr(err, errlen, "the package has an invalid path"); return -1; }
-        if (out->nfiles >= LPK_MAX_FILES || (total += size) > LPK_MAX_TOTAL) { lpk_free(out); seterr(err, errlen, "the package is too large"); return -1; }
-        if (lpk_find(out, name)) { lpk_free(out); seterr(err, errlen, "the package has duplicate files"); return -1; }
+        if (type != '0' && type != 0) { lpk_free(out); seterr(err, errlen, "lpk.specialFiles"); return -1; }
+        if (!lpk_valid_path(name)) { lpk_free(out); seterr(err, errlen, "lpk.badPath"); return -1; }
+        if (out->nfiles >= LPK_MAX_FILES || (total += size) > LPK_MAX_TOTAL) { lpk_free(out); seterr(err, errlen, "lpk.tooLarge"); return -1; }
+        if (lpk_find(out, name)) { lpk_free(out); seterr(err, errlen, "lpk.duplicateFiles"); return -1; }
         LpkFile *f = &out->files[out->nfiles++];
         snprintf(f->path, sizeof f->path, "%s", name);
         f->data = buf + data;
         f->size = size;
         off = next;
     }
-    if (!out->nfiles) { lpk_free(out); seterr(err, errlen, "the package is empty"); return -1; }
+    if (!out->nfiles) { lpk_free(out); seterr(err, errlen, "lpk.empty"); return -1; }
     return 0;
 }
 
@@ -203,14 +203,14 @@ static int make_parents(const char *base, const char *rel) {
 
 int lpk_install(const Lpk *p, const char *id, char *err, size_t errlen) {
     const char *root = lpk_root();
-    if (!root || !lpk_valid_id(id)) { seterr(err, errlen, "cannot install in the home folder"); return -1; }
+    if (!root || !lpk_valid_id(id)) { seterr(err, errlen, "lpk.installHome"); return -1; }
     char dst[PATH_MAX], tmp[PATH_MAX], old[PATH_MAX];
     snprintf(dst, sizeof dst, "%s/%s", root, id);
     snprintf(tmp, sizeof tmp, "%s/.%s.new", root, id);
     snprintf(old, sizeof old, "%s/.%s.old", root, id);
     rm_tree(tmp);
     rm_tree(old);
-    if (mkdir(tmp, 0755)) { seterr(err, errlen, "cannot create the app folder"); return -1; }
+    if (mkdir(tmp, 0755)) { seterr(err, errlen, "lpk.mkdirFailed"); return -1; }
     for (int i = 0; i < p->nfiles; i++) {
         const LpkFile *f = &p->files[i];
         char path[PATH_MAX];
@@ -224,15 +224,15 @@ int lpk_install(const Lpk *p, const char *id, char *err, size_t errlen) {
             if (r <= 0) break;
             w += (size_t)r;
         }
-        if (fd < 0 || close(fd) || w != f->size) { rm_tree(tmp); seterr(err, errlen, "could not write the app (disk full?)"); return -1; }
+        if (fd < 0 || close(fd) || w != f->size) { rm_tree(tmp); seterr(err, errlen, "lpk.writeFailed"); return -1; }
     }
     struct stat st;
     int had = !lstat(dst, &st);
-    if (had && rename(dst, old)) { rm_tree(tmp); seterr(err, errlen, "could not replace the installed version"); return -1; }
+    if (had && rename(dst, old)) { rm_tree(tmp); seterr(err, errlen, "lpk.replaceFailed"); return -1; }
     if (rename(tmp, dst)) {
         if (had) rename(old, dst);
         rm_tree(tmp);
-        seterr(err, errlen, "could not install the app");
+        seterr(err, errlen, "lpk.installFailed");
         return -1;
     }
     if (had) rm_tree(old);

@@ -7,7 +7,7 @@ import {
   DesktopWidgets, registerGestureActions, screenDisplays, mainDisplay, settings,
 } from '@lordos/sdk';
 import { apps } from '@lordos/apps';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { makeTheme } from './tokens.js';
 import { MenuBar } from './components/MenuBar.jsx';
 import { Dock, LaunchpadIcon, dockThickness } from './components/Dock.jsx';
@@ -43,10 +43,40 @@ wm.open('about');
 // Pinned by default (the user changes the Dock with «Keep in Dock»: settings.dockPinned).
 const DOCK_DEFAULT = [...DOCK_ORDER, ...apps.filter((a) => a.dock && !DOCK_ORDER.includes(a.id)).map((a) => a.id)];
 
+// Minimize effect: a window that was just minimized stays drawn for MIN_MS, shrinking towards the
+// Dock (transform: scale, painted from a cached raster by lord-server; layout doesn't change).
+const MIN_MS = 260;
+function useMinimizing(windows) {
+  const prev = useRef(new Map());
+  const [anim, setAnim] = useState([]);                 // [{ id, t0 }]
+  useEffect(() => {
+    const started = [];
+    for (const w of windows) {
+      if (w.minimized && prev.current.get(w.id) === false && !w.fullscreen && !w.pip) started.push({ id: w.id, t0: Date.now() });
+      prev.current.set(w.id, !!w.minimized);
+    }
+    if (started.length) setAnim((a) => [...a.filter((x) => !started.some((y) => y.id === x.id)), ...started]);
+  }, [windows]);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!anim.length) return undefined;
+    let raf = requestAnimationFrame(function step() {
+      const now = Date.now();
+      if (anim.some((x) => now - x.t0 >= MIN_MS)) setAnim((a) => a.filter((x) => now - x.t0 < MIN_MS));
+      else { tick((n) => n + 1); raf = requestAnimationFrame(step); }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [anim]);
+  const now = Date.now();
+  return anim.map((x) => ({ win: windows.find((w) => w.id === x.id), p: Math.min(1, (now - x.t0) / MIN_MS) }))
+    .filter((x) => x.win && x.win.minimized);
+}
+
 function App() {
   const [s] = useSettings();
   const t = makeTheme(s);
   const { windows, visible, focused } = useWindows();
+  const minimizing = useMinimizing(windows);
   const [launchpad, setLaunchpad] = useState(false);
   const [control, setControl] = useState(null);         // the display whose menu bar opened it
   const [context, setContext] = useState(null);
@@ -95,6 +125,8 @@ function App() {
         ))}
         <DesktopWidgets layer="below" />
         {visible.map((w) => <Window key={w.id} win={w} app={getApp(w.id)} t={t} focused={w.id === focused} />)}
+        {minimizing.map(({ win, p }) => <Window key={win.id} win={win} app={getApp(win.id)} t={t} focused={false}
+          fx={{ p, x: main.x + main.w / 2, y: main.y + main.h - 36 }} />)}
         <DesktopWidgets layer="above" />
         {bars.map((d) => (
           <MenuBar key={d.id + ':' + d.x} t={t} height={MENU_H} focused={focused} controlCenter={!!control} area={d}

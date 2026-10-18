@@ -6,6 +6,7 @@
 #include "sec/json.h"
 #include "sec/sign.h"
 #include "pkg/crypto.h"
+#include "errcode.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -152,7 +153,7 @@ static void test_packages(void) {
     static const char evil[] = "var __lordosApp={x:1};";
     files[1].data = (const uint8_t *)evil;
     files[1].size = sizeof evil - 1;
-    CHECK(sig_verify_package(&pk, "hola", "1.0.0", &si, err, sizeof err) && strstr(err, "app.js"), "altered file: %s", err);
+    CHECK(sig_verify_package(&pk, "hola", "1.0.0", &si, err, sizeof err) && lerr_has(err, "sig.fileModified") && strstr(err, "path=app.js"), "altered file: %s", err);
     files[1] = (LpkFile){ "app.js", (const uint8_t *)appjs, sizeof appjs - 1 };
 
     /* an extra file */

@@ -12,10 +12,19 @@ const LIGHTS = [
   { key: 'max', color: '#28c840', glyph: '+', act: (id) => wm.toggleMaximize(id) },
 ];
 
-export function Window({ win, app, t, focused }) {
+// fx: the minimize effect ({ p: 0..1, x, y: where the Dock is}): the frame shrinks towards it.
+function fxStyle(fx, geo) {
+  if (!fx) return null;
+  const e = fx.p * fx.p;                                // ease-in
+  const dx = (fx.x - (geo.x + geo.w / 2)) * e, dy = (fx.y - (geo.y + geo.h / 2)) * e;
+  return { transform: `translate(${dx}px, ${dy}px) scale(${1 - 0.9 * e})`, opacity: 1 - 0.7 * e, pointerEvents: 'none' };
+}
+
+export function Window({ win, app, t, focused, fx }) {
   const drag = useRef(null);
   const [hover, setHover] = useState(false);
   const geo = wm.frame(win);
+  const fxs = fxStyle(fx, geo);
 
   useEffect(() => {
     const offMove = addListener('pointermove', (e) => {
@@ -29,7 +38,7 @@ export function Window({ win, app, t, focused }) {
   if (win.args?.csd) {
     return (
       <WindowShell win={win} onMouseDown={() => wm.focus(win.id)}
-        style={{ boxShadow: focused ? '0 24px 56px rgba(0,0,0,0.5)' : '0 10px 28px rgba(0,0,0,0.3)' }}>
+        style={{ boxShadow: focused ? '0 24px 56px rgba(0,0,0,0.5)' : '0 10px 28px rgba(0,0,0,0.3)', ...fxs }}>
         <AppHost id={win.id} focused={focused} />
       </WindowShell>
     );
@@ -40,6 +49,7 @@ export function Window({ win, app, t, focused }) {
       borderRadius: win.maximized ? 0 : 12, backgroundColor: app.transparent ? 'transparent' : t.windowBg, overflow: 'hidden',
       border: `1px solid ${t.windowBorder}`,
       boxShadow: focused ? '0 24px 56px rgba(0,0,0,0.55)' : '0 10px 28px rgba(0,0,0,0.32)',
+      ...fxs,
     }}>
       <View onMouseDown={(e) => { if (!wm.beginMove(win.id)) drag.current = { dx: e.x - geo.x, dy: e.y - geo.y }; }}
         onDoubleClick={() => wm.toggleMaximize(win.id)}

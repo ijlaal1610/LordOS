@@ -1,7 +1,7 @@
 {
   "id": "about",
-  "name": "Acerca de LordOS",
-  "description": "Información del sistema y del servidor gráfico",
+  "name": "About LordOS",
+  "description": "System and graphics server information",
   "size": [
     440,
     530

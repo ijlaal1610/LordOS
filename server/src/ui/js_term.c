@@ -7,6 +7,7 @@
 #include "ui.h"
 #include "../term/term.h"
 #include "js_sys.h"
+#include "js_err.h"
 
 #include <fcntl.h>
 #include <limits.h>
@@ -62,7 +63,7 @@ static JSValue f_create(JSContext *c, JSValueConst this_val, int argc, JSValueCo
         scrollback = (int)num(c, argv[0], "scrollback", 0);
     }
     Session *s = term_create(cwd[0] ? cwd : NULL, scrollback);
-    if (!s) return JS_ThrowInternalError(c, "could not create the terminal");
+    if (!s) return js_throw_code(c, "term.createFailed", NULL);
     return JS_NewInt32(c, s->id);
 }
 
@@ -710,7 +711,7 @@ static JSValue f_clip_save_image(JSContext *c, JSValueConst this_val, int argc, 
     char dst[PATH_MAX + 300];
     int r = js_sys_resolve_target(p, dst, sizeof dst);
     JS_FreeCString(c, p);
-    if (r) return JS_ThrowRangeError(c, "path outside the home folder or protected");
+    if (r) return js_throw_code(c, "fs.outsideHome", NULL);
     size_t n = 0;
     FILE *in = fopen(src, "rb");
     if (!in) return JS_FALSE;

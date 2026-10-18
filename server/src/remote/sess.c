@@ -301,7 +301,7 @@ int sd_session_get(const struct passwd *pw, int w, int h) {
         }
         if (stat(rt, &st) || st.st_uid != pw->pw_uid) sd_log("no %s", rt);
         else {
-            char lang[64] = "LANG=es_ES.UTF-8", p[600];
+            char lang[64] = "LANG=en_US.UTF-8", p[600];
             read_lang("/etc/default/locale", lang, sizeof lang);
             snprintf(p, sizeof p, "%s/.config/locale.conf", pw->pw_dir);
             read_lang(p, lang, sizeof lang);
@@ -330,7 +330,7 @@ int sd_greeter_get(int w, int h) {
         sd_log("could not prepare %s", SD_GREETER_RUN);
         return -1;
     }
-    char lang[64] = "LANG=es_ES.UTF-8";
+    char lang[64] = "LANG=en_US.UTF-8";
     read_lang("/etc/default/locale", lang, sizeof lang);
     spawn(pw, SD_GREETER_RUN, lang, w, h, 1);
     fd = wait_socket(sock, 0, 1);

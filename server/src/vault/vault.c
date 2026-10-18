@@ -1,15 +1,16 @@
-/* vault.c — lord-vault: el ayudante de las contraseñas y el llavero (ver docs/CONTRASENAS.md).
+/* vault.c — lord-vault: the passwords and keyring helper (see docs/PASSWORDS.md).
  *
- * Lo lanza lord-server (vclient.c) con ruta fija (al lado de su binario), sin argumentos, con el
- * canal de control en el fd 3. Antes de leer una sola bóveda:
- *   - sin core dumps ni ptrace (PR_SET_DUMPABLE 0, RLIMIT_CORE 0), muere con lord-server;
- *   - recibe por el canal de control la carpeta de las bóvedas (un fd) y, si hay, el socket ya
- *     conectado al bus de D-Bus de la sesión; y se encierra con sandbox_apply_helper: sin red, sin
- *     sockets nuevos, sin exec, sin archivos salvo esa carpeta (y los fds que le pasen después).
- * Lo descifrado vive solo en la arena de secretos (smem.h: mlock, MADV_DONTDUMP, se borra al
- * bloquear). Atiende varios canales: el de control (lord-server) y los de la app Contraseñas.
- * Lo lento que espera a una persona (tocar la llave FIDO2) va en un hilo aparte; Argon2id (≈0,5–1 s)
- * corre en el bucle. */
+ * lord-server (vclient.c) launches it from a fixed path (next to its own binary), without
+ * arguments, with the control channel on fd 3. Before reading a single vault:
+ *   - no core dumps or ptrace (PR_SET_DUMPABLE 0, RLIMIT_CORE 0), it dies with lord-server;
+ *   - it receives the vaults folder (an fd) over the control channel and, if there is one, the
+ *     socket already connected to the session's D-Bus bus; and confines itself with
+ *     sandbox_apply_helper: no network, no new sockets, no exec, no files except that folder
+ *     (and the fds passed to it later).
+ * Decrypted data lives only in the secrets arena (smem.h: mlock, MADV_DONTDUMP, wiped on
+ * lock). It serves several channels: the control one (lord-server) and those of the Passwords app.
+ * Slow work that waits for a person (touching the FIDO2 key) runs in a separate thread; Argon2id
+ * (≈0.5–1 s) runs in the loop. */
 #include "vault_int.h"
 #include "smem.h"
 #include "vcrypto.h"
@@ -56,7 +57,7 @@ static int debug;
 static double now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
 static int64_t now_s(void) { return (int64_t)time(NULL); }
 
-/* ================= respuestas ================= */
+/* ================= replies ================= */
 
 static const VwAlloc smalloc = { sm_alloc, sm_realloc, sm_free };
 
@@ -84,7 +85,7 @@ static void event_v(const char *ev, int v) {
     broadcast_event(b);
 }
 
-/* ================= bóvedas ================= */
+/* ================= vaults ================= */
 
 static uint8_t *read_fd_all(int fd, size_t max, size_t *len, int secure) {
     struct stat st;
@@ -106,7 +107,7 @@ static uint8_t *read_fd_all(int fd, size_t max, size_t *len, int secure) {
 }
 
 static uint8_t *read_stream(int fd, size_t max, size_t *len) {
-    /* un fd que puede no ser un archivo regular (un pipe del powerbox): leer hasta el final */
+    /* an fd that may not be a regular file (a powerbox pipe): read up to the end */
     size_t cap = 65536, n = 0;
     uint8_t *b = sm_alloc(cap);
     if (!b) return NULL;
@@ -128,7 +129,7 @@ static uint8_t *read_stream(int fd, size_t max, size_t *len) {
     return b;
 }
 
-/* lee la cabecera del archivo (sin abrir): exists, ranuras */
+/* reads the file header (without unlocking): exists, slots */
 static void vault_probe(Vault *v) {
     vf_header_free(&v->h);
     memset(&v->h, 0, sizeof v->h);
@@ -140,7 +141,7 @@ static void vault_probe(Vault *v) {
     close(fd);
     if (!d) return;
     if (vf_parse(d, len, &v->h) == VF_OK) v->exists = 1;
-    else v->exists = -1;                          /* existe pero no se puede leer */
+    else v->exists = -1;                          /* exists but cannot be read */
     free(d);
 }
 
@@ -183,7 +184,7 @@ static int slot_type_of(const char *s) {
     return 0;
 }
 
-/* abre con los factores; err recibe el código para la interfaz */
+/* unlocks with the factors; err receives the code for the interface */
 int vault_unlock_with(Vault *v, int type, const VFactors *f, char *err, size_t errn) {
     if (v->unlocked) return 0;
     int fd = openat(vault_dirfd, v->file, O_RDONLY | O_CLOEXEC);
@@ -221,7 +222,7 @@ int vault_unlock_with(Vault *v, int type, const VFactors *f, char *err, size_t e
     v->exists = 1;
     v->last_use = now_ms();
     if (v == &vaults[V_MAIN]) {
-        /* el bloqueo automático sale de los ajustes de la bóveda */
+        /* the auto-lock comes from the vault's settings */
         Vj j;
         if (m.meta && !vj_parse(&j, m.meta, strlen(m.meta))) {
             v->autolock_s = (int)vj_getn(&j, 0, "autolock", 300);
@@ -240,7 +241,7 @@ int vault_save(Vault *v) {
     size_t plen;
     char *plain = vm_dump(&v->m, &plen);
     if (!plain) return VF_ENOMEM;
-    /* adjuntos: los de las entradas; nuevos (en memoria) o del archivo actual */
+    /* attachments: those of the entries; new (in memory) or from the current file */
     int total = 0;
     for (int i = 0; i < v->m.n; i++) total += v->m.e[i]->natt;
     VAttOut *outs = calloc((size_t)(total ? total : 1), sizeof *outs);
@@ -265,7 +266,7 @@ int vault_save(Vault *v) {
     free(outs);
     sm_free(plain);
     if (r != VF_OK) return r;
-    /* volver a abrir el archivo nuevo (los adjuntos ahora salen de ahí) */
+    /* reopen the new file (attachments now come from there) */
     int fd = openat(vault_dirfd, v->file, O_RDONLY | O_CLOEXEC);
     if (fd >= 0) {
         size_t len;
@@ -299,7 +300,7 @@ int vault_create(Vault *v, int type, const VFactors *f, const VKdf *kdf, const c
     vc_random(vk, 32);
     VSlot s;
     memset(&s, 0, sizeof s);
-    if (type == VS_FIDO2) s = h.slots[0];        /* el llamador dejó cred/salt en h.slots[0] */
+    if (type == VS_FIDO2) s = h.slots[0];        /* the caller left cred/salt in h.slots[0] */
     int r = vf_make_slot(&h, &s, type, f, vk, kdf, label);
     if (r != VF_OK) { sm_free(vk); return r; }
     h.slots[h.nslots++] = s;
@@ -326,7 +327,7 @@ int vault_create(Vault *v, int type, const VFactors *f, const VKdf *kdf, const c
     return VF_OK;
 }
 
-/* ================= FIDO2 en un hilo ================= */
+/* ================= FIDO2 in a thread ================= */
 
 enum { FJ_UNLOCK = 1, FJ_CREATE, FJ_ADD };
 typedef struct {
@@ -336,7 +337,7 @@ typedef struct {
     int fd;
     VKdf kdf;
     char label[64];
-    /* resultado */
+    /* result */
     int err;
     uint8_t secret[32];
     uint8_t cred[FIDO_CRED_MAX]; size_t cred_len;
@@ -385,7 +386,7 @@ static const char *fido_code(int e) {
     return s ? s : "fido";
 }
 
-/* el hilo terminó: completar el pedido en el bucle */
+/* the thread finished: complete the request in the loop */
 static void fido_done(void) {
     fj.busy = 0;
     Vault *v = &vaults[fj.v];
@@ -445,7 +446,7 @@ static int fido_start(Chan *c, uint32_t id, int kind, int vi, const Vj *j, int o
     return 0;
 }
 
-/* ================= pedidos ================= */
+/* ================= requests ================= */
 
 static int vault_of(const Vj *j) {
     int k = vj_get(j, 0, "v");
@@ -496,7 +497,7 @@ static void status_json(VjB *b) {
     vb_close(b, '}');
 }
 
-/* factores de un pedido: password, recovery y el archivo llave (fd) */
+/* factors of a request: password, recovery and the key file (fd) */
 typedef struct { char *password, *recovery; uint8_t kf[32]; int has_kf; } Factors;
 
 static int get_factors(const Vj *j, const VMsg *m, int kf_index, Factors *F) {
@@ -507,7 +508,7 @@ static int get_factors(const Vj *j, const VMsg *m, int kf_index, Factors *F) {
         size_t len;
         uint8_t *d = read_stream(m->fds[kf_index], 16u << 20, &len);
         if (!d) return -1;
-        if (len < 32) { sm_free(d); return -2; }               /* muy corto para ser una llave */
+        if (len < 32) { sm_free(d); return -2; }               /* too short to be a key */
         vf_keyfile_hash(d, len, F->kf);
         sm_free(d);
         F->has_kf = 1;
@@ -545,7 +546,7 @@ static void op_create(Chan *c, uint32_t id, const Vj *j, const VMsg *m) {
     if (!type || type == VS_RECOVERY || type == VS_SESSION) { reply_err(c, id, "bad-method"); return; }
     if (type == VS_FIDO2) { fido_start(c, id, FJ_CREATE, vi, j, 0); return; }
     Factors F;
-    /* archivo llave: "newkey" → se genera y se escribe en fds[0]; si no, se lee de fds[0] */
+    /* key file: "newkey" → generated and written to fds[0]; otherwise read from fds[0] */
     int newkey = vj_getb(j, 0, "newkey", 0);
     uint8_t key[64];
     if ((type == VS_KEYFILE || type == VS_PASSKEY) && newkey) {
@@ -684,7 +685,7 @@ static void op_report(Chan *c, uint32_t id, Vault *v, const VMsg *m) {
         vb_close(&b, '}');
     }
     vb_close(&b, ']');
-    /* repetidas: agrupadas por el hash de la contraseña */
+    /* reused: grouped by the password's hash */
     vb_key(&b, "reused");
     vb_open(&b, '[');
     char *seen = calloc((size_t)(v->m.n ? v->m.n : 1), 1);
@@ -704,7 +705,7 @@ static void op_report(Chan *c, uint32_t id, Vault *v, const VMsg *m) {
     }
     free(seen);
     vb_close(&b, ']');
-    /* viejas: más días que su recordatorio (o un año sin recordatorio) */
+    /* old: more days than their reminder (or a year without a reminder) */
     vb_key(&b, "old");
     vb_open(&b, '[');
     for (int i = 0; i < v->m.n; i++) {
@@ -791,7 +792,7 @@ static void op_totp(Chan *c, uint32_t id, Vault *v, const Vj *j) {
     reply(c, id, &b);
 }
 
-/* QR: de un texto dado o del Wi-Fi de una entrada; responde las filas como hex */
+/* QR: from a given text or an entry's Wi-Fi; replies with the rows as hex */
 static void wifi_escape(VjB *b, const char *s) {
     for (; s && *s; s++) {
         if (strchr("\\;,:\"", *s)) vb_raw(b, "\\");
@@ -926,7 +927,7 @@ static void op_strength(Chan *c, uint32_t id, const Vj *j) {
     reply(c, id, &b);
 }
 
-/* ---- adjuntos ---- */
+/* ---- attachments ---- */
 
 static int hexbytes(const char *s, uint8_t *out, size_t n) {
     if (!s || strlen(s) != n * 2) return -1;
@@ -941,7 +942,7 @@ static int att_find(VEntry *e, const char *hid) {
     return -1;
 }
 
-/* descifra un adjunto → smem */
+/* decrypts an attachment → smem */
 static uint8_t *att_plain(Vault *v, const VAtt *a, size_t *len) {
     const uint8_t *cipher = NULL;
     uint8_t *tmp = NULL;
@@ -989,7 +990,7 @@ static int att_add_bytes(Vault *v, VEntry *e, const char *name, const char *mime
     memcpy(p->nonce, a->nonce, 24);
     memcpy(p->mac, a->mac, 16);
     v->npend++;
-    a->name = sm_strdup(name && name[0] ? name : "archivo");
+    a->name = sm_strdup(name && name[0] ? name : "file");
     a->mime = sm_strdup(mime && mime[0] ? mime : "application/octet-stream");
     a->size = len;
     e->natt++;
@@ -1037,14 +1038,14 @@ static void op_att(Chan *c, uint32_t id, Vault *v, const char *op, const Vj *j, 
         reply(c, id, &b);
         return;
     }
-    if (!strcmp(op, "att-text")) {           /* texto (licencias, claves): hasta 256 KB */
+    if (!strcmp(op, "att-text")) {           /* text (licenses, keys): up to 256 KB */
         if (len > 262144) { sm_free(pt); reply_err(c, id, "too-big"); return; }
         VjB b; vb_init(&b); vb_open(&b, '{'); vb_kb(&b, "ok", 1); vb_key(&b, "text"); vb_strn(&b, (const char *)pt, len); vb_close(&b, '}');
         sm_free(pt);
         reply(c, id, &b);
         return;
     }
-    /* att-preview: imagen achicada a max px, RGBA en base64 */
+    /* att-preview: image shrunk to max px, RGBA in base64 */
     int w, h;
     uint32_t *px = vstb_decode_argb(pt, len, &w, &h);
     sm_free(pt);
@@ -1060,7 +1061,7 @@ static void op_att(Chan *c, uint32_t id, Vault *v, const char *op, const Vj *j, 
     uint8_t *rgba = sm_alloc((size_t)ow * oh * 4);
     for (int y = 0; rgba && y < oh; y++)
         for (int x = 0; x < ow; x++) {
-            /* promedio de la caja de origen */
+            /* average of the source box */
             int x0 = (int)(x / sc), x1 = (int)((x + 1) / sc), y0 = (int)(y / sc), y1 = (int)((y + 1) / sc);
             if (x1 <= x0) x1 = x0 + 1;
             if (y1 <= y0) y1 = y0 + 1;
@@ -1084,7 +1085,7 @@ static void op_att(Chan *c, uint32_t id, Vault *v, const char *op, const Vj *j, 
     reply(c, id, &b);
 }
 
-/* ---- importar/exportar ---- */
+/* ---- import/export ---- */
 
 static const char *kind_cat(const ImpEntry *ie) {
     const char *k = ie->kind ? ie->kind : "";
@@ -1097,13 +1098,13 @@ static const char *kind_cat(const ImpEntry *ie) {
     return "general";
 }
 
-/* agrega a cats (JSON) una categoría de usuario por cada carpeta importada; devuelve su id */
+/* adds to cats (JSON) a user category for each imported folder; returns its id */
 typedef struct { char path[256]; char id[40]; } GroupMap;
 
 static const char *group_cat(Vault *v, GroupMap **gm, int *ngm, const char *path, int *added) {
     if (!path || !path[0]) return NULL;
     for (int i = 0; i < *ngm; i++) if (!strcmp((*gm)[i].path, path)) return (*gm)[i].id;
-    /* el padre primero */
+    /* the parent first */
     char parent[256];
     snprintf(parent, sizeof parent, "%s", path);
     char *slash = strrchr(parent, '/');
@@ -1117,7 +1118,7 @@ static const char *group_cat(Vault *v, GroupMap **gm, int *ngm, const char *path
     uint8_t h[8];
     crypto_blake2b(h, 8, (const uint8_t *)path, strlen(path));
     snprintf(g->id, sizeof g->id, "g%02x%02x%02x%02x%02x%02x", h[0], h[1], h[2], h[3], h[4], h[5]);
-    /* ¿ya existe en cats? */
+    /* already in cats? */
     if (v->m.cats && strstr(v->m.cats, g->id)) return g->id;
     VjB b;
     vb_init(&b);
@@ -1185,7 +1186,7 @@ static int import_list(Vault *v, ImpList *L, int *cats_added) {
             int ty = fi->type >= 0 && fi->type <= 5 ? fi->type : 0;
             char key[24];
             snprintf(key, sizeof key, "c%d", f + 1);
-            /* campos conocidos de las plantillas (tarjetas, identidad) entran con su clave */
+            /* known template fields (cards, identity) come in with their key */
             const char *known = NULL;
             static const char *keys[] = { "holder", "number", "expiry", "cvv", "pin", "brand", "email", "phone", "address", "ssid", "security",
                                           "host", "port", "server", "account", "service", "product", "license", "document", NULL };
@@ -1323,7 +1324,7 @@ static void op_export_vault(Chan *c, uint32_t id, Vault *v, const VMsg *m) {
             for (int p = 0; p < v->h.natts && !found; p++) if (!memcmp(v->h.atts[p].id, at->id, 16)) { o->srcfd = v->fd; o->off = v->h.atts[p].off; o->len = v->h.atts[p].len; found = 1; }
             if (found) no++;
         }
-    VHeader h = v->h;                         /* misma cabecera y ranuras: se abre igual que la original */
+    VHeader h = v->h;                         /* same header and slots: it unlocks like the original */
     h.atts = NULL; h.natts = 0;
     int r = outs ? vf_write_fd(m->fds[0], &h, v->vk, (const uint8_t *)plain, plen, outs, no) : VF_ENOMEM;
     free(outs);
@@ -1331,7 +1332,7 @@ static void op_export_vault(Chan *c, uint32_t id, Vault *v, const VMsg *m) {
     if (r != VF_OK) reply_err(c, id, vf_strerror(r)); else reply_ok(c, id);
 }
 
-/* abrir otra bóveda .lvault (copia, otra máquina) e incorporar sus entradas */
+/* open another .lvault vault (a copy, another machine) and merge its entries */
 static void op_import_vault(Chan *c, uint32_t id, Vault *v, const Vj *j, const VMsg *m) {
     if (m->nfds < 1) { reply_err(c, id, "no-file"); return; }
     size_t len;
@@ -1356,7 +1357,7 @@ static void op_import_vault(Chan *c, uint32_t id, Vault *v, const Vj *j, const V
     int count = 0;
     for (int i = 0; i < om.n; i++) {
         VEntry *e = om.e[i];
-        if (vm_find(&v->m, e->id)) continue;                   /* ya está (misma entrada) */
+        if (vm_find(&v->m, e->id)) continue;                   /* already there (same entry) */
         VjB b; vb_init(&b);
         vm_entry_json(&b, e, 1, 0);
         Vj ej; VEntry *ne = NULL; char err[64];
@@ -1382,7 +1383,7 @@ static void op_import_vault(Chan *c, uint32_t id, Vault *v, const Vj *j, const V
     event_v("changed", (int)(v - vaults));
 }
 
-/* ---- ranuras ---- */
+/* ---- slots ---- */
 
 static int slot_index(Vault *v, const char *hid) {
     uint8_t sid[8];
@@ -1425,7 +1426,7 @@ static void op_slot(Chan *c, uint32_t id, Vault *v, const char *op, const Vj *j,
         reply(c, id, &b);
         return;
     }
-    /* slot-add / password-change: method + factores; password-change reemplaza la(s) de contraseña */
+    /* slot-add / password-change: method + factors; password-change replaces the password slot(s) */
     char method[16] = "";
     vj_getsbuf(j, 0, "method", method, sizeof method);
     int type = slot_type_of(method);
@@ -1434,7 +1435,7 @@ static void op_slot(Chan *c, uint32_t id, Vault *v, const char *op, const Vj *j,
     if (v->h.nslots >= VF_MAX_SLOTS) { reply_err(c, id, "too-many"); return; }
     if (type == VS_FIDO2) { fido_start(c, id, FJ_ADD, (int)(v - vaults), j, 0); return; }
     if (!strcmp(op, "password-change")) {
-        /* pedir la contraseña actual (aunque esté abierta) */
+        /* ask for the current password (even if it is unlocked) */
         char *old = vj_gets(j, 0, "old");
         VFactors of = { .password = old };
         uint8_t tmp[32];
@@ -1473,7 +1474,7 @@ static void op_slot(Chan *c, uint32_t id, Vault *v, const char *op, const Vj *j,
             v->h.nslots--;
         }
     }
-    /* «contraseña + archivo llave» reemplaza a la contraseña sola (si no, el segundo factor no sirve) */
+    /* "password + key file" replaces the password alone (otherwise the second factor is useless) */
     if (type == VS_PASSKEY && vj_getb(j, 0, "dropPassword", 1))
         for (int i = v->h.nslots - 1; i >= 0; i--) if (v->h.slots[i].type == VS_PASSWORD) {
             memmove(v->h.slots + i, v->h.slots + i + 1, sizeof(VSlot) * (size_t)(v->h.nslots - i - 1));
@@ -1484,7 +1485,7 @@ static void op_slot(Chan *c, uint32_t id, Vault *v, const char *op, const Vj *j,
     if (r != VF_OK) reply_err(c, id, vf_strerror(r)); else reply_ok(c, id);
 }
 
-/* ---- despacho ---- */
+/* ---- dispatch ---- */
 
 static void handle_request(Chan *c, VMsg *m) {
     Vj j;
@@ -1521,7 +1522,7 @@ static void handle_request(Chan *c, VMsg *m) {
     }
     else if (keyring_handle(c, id, op, &j)) { /* kr-* */ }
     else if (!strcmp(op, "qr")) op_qr(c, id, v, &j);
-    else if (!need_unlocked(c, id, v)) { /* respondió "locked" */ }
+    else if (!need_unlocked(c, id, v)) { /* replied "locked" */ }
     else if (!strcmp(op, "list")) op_list(c, id, v);
     else if (!strcmp(op, "get")) {
         char eid[40] = "";
@@ -1616,7 +1617,7 @@ static void handle_request(Chan *c, VMsg *m) {
     vj_free(&j);
 }
 
-/* ================= control (solo lord-server) ================= */
+/* ================= control (lord-server only) ================= */
 
 static void handle_ctl(Chan *c, VMsg *m) {
     Vj j;
@@ -1659,7 +1660,7 @@ static void handle_ctl(Chan *c, VMsg *m) {
     vj_free(&j);
 }
 
-/* ================= arranque ================= */
+/* ================= startup ================= */
 
 static void lockdown(void) {
     static const int sys[] = { SYS_mlock, SYS_munlock,
@@ -1680,19 +1681,19 @@ int main(void) {
     sm_harden_process();
     debug = getenv("LORD_VAULT_DEBUG") ? atoi(getenv("LORD_VAULT_DEBUG")) + 1 : 0;
     if (debug < 0) debug = 1;
-    /* nada heredado salvo 0–3 */
+    /* nothing inherited except 0–3 */
     for (int fd = 4; fd < 1024; fd++) close(fd);
-    /* 1) init: la carpeta de bóvedas (y quizás el bus) */
+    /* 1) init: the vaults folder (and maybe the bus) */
     VMsg m;
     if (vw_recv(CTL_FD, &m, &smalloc)) return 1;
-    if (m.kind != VW_CTL || m.nfds < 1) { fprintf(stderr, "lord-vault: falta la carpeta\n"); return 1; }
+    if (m.kind != VW_CTL || m.nfds < 1) { fprintf(stderr, "lord-vault: the folder is missing\n"); return 1; }
     vault_dirfd = m.fds[0];
     m.fds[0] = -1;
     int busfd = -1;
     if (m.nfds >= 2) { busfd = m.fds[1]; m.fds[1] = -1; }
     uint32_t init_id = m.id;
     vw_msg_free(&m, &smalloc);
-    /* 2) encerrarse antes de tocar una bóveda */
+    /* 2) confine ourselves before touching a vault */
     lockdown();
     if (pipe2(fpipe, O_CLOEXEC | O_NONBLOCK)) return 1;
     vg_set_lists(_binary_words_txt_start, (size_t)(_binary_words_txt_end - _binary_words_txt_start),
@@ -1703,7 +1704,7 @@ int main(void) {
     for (int i = 0; i < V_COUNT; i++) vault_probe(&vaults[i]);
     if (busfd >= 0) keyring_start_bus(busfd);
     reply_ok(&chans[0], init_id);
-    /* 3) bucle */
+    /* 3) loop */
     for (;;) {
         struct pollfd pf[MAX_CHANS + 2];
         int n = 0;
@@ -1713,10 +1714,10 @@ int main(void) {
         if (bfd >= 0) { pf[n].fd = bfd; pf[n].events = POLLIN | (keyring_bus_wants_out() ? POLLOUT : 0); n++; }
         int r = poll(pf, (nfds_t)n, 1000);
         if (r < 0 && errno != EINTR) break;
-        /* bloqueo automático */
+        /* auto-lock */
         Vault *mv = &vaults[V_MAIN];
         if (mv->unlocked && mv->autolock_s > 0 && !fj.busy && now_ms() - mv->last_use > mv->autolock_s * 1000.0) {
-            if (debug) fprintf(stderr, "lord-vault: bloqueo automático\n");
+            if (debug) fprintf(stderr, "lord-vault: automatic lock\n");
             vault_lock(mv);
         }
         if (r <= 0) continue;
@@ -1732,7 +1733,7 @@ int main(void) {
                     if (c->role == ROLE_SYSTEM) { for (int v = 0; v < V_COUNT; v++) vault_lock(&vaults[v]); sm_wipe_all(); _exit(0); }
                     close(c->fd);
                     vw_rx_free(&c->rx, &smalloc);
-                    /* canal de la app cerrado: sacarlo */
+                    /* app channel closed: remove it */
                     chans[i] = chans[--nchans];
                     i--;
                     break;

@@ -229,7 +229,7 @@ def build_mmdb(csv_path, out):
     tree = bytearray()
     for n in order:
         l, r = rec(L[n]), rec(R[n])
-        assert l < 1 << 24 and r < 1 << 24, 'hace falta record_size 28'
+        assert l < 1 << 24 and r < 1 << 24, 'record_size 28 is needed'
         tree += l.to_bytes(3, 'big') + r.to_bytes(3, 'big')
     meta = mm_map(8)
     meta += mm_str('node_count') + mm_uint(node_count, 6)

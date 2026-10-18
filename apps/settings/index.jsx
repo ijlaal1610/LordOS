@@ -4,7 +4,7 @@
 // from ./ui.jsx (docs/DESIGN.md, "Settings").
 import {
   View, Text, Image, useTheme, useSettings, themes, session, keyboard, admin, languages, setLanguage, useLocale,
-  reloadCatalogs, fs, useStore, SidebarItem, Toggle, Button, TextInput, ScrollView, SearchField, Hairline, useSystemInfo, useAppWindow, useTrackpads,
+  reloadCatalogs, tOptional, statusText, fs, useStore, SidebarItem, Toggle, Button, TextInput, ScrollView, SearchField, Hairline, useSystemInfo, useAppWindow, useTrackpads,
   spacing, typeScale,
 } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
@@ -124,6 +124,9 @@ function Appearance() {
   );
 }
 
+// A theme names its wallpapers with a locale key (nameKey) and an English fallback (name).
+const wallpaperName = (w) => (w.nameKey && tOptional(w.nameKey)) || w.name;
+
 function Wallpapers() {
   const t = useTheme();
   const { t: tr } = useLocale();
@@ -138,7 +141,7 @@ function Wallpapers() {
           <View style={{ width: 128, height: 80, borderRadius: 8, overflow: 'hidden', border: `1px solid ${t.separator}` }}>
             <Image src={cur.src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </View>
-          <Text style={{ flex: 1, minWidth: 0, fontSize: typeScale.headline, fontWeight: 600, color: t.text, textAlign: 'start' }}>{cur.name}</Text>
+          <Text style={{ flex: 1, minWidth: 0, fontSize: typeScale.headline, fontWeight: 600, color: t.text, textAlign: 'start' }}>{wallpaperName(cur)}</Text>
         </View>
       </Section>
       <Section title={tr('settings.section.wallpaper')}>
@@ -150,7 +153,7 @@ function Wallpapers() {
                   <Image src={w.src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </View>
               </View>
-              <Text style={{ fontSize: typeScale.caption, color: cur.id === w.id ? t.text : t.textDim, fontWeight: cur.id === w.id ? 600 : 400 }}>{w.name}</Text>
+              <Text style={{ fontSize: typeScale.caption, color: cur.id === w.id ? t.text : t.textDim, fontWeight: cur.id === w.id ? 600 : 400 }}>{wallpaperName(w)}</Text>
             </View>
           ))}
         </View>
@@ -171,7 +174,7 @@ function AdminLog() {
     <Section>
       <View style={{ paddingVertical: spacing.m, gap: 3 }}>
         <Text style={{ fontSize: typeScale.callout, fontWeight: 600, color: t.text, textAlign: 'start' }}>{tr('settings.admin.running', { action: tr(`settings.admin.${busy.action}`), arg: busy.arg })}</Text>
-        {busy.log.slice(-6).map((l, i) => <Text key={i} style={{ fontSize: typeScale.caption, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden', direction: 'ltr', textAlign: 'start' }}>{l}</Text>)}
+        {busy.log.slice(-6).map((l, i) => <Text key={i} style={{ fontSize: typeScale.caption, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden', direction: 'ltr', textAlign: 'start' }}>{statusText(l)}</Text>)}
       </View>
     </Section>
   );

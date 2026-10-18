@@ -78,7 +78,18 @@
   "scan": "Escanear…",
   "noScanners": "No se encontraron escáneres en la red.",
   "tlsUnsupported": "solo cifrado (todavía no)",
-  "err.forbidden": "Tu usuario no puede administrar impresoras: hace falta ser administrador (grupo lpadmin).",
+  "err.forbidden": "no tenés permiso para administrar impresoras",
   "err.notFound": "CUPS no encontró esa impresora",
-  "err.other": "CUPS respondió: {error}"
+  "err.other": "CUPS respondió: {error}",
+  "err.encode": "no se pudo armar el pedido",
+  "err.no-cups": "el servicio de impresión (CUPS) no está funcionando",
+  "err.http": "la impresora respondió con un error ({detail})",
+  "err.bad-response": "respuesta inválida de la impresora",
+  "err.bad-request": "pedido inválido",
+  "err.bad-pages": "rango de páginas inválido",
+  "err.unreachable": "no se pudo llegar",
+  "err.busy": "está ocupado; probá de nuevo en un momento",
+  "err.timeout": "tardó demasiado",
+  "err.write": "no se pudo escribir el archivo",
+  "err.unknown": "error desconocido"
 }

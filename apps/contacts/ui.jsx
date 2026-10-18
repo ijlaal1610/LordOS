@@ -127,13 +127,13 @@ export function Sheet({ title, onClose, children, footer, width = 440 }) {
       <View style={{ width, maxWidth: '94%', maxHeight: '94%', borderRadius: 12, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`,
         boxShadow: '0 18px 50px rgba(0,0,0,0.45)', overflow: 'hidden' }}>
         {title ? (
-          <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 }}>
-            <Text style={{ fontSize: 15, fontWeight: 700, color: th.text }}>{title}</Text>
+          <View style={{ paddingHorizontal: 20, paddingTop: 18, paddingBottom: 4 }}>
+            <Text style={{ fontSize: 15, fontWeight: 600, color: th.text }}>{title}</Text>
           </View>
         ) : null}
-        <View style={{ paddingHorizontal: 16, paddingVertical: 10, gap: 10, flexShrink: 1 }}>{children}</View>
+        <View style={{ paddingHorizontal: 20, paddingVertical: 12, gap: 10, flexShrink: 1 }}>{children}</View>
         {footer ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 14 }}>
             <Hairline edge="top" />
             {footer}
           </View>
@@ -244,7 +244,7 @@ export function MiniMonth({ value, onPick, marks, month: ctlMonth, onMonth, cell
         <View key={c} onClick={() => onPick(d)} style={{ width: cell, height: cell, alignItems: 'center', justifyContent: 'center' }}>
           <View style={{ width: cell - 4, height: cell - 4, borderRadius: (cell - 4) / 2, alignItems: 'center', justifyContent: 'center',
             backgroundColor: sel ? (isToday ? RED : th.accent) : 'transparent' }}>
-            <Text style={{ fontSize: 11, fontWeight: isToday || sel ? 700 : 400,
+            <Text style={{ fontSize: 11, fontWeight: isToday || sel ? 600 : 400,
               color: sel ? '#fff' : isToday ? RED : inMonth ? th.text : th.textDim }}>{String(d.getDate())}</Text>
           </View>
           {marks && marks.has(ymd(d)) && !sel ? <View style={{ position: 'absolute', bottom: 1, width: 3, height: 3, borderRadius: 2, backgroundColor: th.textDim }} /> : null}
@@ -256,7 +256,7 @@ export function MiniMonth({ value, onPick, marks, month: ctlMonth, onMonth, cell
   return (
     <View style={{ width: cell * 7, gap: 2 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', height: 24 }}>
-        <Text style={{ flex: 1, fontSize: 12, fontWeight: 700, color: th.text, marginHorizontal: 4 }}>{monthYear(month)}</Text>
+        <Text style={{ flex: 1, fontSize: 12, fontWeight: 600, color: th.text, marginHorizontal: 4, whiteSpace: 'nowrap', overflow: 'hidden' }}>{monthYear(month)}</Text>
         <NavArrow glyph={rtl ? '›' : '‹'} onClick={() => setMonth(addMonths(month, -1))} />
         <NavArrow glyph="●" small onClick={() => { setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); }} />
         <NavArrow glyph={rtl ? '‹' : '›'} onClick={() => setMonth(addMonths(month, 1))} />

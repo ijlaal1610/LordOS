@@ -1,5 +1,5 @@
-// panels.jsx — menú contextual (con submenús), Vista rápida, Ver información y confirmar.
-// Todos se dibujan adentro de la ventana, con coordenadas relativas a ella.
+// panels.jsx — context menu (with submenus), Quick Look, Get Info and confirm.
+// All are drawn inside the window, with coordinates relative to it.
 import { View, Text, Button, ToolbarButton, Hairline, useTheme, formatBytes, formatDate, formatTime, addListener, direction, typeScale, spacing, t as tr } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { Preview, kindLabel } from './views.jsx';
@@ -50,7 +50,7 @@ function MenuBox({ items, x, y, width, onClose, onSub, boxRef, bounds }) {
   );
 }
 
-// Menú contextual: items [{ label, onClick, hint, checked, disabled, danger, submenu } | '-' | { header } | { swatches }]
+// Context menu: items [{ label, onClick, hint, checked, disabled, danger, submenu } | '-' | { header } | { swatches }]
 export function ContextMenu({ x, y, items, onClose, bounds }) {
   const ref = useRef(null), subRef = useRef(null);
   const [sub, setSub] = useState(null);
@@ -103,7 +103,7 @@ function Row({ k, v, t }) {
   );
 }
 
-// Ver información (❖I): ficha del archivo; el tamaño de las carpetas se calcula acotado.
+// Get Info (❖I): the file's card; folder sizes are computed with a bound.
 export function InfoPanel({ e, onClose, openers }) {
   const t = useTheme();
   const [st, setSt] = useState(null);
@@ -113,7 +113,7 @@ export function InfoPanel({ e, onClose, openers }) {
     if (!e || e.app) return undefined;
     try { setSt(lord.fs.stat(e.path)); } catch (err) { setSt({ error: err.message }); }
     if (!e.dir) return undefined;
-    const id = setTimeout(() => { try { setDu(lord.fs.du(e.path, 900)); } catch (err) { /* sin permiso */ } }, 30);
+    const id = setTimeout(() => { try { setDu(lord.fs.du(e.path, 900)); } catch (err) { /* no permission */ } }, 30);
     return () => clearTimeout(id);
   }, [e?.path]);
   if (!e) return null;

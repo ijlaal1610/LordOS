@@ -54,7 +54,7 @@ function buildIndex() {
   return index;
 }
 
-const uiLang = () => String(locale.get().lang || 'es').split(/[-_]/)[0];
+const uiLang = () => String(locale.get().lang || 'en').split(/[-_]/)[0];
 
 export const emoji = {
   groups,

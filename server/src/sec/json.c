@@ -150,7 +150,7 @@ static JVal *container(P *p, int obj) {
     if (!v) { fail(p, "out of memory"); return NULL; }
     memset(v, 0, sizeof *v);
     v->type = obj ? J_OBJ : J_ARR;
-    if (++p->depth > MAX_DEPTH) { fail(p, "demasiados niveles"); return NULL; }
+    if (++p->depth > MAX_DEPTH) { fail(p, "nested too deeply"); return NULL; }
     p->s++;
     ws(p);
     JVal **tail = &v->kid;

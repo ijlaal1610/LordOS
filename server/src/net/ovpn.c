@@ -69,7 +69,7 @@ static int arg_ok(const char *s) {
 
 int ovpn_import(const char *name, const char *text, char *err, size_t errn) {
     char *copy = strdup(text);
-    if (!copy) { snprintf(err, errn, "sin memoria"); return -1; }
+    if (!copy) { lerr_set(err, errn, "sys.outOfMemory", NULL); return -1; }
     Buf out = {0};
     char block[24] = "", dev_type[8] = "tun", server[200] = "";
     int lineno = 0, rc = 0, needs_auth = 0, has_ca = 0, client = 0, ignored = 0;
@@ -86,7 +86,7 @@ int ovpn_import(const char *name, const char *text, char *err, size_t errn) {
             while (isspace((unsigned char)*t)) t++;
             if (!strncmp(t, close_tag, strlen(close_tag))) { buf_printf(&out, "%s\n", close_tag); block[0] = 0; continue; }
             /* certificate/key contents: base64, dashes, PEM headers, hex */
-            for (char *p = l; *p; p++) if (!isalnum((unsigned char)*p) && !strchr("+/=- :\t.#,()", *p)) { snprintf(err, errn, "línea %d: carácter inválido en <%s>", lineno, block); rc = -1; break; }
+            for (char *p = l; *p; p++) if (!isalnum((unsigned char)*p) && !strchr("+/=- :\t.#,()", *p)) { lerr_set(err, errn, "vpn.badChar", "line", lerr_int(lineno), "key", block, NULL); rc = -1; break; }
             if (!rc) buf_printf(&out, "%s\n", l);
             continue;
         }
@@ -95,7 +95,7 @@ int ovpn_import(const char *name, const char *text, char *err, size_t errn) {
         if (!*t || *t == '#' || *t == ';') continue;
         if (*t == '<') {
             char tag[24];
-            if (sscanf(t, "<%23[a-z0-9-]>", tag) != 1 || !in_list(blocks, tag)) { snprintf(err, errn, "línea %d: bloque no permitido %s", lineno, t); rc = -1; break; }
+            if (sscanf(t, "<%23[a-z0-9-]>", tag) != 1 || !in_list(blocks, tag)) { lerr_set(err, errn, "ovpn.blockNotAllowed", "line", lerr_int(lineno), "block", t, NULL); rc = -1; break; }
             snprintf(block, sizeof block, "%s", tag);
             if (!strcmp(tag, "ca")) has_ca = 1;
             buf_printf(&out, "<%s>\n", tag);
@@ -111,29 +111,29 @@ int ovpn_import(const char *name, const char *text, char *err, size_t errn) {
         if (in_list(windows_only, w)) { ignored++; continue; }
         if (in_list(blocks, w)) {
             /* "ca file": it has to come embedded (lord.net.prepareOvpn does that) */
-            if (strncmp(args, "[inline]", 8)) { snprintf(err, errn, "línea %d: %s tiene que estar incrustado (<%s>)", lineno, w, w); rc = -1; break; }
+            if (strncmp(args, "[inline]", 8)) { lerr_set(err, errn, "ovpn.mustBeInline", "line", lerr_int(lineno), "option", w, NULL); rc = -1; break; }
             continue;
         }
-        if (!in_list(allowed, w)) { snprintf(err, errn, "línea %d: opción no permitida: %s", lineno, w); rc = -1; break; }
-        if (!arg_ok(args)) { snprintf(err, errn, "línea %d: argumento inválido", lineno); rc = -1; break; }
+        if (!in_list(allowed, w)) { lerr_set(err, errn, "ovpn.optionNotAllowed", "line", lerr_int(lineno), "option", w, NULL); rc = -1; break; }
+        if (!arg_ok(args)) { lerr_set(err, errn, "ovpn.invalidArgument", "line", lerr_int(lineno), NULL); rc = -1; break; }
         if (!strcmp(w, "client") || !strcmp(w, "tls-client")) client = 1;
         if (!strcmp(w, "auth-user-pass")) {
-            if (*args) { snprintf(err, errn, "línea %d: auth-user-pass no lleva archivo (se pide la contraseña)", lineno); rc = -1; break; }
+            if (*args) { lerr_set(err, errn, "ovpn.authFile", "line", lerr_int(lineno), NULL); rc = -1; break; }
             needs_auth = 1;
         }
-        if (!strcmp(w, "dev")) { if (!strncmp(args, "tap", 3)) { snprintf(err, errn, "solo se admite dev tun"); rc = -1; } continue; }
-        if (!strcmp(w, "dev-type")) { if (strcmp(args, "tun")) { snprintf(err, errn, "solo se admite dev-type tun"); rc = -1; } snprintf(dev_type, sizeof dev_type, "tun"); continue; }
+        if (!strcmp(w, "dev")) { if (!strncmp(args, "tap", 3)) { lerr_set(err, errn, "ovpn.onlyTun", NULL); rc = -1; } continue; }
+        if (!strcmp(w, "dev-type")) { if (strcmp(args, "tun")) { lerr_set(err, errn, "ovpn.onlyTun", NULL); rc = -1; } snprintf(dev_type, sizeof dev_type, "tun"); continue; }
         if (!strcmp(w, "remote") && !server[0]) snprintf(server, sizeof server, "%s", args);
         if (in_list(replaced, w)) continue;
         buf_printf(&out, "%s%s%s\n", w, *args ? " " : "", args);
     }
     free(copy);
-    if (!rc && block[0]) { snprintf(err, errn, "falta </%s>", block); rc = -1; }
-    if (!rc && !client) { snprintf(err, errn, "no es una configuración de cliente (falta client)"); rc = -1; }
-    if (!rc && !has_ca) { snprintf(err, errn, "falta el certificado de la autoridad (<ca>)"); rc = -1; }
-    if (!rc && !server[0]) { snprintf(err, errn, "falta remote"); rc = -1; }
-    if (rc || out.oom) { buf_free(&out); if (!rc) snprintf(err, errn, "sin memoria"); return -1; }
-    if (ignored) admin_say("LOG", "se ignoraron %d opciones que solo valen en Windows", ignored);
+    if (!rc && block[0]) { lerr_set(err, errn, "ovpn.blockUnclosed", "block", block, NULL); rc = -1; }
+    if (!rc && !client) { lerr_set(err, errn, "ovpn.notClient", NULL); rc = -1; }
+    if (!rc && !has_ca) { lerr_set(err, errn, "ovpn.noCa", NULL); rc = -1; }
+    if (!rc && !server[0]) { lerr_set(err, errn, "vpn.missingKey", "key", "remote", NULL); rc = -1; }
+    if (rc || out.oom) { buf_free(&out); if (!rc) lerr_set(err, errn, "sys.outOfMemory", NULL); return -1; }
+    if (ignored) admin_log("ovpn.ignoredWindows", "count", lerr_int(ignored), NULL);
     char path[160];
     snprintf(path, sizeof path, NET_VPN_DIR "/%s.ovpn", name);
     int ok = write_file_atomic(path, out.p, out.len, 0600) == 0;
@@ -150,7 +150,7 @@ int ovpn_import(const char *name, const char *text, char *err, size_t errn) {
     snprintf(path, sizeof path, NET_VPN_DIR "/%s.json", name);
     ok = ok && m.p && write_file_atomic(path, m.p, m.len, 0644) == 0;
     buf_free(&m);
-    if (!ok) { snprintf(err, errn, "no se pudo guardar"); return -1; }
+    if (!ok) { lerr_set(err, errn, "net.saveFailed", NULL); return -1; }
     return 0;
 }
 
@@ -230,7 +230,7 @@ void ovpn_run(const char *name) {
     vpn_ifname("openvpn", name, ifn, sizeof ifn);
     snprintf(path, sizeof path, NET_VPN_DIR "/%s.ovpn", name);
     char *stored = read_file(path, 65536, NULL);
-    if (!stored) { admin_event("net vpn %s error no-config", name); return; }
+    if (!stored) { admin_event("net vpn %s error vpn.noConfig", name); return; }
     mkdir(NET_RUN_DIR, 0755);
     mkdir(OVPN_RUN, 0700);
     snprintf(sock, sizeof sock, OVPN_RUN "/%s.sock", name);
@@ -242,7 +242,7 @@ void ovpn_run(const char *name) {
     int local_full = strstr(stored, "\nredirect-gateway") != NULL || !strncmp(stored, "redirect-gateway", 16);
     memset(stored, 0, strlen(stored));
     free(stored);
-    if (c.oom || write_file_atomic(conf, c.p, c.len, 0600)) { buf_free(&c); admin_event("net vpn %s error write", name); return; }
+    if (c.oom || write_file_atomic(conf, c.p, c.len, 0600)) { buf_free(&c); admin_event("net vpn %s error vpn.writeFailed", name); return; }
     memset(c.p, 0, c.len);
     buf_free(&c);
 
@@ -262,7 +262,7 @@ void ovpn_run(const char *name) {
         _exit(127);
     }
     close(p[1]);
-    if (pid < 0) { close(p[0]); admin_event("net vpn %s error fork", name); return; }
+    if (pid < 0) { close(p[0]); admin_event("net vpn %s error vpn.startFailed", name); return; }
     mkdir(NET_RUN_DIR "/vpn", 0755);
     char mark[128], content[64];
     snprintf(mark, sizeof mark, NET_RUN_DIR "/vpn/%s", ifn);

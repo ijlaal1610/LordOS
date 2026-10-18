@@ -1,18 +1,18 @@
-/* secretsvc.c — la API freedesktop Secret Service sobre el D-Bus propio (ver secretsvc.h y
- * docs/CONTRASENAS.md, «Secret Service»).
+/* secretsvc.c — the freedesktop Secret Service API over our own D-Bus code (see secretsvc.h and
+ * docs/PASSWORDS.md, "Secret Service").
  *
- * Una sola colección, el llavero de la sesión: /org/freedesktop/secrets/collection/login, con el
- * alias "default" (también se acepta /org/freedesktop/secrets/aliases/default). CreateCollection
- * devuelve esa misma colección (no se crean otras: así cualquier app que pida «una colección
- * nueva» termina en el llavero de la sesión, como en macOS). Delete de la colección: NotSupported.
+ * A single collection, the session keyring: /org/freedesktop/secrets/collection/login, with the
+ * alias "default" (/org/freedesktop/secrets/aliases/default is accepted too). CreateCollection
+ * returns that same collection (no others are created: so any app that asks for "a new
+ * collection" ends up in the session keyring, as on macOS). Deleting the collection: NotSupported.
  *
- * Sesiones: "plain" y "dh-ietf1024-sha256-aes128-cbc-pkcs7" (grupo MODP de 1024 bits de RFC 2409,
- * HKDF-SHA256 sin salt ni info → clave AES-128, AES-128-CBC con PKCS#7 y el IV en los parámetros
- * del Secret). La aritmética de 1024 bits es propia (Montgomery con palabras de 32 bits).
+ * Sessions: "plain" and "dh-ietf1024-sha256-aes128-cbc-pkcs7" (the 1024-bit MODP group of RFC 2409,
+ * HKDF-SHA256 without salt or info → AES-128 key, AES-128-CBC with PKCS#7 and the IV in the
+ * Secret's parameters). The 1024-bit arithmetic is our own (Montgomery with 32-bit words).
  *
- * Control de acceso: como gnome-keyring, toda app de la sesión que llega al bus puede usar la
- * colección cuando está desbloqueada; el backend recibe quién llama (caller) para el registro y
- * los avisos. Las apps .lpk aisladas no llegan al bus (no pueden abrir sockets). */
+ * Access control: as in gnome-keyring, every app of the session that reaches the bus can use the
+ * collection while it is unlocked; the backend receives the caller for the log and the
+ * notices. Isolated .lpk apps do not reach the bus (they cannot open sockets). */
 #include "secretsvc.h"
 #include "dbus.h"
 #include "smem.h"
@@ -55,7 +55,7 @@ static uint64_t created_at;
 
 #define LOG(...) do { if (debug) fprintf(stderr, "secretsvc: " __VA_ARGS__); } while (0)
 
-/* ================= aritmética de 1024 bits (DH) ================= */
+/* ================= 1024-bit arithmetic (DH) ================= */
 
 #define BN 32
 typedef uint32_t Bn[BN];
@@ -63,7 +63,7 @@ typedef uint32_t Bn[BN];
 static void bn_from_be(Bn r, const uint8_t *b, size_t n) {
     memset(r, 0, sizeof(Bn));
     for (size_t i = 0; i < n && i < 128; i++) {
-        size_t bit = (n - 1 - i);           /* byte menos significativo = el último */
+        size_t bit = (n - 1 - i);           /* least significant byte = the last one */
         r[bit / 4] |= (uint32_t)b[i] << (8 * (bit % 4));
     }
 }
@@ -96,7 +96,7 @@ static void mont_mul(Bn r, const Bn a, const Bn b, const Bn m, uint32_t minv) {
     }
     Bn d;
     uint32_t br = bn_sub(d, t, m);
-    /* t >= m si hubo acarreo arriba o la resta no pidió prestado */
+    /* t >= m if there was a carry out or the subtraction did not borrow */
     uint32_t use_d = (uint32_t)(t[BN] != 0) | (br ^ 1);
     uint32_t mask = (uint32_t)0 - use_d;
     for (int i = 0; i < BN; i++) r[i] = (d[i] & mask) | (t[i] & ~mask);
@@ -113,7 +113,7 @@ int ss_dh_modexp(const uint8_t base[128], const uint8_t exp[128], const uint8_t 
     uint32_t inv = 1;
     for (int i = 0; i < 5; i++) inv *= 2 - m[0] * inv;
     uint32_t minv = (uint32_t)0 - inv;
-    /* R^2 mod m con 2048 duplicaciones */
+    /* R^2 mod m with 2048 doublings */
     memset(r2, 0, sizeof r2);
     r2[0] = 1;
     for (int i = 0; i < 2 * 32 * BN; i++) {
@@ -126,7 +126,7 @@ int ss_dh_modexp(const uint8_t base[128], const uint8_t exp[128], const uint8_t 
     }
     memset(one, 0, sizeof one);
     one[0] = 1;
-    mont_mul(x, one, r2, m, minv);           /* 1 en forma de Montgomery */
+    mont_mul(x, one, r2, m, minv);           /* 1 in Montgomery form */
     mont_mul(a, a, r2, m, minv);
     for (int i = 0; i < 1024; i++) {
         int byte = i / 8, bit = 7 - i % 8;
@@ -162,7 +162,7 @@ static int dh_pub_ok(const uint8_t y[128]) {
     return !bn_zero(a) && bn_cmp(a, one) != 0 && bn_cmp(a, pm1) < 0;
 }
 
-/* ================= sesiones y avisos ================= */
+/* ================= sessions and notices ================= */
 
 #define NSESS 64
 typedef struct { unsigned id; int used, dh; uint8_t key[16]; char owner[256]; } Sess;
@@ -183,7 +183,7 @@ static void sess_free(Sess *s) { explicit_bzero(s, sizeof *s); }
 static Sess *sess_new(const char *owner) {
     Sess *s = NULL;
     for (int i = 0; i < NSESS; i++) if (!sess[i].used) { s = &sess[i]; break; }
-    if (!s) {                                     /* lleno: se descarta la más vieja */
+    if (!s) {                                     /* full: the oldest one is dropped */
         s = &sess[0];
         for (int i = 1; i < NSESS; i++) if (sess[i].id < s->id) s = &sess[i];
         sess_free(s);
@@ -253,7 +253,7 @@ static void prompt_path(unsigned id, char out[64]) { snprintf(out, 64, BASE "/pr
 
 static int locked(void) { return B->locked ? B->locked(U) != 0 : 0; }
 
-/* ids de los ítems que cumplen attrs (malloc; liberar con free) */
+/* ids of the items that match attrs (malloc; release with free) */
 static int search_ids(const SsAttr *attrs, int n, char (**out)[40]) {
     *out = NULL;
     for (int max = 256; max <= 65536; max *= 4) {
@@ -267,7 +267,7 @@ static int search_ids(const SsAttr *attrs, int n, char (**out)[40]) {
     return -1;
 }
 
-/* a{ss} → arreglo de SsAttr que apunta al mensaje */
+/* a{ss} → array of SsAttr pointing into the message */
 static int read_attrs(DRd *r, SsAttr *a, int max) {
     int n = 0;
     size_t end = dr_arr(r, 8);
@@ -325,7 +325,7 @@ static void encode_secret(DBuf *w, Sess *s, const uint8_t *sec, size_t len, cons
     dw_str(w, ctype && ctype[0] ? ctype : "text/plain");
 }
 
-/* (oayays) → secreto en smem. 0 bien, -2 sin sesión, -1 inválido */
+/* (oayays) → secret in smem. 0 ok, -2 no session, -1 invalid */
 static int decode_secret(DRd *r, const char *sender, uint8_t **out, size_t *outlen, char ctype[64]) {
     *out = NULL;
     *outlen = 0;
@@ -359,7 +359,7 @@ static int decode_secret(DRd *r, const char *sender, uint8_t **out, size_t *outl
     return 0;
 }
 
-/* ================= introspección ================= */
+/* ================= introspection ================= */
 
 static const char X_HEAD[] = "<!DOCTYPE node PUBLIC \"-//freedesktop//DTD D-BUS Object Introspection 1.0//EN\" \"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n<node>";
 static const char X_STD[] =
@@ -451,7 +451,7 @@ static const char *item_type(const SsItemInfo *in) {
     return "org.freedesktop.Secret.Generic";
 }
 
-/* Escribe el valor (variante) de una propiedad; -1 si no existe. */
+/* Writes the value (variant) of a property; -1 if it does not exist. */
 static int put_prop(DBuf *w, int kind, const SsItemInfo *in, const char *name) {
     if (kind == O_SERVICE && !strcmp(name, "Collections")) {
         dw_variant(w, "ao");
@@ -663,7 +663,7 @@ static void search_items(const DMsg *m, int service) {
     free(ids);
 }
 
-/* objetos pedidos (ao) que son nuestros: la colección o ítems */
+/* requested objects (ao) that are ours: the collection or items */
 static int read_objs(DRd *r, char out[][128], int max) {
     int n = 0;
     size_t end = dr_arr(r, 4);
@@ -785,7 +785,7 @@ static void service_call(const DMsg *m) {
     } else dbus_error(&C, m, E_METHOD, mb);
 }
 
-/* ================= Collection e Item ================= */
+/* ================= Collection and Item ================= */
 
 static void create_item(const DMsg *m) {
     if (strcmp(m->sig, "a{sv}(oayays)b")) { dbus_error(&C, m, E_ARGS, "a{sv}(oayays)b"); return; }
@@ -897,7 +897,7 @@ static void prompt_complete(Prompt *p) {
     p->used = 0;
 }
 
-/* ================= despacho ================= */
+/* ================= dispatch ================= */
 
 static void note_caller(const DMsg *m) {
     if (!m->sender || !B->caller) return;
@@ -985,7 +985,7 @@ int ss_start(int busfd, const SsBackend *be, void *ud) {
     debug = getenv("LORD_SS_DEBUG") != NULL;
     B = be;
     U = ud;
-    if (dbus_open(&C, busfd, 5000)) { LOG("no se pudo autenticar con el bus\n"); dbus_close(&C); return -1; }
+    if (dbus_open(&C, busfd, 5000)) { LOG("could not authenticate with the bus\n"); dbus_close(&C); return -1; }
     DBuf b;
     dw_init(&b);
     dw_str(&b, "org.freedesktop.secrets");
@@ -1000,7 +1000,7 @@ int ss_start(int busfd, const SsBackend *be, void *ud) {
     dr_init(&r, &m);
     uint32_t res = dr_u32(&r);
     dbus_msg_free(&m);
-    if (res != 1 && res != 4) { LOG("org.freedesktop.secrets ya tiene dueño (%u)\n", res); dbus_close(&C); return 1; }
+    if (res != 1 && res != 4) { LOG("org.freedesktop.secrets already has an owner (%u)\n", res); dbus_close(&C); return 1; }
     created_at = (uint64_t)time(NULL);
     running = 1;
     LOG("atendiendo org.freedesktop.secrets como %s\n", C.unique);
@@ -1016,11 +1016,11 @@ int ss_dispatch(void) {
     for (int i = 0; i < 256; i++) {
         DMsg m;
         int r = dbus_next(&C, &m);
-        if (r < 0) { LOG("el bus se cerró\n"); ss_stop(); return -1; }
+        if (r < 0) { LOG("the bus closed\n"); ss_stop(); return -1; }
         if (r == 0) break;
         if (m.type == DBUS_CALL) handle_call(&m);
         else if (m.type == DBUS_RETURN || m.type == DBUS_ERROR) handle_reply(&m);
-        else if (m.type == DBUS_SIGNAL && m.member && !strcmp(m.member, "NameLost")) LOG("se perdió el nombre\n");
+        else if (m.type == DBUS_SIGNAL && m.member && !strcmp(m.member, "NameLost")) LOG("the name was lost\n");
         dbus_msg_free(&m);
     }
     if (dbus_flush(&C) < 0) { ss_stop(); return -1; }

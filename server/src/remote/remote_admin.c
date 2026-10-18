@@ -79,22 +79,22 @@ static pid_t sessiond_pid(void) {
 
 static void set_enabled(int on) {
     pid_t pid = sessiond_pid();
-    if (pid < 0) { admin_say("ERR", "el escritorio remoto necesita lord-sessiond (lordos.service)"); return; }
+    if (pid < 0) { admin_err("remote.needSessiond", NULL); return; }
     Conf c;
     conf_read(&c);
     c.enabled = on;
-    if (conf_write(&c)) { admin_say("ERR", "no se pudo escribir %s/config", CONF_DIR); return; }
+    if (conf_write(&c)) { admin_err("sys.writeFailed", "path", CONF_DIR "/config", NULL); return; }
     kill(pid, SIGHUP);
-    if (!on) { admin_say("OK", "escritorio remoto apagado"); return; }
+    if (!on) { admin_ok("remote.off", NULL); return; }
     /* waits for it to listen (status.json says running) */
     for (int i = 0; i < 40; i++) {
         char st[512] = "";
         int fd = open("/run/lordos/status.json", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
         if (fd >= 0) { ssize_t n = read(fd, st, sizeof st - 1); if (n > 0) st[n] = 0; close(fd); }
-        if (strstr(st, "\"running\":true")) { admin_say("OK", "escritorio remoto prendido"); return; }
+        if (strstr(st, "\"running\":true")) { admin_ok("remote.on", NULL); return; }
         usleep(100000);
     }
-    admin_say("ERR", "lord-sessiond no pudo escuchar en el puerto %d (journalctl -u lordos)", c.port);
+    admin_err("remote.listenFailed", "port", lerr_int(c.port), NULL);
 }
 
 void remote_act_enable(const AdminReq *r, const char *arg, size_t len) {
@@ -117,48 +117,48 @@ void remote_act_config(const AdminReq *r, const char *arg, size_t len) {
         int v;
         char s[16];
         if (sscanf(line, "port=%d", &v) == 1) {
-            if (v < 1024 || v > 65535) { admin_say("ERR", "puerto inválido"); return; }
+            if (v < 1024 || v > 65535) { admin_err("remote.badPort", NULL); return; }
             c.port = v;
         } else if (sscanf(line, "allow=%15s", s) == 1) {
-            if (strcmp(s, "all") && strcmp(s, "group")) { admin_say("ERR", "allow inválido"); return; }
+            if (strcmp(s, "all") && strcmp(s, "group")) { admin_err("admin.invalidArgument", NULL); return; }
             c.group_only = !strcmp(s, "group");
-        } else { admin_say("ERR", "opción desconocida"); return; }
+        } else { admin_err("admin.invalidArgument", NULL); return; }
     }
     if (c.group_only && !getgrnam("lordos-remote")) {
         const char *const g[] = { "/usr/sbin/groupadd", "--system", "lordos-remote", NULL };
-        if (admin_run(g)) { admin_say("ERR", "no se pudo crear el grupo lordos-remote"); return; }
+        if (admin_run(g)) { admin_err("remote.groupFailed", NULL); return; }
     }
-    if (conf_write(&c)) { admin_say("ERR", "no se pudo escribir la configuración"); return; }
+    if (conf_write(&c)) { admin_err("remote.configFailed", NULL); return; }
     pid_t pid = sessiond_pid();
     if (pid > 0) kill(pid, SIGHUP);
-    admin_say("OK", "configuración guardada");
+    admin_ok("remote.saved", NULL);
 }
 
 void remote_act_member(const AdminReq *r, const char *arg, size_t len) {
     (void)r; (void)len;
     char user[40] = "";
     int on = -1;
-    if (sscanf(arg, "%39[a-z0-9_-]\n%d", user, &on) != 2 || (on != 0 && on != 1)) { admin_say("ERR", "argumento inválido"); return; }
+    if (sscanf(arg, "%39[a-z0-9_-]\n%d", user, &on) != 2 || (on != 0 && on != 1)) { admin_err("admin.invalidArgument", NULL); return; }
     struct passwd *pw = getpwnam(user);
-    if (!pw || pw->pw_uid < 1000 || pw->pw_uid >= 60000) { admin_say("ERR", "usuario inválido"); return; }
+    if (!pw || pw->pw_uid < 1000 || pw->pw_uid >= 60000) { admin_err("users.invalid", NULL); return; }
     if (!getgrnam("lordos-remote")) {
         const char *const g[] = { "/usr/sbin/groupadd", "--system", "lordos-remote", NULL };
-        if (admin_run(g)) { admin_say("ERR", "no se pudo crear el grupo lordos-remote"); return; }
+        if (admin_run(g)) { admin_err("remote.groupFailed", NULL); return; }
     }
     const char *const a[] = { "/usr/bin/gpasswd", on ? "-a" : "-d", user, "lordos-remote", NULL };
-    if (admin_run(a)) admin_say("ERR", "gpasswd falló"); else admin_say("OK", "%s", on ? "agregado" : "quitado");
+    if (admin_run(a)) admin_err("sys.programError", "program", "gpasswd", NULL); else admin_ok(on ? "remote.userAdded" : "remote.userRemoved", "name", user, NULL);
 }
 
 void remote_act_kick(const AdminReq *r, const char *arg, size_t len) {
     (void)r; (void)len;
     char *end;
     long pid = strtol(arg, &end, 10);
-    if (pid <= 1 || *end) { admin_say("ERR", "pid inválido"); return; }
+    if (pid <= 1 || *end) { admin_err("admin.invalidArgument", NULL); return; }
     /* only a connection that lord-sessiond (root) recorded in its list */
     char status[16384] = "", want[40];
     int fd = open("/run/lordos/status.json", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     struct stat st;
-    if (fd < 0 || fstat(fd, &st) || st.st_uid != 0) { if (fd >= 0) close(fd); admin_say("ERR", "el servicio no está prendido"); return; }
+    if (fd < 0 || fstat(fd, &st) || st.st_uid != 0) { if (fd >= 0) close(fd); admin_err("remote.notRunning", NULL); return; }
     ssize_t n = read(fd, status, sizeof status - 1);
     close(fd);
     if (n > 0) status[n] = 0;
@@ -168,7 +168,7 @@ void remote_act_kick(const AdminReq *r, const char *arg, size_t len) {
     ssize_t l = readlink(link, exe, sizeof exe - 1);
     if (l > 0) exe[l] = 0;
     const char *base = l > 0 ? strrchr(exe, '/') : NULL;
-    if (!strstr(status, want) || !base || strcmp(base + 1, "lord-sessiond")) { admin_say("ERR", "esa conexión no existe"); return; }
+    if (!strstr(status, want) || !base || strcmp(base + 1, "lord-sessiond")) { admin_err("remote.noSuchConnection", NULL); return; }
     kill((pid_t)pid, SIGTERM);
-    admin_say("OK", "conexión cortada");
+    admin_ok("remote.disconnected", NULL);
 }

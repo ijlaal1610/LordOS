@@ -358,7 +358,7 @@ static JSValue f_plan(JSContext *c, JSValueConst this_val, int argc, JSValueCons
     JSValue r = JS_NewObject(c);
     if (ni < 0 || nr < 0) {
         JS_SetPropertyStr(c, r, "ok", JS_FALSE);
-        set_s(c, r, "error", "invalid package name");
+        set_s(c, r, "error", "pkg.invalidName");
         return r;
     }
     refresh();

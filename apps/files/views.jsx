@@ -1,5 +1,5 @@
-// views.jsx — las cuatro vistas de Archivos: íconos (tarjetas), lista (con carpetas que se
-// despliegan), columnas (Miller, con vista previa) y galería.
+// views.jsx — the four Files views: icons (cards), list (with expandable folders),
+// columns (Miller, with a preview) and gallery.
 import { View, Text, Image, TextInput, ScrollView, EmptyState, useTheme, direction, formatBytes, formatDate, formatTime, typeScale, t as tr } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 import { EntryIcon, TagDots } from './glyphs.jsx';
@@ -8,11 +8,11 @@ import { tagsOf } from './ops.js';
 import { sortEntries } from './locations.js';
 
 const when = (ms) => { if (!ms) return '—'; const d = new Date(ms); return `${formatDate(d, 'numeric')} ${formatTime(d)}`; };
-// carpeta de un resultado de búsqueda o de Recientes (el último tramo de la ruta)
+// folder of a search or Recents result (the last segment of the path)
 const where = (p) => { const parts = String(p).split('/'); return parts[parts.length - 2] || '/'; };
 export const kindLabel = (e) => (e.app ? tr('files.kind.app') : tr(`files.kind.${kindOf(e)}`));
 
-// Nombre, o el campo para renombrar en el lugar.
+// Name, or the field for renaming in place.
 function Name({ e, ctx, center, color, lines = 1 }) {
   if (ctx.renaming?.path === e.path) {
     return (
@@ -24,7 +24,7 @@ function Name({ e, ctx, center, color, lines = 1 }) {
   }
   return (
     <Text style={{ fontSize: center ? 12 : 13, color, textAlign: center ? 'center' : 'start', whiteSpace: lines === 1 ? 'nowrap' : 'normal',
-      overflow: 'hidden', maxHeight: lines * 16, lineHeight: 16 }}>{e.name}</Text>
+      overflow: 'hidden', maxHeight: lines * 16, lineHeight: 16, textOverflow: 'ellipsis', numberOfLines: lines }}>{e.name}</Text>
   );
 }
 
@@ -50,7 +50,7 @@ function GroupTitle({ g, t }) {
   );
 }
 
-// ---- íconos ----
+// ---- icons ----
 
 export function IconView({ groups, ctx }) {
   const t = useTheme();
@@ -85,17 +85,17 @@ export function IconView({ groups, ctx }) {
   );
 }
 
-// ---- lista ----
+// ---- list ----
 
 const COLS = [['name', 'flex'], ['date', 150], ['size', 80], ['kind', 120]];
 
 function Header({ sort, onSort, t, showFolder }) {
   return (
-    <View style={{ flexDirection: 'row', height: 26, alignItems: 'center', paddingHorizontal: 18 }}>
+    <View style={{ flexDirection: 'row', height: 27, alignItems: 'center', paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: t.separator }}>
       {COLS.map(([k, w], i) => (
         <View key={k} onClick={() => onSort(k)} style={{ ...(w === 'flex' ? { flex: 1 } : { width: w }), height: 26, flexDirection: 'row', alignItems: 'center', gap: 4,
           justifyContent: k === 'size' ? 'flex-end' : 'flex-start', paddingHorizontal: w === 'flex' ? 20 : 8 }}>
-          {i > 0 && <View style={{ position: 'absolute', top: 6, bottom: 6, [direction() === 'rtl' ? 'right' : 'left']: 0, width: 1, backgroundColor: t.separator }} />}
+          {i > 0 && <View style={{ position: 'absolute', top: 6, bottom: 6, insetInlineStart: 0, width: 1, backgroundColor: t.separator }} />}
           <Text style={{ fontSize: typeScale.caption, fontWeight: sort.by === k ? 600 : 500, color: sort.by === k ? t.text : t.textDim, whiteSpace: 'nowrap' }}>{tr(`files.col.${k === 'kind' && showFolder ? 'where' : k}`)}</Text>
           {sort.by === k && <Text style={{ fontSize: 8, color: t.textDim }}>{sort.desc ? '▼' : '▲'}</Text>}
         </View>
@@ -124,12 +124,12 @@ function ListRows({ items, depth, ctx, t, sort, alt }) {
         </View>
         <Text style={{ width: 150, paddingHorizontal: 8, fontSize: typeScale.callout, color: sel ? '#fff' : t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{e.trash ? (e.deleted || '').replace('T', ' ') : when(e.mtime)}</Text>
         <Text style={{ width: 80, paddingHorizontal: 8, fontSize: typeScale.callout, color: sel ? '#fff' : t.textDim, textAlign: 'end', whiteSpace: 'nowrap' }}>{e.dir && !e.trash ? '—' : e.app ? '' : formatBytes(e.size)}</Text>
-        <Text style={{ width: 120, paddingHorizontal: 8, fontSize: typeScale.callout, color: sel ? '#fff' : t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{ctx.showFolder ? where(e.path) : kindLabel(e)}</Text>
+        <Text style={{ width: 120, paddingHorizontal: 8, fontSize: typeScale.callout, color: sel ? '#fff' : t.textDim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ctx.showFolder ? where(e.path) : kindLabel(e)}</Text>
       </View>,
     );
     if (open) {
       let kids = [];
-      try { kids = sortEntries(lord.fs.list(e.path).filter((x) => ctx.hidden || !x.name.startsWith('.')).map((x) => ({ ...x, path: `${e.path}/${x.name}` })), sort); } catch (err) { /* sin permiso */ }
+      try { kids = sortEntries(lord.fs.list(e.path).filter((x) => ctx.hidden || !x.name.startsWith('.')).map((x) => ({ ...x, path: `${e.path}/${x.name}` })), sort); } catch (err) { /* no permission */ }
       rows.push(...ListRows({ items: kids, depth: depth + 1, ctx, t, sort, alt }));
     }
   }
@@ -142,7 +142,6 @@ export function ListView({ groups, ctx, sort, onSort }) {
   return (
     <View style={{ flex: 1 }}>
       <Header sort={sort} onSort={onSort} t={t} showFolder={ctx.showFolder} />
-      <View style={{ height: 1, backgroundColor: t.separator }} />
       <ScrollView style={{ flex: 1 }}>
         <View style={{ paddingHorizontal: 8, paddingTop: 4, paddingBottom: 32 }}>
           {groups.map((g) => (
@@ -158,7 +157,7 @@ export function ListView({ groups, ctx, sort, onSort }) {
   );
 }
 
-// ---- vista previa (columnas, galería, Vista rápida) ----
+// ---- preview (columns, gallery, Quick Look) ----
 
 export function Preview({ e, big = false }) {
   const t = useTheme();
@@ -183,14 +182,14 @@ export function Preview({ e, big = false }) {
   );
 }
 
-// ---- columnas (Miller) ----
+// ---- columns (Miller) ----
 
 export function ColumnView({ root, chain, setChain, entriesOf, ctx, sort }) {
   const t = useTheme();
   const dirs = [root, ...chain.filter((p) => ctx.isDir(p))];
   const last = chain[chain.length - 1];
   const file = last && !ctx.isDir(last) ? ctx.entryAt(last) : null;
-  // las que entran: las últimas 3 carpetas
+  // the ones that fit: the last 3 folders
   const shown = dirs.slice(-3);
   const offset = dirs.length - shown.length;
   return (
@@ -229,7 +228,7 @@ export function ColumnView({ root, chain, setChain, entriesOf, ctx, sort }) {
   );
 }
 
-// ---- galería ----
+// ---- gallery ----
 
 export function GalleryView({ entries, ctx }) {
   const t = useTheme();
@@ -239,8 +238,7 @@ export function GalleryView({ entries, ctx }) {
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flex: 1, padding: 8 }}>{cur ? <Preview e={cur} big /> : <EmptyState title={ctx.emptyText} />}</View>
-      <View style={{ height: 1, backgroundColor: t.separator }} />
-      <View style={{ height: 96, flexDirection: 'row', gap: 8, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', direction: 'ltr', overflow: 'hidden' }}>
+      <View style={{ height: 97, borderTopWidth: 1, borderTopColor: t.separator, flexDirection: 'row', gap: 8, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', direction: 'ltr', overflow: 'hidden' }}>
         {entries.slice(from, from + 9).map((e) => {
           const sel = e === cur;
           return (

@@ -30,7 +30,7 @@ export function Icon({ size: s }) {
   );
 }
 
-const ROW = 34, HEAD = 22;
+const ROW = 30, HEAD = 24;
 
 const sortKey = (c) => {
   const n = c.n || {};
@@ -129,7 +129,7 @@ export default function ContactsApp() {
         onRenameGroup={(g) => setSheet({ group: g })} onDeleteGroup={(g) => { contacts.remove(g.book, g.uid).catch(() => {}); if (src === `group:${keyOf(g)}`) setSrc('all'); }} />
       <View style={{ width: 270 }}>
         <Hairline edge="end" />
-        <View style={{ padding: 10, flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+        <View style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8, flexDirection: 'row', gap: 6, alignItems: 'center' }}>
           <SearchField value={query} onChange={setQuery} placeholder={t('contacts.search')} style={{ flex: 1 }} />
         </View>
         {unavailable ? null : list.length ? (
@@ -137,23 +137,23 @@ export default function ContactsApp() {
         ) : (
           <EmptyState title={query ? t('contacts.noResults') : t('contacts.noContacts')} />
         )}
-        <View style={{ height: 34, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 }}>
+        <View style={{ height: 40, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10 }}>
           <Hairline edge="top" />
           <ToolbarButton icon="+" iconSize={18} small title={t('contacts.newContact')} onClick={startNew} disabled={unavailable} />
-          <Text style={{ flex: 1, fontSize: 11, color: th.textDim, textAlign: 'center' }}>{t('contacts.count', { count: list.length, n: formatNumber(list.length, 0) })}</Text>
+          <Text style={{ flex: 1, fontSize: 11, color: th.textDim, textAlign: 'center', whiteSpace: 'nowrap' }}>{t('contacts.count', { count: list.length, n: formatNumber(list.length, 0) })}</Text>
           <View style={{ width: 22 }} />
         </View>
       </View>
       <View style={{ flex: 1 }}>
         {unavailable ? (
-          <EmptyState icon="👤" title={t('contacts.unavailable')} hint={t('contacts.unavailableHint')} />
+          <EmptyState icon={<PersonGlyph size={44} color={th.textDim} />} title={t('contacts.unavailable')} hint={t('contacts.unavailableHint')} />
         ) : draft ? (
           <Editor key={draft._new ? 'new' : keyOf(draft)} contact={draft} groups={groups} onCancel={() => setDraft(null)} onSave={saveDraft}
             onDelete={draft._new ? null : () => setSheet({ confirm: draft })} />
         ) : selected ? (
           <Card contact={selected} groups={groups.filter((g) => g.book === selected.book)} onEdit={() => setDraft(JSON.parse(JSON.stringify(selected)))} />
         ) : (
-          <EmptyState icon="👤" title={t('contacts.noSelection')} />
+          <EmptyState icon={<PersonGlyph size={44} color={th.textDim} />} title={t('contacts.noSelection')} />
         )}
       </View>
       {sheet && (sheet.newGroup || sheet.group) ? (
@@ -195,14 +195,14 @@ export default function ContactsApp() {
 function Sources({ books, groups, src, counts, onSrc, onNewGroup, onImport, onRenameGroup, onDeleteGroup }) {
   const th = useTheme();
   return (
-    <View style={{ width: 200, backgroundColor: th.sidebarBg }}>
+    <View style={{ width: 212, backgroundColor: th.sidebarBg }}>
       <Hairline edge="end" />
-      <View style={{ flex: 1, padding: 10, gap: 2 }}>
-        <SrcRow icon="👥" label={t('contacts.allContacts')} count={counts.length} selected={src === 'all'} onClick={() => onSrc('all')} />
+      <View style={{ flex: 1, paddingHorizontal: 10, paddingTop: 12, gap: 2 }}>
+        <SrcRow icon={<PersonGlyph size={14} />} label={t('contacts.allContacts')} count={counts.length} selected={src === 'all'} onClick={() => onSrc('all')} />
         {books.map((b) => (
-          <View key={b.id} style={{ gap: 2, marginTop: 10 }}>
-            <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, marginHorizontal: 6, marginBottom: 2 }}>{b.acct ? b.acctName || b.acct : t('contacts.onThisComputer')}</Text>
-            <SrcRow icon="📒" label={b.name} count={counts.filter((c) => c.book === b.id).length} selected={src === `book:${b.id}`} onClick={() => onSrc(`book:${b.id}`)} />
+          <View key={b.id} style={{ gap: 2, marginTop: 16 }}>
+            <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, marginHorizontal: 8, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden' }}>{b.acct ? b.acctName || b.acct : t('contacts.onThisComputer')}</Text>
+            <SrcRow icon="▤" label={b.name} count={counts.filter((c) => c.book === b.id).length} selected={src === `book:${b.id}`} onClick={() => onSrc(`book:${b.id}`)} />
             {groups.filter((g) => g.book === b.id).map((g) => (
               <SrcRow key={g.uid} indent icon="▢" label={contactName(g) || t('contacts.untitledGroup')} count={(g.members || []).length}
                 selected={src === `group:${keyOf(g)}`} onClick={() => onSrc(`group:${keyOf(g)}`)}
@@ -211,9 +211,9 @@ function Sources({ books, groups, src, counts, onSrc, onNewGroup, onImport, onRe
           </View>
         ))}
       </View>
-      <View style={{ flexDirection: 'row', padding: 8, gap: 4 }}>
+      <View style={{ height: 40, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, gap: 2 }}>
         <Hairline edge="top" />
-        <Button small plain icon="+" label={t('contacts.newGroup')} onClick={onNewGroup} />
+        <Button small plain icon="⊕" label={t('contacts.newGroup')} onClick={onNewGroup} />
         <View style={{ flex: 1 }} />
         <Button small plain label={t('contacts.import')} onClick={onImport} />
       </View>
@@ -228,9 +228,12 @@ function SrcRow({ icon, label, count, selected, onClick, indent, menu }) {
   const [hover, setHover] = useState(false);
   return (
     <View ref={ref} onClick={onClick} onContextMenu={menu ? () => setOpen(true) : undefined} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ height: 26, paddingHorizontal: indent ? 22 : 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 7,
+      style={{ height: 28, paddingHorizontal: indent ? 24 : 8, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 8,
         backgroundColor: selected ? th.accent : hover ? th.hover : 'transparent' }}>
-      <Text style={{ fontSize: 12, color: selected ? '#fff' : th.textDim }}>{icon}</Text>
+      <View style={{ width: 16, alignItems: 'center' }}>
+        {typeof icon === 'string' ? <Text style={{ fontSize: 13, color: selected ? '#fff' : th.accent }}>{icon}</Text>
+          : <PersonGlyph size={14} color={selected ? '#fff' : th.accent} />}
+      </View>
       <Text style={{ flex: 1, fontSize: 13, color: selected ? '#fff' : th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</Text>
       <Text style={{ fontSize: 11, color: selected ? 'rgba(255,255,255,0.8)' : th.textDim }}>{String(count)}</Text>
       {open && menu ? (
@@ -287,9 +290,9 @@ function ContactList({ list, cur, onPick }) {
   return (
     <View ref={box} onWheel={(e) => setOff((o) => Math.max(0, Math.min(max, Math.min(o, max) + e.deltaY)))} style={{ flex: 1, overflow: 'hidden' }}>
       {shown.map((r) => (r.head != null ? (
-        <View key={`h${r.head}`} style={{ position: 'absolute', left: 0, right: 0, top: r.top - y, height: HEAD, justifyContent: 'center', paddingHorizontal: 14 }}>
-          <Text style={{ fontSize: 12, fontWeight: 700, color: th.textDim }}>{r.head}</Text>
-          <Hairline edge="bottom" inset={12} />
+        <View key={`h${r.head}`} style={{ position: 'absolute', left: 0, right: 0, top: r.top - y, height: HEAD, justifyContent: 'flex-end', paddingBottom: 3, paddingHorizontal: 16 }}>
+          <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim }}>{r.head}</Text>
+          <Hairline edge="bottom" inset={14} />
         </View>
       ) : (
         <ContactRow key={keyOf(r.c)} c={r.c} top={r.top - y} selected={keyOf(r.c) === cur} onPick={onPick} />
@@ -310,15 +313,15 @@ function ContactRow({ c, top, selected, onPick }) {
   const family = [n.family, n.suffix].filter(Boolean).join(' ');
   const fg = selected ? '#fff' : th.text;
   return (
-    <View onClick={() => onPick(c)} style={{ position: 'absolute', left: 6, right: 6, top, height: ROW, borderRadius: 6, paddingHorizontal: 10,
+    <View onClick={() => onPick(c)} style={{ position: 'absolute', left: 8, right: 8, top: top + 1, height: ROW - 2, borderRadius: 6, paddingHorizontal: 8,
       flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: selected ? th.accent : 'transparent' }}>
       {given || family ? (
         <>
           {given ? <Text style={{ fontSize: 13, color: fg, whiteSpace: 'nowrap' }}>{given}</Text> : null}
-          {family ? <Text style={{ fontSize: 13, fontWeight: 700, color: fg, whiteSpace: 'nowrap', overflow: 'hidden', flexShrink: 1 }}>{family}</Text> : null}
+          {family ? <Text style={{ fontSize: 13, fontWeight: 600, color: fg, whiteSpace: 'nowrap', overflow: 'hidden', flexShrink: 1 }}>{family}</Text> : null}
         </>
       ) : (
-        <Text style={{ fontSize: 13, fontWeight: 700, color: fg, whiteSpace: 'nowrap', overflow: 'hidden', flexShrink: 1 }}>{contactName(c) || t('contacts.noName')}</Text>
+        <Text style={{ fontSize: 13, fontWeight: 600, color: fg, whiteSpace: 'nowrap', overflow: 'hidden', flexShrink: 1 }}>{contactName(c) || t('contacts.noName')}</Text>
       )}
     </View>
   );
@@ -337,5 +340,18 @@ function GroupSheet({ group, onClose, onSave }) {
       <Button key="s" primary disabled={!name.trim()} label={t('contacts.save')} onClick={save} />]}>
       <TextInput value={name} onChange={setName} placeholder={t('contacts.groupName')} autoFocus onSubmit={save} onCancel={onClose} />
     </Sheet>
+  );
+}
+
+// A person silhouette drawn with two shapes (the 👤 emoji is in color and does not follow the theme).
+export function PersonGlyph({ size = 14, color }) {
+  const th = useTheme();
+  const c = color || th.accent;
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center' }}>
+      <View style={{ width: size * 0.44, height: size * 0.44, borderRadius: size * 0.22, backgroundColor: c }} />
+      <View style={{ marginTop: size * 0.06, width: size * 0.86, height: size * 0.42, borderTopLeftRadius: size * 0.43, borderTopRightRadius: size * 0.43,
+        borderBottomLeftRadius: size * 0.08, borderBottomRightRadius: size * 0.08, backgroundColor: c }} />
+    </View>
   );
 }

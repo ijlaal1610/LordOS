@@ -159,7 +159,7 @@ static int on_helper_msg(void *src, const MediaMsg *m, const char *payload, int 
         return 1;
     }
     case MM_ERROR:
-        cam_event(c, "event %d error {\"message\":\"camera\"}", c->sid);
+        cam_event(c, "event %d error {\"message\":\"camera.failed\"}", c->sid);
         return 1;
     default:
         return 1;                                    /* nothing else of a camera reaches the session */

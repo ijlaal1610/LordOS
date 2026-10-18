@@ -93,7 +93,7 @@ static int key32(const char *b64, uint8_t out[32]) {
 static int wg_parse(const char *text, WgConf *c, char *err, size_t errn) {
     memset(c, 0, sizeof *c);
     char *copy = strdup(text);
-    if (!copy) { snprintf(err, errn, "sin memoria"); return -1; }
+    if (!copy) { lerr_set(err, errn, "sys.outOfMemory", NULL); return -1; }
     int section = 0, lineno = 0, rc = 0;
     for (char *l = copy, *next; l && !rc; l = next) {
         next = strchr(l, '\n');
@@ -105,12 +105,12 @@ static int wg_parse(const char *text, WgConf *c, char *err, size_t errn) {
         if (!*l) continue;
         if (!strcasecmp(l, "[Interface]")) { section = 1; continue; }
         if (!strcasecmp(l, "[Peer]")) {
-            if (c->npeer >= MAX_PEERS) { snprintf(err, errn, "demasiados [Peer]"); rc = -1; break; }
+            if (c->npeer >= MAX_PEERS) { lerr_set(err, errn, "wg.tooManyPeers", NULL); rc = -1; break; }
             section = 2; c->npeer++;
             continue;
         }
         char *eq = strchr(l, '=');
-        if (!eq || !section) { snprintf(err, errn, "línea %d: se esperaba clave = valor", lineno); rc = -1; break; }
+        if (!eq || !section) { lerr_set(err, errn, "vpn.expectedKeyValue", "line", lerr_int(lineno), NULL); rc = -1; break; }
         *eq = 0;
         char *k = trim(l), *v = trim(eq + 1);
         Peer *p = section == 2 ? &c->peer[c->npeer - 1] : NULL;
@@ -118,12 +118,12 @@ static int wg_parse(const char *text, WgConf *c, char *err, size_t errn) {
             !strcasecmp(k, "SaveConfig") || !strcasecmp(k, "Table")) { c->ignored++; continue; }
         if (section == 1 && !strcasecmp(k, "PrivateKey")) {
             if (!strcmp(v, "generate")) c->generate = 1;
-            else if (key32(v, c->priv)) { snprintf(err, errn, "línea %d: PrivateKey inválida", lineno); rc = -1; }
+            else if (key32(v, c->priv)) { lerr_set(err, errn, "vpn.invalidLineValue", "line", lerr_int(lineno), "key", "PrivateKey", NULL); rc = -1; }
             else c->has_priv = 1;
         } else if (section == 1 && !strcasecmp(k, "Address")) {
             for (char *t = strtok(v, ","); t && !rc; t = strtok(NULL, ",")) {
                 t = trim(t);
-                if (c->naddr >= 8 || parse_cidr(t, &c->addr[c->naddr], 0)) { snprintf(err, errn, "línea %d: Address inválida (%s)", lineno, t); rc = -1; }
+                if (c->naddr >= 8 || parse_cidr(t, &c->addr[c->naddr], 0)) { lerr_set(err, errn, "vpn.invalidLineValue", "line", lerr_int(lineno), "key", "Address", "value", t, NULL); rc = -1; }
                 else c->naddr++;
             }
         } else if (section == 1 && !strcasecmp(k, "DNS")) {
@@ -133,42 +133,42 @@ static int wg_parse(const char *text, WgConf *c, char *err, size_t errn) {
                 uint8_t a[16];
                 if (!parse_ip(t, &fam, a)) { if (c->ndns < 8) snprintf(c->dns[c->ndns++], 64, "%s", t); }
                 else if (valid_domain(t)) { if (c->nsearch < 8) snprintf(c->search[c->nsearch++], 64, "%s", t); }
-                else { snprintf(err, errn, "línea %d: DNS inválido (%s)", lineno, t); rc = -1; }
+                else { lerr_set(err, errn, "vpn.invalidLineValue", "line", lerr_int(lineno), "key", "DNS", "value", t, NULL); rc = -1; }
             }
         } else if (section == 1 && !strcasecmp(k, "MTU")) {
             c->mtu = atoi(v);
-            if (c->mtu < 576 || c->mtu > 9000) { snprintf(err, errn, "línea %d: MTU inválido", lineno); rc = -1; }
+            if (c->mtu < 576 || c->mtu > 9000) { lerr_set(err, errn, "vpn.invalidLineValue", "line", lerr_int(lineno), "key", "MTU", NULL); rc = -1; }
         } else if (section == 1 && !strcasecmp(k, "ListenPort")) {
             c->listen = atoi(v);
-            if (c->listen < 1 || c->listen > 65535) { snprintf(err, errn, "línea %d: ListenPort inválido", lineno); rc = -1; }
+            if (c->listen < 1 || c->listen > 65535) { lerr_set(err, errn, "vpn.invalidLineValue", "line", lerr_int(lineno), "key", "ListenPort", NULL); rc = -1; }
         } else if (section == 1 && !strcasecmp(k, "FwMark")) {
             c->ignored++;
         } else if (p && !strcasecmp(k, "PublicKey")) {
-            if (key32(v, p->pub)) { snprintf(err, errn, "línea %d: PublicKey inválida", lineno); rc = -1; }
+            if (key32(v, p->pub)) { lerr_set(err, errn, "vpn.invalidLineValue", "line", lerr_int(lineno), "key", "PublicKey", NULL); rc = -1; }
         } else if (p && !strcasecmp(k, "PresharedKey")) {
-            if (key32(v, p->psk)) { snprintf(err, errn, "línea %d: PresharedKey inválida", lineno); rc = -1; }
+            if (key32(v, p->psk)) { lerr_set(err, errn, "vpn.invalidLineValue", "line", lerr_int(lineno), "key", "PresharedKey", NULL); rc = -1; }
             else p->has_psk = 1;
         } else if (p && !strcasecmp(k, "Endpoint")) {
-            if (!valid_endpoint(v)) { snprintf(err, errn, "línea %d: Endpoint inválido", lineno); rc = -1; }
+            if (!valid_endpoint(v)) { lerr_set(err, errn, "vpn.invalidLineValue", "line", lerr_int(lineno), "key", "Endpoint", NULL); rc = -1; }
             else snprintf(p->endpoint, sizeof p->endpoint, "%s", v);
         } else if (p && !strcasecmp(k, "AllowedIPs")) {
             for (char *t = strtok(v, ","); t && !rc; t = strtok(NULL, ",")) {
                 t = trim(t);
                 if (!*t) continue;
-                if (p->nallowed >= MAX_IPS || parse_cidr(t, &p->allowed[p->nallowed], 0)) { snprintf(err, errn, "línea %d: AllowedIPs inválido (%s)", lineno, t); rc = -1; }
+                if (p->nallowed >= MAX_IPS || parse_cidr(t, &p->allowed[p->nallowed], 0)) { lerr_set(err, errn, "vpn.invalidLineValue", "line", lerr_int(lineno), "key", "AllowedIPs", "value", t, NULL); rc = -1; }
                 else p->nallowed++;
             }
         } else if (p && !strcasecmp(k, "PersistentKeepalive")) {
             p->keepalive = !strcasecmp(v, "off") ? 0 : atoi(v);
-            if (p->keepalive < 0 || p->keepalive > 65535) { snprintf(err, errn, "línea %d: PersistentKeepalive inválido", lineno); rc = -1; }
-        } else { snprintf(err, errn, "línea %d: clave desconocida %s", lineno, k); rc = -1; }
+            if (p->keepalive < 0 || p->keepalive > 65535) { lerr_set(err, errn, "vpn.invalidLineValue", "line", lerr_int(lineno), "key", "PersistentKeepalive", NULL); rc = -1; }
+        } else { lerr_set(err, errn, "vpn.unknownKey", "line", lerr_int(lineno), "key", k, NULL); rc = -1; }
     }
     free(copy);
-    if (!rc && !c->has_priv && !c->generate) { snprintf(err, errn, "falta PrivateKey"); rc = -1; }
-    if (!rc && !c->npeer) { snprintf(err, errn, "falta [Peer]"); rc = -1; }
+    if (!rc && !c->has_priv && !c->generate) { lerr_set(err, errn, "vpn.missingKey", "key", "PrivateKey", NULL); rc = -1; }
+    if (!rc && !c->npeer) { lerr_set(err, errn, "vpn.missingKey", "key", "[Peer]", NULL); rc = -1; }
     for (int i = 0; !rc && i < c->npeer; i++) {
         uint8_t zero[32] = {0};
-        if (!memcmp(c->peer[i].pub, zero, 32)) { snprintf(err, errn, "un [Peer] no tiene PublicKey"); rc = -1; }
+        if (!memcmp(c->peer[i].pub, zero, 32)) { lerr_set(err, errn, "wg.peerNoPublicKey", NULL); rc = -1; }
     }
     return rc;
 }
@@ -211,11 +211,11 @@ void vpn_ifname(const char *type, const char *name, char *out, size_t n) {
 int wg_import(const char *name, const char *text, char *pub_out, char *err, size_t errn) {
     WgConf c;
     if (wg_parse(text, &c, err, errn)) return -1;
-    if (c.generate) { if (random_bytes(c.priv, 32)) { snprintf(err, errn, "sin números aleatorios"); return -1; } x25519_clamp(c.priv); }
+    if (c.generate) { if (random_bytes(c.priv, 32)) { lerr_set(err, errn, "wg.noRandom", NULL); return -1; } x25519_clamp(c.priv); }
     uint8_t pub[32];
     x25519_public(pub, c.priv);
     b64_encode(pub, 32, pub_out, 64);
-    if (c.ignored) admin_say("LOG", "se ignoraron %d líneas (PostUp, PreDown, Table...): LordOS no ejecuta comandos", c.ignored);
+    if (c.ignored) admin_log("wg.ignoredLines", "count", lerr_int(c.ignored), NULL);
     Buf b = {0};
     wg_emit(&c, &b);
     char path[160];
@@ -241,7 +241,7 @@ int wg_import(const char *name, const char *text, char *pub_out, char *err, size
     snprintf(path, sizeof path, NET_VPN_DIR "/%s.json", name);
     ok = ok && m.p && write_file_atomic(path, m.p, m.len, 0644) == 0;
     buf_free(&m);
-    if (!ok) { snprintf(err, errn, "no se pudo guardar"); return -1; }
+    if (!ok) { lerr_set(err, errn, "net.saveFailed", NULL); return -1; }
     return 0;
 }
 
@@ -285,9 +285,9 @@ static int resolve_endpoint(const char *ep, struct sockaddr_storage *ss, socklen
 
 static int wg_set_device(const char *ifn, const WgConf *c, uint32_t fwmark, char *err, size_t errn) {
     int fd = nl_open(NETLINK_GENERIC, 0);
-    if (fd < 0) { snprintf(err, errn, "netlink"); return -1; }
+    if (fd < 0) { lerr_set(err, errn, "net.netlinkFailed", NULL); return -1; }
     int fam = genl_family(fd, WG_GENL_NAME);
-    if (fam < 0) { close(fd); snprintf(err, errn, "el kernel no tiene WireGuard"); return -1; }
+    if (fam < 0) { close(fd); lerr_set(err, errn, "wg.noKernel", NULL); return -1; }
     NlMsg m;
     nlm_init(&m, (uint16_t)fam, 0);
     struct genlmsghdr g = { .cmd = WG_CMD_SET_DEVICE, .version = WG_GENL_VERSION };
@@ -307,7 +307,7 @@ static int wg_set_device(const char *ifn, const WgConf *c, uint32_t fwmark, char
         if (p->endpoint[0]) {
             struct sockaddr_storage ss;
             socklen_t sl;
-            if (resolve_endpoint(p->endpoint, &ss, &sl)) { nlm_free(&m); close(fd); snprintf(err, errn, "no se pudo resolver %s", p->endpoint); return -1; }
+            if (resolve_endpoint(p->endpoint, &ss, &sl)) { nlm_free(&m); close(fd); lerr_set(err, errn, "vpn.resolveFailed", "host", p->endpoint, NULL); return -1; }
             nlm_attr(&m, WGPEER_A_ENDPOINT, &ss, sl);
         }
         nlm_attr_u16(&m, WGPEER_A_PERSISTENT_KEEPALIVE_INTERVAL, (uint16_t)p->keepalive);
@@ -325,7 +325,7 @@ static int wg_set_device(const char *ifn, const WgConf *c, uint32_t fwmark, char
     nlm_nest_end(&m, peers);
     int r = nl_talk(fd, &m);
     close(fd);
-    if (r) snprintf(err, errn, "WG_CMD_SET_DEVICE: %s", strerror(-r));
+    if (r) lerr_set(err, errn, "wg.setDeviceFailed", "errno", lerr_errno(-r), NULL);
     return r ? -1 : 0;
 }
 
@@ -338,7 +338,7 @@ static int load_conf(const char *name, WgConf *c, char *err, size_t errn) {
     char path[160];
     snprintf(path, sizeof path, NET_VPN_DIR "/%s.conf", name);
     char *t = read_file(path, 65536, NULL);
-    if (!t) { snprintf(err, errn, "no existe la VPN %s", name); return -1; }
+    if (!t) { lerr_set(err, errn, "vpn.unknown", "name", name, NULL); return -1; }
     int r = wg_parse(t, c, err, errn);
     memset(t, 0, strlen(t));
     free(t);
@@ -356,11 +356,11 @@ int wg_up(const char *name, char *err, size_t errn) {
     char ifn[IFNAMSIZ];
     vpn_ifname("wireguard", name, ifn, sizeof ifn);
     int fd = nl_open(NETLINK_ROUTE, 0);
-    if (fd < 0) { snprintf(err, errn, "netlink"); return -1; }
+    if (fd < 0) { lerr_set(err, errn, "net.netlinkFailed", NULL); return -1; }
     int idx = rt_ifindex(ifn);
     if (idx) { rt_link_del(fd, idx); idx = 0; }
     int r = rt_link_new(fd, ifn, "wireguard");
-    if (r) { close(fd); snprintf(err, errn, "no se pudo crear %s: %s", ifn, strerror(-r)); return -1; }
+    if (r) { close(fd); lerr_set(err, errn, "vpn.createIfFailed", "name", ifn, "errno", lerr_errno(-r), NULL); return -1; }
     idx = rt_ifindex(ifn);
     int full4 = 0, full6 = 0;
     for (int i = 0; i < c.npeer; i++)

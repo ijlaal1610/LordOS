@@ -2,6 +2,7 @@
 #ifndef LORD_UI_H
 #define LORD_UI_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include "../canvas.h"
 #include "otf.h"
@@ -31,6 +32,8 @@ typedef struct {
     float gap;
     uint32_t bg, border_color, color, shadow_color;
     uint8_t has_gradient;
+    uint8_t text_overflow;      /* textOverflow: 'ellipsis' */
+    uint8_t line_clamp;         /* numberOfLines / lineClamp: at most N lines, "…" on the last (0 = no limit) */
     uint32_t grad_from, grad_to;
     float grad_angle;
     float radius, border_width, opacity;
@@ -38,12 +41,56 @@ typedef struct {
     float font_size, line_height, font_weight;
     float translate_x, translate_y;
     float z_index;
+    /* Per-side and logical edges, scale/rotate: rarely used, so they live in an allocation of their
+     * own (StyleExt, created by the first such property); every node walk stays as fast as before. */
+    struct StyleExt *ext;
 } Style;
+
+typedef struct StyleExt {
+    /* A value below only overrides the shorthand (borderWidth, borderColor, borderRadius, margin*,
+     * padding*) when its bit is in edge_set (ES_*); start/end follow the node's direction and win
+     * over the physical side, as in React Native. */
+    uint32_t edge_set;
+    /* transform: scale(...) rotate(...) for painting only (layout and translate are unaffected) */
+    float scale_x, scale_y, rotate;
+    float border_side[6];           /* widths: left, top, right, bottom, start, end */
+    uint32_t border_side_color[6];
+    float margin_inline[2], padding_inline[2];   /* start, end */
+    Dim inset_inline[2];            /* insetInlineStart / insetInlineEnd (auto = unset) */
+    float radius_corner[8];         /* top-left, top-right, bottom-right, bottom-left, top-start, top-end, bottom-start, bottom-end */
+    Dim origin_x, origin_y;         /* transformOrigin, 50% 50% by default */
+    /* not style: the edges resolved for the node's direction (layout.c node_resolve_edges), physical L, T, R, B */
+    struct {
+        float mg[4], pd[4], bw[4];
+        uint32_t bc[4];
+        float rad[4];               /* top-left, top-right, bottom-right, bottom-left */
+        uint8_t ok, rtl, plain;     /* resolved for this style and direction; uniform border and radius */
+    } r;
+} StyleExt;
+#define STYLE_EXT_VALUES offsetof(StyleExt, r)   /* what lord.setStyle compares */
+
+enum { SIDE_START = 4, SIDE_END = 5 };
+#define ES_BW(i)      (1u << (i))           /* border width of side i (0..5) */
+#define ES_BC(i)      (1u << (6 + (i)))     /* border color of side i */
+#define ES_MARGIN(i)  (1u << (12 + (i)))    /* margin start (0) / end (1) */
+#define ES_PADDING(i) (1u << (14 + (i)))    /* padding start (0) / end (1) */
+#define ES_RADIUS(i)  (1u << (16 + (i)))    /* corner i (0..7) */
+
+/* 2D affine transform: (x, y) → (a x + c y + e, b x + d y + f). */
+typedef struct { float a, b, c, d, e, f; } Affine;
 
 typedef struct Image Image;
 
 /* Box in screen coordinates; empty if x1 <= x0. */
 typedef struct { float x0, y0, x1, y1; } Box;
+
+/* Transforms (layout.c place), only for nodes that have one or are inside one: own = this node's
+ * scale/rotate around its origin, in layout coordinates; world = its ancestors' and its own
+ * (layout → screen); inv = the inverse of world. */
+typedef struct {
+    Affine own, world, inv;
+    uint64_t sig;               /* paint.c: geometry of its subtree in the last damage pass (own_tf) */
+} NodeTf;
 
 typedef struct Node {
     int id, type;
@@ -53,6 +100,8 @@ typedef struct Node {
     int term;                   /* NODE_TERM: session id; NODE_SURFACE: Wayland surface id; NODE_MEDIA: source (media/) */
     uint8_t protect;            /* protected window: black in screenshots, recordings and remote desktop (media/capture.c) */
     uint8_t rtl;                /* effective direction (computed in layout) */
+    uint8_t own_tf, has_tf;     /* it has a scale/rotate; it or an ancestor has one (tf is set) */
+    uint8_t layout_ok, layout_rtl;  /* its subtree is laid out for its current w × h and direction */
     struct Node *parent, *first, *last, *next, *prev;
     float x, y, w, h;           /* layout relative to the parent */
     float ax, ay;               /* absolute position on screen */
@@ -60,7 +109,15 @@ typedef struct Node {
     float measure_maxw, measure_w, measure_h;
     uint8_t paint_dirty;        /* its style or text changed */
     Box prev_box;               /* what it occupied on screen in the last frame */
+    NodeTf *tf;
 } Node;
+
+/* The node's edges for its direction (after layout's prepare): straight from the style unless it
+ * has per-side or logical ones. Arrays are physical L, T, R, B. */
+static inline const float *node_margin(const Node *n) { return n->s.ext ? n->s.ext->r.mg : n->s.margin; }
+static inline const float *node_padding(const Node *n) { return n->s.ext ? n->s.ext->r.pd : n->s.padding; }
+static inline float node_border(const Node *n, int e) { return n->s.ext ? n->s.ext->r.bw[e] : n->s.border_width; }
+static inline int node_edges_plain(const Node *n) { return !n->s.ext || n->s.ext->r.plain; }
 
 typedef struct {
     Node **nodes;
@@ -91,6 +148,7 @@ void  node_insert_before(Node *p, Node *c, Node *before);
 void  node_detach(Node *c);
 void  node_set_text(Node *n, const char *s);
 void  node_invalidate(Node *n);
+void  node_moved(Node *n);          /* only left/top changed (window drag): no repaint of its content */
 int   node_gather_text(const Node *n, char *buf, int size);
 int   node_children_ordered(Node *n, Node **out, int max);
 void  damage_add(Box b);
@@ -104,6 +162,23 @@ int style_reset(Style *s, const char *key);
 
 /* layout.c */
 void layout_root(Node *root, float w, float h);
+void node_resolve_edges(Node *n);
+
+/* transform.c: affine math shared by layout, paint and hit testing */
+Affine affine_identity(void);
+Affine affine_mul(Affine m, Affine n);              /* m after n: (m ∘ n)(p) = m(n(p)) */
+int    affine_invert(Affine m, Affine *out);         /* 0 if singular */
+void   affine_apply(Affine m, float x, float y, float *ox, float *oy);
+Box    affine_box(Affine m, Box b);                  /* bounding box of the transformed rectangle */
+int    style_rotates(float deg);
+/* inline: layout asks it of every node */
+static inline int style_has_transform(const Style *s) {
+    const struct StyleExt *x = s->ext;
+    return x && (x->scale_x != 1 || x->scale_y != 1 || (x->rotate != 0 && style_rotates(x->rotate)));
+}
+/* The node's own transform: translate(origin) · rotate · scale · translate(-origin), with the origin
+ * resolved against its border box at (x, y, w, h). */
+Affine style_transform(const Style *s, float x, float y, float w, float h);
 
 /* text.c */
 typedef struct {
@@ -139,6 +214,17 @@ extern float text_paint_scale;
 void  text_measure(const char *s, float weight, float size, float line_h, float max_w, int nowrap, float *w, float *h);
 void  text_draw(Canvas *c, const char *s, float weight, float size, float line_h,
                 float x, float y, float box_w, int align, int nowrap, uint32_t argb);
+/* With truncation: at most max_lines lines (0 = all) and, if ellipsis, "…" where text is cut (the
+ * last visible line when more text follows, and any nowrap line wider than box_w). */
+void  text_measure_ex(const char *s, float weight, float size, float line_h, float max_w, int nowrap,
+                      int max_lines, float *w, float *h);
+void  text_draw_ex(Canvas *c, const char *s, float weight, float size, float line_h,
+                   float x, float y, float box_w, int align, int nowrap, int max_lines, int ellipsis, uint32_t argb);
+/* The truncated form of one line: the longest prefix that ends on a grapheme cluster (never inside
+ * a ligature, a mark sequence, an emoji ZWJ sequence or a flag) and fits in box_w with "…" after it.
+ * Writes it (with the "…") to out and returns its width; returns -1 and copies s if s already fits
+ * and force is 0. Shaped text is re-shaped, so Arabic letters take their final forms. */
+float text_ellipsize(const char *s, float weight, float size, float box_w, int force, char *out, int out_size);
 Otf  *text_font_otf(int font);
 float text_font_scale(int font, float size);
 int   text_font_kern_glyphs(int font, uint32_t a, uint32_t b);  /* font units */
@@ -150,6 +236,13 @@ void  text_layout_measure(const char *s, int font, float size, float line_h, flo
 void  text_layout_draw(Canvas *c, const char *s, int font, float size, float line_h,
                        float x, float y, float box_w, int align, int nowrap, uint32_t argb);
 void  text_layout_flush(void);
+unsigned text_generation(void);                            /* changes when text may measure differently (language) */
+float text_layout_ellipsize(const char *s, int font, float size, float box_w, int force, char *out, int out_size);
+void  text_layout_measure_ex(const char *s, int font, float size, float line_h, float max_w, int nowrap, int max_lines, float *w, float *h);
+void  text_layout_draw_n(Canvas *c, const char *s, int font, float size, float line_h,
+                         float x, float y, float box_w, int align, int nowrap, int max_lines, uint32_t argb);
+int   text_layout_line_bytes(const char *s, int font, float size, float max_w, int nowrap, int *bs, int *be, int max);
+int   text_ellipsis_join(char *out, int out_size, const char *s, int len);   /* prefix + "…" */
 void  text_set_language(const char *lang);                 /* picks the CJK font (ja/ko/zh) */
 int   text_script_fallback(uint32_t cp, int bold);         /* terminal: font per script */
 int   text_direction(const char *s);                       /* 1 if the first strong character is RTL */

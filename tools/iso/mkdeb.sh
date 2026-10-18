@@ -104,6 +104,7 @@ Files: third_party/quickjs/* third_party/stb/*
 License: MIT and public-domain
  QuickJS (MIT) and stb (public domain / MIT), compiled into lord-server.
 C
+chmod 644 "$D/copyright"
 printf 'lordos (%s) trixie; urgency=medium\n\n  * Package built by tools/iso/mkdeb.sh.\n\n -- LordOS <lord.basex@gmail.com>  %s\n' \
     "$VERSION" "$(date -R)" | gzip -9n > "$D/changelog.gz"
 chmod 644 "$D/changelog.gz"
@@ -128,7 +129,7 @@ Recommends: pipewire-pulse, wireplumber, wpasupplicant, openvpn, fonts-noto-core
 Section: x11
 Priority: optional
 Homepage: https://github.com/lordbasex/LordOS
-Description: LordOS desktop environment (own display server)
+Description: desktop environment with its own display server
  LordOS is a desktop environment with its own display server in C (DRM/KMS,
  evdev, Wayland compositor) and the interface in React on its own engine.
  It includes the native apps, the themes, the login screen and the
@@ -144,5 +145,8 @@ if [ "$1" = configure ] && command -v systemctl >/dev/null 2>&1; then
 fi
 C
 chmod 755 "$PKG/DEBIAN/postinst"
+# files under /etc are conffiles (lintian: file-in-etc-not-marked-as-conffile)
+( cd "$PKG" && find etc -type f | sed 's|^|/|' ) > "$PKG/DEBIAN/conffiles"
+chmod 644 "$PKG/DEBIAN/conffiles"
 dpkg-deb --root-owner-group --build "$PKG" "$OUT" >/dev/null
 echo "$OUT ($(du -h "$OUT" | cut -f1))"

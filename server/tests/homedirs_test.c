@@ -64,7 +64,7 @@ int main(void) {
     lang("es_AR.UTF-8", es, "XDG_DOCUMENTS_DIR=\"$HOME/Documentos\"", "es_AR");
     lang("en_US.UTF-8", en, "XDG_DOWNLOAD_DIR=\"$HOME/Downloads\"", "en_US");
     lang("pt_BR.UTF-8", pt, "XDG_DESKTOP_DIR=\"$HOME/Área de trabalho\"", "pt_BR");
-    lang("C.UTF-8", es, "XDG_PICTURES_DIR=\"$HOME/Imágenes\"", "es_ES");     /* no language: Spanish */
+    lang("C.UTF-8", en, "XDG_PICTURES_DIR=\"$HOME/Pictures\"", "en_US");    /* no language: English */
 
     /* ~/.config is a symlink elsewhere: nothing is written through it */
     char home[] = "/tmp/homedirs-test-XXXXXX", other[] = "/tmp/homedirs-other-XXXXXX";

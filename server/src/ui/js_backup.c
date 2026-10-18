@@ -14,6 +14,7 @@
  *                                    the thread) and kept only in memory; result in status().unlock
  * Errors are thrown as exceptions carrying the reason. */
 #include "js_backup.h"
+#include "js_err.h"
 #include "../backup/backup.h"
 
 #include <stdlib.h>
@@ -26,7 +27,7 @@ static JSValue parsed(JSContext *c, char *j, const char *what) {
     return v;
 }
 
-static JSValue fail(JSContext *c, const char *err) { return JS_ThrowTypeError(c, "%s", err[0] ? err : "error"); }
+static JSValue fail(JSContext *c, const char *err) { return js_throw_line(c, err[0] ? err : "sys.unknown"); }
 
 static JSValue f_status(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc; (void)argv;
@@ -40,7 +41,7 @@ static JSValue f_config(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
 
 static JSValue f_configure(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (argc < 1) return JS_ThrowTypeError(c, "missing configuration");
+    if (argc < 1) return js_throw_code(c, "backup.badConfig", NULL);
     JSValue s = JS_JSONStringify(c, argv[0], JS_UNDEFINED, JS_UNDEFINED);
     const char *j = JS_IsException(s) ? NULL : JS_ToCString(c, s);
     JS_FreeValue(c, s);

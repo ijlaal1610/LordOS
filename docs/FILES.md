@@ -13,7 +13,7 @@ drop, color tags and search. Disk operations belong to the server (`server/src/f
 | Icons with real image thumbnails | List: columns, alternating rows and folders that expand in place (names in several scripts) |
 | ![columnas](m7-archivos-columnas.png) | ![galeria](m7-archivos-galeria.png) |
 | Columns (Miller) with the text preview | Gallery: large preview and the strip below |
-| ![vista rápida](m7-archivos-vista-rapida.png) | ![info](m7-archivos-info.png) |
+| ![quick look](m7-archivos-vista-rapida.png) | ![info](m7-archivos-info.png) |
 | Quick Look (Space), 5 of 7; the arrows go to the next one | Get Info (❖I): size, location, dates, permissions and «Open with» |
 | ![menú](m7-archivos-menu.png) | ![abrir con](m7-archivos-abrir-con.png) |
 | Context menu of a file, with tags | «Open with»: the Text Editor or a Linux app that declares the type (FeatherPad) |

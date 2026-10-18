@@ -155,7 +155,7 @@ function Dialog({ req }) {
       finish({ job: r.job, printer: dest });
     } catch (e) {
       setBusy(false);
-      setError(e.code === 'bad-pages' ? t('print.badPages') : t('print.failed', { error: e.detail || e.code || e.message }));
+      setError(e.code === 'bad-pages' ? t('print.badPages') : t('print.failed', { error: e.message }));
     }
   }
 

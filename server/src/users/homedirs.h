@@ -7,7 +7,7 @@
 
 #include <sys/types.h>
 
-/* UI language for a locale ("es_AR.UTF-8" → "es"): es, en or pt (Spanish otherwise). */
+/* UI language for a locale ("es_AR.UTF-8" → "es"): es, en or pt (English otherwise). */
 const char *homedirs_ui_lang(const char *locale);
 /* Visible name of each folder (0..5: desktop, documents, downloads, music, pictures, videos). */
 const char *homedirs_name(const char *ui_lang, int i);

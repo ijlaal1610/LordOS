@@ -128,19 +128,19 @@ function Sidebar({ sel, onSel, lists, counts, now, onAdd, onEdit }) {
     <View style={{ width: 236, backgroundColor: th.sidebarBg }}>
       <Hairline edge="end" />
       <ScrollView style={{ flex: 1 }}>
-        <View style={{ padding: 10, gap: 4 }}>
+        <View style={{ paddingHorizontal: 10, paddingTop: 12, paddingBottom: 10, gap: 2 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {tiles.map((k) => (
               <Tile key={k} label={t(`reminders.smart.${k}`)} color={SMART[k]} glyph={glyph[k]} count={k === 'completed' ? null : counts[k]}
                 selected={sel === k} onClick={() => onSel(k)} />
             ))}
           </View>
-          <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, marginHorizontal: 6, marginTop: 14, marginBottom: 2 }}>{t('reminders.myLists')}</Text>
+          <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, marginHorizontal: 8, marginTop: 18, marginBottom: 4 }}>{t('reminders.myLists')}</Text>
           {lists.map((l) => <ListRow key={l.id} list={l} count={counts.lists[l.id] || 0} selected={sel === `list:${l.id}`} onClick={() => onSel(`list:${l.id}`)} onEdit={onEdit} />)}
-          {!lists.length ? <Text style={{ fontSize: 12, color: th.textDim, marginHorizontal: 6 }}>{t('reminders.noLists')}</Text> : null}
+          {!lists.length ? <Text style={{ fontSize: 12, color: th.textDim, marginHorizontal: 8 }}>{t('reminders.noLists')}</Text> : null}
         </View>
       </ScrollView>
-      <View style={{ padding: 8 }}>
+      <View style={{ height: 40, paddingHorizontal: 10, justifyContent: 'center' }}>
         <Hairline edge="top" />
         <Button small plain icon="⊕" label={t('reminders.addList')} onClick={onAdd} style={{ alignSelf: 'flex-start' }} />
       </View>
@@ -152,14 +152,15 @@ function Tile({ label, color, glyph, count, selected, onClick }) {
   const th = useTheme();
   const dark = th.mode === 'dark';
   return (
-    <View onClick={onClick} style={{ width: 103, height: 62, borderRadius: 10, padding: 8, justifyContent: 'space-between',
-      backgroundColor: selected ? color : dark ? 'rgba(255,255,255,0.08)' : '#ffffff', boxShadow: dark || selected ? 'none' : '0 1px 2px rgba(0,0,0,0.12)' }}>
+    <View onClick={onClick} style={{ width: 104, height: 64, borderRadius: 10, paddingHorizontal: 9, paddingTop: 8, paddingBottom: 7, justifyContent: 'space-between',
+      backgroundColor: selected ? color : dark ? 'rgba(255,255,255,0.07)' : '#ffffff',
+      border: `1px solid ${selected ? 'transparent' : dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`, boxShadow: dark || selected ? 'none' : '0 1px 1px rgba(0,0,0,0.06)' }}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? '#ffffff' : color }}>
-          <Text style={{ fontSize: 12, fontWeight: 700, color: selected ? color : '#ffffff' }}>{glyph}</Text>
+        <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? '#ffffff' : color }}>
+          <Text style={{ fontSize: 12, fontWeight: 600, color: selected ? color : '#ffffff' }}>{glyph}</Text>
         </View>
         <View style={{ flex: 1 }} />
-        {count != null ? <Text style={{ fontSize: 19, fontWeight: 700, color: selected ? '#fff' : th.text }}>{String(count)}</Text> : null}
+        {count != null ? <Text style={{ fontSize: 20, fontWeight: 700, color: selected ? '#fff' : th.text }}>{String(count)}</Text> : null}
       </View>
       <Text style={{ fontSize: 12, fontWeight: 600, color: selected ? '#fff' : th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</Text>
     </View>
@@ -173,13 +174,13 @@ function ListRow({ list, count, selected, onClick, onEdit }) {
   const [hover, setHover] = useState(false);
   return (
     <View ref={ref} onClick={onClick} onContextMenu={() => setMenu(true)} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ height: 32, paddingHorizontal: 6, borderRadius: 7, flexDirection: 'row', alignItems: 'center', gap: 8,
+      style={{ height: 32, paddingHorizontal: 8, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 8,
         backgroundColor: selected ? (th.mode === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.09)') : hover ? th.hover : 'transparent' }}>
-      <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: list.color || '#007aff' }}>
-        <Text style={{ fontSize: 12, color: '#fff' }}>☰</Text>
+      <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: list.color || '#007aff' }}>
+        <Text style={{ fontSize: 11, color: '#fff' }}>☰</Text>
       </View>
       <Text style={{ flex: 1, fontSize: 13, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{list.name}</Text>
-      <Text style={{ fontSize: 13, color: th.textDim }}>{String(count)}</Text>
+      <Text style={{ fontSize: 12, color: th.textDim }}>{String(count)}</Text>
       {menu && (
         <Popover anchor={ref} width={200} onClose={() => setMenu(false)}>
           <MenuList onDone={() => setMenu(false)} items={[
@@ -235,24 +236,24 @@ function ListView({ sel, title, color, items, lists, now, showDone, newRowRef, l
   const canAdd = sel !== 'completed';
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 22, paddingBottom: 6 }}>
-        <Text style={{ flex: 1, fontSize: 28, fontWeight: 700, color, whiteSpace: 'nowrap', overflow: 'hidden' }}>{title}</Text>
-        <Text style={{ fontSize: 28, fontWeight: 600, color }}>{sel === 'completed' ? String(shown.length) : String(openCount)}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingBottom: 10 }}>
+        <Text style={{ flex: 1, fontSize: 26, fontWeight: 700, color, whiteSpace: 'nowrap', overflow: 'hidden' }}>{title}</Text>
+        <Text style={{ fontSize: 26, fontWeight: 600, color }}>{sel === 'completed' ? String(shown.length) : String(openCount)}</Text>
       </View>
       <ScrollView style={{ flex: 1 }}>
-        <View style={{ paddingHorizontal: 14, paddingBottom: 20 }}>
+        <View style={{ paddingHorizontal: 12, paddingBottom: 20 }}>
           {sections.map((s) => (
-            <View key={s.key} style={{ marginBottom: s.title ? 12 : 0 }}>
-              {s.title ? <Text style={{ fontSize: 15, fontWeight: 700, color: s.color || th.text, marginHorizontal: 8, marginTop: 8, marginBottom: 4 }}>{s.title}</Text> : null}
+            <View key={s.key} style={{ marginBottom: s.title ? 14 : 0 }}>
+              {s.title ? <Text style={{ fontSize: 15, fontWeight: 600, color: s.color || th.text, marginHorizontal: 8, marginTop: 6, marginBottom: 2 }}>{s.title}</Text> : null}
               {s.rows.map(({ it, depth }) => (
                 <ReminderRow key={`${it.list}/${it.uid}`} item={it} depth={depth} lists={lists} now={now} color={listOf(it.list)?.color || it.color || '#007aff'}
                   listName={smart && sel !== 'all' ? listOf(it.list)?.name : ''} />
               ))}
             </View>
           ))}
-          {!shown.length && !loading && !canAdd ? <Text style={{ fontSize: 13, color: th.textDim, margin: 10 }}>{t('reminders.nothingCompleted')}</Text> : null}
+          {!shown.length && !loading && !canAdd ? <Text style={{ fontSize: 13, color: th.textDim, marginHorizontal: 8, marginVertical: 10 }}>{t('reminders.nothingCompleted')}</Text> : null}
           {!shown.length && !loading && canAdd && sel !== 'all' && !sel.startsWith('list:') ? (
-            <Text style={{ fontSize: 13, color: th.textDim, marginHorizontal: 10, marginVertical: 6 }}>{t('reminders.empty')}</Text>
+            <Text style={{ fontSize: 13, color: th.textDim, marginHorizontal: 8, marginVertical: 8 }}>{t('reminders.empty')}</Text>
           ) : null}
           {canAdd ? <NewRow sel={sel} target={target} color={target?.color || color} registerFocus={newRowRef} /> : null}
         </View>
@@ -261,11 +262,11 @@ function ListView({ sel, title, color, items, lists, now, showDone, newRowRef, l
   );
 }
 
-function Circle({ done, color, onClick, size = 20 }) {
+function Circle({ done, color, onClick, size = 18 }) {
   return (
     <View onClick={onClick} style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center',
       border: `1.5px solid ${done ? color : '#a1a1a6'}` }}>
-      {done ? <View style={{ width: size - 6, height: size - 6, borderRadius: (size - 6) / 2, backgroundColor: color }} /> : null}
+      {done ? <View style={{ width: size - 5, height: size - 5, borderRadius: (size - 5) / 2, backgroundColor: color }} /> : null}
     </View>
   );
 }
@@ -299,17 +300,18 @@ function ReminderRow({ item, depth, color, lists, now, listName }) {
   const marks = prioMarks(item.prio);
   const due = dueText(item);
   const sub = [due, listName].filter(Boolean);
+  const rtl = direction() === 'rtl';
   return (
     <View ref={row} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 7, paddingHorizontal: 8, marginHorizontal: depth ? 28 : 0 }}>
+      style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 8, paddingHorizontal: 8, marginHorizontal: depth ? 28 : 0 }}>
       <View style={{ paddingTop: 1 }}><Circle done={done} color={color} onClick={toggle} /></View>
       <View style={{ flex: 1, gap: 2 }}>
         {editing != null ? (
           <TextInput value={editing} onChange={setEditing} autoFocus onSubmit={commit} onCancel={() => setEditing(null)} style={{ height: 24 }} />
         ) : (
           <View onClick={() => setEditing(item.title || '')} style={{ flexDirection: 'row', gap: 4, minHeight: 20, alignItems: 'center' }}>
-            {marks ? <Text style={{ fontSize: 14, fontWeight: 700, color }}>{marks}</Text> : null}
-            <Text style={{ flex: 1, fontSize: 14, color: done ? th.textDim : th.text }}>{item.title || t('reminders.untitled')}</Text>
+            {marks ? <Text style={{ fontSize: 13, fontWeight: 700, color }}>{marks}</Text> : null}
+            <Text style={{ flex: 1, fontSize: 13, color: done ? th.textDim : th.text }}>{item.title || t('reminders.untitled')}</Text>
           </View>
         )}
         {item.notes ? <Text style={{ fontSize: 12, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{item.notes.split('\n')[0]}</Text> : null}
@@ -320,12 +322,13 @@ function ReminderRow({ item, depth, color, lists, now, listName }) {
           </View>
         ) : null}
       </View>
-      {item.flag ? <Text style={{ fontSize: 14, color: ORANGE, paddingTop: 1 }}>⚑</Text> : null}
+      {item.flag ? <Text style={{ fontSize: 13, color: ORANGE, paddingTop: 1 }}>⚑</Text> : null}
       <View ref={info} onClick={() => setInspect(true)} style={{ width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
         border: `1.2px solid ${hover || inspect ? th.accent : 'transparent'}` }}>
         <Text style={{ fontSize: 11, fontWeight: 700, color: hover || inspect ? th.accent : 'transparent' }}>i</Text>
       </View>
-      <Hairline edge="bottom" inset={0} />
+      {/* the separator starts under the text, as in Reminders */}
+      <View style={{ position: 'absolute', bottom: 0, height: 1, [rtl ? 'right' : 'left']: 36, [rtl ? 'left' : 'right']: 0, backgroundColor: th.separator, pointerEvents: 'none' }} />
       {inspect ? <Inspector item={item} lists={lists} anchor={info} onClose={() => setInspect(false)} /> : null}
     </View>
   );
@@ -408,16 +411,16 @@ function NewRow({ sel, target, color, registerFocus }) {
     } catch (e) { setError(t('reminders.saveFailed')); }
   };
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7, paddingHorizontal: 8 }}>
-      <View onClick={() => setActive(true)} style={{ width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: active ? 'transparent' : color }}>
-        {active ? <View style={{ width: 20, height: 20, borderRadius: 10, border: '1.5px solid #a1a1a6' }} /> : <Text style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>+</Text>}
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 36, paddingVertical: 6, paddingHorizontal: 8 }}>
+      <View onClick={() => setActive(true)} style={{ width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: active ? 'transparent' : color }}>
+        {active ? <View style={{ width: 18, height: 18, borderRadius: 9, border: '1.5px solid #a1a1a6' }} /> : <Text style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>+</Text>}
       </View>
       {active ? (
         <View style={{ flex: 1 }}>
           <TextInput value={text} onChange={setText} autoFocus placeholder={t('reminders.newReminder')} onSubmit={add} onCancel={() => { setText(''); setActive(false); }} style={{ height: 26 }} />
         </View>
       ) : (
-        <Text onClick={() => setActive(true)} style={{ flex: 1, fontSize: 14, color: th.textDim }}>{t('reminders.newReminder')}</Text>
+        <Text onClick={() => setActive(true)} style={{ flex: 1, fontSize: 13, color: th.textDim }}>{t('reminders.newReminder')}</Text>
       )}
       {error ? <Text style={{ fontSize: 12, color: RED }}>{error}</Text> : null}
     </View>

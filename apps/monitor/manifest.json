@@ -1,7 +1,7 @@
 {
   "id": "monitor",
   "name": "Monitor",
-  "description": "CPU, memoria, red, discos, procesos y conexiones de cada app",
+  "description": "CPU, memory, network, disks, processes and each app's connections",
   "size": [
     1180,
     700

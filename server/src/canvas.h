@@ -36,6 +36,20 @@ typedef struct { int x[4], y[4], n; uint32_t *buf; } Corners;
 void canvas_corners_save(Canvas *c, Corners *k, float x, float y, float w, float h, float r);
 void canvas_corners_restore(Canvas *c, Corners *k, float x, float y, float w, float h, float r);
 
+/* Per-corner radii r[4] = top-left, top-right, bottom-right, bottom-left (radii that are all equal go
+ * through the functions above, which are faster). */
+void canvas_rrect4(Canvas *c, float x, float y, float w, float h, const float r[4], uint32_t argb);
+void canvas_rrect4_gradient(Canvas *c, float x, float y, float w, float h, const float r[4],
+                            uint32_t from, uint32_t to, float angle_deg, float opacity);
+/* Border with a width and a color per side (bw/col: left, top, right, bottom) and per-corner radii.
+ * Sides meet on the diagonal of each corner, as in CSS. */
+void canvas_border4(Canvas *c, float x, float y, float w, float h, const float r[4], const float bw[4], const uint32_t col[4]);
+void canvas_corners_save4(Canvas *c, Corners *k, float x, float y, float w, float h, const float r[4]);
+void canvas_corners_restore4(Canvas *c, Corners *k, float x, float y, float w, float h, const float r[4]);
+/* Affine copy: destination pixel p takes the source at inv(p) (bilinear, transparent outside), a
+ * premultiplied w × h image; inv maps canvas pixels to source pixels. */
+void canvas_blit_affine(Canvas *c, const uint32_t *src, int sw, int sh, const float inv[6], const float fwd[6], float opacity);
+
 /* 8-bit coverage mask (glyphs). */
 void canvas_alpha_mask(Canvas *c, int x, int y, const uint8_t *a, int w, int h, int stride, uint32_t argb);
 /* Premultiplied ARGB image, with rounded corners and opacity. */

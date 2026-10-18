@@ -1,11 +1,11 @@
 // debian.js — the Debian part of the Store. It reads our own index (lord.pkg, no root;
 // server/src/pkg) and makes changes through the administration helper (pkg-update, pkg-install,
 // pkg-remove, pkg-upgrade, pkg-install-file). Before changing anything it shows the plan: what is
-// installed, upgraded or removed, and how much is downloaded and used. See docs/PAQUETES.md.
+// installed, upgraded or removed, and how much is downloaded and used. See docs/PACKAGES.md.
 import { createElement as h, useEffect, useState } from 'react';
 import {
   View, Text, Image, Button, EmptyState, GroupBox, useTheme, useStore, createStore, admin, formatBytes, formatDate,
-  refreshApps, launchApp, useLauncherApps, LetterIcon, typeScale, spacing, direction, t, locale,
+  refreshApps, launchApp, useLauncherApps, LetterIcon, typeScale, spacing, direction, t, locale, errorText, statusText,
 } from '@lordos/sdk';
 
 const available = () => typeof lord.pkg !== 'undefined';
@@ -19,17 +19,18 @@ admin.onEvent((text) => {
   if (text === 'pkg index' || text === 'pkg changed') { bump(); if (text === 'pkg changed') refreshApps(); }
 });
 
-// Runs a package action showing its progress ("progress <phase> <done> <total>").
+// Runs a package action showing its progress ("progress <phase> <done> <total>"). The other LOG
+// lines and the final OK are status code lines (server/src/pkg/pkg.c), shown with statusText().
 function runJob(action, arg, title) {
   state.set((s) => ({ ...s, job: { title, phase: '', done: 0, total: 0, log: [] }, msg: null }));
   const onLog = (line) => {
     const m = /^progress (\w+) (\d+) (\d+)$/.exec(line);
     state.set((s) => ({ ...s, job: s.job && (m
       ? { ...s.job, phase: m[1], done: Number(m[2]), total: Number(m[3]) }
-      : /^plan /.test(line) ? s.job : { ...s.job, log: [...s.job.log, line].slice(-4) }) }));
+      : /^plan /.test(line) ? s.job : { ...s.job, log: [...s.job.log, statusText(line)].slice(-4) }) }));
   };
   return admin.run(action, arg, onLog).then(
-    (ok) => { state.set((s) => ({ ...s, job: null, msg: { ok: true, text: ok } })); bump(); refreshApps(); return true; },
+    (ok) => { state.set((s) => ({ ...s, job: null, msg: { ok: true, text: statusText(ok) } })); bump(); refreshApps(); return true; },
     (e) => { state.set((s) => ({ ...s, job: null, msg: { ok: false, text: e.message } })); bump(); return false; },
   );
 }
@@ -79,7 +80,7 @@ function Progress() {
 // Summary of a plan: what happens and how much space it takes.
 function PlanView({ plan }) {
   const th = useTheme();
-  if (!plan.ok) return h(Text, { style: { fontSize: 12, color: '#ff453a' } }, plan.error || t('store.plan.impossible'));
+  if (!plan.ok) return h(Text, { style: { fontSize: 12, color: '#ff453a' } }, (plan.error && errorText(plan.error)) || t('store.plan.impossible'));
   const by = (a) => plan.items.filter((i) => i.action === a);
   const line = (label, list) => (list.length ? h(Text, { style: { fontSize: 12, color: th.text, lineHeight: 1.4 } },
     `${label}: ${list.slice(0, 14).map((i) => i.name).join(', ')}${list.length > 14 ? ` ${t('store.plan.more', { count: list.length - 14 })}` : ''}`) : null);

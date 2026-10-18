@@ -15,6 +15,11 @@
 //   scanCaps(scanner), scan(scanner, settings) → { file, format, bytes }
 //   submit(printer, blob | pdfPath, options) → { job }
 import { createStore } from './store.js';
+import { tOptional } from './i18n.js';
+import { errorText } from './errors.js';
+
+// lord.print reports short codes ('no-cups', 'unreachable'…): the message is their translation (print.err.*).
+const printError = (code, detail) => Object.assign(new Error(code ? tOptional(`print.err.${code}`, { detail: detail || '' }) ?? errorText(code) : errorText('sys.unknown')), { code, detail });
 
 const has = () => typeof lord !== 'undefined' && typeof lord.print !== 'undefined';
 const waiting = new Map();
@@ -28,13 +33,13 @@ function pump() {
     if (!w) continue;
     waiting.delete(e.id);
     if (e.ok) w.resolve(e.data);
-    else { const err = new Error(e.data?.error || 'error'); err.code = e.data?.error; err.detail = e.data?.detail; w.reject(err); }
+    else w.reject(printError(e.data?.error, e.data?.detail));
   }
   if (!waiting.size && timer) { clearInterval(timer); timer = null; }
 }
 
 function wait(id) {
-  if (!(id > 0)) return Promise.reject(Object.assign(new Error('busy'), { code: 'busy' }));
+  if (!(id > 0)) return Promise.reject(printError('busy'));
   return new Promise((resolve, reject) => {
     waiting.set(id, { resolve, reject });
     if (!timer) timer = setInterval(pump, 50);

@@ -120,7 +120,9 @@ export function Dock({ t, items: list, running, onOpen, onContext, position = 'b
   const hide = Math.round((1 - shown) * (bar + MARGIN + 2));
   if (autohide && shown <= 0) return null;
 
-  const BH = MAX + PAD * 2 + 34, BW = MAX + PAD * 2;
+  // The hit box covers only the bar until the pointer is on it; then it grows to fit the magnified
+  // icons and the tooltip. A full-height box at rest would swallow clicks on windows just above the Dock.
+  const BH = m != null ? MAX + PAD * 2 + 34 : bar, BW = m != null ? MAX + PAD * 2 : bar;
   const box = position === 'bottom' ? { left: start, top: AB - (MARGIN - hide) - BH, width: len, height: BH }
     : position === 'left' ? { left: AX + MARGIN - hide, top: start, width: BW, height: len }
       : { left: AR - (MARGIN - hide) - BW, top: start, width: BW, height: len };

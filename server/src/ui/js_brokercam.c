@@ -9,6 +9,7 @@
  * the app only learns the file name. */
 #include "js_broker.h"
 #include "js.h"
+#include "js_err.h"
 #include "../sec/broker.h"
 #include "../media/media_int.h"
 
@@ -157,18 +158,18 @@ static JSValue f_camera(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
     char p[96];
     int n = dev && a ? snprintf(p, sizeof p, "open %.40s %d %d", dev, opt_int(c, o, "width", 1280, 160, 3840), opt_int(c, o, "height", 720, 120, 2160)) : -1;
     if (dev) JS_FreeCString(c, dev);
-    if (n <= 0) return JS_ThrowTypeError(c, "invalid camera");
+    if (n <= 0) return js_throw_code(c, "camera.invalid", NULL);
     int st = BST_ERROR;
     char *out = NULL;
     uint32_t len = 0;
     if (js_broker_rpc(BOP_CAMERA, p, (uint32_t)n, &st, &out, &len) || st != BST_OK || !out) {
         free(out);
-        return st == BST_DENIED ? JS_ThrowTypeError(c, "camera permission denied") : JS_ThrowRangeError(c, "could not open the camera");
+        return js_throw_code(c, st == BST_DENIED ? "perm.cameraDenied" : "camera.openFailed", NULL);
     }
     int sid = atoi(out);
     free(out);
     MediaSrc *s = media_src_new(SK_CAMERA, "app");
-    if (!s) { cmd("close %d%s", sid, NULL, NULL); return JS_ThrowRangeError(c, "too many media"); }
+    if (!s) { cmd("close %d%s", sid, NULL, NULL); return js_throw_code(c, "media.tooMany", NULL); }
     *a = (ACam){ .used = 1, .sid = sid, .local = s->id };
     return JS_NewInt32(c, s->id);
 }

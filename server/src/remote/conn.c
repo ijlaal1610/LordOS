@@ -790,7 +790,7 @@ void rd_serve(SSL_CTX *ctx, int fd, const char *ip) {
         }
         sd_log("connected to %s's session", name);
         bridge(&me);
-        sd_log("desconectado");
+        sd_log("disconnected");
         return;
     }
     respond(404, "Not Found", "text/plain", NULL, "no", 2);

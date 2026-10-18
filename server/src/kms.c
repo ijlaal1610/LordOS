@@ -1,4 +1,4 @@
-/* kms.c — modesetting con ioctls del kernel: conector, CRTC, dumb buffers, page flip. */
+/* kms.c — modesetting with kernel ioctls: connector, CRTC, dumb buffers, page flip. */
 #include "kms.h"
 
 #include <errno.h>
@@ -188,13 +188,13 @@ static int pick_output(Kms *k) {
         ret = 0;
     }
     kms_outputs_free(outs, n);
-    if (ret) fprintf(stderr, "kms: no hay monitor conectado\n");
+    if (ret) fprintf(stderr, "kms: no monitor connected\n");
     return ret;
 }
 
-/* ---- formatos del plano primario (IN_FORMATS) ---- */
+/* ---- primary plane formats (IN_FORMATS) ---- */
 
-#define PLANE_TYPE_PRIMARY 1        /* enum drm_plane_type del kernel (no está en la uapi) */
+#define PLANE_TYPE_PRIMARY 1        /* the kernel's enum drm_plane_type (not in the uapi) */
 
 /* Value (and property id) of property `name` of a KMS object. 0 if found. */
 int kms_obj_prop(int fd, uint32_t obj, uint32_t type, const char *name, uint64_t *val, uint32_t *prop_id) {
@@ -221,7 +221,7 @@ static int rgb32(uint32_t f) {
     return f == DRM_FORMAT_XRGB8888 || f == DRM_FORMAT_ARGB8888 || f == DRM_FORMAT_XBGR8888 || f == DRM_FORMAT_ABGR8888;
 }
 
-/* Lee el blob IN_FORMATS (struct drm_format_modifier_blob) y guarda los pares de RGB de 32 bits. */
+/* Reads the IN_FORMATS blob (struct drm_format_modifier_blob) and keeps the 32-bit RGB pairs. */
 static void parse_in_formats(Kms *k, uint32_t blob_id) {
     struct drm_mode_get_blob gb = { .blob_id = blob_id };
     if (xioctl(k->fd, DRM_IOCTL_MODE_GETPROPBLOB, &gb) || gb.length < sizeof(struct drm_format_modifier_blob) || gb.length > (1u << 20)) return;
@@ -254,8 +254,8 @@ static void parse_in_formats(Kms *k, uint32_t blob_id) {
     free(d);
 }
 
-/* Busca el plano primario del CRTC y lo que acepta. Sin IN_FORMATS (drivers viejos) queda
- * scan_known = 0 y el scanout directo se prueba con ADDFB2 como antes. */
+/* Finds the CRTC's primary plane and what it accepts. Without IN_FORMATS (old drivers)
+ * scan_known stays 0 and direct scanout is tried with ADDFB2 as before. */
 static void read_scanout_formats(Kms *k) {
     struct drm_version v;
     memset(&v, 0, sizeof v);
@@ -280,8 +280,8 @@ static void read_scanout_formats(Kms *k) {
         if (!obj_prop(k->fd, planes[i], DRM_MODE_OBJECT_PLANE, "IN_FORMATS", &blob) && blob) parse_in_formats(k, (uint32_t)blob);
         break;
     }
-    if (!k->scan_known) { fprintf(stderr, "kms: placa %s, el plano primario no informa modificadores\n", k->driver); return; }
-    fprintf(stderr, "kms: placa %s, XRGB8888 en el plano primario con modificadores:", k->driver);
+    if (!k->scan_known) { fprintf(stderr, "kms: card %s, the primary plane reports no modifiers\n", k->driver); return; }
+    fprintf(stderr, "kms: card %s, XRGB8888 on the primary plane with modifiers:", k->driver);
     for (int i = 0; i < k->nscan; i++)
         if (k->scan[i].fourcc == DRM_FORMAT_XRGB8888) fprintf(stderr, " 0x%llx", (unsigned long long)k->scan[i].modifier);
     fputc('\n', stderr);
@@ -301,7 +301,7 @@ static int kms_setup(Kms *k) {
     k->saved.crtc_id = k->crtc_id;
     xioctl(k->fd, DRM_IOCTL_MODE_GETCRTC, &k->saved);
     if (create_buffer(k, &k->buf[0]) || create_buffer(k, &k->buf[1])) return -1;
-    /* el primer cuadro en negro (no lo que dejó la sesión anterior) */
+    /* the first frame in black (not what the previous session left) */
     memset(k->buf[0].map, 0, k->buf[0].size);
     memset(k->buf[1].map, 0, k->buf[1].size);
     struct drm_mode_crtc set = {
@@ -351,7 +351,7 @@ int kms_open(Kms *k, const char *path) {
     k->fd = open(path, O_RDWR | O_CLOEXEC);
     if (k->fd < 0) { perror(path); return -1; }
     if (xioctl(k->fd, DRM_IOCTL_SET_MASTER, NULL))
-        fprintf(stderr, "kms: aviso, no somos DRM master (%s)\n", strerror(errno));
+        fprintf(stderr, "kms: warning, we are not DRM master (%s)\n", strerror(errno));
     if (kms_setup(k)) { kms_close(k); return -1; }
     return 0;
 }
@@ -381,8 +381,8 @@ void kms_close(Kms *k) {
         r.count_connectors = 1;
         xioctl(k->fd, DRM_IOCTL_MODE_SETCRTC, &r);
     }
-    /* prestado (kms_attach): el próximo en mostrarse pone su cuadro; el master lo maneja
-     * lord-sessiond. Los dumb buffers se destruyen después de que otro tomó la pantalla. */
+    /* borrowed (kms_attach): the next one to show puts up its frame; lord-sessiond handles
+     * master. The dumb buffers are destroyed after another one took the screen. */
     if (k->shared && k->crtc_id) {             /* a second display: its CRTC stops scanning out */
         struct drm_mode_crtc off = { .crtc_id = k->crtc_id };
         xioctl(k->fd, DRM_IOCTL_MODE_SETCRTC, &off);
@@ -407,7 +407,7 @@ int kms_flip(Kms *k) {
         k->flip_pending = 1;
         return 0;
     }
-    /* Fallback síncrono si el driver no soporta page flip. */
+    /* Synchronous fallback if the driver does not support page flip. */
     struct drm_mode_crtc set = {
         .crtc_id = k->crtc_id, .fb_id = k->buf[back].fb_id,
         .set_connectors_ptr = (uintptr_t)&k->conn_id, .count_connectors = 1,
@@ -424,7 +424,7 @@ void kms_dispatch(Kms *k) { kms_dispatch_heads(&k, 1); }
  * 4.12+; without it the first head waiting for a flip takes it). */
 void kms_dispatch_heads(Kms **heads, int nh) {
     if (nh < 1 || heads[0]->fd < 0) return;
-    /* alineado: los eventos llevan campos de 64 bits (user_data) y se leen con un cast */
+    /* aligned: events carry 64-bit fields (user_data) and are read with a cast */
     char buf[1024] __attribute__((aligned(8)));
     ssize_t n = read(heads[0]->fd, buf, sizeof buf);
     for (ssize_t off = 0; n > 0 && off + (ssize_t)sizeof(struct drm_event) <= n;) {
@@ -453,7 +453,7 @@ void kms_dispatch_heads(Kms **heads, int nh) {
     }
 }
 
-/* ---- framebuffers propios (GPU y scanout directo) ---- */
+/* ---- our own framebuffers (GPU and direct scanout) ---- */
 
 int kms_add_fb2(Kms *k, uint32_t w, uint32_t h, uint32_t fourcc, const uint32_t handles[4],
                 const uint32_t pitches[4], const uint32_t offsets[4], uint64_t modifier, uint32_t *fb) {
@@ -500,7 +500,7 @@ int kms_flip_fb(Kms *k, uint32_t fb, void *data) {
     };
     k->custom = 1;
     if (xioctl(k->fd, DRM_IOCTL_MODE_PAGE_FLIP, &pf) == 0) { k->flip_pending = 1; return 0; }
-    /* sin page flip: modeset síncrono y se avisa enseguida */
+    /* no page flip: synchronous modeset and notify right away */
     if (kms_set_fb(k, fb)) return -1;
     struct timespec t;
     clock_gettime(CLOCK_MONOTONIC, &t);
@@ -510,7 +510,7 @@ int kms_flip_fb(Kms *k, uint32_t fb, void *data) {
     return 0;
 }
 
-/* ---- cursor por hardware ---- */
+/* ---- hardware cursor ---- */
 
 int kms_cursor_image(Kms *k, const uint32_t *argb, int w, int h, int hot_x, int hot_y) {
     if (!k->cursor_handle) {

@@ -55,7 +55,7 @@ int vpn_host_ok(const char *s) {
 int vpn_kv_parse(const char *text, const char *const *keys, const char *const *pem_keys, VpnKv *kv, char *err, size_t errn) {
     memset(kv, 0, sizeof *kv);
     char *copy = strdup(text);
-    if (!copy) { snprintf(err, errn, "sin memoria"); return -1; }
+    if (!copy) { lerr_set(err, errn, "sys.outOfMemory", NULL); return -1; }
     int lineno = 0, rc = 0;
     for (char *l = copy, *next; l && !rc; l = next) {
         next = strchr(l, '\n');
@@ -67,7 +67,7 @@ int vpn_kv_parse(const char *text, const char *const *keys, const char *const *p
         while (isspace((unsigned char)*t)) t++;
         if (!*t || *t == '#') continue;
         char *eq = strchr(t, '=');
-        if (!eq) { snprintf(err, errn, "línea %d: se esperaba clave=valor", lineno); rc = -1; break; }
+        if (!eq) { lerr_set(err, errn, "vpn.expectedKeyValue", "line", lerr_int(lineno), NULL); rc = -1; break; }
         *eq = 0;
         char *k = t, *v = eq + 1;
         char *ke = k + strlen(k);
@@ -76,7 +76,7 @@ int vpn_kv_parse(const char *text, const char *const *keys, const char *const *p
         char *ve = v + strlen(v);
         while (ve > v && isspace((unsigned char)ve[-1])) *--ve = 0;
         if (in_list(pem_keys, k)) {
-            if (strncmp(v, "-----BEGIN ", 11)) { snprintf(err, errn, "línea %d: %s tiene que ser PEM (-----BEGIN ...)", lineno, k); rc = -1; break; }
+            if (strncmp(v, "-----BEGIN ", 11)) { lerr_set(err, errn, "vpn.pemRequired", "line", lerr_int(lineno), "key", k, NULL); rc = -1; break; }
             Buf b = {0};
             buf_printf(&b, "%s\n", v);
             int closed = strstr(v + 11, "-----END ") != NULL;
@@ -87,20 +87,20 @@ int vpn_kv_parse(const char *text, const char *const *keys, const char *const *p
                 lineno++;
                 size_t pn = strlen(pl);
                 if (pn && pl[pn - 1] == '\r') pl[--pn] = 0;
-                for (char *c = pl; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("+/=- :", *c)) { snprintf(err, errn, "línea %d: carácter inválido en %s", lineno, k); rc = -1; break; }
+                for (char *c = pl; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("+/=- :", *c)) { lerr_set(err, errn, "vpn.badChar", "line", lerr_int(lineno), "key", k, NULL); rc = -1; break; }
                 if (rc) break;
                 buf_printf(&b, "%s\n", pl);
                 if (!strncmp(pl, "-----END ", 9)) closed = 1;
             }
-            if (!rc && !closed) { snprintf(err, errn, "%s: falta -----END", k); rc = -1; }
-            if (rc || kv->npem >= VPN_MAX_PEM) { buf_free(&b); if (!rc) { snprintf(err, errn, "demasiados PEM"); rc = -1; } break; }
+            if (!rc && !closed) { lerr_set(err, errn, "vpn.pemUnclosed", "key", k, NULL); rc = -1; }
+            if (rc || kv->npem >= VPN_MAX_PEM) { buf_free(&b); if (!rc) { lerr_set(err, errn, "vpn.tooManyPem", NULL); rc = -1; } break; }
             snprintf(kv->pem_key[kv->npem], sizeof kv->pem_key[0], "%s", k);
             kv->pem[kv->npem++] = b.p;
             continue;
         }
-        if (!in_list(keys, k)) { snprintf(err, errn, "línea %d: clave desconocida %s", lineno, k); rc = -1; break; }
-        if (!vpn_text_ok(v, 255)) { snprintf(err, errn, "línea %d: valor inválido para %s", lineno, k); rc = -1; break; }
-        if (kv->n >= VPN_MAX_KV) { snprintf(err, errn, "demasiadas líneas"); rc = -1; break; }
+        if (!in_list(keys, k)) { lerr_set(err, errn, "vpn.unknownKey", "line", lerr_int(lineno), "key", k, NULL); rc = -1; break; }
+        if (!vpn_text_ok(v, 255)) { lerr_set(err, errn, "vpn.invalidLineValue", "line", lerr_int(lineno), "key", k, NULL); rc = -1; break; }
+        if (kv->n >= VPN_MAX_KV) { lerr_set(err, errn, "vpn.tooManyLines", NULL); rc = -1; break; }
         snprintf(kv->key[kv->n], sizeof kv->key[0], "%s", k);
         snprintf(kv->val[kv->n], sizeof kv->val[0], "%s", v);
         kv->n++;
@@ -218,7 +218,7 @@ int vpn_routes_full(const char *ifn, int sfam, const uint8_t server[16]) {
     int r = rt_route_proto(fd, 1, AF_INET, lo, 1, NULL, idx, 0, 0, RTPROT_LORDOS);
     if (!r) r = rt_route_proto(fd, 1, AF_INET, hi, 1, NULL, idx, 0, 0, RTPROT_LORDOS);
     close(fd);
-    if (r) admin_event("net vpn - log rutas por %s: %s", ifn, strerror(-r));
+    if (r) { char e[200]; admin_event("net vpn - error %s", lerr_set(e, sizeof e, "vpn.routesFailed", "dev", ifn, "errno", lerr_errno(-r), NULL)); }
     return r ? -1 : 0;
 }
 

@@ -4,7 +4,7 @@
 // (validates everything again on the root side) and install-reboot. See docs/ISO.md.
 import {
   View, Text, Button, TextInput, ScrollView, Toggle, Segmented, SearchField, Hairline, GroupBox, FormRow, useTheme, useLocale, useStore, createStore,
-  admin, keyboard, languages, setLanguage, formatBytes, locale, wm, useAppWindow, typeScale,
+  admin, keyboard, languages, setLanguage, formatBytes, locale, wm, useAppWindow, typeScale, statusText,
 } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 
@@ -330,7 +330,7 @@ function Install() {
       )}
       {s.error && <Text style={{ fontSize: 12, color: '#ff453a', textAlign: 'center', maxWidth: 480 }}>{s.error}</Text>}
       <View style={{ width: 520, gap: 2 }}>
-        {s.log.slice(-4).map((l, i) => <Text key={i} style={{ fontSize: 11, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{l}</Text>)}
+        {s.log.slice(-4).map((l, i) => <Text key={i} style={{ fontSize: 11, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{statusText(l)}</Text>)}
       </View>
       {s.done && <Text style={{ fontSize: 12, color: t.text, maxWidth: 480, textAlign: 'center' }}>{tr('installer.done.usb')}</Text>}
     </View>

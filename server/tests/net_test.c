@@ -4,6 +4,7 @@
  *   net-test state                   what lord.net sees without root (interfaces, routes, DNS, VPN)
  *   net-test monitor <seconds>       rtnetlink notifications
  *   net-test ovpn-inline <path>      the .ovpn with its files embedded (lord.net.prepareOvpn)
+ *   net-test errors                  config errors are code lines (errcode.h), never prose
  *   sudo net-test act <action> <arg> runs a "net-*" action the way the helper would;
  *                                    "\n" in arg is a newline, "@file" reads it
  *   sudo net-test daemons            the tests' resident processes
@@ -14,6 +15,8 @@
 #define LORD_NET_ACTIONS
 #include "net/net.h"
 #include "net/netpriv.h"
+#include "net/vpn.h"
+#include "errcode.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -218,16 +221,40 @@ static int test_crypto(void) {
     return fails;
 }
 
+/* The UI translates these with t('errors.<code>'): the test matches codes and params, not text. */
+static int test_errors(void) {
+    int fails = 0, ok;
+    char err[256], v[64];
+    static const char *const keys[] = { "server", "user", NULL }, *const pem[] = { "ca", NULL };
+    VpnKv kv;
+    ok = vpn_kv_parse("server=a.example\nnot a pair\n", keys, pem, &kv, err, sizeof err) && lerr_has(err, "vpn.expectedKeyValue")
+         && lerr_param(err, "line", v, sizeof v) && !strcmp(v, "2");
+    printf("kv without '=': %s (%s)\n", ok ? "ok" : "BAD", err); fails += !ok;
+    ok = vpn_kv_parse("color=red\n", keys, pem, &kv, err, sizeof err) && lerr_has(err, "vpn.unknownKey")
+         && lerr_param(err, "key", v, sizeof v) && !strcmp(v, "color");
+    printf("unknown key: %s (%s)\n", ok ? "ok" : "BAD", err); fails += !ok;
+    ok = vpn_kv_parse("ca=not pem\n", keys, pem, &kv, err, sizeof err) && lerr_has(err, "vpn.pemRequired");
+    printf("PEM required: %s (%s)\n", ok ? "ok" : "BAD", err); fails += !ok;
+    ok = !vpn_kv_parse("server=a.example\nuser=me\n", keys, pem, &kv, err, sizeof err) && !strcmp(vpn_kv(&kv, "user"), "me");
+    if (ok) vpn_kv_free(&kv);
+    printf("valid kv: %s\n", ok ? "ok" : "BAD"); fails += !ok;
+    ok = !net_ovpn_inline("/nonexistent/x y.ovpn", err, sizeof err) && lerr_has(err, "sys.readFailed")
+         && lerr_param(err, "path", v, sizeof v) && !strcmp(v, "/nonexistent/x y.ovpn") && strstr(err, "x%20y");
+    printf("ovpn missing file: %s (%s)\n", ok ? "ok" : "BAD", err); fails += !ok;
+    return fails;
+}
+
 static void print_json(const char *what, char *j) {
     printf("%s: %s\n", what, j ? j : "(error)");
     free(j);
 }
 
-static void on_change(const char *what) { printf("cambio: %s\n", what); fflush(stdout); }
+static void on_change(const char *what) { printf("change: %s\n", what); fflush(stdout); }
 
 int main(int argc, char **argv) {
-    if (argc < 2) { fprintf(stderr, "usage: net-test crypto | state | monitor <s> | act <action> <arg> | daemons\n"); return 2; }
+    if (argc < 2) { fprintf(stderr, "usage: net-test crypto | errors | state | monitor <s> | act <action> <arg> | daemons\n"); return 2; }
     if (!strcmp(argv[1], "crypto")) return test_crypto() ? 1 : 0;
+    if (!strcmp(argv[1], "errors")) return test_errors() ? 1 : 0;
     if (!strcmp(argv[1], "state")) {
         print_json("interfaces", net_interfaces_json());
         print_json("routes", net_routes_json());

@@ -1,5 +1,5 @@
-// glyphs.jsx — íconos de Archivos: carpeta, documento por tipo (con la extensión) y miniatura
-// de las imágenes. Dibujados con nodos (sin imágenes), salvo las miniaturas.
+// glyphs.jsx — Files icons: folder, document by kind (with the extension) and image
+// thumbnails. Drawn with nodes (no images), except the thumbnails.
 import { View, Text, Image, useThumb } from '@lordos/sdk';
 import { kindOf, extOf, isImage, KIND_COLOR } from './kinds.js';
 
@@ -34,7 +34,7 @@ export function DocGlyph({ size: s, kind, ext, dark }) {
   );
 }
 
-// Ícono de una entrada: carpeta, miniatura (imágenes) o documento.
+// Icon of an entry: folder, thumbnail (images) or document.
 export function EntryIcon({ e, size, dark, thumb = true }) {
   if (e.Icon) return <e.Icon size={size} />;
   const kind = kindOf(e);
@@ -46,7 +46,7 @@ export function EntryIcon({ e, size, dark, thumb = true }) {
       </View>
     );
   }
-  // medios (M9): miniaturas de videos, carátulas y formatos que no lee stb (WebP, HEIC, AVIF), por lord-media
+  // media (M9): video thumbnails, covers and formats stb cannot read (WebP, HEIC, AVIF), through lord-media
   if (thumb && size >= 32 && (kind === 'video' || kind === 'audio' || (kind === 'image' && !isImage(e) && !/\.svg$/i.test(e.name)))) {
     return <MediaThumb e={e} size={size} kind={kind} dark={dark} />;
   }

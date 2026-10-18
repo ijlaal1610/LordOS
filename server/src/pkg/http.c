@@ -6,6 +6,7 @@
  *   [type 1 byte][item 4][length 4][data]   type H = "status date length", D = data, E = end
  * (E with text = error). */
 #include "http.h"
+#include "../errcode.h"
 #include "crypto.h"
 
 #include <ctype.h>
@@ -95,7 +96,7 @@ static int conn_open(Conn *c, const char *host, const char *port, char *err, siz
     memset(&hints, 0, sizeof hints);
     hints.ai_socktype = SOCK_STREAM;
     int r = getaddrinfo(host, port, &hints, &res);
-    if (r) { snprintf(err, errlen, "no se encontró %.100s (%.60s)", host, gai_strerror(r)); return -1; }
+    if (r) { lerr_set(err, errlen, "pkg.http.hostNotFound", "host", host, NULL); return -1; }
     for (struct addrinfo *a = res; a; a = a->ai_next) {
         int fd = socket(a->ai_family, a->ai_socktype | SOCK_CLOEXEC | SOCK_NONBLOCK, a->ai_protocol);
         if (fd < 0) continue;
@@ -108,7 +109,7 @@ static int conn_open(Conn *c, const char *host, const char *port, char *err, siz
         break;
     }
     freeaddrinfo(res);
-    if (c->fd < 0) { snprintf(err, errlen, "no se pudo conectar con %.120s", host); return -1; }
+    if (c->fd < 0) { lerr_set(err, errlen, "pkg.http.connectFailed", "host", host, NULL); return -1; }
     snprintf(c->host, sizeof c->host, "%s", host);
     snprintf(c->port, sizeof c->port, "%s", port);
     return 0;
@@ -195,7 +196,7 @@ static void get_one(Conn *c, const FetchItem *it, uint32_t idx) {
         char host[256], port[8];
         const char *path;
         if (parse_url(url, host, sizeof host, port, sizeof port, &path)) {
-            snprintf(err, sizeof err, strncmp(url, "https://", 8) ? "dirección inválida" : "el servidor redirige a https, que LordOS no usa para paquetes");
+            lerr_set(err, sizeof err, strncmp(url, "https://", 8) ? "pkg.http.badUrl" : "pkg.http.httpsRedirect", NULL);
             break;
         }
         int retry = c->fd >= 0;             /* a reused connection may have been closed */
@@ -213,16 +214,16 @@ static void get_one(Conn *c, const FetchItem *it, uint32_t idx) {
         if (rl >= (int)sizeof req || conn_write(c, req, (size_t)rl) || conn_line(c, line, sizeof line)) {
             conn_close(c);
             if (retry) { retry = 0; goto again; }
-            snprintf(err, sizeof err, "%.150s no respondió", host);
+            lerr_set(err, sizeof err, "pkg.http.noResponse", "host", host, NULL);
             break;
         }
         int status = 0, minor = 1;
-        if (sscanf(line, "HTTP/1.%d %d", &minor, &status) != 2) { conn_close(c); snprintf(err, sizeof err, "respuesta HTTP inválida"); break; }
+        if (sscanf(line, "HTTP/1.%d %d", &minor, &status) != 2) { conn_close(c); lerr_set(err, sizeof err, "pkg.http.badResponse", NULL); break; }
         int64_t clen = -1, lastmod = 0;
         int chunked = 0, close_after = minor == 0;
         char location[1024] = "";
         for (;;) {
-            if (conn_line(c, line, sizeof line)) { conn_close(c); snprintf(err, sizeof err, "encabezados HTTP inválidos"); goto out; }
+            if (conn_line(c, line, sizeof line)) { conn_close(c); lerr_set(err, sizeof err, "pkg.http.badHeaders", NULL); goto out; }
             if (!line[0]) break;
             char *v = strchr(line, ':');
             if (!v) continue;
@@ -266,7 +267,7 @@ static void get_one(Conn *c, const FetchItem *it, uint32_t idx) {
                 size_t n = c->len - c->pos;
                 if ((chunked || clen >= 0) && (int64_t)n > remaining) n = (size_t)remaining;
                 if (deliver) {
-                    if (got + n > it->max) { snprintf(err, sizeof err, "archivo más grande de lo permitido"); conn_close(c); goto out; }
+                    if (got + n > it->max) { lerr_set(err, sizeof err, "pkg.http.tooLarge", NULL); conn_close(c); goto out; }
                     if (send_msg(c->out, 'D', idx, c->buf + c->pos, (uint32_t)n)) _exit(1);
                 }
                 got += n;
@@ -285,11 +286,11 @@ static void get_one(Conn *c, const FetchItem *it, uint32_t idx) {
             char h[48];
             snprintf(h, sizeof h, "304 0 0");
             send_msg(c->out, 'H', idx, h, (uint32_t)strlen(h));
-        } else if (!deliver) snprintf(err, sizeof err, "el servidor respondió %d", status);
+        } else if (!deliver) lerr_set(err, sizeof err, "pkg.http.status", "status", lerr_int(status), NULL);
         break;
     broken:
         conn_close(c);
-        snprintf(err, sizeof err, "la conexión se cortó");
+        lerr_set(err, sizeof err, "pkg.http.connectionLost", NULL);
         break;
     }
 out:
@@ -332,7 +333,7 @@ int fetch_batch(FetchItem *items, int n, FetchProgress cb, void *ud) {
         items[i].status = 0;
         items[i].size = 0;
         items[i].last_modified = 0;
-        snprintf(items[i].err, sizeof items[i].err, "no se descargó");
+        lerr_set(items[i].err, sizeof items[i].err, "pkg.http.notDownloaded", NULL);
     }
     pid_t pid = fork();
     if (pid < 0) { close(p[0]); close(p[1]); return 0; }
@@ -379,15 +380,15 @@ int fetch_batch(FetchItem *items, int n, FetchProgress cb, void *ud) {
                 fd = open(tmp, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0644);
                 cur = (int)item;
                 sha256_init(&sh);
-                if (fd < 0) { snprintf(it->err, sizeof it->err, "no se pudo crear %.150s", tmp); it->status = 0; }
+                if (fd < 0) { lerr_set(it->err, sizeof it->err, "pkg.http.createFailed", "path", tmp, NULL); it->status = 0; }
             }
         } else if (h[0] == 'D') {
             if ((int)item != cur || fd < 0) continue;
-            if (it->size + len > it->max) { close(fd); fd = -1; unlink(tmp); it->status = 0; snprintf(it->err, sizeof it->err, "archivo más grande de lo permitido"); continue; }
+            if (it->size + len > it->max) { close(fd); fd = -1; unlink(tmp); it->status = 0; lerr_set(it->err, sizeof it->err, "pkg.http.tooLarge", NULL); continue; }
             for (uint32_t o = 0; o < len;) {
                 ssize_t w = write(fd, buf + o, len - o);
                 if (w < 0 && errno == EINTR) continue;
-                if (w <= 0) { close(fd); fd = -1; unlink(tmp); it->status = 0; snprintf(it->err, sizeof it->err, "no se pudo escribir (¿disco lleno?)"); break; }
+                if (w <= 0) { close(fd); fd = -1; unlink(tmp); it->status = 0; lerr_set(it->err, sizeof it->err, "pkg.http.writeFailed", NULL); break; }
                 o += (uint32_t)w;
             }
             sha256_update(&sh, buf, len);
@@ -410,7 +411,7 @@ int fetch_batch(FetchItem *items, int n, FetchProgress cb, void *ud) {
                 fd = -1;
                 if (good) {
                     sha256_final(&sh, it->sha256);
-                    if (rename(tmp, it->dest)) { unlink(tmp); it->status = 0; snprintf(it->err, sizeof it->err, "no se pudo guardar %.150s", it->dest); }
+                    if (rename(tmp, it->dest)) { unlink(tmp); it->status = 0; lerr_set(it->err, sizeof it->err, "pkg.http.saveFailed", "path", it->dest, NULL); }
                 } else unlink(tmp);
             }
             if (it->status == 200 || it->status == 304) ok++;

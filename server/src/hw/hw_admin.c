@@ -59,22 +59,22 @@ void hw_act_brightness(const AdminReq *r, const char *arg, size_t len) {
     char a[128], name[72];
     long v;
     if (arg_copy(arg, len, a, sizeof a) || sscanf(a, "%71s %ld", name, &v) != 2 || !hw_backlight_name_valid(name)) {
-        admin_say("ERR", "invalid argument");
+        admin_err("admin.invalidArgument", NULL);
         return;
     }
     /* the entry has to be a real backlight device under /sys/devices */
     char link[PATH_MAX], real[PATH_MAX];
     snprintf(link, sizeof link, "/sys/class/backlight/%s", name);
-    if (!realpath(link, real) || strncmp(real, "/sys/devices/", 13)) { admin_say("ERR", "no such backlight"); return; }
+    if (!realpath(link, real) || strncmp(real, "/sys/devices/", 13)) { admin_err("hw.noBacklight", NULL); return; }
     char p[PATH_MAX + 32];
     snprintf(p, sizeof p, "%s/max_brightness", real);
     long max = read_long(p);
-    if (max <= 0 || v < 0 || v > max) { admin_say("ERR", "value out of range (0..%ld)", max); return; }
+    if (max <= 0 || v < 0 || v > max) { admin_err("hw.outOfRange", "max", lerr_int(max), NULL); return; }
     char val[32];
     snprintf(val, sizeof val, "%ld\n", v);
     snprintf(p, sizeof p, "%s/brightness", real);
-    if (write_file(p, val)) admin_say("ERR", "could not set the brightness: %s", strerror(errno));
-    else admin_say("OK", "%ld", v);
+    if (write_file(p, val)) admin_err("hw.brightnessFailed", "errno", lerr_errno(errno), NULL);
+    else admin_say("OK", "%ld", v);   /* i18n-ok */
 }
 
 /* ---- power profile ---- */
@@ -88,19 +88,19 @@ void hw_act_power_profile(const AdminReq *r, const char *arg, size_t len) {
     (void)r;
     char p[24];
     if (arg_copy(arg, len, p, sizeof p) || (strcmp(p, "performance") && strcmp(p, "balanced") && strcmp(p, "power-saver"))) {
-        admin_say("ERR", "invalid profile");
+        admin_err("hw.badProfile", NULL);
         return;
     }
     if (file_ok("/usr/bin/powerprofilesctl")) {
         const char *const argv[] = { "/usr/bin/powerprofilesctl", "set", p, NULL };
         int code = admin_run(argv);
-        if (code) admin_say("ERR", "powerprofilesctl failed (%d)", code);
-        else admin_say("OK", "%s", p);
+        if (code) admin_err("sys.programFailed", "program", "powerprofilesctl", "code", lerr_int(code), NULL);
+        else admin_say("OK", "%s", p);   /* i18n-ok */
         return;
     }
     /* no daemon: the cpufreq governor of every policy (and the energy/performance preference) */
     DIR *d = opendir("/sys/devices/system/cpu/cpufreq");
-    if (!d) { admin_say("ERR", "this computer has no CPU frequency scaling"); return; }
+    if (!d) { admin_err("hw.noCpufreq", NULL); return; }
     int done = 0, failed = 0;
     for (struct dirent *e; (e = readdir(d));) {
         if (strncmp(e->d_name, "policy", 6) || !isdigit((unsigned char)e->d_name[6])) continue;
@@ -121,16 +121,16 @@ void hw_act_power_profile(const AdminReq *r, const char *arg, size_t len) {
         done++;
     }
     closedir(d);
-    if (!done) admin_say("ERR", "no CPU policy accepted the profile");
-    else admin_say("OK", "%s (%d policies%s)", p, done, failed ? ", some refused" : "");
+    if (!done) admin_err("hw.profileRefused", NULL);
+    else admin_ok("hw.profileSet", "profile", p, "count", lerr_int(done), "refused", failed ? "1" : "0", NULL);
 }
 
 void hw_act_suspend(const AdminReq *r, const char *arg, size_t len) {
     (void)r; (void)arg; (void)len;
     const char *const argv[] = { "/usr/bin/systemctl", "suspend", NULL };
     int code = admin_run(argv);
-    if (code) admin_say("ERR", "systemctl suspend failed (%d)", code);
-    else admin_say("OK", "suspend");
+    if (code) admin_err("hw.suspendFailed", "code", lerr_int(code), NULL);
+    else admin_ok("hw.suspended", NULL);
 }
 
 /* ---- power button and lid (logind) ---- */
@@ -149,7 +149,7 @@ void hw_act_buttons(const AdminReq *r, const char *arg, size_t len) {
     char a[128], power[16], lid[16], lidac[16];
     if (arg_copy(arg, len, a, sizeof a) || sscanf(a, "%15s %15s %15s", power, lid, lidac) != 3 ||
         !hw_button_action_valid(power, 0) || !hw_button_action_valid(lid, 1) || !hw_button_action_valid(lidac, 1)) {
-        admin_say("ERR", "invalid argument");
+        admin_err("admin.invalidArgument", NULL);
         return;
     }
     mkdir("/etc/systemd/logind.conf.d", 0755);
@@ -161,11 +161,11 @@ void hw_act_buttons(const AdminReq *r, const char *arg, size_t len) {
     int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0644);
     int ok = fd >= 0 && write(fd, text, strlen(text)) == (ssize_t)strlen(text);
     if (fd >= 0) { ok = fsync(fd) == 0 && ok; close(fd); }
-    if (!ok || rename(tmp, dst)) { unlink(tmp); admin_say("ERR", "could not write %s", dst); return; }
+    if (!ok || rename(tmp, dst)) { unlink(tmp); admin_err("sys.writeFailed", "path", dst, NULL); return; }
     const char *const argv[] = { "/usr/bin/systemctl", "reload", "systemd-logind", NULL };
     int code = admin_run(argv);
-    if (code) admin_say("ERR", "logind did not reload (%d)", code);
-    else admin_say("OK", "%s %s %s", power, lid, lidac);
+    if (code) admin_err("hw.logindFailed", "code", lerr_int(code), NULL);
+    else admin_say("OK", "%s %s %s", power, lid, lidac);   /* i18n-ok */
 }
 
 /* ---- date and time ---- */
@@ -173,11 +173,11 @@ void hw_act_buttons(const AdminReq *r, const char *arg, size_t len) {
 void hw_act_ntp(const AdminReq *r, const char *arg, size_t len) {
     (void)r;
     char a[8];
-    if (arg_copy(arg, len, a, sizeof a) || (strcmp(a, "on") && strcmp(a, "off"))) { admin_say("ERR", "invalid argument"); return; }
+    if (arg_copy(arg, len, a, sizeof a) || (strcmp(a, "on") && strcmp(a, "off"))) { admin_err("admin.invalidArgument", NULL); return; }
     const char *const argv[] = { "/usr/bin/timedatectl", "set-ntp", !strcmp(a, "on") ? "true" : "false", NULL };
     int code = admin_run(argv);
-    if (code) admin_say("ERR", "timedatectl set-ntp failed (%d)", code);
-    else admin_say("OK", "%s", a);
+    if (code) admin_err("hw.ntpFailed", "code", lerr_int(code), NULL);
+    else admin_say("OK", "%s", a);   /* i18n-ok */
 }
 
 int hw_time_valid(const char *t) {
@@ -198,11 +198,11 @@ int hw_time_valid(const char *t) {
 void hw_act_time_set(const AdminReq *r, const char *arg, size_t len) {
     (void)r;
     char t[32];
-    if (arg_copy(arg, len, t, sizeof t) || !hw_time_valid(t)) { admin_say("ERR", "invalid date and time"); return; }
+    if (arg_copy(arg, len, t, sizeof t) || !hw_time_valid(t)) { admin_err("hw.badTime", NULL); return; }
     const char *const argv[] = { "/usr/bin/timedatectl", "set-time", t, NULL };
     int code = admin_run(argv);
-    if (code) admin_say("ERR", "timedatectl set-time failed (%d): turn off automatic time first", code);
-    else admin_say("OK", "%s", t);
+    if (code) admin_err("hw.setTimeFailed", "code", lerr_int(code), NULL);
+    else admin_say("OK", "%s", t);   /* i18n-ok */
 }
 
 /* ---- Bluetooth rfkill ---- */
@@ -210,10 +210,10 @@ void hw_act_time_set(const AdminReq *r, const char *arg, size_t len) {
 void hw_act_bt_unblock(const AdminReq *r, const char *arg, size_t len) {
     (void)r; (void)arg; (void)len;
     int fd = open("/dev/rfkill", O_WRONLY | O_CLOEXEC);
-    if (fd < 0) { admin_say("ERR", "no /dev/rfkill"); return; }
+    if (fd < 0) { admin_err("hw.noRfkill", NULL); return; }
     struct rfkill_event ev = { .type = RFKILL_TYPE_BLUETOOTH, .op = RFKILL_OP_CHANGE_ALL, .soft = 0 };
     ssize_t w = write(fd, &ev, RFKILL_EVENT_SIZE_V1);
     close(fd);
-    if (w != RFKILL_EVENT_SIZE_V1) admin_say("ERR", "rfkill: %s", strerror(errno));
-    else admin_say("OK", "unblocked");
+    if (w != RFKILL_EVENT_SIZE_V1) admin_err("hw.rfkillFailed", "errno", lerr_errno(errno), NULL);
+    else admin_ok("hw.unblocked", NULL);
 }

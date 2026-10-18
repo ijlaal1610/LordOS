@@ -927,7 +927,7 @@ static int load_doc(FwStore *t, const JVal *root, char *err, size_t errlen) {
             const char *app = jstr(k, FW_APP_MAX);
             char c[FW_APP_MAX];
             if (!app || fw_app_canon(app, c, sizeof c) || strcmp(app, c)) return jerr(err, errlen, "trusted %d: invalid app", i);
-            if (fw_is_trusted(t, c)) return jerr(err, errlen, "trusted %d: repetida", i);
+            if (fw_is_trusted(t, c)) return jerr(err, errlen, "trusted %d: repeated", i);
             if (fw_set_trusted(t, c, 1)) return jerr(err, errlen, "trusted %d: doesn't fit", i);
         }
     }

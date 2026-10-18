@@ -581,3 +581,220 @@ void canvas_blit_scaled(Canvas *c, const uint32_t *src, int stride, int sw_px, i
         }
     }
 }
+
+/* ---- per-corner radii, per-side borders, affine copies ---- */
+
+/* CSS: radii that don't fit are all scaled down by the same factor. */
+static void fix_radii(const float in[4], float w, float h, float r[4]) {
+    float f = 1;
+    float top = in[0] + in[1], bot = in[3] + in[2], left = in[0] + in[3], right = in[1] + in[2];
+    if (top > w && top > 0) f = fminf(f, w / top);
+    if (bot > w && bot > 0) f = fminf(f, w / bot);
+    if (left > h && left > 0) f = fminf(f, h / left);
+    if (right > h && right > 0) f = fminf(f, h / right);
+    for (int i = 0; i < 4; i++) r[i] = in[i] > 0 ? in[i] * f : 0;
+}
+
+static inline float rr4_sdf(float px, float py, float cx, float cy, float hw, float hh, const float r[4]) {
+    float k = px < cx ? (py < cy ? r[0] : r[3]) : (py < cy ? r[1] : r[2]);
+    return rr_sdf(px, py, cx, cy, hw, hh, k);
+}
+
+void canvas_rrect4(Canvas *c, float x, float y, float w, float h, const float rin[4], uint32_t argb) {
+    uint32_t a = argb >> 24;
+    int x0, y0, x1, y1;
+    if (!a || w <= 0 || h <= 0 || !bounds(c, x, y, w, h, &x0, &y0, &x1, &y1)) return;
+    float r[4];
+    fix_radii(rin, w, h, r);
+    float cx = x + w * 0.5f, cy = y + h * 0.5f, hw = w * 0.5f, hh = h * 0.5f;
+    float top = fmaxf(r[0], r[1]), bot = fmaxf(r[2], r[3]);
+    int fx0 = (int)ceilf(x), fx1 = (int)floorf(x + w);
+    for (int j = y0; j < y1; j++) {
+        uint32_t *row = c->px + (size_t)j * c->stride;
+        if (j >= y + top && j + 1 <= y + h - bot) {
+            int m0 = fx0 > x0 ? fx0 : x0, m1 = fx1 < x1 ? fx1 : x1;
+            if (m1 < m0) m1 = m0;
+            for (int i = x0; i < m0; i++) {
+                float cov = fminf(i + 1.0f, x + w) - fmaxf((float)i, x);
+                if (cov > 0) put(&row[i], argb, (uint32_t)(a * cov + 0.5f));
+            }
+            if (a >= 255) { uint32_t v = argb | 0xff000000u; for (int i = m0; i < m1; i++) row[i] = v; }
+            else for (int i = m0; i < m1; i++) row[i] = blend(row[i], argb, a);
+            for (int i = m1; i < x1; i++) {
+                float cov = fminf(i + 1.0f, x + w) - fmaxf((float)i, x);
+                if (cov > 0) put(&row[i], argb, (uint32_t)(a * cov + 0.5f));
+            }
+        } else {
+            float py = j + 0.5f;
+            for (int i = x0; i < x1; i++) {
+                float cov = cov_of(rr4_sdf(i + 0.5f, py, cx, cy, hw, hh, r));
+                if (cov > 0) put(&row[i], argb, (uint32_t)(a * cov + 0.5f));
+            }
+        }
+    }
+}
+
+void canvas_rrect4_gradient(Canvas *c, float x, float y, float w, float h, const float rin[4],
+                            uint32_t from, uint32_t to, float angle_deg, float opacity) {
+    int x0, y0, x1, y1;
+    if (w <= 0 || h <= 0 || !bounds(c, x, y, w, h, &x0, &y0, &x1, &y1)) return;
+    float r[4];
+    fix_radii(rin, w, h, r);
+    float cx = x + w * 0.5f, cy = y + h * 0.5f, hw = w * 0.5f, hh = h * 0.5f;
+    float rad = angle_deg * 3.14159265f / 180.0f, dx = sinf(rad), dy = -cosf(rad);
+    float len = fabsf(w * dx) + fabsf(h * dy);
+    if (len <= 0) len = 1;
+    for (int j = y0; j < y1; j++) {
+        uint32_t *row = c->px + (size_t)j * c->stride;
+        float py = j + 0.5f;
+        for (int i = x0; i < x1; i++) {
+            float px = i + 0.5f;
+            float cov = cov_of(rr4_sdf(px, py, cx, cy, hw, hh, r));
+            if (cov <= 0) continue;
+            float t = 0.5f + ((px - cx) * dx + (py - cy) * dy) / len;
+            t = t < 0 ? 0 : t > 1 ? 1 : t;
+            uint32_t col = lerp_color(from, to, t);
+            put(&row[i], col, (uint32_t)((col >> 24) * cov * opacity + 0.5f));
+        }
+    }
+}
+
+void canvas_border4(Canvas *c, float x, float y, float w, float h, const float rin[4], const float bw[4], const uint32_t col[4]) {
+    int x0, y0, x1, y1;
+    if (w <= 0 || h <= 0 || !bounds(c, x, y, w, h, &x0, &y0, &x1, &y1)) return;
+    enum { L, T, R, B };
+    float r[4];
+    fix_radii(rin, w, h, r);
+    if (r[0] <= 0 && r[1] <= 0 && r[2] <= 0 && r[3] <= 0) {
+        /* square corners: four rectangles (the top and bottom ones span the corners) */
+        float bt = fminf(bw[T], h), bb = fminf(bw[B], h - bt);
+        if (bt > 0) canvas_rrect(c, x, y, w, bt, 0, col[T]);
+        if (bb > 0) canvas_rrect(c, x, y + h - bb, w, bb, 0, col[B]);
+        float mh = h - bt - bb;
+        if (mh > 0 && bw[L] > 0) canvas_rrect(c, x, y + bt, fminf(bw[L], w), mh, 0, col[L]);
+        if (mh > 0 && bw[R] > 0) canvas_rrect(c, x + w - fminf(bw[R], w), y + bt, fminf(bw[R], w), mh, 0, col[R]);
+        return;
+    }
+    float ix = x + bw[L], iy = y + bw[T], iw = w - bw[L] - bw[R], ih = h - bw[T] - bw[B];
+    float ir[4] = { fmaxf(0, r[0] - fmaxf(bw[L], bw[T])), fmaxf(0, r[1] - fmaxf(bw[R], bw[T])),
+                    fmaxf(0, r[2] - fmaxf(bw[R], bw[B])), fmaxf(0, r[3] - fmaxf(bw[L], bw[B])) };
+    float cx = x + w * 0.5f, cy = y + h * 0.5f, hw = w * 0.5f, hh = h * 0.5f;
+    float icx = ix + iw * 0.5f, icy = iy + ih * 0.5f, ihw = iw * 0.5f, ihh = ih * 0.5f;
+    int hollow = iw > 0 && ih > 0;
+    float etop = fmaxf(bw[T], fmaxf(r[0], r[1])) + 1, ebot = fmaxf(bw[B], fmaxf(r[2], r[3])) + 1;
+    float eleft = fmaxf(bw[L], fmaxf(r[0], r[3])) + 1, eright = fmaxf(bw[R], fmaxf(r[1], r[2])) + 1;
+    for (int j = y0; j < y1; j++) {
+        uint32_t *row = c->px + (size_t)j * c->stride;
+        float py = j + 0.5f;
+        int middle = hollow && py > y + etop && py < y + h - ebot;
+        for (int i = x0; i < x1; i++) {
+            float px = i + 0.5f;
+            if (middle && px > x + eleft && px < x + w - eright) {
+                int last = (int)ceilf(x + w - eright - 0.5f) - 1;
+                if (last > i) i = last;
+                continue;
+            }
+            float cov = cov_of(rr4_sdf(px, py, cx, cy, hw, hh, r));
+            if (hollow) cov -= cov_of(rr4_sdf(px, py, icx, icy, ihw, ihh, ir));
+            if (cov <= 0) continue;
+            /* the side whose border band the pixel is deepest in, relative to its width (corner diagonals) */
+            float best = 1e30f;
+            int side = T;
+            float d[4] = { px - x, py - y, x + w - px, y + h - py };
+            for (int s = 0; s < 4; s++) {
+                if (bw[s] <= 0) continue;
+                float v = d[s] / bw[s];
+                if (v < best) { best = v; side = s; }
+            }
+            uint32_t a = col[side] >> 24;
+            if (a && bw[side] > 0) put(&row[i], col[side], (uint32_t)(a * cov + 0.5f));
+        }
+    }
+}
+
+void canvas_corners_save4(Canvas *c, Corners *k, float x, float y, float w, float h, const float rin[4]) {
+    float r[4];
+    fix_radii(rin, w, h, r);
+    float m = fmaxf(fmaxf(r[0], r[1]), fmaxf(r[2], r[3]));
+    k->n = (int)ceilf(m) + 1;
+    k->buf = NULL;
+    if (m <= 0) return;
+    k->buf = malloc((size_t)k->n * k->n * 4 * 4);
+    if (!k->buf) return;
+    int xs[4] = { (int)floorf(x), (int)ceilf(x + w) - k->n, (int)floorf(x), (int)ceilf(x + w) - k->n };
+    int ys[4] = { (int)floorf(y), (int)floorf(y), (int)ceilf(y + h) - k->n, (int)ceilf(y + h) - k->n };
+    for (int q = 0; q < 4; q++) {
+        k->x[q] = xs[q]; k->y[q] = ys[q];
+        for (int j = 0; j < k->n; j++)
+            for (int i = 0; i < k->n; i++) {
+                int px = xs[q] + i, py = ys[q] + j;
+                uint32_t v = 0;
+                if (px >= 0 && py >= 0 && px < c->w && py < c->h) v = c->px[(size_t)py * c->stride + px];
+                k->buf[((size_t)q * k->n + j) * k->n + i] = v;
+            }
+    }
+}
+
+void canvas_corners_restore4(Canvas *c, Corners *k, float x, float y, float w, float h, const float rin[4]) {
+    if (!k->buf) return;
+    float r[4];
+    fix_radii(rin, w, h, r);
+    float cx = x + w * 0.5f, cy = y + h * 0.5f, hw = w * 0.5f, hh = h * 0.5f;
+    for (int q = 0; q < 4; q++)
+        for (int j = 0; j < k->n; j++)
+            for (int i = 0; i < k->n; i++) {
+                int px = k->x[q] + i, py = k->y[q] + j;
+                if (px < c->clip.x0 || py < c->clip.y0 || px >= c->clip.x1 || py >= c->clip.y1) continue;
+                float cov = cov_of(rr4_sdf(px + 0.5f, py + 0.5f, cx, cy, hw, hh, r));
+                if (cov >= 1) continue;
+                uint32_t *d = &c->px[(size_t)py * c->stride + px];
+                *d = blend(*d, k->buf[((size_t)q * k->n + j) * k->n + i], (uint32_t)((1 - cov) * 255 + 0.5f));
+            }
+    free(k->buf);
+    k->buf = NULL;
+}
+
+static inline uint32_t texel(const uint32_t *src, int sw, int sh, int x, int y) {
+    return x < 0 || y < 0 || x >= sw || y >= sh ? 0 : src[(size_t)y * sw + x];
+}
+
+void canvas_blit_affine(Canvas *c, const uint32_t *src, int sw, int sh, const float inv[6], const float fwd[6], float opacity) {
+    if (sw <= 0 || sh <= 0) return;
+    /* destination bounds: the four transformed corners */
+    float bx0 = 1e30f, by0 = 1e30f, bx1 = -1e30f, by1 = -1e30f;
+    const float cs[4][2] = { {0, 0}, {(float)sw, 0}, {(float)sw, (float)sh}, {0, (float)sh} };
+    for (int q = 0; q < 4; q++) {
+        float px = fwd[0] * cs[q][0] + fwd[2] * cs[q][1] + fwd[4], py = fwd[1] * cs[q][0] + fwd[3] * cs[q][1] + fwd[5];
+        bx0 = fminf(bx0, px); by0 = fminf(by0, py); bx1 = fmaxf(bx1, px); by1 = fmaxf(by1, py);
+    }
+    int x0, y0, x1, y1;
+    if (!bounds(c, bx0 - 1, by0 - 1, bx1 - bx0 + 2, by1 - by0 + 2, &x0, &y0, &x1, &y1)) return;
+    uint32_t k_op = (uint32_t)(opacity * 256 + 0.5f);
+    if (!k_op) return;
+    for (int j = y0; j < y1; j++) {
+        uint32_t *row = c->px + (size_t)j * c->stride;
+        float dy = j + 0.5f;
+        /* source coordinates of the pixel center, stepped along the row */
+        float u = inv[0] * (x0 + 0.5f) + inv[2] * dy + inv[4] - 0.5f;
+        float v = inv[1] * (x0 + 0.5f) + inv[3] * dy + inv[5] - 0.5f;
+        for (int i = x0; i < x1; i++, u += inv[0], v += inv[1]) {
+            if (u <= -1 || v <= -1 || u >= sw || v >= sh) continue;
+            int ix = (int)floorf(u), iy = (int)floorf(v);
+            uint32_t wx = (uint32_t)((u - ix) * 256), wy = (uint32_t)((v - iy) * 256);
+            uint32_t a = texel(src, sw, sh, ix, iy), b = texel(src, sw, sh, ix + 1, iy);
+            uint32_t cc = texel(src, sw, sh, ix, iy + 1), d = texel(src, sw, sh, ix + 1, iy + 1), p = 0;
+            if (!(a | b | cc | d)) continue;
+            for (int s8 = 0; s8 < 32; s8 += 8) {
+                uint32_t top = ((a >> s8 & 255) * (256 - wx) + (b >> s8 & 255) * wx) >> 8;
+                uint32_t bot = ((cc >> s8 & 255) * (256 - wx) + (d >> s8 & 255) * wx) >> 8;
+                p |= ((top * (256 - wy) + bot * wy) >> 8 & 255) << s8;
+            }
+            uint32_t sa = ((p >> 24) * k_op) >> 8;
+            if (!sa) continue;
+            uint32_t srb = (((p & 0xff00ff) * k_op) >> 8) & 0xff00ff, sg = (((p & 0xff00) * k_op) >> 8) & 0xff00;
+            uint32_t ia = 255 - sa, dd = row[i];
+            uint32_t drb = (((dd & 0xff00ff) * ia) >> 8) & 0xff00ff, dg = (((dd & 0xff00) * ia) >> 8) & 0xff00;
+            row[i] = over_alpha(sa, dd >> 24) << 24 | (srb + drb) | (sg + dg);
+        }
+    }
+}

@@ -108,9 +108,9 @@ LmEnc *lm_enc_open(int out_fd, int w, int h, int fps, AVBufferRef *hw, int audio
     e->last_pts = -1;
     e->pkt = av_packet_alloc();
     e->oc = lm_open_output(out_fd, "mp4");
-    if (!e->oc || e->w < 16 || e->h < 16) { snprintf(err, errlen, "no se pudo crear el archivo"); lm_enc_close(e); return NULL; }
+    if (!e->oc || e->w < 16 || e->h < 16) { lerr_set(err, errlen, "media.createFailed", NULL); lm_enc_close(e); return NULL; }
     e->v = video_encoder(e, fps > 0 ? fps : 30, hw);
-    if (!e->v) { snprintf(err, errlen, "sin codificador de video"); lm_enc_close(e); return NULL; }
+    if (!e->v) { lerr_set(err, errlen, "media.noVideoEncoder", NULL); lm_enc_close(e); return NULL; }
     e->vs = avformat_new_stream(e->oc, NULL);
     avcodec_parameters_from_context(e->vs->codecpar, e->v);
     e->vs->time_base = (AVRational){ 1, 1000 };
@@ -134,7 +134,7 @@ LmEnc *lm_enc_open(int out_fd, int w, int h, int fps, AVBufferRef *hw, int audio
             swr_init(e->swr);
         } else LM_LOG("no AAC: the recording has no sound");
     }
-    if (avformat_write_header(e->oc, NULL) < 0) { snprintf(err, errlen, "no se pudo escribir el archivo"); lm_enc_close(e); return NULL; }
+    if (avformat_write_header(e->oc, NULL) < 0) { lerr_set(err, errlen, "media.writeFailed", NULL); lm_enc_close(e); return NULL; }
     e->header = 1;
     e->yuv = av_frame_alloc();
     e->yuv->format = e->frames ? AV_PIX_FMT_NV12 : AV_PIX_FMT_YUV420P;

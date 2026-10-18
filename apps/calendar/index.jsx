@@ -3,7 +3,7 @@
 // promise and usePim() changes whenever something changes, so views re-query on it.
 import {
   View, Text, useTheme, useLocale, useAppWindow, useKeyboard, useWindowState, usePim, calendars, calendarEvents,
-  Button, Segmented, ScrollView, Hairline, Toolbar, ToolbarButton, ToolbarSpacer, EmptyState, formatDate, formatTime, weekdayName, direction, t,
+  Button, Segmented, ScrollView, Hairline, Toolbar, ToolbarButton, ToolbarGroup, ToolbarSpacer, EmptyState, formatDate, formatTime, weekdayName, direction, textDirection, t,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -91,6 +91,13 @@ export default function CalendarApp() {
   const [view, setView] = useWindowState('view', 'week');
   const [cursorMs, setCursor] = useWindowState('cursor', () => sod(new Date()).getTime());
   const [sidebar, setSidebar] = useWindowState('sidebar', true);
+  // narrow windows hide the sidebar unless it is asked for, as Calendar does
+  const [narrowSidebar, setNarrowSidebar] = useWindowState('narrowSidebar', false);
+  const rootRef = useRef(null);
+  const rootW = useWidth(rootRef, 960);
+  const narrow = rootW < 760;
+  const showSidebar = narrow ? narrowSidebar : sidebar;
+  const toggleSidebar = () => (narrow ? setNarrowSidebar(!narrowSidebar) : setSidebar(!sidebar));
   const [sheet, setSheet] = useState(null);        // { ev, isNew } | { cal } | { newCal: true }
   const now = useNow(30000);
   const cursor = new Date(cursorMs);
@@ -155,27 +162,33 @@ export default function CalendarApp() {
   const rtl = direction() === 'rtl';
 
   return (
-    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: th.windowBg }}>
-      {sidebar && (
+    <View ref={rootRef} style={{ flex: 1, flexDirection: 'row', backgroundColor: th.windowBg }}>
+      {showSidebar && (
         <Sidebar cals={eventCals} cursor={cursor} days={days} onPick={(d) => setCursor(sod(d).getTime())}
           onNew={() => setSheet({ newCal: true })} onEdit={(c) => setSheet({ cal: c })} />
       )}
       <View style={{ flex: 1 }}>
-        <Toolbar>
-          <ToolbarButton icon="▤" title={t('calendar.toggleSidebar')} onClick={() => setSidebar(!sidebar)} active={sidebar} />
-          <Button small label={t('calendar.today')} onClick={today} />
-          <View style={{ flexDirection: 'row' }}>
-            <ToolbarButton icon={rtl ? '›' : '‹'} iconSize={20} small title={t('calendar.previous')} onClick={() => go(-1)} />
-            <ToolbarButton icon={rtl ? '‹' : '›'} iconSize={20} small title={t('calendar.next')} onClick={() => go(1)} />
-          </View>
-          <Text style={{ fontSize: 17, fontWeight: 700, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden', flexShrink: 1 }}>{title}</Text>
+        {/* toolbar: sidebar and new event at the start, the view switch centered */}
+        <Toolbar separator={false}>
+          <ToolbarButton icon="▤" title={t('calendar.toggleSidebar')} onClick={toggleSidebar} active={showSidebar} />
+          <ToolbarButton icon="+" iconSize={20} title={t('calendar.newEvent')} disabled={unavailable} onClick={() => newEvent(cursor)} />
           <ToolbarSpacer />
           <Segmented small appearance="neutral" value={view} onChange={setView}
             options={[['day', t('calendar.view.day')], ['week', t('calendar.view.week')], ['month', t('calendar.view.month')]]} />
-          <ToolbarButton icon="+" iconSize={20} title={t('calendar.newEvent')} disabled={unavailable} onClick={() => newEvent(cursor)} />
+          <ToolbarSpacer />
+          <View style={{ width: 64 }} />
         </Toolbar>
+        {/* the period title, with previous / today / next at the trailing edge */}
+        <View style={{ height: narrow ? 42 : 50, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16 }}>
+          <Text style={{ flex: 1, fontSize: narrow ? 17 : 22, fontWeight: 700, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{title}</Text>
+          <ToolbarGroup>
+            <ToolbarButton icon={rtl ? '›' : '‹'} iconSize={18} small title={t('calendar.previous')} onClick={() => go(-1)} />
+            <ToolbarButton label={t('calendar.today')} small onClick={today} />
+            <ToolbarButton icon={rtl ? '‹' : '›'} iconSize={18} small title={t('calendar.next')} onClick={() => go(1)} />
+          </ToolbarGroup>
+        </View>
         {unavailable ? (
-          <EmptyState icon="📅" title={t('calendar.unavailable')} hint={t('calendar.unavailableHint')} />
+          <EmptyState icon="▦" title={t('calendar.unavailable')} hint={t('calendar.unavailableHint')} />
         ) : view === 'month' ? (
           <MonthGrid cursor={cursor} days={days} cals={cals} now={now} onOpen={(ev) => setSheet({ ev })}
             onSlot={(d) => newEvent(d, 9 * 60)} onDay={(d) => { setCursor(sod(d).getTime()); setView('day'); }} />
@@ -209,20 +222,23 @@ function Sidebar({ cals, cursor, days, onPick, onNew, onEdit }) {
     <View style={{ width: 216, backgroundColor: th.sidebarBg }}>
       <Hairline edge="end" />
       <ScrollView style={{ flex: 1 }}>
-        <View style={{ padding: 10, gap: 2 }}>
+        <View style={{ paddingHorizontal: 10, paddingTop: 12, paddingBottom: 10, gap: 2 }}>
           {groups.map((g) => (
-            <View key={g.key} style={{ gap: 2, marginBottom: 8 }}>
-              <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, marginHorizontal: 6, marginBottom: 2 }}>{g.name}</Text>
+            <View key={g.key} style={{ gap: 2, marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, marginHorizontal: 8, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden' }}>{g.name}</Text>
               {g.list.map((c) => <CalRow key={c.id} cal={c} onEdit={onEdit} />)}
             </View>
           ))}
           {!cals.length ? <Text style={{ fontSize: 12, color: th.textDim, margin: 6 }}>{t('calendar.noCalendars')}</Text> : null}
         </View>
       </ScrollView>
-      <View style={{ padding: 10, gap: 8, alignItems: 'center' }}>
+      <View style={{ paddingHorizontal: 10, paddingTop: 12, gap: 6, alignItems: 'center' }}>
         <Hairline edge="top" />
         <MiniMonth key={`${cursor.getFullYear()}-${cursor.getMonth()}`} value={cursor} onPick={onPick} marks={marks} cell={26} />
-        <Button small plain icon="+" label={t('calendar.newCalendar')} onClick={onNew} style={{ alignSelf: 'stretch' }} />
+      </View>
+      <View style={{ height: 40, paddingHorizontal: 10, justifyContent: 'center' }}>
+        <Hairline edge="top" />
+        <Button small plain icon="⊕" label={t('calendar.newCalendar')} onClick={onNew} style={{ alignSelf: 'flex-start' }} />
       </View>
     </View>
   );
@@ -236,7 +252,7 @@ function CalRow({ cal, onEdit }) {
   const toggle = () => calendars.update(cal.id, { hidden: !cal.hidden }).catch(() => {});
   return (
     <View ref={ref} onClick={toggle} onContextMenu={() => setMenu(true)} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ height: 26, paddingHorizontal: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: hover ? th.hover : 'transparent' }}>
+      style={{ height: 28, paddingHorizontal: 8, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: hover ? th.hover : 'transparent' }}>
       <ColorCheck on={!cal.hidden} color={cal.color || '#007aff'} />
       <Text style={{ flex: 1, fontSize: 13, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{cal.name}</Text>
       {menu && (
@@ -271,34 +287,36 @@ function TimeGrid({ dates, days, cals, now, onOpen, onSlot, onDay }) {
   const colW = useWidth(colRef, 120);
   const rtl = direction() === 'rtl';
   const nowD = new Date(now);
-  useEffect(() => { const id = setTimeout(() => scroll.current?.scrollTo(8 * HOUR - 6), 60); return () => clearTimeout(id); }, []);
+  useEffect(() => { const id = setTimeout(() => scroll.current?.scrollTo(8 * HOUR - 16), 60); return () => clearTimeout(id); }, []);
   const sep = (key) => <View key={key} style={{ position: 'absolute', top: 0, bottom: 0, [rtl ? 'right' : 'left']: 0, width: 1, backgroundColor: th.separator }} />;
   const allDay = dates.map((d) => (days.get(ymd(d)) || []).filter((e) => e.allDay));
   const maxAll = Math.max(1, ...allDay.map((l) => l.length));
   const single = dates.length === 1;
+  const stacked = !single && colW < 80;          // narrow columns: weekday above the day number
   return (
     <View style={{ flex: 1 }}>
       {/* day headers */}
-      <View style={{ flexDirection: 'row', height: single ? 30 : 40 }}>
+      <View style={{ flexDirection: 'row', height: single ? 32 : stacked ? 46 : 36 }}>
         <Hairline edge="bottom" />
         <View style={{ width: GUTTER }} />
         {dates.map((d) => {
           const today = sameDay(d, nowD);
           return (
-            <View key={ymd(d)} onClick={() => !single && onDay(d)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-              <Text style={{ fontSize: 12, color: today ? RED : th.textDim }}>{weekdayName(d.getDay())}</Text>
+            <View key={ymd(d)} onClick={() => !single && onDay(d)}
+              style={{ flex: 1, flexDirection: stacked ? 'column' : 'row', alignItems: 'center', justifyContent: 'center', gap: stacked ? 1 : 5, overflow: 'hidden' }}>
+              <Text style={{ fontSize: stacked ? 10 : 12, fontWeight: stacked ? 600 : 400, color: today ? RED : th.textDim, whiteSpace: 'nowrap' }}>{weekdayName(d.getDay())}</Text>
               <View style={{ minWidth: 24, height: 24, paddingHorizontal: 4, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: today ? RED : 'transparent' }}>
-                <Text style={{ fontSize: 15, fontWeight: today ? 700 : 500, color: today ? '#fff' : th.text }}>{String(d.getDate())}</Text>
+                <Text style={{ fontSize: 15, fontWeight: today ? 600 : 500, color: today ? '#fff' : th.text }}>{String(d.getDate())}</Text>
               </View>
             </View>
           );
         })}
       </View>
       {/* all-day row */}
-      <View style={{ flexDirection: 'row', minHeight: 24, maxHeight: 24 + 20 * Math.min(maxAll, 4) }}>
+      <View style={{ flexDirection: 'row', minHeight: 30, maxHeight: 30 + 20 * Math.min(maxAll, 4) }}>
         <Hairline edge="bottom" />
-        <View style={{ width: GUTTER, justifyContent: 'center' }}>
-          <Text style={{ fontSize: 10, color: th.textDim, textAlign: 'end', marginHorizontal: 6 }}>{t('calendar.allDay')}</Text>
+        <View style={{ width: GUTTER, justifyContent: 'center', paddingVertical: 3 }}>
+          <Text style={{ fontSize: 10, lineHeight: 12, color: th.textDim, textAlign: 'end', marginHorizontal: 8 }}>{t('calendar.allDay')}</Text>
         </View>
         {dates.map((d, i) => (
           <View key={ymd(d)} onClick={() => onSlot(d, null)} style={{ flex: 1, padding: 2, gap: 2, overflow: 'hidden' }}>
@@ -313,7 +331,7 @@ function TimeGrid({ dates, days, cals, now, onOpen, onSlot, onDay }) {
         <View style={{ flexDirection: 'row', height: 24 * HOUR + 8 }}>
           <View style={{ width: GUTTER }}>
             {Array.from({ length: 23 }, (_, i) => i + 1).map((h) => (
-              <Text key={h} style={{ position: 'absolute', top: h * HOUR - 7, left: 0, right: 0, paddingHorizontal: 6, fontSize: 10, color: th.textDim, textAlign: 'end' }}>
+              <Text key={h} style={{ position: 'absolute', top: h * HOUR - 7, left: 0, right: 0, paddingHorizontal: 8, fontSize: 10, color: th.textDim, textAlign: 'end', whiteSpace: 'nowrap' }}>
                 {formatTime(new Date(2000, 0, 3, h, 0))}
               </Text>
             ))}
@@ -357,15 +375,17 @@ function EventBlock({ seg, left, width, color, onOpen }) {
   const h = Math.max(18, ((seg.bottom - seg.top) * HOUR) / 60 - 2);
   const rtl = direction() === 'rtl';
   const dark = th.mode === 'dark';
+  const oneLine = h < 34 || width < 72;           // no broken words in narrow columns
   return (
     <View onClick={(e) => { e.stopPropagation(); onOpen(ev); }}
-      style={{ position: 'absolute', top: (seg.top * HOUR) / 60 + 1, left, width: Math.max(8, width), height: h, borderRadius: 5, overflow: 'hidden',
-        backgroundColor: tint(color, dark ? '55' : '33'), paddingVertical: 2, paddingHorizontal: 6 }}>
+      style={{ position: 'absolute', top: (seg.top * HOUR) / 60 + 1, left, width: Math.max(8, width), height: h, borderRadius: 4, overflow: 'hidden',
+        backgroundColor: tint(color, dark ? '4d' : '2e'), paddingVertical: 2, [rtl ? 'paddingRight' : 'paddingLeft']: 7, [rtl ? 'paddingLeft' : 'paddingRight']: 4 }}>
       <View style={{ position: 'absolute', top: 0, bottom: 0, [rtl ? 'right' : 'left']: 0, width: 3, backgroundColor: color }} />
-      <Text style={{ fontSize: 11, fontWeight: 600, color: th.text, whiteSpace: h < 34 ? 'nowrap' : undefined, overflow: 'hidden' }}>
+      {/* the event's own text keeps its direction, so a clipped title loses its end, not its start */}
+      <Text style={{ fontSize: 11, fontWeight: 600, color: th.text, whiteSpace: oneLine ? 'nowrap' : undefined, overflow: 'hidden', direction: textDirection(ev.title || '') }}>
         {ev.title || t('calendar.untitled')}
       </Text>
-      {h >= 34 ? <Text style={{ fontSize: 10, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{ev.loc ? `${formatTime(new Date(ev.start))} · ${ev.loc}` : formatTime(new Date(ev.start))}</Text> : null}
+      {h >= 34 ? <Text style={{ fontSize: 10, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden', direction: textDirection(ev.loc || ev.title || '') }}>{ev.loc ? `${formatTime(new Date(ev.start))} · ${ev.loc}` : formatTime(new Date(ev.start))}</Text> : null}
     </View>
   );
 }
@@ -373,7 +393,7 @@ function EventBlock({ seg, left, width, color, onOpen }) {
 function AllDayChip({ ev, color, onOpen }) {
   return (
     <View onClick={(e) => { e.stopPropagation(); onOpen(ev); }} style={{ height: 18, borderRadius: 4, paddingHorizontal: 6, justifyContent: 'center', backgroundColor: color }}>
-      <Text style={{ fontSize: 11, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden' }}>{ev.title || t('calendar.untitled')}</Text>
+      <Text style={{ fontSize: 11, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', direction: textDirection(ev.title || '') }}>{ev.title || t('calendar.untitled')}</Text>
     </View>
   );
 }
@@ -442,7 +462,7 @@ function MonthChip({ ev, color, onOpen }) {
   return (
     <View onClick={(e) => { e.stopPropagation(); onOpen(ev); }} style={{ height: 16, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 3 }}>
       <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color }} />
-      <Text style={{ flex: 1, fontSize: 11, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{ev.title || t('calendar.untitled')}</Text>
+      <Text style={{ flex: 1, fontSize: 11, color: th.text, whiteSpace: 'nowrap', overflow: 'hidden', direction: textDirection(ev.title || '') }}>{ev.title || t('calendar.untitled')}</Text>
       <Text style={{ fontSize: 10, color: th.textDim, whiteSpace: 'nowrap' }}>{formatTime(new Date(ev.start))}</Text>
     </View>
   );

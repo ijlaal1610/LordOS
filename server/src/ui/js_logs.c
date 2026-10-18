@@ -18,6 +18,7 @@
  * The thread and inotify go through a single epoll fd that the main loop watches (logs_fd()), so
  * the compositor never waits on a read and there is no polling. */
 #include "js_logs.h"
+#include "js_err.h"
 #include "../logs/journal.h"
 
 #include <ctype.h>
@@ -217,7 +218,7 @@ static int get_str(JSContext *c, JSValueConst o, const char *k, char *out, size_
 
 static JSValue f_query(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (argc < 1 || !JS_IsObject(argv[0])) return JS_ThrowTypeError(c, "logs.query: missing query");
+    if (argc < 1 || !JS_IsObject(argv[0])) return js_throw_code(c, "logs.badQuery", NULL);
     JSValueConst o = argv[0];
     Req r = { 0 };
     char scope[16], tmp[160];
@@ -236,16 +237,16 @@ static JSValue f_query(JSContext *c, JSValueConst t, int argc, JSValueConst *arg
     JS_FreeValue(c, k);
     if (get_str(c, o, "match", tmp, 97) == 1 && tmp[0]) n += (size_t)snprintf(text + n, sizeof text - n, "match=%s\n", tmp);
     if (get_str(c, o, "grep", tmp, 128) == 1 && tmp[0] && !strchr(tmp, '\n')) n += (size_t)snprintf(text + n, sizeof text - n, "grep=%s\n", tmp);
-    if (n >= sizeof text || jq_parse(text, &r.q, 20000)) return JS_ThrowRangeError(c, "logs.query: invalid query");
+    if (n >= sizeof text || jq_parse(text, &r.q, 20000)) return js_throw_code(c, "logs.badQuery", NULL);
     pthread_mutex_lock(&mu);
-    if (nq == QMAX) { pthread_mutex_unlock(&mu); return JS_ThrowRangeError(c, "logs.query: too many queries in progress"); }
+    if (nq == QMAX) { pthread_mutex_unlock(&mu); return js_throw_code(c, "logs.tooManyQueries", NULL); }
     if (!th_started) {
         pthread_attr_t a;
         pthread_attr_init(&a);
         pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
         th_started = pthread_create(&th, &a, worker, NULL) == 0;
         pthread_attr_destroy(&a);
-        if (!th_started) { pthread_mutex_unlock(&mu); return JS_ThrowInternalError(c, "logs.query: no thread"); }
+        if (!th_started) { pthread_mutex_unlock(&mu); return js_throw_code(c, "logs.noThread", NULL); }
     }
     r.id = next_id++;
     if (next_id > 1 << 30) next_id = 1;
@@ -320,7 +321,7 @@ static JSValue f_tail(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     char p[1024];
     snprintf(p, sizeof p, "%s/.cache/lordos/%s", home(), name);
     JS_FreeCString(c, name);
-    if (!ok) return JS_ThrowRangeError(c, "logs.tail: invalid name");
+    if (!ok) return js_throw_code(c, "logs.badName", NULL);
     double want = 262144;
     if (argc > 1) JS_ToFloat64(c, &want, argv[1]);
     size_t max = want < 1024 ? 1024 : want > 1048576 ? 1048576 : (size_t)want;

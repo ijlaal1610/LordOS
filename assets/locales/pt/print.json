@@ -78,7 +78,18 @@
   "scan": "Digitalizar…",
   "noScanners": "Nenhum scanner encontrado na rede.",
   "tlsUnsupported": "somente cifrado (ainda não)",
-  "err.forbidden": "Seu usuário não pode administrar impressoras: é preciso ser administrador (grupo lpadmin).",
+  "err.forbidden": "você não tem permissão para administrar impressoras",
   "err.notFound": "O CUPS não encontrou essa impressora",
-  "err.other": "O CUPS respondeu: {error}"
+  "err.other": "O CUPS respondeu: {error}",
+  "err.encode": "não foi possível montar o pedido",
+  "err.no-cups": "o serviço de impressão (CUPS) não está funcionando",
+  "err.http": "a impressora respondeu com um erro ({detail})",
+  "err.bad-response": "resposta inválida da impressora",
+  "err.bad-request": "pedido inválido",
+  "err.bad-pages": "intervalo de páginas inválido",
+  "err.unreachable": "não foi possível alcançá-lo",
+  "err.busy": "está ocupado; tente de novo em instantes",
+  "err.timeout": "demorou demais",
+  "err.write": "não foi possível gravar o arquivo",
+  "err.unknown": "erro desconhecido"
 }

@@ -12,6 +12,7 @@
  * lpk.c, nor to overwrite the settings. lord.settings only writes to ~/.config/lordos/settings.json;
  * lord.themes only accepts simple names. */
 #include "js_sys.h"
+#include "js_err.h"
 #include "ui.h"
 #include "fonts.h"
 #include "../admin.h"
@@ -118,9 +119,9 @@ static JSValue f_fs_list(JSContext *c, JSValueConst this_val, int argc, JSValueC
     char dir[PATH_MAX];
     int bad = resolve_in_home(p, dir);
     JS_FreeCString(c, p);
-    if (bad) return JS_ThrowRangeError(c, "path outside the home folder or nonexistent");
+    if (bad) return js_throw_code(c, "fs.outsideHome", NULL);
     DIR *d = opendir(dir);
-    if (!d) return JS_ThrowInternalError(c, "%s", strerror(errno));
+    if (!d) return js_throw_code(c, "sys.errno", "errno", lerr_errno(errno), NULL);
     JSValue arr = JS_NewArray(c);
     uint32_t i = 0;
     struct dirent *e;
@@ -156,13 +157,13 @@ static JSValue f_fs_read(JSContext *c, JSValueConst this_val, int argc, JSValueC
     char path[PATH_MAX];
     int bad = resolve_in_home(p, path);
     JS_FreeCString(c, p);
-    if (bad) return JS_ThrowRangeError(c, "path outside the home folder or nonexistent");
+    if (bad) return js_throw_code(c, "fs.outsideHome", NULL);
     struct stat st;
-    if (stat(path, &st) || !S_ISREG(st.st_mode)) return JS_ThrowTypeError(c, "not a file");
-    if (st.st_size > FS_READ_MAX) return JS_ThrowRangeError(c, "file too large (max. 8 MB)");
+    if (stat(path, &st) || !S_ISREG(st.st_mode)) return js_throw_code(c, "fs.notFile", NULL);
+    if (st.st_size > FS_READ_MAX) return js_throw_code(c, "fs.tooLarge", "max", "8 MB", NULL);
     size_t len;
     char *buf = read_small(path, FS_READ_MAX, &len);
-    if (!buf) return JS_ThrowInternalError(c, "%s", strerror(errno));
+    if (!buf) return js_throw_code(c, "sys.errno", "errno", lerr_errno(errno), NULL);
     JSValue v = binary ? JS_NewArrayBufferCopy(c, (uint8_t *)buf, len) : JS_NewStringLen(c, buf, len);
     free(buf);
     return v;
@@ -189,7 +190,7 @@ static void arm_cpu_name(const char *txt, char *out, size_t size) {
     if (core[0] && board && board[0]) snprintf(out, size, "%s · %s", core, board);
     else if (core[0]) snprintf(out, size, "%s", core);
     else if (board && board[0]) snprintf(out, size, "%s", board);
-    else snprintf(out, size, "desconocido");
+    else if (size) out[0] = 0;              /* unknown: the UI shows its own translated word */
     free(board);
 }
 
@@ -298,7 +299,7 @@ static JSValue f_settings_save(JSContext *c, JSValueConst this_val, int argc, JS
     size_t len;
     const char *txt = JS_ToCStringLen(c, &len, argv[0]);
     if (!txt) return JS_EXCEPTION;
-    if (len > SETTINGS_MAX) { JS_FreeCString(c, txt); return JS_ThrowRangeError(c, "settings too large"); }
+    if (len > SETTINGS_MAX) { JS_FreeCString(c, txt); return js_throw_code(c, "settings.tooLarge", NULL); }
     char dir[PATH_MAX + 64], tmp[PATH_MAX + 64], path[PATH_MAX + 64];
     snprintf(dir, sizeof dir, "%s/.config", home);
     mkdir(dir, 0700);
@@ -913,7 +914,7 @@ static int resolve_target(const char *path, char *out, size_t n, char *dir, size
 int js_sys_resolve_target(const char *path, char *out, size_t n) { return resolve_target(path, out, n, NULL, 0); }
 
 static JSValue fs_path_error(JSContext *c, int r) {
-    return r == -2 ? JS_ThrowRangeError(c, "that folder is protected") : JS_ThrowRangeError(c, "path outside the home folder or invalid");
+    return js_throw_code(c, r == -2 ? "fs.protected" : "fs.outsideHome", NULL);
 }
 
 /* lord.fs.write(path, text | ArrayBuffer): creates or replaces the file atomically. */
@@ -934,11 +935,11 @@ static JSValue f_fs_write(JSContext *c, JSValueConst this_val, int argc, JSValue
         if (!text) return JS_EXCEPTION;
     }
     const uint8_t *data = bin ? bin : (const uint8_t *)text;
-    if (len > FS_WRITE_MAX) { if (text) JS_FreeCString(c, text); return JS_ThrowRangeError(c, "file too large (max. 32 MB)"); }
+    if (len > FS_WRITE_MAX) { if (text) JS_FreeCString(c, text); return js_throw_code(c, "fs.tooLarge", "max", "32 MB", NULL); }
     struct stat st;
     mode_t mode = 0644;
     if (!lstat(target, &st)) {
-        if (!S_ISREG(st.st_mode)) { if (text) JS_FreeCString(c, text); return JS_ThrowTypeError(c, "not a regular file (a link?)"); }
+        if (!S_ISREG(st.st_mode)) { if (text) JS_FreeCString(c, text); return js_throw_code(c, "fs.notRegular", NULL); }
         mode = st.st_mode & 07777;
     }
     char tmp[PATH_MAX + 64];
@@ -959,7 +960,7 @@ static JSValue f_fs_write(JSContext *c, JSValueConst this_val, int argc, JSValue
     }
     int err = errno;
     if (text) JS_FreeCString(c, text);
-    if (!ok) return JS_ThrowInternalError(c, "%s", strerror(err));
+    if (!ok) return js_throw_code(c, "sys.errno", "errno", lerr_errno(err), NULL);
     return JS_TRUE;
 }
 
@@ -972,7 +973,7 @@ static JSValue f_fs_mkdir(JSContext *c, JSValueConst this_val, int argc, JSValue
     int r = resolve_target(p, target, sizeof target, NULL, 0);
     JS_FreeCString(c, p);
     if (r) return fs_path_error(c, r);
-    if (mkdir(target, 0755) && errno != EEXIST) return JS_ThrowInternalError(c, "%s", strerror(errno));
+    if (mkdir(target, 0755) && errno != EEXIST) return js_throw_code(c, "sys.errno", "errno", lerr_errno(errno), NULL);
     return JS_TRUE;
 }
 
@@ -988,9 +989,9 @@ static JSValue f_fs_rename(JSContext *c, JSValueConst this_val, int argc, JSValu
     if (b) JS_FreeCString(c, b);
     if (r) return fs_path_error(c, r);
     struct stat st;
-    if (lstat(from, &st)) return JS_ThrowInternalError(c, "%s", strerror(errno));
-    if (!lstat(to, &st)) return JS_ThrowRangeError(c, "already exists");
-    if (rename(from, to)) return JS_ThrowInternalError(c, "%s", strerror(errno));
+    if (lstat(from, &st)) return js_throw_code(c, "sys.errno", "errno", lerr_errno(errno), NULL);
+    if (!lstat(to, &st)) return js_throw_code(c, "fs.exists", NULL);
+    if (rename(from, to)) return js_throw_code(c, "sys.errno", "errno", lerr_errno(errno), NULL);
     return JS_TRUE;
 }
 
@@ -1010,7 +1011,7 @@ static JSValue f_fs_copy(JSContext *c, JSValueConst this_val, int argc, JSValueC
     if (b) JS_FreeCString(c, b);
     if (r) return fs_path_error(c, r);
     int id = fsjob_start(from, to, move, err, sizeof err);
-    if (id < 0) return JS_ThrowInternalError(c, "%s", err);
+    if (id < 0) return js_throw_line(c, err);
     return JS_NewInt32(c, id);
 }
 
@@ -1064,7 +1065,7 @@ static JSValue f_fs_trash(JSContext *c, JSValueConst this_val, int argc, JSValue
     int r = resolve_target(p, target, sizeof target, NULL, 0);
     JS_FreeCString(c, p);
     if (r) return fs_path_error(c, r);
-    if (fstrash_put(target, err, sizeof err)) return JS_ThrowInternalError(c, "%s", err);
+    if (fstrash_put(target, err, sizeof err)) return js_throw_line(c, err);
     return JS_TRUE;
 }
 
@@ -1096,7 +1097,7 @@ static JSValue trash_id_op(JSContext *c, JSValueConst arg, int (*op)(const char 
     char err[256] = "";
     int r = op(id, err, sizeof err);
     JS_FreeCString(c, id);
-    if (r) return JS_ThrowInternalError(c, "%s", err);
+    if (r) return js_throw_line(c, err);
     return JS_TRUE;
 }
 static JSValue f_fs_restore(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
@@ -1122,7 +1123,7 @@ static JSValue f_fs_stat(JSContext *c, JSValueConst this_val, int argc, JSValueC
     JS_FreeCString(c, p);
     if (r == -1) return fs_path_error(c, r);
     struct statx sx;
-    if (statx(AT_FDCWD, target, AT_SYMLINK_NOFOLLOW, STATX_BASIC_STATS | STATX_BTIME, &sx)) return JS_ThrowInternalError(c, "%s", strerror(errno));
+    if (statx(AT_FDCWD, target, AT_SYMLINK_NOFOLLOW, STATX_BASIC_STATS | STATX_BTIME, &sx)) return js_throw_code(c, "sys.errno", "errno", lerr_errno(errno), NULL);
     JSValue o = JS_NewObject(c);
     const char *base = strrchr(target, '/');
     JS_SetPropertyStr(c, o, "name", JS_NewString(c, base ? base + 1 : target));
@@ -1187,7 +1188,7 @@ static JSValue f_fs_free(JSContext *c, JSValueConst this_val, int argc, JSValueC
     JS_FreeCString(c, p);
     if (bad) return fs_path_error(c, -1);
     struct statvfs vs;
-    if (statvfs(path, &vs)) return JS_ThrowInternalError(c, "%s", strerror(errno));
+    if (statvfs(path, &vs)) return js_throw_code(c, "sys.errno", "errno", lerr_errno(errno), NULL);
     JSValue o = JS_NewObject(c);
     JS_SetPropertyStr(c, o, "total", JS_NewFloat64(c, (double)vs.f_blocks * vs.f_frsize));
     JS_SetPropertyStr(c, o, "free", JS_NewFloat64(c, (double)vs.f_bavail * vs.f_frsize));
@@ -1469,12 +1470,12 @@ static JSValue lpk_check(JSContext *c, JSValueConst arg, int install) {
     char path[PATH_MAX];
     int bad = resolve_in_home(p, path);
     JS_FreeCString(c, p);
-    if (bad) return JS_ThrowRangeError(c, "path outside the home folder or nonexistent");
+    if (bad) return js_throw_code(c, "fs.outsideHome", NULL);
     Lpk pk;
     char err[160];
-    if (lpk_open(path, &pk, err, sizeof err)) return JS_ThrowTypeError(c, "%s", err);
+    if (lpk_open(path, &pk, err, sizeof err)) return js_throw_line(c, err);
     const LpkFile *mf = lpk_find(&pk, "manifest.json");
-    if (!mf || !lpk_find(&pk, "app.js")) { lpk_free(&pk); return JS_ThrowTypeError(c, "not a LordOS package (manifest.json or app.js missing)"); }
+    if (!mf || !lpk_find(&pk, "app.js")) { lpk_free(&pk); return js_throw_code(c, "lpk.notPackage", NULL); }
     char *txt = malloc(mf->size + 1);
     if (!txt) { lpk_free(&pk); return JS_ThrowOutOfMemory(c); }
     memcpy(txt, mf->data, mf->size);
@@ -1485,25 +1486,25 @@ static JSValue lpk_check(JSContext *c, JSValueConst arg, int install) {
         JS_FreeValue(c, JS_GetException(c));
         JS_FreeValue(c, m);
         lpk_free(&pk);
-        return JS_ThrowTypeError(c, "invalid manifest.json");
+        return js_throw_code(c, "lpk.badManifest", NULL);
     }
     char id[64], ver[48], name[128], icon[224];
     const char *why = NULL;
-    if (!str_prop(c, m, "id", id, sizeof id) || !lpk_valid_id(id)) why = "the app id is invalid (a-z, 0-9 and -)";
-    else if (lpk_reserved(id)) why = "the app id is reserved by LordOS";
-    else if (!str_prop_tr(c, m, "name", name, sizeof name, 1)) why = "the app name is missing";
-    else if (!str_prop(c, m, "version", ver, sizeof ver) || !valid_version(ver)) why = "the version is invalid";
+    if (!str_prop(c, m, "id", id, sizeof id) || !lpk_valid_id(id)) why = "lpk.badId";
+    else if (lpk_reserved(id)) why = "lpk.reservedId";
+    else if (!str_prop_tr(c, m, "name", name, sizeof name, 1)) why = "lpk.noName";
+    else if (!str_prop(c, m, "version", ver, sizeof ver) || !valid_version(ver)) why = "lpk.badVersion";
     else if (!str_prop(c, m, "icon", icon, sizeof icon) || !lpk_find(&pk, icon) || strlen(icon) < 5 || strcmp(icon + strlen(icon) - 4, ".png"))
-        why = "the app must ship its own icon (a .png from the package in \"icon\")";
-    if (why) { JS_FreeValue(c, m); lpk_free(&pk); return JS_ThrowTypeError(c, "%s", why); }
+        why = "lpk.noIcon";
+    if (why) { JS_FreeValue(c, m); lpk_free(&pk); return js_throw_code(c, why, NULL); }
     /* Signature: checks hashes and signature; rejects an altered or revoked package, and when installing
      * requires the update rule (same key as the installed version). See docs/SIGNING.md. */
     LpkSigInfo si;
-    if (sig_verify_package(&pk, id, ver, &si, err, sizeof err)) { JS_FreeValue(c, m); lpk_free(&pk); return JS_ThrowTypeError(c, "the package is damaged or badly signed: %s", err); }
-    if (si.revoked) { JS_FreeValue(c, m); lpk_free(&pk); return JS_ThrowTypeError(c, "%s", si.revoked_why); }
+    if (sig_verify_package(&pk, id, ver, &si, err, sizeof err)) { JS_FreeValue(c, m); lpk_free(&pk); return js_throw_code(c, "lpk.badSignature", "reason", err, NULL); }
+    if (si.revoked) { JS_FreeValue(c, m); lpk_free(&pk); return js_throw_line(c, si.revoked_why); }
     if (install) {
-        if (pkg_check_update(id, &si, err, sizeof err)) { JS_FreeValue(c, m); lpk_free(&pk); return JS_ThrowTypeError(c, "%s", err); }
-        if (lpk_install(&pk, id, err, sizeof err)) { JS_FreeValue(c, m); lpk_free(&pk); return JS_ThrowInternalError(c, "%s", err); }
+        if (pkg_check_update(id, &si, err, sizeof err)) { JS_FreeValue(c, m); lpk_free(&pk); return js_throw_line(c, err); }
+        if (lpk_install(&pk, id, err, sizeof err)) { JS_FreeValue(c, m); lpk_free(&pk); return js_throw_line(c, err); }
         pkg_keep_original(id, path);        /* the original .lpk, for "Restore" and to detect changes */
     }
     size_t total = 0;
@@ -1592,7 +1593,7 @@ static JSValue f_apps_load(JSContext *c, JSValueConst this_val, int argc, JSValu
     char name[96];
     snprintf(name, sizeof name, "lpk:%s/app.js", id);
     JS_FreeCString(c, id);
-    if (!src) return JS_ThrowTypeError(c, "the app is not installed");
+    if (!src) return js_throw_code(c, "lpk.notInstalled", NULL);
     JSValue r = JS_Eval(c, src, len, name, JS_EVAL_TYPE_GLOBAL);
     free(src);
     if (JS_IsException(r)) return r;
@@ -1614,7 +1615,7 @@ static JSValue f_apps_file(JSContext *c, JSValueConst this_val, int argc, JSValu
     char *buf = id && rel ? lpk_read(id, rel, 32 * 1024 * 1024, &len) : NULL;
     if (id) JS_FreeCString(c, id);
     if (rel) JS_FreeCString(c, rel);
-    if (!buf) return JS_ThrowTypeError(c, "file does not exist in the app");
+    if (!buf) return js_throw_code(c, "lpk.noFile", NULL);
     JSValue v = JS_NewArrayBufferCopy(c, (uint8_t *)buf, len);
     free(buf);
     return v;

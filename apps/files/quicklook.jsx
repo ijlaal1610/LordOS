@@ -1,7 +1,7 @@
-// quicklook.jsx — contenido de la Vista rápida (Espacio): imagen, primera página de un PDF,
-// texto o código, muestra de una fuente, lo que hay adentro de un comprimido y, si el agente de
-// medios lo ofrece (media.poster), un cuadro del video o la tapa de un audio. Lo que viene de
-// afuera (PDF, fuentes, comprimidos) lo abre el ayudante encerrado lord-doc.
+// quicklook.jsx — Quick Look contents (Space): an image, the first page of a PDF, text or code,
+// a font sample, what is inside an archive and, if the media agent offers it (media.poster), a
+// video frame or an audio cover. What comes from outside (PDFs, fonts, archives) is opened by the
+// confined helper lord-doc.
 import * as sdk from '@lordos/sdk';
 import { View, Text, Image, useTheme, formatBytes, DocImage, releaseImage, pdfThumb, fontSample, archive, warmDocs, t as tr } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
@@ -12,8 +12,8 @@ import { extractEntry } from './archive.js';
 
 const isFont = (e) => /^(ttf|otf|ttc|otc)$/.test(extOf(e.name));
 
-// medición: desde que se abre la Vista rápida hasta tener el contenido (docs/DOCUMENTS.md,
-// «Rendimiento»). La marca de inicio se toma al dibujar por primera vez, no en un efecto.
+// measurement: from opening Quick Look until the content is there (docs/DOCUMENTS.md,
+// "Performance"). The start mark is taken on the first draw, not in an effect.
 function useTiming(e, ready) {
   const t0 = useRef(null);
   const path = useRef(null);
@@ -21,12 +21,12 @@ function useTiming(e, ready) {
   const done = useRef(null);
   if (ready && done.current !== e?.path) {
     done.current = e?.path;
-    console.log(`vista-rapida: ${kindOf(e)} ${e.name} en ${Date.now() - t0.current} ms`);
+    console.log(`quick-look: ${kindOf(e)} ${e.name} in ${Date.now() - t0.current} ms`);
   }
 }
 
-// pedido asincrónico que devuelve una imagen de lord-doc (se libera al cambiar). Se manda al
-// dibujar, no en un efecto: así el ayudante trabaja mientras se pinta el panel.
+// asynchronous request that returns an image from lord-doc (released on change). It is sent while
+// drawing, not in an effect: so the helper works while the panel is painted.
 function useDocImage(key, make) {
   const [, force] = useState(0);
   const cur = useRef(null);
@@ -51,7 +51,7 @@ function Footer({ e, th, extra }) {
 }
 
 function PdfLook({ e, path, th }) {
-  // se pide enseguida (sin esperar a medir el panel) y se muestra ajustada al lugar que haya
+  // requested right away (without waiting to measure the panel) and shown fitted to the space there is
   const [img, err] = useDocImage(path, () => pdfThumb(path, { width: 400, height: 480 }));
   useTiming(e, !!img || !!err);
   return (
@@ -101,7 +101,7 @@ function ArchiveLook({ e, th }) {
   );
 }
 
-// cuadro de un video o tapa de un audio: solo si el SDK trae media.poster (agente de medios)
+// a video frame or an audio cover: only if the SDK has media.poster (media agent)
 function MediaLook({ e, th }) {
   const poster = sdk.media && typeof sdk.media.poster === 'function' ? sdk.media.poster : null;
   const [px, setPx] = useState(null);
@@ -135,11 +135,11 @@ export function QuickContent({ e }) {
   const th = useTheme();
   const [real, setReal] = useState(null);
   const [err, setErr] = useState(null);
-  // un archivo de adentro de un comprimido: se extrae solo ese, a la caché
+  // a file inside an archive: only that one is extracted, to the cache
   useEffect(() => {
     setReal(null); setErr(null);
     if (!e?.arc || e.dir) return;
-    extractEntry(e).then(setReal).catch((x) => setErr(x.code || x.message));
+    extractEntry(e).then(setReal).catch((x) => setErr(x.message));
   }, [e?.path]);
   if (!e) return null;
   if (e.arc && !e.dir) {

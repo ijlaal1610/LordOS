@@ -11,23 +11,23 @@
 
 /* The same list as tools/iso/rootfs/usr/lib/lordos/lordos-live-prep (there with _ for spaces). */
 static const char *const names[3][HOMEDIRS_COUNT] = {
-    { "Escritorio", "Documentos", "Descargas", "Música", "Imágenes", "Videos" },
+    { "Escritorio", "Documentos", "Descargas", "Música", "Imágenes", "Videos" },   /* i18n-ok */
     { "Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos" },
-    { "Área de trabalho", "Documentos", "Downloads", "Música", "Imagens", "Vídeos" },
+    { "Área de trabalho", "Documentos", "Downloads", "Música", "Imagens", "Vídeos" },   /* i18n-ok */
 };
 static const char *const xdg_keys[HOMEDIRS_COUNT] = { "DESKTOP", "DOCUMENTS", "DOWNLOAD", "MUSIC", "PICTURES", "VIDEOS" };
 
 const char *homedirs_ui_lang(const char *locale) {
-    if (locale && !strncmp(locale, "en", 2)) return "en";
+    if (locale && !strncmp(locale, "es", 2)) return "es";
     if (locale && !strncmp(locale, "pt", 2)) return "pt";
-    return "es";
+    return "en";                        /* English is the default language */
 }
 
-static int lang_index(const char *ui) { return !strcmp(ui, "en") ? 1 : !strcmp(ui, "pt") ? 2 : 0; }
+static int lang_index(const char *ui) { return !strcmp(ui, "es") ? 0 : !strcmp(ui, "pt") ? 2 : 1; }
 
 const char *homedirs_name(const char *ui_lang, int i) {
     if (i < 0 || i >= HOMEDIRS_COUNT) return NULL;
-    return names[lang_index(ui_lang ? ui_lang : "es")][i];
+    return names[lang_index(ui_lang ? ui_lang : "en")][i];
 }
 
 /* New file (O_EXCL, no symlinks followed) relative to the open directory dfd. */

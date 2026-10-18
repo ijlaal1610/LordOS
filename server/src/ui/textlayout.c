@@ -209,7 +209,8 @@ typedef struct {
     float width;
 } Layout;
 
-#define CACHE 48
+/* 128: a list of truncated labels needs each one twice (the text and its cut form) */
+#define CACHE 128
 static Layout cache[CACHE];
 static unsigned tick;
 static Shaper shaper;
@@ -219,7 +220,10 @@ static void layout_free(Layout *L) {
     memset(L, 0, sizeof *L);
 }
 
-void text_layout_flush(void) { for (int i = 0; i < CACHE; i++) layout_free(&cache[i]); }
+static unsigned generation;
+unsigned text_generation(void) { return generation; }
+
+void text_layout_flush(void) { for (int i = 0; i < CACHE; i++) layout_free(&cache[i]); generation++; }
 
 static int is_space(uint32_t cp) { return cp == ' ' || cp == 0x3000 || cp == '\t'; }
 
@@ -470,13 +474,27 @@ static Layout *get(const char *s, int font, float size, float max_w, int nowrap)
 }
 
 void text_layout_measure(const char *s, int font, float size, float line_h, float max_w, int nowrap, float *w, float *h) {
+    text_layout_measure_ex(s, font, size, line_h, max_w, nowrap, 0, w, h);
+}
+
+void text_layout_measure_ex(const char *s, int font, float size, float line_h, float max_w, int nowrap, int max_lines, float *w, float *h) {
     Layout *L = get(s, font, size, max_w, nowrap);
-    *w = L ? ceilf(L->width) : 0;
-    *h = (L ? L->nlines : 1) * text_line_height(size, line_h);
+    if (!L) { *w = 0; *h = text_line_height(size, line_h); return; }
+    int vis = max_lines > 0 && L->nlines > max_lines ? max_lines : L->nlines;
+    float mw = 0;
+    for (int i = 0; i < vis; i++) if (L->lines[i].width > mw) mw = L->lines[i].width;
+    if (vis < L->nlines && max_w > 0 && mw < max_w) mw = max_w;
+    *w = ceilf(vis == L->nlines ? L->width : mw);
+    *h = (vis ? vis : 1) * text_line_height(size, line_h);
 }
 
 void text_layout_draw(Canvas *c, const char *s, int font, float size, float line_h,
                       float x, float y, float box_w, int align, int nowrap, uint32_t argb) {
+    text_layout_draw_n(c, s, font, size, line_h, x, y, box_w, align, nowrap, 0, argb);
+}
+
+void text_layout_draw_n(Canvas *c, const char *s, int font, float size, float line_h,
+                        float x, float y, float box_w, int align, int nowrap, int max_lines, uint32_t argb) {
     /* scaled display (text_paint_scale): shaped and broken at the logical size, positions scaled */
     float sk = text_paint_scale > 0 ? text_paint_scale : 1;
     Layout *L = get(s, font, size / sk, box_w / sk, nowrap);
@@ -493,7 +511,8 @@ void text_layout_draw(Canvas *c, const char *s, int font, float size, float line
         ocap = L->ng;
     }
     float opacity = (argb >> 24) / 255.0f;
-    for (int li = 0; li < L->nlines; li++) {
+    int nl = max_lines > 0 && L->nlines > max_lines ? max_lines : L->nlines;
+    for (int li = 0; li < nl; li++) {
         const LLine *ln = &L->lines[li];
         float pen = x;
         if (align == TEXT_CENTER) pen += (box_w - ln->width * sk) / 2;
@@ -529,6 +548,95 @@ void text_layout_draw(Canvas *c, const char *s, int font, float size, float line
             if (gl->bmp) canvas_alpha_mask(c, (int)roundf(gx) + gl->xoff, (int)roundf(gy) + gl->yoff, gl->bmp, gl->w, gl->h, gl->w, argb);
         }
     }
+}
+
+/* ---- truncation ---- */
+
+/* Byte offset of each code point (offs[ncp] = the end). */
+static int *cp_bytes(const char *s, int ncp) {
+    int *o = malloc(sizeof *o * (size_t)(ncp + 1));
+    if (!o) return NULL;
+    int i = 0;
+    const unsigned char *p = (const unsigned char *)s;
+    for (; *p && i < ncp; i++) { o[i] = (int)((const char *)p - s); utf8_decode(&p); }
+    for (; i <= ncp; i++) o[i] = (int)((const char *)p - s);
+    return o;
+}
+
+int text_layout_line_bytes(const char *s, int font, float size, float max_w, int nowrap, int *bs, int *be, int max) {
+    Layout *L = get(s, font, size, max_w, nowrap);
+    if (!L) return 0;
+    int *o = cp_bytes(s, L->ncp);
+    if (!o) return 0;
+    int n = L->nlines < max ? L->nlines : max;
+    for (int i = 0; i < n; i++) { bs[i] = o[L->lines[i].start]; be[i] = o[L->lines[i].end]; }
+    free(o);
+    return n;
+}
+
+static int is_ri(uint32_t cp) { return cp >= 0x1F1E6 && cp <= 0x1F1FF; }
+
+/* May the text be cut before code point k? Only between grapheme clusters, and never inside what
+ * the shaper drew as one glyph (a ligature like lam-alef, an Indic syllable, an emoji ZWJ sequence). */
+static int cut_ok(const uint32_t *cp, const uint8_t *own, int n, int k) {
+    if (k <= 0 || k >= n) return 1;
+    uint32_t a = cp[k - 1], b = cp[k];
+    if (!own[k]) return 0;                              /* part of the previous glyph */
+    if (sticks_to_prev(b) || uc_mark(b)) return 0;      /* marks, joiners, variation selectors, skin tones */
+    if (a == 0x200D) return 0;                          /* after a ZWJ (emoji sequences) */
+    if (uc_ccc(a) == 9) return 0;                       /* after a virama: the conjunct goes on */
+    if (b == 0x0E33 || b == 0x0EB3) return 0;           /* Thai and Lao SARA AM are spacing marks */
+    if (is_ri(b)) {                                     /* flags: pairs of regional indicators */
+        int r = 0;
+        for (int i = k - 1; i >= 0 && is_ri(cp[i]); i--) r++;
+        if (r & 1) return 0;
+    }
+    return 1;
+}
+
+float text_layout_ellipsize(const char *s, int font, float size, float box_w, int force, char *out, int out_size) {
+    Layout *L = get(s, font, size, 0, 1);
+    if (!L) { text_ellipsis_join(out, out_size, "", 0); return 0; }
+    if (!force && L->width <= box_w + 0.5f) { snprintf(out, (size_t)out_size, "%s", s); return -1; }
+    float ell = 0;
+    Layout *E = get("\xe2\x80\xa6", font, size, 0, 1);
+    if (E) ell = E->width;
+    L = get(s, font, size, 0, 1);                       /* the cache may have moved it */
+    if (!L) { text_ellipsis_join(out, out_size, "", 0); return ell; }
+    int n = L->ncp;
+    uint8_t *own = calloc((size_t)n + 1, 1);
+    int *o = cp_bytes(s, n);
+    float *pre = malloc(sizeof *pre * (size_t)(n + 1));
+    if (!own || !o || !pre) { free(own); free(o); free(pre); text_ellipsis_join(out, out_size, "", 0); return ell; }
+    for (int g = 0; g < L->ng; g++) if (L->g[g].cp >= 0 && L->g[g].cp < n) own[L->g[g].cp] = 1;
+    pre[0] = 0;
+    for (int i = 0; i < n; i++) pre[i + 1] = pre[i] + L->cpw[i];
+    uint32_t *cps = malloc(sizeof *cps * (size_t)(n + 1));
+    if (cps) memcpy(cps, L->cp, sizeof *cps * (size_t)n);
+    /* the longest prefix that fits by the original widths; the cut form is shaped again (final
+     * forms, bidi with the "…" at the end of the paragraph: on the left in RTL) and, if shaping
+     * made it wider, one cluster less */
+    float width = ell;
+    int k = n;
+    while (k > 0 && (!cps || !cut_ok(cps, own, n, k) || pre[k] + ell > box_w + 0.5f)) k--;
+    for (int tries = 0; tries < 16; tries++) {
+        text_ellipsis_join(out, out_size, s, o[k]);
+        Layout *T = get(out, font, size, 0, 1);
+        width = T ? T->width : pre[k] + ell;
+        if (width <= box_w + 0.5f || k == 0) break;
+        do k--; while (k > 0 && (!cps || !cut_ok(cps, own, n, k)));
+    }
+    free(own); free(o); free(pre); free(cps);
+    return width;
+}
+
+/* Debugging and tests: the logical code point index of each glyph of the first line, in visual order. */
+int text_layout_visual(const char *s, int font, float size, int *cps, int max) {
+    Layout *L = get(s, font, size, 0, 1);
+    if (!L || !L->nlines) return 0;
+    int n = 0;
+    for (int k = 0; k < L->lines[0].nvis && n < max; k++) cps[n++] = L->g[L->vis[L->lines[0].vis0 + k]].cp;
+    return n;
 }
 
 int text_direction(const char *s) {

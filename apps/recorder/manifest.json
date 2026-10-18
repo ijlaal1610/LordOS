@@ -1,7 +1,7 @@
 {
   "id": "recorder",
-  "name": "Grabadora",
-  "description": "Notas de voz: grabar, forma de onda, renombrar, recortar y exportar a Opus, MP3 o WAV",
+  "name": "Voice Recorder",
+  "description": "Voice memos: record, waveform, rename, trim and export to Opus, MP3 or WAV",
   "size": [800, 480],
   "minSize": [640, 400],
   "dock": true,

@@ -5,6 +5,7 @@
  * changes (links, addresses, routes) arrive at __lordNet(what), with what = link | addr | route. */
 #include "js_net.h"
 #include "../net/net.h"
+#include "js_err.h"
 
 #include <limits.h>
 #include <stdio.h>
@@ -58,7 +59,7 @@ static JSValue f_config(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
  * for admin.run('net-vpn-import', 'openvpn\n<name>\n' + text). Throws an error if something is missing. */
 static JSValue f_prepare_ovpn(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (argc < 1) return JS_ThrowTypeError(c, "missing path");
+    if (argc < 1) return js_throw_code(c, "admin.invalidArgument", NULL);
     const char *p = JS_ToCString(c, argv[0]);
     if (!p) return JS_EXCEPTION;
     char real[PATH_MAX], home[PATH_MAX];
@@ -67,10 +68,10 @@ static JSValue f_prepare_ovpn(JSContext *c, JSValueConst t, int argc, JSValueCon
     size_t hl = ok ? strlen(home) : 0;
     ok = ok && !strncmp(real, home, hl) && real[hl] == '/';
     JS_FreeCString(c, p);
-    if (!ok) return JS_ThrowTypeError(c, "the file must be in the home folder");
+    if (!ok) return js_throw_code(c, "fs.outsideHome", NULL);
     char err[256] = "";
     char *txt = net_ovpn_inline(real, err, sizeof err);
-    if (!txt) return JS_ThrowTypeError(c, "%s", err);
+    if (!txt) return js_throw_line(c, err);
     JSValue v = JS_NewString(c, txt);
     free(txt);
     return v;

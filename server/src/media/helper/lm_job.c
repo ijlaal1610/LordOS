@@ -51,7 +51,7 @@ static void job_thumb(uint32_t id, int in, int out, int size, int as_pixels) {
     int is_video = vi >= 0 && !(fmt->streams[vi]->disposition & AV_DISPOSITION_ATTACHED_PIC) && dur > 1000;
     int orient = 0;
     AVFrame *f = lm_decode_still(fmt, is_video ? (dur > 30000 ? dur / 10 : dur / 3) : 0, &orient, !is_video);
-    if (!f) { lm_close_input(&fmt); lm_result(id, -2, "sin imagen", -1); return; }
+    if (!f) { lm_close_input(&fmt); lm_result(id, -2, "media.notAnImage", -1); return; }
     if (size < 16) size = 16;
     if (size > 1024) size = 1024;
     int sw = f->width, sh = f->height;
@@ -62,7 +62,7 @@ static void job_thumb(uint32_t id, int in, int out, int size, int as_pixels) {
     AVFrame *o = lm_to_bgra(f, tw, th, 1);
     av_frame_free(&f);
     lm_close_input(&fmt);
-    if (!o) { lm_result(id, -1, "no se pudo escalar", -1); return; }
+    if (!o) { lm_result(id, -1, "media.scaleFailed", -1); return; }
     char json[160];
     snprintf(json, sizeof json, "{\"width\":%d,\"height\":%d,\"orientation\":%d,\"video\":%s,\"duration\":%lld}", tw, th, orient,
              is_video ? "true" : "false", (long long)dur);
@@ -70,14 +70,14 @@ static void job_thumb(uint32_t id, int in, int out, int size, int as_pixels) {
         void *map;
         size_t n = (size_t)tw * th * 4;
         int mfd = lm_memfd(n, &map, "lord-media-poster");
-        if (mfd < 0) { av_frame_free(&o); lm_result(id, -1, "sin memoria", -1); return; }
+        if (mfd < 0) { av_frame_free(&o); lm_result(id, -1, "sys.outOfMemory", -1); return; }
         for (int y = 0; y < th; y++) memcpy((uint8_t *)map + (size_t)y * tw * 4, o->data[0] + (size_t)y * o->linesize[0], (size_t)tw * 4);
         munmap(map, n);
         lm_result(id, 0, json, mfd);
         close(mfd);
     } else {
         int r = lm_encode_image(o, "png", 0, out);
-        lm_result(id, r ? -1 : 0, r ? "no se pudo codificar" : json, -1);
+        lm_result(id, r ? -1 : 0, r ? "media.encodeFailed" : json, -1);
     }
     av_frame_free(&o);
 }
@@ -102,17 +102,17 @@ static void job_image(uint32_t id, int in) {
         av_packet_free(&pkt);
     }
     lm_close_input(&fmt);
-    if (!f) { lm_result(id, -2, "no es una imagen", -1); return; }
+    if (!f) { lm_result(id, -2, "media.notAnImage", -1); return; }
     int w, h;
     fit_size(f->width, f->height, MP_MAX_DIM, &w, &h);
     AVFrame *o = lm_to_bgra(f, w, h, 1);
     int ow = f->width, oh = f->height;
     av_frame_free(&f);
-    if (!o) { lm_result(id, -1, "no se pudo convertir", -1); return; }
+    if (!o) { lm_result(id, -1, "media.convertFailed", -1); return; }
     void *map;
     size_t n = (size_t)w * h * 4;
     int mfd = lm_memfd(n, &map, "lord-media-image");
-    if (mfd < 0) { av_frame_free(&o); lm_result(id, -1, "sin memoria", -1); return; }
+    if (mfd < 0) { av_frame_free(&o); lm_result(id, -1, "sys.outOfMemory", -1); return; }
     int alpha = 0;
     for (int y = 0; y < h; y++) {
         const uint8_t *s = o->data[0] + (size_t)y * o->linesize[0];
@@ -139,12 +139,12 @@ static void job_edit(uint32_t id, int in, int out, const char *p) {
     int orient = 0;
     AVFrame *f = lm_decode_still(fmt, 0, &orient, 0);
     lm_close_input(&fmt);
-    if (!f) { lm_result(id, -2, "no es una imagen", -1); return; }
+    if (!f) { lm_result(id, -2, "media.notAnImage", -1); return; }
     int w, h;
     fit_size(f->width, f->height, MP_MAX_DIM, &w, &h);
     AVFrame *o = lm_to_bgra(f, w, h, 0);
     av_frame_free(&f);
-    if (!o) { lm_result(id, -1, "sin memoria", -1); return; }
+    if (!o) { lm_result(id, -1, "sys.outOfMemory", -1); return; }
     int rot = (((int)mp_param_int(p, "rotate", 0) + orient) % 360 + 360) % 360;
     int bright = (int)mp_param_int(p, "brightness", 0), contrast = (int)mp_param_int(p, "contrast", 0);
     if (mp_param(p, "format", format, sizeof format)) snprintf(format, sizeof format, "png");
@@ -152,7 +152,7 @@ static void job_edit(uint32_t id, int in, int out, const char *p) {
     int rw = (rot == 90 || rot == 270) ? h : w, rh = (rot == 90 || rot == 270) ? w : h;
     AVFrame *r = av_frame_alloc();
     r->format = AV_PIX_FMT_BGRA; r->width = rw; r->height = rh;
-    if (av_frame_get_buffer(r, 0) < 0) { av_frame_free(&o); av_frame_free(&r); lm_result(id, -1, "sin memoria", -1); return; }
+    if (av_frame_get_buffer(r, 0) < 0) { av_frame_free(&o); av_frame_free(&r); lm_result(id, -1, "sys.outOfMemory", -1); return; }
     for (int y = 0; y < rh; y++) {
         uint32_t *d = (uint32_t *)(r->data[0] + (size_t)y * r->linesize[0]);
         for (int x = 0; x < rw; x++) {
@@ -174,7 +174,7 @@ static void job_edit(uint32_t id, int in, int out, const char *p) {
     if (cy < 0) cy = 0;
     if (cx + cw > rw) cw = rw - cx;
     if (cy + ch > rh) ch = rh - cy;
-    if (cw < 1 || ch < 1) { av_frame_free(&r); lm_result(id, -1, "recorte inválido", -1); return; }
+    if (cw < 1 || ch < 1) { av_frame_free(&r); lm_result(id, -1, "media.invalidCrop", -1); return; }
     AVFrame *c = av_frame_alloc();
     c->format = AV_PIX_FMT_BGRA; c->width = cw; c->height = ch;
     av_frame_get_buffer(c, 0);
@@ -198,7 +198,7 @@ static void job_edit(uint32_t id, int in, int out, const char *p) {
     int e = lm_encode_image(c, format, (int)mp_param_int(p, "quality", 92), out);
     char json[96];
     snprintf(json, sizeof json, "{\"width\":%d,\"height\":%d}", cw, ch);
-    lm_result(id, e ? -1 : 0, e ? "no se pudo codificar" : json, -1);
+    lm_result(id, e ? -1 : 0, e ? "media.encodeFailed" : json, -1);
     av_frame_free(&c);
 }
 
@@ -206,11 +206,11 @@ static void job_edit(uint32_t id, int in, int out, const char *p) {
 static void job_encode(uint32_t id, int mfd, int out, int w, int h, const char *p) {
     struct stat st;
     if (w <= 0 || h <= 0 || w > MP_MAX_DIM || h > MP_MAX_DIM || fstat(mfd, &st) || st.st_size < (off_t)w * h * 4) {
-        lm_result(id, -1, "píxeles inválidos", -1);
+        lm_result(id, -1, "media.invalidPixels", -1);
         return;
     }
     void *m = mmap(NULL, (size_t)w * h * 4, PROT_READ, MAP_SHARED, mfd, 0);
-    if (m == MAP_FAILED) { lm_result(id, -1, "no se pudo mapear", -1); return; }
+    if (m == MAP_FAILED) { lm_result(id, -1, "media.mapFailed", -1); return; }
     AVFrame *f = av_frame_alloc();
     f->format = AV_PIX_FMT_BGRA; f->width = w; f->height = h;
     av_frame_get_buffer(f, 0);
@@ -220,7 +220,7 @@ static void job_encode(uint32_t id, int mfd, int out, int w, int h, const char *
     if (mp_param(p, "format", format, sizeof format)) snprintf(format, sizeof format, "png");
     int r = lm_encode_image(f, format, (int)mp_param_int(p, "quality", 92), out);
     av_frame_free(&f);
-    lm_result(id, r ? -1 : 0, r ? "no se pudo codificar" : "{}", -1);
+    lm_result(id, r ? -1 : 0, r ? "media.encodeFailed" : "{}", -1);
 }
 
 /* ---- audio: decode everything (or a segment) to float mono/stereo ---- */
@@ -239,20 +239,20 @@ static int audio_open(AudioIn *a, int in, int rate, int channels, char *err, siz
     a->fmt = lm_open_input(in, err, errlen);
     if (!a->fmt) return -1;
     a->ai = av_find_best_stream(a->fmt, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
-    if (a->ai < 0) { snprintf(err, errlen, "sin audio"); return -1; }
+    if (a->ai < 0) { lerr_set(err, errlen, "media.noAudio", NULL); return -1; }
     AVStream *st = a->fmt->streams[a->ai];
     const AVCodec *codec = avcodec_find_decoder(st->codecpar->codec_id);
     a->dec = codec ? avcodec_alloc_context3(codec) : NULL;
-    if (!a->dec) { snprintf(err, errlen, "sin decodificador"); return -1; }
+    if (!a->dec) { lerr_set(err, errlen, "media.noDecoder", NULL); return -1; }
     avcodec_parameters_to_context(a->dec, st->codecpar);
     a->dec->pkt_timebase = st->time_base;
-    if (avcodec_open2(a->dec, codec, NULL) < 0) { snprintf(err, errlen, "no se pudo abrir el audio"); return -1; }
+    if (avcodec_open2(a->dec, codec, NULL) < 0) { lerr_set(err, errlen, "media.audioOpenFailed", NULL); return -1; }
     a->rate = rate > 0 ? rate : a->dec->sample_rate;
     a->channels = channels;
     AVChannelLayout out;
     av_channel_layout_default(&out, channels);
     if (swr_alloc_set_opts2(&a->swr, &out, AV_SAMPLE_FMT_FLT, a->rate, &a->dec->ch_layout, a->dec->sample_fmt, a->dec->sample_rate, 0, NULL) < 0 ||
-        swr_init(a->swr) < 0) { snprintf(err, errlen, "no se pudo convertir el audio"); return -1; }
+        swr_init(a->swr) < 0) { lerr_set(err, errlen, "media.audioConvertFailed", NULL); return -1; }
     a->pkt = av_packet_alloc();
     a->frame = av_frame_alloc();
     return 0;
@@ -325,11 +325,11 @@ static void job_transcode(uint32_t id, int in, int out, const char *p) {
     char err[128], format[16];
     if (mp_param(p, "format", format, sizeof format)) snprintf(format, sizeof format, "opus");
     int opus = !strcmp(format, "opus"), mp3 = !strcmp(format, "mp3");
-    if (!opus && !mp3 && strcmp(format, "wav")) { lm_result(id, -1, "formato no soportado", -1); return; }
+    if (!opus && !mp3 && strcmp(format, "wav")) { lm_result(id, -1, "media.unsupportedFormat", -1); return; }
     const AVCodec *codec = opus ? avcodec_find_encoder_by_name("libopus") : mp3 ? avcodec_find_encoder_by_name("libmp3lame")
                                 : avcodec_find_encoder(AV_CODEC_ID_PCM_S16LE);
     if (!codec && opus) codec = avcodec_find_encoder(AV_CODEC_ID_OPUS);
-    if (!codec) { lm_result(id, -1, "sin codificador", -1); return; }
+    if (!codec) { lm_result(id, -1, "media.noEncoder", -1); return; }
     AudioIn a;
     int rate = mp3 ? 44100 : 48000;           /* MP3 at 44.1 kHz; Opus and WAV like the recorder */
     if (audio_open(&a, in, rate, 1, err, sizeof err)) { audio_close(&a); lm_result(id, -1, err, -1); return; }
@@ -346,13 +346,13 @@ static void job_transcode(uint32_t id, int in, int out, const char *p) {
     enc->bit_rate = opus ? 64000 * ch : mp3 ? 96000 * ch : 0;
     enc->time_base = (AVRational){ 1, rate };
     AVFormatContext *oc = lm_open_output(out, opus ? "ogg" : mp3 ? "mp3" : "wav");
-    if (!oc) { avcodec_free_context(&enc); audio_close(&a); lm_result(id, -1, "sin salida", -1); return; }
+    if (!oc) { avcodec_free_context(&enc); audio_close(&a); lm_result(id, -1, "media.noOutput", -1); return; }
     if (oc->oformat->flags & AVFMT_GLOBALHEADER) enc->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-    if (avcodec_open2(enc, codec, NULL) < 0) { lm_close_output(oc, 0); avcodec_free_context(&enc); audio_close(&a); lm_result(id, -1, "no se pudo abrir el codificador", -1); return; }
+    if (avcodec_open2(enc, codec, NULL) < 0) { lm_close_output(oc, 0); avcodec_free_context(&enc); audio_close(&a); lm_result(id, -1, "media.encoderOpenFailed", -1); return; }
     AVStream *os = avformat_new_stream(oc, NULL);
     avcodec_parameters_from_context(os->codecpar, enc);
     os->time_base = enc->time_base;
-    if (avformat_write_header(oc, NULL) < 0) { lm_close_output(oc, 0); avcodec_free_context(&enc); audio_close(&a); lm_result(id, -1, "no se pudo escribir", -1); return; }
+    if (avformat_write_header(oc, NULL) < 0) { lm_close_output(oc, 0); avcodec_free_context(&enc); audio_close(&a); lm_result(id, -1, "media.writeFailed", -1); return; }
     int64_t from = mp_param_int(p, "from", 0) * rate / 1000, to = mp_param_int(p, "to", -1);
     to = to < 0 ? INT64_MAX : to * rate / 1000;
     /* interleaved float → the encoder's format, in frames of frame_size */
@@ -408,7 +408,7 @@ static void job_transcode(uint32_t id, int in, int out, const char *p) {
     int r = lm_close_output(oc, 1);
     char json[96];
     snprintf(json, sizeof json, "{\"duration\":%lld}", (long long)(pts * 1000 / rate));
-    lm_result(id, (r < 0 || !okw) ? -1 : 0, (r < 0 || !okw) ? "no se pudo exportar" : json, -1);
+    lm_result(id, (r < 0 || !okw) ? -1 : 0, (r < 0 || !okw) ? "media.exportFailed" : json, -1);
     swr_free(&cv);
     av_frame_free(&ef);
     av_packet_free(&pkt);
@@ -468,7 +468,7 @@ void lm_worker(void) {
         case MW_TRANSCODE: job_transcode(m.id, fds[0], fds[1], payload); break;
         case MW_WAVEFORM: job_waveform(m.id, fds[0], (int)m.v[1]); break;
         case MW_SELFTEST: job_selftest(m.id); break;
-        default: lm_result(m.id, -1, "trabajo desconocido", -1);
+        default: lm_result(m.id, -1, "media.unknownJob", -1);
         }
         LM_DBG("trabajo %u (%lld) en %.1f ms", m.id, (long long)m.v[0], lm_now_ms() - t0);
         closefds(fds);

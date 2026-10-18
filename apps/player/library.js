@@ -1,8 +1,8 @@
-// library.js — biblioteca de música y videos del Reproductor.
+// library.js — the Player's music and video library.
 //
-// Recorre ~/Música y ~/Videos (acotado), lee las etiquetas con media.probe (lord-media, en
-// segundo plano) y guarda lo leído en ~/.cache/lordos/music.json (por ruta, tamaño y fecha), así
-// la próxima vez no se vuelve a leer nada que no cambió.
+// Walks ~/Music and ~/Videos (bounded), reads the tags with media.probe (lord-media, in the
+// background) and stores what it read in ~/.cache/lordos/music.json (by path, size and date), so
+// next time nothing that did not change is read again.
 import { fs, media, userDirs, createStore } from '@lordos/sdk';
 
 export const AUDIO = /\.(mp3|ogg|oga|opus|flac|wav|m4a|aac|wma|aif|aiff|ape|mka)$/i;
@@ -23,7 +23,7 @@ function walk(dir, re, out, depth = 0) {
 
 const baseName = (p) => String(p).split('/').pop().replace(/\.[^.]+$/, '');
 
-// Pista desde el resultado de probe (o el nombre del archivo si no hay etiquetas).
+// Track from the probe result (or the file name if there are no tags).
 export function trackFrom(f, info) {
   const tags = (info && info.tags) || {};
   const n = parseInt(String(tags.track || '').split('/')[0], 10);
@@ -50,7 +50,7 @@ export async function scan() {
   walk(dirs.music, AUDIO, files);
   walk(dirs.videos, VIDEO, vids);
   let cache = {};
-  try { cache = JSON.parse(fs.read(CACHE)); } catch (e) { /* primera vez */ }
+  try { cache = JSON.parse(fs.read(CACHE)); } catch (e) { /* first time */ }
   const key = (f) => `${f.size}:${Math.round(f.mtime || 0)}`;
   const tracks = [];
   const todo = [];
@@ -73,13 +73,13 @@ export async function scan() {
   }
   library.set({ scanning: false });
   if (todo.length || Object.keys(cache).length !== Object.keys(next).length) {
-    try { fs.mkdir('.cache/lordos'); } catch (e) { /* ya está */ }
-    try { fs.write(CACHE, JSON.stringify(next)); } catch (e) { /* sin disco */ }
+    try { fs.mkdir('.cache/lordos'); } catch (e) { /* already there */ }
+    try { fs.write(CACHE, JSON.stringify(next)); } catch (e) { /* no disk */ }
   }
   running = false;
 }
 
-// Agrupar: artistas → álbumes → pistas.
+// Grouping: artists → albums → tracks.
 export function albumsOf(tracks) {
   const map = new Map();
   for (const t of tracks) {
@@ -102,7 +102,7 @@ export function artistsOf(tracks) {
   return [...map.entries()].map(([name, list]) => ({ name, tracks: list })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// Subtítulos .srt: [{ start, end, text }] en ms.
+// .srt subtitles: [{ start, end, text }] in ms.
 export function parseSrt(text) {
   const out = [];
   const ms = (s) => { const m = /(\d+):(\d+):(\d+)[,.](\d+)/.exec(s); return m ? ((+m[1] * 60 + +m[2]) * 60 + +m[3]) * 1000 + +m[4].padEnd(3, '0').slice(0, 3) : 0; };

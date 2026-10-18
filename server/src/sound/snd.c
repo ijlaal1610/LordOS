@@ -452,7 +452,7 @@ static void on_reply(Pending p, TsIn *t) {
     case R_NAME:
         S.connected = 1;
         S.dirty = 1;
-        fprintf(stderr, "sonido: conectado a PipeWire (protocolo %u)\n", S.version);
+        fprintf(stderr, "sound: connected to PipeWire (protocol %u)\n", S.version);
         after_connected();
         break;
     case R_SERVER: {
@@ -548,7 +548,7 @@ void snd_dispatch(void) {
         if (S.in_cap - S.in_len < 65536) {
             size_t cap = S.in_cap ? S.in_cap * 2 : 65536;
             while (cap - S.in_len < 65536) cap *= 2;
-            if (cap > PA_FRAME_MAX + 65536) { disconnect("paquete demasiado grande"); return; }
+            if (cap > PA_FRAME_MAX + 65536) { disconnect("packet too large"); return; }
             uint8_t *b = realloc(S.in, cap);
             if (!b) { disconnect("out of memory"); return; }
             S.in = b;

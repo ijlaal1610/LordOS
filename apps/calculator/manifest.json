@@ -1,7 +1,7 @@
 {
   "id": "calculator",
-  "name": "Calculadora",
-  "description": "Calculadora con teclado",
+  "name": "Calculator",
+  "description": "Calculator with keyboard input",
   "size": [
     300,
     430

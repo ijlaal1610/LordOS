@@ -1,7 +1,7 @@
 {
   "id": "screenshots",
-  "name": "Capturas",
-  "description": "Capturas de pantalla (pantalla, ventana o área) con anotaciones, y grabación de la pantalla",
+  "name": "Screenshots",
+  "description": "Screenshots (screen, window or area) with annotations, and screen recording",
   "size": [440, 420],
   "minSize": [380, 360],
   "dock": false,

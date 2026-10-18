@@ -18,6 +18,7 @@
  */
 #include "js_mail.h"
 #include "js_sys.h"
+#include "js_err.h"
 #include "ui.h"
 #include "../mail/mailc.h"
 #include "../mail/proto.h"
@@ -77,14 +78,14 @@ static JSValue f_request(JSContext *c, JSValueConst t, int argc, JSValueConst *a
     (void)t;
     size_t len = 0;
     const char *j = arg_str(c, argc, argv, 0, &len);
-    if (!j) return JS_ThrowTypeError(c, "request(json, [paths])");
-    if (len > MAIL_REQ_MAX) { JS_FreeCString(c, j); return JS_ThrowRangeError(c, "request too big"); }
+    if (!j) return js_throw_code(c, "sys.badArgument", NULL);
+    if (len > MAIL_REQ_MAX) { JS_FreeCString(c, j); return js_throw_code(c, "mail.requestTooLarge", NULL); }
     /* must be a JSON object with a short "op" */
     JDoc d;
     if (json_parse(j, len, &d, NULL, 0) || !d.root || d.root->type != J_OBJ || !json_str(d.root, "op") || strlen(json_str(d.root, "op")) > 32) {
         if (d.root) json_free(&d);
         JS_FreeCString(c, j);
-        return JS_ThrowTypeError(c, "request: invalid JSON");
+        return js_throw_code(c, "sys.badArgument", NULL);
     }
     json_free(&d);
     int fds[15], nfds = 0;
@@ -93,7 +94,7 @@ static JSValue f_request(JSContext *c, JSValueConst t, int argc, JSValueConst *a
         int32_t n = 0;
         JS_ToInt32(c, &n, lv);
         JS_FreeValue(c, lv);
-        if (n < 0 || n > 15) { JS_FreeCString(c, j); return JS_ThrowRangeError(c, "at most 15 files"); }
+        if (n < 0 || n > 15) { JS_FreeCString(c, j); return js_throw_code(c, "mail.tooManyFiles", "max", "15", NULL); }
         for (int i = 0; i < n; i++) {
             JSValue pv = JS_GetPropertyUint32(c, argv[1], (uint32_t)i);
             const char *p = JS_IsString(pv) ? JS_ToCString(c, pv) : NULL;
@@ -103,7 +104,7 @@ static JSValue f_request(JSContext *c, JSValueConst t, int argc, JSValueConst *a
             if (fd < 0) {
                 for (int k = 0; k < nfds; k++) close(fds[k]);
                 JS_FreeCString(c, j);
-                return JS_ThrowRangeError(c, "file outside the home folder or unreadable");
+                return js_throw_code(c, "fs.outsideHome", NULL);
             }
             fds[nfds++] = fd;
         }
@@ -155,7 +156,7 @@ static JSValue f_save_config(JSContext *c, JSValueConst t, int argc, JSValueCons
     (void)t;
     size_t len = 0;
     const char *j = arg_str(c, argc, argv, 0, &len);
-    if (!j) return JS_ThrowTypeError(c, "saveConfig(json)");
+    if (!j) return js_throw_code(c, "sys.badArgument", NULL);
     JDoc d;
     int bad = len > MAIL_CONFIG_MAX || json_parse(j, len, &d, NULL, 0);
     if (!bad) {
@@ -165,12 +166,12 @@ static JSValue f_save_config(JSContext *c, JSValueConst t, int argc, JSValueCons
         for (const JVal *a = acc ? acc->kid : NULL; !bad && a; a = a->next) if (json_get(a, "password") || json_get(a, "secret")) bad = 1;
         json_free(&d);
     }
-    if (bad) { JS_FreeCString(c, j); return JS_ThrowTypeError(c, "saveConfig: invalid accounts JSON"); }
+    if (bad) { JS_FreeCString(c, j); return js_throw_code(c, "mail.badAccounts", NULL); }
     char dir[PATH_MAX], tmp[PATH_MAX + 16];
     snprintf(dir, sizeof dir, "%s", mail_config_path());
     char *slash = strrchr(dir, '/');
     if (slash) *slash = 0;
-    if (mkdirs(dir)) { JS_FreeCString(c, j); return JS_ThrowInternalError(c, "cannot create %s", dir); }
+    if (mkdirs(dir)) { JS_FreeCString(c, j); return js_throw_code(c, "sys.writeFailed", "path", dir, NULL); }
     snprintf(tmp, sizeof tmp, "%s.tmp", mail_config_path());
     int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
     int ok = fd >= 0 && write(fd, j, len) == (ssize_t)len && fsync(fd) == 0;
@@ -178,14 +179,14 @@ static JSValue f_save_config(JSContext *c, JSValueConst t, int argc, JSValueCons
     ok = ok && rename(tmp, mail_config_path()) == 0;
     if (!ok) unlink(tmp);
     JS_FreeCString(c, j);
-    if (!ok) return JS_ThrowInternalError(c, "cannot write the accounts file");
+    if (!ok) return js_throw_code(c, "sys.writeFailed", "path", mail_config_path(), NULL);
     mail_reload_config();
     return JS_TRUE;
 }
 
 static JSValue f_allow_images(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (argc < 1 || !JS_IsArray(c, argv[0])) return JS_ThrowTypeError(c, "allowImages([urls])");
+    if (argc < 1 || !JS_IsArray(c, argv[0])) return js_throw_code(c, "sys.badArgument", NULL);
     JSValue lv = JS_GetPropertyStr(c, argv[0], "length");
     int32_t n = 0;
     JS_ToInt32(c, &n, lv);

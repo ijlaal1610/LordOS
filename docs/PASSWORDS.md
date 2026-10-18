@@ -1,6 +1,6 @@
 # Passwords and the system keyring (M9)
 
-**Contraseñas** ("Passwords" in English, "Senhas" in Portuguese) is the LordOS password manager.
+**Passwords** ("Contraseñas" in Spanish, "Senhas" in Portuguese) is the LordOS password manager.
 The same machinery is also the **system keyring**: native apps keep their secrets there through
 `lord.keyring` / the SDK `keyring`, and Linux apps (Chromium, Firefox, `secret-tool`, anything
 using libsecret) through our own implementation of the freedesktop **Secret Service** D-Bus API.

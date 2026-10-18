@@ -78,7 +78,18 @@
   "scan": "Scan…",
   "noScanners": "No scanners found on the network.",
   "tlsUnsupported": "encrypted only (not yet)",
-  "err.forbidden": "Your user cannot manage printers: you need to be an administrator (lpadmin group).",
+  "err.forbidden": "you are not allowed to manage printers",
   "err.notFound": "CUPS did not find that printer",
-  "err.other": "CUPS said: {error}"
+  "err.other": "CUPS said: {error}",
+  "err.encode": "could not prepare the request",
+  "err.no-cups": "the printing service (CUPS) is not running",
+  "err.http": "the printer replied with an error ({detail})",
+  "err.bad-response": "invalid reply from the printer",
+  "err.bad-request": "invalid request",
+  "err.bad-pages": "invalid page range",
+  "err.unreachable": "could not reach it",
+  "err.busy": "it is busy; try again in a moment",
+  "err.timeout": "it took too long",
+  "err.write": "could not write the file",
+  "err.unknown": "unknown error"
 }

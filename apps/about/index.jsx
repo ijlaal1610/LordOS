@@ -34,7 +34,7 @@ export default function About() {
         <InfoRow k={tr('about.os')} v={info.os} />
         <InfoRow k={tr('about.kernel')} v={`${info.kernel} (${info.arch})`} />
         <InfoRow k={tr('about.host')} v={tr('about.hostValue', { host: info.hostname, user: info.user })} />
-        <InfoRow k={tr('about.cpu')} v={tr('about.cpuValue', { cpu: cpu.slice(0, 34), count: info.cores })} />
+        <InfoRow k={tr('about.cpu')} v={tr('about.cpuValue', { cpu: cpu.slice(0, 34) || tr('about.cpuUnknown'), count: info.cores })} />
         <InfoRow k={tr('about.memory')} v={tr('shell.cc.memDetail', { used: formatBytes((info.memTotalKB - info.memAvailableKB) * 1024), total: formatBytes(info.memTotalKB * 1024) })} />
         <InfoRow k={tr('about.uptime')} v={formatDuration(info.uptime)} />
         <View style={{ height: 1, backgroundColor: t.separator, marginVertical: 8, marginHorizontal: 24 }} />

@@ -1,4 +1,4 @@
-/* kms.h — salida de video directa al kernel (DRM/KMS), sin libdrm. */
+/* kms.h — video output straight to the kernel (DRM/KMS), without libdrm. */
 #ifndef LORD_KMS_H
 #define LORD_KMS_H
 
@@ -19,40 +19,40 @@ typedef struct {
     struct drm_mode_modeinfo mode;
     uint32_t width, height;
     KmsBuffer buf[2];
-    int front;          /* buffer que se ve en pantalla */
-    int flip_pending;   /* esperando vblank */
+    int front;          /* buffer shown on screen */
+    int flip_pending;   /* waiting for vblank */
     struct drm_mode_crtc saved;
-    /* flips de framebuffers propios (camino GPU, scanout directo): al terminar se llama a
-     * on_flip con lo que se pasó a kms_flip_fb; los dumb buffers de arriba no se usan */
+    /* flips of our own framebuffers (GPU path, direct scanout): when done, on_flip is called
+     * with what was passed to kms_flip_fb; the dumb buffers above are not used */
     void (*on_flip)(void *data);
     int custom;
-    /* último flip: hora (CLOCK_MONOTONIC, ns) y número de vblank (wp_presentation) */
+    /* last flip: time (CLOCK_MONOTONIC, ns) and vblank number (wp_presentation) */
     uint64_t flip_ns;
     unsigned flip_seq;
-    /* cursor por hardware (plano de cursor, ioctl clásico) */
+    /* hardware cursor (cursor plane, legacy ioctl) */
     uint32_t cursor_handle, cursor_w, cursor_h;
     uint32_t *cursor_map;
     uint64_t cursor_size;
     int cursor_ok, cursor_visible;
-    int borrowed;       /* el fd lo pasó lord-sessiond (master y modo previo los maneja él) */
+    int borrowed;       /* the fd came from lord-sessiond (it handles master and the previous mode) */
     int shared;         /* a second display (kms_head_open): the fd belongs to the main head */
-    /* plano primario del CRTC: formato y modificadores que acepta (propiedad IN_FORMATS). En la
-     * Raspberry Pi (vc4) el RGB solo se muestra lineal: los búferes con tiling UIF de v3d no van
-     * directo a la pantalla. scan_known = 0: el driver no lo dice (se prueba con ADDFB2). */
+    /* the CRTC's primary plane: formats and modifiers it accepts (IN_FORMATS property). On the
+     * Raspberry Pi (vc4) RGB is only shown linear: buffers with v3d's UIF tiling do not go
+     * straight to the screen. scan_known = 0: the driver does not say (ADDFB2 is tried). */
     char driver[32];
     int crtc_index, scan_known, nscan;
     struct { uint32_t fourcc; uint64_t modifier; } scan[96];
 } Kms;
 
 int  kms_open(Kms *k, const char *path);
-/* Con un fd de la placa que pasó lord-sessiond (ya master): misma preparación que kms_open. */
+/* With a card fd passed by lord-sessiond (already master): same setup as kms_open. */
 int  kms_attach(Kms *k, int fd);
 void kms_close(Kms *k);
-/* Buffer libre para dibujar (el que no está en pantalla). */
+/* Free buffer to draw on (the one not on screen). */
 KmsBuffer *kms_back(Kms *k);
-/* Muestra el back buffer en el próximo vblank. */
+/* Shows the back buffer at the next vblank. */
 int  kms_flip(Kms *k);
-/* Procesa eventos del fd DRM (fin de page flip). */
+/* Handles events of the DRM fd (page flip done). */
 void kms_dispatch(Kms *k);
 /* Several displays on one card: the events go to the head whose CRTC flipped. */
 void kms_dispatch_heads(Kms **heads, int n);
@@ -60,22 +60,22 @@ void kms_dispatch_heads(Kms **heads, int n);
  * kms_close turns its CRTC off and leaves the fd open. 0 if it shows. */
 int  kms_head_open(Kms *k, int fd, uint32_t conn_id, const struct drm_mode_modeinfo *mode);
 
-/* Framebuffer desde handles GEM del fd de KMS (BO de GBM, o un dmabuf importado). Con modifier
- * != DRM_FORMAT_MOD_INVALID se usa DRM_MODE_FB_MODIFIERS. 0 bien. */
+/* Framebuffer from GEM handles of the KMS fd (a GBM BO, or an imported dmabuf). With modifier
+ * != DRM_FORMAT_MOD_INVALID, DRM_MODE_FB_MODIFIERS is used. 0 on success. */
 int  kms_add_fb2(Kms *k, uint32_t w, uint32_t h, uint32_t fourcc, const uint32_t handles[4],
                  const uint32_t pitches[4], const uint32_t offsets[4], uint64_t modifier, uint32_t *fb);
 void kms_rm_fb(Kms *k, uint32_t fb);
-int  kms_prime_import(Kms *k, int dmabuf_fd, uint32_t *handle);    /* dmabuf → handle GEM */
+int  kms_prime_import(Kms *k, int dmabuf_fd, uint32_t *handle);    /* dmabuf → GEM handle */
 void kms_close_handle(Kms *k, uint32_t handle);
-/* Primer modeset con un framebuffer propio, y page flip a uno (data vuelve en on_flip). */
+/* First modeset with our own framebuffer, and page flip to one (data comes back in on_flip). */
 int  kms_set_fb(Kms *k, uint32_t fb);
 int  kms_flip_fb(Kms *k, uint32_t fb, void *data);
 
-/* ¿El plano primario muestra este formato con este modificador? 1 sí (o no se sabe), 0 no.
- * DRM_FORMAT_MOD_INVALID (implícito) cuenta como lineal. */
+/* Does the primary plane show this format with this modifier? 1 yes (or unknown), 0 no.
+ * DRM_FORMAT_MOD_INVALID (implicit) counts as linear. */
 int  kms_scanout_ok(const Kms *k, uint32_t fourcc, uint64_t modifier);
 
-/* Cursor por hardware: imagen ARGB (hasta 64×64) y posición. 0 si el driver lo soporta. */
+/* Hardware cursor: ARGB image (up to 64×64) and position. 0 if the driver supports it. */
 int  kms_cursor_image(Kms *k, const uint32_t *argb, int w, int h, int hot_x, int hot_y);
 void kms_cursor_move(Kms *k, int x, int y);
 void kms_cursor_show(Kms *k, int visible);

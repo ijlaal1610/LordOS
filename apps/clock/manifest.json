@@ -1,7 +1,7 @@
 {
   "id": "clock",
-  "name": "Reloj",
-  "description": "Reloj mundial, alarmas, temporizador y cronómetro",
+  "name": "Clock",
+  "description": "World clock, alarms, timer and stopwatch",
   "size": [
     560,
     520

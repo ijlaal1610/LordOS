@@ -1,4 +1,4 @@
-// locations.js — qué muestra cada lugar de la barra lateral y cómo se ordena y agrupa.
+// locations.js — what each sidebar place shows and how it is sorted and grouped.
 //   { type: 'dir', path } | { type: 'recent' } | { type: 'apps' } | { type: 'trash' }
 //   | { type: 'tag', color } | { type: 'search', root, query }
 import { fs } from '@lordos/sdk';
@@ -10,7 +10,7 @@ export const sameLoc = (a, b) => a && b && a.type === b.type && a.path === b.pat
 
 const norm = (dir) => (e) => ({ ...e, path: `${dir === '/' ? '' : dir}/${e.name}` });
 
-// Entradas de un lugar (sin ordenar). hidden: mostrar los que empiezan con punto.
+// Entries of a place (unsorted). hidden: show the ones that start with a dot.
 export function loadEntries(loc, { hidden, launcherApps }) {
   switch (loc.type) {
     case 'dir': return lord.fs.list(loc.path).filter((e) => hidden || !e.name.startsWith('.')).map(norm(loc.path));
@@ -22,7 +22,7 @@ export function loadEntries(loc, { hidden, launcherApps }) {
       const out = [];
       for (const [p, colors] of Object.entries(all)) {
         if (!colors.includes(loc.color)) continue;
-        try { const s = fs.stat(p); out.push({ name: s.name, path: s.path, dir: s.dir, size: s.size, mtime: s.mtime }); } catch (e) { /* ya no existe */ }
+        try { const s = fs.stat(p); out.push({ name: s.name, path: s.path, dir: s.dir, size: s.size, mtime: s.mtime }); } catch (e) { /* no longer exists */ }
       }
       return out;
     }
@@ -38,7 +38,7 @@ export function sortEntries(list, sort) {
   const dir = sort.desc ? -1 : 1;
   const key = sort.by;
   const cmp = (a, b) => {
-    if (a.dir !== b.dir && key !== 'kind') return a.dir ? -1 : 1;           // carpetas primero
+    if (a.dir !== b.dir && key !== 'kind') return a.dir ? -1 : 1;           // folders first
     let r = 0;
     if (key === 'date') r = (a.mtime || 0) - (b.mtime || 0);
     else if (key === 'size') r = (a.dir ? -1 : a.size) - (b.dir ? -1 : b.size);
@@ -49,7 +49,7 @@ export function sortEntries(list, sort) {
   return [...list].sort(cmp);
 }
 
-// Grupos: [{ key, label, items }] (un solo grupo sin título si group = 'none').
+// Groups: [{ key, label, items }] (a single untitled group if group = 'none').
 export function groupEntries(list, group, t) {
   if (group === 'none') return [{ key: 'all', label: '', items: list }];
   const buckets = new Map();
@@ -68,20 +68,20 @@ export function groupEntries(list, group, t) {
   }
   const order = { date: ['today', 'week', 'month', 'year', 'older'], size: ['folders', 'small', 'medium', 'large', 'huge'] }[group];
   const label = (k) => t(`files.group.${group}.${k}`);
-  // por tipo: las carpetas primero y después por el nombre del tipo
+  // by kind: folders first, then by kind name
   const keys = order ? order.filter((k) => buckets.has(k))
     : [...buckets.keys()].sort((a, b) => (a === 'folder' ? -1 : b === 'folder' ? 1 : collator(label(a), label(b))));
   return keys.map((k) => ({ key: k, label: label(k), items: buckets.get(k) }));
 }
 
-// Carpetas del usuario (xdg-user-dirs ya trae los nombres traducidos por el sistema).
+// User folders (xdg-user-dirs already provides the names translated by the system).
 const XDG = [['DESKTOP', 'desktop', ['Escritorio', 'Desktop', 'Área de Trabalho']], ['DOCUMENTS', 'documents', ['Documentos', 'Documents']],
   ['DOWNLOAD', 'downloads', ['Descargas', 'Downloads', 'Transferências']], ['PICTURES', 'pictures', ['Imágenes', 'Pictures', 'Imagens']],
   ['MUSIC', 'music', ['Música', 'Music']], ['VIDEOS', 'videos', ['Videos', 'Videos', 'Vídeos']]];
 export function userDirs() {
   const home = fs.home();
   let conf = '';
-  try { conf = fs.read('.config/user-dirs.dirs'); } catch (e) { /* sin xdg-user-dirs */ }
+  try { conf = fs.read('.config/user-dirs.dirs'); } catch (e) { /* no xdg-user-dirs */ }
   let existing;
   try { existing = new Set(lord.fs.list(home).filter((e) => e.dir).map((e) => e.name)); } catch (e) { existing = new Set(); }
   const out = [];

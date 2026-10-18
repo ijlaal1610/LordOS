@@ -1,7 +1,7 @@
 {
   "id": "photos",
-  "name": "Fotos",
-  "description": "Visor y biblioteca de imágenes: zoom, giro, presentación y edición básica guardada como copia",
+  "name": "Photos",
+  "description": "Image viewer and library: zoom, rotate, slideshow and basic editing saved as a copy",
   "size": [980, 640],
   "minSize": [520, 360],
   "dock": true,

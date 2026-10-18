@@ -17,6 +17,7 @@
 #include "../pkg/crypto.h"
 #include "../ui/ui.h"
 #include "../ui/js_sys.h"
+#include "../errcode.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -576,7 +577,7 @@ static void job_finish(Job *j, int status, int fd) {
                 media_src_damage(s);
                 media_event(s->id, "ready", "%s", payload);
             } else {
-                media_json_str(esc, sizeof esc, ok ? "no se pudo leer la imagen" : payload);
+                media_json_str(esc, sizeof esc, ok || !lerr_is(payload) ? "media.imageUnreadable" : payload);
                 media_event(s->id, "error", "{\"message\":%s}", esc);
             }
         }
@@ -636,7 +637,7 @@ static void worker_kick(int bg) {
         wk->sock = media_spawn(MK_WORKER, NULL, NULL, 0, &wk->pid);
         if (wk->sock < 0) {
             /* no lord-media: all jobs fail */
-            while (queue[bg]) { Job *j = queue[bg]; queue[bg] = j->next; queued[bg]--; payload[0] = 0; snprintf(payload, sizeof payload, "sin lord-media"); job_finish(j, -1, -1); job_free(j); }
+            while (queue[bg]) { Job *j = queue[bg]; queue[bg] = j->next; queued[bg]--; payload[0] = 0; snprintf(payload, sizeof payload, "media.noHelper"); job_finish(j, -1, -1); job_free(j); }
             queue_tail[bg] = NULL;
             return;
         }
@@ -648,7 +649,7 @@ static void worker_kick(int bg) {
     int64_t v[6] = { j->kind, j->a, j->b, 0, 0, 0 };
     if (mp_send(wk->sock, MM_JOB, (uint32_t)j->id, v, j->params && j->purpose != JP_THUMB ? j->params : NULL,
                 j->params && j->purpose != JP_THUMB ? strlen(j->params) : 0, j->fds, j->nfds)) {
-        snprintf(payload, sizeof payload, "el ayudante no responde");
+        snprintf(payload, sizeof payload, "media.helperNotResponding");
         job_finish(j, -1, -1);
         job_free(j);
         return;
@@ -697,7 +698,7 @@ static void worker_dispatch(int bg) {
             wk->pid = 0;
             if (wk->cur) {
                 fprintf(stderr, "media: lord-media crashed during a job (%d); moving on to the next\n", wk->cur->kind);
-                snprintf(payload, sizeof payload, "el ayudante se cayó");
+                snprintf(payload, sizeof payload, "media.helperCrashed");
                 job_finish(wk->cur, -1, -1);
                 job_free(wk->cur);
                 wk->cur = NULL;

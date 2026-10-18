@@ -224,7 +224,7 @@ static void ok_cb(const char *path, const char *key, const char *val, void *ud) 
 
 int vici_simple(int fd, const char *cmd, const ViciMsg *req, ViciResult *res, int timeout_ms) {
     memset(res, 0, sizeof *res);
-    if (vici_call(fd, cmd, req, NULL, NULL, ok_cb, res, timeout_ms)) { snprintf(res->errmsg, sizeof res->errmsg, "sin respuesta de charon"); return -1; }
+    if (vici_call(fd, cmd, req, NULL, NULL, ok_cb, res, timeout_ms)) { snprintf(res->errmsg, sizeof res->errmsg, "no answer from charon"); return -1; }
     return res->success ? 0 : -1;
 }
 

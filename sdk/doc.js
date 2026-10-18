@@ -12,6 +12,11 @@
 import { createElement as h, useEffect, useRef } from 'react';
 import { Image } from '@lordos/runtime';
 import { settings } from './settings.js';
+import { tOptional } from './i18n.js';
+import { errorText } from './errors.js';
+
+// lord-doc reports short codes ('corrupt', 'password'…): the message is their translation (docs.err.*).
+const docError = (code, extra = {}) => Object.assign(new Error(code ? tOptional(`docs.err.${code}`) ?? errorText(code) : errorText('sys.unknown')), { code, ...extra });
 
 const has = () => typeof lord !== 'undefined' && typeof lord.doc !== 'undefined';
 export const docAvailable = () => has() && lord.doc.available();
@@ -36,7 +41,7 @@ function dispatch(e) {
   if (e.type === 'part') { w.onPart?.(e.data); return; }
   if (e.type === 'prog') { w.onProgress?.(e.data); return; }
   waiting.delete(k);
-  if (e.type === 'err') { const err = new Error(e.data?.error || 'error'); err.code = e.data?.error; err.detail = e.data?.detail; err.data = e.data; w.reject(err); return; }
+  if (e.type === 'err') { w.reject(docError(e.data?.error, { detail: e.data?.detail, data: e.data })); return; }
   if (e.type === 'img') w.resolve({ image: e.image, w: e.w, h: e.h, data: e.data || {} });
   else if (e.type === 'blob') w.resolve({ blob: e.blob, size: e.size });
   else w.resolve(e.data || {});
@@ -58,7 +63,7 @@ export function onSessionCrash(sid, fn) {
 
 // Waits for the result of a request already made ({ sid, req } or both numbers).
 export function waitFor(sid, req, { onPart, onProgress } = {}) {
-  if (req == null || req < 0) return Promise.reject(Object.assign(new Error('unavailable'), { code: 'unavailable' }));
+  if (req == null || req < 0) return Promise.reject(docError('unavailable'));
   return new Promise((resolve, reject) => {
     waiting.set(`${sid}:${req}`, { resolve, reject, onPart, onProgress });
     if (!timer) timer = setInterval(pump, 8);
@@ -69,7 +74,7 @@ export function cancelRequest(sid, req) {
   if (lord.doc.cancel(sid, req)) {
     const w = waiting.get(`${sid}:${req}`);
     waiting.delete(`${sid}:${req}`);
-    w?.reject(Object.assign(new Error('cancelled'), { code: 'cancelled' }));
+    w?.reject(docError('cancelled'));
   }
 }
 

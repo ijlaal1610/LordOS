@@ -8,6 +8,9 @@
 //   const p = usePlayer(id);   // { info, pos, duration, playing, state, subs, stats }
 //   media.control(id, 'seek', 30000)
 //
+// Errors (the `error` of a job result and of a player's state) are code lines such as
+// "media.notAnImage": show them with errorText() (sdk/errors.js). 'crash' means lord-media died.
+//
 // Camera, microphone and screen ask for permission (requestPermission, the system prompt) and the
 // server checks it again. While in use, the menu bar indicators light up.
 import { createElement as h, useEffect, useState } from 'react';
@@ -39,7 +42,7 @@ function job(fn) {
   return new Promise((resolve) => {
     let id = 0;
     try { id = fn(); } catch (e) { resolve({ ok: false, error: e?.message || String(e) }); return; }
-    if (!id) { resolve({ ok: false, error: 'sin lord-media' }); return; }
+    if (!id) { resolve({ ok: false, error: 'media.noHelper' }); return; }
     pending.set(id, resolve);
   });
 }

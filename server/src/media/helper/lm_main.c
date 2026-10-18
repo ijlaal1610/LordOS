@@ -79,7 +79,7 @@ int main(int argc, char **argv) {
     case MK_SCREENREC: lm_screenrec(payload, fds[0], fds[1], fds[2]); break;
     case MK_CAMERA: lm_camera(payload, fds[0], fds[1]); break;
     case MK_AUDIOREC: lm_audiorec(payload, fds[0], fds[1]); break;
-    default: LM_LOG("tipo desconocido %lld", (long long)m.v[0]); return 1;
+    default: LM_LOG("unknown kind %lld", (long long)m.v[0]); return 1;
     }
     return 0;
 }

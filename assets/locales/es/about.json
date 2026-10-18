@@ -1,5 +1,6 @@
 {
   "cpu": "Procesador",
+  "cpuUnknown": "Desconocido",
   "cpuValue": {
     "one": "{cpu} · {count} núcleo",
     "other": "{cpu} · {count} núcleos"

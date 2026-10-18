@@ -35,10 +35,12 @@ motherboard. It works with **UEFI** and with **BIOS/Legacy**. **Secure Boot** ha
 
 | Entry | What for |
 |---|---|
-| LordOS (en vivo) | normal, in Spanish |
-| LordOS (modo seguro: sin GPU) | passes `lordos.gpu=0` → `LORD_GPU=0`: lord-server doesn't use the GPU path and composites on the CPU |
-| LordOS (English) | the interface in English the first time |
-| LordOS (copiar a la RAM) | `toram`: copies the system to memory (~1 GB free is needed) and the USB stick can be removed |
+| LordOS (live) | normal, in English (the default language) |
+| LordOS (safe mode: no GPU) | passes `lordos.gpu=0` → `LORD_GPU=0`: lord-server doesn't use the GPU path and composites on the CPU |
+| LordOS (Español) / LordOS (Português) | `lordos.lang=es` / `lordos.lang=pt`: the interface in Spanish or Portuguese the first time |
+| LordOS (copy to RAM) | `toram`: copies the system to memory (~1 GB free is needed) and the USB stick can be removed |
+
+The GRUB menu itself is in English (GRUB's default).
 
 In the live session:
 - **User:** `lordos`, no password, with passwordless `sudo`.

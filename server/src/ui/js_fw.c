@@ -20,6 +20,7 @@
  * All of them validate: app ids with fw_app_canon, destinations with fw_parse_dest, ports 1–65535. */
 #include "js_fw.h"
 #include "../fw/rules.h"
+#include "js_err.h"
 #include "../netperm/npproto.h"
 
 #include <errno.h>
@@ -210,7 +211,7 @@ static JSValue f_state(JSContext *c, JSValueConst t, int argc, JSValueConst *arg
 static JSValue f_app_rule(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     char app[FW_APP_MAX];
-    if (argc < 1 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "invalid app");
+    if (argc < 1 || arg_app(c, argv[0], app)) return js_throw_code(c, "fw.invalidApp", NULL);
     FwRule buf[256];
     const FwRule *r = app_rule(app, buf, 256);
     return r ? JS_NewString(c, r->action == FW_DENY ? "deny" : "allow") : JS_NULL;
@@ -219,12 +220,12 @@ static JSValue f_app_rule(JSContext *c, JSValueConst t, int argc, JSValueConst *
 static JSValue f_set_app_rule(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     char app[FW_APP_MAX];
-    if (argc < 2 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "invalid app");
+    if (argc < 2 || arg_app(c, argv[0], app)) return js_throw_code(c, "fw.invalidApp", NULL);
     char v[8];
     if (JS_IsNull(argv[1])) v[0] = 0;
     else {
         const char *s = JS_IsString(argv[1]) ? JS_ToCString(c, argv[1]) : NULL;
-        if (!s || (strcmp(s, "allow") && strcmp(s, "deny"))) { if (s) JS_FreeCString(c, s); return JS_ThrowTypeError(c, "'allow', 'deny' or null"); }
+        if (!s || (strcmp(s, "allow") && strcmp(s, "deny"))) { if (s) JS_FreeCString(c, s); return js_throw_code(c, "fw.invalidRule", "field", "action", NULL); }
         snprintf(v, sizeof v, "%s", s);
         JS_FreeCString(c, s);
     }
@@ -251,7 +252,7 @@ static JSValue f_set_app_rule(JSContext *c, JSValueConst t, int argc, JSValueCon
 static JSValue f_set_trusted(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     char app[FW_APP_MAX];
-    if (argc < 2 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "invalid app");
+    if (argc < 2 || arg_app(c, argv[0], app)) return js_throw_code(c, "fw.invalidApp", NULL);
     if (fw_set_trusted(store, app, JS_ToBool(c, argv[1]) > 0)) return JS_FALSE;
     return JS_NewBool(c, save() == 0);
 }
@@ -259,20 +260,20 @@ static JSValue f_set_trusted(JSContext *c, JSValueConst t, int argc, JSValueCons
 static JSValue f_set_restricted(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     char app[FW_APP_MAX];
-    if (argc < 2 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "invalid app");
+    if (argc < 2 || arg_app(c, argv[0], app)) return js_throw_code(c, "fw.invalidApp", NULL);
     uint32_t flags = 0, len = 0;
-    if (!JS_IsArray(c, argv[1])) return JS_ThrowTypeError(c, "list of restrictions");
+    if (!JS_IsArray(c, argv[1])) return js_throw_code(c, "fw.invalidRestrictions", NULL);
     JSValue lv = JS_GetPropertyStr(c, argv[1], "length");
     JS_ToUint32(c, &len, lv);
     JS_FreeValue(c, lv);
-    if (len > 32) return JS_ThrowRangeError(c, "too many restrictions");
+    if (len > 32) return js_throw_code(c, "fw.invalidRestrictions", NULL);
     for (uint32_t i = 0; i < len; i++) {
         JSValue e = JS_GetPropertyUint32(c, argv[1], i);
         const char *s = JS_IsString(e) ? JS_ToCString(c, e) : NULL;
         uint32_t f = s ? fw_flag_from_name(s) : 0;
         if (s) JS_FreeCString(c, s);
         JS_FreeValue(c, e);
-        if (!f) return JS_ThrowTypeError(c, "unknown restriction");
+        if (!f) return js_throw_code(c, "fw.invalidRestrictions", NULL);
         flags |= f;
     }
     if (fw_set_restricted(store, app, flags)) return JS_FALSE;
@@ -282,12 +283,12 @@ static JSValue f_set_restricted(JSContext *c, JSValueConst t, int argc, JSValueC
 static JSValue f_set_mode(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     char m[16];
-    if (argc < 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(c, "mode");
+    if (argc < 1 || !JS_IsString(argv[0])) return js_throw_code(c, "fw.invalidMode", NULL);
     const char *s = JS_ToCString(c, argv[0]);
     snprintf(m, sizeof m, "%s", s ? s : "");
     if (s) JS_FreeCString(c, s);
     FwMode mode = !strcmp(m, "silent") ? FW_MODE_SILENT : !strcmp(m, "ask") ? FW_MODE_ASK : !strcmp(m, "off") ? FW_MODE_OFF : (FwMode)-1;
-    if ((int)mode < 0) return JS_ThrowTypeError(c, "'silent', 'ask' u 'off'");
+    if ((int)mode < 0) return js_throw_code(c, "fw.invalidMode", NULL);
     fw_set_mode(store, mode);
     return JS_NewBool(c, save() == 0);
 }
@@ -313,7 +314,7 @@ static JSValue rule_obj(JSContext *c, const FwRule *r) {
 static JSValue f_rules(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     char app[FW_APP_MAX];
-    if (argc < 1 || arg_app(c, argv[0], app)) return JS_ThrowTypeError(c, "invalid app");
+    if (argc < 1 || arg_app(c, argv[0], app)) return js_throw_code(c, "fw.invalidApp", NULL);
     JSValue arr = JS_NewArray(c);
     int n = fw_rule_list(store, app, NULL, 0);
     if (n <= 0) return arr;
@@ -343,28 +344,28 @@ static int parse_port(const char *s, FwRule *r) {
 
 static JSValue f_add_rule(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (argc < 1 || !JS_IsObject(argv[0])) return JS_ThrowTypeError(c, "rule");
+    if (argc < 1 || !JS_IsObject(argv[0])) return js_throw_code(c, "fw.invalidRule", "field", "rule", NULL);
     char app[FW_APP_MAX], canon[FW_APP_MAX], dir[8], dst[300], port[16], proto[8], action[8];
-    if (str_prop(c, argv[0], "app", app, sizeof app) || fw_app_canon(app, canon, sizeof canon)) return JS_ThrowTypeError(c, "invalid app");
-    if (str_prop(c, argv[0], "dst", dst, sizeof dst)) return JS_ThrowTypeError(c, "destination");
+    if (str_prop(c, argv[0], "app", app, sizeof app) || fw_app_canon(app, canon, sizeof canon)) return js_throw_code(c, "fw.invalidApp", NULL);
+    if (str_prop(c, argv[0], "dst", dst, sizeof dst)) return js_throw_code(c, "fw.invalidRule", "field", "dst", NULL);
     if (str_prop(c, argv[0], "dir", dir, sizeof dir) < 0 || str_prop(c, argv[0], "port", port, sizeof port) < 0 ||
         str_prop(c, argv[0], "proto", proto, sizeof proto) < 0 || str_prop(c, argv[0], "action", action, sizeof action))
-        return JS_ThrowTypeError(c, "rule");
+        return js_throw_code(c, "fw.invalidRule", "field", "rule", NULL);
     FwRule r;
     memset(&r, 0, sizeof r);
     snprintf(r.app, sizeof r.app, "%s", canon);
-    if (fw_parse_dest(dst, &r)) return JS_ThrowTypeError(c, "invalid destination");
+    if (fw_parse_dest(dst, &r)) return js_throw_code(c, "fw.invalidDestination", NULL);
     if (!dir[0] || !strcmp(dir, "out")) r.dir = FW_OUT;
     else if (!strcmp(dir, "in")) r.dir = FW_IN;
-    else return JS_ThrowTypeError(c, "direction");
-    if (parse_port(port, &r)) return JS_ThrowTypeError(c, "port");
+    else return js_throw_code(c, "fw.invalidRule", "field", "dir", NULL);
+    if (parse_port(port, &r)) return js_throw_code(c, "fw.invalidRule", "field", "port", NULL);
     if (!proto[0]) r.proto = FW_PROTO_ANY;
     else if (!strcmp(proto, "tcp")) r.proto = FW_PROTO_TCP;
     else if (!strcmp(proto, "udp")) r.proto = FW_PROTO_UDP;
-    else return JS_ThrowTypeError(c, "protocol");
+    else return js_throw_code(c, "fw.invalidRule", "field", "proto", NULL);
     if (!strcmp(action, "allow")) r.action = FW_ALLOW;
     else if (!strcmp(action, "deny")) r.action = FW_DENY;
-    else return JS_ThrowTypeError(c, "action");
+    else return js_throw_code(c, "fw.invalidRule", "field", "action", NULL);
     r.life = FW_LIFE_FOREVER;
     r.when = (long long)time(NULL);
     uint32_t id = 0;
@@ -376,7 +377,7 @@ static JSValue f_add_rule(JSContext *c, JSValueConst t, int argc, JSValueConst *
 static JSValue f_remove_rule(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     uint32_t id = 0;
-    if (argc < 1 || JS_ToUint32(c, &id, argv[0]) || !id) return JS_ThrowTypeError(c, "id");
+    if (argc < 1 || JS_ToUint32(c, &id, argv[0]) || !id) return js_throw_code(c, "fw.invalidRule", "field", "id", NULL);
     if (fw_rule_remove(store, id)) return JS_FALSE;
     return JS_NewBool(c, save() == 0);
 }

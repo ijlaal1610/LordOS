@@ -2,6 +2,7 @@
  * state lives in perms.c (a file the apps cannot write). */
 #include "js_sec.h"
 #include "js_sys.h"
+#include "js_err.h"
 #include "../sec/perms.h"
 #include "../sec/sign.h"
 #include "../sec/pkgstate.h"
@@ -115,7 +116,7 @@ static JSValue f_sign_restore(JSContext *c, JSValueConst t, int argc, JSValueCon
     char err[160] = "";
     int ok = id && lpk_valid_id(id) && pkg_restore(id, err, sizeof err) == 0;
     if (id) JS_FreeCString(c, id);
-    if (!ok) return JS_ThrowInternalError(c, "%s", err[0] ? err : "could not restore");
+    if (!ok) return js_throw_line(c, err[0] ? err : "pkgstate.restoreFailed");
     return JS_TRUE;
 }
 
@@ -130,7 +131,7 @@ static JSValue f_sign_share(JSContext *c, JSValueConst t, int argc, JSValueConst
     char out[1024], err[160] = "";
     int ok = id && manifest && rel && lpk_valid_id(id) && !js_sys_resolve_target(rel, out, sizeof out) &&
              pkg_share(id, manifest, mlen, out, err, sizeof err) == 0;
-    JSValue r = ok ? JS_NewString(c, out) : JS_ThrowInternalError(c, "%s", err[0] ? err : "could not share");
+    JSValue r = ok ? JS_NewString(c, out) : js_throw_line(c, err[0] ? err : "pkgstate.shareFailed");
     if (id) JS_FreeCString(c, id);
     if (manifest) JS_FreeCString(c, manifest);
     if (rel) JS_FreeCString(c, rel);
@@ -141,7 +142,7 @@ static JSValue f_sign_userkey(JSContext *c, JSValueConst t, int argc, JSValueCon
     (void)t; (void)argc; (void)argv;
     uint8_t seed[32];
     char pub[65], name[128];
-    if (pkg_user_key(seed, pub, name)) return JS_ThrowInternalError(c, "could not get our own key");
+    if (pkg_user_key(seed, pub, name)) return js_throw_code(c, "pkgstate.keyFailed", NULL);
     memset(seed, 0, sizeof seed);
     JSValue o = JS_NewObject(c);
     JS_SetPropertyStr(c, o, "public", JS_NewString(c, pub));

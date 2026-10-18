@@ -1,5 +1,6 @@
 /* idx.c — building and reading the package index (see idx.h). */
 #include "idx.h"
+#include "../errcode.h"
 #include "deb.h"
 #include "crypto.h"
 
@@ -712,15 +713,15 @@ static int pad4(int fd, size_t *off) {
 }
 
 int idxb_write(IdxBuilder *b, const char *dir, const char *arch, char *err, size_t errlen) {
-    if (b->npk >= UINT32_MAX / 2) { snprintf(err, errlen, "demasiados paquetes"); return -1; }
+    if (b->npk >= UINT32_MAX / 2) { lerr_set(err, errlen, "pkg.index.tooManyPackages", NULL); return -1; }
     uint32_t *perm = malloc((b->npk ? b->npk : 1) * sizeof *perm), *inv = malloc((b->npk ? b->npk : 1) * sizeof *inv);
-    if (!perm || !inv) { free(perm); free(inv); snprintf(err, errlen, "sin memoria"); return -1; }
+    if (!perm || !inv) { free(perm); free(inv); lerr_set(err, errlen, "sys.outOfMemory", NULL); return -1; }
     for (size_t i = 0; i < b->npk; i++) perm[i] = (uint32_t)i;
     sort_b = b;
     qsort(perm, b->npk, sizeof *perm, pkg_order);
     for (size_t i = 0; i < b->npk; i++) inv[perm[i]] = (uint32_t)i;
     IdxPkg *sorted = malloc((b->npk ? b->npk : 1) * sizeof *sorted);
-    if (!sorted) { free(perm); free(inv); snprintf(err, errlen, "sin memoria"); return -1; }
+    if (!sorted) { free(perm); free(inv); lerr_set(err, errlen, "sys.outOfMemory", NULL); return -1; }
     for (size_t i = 0; i < b->npk; i++) sorted[i] = b->pk[perm[i]];
 
     /* provides */
@@ -775,7 +776,7 @@ int idxb_write(IdxBuilder *b, const char *dir, const char *arch, char *err, size
     h.off_str = (uint32_t)off; h.len_str = (uint32_t)b->slen; off += b->slen;
     off = (off + 3) & ~(size_t)3;
     h.off_desc = (uint32_t)off; h.len_desc = (uint32_t)b->dlen; off += b->dlen;
-    if (off > UINT32_MAX) { free(perm); free(inv); free(sorted); free(prov); snprintf(err, errlen, "índice demasiado grande"); return -1; }
+    if (off > UINT32_MAX) { free(perm); free(inv); free(sorted); free(prov); lerr_set(err, errlen, "pkg.index.tooLarge", NULL); return -1; }
 
     char tmp[512], path[512];
     snprintf(tmp, sizeof tmp, "%s/index.bin.new", dir);
@@ -801,6 +802,6 @@ int idxb_write(IdxBuilder *b, const char *dir, const char *arch, char *err, size
     if (ok) ok = fsync(fd) == 0;
     if (fd >= 0 && close(fd)) ok = 0;
     free(perm); free(inv); free(sorted); free(prov);
-    if (!ok || rename(tmp, path)) { unlink(tmp); snprintf(err, errlen, "no se pudo escribir %s: %s", path, strerror(errno)); return -1; }
+    if (!ok || rename(tmp, path)) { unlink(tmp); lerr_set(err, errlen, "pkg.index.writeFailed", "path", path, "errno", lerr_errno(errno), NULL); return -1; }
     return 0;
 }

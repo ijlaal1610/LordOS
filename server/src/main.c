@@ -73,9 +73,9 @@ extern int paint_profile;
 
 typedef struct { int down, button; } ButtonEvent;
 
-/* Medición de arrastres (docs/WINDOWS.md): con un botón apretado y el puntero en movimiento se
- * cuentan los cuadros y el trabajo de cada uno (JS del puntero + layout + pintado + presentar). Al
- * soltar se escribe una línea "arrastre: …" en el registro de la sesión. */
+/* Drag measurement (docs/WINDOWS.md): with a button held and the pointer moving, the frames
+ * and the work of each one are counted (pointer JS + layout + paint + present). On
+ * release a "drag: …" line is written to the session log. */
 typedef struct {
     int held, active;
     double t0, last, js, work_js, work, work_max, gap_max, paint, present, layout;
@@ -268,20 +268,20 @@ static double now_ms(void) {
     return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
 }
 
-/* Pasa de root al usuario que invocó sudo (o --user), conservando solo
- * CAP_SYS_TTY_CONFIG para poder devolver la consola a modo texto al salir. */
+/* Drops from root to the user who ran sudo (or --user), keeping only
+ * CAP_SYS_TTY_CONFIG so the console can be put back in text mode on exit. */
 static int drop_privileges(const char *user) {
     if (geteuid() != 0) return 0;
     if (!user) user = getenv("SUDO_USER");
     if (!user) {
-        fprintf(stderr, "lord-server: aviso, sigue corriendo como root (usar sudo o --user)\n");
+        fprintf(stderr, "lord-server: warning, still running as root (use sudo or --user)\n");
         return 0;
     }
     struct passwd *pw = getpwnam(user);
-    if (!pw || pw->pw_uid == 0) { fprintf(stderr, "lord-server: usuario inválido '%s'\n", user); return -1; }
+    if (!pw || pw->pw_uid == 0) { fprintf(stderr, "lord-server: invalid user '%s'\n", user); return -1; }
     if (prctl(PR_SET_KEEPCAPS, 1) || initgroups(pw->pw_name, pw->pw_gid) ||
         setgid(pw->pw_gid) || setuid(pw->pw_uid)) {
-        perror("lord-server: soltar privilegios");
+        perror("lord-server: dropping privileges");
         return -1;
     }
     struct __user_cap_header_struct hdr = { _LINUX_CAPABILITY_VERSION_3, 0 };
@@ -290,10 +290,10 @@ static int drop_privileges(const char *user) {
     caps[0].effective = caps[0].permitted = 1u << CAP_SYS_TTY_CONFIG;
     if (syscall(SYS_capset, &hdr, caps)) perror("lord-server: capset");
     prctl(PR_SET_KEEPCAPS, 0);
-    if (setuid(0) == 0) { fprintf(stderr, "lord-server: no se pudieron soltar privilegios\n"); return -1; }
+    if (setuid(0) == 0) { fprintf(stderr, "lord-server: could not drop privileges\n"); return -1; }
     setenv("HOME", pw->pw_dir, 1);
     setenv("USER", pw->pw_name, 1);
-    fprintf(stderr, "lord-server: corriendo como %s (uid %d)\n", pw->pw_name, (int)pw->pw_uid);
+    fprintf(stderr, "lord-server: running as %s (uid %d)\n", pw->pw_name, (int)pw->pw_uid);
     return 0;
 }
 
@@ -358,9 +358,9 @@ static void dispatch_pointer(Server *s) {
             double span = dstat.last - dstat.t0;
             long lr = 0, lb = 0;
             paint_layer_stats(&lr, &lb);
-            fprintf(stderr, "arrastre: %ld cuadros en %.0f ms = %.1f FPS (%ld movimientos); por cuadro: trabajo %.2f ms "
-                            "(máx %.2f; JS %.2f, layout %.2f, pintado %.2f, presentar %.2f), intervalo máx %.1f ms; "
-                            "capa: %ld pintadas, %ld copiadas (%s)\n",
+            fprintf(stderr, "drag: %ld frames in %.0f ms = %.1f FPS (%ld moves); per frame: work %.2f ms "
+                            "(max %.2f; JS %.2f, layout %.2f, paint %.2f, present %.2f), max gap %.1f ms; "
+                            "layer: %ld painted, %ld copied (%s)\n",
                     dstat.frames, span, 1000.0 * dstat.frames / span, dstat.moves, dstat.work / dstat.frames, dstat.work_max,
                     dstat.js / dstat.frames, dstat.layout / dstat.frames, (dstat.paint - dstat.layout) / dstat.frames,
                     dstat.present / dstat.frames, dstat.gap_max, lr, lb, gpu_active() ? "GPU" : "CPU");
@@ -1278,7 +1278,7 @@ static void switch_theme(const char *current) {
     ui_reset();
     term_detach_all();
     if (js_init(path)) {
-        fprintf(stderr, "lord-server: el tema falló, se vuelve a %s\n", current);
+        fprintf(stderr, "lord-server: the theme failed, going back to %s\n", current);
         snprintf(ui.theme_failed, sizeof ui.theme_failed, "%s", path);
         js_shutdown();
         ui_reset();
@@ -1301,8 +1301,8 @@ static void hw_redraw(void) { if (hw_server) full_damage(hw_server); }
 static const DisplayHost hw_host = { hw_kms, hw_redraw, js_hw_event, hw_heads };
 
 static void usage(const char *argv0) {
-    fprintf(stderr, "uso: %s [--theme bundle.js] [--fonts dir] [--shell dir] [--user nombre] [--card /dev/dri/cardN]\n"
-                    "          [--headless ANCHOxALTO [--greeter]] [--timeout s] [--debug] [--profile]\n", argv0);
+    fprintf(stderr, "usage: %s [--theme bundle.js] [--fonts dir] [--shell dir] [--user name] [--card /dev/dri/cardN]\n"
+                    "          [--headless WIDTHxHEIGHT [--greeter]] [--timeout s] [--debug] [--profile]\n", argv0);
 }
 
 int main(int argc, char **argv) {
@@ -1384,33 +1384,33 @@ int main(int argc, char **argv) {
 
     int vt = -1;
     if (!s.headless) {
-        if (input_open(&s.input)) fprintf(stderr, "input: sin dispositivos (¿permisos?)\n");
-        /* La consola de texto deja de dibujar encima nuestro. */
+        if (input_open(&s.input)) fprintf(stderr, "input: no devices (permissions?)\n");
+        /* The text console stops drawing over us. */
         vt = open("/dev/tty0", O_RDWR | O_CLOEXEC);
         if (vt >= 0 && ioctl(vt, KDSETMODE, KD_GRAPHICS)) { close(vt); vt = -1; }
     }
 
-    /* Ayudante privilegiado (acciones cerradas: región, zona horaria, paquetes de idioma). La
-     * pantalla de ingreso no tiene: lo que necesita root lo hace lord-sessiond. */
+    /* Privileged helper (a closed set of actions: region, time zone, language packs). The
+     * login screen has none: what needs root is done by lord-sessiond. */
     const char *session_user = s.greeter ? NULL : user ? user : getenv("SUDO_USER");
-    if (session_user && admin_start(session_user)) fprintf(stderr, "lord-server: sin ayudante de administración\n");
+    if (session_user && admin_start(session_user)) fprintf(stderr, "lord-server: no administration helper\n");
     /* LordOS networking: with lord-sessiond the network belongs to the system (lord-netd brings it
      * up at boot) and net-restore only confirms; without it (a standalone lord-server) this
      * session's helper brings it up (see net_act_restore and docs/NETWORK.md) */
     else if (session_user) admin_send("net-restore", "", 0);
     int ok = drop_privileges(user) == 0;
     if (ok && s.headless && getenv("HOME")) {
-        /* sin terminal: el registro de la sesión va a la carpeta personal */
+        /* no terminal: the session log goes to the home folder */
         char log[1024];
         snprintf(log, sizeof log, "%s/.cache", getenv("HOME"));
         mkdir(log, 0700);
         snprintf(log, sizeof log, "%s/.cache/lordos", getenv("HOME"));
         mkdir(log, 0700);
         snprintf(log, sizeof log, "%s/.cache/lordos/%s", getenv("HOME"), s.greeter ? "greeter.log" : "session.log");
-        if (!freopen(log, "w", stderr)) { /* sigue sin registro */ }
+        if (!freopen(log, "w", stderr)) { /* carries on without a log */ }
         setvbuf(stderr, NULL, _IOLBF, 0);
     }
-    /* GPU (Mesa) después de soltar root: si no hay una usable, sigue el camino por CPU */
+    /* GPU (Mesa) after dropping root: if there is no usable one, the CPU path goes on */
     /* Settings' hardware pages: displays, uevents, Bluetooth, power profiles (src/hw) */
     kms_set_picker(display_pick);
     hw_server = &s;
@@ -1420,20 +1420,20 @@ int main(int argc, char **argv) {
         struct stat st;
         if (K0(&s)->fd >= 0 && fstat(K0(&s)->fd, &st) == 0) wl_set_drm_device(st.st_rdev);
     }
-    if (ok && wl_start()) fprintf(stderr, "lord-server: sin Wayland (las apps Linux no van a poder abrirse)\n");
+    if (ok && wl_start()) fprintf(stderr, "lord-server: no Wayland (Linux apps will not be able to open)\n");
     publish_displays(&s);                   /* one wl_output per display */
-    if (ok && net_open()) fprintf(stderr, "lord-server: sin avisos de red (rtnetlink)\n");
+    if (ok && net_open()) fprintf(stderr, "lord-server: no network notifications (rtnetlink)\n");
     /* Backups: a thread running as the user, nice 19 and idle I/O (backup/backup.c) */
     if (ok && !s.greeter && getenv("HOME") && session_user) backup_start(getenv("HOME"), session_user);
-    if (ok && snd_start()) fprintf(stderr, "lord-server: sin PipeWire por ahora (sonido); se reintenta solo\n");
-    if (ok && !s.greeter) portal_start();   /* modo oscuro, acento y botones para GTK/GNOME/Qt (ui/portal.c) */
-    if (ok && !s.greeter) term_restore();   /* shells que siguieron vivos desde el arranque anterior */
+    if (ok && snd_start()) fprintf(stderr, "lord-server: no PipeWire for now (sound); it retries on its own\n");
+    if (ok && !s.greeter) portal_start();   /* dark mode, accent and buttons for GTK/GNOME/Qt (ui/portal.c) */
+    if (ok && !s.greeter) term_restore();   /* shells still alive from the previous start */
     remote_server = &s;
     tp_route_init(&tp_host);
     static const MirrorInput mirror_in = { remote_pointer, remote_button, remote_wheel, remote_key, remote_clip, remote_clients,
                                            remote_refresh, remote_resize, remote_greeter, display_attach, display_detach,
                                            remote_scroll, remote_pinch, remote_input_add };
-    if (ok && mirror_start(s.W, s.H, &mirror_in)) fprintf(stderr, "lord-server: sin escritorio remoto (socket)\n");
+    if (ok && mirror_start(s.W, s.H, &mirror_in)) fprintf(stderr, "lord-server: no remote desktop (socket)\n");
     if (ok) {
         char path[1024];
         snprintf(path, sizeof path, "%s", theme);
@@ -1594,7 +1594,7 @@ int main(int argc, char **argv) {
     }
 
     if (s.renders)
-        fprintf(stderr, "lord-server: %ld frames, %ld renders de UI, layout %.2f ms, paint %.2f ms (promedio)\n",
+        fprintf(stderr, "lord-server: %ld frames, %ld UI renders, layout %.2f ms, paint %.2f ms (average)\n",
                 s.frames, s.renders, s.layout_total / s.renders, s.paint_total / s.renders);
     input_close(&s.input);
     mirror_stop();

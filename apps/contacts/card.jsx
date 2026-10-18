@@ -3,7 +3,7 @@
 import {
   View, Text, useTheme, Button, TextInput, ScrollView, Hairline, ContactPhoto, contacts, contactName, wm, getApp, formatDate, FilePicker, t,
 } from '@lordos/sdk';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RED, Popover, MenuList, Choice, TextArea, DateField, ymd, parseYmd, monthName } from './ui.jsx';
 
 const TYPES = {
@@ -58,30 +58,35 @@ export function Card({ contact: c, groups, onEdit }) {
     contacts.save(g.book, { ...g, members }, {}).catch(() => {});
   };
   const mine = groups.filter((g) => (g.members || []).includes(c.uid));
+  const box = useRef(null);
+  const w = useWidth(box);
+  const narrow = w < 400;                 // a narrow card stacks the photo above the name, centered
+  const lw = w < 300 ? 0 : narrow ? 70 : 96;    // 0: the label goes above its value
+  const head = [
+    <ContactPhoto key="p" contact={c} size={narrow ? 72 : 88} />,
+    <View key="n" style={narrow ? { alignSelf: 'stretch', alignItems: 'center', gap: 3 } : { flex: 1, gap: 3 }}>
+      <Text style={{ fontSize: narrow ? 20 : 24, fontWeight: 600, color: th.text, textAlign: narrow ? 'center' : 'start' }}>{name}</Text>
+      {sub && (showOrg || c.title) ? <Text style={{ fontSize: 13, color: th.textDim, textAlign: narrow ? 'center' : 'start' }}>{sub}</Text> : null}
+      {c.nick ? <Text style={{ fontSize: 12, color: th.textDim }}>{`“${c.nick}”`}</Text> : null}
+      {mine.length ? <Text style={{ fontSize: 11, color: th.textDim }}>{mine.map((g) => contactName(g)).join(', ')}</Text> : null}
+    </View>,
+  ];
   return (
-    <View style={{ flex: 1 }}>
+    <View ref={box} style={{ flex: 1 }}>
       <ScrollView style={{ flex: 1 }}>
-        <View style={{ padding: 24, gap: 18 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
-            <ContactPhoto contact={c} size={96} />
-            <View style={{ flex: 1, gap: 3 }}>
-              <Text style={{ fontSize: 24, fontWeight: 700, color: th.text }}>{name}</Text>
-              {sub && (showOrg || c.title) ? <Text style={{ fontSize: 13, color: th.textDim }}>{sub}</Text> : null}
-              {c.nick ? <Text style={{ fontSize: 12, color: th.textDim }}>{`“${c.nick}”`}</Text> : null}
-              {mine.length ? <Text style={{ fontSize: 11, color: th.textDim }}>{mine.map((g) => contactName(g)).join(', ')}</Text> : null}
-            </View>
-          </View>
-          <View style={{ gap: 2 }}>
-            {(c.phones || []).map((p, i) => <Row key={`p${i}`} label={typeLabel('phones', p.type)} value={p.value} />)}
-            {(c.emails || []).map((p, i) => <Row key={`e${i}`} label={typeLabel('emails', p.type)} value={p.value} link onClick={() => openMail(contactName(c), p.value)} />)}
-            {(c.urls || []).map((p, i) => <Row key={`u${i}`} label={typeLabel('urls', p.type)} value={p.value} />)}
-            {(c.addrs || []).map((a, i) => <Row key={`a${i}`} label={typeLabel('addrs', a.type)} value={addrLines(a).join('\n')} />)}
-            {c.bday ? <Row label={t('contacts.birthday')} value={bdayText(c.bday)} /> : null}
-            {c.notes ? <Row label={t('contacts.notes')} value={c.notes} /> : null}
+        <View style={{ paddingHorizontal: narrow ? 16 : 28, paddingTop: 24, paddingBottom: 24, gap: 20 }}>
+          <View style={narrow ? { alignItems: 'center', gap: 12 } : { flexDirection: 'row', alignItems: 'center', gap: 20 }}>{head}</View>
+          <View style={{ gap: 0 }}>
+            {(c.phones || []).map((p, i) => <Row key={`p${i}`} lw={lw} label={typeLabel('phones', p.type)} value={p.value} />)}
+            {(c.emails || []).map((p, i) => <Row key={`e${i}`} lw={lw} label={typeLabel('emails', p.type)} value={p.value} link onClick={() => openMail(contactName(c), p.value)} />)}
+            {(c.urls || []).map((p, i) => <Row key={`u${i}`} lw={lw} label={typeLabel('urls', p.type)} value={p.value} />)}
+            {(c.addrs || []).map((a, i) => <Row key={`a${i}`} lw={lw} label={typeLabel('addrs', a.type)} value={addrLines(a).join('\n')} />)}
+            {c.bday ? <Row lw={lw} label={t('contacts.birthday')} value={bdayText(c.bday)} /> : null}
+            {c.notes ? <Row lw={lw} label={t('contacts.notes')} value={c.notes} /> : null}
           </View>
         </View>
       </ScrollView>
-      <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14 }}>
+      <View style={{ height: 40, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12 }}>
         <Hairline edge="top" />
         <View ref={groupRef}>
           <Button small label={t('contacts.groups')} disabled={!groups.length} onClick={() => setGroupMenu(true)} />
@@ -99,11 +104,29 @@ export function Card({ contact: c, groups, onEdit }) {
   );
 }
 
-function Row({ label, value, link, onClick }) {
+// the width of a box after layout (re-measured on every render)
+function useWidth(ref, initial = 600) {
+  const [w, setW] = useState(initial);
+  useEffect(() => {
+    const id = setTimeout(() => { if (ref.current) { const nw = lord.getLayout(ref.current.id)[2]; if (nw && Math.abs(nw - w) > 0.5) setW(nw); } }, 20);
+    return () => clearTimeout(id);
+  });
+  return w;
+}
+
+function Row({ label, value, link, onClick, lw = 96 }) {
   const th = useTheme();
+  if (!lw) {
+    return (
+      <View style={{ paddingVertical: 5, gap: 1 }}>
+        <Text style={{ fontSize: 11, color: th.textDim }}>{label}</Text>
+        <Text onClick={onClick} style={{ fontSize: 13, color: link ? th.accent : th.text, lineHeight: 18 }}>{value}</Text>
+      </View>
+    );
+  }
   return (
-    <View style={{ flexDirection: 'row', gap: 12, paddingVertical: 6 }}>
-      <Text style={{ width: 96, fontSize: 12, color: th.textDim, textAlign: 'end', paddingTop: 1 }}>{label}</Text>
+    <View style={{ flexDirection: 'row', gap: 12, paddingVertical: 5 }}>
+      <Text style={{ width: lw, fontSize: 12, color: th.textDim, textAlign: 'end', paddingTop: 1, whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</Text>
       <Text onClick={onClick} style={{ flex: 1, fontSize: 13, color: link ? th.accent : th.text, lineHeight: 18 }}>{value}</Text>
     </View>
   );
@@ -189,7 +212,7 @@ export function Editor({ contact, groups, onCancel, onSave, onDelete }) {
           </View>
         </View>
       </ScrollView>
-      <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14 }}>
+      <View style={{ height: 40, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12 }}>
         <Hairline edge="top" />
         {onDelete ? <Button small destructive label={t('contacts.deleteContact')} onClick={onDelete} /> : null}
         <Text style={{ flex: 1, fontSize: 12, color: RED, textAlign: 'center' }}>{error}</Text>

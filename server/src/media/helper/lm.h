@@ -11,6 +11,7 @@
 #define LORD_MEDIA_LM_H
 
 #include "../proto.h"
+#include "../../errcode.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -53,7 +54,8 @@ void lm_buf_printf(LmBuf *b, const char *fmt, ...) __attribute__((format(printf,
 void lm_buf_str(LmBuf *b, const char *s);      /* JSON string with escapes */
 void lm_buf_free(LmBuf *b);
 
-/* Replies to lord-server. */
+/* Replies to lord-server. A failed result's payload and every error are code lines (../../errcode.h),
+ * never prose: the UI translates them (errors.media.*). Details go to the log (LM_LOG). */
 void lm_result(uint32_t id, int status, const char *payload, int fd);
 void lm_error(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 

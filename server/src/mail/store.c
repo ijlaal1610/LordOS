@@ -47,7 +47,7 @@ const char *special_of(const char *name, const char *flags) {
         { "Drafts", "drafts" }, { "Borradores", "drafts" }, { "Rascunhos", "drafts" },
         { "Trash", "trash" }, { "Deleted Items", "trash" }, { "Deleted Messages", "trash" }, { "Papelera", "trash" }, { "Lixeira", "trash" }, { "Bin", "trash" },
         { "Junk", "junk" }, { "Spam", "junk" }, { "Junk E-mail", "junk" }, { "Correo no deseado", "junk" },
-        { "Archive", "archive" }, { "Archivo", "archive" }, { "Arquivo", "archive" }, { "All Mail", "all" },
+        { "Archive", "archive" }, { "Archivo", "archive" }, { "Arquivo", "archive" }, { "All Mail", "all" }, /* i18n-ok: folder names servers use */
     };
     for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) if (!strcasecmp(base, names[i].n)) return names[i].sp;
     return "";

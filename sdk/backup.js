@@ -13,6 +13,7 @@
 import { createStore, useStore } from './store.js';
 import { notify } from './notify.js';
 import { t } from './i18n.js';
+import { errorText } from './errors.js';
 import { formatBytes } from './system.js';
 import { wm } from './windows.js';
 
@@ -32,7 +33,7 @@ function changed(prev, st) {
       notify({ app: 'backup', title: t('backup.notify.doneTitle'),
         body: t('backup.notify.doneBody', { count: st.last.files, size: formatBytes(st.last.bytes) }), actions: open, sound: false });
     } else if (st.last.ok === 0) {
-      notify({ app: 'backup', title: t('backup.notify.failTitle'), body: st.last.error || '', actions: open });
+      notify({ app: 'backup', title: t('backup.notify.failTitle'), body: errorText(st.last.error) || '', actions: open });
     }
     asked = false;
   }

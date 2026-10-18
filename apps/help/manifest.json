@@ -1,7 +1,7 @@
 {
   "id": "help",
-  "name": "Ayuda",
-  "description": "Ayuda y consejos de LordOS",
+  "name": "Help",
+  "description": "LordOS help and tips",
   "size": [
     860,
     600

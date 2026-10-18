@@ -1,21 +1,22 @@
-/* js_vault.c — lord.vault: Contraseñas y el llavero por el ayudante encerrado lord-vault (ver
- * src/vault/vclient.c y docs/CONTRASENAS.md).
+/* js_vault.c — lord.vault: Passwords and the keyring through the confined helper lord-vault (see
+ * src/vault/vclient.c and docs/PASSWORDS.md).
  *
  *   lord.vault.available()                     → bool
  *   lord.vault.request(json, { files })        → id; files: [{ path, mode: 'r' | 'w' }]
- *       'r' = archivo existente de la carpeta personal o un disco del usuario (realpath + raíces);
- *       'w' = archivo NUEVO (O_EXCL) en un destino válido de lord.fs. lord-server los abre y le
- *       pasa solo los fds a lord-vault, que no puede abrir rutas.
- *   lord.vault.poll()                          → texto JSON [{ id, kind: 'rep'|'evt', data }] o null
- *   lord.vault.pending()                       → pedidos sin respuesta
- *   lord.vault.lock(why)                       → cerrar la bóveda (pantalla, cambio de usuario)
- *   lord.vault.fidoDevices()                   → [{ path, name, vid, pid }] (sin abrirlas)
- *   lord.vault.fidoAttach(app)                 → { ok, name } — solo con el permiso usb de la app:
- *       lord-server abre /dev/hidrawN y le pasa el fd a lord-vault; la app nunca lo ve.
- *   lord.vault.promptDone(prompt, ok)          → respuesta al aviso de desbloqueo de Secret Service
- * Todo validado acá; nada de esto ejecuta programas ni abre rutas del llamador sin validarlas. */
+ *       'r' = an existing file in the home folder or on one of the user's disks (realpath + roots);
+ *       'w' = a NEW file (O_EXCL) in a valid lord.fs destination. lord-server opens them and
+ *       passes only the fds to lord-vault, which cannot open paths.
+ *   lord.vault.poll()                          → JSON text [{ id, kind: 'rep'|'evt', data }] or null
+ *   lord.vault.pending()                       → requests without a reply
+ *   lord.vault.lock(why)                       → lock the vault (screen lock, user switch)
+ *   lord.vault.fidoDevices()                   → [{ path, name, vid, pid }] (without opening them)
+ *   lord.vault.fidoAttach(app)                 → { ok, name } — only with the app's usb permission:
+ *       lord-server opens /dev/hidrawN and passes the fd to lord-vault; the app never sees it.
+ *   lord.vault.promptDone(prompt, ok)          → answer to Secret Service's unlock prompt
+ * Everything is validated here; none of this runs programs or opens caller paths without validating them. */
 #include "js_vault.h"
 #include "js_sys.h"
+#include "js_err.h"
 #include "../fsops.h"
 #include "../sec/perms.h"
 #include "../vault/vclient.h"
@@ -61,11 +62,11 @@ static JSValue f_available(JSContext *c, JSValueConst t, int argc, JSValueConst 
 
 static JSValue f_request(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (argc < 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(c, "vault.request(json)");
+    if (argc < 1 || !JS_IsString(argv[0])) return js_throw_code(c, "sys.badArgument", NULL);
     size_t len;
     const char *j = JS_ToCStringLen(c, &len, argv[0]);
     if (!j) return JS_EXCEPTION;
-    if (len > (32u << 20)) { JS_FreeCString(c, j); return JS_ThrowRangeError(c, "pedido muy grande"); }
+    if (len > (32u << 20)) { JS_FreeCString(c, j); return js_throw_code(c, "vault.requestTooLarge", NULL); }
     int fds[4], nf = 0;
     if (argc > 1 && JS_IsObject(argv[1])) {
         JSValue files = JS_GetPropertyStr(c, argv[1], "files");
@@ -88,7 +89,7 @@ static JSValue f_request(JSContext *c, JSValueConst t, int argc, JSValueConst *a
                     for (int k = 0; k < nf; k++) close(fds[k]);
                     JS_FreeValue(c, files);
                     JS_FreeCString(c, j);
-                    return JS_ThrowRangeError(c, err == EEXIST ? "ya existe un archivo con ese nombre" : "archivo inválido o fuera de la carpeta personal");
+                    return js_throw_code(c, err == EEXIST ? "fs.exists" : "fs.outsideHome", NULL);
                 }
                 fds[nf++] = fd;
             }
@@ -97,7 +98,7 @@ static JSValue f_request(JSContext *c, JSValueConst t, int argc, JSValueConst *a
     }
     int id = vc_request(j, len, fds, nf);
     JS_FreeCString(c, j);
-    if (id < 0) return JS_ThrowInternalError(c, "lord-vault no está disponible");
+    if (id < 0) return js_throw_code(c, "vault.unavailable", NULL);
     return JS_NewInt32(c, id);
 }
 
@@ -144,7 +145,7 @@ static JSValue f_fido_attach(JSContext *c, JSValueConst t, int argc, JSValueCons
     const char *app = argc > 0 && JS_IsString(argv[0]) ? JS_ToCString(c, argv[0]) : NULL;
     int ok = app && perm_get(app, PERM_USB) == PERM_ALLOW;
     if (app) JS_FreeCString(c, app);
-    if (!ok) return JS_ThrowTypeError(c, "permiso usb denegado");
+    if (!ok) return js_throw_code(c, "perm.usbDenied", NULL);
     char name[128] = "";
     int r = vc_fido_attach(name, sizeof name);
     JSValue o = JS_NewObject(c);
@@ -177,7 +178,7 @@ void js_vault_register(JSContext *c, JSValue lord) {
     JSValue o = JS_NewObject(c);
     JS_SetPropertyFunctionList(c, o, vault_funcs, sizeof vault_funcs / sizeof vault_funcs[0]);
     JS_SetPropertyStr(c, lord, "vault", o);
-    vc_start();               /* el llavero y Secret Service andan desde el comienzo de la sesión */
+    vc_start();               /* the keyring and Secret Service run from the start of the session */
 }
 
 /* ================= app mode =================
@@ -199,8 +200,8 @@ static JSValue fa_available(JSContext *c, JSValueConst t, int argc, JSValueConst
 
 static JSValue fa_request(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
-    if (app_fd < 0) return JS_ThrowInternalError(c, "lord-vault is not available");
-    if (argc < 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(c, "vault.request(json)");
+    if (app_fd < 0) return js_throw_code(c, "vault.unavailable", NULL);
+    if (argc < 1 || !JS_IsString(argv[0])) return js_throw_code(c, "sys.badArgument", NULL);
     size_t len;
     const char *j = JS_ToCStringLen(c, &len, argv[0]);
     if (!j) return JS_EXCEPTION;
@@ -227,7 +228,7 @@ static JSValue fa_request(JSContext *c, JSValueConst t, int argc, JSValueConst *
     int r = vw_send(app_fd, VW_REQ, id, j, len, fds, nf);
     JS_FreeCString(c, j);
     for (int i = 0; i < nf; i++) close(fds[i]);        /* the powerbox fds are spent */
-    if (r) return JS_ThrowInternalError(c, "lord-vault is not available");
+    if (r) return js_throw_code(c, "vault.unavailable", NULL);
     app_inflight++;
     return JS_NewInt32(c, (int32_t)id);
 }

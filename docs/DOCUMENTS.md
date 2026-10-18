@@ -295,7 +295,7 @@ lord-server (no Poppler or libarchive)
 
 The measurements show up in the session log:
 - `js: pdf: … first page in N ms (N pages)`;
-- `js: vista-rapida: …` (Quick Look; this Files log line is still in Spanish);
+- `js: quick-look: <kind> <name> in N ms` (Quick Look, from Files);
 - with the file `~/.cache/lordos/doc-trace` (or `LORD_DOC_TRACE=1`), `lord-doc: request N: queue X
   ms, helper Y ms` for each request.
 
@@ -305,7 +305,7 @@ The measurements show up in the session log:
 make -C server test        # includes build/arcpath-test, build/ipp-test and build/doc-test
 server/build/arcpath-test  # 37/37: names and link targets
 sh tests/doc_evil.sh       # 31/31 (in server/): malicious archives, formats, confinement and annotated copy
-server/build/doc-test server/build/lord-doc pdf archivo.pdf 900   # open, draw and measure
+server/build/doc-test server/build/lord-doc pdf file.pdf 900   # open, draw and measure
 ```
 
 ## Pending

@@ -1,4 +1,4 @@
-// kinds.js — tipo de cada archivo (por la extensión), su tipo MIME y si se puede previsualizar.
+// kinds.js — each file's kind (by extension), its MIME type and whether it can be previewed.
 
 const EXT = {
   image: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg', 'tif', 'tiff', 'heic', 'avif'],
@@ -16,7 +16,7 @@ const EXT = {
 const BY_EXT = new Map();
 for (const [kind, list] of Object.entries(EXT)) for (const e of list) BY_EXT.set(e, kind);
 
-// Nombres sin extensión que son texto (Makefile, README…).
+// Extensionless names that are text (Makefile, README…).
 const TEXT_NAMES = /^(makefile|dockerfile|readme|license|copying|authors|changelog|todo|news|install|\.bashrc|\.profile|\.zshrc|\.gitignore|\.editorconfig)$/i;
 
 export function extOf(name) {
@@ -31,7 +31,7 @@ export function kindOf(e) {
   return BY_EXT.get(ext) || (TEXT_NAMES.test(e.name) ? 'text' : 'other');
 }
 
-// Para «Abrir con» de las apps Linux (su MimeType en el .desktop).
+// For "Open With" of Linux apps (their MimeType in the .desktop file).
 const MIME = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp',
   txt: 'text/plain', md: 'text/markdown', log: 'text/plain', csv: 'text/csv', html: 'text/html', htm: 'text/html', css: 'text/css',
@@ -49,7 +49,7 @@ export function mimeOf(e) {
   return k === 'text' || k === 'code' ? 'text/plain' : 'application/octet-stream';
 }
 
-// ¿La app Linux (mimeTypes "a/b;c/*;…") abre este tipo?
+// Does the Linux app (mimeTypes "a/b;c/*;…") open this type?
 export function appOpens(mimeTypes, mime) {
   if (!mimeTypes) return false;
   const [top] = mime.split('/');
@@ -58,9 +58,9 @@ export function appOpens(mimeTypes, mime) {
 }
 
 export const isTextual = (e) => ['text', 'code'].includes(kindOf(e));
-export const isImage = (e) => kindOf(e) === 'image' && !/\.(svg|heic|avif|tiff?|webp)$/i.test(e.name);   // las que dibuja stb_image (las demás: miniatura de lord-media)
+export const isImage = (e) => kindOf(e) === 'image' && !/\.(svg|heic|avif|tiff?|webp)$/i.test(e.name);   // the ones stb_image draws (the rest: lord-media thumbnail)
 
-// Color de la banda de cada tipo en el ícono de documento.
+// Band color of each kind in the document icon.
 export const KIND_COLOR = {
   text: '#8e8e93', code: '#5e5ce6', pdf: '#ff3b30', archive: '#a2845e', audio: '#ff2d55', video: '#af52de',
   lpk: '#7d5bf0', deb: '#d70751', doc: '#0a84ff', image: '#30b0c7', other: '#8e8e93',

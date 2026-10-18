@@ -12,6 +12,7 @@
  * The time of the last good backup is the newest snapshot on the destination: there is no other
  * state file. The first scheduled backup waits 5 minutes after the session starts. */
 #include "backup.h"
+#include "../errcode.h"
 #include "engine.h"
 #include "crypt.h"
 #include "../fsops.h"
@@ -109,9 +110,9 @@ static int valid_dest(const char *in, char *real, size_t n, char *err, size_t en
     char r[PATH_MAX];
     struct stat st;
     if (!in[0]) { real[0] = 0; return 0; }
-    if (in[0] != '/' || !realpath(in, r) || stat(r, &st) || !S_ISDIR(st.st_mode)) { snprintf(err, en, "the destination does not exist"); return -1; }
-    if (!fsops_allowed(r) || fsops_protected(r)) { snprintf(err, en, "the destination must be in the home folder or on one of the user's disks"); return -1; }
-    if (access(r, W_OK)) { snprintf(err, en, "cannot write to the destination"); return -1; }
+    if (in[0] != '/' || !realpath(in, r) || stat(r, &st) || !S_ISDIR(st.st_mode)) { lerr_set(err, en, "backup.destMissing", NULL); return -1; }
+    if (!fsops_allowed(r) || fsops_protected(r)) { lerr_set(err, en, "backup.destOutside", NULL); return -1; }
+    if (access(r, W_OK)) { lerr_set(err, en, "backup.destUnwritable", NULL); return -1; }
     snprintf(real, n, "%s", r);
     return 0;
 }
@@ -122,14 +123,14 @@ static int parse_config(const char *text, size_t len, Config *c, char *err, size
     memset(c, 0, sizeof *c);
     c->interval = 3600;
     c->battery_pause = 1;
-    if (json_parse(text, len, &d, jerr, sizeof jerr)) { snprintf(err, en, "invalid configuration: %s", jerr); return -1; }
+    if (json_parse(text, len, &d, jerr, sizeof jerr)) { lerr_set(err, en, "backup.badConfig", NULL); return -1; }
     const JVal *o = d.root;
     int r = 0;
-    if (!o || o->type != J_OBJ) { snprintf(err, en, "invalid configuration"); r = -1; goto out; }
+    if (!o || o->type != J_OBJ) { lerr_set(err, en, "backup.badConfig", NULL); r = -1; goto out; }
     const char *dest = json_str(o, "dest");
     if (dest && strict && (strlen(dest) >= PATH_MAX || valid_dest(dest, c->dest, sizeof c->dest, err, en))) { r = -1; goto out; }
     if (dest && !strict) {
-        if (dest[0] != '/' || strlen(dest) >= sizeof c->dest || !bk_rel_valid(dest + 1)) { snprintf(err, en, "invalid destination"); r = -1; goto out; }
+        if (dest[0] != '/' || strlen(dest) >= sizeof c->dest || !bk_rel_valid(dest + 1)) { lerr_set(err, en, "backup.badDest", NULL); r = -1; goto out; }
         snprintf(c->dest, sizeof c->dest, "%s", dest);
     }
     const char *iv = json_str(o, "interval");
@@ -138,14 +139,14 @@ static int parse_config(const char *text, size_t len, Config *c, char *err, size
         else if (!strcmp(iv, "daily")) c->interval = 86400;
         else if (!strcmp(iv, "weekly")) c->interval = 7 * 86400;
         else if (!strcmp(iv, "manual")) c->interval = 0;
-        else { snprintf(err, en, "invalid schedule"); r = -1; goto out; }
+        else { lerr_set(err, en, "backup.badSchedule", NULL); r = -1; goto out; }
     }
     c->battery_pause = json_bool(o, "pauseOnBattery", 1);
     const JVal *ex = json_get(o, "exclude");
     if (ex && ex->type == J_ARR) {
         for (const JVal *e = ex->kid; e; e = e->next) {
-            if (e->type != J_STR || !e->len || e->len > 255 || !bk_rel_valid(e->str)) { snprintf(err, en, "invalid exclusion"); r = -1; goto out; }
-            if (c->nexcl >= BK_MAX_EXCL - 8) { snprintf(err, en, "too many exclusions"); r = -1; goto out; }
+            if (e->type != J_STR || !e->len || e->len > 255 || !bk_rel_valid(e->str)) { lerr_set(err, en, "backup.badExclusion", NULL); r = -1; goto out; }
+            if (c->nexcl >= BK_MAX_EXCL - 8) { lerr_set(err, en, "backup.tooManyExclusions", NULL); r = -1; goto out; }
             snprintf(c->excl[c->nexcl++], sizeof c->excl[0], "%s", e->str);
         }
     }
@@ -330,10 +331,10 @@ static void do_snapshot(void) {
         last_ok = time(NULL);
     } else if (r < 0) {
         last.ok = 0;
-        snprintf(last_error, sizeof last_error, "%s", run.error[0] ? run.error : "error");
+        snprintf(last_error, sizeof last_error, "%s", run.error[0] ? run.error : "sys.unknown");
     } else {
         last.ok = -1;                   /* interrupted: resumed next time */
-        snprintf(last_error, sizeof last_error, "interrupted");
+        snprintf(last_error, sizeof last_error, "backup.interrupted");
     }
     last.files = run.files;
     last.copied = run.copied;
@@ -362,12 +363,12 @@ static void do_restore(void) {
     int replace = rjob.replace;
     memset(&rres, 0, sizeof rres);
     snprintf(rres.id, sizeof rres.id, "%s", id);
-    if (machine_dir(&c, machine, sizeof machine)) { rres.done = 1; snprintf(rres.error, sizeof rres.error, "no-destination"); emit(); return; }
+    if (machine_dir(&c, machine, sizeof machine)) { rres.done = 1; snprintf(rres.error, sizeof rres.error, "backup.noDestination"); emit(); return; }
     state = S_RESTORING;
     cancel_flag = 0;
     emit();
     pthread_mutex_unlock(&mu);
-    if (dest_enc && !have_key) { state = S_IDLE; rres.done = 1; snprintf(rres.error, sizeof rres.error, "locked"); emit(); return; }
+    if (dest_enc && !have_key) { state = S_IDLE; rres.done = 1; snprintf(rres.error, sizeof rres.error, "backup.locked"); emit(); return; }
     BkRestore o = { .cancel = &cancel_flag, .key = dest_enc ? key : NULL };
     int r = bk_restore(machine, id, rel, to, replace, suffix, &o);
     pthread_mutex_lock(&mu);
@@ -379,7 +380,7 @@ static void do_restore(void) {
     rres.replaced = o.replaced;
     rres.skipped = o.skipped;
     rres.errors = o.errors;
-    snprintf(rres.error, sizeof rres.error, "%s", r > 0 ? "interrupted" : o.error);
+    snprintf(rres.error, sizeof rres.error, "%s", r > 0 ? "backup.interrupted" : o.error);
     fprintf(stderr, "backup: restored %s/%s: %llu files, %llu kept alongside, %llu replaced, %llu errors\n", id, rel,
             (unsigned long long)o.files, (unsigned long long)o.kept_both, (unsigned long long)o.replaced, (unsigned long long)o.errors);
     emit();
@@ -408,7 +409,7 @@ static void do_unlock(void) {
     bkc_wipe(ujob.pass, sizeof ujob.pass);
     ujob.pending = 0;
     memset(&ures, 0, sizeof ures);
-    if (machine_dir(&cfg, machine, sizeof machine)) { bkc_wipe(pass, sizeof pass); ures.done = 1; snprintf(ures.error, sizeof ures.error, "no-destination"); emit(); return; }
+    if (machine_dir(&cfg, machine, sizeof machine)) { bkc_wipe(pass, sizeof pass); ures.done = 1; snprintf(ures.error, sizeof ures.error, "backup.noDestination"); emit(); return; }
     State before = state;
     state = S_UNLOCKING;
     emit();
@@ -431,8 +432,8 @@ static void do_unlock(void) {
     ures.done = 1;
     ures.ok = r == 0;
     if (r == 0) { memcpy(key, k, sizeof key); have_key = 1; dest_enc = 1; }
-    else snprintf(ures.error, sizeof ures.error, "%s", r == -1 ? "wrong-passphrase" : r == -2 ? "not-encrypted" :
-                  r == -3 ? "plain-backups-exist" : "setup-failed");   /* codes: the UI translates them */
+    else snprintf(ures.error, sizeof ures.error, "%s", r == -1 ? "backup.wrongPassphrase" : r == -2 ? "backup.notEncrypted" :
+                  r == -3 ? "backup.plainBackupsExist" : "backup.setupFailed");   /* code lines: the UI translates them */
     bkc_wipe(k, sizeof k);
     state = before == S_UNLOCKING ? S_IDLE : before;
     if (state == S_LOCKED) state = S_IDLE;
@@ -590,11 +591,11 @@ char *backup_config_json(void) {
 }
 
 int backup_configure(const char *json, char *err, size_t n) {
-    if (!started) { snprintf(err, n, "backups are not running"); return -1; }
-    if (strlen(json) > 60000) { snprintf(err, n, "configuration too large"); return -1; }
+    if (!started) { lerr_set(err, n, "backup.notRunning", NULL); return -1; }
+    if (strlen(json) > 60000) { lerr_set(err, n, "backup.configTooLarge", NULL); return -1; }
     Config c;
     if (parse_config(json, strlen(json), &c, err, n, 1)) return -1;
-    if (save_config(&c)) { snprintf(err, n, "could not save the configuration"); return -1; }
+    if (save_config(&c)) { lerr_set(err, n, "backup.saveFailed", NULL); return -1; }
     pthread_mutex_lock(&mu);
     int changed_dest = strcmp(c.dest, cfg.dest) != 0;
     cfg = c;
@@ -612,11 +613,11 @@ int backup_configure(const char *json, char *err, size_t n) {
 }
 
 int backup_run_now(char *err, size_t n) {
-    if (!started) { snprintf(err, n, "backups are not running"); return -1; }
+    if (!started) { lerr_set(err, n, "backup.notRunning", NULL); return -1; }
     pthread_mutex_lock(&mu);
     int r = 0;
-    if (!cfg.dest[0]) { snprintf(err, n, "choose a destination first"); r = -1; }
-    else if (state == S_RUNNING || state == S_RESTORING) { snprintf(err, n, "a backup is already running"); r = -1; }
+    if (!cfg.dest[0]) { lerr_set(err, n, "backup.noDestination", NULL); r = -1; }
+    else if (state == S_RUNNING || state == S_RESTORING) { lerr_set(err, n, "backup.alreadyRunning", NULL); r = -1; }
     else { want_run = 1; user_pause = 0; if (state == S_NODEST) state = S_IDLE; last_try = 0; pthread_cond_broadcast(&cv); }
     pthread_mutex_unlock(&mu);
     return r;
@@ -682,13 +683,13 @@ static int ent_cmp(const void *a, const void *b) {
 
 char *backup_ls_json(const char *id, const char *rel, char *err, size_t en) {
     char snap[PATH_MAX], dir[PATH_MAX], real[PATH_MAX];
-    if (!bk_rel_valid(rel)) { snprintf(err, en, "invalid path"); return NULL; }
-    if (backup_snapshot_path(id, snap, sizeof snap)) { snprintf(err, en, "no such backup"); return NULL; }
-    if (pathf(dir, sizeof dir, "%s%s%s", snap, rel[0] ? "/" : "", rel)) { snprintf(err, en, "invalid path"); return NULL; }
+    if (!bk_rel_valid(rel)) { lerr_set(err, en, "backup.badPath", NULL); return NULL; }
+    if (backup_snapshot_path(id, snap, sizeof snap)) { lerr_set(err, en, "backup.noSuchBackup", NULL); return NULL; }
+    if (pathf(dir, sizeof dir, "%s%s%s", snap, rel[0] ? "/" : "", rel)) { lerr_set(err, en, "backup.badPath", NULL); return NULL; }
     size_t sl = strlen(snap);
-    if (!realpath(dir, real) || strncmp(real, snap, sl) || (real[sl] && real[sl] != '/')) { snprintf(err, en, "invalid path"); return NULL; }
+    if (!realpath(dir, real) || strncmp(real, snap, sl) || (real[sl] && real[sl] != '/')) { lerr_set(err, en, "backup.badPath", NULL); return NULL; }
     DIR *d = opendir(real);
-    if (!d) { snprintf(err, en, "cannot read"); return NULL; }
+    if (!d) { lerr_set(err, en, "backup.readFailed", NULL); return NULL; }
     pthread_mutex_lock(&mu);
     int enc = dest_enc;
     pthread_mutex_unlock(&mu);
@@ -730,17 +731,17 @@ char *backup_ls_json(const char *id, const char *rel, char *err, size_t en) {
 }
 
 int backup_restore(const char *id, const char *rel, int replace, const char *suffix, const char *to, char *err, size_t n) {
-    if (!started) { snprintf(err, n, "backups are not running"); return -1; }
-    if (!bk_id_valid(id) || !bk_rel_valid(rel) || strlen(rel) >= sizeof rjob.rel) { snprintf(err, n, "invalid path"); return -1; }
+    if (!started) { lerr_set(err, n, "backup.notRunning", NULL); return -1; }
+    if (!bk_id_valid(id) || !bk_rel_valid(rel) || strlen(rel) >= sizeof rjob.rel) { lerr_set(err, n, "backup.badPath", NULL); return -1; }
     size_t sl = strlen(suffix);
-    if (!sl || sl >= sizeof rjob.suffix || strchr(suffix, '/')) { snprintf(err, n, "invalid suffix"); return -1; }
+    if (!sl || sl >= sizeof rjob.suffix || strchr(suffix, '/')) { lerr_set(err, n, "backup.badSuffix", NULL); return -1; }
     char tr[PATH_MAX] = "";
     if (to && to[0]) {
-        if (!realpath(to, tr) || !fsops_allowed(tr) || fsops_protected(tr)) { snprintf(err, n, "destination not allowed"); return -1; }
+        if (!realpath(to, tr) || !fsops_allowed(tr) || fsops_protected(tr)) { lerr_set(err, n, "backup.destNotAllowed", NULL); return -1; }
     }
     pthread_mutex_lock(&mu);
     int r = 0;
-    if (state == S_RUNNING || state == S_RESTORING || state == S_DELETING || rjob.pending) { snprintf(err, n, "another task is running"); r = -1; }
+    if (state == S_RUNNING || state == S_RESTORING || state == S_DELETING || rjob.pending) { lerr_set(err, n, "backup.busy", NULL); r = -1; }
     else {
         snprintf(rjob.id, sizeof rjob.id, "%s", id);
         snprintf(rjob.rel, sizeof rjob.rel, "%s", rel);
@@ -756,24 +757,24 @@ int backup_restore(const char *id, const char *rel, int replace, const char *suf
 }
 
 int backup_delete(const char *id, char *err, size_t n) {
-    if (!started) { snprintf(err, n, "backups are not running"); return -1; }
-    if (!bk_id_valid(id)) { snprintf(err, n, "invalid backup"); return -1; }
+    if (!started) { lerr_set(err, n, "backup.notRunning", NULL); return -1; }
+    if (!bk_id_valid(id)) { lerr_set(err, n, "backup.badId", NULL); return -1; }
     pthread_mutex_lock(&mu);
     int r = 0;
-    if (state != S_IDLE && state != S_NODEST) { snprintf(err, n, "another task is running"); r = -1; }
+    if (state != S_IDLE && state != S_NODEST) { lerr_set(err, n, "backup.busy", NULL); r = -1; }
     else { snprintf(djob.id, sizeof djob.id, "%s", id); djob.pending = 1; pthread_cond_broadcast(&cv); }
     pthread_mutex_unlock(&mu);
     return r;
 }
 
 int backup_unlock(const char *pass, int create, char *err, size_t n) {
-    if (!started) { snprintf(err, n, "backups are not running"); return -1; }
+    if (!started) { lerr_set(err, n, "backup.notRunning", NULL); return -1; }
     size_t len = strlen(pass);
-    if (len < (create ? 8u : 1u) || len >= sizeof ujob.pass) { snprintf(err, n, create ? "the passphrase must have at least 8 characters" : "invalid passphrase"); return -1; }
+    if (len < (create ? 8u : 1u) || len >= sizeof ujob.pass) { lerr_set(err, n, create ? "backup.passphraseShort" : "backup.badPassphrase", NULL); return -1; }
     pthread_mutex_lock(&mu);
     int r = 0;
-    if (!cfg.dest[0]) { snprintf(err, n, "choose a destination first"); r = -1; }
-    else if (state == S_RUNNING || state == S_RESTORING || state == S_UNLOCKING || ujob.pending) { snprintf(err, n, "another task is running"); r = -1; }
+    if (!cfg.dest[0]) { lerr_set(err, n, "backup.noDestination", NULL); r = -1; }
+    else if (state == S_RUNNING || state == S_RESTORING || state == S_UNLOCKING || ujob.pending) { lerr_set(err, n, "backup.busy", NULL); r = -1; }
     else {
         snprintf(ujob.pass, sizeof ujob.pass, "%s", pass);
         ujob.create = create != 0;

@@ -113,7 +113,7 @@ export function AccountSetup({ onClose, kind: kind0 = 'mail' }) {
           <Segmented options={[['mail', t('mail.setup.kindMail')], ['dav', t('mail.setup.kindDav')]]} value={kind} onChange={setKind} />
           <Field label={t('mail.setup.name')}><TextInput value={name} onChange={setName} placeholder={kind === 'dav' ? t('mail.setup.davNamePh') : t('mail.setup.namePh')} autoFocus /></Field>
           {kind === 'mail' ? (
-            <Field label={t('mail.setup.email')}><TextInput value={email} onChange={setEmail} placeholder="nombre@example.com" onSubmit={next} /></Field>
+            <Field label={t('mail.setup.email')}><TextInput value={email} onChange={setEmail} placeholder={t('mail.setup.emailPh')} onSubmit={next} /></Field>
           ) : (
             <>
               <Field label={t('mail.setup.url')}><TextInput value={dav.url} onChange={(url) => setDav({ ...dav, url })} placeholder="https://cloud.example.com/remote.php/dav" /></Field>

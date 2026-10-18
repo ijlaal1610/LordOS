@@ -15,6 +15,7 @@
 #include "pkg/resolve.h"
 #include "pkg/status.h"
 #include "pkg/xz.h"
+#include "errcode.h"
 
 #include <pwd.h>
 #include <stdarg.h>
@@ -261,7 +262,7 @@ static void test_resolver(const char *dir) {
     o = (PlanOpts){ 0 };
     const char *rm[] = { "libfoo" };
     plan_make(&x, &st, NULL, 0, rm, 1, &o, &p);
-    CHECK(!p.ok && strstr(p.err, "también hay que quitar") && has(&p, PA_REMOVE, "oldtool") && has(&p, PA_REMOVE, "user"), "cascade asks for confirmation: %s", p.err);
+    CHECK(!p.ok && lerr_has(p.err, "pkg.removeAlso") && has(&p, PA_REMOVE, "oldtool") && has(&p, PA_REMOVE, "user"), "cascade asks for confirmation: %s", p.err);
     plan_free(&p);
     o.cascade = 1;
     plan_make(&x, &st, NULL, 0, rm, 1, &o, &p);
@@ -269,7 +270,7 @@ static void test_resolver(const char *dir) {
     plan_free(&p);
     const char *ess[] = { "dpkg" };
     plan_make(&x, &st, NULL, 0, ess, 1, &o, &p);
-    CHECK(!p.ok && strstr(p.err, "esencial"), "dpkg is not removed: %s", p.err);
+    CHECK(!p.ok && lerr_has(p.err, "pkg.removeEssential"), "dpkg is not removed: %s", p.err);
     plan_free(&p);
     /* two MTAs: installing mta-a removes mta-b (with confirmation) */
     o = (PlanOpts){ 0 };
@@ -279,19 +280,19 @@ static void test_resolver(const char *dir) {
     plan_free(&p);
     o.allow_remove = 1;
     plan_make(&x, &st, mta, 1, NULL, 0, &o, &p);
-    CHECK(p.ok && has(&p, PA_REMOVE, "mta-b") && has(&p, PA_INSTALL, "mta-a"), "mta-a reemplaza a mta-b: %s", p.err);
+    CHECK(p.ok && has(&p, PA_REMOVE, "mta-b") && has(&p, PA_INSTALL, "mta-a"), "mta-a replaces mta-b: %s", p.err);
     plan_free(&p);
     /* virtual with several providers */
     const char *wb[] = { "web-browser" };
     plan_make(&x, &st, wb, 1, NULL, 0, &o, &p);
-    CHECK(!p.ok && strstr(p.err, "virtual"), "virtual: %s", p.err);
+    CHECK(!p.ok && lerr_has(p.err, "pkg.virtual"), "virtual: %s", p.err);
     plan_free(&p);
     /* orphans: libdep, libdeep and librec are automatic dependencies of user2; libold is used by
      * nobody; libmanual is not automatic */
     static const char *const autos[] = { "libdep", "libdeep", "librec", "libold" };
     o = (PlanOpts){ .orphans = 1, .autos = autos, .nautos = 4 };
     plan_make(&x, &st, NULL, 0, NULL, 0, &o, &p);
-    CHECK(p.ok && p.n == 1 && has(&p, PA_REMOVE, "libold") && !strcmp(p.items[0].reason, "auto") && p.items[0].orphan, "autoremove: only libold (%d)", p.n);
+    CHECK(p.ok && p.n == 1 && has(&p, PA_REMOVE, "libold") && !strcmp(p.items[0].reason, "pkg.why.auto") && p.items[0].orphan, "autoremove: only libold (%d)", p.n);
     plan_free(&p);
     const char *u2[] = { "user2" };
     plan_make(&x, &st, NULL, 0, u2, 1, &o, &p);
@@ -330,7 +331,7 @@ static int cmd_plan(int argc, char **argv) {
     }
     Plan p;
     plan_make(&x, &st, ins, ni, rem, nr, &o, &p);
-    printf("ok=%d %s · bajar %llu bytes · %lld KB\n", p.ok, p.err, (unsigned long long)p.download, (long long)p.isize_delta);
+    printf("ok=%d %s · download %llu bytes · %lld KB\n", p.ok, p.err, (unsigned long long)p.download, (long long)p.isize_delta);
     for (int i = 0; i < p.n; i++)
         printf("  %-7s %s %s%s%s (%s)\n", p.items[i].action == PA_INSTALL ? "install" : p.items[i].action == PA_UPGRADE ? "upgrade" : "remove",
                p.items[i].name, p.items[i].old_version ? p.items[i].old_version : "", p.items[i].old_version ? " -> " : "", p.items[i].version, p.items[i].reason);
