@@ -105,6 +105,7 @@ PY
 fi
 # Firefox ESR: same (the user changes it in Customize Toolbar > Title Bar)
 install -D -m 644 tools/iso/rootfs/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf "$CH/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf"
+install -D -m 644 tools/iso/rootfs/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf "$CH/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf"
 install -d "$CH/etc/firefox-esr"
 printf '%s\n' '// LordOS: Firefox windows use the system frame (the theme frame); change it in' \
   '// Customize Toolbar > Title Bar, or in about:config.' \

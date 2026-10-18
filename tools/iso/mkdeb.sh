@@ -71,6 +71,7 @@ install -m 644 assets/app-host.bundle.js "$L/assets/app-host.bundle.js"
 [ -d assets/sysapps ] && cp -r assets/sysapps "$L/assets/"
 install -m 755 tools/iso/rootfs/usr/lib/lordos/lordos-live-prep "$L/lordos-live-prep"
 install -D -m 644 tools/iso/rootfs/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf "$PKG/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf"
+install -D -m 644 tools/iso/rootfs/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf "$PKG/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf"
 install -m 644 tools/iso/rootfs/etc/systemd/system/lordos.service "$PKG/usr/lib/systemd/system/lordos.service"
 # boot splash (docs/brand/README.md, "Boot splash"): the Plymouth theme and the hand-off to LordOS
 install -m 755 tools/boot/lordos-splash "$L/lordos-splash"
