@@ -12,12 +12,16 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sched.h>
+#include <signal.h>
+#include <sys/mount.h>
 #include <sys/prctl.h>
+#include <sys/wait.h>
 #include <sys/syscall.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -182,6 +186,10 @@ int sandbox_apply_files(const SandboxFilesCfg *cfg) {
     struct landlock_ruleset_attr attr;
     memset(&attr, 0, sizeof attr);
     attr.handled_access_fs = handled;
+#ifdef LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET
+    /* abstract unix sockets of programs outside the app (ABI 6): refused too */
+    if (abi >= 6) attr.scoped = LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET;
+#endif
     int rs = ll_create(&attr, sizeof attr);
     if (rs < 0) return -1;
     /* not "/run" or "/var" as a whole: /run/media/<user> and /var/mail are the user's */
@@ -211,6 +219,140 @@ int sandbox_apply_files(const SandboxFilesCfg *cfg) {
     (void)cfg;
     return -1;
 #endif
+}
+
+/* ---- the app's own view: user + mount + PID namespace (sandbox.h) ---- */
+
+#ifndef OPEN_TREE_CLONE
+#define OPEN_TREE_CLONE 1
+#endif
+#ifndef MOVE_MOUNT_F_EMPTY_PATH
+#define MOVE_MOUNT_F_EMPTY_PATH 0x00000004
+#endif
+
+static int write_file(const char *path, const char *text) {
+    int fd = open(path, O_WRONLY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    size_t n = strlen(text);
+    int r = write(fd, text, n) == (ssize_t)n ? 0 : -1;
+    close(fd);
+    return r;
+}
+
+/* mkdir -p of the parents of path (inside a tmpfs we just mounted) */
+static void mk_parents(const char *path) {
+    char p[PATH_MAX];
+    snprintf(p, sizeof p, "%s", path);
+    for (char *q = p + 1; *q; q++) {
+        if (*q != '/') continue;
+        *q = 0;
+        mkdir(p, 0700);
+        *q = '/';
+    }
+}
+
+/* Binds an open_tree clone on path: creates an empty dir or file of the same kind first. */
+static int bind_clone(int tree, const char *path, int is_dir) {
+    mk_parents(path);
+    if (is_dir) mkdir(path, 0700);
+    else { int fd = open(path, O_WRONLY | O_CREAT | O_CLOEXEC, 0600); if (fd >= 0) close(fd); }
+    return (int)syscall(SYS_move_mount, tree, "", AT_FDCWD, path, MOVE_MOUNT_F_EMPTY_PATH);
+}
+
+static int is_under(const char *path, const char *dir) {
+    size_t n = strlen(dir);
+    return !strncmp(path, dir, n) && (path[n] == '/' || !path[n]);
+}
+
+int sandbox_files_isolate(const SandboxFilesCfg *cfg) {
+    if (!cfg->home || cfg->home[0] != '/' || !strcmp(cfg->home, "/")) return -1;
+    char map[64];
+    unsigned uid = (unsigned)getuid(), gid = (unsigned)getgid();
+    if (unshare(CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID)) return -1;
+    if (write_file("/proc/self/setgroups", "deny")) return -1;
+    snprintf(map, sizeof map, "%u %u 1", uid, uid);
+    if (write_file("/proc/self/uid_map", map)) return -1;
+    snprintf(map, sizeof map, "%u %u 1", gid, gid);
+    if (write_file("/proc/self/gid_map", map)) return -1;
+    if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL)) return -1;
+
+    /* the PID namespace starts with the next child: it is PID 1 */
+    int sync[2];
+    if (pipe2(sync, O_CLOEXEC)) return -1;
+    pid_t init = fork();
+    if (init < 0) return -1;
+    if (init > 0) {
+        /* tell the caller (through the exit status of nothing: we're an orphan) — wait until PID 1
+         * says whether the view could be built, so a failure is logged before we go */
+        char ok = 0;
+        close(sync[1]);
+        if (read(sync[0], &ok, 1) != 1) ok = 0;
+        if (!ok) { static const char m[] = "sandbox: could not build the app's view (namespaces); not launched\n"; if (write(2, m, sizeof m - 1) < 0) {} }
+        _exit(0);
+    }
+    close(sync[0]);
+
+    /* PID 1: clones of everything that stays visible, taken before the tmpfs hide the originals */
+    struct { int fd, dir; const char *path; int ro; } keep[2 * SANDBOX_FILES_MAX + 10];
+    int nk = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        const char *const *list = pass ? cfg->ro : cfg->rw;
+        for (int i = 0; i < SANDBOX_FILES_MAX && list[i]; i++) {
+            if (!is_under(list[i], cfg->home) || !strcmp(list[i], cfg->home)) continue;   /* outside home: Landlock alone */
+            struct stat st;
+            if (lstat(list[i], &st) || !(S_ISDIR(st.st_mode) || S_ISREG(st.st_mode))) continue;
+            int t = (int)syscall(SYS_open_tree, AT_FDCWD, list[i], OPEN_TREE_CLONE | O_CLOEXEC);
+            if (t < 0) continue;
+            keep[nk].fd = t; keep[nk].dir = S_ISDIR(st.st_mode); keep[nk].path = list[i]; keep[nk].ro = pass; nk++;
+        }
+    }
+    char sockpath[8][PATH_MAX];
+    int nsock = 0;
+    for (int i = 0; cfg->runtime_dir && i < 8 && cfg->sockets[i]; i++) {
+        snprintf(sockpath[nsock], PATH_MAX, "%s/%s", cfg->runtime_dir, cfg->sockets[i]);
+        struct stat st;
+        if (lstat(sockpath[nsock], &st) || !S_ISSOCK(st.st_mode)) continue;
+        int t = (int)syscall(SYS_open_tree, AT_FDCWD, sockpath[nsock], OPEN_TREE_CLONE | O_CLOEXEC);
+        if (t < 0) continue;
+        keep[nk].fd = t; keep[nk].dir = 0; keep[nk].path = sockpath[nsock]; keep[nk].ro = 0; nk++;
+        nsock++;
+    }
+    int bad = 0;
+    const char *opts = "mode=0700,size=64m";
+    bad |= mount("tmpfs", cfg->home, "tmpfs", MS_NOSUID | MS_NODEV, opts);
+    if (cfg->runtime_dir) bad |= mount("tmpfs", cfg->runtime_dir, "tmpfs", MS_NOSUID | MS_NODEV, "mode=0700,size=8m");
+    bad |= mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV, "mode=1777");
+    struct stat vt;
+    if (!stat("/var/tmp", &vt)) bad |= mount("tmpfs", "/var/tmp", "tmpfs", MS_NOSUID | MS_NODEV, "mode=1777");
+    bad |= mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL);
+    for (int i = 0; i < nk && !bad; i++) {
+        if (bind_clone(keep[i].fd, keep[i].path, keep[i].dir)) { bad = 1; break; }
+        if (keep[i].ro) mount(NULL, keep[i].path, NULL, MS_REMOUNT | MS_BIND | MS_RDONLY | MS_NOSUID | MS_NODEV, NULL);
+    }
+    for (int i = 0; i < nk; i++) close(keep[i].fd);
+    char ok = !bad;
+    if (write(sync[1], &ok, 1) < 0) {}
+    close(sync[1]);
+    if (bad) _exit(1);
+
+    pid_t app = fork();
+    if (app < 0) _exit(1);
+    if (app == 0) { prctl(PR_SET_PDEATHSIG, SIGKILL); return 0; }   /* the app: Landlock, then execve */
+    /* PID 1 only reaps; it leaves with the app's status. SIGTERM/SIGINT/SIGHUP go to the app. */
+    sigset_t all;
+    sigfillset(&all);
+    sigprocmask(SIG_BLOCK, &all, NULL);
+    for (;;) {
+        struct timespec tick = { 1, 0 };
+        siginfo_t si;
+        int sig = sigtimedwait(&all, &si, &tick);
+        if (sig == SIGTERM || sig == SIGINT || sig == SIGHUP) kill(app, sig);
+        int st;
+        pid_t w;
+        while ((w = waitpid(-1, &st, WNOHANG)) > 0)
+            if (w == app) _exit(WIFEXITED(st) ? WEXITSTATUS(st) : 128 + (WIFSIGNALED(st) ? WTERMSIG(st) : 0));
+        if (w < 0 && errno == ECHILD) _exit(0);
+    }
 }
 
 /* ---- seccomp-bpf: allowlist ---- */

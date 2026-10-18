@@ -403,6 +403,7 @@ static void open_log(void) {
 
 typedef struct {
     SandboxFilesCfg cfg;
+    char home[PATH_MAX], runtime[PATH_MAX], wayland[64];
     char buf[2 * SANDBOX_FILES_MAX][PATH_MAX];
     int nbuf, nrw, nro;
 } FilesPlan;
@@ -425,96 +426,85 @@ static void plan_add(FilesPlan *p, int rw, const char *fmt, const char *a, const
     list[*n] = NULL;
 }
 
-/* A name that may become a folder of its own under ~/.config, ~/.cache or ~/.local/share:
- * plain characters, not hidden, and never one of the folders that hold the user's secrets or
- * LordOS's own decisions. */
-static int dir_name_ok(const char *c) {
-    static const char *const deny[] = { "lordos", "ssh", "gnupg", "local", "config", "cache", "pki", "password-store",
-                                        "thumbnails", "autostart", "systemd", "environment.d", "dconf", "keyrings", NULL };
-    size_t n = strlen(c);
-    if (!n || n > 100 || c[0] == '.' || c[0] == '-') return 0;
-    for (const char *q = c; *q; q++) if (!isalnum((unsigned char)*q) && !strchr("._-+", *q)) return 0;
-    for (int i = 0; deny[i]; i++) if (!strcasecmp(c, deny[i])) return 0;
+/* The canonical desktop id as a folder name under ~/.config, ~/.cache and ~/.local/share: only
+ * if it can't name a folder that belongs to someone else's startup, keys or settings. The id is
+ * the only name used: Exec, StartupWMClass and Name are free text of the .desktop file. */
+static int own_dir_ok(const char *id) {
+    static const char *const deny[] = { "lordos", "ssh", "gnupg", "autostart", "applications", "systemd", "environment.d",
+                                        "keyrings", "dconf", "git", "trash", "mime", "fontconfig", "pulse", "pipewire",
+                                        "wireplumber", "user-dirs.dirs", "mimeapps.list", "gtk-3.0", "gtk-4.0", "fish",
+                                        "bash", "zsh", "nvim", "vim", "emacs", "nano", "mc", "flatpak", "containers",
+                                        "thumbnails", "recently-used.xbel", "icons", "themes", "fonts", NULL };
+    size_t n = strlen(id);
+    if (!n || n > 100 || id[0] == '.' || id[0] == '-') return 0;
+    for (const char *q = id; *q; q++) if (!isalnum((unsigned char)*q) && !strchr("._-+", *q)) return 0;
+    if (!strncasecmp(id, "lordos", 6)) return 0;
+    for (int i = 0; deny[i]; i++) if (!strcasecmp(id, deny[i])) return 0;
     return 1;
 }
 
-/* The app's own names: its .desktop id, the last part of a reverse-DNS id, the program and its
- * window class, as written and in lowercase. */
-static int app_names(const DesktopApp *a, char out[][160], int max) {
-    char tmp[6][160];
-    int nt = 0;
-    snprintf(tmp[nt++], 160, "%.159s", a->id);
-    const char *dot = strrchr(a->id, '.');
-    if (dot && dot[1]) snprintf(tmp[nt++], 160, "%.159s", dot + 1);
-    if (a->bin[0]) snprintf(tmp[nt++], 160, "%.159s", a->bin);
-    static const char *const suffixes[] = { "-esr", "-stable", "-bin", NULL };
-    for (int i = 0; suffixes[i] && a->bin[0]; i++) {
-        size_t bl = strlen(a->bin), sl = strlen(suffixes[i]);
-        if (bl > sl && !strcmp(a->bin + bl - sl, suffixes[i])) { snprintf(tmp[nt++], 160, "%.*s", (int)(bl - sl), a->bin); break; }
-    }
-    if (a->wmclass[0]) snprintf(tmp[nt++], 160, "%.159s", a->wmclass);
-    int n = 0;
-    for (int i = 0; i < nt; i++)
-        for (int lower = 0; lower < 2; lower++) {
-            char c[160];
-            memcpy(c, tmp[i], sizeof c);
-            c[sizeof c - 1] = 0;
-            if (lower) for (char *q = c; *q; q++) *q = (char)tolower((unsigned char)*q);
-            if (!dir_name_ok(c)) continue;
-            int dup = 0;
-            for (int k = 0; k < n; k++) dup |= !strcmp(out[k], c);
-            if (!dup && n < max) memcpy(out[n++], c, sizeof c);
-        }
-    return n;
+/* A writable grant must never land on a folder the system reads to start or install something,
+ * or that holds a security decision (fsops_protected), nor on the shell's startup files. */
+static int grant_ok(const char *path) {
+    if (fsops_protected(path)) return 0;
+    const char *base = strrchr(path, '/');
+    base = base ? base + 1 : path;
+    static const char *const startup[] = { ".bashrc", ".bash_profile", ".bash_login", ".profile", ".zshrc", ".zprofile",
+                                           ".zshenv", ".zlogin", ".xprofile", ".xsession", ".xsessionrc", ".pam_environment",
+                                           ".gitconfig", ".ssh", ".gnupg", NULL };
+    for (int i = 0; startup[i]; i++) if (!strcmp(base, startup[i])) return 0;
+    return 1;
 }
 
 static int is_dir(const char *p) { struct stat st; return !lstat(p, &st) && S_ISDIR(st.st_mode); }
 
 /* What a restricted app may touch (see sandbox.h). file: the realpath it was opened with, or NULL. */
 static FilesPlan *files_plan(const DesktopApp *a, const char *file) {
-    const char *home = getenv("HOME");
-    if (!home || home[0] != '/') return NULL;
+    const char *h = getenv("HOME");
     FilesPlan *p = calloc(1, sizeof *p);
     if (!p) return NULL;
-    p->cfg.runtime_dir = getenv("XDG_RUNTIME_DIR");
-    char names[12][160];
-    int nn = app_names(a, names, 12), have_config = 0;
+    if (!h || !realpath(h, p->home) || p->home[0] != '/' || !strcmp(p->home, "/")) { free(p); return NULL; }
+    const char *home = p->home;
+    p->cfg.home = home;
+    const char *rt = getenv("XDG_RUNTIME_DIR");
+    if (rt && rt[0] == '/' && realpath(rt, p->runtime)) p->cfg.runtime_dir = p->runtime;
+    /* the only sockets of the session it keeps: the display and the sound server's normal ones
+     * (never pipewire-0-manager, the bus, systemd's, agents' or LordOS's own) */
+    const char *wd = getenv("WAYLAND_DISPLAY");
+    int ns = 0;
+    if (wd && wd[0] && !strchr(wd, '/') && strlen(wd) < sizeof p->wayland) { snprintf(p->wayland, sizeof p->wayland, "%s", wd); p->cfg.sockets[ns++] = p->wayland; }
+    else p->cfg.sockets[ns++] = "wayland-0";
+    p->cfg.sockets[ns++] = "pipewire-0";
+    p->cfg.sockets[ns++] = "pulse/native";
+    p->cfg.sockets[ns] = NULL;
     char path[PATH_MAX];
-    for (int i = 0; i < nn; i++) {
-        static const char *const own[] = { "%s/.config/%s", "%s/.local/share/%s", "%s/.local/state/%s", "%s/.cache/%s", "%s/.%s", NULL };
+    /* its own folders, named exactly after its canonical id, created if missing */
+    if (own_dir_ok(a->id)) {
+        static const char *const own[] = { "%s/.config/%s", "%s/.cache/%s", "%s/.local/share/%s", "%s/.local/state/%s", NULL };
+        static const char *const parents[] = { "%s/.config", "%s/.cache", "%s/.local", "%s/.local/share", "%s/.local/state", NULL };
+        for (int k = 0; parents[k]; k++) { snprintf(path, sizeof path, parents[k], home); mkdir(path, 0700); }
         for (int k = 0; own[k]; k++) {
-            snprintf(path, sizeof path, own[k], home, names[i]);
-            if (!is_dir(path)) continue;               /* only what exists (no symlinks out of the home) */
-            plan_add(p, 1, "%s%s", path, "");
-            if (k == 0 || k == 4) have_config = 1;
+            snprintf(path, sizeof path, own[k], home, a->id);
+            mkdir(path, 0700);
+            if (is_dir(path) && grant_ok(path)) plan_add(p, 1, "%s%s", path, "");
         }
     }
-    /* programs whose data folder isn't named after them (program name prefix → folder in the
-     * home and in ~/.cache); created if missing, like the app would */
-    static const struct { const char *prog, *dir; } alias[] = { { "firefox", "mozilla" }, { "librewolf", "librewolf" },
-                                                               { "icecat", "mozilla" }, { NULL, NULL } };
-    for (int k = 0; alias[k].prog && a->bin[0]; k++) {
-        if (strncmp(a->bin, alias[k].prog, strlen(alias[k].prog))) continue;
-        snprintf(path, sizeof path, "%s/.%s", home, alias[k].dir);
-        mkdir(path, 0700);
-        if (is_dir(path)) { plan_add(p, 1, "%s%s", path, ""); have_config = 1; }
-        snprintf(path, sizeof path, "%s/.cache/%s", home, alias[k].dir);
-        mkdir(path, 0700);
-        if (is_dir(path)) plan_add(p, 1, "%s%s", path, "");
-    }
-    /* none yet: its folders under the program's name, so it can save its settings */
-    if (!have_config && a->bin[0] && dir_name_ok(a->bin)) {
-        static const char *const make[] = { "%s/.config", "%s/.config/%s", "%s/.local", "%s/.local/share", "%s/.local/share/%s",
-                                            "%s/.cache", "%s/.cache/%s", NULL };
-        for (int k = 0; make[k]; k++) { snprintf(path, sizeof path, make[k], home, a->bin); mkdir(path, 0700); }
-        plan_add(p, 1, "%s/.config/%s", home, a->bin);
-        plan_add(p, 1, "%s/.local/share/%s", home, a->bin);
-        plan_add(p, 1, "%s/.cache/%s", home, a->bin);
+    /* apps whose data folder isn't named after their id: a fixed table (canonical id → folder in
+     * the home and in ~/.cache), never names taken from the .desktop file */
+    static const struct { const char *id, *dir; } alias[] = { { "firefox-esr", "mozilla" }, { "firefox", "mozilla" }, { NULL, NULL } };
+    for (int k = 0; alias[k].id; k++) {
+        if (strcmp(a->id, alias[k].id)) continue;
+        static const char *const where[] = { "%s/.%s", "%s/.cache/%s", NULL };
+        for (int w = 0; where[w]; w++) {
+            snprintf(path, sizeof path, where[w], home, alias[k].dir);
+            mkdir(path, 0700);
+            if (is_dir(path) && grant_ok(path)) plan_add(p, 1, "%s%s", path, "");
+        }
     }
     /* caches shared by every app that hold nothing of the user's (not all of ~/.cache: its
      * thumbnails are pictures of the user's documents) */
     static const char *const caches[] = { "fontconfig", "mesa_shader_cache", "mesa_shader_cache_db", "radv_builtin_shaders",
-                                          "gstreamer-1.0", "ibus", "at-spi", NULL };
+                                          "gstreamer-1.0", NULL };
     for (int k = 0; caches[k]; k++) plan_add(p, 1, "%s/.cache/%s", home, caches[k]);
     /* the desktop's look and settings, read only */
     static const char *const look[] = { ".config/gtk-3.0", ".config/gtk-4.0", ".config/fontconfig", ".config/dconf",
@@ -523,8 +513,8 @@ static FilesPlan *files_plan(const DesktopApp *a, const char *file) {
                                         ".config/pulse", ".local/share/fonts", ".local/share/icons", ".local/share/themes",
                                         ".local/share/mime", ".local/share/applications", ".fonts", ".icons", ".themes", NULL };
     for (int k = 0; look[k]; k++) plan_add(p, 0, "%s/%s", home, look[k]);
-    /* "Open with": that file or folder only */
-    if (file) plan_add(p, 1, "%s%s", file, "");
+    /* "Open with": that file or folder only (read only if it is one of the protected ones) */
+    if (file) plan_add(p, grant_ok(file), "%s%s", file, "");
     return p;
 }
 
@@ -594,8 +584,9 @@ static int launch(const char *id, const char *file) {
         const char *home = getenv("HOME");
         if (!cwd[0] || chdir(cwd)) { if (home && chdir(home)) {} }
         app_scope_enter(id);        /* its own app-lordos-<id>.scope cgroup (the monitor attributes it) */
-        if (plan && sandbox_apply_files(&plan->cfg)) {
-            static const char msg[] = "apps: could not apply the no-files restriction (Landlock): not launched\n";
+        /* its own view (namespaces: no session sockets, only its folders), then Landlock */
+        if (plan && (sandbox_files_isolate(&plan->cfg) || sandbox_apply_files(&plan->cfg))) {
+            static const char msg[] = "apps: could not apply the no-files restriction: not launched\n";
             if (write(2, msg, sizeof msg - 1) < 0) {}
             _exit(126);
         }

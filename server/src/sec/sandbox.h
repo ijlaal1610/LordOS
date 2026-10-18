@@ -84,10 +84,28 @@ int sandbox_apply_helper(const SandboxHelperCfg *cfg);
  * the caller decides). */
 #define SANDBOX_FILES_MAX 48
 typedef struct {
+    const char *home;
     const char *runtime_dir;
     const char *rw[SANDBOX_FILES_MAX + 1];     /* NULL-terminated */
     const char *ro[SANDBOX_FILES_MAX + 1];
+    const char *sockets[8];                    /* names inside runtime_dir kept visible (wayland-0...), NULL-terminated */
 } SandboxFilesCfg;
+
+/* Before sandbox_apply_files: the app's own view of the system, so no unix socket of the session
+ * can be reached (Landlock in kernel 6.12 doesn't cover connect() on unix sockets, and the session
+ * bus or a terminal multiplexer would run anything outside the restriction). In a new user, mount
+ * and PID namespace (unprivileged; uid and gid map to themselves):
+ *   - the home folder is an empty tmpfs with only rw[] and ro[] bound into it (ro[] read-only);
+ *   - the runtime dir is an empty tmpfs with only sockets[] bound into it: no session bus, no
+ *     systemd user manager, no agents, no LordOS sockets;
+ *   - /tmp and /var/tmp are private tmpfs (no other program's sockets);
+ *   - /proc is a new procfs of the new PID namespace (no /proc/<pid>/root of the session's
+ *     processes back into the real one).
+ * The calling process forks: the parent _exits (the caller already is an orphan), the child is
+ * PID 1 of the new namespace and only reaps; its child returns 0 and goes on to Landlock and
+ * execve. -1 (and nothing launched) if the kernel refuses any step: the caller doesn't start the
+ * app. Doesn't allocate. */
+int sandbox_files_isolate(const SandboxFilesCfg *cfg);
 int sandbox_apply_files(const SandboxFilesCfg *cfg);
 /* Landlock ABI of the running kernel (0 = none). */
 int sandbox_landlock_abi(void);
