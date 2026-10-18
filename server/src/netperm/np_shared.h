@@ -17,6 +17,9 @@
  *   np_events  RINGBUF                              NpEvent towards lord-netperm
  *   np_snd     HASH   ALSA minor (u32) → u32           every ALSA node in /sys/class/sound: NP_SND_CAPTURE for the
  *                                                     capture PCMs (/dev/snd/pcmC*D*c), NP_SND_OTHER for the rest
+ *   np_sndsvc  HASH   tgid (u32) → cgroup id (u64)     each session user's real PipeWire and WirePlumber: the one process in
+ *                                                     user@<uid>/session.slice/{pipewire,wireplumber}.service, which the user@
+ *                                                     union's no-mic leaves the capture nodes to
  *
  * Besides the network, the same per-app policy carries the device restrictions (docs/FIREWALL.md,
  * "Linux apps"): "no camera", "no USB" and "no screen capture" (/dev/fb*) (cgroup/dev, by device

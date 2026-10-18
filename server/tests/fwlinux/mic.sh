@@ -157,11 +157,29 @@ if command -v systemd-run >/dev/null && [ -d "$UM" ]; then
     done
     for d in session.slice/pipewire.service session.slice/wireplumber.service session.slice ""; do rmdir "$UM/fwfake.scope/$d" 2>/dev/null; done
     rm -f "$f"
+    CAPN=$(ls /dev/snd/pcmC*D*c 2>/dev/null | head -1)
+    if [ -n "$CAPN" ] && [ -S /run/lordos/netperm.sock ]; then
+        got=$(timeout 10 systemd-run --user --pipe --quiet python3 -c 'import os,sys,errno
+try: os.close(os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK)); print("ok")
+except OSError as e: print(errno.errorcode.get(e.errno))' "$CAPN" 2>&1 | tail -1)
+        [ "$got" = EPERM ] && ok "escaped with systemd-run --user, open $CAPN → EPERM" || bad "escaped open of $CAPN → $got"
+        got=$(timeout 10 systemd-run --user --scope -q bash -c 'P=$1/user@$2.service/session.slice/pipewire.service; echo $$ > $P/cgroup.procs 2>/dev/null; exec python3 -c "import os,sys,errno
+try: os.close(os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK)); print(\"ok\")
+except OSError as e: print(errno.errorcode.get(e.errno))" "$3"' _ /sys/fs/cgroup/user.slice/user-$U.slice "$U" "$CAPN" 2>&1 | tail -1)
+        [ "$got" = EPERM ] && ok "moved into PipeWire's own cgroup, open $CAPN → EPERM" || bad "moved into pipewire.service, open → $got"
+        sleep 1.5   # lord-netperm sees PipeWire alone in its cgroup again
+    fi
     f=$OUTD/um.raw
     timeout 10 systemd-run --user --scope -q timeout 3 pw-record --rate 48000 --channels 1 --format s16 "$f" >/dev/null 2>&1
     n=$(stat -c %s "$f" 2>/dev/null || echo 0)
     [ "$n" -lt 4096 ] && ok "systemd-run --user pw-record: $n bytes" || bad "systemd-run --user recorded $n bytes"
 fi
+restrict $APP ""
+sleep 1.5
+f=$OUTD/after.raw; timeout 3 pw-record --rate 48000 --channels 1 --format s16 "$f" >/dev/null 2>&1
+n=$(stat -c %s "$f" 2>/dev/null || echo 0)
+all=$(pw-dump 2>/dev/null | grep -c '"media.class": "Audio/Source"')
+[ "$n" -gt 20000 ] && [ "$all" -gt 0 ] && ok "once lifted, the desktop still records ($n bytes, $all microphone nodes)" || bad "the desktop lost the microphone ($n bytes, $all nodes)"
 kill $GPID 2>/dev/null; wait $GPID 2>/dev/null
 rm -rf "$OUTD"
 fwlinux_done

@@ -80,6 +80,7 @@ typedef struct {
     int nsc, cap;
     int dirty_counts;
     uint64_t user_cg;                   /* id of user@<uid>.service, or 0 if it isn't there (nor attached) */
+    uint32_t snd_tgid[2];               /* its PipeWire and WirePlumber in np_sndsvc (0 = none) */
     int ulinks[16], nulinks;            /* the programs attached to user@<uid>.service */
 } Session;
 
@@ -101,7 +102,7 @@ typedef struct {
 static struct {
     int bpf_ok;
     char bpf_err[200];                  /* a code line (errcode.h): the firewall page shows it translated */
-    int m_np_cfg, m_np_apps, m_np_union, m_np_lpm4, m_np_lpm6, m_np_seen, m_np_counts, m_np_events, m_np_snd;
+    int m_np_cfg, m_np_apps, m_np_union, m_np_lpm4, m_np_lpm6, m_np_seen, m_np_counts, m_np_events, m_np_snd, m_np_sndsvc;
     uint32_t snd[NP_MAX_SND];           /* the ALSA minors in np_snd */
     int nsnd;
     int dev_ok, bt_ok;                  /* the device / Bluetooth programs loaded */
@@ -211,6 +212,7 @@ static int map_fd(const char *name) {
     if (!strcmp(name, "np_counts")) return G.m_np_counts;
     if (!strcmp(name, "np_events")) return G.m_np_events;
     if (!strcmp(name, "np_snd")) return G.m_np_snd;
+    if (!strcmp(name, "np_sndsvc")) return G.m_np_sndsvc;
     return -1;
 }
 #endif
@@ -309,16 +311,13 @@ static void drop_scope(Scope *sc) {
 
 /* Recompiles the user's union from the flags of their scopes and writes it (or deletes it if
  * there's no restriction). Only takes effect with user@ attached. */
+static void sync_sndsvc(Session *s);
+
 static void sync_union(Session *s) {
     if (!G.bpf_ok || !s->user_cg) return;
     NpApp u;
     memset(&u, 0, sizeof u);
-    /* "no microphone" stays out of the union: under user@ it would deny the ALSA capture nodes
-     * to the user's own PipeWire, which then drops the microphone for every app (and doesn't get
-     * it back). A process escaped there is held by the PipeWire guard instead (its clients count
-     * as restricted while restricted apps run); reading the card directly from there is the
-     * residual risk (docs/FIREWALL.md). */
-    for (int k = 0; k < s->nsc; k++) u.flags |= s->sc[k].app_v.flags & ~NP_R_NO_MIC;
+    for (int k = 0; k < s->nsc; k++) u.flags |= s->sc[k].app_v.flags;
     if (u.flags) {
         u.trusted = 1;                  /* whatever the union doesn't restrict is allowed without notice */
         u.mode = NP_M_SILENT;
@@ -326,6 +325,38 @@ static void sync_union(Session *s) {
     } else {
         bpfs_map_delete(G.m_np_union, &s->user_cg);
     }
+    sync_sndsvc(s);
+}
+
+/* The user's real sound services, which keep the ALSA capture nodes under the union's no-mic
+ * (PipeWire opens them to record, WirePlumber to probe the card's profiles): the exact cgroups
+ * user.slice/user-<uid>.slice/user@<uid>.service/session.slice/{pipewire,wireplumber}.service
+ * (never a nested one that merely ends in the same names), and only while each holds exactly one
+ * process. Its tgid and cgroup id go into np_sndsvc; the program matches both. Refreshed every
+ * second (a restart is a new process). */
+static void sync_sndsvc(Session *s) {
+    if (!G.bpf_ok) return;
+    static const char *const unit[2] = { "pipewire.service", "wireplumber.service" };
+    char dir[200], path[300], line[32];
+    snprintf(dir, sizeof dir, CG_ROOT "/" CG_USER "/user-%u.slice/user@%u.service/session.slice", s->uid, s->uid);
+    int dfd = s->user_cg ? open(dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) : -1;
+    for (int k = 0; k < 2; k++) {
+        uint32_t tgid = 0;
+        uint64_t cg = dfd >= 0 ? bpfs_cgroup_id(dfd, unit[k]) : 0;
+        if (cg) {
+            snprintf(path, sizeof path, "%s/%s/cgroup.procs", dir, unit[k]);
+            FILE *f = fopen(path, "re");
+            int n = 0;
+            unsigned long v = 0;
+            while (f && fgets(line, sizeof line, f)) { if (!n) v = strtoul(line, NULL, 10); n++; }
+            if (f) fclose(f);
+            if (n == 1 && v > 0 && v <= UINT32_MAX) tgid = (uint32_t)v;
+        }
+        if (s->snd_tgid[k] && s->snd_tgid[k] != tgid) bpfs_map_delete(G.m_np_sndsvc, &s->snd_tgid[k]);
+        if (tgid && bpfs_map_update(G.m_np_sndsvc, &tgid, &cg, BPF_ANY)) tgid = 0;
+        s->snd_tgid[k] = tgid;
+    }
+    if (dfd >= 0) close(dfd);
 }
 
 static void drop_user_links(Session *s) {
@@ -424,6 +455,7 @@ static void drop_session(int k) {
     for (int i = 0; i < s->nsc; i++) drop_scope(&s->sc[i]);
     drop_user_links(s);
     if (s->user_cg) { bpfs_map_delete(G.m_np_union, &s->user_cg); bpfs_map_delete(G.m_np_counts, &s->user_cg); }
+    for (int k = 0; k < 2; k++) if (s->snd_tgid[k]) bpfs_map_delete(G.m_np_sndsvc, &s->snd_tgid[k]);
     if (s->wd >= 0) inotify_rm_watch(G.ifd, s->wd);
     free(s->sc);
     fw_store_free(s->store);
@@ -761,7 +793,7 @@ static int bpf_setup(void) {
 #define NP_MKMAP(n, t, k, v, m, f) G.m_##n = bpfs_map_create(t, k, v, m, f, #n);
     NP_MAPS(NP_MKMAP)
 #undef NP_MKMAP
-    if (G.m_np_snd < 0 || G.m_np_cfg < 0 || G.m_np_apps < 0 || G.m_np_union < 0 || G.m_np_lpm4 < 0 || G.m_np_lpm6 < 0 || G.m_np_seen < 0 || G.m_np_counts < 0 || G.m_np_events < 0) {
+    if (G.m_np_snd < 0 || G.m_np_sndsvc < 0 || G.m_np_cfg < 0 || G.m_np_apps < 0 || G.m_np_union < 0 || G.m_np_lpm4 < 0 || G.m_np_lpm6 < 0 || G.m_np_seen < 0 || G.m_np_counts < 0 || G.m_np_events < 0) {
         lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfMaps", "errno", lerr_errno(errno), NULL);
         return -1;
     }
@@ -939,6 +971,7 @@ int main(int argc, char **argv) {
                 attach_service();
                 if (G.dns) { npdns_tick(G.dns); watch_dns(); }
                 if (G.tick % 5 == 0) scan_all();    /* in case an inotify notice was lost */
+                for (int k = 0; k < G.nsess; k++) sync_sndsvc(&G.sess[k]);
                 if (G.tick % 30 == 0) {
                     dnsmap_expire(G.names, mono());
                     for (int s = 0; s < G.nsess; s++)

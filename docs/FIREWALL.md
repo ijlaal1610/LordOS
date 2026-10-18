@@ -190,10 +190,13 @@ on `open()` and `mknod()` of a device node, and returns 0 only for the device cl
 restricted from (`np_dev_restriction()` in `np_shared.h`, plus, for "no microphone", the ALSA
 capture PCMs in `np_snd`). In the app's own scope "no microphone" fails closed: an ALSA node the
 last scan of `/sys/class/sound` hasn't classified yet (a USB microphone plugged in, at most 5 s)
-is denied too. "No microphone" is never part of the `user@` union: there it would deny the ALSA
-capture nodes to the user's own PipeWire, which drops the microphone for every app and doesn't
-get it back. A process that escaped to `user@` is held by the PipeWire guard instead; opening the
-card directly from there is a residual risk. Everything else returns 1. Programs systemd attaches higher up (`DeviceAllow=`) still
+is denied too. Under the `user@` union "no microphone" denies the known capture nodes to every
+process except the user's real PipeWire and WirePlumber (otherwise the microphone is gone for
+every app and doesn't come back): exactly their process id in exactly the cgroups
+`user.slice/user-<uid>.slice/user@<uid>.service/session.slice/{pipewire,wireplumber}.service`, and
+only while each holds that one process (`np_sndsvc`, refreshed every second). A process the user moves
+into that cgroup has another process id and is still denied; a nested cgroup that merely ends in
+the same names is another cgroup. Everything else returns 1. Programs systemd attaches higher up (`DeviceAllow=`) still
 apply: the kernel allows only what all of them allow. A denial is logged by `lord-netperm` once per
 5 s, not counted with the connections. `lord-server`'s own scope (`lordos`) never gets device
 restrictions in the kernel: it opens the camera, the FIDO key and the sound for the apps after
@@ -239,12 +242,26 @@ the apps could change. Who a client is:
 - for a native client, `pipewire.sec.pid`, which PipeWire takes from the socket's credentials
   (a client can't change `pipewire.sec.*`), and that PID's cgroup;
 - `application.process.id` (what the app reported) is used only when `pipewire.sec.pid` is the
-  session's real `pipewire-pulse`: the root-owned `/usr/bin/pipewire` executable, our uid, in the
-  user manager's `pipewire-pulse.service`. `pulse.server.type` alone is the client's word and is
-  ignored;
+  session's real `pipewire-pulse`: the root-owned `/usr/bin/pipewire` executable, our uid, at the
+  exact cgroup path of the user manager's `pipewire-pulse.service` and the only process in it (the
+  user owns the `user@` subtree: a nested cgroup that merely ends in the same names, or a second
+  process moved into the unit, never counts). `pulse.server.type` alone is the client's word and
+  is ignored;
 - even then the claimed process must really hold as many connections to `pipewire-pulse` as there
   are clients claiming it (the kernel's unix socket peers, `sock_diag`, against the process's
-  fds);
+  fds), and must live in our PID namespace (a process in another one, such as a `no-files` app,
+  reports its inner PID, so a claim of its outer PID is someone else's);
+- `pipewire-pulse`'s own connection carries the streams of modules a pulse client loaded; while a
+  restricted app runs its capture streams are closed. Module loading itself is off in LordOS
+  (`/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf`: a loopback from the
+  microphone, a tunnel to any host or a pipe at any path would run outside the app's scope);
+- a client of a process under `user@<uid>` (escaped with `systemd-run --user`, or D-Bus
+  activated) is treated as restricted while a restricted app runs, except PipeWire, WirePlumber and
+  `pipewire-pulse` themselves, checked by exact unit path, being alone in it and their root-owned
+  executable;
+- when the guard can't follow a client or a capture node (its fixed tables are full), it
+  disconnects or destroys it; a permission list longer than one message is sent in parts. It never
+  leaves a client unrestricted because it ran out of room;
 - while a restricted app of the session is running, a client whose identity can't be established
   (a false claim, a PID that doesn't resolve or is gone) is treated as restricted; with no
   restricted app running nothing is checked, so normal use pays nothing.
@@ -262,10 +279,17 @@ the apps could change. Who a client is:
 - When a restricted app falsely claims another process's PID through `pipewire-pulse`, every
   client claiming that PID is treated as restricted while the false claim lasts, the honest one
   included.
-- A process that escaped to `user@<uid>` (`systemd-run --user`) is in no app scope: its PipeWire
-  clients aren't restricted (PipeWire, WirePlumber and `pipewire-pulse` themselves live there).
-  With `no-files` the app can't reach the session bus or the user manager, which closes that path;
-  without it, it stays open.
+- A process that escaped to `user@<uid>` (`systemd-run --user`) is held as restricted only while
+  a restricted app runs, like `lord-netperm`'s union (which also denies it the ALSA capture
+  nodes). If the restricted app exits first, the escaped process is free. With `no-files` the app
+  can't reach the session bus or the user manager, which closes that path; no-mic and no-camera
+  alone don't cut the session bus (that would break most apps' D-Bus use).
+- If PipeWire restarts while a no-mic app runs, the new daemon is known to `lord-netperm` within a
+  second; an ALSA capture open in that second is refused.
+- A Linux app restricted without `no-files` runs as the user, so it could take over another of the
+  user's processes (lord-server, PipeWire, another app) with `ptrace` and act through it. LordOS
+  sets `kernel.yama.ptrace_scope = 1` (`/usr/lib/sysctl.d/50-lordos-ptrace.conf`): only a
+  process's own descendants can be traced.
 - A pulse socket of its own for each restricted app (`pipewire-pulse` listening on a per-app
   address bound into the app's view) would remove the need to trust `application.process.id` at
   all: also the next step.
