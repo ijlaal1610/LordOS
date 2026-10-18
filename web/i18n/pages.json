@@ -33,7 +33,16 @@
     "lumoSays": "Lumo says",
     "legal": {
       "nav": "Legal",
-      "updated": "Last updated"
+      "updated": "Last updated",
+      "indexTitle": "Legal and trust",
+      "indexLead": "The terms, policies and notices for lordos.org and LordOS, and how we handle security and trust.",
+      "groups": {
+        "legal": "Legal",
+        "trust": "Trust & security"
+      },
+      "all": "All legal pages",
+      "moved": "This page has moved to",
+      "metaIndex": "Terms, privacy, licenses, trademark, security and trust policies for LordOS and lordos.org."
     },
     "faq": {
       "title": "Frequently asked questions",
@@ -131,7 +140,16 @@
     "lumoSays": "Lumo cuenta",
     "legal": {
       "nav": "Legal",
-      "updated": "Última actualización"
+      "updated": "Última actualización",
+      "indexTitle": "Legal y confianza",
+      "indexLead": "Los términos, políticas y avisos de lordos.org y LordOS, y cómo manejamos la seguridad y la confianza.",
+      "groups": {
+        "legal": "Legal",
+        "trust": "Confianza y seguridad"
+      },
+      "all": "Todas las páginas legales",
+      "moved": "Esta página se mudó a",
+      "metaIndex": "Términos, privacidad, licencias, marca, seguridad y políticas de confianza de LordOS y lordos.org."
     },
     "faq": {
       "title": "Preguntas frecuentes",
@@ -229,7 +247,16 @@
     "lumoSays": "Lumo conta",
     "legal": {
       "nav": "Jurídico",
-      "updated": "Última atualização"
+      "updated": "Última atualização",
+      "indexTitle": "Jurídico e confiança",
+      "indexLead": "Os termos, políticas e avisos do lordos.org e do LordOS, e como tratamos segurança e confiança.",
+      "groups": {
+        "legal": "Jurídico",
+        "trust": "Confiança e segurança"
+      },
+      "all": "Todas as páginas jurídicas",
+      "moved": "Esta página mudou para",
+      "metaIndex": "Termos, privacidade, licenças, marca, segurança e políticas de confiança do LordOS e do lordos.org."
     },
     "faq": {
       "title": "Perguntas frequentes",

@@ -203,8 +203,22 @@ const legalIndex = fs.existsSync(path.join(legalDir, 'pages.json')) ? readJson(p
 const hasPh = (text) => /\[\[[A-Z][A-Z0-9_]*\]\]/.test(text);
 // production: legal pages that still contain [[PLACEHOLDERS]] are left out (--allow-placeholders keeps them, highlighted)
 const legalAll = legalIndex ? (legalIndex.pages || []).filter((p) => LANGS.every((l) => fs.existsSync(path.join(legalDir, `${p.slug}.${l}.md`)))) : [];
-const legalPages = legalAll.filter((p) => ALLOW_PH || !LANGS.some((l) => hasPh(fs.readFileSync(path.join(legalDir, `${p.slug}.${l}.md`), 'utf8')) || hasPh(JSON.stringify(p))));
-const legalHeld = legalAll.filter((p) => !legalPages.includes(p)).map((p) => p.slug);
+const LEGAL_MOVED = [['cookies', 'cookies-and-statistics']];
+const legalPages = legalAll.filter((p) => !LEGAL_MOVED.some(([from, to]) => p.slug === from && legalAll.some((x) => x.slug === to))).filter((p) => ALLOW_PH || !LANGS.some((l) => hasPh(fs.readFileSync(path.join(legalDir, `${p.slug}.${l}.md`), 'utf8')) || hasPh(JSON.stringify(p))));
+const legalHeld = legalAll.filter((p) => !legalPages.includes(p) && !LEGAL_MOVED.some(([from]) => from === p.slug)).map((p) => p.slug);
+const LEGAL_GROUPS = ['legal', 'trust'];
+const TRUST = new Set(['security', 'code-signing', 'issues', 'support-lifecycle', 'standards', 'code-of-conduct', 'contributing', 'accessibility']);
+const legalGroup = (p) => (p.group === 'trust' || p.group === 'legal' ? p.group : TRUST.has(p.slug) ? 'trust' : 'legal');
+// one-line description for the /legal/ index: pages.json "description", else the first sentence of the page
+function legalDesc(p, l) {
+  const d = loc(p.description, l);
+  if (d) return d;
+  const md = fs.readFileSync(path.join(legalDir, `${p.slug}.${l}.md`), 'utf8').replace(/^---[\s\S]*?---\n/, '');
+  const para = md.split(/\n\s*\n/).map((x) => x.trim()).find((x) => x && !x.startsWith('#') && !x.startsWith('|') && !x.startsWith('-')) || '';
+  const plain = para.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/[`*_]/g, '').replace(/\s+/g, ' ');
+  const m = plain.match(/^(.{40,220}?[.!?])(\s|$)/);
+  return m ? m[1] : plain.slice(0, 200);
+}
 const faqFile = path.join(CONTENT, 'faq/faq.json');
 const faqJson = fs.existsSync(faqFile) ? readJson(faqFile) : null;
 let faqHeld = 0;
@@ -332,7 +346,7 @@ function linkBuilt(href) {
 }
 let _built = null;
 function builtPages() {
-  if (!_built) _built = new Set(['', 'apps', 'gallery', 'about', ...featureList.map((m) => 'features/' + m.slug), ...(HAS_PAPER ? ['paper'] : []), ...(HAS_FAQ ? ['faq'] : []), ...legalPages.map((x) => 'legal/' + x.slug)]);
+  if (!_built) _built = new Set(['', 'apps', 'gallery', 'about', ...featureList.map((m) => 'features/' + m.slug), ...(HAS_PAPER ? ['paper'] : []), ...(HAS_FAQ ? ['faq'] : []), ...legalPages.map((x) => 'legal/' + x.slug), ...(legalPages.length ? ['legal', ...LEGAL_MOVED.map((m) => 'legal/' + m[0])] : [])]);
   return _built;
 }
 function langLinks(t, page) {
@@ -417,7 +431,7 @@ ${icons}
 </section>`;
 }
 
-const tpl = { home: src('home.html'), gallery: src('gallery.html'), apps: src('apps.html'), notFound: src('404.html'), lightbox: src('lightbox.html'), feature: src('feature.html'), paper: src('paper.html'), legal: src('legal.html'), faq: src('faq.html'), about: src('about.html') };
+const tpl = { home: src('home.html'), gallery: src('gallery.html'), apps: src('apps.html'), notFound: src('404.html'), lightbox: src('lightbox.html'), feature: src('feature.html'), paper: src('paper.html'), legal: src('legal.html'), legalIndex: src('legal-index.html'), faq: src('faq.html'), about: src('about.html') };
 
 for (const l of LANGS) {
   const t = dict[l];
@@ -587,11 +601,44 @@ ${apps.filter((a) => a.category === c).sort((x, y) => appName(x, l).localeCompar
     const { html: bodyHtml } = renderMd(body, [], [], null, `legal/${lp.slug}.${l}.md`);
     const title = loc(lp.title, l) || lp.slug;
     const updated = lp.updated || legalIndex.updated || today;
-    const nav = legalPages.map((x) => `<li><a href="${pageUrl(l, 'legal/' + x.slug)}"${x.slug === lp.slug ? ' aria-current="page"' : ''}>${esc(loc(x.title, l) || x.slug)}</a></li>`).join('\n');
+    const nav = LEGAL_GROUPS.map((g) => {
+      const ps = legalPages.filter((x) => legalGroup(x) === g);
+      return ps.length ? `<h2>${esc(t.pages.legal.groups[g])}</h2>\n<ul>\n${ps.map((x) => `<li><a href="${pageUrl(l, 'legal/' + x.slug)}"${x.slug === lp.slug ? ' aria-current="page"' : ''}>${esc(loc(x.title, l) || x.slug)}</a></li>`).join('\n')}\n</ul>` : '';
+    }).join('\n');
     write(path.join(pageUrl(l, page), 'index.html'), render(tpl.legal, {
       ...common(page, [`${title} · LordOS`, loc(lp.description, l) || `${title} — lordos.org`], true),
-      title: phOut(esc(phIn(title, 'legal/pages.json'))), updated: esc(fmtDate(updated)), updatedIso: esc(updated), nav, body: bodyHtml,
+      title: phOut(esc(phIn(title, 'legal/pages.json'))), updated: esc(fmtDate(updated)), updatedIso: esc(updated), nav, body: bodyHtml, indexUrl: pageUrl(l, 'legal'),
     }, t));
+  }
+
+  // legal index and redirects for moved legal pages
+  if (legalPages.length) {
+    const groups = LEGAL_GROUPS.map((g) => {
+      const ps = legalPages.filter((x) => legalGroup(x) === g);
+      if (!ps.length) return '';
+      return `<section aria-labelledby="lg-${g}"><h2 id="lg-${g}">${esc(t.pages.legal.groups[g])}</h2><ul class="lcards">${ps.map((x) => `<li><a href="${pageUrl(l, 'legal/' + x.slug)}"><strong>${esc(loc(x.title, l) || x.slug)}</strong><span>${esc(legalDesc(x, l))}</span></a></li>`).join('')}</ul></section>`;
+    }).join('\n');
+    write(path.join(pageUrl(l, 'legal'), 'index.html'), render(tpl.legalIndex, { ...common('legal', [`${t.pages.legal.indexTitle} · LordOS`, t.pages.legal.metaIndex], true), groups }, t));
+    for (const [from, to] of LEGAL_MOVED) {
+      if (legalPages.some((x) => x.slug === from) || !legalPages.some((x) => x.slug === to)) continue;
+      const dest = SITE + pageUrl(l, 'legal/' + to);
+      write(path.join(pageUrl(l, 'legal/' + from), 'index.html'), `<!doctype html>
+<html lang="${l}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(loc(legalPages.find((x) => x.slug === to).title, l))} · LordOS</title>
+<meta name="robots" content="noindex">
+<link rel="canonical" href="${dest}">
+<meta http-equiv="refresh" content="0; url=${dest}">
+<link rel="stylesheet" href="${cssUrl}">
+</head>
+<body>
+<p class="moved">${esc(t.pages.legal.moved)} <a href="${dest}">${dest}</a></p>
+</body>
+</html>
+`);
+    }
   }
 
   // FAQ
@@ -666,7 +713,7 @@ if (fs.existsSync(secTxt)) {
   else log('security.txt held back: it still has placeholders');
 }
 write('robots.txt', `User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n`);
-const allPages = [...PAGES.filter((p) => p !== 'apps' || HAS_APPS), ...featureList.map((m) => 'features/' + m.slug), ...(HAS_PAPER ? ['paper'] : []), ...(HAS_FAQ ? ['faq'] : []), 'about', ...legalPages.map((p) => 'legal/' + p.slug)];
+const allPages = [...PAGES.filter((p) => p !== 'apps' || HAS_APPS), ...featureList.map((m) => 'features/' + m.slug), ...(HAS_PAPER ? ['paper'] : []), ...(HAS_FAQ ? ['faq'] : []), 'about', ...legalPages.map((p) => 'legal/' + p.slug), ...(legalPages.length ? ['legal'] : [])];
 const urls = allPages.flatMap((p) => LANGS.map((l) => `  <url>
     <loc>${SITE}${pageUrl(l, p)}</loc>
     <lastmod>${today}</lastmod>
