@@ -297,7 +297,7 @@
   "net.remoteAdminOnly": "Only administrators see failed sign-ins and can block addresses.",
   "net.remoteLists": "Address lists",
   "net.remoteBlockedTotal": "Blocked in all",
-  "net.searchTokens": "Search: app:, domain:, ip:, port:, proto:, country:",
+  "net.searchTokens": "Search, or app: port: domain:…",
   "net.clearChips": "Clear",
   "net.chip.app": "App",
   "net.chip.domain": "Domain",

@@ -297,7 +297,7 @@
   "net.remoteAdminOnly": "Só administradores veem as entradas com erro e podem bloquear endereços.",
   "net.remoteLists": "Listas de endereços",
   "net.remoteBlockedTotal": "Bloqueados no total",
-  "net.searchTokens": "Buscar: app:, domain:, ip:, port:, proto:, country:",
+  "net.searchTokens": "Buscar, ou app: port: domain:…",
   "net.clearChips": "Limpar",
   "net.chip.app": "App",
   "net.chip.domain": "Domínio",

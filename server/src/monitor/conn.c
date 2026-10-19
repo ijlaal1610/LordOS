@@ -9,7 +9,7 @@
  * (0.8.4) Each socket's cgroup comes too (INET_DIAG_CGROUP_ID): a socket made in one of the session's
  * scopes is that app's, whoever holds it now (lord-server holds the ones Mail's connector made, a
  * program in the Terminal is the Terminal's), so the list says "scope": the app's firewall id, the
- * same lord-netperm counts it under.
+ * same lord-netperm counts it under ("cgApp").
  *
  * The country comes from the local database (mmdb.c). No address leaves the machine. */
 #include "monpriv.h"
@@ -336,7 +336,7 @@ void conn_scan(Buf *b, const Mmdb *geo) {
         mon_buf_str(b, pi >= 0 ? pinfo[pi].name : "");
         mon_buf_printf(b, ",\"exe\":");
         mon_buf_str(b, pi >= 0 ? pinfo[pi].exe : "");
-        mon_buf_printf(b, ",\"scope\":");
+        mon_buf_printf(b, ",\"cgApp\":");
         mon_buf_str(b, scope_app_of(s->cg));
         if (s->bytes) mon_buf_printf(b, ",\"sent\":%llu,\"recv\":%llu}", (unsigned long long)s->sent, (unsigned long long)s->recv);
         else mon_buf_printf(b, ",\"sent\":null,\"recv\":null}");

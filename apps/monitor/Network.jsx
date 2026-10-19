@@ -28,9 +28,9 @@ import { TokenSearch, ViewButton, useNetView, TreeChildren, Child } from './NetT
 
 const { COMPONENTS, isSystemId, filterFlows, groupFlows, sortTree } = netModel;
 
-// (0.8.4) a socket made in an app's scope is that app's (conn.c "scope"), whoever holds it: the ones
+// (0.8.4) a socket made in an app's scope is that app's (conn.c "cgApp"), whoever holds it: the ones
 // Mail's connector made are Mail's, a program in the Terminal is the Terminal's
-export const appKeyOf = (c) => c.scope || (c.self ? 'lordos' : c.app || c.exe || c.name || '?');
+export const appKeyOf = (c) => c.cgApp || (c.self ? 'lordos' : c.app || c.exe || c.name || '?');
 // The row's name: LordOS's own components by their label, LordOS itself, or the app's name.
 export const labelOf = (tr, g) => (COMPONENTS[g.key] ? tr(COMPONENTS[g.key].label) : g.key === 'lordos' ? tr('monitor.lordos') : g.name);
 const countryName = (cc) => (cc ? tOptional(`countries.${cc}`) || cc : '');
@@ -87,11 +87,11 @@ function useGroups(conns) {
       let g = apps.get(key);
       if (!g) {
         const comp = !!COMPONENTS[key] || key === 'lordos';
-        g = { key, item: comp ? { app: key } : c, name: comp || (c.self && !c.scope) ? null : c.appName || c.name || '?', exe: c.exe, pids: new Set(), conns: [], hosts: new Map(),
+        g = { key, item: comp ? { app: key } : c, name: comp || (c.self && !c.cgApp) ? null : c.appName || c.name || '?', exe: c.exe, pids: new Set(), conns: [], hosts: new Map(),
           sent: 0, recv: 0, rateTx: 0, rateRx: 0, listen: [], incoming: 0, verdict: 'allow', programs: new Set() };
         apps.set(key, g);
       }
-      if (c.name && c.scope && !c.self) g.programs.add(c.name);
+      if (c.name && c.cgApp && !c.self) g.programs.add(c.name);
       if (!g.exe && c.exe) g.exe = c.exe;
       if (c.pid > 0) g.pids.add(c.pid);
       g.conns.push(c);
@@ -194,6 +194,9 @@ function withFirewall(groups, fw, launcher) {
 // { app, out, any, allow|deny } (lord.fw); ir y volver no acumula reglas. Las apps sin scope propia
 // (un programa suelto, identificado por su ruta) no se pueden filtrar: el interruptor queda fijo.
 function RuleSwitch({ g, selected, onConfirm }) {
+  const t = useTheme();
+  // the essential system services and the VPN can't take a rule: a dash instead of a switch
+  if (g.system) return <Text style={{ width: 26, fontSize: 11, color: selected ? '#fff' : t.textDim, textAlign: 'center' }}>—</Text>;
   const on = g.rule !== 'deny';
   const can = firewall.available() && firewall.enforceable(g.key);
   const color = on ? '#30d158' : '#ff453a';

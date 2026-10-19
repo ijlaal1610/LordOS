@@ -297,7 +297,7 @@
   "net.remoteAdminOnly": "Solo los administradores ven los ingresos fallidos y pueden bloquear direcciones.",
   "net.remoteLists": "Listas de direcciones",
   "net.remoteBlockedTotal": "Bloqueadas en total",
-  "net.searchTokens": "Buscar: app:, domain:, ip:, port:, proto:, country:",
+  "net.searchTokens": "Buscar, o app: port: domain:…",
   "net.clearChips": "Borrar",
   "net.chip.app": "App",
   "net.chip.domain": "Dominio",

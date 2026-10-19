@@ -192,8 +192,8 @@ int netconn_main(int argc, char **argv) {
     int known = 0;
     for (int i = 0; i < NC_COUNT; i++) known |= !strcmp(argv[2], NAMES[i]);
     if (!known) return 2;
-    prctl(PR_SET_PDEATHSIG, SIGKILL);
-    if (getppid() == 1) return 0;
+    /* no PR_SET_PDEATHSIG: it fires when the *thread* that forked us ends (a worker thread of
+     * lord-server), not lord-server; the channel closing (recv → 0) is what ends the connector */
     prctl(PR_SET_DUMPABLE, 0);
     prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
     signal(SIGPIPE, SIG_IGN);
