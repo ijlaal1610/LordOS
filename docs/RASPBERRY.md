@@ -431,6 +431,13 @@ in the app's scope `socket(AF_BLUETOOTH)` gets `EPERM`, outside it works (`FIREW
 sockets"). **Not checked yet:** pairing and a headset's audio on the board (they need a device in
 pairing mode next to it), and Settings → Bluetooth on the board's own screen (no LordOS session was
 open; it is the same page and the same D-Bus client as on a PC, `SETTINGS.md`).
+The image built with this kernel (`lordos-0.8.1-rpi5-arm64.img.xz`, 2,717 MB uncompressed) was
+checked read-only, loop-mounted: our `kernel_2712.img` on `bootfs` with `BPF_LSM`, BTF, Yama and
+Landlock in its config, `lsm=` with `bpf` in `cmdline.txt`, `bluez`, `bluez-firmware` (with
+`brcm/BCM4345C0.hcd`), `libspa-0.2-bluetooth`, `rfkill`, `hciconfig`/`hcitool`, the helper, its unit
+and udev rule, `lordos`, `lord-netperm`, `lord-fand` and `bluetooth` enabled, SSH off. The Pi 4
+kernel in it (`-rpi-v8`) is still 0.8.0's `6.18.57-1+lordos`, without the BPF LSM: "No Bluetooth" is
+only enforced on a Pi 4 once that flavour is rebuilt (`build-kernel.sh … v8`).
 
 ### After flashing
 
