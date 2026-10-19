@@ -259,6 +259,10 @@ Estimate: on x86-64 with qemu, 30–60 minutes the first time. Natively on the P
 
 ### Writing it
 
+- **LordOS Imager** (recommended; `IMAGER.md`): in LordOS (App Launcher → System) or as a small app
+  for other computers. It downloads the latest release, checks its signature, writes
+  and verifies the card, and prepares the first boot (computer name, language, user, Wi-Fi, SSH and
+  remote desktop, appearance, cooling) in `lordos-firstrun.txt` (next section).
 - **Raspberry Pi Imager:** "Choose OS" → "Use custom" → the `.img.xz`, and then the card or the
   NVMe.
   - Skip Imager's OS customization (it's designed for Raspberry Pi OS; newer versions write
@@ -287,6 +291,17 @@ Estimate: on x86-64 with qemu, 30–60 minutes the first time. Natively on the P
 
 `lordos-rpi-firstboot.service` runs before lord-sessiond (`/usr/lib/lordos/rpi/firstboot`) and does
 two things.
+
+0. **The LordOS Imager's settings (0.8.4).** If the `bootfs` partition has a `lordos-firstrun.txt`,
+   `/usr/lib/lordos/bin/lordos-firstrun` checks it with a strict parser and, only if all of it is
+   valid, applies it once: computer name, language, time zone, keyboard, Wi-Fi country and network
+   (the derived WPA2 key, never the password), the user (from a yescrypt or SHA-512 crypt hash),
+   automatic login, SSH (keys only or with passwords), remote desktop (local network only),
+   Bluetooth, appearance and cooling (fan profile, CPU governor, a `config.txt` block for a mild
+   overclock or a lower clock). The file is then overwritten and deleted. An invalid file applies
+   nothing and the steps below run as before. Format and details: `IMAGER.md`, "The first-run
+   file". Tested by applying it (`--root`) to the real 0.8.3 image on a virtual USB stick; not yet
+   booted on a board.
 
 1. **Grows partition 2** to the end of the card or disk (`sfdisk -N 2`, `partx -u` and an online
    `resize2fs`).

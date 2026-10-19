@@ -12,6 +12,36 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [0.8.4] - Unreleased
 
+### Added
+
+- **LordOS Imager.** Write LordOS to an SD card or a USB stick and have the Raspberry Pi 5 start
+  ready to use: choose the device (Raspberry Pi 5, or a PC from a USB stick), the system image (the
+  latest signed release, downloaded once and resumed if interrupted, or a file of your own with a
+  clear warning) and the drive (only SD cards and USB drives; internal disks and the disk the
+  computer runs from are never shown), then customise the first boot: computer name, language,
+  time zone, keyboard, your account (only a hash of the password goes on the card), Wi-Fi (only the
+  derived key), SSH with keys or a password, LordOS remote desktop (local network only), Bluetooth,
+  Lord Default or Classic in light or dark with your accent, and cooling (case with a fan, active
+  cooler, passive case or nothing, with a matching profile and an optional mild overclock with a
+  fan). Lumo gives a tip at every step and celebrates at the end. Every official image is checked
+  against the LordOS release signature before anything is erased, and every card is read back and
+  compared after writing; cancelling clears the card. In English, Spanish and Portuguese, with
+  keyboard navigation. See [docs/IMAGER.md](docs/IMAGER.md).
+- **The LordOS Imager for other computers**: the same app for the three common desktop platforms (Tauri, about
+  6 MB), sharing the interface with the one in LordOS. Built from the source for now; signed
+  downloads will come with a release.
+- **First-run file on the Raspberry Pi** (`lordos-firstrun.txt` on the boot partition): read once on
+  the first boot by `lordos-firstrun`, strictly validated (nothing is applied if any part is wrong),
+  then overwritten and deleted. See [docs/RASPBERRY.md](docs/RASPBERRY.md), "First boot".
+
+### Security
+
+- The imager's privileged part is four closed actions: downloads run `curl` as the user against two
+  fixed URL shapes; writing accepts only a whole removable disk whose size, model and serial are
+  re-checked right before it is opened exclusively, decompresses with `xz` running as the user, and
+  never writes an official image whose signature or hash doesn't match. Over 2 TiB is refused.
+- Saved Wi-Fi networks may hold a derived WPA2 key (`psk=`) instead of the password.
+
 ### Changed
 
 - **Browsers with a single top bar.** Chromium and Firefox now draw their own bar, with the tabs in

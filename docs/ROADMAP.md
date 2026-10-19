@@ -668,6 +668,17 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   Firefox draw their own bar by default, with LordOS's window buttons (traffic lights from LordOS's
   GTK theme in Chromium), and the window menu, resize edges and snap layouts keep working. See
   `docs/WAYLAND.md`, "Who draws the frame".
+- [x] **LordOS Imager (0.8.4)** — our own card and stick writer with a first-run experience for the
+  Raspberry Pi 5, in LordOS (`apps/imager`) and as a Tauri app for other computers
+  (`desktop/imager`, one UI for both): signed releases downloaded and cached with resume, only
+  removable drives, verified writes (read back and compared), the first-run file
+  (`lordos-firstrun.txt`: computer name, language, user, Wi-Fi with the derived key, SSH, remote
+  desktop, appearance, cooling) applied once by `lordos-firstrun` on the board. See `docs/IMAGER.md`.
+  - [ ] boot a card it wrote on a real Raspberry Pi 5 (applied with `--root` to the 0.8.3 image so far);
+  - [ ] real sticks and cards on each desktop platform (only virtual ones so far), the Mac's
+    authorized-open prompt and udisks2/polkit on a desktop Linux;
+  - [ ] sign the Mac and Windows downloads (an identity to be chosen) and publish them with the release;
+  - [ ] Wi-Fi scan in the desktop app; WPA3-only networks (today the board needs the password typed there).
 - [ ] **Settings → Appearance: "Browsers: tabs in the title bar" (0.8.4, proposal)** — one switch,
   on by default, that sets the browsers' own preferences for the user instead of each browser's
   settings page:
