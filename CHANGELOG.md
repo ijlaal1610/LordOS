@@ -10,7 +10,15 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Settings → Sharing → Remote login (SSH).** A new switch, off by default on every install,
+  turns the standard SSH server on and off for good (`systemctl enable --now` / `disable --now`).
+  The first time, it installs `openssh-server` through the package engine (the Store's path). The
+  page shows `ssh <user>@<address>` for this computer and its ED25519 host key fingerprint, and
+  lets you allow all users or only administrators. Root never logs in (`PermitRootLogin no` in a
+  drop-in shipped by the `lordos` package). The Raspberry Pi image's `ssh` switch file keeps
+  working and shows up as on ([docs/REMOTE.md](docs/REMOTE.md#remote-login-ssh)).
 
 ## [0.8.0-beta] - 2026-10-18
 

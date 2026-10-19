@@ -1106,3 +1106,21 @@ See `FIREWALL.md`, "Linux apps". Tree in `~/LordOS-fwlinux`, built there (`make 
 - **Scripts:** `server/tests/fwlinux/{devices,bluetooth,files,notify,mic,screen}.sh`, run as `lord`.
   They build app scopes by hand as root under `lordos-session-1000` and put `firewall.json` back
   at the end. Nothing in the network configuration was touched.
+
+## Step 27 — Remote login (SSH) in Settings → Sharing (VM 122 `lordos-sandbox`, October 18)
+
+See `REMOTE.md`, "Remote login (SSH)". Tree in `~/LordOS-ssh` (sent with `tar`), only
+`make -C server build/lord-server`; that `lord-server`, the three theme bundles, `app-host` and
+`assets/locales` were installed over `/usr/lib/lordos` after saving the previous ones.
+
+- **Packages:** `openssh-server` and `openssh-sftp-server` were purged with `apt-get` (test setup:
+  a system without the SSH server, driven through `qm guest exec 122`) and installed again by the
+  Settings switch through the package engine (`pkg-install`), same version
+  (`1:10.0p1-7+deb13u4`).
+- **Changes undone at the end:** the previous `/etc/ssh` (host keys and the cloud image's
+  `sshd_config` with `PasswordAuthentication no`) was restored from a backup, both LordOS drop-ins
+  were removed and `ssh.service` was enabled again, so other agents' SSH access and known host
+  keys are unchanged. `lord` was taken out of `sudo` for the standard-user test and put back. The
+  saved `lord-server`, themes and assets were restored and `~/LordOS-ssh` deleted.
+- **Side effects:** the VM was rebooted twice (the reboot tests), which ended `bob`'s background
+  session; `lord` ends at the login screen. Nothing in the network configuration was touched.

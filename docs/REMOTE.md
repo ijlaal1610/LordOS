@@ -16,6 +16,8 @@ The port is **5673**, which spells "LORD" on a phone keypad.
   before switching users).
 - **It's off by default.** It's turned on and off in Settings → Sharing → «Remote Desktop», as on
   popular desktop systems.
+- **Terminal access** (SSH) is a separate switch on the same page: see
+  [Remote login (SSH)](#remote-login-ssh).
 
 ![Settings → Sharing](remote-desktop-settings.png)
 
@@ -156,6 +158,97 @@ session's PipeWire:
   for it.
 - **Dependency:** libopus, only in lord-sessiond.
 
+## Remote login (SSH)
+
+Settings → Sharing also has **«Remote login (SSH)»**: other computers open a terminal on this one
+with any SSH client (`ssh <user>@<address>`), with a user and password of the machine. It's the
+standard OpenSSH server (`openssh-server`), not something of our own.
+
+![Settings → Sharing: remote login on](settings-sharing-ssh-light.png)
+
+- **It's off by default on every install:** the live ISO, a disk installed from it, the Raspberry
+  Pi image and the Debian installer. The ISO and the installed system don't even ship
+  `openssh-server`; the Pi image ships it disabled. The switch shows the real state: whether
+  `ssh.service` (or `ssh.socket`) is enabled to start at boot, and whether `sshd` is running.
+- **Turning it on:**
+  1. If `openssh-server` isn't installed, Settings installs it with the package engine's own
+     action, `pkg-install openssh-server openssh-sftp-server` (the Store's path, `server/src/pkg`
+     and `dpkg`; `openssh-sftp-server` is a Recommends the engine skips, and `scp`/`sftp` need
+     it). With no package lists yet (a fresh install) it runs `pkg-update` once first. It needs
+     the internet.
+  2. Then `ssh-set on`: it creates the host keys if missing (`ssh-keygen -A`), checks the
+     configuration (`sshd -t`) and runs `systemctl enable --now ssh.service`. It stays on across
+     reboots.
+- **Turning it off:** `ssh-set off` runs `systemctl disable --now ssh.service ssh.socket`. The
+  package stays installed. Sessions already open aren't cut (Debian's unit uses
+  `KillMode=process`); new ones are refused and port 22 closes, also after a reboot.
+- **How to connect:** when it's on, the page shows `ssh <your user>@<address>` for each LAN IPv4
+  address and for the machine name, and the **ED25519 host key fingerprint** (`SHA256:…`, computed
+  by `lord-server` from `/etc/ssh/ssh_host_ed25519_key.pub`, the same as
+  `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`). Compare it with the one `ssh` shows the
+  first time it connects.
+- **Who can log in:** all users with a password (the default), or **only administrators**
+  (`ssh-allow admins` writes `/etc/ssh/sshd_config.d/11-lordos-allow.conf` with
+  `AllowGroups sudo admin wheel`, checks it with `sshd -t` and reloads the server; `ssh-allow all`
+  removes it). **Root never logs in.**
+- **Raspberry Pi:** the image's `ssh` switch file on the boot partition keeps working
+  ([RASPBERRY.md](RASPBERRY.md)): it enables `ssh.service`, and the Settings switch shows it on.
+- **Debian installer** (`install.sh`): it never touches an existing SSH server (on a server or VPS
+  it may be how you are connected); it only reports its state at the end.
+
+![Settings → Sharing: remote login off (dark)](settings-sharing-ssh-off-dark.png)
+
+### Safe defaults
+
+The `lordos` package ships `/etc/ssh/sshd_config.d/10-lordos.conf`, read only once
+`openssh-server` is installed. Debian's `sshd_config` includes that folder at the top and `sshd`
+keeps the first value it reads, so it wins over the rest:
+
+- `PermitRootLogin no`.
+- Password logins stay on, because people expect them. **Key logins are safer**: copy your key
+  with `ssh-copy-id <user>@<address>` and, once it works, you may add a file in that folder with
+  `PasswordAuthentication no`.
+- Nothing else is changed: Debian's defaults (key types, ciphers, `MaxAuthTries`) stay.
+
+### Privileges
+
+The privileged part is two closed actions of the admin helper (`server/src/remote/ssh_admin.c`,
+`SSH_ADMIN_ACTIONS` in `admin.c`), only for administrators (sudo, admin or wheel), like the
+`remote-*` actions:
+
+| Action                  | Argument          | What it runs (fixed paths)                                              |
+|-------------------------|-------------------|--------------------------------------------------------------------------|
+| `ssh-set`               | `on` or `off`     | `ssh-keygen -A` if there's no host key, `sshd -t`, `systemctl enable --now` / `disable --now` |
+| `ssh-allow`             | `all` or `admins` | writes or removes the fixed `AllowGroups` drop-in, `sshd -t`, `systemctl try-reload-or-restart` |
+
+Nothing the user types reaches a command line or sshd's configuration, and no package is installed
+by these actions: that stays in the package engine. `lord-server` only reads the state
+(`lord.ssh.status()` in `server/src/ui/js_sys.c`: the unit files, `/proc/*/comm` for a root
+`sshd`, the drop-in and the public host key), and doesn't run anything.
+
+### Firewall
+
+Nothing to open. `lord-netperm`'s per-app rules apply to programs started from a LordOS session
+(they live in its cgroup tree); `sshd` is a system service in `system.slice/ssh.service`, so the
+rules never block it, and LordOS adds no system-wide packet filter. If you run your own (nftables,
+a router), allow TCP port 22 from the local network only. As with remote desktop, to use it from
+the internet, use a VPN instead of opening the port.
+
+### Tested (VM 122, Debian 13, 0.8.1 development build)
+
+- With `openssh-server` purged, the switch was off and port 22 closed. Turning it on installed
+  `openssh-server` and `openssh-sftp-server` through `pkg-install` (about 20 s), created new host
+  keys and started the server; the fingerprint on the page matched
+  `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`.
+- From another machine: key login, password login and `scp` worked; `root` was refused
+  (`sshd -T`: `permitrootlogin no`, `passwordauthentication yes`).
+- «Only administrators»: `bob` (not in sudo) was refused («none of user's groups are listed in
+  AllowGroups»), `lord` logged in. Back to «All users» removed the drop-in.
+- Reboot with it on: still enabled and listening. Turned off: `ssh.service` disabled and
+  inactive, port 22 closed, and still closed after another reboot.
+- A standard user (lord taken out of `sudo` for the test): the page shows the administrator note
+  and the switch does nothing; the server stayed off.
+
 ## Files
 
 | Path                                  | What it is                                                 |
@@ -164,6 +257,8 @@ session's PipeWire:
 | `server/src/remote/enc.c`             | PNG/JPEG (stb_image_write, vendored in third_party/stb)    |
 | `server/src/remote/login.html`, `client.html` | pages (embedded in the binary)                      |
 | `server/src/remote/remote_admin.c`    | `remote-*` actions                                         |
+| `server/src/remote/ssh_admin.c`       | `ssh-*` actions (remote login)                             |
+| `tools/iso/rootfs/etc/ssh/sshd_config.d/10-lordos.conf` | sshd defaults shipped by the `lordos` package |
 | `apps/settings/Sharing.jsx`, `sdk/remote.js` | Settings → Sharing and the notice on the monitor    |
 | `/etc/lordos/remote/`                 | `config`, `cert.pem`, `key.pem`, `fingerprint`             |
 
@@ -174,3 +269,5 @@ session's PipeWire:
 - ![bob with his own desktop](remote-desktop-own-session.png)
 - ![Latin American keyboard from the browser (ñ)](remote-desktop-keyboard-layout.png)
 - ![lock: the browser goes back to the login](remote-desktop-web-locked.png)
+- ![remote login on (dark)](settings-sharing-ssh-dark.png)
+- ![remote login off (light)](settings-sharing-ssh-off-light.png)
