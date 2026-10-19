@@ -508,6 +508,14 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
 
 ## Before 1.0
 
+- [ ] **Immutable edition (A/B system images)** — 0.8.2 published the design study and an
+  experimental, VM-verified prototype (`IMMUTABLE.md`, `tools/immutable/`): read-only `/usr` with
+  dm-verity in two slots, one boot image per version, automatic fallback, `/etc` and `/home` kept.
+  Still to do, in phases: the full desktop as an image with an "Immutable (experimental)" installer
+  option and Store updates (phase 1), Secure Boot and the TPM (phase 2), the Raspberry Pi 5 with
+  `tryboot` (phase 3), Debian packages as system extensions and delta updates (phase 4), `/etc` and
+  execution hardening (phase 5). The classic edition stays as it is.
+
 - [ ] **Xwayland** (X11 app compatibility). Today LordOS runs Wayland apps only, so programs that
   speak only X11 don't start. Plan:
   - start `Xwayland` on demand (rootless) when an X11 client connects, with its own `DISPLAY`

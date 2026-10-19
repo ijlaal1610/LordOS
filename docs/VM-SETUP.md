@@ -1142,3 +1142,21 @@ folder `~/LordOS-monred`, installed into `/usr/local/lib/lordos` as in step 15 (
   `lord-qmp-input.py 118 2987 1067` (the VM has two heads, see "Several displays").
 - The session language, theme and accent were changed for the screenshots and restored from
   `~/.config-lordos-backup-monred` afterwards.
+
+## Step 29 — 0.8.2: immutable (A/B) prototype (VM 122 `lordos-sandbox`, October 19)
+
+See `IMMUTABLE.md`, "The prototype". On VM 122 (172.17.0.56), in its own folder `~/LordOS-inmut3`
+(only `tools/immutable/`) and the work folder `/var/tmp/lordos-immutable` (base tree, images,
+throwaway test key). The test images boot in **QEMU inside the VM** (nested KVM, OVMF): the VM's own
+disk, boot, network and LordOS installation were not touched.
+
+- **Installed** (`apt-get install --no-install-recommends`): `debootstrap`, `systemd-repart`,
+  `systemd-ukify`, `systemd-boot-efi`, `systemd-boot-tools`, `cryptsetup-bin`, `erofs-utils`,
+  `qemu-system-x86`, `ovmf`, `gpg`, `gpg-agent`, `gpgv`, `libcryptsetup12`, `mtools`,
+  `dosfstools` (and their dependencies). `systemd-boot` itself and dracut were installed only inside
+  the image's chroot, never on the VM (dracut would replace the VM's initramfs-tools).
+- **Run:** `sudo tools/immutable/build.sh all` and `sudo tools/immutable/demo.py` (as root: `lord`
+  is not in the `kvm` group, and it was not added). The demo's HTTP server listens on port 8642
+  only while it runs; QEMU uses user-mode networking.
+- **Left behind:** the packages above and `/var/tmp/lordos-immutable` (~5 GB; delete it to free the
+  space). Nothing else changed.

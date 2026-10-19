@@ -10,6 +10,23 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
+## [0.8.2] - Unreleased
+
+### Added
+
+- **Design study: an immutable LordOS with A/B system images** ([docs/IMMUTABLE.md](docs/IMMUTABLE.md)).
+  It compares dm-verity system partitions, fs-verity, composefs, OSTree, A/B root partitions and
+  btrfs snapshots against Debian 13, the Store, the Raspberry Pi 5 and LordOS's threat model, and
+  recommends a separate, optional edition: a read-only `/usr` verified by dm-verity in two slots,
+  one signed boot image per version, automatic fallback to the previous version when an update
+  doesn't start, and `/etc` and the home folders kept on their own partition. The classic edition,
+  `install.sh` and in-place updates stay as they are; there is no conversion of existing systems.
+- **Experimental build of that design** (`tools/immutable/`, not part of the regular ISO or
+  Raspberry Pi image): a disk image for UEFI virtual machines with the A/B layout, a signed
+  update into the other slot, and a scripted demonstration in which a deliberately broken version
+  fails three times and the machine returns to the previous version on its own. Its payload is a
+  minimal Debian 13, not the LordOS desktop yet; the rest of the plan moves to later versions.
+
 ## [0.8.1-beta] - 2026-10-19
 
 A maintenance and polish release on top of 0.8.0-beta, and the first one that installed systems
