@@ -18,8 +18,9 @@
 # the Raspberry Pi archive key fingerprint; not recommended), KERNEL_DEBS (folder with the LordOS
 # kernel packages from tools/rpi/build-kernel.sh, default /var/tmp/lordos-kernel/out).
 #
-# Kernel: the LordOS build of the Raspberry Pi kernel (with Landlock) when its .debs are in
-# $KERNEL_DEBS; otherwise Raspberry Pi's archive kernel, which has no Landlock (a loud warning).
+# Kernel: the LordOS build of the Raspberry Pi kernel (with Landlock, the BPF LSM and BTF) when its
+# .debs are in $KERNEL_DEBS; otherwise Raspberry Pi's archive kernel, which has none of them (a loud
+# warning).
 set -eu
 
 [ "$(id -u)" = 0 ] || { echo "build-img.sh: run as root (sudo)" >&2; exit 1; }
@@ -68,8 +69,13 @@ PKGS_LORDOS="libwayland-server0 libxkbcommon0 xkb-data pipewire pipewire-pulse p
  alsa-ucm-conf wpasupplicant openvpn fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji libthai-data
  skkdic rime-data-pinyin-simp fonts-dejavu-core"
 # Raspberry Pi: boot firmware (start*.elf are not used on the Pi 5: its firmware lives in the
-# EEPROM) and Wi-Fi/BT (CYW43455); kernels below
+# EEPROM) and Wi-Fi (CYW43455, firmware-brcm80211); kernels below
 PKGS_RPI="raspi-firmware firmware-brcm80211 rsync"
+# Bluetooth (the CYW43455 on a UART, brought up by the kernel; see docs/RASPBERRY.md, "Bluetooth"),
+# all from Debian: BlueZ (bluetoothd, plus hciconfig/hcitool for rpi/bt-uart), the chip's patch
+# (bluez-firmware: brcm/BCM4345C0.hcd), headset audio in PipeWire (libspa-0.2-bluetooth, with the
+# lordos package's WirePlumber drop-in) and rfkill. The same BlueZ packages as the ISO.
+PKGS_BT="bluez bluez-firmware libspa-0.2-bluetooth rfkill"
 PKGS_RPI_EXTRA="rpi-eeprom raspi-utils"
 # Kernels: Pi 5 (2712: 16K pages) and Pi 4/400/CM4 (v8: 4K pages). Ours (Landlock) if built,
 # per flavour; otherwise Raspberry Pi's.
@@ -96,7 +102,8 @@ kernel_warning() {
     echo "##########################################################################################" >&2
     echo "## WARNING: no LordOS kernel for rpi-$1 in $KERNEL_DEBS: using Raspberry Pi's archive kernel." >&2
     echo "## It has NO Landlock: app and helper isolation will be seccomp-only on that board and" >&2
-    echo "## doc_evil.sh / sandbox-test fail. Build it first: tools/rpi/build-kernel.sh (docs/RASPBERRY.md)." >&2
+    echo "## doc_evil.sh / sandbox-test fail; and no BPF LSM or BTF: \"No Bluetooth\" for Linux apps" >&2
+    echo "## isn't enforced. Build it first: tools/rpi/build-kernel.sh (docs/RASPBERRY.md)." >&2
     echo "##########################################################################################" >&2
 }
 for fl in 2712 v8; do
@@ -229,7 +236,7 @@ mount_ch "$CH"
 echo "== paquetes"
 in_root "$CH" apt-get update -q > "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
 # shellcheck disable=SC2086
-in_root "$CH" apt-get install -y -q --no-install-recommends $PKGS_BASE $PKGS_LORDOS $PKGS_RPI $ARCHIVE_K $PKGS_GPU $PKGS_APPS $PKGS_SSH $PKGS_SPLASH \
+in_root "$CH" apt-get install -y -q --no-install-recommends $PKGS_BASE $PKGS_LORDOS $PKGS_RPI $PKGS_BT $ARCHIVE_K $PKGS_GPU $PKGS_APPS $PKGS_SSH $PKGS_SPLASH \
     >> "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
 # the LordOS kernels (same hooks as Raspberry Pi's: initramfs, raspi-firmware copies kernel_2712.img,
 # device trees and overlays), and an apt pin so the archive kernel of that flavour never replaces them
@@ -241,7 +248,7 @@ if [ -n "$OWN_KDEBS" ]; then
         tail -30 "$WORK/apt.log"; exit 1; }
     rm -rf "$CH/tmp/kernel"
     {
-        echo "# LordOS on Raspberry Pi: the kernel is LordOS's build of the Raspberry Pi kernel (with Landlock,"
+        echo "# LordOS on Raspberry Pi: the kernel is LordOS's build of the Raspberry Pi kernel (Landlock, BPF LSM,"
         echo "# tools/rpi/build-kernel.sh, docs/RASPBERRY.md). Raspberry Pi's kernel packages for the same"
         echo "# board are never installed over it; LordOS updates ship as new linux-image-*-lordos-rpi-* packages."
         for fl in $OWN_FLAVOURS; do
@@ -293,6 +300,10 @@ install -m 755 "$RPI/usr/lib/lordos/rpi/firstboot" "$RPI/usr/lib/lordos/rpi/wait
 install -m 755 "$ROOT/tools/rpi/verify-board.sh" "$CH/usr/lib/lordos/rpi/verify-board"
 install -m 644 "$RPI/etc/systemd/system/lordos-rpi-firstboot.service" "$CH/etc/systemd/system/"
 install -m 644 "$RPI/etc/systemd/system/lordos.service.d/rpi.conf" "$CH/etc/systemd/system/lordos.service.d/"
+# the on-board Bluetooth: SCO routing helper, started by udev for the UART controller (docs/RASPBERRY.md)
+install -m 755 "$RPI/usr/lib/lordos/rpi/bt-uart" "$CH/usr/lib/lordos/rpi/"
+install -m 644 "$RPI/etc/systemd/system/lordos-rpi-bt@.service" "$CH/etc/systemd/system/"
+install -D -m 644 "$RPI/etc/udev/rules.d/90-lordos-rpi-bt.rules" "$CH/etc/udev/rules.d/90-lordos-rpi-bt.rules"
 mkdir -p "$CH/var/lib/lordos/rpi"
 : > "$CH/var/lib/lordos/rpi/resize-pending"
 : > "$CH/var/lib/lordos/rpi/firstboot-pending"
@@ -300,6 +311,7 @@ in_root "$CH" systemctl enable lordos-rpi-firstboot.service lordos.service > /de
 in_root "$CH" systemctl enable lord-fand.service > /dev/null    # fans by temperature from the first boot (docs/FANS.md)
 # per-app network permissions and the device restrictions in the kernel (docs/FIREWALL.md), as on the ISO
 in_root "$CH" systemctl enable lord-netperm.service > /dev/null
+in_root "$CH" systemctl enable bluetooth.service > /dev/null       # bluez's postinst does it too; made sure
 in_root "$CH" systemctl mask getty@tty1.service > /dev/null
 in_root "$CH" systemctl mask systemd-networkd-wait-online.service > /dev/null 2>&1 || true
 # no root password: the emergency console stays locked (like the installed system)
@@ -312,6 +324,9 @@ KV8=$(ls "$CH/boot" | sed -n 's/^vmlinuz-\(.*-rpi-v8\)$/\1/p' | sort -V | tail -
 for kv in $KV2712 $KV8; do
     if grep -q '^CONFIG_SECURITY_LANDLOCK=y' "$CH/boot/config-$kv" 2>/dev/null; then echo "   kernel $kv: Landlock built in"
     else echo "   WARNING: kernel $kv has NO Landlock (seccomp-only isolation on that board)" >&2; fi
+    if grep -q '^CONFIG_BPF_LSM=y' "$CH/boot/config-$kv" 2>/dev/null && grep -q '^CONFIG_DEBUG_INFO_BTF=y' "$CH/boot/config-$kv"; then
+        echo "   kernel $kv: BPF LSM and BTF built in"
+    else echo "   WARNING: kernel $kv has no BPF LSM/BTF (\"No Bluetooth\" for Linux apps not enforced on that board)" >&2; fi
 done
 # boot splash: the LordOS theme, and vc4 (HDMI) with DRM in the initramfs so Plymouth draws from the
 # first seconds instead of waiting for the root file system. Plymouth's own hook adds the rest of
@@ -391,8 +406,9 @@ EOF
 # The boot splash: quiet splash (Plymouth), no serial console for it, no kernel logo or blinking cursor;
 # the console is tty1, where Plymouth draws and where Esc shows the boot messages. Removing "splash"
 # boots in text as before (docs/RASPBERRY.md, "Boot splash").
-# lsm=: the same list as the LordOS kernel's CONFIG_LSM (Landlock for app isolation, server/src/sec);
-# those the kernel lacks are ignored, so the active list is "capability,landlock".
+# lsm=: the same list as the LordOS kernel's CONFIG_LSM (Landlock for app isolation, server/src/sec;
+# Yama for ptrace_scope; bpf for lord-netperm's "No Bluetooth" program); those the kernel lacks are
+# ignored, so the active list is "capability,landlock,yama,bpf".
 printf 'console=serial0,115200 console=tty1 root=PARTUUID=%s rootfstype=ext4 fsck.repair=yes rootwait quiet splash plymouth.ignore-serial-consoles logo.nologo vt.global_cursor_default=0 loglevel=3 cgroup_enable=memory lsm=landlock,lockdown,yama,integrity,bpf lordos.lang=en\n' \
     "$PARTUUID_ROOT" > "$WORK/mnt/boot/firmware/cmdline.txt"
 sync

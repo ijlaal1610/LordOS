@@ -30,6 +30,15 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   lets you allow all users or only administrators. Root never logs in (`PermitRootLogin no` in a
   drop-in shipped by the `lordos` package). The Raspberry Pi image's `ssh` switch file keeps
   working and shows up as on ([docs/REMOTE.md](docs/REMOTE.md#remote-login-ssh)).
+- **Bluetooth on the Raspberry Pi 5 image.** The on-board CYW43455 controller (on a UART, brought
+  up by the kernel) now works out of the box: the image ships BlueZ, the chip's firmware patch
+  (`bluez-firmware`), headset audio in PipeWire (`libspa-0.2-bluetooth`) and a small helper of our
+  own, `lordos-rpi-bt@hciN`, that routes call audio (SCO) over HCI so headset microphones work.
+  Settings → Bluetooth uses it as on a PC. Scanning is verified on a Pi 5; pairing a device on the
+  board is still to be tested ([docs/RASPBERRY.md](docs/RASPBERRY.md#bluetooth)).
+- **`verify-board` checks Bluetooth and the BPF LSM** on a freshly flashed board: the controller on
+  its UART, `bluetoothd`, the SCO helper, the board address, `bpf` in the LSM list, the kernel's
+  BTF and `lord-netperm`.
 - **Guest tools on VMware.** The ISO (and so every installed system) ships `open-vm-tools`:
   shutdown and restart from the hypervisor, time sync and the guest's IP address. Its services only
   run under VMware. Shared clipboard and automatic screen resize are not supported yet
@@ -37,6 +46,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Changed
 
+- **The LordOS Raspberry Pi kernel gains the BPF LSM, BTF and Yama** (`6.18.57-2+lordos`, same
+  Raspberry Pi source as 0.8.0's `-1`): `CONFIG_BPF_LSM`, `CONFIG_DEBUG_INFO_BTF` (from `pahole`;
+  modules stripped, no debug package) and `CONFIG_SECURITY_YAMA`. The active LSM list on the Pi is
+  now `capability,landlock,yama,bpf`.
 - **Monitor → Network: a fluid traffic chart.** The sparse per-second bars are now a continuous
   mirrored strip for the last 60 s: sent above the baseline, received below, one bar per second on
   a faint track, scrolling smoothly at 4 samples per second, auto-scaled, with the minute's totals
@@ -65,6 +78,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   bar < fullscreen < launcher < menus and popovers < sheets < notifications < tooltips < drag
   images < system prompts), and clicks follow it, in every Dock position, light and dark, RTL and
   the Classic theme ([docs/LAYERS.md](docs/LAYERS.md)).
+- **"No Bluetooth" for Linux apps is enforced on the Raspberry Pi 5** (a known issue in 0.8.0):
+  `lord-netperm` loads its Bluetooth socket program there as on a PC (`npverify-test` 37/37 on the
+  board), and a process in a restricted app's scope gets `EPERM` from `socket(AF_BLUETOOTH)` while
+  the same call outside it works.
+- **`kernel.yama.ptrace_scope = 1` applies on the Raspberry Pi 5:** 0.8.0's Pi kernel had no Yama,
+  so any process could attach to another of the same user there.
 - **The menu bar names a Linux app, not its window.** Next to the crown it showed the window title
   (for a browser, the whole page title); it now shows the app's short
   name, "Chromium", in every language. The Dock tooltip and Linux app notifications use the same

@@ -49,17 +49,26 @@ case ",$LSM," in
     *,landlock,*) row PASS "Landlock in the LSM list" "$LSM" ;;
     *) row FAIL "Landlock in the LSM list" "/sys/kernel/security/lsm = '${LSM:-unreadable}'" ;;
 esac
-KLOG=$( (dmesg 2>/dev/null || journalctl -k -b --no-pager 2>/dev/null) | grep -i 'landlock' | head -1)
+# the bpf LSM and BTF: lord-netperm's "No Bluetooth" program for Linux apps (docs/FIREWALL.md)
+case ",$LSM," in
+    *,bpf,*) row PASS "BPF LSM in the LSM list" "$LSM" ;;
+    *) row FAIL "BPF LSM in the LSM list" "no bpf in '${LSM:-unreadable}' (\"No Bluetooth\" not enforced)" ;;
+esac
+if [ -s /sys/kernel/btf/vmlinux ]; then row PASS "kernel BTF" "/sys/kernel/btf/vmlinux, $(($(stat -c %s /sys/kernel/btf/vmlinux) / 1024)) KiB"
+else row FAIL "kernel BTF" "no /sys/kernel/btf/vmlinux (lord-netperm can't attach its LSM program)"; fi
+if systemctl is-active -q lord-netperm.service 2>/dev/null; then row PASS "lord-netperm" "active"
+elif systemctl cat lord-netperm.service >/dev/null 2>&1; then row FAIL "lord-netperm" "$(systemctl is-active lord-netperm.service)"; fi
+KLOG=$( (dmesg 2>/dev/null || journalctl -k -b --no-pager 2>/dev/null) | grep -i 'landlock:' | head -1)
 if echo "$KLOG" | grep -qi 'up and running'; then row PASS "Landlock initialized" "$(echo "$KLOG" | sed 's/^.*\] //')"
 elif [ -z "$KLOG" ]; then row WARN "Landlock initialized" "no landlock line in the kernel log$([ "$(id -u)" = 0 ] || echo " (run as root)")"
 else row FAIL "Landlock initialized" "$KLOG"; fi
 CFG=/boot/config-$KREL
 if [ -f "$CFG" ]; then
     MISS=""
-    for o in SECURITY_LANDLOCK SECCOMP_FILTER CGROUP_BPF BPF_SYSCALL MEMCG; do
+    for o in SECURITY_LANDLOCK SECCOMP_FILTER CGROUP_BPF BPF_SYSCALL BPF_LSM DEBUG_INFO_BTF MEMCG; do
         grep -q "^CONFIG_$o=y" "$CFG" || MISS="$MISS $o"
     done
-    if [ -z "$MISS" ]; then row PASS "kernel config" "LANDLOCK SECCOMP_FILTER CGROUP_BPF BPF_SYSCALL MEMCG"
+    if [ -z "$MISS" ]; then row PASS "kernel config" "LANDLOCK SECCOMP_FILTER CGROUP_BPF BPF_SYSCALL BPF_LSM DEBUG_INFO_BTF MEMCG"
     else row FAIL "kernel config" "missing:$MISS"; fi
 fi
 grep -q '^Seccomp:' /proc/self/status && row PASS "seccomp" "available" || row FAIL "seccomp" "no Seccomp field in /proc/self/status"
@@ -134,6 +143,27 @@ if command -v vcgencmd >/dev/null; then
     if [ "$TH" = 0x0 ]; then row PASS "throttling" "throttled=0x0"
     else row WARN "throttling" "throttled=$TH (under-voltage or heat; 0x50000 = happened before)"; fi
 fi
+
+# ---- Bluetooth: the on-board CYW43455 on its UART (docs/RASPBERRY.md, "Bluetooth") ----
+HCI=""
+for h in /sys/class/bluetooth/hci*; do
+    [ -e "$h" ] || continue
+    case "$(readlink -f "$h")" in */serial*/bluetooth/*) HCI=$(basename "$h") ;; esac
+done
+if [ -n "$HCI" ]; then
+    FW=$( (dmesg 2>/dev/null || journalctl -k -b --no-pager 2>/dev/null) | grep -m1 "$HCI: BCM.*hcd" | sed 's/^.*\] //')
+    row PASS "Bluetooth controller" "$HCI on the UART${FW:+ ($FW)}"
+    if systemctl is-active -q bluetooth.service; then row PASS "bluetoothd" "active"
+    else row FAIL "bluetoothd" "$(systemctl is-active bluetooth.service)"; fi
+    if systemctl is-active -q "lordos-rpi-bt@$HCI.service"; then row PASS "Bluetooth UART helper" "lordos-rpi-bt@$HCI: $(journalctl -b -u "lordos-rpi-bt@$HCI" -o cat --no-pager 2>/dev/null | grep -m1 'bt-uart:' | sed 's/^bt-uart: //')"
+    else row WARN "Bluetooth UART helper" "lordos-rpi-bt@$HCI is $(systemctl is-active "lordos-rpi-bt@$HCI.service")"; fi
+    if command -v btmgmt > /dev/null; then
+        A=$(btmgmt --index "${HCI#hci}" info 2>/dev/null | sed -n 's/^[[:space:]]*addr \([0-9A-F:]*\).*/\1/p' | head -1)
+        case "$A" in ""|43:45:C0:*|AA:AA:AA:AA:AA:AA|00:00:00:00:00:00) row FAIL "Bluetooth address" "'${A}' (the chip's default: no local-bd-address)" ;;
+                     *) row PASS "Bluetooth address" "$A" ;; esac
+    fi
+elif [ -e /proc/device-tree/aliases/bluetooth ]; then row FAIL "Bluetooth controller" "the device tree has one but no hciN on a UART (dtoverlay=disable-bt? hci_uart?)"
+else row INFO "Bluetooth controller" "none on this board"; fi
 
 # ---- remote desktop: listening on its port only when enabled ----
 RC=/etc/lordos/remote/config

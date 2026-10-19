@@ -216,6 +216,14 @@ distributed under the GPL); the others keep "LordOS". If the kernel refuses the 
 Bluetooth program, the network ones still work and the status says `"devices":false` or
 `"bluetooth":false`.
 
+On the Raspberry Pi 5 this needs the LordOS kernel from 0.8.1 on (`6.18.57-2+lordos`, built with
+`CONFIG_BPF_LSM` and BTF; see `RASPBERRY.md`, "The LordOS kernel"). 0.8.0's Pi kernel had neither,
+so there `lord-netperm` reported `"bluetooth":false` and "No Bluetooth" wasn't enforced. Tested on
+a Pi 5 (2026-10-18): `lord-netperm: 9 BPF programs loaded (devices: yes, Bluetooth sockets: yes)`,
+`npverify-test` 37/37, and the steps of `tests/fwlinux/bluetooth.sh` (as root, for the board's
+user): `socket(AF_BLUETOOTH)` in the restricted app's scope → `EPERM`, inet and unix sockets there
+still work, the same call outside the scope works, and lifting the restriction gives it back.
+
 *Not covered:* BlueZ over D-Bus. An app can still ask `bluetoothd` on the system bus (`org.bluez`)
 to scan, pair and connect, and a profile it registers gets its connected socket from `bluetoothd`.
 The system bus policy can't tell two apps of the same user apart; mediating it per app needs a

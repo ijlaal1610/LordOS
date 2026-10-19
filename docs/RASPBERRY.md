@@ -51,7 +51,7 @@ SD card or an NVMe, and the same image boots on the Pi 5 and the Pi 4.
   wpa_supplicant, OpenVPN, Noto, foot, FeatherPad.
 - **The LordOS build of the Raspberry Pi kernel** (see "The LordOS kernel"), when
   `tools/rpi/build-kernel.sh` has built it; otherwise Raspberry Pi's archive kernel, with a loud
-  warning (it has no Landlock):
+  warning (it has no Landlock, BPF LSM or BTF):
   - `linux-image-<version>-lordos-rpi-2712`: the Pi 5 one, with 16K pages (archive:
     `linux-image-rpi-2712`);
   - `linux-image-<version>-lordos-rpi-v8`: the Pi 4/400/CM4 one, with 4K pages (archive:
@@ -59,10 +59,13 @@ SD card or an NVMe, and the same image boots on the Pi 5 and the Pi 4.
 - **Firmware from the Raspberry Pi archive** (`archive.raspberrypi.com/debian`, suite trixie), only
   these packages (`/etc/apt/preferences.d/raspberrypi`):
   - `raspi-firmware`: the boot files, device trees and overlays in `/boot/firmware`;
-  - `firmware-brcm80211`: Wi-Fi and Bluetooth (CYW43455);
+  - `firmware-brcm80211`: Wi-Fi (CYW43455);
   - `rpi-eeprom` and `raspi-utils` (`vcgencmd`, `pinctrl`), if available.
 
   Everything else comes from Debian, Mesa included.
+- **Bluetooth** (the CYW43455's Bluetooth half, on a UART; see "Bluetooth"), from Debian: `bluez`,
+  `bluez-firmware` (the chip's patch, `brcm/BCM4345C0.hcd`), `libspa-0.2-bluetooth` (headsets in
+  PipeWire) and `rfkill`, plus our SCO-routing helper (`lordos-rpi-bt@hciN`).
 - **Debian 13's Mesa:** v3d (GLES 3.1), v3dv (Vulkan) and kmsro (vc4 for the display, v3d for
   rendering). lord-server is compiled with `GPU=1`.
 - **The same LordOS package as the ISO.** Built by `tools/iso/mkdeb.sh` with `DEB_ARCH=arm64`.
@@ -102,23 +105,26 @@ Pi, and everything else from Debian. The kernel is LordOS's own build of it (nex
 Raspberry Pi's kernel leaves Landlock out (`# CONFIG_SECURITY_LANDLOCK is not set`, `CONFIG_LSM=""`,
 so `/sys/kernel/security/lsm` is just `capability`). LordOS confines apps (`.lpk`) and its helpers
 (`lord-doc`, `lord-media`, `lord-maild`) with Landlock (`server/src/sec/sandbox.c`, see
-`PRIVACY.md`); without it `doc_evil.sh` fails 5 of 25 and `sandbox-test` is skipped. The tests stay
-as they are: the fix is the kernel.
+`PRIVACY.md`); without it `doc_evil.sh` fails 5 of 25 and `sandbox-test` is skipped. It also has no
+BPF LSM and no BTF (`/sys/kernel/btf/vmlinux`), which `lord-netperm` needs for "No Bluetooth" of
+Linux apps (its per-cgroup LSM program on `socket_create`, `FIREWALL.md`); without them
+`npverify-test` fails 35/36. The tests stay as they are: the fix is the kernel.
 
 `tools/rpi/build-kernel.sh` builds it from **Raspberry Pi's own source and defconfig**, changing only
 what LordOS needs:
 
 ```sh
-# on the Pi (arm64 Debian 13): about 50 min per flavour on a Pi 5 (4 cores, SD card, Active Cooler)
+# on the Pi (arm64 Debian 13): about 75 min per flavour on a Pi 5 (4 cores, SD card), ~10 GB free
 sudo apt-get install -y --no-install-recommends build-essential bc bison flex libssl-dev libelf-dev \
   libdw-dev dwarves cpio kmod rsync dpkg-dev debhelper git
 tools/rpi/build-kernel.sh /var/tmp/lordos-kernel all     # 2712 (Pi 5), v8 (Pi 4), or all
-# → /var/tmp/lordos-kernel/out/linux-image-6.18.57-lordos-rpi-2712_6.18.57-1+lordos_arm64.deb, …
+# → /var/tmp/lordos-kernel/out/linux-image-6.18.57-lordos-rpi-2712_6.18.57-2+lordos_arm64.deb, …
 ```
 
 - **Source:** `github.com/raspberrypi/linux`, branch `rpi-6.18.y` (`RPI_KERNEL_BRANCH`;
   `RPI_KERNEL_REF=<commit>` pins one). The first build (2026-10-18) used commit `234188315037`,
-  kernel **6.18.57**; the archive shipped 6.18.50 at the time. `out/SOURCE` records it.
+  kernel **6.18.57**; the archive shipped 6.18.50 at the time. The 0.8.1 rebuild (`-2+lordos`, BPF
+  LSM and BTF) uses the same commit. `out/SOURCE` records it.
 - **Config:** `bcm2712_defconfig` (Pi 5, 16K pages) or `bcm2711_defconfig` (Pi 4, 4K pages), then
   `scripts/config` and `olddefconfig`. The whole diff against the defconfig (`out/config-*.diff`):
 
@@ -129,17 +135,42 @@ tools/rpi/build-kernel.sh /var/tmp/lordos-kernel all     # 2712 (Pi 5), v8 (Pi 4
   +CONFIG_SECURITY_LANDLOCK=y
   -CONFIG_LSM=""
   +CONFIG_LSM="landlock,lockdown,yama,integrity,bpf"
+  -# CONFIG_SECURITY_YAMA is not set
+  +CONFIG_SECURITY_YAMA=y
+  -# CONFIG_BPF_LSM is not set
+  +CONFIG_BPF_LSM=y
+  -CONFIG_DEBUG_INFO_NONE=y
+  +CONFIG_DEBUG_INFO=y
+  +CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y
+  +CONFIG_DEBUG_INFO_BTF=y
+  +CONFIG_DEBUG_INFO_BTF_MODULES=y
   ```
 
-  `CONFIG_LSM` uses the usual Debian order; the kernel skips the ones it doesn't build (lockdown,
-  Yama, IMA/EVM and the BPF LSM stay off, as Raspberry Pi has them), so the active list is
-  **`capability,landlock`**. The image's `cmdline.txt` has the same `lsm=` list.
+  plus what `olddefconfig` derives from those (`PAHOLE_HAS_SPLIT_BTF`, `PROBE_EVENTS_BTF_ARGS`,
+  `FUNCTION_TRACE_ARGS`, and a few new options answered "no").
+
+  `CONFIG_LSM` uses the usual Debian order; the kernel skips the ones it doesn't build (lockdown
+  and IMA/EVM stay off, as Raspberry Pi has them), so the active list is
+  **`capability,landlock,yama,bpf`**. The image's `cmdline.txt` has the same `lsm=` list.
+- **Yama (0.8.1)**, so the lordos package's `kernel.yama.ptrace_scope = 1` (a process may only
+  trace its own descendants) applies on the Pi as on a PC; with 0.8.0's kernel the sysctl had
+  nothing to set.
+- **BPF LSM and BTF (0.8.1).** `CONFIG_BPF_LSM` lets `lord-netperm` attach its per-cgroup LSM
+  program (`BPF_LSM_CGROUP`) to `socket_create`, so "No Bluetooth" is enforced for Linux apps on the
+  Pi as on a PC; its attach point is the BTF id of `bpf_lsm_socket_create`, read from
+  `/sys/kernel/btf/vmlinux` (`CONFIG_DEBUG_INFO_BTF`, generated by `pahole` from the DWARF debug
+  info: Debian's `dwarves`). The debug info is only there to make BTF: the modules are stripped by
+  the packaging (their `.BTF` sections stay) and the `-dbg` package isn't built
+  (`DEB_BUILD_PROFILES=pkg.linux-lordos-rpi-<flavour>.nokerneldbg`), so the package hardly grows.
+  The script checks `vmlinux` has a `.BTF` section. The build needs about 10 GB free while it runs
+  (the object files carry DWARF) and takes about 50 % longer.
 - **Already in the defconfig, checked by the script** so a future defconfig can't drop them:
   `SECCOMP_FILTER` (sandbox.c), cgroup v2 with `MEMCG`, `CGROUP_PIDS` and `CGROUP_SCHED` (per-app
   limits; `cgroup_enable=memory` is in `cmdline.txt` because Raspberry Pi turns memcg off at boot),
-  and `BPF_SYSCALL`, `BPF_JIT`, `CGROUP_BPF` (lord-netperm's cgroup hooks). LordOS doesn't need user
-  namespaces (`USER_NS` stays as Raspberry Pi has it, on) or the BPF LSM.
-- **Packages:** `make bindeb-pkg`, version `6.18.57-1+lordos`, release `6.18.57-lordos-rpi-2712`
+  and `BPF_SYSCALL`, `BPF_JIT`, `CGROUP_BPF` (lord-netperm's cgroup hooks). `USER_NS` stays as
+  Raspberry Pi has it, on (the launcher's own view for restricted Linux apps uses it).
+- **Packages:** `make bindeb-pkg`, version `6.18.57-2+lordos` (`LORDOS_KREV`; `-1` was 0.8.0's,
+  without the BPF LSM), release `6.18.57-lordos-rpi-2712`
   (`-lordos-rpi-v8` for the Pi 4). The `-rpi-<flavour>` suffix is what `raspi-firmware`'s hook keys
   on, so it installs exactly like Raspberry Pi's: `kernel_2712.img`, initramfs, device trees and
   overlays in `/boot/firmware`. The script checks the package carries the device trees and
@@ -351,6 +382,56 @@ Checked on the image (read-only, loop-mounted on the Pi): `config.txt`, `cmdline
 theme and `lsinitramfs` of both initramfs files. Still to check on a board: the timing of the first
 frame of the splash after power-on, the hand-off with no flash on vc4, and 4K.
 
+### Bluetooth
+
+The Pi 5's Bluetooth is the second half of its CYW43455 (Wi-Fi is the first, on SDIO), wired to a
+UART of the BCM2712. On the Pi 5 the kernel brings it up by itself, with no `hciattach` and none of
+Raspberry Pi OS's `pi-bluetooth` scripts:
+
+- **The device tree** (`bcm2712-rpi-5-b.dtb`) has a `brcm,bcm43438-bt` node under the UART, so the
+  serial-device bus binds `hci_uart` with its BCM protocol (`CONFIG_BT_HCIUART_SERDEV`,
+  `CONFIG_BT_HCIUART_BCM`, both in Raspberry Pi's defconfig and so in the LordOS kernel). It also
+  carries `shutdown-gpios` (power), `max-speed` and `local-bd-address`, which the board firmware
+  fills in with the board's own address before the kernel starts.
+- **`btbcm`** loads the chip's patch: it looks for
+  `brcm/BCM4345C0.raspberrypi,5-model-b.hcd` and then `brcm/BCM4345C0.hcd`. The image takes it from
+  **Debian's `bluez-firmware`** (`non-free-firmware`, the same 63,806-byte file as Raspberry Pi's
+  `+rpt` package, which only adds per-model symlinks), so the generic name is the one used. The
+  chip reports the placeholder address `43:45:c0:00:1f:ac`; the kernel replaces it with the device
+  tree's.
+- **BlueZ** (Debian's `bluez`, `bluetooth.service` enabled) and the rest of the desktop side are the
+  same as on a PC (`SETTINGS.md`, "Bluetooth"): our own D-Bus client in `lord-server`, the
+  system-drawn pairing prompts, and headsets in PipeWire through `libspa-0.2-bluetooth` with the
+  lordos package's WirePlumber drop-in (`lordos-bluez.conf`).
+- **SCO routing, our helper.** Call audio (HFP/HSP: a headset's microphone) can leave the chip over
+  HCI or over its PCM pins, which the Pi doesn't wire. Raspberry Pi OS's `bthelper` sets HCI with a
+  vendor command of the chip; LordOS does the same with its own `/usr/lib/lordos/rpi/bt-uart`, run by
+  `lordos-rpi-bt@hciN.service` (udev starts it for an `hciN` whose parent is on the serial bus,
+  `/etc/udev/rules.d/90-lordos-rpi-bt.rules`; before `bluetooth.service`). It reads the setting
+  back first (`Read_SCO_PCM_Int_Param`, 0xfc1d) and only writes (`Write_SCO_PCM_Int_Param`,
+  0xfc1c, `01 02 00 01 01`: routing over HCI, with the same other parameters as `bthelper`) when it
+  differs,
+  leaves the controller powered as it found it, skips a controller blocked by rfkill or not on a
+  UART, warns if the address is still the chip's placeholder, and never fails the boot. It uses
+  `hciconfig`/`hcitool` from Debian's `bluez`; `lord-server` still never runs either (it speaks
+  D-Bus to `bluetoothd` only). The setting survives a power cycle of the controller from Settings
+  (an HCI reset): checked on the board.
+- **Not used from Raspberry Pi OS:** `pi-bluetooth` (`hciuart.service`/`btuart` are for the older
+  boards' `hciattach` and exit at once when the kernel already drives the chip; `bthelper` is
+  replaced by the helper above, without its "power off and on again after 5 s" workaround, which
+  the kernel driver doesn't need: Secure Simple Pairing is on from the start).
+
+To turn Bluetooth off for good, `dtoverlay=disable-bt` in `config.txt` (the UART is then free); the
+switch in Settings → Bluetooth only powers the controller off.
+
+**Checked on a Pi 5 (2026-10-18, LordOS kernel `6.18.57-2+lordos`):** `hci0` on the UART with the
+board's own address (`88:A2:…`, not the chip's placeholder), `bluetoothctl show` powered, and a
+12-second scan lists the devices around it (4 to 5 in that room). "No Bluetooth" for a Linux app:
+in the app's scope `socket(AF_BLUETOOTH)` gets `EPERM`, outside it works (`FIREWALL.md`, "Bluetooth
+sockets"). **Not checked yet:** pairing and a headset's audio on the board (they need a device in
+pairing mode next to it), and Settings → Bluetooth on the board's own screen (no LordOS session was
+open; it is the same page and the same D-Bus client as on a PC, `SETTINGS.md`).
+
 ### After flashing
 
 `tools/rpi/verify-board.sh` (in the image as `/usr/lib/lordos/rpi/verify-board`) checks a freshly
@@ -366,10 +447,12 @@ sudo /usr/lib/lordos/rpi/verify-board --repo ~/LordOS  # plus make -C server tes
 |---|---|
 | kernel | `uname -r` is a `-lordos-rpi-*` kernel; page size 16K on the Pi 5 (4K with `-rpi-v8`) |
 | Landlock | `/sys/kernel/security/lsm` lists `landlock`; the kernel log says `landlock: Up and running`; the kernel config has `SECURITY_LANDLOCK`, `SECCOMP_FILTER`, `CGROUP_BPF`, `BPF_SYSCALL`, `MEMCG` |
+| BPF LSM, BTF | `bpf` in `/sys/kernel/security/lsm`; `/sys/kernel/btf/vmlinux` present; the kernel config has `BPF_LSM` and `DEBUG_INFO_BTF`; `lord-netperm` active |
 | seccomp, cgroups | seccomp available; the cgroup v2 `memory` controller is on (`cgroup_enable=memory`) |
 | first boot | the root partition has grown; no switch file left on `bootfs` (WARN for a `remote-desktop` still waiting for an account); not in setup mode |
 | display, GPU | a `connected` KMS output with its mode (WARN with no monitor); `eglinfo -p gbm` shows V3D; the session log shows `GPU composition` |
 | fan, temperature | a fan hwmon (`pwmfan`, rpm and PWM; `lord-fand` active if it's installed); SoC < 75 °C; `throttled=0x0` |
+| Bluetooth | an `hciN` on the UART (with the patch file from the kernel log); `bluetoothd` active; `lordos-rpi-bt@hciN` active (WARN otherwise); the board's own address, not the chip's placeholder `43:45:c0:…` |
 | remote desktop | port 5673 (or the configured one) listens **only** when `/etc/lordos/remote/config` has `enabled=1` |
 | services | `lordos.service` active; SSH shown as on or off |
 | `--repo` | `make -C server test-full` passes; `doc_evil.sh` N/N (25/25 with the archive tools installed); the three `sandbox-test` runs ok |
