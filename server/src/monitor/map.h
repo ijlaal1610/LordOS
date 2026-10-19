@@ -13,7 +13,7 @@
 #define MAP_MAX_H 2048
 #define MAP_MAX_DOTS 256
 
-typedef struct { float lon, lat, r; int sel; } MapDot;
+typedef struct { float lon, lat, r; int sel, idle; } MapDot;   /* idle: no traffic now (dimmed arc) */
 
 typedef struct {
     int w, h;

@@ -238,7 +238,7 @@ static int color_prop(JSContext *c, JSValueConst o, const char *k, uint32_t *out
 }
 
 /* map({ width, height, lon, lat, ppd, land, border, accent, homeColor, selColor,
- *       home: { lon, lat } | null, dots: [{ lon, lat, r, sel }] }) → request number */
+ *       home: { lon, lat } | null, dots: [{ lon, lat, r, sel, idle }] }) → request number */
 static JSValue f_map(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     if (argc < 1 || !JS_IsObject(argv[0])) return js_throw_code(c, "sys.badArgument", NULL);
@@ -274,6 +274,9 @@ static JSValue f_map(JSContext *c, JSValueConst t, int argc, JSValueConst *argv)
             m->r = (float)r;
             m->sel = JS_ToBool(c, sv) > 0;
             JS_FreeValue(c, sv);
+            JSValue iv = JS_GetPropertyStr(c, d, "idle");
+            m->idle = JS_IsBool(iv) && JS_ToBool(c, iv) > 0;
+            JS_FreeValue(c, iv);
         }
         JS_FreeValue(c, d);
     }

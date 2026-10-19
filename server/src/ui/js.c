@@ -174,8 +174,17 @@ static JSValue f_set_style(JSContext *c, JSValueConst this_val, int argc, JSValu
     if (err) fprintf(stderr, "js: unsupported style '%s'\n", key);
     JS_FreeCString(c, key);
     /* the same value (e.g. React confirms the position left by a drag in C): nothing to repaint */
-    if (memcmp(&before, &n->s, sizeof before) || (n->s.ext && (!before.ext || memcmp(&ext_before, n->s.ext, STYLE_EXT_VALUES))))
-        node_invalidate(n);
+    int ext_changed = n->s.ext && (!before.ext || memcmp(&ext_before, n->s.ext, STYLE_EXT_VALUES));
+    if (memcmp(&before, &n->s, sizeof before) || ext_changed) {
+        /* only the insets of an absolutely positioned node changed (a dot sliding along the Monitor's
+         * map, the map image while panning): its size and content are the same, so it's only placed
+         * again, like a window being dragged (no remeasuring of every ancestor, no repaint of its
+         * content; the old and new boxes are damaged by the paint pass) */
+        Style moved = before;
+        memcpy(moved.pos, n->s.pos, sizeof moved.pos);
+        if (!ext_changed && n->s.absolute && before.absolute && !memcmp(&moved, &n->s, sizeof moved)) node_moved(n);
+        else node_invalidate(n);
+    }
     return JS_UNDEFINED;
 }
 

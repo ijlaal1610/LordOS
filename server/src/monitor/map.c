@@ -361,7 +361,7 @@ static void render(const MapReq *q, uint8_t *out) {
             const MapDot *d = &q->dots[i];
             if (!!d->sel != pass) continue;
             float x = (float)((d->lon - q->lon0) * q->ppd), y = (float)((q->lat0 - d->lat) * q->ppd);
-            arc(q, out, hx, hy, x, y, d->sel ? q->sel_color : q->accent, d->sel ? 2.6f : 1.6f, d->sel ? 1.0f : 0.85f);
+            arc(q, out, hx, hy, x, y, d->sel ? q->sel_color : q->accent, d->sel ? 2.6f : d->idle ? 1.3f : 1.6f, d->sel ? 1.0f : d->idle ? 0.4f : 0.85f);
         }
     for (int pass = 0; pass < 2; pass++)
         for (int i = 0; i < q->ndots; i++) {

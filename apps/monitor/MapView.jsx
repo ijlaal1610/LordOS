@@ -6,10 +6,107 @@
 //
 // Mientras llega el cuadro nuevo se muestra el anterior corrido (y escalado, si cambió el zoom),
 // así que mover y acercar no esperan al dibujo. Las etiquetas son texto del motor: siempre nítidas.
-import { View, Text, Image, useTheme, useLocale, addListener, formatNumber, tOptional } from '@lordos/sdk';
+import { View, Text, Image, useTheme, useLocale, addListener, formatNumber, tOptional, useAppWindow, useStore, windows, settings } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseColor } from './draw.js';
 import { COUNTRY_LL } from './countries.js';
+import { C } from './index.jsx';
+
+// ---- traffic direction on the arcs ----
+// Dots travel along each arc while bytes move: sent (orange) from "This computer" to the place,
+// received (green) back. More dots and faster the higher the rate; an idle arc has none and is
+// drawn dimmed (map.c). The dots are engine views moved with lord.setStyle (no React render per
+// frame) at FLOW_FPS with the window in front and FLOW_FPS_BEHIND behind it, only for arcs on
+// screen and at most FLOW_ARCS of them; the timer stops with the window minimized, while the map
+// moves and when nothing moves. Each frame repaints the box around the dots (about 0.35 % of a
+// 1.8 GHz core per frame per second with CPU compositing, docs/MONITOR.md). With Reduce motion each
+// busy arc gets two still arrows instead.
+const FLOW_FPS = 12, FLOW_FPS_BEHIND = 5, FLOW_ARCS = 12, FLOW_MIN = 256;   // FLOW_MIN: bytes per second that count as "moving"
+// 0 at FLOW_MIN, 1 from about 4 MB/s
+const flowLevel = (rate) => (rate > FLOW_MIN ? Math.max(0, Math.min(1, Math.log10(rate / FLOW_MIN) / 4.2)) : -1);
+const bez = (a, k) => { const u = 1 - k; return [u * u * a.x0 + 2 * u * k * a.cx + k * k * a.x1, u * u * a.y0 + 2 * u * k * a.cy + k * k * a.y1]; };
+
+// arcs: [{ cc, x0, y0, cx, cy, x1, y1, tx, rx }] in the map's pixels.
+function FlowLayer({ arcs, w, h, paused }) {
+  const t = useTheme();
+  const { id, focused } = useAppWindow() || {};
+  const fps = focused === false ? FLOW_FPS_BEHIND : FLOW_FPS;
+  const hidden = useStore(windows, (ws) => !!ws.find((x) => x.id === id)?.minimized);
+  const motion = useStore(settings, (st) => !st.reduceMotion);
+  // each moving dot: arc index, direction (1 sent, -1 received), phase offset, seconds per trip
+  const dots = [];
+  arcs.forEach((a, i) => {
+    for (const [dir, rate] of [[1, a.tx], [-1, a.rx]]) {
+      const lv = flowLevel(rate);
+      if (lv < 0) continue;
+      const n = 1 + Math.round(lv * 3), trip = 4 - 2.6 * lv;
+      for (let k = 0; k < n; k++) dots.push({ key: `${a.cc}${dir}${k}`, arc: i, dir, off: k / n + (dir < 0 ? 0.5 / n : 0), trip });
+    }
+  });
+  const nodes = useRef(new Map());
+  const place = (d, now) => {
+    const a = arcs[d.arc];
+    let k = ((now / 1000) / d.trip + d.off) % 1;
+    if (d.dir < 0) k = 1 - k;
+    const [x, y] = bez(a, k);
+    return [x - 4.5, y - 4.5, x > -6 && y > -6 && x < w + 6 && y < h + 6];
+  };
+  const animate = motion && !hidden && !paused && dots.length > 0;
+  const sig = dots.map((d) => `${d.key}:${d.trip.toFixed(2)}`).join(',') + arcs.map((a) => `${a.x0 | 0},${a.y0 | 0},${a.x1 | 0},${a.y1 | 0}`).join(';');
+  useEffect(() => {
+    if (!animate) return undefined;
+    let tm = null;
+    const step = () => {
+      const now = lord.now();
+      for (const d of dots) {
+        const node = nodes.current.get(d.key);
+        if (node == null) continue;
+        const [x, y, on] = place(d, now);
+        try {
+          lord.setStyle(node, 'left', on ? x : -20);
+          lord.setStyle(node, 'top', on ? y : -20);
+        } catch (e) { /* the node went away */ }
+      }
+      tm = setTimeout(step, 1000 / fps);
+    };
+    tm = setTimeout(step, 1000 / fps);
+    return () => clearTimeout(tm);
+  }, [animate, sig, w, h, fps]);
+  if (paused || hidden) return null;
+  const ring = t.mode === 'dark' ? 'rgba(20,21,24,0.85)' : 'rgba(255,255,255,0.9)';
+  if (!motion) {
+    // still markers at 38 % (received) and 62 % (sent) of each busy arc: a short comet of three
+    // dots, the biggest in front, so it reads as pointing the way the bytes go (no rotation needed)
+    const out = [];
+    arcs.forEach((a) => {
+      for (const [dir, rate, k] of [[1, a.tx, 0.62], [-1, a.rx, 0.38]]) {
+        if (flowLevel(rate) < 0) continue;
+        const [x, y] = bez(a, k), [x2, y2] = bez(a, k + 0.01 * dir);
+        const len = Math.hypot(x2 - x, y2 - y) || 1, ux = (x2 - x) / len, uy = (y2 - y) / len;
+        if (x < -8 || y < -8 || x > w + 8 || y > h + 8) continue;
+        [[0, 7], [-6, 5], [-11, 3]].forEach(([off, size], i) => {
+          const cx = x + ux * off, cy = y + uy * off;
+          out.push(<View key={`${a.cc}${dir}${i}`} style={{ position: 'absolute', left: cx - size / 2, top: cy - size / 2, width: size, height: size, borderRadius: size / 2,
+            backgroundColor: dir > 0 ? C.tx : C.rx, opacity: 1 - i * 0.25, pointerEvents: 'none' }} />);
+        });
+      }
+    });
+    return <>{out}</>;
+  }
+  const now = lord.now();
+  return (
+    <>
+      {dots.map((d) => {
+        const [x, y, on] = place(d, now);
+        return (
+          <View key={d.key} ref={(r) => { if (r) nodes.current.set(d.key, r.id); else nodes.current.delete(d.key); }}
+            style={{ position: 'absolute', left: on ? x : -20, top: on ? y : -20, width: 9, height: 9, borderRadius: 5, pointerEvents: 'none',
+              backgroundColor: d.dir > 0 ? C.tx : C.rx, border: `2px solid ${ring}` }} />
+        );
+      })}
+    </>
+  );
+}
 
 const LAT_TOP = 84, LAT_BOTTOM = -56;
 const countryName = (cc) => (cc ? tOptional(`countries.${cc}`) || cc : '');
@@ -73,7 +170,8 @@ export function MapView({ places, home, selected, onSelect, geoOn, fitKey }) {
 
   // puntos (radio según conexiones)
   const dots = places.filter((p) => COUNTRY_LL[p.cc]).map((p) => ({
-    cc: p.cc, lon: COUNTRY_LL[p.cc][0], lat: COUNTRY_LL[p.cc][1], r: Math.min(11, 3 + 1.6 * Math.sqrt(p.count)), sel: selected === p.cc, count: p.count,
+    cc: p.cc, lon: COUNTRY_LL[p.cc][0], lat: COUNTRY_LL[p.cc][1], r: Math.min(11, 3 + 1.6 * Math.sqrt(Math.max(1, p.count))), sel: selected === p.cc, count: p.count,
+    tx: p.rateTx || 0, rx: p.rateRx || 0, idle: (p.rateTx || 0) + (p.rateRx || 0) < FLOW_MIN,
   }));
   const dark = t.mode === 'dark';
   const colors = {
@@ -81,7 +179,7 @@ export function MapView({ places, home, selected, onSelect, geoOn, fitKey }) {
     border: rgba(dark ? '#cfd6e6' : '#ffffff', dark ? (v && v.ppd > 6 ? 0.42 : 0.25) : 0.9),
     accent: rgba(t.accent, 1), homeColor: rgba('#30d158', 1), selColor: rgba('#ffd60a', 1),
   };
-  const dataKey = JSON.stringify([dots.map((d) => [d.cc, d.r, d.sel]), home, colors]);
+  const dataKey = JSON.stringify([dots.map((d) => [d.cc, d.r, d.sel, d.idle]), home, colors]);
   // pedir un cuadro cuando cambia la vista, el tamaño o los datos; retirarlo cuando esté listo
   const pending = useRef(0);
   // Mientras se mueve (arrastrar, dos dedos con inercia, pellizco): a lo sumo un cuadro cada 100 ms
@@ -100,7 +198,7 @@ export function MapView({ places, home, selected, onSelect, geoOn, fitKey }) {
     const { w: ww, h: hh, colors: cc, home: hm, dots: dd } = latest.current;
     lastReq.current = lord.now();
     pending.current = lord.monitor.map({ width: Math.round(ww * q), height: Math.round(hh * q), lon: vv.lon - ww / 2 / vv.ppd,
-      lat: vv.lat + hh / 2 / vv.ppd, ppd: vv.ppd * q, ...cc, home: hm || null, dots: dd });
+      lat: vv.lat + hh / 2 / vv.ppd, ppd: vv.ppd * q, ...cc, home: hm || null, dots: dd.map((d) => ({ lon: d.lon, lat: d.lat, r: d.r, sel: d.sel, idle: d.idle })) });
     clearTimeout(pollT.current);
     const poll = () => {
       const f = lord.monitor.mapFrame();
@@ -232,6 +330,20 @@ export function MapView({ places, home, selected, onSelect, geoOn, fitKey }) {
   const vNow = live.current || v;
   const img = frame && vNow ? imgBox(vNow, frame) : null;
 
+  // ---- arcs with traffic, for the moving dots (the busiest ones, in screen pixels) ----
+  const flowArcs = [];
+  if (v && home) {
+    const [hx, hy] = toXY(home.lon, home.lat);
+    for (const d of [...dots].filter((x) => !x.idle).sort((a, b) => b.tx + b.rx - (a.tx + a.rx)).slice(0, FLOW_ARCS)) {
+      const [x, y] = toXY(d.lon, d.lat);
+      const len = Math.hypot(x - hx, y - hy);
+      if (len < 6) continue;
+      const cx = (hx + x) / 2, cy = (hy + y) / 2 - len * 0.3;
+      if (Math.max(hx, x, cx) < 0 || Math.min(hx, x, cx) > w || Math.max(hy, y, cy) < 0 || Math.min(hy, y, cy) > h) continue;   // off screen
+      flowArcs.push({ cc: d.cc, x0: hx, y0: hy, cx, cy, x1: x, y1: y, tx: d.tx, rx: d.rx });
+    }
+  }
+
   // ---- etiquetas ----
   const labels = useMemo(() => {
     if (!v || moving) return [];
@@ -273,12 +385,13 @@ export function MapView({ places, home, selected, onSelect, geoOn, fitKey }) {
     <View ref={box} style={{ flex: 1, minHeight: 120, overflow: 'hidden', borderRadius: 8, direction: 'ltr' }}
       onMouseDown={onMouseDown} onWheel={onWheel} onPinch={onPinch} onDoubleClick={onDoubleClick}>
       {img && <Image ref={imgRef} pixels={frame.pixels} style={{ position: 'absolute', left: img.left, top: img.top, width: img.width, height: img.height, pointerEvents: 'none' }} />}
+      {v && <FlowLayer arcs={flowArcs} w={w} h={h} paused={moving || !!live.current} />}
       {labels.map((l) => (l.kind === 'name' ? (
         <Text key={`n${l.key}`} style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, fontSize: 9, color: t.textDim, textAlign: 'center', whiteSpace: 'nowrap', pointerEvents: 'none' }}>{l.text}</Text>
       ) : (
         <View key={`p${l.key}`} style={{ position: 'absolute', left: l.x, top: l.y, height: 18, paddingHorizontal: 8, borderRadius: 9, justifyContent: 'center', pointerEvents: 'none',
           backgroundColor: l.kind === 'home' ? 'rgba(48,209,88,0.92)' : l.kind === 'sel' ? 'rgba(255,214,10,0.95)' : dark ? 'rgba(28,29,33,0.88)' : 'rgba(255,255,255,0.94)',
-          border: l.kind === 'place' ? `1px solid ${t.separator}` : '0 solid transparent', boxShadow: '0 2px 6px rgba(0,0,0,0.25)' }}>
+          border: l.kind === 'place' ? `1px solid ${t.separator}` : '0 solid transparent' }}>
           <Text style={{ fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap', color: l.kind === 'home' ? '#fff' : l.kind === 'sel' ? '#1c1c1e' : t.text }}>{l.text}</Text>
         </View>
       )))}
