@@ -69,6 +69,8 @@ typedef struct {
     int has_domains, seen;
     NpApp app_v;                        /* the last thing written to np_apps */
     uint64_t allowed, denied;           /* kernel counters */
+    uint64_t rx, tx;                    /* bytes (np_counts) */
+    double rrx, rtx;                    /* bytes per second over the last tick */
 } Scope;
 
 typedef struct {
@@ -101,7 +103,10 @@ typedef struct {
 static struct {
     int bpf_ok;
     char bpf_err[200];                  /* a code line (errcode.h): the firewall page shows it translated */
-    int m_np_cfg, m_np_apps, m_np_union, m_np_lpm4, m_np_lpm6, m_np_seen, m_np_counts, m_np_events, m_np_snd;
+    int m_np_cfg, m_np_apps, m_np_union, m_np_lpm4, m_np_lpm6, m_np_seen, m_np_counts, m_np_events, m_np_snd, m_np_flows;
+    int acct_ok;                        /* the traffic accounting programs loaded */
+    FwMap flows;                        /* NpFlowKey → FlowSt: the previous reading of np_flows */
+    long long counts_ns;                /* when push_counts last read the counters */
     uint32_t snd[NP_MAX_SND];           /* the ALSA minors in np_snd */
     int nsnd;
     int dev_ok, bt_ok;                  /* the device / Bluetooth programs loaded */
@@ -211,6 +216,7 @@ static int map_fd(const char *name) {
     if (!strcmp(name, "np_counts")) return G.m_np_counts;
     if (!strcmp(name, "np_events")) return G.m_np_events;
     if (!strcmp(name, "np_snd")) return G.m_np_snd;
+    if (!strcmp(name, "np_flows")) return G.m_np_flows;
     return -1;
 }
 #endif
@@ -286,11 +292,21 @@ static void sync_scope(Session *s, Scope *sc) {
     sc->has_domains = c.has_domains;
     sc->app_v = c.app;
     if (bpfs_map_update(G.m_np_apps, &sc->cgid, &c.app, BPF_ANY)) logf_("np_apps: %s", strerror(errno));
+    /* the counters' entry exists from the start: the accounting programs only add to existing
+     * entries, so they never store anything for a cgroup that isn't an app */
+    NpCount zero = { 0, 0, 0, 0 };
+    bpfs_map_update(G.m_np_counts, &sc->cgid, &zero, BPF_NOEXIST);
     np_compiled_free(&c);
 }
 
 static void drop_scope(Scope *sc) {
     if (!G.bpf_ok) return;
+    FWMAP_EACH(&G.flows, e) {                       /* its addresses' byte counters */
+        const NpFlowKey *k = (const NpFlowKey *)(const void *)e->key;
+        if (k->cgid != sc->cgid) continue;
+        bpfs_map_delete(G.m_np_flows, k);
+        free(fwmap_take(&G.flows, e->key, e->klen));
+    }
     bpfs_map_delete(G.m_np_apps, &sc->cgid);
     bpfs_map_delete(G.m_np_counts, &sc->cgid);
     prune(sc->idx, 0);
@@ -355,6 +371,7 @@ static void sync_user_scope(Session *s) {
     s->user_cg = 0;
     if (!id || ufd < 0) { if (ufd >= 0) close(ufd); return; }
     for (int i = 0; i < G.nprogs && s->nulinks < (int)(sizeof s->ulinks / sizeof s->ulinks[0]); i++) {
+        if (!np_attach_user(G.attach[i])) continue;             /* accounting: only the app scopes */
         int l = bpfs_link_create(G.progs[i], ufd, G.attach[i]);
         if (l < 0) { logf_("uid %u: could not attach to user@: %s", s->uid, strerror(errno)); drop_user_links(s); close(ufd); return; }
         s->ulinks[s->nulinks++] = l;
@@ -553,8 +570,9 @@ static void send_uid(unsigned uid, int type, const char *json, size_t n, int dro
 static void status_json(char *b, size_t n) {
     char err[260];
     json_quote(err, sizeof err, G.bpf_ok ? "" : G.bpf_err);
-    snprintf(b, n, "{\"bpf\":%s,\"devices\":%s,\"bluetooth\":%s,\"dns\":\"%s\",\"error\":%s}", G.bpf_ok ? "true" : "false",
-             G.bpf_ok && G.dev_ok ? "true" : "false", G.bpf_ok && G.bt_ok ? "true" : "false", G.dns ? npdns_source(G.dns) : "none", err);
+    snprintf(b, n, "{\"bpf\":%s,\"devices\":%s,\"bluetooth\":%s,\"bytes\":%s,\"dns\":\"%s\",\"error\":%s}", G.bpf_ok ? "true" : "false",
+             G.bpf_ok && G.dev_ok ? "true" : "false", G.bpf_ok && G.bt_ok ? "true" : "false", G.bpf_ok && G.acct_ok == 2 ? "true" : "false",
+             G.dns ? npdns_source(G.dns) : "none", err);
 }
 
 static void accept_client(void) {
@@ -673,28 +691,141 @@ static void on_event(void *u, const void *data, uint32_t len) {
               ev.flag ? " " : "", ev.flag && flag ? flag : "");
 }
 
+/* ---- traffic per address (np_flows) ------------------------------------------------------- */
+
+typedef struct {
+    uint64_t rx, tx;                    /* the last reading */
+    double rrx, rtx;                    /* bytes per second over the last tick */
+    long long active;                   /* tick of the last change */
+    long long tick;                     /* tick of the last reading that saw it */
+} FlowSt;
+
+#define FLOW_KEEP_TICKS 120             /* an address idle for 2 min stops being sent (its bytes stay in the app's total) */
+#define FLOWS_PER_APP   64              /* the busiest addresses of each app, per COUNTS message */
+
+typedef struct { const NpFlowKey *k; const FlowSt *f; } FlowRef;
+
+static int flow_cmp(const void *a, const void *b) {
+    const FlowSt *x = ((const FlowRef *)a)->f, *y = ((const FlowRef *)b)->f;
+    double rx = x->rrx + x->rtx, ry = y->rrx + y->rtx;
+    if (rx != ry) return rx < ry ? 1 : -1;
+    uint64_t bx = x->rx + x->tx, by = y->rx + y->tx;
+    return bx < by ? 1 : bx > by ? -1 : 0;
+}
+
+/* Rereads np_flows (one batch call) and updates each address's rate. dt in seconds. */
+static void read_flows(double dt) {
+    static NpFlowKey keys[NP_MAX_FLOWS];
+    static NpFlow vals[NP_MAX_FLOWS];
+    int n = bpfs_map_dump(G.m_np_flows, keys, sizeof keys[0], vals, sizeof vals[0], NP_MAX_FLOWS);
+    for (int i = 0; i < n; i++) {
+        void **slot = fwmap_slot(&G.flows, &keys[i], sizeof keys[i], 1);
+        if (!slot) break;
+        FlowSt *f = *slot;
+        if (!f && !(f = *slot = calloc(1, sizeof *f))) break;   /* new in the kernel since the last dump: all its bytes are new */
+        if (f->tick == G.tick) continue;                         /* the same entry twice in one dump */
+        uint64_t drx = vals[i].rx >= f->rx ? vals[i].rx - f->rx : vals[i].rx;   /* LRU reuse: started over */
+        uint64_t dtx = vals[i].tx >= f->tx ? vals[i].tx - f->tx : vals[i].tx;
+        f->rrx = dt > 0 ? (double)drx / dt : 0;
+        f->rtx = dt > 0 ? (double)dtx / dt : 0;
+        if (drx || dtx || !f->active) f->active = G.tick;
+        f->rx = vals[i].rx;
+        f->tx = vals[i].tx;
+        f->tick = G.tick;
+    }
+    /* the table mirrors the kernel's: what the LRU evicted (or a closed scope left) goes */
+    FWMAP_EACH(&G.flows, e) {
+        FlowSt *f = e->val;
+        if (f->tick != G.tick) free(fwmap_take(&G.flows, e->key, e->klen));
+    }
+}
+
+/* No bytes moved this second: every address is idle (no need to read the kernel's table). */
+static void idle_flows(void) {
+    FWMAP_EACH(&G.flows, e) {
+        FlowSt *f = e->val;
+        f->rrx = f->rtx = 0;
+    }
+}
+
+/* [["addr",rx,tx,rxRate,txRate],...] of one app, busiest first. */
+static size_t flows_json(uint64_t cgid, char *j, size_t cap) {
+    static FlowRef refs[NP_MAX_FLOWS];
+    int n = 0;
+    FWMAP_EACH(&G.flows, e) {
+        const NpFlowKey *k = (const NpFlowKey *)(const void *)e->key;
+        const FlowSt *f = e->val;
+        if (k->cgid != cgid || n >= NP_MAX_FLOWS || G.tick - f->active > FLOW_KEEP_TICKS) continue;
+        refs[n].k = k;
+        refs[n++].f = e->val;
+    }
+    qsort(refs, (size_t)n, sizeof refs[0], flow_cmp);
+    size_t w = 0;
+    w += (size_t)snprintf(j + w, cap - w, "[");
+    for (int i = 0; i < n && i < FLOWS_PER_APP && w + 120 < cap; i++) {
+        char addr[INET6_ADDRSTRLEN] = "";
+        inet_ntop(refs[i].k->fam == 4 ? AF_INET : AF_INET6, refs[i].k->addr, addr, sizeof addr);
+        w += (size_t)snprintf(j + w, cap - w, "%s[\"%s\",%llu,%llu,%.0f,%.0f]", i ? "," : "", addr,
+                              (unsigned long long)refs[i].f->rx, (unsigned long long)refs[i].f->tx, refs[i].f->rrx, refs[i].f->rtx);
+    }
+    w += (size_t)snprintf(j + w, cap - w, "]");
+    return w;
+}
+
+/* Every second: {"app":[allowed,denied,rx,tx,rxRate,txRate,[[addr,rx,tx,rxRate,txRate],...]],...}
+ * to each user with something new (the rates are bytes per second over the last second). With
+ * no traffic and no new connections nothing is sent. */
 static void push_counts(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    long long now = (long long)ts.tv_sec * 1000000000ll + ts.tv_nsec;
+    double dt = G.counts_ns ? (double)(now - G.counts_ns) / 1e9 : 0;
+    G.counts_ns = now;
+    int bytes_moved = 0;
     for (int i = 0; i < G.nsess; i++) {
         Session *s = &G.sess[i];
-        int changed = s->dirty_counts;
         for (int k = 0; k < s->nsc; k++) {
-            NpCount c = { 0, 0 };
-            if (G.bpf_ok) bpfs_map_lookup(G.m_np_counts, &s->sc[k].cgid, &c);
-            if (c.allowed != s->sc[k].allowed || c.denied != s->sc[k].denied) changed = 1;
-            s->sc[k].allowed = c.allowed;
-            s->sc[k].denied = c.denied;
+            Scope *sc = &s->sc[k];
+            NpCount c = { 0, 0, 0, 0 };
+            if (G.bpf_ok) bpfs_map_lookup(G.m_np_counts, &sc->cgid, &c);
+            if (c.allowed != sc->allowed || c.denied != sc->denied) s->dirty_counts = 1;
+            double rrx = dt > 0 && c.rx >= sc->rx ? (double)(c.rx - sc->rx) / dt : 0;
+            double rtx = dt > 0 && c.tx >= sc->tx ? (double)(c.tx - sc->tx) / dt : 0;
+            if (c.rx != sc->rx || c.tx != sc->tx || (rrx == 0) != (sc->rrx == 0) || (rtx == 0) != (sc->rtx == 0)) { s->dirty_counts = 1; bytes_moved = 1; }
+            sc->allowed = c.allowed;
+            sc->denied = c.denied;
+            sc->rx = c.rx;
+            sc->tx = c.tx;
+            sc->rrx = rrx;
+            sc->rtx = rtx;
         }
-        if (!changed) continue;
+    }
+    /* the per-address table only while bytes move (one batch call per second) */
+    if (G.bpf_ok && G.acct_ok == 2) {
+        if (bytes_moved) read_flows(dt);
+        else idle_flows();
+    }
+    for (int i = 0; i < G.nsess; i++) {
+        Session *s = &G.sess[i];
+        if (!s->dirty_counts) continue;
+        int has_client = 0;
+        for (int c = 0; c < G.ncl && !has_client; c++) has_client = G.cl[c].uid == s->uid;
+        if (!has_client) continue;                                  /* stays dirty until someone connects */
         s->dirty_counts = 0;
-        size_t cap = 64 + (size_t)s->nsc * (FW_APP_MAX * 2 + 48), w = 0;
+        size_t per = FW_APP_MAX * 2 + 160 + (size_t)FLOWS_PER_APP * 120;
+        size_t cap = 64 + (size_t)s->nsc * per, w = 0;
         char *j = malloc(cap);
         if (!j) continue;
         j[w++] = '{';
         for (int k = 0; k < s->nsc; k++) {
+            Scope *sc = &s->sc[k];
             char app[FW_APP_MAX * 2 + 4];
-            json_quote(app, sizeof app, s->sc[k].app);
-            w += (size_t)snprintf(j + w, cap - w, "%s%s:[%llu,%llu]", w > 1 ? "," : "", app,
-                                  (unsigned long long)s->sc[k].allowed, (unsigned long long)s->sc[k].denied);
+            json_quote(app, sizeof app, sc->app);
+            w += (size_t)snprintf(j + w, cap - w, "%s%s:[%llu,%llu,%llu,%llu,%.0f,%.0f,", w > 1 ? "," : "", app,
+                                  (unsigned long long)sc->allowed, (unsigned long long)sc->denied,
+                                  (unsigned long long)sc->rx, (unsigned long long)sc->tx, sc->rrx, sc->rtx);
+            w += flows_json(sc->cgid, j + w, cap - w - 2);
+            j[w++] = ']';
         }
         j[w++] = '}';
         send_uid(s->uid, NP_MSG_COUNTS, j, w, 0);
@@ -761,7 +892,7 @@ static int bpf_setup(void) {
 #define NP_MKMAP(n, t, k, v, m, f) G.m_##n = bpfs_map_create(t, k, v, m, f, #n);
     NP_MAPS(NP_MKMAP)
 #undef NP_MKMAP
-    if (G.m_np_snd < 0 || G.m_np_cfg < 0 || G.m_np_apps < 0 || G.m_np_union < 0 || G.m_np_lpm4 < 0 || G.m_np_lpm6 < 0 || G.m_np_seen < 0 || G.m_np_counts < 0 || G.m_np_events < 0) {
+    if (G.m_np_flows < 0 || G.m_np_snd < 0 || G.m_np_cfg < 0 || G.m_np_apps < 0 || G.m_np_union < 0 || G.m_np_lpm4 < 0 || G.m_np_lpm6 < 0 || G.m_np_seen < 0 || G.m_np_counts < 0 || G.m_np_events < 0) {
         lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfMaps", "errno", lerr_errno(errno), NULL);
         return -1;
     }
@@ -798,6 +929,7 @@ static int bpf_setup(void) {
         }
         if (want[w].attach == BPF_CGROUP_DEVICE) G.dev_ok = 1;
         if (want[w].attach == BPF_LSM_CGROUP) G.bt_ok = 1;
+        if (want[w].attach == BPF_CGROUP_INET_INGRESS || want[w].attach == BPF_CGROUP_INET_EGRESS) G.acct_ok++;
         G.attach[np] = want[w].attach;
         G.progs[np++] = fd;
     }
@@ -805,8 +937,8 @@ static int bpf_setup(void) {
     NpCfg cfg = { SCOPE_LEVEL, 1, USER_LEVEL, hidraw_major() };
     uint32_t zero = 0;
     if (bpfs_map_update(G.m_np_cfg, &zero, &cfg, BPF_ANY)) { lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfConfig", "errno", lerr_errno(errno), NULL); return -1; }
-    logf_("%d BPF programs loaded (devices: %s, Bluetooth sockets: %s, hidraw major %u)", np, G.dev_ok ? "yes" : "no",
-          G.bt_ok ? "yes" : "no", cfg.hidraw_major);
+    logf_("%d BPF programs loaded (devices: %s, Bluetooth sockets: %s, traffic accounting: %s, hidraw major %u)", np, G.dev_ok ? "yes" : "no",
+          G.bt_ok ? "yes" : "no", G.acct_ok == 2 ? "yes" : "no", cfg.hidraw_major);
     return 0;
 #endif
 }

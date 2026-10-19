@@ -22,11 +22,14 @@
     X(np_seen,   BPF_MAP_TYPE_LRU_HASH, sizeof(NpSeenKey), 8,               NP_MAX_SEEN,     0) \
     X(np_counts, BPF_MAP_TYPE_HASH,     8,                 sizeof(NpCount), NP_MAX_APPS,     0) \
     X(np_events, BPF_MAP_TYPE_RINGBUF,  0,                 0,               NP_RINGBUF,      0) \
-    X(np_snd,    BPF_MAP_TYPE_HASH,     4,                 4,               NP_MAX_SND,      0)
+    X(np_snd,    BPF_MAP_TYPE_HASH,     4,                 4,               NP_MAX_SND,      0) \
+    X(np_flows,  BPF_MAP_TYPE_LRU_HASH, sizeof(NpFlowKey), sizeof(NpFlow),  NP_MAX_FLOWS,    0)
 
 /* Each program: its section, kind and attach point. btf: the kernel function an LSM program
- * hooks (its id comes from /sys/kernel/btf/vmlinux). opt: 1 = the device and Bluetooth
- * programs; if the kernel refuses one (no bpf LSM, an old kernel) the network ones still work. */
+ * hooks (its id comes from /sys/kernel/btf/vmlinux). opt: 1 = the device, Bluetooth and traffic
+ * accounting programs; if the kernel refuses one (no bpf LSM, an old kernel) the network ones
+ * still work. The accounting programs (BPF_CGROUP_INET_INGRESS / EGRESS) are attached only to
+ * lordos.service, not to user@<uid>.service (np_attach_user). */
 typedef struct {
     const char *sec;
     uint32_t type, attach;
@@ -44,8 +47,13 @@ static const NpProgSpec np_prog_specs[] = {
     { "cgroup/sock_create", BPF_PROG_TYPE_CGROUP_SOCK, BPF_CGROUP_INET_SOCK_CREATE, NULL, 0 },
     { "cgroup/dev", BPF_PROG_TYPE_CGROUP_DEVICE, BPF_CGROUP_DEVICE, NULL, 1 },
     { "cgroup/lsm_socket_create", BPF_PROG_TYPE_LSM, BPF_LSM_CGROUP, "bpf_lsm_socket_create", 1 },
+    /* traffic accounting for the Monitor (bytes per app and per remote address); never denies */
+    { "cgroup/skb_ingress", BPF_PROG_TYPE_CGROUP_SKB, BPF_CGROUP_INET_INGRESS, NULL, 1 },
+    { "cgroup/skb_egress", BPF_PROG_TYPE_CGROUP_SKB, BPF_CGROUP_INET_EGRESS, NULL, 1 },
 };
 #define NP_NSPECS (int)(sizeof np_prog_specs / sizeof np_prog_specs[0])
+
+static inline int np_attach_user(uint32_t attach) { return attach != BPF_CGROUP_INET_INGRESS && attach != BPF_CGROUP_INET_EGRESS; }
 
 /* The license the kernel sees: LSM programs must declare a GPL-compatible one (see bpfsys.h). */
 static inline const char *np_prog_license(const NpProgSpec *p) { return p->type == BPF_PROG_TYPE_LSM ? "Dual MIT/GPL" : "LordOS"; }

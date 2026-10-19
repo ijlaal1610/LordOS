@@ -29,6 +29,10 @@ int  bpfs_map_create(uint32_t type, uint32_t key, uint32_t val, uint32_t max, ui
 int  bpfs_map_update(int fd, const void *key, const void *val, uint64_t flags);
 int  bpfs_map_lookup(int fd, const void *key, void *val);
 int  bpfs_map_delete(int fd, const void *key);
+/* Reads up to max entries of a hash map (keys of ksz bytes into keys, values of vsz into vals),
+ * in one BPF_MAP_LOOKUP_BATCH call when the kernel has it (5.6+), otherwise key by key. Returns how
+ * many it read, or -1. A map that changes meanwhile may give an entry twice or miss a new one. */
+int  bpfs_map_dump(int fd, void *keys, uint32_t ksz, void *vals, uint32_t vsz, uint32_t max);
 
 /* Loads a program with its relocations resolved (map_fd(name) gives the fd, -1 if it doesn't
  * exist). log (optional) receives the verifier log if it fails. Returns the fd or -1. */

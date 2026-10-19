@@ -11,6 +11,8 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#define ENOTSUPP_FALLBACK 524      /* the kernel's internal ENOTSUPP, which BPF calls may return */
+
 static int sys_bpf(int cmd, union bpf_attr *a) {
     return (int)syscall(__NR_bpf, cmd, a, sizeof *a);
 }
@@ -65,6 +67,49 @@ int bpfs_map_delete(int fd, const void *key) {
     a.map_fd = (uint32_t)fd;
     a.key = (uint64_t)(uintptr_t)key;
     return sys_bpf(BPF_MAP_DELETE_ELEM, &a);
+}
+
+int bpfs_map_dump(int fd, void *keys, uint32_t ksz, void *vals, uint32_t vsz, uint32_t max) {
+    if (!max) return 0;
+    union bpf_attr a;
+    uint32_t got = 0;
+    uint64_t batch = 0;                 /* the kernel's cursor (u32 for hash maps; 8 bytes is enough) */
+    int first = 1, batch_ok = 1;
+    while (batch_ok && got < max) {
+        memset(&a, 0, sizeof a);
+        a.batch.map_fd = (uint32_t)fd;
+        a.batch.in_batch = first ? 0 : (uint64_t)(uintptr_t)&batch;
+        a.batch.out_batch = (uint64_t)(uintptr_t)&batch;
+        a.batch.keys = (uint64_t)(uintptr_t)((unsigned char *)keys + (size_t)got * ksz);
+        a.batch.values = (uint64_t)(uintptr_t)((unsigned char *)vals + (size_t)got * vsz);
+        a.batch.count = max - got;
+        int r = sys_bpf(BPF_MAP_LOOKUP_BATCH, &a);
+        if (r < 0 && errno != ENOENT) {
+            if (first && (errno == EINVAL || errno == ENOTSUPP_FALLBACK || errno == EOPNOTSUPP)) { batch_ok = 0; break; }
+            return got ? (int)got : -1;
+        }
+        got += a.batch.count;
+        first = 0;
+        if (r < 0) return (int)got;     /* ENOENT: that was the last batch */
+    }
+    if (batch_ok) return (int)got;
+    /* without batches: key by key */
+    unsigned char cur[64], next[64];
+    if (ksz > sizeof cur) { errno = EINVAL; return -1; }
+    const void *prev = NULL;
+    while (got < max) {
+        memset(&a, 0, sizeof a);
+        a.map_fd = (uint32_t)fd;
+        a.key = (uint64_t)(uintptr_t)prev;
+        a.next_key = (uint64_t)(uintptr_t)next;
+        if (sys_bpf(BPF_MAP_GET_NEXT_KEY, &a)) break;
+        memcpy(cur, next, ksz);
+        prev = cur;
+        if (bpfs_map_lookup(fd, cur, (unsigned char *)vals + (size_t)got * vsz)) continue;
+        memcpy((unsigned char *)keys + (size_t)got * ksz, cur, ksz);
+        got++;
+    }
+    return (int)got;
 }
 
 int bpfs_prog_load(uint32_t type, uint32_t attach, const NpProgDesc *d, int (*map_fd)(const char *), char *log, size_t loglen) {

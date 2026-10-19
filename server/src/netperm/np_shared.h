@@ -13,7 +13,8 @@
  *   np_lpm4    LPM    (app idx, IPv4/n) → NpList    network and domain rules, ordered
  *   np_lpm6    LPM    (app idx, IPv6/n) → NpList
  *   np_seen    LRU    NpSeenKey → u64 ns            to report only new connections
- *   np_counts  HASH   cgroup id → NpCount           allowed / denied
+ *   np_counts  HASH   cgroup id → NpCount           allowed / denied, bytes received / sent
+ *   np_flows   LRU    NpFlowKey → NpFlow            bytes received / sent per (app, remote address)
  *   np_events  RINGBUF                              NpEvent towards lord-netperm
  *   np_snd     HASH   ALSA minor (u32) → u32           every ALSA node in /sys/class/sound: NP_SND_CAPTURE for the
  *                                                     capture PCMs (/dev/snd/pcmC*D*c), NP_SND_OTHER for the rest
@@ -47,6 +48,7 @@ typedef uint64_t np_u64;
 #define NP_MAX_APPS   8192      /* cgroups with a policy */
 #define NP_MAX_LPM    65536     /* entries of each trie */
 #define NP_MAX_SEEN   16384
+#define NP_MAX_FLOWS  4096      /* (app, remote address) byte counters; the least recently used go first */
 #define NP_RINGBUF    (256u << 10)
 #define NP_REPEAT_NS  (5ull * 1000000000ull)   /* a repeated connection is reported again after 5 s */
 
@@ -125,7 +127,19 @@ typedef struct {
     np_u8  pad[2];
 } NpSeenKey;
 
-typedef struct { np_u64 allowed, denied; } NpCount;
+/* allowed / denied: connections (connect, bind, the first sendto in 5 s). rx / tx: IP bytes
+ * received and sent by the app's sockets (cgroup/skb_ingress and skb_egress, every protocol:
+ * TCP, UDP and so QUIC), loopback excluded so they compare with the interfaces' counters. */
+typedef struct { np_u64 allowed, denied, rx, tx; } NpCount;
+
+typedef struct {
+    np_u64 cgid;
+    np_u8  addr[16];            /* the remote address; IPv4 (also IPv4-mapped IPv6) in the first 4 */
+    np_u8  fam;                 /* 4 or 6 */
+    np_u8  pad[7];
+} NpFlowKey;
+
+typedef struct { np_u64 rx, tx; } NpFlow;
 
 typedef struct {
     np_u64 cgid;

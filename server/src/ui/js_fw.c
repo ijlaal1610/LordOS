@@ -21,7 +21,9 @@
  *   addRule({ app, dir, dst, port, proto, action }) → id    removeRule(id)
  *   updateRule(id, { dir, dst, port, proto, action }) → id  same app; the old rule comes back if
  *                                the new one can't be added
- *   poll()                       { counts: { app: [allowed, denied] }, events: [...] }
+ *   poll()                       { counts: { app: [allowed, denied, rx, tx, rxRate, txRate, flows] },
+ *                                  events: [...] } (the bytes when lord-netperm's accounting is loaded,
+ *                                  see npproto.h)
  *   blocks(app, restriction)     true if the app is restricted in it (sdk/notify.js asks before showing
  *                                a built-in app's notification)
  *

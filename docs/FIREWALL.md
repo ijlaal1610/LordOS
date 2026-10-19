@@ -547,7 +547,7 @@ with gcc 14 on Linux.
 
 ```
 server/src/netperm/np_shared.h   map types and the decision (np_decide), identical in BPF and C
-server/src/netperm/np.bpf.c      the 7 cgroup BPF programs (restricted C, clang -target bpf)
+server/src/netperm/np.bpf.c      the cgroup BPF programs (restricted C, clang -target bpf)
 server/src/netperm/bpf2c.c       build tool: clang's .o → build/gen/np_bpf.h
 server/src/netperm/bpfsys.{c,h}  direct bpf() syscall: maps, load, bpf_link, ring
 server/src/netperm/npcompile.{c,h}  rules → map entries (pure C, with a test)
@@ -605,6 +605,7 @@ tests/netperm_bench.c, netperm_measure.sh   measurements
 | `cgroup/sock_create` | "no network": the app can't even create an AF_INET/AF_INET6 socket, so it can't ping either |
 | `cgroup/dev` | "no camera", "no USB", "no screen capture" (`/dev/fb*`) and "no microphone" (ALSA capture nodes): device `open()`/`mknod()` (see [Linux apps](#linux-apps)) |
 | `cgroup/lsm_socket_create` | "no Bluetooth": `socket(AF_BLUETOOTH)`, a per-cgroup LSM program (`BPF_LSM_CGROUP`) |
+| `cgroup/skb_ingress`, `skb_egress` | nothing: **traffic accounting** for the Monitor (bytes per app and per remote address, see below). They always let the packet through |
 
 Each program does the following:
 
@@ -678,7 +679,8 @@ is denied by the union all the same. The decision helper (`np_decide`) is unchan
 | `np_union` | hash | `user@<uid>.service` id → strict union of the user's restricted apps |
 | `np_lpm4`, `np_lpm6` | LPM trie | (app index, network) → ordered list of rules |
 | `np_seen` | LRU | (cgroup, address, port, protocol, connection direction, verdict) → last time reported |
-| `np_counts` | hash | cgroup id → allowed, denied |
+| `np_counts` | hash | cgroup id → allowed, denied, bytes received, bytes sent |
+| `np_flows` | LRU (4096) | (cgroup id, remote address) → bytes received, bytes sent |
 | `np_events` | ring buffer | new connections (and device or Bluetooth denials) to the service |
 | `np_snd` | hash | every ALSA minor in `/sys/class/sound` → 2 for a capture PCM, 1 for the rest |
 
@@ -687,8 +689,28 @@ is denied by the union all the same. The decision helper (`np_decide`) is unchan
 inflated: getaddrinfo does a UDP connect for each address to sort them (RFC 6724).
 
 The service gets one notice per new connection, through the ring, only if that same connection
-wasn't reported in the last 5 s. Nothing is per packet: no hook runs per packet and no packet is
-processed in user space. The exception is the DNS responses of the source without resolved, below.
+wasn't reported in the last 5 s. No decision is per packet and no packet is processed in user
+space (the exception is the DNS responses of the source without resolved, below).
+
+**Traffic accounting (0.8.1).** The Monitor used to add up `tcp_info` of the sockets open at that
+moment, so UDP — and with it QUIC (HTTP/3, video streaming) — counted nothing and a closed
+connection took its bytes with it: a browser playing a video showed a few KB. Now two
+`cgroup_skb` programs (ingress and egress) count every packet of the session's apps:
+
+- the app is the socket's cgroup at the scope level (`bpf_skb_ancestor_cgroup_id`), the same id
+  as the other programs; they only **add** to an `np_counts` entry that `lord-netperm` creates when
+  the scope appears, so nothing outside an app (login screen, the system) is counted or stored;
+- the bytes are the IP length of each skb (one GRO/GSO segment, so a fast TCP flow is a few
+  thousand calls per second, not one per wire packet); the remote address comes from the IP header
+  (source going in, destination going out) into the `np_flows` LRU;
+- loopback (`ifindex` 1) isn't counted, so the totals compare with the interfaces' counters;
+- they are attached only to `lordos.service`, not to `user@<uid>.service` (`np_attach_user`), and
+  are optional: a kernel that refuses them leaves the firewall working and the Monitor falls back
+  to `tcp_info` (`STATUS` says `"bytes": false`).
+
+Every second `lord-netperm` reads `np_counts` (one lookup per app) and, only if bytes moved, the
+whole `np_flows` table in one `BPF_MAP_LOOKUP_BATCH` call, works out the rates and sends `COUNTS`
+(below). With nothing moving it reads no table and sends nothing.
 
 ### From rules to maps (`npcompile.c`)
 
@@ -789,9 +811,13 @@ connect to the IPs of `permitido.com` even if another one requested them.
 
   It reads it when the session appears and on every `RELOAD`.
 - **From lord-netperm to lord-server:**
-  - `STATUS`: `{bpf, dns, error}`;
+  - `STATUS`: `{bpf, devices, bluetooth, bytes, dns, error}` (`bytes`: the accounting programs are loaded);
   - `EVENT`: `{app, v, dir, proto, addr, port, by, rule, flag, record}`, a new connection;
-  - `COUNTS`: `{app: [allowed, denied]}`, every second, only if it changed.
+  - `COUNTS`: `{app: [allowed, denied, rx, tx, rxRate, txRate, [[addr, rx, tx, rxRate, txRate], ...]]}`,
+    every second, only if something changed. `rx`/`tx` are the app's bytes since its scope
+    appeared, the rates are bytes per second over the last second, and the list holds the app's
+    64 busiest addresses (those active in the last 2 minutes). Readers that only know
+    `[allowed, denied]` keep working.
 
   If nobody reads, notices are dropped. Counters are sent again when they change.
 
@@ -910,12 +936,44 @@ over TCP on 127.0.0.1.
 
 - **The per-connection cost** shows in UDP, because its connect does no handshake: about
   **0.5 µs**. In TCP it stays within loopback noise.
-- **Throughput doesn't change:** the differences are within run-to-run noise. No hook runs per
-  packet.
+- **Throughput doesn't change:** the differences are within run-to-run noise. (These loopback
+  numbers predate the accounting programs of 0.8.1, which return at once on loopback.)
 - **The compositor:** lord-server's main thread, with the Monitor open on Network (which calls
   `lord.fw.poll` once per second), used 3.20 % of a core with lord-netperm on, 3.20 % off and
   3.13 % on again. 30 s each. Nothing of the firewall runs in the frame: `poll` reads a socket that
   doesn't block. Per-frame times weren't measured separately.
+
+### Measurements of the traffic accounting (0.8.1, VM 118, same CPU, kernel 6.12)
+
+**Accuracy**, against `/proc/net/dev` (eth0, which also counts the 14-byte Ethernet header and
+any other traffic of the machine) while only the app moved data:
+
+| App (its own scope) | Counted by the app | eth0 | Ratio |
+|---|---|---|---|
+| `curl --http3-only`, a 20 MB file over QUIC | 20.31 MB received | 20.55 MB | 98.8 % |
+| Chromium playing a video on a video site (QUIC, 60 s) | 4.54 MB received | 4.60 MB | 98.7 % |
+| `iperf3 -u -b 400M -l 1200`, 8 s, to a veth peer | 409,385,865 B sent | — | exact: 400,050,000 B payload + 333,375 × 28 B of IP/UDP headers |
+
+Before, the same QUIC download showed "—" (0 B): UDP had no `tcp_info`.
+
+**Cost**, `iperf3` through a veth pair into a private network namespace (eth0 untouched), the
+client inside an app scope; system CPU as % of one core over 15 s, two runs with the accounting
+programs:
+
+| | 0.8.0 `lord-netperm` | 0.8.1 (accounting) |
+|---|---|---|
+| TCP, ~24 Gbit/s (GSO/GRO: few, large skbs) | 162.0 / 161.6 % | 164.5 / 163.1 %, 162.4 / 162.3 % |
+| UDP 1 Gbit/s, 1200 B datagrams (104,000 packets/s), sending | 91.5 % | 94.7 %, 100.2 % |
+| UDP 1 Gbit/s, 1200 B datagrams, receiving | 100.2 % | 108.7 %, 106.9 % |
+
+- TCP: no measurable difference (throughput 22–25 Gbit/s run to run, either way).
+- UDP at 104,000 packets per second: about 5 % of one core more, roughly 0.5 µs per packet (two
+  map lookups, two atomic adds, one header read). A QUIC video at a few MB/s is a few thousand
+  packets per second: well under 0.1 %.
+- `lord-netperm` itself: 0.00–0.01 s of CPU per 15 s run (one counter read per app per second,
+  plus one batch read of `np_flows` only while bytes move).
+- Script: `bench-monred-118.sh` in the scratchpad (veth `npb0`/`npb1`, namespace `npb`, both
+  removed afterwards); `iperf3` was installed on VM 118 for this (`VM-SETUP.md`).
 
 ### Known limits
 

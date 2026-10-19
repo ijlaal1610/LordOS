@@ -99,7 +99,8 @@ export function useMonitor({ procs = false, conns = false, geo = true, everyMs =
 
 // ---- per-app firewall (lord.fw, docs/FIREWALL.md) ----
 // lord-netperm (root) applies the rules in the kernel and counts each app's new connections;
-// lord-server passes them to JS. firewallState: { status, counts: { app: [allowed, denied] },
+// lord-server passes them to JS. firewallState: { status, counts: { app: [allowed, denied, rx, tx,
+// rxRate, txRate, [[addr, rx, tx, rxRate, txRate], ...]] } (the bytes when status.bytes),
 // events: [the last 200 new connections], rev }. rev goes up when a rule changes.
 const fwApi = () => (typeof lord !== 'undefined' && lord.fw) || null;
 export const firewallState = createStore({ status: null, counts: {}, events: [], rev: 0 });

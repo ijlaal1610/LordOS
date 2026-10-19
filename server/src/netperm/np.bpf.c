@@ -16,6 +16,8 @@
  *                               to be a non-capture one); every other device stays allowed
  *   cgroup/lsm_socket_create    "no Bluetooth": socket(AF_BLUETOOTH) (a per-cgroup LSM program,
  *                               BPF_LSM_CGROUP: the inet sock_create hook never sees that family)
+ *   cgroup/skb_ingress, egress  traffic accounting for the Monitor: bytes per app (np_counts) and
+ *                               per (app, remote address) (np_flows). They never drop a packet.
  *
  * The same programs are also attached to the user@<uid>.service of each LordOS session, to
  * close the `systemd-run --user` escape (the process ends up there, outside lordos.service). A
@@ -29,7 +31,12 @@
  * 0 (the kernel returns EPERM to the app). It counts the connection and notifies lord-netperm over
  * the ring buffer only if it's new (np_seen, 5 s). Nothing per packet: only per connection, bind or
  * sendto. A UDP connect() counts only the first time within 5 s, like a sendto: getaddrinfo does one
- * per address to sort them (RFC 6724) and they aren't real connections. */
+ * per address to sort them (RFC 6724) and they aren't real connections.
+ *
+ * The one exception is traffic accounting (skb_ingress / skb_egress), which runs per packet
+ * (per GRO/GSO segment): only for the sessions' apps, two map lookups and two atomic adds, and it
+ * always lets the packet through. It's what counts UDP (QUIC) and the bytes of connections that
+ * already closed, which the sockets' own counters (tcp_info) can't. */
 #define NP_BPF 1
 #include <linux/bpf.h>
 #include "netperm/np_shared.h"
@@ -42,6 +49,8 @@ static long (*bpf_map_update_elem)(void *map, const void *key, const void *value
 static unsigned long long (*bpf_ktime_get_ns)(void) = (void *)5;
 static unsigned long long (*bpf_get_current_ancestor_cgroup_id)(int level) = (void *)123;
 static long (*bpf_ringbuf_output)(void *ringbuf, void *data, unsigned long long size, unsigned long long flags) = (void *)130;
+static long (*bpf_skb_load_bytes)(const void *skb, unsigned int offset, void *to, unsigned int len) = (void *)26;
+static unsigned long long (*bpf_skb_ancestor_cgroup_id)(void *skb, int level) = (void *)83;
 
 /* the maps: only their names (lord-netperm defines them, netperm.c) */
 char np_cfg[4] SEC("maps");
@@ -53,6 +62,7 @@ char np_seen[4] SEC("maps");
 char np_counts[4] SEC("maps");
 char np_events[4] SEC("maps");
 char np_snd[4] SEC("maps");
+char np_flows[4] SEC("maps");
 
 #define AF_INET  2
 #define AF_INET6 10
@@ -87,7 +97,7 @@ NP_INLINE NpApp *find_app(NpCfg *cfg, np_u64 *cgid) {
 NP_INLINE void count(np_u64 cgid, int deny) {
     NpCount *c = bpf_map_lookup_elem(&np_counts, &cgid);
     if (!c) {
-        NpCount z = { 0, 0 };
+        NpCount z = { 0, 0, 0, 0 };
         bpf_map_update_elem(&np_counts, &cgid, &z, BPF_NOEXIST);
         c = bpf_map_lookup_elem(&np_counts, &cgid);
         if (!c) return;
@@ -327,3 +337,49 @@ SEC("cgroup/lsm_socket_create") int np_bt_socket(unsigned long long *ctx) {
     report_dev(cgid, NP_D_BT, 0, 0, NP_R_NO_BLUETOOTH);
     return 0;
 }
+
+/* ---- traffic accounting (the Monitor's bytes per app and per address) ---- */
+
+#define LOOPBACK_IFINDEX 1      /* "lo" is always ifindex 1 (in every network namespace) */
+
+/* Adds the packet's bytes to its app (the socket's cgroup, the scope at cfg->level) and to the
+ * (app, remote address) pair. Only for apps lord-netperm knows: it creates their np_counts entry
+ * when the scope appears, so nothing else (the login screen, the system) is counted or stored.
+ * Loopback isn't counted. The skb starts at the IP header in both directions. */
+NP_INLINE void account(struct __sk_buff *skb, int in) {
+    if (skb->ifindex == LOOPBACK_IFINDEX) return;
+    np_u32 zero = 0;
+    NpCfg *cfg = bpf_map_lookup_elem(&np_cfg, &zero);
+    if (!cfg) return;
+    np_u64 cgid = bpf_skb_ancestor_cgroup_id(skb, (int)cfg->level);
+    if (!cgid) return;
+    NpCount *c = bpf_map_lookup_elem(&np_counts, &cgid);
+    if (!c) return;
+    NpFlowKey k;
+    __builtin_memset(&k, 0, sizeof k);
+    k.cgid = cgid;
+    np_u8 v = 0;
+    if (bpf_skb_load_bytes(skb, 0, &v, 1)) return;
+    if (v >> 4 == 4) {
+        if (bpf_skb_load_bytes(skb, in ? 12 : 16, k.addr, 4)) return;      /* source when it comes in, destination when it goes out */
+        k.fam = 4;
+    } else if (v >> 4 == 6) {
+        if (bpf_skb_load_bytes(skb, in ? 8 : 24, k.addr, 16)) return;
+        k.fam = 6;
+    } else return;
+    np_u64 len = skb->len;
+    if (in) __sync_fetch_and_add(&c->rx, len);
+    else __sync_fetch_and_add(&c->tx, len);
+    NpFlow *f = bpf_map_lookup_elem(&np_flows, &k);
+    if (!f) {
+        NpFlow z = { 0, 0 };
+        bpf_map_update_elem(&np_flows, &k, &z, BPF_NOEXIST);
+        f = bpf_map_lookup_elem(&np_flows, &k);
+        if (!f) return;
+    }
+    if (in) __sync_fetch_and_add(&f->rx, len);
+    else __sync_fetch_and_add(&f->tx, len);
+}
+
+SEC("cgroup/skb_ingress") int np_skb_in(struct __sk_buff *skb) { account(skb, 1); return 1; }
+SEC("cgroup/skb_egress") int np_skb_out(struct __sk_buff *skb) { account(skb, 0); return 1; }
