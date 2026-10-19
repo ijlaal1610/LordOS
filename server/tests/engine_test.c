@@ -199,6 +199,7 @@ static void test_ellipsis(void) {
 #endif
 
 /* ---- nodes ---- */
+static Node *text(Node *parent, const char *s, float size);
 static Node *view(Node *parent) {
     Node *n = node_new(NODE_VIEW);
     if (parent) node_append(parent, n);
@@ -792,6 +793,83 @@ static void test_transform_paint_hit(void) {
     CHECK(pix(35, 35) == 0xff0000, "the scaled box with a blurred child: %06x", pix(35, 35));
 }
 
+/* The overlay scroll bar as ScrollView (sdk/components.jsx, sdk/scrollbar.js) builds it: an
+ * overflow-hidden view, the content translated inside it with its normal end padding, and over it a
+ * 14 px hit strip at the end edge holding the 6 px thumb 2 px from the edge. The bar is painted
+ * over the content (no strip reserved), never over the text, takes the pointer only while shown,
+ * fades by opacity and goes to the left in RTL. */
+static void test_overlay_scrollbar(void) {
+    ui_reset();
+    Node *root = view(NULL);
+    ui.root = root;
+    sn(root, "backgroundColor", 0xffffffff);
+    Node *sv = view(root);                               /* the ScrollView: 200 × 100 */
+    ss(sv, "position", "absolute");
+    sn(sv, "left", 20); sn(sv, "top", 10); sn(sv, "width", 200); sn(sv, "height", 100);
+    ss(sv, "overflow", "hidden");
+    Node *in = view(sv);                                 /* content: 400 high, 12 px end padding */
+    sn(in, "backgroundColor", 0xffddeeff);
+    sn(in, "paddingEnd", 12);
+    sn(in, "translateY", -40);
+    Node *rows[8], *label = NULL;
+    for (int i = 0; i < 8; i++) {
+        rows[i] = view(in);
+        sn(rows[i], "height", 50);
+        ss(rows[i], "flexDirection", "row");
+        Node *tx = text(rows[i], "Value 1,234 MB", 12);
+        sn(tx, "flexGrow", 1); ss(tx, "textAlign", "end"); ss(tx, "whiteSpace", "nowrap");
+        if (i == 1) label = tx;
+    }
+    /* thumb geometry for view 100 / content 400 / offset 40: track 96, size 24, top 2 + 72 * 40/300 */
+    float top = 2 + (96 - 24) * (40.0f / 300.0f);
+    Node *strip = view(sv);
+    ss(strip, "position", "absolute");
+    sn(strip, "end", 0); sn(strip, "top", top); sn(strip, "width", 14); sn(strip, "height", 24);
+    Node *thumb = view(strip);
+    ss(thumb, "position", "absolute");
+    sn(thumb, "end", 2); sn(thumb, "top", 0); sn(thumb, "width", 6); sn(thumb, "height", 24);
+    sn(thumb, "borderRadius", 3); sn(thumb, "backgroundColor", 0xff808080); sn(thumb, "opacity", 1);
+    render(root, 240, 120);
+
+    int tx = (int)(sv->ax + 200 - 2 - 3), ty = (int)(sv->ay + top + 12);   /* the thumb's center */
+    CHECK(in->w == 200, "the content keeps the full width (no strip reserved): %g", in->w);
+    CHECK(pix(tx, ty) == 0x808080, "thumb painted over the content: %06x", pix(tx, ty));
+    CHECK(pix((int)(sv->ax + 199), ty) == 0xddeeff, "2 px inset: the edge shows the content: %06x", pix((int)(sv->ax + 199), ty));
+    CHECK(pix((int)(sv->ax + 200 - 8 - 2), ty) == 0xddeeff, "thumb wider than 6 px: %06x", pix((int)(sv->ax + 190), ty));
+    CHECK(label && label->ax + label->w <= thumb->ax, "the text (ends at %g) runs under the thumb (starts at %g)",
+          label ? label->ax + label->w : -1, thumb->ax);
+    CHECK(fabsf(rows[1]->ay - (sv->ay + 50 - 40)) < 0.5f, "content scrolled by translateY: row at %g", rows[1]->ay);
+    /* hit testing: the strip takes the pointer (drag), just outside it the content does */
+    CHECK(hit_test(root, (float)tx, (float)ty) == thumb || hit_test(root, (float)tx, (float)ty) == strip, "thumb not hit");
+    CHECK(hit_test(root, sv->ax + 200 - 13, (float)ty) == strip, "the 14 px strip is not hit at its start");
+    CHECK(hit_test(root, sv->ax + 200 - 15, (float)ty) != strip && hit_test(root, sv->ax + 200 - 15, (float)ty) != thumb, "hit outside the strip");
+    CHECK(hit_test(root, (float)tx, sv->ay + top + 30) != strip, "hit below the thumb went to the strip");
+
+    /* fading: half opacity blends the thumb with the content */
+    sn(thumb, "opacity", 0.5);
+    render(root, 240, 120);
+    uint32_t p = pix(tx, ty);
+    int r = (int)(p >> 16 & 0xff), b = (int)(p & 0xff);
+    CHECK(r > 0x90 && r < 0xd0 && b > 0x90 && b < 0xf0, "half-faded thumb: %06x", p);
+    /* hidden: opacity 0 and pointerEvents none: nothing painted, the click goes to the content */
+    sn(thumb, "opacity", 0);
+    ss(strip, "pointerEvents", "none");
+    render(root, 240, 120);
+    CHECK(pix(tx, ty) == 0xddeeff, "hidden thumb painted: %06x", pix(tx, ty));
+    Node *h = hit_test(root, (float)tx, (float)ty);
+    CHECK(h != strip && h != thumb, "a hidden bar takes the click");
+
+    /* RTL: the bar is on the left edge */
+    sn(thumb, "opacity", 1);
+    ss(strip, "pointerEvents", "auto");
+    ss(sv, "direction", "rtl");
+    node_invalidate(sv);
+    render(root, 240, 120);
+    CHECK(fabsf(strip->ax - sv->ax) < 0.5f, "RTL strip at the left edge: %g (view at %g)", strip->ax, sv->ax);
+    CHECK(pix((int)(sv->ax + 2 + 3), ty) == 0x808080, "RTL thumb painted on the left: %06x", pix((int)(sv->ax + 5), ty));
+    CHECK(pix((int)(sv->ax + 200 - 5), ty) != 0x808080, "RTL thumb still on the right");
+}
+
 #endif
 
 /* ---- benchmark: a Files-like list and a window drag (docs/DESIGN.md, Engine notes) ---- */
@@ -993,6 +1071,7 @@ int main(int argc, char **argv) {
     test_multi_damage();
     test_minimize_damage();
     test_grow_wrap_height();
+    test_overlay_scrollbar();
     printf("engine-test: %d checks, %d failures\n", checks, fails);
     return fails ? 1 : 0;
 #endif

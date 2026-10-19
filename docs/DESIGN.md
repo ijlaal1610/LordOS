@@ -224,6 +224,42 @@ and the shell (`shell-*.png`; `shell-before-*.png` is the 0.8.2 template).
 | ![](classic/mail-classic-dark.png) | ![](classic/mail-default-dark.png) |
 | ![](classic/calculator-classic-dark.png) | ![](classic/calculator-default-dark.png) |
 
+## Scroll bars (0.8.3)
+
+Every scrolling area uses the SDK's `ScrollView`, which draws an **overlay scroll bar**
+(`sdk/components.jsx`, model in `sdk/scrollbar.js`):
+
+- **Over the content, at the very edge:** a 6 px thumb, 2 px from the end edge of the view (and from
+  its top and bottom), widening to 10 px and darkening under the pointer or while dragged. It never
+  reserves a strip: **give the content its normal padding** (`contentStyle`, or a padded first
+  child) and the bar sits in it. Content that should run to the edge of a card can bleed into the
+  card's padding: `style={{ marginHorizontal: -12 }} contentStyle={{ paddingHorizontal: 12 }}`
+  (Monitor → Network). At least 12 px of end padding keeps the widened bar off the text.
+- **Hidden until used:** it appears while the view scrolls (wheel, touchpad, a keyboard jump through
+  `scrollRef.scrollTo`, dragging the thumb) and, with *Automatically*, when the pointer comes within
+  16 px of the edge; it fades out over 200 ms a second after the last scroll. Settings → Appearance
+  → **Show scroll bars**: *Automatically* (default), *When scrolling* (no pointer reveal), *Always*
+  (a persistent bar, for accessibility; the 0.8.1 `gutter` prop reserves an 11 px strip only in this
+  mode). With **Reduce motion** it shows and hides without the fade.
+- **Hit-testing:** while shown, a 14 px strip at the edge over the thumb takes the pointer, so the
+  thumb can be dragged; while hidden it has `pointerEvents: 'none'` and clicks reach the content.
+  The fade changes only the thumb's opacity with `lord.setStyle` (no React render per frame).
+- **Direction and themes:** the bar is on the end edge (`end`), so on the left in right-to-left
+  languages. The theme styles it with the optional tokens `scrollThumb`, `scrollThumbHover`,
+  `scrollRadius` and `scrollThumbBorder` (a pill in Lord Default; the Classic theme's is squarer and
+  solid with a hairline). `ThemeProvider` passes the setting (`scrollBars`) and `reduceMotion` with
+  the tokens, so isolated apps follow them too.
+- The Terminal's history bar (drawn in C, `term_paint.c`) uses the same size and inset and shows
+  only while you look at the history.
+
+Tests: `tests/scrollbar_model_test.mjs` (geometry, thumb hit-test and drag, show/hide per mode,
+fade timing, reduce motion) and `test_overlay_scrollbar` in `build/engine-test` (painted over the
+content, no strip reserved, never over the text, the strip takes the pointer only while shown,
+the faded opacity, RTL). Screenshots: `scrollbars-network-{light,dark}-{hidden,scrolling}.png`,
+`scrollbars-settings-{light,dark}.png`.
+
+![Monitor → Network while scrolling](scrollbars-network-light-scrolling.png)
+
 ## Robustness checklist
 
 Check every pass on the VM with:

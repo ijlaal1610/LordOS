@@ -67,7 +67,11 @@ Images (`<Image src="assets/...">`) are resolved relative to the theme's folder.
 (`[{ id, nameKey, name, src, thumb?, category?, variants? }]`; Settings groups them by `category` and
 shows `thumb` in its grid; add `lordosWallpapers` from the SDK to offer the LordOS collection, and
 draw with `wallpaperSrc(w, width, height)` so a higher-resolution variant is used where it exists,
-see `assets/wallpapers/README.md`). The theme can add any tokens of its own.
+see `assets/wallpapers/README.md`), and the overlay scroll bars' look (0.8.3, `ScrollView`):
+`scrollThumb`, `scrollThumbHover` (colors), `scrollRadius` (corner radius; a pill by default) and
+`scrollThumbBorder` (a hairline color). `ThemeProvider` adds `scrollBars` and `reduceMotion` from
+the settings, so apps (isolated ones too) follow Settings → Appearance. The theme can add any
+tokens of its own.
 
 Optional shape tokens restyle the SDK's shared controls in every app (see `docs/DESIGN.md`, "Theme
 tokens for the shared controls"): `controlRadius`, `controlRadiusSmall`, `groupRadius`, `menuRadius`,

@@ -13,7 +13,7 @@
 // de regla de la lista y los contadores de permitidas/denegadas ya están en su lugar.
 import {
   View, Text, Image, ScrollView, SearchField, useTheme, useLocale, useStore, monitor, monitorConnections, useMonitor,
-  formatBytes, formatNumber, tOptional, useSystemInfo, wm, direction, firewall, firewallState, useLauncherApps, Lumo, Button, useAppWindow, fwRule,
+  formatBytes, formatNumber, tOptional, useSystemInfo, wm, direction, firewall, firewallState, useLauncherApps, Lumo, Button, useAppWindow, fwRule, useSettings,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { C, fmt, AppGlyph, useCardStyle } from './index.jsx';
@@ -294,15 +294,21 @@ function AppRow({ g, open, selected, onToggle, onSelect, onHost, names, maxBytes
   const active = g.conns.length - g.listen.length;
   return (
     <View>
-      <View onClick={onSelect} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 8, borderRadius: 8,
+      <View onClick={onSelect} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8,
         backgroundColor: selected ? t.accent : 'transparent' }}>
         <View onClick={(e) => { e.stopPropagation(); onToggle(); }} style={{ width: 14, alignItems: 'center' }}>
           <Text style={{ fontSize: 10, color: selected ? '#fff' : t.textDim }}>{open ? '▾' : direction() === 'rtl' ? '◂' : '▸'}</Text>
         </View>
         <AppGlyph item={g.item} size={20} />
         <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            <Text style={{ flex: 1, fontSize: 12, fontWeight: 600, color: selected ? '#fff' : t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</Text>
+          {/* the name gets the whole width (two lines at most); the counts go next to the traffic bar */}
+          <Text style={{ fontSize: 12, fontWeight: 600, color: selected ? '#fff' : t.text, lineHeight: 1.25, textAlign: 'start' }} numberOfLines={2}>{label}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            {/* barra de tráfico: recibido + enviado, relativa a la app que más movió */}
+            <View style={{ flex: 1, minWidth: 0, height: 4, borderRadius: 2, backgroundColor: selected ? 'rgba(255,255,255,0.25)' : t.control, flexDirection: 'row', overflow: 'hidden', direction: 'ltr' }}>
+              <View style={{ width: `${(g.recv / Math.max(1, maxBytes)) * 100}%`, height: 4, backgroundColor: C.rx }} />
+              <View style={{ width: `${(g.sent / Math.max(1, maxBytes)) * 100}%`, height: 4, backgroundColor: C.tx }} />
+            </View>
             <View style={{ paddingHorizontal: 5, height: 14, borderRadius: 7, justifyContent: 'center', backgroundColor: selected ? 'rgba(255,255,255,0.25)' : t.control }}>
               <Text style={{ fontSize: 9, fontWeight: 600, color: selected ? '#fff' : t.textDim }}>{formatNumber(active, 0)}</Text>
             </View>
@@ -312,14 +318,9 @@ function AppRow({ g, open, selected, onToggle, onSelect, onHost, names, maxBytes
               </View>
             ) : null}
           </View>
-          {/* barra de tráfico: recibido + enviado, relativa a la app que más movió */}
-          <View style={{ height: 4, borderRadius: 2, backgroundColor: selected ? 'rgba(255,255,255,0.25)' : t.control, flexDirection: 'row', overflow: 'hidden', direction: 'ltr' }}>
-            <View style={{ width: `${(g.recv / Math.max(1, maxBytes)) * 100}%`, height: 4, backgroundColor: C.rx }} />
-            <View style={{ width: `${(g.sent / Math.max(1, maxBytes)) * 100}%`, height: 4, backgroundColor: C.tx }} />
-          </View>
         </View>
         <Activity hist={hist} selected={selected} />
-        <Text style={{ width: 50, fontSize: 10, color: selected ? '#fff' : t.textDim, textAlign: 'end', whiteSpace: 'nowrap' }}>{total ? formatBytes(total) : '—'}</Text>
+        <Text style={{ width: 44, fontSize: 10, color: selected ? '#fff' : t.textDim, textAlign: 'end', whiteSpace: 'nowrap' }}>{total ? formatBytes(total) : '—'}</Text>
         {/* regla: permitir / denegar la red a la app (lord-netperm la aplica en el kernel) */}
         <RuleSwitch g={g} selected={selected} tr={tr} />
       </View>
@@ -432,21 +433,43 @@ function placesOf(groups, appKey) {
 
 // ---- columna derecha ----
 
-function Section({ title, children }) {
+// A section of the right panel. With an id it folds: a click on its header hides the content, and
+// which ones are folded is remembered (settings.monitor.netFolded), so they stay that way for every
+// app and the next time Monitor opens.
+function Section({ id, title, children }) {
   const t = useTheme();
+  const [s, set] = useSettings();
+  const m = s.monitor || {};
+  const folded = !!id && (m.netFolded || []).includes(id);
+  const toggle = () => {
+    const list = (m.netFolded || []).filter((x) => x !== id);
+    set({ monitor: { ...m, netFolded: folded ? list : [...list, id] } });
+  };
+  if (!id) {
+    return (
+      <View style={{ gap: 6 }}>
+        <Text style={{ fontSize: 11, fontWeight: 600, color: t.textDim }}>{title}</Text>
+        {children}
+      </View>
+    );
+  }
   return (
     <View style={{ gap: 6 }}>
-      <Text style={{ fontSize: 11, fontWeight: 600, color: t.textDim }}>{title}</Text>
-      {children}
+      <View onClick={toggle} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 18, paddingBottom: folded ? 0 : 2,
+        borderBottomWidth: 1, borderBottomColor: t.separator }}>
+        <Text style={{ width: 12, fontSize: 9, color: t.textDim }}>{folded ? (direction() === 'rtl' ? '◂' : '▸') : '▾'}</Text>
+        <Text style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 600, color: t.textDim, textAlign: 'start' }}>{title}</Text>
+      </View>
+      {folded ? null : children}
     </View>
   );
 }
 
-// The right panel's text column (270 − padding − the scroll bar's gutter) and a rough width per
+// The right panel's text column (270 − padding; the overlay scroll bar sits in the padding) and a rough width per
 // character at 12 px: a pair that wouldn't fit on one line goes on two (the key, then the value)
 // instead of wrapping inside the row, which the engine measures as one line (the text then ran
 // over the next row).
-const PANEL_TEXT_W = 235;
+const PANEL_TEXT_W = 244;
 const fitsOneLine = (k, v, mono) => String(k).length * 6.3 + 8 + String(v).length * (mono ? 7.3 : 6.9) <= PANEL_TEXT_W;
 
 function KV({ k, v, mono, color }) {
@@ -484,12 +507,12 @@ function Summary({ groups, conns, last, tr, fw, names, range, sysHist, launcher 
   if (hosts.some((h) => h.sent + h.recv)) hosts.splice(0, hosts.length, ...hosts.filter((h) => h.sent + h.recv));   // with traffic, only those that moved bytes
   return (
     <>
-      <Section title={tr('monitor.net.traffic')}>
+      <Section id="traffic" title={tr('monitor.net.traffic')}>
         <KV k={`↓ ${tr('monitor.received')}`} v={fmt.rate(tr, last.net.rx)} color={C.rx} />
         <KV k={`↑ ${tr('monitor.sent')}`} v={fmt.rate(tr, last.net.tx)} color={C.tx} />
         <KV k={tr('monitor.net.sinceBoot')} v={`↓ ${formatBytes(last.net.rxTotal)} · ↑ ${formatBytes(last.net.txTotal)}`} />
       </Section>
-      <Section title={tr('monitor.net.connections')}>
+      <Section id="connections" title={tr('monitor.net.connections')}>
         <KV k={tr('monitor.net.allowed')} v={fwOn ? formatNumber(fwAllowed, 0) : formatNumber(open.length, 0)} />
         <KV k={tr('monitor.net.denied')} v={fwOn ? formatNumber(fwDenied, 0) : tr('firewall.off')} color={fwOn && fwDenied ? '#ff453a' : t.textDim} />
         <KV k={tr('monitor.net.incoming')} v={formatNumber(incoming, 0)} />
@@ -502,37 +525,41 @@ function Summary({ groups, conns, last, tr, fw, names, range, sysHist, launcher 
           </View>
         ) : null}
       </Section>
-      <Section title={tr('monitor.net.topApps')}>
+      <Section id="topApps" title={tr('monitor.net.topApps')}>
         {groups.slice(0, 5).map((g) => (
-          <View key={g.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <AppGlyph item={g.item} size={14} />
-            <Text style={{ flex: 1, minWidth: 0, fontSize: 12, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{g.key === 'lordos' ? tr('monitor.lordos') : g.name}</Text>
-            <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{upDown(tr, g)}</Text>
+          <View key={g.key} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
+            <View style={{ paddingTop: 1 }}><AppGlyph item={g.item} size={14} /></View>
+            <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+              <Text style={{ fontSize: 12, color: t.text, lineHeight: 1.3, textAlign: 'start' }} numberOfLines={2}>{g.key === 'lordos' ? tr('monitor.lordos') : g.name}</Text>
+              <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap', textAlign: 'start' }}>{upDown(tr, g)}</Text>
+            </View>
           </View>
         ))}
         {!groups.length && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('monitor.net.none')}</Text>}
       </Section>
       {range !== 'live' ? (
-        <Section title={tr('monitor.hist.topApps', { range: tr(`monitor.hist.${range}`) })}>
+        <Section id="topApps" title={tr('monitor.hist.topApps', { range: tr(`monitor.hist.${range}`) })}>
           {(sysHist?.h?.top || []).slice(0, 6).map(([id, rx, tx]) => {
             const la = launcher.find((a) => a.id === id || `lpk:${a.id}` === id || `desktop:${a.id}` === id);
             const item = { app: id, appName: la?.name, name: la?.name || id, appIcon: la?.icon || '', self: id === 'lordos' };
             return (
-              <View key={id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <AppGlyph item={item} size={14} />
-                <Text style={{ flex: 1, minWidth: 0, fontSize: 12, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{id === 'lordos' ? tr('monitor.lordos') : la?.name || id.replace(/^(desktop|lpk):/, '')}</Text>
-                <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{upDown(tr, { recv: rx, sent: tx })}</Text>
+              <View key={id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
+                <View style={{ paddingTop: 1 }}><AppGlyph item={item} size={14} /></View>
+                <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                  <Text style={{ fontSize: 12, color: t.text, lineHeight: 1.3, textAlign: 'start' }} numberOfLines={2}>{id === 'lordos' ? tr('monitor.lordos') : la?.name || id.replace(/^(desktop|lpk):/, '')}</Text>
+                  <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap', textAlign: 'start' }}>{upDown(tr, { recv: rx, sent: tx })}</Text>
+                </View>
               </View>
             );
           })}
           {!(sysHist?.h?.top || []).length && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('monitor.net.none')}</Text>}
         </Section>
       ) : null}
-      <Section title={tr('monitor.net.topHosts')}>
+      <Section id="destinations" title={tr('monitor.net.topHosts')}>
         {hosts.slice(0, 6).map((h) => (
           <View key={`${h.app.key}${h.remote}`} style={{ gap: 1 }}>
-            <Text style={{ fontSize: 11, color: t.text, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', direction: 'ltr', textAlign: 'start' }}>{names.get(h.remote) || h.remote}</Text>
-            <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{`${upDown(tr, h)} · ${placeOf(tr, h)} · ${h.app.key === 'lordos' ? tr('monitor.lordos') : h.app.name}`}</Text>
+            <Text style={{ fontSize: 11, color: t.text, fontFamily: 'monospace', direction: 'ltr', textAlign: 'start', lineHeight: 1.3 }} numberOfLines={2}>{names.get(h.remote) || h.remote}</Text>
+            <Text style={{ fontSize: 10, color: t.textDim, lineHeight: 1.3, textAlign: 'start' }} numberOfLines={2}>{`${upDown(tr, h)} · ${placeOf(tr, h)} · ${h.app.key === 'lordos' ? tr('monitor.lordos') : h.app.name}`}</Text>
           </View>
         ))}
         {!hosts.length && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('monitor.net.none')}</Text>}
@@ -550,8 +577,8 @@ function HostRow({ h, name, selected, onSelect, can, onRule, tr }) {
     <View style={{ gap: 4, paddingVertical: 3, paddingHorizontal: 6, marginHorizontal: -6, borderRadius: 6, backgroundColor: selected ? (t.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)') : 'transparent' }}>
       <View onClick={onSelect} style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 11, color: t.text, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', direction: 'ltr', textAlign: 'start' }}>{name || h.remote}</Text>
-          {name ? <Text style={{ fontSize: 10, color: t.textDim, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', direction: 'ltr', textAlign: 'start' }}>{h.remote}</Text> : null}
+          <Text style={{ fontSize: 11, color: t.text, fontFamily: 'monospace', direction: 'ltr', textAlign: 'start', lineHeight: 1.3 }} numberOfLines={2}>{name || h.remote}</Text>
+          {name ? <Text style={{ fontSize: 10, color: t.textDim, fontFamily: 'monospace', direction: 'ltr', textAlign: 'start', lineHeight: 1.3 }} numberOfLines={2}>{h.remote}</Text> : null}
         </View>
         <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{placeOf(tr, h)}</Text>
       </View>
@@ -579,15 +606,17 @@ function Detail({ g, tr, user, names, host, onHost, onRule, hist, range, end }) 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <AppGlyph item={g.item} size={32} />
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 15, fontWeight: 600, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{g.key === 'lordos' ? tr('monitor.lordos') : g.name}</Text>
+          <Text style={{ fontSize: 15, fontWeight: 600, color: t.text, lineHeight: 1.25, textAlign: 'start' }} numberOfLines={2}>{g.key === 'lordos' ? tr('monitor.lordos') : g.name}</Text>
           <Text style={{ fontSize: 11, color: t.textDim }}>{tr('monitor.net.connCount', { count: g.conns.length - g.listen.length })}</Text>
         </View>
       </View>
-      <Section title={tr('monitor.net.process')}>
+      <Section id="process" title={tr('monitor.net.process')}>
         <Text style={{ fontSize: 12, color: t.textDim }}>{tr('monitor.net.path')}</Text>
-        <Text style={{ fontSize: 11, color: t.text, fontFamily: 'monospace', lineHeight: 1.35 }}>{g.exe || '—'}</Text>
+        <Text style={{ fontSize: 11, color: t.text, fontFamily: 'monospace', lineHeight: 1.35, direction: 'ltr', textAlign: 'start' }}>{g.exe || '—'}</Text>
         <KV k={tr('monitor.user')} v={user || '—'} />
         <KV k={tr('monitor.pid')} v={[...g.pids].join(', ') || '—'} />
+      </Section>
+      <Section id="rule" title={tr('monitor.net.rule')}>
         <KV k={tr('monitor.net.rule')} v={tr(g.rule === 'deny' ? 'firewall.rule.deny' : g.rule === 'allow' ? 'firewall.rule.allow' : 'firewall.rule.none')}
           color={g.rule === 'deny' ? '#ff453a' : '#30d158'} />
         {g.allowed || g.denied ? <KV k={tr('firewall.counts')} v={tr('firewall.countsValue', { allowed: g.allowed || 0, denied: g.denied || 0 })} /> : null}
@@ -597,16 +626,22 @@ function Detail({ g, tr, user, names, host, onHost, onRule, hist, range, end }) 
           </View>
         ) : null}
       </Section>
-      <Section title={tr('monitor.net.data')}>
+      <Section id="appConnections" title={tr('monitor.net.connections')}>
+        <KV k={tr('monitor.net.active')} v={formatNumber(g.conns.length - g.listen.length, 0)} />
+        <KV k={tr('monitor.net.incoming')} v={formatNumber(g.conns.filter((c) => c.dir === 'in').length, 0)} />
+        <KV k={tr('monitor.net.listening')} v={formatNumber(g.listen.length, 0)} />
+        <KV k={tr('monitor.net.destinationsCount')} v={formatNumber(g.hosts.size, 0)} />
+      </Section>
+      <Section id="data" title={tr('monitor.net.data')}>
         <KV k={`↓ ${tr('monitor.received')}`} v={`${formatBytes(g.recv)} · ${fmt.rate(tr, g.rateRx)}`} color={C.rx} />
         <KV k={`↑ ${tr('monitor.sent')}`} v={`${formatBytes(g.sent)} · ${fmt.rate(tr, g.rateTx)}`} color={C.tx} />
         {range === 'live' ? <AppTraffic hist={hist} /> : <AppHistory app={g.key} range={range} end={end} />}
       </Section>
-      <Section title={tr('monitor.net.ports')}>
+      <Section id="ports" title={tr('monitor.net.ports')}>
         <Text style={{ fontSize: 12, color: t.text, lineHeight: 1.4 }}>{[...ports].join(' · ') || '—'}</Text>
         {local.size ? <Text style={{ fontSize: 11, color: t.textDim, lineHeight: 1.4 }}>{tr('monitor.net.listensOn', { ports: [...local].join(' · ') })}</Text> : null}
       </Section>
-      <Section title={tr('monitor.net.addresses')}>
+      <Section id="destinations" title={tr('monitor.net.destinations')}>
         {hosts.slice(0, 10).map((h) => (
           <HostRow key={h.remote} h={h} name={names.get(h.remote)} selected={host === h.remote} can={can} tr={tr}
             onSelect={() => onHost(host === h.remote ? null : h.remote)} onRule={(action) => onRule(h.remote, action)} />
@@ -637,29 +672,29 @@ function PlaceDetail({ p, tr }) {
   return (
     <>
       <View style={{ gap: 2 }}>
-        <Text style={{ fontSize: 15, fontWeight: 600, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{countryName(p.cc)}</Text>
+        <Text style={{ fontSize: 15, fontWeight: 600, color: t.text, lineHeight: 1.25, textAlign: 'start' }} numberOfLines={2}>{countryName(p.cc)}</Text>
         <Text style={{ fontSize: 11, color: t.textDim }}>{tr('monitor.net.connCount', { count: p.count })}</Text>
       </View>
-      <Section title={tr('monitor.net.data')}>
+      <Section id="data" title={tr('monitor.net.data')}>
         <KV k={`↓ ${tr('monitor.received')}`} v={formatBytes(p.recv)} color={C.rx} />
         <KV k={`↑ ${tr('monitor.sent')}`} v={formatBytes(p.sent)} color={C.tx} />
       </Section>
-      <Section title={tr('monitor.net.placeApps')}>
+      <Section id="placeApps" title={tr('monitor.net.placeApps')}>
         {[...p.apps.values()].map((g) => (
-          <View key={g.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <AppGlyph item={g.item} size={14} />
-            <Text style={{ flex: 1, fontSize: 12, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{g.key === 'lordos' ? tr('monitor.lordos') : g.name}</Text>
+          <View key={g.key} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
+            <View style={{ paddingTop: 1 }}><AppGlyph item={g.item} size={14} /></View>
+            <Text style={{ flex: 1, minWidth: 0, fontSize: 12, color: t.text, lineHeight: 1.3, textAlign: 'start' }} numberOfLines={2}>{g.key === 'lordos' ? tr('monitor.lordos') : g.name}</Text>
           </View>
         ))}
       </Section>
-      <Section title={tr('monitor.net.addresses')}>
+      <Section id="destinations" title={tr('monitor.net.destinations')}>
         {hosts.slice(0, 14).map((h) => (
           <View key={`${h.app.key}${h.remote}`} style={{ gap: 1 }}>
             <View style={{ flexDirection: 'row', gap: 6 }}>
-              <Text style={{ flex: 1, fontSize: 11, color: t.text, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden' }}>{h.remote}</Text>
+              <Text style={{ flex: 1, minWidth: 0, fontSize: 11, color: t.text, fontFamily: 'monospace', direction: 'ltr', textAlign: 'start' }} numberOfLines={2}>{h.remote}</Text>
               <Text style={{ fontSize: 11, color: t.textDim }}>{formatBytes(h.sent + h.recv)}</Text>
             </View>
-            <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{`${[...h.ports].join(' · ')} · ${h.app.key === 'lordos' ? tr('monitor.lordos') : h.app.name}`}</Text>
+            <Text style={{ fontSize: 10, color: t.textDim, lineHeight: 1.3, textAlign: 'start' }} numberOfLines={2}>{`${[...h.ports].join(' · ')} · ${h.app.key === 'lordos' ? tr('monitor.lordos') : h.app.name}`}</Text>
           </View>
         ))}
       </Section>
@@ -710,14 +745,14 @@ export function NetworkTab({ last, prefs }) {
   return (
     <View style={{ flex: 1, flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingVertical: 16 }}>
       {/* left */}
-      <View style={{ ...column, width: 320, gap: 8, padding: 10 }}>
+      <View style={{ ...column, width: 336, gap: 8, padding: 10 }}>
         <SearchField value={q} onChange={setQ} placeholder={tr('monitor.net.search')} />
         <View style={{ flexDirection: 'row', paddingHorizontal: 8 }}>
           <Text style={{ flex: 1, fontSize: 10, fontWeight: 600, color: t.textDim }}>{tr('monitor.net.apps', { count: apps.length })}</Text>
-          <Text style={{ width: 83, fontSize: 10, fontWeight: 600, color: t.textDim, textAlign: 'end' }}>{tr('monitor.net.dataCol')}</Text>
-          <Text style={{ width: 44, fontSize: 10, fontWeight: 600, color: t.textDim, textAlign: 'end' }}>{tr('monitor.net.ruleCol')}</Text>
+          <Text style={{ width: 75, fontSize: 10, fontWeight: 600, color: t.textDim, textAlign: 'end' }}>{tr('monitor.net.dataCol')}</Text>
+          <Text style={{ width: 38, fontSize: 10, fontWeight: 600, color: t.textDim, textAlign: 'end' }}>{tr('monitor.net.ruleCol')}</Text>
         </View>
-        <ScrollView style={{ flex: 1 }} gutter>
+        <ScrollView style={{ flex: 1, marginHorizontal: -10 }} contentStyle={{ paddingHorizontal: 10 }}>
           {!enabled && <Text style={{ fontSize: 12, color: t.textDim, padding: 8, lineHeight: 1.4 }}>{tr('monitor.net.disabled')}</Text>}
           {enabled && !conns && <Text style={{ fontSize: 12, color: t.textDim, padding: 8 }}>{tr('monitor.loading')}</Text>}
           {enabled && conns && !conns.ok && <Text style={{ fontSize: 12, color: '#ff9f0a', padding: 8 }}>{tr('monitor.net.noDiag')}</Text>}
@@ -751,7 +786,7 @@ export function NetworkTab({ last, prefs }) {
       </View>
       {/* derecha */}
       <View style={{ ...column, width: 270 }}>
-        <ScrollView style={{ flex: 1 }} gutter>
+        <ScrollView style={{ flex: 1, marginHorizontal: -12 }} contentStyle={{ paddingHorizontal: 12 }}>
           <View style={{ gap: 16 }}>
             {selPlace ? <PlaceDetail p={selPlace} tr={tr} /> : sel ? (
               <Detail g={sel} tr={tr} user={sys.user} names={names} host={host} onHost={setHost} hist={hist.get(sel.key)} range={range} end={end} onRule={(addr, action) => ruleFor(sel, addr, action)} />

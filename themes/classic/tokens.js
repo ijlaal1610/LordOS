@@ -47,6 +47,9 @@ export function makeTheme({ mode, accent, effects }) {
     buttonBorder: true,
     popupBg: dark ? '#2b2b30' : '#fafafb',
     gtkButtons: ':minimize,maximize,close',     // GTK apps: buttons on the right, like this frame
+    // overlay scroll bars (sdk/components.jsx ScrollView): a squarer, solid thumb with a hairline
+    scrollThumb: dark ? '#55555c' : '#a9a9b1', scrollThumbHover: dark ? '#6a6a72' : '#8e8e97',
+    scrollThumbBorder: dark ? '#202024' : '#fbfbfc', scrollRadius: 2,
     // This theme's own:
     titleBg: dark ? '#202024' : '#fbfbfc',
     titleBgBlur: dark ? '#1b1b1f' : '#f1f1f4',   // the title bar of a window that isn't in front

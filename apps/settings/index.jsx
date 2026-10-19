@@ -26,7 +26,7 @@ import { CoolingSettings } from './Cooling.jsx';
 import { NotificationsSettings } from './Notifications.jsx';
 import { DateTimeSettings } from './DateTime.jsx';
 import { DefaultAppsSettings } from './DefaultApps.jsx';
-import { Stack, Section, SettingRow, ValueRow, Badge, Note, Message, Actions, shade } from './ui.jsx';
+import { Stack, Section, SettingRow, ValueRow, Badge, Note, Message, Actions, PopUp, shade } from './ui.jsx';
 
 export function Icon({ size: s }) {
   const dark = '#3b3e46';
@@ -186,6 +186,12 @@ function Appearance() {
         </SettingRow>
         <SettingRow label={tr('settings.reduceMotion')} hint={tr('settings.reduceMotionHint')}>
           <Toggle small on={!!s.reduceMotion} onChange={(reduceMotion) => set({ reduceMotion })} />
+        </SettingRow>
+      </Section>
+      <Section footer={tr('settings.scrollBarsHint')}>
+        <SettingRow label={tr('settings.scrollBars')}>
+          <PopUp width={170} value={s.scrollBars || 'auto'} onChange={(scrollBars) => set({ scrollBars })}
+            options={[['auto', tr('settings.scrollBarsAuto')], ['scrolling', tr('settings.scrollBarsScrolling')], ['always', tr('settings.scrollBarsAlways')]]} />
         </SettingRow>
       </Section>
     </Stack>

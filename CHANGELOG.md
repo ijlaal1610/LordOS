@@ -57,6 +57,20 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 - The theme engine paints a scaled window that contains a blurred surface (a translucent
   Terminal) at its scaled size; its blur then only shows the window's own content. Before, such a
   window was drawn at full size during the Dock's minimize effect.
+- **Scroll bars stay out of the way.** Scroll bars across the system are now thin overlay bars
+  drawn at the very edge of a list or panel: hidden until you scroll (mouse wheel, touchpad,
+  keyboard or dragging the bar) or bring the pointer near the edge, 6 px wide and 10 px under the
+  pointer, fading out a second after the last scroll. They no longer take a strip of their own and
+  never cover text. Settings → Appearance → **Show scroll bars**: *Automatically* (the default),
+  *When scrolling* or *Always* (the persistent bar, for accessibility). With Reduce motion they
+  appear and disappear without a fade; in right-to-left languages they are on the left. The
+  Classic theme draws them with its own squarer style, and the Terminal's history bar matches.
+- **Monitor → Network: a tidier detail panel.** The right panel's sections (Process, Rule,
+  Connections, Data, Ports and protocols, Destinations, and the summary's) fold with a click on
+  their header and stay folded the next time. App names in "Top apps by traffic", the app list and
+  the panel header wrap to two lines instead of being cut, long destinations wrap too, and the app
+  list gives the name more room (the counts moved next to the traffic bar, the Data and Rule
+  columns are narrower).
 
 ### Security
 

@@ -38,7 +38,9 @@ itself.
   name the system resolver gave (its addresses together) or per address, with the country, the
   ones the firewall reported recently ("recent connection" or "recently denied") and, since 0.8.2,
   **each one's own allow/block switch** (see "Per-destination switches"); a click on a row selects
-  it in the right panel. At the bottom, the machine's traffic:
+  it in the right panel. Since 0.8.3 the app's name gets the row's whole width and wraps to two
+  lines (the connection count and the denied badge sit next to the traffic bar; the column is
+  336 px and the Data and Rule columns are narrower). At the bottom, the machine's traffic:
   - the current download and upload speed;
   - two pills with what was sent (↑, orange) and received (↓, green) in the visible minute;
   - a **mirrored chart** of the last 60 s (`TrafficChart.jsx`, `drawMirror` in `draw.js`): one bar
@@ -80,18 +82,21 @@ itself.
   When an app is chosen, the map shows only its places and frames them. A click on a dot or an arc
   chooses that country: the right panel shows its apps, addresses, ports and bytes. At the bottom,
   a line with the DB-IP attribution and the link to the privacy settings.
-- **Right** (its scroll area keeps an 11 px strip for the scroll bar, `ScrollView gutter`, so the
-  bar never covers a value; long values wrap):
+- **Right** (0.8.3: the overlay scroll bar sits in the panel's padding, so it never covers a value
+  and no strip is reserved; long values, app names and destinations wrap to two lines instead of
+  being cut). Every section folds with a click on its header (▾/▸) and the folded ones are
+  remembered (`settings.monitor.netFolded`), for every app and the next time Monitor opens:
   - no selection: traffic (current and since boot), allowed and denied connections (0: there are
     no rules yet), incoming, listening and from other users, and the apps and destinations with the
     most traffic, each with "↓ received · ↑ sent" (destinations by the name the resolver gave,
     when known);
   - with a history zoom chosen (0.8.2): also "Most traffic · 24 h" (or the zoom chosen), the apps
     that moved the most in that window, from the history file;
-  - with an app chosen: executable path, user, PIDs, rule, a "Rules for this app" link (Settings
-    → Privacy with that app open), bytes and speed with the app's own mirrored chart of the last
-    minute (one bar per second, or the history window chosen), ports and protocols, listening ports and
-    addresses. A selected address offers **Allow / Block this domain** (or "this address" when no
+  - with an app chosen, in the sections Process (executable path, user, PIDs), Rule (rule,
+    counts, a "Rules for this app" link to Settings → Privacy with that app open), Connections
+    (active, incoming, listening, destinations), Data (bytes and speed with the app's own mirrored chart of the last
+    minute, one bar per second, or the history window chosen), Ports and protocols (with the
+    listening ports) and Destinations. A selected address offers **Allow / Block this domain** (or "this address" when no
     name is known) for that app: a sheet prefilled with the destination (see `FIREWALL.md`, "Rules
     by app");
   - with a country chosen: bytes, apps and addresses (with ports and app).
