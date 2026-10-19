@@ -83,11 +83,30 @@ import { Layer, Overlay, LAYERS } from '@lordos/sdk';
 - **Don't** fight the order with large `zIndex` values: they only order siblings. A new kind of
   surface gets a row in the table above (and in `sdk/layers.js`) instead.
 
+## Blurred surfaces and partial repaints
+
+The menu bar, the Dock, menus and the Control Center blur what is behind them
+(`backdropFilter`). The blur reads the screen around the surface, a margin of twice its radius
+(`canvas_backdrop_blur`). lord-server only repaints the area that changed, and outside it the
+screen still holds the last frame, with the surface's own tint already on it: before 0.8.1, closing
+a menu or the Control Center left a lighter band in the menu bar where the repainted area met it.
+Now `paint_damage` (`paint.c`, `blur_walk`) grows the damaged area to the whole surface whenever a
+change touches a blurred surface or the margin its blur reads, so the blur only sees this frame.
+The GPU path composites that same canvas, so it gets the same fix (tested on VM 122 on the CPU
+path).
+
+| | |
+|---|---|
+| ![before](menubar-band-before.png) | ![after](menubar-band-after.png) |
+| Before: the Control Center has just closed, a lighter band from «Help» to «US» | After: the same steps, the bar is even |
+
 ## Tests
 
 - `build/engine-test` (`make -C server test`), `test_layers`: layers created in the «wrong» tree
   order still paint and hit in `zIndex` order; an empty layer lets the click through; a `zIndex`
   inside the base can't climb above a layer; `pointerEvents: 'none'` still hides a subtree.
+  `test_backdrop_band`: after a menu closes, the blurred bar is repainted whole and matches a full
+  repaint (37 levels lighter without the fix).
 - On the VM: the screenshots above (VM 122), clicking the crown menu's items over the Dock (they
   open their item, not the Dock's app) and the Passwords category list (picking «Licenses» changes
   the form).

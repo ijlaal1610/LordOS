@@ -84,6 +84,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   bar < fullscreen < launcher < menus and popovers < sheets < notifications < tooltips < drag
   images < system prompts), and clicks follow it, in every Dock position, light and dark, RTL and
   the Classic theme ([docs/LAYERS.md](docs/LAYERS.md)).
+- **No lighter band in the menu bar after a menu or the Control Center closes.** The menu bar's
+  background blur read the screen around it, and outside the repainted area that still held the
+  bar's previous frame, so the repainted part came out lighter until something else redrew the bar.
+  Now a change that touches a blurred surface, or the margin its blur reads, repaints the whole
+  surface (the GPU path composites the same canvas; `engine-test` checks it against a full
+  repaint).
 - **"No Bluetooth" for Linux apps is enforced on the Raspberry Pi 5** (a known issue in 0.8.0):
   `lord-netperm` loads its Bluetooth socket program there as on a PC (`npverify-test` 37/37 on the
   board), and a process in a restricted app's scope gets `EPERM` from `socket(AF_BLUETOOTH)` while

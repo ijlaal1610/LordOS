@@ -402,6 +402,46 @@ static void test_layers(void) {
     CHECK(hit_test(root, 20, 30) == menu && pix(20, 30) == 0xff0000, "a zIndex inside the base stays under the layers");
 }
 
+/* Closing a menu repaints only where it was; the translucent, blurred menu bar above it must come
+ * out as in a full repaint (before 0.8.1 the blur mixed in the bar's last frame: a lighter band). */
+static void test_backdrop_band(void) {
+    ui_reset();
+    Node *root = view(NULL);
+    ui.root = root;
+    sn(root, "backgroundColor", 0xff102040);
+    for (int i = 0; i < 8; i++) box_in(root, (float)(i * 20), 0, 10, 100, 0xff4060a0);   /* stripes to blur */
+    Node *barl = layer_node(root, 20, 160, 100);
+    Node *bar = box_in(barl, 0, 0, 160, 28, 0x80ffffff);
+    sn(bar, "backdropBlur", 12);
+    Node *popl = layer_node(root, 50, 160, 100);
+    Node *menu = box_in(popl, 30, 20, 60, 60, 0xffff0000);       /* reaches into the bar, like its shadow */
+    render(root, 160, 100);
+    node_destroy(menu);
+    layout_root(root, 160, 100);
+    Box d = { 0, 0, 0, 0 };
+    if (paint_damage(root)) d = ui.damage;
+    CHECK(d.x0 <= 0 && d.y0 <= 0 && d.x1 >= 160 && d.y1 >= 28, "the blurred bar is repainted whole: %.0f,%.0f %.0f,%.0f", d.x0, d.y0, d.x1, d.y1);
+    ui.damage = d;
+    Rect r = { (int)fmaxf(0, floorf(d.x0)), (int)fmaxf(0, floorf(d.y0)), (int)fminf(160, ceilf(d.x1)), (int)fminf(100, ceilf(d.y1)) };
+    canvas_set_clip(&frame, r);
+    canvas_clear(&frame, 0);
+    paint_root(&frame, root);
+    canvas_set_clip(&frame, (Rect){ 0, 0, 160, 100 });
+    ui.damage = (Box){ 0, 0, 0, 0 };
+    uint32_t *partial = malloc(160 * 28 * 4);
+    if (!partial) return;
+    memcpy(partial, fb, 160 * 28 * 4);
+    render(root, 160, 100);
+    int worst = 0;
+    for (int i = 0; i < 160 * 28; i++)
+        for (int sh = 0; sh < 24; sh += 8) {
+            int dv = abs((int)((partial[i] >> sh) & 255) - (int)((fb[i] >> sh) & 255));
+            if (dv > worst) worst = dv;
+        }
+    CHECK(worst <= 1, "menu bar after closing a menu differs from a full repaint by %d", worst);
+    free(partial);
+}
+
 static void test_transform_paint_hit(void) {
     ui_reset();
     Node *root = view(NULL);
@@ -674,6 +714,7 @@ int main(int argc, char **argv) {
     test_transform_math();
     test_transform_paint_hit();
     test_layers();
+    test_backdrop_band();
     printf("engine-test: %d checks, %d failures\n", checks, fails);
     return fails ? 1 : 0;
 #endif

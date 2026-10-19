@@ -689,6 +689,23 @@ static void damage_walk(Node *n, int parent_dirty, int visible, int in_layer, Bo
 static int box_inside(Box a, Box b) { return a.x0 >= b.x0 && a.y0 >= b.y0 && a.x1 <= b.x1 && a.y1 <= b.y1; }
 static int box_meets(Box a, Box b) { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
 
+/* A backdrop blur reads the canvas around its box (canvas_backdrop_blur samples a margin of twice
+ * the radius), and outside the region being repainted the canvas still holds the last frame, with
+ * this node's own tint already on it. Blurring that in made the repainted part lighter: the band
+ * left in the menu bar where a menu or the Control Center had just closed (0.8.1, docs/LAYERS.md).
+ * So a damage that touches a blurred node, or the margin it samples, repaints the whole node: what
+ * it blurs is then this frame's, as in a full repaint. Same on the GPU path (same CPU canvas). */
+static void blur_walk(Node *n, int *grew) {
+    if (n->type == NODE_RAW || n->s.display_none) return;
+    Box b = n->prev_box;
+    if (n->s.backdrop_blur >= 1 && b.x1 > b.x0 && b.y1 > b.y0) {
+        float m = ceilf(n->s.backdrop_blur * 2) + 1;
+        Box near = { b.x0 - m, b.y0 - m, b.x1 + m, b.y1 + m };
+        if (box_meets(ui.damage, near) && !box_inside(b, ui.damage)) { damage_add(b); *grew = 1; }
+    }
+    for (Node *c = n->first; c; c = c->next) blur_walk(c, grew);
+}
+
 int paint_damage(Node *root) {
     /* lo que llegó de afuera desde el cuadro anterior (terminal, apps Linux, video): si toca la
      * ventana, se vuelve a pintar su capa; si cae afuera, lo de abajo */
@@ -707,6 +724,8 @@ int paint_damage(Node *root) {
         if (!box_inside(ext, layer.at) && !box_inside(ext, now)) layer.below_valid = 0;
     }
     if (root) damage_walk(root, 0, 1, 0, (Box){ -1e9f, -1e9f, 1e9f, 1e9f });
+    /* the damage is one box: growing it for a blurred node can reach another one (the bar and a menu) */
+    for (int pass = 0, grew = 1; root && grew && pass < 4 && ui.damage.x1 > ui.damage.x0; pass++) { grew = 0; blur_walk(root, &grew); }
     if (layer.want && layer.valid && layer.part.x1 > layer.part.x0) {     /* esa parte, donde está ahora la ventana */
         Node *n = node_get(layer.node);
         if (n) {
