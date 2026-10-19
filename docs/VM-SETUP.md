@@ -1477,3 +1477,48 @@ See `RASPBERRY.md` ("The LordOS kernel", "Switching kernels on a board") and `FI
   - Not changed: the network configuration, the `lordbasex` account, the partitions, `cmdline.txt`
     (this board's lacks `cgroup_enable=memory`, so `verify-board` reports the memory controller as
     FAIL; the image's has it).
+
+## Step 42 — 0.8.4: the remote desktop WebRTC only (VM 122 `lordos-sandbox`, October 19)
+
+See `REMOTE.md`, "Video (WebRTC)", "ICE over TCP", "Reconnecting" and "When it can't connect". On
+VM 122 (172.17.0.56), tree in `~/LordOS-rtc2` (copied from the Mac's `v084-rtc-only` worktree with
+`tar` over SSH: the VM has no `rsync`), built there (`make -C server`, `make -C server test`) and
+installed over the package's files by `~/deploy-rtc2-122.sh`, which needed the backup of
+`/usr/lib/lordos`, `/etc/lordos`, `/var/lib/lordos/remote`, `/var/lib/lordos/last-user`, the
+`iptables-save` output and the package selections in `/var/backups/lordos-rtc2-20261019` first
+(`~/restore-rtc2-122.sh` put them back). The theme bundles were built on the Mac (the VM has no Node).
+For the before/after measurements, `main`'s `server/` was built in `~/LordOS-rtc2-base` and its three
+binaries installed for one round, then this branch's again.
+
+- **Installed for the build:** `libsrtp2-dev` and `libusrsctp-dev` (with `libsrtp2-1`, `libusrsctp2`,
+  `libnss3-dev`, `libnspr4-dev`); purged at the end.
+- **Installed for the TURN tests:** `coturn` (`--no-install-recommends`, with `inetutils-telnet`,
+  `telnet`, `libevent-extra-2.1-7t64`, `libevent-openssl-2.1-7t64`, `libevent-pthreads-2.1-7t64`,
+  `libhiredis1.1.0`, `libmariadb3`, `libpq5`, `mariadb-common`, `mysql-common`, `sqlite3`); its unit
+  was disabled and stopped right after installing, and `turnserver` ran by hand on 172.17.0.56 (3478
+  UDP/TCP, 5349 TLS with a throwaway self-signed P-256 certificate, relay ports 49160–49200) with a
+  test-only user from `/tmp/turn-rtc2/turn.conf`. Purged at the end; `/tmp/turn-rtc2` removed.
+- **Firewall rules for the tests only:** `iptables` (the nftables backend, already installed) on the
+  VM's INPUT chain, only for the Mac's address (172.17.0.5): drop UDP; drop TCP 5673; drop new TCP
+  connections to 5673 beyond the first (`connlimit`, so the WebSocket stays and ICE-TCP can't); drop
+  UDP except the relay ports. Each rule was deleted right after its test; eth0 and the VM's network
+  configuration were never touched. The rules left an empty `ip filter` table behind, removed with
+  `nft delete table ip filter` (`nftables` installed for that one command and purged), so
+  `iptables-save` is empty again, as before.
+- **Test-only accounts** `rtest` and `rtest2` (one password, only for these tests); `rtest` was put
+  in `sudo` for Settings → Sharing → Connection (the `remote-ice` action through the UI) and its
+  screenshots. Both deleted with their homes at the end (their `/run/lordos/spawn-<uid>.lock` too).
+- **Browsers:** headless Chrome on the Mac with throwaway profiles in the scratchpad, driven over the
+  DevTools protocol; the ICE and ICE-TCP probes (`/tmp/iceprobe-rtc2.py`) ran from the VM itself as a
+  second address; CPU and traffic from `/proc` and `eth0` (`/tmp/cpu-rtc2.py`). The fuzzer's 1,000,000
+  input run: `./build/remote-fuzz 1000000 7` (2 min 29 s).
+- **Configuration changed during the tests** (all restored from the backup): `config` (`turn*` lines
+  written by hand and by Settings, `net=list` for one test, `net=lan` written by Settings), `access`
+  (one test `allow` line), `turn.key`. One `systemctl kill -s HUP lordos` signalled the whole unit
+  instead of only `lord-sessiond`, so `lord-netd` restarted once ("the network was not interrupted");
+  use `systemctl reload lordos` (`ExecReload` sends SIGHUP to the main process only).
+- **Undone at the end:** `/usr/lib/lordos`, `/etc/lordos`, `/var/lib/lordos/remote` and `last-user`
+  restored (`diff -r` empty), the packages above purged (`dpkg --get-selections` identical to before),
+  `iptables-save` as before, the test accounts, both trees, the scripts, the `/tmp` files and the
+  backup removed, `lordos.service` restarted on the package's binaries, at the login screen.
+  VMs 115, 106 and 123 were not used.
