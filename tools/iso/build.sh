@@ -177,6 +177,12 @@ mksquashfs "$CH" "$IMG/live/filesystem.squashfs" -comp xz -Xbcj x86 -b 1M -noapp
 # language name pass lordos.lang to lordos-live-prep (English is the default).
 # The LordOS boot menu theme (dark, small crown, rounded selection); "safe mode" boots
 # without the splash (text), the other entries with it.
+# Legacy BIOS (0.8.0 bug): the theme's terminal font was Inter, a proportional font, and GRUB's
+# gfxterm corrupts its own memory with it at 640x480, the mode "auto" falls back to on BIOS (VBE)
+# when the display has no EDID (the VMware-compatible display): VMware triple-faulted when the
+# timeout fired, QEMU hung at the menu. The theme now uses GRUB's fixed-width Unifont for the
+# terminal, and BIOS asks for 1024x768 or 800x600 first (the theme's layout fits; 640x480 still
+# works). UEFI is unchanged (GOP, native mode). docs/ISO.md, "Firmware and displays".
 install -d "$IMG/boot/grub/themes/lordos"
 install -m 644 tools/iso/grub/lordos/theme.txt tools/iso/grub/lordos/*.png tools/iso/grub/lordos/*.pf2 "$IMG/boot/grub/themes/lordos/"
 cat > "$IMG/boot/grub/grub.cfg" <<EOF
@@ -186,7 +192,11 @@ insmod all_video
 insmod gfxterm
 insmod png
 loadfont unicode
-set gfxmode=auto
+if [ "\$grub_platform" = pc ]; then
+    set gfxmode=1024x768x32,800x600x32,auto
+else
+    set gfxmode=auto
+fi
 set gfxpayload=keep
 terminal_output gfxterm
 loadfont /boot/grub/themes/lordos/inter-regular-14.pf2

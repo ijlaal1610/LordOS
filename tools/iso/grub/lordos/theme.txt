@@ -5,7 +5,11 @@ title-text: ""
 desktop-image: "background.png"
 desktop-image-scale-method: "stretch"
 desktop-color: "#0B0B1C"
-terminal-font: "Inter Regular 16"
+# the terminal (command line, entry editor, boot messages) uses GRUB's own fixed-width font: gfxterm
+# is a character grid, and with Inter (proportional) it corrupted GRUB's memory at 640x480 on legacy
+# BIOS (0.8.0: triple fault on VMware, hang on QEMU's VMware-compatible display). docs/ISO.md,
+# "Firmware and displays". Loaded by "loadfont unicode" (ISO) or GRUB_FONT (installed system).
+terminal-font: "GNU Unifont Regular 16"
 terminal-left: "10%"
 terminal-top: "10%"
 terminal-width: "80%"
