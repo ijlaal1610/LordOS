@@ -42,7 +42,7 @@ VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)
 [ -x server/build/lord-netperm ] || { echo "missing server/build/lord-netperm (make -C server; clang for BPF)" >&2; exit 1; }
 [ -x server/build/lord-netd ] || { echo "missing server/build/lord-netd (make -C server)" >&2; exit 1; }
 [ -x server/build/lord-fand ] || { echo "missing server/build/lord-fand (make -C server)" >&2; exit 1; }
-[ -x server/build/lord-sessiond ] || { echo "missing server/build/lord-sessiond (make -C server, with libssl-dev)" >&2; exit 1; }
+[ -x server/build/lord-sessiond ] || { echo "missing server/build/lord-sessiond (make -C server, with libssl-dev, libsrtp2-dev and libusrsctp-dev)" >&2; exit 1; }
 [ -f themes/greeter/theme.bundle.js ] || { echo "missing the login screen (npm run build)" >&2; exit 1; }
 for t in themes/*/theme.bundle.js; do [ -f "$t" ] || { echo "built themes missing (npm run build)" >&2; exit 1; }; done
 
@@ -231,9 +231,9 @@ DOCDEPS=""
 if [ -x "$L/bin/lord-doc" ]; then DOCDEPS=", libpoppler-glib8t64, libarchive13t64, libcairo2, libfreetype6, libfontconfig1, poppler-data"; fi
 MEDIADEPS=""
 if [ -x "$L/bin/lord-media" ]; then MEDIADEPS=", libavcodec61, libavformat61, libavutil59, libswscale8, libswresample5, libva2, libva-drm2"; fi
-# the remote desktop's video (docs/REMOTE.md, "Video (WebRTC)"): lord-sessiond built with libsrtp2 and usrsctp
-RTCDEPS=""
-if objdump -p "$L/bin/lord-sessiond" 2>/dev/null | grep -q "libsrtp2"; then RTCDEPS=", libsrtp2-1, libusrsctp2"; fi
+# the remote desktop is WebRTC only (docs/REMOTE.md, "Video (WebRTC)"): lord-sessiond always links libsrtp2 and usrsctp
+RTCDEPS=", libsrtp2-1, libusrsctp2"
+if ! objdump -p "$L/bin/lord-sessiond" 2>/dev/null | grep -q "libsrtp2"; then echo "lord-sessiond is not linked with libsrtp2: rebuild it (make -C server)" >&2; exit 1; fi
 SIZE=$(du -sk "$PKG/usr" | awk '{s += $1} END {print s}')
 cat > "$PKG/DEBIAN/control" <<C
 Package: lordos

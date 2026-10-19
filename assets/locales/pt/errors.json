@@ -598,5 +598,6 @@
   "imager.ejectFailed": "Não foi possível ejetar a unidade",
   "imager.noUdisks": "O serviço de discos (udisks2) não está funcionando",
   "imager.hashFailed": "Não foi possível calcular o hash da senha",
-  "imager.pskFailed": "Não foi possível derivar a chave do Wi-Fi"
+  "imager.pskFailed": "Não foi possível derivar a chave do Wi-Fi",
+  "remote.badTurnFingerprint": "Não é uma impressão digital de certificado válida: 64 dígitos hexadecimais (os pares podem ser separados por dois-pontos)"
 }

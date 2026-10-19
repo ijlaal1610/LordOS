@@ -14,20 +14,20 @@
  *      shared state, closes every other descriptor and DROPS root for good: TLS, compression and
  *      the bridge run as the user. This root process only waits, and when the bridge says the
  *      session was locked it ends every cookie of that user.
- *   4. Bridge: session rectangles → PNG/JPEG → browser; mouse, keyboard and clipboard from the
- *      browser (validated, rsec.c rs_browser_input) → session. Flow control: the browser
- *      acknowledges each frame ("ack") and only then does the session build the next one.
- *   5. Video (rtc.c, docs/REMOTE.md "Video (WebRTC)"): if the browser can, it sends a WebRTC offer
- *      over this same WebSocket; the bridge answers, the session's shared encoder feeds it H.264 or
- *      VP8 and Opus (RP_VFRAME, RP_AFRAME), input and the lossless tiles of still areas go over data
- *      channels. The tiles above stay as the fallback until the video plays, and if it fails.
+ *   4. Bridge: the screen only ever reaches the browser over WebRTC (rtc.c, docs/REMOTE.md "Video
+ *      (WebRTC)"). The browser sends its offer over this WebSocket; the bridge answers, the session's
+ *      shared encoder feeds it H.264 or VP8 and Opus (RP_VFRAME, RP_AFRAME), and input and the
+ *      lossless PNG refresh of still areas go over data channels. The WebSocket carries the sign-in,
+ *      the signaling, the cursor, the clipboard and pings; mouse, keyboard and clipboard from either
+ *      are validated by rsec.c rs_browser_input. When a peer fails the bridge says why and makes a new
+ *      one; the page restarts ICE or reconnects on its own. There is no other way to show the screen.
+ *   5. ICE over TCP: a connection to this same port that starts with a framed STUN check instead of
+ *      a TLS ClientHello is handed, by this root child, to the bridge its check names (ice_tcp()).
  * Browser protocol and the security analysis: docs/REMOTE.md. */
 #include "sessiond.h"
 #include "proto.h"
 #include "rsec.h"
-#ifdef LORD_RTC
 #include "rtc.h"
-#endif
 
 #include <arpa/inet.h>
 #include <ctype.h>
@@ -51,6 +51,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -71,10 +72,13 @@ static char peer[48];           /* address as shown */
 static char peer_key[48];       /* lockout key (IPv4, or the IPv6 /64) */
 static double deadline;
 static int lock_fd = -1;        /* bridge → root parent: "L" = the session was locked */
-#ifdef LORD_RTC
-static int want_rtc;            /* the page can do WebRTC (/ws?v=1) and Settings allows video */
-#endif
 static char *turn_pass;         /* read as root before the bridge drops root; the bridge's rtc.c owns it */
+static int ice_lfd = -1;        /* ICE-TCP handoff: root's /run/lordos/rtc/<route>, kept by the bridge */
+static int turn_has_key;        /* the TURN key a peer derived, for the next peer (the password is gone) */
+static uint8_t turn_key_saved[16];
+static char turn_realm_saved[256];
+static char ice_route[9];
+static char ice_path[64];
 
 static double mono(void) {
     struct timespec t;
@@ -598,19 +602,14 @@ static int ws_handshake(const RsReq *r) {
 /* ---- bridge (runs as the user) ---- */
 
 static int sess = -1;                  /* session socket */
-static int vmode;                      /* video mode: tiles go over the data channel, lossless, once still */
-#ifdef LORD_RTC
-static int tiles_lost;                 /* a tile didn't fit the data channel: ask for them all again */
+static int vmode;                      /* the video plays: the lossless refresh goes over the data channel */
+static int tiles_lost;                 /* a refresh tile didn't fit the data channel: ask for them all again */
 static double tiles_lost_at;
 static Rtc *rtc;
-static int rtc_dead;
-#endif
-static uint32_t *fb;                   /* copy of the screen (to replace with PNG) */
+static const char *rtc_dead;           /* RTC_WHY_* of a peer that just failed */
+static int resets;               /* peers made after the first; the current one is number resets + 1 */
+static double reset_at;
 static int W, H;
-typedef struct { uint16_t x, y, w, h; } Box16;
-static Box16 jpegs[512];
-static int njpegs;
-static double last_frame;
 static int locked, closing;
 
 static void sess_send(int type, const void *a, size_t an) {
@@ -622,16 +621,16 @@ static void sess_send(int type, const void *a, size_t an) {
     if (an && write(sess, a, an) != (ssize_t)an) return;
 }
 
-#ifdef LORD_RTC
-/* A lossless tile over the "tiles" data channel: [1][x, y, w, h u16 BE][png]; halved until it fits. */
-static void dc_tile(int x, int y, int w, int h) {
-    int len = 0, jpeg = 0;
-    unsigned char *img = rd_encode(fb + (size_t)y * W + x, W, w, h, 0, &len, &jpeg);
+/* A lossless tile over the "tiles" data channel: [1][x, y, w, h u16 BE][png]; halved until it fits.
+ * px: the rectangle's own pixels (stride w), straight from the session's message. */
+static void dc_tile(const uint32_t *px, int stride, int x, int y, int w, int h) {
+    int len = 0;
+    unsigned char *img = rd_encode_png(px, stride, w, h, &len);
     if (!img) return;
     if (len > 250000 && h > 1) {
         free(img);
-        dc_tile(x, y, w, h / 2);
-        dc_tile(x, y + h / 2, w, h - h / 2);
+        dc_tile(px, stride, x, y, w, h / 2);
+        dc_tile(px + (size_t)(h / 2) * stride, stride, x, y + h / 2, w, h - h / 2);
         return;
     }
     unsigned char *m = malloc((size_t)len + 9);
@@ -645,18 +644,6 @@ static void dc_tile(int x, int y, int w, int h) {
     }
     free(img);
 }
-#endif
-
-static void send_rect(int x, int y, int w, int h, int allow_jpeg) {
-    int len = 0, jpeg = 0;
-    unsigned char *img = rd_encode(fb + (size_t)y * W + x, W, w, h, allow_jpeg, &len, &jpeg);
-    if (!img) return;
-    unsigned char hd[10] = { 1, (unsigned char)(x >> 8), (unsigned char)x, (unsigned char)(y >> 8), (unsigned char)y,
-                             (unsigned char)(w >> 8), (unsigned char)w, (unsigned char)(h >> 8), (unsigned char)h, (unsigned char)jpeg };
-    ws_frame(2, hd, 10, img, (size_t)len);
-    free(img);
-    if (jpeg && njpegs < 512) jpegs[njpegs++] = (Box16){ (uint16_t)x, (uint16_t)y, (uint16_t)w, (uint16_t)h };
-}
 
 /* Session message → browser. */
 static void from_session(int type, const unsigned char *d, uint32_t n) {
@@ -669,41 +656,30 @@ static void from_session(int type, const unsigned char *d, uint32_t n) {
             if (!s[0] || !s[1] || s[0] > 8192 || s[1] > 8192) break;
             W = s[0];
             H = s[1];
-            free(fb);
-            fb = calloc((size_t)W * H, 4);
-            njpegs = 0;
             ws_text("{\"t\":\"size\",\"w\":%d,\"h\":%d}", W, H);
         }
         break;
     case RP_RECT: {
-        if (n < 8 || !fb) break;
+        /* the session sends rectangles only to a viewer whose video plays, once the screen is still:
+         * the lossless refresh over the video (mirror.c) */
+        if (n < 8 || !vmode || !rtc) break;
         uint16_t r[4];
         memcpy(r, d, 8);
-        if ((uint32_t)r[0] + r[2] > (uint32_t)W || (uint32_t)r[1] + r[3] > (uint32_t)H || n < 8 + (uint32_t)r[2] * r[3] * 4) break;
-        for (int j = 0; j < r[3]; j++) memcpy(fb + (size_t)(r[1] + j) * W + r[0], d + 8 + (size_t)j * r[2] * 4, (size_t)r[2] * 4);
-        /* whatever gets overwritten no longer needs replacing */
-        for (int i = 0; i < njpegs; i++)
-            if (jpegs[i].x >= r[0] && jpegs[i].y >= r[1] && jpegs[i].x + jpegs[i].w <= r[0] + r[2] && jpegs[i].y + jpegs[i].h <= r[1] + r[3]) jpegs[i--] = jpegs[--njpegs];
-#ifdef LORD_RTC
-        if (vmode) { dc_tile(r[0], r[1], r[2], r[3]); break; }       /* the screen is still: lossless */
-#endif
-        /* screen in motion (consecutive frames): straight JPEG, replaced with PNG once it's still */
-        send_rect(r[0], r[1], r[2], r[3], rd_now() - last_frame < 0.25 ? 2 : 1);
+        if (!r[2] || !r[3] || (uint32_t)r[0] + r[2] > (uint32_t)W || (uint32_t)r[1] + r[3] > (uint32_t)H || n < 8 + (uint32_t)r[2] * r[3] * 4) break;
+        uint32_t *px = malloc((size_t)r[2] * r[3] * 4);              /* aligned copy of the message's pixels */
+        if (!px) break;
+        memcpy(px, d + 8, (size_t)r[2] * r[3] * 4);
+        dc_tile(px, r[2], r[0], r[1], r[2], r[3]);
+        free(px);
         break;
     }
     case RP_END:
-#ifdef LORD_RTC
-        if (vmode) {                    /* the data channel is reliable: no browser ack needed */
+        if (vmode && rtc) {             /* the data channel is reliable: no browser ack needed */
             unsigned char e = 3;
             rtc_send(rtc, RTC_CH_TILES, &e, 1, 1);
-            sess_send(RP_READY, NULL, 0);
-            break;
         }
-#endif
-        ws_frame(2, (unsigned char[]){ 3 }, 1, NULL, 0);
-        last_frame = rd_now();
+        sess_send(RP_READY, NULL, 0);
         break;
-#ifdef LORD_RTC
     case RP_VFRAME:
         if (n > 8 && rtc && d[0] == rtc_codec(rtc)) {
             uint32_t ms;
@@ -732,7 +708,6 @@ static void from_session(int type, const unsigned char *d, uint32_t n) {
             rtc_send(rtc, RTC_CH_TILES, m, 1 + n, 1);
         }
         break;
-#endif
     case RP_CURSOR:
         if (n >= 5) {
             int16_t x, y;
@@ -773,18 +748,15 @@ static void from_session(int type, const unsigned char *d, uint32_t n) {
     }
 }
 
-#ifdef LORD_RTC
-static void video_off(const char *why);
-static void video_mode(int on) {
-    if (on && (!rtc || !rtc_media_ready(rtc) || !rtc_dc_open(rtc, RTC_CH_TILES))) return;
-    if (on == vmode) return;
-    vmode = on;
-    njpegs = 0;
-    unsigned char v = (unsigned char)on;
+static void video_reset(const char *code, const char *why);
+/* The browser says the video plays: the lossless refresh of still areas starts (RP_VMODE). */
+static void video_mode(void) {
+    if (!rtc || !rtc_media_ready(rtc) || !rtc_dc_open(rtc, RTC_CH_TILES) || vmode) return;
+    vmode = 1;
+    unsigned char v = 1;
     sess_send(RP_VMODE, &v, 1);
-    sd_log("video: %s", on ? "playing in the browser; tiles only for still areas" : "back to tiles");
+    sd_log("video: playing in the browser (%s)", rtc_path_kind(rtc));
 }
-#endif
 
 /* One validated browser message → session. From a data channel (dc) only the input messages count. */
 static void from_browser(const char *j, size_t n, int dc) {
@@ -794,7 +766,7 @@ static void from_browser(const char *j, size_t n, int dc) {
     RsInput in;
     if (rs_json_parse(j, n, &o, sb, n + 1) == 0) {
         int type = rs_browser_input(&o, W, H, &in);
-        if (dc && (type == RS_IN_ACK || type == RS_IN_PING || type == RS_IN_RTC || type == RS_IN_ICE || type == RS_IN_VMODE)) type = RS_IN_NONE;
+        if (dc && (type == RS_IN_PING || type == RS_IN_RTC || type == RS_IN_ICE || type == RS_IN_VMODE)) type = RS_IN_NONE;
         switch (type) {
         case RS_IN_PTR: { int16_t p[2] = { (int16_t)in.a, (int16_t)in.b }; sess_send(RP_PTR, p, 4); break; }
         case RS_IN_BTN: { unsigned char p[2] = { (unsigned char)in.a, (unsigned char)in.b }; sess_send(RP_BTN, p, 2); break; }
@@ -816,17 +788,21 @@ static void from_browser(const char *j, size_t n, int dc) {
             sess_send(RP_KEY, p, 3);
             break;
         }
-        case RS_IN_ACK: sess_send(RP_READY, NULL, 0); break;
         case RS_IN_RESIZE: { uint16_t sz[2] = { (uint16_t)in.a, (uint16_t)in.b }; sess_send(RP_RESIZE, sz, 4); break; }
         case RS_IN_PING: ws_text("{\"t\":\"pong\",\"ts\":%lld}", in.ts); break;
         case RS_IN_CLIP: sess_send(RP_SETCLIP, in.text, in.tlen); break;
-#ifdef LORD_RTC
         case RS_IN_RTC:
-            if (rtc && rtc_codec(rtc) == 0 && rtc_offer(rtc, in.text, in.tlen, 1) < 0) video_off("the offer was refused");
+            /* an offer for an older peer of this connection (sent before the page learned of the new
+             * one): never the new peer's first offer */
+            if (rtc && in.a && in.a != resets + 1) { sd_log("video: ignored an offer for an older peer"); break; }
+            if (rtc) {
+                int first = rtc_codec(rtc) == 0, e = rtc_offer(rtc, in.text, in.tlen, 1);
+                if (e < 0) video_reset(e == RW_ECODEC ? "codec" : first ? "offer" : "restart",
+                                       e == RW_ECODEC ? "the browser offers neither H.264 nor VP8" : first ? "the offer was refused" : "the ICE restart was refused");
+            }
             break;
-        case RS_IN_ICE: if (rtc) rtc_candidate(rtc, in.text, in.tlen); break;
-        case RS_IN_VMODE: if (in.a) video_mode(1); else video_off("the browser gave up"); break;
-#endif
+        case RS_IN_ICE: if (rtc && (!in.a || in.a == resets + 1)) rtc_candidate(rtc, in.text, in.tlen); break;
+        case RS_IN_VMODE: if (in.a) video_mode(); else video_reset("browser", "the browser closed this peer"); break;
         default: break;
         }
     }
@@ -896,7 +872,6 @@ static int conns_full(void) {
     return n >= RD_MAX_CONNS;
 }
 
-#ifdef LORD_RTC
 static void rtc_signal(void *ud, const char *json) { (void)ud; ws_frame(1, json, strlen(json), NULL, 0); }
 static void rtc_state(void *ud, int st, const char *why) {
     (void)ud;
@@ -906,7 +881,7 @@ static void rtc_state(void *ud, int st, const char *why) {
         uint32_t k = 4000;
         memcpy(v + 4, &k, 4);
         sess_send(RP_VIDEO, v, 8);
-    } else if (st == RTC_FAILED) { rtc_dead = 1; (void)why; }
+    } else if (st == RTC_FAILED) rtc_dead = why ? why : RTC_WHY_SERVER;
 }
 static void rtc_message(void *ud, int chan, const uint8_t *p, size_t n, int binary) {
     (void)ud;
@@ -915,22 +890,29 @@ static void rtc_message(void *ud, int chan, const uint8_t *p, size_t n, int bina
 static void rtc_key(void *ud) { (void)ud; sess_send(RP_KEYFRAME, NULL, 0); }
 static void rtc_rate(void *ud, unsigned kbps) { (void)ud; uint32_t k = kbps; sess_send(RP_RATE, &k, 4); }
 
-/* Back to the tiles for good (the video failed or the browser gave up). */
-static void video_off(const char *why) {
-    if (!rtc) return;
-    char st[160];
-    rtc_stats(rtc, st, sizeof st);
-    sd_log("video: off (%s; %s)", why, st);
-    if (vmode) { unsigned char v = 0; sess_send(RP_VMODE, &v, 1); vmode = 0; }
-    unsigned char v[8] = { 0 };
-    sess_send(RP_VIDEO, v, 8);
-    rtc_free(rtc);
-    rtc = NULL;
-    ws_text("{\"t\":\"rtc\",\"fail\":1}");
+/* The ICE servers the page may use: our own STUN server (this connection's UDP port, at the address
+ * the page used) and the external ones from Settings. The TURN relay is never given to the browser. */
+static void ice_list(char *ice, size_t cap) {
+    char ip[64] = "";
+    size_t o = 0;
+    RwAddr la;
+    struct sockaddr_storage ls;
+    socklen_t ll = sizeof ls;
+    if (!getsockname(sock, (struct sockaddr *)&ls, &ll)) {
+        if (ls.ss_family == AF_INET) inet_ntop(AF_INET, &((struct sockaddr_in *)&ls)->sin_addr, ip, sizeof ip);
+        else if (ls.ss_family == AF_INET6) inet_ntop(AF_INET6, &((struct sockaddr_in6 *)&ls)->sin6_addr, ip, sizeof ip);
+    }
+    if (!strncmp(ip, "::ffff:", 7)) memmove(ip, ip + 7, strlen(ip + 7) + 1);
+    int v6 = !rw_addr_text(ip, &la) && la.family == 6;
+    o += (size_t)snprintf(ice + o, cap - o, "[\"stun:%s%s%s:%d\"", v6 ? "[" : "", ip, v6 ? "]" : "", rtc_port(rtc));
+    for (int i = 0; i < rd_conf.nstun && o < cap - 120; i++) o += (size_t)snprintf(ice + o, cap - o, ",\"stun:%s\"", rd_conf.stun[i]);
+    snprintf(ice + o, cap - o, "]");
 }
 
-/* The WebRTC peer, before the hello: its UDP port is also the browser's STUN server. */
-static void rtc_start(void) {
+/* The WebRTC peer, before the hello and after each failed one: its UDP port is also the browser's
+ * STUN server. The TURN password is only there for the first one (rtc.c wipes it), so a later peer
+ * has no relay unless the bridge kept its key: it doesn't, by design. */
+static int rtc_start(void) {
     RtcConfig c;
     memset(&c, 0, sizeof c);
     c.access = &rd_conf.access;
@@ -948,41 +930,62 @@ static void rtc_start(void) {
     for (int i = 0; i < rd_conf.nstun; i++) snprintf(c.stun[i], sizeof c.stun[i], "%s", rd_conf.stun[i]);
     snprintf(c.turn, sizeof c.turn, "%s", rd_conf.turn);
     snprintf(c.turn_user, sizeof c.turn_user, "%s", rd_conf.turn_user);
+    c.turn_transport = rd_conf.turn_transport;
+    c.turn_has_fp = rd_conf.turn_has_fp;
+    memcpy(c.turn_fp, rd_conf.turn_fp, 32);
     c.turn_pass = turn_pass;                /* rtc.c owns it now and wipes it */
     turn_pass = NULL;
+    if (!c.turn_pass && turn_has_key) {
+        c.turn_has_key = 1;
+        memcpy(c.turn_key, turn_key_saved, 16);
+        memcpy(c.turn_realm, turn_realm_saved, sizeof c.turn_realm);
+    }
     c.max_kbps = 12000;
+    c.ice_lfd = ice_lfd;
+    memcpy(c.route, ice_route, sizeof c.route);
+    c.tcp_port = rd_conf.port;
+    c.peer_no = resets + 1;
     RtcCallbacks cb = { rtc_signal, rtc_state, rtc_message, rtc_key, rtc_rate, NULL };
     rtc = rtc_new(&c, &cb);
+    return rtc ? 0 : -1;
 }
-#endif
+
+/* This peer is over (it failed, its offer was refused, or the browser closed it): the session stops
+ * sending to it, the browser is told why, and a new peer waits for the browser's next offer. The page
+ * decides whether to try again (docs/REMOTE.md, "Reconnecting"); there is nothing to fall back to. */
+static void video_reset(const char *code, const char *why) {
+    char st[160];
+    if (rtc) rtc_stats(rtc, st, sizeof st); else snprintf(st, sizeof st, "-");
+    sd_log("video: peer closed (%s; %s)", why, st);
+    if (vmode) { unsigned char v = 0; sess_send(RP_VMODE, &v, 1); vmode = 0; }
+    unsigned char v[8] = { 0 };
+    sess_send(RP_VIDEO, v, 8);
+    if (!rtc_turn_key(rtc, turn_key_saved, turn_realm_saved)) turn_has_key = 1;
+    rtc_free(rtc);
+    rtc = NULL;
+    tiles_lost = 0;
+    /* a new peer at once, but not more often than every 2 s and at most 60 per connection */
+    double now = rd_now();
+    if (++resets > 60) { ws_text("{\"t\":\"rtc\",\"fail\":\"%s\"}", code); ws_text("{\"t\":\"bye\"}"); closing = 1; return; }
+    if (now - reset_at < 2) { reset_at = now + 2; ws_text("{\"t\":\"rtc\",\"fail\":\"%s\"}", code); return; }
+    reset_at = now;
+    char ice[600];
+    if (rtc_start()) { ws_text("{\"t\":\"rtc\",\"fail\":\"%s\",\"why2\":\"server\"}", code); return; }
+    ice_list(ice, sizeof ice);
+    ws_text("{\"t\":\"rtc\",\"fail\":\"%s\",\"ready\":1,\"p\":%d,\"ice\":%s}", code, resets + 1, ice);
+}
 
 static void bridge(const struct passwd *pw) {
     char hello[96];
     snprintf(hello, sizeof hello, "%s %s", peer, pw->pw_name);
     sess_send(RP_HELLO, hello, strlen(hello));
     fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) | O_NONBLOCK);
-#ifdef LORD_RTC
-    if (want_rtc) rtc_start();
-    if (rtc) {
-        /* the built-in STUN server is this connection's UDP port, at the address the page used */
-        char ice[600], ip[64] = "";
-        size_t o = 0;
-        RwAddr la;
-        struct sockaddr_storage ls;
-        socklen_t ll = sizeof ls;
-        if (!getsockname(sock, (struct sockaddr *)&ls, &ll)) {
-            if (ls.ss_family == AF_INET) inet_ntop(AF_INET, &((struct sockaddr_in *)&ls)->sin_addr, ip, sizeof ip);
-            else if (ls.ss_family == AF_INET6) inet_ntop(AF_INET6, &((struct sockaddr_in6 *)&ls)->sin6_addr, ip, sizeof ip);
-        }
-        if (!strncmp(ip, "::ffff:", 7)) memmove(ip, ip + 7, strlen(ip + 7) + 1);
-        int v6 = !rw_addr_text(ip, &la) && la.family == 6;
-        o += (size_t)snprintf(ice + o, sizeof ice - o, "[\"stun:%s%s%s:%d\"", v6 ? "[" : "", ip, v6 ? "]" : "", rtc_port(rtc));
-        for (int i = 0; i < rd_conf.nstun && o < sizeof ice - 120; i++) o += (size_t)snprintf(ice + o, sizeof ice - o, ",\"stun:%s\"", rd_conf.stun[i]);
-        snprintf(ice + o, sizeof ice - o, "]");
-        ws_text("{\"t\":\"hello\",\"user\":\"%s\",\"rtc\":1,\"ice\":%s}", pw->pw_name, ice);
-    } else
-#endif
-    ws_text("{\"t\":\"hello\",\"user\":\"%s\"}", pw->pw_name);
+    /* the WebRTC peer is the only way the screen reaches the page: without it, the page says why */
+    if (rtc_start() == 0) {
+        char ice[600];
+        ice_list(ice, sizeof ice);
+        ws_text("{\"t\":\"hello\",\"user\":\"%s\",\"rtc\":1,\"p\":1,\"ice\":%s}", pw->pw_name, ice);
+    } else ws_text("{\"t\":\"hello\",\"user\":\"%s\",\"rtc\":0}", pw->pw_name);
     rs_ws_init(&wsr, RS_WS_MAX_MSG);
     unsigned char *sin = NULL;
     size_t sin_len = 0, sin_cap = 0;
@@ -999,19 +1002,17 @@ static void bridge(const struct passwd *pw) {
             for (int i = 0; i < 20 && wout_len; i++) { struct pollfd q = { sock, POLLOUT, 0 }; poll(&q, 1, 100); if (ws_flush()) break; }
             return;
         }
-        struct pollfd p[4] = { { sock, (short)(POLLIN | (wout_len ? POLLOUT : 0)), 0 }, { sess, POLLIN, 0 }, { -1, 0, 0 }, { -1, 0, 0 } };
+        struct pollfd p[2 + RTC_MAX_FDS] = { { sock, (short)(POLLIN | (wout_len ? POLLOUT : 0)), 0 }, { sess, POLLIN, 0 } };
         int np = 2;
         /* while there is something to send, nothing more is read from the session (flow control) */
         if (wout_len > (4u << 20)) p[1].events = 0;
-        int timeout = njpegs ? 200 : 15000;
-#ifdef LORD_RTC
+        int timeout = 15000;
         if (rtc) {
-            np += rtc_pollfds(rtc, p + 2, 2);
+            np += rtc_pollfds(rtc, p + 2, RTC_MAX_FDS);
             int t = rtc_timeout(rtc);
             if (t >= 0 && t < timeout) timeout = t;
-        }
+        } else if (reset_at > rd_now()) timeout = 200;
         if (tiles_lost && timeout > 500) timeout = 500;
-#endif
         int r = SSL_pending(ssl) ? 1 : poll(p, (nfds_t)np, timeout);
         if (r < 0 && errno != EINTR) return;
         if (SSL_pending(ssl) || (p[0].revents & POLLIN)) {
@@ -1048,27 +1049,23 @@ static void bridge(const struct passwd *pw) {
             memmove(sin, sin + off, sin_len - off);
             sin_len -= off;
         }
-#ifdef LORD_RTC
         if (rtc) {
             if (np > 2) rtc_dispatch(rtc, p + 2, np - 2);
             if (rtc) rtc_tick(rtc);
-            if (rtc_dead) { rtc_dead = 0; video_off("connection failed"); }
+            if (rtc_dead) { const char *why = rtc_dead; rtc_dead = NULL; video_reset(why, "the connection failed"); }
             /* tiles that didn't fit: the whole lossless layer again, at most every 2 s */
-            if (vmode && tiles_lost && rd_now() - tiles_lost_at > 2) {
+            if (rtc && vmode && tiles_lost && rd_now() - tiles_lost_at > 2) {
                 tiles_lost = 0;
                 unsigned char v = 1;
                 sess_send(RP_VMODE, &v, 1);
             }
+        } else if (reset_at && rd_now() >= reset_at && !closing) {     /* a reset that had to wait: the new peer */
+            reset_at = rd_now();
+            char ice[600];
+            if (rtc_start() == 0) { ice_list(ice, sizeof ice); ws_text("{\"t\":\"rtc\",\"ready\":1,\"p\":%d,\"ice\":%s}", resets + 1, ice); }
+            else { ws_text("{\"t\":\"rtc\",\"fail\":\"server\"}"); reset_at = 0; }
         }
-#endif
         if (locked) { ws_flush(); return; }
-        /* screen is still: whatever was JPEG is replaced with PNG (lossless) */
-        if (njpegs && !vmode && rd_now() - last_frame > 0.4 && wout_len < (1u << 20)) {
-            int k = njpegs;
-            njpegs = 0;
-            for (int i = 0; i < k; i++) send_rect(jpegs[i].x, jpegs[i].y, jpegs[i].w, jpegs[i].h, 0);
-            ws_frame(2, (unsigned char[]){ 4 }, 1, NULL, 0);    /* replacement (no ack) */
-        }
         if (rd_now() - last_input > 60) return;     /* the browser sends a ping every 2 s */
     }
 }
@@ -1100,8 +1097,8 @@ static void close_all_but(const int *keep, int nkeep) {
 static int drop_root(const struct passwd *pw, pid_t parent) {
     if (rd_shared) munmap(rd_shared, sizeof *rd_shared);
     rd_shared = NULL;
-    int keep[3] = { sock, sess, lock_fd };
-    close_all_but(keep, 3);
+    int keep[4] = { sock, sess, lock_fd, ice_lfd };
+    close_all_but(keep, 4);
     clearenv();
     struct rlimit core = { 0, 0 };
     setrlimit(RLIMIT_CORE, &core);
@@ -1119,6 +1116,86 @@ static int drop_root(const struct passwd *pw, pid_t parent) {
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) || prctl(PR_SET_DUMPABLE, 0, 0, 0, 0)) return -1;
     if (prctl(PR_SET_PDEATHSIG, SIGTERM, 0, 0, 0) || getppid() != parent) return -1;
     return 0;
+}
+
+/* ---- ICE over TCP (docs/REMOTE.md, "ICE over TCP") ---- */
+
+/* As root, before the bridge forks: a listening socket in root's /run/lordos/rtc (0700) named after
+ * this connection's random route. Only root can connect to it: the connection children below. */
+static void ice_listen(void) {
+    struct stat st;
+    mkdir(SD_RUN_DIR, 0755);
+    mkdir(RD_RTC_DIR, 0700);
+    if (lstat(RD_RTC_DIR, &st) || !S_ISDIR(st.st_mode) || st.st_uid != 0 || (st.st_mode & 077)) return;
+    static const char al[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    unsigned char b[8];
+    if (getrandom(b, 8, 0) != 8) return;
+    for (int i = 0; i < 8; i++) ice_route[i] = al[b[i] % (sizeof al - 1)];
+    ice_route[8] = 0;
+    snprintf(ice_path, sizeof ice_path, RD_RTC_DIR "/%s", ice_route);
+    int fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+    struct sockaddr_un a = { .sun_family = AF_UNIX };
+    snprintf(a.sun_path, sizeof a.sun_path, "%s", ice_path);
+    unlink(ice_path);
+    mode_t old = umask(077);
+    int ok = fd >= 0 && !bind(fd, (struct sockaddr *)&a, sizeof a) && !listen(fd, 8);
+    umask(old);
+    if (!ok) { if (fd >= 0) close(fd); unlink(ice_path); ice_path[0] = 0; ice_route[0] = 0; return; }
+    ice_lfd = fd;
+}
+
+static void ice_unlisten(void) {
+    if (ice_lfd >= 0) close(ice_lfd);
+    ice_lfd = -1;
+    if (ice_path[0]) unlink(ice_path);
+    ice_path[0] = 0;
+}
+
+static int read_full(int fd, unsigned char *b, size_t n) {
+    size_t got = 0;
+    while (got < n) {
+        double left = deadline - mono();
+        struct pollfd p = { fd, POLLIN, 0 };
+        if (left <= 0 || poll(&p, 1, (int)(left * 1000) + 1) <= 0) return -1;
+        ssize_t k = recv(fd, b + got, n - got, MSG_DONTWAIT);
+        if (k < 0 && (errno == EINTR || errno == EAGAIN)) continue;
+        if (k <= 0) return -1;
+        got += (size_t)k;
+    }
+    return 0;
+}
+
+/* A connection to the remote desktop port that starts with an RFC 4571 frame instead of a TLS
+ * ClientHello: the browser's ICE-TCP check. This root child reads exactly that first frame, takes the
+ * route from its user name (rtcwire.c rw_ice_route, nothing else is trusted here) and hands the
+ * socket and the frame to that bridge, which checks the message's integrity with its ICE password.
+ * The address already passed the same rules as any other connection (sessiond.c accept_remote). */
+static void ice_tcp(int fd) {
+    unsigned char b[2 + RW_TCP_FRAME_MAX];
+    size_t len = 0;
+    if (read_full(fd, b, 2) || rw_tcp_frame(b, 2 + RW_TCP_FRAME_MAX, &len) < 0) return;
+    len = (size_t)(b[0] << 8 | b[1]);
+    if (len < 20 || len > 1500 || read_full(fd, b + 2, len)) return;
+    char route[9], path[64];
+    if (rw_ice_route(b + 2, len, route)) return;
+    snprintf(path, sizeof path, RD_RTC_DIR "/%s", route);
+    struct stat st;
+    if (lstat(path, &st) || !S_ISSOCK(st.st_mode) || st.st_uid != 0) return;
+    int u = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
+    struct sockaddr_un a = { .sun_family = AF_UNIX };
+    snprintf(a.sun_path, sizeof a.sun_path, "%s", path);
+    if (u < 0 || connect(u, (struct sockaddr *)&a, sizeof a)) { if (u >= 0) close(u); return; }
+    char cbuf[CMSG_SPACE(sizeof(int))];
+    memset(cbuf, 0, sizeof cbuf);
+    struct iovec iov = { b, 2 + len };
+    struct msghdr mh = { .msg_iov = &iov, .msg_iovlen = 1, .msg_control = cbuf, .msg_controllen = sizeof cbuf };
+    struct cmsghdr *cm = CMSG_FIRSTHDR(&mh);
+    cm->cmsg_level = SOL_SOCKET;
+    cm->cmsg_type = SCM_RIGHTS;
+    cm->cmsg_len = CMSG_LEN(sizeof(int));
+    memcpy(CMSG_DATA(cm), &fd, sizeof(int));
+    if (sendmsg(u, &mh, MSG_NOSIGNAL) < 0) sd_log("ICE-TCP: could not hand the connection over");
+    close(u);
 }
 
 /* ---- one connection ---- */
@@ -1146,11 +1223,9 @@ static void handle_ws(const RsReq *r, int logged, const char *user, uid_t uid) {
     if (h > 1600) h = 1600;
     sess = sd_session_get(&me, w & ~1, h & ~1);
     if (sess < 0) { respond(503, NULL); return; }
-#ifdef LORD_RTC
-    want_rtc = rd_conf.video && query_num(r->query, "v", 0) == 1;
     /* the TURN password, read here as root (RD_TURN_KEY is root 0600) and handed to the bridge's WebRTC
      * peer in memory only; never logged, never sent to the browser */
-    if (want_rtc && rd_conf.turn[0] && rd_conf.turn_user[0]) {
+    if (rd_conf.turn[0] && rd_conf.turn_user[0]) {
         int f = open(RD_TURN_KEY, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
         struct stat st;
         char buf[160];
@@ -1165,15 +1240,15 @@ static void handle_ws(const RsReq *r, int logged, const char *user, uid_t uid) {
         }
         explicit_bzero(buf, sizeof buf);
     }
-#endif
-    if (ws_handshake(r)) return;
+    ice_listen();
+    if (ws_handshake(r)) { ice_unlisten(); return; }
     conn_register(name);
     int pp[2];
     if (pipe2(pp, O_CLOEXEC)) return;
     pid_t parent = getpid();
     alarm(0);
     pid_t b = fork();
-    if (b < 0) return;
+    if (b < 0) { ice_unlisten(); return; }
     if (b == 0) {
         close(pp[0]);
         lock_fd = pp[1];
@@ -1186,6 +1261,8 @@ static void handle_ws(const RsReq *r, int logged, const char *user, uid_t uid) {
     }
     /* the root side keeps nothing of the connection: it only listens for "the session was locked" */
     if (turn_pass) { explicit_bzero(turn_pass, strlen(turn_pass)); free(turn_pass); turn_pass = NULL; }
+    if (ice_lfd >= 0) close(ice_lfd);        /* the bridge has it; the path goes when the bridge does */
+    ice_lfd = -1;
     close(pp[1]);
     close(sess);
     close(sock);
@@ -1213,6 +1290,7 @@ static void handle_ws(const RsReq *r, int logged, const char *user, uid_t uid) {
         }
     }
     while (waitpid(b, NULL, 0) < 0 && errno == EINTR) {}
+    ice_unlisten();
 }
 
 void rd_serve(SSL_CTX *ctx, int fd, const char *ip, const char *key) {
@@ -1224,6 +1302,18 @@ void rd_serve(SSL_CTX *ctx, int fd, const char *ip, const char *key) {
     sd_log_prefix(prefix);
     alarm(ALARM_SECONDS);                       /* backstop: SIGALRM ends a stuck connection */
     deadline = mono() + HEAD_SECONDS;
+    /* TLS starts with a handshake record (0x16); an ICE-TCP check with its 16-bit length (< 0x10) */
+    for (;;) {
+        unsigned char first = 0;
+        struct pollfd p = { fd, POLLIN, 0 };
+        double left = deadline - mono();
+        if (left <= 0 || poll(&p, 1, (int)(left * 1000) + 1) <= 0) return;
+        ssize_t k = recv(fd, &first, 1, MSG_PEEK | MSG_DONTWAIT);
+        if (k < 0 && (errno == EINTR || errno == EAGAIN)) continue;
+        if (k <= 0) return;
+        if (first < 0x10) { ice_tcp(fd); return; }
+        break;
+    }
     ssl = SSL_new(ctx);
     if (!ssl) return;
     SSL_set_fd(ssl, fd);

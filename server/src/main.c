@@ -538,7 +538,7 @@ static int gpu_start(Server *s);
  * read back once (gpu_read_next) for every viewer. Only protected windows still need the CPU path
  * (they are painted black in a CPU copy of the scene, media/capture.c); LORD_REMOTE_GPU=0 forces it. */
 static int remote_needs_cpu(void) {
-    if (!mirror_clients()) return 0;
+    if (!mirror_watchers()) return 0;
     const char *e = getenv("LORD_REMOTE_GPU");
     return (e && !strcmp(e, "0")) || media_protected_count() > 0;
 }
@@ -1239,7 +1239,7 @@ static void present_cpu(Server *s, Out *o, int index, Rect r, int feed) {
         /* remote desktop (without the cursor) and recording: with protected windows in black */
         MediaCursor mc = { px_, py_, k.mode, k.px, k.w, k.h, k.hx, k.hy };
         view_of(o, index);
-        const Canvas *seen = media_composed(&out, mirror_clients() > 0, &mc);
+        const Canvas *seen = media_composed(&out, mirror_watchers() > 0, &mc);
         view_reset();
         mirror_frame(seen->px, seen->stride, W, H);
         mirror_cursor(px_, py_, k.mode, k.px, k.w, k.h, k.hx, k.hy, k.gen);
@@ -1295,7 +1295,7 @@ static void present_memory(Server *s, Out *o, int index, int feed) {
     if (feed) {
         /* what the browser sees and what is recorded: with the protected windows in black */
         MediaCursor mc = { x, y, k.mode, k.px, k.w, k.h, k.hx, k.hy };
-        const Canvas *seen = media_composed(&out, mirror_clients() > 0, &mc);
+        const Canvas *seen = media_composed(&out, mirror_watchers() > 0, &mc);
         mirror_frame(seen->px, seen->stride, o->scene.w, o->scene.h);
         mirror_cursor(x, y, k.mode, k.px, k.w, k.h, k.hx, k.hy, k.gen);
     }
@@ -1366,7 +1366,7 @@ static void render_frame(Server *s) {
                 /* the remote desktop watches: the composed frame is read back once for every viewer */
                 static uint32_t *rb;
                 static size_t rb_n;
-                int readback = o == feed && mirror_clients() > 0;
+                int readback = o == feed && mirror_watchers() > 0;
                 if (readback) {
                     size_t need = (size_t)o->scene.w * o->scene.h;
                     if (need > rb_n) { free(rb); rb = malloc(need * 4); rb_n = rb ? need : 0; }
@@ -1401,7 +1401,7 @@ static void render_frame(Server *s) {
         }
         /* every display in one frame for the remote desktop and recording (capture view) */
         Out *c = &s->cap;
-        if (feed == c && (mirror_clients() || media_needs_cpu())) {
+        if (feed == c && (mirror_watchers() || media_needs_cpu())) {
             if (!c->on || c->v.w != s->W || c->v.h != s->H) {
                 c->on = 1;
                 c->v = out_view(0, 0, s->W, s->H, 100);
@@ -1744,7 +1744,7 @@ int main(int argc, char **argv) {
         double mrd = mirror_timeout();
         if (mrd >= 0 && (delay < 0 || mrd < delay)) delay = mrd;
         /* sin monitor y sin nadie mirando no se dibuja (al conectarse alguien llega un cuadro entero) */
-        int unseen = s.headless && !mirror_clients() && !media_needs_cpu();   /* grabando la pantalla, sí */
+        int unseen = s.headless && !mirror_watchers() && !media_needs_cpu();   /* recording the screen: yes */
         if (!s.headless && display_is_off()) unseen = 1;     /* screen off after idle (DPMS): nothing to draw */
         /* nothing is drawn: the Linux apps waiting for a frame get it at most once a second (wl.c) */
         if (unseen) {

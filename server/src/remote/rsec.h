@@ -102,13 +102,14 @@ const char *rs_json_str(const RsJson *o, const char *key, size_t *len);
 int  rs_json_num(const RsJson *o, const char *key, long long *v);
 
 /* A browser message, validated and clamped against a W×H screen. */
-enum { RS_IN_NONE = 0, RS_IN_PTR, RS_IN_BTN, RS_IN_WHEEL, RS_IN_SCROLL, RS_IN_PINCH, RS_IN_KEY, RS_IN_ACK, RS_IN_RESIZE,
+enum { RS_IN_NONE = 0, RS_IN_PTR, RS_IN_BTN, RS_IN_WHEEL, RS_IN_SCROLL, RS_IN_PINCH, RS_IN_KEY, RS_IN_RESIZE,
        RS_IN_PING, RS_IN_CLIP, RS_IN_RTC, RS_IN_ICE, RS_IN_VMODE };
 #define RS_SDP_MAX 32768            /* {"t":"rtc","sdp":…} (rtcwire.h RW_SDP_MAX) */
 #define RS_CLIP_MAX (1u << 20)
 typedef struct {
     int type;
-    int a, b;                   /* PTR x,y · BTN button,down · WHEEL steps · KEY code,down · RESIZE w,h · SCROLL/PINCH phase · VMODE on */
+    int a, b;                   /* PTR x,y · BTN button,down · WHEEL steps · KEY code,down · RESIZE w,h · SCROLL/PINCH phase · VMODE on
+                                 * · RTC/ICE the peer number "p" (0 if absent) */
     int32_t v1, v2;             /* SCROLL dx,dy (1/256 px) · PINCH scale ×65536, rotation ×256 */
     long long ts;               /* PING */
     const char *text;           /* CLIP, RTC (the SDP offer), ICE (a candidate; "" ends) (inside the RsJson buffer) */

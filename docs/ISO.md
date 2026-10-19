@@ -332,7 +332,7 @@ COPYFILE_DISABLE=1 tar czf - --no-xattrs --exclude build --exclude node_modules 
   package.json README.md server third_party assets themes tools | \
   ssh lord@172.17.0.52 'rm -rf ~/LordOS-iso && mkdir ~/LordOS-iso && cd ~/LordOS-iso && tar xzf -'
 # on VM 116
-make -C server -j4                            # lord-server (GPU=1) and lord-sessiond (needs libssl-dev)
+make -C server -j4                            # lord-server (GPU=1) and lord-sessiond (needs libssl-dev, libsrtp2-dev, libusrsctp-dev)
 sudo tools/iso/build.sh /var/tmp/lordos-iso   # → /var/tmp/lordos-iso/out/
 ```
 
@@ -384,7 +384,7 @@ sudo apt-get install -y --no-install-recommends debootstrap squashfs-tools xorri
 | `libpoppler-glib-dev`, `libarchive-dev` | compiling `lord-doc` (PDF and archives); without them `make` skips it and the package ships without a PDF viewer |
 | `libavcodec-dev`, `libavformat-dev`, `libavutil-dev`, `libswscale-dev`, `libswresample-dev` | compiling `lord-media` (video, photos, camera, recorder); without them `make` skips it |
 | `libva-dev` | optional: GPU decoding (VA-API) in `lord-media` |
-| `libsrtp2-dev`, `libusrsctp-dev` | the remote desktop's video (WebRTC: SRTP and the data channels) in `lord-sessiond`; without them `make` builds the tile path only and the package doesn't depend on `libsrtp2-1`/`libusrsctp2` |
+| `libsrtp2-dev`, `libusrsctp-dev` | the remote desktop (WebRTC: SRTP and the data channels) in `lord-sessiond`; required: without them `make` stops with an error for `lord-sessiond` (or build with `SESSIOND=0`), and the package always depends on `libsrtp2-1` and `libusrsctp2` |
 | `clang` | compiling `lord-netperm`'s BPF programs (per-app network permissions); without it the build still works, but no rules are applied |
 | `debootstrap` | the Debian base system |
 | `squashfs-tools` | `mksquashfs` |
@@ -675,7 +675,7 @@ M8 step (live ISO), on the development VM:
 
 ```sh
 sudo apt-get install -y --no-install-recommends debootstrap squashfs-tools xorriso grub-pc-bin \
-  grub-efi-amd64-bin grub-common mtools dosfstools lintian libssl-dev
+  grub-efi-amd64-bin grub-common mtools dosfstools lintian libssl-dev libsrtp2-dev libusrsctp-dev
 ```
 
 In Proxmox, VM 117 `lordos-live` is used to test the ISO. It has 4 GB, 4 cores, q35, `vga: virtio`,

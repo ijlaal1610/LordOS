@@ -283,7 +283,7 @@ static void test_json(void) {
     CHECK(jin("{\"t\":\"resize\",\"w\":100000,\"h\":1080}", 1280, 800, &in) == RS_IN_NONE);
     CHECK(jin("{\"t\":\"resize\",\"w\":100,\"h\":100}", 1280, 800, &in) == RS_IN_NONE);
     CHECK(jin("{\"t\":\"ping\",\"ts\":123}", 1280, 800, &in) == RS_IN_PING && in.ts == 123);
-    CHECK(jin("{\"t\":\"ack\"}", 1280, 800, &in) == RS_IN_ACK);
+    CHECK(jin("{\"t\":\"ack\"}", 1280, 800, &in) == RS_IN_NONE);       /* the image path's ack is gone (0.8.4) */
     CHECK(jin("{\"t\":\"clip\",\"text\":\"h\\u00e9\\ud83d\\udc51\\n\"}", 1280, 800, &in) == RS_IN_CLIP && in.tlen == 8 &&
           !memcmp(in.text, "h\xc3\xa9\xf0\x9f\x91\x91\n", 8));
     CHECK(jin("{\"t\":\"clip\",\"text\":\"\\ud83d\"}", 1280, 800, &in) == -1);        /* lone surrogate */
@@ -584,8 +584,8 @@ static void test_sdp(void) {
     CHECK(rw_sdp_parse_offer(chrome_offer, n, 1, &o) == RW_OK);
     uint8_t fp[32];
     for (int i = 0; i < 32; i++) fp[i] = (uint8_t)i;
-    RwLocalCand c[2] = { { "192.168.1.5", 40000, RW_CAND_HOST, 2130706431, "", 0 }, { "203.0.113.9", 3478, RW_CAND_RELAY, 33554431, "198.51.100.2", 5555 } };
-    RwAnswer a = { "AbCdEfGh", "0123456789abcdefABCDEF01", fp, 111, 222, 1, c, 2, 42 };
+    RwLocalCand c[2] = { { "192.168.1.5", 40000, RW_CAND_HOST, 2130706431, "", 0, 0 }, { "203.0.113.9", 3478, RW_CAND_RELAY, 33554431, "198.51.100.2", 5555, 0 } };
+    RwAnswer a = { "AbCdEfGh", "0123456789abcdefABCDEF01", fp, 111, 222, 1, c, 2, 42, 0 };
     char ans[16384];
     int al = rw_sdp_answer(&o, &a, ans, sizeof ans);
     CHECK(al > 0 && strstr(ans, "a=ice-lite\r\n") && strstr(ans, "a=setup:passive\r\n") && strstr(ans, "a=group:BUNDLE 0 1 2\r\n"));
@@ -598,6 +598,78 @@ static void test_sdp(void) {
     CHECK(strstr(ans, "a=ssrc:111 cname:lordos") && strstr(ans, "a=ssrc:222 cname:lordos") && strstr(ans, "a=rtpmap:111 opus/48000/2"));
     CHECK(!strstr(ans, "RifL1w"));                                      /* never echoes the browser's secrets */
     CHECK(rw_sdp_answer(&o, &a, ans, 200) == -1);                       /* doesn't fit */
+    CHECK(strstr(ans, "o=- 42 2 IN IP4") != NULL);                      /* first answer: version 2 */
+    /* ICE-TCP: a passive TCP host candidate on the remote desktop port; an ICE restart's answer has the
+     * next session version */
+    RwLocalCand t[2] = { { "192.168.1.5", 40000, RW_CAND_HOST, 2130706431, "", 0, 0 }, { "192.168.1.5", 5673, RW_CAND_HOST, 1358954751, "", 0, 1 } };
+    RwAnswer b = { "AbCdEfGhIjKl", "0123456789abcdefABCDEF01", fp, 111, 222, 1, t, 2, 42, 3 };
+    al = rw_sdp_answer(&o, &b, ans, sizeof ans);
+    CHECK(al > 0 && strstr(ans, "a=candidate:11 1 tcp 1358954751 192.168.1.5 5673 typ host tcptype passive\r\n"));
+    CHECK(strstr(ans, "a=candidate:10 1 udp 2130706431 192.168.1.5 40000 typ host\r\n") && strstr(ans, "o=- 42 3 IN IP4"));
+    CHECK(strstr(ans, "a=ice-ufrag:AbCdEfGhIjKl\r\n") != NULL);
+}
+
+/* ICE over TCP (RFC 6544/4571 framing), the TURN server's stream, the route a root child reads from the
+ * first check, the TURN transports and the pinned fingerprint */
+static void test_tcp(void) {
+    size_t len = 0;
+    uint8_t f[8] = { 0, 3, 'a', 'b', 'c', 0, 1 };
+    CHECK(rw_tcp_frame(f, 0, &len) == 0 && rw_tcp_frame(f, 1, &len) == 0 && rw_tcp_frame(f, 4, &len) == 0);
+    CHECK(rw_tcp_frame(f, 5, &len) == 1 && len == 3);
+    CHECK(rw_tcp_frame(f + 5, 2, &len) == 0);                           /* length 1, no byte yet */
+    uint8_t z[2] = { 0, 0 }, big[2] = { 0x10, 0x01 }, max[2] = { 0x10, 0x00 };
+    CHECK(rw_tcp_frame(z, 2, &len) == -1 && rw_tcp_frame(big, 2, &len) == -1 && rw_tcp_frame(max, 2, &len) == 0);
+    /* a STUN stream: a binding answer (from test_stun) whole, cut, and followed by ChannelData */
+    uint8_t p[200];
+    int n = hexbytes("0101002c2112a442496f307873764d3849326171002000080001df408d03a44700080014891a716ef20e7a305d8e94f44f899dba06a12704802800049abe8fcc", p);
+    CHECK(rw_stun_stream(p, (size_t)n, &len) == 1 && len == (size_t)n);
+    CHECK(rw_stun_stream(p, 19, &len) == 0 && rw_stun_stream(p, (size_t)n - 1, &len) == 0 && rw_stun_stream(p, 0, &len) == 0);
+    uint8_t cd[8] = { 0x40, 0x00, 0x00, 0x04, 1, 2, 3, 4 };
+    CHECK(rw_stun_stream(cd, 8, &len) == -1);                           /* ChannelData: we never bind channels */
+    uint8_t odd[20];
+    memcpy(odd, p, 20);
+    odd[3] = 0x2d;                                                      /* length not a multiple of 4 */
+    CHECK(rw_stun_stream(odd, 20, &len) == -1);
+    memcpy(odd, p, 20);
+    odd[4] = 0;                                                         /* no magic cookie */
+    CHECK(rw_stun_stream(odd, 20, &len) == -1);
+    /* the route: a binding request with MESSAGE-INTEGRITY and a user name "<8 alnum><more>:<theirs>" */
+    uint8_t tid[12] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+    RwStunOut o;
+    rw_so_init(&o, RW_STUN_BINDING_REQ, tid);
+    rw_so_attr(&o, RW_ATTR_USERNAME, "Ab3dEf7hWxYz:brws", 17);
+    rw_so_mi(&o, (const uint8_t *)"pw", 2, hmac1);
+    rw_so_fingerprint(&o);
+    char route[9];
+    CHECK(rw_ice_route(o.b, o.n, route) == 0 && !strcmp(route, "Ab3dEf7h"));
+    const char *bad_users[] = { "Ab3dEf7:brws", "Ab3d+f7hWx:b", "Ab3dEf7hWxYz", "short:x" };
+    for (size_t i = 0; i < sizeof bad_users / sizeof bad_users[0]; i++) {
+        rw_so_init(&o, RW_STUN_BINDING_REQ, tid);
+        rw_so_attr(&o, RW_ATTR_USERNAME, bad_users[i], strlen(bad_users[i]));
+        rw_so_mi(&o, (const uint8_t *)"pw", 2, hmac1);
+        rw_so_fingerprint(&o);
+        CHECK(rw_ice_route(o.b, o.n, route) == -1);
+    }
+    rw_so_init(&o, RW_STUN_BINDING_REQ, tid);                           /* no integrity: never routed */
+    rw_so_attr(&o, RW_ATTR_USERNAME, "Ab3dEf7hWxYz:brws", 17);
+    rw_so_fingerprint(&o);
+    CHECK(rw_ice_route(o.b, o.n, route) == -1);
+    rw_so_init(&o, RW_STUN_BINDING_OK, tid);                            /* not a request */
+    rw_so_attr(&o, RW_ATTR_USERNAME, "Ab3dEf7hWxYz:brws", 17);
+    rw_so_mi(&o, (const uint8_t *)"pw", 2, hmac1);
+    CHECK(rw_ice_route(o.b, o.n, route) == -1);
+    CHECK(rw_ice_route((const uint8_t *)"\x16\x03\x01", 3, route) == -1);   /* a TLS ClientHello */
+    /* TURN transports and the pin */
+    CHECK(rw_turn_transport("udp") == RW_TURN_UDP && rw_turn_transport("tcp") == RW_TURN_TCP && rw_turn_transport("tls") == RW_TURN_TLS);
+    CHECK(rw_turn_transport("TLS") < 0 && rw_turn_transport("") < 0 && rw_turn_transport("dtls") < 0 && rw_turn_transport("tls ") < 0);
+    CHECK(!strcmp(rw_turn_transport_name(RW_TURN_TLS), "tls") && !strcmp(rw_turn_transport_name(99), "udp"));
+    uint8_t fp[32];
+    CHECK(rw_fp_parse("000102030405060708090a0b0c0d0e0f101112131415161718191A1B1C1D1E1F", fp) == 0 && fp[0] == 0 && fp[31] == 0x1f && fp[26] == 0x1a);
+    CHECK(rw_fp_parse("00:01:02:03:04:05:06:07:08:09:0A:0B:0C:0D:0E:0F:10:11:12:13:14:15:16:17:18:19:1A:1B:1C:1D:1E:FF", fp) == 0 && fp[31] == 0xff);
+    CHECK(rw_fp_parse("00:01:02:03:04:05:06:07:08:09:0A:0B:0C:0D:0E:0F:10:11:12:13:14:15:16:17:18:19:1A:1B:1C:1D:1E", fp) == -1);
+    CHECK(rw_fp_parse("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1g", fp) == -1);
+    CHECK(rw_fp_parse("00-01-02-03-04-05-06-07-08-09-0A-0B-0C-0D-0E-0F-10-11-12-13-14-15-16-17-18-19-1A-1B-1C-1D-1E-FF", fp) == -1);
+    CHECK(rw_fp_parse("", fp) == -1 && rw_fp_parse("00", fp) == -1);
 }
 
 static void test_cand(void) {
@@ -837,6 +909,17 @@ static void test_signal(void) {
     CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_ICE);
     j = "{\"t\":\"ice\",\"c\":\"\"}";
     CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_ICE && in.tlen == 0);
+    /* the peer number: optional, 1..1000000, an integer */
+    j = "{\"t\":\"rtc\",\"sdp\":\"v=0\\r\\nm=video 9\",\"p\":3}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_RTC && in.a == 3);
+    j = "{\"t\":\"rtc\",\"sdp\":\"v=0\\r\\nm=video 9\"}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_RTC && in.a == 0);
+    j = "{\"t\":\"rtc\",\"sdp\":\"v=0\\r\\nm=video 9\",\"p\":0}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_NONE);
+    j = "{\"t\":\"ice\",\"c\":\"\",\"p\":1000001}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_NONE);
+    j = "{\"t\":\"ice\",\"c\":\"\",\"p\":\"2\"}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_NONE);   /* a string: refused */
     j = "{\"t\":\"vmode\",\"on\":1}";
     CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_VMODE && in.a == 1);
     j = "{\"t\":\"vmode\",\"on\":2}";
@@ -863,6 +946,7 @@ int main(void) {
     test_dcep();
     test_rtp();
     test_signal();
+    test_tcp();
     printf("remote-sec-test: %d checks, %d failed\n", checks, fails);
     return fails ? 1 : 0;
 }

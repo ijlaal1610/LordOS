@@ -2,9 +2,12 @@
  *
  * lord-server (already as the session's user) listens on $XDG_RUNTIME_DIR/lordos/remote.sock;
  * it only accepts root (lord-sessiond: the monitor and the network bridge) and the same user (SO_PEERCRED). Through it:
- *   - it sends the screen in 64×64 tiles: on each frame it compares with the previous copy and
- *     each connection accumulates the tiles that changed until it asks for the next frame
- *     (RP_READY): that way a slow network gets fewer frames but always the current state;
+ *   - the screen goes to the session's shared live encoder (media/mstream.c) for every viewer that
+ *     subscribed to the video (RP_VIDEO); the encoded frames go back to each one (RP_VFRAME);
+ *   - on each frame it compares with the previous copy in 64×64 tiles: what changed is announced at
+ *     once (RP_DAMAGE) and, once the screen has been still for STILL_MS, sent as lossless rectangles
+ *     (RP_RECT) to each viewer whose video plays (RP_VMODE), which the browser draws over the video;
+ *   - nothing is captured or compared while no viewer takes the video (mirror_watchers());
  *   - it sends the cursor position and image separately, and the text clipboard;
  *   - it receives mouse, keyboard and clipboard, which main.c injects as if they were local.
  * lord-sessiond (docs/SESSIONS.md) connects as root and marks itself with RP_SEAT: it doesn't get the
@@ -47,7 +50,7 @@ typedef struct {
     /* the video path (docs/REMOTE.md, "Video (WebRTC)") */
     int vcodec, vaudio, vneed_key;  /* subscribed to the session's encoder (1 H.264, 2 VP8) */
     unsigned vkbps;
-    int vmode;                      /* tiles only when the screen is still, damage right away */
+    int vmode;                      /* the video plays: lossless tiles once still, damage right away */
 } Client;
 
 static int lfd = -1;
@@ -200,7 +203,8 @@ static void pump(Client *c) {
         msg(c, RP_CLIP, clip_text, clip_len, NULL, 0);
         c->clip_gen = clip_gen_seen;
     }
-    if (c->ready && c->dirty && fb && c->out_len - c->out_off < OUT_LIMIT && (!c->vmode || still())) {
+    /* the lossless refresh: only for a viewer whose video plays, only once the screen is still */
+    if (c->vmode && c->ready && c->dirty && fb && c->out_len - c->out_off < OUT_LIMIT && still()) {
         int any = 0;
         for (int ty = 0; ty < TH; ty++) {
             for (int tx = 0; tx < TW;) {
@@ -295,6 +299,7 @@ static void handle(Client *c, int type, const unsigned char *d, uint32_t n) {
             if (c->vcodec && c->vcodec != was) c->vneed_key = 1;
             video_update();
             if (c->vcodec && fb) mstream_frame(fb, W, W, H);
+            else if (c->vcodec && cb.refresh) cb.refresh();     /* the first viewer: a whole frame */
         }
         break;
     case RP_KEYFRAME: if (c->vcodec) { mstream_keyframe(c->vcodec); c->vneed_key = 1; } break;
@@ -309,7 +314,7 @@ static void handle(Client *c, int type, const unsigned char *d, uint32_t n) {
     case RP_VMODE:
         if (n >= 1) {
             c->vmode = d[0] == 1;
-            all_dirty(c);                       /* the lossless layer starts (or the tiles start) whole */
+            all_dirty(c);                       /* the lossless layer starts whole */
             c->ready = 1;
         }
         break;
@@ -472,6 +477,12 @@ int mirror_clients(void) {
     return n;
 }
 
+int mirror_watchers(void) {
+    int n = 0;
+    for (int i = 0; i < MAX_CLIENTS; i++) if (cl[i].fd >= 0 && !cl[i].seat && cl[i].vcodec) n++;
+    return n;
+}
+
 int mirror_has_seat(void) {
     for (int i = 0; i < MAX_CLIENTS; i++) if (cl[i].fd >= 0 && cl[i].seat) return 1;
     return 0;
@@ -548,7 +559,7 @@ void mirror_dispatch(const struct pollfd *p, int n) {
 }
 
 void mirror_frame(const uint32_t *px, int stride, int w, int h) {
-    if (lfd < 0 || !mirror_clients()) { free(fb); fb = NULL; return; }
+    if (lfd < 0 || !mirror_watchers()) { free(fb); fb = NULL; return; }
     int resized = !fb || w != W || h != H, any = 0;
     int new_size = w != W || h != H;
     if (resized) {
@@ -645,7 +656,7 @@ double mirror_timeout(void) {
 }
 
 void mirror_cursor(int x, int y, int mode, const uint32_t *argb, int w, int h, int hx, int hy, unsigned gen) {
-    if (lfd < 0 || !mirror_clients()) return;
+    if (lfd < 0 || !mirror_watchers()) return;
     cur_x = x;
     cur_y = y;
     cur_mode = mode;

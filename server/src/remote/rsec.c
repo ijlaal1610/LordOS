@@ -530,6 +530,7 @@ int rs_browser_input(const RsJson *j, int W, int H, RsInput *in) {
     size_t tl = 0;
     const char *t = rs_json_str(j, "t", &tl);
     long long a, b;
+    size_t pl = 0;
     if (!t || tl > 6) return RS_IN_NONE;
     if (!strcmp(t, "m")) {
         if (W <= 0 || H <= 0 || rs_json_num(j, "x", &a) || rs_json_num(j, "y", &b)) return RS_IN_NONE;
@@ -570,7 +571,6 @@ int rs_browser_input(const RsJson *j, int W, int H, RsInput *in) {
         in->b = b != 0;
         return in->type = RS_IN_KEY;
     }
-    if (!strcmp(t, "ack")) return in->type = RS_IN_ACK;
     if (!strcmp(t, "resize")) {
         if (rs_json_num(j, "w", &a) || rs_json_num(j, "h", &b) || a < 640 || b < 480 || a > 3840 || b > 2400) return RS_IN_NONE;
         in->a = (int)(a & ~1LL);
@@ -596,6 +596,8 @@ int rs_browser_input(const RsJson *j, int W, int H, RsInput *in) {
         size_t l = 0;
         const char *x = rs_json_str(j, "sdp", &l);
         if (!x || l < 10 || l > RS_SDP_MAX) return RS_IN_NONE;
+        if (rs_json_str(j, "p", &pl) || (!rs_json_num(j, "p", &a) && (a < 1 || a > 1000000))) return RS_IN_NONE;
+        in->a = rs_json_num(j, "p", &a) ? 0 : (int)a;           /* the peer it is for (0: not said) */
         in->text = x;
         in->tlen = l;
         return in->type = RS_IN_RTC;
@@ -604,6 +606,8 @@ int rs_browser_input(const RsJson *j, int W, int H, RsInput *in) {
         size_t l = 0;
         const char *x = rs_json_str(j, "c", &l);
         if (!x || l > 512) return RS_IN_NONE;
+        if (rs_json_str(j, "p", &pl) || (!rs_json_num(j, "p", &a) && (a < 1 || a > 1000000))) return RS_IN_NONE;
+        in->a = rs_json_num(j, "p", &a) ? 0 : (int)a;
         in->text = x;
         in->tlen = l;
         return in->type = RS_IN_ICE;

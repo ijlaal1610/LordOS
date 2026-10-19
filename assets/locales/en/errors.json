@@ -598,5 +598,6 @@
   "imager.ejectFailed": "The drive couldn't be ejected",
   "imager.noUdisks": "The disk service (udisks2) isn't running",
   "imager.hashFailed": "The password couldn't be hashed",
-  "imager.pskFailed": "The Wi-Fi key couldn't be derived"
+  "imager.pskFailed": "The Wi-Fi key couldn't be derived",
+  "remote.badTurnFingerprint": "Not a valid certificate fingerprint: 64 hexadecimal digits (pairs may be separated by colons)"
 }

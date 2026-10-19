@@ -5,8 +5,8 @@
  * (build/remote-sec-test, build/remote-fuzz).
  *
  * Every parser rejects instead of guessing. The browser's SDP is only accepted over the remote
- * desktop's own authenticated WebSocket; everything else here arrives on the bridge's UDP socket
- * and is parsed before any cryptography looks at it. */
+ * desktop's own authenticated WebSocket; everything else here arrives on the bridge's UDP socket, an
+ * ICE-TCP connection or the TURN server's stream, and is parsed before any cryptography looks at it. */
 #ifndef LORD_REMOTE_RTCWIRE_H
 #define LORD_REMOTE_RTCWIRE_H
 
@@ -26,6 +26,14 @@ int  rw_ice_server_valid(const char *s);
 /* A TURN user name: 1..128 printable ASCII, no space, quote or backslash. Password: 1..128 printable ASCII. */
 int  rw_turn_user_valid(const char *s);
 int  rw_turn_pass_valid(const char *s);
+/* How the bridge reaches its TURN server: "udp" (the default), "tcp" or "tls" (TURN over TLS, the
+ * turns: scheme; port 443 works). RW_TURN_* or -1. */
+enum { RW_TURN_UDP = 0, RW_TURN_TCP = 1, RW_TURN_TLS = 2 };
+int  rw_turn_transport(const char *s);
+const char *rw_turn_transport_name(int t);
+/* A pinned SHA-256 certificate fingerprint for a TURN-over-TLS server with its own certificate:
+ * 64 hex digits, optionally in pairs separated by ':' (upper or lower case). 0 and out[32], or -1. */
+int  rw_fp_parse(const char *s, uint8_t out[32]);
 
 /* ---- SDP: the browser's offer ---- */
 
@@ -103,6 +111,7 @@ typedef struct {
     uint32_t prio;
     char raddr[64];
     uint16_t rport;
+    int tcp;                    /* a passive ICE-TCP host candidate (RFC 6544) */
 } RwLocalCand;
 
 typedef struct {
@@ -113,6 +122,7 @@ typedef struct {
     const RwLocalCand *cand;
     int ncand;
     uint32_t sess_id;
+    unsigned version;           /* o= session version: 2, one more for each ICE restart */
 } RwAnswer;
 /* ICE-lite, setup:passive, each offered section answered in order (unusable ones rejected with port 0).
  * Returns the length or -1 if it doesn't fit. */
@@ -145,6 +155,21 @@ typedef struct {
     size_t rlen, nlen, dlen;
     uint32_t lifetime;
 } RwStun;
+
+/* ICE over TCP (RFC 6544): every packet framed by a 16-bit big-endian length (RFC 4571). Is there a
+ * whole frame at the start of p? 1 (*len = its payload length, the payload at p + 2), 0 not yet, -1
+ * never (a zero or oversized length: the connection is closed). */
+#define RW_TCP_FRAME_MAX 4096
+int  rw_tcp_frame(const uint8_t *p, size_t n, size_t *len);
+/* A TURN server's TCP or TLS stream carries bare STUN messages, delimited by their own length (RFC
+ * 8656 §6.2; we never bind channels, so ChannelData is refused). 1 (*len = the whole message), 0 not
+ * yet, -1 never. */
+int  rw_stun_stream(const uint8_t *p, size_t n, size_t *len);
+/* The first ICE check on a new ICE-TCP connection, read by lord-sessiond's root connection child
+ * (before any bridge is involved): a STUN binding request whose USERNAME starts with the 8 routing
+ * characters [A-Za-z0-9] of the bridge it is for (our ufrag is <route><4 random>, see rtc.c). 0 and
+ * route[9], or -1. Nothing else of the message is trusted here: the bridge checks its integrity. */
+int  rw_ice_route(const uint8_t *p, size_t n, char route[9]);
 
 /* First byte demultiplexing (RFC 7983): 0..3 STUN, 20..63 DTLS, 128..191 RTP/RTCP. */
 int  rw_is_stun(const uint8_t *p, size_t n);

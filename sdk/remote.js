@@ -7,7 +7,7 @@
 //   useStore(remoteViewers) → [{ ip, user }]
 //   remote.status()         → { enabled, installed, port, allow, net: 'lan'|'list'|'any', fingerprint, clients: [...],
 //                               sessions: [...], monitor, blocked: [{ ip, until, strikes, manual }], allowed: ['cidr'] }
-//   remoteVideo.setVideo(on) / setStun([...]) / setTurn(server, user, pass) / clearTurn()  (remote-ice)
+//   remoteVideo.setStun([...]) / setTurn(server, user, pass, 'udp'|'tcp'|'tls', fingerprint) / clearTurn()  (remote-ice)
 //   remoteCidr(text)        → canonical-looking text if it's an address or network the admin actions accept, else ''
 //                             (lord-sessiond's helper checks again, strictly: server/src/remote/ipnet.c)
 // lord-sessiond's notice "this source was blocked after failed logins" arrives as __lordRemoteNotice and is
@@ -82,10 +82,11 @@ export const remoteAccess = {
 };
 
 function parseConfig(text) {
-  const c = { port: 5673, allow: 'all', net: 'lan', video: true, stun: [], turn: '', turnUser: '', turnKey: false };
+  const c = { port: 5673, allow: 'all', net: 'lan', stun: [], turn: '', turnUser: '', turnKey: false, turnTransport: 'udp', turnFp: '' };
   for (const line of String(text || '').split('\n')) {
     const m = /^(\w+)=(.*)$/.exec(line.trim());
-    if (m && m[1] === 'video') c.video = m[2] !== '0';
+    if (m && m[1] === 'turn_transport' && ['udp', 'tcp', 'tls'].includes(m[2])) c.turnTransport = m[2];
+    if (m && m[1] === 'turn_fp') c.turnFp = remoteFingerprint(m[2]);
     if (m && m[1] === 'stun' && c.stun.length < 4) c.stun.push(m[2]);
     if (m && m[1] === 'turn') c.turn = m[2];
     if (m && m[1] === 'turn_user') c.turnUser = m[2];
@@ -109,7 +110,7 @@ export const remote = {
       installed: !!s.installed, enabled: !!(st && st.running), port: st?.port || cfg.port, allow: st?.allow || cfg.allow,
       fingerprint: s.fingerprint || '', clients: st?.clients || [], sessions: st?.sessions || [], monitor: st?.monitor || '',
       net: st?.net || cfg.net, blocked: Array.isArray(st?.blocked) ? st.blocked : [], allowed: Array.isArray(st?.allowed) ? st.allowed : [],
-      video: cfg.video, stun: cfg.stun, turn: cfg.turn, turnUser: cfg.turnUser, turnKey: cfg.turnKey,
+      stun: cfg.stun, turn: cfg.turn, turnUser: cfg.turnUser, turnKey: cfg.turnKey, turnTransport: cfg.turnTransport, turnFp: cfg.turnFp,
     };
   },
 };
@@ -121,12 +122,20 @@ export function remoteIceServer(text) {
   return m && Number(m[2]) <= 65535 && !m[1].includes('..') ? s : '';
 }
 
-// The video path's settings (docs/REMOTE.md, "Video (WebRTC)"), through the remote-ice admin action;
-// the TURN password goes quietly (never into the visible admin log) and is never read back.
+// Mirrors rw_fp_parse (rtcwire.c): a SHA-256 certificate fingerprint, 64 hex digits, optionally in pairs
+// separated by ':'. Returns the text (trimmed) or ''.
+export function remoteFingerprint(text) {
+  const s = String(text || '').trim();
+  return /^[0-9a-fA-F]{64}$/.test(s) || /^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){31}$/.test(s) ? s : '';
+}
+
+// The WebRTC connection's settings (docs/REMOTE.md, "Video (WebRTC)"), through the remote-ice admin
+// action; the TURN password goes quietly (never into the visible admin log) and is never read back.
 export const remoteVideo = {
-  setVideo: (on) => admin.run('remote-ice', `video=${on ? 'on' : 'off'}`),
   setStun: (list) => admin.run('remote-ice', `stun=${list.join(',')}`),
-  setTurn: (server, user, pass) => admin.run('remote-ice', [`turn=${server}`, `turn_user=${user}`, ...(pass ? [`turn_pass=${pass}`] : [])].join('\n'), undefined, { quiet: true }),
+  setTurn: (server, user, pass, transport = 'udp', fp = '') => admin.run('remote-ice',
+    [`turn=${server}`, `turn_transport=${transport}`, `turn_fp=${transport === 'tls' ? fp : ''}`, `turn_user=${user}`, ...(pass ? [`turn_pass=${pass}`] : [])].join('\n'),
+    undefined, { quiet: true }),
   clearTurn: () => admin.run('remote-ice', 'turn='),
 };
 

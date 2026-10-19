@@ -86,10 +86,10 @@ Besides the kernel and libc, only these are allowed:
 | Mesa: `libgbm`, `libEGL`, `libGLESv2` | GPU composition and dmabuf buffers from apps (games); optional: without a 3D GPU or without the `-dev` packages it builds and runs without Mesa (approved by the user on 2026-10-16, see `GPU.md`) | system |
 | QuickJS              | ES2023 JavaScript engine, ~1 MB, written in C                  | vendored|
 | `stb_truetype`, `stb_image` | fonts and images; public domain, a single header    | vendored|
-| `stb_image_write`    | PNG and JPEG for the remote desktop (`lord-sessiond` only); public domain | vendored|
+| `stb_image_write`    | PNG for the remote desktop's lossless refresh of still areas and cursor images (`lord-sessiond` only); public domain | vendored|
 | OpenSSL (`libssl`, `libcrypto`) | TLS. **Only two binaries link it**: `lord-sessiond` (remote desktop on the LAN, `REMOTE.md`) and `lord-maild` (IMAP/SMTP/CalDAV/CardDAV, certificates checked against the system CA store, `MAIL.md`). Never `lord-server` | system |
 | `libcrypt`           | verifying passwords against `/etc/shadow` (`lord-sessiond`, `admin.c`) | system |
-| `libsrtp2`, `usrsctp` | the remote desktop's video (WebRTC, 0.8.4): SRTP and the data channels' SCTP, in `lord-sessiond`'s bridge only (as the user, after it dropped root); with OpenSSL's DTLS and our own ICE-lite, SDP and RTP code (`remote/rtc.c`, `remote/rtcwire.c`) because Debian 13 packages no libdatachannel. Optional: without them the remote desktop is tiles only. Never `lord-server` | system |
+| `libsrtp2`, `usrsctp` | the remote desktop's video (WebRTC, 0.8.4): SRTP and the data channels' SCTP, in `lord-sessiond`'s bridge only (as the user, after it dropped root); with OpenSSL's DTLS and our own ICE-lite, SDP and RTP code (`remote/rtc.c`, `remote/rtcwire.c`) because Debian 13 packages no libdatachannel. Required for `lord-sessiond` since the remote desktop shows the screen only over WebRTC (the image path was removed in 0.8.4). Never `lord-server` | system |
 | FFmpeg (`libavcodec`, `libavformat`, `libavutil`, `libswscale`, `libswresample`) and `libva` (+ `libva-drm`) | Decoding and encoding video, audio and images; VA-API for hardware decoding (M9, approved by the user). **Only `lord-media` links them**, the sandboxed helper; the player, synchronization and interface are our own. Never `lord-server` (`MEDIA.md`) | system |
 | Poppler (`libpoppler-glib`) and libarchive | PDF and archives (M9, approved by the user). **Only `lord-doc` links them**, the sandboxed helper; Poppler brings cairo, FreeType and fontconfig, which `lord-doc` also uses for font samples and for building PDFs. Never `lord-server` (`DOCUMENTS.md`) | system |
 | `clang` (build time only) | the BPF programs of `lord-netperm` (`np.bpf.c`, `clang -target bpf`); they are embedded in the binary. Without clang (`BPF=0`) the service runs without BPF. Neither libbpf nor bcc is used | build machine |
@@ -113,7 +113,10 @@ Since M8 there are two programs, and since M9 two helpers:
   only the `net-*` actions of `admin.c`. libc only. See `NETWORK.md`.
 
 - **`lord-sessiond`** (root, `lordos.service`): the login screen, the session list, the
-  monitor and the remote desktop. See `SESSIONS.md` and `REMOTE.md`.
+  monitor and the remote desktop. See `SESSIONS.md` and `REMOTE.md`. The remote desktop shows the
+  screen only as WebRTC video, from a bridge process that runs as the signed-in user: ICE over UDP
+  and over TCP on the remote desktop port (the root connection child only routes an ICE-TCP socket
+  to its bridge over `/run/lordos/rtc`), TURN over UDP, TCP or TLS, ICE restarts and reconnection.
 - **`lord-server`**: one session per user, always without a monitor of its own (`--headless`); the
   monitor and the browsers look at it through its socket.
 - **`lord-netperm`** (root, `lord-netperm.service`): per-app network permissions. It attaches its

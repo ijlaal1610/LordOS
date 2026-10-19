@@ -326,10 +326,8 @@
   "sharing.blocklistFooter": "Sempre recusados, antes de qualquer outra regra, até você removê-los.",
   "sharing.listEmpty": "A lista está vazia.",
   "sharing.blockForever": "Bloquear sempre",
-  "sharing.video": "Vídeo",
-  "sharing.videoToggle": "Transmitir como vídeo (WebRTC)",
-  "sharing.videoHint": "Mais fluido e nítido que com imagens, e com som. Volta para imagens quando o navegador ou a rede não conseguem.",
-  "sharing.videoOffHint": "O navegador recebe a tela como imagens.",
+  "sharing.video": "Conexão",
+  "sharing.videoHint": "A tela, o som e o que você digita viajam criptografados por WebRTC: é a única forma de funcionamento da área de trabalho remota.",
   "sharing.stun": "Servidores STUN",
   "sharing.stunPlaceholder": "stun.exemplo.org:3478",
   "sharing.stunHint": "Este computador responde STUN sozinho, o que basta na rede local. Adicione um servidor público só para conectar entre redes (até 4, separados por vírgulas).",
@@ -342,5 +340,14 @@
   "sharing.turnRemove": "Remover retransmissor",
   "sharing.turnFooter": "Só quando nenhum dos lados consegue chegar ao outro diretamente. O retransmissor só vê vídeo e entrada criptografados; a senha fica neste computador e só o sistema pode lê-la.",
   "sharing.save": "Salvar",
-  "sharing.noneSet": "Nenhum"
+  "sharing.noneSet": "Nenhum",
+  "sharing.videoRow": "Vídeo por WebRTC",
+  "sharing.videoFooter": "Funciona na rede local e por VPN com UDP, ou pela porta TCP {port} onde o UDP está bloqueado. Para conectar entre redes diferentes, adicione um servidor STUN ou um retransmissor abaixo.",
+  "sharing.turnTransport": "Chegar ao retransmissor por",
+  "sharing.turnUdp": "UDP",
+  "sharing.turnTcp": "TCP",
+  "sharing.turnTls": "TLS",
+  "sharing.turnFp": "Impressão digital do certificado (opcional)",
+  "sharing.turnFpPlaceholder": "SHA-256, como 3A:7F:…",
+  "sharing.turnFpHint": "Vazio: o certificado do retransmissor precisa ser válido para o nome dele. Para um retransmissor com certificado próprio, cole aqui a impressão digital SHA-256."
 }

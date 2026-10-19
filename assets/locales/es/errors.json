@@ -598,5 +598,6 @@
   "imager.ejectFailed": "No se pudo expulsar la unidad",
   "imager.noUdisks": "El servicio de discos (udisks2) no está funcionando",
   "imager.hashFailed": "No se pudo calcular el hash de la contraseña",
-  "imager.pskFailed": "No se pudo derivar la clave del Wi-Fi"
+  "imager.pskFailed": "No se pudo derivar la clave del Wi-Fi",
+  "remote.badTurnFingerprint": "No es una huella de certificado válida: 64 dígitos hexadecimales (los pares pueden ir separados por dos puntos)"
 }

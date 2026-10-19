@@ -134,8 +134,8 @@ static void rtc_one(const uint8_t *b, size_t n) {
     if (!rw_sdp_parse_offer((const char *)c, n, (int)(rnd() & 1), o)) {
         static char ans[16384];
         uint8_t fp[32] = { 0 };
-        RwLocalCand lc = { "192.168.1.5", 4000, RW_CAND_HOST, 1, "", 0 };
-        RwAnswer a = { "ufraguf", "passwordpasswordpassword", fp, 1, 2, 1, &lc, 1, 3 };
+        RwLocalCand lc[2] = { { "192.168.1.5", 4000, RW_CAND_HOST, 1, "", 0, 0 }, { "192.168.1.5", 5673, RW_CAND_HOST, 1, "", 0, 1 } };
+        RwAnswer a = { "ufraguf", "passwordpasswordpassword", fp, 1, 2, 1, lc, 2, 3, (unsigned)(rnd() % 5) };
         rw_sdp_answer(o, &a, ans, (size_t)(1 + rnd() % sizeof ans));
     }
     free(o);
@@ -150,7 +150,14 @@ static void rtc_one(const uint8_t *b, size_t n) {
     rw_h264_packetize(c, n, 64 + rnd() % 1500, pk, NULL);
     rw_h264_is_idr(c, n);
     rw_vp8_packetize(c, n, 64 + rnd() % 1500, pk, NULL);
+    /* ICE-TCP framing, the TURN stream, the root child's route (all on untrusted bytes) */
+    size_t fl = 0, off = 0;
+    while (off < n && rw_tcp_frame(c + off, n - off, &fl) == 1) { char route[9]; rw_ice_route(c + off + 2, fl, route); off += 2 + fl; }
+    for (off = 0; off < n && rw_stun_stream(c + off, n - off, &fl) == 1; off += fl) { RwStun s2; rw_stun_parse(c + off, fl, &s2); }
+    { char route[9]; rw_ice_route(c, n, route); }
     c[n] = 0;
+    rw_turn_transport((const char *)c);
+    { uint8_t pin[32]; rw_fp_parse((const char *)c, pin); }
     rw_ice_server_valid((const char *)c);
     rw_turn_user_valid((const char *)c);
     rw_turn_pass_valid((const char *)c);
@@ -183,13 +190,19 @@ static size_t rtc_seed(uint8_t *b, size_t cap) {
     }
     case 2: case 3:
         rw_so_init(&o, (uint16_t)(rnd() % 2 ? RW_STUN_BINDING_REQ : RW_TURN_ALLOCATE_OK), tid);
-        if (rnd() % 2) rw_so_attr(&o, RW_ATTR_USERNAME, "abcd:efgh", 9);
+        if (rnd() % 2) { const char *u = rnd() % 2 ? "abcd:efgh" : "Ab3dEf7hWxYz:efgh"; rw_so_attr(&o, RW_ATTR_USERNAME, u, strlen(u)); }
         if (rnd() % 2) rw_so_u32(&o, RW_ATTR_PRIORITY, rnd());
         if (rnd() % 2) rw_so_xaddr(&o, RW_ATTR_XOR_MAPPED, &a);
         if (rnd() % 2) rw_so_xaddr(&o, RW_ATTR_XOR_RELAYED, &a);
         if (rnd() % 3 == 0) rw_so_attr(&o, RW_ATTR_DATA, "\x16\xfe\xfd payload", 12);
         if (rnd() % 2) rw_so_mi(&o, (const uint8_t *)"k", 1, fake_hmac);
         if (rnd() % 2) rw_so_fingerprint(&o);
+        if (rnd() % 3 == 0 && o.n + 2 <= cap) {       /* framed for ICE-TCP (RFC 4571) */
+            b[0] = (uint8_t)(o.n >> 8);
+            b[1] = (uint8_t)o.n;
+            memcpy(b + 2, o.b, o.n);
+            return rnd() % 2 ? mutate((char *)b, o.n + 2, 1500) : o.n + 2;
+        }
         memcpy(b, o.b, o.n);
         return rnd() % 2 ? mutate((char *)b, o.n, 1500) : o.n;
     case 4: {

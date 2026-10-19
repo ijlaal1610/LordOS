@@ -579,8 +579,15 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
     (RTP/SRTP), keyboard, mouse, clipboard and a lossless refresh of still areas (sharp text) over two
     data channels. **Stack:** Debian 13 doesn't package libdatachannel (nor libjuice), so it is our
     own small peer in C (`remote/rtc.c`, `remote/rtcwire.c`) on what Debian does ship: OpenSSL's
-    DTLS (already in `lord-sessiond`), libsrtp2 and usrsctp. Falls back to the tiles when the browser
-    lacks WebRTC or the connection fails.
+    DTLS (already in `lord-sessiond`), libsrtp2 and usrsctp.
+  - [x] **WebRTC only (0.8.4):** the image path (PNG/JPEG tiles over the WebSocket) and its «images
+    only» switch are removed, not kept as a fallback. Instead: ICE over TCP on the remote desktop
+    port (passive candidates; the root connection child hands the socket to the bridge its check
+    names), TURN over UDP, TCP or TLS (pinned fingerprint optional), ICE restarts on the same DTLS
+    association, a new peer and a new WebSocket with backoff without signing in again, and a page
+    that explains each failure (no route, DTLS, lost, offer, media, server) with what to do, or the
+    requirements for a browser without WebRTC or H.264/VP8 (`REMOTE.md`, "Reconnecting" and "When it
+    can't connect").
   - [x] **Rendering once:** the GPU keeps composing while someone watches (the composed frame is read
     back once; only protected windows on screen, or screen recording, still need the CPU path); the
     same frame feeds the encoder (`lord-media` MK_STREAM: VA-API when the card encodes H.264, libx264
@@ -594,7 +601,9 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
     `lord-sessiond`'s bridge. Signaling only over the existing authenticated WebSocket; DTLS-SRTP runs
     in the bridge that already dropped root, and the browser's DTLS certificate must match the
     fingerprint of the offer that came over that WebSocket. Protected windows stay black.
-  - [x] Measured against 0.8.3's numbers (`REMOTE.md`, "Measurements (0.8.4, video)").
+  - [x] Measured against 0.8.3's numbers, and again after the image path was removed (`REMOTE.md`,
+    "Measurements (0.8.4, video)": the same CPU while the video plays; video over TCP where UDP is
+    blocked).
   - [ ] later: VA-API encoding tested on real hardware (only the software path ran, on a VM without
     a video encoder); a GPU's concurrent-encode limit (today a session falls back to software only
     when the encoder can't be opened); sessions without a monitor composing on the GPU off-screen;

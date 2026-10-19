@@ -86,6 +86,31 @@ int rw_turn_pass_valid(const char *s) {
     return 1;
 }
 
+int rw_turn_transport(const char *s) {
+    if (!strcmp(s, "udp")) return RW_TURN_UDP;
+    if (!strcmp(s, "tcp")) return RW_TURN_TCP;
+    if (!strcmp(s, "tls")) return RW_TURN_TLS;
+    return -1;
+}
+const char *rw_turn_transport_name(int t) { return t == RW_TURN_TLS ? "tls" : t == RW_TURN_TCP ? "tcp" : "udp"; }
+
+int rw_fp_parse(const char *s, uint8_t out[32]) {
+    size_t n = strlen(s), k = 0;
+    int colons = n == 95;
+    if (n != 64 && n != 95) return -1;
+    for (size_t i = 0; i < n;) {
+        if (colons && i % 3 == 2) { if (s[i] != ':') return -1; i++; continue; }
+        int hi = -1, lo = -1;
+        char c = s[i], d = i + 1 < n ? s[i + 1] : 0;
+        hi = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+        lo = d >= '0' && d <= '9' ? d - '0' : d >= 'a' && d <= 'f' ? d - 'a' + 10 : d >= 'A' && d <= 'F' ? d - 'A' + 10 : -1;
+        if (hi < 0 || lo < 0 || k >= 32) return -1;
+        out[k++] = (uint8_t)(hi << 4 | lo);
+        i += 2;
+    }
+    return k == 32 ? 0 : -1;
+}
+
 /* ---- small text helpers ---- */
 
 static int ice_char(char c) {
@@ -493,7 +518,7 @@ int rw_sdp_answer(const RwOffer *of, const RwAnswer *a, char *buf, size_t cap) {
     Out o = { buf, 0, cap, 0 };
     if (!cap) return -1;
     buf[0] = 0;
-    outf(&o, "v=0\r\no=- %u 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=ice-lite\r\na=group:BUNDLE", a->sess_id);
+    outf(&o, "v=0\r\no=- %u %u IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=ice-lite\r\na=group:BUNDLE", a->sess_id, a->version ? a->version : 2);
     for (int i = 0; i < of->nmedia; i++) if (!of->m[i].rejected) outf(&o, " %s", of->m[i].mid);
     outf(&o, "\r\na=msid-semantic: WMS lordos\r\n");
     int first = 1;
@@ -517,8 +542,9 @@ int rw_sdp_answer(const RwOffer *of, const RwAnswer *a, char *buf, size_t cap) {
             for (int c = 0; c < a->ncand; c++) {
                 const RwLocalCand *lc = &a->cand[c];
                 const char *typ = lc->type == RW_CAND_RELAY ? "relay" : lc->type == RW_CAND_SRFLX ? "srflx" : "host";
-                outf(&o, "a=candidate:%d 1 udp %u %s %u typ %s", lc->type * 10 + c, lc->prio, lc->ip, lc->port, typ);
-                if (lc->type != RW_CAND_HOST) outf(&o, " raddr %s rport %u", lc->raddr[0] ? lc->raddr : "0.0.0.0", lc->rport);
+                outf(&o, "a=candidate:%d 1 %s %u %s %u typ %s", lc->type * 10 + c, lc->tcp ? "tcp" : "udp", lc->prio, lc->ip, lc->port, typ);
+                if (lc->tcp) outf(&o, " tcptype passive");
+                else if (lc->type != RW_CAND_HOST) outf(&o, " raddr %s rport %u", lc->raddr[0] ? lc->raddr : "0.0.0.0", lc->rport);
                 outf(&o, "\r\n");
             }
             outf(&o, "a=end-of-candidates\r\n");
@@ -553,6 +579,39 @@ int rw_sdp_answer(const RwOffer *of, const RwAnswer *a, char *buf, size_t cap) {
 /* ---- STUN ---- */
 
 int rw_is_stun(const uint8_t *p, size_t n) { return n >= 20 && p[0] < 4 && be32(p + 4) == 0x2112A442u; }
+
+int rw_tcp_frame(const uint8_t *p, size_t n, size_t *len) {
+    if (n < 2) return 0;
+    size_t l = be16(p);
+    if (!l || l > RW_TCP_FRAME_MAX) return -1;
+    if (n < 2 + l) return 0;
+    *len = l;
+    return 1;
+}
+
+int rw_stun_stream(const uint8_t *p, size_t n, size_t *len) {
+    if (n < 1) return 0;
+    if (p[0] > 3) return -1;                                       /* ChannelData or garbage */
+    if (n < 20) return 0;
+    size_t l = be16(p + 2);
+    if (l % 4 || 20 + l > RW_STUN_MAX || be32(p + 4) != 0x2112A442u) return -1;
+    if (n < 20 + l) return 0;
+    *len = 20 + l;
+    return 1;
+}
+
+int rw_ice_route(const uint8_t *p, size_t n, char route[9]) {
+    RwStun s;
+    if (!rw_is_stun(p, n) || rw_stun_parse(p, n, &s) || s.type != RW_STUN_BINDING_REQ || !s.username || s.ulen < 10 || !s.mi_off) return -1;
+    for (int i = 0; i < 8; i++) {
+        char c = (char)s.username[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) return -1;
+        route[i] = c;
+    }
+    route[8] = 0;
+    if (!memchr(s.username, ':', s.ulen)) return -1;
+    return 0;
+}
 
 uint32_t rw_crc32(const uint8_t *p, size_t n) {
     uint32_t c = 0xffffffffu;
