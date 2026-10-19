@@ -538,6 +538,20 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
     fonts, sounds or product names from any company, and no third-party "clone" projects' assets
     (they often bundle copyrighted material). See `docs/LORDOS-BRAND.md` and the no-brand rule;
   - before/after screenshots of every app in both themes, like the polish pass.
+- [ ] **Mail: sign in with Google and Microsoft (OAuth2)**, so nobody needs an app password. The
+  pieces are prepared and disabled today (`sdk/mail.js` `OAUTH_PROVIDERS`, `lord-maild` answers
+  `oauth-disabled`; see `MAIL.md`, "OAuth"):
+  - the authorization-code flow with PKCE in the system browser and a loopback redirect served by
+    `lord-server`; the refresh token stored in the system keyring (Passwords), never in the account
+    file; `AUTHENTICATE XOAUTH2` in `imap.c` and `smtp.c`; token refresh and revoke on account removal;
+  - Google calendars and contacts (CalDAV/CardDAV) with the same sign-in;
+  - **needs iPERFEX to register LordOS with each provider** (only the project owners can do this):
+    a Microsoft Entra app registration (public client, personal and work accounts,
+    `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`; publisher verification optional) and a
+    Google Cloud OAuth client of type "Desktop app" with the `https://mail.google.com/` scope and the
+    calendar/contacts scopes, pointing to the privacy policy and terms on lordos.org. Gmail's mail
+    scope is restricted: until Google verifies the app, only up to 100 listed test users can sign in;
+  - Microsoft first: it is retiring password sign-in for IMAP, so OAuth will become the only way in.
 
 ## After the final ISO
 
