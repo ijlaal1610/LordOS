@@ -34,7 +34,7 @@ export function parseReleases(json, deviceId) {
     const sig = find((n) => n === 'SHA256SUMS.sig');
     if (!image || !sums || !sig || sums.size > 65536 || sig.size > 512) continue;
     const t = Date.parse(r.published_at || '');
-    out.push({ tag: r.tag_name, version: r.tag_name.slice(1), date: Number.isFinite(t) ? t : 0, prerelease: !!r.prerelease, image, sums, sig });
+    out.push({ tag: r.tag_name, version: r.tag_name.slice(1).replace(/-.*$/, ''), date: Number.isFinite(t) ? t : 0, prerelease: !!r.prerelease, image, sums, sig });
   }
   return out.sort((a, b) => b.date - a.date);
 }

@@ -1,6 +1,6 @@
 // mascot.js — Lumo, the LordOS guardian (docs/brand/README.md, "Lumo").
 //
-//   <Lumo pose="confused" size={96} />   a pose: 'wave' (welcome), 'shield' (security), 'celebrate'
+//   <Lumo pose="confused" size={96} />   a pose: 'wave' (welcome), 'shield' (security), 'run' (busy), 'celebrate'
 //                                        (done), 'confused' (error, unavailable), 'sleep' (idle)
 //   <Lumo pose="avatar" size={24} />     the head in a violet circle (the simplified one up to 40 px)
 //
@@ -13,7 +13,7 @@ import { createElement as h } from 'react';
 import { Image } from '@lordos/runtime';
 import { t } from './i18n.js';
 
-const POSES = new Set(['wave', 'shield', 'celebrate', 'confused', 'sleep']);
+const POSES = new Set(['wave', 'shield', 'celebrate', 'confused', 'sleep', 'run']);
 
 export function lumoSource(pose = 'confused', size = 96) {
   if (pose === 'avatar') return size <= 40 ? 'asset:mascot/lumo-avatar-small-64.png' : 'asset:mascot/lumo-avatar-128.png';

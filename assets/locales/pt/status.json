@@ -124,5 +124,11 @@
   "remote.blocked": "{address} bloqueado",
   "remote.unblocked": "{address} desbloqueado",
   "remote.failures": "{count} entradas com erro",
-  "remote.failure": "Entrada com erro de {user} de {key} ({count})"
+  "remote.failure": "Entrada com erro de {user} de {key} ({count})",
+  "imager.cached": "Já estava baixado",
+  "imager.fetched": "Baixado",
+  "imager.cancelling": "Cancelando…",
+  "imager.cacheCleared": "Downloads apagados",
+  "imager.verifiedImage": "A imagem confere com o seu SHA-256 assinado",
+  "imager.written": "Gravada e verificada"
 }
