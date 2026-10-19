@@ -134,7 +134,7 @@ HDR += $(wildcard src/tp/*.h)
 # only one that links OpenSSL (TLS), and with it libsrtp2 and usrsctp (the remote desktop's WebRTC);
 # without libssl-dev, only lord-server is built.
 SESSIOND ?= $(shell pkg-config --exists openssl 2>/dev/null && echo 1 || echo 0)
-ALL := build/lord-server
+ALL += build/lord-server
 ifeq ($(SESSIOND),1)
 ALL += build/lord-sessiond
 endif
