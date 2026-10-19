@@ -37,6 +37,7 @@ int  wl_has_key_focus(void);            /* does a Linux app have the keyboard? *
 void wl_set_focus(int id);              /* 0: no Wayland app has the keyboard */
 void wl_close(int id);                  /* asks the app to close the window */
 void wl_set_state(int id, int maximized, int fullscreen);
+void wl_set_minimized(int id, int minimized);   /* X11 windows: iconic and at the bottom of X's stack */
 int  wl_count(void);
 void wl_output_resized(void);               /* headless: one display of ui.width × ui.height */
 /* The displays (docs/DISPLAYS.md): one wl_output (+ xdg-output) each. x, y, w, h: logical rect in the

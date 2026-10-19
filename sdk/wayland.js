@@ -10,6 +10,7 @@ import { View, Text, Surface, addListener } from '@lordos/runtime';
 import { windows, wm, registerBuiltinApp, windowChrome, pointerWorkArea, getApp } from './windows.js';
 import { useAppWindow } from './components.jsx';
 import { locale, appName } from './i18n.js';
+import { linuxAppFor } from './apps.js';
 
 const idOf = (sid) => `linux#${sid}`;
 export const surfaceOf = (wid) => (String(wid).startsWith('linux#') ? Number(String(wid).slice(6)) || 0 : 0);
@@ -52,6 +53,8 @@ globalThis.__lordWayland = (sid, type, d = {}) => {
   const win = wm.get(id);
   switch (type) {
     case 'map': {
+      // X11 (Xwayland): the WM_CLASS class, or its instance when only that names a .desktop
+      if (d.x11 && d.appAlt && !linuxAppFor(d.appId) && linuxAppFor(d.appAlt)) d = { ...d, appId: d.appAlt };
       const c = d.csd ? { w: 0, h: 0 } : windowChrome();
       const area = pointerWorkArea();         // on the display under the pointer (docs/DISPLAYS.md)
       const w = Math.min(area.w, d.width + c.w), hh = Math.min(area.h, d.height + c.h);
@@ -61,7 +64,7 @@ globalThis.__lordWayland = (sid, type, d = {}) => {
       wm.open('linux', {
         instance: String(sid),
         frame: { w, h: hh, x: Math.max(area.x, Math.min(x, area.x + area.w - w)), y: Math.max(area.y, Math.min(y, area.y + area.h - hh)) },
-        args: { surface: sid, csd: !!d.csd, appId: d.appId || '', pkg: !!(d.appId && (getApp(d.appId)?.package || getApp(d.appId)?.isolated)) },
+        args: { surface: sid, csd: !!d.csd, appId: d.appId || '', x11: !!d.x11, pkg: !!(d.appId && (getApp(d.appId)?.package || getApp(d.appId)?.isolated)) },
       });
       // app .lpk aislada: su nombre (del manifest) en vez del id
       { const pkg = d.appId ? getApp(d.appId) : null; wm.setTitle(id, pkg && (pkg.package || pkg.isolated) && (!d.title || d.title === d.appId) ? (pkg.isolated ? appName(pkg) : pkg.name) : (d.title || d.appId || null)); }
@@ -109,8 +112,8 @@ function sync() {
   for (const w of list) {
     const s = surfaceOf(w.id);
     if (!s) continue;
-    const st = w.maximized ? 1 : 0;
-    if (lastState.get(s) !== st) { lastState.set(s, st); lord.wayland.state(s, !!w.maximized, false); }
+    const st = (w.maximized ? 1 : 0) | (w.minimized ? 2 : 0);
+    if (lastState.get(s) !== st) { lastState.set(s, st); lord.wayland.state(s, !!w.maximized, false, !!w.minimized); }
   }
 }
 windows.subscribe(sync);
