@@ -359,6 +359,12 @@ mod win {
     use windows_sys::Win32::System::Ioctl::*;
     use windows_sys::Win32::System::IO::DeviceIoControl;
 
+    /// The disk number, parsed strictly: it is the only value put into a PowerShell command.
+    fn num(d: &Drive) -> Result<u32> {
+        if d.id.is_empty() || d.id.len() > 4 || !d.id.bytes().all(|b| b.is_ascii_digit()) { return Err(Error::new("admin.invalidArgument", "")); }
+        d.id.parse().map_err(|_| Error::new("admin.invalidArgument", ""))
+    }
+
     fn ps(script: &str) -> Result<String> {
         run("powershell.exe", &["-NoProfile", "-NonInteractive", "-Command", script])
     }
@@ -390,7 +396,7 @@ mod win {
     static LOCKS: std::sync::Mutex<Vec<isize>> = std::sync::Mutex::new(Vec::new());
 
     pub fn unmount(d: &Drive) -> Result<()> {
-        let letters = ps(&format!("(Get-Partition -DiskNumber {} | Where-Object DriveLetter | ForEach-Object {{ $_.DriveLetter }}) -join ','", d.id))?;
+        let letters = ps(&format!("(Get-Partition -DiskNumber {} | Where-Object DriveLetter | ForEach-Object {{ $_.DriveLetter }}) -join ','", num(d)?))?;
         for l in letters.trim().split(',').filter(|s| s.len() == 1) {
             let path: Vec<u16> = format!(r"\\.\{l}:").encode_utf16().chain([0]).collect();
             let h = unsafe { CreateFileW(path.as_ptr(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, std::ptr::null(), OPEN_EXISTING, 0, std::ptr::null_mut()) };
@@ -417,14 +423,15 @@ mod win {
 
     pub fn eject(d: &Drive) -> Result<()> {
         release_locks();
-        ps(&format!("$s = New-Object -ComObject Shell.Application; Get-Partition -DiskNumber {} | Where-Object DriveLetter | ForEach-Object {{ $s.Namespace(17).ParseName(\"$($_.DriveLetter):\").InvokeVerb('Eject') }}", d.id)).map(|_| ())
+        ps(&format!("$s = New-Object -ComObject Shell.Application; Get-Partition -DiskNumber {} | Where-Object DriveLetter | ForEach-Object {{ $s.Namespace(17).ParseName(\"$($_.DriveLetter):\").InvokeVerb('Eject') }}", num(d)?)).map(|_| ())
     }
 
     pub fn mount_boot(d: &Drive) -> Result<std::path::PathBuf> {
         release_locks();
-        let _ = ps(&format!("Update-Disk -Number {}", d.id));
+        let n = num(d)?;
+        let _ = ps(&format!("Update-Disk -Number {n}"));
         for _ in 0..30 {
-            let l = ps(&format!("$p = Get-Partition -DiskNumber {} -PartitionNumber 1 -ErrorAction SilentlyContinue; if ($p -and -not $p.DriveLetter) {{ $p | Add-PartitionAccessPath -AssignDriveLetter | Out-Null; $p = Get-Partition -DiskNumber {} -PartitionNumber 1 }}; $p.DriveLetter", d.id, d.id)).unwrap_or_default();
+            let l = ps(&format!("$p = Get-Partition -DiskNumber {} -PartitionNumber 1 -ErrorAction SilentlyContinue; if ($p -and -not $p.DriveLetter) {{ $p | Add-PartitionAccessPath -AssignDriveLetter | Out-Null; $p = Get-Partition -DiskNumber {} -PartitionNumber 1 }}; $p.DriveLetter", n, n)).unwrap_or_default();
             let l = l.trim();
             if l.len() == 1 { return Ok(format!(r"{l}:\").into()); }
             std::thread::sleep(std::time::Duration::from_millis(500));

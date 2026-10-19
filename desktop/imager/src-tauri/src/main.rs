@@ -252,16 +252,18 @@ async fn write_image(app: AppHandle, st: State<'_, App>, drive: drives::Drive, p
 async fn write_firstrun(drive: drives::Drive, text: String, name: String) -> Res<()> {
     if name != "lordos-firstrun.txt" || text.len() > 65536 { return Err(code("admin.invalidArgument", "")); }
     tauri::async_runtime::spawn_blocking(move || {
-        let dir = drives::mount_boot(&drive).map_err(err)?;
+        // the drive as listed now, never the fields the page sent
+        let d = find_drive(&drive)?;
+        let dir = drives::mount_boot(&d).map_err(err)?;
         let r = fs::write(dir.join(&name), text.as_bytes()).and_then(|_| fs::File::open(dir.join(&name))?.sync_all());
-        drives::unmount_boot(&drive);
+        drives::unmount_boot(&d);
         r.map_err(|e| code("fs.writeFailed", e.to_string()))
     }).await.map_err(|e| code("fs.writeFailed", e.to_string()))?
 }
 
 #[tauri::command]
 async fn eject(drive: drives::Drive) -> Res<()> {
-    tauri::async_runtime::spawn_blocking(move || drives::eject(&drive).map_err(err)).await.map_err(|e| code("imager.ejectFailed", e.to_string()))?
+    tauri::async_runtime::spawn_blocking(move || { let d = find_drive(&drive)?; drives::eject(&d).map_err(err) }).await.map_err(|e| code("imager.ejectFailed", e.to_string()))?
 }
 
 // ---- options, profiles (never secrets), cache ----
