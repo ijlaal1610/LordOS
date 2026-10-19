@@ -6,7 +6,7 @@
 // el suyo (GTK) van "sin marco": args.csd = true, y el tema dibuja solo el contenido. Mover y
 // cambiar el tamaño desde la barra de una app GTK llega como pedido del compositor.
 import { createElement as h } from 'react';
-import { View, Text, Surface, addListener } from '@lordos/runtime';
+import { View, Text, Surface, addListener, onShellKeyboard, shellHasKeyboard } from '@lordos/runtime';
 import { windows, wm, registerBuiltinApp, windowChrome, pointerWorkArea, getApp } from './windows.js';
 import { useAppWindow } from './components.jsx';
 import { locale, appName } from './i18n.js';
@@ -104,7 +104,8 @@ function sync() {
   const list = windows.get();
   const vis = list.filter((w) => !w.minimized);
   const top = vis.length ? vis[vis.length - 1] : null;
-  const f = top ? surfaceOf(top.id) : 0;
+  // search, the launcher, a sheet or a system prompt is open: the keys are LordOS's, not the app's
+  const f = top && !shellHasKeyboard() ? surfaceOf(top.id) : 0;
   if (f !== lastFocus) { lastFocus = f; lord.wayland.focus(f); }
   for (const w of list) {
     const s = surfaceOf(w.id);
@@ -114,6 +115,7 @@ function sync() {
   }
 }
 windows.subscribe(sync);
+if (typeof onShellKeyboard === 'function') onShellKeyboard(() => sync());
 
 export const wayland = {
   info: () => (typeof lord.wayland !== 'undefined' ? lord.wayland.info() : { socket: '', windows: 0 }),

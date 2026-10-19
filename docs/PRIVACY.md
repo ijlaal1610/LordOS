@@ -420,6 +420,22 @@ through `globalThis.__lordos.monitorDevices`.
 | `sdk/sysopen.js` | the session opens attachments and apps for the isolated system apps |
 | `server/tests/brokermail_test.c` | `build/brokermail-test` |
 
+## System prompts take the keyboard (0.8.2)
+
+Until 0.8.1, keys typed into LordOS's search, the app launcher, a sheet or a system prompt (the
+keyring/password prompt, a permission prompt, the file chooser) were also delivered to the Linux
+(Wayland) app in front: the compositor's keyboard focus followed the top window, not what LordOS
+drew above it, so a Linux app could read a password typed into the keyring prompt. Now, while
+anything shows in the `overlay`, `modal` or `system` layers ([LAYERS.md](LAYERS.md)),
+`runtime/index.js` reports it after each React commit and `sdk/wayland.js` sets the compositor's
+keyboard focus to no surface (`lord.wayland.focus(0)`); when the last of them closes, the top window
+gets the keyboard back. Menus and the clipboard and emoji panels (`popover`) don't take it: they paste
+into the app in front.
+
+Check: `server/tests/keyfocus/shellkeys.sh` runs `tools/diag/keylag-client` (a Wayland window that
+counts `wl_keyboard.key` presses) while keys are typed; with the search open it must count 0 (see
+[ISO.md](ISO.md), release test 0.8.2).
+
 ## System apps in their own process (0.8.2)
 
 Mail parses mail from anyone; Calendar, Contacts and Reminders show invitations, `.ics` and

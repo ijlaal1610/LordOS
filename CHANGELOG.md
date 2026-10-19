@@ -148,6 +148,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Security
 
+- **Keys typed into LordOS's own prompts no longer reach the Linux app in front.** What you typed
+  into the search, the app launcher, a sheet or a system prompt (the keyring password, a permission
+  prompt, the file chooser) was also delivered to the Linux (Wayland) app whose window was in front,
+  so that app could read a password typed into the keyring prompt. While any of them is open, Linux
+  apps now get no keys at all; menus and the clipboard and emoji panels still type into the app
+  ([docs/PRIVACY.md](docs/PRIVACY.md#system-prompts-take-the-keyboard-082)).
 - **Mail, Calendar, Contacts and Reminders run in their own sandboxed process.** Like Passwords
   and installed apps, each one is now `lord-server --app <id>` with Landlock, seccomp, no network
   and its own cgroup scope, instead of running inside the desktop's process. Mail's window can read
