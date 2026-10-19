@@ -13,10 +13,17 @@
  *   info()                      CPU model, cores, location by time zone, country database
  *   map(view)                   requests a frame of the vector map (another thread draws it; map.c)
  *   mapFrame()                  the latest ready frame { seq, width, height, lon, lat, ppd, ms, data } or null
+ *   detail(pid, start)          Get Info: which process the thread describes once per second (0: none)
+ *   detailInfo()                its latest details (procctl.c), or null if nothing new
+ *   signal(pid, start, kind)    stops one of the user's own processes: kind 'TERM' or 'KILL'; null or
+ *                               an error code (proc.gone, proc.protected…, proc.notOwn, proc.denied).
+ *                               Other users' processes go through the root helper (proc-signal,
+ *                               administrators only; sdk/monitor.js).
  */
 #include "js_monitor.h"
 #include "../monitor/mon.h"
 #include "../monitor/map.h"
+#include "../monitor/procctl.h"
 #include "../apps.h"
 #include "js_sys.h"
 #include "js_err.h"
@@ -27,8 +34,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <signal.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
-static uint64_t seq_sample, seq_procs, seq_conns;
+static uint64_t seq_sample, seq_procs, seq_conns, seq_detail;
 
 static JSValue parse(JSContext *c, char *j, const char *what) {
     if (!j) return JS_NULL;
@@ -305,6 +315,54 @@ static JSValue f_map_frame(JSContext *c, JSValueConst t, int argc, JSValueConst 
     return o;
 }
 
+/* ---- one process: Get Info and stop ---- */
+
+/* pid (1..PID_MAX) and start time (an integer number of ticks, 0..2^53) from argv[0..1]. */
+static int arg_proc(JSContext *c, int argc, JSValueConst *argv, int *pid, unsigned long long *start) {
+    double p, st;
+    if (argc < 2 || !JS_IsNumber(argv[0]) || !JS_IsNumber(argv[1]) || JS_ToFloat64(c, &p, argv[0]) || JS_ToFloat64(c, &st, argv[1])) return -1;
+    if (!isfinite(p) || p != floor(p) || p < 0 || p > PROC_PID_MAX) return -1;
+    if (!isfinite(st) || st != floor(st) || st < 0 || st > 9007199254740992.0) return -1;
+    *pid = (int)p;
+    *start = (unsigned long long)st;
+    return 0;
+}
+
+static JSValue f_detail(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    int pid;
+    unsigned long long start;
+    if (arg_proc(c, argc, argv, &pid, &start)) return js_throw_code(c, "sys.badArgument", NULL);
+    mon_detail(pid, start);
+    seq_detail = 0;
+    return JS_TRUE;
+}
+
+static JSValue f_detail_info(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    return parse(c, mon_detail_json(&seq_detail), "<monitor.detail>");
+}
+
+static JSValue f_signal(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    int pid;
+    unsigned long long start;
+    if (arg_proc(c, argc, argv, &pid, &start) || pid < 1 || argc < 3 || !JS_IsString(argv[2])) return js_throw_code(c, "sys.badArgument", NULL);
+    const char *k = JS_ToCString(c, argv[2]);
+    if (!k) return JS_EXCEPTION;
+    int sig = !strcmp(k, "TERM") ? SIGTERM : !strcmp(k, "KILL") ? SIGKILL : 0;
+    JS_FreeCString(c, k);
+    if (!sig) return js_throw_code(c, "sys.badArgument", NULL);
+    /* only the user's own processes here; the rest goes through the root helper (administrators) */
+    char p[64];
+    struct stat sb;
+    snprintf(p, sizeof p, "/proc/%d", pid);
+    if (stat(p, &sb)) return JS_NewString(c, "proc.gone");
+    if (sb.st_uid != getuid()) return JS_NewString(c, "proc.notOwn");
+    const char *e = proc_signal(pid, start, sig, (int)getpid());
+    return e ? JS_NewString(c, e) : JS_NULL;
+}
+
 static const JSCFunctionListEntry monitor_funcs[] = {
     JS_CFUNC_DEF("start", 0, f_start),
     JS_CFUNC_DEF("stop", 0, f_stop),
@@ -315,13 +373,16 @@ static const JSCFunctionListEntry monitor_funcs[] = {
     JS_CFUNC_DEF("info", 0, f_info),
     JS_CFUNC_DEF("map", 1, f_map),
     JS_CFUNC_DEF("mapFrame", 0, f_map_frame),
+    JS_CFUNC_DEF("detail", 2, f_detail),
+    JS_CFUNC_DEF("detailInfo", 0, f_detail_info),
+    JS_CFUNC_DEF("signal", 3, f_signal),
 };
 
 void js_monitor_register(JSContext *c, JSValue lord, const char *assets_dir) {
     mon_init(assets_dir);
     map_init(assets_dir);
     mon_reset();                       /* new context: the previous one's start() calls don't count */
-    seq_sample = seq_procs = seq_conns = 0;
+    seq_sample = seq_procs = seq_conns = seq_detail = 0;
     JSValue o = JS_NewObject(c);
     JS_SetPropertyFunctionList(c, o, monitor_funcs, sizeof monitor_funcs / sizeof monitor_funcs[0]);
     JS_SetPropertyStr(c, lord, "monitor", o);

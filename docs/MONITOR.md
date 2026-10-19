@@ -7,7 +7,9 @@ a big number and a live area chart, a row of small figures and a footer with the
 The Network tab takes the shape of a per-app network monitor (apps on the left, map in the middle, summary on
 the right).
 
-Phase 1 (this one): read-only. No root daemon, no firewall, no saved history and no alerts.
+Phase 1 was read-only. Since then the Network tab holds per-app firewall rules (Phase 2) and, in
+0.8.1, the Processes tab can stop a process and show its details ("Process actions"). There is no
+saved history and there are no alerts.
 
 ## Tabs
 
@@ -18,7 +20,7 @@ Phase 1 (this one): read-only. No root daemon, no firewall, no saved history and
 | Memory | stacked bar (used, file cache, free), swap and a 60 s chart |
 | Network | apps with connections, map, summary or detail of the chosen app (see below) |
 | Disks | total read and write and one row per disk (model, `/dev`, size, rates) |
-| Processes | sortable table (CPU, memory, threads, PID, user), search, "Mine" / "All" |
+| Processes | sortable table (CPU, memory, threads, PID, user), search, "Mine" / "All"; Stop and Get Info for the selected process (see "Process actions") |
 
 Charts pause with the mouse over them and show a crosshair with the values at that instant, as in
 TangoOS. Time always runs left to right, also in Arabic and Hebrew; the rest of the window mirrors
@@ -88,18 +90,103 @@ server, and this app's rule is that no address leaves the machine.
 **"This computer"** is placed by the time zone (`/etc/localtime` → coordinates from
 `/usr/share/zoneinfo/zone1970.tab`), without the network.
 
+### Process actions (0.8.1)
+
+Select a row in Processes and use the two buttons next to "Mine / All", the right-click menu, a
+double click or the keyboard:
+
+| Action | Toolbar | Menu | Keys |
+|---|---|---|---|
+| **Stop** | circle with a cross | "Quit Process…" | Delete (or ❖/Ctrl+Backspace) |
+| **Get Info** | circled "i" | "Get Info" | ❖/Ctrl+I, Enter, double click |
+
+The arrow keys move the selection. Both buttons are disabled while nothing is selected.
+❖/Ctrl+Q is not used: it quits the Monitor.
+
+**Stop** opens a sheet: *Are you sure you want to quit "name"?* with **Quit** (SIGTERM: the process
+is asked to close), **Force Quit** (SIGKILL) and **Cancel**.
+
+- **The user's own processes** (same uid) are signalled by `lord-server` itself with a syscall,
+  not a program: `lord.monitor.signal(pid, start, 'TERM' | 'KILL')` (`js_monitor.c` →
+  `proc_signal()` in `monitor/procctl.c`).
+- **Another user's or root's processes**, only for administrators (sudo/admin/wheel): the root
+  helper's fixed action `proc-signal <pid> <start> TERM|KILL` (`monitor/proc_admin.c`), the same
+  authorization as every other privileged action (`admin.c` refuses a non-administrator with
+  `admin.notAdmin`). The arguments are two decimal numbers and one of two words, checked on the root
+  side; there is no shell and no program. A non-administrator gets an explanation instead of the
+  buttons.
+- **No PID-reuse races.** Every row carries `st`, the process's start time in clock ticks (field 22
+  of `/proc/<pid>/stat`). `proc_signal()` first pins the process with `pidfd_open`, then compares
+  the start time, and only then calls `pidfd_send_signal` on that pidfd. If the process ended and
+  its PID was given to another one before the pin, the start time differs and the request is
+  refused (`proc.gone`); if it ends after the pin, the signal can only reach the pinned (dead)
+  process. Kernels without pidfd fall back to `kill(2)` right after the check.
+- **Protected processes** can't be stopped from the Monitor, in either path (`proc_protect_reason()`;
+  each row has `prot`, and the C side checks again). The sheet explains why instead:
+
+  | `prot` | Which | Explanation |
+  |---|---|---|
+  | `init` | PID 1 | "This process starts and runs the whole system." |
+  | `kernel` | kernel threads (`PF_KTHREAD`) | "This is part of the Linux kernel." |
+  | `session` | the session's own `lord-server` | "This is your LordOS session. To end it, use Log Out…" |
+  | `system` | `lord-sessiond`, `lord-netperm`, `lord-netd`, `lord-fand`, `lord-vault`, `lord-maild`, `lord-doc`, `lord-media`, the root helper (`lord-admin`), any `lord-server` that is not an isolated app (another session, a terminal holder), PipeWire (`pipewire`, `pipewire-pulse`, `wireplumber`) and the systemd managers | "This process is part of LordOS." |
+
+  An isolated `.lpk` app (`lord-server --app <id>`) is not protected: a hung app can be quit. The
+  names are matched against the process name and, when it can be read, the executable's name. This
+  is a guard against mistakes, not a security boundary (the kernel's rules on who may signal whom
+  still apply; a terminal can always `kill` the user's own processes).
+
+**Get Info** opens a sheet that follows the process once per second while it is open:
+
+- **Header:** icon, name, PID and user; the executable path and the command line (arguments with
+  spaces are quoted; up to four lines, then "…"; at most 128 arguments of 2 KB each are read).
+- **Memory:** real (RSS), virtual, shared, private, proportional share (PSS) and swapped out, plus
+  the real memory by kind (anonymous, mapped files, shared memory objects). From
+  `/proc/<pid>/status` (anyone can read it) and `/proc/<pid>/smaps_rollup` (the owner or root).
+- **Statistics:** user (and the effective uid if it differs), parent process (a link: it selects the
+  parent and shows its details), process group and session, CPU %, CPU time, threads, context
+  switches (voluntary and forced), page faults (minor and major), start time, nice and priority, the
+  control group (the app scope, as the firewall sees it) and the restrictions LordOS knows about:
+  an isolated LordOS app (Landlock, seccomp, its own cgroup), a seccomp filter, "no new
+  privileges", a network block rule and the app's restrictions from Settings → Privacy (`lord.fw`).
+- **Open files and ports:** each descriptor of `/proc/<pid>/fd` (up to 300; the total is always
+  shown): files, devices, pipes, kernel objects and sockets, with the protocol, local and remote
+  address and TCP state from that process's own `/proc/<pid>/net/{tcp,tcp6,udp,udp6,unix}`. Same
+  privacy rules as the rest of the Monitor: addresses are numbers, nothing is looked up on the
+  network, and with Settings → Privacy → Monitor → connections off the remote addresses are hidden.
+- **Another user's process:** what anyone can read (status, stat, cmdline) comes from the session;
+  the memory breakdown, executable, working folder and open files need root. For an administrator
+  they come from the helper's read-only `proc-info <pid> <start>` action (the same JSON, sent as LOG
+  lines of at most 900 bytes that `sdk/monitor.js` joins); for anyone else those fields say "Not
+  available" or "Only an administrator can see this".
+- **Quit…** opens the stop sheet for the same process; **Close** (or Escape) closes it. If the
+  process ends, the sheet says so.
+
+The details are built on the Monitor's sampling thread (`mon_detail`, once per second and only
+while the sheet is open), never during a frame. Sampling a process's stacks ("Sample process") is
+not offered: it needs ptrace and an unwinder, which LordOS doesn't ship.
+
+Tests: `build/procctl-test` (in `make -C server test`): stat parsing with a hostile name, the
+protected list, a stale start time refused while the process survives, TERM and KILL on real
+children, the session and PID 1 refused, and the Get Info JSON (a pipe and a listening TCP socket
+among the open files; no private parts when not the owner; "gone" for another start time).
+
 ## Architecture
 
 ```
 apps/monitor/            index.jsx (tabs), Network.jsx (Network), MapView.jsx (map), Chart.jsx,
                          TrafficChart.jsx (mirrored sent/received chart), draw.js (pixels),
                          icons.jsx, Privacy.jsx, countries.js (generated)
-sdk/monitor.js           useMonitor(), stores monitorSamples / monitorProcesses / monitorConnections
+apps/monitor/Processes.jsx   the Processes tab, its context menu, the stop sheet and Get Info
+sdk/monitor.js           useMonitor(), stores monitorSamples / monitorProcesses / monitorConnections /
+                         monitorDetail; monitor.watchProcess(), monitor.stopProcess()
 server/src/ui/js_monitor.c   lord.monitor (read-only, validated API)
 server/src/monitor/mon.c     sampling thread: /proc, /sys, processes
 server/src/monitor/conn.c    connections via sock_diag + inode → process
 server/src/monitor/mmdb.c    our own MaxMind DB reader (IP → country)
 server/src/monitor/map.c     vector map, on its own thread
+server/src/monitor/procctl.c the protected list, proc_signal() (pidfd) and the Get Info JSON
+server/src/monitor/proc_admin.c  the root helper's proc-signal / proc-info (administrators)
 assets/monitor/          land.bin (Natural Earth 1:50m), geoip-country.mmdb.xz (DB-IP Lite)
 tools/gen-monitor-data.py    generates that data, countries.js and the country names
 tests/mmdb_test.c, tests/map_bench.c   reader test and map benchmark
@@ -112,14 +199,18 @@ tests/mmdb_test.c, tests/map_bench.c   reader test and map benchmark
 | `start()` / `stop()` | adds or removes an interested party; at 0, or with no queries for 3 s, the thread goes to sleep |
 | `want(processes, connections, countries)` | which lists the thread builds besides the sample |
 | `sample()` | the latest sample, or `null` if there is no new one |
-| `processes(lang)` | `{ t, total, hz, list: [{ pid, ppid, uid, user, name, cmd, exe, state, threads, cpu, rss, start, self, app, appName, appIcon }] }` |
+| `processes(lang)` | `{ t, total, hz, list: [{ pid, ppid, uid, user, name, cmd, exe, state, threads, cpu, rss, start, st, self, prot, app, appName, appIcon }] }` (`st`: start time in ticks; `prot`: why it can't be stopped, or `null`) |
 | `connections(lang)` | `{ t, ok, others, list: [{ id, proto, fam, state, dir, local, lport, remote, rport, scope, cc, pid, self, name, exe, sent, recv, app, appName, appIcon }] }` |
 | `info()` | `{ cpuModel, cores, geo, tick, home: { zone, cc, lat, lon } }`; `cpuModel` comes from `js_sys_cpu_name()`, the same one About uses (on ARM, the core from "CPU part" and the board) |
 | `map(view)` | requests a map frame: `{ width, height, lon, lat, ppd, land, border, accent, homeColor, selColor, home, dots: [{ lon, lat, r, sel }] }` (validated numbers, up to 2048×2048 and 256 dots) |
 | `mapFrame()` | the latest ready frame `{ seq, width, height, lon, lat, ppd, ms, data }`, or `null` |
+| `detail(pid, st)` | Get Info: the process the thread describes once per second (`0, 0`: none) |
+| `detailInfo()` | its latest details, or `null` if there is nothing new; `{ pid, gone: true }` once it ended |
+| `signal(pid, st, 'TERM' \| 'KILL')` | stops one of the user's own processes: `null`, or an error code (`proc.gone`, `proc.protected…`, `proc.notOwn`, `proc.denied`) |
 
-No function takes paths or commands: the only arguments are booleans and a language code
-(letters, digits, `-` and `_`, up to 15). `lord-server` runs nothing for the Monitor.
+No function takes paths or commands: the only arguments are booleans, a language code (letters,
+digits, `-` and `_`, up to 15), a PID with its start time (integers) and `'TERM'` or `'KILL'`.
+`lord-server` runs nothing for the Monitor.
 
 ### Sampling without slowing the screen
 
@@ -340,6 +431,20 @@ It runs outside the frame. While it draws, the screen shows the previous frame s
   - The whole `build/mmdb-test`, which includes that load and 400 broken files, takes 0.5 s in the
     VM.
 - **Lookup:** each one walks at most 128 nodes.
+
+## Screenshots (0.8.1, process actions, VM 118)
+
+- The Stop and Get Info buttons with a row selected: ![light](monitor-process-toolbar-light.png)
+  ![dark](monitor-process-toolbar-dark.png)
+- The right-click menu: ![light](monitor-process-menu-light.png) ![dark](monitor-process-menu-dark.png)
+- The stop sheet: ![light](monitor-process-stop-light.png) ![dark](monitor-process-stop-dark.png)
+- Get Info of a download (curl), Memory, Statistics and Open files and ports:
+  ![memory](monitor-process-info-memory-light.png) ![statistics](monitor-process-info-stats-light.png)
+  ![files](monitor-process-info-files-light.png); dark: ![memory](monitor-process-info-memory-dark.png)
+  ![statistics](monitor-process-info-stats-dark.png) ![files](monitor-process-info-files-dark.png)
+- A root process as an administrator (read through `proc-info`): ![root](monitor-process-info-root.png)
+- A non-administrator trying to stop another user's process: ![refused](monitor-process-needadmin.png)
+- Right to left (Arabic): ![rtl](monitor-process-rtl.png)
 
 ## Screenshots (0.8.1, VM 118, real traffic: a browser on a video site over QUIC and five downloads)
 

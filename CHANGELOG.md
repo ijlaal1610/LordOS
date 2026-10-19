@@ -12,6 +12,17 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Added
 
+- **Monitor → Processes: stop a process and Get Info.** Select a row and use the new Stop and
+  Info buttons, the right-click menu, a double click, ❖/Ctrl+I or Delete. Stop asks first, with
+  **Quit** (SIGTERM), **Force Quit** (SIGKILL) and Cancel. Your own processes are signalled by the
+  session itself with `pidfd_send_signal` after checking the process's start time, so a reused PID
+  is never hit; another user's or root's need an administrator and go through two new fixed,
+  validated root helper actions (`proc-signal`, `proc-info`). PID 1, kernel threads, your
+  session, LordOS's services and helpers and PipeWire can't be stopped: the sheet explains why.
+  Get Info shows memory (real, virtual, shared, private, proportional), statistics (parent, group,
+  CPU time, threads, context switches, page faults, start time, nice, control group and LordOS
+  restrictions), open files and ports (with the addresses of each socket), the executable and the
+  command line, updated every second ([docs/MONITOR.md](docs/MONITOR.md#process-actions-081)).
 - **Settings → Sharing → Remote login (SSH).** A new switch, off by default on every install,
   turns the standard SSH server on and off for good (`systemctl enable --now` / `disable --now`).
   The first time, it installs `openssh-server` through the package engine (the Store's path). The

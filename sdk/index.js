@@ -46,7 +46,7 @@ export {
   dockDrag, dockPoof, beginDockDrag, registerDockTarget, dockDragJustEnded,
 } from './dock.js';
 export { sound, useSound, useSoundPeak, soundState, defaultSink, defaultSource, microphones } from './sound.js';
-export { monitor, useMonitor, monitorSamples, monitorProcesses, monitorConnections, monitorDevices, MONITOR_HISTORY, firewall, firewallState } from './monitor.js';
+export { monitor, useMonitor, monitorSamples, monitorProcesses, monitorConnections, monitorDevices, monitorDetail, MONITOR_HISTORY, firewall, firewallState } from './monitor.js';
 export * as fwRule from './fwrule.js';            // checks what the user types for a firewall rule
 export { packages, packageList, refreshPackages, packageFile, loadWasm } from './packages.js';
 import { refreshPackages } from './packages.js';

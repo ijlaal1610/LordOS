@@ -4,12 +4,14 @@
  *   /proc/stat (total and per-core CPU), /proc/meminfo, /proc/loadavg, /proc/uptime,
  *   /proc/net/dev (traffic per interface), /proc/diskstats + /sys/block (reads and writes per
  *   disk), /sys/class/hwmon and /sys/class/thermal (temperature and fans),
- *   /proc/<pid>/{stat,cmdline,exe} (processes) and sock_diag (connections, in conn.c).
+ *   /proc/<pid>/{stat,cmdline,exe} (processes), sock_diag (connections, in conn.c) and, for the
+ *   one process whose Get Info is open, procctl.c's details.
  *
  * The thread builds ready-made JSON; the screen thread only copies the latest (mon_*_json). No
  * program is executed. */
 #include "mon.h"
 #include "monpriv.h"
+#include "procctl.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -126,8 +128,10 @@ static struct {
     pthread_cond_t cv;
     int started, refs, want_procs, want_conns, want_geo;
     double last_poll;
-    char *sample, *procs, *conns;
-    uint64_t sseq, pseq, cseq;
+    char *sample, *procs, *conns, *detail;
+    uint64_t sseq, pseq, cseq, dseq;
+    int detail_pid;                     /* Get Info: 0 = none */
+    unsigned long long detail_start;
     char geo_path[PATH_MAX];
 } M = { .mu = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER };
 
@@ -467,9 +471,12 @@ static void procs_scan(Buf *b) {
         struct stat sb;
         snprintf(p, sizeof p, "/proc/%d", pid);
         unsigned uid = stat(p, &sb) ? 0 : (unsigned)sb.st_uid;
-        char cmd[256] = "";
+        char cmd[256] = "", argv1[16] = "";
         snprintf(p, sizeof p, "/proc/%d/cmdline", pid);
-        if (mon_read_small(p, cmd, sizeof cmd) > 0) {
+        long cl = mon_read_small(p, cmd, sizeof cmd);
+        if (cl > 0) {
+            size_t a0 = strnlen(cmd, (size_t)cl);
+            if ((long)a0 + 1 < cl) snprintf(argv1, sizeof argv1, "%s", cmd + a0 + 1);
             char *base = strrchr(cmd, '/');
             if (base) memmove(cmd, base + 1, strlen(base + 1) + 1);
         }
@@ -494,9 +501,13 @@ static void procs_scan(Buf *b) {
         mon_buf_str(b, cmd);
         mon_buf_printf(b, ",\"exe\":");
         mon_buf_str(b, exe);
-        mon_buf_printf(b, ",\"state\":\"%c\",\"threads\":%llu,\"cpu\":%.4f,\"rss\":%llu,\"start\":%.0f,\"self\":%s}",
+        /* why it may not be stopped (procctl.c); "st": the exact start time for proc_signal */
+        const char *prot = proc_protect_reason(pid, (unsigned)v[5], comm, exe, argv1, self);
+        mon_buf_printf(b, ",\"state\":\"%c\",\"threads\":%llu,\"cpu\":%.4f,\"rss\":%llu,\"start\":%.0f,\"st\":%llu,\"self\":%s,\"prot\":",
                    isalpha((unsigned char)state) ? state : '?', v[16], cpu, v[20] * (unsigned long long)page,
-                   (double)start / (double)hz, pid == self ? "true" : "false");
+                   (double)start / (double)hz, start, pid == self ? "true" : "false");
+        if (prot) mon_buf_str(b, prot); else mon_buf_printf(b, "null");
+        mon_buf_printf(b, "}");
     }
     closedir(d);
     qsort(pcur, (size_t)n, sizeof *pcur, cmp_pid);
@@ -532,7 +543,8 @@ static void *worker(void *arg) {
             slept = 1;
             pthread_cond_wait(&M.cv, &M.mu);
         }
-        int wp = M.want_procs, wc = M.want_conns, wg = M.want_geo;
+        int wp = M.want_procs, wc = M.want_conns, wg = M.want_geo, dpid = M.detail_pid;
+        unsigned long long dstart = M.detail_start;
         pthread_mutex_unlock(&M.mu);
         if (slept || !tick) {                       /* (re)start: no stale rates */
             memset(&prev, 0, sizeof prev);
@@ -559,6 +571,17 @@ static void *worker(void *arg) {
             Buf p = { 0 };
             procs_scan(&p);
             publish(&M.procs, &M.pseq, &p);
+        }
+        if (dpid > 0 && tick % 4 == 1) {
+            /* Get Info: full details only for the user's own processes (the kernel decides what
+             * else is readable: another user's smaps_rollup, exe and fds are not) */
+            char pp[64];
+            struct stat sb;
+            snprintf(pp, sizeof pp, "/proc/%d", dpid);
+            int own = !stat(pp, &sb) && sb.st_uid == getuid();
+            Buf d = { 0 };
+            proc_detail_json(&d, dpid, dstart, own, (int)getpid());
+            publish(&M.detail, &M.dseq, &d);
         }
         if (wc && tick % 4 == 2) {
             if (wg && !geo_tried) { geo_tried = 1; geo_open = M.geo_path[0] && !mmdb_open(&geo, M.geo_path); }
@@ -592,6 +615,7 @@ void mon_reset(void) {
     pthread_mutex_lock(&M.mu);
     M.refs = 0;
     M.want_procs = M.want_conns = M.want_geo = 0;
+    M.detail_pid = 0;
     pthread_mutex_unlock(&M.mu);
 }
 
@@ -639,6 +663,17 @@ static char *take(char *slot, uint64_t have, uint64_t *seq) {
 char *mon_sample_json(uint64_t *seq) { return take(M.sample, M.sseq, seq); }
 char *mon_procs_json(uint64_t *seq) { return take(M.procs, M.pseq, seq); }
 char *mon_conns_json(uint64_t *seq) { return take(M.conns, M.cseq, seq); }
+char *mon_detail_json(uint64_t *seq) { return take(M.detail, M.dseq, seq); }
+
+void mon_detail(int pid, unsigned long long start) {
+    pthread_mutex_lock(&M.mu);
+    M.detail_pid = pid > 0 && pid <= PROC_PID_MAX ? pid : 0;
+    M.detail_start = start;
+    free(M.detail);                     /* never show the previous process's details */
+    M.detail = NULL;
+    M.dseq++;
+    pthread_mutex_unlock(&M.mu);
+}
 
 /* ---- fixed data ----------------------------------------------------------------------- */
 

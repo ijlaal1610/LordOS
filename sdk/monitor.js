@@ -9,18 +9,26 @@
 // polls it): with the app closed it costs nothing. The process and connection lists are built
 // only if some useMonitor asks for them, once per second.
 //
+// One process (Processes tab, docs/MONITOR.md "Process actions"):
+//   monitor.watchProcess(p, { asAdmin })   Get Info: monitorDetail follows p once per second; returns stop()
+//   await monitor.stopProcess(p, 'TERM' | 'KILL')   the user's own: lord-server signals it; another
+//                                                  user's or root's: the root helper (administrators)
+//
 // Phase 2 (not implemented yet): monitor.deviceUsers() → [{ kind: 'camera' | 'microphone',
 // app, name, pid }] and the monitorDevices store; and the firewall with per-app and per-domain rules,
 // which rely on the same connection records (the `verdict` field, always 'allow' today).
 import { useEffect, useRef, useState } from 'react';
 import { createStore, useStore } from './store.js';
 import { locale } from './i18n.js';
+import { admin } from './admin.js';
+import { codeError } from './errors.js';
 
 export const MONITOR_HISTORY = 240;             // 60 s at 4 samples per second
 export const monitorSamples = createStore([]);
 export const monitorProcesses = createStore(null);
 export const monitorConnections = createStore(null);
 export const monitorDevices = createStore([]);  // phase 2
+export const monitorDetail = createStore(null); // Get Info of one process (procctl.c's JSON)
 
 const available = () => typeof lord.monitor !== 'undefined';
 const wants = new Map();                        // mounted useMonitor → { procs, conns }
@@ -41,6 +49,7 @@ function poll() {
   if (s) monitorSamples.set((list) => (list.length >= MONITOR_HISTORY ? [...list.slice(1 - MONITOR_HISTORY), s] : [...list, s]));
   const lang = locale.get().lang;
   if (w.procs) { const p = lord.monitor.processes(lang); if (p) monitorProcesses.set(() => p); }
+  if (watched && !watched.viaAdmin) { const d = lord.monitor.detailInfo(); if (d) monitorDetail.set(() => d); }
   if (w.conns) {
     const c = lord.monitor.connections(lang);
     if (c) {
@@ -65,6 +74,7 @@ function unsubscribe(token) {
   if (wants.size || !timer) return;
   clearInterval(timer);
   timer = null;
+  if (watched) stopWatching(watched);
   lord.monitor.want(false, false, false);
   lord.monitor.stop();
   monitorSamples.set([]);                       // the history starts over when reopened
@@ -143,9 +153,62 @@ export const firewall = {
   RESTRICTIONS: ['no-internet', 'no-lan', 'no-network', 'no-incoming', 'no-camera', 'no-mic', 'no-screen', 'no-usb', 'no-bluetooth', 'no-files', 'no-clipboard', 'no-notifications'],
 };
 
+// ---- one process: Get Info and stop ----
+let watched = null;                             // { pid, st, viaAdmin, timer }
+
+// Get Info as root (another user's process, administrators only): the helper's proc-info sends the
+// JSON in LOG lines that are joined here. If it fails, the session's partial details are used.
+function adminDetail(w) {
+  let text = '';
+  admin.run('proc-info', `${w.pid} ${w.st}`, (line) => { text += line; }, { quiet: true }).then(() => {
+    if (watched !== w) return;
+    try { monitorDetail.set(() => JSON.parse(text)); } catch (e) { /* cut or broken: keep the last one */ }
+  }).catch(() => {
+    if (watched !== w) return;
+    w.viaAdmin = false;                         // not allowed after all: what the session can read
+    clearInterval(w.timer);
+    lord.monitor.detail(w.pid, w.st);
+  });
+}
+
+function watchProcess(p, { asAdmin = false } = {}) {
+  if (!available() || !p) return () => {};
+  if (watched) stopWatching(watched);
+  const w = { pid: p.pid, st: p.st, viaAdmin: !!asAdmin && admin.available(), timer: null };
+  watched = w;
+  monitorDetail.set(() => null);
+  if (w.viaAdmin) {
+    lord.monitor.detail(0, 0);
+    adminDetail(w);
+    w.timer = setInterval(() => adminDetail(w), 1000);
+  } else lord.monitor.detail(p.pid, p.st);
+  return () => stopWatching(w);
+}
+
+function stopWatching(w) {
+  if (watched !== w) return;
+  clearInterval(w.timer);
+  watched = null;
+  lord.monitor.detail(0, 0);
+  monitorDetail.set(() => null);
+}
+
+// own: the process runs as this user (p.uid === the session's uid); otherwise the root helper.
+async function stopProcess(p, kind, { own } = {}) {
+  if (kind !== 'TERM' && kind !== 'KILL') throw codeError('sys.badArgument');
+  if (own) {
+    const err = lord.monitor.signal(p.pid, p.st, kind);
+    if (err) throw codeError(err);
+    return;
+  }
+  await admin.run('proc-signal', `${p.pid} ${p.st} ${kind}`, null, { quiet: true });
+}
+
 let infoCache = null;
 export const monitor = {
   available,
   info: () => (infoCache ||= available() ? lord.monitor.info() : null),
   deviceUsers: () => [],                        // phase 2
+  watchProcess,
+  stopProcess,
 };

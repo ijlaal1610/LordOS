@@ -549,5 +549,14 @@
   "fw.restricted.notifications": "{app} está impedido de mostrar notificações (Privacidade → Rede dos apps)",
   "ssh.badConfig": "A configuração do servidor SSH não é válida (sshd -t); nada foi alterado",
   "ssh.notInstalled": "O servidor SSH (openssh-server) não está instalado",
-  "ssh.startFailed": "O servidor SSH não iniciou (veja Registros)"
+  "ssh.startFailed": "O servidor SSH não iniciou (veja Registros)",
+  "proc.gone": "Esse processo já terminou",
+  "proc.protectedInit": "Este processo mantém todo o sistema e não pode ser parado",
+  "proc.protectedKernel": "Threads do núcleo não podem ser paradas",
+  "proc.protectedSession": "É a sua sessão: use Encerrar sessão para encerrá-la",
+  "proc.protectedSystem": "Este processo faz parte do LordOS e não pode ser parado",
+  "proc.denied": "Sem permissão para parar este processo",
+  "proc.failed": "Não foi possível parar o processo",
+  "proc.badArgument": "Pedido de processo inválido",
+  "proc.notOwn": "Este processo pertence a outro usuário"
 }

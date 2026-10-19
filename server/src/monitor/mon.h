@@ -23,6 +23,10 @@ void mon_want(int procs, int conns, int geo);
 char *mon_sample_json(uint64_t *seq);
 char *mon_procs_json(uint64_t *seq);
 char *mon_conns_json(uint64_t *seq);
+/* Get Info (procctl.c): the process whose details the thread builds once per second (pid 0: none)
+ * and the latest JSON. start: its start time in ticks, so a reused PID shows as gone. */
+void mon_detail(int pid, unsigned long long start);
+char *mon_detail_json(uint64_t *seq);
 /* Fixed data: CPU model, cores, location from the time zone, country database. */
 char *mon_info_json(void);
 

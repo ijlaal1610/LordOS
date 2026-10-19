@@ -4,8 +4,8 @@
 // sampling rate. lord-server (lord.monitor) reads the metrics only while this window is open,
 // four times per second.
 import {
-  View, Text, Image, ScrollView, Segmented, SearchField, Toolbar, typeScale, useTheme, useLocale, useStore, useSettings, useAppWindow,
-  useMonitor, monitor, monitorProcesses, monitorSamples, formatBytes, formatNumber, LordOSLogo, iconFromFile,
+  View, Text, Image, ScrollView, Segmented, Toolbar, typeScale, useTheme, useLocale, useStore, useSettings, useAppWindow,
+  useMonitor, monitor, monitorSamples, formatBytes, formatNumber, LordOSLogo, iconFromFile,
 } from '@lordos/sdk';
 import { registerDockActions } from '@lordos/sdk';
 import * as sdk from '@lordos/sdk';
@@ -17,6 +17,7 @@ import { MonitorPrivacy } from './Privacy.jsx';
 import { FirewallPrivacy } from './Firewall.jsx';
 import { FirewallRulesPrivacy } from './FwRules.jsx';
 import { CoolingTab } from './Cooling.jsx';
+import { ProcessesTab, ProcessLayers } from './Processes.jsx';
 
 export function Icon({ size }) { return <MonitorIcon size={size} />; }
 
@@ -287,9 +288,9 @@ function MemTab({ s, last }) {
 // ---- Disks ----
 
 // Table column: the flexible one stretches; fixed-width ones don't shrink.
-const colBox = (c) => (c.flex ? { flex: c.flex, minWidth: 0 } : { width: c.width, flexShrink: 0 });
+export const colBox = (c) => (c.flex ? { flex: c.flex, minWidth: 0 } : { width: c.width, flexShrink: 0 });
 
-function Table({ cols, rows, onSort, sort }) {
+export function Table({ cols, rows, onSort, sort }) {
   const t = useTheme();
   const card = useCardStyle();
   return (
@@ -356,59 +357,6 @@ export function AppGlyph({ item, size = 16 }) {
   if (item.appIcon) return <Image src={item.appIcon} style={{ width: size, height: size, objectFit: 'contain' }} />;
   const Ico = iconFromFile(null, item.appName || item.name || '?');
   return <Ico size={size} />;
-}
-
-function ProcessesTab() {
-  const t = useTheme();
-  const { t: tr } = useLocale();
-  const procs = useStore(monitorProcesses);
-  const [q, setQ] = useState('');
-  const [mine, setMine] = useState('mine');
-  const [sort, setSort] = useState({ key: 'cpu', dir: -1 });
-  const me = procs?.list.find((p) => p.self)?.uid;
-  const cols = [
-    { key: 'name', label: tr('monitor.process'), flex: 1, sort: true },
-    { key: 'cpu', label: tr('monitor.cpuPct'), width: 80, num: true, sort: true },
-    { key: 'rss', label: tr('monitor.memory'), width: 96, num: true, sort: true },
-    { key: 'threads', label: tr('monitor.threads'), width: 64, num: true, sort: true },
-    { key: 'pid', label: tr('monitor.pid'), width: 72, num: true, sort: true },
-    { key: 'user', label: tr('monitor.user'), width: 96, sort: true },
-  ];
-  if (!procs) return <Text style={{ fontSize: 12, color: t.textDim }}>{tr('monitor.loading')}</Text>;
-  const needle = q.trim().toLowerCase();
-  const label = (p) => (p.app === 'lordos' ? tr('monitor.lordos') : p.name);
-  let list = procs.list.filter((p) => (mine === 'all' || p.uid === me) && (!needle || `${p.name} ${p.cmd} ${p.appName || ''} ${p.pid}`.toLowerCase().includes(needle)));
-  const k = sort.key;
-  list = list.slice().sort((a, b) => {
-    const va = k === 'name' ? label(a).toLowerCase() : a[k], vb = k === 'name' ? label(b).toLowerCase() : b[k];
-    return (va < vb ? -1 : va > vb ? 1 : a.pid - b.pid) * sort.dir;
-  });
-  const shown = list.slice(0, 150);
-  const totalCpu = procs.list.reduce((a, p) => a + p.cpu, 0);
-  return (
-    <>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text }}>{tr('monitor.processes')}</Text>
-        <Text style={{ fontSize: 12, color: t.textDim }}>{tr('monitor.procCount', { count: procs.total })}</Text>
-        <View style={{ flex: 1 }} />
-        <Segmented value={mine} onChange={setMine} options={[['mine', tr('monitor.mine')], ['all', tr('monitor.all')]]} />
-        <SearchField value={q} onChange={setQ} placeholder={tr('monitor.search')} width={200} />
-      </View>
-      <Table cols={cols} sort={sort} onSort={(key) => setSort((s0) => ({ key, dir: s0.key === key ? -s0.dir : key === 'name' || key === 'user' || key === 'pid' ? 1 : -1 }))}
-        rows={shown.map((p, i) => (
-          <View key={p.pid} style={{ flexDirection: 'row', height: 26, alignItems: 'center', paddingHorizontal: 10, backgroundColor: i % 2 ? t.hover : 'transparent' }}>
-            <Cell col={cols[0]}><AppGlyph item={p} /><Text style={{ fontSize: 12, color: t.text, whiteSpace: 'nowrap' }}>{label(p)}</Text>
-              {p.appName && p.appName !== p.name ? <Text style={{ fontSize: 11, color: t.textDim, whiteSpace: 'nowrap' }}>{p.appName}</Text> : null}</Cell>
-            <Cell col={cols[1]} bold={p.cpu > 0.5}>{formatNumber(p.cpu * 100, 1)}</Cell>
-            <Cell col={cols[2]}>{fmt.mem(p.rss)}</Cell>
-            <Cell col={cols[3]} color={t.textDim}>{formatNumber(p.threads, 0)}</Cell>
-            <Cell col={cols[4]} color={t.textDim}>{String(p.pid)}</Cell>
-            <Cell col={cols[5]} color={t.textDim}>{p.user}</Cell>
-          </View>
-        ))} />
-      <Text style={{ fontSize: 11, color: t.textDim }}>{tr('monitor.procFoot', { shown: shown.length, count: list.length, cpu: formatNumber(totalCpu * 100, 0) })}</Text>
-    </>
-  );
 }
 
 // ---- window ----
@@ -503,6 +451,7 @@ export default function Monitor() {
       )}
       <View style={{ height: 1, backgroundColor: t.separator }} />
       <Footer />
+      <ProcessLayers active={tab === 'processes'} />
     </View>
   );
 }

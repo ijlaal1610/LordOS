@@ -37,6 +37,7 @@
 #include "disk/disk.h"
 #include "logs/logs_admin.h"
 #include "hw/hw_admin.h"
+#include "monitor/proc_admin.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -395,6 +396,7 @@ static const struct { const char *name; ActionFn fn; int flags; } actions[] = {
     DISK_ADMIN_ACTIONS
     LOGS_ADMIN_ACTIONS
     HW_ADMIN_ACTIONS
+    PROC_ADMIN_ACTIONS
 #endif /* LORD_NETD: other modules' actions go above this line */
 };
 #define N_ACTIONS (sizeof actions / sizeof actions[0])
