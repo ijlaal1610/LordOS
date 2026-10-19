@@ -1142,3 +1142,22 @@ folder `~/LordOS-monred`, installed into `/usr/local/lib/lordos` as in step 15 (
   `lord-qmp-input.py 118 2987 1067` (the VM has two heads, see "Several displays").
 - The session language, theme and accent were changed for the screenshots and restored from
   `~/.config-lordos-backup-monred` afterwards.
+
+## Step 29 — New wallpapers (VM 123 `lordos-monitor`, October 19)
+
+Tree in `~/LordOS-wp`, built there (`make -C server -j4`, `make -C server test`: 23 passed,
+3 skipped). Nothing was installed with apt.
+
+- **Deployment, temporary:** `/usr/local/lib/lordos` was copied to `lordos.wp123-bak`, the new
+  `lord-server`, `lord-sessiond`, `lord-vault`, `lord-maild`, the themes and `assets/` were installed
+  over it, and the collection went to `/usr/share/backgrounds/lordos` with the
+  `assets/wallpapers` link, as the package does. Afterwards the backup was copied back, the files
+  that only the new build had were removed (`diff -rq` against the backup: identical), and
+  `/usr/share/backgrounds/lordos` was deleted.
+- **New user:** `~/.config/lordos/settings.json` was replaced by `{"language": "en"}` for the
+  screenshots (Celestial by default, then Crystal Crown and light mode chosen in Settings) and
+  restored from its backup (`wallpaper: "sunset"` again).
+- **Login screen:** the session from before the deploy was ended and `/run/lordos/autologin-done`
+  removed to show the greeter and then autologin again; `/etc/lordos/session.conf` wasn't changed.
+- **Screenshots** with `screendump` from the Proxmox host, the pointer with
+  `lord-qmp-input.py 123 1280 800`. eth0 and the VM's network weren't touched.

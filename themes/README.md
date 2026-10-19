@@ -62,7 +62,10 @@ Images (`<Image src="assets/...">`) are resolved relative to the theme's folder.
 
 `mode`, `accent`, `text`, `textDim`, `windowBg`, `sidebarBg`, `separator`, `hover`, `control`,
 `inputBg`. Optional: `gtkButtons` (order of the GTK apps' buttons, e.g. `':minimize,maximize,close'`; by default the traffic lights on the left, see `docs/WAYLAND.md`), `accents` (name → color map, for Settings), `wallpapers`
-(`[{ id, name, src }]`). The theme can add any tokens of its own.
+(`[{ id, nameKey, name, src, thumb?, category?, variants? }]`; Settings groups them by `category` and
+shows `thumb` in its grid; add `lordosWallpapers` from the SDK to offer the LordOS collection, and
+draw with `wallpaperSrc(w, width, height)` so a higher-resolution variant is used where it exists,
+see `assets/wallpapers/README.md`). The theme can add any tokens of its own.
 
 ## Native components
 

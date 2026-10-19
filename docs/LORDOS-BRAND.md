@@ -243,3 +243,45 @@ in outcome states, never in "nothing selected" panes.
 - Don't give Lumo a long snout, a long tail or a big body; don't make it look like another
   project's mascot.
 - Don't trace or rebuild Lumo from raster images or screenshots.
+
+## 7. Wallpapers
+
+Created by iPERFEX with an AI image generator; part of the LordOS brand assets.
+© iPERFEX, part of the LordOS brand.
+
+Eleven original wallpapers in three categories, shipped in `/usr/share/backgrounds/lordos/` and
+listed by category in **Settings → Wallpaper** (with the default theme's four gradients as a fourth
+category, "Gradients"). The files, sizes and how to regenerate them are in
+[`assets/wallpapers/README.md`](../assets/wallpapers/README.md).
+
+| | Signature | |
+|:-:|:-:|:-:|
+| ![Crystal Crown](../assets/wallpapers/thumbs/signature/lordos-crystal-crown.jpg)<br>**Crystal Crown** (login screen) | ![Eternal Dawn](../assets/wallpapers/thumbs/signature/lordos-eternal-dawn.jpg)<br>**Eternal Dawn** | ![Royal Flow](../assets/wallpapers/thumbs/signature/lordos-royal-flow.jpg)<br>**Royal Flow** |
+| ![Royal Waves](../assets/wallpapers/thumbs/signature/lordos-royal-waves.jpg)<br>**Royal Waves** | ![Violet Horizon](../assets/wallpapers/thumbs/signature/lordos-violet-horizon.jpg)<br>**Violet Horizon** | |
+
+| Lumo | |
+|:-:|:-:|
+| ![Celestial](../assets/wallpapers/thumbs/lumo/lordos-lumo-celestial.jpg)<br>**Celestial** (default desktop) | ![Aurora](../assets/wallpapers/thumbs/lumo/lordos-lumo-aurora.jpg)<br>**Aurora** |
+
+| | Cosmos | | |
+|:-:|:-:|:-:|:-:|
+| ![Event Horizon](../assets/wallpapers/thumbs/cosmos/lordos-event-horizon.jpg)<br>**Event Horizon** | ![Infinite Galaxy](../assets/wallpapers/thumbs/cosmos/lordos-infinite-galaxy.jpg)<br>**Infinite Galaxy** | ![Solar Odyssey](../assets/wallpapers/thumbs/cosmos/lordos-solar-odyssey.jpg)<br>**Solar Odyssey** | ![Stellar Voyage](../assets/wallpapers/thumbs/cosmos/lordos-stellar-voyage.jpg)<br>**Stellar Voyage** |
+
+- **Defaults:** new users start on **Celestial** (Lumo); the login screen and the remote login page
+  use **Crystal Crown**. Users who already chose a wallpaper keep it.
+- **Size:** the originals are 1672×941. They ship as high-quality JPEG (about 4 MB for all eleven
+  instead of 23 MB of PNG) with 320×180 thumbnails for the pickers. On 4K screens they look soft;
+  a `lordos-<name>@3840x2160` version added to the collection is picked automatically on screens
+  that need it.
+- **License and provenance:** iPERFEX created the images with an AI image generator; they are
+  not hand-drawn. They ship under the repository's terms (MIT) like
+  the rest of the brand kit, and the name, crown and Lumo in them fall under the trademark and brand
+  policy. AI-generated images may get limited copyright protection in some countries; the
+  trademark policy still applies.
+- **Lumo pieces:** Celestial and Aurora are an artistic interpretation of the celestial fox, with a
+  long flowing tail. They don't replace the mascot drawings in section 6; for Lumo in the interface,
+  use the brand kit.
+- **Do** use them as desktop, login and promotional backgrounds for LordOS, with the logo on top
+  following section 5.
+- **Don't** crop the crown out of Crystal Crown for use as a logo, or present them as another
+  project's artwork.

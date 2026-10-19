@@ -10,6 +10,26 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
+## [0.8.2] - Unreleased
+
+### Added
+
+- **New wallpapers.** Eleven original LordOS wallpapers in three categories: **Signature** (Crystal
+  Crown, Eternal Dawn, Royal Flow, Royal Waves, Violet Horizon), **Lumo** (Celestial, Aurora) and
+  **Cosmos** (Event Horizon, Infinite Galaxy, Solar Odyssey, Stellar Voyage), created by iPERFEX
+  with an AI image generator. Settings → Wallpaper now lists every wallpaper grouped by category,
+  with the previous four gradients as "Gradients". They are installed once in
+  `/usr/share/backgrounds/lordos/` as high-quality JPEG (about 4 MB in total) with small thumbnails
+  for the pickers, and a higher-resolution version added later is used automatically on the
+  screens that need it.
+
+### Changed
+
+- **New default wallpaper:** new users start on **Celestial**; anyone who already chose a wallpaper
+  keeps it. The login screen (and the remote login page) now shows **Crystal Crown**.
+- The Control Center shows the current wallpaper and three from the collection; the rest are in
+  Settings → Wallpaper (**Change Wallpaper…**).
+
 ## [0.8.1-beta] - 2026-10-19
 
 A maintenance and polish release on top of 0.8.0-beta, and the first one that installed systems
