@@ -508,6 +508,39 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
 
 ## Before 1.0
 
+- [ ] **Monitor → Network, second generation (0.8.4)** — our own design; same function as the
+  best per-app firewalls, no copied look or names.
+  - **Native apps as their own rows:** every built-in component that uses the network gets a row
+    with its name and icon, backed by its own process and cgroup so rules are enforced by the
+    kernel: Mail (`lord-maild`, also the Calendar, Contacts and Reminders sync), Store and
+    updates (the package engine), Remote desktop, Printers, VPN, and the Terminal (its programs in
+    their own scope, shown as "Terminal" with the program's name). Apps that never touch the
+    network (Calculator) don't appear. Essential system traffic (DNS, time, DHCP) is shown but
+    can't be blocked; blocking Store and updates warns that security updates stop. Goal: the
+    "LordOS" row near zero; anything left gets its own process.
+  - **A tree with traffic everywhere:** app → its domains and IPs (and ports under them), each row
+    with sent and received bytes, a small up/down activity meter and its allow/deny switch
+    (domain rules from the row, e.g. deny one tracker and keep the site). "N more…" folds long
+    lists.
+  - **Left column view selector** (a pop-up button): group by app, domain, IP, port or country;
+    direction filter (all, incoming, outgoing); protocol filter (all, TCP, UDP/QUIC); status
+    filter (all, allowed, denied, with rules); sort by name, most traffic, least traffic, most
+    recent, most connections. Remembered per user.
+  - **Search with tokens:** typed search turns into chips for app, domain, IP/CIDR, port,
+    protocol, country and city, combinable (an app chip plus a domain chip).
+  - **Time range:** the traffic histogram (sent up, received down) with zoom and back/forward by
+    hour, day and week; the list follows the selected range.
+  - **Menu bar network item** (optional, off by default): live up/down rate in the status area;
+    its panel shows the sent/received graph of the last minutes, recent network activity by app,
+    "Recently denied" with a count, quick controls (firewall mode: ask, allow silently, deny
+    silently; rule profiles such as Home/Public) and a link to the Monitor.
+  - **Blocklists:** a curated catalog of public lists by topic (malware, advertising, trackers),
+    domain- and IP-based, each with its licence checked before inclusion; enable with a checkbox,
+    entry counts shown, daily updates downloaded over HTTPS by an unprivileged fetcher with size and
+    format limits, parsed strictly, compiled into the existing domain/IP rule maps; custom list
+    URLs allowed. Lists never override a user's explicit allow rule.
+  - Performance budget measured as in 0.8.3 (no visible cost with thousands of list entries).
+
 - [ ] **Remote desktop over WebRTC (0.8.4)** — today the browser gets PNG/JPEG tiles over a TLS
   WebSocket, and a connection switches the session to CPU composition. The goal is real video:
   - **Media:** H.264/VP8 video and Opus audio as WebRTC media tracks (RTP/SRTP); keyboard,
