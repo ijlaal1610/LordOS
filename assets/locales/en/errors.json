@@ -566,5 +566,11 @@
   "hw.noKernelLog": "The kernel log could not be read",
   "app.codeRefused": "This app's code was modified and was not loaded",
   "remote.badAddress": "Not a valid address or network",
-  "remote.listFull": "The list is full (64 entries)"
+  "remote.listFull": "The list is full (64 entries)",
+  "fw.list.unknown": "Unknown blocklist",
+  "fw.list.badUrl": "Not a valid https address",
+  "fw.list.badFormat": "Unknown list format",
+  "fw.list.tooMany": "There are already 16 lists of your own",
+  "fw.list.exists": "That list is already there",
+  "fw.list.unavailable": "Blocklists are not available in this session"
 }

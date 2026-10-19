@@ -566,5 +566,11 @@
   "hw.noKernelLog": "No se pudo leer el registro del kernel",
   "app.codeRefused": "El código de esta app fue modificado y no se cargó",
   "remote.badAddress": "No es una dirección o red válida",
-  "remote.listFull": "La lista está llena (64 entradas)"
+  "remote.listFull": "La lista está llena (64 entradas)",
+  "fw.list.unknown": "Lista de bloqueo desconocida",
+  "fw.list.badUrl": "No es una dirección https válida",
+  "fw.list.badFormat": "Formato de lista desconocido",
+  "fw.list.tooMany": "Ya hay 16 listas propias",
+  "fw.list.exists": "Esa lista ya está",
+  "fw.list.unavailable": "Las listas de bloqueo no están disponibles en esta sesión"
 }

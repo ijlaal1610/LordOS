@@ -158,7 +158,8 @@ function fwPoll(force) {
   try {
     const p = api.poll();
     const status = api.status();
-    firewallState.set((s) => ({ ...s, status, counts: p.counts || {}, events: p.events.length ? [...s.events, ...p.events].slice(-200) : s.events }));
+    const at = Date.now();
+    firewallState.set((s) => ({ ...s, status, counts: p.counts || {}, events: p.events.length ? [...s.events, ...p.events.map((e) => ({ ...e, at }))].slice(-200) : s.events }));
   } catch (e) { /* no lord.fw */ }
 }
 const fwBump = (r) => { firewallState.set((s) => ({ ...s, rev: s.rev + 1 })); fwPoll(true); return r; };

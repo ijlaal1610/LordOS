@@ -32,6 +32,8 @@ typedef struct {
     long domains, nets;
     int truncated;
     char error[64];                     /* the last attempt's error code ("" if it went well) */
+    char topic[16], source[96], license[96], homepage[160];   /* the catalog's, for Settings */
+    long approx;
 } List;
 
 static List L[FWS_MAX_LISTS];
@@ -148,8 +150,17 @@ static void load_catalog(void) {
     size_t i = 0;
     for (const JVal *o = lists && lists->type == J_ARR ? lists->kid : NULL; o; o = o->next, i++) {
         if (add_list(json_str(o, "id") ? json_str(o, "id") : "", json_str(o, "url") ? json_str(o, "url") : "",
-                     json_str(o, "format") ? json_str(o, "format") : "", json_num(o, "sub", 0) == 1, 0))
+                     json_str(o, "format") ? json_str(o, "format") : "", json_num(o, "sub", 0) == 1, 0)) {
             fprintf(stderr, "lord.fw: blocklist catalog entry %zu is invalid\n", i);
+            continue;
+        }
+        List *l = &L[nl - 1];
+        const char *tp = json_str(o, "topic"), *src = json_str(o, "source"), *lic = json_str(o, "license"), *hp = json_str(o, "homepage");
+        snprintf(l->topic, sizeof l->topic, "%s", tp && (!strcmp(tp, "ads") || !strcmp(tp, "trackers") || !strcmp(tp, "malware")) ? tp : "other");
+        snprintf(l->source, sizeof l->source, "%s", src ? src : "");
+        snprintf(l->license, sizeof l->license, "%s", lic ? lic : "");
+        snprintf(l->homepage, sizeof l->homepage, "%s", hp && !strncmp(hp, "https://", 8) ? hp : "");
+        l->approx = (long)json_num(o, "approx", 0);
     }
     json_free(&d);
     free(t);
@@ -606,6 +617,15 @@ char *fws_json(void) {
         jb_str(&b, l->format);
         jb_raw(&b, ",\"error\":");
         jb_str(&b, l->error);
+        jb_raw(&b, ",\"topic\":");
+        jb_str(&b, l->custom ? "custom" : l->topic);
+        jb_raw(&b, ",\"source\":");
+        jb_str(&b, l->source);
+        jb_raw(&b, ",\"license\":");
+        jb_str(&b, l->license);
+        jb_raw(&b, ",\"homepage\":");
+        jb_str(&b, l->homepage);
+        jb_printf(&b, ",\"approx\":%ld", l->approx);
         jb_printf(&b, ",\"custom\":%s,\"on\":%s,\"updated\":%lld,\"tried\":%lld,\"domains\":%ld,\"nets\":%ld,\"truncated\":%s}",
                   l->custom ? "true" : "false", l->on ? "true" : "false", l->updated, l->tried, l->domains, l->nets,
                   l->truncated ? "true" : "false");

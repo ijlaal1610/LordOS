@@ -15,6 +15,7 @@ import { Glyph, MonitorIcon } from './icons.jsx';
 import { NetworkTab } from './Network.jsx';
 import { RemoteGlyph } from './RemoteDesktop.jsx';
 import { MonitorPrivacy } from './Privacy.jsx';
+import { BlocklistsPrivacy } from './Blocklists.jsx';
 import { FirewallPrivacy } from './Firewall.jsx';
 import { FirewallRulesPrivacy } from './FwRules.jsx';
 import { CoolingTab } from './Cooling.jsx';
@@ -32,6 +33,8 @@ if (typeof sdk.registerPrivacySection === 'function') sdk.registerPrivacySection
 if (typeof sdk.registerPrivacySection === 'function') sdk.registerPrivacySection({ id: 'firewall', order: 11, Component: FirewallPrivacy });
 // … and the rules of each app: domains, addresses and networks, with the app's default
 if (typeof sdk.registerPrivacySection === 'function') sdk.registerPrivacySection({ id: 'fwrules', order: 12, Component: FirewallRulesPrivacy });
+// … and (0.8.4) the subscribed blocklists (docs/FIREWALL.md, "Blocklists")
+if (typeof sdk.registerPrivacySection === 'function') sdk.registerPrivacySection({ id: 'blocklists', order: 13, Component: BlocklistsPrivacy });
 
 // ---- formats ----
 export const fmt = {
@@ -327,8 +330,22 @@ export function Cell({ col, children, color, bold }) {
 // as Mail or Passwords; the process is shown with the app's name and icon.
 export const isolatedAppOf = (item) => (typeof item?.app === 'string' && item.app.startsWith('lpk:') ? getApp(item.app.slice(4)) : null);
 
+// (0.8.4) LordOS's own components: the built-in app's icon (Mail, Store, Terminal) or a glyph
+function ComponentGlyph({ comp, size }) {
+  const t = useTheme();
+  const a = comp.icon ? getApp(comp.icon) : null;
+  if (a?.Icon) return <a.Icon size={size} />;
+  return (
+    <View style={{ width: size, height: size, borderRadius: size * 0.24, backgroundColor: comp.system ? '#8e8e93' : t.accent, alignItems: 'center', justifyContent: 'center' }}>
+      <Glyph name={comp.glyph || 'network'} color="#fff" size={Math.round(size * 0.62)} />
+    </View>
+  );
+}
+
 export function AppGlyph({ item, size = 16 }) {
   if (item.app === 'lordos') return <LordOSLogo size={size} />;
+  const comp = sdk.netModel?.COMPONENTS?.[item.app];
+  if (comp) return <ComponentGlyph comp={comp} size={size} />;
   if (item.app === 'remote-desktop') return <RemoteGlyph size={size} />;
   const iso = isolatedAppOf(item);
   if (iso?.Icon) return <iso.Icon size={size} />;
