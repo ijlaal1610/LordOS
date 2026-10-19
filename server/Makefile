@@ -352,6 +352,10 @@ endef
 $(foreach p,$(CLIENT_PROTO),$(eval $(call wl_client_proto,$(p))))
 build/dmabuf-client: tests/dmabuf_client.c $(CLIENT_GEN)
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -Ibuild/gen $(WARN) -std=c11 -o $@ tests/dmabuf_client.c $(filter %.c,$(CLIENT_GEN)) -lwayland-client
+# off/on-monitor cycles against one session (tests/gpu_cycle.sh, docs/GPU.md); a test tool, never installed
+build/seat-cycle: tests/seat_cycle.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/seat_cycle.c
 
 MEDIA_PKGS := libavcodec libavformat libavutil libswscale libswresample
 MEDIA_VA := $(shell pkg-config --exists libva libva-drm 2>/dev/null && echo 1 || echo 0)

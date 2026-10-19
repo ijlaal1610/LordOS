@@ -31,6 +31,10 @@ int  gpu_device(dev_t *dev) { (void)dev; return -1; }
 GpuTex *gpu_tex_pixels(GpuTex *t, const uint32_t *px, int w, int h, int opaque) { (void)t; (void)px; (void)w; (void)h; (void)opaque; return NULL; }
 GpuTex *gpu_tex_dmabuf(const GpuDmabuf *d) { (void)d; return NULL; }
 void gpu_tex_free(GpuTex *t) { (void)t; }
+int  gpu_tex_current(const GpuTex *t) { (void)t; return 0; }
+unsigned gpu_generation(void) { return 0; }
+void gpu_set_hooks(void (*lost)(void), void (*changed)(void)) { (void)lost; (void)changed; }
+int  gpu_tex_read(const GpuTex *t, uint32_t *px, int w, int h) { (void)t; (void)px; (void)w; (void)h; return -1; }
 int  gpu_add_output(Kms *k) { (void)k; return -1; }
 int  gpu_frame(int out, const Canvas *s, Rect d, void (*f)(int)) { (void)out; (void)s; (void)d; (void)f; return -1; }
 void gpu_draw(GpuTex *t, float dx, float dy, float dw, float dh, float sx, float sy, float sw, float sh, Rect c, float o) {
@@ -83,6 +87,7 @@ struct GpuTex {
     GLuint id;
     int w, h, opaque, external, swap;
     EGLImageKHR image;
+    unsigned gen;                       /* the context it was made in (gpu_generation) */
 };
 
 /* What is on screen (or on its way): a BO of the gbm_surface or an app's dmabuf. */
@@ -126,7 +131,16 @@ static struct {
     PFNEGLQUERYDMABUFMODIFIERSEXTPROC query_modifiers;
     long frames, scanouts;
     char render_node[64];               /* where Mesa renders (on the Pi 5: v3d, not vc4) */
+    unsigned gen;                       /* this context's generation (0 = none) */
 } G;
+
+/* These outlive the context (G is wiped by gpu_shutdown). */
+static unsigned last_gen;
+static void (*hook_lost)(void), (*hook_changed)(void);
+
+void gpu_set_hooks(void (*lost)(void), void (*changed)(void)) { hook_lost = lost; hook_changed = changed; }
+unsigned gpu_generation(void) { return G.on ? G.gen : 0; }
+int gpu_tex_current(const GpuTex *t) { return t && G.on && t->gen == G.gen; }
 
 static void dbg(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void dbg(const char *fmt, ...) {
@@ -331,6 +345,7 @@ static void out_texture(GOut *o) {
     o->canvas.w = o->W;
     o->canvas.h = o->H;
     o->canvas.swap = !G.bgra;
+    o->canvas.gen = G.gen;
 }
 
 static void out_teardown(GOut *o) {
@@ -395,6 +410,8 @@ int gpu_init(Kms *k) {
     static const EGLint ctx_attr[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
     G.ctx = eglCreateContext(G.dpy, cfg, EGL_NO_CONTEXT, ctx_attr);
     G.cfg = cfg;
+    G.gen = ++last_gen;
+    if (last_gen == 0) G.gen = last_gen = 1;    /* 0 means "no context" */
     if (G.ctx == EGL_NO_CONTEXT || out_setup(&G.out[0], k)) { fprintf(stderr, "gpu: could not create the context or the surface, CPU composition\n"); goto fail; }
 
     const char *rend = (const char *)glGetString(GL_RENDERER), *gl_exts = (const char *)glGetString(GL_EXTENSIONS);
@@ -431,6 +448,7 @@ int gpu_init(Kms *k) {
     fprintf(stderr, "gpu: GPU composition (%s, EGL %d.%d, dmabuf %s, render %s, display %s)\n", G.renderer, maj, min,
             G.create_image ? (G.query_modifiers ? "with modifiers" : "yes") : "no",
             G.render_node[0] ? G.render_node : "the card's", k->driver[0] ? k->driver : drv);
+    if (hook_changed) hook_changed();       /* windows re-import their buffers in this context */
     return 0;
 fail:
     gpu_shutdown();
@@ -438,6 +456,12 @@ fail:
 }
 
 void gpu_shutdown(void) {
+    int was_on = G.on;
+    if (was_on && hook_lost) {
+        /* the compositor reads back and frees what it holds while the context still works */
+        for (int i = 0; i < OUT_MAX; i++)
+            if (G.out[i].used && eglMakeCurrent(G.dpy, G.out[i].surf, G.out[i].surf, G.ctx)) { hook_lost(); break; }
+    }
     if (G.dpy != EGL_NO_DISPLAY && G.dpy) {
         for (int i = OUT_MAX - 1; i >= 0; i--) out_teardown(&G.out[i]);
         eglMakeCurrent(G.dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -449,6 +473,7 @@ void gpu_shutdown(void) {
     int debug = G.debug;
     memset(&G, 0, sizeof G);
     G.debug = debug;
+    if (was_on && hook_changed) hook_changed();     /* now on the CPU path */
 }
 /* ---- formats and device (linux-dmabuf) ---- */
 
@@ -519,7 +544,7 @@ static void tex_params(GLenum target) {
 
 GpuTex *gpu_tex_pixels(GpuTex *t, const uint32_t *px, int w, int h, int opaque) {
     if (!G.on || !px || w <= 0 || h <= 0) return t;
-    if (t && t->external) { gpu_tex_free(t); t = NULL; }
+    if (t && (t->external || t->gen != G.gen)) { gpu_tex_free(t); t = NULL; }     /* stale: from a dead context */
     int fresh = !t;
     if (!t) {
         t = calloc(1, sizeof *t);
@@ -527,6 +552,7 @@ GpuTex *gpu_tex_pixels(GpuTex *t, const uint32_t *px, int w, int h, int opaque) 
         glGenTextures(1, &t->id);
         glBindTexture(GL_TEXTURE_2D, t->id);
         tex_params(GL_TEXTURE_2D);
+        t->gen = G.gen;
     } else glBindTexture(GL_TEXTURE_2D, t->id);
     GLenum fmt = G.bgra ? GL_BGRA_EXT : GL_RGBA;
     if (fresh || t->w != w || t->h != h) glTexImage2D(GL_TEXTURE_2D, 0, fmt, w, h, 0, fmt, GL_UNSIGNED_BYTE, px);
@@ -558,6 +584,7 @@ GpuTex *gpu_tex_dmabuf(const GpuDmabuf *d) {
     G.image_target(GL_TEXTURE_EXTERNAL_OES, (GLeglImageOES)img);
     t->image = img;
     t->external = 1;
+    t->gen = G.gen;
     t->w = d->width;
     t->h = d->height;
     t->opaque = d->fourcc == DRM_FORMAT_XRGB8888 || d->fourcc == DRM_FORMAT_XBGR8888;
@@ -591,17 +618,63 @@ static EGLImageKHR import_image(const GpuDmabuf *d, int with_mod) {
 
 void gpu_tex_free(GpuTex *t) {
     if (!t) return;
-    if (G.on) {
+    if (G.on && t->gen == G.gen) {          /* a stale one's GL name may now be someone else's */
         glDeleteTextures(1, &t->id);
         if (t->image && G.destroy_image) G.destroy_image(G.dpy, t->image);
     }
     free(t);
 }
 
+int gpu_tex_read(const GpuTex *t, uint32_t *px, int w, int h) {
+    if (!gpu_tex_current(t) || !px || w != t->w || h != t->h || w <= 0 || h <= 0 || w > 8192 || h > 8192) return -1;
+    while (glGetError() != GL_NO_ERROR) {}
+    GLuint tex = 0, fbo = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+    int ok = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+    if (ok) {
+        glViewport(0, 0, w, h);
+        glDisable(GL_BLEND);
+        glDisable(GL_SCISSOR_TEST);
+        int p = t->external ? 1 : 0;
+        glUseProgram(G.prog[p]);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(t->external ? GL_TEXTURE_EXTERNAL_OES : GL_TEXTURE_2D, t->id);
+        glUniform1i(G.u_tex[p], 0);
+        glUniform1f(G.u_op[p], 1.0f);
+        glUniform1f(G.u_opaque[p], t->opaque ? 1.0f : 0.0f);
+        glUniform1f(G.u_swap[p], t->swap ? 1.0f : 0.0f);
+        /* the image's first row at y = -1: glReadPixels returns it first */
+        static const GLfloat v[] = { -1, -1, 0, 0,  1, -1, 1, 0,  -1, 1, 0, 1,  1, 1, 1, 1 };
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, v);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, v + 2);
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px);
+        ok = glGetError() == GL_NO_ERROR;
+        for (size_t i = 0, n = (size_t)w * (size_t)h; ok && i < n; i++) {    /* RGBA bytes → ARGB words */
+            const uint8_t *b = (const uint8_t *)&px[i];
+            px[i] = (uint32_t)b[3] << 24 | (uint32_t)b[0] << 16 | (uint32_t)b[1] << 8 | b[2];
+        }
+        glEnable(GL_BLEND);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteFramebuffers(1, &fbo);
+    glDeleteTextures(1, &tex);
+    return ok ? 0 : -1;
+}
+
 /* ---- drawing ---- */
 
 void gpu_draw(GpuTex *t, float dx, float dy, float dw, float dh, float sx, float sy, float sw, float sh, Rect clip, float op) {
-    if (!G.on || !G.cur || !t || dw <= 0 || dh <= 0 || op <= 0.004f) return;
+    if (!G.on || !G.cur || !t || t->gen != G.gen || dw <= 0 || dh <= 0 || op <= 0.004f) return;
     const int W = G.cur->W, H = G.cur->H;           /* the display being drawn */
     if (clip.x0 < 0) clip.x0 = 0;
     if (clip.y0 < 0) clip.y0 = 0;

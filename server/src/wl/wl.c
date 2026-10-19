@@ -61,9 +61,9 @@ enum { R_NONE, R_TOPLEVEL, R_POPUP, R_SUB, R_CURSOR };
 typedef struct Dmabuf {
     GpuDmabuf d;
     struct wl_resource *res;            /* NULL if the app already destroyed it */
-    GpuTex *tex;                        /* EGLImage (GPU path) */
+    GpuTex *tex;                        /* EGLImage (GPU path); stale once its context is gone */
     int refs, scanned;
-    int cpu;                            /* EGL does not import it: it is mapped and copied (linear) */
+    unsigned no_import;                 /* the GPU context (generation) where EGL refused it: mapped and copied */
 } Dmabuf;
 
 typedef struct Surf Surf;
@@ -177,6 +177,12 @@ static struct wl_list rel_pointers;
 typedef struct { struct wl_resource *res; Surf *surf; int lock, active, oneshot; } Constraint;
 static Constraint *constraint;      /* the only active (or pending) one */
 static dev_t drm_dev;
+/* linux-dmabuf feedback objects (re-sent when the GPU comes or goes), the signature of the table
+ * last sent, and the formats the last GPU context imported (accepted off the GPU, see dmabuf_usable) */
+static struct wl_list feedbacks;
+static uint64_t feedback_sig;
+static GpuFormat gpu_fmt_cache[256];
+static int ngpu_fmt;
 
 static unsigned now_ms(void) {
     struct timespec t;
@@ -356,6 +362,26 @@ static Dmabuf *dmabuf_of(struct wl_resource *buf) {
     return buf && wl_resource_instance_of(buf, &wl_buffer_interface, &dmabuf_buffer_impl) ? wl_resource_get_user_data(buf) : NULL;
 }
 
+/* The buffer's texture in the live GPU context. The import is cached per wl_buffer, but only for
+ * one context: after the GPU is re-created (the session back on the monitor, a remote viewer
+ * leaving, a display change) the old texture is dropped and the buffer imported again. */
+static GpuTex *dm_tex(Dmabuf *d) {
+    if (!gpu_active()) return NULL;
+    if (d->tex && !gpu_tex_current(d->tex)) { gpu_tex_free(d->tex); d->tex = NULL; }
+    if (!d->tex && d->no_import != gpu_generation()) {
+        d->tex = gpu_tex_dmabuf(&d->d);
+        if (!d->tex) d->no_import = gpu_generation();
+    }
+    return d->tex;
+}
+
+/* Linear ARGB/XRGB8888 in one plane: the CPU path can map and copy it. */
+static int dm_linear(const Dmabuf *d) {
+    const GpuDmabuf *g = &d->d;
+    return g->nplanes == 1 && (g->modifier == DRM_FORMAT_MOD_LINEAR || g->modifier == DRM_FORMAT_MOD_INVALID) &&
+           (g->fourcc == DRM_FORMAT_ARGB8888 || g->fourcc == DRM_FORMAT_XRGB8888);
+}
+
 /* CPU path: a linear dmabuf (ARGB/XRGB8888, one plane) is mapped and copied to px. */
 static int map_linear(Surf *s, Dmabuf *d) {
     const GpuDmabuf *g = &d->d;
@@ -397,7 +423,7 @@ static void queue_release(Dmabuf *d) {
 static void take_buffer(Surf *s, struct wl_resource *buf) {
     Dmabuf *dm = dmabuf_of(buf), *old = s->dmabuf;
     s->dmabuf = NULL;
-    if (dm && gpu_active() && !dm->cpu && s->role != R_CURSOR) {
+    if (dm && s->role != R_CURSOR && dm_tex(dm)) {
         dm->refs++;
         s->dmabuf = dm;
         s->w = dm->d.width;
@@ -406,10 +432,23 @@ static void take_buffer(Surf *s, struct wl_resource *buf) {
         s->content = 1;
         free(s->px);
         s->px = NULL;
-    } else if (dm) {
-        s->content = map_linear(s, dm) == 0;
-        if (!s->content) { free(s->px); s->px = NULL; s->w = s->h = 0; }
+    } else if (dm && map_linear(s, dm) == 0) {
+        s->content = 1;
         s->tex_dirty = 1;
+        wl_buffer_send_release(buf);
+    } else if (dm && !gpu_active() && s->role != R_CURSOR) {
+        /* Off the GPU (the session left the monitor, or a remote viewer) with a buffer the CPU
+         * can't read (tiled, or a driver that doesn't map it): keep showing the last good frame
+         * (px, read back from the GPU) and hold the buffer, so it is imported as soon as the GPU
+         * is back without waiting for the app's next frame. */
+        dm->refs++;
+        s->dmabuf = dm;
+        s->content = s->px != NULL;
+    } else if (dm) {
+        s->content = 0;
+        free(s->px);
+        s->px = NULL;
+        s->w = s->h = 0;
         wl_buffer_send_release(buf);
     } else {
         copy_buffer(s, buf);
@@ -1884,8 +1923,9 @@ void wl_paint_popups(Canvas *c) {
 /* Texture with a surface's current content (GPU path). */
 static GpuTex *surface_tex(Surf *s) {
     if (s->dmabuf) {
-        if (!s->dmabuf->tex) s->dmabuf->tex = gpu_tex_dmabuf(&s->dmabuf->d);
-        return s->dmabuf->tex;
+        GpuTex *t = dm_tex(s->dmabuf);
+        if (t || !s->px) return t;
+        /* this context does not import it: the last good frame (px) is drawn instead */
     }
     if (s->px && (s->tex_dirty || !s->tex)) {
         s->tex = gpu_tex_pixels(s->tex, s->px, s->w, s->h, s->opaque);
@@ -2234,14 +2274,14 @@ static void params_add(struct wl_client *c, struct wl_resource *r, int32_t fd, u
 }
 
 /* Can we show it? On GPU, it must import as an EGLImage; on CPU, it must be linear and mappable. */
+static int gpu_format_known(const GpuDmabuf *g);
 static int dmabuf_usable(Dmabuf *d) {
-    if (gpu_active() && (d->tex = gpu_tex_dmabuf(&d->d)) != NULL) return 1;
+    if (dm_tex(d)) return 1;
     /* no GPU, or a dmabuf EGL does not import (for example udmabuf with a driver that does not
-     * accept it): if it is linear it is mapped and copied, as in the CPU path */
-    const GpuDmabuf *g = &d->d;
-    d->cpu = g->nplanes == 1 && (g->modifier == DRM_FORMAT_MOD_LINEAR || g->modifier == DRM_FORMAT_MOD_INVALID) &&
-             (g->fourcc == DRM_FORMAT_ARGB8888 || g->fourcc == DRM_FORMAT_XRGB8888);
-    return d->cpu;
+     * accept it): if it is linear it is mapped and copied, as in the CPU path. Off the GPU, a
+     * format the last GPU context imported is accepted too (an app may still be allocating with
+     * the old feedback): it is held and imported once the GPU is back. */
+    return dm_linear(d) || (!gpu_active() && gpu_format_known(&d->d));
 }
 
 static void params_create_common(struct wl_client *c, struct wl_resource *r, uint32_t buffer_id, int32_t w, int32_t h,
@@ -2305,10 +2345,34 @@ static int dmabuf_formats(GpuFormat *out, int max) {
 
 static void feedback_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
 static const struct zwp_linux_dmabuf_feedback_v1_interface feedback_impl = { .destroy = feedback_destroy };
+static void feedback_gone(struct wl_resource *r) { wl_list_remove(wl_resource_get_link(r)); }
+
+static int gpu_format_known(const GpuDmabuf *g) {
+    for (int i = 0; i < ngpu_fmt; i++)
+        if (gpu_fmt_cache[i].fourcc == g->fourcc && gpu_fmt_cache[i].modifier == g->modifier) return 1;
+    return 0;
+}
+
+/* What the feedback says right now (formats and device), to know when it must be sent again. */
+static uint64_t formats_sig(const GpuFormat *f, int n, dev_t dev) {
+    uint64_t h = 1469598103934665603ull ^ (uint64_t)dev;
+    for (int i = 0; i < n; i++) {
+        h = (h ^ f[i].fourcc) * 1099511628211ull;
+        h = (h ^ f[i].modifier) * 1099511628211ull;
+    }
+    return h;
+}
+
+static dev_t feedback_dev(void) {
+    dev_t dev = drm_dev;
+    if (gpu_active()) gpu_device(&dev);
+    return dev;
+}
 
 static void send_feedback(struct wl_resource *fb) {
     GpuFormat f[256];
     int n = dmabuf_formats(f, 256);
+    feedback_sig = formats_sig(f, n, feedback_dev());
     size_t size = (size_t)n * 16;
     int fd = memfd_create("lord-dmabuf-formats", MFD_CLOEXEC | MFD_ALLOW_SEALING);
     if (fd < 0 || ftruncate(fd, (off_t)size)) { if (fd >= 0) close(fd); return; }
@@ -2323,8 +2387,7 @@ static void send_feedback(struct wl_resource *fb) {
     fcntl(fd, F_ADD_SEALS, F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_WRITE | F_SEAL_SEAL);
     zwp_linux_dmabuf_feedback_v1_send_format_table(fb, fd, (uint32_t)size);
     close(fd);
-    dev_t dev = drm_dev;
-    if (gpu_active()) gpu_device(&dev);
+    dev_t dev = feedback_dev();
     struct wl_array devs, idx;
     wl_array_init(&devs);
     dev_t *dp = wl_array_add(&devs, sizeof dev);
@@ -2351,7 +2414,8 @@ static void dmabuf_create_params(struct wl_client *c, struct wl_resource *r, uin
 static void dmabuf_get_feedback(struct wl_client *c, struct wl_resource *r, uint32_t id) {
     struct wl_resource *fb = wl_resource_create(c, &zwp_linux_dmabuf_feedback_v1_interface, wl_resource_get_version(r), id);
     if (!fb) { wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(fb, &feedback_impl, NULL, NULL);
+    wl_resource_set_implementation(fb, &feedback_impl, NULL, feedback_gone);
+    wl_list_insert(&feedbacks, wl_resource_get_link(fb));
     send_feedback(fb);
 }
 static void dmabuf_get_surface_feedback(struct wl_client *c, struct wl_resource *r, uint32_t id, struct wl_resource *surface) {
@@ -2380,6 +2444,70 @@ static void bind_dmabuf(struct wl_client *c, void *data, uint32_t ver, uint32_t 
 }
 
 void wl_set_drm_device(dev_t dev) { drm_dev = dev; }
+
+/* ---- GPU context re-created (docs/GPU.md, "When the GPU context is re-created") ---- */
+
+/* The GPU is going away (gpu_shutdown, its context still current): every window showing a dmabuf
+ * keeps its last good frame as pixels for the CPU path, and textures are freed while they still can be. */
+static void wl_gpu_lost(void) {
+    for (int i = 0; i < MAX_SURF; i++) {
+        Surf *s = surfs[i];
+        if (!s) continue;
+        Dmabuf *d = s->dmabuf;
+        if (d && gpu_tex_current(d->tex)) {
+            int w = d->d.width, h = d->d.height;
+            uint32_t *px = w <= 8192 && h <= 8192 ? malloc((size_t)w * (size_t)h * 4) : NULL;
+            if (px && gpu_tex_read(d->tex, px, w, h) == 0) {
+                free(s->px);
+                s->px = px;
+                s->w = w;
+                s->h = h;
+            } else {
+                free(px);
+                if (map_linear(s, d)) { free(s->px); s->px = NULL; }
+            }
+        }
+        if (d) { gpu_tex_free(d->tex); d->tex = NULL; }
+        gpu_tex_free(s->tex);
+        s->tex = NULL;
+        s->tex_dirty = 1;
+    }
+}
+
+/* The switch is done (GPU → CPU or a new GPU context): held buffers are imported again, pixel
+ * textures re-uploaded, everything is repainted and the dmabuf feedback is re-sent if the formats
+ * or the device changed, so apps reallocate buffers the new path can use. */
+static void wl_gpu_changed(void) {
+    if (!dpy) return;
+    if (gpu_active()) ngpu_fmt = gpu_formats(gpu_fmt_cache, 256);
+    for (int i = 0; i < MAX_SURF; i++) {
+        Surf *s = surfs[i];
+        if (!s) continue;
+        if (s->dmabuf && dm_tex(s->dmabuf)) {
+            const GpuDmabuf *g = &s->dmabuf->d;
+            s->w = g->width;
+            s->h = g->height;
+            s->opaque = g->fourcc == DRM_FORMAT_XRGB8888 || g->fourcc == DRM_FORMAT_XBGR8888;
+            s->content = 1;
+            free(s->px);
+            s->px = NULL;
+            apply_viewport(s);
+        }
+        s->tex_dirty = 1;
+        if (s->node) damage_node(s);
+    }
+    need_frame = 1;
+    ui.dirty = 1;
+    damage_add((Box){ 0, 0, ui.width, ui.height });
+    GpuFormat f[256];
+    int n = dmabuf_formats(f, 256);
+    if (formats_sig(f, n, feedback_dev()) != feedback_sig) {
+        struct wl_resource *fb;
+        int sent = 0;
+        wl_resource_for_each(fb, &feedbacks) { send_feedback(fb); sent++; }
+        if (sent) fprintf(stderr, "wayland: dmabuf feedback sent again (%s formats) to %d object(s)\n", gpu_active() ? "GPU" : "CPU", sent);
+    }
+}
 
 /* ---- wp_presentation: when each frame was seen ---- */
 
@@ -2713,6 +2841,9 @@ int wl_start(void) {
     wl_global_create(dpy, &xdg_wm_base_interface, 6, NULL, bind_wm_base);
     wl_global_create(dpy, &zxdg_decoration_manager_v1_interface, 1, NULL, bind_decm);
     wl_list_init(&rel_pointers);
+    wl_list_init(&feedbacks);
+    if (gpu_active()) ngpu_fmt = gpu_formats(gpu_fmt_cache, 256);
+    gpu_set_hooks(wl_gpu_lost, wl_gpu_changed);
     wl_global_create(dpy, &zwp_linux_dmabuf_v1_interface, 4, NULL, bind_dmabuf);
     wl_global_create(dpy, &wp_presentation_interface, 1, NULL, bind_presentation);
     wl_global_create(dpy, &wp_viewporter_interface, 1, NULL, bind_viewporter);

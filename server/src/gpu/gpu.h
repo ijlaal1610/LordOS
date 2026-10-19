@@ -35,6 +35,20 @@ GpuTex *gpu_tex_pixels(GpuTex *t, const uint32_t *px, int w, int h, int opaque);
 GpuTex *gpu_tex_dmabuf(const GpuDmabuf *d);
 void    gpu_tex_free(GpuTex *t);
 
+/* GPU context lifetime. Each gpu_init that succeeds starts a new context ("generation"); a
+ * texture made in an earlier one is stale: its GL name and EGLImage died with that context, so it
+ * must never be drawn and gpu_tex_free only frees its memory. The session leaving and coming back
+ * to the monitor, a remote viewer, a display change or a failed frame all re-create the context. */
+int      gpu_tex_current(const GpuTex *t);  /* 1 if t belongs to the live context */
+unsigned gpu_generation(void);              /* 0 while there is no GPU */
+/* Hooks for the compositor: lost() runs inside gpu_shutdown with the old context still current
+ * (last chance to read textures back or free them); changed() runs once the switch is done, after
+ * a successful gpu_init and after gpu_shutdown (to re-import buffers and re-send dmabuf feedback). */
+void gpu_set_hooks(void (*lost)(void), void (*changed)(void));
+/* Reads a texture back as premultiplied ARGB pixels (t->w × t->h, rows top to bottom), for the
+ * last good frame of a dmabuf window when the GPU goes away. 0 on success. */
+int  gpu_tex_read(const GpuTex *t, uint32_t *px, int w, int h);
+
 /* One frame: what changed in the UI canvas is uploaded, the layers are drawn and the flip is done.
  * draw_layer(0) = app windows (below the UI), draw_layer(1) = app menus and
  * fullscreen (on top). */
