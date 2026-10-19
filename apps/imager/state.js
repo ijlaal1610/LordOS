@@ -52,7 +52,7 @@ export async function loadReleases() {
     set((st) => ({ releases: { state: 'ok', list, error: null, all: text }, image: st.image || (list[0] ? officialImage(list[0]) : null) }));
   } catch (e) {
     // offline: what was fetched before still works (the signature is checked again before writing)
-    const cached = platform.cachedReleases();
+    const cached = await platform.cachedReleases();
     const list = cached ? parseReleases(cached, app.get().device) : [];
     set({ releases: { state: list.length ? 'stale' : 'error', list, error: e.message || String(e), all: cached } });
   }
@@ -105,7 +105,7 @@ export async function run() {
       setJob({ phase: 'signature' });
       const sumsPath = await platform.download(r.tag, r.sums);
       const sigPath = await platform.download(r.tag, r.sig);
-      const check = platform.checkSums(await platform.readText(sumsPath), await platform.readText(sigPath));
+      const check = await platform.checkSums(await platform.readText(sumsPath), await platform.readText(sigPath));
       if (!check || !check.ok) throw Object.assign(new Error('imager.err.badSignature'), { code: 'imager.badSignature' });
       if (!check.files[r.image.name]) throw Object.assign(new Error('imager.err.notListed'), { code: 'imager.notListed' });
       mark('signature');

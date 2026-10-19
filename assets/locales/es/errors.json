@@ -587,5 +587,13 @@
   "imager.hashMismatch": "La imagen no coincide con su SHA-256 firmado: no se grabó",
   "imager.cancelledWiped": "Cancelado: la unidad quedó limpia",
   "imager.xzFailed": "No se pudo descomprimir la imagen",
-  "imager.imageChanged": "El archivo de imagen cambió mientras se grababa: la unidad quedó limpia"
+  "imager.imageChanged": "El archivo de imagen cambió mientras se grababa: la unidad quedó limpia",
+  "imager.driveTooLarge": "{name} tiene más de 2 TiB: las imágenes de LordOS no pueden usarla",
+  "imager.notAuthorized": "No se permitió grabar en la unidad",
+  "imager.listFailed": "No se pudieron listar las unidades",
+  "imager.bootNotFound": "No apareció la partición de arranque de la tarjeta",
+  "imager.ejectFailed": "No se pudo expulsar la unidad",
+  "imager.noUdisks": "El servicio de discos (udisks2) no está funcionando",
+  "imager.hashFailed": "No se pudo calcular el hash de la contraseña",
+  "imager.pskFailed": "No se pudo derivar la clave del Wi-Fi"
 }

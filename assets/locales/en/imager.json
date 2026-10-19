@@ -279,6 +279,7 @@
   "storage.readOnly": "Write-protected: slide the card's lock switch.",
   "storage.text": "The SD card or USB drive LordOS will be written to.",
   "storage.title": "Choose the storage",
+  "storage.tooLargeMbr": "Larger than 2 TiB: LordOS images can't use a drive this big (and it isn't a card or a stick).",
   "storage.tooSmall": "Too small for this image.",
   "storage.tooSmallPc": "Too small: use a drive of at least 2 GB.",
   "storage.tooSmallPi": "Too small: use a card of at least 8 GB (16 GB or more is better).",

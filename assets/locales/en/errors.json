@@ -587,5 +587,13 @@
   "imager.hashMismatch": "The image doesn't match its signed SHA-256: it was not written",
   "imager.cancelledWiped": "Cancelled: the drive was cleared",
   "imager.xzFailed": "The image couldn't be decompressed",
-  "imager.imageChanged": "The image file changed while it was written: the drive was cleared"
+  "imager.imageChanged": "The image file changed while it was written: the drive was cleared",
+  "imager.driveTooLarge": "{name} is larger than 2 TiB: LordOS images can't use it",
+  "imager.notAuthorized": "Writing to the drive wasn't allowed",
+  "imager.listFailed": "The drives couldn't be listed",
+  "imager.bootNotFound": "The card's boot partition didn't appear",
+  "imager.ejectFailed": "The drive couldn't be ejected",
+  "imager.noUdisks": "The disk service (udisks2) isn't running",
+  "imager.hashFailed": "The password couldn't be hashed",
+  "imager.pskFailed": "The Wi-Fi key couldn't be derived"
 }

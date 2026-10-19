@@ -279,6 +279,7 @@
   "storage.readOnly": "Protegida contra escritura: mové la traba de la tarjeta.",
   "storage.text": "La tarjeta SD o la unidad USB donde se va a grabar LordOS.",
   "storage.title": "Elegí el almacenamiento",
+  "storage.tooLargeMbr": "Más de 2 TiB: las imágenes de LordOS no pueden usar una unidad tan grande (y no es una tarjeta ni un pendrive).",
   "storage.tooSmall": "Demasiado chica para esta imagen.",
   "storage.tooSmallPc": "Demasiado chica: usá una unidad de al menos 2 GB.",
   "storage.tooSmallPi": "Demasiado chica: usá una tarjeta de al menos 8 GB (16 GB o más es mejor).",

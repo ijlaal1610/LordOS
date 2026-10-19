@@ -19,6 +19,7 @@ const BIG = 300e9;          // a removable drive this large is probably someone'
 export function driveProblem(s, d) {
   const dev = deviceById(s.device);
   if (d.readOnly) return 'imager.storage.readOnly';
+  if (d.size > 2 ** 41) return 'imager.storage.tooLargeMbr';          // MBR images: 2 TiB at most (and not a card)
   const need = s.image?.raw || (s.image?.official ? null : s.image?.size);
   if (need && fits(need, d.size) === 'no') return 'imager.storage.tooSmall';
   if (d.size < MIN[dev.kind]) return dev.kind === 'pi' ? 'imager.storage.tooSmallPi' : 'imager.storage.tooSmallPc';

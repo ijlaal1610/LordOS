@@ -384,6 +384,8 @@ void imager_act_write(const AdminReq *r, const char *arg, size_t len) {
     if (disk_admin_whole(r, f[0], &t)) { free(buf); return; }
     free(buf);
     if (!t.removable) { admin_err("imager.notRemovable", "name", t.disk, NULL); return; }
+    /* LordOS images use an MBR table (2 TiB at most); a larger "removable" drive is also not a card */
+    if (t.size > (2ull << 40)) { admin_err("imager.driveTooLarge", "name", t.disk, NULL); return; }
     char ro[8] = "0", rop[96];
     pathf(rop, sizeof rop, "/sys/class/block/%s/ro", t.disk);
     FILE *rf = fopen(rop, "re");
