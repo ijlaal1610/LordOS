@@ -1124,3 +1124,21 @@ See `REMOTE.md`, "Remote login (SSH)". Tree in `~/LordOS-ssh` (sent with `tar`),
   saved `lord-server`, themes and assets were restored and `~/LordOS-ssh` deleted.
 - **Side effects:** the VM was rebooted twice (the reboot tests), which ended `bob`'s background
   session; `lord` ends at the login screen. Nothing in the network configuration was touched.
+
+## Step 28 — Monitor → Network: traffic accounting, chart and map (VM 118 `lordos-notes`, October 18)
+
+See `MONITOR.md` and `FIREWALL.md` ("Traffic accounting"). On VM 118 (172.17.0.53), in its own
+folder `~/LordOS-monred`, installed into `/usr/local/lib/lordos` as in step 15 (the previous
+`/usr/local/lib/lordos` was saved in `/var/tmp/lordos-backup-monred` and put back at the end).
+
+- **Installed, tests only:** `iperf3` 3.18 (`apt-get install --no-install-recommends iperf3`; its
+  service stays disabled). For the throughput and CPU measurements a veth pair (`npb0`/`npb1`)
+  into a private network namespace `npb` (`10.213.7.0/30`) was created and deleted afterwards;
+  eth0 and the VM's network configuration weren't touched.
+- **Traffic:** Chromium (already on the VM) on a video site, `curl --http3-only` (Debian's curl
+  8.14 has HTTP/3) and `curl --limit-rate` downloads from Debian mirrors, each run inside an app
+  scope made by hand (`app-lordos-<name>.scope`, as `tests/netperm_integration.sh` does).
+- **Screenshots** with `screendump` from the Proxmox host; the pointer with
+  `lord-qmp-input.py 118 2987 1067` (the VM has two heads, see "Several displays").
+- The session language, theme and accent were changed for the screenshots and restored from
+  `~/.config-lordos-backup-monred` afterwards.

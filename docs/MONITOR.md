@@ -28,11 +28,19 @@ itself.
 
 - **Left:** search (by app, address or country) and one row per app with its icon, number of
   connections, a traffic bar (received in green, sent in orange, relative to the app that moved
-  the most), the bytes and the **Rule** column: a per-app allow/deny switch that `lord-netperm`
+  the most), a tiny live activity indicator (its traffic over the last 12 s, one bar per second),
+  the bytes and the **Rule** column: a per-app allow/deny switch that `lord-netperm`
   enforces in the kernel (see "Phase 2"). Each app expands to show its destinations (IP and country,
   plus the ones the firewall reported recently: "recent connection" or "recently denied"); a click
-  on one selects it in the right panel. At the bottom,
-  the current download and upload speed and per-second bars for the last 60 s.
+  on one selects it in the right panel. At the bottom, the machine's traffic:
+  - the current download and upload speed;
+  - two pills with what was sent (↑, orange) and received (↓, green) in the visible minute;
+  - a **mirrored chart** of the last 60 s (`TrafficChart.jsx`, `drawMirror` in `draw.js`): one bar
+    per second, sent above the baseline and received below, every bar on a faint full-height track
+    so the strip reads as one continuous chart even when idle; the newest second grows in from the
+    right edge while the rest slides left, redrawn at the 4 samples per second with the window in
+    front (once per second behind it). Auto-scaled to a "nice" maximum shown at both ends; any
+    bucket that moved bytes is at least one pixel tall.
 - **Center:** the map fills the whole height of the column. It has an arc from "This computer" to
   each country, one dot per country (bigger the more connections) and pill labels with the name
   and the count. It's controlled like this:
@@ -47,15 +55,28 @@ itself.
   When zoomed in, the borders and names of the other countries show. The Lite base has no cities,
   so labels are always countries.
 
+  **Direction of the traffic.** While bytes move, dots travel along each arc: sent (orange) from
+  "This computer" to the place, received (green) back. The higher the rate, the more dots (1 to 4
+  each way) and the faster they go (3.4 s to 1 s per trip, on a log scale from 256 B/s to about
+  4 MB/s). An idle arc has no dots and is drawn dimmed (`idle` in the map request, `map.c`). The
+  dots are engine views moved with `lord.setStyle`, no React render per frame: 12 frames per
+  second with the window in front, 5 behind it, at most the 12 busiest arcs and only those on
+  screen; the timer stops with the window minimized, while the map is being moved and when nothing
+  moves. With Appearance → Reduce motion, each busy arc shows two still markers instead: a short
+  comet of three dots, the biggest in front, pointing the way the bytes go.
+
   When an app is chosen, the map shows only its places and frames them. A click on a dot or an arc
   chooses that country: the right panel shows its apps, addresses, ports and bytes. At the bottom,
   a line with the DB-IP attribution and the link to the privacy settings.
-- **Right:**
+- **Right** (its scroll area keeps an 11 px strip for the scroll bar, `ScrollView gutter`, so the
+  bar never covers a value; long values wrap):
   - no selection: traffic (current and since boot), allowed and denied connections (0: there are
     no rules yet), incoming, listening and from other users, and the apps and destinations with the
-    most traffic;
+    most traffic, each with "↓ received · ↑ sent" (destinations by the name the resolver gave,
+    when known);
   - with an app chosen: executable path, user, PIDs, rule, a "Rules for this app" link (Settings
-    → Privacy with that app open), bytes and speed, ports and protocols, listening ports and
+    → Privacy with that app open), bytes and speed with the app's own mirrored chart of the last
+    minute (one bar per second), ports and protocols, listening ports and
     addresses. A selected address offers **Allow / Block this domain** (or "this address" when no
     name is known) for that app: a sheet prefilled with the destination (see `FIREWALL.md`, "Rules
     by app");
@@ -71,7 +92,8 @@ server, and this app's rule is that no address leaves the machine.
 
 ```
 apps/monitor/            index.jsx (tabs), Network.jsx (Network), MapView.jsx (map), Chart.jsx,
-                         draw.js (pixels), icons.jsx, Privacy.jsx, countries.js (generated)
+                         TrafficChart.jsx (mirrored sent/received chart), draw.js (pixels),
+                         icons.jsx, Privacy.jsx, countries.js (generated)
 sdk/monitor.js           useMonitor(), stores monitorSamples / monitorProcesses / monitorConnections
 server/src/ui/js_monitor.c   lord.monitor (read-only, validated API)
 server/src/monitor/mon.c     sampling thread: /proc, /sys, processes
@@ -119,6 +141,17 @@ No function takes paths or commands: the only arguments are booleans and a langu
 `conn.c` does the same as `ss`: a `NETLINK_SOCK_DIAG` dump for TCP and UDP, IPv4 and IPv6, with
 `INET_DIAG_INFO` (`tcpi_bytes_acked` and `tcpi_bytes_received` come from `tcp_info`). No root
 needed. For other users' sockets, only how many there are is counted.
+
+**Bytes per app (0.8.1).** `tcp_info` only exists for TCP and only while the socket is open, so up
+to 0.8.0 UDP — and with it QUIC: HTTP/3, a browser playing a video — counted nothing, and a closed
+connection took its bytes with it (a browser streaming music showed 13 KB). With `lord-netperm`
+running, the bytes and rates of each app and of each of its addresses come from the kernel instead:
+its `cgroup_skb` programs count every packet of the app's sockets, TCP and UDP, both directions
+(`FIREWALL.md`, "Traffic accounting"), and its `COUNTS` notice brings, every second, the app's
+totals since its scope appeared, its rates over the last second and its 64 busiest addresses
+(`lord.fw.poll()`, `firewallState.counts`). An address whose socket already closed keeps its bytes
+and its country (remembered from the last open connection to it). Without `lord-netperm` (or with
+`STATUS` `bytes: false`) the Monitor falls back to `tcp_info`.
 
 The owning process of each of the user's sockets comes from `/proc/<pid>/fd` (`socket:[inode]`) of
 the user's own processes. That walk is the most expensive part, so there is an inode → pid cache
@@ -262,6 +295,32 @@ measurement there were 13 downloads in progress and Firefox open on the Network 
   - In Overview, most of it is repainting the box that holds the four charts (the engine uses a
     single damaged region per frame, about 12 ms) and drawing the charts in JS (around 1.5 %).
 
+### 0.8.1: traffic accounting, chart and moving dots (VM 118)
+
+VM 118: 4 vCPU Xeon Silver 4108 at 1.8 GHz, `virtio_gpu` without 3D, CPU compositing, 1280×800.
+Network tab in front, five downloads running (one over HTTP/3), arcs to 4–6 countries.
+`lord-server` (whole process, % of one core), 3 × 30 s each:
+
+| Build | Runs | Mean |
+|---|---|---|
+| 0.8.0 theme (bars redrawn once per second, no animation) | 5.2 / 6.0 / 8.2 % | 6.5 % |
+| 0.8.1, Reduce motion (chart at 4 Hz, still markers) | 8.9 / 9.4 % | 9.2 % |
+| 0.8.1, dots moving at 12 frames per second | 11.7 / 12.7 / 13.1 % | 12.5 % |
+| 0.8.1, window minimized | 2.0 % | |
+
+- **The chart** (redrawn 4 times per second with the window in front) costs about 2.5 points; behind
+  other windows it drops to once per second.
+- **The moving dots** cost about 0.3 points per frame per second (5 fps: 10.1 %, 15 fps:
+  13.6 %): each frame repaints the box around all the dots, which with arcs across the world is
+  most of the map. 12 fps is the compromise; the engine has one damaged rectangle per frame, so
+  several small rectangles would cut this further (future work).
+- An `lord.setStyle` that only moves an absolutely positioned node (the dots, the map image while
+  panning) now just places it again instead of remeasuring every ancestor (`js.c`, like a window
+  drag); it made no measurable difference here because painting dominates.
+- **`lord-netperm`** stays at 0.0–0.07 % with traffic flowing (one map read per app per second,
+  plus one batch read of the address table only while bytes move).
+- **The kernel side** of the accounting is in `FIREWALL.md` ("Measurements").
+
 ### Map
 
 Time for an 800×560 frame on the map thread (`build/map-bench`):
@@ -281,6 +340,18 @@ It runs outside the frame. While it draws, the screen shows the previous frame s
   - The whole `build/mmdb-test`, which includes that load and 400 broken files, takes 0.5 s in the
     VM.
 - **Lookup:** each one walks at most 128 nodes.
+
+## Screenshots (0.8.1, VM 118, real traffic: a browser on a video site over QUIC and five downloads)
+
+- Network, dark and light: ![dark](monitor-network-dark.png) ![light](monitor-network-light.png)
+- The browser chosen (detail panel, its own chart): ![dark](monitor-network-detail-dark.png)
+  ![light](monitor-network-detail-light.png)
+- The map with traffic moving (a still frame): ![map](monitor-network-map-flow.png); with Reduce
+  motion: ![still](monitor-network-map-still.png)
+- Minimum window size in Spanish (the longest values go on their own line):
+  ![es](monitor-network-min-es.png); right to left (Arabic): ![rtl](monitor-network-rtl.png)
+- Before the fix (0.8.0, Spanish): a 400 KB/s HTTP/3 download shows "—" and "0 B":
+  ![before](monitor-network-before.png)
 
 ## Screenshots (VM 123)
 

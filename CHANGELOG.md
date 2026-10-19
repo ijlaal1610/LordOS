@@ -20,6 +20,19 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   drop-in shipped by the `lordos` package). The Raspberry Pi image's `ssh` switch file keeps
   working and shows up as on ([docs/REMOTE.md](docs/REMOTE.md#remote-login-ssh)).
 
+### Changed
+
+- **Monitor → Network: a fluid traffic chart.** The sparse per-second bars are now a continuous
+  mirrored strip for the last 60 s: sent above the baseline, received below, one bar per second on
+  a faint track, scrolling smoothly at 4 samples per second, auto-scaled, with the minute's totals
+  as pills. The selected app gets the same chart, each app row a small live activity indicator, and
+  the summary shows "↓ received · ↑ sent" per app and destination
+  ([docs/MONITOR.md](docs/MONITOR.md#network)).
+- **Monitor → Network: the map shows which way the traffic flows.** Dots travel along each arc,
+  sent from "This computer" to the place and received back, more and faster with the rate; idle
+  arcs are dimmed. Reduce motion shows still markers instead; the animation runs at 12 frames per
+  second, only on screen, and stops when the window is minimized.
+
 ### Fixed
 
 - **The menu bar names a Linux app, not its window.** Next to the crown it showed the window title
@@ -33,6 +46,17 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   kept playing. Imports now belong to one context and are made again, windows keep
   their last frame while the session is off the monitor, and apps get the new dmabuf formats
   ([docs/GPU.md](docs/GPU.md#when-the-gpu-context-is-re-created)).
+- **Monitor → Network counts all of an app's traffic, UDP and QUIC included.** Per-app bytes came
+  only from the TCP sockets open at that moment, so UDP — and with it QUIC: HTTP/3, a browser
+  playing a video — counted nothing, and a closed connection took its bytes with it (a browser
+  streaming music showed 13 KB). `lord-netperm` now counts every packet of each app's sockets in
+  the kernel (two `cgroup_skb` programs, both directions, loopback excluded) and sends bytes and
+  rates per app and per address every second: 98.7–98.8 % of the interface's counters in the
+  tests (an HTTP/3 download, a browser on a video site), about 0.5 µs per packet and no measurable
+  cost on TCP ([docs/FIREWALL.md](docs/FIREWALL.md#the-programs)).
+- **The Network tab's detail panel no longer hides values under its scroll bar.** The panel keeps
+  a strip for the bar, and a label and value that don't fit on one line go on two instead of
+  running over the next row (es/en/pt, right to left, minimum window size).
 
 ## [0.8.0-beta] - 2026-10-18
 
