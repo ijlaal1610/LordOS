@@ -22,8 +22,9 @@ This document gathers what's needed to build the image, write it, develop on the
 > **`6.18.57-lordos.3-rpi-2712`** (`6.18.57-3+lordos`): the same source and options plus sock_diag
 > `SOCK_DESTROY` (`INET_DIAG_DESTROY`, `INET_UDP_DIAG`), so the firewall closes the connections a new
 > rule denies instead of leaving them stalled. Each kernel revision now has its own release, so the
-> previous one stays installed and bootable. **Not built yet:** the first attempt on the board (in a
-> tmpfs, see below) left the Pi unreachable; it needs a power cycle and enough free disk.
+> previous one stays installed and bootable (see "Switching kernels on a board"). Cross-compiled on
+> VM 116, installed on the Pi 5 and verified there: `verify-board`, the firewall cut test (15/15,
+> TCP and QUIC closed in 0.04–0.37 s) and `make -C server test`.
 
 ## Models
 
@@ -122,13 +123,24 @@ what LordOS needs:
 
 ```sh
 # on the Pi (arm64 Debian 13): about 75 min per flavour on a Pi 5 (4 cores, SD card), ~10 GB free
-# on disk (not in a tmpfs: on the 16 GB board a 10 GB tmpfs for the build folder plus the final link
-# with full DWARF left it unreachable, 2026-10-19)
 sudo apt-get install -y --no-install-recommends build-essential bc bison flex libssl-dev libelf-dev \
   libdw-dev dwarves cpio kmod rsync dpkg-dev debhelper git
 tools/rpi/build-kernel.sh /var/tmp/lordos-kernel all     # 2712 (Pi 5), v8 (Pi 4), or all
 # → /var/tmp/lordos-kernel/out/linux-image-6.18.57-lordos.3-rpi-2712_6.18.57-3+lordos_arm64.deb, …
+
+# or cross-compiled on an x86-64 Debian 13 (VM 116: 4 vCPU, 4 GB RAM; 67 min for 2712), the same
+# packages plus the cross compiler and the arm64 libc headers (for the headers package's tools)
+sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+RPI_KERNEL_REF=234188315037848e5b07d65b85d38edc64095caa tools/rpi/build-kernel.sh /var/tmp/pik-kernel 2712
 ```
+
+The script cross-compiles by itself when the host isn't arm64 (`CROSS_COMPILE=aarch64-linux-gnu-`,
+and `DPKG_FLAGS=-d`: `dpkg-buildpackage` would otherwise ask for arm64 build dependencies the kernel
+doesn't use). The 0.8.4 packages were built that way: same commit, same `.config` (the diff
+against the defconfig is identical to a native build's apart from the release name), same package
+size as the native `-2` (43 MB). With 4 GB of RAM a temporary 4 GB swap file was added for the
+final link; the work folder peaked at about 16 GB. Don't build on the Pi in a tmpfs or with less
+than 10 GB free on its SD card.
 
 - **Source:** `github.com/raspberrypi/linux`, branch `rpi-6.18.y` (`RPI_KERNEL_BRANCH`;
   `RPI_KERNEL_REF=<commit>` pins one). The first build (2026-10-18) used commit `234188315037`,
@@ -225,6 +237,42 @@ tools/rpi/build-kernel.sh /var/tmp/lordos-kernel all     # 2712 (Pi 5), v8 (Pi 4
   `vmlinuz-*-rpi-2712`" and boot without Landlock. Kernel updates come as new LordOS packages.
 - **Per flavour:** if only the 2712 kernel was built, the Pi 4 kernel comes from the archive (with
   a warning, and without the pin).
+
+### Switching kernels on a board
+
+The firmware reads `config.txt` on `bootfs`; `os_prefix=<folder>/` makes it take the kernel,
+initramfs, `cmdline.txt`, device trees and overlays from that folder instead of the top level. On
+an installed system the top level is always what the packages put there: the newest LordOS kernel
+(`raspi-firmware`'s hook copies it on every install). The previous kernel stays installed (its own
+`/lib/modules`) and its boot files go in a folder, `lordos-prev/`:
+
+```sh
+# keep the running kernel's boot files before installing a new one (once per revision)
+K=$(uname -r); D=/boot/firmware/lordos-prev
+sudo mkdir -p $D/overlays && sudo cp /boot/vmlinuz-$K $D/kernel_2712.img && sudo cp /boot/initrd.img-$K $D/initramfs_2712
+sudo cp /boot/firmware/cmdline.txt $D/ && sudo cp /usr/lib/linux-image-$K/broadcom/bcm27*.dtb $D/
+sudo cp /usr/lib/linux-image-$K/overlays/* $D/overlays/
+sudo dpkg -i linux-image-6.18.57-lordos.3-rpi-2712_6.18.57-3+lordos_arm64.deb   # the hook: top level = new
+# first boot of the new kernel only once: tryboot.txt = config.txt without os_prefix
+sudo reboot "0 tryboot"         # if it doesn't come up, any reset boots config.txt again
+```
+
+- **Use the new kernel:** `config.txt` without `os_prefix` (the image's default).
+- **Back to the previous kernel:** add, at the end of `config.txt` (it's on the FAT partition, so
+  any computer with a card reader can edit it if the board doesn't boot):
+
+  ```
+  [all]
+  os_prefix=lordos-prev/
+  ```
+
+  Removing those two lines boots the new kernel again. To try the previous one **once** without
+  editing `config.txt`, put that line in `tryboot.txt` (a copy of `config.txt`) and
+  `sudo reboot "0 tryboot"`; the next reset is back on the top level.
+- `uname -r` tells them apart: `6.18.57-lordos.3-rpi-2712` (0.8.4) or `6.18.57-lordos-rpi-2712`
+  (0.8.1–0.8.3's `-2+lordos`).
+- The Pi 5 used for development (2026-10-19) has exactly this: the top level is `-3`,
+  `lordos-prev/` is `-2`, and `tryboot.txt` boots `lordos-prev/` once. Both were booted and checked.
 
 ### Packages to build it
 

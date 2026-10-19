@@ -1371,3 +1371,37 @@ in `~/LordOS-csd`, built there (`make -C server`, `make -C server build/deco-cli
   `master_preferences` and `settings.json` restored, the themes, the schemas package, `session.conf`,
   the profiles, the tree, the script and the backup removed, `lordos.service` restarted to the login
   screen. No network or Proxmox setting was touched.
+
+## Step 39 — 0.8.4: the Pi kernel with socket destroy (VM 116 and the Raspberry Pi, October 19)
+
+See `RASPBERRY.md` ("The LordOS kernel", "Switching kernels on a board") and `FIREWALL.md`
+("Existing connections are cut").
+
+- **VM 116 (172.17.0.52), cross build:** installed `gcc-aarch64-linux-gnu` and
+  `libc6-dev-arm64-cross` (with their dependencies: `binutils-aarch64-linux-gnu`, the arm64 cross
+  libraries) and the kernel build packages it lacked: `bison`, `flex`, `libelf-dev`, `libdw-dev`,
+  `dwarves`, `rsync`, `debhelper`. They stay, for the next cross build. Work folder
+  `/var/tmp/imager-scratch/pik-kernel` (the 24 GB scratch disk; about 16 GB at the peak) with a
+  temporary 4 GB swap file; `RPI_KERNEL_REF=234188315037… tools/rpi/build-kernel.sh … 2712`, 67 min.
+  The swap file and the work folder were removed afterwards; the `.debs` were copied out first.
+- **Raspberry Pi 5 (172.17.0.24):** a first attempt to build natively (in a tmpfs, the SD card being
+  86 % full) ended when the card was removed; nothing of it is left. Then:
+  - `/var/tmp/lordos-kernel/out/`: the `-3` image and headers `.debs` and their config added
+    (`SHA256SUMS` regenerated), where `build-img.sh` takes them from.
+  - `dpkg -i linux-image-6.18.57-lordos.3-rpi-2712_6.18.57-3+lordos_arm64.deb`: the hooks put it at
+    the top level of `/boot/firmware` (over Raspberry Pi's 6.18.50 copy there, which is still
+    installed; the October 18 backup is in `/var/tmp/lordos-kernel/bootbak-20261018`). `-2` stays
+    installed.
+  - `/boot/firmware/lordos/` (the `-2` boot files) renamed `lordos-prev/`; `config.txt` lost its
+    `os_prefix=lordos/` lines (a comment explains how to go back); `tryboot.txt` now boots
+    `lordos-prev/` once. Before the change: `/var/tmp/lordos-pik/config.txt.before` and
+    `tryboot.txt.before`. First boot of `-3` through `tryboot`, then a normal boot, a `tryboot` into
+    `-2` (69 modules loaded, everything active) and back.
+  - `lord-netperm` was still the 0.8.2 binary (not restarted by the 0.8.3 upgrade): restarted.
+  - Tests in `/var/tmp/lordos-pik` (tree copy in `src/`, logs): `netperm_cut.sh` as root with a
+    hand-made `lordos-session-0` cgroup (gone at the reboot; `/root/.config/lordos` removed), before
+    (12/15, the stall) and after (15/15); `verify-board`; `lord-fand` `FORCE 1`/`FORCE off`;
+    `make -C server test`.
+  - Not changed: the network configuration, the `lordbasex` account, the partitions, `cmdline.txt`
+    (this board's lacks `cgroup_enable=memory`, so `verify-board` reports the memory controller as
+    FAIL; the image's has it).

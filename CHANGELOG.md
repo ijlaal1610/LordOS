@@ -35,6 +35,18 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 - **The window menu of apps that draw their own bar.** A right click on a GTK app's own title bar
   now opens the theme's window menu (Minimize, Zoom, Close; in Classic also Restore, Snap layouts
   and the snap halves).
+- **Raspberry Pi 5: blocking an app now closes its open connections** (a known issue in 0.8.3),
+  as on a PC, instead of leaving them stalled until the app's own timeout. The LordOS Pi kernel is
+  rebuilt as `6.18.57-lordos.3-rpi-2712` (`6.18.57-3+lordos`): the same Raspberry Pi source and
+  options as before (Landlock, the BPF LSM, BTF, Yama) plus sock_diag socket destroy
+  (`CONFIG_INET_DIAG_DESTROY`, `CONFIG_INET_UDP_DIAG`), so `lord-netperm` closes TCP and QUIC
+  connections a new rule denies within a fraction of a second. Each kernel revision now installs
+  as its own package next to the previous one, so the previous kernel stays bootable as a fallback
+  (one line in `config.txt`, see [docs/RASPBERRY.md](docs/RASPBERRY.md#switching-kernels-on-a-board)).
+  The image build and `verify-board` check the kernel has it. On a Pi 5: TCP downloads and an idle
+  session end 0.04–0.37 s after the rule changes, an HTTP/3 (QUIC) download 0.08 s.
+- **`build-kernel.sh` cross-compiles** the Pi kernel on an x86-64 Debian 13 (the arm64 Debian
+  packages, no arm64 build dependencies needed).
 
 ## [0.8.3-beta] - 2026-10-19
 

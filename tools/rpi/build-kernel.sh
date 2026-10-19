@@ -3,8 +3,9 @@
 # plus what LordOS needs that it lacks (Landlock, the BPF LSM and BTF). See docs/RASPBERRY.md,
 # "The LordOS kernel".
 #
-# Usage (on an arm64 Debian 13, ideally the Pi itself; about 75 min per flavour on a Pi 5, and
-# ~10 GB free in the work folder while one flavour builds: BTF needs the DWARF debug info):
+# Usage (on an arm64 Debian 13, e.g. the Pi itself, about 75 min per flavour on a Pi 5; or cross on
+# an x86-64 Debian 13 with gcc-aarch64-linux-gnu; ~10 GB free in the work folder while one flavour
+# builds: BTF needs the DWARF debug info):
 #   tools/rpi/build-kernel.sh [work folder] [2712|v8|all]     # default /var/tmp/lordos-kernel 2712
 #
 # Result: <work>/out/linux-image-<release>_<version>_arm64.deb (+ linux-headers-…), where
@@ -41,7 +42,12 @@ case "$(uname -m)" in
     aarch64|arm64) CROSS="" ;;
     *) command -v aarch64-linux-gnu-gcc >/dev/null || {
            echo "build-kernel.sh: not arm64 and no aarch64-linux-gnu-gcc (gcc-aarch64-linux-gnu)" >&2; exit 1; }
-       CROSS="CROSS_COMPILE=aarch64-linux-gnu-" ;;
+       # the headers package builds its host tools (fixdep, …) for arm64: needs the arm64 libc headers
+       [ -f /usr/aarch64-linux-gnu/include/sys/types.h ] || {
+           echo "build-kernel.sh: no arm64 libc headers (libc6-dev-arm64-cross)" >&2; exit 1; }
+       # cross build (x86-64 Debian 13, e.g. VM 116): dpkg-buildpackage would ask for the arm64
+       # build dependencies (libssl-dev:arm64, …); the kernel only needs the native ones, so -d
+       CROSS="CROSS_COMPILE=aarch64-linux-gnu- DPKG_FLAGS=-d" ;;
 esac
 for t in git make gcc bc bison flex dpkg-deb dpkg-buildpackage dh rsync cpio pahole readelf; do
     command -v "$t" >/dev/null || { echo "build-kernel.sh: missing $t" >&2; exit 1; }
