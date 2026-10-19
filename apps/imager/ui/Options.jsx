@@ -24,7 +24,9 @@ export function OptionsDialog({ s }) {
           <SwitchRow id="o-sound" label={tr('imager.options.sound')} on={o.sound} onChange={(sound) => setOptions({ sound })} />
           <SwitchRow id="o-eject" label={tr('imager.options.eject')} detail={tr('imager.options.ejectHint')} on={o.eject} onChange={(eject) => setOptions({ eject })} />
           {platform.appUpdates ? (
-            <SwitchRow id="o-upd" label={tr('imager.options.updates')} detail={tr('imager.options.updatesHint')} on={o.appUpdates} onChange={(appUpdates) => setOptions({ appUpdates })} />
+            <SwitchRow id="o-upd" label={tr('imager.options.updates')}
+              detail={o.appUpdates && platform.appUpdate ? tr('imager.options.updateFound', { v: platform.appUpdate.version }) : tr('imager.options.updatesHint')}
+              on={o.appUpdates} onChange={(appUpdates) => setOptions({ appUpdates })} />
           ) : (
             <View style={{ paddingVertical: 9 }}><Text style={{ fontSize: typeScale.caption, color: t.textDim, lineHeight: 1.4 }}>{tr('imager.options.updatesSystem')}</Text></View>
           )}

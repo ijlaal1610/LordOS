@@ -286,7 +286,8 @@ mod linux {
         for line in parts.lines() {
             let mut it = line.split_whitespace();
             let (Some(p), Some(_m)) = (it.next(), it.next()) else { continue };
-            let proxy = zbus::blocking::Proxy::new(&c, "org.freedesktop.UDisks2", udisks_path(p).as_str(), "org.freedesktop.UDisks2.Filesystem").map_err(|e| Error::new("disk.busy", e.to_string()))?;
+            let op = udisks_path(p);
+            let proxy = zbus::blocking::Proxy::new(&c, "org.freedesktop.UDisks2", op.as_str(), "org.freedesktop.UDisks2.Filesystem").map_err(|e| Error::new("disk.busy", e.to_string()))?;
             proxy.call_method("Unmount", &(opts(),)).map_err(|e| Error::new("disk.busy", e.to_string()))?;
         }
         Ok(())
@@ -296,7 +297,8 @@ mod linux {
         use std::os::fd::{FromRawFd, IntoRawFd};
         if let Ok(f) = std::fs::OpenOptions::new().read(true).write(true).open(&d.path) { return Ok(f); }    // root, or a test loop device
         let c = conn()?;
-        let proxy = zbus::blocking::Proxy::new(&c, "org.freedesktop.UDisks2", udisks_path(&d.path).as_str(), "org.freedesktop.UDisks2.Block").map_err(|e| Error::new("disk.openFailed", e.to_string()))?;
+        let op = udisks_path(&d.path);
+        let proxy = zbus::blocking::Proxy::new(&c, "org.freedesktop.UDisks2", op.as_str(), "org.freedesktop.UDisks2.Block").map_err(|e| Error::new("disk.openFailed", e.to_string()))?;
         let mut o = opts();
         o.insert("flags", zbus::zvariant::Value::I32(libc::O_EXCL));
         let reply = proxy.call_method("OpenDevice", &("rw", o)).map_err(|e| Error::new("imager.notAuthorized", e.to_string()))?;
@@ -308,7 +310,8 @@ mod linux {
     pub fn eject(d: &Drive) -> Result<()> {
         let c = conn()?;
         // the drive object behind the block device, then PowerOff (like "Safely remove")
-        let block = zbus::blocking::Proxy::new(&c, "org.freedesktop.UDisks2", udisks_path(&d.path).as_str(), "org.freedesktop.UDisks2.Block").map_err(|e| Error::new("imager.ejectFailed", e.to_string()))?;
+        let op = udisks_path(&d.path);
+        let block = zbus::blocking::Proxy::new(&c, "org.freedesktop.UDisks2", op.as_str(), "org.freedesktop.UDisks2.Block").map_err(|e| Error::new("imager.ejectFailed", e.to_string()))?;
         let drive: zbus::zvariant::OwnedObjectPath = block.get_property("Drive").map_err(|e| Error::new("imager.ejectFailed", e.to_string()))?;
         let dp = zbus::blocking::Proxy::new(&c, "org.freedesktop.UDisks2", drive.as_str(), "org.freedesktop.UDisks2.Drive").map_err(|e| Error::new("imager.ejectFailed", e.to_string()))?;
         let _ = dp.call_method("Eject", &(opts(),));
@@ -322,7 +325,8 @@ mod linux {
         let c = conn()?;
         for _ in 0..30 {
             if std::path::Path::new(&p).exists() {
-                let fs = zbus::blocking::Proxy::new(&c, "org.freedesktop.UDisks2", udisks_path(&p).as_str(), "org.freedesktop.UDisks2.Filesystem").map_err(|e| Error::new("imager.bootNotFound", e.to_string()))?;
+                let op = udisks_path(&p);
+                let fs = zbus::blocking::Proxy::new(&c, "org.freedesktop.UDisks2", op.as_str(), "org.freedesktop.UDisks2.Filesystem").map_err(|e| Error::new("imager.bootNotFound", e.to_string()))?;
                 if let Ok(r) = fs.call_method("Mount", &(opts(),)) {
                     let mp: String = r.body().deserialize().map_err(|e| Error::new("imager.bootNotFound", e.to_string()))?;
                     return Ok(mp.into());
@@ -334,9 +338,9 @@ mod linux {
     }
     pub fn unmount_boot(d: &Drive) {
         if let Ok(c) = conn() {
-            if let Ok(fs) = zbus::blocking::Proxy::new(&c, "org.freedesktop.UDisks2", udisks_path(&part1(d)).as_str(), "org.freedesktop.UDisks2.Filesystem") {
-                let _ = fs.call_method("Unmount", &(opts(),));
-            }
+            let op = udisks_path(&part1(d));
+            let fs = zbus::blocking::Proxy::new(&c, "org.freedesktop.UDisks2", op.as_str(), "org.freedesktop.UDisks2.Filesystem");
+            if let Ok(fs) = fs { let _ = fs.call_method("Unmount", &(opts(),)); }
         }
     }
 }

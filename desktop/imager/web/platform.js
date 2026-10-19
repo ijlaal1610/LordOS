@@ -84,8 +84,10 @@ export const platform = {
   async releases() {
     const text = await call('fetch_releases');
     await cacheStates(text);
+    if (options.appUpdates !== false) findUpdate(text);
     return text;
   },
+  appUpdate: null,
   async cachedReleases() {
     const text = await invoke('cached_releases');
     if (text) await cacheStates(text);
@@ -157,6 +159,17 @@ export const platform = {
 
 let profilesCache = [];
 let cacheSizeNow = 0;
+
+// "Check for app updates": a newer LordOS Imager among the release files GitHub lists (no other request)
+const newer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+function findUpdate(text) {
+  try {
+    for (const r of JSON.parse(text)) for (const a of r.assets || []) {
+      const m = /^(?:lordos-imager|LordOS[ ._-]Imager)[_-]v?(\d+\.\d+\.\d+)/i.exec(a.name || '');
+      if (m && newer(m[1], info_.version) && (!platform.appUpdate || newer(m[1], platform.appUpdate.version))) platform.appUpdate = { version: m[1], tag: r.tag_name };
+    }
+  } catch { /* not a list */ }
+}
 
 export async function warm() {
   profilesCache = (await invoke('load_profiles')) || [];
