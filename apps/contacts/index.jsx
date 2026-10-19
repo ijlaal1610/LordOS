@@ -4,6 +4,7 @@
 import {
   View, Text, useTheme, useLocale, useKeyboard, useWindowState, usePim, addressBooks, contacts, contactName,
   Button, TextInput, SearchField, Hairline, EmptyState, ToolbarButton, FilePicker, addListener, direction, formatNumber, t,
+  isolatedPim, pickFileFd, closeFileFd,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { RED, Sheet, Popover, MenuList, Layers, useLoad } from './ui.jsx';
@@ -120,12 +121,20 @@ export default function ContactsApp() {
       const r = await contacts.importFile(path, await targetBook());
       setSheet({ notice: t('contacts.imported', { count: r && r.added != null ? r.added : 0, n: formatNumber(r && r.added != null ? r.added : 0, 0) }) });
     } catch (e) { setSheet({ notice: t('contacts.importFailed') }); }
+    closeFileFd(path);
+  };
+  // in its own process Contacts gets the .vcf from the system's file dialog (only that file)
+  const startImport = () => {
+    if (!isolatedPim()) { setSheet({ pick: 'vcf' }); return; }
+    let f = null;
+    try { f = pickFileFd(); } catch (e) { setSheet({ notice: t('contacts.importFailed') }); }
+    if (f) importVcf(f);
   };
 
   return (
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: th.windowBg }}>
       <Sources books={books} groups={groups} src={src} counts={people} onSrc={(s) => { setSrc(s); setDraft(null); }}
-        onNewGroup={() => setSheet({ newGroup: true })} onImport={() => setSheet({ pick: 'vcf' })}
+        onNewGroup={() => setSheet({ newGroup: true })} onImport={startImport}
         onRenameGroup={(g) => setSheet({ group: g })} onDeleteGroup={(g) => { contacts.remove(g.book, g.uid).catch(() => {}); if (src === `group:${keyOf(g)}`) setSrc('all'); }} />
       <View style={{ width: 270 }}>
         <Hairline edge="end" />

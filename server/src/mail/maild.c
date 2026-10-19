@@ -150,7 +150,7 @@ static void on_sock(DocMsg *m) {
     pthread_mutex_unlock(&pend_mu);
 }
 
-Conn *open_conn(const char *acct, const char *host, int port, int tls_now, const char *pin, TlsInfo *ti, char *why, size_t wcap) {
+Conn *open_conn(const char *acct, int smtp, const char *host, int port, int tls_now, const char *pin, TlsInfo *ti, char *why, size_t wcap) {
     int fd = net_connect(host, port, why, wcap);
     if (fd < 0) return NULL;
     Conn *c = conn_new(fd, host, 60000);
@@ -163,7 +163,7 @@ Conn *open_conn(const char *acct, const char *host, int port, int tls_now, const
                 jb_init(&b);
                 jb_raw(&b, "{\"ev\":\"cert\",\"acct\":"); jb_str(&b, acct);
                 jb_raw(&b, ",\"host\":"); jb_str(&b, host);
-                jb_printf(&b, ",\"port\":%d,\"reason\":", port); jb_str(&b, ti->reason);
+                jb_printf(&b, ",\"port\":%d,%s\"reason\":", port, smtp ? "\"smtp\":true," : ""); jb_str(&b, ti->reason);
                 jb_raw(&b, ",\"subject\":"); jb_str(&b, ti->subject);
                 jb_raw(&b, ",\"issuer\":"); jb_str(&b, ti->issuer);
                 jb_raw(&b, ",\"sha256\":"); jb_str(&b, ti->sha256);

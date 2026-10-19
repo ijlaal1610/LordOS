@@ -39,6 +39,7 @@
 #include "wl/wl_input.h"
 #include "media/media.h"
 #include "app/app.h"
+#include "app/apphost_bc.h"
 #include "sec/broker.h"
 #include "cursor.h"
 #include "ui/grab.h"
@@ -1570,6 +1571,11 @@ int main(int argc, char **argv) {
         char path[1024];
         snprintf(path, sizeof path, "%s", theme);
         ok = js_init(path) == 0;
+    }
+    if (ok && !s.greeter) {                  /* the app host as bytecode for isolated apps (app/apphost_bc.c) */
+        char host[1200];
+        snprintf(host, sizeof host, "%s/app-host.bundle.js", js_sys_assets());
+        apphost_bc_start(host);
     }
     if (!ok) {
         input_close(&s.input);

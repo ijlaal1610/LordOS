@@ -212,7 +212,7 @@ int smtp_send(Account *a, const char *from, const char **rcpt, int nrcpt, const 
     if (s.sec == SEC_NONE || !s.host[0]) { free(pw); snprintf(err, ecap, s.host[0] ? "insecure" : "no SMTP server"); return -1; }
     TlsInfo ti;
     char why[64], text[512], caps[4096];
-    Conn *c = open_conn(a->id, s.host, s.port, s.sec == SEC_SSL, pin, &ti, why, sizeof why);
+    Conn *c = open_conn(a->id, 1, s.host, s.port, s.sec == SEC_SSL, pin, &ti, why, sizeof why);
     if (!c) { free(pw); snprintf(err, ecap, "%s", why); return -1; }
     int r = -1;
     if (smtp_reply(c, text, sizeof text, NULL, 0) != 220) { snprintf(err, ecap, "greeting: %s", text); goto out; }

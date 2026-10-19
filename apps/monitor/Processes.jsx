@@ -11,10 +11,10 @@
 import {
   View, Text, ScrollView, Segmented, SearchField, ToolbarButton, Button, GroupBox, FormRow, typeScale, spacing, useTheme, useLocale,
   useStore, useSettings, useKeyboard, createStore, monitor, monitorProcesses, monitorDetail, firewall, firewallState, formatNumber,
-  formatDate, formatTime, addListener,
+  formatDate, formatTime, addListener, appName,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fmt, AppGlyph, Table, Cell } from './index.jsx';
+import { fmt, AppGlyph, Table, Cell, isolatedAppOf } from './index.jsx';
 
 const RED = '#ff453a';
 
@@ -31,7 +31,7 @@ const isAdmin = () => {
 };
 
 const myUid = (procs) => procs?.list.find((p) => p.self)?.uid;
-const procLabel = (tr, p) => (p.app === 'lordos' ? tr('monitor.lordos') : p.name);
+const procLabel = (tr, p) => (p.app === 'lordos' ? tr('monitor.lordos') : isolatedAppOf(p) ? appName(isolatedAppOf(p)) : p.name);
 const findProc = (procs, sel) => (sel ? procs?.list.find((p) => p.pid === sel.pid && p.st === sel.st) || null : null);
 
 // ---- icons (drawn: a circle with a cross, and a circled "i") ----

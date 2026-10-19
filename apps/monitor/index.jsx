@@ -5,7 +5,7 @@
 // four times per second.
 import {
   View, Text, Image, ScrollView, Segmented, Toolbar, typeScale, useTheme, useLocale, useStore, useSettings, useAppWindow,
-  useMonitor, monitor, monitorSamples, formatBytes, formatNumber, LordOSLogo, iconFromFile,
+  useMonitor, monitor, monitorSamples, formatBytes, formatNumber, LordOSLogo, iconFromFile, getApp,
 } from '@lordos/sdk';
 import { registerDockActions } from '@lordos/sdk';
 import * as sdk from '@lordos/sdk';
@@ -322,8 +322,14 @@ export function Cell({ col, children, color, bold }) {
 
 // ---- Processes ----
 
+// An isolated LordOS app (its own process and scope, "lpk:<id>"): a package or a built-in app such
+// as Mail or Passwords; the process is shown with the app's name and icon.
+export const isolatedAppOf = (item) => (typeof item?.app === 'string' && item.app.startsWith('lpk:') ? getApp(item.app.slice(4)) : null);
+
 export function AppGlyph({ item, size = 16 }) {
   if (item.app === 'lordos') return <LordOSLogo size={size} />;
+  const iso = isolatedAppOf(item);
+  if (iso?.Icon) return <iso.Icon size={size} />;
   if (item.appIcon) return <Image src={item.appIcon} style={{ width: size, height: size, objectFit: 'contain' }} />;
   const Ico = iconFromFile(null, item.appName || item.name || '?');
   return <Ico size={size} />;

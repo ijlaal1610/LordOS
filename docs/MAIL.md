@@ -29,14 +29,23 @@ run in one sandboxed helper process, **`lord-maild`**.
 ## Processes and trust
 
 ```
- apps/mail, calendar, contacts, reminders (React)      sdk/mail.js, calendar.js, contacts.js
-                 │ lord.mail.request / poll (async, JSON)
- lord-server ── server/src/ui/js_mail.c (validates, opens picked files, writes the accounts file)
+ lord-server --app mail | calendar | contacts | reminders      (0.8.2: each its own sandboxed process,
+   apps/<id> (React), sdk/mail.js, calendar.js, contacts.js     no network, no access to the cache)
+                 │ lord.mail.request / poll (ui/js_brokermail.c) over the broker: BOP_MAIL
+                 ▼
+ lord-server ── server/src/sec/brokermail.c (per-app allow list, fds from the system dialog only)
+             ── server/src/ui/js_mail.c (the session's lord.mail: notifications, alarms, need-auth)
              └─ server/src/mail/mailc.c: starts lord-maild, its channel thread, the CONNECTOR
                  │ socketpair (fd 3, same framing as lord-doc: header + JSON + SCM_RIGHTS)
  lord-maild  ── sandboxed: TLS, IMAP, SMTP, HTTP/WebDAV, MIME, HTML, iCalendar, vCard, images
 ```
 
+- **The windows run in their own process (0.8.2).** Mail, Calendar, Contacts and Reminders are
+  system packages that run as `lord-server --app <id>` with Landlock, seccomp, no network and their
+  own cgroup scope; they reach lord-maild only through `lord-server` (`BOP_MAIL`), each with its own
+  allow list, its own replies and images, and files only as fds picked in the system dialog. The
+  session keeps new-mail notifications, alarms and passwords on demand. See
+  [PRIVACY.md, "System apps in their own process"](PRIVACY.md#system-apps-in-their-own-process-082).
 - **lord-maild** is started by `lord-server` with a fixed path (`<lord-server dir>/lord-maild`,
   owned by root or the user, not writable by others), no arguments, a minimal environment and the
   channel on fd 3. Before reading anything from the network it loads the CA bundle and the time

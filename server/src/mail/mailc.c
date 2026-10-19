@@ -37,7 +37,15 @@ extern char **environ;
 
 typedef struct { char host[256]; int port; int suffix; } Allow;
 typedef struct { char host[256]; int port; time_t until; } Grant;
-typedef struct { int handle, w, h; uint32_t *px; uint64_t seq; } Img;
+typedef struct { int handle, w, h, owner; uint32_t *px; uint64_t seq; } Img;
+
+/* Isolated system apps (Mail, Calendar, Contacts, Reminders as `lord-server --app <id>`): each
+ * app process is an "owner" with its own event queue. Replies to its requests go only there; the
+ * events lord-maild broadcasts go to the session (owner 0) and to every owner whose mask allows
+ * them. brokermail.c reads these queues and forwards them over the broker. */
+typedef struct { int used, mask; JBuf ev; } Owner;
+typedef struct { int id, owner; } Route;
+#define MAX_ROUTE 512
 
 static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t send_mu = PTHREAD_MUTEX_INITIALIZER;
@@ -56,6 +64,9 @@ static size_t img_bytes;
 static uint64_t img_seq;
 static int next_handle = 1;
 static double last_crash;
+static Owner owners[MAIL_OWNERS + 1];          /* index 1..MAIL_OWNERS; 0 is the session (events) */
+static Route routes[MAX_ROUTE];
+static int owner_wake = -1;
 
 static double now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
 
@@ -243,20 +254,71 @@ static int allowed_now(const char *host, int port) {
 
 /* ---- events ---- */
 
-static void ev_push(int id, const char *type, const char *data, size_t dlen) {
-    pthread_mutex_lock(&mu);
-    if (events.n) jb_raw(&events, ",");
-    jb_printf(&events, "{\"id\":%d,\"type\":\"%s\"", id, type);
+static void ev_append(JBuf *dst, int id, const char *type, const char *data, size_t dlen) {
+    if (dst->n) jb_raw(dst, ",");
+    jb_printf(dst, "{\"id\":%d,\"type\":\"%s\"", id, type);
     if (data && dlen) {
-        jb_raw(&events, ",\"data\":");
+        jb_raw(dst, ",\"data\":");
         /* the helper's JSON is re-validated before JS sees it */
         JDoc d;
-        if (!json_parse(data, dlen, &d, NULL, 0)) { json_free(&d); char *tmp = malloc(dlen + 1); if (tmp) { memcpy(tmp, data, dlen); tmp[dlen] = 0; jb_raw(&events, tmp); free(tmp); } else jb_raw(&events, "null"); }
-        else jb_raw(&events, "{\"error\":\"bad-json\"}");
+        if (!json_parse(data, dlen, &d, NULL, 0)) { json_free(&d); char *tmp = malloc(dlen + 1); if (tmp) { memcpy(tmp, data, dlen); tmp[dlen] = 0; jb_raw(dst, tmp); free(tmp); } else jb_raw(dst, "null"); }
+        else jb_raw(dst, "{\"error\":\"bad-json\"}");
     }
-    jb_raw(&events, "}");
-    if (strcmp(type, "evt") && pending > 0) pending--;
+    jb_raw(dst, "}");
+}
+
+static void owner_signal(void) {
+    if (owner_wake < 0) return;
+    uint64_t one = 1;
+    if (write(owner_wake, &one, sizeof one) < 0) { /* already signalled */ }
+}
+
+/* Which owner sent request `id` (0 = the session); the route is consumed. Called with mu held. */
+static int route_take(int id) {
+    if (id <= 0) return 0;
+    for (int i = 0; i < MAX_ROUTE; i++) if (routes[i].id == id) { int o = routes[i].owner; routes[i].id = 0; return o; }
+    return 0;
+}
+
+/* Events that an owner with MAIL_EV_PIM (Calendar, Contacts, Reminders) may see: no mail
+ * metadata ("new" carries senders and subjects), only that the PIM data changed. */
+static int pim_event(const char *data, size_t dlen) {
+    JDoc d;
+    int ok = 0;
+    if (data && dlen && !json_parse(data, dlen, &d, NULL, 0)) {
+        const char *ev = json_str(d.root, "ev");
+        ok = ev && (!strcmp(ev, "pim-changed") || !strcmp(ev, "ready"));
+        json_free(&d);
+    }
+    return ok;
+}
+
+/* owner >= 0: a reply (done/err) for that owner; -1: a broadcast (evt, crash); -2: a reply for
+ * an app process that is gone (dropped). */
+static void ev_push_to(int owner, int id, const char *type, const char *data, size_t dlen) {
+    pthread_mutex_lock(&mu);
+    int sig = 0;
+    if (owner == -2) { /* dropped */ }
+    else if (owner > 0) {
+        if (owner <= MAIL_OWNERS && owners[owner].used) { ev_append(&owners[owner].ev, id, type, data, dlen); sig = 1; }
+    } else {
+        ev_append(&events, id, type, data, dlen);
+        if (owner < 0) {
+            int pim = !strcmp(type, "crash") || pim_event(data, dlen);
+            for (int o = 1; o <= MAIL_OWNERS; o++)
+                if (owners[o].used && (owners[o].mask == MAIL_EV_ALL || pim)) { ev_append(&owners[o].ev, id, type, data, dlen); sig = 1; }
+        }
+    }
+    if (strcmp(type, "evt") && strcmp(type, "crash") && pending > 0) pending--;
     pthread_mutex_unlock(&mu);
+    if (sig) owner_signal();
+}
+
+static void ev_push(int id, const char *type, const char *data, size_t dlen) {
+    int bcast = !strcmp(type, "evt") || !strcmp(type, "crash");
+    int owner = -1;
+    if (!bcast) { pthread_mutex_lock(&mu); owner = route_take(id); pthread_mutex_unlock(&mu); }
+    ev_push_to(owner, id, type, data, dlen);
 }
 
 char *mail_poll(void) {
@@ -272,11 +334,59 @@ char *mail_poll(void) {
     return r;
 }
 
+int mail_owner_open(int mask) {
+    pthread_mutex_lock(&mu);
+    if (owner_wake < 0) owner_wake = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+    int got = -1;
+    for (int o = 1; o <= MAIL_OWNERS && got < 0; o++) if (!owners[o].used) {
+        jb_init(&owners[o].ev);
+        owners[o].used = 1;
+        owners[o].mask = mask == MAIL_EV_ALL ? MAIL_EV_ALL : MAIL_EV_PIM;
+        got = o;
+    }
+    pthread_mutex_unlock(&mu);
+    return got;
+}
+
+void mail_owner_close(int owner) {
+    if (owner <= 0 || owner > MAIL_OWNERS) return;
+    pthread_mutex_lock(&mu);
+    if (owners[owner].used) { jb_free(&owners[owner].ev); owners[owner].used = 0; }
+    for (int i = 0; i < MAX_ROUTE; i++) if (routes[i].id && routes[i].owner == owner) routes[i].owner = -2;   /* its replies are dropped */
+    pthread_mutex_unlock(&mu);
+    /* its decoded images go too */
+    pthread_mutex_lock(&img_mu);
+    for (int i = 0; i < MAX_IMG; i++) if (imgs[i].px && imgs[i].owner == owner) {
+        img_bytes -= (size_t)imgs[i].w * (size_t)imgs[i].h * 4;
+        free(imgs[i].px);
+        memset(&imgs[i], 0, sizeof imgs[i]);
+    }
+    pthread_mutex_unlock(&img_mu);
+}
+
+char *mail_poll_owner(int owner) {
+    if (owner <= 0 || owner > MAIL_OWNERS) return NULL;
+    pthread_mutex_lock(&mu);
+    char *r = NULL;
+    Owner *o = &owners[owner];
+    if (o->used && o->ev.n) {
+        size_t n = o->ev.n;
+        r = malloc(n + 3);
+        if (r) { r[0] = '['; memcpy(r + 1, o->ev.p, n); r[n + 1] = ']'; r[n + 2] = 0; }
+        o->ev.n = 0;
+    }
+    pthread_mutex_unlock(&mu);
+    return r;
+}
+
+int mail_owner_pollfd(void) { return owner_wake; }
+void mail_owner_clear_wake(void) { uint64_t v; if (owner_wake >= 0 && read(owner_wake, &v, sizeof v) < 0) { /* nothing pending */ } }
+
 int mail_pending(void) { pthread_mutex_lock(&mu); int p = pending; pthread_mutex_unlock(&mu); return p; }
 
 /* ---- images ---- */
 
-static int img_store(int w, int h, int fd) {
+static int img_store(int w, int h, int fd, int owner) {
     size_t bytes = (size_t)w * (size_t)h * 4;
     void *m = mmap(NULL, bytes, PROT_READ, MAP_SHARED, fd, 0);
     if (m == MAP_FAILED) return -1;
@@ -302,7 +412,7 @@ static int img_store(int w, int h, int fd) {
         img_bytes -= (size_t)imgs[slot].w * (size_t)imgs[slot].h * 4;
         free(imgs[slot].px);
     }
-    imgs[slot] = (Img){ next_handle++, w, h, px, ++img_seq };
+    imgs[slot] = (Img){ .handle = next_handle++, .w = w, .h = h, .owner = owner, .px = px, .seq = ++img_seq };
     img_bytes += bytes;
     int handle = imgs[slot].handle;
     pthread_mutex_unlock(&img_mu);
@@ -311,18 +421,41 @@ static int img_store(int w, int h, int fd) {
 
 const uint32_t *mail_image_lock(int handle, int *w, int *h) {
     pthread_mutex_lock(&img_mu);
-    for (int i = 0; i < MAX_IMG; i++) if (imgs[i].px && imgs[i].handle == handle) { *w = imgs[i].w; *h = imgs[i].h; imgs[i].seq = ++img_seq; return imgs[i].px; }
+    for (int i = 0; i < MAX_IMG; i++) if (imgs[i].px && imgs[i].handle == handle && imgs[i].owner == 0) { *w = imgs[i].w; *h = imgs[i].h; imgs[i].seq = ++img_seq; return imgs[i].px; }
     return NULL;
 }
 void mail_image_unlock(void) { pthread_mutex_unlock(&img_mu); }
-void mail_image_release(int handle) {
+void mail_image_release(int handle) { mail_image_release_as(0, handle); }
+
+void mail_image_release_as(int owner, int handle) {
     pthread_mutex_lock(&img_mu);
-    for (int i = 0; i < MAX_IMG; i++) if (imgs[i].px && imgs[i].handle == handle) {
+    for (int i = 0; i < MAX_IMG; i++) if (imgs[i].px && imgs[i].handle == handle && imgs[i].owner == owner) {
         img_bytes -= (size_t)imgs[i].w * (size_t)imgs[i].h * 4;
         free(imgs[i].px);
         memset(&imgs[i], 0, sizeof imgs[i]);
     }
     pthread_mutex_unlock(&img_mu);
+}
+
+/* A copy of an owner's decoded image in a sealed memfd (for the app process to map read-only). */
+int mail_image_fd(int owner, int handle, int *w, int *h) {
+    int fd = -1;
+    pthread_mutex_lock(&img_mu);
+    for (int i = 0; i < MAX_IMG; i++) if (imgs[i].px && imgs[i].handle == handle && imgs[i].owner == owner && owner > 0) {
+        size_t bytes = (size_t)imgs[i].w * (size_t)imgs[i].h * 4;
+        fd = memfd_create("lordos-mail-img", MFD_CLOEXEC | MFD_ALLOW_SEALING);
+        if (fd >= 0) {
+            size_t off = 0;
+            while (off < bytes) { ssize_t r = write(fd, (const char *)imgs[i].px + off, bytes - off); if (r <= 0) break; off += (size_t)r; }
+            if (off != bytes || fcntl(fd, F_ADD_SEALS, F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_WRITE | F_SEAL_SEAL)) { close(fd); fd = -1; }
+        }
+        *w = imgs[i].w;
+        *h = imgs[i].h;
+        imgs[i].seq = ++img_seq;
+        break;
+    }
+    pthread_mutex_unlock(&img_mu);
+    return fd;
 }
 
 /* ---- connector ---- */
@@ -470,7 +603,10 @@ static void *loop(void *arg) {
             running = 0;
             pthread_mutex_unlock(&mu);
             (void)np;
-            ev_push(0, "crash", NULL, 0);
+            pthread_mutex_lock(&mu);
+            memset(routes, 0, sizeof routes);           /* every pending request failed */
+            pthread_mutex_unlock(&mu);
+            ev_push_to(-1, 0, "crash", NULL, 0);
             last_crash = now_ms();
             break;
         }
@@ -484,12 +620,15 @@ static void *loop(void *arg) {
             int w = 0, h = 0;
             if (m.json && !json_parse(m.json, m.len, &d, NULL, 0)) { w = (int)json_num(d.root, "w", 0); h = (int)json_num(d.root, "h", 0); json_free(&d); }
             int handle = -1;
-            if (m.nfds == 1 && w > 0 && h > 0 && w <= 8192 && h <= 8192 && doc_check_sealed(m.fds[0], (size_t)w * (size_t)h * 4) >= 0)
-                handle = img_store(w, h, m.fds[0]);
+            pthread_mutex_lock(&mu);
+            int owner = route_take((int)m.h.id);
+            pthread_mutex_unlock(&mu);
+            if (owner >= 0 && m.nfds == 1 && w > 0 && h > 0 && w <= 8192 && h <= 8192 && doc_check_sealed(m.fds[0], (size_t)w * (size_t)h * 4) >= 0)
+                handle = img_store(w, h, m.fds[0], owner);
             char j[96];
             if (handle > 0) snprintf(j, sizeof j, "{\"image\":%d,\"w\":%d,\"h\":%d}", handle, w, h);
             else snprintf(j, sizeof j, "{\"error\":\"image\"}");
-            ev_push((int)m.h.id, handle > 0 ? "done" : "err", j, strlen(j));
+            ev_push_to(owner, (int)m.h.id, handle > 0 ? "done" : "err", j, strlen(j));
             break;
         }
         default: break;
@@ -588,9 +727,17 @@ int mail_start(void) {
     return 0;
 }
 
-int mail_request(const char *json, size_t len, int *fds, int nfds) {
-    if (mail_start()) { for (int i = 0; i < nfds; i++) close(fds[i]); return -1; }
+int mail_request(const char *json, size_t len, int *fds, int nfds) { return mail_request_as(0, json, len, fds, nfds); }
+
+int mail_request_as(int owner, const char *json, size_t len, int *fds, int nfds) {
+    if (owner < 0 || owner > MAIL_OWNERS || mail_start()) { for (int i = 0; i < nfds; i++) close(fds[i]); return -1; }
     pthread_mutex_lock(&mu);
+    if (owner > 0) {
+        int slot = -1;
+        for (int i = 0; i < MAX_ROUTE && slot < 0; i++) if (!routes[i].id) slot = i;
+        if (!owners[owner].used || slot < 0) { pthread_mutex_unlock(&mu); for (int i = 0; i < nfds; i++) close(fds[i]); return -1; }
+        routes[slot] = (Route){ next_id, owner };
+    }
     int id = next_id++;
     if (next_id > 1 << 30) next_id = 1;
     pending++;
@@ -599,8 +746,35 @@ int mail_request(const char *json, size_t len, int *fds, int nfds) {
     int r = sock >= 0 ? doc_send(sock, MQ_REQ, (uint32_t)id, json, len, nfds ? fds : NULL, nfds) : -1;
     pthread_mutex_unlock(&send_mu);
     for (int i = 0; i < nfds; i++) close(fds[i]);
-    if (r) { pthread_mutex_lock(&mu); pending--; pthread_mutex_unlock(&mu); return -1; }
+    if (r) { pthread_mutex_lock(&mu); pending--; route_take(id); pthread_mutex_unlock(&mu); return -1; }
     return id;
+}
+
+int mail_save_config(const char *j, size_t len) {
+    JDoc d;
+    int bad = len > MAIL_CONFIG_MAX || json_parse(j, len, &d, NULL, 0);
+    if (!bad) {
+        const JVal *acc = json_get(d.root, "accounts");
+        bad = d.root->type != J_OBJ || (acc && (acc->type != J_ARR || acc->len > MAIL_MAX_ACCOUNTS));
+        /* no secrets in this file */
+        for (const JVal *a = acc ? acc->kid : NULL; !bad && a; a = a->next) if (json_get(a, "password") || json_get(a, "secret")) bad = 1;
+        json_free(&d);
+    }
+    if (bad) return 1;
+    paths();
+    char dir[PATH_MAX], tmp[PATH_MAX + 16];
+    snprintf(dir, sizeof dir, "%s", cfg_path);
+    char *slash = strrchr(dir, '/');
+    if (slash) *slash = 0;
+    if (mkdirs(dir, 0700)) return 2;
+    snprintf(tmp, sizeof tmp, "%s.tmp", cfg_path);
+    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
+    int ok = fd >= 0 && write(fd, j, len) == (ssize_t)len && fsync(fd) == 0;
+    if (fd >= 0) close(fd);
+    ok = ok && rename(tmp, cfg_path) == 0;
+    if (!ok) { unlink(tmp); return 2; }
+    mail_reload_config();
+    return 0;
 }
 
 void mail_reload_config(void) {

@@ -26,6 +26,8 @@ first time and the user decides. See also [SIGNING.md](SIGNING.md) (signed packa
 | **Microphone** as data (audio) through a read-only ring, after consent | **done** (lord-server opens the PipeWire stream; the app reads the level with its own cursor; revoking closes it) |
 | Camera as decoded frames through a ring (via lord-media), after consent | **done**, tested on VM 122 with v4l2loopback (see [Camera for isolated apps](#camera-for-isolated-apps)) |
 | Several windows per isolated app | **done**, tested on VM 122 (see [Several windows per isolated app](#several-windows-per-isolated-app)) |
+| **Mail, Calendar, Contacts and Reminders** run as their own sandboxed process (0.8.2) | **done**, tested on VM 118 (see [System apps in their own process](#system-apps-in-their-own-process-082)) |
+| Store and Photos in their own process | **not yet**: they stay in the session's process, see [what stays in-process and why](#what-stays-in-process-and-why) |
 
 ## What is isolated today
 
@@ -33,7 +35,7 @@ Not every program on LordOS is sandboxed. This is exactly what applies to each k
 
 | Kind | Process | Landlock + seccomp | cgroup scope | Broker and permissions | Firewall |
 |---|---|---|---|---|---|
-| `.lpk` apps and Passwords | own process (`lord-server --app <id>`) | yes | own (`app-lordos-lpk-<id>.scope`) | yes: every call is checked in `lord-server` | per app (`lpk:<id>`): network rules and every non-network restriction (broker) |
+| `.lpk` apps, Passwords, Mail, Calendar, Contacts, Reminders | own process (`lord-server --app <id>`) | yes | own (`app-lordos-lpk-<id>.scope`) | yes: every call is checked in `lord-server` | per app (`lpk:<id>`): network rules and every non-network restriction (broker) |
 | Other built-in apps | inside `lord-server` | no | `lord-server`'s | no broker: camera, microphone and screen are checked in C (`js_media.c`), notifications in `sdk/notify.js` | as "LordOS" (`lordos`): network rules; camera, microphone, screen and notifications restrictions |
 | Linux apps from the launcher | own process | no by default; with "no access to your files", their own user, mount and PID namespace plus Landlock (no seccomp), from the next launch | own (`app-lordos-<id>.scope`) | no | per app (`desktop:<id>`), when the owner sets them: network rules; camera, USB and screen (`/dev/fb*`) devices and Bluetooth sockets in the kernel (`lord-netperm`); microphone and PipeWire cameras (our PipeWire guard, plus ALSA capture nodes in the kernel); files (the launcher); notifications (our notification server). Not the clipboard, and not BlueZ over D-Bus |
 | Terminal programs | children of the Terminal's shell | no | `lord-server`'s | no | as "LordOS" (`lordos`): network rules |
@@ -413,6 +415,144 @@ through `globalThis.__lordos.monitorDevices`.
 | `apps/settings/Privacy.jsx` | Settings → Privacy |
 | `tests/lpk-evil`, `tests/lpk-legit` | test apps (malicious and legitimate) |
 | `server/tests/sandbox_test.c` | sandbox tests (app, network, helper) |
+| `server/src/sec/brokermail.c`, `server/src/ui/js_brokermail.c` | lord-maild for the isolated Mail, Calendar, Contacts and Reminders (`BOP_MAIL`, `BOP_SYS_OPEN`) |
+| `server/src/app/apphost_bc.c` | the app host compiled to bytecode once per session |
+| `sdk/sysopen.js` | the session opens attachments and apps for the isolated system apps |
+| `server/tests/brokermail_test.c` | `build/brokermail-test` |
+
+## System apps in their own process (0.8.2)
+
+Mail parses mail from anyone; Calendar, Contacts and Reminders show invitations, `.ics` and
+`.vcf` files and synced data. Since 0.8.2 their windows are no longer drawn by the session's
+JavaScript: like Passwords, each one is a system package (`"process": "isolated"` in its manifest,
+built into `assets/sysapps/<id>/`) that runs as `lord-server --app <id>`, with the same sandbox as an
+`.lpk` app. If a message ever exploited a bug in Mail's interface code, it would be locked in that
+process: it could not read your files, your SSH keys, Passwords' data or the other apps' data, open
+a socket, or hang the desktop. Parsing itself (IMAP, MIME, HTML, iCalendar, vCard, images) was
+already done in `lord-maild` ([MAIL.md](MAIL.md)) and still is.
+
+| | Mail | Calendar | Contacts | Reminders |
+|---|---|---|---|---|
+| Process, scope | `lord-server --app mail`, `app-lordos-lpk-mail.scope` | `… --app calendar`, `app-lordos-lpk-calendar.scope` | `… --app contacts`, `app-lordos-lpk-contacts.scope` | `… --app reminders`, `app-lordos-lpk-reminders.scope` |
+| Files it can open itself | its data folder `~/.local/share/lordos/appdata/mail` and read-only system data (its package, the app host, fonts, language packs) | the same, for `calendar` | the same, for `contacts` | the same, for `reminders` |
+| Your files | only what you pick in the system's open/save dialog (attachments to send, saving an attachment) | — (no file use) | only the `.vcf` to import and a contact's photo, picked in the system dialog | — |
+| Network | **none** (no sockets: Landlock + seccomp, `net=no`). lord-maild's connections are made by `lord-server` exactly as before, only to the configured servers | none | none | none |
+| lord-maild requests (`BOP_MAIL`) | all of them | `cal-*`, `ev-*`, `todo-*`, `alarms`, `status` | `book-*`, `contact-*`, `autocomplete`, `status` | `cal-*`, `todo-*`, `alarms`, `status` |
+| lord-maild events | all (new mail, status, certificates, PIM changes) | only "PIM data changed" | only "PIM data changed" | only "PIM data changed" |
+| Accounts file, remote images | through `lord-server` (`mail_save_config`, same validation; no passwords) | no | no | no |
+| Keyring (`BOP_KEYRING`) | its own items, owner `mail` (the owner Mail always had: the session's need-auth handler reads the same items); another app's only after the system prompt | own items (unused) | own items (unused) | own items (unused) |
+| Mail's cache (`~/.local/share/lordos/mail`) | not readable; one cached attachment as a read-only fd (to save it), or the session opens it with your apps | no | no | no |
+| Opening another app | Calendar (an invitation), through the session (`BOP_SYS_OPEN`) | Mail, Contacts, Reminders likewise | Mail (a new message to a contact) | likewise |
+
+What did not change: new-mail notifications, calendar and reminder alarms, passwords on demand
+and the unread count are the session's services (`startMail`, `startReminders`), so they work
+with the apps closed. Notifications, Dock grouping and quick actions (Mail's **New Message**),
+several windows (a compose window is a second window of the same process), the system menu bar,
+theme, language and RTL, and Monitor and the firewall all work as for any isolated app.
+
+| ![Mail in its own process](isolated-apps-mail.png) | ![Saving an attachment: the system's dialog](isolated-apps-powerbox.png) |
+|---|---|
+| Mail in its own process: remote images held back, a deceptive link flagged, an attachment | Saving an attachment: the system draws the dialog; Mail gets one fd |
+| ![Monitor: each app is its own process](isolated-apps-monitor.png) | ![Monitor: scope and restrictions of Calendar](isolated-apps-monitor-detail.png) |
+| Monitor lists Mail, Calendar and Contacts as their own processes, with their names and icons | Calendar's scope and its restrictions (Landlock, seccomp, own cgroup) |
+| ![A firewall restriction on Mail](isolated-apps-firewall.png) | ![The notification opens the message](isolated-apps-notification.png) |
+| Settings → Privacy → Restricted apps → Mail (`lpk:mail`) "no access to your files": attaching is refused | With Mail closed, the new-mail notification's **Open** starts Mail on that message |
+| ![Contacts opens a new message in Mail](isolated-apps-contacts-to-mail.png) | |
+| Contacts → an email address: the session opens Mail's new message (`BOP_SYS_OPEN`) | |
+
+### How it works
+
+- **lord-maild through lord-server** (`sec/brokermail.c`, app side `ui/js_brokermail.c`). The app
+  process has the same `lord.mail` API as the session (so `sdk/mail.js`, `calendar.js` and
+  `contacts.js` are unchanged), but every call is a `BOP_MAIL` broker request, only for a system
+  package (`brokersrv_conn_system`, set by `app_spawn` for `assets/sysapps`) named `mail`,
+  `calendar`, `contacts` or `reminders`. `lord-server` checks the request JSON as `js_mail.c` does,
+  then the per-app allow list above, then the files: only fds the app already holds (from the
+  system dialog), only readable regular files of at most 64 MB, only for `send`, `draft`,
+  `contact-save`, `contact-import` and `ev-import`. Other fds that arrive with any broker request
+  are closed. Large requests travel in a memfd (`reqm`).
+- **Replies and events are per app.** `mailc.c` keeps one owner queue per app process: a reply goes
+  only to the process that asked (an app cannot read another app's results or images), broadcast
+  events go to the session and to each app by its mask. They reach the app as `mail` events in
+  chunks of 60 KB; `lord-server` never blocks on a full socket (it resumes on `POLLOUT`).
+- **Images** (remote images, inline images, contact photos) stay owned by the app that asked:
+  `lord.mail.bind` receives a sealed memfd with the pixels.
+- **Attachments.** *Open* → `lord-server` resolves the cached file (`att/…` inside the cache, no
+  `..`, no links out) and the session opens it with your apps (`sdk/sysopen.js`, the same rules as
+  Files). *Save* → a read-only fd of that one file, then the system's save dialog.
+- **Args for an isolated app.** `wm.open('mail', { args })` in the session (a notification's
+  *Open*, a Dock quick action, a link from another app) reaches the process as an `open` broker event
+  (`lord.broker.openArgs`, `brokersrv_open_args`): now if it runs, or right after it starts. Args are a
+  JSON object of at most 16 KiB; `BOP_SYS_OPEN` from an app only reaches Mail, Calendar, Contacts
+  and Reminders, with at most 1.5 KiB and never a `path`.
+- **Time zone and text.** The app reads the local time zone before the sandbox (`tzset()`), so
+  dates are local; `lord.measureText` is available in app processes (Mail's body editor).
+- **Process name.** The app process is named after its id (`PR_SET_NAME`), so `ps` and Monitor
+  show `mail`, not `exe`; Monitor draws it with the app's name and icon.
+
+### Proof from inside the Mail process (VM 118)
+
+`gdb -p <pid of lord-server --app mail>` calling `open()` and `socket()` inside the running,
+sandboxed Mail process (root attaches with `ptrace`; the calls run as the app):
+
+```
+open ~/.ssh/authorized_keys = -1                  errno = 13 (EACCES)
+open ~/.config/lordos/mail/accounts.json = -1     errno = 13
+open ~/.local/share/lordos/mail (cache) = -1      errno = 13
+open appdata/passwords (another app) = -1         errno = 13
+open ~/Documents/inmut2-budget.txt = -1           errno = 13
+open appdata/mail (its own) = 6                   allowed
+socket(AF_INET, SOCK_STREAM) = -1                 errno = 13
+```
+
+`kill -9` of the Mail process, six times in a row while it was open: each time only its windows
+went away; the desktop, lord-maild (and its sync), the notifications and the other apps kept
+running, and Mail opened again normally. `build/brokermail-test` (47 checks) runs the real
+`brokermail.c`: who may ask, each app's allow list, malformed requests, sockets/folders/write-only
+fds refused, the memfd path, the Mail-only verbs, attachment paths (`..`, outside `att/`, a symlink
+out of the cache) and `BOP_SYS_OPEN` targets and args. `build/brokerkr-e2e` checks that a system
+package keeps its plain owner while a user `.lpk` with the same id does not reach it.
+
+### Startup and memory (VM 118: Xeon Silver 4108 @ 1.8 GHz, 4 vCPU on a shared host, CPU composition)
+
+| | In-process (0.8.1) | Isolated (0.8.2) |
+|---|---|---|
+| Mail: Dock click → first frame of the window | ~72 ms (React render in the session) | **~145 ms** (launch → the app's first frame, 6 runs: 135–152 ms) + the frame the session draws around it (~70 ms, the same work an in-process window does) |
+| Calendar / Contacts: launch → first frame | — | 128 ms / 97 ms |
+| App host JavaScript in the app | — | **23 ms** (bytecode) instead of 110 ms (parsing 430 KB) |
+| Memory | the session grows ~5 MB when Mail opens | Mail 26 MB RSS / 18 MB PSS; Calendar 22 / 15 MB; Contacts 20 / 13.5 MB; Reminders ~21 MB RSS |
+
+- **The app host as bytecode** (`app/apphost_bc.c`): three seconds after the session starts,
+  `lord-server` compiles `assets/app-host.bundle.js` once, on a thread with its own QuickJS
+  runtime, into a sealed memfd (1.7 MB). Each app process gets a read-only fd of it
+  (`LORD_APPHOST_BC_FD`) and uses it only if its header names the very file it would load (device,
+  inode, size, modification time); otherwise it parses the source. This took Mail from ~225 ms to
+  ~145 ms.
+- Painting the window early (before the JavaScript) was tried and dropped: on this VM the session's
+  frame drawing then competed with the app's start-up and the content arrived ~55 ms later.
+- With `"debugTiming": true` in `~/.config/lordos/settings.json` (no UI), opening an app logs
+  `timing:` lines to the session log; each isolated app always logs its first frame.
+
+### What stays in-process and why
+
+- **Store** stays in the session's process for now. It drives the package engine (`lord.pkg`:
+  plans, installs and removals through the root helper), signature checks and trust
+  (`lord.sign`), reads `.lpk`/`.deb` files you pick, lists every installed app and drives updates
+  of LordOS itself. Isolating it means a broker op for each of those powers with its own checks —
+  a set of new privileged operations, not a move — and the Store is being changed by another
+  0.8.2 item ("Suggested for your computer"). It is not shipped half-isolated.
+- **Photos** stays in-process: it is a library over your picture folders (it lists them and
+  saves edits as copies next to the originals) and prints. The system dialog hands over one file,
+  not a folder, and isolated apps cannot print yet, so isolating it needs a folder grant and
+  printing over the broker first. The untrusted part, decoding images, already happens in the
+  sandboxed `lord-media` helper (`media.image`, `media.edit`), not in the window's process.
+- **Not covered for the isolated four:** printing (none of them prints today) and drag and drop
+  (none of them accepts drops today). Links in mail are shown and copied (LordOS has no web engine),
+  as before.
+- **Limits.** A firewall *network* rule for `lpk:mail` does not stop mail syncing: the connections
+  are opened by `lord-server` for `lord-maild` (firewall id `lordos`), as in 0.8.1; the Mail window
+  process itself has no network at all. Certificate warnings that happened while Mail was closed are
+  shown again on the next connection attempt (the account shows its error meanwhile).
 
 ## Root-owned app scopes
 

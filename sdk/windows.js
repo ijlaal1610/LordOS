@@ -159,15 +159,28 @@ globalThis.__lordWm = (type, d) => {
   patch(id, { x: Math.round(f.x + d.dx), y: Math.round(f.y + d.dy), w: Math.round(f.w + d.dw), h: Math.round(f.h + d.dh), maximized: false });
 };
 
+// when each window was opened (lord.now()), for the developer timing log (settings "debugTiming")
+export const openedAt = new Map();
+
 export const wm = {
   // opts: { new: true } another window of the same app; { instance: 'x' } named window;
   //       { frame: { x, y, w, h } } initial geometry; { args: {...} } data for the app
   //       (e.g. wm.open('files', { args: { path: '/home/lord/Documentos' } })).
   // Returns the window id.
   open(appId, opts = {}) {
-    if (!registry.has(appId)) { console.warn('app desconocida:', appId); return null; }
+    if (!registry.has(appId)) {
+      // inside an isolated system app (lord-server --app): another system app is opened by the
+      // session, through the broker (Mail → Calendar, Contacts → a new message; sec/brokermail.c)
+      if (typeof lord !== 'undefined' && typeof lord.appId === 'string' && lord.broker && typeof lord.broker.openApp === 'function') {
+        lord.broker.openApp(String(appId), JSON.stringify(opts.args || {}), !!opts.new);
+        return null;
+      }
+      console.warn('unknown app:', appId);
+      return null;
+    }
     const id = opts.instance ? `${appId}#${opts.instance}` : opts.new ? `${appId}#${seq++}` : appId;
     const args = opts.args ? { ...opts.args, nonce: seq++ } : null;
+    if (globalThis.__lordTiming && typeof lord !== 'undefined' && lord.now) openedAt.set(id, lord.now());
     windows.set((ws) => (ws.some((w) => w.id === id)
       ? raise(ws, id).map((w) => (w.id === id && args ? { ...w, args } : w))
       : [...ws, { id, app: appId, title: null, args, ...place(appId, ws.length, opts.frame) }]));

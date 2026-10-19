@@ -1,11 +1,20 @@
 // Compose.jsx — the compose window: From, To/Cc/Bcc with autocomplete (Contacts and people you
 // wrote to), subject, a body in rich text (formatting buttons and a live preview), markdown or
 // plain text, attachments, signature, drafts saved to the server, send now or later.
-import { View, Text, useTheme, useAppWindow, Button, TextInput, Segmented, ScrollView, Markdown, FilePicker, t, wm, fs, mailRequest, mailAccounts, contacts, useKeyboard } from '@lordos/sdk';
+import { View, Text, useTheme, useAppWindow, Button, TextInput, Segmented, ScrollView, Markdown, FilePicker, t, wm, fs, mailRequest, mailAccounts, contacts, useKeyboard, isolatedPim, pickFileFd, closeFileFd } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { BodyEditor } from './BodyEditor.jsx';
 import { mdToHtml, mdToText } from './md.js';
 import { formatSize } from './util.js';
+
+// An attachment is a path (Mail in the session) or { fd, name, size } (Mail in its own process: a
+// file from the system dialog, or a cached attachment lord-server opened for it).
+const attName = (p) => (typeof p === 'object' ? p.name : fs.basename(p));
+const attKey = (p) => (typeof p === 'object' ? `fd:${p.fd}` : p);
+function attSize(p) {
+  if (typeof p === 'object') return p.size || 0;
+  try { return fs.stat(p)?.size || 0; } catch (e) { return 0; }
+}
 
 const emailOk = (e) => /^[^@\s<>,;"]+@[^@\s<>,;"]+\.[^@\s<>,;"]+$/.test(e);
 
@@ -104,13 +113,17 @@ export function Compose({ draft: initial }) {
   const set = (patch) => { dirty.current = true; setD((x) => ({ ...x, ...patch })); };
 
   useEffect(() => { wm.setTitle(wid, d.subject || t('mail.compose.newMessage')); }, [d.subject]);
+  // files held as fds (isolated Mail) are closed with the window
+  const atts = useRef(d.attachments);
+  atts.current = d.attachments;
+  useEffect(() => () => { for (const p of atts.current) closeFileFd(p); }, []);
 
   const payload = () => {
     const html = d.format === 'plain' ? undefined : mdToHtml(d.body);
     const text = d.format === 'plain' ? d.body : mdToText(d.body);
     return {
       acct: d.acct, to: d.to, cc: d.cc, bcc: d.bcc, subject: d.subject, text, ...(html ? { html } : {}),
-      attachments: d.attachments.map((p) => ({ name: fs.basename(p) })),
+      attachments: d.attachments.map((p) => ({ name: attName(p) })),
       ...(d.inReplyTo ? { inReplyTo: d.inReplyTo } : {}), ...(d.references ? { references: d.references } : {}),
       ...(d.original ? { original: d.original } : {}),
       ...(d.draftUid ? { draftUid: d.draftUid, draftFolder: d.draftFolder } : {}),
@@ -174,7 +187,13 @@ export function Compose({ draft: initial }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, height: 46 }}>
         <Button primary label={`➤ ${t('mail.compose.send')}`} onClick={() => send()} />
         <Button label={t('mail.compose.later')} onClick={() => setLater(!later)} />
-        <Button label={`📎 ${t('mail.compose.attach')}`} onClick={() => setPicker(true)} />
+        <Button label={`📎 ${t('mail.compose.attach')}`} onClick={() => {
+          if (!isolatedPim()) { setPicker(true); return; }
+          // the system's file dialog: this process receives only the chosen file
+          let f = null;
+          try { f = pickFileFd(); } catch (e) { setErr(e.message); }
+          if (f) set({ attachments: [...d.attachments, f].slice(0, 15) });
+        }} />
         <Button label={t('mail.compose.saveDraft')} onClick={() => saveDraft()} />
         <View style={{ flex: 1 }} />
         <Segmented small options={fmtOpts} value={d.format} onChange={(format) => set({ format })} />
@@ -242,13 +261,12 @@ export function Compose({ draft: initial }) {
       {d.attachments.length > 0 && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 10 }}>
           {d.attachments.map((p) => {
-            let size = 0;
-            try { size = fs.stat(p)?.size || 0; } catch (e) { size = 0; }
+            const size = attSize(p);
             return (
-              <View key={p} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, height: 28, borderRadius: 8, backgroundColor: th.control }}>
-                <Text style={{ fontSize: 12, color: th.text }}>{`📄 ${fs.basename(p)}`}</Text>
+              <View key={attKey(p)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, height: 28, borderRadius: 8, backgroundColor: th.control }}>
+                <Text style={{ fontSize: 12, color: th.text }}>{`📄 ${attName(p)}`}</Text>
                 <Text style={{ fontSize: 11, color: th.textDim }}>{formatSize(size)}</Text>
-                <Text onClick={() => set({ attachments: d.attachments.filter((x) => x !== p) })} style={{ fontSize: 11, color: th.textDim }}>✕</Text>
+                <Text onClick={() => { closeFileFd(p); set({ attachments: d.attachments.filter((x) => x !== p) }); }} style={{ fontSize: 11, color: th.textDim }}>✕</Text>
               </View>
             );
           })}

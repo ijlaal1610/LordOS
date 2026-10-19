@@ -40,7 +40,8 @@ void reply_image(uint32_t id, const uint32_t *argb, int w, int h);
 int  net_connect(const char *host, int port, char *why, size_t wcap);
 /* Connects and starts TLS (implicit or STARTTLS is the caller's job when starttls=1).
  * On a certificate problem emits a "cert" event for that account. */
-Conn *open_conn(const char *acct, const char *host, int port, int tls_now, const char *pin, TlsInfo *ti, char *why, size_t wcap);
+/* smtp: the connection is the account's SMTP server (its certificate event says so, so Mail pins it as "smtp") */
+Conn *open_conn(const char *acct, int smtp, const char *host, int port, int tls_now, const char *pin, TlsInfo *ti, char *why, size_t wcap);
 void dbg(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 /* ---- files under cache_fd ---- */

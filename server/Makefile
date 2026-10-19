@@ -51,9 +51,9 @@ QJS_OBJ := $(patsubst %,build/qjs/%.o,quickjs libregexp libunicode cutils dtoa)
 MON_SRC := src/monitor/mon.c src/monitor/disktemp.c src/monitor/nethist.c src/monitor/netrec.c src/monitor/conn.c src/monitor/procctl.c src/monitor/proc_admin.c src/monitor/mmdb.c src/monitor/map.c src/ui/js_monitor.c
 # Media (src/media, docs/MEDIA.md): only the lord-server side. Only lord-media links FFmpeg.
 MEDIA_SRC := src/media/media.c src/media/hwdec.c src/media/mview.c src/media/capture.c src/media/annot.c src/media/maudio.c src/media/mpulse.c src/media/proto.c src/ui/js_media.c
-SEC_SRC := src/sec/json.c src/sec/sign.c src/sec/pkgstate.c src/sec/perms.c src/sec/cgroup.c src/sec/sandbox.c src/sec/brokersrv.c src/sec/brokercam.c src/sec/brokerkr.c src/sec/restrict.c src/sec/appid.c src/sec/pwguard.c
+SEC_SRC := src/sec/json.c src/sec/sign.c src/sec/pkgstate.c src/sec/perms.c src/sec/cgroup.c src/sec/sandbox.c src/sec/brokersrv.c src/sec/brokercam.c src/sec/brokerkr.c src/sec/brokermail.c src/sec/restrict.c src/sec/appid.c src/sec/pwguard.c
 # App mode: lord-server --app <id> runs an .lpk app as an isolated Wayland client (src/app)
-APP_SRC := src/app/appclient.c src/app/appspawn.c src/ui/js_broker.c src/ui/js_brokercam.c
+APP_SRC := src/app/appclient.c src/app/appspawn.c src/ui/js_broker.c src/ui/js_brokercam.c src/ui/js_brokermail.c src/app/apphost_bc.c
 SRC := src/main.c src/kms.c src/gpu/gpu.c src/input.c src/canvas.c src/admin.c src/install/install.c src/apps.c src/lpk.c src/fsops.c src/remote/mirror.c src/remote/remote_admin.c src/remote/ssh_admin.c src/users/users_admin.c src/users/homedirs.c src/keyboard.c src/keylag.c src/ime.c src/wl/wl.c \
        src/ui/node.c src/ui/style.c src/ui/layout.c src/ui/transform.c src/ui/text.c src/ui/image.c \
        src/ui/paint.c src/ui/js.c src/ui/js_sys.c src/ui/js_term.c src/ui/js_wasm.c src/wasm/wasm.c src/wasm/wasm_run.c src/ui/js_sound.c src/ui/js_net.c src/sound/snd.c src/sound/pulse.c src/ui/otf.c src/ui/fonts.c \
@@ -236,6 +236,12 @@ BROKER_RESTRICT_SRC := src/sec/brokersrv.c src/sec/brokercam.c src/sec/restrict.
 build/broker-restrict-test: tests/broker_restrict_test.c $(BROKER_RESTRICT_SRC) $(wildcard src/sec/*.h src/fw/*.h src/media/*.h)
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/broker_restrict_test.c $(BROKER_RESTRICT_SRC) -Wl,--wrap=open
+	./$@ || { rm -f $@; exit 1; }
+# lord-maild for the isolated system apps (src/sec/brokermail.c): who may ask what, files, Mail-only verbs
+test: build/brokermail-test
+build/brokermail-test: tests/brokermail_test.c src/sec/brokermail.c src/sec/json.c $(wildcard src/sec/*.h src/mail/*.h)
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/brokermail_test.c src/sec/brokermail.c src/sec/json.c
 	./$@ || { rm -f $@; exit 1; }
 # tests/launch_cli.c: the real Linux app launcher outside the desktop, for tests/fwlinux/files.sh
 # (built by `make test`, run by that script in the VM)

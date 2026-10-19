@@ -6,5 +6,6 @@
   "minSize": [640, 440],
   "dock": true,
   "category": "Office",
-  "permissions": []
+  "permissions": [],
+  "process": "isolated"
 }

@@ -16,5 +16,6 @@
     "usb"
   ],
   "process": "isolated",
-  "protected": true
+  "protected": true,
+  "singleWindow": true
 }

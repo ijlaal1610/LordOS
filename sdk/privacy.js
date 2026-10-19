@@ -60,6 +60,10 @@ if (typeof globalThis !== 'undefined') {
         if (typeof globalThis.__lordApplyAppMenus === 'function') globalThis.__lordApplyAppMenus(data.app);
       } else if (kind === 'pick') {
         if (typeof globalThis.__lordBrokerPick === 'function') globalThis.__lordBrokerPick(data.reqid, data.app, data.save, data.suggest);
+      } else if (kind === 'mailopen' || kind === 'launch') {
+        // an isolated system app asked the session to open an attachment or another app; lord-server
+        // checked it (sec/brokermail.c), sdk/sysopen.js does it
+        if (typeof globalThis.__lordSysOpen === 'function') globalThis.__lordSysOpen(kind, data);
       } else if (kind === 'device') {
         if (data.off) brokerDevicesByApp(data.app, null, false);
         else brokerDevicesByApp(data.app, data.kind, !!data.on);

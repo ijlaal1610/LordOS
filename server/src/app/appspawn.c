@@ -8,6 +8,7 @@
 #include "../sec/broker.h"
 #include "../ui/js_sys.h"
 #include "../vault/vclient.h"
+#include "apphost_bc.h"
 
 #include <fcntl.h>
 #include <limits.h>
@@ -65,6 +66,7 @@ int app_spawn(const char *id) {
     if (pipe2(pp, O_CLOEXEC)) { close(sv[0]); close(sv[1]); return -1; }
     /* Passwords talks to lord-vault on its own channel: decrypted data never passes through here */
     int vfd = wants_vault(id, sys) ? vc_attach_app() : -1;
+    int bcfd = apphost_bc_dup_ro();
 
     pid_t pid = fork();
     if (pid == 0) {
@@ -85,6 +87,12 @@ int app_spawn(const char *id) {
             snprintf(vstr, sizeof vstr, "%d", vfd);
             setenv("LORD_VAULT_FD", vstr, 1);
         } else unsetenv("LORD_VAULT_FD");
+        if (bcfd >= 0) {                     /* the app host as bytecode (apphost_bc.c), read-only */
+            char bstr[16];
+            fcntl(bcfd, F_SETFD, 0);
+            snprintf(bstr, sizeof bstr, "%d", bcfd);
+            setenv(APPHOST_BC_ENV, bstr, 1);
+        } else unsetenv(APPHOST_BC_ENV);
         int null = open("/dev/null", O_RDWR);
         if (null >= 0) { dup2(null, 0); if (null > 2) close(null); }
         /* lord-server passes the id, already validated; there are no caller arguments */
@@ -95,6 +103,7 @@ int app_spawn(const char *id) {
     close(sv[1]);
     close(pp[1]);
     if (vfd >= 0) close(vfd);
+    if (bcfd >= 0) close(bcfd);
     if (pid < 0) { close(sv[0]); close(pp[0]); return -1; }
     waitpid(pid, NULL, 0);                   /* the intermediate child exits right away */
     pid_t app = -1;
@@ -102,6 +111,7 @@ int app_spawn(const char *id) {
     close(pp[0]);
     if (brokersrv_add(sv[0], id, (int)app)) { close(sv[0]); return -1; }
     if (vfd >= 0) brokersrv_set_vault(sv[0]);   /* this app may also ask for the FIDO2 device */
+    if (sys == 1) brokersrv_set_system(sv[0]);  /* a system package: its keyring owner, lord-maild (brokermail.c) */
     fprintf(stderr, "lord-server: app '%s' started as an isolated process (pid %d)\n", id, (int)app);
     return 0;
 }

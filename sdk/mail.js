@@ -4,7 +4,8 @@
 // so the desktop never waits for the network.
 //
 //   mailAvailable()                          is lord-maild installed?
-//   mailRequest(op, args, { files })         → promise with the reply, or an Error with .code
+//   mailRequest(op, args, { files })         → promise with the reply, or an Error with .code; files are paths, or
+//                                            { fd } in an isolated app (lord.mail.appMode)
 //   onMailEvent(fn)                          events: new, changed, folders, status, need-auth, auth-failed,
 //                                            cert, sent, send-failed, pim-changed, crash
 //   mailConfig.get() / mailConfig.save(cfg)  the accounts file (no passwords: those live in the keyring)
@@ -22,6 +23,19 @@ import { wm, getApp } from './windows.js';
 
 const has = () => typeof lord !== 'undefined' && typeof lord.mail !== 'undefined';
 export const mailAvailable = () => has() && lord.mail.available();
+
+// Mail, Calendar, Contacts and Reminders in their own process (lord.mail.appMode): files come from
+// the system file dialog as fds, never as paths.
+export const isolatedPim = () => has() && !!lord.mail.appMode;
+// → { fd, name, size } | null; the system draws the dialog, this process only gets the fd
+export function pickFileFd() {
+  if (typeof lord === 'undefined' || !lord.broker || typeof lord.broker.pick !== 'function') return null;
+  const r = lord.broker.pick(false, '');
+  if (!r) return null;
+  const size = typeof lord.broker.fdSize === 'function' ? lord.broker.fdSize(r.fd) : -1;
+  return { fd: r.fd, name: r.name, size: size > 0 ? size : 0 };
+}
+export const closeFileFd = (f) => { if (f && typeof f === 'object' && f.fd >= 0) { try { lord.broker.fdClose(f.fd); } catch (e) { /* closed */ } } };
 
 const waiting = new Map();
 const listeners = new Set();
@@ -57,7 +71,9 @@ function startSlow() { if (!slow && has()) slow = setInterval(pump, 500); }
 export function mailRequest(op, args = {}, { files } = {}) {
   if (!has()) return Promise.reject(Object.assign(new Error('unavailable'), { code: 'unavailable' }));
   let id;
-  try { id = lord.mail.request(JSON.stringify({ op, ...args }), files && files.length ? files : undefined); }
+  // a file is a path (in the session) or { fd } (the isolated apps: an fd from the system file dialog)
+  const list = files && files.length ? files.map((f) => (f && typeof f === 'object' ? f.fd : f)) : undefined;
+  try { id = lord.mail.request(JSON.stringify({ op, ...args }), list); }
   catch (e) { return Promise.reject(Object.assign(new Error(e.message), { code: 'file' })); }
   if (id < 0) return Promise.reject(Object.assign(new Error('unavailable'), { code: 'unavailable' }));
   startSlow();
@@ -196,6 +212,35 @@ async function refreshCounts() {
 
 function openMessage(acct, folder, uid) {
   if (getApp('mail')) wm.open('mail', { args: { acct, folder, uid, nonce: Date.now() } });
+}
+
+// In the isolated Mail app (lord-server --app mail, lord.mail.appMode) startMail never runs: the
+// session keeps notifications, the unread count and passwords on demand. The app keeps its own copy
+// of the account status from the events lord-server forwards to it (sec/brokermail.c), seeded with
+// lord-maild's current status.
+let tracking = false;
+export function trackMailStatus() {
+  if (tracking || !has() || !lord.mail.appMode) return;
+  tracking = true;
+  onMailEvent(async (ev) => {
+    if (ev.ev === 'status') mailStatus.set((s) => ({ ...s, accounts: { ...s.accounts, [ev.acct]: { status: ev.status, error: ev.error } } }));
+    else if (ev.ev === 'cert') mailStatus.set((s) => ({ ...s, certs: [...s.certs.filter((c) => !(c.acct === ev.acct && c.host === ev.host)), ev] }));
+    else if (ev.ev === 'auth-failed') mailStatus.set((s) => ({ ...s, authFailed: { ...s.authFailed, [ev.acct]: true } }));
+    else if (ev.ev === 'need-auth') {
+      // the session answers too; here it only matters whether a password exists at all
+      const a = mailAccounts.get(ev.acct);
+      const pw = a ? await passwordFor(a) : null;
+      if (pw) mailRequest('auth', { acct: ev.acct, password: pw }).catch(() => {});
+      else mailStatus.set((s) => ({ ...s, authFailed: { ...s.authFailed, [ev.acct]: true } }));
+    } else if (ev.ev === 'new' || ev.ev === 'changed' || ev.ev === 'folders' || ev.ev === 'ready') refreshCounts();
+  });
+  lord.mail.start();
+  mailRequest('status').then((st) => {
+    const accounts = {};
+    for (const a of st.accounts || []) accounts[a.id] = { status: a.status, error: a.error };
+    mailStatus.set((s) => ({ ...s, accounts: { ...accounts, ...s.accounts } }));
+  }).catch(() => {});
+  refreshCounts();
 }
 
 export function startMail() {

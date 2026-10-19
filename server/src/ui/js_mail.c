@@ -143,44 +143,18 @@ static JSValue f_config(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
     return v;
 }
 
-static int mkdirs(const char *p) {
-    char tmp[PATH_MAX];
-    snprintf(tmp, sizeof tmp, "%s", p);
-    for (char *s = tmp + 1; *s; s++) if (*s == '/') { *s = 0; mkdir(tmp, 0700); *s = '/'; }
-    return mkdir(tmp, 0700) && errno != EEXIST ? -1 : 0;
-}
-
 /* The accounts file holds security decisions (which servers lord-maild may reach, trusted
- * certificate fingerprints): JS cannot write it through lord.fs (fsops_protected), only here. */
+ * certificate fingerprints): JS cannot write it through lord.fs (fsops_protected), only here and,
+ * for the isolated Mail app, through the broker (sec/brokermail.c). Both use mail_save_config. */
 static JSValue f_save_config(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     size_t len = 0;
     const char *j = arg_str(c, argc, argv, 0, &len);
     if (!j) return js_throw_code(c, "sys.badArgument", NULL);
-    JDoc d;
-    int bad = len > MAIL_CONFIG_MAX || json_parse(j, len, &d, NULL, 0);
-    if (!bad) {
-        const JVal *acc = json_get(d.root, "accounts");
-        bad = d.root->type != J_OBJ || (acc && (acc->type != J_ARR || acc->len > MAIL_MAX_ACCOUNTS));
-        /* no secrets in this file */
-        for (const JVal *a = acc ? acc->kid : NULL; !bad && a; a = a->next) if (json_get(a, "password") || json_get(a, "secret")) bad = 1;
-        json_free(&d);
-    }
-    if (bad) { JS_FreeCString(c, j); return js_throw_code(c, "mail.badAccounts", NULL); }
-    char dir[PATH_MAX], tmp[PATH_MAX + 16];
-    snprintf(dir, sizeof dir, "%s", mail_config_path());
-    char *slash = strrchr(dir, '/');
-    if (slash) *slash = 0;
-    if (mkdirs(dir)) { JS_FreeCString(c, j); return js_throw_code(c, "sys.writeFailed", "path", dir, NULL); }
-    snprintf(tmp, sizeof tmp, "%s.tmp", mail_config_path());
-    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
-    int ok = fd >= 0 && write(fd, j, len) == (ssize_t)len && fsync(fd) == 0;
-    if (fd >= 0) close(fd);
-    ok = ok && rename(tmp, mail_config_path()) == 0;
-    if (!ok) unlink(tmp);
+    int r = mail_save_config(j, len);
     JS_FreeCString(c, j);
-    if (!ok) return js_throw_code(c, "sys.writeFailed", "path", mail_config_path(), NULL);
-    mail_reload_config();
+    if (r == 1) return js_throw_code(c, "mail.badAccounts", NULL);
+    if (r) return js_throw_code(c, "sys.writeFailed", "path", mail_config_path(), NULL);
     return JS_TRUE;
 }
 

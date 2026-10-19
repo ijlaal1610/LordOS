@@ -42,6 +42,11 @@ enum BrokerOp {
     BOP_KEYRING,        /* payload "op\0service\0account\0label\0secret" (op: get | set | delete | list) → the
                          * app's own session-keyring items, owner = the verified app id (brokerkr.c,
                          * docs/PASSWORDS.md). Error replies carry an error code line (keyring.*) */
+    BOP_MAIL,           /* (system Mail, Calendar, Contacts, Reminders only) lord-maild through lord-server:
+                         * payload "verb\0rest", fds via SCM_RIGHTS for "req"/"reqm". Replies and events
+                         * come back as "mail" events, in chunks. See brokermail.c, docs/PRIVACY.md */
+    BOP_SYS_OPEN,       /* (those same system apps only) payload "app\0new\0json": open another of them
+                         * with these args (Mail → Calendar for an invitation, Contacts → a new message) */
     BOP_EVENT = 100,    /* server → app, unrequested (reqid 0): payload "type\0json" */
 };
 
@@ -73,6 +78,12 @@ int  brokersrv_count(void);
 /* The app on broker fd `fd` was spawned with a channel to lord-vault (system Passwords app): it may
  * use BOP_VAULT_FIDO. */
 void brokersrv_set_vault(int fd);
+/* The app on broker fd `fd` is a system package (assets/sysapps, verified by app_package_dir): it
+ * keeps the keyring owner and lord-maild access it had in-process. */
+void brokersrv_set_system(int fd);
+/* Args for an isolated app (wm.open(id, { args }) in the session): sent now if it is running, or
+ * kept and sent when it starts. `json` is a JSON object (≤ 16 KiB). 0 if sent or kept. */
+int  brokersrv_open_args(const char *id, const char *json, size_t len, int new_window);
 /* The app <id> is running: ask it for a new window. 0 if sent, -1 if it is not running. */
 int  brokersrv_new_window(const char *id);
 /* Quit app <id> (❖Q, Dock → Quit): the app host closes all its windows, its close guards still

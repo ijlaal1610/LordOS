@@ -1,6 +1,6 @@
 // util.js — small helpers for Mail: dates in the list, folder names, color categories, opening
 // an attachment the way Files would.
-import { t, formatDate, formatTime, weekdayName, wm, getApp, fs, defaultOpenerId, nativeOf, calendarEvents, contacts, addressBooks } from '@lordos/sdk';
+import { t, formatDate, formatTime, weekdayName, openFileWithApps, revealPath } from '@lordos/sdk';
 
 export const CATEGORY_COLORS = ['#ff453a', '#ff9f0a', '#ffd60a', '#30d158', '#0a84ff', '#bf5af2'];
 // labels are built at render time (they follow the language)
@@ -30,30 +30,9 @@ export function formatSize(n) {
   return `${(n / 1048576).toFixed(1)} MB`;
 }
 
-// The same rules as Files (apps/files/ops.js): our apps for documents, images and media, the
-// system's default app for the rest, and otherwise reveal it in Files.
-export function openPath(path, name) {
-  const n = String(name || path).toLowerCase();
-  if (/\.pdf$/.test(n) && getApp('pdf')) return wm.open('pdf', { new: true, args: { path } });
-  if (/\.(png|jpe?g|gif|webp|bmp|heic|avif)$/.test(n) && getApp('photos')) return wm.open('photos', { new: true, args: { path } });
-  if (/\.(mp3|ogg|flac|wav|m4a|opus|mp4|mkv|webm|mov|avi)$/.test(n) && getApp('player')) return wm.open('player', { args: { path } });
-  if (/\.(txt|md|csv|log|json|xml|ya?ml|c|h|js|py|sh)$/.test(n) && getApp('editor')) return wm.open('editor', { args: { path } });
-  if (/\.ics$/.test(n) && getApp('calendar')) { calendarEvents.importFile(path).then(() => wm.open('calendar')).catch(() => revealPath(path)); return true; }
-  if (/\.vcf$/.test(n) && getApp('contacts')) {
-    addressBooks.list().then((b) => (b[0] ? contacts.importFile(path, b[0].id) : null)).then(() => wm.open('contacts')).catch(() => revealPath(path));
-    return true;
-  }
-  try {
-    const def = defaultOpenerId(typeof lord.mime !== 'undefined' ? lord.mime.guess(n) : '');
-    const native = nativeOf(def);
-    if (native && getApp(native)) return wm.open(native, { new: true, args: { path } });
-    if (def && lord.apps.launchWith(def.replace(/\.desktop$/, ''), path)) return true;
-    if (lord.apps.launchWith('', path)) return true;
-  } catch (e) { /* no default app */ }
-  return revealPath(path);
-}
-
-export const revealPath = (path) => wm.open('files', { new: true, args: { path: fs.parent(path), select: fs.basename(path), nonce: Date.now() } });
+// The same rules as Files (apps/files/ops.js), in the session (sdk/sysopen.js).
+export const openPath = (path, name) => openFileWithApps(path, name);
+export { revealPath };
 
 // The same rule as lord-maild (mime_safe_filename): a sender-chosen attachment name becomes a
 // plain basename: no path parts, no leading dots, no control, bidi-override or FAT-reserved

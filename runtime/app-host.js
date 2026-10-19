@@ -110,6 +110,12 @@ globalThis.__lordBrokerEvent = (kind, data) => {
     else if (data.type === 'focus') wm.focus(id);
   }
   else if (kind === 'window' && data && data.new) wm.open(APP, { new: true });   // Dock → «New window»
+  else if (kind === 'open' && data && data.args && typeof data.args === 'object') {
+    // the session opened this app with args (sdk/packages.js isolatedApp → lord.broker.openArgs):
+    // a notification's "Open", the Dock's "New message", a link from another system app
+    const args = data.args;
+    if (data.new || Object.keys(args).length) wm.open(APP, data.new ? { new: true, args } : { args });
+  }
   else if (kind === 'quit') {
     // ❖Q or Dock → Quit: close every window; a close guard can still keep one open (unsaved
     // changes). The process ends when the last window closes (appclient.c).

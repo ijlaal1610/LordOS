@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/prctl.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -67,6 +68,8 @@ typedef struct {
 } AppWin;
 static AppWin wins[MAX_WINS];
 static int next_key = 1, closed;
+static double t_start;              /* app_main entry (CLOCK_MONOTONIC ms), for the first-frame log */
+static int first_frame_logged;
 static const char *app_id_str = "";
 static AppWin *ptr_win, *kbd_win;   /* window under the pointer / with keyboard focus */
 
@@ -148,6 +151,11 @@ static void render(AppWin *w) {
     w->frame_pending = 1;
     wl_surface_commit(w->surf);
     w->need_render = 0;
+    if (!first_frame_logged && w->key == 0) {      /* one line: how long the app took to show */
+        first_frame_logged = 1;
+        double t = now_ms();
+        fprintf(stderr, "app %s: first frame %.1f ms after the process started (at %.1f ms, monotonic)\n", app_id_str, t - t_start, t);
+    }
 }
 
 static void frame_done(void *d, struct wl_callback *cb, uint32_t t) {
@@ -457,7 +465,11 @@ static int manifest_pair(const char *dir, const char *key, int *w, int *h) {
 }
 
 int app_main(const char *id, const char *theme_bundle, const char *fonts) {
+    t_start = now_ms();
     if (!lpk_valid_id(id)) { fprintf(stderr, "lord-server --app: invalid id\n"); return 2; }
+    /* the process name is the app's id ("mail"), not "exe" (it was started through /proc/self/exe):
+     * ps, top and the Monitor's process list show which app it is */
+    prctl(PR_SET_NAME, id, 0, 0, 0);
     char dir[PATH_MAX];
     {
         /* <assets> = the parent of the fonts folder; a system app there wins over a user .lpk */
@@ -509,6 +521,9 @@ int app_main(const char *id, const char *theme_bundle, const char *fonts) {
     snprintf(langs, sizeof langs, "%s/.local/share/lordos/locales", home ? home : "/nonexistent");
     const char *ro[] = { fonts, hostdir, "/usr/share/fonts", langs, NULL };   /* + fuentes del sistema (emoji, respaldo por escritura) */
     SandboxConfig sb = { .id = id, .pkg_dir = dir, .data_dir = data, .runtime_dir = getenv("XDG_RUNTIME_DIR"), .ro_extra = ro, .network = net };
+    /* the local time zone is read now (libc keeps it): /etc/localtime and the zone files are
+     * outside the sandbox, and without this dates in Mail and Calendar would be in UTC */
+    tzset();
     sandbox_apply(&sb);
 
     if (js_init_app(theme_bundle, id)) { fprintf(stderr, "lord-server --app: could not load the app\n"); return 1; }

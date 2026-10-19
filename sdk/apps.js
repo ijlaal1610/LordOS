@@ -93,6 +93,7 @@ export function launchApp(id) {
   if (app && app.isolated && typeof lord.apps !== 'undefined' && typeof lord.apps.launchPackage === 'function') {
     const running = windows.get().filter((w) => w.args?.pkg && w.args?.appId === id);
     if (running.length) { wm.focus(running[running.length - 1].id); return true; }
+    if (globalThis.__lordTiming && lord.now) console.log(`timing: ${id} isolated launch at ${lord.now().toFixed(1)} ms (monotonic)`);
     if (lord.apps.launchPackage(id)) return true;
   }
   return wm.open(id) != null;

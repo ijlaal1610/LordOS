@@ -2,6 +2,7 @@
 // (name, photo, phones, emails, addresses, web pages, birthday and notes).
 import {
   View, Text, useTheme, Button, TextInput, ScrollView, Hairline, ContactPhoto, contacts, contactName, wm, getApp, formatDate, FilePicker, t,
+  isolatedPim, pickFileFd,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { RED, Popover, MenuList, Choice, TextArea, DateField, ymd, parseYmd, monthName } from './ui.jsx';
@@ -38,7 +39,7 @@ function bdayText(s) {
 const addrLines = (a) => [a.street, [a.code, a.city].filter(Boolean).join(' '), a.region, a.country].filter(Boolean);
 
 function openMail(name, email) {
-  if (!getApp('mail')) return;
+  if (!getApp('mail') && !isolatedPim()) return;    // in its own process, the session opens Mail
   wm.open('mail', { new: true, args: { compose: { to: [{ name: name || '', email }] } } });
 }
 
@@ -180,7 +181,12 @@ export function Editor({ contact, groups, onCancel, onSave, onDelete }) {
               {photoMenu ? (
                 <Popover anchor={photoRef} width={200} onClose={() => setPhotoMenu(false)}>
                   <MenuList onDone={() => setPhotoMenu(false)} items={[
-                    { label: t('contacts.choosePhoto'), onClick: () => setPicking(true) },
+                    { label: t('contacts.choosePhoto'), onClick: () => {
+                      if (!isolatedPim()) { setPicking(true); return; }
+                      let f = null;           // the system's file dialog (only the chosen image reaches this process)
+                      try { f = pickFileFd(); } catch (e) { f = null; }
+                      if (f) setPhoto(f);
+                    } },
                     { label: t('contacts.removePhoto'), destructive: true, disabled: !d.photo && photo === 'keep', onClick: () => setPhoto('remove') },
                   ]} />
                 </Popover>

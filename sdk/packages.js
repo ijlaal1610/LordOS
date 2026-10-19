@@ -69,12 +69,29 @@ export function isolatedApp(id, Fallback) {
     const win = sdk.useAppWindow();
     const [inproc, setInproc] = React.useState(false);
     React.useEffect(() => {
-      // already running: focus its window (a single window: it holds a vault)
       const running = windows.get().filter((w) => w.args?.pkg && w.args?.appId === id);
-      if (isolated() && running.length) { wm.focus(running[running.length - 1].id); if (win && win.id) wm.close(win.id, true); }
-      else if (isolated() && lord.apps.launchPackage(id)) { if (win && win.id) wm.close(win.id, true); }
+      // what the window was opened with (a notification's "Open", the Dock's "New message", another
+      // app's link) goes to the app process: now if it runs, or when it starts (lord.broker.openArgs)
+      // a single-window app (manifest "singleWindow": Passwords holds one vault view) only gets focused
+      const wantsNew = !!(win && win.id && String(win.id).includes('#')) && !sdk.getApp(id)?.singleWindow;
+      const { nonce, ...args } = win?.args || {};
+      const hasArgs = Object.keys(args).length > 0;
+      const forward = () => { if ((hasArgs || wantsNew) && lord.broker && typeof lord.broker.openArgs === 'function') lord.broker.openArgs(id, JSON.stringify(args), wantsNew); };
+      if (globalThis.__lordTiming && lord.now) {
+        const t0 = sdk.openedAt?.get(win?.id);
+        console.log(`timing: ${id} isolated launch at ${lord.now().toFixed(1)} ms (monotonic)${t0 != null ? `, ${(lord.now() - t0).toFixed(1)} ms after wm.open at ${t0.toFixed(1)}` : ''}`);
+      }
+      if (isolated() && running.length) {
+        forward();
+        if (!wantsNew) wm.focus(running[running.length - 1].id);
+        if (win && win.id) wm.close(win.id, true);
+      } else if (isolated() && lord.apps.launchPackage(id)) { forward(); if (win && win.id) wm.close(win.id, true); }
       else setInproc(true);
     }, []);
+    React.useEffect(() => {               // developer timing of the in-process fallback
+      const t0 = inproc && globalThis.__lordTiming ? sdk.openedAt?.get(win?.id) : null;
+      if (t0 != null) { sdk.openedAt.delete(win.id); console.log(`timing: ${id} in-process window committed ${(lord.now() - t0).toFixed(1)} ms after wm.open`); }
+    }, [inproc]);
     return inproc && Fallback ? h(Fallback, props) : null;
   };
 }
