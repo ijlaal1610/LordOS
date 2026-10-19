@@ -62,6 +62,11 @@ export function MenuBar({ t, height, focused, onLaunchpad, onControlCenter, cont
         { label: tr('shell.menu.switchUser'), onClick: () => session.switchUser() },
       ] : []),
       { label: tr('shell.menu.logout'), onClick: () => session.quit() },
+      ...(session.canPower() ? [
+        '-',
+        { label: tr('shell.menu.restart'), onClick: () => session.restart() },
+        { label: tr('shell.menu.shutdown'), onClick: () => session.shutdown() },
+      ] : []),
     ] },
     window: { items: [
       { label: tr('shell.window.minimize'), disabled: !app, onClick: () => wm.minimize(focused) },

@@ -10,7 +10,7 @@ import {
   ScrollView, useLauncherApps, launchApp, windowIcon, APP_CATEGORIES, appCategory, useDockEntries, dockActivate, dockMenu,
   DesktopWidgets, PrivacyIndicators, registerGestureActions, WindowShell, StatusItems, dockPrefs, mainDisplay,
   useStore, dock, dockIdOf, dockDrag, dockPoof, beginDockDrag, registerDockTarget, dockDragJustEnded, useTrash, openTrash, emptyTrash, trashMenu,
-  refreshTrash, ConfirmDialog, takeTextFocus, releaseTextFocus, Layer,
+  refreshTrash, ConfirmDialog, takeTextFocus, releaseTextFocus, Layer, PowerDialog,
 } from '@lordos/sdk';
 import { apps } from '@lordos/apps';
 import { useEffect, useRef, useState } from 'react';
@@ -122,12 +122,35 @@ function Window({ win, t, focused }) {
 
 // ---- 3. taskbar + start menu ----
 
+// The power symbol, drawn (it doesn't depend on the font having ⏻)
+function PowerGlyph({ color, bg }) {
+  return (
+    <View style={{ width: 14, height: 14 }}>
+      <View style={{ position: 'absolute', left: 1, top: 2, width: 12, height: 12, borderRadius: 6, border: `1.6px solid ${color}` }} />
+      <View style={{ position: 'absolute', left: 4, top: 0, width: 6, height: 5, backgroundColor: bg }} />
+      <View style={{ position: 'absolute', left: 6.2, top: 0, width: 1.6, height: 7, borderRadius: 1, backgroundColor: color }} />
+    </View>
+  );
+}
+
+// A choice under the power button (Restart…, Shut Down…)
+function PowerRow({ t, label, onClick }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{ padding: 8, paddingLeft: 30, backgroundColor: hover ? t.hover : 'transparent' }}>
+      <Text style={{ fontSize: 13, color: t.text }}>{label}</Text>
+    </View>
+  );
+}
+
 // An app is pinned by dragging it onto the bar (the menu closes when the drag starts) or with a
 // right click → Pin to taskbar.
 function StartMenu({ t, onClose, pos }) {
   const ref = useRef(null);
   const list = useLauncherApps();
   const [ctx, setCtx] = useState(null);       // { app, x }
+  const [power, setPower] = useState(false);   // the power button's menu (Restart…, Shut Down…)
   const groups = APP_CATEGORIES.map((c) => [c, list.filter((a) => appCategory(a) === c)]).filter(([, items]) => items.length);
   useEffect(() => addListener('pointerdown', (e) => {
     for (let n = e.target; n; n = n.parent) if (n === ref.current) return;
@@ -137,7 +160,8 @@ function StartMenu({ t, onClose, pos }) {
     <View ref={ref} style={{ position: 'absolute', ...nextToBar(pos, 6), width: 280, padding: 8, direction: 'ltr',
       backgroundColor: t.bar, border: `1px solid ${t.separator}`, boxShadow: '0 10px 30px rgba(0,0,0,0.4)' }}>
       <Text style={{ fontSize: 11, fontWeight: 600, color: t.textDim, margin: 6 }}>{tr('shell.start.apps')}</Text>
-      <ScrollView style={{ height: Math.min(list.length * 40 + groups.length * 26, screen.height - BAR_H - 120) }}>
+      {/* the list leaves room for the footer (lock, switch user, log out, power and its two choices) */}
+      <ScrollView style={{ height: Math.min(list.length * 40 + groups.length * 26, screen.height - BAR_H - 200 - (power ? 72 : 0)) }}>
         {groups.map(([c, items]) => (
           <View key={c}>
             <Text style={{ fontSize: 10, fontWeight: 700, color: t.textDim, marginLeft: 6, marginTop: 8, marginBottom: 2 }}>{tr(`shell.category.${c}`)}</Text>
@@ -160,7 +184,19 @@ function StartMenu({ t, onClose, pos }) {
       {session.managed() ? (
         <View onClick={() => { onClose(); session.switchUser(); }} style={{ padding: 8 }}><Text style={{ fontSize: 13, color: t.text }}>{tr('shell.menu.switchUser')}</Text></View>
       ) : null}
-      <View onClick={() => session.quit()} style={{ padding: 8 }}><Text style={{ fontSize: 13, color: t.text }}>{tr('shell.menu.logout')}</Text></View>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View onClick={() => session.quit()} style={{ flex: 1, padding: 8 }}><Text style={{ fontSize: 13, color: t.text }}>{tr('shell.menu.logout')}</Text></View>
+        {session.canPower() ? (
+          <View onClick={() => setPower((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6,
+            paddingHorizontal: 10, borderRadius: 4, backgroundColor: power ? t.hover : 'transparent' }}>
+            <PowerGlyph color={t.text} bg={power ? t.hover : t.bar} />
+            <Text style={{ fontSize: 13, color: t.text }}>{tr('shell.menu.power')}</Text>
+          </View>
+        ) : null}
+      </View>
+      {power ? [['restart', () => session.restart()], ['shutdown', () => session.shutdown()]].map(([k, go]) => (
+        <PowerRow key={k} t={t} label={tr(`shell.menu.${k}`)} onClick={() => { onClose(); go(); }} />
+      )) : null}
       {ctx && (
         <PopupMenu t={t} pos={pos} x={ctx.x} onClose={() => setCtx(null)} items={[
           { label: tr('shell.dock.open'), onClick: () => { onClose(); launchApp(ctx.app.id); } },
@@ -440,6 +476,7 @@ function App() {
           <DragGhost t={t} />
           <PoofFade />
         </Layer>
+        <Layer name="modal"><PowerDialog /></Layer>   {/* Restart…, Shut Down… (sdk/power.jsx) */}
         {askEmpty && (
           <Layer name="modal">
             <ConfirmDialog title={tr('shell.trash.confirmTitle')} detail={tr('shell.trash.confirmDetail')} okLabel={tr('shell.trash.empty')}

@@ -43,6 +43,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   shutdown and restart from the hypervisor, time sync and the guest's IP address. Its services only
   run under VMware. Shared clipboard and automatic screen resize are not supported yet
   ([docs/ISO.md](docs/ISO.md#firmware-and-displays)).
+- **Restart… and Shut Down… in the crown menu** (and behind a Power button in the Classic theme's
+  start menu); before, they were only on the login screen. Each opens a confirmation that does it
+  by itself after 60 seconds unless cancelled, lists the apps still open and warns when other users
+  are logged in. The session asks `lord-sessiond`, which only accepts those two words: any user may
+  do it alone, and only an administrator while other users have sessions open
+  ([docs/SESSIONS.md](docs/SESSIONS.md#restart-and-shut-down-from-a-session)).
 
 ### Changed
 

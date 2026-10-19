@@ -132,5 +132,31 @@
   "trash.empty": "Empty Trash",
   "trash.confirmTitle": "Empty the Trash?",
   "trash.confirmDetail": "Everything in the Trash will be deleted permanently. You can’t undo this action.",
-  "trash.cancel": "Cancel"
+  "trash.cancel": "Cancel",
+  "menu.restart": "Restart…",
+  "menu.shutdown": "Shut Down…",
+  "menu.power": "Power",
+  "power.restartTitle": "Restart the computer now?",
+  "power.shutdownTitle": "Shut down the computer now?",
+  "power.restartCountdown": {
+    "one": "If you do nothing, the computer will restart in {count} second.",
+    "other": "If you do nothing, the computer will restart in {count} seconds."
+  },
+  "power.shutdownCountdown": {
+    "one": "If you do nothing, the computer will shut down in {count} second.",
+    "other": "If you do nothing, the computer will shut down in {count} seconds."
+  },
+  "power.apps": "Open apps: {list}. They will be closed: save your work first.",
+  "power.others": {
+    "one": "{list} is also logged in and may lose unsaved work.",
+    "other": "{count} other users are logged in ({list}) and may lose unsaved work."
+  },
+  "power.needAdminRestart": "Only an administrator can restart the computer while other users are logged in.",
+  "power.needAdminShutdown": "Only an administrator can shut down the computer while other users are logged in.",
+  "power.unavailable": "This session can’t restart or shut down the computer.",
+  "power.restarting": "Restarting…",
+  "power.shuttingDown": "Shutting down…",
+  "power.restart": "Restart",
+  "power.shutdown": "Shut Down",
+  "power.cancel": "Cancel"
 }

@@ -132,5 +132,31 @@
   "trash.empty": "Esvaziar Lixo",
   "trash.confirmTitle": "Esvaziar o Lixo?",
   "trash.confirmDetail": "Tudo o que está no Lixo será apagado permanentemente. Não é possível desfazer.",
-  "trash.cancel": "Cancelar"
+  "trash.cancel": "Cancelar",
+  "menu.restart": "Reiniciar…",
+  "menu.shutdown": "Desligar…",
+  "menu.power": "Energia",
+  "power.restartTitle": "Reiniciar o computador agora?",
+  "power.shutdownTitle": "Desligar o computador agora?",
+  "power.restartCountdown": {
+    "one": "Se você não fizer nada, o computador será reiniciado em {count} segundo.",
+    "other": "Se você não fizer nada, o computador será reiniciado em {count} segundos."
+  },
+  "power.shutdownCountdown": {
+    "one": "Se você não fizer nada, o computador será desligado em {count} segundo.",
+    "other": "Se você não fizer nada, o computador será desligado em {count} segundos."
+  },
+  "power.apps": "Apps abertos: {list}. Eles serão fechados: salve seu trabalho antes.",
+  "power.others": {
+    "one": "{list} também tem uma sessão aberta e pode perder trabalho não salvo.",
+    "other": "Há mais {count} usuários com sessão aberta ({list}) que podem perder trabalho não salvo."
+  },
+  "power.needAdminRestart": "Só um administrador pode reiniciar o computador enquanto outros usuários têm sessão aberta.",
+  "power.needAdminShutdown": "Só um administrador pode desligar o computador enquanto outros usuários têm sessão aberta.",
+  "power.unavailable": "Esta sessão não pode reiniciar nem desligar o computador.",
+  "power.restarting": "Reiniciando…",
+  "power.shuttingDown": "Desligando…",
+  "power.restart": "Reiniciar",
+  "power.shutdown": "Desligar",
+  "power.cancel": "Cancelar"
 }

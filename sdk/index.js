@@ -32,6 +32,8 @@ export { archive } from './archive.js';
 export { print, queueName } from './print.js';
 export { emoji, Grid as EmojiGrid, ToneBar as EmojiToneBar } from './emoji.jsx';
 import { PrintDialog } from './printdialog.jsx';
+import { askPower, canPower } from './power.jsx';
+export { PowerDialog, powerAsk, POWER_SECONDS } from './power.jsx';
 import { EmojiPanel } from './emoji.jsx';
 export { admin } from './admin.js';
 export { errorText, statusText, codeError, parseCode } from './errors.js';
@@ -137,6 +139,11 @@ export const session = {
   managed: () => typeof lord.session !== 'undefined' && lord.session.managed(),
   lock: () => typeof lord.session !== 'undefined' && lord.session.lock(),
   switchUser: () => typeof lord.session !== 'undefined' && lord.session.switchUser(),
+  // Restart… and Shut Down… (0.8.1): a confirmation with a 60 s countdown (sdk/power.jsx), then
+  // lord-sessiond decides. canPower(): only in a session lord-sessiond shows on the monitor.
+  canPower,
+  restart: () => askPower('reboot'),
+  shutdown: () => askPower('poweroff'),
 };
 
 // ❖L or ❖Ctrl+Q lock the screen.

@@ -1892,8 +1892,24 @@ static JSValue f_session_switch(JSContext *c, JSValueConst this_val, int argc, J
     return JS_NewBool(c, mirror_has_seat());
 }
 
+/* lord.session.power('reboot'|'poweroff'): asks lord-sessiond (root), which decides (docs/SESSIONS.md,
+ * "Restart and Shut Down from a session"). Only those two words, sent as a fixed message; lord-server
+ * runs nothing. false if no lord-sessiond drives this session's monitor. */
+static JSValue f_session_power(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
+    (void)this_val;
+    const char *w = argc ? JS_ToCString(c, argv[0]) : NULL;
+    if (!w) return JS_EXCEPTION;
+    const char *msg = !strcmp(w, "reboot") ? "{\"a\":\"power\",\"p\":\"reboot\"}"
+                    : !strcmp(w, "poweroff") ? "{\"a\":\"power\",\"p\":\"poweroff\"}" : NULL;
+    JS_FreeCString(c, w);
+    if (!msg || greeter_mode || !mirror_has_seat()) return JS_FALSE;
+    mirror_session(msg);
+    return JS_TRUE;
+}
+
 static const JSCFunctionListEntry session_funcs[] = {
     JS_CFUNC_DEF("managed", 0, f_session_managed),
+    JS_CFUNC_DEF("power", 1, f_session_power),
     JS_CFUNC_DEF("lock", 0, f_session_lock),
     JS_CFUNC_DEF("switchUser", 0, f_session_switch),
 };

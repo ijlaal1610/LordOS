@@ -132,5 +132,31 @@
   "trash.empty": "Vaciar Papelera",
   "trash.confirmTitle": "¿Vaciar la Papelera?",
   "trash.confirmDetail": "Todo lo que hay en la Papelera se borrará para siempre. No se puede deshacer.",
-  "trash.cancel": "Cancelar"
+  "trash.cancel": "Cancelar",
+  "menu.restart": "Reiniciar…",
+  "menu.shutdown": "Apagar…",
+  "menu.power": "Apagar",
+  "power.restartTitle": "¿Reiniciar la computadora ahora?",
+  "power.shutdownTitle": "¿Apagar la computadora ahora?",
+  "power.restartCountdown": {
+    "one": "Si no hacés nada, la computadora se reiniciará en {count} segundo.",
+    "other": "Si no hacés nada, la computadora se reiniciará en {count} segundos."
+  },
+  "power.shutdownCountdown": {
+    "one": "Si no hacés nada, la computadora se apagará en {count} segundo.",
+    "other": "Si no hacés nada, la computadora se apagará en {count} segundos."
+  },
+  "power.apps": "Apps abiertas: {list}. Se van a cerrar: guardá tu trabajo antes.",
+  "power.others": {
+    "one": "{list} también tiene la sesión abierta y puede perder trabajo sin guardar.",
+    "other": "Hay {count} usuarios más con la sesión abierta ({list}) que pueden perder trabajo sin guardar."
+  },
+  "power.needAdminRestart": "Solo un administrador puede reiniciar la computadora mientras otros usuarios tienen la sesión abierta.",
+  "power.needAdminShutdown": "Solo un administrador puede apagar la computadora mientras otros usuarios tienen la sesión abierta.",
+  "power.unavailable": "Esta sesión no puede reiniciar ni apagar la computadora.",
+  "power.restarting": "Reiniciando…",
+  "power.shuttingDown": "Apagando…",
+  "power.restart": "Reiniciar",
+  "power.shutdown": "Apagar",
+  "power.cancel": "Cancelar"
 }

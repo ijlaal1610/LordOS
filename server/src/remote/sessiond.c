@@ -498,10 +498,10 @@ static void show_greeter(const char *mode, const char *user) {
     if (start_worker(W_GREETER, NULL, NULL)) pending = W_GREETER;
 }
 
-static void power(const char *what) {
+static void power(const char *what, const char *who) {
     const char *verb = !strcmp(what, "reboot") ? "reboot" : !strcmp(what, "poweroff") ? "poweroff" : NULL;
     if (!verb) return;
-    sd_log("%s requested from the login screen", verb);
+    sd_log("%s requested %s", verb, who);
     pid_t pid = fork();
     if (pid == 0) {
         const char *const a[] = { "/usr/bin/systemctl", verb, NULL };
@@ -623,11 +623,49 @@ static void from_worker(void) {
     if (!strncmp(buf, "greeter-in ", 11) && shown == 'g') sd_mon_greeter(buf + 11);
 }
 
-/* Requests from the session being shown: lock or switch user; from the login screen:
+/* Restart or shut down from the session on the monitor (0.8.1: the crown menu, the Classic start
+ * menu; docs/SESSIONS.md, "Restart and Shut Down from a session"). Only "reboot" or "poweroff",
+ * through the same closed path as the login screen. Policy, decided here as root: the user on the
+ * monitor may do it alone; while other users have sessions open, only an administrator (sudo,
+ * admin or wheel, as for the admin actions). A refusal goes back to that session. */
+static int other_sessions(uid_t me) {
+    int n = 0;
+    rd_lock();
+    for (int i = 0; i < SD_MAX_SESSIONS; i++) {
+        SdSession *x = &rd_shared->sessions[i];
+        if (x->pid && x->uid != me && kill(x->pid, 0) == 0) n++;
+    }
+    rd_unlock();
+    return n;
+}
+
+static void session_power(const char *j) {
+    char what[16] = "";
+    jstr(j, "p", what, sizeof what);
+    if (strcmp(what, "reboot") && strcmp(what, "poweroff")) return;
+    struct passwd *pw = sd_valid_username(shown_user) ? getpwnam(shown_user) : NULL;
+    if (!pw) return;
+    int others = other_sessions(pw->pw_uid);
+    if (others && !is_admin(pw)) {
+        sd_log("%s asked to %s with %d other session(s) open: not an administrator, refused", shown_user, what, others);
+        char r[96];
+        snprintf(r, sizeof r, "{\"t\":\"power\",\"ok\":false,\"why\":\"admin\",\"others\":%d}", others);
+        sd_mon_greeter(r);
+        return;
+    }
+    char who[96];
+    snprintf(who, sizeof who, "by %s (%d other session(s) open)", shown_user, others);
+    power(what, who);
+}
+
+/* Requests from the session being shown: lock, switch user, restart or shut down; from the login screen:
  * log in, restart or shut down. */
 static void from_shown(int type, const char *j) {
     if (type == RP_SHOWN) { first_frame(); return; }
     if (type == RP_SESSION && shown == 'u') {
+        char a[16] = "";
+        jstr(j, "a", a, sizeof a);
+        if (!strcmp(a, "power")) { session_power(j); return; }
         if (strstr(j, "\"lock\"")) { sd_log("%s locked the screen", shown_user); show_greeter("lock", shown_user); }
         else if (strstr(j, "\"switch\"")) { sd_log("%s is switching user", shown_user); show_greeter("switch", shown_user); }
         return;
@@ -645,7 +683,7 @@ static void from_shown(int type, const char *j) {
     } else if (!strcmp(t, "power")) {
         char what[16] = "";
         jstr(j, "a", what, sizeof what);
-        power(what);
+        power(what, "from the login screen");
     }
 }
 

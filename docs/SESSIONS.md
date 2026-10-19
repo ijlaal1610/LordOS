@@ -216,6 +216,41 @@ after that the wait is 1, 2, 4… seconds, up to 5 minutes.
 In the SDK: `session.lock()`, `session.switchUser()` and `session.managed()`. The `default` and
 `classic` themes show those items only if `managed()` is true.
 
+### Restart and Shut Down from a session
+
+Since 0.8.1 the crown menu ends with **Restart…** and **Shut Down…**, after Lock Screen, Switch
+User… and Log Out; the Classic theme has them behind a **Power** button at the bottom of its start
+menu. Before, they were only on the login screen. Sleep is not offered: suspend and resume with the
+card lent to a session has not been tested on real hardware yet.
+
+| | |
+|---|---|
+| ![crown menu](session-power-menu-light.png) | ![crown menu, dark](session-power-menu-dark.png) |
+| ![restart confirmation](session-power-restart-light.png) | ![restart confirmation, dark](session-power-restart-dark.png) |
+| ![Classic start menu, Power](session-power-classic-light.png) | ![Classic, dark](session-power-classic-dark.png) |
+
+- **The confirmation** (`sdk/power.jsx`, `<PowerDialog>`, in the `modal` layer; a theme renders it
+  inside its `ThemeProvider`) says what will happen and counts down 60 seconds; at zero it does it,
+  as if confirmed. Cancel, Escape or a click outside stops it. It lists the apps that are open
+  (they are closed; there is no "unsaved changes" signal to read yet) and the other users with a
+  session open.
+- **The request:** `session.restart()` / `session.shutdown()` → `lord.session.power('reboot'|'poweroff')`
+  (`js_sys.c`), which only knows those two words and sends a fixed `RP_SESSION`
+  `{"a":"power","p":"reboot"|"poweroff"}`. lord-server runs nothing.
+- **The decision is lord-sessiond's** (`session_power` in `sessiond.c`), and only for the session
+  that is on the monitor (its connection is the only one it reads requests from):
+  - the user is alone (no other user has a session): any user may restart or shut down;
+  - other users have sessions open: only an administrator (`sudo`, `admin` or `wheel`, the same
+    rule as the admin actions in `admin.c`). The sheet says so beforehand and hides the button; if
+    it changed in between, lord-sessiond answers `{t:'power', ok:false, why:'admin'}` over the login
+    screen's channel (`RP_GREETER_IN`) and the sheet shows the refusal.
+  - then the same closed path as the login screen: `systemctl reboot` or `poweroff`, fixed path,
+    fixed environment, logged as `reboot requested by <user> (<n> other session(s) open)`.
+- **Tested on VM 122:** the menu items, the sheet in light and dark, the countdown, Cancel and
+  Escape (no restart after the minute), the Classic Power button, a real Shut Down (`qm start` back
+  to the login screen) and a real Restart (back to the login screen). The refusal with other users
+  logged in was checked in the code path only: it needs a second account's password on the VM.
+
 ## cgroups: one subtree per session
 
 Each app in a session goes into its own cgroup v2 (a «scope») so monitoring can attribute traffic
@@ -316,7 +351,7 @@ session. Everything that changes something goes through closed `admin.c` actions
 
 | Process                           | Runs as         | What it can do                                                   |
 |-----------------------------------|-----------------|------------------------------------------------------------------|
-| `lord-sessiond` (main)            | root            | reads shadow, opens and lends the card and input, creates sessions, reboots; doesn't read pixels |
+| `lord-sessiond` (main)            | root            | reads shadow, opens and lends the card and input, creates sessions, reboots or shuts down (login screen, or the monitor's session under the rule above); doesn't read pixels |
 | `lord-netd`                       | root            | only the `net-*` actions of `admin.c` (NETWORK.md); talks only to the sessions' root helpers (`netd.sock` 0600) |
 | login screen                      | `lordos-greeter` | draw and request; no admin helper and no access to homes        |
 | session                           | the user        | the usual (the `admin.c` helper with its closed list); the card and input only while it's on the monitor |
