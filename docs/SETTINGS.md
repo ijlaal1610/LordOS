@@ -44,7 +44,8 @@ the time fields keep `direction: 'ltr'`.
         │
         ▼  root work: closed admin actions (hw/hw_admin.c)
  admin.c ─ display-brightness, power-profile, power-suspend, power-buttons, time-ntp, time-set,
-           bt-unblock, rpi-case, hw-firmware-missing (the Store's suggestions, read-only)
+           bt-unblock, rpi-case, video-optimize, hw-firmware-missing (the Store's suggestions,
+           read-only)
 
  Cooling: lord.fan (ui/js_fan.c) ── /run/lordos/fand.sock ── lord-fand (root service, src/fan)
 ```
@@ -126,6 +127,10 @@ timer that sleeps until the next change (30 s steps only during the 30-minute fa
   for Computers algorithm (`night_sun_times`, within ±4 min of NOAA in the tests) at the
   coordinates of the **chosen time zone** in `/usr/share/zoneinfo/zone1970.tab`. The location is
   never looked up on the network.
+- **Video in the browser.** "Optimize video for this computer" (Automatic, Always, Never) and
+  "Lower quality automatically when video stutters": when the hardware can't decode VP9 or AV1,
+  the browsers are asked for H.264 (`Video.jsx`, `sdk/video.js`, the closed admin action
+  `video-optimize`). See [VIDEO.md](VIDEO.md).
 - **Multiple displays** (`DISPLAYS.md`): extend or mirror, the arrangement edited by dragging the
   displays (they snap next to each other), "Show menu bar on all displays", and what screenshots,
   recording and the remote desktop see (main display or all). Each display has its own CRTC,

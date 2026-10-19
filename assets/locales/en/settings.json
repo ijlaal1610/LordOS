@@ -242,7 +242,7 @@
   "section.notifications": "Notifications",
   "section.datetime": "Date & Time",
   "section.defaultapps": "Default Apps",
-  "keywords.displays": "display monitor screen resolution refresh rate hz rotation brightness night shift color temperature edid",
+  "keywords.displays": "display monitor screen resolution refresh rate hz rotation brightness night shift color temperature edid video browser codec h264 vp9 av1 stutter",
   "keywords.bluetooth": "bluetooth pair pairing headphones headset speaker keyboard mouse wireless",
   "keywords.power": "battery energy power profile low power performance sleep suspend lid power button screen off",
   "keywords.notifications": "notifications alerts banners do not disturb focus sound",

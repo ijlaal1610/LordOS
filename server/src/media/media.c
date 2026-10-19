@@ -13,6 +13,7 @@
  *     (F_SEAL_SHRINK): otherwise, a compromised helper could bring down lord-server with
  *     SIGBUS by truncating it. */
 #include "media_int.h"
+#include "hwdec.h"
 #include "../fsops.h"
 #include "../pkg/crypto.h"
 #include "../ui/ui.h"
@@ -808,6 +809,8 @@ int media_cameras(char *json, size_t n) {
 int media_pollfds(struct pollfd *p, int max) {
     int n = 0;
     for (int i = 0; i < 2 && n < max; i++) if (workers[i].sock >= 0) p[n++] = (struct pollfd){ workers[i].sock, POLLIN, 0 };
+    int hw = hwdec_pollfd();                   /* the hardware decoding probe (hwdec.c), once per boot */
+    if (hw >= 0 && n < max) p[n++] = (struct pollfd){ hw, POLLIN, 0 };
     for (int i = 0; i < MEDIA_MAX_SRC && n < max; i++) if (srcs[i].used && srcs[i].sock >= 0) p[n++] = (struct pollfd){ srcs[i].sock, POLLIN, 0 };
     for (int i = 0; i < MEDIA_MAX_SRC && n < max; i++) {
         if (!srcs[i].used) continue;
@@ -825,6 +828,7 @@ void media_dispatch(const struct pollfd *p, int n) {
     for (int k = 0; k < n; k++) {
         if (!p[k].revents) continue;
         int fd = p[k].fd;
+        if (fd == hwdec_pollfd()) { hwdec_dispatch(); continue; }
         for (int i = 0; i < 2; i++) if (workers[i].sock == fd) worker_dispatch(i);
         for (int i = 0; i < MEDIA_MAX_SRC; i++) {
             if (!srcs[i].used) continue;
@@ -848,5 +852,6 @@ void media_shutdown(void) {
         if (workers[b].sock >= 0) { close(workers[b].sock); workers[b].sock = -1; bury(workers[b].pid, 1000); }
     }
     thumb_n = 0;
+    hwdec_shutdown();
     media_events(NULL);
 }

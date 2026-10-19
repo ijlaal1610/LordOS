@@ -33,6 +33,22 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 - **Notifications when a disk gets too hot or its health gets worse**, at most once per disk every
   30 minutes for heat, and only when the health is worse than last seen. On by default, with a switch
   in Monitor → Disks.
+- **Smooth video in the browser without hardware decoding.** Video sites that send VP9 or AV1
+  make the browser decode them on the processor when the graphics card can't (virtual machines,
+  older PCs, the Raspberry Pi 5), and the video stutters. LordOS now checks at every boot what the
+  hardware decodes (VA-API profiles through `lord-media`, V4L2 memory-to-memory decoders on ARM,
+  virtual graphics cards count as "no"; cached per boot) and, when VP9 or AV1 is missing, asks the
+  browsers for H.264 instead, which is far lighter to decode. Settings → Displays → Video in the
+  browser: "Optimize video for this computer" (Automatic by default, Always, Never) and "Lower
+  quality automatically when video stutters" (off by default). Nothing is sent anywhere
+  ([docs/VIDEO.md](docs/VIDEO.md)).
+- **Our own small browser extension** (`/usr/share/chromium/extensions/lordos-video`, MIT), loaded
+  by Debian's Chromium: on YouTube it reports VP9/AV1 as unsupported so the site sends H.264, and
+  when a video keeps dropping frames it shows a small notice that offers a lower quality (or lowers
+  it by itself, if enabled). Its settings come from a managed policy written by the closed admin
+  action `video-optimize` (fixed text, no user text). Firefox ESR only loads signed extensions, so
+  for now it gets AV1 turned off through a default preference (it then uses VP9); the extension
+  for Firefox waits for signing.
 
 ## [Unreleased]
 

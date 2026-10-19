@@ -363,6 +363,18 @@ static void test_admin(void) {
     CHECK(!hw_rpi_case_text("") && !hw_rpi_case_text("argon") && !hw_rpi_case_text("none ") && !hw_rpi_case_text("../x"));
     CHECK(hw_backlight_name_valid("intel_backlight") && hw_backlight_name_valid("amdgpu_bl1") && hw_backlight_name_valid("acpi_video0"));
     CHECK(!hw_backlight_name_valid("../x") && !hw_backlight_name_valid(".x") && !hw_backlight_name_valid("a/b") && !hw_backlight_name_valid(""));
+    /* video-optimize: closed values only, fixed text out */
+    char cr[1024], ff[512];
+    CHECK(!hw_video_files("auto off no no", cr, sizeof cr, ff, sizeof ff));
+    CHECK(strstr(cr, "\"" HW_VIDEO_EXT_ID "\"") && strstr(cr, "\"mode\": \"auto\"") && strstr(cr, "\"hwVp9\": false") && strstr(cr, "\"autoLower\": false"));
+    CHECK(strstr(ff, "pref(\"media.av1.enabled\", false);"));
+    CHECK(!hw_video_files("auto on yes yes", cr, sizeof cr, ff, sizeof ff) && strstr(cr, "\"autoLower\": true") && !strstr(ff, "pref("));
+    CHECK(!hw_video_files("never off no no", cr, sizeof cr, ff, sizeof ff) && !strstr(ff, "pref("));
+    CHECK(!hw_video_files("always off yes yes", cr, sizeof cr, ff, sizeof ff) && strstr(ff, "media.av1.enabled"));
+    CHECK(hw_video_files("auto off no", cr, sizeof cr, ff, sizeof ff) && hw_video_files("auto off no no x", cr, sizeof cr, ff, sizeof ff));
+    CHECK(hw_video_files("sometimes off no no", cr, sizeof cr, ff, sizeof ff) && hw_video_files("auto maybe no no", cr, sizeof cr, ff, sizeof ff));
+    CHECK(hw_video_files("auto off true no", cr, sizeof cr, ff, sizeof ff) && hw_video_files("auto\" off no no", cr, sizeof cr, ff, sizeof ff));
+    CHECK(hw_video_files("", cr, sizeof cr, ff, sizeof ff) && hw_video_files(NULL, cr, sizeof cr, ff, sizeof ff));
 }
 
 int main(void) {

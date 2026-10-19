@@ -75,7 +75,9 @@ We took the way the apps of popular desktop systems work, never their logos or t
   others. It takes no arguments, the environment is minimal and the socket goes on fd 3. There is
   one per player, camera or recording, and two *workers* for short jobs (thumbnails and probes in
   the background; images, edits and exports in the foreground). Workers exit on their own after
-  20 s without work.
+  20 s without work. A one-shot `MK_HWPROBE` helper lists, once per boot, which codecs VA-API
+  decodes on the render nodes it gets (`lm_hwprobe.c`, for "Video in the browser": see
+  [VIDEO.md](VIDEO.md)).
 - **It never receives a path.** lord-server validates each path with the same rules as `lord.fs`
   (home folder and the user's mounts), opens the file and passes it the fd.
   - Outputs are created as temporary files next to the destination. When they finish well they're

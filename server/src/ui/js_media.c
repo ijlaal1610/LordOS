@@ -15,6 +15,7 @@
 #include "js_media.h"
 #include "../media/media_int.h"
 #include "../media/proto.h"
+#include "../media/hwdec.h"
 #include "../sec/perms.h"
 #include "../sec/restrict.h"
 #include "../fw/rules.h"
@@ -673,6 +674,14 @@ static JSValue f_hwaccel(JSContext *c, JSValueConst t, int argc, JSValueConst *a
     return JS_NewString(c, media_hwaccel());
 }
 
+/* hwDecode(): can this computer decode VP9/AV1 in hardware? The object from media/hwdec.c, or null
+ * while it is being found out (the first call starts it; cached per boot). docs/VIDEO.md */
+static JSValue f_hwdecode(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    const char *j = hwdec_result();
+    return j ? JS_ParseJSON(c, j, strlen(j), "<hwdec>") : JS_NULL;
+}
+
 static const JSCFunctionListEntry media_funcs[] = {
     JS_CFUNC_DEF("play", 3, f_play),
     JS_CFUNC_DEF("control", 3, f_control),
@@ -701,6 +710,7 @@ static const JSCFunctionListEntry media_funcs[] = {
     JS_CFUNC_DEF("cameraRecord", 3, f_camera_record),
     JS_CFUNC_DEF("protectedCount", 0, f_protected),
     JS_CFUNC_DEF("hwaccel", 0, f_hwaccel),
+    JS_CFUNC_DEF("hwDecode", 0, f_hwdecode),
 };
 
 /* A restriction was just added to the built-in apps: what it covers stops now, like revoking the

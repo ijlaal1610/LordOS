@@ -1,5 +1,6 @@
 // Settings → Displays: arrangement of several displays (extend or mirror), resolution, refresh rate,
-// rotation, scale (100–200 %, sharp), the main display, brightness and Night Light (docs/SETTINGS.md,
+// rotation, scale (100–200 %, sharp), the main display, brightness, Night Light and video in the
+// browser (Video.jsx, docs/VIDEO.md) (docs/SETTINGS.md,
 // "Displays", and docs/DISPLAYS.md). Changes apply live with the system's 15-second "Keep these
 // display settings?" countdown (sdk/hardware.jsx) and are saved per display (EDID identity).
 // Layout: the arrangement on top, then the selected display's
@@ -11,6 +12,7 @@ import {
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { Section, SettingRow, PopUp, Note, Stack, TimeField } from './ui.jsx';
+import { BrowserVideo } from './Video.jsx';
 
 const hz = (mhz) => {
   const v = mhz / 1000;
@@ -251,6 +253,7 @@ export function DisplaysSettings() {
       <Stack>
         <Note>{tr('prefs.display.notOnMonitor')}</Note>
         <NightShift />
+        <BrowserVideo />
       </Stack>
     );
   }
@@ -327,6 +330,7 @@ export function DisplaysSettings() {
 
       <NightShift />
       {d.softTint ? <Note style={{ marginTop: -12 }}>{tr('prefs.night.software')}</Note> : null}
+      <BrowserVideo />
     </Stack>
   );
 }
