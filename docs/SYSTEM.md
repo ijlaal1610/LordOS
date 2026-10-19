@@ -248,8 +248,11 @@ so 0.8.2 uses it instead of growing our own:
 enables `smartmontools.service`, which starts at the next boot (on VM 119 it was enabled but not
 started right after the install). Debian's default configuration checks each disk every 30
 minutes with `-n standby` (a resting disk is not woken) and mails root, which goes nowhere on a
-desktop. LordOS's own notices (`MONITOR.md`) don't need it; an administrator can turn it off with
-`systemctl disable --now smartmontools`.
+desktop. LordOS's own notices (`MONITOR.md`) don't need it, so since 0.8.3 it stays off: the
+`lordos` package ships `/usr/lib/systemd/system/smartmontools.service.d/lordos.conf` with
+`ConditionPathExists=/etc/lordos/smartd-enabled`, and migration `004-0.8.3-smartd-off.sh` stops a
+smartd already running from an earlier install. An administrator who wants it creates that file
+and runs `systemctl start smartmontools`.
 
 ### Measured on VM 119
 

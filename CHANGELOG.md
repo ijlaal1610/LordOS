@@ -71,6 +71,9 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   the panel header wrap to two lines instead of being cut, long destinations wrap too, and the app
   list gives the name more room (the counts moved next to the traffic bar, the Data and Rule
   columns are narrower).
+- **Debian's smartd stays off.** Installing smartmontools from Disks no longer leaves its
+  monitoring daemon polling the disks every 30 minutes; Disks and the Monitor read SMART on demand.
+  Administrators can opt back in (docs/SYSTEM.md, "smartd").
 
 ### Security
 
