@@ -29,7 +29,7 @@ aws() { command aws --profile "$PROFILE" "$@"; }
 aws s3 sync "$DIST/assets" "s3://$BUCKET/assets" --cache-control "public, max-age=31536000, immutable" --only-show-errors
 
 # 2. Pages and the other root files, always revalidated.
-aws s3 sync "$DIST" "s3://$BUCKET" --exclude "assets/*" --exclude "install.sh" --exclude "lordos-release.pub.pem" --exclude ".well-known/*" \
+aws s3 sync "$DIST" "s3://$BUCKET" --exclude "assets/*" --exclude "apt/*" --exclude "apt-staging/*" --exclude "keys/*" --exclude "install.sh" --exclude "lordos-release.pub.pem" --exclude ".well-known/*" \
   --cache-control "no-cache" --only-show-errors
 
 # 3. install.sh (curl … | sh), the release key and security.txt as plain text, readable in a browser.
@@ -38,8 +38,10 @@ aws s3 cp "$DIST/install.sh" "s3://$BUCKET/install.sh" --cache-control "no-cache
 aws s3 cp "$DIST/lordos-release.pub.pem" "s3://$BUCKET/lordos-release.pub.pem" --cache-control "no-cache" --content-type "text/plain; charset=utf-8" --only-show-errors
 
 # 4. Remove pages and root files the build no longer produces. Old hashed assets stay for pages
-#    that are already open in a browser; they are small and never referenced again.
-aws s3 sync "$DIST" "s3://$BUCKET" --delete --exclude "assets/*" --exclude "install.sh" --exclude "lordos-release.pub.pem" --exclude ".well-known/*" \
+#    that are already open in a browser; they are small and never referenced again. The APT
+#    repository (apt/, apt-staging/) and its key (keys/) belong to tools/release/apt-repo.sh: never
+#    touched here.
+aws s3 sync "$DIST" "s3://$BUCKET" --delete --exclude "assets/*" --exclude "apt/*" --exclude "apt-staging/*" --exclude "keys/*" --exclude "install.sh" --exclude "lordos-release.pub.pem" --exclude ".well-known/*" \
   --cache-control "no-cache" --only-show-errors
 
 id=$(aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION" --paths "/*" --query Invalidation.Id --output text)

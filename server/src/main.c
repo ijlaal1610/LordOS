@@ -16,6 +16,7 @@
  * recuperan en el próximo arranque; las dos primeras formas los cierran.
  */
 #include "admin.h"
+#include "keylag.h"
 #include "net/net.h"
 #include "disk/disk.h"
 #include "backup/backup.h"
@@ -102,6 +103,7 @@ typedef struct {
     Rect stale[2], curs[2];
     int full_copy, was_fs;
     int gpu;                    /* its GPU output (gpu_frame), -1 = composed by the CPU */
+    int wl_new;                 /* GPU path: a Linux app's window has new content not presented here yet */
 } Out;
 
 typedef struct {
@@ -532,6 +534,7 @@ static void cpu_takeover(Server *s) {
         o->kms.custom = 0;
         o->gpu = -1;
         o->full_copy = 2;
+        o->wl_new = 0;
     }
     s->hw_cursor = 0;
 }
@@ -850,7 +853,11 @@ static void on_input(void *ud, const InputDevice *d, const struct input_event *e
         int button = ev->code == BTN_LEFT ? 0 : ev->code == BTN_MIDDLE ? 1 : ev->code == BTN_RIGHT ? 2 : -1;
         if (button >= 0 && ev->value != 2 && s->nbuttons < MAX_BUTTONS)
             s->buttons[s->nbuttons++] = (ButtonEvent){ ev->value == 1, button };
-        else if (ev->code < BTN_MISC) js_key(ev->code, ev->value);
+        else if (ev->code < BTN_MISC) {
+            if (keylag_enabled) keylag_rx(ev->value, &ev->time);
+            js_key(ev->code, ev->value);
+            if (keylag_enabled) keylag_handled();
+        }
         break;
     }
     case EV_SYN:
@@ -1219,7 +1226,7 @@ static void present_memory(Server *s, Out *o, int index, int feed) {
 /* Does this display have something to show? (damage, a moved cursor on it, a fullscreen app) */
 static int out_needs(const Server *s, const Out *o) {
     if (!o->on) return 0;
-    if (o->full || !box_empty(o->pend)) return 1;
+    if (o->full || !box_empty(o->pend) || o->wl_new) return 1;
     if (!o->cdirty) return 0;
     if (o->cur_on) return 1;
     ORect me = { o->v.x, o->v.y, o->v.w, o->v.h };
@@ -1234,6 +1241,13 @@ static void render_frame(Server *s) {
     double t0 = now_ms();
     ui.layout_ms = ui.paint_ms = 0;
     ui.damage_px = 0;
+    if (keylag_enabled) keylag_render();
+    /* GPU path: a Linux app's new frame is only a texture (wl.c damage_node), not UI damage. Every
+     * GPU display must still present it: before 0.8.1 nothing was flipped until some other part of
+     * the screen changed (the clock, the cursor...), so typing in Chromium or Firefox showed up to a
+     * second late and Chromium logged "buggy presentation feedback" (docs/TROUBLESHOOTING.md). */
+    if (wl_wants_frame() && gpu_active())
+        for (int i = 0; i < OUT_MAX; i++) if (s->out[i].on && s->out[i].gpu >= 0) s->out[i].wl_new = 1;
     paint_ui(s);
     s->last_render = now_ms();
     if (s->cursor_dirty) {
@@ -1252,7 +1266,8 @@ static void render_frame(Server *s) {
         full_damage(s);
         paint_ui(s);
     }
-    Out *feed = feed_out(s);
+    Out *feed = feed_out(s), *mo = main_out(s);
+    int main_shown = 0;                 /* the main display got this frame */
     if (s->headless) {
         Out *o = &s->out[0];
         paint_out(s, o, 0, 1);
@@ -1273,6 +1288,7 @@ static void render_frame(Server *s) {
                 view_reset();
                 gpu_out = NULL;
                 o->cdirty = 0;
+                o->wl_new = 0;
                 if (failed) {
                     fprintf(stderr, "gpu: a frame failed; going on by CPU\n");
                     gpu_shutdown();
@@ -1280,6 +1296,7 @@ static void render_frame(Server *s) {
                     full_damage(s);
                 }
             } else present_cpu(s, o, i, r, o == feed);
+            if (o == mo) main_shown = 1;
         }
         /* every display in one frame for the remote desktop and recording (capture view) */
         Out *c = &s->cap;
@@ -1298,6 +1315,16 @@ static void render_frame(Server *s) {
     }
     s->frames++;
     wl_frame_done((unsigned)now_ms());
+    /* No flip event will come (a modeset instead of a page flip: the first frame, or a driver
+     * without page flip): the frame is on screen already, so its presentation feedback goes now.
+     * Otherwise the apps' feedback would wait for some later flip. */
+    if (main_shown && !s->headless && !mo->kms.flip_pending) {
+        struct timespec t;
+        clock_gettime(CLOCK_MONOTONIC, &t);
+        uint64_t ns = (uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec;
+        wl_presented(ns, mo->kms.flip_seq, mo->kms.mode.vrefresh ? 1000000000u / mo->kms.mode.vrefresh : 16666667u);
+        if (keylag_enabled) keylag_presented(ns);
+    }
     frame_stats(s, now_ms() - t0, ui.layout_ms + ui.paint_ms);
 }
 
@@ -1492,6 +1519,7 @@ int main(int argc, char **argv) {
     sigaddset(&mask, SIGINT);
     sigaddset(&mask, SIGTERM);
     sigprocmask(SIG_BLOCK, &mask, NULL);
+    keylag_init(s.greeter);                 /* key latency trace, only with LORD_INPUT_DEBUG=1 (keylag.h) */
     int sfd = signalfd(-1, &mask, SFD_CLOEXEC);
 
     char current[sizeof ui.theme_request];
@@ -1534,6 +1562,16 @@ int main(int argc, char **argv) {
         /* sin monitor y sin nadie mirando no se dibuja (al conectarse alguien llega un cuadro entero) */
         int unseen = s.headless && !mirror_clients() && !media_needs_cpu();   /* grabando la pantalla, sí */
         if (!s.headless && display_is_off()) unseen = 1;     /* screen off after idle (DPMS): nothing to draw */
+        /* nothing is drawn: the Linux apps waiting for a frame get it at most once a second (wl.c) */
+        if (unseen) {
+            static double unseen_tick;
+            double since = now_ms() - unseen_tick;
+            if (since >= 1000) { wl_frame_unseen((unsigned)now_ms()); unseen_tick = now_ms(); since = 0; }
+            if (wl_wants_frame() || ui.dirty) {
+                double left = 1000 - since;
+                if (delay < 0 || left < delay) delay = left;
+            }
+        }
         int wants = !unseen && (ui.dirty || s.cursor_dirty || js_wants_frame() || wl_wants_frame() || media_wants_frame() || outs_have_work(&s));
         /* sin monitor no hay vblank: a lo sumo 60 cuadros por segundo */
         double pace = s.headless ? s.last_render + 16.6 - now_ms() : 0;
@@ -1591,8 +1629,10 @@ int main(int argc, char **argv) {
             for (int i = 0; i < OUT_MAX; i++) if (s.out[i].on && s.out[i].kms.fd >= 0) heads[nh++] = &s.out[i].kms;
             if (nh) kms_dispatch_heads(heads, nh);
             /* wp_presentation follows the main display's vblank */
-            if (was && !mk->flip_pending)
+            if (was && !mk->flip_pending) {
                 wl_presented(mk->flip_ns, mk->flip_seq, mk->mode.vrefresh ? 1000000000u / mk->mode.vrefresh : 16666667u);
+                if (keylag_enabled) keylag_presented(mk->flip_ns);
+            }
         }
         if (pfd[1].revents & POLLIN) break;
         int lost[INPUT_MAX_DEVICES], nlost = 0;

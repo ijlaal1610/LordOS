@@ -30,6 +30,7 @@
 
 static char log_prefix[96] = "lord-sessiond";
 char sd_gpu_env[24];
+int sd_input_debug;
 
 void sd_log_prefix(const char *prefix) { snprintf(log_prefix, sizeof log_prefix, "%s", prefix); }
 
@@ -258,6 +259,7 @@ static void spawn(const struct passwd *pw, const char *rt, const char *lang, int
         env[ne++] = home;
         env[ne++] = "LORDOS_SESSIOND=1";
         if (sd_gpu_env[0]) env[ne++] = sd_gpu_env;
+        if (sd_input_debug && !greeter) env[ne++] = "LORD_INPUT_DEBUG=1";   /* key latency trace, never the login screen */
         env[ne] = NULL;
         if (!greeter) cgroup_delegate_session(uid, pw->pw_gid);   /* cgroup subtree for the apps (docs/SESSIONS.md) */
         const char *const a_user[] = { rd_conf.server, "--headless", size, "--user", user, "--theme", rd_conf.theme,

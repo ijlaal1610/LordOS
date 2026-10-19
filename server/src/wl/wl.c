@@ -16,6 +16,7 @@
  * app cursors, text-input (LordOS input methods inside Wayland apps),
  * Xwayland. */
 #include "wl.h"
+#include "../keylag.h"
 
 #include <errno.h>
 #include <math.h>
@@ -508,6 +509,7 @@ static void srf_region(struct wl_client *c, struct wl_resource *r, struct wl_res
 static void srf_commit(struct wl_client *c, struct wl_resource *r) {
     (void)c;
     Surf *s = wl_resource_get_user_data(r);
+    if (keylag_enabled && key_focus && c == key_focus->client) keylag_commit();
     if (s->p_attached) {
         take_buffer(s, s->p_buf);
         if (s->p_buf) { wl_list_remove(&s->p_buf_destroy.link); wl_list_init(&s->p_buf_destroy.link); }
@@ -2054,6 +2056,23 @@ void wl_frame_done(unsigned t) {
         wl_list_init(&s->feedback);
     }
     wl_display_flush_clients(dpy);
+    if (keylag_enabled) keylag_flushed();
+}
+
+int wl_frame_unseen(unsigned t) {
+    if (!dpy) return 0;
+    int waiting = 0;
+    for (int i = 0; i < MAX_SURF; i++) {
+        Surf *s = surfs[i];
+        if (!s) continue;
+        struct wl_resource *r, *tmp;
+        wl_resource_for_each_safe(r, tmp, &s->frames) { wl_callback_send_done(r, t); wl_resource_destroy(r); waiting = 1; }
+        wl_resource_for_each_safe(r, tmp, &s->feedback) { wp_presentation_feedback_send_discarded(r); wl_resource_destroy(r); waiting = 1; }
+        wl_resource_for_each_safe(r, tmp, &s->sent_feedback) { wp_presentation_feedback_send_discarded(r); wl_resource_destroy(r); waiting = 1; }
+    }
+    need_frame = 0;
+    if (waiting) wl_display_flush_clients(dpy);
+    return waiting;
 }
 
 /* ---- input ---- */
@@ -2177,8 +2196,20 @@ int wl_send_paste(void) {
     return 1;
 }
 
+static int focus_is_lord_app(void);
+static int node_protected(int node);
+static Surf *toplevel_of(Surf *s);
+
+/* Key latency trace (keylag.h): only keys for a Linux app, never an isolated LordOS app or a
+ * protected window. */
+static int keylag_traceable(void) {
+    Surf *top = toplevel_of(key_focus);
+    return !focus_is_lord_app() && !(top && node_protected(top->node));
+}
+
 static void send_key_to_focus(int code, int value) {
     unsigned t = now_ms();
+    if (keylag_enabled) keylag_sent_wl(keylag_traceable());
     uint32_t d, l, lk, g;
     kb_mods(&d, &l, &lk, &g);
     struct wl_resource *kb;
@@ -2887,6 +2918,7 @@ void wl_flush(void) {
         offer_to_focus();
     }
     wl_display_flush_clients(dpy);
+    if (keylag_enabled) keylag_flushed();
 }
 
 /* ---- for wl_input.c (gestures, fine scrolling and touches) ---- */

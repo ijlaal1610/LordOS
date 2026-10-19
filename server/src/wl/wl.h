@@ -16,6 +16,10 @@ void wl_dispatch(void);                 /* there is something on wl_fd */
 void wl_flush(void);                    /* sends what is pending to the clients */
 const char *wl_socket(void);            /* "wayland-0" */
 void wl_frame_done(unsigned time_ms);   /* after presenting a frame */
+/* Nothing is being drawn (screen off, the session away from the monitor, nobody watching): apps
+ * still waiting for a frame callback get it and their presentation feedback is discarded, so
+ * none stalls. 1 if some app was waiting. */
+int  wl_frame_unseen(unsigned time_ms);
 
 /* Input (main.c). hit = node under the pointer; down[i]/button[i] = buttons of this event
  * (0 left, 1 middle, 2 right). Returns 1 if the pointer is over a Wayland app and 2 if
