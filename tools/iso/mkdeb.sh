@@ -18,6 +18,12 @@
 #                                         image or install.sh; the package never selects it)
 #   /usr/share/grub/themes/lordos/        the boot menu theme (amd64; the ISO and the disk installer)
 #   /usr/share/doc/lordos/                README, copyright, changelog
+#   /usr/lib/lordos/apt/lordos.sources    the signed LordOS repository on lordos.org (updates from the
+#                                         Store and apt; docs/UPDATES.md): postinst copies it to
+#                                         /etc/apt/sources.list.d/ when missing, postrm removes it
+#   /usr/share/keyrings/lordos-archive-keyring.gpg   the key that signs that repository
+#   /usr/lib/lordos/migrate, migrations/  version-to-version system migrations, run by postinst
+#   /etc/kernel/postinst.d/zz-lordos-reboot-required  "restart required" after a kernel update
 set -eu
 OUT=${1:?uso: mkdeb.sh salida.deb}
 ROOT=$(pwd)
@@ -70,6 +76,13 @@ install -m 644 assets/app-host.bundle.js "$L/assets/app-host.bundle.js"
 # system apps that run as their own sandboxed process (manifest "process": "isolated"; e.g. Passwords)
 [ -d assets/sysapps ] && cp -r assets/sysapps "$L/assets/"
 install -m 755 tools/iso/rootfs/usr/lib/lordos/lordos-live-prep "$L/lordos-live-prep"
+# updates in place (docs/UPDATES.md): the repository, its key, the migrations and the restart notice
+install -D -m 644 packaging/apt/lordos.sources "$L/apt/lordos.sources"
+install -D -m 644 packaging/keys/lordos-archive-keyring.gpg "$PKG/usr/share/keyrings/lordos-archive-keyring.gpg"
+install -m 755 packaging/migrations/migrate "$L/migrate"
+install -d "$L/migrations"
+install -m 644 packaging/migrations/[0-9][0-9][0-9]-*.sh "$L/migrations/"
+install -D -m 755 packaging/kernel/zz-lordos-reboot-required "$PKG/etc/kernel/postinst.d/zz-lordos-reboot-required"
 install -D -m 644 tools/iso/rootfs/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf "$PKG/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf"
 install -D -m 644 tools/iso/rootfs/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf "$PKG/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf"
 # in a virtual machine only: more headroom for emulated sound cards (docs/SOUND.md, "Virtual machines")
@@ -105,7 +118,7 @@ install -m 644 tools/iso/rootfs/etc/systemd/system/lord-netperm.service "$PKG/us
 # fans by temperature from the first boot (docs/FANS.md): enabled by postinst, also in a chroot
 install -m 644 tools/iso/rootfs/etc/systemd/system/lord-fand.service "$PKG/usr/lib/systemd/system/lord-fand.service"
 find "$L" -type d -exec chmod 755 {} +
-find "$L/themes" "$L/assets" -type f -exec chmod 644 {} +
+find "$L/themes" "$L/assets" "$L/migrations" "$L/apt" -type f -exec chmod 644 {} +
 
 D="$PKG/usr/share/doc/lordos"
 install -m 644 README.md "$D/README.md"
@@ -199,6 +212,21 @@ if [ "$1" = configure ] && command -v systemctl >/dev/null 2>&1; then
     if [ -d /run/systemd/system ]; then systemctl restart systemd-sysctl.service >/dev/null 2>&1 || true; fi
     if [ -d /run/systemd/system ]; then systemctl restart lord-fand.service >/dev/null 2>&1 || true; fi
 fi
+# the LordOS repository: added when missing, so an administrator's edit (Enabled: no) is kept; not a
+# conffile, so removing the package also removes it and apt keeps working (docs/UPDATES.md)
+if [ "$1" = configure ] && [ ! -e /etc/apt/sources.list.d/lordos.sources ] && [ -d /etc/apt/sources.list.d ]; then
+    install -m 644 /usr/lib/lordos/apt/lordos.sources /etc/apt/sources.list.d/lordos.sources
+fi
+# version-to-version system changes, each applied once (docs/UPDATES.md, "Migrations")
+if [ "$1" = configure ] && [ -x /usr/lib/lordos/migrate ]; then
+    /usr/lib/lordos/migrate "${2:-}"
+fi
+# an upgrade replaced the desktop under the running sessions: Store → Updates offers a restart
+# (the Debian convention /run/reboot-required; never on a new install or in an image build)
+if [ "$1" = configure ] && [ -n "${2:-}" ] && [ -d /run/systemd/system ] &&
+   [ "$2" != "$(dpkg-query -W -f '${Version}' lordos 2>/dev/null || true)" ]; then
+    touch /run/reboot-required 2>/dev/null && echo lordos >> /run/reboot-required.pkgs 2>/dev/null || true
+fi
 # the boot splash lives in the initramfs: when it is the selected theme, rebuild it with the new images
 # (initramfs-tools' trigger; the theme is selected by the ISO, the Pi image or install.sh, never here)
 if [ "$1" = configure ] && [ -x /usr/sbin/plymouth-set-default-theme ] &&
@@ -223,6 +251,14 @@ if [ "$1" = remove ] && [ -x /usr/sbin/plymouth-set-default-theme ] &&
 fi
 C
 chmod 755 "$PKG/DEBIAN/prerm"
+# without the package its key is gone: take the repository out of apt's sources too
+cat > "$PKG/DEBIAN/postrm" <<'C'
+#!/bin/sh
+set -e
+if [ "$1" = remove ] || [ "$1" = purge ]; then rm -f /etc/apt/sources.list.d/lordos.sources; fi
+if [ "$1" = purge ]; then rm -rf /var/lib/lordos/migrations; fi
+C
+chmod 755 "$PKG/DEBIAN/postrm"
 # files under /etc are conffiles (lintian: file-in-etc-not-marked-as-conffile)
 ( cd "$PKG" && find etc -type f | sed 's|^|/|' ) > "$PKG/DEBIAN/conffiles"
 chmod 644 "$PKG/DEBIAN/conffiles"
