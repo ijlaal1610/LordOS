@@ -26,7 +26,8 @@ function Pill({ arrow, value, color, t }) {
 }
 
 // totals: [rxBytes, txBytes] over the visible period (shown as pills) or null.
-export function TrafficChart({ buckets, shift = 0, seconds = 60, height = 52, totals, compact }) {
+// caption replaces "last 60 s" and axis the [left, right] labels under it (the history's dates).
+export function TrafficChart({ buckets, shift = 0, seconds = 60, height = 52, totals, compact, caption, axis }) {
   const t = useTheme();
   const { t: tr } = useLocale();
   const box = useRef(null);
@@ -51,7 +52,7 @@ export function TrafficChart({ buckets, shift = 0, seconds = 60, height = 52, to
           <Pill arrow="↑" value={formatBytes(totals[1])} color={C.tx} t={t} />
           <Pill arrow="↓" value={formatBytes(totals[0])} color={C.rx} t={t} />
           <View style={{ flex: 1 }} />
-          <Text style={{ fontSize: 9, color: t.textDim, whiteSpace: 'nowrap' }}>{tr('monitor.net.lastSeconds', { n: seconds })}</Text>
+          <Text style={{ fontSize: 9, color: t.textDim, whiteSpace: 'nowrap' }}>{caption || tr('monitor.net.lastSeconds', { n: seconds })}</Text>
         </View>
       ) : null}
       <View ref={box} style={{ height, direction: 'ltr', borderRadius: 4, overflow: 'hidden' }}>
@@ -61,8 +62,8 @@ export function TrafficChart({ buckets, shift = 0, seconds = 60, height = 52, to
       </View>
       {!compact ? (
         <View style={{ flexDirection: 'row', direction: 'ltr' }}>
-          <Text style={{ flex: 1, fontSize: 9, color: t.textDim }}>{tr('monitor.agoSeconds', { n: seconds })}</Text>
-          <Text style={{ fontSize: 9, color: t.textDim }}>{tr('monitor.now')}</Text>
+          <Text style={{ flex: 1, fontSize: 9, color: t.textDim }}>{axis ? axis[0] : tr('monitor.agoSeconds', { n: seconds })}</Text>
+          <Text style={{ fontSize: 9, color: t.textDim }}>{axis ? axis[1] : tr('monitor.now')}</Text>
         </View>
       ) : null}
     </View>

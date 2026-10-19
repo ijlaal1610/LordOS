@@ -1,8 +1,11 @@
 // Privacy.jsx — the "Monitor" item of Settings → Privacy (another module builds the page and the
 // Monitor registers itself with registerPrivacySection, if it exists). Two switches, saved in
-// settings: see each app's connections and place them on the map with the local country database.
+// settings: see each app's connections and place them on the map with the local country database;
+// and, since 0.8.2, keep a traffic history (bytes per minute and per hour, never addresses) with
+// "Clear History" (monitor.clearHistory, docs/MONITOR.md "Traffic history").
 // Drawn like the Settings sections: a 13/600 header, an inset GroupBox and a footer.
-import { View, Text, Toggle, Button, GroupBox, useTheme, useLocale, useSettings, wm, spacing, typeScale } from '@lordos/sdk';
+import { View, Text, Toggle, Button, GroupBox, useTheme, useLocale, useSettings, wm, spacing, typeScale, monitor } from '@lordos/sdk';
+import { useState } from 'react';
 
 function Row({ label, hint, children }) {
   const t = useTheme();
@@ -23,6 +26,7 @@ export function MonitorPrivacy() {
   const [s, set] = useSettings();
   const m = s.monitor || {};
   const put = (patch) => set({ monitor: { ...m, ...patch } });
+  const [cleared, setCleared] = useState(false);
   return (
     <View style={{ gap: 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 22, paddingHorizontal: spacing.xs, gap: spacing.s }}>
@@ -36,6 +40,13 @@ export function MonitorPrivacy() {
         <Row label={tr('monitor.privacy.geo')} hint={tr('monitor.privacy.geoHint')}>
           <Toggle small on={m.geo !== false} onChange={(on) => put({ geo: on })} />
         </Row>
+        <Row label={tr('monitor.privacy.history')} hint={tr('monitor.privacy.historyHint')}>
+          <Toggle small on={m.history !== false} onChange={(on) => put({ history: on })} />
+        </Row>
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingVertical: 6 }}>
+          <Button small label={cleared ? tr('monitor.privacy.cleared') : tr('monitor.privacy.clear')} disabled={cleared}
+            onClick={() => { if (monitor.clearHistory()) setCleared(true); }} />
+        </View>
       </GroupBox>
       <Text style={{ fontSize: typeScale.caption, color: t.textDim, lineHeight: 1.4, marginHorizontal: spacing.xs, textAlign: 'start' }}>{tr('monitor.privacy.local')}</Text>
     </View>

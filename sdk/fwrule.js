@@ -222,3 +222,96 @@ export function comparePrecedence(a, b) {
     (b.action === 'deny' ? 1 : 0) - (a.action === 'deny' ? 1 : 0) || (b.id || 0) - (a.id || 0);
 }
 export const sortByPrecedence = (rules) => [...rules].sort(comparePrecedence);
+
+// ---- one destination's verdict (the Monitor's per-domain switch, 0.8.2) --------------------------
+// The same decision fw_decide makes for one connection of an app (rules.c, docs/FIREWALL.md
+// "Precedence"), over that app's rules as lord.fw.rules(app) lists them: the restrictions first,
+// then the most specific matching rule. Without a rule the mode decides (null here: allowed in the
+// silent and off modes). server/tests/fw_domain_cases.txt is run through both this and fw_decide
+// (build/fwdest-test and fwrule_input_test.mjs), so the Monitor shows what the kernel will do.
+//
+//   decide(rules, { names: ['api.example.com'], addr: '93.184.216.34', proto: 'tcp', port: 443 },
+//          ['no-lan'])                       → { action: 'allow' | 'deny', rule, by: 'rule' | 'restricted' } | null
+
+function addrBytes(a) {
+  const c = typeof a === 'string' && a ? parseCidr(a) : null;
+  if (!c || !c.ok || c.kind !== 'address') return null;
+  return { fam: c.fam, b: c.fam === 4 ? parseV4(c.dst) : parseV6(c.dst) };
+}
+
+export function isLan(a) {
+  const x = addrBytes(a);
+  if (!x) return false;
+  const b = x.b;
+  if (x.fam === 4) {
+    return b[0] === 0 || b[0] === 10 || b[0] === 127 || (b[0] === 100 && (b[1] & 0xc0) === 64) || (b[0] === 169 && b[1] === 254) ||
+      (b[0] === 172 && (b[1] & 0xf0) === 16) || (b[0] === 192 && b[1] === 168) || (b[0] & 0xf0) === 224 || b.every((v) => v === 255);
+  }
+  if (b.slice(0, 15).every((v) => v === 0) && (b[15] === 0 || b[15] === 1)) return true;
+  return (b[0] & 0xfe) === 0xfc || (b[0] === 0xfe && (b[1] & 0xc0) === 0x80) || b[0] === 0xff;
+}
+
+function cidrHas(rule, x) {
+  const c = parseCidr(rule);
+  if (!c.ok || !x || c.fam !== x.fam) return false;
+  const net = c.fam === 4 ? parseV4(c.dst.split('/')[0]) : parseV6(c.dst.split('/')[0]);
+  for (let i = 0; i < c.prefix; i++) if (bitAt(net, i) !== bitAt(x.b, i)) return false;
+  return true;
+}
+
+function destMatches(r, names, a, lan) {
+  const d = parseDest(r.dst);
+  if (!d.ok) return false;
+  switch (d.kind) {
+    case 'any': return true;
+    case 'lan': return !!a && lan;                          // an unknown address is neither (rules.c)
+    case 'internet': return !!a && !lan;
+    case 'domain': return names.includes(d.domain);
+    case 'wildcard': return names.some((n) => n === d.domain || n.endsWith(`.${d.domain}`));
+    default: return cidrHas(r.dst, a);
+  }
+}
+
+export function decide(rules, { names = [], addr = '', proto = 'tcp', port = 0, dir = 'out' } = {}, restricted = []) {
+  const a = addrBytes(addr);
+  const lan = a ? isLan(addr) : false;
+  const has = (f) => restricted.includes(f);
+  if (has('no-network') || (dir === 'in' && has('no-incoming')) || (has('no-internet') && !lan) || (has('no-lan') && lan)) {
+    return { action: 'deny', rule: null, by: 'restricted' };
+  }
+  const ns = names.map((n) => normDomain(n)).filter(Boolean);
+  const hits = (rules || []).filter((r) => {
+    if ((r.dir || 'out') !== dir) return false;
+    if (r.proto && r.proto !== proto) return false;
+    const p = parsePort(r.port || '');
+    if (!p.ok || (p.port && (port < p.lo || port > p.hi))) return false;
+    return destMatches(r, ns, a, lan);
+  });
+  if (!hits.length) return null;
+  // as rules.c weighs them: an exact name also counts its labels (a CNAME chain's longest name wins)
+  const spec = (r) => { const d = parseDest(r.dst); return d.ok && d.kind === 'domain' ? SC_EXACT + d.domain.split('.').length : specificity(r); };
+  const best = [...hits].sort((x, y) => spec(y) - spec(x) || comparePrecedence(x, y))[0];
+  return { action: best.action, rule: best, by: 'rule' };
+}
+
+// What one click on a destination's switch does: the rule for exactly that name (or address), any
+// port and protocol, set to the other verdict; if dropping that rule already gives the other
+// verdict, it is removed instead of piling up rules (like the Monitor's per-app switch).
+//   → { op: 'add', rule } | { op: 'update', id, rule } | { op: 'remove', id } | null
+export function toggleOp(rules, { name, addr, proto = 'tcp', port = 0 }, restricted = []) {
+  const q = { names: name ? [name] : [], addr, proto, port };
+  const now = decide(rules, q, restricted);
+  if (now?.by === 'restricted') return null;
+  const allowedNow = now ? now.action === 'allow' : true;    // no rule: the mode ("ask" is applied as silent)
+  const target = allowedNow ? 'deny' : 'allow';
+  const dst = name ? normDomain(name) : parseDest(addr).ok ? parseDest(addr).dst : null;
+  if (!dst) return null;
+  const own = (rules || []).find((r) => (r.dir || 'out') === 'out' && r.dst === dst && !r.port && !r.proto);
+  if (own) {
+    const without = decide(rules.filter((r) => r !== own), q, restricted);
+    const allowedWithout = without ? without.action === 'allow' : true;
+    if ((allowedWithout ? 'allow' : 'deny') === target) return { op: 'remove', id: own.id };
+    return { op: 'update', id: own.id, rule: { dir: 'out', dst, port: '', proto: '', action: target } };
+  }
+  return { op: 'add', rule: { dir: 'out', dst, port: '', proto: '', action: target } };
+}

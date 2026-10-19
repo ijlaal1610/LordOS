@@ -8,9 +8,10 @@ The Network tab takes the shape of a per-app network monitor (apps on the left, 
 the right).
 
 Phase 1 was read-only. Since then the Network tab holds per-app firewall rules (Phase 2) and, in
-0.8.1, the Processes tab can stop a process and show its details ("Process actions"). In 0.8.2 the
-Disks tab shows each disk's temperature and health, and the session can notify when a disk gets too
-hot or less healthy ("Disk temperature and health"). There is no saved history.
+0.8.1, the Processes tab can stop a process and show its details ("Process actions"). In 0.8.2
+each destination of an app has its own allow/block switch, the traffic chart reaches back 30 days
+("Traffic history"), the Disks tab shows each disk's temperature and health, and the session can
+notify when a disk gets too hot or less healthy ("Disk temperature and health").
 
 ## Tabs
 
@@ -33,9 +34,11 @@ itself.
   connections, a traffic bar (received in green, sent in orange, relative to the app that moved
   the most), a tiny live activity indicator (its traffic over the last 12 s, one bar per second),
   the bytes and the **Rule** column: a per-app allow/deny switch that `lord-netperm`
-  enforces in the kernel (see "Phase 2"). Each app expands to show its destinations (IP and country,
-  plus the ones the firewall reported recently: "recent connection" or "recently denied"); a click
-  on one selects it in the right panel. At the bottom, the machine's traffic:
+  enforces in the kernel (see "Phase 2"). Each app expands to show its destinations, one row per
+  name the system resolver gave (its addresses together) or per address, with the country, the
+  ones the firewall reported recently ("recent connection" or "recently denied") and, since 0.8.2,
+  **each one's own allow/block switch** (see "Per-destination switches"); a click on a row selects
+  it in the right panel. At the bottom, the machine's traffic:
   - the current download and upload speed;
   - two pills with what was sent (↑, orange) and received (↓, green) in the visible minute;
   - a **mirrored chart** of the last 60 s (`TrafficChart.jsx`, `drawMirror` in `draw.js`): one bar
@@ -43,7 +46,10 @@ itself.
     so the strip reads as one continuous chart even when idle; the newest second grows in from the
     right edge while the rest slides left, redrawn at the 4 samples per second with the window in
     front (once per second behind it). Auto-scaled to a "nice" maximum shown at both ends; any
-    bucket that moved bytes is at least one pixel tall.
+    bucket that moved bytes is at least one pixel tall;
+  - since 0.8.2, a zoom above the chart: **60 s** (the live minute), **1 h**, **24 h**, **7 d**
+    and **30 d**, with ‹ › to step one window back or forward and **Now** to come back (see
+    "Traffic history").
 - **Center:** the map fills the whole height of the column. It has an arc from "This computer" to
   each country, one dot per country (bigger the more connections) and pill labels with the name
   and the count. It's controlled like this:
@@ -56,16 +62,18 @@ itself.
   - `+`, `−` and "show all" buttons in the corner.
 
   When zoomed in, the borders and names of the other countries show. The Lite base has no cities,
-  so labels are always countries.
+  so labels are always countries. (0.8.2: city labels would need a city-level IP database with a
+  compatible license; Debian 13 only ships country-level ones, `geoip-database`, so none was added.)
 
   **Direction of the traffic.** While bytes move, dots travel along each arc: sent (orange) from
   "This computer" to the place, received (green) back. The higher the rate, the more dots (1 to 4
   each way) and the faster they go (3.4 s to 1 s per trip, on a log scale from 256 B/s to about
   4 MB/s). An idle arc has no dots and is drawn dimmed (`idle` in the map request, `map.c`). The
-  dots are engine views moved with `lord.setStyle`, no React render per frame: 12 frames per
-  second with the window in front, 5 behind it, at most the 12 busiest arcs and only those on
-  screen; the timer stops with the window minimized, while the map is being moved and when nothing
-  moves. With Appearance → Reduce motion, each busy arc shows two still markers instead: a short
+  dots are small ready-made images (a ring and the direction's color, drawn once) moved with
+  `lord.setStyle`, no React render per frame: 12 frames per second with the window in front, 5
+  behind it, at most the 12 busiest arcs and only those on screen; the timer stops with the window
+  minimized, while the map is being moved and when nothing moves. Each frame repaints only the
+  small rectangles the dots left and entered (0.8.2, "Several damaged rectangles"). With Appearance → Reduce motion, each busy arc shows two still markers instead: a short
   comet of three dots, the biggest in front, pointing the way the bytes go.
 
   When an app is chosen, the map shows only its places and frames them. A click on a dot or an arc
@@ -77,9 +85,11 @@ itself.
     no rules yet), incoming, listening and from other users, and the apps and destinations with the
     most traffic, each with "↓ received · ↑ sent" (destinations by the name the resolver gave,
     when known);
+  - with a history zoom chosen (0.8.2): also "Most traffic · 24 h" (or the zoom chosen), the apps
+    that moved the most in that window, from the history file;
   - with an app chosen: executable path, user, PIDs, rule, a "Rules for this app" link (Settings
     → Privacy with that app open), bytes and speed with the app's own mirrored chart of the last
-    minute (one bar per second), ports and protocols, listening ports and
+    minute (one bar per second, or the history window chosen), ports and protocols, listening ports and
     addresses. A selected address offers **Allow / Block this domain** (or "this address" when no
     name is known) for that app: a sheet prefilled with the destination (see `FIREWALL.md`, "Rules
     by app");
@@ -90,6 +100,107 @@ server, and this app's rule is that no address leaves the machine.
 
 **"This computer"** is placed by the time zone (`/etc/localtime` → coordinates from
 `/usr/share/zoneinfo/zone1970.tab`), without the network.
+
+### Per-destination switches (0.8.2)
+
+An open app row lists the destinations it reached and gives each one an allow/block switch
+(green: allowed, red: blocked), the same per-app rules Settings → Privacy → Network rules by app
+edits (`FIREWALL.md`, "Rules by app"); there is no new enforcement:
+
+- **What a row is:** one per name the system resolver gave for the app's addresses (from
+  `lord-netperm`'s notices, `hosts`), with its addresses together ("cdn.example.net (4)"), or one
+  per address when no name is known. The first eight show, then "N more…" (and "Show fewer").
+  While the row is open the order is kept: busiest first when it opens, newcomers below, so a
+  switch never moves under the pointer.
+- **What the switch shows** is what the app's rules decide for that destination right now:
+  `sdk/fwrule.js` `decide()` runs the same order as `fw_decide` (restrictions, then the most
+  specific matching rule; no rule: the mode, which allows). When another rule decides, the row
+  says which ("By the rule \*.example.com", "Follows this app's default"); a restriction ("no
+  internet") locks the switch and says so.
+- **What a click does** (`toggleOp()`): it writes the rule for exactly that name (or address),
+  any port and protocol, with the other verdict; if that name already has its own rule it is flipped,
+  or removed when the app's other rules alone already give the new verdict, so going back and forth
+  never piles up rules. It goes through `lord.fw.addRule` / `updateRule` / `removeRule`, which save
+  `firewall.json` and send `RELOAD`; `lord-netperm` applies it to the next connection.
+- Domains match the names the system resolver returned (`FIREWALL.md`, "What domain rules can't
+  see"): a browser using its own encrypted DNS shows addresses, and those rows write address rules.
+- **Tests:** `server/tests/fw_domain_cases.txt`, 37 cases (exact names, wildcards, CNAME chains,
+  networks, ports, protocols, LAN/internet, restrictions, IPv6), run through `fw_decide` by
+  `build/fwdest-test` — once from the store and once after a round trip through the
+  `firewall.json` text — and through `decide()` by `fwrule_input_test.mjs`, which also checks the
+  switch's add / flip / remove choices. On VM 119 a click on a Firefox ESR destination wrote
+  `{"app":"desktop:firefox-esr","dst":"scripts.webcontentassessor.com","action":"deny"}` and
+  `lord-netperm` logged the reload.
+
+### Traffic history (0.8.2)
+
+The chart's zoom reads a history lord-server keeps: bytes received and sent **per minute for 7 days
+and per hour for 30 days**, for the machine (every interface but `lo`, as the live totals) and for
+each of the user's apps (`lord-netperm`'s per-app counters, the ones the live list uses).
+
+| Zoom | Window | One bar |
+|---|---|---|
+| 60 s | the live minute (as before) | 1 s |
+| 1 h | 1 hour | 1 minute |
+| 24 h | 24 hours | 15 minutes |
+| 7 d | 7 days | 1 hour |
+| 30 d | 30 days | 6 hours |
+
+‹ and › move one window back or forward (no further back than the oldest record), **Now** comes
+back to the present; a window that reaches the present is read again every minute. With an app
+selected its own chart follows the same window. Bars are average rates over the bar, the pills the
+window's totals.
+
+**Privacy.**
+
+- **Whose file:** the apps are the user's own, so the history is the user's:
+  `$XDG_STATE_HOME/lordos/net-history.bin` (default `~/.local/state/lordos/net-history.bin`),
+  mode 0600 in a 0700 folder, written by the user's own lord-server. No root process writes into
+  a home folder, and the machine's total is recorded only while that user's session runs.
+- **What it holds:** app ids (`desktop:firefox-esr`, `lpk:…`, `lordos`) and byte counts. **Never an
+  address, a domain name or a country**, whatever the "connections" switch says: the long-term
+  file can't be used to rebuild where the machine went, only how much each app moved. (The live
+  lists keep showing addresses and names while the Monitor is open and "connections" is on.)
+- **Switch and Clear:** Settings → Privacy → Monitor → **Keep a traffic history** (on by default;
+  `settings.monitor.history`) stops recording at once; **Clear History** deletes the file and what
+  is in memory. Nothing leaves the machine.
+- The login screen and isolated apps never record (lord-server only allows it in a user session).
+
+**How it is written** (`server/src/monitor/netrec.c`, `nethist.c`):
+
+- every 5 s lord-server reads `/proc/net/dev` and the latest per-app counters `lord-netperm`
+  already sends it (`COUNTS`, read without waiting from the same socket `lord.fw` uses), and adds
+  the difference to the minute in progress (in memory: its totals and one entry per app that
+  moved bytes);
+- when the minute ends it **appends one record** to the file, a few dozen bytes in one `write`;
+- at startup and every 6 hours a **compaction** folds minutes older than 7 days into hours, drops
+  hours older than 30 days and any damaged tail, and replaces the file atomically (a temporary file,
+  `fsync`, `rename`). 40 days of one record every 10 minutes compact to under 64 KB (`nethist-test`); a
+  week of minutes with a few apps is a few hundred KB.
+
+**File format.** `"LNH1"`, a version byte and three reserved bytes, then records
+`[type u8][length u16][payload][CRC-32]`; payloads use LEB128 numbers. `APP` gives an app id an
+index; `MIN` (Unix time / 60) and `HOUR` (Unix time / 3600) hold the totals and `(index, rx, tx)`
+per app. The reader checks every length, every varint and every CRC and stops at the first record
+that doesn't check out (a crash in the middle of a write): what came before is kept and the next
+compaction drops the rest. A file that isn't ours, that isn't a regular file of the user's or that
+is bigger than 8 MB is not read; a symlink in its place is refused.
+
+**Cost.** One small file read and a look at a buffer every 5 s, one append per minute: nothing
+measurable next to the session (the main loop wakes every 5 s for it, only while recording is on).
+
+`lord.monitor.history({ from, step, n, app })` returns `{ res, oldest, now, enabled, rx: [n], tx: [n],
+top: [[app, rx, tx]] }`: bytes per bucket (`from` and `step` in Unix seconds, `n` ≤ 1500), for the
+machine or one app id; `res` is the finest resolution found (60 or 3600 s), records longer than a
+bucket are spread over it. `historyEnable(on)` and `historyClear()` go with the setting and the
+button.
+
+**Tests:** `build/nethist-test` (in `make -C server test`): totals survive writing, reopening and
+bigger buckets; the top apps; 40 days of records rotate to 7 days of minutes and 30 days of hours
+(totals checked exactly); a cut at every byte of a file and 2,000 random byte changes never crash,
+keep what came before the damage and leave a clean file after the next write; a foreign file is
+replaced; more than 1,024 apps go to "other"; Clear removes everything and recording goes on; a
+symlink is refused. Also run with `-fsanitize=address,undefined`.
 
 ### Process actions (0.8.1)
 
@@ -235,7 +346,8 @@ bottom of the tab (`settings.monitor.diskAlerts`):
 
 ```
 apps/monitor/            index.jsx (tabs), Network.jsx (Network), MapView.jsx (map), Chart.jsx,
-                         TrafficChart.jsx (mirrored sent/received chart), draw.js (pixels),
+                         TrafficChart.jsx (mirrored sent/received chart), History.jsx (zoom and
+                         history windows), draw.js (pixels),
                          icons.jsx, Privacy.jsx, countries.js (generated)
 apps/monitor/Processes.jsx   the Processes tab, its context menu, the stop sheet and Get Info
 apps/monitor/DisksTab.jsx    the Disks tab: rates, temperature and health per disk, the chosen disk's cards
@@ -249,6 +361,8 @@ server/src/monitor/disktemp.c  which hwmon sensor belongs to which disk (nvme, d
 server/src/monitor/conn.c    connections via sock_diag + inode → process
 server/src/monitor/mmdb.c    our own MaxMind DB reader (IP → country)
 server/src/monitor/map.c     vector map, on its own thread
+server/src/monitor/nethist.c the traffic history file (append, query, compaction)
+server/src/monitor/netrec.c  feeds it every 5 s from /proc/net/dev and lord-netperm's counters
 server/src/monitor/procctl.c the protected list, proc_signal() (pidfd) and the Get Info JSON
 server/src/monitor/proc_admin.c  the root helper's proc-signal / proc-info (administrators)
 assets/monitor/          land.bin (Natural Earth 1:50m), geoip-country.mmdb.xz (DB-IP Lite)
@@ -277,9 +391,12 @@ tests/mmdb_test.c, tests/map_bench.c   reader test and map benchmark
 Each disk in `sample().disk.disks` carries the same fields (`sensor`: `"nvme"`, `"drivetemp"` or
 `null`; `temp` in °C or `null`; `tempT`: when it was read; `tempIdle`: a spinning disk at rest, not
 read; `awake`: I/O in the last minute).
+| `history({ from, step, n, app })` | the traffic history in `n` buckets (see "Traffic history"), or `null` |
+| `historyEnable(on)` / `historyClear()` | the "Keep a traffic history" setting; deletes the history |
 
 No function takes paths or commands: the only arguments are booleans, a language code (letters,
-digits, `-` and `_`, up to 15), a PID with its start time (integers) and `'TERM'` or `'KILL'`.
+digits, `-` and `_`, up to 15), a PID with its start time (integers), `'TERM'` or `'KILL'`, and the
+history's integers and app id (`[A-Za-z0-9._:@+~/-]`, up to 127).
 `lord-server` runs nothing for the Monitor.
 
 ### Sampling without slowing the screen
@@ -394,10 +511,12 @@ With `Uint32Array` it costs one pixel per write.
 ## Privacy
 
 Settings → Privacy → **Monitor** (registered with `registerPrivacySection` if the page exists) has
-two switches, saved in `settings.monitor`:
+three switches, saved in `settings.monitor`, and a button:
 
 - `connections`: see each app's connections. When off, the thread doesn't query sock_diag.
 - `geo`: place them on the map. When off, the country database isn't loaded.
+- `history` (0.8.2, on by default): keep the traffic history (bytes per minute and per hour, never
+  addresses; see "Traffic history"). **Clear History** deletes it.
 
 ## Phase 2
 
@@ -424,7 +543,7 @@ two switches, saved in `settings.monitor`:
 - **Host names** without asking anyone: `lord-netperm` already learns them from the system
   resolver; its notices don't carry them to the session yet. The Network tab shows a `host` /
   `hosts` field as soon as a notice brings one.
-- Saved history and usage alerts.
+- Usage alerts (the history is in place since 0.8.2).
 
 ## Measurements
 
@@ -474,14 +593,64 @@ Network tab in front, five downloads running (one over HTTP/3), arcs to 4–6 co
   other windows it drops to once per second.
 - **The moving dots** cost about 0.3 points per frame per second (5 fps: 10.1 %, 15 fps:
   13.6 %): each frame repaints the box around all the dots, which with arcs across the world is
-  most of the map. 12 fps is the compromise; the engine has one damaged rectangle per frame, so
-  several small rectangles would cut this further (future work).
+  most of the map. 12 fps is the compromise. (0.8.2: several damaged rectangles, see below.)
 - An `lord.setStyle` that only moves an absolutely positioned node (the dots, the map image while
   panning) now just places it again instead of remeasuring every ancestor (`js.c`, like a window
   drag); it made no measurable difference here because painting dominates.
 - **`lord-netperm`** stays at 0.0–0.07 % with traffic flowing (one map read per app per second,
   plus one batch read of the address table only while bytes move).
 - **The kernel side** of the accounting is in `FIREWALL.md` ("Measurements").
+
+### 0.8.2: several damaged rectangles (VM 119)
+
+VM 119: 4 vCPU Xeon Silver 4108 at 1.8 GHz, `virtio` GPU without 3D, CPU compositing, 1280×800.
+Network tab in front, ten slow downloads to mirrors in ten countries (arcs to 8–11 countries, about
+20 moving dots). `lord-server` (whole process, % of one core), 5 × 30 s each, the same session
+restarted with each build:
+
+| Build | Dots moving | Reduce motion (still) | Animation's cost |
+|---|---|---|---|
+| before (0.8.1 engine and Monitor, `origin/main`) | 11.3 / 11.5 / 10.8 / 10.7 / 10.7 = **11.0 %** | 7.9 / 8.1 / 8.0 / 8.5 / 8.0 = **8.1 %** | **2.9 points** |
+| after (this branch) | 10.1 / 9.2 / 8.8 / 9.2 / 9.8 = **9.4 %** | 7.8 / 7.9 / 7.9 / 8.1 / 7.6 = **7.9 %** | **1.6 points** (−46 %) |
+
+What changed, and what each step bought (main thread, instrumented builds, per second of the dots
+moving, about 14 frames per second):
+
+| Step | Repainted per frame | Paint | Render (layout, damage, paint, present) |
+|---|---|---|---|
+| one damaged box (before) | 164,000 px, 1 rectangle | 25 ms/s | 33 ms/s |
+| several rectangles (`dlist_add`, joined when the union wastes < 6,144 px) | 41,000 px, 5 | 21 ms/s | 29 ms/s |
+| + clipped subtrees outside the rectangle skipped, cover search pruned | 45,000 px, 5 | 13 ms/s | 21 ms/s |
+| + joined only below 1,024 px of waste | 30,000 px, 10 | 11 ms/s | 19 ms/s |
+| + only the rectangles copied to the screen (`present_cpu`) | 26,000 px, 11 | 11 ms/s | 16 ms/s |
+
+- **Several rectangles** (`ui.dlist`, `paint_damage_rects`, `paint.c` "Several damaged
+  rectangles"): `damage_add` keeps the changes as up to 16 non-overlapping rectangles besides
+  the box around them; `paint_damage` joins pairs whose union wastes less than `DAMAGE_PASS_PX`
+  (1,024 px, measured: 256 to 4,096 px all cost within 10 %), falls back to one box when they
+  cover 70 % of it, and `paint_out` paints each one (clear, `paint_root` clipped to it). Only on
+  the CPU path and without a window being dragged; `LORD_DAMAGE=1` forces one box.
+- **Blurred surfaces** keep the 0.8.1 rule ("Paint: repaint a blurred surface whole"): a rectangle
+  that touches a blurred node or the margin its blur samples grows to the whole node, and every
+  rectangle touching that margin joins it, so the margin is either repainted in the same pass or
+  not at all this frame (`docs/LAYERS.md`).
+- **Each pass is cheaper:** `paint_node` skips a node that clips its children (`overflow: hidden`)
+  when it lies outside the clip (CPU path, not through transforms), and the opaque-cover search
+  stops at such a node when it doesn't hold the region and keeps away from rounded corners.
+- **Present:** the CPU path copies the painted rectangles (plus what the other buffer missed and
+  the cursor) into the display's buffer instead of the box around them; Night Light tints the same
+  rectangles.
+- **The Monitor's side:** the dots are 9×9 images drawn once, and the map's frame has the card's
+  own opaque color, so a repaint starts there instead of at the card.
+- **What is left** of the animation's cost is mostly per frame and not per pixel: the tree walks of
+  each pass (about 45 µs per rectangle), layout and damage walks, and the frame itself.
+- **Tests:** `build/engine-test` `test_multi_damage`: 40 frames of 24 translucent round dots moving
+  inside a clipped, rounded "map" under a translucent blurred bar (dots crossing its blur margin, a
+  menu opening and closing), each frame painted rectangle by rectangle and compared with a full
+  repaint: identical (at most 1 level, as `test_backdrop_band`); no rectangle outside the box or
+  overlapping another; one box with `LORD_DAMAGE=1`; a full repaint set directly stays one box.
+  With the blur rule turned off, 15 checks fail. `perf` was installed on VM 119 to find where the
+  time went (`VM-SETUP.md`).
 
 ### Map
 
@@ -502,6 +671,13 @@ It runs outside the frame. While it draws, the screen shows the previous frame s
   - The whole `build/mmdb-test`, which includes that load and 400 broken files, takes 0.5 s in the
     VM.
 - **Lookup:** each one walks at most 128 nodes.
+
+## Screenshots (0.8.2, VM 119, English)
+
+- An app's destinations with their switches, one blocked, and the 24-hour history:
+  ![dark](monitor-network-082-dark.png) ![light](monitor-network-082-light.png)
+- Settings → Privacy → Monitor with "Keep a traffic history" and "Clear History":
+  ![privacy](monitor-network-082-privacy.png)
 
 ## Screenshots (0.8.1, process actions, VM 118)
 

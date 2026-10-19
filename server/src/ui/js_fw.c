@@ -60,6 +60,7 @@ static long long last_try;
 static unsigned char *inbuf;
 static size_t inlen;
 static char *status_json, *counts_json;
+static uint64_t counts_gen;             /* goes up with every COUNTS notice (netrec.c) */
 static char *events[MAX_EVENTS];
 static int nevents;
 
@@ -216,7 +217,7 @@ static void pump(void) {
             const unsigned char *body = h + 5;
             size_t bl = l - 1;
             if (h[4] == NP_MSG_STATUS) keep(&status_json, body, bl);
-            else if (h[4] == NP_MSG_COUNTS) keep(&counts_json, body, bl);
+            else if (h[4] == NP_MSG_COUNTS) { keep(&counts_json, body, bl); counts_gen++; }
             else if (h[4] == NP_MSG_EVENT) {
                 match_event(body, bl);
                 if (nevents == MAX_EVENTS) { free(events[0]); memmove(events, events + 1, (MAX_EVENTS - 1) * sizeof *events); nevents--; }
@@ -595,6 +596,13 @@ static JSValue f_poll(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
     nevents = 0;
     JS_SetPropertyStr(c, o, "events", arr);
     return o;
+}
+
+/* The latest COUNTS notice for the traffic history (monitor/netrec.c), after reading what arrived. */
+const char *js_fw_counts(uint64_t *seq) {
+    pump();
+    *seq = counts_gen;
+    return counts_json;
 }
 
 static const JSCFunctionListEntry fw_funcs[] = {

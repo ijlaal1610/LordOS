@@ -120,6 +120,12 @@ static inline const float *node_padding(const Node *n) { return n->s.ext ? n->s.
 static inline float node_border(const Node *n, int e) { return n->s.ext ? n->s.ext->r.bw[e] : n->s.border_width; }
 static inline int node_edges_plain(const Node *n) { return !n->s.ext || n->s.ext->r.plain; }
 
+/* Damage as a short list of rectangles (0.8.2): small changes far apart (the Monitor's moving
+ * dots) are repainted one by one instead of the box around all of them. dlist_add merges a
+ * rectangle into the ones it overlaps and, past DAMAGE_MAX, the pair that wastes the least area. */
+#define DAMAGE_MAX 16
+typedef struct { Box r[DAMAGE_MAX]; int n; } DamageList;
+
 typedef struct {
     Node **nodes;
     int cap;
@@ -128,7 +134,9 @@ typedef struct {
     float width, height;
     char theme_dir[1024];
     double layout_ms, paint_ms;     /* last frame */
-    Box damage;                     /* region to repaint */
+    Box damage;                     /* region to repaint (the box around dlist) */
+    DamageList dlist;               /* the same damage as separate rectangles (damage_add) */
+    Box dlast;                      /* ui.damage as damage_add left it: if it differs, it was set directly */
     double damage_px;               /* pixels repainted in the last frame */
     int quit_requested;             /* lord.quit() */
     uint8_t rtl;                    /* interface direction (Arabic, Hebrew… language) */
@@ -153,6 +161,8 @@ void  node_moved(Node *n);          /* only left/top changed (window drag): no r
 int   node_gather_text(const Node *n, char *buf, int size);
 int   node_children_ordered(Node *n, Node **out, int max);
 void  damage_add(Box b);
+void  dlist_add(DamageList *l, Box b);
+float box_area(Box b);
 void  damage_subtree(Node *n);
 void  ui_reset(void);
 
@@ -266,6 +276,10 @@ extern PaintView paint_view;
 void  paint_layer_view(int index);  /* the display with most of the window being moved */
 int   paint_layer_node(void);       /* that window's node (0: no drag layer) */
 int   paint_damage(Node *root);     /* computes ui.damage; 0 if there is nothing to repaint */
+/* after paint_damage: the rectangles to repaint (1 = just ui.damage), each inside ui.damage;
+ * see "Several damaged rectangles" in paint.c */
+int   paint_damage_rects(Box *out, int max);
+extern int paint_multi_damage;      /* 0: always one rectangle (LORD_DAMAGE=1, tests) */
 void  paint_root(Canvas *c, Node *root);
 Node *hit_test(Node *root, float x, float y);
 /* Capture mode (media/capture.c): protected nodes are painted black and app windows

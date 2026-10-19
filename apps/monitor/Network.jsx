@@ -13,7 +13,7 @@
 // de regla de la lista y los contadores de permitidas/denegadas ya están en su lugar.
 import {
   View, Text, Image, ScrollView, SearchField, useTheme, useLocale, useStore, monitor, monitorConnections, useMonitor,
-  formatBytes, formatNumber, tOptional, useSystemInfo, wm, direction, firewall, firewallState, useLauncherApps, Lumo, Button, useAppWindow,
+  formatBytes, formatNumber, tOptional, useSystemInfo, wm, direction, firewall, firewallState, useLauncherApps, Lumo, Button, useAppWindow, fwRule,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { C, fmt, AppGlyph, useCardStyle } from './index.jsx';
@@ -21,6 +21,7 @@ import { Glyph } from './icons.jsx';
 import { MapView } from './MapView.jsx';
 import { TrafficChart, systemBuckets } from './TrafficChart.jsx';
 import { RuleSheet } from './RuleSheet.jsx';
+import { HistoryControls, HistoryChart, useHistory } from './History.jsx';
 
 export const appKeyOf = (c) => (c.self ? 'lordos' : c.app || c.exe || c.name || '?');
 const countryName = (cc) => (cc ? tOptional(`countries.${cc}`) || cc : '');
@@ -205,11 +206,91 @@ function Activity({ hist, selected }) {
   );
 }
 
-function AppRow({ g, open, selected, onToggle, onSelect, onHost, names, maxBytes, tr, hist }) {
+// The destinations of an app, one row per name the system resolver gave (its addresses together),
+// or per address when no name is known; busiest first.
+function domainsOf(g, names) {
+  const out = new Map();
+  for (const h of g.hosts.values()) {
+    const name = names.get(h.remote) || null, key = name || h.remote;
+    const d = out.get(key) || { key, name, addrs: [], ports: new Set(), sent: 0, recv: 0, count: 0, cc: h.cc, scope: h.scope, recent: true, denied: false };
+    d.addrs.push(h.remote);
+    for (const p of h.ports || []) d.ports.add(p);
+    d.sent += h.sent || 0;
+    d.recv += h.recv || 0;
+    d.count += h.count || 0;
+    if (!h.recent) d.recent = false;
+    if (h.denied) d.denied = true;
+    if (!d.cc && h.cc) { d.cc = h.cc; d.scope = h.scope; }
+    out.set(key, d);
+  }
+  return [...out.values()].sort((a, b) => b.sent + b.recv - (a.sent + a.recv) || b.count - a.count);
+}
+
+// The first port seen ("TCP 443") as the connection the verdict is worked out for.
+function portOf(d) {
+  const p = [...d.ports][0];
+  const m = p ? /^(TCP|UDP) (\d+)$/.exec(p) : null;
+  return m ? { proto: m[1].toLowerCase(), port: Number(m[2]) } : { proto: 'tcp', port: 443 };
+}
+
+// One destination's own allow / deny switch (0.8.2): what the app's rules decide for it right now
+// (sdk/fwrule.js decide, the same order as the kernel), and one click writes, flips or removes the
+// rule for exactly that name (or address) with lord.fw, as Settings → Network rules by app does.
+function DomainSwitch({ d, g, rules, restricted, can, tr }) {
+  const t = useTheme();
+  const q = { names: d.name ? [d.name] : [], addr: d.addrs[0], ...portOf(d) };
+  const v = fwRule.decide(rules, q, restricted);
+  const on = v ? v.action === 'allow' : true;
+  const locked = !can || v?.by === 'restricted';
+  const flip = (e) => {
+    e.stopPropagation();
+    if (locked) return;
+    const op = fwRule.toggleOp(rules, { name: d.name, addr: d.addrs[0], ...portOf(d) }, restricted);
+    if (!op) return;
+    if (op.op === 'add') firewall.addRule({ app: g.key, ...op.rule });
+    else if (op.op === 'update') firewall.updateRule(op.id, op.rule);
+    else firewall.removeRule(op.id);
+  };
+  const color = on ? '#30d158' : '#ff453a';
+  return (
+    <View onClick={flip} style={{ width: 22, height: 12, borderRadius: 6, backgroundColor: on ? 'rgba(48,209,88,0.32)' : 'rgba(255,69,58,0.32)',
+      opacity: locked ? 0.45 : 1, justifyContent: 'center', alignItems: on ? 'flex-end' : 'flex-start', paddingHorizontal: 2, direction: 'ltr' }}>
+      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
+    </View>
+  );
+}
+
+// Why a destination is allowed or blocked when it isn't its own rule: the rule that decides it
+// ("*.example.com", "everything") or the app's restriction.
+function ruleHint(tr, d, rules, restricted) {
+  const v = fwRule.decide(rules, { names: d.name ? [d.name] : [], addr: d.addrs[0], ...portOf(d) }, restricted);
+  if (!v) return '';
+  if (v.by === 'restricted') return tr('monitor.net.domainRestricted');
+  const own = d.name ? fwRule.normDomain(d.name) : d.addrs[0];
+  if (v.rule.dst === own && !v.rule.port && !v.rule.proto) return '';
+  return v.rule.dst === 'any' ? tr('monitor.net.domainByDefault') : tr('monitor.net.domainByRule', { rule: v.rule.dst });
+}
+
+const DOMAINS_SHOWN = 8;
+
+function AppRow({ g, open, selected, onToggle, onSelect, onHost, names, maxBytes, tr, hist, all, onAll, restricted }) {
   const t = useTheme();
   const label = g.key === 'lordos' ? tr('monitor.lordos') : g.name;
   const total = g.sent + g.recv;
-  const hosts = [...g.hosts.values()].sort((a, b) => b.sent + b.recv - (a.sent + a.recv) || b.count - a.count);
+  // the order is kept while the row is open, so a switch doesn't move under the pointer when the
+  // traffic changes: busiest first when it opens, newcomers below
+  const order = useRef(null);
+  if (!open) order.current = null;
+  let domains = open ? domainsOf(g, names) : [];
+  if (open) {
+    const seen = order.current || new Map();
+    for (const d of domains) if (!seen.has(d.key)) seen.set(d.key, seen.size);
+    order.current = seen;
+    domains = [...domains].sort((a, b) => seen.get(a.key) - seen.get(b.key));
+  }
+  const can = firewall.available() && firewall.enforceable(g.key);
+  const rules = open && can ? firewall.rules(g.key) : [];
+  const shownDomains = all ? domains : domains.slice(0, DOMAINS_SHOWN);
   const active = g.conns.length - g.listen.length;
   return (
     <View>
@@ -243,16 +324,29 @@ function AppRow({ g, open, selected, onToggle, onSelect, onHost, names, maxBytes
         <RuleSwitch g={g} selected={selected} tr={tr} />
       </View>
       {open && (
-        <View style={{ ...(direction() === 'rtl' ? { paddingRight: 46, paddingLeft: 8 } : { paddingLeft: 46, paddingRight: 8 }), paddingBottom: 4, gap: 1 }}>
-          {hosts.slice(0, 30).map((h) => (
-            <View key={h.remote} onClick={() => onHost(h.remote)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 22 }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: h.denied ? '#ff453a' : h.scope === 'internet' || h.recent ? t.accent : t.textDim }} />
-              <Text style={{ flex: 1, fontSize: 11, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', fontFamily: 'monospace' }}>{names.get(h.remote) || h.remote}</Text>
-              <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{placeOf(tr, h)}</Text>
+        <View style={{ ...(direction() === 'rtl' ? { paddingRight: 30, paddingLeft: 8 } : { paddingLeft: 30, paddingRight: 8 }), paddingBottom: 4, gap: 1 }}>
+          {shownDomains.map((d) => {
+            const hint = can ? ruleHint(tr, d, rules, restricted) : '';
+            return (
+              <View key={d.key} onClick={() => onHost(d.addrs[0])} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 22 }}>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: d.denied ? '#ff453a' : d.scope === 'internet' || d.recent ? t.accent : t.textDim }} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 11, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', fontFamily: 'monospace', direction: 'ltr', textAlign: 'start' }}>
+                    {d.name || d.key}{d.addrs.length > 1 ? ` (${d.addrs.length})` : ''}
+                  </Text>
+                  {hint ? <Text style={{ fontSize: 9, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{hint}</Text> : null}
+                </View>
+                <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{placeOf(tr, d)}</Text>
+                {can ? <DomainSwitch d={d} g={g} rules={rules} restricted={restricted} can={can} tr={tr} /> : null}
+              </View>
+            );
+          })}
+          {!domains.length && <Text style={{ fontSize: 11, color: t.textDim, height: 22 }}>{tr('monitor.net.onlyListening', { ports: g.listen.map((c) => c.lport).join(', ') })}</Text>}
+          {domains.length > DOMAINS_SHOWN ? (
+            <View onClick={onAll} style={{ height: 20, justifyContent: 'center' }}>
+              <Text style={{ fontSize: 10, color: t.accent }}>{all ? tr('monitor.net.fewer') : tr('monitor.net.moreDomains', { count: domains.length - DOMAINS_SHOWN })}</Text>
             </View>
-          ))}
-          {!hosts.length && <Text style={{ fontSize: 11, color: t.textDim, height: 22 }}>{tr('monitor.net.onlyListening', { ports: g.listen.map((c) => c.lport).join(', ') })}</Text>}
-          {hosts.length > 30 && <Text style={{ fontSize: 10, color: t.textDim }}>{tr('monitor.net.more', { count: hosts.length - 30 })}</Text>}
+          ) : null}
         </View>
       )}
     </View>
@@ -285,26 +379,31 @@ function useRateHistory(apps) {
 }
 
 // The machine's traffic: current rates, the mirrored chart of the last 60 s and its totals. It
-// redraws at the 4 samples per second with the window in front (1 per second behind).
-function SystemTraffic({ tr }) {
+// redraws at the 4 samples per second with the window in front (1 per second behind). With a
+// history zoom (0.8.2) the chart shows that window from the history file instead.
+function SystemTraffic({ tr, range, setRange, end, setEnd, sysHist }) {
   const t = useTheme();
   const { focused } = useAppWindow() || {};
-  const samples = useMonitor({ everyMs: focused === false ? 1000 : 250 });
+  const samples = useMonitor({ everyMs: range !== 'live' ? 0 : focused === false ? 1000 : 250 }) || [];
   const last = samples[samples.length - 1];
   const { buckets, shift, totals } = systemBuckets(samples, 60);
   return (
     <View style={{ gap: 6 }}>
-      <View style={{ flexDirection: 'row', gap: 14, paddingHorizontal: 2 }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 10, color: t.textDim }}>{`↓ ${tr('monitor.received')}`}</Text>
-          <Text style={{ fontSize: 14, fontWeight: 600, color: C.rx }}>{fmt.rate(tr, last?.net.rx)}</Text>
+      {range === 'live' ? (
+        <View style={{ flexDirection: 'row', gap: 14, paddingHorizontal: 2 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 10, color: t.textDim }}>{`↓ ${tr('monitor.received')}`}</Text>
+            <Text style={{ fontSize: 14, fontWeight: 600, color: C.rx }}>{fmt.rate(tr, last?.net.rx)}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 10, color: t.textDim }}>{`↑ ${tr('monitor.sent')}`}</Text>
+            <Text style={{ fontSize: 14, fontWeight: 600, color: C.tx }}>{fmt.rate(tr, last?.net.tx)}</Text>
+          </View>
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 10, color: t.textDim }}>{`↑ ${tr('monitor.sent')}`}</Text>
-          <Text style={{ fontSize: 14, fontWeight: 600, color: C.tx }}>{fmt.rate(tr, last?.net.tx)}</Text>
-        </View>
-      </View>
-      <TrafficChart buckets={buckets} shift={shift} totals={totals} seconds={60} />
+      ) : null}
+      <HistoryControls range={range} setRange={setRange} end={end} setEnd={setEnd} oldest={sysHist?.h?.oldest || 0} />
+      {range === 'live' ? <TrafficChart buckets={buckets} shift={shift} totals={totals} seconds={60} />
+        : <HistoryChart data={sysHist} range={range} />}
     </View>
   );
 }
@@ -370,7 +469,7 @@ function KV({ k, v, mono, color }) {
 
 const upDown = (tr, g) => tr('monitor.net.downUp', { down: formatBytes(g.recv || 0), up: formatBytes(g.sent || 0) });
 
-function Summary({ groups, conns, last, tr, fw, names }) {
+function Summary({ groups, conns, last, tr, fw, names, range, sysHist, launcher }) {
   const t = useTheme();
   let fwAllowed = 0, fwDenied = 0;
   for (const v of Object.values(fw?.counts || {})) { fwAllowed += v[0] || 0; fwDenied += v[1] || 0; }
@@ -413,6 +512,22 @@ function Summary({ groups, conns, last, tr, fw, names }) {
         ))}
         {!groups.length && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('monitor.net.none')}</Text>}
       </Section>
+      {range !== 'live' ? (
+        <Section title={tr('monitor.hist.topApps', { range: tr(`monitor.hist.${range}`) })}>
+          {(sysHist?.h?.top || []).slice(0, 6).map(([id, rx, tx]) => {
+            const la = launcher.find((a) => a.id === id || `lpk:${a.id}` === id || `desktop:${a.id}` === id);
+            const item = { app: id, appName: la?.name, name: la?.name || id, appIcon: la?.icon || '', self: id === 'lordos' };
+            return (
+              <View key={id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <AppGlyph item={item} size={14} />
+                <Text style={{ flex: 1, minWidth: 0, fontSize: 12, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{id === 'lordos' ? tr('monitor.lordos') : la?.name || id.replace(/^(desktop|lpk):/, '')}</Text>
+                <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{upDown(tr, { recv: rx, sent: tx })}</Text>
+              </View>
+            );
+          })}
+          {!(sysHist?.h?.top || []).length && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('monitor.net.none')}</Text>}
+        </Section>
+      ) : null}
       <Section title={tr('monitor.net.topHosts')}>
         {hosts.slice(0, 6).map((h) => (
           <View key={`${h.app.key}${h.remote}`} style={{ gap: 1 }}>
@@ -450,7 +565,7 @@ function HostRow({ h, name, selected, onSelect, can, onRule, tr }) {
   );
 }
 
-function Detail({ g, tr, user, names, host, onHost, onRule, hist }) {
+function Detail({ g, tr, user, names, host, onHost, onRule, hist, range, end }) {
   const t = useTheme();
   const can = firewall.available() && firewall.enforceable(g.key);
   const ports = new Set(), local = new Set();
@@ -485,7 +600,7 @@ function Detail({ g, tr, user, names, host, onHost, onRule, hist }) {
       <Section title={tr('monitor.net.data')}>
         <KV k={`↓ ${tr('monitor.received')}`} v={`${formatBytes(g.recv)} · ${fmt.rate(tr, g.rateRx)}`} color={C.rx} />
         <KV k={`↑ ${tr('monitor.sent')}`} v={`${formatBytes(g.sent)} · ${fmt.rate(tr, g.rateTx)}`} color={C.tx} />
-        <AppTraffic hist={hist} />
+        {range === 'live' ? <AppTraffic hist={hist} /> : <AppHistory app={g.key} range={range} end={end} />}
       </Section>
       <Section title={tr('monitor.net.ports')}>
         <Text style={{ fontSize: 12, color: t.text, lineHeight: 1.4 }}>{[...ports].join(' · ') || '—'}</Text>
@@ -508,6 +623,12 @@ function AppTraffic({ hist }) {
   const list = (hist || []).slice(-60);
   const buckets = Array.from({ length: 60 - list.length }, () => [0, 0]).concat(list);
   return <TrafficChart buckets={buckets} height={40} seconds={60} />;
+}
+
+// The selected app's share of the history window (the same zoom as the machine's chart).
+function AppHistory({ app, range, end }) {
+  const d = useHistory(range, end, app);
+  return <HistoryChart data={d} range={range} height={40} />;
 }
 
 function PlaceDetail({ p, tr }) {
@@ -565,6 +686,11 @@ export function NetworkTab({ last, prefs }) {
   const [place, setPlace] = useState(null);             // país elegido en el mapa
   const [host, setHost] = useState(null);               // the selected app's address with the actions open
   const [sheet, setSheet] = useState(null);             // { app, label, dst, action, suggestions, note }
+  const [allDomains, setAllDomains] = useState(() => new Set());   // apps whose every destination is listed
+  const [range, setRange] = useState('live');           // the traffic chart's zoom: 'live' or a history window
+  const [end, setEnd] = useState(null);                 // the history window's end (Unix s), null = now
+  const sysHist = useHistory(range === 'live' ? null : range, end, null);
+  const restrictedOf = useMemo(() => firewall.state().restricted || {}, [fw.rev]);
   const names = useMemo(() => namesOf(fw.events), [fw.events]);
   const hist = useRateHistory(apps);
   const ruleFor = (g, addr, action) => {
@@ -597,13 +723,15 @@ export function NetworkTab({ last, prefs }) {
           {enabled && conns && !conns.ok && <Text style={{ fontSize: 12, color: '#ff9f0a', padding: 8 }}>{tr('monitor.net.noDiag')}</Text>}
           {shown.map((g) => (
             <AppRow key={g.key} g={g} tr={tr} open={open.has(g.key)} selected={selected === g.key} maxBytes={maxBytes} names={names} hist={hist.get(g.key)}
+              all={allDomains.has(g.key)} restricted={restrictedOf[g.key] || []}
+              onAll={() => setAllDomains((s0) => { const n = new Set(s0); if (n.has(g.key)) n.delete(g.key); else n.add(g.key); return n; })}
               onToggle={() => toggle(g.key)} onSelect={() => { setPlace(null); setHost(null); setSelected(selected === g.key ? null : g.key); }}
               onHost={(addr) => { setPlace(null); setSelected(g.key); setHost(addr); }} />
           ))}
           {enabled && conns && !shown.length && <Text style={{ fontSize: 12, color: t.textDim, padding: 8 }}>{tr('monitor.net.none')}</Text>}
         </ScrollView>
         <View style={{ height: 1, backgroundColor: t.separator }} />
-        <SystemTraffic tr={tr} />
+        <SystemTraffic tr={tr} range={range} setRange={setRange} end={end} setEnd={setEnd} sysHist={sysHist} />
       </View>
       {/* centro: el mapa ocupa toda la altura */}
       <View style={{ ...column, flex: 1, minWidth: 0, gap: 8, padding: 10 }}>
@@ -626,8 +754,8 @@ export function NetworkTab({ last, prefs }) {
         <ScrollView style={{ flex: 1 }} gutter>
           <View style={{ gap: 16 }}>
             {selPlace ? <PlaceDetail p={selPlace} tr={tr} /> : sel ? (
-              <Detail g={sel} tr={tr} user={sys.user} names={names} host={host} onHost={setHost} hist={hist.get(sel.key)} onRule={(addr, action) => ruleFor(sel, addr, action)} />
-            ) : <Summary groups={apps} conns={conns} last={last} tr={tr} fw={fw} names={names} />}
+              <Detail g={sel} tr={tr} user={sys.user} names={names} host={host} onHost={setHost} hist={hist.get(sel.key)} range={range} end={end} onRule={(addr, action) => ruleFor(sel, addr, action)} />
+            ) : <Summary groups={apps} conns={conns} last={last} tr={tr} fw={fw} names={names} range={range} sysHist={sysHist} launcher={launcher} />}
           </View>
         </ScrollView>
       </View>

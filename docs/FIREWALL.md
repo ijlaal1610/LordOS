@@ -1071,6 +1071,10 @@ rules in exactly that order (`sortByPrecedence` in `sdk/fwrule.js`, a copy of `c
 
 Short connections (a `curl`) close before the next sample, so besides the open sockets each app
 lists the destinations `lord-netperm` reported recently ("recent connection" / "recently denied").
+Since 0.8.2 each destination in an app's open row also has its own allow/block switch: it shows what
+the app's rules decide for that name or address (the same order as `fw_decide`, mirrored in
+`sdk/fwrule.js` `decide()` and checked against it with `server/tests/fw_domain_cases.txt`) and a
+click writes, flips or removes the exact-name rule (`MONITOR.md`, "Per-destination switches").
 The detail pane also links to "Rules for this app" (Settings → Privacy, with that app open).
 
 **Last match.** `lord-netperm`'s `EVENT` notices carry the rule that decided (`"by":"rule"`,

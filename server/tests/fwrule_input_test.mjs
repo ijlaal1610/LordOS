@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const { parseDest, parsePort, checkRule, sortByPrecedence, specificity, isDefaultRule } = await import(path.join(here, '../../sdk/fwrule.js'));
+const { parseDest, parsePort, checkRule, sortByPrecedence, specificity, isDefaultRule, decide, toggleOp, isLan } = await import(path.join(here, '../../sdk/fwrule.js'));
 
 let n = 0, bad = 0;
 const eq = (name, got, want) => {
@@ -81,6 +81,48 @@ const rules = [
   { id: 9, dst: '*.example.com', port: '443', proto: 'tcp', action: 'deny' },
 ];
 eq('sorted', sortByPrecedence(rules).map((r) => r.id), [4, 9, 8, 7, 3, 2, 6, 5, 1]);
+
+// 3. one destination's verdict (the Monitor's per-domain switch): the cases build/fwdest-test runs
+//    through fw_decide
+const ruleOf = (txt, i) => {
+  const [action, dst, a = '', b = ''] = txt.trim().split(/\s+/);
+  const proto = a === 'tcp' || a === 'udp' ? a : b;
+  const port = a === 'tcp' || a === 'udp' ? '' : a;
+  const c = parseDest(dst);
+  return { id: i + 1, dir: 'out', dst: c.ok ? c.dst : dst, port, proto, action };
+};
+let cases = 0;
+for (const line of fs.readFileSync(path.join(here, 'fw_domain_cases.txt'), 'utf8').split('\n')) {
+  if (!line || line[0] === '#') continue;
+  const col = line.split('|').map((x) => x.trim());
+  // a rule added again with the same destination, ports and protocol replaces the previous one (rules.c)
+  const list = [];
+  if (col[0] !== '-') col[0].split(';').forEach((r, i) => {
+    const x = ruleOf(r, i);
+    const same = list.findIndex((y) => y.dst === x.dst && y.port === x.port && y.proto === x.proto);
+    if (same >= 0) list[same] = { ...x, id: list[same].id }; else list.push(x);
+  });
+  const [proto, port] = col[3].split(/\s+/);
+  const names = col[1] === '-' ? [] : col[1].split(',');
+  const restricted = col[4] === '-' ? [] : col[4].split(',');
+  const d = decide(list, { names, addr: col[2] === '-' ? '' : col[2], proto, port: Number(port) }, restricted);
+  eq(`domain case ${++cases} ${col[1]} ${col[2]}`, d ? (d.by === 'restricted' ? 'restricted' : d.action) : 'none', col[5]);
+}
+eq('lan', [isLan('192.168.1.2'), isLan('100.64.0.1'), isLan('8.8.8.8'), isLan('fe80::1'), isLan('2001:db8::1'), isLan('::1')], [true, true, false, true, false, true]);
+
+// the switch: one click flips the verdict, and going back removes the rule instead of adding another
+const q = { name: 'ads.example.com', addr: '93.184.216.34', proto: 'tcp', port: 443 };
+eq('toggle: none → add deny', toggleOp([], q), { op: 'add', rule: { dir: 'out', dst: 'ads.example.com', port: '', proto: '', action: 'deny' } });
+const one = [{ id: 7, dir: 'out', dst: 'ads.example.com', port: '', proto: '', action: 'deny' }];
+eq('toggle: own deny → remove', toggleOp(one, q), { op: 'remove', id: 7 });
+const blockAll = [{ id: 1, dir: 'out', dst: 'any', port: '', proto: '', action: 'deny' }];
+eq('toggle: blocked by default → add allow', toggleOp(blockAll, q).rule.action, 'allow');
+const both = [...blockAll, { id: 2, dir: 'out', dst: 'ads.example.com', port: '', proto: '', action: 'allow' }];
+eq('toggle: own allow over deny-all → remove', toggleOp(both, q), { op: 'remove', id: 2 });
+const wild = [{ id: 3, dir: 'out', dst: '*.example.com', port: '', proto: '', action: 'deny' }, { id: 4, dir: 'out', dst: 'ads.example.com', port: '', proto: '', action: 'deny' }];
+eq('toggle: own deny under a deny wildcard → update to allow', toggleOp(wild, q), { op: 'update', id: 4, rule: { dir: 'out', dst: 'ads.example.com', port: '', proto: '', action: 'allow' } });
+eq('toggle: no name → the address', toggleOp([], { addr: '203.0.113.5', proto: 'udp', port: 443 }).rule.dst, '203.0.113.5');
+eq('toggle: restricted → nothing', toggleOp([], q, ['no-internet']), null);
 
 console.log(`fwrule-input-test: ${n} checks, ${bad} failed`);
 process.exit(bad ? 1 : 0);

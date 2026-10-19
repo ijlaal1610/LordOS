@@ -1,6 +1,7 @@
 /* node.c — tree of native nodes that React creates and modifies. */
 #include "ui.h"
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,14 +48,56 @@ int node_count(void) {
     return n;
 }
 
+float box_area(Box b) { return b.x1 > b.x0 && b.y1 > b.y0 ? (b.x1 - b.x0) * (b.y1 - b.y0) : 0; }
+static int dbox_meets(Box a, Box b) { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
+static Box dbox_join(Box a, Box b) { return (Box){ fminf(a.x0, b.x0), fminf(a.y0, b.y0), fmaxf(a.x1, b.x1), fmaxf(a.y1, b.y1) }; }
+
+/* Adds b to the list: it swallows every rectangle it overlaps (and grows by them, so the list never
+ * holds two that overlap); past DAMAGE_MAX the two whose union adds the least area are joined. */
+void dlist_add(DamageList *l, Box b) {
+    if (b.x1 <= b.x0 || b.y1 <= b.y0) return;
+    for (int again = 1; again;) {
+        again = 0;
+        for (int i = 0; i < l->n; i++) {
+            if (!dbox_meets(l->r[i], b)) continue;
+            b = dbox_join(b, l->r[i]);
+            l->r[i--] = l->r[--l->n];
+            again = 1;
+        }
+    }
+    if (l->n == DAMAGE_MAX) {
+        int bi = 0, bj = 1;
+        float best = 1e30f;
+        for (int i = 0; i < l->n; i++)
+            for (int j = i + 1; j < l->n; j++) {
+                float w = box_area(dbox_join(l->r[i], l->r[j])) - box_area(l->r[i]) - box_area(l->r[j]);
+                if (w < best) { best = w; bi = i; bj = j; }
+            }
+        Box u = dbox_join(l->r[bi], l->r[bj]);
+        l->r[bj] = l->r[--l->n];
+        l->r[bi] = l->r[--l->n];
+        dlist_add(l, u);                /* the union may overlap a third one */
+    }
+    l->r[l->n++] = b;
+}
+
 void damage_add(Box b) {
     if (b.x1 <= b.x0 || b.y1 <= b.y0) return;
     Box *d = &ui.damage;
-    if (d->x1 <= d->x0 || d->y1 <= d->y0) { *d = b; return; }
-    if (b.x0 < d->x0) d->x0 = b.x0;
-    if (b.y0 < d->y0) d->y0 = b.y0;
-    if (b.x1 > d->x1) d->x1 = b.x1;
-    if (b.y1 > d->y1) d->y1 = b.y1;
+    /* ui.damage set or cleared directly (a full repaint, the end of a frame): the list starts from it */
+    if (d->x0 != ui.dlast.x0 || d->y0 != ui.dlast.y0 || d->x1 != ui.dlast.x1 || d->y1 != ui.dlast.y1) {
+        ui.dlist.n = 0;
+        dlist_add(&ui.dlist, *d);
+    }
+    if (d->x1 <= d->x0 || d->y1 <= d->y0) *d = b;
+    else {
+        if (b.x0 < d->x0) d->x0 = b.x0;
+        if (b.y0 < d->y0) d->y0 = b.y0;
+        if (b.x1 > d->x1) d->x1 = b.x1;
+        if (b.y1 > d->y1) d->y1 = b.y1;
+    }
+    dlist_add(&ui.dlist, b);
+    ui.dlast = *d;
 }
 
 /* A node that leaves the tree stops being visible: its previous area must be repainted. */

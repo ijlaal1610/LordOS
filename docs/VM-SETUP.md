@@ -1196,3 +1196,30 @@ See `MONITOR.md` ("Disk temperature and health") and `SYSTEM.md` ("SMART with sm
   `server/tests/smart/` were captured with a `smartctl` unpacked into `/tmp/smx` (`apt-get download`
   + `dpkg -x`, never installed).
 - Nothing else changed: no Proxmox setting, no network setting.
+## Step 29 — Monitor → Network: per-destination switches, traffic history, several damaged rectangles (VM 119 `lordos-spot`, October 19)
+
+See `MONITOR.md` ("Per-destination switches", "Traffic history", "0.8.2: several damaged
+rectangles"). On VM 119 (172.17.0.54), built in its own folders (`~/LordOS-monred`, plus
+`~/LordOS-before` from `origin/main` and instrumented copies for the measurements), all deleted at
+the end.
+
+- **Installed:** `linux-perf` (`apt-get install --no-install-recommends linux-perf`), to find where
+  `lord-server` spends CPU while the map animates (`perf record -g -t <main thread>`). It stays
+  installed.
+- **Deployed for the test, then restored:** `/usr/lib/lordos` (the session's `lord-server`, the
+  theme bundles, `assets`, and for the per-app history `lord-netperm` from the same tree, since the
+  installed one predates the 0.8.1 traffic accounting) was saved in `/var/backups/lordos-monred-bak`
+  and put back at the end (file list and contents compared with `diff -r`; the backup was then
+  deleted). `lord-netperm.service` was restarted with the original binary.
+- **Session:** `/etc/lordos/session.conf` with `AUTOLOGIN=lord` (it didn't exist; removed at the
+  end) and `/run/lordos/autologin-done` removed before each `systemctl restart lordos`, to start a
+  fresh session with each build. The language (English), Appearance mode and Reduce motion were
+  changed for the screenshots and measurements, and `settings.json` and `firewall.json` were
+  restored from a copy; the history file the test wrote (`~/.local/state/lordos`) was deleted. The
+  VM ends at the login screen.
+- **Traffic:** `curl --limit-rate 40k` loops to Debian mirrors in ten countries from the SSH
+  session (stopped at the end), and Firefox ESR (already on the VM) opening a few sites and one
+  download (`~/Downloads/ls-lR.gz`, deleted).
+- **Screenshots** with `screendump` from the Proxmox host; pointer and keys with
+  `lord-qmp-input.py 119 1280 800` and `qm monitor 119` `sendkey`.
+- Nothing in the network configuration was touched (`eth0` keeps 172.17.0.54).

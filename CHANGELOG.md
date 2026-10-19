@@ -103,6 +103,37 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   or a source whose signed release file hadn't changed upstream left the package list as it was
   ("already up to date"); the index is now rebuilt whenever the set of lists it is built from
   changes.
+- **Allow or block each destination inside Monitor's app rows.** Open an app in Monitor → Network
+  and every name it reached (or address, when the system resolver gave no name) has its own
+  allow/block switch, showing what the app's rules decide for it right now and why ("By the rule
+  \*.example.com", "Follows this app's default", "Blocked by this app's restrictions"). A click
+  writes, flips or removes the rule for exactly that name, the same rule Settings → Privacy →
+  Network rules by app shows, and `lord-netperm` applies it at once. Long lists show eight and
+  "N more…"; rows keep their place while the list is open
+  ([docs/MONITOR.md](docs/MONITOR.md#per-destination-switches-082)).
+- **Traffic history.** The Network tab's chart now zooms out from the live minute to 1 hour,
+  24 hours, 7 days and 30 days, steps back and forward one window at a time and has **Now**; with
+  an app selected its own chart follows the same window, and the summary lists the apps that moved
+  the most in it. Your session records bytes received and sent per minute (7 days) and per hour
+  (30 days), for the computer and for each of your apps, in a small file in your home folder
+  (`~/.local/state/lordos/net-history.bin`): never an address, a name or a country. Settings →
+  Privacy → Monitor has **Keep a traffic history** (on) and **Clear History**
+  ([docs/MONITOR.md](docs/MONITOR.md#traffic-history-082)).
+
+### Changed
+
+- **The map's moving dots cost about half as much.** lord-server now repaints several small
+  rectangles per frame instead of the one box around every change, skips clipped parts of the
+  interface outside them, and copies only those rectangles to the screen; the dots are small
+  ready-made images. With Monitor's map animating, the animation's share of lord-server's CPU went
+  from 2.9 to 1.6 points of one core (VM 119, CPU compositing), and every partial repaint of the
+  desktop gets cheaper the same way. Blurred surfaces (the menu bar, the Dock) are still repainted
+  whole when anything touches them, as in 0.8.1 ([docs/MONITOR.md](docs/MONITOR.md#082-several-damaged-rectangles-vm-119)).
+
+### Not included
+
+- **City names on the map.** Debian 13 only ships country-level IP databases (`geoip-database`) and
+  LordOS's own is country-level too, so labels stay countries; no large download was added.
 
 ## [0.8.1-beta] - 2026-10-19
 
