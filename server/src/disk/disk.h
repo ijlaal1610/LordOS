@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 
 #include "../admin.h"
 
@@ -30,6 +31,8 @@ int  disk_udev_prop(const char *name, const char *key, char *out, size_t n);
 void disk_fs_label(const char *name, char *out, size_t n);
 /* Size in bytes (/sys/class/block/<n>/size × 512). */
 uint64_t disk_size(const char *name);
+/* Model and short serial, exactly as disk_list_json() reports them (the imager's identity check). */
+int  disk_identity(const char *name, char *model, size_t mn, char *serial, size_t sn);
 /* Mount points of the device (separated by \n) from mountinfo; returns how many. */
 int  disk_mounts(const char *name, char *out, size_t n);
 
@@ -101,6 +104,30 @@ void smart_act_info(const AdminReq *r, const char *arg, size_t len);
 void smart_act_health(const AdminReq *r, const char *arg, size_t len);
 void smart_act_test(const AdminReq *r, const char *arg, size_t len);
 void smart_act_abort(const AdminReq *r, const char *arg, size_t len);
+
+/* ---- for the LordOS Imager's actions (imager/imager_admin.c), the same checks as disk-* ---- */
+typedef struct {
+    char name[32], disk[32], dev[48];
+    int part, removable;
+    uint64_t size;
+    unsigned major, minor;
+} DiskTarget;
+/* A whole disk that is not the system disk (after admin_err on failure: -1). */
+int  disk_admin_whole(const AdminReq *r, const char *name, DiskTarget *t);
+/* Unmounts its partitions under /media or /run/media; refuses anything mounted elsewhere. */
+int  disk_admin_unmount(const DiskTarget *t);
+/* O_RDWR | O_EXCL | extra, with admin_err on failure. */
+int  disk_admin_open_excl(const DiskTarget *t, int extra);
+/* The user's image file: regular, from their home or their mounts, opened as them. */
+int  disk_admin_open_user_file(const AdminReq *r, const char *path, struct stat *st);
+int  disk_admin_wipe_ends(int fd, uint64_t size);
+/* Cancellable job (disk-cancel), low priority; disk_admin_cancelled() after SIGTERM. */
+void disk_admin_job_begin(const AdminReq *r, const char *disk);
+void disk_admin_job_end(const char *disk);
+int  disk_admin_cancelled(void);
+void disk_admin_reread(const char *disk);     /* uevent "change" and udevadm settle */
+/* The disk holding the file st describes is this one (an image can't be read from the disk being written). */
+int  disk_admin_file_on(const struct stat *st, const char *disk);
 
 void disk_act_smart(const AdminReq *r, const char *arg, size_t len);
 void disk_act_mount(const AdminReq *r, const char *arg, size_t len);

@@ -8,7 +8,10 @@
  * WPA3 password (sae_password), which is validated (no line breaks or control characters).
  *
  * Saved networks: /etc/lordos/net/wifi/<ssid in hex>.json (public: ssid and security) and
- * <ssid in hex>.key (0600: the password). */
+ * <ssid in hex>.key (0600: the password, "pass=…"). A network saved by the LordOS Imager's first-run
+ * file (lordos-firstrun, docs/IMAGER.md) has the already derived key instead ("psk=<64 hex>"), so
+ * the password never reaches the card: it joins WPA2/WPA3-transition networks (not WPA3-only ones,
+ * which need the password itself for SAE). */
 #include "netpriv.h"
 #include "../admin.h"
 
@@ -108,8 +111,15 @@ static int find_network(const char *ifname, const char *ssidhex) {
     return -1;
 }
 
-/* Loads (or replaces) a network in wpa_supplicant. Empty pass = open. Returns the id. */
-static int load_network(const char *ifname, const char *ssid, const char *pass) {
+static int is_psk_hex(const char *p) {
+    if (strlen(p) != 64) return 0;
+    for (const char *c = p; *c; c++) if (!((*c >= '0' && *c <= '9') || (*c >= 'a' && *c <= 'f'))) return 0;
+    return 1;
+}
+
+/* Loads (or replaces) a network in wpa_supplicant. Empty pass = open. psk (or NULL): a derived
+ * WPA2 key in hex, used instead of the password (WPA2 only). Returns the id. */
+static int load_network_psk(const char *ifname, const char *ssid, const char *pass, const char *psk) {
     char sh[72], cmd[400], r[64];
     hex((const uint8_t *)ssid, strlen(ssid), sh);
     int old = find_network(ifname, sh);
@@ -122,7 +132,14 @@ static int load_network(const char *ifname, const char *ssid, const char *pass) 
     ok = ok && ctrl_ok(ifname, cmd) == 0;
     snprintf(cmd, sizeof cmd, "SET_NETWORK %d scan_ssid 1", id);
     ok = ok && ctrl_ok(ifname, cmd) == 0;
-    if (!pass[0]) {
+    if (psk) {
+        snprintf(cmd, sizeof cmd, "SET_NETWORK %d key_mgmt WPA-PSK WPA-PSK-SHA256", id);
+        ok = ok && ctrl_ok(ifname, cmd) == 0;
+        snprintf(cmd, sizeof cmd, "SET_NETWORK %d psk %s", id, psk);
+        ok = ok && ctrl_ok(ifname, cmd) == 0;
+        snprintf(cmd, sizeof cmd, "SET_NETWORK %d ieee80211w 1", id);
+        ctrl_ok(ifname, cmd);
+    } else if (!pass[0]) {
         snprintf(cmd, sizeof cmd, "SET_NETWORK %d key_mgmt NONE", id);
         ok = ok && ctrl_ok(ifname, cmd) == 0;
     } else {
@@ -148,6 +165,8 @@ static int load_network(const char *ifname, const char *ssid, const char *pass) 
     return ok ? id : -1;
 }
 
+static int load_network(const char *ifname, const char *ssid, const char *pass) { return load_network_psk(ifname, ssid, pass, NULL); }
+
 static void load_known(const char *ifname) {
     DIR *d = opendir(NET_WIFI_DIR);
     struct dirent *e;
@@ -163,9 +182,13 @@ static void load_known(const char *ifname) {
         snprintf(path, sizeof path, NET_WIFI_DIR "/%s", e->d_name);
         char *t = read_file(path, 1024, NULL);
         if (!t || !valid_ssid(ssid)) { free(t); continue; }
-        char pass[160];
+        char pass[160], psk[80] = "";
+        pass[0] = 0;
         kv_get(t, "pass", 0, pass, sizeof pass);
-        if (valid_pass(pass)) load_network(ifname, ssid, pass);
+        kv_get(t, "psk", 0, psk, sizeof psk);
+        if (psk[0]) { if (is_psk_hex(psk)) load_network_psk(ifname, ssid, "", psk); }
+        else if (valid_pass(pass)) load_network(ifname, ssid, pass);
+        memset(psk, 0, sizeof psk);
         memset(t, 0, strlen(t));
         free(t);
     }
