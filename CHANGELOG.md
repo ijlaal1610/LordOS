@@ -12,6 +12,34 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [0.8.4] - Unreleased
 
+### Added
+
+- **Monitor → Network, second generation.** The app list is now a tree: each app opens into the
+  sites and addresses it talks to, and each address into its ports, with what was sent and received
+  everywhere, a small live meter and an allow/block switch on every destination. One pop-up button
+  holds the whole view (group by app, domain, address, port or country; incoming or outgoing; TCP or
+  UDP; allowed, denied or with rules; sort by name, most or least traffic, most recent or most
+  connections), remembered for each user. The search turns `app:`, `domain:`, `ip:`, `port:`,
+  `proto:` and `country:` into chips you can combine, and the history zoom (1 h to 30 d) now also
+  shows each app's traffic for that window.
+- **LordOS's own parts have their own rows and rules.** Mail and the calendar sync, the Store and
+  updates, printers and scanners, the Terminal (with the names of the programs you run in it) and
+  the blocklist updates each run in a process of their own, so you can see and block each one
+  separately, and the kernel enforces it. Blocking the Store asks first, because security updates
+  stop. Name resolution, time synchronization, the network service and your VPN tunnels are shown
+  too, and are never blocked.
+- **Blocklists.** Settings → Privacy → Blocklists offers public lists of advertising, tracker,
+  malware and attacking sites, each with its source and licence; turn one on and LordOS downloads
+  it over HTTPS once a day, in a sandboxed downloader, and blocks those destinations for every app.
+  You can add your own list by its https address. A rule you write for a site always wins over a
+  list: switch a blocked site on in the Monitor and it stays allowed.
+- **Deny silently.** A new firewall mode: only what a rule allows can connect, and everything else is
+  denied and recorded (this computer's own services keep working). In Settings → Privacy and in the
+  new menu bar item.
+- **Network activity in the menu bar** (optional, off by default): upload and download rates in the
+  menu bar, and a panel with the last five minutes, the apps moving data now, what was recently
+  denied, the firewall mode, the blocklists and a link to the Monitor.
+
 ### Changed
 
 - **Browsers with a single top bar.** Chromium and Firefox now draw their own bar, with the tabs in
