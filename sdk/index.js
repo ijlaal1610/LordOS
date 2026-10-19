@@ -56,7 +56,7 @@ export { packages, packageList, refreshPackages, packageFile, loadWasm } from '.
 import { refreshPackages } from './packages.js';
 export {
   windows, wm, openedAt, useWindows, configureWindows, getApp, listApps, isLiveSystem, appIdOf, workArea, workAreaOf, pointerWorkArea, appMenus, useAppMenus, windowTitle, appRegistry, appMenuClick,
-  registerBuiltinApp, isSystemApp,
+  registerBuiltinApp, isSystemApp, snapPreview, snapRect, snapZoneAt, snapEnabled, SNAP_ZONES,
 } from './windows.js';
 export { codeStatus } from './codesig.js';
 import { reportRefusedCode } from './codesig.js';
@@ -64,9 +64,9 @@ export { WindowShell, WINDOW_EDGE } from './windowshell.jsx';
 export { term } from './terminal.js';
 export { clipboard, clipboardHistory, clipboardPanel, clipboardKind } from './clipboard.js';
 export { spotlight, spotlightOpen, calc as spotlightCalc, convert as spotlightConvert } from './spotlight.js';
-export { registerSpotlightSource } from './spotlight.js';
+export { registerSpotlightSource, searchEverything } from './spotlight.js';
 // session notifications, menu bar status items, Clock (alarms) and Help (docs/SYSTEM.md)
-export { notify, dismissNotification, useNotifications, notifications, notifyHistory, clearNotifyHistory, NotificationBanner } from './notify.js';
+export { notify, dismissNotification, useNotifications, notifications, notifyHistory, clearNotifyHistory, NotificationBanner, setBannerPlacement } from './notify.js';
 export { registerStatusItem, StatusItems, statusItems } from './statusitems.js';
 export { clockAlarms, clockTimer, timerStart, timerPause, timerResume, timerReset, timerLeft, stopwatch, swStart, swStop, swLap, swReset, swElapsed, nextAlarm, nextFire } from './alarms.js';
 export { help } from './help.js';
@@ -74,7 +74,7 @@ import { NotificationBanner } from './notify.js';
 import { startAlarms } from './alarms.js';
 import { startDiskWatch } from './diskwatch.js';
 import { maybeStartTour } from './help.js';
-import { getApp as getAppOf, isLiveSystem as isLiveSystemOf, wm as wmOf } from './windows.js';
+import { getApp as getAppOf, isLiveSystem as isLiveSystemOf, wm as wmOf, windows as windowsStore } from './windows.js';
 export const windowIcon = (w) => windowIconOf(w, getAppOf);
 export { systemInfo, lordosVersion, useSystemInfo, useServerStats, useCpuUsage, formatBytes, formatDuration } from './system.js';
 export * as fs from './fs.js';
@@ -133,9 +133,17 @@ export const themes = {
       description: tOptional(`shell.theme.${t.id}.description`) || meta.description || '' };
   }).filter((t) => !t.hidden),         // the login screen (themes/greeter) can't be chosen
   current: () => lord.themes.list().find((t) => t.current)?.id || null,
-  // Switches theme live: the server discards this JS context and loads the new one.
+  // Switches theme live: the server discards this JS context and loads the new one. The LordOS
+  // app windows that are open come back in the new theme (themeReopen, read once by startShell);
+  // Linux app windows stay connected and simply get the new theme's frame.
   use(id) {
-    settings.set({ theme: id });
+    let reopen = [];
+    try {
+      reopen = windowsStore.get().filter((w) => { const a = getAppOf(w.id); return a && !a.builtin; }).slice(-8)
+        .map((w) => ({ app: w.app, id: w.id, args: w.args ? JSON.parse(JSON.stringify(w.args)) : null, minimized: !!w.minimized,
+          frame: { x: w.x, y: w.y, w: w.w, h: w.h }, maximized: !!w.maximized }));
+    } catch (e) { reopen = []; }
+    settings.set({ theme: id, themeReopen: reopen.length ? reopen : null });
     lord.settings.save(JSON.stringify(settings.get(), null, 2));
     return lord.themes.use(id);
   },
@@ -174,6 +182,7 @@ export function startShell(element) {
   if (wanted && current && wanted !== current && lord.themes.use(wanted)) return;
   refreshPackages();                    // after the theme's configureWindows
   enableShellLayers();                  // menus, popovers and prompts go to their layer (sdk/layers.js)
+  reopenAfterThemeSwitch();
   render(createElement(LocaleRoot, null, element));
   // live ISO: the installation assistant opens by itself, in front
   if (isLiveSystemOf() && getAppOf('installer')) setTimeout(() => wmOf.open('installer'), 300);
@@ -185,6 +194,26 @@ export function startShell(element) {
   startDiskWatch();                     // notices when a disk gets too hot or its health gets worse
   startVideo();                         // browser video without hardware decoding (video.js, docs/VIDEO.md)
   setTimeout(reportRefusedCode, 800);   // "This LordOS component was modified and was not loaded" (docs/SIGNING.md)
+}
+
+// After Settings → Appearance switched theme: the windows that were open replace the ones the new
+// theme opens by itself at start.
+function reopenAfterThemeSwitch() {
+  const list = settings.get().themeReopen;
+  if (!Array.isArray(list) || !list.length) return;
+  settings.set({ themeReopen: null });
+  for (const w of windowsStore.get()) if (!getAppOf(w.id)?.builtin) wmOf.close(w.id, true);
+  for (const r of list) {
+    if (!r || typeof r.app !== 'string' || !getAppOf(r.app)) continue;
+    const inst = typeof r.id === 'string' && r.id.includes('#') ? r.id.split('#')[1] : null;
+    const id = wmOf.open(r.app, { ...(inst ? { instance: inst } : null), ...(r.args ? { args: r.args } : null), frame: r.frame });
+    if (id && r.maximized) wmOf.toggleMaximize(id);
+    if (id && r.minimized) wmOf.minimize(id);
+  }
+  // apps that bring their own windows back as they start (the Terminal's sessions) must not end up
+  // in front of the one the user was using
+  const top = [...list].reverse().find((r) => r && !r.minimized && getAppOf(r.app));
+  if (top) setTimeout(() => { if (windowsStore.get().some((w) => w.id === top.id)) wmOf.focus(top.id); }, 900);
 }
 
 // Changing the language remounts the whole interface (windows, tabs and

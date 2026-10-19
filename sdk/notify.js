@@ -104,6 +104,11 @@ export function dismissNotification(id, reason = 'closed') {
 }
 
 export const useNotifications = () => useStore(notifications);
+
+// Where the banners go: 'top' (default: below a menu bar) or 'bottom' (above a taskbar, the Classic
+// theme). Always on the end side of the line.
+let placement = 'top';
+export function setBannerPlacement(p) { placement = p === 'bottom' ? 'bottom' : 'top'; }
 export const clearNotifyHistory = () => notifyHistory.set([]);
 
 function runAction(n, a) {
@@ -153,8 +158,13 @@ export function NotificationBanner() {
   const area = workArea() || { x: 0, y: 0, w: screen.width, h: screen.height };
   const rtl = direction() === 'rtl';
   const left = rtl ? (area.x || 0) + 12 : (area.x || 0) + (area.w || screen.width) - 352;
-  return h(View, { style: { position: 'absolute', left, top: (area.y || 0) + 10, width: 340, gap: 10 } },
-    ...grouped(list).map((n) => h(Banner, { key: n.id, n, th })));
+  const at = placement === 'bottom'
+    ? { bottom: Math.max(0, screen.height - ((area.y || 0) + (area.h || screen.height))) + 12 }
+    : { top: (area.y || 0) + 10 };
+  const shown = grouped(list);
+  if (placement === 'bottom') shown.reverse();          // the newest one next to the taskbar
+  return h(View, { style: { position: 'absolute', left, width: 340, gap: 10, ...at } },
+    ...shown.map((n) => h(Banner, { key: n.id, n, th })));
 }
 
 // Grouping by app (Settings → Notifications): the newest banner of each app, with "+N".

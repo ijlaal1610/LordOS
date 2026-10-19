@@ -339,6 +339,19 @@ function buildResults(raw, apps) {
   return sections.sort((a, b) => b.top - a.top);
 }
 
+// The same search for another surface (the Classic start menu): sections of results, the file index
+// built on first use, and run() that counts the choice like the search panel does.
+export const searchEverything = {
+  results: (query, apps) => buildResults(query, apps),
+  prepare: () => buildFileIndex(),
+  version: () => resultsVersion,
+  run(item, reveal = false) {
+    if (!item) return;
+    noteUse(item.key);
+    setTimeout(() => (reveal && item.reveal ? item.reveal() : item.run()), 0);
+  },
+};
+
 // ---- preview ----
 
 const previewCache = new Map();
