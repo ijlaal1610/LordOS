@@ -106,7 +106,8 @@ HDR += $(wildcard src/tp/*.h)
 
 .PHONY: all clean test test-full
 # lord-sessiond: sessions, login screen and remote desktop (docs/SESSIONS.md). It's the
-# only one that links OpenSSL (TLS); without libssl-dev, only lord-server is built.
+# only one that links OpenSSL (TLS), and with it libsrtp2 and usrsctp (the remote desktop's WebRTC);
+# without libssl-dev, only lord-server is built.
 SESSIOND ?= $(shell pkg-config --exists openssl 2>/dev/null && echo 1 || echo 0)
 ALL := build/lord-server
 ifeq ($(SESSIOND),1)
@@ -458,14 +459,16 @@ build/lord-server: $(OBJ) build/obj/ui/stb.o $(QJS_OBJ) $(WL_OBJ)
 
 SESSIOND_OBJ := build/obj/remote/sessiond.o build/obj/remote/sess.o build/obj/remote/monitor.o build/obj/remote/conn.o \
                 build/obj/remote/enc.o build/obj/remote/pages.o build/obj/sec/cgroup.o build/obj/remote/netsup.o build/obj/remote/cgsup.o \
-                build/obj/remote/rsec.o build/obj/remote/ipnet.o build/obj/remote/lockout.o build/obj/remote/rtcwire.o
-# The remote desktop's video (docs/REMOTE.md, "Video (WebRTC)"): our own WebRTC peer in the bridge, on
-# Debian's libsrtp2 and usrsctp (and OpenSSL's DTLS). Without them, the tile path only.
-RTC ?= $(shell pkg-config --exists libsrtp2 usrsctp 2>/dev/null && echo 1 || echo 0)
-ifeq ($(RTC),1)
-SESSIOND_OBJ += build/obj/remote/rtc.o
+                build/obj/remote/rsec.o build/obj/remote/ipnet.o build/obj/remote/lockout.o build/obj/remote/rtcwire.o build/obj/remote/rtc.o
+# The remote desktop shows the screen only over WebRTC (docs/REMOTE.md, "Video (WebRTC)"): our own peer in
+# the bridge, on Debian's libsrtp2 and usrsctp (and OpenSSL's DTLS). lord-sessiond can't be built without
+# them (libsrtp2-dev, libusrsctp-dev).
+ifeq ($(SESSIOND),1)
+ifneq ($(shell pkg-config --exists libsrtp2 usrsctp 2>/dev/null && echo 1),1)
+$(error lord-sessiond needs libsrtp2 and usrsctp for the remote desktop: apt-get install libsrtp2-dev libusrsctp-dev (or SESSIOND=0))
+endif
 SESSIOND_LIBS := $(shell pkg-config --libs libsrtp2 usrsctp)
-build/obj/remote/rtc.o build/obj/remote/conn.o: CPPFLAGS += -DLORD_RTC $(shell pkg-config --cflags libsrtp2 usrsctp)
+build/obj/remote/rtc.o: CPPFLAGS += $(shell pkg-config --cflags libsrtp2 usrsctp)
 endif
 build/obj/remote/pages.o: src/remote/login.html src/remote/client.html
 	@mkdir -p $(dir $@)

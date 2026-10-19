@@ -326,10 +326,8 @@
   "sharing.blocklistFooter": "Always refused, before anything else, until you remove them.",
   "sharing.listEmpty": "The list is empty.",
   "sharing.blockForever": "Block permanently",
-  "sharing.video": "Video",
-  "sharing.videoToggle": "Stream as video (WebRTC)",
-  "sharing.videoHint": "Smoother and sharper than images, with sound. Falls back to images when the browser or the network can’t.",
-  "sharing.videoOffHint": "The browser gets the screen as images.",
+  "sharing.video": "Connection",
+  "sharing.videoHint": "The screen, its sound and your input travel encrypted over WebRTC: the only way the remote desktop works.",
   "sharing.stun": "STUN servers",
   "sharing.stunPlaceholder": "stun.example.org:3478",
   "sharing.stunHint": "This computer answers STUN itself, which is enough on the local network. Add a public server only to connect across networks (up to 4, separated by commas).",
@@ -342,5 +340,14 @@
   "sharing.turnRemove": "Remove relay",
   "sharing.turnFooter": "Only when neither side can reach the other directly. The relay only sees encrypted video and input; its password stays on this computer, readable only by the system.",
   "sharing.save": "Save",
-  "sharing.noneSet": "None"
+  "sharing.noneSet": "None",
+  "sharing.videoRow": "Video over WebRTC",
+  "sharing.videoFooter": "Works across the local network and VPNs over UDP, or over TCP port {port} where UDP is blocked. To connect across networks, add a STUN server or a relay below.",
+  "sharing.turnTransport": "Reach the relay over",
+  "sharing.turnUdp": "UDP",
+  "sharing.turnTcp": "TCP",
+  "sharing.turnTls": "TLS",
+  "sharing.turnFp": "Certificate fingerprint (optional)",
+  "sharing.turnFpPlaceholder": "SHA-256, like 3A:7F:…",
+  "sharing.turnFpHint": "Empty: the relay’s certificate must be valid for its name. For a relay with its own certificate, paste its SHA-256 fingerprint here."
 }

@@ -570,7 +570,6 @@ int rs_browser_input(const RsJson *j, int W, int H, RsInput *in) {
         in->b = b != 0;
         return in->type = RS_IN_KEY;
     }
-    if (!strcmp(t, "ack")) return in->type = RS_IN_ACK;
     if (!strcmp(t, "resize")) {
         if (rs_json_num(j, "w", &a) || rs_json_num(j, "h", &b) || a < 640 || b < 480 || a > 3840 || b > 2400) return RS_IN_NONE;
         in->a = (int)(a & ~1LL);

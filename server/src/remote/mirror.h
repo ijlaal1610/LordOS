@@ -36,7 +36,10 @@ int  mirror_start(int w, int h, const MirrorInput *in);
 void mirror_stop(void);
 int  mirror_pollfds(struct pollfd *p, int max);       /* adds its fds; returns how many */
 void mirror_dispatch(const struct pollfd *p, int n);  /* the same ones, with revents */
-int  mirror_clients(void);                            /* connections watching the screen (not lord-sessiond) */
+int  mirror_clients(void);                            /* remote desktop connections (not lord-sessiond) */
+/* Connections that take the video now (RP_VIDEO): only for them is the screen captured, compared and
+ * encoded. A browser that is still connecting, or reconnecting its peer, costs nothing. */
+int  mirror_watchers(void);
 int  mirror_has_seat(void);                           /* is lord-sessiond (monitor) connected? */
 /* Requests from the session to whoever shows it (short JSON): RP_SESSION to every connection
  * ({"a":"lock"}: lock; {"a":"switch"}: switch user) and RP_GREETER to the monitor. */
@@ -45,12 +48,12 @@ void mirror_greeter(const char *json);
 /* To lord-sessiond: the first frame after an RP_DISPLAY_KEEP is on the screen (RP_SHOWN). */
 void mirror_shown(void);
 
-/* A new screen frame (without the cursor). Compares it tile by tile with the previous one and sends
- * only what changed to each connection that is ready. */
+/* A new screen frame (without the cursor), for the encoder; compares it tile by tile with the previous
+ * one: the damage goes out at once, the lossless tiles once the screen is still. */
 void mirror_frame(const uint32_t *px, int stride, int w, int h);
 /* Cursor: position and mode (0 arrow, 1 app image, 2 hidden); the image only if gen changed. */
 void mirror_cursor(int x, int y, int mode, const uint32_t *argb, int w, int h, int hx, int hy, unsigned gen);
-/* The video path: lossless tiles for video-mode viewers once the screen is still, the encoder's
+/* Lossless tiles for viewers whose video plays once the screen is still, the encoder's
  * pending frame. Called on every loop iteration; mirror_timeout says when it has work (ms, -1 none). */
 void mirror_tick(void);
 double mirror_timeout(void);

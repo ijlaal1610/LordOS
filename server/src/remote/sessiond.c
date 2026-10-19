@@ -14,7 +14,8 @@
  *     one child per connection that drops root as soon as it knows whose session it is.
  *
  *   /etc/lordos/session.conf         AUTOLOGIN=user (empty or missing line: login screen)
- *   /etc/lordos/remote/config        enabled=0|1, port=5673, allow=all|group, net=lan|list|any, insecure_dev=0 (0644)
+ *   /etc/lordos/remote/config        enabled=0|1, port=5673, allow=all|group, net=lan|list|any, insecure_dev=0,
+ *                                    stun=, turn=, turn_user=, turn_key=, turn_transport=udp|tcp|tls, turn_fp= (0644)
  *   /etc/lordos/remote/access        manual "allow <cidr>" / "block <cidr>" lists (root 0600, admin actions)
  *   /var/lib/lordos/remote/blocklist sources blocked after failed logins (root 0600, survives restarts)
  *   /var/lib/lordos/remote/requests  "unblock <cidr>" lines from the admin helper (read on SIGHUP)
@@ -133,15 +134,17 @@ static void load_config(void) {
     rd_conf.port = RD_DEFAULT_PORT;
     rd_conf.enabled = rd_conf.group_only = rd_conf.insecure_dev = 0;
     rd_conf.net_mode = RS_NET_LAN;
-    rd_conf.video = 1;
     rd_conf.nstun = 0;
     rd_conf.turn[0] = rd_conf.turn_user[0] = 0;
+    rd_conf.turn_transport = RW_TURN_UDP;
+    rd_conf.turn_has_fp = 0;
     FILE *f = fopen(RD_CONF_DIR "/config", "r");
     char line[256];
     while (f && fgets(line, sizeof line, f)) {
         int v;
         char s[32], h[160];
-        if (sscanf(line, "video=%d", &v) == 1) { rd_conf.video = v != 0; continue; }
+        if (sscanf(line, "turn_transport=%31s", s) == 1) { if (rw_turn_transport(s) >= 0) rd_conf.turn_transport = rw_turn_transport(s); continue; }
+        if (sscanf(line, "turn_fp=%159s", h) == 1) { rd_conf.turn_has_fp = !rw_fp_parse(h, rd_conf.turn_fp); continue; }
         if (sscanf(line, "stun=%159s", h) == 1) {
             if (rw_ice_server_valid(h) && rd_conf.nstun < 4) snprintf(rd_conf.stun[rd_conf.nstun++], 96, "%.95s", h);
             continue;
@@ -805,7 +808,23 @@ static void stop_remote(void) {
     tls = NULL;
 }
 
+/* ICE-TCP handoff sockets left by connections that ended without cleaning up (killed): only
+ * sockets, only in root's own folder (conn.c ice_listen) */
+static void clean_rtc_dir(void) {
+    struct stat st;
+    if (lstat(RD_RTC_DIR, &st) || !S_ISDIR(st.st_mode) || st.st_uid != 0) return;
+    DIR *d = opendir(RD_RTC_DIR);
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (e->d_name[0] == '.' || strlen(e->d_name) != 8) continue;
+        if (!fstatat(dirfd(d), e->d_name, &st, AT_SYMLINK_NOFOLLOW) && S_ISSOCK(st.st_mode)) unlinkat(dirfd(d), e->d_name, 0);
+    }
+    closedir(d);
+}
+
 static void start_remote(void) {
+    clean_rtc_dir();
     if (ensure_cert()) { sd_log("could not create the certificate"); return; }
     write_fingerprint();
     /* the private key: root's, 0600 (fixed if it isn't) */
@@ -1225,8 +1244,9 @@ int main(int argc, char **argv) {
             int was = rd_conf.enabled, port = rd_conf.port;
             load_config();
             unblock_requests();
-            sd_log("configuration: remote %s, port %d, from %s; video %s, %d STUN server(s), TURN %s", rd_conf.enabled ? "on" : "off", rd_conf.port,
-                   rs_net_name(rd_conf.net_mode), rd_conf.video ? "on" : "off", rd_conf.nstun, rd_conf.turn[0] ? "configured" : "none");
+            sd_log("configuration: remote %s, port %d, from %s; %d STUN server(s), TURN %s%s%s", rd_conf.enabled ? "on" : "off", rd_conf.port,
+                   rs_net_name(rd_conf.net_mode), rd_conf.nstun, rd_conf.turn[0] ? "over " : "none", rd_conf.turn[0] ? rw_turn_transport_name(rd_conf.turn_transport) : "",
+                   rd_conf.turn[0] && rd_conf.turn_has_fp ? " (pinned certificate)" : "");
             if (listening && (!rd_conf.enabled || port != rd_conf.port)) stop_remote();
             if (rd_conf.enabled && (!listening || !was)) start_remote();
             bump();

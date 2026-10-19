@@ -33,6 +33,7 @@
 #define RD_ACCESS RD_CONF_DIR "/access"  /* manual allow/block lists (admin actions, root 0600) */
 #define RD_COOKIE "__Host-lordos_remote"
 #define RD_TURN_KEY RD_CONF_DIR "/turn.key"  /* the TURN password (admin action remote-ice, root 0600) */
+#define RD_RTC_DIR SD_RUN_DIR "/rtc"         /* ICE-TCP handoff sockets, one per bridge (root 0700; conn.c) */
 #define SD_MAX_SESSIONS 32
 
 /* State shared between the main process and its children. */
@@ -73,10 +74,12 @@ typedef struct {
     int insecure_dev;           /* allows binaries not owned by root (development VMs only) */
     int net_mode;               /* RS_NET_LAN (default) | RS_NET_LIST | RS_NET_ANY: who may connect */
     RsAccess access;            /* RD_ACCESS */
-    /* the video path (docs/REMOTE.md, "Video (WebRTC)"): video=1 (the default), up to 4 stun=host:port,
-     * turn=host:port and turn_user=…; the TURN password is in RD_TURN_KEY (root 0600) */
-    int video, nstun;
+    /* the WebRTC connection (docs/REMOTE.md, "Video (WebRTC)"): up to 4 stun=host:port, turn=host:port,
+     * turn_user=…, turn_transport=udp|tcp|tls and, for TLS, an optional pinned turn_fp=<sha-256>; the
+     * TURN password is in RD_TURN_KEY (root 0600) */
+    int nstun, turn_transport, turn_has_fp;
     char stun[4][96], turn[96], turn_user[129];
+    uint8_t turn_fp[32];
     char server[512], theme[512], greeter_theme[512], fonts[512], shell[512], workdir[512];
 } RdConfig;
 
@@ -133,8 +136,8 @@ void rd_serve(SSL_CTX *ctx, int fd, const char *ip, const char *key);
 void rd_tokens_drop_uid(uid_t uid);                 /* every cookie of that user (lock) */
 void rd_tokens_clear(void);                         /* every cookie (remote turned off) */
 
-/* ---- enc.c: rectangle (0xAARRGGBB) → PNG or JPEG. Returns malloc'd memory; *jpeg = 1 if it chose JPEG. */
-unsigned char *rd_encode(const uint32_t *px, int stride, int w, int h, int allow_jpeg, int *len, int *jpeg);
+/* ---- enc.c: rectangle (0xAARRGGBB) → PNG (the lossless refresh of still areas). malloc'd memory. */
+unsigned char *rd_encode_png(const uint32_t *px, int stride, int w, int h, int *len);
 unsigned char *rd_encode_rgba(const uint32_t *px, int w, int h, int *len);   /* cursor, with alpha */
 
 /* ---- monitor.c: lending the monitor to a session ---- */

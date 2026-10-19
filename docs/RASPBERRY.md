@@ -693,7 +693,7 @@ There are two possible systems on the board:
 2. **Packages for compiling** (the same as in `VM-SETUP.md` plus Mesa):
    ```sh
    sudo apt-get install -y --no-install-recommends build-essential pkg-config libxkbcommon-dev libwayland-dev \
-     wayland-protocols libgbm-dev libegl-dev libgles-dev libssl-dev libcrypt-dev xkb-data \
+     wayland-protocols libgbm-dev libegl-dev libgles-dev libssl-dev libcrypt-dev libsrtp2-dev libusrsctp-dev xkb-data \
      libgl1-mesa-dri libegl1 libgles2 libgbm1 mesa-utils glmark2-es2-wayland
    ```
 3. **The tree,** from the development machine (as for the VM; the themes are built there):
