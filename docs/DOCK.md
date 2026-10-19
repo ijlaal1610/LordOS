@@ -36,6 +36,7 @@ Everything is applied live, without restarting, and is saved in
 | `dockAutohide` | `true`/`false` | `false` |
 | `dockRecents` | `true`/`false`: the last 3 used apps that are not pinned, after a separator line | `false` |
 | `taskbarPosition` | `bottom`, `top`, `left`, `right` (Classic theme) | `bottom` |
+| `taskbarAlign` | `center`, `start`: where the taskbar's buttons go when it is at the bottom or top (Classic theme, 0.8.3) | `center` |
 
 The SDK records recent apps in `dockRecentApps` every time an app opens a window
 (`useDockEntries(defaults, { recents: 3 })`).
