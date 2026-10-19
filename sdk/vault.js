@@ -11,12 +11,13 @@
 //   autofill(app, { url | service })                → [{ id, title, username }] from Passwords (if it is unlocked)
 //   <KeyringPrompt />                               system prompt to unlock the keyring (mounted by startShell)
 //   <AutofillButton app service|url|ssid onFill />   "fill from Passwords" next to a login field
-import { createElement as h, useEffect, useState } from 'react';
+import { createElement as h, useEffect, useRef, useState } from 'react';
 import { View, Text, mainBox } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
 import { useTheme } from './theme.js';
 import { t } from './i18n.js';
 import { TextInput, Button } from './components.jsx';
+import { Overlay } from './layers.js';
 
 const has = () => typeof lord !== 'undefined' && typeof lord.vault !== 'undefined';
 export const vaultAvailable = () => has() && lord.vault.available();
@@ -188,14 +189,16 @@ export function AutofillButton({ app, service, url, ssid, onFill }) {
     if (it.kind === 'kr') { onFill({ username: it.username, password: it.secret }); return; }
     try { onFill(await autofillReveal(it.id)); } catch (e) { /* locked */ }
   };
+  const btn = useRef(null);
+  // the list goes in the overlay layer (sdk/layers.js), above the rest of the form
   return h(View, null,
-    h(View, { onClick: () => { setOpen(!open); if (!open) load(); }, style: { width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center',
+    h(View, { ref: btn, onClick: () => { setOpen(!open); if (!open) load(); }, style: { width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center',
       backgroundColor: th.control } }, h(Text, { style: { fontSize: 14 } }, '🔑')),
-    open ? h(View, { style: { position: 'absolute', top: 34, right: 0, width: 260, zIndex: 100, padding: 4, borderRadius: 9, backgroundColor: th.windowBg,
+    open ? h(Overlay, { anchor: btn, onClose: () => setOpen(false) }, h(View, { style: { position: 'absolute', top: 34, right: 0, width: 260, padding: 4, borderRadius: 9, backgroundColor: th.windowBg,
       border: `1px solid ${th.separator}`, boxShadow: '0 10px 28px rgba(0,0,0,0.4)' } },
       h(Text, { style: { fontSize: 11, fontWeight: 600, color: th.textDim, padding: 6 } }, t('passwords.autofill.title')),
       items == null ? null : !items.length ? h(Text, { style: { fontSize: 12, color: th.textDim, padding: 6 } }, t('passwords.autofill.none'))
         : items.map((it, i) => h(View, { key: i, onClick: () => pick(it), style: { padding: 6, borderRadius: 6 } },
           h(Text, { style: { fontSize: 13, color: th.text } }, it.title),
-          it.username ? h(Text, { style: { fontSize: 11, color: th.textDim } }, it.username) : null))) : null);
+          it.username ? h(Text, { style: { fontSize: 11, color: th.textDim } }, it.username) : null)))) : null);
 }

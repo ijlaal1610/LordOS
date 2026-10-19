@@ -62,6 +62,7 @@ globalThis.__lordScreen = () => {
   screen.height = lord.screen.height;
   readDisplays();
   if (rootNode) { lord.setStyle(rootNode, 'width', screen.width); lord.setStyle(rootNode, 'height', screen.height); }
+  for (const c of layerNodes.values()) { lord.setStyle(c.id, 'width', screen.width); lord.setStyle(c.id, 'height', screen.height); }
   for (const fn of screenListeners) { try { fn(screen, old); } catch (e) { console.error('pantalla:', e?.message || e); } }
 };
 
@@ -173,6 +174,30 @@ const host = {
 };
 
 const reconciler = Reconciler(host);
+
+// ---- layers: one stacking order for the whole screen (sdk/layers.js, docs/LAYERS.md) ----
+// Each layer is a root node of the screen's size, above the React tree (zIndex > 0) and
+// pointerEvents 'box-none' (lord-server never hits the layer itself, only what is in it), so paint
+// order and hit testing follow the same order. Content goes in with createPortal.
+const layerNodes = new Map();                 // zIndex → container
+export function layerContainer(z) {
+  if (!rootNode || !(z > 0)) return null;
+  let c = layerNodes.get(z);
+  if (!c) {
+    const id = lord.createNode('view');
+    for (const [k, v] of [['position', 'absolute'], ['left', 0], ['top', 0], ['width', screen.width], ['height', screen.height],
+      ['pointerEvents', 'box-none'], ['zIndex', z]]) lord.setStyle(id, k, v);
+    lord.appendChild(rootNode, id);
+    c = { id, isContainer: true };
+    layerNodes.set(z, c);
+  }
+  return c;
+}
+// A portal into a host node: a layer container (above), or a View instance (the window's overlay
+// host: events then bubble from the portal's content to that View and up to the window).
+export function createPortal(children, container, key = null) {
+  return reconciler.createPortal(children, container, null, key);
+}
 
 export function render(element) {
   const rootId = lord.createNode('view');

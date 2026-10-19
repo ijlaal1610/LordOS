@@ -1,7 +1,7 @@
 // ui.jsx — the building blocks of every Settings page, on top of the SDK's GroupBox (docs/DESIGN.md,
 // "Settings"): a page column, titled sections (inset grouped boxes with hairlines between rows),
 // rows with the control or the value at the trailing edge, form rows, a pop-up button, a page header, badges and notes.
-import { View, Text, useTheme, addListener, GroupBox as InsetBox, spacing, typeScale, createStore, useStore, screen, ScrollView } from '@lordos/sdk';
+import { View, Text, useTheme, addListener, GroupBox as InsetBox, spacing, typeScale, createStore, useStore, screen, ScrollView, Overlay } from '@lordos/sdk';
 import { createElement as h, useEffect, useRef, useState } from 'react';
 
 
@@ -145,8 +145,8 @@ export function StatusDot({ color, size = 8 }) {
   return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }} />;
 }
 
-// The page: a column of sections 20 px apart. It also hosts the open pop-up menu (PopUpLayer), drawn
-// last so it covers the rows below its button (zIndex only orders siblings).
+// The page: a column of sections 20 px apart. It also hosts the open pop-up menu (PopUpLayer), which
+// draws itself in the overlay layer (sdk/layers.js).
 export function Stack({ children, gap = 20 }) {
   return (
     <View style={{ gap, paddingBottom: 24 }}>
@@ -185,36 +185,32 @@ export function PopUp({ value, options, onChange, width = 190, disabled }) {
 function PopUpLayer() {
   const t = useTheme();
   const p = useStore(popup);
-  const origin = useRef(null), menu = useRef(null);
-  const [, relayout] = useState(0);
+  const menu = useRef(null);
   useEffect(() => {
     if (!p) return undefined;
-    relayout((x) => x + 1);             // the origin is known after the first layout
     return addListener('pointerdown', (e) => {
       const inside = (n) => { if (!n) return false; const [x, y, w, h] = lord.getLayout(n.id); return e.x >= x && e.x <= x + w && e.y >= y && e.y <= y + h; };
       if (!inside(menu.current) && !inside(p.node)) popup.set(null);
     });
   }, [p]);
-  const anchor = <View ref={origin} style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0 }} />;
-  if (!p || !p.node || !origin.current) return anchor;
-  const [ox, oy] = lord.getLayout(origin.current.id);
-  const [bx, by, bw, bh] = lord.getLayout(p.node.id);
+  if (!p || !p.node) return null;
+  const [, by, bw, bh] = lord.getLayout(p.node.id);
   const rows = p.options.length;
   const mh = rows * 24 + 12;
   const below = by + bh + 4 + Math.min(mh, 320) < screen.height - 70;
   const height = Math.min(mh, 320);
-  const top = below ? by + bh + 4 - oy : by - 4 - height - oy;
+  // in the overlay layer (sdk/layers.js), placed against the button: above the rows below it and
+  // not clipped by the page's scroll view
   return (
-    <>
-      {anchor}
-      <View ref={menu} style={{ position: 'absolute', left: bx - ox, top, width: Math.max(bw, p.width), height, padding: 5, borderRadius: 8, overflow: 'hidden',
+    <Overlay anchor={p.node}>
+      <View ref={menu} style={{ position: 'absolute', left: 0, top: below ? bh + 4 : -4 - height, width: Math.max(bw, p.width), height, padding: 5, borderRadius: 8, overflow: 'hidden',
         backgroundColor: t.mode === 'dark' ? '#2c2c31' : '#ffffff', border: `1px solid ${t.separator}`, boxShadow: '0 10px 30px rgba(0,0,0,0.35)' }}>
         <ScrollView style={{ flex: 1 }}>
           {p.options.map(([v, label], i) => (v === '-' ? <View key={`s${i}`} style={{ height: 1, marginVertical: 4, marginHorizontal: 6, backgroundColor: t.separator }} />
             : <PopRow key={String(v)} label={label} Icon={p.options[i][2]} checked={v === p.value} onClick={() => { popup.set(null); if (v !== p.value) p.onChange(v); }} />))}
         </ScrollView>
       </View>
-    </>
+    </Overlay>
   );
 }
 

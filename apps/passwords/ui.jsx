@@ -1,7 +1,7 @@
 // ui.jsx — small pieces of Passwords: category and item icons, sheets (dialogs), the strength
 // bar, a QR code image, a multi-line field, a file picker and pop-up menus. Spacing, type and
 // controls follow docs/DESIGN.md; icons are drawn (glyphs.jsx), never color emoji.
-import { View, Text, Image, useTheme, useStore, createStore, Button, ScrollView, TextInput, ToolbarButton, takeTextFocus, releaseTextFocus, fs, t } from '@lordos/sdk';
+import { View, Text, Image, useTheme, useStore, createStore, Button, ScrollView, TextInput, ToolbarButton, takeTextFocus, releaseTextFocus, fs, t, Overlay } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { builtinById } from './templates.js';
 import { appMode } from './api.js';
@@ -297,18 +297,22 @@ export function Choice({ value, options, onChange, width = 200 }) {
   const th = useTheme();
   const [open, setOpen] = useState(false);
   const cur = options.find((o) => o[0] === value);
+  const btn = useRef(null);
   return (
     <View style={{ width }}>
-      <View onClick={() => setOpen(!open)} style={{ height: 28, paddingHorizontal: 10, borderRadius: 7, flexDirection: 'row', alignItems: 'center', gap: 6,
+      <View ref={btn} onClick={() => setOpen(!open)} style={{ height: 28, paddingHorizontal: 10, borderRadius: 7, flexDirection: 'row', alignItems: 'center', gap: 6,
         backgroundColor: th.control, border: `1px solid ${open ? th.accent : 'transparent'}` }}>
         <Text style={{ flex: 1, minWidth: 0, fontSize: 13, color: th.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{cur ? cur[1] : String(value ?? '')}</Text>
         <Text style={{ fontSize: 9, color: th.textDim }}>▼</Text>
       </View>
+      {/* the list goes in the window's overlay layer (sdk/layers.js), above every field of the form */}
       {open && (
-        <View style={{ position: 'absolute', top: 32, insetInlineStart: 0, width, zIndex: 60, borderRadius: 8, padding: 5,
-          backgroundColor: th.mode === 'dark' ? '#2c2c31' : '#ffffff', border: `1px solid ${th.separator}`, boxShadow: '0 10px 30px rgba(0,0,0,0.35)' }}>
-          {options.map(([v, label]) => <ChoiceRow key={String(v)} label={label} on={v === value} onClick={() => { setOpen(false); onChange(v); }} />)}
-        </View>
+        <Overlay anchor={btn} onClose={() => setOpen(false)}>
+          <View style={{ position: 'absolute', top: 32, insetInlineStart: 0, width, borderRadius: 8, padding: 5,
+            backgroundColor: th.mode === 'dark' ? '#2c2c31' : '#ffffff', border: `1px solid ${th.separator}`, boxShadow: '0 10px 30px rgba(0,0,0,0.35)' }}>
+            {options.map(([v, label]) => <ChoiceRow key={String(v)} label={label} on={v === value} onClick={() => { setOpen(false); onChange(v); }} />)}
+          </View>
+        </Overlay>
       )}
     </View>
   );

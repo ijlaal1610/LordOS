@@ -354,6 +354,54 @@ static void test_transform_math(void) {
     free(st.ext);
 }
 
+/* Shell layers (sdk/layers.js, docs/LAYERS.md): full-screen root children with zIndex and
+ * pointerEvents box-none. Paint and hit order follow the zIndex whatever the tree order, a layer
+ * never takes a click itself, and pointerEvents none still hides a whole subtree. */
+static Node *layer_node(Node *root, float z, float w, float h) {
+    Node *l = view(root);
+    ss(l, "position", "absolute");
+    sn(l, "left", 0); sn(l, "top", 0); sn(l, "width", w); sn(l, "height", h);
+    ss(l, "pointerEvents", "box-none");
+    sn(l, "zIndex", z);
+    return l;
+}
+static Node *box_in(Node *parent, float x, float y, float w, float h, uint32_t color) {
+    Node *b = view(parent);
+    ss(b, "position", "absolute");
+    sn(b, "left", x); sn(b, "top", y); sn(b, "width", w); sn(b, "height", h);
+    sn(b, "backgroundColor", color);
+    return b;
+}
+static void test_layers(void) {
+    ui_reset();
+    Node *root = view(NULL);
+    ui.root = root;
+    sn(root, "backgroundColor", 0xffffffff);
+    /* created in the "wrong" tree order on purpose: popover before dock, both before the windows */
+    Node *pop = layer_node(root, 50, 160, 100);
+    Node *dockl = layer_node(root, 10, 160, 100);
+    Node *base = view(root);                            /* the theme's tree (zIndex 0) */
+    sn(base, "width", 160); sn(base, "height", 100);
+    Node *win = box_in(base, 0, 0, 160, 100, 0xff0000ff);         /* a window: blue */
+    Node *dock = box_in(dockl, 0, 10, 30, 80, 0xff00ff00);        /* the Dock on the left: green */
+    Node *menu = box_in(pop, 10, 20, 60, 30, 0xffff0000);         /* the crown menu: red */
+    Node *ghost = box_in(pop, 100, 60, 20, 20, 0xff000000);       /* pointerEvents none: never hit */
+    ss(ghost, "pointerEvents", "none");
+    render(root, 160, 100);
+
+    CHECK(pix(20, 30) == 0xff0000, "menu painted over the Dock: %06x", pix(20, 30));
+    CHECK(pix(5, 70) == 0x00ff00, "Dock painted over the window: %06x", pix(5, 70));
+    CHECK(pix(100, 30) == 0x0000ff, "window painted under empty layers: %06x", pix(100, 30));
+    CHECK(hit_test(root, 20, 30) == menu, "a click on the menu over the Dock goes to the menu");
+    CHECK(hit_test(root, 5, 70) == dock, "a click on the Dock goes to the Dock");
+    CHECK(hit_test(root, 100, 30) == win, "an empty layer lets the click through to the window");
+    CHECK(hit_test(root, 110, 70) == win, "pointerEvents none: the click goes through");
+    /* the base can't climb above a layer, the order holds after a re-render */
+    sn(win, "zIndex", 5);
+    render(root, 160, 100);
+    CHECK(hit_test(root, 20, 30) == menu && pix(20, 30) == 0xff0000, "a zIndex inside the base stays under the layers");
+}
+
 static void test_transform_paint_hit(void) {
     ui_reset();
     Node *root = view(NULL);
@@ -625,6 +673,7 @@ int main(int argc, char **argv) {
     test_logical();
     test_transform_math();
     test_transform_paint_hit();
+    test_layers();
     printf("engine-test: %d checks, %d failures\n", checks, fails);
     return fails ? 1 : 0;
 #endif

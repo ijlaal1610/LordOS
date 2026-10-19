@@ -208,6 +208,13 @@ The state only changes when crossing those limits. Moving the mouse over the res
 doesn't redraw anything, and the animation redraws only the Dock, not the desktop. Magnification
 already worked this way: its state belongs to the Dock component.
 
+## Above and below
+
+The Dock is in the `dock` layer: above the windows and under the menu bar. Its own menus are in
+`popover` (above the windows and the menu bar), its name tooltip in `tooltip` (hidden while the
+icon's menu is open) and the dragged icon and the «poof» in `drag`. Every other menu, popover and
+the Control Center are above it whatever its side, auto-hide or magnification. See `LAYERS.md`.
+
 ## Right to left (Arabic, Hebrew)
 
 **Left and right are physical sides of the screen**, as on popular desktop systems: with an RTL language a Dock on the

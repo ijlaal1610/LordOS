@@ -24,7 +24,8 @@ static const char *const E_JUSTIFY[]  = {"flex-start", "center", "flex-end", "sp
                                          "space-around", "space-evenly", NULL};
 static const char *const E_ALIGN[]    = {"auto", "stretch", "flex-start", "center", "flex-end", NULL};
 static const char *const E_OVERFLOW[] = {"visible", "hidden", NULL};
-static const char *const E_POINTER[]  = {"auto", "none", NULL};
+/* box-none: the node itself never takes the pointer, its children do (shell layers, overlay hosts) */
+static const char *const E_POINTER[]  = {"auto", "none", "box-none", NULL};
 static const char *const E_TALIGN[]   = {"left", "center", "right", "start", "end", NULL};
 static const char *const E_DIRECTION[] = {"inherit", "ltr", "rtl", NULL};
 static const char *const E_FIT[]      = {"fill", "cover", "contain", NULL};

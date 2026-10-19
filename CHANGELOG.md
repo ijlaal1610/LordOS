@@ -48,6 +48,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **Menus are always above the Dock.** With the Dock on the left, the crown menu opened underneath
+  it and the Dock took its clicks; select lists inside apps (Passwords' category list) were drawn
+  under the form fields after them. The desktop now has one stacking order, in layers (Dock < menu
+  bar < fullscreen < launcher < menus and popovers < sheets < notifications < tooltips < drag
+  images < system prompts), and clicks follow it, in every Dock position, light and dark, RTL and
+  the Classic theme ([docs/LAYERS.md](docs/LAYERS.md)).
 - **The menu bar names a Linux app, not its window.** Next to the crown it showed the window title
   (for a browser, the whole page title); it now shows the app's short
   name, "Chromium", in every language. The Dock tooltip and Linux app notifications use the same

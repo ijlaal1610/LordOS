@@ -64,7 +64,7 @@ export function Launchpad({ t, apps, onOpen, onClose, area = { x: 0, y: 0, w: sc
       </View>
       </ScrollView>
       {ctx && (
-        <Menu x={ctx.x - area.x} y={ctx.y - area.y} onClose={() => setCtx(null)} items={[
+        <Menu x={ctx.x} y={ctx.y} onClose={() => setCtx(null)} items={[
           { label: tr('shell.dock.open'), onClick: () => open(ctx.app.id) },
           ...(dockIdOf(ctx.app) ? [{ label: tr('shell.dock.keep'), checked: dock.isPinned(ctx.app), disabled: dock.isPinned(ctx.app) && !dock.canRemove(ctx.app),
             onClick: () => (dock.isPinned(ctx.app) ? dock.unpin(ctx.app) : dock.pin(ctx.app)) }] : []),

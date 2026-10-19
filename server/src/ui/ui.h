@@ -16,11 +16,12 @@ enum { ALIGN_AUTO, ALIGN_STRETCH, ALIGN_START, ALIGN_CENTER, ALIGN_END };
 enum { TEXT_LEFT, TEXT_CENTER, TEXT_RIGHT, TEXT_START, TEXT_END };   /* start/end according to direction */
 enum { EDGE_L, EDGE_T, EDGE_R, EDGE_B };
 enum { DIR_INHERIT, DIR_LTR, DIR_RTL };
+enum { POINTER_AUTO, POINTER_NONE, POINTER_BOX_NONE };   /* pointerEvents; box-none: only the children are hit */
 
 /* Subset of CSS the engine understands (the JS names are in style.c). */
 typedef struct {
     uint8_t display_none, absolute, row, justify, align_items, align_self;
-    uint8_t overflow_hidden, pointer_none, text_align, object_fit, nowrap;
+    uint8_t overflow_hidden, pointer_none, text_align, object_fit, nowrap;   /* pointer_none: POINTER_* */
     uint8_t dir;                /* DIR_INHERIT / DIR_LTR / DIR_RTL (CSS direction) */
     uint8_t wrap;               /* flexWrap: 'wrap' (children that don't fit move to another line) */
     uint8_t mono;               /* fontFamily: 0 'sans-serif' (Inter), 1 'monospace' (JetBrains Mono), 2 'brand' (Plus Jakarta Sans) */

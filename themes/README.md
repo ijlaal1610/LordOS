@@ -45,6 +45,11 @@ respected on the next start.
      and drop-down menus open to the left if `direction() === 'rtl'` (see the default theme and
      `docs/LANGUAGES.md`). The input method's candidate window is placed by `startShell`: the
      theme doesn't need to do anything.
+   - everything above the windows in its layer (`<Layer name="dock|menubar|overlay|popover|modal|tooltip|drag">`
+     from the SDK): menus, the Control Center, the app launcher, tooltips and drag images. The
+     order is the layers', not the tree's, and clicks follow it, so a menu is never under the Dock
+     (see `docs/LAYERS.md`). `startShell` places the SDK's own surfaces (search, notifications,
+     prompts, fullscreen windows).
    - Linux app windows (Wayland) arrive as windows of the internal app `linux`: if
      `win.args.csd` is true the app draws its own frame and the theme shows only `<AppHost>`;
      and `configureWindows({ chrome: { w, h } })` says how much the theme's frame adds (borders +
@@ -103,7 +108,8 @@ A theme draws `<DesktopWidgets layer="below" />` between the wallpaper and the w
   move to another line; `gap` also separates the lines, which go at the start: no
   `wrap-reverse` or `alignContent`), `justifyContent`, `alignItems`, `alignSelf`, `flex`,
   `flexGrow`, `flexShrink`, `flexBasis`, `gap`, `width`/`height` (px, `%`, `auto`),
-  `min*`/`max*`, `left`/`top`/`right`/`bottom`, `inset`, `margin*`, `padding*`, `overflow`, `zIndex`.
+  `min*`/`max*`, `left`/`top`/`right`/`bottom`, `inset`, `margin*`, `padding*`, `overflow`, `zIndex`
+  (it only orders siblings: what goes above the windows uses the layers, see below).
   `flex` follows React Native: `flex: N > 0` grows and shrinks from a zero basis, `flex: 0` keeps its
   `width`/`height` and doesn't flex, `flex: -N` only shrinks.
 - **Logical edges** (they follow the node's `direction`, and win over the physical side as in React
@@ -112,7 +118,8 @@ A theme draws `<DesktopWidgets layer="below" />` between the wallpaper and the w
   `insetInlineStart`/`insetInlineEnd` (`start`/`end`, `insetInline`).
 - **Visual:** `backgroundColor`, `background: linear-gradient(...)`, `borderRadius`, `border`,
   `borderWidth`, `borderColor`, `opacity`, `boxShadow`, `backdropFilter: blur(px)`,
-  `pointerEvents`, `cursor` (`default`, `pointer`,
+  `pointerEvents` (`auto`, `none`: the node and its children are never hit, `box-none`: only its
+  children are), `cursor` (`default`, `pointer`,
   `text`, `move`, `grab`, `grabbing`, `not-allowed`, `wait`, `progress`, `crosshair`, `n-resize`… `ew-resize`,
   `ns-resize`, `nesw-resize`, `nwse-resize`; the one of the first node upwards that has it applies).
 - **Per-side borders:** `borderTop`/`borderRight`/`borderBottom`/`borderLeft` (`'1px solid #ccc'`), their

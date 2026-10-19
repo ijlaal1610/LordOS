@@ -1,7 +1,7 @@
 // Drop-down / context menu. Closes when clicking outside or with Escape. Keyboard: ↑/↓ move,
 // Home/End jump, Enter/Space choose, → opens a submenu and ← closes it. A menu taller than the
 // screen scrolls (wheel or touchpad), and the keyboard keeps the highlighted item in view.
-import { View, Text, addListener, useTheme, screen, direction, ScrollView, takeTextFocus, releaseTextFocus, focusToken, restoreFocus } from '@lordos/sdk';
+import { View, Text, addListener, useTheme, screen, direction, ScrollView, takeTextFocus, releaseTextFocus, focusToken, restoreFocus, Layer } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 
 const ROW = 24, SEP_H = 9, HEAD_H = 22;
@@ -52,6 +52,8 @@ function fitWidth(items, min) {
 // side: 'left' opens the menu to the left of x and 'right' to the right, regardless of the language
 // (the side Dock; screen sides are physical). centered: y is the center of the menu.
 // keys: this menu has the keyboard (a submenu takes it while it is open; onBack gives it back).
+// Every menu is drawn in the shell's popover layer (sdk/layers.js), above the Dock, the menu bar and
+// the windows wherever it is rendered from; its submenus go in the same layer, beside it.
 export function Menu({ x, y, items, onClose, anchor, width: minWidth = 220, above = false, sub = false, nodeRef, side = null, centered = false, onBack }) {
   const t = useTheme();
   const own = useRef(null);
@@ -127,7 +129,7 @@ export function Menu({ x, y, items, onClose, anchor, width: minWidth = 220, abov
     <Item key={i} item={it} onClose={onClose} active={i === active}
       onHover={() => setActive(selectable(it) ? i : -1)} onSub={(s) => setSubMenu(s ? { ...s, keys: false } : null)} />
   ));
-  return (
+  const body = (
     <>
     <View ref={ref} style={{
       position: 'absolute', left: x, top: y, width, height: scrolls ? height : undefined, paddingVertical: scrolls ? 0 : 5, borderRadius: 9,
@@ -142,4 +144,5 @@ export function Menu({ x, y, items, onClose, anchor, width: minWidth = 220, abov
       onBack={subMenu.keys ? () => setSubMenu(null) : undefined} />}
     </>
   );
+  return sub ? body : <Layer name="popover">{body}</Layer>;
 }

@@ -5,7 +5,7 @@ import {
   startShell, View, Text, Image, screen, ThemeProvider, useSettings, useWindows, configureWindows, getApp, wm, addListener, t as tr,
   useLauncherApps, launchApp, useDockEntries, dockActivate, dockMenu, dockPrefs, DOCK_LAUNCHER,
   useTrash, openTrash, emptyTrash, trashMenu, ConfirmDialog,
-  DesktopWidgets, registerGestureActions, screenDisplays, mainDisplay, settings,
+  DesktopWidgets, registerGestureActions, screenDisplays, mainDisplay, settings, Layer,
 } from '@lordos/sdk';
 import { apps } from '@lordos/apps';
 import { useEffect, useRef, useState } from 'react';
@@ -140,24 +140,33 @@ function App() {
         {minimizing.map(({ win, p }) => <Window key={win.id} win={win} app={getApp(win.id)} t={t} focused={false}
           fx={{ p, x: main.x + main.w / 2, y: main.y + main.h - 36 }} />)}
         <DesktopWidgets layer="above" />
-        {bars.map((d) => (
-          <MenuBar key={d.id + ':' + d.x} t={t} height={MENU_H} focused={focused} controlCenter={!!control} area={d}
-            onLaunchpad={() => setLaunchpad(true)} onControlCenter={() => setControl((v) => (v ? null : d))} />
-        ))}
+        {/* Everything above the windows goes in its layer (sdk/layers.js, docs/LAYERS.md): the
+            order is the layers', not this tree's, and clicks follow it. Menus go to «popover»
+            by themselves (Menu.jsx). */}
+        <Layer name="menubar">
+          {bars.map((d) => (
+            <MenuBar key={d.id + ':' + d.x} t={t} height={MENU_H} focused={focused} controlCenter={!!control} area={d}
+              onLaunchpad={() => setLaunchpad(true)} onControlCenter={() => setControl((v) => (v ? null : d))} />
+          ))}
+        </Layer>
+        <Layer name="dock">
         <Dock t={t} items={entries} running={entries.filter((e) => e.running).map((e) => e.id)}
           onOpen={(id) => byId.has(id) && dockActivate(byId.get(id))}
           onContext={(id, at) => byId.has(id) && setDockCtx({ entry: byId.get(id), at })}
           onTrash={openTrash} onTrashContext={(at) => setTrashCtx(at)} trashFull={trash.full}
           position={dp.dockPosition} size={dp.dockSize} magnify={dp.dockMagnify} maxSize={dp.dockMagnifySize}
           autohide={dp.dockAutohide} top={MENU_H} keepOpen={!!dockCtx || !!trashCtx} area={main} />
+        </Layer>
         {dockCtx && <DockMenu pos={dp.dockPosition} at={dockCtx.at} onClose={() => setDockCtx(null)} items={dockMenu(byId.get(dockCtx.entry.id) || dockCtx.entry)} />}
         {trashCtx && <DockMenu pos={dp.dockPosition} at={trashCtx} onClose={() => setTrashCtx(null)} items={trashMenu({ onEmpty: () => setAskEmpty(true) })} />}
         {askEmpty && (
-          <ConfirmDialog title={tr('shell.trash.confirmTitle')} detail={tr('shell.trash.confirmDetail')} okLabel={tr('shell.trash.empty')}
-            cancelLabel={tr('shell.trash.cancel')} destructive area={main}
-            onCancel={() => setAskEmpty(false)} onOk={() => { setAskEmpty(false); emptyTrash(); }} />
+          <Layer name="modal">
+            <ConfirmDialog title={tr('shell.trash.confirmTitle')} detail={tr('shell.trash.confirmDetail')} okLabel={tr('shell.trash.empty')}
+              cancelLabel={tr('shell.trash.cancel')} destructive area={main}
+              onCancel={() => setAskEmpty(false)} onOk={() => { setAskEmpty(false); emptyTrash(); }} />
+          </Layer>
         )}
-        {control && <ControlCenter t={t} top={MENU_H} area={control} onClose={() => setControl(null)} />}
+        {control && <Layer name="popover"><ControlCenter t={t} top={MENU_H} area={control} onClose={() => setControl(null)} /></Layer>}
         {context && (
           <Menu x={context.x} y={context.y} onClose={() => setContext(null)} items={[
             { label: tr('shell.desktop.wallpaper'), onClick: () => setControl(main) },
@@ -167,7 +176,7 @@ function App() {
             { label: tr('shell.menu.about'), onClick: () => wm.open('about') },
           ]} />
         )}
-        {launchpad && <Launchpad t={t} apps={launcherApps} onOpen={launchApp} onClose={() => setLaunchpad(false)} area={main} />}
+        {launchpad && <Layer name="overlay"><Launchpad t={t} apps={launcherApps} onOpen={launchApp} onClose={() => setLaunchpad(false)} area={main} /></Layer>}
       </View>
     </ThemeProvider>
   );

@@ -10,7 +10,7 @@ import {
   ScrollView, useLauncherApps, launchApp, windowIcon, APP_CATEGORIES, appCategory, useDockEntries, dockActivate, dockMenu,
   DesktopWidgets, PrivacyIndicators, registerGestureActions, WindowShell, StatusItems, dockPrefs, mainDisplay,
   useStore, dock, dockIdOf, dockDrag, dockPoof, beginDockDrag, registerDockTarget, dockDragJustEnded, useTrash, openTrash, emptyTrash, trashMenu,
-  refreshTrash, ConfirmDialog, takeTextFocus, releaseTextFocus,
+  refreshTrash, ConfirmDialog, takeTextFocus, releaseTextFocus, Layer,
 } from '@lordos/sdk';
 import { apps } from '@lordos/apps';
 import { useEffect, useRef, useState } from 'react';
@@ -52,6 +52,21 @@ function nextToBar(pos, along) {
   if (pos === 'left') return { left: b, top: along };
   if (pos === 'right') return { right: b, top: along };
   return { left: along, bottom: b };
+}
+// The bar's box in screen coordinates (main display), so a menu drawn in another layer can still
+// be placed against the bar with nextToBar.
+function barBox(pos, m = mainDisplay()) {
+  const b = barSize(pos);
+  if (pos === 'left' || pos === 'right') return { left: m.x + (pos === 'right' ? m.w - b : 0), top: m.y, width: b, height: m.h };
+  return { left: m.x, top: m.y + (pos === 'top' ? 0 : m.h - b), width: m.w, height: b };
+}
+// A menu next to the bar: in the popover layer (sdk/layers.js), above the bar and the windows.
+function NextToBar({ pos, children }) {
+  return (
+    <Layer name="popover">
+      <View style={{ position: 'absolute', ...barBox(pos), pointerEvents: 'box-none' }}>{children}</View>
+    </Layer>
+  );
 }
 // Is the point over the bar? (a click there doesn't close the menu: the start button toggles it)
 function onBar(pos, x, y) {
@@ -324,9 +339,9 @@ function Taskbar({ t, onStart, pos, onEmptyTrash }) {
       <PrivacyIndicators />
       <Text style={{ fontSize: vert ? 12 : 13, fontWeight: 600, color: t.text, marginRight: vert ? 0 : 10, marginBottom: vert ? 6 : 0 }}>{clock}</Text>
       {dropLine && <View style={{ position: 'absolute', ...dropLine, backgroundColor: t.accent, pointerEvents: 'none' }} />}
-      {jump && <JumpList t={t} pos={pos} entry={entries.find((x) => x.id === jump.entry.id) || jump.entry} x={jump.x} onClose={() => setJump(null)} />}
-      {trashMenuAt != null && <PopupMenu t={t} pos={pos} x={trashMenuAt} onClose={() => setTrashMenuAt(null)}
-        items={trashMenu({ onEmpty: onEmptyTrash }).filter((it) => it !== '-')} />}
+      {jump && <NextToBar pos={pos}><JumpList t={t} pos={pos} entry={entries.find((x) => x.id === jump.entry.id) || jump.entry} x={jump.x} onClose={() => setJump(null)} /></NextToBar>}
+      {trashMenuAt != null && <NextToBar pos={pos}><PopupMenu t={t} pos={pos} x={trashMenuAt} onClose={() => setTrashMenuAt(null)}
+        items={trashMenu({ onEmpty: onEmptyTrash }).filter((it) => it !== '-')} /></NextToBar>}
     </View>
   );
 }
@@ -407,17 +422,30 @@ function App() {
         <DesktopWidgets layer="below" />
         {visible.map((w) => <Window key={w.id} win={w} t={t} focused={w.id === focused} />)}
         <DesktopWidgets layer="above" />
-        {/* the bar and the start menu on the main display */}
-        <View style={{ position: 'absolute', left: m.x, top: m.y, width: m.w, height: m.h }}>
-          <Taskbar t={t} pos={pos} onStart={() => setStart((v) => !v)} onEmptyTrash={() => setAskEmpty(true)} />
-          {start && <StartMenu t={t} pos={pos} onClose={() => setStart(false)} />}
-        </View>
-        <DragGhost t={t} />
-        <PoofFade />
+        {/* the bar on the main display, and above it the start menu: each in its layer
+            (sdk/layers.js, docs/LAYERS.md), so the order and the clicks are the layers' */}
+        <Layer name="dock">
+          <View style={{ position: 'absolute', left: m.x, top: m.y, width: m.w, height: m.h, pointerEvents: 'box-none' }}>
+            <Taskbar t={t} pos={pos} onStart={() => setStart((v) => !v)} onEmptyTrash={() => setAskEmpty(true)} />
+          </View>
+        </Layer>
+        {start && (
+          <Layer name="popover">
+            <View style={{ position: 'absolute', left: m.x, top: m.y, width: m.w, height: m.h, pointerEvents: 'box-none' }}>
+              <StartMenu t={t} pos={pos} onClose={() => setStart(false)} />
+            </View>
+          </Layer>
+        )}
+        <Layer name="drag">
+          <DragGhost t={t} />
+          <PoofFade />
+        </Layer>
         {askEmpty && (
-          <ConfirmDialog title={tr('shell.trash.confirmTitle')} detail={tr('shell.trash.confirmDetail')} okLabel={tr('shell.trash.empty')}
-            cancelLabel={tr('shell.trash.cancel')} destructive area={m}
-            onCancel={() => setAskEmpty(false)} onOk={() => { setAskEmpty(false); emptyTrash(); }} />
+          <Layer name="modal">
+            <ConfirmDialog title={tr('shell.trash.confirmTitle')} detail={tr('shell.trash.confirmDetail')} okLabel={tr('shell.trash.empty')}
+              cancelLabel={tr('shell.trash.cancel')} destructive area={m}
+              onCancel={() => setAskEmpty(false)} onOk={() => { setAskEmpty(false); emptyTrash(); }} />
+          </Layer>
         )}
       </View>
     </ThemeProvider>

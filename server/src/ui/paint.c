@@ -779,7 +779,7 @@ void paint_capture(Canvas *c, Node *root) {
 }
 
 static Node *hit(Node *n, float x, float y) {
-    if (n->type == NODE_RAW || n->s.display_none || n->s.pointer_none) return NULL;
+    if (n->type == NODE_RAW || n->s.display_none || n->s.pointer_none == POINTER_NONE) return NULL;
     float lx = x, ly = y;              /* through the transforms: the box as it is painted */
     if (n->has_tf) affine_apply(n->tf->inv, x, y, &lx, &ly);
     int inside = lx >= n->ax && ly >= n->ay && lx < n->ax + n->w && ly < n->ay + n->h;
@@ -792,7 +792,7 @@ static Node *hit(Node *n, float x, float y) {
             if (h) return h;
         }
     }
-    return inside ? n : NULL;
+    return inside && n->s.pointer_none != POINTER_BOX_NONE ? n : NULL;
 }
 
 Node *hit_test(Node *root, float x, float y) {

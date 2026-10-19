@@ -78,6 +78,9 @@ export {
   AppHost, useAppWindow, useKeyboard, focusToken, restoreFocus, pasteIntoFocused, FloatingWindows, useWindowState,
 } from './components.jsx';
 import { FloatingWindows } from './components.jsx';
+// One stacking order for the desktop: <Layer name>, <Overlay anchor> (docs/LAYERS.md)
+export { LAYERS, Layer, Overlay, shellLayers } from './layers.js';
+import { Layer, enableShellLayers } from './layers.js';
 export {
   ToolbarButton, ToolbarGroup, Toolbar, ToolbarSpacer, ToolbarDivider, Hairline, MenuButton, SearchField, EmptyState, GroupBox, FormRow, spacing, typeScale, controlSize, ConfirmDialog,
 } from './controls.jsx';
@@ -152,6 +155,7 @@ export function startShell(element) {
   const current = themes.current();
   if (wanted && current && wanted !== current && lord.themes.use(wanted)) return;
   refreshPackages();                    // after the theme's configureWindows
+  enableShellLayers();                  // menus, popovers and prompts go to their layer (sdk/layers.js)
   render(createElement(LocaleRoot, null, element));
   // live ISO: the installation assistant opens by itself, in front
   if (isLiveSystemOf() && getAppOf('installer')) setTimeout(() => wmOf.open('installer'), 300);
@@ -167,5 +171,14 @@ export function startShell(element) {
 function LocaleRoot({ children }) {
   const { lang, region } = useStore(locale);
   const rev = useStore(screenRev);
-  return createElement(Fragment, { key: `${lang}|${region}` }, rev ? cloneElement(children, { screenRev: rev }) : children, createElement(ClipboardPanel), createElement(SpotlightPanel), createElement(ClipboardToast), createElement(RemoteBadge), createElement(ImeOverlay), createElement(FloatingWindows), createElement(PermissionPrompt), createElement(EmojiPanel), createElement(PrintDialog), createElement(Powerbox), createElement(NotificationBanner), createElement(KeyringPrompt), createElement(BluetoothPrompt), createElement(DisplayConfirm));
+  // the SDK's own surfaces, each in its layer (sdk/layers.js); the theme's tree is the base
+  const at = (name, ...kids) => createElement(Layer, { name }, ...kids.map((k, i) => createElement(k, { key: i })));
+  return createElement(Fragment, { key: `${lang}|${region}` }, rev ? cloneElement(children, { screenRev: rev }) : children,
+    at('floating', FloatingWindows),
+    at('overlay', SpotlightPanel),
+    at('popover', ClipboardPanel, EmojiPanel),
+    at('modal', PrintDialog),
+    at('notification', NotificationBanner, ClipboardToast, RemoteBadge),
+    at('system', PermissionPrompt, Powerbox, KeyringPrompt, BluetoothPrompt, DisplayConfirm),
+    at('input', ImeOverlay));
 }

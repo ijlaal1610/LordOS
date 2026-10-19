@@ -9,7 +9,7 @@
 // this file only draws it and says where things are. The Trash is always the last item.
 import {
   View, Text, screen, appName, useLocale, addListener, t as tr, useStore, settings, dockDrag, dockPoof, beginDockDrag,
-  registerDockTarget, dockDragJustEnded, refreshTrash,
+  registerDockTarget, dockDragJustEnded, refreshTrash, Layer,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 
@@ -324,7 +324,7 @@ export function Dock({ t, items: list, running, onOpen, onContext, onTrash, onTr
     return () => { a(); b(); };
   }, []);
 
-  if (autohide && shown <= 0 && !dragging) return <Poof poof={poof} size={BASE} reduce={reduce} />;
+  if (autohide && shown <= 0 && !dragging) return <Layer name="drag"><Poof poof={poof} size={BASE} reduce={reduce} /></Layer>;
 
   // The hit box covers only the bar until the pointer is on it; then it grows to fit the magnified
   // icons and the tooltip. A full-height box at rest would swallow clicks on windows just above the Dock.
@@ -342,6 +342,7 @@ export function Dock({ t, items: list, running, onOpen, onContext, onTrash, onTr
   const anchor = (i) => (position === 'bottom' ? { x: start + iconC[i], y: AB - MARGIN - bar - 6 }
     : position === 'left' ? { x: AX + MARGIN + bar + 8, y: start + iconC[i] } : { x: AR - MARGIN - bar - 8, y: start + iconC[i] });
   const hit = hovered >= 0 ? items[hovered] : null;
+  const showTip = hovered >= 0 && !keepOpen;
   const label = !hit ? '' : hit.trash ? tr('shell.trash.name') : hit.launcher ? tr('shell.menu.apps') : appName(hit);
   const tip = (
     <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 7, backgroundColor: t.panelBg,
@@ -410,17 +411,22 @@ export function Dock({ t, items: list, running, onOpen, onContext, onTrash, onTr
             )}
           </View>
         )))}
-        {hovered >= 0 && position === 'bottom' && (
-          <View style={{ position: 'absolute', left: iconC[hovered] - 90, width: 180, bottom: sizes[hovered] + PAD + 12,
-            alignItems: 'center', pointerEvents: 'none' }}>{tip}</View>
-        )}
       </View>
-      {hovered >= 0 && vert && (
-        <View style={{ position: 'absolute', top: start + iconC[hovered] - 13, pointerEvents: 'none', direction: 'ltr',
-          ...(position === 'left' ? { left: AX + MARGIN - hide + PAD + sizes[hovered] + 14 } : { right: screen.width - AR + MARGIN - hide + PAD + sizes[hovered] + 14 }) }}>{tip}</View>
-      )}
-      {ghost}
-      <Poof poof={poof} size={BASE} reduce={reduce} />
+      {/* the name tooltip (not while the icon's menu is open: the menu takes that place) */}
+      <Layer name="tooltip">
+        {showTip && position === 'bottom' && (
+          <View style={{ position: 'absolute', left: start + iconC[hovered] - 90, width: 180, bottom: screen.height - (AB - MARGIN + hide) + sizes[hovered] + PAD + 12,
+            alignItems: 'center', pointerEvents: 'none', direction: 'ltr' }}>{tip}</View>
+        )}
+        {showTip && vert && (
+          <View style={{ position: 'absolute', top: start + iconC[hovered] - 13, pointerEvents: 'none', direction: 'ltr',
+            ...(position === 'left' ? { left: AX + MARGIN - hide + PAD + sizes[hovered] + 14 } : { right: screen.width - AR + MARGIN - hide + PAD + sizes[hovered] + 14 }) }}>{tip}</View>
+        )}
+      </Layer>
+      <Layer name="drag">
+        {ghost}
+        <Poof poof={poof} size={BASE} reduce={reduce} />
+      </Layer>
     </>
   );
 }

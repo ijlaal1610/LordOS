@@ -273,7 +273,7 @@ export function Slider({ value, onChange, min = 0, max = 1, width = 160 }) {
 
 // ---- context of each app's window ----
 
-const AppWindowContext = createContext({ id: null, focused: false, args: null });
+export const AppWindowContext = createContext({ id: null, focused: false, args: null });
 export const useAppWindow = () => useContext(AppWindowContext);
 
 // State of a window that survives the app being remounted (going fullscreen
@@ -300,13 +300,17 @@ export function AppHost({ id, focused }) {
   const args = useStore(windows, (ws) => ws.find((w) => w.id === id)?.args || null);
   const prot = useStore(windows, (ws) => !!ws.find((w) => w.id === id)?.protected);
   const mode = useStore(windows, (ws) => { const w = ws.find((x) => x.id === id); return w?.fullscreen ? 'fullscreen' : w?.pip ? 'pip' : 'window'; });
+  // the window's overlay host (sdk/layers.js): lists and popovers of an isolated app's process go
+  // here, above all of the window's content; in the desktop's process they go to the shell layers
+  const [overlayHost, setOverlayHost] = useState(null);
   if (!app) return null;
   const C = app.Component;
   // the content goes in its own node: `protected` paints it black in screenshots (wm.setProtected)
   return (
-    <AppWindowContext.Provider value={{ id, focused, args, mode }}>
+    <AppWindowContext.Provider value={{ id, focused, args, mode, protected: prot, overlayHost }}>
       <View protected={prot} style={{ flex: 1, alignSelf: 'stretch' }}>
         <C />
+        <View ref={setOverlayHost} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, pointerEvents: 'box-none' }} />
       </View>
     </AppWindowContext.Provider>
   );

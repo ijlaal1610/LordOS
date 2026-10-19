@@ -8,6 +8,7 @@ import { TextInput, useAppWindow } from './components.jsx';
 import { wm } from './windows.js';
 import { direction } from './i18n.js';
 import { Lumo } from './mascot.js';
+import { Overlay } from './layers.js';
 
 // Design tokens (docs/DESIGN.md): an 8 px grid, desktop-standard type sizes and control heights.
 export const spacing = { xxs: 2, xs: 4, s: 8, m: 12, l: 16, xl: 20, xxl: 24, xxxl: 32 };
@@ -124,16 +125,20 @@ export function MenuButton({ icon = '⋯', title, items, small }) {
     });
   }, [open]);
   const end = open && nearEnd(winId, btn.current);
+  // the menu goes in the overlay layer (sdk/layers.js): above the rest of the window, whatever
+  // comes after the button, and not clipped by a scrolling parent
   return (
-    <View ref={btn} style={{ zIndex: open ? 1000 : 0 }}>
+    <View ref={btn}>
       <ToolbarButton icon={icon} title={open ? null : title} small={small} active={open} onClick={() => setOpen((o) => !o)} />
       {open && (
-        <View ref={menu} style={{ position: 'absolute', top: (small ? controlSize.small : controlSize.regular) + 4, [end ? 'right' : 'left']: 0, zIndex: 1000,
-          minWidth: 200, paddingVertical: 5, paddingHorizontal: 5, borderRadius: 8, backgroundColor: t.mode === 'dark' ? '#2c2c31' : '#ffffff',
-          border: `1px solid ${t.separator}`, boxShadow: '0 10px 30px rgba(0,0,0,0.35)' }}>
-          {items.map((it, i) => (it === '-' ? <View key={`s${i}`} style={{ height: 1, marginVertical: 4, marginHorizontal: 6, backgroundColor: t.separator }} />
-            : <MenuRow key={it.label} it={it} onDone={() => setOpen(false)} />))}
-        </View>
+        <Overlay anchor={btn}>
+          <View ref={menu} style={{ position: 'absolute', top: (small ? controlSize.small : controlSize.regular) + 4, [end ? 'right' : 'left']: 0,
+            minWidth: 200, paddingVertical: 5, paddingHorizontal: 5, borderRadius: 8, backgroundColor: t.mode === 'dark' ? '#2c2c31' : '#ffffff',
+            border: `1px solid ${t.separator}`, boxShadow: '0 10px 30px rgba(0,0,0,0.35)' }}>
+            {items.map((it, i) => (it === '-' ? <View key={`s${i}`} style={{ height: 1, marginVertical: 4, marginHorizontal: 6, backgroundColor: t.separator }} />
+              : <MenuRow key={it.label} it={it} onDone={() => setOpen(false)} />))}
+          </View>
+        </Overlay>
       )}
     </View>
   );
