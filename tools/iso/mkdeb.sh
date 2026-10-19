@@ -26,6 +26,7 @@
 #   /usr/share/keyrings/lordos-archive-keyring.gpg   the key that signs that repository
 #   /usr/lib/lordos/migrate, migrations/  version-to-version system migrations, run by postinst
 #   /etc/kernel/postinst.d/zz-lordos-reboot-required  "restart required" after a kernel update
+#   /usr/lib/modules-load.d/lordos-drivetemp.conf    SATA disk temperatures (drivetemp) at boot
 set -eu
 OUT=${1:?uso: mkdeb.sh salida.deb}
 ROOT=$(pwd)
@@ -99,6 +100,8 @@ install -D -m 644 tools/iso/rootfs/etc/pipewire/pipewire-pulse.conf.d/lordos-no-
 install -D -m 644 tools/iso/rootfs/etc/wireplumber/wireplumber.conf.d/lordos-vm-audio.conf "$PKG/etc/wireplumber/wireplumber.conf.d/lordos-vm-audio.conf"
 # vmwgfx only on VMware itself; elsewhere it removes the firmware framebuffer and fails (docs/ISO.md)
 install -D -m 644 tools/iso/rootfs/etc/modprobe.d/lordos-vmwgfx.conf "$PKG/etc/modprobe.d/lordos-vmwgfx.conf"
+# SATA disk temperatures for Monitor → Disks: the drivetemp module at boot (docs/MONITOR.md)
+install -D -m 644 tools/iso/rootfs/etc/modules-load.d/lordos-drivetemp.conf "$PKG/usr/lib/modules-load.d/lordos-drivetemp.conf"
 # remote login (SSH) defaults, read only once openssh-server is installed (docs/REMOTE.md)
 install -D -m 644 tools/iso/rootfs/etc/ssh/sshd_config.d/10-lordos.conf "$PKG/etc/ssh/sshd_config.d/10-lordos.conf"
 # a process may only trace its own descendants: a restricted Linux app must not take over an

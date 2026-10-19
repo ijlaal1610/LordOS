@@ -8,8 +8,9 @@ The Network tab takes the shape of a per-app network monitor (apps on the left, 
 the right).
 
 Phase 1 was read-only. Since then the Network tab holds per-app firewall rules (Phase 2) and, in
-0.8.1, the Processes tab can stop a process and show its details ("Process actions"). There is no
-saved history and there are no alerts.
+0.8.1, the Processes tab can stop a process and show its details ("Process actions"). In 0.8.2 the
+Disks tab shows each disk's temperature and health, and the session can notify when a disk gets too
+hot or less healthy ("Disk temperature and health"). There is no saved history.
 
 ## Tabs
 
@@ -19,7 +20,7 @@ saved history and there are no alerts.
 | CPU | total usage (big chart), one chart per core, 1/5/15 load, temperature and tasks |
 | Memory | stacked bar (used, file cache, free), swap and a 60 s chart |
 | Network | apps with connections, map, summary or detail of the chosen app (see below) |
-| Disks | total read and write and one row per disk (model, `/dev`, size, rates) |
+| Disks | total read and write; one row per disk (model, `/dev`, size, temperature, health, rates); the chosen disk's temperature over the last 30 minutes and its health, with "Open in Disks" (see "Disk temperature and health") |
 | Processes | sortable table (CPU, memory, threads, PID, user), search, "Mine" / "All"; Stop and Get Info for the selected process (see "Process actions") |
 
 Charts pause with the mouse over them and show a crosshair with the values at that instant, as in
@@ -171,6 +172,65 @@ protected list, a stale start time refused while the process survives, TERM and 
 children, the session and PID 1 refused, and the Get Info JSON (a pipe and a listening TCP socket
 among the open files; no private parts when not the owner; "gone" for another start time).
 
+## Disk temperature and health (0.8.2)
+
+![Monitor → Disks, dark](disks-monitor-dark.png) ![Monitor → Disks, light](disks-monitor-light.png)
+
+**Temperature, from the kernel, without root.** Each physical disk's temperature comes from its
+hwmon sensor, which the session reads like any other sysfs file (`server/src/monitor/disktemp.c`):
+
+| Disk | Sensor | Where it sits in sysfs |
+|---|---|---|
+| NVMe / M.2 (also an M.2 drive on a Raspberry Pi 5 HAT) | the nvme driver's own (`CONFIG_NVME_HWMON`, on in Debian's and LordOS's Pi kernel) | `/sys/block/nvme0n1/device` is the controller; the sensor is its child `hwmonN` (name `nvme`). With native multipath the block device's `device` is the `nvme-subsysN`, and the sensor is found through the controllers it lists |
+| SATA | `drivetemp` (`CONFIG_SENSORS_DRIVETEMP=m`), loaded at boot by `/usr/lib/modules-load.d/lordos-drivetemp.conf` from the `lordos` package (migration `003-0.8.2-drivetemp` loads it once on an upgraded running system) | `/sys/block/sda/device` is the SCSI device; the sensor is in its glue folder `hwmon/hwmonN` (name `drivetemp`) |
+| microSD / eMMC cards, virtual disks (virtio, QEMU), optical drives, most USB bridges | none | the tab says **No sensor**: there is never a made-up value |
+
+Only chips named `nvme` or `drivetemp` count, `temp1_input` is the drive's main temperature
+("Composite" on NVMe) and a reading outside −40…150 °C is "no value". The drive's own limits come
+from `temp1_max` (warning) and `temp1_crit` (critical) when it exposes them; otherwise the tab says
+"the drive does not report its own" and uses a conservative default: 75 °C for NVMe, 70 °C for a SATA
+SSD and 55 °C for a spinning disk (`diskTempLimit` in `sdk/smart.js`).
+
+**Cost.** The temperatures are read by the Monitor's own sampling thread (`mon.c`), never on the screen
+thread: every 3 s (one sysfs read per disk) while the Monitor is open. The chart keeps the last 600
+readings (30 minutes) in `diskTempHistory` (`sdk/monitor.js`), drawn with the same `Chart.jsx` as
+Cooling. **A spinning disk is only read while it is awake** (I/O in the last minute, from
+`/proc/diskstats`): asking a resting drive for its temperature can keep it from spinning down
+(drivetemp sends it an ATA command), so it shows **Resting** until it is used again.
+
+**Health light: OK / Check / Failing.** Each row and the chosen disk's card show the health from a
+cached SMART summary (`smartSummaries`, `smart.refresh` in `sdk/smart.js`):
+
+- with smartmontools installed: the root helper's `smart-health` action (`smartctl -n standby -i -H
+  -A -c -l selftest`), which **never wakes a resting disk** (`-n standby`: smartctl only asks the
+  power mode, and a disk in standby keeps its previous summary);
+- without it: LordOS's own reader (`disk-smart`, see `SYSTEM.md`), only for flash disks and for
+  spinning disks that are awake;
+- at most once every 5 minutes per disk, one disk at a time, and only for disks that can have
+  SMART (`sd*`, `hd*`, `nvme*n*`). Cards, optical drives and virtual disks say **No SMART** or **No
+  data**.
+
+The verdict is the one in "SMART with smartmontools" (`SYSTEM.md`): **Failing** when the disk says
+so (overall status, a pre-fail attribute below its threshold, NVMe reliability or read-only
+bits), **Check** with reallocated, pending or uncorrectable sectors, low NVMe spare, media errors or
+more than 90 % of its rated life used. "Open in Disks" opens the Disks app on that disk.
+
+**Notifications** (`sdk/diskwatch.js`, started by `startShell`), on by default, with a switch at the
+bottom of the tab (`settings.monitor.diskAlerts`):
+
+- **too hot:** while the Monitor is closed, `lord.monitor.watchDisks(true)` lets the sampling thread
+  wake every 30 s and read only the disk list and their sensors (spinning disks only when awake);
+  the session polls `lord.monitor.diskTemps()` every 30 s, which does not keep the 4 Hz sampling
+  alive. A notice when a disk reaches its limit ("critical temperature", and it stays on screen, at
+  its critical limit), at most one per disk every 30 minutes and again only after it has cooled
+  3 °C below the limit;
+- **health got worse:** 3 minutes after login and then every 6 hours the summaries are refreshed
+  (the same `smart-health`, never waking a disk). A notice only when a disk is worse than the last
+  time it was seen (remembered by model and serial in `settings.monitor.diskHealth`), with "Open in
+  Disks";
+- notices go through the session's notifications, so Do Not Disturb and Settings → Notifications
+  apply. With the switch off, the background reading stops too.
+
 ## Architecture
 
 ```
@@ -178,10 +238,14 @@ apps/monitor/            index.jsx (tabs), Network.jsx (Network), MapView.jsx (m
                          TrafficChart.jsx (mirrored sent/received chart), draw.js (pixels),
                          icons.jsx, Privacy.jsx, countries.js (generated)
 apps/monitor/Processes.jsx   the Processes tab, its context menu, the stop sheet and Get Info
+apps/monitor/DisksTab.jsx    the Disks tab: rates, temperature and health per disk, the chosen disk's cards
+sdk/smart.js, sdk/smartparse.js   SMART summaries and smartctl's JSON → one model (Disks app too)
+sdk/diskwatch.js         notices when a disk gets too hot or less healthy
 sdk/monitor.js           useMonitor(), stores monitorSamples / monitorProcesses / monitorConnections /
                          monitorDetail; monitor.watchProcess(), monitor.stopProcess()
 server/src/ui/js_monitor.c   lord.monitor (read-only, validated API)
 server/src/monitor/mon.c     sampling thread: /proc, /sys, processes
+server/src/monitor/disktemp.c  which hwmon sensor belongs to which disk (nvme, drivetemp)
 server/src/monitor/conn.c    connections via sock_diag + inode → process
 server/src/monitor/mmdb.c    our own MaxMind DB reader (IP → country)
 server/src/monitor/map.c     vector map, on its own thread
@@ -207,6 +271,12 @@ tests/mmdb_test.c, tests/map_bench.c   reader test and map benchmark
 | `detail(pid, st)` | Get Info: the process the thread describes once per second (`0, 0`: none) |
 | `detailInfo()` | its latest details, or `null` if there is nothing new; `{ pid, gone: true }` once it ended |
 | `signal(pid, st, 'TERM' \| 'KILL')` | stops one of the user's own processes: `null`, or an error code (`proc.gone`, `proc.protected…`, `proc.notOwn`, `proc.denied`) |
+| `watchDisks(on)` | (0.8.2) with the Monitor closed, the thread wakes every 30 s and reads only the disk sensors |
+| `diskTemps()` | (0.8.2) `{ t, disks: [{ name, model, rota, sensor, temp, tempT, tempMax, tempCrit, tempIdle, awake }] }` or `null` if nothing new; it does not keep the 4 Hz sampling alive |
+
+Each disk in `sample().disk.disks` carries the same fields (`sensor`: `"nvme"`, `"drivetemp"` or
+`null`; `temp` in °C or `null`; `tempT`: when it was read; `tempIdle`: a spinning disk at rest, not
+read; `awake`: I/O in the last minute).
 
 No function takes paths or commands: the only arguments are booleans, a language code (letters,
 digits, `-` and `_`, up to 15), a PID with its start time (integers) and `'TERM'` or `'KILL'`.
@@ -218,7 +288,8 @@ digits, `-` and `_`, up to 15), a PID with its start time (integers) and `'TERM'
   (total and per-core CPU), `/proc/meminfo`, `/proc/loadavg`, `/proc/uptime`, `/proc/net/dev`,
   `/proc/diskstats` (only whole disks from `/sys/block` with `device/`), and the temperature and
   fans from `/sys/class/hwmon` (chip `coretemp`, `k10temp`, `zenpower`, `cpu_thermal`…; if there
-  is none, `/sys/class/thermal`).
+  is none, `/sys/class/thermal`); every 3 s, the disks' own sensors (see "Disk temperature and
+  health").
 - Processes (`/proc/<pid>/stat`, `cmdline`, and `exe` for the user's own) and connections: **once
   per second**, and only if the tab that shows them is open.
 - The thread leaves the JSON ready; the screen thread only copies and converts it
@@ -484,6 +555,11 @@ It runs outside the frame. While it draws, the screen shows the previous frame s
 - **Sensors:** the VM has no CPU `hwmon` or fans, so temperature and fan show "—". Still needs
   testing on real hardware (the code looks for `coretemp`, `k10temp`, `zenpower`, `cpu_thermal`
   and `pwmfan`).
+- **Disk temperatures on real hardware:** the code paths and the sysfs layouts are tested on fake
+  trees (`build/disktemp-test`), and on VM 119 every disk correctly says "No sensor" (QEMU's SATA disk
+  has neither SCT nor attribute 194, so `drivetemp` does not bind to it). A real NVMe drive (a PC, or
+  a Pi 5 with an M.2 HAT) and a real SATA disk with `drivetemp` loaded are still to be checked, and
+  with them the "too hot" notice.
 - **Phase 2:** what's in the "Phase 2" section.
 
 ## Attributions

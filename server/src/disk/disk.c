@@ -461,9 +461,10 @@ char *disk_list_json(void) {
 char *disk_tools_json(void) {
     char *out = malloc(160);
     if (!out) return NULL;
-    snprintf(out, 160, "{\"fat32\":%d,\"exfat\":%d,\"ext4\":%d,\"ntfs\":%d}",
+    snprintf(out, 160, "{\"fat32\":%d,\"exfat\":%d,\"ext4\":%d,\"ntfs\":%d,\"smartctl\":%d}",
              !access("/usr/sbin/mkfs.fat", X_OK), !access("/usr/sbin/mkfs.exfat", X_OK),
-             !access("/usr/sbin/mkfs.ext4", X_OK), !access("/usr/sbin/mkfs.ntfs", X_OK));
+             !access("/usr/sbin/mkfs.ext4", X_OK), !access("/usr/sbin/mkfs.ntfs", X_OK),
+             !access("/usr/sbin/smartctl", X_OK));
     return out;
 }
 

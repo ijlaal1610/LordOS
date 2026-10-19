@@ -48,7 +48,7 @@ export {
   dockDrag, dockPoof, beginDockDrag, registerDockTarget, dockDragJustEnded,
 } from './dock.js';
 export { sound, useSound, useSoundPeak, soundState, defaultSink, defaultSource, microphones } from './sound.js';
-export { monitor, useMonitor, monitorSamples, monitorProcesses, monitorConnections, monitorDevices, monitorDetail, MONITOR_HISTORY, firewall, firewallState } from './monitor.js';
+export { monitor, useMonitor, monitorSamples, monitorProcesses, monitorConnections, monitorDevices, monitorDetail, MONITOR_HISTORY, diskTempHistory, DISK_TEMP_HISTORY, firewall, firewallState } from './monitor.js';
 export * as fwRule from './fwrule.js';            // checks what the user types for a firewall rule
 export { packages, packageList, refreshPackages, packageFile, loadWasm } from './packages.js';
 import { refreshPackages } from './packages.js';
@@ -68,6 +68,7 @@ export { clockAlarms, clockTimer, timerStart, timerPause, timerResume, timerRese
 export { help } from './help.js';
 import { NotificationBanner } from './notify.js';
 import { startAlarms } from './alarms.js';
+import { startDiskWatch } from './diskwatch.js';
 import { maybeStartTour } from './help.js';
 import { getApp as getAppOf, isLiveSystem as isLiveSystemOf, wm as wmOf } from './windows.js';
 export const windowIcon = (w) => windowIconOf(w, getAppOf);
@@ -88,6 +89,8 @@ export {
 } from './controls.jsx';
 export { media, useMedia, usePlayer, nowPlaying, useNowPlaying, NowPlayingTile, mediaFormatTime, thumbFor, useThumb, userDirs } from './media.js';
 export { disks, useDisks } from './disks.js';
+export { smart, smartSummaries, useSmartSummaries, diskTempLimit, diskAlertPrefs, setDiskAlerts } from './smart.js';
+export { parseSmartctl, prettyAttrName, ATTR_KEYS, HEALTH_RANK } from './smartparse.js';
 export { backup, useBackup, backupStatus } from './backup.js';   // Backups (docs/SYSTEM.md)
 export { lordosUpdate, restartNeeded, updatePrefs, setUpdatePrefs, UPDATE_DEFAULTS } from './updates.js';   // updating LordOS in place (docs/UPDATES.md)
 export { vaultAvailable, vaultRequest, onVaultEvent, keyring, autofill, autofillReveal, KeyringPrompt, AutofillButton } from './vault.js';   // Passwords and keyring (docs/PASSWORDS.md)
@@ -172,6 +175,7 @@ export function startShell(element) {
   startReminders();                     // calendar and reminder alarms, with the apps closed
   maybeStartTour();                     // "Welcome to LordOS", the first time
   startHardware();                      // Night Light, idle timers, battery in the menu bar (hardware.jsx)
+  startDiskWatch();                     // notices when a disk gets too hot or its health gets worse
 }
 
 // Changing the language remounts the whole interface (windows, tabs and

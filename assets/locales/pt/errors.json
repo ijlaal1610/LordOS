@@ -558,5 +558,8 @@
   "proc.denied": "Sem permissão para parar este processo",
   "proc.failed": "Não foi possível parar o processo",
   "proc.badArgument": "Pedido de processo inválido",
-  "proc.notOwn": "Este processo pertence a outro usuário"
+  "proc.notOwn": "Este processo pertence a outro usuário",
+  "disk.noSmartctl": "O smartmontools não está instalado",
+  "disk.smartFailed": "Não foi possível ler a saúde do disco",
+  "disk.smartTestFailed": "O disco não iniciou o autoteste"
 }

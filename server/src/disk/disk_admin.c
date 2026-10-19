@@ -115,6 +115,18 @@ static int target(const AdminReq *r, const char *name, int want, int allow_syste
     return 0;
 }
 
+/* For the smart-* actions (smartctl_admin.c): a whole disk, the system disk allowed. need_admin:
+ * an internal disk also needs an administrator (starting or stopping a self-test). */
+int disk_admin_target(const AdminReq *r, const char *name, int need_admin, char *dev, size_t n, int *usb) {
+    Target t;
+    if (target(r, name, 1, 1, &t)) return -1;
+    if (need_admin && !t.removable && !r->admin) { admin_err("disk.internalNeedsAdmin", NULL); return -1; }
+    char bus[16];
+    *usb = disk_udev_prop(t.disk, "ID_BUS", bus, sizeof bus) == 0 && !strcmp(bus, "usb");
+    snprintf(dev, n, "%s", t.dev);
+    return 0;
+}
+
 /* ---- long jobs that can be cancelled (disk-cancel) ---- */
 
 static volatile sig_atomic_t cancelled;
