@@ -1477,3 +1477,40 @@ See `RASPBERRY.md` ("The LordOS kernel", "Switching kernels on a board") and `FI
   - Not changed: the network configuration, the `lordbasex` account, the partitions, `cmdline.txt`
     (this board's lacks `cgroup_enable=memory`, so `verify-board` reports the memory controller as
     FAIL; the image's has it).
+
+## Step 42 — 0.8.4: LordOS Imager (VM 116 `lordos-gpu`, October 19)
+
+See `IMAGER.md`. Tree in `~/LordOS-imager`, built there (`make -C server`, `make -C server test`:
+23 passed, the imager suites included) and installed over `/usr/local/lib/lordos` by
+`~/deploy-imager-116.sh`, which first saved `/usr/local/lib/lordos` and lord's `settings.json` in
+`/var/backups/lordos-imager-bak`.
+
+- **A scratch disk:** `qm set 116 --scsi1 local-lvm:24,discard=on` on the Proxmox host (as VM 119's
+  `sata1` before it), formatted ext4 (label `imgscratch`) and mounted at `/var/tmp/imager-scratch`
+  (not in fstab); `~/ImagerTest` was a bind mount of its `user/` folder, so test images sat in the
+  home folder as the imager requires. It also served as the internal, non-removable disk the
+  imager must refuse.
+- **A virtual USB stick:** `modprobe dummy_hcd` and `modprobe g_mass_storage
+  file=/var/tmp/imager-scratch/usb-stick-116.img removable=1` (4 GB, then 16 GB, sparse): `sdc`,
+  `TRAN usb`, `RM 1`. Every write was preceded by `~/ImagerTest/vguard.sh sdc`, which prints the
+  device and stops unless it is that gadget with the backing file's size. No other disk was written.
+- **Images:** the signed 0.8.1 release folder copied from the development machine, and 0.8.3
+  downloaded from GitHub by `imager-fetch` into `~/.cache/lordos/imager`.
+- **Session:** `/etc/lordos/session.conf` with `AUTOLOGIN=lord` (it didn't exist) and lord's
+  `settings.json` set to English, both put back at the end; the locked `pwtest` session from an earlier
+  test was ended by the service restarts.
+- **The Linux download (Tauri) inside the LordOS session:** installed for the test only
+  `libwebkit2gtk-4.1-0` and `udisks2` with their dependencies (61 packages, listed in
+  `~/ImagerTest/linux-test-packages.txt`), and `/etc/polkit-1/rules.d/49-lordos-imager-test.rules`
+  allowing `lord` the udisks2 open/mount/eject actions (the LordOS session has no polkit agent to
+  ask); the app ran as a Wayland client with `WAYLAND_DISPLAY=wayland-0`. All of it was removed at
+  the end (`apt-get purge` of those packages, then the rule).
+- **Screenshots** with `qm monitor 116` (`screendump`) from the Proxmox host, the pointer with
+  `/root/lord-qmp-input.py 116` and keys with `/root/lord-type.py 116`.
+- **Undone at the end:** `/usr/local/lib/lordos` restored from the backup, `session.conf` removed and
+  lord's `settings.json` restored, `lordos.service` restarted to the login screen; the gadget
+  unloaded (`rmmod g_mass_storage dummy_hcd`), the bind mount and the scratch mount removed, and the
+  scratch disk detached and deleted from the VM (`qm set 116 --delete scsi1`, then the unused volume
+  removed); `~/ImagerTest`, `~/.cache/lordos/imager`, `~/.config/LordOS Imager` and the test key and
+  image files deleted. `~/LordOS-imager` (the tree) is kept, like the other agents' trees. No network
+  or Proxmox setting other than the scratch disk was touched.

@@ -101,6 +101,31 @@ build/obj/backup/%.o: CPPFLAGS += -isystem ../third_party/monocypher
 DISK_SRC := src/disk/disk.c src/disk/smart.c src/disk/smartctl.c src/disk/disk_admin.c src/disk/smartctl_admin.c src/ui/js_disk.c
 SRC += $(DISK_SRC)
 HDR += $(wildcard src/disk/*.h)
+# LordOS Imager (docs/IMAGER.md): the imager-* actions (verified image → removable disk, downloads
+# as the user) and lordos-firstrun, the Raspberry Pi first-run file applier (src/firstrun)
+IMAGER_SRC := src/imager/imgverify.c src/imager/imager_admin.c src/ui/js_imager.c
+SRC += $(IMAGER_SRC)
+HDR += $(wildcard src/imager/*.h)
+FIRSTRUN_SRC := src/firstrun/firstrun.c src/firstrun/firstrun_apply.c src/users/homedirs.c
+ALL += build/lordos-firstrun
+build/lordos-firstrun: $(FIRSTRUN_SRC) src/firstrun/firstrun.h src/users/homedirs.h
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ $(FIRSTRUN_SRC)
+test: build/firstrun-test build/firstrun-fuzz build/imager-test
+build/firstrun-test: tests/firstrun_test.c src/firstrun/firstrun.c src/firstrun/firstrun.h
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/firstrun_test.c src/firstrun/firstrun.c
+	./$@ || { rm -f $@; exit 1; }
+build/firstrun-fuzz: tests/firstrun_test.c src/firstrun/firstrun.c src/firstrun/firstrun.h
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) -O1 -g $(WARN) -std=c11 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer \
+	    -o $@ tests/firstrun_test.c src/firstrun/firstrun.c
+	./$@ 300000 || { rm -f $@; exit 1; }
+build/imager-test: tests/imager_test.c src/imager/imgverify.c src/imager/imgverify.h src/pkg/crypto.c
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) -O1 -g $(WARN) -std=c11 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer \
+	    -o $@ tests/imager_test.c src/imager/imgverify.c src/pkg/crypto.c
+	./$@ || { rm -f $@; exit 1; }
 OBJ := $(SRC:src/%.c=build/obj/%.o)
 HDR += $(wildcard src/tp/*.h)
 
@@ -577,9 +602,11 @@ build/disktemp-test: tests/disktemp_test.c src/monitor/disktemp.c src/monitor/di
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -D_GNU_SOURCE -o $@ tests/disktemp_test.c src/monitor/disktemp.c
 	./$@ || { rm -f $@; exit 1; }
 # manual test of the disk-* actions (root and real devices; not part of `test`)
-build/disk-cli: tests/disk_cli.c src/disk/disk.c src/disk/smart.c src/disk/smartctl.c src/disk/disk_admin.c src/disk/smartctl_admin.c src/pkg/crypto.c src/disk/disk.h
+DISKCLI_SRC := tests/disk_cli.c src/disk/disk.c src/disk/smart.c src/disk/smartctl.c src/disk/disk_admin.c src/disk/smartctl_admin.c src/pkg/crypto.c \
+               src/imager/imgverify.c src/imager/imager_admin.c tests/imager_key.c
+build/disk-cli: $(DISKCLI_SRC) src/disk/disk.h src/imager/imager_admin.h
 	@mkdir -p build
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/disk_cli.c src/disk/disk.c src/disk/smart.c src/disk/smartctl.c src/disk/disk_admin.c src/disk/smartctl_admin.c src/pkg/crypto.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ $(DISKCLI_SRC)
 # user folders (src/users/homedirs.c): languages, user-dirs.dirs, no overwriting, no symlinks
 test: build/homedirs-test
 build/homedirs-test: tests/homedirs_test.c src/users/homedirs.c src/users/homedirs.h

@@ -780,3 +780,49 @@ void disk_act_eject(const AdminReq *r, const char *arg, size_t len) {
     }
     admin_ok("disk.ejected", NULL);
 }
+
+/* ---- for the LordOS Imager (imager/imager_admin.c) ---- */
+
+int disk_admin_whole(const AdminReq *r, const char *name, DiskTarget *o) {
+    Target t;
+    if (target(r, name, 1, 0, &t)) return -1;
+    memset(o, 0, sizeof *o);
+    snprintf(o->name, sizeof o->name, "%s", t.name);
+    snprintf(o->disk, sizeof o->disk, "%s", t.disk);
+    snprintf(o->dev, sizeof o->dev, "%s", t.dev);
+    o->part = t.part;
+    o->removable = t.removable;
+    o->size = t.size;
+    struct stat st;
+    if (lstat(t.dev, &st) || !S_ISBLK(st.st_mode)) { admin_err("disk.notBlock", "name", t.dev, NULL); return -1; }
+    o->major = major(st.st_rdev);
+    o->minor = minor(st.st_rdev);
+    return 0;
+}
+
+static void to_target(const DiskTarget *d, Target *t) {
+    memset(t, 0, sizeof *t);
+    snprintf(t->name, sizeof t->name, "%s", d->name);
+    snprintf(t->disk, sizeof t->disk, "%s", d->disk);
+    snprintf(t->dev, sizeof t->dev, "%s", d->dev);
+    t->part = d->part;
+    t->removable = d->removable;
+    t->size = d->size;
+}
+
+int disk_admin_unmount(const DiskTarget *d) { Target t; to_target(d, &t); return unmount_disk(&t); }
+int disk_admin_open_excl(const DiskTarget *d, int extra) { Target t; to_target(d, &t); return open_excl(&t, extra); }
+int disk_admin_open_user_file(const AdminReq *r, const char *path, struct stat *st) { return open_image(r, path, st); }
+int disk_admin_wipe_ends(int fd, uint64_t size) { return wipe_ends(fd, size); }
+void disk_admin_job_begin(const AdminReq *r, const char *disk) { job_begin(r, disk); }
+void disk_admin_job_end(const char *disk) { job_end(disk); }
+int disk_admin_cancelled(void) { return cancelled != 0; }
+void disk_admin_reread(const char *disk) { uevent_change(disk); settle(); }
+
+int disk_admin_file_on(const struct stat *st, const char *disk) {
+    char dn[32] = "", base[32] = "", p[64], real[PATH_MAX];
+    snprintf(p, sizeof p, "/sys/dev/block/%u:%u", major(st->st_dev), minor(st->st_dev));
+    if (realpath(p, real) && strrchr(real, '/')) snprintf(dn, sizeof dn, "%s", strrchr(real, '/') + 1);
+    if (dn[0] && !disk_parent(dn, base, sizeof base)) snprintf(base, sizeof base, "%s", dn);
+    return base[0] && !strcmp(base, disk);
+}

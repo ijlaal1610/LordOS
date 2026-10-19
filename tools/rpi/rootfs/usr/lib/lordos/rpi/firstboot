@@ -4,6 +4,11 @@
 #
 # 1. First boot: grows the system partition (number 2) to the end of the SD card or NVMe.
 # 2. First boot: the user.
+#    0) If the boot partition has a lordos-firstrun.txt (written by the LordOS Imager,
+#       docs/IMAGER.md), /usr/lib/lordos/bin/lordos-firstrun validates it strictly and applies it
+#       once (computer name, language, time zone, keyboard, Wi-Fi, user, SSH, remote desktop,
+#       Bluetooth, appearance, cooling), then shreds it. If it is invalid, nothing of it is applied
+#       and the steps below run as if it weren't there.
 #    a) If the boot partition (/boot/firmware) has a lordos-user.txt (or the userconf.txt
 #       from Raspberry Pi Imager / Raspberry Pi OS: «user:hash»), that user is created with the same
 #       rules as the installer's «User» step (docs/ISO.md, install.c) and the file is deleted.
@@ -132,7 +137,27 @@ wifi_from() {
     fi
 }
 
-# ---- 2. first boot: the user ----
+# ---- 2. first boot: the LordOS Imager's first-run file, then the user ----
+FIRSTRUN=/usr/lib/lordos/bin/lordos-firstrun
+if [ -e "$STATE/firstboot-pending" ] && [ -f "$BOOT/lordos-firstrun.txt" ]; then
+    if [ -x "$FIRSTRUN" ]; then
+        log "applying lordos-firstrun.txt (LordOS Imager)"
+        "$FIRSTRUN" apply "$BOOT/lordos-firstrun.txt"
+        RC=$?
+    else
+        log "lordos-firstrun.txt found but this image has no lordos-firstrun: ignored"
+        RC=1
+    fi
+    # it is shredded by lordos-firstrun; never leave it behind
+    [ -e "$BOOT/lordos-firstrun.txt" ] && { dd if=/dev/zero of="$BOOT/lordos-firstrun.txt" bs=1 count="$(stat -c %s "$BOOT/lordos-firstrun.txt")" conv=notrunc 2>/dev/null; rm -f "$BOOT/lordos-firstrun.txt"; }
+    if [ "$RC" = 0 ]; then
+        # the account exists (and session.conf says whether it logs in automatically)
+        drop_setup_user
+        rm -f "$STATE/setup-mode" "$STATE/firstboot-pending"
+        rm -f "$BOOT/lordos-user.txt" "$BOOT/userconf.txt"
+        sync
+    fi
+fi
 if [ -e "$STATE/firstboot-pending" ]; then
     F=""
     [ -f "$BOOT/lordos-user.txt" ] && F="$BOOT/lordos-user.txt"

@@ -25,6 +25,7 @@
 #include "js_media.h"
 #include "js_wm.h"
 #include "js_disk.h"
+#include "js_imager.h"
 #include "js_logs.h"
 #include "js_help.h"
 #include "js_hw.h"
@@ -424,6 +425,7 @@ static void session_context(void) {
     js_input_register(ctx, lord);      /* lord.input: touchpads and touchscreens (tp/) */
     js_fw_register(ctx, lord);         /* lord.fw: per-app network permissions (lord-netperm, docs/FIREWALL.md) */
     js_disk_register(ctx, lord);       /* lord.disks: disks and partitions (Disks app) */
+    js_imager_register(ctx, lord);     /* lord.imager: LordOS Imager (docs/IMAGER.md) */
     js_backup_register(ctx, lord);     /* lord.backup: Backups (backup/) */
     js_logs_register(ctx, lord);       /* lord.logs: journal and LordOS logs (Logs app) */
     js_help_register(ctx, lord);       /* lord.help (Help) and lord.time.zoneOffset (Clock, tzif.c) */

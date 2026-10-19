@@ -55,6 +55,8 @@ install -m 755 server/build/lord-sessiond "$L/bin/lord-sessiond"
 install -m 755 server/build/lord-netd "$L/bin/lord-netd"
 install -m 755 server/build/lord-netperm "$L/bin/lord-netperm"
 install -m 755 server/build/lord-fand "$L/bin/lord-fand"
+# the LordOS Imager's first-run file applier (Raspberry Pi image, rpi/firstboot; docs/IMAGER.md)
+install -m 755 server/build/lordos-firstrun "$L/bin/lordos-firstrun"
 # isolated PDF and archive helper (optional: make skips it without libpoppler-glib-dev/libarchive-dev);
 # lord-server only launches the lord-doc in its own folder
 [ -x server/build/lord-doc ] && install -m 755 server/build/lord-doc "$L/bin/lord-doc"

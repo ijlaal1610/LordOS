@@ -124,5 +124,11 @@
   "remote.blocked": "{address} blocked",
   "remote.unblocked": "{address} unblocked",
   "remote.failures": "{count} failed sign-ins",
-  "remote.failure": "Failed sign-in for {user} from {key} ({count})"
+  "remote.failure": "Failed sign-in for {user} from {key} ({count})",
+  "imager.cached": "Already downloaded",
+  "imager.fetched": "Downloaded",
+  "imager.cancelling": "Cancelling…",
+  "imager.cacheCleared": "Downloads cleared",
+  "imager.verifiedImage": "The image matches its signed SHA-256",
+  "imager.written": "Written and verified"
 }

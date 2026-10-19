@@ -538,3 +538,19 @@ int disk_watch_dispatch(void) {
     if (h != last_mounts) { last_mounts = h; changed = 1; }
     return changed;
 }
+
+/* The disk's identity as lord.disks.list() shows it (the LordOS Imager re-checks it right before
+ * writing, so a stick swapped under the same name is refused): the model (sysfs or udev; a loop
+ * device's backing file) and the short serial (udev, may be empty). */
+int disk_identity(const char *name, char *model, size_t mn, char *serial, size_t sn) {
+    if (!disk_valid_name(name) || !mn || !sn) return -1;
+    model[0] = serial[0] = 0;
+    if (sysfs(name, "device/model", model, mn)) disk_udev_prop(name, "ID_MODEL", model, mn);
+    if (!strncmp(name, "loop", 4)) {
+        char p[PATH_MAX];
+        snprintf(p, sizeof p, "/sys/block/%s/loop/backing_file", name);
+        read_small(p, model, mn);
+    }
+    disk_udev_prop(name, "ID_SERIAL_SHORT", serial, sn);
+    return 0;
+}

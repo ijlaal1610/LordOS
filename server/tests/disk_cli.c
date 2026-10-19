@@ -6,8 +6,11 @@
  *   sudo build/disk-cli [-u user] [-n] <action> '<arg with \n>'
  *        -n: as a user who is not an administrator
  *
+ * The LordOS Imager's imager-* actions too (docs/IMAGER.md), with the real release key.
+ *
  * admin_say/admin_run are minimal versions of the ones in admin.c (they print to stdout). */
 #include "disk/disk.h"
+#include "imager/imager_admin.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -90,6 +93,8 @@ int main(int argc, char **argv) {
         { "disk-eject", disk_act_eject }, { "disk-format", disk_act_format }, { "disk-label", disk_act_label },
         { "disk-erase", disk_act_erase }, { "disk-write-image", disk_act_write_image }, { "disk-cancel", disk_act_cancel },
         { "smart-info", smart_act_info }, { "smart-health", smart_act_health }, { "smart-test", smart_act_test }, { "smart-abort", smart_act_abort },
+        { "imager-fetch", imager_act_fetch }, { "imager-fetch-cancel", imager_act_fetch_cancel },
+        { "imager-cache-clear", imager_act_cache_clear }, { "imager-write", imager_act_write },
     };
     for (size_t k = 0; k < sizeof acts / sizeof *acts; k++)
         if (!strcmp(acts[k].n, argv[i])) { acts[k].fn(&r, arg, strlen(arg)); free(arg); return 0; }

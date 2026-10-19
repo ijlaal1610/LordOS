@@ -23,6 +23,7 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 |---|---|
 | [ISO.md](ISO.md) | The live and installable ISO for 64-bit PCs: building, booting, final test results |
 | [RASPBERRY.md](RASPBERRY.md) | The Raspberry Pi 5 image, our kernel with Landlock, boot switch files |
+| [IMAGER.md](IMAGER.md) | LordOS Imager: writing LordOS to cards and sticks, in LordOS and on other computers, and the first-run file |
 | [INSTALL-DEBIAN.md](INSTALL-DEBIAN.md) | Installing LordOS on an existing Debian 13 with one command |
 | [VM-SETUP.md](VM-SETUP.md) | The development VM, step by step |
 | [RELEASING.md](RELEASING.md) | How a release is made: changelog, tag, build, sign, SBOM and the GitHub release notes |

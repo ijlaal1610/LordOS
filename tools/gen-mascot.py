@@ -601,7 +601,7 @@ def build(only=None):
 
 AVATARS = ('lumo-avatar', 'lumo-avatar-small')
 UI_PNG = {   # what the UI draws (sdk/mascot.js): twice the largest size it is shown at
-    'lumo-wave': [256], 'lumo-shield': [256], 'lumo-celebrate': [256], 'lumo-confused': [256],
+    'lumo-wave': [256], 'lumo-shield': [256], 'lumo-celebrate': [256], 'lumo-confused': [256], 'lumo-run': [256], 'lumo-sleep': [256],
     'lumo-avatar': [128], 'lumo-avatar-small': [64],
 }
 
