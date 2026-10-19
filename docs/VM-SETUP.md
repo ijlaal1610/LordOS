@@ -1308,7 +1308,12 @@ package's files by `~/deploy-remotesec-122.sh` (it saved `/usr/lib/lordos`, `/et
   (the same Python script over SSH stdin); OpenSSL's `s_client` on the VM did the TLS scan.
 - **Test-only account `rtest`** (password only for these tests), temporarily in `sudo` and the
   autologin user, so the block notification reached the monitor's session; removed at the end.
-- `~/unblock-remotesec-122.sh <cidr>` writes the same request as the `remote-unblock` action.
-- **Undone at the end:** the package's files restored from the backup, `/etc/lordos` restored
-  (`session.conf` back to `AUTOLOGIN=`, remote config as before), `/var/lib/lordos/remote` removed,
-  `rtest` and its home deleted, `lordos.service` restarted to the login screen. Network untouched.
+- `~/unblock-remotesec-122.sh <cidr>` wrote the same request as the `remote-unblock` action.
+- **Monitor and Settings screenshots** were taken through the remote desktop itself, in that
+  headless browser (the session was `rtest`'s, shown on the monitor so the notification reached it).
+- **Undone at the end:** `/usr/lib/lordos` and `/etc/lordos` restored from the backup (`diff -r`
+  empty; `session.conf` back to `AUTOLOGIN=`, the remote config as before: `enabled=1`, port 5673),
+  `/var/lib/lordos/remote` and `/run/lordos/remote-failures` removed, `/var/lib/lordos/last-user`
+  back to `lord` (the autologin had changed it), `rtest` and its home deleted, the tree, the scripts
+  and the backup removed, `lordos.service` restarted on the package's 0.8.2 binaries, at the login
+  screen. Network untouched.
