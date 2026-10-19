@@ -55,7 +55,7 @@ Deliberately absent: any protocol that lets an app capture the screen or other a
 
 **Can a Linux app see other windows or record the screen?** Not through LordOS. The compositor only gives an app its own surfaces and offers no screen-capture protocol, there is no X server and no screen-cast portal, and a restricted app is also denied the framebuffer device, so protected windows like Passwords stay private from them too.
 
-**What about X11-only apps?** They don't run yet: Xwayland is not part of LordOS 0.8.1 Beta. It is planned before 1.0, with X11 apps getting the same per-app identity, firewall and restrictions. Current GTK and Qt apps speak Wayland, and so did the SDL game tested.
+**What about X11-only apps?** They don't run yet: Xwayland is not part of LordOS 0.8.2 Beta. It is planned before 1.0, with X11 apps getting the same per-app identity, firewall and restrictions. Current GTK and Qt apps speak Wayland, and so did the SDL game tested.
 
 **And Flatpak?** LordOS doesn't use or integrate it, and it hasn't been tested.
 

@@ -10,7 +10,7 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
-## [0.8.2] - Unreleased
+## [0.8.2-beta] - 2026-10-19
 
 ### Added
 
@@ -179,6 +179,25 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 - **City names on the map.** Debian 13 only ships country-level IP databases (`geoip-database`) and
   LordOS's own is country-level too, so labels stay countries; no large download was added.
+- **Repainting several small rectangles per frame is off by default** (see Changed): in one of five
+  tries a window minimized over Monitor's animated map left a grey rectangle until it came back,
+  and the cause is still being looked for. The desktop repaints as in 0.8.1.
+- **Firefox ESR** gets AV1 turned off but not the video extension, which needs signing first.
+- **The immutable edition** is a study and an experimental image for virtual machines; its payload
+  is not the LordOS desktop yet.
+- The other known issues of 0.8.1 still apply.
+
+### Upgrading
+
+- **From 0.8.1:** Store → Updates shows "LordOS 0.8.2 is available" with these notes; **Update**
+  installs it, and a restart finishes it. `sudo apt update && sudo apt upgrade` does the same. The
+  update runs migration 003 once (it loads the `drivetemp` module for SATA disk temperatures);
+  `ls /var/lib/lordos/migrations` lists the ones applied. Your settings are kept, and a wallpaper
+  you chose stays; the new default (Celestial) is for new users.
+- **From 0.8.0 (once):** run `curl -fsSL https://lordos.org/install.sh | sh` (a system installed
+  from the 0.8.0 ISO has no `curl`: run `sudo apt update && sudo apt install -y curl` first). It
+  upgrades in place to 0.8.2, runs migrations 001 to 003 and adds the LordOS repository; from then
+  on new versions come through Store → Updates.
 
 ## [0.8.1-beta] - 2026-10-19
 
@@ -888,7 +907,8 @@ we published. See [docs/SIGNING.md](docs/SIGNING.md).
 
 Never published; superseded by 0.8.0-beta.
 
-[Unreleased]: https://github.com/lordbasex/LordOS/compare/v0.8.1-beta...HEAD
+[Unreleased]: https://github.com/lordbasex/LordOS/compare/v0.8.2-beta...HEAD
+[0.8.2-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.1-beta...v0.8.2-beta
 [0.8.1-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.0-beta...v0.8.1-beta
 [0.8.0-beta]: https://github.com/lordbasex/LordOS/releases/tag/v0.8.0-beta
 [0.7.0-beta]: https://github.com/lordbasex/LordOS/commit/389abc9
