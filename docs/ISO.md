@@ -440,6 +440,33 @@ text was fixed (sha256 `daba6313…c8ec65`). That ISO has the same binaries; onl
 With the final ISO, UEFI boot, the network, ❖L/Enter and the installer summary were repeated. Nothing
 was installed in that repeat.
 
+## Release test (0.8.1 Beta, October 19)
+
+`lordos-live-0.8.1-amd64.iso` from the `v0.8.1-beta` tag (7cba92d, build `20261019.7cba92d2`),
+1 043 156 992 bytes, sha256 `04f388d6d3d252c5c51d0ff4260a553b7e3dfaf904d7c0d04b7122fce21950e4`, built on
+VM 116 with `GPU=1`; `make -C server test`: 23 passed, 0 failed, 3 skipped, 0 compiler warnings.
+`lordos_0.8.1_amd64.deb` and `_arm64.deb`: lintian 0 errors (the known warnings). Both SBOMs validated
+with `pyspdxtools`.
+
+| Check | Result |
+|---|---|
+| VM 117, OVMF: menu, splash, desktop; About "Version 0.8.1 · Beta", build `20261019.7cba92d2`; `lordos`, `lord-netperm` (11 BPF programs), `lord-fand` active, 0 failed units | pass |
+| Crown menu → Restart…: the sheet with its countdown and the open apps, Cancel | pass |
+| Settings → Sharing → Remote login (SSH): installs `openssh-server`, port 22 open, host key fingerprint matches; off closes the port | pass |
+| Monitor → Processes (Get Info, the Quit/Force Quit sheet, cancelled), Network (Chromium's traffic counted, the map), the Dock's quick actions | pass |
+| Chromium typing: no "buggy presentation feedback" lines; audio through the HDA sink with 0 errors; a per-app firewall restriction blocks and unblocks | pass |
+| Install on VM 117's disk (OVMF, en_US, Buenos Aires, 2 GB swap) in about 90 s, "Restart" in one click; installed: login, services, 0 failed units, boot 7.3 s, 474 MB used | pass |
+| VM 123, SeaBIOS, VMware-compatible display, 2 GB: menu at 1024×768, the timeout boots the kernel, the "no KMS display" notice on the console (0.8.0: GRUB hung) | pass |
+| VM 123, SeaBIOS, standard VGA, 2 GB: menu, splash, live desktop | pass |
+| Upgrade with apt (VM 120, 0.8.0 from the ISO, `apt-staging`): 0.8.1 in 33 s, migrations 001 and 002, settings and `session.conf` unchanged, restart, `--reinstall` runs no migration again | pass |
+| Upgrade with `install.sh` (VM 117, 0.8.0 installed from the 0.8.0 ISO): after adding `apt-staging`, the 0.8.0 Store's Updates lists `lordos 0.8.0 → 0.8.1`; `install.sh --deb` (the tag's file) upgrades in place, migrations 001 and 002, `session.conf` unchanged, settings kept (only window positions and recent apps changed, `schema: 1` added), after the restart About shows 0.8.1 | pass |
+| Raspberry Pi 5 image, checked read-only: LordOS kernel `6.18.57-2+lordos` with BPF LSM, BTF and Yama, Bluetooth packages and helper, services enabled, SSH off, the repository and migrations; `apt-get update` against staging on the board in temporary lists lists `lordos 0.8.1 arm64` | pass |
+
+Found in this test: a system installed from the 0.8.0 ISO has no `curl`, so the one-time
+`curl -fsSL https://lordos.org/install.sh | sh` step needs `sudo apt update && sudo apt install -y curl`
+first (added to the release notes, [UPDATES.md](UPDATES.md) and the FAQ). The 0.8.1 ISO doesn't need
+that step: its package carries the repository.
+
 ## Release test (0.8.0 Beta, October 18)
 
 `lordos-live-0.8.0-amd64.iso` from the `v0.8.0-beta` tag (46c972a, build `20261018.46c972ac`),

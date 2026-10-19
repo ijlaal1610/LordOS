@@ -96,9 +96,11 @@ at least one release before signing with it.
 - **New installs** from the 0.8.1 ISO, the Raspberry Pi image and `install.sh` get it with the
   package; none of them needs a step of its own.
 - **LordOS 0.8.0** (one time): its package has no repository yet. Either run the installer again,
-  which upgrades in place (it keeps the login setup, the users and their settings):
+  which upgrades in place (it keeps the login setup, the users and their settings). A system
+  installed from the 0.8.0 ISO has no `curl`, so install it first:
 
   ```sh
+  sudo apt update && sudo apt install -y curl
   curl -fsSL https://lordos.org/install.sh | sh
   ```
 

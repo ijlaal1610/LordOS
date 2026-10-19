@@ -212,8 +212,9 @@ and black windows on the GPU path and for legacy BIOS boot in virtual machines.
 
 ### Upgrading
 
-- **From 0.8.0 (once):** run `curl -fsSL https://lordos.org/install.sh | sh` again. It upgrades in
-  place (keeps users, settings and the login setup) and its package adds the LordOS repository;
+- **From 0.8.0 (once):** run `curl -fsSL https://lordos.org/install.sh | sh` again (a system
+  installed from the 0.8.0 ISO has no `curl`: run `sudo apt update && sudo apt install -y curl`
+  first). It upgrades in place (keeps users, settings and the login setup) and its package adds the LordOS repository;
   from then on new versions come through Store → Updates or `apt`. Or add the repository by hand and
   `sudo apt update && sudo apt install lordos` ([docs/UPDATES.md](docs/UPDATES.md#how-a-system-gets-the-repository)).
 - On a server administered as root with an SSH key, the upgrade keeps root's key login
