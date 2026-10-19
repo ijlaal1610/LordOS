@@ -14,7 +14,7 @@
 
 typedef struct MAudio MAudio;
 
-enum { SK_NONE = 0, SK_PLAYER, SK_CAMERA, SK_IMAGE, SK_CAPTURE, SK_SCREENREC, SK_AUDIOREC };
+enum { SK_NONE = 0, SK_PLAYER, SK_CAMERA, SK_IMAGE, SK_CAPTURE, SK_SCREENREC, SK_AUDIOREC, SK_STREAM };
 
 /* How a source is shown in its node. */
 typedef struct {

@@ -42,6 +42,8 @@ void gpu_draw(GpuTex *t, float dx, float dy, float dw, float dh, float sx, float
 }
 int  gpu_scanout(const GpuDmabuf *d, void (*done)(void *), void *data) { (void)d; (void)done; (void)data; return -1; }
 int  gpu_can_scanout(const GpuDmabuf *d, int w, int h) { (void)d; (void)w; (void)h; return 0; }
+void gpu_read_next(uint32_t *px, int w, int h) { (void)px; (void)w; (void)h; }
+int  gpu_read_done(void) { return 0; }
 
 #else
 
@@ -703,6 +705,29 @@ void gpu_draw(GpuTex *t, float dx, float dy, float dw, float dh, float sx, float
     glDisable(GL_SCISSOR_TEST);
 }
 
+static struct { uint32_t *px; int w, h, done; } rb;
+
+void gpu_read_next(uint32_t *px, int w, int h) { rb.px = px; rb.w = w; rb.h = h; rb.done = 0; }
+int gpu_read_done(void) { return rb.done; }
+
+/* RGBA bytes, bottom row first (GL) → 0xAARRGGBB words, top row first; opaque. */
+static void read_back(int W, int H) {
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    glReadPixels(0, 0, W, H, GL_RGBA, GL_UNSIGNED_BYTE, rb.px);
+    if (glGetError() != GL_NO_ERROR) return;
+    for (int y = 0; y < (H + 1) / 2; y++) {
+        uint32_t *a = rb.px + (size_t)y * W, *b = rb.px + (size_t)(H - 1 - y) * W;
+        for (int x = 0; x < W; x++) {
+            const uint8_t *pa = (const uint8_t *)&a[x], *pb = (const uint8_t *)&b[x];
+            uint32_t va = 0xff000000u | (uint32_t)pa[0] << 16 | (uint32_t)pa[1] << 8 | pa[2];
+            uint32_t vb = 0xff000000u | (uint32_t)pb[0] << 16 | (uint32_t)pb[1] << 8 | pb[2];
+            a[x] = vb;
+            b[x] = va;
+        }
+    }
+    rb.done = 1;
+}
+
 int gpu_frame(int out, const Canvas *scene, Rect dmg, void (*draw_layer)(int layer)) {
     if (!G.on || out < 0 || out >= OUT_MAX || !G.out[out].used) return -1;
     GOut *o = &G.out[out];
@@ -724,6 +749,10 @@ int gpu_frame(int out, const Canvas *scene, Rect dmg, void (*draw_layer)(int lay
     if (draw_layer) draw_layer(0);
     gpu_draw(&o->canvas, 0, 0, (float)o->W, (float)o->H, 0, 0, (float)o->W, (float)o->H, all, 1);
     if (draw_layer) draw_layer(1);
+    if (rb.px) {
+        if (rb.w == o->W && rb.h == o->H) read_back(o->W, o->H);
+        rb.px = NULL;
+    }
     if (!eglSwapBuffers(G.dpy, o->surf)) { fprintf(stderr, "gpu: eglSwapBuffers failed\n"); return -1; }
     struct gbm_bo *bo = gbm_surface_lock_front_buffer(o->gs);
     if (!bo) { fprintf(stderr, "gpu: no GBM buffer\n"); return -1; }

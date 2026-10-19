@@ -51,11 +51,11 @@ QJS_OBJ := $(patsubst %,build/qjs/%.o,quickjs libregexp libunicode cutils dtoa)
 # Monitor: metrics, connections and the country of an IP (src/monitor, see docs/MONITOR.md)
 MON_SRC := src/monitor/mon.c src/monitor/disktemp.c src/monitor/nethist.c src/monitor/netrec.c src/monitor/conn.c src/monitor/procctl.c src/monitor/proc_admin.c src/monitor/mmdb.c src/monitor/map.c src/ui/js_monitor.c
 # Media (src/media, docs/MEDIA.md): only the lord-server side. Only lord-media links FFmpeg.
-MEDIA_SRC := src/media/media.c src/media/hwdec.c src/media/mview.c src/media/capture.c src/media/annot.c src/media/maudio.c src/media/mpulse.c src/media/proto.c src/ui/js_media.c
+MEDIA_SRC := src/media/media.c src/media/hwdec.c src/media/mview.c src/media/capture.c src/media/annot.c src/media/maudio.c src/media/mpulse.c src/media/proto.c src/media/mstream.c src/ui/js_media.c
 SEC_SRC := src/sec/json.c src/sec/sign.c src/sec/pkgstate.c src/sec/perms.c src/sec/cgroup.c src/sec/sandbox.c src/sec/brokersrv.c src/sec/brokercam.c src/sec/brokerkr.c src/sec/brokermail.c src/sec/restrict.c src/sec/appid.c src/sec/pwguard.c src/sec/codesig.c
 # App mode: lord-server --app <id> runs an .lpk app as an isolated Wayland client (src/app)
 APP_SRC := src/app/appclient.c src/app/appspawn.c src/ui/js_broker.c src/ui/js_brokercam.c src/ui/js_brokermail.c src/app/apphost_bc.c
-SRC := src/main.c src/kms.c src/gpu/gpu.c src/input.c src/canvas.c src/admin.c src/install/install.c src/apps.c src/lpk.c src/fsops.c src/remote/mirror.c src/remote/remote_admin.c src/remote/ipnet.c src/remote/ssh_admin.c src/users/users_admin.c src/users/homedirs.c src/keyboard.c src/keylag.c src/ime.c src/wl/wl.c src/wl/x11wire.c src/wl/xwm.c src/wl/xwayland.c \
+SRC := src/main.c src/kms.c src/gpu/gpu.c src/input.c src/canvas.c src/admin.c src/install/install.c src/apps.c src/lpk.c src/fsops.c src/remote/mirror.c src/remote/remote_admin.c src/remote/ipnet.c src/remote/rtcwire.c src/remote/ssh_admin.c src/users/users_admin.c src/users/homedirs.c src/keyboard.c src/keylag.c src/ime.c src/wl/wl.c src/wl/x11wire.c src/wl/xwm.c src/wl/xwayland.c \
        src/ui/node.c src/ui/style.c src/ui/layout.c src/ui/transform.c src/ui/text.c src/ui/image.c \
        src/ui/paint.c src/ui/js.c src/ui/js_sys.c src/ui/js_term.c src/ui/js_wasm.c src/wasm/wasm.c src/wasm/wasm_run.c src/ui/js_sound.c src/ui/js_net.c src/sound/snd.c src/sound/pulse.c src/ui/otf.c src/ui/fonts.c \
        src/ui/unicode.c src/ui/bidi.c src/ui/shape.c src/ui/shape_indic.c src/ui/shape_syl.c src/ui/shape_khmer.c src/ui/shape_myanmar.c src/ui/shape_use.c src/ui/thbrk.c src/ui/textlayout.c \
@@ -236,13 +236,13 @@ build/tzif-test: tests/tzif_test.c src/ui/tzif.c src/ui/tzif.h
 # remote desktop security (docs/REMOTE.md, "Security analysis (0.8.3)"): the strict HTTP, form,
 # cookie, WebSocket and JSON parsers, addresses and networks, the failed-login lockout and the
 # connection rate; then the same parsers under ASan+UBSan with many random and mutated inputs
-REMOTE_SEC_SRC := src/remote/rsec.c src/remote/ipnet.c src/remote/lockout.c
+REMOTE_SEC_SRC := src/remote/rsec.c src/remote/ipnet.c src/remote/lockout.c src/remote/rtcwire.c
 test: build/remote-sec-test build/remote-fuzz
-build/remote-sec-test: tests/remote_sec_test.c $(REMOTE_SEC_SRC) src/remote/rsec.h src/remote/ipnet.h src/remote/lockout.h
+build/remote-sec-test: tests/remote_sec_test.c $(REMOTE_SEC_SRC) src/remote/rsec.h src/remote/ipnet.h src/remote/lockout.h src/remote/rtcwire.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/remote_sec_test.c $(REMOTE_SEC_SRC)
 	./$@ || { rm -f $@; exit 1; }
-build/remote-fuzz: tests/remote_fuzz.c $(REMOTE_SEC_SRC) src/remote/rsec.h src/remote/ipnet.h src/remote/lockout.h
+build/remote-fuzz: tests/remote_fuzz.c $(REMOTE_SEC_SRC) src/remote/rsec.h src/remote/ipnet.h src/remote/lockout.h src/remote/rtcwire.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) -O1 -g $(WARN) -std=c11 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer \
 	    -o $@ tests/remote_fuzz.c $(REMOTE_SEC_SRC)
@@ -458,12 +458,20 @@ build/lord-server: $(OBJ) build/obj/ui/stb.o $(QJS_OBJ) $(WL_OBJ)
 
 SESSIOND_OBJ := build/obj/remote/sessiond.o build/obj/remote/sess.o build/obj/remote/monitor.o build/obj/remote/conn.o \
                 build/obj/remote/enc.o build/obj/remote/pages.o build/obj/sec/cgroup.o build/obj/remote/netsup.o build/obj/remote/cgsup.o \
-                build/obj/remote/rsec.o build/obj/remote/ipnet.o build/obj/remote/lockout.o
+                build/obj/remote/rsec.o build/obj/remote/ipnet.o build/obj/remote/lockout.o build/obj/remote/rtcwire.o
+# The remote desktop's video (docs/REMOTE.md, "Video (WebRTC)"): our own WebRTC peer in the bridge, on
+# Debian's libsrtp2 and usrsctp (and OpenSSL's DTLS). Without them, the tile path only.
+RTC ?= $(shell pkg-config --exists libsrtp2 usrsctp 2>/dev/null && echo 1 || echo 0)
+ifeq ($(RTC),1)
+SESSIOND_OBJ += build/obj/remote/rtc.o
+SESSIOND_LIBS := $(shell pkg-config --libs libsrtp2 usrsctp)
+build/obj/remote/rtc.o build/obj/remote/conn.o: CPPFLAGS += -DLORD_RTC $(shell pkg-config --cflags libsrtp2 usrsctp)
+endif
 build/obj/remote/pages.o: src/remote/login.html src/remote/client.html
 	@mkdir -p $(dir $@)
 	$(LD) -r -b binary -z noexecstack -o $@ src/remote/login.html src/remote/client.html
 build/lord-sessiond: $(SESSIOND_OBJ)
-	$(CC) $(LDFLAGS) -o $@ $^ $(shell pkg-config --libs openssl) -lcrypt -lpthread
+	$(CC) $(LDFLAGS) -o $@ $^ $(shell pkg-config --libs openssl) $(SESSIOND_LIBS) -lcrypt -lpthread
 
 # Version, channel and build of LordOS, shown in About and Settings → General (lord.version and
 # lord.system.info()). Version and channel come from ../package.json ("version" and "lordos": {"channel"}),

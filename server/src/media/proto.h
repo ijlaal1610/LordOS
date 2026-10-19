@@ -33,6 +33,8 @@ enum {
     MK_AUDIOREC,        /* audio recorder: fds = wav output, microphone ring */
     MK_HWPROBE,         /* which video codecs VA-API decodes: fds = render node → one MM_RESULT
                            with JSON {"vaapi":bool,"vendor":"…","vp9":bool,"av1":bool,"h264":bool,"hevc":bool} */
+    MK_STREAM,          /* remote desktop live encoder (docs/REMOTE.md, "Video (WebRTC)"): fds = audio ring
+                           (or -1), render node (or -1); params codec=h264|vp8, width, height, fps, kbps */
 };
 
 /* Jobs of the MK_WORKER helper (MM_JOB with v[0] = MW_*). */
@@ -63,6 +65,8 @@ enum {
     MM_PHOTO,           /* camera: fd = jpeg output; v[0] = mirrored */
     MM_RECORD,          /* camera: fds = mp4 output, microphone ring (or no fd); no fds: finish */
     MM_LOOP,            /* v[0] = 1: start over when it ends */
+    MM_KEYFRAME,        /* live encoder: the next frame is a keyframe */
+    MM_RATE,            /* live encoder: v[0] = target kbit/s */
 
     /* lord-media → lord-server */
     MM_INFO = 64,       /* payload = JSON with the file's information */
@@ -77,6 +81,8 @@ enum {
     MM_SLOTFREE,        /* id = input slot already processed */
     MM_ERROR,           /* payload = message */
     MM_AUDIO,           /* there's new PCM in the audio ring (or a seek: discard_to/serial) */
+    MM_PACKET,          /* live encoder: id = 0 video, 1 audio; v[0] = total bytes, v[1] = offset of this
+                           chunk, v[2] = pts (ms for video, 48 kHz samples for audio), v[3] = 1 keyframe */
 };
 
 enum { MS_LOADING = 0, MS_PLAYING, MS_PAUSED, MS_ENDED, MS_RECORDING, MS_DONE, MS_FAILED };

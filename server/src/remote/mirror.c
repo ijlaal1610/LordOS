@@ -14,6 +14,7 @@
 #include "mirror.h"
 #include "proto.h"
 #include "../vault/vclient.h"
+#include "../media/mstream.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -23,11 +24,14 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 
 #define TILE 64
 #define MAX_CLIENTS 8
 #define OUT_LIMIT (8u << 20)        /* with more pending than this, no new frame is built */
+#define VIDEO_LIMIT (3u << 20)      /* a viewer this far behind skips video until the next keyframe */
+#define STILL_MS 250                /* video mode: the lossless tiles go once the screen is this still */
 
 typedef struct {
     int fd;
@@ -40,6 +44,10 @@ typedef struct {
     int seat;                       /* lord-sessiond (RP_SEAT) */
     uid_t uid;                      /* of the other end (SO_PEERCRED) */
     int fds[40], nfds;              /* fds received with the last message (RP_DISPLAY) */
+    /* the video path (docs/REMOTE.md, "Video (WebRTC)") */
+    int vcodec, vaudio, vneed_key;  /* subscribed to the session's encoder (1 H.264, 2 VP8) */
+    unsigned vkbps;
+    int vmode;                      /* tiles only when the screen is still, damage right away */
 } Client;
 
 static int lfd = -1;
@@ -54,6 +62,18 @@ static int shape_w, shape_h, shape_hx, shape_hy;
 static unsigned shape_gen;
 static char *clip_text;
 static unsigned clip_len, clip_gen_seen;
+static unsigned char *chg;          /* tiles changed in this frame */
+static double last_change;
+
+static double now_ms(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
+}
+static int still(void) { return now_ms() - last_change >= STILL_MS; }
+
+static void send_damage(void);
+static void video_update(void);
 
 static void put(Client *c, const void *p, size_t n) {
     if (c->out_len + n > c->out_cap) {
@@ -110,6 +130,22 @@ static void notify_clients(void) {
     cb.clients(json);
 }
 
+/* Who wants which encoder: viewers per codec, sound, and the slowest viewer's rate. */
+static void video_update(void) {
+    for (int k = 1; k < MS_CODECS; k++) {
+        int n = 0, audio = 0;
+        unsigned kbps = 0;
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            const Client *c = &cl[i];
+            if (c->fd < 0 || c->vcodec != k) continue;
+            n++;
+            audio |= c->vaudio;
+            if (!kbps || c->vkbps < kbps) kbps = c->vkbps;
+        }
+        mstream_want(k, n, audio, kbps ? kbps : 4000);
+    }
+}
+
 static void close_fds(Client *c) {
     for (int i = 0; i < c->nfds; i++) if (c->fds[i] >= 0) close(c->fds[i]);
     c->nfds = 0;
@@ -122,9 +158,11 @@ static void drop(Client *c) {
     free(c->in);
     free(c->out);
     free(c->dirty);
+    int video = c->vcodec;
     memset(c, 0, sizeof *c);
     c->fd = -1;
     if (had) notify_clients();
+    if (video) video_update();
 }
 
 static void all_dirty(Client *c) {
@@ -162,7 +200,7 @@ static void pump(Client *c) {
         msg(c, RP_CLIP, clip_text, clip_len, NULL, 0);
         c->clip_gen = clip_gen_seen;
     }
-    if (c->ready && c->dirty && fb && c->out_len - c->out_off < OUT_LIMIT) {
+    if (c->ready && c->dirty && fb && c->out_len - c->out_off < OUT_LIMIT && (!c->vmode || still())) {
         int any = 0;
         for (int ty = 0; ty < TH; ty++) {
             for (int tx = 0; tx < TW;) {
@@ -244,6 +282,36 @@ static void handle(Client *c, int type, const unsigned char *d, uint32_t n) {
         break;
     case RP_UNDISPLAY:
         if (c->seat && cb.undisplay) cb.undisplay();
+        break;
+    case RP_VIDEO:
+        /* u8 codec (0 none, 1 H.264, 2 VP8), u8 sound, u16 0, u32 kbit/s: this viewer's video */
+        if (n >= 8 && d[0] <= 2) {
+            uint32_t k;
+            memcpy(&k, d + 4, 4);
+            int was = c->vcodec;
+            c->vcodec = d[0];
+            c->vaudio = d[1] != 0;
+            c->vkbps = k < 300 ? 300 : k > 20000 ? 20000 : k;
+            if (c->vcodec && c->vcodec != was) c->vneed_key = 1;
+            video_update();
+            if (c->vcodec && fb) mstream_frame(fb, W, W, H);
+        }
+        break;
+    case RP_KEYFRAME: if (c->vcodec) { mstream_keyframe(c->vcodec); c->vneed_key = 1; } break;
+    case RP_RATE:
+        if (n >= 4 && c->vcodec) {
+            uint32_t k;
+            memcpy(&k, d, 4);
+            c->vkbps = k < 300 ? 300 : k > 20000 ? 20000 : k;
+            video_update();
+        }
+        break;
+    case RP_VMODE:
+        if (n >= 1) {
+            c->vmode = d[0] == 1;
+            all_dirty(c);                       /* the lossless layer starts (or the tiles start) whole */
+            c->ready = 1;
+        }
         break;
     case RP_RESIZE:
         if (n >= 4 && cb.resize) {
@@ -328,8 +396,33 @@ static void read_client(Client *c) {
     pump(c);
 }
 
+static void video_out(int codec, int key, uint32_t ms, const uint8_t *p, size_t n) {
+    unsigned char h[8] = { (unsigned char)codec, (unsigned char)(key != 0), 0, 0 };
+    memcpy(h + 4, &ms, 4);
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        Client *c = &cl[i];
+        if (c->fd < 0 || c->vcodec != codec) continue;
+        if (c->vneed_key && !key) continue;
+        if (c->out_len - c->out_off > VIDEO_LIMIT) { c->vneed_key = 1; mstream_keyframe(codec); continue; }
+        msg(c, RP_VFRAME, h, 8, p, n);
+        if (key) c->vneed_key = 0;
+        flush(c);
+    }
+}
+
+static void audio_out(int codec, uint32_t samples, const uint8_t *p, size_t n) {
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        Client *c = &cl[i];
+        if (c->fd < 0 || c->vcodec != codec || !c->vaudio || c->out_len - c->out_off > VIDEO_LIMIT) continue;
+        msg(c, RP_AFRAME, &samples, 4, p, n);
+        flush(c);
+    }
+}
+
 int mirror_start(int w, int h, const MirrorInput *in) {
     if (in) cb = *in;
+    static const MStreamOut so = { video_out, audio_out };
+    mstream_init(&so);
     for (int i = 0; i < MAX_CLIENTS; i++) cl[i].fd = -1;
     W = w;
     H = h;
@@ -369,6 +462,8 @@ void mirror_stop(void) {
     shape = NULL;
     free(clip_text);
     clip_text = NULL;
+    free(chg);
+    chg = NULL;
 }
 
 int mirror_clients(void) {
@@ -454,7 +549,7 @@ void mirror_dispatch(const struct pollfd *p, int n) {
 
 void mirror_frame(const uint32_t *px, int stride, int w, int h) {
     if (lfd < 0 || !mirror_clients()) { free(fb); fb = NULL; return; }
-    int resized = !fb || w != W || h != H;
+    int resized = !fb || w != W || h != H, any = 0;
     int new_size = w != W || h != H;
     if (resized) {
         W = w;
@@ -466,7 +561,13 @@ void mirror_frame(const uint32_t *px, int stride, int w, int h) {
         if (!fb) return;
         for (int j = 0; j < H; j++) memcpy(fb + (size_t)j * W, px + (size_t)j * stride, (size_t)W * 4);
         for (int i = 0; i < MAX_CLIENTS; i++) if (cl[i].fd >= 0) { if (new_size) cl[i].need_size = 1; all_dirty(&cl[i]); }
+        free(chg);
+        chg = calloc((size_t)TW * TH, 1);
+        if (chg) memset(chg, 1, (size_t)TW * TH);
+        any = 1;
     } else {
+        if (!chg) chg = calloc((size_t)TW * TH, 1);
+        if (chg) memset(chg, 0, (size_t)TW * TH);
         for (int ty = 0; ty < TH; ty++)
             for (int tx = 0; tx < TW; tx++) {
                 int x = tx * TILE, y = ty * TILE;
@@ -478,9 +579,69 @@ void mirror_frame(const uint32_t *px, int stride, int w, int h) {
                 for (int j = 0; j < th; j++)
                     memcpy(fb + (size_t)(y + j) * W + x, px + (size_t)(y + j) * stride + x, (size_t)tw * 4);
                 for (int i = 0; i < MAX_CLIENTS; i++) if (cl[i].fd >= 0 && cl[i].dirty) cl[i].dirty[ty * TW + tx] = 1;
+                if (chg) chg[ty * TW + tx] = 1;
+                any = 1;
             }
     }
+    if (any) {
+        last_change = now_ms();
+        send_damage();
+        int video = 0;
+        for (int i = 0; i < MAX_CLIENTS; i++) if (cl[i].fd >= 0 && cl[i].vcodec) video = 1;
+        if (video) mstream_frame(fb, W, W, H);
+    }
     for (int i = 0; i < MAX_CLIENTS; i++) pump(&cl[i]);
+}
+
+/* Video mode: what changed in this frame, as rows of tiles, so the browser drops its lossless layer
+ * there and shows the video (RP_DAMAGE: u16 x, y, w, h each). */
+static void send_damage(void) {
+    if (!chg) return;
+    uint16_t r[4 * 256];
+    int n = 0;
+    for (int ty = 0; ty < TH && n < 256; ty++)
+        for (int tx = 0; tx < TW && n < 256;) {
+            if (!chg[ty * TW + tx]) { tx++; continue; }
+            int t0 = tx;
+            while (tx < TW && chg[ty * TW + tx]) tx++;
+            int x = t0 * TILE, y = ty * TILE;
+            r[n * 4] = (uint16_t)x;
+            r[n * 4 + 1] = (uint16_t)y;
+            r[n * 4 + 2] = (uint16_t)((tx * TILE > W ? W : tx * TILE) - x);
+            r[n * 4 + 3] = (uint16_t)(y + TILE > H ? H - y : TILE);
+            n++;
+        }
+    if (!n) return;
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        Client *c = &cl[i];
+        if (c->fd < 0 || !c->vmode) continue;
+        msg(c, RP_DAMAGE, r, (size_t)n * 8, NULL, 0);
+        flush(c);
+    }
+}
+
+/* Video mode clients get their lossless tiles once the screen is still; the encoder may have a
+ * frame waiting for a free slot. */
+void mirror_tick(void) {
+    if (lfd < 0) return;
+    if (still()) for (int i = 0; i < MAX_CLIENTS; i++) if (cl[i].fd >= 0 && cl[i].vmode && cl[i].ready) pump(&cl[i]);
+    mstream_tick();
+}
+
+double mirror_timeout(void) {
+    if (lfd < 0) return -1;
+    double best = mstream_timeout();
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        const Client *c = &cl[i];
+        if (c->fd < 0 || !c->vmode || !c->ready || !c->dirty) continue;
+        int pend = 0;
+        for (int k = 0; k < TW * TH && !pend; k++) pend = c->dirty[k];
+        if (!pend) continue;
+        double d = STILL_MS - (now_ms() - last_change);
+        if (d < 1) d = 1;
+        if (best < 0 || d < best) best = d;
+    }
+    return best;
 }
 
 void mirror_cursor(int x, int y, int mode, const uint32_t *argb, int w, int h, int hx, int hy, unsigned gen) {

@@ -103,14 +103,15 @@ int  rs_json_num(const RsJson *o, const char *key, long long *v);
 
 /* A browser message, validated and clamped against a W×H screen. */
 enum { RS_IN_NONE = 0, RS_IN_PTR, RS_IN_BTN, RS_IN_WHEEL, RS_IN_SCROLL, RS_IN_PINCH, RS_IN_KEY, RS_IN_ACK, RS_IN_RESIZE,
-       RS_IN_PING, RS_IN_CLIP };
+       RS_IN_PING, RS_IN_CLIP, RS_IN_RTC, RS_IN_ICE, RS_IN_VMODE };
+#define RS_SDP_MAX 32768            /* {"t":"rtc","sdp":…} (rtcwire.h RW_SDP_MAX) */
 #define RS_CLIP_MAX (1u << 20)
 typedef struct {
     int type;
-    int a, b;                   /* PTR x,y · BTN button,down · WHEEL steps · KEY code,down · RESIZE w,h · SCROLL/PINCH phase */
+    int a, b;                   /* PTR x,y · BTN button,down · WHEEL steps · KEY code,down · RESIZE w,h · SCROLL/PINCH phase · VMODE on */
     int32_t v1, v2;             /* SCROLL dx,dy (1/256 px) · PINCH scale ×65536, rotation ×256 */
     long long ts;               /* PING */
-    const char *text;           /* CLIP (inside the RsJson buffer) */
+    const char *text;           /* CLIP, RTC (the SDP offer), ICE (a candidate; "" ends) (inside the RsJson buffer) */
     size_t tlen;
 } RsInput;
 int  rs_browser_input(const RsJson *j, int W, int H, RsInput *in);

@@ -59,6 +59,12 @@ int  gpu_add_output(Kms *k);
 void gpu_draw(GpuTex *t, float dx, float dy, float dw, float dh,
               float sx, float sy, float sw, float sh, Rect clip, float opacity);
 
+/* The remote desktop's copy of the next composed frame (docs/REMOTE.md, "Video (WebRTC)"): the
+ * next gpu_frame of a w×h display reads the whole frame back into px (0xAARRGGBB, rows top to
+ * bottom) before showing it; gpu_read_done says whether it did. */
+void gpu_read_next(uint32_t *px, int w, int h);
+int  gpu_read_done(void);
+
 /* Direct scanout of a fullscreen dmabuf (without composing). done(data) is called when
  * the buffer leaves the screen. 0 if the flip was sent. */
 int  gpu_scanout(const GpuDmabuf *d, void (*done)(void *), void *data);

@@ -67,6 +67,13 @@ int main(int argc, char **argv) {
     int ioctls = 0;
     if ((m.v[0] == MK_PLAY || m.v[0] == MK_SCREENREC) && fds[2] >= 0) ioctls |= SANDBOX_IOCTL_DRM | SANDBOX_IOCTL_DMABUF;
     if (m.v[0] == MK_HWPROBE && fds[0] >= 0) ioctls |= SANDBOX_IOCTL_DRM;
+    /* MK_STREAM: the descriptors that came, in order (mp_send skips the missing ones) */
+    int st_k = 0, st_ring = -1, st_render = -1;
+    if (m.v[0] == MK_STREAM) {
+        if (mp_param_int(payload, "audio", 0) == 1) st_ring = fds[st_k++];
+        if (mp_param_int(payload, "render", 0) == 1) st_render = fds[st_k++];
+        if (st_render >= 0) ioctls |= SANDBOX_IOCTL_DRM | SANDBOX_IOCTL_DMABUF;
+    }
     if (m.v[0] == MK_CAMERA) ioctls |= SANDBOX_IOCTL_V4L2 | (fds[1] >= 0 ? SANDBOX_IOCTL_DRM | SANDBOX_IOCTL_DMABUF : 0);
     SandboxHelperCfg cfg = { .name = "app-lordos-media", .ro_paths = ro, .extra_syscalls = extra, .allow_ioctl_classes = ioctls,
                              .mem_max_mb = m.v[0] == MK_WORKER ? 1024 : 1536 };
@@ -84,6 +91,7 @@ int main(int argc, char **argv) {
     case MK_CAMERA: lm_camera(payload, fds[0], fds[1]); break;
     case MK_AUDIOREC: lm_audiorec(payload, fds[0], fds[1]); break;
     case MK_HWPROBE: lm_hwprobe(fds, MP_MAX_FDS); break;
+    case MK_STREAM: lm_stream(payload, st_ring, st_render); break;
     default: LM_LOG("unknown kind %lld", (long long)m.v[0]); return 1;
     }
     return 0;

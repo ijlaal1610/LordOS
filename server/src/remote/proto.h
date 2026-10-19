@@ -21,6 +21,10 @@ enum {
                          * RP_DISPLAY_KEEP is on the screen (the boot splash can go; docs/SESSIONS.md) */
     RP_SESSION = 9,     /* JSON: request from the session to the monitor ({"a":"lock"} or {"a":"switch"}) */
     RP_GREETER = 20,    /* JSON: request from the login screen to lord-sessiond (greeter mode only) */
+    /* the video path (docs/REMOTE.md, "Video (WebRTC)"): the session's shared encoder */
+    RP_VFRAME = 40,     /* u8 codec (1 H.264, 2 VP8), u8 keyframe, u16 0, u32 ms + the encoded frame */
+    RP_AFRAME = 41,     /* u32 first sample (48 kHz) + one Opus packet */
+    RP_DAMAGE = 42,     /* video mode: u16 x, y, w, h per rectangle that changed in this frame */
 };
 
 /* bridge → session */
@@ -48,6 +52,10 @@ enum {
                          * {"t":"blocked","ip":"…","min":N,"n":N} (a source blocked after failed remote logins) */
     RP_SCROLL = 30,     /* u8 phase (1 begins, 2 continues, 3 ends), i32 dx, dy in 1/256 pixel: browser trackpad */
     RP_PINCH = 31,      /* u8 phase, i32 scale ×65536 (relative to the start), i32 rotation in degrees ×256 */
+    RP_VIDEO = 32,      /* u8 codec (0 stop), u8 sound, u16 0, u32 kbit/s: this viewer takes the encoded video */
+    RP_KEYFRAME = 33,   /* the viewer lost a frame: the next one is a keyframe */
+    RP_RATE = 34,       /* u32 kbit/s: what this viewer's network takes now */
+    RP_VMODE = 35,      /* u8 1: video mode (RP_RECT only once the screen is still, RP_DAMAGE at once); 0: tiles */
 };
 
 /* RP_DISPLAY flags */

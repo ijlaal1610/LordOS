@@ -9,7 +9,9 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: #0b0a14; overflow: hidden; font: 13px system-ui, -apple-system, "Segoe UI", sans-serif; color: #eee; }
   #wrap { position: fixed; inset: 0; display: grid; place-items: center; }
-  canvas { display: block; image-rendering: auto; outline: none; touch-action: none; }
+  #stage { position: relative; }
+  canvas { position: absolute; inset: 0; display: block; image-rendering: auto; outline: none; touch-action: none; }
+  video { position: absolute; inset: 0; display: block; visibility: hidden; background: #000; pointer-events: none; }
   #bar { position: fixed; top: 0; left: 50%; transform: translate(-50%, -34px); transition: transform .18s ease; z-index: 3;
          display: flex; gap: 10px; align-items: center; padding: 6px 10px 6px 12px; border-radius: 0 0 12px 12px;
          background: rgba(28,26,44,.92); border: 1px solid rgba(255,255,255,.12); border-top: 0; }
@@ -25,21 +27,24 @@
 </style>
 </head>
 <body>
-<div id="wrap"><canvas id="c" tabindex="0"></canvas></div>
+<div id="wrap"><div id="stage"><video id="v" autoplay playsinline muted></video><canvas id="c" tabindex="0"></canvas></div></div>
 <div id="rcur"></div>
-<div id="bar"><span id="who">LordOS</span><span id="lat">…</span>
-  <button id="fs">⛶</button><button id="out" class="red">✕</button></div>
+<div id="bar"><span id="who">LordOS</span><span id="lat">…</span><span id="mode"></span>
+  <button id="snd" hidden>🔇</button><button id="fs">⛶</button><button id="out" class="red">✕</button></div>
 <div id="msg"><div><div id="msgtext"></div><button id="again"></button></div></div>
 <script>
 'use strict';
 const L = {
-  en: { full: 'Full screen', out: 'Disconnect', bye: 'The session ended or the connection was lost.', again: 'Reconnect', conn: 'Connecting…' },
-  es: { full: 'Pantalla completa', out: 'Desconectar', bye: 'La sesión terminó o se cortó la conexión.', again: 'Reconectar', conn: 'Conectando…' },
-  pt: { full: 'Tela cheia', out: 'Desconectar', bye: 'A sessão terminou ou a conexão caiu.', again: 'Reconectar', conn: 'Conectando…' },
+  en: { full: 'Full screen', out: 'Disconnect', bye: 'The session ended or the connection was lost.', again: 'Reconnect', conn: 'Connecting…',
+        sndOn: 'Turn sound on', sndOff: 'Turn sound off', video: 'Video', tiles: 'Images' },
+  es: { full: 'Pantalla completa', out: 'Desconectar', bye: 'La sesión terminó o se cortó la conexión.', again: 'Reconectar', conn: 'Conectando…',
+        sndOn: 'Activar el sonido', sndOff: 'Silenciar', video: 'Video', tiles: 'Imágenes' },
+  pt: { full: 'Tela cheia', out: 'Desconectar', bye: 'A sessão terminou ou a conexão caiu.', again: 'Reconectar', conn: 'Conectando…',
+        sndOn: 'Ativar o som', sndOff: 'Silenciar', video: 'Vídeo', tiles: 'Imagens' },
 };
 const T = L[(navigator.language || 'en').slice(0, 2)] || L.en;
 const $ = (id) => document.getElementById(id);
-const cv = $('c'), ctx = cv.getContext('2d', { alpha: false });
+const cv = $('c'), ctx = cv.getContext('2d'), vid = $('v'), stage = $('stage');
 $('fs').title = T.full; $('out').title = T.out; $('again').textContent = T.again;
 
 // KeyboardEvent.code → evdev code (linux/input-event-codes.h)
@@ -64,8 +69,7 @@ function fit() {
   const sw = innerWidth, sh = innerHeight;
   scale = Math.min(sw / W, sh / H);
   if (Math.abs(scale - 1) < 0.02) scale = 1;
-  cv.style.width = Math.round(W * scale) + 'px';
-  cv.style.height = Math.round(H * scale) + 'px';
+  for (const el of [stage, cv, vid]) { el.style.width = Math.round(W * scale) + 'px'; el.style.height = Math.round(H * scale) + 'px'; }
   const r = cv.getBoundingClientRect();
   ox = r.left; oy = r.top;
 }
@@ -78,22 +82,109 @@ addEventListener('resize', () => {
 });
 
 function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+// Input goes over the WebRTC data channel when it's open (lower latency), else over the WebSocket.
+function sendIn(o) {
+  const j = JSON.stringify(o);
+  if (dcIn && dcIn.readyState === 'open' && j.length < 200000) dcIn.send(j); else send(o);
+}
+
+// ---- video (WebRTC): H.264/VP8 + Opus from the session's encoder; input and the lossless tiles of
+// still areas over data channels. The tiles over the WebSocket stay until the video plays, and come
+// back if it fails (docs/REMOTE.md, "Video (WebRTC)").
+let pc = null, dcIn = null, vmode = false, rtcTimer = 0, offered = false, codec = '';
+function setMode() { $('mode').textContent = vmode ? `${T.video} · ${codec.toUpperCase()}` : T.tiles; }
+function giveUp(tell) {
+  clearTimeout(rtcTimer);
+  if (pc) { try { pc.close(); } catch (e) {} }
+  pc = null; dcIn = null; offered = false;
+  const was = vmode;
+  vmode = false;
+  vid.style.visibility = 'hidden'; vid.srcObject = null; $('snd').hidden = true;
+  if (was) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
+  if (tell) send({ t: 'vmode', on: 0 });
+  setMode();
+}
+function enterVideo() {
+  if (vmode || !pc) return;
+  clearTimeout(rtcTimer);
+  vmode = true;
+  queue = queue.then(() => ctx.clearRect(0, 0, W, H));
+  vid.style.visibility = 'visible';
+  $('snd').hidden = false;
+  send({ t: 'vmode', on: 1 });
+  setMode();
+}
+function startRtc(ice) {
+  try {
+    pc = new RTCPeerConnection({ iceServers: (ice || []).map((u) => ({ urls: u })), bundlePolicy: 'max-bundle', rtcpMuxPolicy: 'require' });
+  } catch (e) { pc = null; return; }
+  pc.addTransceiver('video', { direction: 'recvonly' });
+  pc.addTransceiver('audio', { direction: 'recvonly' });
+  dcIn = pc.createDataChannel('input', { ordered: true });
+  const tiles = pc.createDataChannel('tiles', { ordered: true });
+  tiles.binaryType = 'arraybuffer';
+  tiles.onmessage = (e) => onTile(new Uint8Array(e.data));
+  pc.ontrack = (e) => {
+    const ms = e.streams[0] || new MediaStream([e.track]);
+    if (vid.srcObject !== ms) vid.srcObject = ms;
+    vid.play().catch(() => {});
+  };
+  pc.onicecandidate = (e) => { if (offered && e.candidate && e.candidate.candidate) send({ t: 'ice', c: e.candidate.candidate }); };
+  pc.onconnectionstatechange = () => { if (pc && (pc.connectionState === 'failed' || pc.connectionState === 'closed')) giveUp(true); };
+  const gathered = () => new Promise((ok) => {
+    if (pc.iceGatheringState === 'complete') return ok();
+    const t = setTimeout(ok, 1500);
+    pc.addEventListener('icegatheringstatechange', () => { if (pc && pc.iceGatheringState === 'complete') { clearTimeout(t); ok(); } });
+  });
+  pc.createOffer().then((o) => pc.setLocalDescription(o)).then(gathered)
+    .then(() => { if (pc) { send({ t: 'rtc', sdp: pc.localDescription.sdp }); offered = true; } })
+    .catch(() => giveUp(true));
+  rtcTimer = setTimeout(() => { if (!vmode) giveUp(true); }, 12000);
+}
+const onFrame = () => { if (vid.videoWidth > 0) enterVideo(); else vid.requestVideoFrameCallback?.(onFrame); };
+vid.addEventListener('playing', () => { if (vid.videoWidth > 0) enterVideo(); });
+vid.addEventListener('loadeddata', onFrame);
+// [1][x,y,w,h u16][png]: a lossless tile · [2][x,y,w,h…]: those areas changed (show the video there) · [3]: done
+function onTile(d) {
+  if (!vmode) return;
+  if (d[0] === 1 && d.length > 9) {
+    const x = d[1] << 8 | d[2], y = d[3] << 8 | d[4], w = d[5] << 8 | d[6], h = d[7] << 8 | d[8];
+    const p = createImageBitmap(new Blob([d.subarray(9)], { type: 'image/png' }));
+    queue = queue.then(() => p).then((bmp) => { if (vmode) ctx.drawImage(bmp, x, y, w, h); bmp.close(); }, () => {});
+  } else if (d[0] === 2) {
+    const r = [];
+    for (let i = 1; i + 8 <= d.length; i += 8) r.push([d[i] << 8 | d[i + 1], d[i + 2] << 8 | d[i + 3], d[i + 4] << 8 | d[i + 5], d[i + 6] << 8 | d[i + 7]]);
+    queue = queue.then(() => { for (const [x, y, w, h] of r) ctx.clearRect(x, y, w, h); });
+  }
+}
+$('snd').onclick = () => {
+  vid.muted = !vid.muted;
+  if (!vid.muted) vid.play().catch(() => {});
+  $('snd').textContent = vid.muted ? '🔇' : '🔊';
+  $('snd').title = vid.muted ? T.sndOn : T.sndOff;
+};
 
 function show(text) { $('msgtext').textContent = text; $('msg').style.display = 'grid'; }
 
 function connect() {
   $('msg').style.display = 'none';
   const w = Math.round(innerWidth * devicePixelRatio > 2560 ? innerWidth : innerWidth), h = Math.round(innerHeight);
-  ws = new WebSocket(`wss://${location.host}/ws?w=${w}&h=${h}`);
+  giveUp(false);
+  const rtcOk = typeof RTCPeerConnection === 'function' ? 1 : 0;
+  ws = new WebSocket(`wss://${location.host}/ws?w=${w}&h=${h}&v=${rtcOk}`);
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => send({ t: 'resize', w: w & ~1, h: h & ~1 });     // an already existing session takes this size
   ws.onmessage = (e) => (typeof e.data === 'string' ? onText(JSON.parse(e.data)) : onBin(new Uint8Array(e.data)));
-  ws.onclose = () => { ws = null; show(T.bye); };
+  ws.onclose = () => { ws = null; giveUp(false); show(T.bye); };
 }
 
 function onText(m) {
   if (m.t === 'size') { W = m.w; H = m.h; cv.width = W; cv.height = H; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); fit(); }
-  else if (m.t === 'hello') $('who').textContent = `${m.user}@${location.hostname}`;
+  else if (m.t === 'hello') { $('who').textContent = `${m.user}@${location.hostname}`; setMode(); if (m.rtc && Array.isArray(m.ice)) startRtc(m.ice); }
+  else if (m.t === 'rtc') {
+    if (m.fail || !pc) giveUp(false);
+    else if (m.sdp) { codec = m.codec || ''; pc.setRemoteDescription({ type: 'answer', sdp: m.sdp }).catch(() => giveUp(true)); }
+  }
   else if (m.t === 'pong') $('lat').textContent = `${Math.max(0, Math.round(performance.now() - m.ts))} ms`;
   else if (m.t === 'cur') {
     // cursor moved by someone else (the monitor or another connection): drawn on top
@@ -130,7 +221,7 @@ function pos(e) {
   const x = Math.round((e.clientX - ox) / scale), y = Math.round((e.clientY - oy) / scale);
   return [Math.max(0, Math.min(W - 1, x)), Math.max(0, Math.min(H - 1, y))];
 }
-function flushMove() { if (pend) { send({ t: 'm', x: pend[0], y: pend[1] }); pend = null; } }
+function flushMove() { if (pend) { sendIn({ t: 'm', x: pend[0], y: pend[1] }); pend = null; } }
 cv.addEventListener('pointermove', (e) => {
   [mx, my] = pos(e);
   if (!pend) requestAnimationFrame(flushMove);
@@ -139,21 +230,21 @@ cv.addEventListener('pointermove', (e) => {
 cv.addEventListener('pointerdown', (e) => {
   cv.focus(); cv.setPointerCapture(e.pointerId);
   pend = pos(e); flushMove();
-  if (e.button <= 2) send({ t: 'b', b: e.button, d: 1 });
+  if (e.button <= 2) sendIn({ t: 'b', b: e.button, d: 1 });
   e.preventDefault();
 });
-cv.addEventListener('pointerup', (e) => { pend = pos(e); flushMove(); if (e.button <= 2) send({ t: 'b', b: e.button, d: 0 }); });
+cv.addEventListener('pointerup', (e) => { pend = pos(e); flushMove(); if (e.button <= 2) sendIn({ t: 'b', b: e.button, d: 0 }); });
 cv.addEventListener('contextmenu', (e) => e.preventDefault());
 // Wheel: a mouse sends steps ('w'); a trackpad, pixels with a phase ('s': 1 begins, 2 continues, 3
 // ends) and pinch arrives as a wheel with ctrlKey (Chrome, Firefox) or gesturechange (WebKit browsers)
 // ('pz': scale relative to the start). Gestures end after 150 ms without events.
 let scrollOn = false, scrollT = 0, pinchOn = false, pinchT = 0, pinchScale = 1, pinchRot = 0;
 function pinch(scale, rot) {
-  if (!pinchOn) { pinchOn = true; pinchScale = 1; pinchRot = 0; send({ t: 'pz', p: 1, s: 65536, r: 0 }); }
+  if (!pinchOn) { pinchOn = true; pinchScale = 1; pinchRot = 0; sendIn({ t: 'pz', p: 1, s: 65536, r: 0 }); }
   pinchScale = Math.max(0.1, Math.min(10, scale)); pinchRot = rot;
-  send({ t: 'pz', p: 2, s: Math.round(pinchScale * 65536), r: Math.round(pinchRot * 256) });
+  sendIn({ t: 'pz', p: 2, s: Math.round(pinchScale * 65536), r: Math.round(pinchRot * 256) });
   clearTimeout(pinchT);
-  pinchT = setTimeout(() => { pinchOn = false; send({ t: 'pz', p: 3, s: Math.round(pinchScale * 65536), r: Math.round(pinchRot * 256) }); }, 150);
+  pinchT = setTimeout(() => { pinchOn = false; sendIn({ t: 'pz', p: 3, s: Math.round(pinchScale * 65536), r: Math.round(pinchRot * 256) }); }, 150);
 }
 cv.addEventListener('wheel', (e) => {
   e.preventDefault();
@@ -162,13 +253,13 @@ cv.addEventListener('wheel', (e) => {
   const wheelLike = e.deltaMode !== 0 || (!e.deltaX && Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 50 && !scrollOn);
   if (wheelLike) {
     const steps = e.deltaMode === 1 ? -Math.sign(e.deltaY) * Math.max(1, Math.round(Math.abs(e.deltaY) / 3)) : -Math.sign(e.deltaY) * Math.max(1, Math.round(Math.abs(e.deltaY) / 100));
-    if (steps) send({ t: 'w', d: steps });
+    if (steps) sendIn({ t: 'w', d: steps });
     return;
   }
-  if (!scrollOn) { scrollOn = true; send({ t: 's', p: 1, x: 0, y: 0 }); }
-  send({ t: 's', p: 2, x: Math.round(e.deltaX * k / scale * 256), y: Math.round(e.deltaY * k / scale * 256) });
+  if (!scrollOn) { scrollOn = true; sendIn({ t: 's', p: 1, x: 0, y: 0 }); }
+  sendIn({ t: 's', p: 2, x: Math.round(e.deltaX * k / scale * 256), y: Math.round(e.deltaY * k / scale * 256) });
   clearTimeout(scrollT);
-  scrollT = setTimeout(() => { scrollOn = false; send({ t: 's', p: 3, x: 0, y: 0 }); }, 150);
+  scrollT = setTimeout(() => { scrollOn = false; sendIn({ t: 's', p: 3, x: 0, y: 0 }); }, 150);
 }, { passive: false });
 cv.addEventListener('gesturestart', (e) => e.preventDefault());
 cv.addEventListener('gesturechange', (e) => { e.preventDefault(); pinch(e.scale, e.rotation || 0); });
@@ -181,15 +272,15 @@ function key(e, down) {
   if (down && e.code === 'KeyV' && (e.ctrlKey || e.metaKey)) return;
   e.preventDefault();
   if (down) held.add(c); else held.delete(c);
-  send({ t: 'k', c, d: down ? 1 : 0 });
+  sendIn({ t: 'k', c, d: down ? 1 : 0 });
 }
 cv.addEventListener('keydown', (e) => key(e, true));
 cv.addEventListener('keyup', (e) => key(e, false));
-cv.addEventListener('blur', () => { for (const c of held) send({ t: 'k', c, d: 0 }); held.clear(); });
+cv.addEventListener('blur', () => { for (const c of held) sendIn({ t: 'k', c, d: 0 }); held.clear(); });
 document.addEventListener('paste', (e) => {
   const text = e.clipboardData && e.clipboardData.getData('text/plain');
-  if (text && text !== lastSent) { send({ t: 'clip', text }); lastSent = text; }
-  send({ t: 'k', c: 47, d: 1 }); send({ t: 'k', c: 47, d: 0 });
+  if (text && text !== lastSent) { sendIn({ t: 'clip', text }); lastSent = text; }
+  sendIn({ t: 'k', c: 47, d: 1 }); sendIn({ t: 'k', c: 47, d: 0 });
   e.preventDefault();
 });
 
