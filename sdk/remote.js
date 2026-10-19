@@ -6,6 +6,7 @@
 //
 //   useStore(remoteViewers) → [{ ip, user }]
 //   remote.status()         → { enabled, installed, port, allow, fingerprint, clients: [...], sessions: [...], monitor }
+//   sshLogin.status()       → { installed, enabled, running, allow: 'all'|'admins', fingerprint } (remote login, SSH)
 import { createElement as h } from 'react';
 import { View, Text } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
@@ -38,6 +39,16 @@ export const remote = {
       installed: !!s.installed, enabled: !!(st && st.running), port: st?.port || cfg.port, allow: st?.allow || cfg.allow,
       fingerprint: s.fingerprint || '', clients: st?.clients || [], sessions: st?.sessions || [], monitor: st?.monitor || '',
     };
+  },
+};
+
+// Remote login (SSH): read-only state; changes go through the ssh-set / ssh-allow admin actions.
+export const sshLogin = {
+  available: () => typeof lord.ssh !== 'undefined',
+  status() {
+    if (typeof lord.ssh === 'undefined') return { installed: false, enabled: false, running: false, allow: 'all', fingerprint: '' };
+    const s = lord.ssh.status();
+    return { installed: !!s.installed, enabled: !!s.enabled, running: !!s.running, allow: s.allow === 'admins' ? 'admins' : 'all', fingerprint: s.fingerprint || '' };
   },
 };
 

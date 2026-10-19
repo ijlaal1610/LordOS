@@ -62,7 +62,7 @@
   "keywords.language": "language region date time zone",
   "keywords.network": "wifi ethernet vpn wireguard openvpn ip dns internet",
   "keywords.session": "log out quit",
-  "keywords.sharing": "remote desktop remote access network lan browser share screen",
+  "keywords.sharing": "remote desktop remote access network lan browser share screen ssh remote login terminal",
   "keywords.sound": "volume speakers microphone audio",
   "keywords.printers": "printer print scanner scan cups queue airprint",
   "keywords.themes": "theme desktop classic",
@@ -251,5 +251,18 @@
   "section.cooling": "Cooling",
   "keywords.cooling": "fan fans temperature cooling heat noise curve case full speed",
   "reduceMotion": "Reduce motion",
-  "reduceMotionHint": "Stops decorative animations, like the spinning fan in Cooling."
+  "reduceMotionHint": "Stops decorative animations, like the spinning fan in Cooling.",
+  "sharing.onlyAdmins": "Only administrators",
+  "sharing.ssh": "Remote login (SSH)",
+  "sharing.sshFingerprint": "Host key fingerprint (compare it with the one ssh shows the first time you connect):",
+  "sharing.sshFrom": "From another computer, run in a terminal:",
+  "sharing.sshHint": "Other computers open a terminal on this one with an SSH client, using a username and password of this computer. Once on, it stays on after restarting.",
+  "sharing.sshHintInstall": "Other computers open a terminal on this one with an SSH client, using a username and password of this computer. The SSH server is installed the first time you turn this on (it needs the internet).",
+  "sharing.sshInstalling": "Installing the SSH server…",
+  "sharing.sshNotRunning": "Remote login is turned on but the SSH server is not running. Turn it off and on again, or see Logs.",
+  "sharing.sshSecurity": "Port 22. Passwords travel encrypted. Logging in with a key is safer: copy yours with ssh-copy-id. To use it from the internet, use a VPN.",
+  "sharing.sshToggle": "Allow logins from the network",
+  "sharing.sshUserPlaceholder": "user",
+  "sharing.sshWhoAdminsHint": "Only administrators (the sudo group). Root can never log in.",
+  "sharing.sshWhoAllHint": "Any user of this computer with a password. Root can never log in."
 }

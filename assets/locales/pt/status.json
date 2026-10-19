@@ -116,5 +116,8 @@
   "wifi.connecting": "Conectando a {ssid}…",
   "wifi.disconnected": "Desconectado",
   "wifi.forgotten": "Rede esquecida",
-  "hw.caseSet": "Gabinete: {case}"
+  "hw.caseSet": "Gabinete: {case}",
+  "ssh.off": "Login remoto desativado",
+  "ssh.on": "Login remoto ativado",
+  "ssh.saved": "Configurações salvas"
 }

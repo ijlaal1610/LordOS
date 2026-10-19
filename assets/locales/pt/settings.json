@@ -62,7 +62,7 @@
   "keywords.language": "idioma região data hora fuso",
   "keywords.network": "wifi ethernet vpn wireguard openvpn ip dns internet",
   "keywords.session": "sair encerrar sessão",
-  "keywords.sharing": "área de trabalho remota acesso remoto rede lan navegador compartilhar tela",
+  "keywords.sharing": "área de trabalho remota acesso remoto rede lan navegador compartilhar tela ssh login remoto terminal",
   "keywords.sound": "volume alto-falantes microfone áudio",
   "keywords.printers": "impressora imprimir scanner digitalizar cups fila airprint",
   "keywords.themes": "tema área de trabalho clássico",
@@ -251,5 +251,18 @@
   "section.cooling": "Resfriamento",
   "keywords.cooling": "ventoinha ventoinhas temperatura resfriamento calor ruído curva gabinete máxima fan cooling",
   "reduceMotion": "Reduzir movimento",
-  "reduceMotionHint": "Para as animações decorativas, como a ventoinha girando em Resfriamento."
+  "reduceMotionHint": "Para as animações decorativas, como a ventoinha girando em Resfriamento.",
+  "sharing.onlyAdmins": "Somente administradores",
+  "sharing.ssh": "Login remoto (SSH)",
+  "sharing.sshFingerprint": "Impressão digital da chave do computador (compare com a que o ssh mostra na primeira conexão):",
+  "sharing.sshFrom": "De outro computador, execute em um terminal:",
+  "sharing.sshHint": "Outros computadores abrem um terminal neste com um cliente SSH, usando um usuário e senha deste computador. Depois de ativado, continua ativo após reiniciar.",
+  "sharing.sshHintInstall": "Outros computadores abrem um terminal neste com um cliente SSH, usando um usuário e senha deste computador. O servidor SSH é instalado na primeira vez que você o ativa (precisa de internet).",
+  "sharing.sshInstalling": "Instalando o servidor SSH…",
+  "sharing.sshNotRunning": "O login remoto está ativado, mas o servidor SSH não está em execução. Desative e ative de novo, ou veja Registros.",
+  "sharing.sshSecurity": "Porta 22. As senhas viajam criptografadas. Entrar com uma chave é mais seguro: copie a sua com ssh-copy-id. Para usar pela internet, use uma VPN.",
+  "sharing.sshToggle": "Permitir login pela rede",
+  "sharing.sshUserPlaceholder": "usuário",
+  "sharing.sshWhoAdminsHint": "Somente administradores (o grupo sudo). O root nunca pode entrar.",
+  "sharing.sshWhoAllHint": "Qualquer usuário deste computador com senha. O root nunca pode entrar."
 }

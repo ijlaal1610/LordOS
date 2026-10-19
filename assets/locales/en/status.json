@@ -116,5 +116,8 @@
   "wifi.connecting": "Connecting to {ssid}…",
   "wifi.disconnected": "Disconnected",
   "wifi.forgotten": "Network forgotten",
-  "hw.caseSet": "Case: {case}"
+  "hw.caseSet": "Case: {case}",
+  "ssh.off": "Remote login turned off",
+  "ssh.on": "Remote login turned on",
+  "ssh.saved": "Settings saved"
 }

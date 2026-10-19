@@ -116,5 +116,8 @@
   "wifi.connecting": "Conectando a {ssid}…",
   "wifi.disconnected": "Desconectado",
   "wifi.forgotten": "Red olvidada",
-  "hw.caseSet": "Caja: {case}"
+  "hw.caseSet": "Caja: {case}",
+  "ssh.off": "Inicio de sesión remoto desactivado",
+  "ssh.on": "Inicio de sesión remoto activado",
+  "ssh.saved": "Ajustes guardados"
 }

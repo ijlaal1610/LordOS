@@ -62,7 +62,7 @@
   "keywords.language": "idioma región fecha hora zona horaria",
   "keywords.network": "wifi ethernet vpn wireguard openvpn ip dns internet",
   "keywords.session": "cerrar sesión salir",
-  "keywords.sharing": "escritorio remoto acceso remoto red lan navegador compartir pantalla",
+  "keywords.sharing": "escritorio remoto acceso remoto red lan navegador compartir pantalla ssh inicio de sesión remoto terminal",
   "keywords.sound": "volumen parlantes micrófono audio",
   "keywords.printers": "impresora imprimir escáner escanear cups cola airprint",
   "keywords.themes": "tema escritorio clásico",
@@ -251,5 +251,18 @@
   "section.cooling": "Refrigeración",
   "keywords.cooling": "ventilador ventiladores temperatura refrigeración calor ruido curva caja a tope fan cooling",
   "reduceMotion": "Reducir movimiento",
-  "reduceMotionHint": "Detiene las animaciones decorativas, como el ventilador que gira en Refrigeración."
+  "reduceMotionHint": "Detiene las animaciones decorativas, como el ventilador que gira en Refrigeración.",
+  "sharing.onlyAdmins": "Solo administradores",
+  "sharing.ssh": "Inicio de sesión remoto (SSH)",
+  "sharing.sshFingerprint": "Huella de la clave del equipo (comparala con la que muestra ssh la primera vez que te conectás):",
+  "sharing.sshFrom": "Desde otra computadora, ejecutá en una terminal:",
+  "sharing.sshHint": "Otras computadoras abren una terminal en esta con un cliente SSH, con un usuario y contraseña de esta computadora. Una vez activado, sigue activo después de reiniciar.",
+  "sharing.sshHintInstall": "Otras computadoras abren una terminal en esta con un cliente SSH, con un usuario y contraseña de esta computadora. El servidor SSH se instala la primera vez que lo activás (necesita internet).",
+  "sharing.sshInstalling": "Instalando el servidor SSH…",
+  "sharing.sshNotRunning": "El inicio de sesión remoto está activado pero el servidor SSH no está funcionando. Apagalo y volvé a encenderlo, o mirá Registros.",
+  "sharing.sshSecurity": "Puerto 22. Las contraseñas viajan cifradas. Entrar con una clave es más seguro: copiá la tuya con ssh-copy-id. Para usarlo desde internet, usá una VPN.",
+  "sharing.sshToggle": "Permitir el inicio de sesión desde la red",
+  "sharing.sshUserPlaceholder": "usuario",
+  "sharing.sshWhoAdminsHint": "Solo administradores (el grupo sudo). Root nunca puede entrar.",
+  "sharing.sshWhoAllHint": "Cualquier usuario de esta computadora con contraseña. Root nunca puede entrar."
 }

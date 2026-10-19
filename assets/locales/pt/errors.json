@@ -546,5 +546,8 @@
   "fw.restricted.files": "{app} está impedido de abrir ou salvar seus arquivos (Privacidade → Rede dos apps)",
   "fw.restricted.clipboard": "{app} está impedido de ler a área de transferência (Privacidade → Rede dos apps)",
   "fw.restricted.bluetooth": "{app} está impedido de usar Bluetooth (Privacidade → Rede dos apps)",
-  "fw.restricted.notifications": "{app} está impedido de mostrar notificações (Privacidade → Rede dos apps)"
+  "fw.restricted.notifications": "{app} está impedido de mostrar notificações (Privacidade → Rede dos apps)",
+  "ssh.badConfig": "A configuração do servidor SSH não é válida (sshd -t); nada foi alterado",
+  "ssh.notInstalled": "O servidor SSH (openssh-server) não está instalado",
+  "ssh.startFailed": "O servidor SSH não iniciou (veja Registros)"
 }
