@@ -10,6 +10,31 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
+## [0.8.2] - Unreleased
+
+### Added
+
+- **Suggested for your computer.** Store → Discover now starts with packages for the hardware
+  LordOS finds in the computer, each with the reason it appears ("We detected a printer from HP
+  connected by USB"): the guest tools of a VMware or QEMU virtual machine, the proprietary graphics
+  driver for an NVIDIA card (labeled as not free software, never preselected, with what changes:
+  DKMS, Secure Boot key enrollment, older cards, and that the free nouveau driver stays the
+  default), vendor drivers for USB printers and scanners, driverless USB printing (`ipp-usb`),
+  the Raspberry Pi 5's board tools, and the firmware package a Wi-Fi, Bluetooth, network or
+  graphics device asked for and didn't find. One click shows the usual plan and installs through
+  the package engine; "Don't suggest again" hides a card for good. When something new is
+  suggested, the Store's Discover item shows a count and one notification says so. For a
+  VirtualBox virtual machine the card explains that its guest utilities aren't part of Debian 13.
+  Detection only reads the kernel's hardware files; nothing is sent anywhere. The rules are data
+  (`assets/store/suggestions.json`); see [docs/PACKAGES.md](docs/PACKAGES.md).
+
+### Fixed
+
+- **Package lists after enabling a component.** Adding a component (such as `non-free-firmware`)
+  or a source whose signed release file hadn't changed upstream left the package list as it was
+  ("already up to date"); the index is now rebuilt whenever the set of lists it is built from
+  changes.
+
 ## [0.8.1-beta] - 2026-10-19
 
 A maintenance and polish release on top of 0.8.0-beta, and the first one that installed systems

@@ -71,6 +71,7 @@ The code is in `server/src/pkg/`:
 | `/var/lib/lordos/pkg/lists/` | Verified `InRelease` files and the compressed indexes, named by their SHA-256 (what didn't change isn't downloaded again) |
 | `/var/lib/lordos/pkg/icons/64/` | 64×64 icons of the desktop apps (DEP-11) |
 | `/var/lib/lordos/pkg/auto` | Packages LordOS installed as dependencies |
+| `/var/lib/lordos/pkg/sources` | SHA-256 of the list files the index was built from: when a component or source is added or removed, the next `pkg-update` rebuilds the index even if no signed release file changed |
 | `/var/lib/lordos/pkg/notes` | The verified `main/notes/ReleaseNotes` of every source that has one (LordOS's; [UPDATES.md](UPDATES.md)); world-readable |
 | `/var/cache/lordos/pkg/` | `.deb` files while they're being installed (deleted when done) |
 
@@ -144,6 +145,99 @@ progress. "Updates" lists what can be upgraded and upgrades everything together.
 | Debian apps by category | The GNOME Sudoku plan: the same 9 packages as `apt-get -s install` |
 | ![sudoku](store-installed-app.png) | |
 | Installed and opened from the Store (GTK 4 + libadwaita, in Spanish, with its AppStream icon in the Dock) | |
+
+## Suggested for your computer
+
+Store → Discover starts with **Suggested for your computer**: Debian packages for the hardware
+LordOS finds, each card saying why it appears, what it installs and, for software that isn't free,
+that it isn't (with an orange label; such cards never have a highlighted button, and the plan
+repeats the notice). **Install** shows the usual plan and runs `pkg-install` through the admin
+helper; **Don't suggest again** stores the card's id in `settings.json` (`suggestions.dismissed`).
+When an installable suggestion is new, the Store's Discover item shows a count until Discover is
+opened, and the session shows one notification (`sdk/suggestions.js`: 3 minutes after login and
+every 6 hours; never again for the same suggestion, `suggestions.notified`).
+
+| | |
+|---|---|
+| ![light](store-suggested-light.png) | ![dark](store-suggested-dark.png) |
+| Test data (fixture, labeled "Test data"), VM 119: the Wi-Fi firmware card expanded, with its plan | Dark: the NVIDIA card with what changes and its plan (38 packages, with `contrib` and `non-free` enabled) |
+| ![notification](store-suggested-notify.png) | |
+| The one-time notification, 3 minutes after login | |
+
+### Rules
+
+The rules are data, `assets/store/suggestions.json`, evaluated by `sdk/suggestengine.js` (pure
+functions; `server/tests/suggest_engine_test.mjs`). Every package is looked up in the package
+index first, and an installable card also needs a plan that can be made (`lord.pkg.plan`): a
+package that isn't in the configured sources, or that depends on one that isn't (the NVIDIA driver
+needs `contrib` as well as `non-free`), is never offered as installable.
+
+| Detected | How | Suggests | Notes |
+|---|---|---|---|
+| VMware virtual machine | DMI `sys_vendor` "VMware, Inc." or a PCI device of vendor `15ad` | `open-vm-tools` | Preinstalled since 0.8.1, so it normally shows as installed. `open-vm-tools-desktop` is not suggested: it targets X11 (clipboard and resize will come when LordOS supports them) |
+| QEMU/KVM guest with a guest agent channel | a virtio port named `org.qemu.guest_agent.0` (only present when the host enabled the agent) | `qemu-guest-agent` | Clean shutdown from the host, frozen disks for backups, the guest's address |
+| VirtualBox virtual machine | DMI product "VirtualBox" or PCI `80ee:cafe` | `virtualbox-guest-utils` | **Not in Debian 13** (main, contrib or backports): the card explains that, and that the kernel already has the guest drivers (display with VMSVGA, shared folders) |
+| NVIDIA graphics card (x86_64) | PCI vendor `10de`, class `0300`/`0302`/`0380` | `linux-headers-amd64`, `nvidia-driver`, `firmware-misc-nonfree` | **non-free**. The card says the free `nouveau` driver is in use and stays the default; what changes: DKMS builds the module for each kernel, Secure Boot needs its key enrolled at the next restart, cards older than about 2014 need the free driver, and the LordOS desktop hasn't been tested with this driver yet. `nvidia-driver` also depends on packages in `contrib` (`nvidia-installer-cleanup`): without both components in the sources the card explains that instead (the LordOS ISO enables both) |
+| USB printer | an interface of class `07`, by USB vendor ID: HP `03f0` → `hplip`, Epson `04b8` → `printer-driver-escpr`, Brother `04f9` → `printer-driver-brlaser`, Samsung `04e8` → `printer-driver-splix`, Canon `04a9` → `printer-driver-gutenprint` | the vendor's Debian driver | Vendors not in the table get nothing: most printers work driverless with CUPS |
+| USB printer with IPP over USB | interface `07/01/04` | `ipp-usb` | Driverless printing and scanning: the device shows up like a network printer |
+| USB scanner | udev's `libsane_matched=yes` for the device (`/run/udev/data/c189:N`; needs libsane's udev rules installed), by vendor: HP → `libsane-hpaio` | the vendor's SANE backend | Other vendors' backends are already in `libsane1` |
+| Raspberry Pi 5 (and 500, CM5) | device tree `compatible` | `rpi-eeprom`, `raspi-utils`, `gpiod` (those that exist) | `rpi-eeprom` and `raspi-utils` come from the Raspberry Pi archive the LordOS image configures; `gpiod` from Debian |
+| A device that asked for missing firmware | the firmware loader's "Direct firmware load for X failed" / "firmware: failed to load X" lines in the kernel log, minus files present now | the package that ships X (`iwlwifi-*`, `intel/ibt-*` → `firmware-iwlwifi`; `rtl_bt/`, `rtw88/`, `rtw89/`, `rtlwifi/`, `rtl_nic/` → `firmware-realtek`; `ath*k/`, `ar3k/`, `qca/`, `htc_*` → `firmware-atheros`; `brcm/brcmfmac*` → `firmware-brcm80211`; `brcm/BCM*` → `bluez-firmware`; `mediatek/`, `mt76*` → `firmware-mediatek`; `mrvl/`, `libertas/` → `firmware-libertas`; `amdgpu/`, `radeon/` → `firmware-amd-graphics`; `i915/`, `xe/` → `firmware-intel-graphics`; `nvidia/` → `firmware-nvidia-graphics`) | **non-free-firmware**, one card per package (Wi-Fi, Bluetooth, network adapter, graphics). The prefixes were checked against trixie's `non-free-firmware` Contents. If the package is installed and a file is still missing, nothing is offered. Files no prefix matches (e.g. `regulatory.db`, which a VM without Wi-Fi also asks for) get no card |
+
+Cards are ordered: installable, then explained (not available), then installed.
+
+### Detection
+
+`lord.hwinfo.scan()` (`server/src/hw/hwscan.c`, exposed in `ui/js_hw.c`) runs in `lord-server`,
+**without root**, and only reads world-readable kernel files: `/sys/class/dmi/id` (vendor, product,
+board, chassis; never the serial numbers, which are root-only), `/proc/device-tree/model` and
+`compatible`, `/sys/bus/pci/devices/*` (vendor, device, class, bound driver),
+`/sys/bus/usb/devices/*` (IDs and interface classes, root hubs skipped), `/sys/class/virtio-ports/*/name`,
+udev's database entry of each USB device (only the `libsane_matched` flag) and `/dev/kmsg`. Values
+are reduced to hex IDs and printable ASCII before they reach JS. Nothing runs, nothing is written,
+nothing goes over the network.
+
+The kernel log is readable by the session only with `kernel.dmesg_restrict=0` (as on the LordOS
+Raspberry Pi kernel). With Debian's default (`1`) the Store asks the admin helper's fixed action
+**`hw-firmware-missing`**: no arguments, any user, read-only; it reads `/dev/kmsg` as root and returns
+only `LOG fw <file> <driver>` lines whose file name passes `hwscan_fw_name_valid()` (`[A-Za-z0-9._+,/-]`,
+no `..`, no leading `/`) and is still missing, never other log text.
+
+`LORD_HWSCAN_ROOT=/path` (development and screenshots only; an absolute path without `..`) makes
+`lord-server` read a fake tree instead, with the kernel log in `<root>/kmsg`; the Store then labels the
+section "Test data". `build/hwscan-test fixture <dir> demo` writes such a tree (also `vmware`,
+`virtualbox`, `nvidia`, `printer`, `scanner`, `rpi5`, `qemu`, `firmware`); `build/hwscan-test dump`
+prints the facts of the machine it runs on.
+
+### Tests
+
+- `build/hwscan-test` (`make test`): the facts over fake sysfs/DMI/PCI/USB/udev/kmsg trees for every
+  kind, the kernel-log parser (kmsg and dmesg formats, Debian's "failed to load" line, duplicates,
+  unsafe names such as `../../etc/shadow`), files already present (`.zst`, `updates/`), and this
+  machine's facts as valid JSON.
+- `node tests/suggest_engine_test.mjs` (`run_suites.sh`): every rule against fixtures and a fake index
+  (installed, installable, not in the sources, dismissed, wrong architecture, other devices of the
+  same vendor), the firmware mapping, ordering, the root helper's lines, notify-once, and that each
+  card's texts exist in en, es and pt.
+- **VM 119 (QEMU, real path):** `hw-firmware-missing` as root returned `fw regulatory.db platform`
+  (no card: unmapped), as a user the kernel refuses (`hw.noKernelLog`), and an argument is refused.
+  The Store showed one card, the guest agent, as installed (`qemu-guest-agent` was already there).
+- **VM 119 (fixture `demo`):** NVIDIA, HP printer with IPP over USB, a Broadcom Wi-Fi and a Realtek
+  Bluetooth firmware miss and the guest agent. With `non-free` and `non-free-firmware` temporarily
+  enabled, **Review and install** on the Wi-Fi card planned `firmware-brcm80211` (5.1 MB) and
+  installed it through `pkg-install`; the card went away and the others stayed. **Don't suggest
+  again** on the printer card was stored and the card hidden. Sources, index and package were
+  restored afterwards.
+- **Raspberry Pi 5 (read-only):** device tree `raspberrypi,5-model-b`, no DMI, two PCI functions
+  (the BCM2712 bridge and RP1), no USB devices, no firmware misses in the kernel log
+  (`dmesg_restrict=0` there, so no root action is needed); `rpi-eeprom`, `raspi-utils` and `gpiod`
+  are installed and have candidates in its sources. Fed those facts and that package state, the
+  engine gives one card, `rpi5Tools`, as installed (the Store itself wasn't run on the board).
+
+**Needs real hardware:** an NVIDIA card (the driver install, DKMS, Secure Boot enrollment and the
+LordOS desktop on it), a USB printer and scanner of each vendor in the table, Wi-Fi and Bluetooth
+adapters without firmware (that the miss is logged as expected and the device works after the
+install), and VMware and VirtualBox guests.
 
 ## `lord.pkg` (lord-server, without root)
 
