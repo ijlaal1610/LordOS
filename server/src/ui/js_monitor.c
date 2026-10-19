@@ -19,11 +19,17 @@
  *                               an error code (proc.gone, proc.protected…, proc.notOwn, proc.denied).
  *                               Other users' processes go through the root helper (proc-signal,
  *                               administrators only; sdk/monitor.js).
+ *   historyEnable(on)           Settings → Privacy → Monitor → "Keep a traffic history" (0.8.2)
+ *   history({ from, step, n, app })  bytes per bucket from the history file (monitor/nethist.c):
+ *                               { res, oldest, now, rx: [n], tx: [n], top: [[app, rx, tx]] } or null;
+ *                               from/step in Unix seconds, n ≤ 1500, app an app id or null (the machine)
+ *   historyClear()              deletes the history; true if it is gone
  */
 #include "js_monitor.h"
 #include "../monitor/mon.h"
 #include "../monitor/map.h"
 #include "../monitor/procctl.h"
+#include "../monitor/netrec.h"
 #include "../apps.h"
 #include "js_sys.h"
 #include "js_err.h"
@@ -363,6 +369,77 @@ static JSValue f_signal(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
     return e ? JS_NewString(c, e) : JS_NULL;
 }
 
+/* ---- traffic history (0.8.2) ---- */
+
+static JSValue f_history_enable(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    netrec_enable(argc > 0 && JS_ToBool(c, argv[0]) > 0);
+    return JS_NewBool(c, netrec_enabled());
+}
+
+static int int_prop(JSContext *c, JSValueConst o, const char *k, double lo, double hi, long long *out) {
+    JSValue v = JS_GetPropertyStr(c, o, k);
+    double d;
+    int bad = !JS_IsNumber(v) || JS_ToFloat64(c, &d, v) || !isfinite(d) || d != floor(d) || d < lo || d > hi;
+    JS_FreeValue(c, v);
+    if (!bad) *out = (long long)d;
+    return bad ? -1 : 0;
+}
+
+static JSValue f_history(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    NetHist *h = netrec_hist();
+    if (!h || argc < 1 || !JS_IsObject(argv[0])) return JS_NULL;
+    long long from, step, n;
+    if (int_prop(c, argv[0], "from", 0, 4102444800.0, &from) || int_prop(c, argv[0], "step", 60, 86400.0 * 31, &step) ||
+        int_prop(c, argv[0], "n", 1, NH_BUCKETS_MAX, &n)) return JS_NULL;
+    char app[NH_ID_MAX] = "";
+    JSValue a = JS_GetPropertyStr(c, argv[0], "app");
+    if (JS_IsString(a)) {
+        const char *s = JS_ToCString(c, a);
+        int ok = s && strlen(s) > 0 && strlen(s) < NH_ID_MAX;
+        for (const char *q = s; ok && *q; q++) ok = isalnum((unsigned char)*q) || strchr("._:@+~/-", *q);
+        if (ok) snprintf(app, sizeof app, "%s", s);
+        if (s) JS_FreeCString(c, s);
+        if (!ok) { JS_FreeValue(c, a); return JS_NULL; }
+    } else if (!JS_IsUndefined(a) && !JS_IsNull(a)) { JS_FreeValue(c, a); return JS_NULL; }
+    JS_FreeValue(c, a);
+    double *rx = malloc(sizeof(double) * (size_t)n), *tx = malloc(sizeof(double) * (size_t)n);
+    NhTop top[12];
+    int ntop = 0;
+    long long oldest = 0, now = netrec_now();
+    int res = rx && tx ? nh_query(h, now, from, step, (int)n, app[0] ? app : NULL, rx, tx, top, 12, &ntop, &oldest) : -1;
+    if (res < 0) { free(rx); free(tx); return JS_NULL; }
+    JSValue o = JS_NewObject(c), arx = JS_NewArray(c), atx = JS_NewArray(c), atop = JS_NewArray(c);
+    for (int i = 0; i < n; i++) {
+        JS_SetPropertyUint32(c, arx, (uint32_t)i, JS_NewFloat64(c, round(rx[i])));
+        JS_SetPropertyUint32(c, atx, (uint32_t)i, JS_NewFloat64(c, round(tx[i])));
+    }
+    for (int i = 0; i < ntop; i++) {
+        JSValue e = JS_NewArray(c);
+        JS_SetPropertyUint32(c, e, 0, JS_NewString(c, top[i].id));
+        JS_SetPropertyUint32(c, e, 1, JS_NewFloat64(c, (double)top[i].rx));
+        JS_SetPropertyUint32(c, e, 2, JS_NewFloat64(c, (double)top[i].tx));
+        JS_SetPropertyUint32(c, atop, (uint32_t)i, e);
+    }
+    JS_SetPropertyStr(c, o, "res", JS_NewInt32(c, res));
+    JS_SetPropertyStr(c, o, "oldest", JS_NewFloat64(c, (double)oldest));
+    JS_SetPropertyStr(c, o, "now", JS_NewFloat64(c, (double)now));
+    JS_SetPropertyStr(c, o, "enabled", JS_NewBool(c, netrec_enabled()));
+    JS_SetPropertyStr(c, o, "rx", arx);
+    JS_SetPropertyStr(c, o, "tx", atx);
+    JS_SetPropertyStr(c, o, "top", atop);
+    free(rx);
+    free(tx);
+    return o;
+}
+
+static JSValue f_history_clear(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    NetHist *h = netrec_hist();
+    return JS_NewBool(c, h && nh_clear(h) == 0);
+}
+
 static const JSCFunctionListEntry monitor_funcs[] = {
     JS_CFUNC_DEF("start", 0, f_start),
     JS_CFUNC_DEF("stop", 0, f_stop),
@@ -376,6 +453,9 @@ static const JSCFunctionListEntry monitor_funcs[] = {
     JS_CFUNC_DEF("detail", 2, f_detail),
     JS_CFUNC_DEF("detailInfo", 0, f_detail_info),
     JS_CFUNC_DEF("signal", 3, f_signal),
+    JS_CFUNC_DEF("historyEnable", 1, f_history_enable),
+    JS_CFUNC_DEF("history", 1, f_history),
+    JS_CFUNC_DEF("historyClear", 0, f_history_clear),
 };
 
 void js_monitor_register(JSContext *c, JSValue lord, const char *assets_dir) {

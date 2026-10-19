@@ -48,6 +48,7 @@
 #include "hw/hw.h"
 #include "hw/modes.h"
 #include "outputs.h"
+#include "monitor/netrec.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -1557,6 +1558,7 @@ int main(int argc, char **argv) {
     if (ok && snd_start()) fprintf(stderr, "lord-server: no PipeWire for now (sound); it retries on its own\n");
     if (ok && !s.greeter) portal_start();   /* dark mode, accent and buttons for GTK/GNOME/Qt (ui/portal.c) */
     if (ok && !s.greeter) term_restore();   /* shells still alive from the previous start */
+    netrec_init(ok && !s.greeter && session_user != NULL);   /* the Monitor's traffic history (monitor/netrec.c) */
     if (getenv("LORD_DAMAGE") && !strcmp(getenv("LORD_DAMAGE"), "1")) paint_multi_damage = 0;   /* one damaged box (paint.c) */
     remote_server = &s;
     tp_route_init(&tp_host);
@@ -1619,6 +1621,9 @@ int main(int argc, char **argv) {
         if (hwd >= 0 && (delay < 0 || hwd < delay)) delay = hwd;
         /* Settings → Displays or a hotplug: displays, modes, scales, arrangement (between frames) */
         if (!s.headless && !any_flip_pending(&s) && display_take_resync()) outputs_apply(&s);
+        netrec_tick();                      /* traffic history: every 5 s while on (monitor/netrec.c) */
+        double nrd = netrec_timeout();
+        if (nrd >= 0 && (delay < 0 || nrd < delay)) delay = nrd;
         double tpd = tp_timeout(now_ms());
         if (tpd >= 0 && (delay < 0 || tpd < delay)) delay = tpd;
         /* sin monitor y sin nadie mirando no se dibuja (al conectarse alguien llega un cuadro entero) */
@@ -1757,6 +1762,7 @@ int main(int argc, char **argv) {
     /* Cerrar sesión (tema o Ctrl+Alt+Backspace) termina los shells; una señal o un reinicio
      * del servidor los deja vivos en sus guardianes para recuperarlos al volver. */
     term_shutdown(!(ui.quit_requested || s.quit));
+    netrec_shutdown();
     wl_stop();
     snd_stop();
     js_shutdown();
