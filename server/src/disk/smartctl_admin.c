@@ -88,7 +88,9 @@ static void act(const AdminReq *r, const char *arg, size_t len, int mode) {
         v[k] = NULL;
         size_t n = 0;
         int rc = run(v, out, OUT_MAX, &n);
-        if (rc < 0 || rc >= 128) { free(out); admin_err("disk.smartFailed", NULL); return; }
+        /* smartctl's exit status is a bit mask up to 255 (bit 7: errors in the self-test log), so
+         * any status counts as long as JSON came out; send_json refuses anything else */
+        if (rc < 0 || !n) { free(out); admin_err("disk.smartFailed", NULL); return; }
         if (!sat && usb && unknown_bridge(out)) continue;   /* try SAT pass-through once */
         send_json(out, n, rc);
         free(out);
