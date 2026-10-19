@@ -280,11 +280,15 @@ desktop/imager/scripts/build-mac.sh
 #   desktop/imager/target/release/bundle/dmg/LordOS Imager_0.8.4_x64.dmg (3.7 MB)
 ```
 
-**Signing:** the build is **unsigned**. The repository documents no signing identity for apps, and
-the LordOS release key (Ed25519, `~/.config/lordos-release/`) signs release files, not apps, so it
-was not used. A code-signing identity can be passed to Tauri (`APPLE_SIGNING_IDENTITY`, plus its
-notarization variables) once the maintainer decides which one to use. Unsigned, the first launch
-needs a right click → Open.
+**Signing (since 2026-10-19):** the download is built for both processor families
+(`--target universal-apple-darwin`), signed with the maintainer's code-signing identity (team
+`UR4X327NVD`, hardened runtime, timestamp), notarized and stapled, so it opens without warnings.
+`scripts/build-mac.sh` does all of it when `IMAGER_SIGN_IDENTITY` is set and a notarization profile
+named `lordos-notary` exists in the keychain (created once by the maintainer with
+`xcrun notarytool store-credentials lordos-notary --apple-id <id> --team-id UR4X327NVD`; the
+password never goes into the repository or a script). The LordOS release key
+(`~/.config/lordos-release/`) signs release files, not apps, and is not used here. Without
+`IMAGER_SIGN_IDENTITY` the build stays unsigned and the first launch needs a right click → Open.
 
 ### Linux download
 
