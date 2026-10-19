@@ -25,7 +25,7 @@ export function Icon({ size }) {
       <View style={{ position: 'absolute', left: s * 0.16, top: s * 0.3, width: s * 0.17, height: bw * 1.4, backgroundColor: '#fff', borderRadius: bw }} />
       <View style={{ position: 'absolute', left: s * 0.26, top: s * 0.2, width: bw * 1.4, height: s * 0.13, backgroundColor: '#fff', borderRadius: bw }} />
       {/* disk at the bottom */}
-      <View style={{ position: 'absolute', bottom: s * 0.08, width: s * 0.5, height: s * 0.07, borderRadius: s * 0.03, backgroundColor: 'rgba(255,255,255,0.55)' }} />
+      <View style={{ position: 'absolute', left: s * 0.25, bottom: s * 0.08, width: s * 0.5, height: s * 0.07, borderRadius: s * 0.03, backgroundColor: 'rgba(255,255,255,0.55)' }} />
     </View>
   );
 }

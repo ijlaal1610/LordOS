@@ -25,11 +25,11 @@ import { SettingsSheet, ImportSheet, ExportSheet, CategorySheet, TagSheet } from
 export function Icon({ size: s }) {
   return (
     <View style={{ width: s, height: s, borderRadius: s * 0.225, background: 'linear-gradient(160deg, #3fd2c7, #1f6fd1)', overflow: 'hidden',
-      boxShadow: `0 ${s * 0.04}px ${s * 0.12}px rgba(0,0,0,0.35)`, alignItems: 'center' }}>
-      {/* shackle */}
-      <View style={{ position: 'absolute', top: s * 0.14, width: s * 0.4, height: s * 0.4, borderRadius: s * 0.2, border: `${Math.max(2, s * 0.075)}px solid #ffffff` }} />
+      boxShadow: `0 ${s * 0.04}px ${s * 0.12}px rgba(0,0,0,0.35)` }}>
+      {/* shackle (absolute children are placed by left/top, as in the other app icons) */}
+      <View style={{ position: 'absolute', left: s * 0.3, top: s * 0.14, width: s * 0.4, height: s * 0.4, borderRadius: s * 0.2, border: `${Math.max(2, s * 0.075)}px solid #ffffff` }} />
       {/* body */}
-      <View style={{ position: 'absolute', top: s * 0.38, width: s * 0.62, height: s * 0.44, borderRadius: s * 0.1, backgroundColor: '#ffffff',
+      <View style={{ position: 'absolute', left: s * 0.19, top: s * 0.38, width: s * 0.62, height: s * 0.44, borderRadius: s * 0.1, backgroundColor: '#ffffff',
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: s * 0.05, boxShadow: `0 ${s * 0.02}px ${s * 0.05}px rgba(0,0,0,0.25)` }}>
         {[0, 1, 2].map((i) => <View key={i} style={{ width: s * 0.09, height: s * 0.09, borderRadius: s * 0.045, backgroundColor: '#1f6fd1' }} />)}
       </View>
