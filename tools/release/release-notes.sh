@@ -82,9 +82,12 @@ cat <<EOF
 | File | What it is |
 |---|---|
 | \`lordos-live-${filever}-amd64.iso\` | Live and installable image for 64-bit PCs (UEFI and BIOS). Write it to a USB stick as is; Secure Boot off. |
-| \`lordos-${filever}-rpi5-arm64.img.xz\` | Image for the Raspberry Pi 5, for Raspberry Pi Imager ("Use custom"), an SD card or an NVMe drive. |
+| \`lordos-${filever}-rpi5-arm64.img.xz\` | Image for the Raspberry Pi 5, for the LordOS Imager (below) or Raspberry Pi Imager ("Use custom"), an SD card or an NVMe drive. |
 | \`lordos_${filever}_amd64.deb\` | The LordOS package for an existing Debian 13 on a PC (installed by \`install.sh\`, or with \`apt install ./…\`). |
 | \`lordos_${filever}_arm64.deb\` | The same package for Debian 13 on arm64. |
+| \`lordos_imager_${filever}_universal.dmg\` | LordOS Imager for Mac (both processor families, signed and notarized): writes LordOS to an SD card or a USB stick and prepares the Raspberry Pi 5's first boot. |
+| \`lordos_imager_${filever}_x64_setup.exe\` | LordOS Imager for Windows (64-bit installer; not code-signed yet, so the system asks before running it). |
+| \`lordos_imager_${filever}_amd64.deb\` | LordOS Imager for Linux (Debian 13 and similar, amd64; needs udisks2). |
 | \`install.sh\` | The one-line installer for Debian 13: \`curl -fsSL https://lordos.org/install.sh \| sh\`. It checks the signature before installing. |
 | \`SHA256SUMS\` | The SHA-256 of every file in this release. |
 | \`SHA256SUMS.sig\` | The Ed25519 signature of \`SHA256SUMS\` with the LordOS release key (base64). |

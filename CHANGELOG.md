@@ -10,7 +10,7 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
-## [0.8.4] - Unreleased
+## [0.8.4-beta] - 2026-10-19
 
 ### Added
 
@@ -62,8 +62,11 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   compared after writing; cancelling clears the card. In English, Spanish and Portuguese, with
   keyboard navigation. See [docs/IMAGER.md](docs/IMAGER.md).
 - **The LordOS Imager for other computers**: the same app for the three common desktop platforms (Tauri, about
-  6 MB), sharing the interface with the one in LordOS. Built from the source for now; signed
-  downloads will come with a release.
+  6 MB), sharing the interface with the one in LordOS, attached to this release as
+  `lordos_imager_0.8.4_universal.dmg` (both processor families, signed and notarized, so it opens
+  without warnings), `lordos_imager_0.8.4_amd64.deb` (needs udisks2 and a polkit agent) and
+  `lordos_imager_0.8.4_x64_setup.exe` (not code-signed yet, see Known issues), all listed in the
+  signed `SHA256SUMS`.
 - **First-run file on the Raspberry Pi** (`lordos-firstrun.txt` on the boot partition): read once on
   the first boot by `lordos-firstrun`, strictly validated (nothing is applied if any part is wrong),
   then overwritten and deleted. See [docs/RASPBERRY.md](docs/RASPBERRY.md), "First boot".
@@ -121,6 +124,51 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   session end 0.04–0.37 s after the rule changes, an HTTP/3 (QUIC) download 0.08 s.
 - **`build-kernel.sh` cross-compiles** the Pi kernel on an x86-64 Debian 13 (the arm64 Debian
   packages, no arm64 build dependencies needed).
+
+### Known issues and limitations
+
+- **The remote desktop needs a browser with WebRTC and H.264 or VP8 video.** Current desktop and
+  mobile browsers have both; a browser without them gets a page that lists what it needs, since
+  the image mode is gone (see Removed).
+- **Raspberry Pi 5 boards updated from the Store or `apt` keep their kernel.** The LordOS Pi kernel
+  is not in the APT repository yet (`docs/UPDATES.md`, "The Raspberry Pi kernel"), so the `-3`
+  kernel, which closes the connections of a blocked app, comes with the 0.8.4 image. On an updated
+  board with the `-2` kernel the firewall still drops a blocked connection's packets, but the app
+  only sees it end at its own timeout, as in 0.8.3.
+- **The LordOS Imager:** the desktop downloads were tested writing to disk images, not yet to real
+  SD cards or USB sticks; the first-run file was applied to the 0.8.4 image in a test, not yet booted
+  on a board. The installer for the third platform is not code-signed yet, so the system warns
+  before running it the first time; its SHA-256 is in the signed `SHA256SUMS`. Images up to 0.8.3
+  ignore the first-run file and start in setup mode.
+- **Existing Chromium profiles keep the LordOS frame** until you switch them (Settings → Appearance
+  lists them, with a button); new profiles and Firefox get the single bar.
+- Monitor → Network's second generation, listed for 0.8.4 in the roadmap, is not in this release.
+- The other known issues of 0.8.3 still apply.
+
+### Upgrading
+
+- **From 0.8.3, 0.8.2 or 0.8.1:** Store → Updates shows "LordOS 0.8.4 is available" with these
+  notes; **Update** installs it (with its two new libraries, `libsrtp2-1` and `libusrsctp2`), and a
+  restart finishes it. `sudo apt update && sudo apt upgrade` does the same (`apt-get upgrade` keeps
+  `lordos` back because of the new dependencies; `apt upgrade` or `apt-get install lordos` installs
+  it). The update runs migration 005 once (the preinstalled browsers' default bar; from older
+  versions the earlier migrations run first); `ls /var/lib/lordos/migrations` lists the ones
+  applied. Your settings are kept.
+- **Browsers after the update:** Firefox draws its single bar the next time it opens (unless you
+  chose «Title Bar» yourself); new Chromium profiles do too. To get it in an existing Chromium
+  profile, or to go back to the LordOS frame for both, use Settings → Appearance → «Browsers: tabs
+  in the title bar».
+- **Remote desktop after the update:** it is WebRTC video only. The «images only» switch is gone
+  from Settings → Sharing; nothing else changes in its settings (port, addresses, the lockout).
+  Where only the remote desktop's port is open, the video now connects over TCP on that port.
+- **Raspberry Pi 5:** `lordos` updates from the Store or `apt` like on a PC. The `-3` kernel comes
+  with the 0.8.4 image (write it with the LordOS Imager; back up your files first); on an updated
+  board `uname -r` still shows `6.18.57-lordos-rpi-2712`. Building and installing it by hand next
+  to the old one is described in `docs/RASPBERRY.md`, "Switching kernels on a board".
+- **From 0.8.0 (once):** run `curl -fsSL https://lordos.org/install.sh | sh` (a system installed
+  from the 0.8.0 ISO has no `curl`: run `sudo apt update && sudo apt install -y curl` first). It
+  upgrades in place to 0.8.4, runs migrations 001 to 005 and adds the LordOS repository; from then
+  on new versions come through Store → Updates.
 
 ## [0.8.3-beta] - 2026-10-19
 
@@ -1188,7 +1236,8 @@ we published. See [docs/SIGNING.md](docs/SIGNING.md).
 
 Never published; superseded by 0.8.0-beta.
 
-[Unreleased]: https://github.com/lordbasex/LordOS/compare/v0.8.3-beta...HEAD
+[Unreleased]: https://github.com/lordbasex/LordOS/compare/v0.8.4-beta...HEAD
+[0.8.4-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.3-beta...v0.8.4-beta
 [0.8.3-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.2-beta...v0.8.3-beta
 [0.8.2-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.1-beta...v0.8.2-beta
 [0.8.1-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.0-beta...v0.8.1-beta

@@ -61,6 +61,9 @@
 .dl-card h3{margin:0;font-size:20px}
 .dl-card p{margin:0;color:var(--night-text);font-size:15px;line-height:1.55}
 .dl-card .btn{margin-top:auto}
+.dl-imager{margin-top:18px}
+.dl-btns{display:flex;flex-wrap:wrap;gap:12px}
+.dl-btns .btn{margin-top:0;flex:1 1 200px}
 .cmd{margin-top:auto;border-radius:12px;background:#0B0B1C;border:1px solid var(--night-line);overflow:hidden}
 .cmd-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:42px;padding:5px 6px 5px 12px;border-bottom:1px solid var(--night-line);background:#121127}
 .cmd-t{display:inline-flex;align-items:center;gap:5px;font:600 12px/1 var(--mono);color:#A9A5CF}
