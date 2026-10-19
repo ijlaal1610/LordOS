@@ -508,6 +508,28 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
 
 ## Before 1.0
 
+- [ ] **Remote desktop over WebRTC (0.8.4)** — today the browser gets PNG/JPEG tiles over a TLS
+  WebSocket, and a connection switches the session to CPU composition. The goal is real video:
+  - **Media:** H.264/VP8 video and Opus audio as WebRTC media tracks (RTP/SRTP); keyboard,
+    mouse, clipboard and a lossless refresh of still areas (sharp text) over a data channel.
+    Stack: libdatachannel (small, C API), not the full browser stack. Falls back to the current
+    mode when the browser lacks support.
+  - **Rendering once:** the GPU keeps composing while someone watches; the same frame feeds the
+    encoder (VA-API hardware encoding when present, software otherwise, with resolution and frame
+    rate lowered to fit the free CPU). Sessions without a monitor also compose on the GPU,
+    off-screen.
+  - **Per session:** one encoder per session, shared by every viewer of that session (only the
+    per-connection encryption is repeated); two users means two isolated sessions, each with its
+    own encoder and audio, inside its own `lord-server` as that user, never root. When a GPU's
+    concurrent-encode limit is reached, that session falls back to software.
+  - **ICE:** a built-in local STUN responder (LAN works with no outside server), plus optional
+    external STUN and TURN servers added in Settings → Sharing (off by default; TURN credentials
+    in the system keyring; a relay only ever sees SRTP-encrypted media). Signaling stays on the
+    existing authenticated WebSocket (login, cookie, TLS unchanged), and DTLS-SRTP runs in the
+    child that already dropped root. Protected windows stay black.
+  - Measured against today's numbers (`REMOTE.md`), with an external security review of the new
+    network surface.
+
 - [ ] **Immutable edition (A/B system images)** — 0.8.2 published the design study and an
   experimental, VM-verified prototype (`IMMUTABLE.md`, `tools/immutable/`): read-only `/usr` with
   dm-verity in two slots, one boot image per version, automatic fallback, `/etc` and `/home` kept.
