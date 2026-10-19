@@ -1160,7 +1160,7 @@ disk, boot, network and LordOS installation were not touched.
   only while it runs; QEMU uses user-mode networking.
 - **Left behind:** the packages above and `/var/tmp/lordos-immutable` (~5 GB; delete it to free the
   space). Nothing else changed.
-## Step 29 — New wallpapers (VM 123 `lordos-monitor`, October 19)
+## Step 30 — New wallpapers (VM 123 `lordos-monitor`, October 19)
 
 Tree in `~/LordOS-wp`, built there (`make -C server -j4`, `make -C server test`: 23 passed,
 3 skipped). Nothing was installed with apt.
@@ -1178,7 +1178,7 @@ Tree in `~/LordOS-wp`, built there (`make -C server -j4`, `make -C server test`:
   removed to show the greeter and then autologin again; `/etc/lordos/session.conf` wasn't changed.
 - **Screenshots** with `screendump` from the Proxmox host, the pointer with
   `lord-qmp-input.py 123 1280 800`. eth0 and the VM's network weren't touched.
-## Step 29 — Disk temperatures and SMART with smartmontools (VM 119 `lordos-spot`, October 19)
+## Step 31 — Disk temperatures and SMART with smartmontools (VM 119 `lordos-spot`, October 19)
 
 See `MONITOR.md` ("Disk temperature and health") and `SYSTEM.md` ("SMART with smartmontools").
 
@@ -1196,7 +1196,7 @@ See `MONITOR.md` ("Disk temperature and health") and `SYSTEM.md` ("SMART with sm
   `server/tests/smart/` were captured with a `smartctl` unpacked into `/tmp/smx` (`apt-get download`
   + `dpkg -x`, never installed).
 - Nothing else changed: no Proxmox setting, no network setting.
-## Step 29 — Monitor → Network: per-destination switches, traffic history, several damaged rectangles (VM 119 `lordos-spot`, October 19)
+## Step 32 — Monitor → Network: per-destination switches, traffic history, several damaged rectangles (VM 119 `lordos-spot`, October 19)
 
 See `MONITOR.md` ("Per-destination switches", "Traffic history", "0.8.2: several damaged
 rectangles"). On VM 119 (172.17.0.54), built in its own folders (`~/LordOS-monred`, plus
@@ -1223,7 +1223,7 @@ the end.
 - **Screenshots** with `screendump` from the Proxmox host; pointer and keys with
   `lord-qmp-input.py 119 1280 800` and `qm monitor 119` `sendkey`.
 - Nothing in the network configuration was touched (`eth0` keeps 172.17.0.54).
-## Step 29 — Mail, Calendar, Contacts and Reminders in their own process (VM 118 `lordos-notes`, October 19)
+## Step 33 — Mail, Calendar, Contacts and Reminders in their own process (VM 118 `lordos-notes`, October 19)
 
 See `PRIVACY.md` ("System apps in their own process"). On VM 118 (172.17.0.53), tree in
 `~/LordOS-inmut2`, built there and installed into `/usr/local/lib/lordos` (`lord-server`,

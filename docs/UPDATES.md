@@ -195,6 +195,7 @@ Today's migrations:
 |---|---|
 | `001-0.8.1-network-permissions` | Enables `lord-netperm.service` (per-app network permissions) where `lordos.service` is enabled. The ISO, the Pi image and `install.sh` already did; a system set up with `apt` alone had it off. Runs once: disabling it later sticks. |
 | `002-0.8.1-root-ssh-keys` | 0.8.1 adds `PermitRootLogin no` (`/etc/ssh/sshd_config.d/10-lordos.conf`). On an **upgrade** from 0.8.0 with SSH installed and keys in `/root/.ssh/authorized_keys` (a VPS run as root), it writes `09-lordos-root-keys.conf` with `PermitRootLogin prohibit-password`, so root keeps logging in with keys (never passwords) instead of being locked out at the next restart. New installs never get it; delete the file to apply LordOS's default. |
+| `003-0.8.2-drivetemp` | 0.8.2 ships `/usr/lib/modules-load.d/lordos-drivetemp.conf` (SATA disk temperatures in Monitor → Disks, read at boot). On a running system it loads `drivetemp` once, so the temperatures show without a restart. Does nothing without systemd (an image being built) or where the kernel has no `drivetemp`. |
 
 **Settings migrations** (each user), in `sdk/settings.js`: `MIGRATIONS` is a list of
 `[schema, (settings) => newSettings]` applied in order when the session loads
