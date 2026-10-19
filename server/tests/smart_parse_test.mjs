@@ -3,7 +3,8 @@
 // Fixtures in tests/smart/:
 //   real smartctl 7.4 output captured on VM 119 (Debian 13):
 //     ata-qemu-x.json (smartctl -j -x, QEMU SATA disk), ata-qemu-health.json (the smart-health
-//     command), scsi-qemu-x.json (virtio-scsi disk: no SMART), usb-unknown-bridge.json (a USB
+//     command), scsi-qemu-x.json (virtio-scsi disk: no SMART), scsi-qemu-health.json (smart-health on
+//     it: -H prints "passed", -i says SMART is not available), usb-unknown-bridge.json (a USB
 //     gadget smartctl does not know), usb-sat-nodata.json (the same retried with -d sat),
 //     ata-test-started.json (smartctl -j -t short), ata-qemu-x-selftests.json (the same disk after
 //     two short self-tests run from the Disks app: the self-test log)
@@ -71,6 +72,8 @@ eq('scsi unsupported', m.supported, false);
 eq('scsi temp 0 is no value', m.temp, null);
 eq('scsi health unknown', m.health, 'unknown');
 eq('scsi model', m.model, 'QEMU QEMU HARDDISK');
+m = parseSmartctl(load('scsi-qemu-health.json'));
+eq('emulated disk: no verdict from -H', [m.passed, m.health, m.supported], [null, 'unknown', false]);
 m = parseSmartctl(load('usb-unknown-bridge.json'));
 eq('usb bridge', [m.kind, m.supported, m.health], [null, false, 'unknown']);
 eq('usb bridge message', m.messages[0].text, '/dev/sdc: Unknown USB bridge [0x0525:0xa4a5 (0x612)]');

@@ -16,7 +16,8 @@ The LordOS disk utility, like GNOME Disks.
   - the actions;
   - the details: device, model, serial number, capacity, connection, type, partition table, file
     system, label, UUID, mount point;
-  - the **Disk health (SMART)** card.
+  - the **Disk health (SMART)** card and, with smartmontools, the self-tests, the error log, the
+    temperature history and every attribute (see "SMART with smartmontools").
 - **Refresh without polling:** the list updates by itself on mount, unmount, plug-in or format.
 
 | | |
@@ -35,6 +36,8 @@ The LordOS disk utility, like GNOME Disks.
 | `server/src/disk/disk.c` | The list, without root, from three sources. **`/sys/block`:** size, removable, read-only, rotational, model. **The udev database** (`/run/udev/data/b<major>:<minor>`): file system, label, UUID, partition table and bus; udev already probed them, so the device is never opened. **`/proc/self/mountinfo`:** where each one is mounted. It also recognizes the system disk and watches for changes. |
 | `server/src/disk/smart.c` | ATA SMART and NVMe health log parsers: pure functions, no I/O |
 | `server/src/disk/disk_admin.c` | The helper's `disk-*` actions (root) |
+| `server/src/disk/smartctl_admin.c`, `smartctl.c` | The helper's `smart-*` actions (smartmontools, root) and their pure checks |
+| `sdk/smart.js`, `sdk/smartparse.js` | `smart.info/health/test/abort/install`, the summaries the Monitor shows, and smartctl's JSON turned into one model |
 | `server/src/ui/js_disk.c`, `sdk/disks.js` | `lord.disks.list()`, `tools()`, `watch(on)`; in the SDK, `useDisks()` and `disks` |
 | `apps/disks/` | The app: `index.jsx`, `health.jsx` (SMART), `dialogs.jsx` (format, rename, erase, bootable USB), `icons.jsx` |
 
@@ -66,6 +69,10 @@ All are in the closed table of `admin.c` (macro `DISK_ADMIN_ACTIONS` in `disk/di
 | `disk-erase` | `device\nquick\|zero` | `quick`: wipes the signatures (first and last MiB) and rereads the table. `zero`: writes zeros everywhere, with progress, cancellable |
 | `disk-write-image` | `disk\npath` | Copies an ISO/IMG image to the whole disk and verifies it |
 | `disk-cancel` | `disk` | Stops a `zero` erase or a copy in progress. Only whoever started it, or an administrator |
+| `smart-info` | `disk` | (0.8.2) `smartctl -j -x`: the full report. Anyone |
+| `smart-health` | `disk` | (0.8.2) `smartctl -j -n standby -i -H -A -c -l selftest`: the summary, without waking a resting disk. Anyone |
+| `smart-test` | `disk\nshort\|long` | (0.8.2) `smartctl -j -t short\|long`: starts a self-test. Internal disks: an administrator; removable: any session user |
+| `smart-abort` | `disk` | (0.8.2) `smartctl -j -X`: stops a running self-test. Same rule as `smart-test` |
 
 Long actions send `LOG progress phase=<table|mkfs|erase|write|verify> done=<n> total=<n>`, which
 the app shows as a bar.
@@ -80,7 +87,8 @@ the app shows as a bar.
 - **The system disk is never touched** (`disk_is_system`). It is the disk of any partition that
   holds `/`, `/usr`, `/var`, `/home`, `/boot`, `/boot/efi`, `/efi`, the live medium
   (`/run/live/medium`…) or an active swap. For a dm/md (LVM, LUKS, RAID), `slaves/` is followed
-  down to the real disks. Only `disk-smart` accepts it, because it only reads.
+  down to the real disks. Only `disk-smart` and the `smart-*` actions accept it: they only read,
+  or start the disk's own self-test, which does not change data.
 - **Who can:**
   - internal disks, only an administrator (group `sudo`);
   - removable ones (USB, `removable=1`, `mmc` cards), any session user, like udisks with active
@@ -174,6 +182,75 @@ stalls.
 Over USB, many adapters don't pass ATA PASS-THROUGH, and the app explains that. Virtual disks
 (virtio, loop) have no SMART.
 
+### SMART with smartmontools (0.8.2)
+
+| | |
+|---|---|
+| ![smart dark](disks-smart-dark.png) | ![smart light](disks-smart-light.png) |
+| The full report through smartmontools, dark | The same, light |
+| ![install](disks-smart-install.png) | ![self-test](disks-smart-selftest.png) |
+| First use: "Install smartmontools" (an administrator) | A short self-test running, with its progress |
+
+Our own reader (above) stays: it needs nothing installed and gives the basic health. The rest — the
+self-tests, the error log, the SCT temperature history, the drive database that names each
+vendor's attributes, USB bridges — is what Debian's **smartmontools** (`smartctl`) already does well,
+so 0.8.2 uses it instead of growing our own:
+
+- **Installed on first use.** If `/usr/sbin/smartctl` is missing (`lord.disks.tools().smartctl`),
+  the card offers **Install smartmontools**, which goes through the Store's package engine
+  (`admin.run('pkg-install', 'smartmontools')`, fetching the package lists first if there are none),
+  exactly like Settings → Sharing installs the SSH server. Only an administrator can. Once installed,
+  the full report is read right away.
+- **Four closed actions** in the root helper (`server/src/disk/smartctl_admin.c`, table above).
+  - The disk name must be a whole disk smartctl understands: `sd<letters>`, `hd<letters>` or
+    `nvme<N>n<M>` (`smartctl_valid_disk`). Partitions, `loop`, `dm-*`, `md*`, `zram*`, `mmcblk*`,
+    `sr*` and anything with a path character are refused before anything runs.
+  - Then the same `target()` check as the `disk-*` actions: it exists in sysfs, it is not a
+    partition, and `/dev/<disk>` is a block device (`lstat`) with the same major:minor.
+  - One program at a fixed path, `/usr/sbin/smartctl`, with an argument list built in C; the only
+    variable parts are the validated `/dev/<disk>` and `short`/`long`. No shell, no generic runner,
+    no options from the app.
+  - A USB disk whose bridge smartctl does not know ("Unknown USB bridge") is retried once with
+    `-d sat`.
+  - The JSON (`-j`) is compacted (whitespace outside strings dropped, `smartctl_compact`) and sent as
+    `LOG` lines of at most 900 bytes cut on UTF-8 boundaries, like `proc-info`; `OK <lines> <exit
+    status>` ends it (smartctl's exit status is a bit mask the app reads: bit 3 is "disk failing").
+    Output is capped at 1 MiB.
+- **Parsing in the session**, not as root: `sdk/smartparse.js` turns smartctl's JSON into one model
+  (every number checked, every string cut and only shown as text):
+  - overall health and why, in plain words: **Failing** if the disk says so (overall status, a
+    pre-fail attribute below its threshold now, NVMe "reliability degraded" or "read-only"); **Check**
+    (shown as "With warnings") with reallocated, pending or uncorrectable sectors, grown defects, NVMe
+    spare below its threshold, temperature or backup warnings, media errors, a pre-fail attribute
+    that failed in the past, or more than 90 % of the rated life used. A device that says it has no
+    SMART gets no verdict;
+  - temperature and the drive's limits, power-on hours, power cycles, data read and written;
+  - **SSD wear** (% of the rated life used): the NVMe health log, the ATA device statistics
+    ("Percentage Used Endurance Indicator"), or attributes 231/233/202/177 counting down from 100;
+  - every attribute with a plain name (by smartctl's attribute name, not by id: vendors reuse ids
+    and smartctl's drive database already knows them), with smartctl's own name under it;
+  - for NVMe, the whole health log (spare, % used, data units, commands, busy time, unsafe
+    shutdowns, media errors, time above the warning and critical temperatures);
+  - the error log (NVMe drives also log harmless events, so its count does not change the health),
+    the SCT temperature history (ATA) as a small bar chart, and the self-test log;
+  - **self-tests**: Short and Long buttons with the drive's own estimate in minutes; while one runs,
+    `smart-health` every 15 s gives the progress (ATA: "remaining percent"; NVMe: "completion
+    percent"), with **Stop the test**; when it ends, the full report is read again.
+- The result also updates the Monitor's cached summary (see `MONITOR.md`).
+- **Tests:** `tests/smart_parse_test.mjs` (92 checks, in `make test` when node is there) with real
+  smartctl 7.4 output captured on VM 119 (`tests/smart/`: a QEMU SATA disk before and after two
+  self-tests, the health command, a virtio-scsi disk, a USB gadget with an unknown bridge and the
+  `-d sat` retry, a started test) and, in the same schema with edited values, a worn SSD, a failing
+  disk, a running self-test, a disk in standby and NVMe drives (healthy, and failing with a test
+  running). `build/smartctl-test` checks the names (48 cases) and the compaction.
+
+**smartd:** the package also brings Debian's `smartd` monitoring daemon. Its maintainer script
+enables `smartmontools.service`, which starts at the next boot (on VM 119 it was enabled but not
+started right after the install). Debian's default configuration checks each disk every 30
+minutes with `-n standby` (a resting disk is not woken) and mails root, which goes nowhere on a
+desktop. LordOS's own notices (`MONITOR.md`) don't need it; an administrator can turn it off with
+`systemctl disable --now smartmontools`.
+
 ### Measured on VM 119
 
 | | |
@@ -229,6 +306,7 @@ Tested on VM 119:
 | `exfatprogs` | exFAT (`mkfs.exfat`, `exfatlabel`) | added to the ISO list |
 | `e2fsprogs` | ext4 (`mkfs.ext4`, `e2label`) | already in Debian base |
 | `ntfs-3g` | NTFS (`mkfs.ntfs`, `ntfslabel`) | optional: without it, the app does not offer NTFS |
+| `smartmontools` | the full SMART report and self-tests (`smartctl`) | no: installed from the app the first time (0.8.2) |
 
 Mounting needs no package: `vfat`, `exfat`, `ntfs3`, `ext4` and `iso9660` are Debian kernel
 modules.
@@ -245,7 +323,9 @@ modules.
 - **Test NVMe with a real disk.** The parser has a test, but the VM has no NVMe: Proxmox does not
   offer it without `args`. SMART over a USB adapter that passes it through (SAT) was not tested
   either.
-- **SMART self-test** (short/long) and health history.
+- **SMART on real hardware** (0.8.2): the smartctl path is tested on VM 119 (QEMU SATA, virtio-scsi,
+  a USB gadget). A real NVMe drive, a real SATA SSD and HDD, a self-test that takes minutes and a USB
+  enclosure that passes SAT through are still to be checked. Health history over time is not kept.
 - **Pick the image with the system file picker:** today there is a list of the `.iso`/`.img` files
   in the home folder and a field for the path.
 

@@ -72,7 +72,7 @@ function Bar({ frac, color }) {
 
 // ---- the card ----
 
-export function HealthCard({ disk, isAdmin }) {
+export function HealthCard({ disk, isAdmin, autoCheck }) {
   const t = useTheme();
   const tr = useTr();
   const [st, setSt] = useState(() => cache.get(disk.name) || null);
@@ -95,6 +95,8 @@ export function HealthCard({ disk, isAdmin }) {
       if (ok && can) { setSt({ loading: true }); readFull(disk.name).then(save, (e) => save({ error: e.message })); }   // the full report right away
     }, (e) => setInst({ error: e.message }));
   };
+  // opened from the Monitor or a notice ("Open in Disks"): the user asked for this disk's health
+  useEffect(() => { if (autoCheck && ownCan && !cache.get(disk.name)) check(); }, [autoCheck]);
   const m = st && st.src === 'smartctl' ? st.m : null;
   const own = st && st.src === 'own' ? st.summary : null;
   const health = m ? m.health : own ? own.health : null;
@@ -102,7 +104,7 @@ export function HealthCard({ disk, isAdmin }) {
     <View key="head" style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.m, paddingVertical: spacing.s }}>
       {health ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: HEALTH_COLOR[health] || HEALTH_COLOR.unknown }} /> : null}
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-        <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text, textAlign: 'start' }}>{health ? tr(`disks.healthState.${health}`) : tr('disks.health')}</Text>
+        <Text style={{ fontSize: typeScale.body, fontWeight: 600, color: t.text, textAlign: 'start' }}>{health ? tr(`disks.healthState.${health}`) : tr('disks.notChecked')}</Text>
         {m && !m.supported ? <Dim>{m.messages.find((x) => x.severity === 'error') ? tr('disks.smart.unsupportedBridge') : tr('disks.noSmart')}</Dim>
           : health ? <Dim>{tr(`disks.healthHint.${health}`)}</Dim>
           : !ownCan ? <Dim>{tr('disks.noSmart')}</Dim>
@@ -116,7 +118,7 @@ export function HealthCard({ disk, isAdmin }) {
   const footer = st && st.ms != null && !st.loading ? (m ? tr('disks.smart.readWith', { ms: `${st.ms} ms` }) : tr('disks.readIn', { ms: st.ms })) : null;
   return (
     <View style={{ gap: spacing.l }}>
-      <GroupBox footer={footer}>
+      <GroupBox title={tr('disks.health')} footer={footer}>
         {[head, ...(m ? fullRows(tr, m) : own ? ownRows(tr, own) : []), own && st.attrs.length ? <OwnAttrs key="oa" attrs={st.attrs} /> : null].filter(Boolean)}
       </GroupBox>
       {ownCan && !installed ? <InstallBox isAdmin={isAdmin} inst={inst} onInstall={install} /> : null}

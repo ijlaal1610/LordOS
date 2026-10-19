@@ -270,5 +270,6 @@
   "attr.a226": "Load-in time",
   "attr.a232": "Reserved space left",
   "attr.a240": "Head flying hours",
-  "attr.a254": "Free fall events"
+  "attr.a254": "Free fall events",
+  "notChecked": "Not checked yet"
 }

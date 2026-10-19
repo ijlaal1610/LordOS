@@ -203,7 +203,7 @@ function DiskToolbar({ disk, part, onDialog, run, busy }) {
   );
 }
 
-function Details({ disk, part, onDialog }) {
+function Details({ disk, part, onDialog, autoCheck }) {
   const t = useTheme();
   const { isAdmin } = useCanTouch();
   const { t: tr } = useLocale();
@@ -261,7 +261,7 @@ function Details({ disk, part, onDialog }) {
               <Row key="parts" label={tr('disks.partitions')} value={String(disk.partitions.length)} />,
             ]}
           </GroupBox>
-          {!part ? <HealthCard disk={disk} isAdmin={isAdmin} /> : null}
+          {!part ? <HealthCard disk={disk} isAdmin={isAdmin} autoCheck={autoCheck} /> : null}
           {target.ro ? <Text style={{ fontSize: typeScale.caption, color: t.textDim, textAlign: 'start' }}>{tr('disks.readOnlyNote')}</Text> : null}
         </View>
       </ScrollView>
@@ -286,7 +286,7 @@ export default function Disks() {
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>
       <Sidebar list={list} sel={{ disk: disk && disk.name, part: part && part.name }} onSel={setSel} />
-      {disk ? <Details key={disk.name} disk={disk} part={part} onDialog={(d) => setDialog({ ...d, disk, part })} />
+      {disk ? <Details key={disk.name} disk={disk} part={part} onDialog={(d) => setDialog({ ...d, disk, part })} autoCheck={args?.disk === disk.name ? args.nonce || 1 : null} />
         : <EmptyState icon={<DisksIcon size={56} />} title={tr('disks.none')} />}
       {dialog ? <DiskDialog {...dialog} tools={tools} onClose={() => { setDialog(null); reload(); }} /> : null}
     </View>

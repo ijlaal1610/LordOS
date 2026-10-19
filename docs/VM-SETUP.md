@@ -1142,3 +1142,22 @@ folder `~/LordOS-monred`, installed into `/usr/local/lib/lordos` as in step 15 (
   `lord-qmp-input.py 118 2987 1067` (the VM has two heads, see "Several displays").
 - The session language, theme and accent were changed for the screenshots and restored from
   `~/.config-lordos-backup-monred` afterwards.
+
+## Step 29 — Disk temperatures and SMART with smartmontools (VM 119 `lordos-spot`, October 19)
+
+See `MONITOR.md` ("Disk temperature and health") and `SYSTEM.md` ("SMART with smartmontools").
+
+- **Deploy:** the `v082-disks` tree built in `~/LordOS-dt082`; only `lord-server`, the themes and
+  `assets/locales` were installed in `/usr/lib/lordos`, after a backup
+  (`/var/tmp/disktemp082-backup/lordos-before.tgz`), and put back from it afterwards.
+- **Test user:** `disktest` ("Disk Test", in the `sudo` group, a test-only password), created so the
+  login screen could be used without touching `lord`'s password; removed afterwards
+  (`userdel -r disktest`).
+- **`drivetemp`** was loaded by hand (`modprobe drivetemp`) to check that QEMU's SATA disk gets no
+  sensor (it has neither SCT nor attribute 194); unloaded afterwards.
+- **smartmontools** was installed twice from the Disks app's "Install smartmontools" (the package
+  engine's `pkg-install`), as the feature does, and purged afterwards (`apt-get purge
+  smartmontools`), so the next test starts from "not installed" again. Before that, the fixtures in
+  `server/tests/smart/` were captured with a `smartctl` unpacked into `/tmp/smx` (`apt-get download`
+  + `dpkg -x`, never installed).
+- Nothing else changed: no Proxmox setting, no network setting.

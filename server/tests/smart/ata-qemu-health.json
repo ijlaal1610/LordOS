@@ -17,6 +17,7 @@
       "-j",
       "-n",
       "standby",
+      "-i",
       "-H",
       "-A",
       "-c",
@@ -30,14 +31,38 @@
     "exit_status": 0
   },
   "local_time": {
-    "time_t": 1792378099,
-    "asctime": "Sun Oct 18 23:48:19 2026 -03"
+    "time_t": 1792380107,
+    "asctime": "Mon Oct 19 00:21:47 2026 -03"
   },
   "device": {
     "name": "/dev/sdb",
     "info_name": "/dev/sdb [SAT]",
     "type": "sat",
     "protocol": "ATA"
+  },
+  "model_name": "QEMU HARDDISK",
+  "serial_number": "QM00015",
+  "firmware_version": "2.5+",
+  "user_capacity": {
+    "blocks": 16777216,
+    "bytes": 8589934592
+  },
+  "logical_block_size": 512,
+  "physical_block_size": 512,
+  "trim": {
+    "supported": true,
+    "deterministic": true,
+    "zeroed": false
+  },
+  "in_smartctl_database": false,
+  "ata_version": {
+    "string": "ATA/ATAPI-7, ATA/ATAPI-5 published, ANSI NCITS 340-2000",
+    "major_value": 240,
+    "minor_value": 22
+  },
+  "smart_support": {
+    "available": true,
+    "enabled": true
   },
   "smart_status": {
     "passed": true
@@ -247,7 +272,35 @@
   "ata_smart_self_test_log": {
     "standard": {
       "revision": 1,
-      "count": 0
+      "table": [
+        {
+          "type": {
+            "value": 1,
+            "string": "Short offline"
+          },
+          "status": {
+            "value": 0,
+            "string": "Completed without error",
+            "passed": true
+          },
+          "lifetime_hours": 4660
+        },
+        {
+          "type": {
+            "value": 1,
+            "string": "Short offline"
+          },
+          "status": {
+            "value": 0,
+            "string": "Completed without error",
+            "passed": true
+          },
+          "lifetime_hours": 4660
+        }
+      ],
+      "count": 2,
+      "error_count_total": 0,
+      "error_count_outdated": 0
     }
   }
 }

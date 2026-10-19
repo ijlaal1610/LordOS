@@ -237,7 +237,8 @@ export function parseSmartctl(j, exit = 0) {
     supported: !!kind && smartAvail,
     enabled: obj(j.smart_support) ? j.smart_support.enabled !== false : true,
     standby,
-    passed: obj(j.smart_status) ? j.smart_status.passed !== false : null,
+    // a device that says it has no SMART (an emulated disk) gets no verdict, whatever -H printed
+    passed: obj(j.smart_status) && !(obj(j.smart_support) && j.smart_support.available === false) ? j.smart_status.passed !== false : null,
     temp: temp != null && temp > -40 && temp < 150 && !(kind === 'scsi' && temp === 0) ? temp : null,
     tempMax: lim.max, tempCrit: lim.crit,
     hours: num(obj(j.power_on_time)?.hours) ?? nvme?.hours ?? null,

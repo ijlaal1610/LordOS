@@ -2,7 +2,7 @@
  * SMART section and the Monitor's health summary, through Debian's smartmontools.
  *
  *   smart-info <disk>               smartctl -j -x            (everything: attributes, logs, tests)
- *   smart-health <disk>             smartctl -j -n standby -H -A -c -l selftest
+ *   smart-health <disk>             smartctl -j -n standby -i -H -A -c -l selftest
  *                                   (the summary; a resting disk is not woken up)
  *   smart-test <disk>\nshort|long   smartctl -j -t short|long (starts a self-test)
  *   smart-abort <disk>              smartctl -j -X            (stops a running self-test)
@@ -81,7 +81,7 @@ static void act(const AdminReq *r, const char *arg, size_t len, int mode) {
         v[k++] = "-j";
         if (sat) { v[k++] = "-d"; v[k++] = "sat"; }
         if (mode == 'i') v[k++] = "-x";
-        else if (mode == 'h') { v[k++] = "-n"; v[k++] = "standby"; v[k++] = "-H"; v[k++] = "-A"; v[k++] = "-c"; v[k++] = "-l"; v[k++] = "selftest"; }
+        else if (mode == 'h') { v[k++] = "-n"; v[k++] = "standby"; v[k++] = "-i"; v[k++] = "-H"; v[k++] = "-A"; v[k++] = "-c"; v[k++] = "-l"; v[k++] = "selftest"; }
         else if (mode == 't') { v[k++] = "-t"; v[k++] = !strcmp(word, "long") ? "long" : "short"; }
         else v[k++] = "-X";
         v[k++] = dev;

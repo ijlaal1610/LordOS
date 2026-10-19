@@ -132,8 +132,7 @@ function DiskDetail({ d, sum, h }) {
             format={(v) => formatNumber(Math.round(v), 0)} times={series.times} capacity={DISK_TEMP_HISTORY} height={130} bg={card.bg} />
         ) : null}
       </Card>
-      <Card icon="disk" title={tr('monitor.health.title')} style={{ flex: 2 }}
-        right={<View onClick={open}><Text style={{ fontSize: 11, color: t.accent, whiteSpace: 'nowrap' }}>{tr('monitor.health.openDisks')}</Text></View>}>
+      <Card icon="disk" title={tr('monitor.health.title')} style={{ flex: 2 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <HealthDot health={health} size={12} />
           <Text style={{ fontSize: 20, fontWeight: 600, color: t.text }}>{smart.smartable(d.name) ? (sum && !sum.idle ? tr(`monitor.health.${health}`) : '—') : tr('monitor.health.none')}</Text>
@@ -148,7 +147,7 @@ function DiskDetail({ d, sum, h }) {
         </Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Stat label={tr('monitor.health.hours')} value={sum?.hours != null ? formatNumber(sum.hours, 0) : '—'} unit={sum?.hours != null ? tr('monitor.health.hoursUnit') : null} />
-          <Stat label={tr('monitor.health.wear')} value={sum?.wear != null ? formatNumber(sum.wear, 0) : '—'} unit={sum?.wear != null ? '%' : null} />
+          {!d.rota ? <Stat label={tr('monitor.health.wear')} value={sum?.wear != null ? formatNumber(sum.wear, 0) : '—'} unit={sum?.wear != null ? '%' : null} /> : null}
         </View>
         {!smart.installed() && smart.smartable(d.name) ? <Text style={{ fontSize: 11, color: t.textDim, lineHeight: 1.4, textAlign: 'start' }}>{tr('monitor.health.basic')}</Text> : null}
         <Button small label={tr('monitor.health.openDisks')} onClick={open} />

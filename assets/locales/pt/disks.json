@@ -270,5 +270,6 @@
   "attr.a226": "Tempo de carga",
   "attr.a232": "Espaço reserva livre",
   "attr.a240": "Horas de voo da cabeça",
-  "attr.a254": "Quedas detectadas"
+  "attr.a254": "Quedas detectadas",
+  "notChecked": "Ainda não verificado"
 }
