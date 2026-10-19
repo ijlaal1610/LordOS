@@ -616,6 +616,7 @@ static void surface_gone(struct wl_resource *r) {
     if (s->viewport) wl_resource_set_user_data(s->viewport, NULL);
     if (s->frac) wl_resource_set_user_data(s->frac, NULL);
     if (s->kde) wl_resource_set_user_data(s->kde, NULL);
+    if (s->deco) wl_resource_set_user_data(s->deco, NULL);
     if (s->node) damage_node(s);
     if (fs_surf == s) { fs_surf = NULL; ui.dirty = 1; damage_add((Box){ 0, 0, ui.width, ui.height }); }
     if (cursor_surf == s) { cursor_surf = NULL; cursor_mode = 0; cursor_gen++; }
@@ -1621,8 +1622,14 @@ static void top_app_id(struct wl_client *c, struct wl_resource *r, const char *a
     Surf *s = wl_resource_get_user_data(r);
     if (s) snprintf(s->app_id, sizeof s->app_id, "%s", a);
 }
+/* The app's own bar asked for the window menu (right click on Chromium's tab strip, a GTK
+ * headerbar): JS gets where, in screen coordinates, and the theme shows its window menu there. */
 static void top_menu(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial, int32_t x, int32_t y) {
-    (void)c; (void)r; (void)seat; (void)serial; (void)x; (void)y;
+    (void)c; (void)seat; (void)serial;
+    Surf *s = wl_resource_get_user_data(r);
+    float ox, oy;
+    if (!s || !s->mapped || !origin(s, &ox, &oy)) return;
+    emit(s, "menu", "{\"x\":%.0f,\"y\":%.0f}", ox + (float)x, oy + (float)y);
 }
 static void top_move(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial) {
     (void)c; (void)seat; (void)serial;
@@ -1803,20 +1810,44 @@ static void bind_wm_base(struct wl_client *c, void *data, uint32_t ver, uint32_t
     wl_resource_set_implementation(r, &wm_base_impl, NULL, NULL);
 }
 
-/* ---- xdg-decoration: server decoration is requested (the theme's frame) ---- */
+/* ---- xdg-decoration: the app picks who draws the frame ----
+ * We prefer the theme's frame (server side) and say so in the first configure, but the client's
+ * choice wins: set_mode(CLIENT_SIDE) means the app draws its own bar and buttons (Chromium with
+ * «Use system title bar and borders» off, GTK 4). unset_mode and SERVER_SIDE give the theme's frame.
+ * A change after the window is mapped (the user flips Chromium's switch) goes to JS as «deco», and
+ * the theme switches that window between its frame and the frameless presentation (sdk/wayland.js). */
+
+static void set_csd(Surf *s, int csd) {
+    csd = !!csd;
+    if (s->csd == csd) return;
+    s->csd = csd;
+    if (s->mapped && (s->top || s->xw)) emit(s, "deco", "{\"csd\":%s}", csd ? "true" : "false");
+}
+
+/* What the compositor answers to a requested xdg-decoration mode: what the app asked for. */
+static uint32_t deco_answer(uint32_t requested) {
+    return requested == ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE ? ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE
+                                                                     : ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE;
+}
 
 static void deco_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
 static void deco_mode(struct wl_client *c, struct wl_resource *r, uint32_t mode) {
-    (void)c; (void)mode;
+    (void)c;
     Surf *s = wl_resource_get_user_data(r);
-    zxdg_toplevel_decoration_v1_send_configure(r, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
-    if (s) { s->csd = 0; if (s->sent_configure) send_toplevel_configure(s); }
+    uint32_t m = deco_answer(mode);
+    zxdg_toplevel_decoration_v1_send_configure(r, m);
+    if (!s) return;
+    set_csd(s, m == ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE);
+    if (s->sent_configure) send_toplevel_configure(s);    /* the decoration configure needs an xdg_surface.configure */
 }
-static void deco_unset(struct wl_client *c, struct wl_resource *r) { deco_mode(c, r, 0); }
+static void deco_unset(struct wl_client *c, struct wl_resource *r) { deco_mode(c, r, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE); }
 static const struct zxdg_toplevel_decoration_v1_interface deco_impl = { .destroy = deco_destroy, .set_mode = deco_mode, .unset_mode = deco_unset };
 static void deco_gone(struct wl_resource *r) {
     Surf *s = wl_resource_get_user_data(r);
-    if (s) s->deco = NULL;
+    if (!s || s->deco != r) return;
+    s->deco = NULL;
+    /* protocol: without the object the app draws its own frame again (unless GTK 3 asked us via KDE's) */
+    if (s->top) set_csd(s, !s->kde_ssd);
 }
 static void decm_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
 static void decm_get(struct wl_client *c, struct wl_resource *r, uint32_t id, struct wl_resource *toplevel) {
@@ -1824,7 +1855,7 @@ static void decm_get(struct wl_client *c, struct wl_resource *r, uint32_t id, st
     struct wl_resource *d = wl_resource_create(c, &zxdg_toplevel_decoration_v1_interface, wl_resource_get_version(r), id);
     if (!d) { wl_client_post_no_memory(c); return; }
     wl_resource_set_implementation(d, &deco_impl, s, deco_gone);
-    if (s) { s->deco = d; s->csd = 0; }
+    if (s) { s->deco = d; set_csd(s, 0); }
     zxdg_toplevel_decoration_v1_send_configure(d, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 static const struct zxdg_decoration_manager_v1_interface decm_impl = { .destroy = decm_destroy, .get_toplevel_decoration = decm_get };
@@ -1867,7 +1898,7 @@ static void kde_request_mode(struct wl_client *c, struct wl_resource *r, uint32_
     wl_resource_post_event(r, 0, ssd ? KDE_DECO_SERVER : KDE_DECO_CLIENT);
     if (!s) return;
     s->kde_ssd = ssd;
-    if (s->role == R_TOPLEVEL && !s->deco) s->csd = !ssd;
+    if (s->role == R_TOPLEVEL && !s->deco) set_csd(s, !ssd);   /* live too: Firefox's «Title Bar» switch */
 }
 static const struct kde_deco_impl kde_deco_impl = { kde_release, kde_request_mode };
 static void kde_gone(struct wl_resource *r) {
@@ -1898,6 +1929,35 @@ static void geometry(Surf *s, int *w, int *h) {
     *h = s->has_geom && s->gh > 0 ? s->gh : s->lh;
 }
 
+/* JS learns about a window: title, app id, content size and whether it draws its own frame. */
+static void emit_map(Surf *s, int w, int h) {
+    char t[520], a[260];
+    json_str(t, sizeof t, s->title);
+    json_str(a, sizeof a, s->app_id);
+    if (s->xw) {                    /* X11: WM_CLASS class, and its instance for the .desktop match */
+        char alt[260];
+        json_str(alt, sizeof alt, s->app_alt);
+        emit(s, "map", "{\"title\":\"%s\",\"appId\":\"%s\",\"appAlt\":\"%s\",\"x11\":true,\"width\":%d,\"height\":%d,\"csd\":%s}",
+             t, a, alt, w, h, s->csd ? "true" : "false");
+    } else
+        emit(s, "map", "{\"title\":\"%s\",\"appId\":\"%s\",\"width\":%d,\"height\":%d,\"csd\":%s}", t, a, w, h, s->csd ? "true" : "false");
+}
+
+/* A new JS context (the theme was switched live): the windows that are still mapped are announced
+ * again, with their maximized state, so they come back in the new theme instead of staying
+ * connected but invisible. Their node belongs to the old tree: forgotten until the next paint. */
+void wl_remap_all(void) {
+    for (int i = 0; i < MAX_SURF; i++) {
+        Surf *s = surfs[i];
+        if (!s || s->role != R_TOPLEVEL || !s->mapped) continue;
+        int w, h;
+        geometry(s, &w, &h);
+        s->node = 0;
+        emit_map(s, w, h);
+        if (s->maximized) emit(s, "maximize", "{}");
+    }
+}
+
 static void surface_commit_role(Surf *s) {
     if (s->role == R_TOPLEVEL && s->content && s->lw > 0) {   /* how the app renders for HiDPI: once per change */
         int ratio = s->w * 100 / s->lw;
@@ -1915,16 +1975,7 @@ static void surface_commit_role(Surf *s) {
         geometry(s, &w, &h);
         if (s->content && !s->mapped) {
             s->mapped = 1;
-            char t[520], a[260];
-            json_str(t, sizeof t, s->title);
-            json_str(a, sizeof a, s->app_id);
-            if (s->xw) {                    /* X11: WM_CLASS class, and its instance for the .desktop match */
-                char alt[260];
-                json_str(alt, sizeof alt, s->app_alt);
-                emit(s, "map", "{\"title\":\"%s\",\"appId\":\"%s\",\"appAlt\":\"%s\",\"x11\":true,\"width\":%d,\"height\":%d,\"csd\":%s}",
-                     t, a, alt, w, h, s->csd ? "true" : "false");
-            } else
-            emit(s, "map", "{\"title\":\"%s\",\"appId\":\"%s\",\"width\":%d,\"height\":%d,\"csd\":%s}", t, a, w, h, s->csd ? "true" : "false");
+            emit_map(s, w, h);
             s->conf_w = w;
             s->conf_h = h;
         } else if (!s->content && s->mapped) {

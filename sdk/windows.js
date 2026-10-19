@@ -322,6 +322,12 @@ export const wm = {
   // comes out black in screenshots, recordings and remote desktop (docs/MEDIA.md). Used, for
   // example, by a password app.
   setProtected: (id, on = true) => patch(id, { protected: !!on }),
+  // Merges into a window's args (a Linux app switching between the theme's frame and its own, args.csd).
+  setArgs: (id, a) => windows.set((ws) => ws.map((w) => (w.id === id ? { ...w, args: { ...(w.args || {}), ...a } } : w))),
+  // The window menu at a screen point (a Linux app with its own bar asked for it,
+  // xdg_toplevel.show_window_menu): the theme draws it from w.windowMenu; null closes it.
+  showWindowMenu: (id, x, y) => patch(id, { windowMenu: { x: Math.round(x), y: Math.round(y) } }),
+  closeWindowMenu: (id) => patch(id, { windowMenu: null }),
   // Fullscreen for a LordOS app (Player, Photos): the SDK draws it above everything,
   // without the theme's frame. Esc or wm.setFullscreen(id, false) goes back.
   setFullscreen: (id, on = true) => windows.set((ws) => ws.map((w) => (w.id === id ? { ...w, fullscreen: !!on, minimized: false } : w))),

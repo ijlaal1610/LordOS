@@ -55,7 +55,11 @@ were open come back in the new theme. The choice is saved and respected on the n
    - Linux app windows (Wayland) arrive as windows of the internal app `linux`: if
      `win.args.csd` is true the app draws its own frame and the theme shows only `<AppHost>`;
      and `configureWindows({ chrome: { w, h } })` says how much the theme's frame adds (borders +
-     title bar) so they open at the size they asked for (see `docs/WAYLAND.md`).
+     title bar) so they open at the size they asked for (see `docs/WAYLAND.md`). `args.csd` can
+     change while the window is open (a browser's title bar switch): render from it every time.
+     When such an app asks for the window menu (right click on its own bar), `win.windowMenu` is
+     `{ x, y }`: draw the theme's window menu there and call `wm.closeWindowMenu(win.id)` when it
+     closes.
 4. `npm run build` and pick it in Settings → Themes.
 
 Images (`<Image src="assets/...">`) are resolved relative to the theme's folder.

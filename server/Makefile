@@ -397,6 +397,11 @@ endef
 $(foreach p,$(CLIENT_PROTO),$(eval $(call wl_client_proto,$(p))))
 build/dmabuf-client: tests/dmabuf_client.c $(CLIENT_GEN)
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -Ibuild/gen $(WARN) -std=c11 -o $@ tests/dmabuf_client.c $(filter %.c,$(CLIENT_GEN)) -lwayland-client
+# Who draws the frame: xdg-decoration and KDE's server-decoration modes, also switched live
+# (tests/deco_client.c; run inside a session: WAYLAND_DISPLAY=wayland-0 build/deco-client)
+build/deco-client: tests/deco_client.c $(CLIENT_GEN)
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -Ibuild/gen $(WARN) -std=c11 -o $@ tests/deco_client.c $(filter %.c,$(CLIENT_GEN)) -lwayland-client
+
 # Clipboard and primary-selection offers bound to their selection (tests/xwayland/clip_offers.sh, docs/WAYLAND.md)
 build/clip-offers: tests/clip_offers.c $(CLIENT_GEN)
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -Ibuild/gen $(WARN) -std=c11 -o $@ tests/clip_offers.c $(filter %.c,$(CLIENT_GEN)) -lwayland-client
