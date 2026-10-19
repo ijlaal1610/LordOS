@@ -12,6 +12,16 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [0.8.4] - Unreleased
 
+### Added
+
+- **Settings → Appearance → «Browsers: tabs in the title bar».** One switch for both preinstalled
+  browsers: on (the default), Chromium and Firefox draw a single bar with their tabs and LordOS's
+  window buttons; off, they use the LordOS frame. It changes the setting in your own browser
+  profiles and applies the next time each browser opens; if Chromium is open, it waits until you
+  quit it. Chromium profiles from before this version that still use the LordOS frame are shown on
+  the page, with a button to change them too. A choice you made yourself in a Firefox `user.js`
+  file is left alone, and choices you make later in the browsers' own settings stick.
+
 ### Changed
 
 - **Browsers with a single top bar.** Chromium and Firefox now draw their own bar, with the tabs in
@@ -22,7 +32,7 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   LordOS frame is one switch in each browser («Use system title bar and borders» in Chromium,
   «Title Bar» in Firefox), and it now applies right away, without reopening the window. Systems
   upgraded from 0.8.3 get the new defaults for Firefox, and for new Chromium profiles; an existing
-  Chromium profile keeps its frame until its user switches.
+  Chromium profile keeps its frame until its user switches (or uses the new switch in Settings).
 
 ### Fixed
 

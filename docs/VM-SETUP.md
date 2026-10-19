@@ -1371,3 +1371,41 @@ in `~/LordOS-csd`, built there (`make -C server`, `make -C server build/deco-cli
   `master_preferences` and `settings.json` restored, the themes, the schemas package, `session.conf`,
   the profiles, the tree, the script and the backup removed, `lordos.service` restarted to the login
   screen. No network or Proxmox setting was touched.
+
+## Step 39 — 0.8.4: the browsers' title bar switch in Settings (VM 119 `lordos-spot`, October 19)
+
+See `WAYLAND.md` ("The switch in Settings"). On VM 119 (172.17.0.54), tree in `~/LordOS-brs` (copied
+with `tar` over SSH: the VM has no `rsync`), built there (`make -C server`, `make -C server test`)
+and installed over `/usr/lib/lordos` by `~/deploy-brs-119.sh` (it saved `/usr/lib/lordos` to
+`/var/backups/lordos-brs-bak` and `settings.json` to `/var/tmp` first).
+
+- **Installed for the tests,** as in step 38: `gsettings-desktop-schemas` and `assets/gtk/LordOS*` in
+  `/usr/share/themes/` (Chromium's GTK theme needs them for the traffic lights); both removed at the
+  end.
+- **Session:** `/etc/lordos/session.conf` with `AUTOLOGIN=lord` (it didn't exist; removed at the
+  end), English and light in `settings.json` (restored at the end). A new session for the login-time
+  tidy-up: the session's `lord-server` ended, `/run/lordos/autologin-done` removed, `systemctl
+  restart lordos`.
+- **Browsers,** started from SSH in the session (`WAYLAND_DISPLAY=wayland-0`, the session bus,
+  `GSETTINGS_BACKEND=keyfile`) by `~/brs-run.sh`, quit with `SIGTERM` (Chromium) or Ctrl+Q and
+  Return through `qm monitor 119` `sendkey` (Firefox: mouse clicks don't reach it on this VM).
+  - **Chromium:** the user's `~/.config/chromium` was moved aside to `~/.config/chromium.brs-saved`
+    and a throwaway profile made by starting Chromium; it was turned into a 0.8.3-style profile
+    (`custom_chrome_frame` false) by hand, then: «Change them», the switch turned off while Chromium
+    was open (applied seconds after it quit), and a check that Chromium keeps the edited values when
+    it rewrites `Preferences`. Chromium left a stale `SingletonLock` after `SIGTERM`; it was
+    correctly ignored. At the end the throwaway profile was deleted and the saved folder put back.
+  - **Firefox:** `lord` already had two Firefox ESR profiles in `~/.config/mozilla/firefox` from
+    October 16 (not checked before the first toggle, so the switch wrote to them): `user.js` lines
+    and `user.js.lordos-backup` files, and Firefox ran three times on `eb7mmslg.default-esr` (its
+    normal session files changed; `prefs.js` got `browser.tabs.inTitlebar`). At the end LordOS's
+    files were removed from both profiles (`user.js`, `user.js.lordos-backup`; Firefox never creates a `user.js`, and both
+    backups held only LordOS's line) and the `inTitlebar` line removed from
+    `prefs.js` with Firefox closed, so it follows the default again.
+- **Input and screenshots:** `lord-qmp-input.py 119 1280 800` from the host, `screendump` holding
+  `flock /tmp/sistema-119-screen.lock`.
+- **Undone at the end:** `/usr/lib/lordos` restored from the backup (the 90 paths the deploy added
+  removed, `diff -r` against the backup empty), `settings.json` restored, `gsettings-desktop-schemas`
+  purged, the GTK themes, `session.conf`, the scripts, the tree, the backup and `/tmp/brs-*` removed,
+  `lordos.service` restarted to the login screen (the 0.8.3-era greeter kept running, as before).
+  `eth0` keeps 172.17.0.54; no network or Proxmox setting was touched.

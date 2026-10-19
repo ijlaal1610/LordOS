@@ -668,21 +668,24 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   Firefox draw their own bar by default, with LordOS's window buttons (traffic lights from LordOS's
   GTK theme in Chromium), and the window menu, resize edges and snap layouts keep working. See
   `docs/WAYLAND.md`, "Who draws the frame".
-- [ ] **Settings → Appearance: "Browsers: tabs in the title bar" (0.8.4, proposal)** — one switch,
-  on by default, that sets the browsers' own preferences for the user instead of each browser's
-  settings page:
-  - **Chromium:** writes `browser.custom_chrome_frame` (and `extensions.theme.system_theme` = 1, the
-    GTK theme, for the traffic lights) in each profile's `Preferences` under `~/.config/chromium`,
-    only while Chromium is not running (it rewrites the file on exit), through a narrow `lord.*`
-    call that edits those two keys and nothing else (never a free-form JSON write);
-  - **Firefox:** a `user.js` line `user_pref("browser.tabs.inTitlebar", 1|0)` in each profile under
-    `~/.mozilla/firefox-esr` (read at start, so it applies the next time Firefox opens);
-  - off → both go back to the LordOS frame; the page says the change applies when the browser
-    restarts;
-  - optional, separate: traffic lights in Firefox too. Firefox draws its window buttons itself (not
-    with the GTK theme), so it would need a per-profile `chrome/userChrome.css` plus
-    `toolkit.legacyUserProfileCustomizations.stylesheets`; weigh it against touching browser
-    profiles before doing it.
+- [x] **Settings → Appearance: "Browsers: tabs in the title bar" (0.8.4)** — one switch, on by
+  default, that sets the browsers' own preference in the user's profiles instead of each browser's
+  settings page (`docs/WAYLAND.md`, "The switch in Settings"):
+  - **Chromium:** `browser.custom_chrome_frame` (and `extensions.theme.system_theme` = 1, the GTK
+    theme, unless the profile uses a theme extension) in each profile's `Preferences`, only while
+    Chromium is closed (if it is open, applied as soon as it quits), through the narrow
+    `lord.browserFrame` call (`hw/brframe.c`): those keys and nothing else, validated JSON before
+    and after, a backup and an atomic rename;
+  - **Firefox:** a marked `user.js` line `user_pref("browser.tabs.inTitlebar", 1|0)` in each
+    profile under `~/.config/mozilla/firefox` (where Firefox 153 puts them) and `~/.mozilla/firefox`,
+    removed again once Firefox has read it; a line the user wrote is kept;
+  - existing Chromium profiles that don't follow the switch (upgrades from 0.8.3) are counted on the
+    page, with a «Change them» button;
+  - the page says the change applies the next time each browser opens.
+- [ ] **Traffic lights in Firefox too** (optional, separate). Firefox draws its window buttons
+  itself (not with the GTK theme), so it would need a per-profile `chrome/userChrome.css` plus
+  `toolkit.legacyUserProfileCustomizations.stylesheets`; weigh it against touching browser profiles
+  before doing it.
 
 ## After the final ISO
 

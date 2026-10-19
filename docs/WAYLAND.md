@@ -243,8 +243,9 @@ What a window with its own bar still gets from LordOS (both themes, `WINDOWS.md`
 - **Upgrades** (migration `005-0.8.4-browser-frames`): where the files are still what the 0.8.3 ISO
   wrote, they change to the new defaults. Firefox's is a default pref, so every profile follows it
   except one whose user changed «Title Bar». Chromium's are initial preferences: only new profiles
-  get them; an existing profile keeps its frame (switch as above, and Settings → Appearance → Theme →
-  «Use GTK» for the traffic lights). Home folders are never touched.
+  get them; an existing profile keeps its frame until its user flips the switch below (Settings
+  shows how many Chromium profiles don't follow it, with a «Change them» button). The root
+  migration never touches home folders.
 - **The LordOS GTK theme's title buttons** (`assets/gtk/LordOS*/gtk-3.0/gtk.css`): GTK sizes a title
   button by its 16 px icon, and Chromium does the same when it draws its tab strip with the GTK
   theme, so the button stays 16 px and the circle is a 13 px radial gradient inside it; measured on
@@ -273,6 +274,63 @@ What a window with its own bar still gets from LordOS (both themes, `WINDOWS.md`
   portal; not tested.
 - **The JS.** The SDK's `ThemeProvider` sends mode, accent and buttons with `lord.portal.set` when
   they change.
+
+### The switch in Settings (0.8.4)
+
+**Settings → Appearance → «Browsers: tabs in the title bar»**, on by default. On: Chromium and
+Firefox draw one bar with their tabs and LordOS's window buttons. Off: they use the LordOS frame.
+It replaces each browser's own setting for the user, and writes that one preference in the user's
+own profiles, only when the switch is turned (never by itself at login):
+
+| | |
+|---|---|
+| ![switch](browser-switch.png) | ![pending](browser-switch-pending.png) |
+| The switch; a profile made before 0.8.4 still has the LordOS frame, «Change them» applies the switch to it | Turned off while Chromium is open: it waits, and applies as soon as Chromium quits |
+
+![off](browser-switch-off.png)
+
+*Switch off: the same Chromium profile with the LordOS frame.*
+
+- **Who writes:** `lord-server`, as the user, in C (`server/src/hw/brframe.c`, exposed as
+  `lord.browserFrame` in `ui/js_hw.c`; the page is `apps/settings/BrowserFrame.jsx`, the logic
+  `sdk/browserframe.js`). No program is run and JS passes no path: only `on`/`off` and which
+  browser. The folders are fixed (`$XDG_CONFIG_HOME` or `~/.config`, and `~`); every file is opened
+  without following links, must be a regular file owned by the user and is size-capped.
+- **Chromium** (`~/.config/chromium/Default` and `Profile N`, `Preferences`):
+  `browser.custom_chrome_frame` = on/off, and with on `extensions.theme.system_theme` = 1 (the GTK
+  theme, for the traffic lights) unless the profile uses a theme extension the user installed
+  (kept). Chromium rewrites `Preferences` when it quits, so it is only written while Chromium is
+  closed: its `SingletonLock` (`<host>-<pid>`) must be missing or stale (that pid isn't one of the
+  user's `chromium` processes; a lock from another host counts as open). If Chromium is open the
+  change waits (`settings.browserFramePending`, a check every 5 s and at login) and is applied when
+  it quits. The edit is surgical: only those values change, the rest of the file stays byte for
+  byte; the file must parse as JSON before (strict reader, `sec/json.c`) and after, with the asked
+  value in it; a malformed or unexpected file (`browser` not an object, an escaped duplicate key) is
+  left alone and reported. The previous file goes to `Preferences.lordos-backup`, then the new one
+  is written next to it (`O_EXCL`, `fsync`) and renamed over it, keeping its mode. Chromium
+  accepts the edited file (tested with Chromium 155: no reset, the value survives its own rewrite).
+- **Firefox** (`~/.config/mozilla/firefox`, where Firefox 153 makes new profiles, and the legacy
+  `~/.mozilla/firefox`; the relative profiles of `profiles.ini`): one marked line
+  `user_pref("browser.tabs.inTitlebar", 1|0); // lordos: …` in `user.js`, which Firefox reads at
+  start, so it can be written while Firefox runs (it applies when Firefox restarts). Not needed
+  when `prefs.js` already holds the value. A `user.js` line the user wrote themselves is never
+  touched («kept», and the page says so). At login `lord.browserFrame.tidy()` removes LordOS's line
+  again once Firefox has started with it (its `lock` link or `.parentlock` newer than `user.js`,
+  the profile not open: a live `.parentlock` lock or a `lock` link to a live `firefox` process), so
+  a later choice in Firefox's own «Title Bar» sticks. `prefs.js` is only read, never written.
+- **Not done:** traffic lights in Firefox too. Firefox draws its window buttons itself, so it
+  would need a per-profile `chrome/userChrome.css` and
+  `toolkit.legacyUserProfileCustomizations.stylesheets`; the roadmap keeps it as a separate item
+  to weigh first. A profile created later follows the system defaults (its own bar), not the
+  switch: turn the switch again for it.
+- **Tests:** `build/brframe-test` (`make -C server test`): the Chromium edit (missing keys, pretty
+  and compact files, strings with braces and quotes, theme extensions, idempotence, 12 malformed
+  inputs), the `user.js` line (other lines kept, the user's own line, comments, NUL bytes), and on
+  fake homes: profile discovery (`Default`/`Profile N` only, `profiles.ini` with absolute and
+  `../` paths refused), a running Chromium (a process named `chromium` holding the lock), stale and
+  foreign locks, a linked `Preferences` or `user.js` refused, backups, modes, a running Firefox
+  (`.parentlock` held, a live `lock` link) and the tidy-up rules. On VM 119 (`VM-SETUP.md`, step 39)
+  with Chromium 155 and Firefox ESR 153.
 
 Tested in VM 118 with Chromium 155, Firefox ESR 153, Mousepad (GTK 3) and GNOME Calculator
 (GTK 4, libadwaita); the 0.8.4 frame changes on VM 119 (`VM-SETUP.md`, step 38) with Chromium 155,

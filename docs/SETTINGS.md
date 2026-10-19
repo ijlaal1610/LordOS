@@ -293,6 +293,14 @@ and the Linux apps whose `.desktop` `MimeType` covers the category (terminals: `
 
   ![Open With](files-open-with-menu.png)
 
+## Appearance: «Browsers: tabs in the title bar»
+
+Not a hardware page, but its native side lives here too: `hw/brframe.c`, exposed as
+`lord.browserFrame.apply(on, 'all'|'chromium'|'firefox')`, `.state()`, `.tidy()` and
+`.chromiumRunning()` in `ui/js_hw.c`; the page is `apps/settings/BrowserFrame.jsx` (strings in
+`settings.json`, `browserTabs.*`) and the logic `sdk/browserframe.js`. It writes one preference in the
+user's own Chromium and Firefox profiles; see `WAYLAND.md`, "The switch in Settings".
+
 ## Admin actions
 
 All in `server/src/hw/hw_admin.c`, in the `actions` table through `HW_ADMIN_ACTIONS`:
@@ -318,6 +326,8 @@ The validators are unit-tested in `build/settings-hw-test`.
   sunset in London, Buenos Aires, Tokyo and Svalbard, schedule across midnight, zone1970.tab),
   mimeapps.list editing and globs2, the power_supply reader, the admin validators. 129 checks.
 - `build/bt-test` (`make test`): BlueZ parsing. 32 checks.
+- `build/brframe-test` (`make test`): the browsers' title bar switch (Chromium `Preferences`,
+  Firefox `user.js`, running browsers, hostile profile folders). 90 checks.
 - `build/fan-test` (`make test`): curves, hysteresis, `fan.json`, the socket requests and the fan
   driver on fake sysfs trees (see `FANS.md`).
 - On VM 118: live mode changes with revert and keep, persistence across a session restart,
