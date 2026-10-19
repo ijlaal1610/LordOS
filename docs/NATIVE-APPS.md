@@ -93,6 +93,14 @@ The full example is in `examples/apps/fractal/`. It uses:
 
 The rest of the SDK is the same as for the bundled apps (see `apps/README.md`).
 
+## System apps (0.8.2)
+
+The apps in `apps/` are **system apps**: they are built into the theme bundles, which LordOS checks
+against its signed manifest before running them (see [SIGNING.md](SIGNING.md), "Verified system
+code"), and the Store never offers to remove them ("System app — part of LordOS"). An installed
+`.lpk` is never a system app, even with the same id: the theme's app wins and the package is not
+listed. `isSystemApp(id)` from `@lordos/sdk` tells them apart.
+
 ## Permissions and trust (M8)
 
 Since M8 there is **package signing** and a **permissions and isolation** model (see

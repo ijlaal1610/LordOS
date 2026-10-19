@@ -247,6 +247,10 @@ other bundle; settings persist on disk.
 - `lord.settings` only writes `~/.config/lordos/settings.json` (max. 64 KB, atomic write).
 - `lord.themes.use` only accepts plain folder names in `themes/`; a theme that fails
   to load is banned to avoid loops.
+- LordOS's own JavaScript (themes, login screen, app host, system apps) only runs if it matches
+  `code-manifest.json`, signed with the release key and checked by lord-server at load time from the
+  same read that is evaluated (`server/src/sec/codesig.c`, `SIGNING.md`, "Verified system code").
+  A modified bundle is not run: another theme, or the built-in recovery screen.
 - There is no API to run arbitrary commands. The only way to start a process is
   `lord.term.create()`, which launches the user's own login shell (the one in `/etc/passwd`)
   with no capabilities and no `SUDO_*` variables, just like any terminal emulator.

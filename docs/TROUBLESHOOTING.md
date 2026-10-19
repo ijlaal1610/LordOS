@@ -1,5 +1,22 @@
 # Troubleshooting
 
+## "This LordOS component was modified and was not loaded"
+
+LordOS checks its own code (the themes, the login screen, the system apps) against a list signed with
+the LordOS key before running it ([SIGNING.md](SIGNING.md), "Verified system code"). This message,
+or the recovery screen, means a file in `/usr/lib/lordos` no longer matches: a disk error, an edit by
+hand, or tampering. To see which files:
+
+```sh
+sudo /usr/lib/lordos/bin/lord-server --check-code
+```
+
+To repair it, reinstall the package (your files and settings are not touched):
+
+```sh
+sudo apt install --reinstall lordos
+```
+
 ## Typing feels slow
 
 If keys show up late in one app (for example Chromium) but not in LordOS's own apps (Notes, the

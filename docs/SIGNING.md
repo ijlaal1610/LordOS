@@ -153,6 +153,178 @@ its signature cover it too. See [COMPLIANCE.md](COMPLIANCE.md).
 The whole release process (changelog, tag, build, SBOM, signing and `gh release create`) is in
 [RELEASING.md](RELEASING.md).
 
+## Verified system code (0.8.2)
+
+The `.lpk` signing above covers apps installed by the user. LordOS's **own** code — the desktop,
+the login screen and every native app — is checked too: lord-server refuses to run a bundle that no
+longer matches the signed copy. This is phase 1 of 3 of "System apps immutable" (phase 3 brings
+fs-verity and A/B system images).
+
+### What is signed
+
+`code-manifest.json`, at the root of the LordOS folder (`/usr/lib/lordos`; the repository root in a
+development tree), lists the size and SHA-256 of every file LordOS runs as JavaScript:
+
+| File | What it is |
+|---|---|
+| `themes/<theme>/theme.bundle.js` | the shell, the SDK, the React runtime and **every native app** (they are bundled into each theme), for `default`, `classic` and `greeter` (the login screen) |
+| `assets/app-host.bundle.js` | React + SDK of isolated app processes (`lord-server --app <id>`) |
+| `assets/sysapps/<id>/app.js` | system apps that run as their own sandboxed process (Passwords) |
+
+```json
+{
+  "format": 1,
+  "kind": "lordos-system-code",
+  "version": "0.8.2",
+  "files": [
+    { "path": "assets/app-host.bundle.js", "size": 433360, "sha256": "25d0b1ae…" },
+    { "path": "themes/default/theme.bundle.js", "size": 1492265, "sha256": "f9546e6e…" }
+  ]
+}
+```
+
+`code-manifest.sig` is the base64 of the Ed25519 signature over the exact bytes of the manifest,
+made with the **LordOS release key** (the same key as `SHA256SUMS.sig`, see "Release files" below).
+The public key is compiled into lord-server (`codesig_release_key` in `server/src/sec/codesig.c`;
+`build/codesig-test` checks it against `tools/release/lordos-release.pub.pem`), so no file on disk
+can add a trusted key. The `kind` field keeps a signature made for another purpose from passing as
+this one.
+
+**Not listed, on purpose:** fonts, language catalogs, icons, images, Help articles, `theme.json`
+and a system app's `manifest.json` (its window size; its permissions are decided by lord-server).
+They are data read by bounded parsers, not code. A modified catalog can change what a text says
+but cannot run anything; phase 3 (fs-verity over the whole system image) covers them.
+
+`tools/code-manifest.mjs` writes the manifest (deterministic: the same bundles give the same bytes);
+`npm run build` runs it after building, and removes a `code-manifest.sig` that no longer matches.
+
+### How lord-server checks it (`server/src/sec/codesig.c`)
+
+- **Once per process**, before the first bundle: read `code-manifest.json` and `.sig` from the
+  LordOS folder, verify the signature with the compiled-in key, then parse the manifest with the
+  strict JSON reader (format 1, the right kind, relative paths without `.`/`..`, sorted and unique,
+  64 lowercase hex digits, at most 4096 files and 1 MB). An isolated app's process does this before
+  its sandbox is applied.
+- **Per bundle, lazily, when it is loaded:** the file is opened under the LordOS folder with
+  `openat2(RESOLVE_BENEATH)` (no `..`, no link out of it), read whole from that one descriptor, and
+  the SHA-256 of **exactly those bytes** is compared with the manifest; the same buffer is what
+  QuickJS evaluates. Nothing is read twice, so there is no window to swap the file between the check
+  and the use (no TOCTOU). Only the bundle that is used is hashed: the login screen hashes the greeter
+  bundle, a session its theme, an isolated app the app host and its `app.js`.
+- The SHA-256 is our own (`server/src/pkg/crypto.c`): portable C, unrolled, and on aarch64 the CPU's
+  SHA-256 instructions when it has them (the Raspberry Pi 5; checked at run time, compared bit for bit
+  with the C code by `build/codesig-test`). x86-64 uses the C code (its SHA extensions are not used
+  until they are tested on such a CPU).
+
+### States
+
+| State | When | About shows |
+|---|---|---|
+| **Verified** | signed manifest, good signature, every loaded bundle matches | "Verified" (green) and "Signed by LordOS · N components" |
+| **Development build** | no `.sig` (a development tree, `npm run build`), or no manifest at all, in a development build of lord-server | "Development build" (orange) and "Development build: the system code is not signed by LordOS." |
+| **Modified** | a bundle does not match, or the manifest or its signature is bad | "Modified — not loaded" (red) |
+
+In a development build with an unsigned manifest the hashes are still checked, so a modified bundle
+is refused the same way. A **release build** (`make -C server RELEASE=1`) never accepts the
+development state: without a valid signature nothing is loaded.
+
+### When something does not match
+
+- The bundle is **not run**. The refusal is logged (`code: REFUSED themes/default/theme.bundle.js:
+  SHA-256 differs from the manifest — this LordOS component was modified and was not loaded` in the
+  session log or the journal) and remembered for the session.
+- **A theme:** lord-server falls back to the default theme, then the classic one, and the desktop
+  shows a notification: **"This LordOS component was modified and was not loaded"**, naming the file,
+  with a Details button (About). The broken theme is not offered again in this session.
+- **Nothing left to load** (every theme, the login screen, or a bad manifest/signature): the built-in
+  **recovery screen** — compiled into lord-server, so it is as trusted as lord-server itself — says
+  what happened, lists the files and how to repair it (`sudo apt install --reinstall lordos`); in a
+  session it has a Log Out button. Never a blank screen.
+- **An isolated system app** (Passwords): its window shows the same recovery screen instead of the app.
+
+`lord.code.status()` (`ui/js_sec.c`) gives the SDK the state and the refusals; `sdk/codesig.js`
+shows the notification. `lord-server --check-code [<folder>] [--require-signed]` checks a whole tree
+the way a session would and exits 1 if anything is off (used by `tools/iso/mkdeb.sh`, and for
+troubleshooting: `sudo /usr/lib/lordos/bin/lord-server --check-code`).
+
+| | |
+|---|---|
+| ![modified](system-apps-modified.png) | ![recovery](system-apps-recovery.png) |
+| One byte changed in the default theme: the classic theme loads and says so | Every theme modified: the recovery screen |
+| ![about verified](system-apps-about-verified-dark.png) | ![about development](system-apps-about-dev-light.png) |
+| About: System app, Verified | About: Development build |
+| ![app recovery](system-apps-app-recovery.png) | |
+| Passwords' `app.js` modified: its window explains it | |
+
+### System apps can't be removed
+
+Every app in `apps/` is a **system app** (`system: true`, set by `tools/build-theme.mjs`; a
+package can never claim it, `sdk/windows.js` `isSystemApp`). Store → Installed shows "System app —
+part of LordOS" where a Linux app has Remove, and About shows a "System app" badge. The `lordos`
+Debian package is marked `Protected: yes` (Debian's field for packages the system needs), so the
+Store's package engine refuses to remove it (`pkg.removeEssential`, the same rule as essential
+packages) and dpkg wants `--force-remove-protected`. This part was checked in the code
+(`status.c` reads the field into `IF_PROTECTED`, `resolve.c` refuses), not yet on an installed
+0.8.2 `.deb`.
+
+| | |
+|---|---|
+| ![store light](system-apps-store-light.png) | ![store dark](system-apps-store-dark.png) |
+| Store → Installed: system apps can't be removed | The same in dark mode |
+
+### Threat model
+
+- **Protects against** a process running as the user (or as any non-root account) changing
+  LordOS's code: it can't write `/usr/lib/lordos` anyway, and a copy elsewhere is never loaded
+  (lord-server only runs files under its own folder, checked against the signed list). It also
+  catches **offline modification** of the bundles or the manifest — a disk edited from another
+  system, a corrupted or tampered image — and plain corruption, and it tells the user instead of
+  running it.
+- **Does not protect against root.** An attacker with root can replace lord-server itself (and its
+  compiled-in key), or the kernel; no check inside lord-server can stop that. A development build of
+  lord-server accepts an unsigned manifest by design, so swapping in a development build also needs
+  root. Full protection of the system files against offline and root-level changes comes with phase 3
+  (fs-verity and A/B system images, verified from boot).
+- Fonts, catalogs and images are not covered (see above).
+
+### Startup cost
+
+Measured with the logs lord-server prints (`code: …`), 2026-10-19:
+
+| Machine | Signature check (once per process) | Default theme (1.46 MB) | Login screen (431 KB) | Added to a session start |
+|---|---|---|---|---|
+| VM 118 (Xeon Silver 4108, 1.8 GHz; C SHA-256, 118 MB/s) | 5.1 ms | 13–26 ms | 3.9 ms | **18–34 ms** |
+| Raspberry Pi 5 (Cortex-A76; SHA-256 instructions, 897 MB/s; C: 169 MB/s) | 5.3 ms | ≈1.6 ms | ≈0.5 ms | **≈7 ms** |
+
+On the Pi the hashing speed and the Ed25519 time come from `build/codesig-test` run on the board;
+the per-bundle figure follows from them. Evaluating the same theme takes 550–670 ms on the VM, so the
+check adds 2–5 %. Wall-clock time from start to "theme loaded" on the VM (5 runs each) was within
+noise of the build without the check (727–870 ms against 745–855 ms).
+
+### The release flow
+
+1. On the maintainer's machine: `npm run build`, then `tools/release/sign-code.sh` (regenerates
+   `code-manifest.json`, signs it with `~/.config/lordos-release/release-ed25519.key.pem` into
+   `code-manifest.sig` and verifies it against `lordos-release.pub.pem`). The bundles don't depend on
+   the architecture, so one signature serves amd64 and arm64.
+2. The tree (with both files) goes to the build VMs; `make -C server RELEASE=1`.
+3. `REQUIRE_SIGNED_CODE=1 tools/iso/mkdeb.sh` installs both files into `/usr/lib/lordos/` and runs
+   `lord-server --check-code` on the staged tree: the `.deb` is not built if a bundle doesn't match
+   or (release build) the signature is missing. The ISO and the Raspberry Pi image install that `.deb`
+   (`tools/rpi/build-img.sh` passes `RELEASE` and `REQUIRE_SIGNED_CODE` to its arm64 chroot).
+
+See [RELEASING.md](RELEASING.md), step 3.
+
+### Testing it (development)
+
+- `make -C server test` runs `build/codesig-test`: the parser, signatures (good, altered, other key,
+  bad encodings, wrong kind), one modified byte, truncation, unlisted files, a link out of the folder,
+  the development and release policies, the SHA-256 vectors on every path and the compiled-in key.
+- A **test build** can trust a throwaway key instead of the release key:
+  `make -C server CODE_PUBKEY=<64 hex digits>` (refused together with `RELEASE=1`), and
+  `CODE_PUB=test.pub.pem tools/release/sign-code.sh "$PWD" test.key.pem` signs with it. That is how the
+  "Verified" screenshots above were taken on VM 118; the release key was not used.
+
 ## Files
 
 | Path | What it is |
@@ -165,3 +337,7 @@ The whole release process (changelog, tag, build, SBOM, signing and `gh release 
 | `server/src/ui/js_sec.c` | `lord.sign` for the SDK (status, restore, share, userKey) |
 | `tools/lpk.mjs` | package, sign, verify, keygen and catalog |
 | `packaging/keys/lordos-dev.pub` | development public key |
+| `server/src/sec/codesig.c` | verified system code: the signed manifest and the check of each bundle at load time |
+| `tools/code-manifest.mjs` | writes `code-manifest.json` (run by `npm run build`) |
+| `tools/release/sign-code.sh` | signs it with the release key (maintainer's machine only) |
+| `sdk/codesig.js` | the "component was modified" notification and `codeStatus()` for About |
