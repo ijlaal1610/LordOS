@@ -3,8 +3,8 @@
  * every time it starts (~80 ms on a 1.8 GHz core; reading the bytecode takes ~3 ms).
  *
  * lord-server reads the bundle once through the verified-code check (codesig_load: the bytes that
- * were hashed against the signed manifest are the bytes returned) and compiles exactly those bytes
- * on a thread of its own, with its own QuickJS runtime, a few seconds after the session starts,
+ * were hashed against the signed manifest are the bytes returned) and compiles exactly those bytes,
+ * both on a thread of its own, with its own QuickJS runtime, a few seconds after the session starts,
  * into a sealed memfd. app_spawn() hands the app process a read-only fd of it
  * (LORD_APPHOST_BC_FD). The app process loads and verifies the source itself as before and uses
  * the bytecode only if its header carries the size and SHA-256 of those same bytes; otherwise, or
@@ -38,8 +38,6 @@ typedef struct {
 
 static _Atomic int bc_fd = -1;
 static char bc_path[1024];
-static char *bc_src;                 /* the verified bytes (codesig_load), owned by the thread */
-static size_t bc_len;
 
 static void header_of(const char *src, size_t len, BcHeader *h) {
     memset(h, 0, sizeof *h);
@@ -52,9 +50,12 @@ static void *compile_thread(void *arg) {
     (void)arg;
     struct timespec pause = { 3, 0 };              /* after the desktop has drawn its first frames */
     nanosleep(&pause, NULL);
-    char *src = bc_src;
-    size_t got = bc_len;
-    bc_src = NULL;
+    /* read and hashed here, off the main thread (~15 ms cold at session start); the state and the
+     * manifest were set up on the main thread before it started (apphost_bc_start) */
+    char why[160];
+    size_t got = 0;
+    char *src = codesig_load(bc_path, BC_MAX, &got, why, sizeof why);
+    if (!src) { fprintf(stderr, "lord-server: no app host bytecode: %s\n", why); return NULL; }
     JSRuntime *rt = JS_NewRuntime();
     JSContext *cx = rt ? JS_NewContext(rt) : NULL;
     uint8_t *bc = NULL;
@@ -93,18 +94,15 @@ void apphost_bc_start(const char *bundle_path) {
     if (started || !bundle_path || strlen(bundle_path) >= sizeof bc_path) return;
     started = 1;
     snprintf(bc_path, sizeof bc_path, "%s", bundle_path);
-    /* in this thread: the verified-code state is the process's own (sec/codesig.c) */
-    char why[160];
-    bc_src = codesig_load(bc_path, BC_MAX, &bc_len, why, sizeof why);
-    if (!bc_src) { fprintf(stderr, "lord-server: no app host bytecode: %s\n", why); return; }
+    /* the verified-code state is set up once, on this thread (main.c); without it, no bytecode:
+     * the apps parse the source, as before */
+    if (codesig_state() == CODE_UNCHECKED) { fprintf(stderr, "lord-server: no app host bytecode: code check not set up\n"); return; }
     pthread_t t;
     pthread_attr_t at;
     pthread_attr_init(&at);
     pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
     if (pthread_create(&t, &at, compile_thread, NULL)) {
         fprintf(stderr, "lord-server: no thread for the app host bytecode\n");
-        free(bc_src);
-        bc_src = NULL;
     }
     pthread_attr_destroy(&at);
 }

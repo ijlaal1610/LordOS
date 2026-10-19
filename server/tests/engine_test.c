@@ -496,6 +496,7 @@ static int full_differs(Node *root, int w, int h, int *where) {
 
 static void test_multi_damage(void) {
     enum { W = 640, H = 400, DOTS = 24 };
+    paint_multi_damage = 1;                 /* off by default (paint.c); LORD_DAMAGE=multi */
     ui_reset();
     Node *root = view(NULL);
     ui.root = root;
@@ -585,6 +586,122 @@ static void test_multi_damage(void) {
         if (l.r[i].x0 < l.r[j].x1 && l.r[j].x0 < l.r[i].x1 && l.r[i].y0 < l.r[j].y1 && l.r[j].y0 < l.r[i].y1) overl++;
     CHECK(!overl, "dlist never holds two overlapping rectangles (%d)", overl);
     (void)worst_all;
+    paint_multi_damage = 0;
+}
+
+
+/* Minimizing a window over the Monitor's moving dots (0.8.2 release): the window is remounted with a
+ * shrinking transform towards the Dock, then removed, while the dots keep moving. Every frame,
+ * painted as several rectangles, must match a full repaint: once a few small rectangles are the
+ * only damage, anything left behind stays on screen (the grey rectangle seen during integration). */
+static Node *mk_window(Node *root, float x, float y, float w, float h) {
+    Node *win = box_in(root, x, y, w, h, 0xff3a3a3c);
+    ss(win, "overflow", "hidden");
+    sn(win, "borderRadius", 10);
+    sn(win, "shadowColor", 0x80000000);
+    sn(win, "shadowBlur", 28);
+    sn(win, "shadowOffsetY", 10);
+    sn(win, "borderWidth", 1);
+    sn(win, "borderColor", 0x40ffffff);
+    box_in(win, 0, 0, w, 28, 0xff505052);                /* title bar */
+    box_in(win, 8, 36, w - 16, h - 44, 0xff1e1e1e);      /* content */
+    return win;
+}
+
+static void test_minimize_damage(void) {
+    enum { W = 640, H = 400, DOTS = 24 };
+    for (int variant = 0; variant < 8; variant++) {
+        paint_multi_damage = variant < 4;     /* both: several rectangles (LORD_DAMAGE=multi) and one box */
+        ui_reset();
+        Node *root = view(NULL);
+        ui.root = root;
+        sn(root, "backgroundColor", 0xff1c1c1e);
+        Node *map = box_in(root, 20, 30, 600, 350, 0xff20304a);
+        ss(map, "overflow", "hidden");
+        sn(map, "borderRadius", 12);
+        Node *dots[DOTS];
+        float dx[DOTS], dy[DOTS];
+        for (int i = 0; i < DOTS; i++) {
+            dx[i] = (float)(rnd() % 580);
+            dy[i] = (float)(rnd() % 330);
+            dots[i] = box_in(map, dx[i], dy[i], 6, 6, i % 2 ? 0xd8ff9f0a : 0xd830d158);
+            sn(dots[i], "borderRadius", 3);
+        }
+        Node *barl = layer_node(root, 20, W, H);
+        Node *bar = box_in(barl, 0, 0, W, 24, 0x80ffffff);
+        sn(bar, "backdropBlur", 10);
+        Node *dockl = layer_node(root, 10, W, H);
+        Node *dock = box_in(dockl, 220, 350, 200, 46, 0x90303034);
+        sn(dock, "backdropBlur", 20);
+        sn(dock, "borderRadius", 14);
+        float wx = 140 + (variant % 4) * 20, wy = 90, ww = 320, wh = 200;
+        Node *win = mk_window(root, wx, wy, ww, wh);
+        render(root, W, H);
+        int steps = 6 + (variant % 4) * 3, bad = 0;
+        for (int f = 0; f < 40; f++) {
+            for (int i = 0; i < DOTS; i++) {
+                if ((i + f) % 4 == 0) continue;
+                dx[i] += (float)((int)(rnd() % 9) - 4) + 0.5f;
+                dy[i] += (float)((int)(rnd() % 7) - 3);
+                if (dx[i] < -6) dx[i] = 580;
+                if (dx[i] > 600) dx[i] = 0;
+                if (dy[i] > 350 || dy[i] < -6) dy[i] = 100;
+                sn(dots[i], "left", dx[i]);
+                sn(dots[i], "top", dy[i]);
+            }
+            if (f == 4) {                                   /* minimize: the same window, remounted */
+                node_destroy(win);
+                win = mk_window(root, wx, wy, ww, wh);
+            }
+            if (f >= 4 && f < 4 + steps) {
+                float p = (float)(f - 4 + 1) / (float)steps, e = p * p;
+                sn(win, "scaleX", 1 - 0.92f * e);
+                sn(win, "scaleY", 1 - 0.92f * e);
+                sn(win, "translateX", (320 - (wx + ww / 2)) * e);
+                sn(win, "translateY", (364 - (wy + wh / 2)) * e);
+                sn(win, "opacity", 1 - 0.7f * e);
+            }
+            if (f == 4 + steps && win) { node_destroy(win); win = NULL; }
+            if (f == 30) win = mk_window(root, wx, wy, ww, wh);   /* restored */
+            layout_root(root, W, H);
+            int n = 0;
+            float area = 0;
+            if (paint_partial(root, W, H, &n, &area) < 0) { bad++; continue; }
+            int where = 0, worst = full_differs(root, W, H, &where);
+            CHECK(worst <= 1, "minimize variant %d frame %d (%d rects) differs from a full repaint by %d at %d,%d",
+                  variant, f, n, worst, where % W, where / W);
+        }
+        CHECK(!bad, "minimize variant %d: %d frames with bad rectangles", variant, bad);
+    }
+    paint_multi_damage = 0;
+}
+
+
+/* A row with a fixed child and one that grows (a list item: bullet + text): the growing child's
+ * wrapped height is measured at the width it gets, not the whole row's (0.8.2: the last line of a
+ * long "What's new" bullet in Store → Updates drew over the next bullet). */
+static void test_grow_wrap_height(void) {
+    ui_reset();
+    Node *root = view(NULL);
+    ui.root = root;
+    sn(root, "width", 200);
+    Node *row = view(root);
+    ss(row, "flexDirection", "row");
+    Node *bullet = view(row);
+    sn(bullet, "width", 18); sn(bullet, "height", 14);
+    Node *text = view(row);
+    sn(text, "flexGrow", 1); sn(text, "flexBasis", 0);
+    Node *words = view(text);
+    ss(words, "flexDirection", "row");
+    ss(words, "flexWrap", "wrap");
+    for (int i = 0; i < 10; i++) { Node *w = view(words); sn(w, "width", 40); sn(w, "height", 14); }
+    Node *next = view(root);
+    sn(next, "height", 10);
+    layout_root(root, 200, 300);
+    /* 182 px for the words: 4 per line, 3 lines (at 200 it would be 5 per line, 2 lines) */
+    CHECK(fabsf(words->h - 42) < 0.5f, "wrapped words: %g high, want 42", words->h);
+    CHECK(row->h >= words->h - 0.5f, "the row (%g) is shorter than its wrapped text (%g)", row->h, words->h);
+    CHECK(next->ay >= row->ay + words->h - 0.5f, "the next item (y %g) overlaps the wrapped text (ends at %g)", next->ay, row->ay + words->h);
 }
 
 static void test_transform_paint_hit(void) {
@@ -861,6 +978,8 @@ int main(int argc, char **argv) {
     test_layers();
     test_backdrop_band();
     test_multi_damage();
+    test_minimize_damage();
+    test_grow_wrap_height();
     printf("engine-test: %d checks, %d failures\n", checks, fails);
     return fails ? 1 : 0;
 #endif

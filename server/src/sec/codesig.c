@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -177,6 +178,11 @@ static struct {
     CodeRefusal refused[16];
     int nrefused;
 } cs = { .state = CODE_UNCHECKED, .rootfd = -1 };
+/* codesig_load also runs on the app host's bytecode thread (app/apphost_bc.c), after the state
+ * was set up on the main thread: the manifest is read-only then, only the time spent and the
+ * refusals change, under this lock */
+static pthread_mutex_t cs_mu = PTHREAD_MUTEX_INITIALIZER;
+static void add_ms(double dt) { pthread_mutex_lock(&cs_mu); cs.ms += dt; pthread_mutex_unlock(&cs_mu); }
 
 static double now_ms(void) {
     struct timespec t;
@@ -303,9 +309,9 @@ CodeState codesig_state(void) { return cs.state; }
 const char *codesig_root(void) { return cs.root; }
 const char *codesig_reason(void) { return cs.reason; }
 const CodeManifest *codesig_manifest(void) { return cs.have_manifest ? &cs.m : NULL; }
-double codesig_ms(void) { return cs.ms; }
-int codesig_refused_count(void) { return cs.nrefused; }
-CodeRefusal *codesig_refused(int i) { return i >= 0 && i < cs.nrefused ? &cs.refused[i] : NULL; }
+double codesig_ms(void) { pthread_mutex_lock(&cs_mu); double v = cs.ms; pthread_mutex_unlock(&cs_mu); return v; }
+int codesig_refused_count(void) { pthread_mutex_lock(&cs_mu); int v = cs.nrefused; pthread_mutex_unlock(&cs_mu); return v; }
+CodeRefusal *codesig_refused(int i) { return i >= 0 && i < codesig_refused_count() ? &cs.refused[i] : NULL; }
 
 const char *codesig_state_name(CodeState s) {
     switch (s) {
@@ -318,12 +324,17 @@ const char *codesig_state_name(CodeState s) {
 
 static void refuse(const char *rel, const char *why) {
     fprintf(stderr, "code: REFUSED %s: %s — this LordOS component was modified and was not loaded\n", rel, why);
-    for (int i = 0; i < cs.nrefused; i++) if (!strcmp(cs.refused[i].path, rel)) return;
-    if (cs.nrefused >= (int)(sizeof cs.refused / sizeof cs.refused[0])) return;
-    CodeRefusal *r = &cs.refused[cs.nrefused++];
-    snprintf(r->path, sizeof r->path, "%s", rel);
-    snprintf(r->reason, sizeof r->reason, "%s", why);
-    r->reported = 0;
+    pthread_mutex_lock(&cs_mu);
+    int known = 0;
+    for (int i = 0; i < cs.nrefused; i++) if (!strcmp(cs.refused[i].path, rel)) known = 1;
+    if (!known && cs.nrefused < (int)(sizeof cs.refused / sizeof cs.refused[0])) {
+        CodeRefusal *r = &cs.refused[cs.nrefused];
+        snprintf(r->path, sizeof r->path, "%s", rel);
+        snprintf(r->reason, sizeof r->reason, "%s", why);
+        r->reported = 0;
+        cs.nrefused++;                  /* after the entry is complete */
+    }
+    pthread_mutex_unlock(&cs_mu);
 }
 
 char *codesig_load(const char *path, size_t max, size_t *len, char *why, size_t whylen) {
@@ -357,7 +368,7 @@ char *codesig_load(const char *path, size_t max, size_t *len, char *why, size_t 
     if (!buf) { snprintf(why, whylen, "cannot read it"); return NULL; }   /* missing: not a modification */
     if (!cs.have_manifest) {
         /* development build without a manifest: runs, flagged in About */
-        cs.ms += now_ms() - t0;
+        add_ms(now_ms() - t0);
         *len = n;
         return buf;
     }
@@ -367,7 +378,7 @@ char *codesig_load(const char *path, size_t max, size_t *len, char *why, size_t 
         return NULL;
     }
     double dt = now_ms() - t0;
-    cs.ms += dt;
+    add_ms(dt);
     fprintf(stderr, "code: %s %s (%zu KB) checked in %.2f ms\n", cs.state == CODE_VERIFIED ? "verified" : "hash ok", rel, n / 1024, dt);
     *len = n;
     return buf;

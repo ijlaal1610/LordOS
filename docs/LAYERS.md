@@ -96,7 +96,8 @@ The GPU path composites that same canvas, so it gets the same fix (tested on VM 
 path).
 
 Since 0.8.2 the damage can be several rectangles painted one by one (`paint.c`, "Several damaged
-rectangles"; the Monitor's moving map dots). The rule holds for each of them: a rectangle that
+rectangles"; the Monitor's moving map dots; off by default in the 0.8.2 release, `LORD_DAMAGE=multi`
+turns it on, see [MONITOR.md](MONITOR.md#082-several-damaged-rectangles-vm-119)). The rule holds for each of them: a rectangle that
 touches a blurred surface or its margin grows to the whole surface, and every other rectangle
 touching that margin joins it, so a blur never reads a neighbour rectangle half painted
 (`test_multi_damage` in `build/engine-test`, against a full repaint).

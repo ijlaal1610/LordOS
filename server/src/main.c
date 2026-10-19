@@ -1193,7 +1193,7 @@ static void present_cpu(Server *s, Out *o, int index, Rect r, int feed) {
         for (int i = 1; i < cp.n; i++) cb = box_join(cb, cp.r[i]);
         Rect cbr = { (int)cb.x0, (int)cb.y0, (int)cb.x1, (int)cb.y1 };
         Rect nj = rect_join(rect_join(o->stale[bi], r), o->curs[bi]);
-        if (!xf && cp.n > 1 && cbr.x0 == nj.x0 && cbr.y0 == nj.y0 && cbr.x1 == nj.x1 && cbr.y1 == nj.y1) {
+        if (paint_multi_damage && !xf && cp.n > 1 && cbr.x0 == nj.x0 && cbr.y0 == nj.y0 && cbr.x1 == nj.x1 && cbr.y1 == nj.y1) {
             for (int i = 0; i < cp.n; i++) {
                 Rect q = { (int)cp.r[i].x0, (int)cp.r[i].y0, (int)cp.r[i].x1, (int)cp.r[i].y1 };
                 if (q.x0 < 0) q.x0 = 0;
@@ -1636,7 +1636,7 @@ int main(int argc, char **argv) {
     if (ok && !s.greeter) portal_start();   /* dark mode, accent and buttons for GTK/GNOME/Qt (ui/portal.c) */
     if (ok && !s.greeter) term_restore();   /* shells still alive from the previous start */
     netrec_init(ok && !s.greeter && session_user != NULL);   /* the Monitor's traffic history (monitor/netrec.c) */
-    if (getenv("LORD_DAMAGE") && !strcmp(getenv("LORD_DAMAGE"), "1")) paint_multi_damage = 0;   /* one damaged box (paint.c) */
+    if (getenv("LORD_DAMAGE") && !strcmp(getenv("LORD_DAMAGE"), "multi")) paint_multi_damage = 1;   /* several damaged rectangles (paint.c; off by default) */
     remote_server = &s;
     tp_route_init(&tp_host);
     static const MirrorInput mirror_in = { remote_pointer, remote_button, remote_wheel, remote_key, remote_clip, remote_clients,

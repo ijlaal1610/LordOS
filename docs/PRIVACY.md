@@ -522,10 +522,12 @@ package keeps its plain owner while a user `.lpk` with the same id does not reac
 | App host JavaScript in the app | — | **23 ms** (bytecode) instead of 110 ms (parsing 430 KB) |
 | Memory | the session grows ~5 MB when Mail opens | Mail 26 MB RSS / 18 MB PSS; Calendar 22 / 15 MB; Contacts 20 / 13.5 MB; Reminders ~21 MB RSS |
 
-- **The app host as bytecode** (`app/apphost_bc.c`): when the session starts, `lord-server` reads
-  `assets/app-host.bundle.js` once through the verified-code check (`codesig_load`, see
-  [SIGNING.md](SIGNING.md), "Verified system code") and, three seconds later, compiles exactly those
-  verified bytes on a thread with its own QuickJS runtime into a sealed memfd (1.7 MB); if the check
+- **The app host as bytecode** (`app/apphost_bc.c`): three seconds after the session starts, a
+  thread of `lord-server` with its own QuickJS runtime reads `assets/app-host.bundle.js` once
+  through the verified-code check (`codesig_load`, see [SIGNING.md](SIGNING.md), "Verified system
+  code"; the check's state is set up on the main thread before, and only its counters change
+  under a lock) and compiles exactly those verified bytes into a sealed memfd (1.7 MB), so the
+  read and the hash (~15 ms cold) stay off the main thread; if the check
   refuses the file nothing is compiled. Each app process gets a read-only fd of it
   (`LORD_APPHOST_BC_FD`), loads and verifies the source itself as before, and uses the bytecode only
   if its header carries the size and SHA-256 of those same bytes; otherwise it parses the source.

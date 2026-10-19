@@ -73,7 +73,8 @@ itself.
   `lord.setStyle`, no React render per frame: 12 frames per second with the window in front, 5
   behind it, at most the 12 busiest arcs and only those on screen; the timer stops with the window
   minimized, while the map is being moved and when nothing moves. Each frame repaints only the
-  small rectangles the dots left and entered (0.8.2, "Several damaged rectangles"). With Appearance → Reduce motion, each busy arc shows two still markers instead: a short
+  small rectangles the dots left and entered (0.8.2, "Several damaged rectangles", off by default
+  in the 0.8.2 release). With Appearance → Reduce motion, each busy arc shows two still markers instead: a short
   comet of three dots, the biggest in front, pointing the way the bytes go.
 
   When an app is chosen, the map shows only its places and frames them. A click on a dot or an arc
@@ -603,6 +604,17 @@ Network tab in front, five downloads running (one over HTTP/3), arcs to 4–6 co
 
 ### 0.8.2: several damaged rectangles (VM 119)
 
+**Off by default in the 0.8.2 release.** During the release integration test, a Terminal window
+minimized over the animated map once (out of five tries) left a grey rectangle on the screen until
+the window came back. The cause was not found in time: `test_minimize_damage` in
+`build/engine-test` (a window remounted with a shrinking, fading transform towards a blurred Dock
+and then removed, over moving dots, every frame compared with a full repaint) passes, so it is not
+in the scene's painting as the test models it. Until it is found, lord-server repaints one box per
+frame, exactly as in 0.8.1; `LORD_DAMAGE=multi` in its environment turns on the several-rectangles
+path described here (with the clipped-subtree skip and the per-rectangle present, which follow the
+same switch). The measurements below are with it on. The 9×9 dot images and the map frame's opaque
+color (below, "The Monitor's side") stay on.
+
 VM 119: 4 vCPU Xeon Silver 4108 at 1.8 GHz, `virtio` GPU without 3D, CPU compositing, 1280×800.
 Network tab in front, ten slow downloads to mirrors in ten countries (arcs to 8–11 countries, about
 20 moving dots). `lord-server` (whole process, % of one core), 5 × 30 s each, the same session
@@ -629,7 +641,8 @@ moving, about 14 frames per second):
   the box around them; `paint_damage` joins pairs whose union wastes less than `DAMAGE_PASS_PX`
   (1,024 px, measured: 256 to 4,096 px all cost within 10 %), falls back to one box when they
   cover 70 % of it, and `paint_out` paints each one (clear, `paint_root` clipped to it). Only on
-  the CPU path and without a window being dragged; `LORD_DAMAGE=1` forces one box.
+  the CPU path and without a window being dragged; only with `LORD_DAMAGE=multi` (off by default
+  in 0.8.2, see above).
 - **Blurred surfaces** keep the 0.8.1 rule ("Paint: repaint a blurred surface whole"): a rectangle
   that touches a blurred node or the margin its blur samples grows to the whole node, and every
   rectangle touching that margin joins it, so the margin is either repainted in the same pass or
@@ -648,7 +661,7 @@ moving, about 14 frames per second):
   inside a clipped, rounded "map" under a translucent blurred bar (dots crossing its blur margin, a
   menu opening and closing), each frame painted rectangle by rectangle and compared with a full
   repaint: identical (at most 1 level, as `test_backdrop_band`); no rectangle outside the box or
-  overlapping another; one box with `LORD_DAMAGE=1`; a full repaint set directly stays one box.
+  overlapping another; one box when it is off; a full repaint set directly stays one box.
   With the blur rule turned off, 15 checks fail. `perf` was installed on VM 119 to find where the
   time went (`VM-SETUP.md`).
 

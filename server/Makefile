@@ -218,7 +218,7 @@ build/sign-test: tests/sign_test.c src/sec/json.c src/sec/sign.c src/lpk.c src/p
 test: build/codesig-test
 build/codesig-test: tests/codesig_test.c src/sec/codesig.c src/sec/json.c src/pkg/crypto.c src/sec/codesig.h src/sec/json.h src/pkg/crypto.h build/gen/codesig_build.h
 	@mkdir -p build
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/codesig_test.c src/sec/codesig.c src/sec/json.c src/pkg/crypto.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/codesig_test.c src/sec/codesig.c src/sec/json.c src/pkg/crypto.c -lpthread
 	./$@ ../tools/release/lordos-release.pub.pem || { rm -f $@; exit 1; }
 # Clock time zones: TZif and POSIX rules against glibc (docs/SYSTEM.md)
 test: build/tzif-test

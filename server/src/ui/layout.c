@@ -112,6 +112,14 @@ static void measure(Node *n, float aw, float ah, float *ow, float *oh) {
             int wrap = s->wrap && !isnan(lim);
             float line_m = 0, line_c = 0, tot_m = 0, tot_c = 0;
             int in_line = 0;
+            /* a row's children that grow (flex: 1) end up narrower than the whole row: their height
+             * is measured again below at the width layout_line gives them, or wrapping text inside
+             * them (a list item's text next to its bullet) is taller than measured and overlaps
+             * what follows (0.8.2: Store → Updates, "What's new") */
+            enum { GROW_MAX = 16 };
+            Node *gk[GROW_MAX];
+            float gbase[GROW_MAX], gmv[GROW_MAX], gw[GROW_MAX], fixed_m = 0, grow_sum = 0;
+            int ng = 0, grow_over = 0;
             for (Node *c = n->first; c; c = c->next) {
                 if (!in_flow(c)) continue;
                 prepare(c);
@@ -133,9 +141,37 @@ static void measure(Node *n, float aw, float ah, float *ow, float *oh) {
                     in_line++;
                     continue;
                 }
-                if (s->row) { cw += c_w; if (c_h > ch) ch = c_h; }
+                if (s->row) {
+                    cw += c_w;
+                    if (c_h > ch) ch = c_h;
+                    if (c->s.grow > 0 && !isnan(iaw)) {
+                        if (ng < GROW_MAX) {
+                            float b = res(c->s.basis, iaw);
+                            gk[ng] = c;
+                            gbase[ng] = (isnan(b) ? c_w - mh : b) + mh;
+                            gmv[ng] = mv;
+                            gw[ng] = c_w - mh;
+                            ng++;
+                            grow_sum += c->s.grow;
+                        } else grow_over = 1;
+                    } else fixed_m += c_w;
+                }
                 else        { ch += c_h; if (c_w > cw) cw = c_w; }
                 count++;
+            }
+            if (s->row && ng && !grow_over && !wrap) {
+                float free = iaw - fixed_m - (count > 1 ? s->gap * (count - 1) : 0);
+                for (int i = 0; i < ng; i++) free -= gbase[i];
+                for (int i = 0; i < ng; i++) {
+                    const float *cm = node_margin(gk[i]);
+                    float mh = cm[EDGE_L] + cm[EDGE_R];
+                    float sz = gbase[i] + (free > 0 ? free * gk[i]->s.grow / grow_sum : 0) - mh;
+                    sz = clamp_dim(sz, gk[i]->s.min_w, gk[i]->s.max_w, iaw);
+                    if (gw[i] <= sz + 0.5f) continue;       /* it fits: same height */
+                    float c_w, c_h;
+                    measure(gk[i], sz, isnan(iah) ? NAN : iah - gmv[i], &c_w, &c_h);
+                    if (c_h + gmv[i] > ch) ch = c_h + gmv[i];
+                }
             }
             if (wrap) {
                 if (line_m > tot_m) tot_m = line_m;

@@ -280,7 +280,7 @@ int   paint_damage(Node *root);     /* computes ui.damage; 0 if there is nothing
 /* after paint_damage: the rectangles to repaint (1 = just ui.damage), each inside ui.damage;
  * see "Several damaged rectangles" in paint.c */
 int   paint_damage_rects(Box *out, int max);
-extern int paint_multi_damage;      /* 0: always one rectangle (LORD_DAMAGE=1, tests) */
+extern int paint_multi_damage;      /* 1: several rectangles (LORD_DAMAGE=multi, tests); 0 by default */
 void  paint_root(Canvas *c, Node *root);
 Node *hit_test(Node *root, float x, float y);
 /* Capture mode (media/capture.c): protected nodes are painted black and app windows

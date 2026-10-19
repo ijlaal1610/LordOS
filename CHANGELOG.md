@@ -113,13 +113,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   keeps it. The login screen (and the remote login page) now shows **Crystal Crown**.
 - The Control Center shows the current wallpaper and three from the collection; the rest are in
   Settings → Wallpaper (**Change Wallpaper…**).
-- **The map's moving dots cost about half as much.** lord-server now repaints several small
-  rectangles per frame instead of the one box around every change, skips clipped parts of the
-  interface outside them, and copies only those rectangles to the screen; the dots are small
-  ready-made images. With Monitor's map animating, the animation's share of lord-server's CPU went
-  from 2.9 to 1.6 points of one core (VM 119, CPU compositing), and every partial repaint of the
-  desktop gets cheaper the same way. Blurred surfaces (the menu bar, the Dock) are still repainted
-  whole when anything touches them, as in 0.8.1 ([docs/MONITOR.md](docs/MONITOR.md#082-several-damaged-rectangles-vm-119)).
+- **The map's moving dots are cheaper to draw:** they are small ready-made images and the map's
+  frame is opaque, so a repaint starts there. Repainting several small rectangles per frame instead
+  of the one box around every change (which halved the animation's cost in our measurements) is in
+  this version but **off by default**: in one test a minimized window left a grey rectangle on the
+  screen, and correctness comes first. `LORD_DAMAGE=multi` in lord-server's environment turns it
+  on for testing ([docs/MONITOR.md](docs/MONITOR.md#082-several-damaged-rectangles-vm-119)).
 - Isolated apps start faster: the app host is compiled to bytecode once per session, so an app's
   JavaScript loads in ~23 ms instead of ~110 ms (Mail's window: ~145 ms from the click to its first
   frame on a 1.8 GHz test machine).
@@ -133,6 +132,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **Long notes no longer overlap.** In a row with a part that grows (a list item's text next to its
+  bullet), the layout engine measured that part's wrapped height at the whole row's width, so the
+  last line of a long bullet could be drawn over the next one (Store → Updates, "What's new", and
+  any Markdown list). It is now measured at the width it is drawn at.
+- The app host's read and hash for isolated apps' bytecode moved off the main thread at session
+  start (about 15 ms on a cold start); the bytecode is still compiled from exactly the verified bytes.
 - **Package lists after enabling a component.** Adding a component (such as `non-free-firmware`)
   or a source whose signed release file hadn't changed upstream left the package list as it was
   ("already up to date"); the index is now rebuilt whenever the set of lists it is built from

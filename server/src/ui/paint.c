@@ -730,11 +730,13 @@ static void blur_walk(Node *n, int *grew) {
  *     the same pass or not repainted this frame at all (then it still holds what it showed).
  *   - Only on the CPU path and without a window being dragged (its layer and the GPU's window list
  *     are built for one paint_root per frame); otherwise one box, as before. */
-#ifdef LORD_DAMAGE_SINGLE
-int paint_multi_damage = 0;             /* a build for comparing (docs/MONITOR.md, measurements) */
-#else
-int paint_multi_damage = 1;             /* LORD_DAMAGE=1 in lord-server's environment: one box */
-#endif
+/* Off by default since the 0.8.2 release: once, out of five tries during the 0.8.2 integration
+ * test, a window minimized over Monitor's animated map left a grey rectangle until it came back,
+ * and the cause was not found (engine-test test_minimize_damage, a full-repaint comparison of that
+ * scene, passes). Correctness first: one box, exactly as in 0.8.1, unless lord-server runs with
+ * LORD_DAMAGE=multi (main.c). The clipped-subtree skip (paint_cull) and the copy of only the
+ * painted rectangles (present_cpu) follow the same switch. */
+int paint_multi_damage = 0;
 static Box drects[DAMAGE_MAX];
 static int ndrects;
 
@@ -905,7 +907,7 @@ void paint_root(Canvas *c, Node *root) {
     skip_until = gpu_active() ? 0 : media_cover_node(ui.damage.x0, ui.damage.y0, ui.damage.x1, ui.damage.y1);
     if (!skip_until && !gpu_active() && !layer.want) skip_until = opaque_cover_node(root);
     skip_reached = 0;
-    paint_cull = !gpu_active();
+    paint_cull = !gpu_active() && paint_multi_damage;
     /* una ventana que se mueve: lo de abajo se copia y se pinta desde ella (capa del arrastre) */
     if (!skip_until && below_ready(c, root)) {
         below_copy(c);
