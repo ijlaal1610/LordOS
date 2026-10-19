@@ -13,6 +13,7 @@
 import { render, screen } from '@lordos/runtime';
 import {
   View, Text, Image, TextInput, ThemeProvider, useStore, locale, t, formatDate, formatTime, setLanguage, languages, keyboard, settings, LordOSWordmark,
+  lordosWallpapers, findWallpaper, wallpaperSrc, GREETER_WALLPAPER,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { createElement } from 'react';
@@ -221,7 +222,7 @@ function Greeter() {
     <ThemeProvider tokens={{ mode: 'dark', accent: '#ffffff', text: '#ffffff', textDim: 'rgba(255,255,255,0.55)',
       inputBg: 'rgba(255,255,255,0.16)', separator: 'rgba(255,255,255,0.22)' }}>
       <View style={{ width: W, height: H, direction: 'ltr' }}>
-        <Image src="assets/background.png" style={{ position: 'absolute', left: 0, top: 0, width: W, height: H, objectFit: 'cover' }} />
+        <Image src={wallpaperSrc(findWallpaper(lordosWallpapers, GREETER_WALLPAPER), W, H) || 'assets/background.jpg'} style={{ position: 'absolute', left: 0, top: 0, width: W, height: H, objectFit: 'cover' }} />
 
         {/* date and clock */}
         <View style={{ position: 'absolute', left: 0, top: Math.round(H * 0.085), width: W, alignItems: 'center' }}>

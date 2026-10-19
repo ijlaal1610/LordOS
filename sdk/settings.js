@@ -1,12 +1,13 @@
 // settings.js — user settings, stored in ~/.config/lordos/settings.json.
 import { createStore, useStore } from './store.js';
+import { DEFAULT_WALLPAPER } from './wallpapers.js';
 
 const DEFAULTS = {
   mode: 'dark',          // 'dark' | 'light'
   accent: 'azul',
   effects: true,         // transparency with blur
   reduceMotion: false,   // decorative animations off (Settings → Appearance)
-  wallpaper: 'aurora',
+  wallpaper: DEFAULT_WALLPAPER,  // 0.8.2: Lumo Celestial (before: 'aurora', still available)
   keyboard: 'latam',     // before M5; now keyboards (see keyboard.js)
   keyboards: null,       // [{ layout, variant }] from xkb-data
   keyboardIndex: 0,

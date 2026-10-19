@@ -264,5 +264,10 @@
   "sharing.sshToggle": "Permitir login pela rede",
   "sharing.sshUserPlaceholder": "usuário",
   "sharing.sshWhoAdminsHint": "Somente administradores (o grupo sudo). O root nunca pode entrar.",
-  "sharing.sshWhoAllHint": "Qualquer usuário deste computador com senha. O root nunca pode entrar."
+  "sharing.sshWhoAllHint": "Qualquer usuário deste computador com senha. O root nunca pode entrar.",
+  "wallpaperCategory.signature": "Signature",
+  "wallpaperCategory.lumo": "Lumo",
+  "wallpaperCategory.cosmos": "Cosmos",
+  "wallpaperCategory.gradients": "Degradês",
+  "wallpaperCategory.other": "Outros"
 }

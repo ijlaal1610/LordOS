@@ -14,6 +14,8 @@
 #   /usr/lib/lordos/lordos-live-prep      live preparation (grub language, folders)
 #   /usr/lib/systemd/system/lordos.service  lord-sessiond on tty1
 #   /usr/lib/lordos/lordos-splash         boot splash hand-off (Plymouth → LordOS, docs/SESSIONS.md)
+#   /usr/share/backgrounds/lordos/        the wallpapers (<category>/lordos-<name>.jpg, thumbs/), linked
+#                                         from /usr/lib/lordos/assets/wallpapers
 #   /usr/share/plymouth/themes/lordos/    the boot splash theme (selected by the ISO, the Raspberry Pi
 #                                         image or install.sh; the package never selects it)
 #   /usr/share/grub/themes/lordos/        the boot menu theme (amd64; the ISO and the disk installer)
@@ -70,6 +72,14 @@ for d in themes/*/; do
     [ -d "$d/assets" ] && cp -r "$d/assets" "$L/themes/$n/"
 done
 cp -r assets/fonts assets/locales assets/shell assets/icons assets/mascot assets/monitor assets/help "$L/assets/"
+# the wallpaper collection (assets/wallpapers/README.md): once, in the standard place for desktop
+# backgrounds; lord-server reaches it as asset:wallpapers/… through the link. Only the JPEGs, the
+# thumbnails and the README (index.json is bundled into the SDK at build time).
+install -d "$PKG/usr/share/backgrounds/lordos"
+( cd assets/wallpapers && find . -name '*.jpg' -o -name README.md ) | while read -r f; do
+    install -D -m 644 "assets/wallpapers/$f" "$PKG/usr/share/backgrounds/lordos/$f"
+done
+ln -s /usr/share/backgrounds/lordos "$L/assets/wallpapers"
 # each isolated app's process (lord-server --app) loads its runtime from here
 [ -f assets/app-host.bundle.js ] || { echo "missing assets/app-host.bundle.js (npm run build)" >&2; exit 1; }
 install -m 644 assets/app-host.bundle.js "$L/assets/app-host.bundle.js"
@@ -147,6 +157,13 @@ License: Expat
  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
+
+Files: usr/share/backgrounds/lordos/*
+Copyright: 2026 iPERFEX
+License: Expat
+Comment: Created by iPERFEX with an AI image generator; part of the LordOS brand
+ assets. The LordOS name, the crown and Lumo shown in them are also covered by the
+ LordOS trademark and brand policy (lordos.org).
 
 Files: usr/lib/lordos/assets/fonts/*
 License: OFL-1.1

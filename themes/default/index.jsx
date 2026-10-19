@@ -6,6 +6,7 @@ import {
   useLauncherApps, launchApp, useDockEntries, dockActivate, dockMenu, dockPrefs, DOCK_LAUNCHER,
   useTrash, openTrash, emptyTrash, trashMenu, ConfirmDialog,
   DesktopWidgets, registerGestureActions, screenDisplays, mainDisplay, settings, Layer, PowerDialog,
+  findWallpaper, wallpaperSrc,
 } from '@lordos/sdk';
 import { apps } from '@lordos/apps';
 import { useEffect, useRef, useState } from 'react';
@@ -122,7 +123,7 @@ function App() {
   // left/right switch windows (the SDK does that). See docs/TRACKPAD.md.
   useEffect(() => registerGestureActions({ up: () => setLaunchpad(true), down: () => setLaunchpad(false) }), []);
 
-  const wallpaper = t.wallpapers.find((w) => w.id === s.wallpaper) || t.wallpapers[0];
+  const wallpaper = findWallpaper(t.wallpapers, s.wallpaper);
   // Pinned and open apps; windows of the same app (Linux too) share a single icon. The app launcher
   // is a Dock item too (it moves, but can't be removed).
   const entries = useDockEntries(DOCK_DEFAULT, { recents: dp.dockRecents ? 3 : 0, launcher: { Icon: LaunchpadIcon, onOpen: () => setLaunchpad(true) } });
@@ -132,7 +133,7 @@ function App() {
     <ThemeProvider tokens={t}>
       <View style={{ width: '100%', height: '100%' }}>
         {all.map((d) => (
-          <Image key={d.id + ':' + d.x} src={wallpaper.src} onContextMenu={(e) => setContext({ x: e.x, y: e.y })}
+          <Image key={d.id + ':' + d.x} src={wallpaperSrc(wallpaper, d.w * (d.scale || 100) / 100, d.h * (d.scale || 100) / 100)} onContextMenu={(e) => setContext({ x: e.x, y: e.y })}
             style={{ position: 'absolute', left: d.x, top: d.y, width: d.w, height: d.h, objectFit: 'cover' }} />
         ))}
         <DesktopWidgets layer="below" />

@@ -264,5 +264,10 @@
   "sharing.sshToggle": "Allow logins from the network",
   "sharing.sshUserPlaceholder": "user",
   "sharing.sshWhoAdminsHint": "Only administrators (the sudo group). Root can never log in.",
-  "sharing.sshWhoAllHint": "Any user of this computer with a password. Root can never log in."
+  "sharing.sshWhoAllHint": "Any user of this computer with a password. Root can never log in.",
+  "wallpaperCategory.signature": "Signature",
+  "wallpaperCategory.lumo": "Lumo",
+  "wallpaperCategory.cosmos": "Cosmos",
+  "wallpaperCategory.gradients": "Gradients",
+  "wallpaperCategory.other": "Other"
 }
