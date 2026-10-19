@@ -167,7 +167,10 @@ static int parse_desktop(const char *file, const char *lang, Entry *e) {
             } else if (!loc && !strcmp(k, "Exec")) snprintf(act->exec, sizeof act->exec, "%s", v);
             continue;
         }
-        if (!strcmp(k, "Name")) { set_tr(e, 0, e->a.name, sizeof e->a.name, v, loc, lang); e->has_name = 1; }
+        if (!strcmp(k, "Name")) {
+            set_tr(e, 0, e->a.name, sizeof e->a.name, v, loc, lang); e->has_name = 1;
+            if (!loc) snprintf(e->a.name_c, sizeof e->a.name_c, "%s", v);
+        }
         else if (!strcmp(k, "GenericName")) set_tr(e, 1, e->a.generic, sizeof e->a.generic, v, loc, lang);
         else if (!strcmp(k, "Comment")) set_tr(e, 2, e->a.comment, sizeof e->a.comment, v, loc, lang);
         else if (!strcmp(k, "Keywords")) set_tr(e, 3, e->a.keywords, sizeof e->a.keywords, v, loc, lang);
@@ -188,7 +191,7 @@ static int parse_desktop(const char *file, const char *lang, Entry *e) {
         else if (!strcmp(k, "Actions")) snprintf(e->actions, sizeof e->actions, "%s", v);
     }
     fclose(f);
-    unescape(e->a.name); unescape(e->a.generic); unescape(e->a.comment);
+    unescape(e->a.name); unescape(e->a.name_c); unescape(e->a.generic); unescape(e->a.comment);
     for (int i = 0; i < e->nact; i++) unescape(e->act[i].label);
     snprintf(e->a.file, sizeof e->a.file, "%s", file);
     return 0;

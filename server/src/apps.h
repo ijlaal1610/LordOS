@@ -7,6 +7,7 @@
 typedef struct {
     char id[160];                       /* "org.featherpad.FeatherPad" (.desktop name without the extension) */
     char name[160], generic[160], comment[320], keywords[320], categories[256];
+    char name_c[160];                   /* the untranslated Name ("Chromium" next to "Navegador web Chromium") */
     char wmclass[160];                  /* StartupWMClass: to recognize its Wayland window */
     char mime[1024];                    /* MimeType: file types it opens ("text/plain;…") */
     char icon[PATH_MAX];                /* PNG found, or "" */

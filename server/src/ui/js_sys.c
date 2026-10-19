@@ -1393,6 +1393,7 @@ static JSValue f_apps_linux(JSContext *c, JSValueConst this_val, int argc, JSVal
         JSValue o = JS_NewObject(c);
         JS_SetPropertyStr(c, o, "id", JS_NewString(c, a->id));
         JS_SetPropertyStr(c, o, "name", JS_NewString(c, a->name));
+        JS_SetPropertyStr(c, o, "nameC", JS_NewString(c, a->name_c));
         JS_SetPropertyStr(c, o, "genericName", JS_NewString(c, a->generic));
         JS_SetPropertyStr(c, o, "comment", JS_NewString(c, a->comment));
         JS_SetPropertyStr(c, o, "keywords", JS_NewString(c, a->keywords));
