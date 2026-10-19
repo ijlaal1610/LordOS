@@ -209,5 +209,8 @@
   "classic.snapRight": "Snap to the right half",
   "classic.close": "Close",
   "classic.personalize": "Personalize",
-  "classic.displaySettings": "Display settings"
+  "classic.displaySettings": "Display settings",
+  "remote.blockedTitle": "Remote desktop: address blocked",
+  "remote.blockedBody": "{ip} failed to sign in 3 times and is blocked for {minutes} min.",
+  "remote.blockedOpen": "Open Sharing"
 }

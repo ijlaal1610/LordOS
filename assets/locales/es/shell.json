@@ -209,5 +209,8 @@
   "classic.snapRight": "Acomodar en la mitad derecha",
   "classic.close": "Cerrar",
   "classic.personalize": "Personalizar",
-  "classic.displaySettings": "Ajustes de pantalla"
+  "classic.displaySettings": "Ajustes de pantalla",
+  "remote.blockedTitle": "Escritorio remoto: dirección bloqueada",
+  "remote.blockedBody": "{ip} falló 3 veces al ingresar y quedó bloqueada {minutes} min.",
+  "remote.blockedOpen": "Abrir Compartir"
 }

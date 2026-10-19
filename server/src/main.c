@@ -527,6 +527,7 @@ static void remote_resize(int w, int h) {
 }
 
 static void remote_greeter(const char *json) { js_greeter_event(json); }
+static void remote_notice(const char *json) { js_remote_notice(json); }
 
 /* ---- applying the display plan (Settings → Displays, hotplug; hw/display.c) ---- */
 
@@ -1644,7 +1645,7 @@ int main(int argc, char **argv) {
     tp_route_init(&tp_host);
     static const MirrorInput mirror_in = { remote_pointer, remote_button, remote_wheel, remote_key, remote_clip, remote_clients,
                                            remote_refresh, remote_resize, remote_greeter, display_attach, display_detach,
-                                           remote_scroll, remote_pinch, remote_input_add };
+                                           remote_scroll, remote_pinch, remote_input_add, remote_notice };
     if (ok && mirror_start(s.W, s.H, &mirror_in)) fprintf(stderr, "lord-server: no remote desktop (socket)\n");
     char current[sizeof ui.theme_request];
     if (ok) ok = start_theme(theme, s.greeter, current, sizeof current) == 0;

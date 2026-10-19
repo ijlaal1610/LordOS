@@ -564,5 +564,7 @@
   "disk.smartFailed": "Could not read the disk health",
   "disk.smartTestFailed": "The disk did not start the self-test",
   "hw.noKernelLog": "The kernel log could not be read",
-  "app.codeRefused": "This app's code was modified and was not loaded"
+  "app.codeRefused": "This app's code was modified and was not loaded",
+  "remote.badAddress": "Not a valid address or network",
+  "remote.listFull": "The list is full (64 entries)"
 }

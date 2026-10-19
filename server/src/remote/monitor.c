@@ -175,6 +175,7 @@ int sd_mon_show(int fd, const char *who, int keep) {
 }
 
 void sd_mon_greeter(const char *json) { send_msg(RP_GREETER_IN, json, strlen(json), NULL, 0); }
+void sd_mon_notice(const char *json) { send_msg(RP_NOTICE, json, strlen(json), NULL, 0); }
 
 /* Requests from the session being shown (RP_SESSION, RP_GREETER: JSON up to 4 KB; RP_SHOWN with no
  * data). Everything else is discarded without looking at it. -1 if the session closed. */

@@ -263,6 +263,15 @@ static void handle(Client *c, int type, const unsigned char *d, uint32_t n) {
         }
         explicit_bzero((void *)d, n);
         break;
+    case RP_NOTICE:
+        /* only lord-sessiond (root, seat); short and printable ASCII, the JS side validates fields */
+        if (cb.notice && c->uid == 0 && c->seat && n > 0 && n < 512) {
+            char j[512];
+            int ok = 1;
+            for (uint32_t i = 0; i < n; i++) if (d[i] < 0x20 || d[i] > 0x7e) ok = 0;
+            if (ok) { memcpy(j, d, n); j[n] = 0; cb.notice(j); }
+        }
+        break;
     case RP_GREETER_IN:
         if (cb.greeter && c->seat && n < 65536) {
             char *j = malloc(n + 1);

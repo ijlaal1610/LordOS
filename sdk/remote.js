@@ -5,24 +5,64 @@
 // fixed notice at the top right while there are connections, in every theme.
 //
 //   useStore(remoteViewers) → [{ ip, user }]
-//   remote.status()         → { enabled, installed, port, allow, fingerprint, clients: [...], sessions: [...], monitor }
+//   remote.status()         → { enabled, installed, port, allow, net: 'lan'|'list'|'any', fingerprint, clients: [...],
+//                               sessions: [...], monitor, blocked: [{ ip, until, strikes, manual }], allowed: ['cidr'] }
+//   remoteCidr(text)        → canonical-looking text if it's an address or network the admin actions accept, else ''
+//                             (lord-sessiond's helper checks again, strictly: server/src/remote/ipnet.c)
+// lord-sessiond's notice "this source was blocked after failed logins" arrives as __lordRemoteNotice and is
+// shown as a notification that opens Settings → Sharing.
 //   sshLogin.status()       → { installed, enabled, running, allow: 'all'|'admins', fingerprint } (remote login, SSH)
 import { createElement as h } from 'react';
 import { View, Text } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
 import { t } from './i18n.js';
+import { notify } from './notify.js';
+import { wm } from './windows.js';
 
 export const remoteViewers = createStore([]);
 globalThis.__lordRemote = (json) => {
   try { remoteViewers.set(JSON.parse(json)); } catch (e) { remoteViewers.set([]); }
 };
 
+// Mirrors rs_cidr_parse: IPv4 (no leading zeros) with /8../32, or IPv6 with /16../128.
+export function remoteCidr(text) {
+  const s = String(text || '').trim();
+  const m = /^([0-9a-fA-F:.]+)(?:\/(\d{1,3}))?$/.exec(s);
+  if (!m || (m[2] && m[2].length > 1 && m[2][0] === '0')) return '';
+  const len = m[2] === undefined ? null : Number(m[2]);
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(m[1])) {
+    if (m[1].split('.').some((o) => Number(o) > 255 || (o.length > 1 && o[0] === '0'))) return '';
+    if (len !== null && (len < 8 || len > 32)) return '';
+    return s;
+  }
+  if (!m[1].includes(':') || m[1].length > 45 || (m[1].match(/::/g) || []).length > 1) return '';
+  const groups = m[1].split(':');
+  if (groups.length > 8 || groups.some((g) => g.length > 4 && !/\./.test(g))) return '';
+  if (len !== null && (len < 16 || len > 128)) return '';
+  return s;
+}
+
+const minutesLeft = (until) => Math.max(1, Math.round((until - Date.now() / 1000) / 60));
+globalThis.__lordRemoteNotice = (n) => {
+  if (!n || n.t !== 'blocked' || typeof n.ip !== 'string' || !/^[0-9a-fA-F:./]{3,48}$/.test(n.ip)) return;
+  const min = Math.max(1, Math.min(1440, Number(n.min) || 15));
+  notify({
+    app: 'settings',
+    title: t('shell.remote.blockedTitle'),
+    body: t('shell.remote.blockedBody', { ip: n.ip, minutes: min }),
+    sticky: true,
+    actions: [{ id: 'open', label: t('shell.remote.blockedOpen'), run: () => wm.open('settings', { args: { section: 'sharing' } }) }],
+  });
+};
+export const remoteMinutesLeft = minutesLeft;
+
 function parseConfig(text) {
-  const c = { port: 5673, allow: 'all' };
+  const c = { port: 5673, allow: 'all', net: 'lan' };
   for (const line of String(text || '').split('\n')) {
     const m = /^(\w+)=(.*)$/.exec(line.trim());
     if (m && m[1] === 'port') c.port = Number(m[2]) || 5673;
     if (m && m[1] === 'allow') c.allow = m[2] === 'group' ? 'group' : 'all';
+    if (m && m[1] === 'net') c.net = ['lan', 'list', 'any'].includes(m[2]) ? m[2] : 'lan';
   }
   return c;
 }
@@ -30,7 +70,7 @@ function parseConfig(text) {
 export const remote = {
   available: () => typeof lord.remote !== 'undefined',
   status() {
-    if (typeof lord.remote === 'undefined') return { enabled: false, installed: false, clients: [], sessions: [], monitor: '' };
+    if (typeof lord.remote === 'undefined') return { enabled: false, installed: false, net: 'lan', clients: [], sessions: [], monitor: '', blocked: [], allowed: [] };
     const s = lord.remote.status();
     const cfg = parseConfig(s.config);
     let st = null;
@@ -38,6 +78,7 @@ export const remote = {
     return {
       installed: !!s.installed, enabled: !!(st && st.running), port: st?.port || cfg.port, allow: st?.allow || cfg.allow,
       fingerprint: s.fingerprint || '', clients: st?.clients || [], sessions: st?.sessions || [], monitor: st?.monitor || '',
+      net: st?.net || cfg.net, blocked: Array.isArray(st?.blocked) ? st.blocked : [], allowed: Array.isArray(st?.allowed) ? st.allowed : [],
     };
   },
 };

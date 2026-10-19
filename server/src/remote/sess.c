@@ -8,6 +8,7 @@
  * per-user lock (/run/lordos/spawn-<uid>.lock). */
 #include "sessiond.h"
 #include "../sec/cgroup.h"
+#include "rsec.h"
 
 #include <crypt.h>
 #include <ctype.h>
@@ -57,17 +58,25 @@ static int ct_equal(const char *a, const char *b) {
     return d == 0;
 }
 
-int sd_valid_username(const char *u) {
-    size_t n = strlen(u);
-    if (!n || n > 32 || !((u[0] >= 'a' && u[0] <= 'z') || u[0] == '_')) return 0;
-    for (const char *p = u; *p; p++) if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '_' || *p == '-')) return 0;
-    return 1;
+int sd_valid_username(const char *u) { return rs_valid_username(u); }
+
+/* is the shell a real login shell? (listed in /etc/shells, and not nologin/false) */
+static int login_shell(const char *sh) {
+    if (!sh || !sh[0] || strstr(sh, "nologin") || strstr(sh, "/false")) return 0;
+    int ok = 0;
+    setusershell();
+    for (char *s; (s = getusershell());) if (!strcmp(s, sh)) { ok = 1; break; }
+    endusershell();
+    return ok;
 }
 
 int sd_user_allowed(const struct passwd *pw, int remote) {
     if (!pw || pw->pw_uid < 1000 || pw->pw_uid >= 60000) return 0;
     if (!pw->pw_shell || strstr(pw->pw_shell, "nologin") || strstr(pw->pw_shell, "/false")) return 0;
-    if (!remote || !rd_conf.group_only) return 1;
+    if (!remote) return 1;
+    /* from the network, stricter: never root's name or group, and a shell from /etc/shells */
+    if (!strcmp(pw->pw_name, "root") || pw->pw_gid == 0 || !login_shell(pw->pw_shell)) return 0;
+    if (!rd_conf.group_only) return 1;
     struct group *g = getgrnam("lordos-remote");
     if (!g) return 0;
     gid_t groups[256];
@@ -86,16 +95,64 @@ static int is_autologin(const char *user) {
     return u[0] && !strcmp(u, user);
 }
 
+/* A hash setting with the cost of a real one, to spend the same time on unknown or refused
+ * accounts as on a wrong password (no user enumeration by timing). Taken once at startup from the
+ * first hash in /etc/shadow (only its "$id$params$salt" part), or libxcrypt's default. */
+static char dummy[128];
+
+void sd_dummy_init(void) {
+    dummy[0] = 0;
+    setspent();
+    for (struct spwd *sp; (sp = getspent());) {
+        const char *h = sp->sp_pwdp, *last = h ? strrchr(h, '$') : NULL;
+        if (!h || h[0] != '$' || !last || last == h || (size_t)(last - h) >= sizeof dummy) continue;
+        memcpy(dummy, h, (size_t)(last - h));
+        dummy[last - h] = 0;
+        break;
+    }
+    endspent();
+    if (!dummy[0] && !crypt_gensalt_rn(NULL, 0, NULL, 0, dummy, sizeof dummy)) snprintf(dummy, sizeof dummy, "$6$lordos.dummy");
+}
+
+static void waste(const char *pass) {
+    struct crypt_data cd;
+    memset(&cd, 0, sizeof cd);
+    const char *h = crypt_r(pass, dummy[0] ? dummy : "$6$lordos.dummy", &cd);
+    volatile int x = h ? ct_equal(h, "*") : 0;
+    (void)x;
+    explicit_bzero(&cd, sizeof cd);
+}
+
+/* Shadow restrictions for logins from the network: no /etc/nologin, password set and not locked,
+ * not forced to change (last change 0), not expired (max days) and the account not expired. */
+static int shadow_ok_remote(const struct spwd *sp) {
+    struct stat st;
+    if (!stat("/etc/nologin", &st)) return 0;
+    if (!sp || !sp->sp_pwdp || !sp->sp_pwdp[0] || sp->sp_pwdp[0] == '!' || sp->sp_pwdp[0] == '*') return 0;
+    long today = (long)(time(NULL) / 86400);
+    if (sp->sp_lstchg == 0) return 0;
+    if (sp->sp_lstchg > 0 && sp->sp_max >= 0 && sp->sp_max < 99999 && today > sp->sp_lstchg + sp->sp_max) return 0;
+    if (sp->sp_expire > 0 && sp->sp_expire <= today) return 0;
+    return 1;
+}
+
+int sd_remote_account_ok(const char *user) {
+    struct passwd *pw = sd_valid_username(user) ? getpwnam(user) : NULL;
+    if (!sd_user_allowed(pw, 1)) return 0;
+    return shadow_ok_remote(getspnam(user));
+}
+
 int sd_check_password(const char *user, const char *pass, int remote) {
-    if (!sd_valid_username(user) || strlen(pass) > 256) return 0;
+    if (!sd_valid_username(user) || strlen(pass) > 1024) return 0;
     struct passwd *pw = getpwnam(user);
-    if (!sd_user_allowed(pw, remote)) return 0;
-    struct spwd *sp = getspnam(user);
+    struct spwd *sp = sd_user_allowed(pw, remote) ? getspnam(user) : NULL;
     /* account without a password (the live ISO user): only on the monitor, only if it's the autologin
      * user and with the field empty (to come back after locking). Never from the network. */
     if (!remote && sp && sp->sp_pwdp && !sp->sp_pwdp[0] && !pass[0] && is_autologin(user)) return 1;
-    if (!sp || !sp->sp_pwdp || !sp->sp_pwdp[0] || sp->sp_pwdp[0] == '!' || sp->sp_pwdp[0] == '*') return 0;
-    if (sp->sp_expire > 0 && sp->sp_expire <= (long)(time(NULL) / 86400)) return 0;
+    int usable = sp && sp->sp_pwdp && sp->sp_pwdp[0] && sp->sp_pwdp[0] != '!' && sp->sp_pwdp[0] != '*' &&
+                 !(sp->sp_expire > 0 && sp->sp_expire <= (long)(time(NULL) / 86400));
+    if (usable && remote) usable = shadow_ok_remote(sp);
+    if (!usable) { waste(pass); return 0; }       /* same work as a wrong password */
     struct crypt_data cd;
     memset(&cd, 0, sizeof cd);
     const char *h = crypt_r(pass, sp->sp_pwdp, &cd);
@@ -109,17 +166,25 @@ int sd_check_password(const char *user, const char *pass, int remote) {
 double sd_fail_wait(const char *key) {
     double w = 0, now = rd_now();
     rd_lock();
-    for (int i = 0; i < 64; i++)
+    for (int i = 0; i < 128; i++)
         if (!strcmp(rd_shared->fails[i].key, key) && rd_shared->fails[i].until > now) w = rd_shared->fails[i].until - now;
     rd_unlock();
     return w;
+}
+
+int sd_fail_count(const char *key) {
+    int n = 0;
+    rd_lock();
+    for (int i = 0; i < 128; i++) if (!strcmp(rd_shared->fails[i].key, key)) n = rd_shared->fails[i].fails;
+    rd_unlock();
+    return n;
 }
 
 void sd_fail_note(const char *key, int failed) {
     double now = rd_now();
     rd_lock();
     int slot = -1, oldest = 0;
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < 128; i++) {
         if (!strcmp(rd_shared->fails[i].key, key)) { slot = i; break; }
         if (rd_shared->fails[i].until < rd_shared->fails[oldest].until) oldest = i;
     }

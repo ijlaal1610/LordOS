@@ -2,13 +2,19 @@
  *
  *   remote-enable            turns the remote desktop on (enabled=1 and lord-sessiond rereads)
  *   remote-disable           turns it off; sessions stay open (they show on the monitor)
- *   remote-config <lines>    allow=all|group, port=1024..65535
+ *   remote-config <lines>    allow=all|group, port=1024..65535, net=lan|list|any
+ *   remote-block <cidr>      blocks an address or network until removed (/etc/lordos/remote/access)
+ *   remote-unblock <cidr>    removes manual blocks inside it and asks lord-sessiond to lift the
+ *                            failed-login blocks inside it (/var/lib/lordos/remote/requests)
+ *   remote-allow add|del <cidr>   the "only these addresses" list (net=list)
  *   remote-member <u>\n1|0   adds or removes a user from the lordos-remote group
  *   remote-kick <pid>        cuts a connection (only a pid from lord-sessiond's list)
  *
  * The remote desktop is part of lord-sessiond (lordos.service, docs/SESSIONS.md): these
  * actions only change /etc/lordos/remote/config and notify it with SIGHUP. */
 #include "remote_admin.h"
+#include "ipnet.h"
+#include "lockout.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -19,10 +25,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #define CONF_DIR "/etc/lordos/remote"
+#define RD_ACCESS_PATH CONF_DIR "/access"
 
 static int write_file(const char *path, const char *text, mode_t mode) {
     char tmp[PATH_MAX];
@@ -35,11 +43,12 @@ static int write_file(const char *path, const char *text, mode_t mode) {
     return ok && !rename(tmp, path) ? 0 : -1;
 }
 
-typedef struct { int enabled, port, group_only, insecure_dev; } Conf;
+typedef struct { int enabled, port, group_only, insecure_dev, net; } Conf;
 
 static void conf_read(Conf *c) {
     c->port = 5673;
     c->enabled = c->group_only = c->insecure_dev = 0;
+    c->net = RS_NET_LAN;
     FILE *f = fopen(CONF_DIR "/config", "r");
     char line[128], s[32];
     int v;
@@ -47,6 +56,7 @@ static void conf_read(Conf *c) {
         if (sscanf(line, "enabled=%d", &v) == 1) c->enabled = v == 1;
         else if (sscanf(line, "port=%d", &v) == 1 && v >= 1024 && v < 65536) c->port = v;
         else if (sscanf(line, "allow=%31s", s) == 1) c->group_only = !strcmp(s, "group");
+        else if (sscanf(line, "net=%31s", s) == 1 && rs_net_mode(s) >= 0) c->net = rs_net_mode(s);
         else if (sscanf(line, "insecure_dev=%d", &v) == 1) c->insecure_dev = v == 1;
     }
     if (f) fclose(f);
@@ -56,8 +66,8 @@ static int conf_write(const Conf *c) {
     mkdir("/etc/lordos", 0755);
     mkdir(CONF_DIR, 0755);
     char text[256];
-    snprintf(text, sizeof text, "# LordOS · remote desktop (Settings → Sharing). See docs/REMOTE.md\nenabled=%d\nport=%d\nallow=%s\ninsecure_dev=%d\n",
-             c->enabled, c->port, c->group_only ? "group" : "all", c->insecure_dev);
+    snprintf(text, sizeof text, "# LordOS · remote desktop (Settings → Sharing). See docs/REMOTE.md\nenabled=%d\nport=%d\nallow=%s\nnet=%s\ninsecure_dev=%d\n",
+             c->enabled, c->port, c->group_only ? "group" : "all", rs_net_name(c->net), c->insecure_dev);
     return write_file(CONF_DIR "/config", text, 0644);
 }
 
@@ -125,6 +135,9 @@ void remote_act_config(const AdminReq *r, const char *arg, size_t len) {
         } else if (sscanf(line, "allow=%15s", s) == 1) {
             if (strcmp(s, "all") && strcmp(s, "group")) { admin_err("admin.invalidArgument", NULL); return; }
             c.group_only = !strcmp(s, "group");
+        } else if (sscanf(line, "net=%15s", s) == 1) {
+            if (rs_net_mode(s) < 0) { admin_err("admin.invalidArgument", NULL); return; }
+            c.net = rs_net_mode(s);
         } else { admin_err("admin.invalidArgument", NULL); return; }
     }
     if (c.group_only && !getgrnam("lordos-remote")) {
@@ -174,4 +187,104 @@ void remote_act_kick(const AdminReq *r, const char *arg, size_t len) {
     if (!strstr(status, want) || !base || strcmp(base + 1, "lord-sessiond")) { admin_err("remote.noSuchConnection", NULL); return; }
     kill((pid_t)pid, SIGTERM);
     admin_ok("remote.disconnected", NULL);
+}
+
+/* ---- address lists (docs/REMOTE.md, "Blocked and allowed addresses") ---- */
+
+/* One argument: an address or network, strictly (ipnet.c), nothing else on the line. */
+static int one_cidr(const char *arg, size_t len, RsCidr *c, char canon[64]) {
+    if (!len || len > 60 || memchr(arg, '\n', len) || memchr(arg, ' ', len)) return -1;
+    char buf[64];
+    memcpy(buf, arg, len);
+    buf[len] = 0;
+    if (rs_cidr_parse(buf, c)) return -1;
+    rs_cidr_format(c, canon, 64);
+    return 0;
+}
+
+static void access_read(RsAccess *acc) {
+    char text[16384] = "";
+    int fd = open(RD_ACCESS_PATH, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd >= 0) {
+        struct stat st;
+        if (!fstat(fd, &st) && S_ISREG(st.st_mode) && st.st_uid == 0) {
+            ssize_t n = read(fd, text, sizeof text - 1);
+            if (n > 0) text[n] = 0;
+        }
+        close(fd);
+    }
+    rs_access_parse(text, acc, NULL);
+}
+
+static int access_write(const RsAccess *acc) {
+    char text[16384];
+    if (rs_access_format(acc, text, sizeof text) < 0) return -1;
+    mkdir("/etc/lordos", 0755);
+    mkdir(CONF_DIR, 0755);
+    return write_file(RD_ACCESS_PATH, text, 0600);
+}
+
+static void reload_sessiond(void) {
+    pid_t pid = sessiond_pid();
+    if (pid > 0) kill(pid, SIGHUP);
+}
+
+void remote_act_block(const AdminReq *r, const char *arg, size_t len) {
+    (void)r;
+    RsCidr c;
+    char canon[64];
+    if (one_cidr(arg, len, &c, canon)) { admin_err("remote.badAddress", NULL); return; }
+    RsAccess acc;
+    access_read(&acc);
+    int k = rs_access_add(acc.block, &acc.nblock, &c);
+    if (k < 0) { admin_err("remote.listFull", NULL); return; }
+    if (k == 0 && access_write(&acc)) { admin_err("remote.configFailed", NULL); return; }
+    reload_sessiond();
+    admin_ok("remote.blocked", "address", canon, NULL);
+}
+
+void remote_act_unblock(const AdminReq *r, const char *arg, size_t len) {
+    (void)r;
+    RsCidr c;
+    char canon[64];
+    /* also an IPv6 /64 lockout key, which one_cidr accepts as a network */
+    if (one_cidr(arg, len, &c, canon)) { admin_err("remote.badAddress", NULL); return; }
+    RsAccess acc;
+    access_read(&acc);
+    if (rs_access_del(acc.block, &acc.nblock, &c) && access_write(&acc)) { admin_err("remote.configFailed", NULL); return; }
+    /* the failed-login blocks belong to lord-sessiond: a request it reads on SIGHUP */
+    mkdir("/var/lib/lordos", 0755);
+    mkdir(RL_FILE_DIR, 0700);
+    struct stat st;
+    if (lstat(RL_FILE_DIR, &st) || !S_ISDIR(st.st_mode) || st.st_uid != 0) { admin_err("remote.configFailed", NULL); return; }
+    int fd = open(RL_REQUESTS, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0600);
+    if (fd < 0) { admin_err("remote.configFailed", NULL); return; }
+    flock(fd, LOCK_EX);
+    char line[96];
+    int n = snprintf(line, sizeof line, "unblock %s\n", canon);
+    int ok = write(fd, line, (size_t)n) == n;
+    close(fd);
+    if (!ok) { admin_err("remote.configFailed", NULL); return; }
+    reload_sessiond();
+    admin_ok("remote.unblocked", "address", canon, NULL);
+}
+
+void remote_act_allow(const AdminReq *r, const char *arg, size_t len) {
+    (void)r;
+    int add;
+    if (len > 4 && !strncmp(arg, "add ", 4)) add = 1;
+    else if (len > 4 && !strncmp(arg, "del ", 4)) add = 0;
+    else { admin_err("admin.invalidArgument", NULL); return; }
+    RsCidr c;
+    char canon[64];
+    if (one_cidr(arg + 4, len - 4, &c, canon)) { admin_err("remote.badAddress", NULL); return; }
+    RsAccess acc;
+    access_read(&acc);
+    if (add) {
+        int k = rs_access_add(acc.allow, &acc.nallow, &c);
+        if (k < 0) { admin_err("remote.listFull", NULL); return; }
+    } else rs_access_del(acc.allow, &acc.nallow, &c);
+    if (access_write(&acc)) { admin_err("remote.configFailed", NULL); return; }
+    reload_sessiond();
+    admin_ok("remote.saved", NULL);
 }

@@ -564,5 +564,7 @@
   "disk.smartFailed": "Não foi possível ler a saúde do disco",
   "disk.smartTestFailed": "O disco não iniciou o autoteste",
   "hw.noKernelLog": "Não foi possível ler o registro do kernel",
-  "app.codeRefused": "O código deste app foi modificado e não foi carregado"
+  "app.codeRefused": "O código deste app foi modificado e não foi carregado",
+  "remote.badAddress": "Não é um endereço ou rede válida",
+  "remote.listFull": "A lista está cheia (64 entradas)"
 }

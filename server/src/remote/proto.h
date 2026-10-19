@@ -44,6 +44,8 @@ enum {
                          * session; the session closes unplugged ones when it gets ENODEV). Root only */
     RP_KEYRING = 24,    /* text: the password just verified on the login screen; the session opens
                          * its keyring with it (lord-vault, docs/PASSWORDS.md) and wipes it. Root only */
+    RP_NOTICE = 25,     /* JSON, from lord-sessiond (root, seat) only: a notice for the user on the monitor,
+                         * {"t":"blocked","ip":"…","min":N,"n":N} (a source blocked after failed remote logins) */
     RP_SCROLL = 30,     /* u8 phase (1 begins, 2 continues, 3 ends), i32 dx, dy in 1/256 pixel: browser trackpad */
     RP_PINCH = 31,      /* u8 phase, i32 scale ×65536 (relative to the start), i32 rotation in degrees ×256 */
 };

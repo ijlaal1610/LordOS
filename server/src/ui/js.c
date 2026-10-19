@@ -827,6 +827,18 @@ void js_remote_event(const char *json) {
     drain_jobs();
 }
 
+/* Remote desktop: lord-sessiond's notice for the user on the monitor (RP_NOTICE, e.g. a source blocked
+ * after failed logins) → __lordRemoteNotice(object). sdk/remote.js shows it as a notification. */
+void js_remote_notice(const char *json) {
+    if (!ctx) return;
+    JSValue v = JS_ParseJSON(ctx, json, strlen(json), "<remote-notice>");
+    if (JS_IsException(v)) { JS_FreeValue(ctx, JS_GetException(ctx)); return; }
+    JSValueConst args[1] = { v };
+    JS_FreeValue(ctx, call_global("__lordRemoteNotice", 1, args));
+    JS_FreeValue(ctx, v);
+    drain_jobs();
+}
+
 /* Broker of isolated .lpk apps: "prompt" (ask for a permission) or "device" (indicator) →
  * __lordBroker(kind, json). The theme handles it in sdk/privacy.js. */
 void js_broker_event(const char *kind, const char *json) {

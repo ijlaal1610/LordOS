@@ -209,5 +209,8 @@
   "classic.snapRight": "Encaixar na metade direita",
   "classic.close": "Fechar",
   "classic.personalize": "Personalizar",
-  "classic.displaySettings": "Configurações de tela"
+  "classic.displaySettings": "Configurações de tela",
+  "remote.blockedTitle": "Área de trabalho remota: endereço bloqueado",
+  "remote.blockedBody": "{ip} errou a entrada 3 vezes e foi bloqueado por {minutes} min.",
+  "remote.blockedOpen": "Abrir Compartilhar"
 }

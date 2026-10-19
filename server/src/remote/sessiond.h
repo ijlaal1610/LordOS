@@ -13,6 +13,9 @@
 #include <sys/types.h>
 #include <openssl/ssl.h>
 
+#include "ipnet.h"
+#include "lockout.h"
+
 #define RD_CONF_DIR "/etc/lordos/remote"
 #define SD_RUN_DIR "/run/lordos"
 #define SD_STATUS SD_RUN_DIR "/status.json"
@@ -24,18 +27,32 @@
 #define SD_USERS_DIR "/var/lib/lordos/users"         /* avatars: <user>.json and <user>.png */
 #define SD_GREETER_USER "lordos-greeter"
 #define RD_DEFAULT_PORT 5673          /* "LORD" on a phone keypad */
-#define RD_MAX_CONNS 32
+#define RD_MAX_CONNS 32                /* signed-in browsers (bridges) */
+#define RD_MAX_CHILDREN 48             /* connection processes in all, signing in or not */
+#define RD_MAX_PER_SOURCE 8            /* of those, from one address (IPv6: one /64) */
+#define RD_ACCESS RD_CONF_DIR "/access"  /* manual allow/block lists (admin actions, root 0600) */
+#define RD_COOKIE "__Host-lordos_remote"
 #define SD_MAX_SESSIONS 32
 
 /* State shared between the main process and its children. */
-typedef struct { char key[56]; int fails; double until; } RdFail;          /* key: IP or "monitor:<user>" */
-typedef struct { char tok[65]; uid_t uid; char user[33]; double expires; } RdToken;
+typedef struct { char key[56]; int fails; double until; } RdFail;   /* key: source, "monitor:<user>" or "u:<user>" */
+/* A signed-in browser. Only the SHA-256 of the cookie is kept, and a digest of the account's shadow
+ * hash at sign-in: changing or locking the password ends the cookie. */
+typedef struct { unsigned char hash[32], pwh[16]; uid_t uid; char user[33]; double expires; } RdToken;
+/* "source blocked" notices from the connection processes; the main process shows them on the
+ * monitor's session (RP_NOTICE) */
+typedef struct { char key[48]; double until, at; int strikes; } RdNotice;
+#define RD_NOTICES 8
 typedef struct { pid_t pid; char ip[48]; char user[33]; double since; } RdConn;
 typedef struct { pid_t pid; uid_t uid; char user[33]; double since; } SdSession;    /* a user's lord-server */
 typedef struct {
     pthread_mutex_t lock;
-    RdFail fails[64];
+    RdFail fails[128];
     RdToken tokens[64];
+    RlTable lockout;            /* failed-login blocks per source (lockout.h) */
+    int lockout_dirty;          /* changed: the main process saves RL_FILE */
+    RdNotice notices[RD_NOTICES];
+    unsigned notice_seq;
     RdConn conns[RD_MAX_CONNS];
     SdSession sessions[SD_MAX_SESSIONS];
     char monitor[33];           /* user shown on the monitor ("" = login screen) */
@@ -47,6 +64,8 @@ typedef struct {
     int port;
     int group_only;             /* only the lordos-remote group */
     int insecure_dev;           /* allows binaries not owned by root (development VMs only) */
+    int net_mode;               /* RS_NET_LAN (default) | RS_NET_LIST | RS_NET_ANY: who may connect */
+    RsAccess access;            /* RD_ACCESS */
     char server[512], theme[512], greeter_theme[512], fonts[512], shell[512], workdir[512];
 } RdConfig;
 
@@ -62,11 +81,14 @@ void   rd_unlock(void);
 void sd_log_prefix(const char *prefix);             /* "lord-sessiond[pid] 1.2.3.4" */
 void sd_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 int  sd_valid_username(const char *u);
+void sd_dummy_init(void);                           /* hash setting for unknown users (same timing) */
 /* A person's regular account: uid 1000..59999, with a shell, and (remote + allow=group) in the group. */
 int  sd_user_allowed(const struct passwd *pw, int remote);
 int  sd_check_password(const char *user, const char *pass, int remote);
+int  sd_remote_account_ok(const char *user);       /* still allowed from the network (cookies) */
 double sd_fail_wait(const char *key);               /* seconds to wait for that key */
 void sd_fail_note(const char *key, int failed);
+int  sd_fail_count(const char *key);
 int  sd_run_wait(const char *const argv[]);
 /* Socket of that user's session if it's already running (lord-server --headless), or -1. */
 int  sd_session_connect(uid_t uid);
@@ -96,7 +118,9 @@ extern char sd_gpu_env[24];
 extern int sd_input_debug;              /* LORD_INPUT_DEBUG=1 for user sessions (keylag.h) */
 
 /* ---- conn.c: one remote desktop connection (in a child process) ---- */
-void rd_serve(SSL_CTX *ctx, int fd, const char *ip);
+void rd_serve(SSL_CTX *ctx, int fd, const char *ip, const char *key);
+void rd_tokens_drop_uid(uid_t uid);                 /* every cookie of that user (lock) */
+void rd_tokens_clear(void);                         /* every cookie (remote turned off) */
 
 /* ---- enc.c: rectangle (0xAARRGGBB) → PNG or JPEG. Returns malloc'd memory; *jpeg = 1 if it chose JPEG. */
 unsigned char *rd_encode(const uint32_t *px, int stride, int w, int h, int allow_jpeg, int *len, int *jpeg);
@@ -110,6 +134,7 @@ int  sd_mon_show(int session_fd, const char *who, int keep);  /* gives it the ca
 int  sd_mon_fd(void);                               /* socket of the session being shown, or -1 */
 int  sd_mon_read(void (*fn)(int type, const char *json));   /* -1 if the session closed */
 void sd_mon_greeter(const char *json);              /* RP_GREETER_IN to the login screen */
+void sd_mon_notice(const char *json);               /* RP_NOTICE to the session on the monitor */
 void sd_mon_lost(void);                             /* takes it away (revokes) */
 void sd_mon_child(void);                            /* in a child: closes the copies without revoking */
 int  sd_mon_hotplug_fd(void);                       /* inotify on /dev/input, or -1 */

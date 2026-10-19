@@ -27,6 +27,8 @@ typedef struct {
     void (*pinch)(int phase, double scale, double rotation);
     /* lord-sessiond: input devices plugged in later (the fds now belong to the session) */
     void (*input_add)(const int *fds, int n);
+    /* lord-sessiond: a notice for the user (RP_NOTICE, short printable JSON) */
+    void (*notice)(const char *json);
 } MirrorInput;
 
 /* After dropping privileges. Creates $XDG_RUNTIME_DIR/lordos/remote.sock. 0 on success. */

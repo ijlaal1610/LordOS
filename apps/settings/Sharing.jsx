@@ -3,7 +3,8 @@
 // connections goes through the administration helper (remote-* and ssh-* actions). The SSH
 // server is installed, the first time, with the package engine's own pkg-install action.
 import {
-  View, Text, Button, Toggle, Segmented, useTheme, useLocale, useStore, admin, remote, remoteViewers, sshLogin, statusText, useSystemInfo, spacing, typeScale,
+  View, Text, Button, Toggle, Segmented, TextInput, useTheme, useLocale, useStore, admin, remote, remoteViewers, sshLogin, remoteCidr,
+  remoteMinutesLeft, statusText, useSystemInfo, spacing, typeScale,
 } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 import { Stack, Section, SettingRow, Note, Message, StatusDot, tint } from './ui.jsx';
@@ -24,6 +25,74 @@ const ago = (sec, tr) => {
   const m = Math.max(0, Math.round((Date.now() / 1000 - sec) / 60));
   return m < 1 ? tr('settings.sharing.justNow') : tr('settings.sharing.minutes', { count: m });
 };
+
+// An address or network field with an action button; the text is checked here for a quick hint
+// and again, strictly, by the admin helper (remote-block, remote-allow).
+function AddressField({ placeholder, label, disabled, onAdd }) {
+  const t = useTheme();
+  const { t: tr } = useLocale();
+  const [text, setText] = useState('');
+  const [bad, setBad] = useState(false);
+  const submit = () => {
+    if (disabled) return;
+    const v = remoteCidr(text);
+    if (!v) { setBad(true); return; }
+    setBad(false);
+    Promise.resolve(onAdd(v)).then((ok) => { if (ok !== false) setText(''); });
+  };
+  return (
+    <View style={{ paddingVertical: spacing.s, gap: 4 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s }}>
+        <TextInput value={text} placeholder={placeholder} style={{ flex: 1, direction: 'ltr' }}
+          onChange={(v) => { setText(v.slice(0, 60)); setBad(false); }} onSubmit={submit} />
+        <Button small label={label} disabled={disabled || !text.trim()} onClick={submit} />
+      </View>
+      {bad ? <Text style={{ fontSize: typeScale.caption, color: tint.error, textAlign: 'start' }}>{tr('settings.sharing.badAddress')}</Text> : null}
+    </View>
+  );
+}
+
+// Who may connect and which addresses are blocked (docs/REMOTE.md, "Blocked and allowed addresses").
+function AccessSection({ st, isAdmin, busy, act }) {
+  const t = useTheme();
+  const { t: tr } = useLocale();
+  const hint = { lan: 'settings.sharing.netLanHint', list: 'settings.sharing.netListHint', any: 'settings.sharing.netAnyHint' }[st.net] || 'settings.sharing.netLanHint';
+  return (
+    <>
+      <Section title={tr('settings.sharing.access')}>
+        <SettingRow label={tr('settings.sharing.netFrom')} hint={tr(hint)} stack>
+          <Segmented small value={st.net} onChange={(net) => isAdmin && !busy && act('remote-config', `net=${net}`)}
+            options={[['lan', tr('settings.sharing.netLan')], ['list', tr('settings.sharing.netList')], ['any', tr('settings.sharing.netAny')]]} />
+        </SettingRow>
+        {st.net === 'list' && (
+          <>
+            {!st.allowed.length && <SettingRow label={tr('settings.sharing.allowEmpty')} labelStyle={{ color: tint.warn }} />}
+            {st.allowed.map((c) => (
+              <SettingRow key={c} label={c} labelStyle={{ fontFamily: 'monospace', direction: 'ltr' }}>
+                {isAdmin && <Button small label={tr('settings.sharing.remove')} disabled={busy} onClick={() => act('remote-allow', `del ${c}`)} />}
+              </SettingRow>
+            ))}
+            {isAdmin && <AddressField placeholder={tr('settings.sharing.allowPlaceholder')} label={tr('settings.sharing.allowAdd')} disabled={busy}
+              onAdd={(v) => act('remote-allow', `add ${v}`)} />}
+          </>
+        )}
+      </Section>
+      {st.net === 'any' && <Note tone="warn">{tr('settings.sharing.netAnyWarn')}</Note>}
+      <Section title={tr('settings.sharing.blocked')} footer={tr('settings.sharing.blockedFooter')}>
+        {!st.blocked.length ? <SettingRow label={tr('settings.sharing.blockedNone')} labelStyle={{ color: t.textDim }} /> : st.blocked.map((b) => (
+          <SettingRow key={`${b.manual ? 'm' : 'a'}${b.ip}`} icon={<StatusDot color={b.manual ? tint.off : tint.error} />}
+            label={b.ip} labelStyle={{ fontFamily: 'monospace', direction: 'ltr' }}
+            hint={b.manual ? tr('settings.sharing.blockedManual')
+              : tr('settings.sharing.blockedAuto', { minutes: remoteMinutesLeft(b.until) })}>
+            {isAdmin && <Button small label={tr('settings.sharing.unblock')} disabled={busy} onClick={() => act('remote-unblock', b.ip)} />}
+          </SettingRow>
+        ))}
+        {isAdmin && <AddressField placeholder={tr('settings.sharing.blockPlaceholder')} label={tr('settings.sharing.block')} disabled={busy}
+          onAdd={(v) => act('remote-block', v)} />}
+      </Section>
+    </>
+  );
+}
 
 // openssh-sftp-server too: scp and sftp need it (a Recommends the package engine skips).
 const SSH_PACKAGES = 'openssh-server openssh-sftp-server';
@@ -107,8 +176,8 @@ export function SharingSettings() {
     setBusy(true);
     setMsg(null);
     return admin.run(action, arg).then(
-      () => { setMsg(ok ? { ok: true, text: ok } : null); setSt(remote.status()); },
-      (e) => setMsg({ ok: false, text: e.message })).finally(() => setBusy(false));
+      (r) => { setMsg({ ok: true, text: ok || statusText(r) }); setTimeout(() => setSt(remote.status()), 300); return true; },
+      (e) => { setMsg({ ok: false, text: e.message }); return false; }).finally(() => setBusy(false));
   };
   const ips = lanAddresses();
   const urls = ips.map((ip) => `https://${ip}:${st.port}`);
@@ -139,6 +208,7 @@ export function SharingSettings() {
       {!isAdmin && <Note tone="warn">{tr('settings.admin.unavailable')}</Note>}
       {!st.installed && <Note tone="warn">{tr('settings.sharing.notInstalled')}</Note>}
       <Message msg={msg} />
+      <AccessSection st={st} isAdmin={isAdmin} busy={busy} act={act} />
       <Section title={tr('settings.sharing.connected')} footer={tr('settings.sharing.security')}>
         {!st.clients.length ? <SettingRow label={tr('settings.sharing.nobody')} labelStyle={{ color: t.textDim }} /> : st.clients.map((c) => (
           <SettingRow key={c.pid} icon={<StatusDot color={tint.ok} />} label={`${c.user} · ${c.ip}`}

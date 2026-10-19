@@ -199,7 +199,13 @@ addEventListener('mousemove', (e) => {
   if (e.clientY < 8) { $('bar').classList.add('show'); clearTimeout(hideT); hideT = setTimeout(() => $('bar').classList.remove('show'), 2500); }
 });
 $('fs').onclick = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).then(() => setTimeout(fit, 200));
-$('out').onclick = () => { if (ws) ws.close(); location.href = '/logout'; };
+// logging out is a POST from this page (the server checks its Origin), never a link another site could open
+$('out').onclick = () => {
+  if (ws) ws.close();
+  const f = document.createElement('form');
+  f.method = 'post'; f.action = '/logout';
+  document.body.appendChild(f); f.submit();
+};
 $('again').onclick = connect;
 $('bar').classList.add('show'); hideT = setTimeout(() => $('bar').classList.remove('show'), 3000);
 show(T.conn); connect(); cv.focus();

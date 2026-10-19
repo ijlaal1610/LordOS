@@ -1,24 +1,29 @@
 /* conn.c — one remote desktop connection, in a child process of lord-sessiond.
  *
- *   1. TLS (OpenSSL) and one HTTP request: the login page (/), the login itself (POST /login),
- *      the desktop (/desk), logout (/logout) or the WebSocket (/ws).
- *   2. Login: system user and password, checked against /etc/shadow with crypt(3). Only regular
- *      accounts (uid >= 1000, with a shell, not locked; if the configuration asks for it, in the
- *      lordos-remote group). Failures per IP wait longer each time (up to 5 minutes). A random
- *      cookie (Secure, HttpOnly, SameSite=Strict) lasts 12 hours.
+ *   1. TLS (OpenSSL) and one HTTP request, parsed strictly (rsec.c) under a deadline: the login
+ *      page (GET /), the login itself (POST /login), the desktop (GET /desk), logout (POST /logout)
+ *      or the WebSocket (GET /ws). Anything else is refused and the connection closed.
+ *   2. Login: system user and password, checked against /etc/shadow with crypt(3) (sess.c). Only
+ *      regular accounts (uid 1000..59999, a shell from /etc/shells, not locked, not expired, never
+ *      root; if the configuration asks for it, in the lordos-remote group). Unknown and refused
+ *      accounts cost the same time as a wrong password. 3 failures block the source (lockout.c):
+ *      15 min, then 1 h, then 24 h. A random cookie (__Host-, Secure, HttpOnly, SameSite=Strict,
+ *      only its SHA-256 is kept) lasts 12 hours.
  *   3. WebSocket: finds the user's session (the same one that may be showing on the monitor) or
- *      creates it (sess.c, docs/SESSIONS.md).
- *      After that this process DROPS root and stays as the user: the rest (TLS, compression,
- *      bridge) runs unprivileged.
- *   4. Bridge: session rectangles → PNG/JPEG → browser; mouse, keyboard and clipboard
- *      from the browser → session. Flow control: the browser acknowledges each frame ("ack") and
- *      only then does the session build the next one, so a slow network gets fewer frames.
- * Browser protocol: docs/REMOTE.md. */
+ *      creates it (sess.c, docs/SESSIONS.md). Then this process forks the bridge, which unmaps the
+ *      shared state, closes every other descriptor and DROPS root for good: TLS, compression and
+ *      the bridge run as the user. This root process only waits, and when the bridge says the
+ *      session was locked it ends every cookie of that user.
+ *   4. Bridge: session rectangles → PNG/JPEG → browser; mouse, keyboard and clipboard from the
+ *      browser (validated, rsec.c rs_browser_input) → session. Flow control: the browser
+ *      acknowledges each frame ("ack") and only then does the session build the next one.
+ * Browser protocol and the security analysis: docs/REMOTE.md. */
 #include "sessiond.h"
 #include "proto.h"
+#include "rsec.h"
 
-#include <crypt.h>
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -30,25 +35,50 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/prctl.h>
 #include <sys/random.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <sys/un.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <openssl/crypto.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
 
 extern const char _binary_src_remote_login_html_start[], _binary_src_remote_login_html_end[];
 extern const char _binary_src_remote_client_html_start[], _binary_src_remote_client_html_end[];
 
+#define HEAD_SECONDS 15         /* TLS handshake + request head + body, from accept */
+#define ALARM_SECONDS 90        /* hard limit before the bridge (covers starting a session) */
+#define TOKEN_SECONDS (12 * 3600)
+
 static SSL *ssl;
 static int sock = -1;
-static char peer[48];
+static char peer[48];           /* address as shown */
+static char peer_key[48];       /* lockout key (IPv4, or the IPv6 /64) */
+static double deadline;
+static int lock_fd = -1;        /* bridge → root parent: "L" = the session was locked */
 
+static double mono(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (double)t.tv_sec + t.tv_nsec / 1e9;
+}
 
 /* ---- blocking TLS I/O (before the bridge) ---- */
+
+static int wait_io(int out) {
+    if (!out && SSL_pending(ssl)) return 0;
+    double left = deadline - mono();
+    if (left <= 0) return -1;
+    struct pollfd p = { sock, (short)(out ? POLLOUT : POLLIN), 0 };
+    int ms = left > 10 ? 10000 : (int)(left * 1000) + 1;
+    return poll(&p, 1, ms) > 0 ? 0 : -1;
+}
 
 static int tls_write_all(const void *p, size_t n) {
     const char *c = p;
@@ -56,11 +86,7 @@ static int tls_write_all(const void *p, size_t n) {
         int w = SSL_write(ssl, c, n > 1u << 30 ? 1 << 30 : (int)n);
         if (w <= 0) {
             int e = SSL_get_error(ssl, w);
-            if (e == SSL_ERROR_WANT_WRITE || e == SSL_ERROR_WANT_READ) {
-                struct pollfd p2 = { sock, (short)(e == SSL_ERROR_WANT_WRITE ? POLLOUT : POLLIN), 0 };
-                if (poll(&p2, 1, 10000) <= 0) return -1;
-                continue;
-            }
+            if ((e == SSL_ERROR_WANT_WRITE || e == SSL_ERROR_WANT_READ) && !wait_io(e == SSL_ERROR_WANT_WRITE)) continue;
             return -1;
         }
         c += w;
@@ -69,198 +95,363 @@ static int tls_write_all(const void *p, size_t n) {
     return 0;
 }
 
-static void respond(int code, const char *status, const char *type, const char *extra, const char *body, size_t len) {
-    char head[1024];
+/* ---- responses ---- */
+
+/* CSP hashes of the inline <script> and <style> of each page, so nothing else can run there */
+typedef struct { const char *start, *end; char script[64], style[64]; } Page;
+static Page login_page = { _binary_src_remote_login_html_start, _binary_src_remote_login_html_end, "", "" };
+static Page desk_page = { _binary_src_remote_client_html_start, _binary_src_remote_client_html_end, "", "" };
+
+static void hash_block(const char *s, const char *e, const char *open, const char *close, char out[64]) {
+    out[0] = 0;
+    size_t ol = strlen(open);
+    const char *a = NULL;
+    for (const char *p = s; p + ol <= e; p++) if (!memcmp(p, open, ol)) { a = p + ol; break; }
+    if (!a) return;
+    size_t cl = strlen(close);
+    const char *b = NULL;
+    for (const char *p = a; p + cl <= e; p++) if (!memcmp(p, close, cl)) { b = p; break; }
+    if (!b) return;
+    unsigned char md[32];
+    unsigned int ml = 0;
+    if (!EVP_Digest(a, (size_t)(b - a), md, &ml, EVP_sha256(), NULL)) return;
+    EVP_EncodeBlock((unsigned char *)out, md, 32);
+}
+
+static void page_hashes(Page *p) {
+    if (p->script[0]) return;
+    hash_block(p->start, p->end, "<script>", "</script>", p->script);
+    hash_block(p->start, p->end, "<style>", "</style>", p->style);
+}
+
+static const char *status_text(int code) {
+    switch (code) {
+    case 200: return "OK";
+    case 303: return "See Other";
+    case 400: return "Bad Request";
+    case 403: return "Forbidden";
+    case 404: return "Not Found";
+    case 405: return "Method Not Allowed";
+    case 408: return "Request Timeout";
+    case 413: return "Content Too Large";
+    case 414: return "URI Too Long";
+    case 415: return "Unsupported Media Type";
+    case 426: return "Upgrade Required";
+    case 431: return "Request Header Fields Too Large";
+    case 501: return "Not Implemented";
+    case 503: return "Service Unavailable";
+    default: return "Error";
+    }
+}
+
+/* Every answer: no caching, no framing, no referrer, no sniffing, no powerful features, and a CSP
+ * that only lets the page's own inline code run (or nothing, for non-HTML answers). No HSTS: the
+ * certificate is self-signed, and HSTS would make its warning impossible to get past. */
+static void respond_page(int code, const char *type, const char *extra, const char *body, size_t len, const Page *pg, const char *host) {
+    char csp[600];
+    if (pg) {
+        char wss[300] = "";
+        if (rs_valid_host(host)) snprintf(wss, sizeof wss, " wss://%s", host);
+        snprintf(csp, sizeof csp,
+                 "default-src 'none'; script-src 'sha256-%s'; style-src 'sha256-%s'; img-src 'self' blob: data:; "
+                 "connect-src 'self'%s; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+                 pg->script, pg->style, wss);
+    } else snprintf(csp, sizeof csp, "default-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'");
+    char head[2048];
     int n = snprintf(head, sizeof head,
-        "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nConnection: close\r\nCache-Control: no-store\r\n"
-        "X-Frame-Options: DENY\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: same-origin\r\n"
-        "Content-Security-Policy: default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' wss:; frame-ancestors 'none'\r\n"
-        "%s\r\n", code, status, type, len, extra ? extra : "");
+        "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nConnection: close\r\n"
+        "Cache-Control: no-store, max-age=0\r\nPragma: no-cache\r\n"
+        "X-Frame-Options: DENY\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n"
+        "Cross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Resource-Policy: same-origin\r\n"
+        "Permissions-Policy: camera=(), microphone=(), geolocation=(), usb=(), serial=(), hid=(), bluetooth=(), payment=(), display-capture=()\r\n"
+        "Content-Security-Policy: %s\r\n%s\r\n", code, status_text(code), type, len, csp, extra ? extra : "");
+    if (n < 0 || (size_t)n >= sizeof head) return;
     tls_write_all(head, (size_t)n);
     if (len) tls_write_all(body, len);
 }
 
+static void respond(int code, const char *extra) {
+    const char *t = status_text(code);
+    respond_page(code, "text/plain; charset=utf-8", extra, t, strlen(t), NULL, NULL);
+}
+
 static void redirect(const char *to, const char *extra) {
-    char h[512];
+    char h[700];
     snprintf(h, sizeof h, "Location: %s\r\n%s", to, extra ? extra : "");
-    respond(303, "See Other", "text/plain", h, "", 0);
+    respond_page(303, "text/plain; charset=utf-8", h, "", 0, NULL, NULL);
+}
+
+/* The login page; with an error code e (1 wrong, 2 wait, 4 blocked) marked on <html data-e>, for the
+ * answers that can't be a redirect (a blocked source's next request is refused). */
+static void send_login(int code, int e, const char *host) {
+    page_hashes(&login_page);
+    size_t len = (size_t)(login_page.end - login_page.start);
+    static const char tag[] = "<html lang=\"en\" translate=\"no\">";
+    const char *at = e ? memmem(login_page.start, len, tag, sizeof tag - 1) : NULL;
+    if (!at) { respond_page(code, "text/html; charset=utf-8", NULL, login_page.start, len, &login_page, host); return; }
+    char mark[48];
+    int ml = snprintf(mark, sizeof mark, "<html lang=\"en\" translate=\"no\" data-e=\"%d\">", e);
+    char *b = malloc(len + (size_t)ml);
+    if (!b) return;
+    size_t pre = (size_t)(at - login_page.start);
+    memcpy(b, login_page.start, pre);
+    memcpy(b + pre, mark, (size_t)ml);
+    memcpy(b + pre + (size_t)ml, at + sizeof tag - 1, len - pre - (sizeof tag - 1));
+    respond_page(code, "text/html; charset=utf-8", NULL, b, len - (sizeof tag - 1) + (size_t)ml, &login_page, host);
+    free(b);
 }
 
 /* ---- HTTP request ---- */
 
-typedef struct {
-    char method[8], path[256], query[256];
-    char cookie[256], upgrade[32], wskey[64], origin[160], host[160];
-    long content_length;
-    char body[4096];
-    size_t body_len;
-} Req;
+static char reqbuf[RS_MAX_HEAD + RS_MAX_BODY + 1];
+static char *body;
+static size_t body_len;
 
-static void header_val(const char *line, const char *name, char *out, size_t n) {
-    size_t l = strlen(name);
-    if (strncasecmp(line, name, l) || line[l] != ':') return;
-    const char *v = line + l + 1;
-    while (*v == ' ') v++;
-    snprintf(out, n, "%s", v);
-}
-
-static int read_request(Req *r) {
-    memset(r, 0, sizeof *r);
-    char buf[16384];
+/* 0, -status to answer with, or -1 to just close */
+static int read_request(RsReq *r) {
     size_t len = 0;
-    char *end = NULL;
-    while (!end) {
-        if (len >= sizeof buf - 1) return -1;
-        struct pollfd p = { sock, POLLIN, 0 };
-        if (!SSL_pending(ssl) && poll(&p, 1, 15000) <= 0) return -1;
-        int n = SSL_read(ssl, buf + len, (int)(sizeof buf - 1 - len));
+    int rc;
+    while ((rc = rs_parse_head(reqbuf, len, r)) == RS_NEED_MORE) {
+        if (len >= RS_MAX_HEAD) return -431;
+        if (wait_io(0)) return len ? -408 : -1;
+        int n = SSL_read(ssl, reqbuf + len, (int)(RS_MAX_HEAD - len));
         if (n <= 0) {
             int e = SSL_get_error(ssl, n);
             if (e == SSL_ERROR_WANT_READ || e == SSL_ERROR_WANT_WRITE) continue;
             return -1;
         }
         len += (size_t)n;
-        buf[len] = 0;
-        end = strstr(buf, "\r\n\r\n");
     }
-    *end = 0;
-    char *body = end + 4;
-    size_t have = len - (size_t)(body - buf);
-    char *line = buf, *nl = strstr(line, "\r\n");
-    if (nl) *nl = 0;
-    char target[512] = "";
-    if (sscanf(line, "%7s %511s", r->method, target) != 2) return -1;
-    char *q = strchr(target, '?');
-    if (q) { *q++ = 0; snprintf(r->query, sizeof r->query, "%s", q); }
-    snprintf(r->path, sizeof r->path, "%s", target);
-    for (line = nl ? nl + 2 : NULL; line && *line; line = nl ? nl + 2 : NULL) {
-        nl = strstr(line, "\r\n");
-        if (nl) *nl = 0;
-        char cl[24] = "";
-        header_val(line, "Cookie", r->cookie, sizeof r->cookie);
-        header_val(line, "Upgrade", r->upgrade, sizeof r->upgrade);
-        header_val(line, "Sec-WebSocket-Key", r->wskey, sizeof r->wskey);
-        header_val(line, "Origin", r->origin, sizeof r->origin);
-        header_val(line, "Host", r->host, sizeof r->host);
-        header_val(line, "Content-Length", cl, sizeof cl);
-        if (cl[0]) r->content_length = atol(cl);
+    if (rc < 0) return rc;
+    size_t cl = r->content_length > 0 ? (size_t)r->content_length : 0, have = len - r->head_len;
+    if (have > cl) return -400;                 /* one request per connection: nothing after it */
+    body = reqbuf + r->head_len;
+    while (have < cl) {
+        if (wait_io(0)) return -408;
+        int n = SSL_read(ssl, body + have, (int)(cl - have));
+        if (n <= 0) {
+            int e = SSL_get_error(ssl, n);
+            if (e == SSL_ERROR_WANT_READ || e == SSL_ERROR_WANT_WRITE) continue;
+            return -1;
+        }
+        have += (size_t)n;
     }
-    if (r->content_length < 0 || r->content_length > (long)sizeof r->body - 1) return -1;
-    if (have > (size_t)r->content_length) have = (size_t)r->content_length;
-    memcpy(r->body, body, have);
-    r->body_len = have;
-    while (r->body_len < (size_t)r->content_length) {
-        int n = SSL_read(ssl, r->body + r->body_len, (int)((size_t)r->content_length - r->body_len));
-        if (n <= 0) return -1;
-        r->body_len += (size_t)n;
-    }
-    r->body[r->body_len] = 0;
+    body[cl] = 0;
+    body_len = cl;
     return 0;
 }
 
-/* application/x-www-form-urlencoded: value of a key (decoded) */
-static int form_get(const char *body, const char *key, char *out, size_t n) {
+/* "w=1280&h=800": a number of up to 5 digits, or def */
+static int query_num(const char *q, const char *key, int def) {
     size_t kl = strlen(key);
-    for (const char *p = body; p && *p; p = strchr(p, '&') ? strchr(p, '&') + 1 : NULL) {
-        if (strncmp(p, key, kl) || p[kl] != '=') continue;
-        const char *v = p + kl + 1;
-        size_t o = 0;
-        for (; *v && *v != '&' && o + 1 < n; v++) {
-            if (*v == '+') out[o++] = ' ';
-            else if (*v == '%' && isxdigit((unsigned char)v[1]) && isxdigit((unsigned char)v[2])) {
-                char hx[3] = { v[1], v[2], 0 };
-                out[o++] = (char)strtol(hx, NULL, 16);
-                v += 2;
-            } else out[o++] = *v;
+    for (const char *p = q; *p;) {
+        const char *e = strchr(p, '&');
+        size_t l = e ? (size_t)(e - p) : strlen(p);
+        if (l > kl + 1 && l <= kl + 6 && !strncmp(p, key, kl) && p[kl] == '=') {
+            int v = 0, ok = 1;
+            for (size_t i = kl + 1; i < l; i++) { if (!isdigit((unsigned char)p[i])) { ok = 0; break; } v = v * 10 + (p[i] - '0'); }
+            if (ok) return v;
         }
-        out[o] = 0;
-        return 0;
+        p += l;
+        if (*p == '&') p++;
     }
-    out[0] = 0;
-    return -1;
+    return def;
 }
 
-static int query_int(const char *q, const char *key, int def) {
-    char v[16];
-    return form_get(q, key, v, sizeof v) == 0 && v[0] ? atoi(v) : def;
+/* Same origin, strictly: browsers always send Origin on a POST and on a WebSocket; a request
+ * without it is not from our page. Sec-Fetch-Site, when sent, must agree. */
+static int origin_ok(const RsReq *r) {
+    if (!rs_same_origin(r->origin, r->host)) return 0;
+    if (r->fetch_site[0] && strcmp(r->fetch_site, "same-origin") && strcmp(r->fetch_site, "none")) return 0;
+    return 1;
 }
 
-/* ---- login ---- */
+/* ---- cookies (shared memory; only root processes map it) ---- */
 
-static int ct_equal(const char *a, const char *b) {
-    size_t la = strlen(a), lb = strlen(b);
-    unsigned char d = (unsigned char)(la != lb);
-    for (size_t i = 0; i < la && i < lb; i++) d |= (unsigned char)(a[i] ^ b[i]);
-    return d == 0;
+static void sha256(const void *p, size_t n, unsigned char out[32]) {
+    unsigned int l = 0;
+    if (!EVP_Digest(p, n, out, &l, EVP_sha256(), NULL)) memset(out, 0, 32);
 }
 
-static void new_token(uid_t uid, const char *user, char out[65]) {
+/* a digest of the account's shadow hash: if the password changes or gets locked, cookies end */
+static void pw_digest(const char *user, unsigned char out[16]) {
+    struct spwd *sp = getspnam(user);
+    unsigned char md[32];
+    const char *h = sp && sp->sp_pwdp ? sp->sp_pwdp : "";
+    sha256(h, strlen(h), md);
+    memcpy(out, md, 16);
+    explicit_bzero(md, sizeof md);
+}
+
+static int new_token(uid_t uid, const char *user, char out[65]) {
     unsigned char r[32];
-    if (getrandom(r, sizeof r, 0) != sizeof r) { out[0] = 0; return; }
+    if (getrandom(r, sizeof r, 0) != sizeof r) { out[0] = 0; return -1; }
     for (int i = 0; i < 32; i++) snprintf(out + i * 2, 3, "%02x", r[i]);
+    explicit_bzero(r, sizeof r);
+    RdToken t = { .uid = uid, .expires = rd_now() + TOKEN_SECONDS };
+    sha256(out, 64, t.hash);
+    pw_digest(user, t.pwh);
+    snprintf(t.user, sizeof t.user, "%.32s", user);
     double now = rd_now();
     rd_lock();
     int slot = 0;
-    for (int i = 0; i < 64; i++) if (rd_shared->tokens[i].expires < rd_shared->tokens[slot].expires) slot = i;
-    RdToken *t = &rd_shared->tokens[slot];
-    snprintf(t->tok, sizeof t->tok, "%s", out);
-    t->uid = uid;
-    snprintf(t->user, sizeof t->user, "%.32s", user);
-    t->expires = now + 12 * 3600;
+    for (int i = 0; i < 64; i++) {
+        RdToken *x = &rd_shared->tokens[i];
+        if (x->expires <= now) { slot = i; break; }
+        if (x->expires < rd_shared->tokens[slot].expires) slot = i;
+    }
+    rd_shared->tokens[slot] = t;
     rd_unlock();
-}
-
-static int token_from_cookie(const char *cookie, char out[65]) {
-    const char *p = strstr(cookie, "lordos_remote=");
-    out[0] = 0;
-    if (!p) return -1;
-    p += 14;
-    size_t n = 0;
-    while (n < 64 && isxdigit((unsigned char)p[n])) n++;
-    if (n != 64) return -1;
-    memcpy(out, p, 64);
-    out[64] = 0;
     return 0;
 }
 
-/* user from the cookie, or -1 */
-static int session_user(const Req *r, char user[33], uid_t *uid) {
+static void token_drop_hash(const unsigned char h[32]) {
+    rd_lock();
+    for (int i = 0; i < 64; i++)
+        if (!CRYPTO_memcmp(rd_shared->tokens[i].hash, h, 32)) memset(&rd_shared->tokens[i], 0, sizeof rd_shared->tokens[i]);
+    rd_unlock();
+}
+
+void rd_tokens_drop_uid(uid_t uid) {
+    rd_lock();
+    for (int i = 0; i < 64; i++)
+        if (rd_shared->tokens[i].expires > 0 && rd_shared->tokens[i].uid == uid) memset(&rd_shared->tokens[i], 0, sizeof rd_shared->tokens[i]);
+    rd_unlock();
+}
+
+void rd_tokens_clear(void) {
+    rd_lock();
+    memset(rd_shared->tokens, 0, sizeof rd_shared->tokens);
+    rd_unlock();
+}
+
+/* user from the cookie, or -1; *hash = the cookie's digest (to drop it on logout) */
+static int session_user(const RsReq *r, char user[33], uid_t *uid, unsigned char hash[32]) {
     char tok[65];
-    if (token_from_cookie(r->cookie, tok)) return -1;
+    memset(hash, 0, 32);
+    if (rs_cookie_token(r->cookie, RD_COOKIE, tok)) return -1;
+    sha256(tok, 64, hash);
+    explicit_bzero(tok, sizeof tok);
     double now = rd_now();
     int ok = -1;
+    unsigned char pwh[16];
     rd_lock();
     for (int i = 0; i < 64; i++) {
         RdToken *t = &rd_shared->tokens[i];
-        if (t->tok[0] && t->expires > now && ct_equal(t->tok, tok)) { snprintf(user, 33, "%s", t->user); *uid = t->uid; ok = 0; }
+        if (t->expires > now && !CRYPTO_memcmp(t->hash, hash, 32)) {
+            snprintf(user, 33, "%s", t->user);
+            *uid = t->uid;
+            memcpy(pwh, t->pwh, 16);
+            ok = 0;
+        }
     }
     rd_unlock();
     if (ok == 0) {     /* the account may have changed since login */
         struct passwd *pw = getpwnam(user);
-        if (!pw || pw->pw_uid != *uid || !sd_user_allowed(pw, 1)) ok = -1;
+        unsigned char now_pwh[16];
+        pw_digest(user, now_pwh);
+        if (!pw || pw->pw_uid != *uid || !sd_remote_account_ok(user) || CRYPTO_memcmp(now_pwh, pwh, 16)) {
+            token_drop_hash(hash);
+            ok = -1;
+        }
     }
     return ok;
 }
 
-static void token_drop_tok(const char *tok) {
-    if (!tok[0]) return;
+#define CLEAR_COOKIES "Set-Cookie: " RD_COOKIE "=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0\r\n" \
+                      "Set-Cookie: lordos_remote=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0\r\n"
+
+/* ---- login ---- */
+
+static void push_notice(const char *key, double until, int strikes) {
+    unsigned i = rd_shared->notice_seq % RD_NOTICES;
+    RdNotice *n = &rd_shared->notices[i];
+    snprintf(n->key, sizeof n->key, "%s", key);
+    n->until = until;
+    n->at = rd_now();
+    n->strikes = strikes;
+    rd_shared->notice_seq++;
+}
+
+static void handle_login(const RsReq *r) {
+    if (r->query[0]) { respond(400, NULL); return; }            /* credentials never travel in a URL */
+    if (!origin_ok(r)) {
+        char o[64], h[64];
+        rs_log_clean(r->origin, strlen(r->origin), o, sizeof o);
+        rs_log_clean(r->host, strlen(r->host), h, sizeof h);
+        sd_log("login refused: origin \"%s\" is not https://%s", o, h);
+        respond(403, NULL);
+        return;
+    }
+    if (!rs_form_type(r->ctype)) { respond(415, NULL); return; }
     rd_lock();
-    for (int i = 0; i < 64; i++) if (ct_equal(rd_shared->tokens[i].tok, tok)) memset(&rd_shared->tokens[i], 0, sizeof rd_shared->tokens[i]);
+    double left = rl_blocked(&rd_shared->lockout, peer_key, rd_now());
     rd_unlock();
-}
+    if (left > 0) { send_login(403, 4, r->host); return; }
+    if (sd_fail_wait(peer_key) > 0) { redirect("/?e=2", NULL); return; }
 
-/* The login page, with an optional message (?e=1 password, ?e=2 wait). */
-static void send_login(const Req *r) {
-    respond(200, "OK", "text/html; charset=utf-8", NULL, _binary_src_remote_login_html_start,
-            (size_t)(_binary_src_remote_login_html_end - _binary_src_remote_login_html_start));
-    (void)r;
-}
-
-/* Same origin (protects the login form from other sites). */
-static int same_origin(const Req *r) {
-    if (!r->origin[0]) return 1;
-    const char *o = strstr(r->origin, "://");
-    return o && !strcmp(o + 3, r->host);
+    char user[33], pass[RS_PASS_MAX + 1], raw[33];
+    size_t plen = 0;
+    int fr = rs_parse_login(body, body_len, user, pass, &plen, raw);
+    explicit_bzero(reqbuf, sizeof reqbuf);
+    if (fr == RS_FORM_BAD) {
+        sd_log("login refused: malformed form");
+        respond(400, NULL);
+        return;
+    }
+    int ok = 0;
+    char ukey[40] = "";
+    if (fr == RS_FORM_OK) {
+        snprintf(ukey, sizeof ukey, "u:%s", user);
+        double d = rl_user_delay(sd_fail_count(ukey));        /* per account: slower, never locked */
+        if (d > 0) sleep((unsigned)d);
+        ok = sd_check_password(user, pass, 1);
+    }
+    explicit_bzero(pass, sizeof pass);
+    if (!ok) {
+        sd_fail_note(peer_key, 1);
+        if (ukey[0]) sd_fail_note(ukey, 1);
+        double until = 0;
+        int strikes = 0;
+        rd_lock();
+        int blocked = rl_fail(&rd_shared->lockout, peer_key, rd_now(), &until, &strikes);
+        if (blocked) push_notice(peer_key, until, strikes);
+        rd_shared->lockout_dirty = 1;
+        rd_shared->version++;
+        rd_unlock();
+        sd_log("failed login for \"%s\"%s", raw[0] ? raw : "?", fr == RS_FORM_USER ? " (not a valid user name)" : "");
+        if (blocked) {
+            sd_log("blocked %s for %.0f minutes after %d failed logins (block %d in 24 h)", peer_key, (until - rd_now()) / 60 + 0.5,
+                   RL_FAILS, strikes);
+            sleep(1);
+            send_login(403, 4, r->host);
+            return;
+        }
+        sleep(1);
+        redirect("/?e=1", NULL);
+        return;
+    }
+    rd_lock();
+    rl_success(&rd_shared->lockout, peer_key);
+    rd_shared->lockout_dirty = 1;
+    rd_unlock();
+    sd_fail_note(peer_key, 0);
+    sd_fail_note(ukey, 0);
+    struct passwd *pw = getpwnam(user);
+    if (!pw) { respond(503, NULL); return; }
+    /* a cookie the browser already had is never kept (no fixation): it ends here */
+    unsigned char oldh[32];
+    char olduser[33];
+    uid_t olduid;
+    if (session_user(r, olduser, &olduid, oldh) == 0) token_drop_hash(oldh);
+    char tok[65], cookie[400];
+    if (new_token(pw->pw_uid, user, tok)) { respond(503, NULL); return; }
+    snprintf(cookie, sizeof cookie, "Set-Cookie: " RD_COOKIE "=%s; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=%d\r\n"
+             "Set-Cookie: lordos_remote=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0\r\n", tok, TOKEN_SECONDS);
+    explicit_bzero(tok, sizeof tok);
+    sd_log("%s logged in", user);
+    redirect("/desk", cookie);
+    explicit_bzero(cookie, sizeof cookie);
 }
 
 /* ---- WebSocket ---- */
@@ -293,6 +484,7 @@ static void ws_frame(int opcode, const void *a, size_t an, const void *b, size_t
     if (bn) wput(b, bn);
 }
 
+static void ws_text(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void ws_text(const char *fmt, ...) {
     char buf[1024];
     va_list ap;
@@ -302,8 +494,14 @@ static void ws_text(const char *fmt, ...) {
     if (n > 0 && (size_t)n < sizeof buf) ws_frame(1, buf, (size_t)n, NULL, 0);
 }
 
-/* text as a JSON string (for the clipboard) */
+static void ws_close(int code) {
+    unsigned char c[2] = { (unsigned char)(code >> 8), (unsigned char)code };
+    ws_frame(8, c, 2, NULL, 0);
+}
+
+/* text as a JSON string (for the clipboard); invalid UTF-8 from the session is not sent */
 static void ws_clip(const char *t, size_t n) {
+    if (n > RS_CLIP_MAX || !rs_utf8_valid((const unsigned char *)t, n)) return;
     size_t cap = n * 6 + 32, o = 0;
     char *j = malloc(cap);
     if (!j) return;
@@ -311,7 +509,7 @@ static void ws_clip(const char *t, size_t n) {
     for (size_t i = 0; i < n; i++) {
         unsigned char c = (unsigned char)t[i];
         if (c == '"' || c == '\\') { j[o++] = '\\'; j[o++] = (char)c; }
-        else if (c < 0x20) o += (size_t)snprintf(j + o, cap - o, "\\u%04x", c);
+        else if (c < 0x20 || c == 0x7f) o += (size_t)snprintf(j + o, cap - o, "\\u%04x", c);
         else j[o++] = (char)c;
     }
     o += (size_t)snprintf(j + o, cap - o, "\"}");
@@ -333,7 +531,7 @@ static int ws_flush(void) {
     return 0;
 }
 
-static int ws_handshake(const Req *r) {
+static int ws_handshake(const RsReq *r) {
     static const char guid[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     char k[128];
     snprintf(k, sizeof k, "%s%s", r->wskey, guid);
@@ -348,7 +546,7 @@ static int ws_handshake(const Req *r) {
     return tls_write_all(head, (size_t)n);
 }
 
-/* ---- bridge ---- */
+/* ---- bridge (runs as the user) ---- */
 
 static int sess = -1;                  /* session socket */
 static uint32_t *fb;                   /* copy of the screen (to replace with PNG) */
@@ -357,6 +555,7 @@ typedef struct { uint16_t x, y, w, h; } Box16;
 static Box16 jpegs[512];
 static int njpegs;
 static double last_frame;
+static int locked, closing;
 
 static void sess_send(int type, const void *a, size_t an) {
     unsigned char h[5];
@@ -366,9 +565,6 @@ static void sess_send(int type, const void *a, size_t an) {
     if (write(sess, h, 5) != 5) return;
     if (an && write(sess, a, an) != (ssize_t)an) return;
 }
-
-static char my_token[65];              /* this connection's cookie (wiped on lock) */
-static int locked;                     /* the session got locked: cut off */
 
 static void send_rect(int x, int y, int w, int h, int allow_jpeg) {
     int len = 0, jpeg = 0;
@@ -389,6 +585,7 @@ static void from_session(int type, const unsigned char *d, uint32_t n) {
         {
             uint16_t s[2];
             memcpy(s, d, 4);
+            if (!s[0] || !s[1] || s[0] > 8192 || s[1] > 8192) break;
             W = s[0];
             H = s[1];
             free(fb);
@@ -419,14 +616,14 @@ static void from_session(int type, const unsigned char *d, uint32_t n) {
             int16_t x, y;
             memcpy(&x, d, 2);
             memcpy(&y, d + 2, 2);
-            ws_text("{\"t\":\"cur\",\"x\":%d,\"y\":%d,\"m\":%d}", x, y, d[4]);
+            ws_text("{\"t\":\"cur\",\"x\":%d,\"y\":%d,\"m\":%d}", x, y, d[4] > 2 ? 0 : d[4]);
         }
         break;
     case RP_SHAPE:
         if (n >= 8) {
             uint16_t s[4];
             memcpy(s, d, 8);
-            if (n < 8 + (uint32_t)s[0] * s[1] * 4 || !s[0] || !s[1]) break;
+            if (!s[0] || !s[1] || s[0] > 512 || s[1] > 512 || n < 8 + (uint32_t)s[0] * s[1] * 4) break;
             uint32_t *px = malloc((size_t)s[0] * s[1] * 4);
             if (!px) break;
             memcpy(px, d + 8, (size_t)s[0] * s[1] * 4);
@@ -443,9 +640,9 @@ static void from_session(int type, const unsigned char *d, uint32_t n) {
         break;
     case RP_CLIP: ws_clip((const char *)d, n); break;
     case RP_SESSION:
-        /* the user locked their session: this browser has to log in again too */
+        /* the user locked their session: every browser of this user has to log in again */
         if (n >= 10 && memmem(d, n, "\"lock\"", 6)) {
-            token_drop_tok(my_token);
+            if (lock_fd >= 0 && write(lock_fd, "L", 1) != 1) { /* the root parent is gone: the cookie expires anyway */ }
             ws_text("{\"t\":\"bye\",\"lock\":1}");
             locked = 1;
         }
@@ -454,110 +651,64 @@ static void from_session(int type, const unsigned char *d, uint32_t n) {
     }
 }
 
-/* Flat JSON from the browser: {"t":"m","x":1,"y":2} — number or string of a key */
-static int jnum(const char *j, const char *key, long *out) {
-    char k[24];
-    snprintf(k, sizeof k, "\"%s\":", key);
-    const char *p = strstr(j, k);
-    if (!p) return -1;
-    char *e;
-    long v = strtol(p + strlen(k), &e, 10);
-    if (e == p + strlen(k)) return -1;
-    *out = v;
-    return 0;
-}
-
-static int jstr(const char *j, const char *key, char *out, size_t n) {
-    char k[24];
-    snprintf(k, sizeof k, "\"%s\":\"", key);
-    const char *p = strstr(j, k);
-    if (!p) return -1;
-    p += strlen(k);
-    size_t o = 0;
-    for (; *p && *p != '"' && o + 4 < n; p++) {
-        if (*p != '\\') { out[o++] = *p; continue; }
-        p++;
-        if (*p == 'n') out[o++] = '\n';
-        else if (*p == 't') out[o++] = '\t';
-        else if (*p == 'r') out[o++] = '\r';
-        else if (*p == 'u' && isxdigit((unsigned char)p[1]) && isxdigit((unsigned char)p[2]) && isxdigit((unsigned char)p[3]) && isxdigit((unsigned char)p[4])) {
-            char hx[5] = { p[1], p[2], p[3], p[4], 0 };
-            unsigned cp = (unsigned)strtol(hx, NULL, 16);
-            p += 4;
-            if (cp < 0x80) out[o++] = (char)cp;
-            else if (cp < 0x800) { out[o++] = (char)(0xc0 | cp >> 6); out[o++] = (char)(0x80 | (cp & 63)); }
-            else { out[o++] = (char)(0xe0 | cp >> 12); out[o++] = (char)(0x80 | ((cp >> 6) & 63)); out[o++] = (char)(0x80 | (cp & 63)); }
-        } else if (*p) out[o++] = *p;
-        else break;
-    }
-    out[o] = 0;
-    return (int)o;
-}
-
+/* One validated browser message → session. */
 static void from_browser(const char *j, size_t n) {
-    char t[12] = "";
-    if (jstr(j, "t", t, sizeof t) < 0) return;
-    long a = 0, b = 0;
-    if (!strcmp(t, "m") && !jnum(j, "x", &a) && !jnum(j, "y", &b)) {
-        if (a < 0) a = 0;
-        if (b < 0) b = 0;
-        if (a >= W) a = W - 1;
-        if (b >= H) b = H - 1;
-        int16_t p[2] = { (int16_t)a, (int16_t)b };
-        sess_send(RP_PTR, p, 4);
-    } else if (!strcmp(t, "b") && !jnum(j, "b", &a) && !jnum(j, "d", &b) && a >= 0 && a <= 2) {
-        unsigned char p[2] = { (unsigned char)a, (unsigned char)(b != 0) };
-        sess_send(RP_BTN, p, 2);
-    } else if (!strcmp(t, "w") && !jnum(j, "d", &a)) {
-        signed char d = (signed char)(a > 10 ? 10 : a < -10 ? -10 : a);
-        sess_send(RP_WHEEL, &d, 1);
-    } else if ((!strcmp(t, "s") || !strcmp(t, "pz")) && !jnum(j, "p", &a) && a >= 1 && a <= 3) {
-        /* browser trackpad: fine scroll {t:'s', p, x, y} (1/256 px) or pinch {t:'pz', p, s, r}
-         * (scale ×65536, rotation in degrees ×256) */
-        long v1 = 0, v2 = 0;
-        int sc = !strcmp(t, "s");
-        if (jnum(j, sc ? "x" : "s", &v1) || jnum(j, sc ? "y" : "r", &v2)) return;
-        long lim = sc ? 4000L * 256 : 20L * 65536;
-        if (v1 > lim) v1 = lim;
-        if (v1 < -lim) v1 = -lim;
-        if (v2 > 360L * 256 * 4) v2 = 360L * 256 * 4;
-        if (v2 < -360L * 256 * 4) v2 = -360L * 256 * 4;
-        if (sc && (v2 > lim || v2 < -lim)) v2 = v2 > 0 ? lim : -lim;
-        unsigned char p[9];
-        int32_t w[2] = { (int32_t)v1, (int32_t)v2 };
-        p[0] = (unsigned char)a;
-        memcpy(p + 1, w, 8);
-        sess_send(sc ? RP_SCROLL : RP_PINCH, p, 9);
-    } else if (!strcmp(t, "k") && !jnum(j, "c", &a) && !jnum(j, "d", &b) && a > 0 && a < 0x2ff) {
-        unsigned char p[3];
-        uint16_t c = (uint16_t)a;
-        memcpy(p, &c, 2);
-        p[2] = (unsigned char)(b != 0);
-        sess_send(RP_KEY, p, 3);
-    } else if (!strcmp(t, "ack")) sess_send(RP_READY, NULL, 0);
-    else if (!strcmp(t, "resize") && !jnum(j, "w", &a) && !jnum(j, "h", &b) && a >= 640 && b >= 480 && a <= 3840 && b <= 2400) {
-        uint16_t sz[2] = { (uint16_t)(a & ~1), (uint16_t)(b & ~1) };      /* if the monitor shows it, the monitor wins */
-        sess_send(RP_RESIZE, sz, 4);
-    }
-    else if (!strcmp(t, "ping") && !jnum(j, "ts", &a)) ws_text("{\"t\":\"pong\",\"ts\":%ld}", a);
-    else if (!strcmp(t, "clip")) {
-        char *txt = malloc(n + 1);
-        if (txt) {
-            int l = jstr(j, "text", txt, n + 1);
-            if (l > 0) sess_send(RP_SETCLIP, txt, (size_t)l);
-            free(txt);
+    char *sb = malloc(n + 1);
+    if (!sb) return;
+    RsJson o;
+    RsInput in;
+    if (rs_json_parse(j, n, &o, sb, n + 1) == 0) {
+        switch (rs_browser_input(&o, W, H, &in)) {
+        case RS_IN_PTR: { int16_t p[2] = { (int16_t)in.a, (int16_t)in.b }; sess_send(RP_PTR, p, 4); break; }
+        case RS_IN_BTN: { unsigned char p[2] = { (unsigned char)in.a, (unsigned char)in.b }; sess_send(RP_BTN, p, 2); break; }
+        case RS_IN_WHEEL: { signed char d = (signed char)in.a; sess_send(RP_WHEEL, &d, 1); break; }
+        case RS_IN_SCROLL:
+        case RS_IN_PINCH: {
+            unsigned char p[9];
+            int32_t w[2] = { in.v1, in.v2 };
+            p[0] = (unsigned char)in.a;
+            memcpy(p + 1, w, 8);
+            sess_send(in.type == RS_IN_SCROLL ? RP_SCROLL : RP_PINCH, p, 9);
+            break;
+        }
+        case RS_IN_KEY: {
+            unsigned char p[3];
+            uint16_t c = (uint16_t)in.a;
+            memcpy(p, &c, 2);
+            p[2] = (unsigned char)in.b;
+            sess_send(RP_KEY, p, 3);
+            break;
+        }
+        case RS_IN_ACK: sess_send(RP_READY, NULL, 0); break;
+        case RS_IN_RESIZE: { uint16_t sz[2] = { (uint16_t)in.a, (uint16_t)in.b }; sess_send(RP_RESIZE, sz, 4); break; }
+        case RS_IN_PING: ws_text("{\"t\":\"pong\",\"ts\":%lld}", in.ts); break;
+        case RS_IN_CLIP: sess_send(RP_SETCLIP, in.text, in.tlen); break;
+        default: break;
         }
     }
+    explicit_bzero(sb, n + 1);
+    free(sb);
 }
 
-/* Reads frames from the browser (masked). Returns -1 if it closed. */
+static void on_ws(void *ud, int op, unsigned char *data, size_t len) {
+    (void)ud;
+    if (closing) return;
+    if (op == 1) from_browser((const char *)data, len);
+    else if (op == 9) ws_frame(10, data, len, NULL, 0);
+    else if (op == 8) { ws_close(1000); closing = 1; }
+    else if (op == 2) { ws_close(1003); closing = 1; }        /* our page never sends binary */
+}
+
+/* Reads frames from the browser (rsec.c). Returns -1 if the connection is over. */
 static unsigned char *win;
 static size_t win_len, win_cap;
+static RsWs wsr;
+
 static int ws_read(void) {
     for (;;) {
         if (win_cap - win_len < 16384) {
             size_t cap = win_cap ? win_cap * 2 : 65536;
-            if (cap > (4u << 20)) return -1;
+            if (cap > RS_WS_MAX_MSG + 65536) return -1;
             unsigned char *nb = realloc(win, cap);
             if (!nb) return -1;
             win = nb;
@@ -571,30 +722,11 @@ static int ws_read(void) {
         }
         win_len += (size_t)r;
     }
-    size_t off = 0;
-    while (win_len - off >= 2) {
-        unsigned char *f = win + off;
-        int op = f[0] & 15, masked = f[1] & 0x80;
-        uint64_t len = f[1] & 127;
-        size_t hl = 2;
-        if (len == 126) { if (win_len - off < 4) break; len = (uint64_t)f[2] << 8 | f[3]; hl = 4; }
-        else if (len == 127) { if (win_len - off < 10) break; len = 0; for (int i = 0; i < 8; i++) len = len << 8 | f[2 + i]; hl = 10; }
-        if (!masked || len > (2u << 20)) return -1;
-        if (win_len - off < hl + 4 + len) break;
-        unsigned char *mask = f + hl, *p = f + hl + 4;
-        for (uint64_t i = 0; i < len; i++) p[i] ^= mask[i & 3];
-        if (op == 8) return -1;
-        if (op == 9) ws_frame(10, p, (size_t)len, NULL, 0);
-        else if (op == 1 && (f[0] & 0x80)) {
-            char save = (char)p[len];
-            p[len] = 0;
-            from_browser((const char *)p, (size_t)len);
-            p[len] = (unsigned char)save;
-        }
-        off += hl + 4 + (size_t)len;
-    }
-    memmove(win, win + off, win_len - off);
-    win_len -= off;
+    size_t used = 0;
+    int rc = rs_ws_consume(&wsr, win, win_len, &used, on_ws, NULL);
+    memmove(win, win + used, win_len - used);
+    win_len -= used;
+    if (rc) { ws_close(rc); closing = 1; }
     return 0;
 }
 
@@ -611,17 +743,30 @@ static void conn_register(const char *user) {
     rd_unlock();
 }
 
+static int conns_full(void) {
+    int n = 0;
+    rd_lock();
+    for (int i = 0; i < RD_MAX_CONNS; i++) if (rd_shared->conns[i].pid) n++;
+    rd_unlock();
+    return n >= RD_MAX_CONNS;
+}
+
 static void bridge(const struct passwd *pw) {
     char hello[96];
     snprintf(hello, sizeof hello, "%s %s", peer, pw->pw_name);
     sess_send(RP_HELLO, hello, strlen(hello));
     fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) | O_NONBLOCK);
     ws_text("{\"t\":\"hello\",\"user\":\"%s\"}", pw->pw_name);
+    rs_ws_init(&wsr, RS_WS_MAX_MSG);
     unsigned char *sin = NULL;
     size_t sin_len = 0, sin_cap = 0;
     double last_input = rd_now();
     for (;;) {
         if (ws_flush()) return;
+        if (closing) {                         /* our close frame went out (or will not): done */
+            for (int i = 0; i < 20 && wout_len; i++) { struct pollfd q = { sock, POLLOUT, 0 }; poll(&q, 1, 100); if (ws_flush()) break; }
+            return;
+        }
         struct pollfd p[2] = { { sock, (short)(POLLIN | (wout_len ? POLLOUT : 0)), 0 }, { sess, POLLIN, 0 } };
         /* while there is something to send, nothing more is read from the session (flow control) */
         if (wout_len > (4u << 20)) p[1].events = 0;
@@ -674,124 +819,202 @@ static void bridge(const struct passwd *pw) {
     }
 }
 
+/* ---- privilege drop (in the bridge process) ---- */
+
+static void close_all_but(const int *keep, int nkeep) {
+    int fds[1024], n = 0;
+    DIR *d = opendir("/proc/self/fd");
+    if (d) {
+        struct dirent *e;
+        int dfd = dirfd(d);
+        while ((e = readdir(d)) && n < 1024) {
+            char *end;
+            long fd = strtol(e->d_name, &end, 10);
+            if (*end || fd < 3 || fd == dfd) continue;
+            int k = 0;
+            for (int i = 0; i < nkeep; i++) if (keep[i] == fd) k = 1;
+            if (!k) fds[n++] = (int)fd;
+        }
+        closedir(d);
+    }
+    for (int i = 0; i < n; i++) close(fds[i]);
+}
+
+/* For good: no shared state, no descriptor but the three it needs, no environment, the user's
+ * groups and ids (real, effective and saved), checked; no new privileges, no core dumps, and it dies
+ * with its root parent. */
+static int drop_root(const struct passwd *pw, pid_t parent) {
+    if (rd_shared) munmap(rd_shared, sizeof *rd_shared);
+    rd_shared = NULL;
+    int keep[3] = { sock, sess, lock_fd };
+    close_all_but(keep, 3);
+    clearenv();
+    struct rlimit core = { 0, 0 };
+    setrlimit(RLIMIT_CORE, &core);
+    if (pw->pw_uid == 0 || pw->pw_gid == 0) return -1;
+    if (initgroups(pw->pw_name, pw->pw_gid) || setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid) ||
+        setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid)) return -1;
+    uid_t ru, eu, su;
+    gid_t rg, eg, sg;
+    if (getresuid(&ru, &eu, &su) || getresgid(&rg, &eg, &sg)) return -1;
+    if (ru != pw->pw_uid || eu != pw->pw_uid || su != pw->pw_uid || rg != pw->pw_gid || eg != pw->pw_gid || sg != pw->pw_gid) return -1;
+    if (setuid(0) == 0 || seteuid(0) == 0 || setgid(0) == 0 || setegid(0) == 0) return -1;
+    gid_t groups[256];
+    int ng = getgroups(256, groups);
+    for (int i = 0; i < ng; i++) if (groups[i] == 0) return -1;
+    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) || prctl(PR_SET_DUMPABLE, 0, 0, 0, 0)) return -1;
+    if (prctl(PR_SET_PDEATHSIG, SIGTERM, 0, 0, 0) || getppid() != parent) return -1;
+    return 0;
+}
+
 /* ---- one connection ---- */
 
-void rd_serve(SSL_CTX *ctx, int fd, const char *ip) {
+static void handle_ws(const RsReq *r, int logged, const char *user, uid_t uid) {
+    if (!logged) { respond(403, NULL); return; }
+    if (!origin_ok(r) || !rs_has_token(r->upgrade, "websocket") || !rs_has_token(r->connection, "upgrade") || !rs_valid_wskey(r->wskey)) {
+        respond(400, NULL);
+        return;
+    }
+    if (strcmp(r->wsversion, "13")) { respond(426, "Sec-WebSocket-Version: 13\r\n"); return; }
+    if (conns_full()) { respond(503, NULL); return; }
+    struct passwd *pw = getpwnam(user);
+    if (!pw || pw->pw_uid != uid) { respond(403, NULL); return; }
+    struct passwd me = *pw;
+    static char name[33], dir[512];
+    snprintf(name, sizeof name, "%s", pw->pw_name);
+    snprintf(dir, sizeof dir, "%s", pw->pw_dir);
+    me.pw_name = name;
+    me.pw_dir = dir;
+    int w = query_num(r->query, "w", 1280), h = query_num(r->query, "h", 800);
+    if (w < 800) w = 800;
+    if (h < 600) h = 600;
+    if (w > 2560) w = 2560;
+    if (h > 1600) h = 1600;
+    sess = sd_session_get(&me, w & ~1, h & ~1);
+    if (sess < 0) { respond(503, NULL); return; }
+    if (ws_handshake(r)) return;
+    conn_register(name);
+    int pp[2];
+    if (pipe2(pp, O_CLOEXEC)) return;
+    pid_t parent = getpid();
+    alarm(0);
+    pid_t b = fork();
+    if (b < 0) return;
+    if (b == 0) {
+        close(pp[0]);
+        lock_fd = pp[1];
+        /* from here on, no root: TLS, compression and bridge as the user */
+        if (drop_root(&me, parent)) { sd_log("could not drop privileges"); _exit(1); }
+        sd_log("connected to %s's session", name);
+        bridge(&me);
+        sd_log("disconnected");
+        _exit(0);
+    }
+    /* the root side keeps nothing of the connection: it only listens for "the session was locked" */
+    close(pp[1]);
+    close(sess);
+    close(sock);
+    for (;;) {
+        char c;
+        ssize_t n = read(pp[0], &c, 1);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) break;
+        if (c == 'L') { rd_tokens_drop_uid(me.pw_uid); sd_log("%s locked the session: every remote cookie of that user ended", name); }
+    }
+    while (waitpid(b, NULL, 0) < 0 && errno == EINTR) {}
+}
+
+void rd_serve(SSL_CTX *ctx, int fd, const char *ip, const char *key) {
     sock = fd;
     snprintf(peer, sizeof peer, "%s", ip);
+    snprintf(peer_key, sizeof peer_key, "%s", key);
     char prefix[96];
     snprintf(prefix, sizeof prefix, "lord-sessiond[%d] %s", (int)getpid(), peer);
     sd_log_prefix(prefix);
+    alarm(ALARM_SECONDS);                       /* backstop: SIGALRM ends a stuck connection */
+    deadline = mono() + HEAD_SECONDS;
     ssl = SSL_new(ctx);
     if (!ssl) return;
     SSL_set_fd(ssl, fd);
     SSL_set_mode(ssl, SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
-    struct timeval tv = { 15, 0 };
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-    if (SSL_accept(ssl) <= 0) return;
-    Req r;
-    if (read_request(&r)) return;
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+    for (;;) {                                  /* handshake, under the same deadline */
+        int a = SSL_accept(ssl);
+        if (a == 1) break;
+        int e = SSL_get_error(ssl, a);
+        if ((e == SSL_ERROR_WANT_READ || e == SSL_ERROR_WANT_WRITE) && !wait_io(e == SSL_ERROR_WANT_WRITE)) continue;
+        return;
+    }
+    RsReq r;
+    int rc = read_request(&r);
+    if (rc == -1) return;
+    if (rc < 0) {
+        if (rc != -408) sd_log("bad request (%d)", -rc);
+        respond(-rc, NULL);
+        return;
+    }
+    deadline = mono() + 30;                     /* answering (session start is covered by the alarm) */
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK);
 
-    char user[33];
+    int get = !strcmp(r.method, "GET"), post = !strcmp(r.method, "POST");
+    if (!post && r.content_length > 0) { respond(400, NULL); return; }
+    char user[33] = "";
     uid_t uid = 0;
-    int logged = session_user(&r, user, &uid) == 0;
+    unsigned char hash[32];
+    int logged = session_user(&r, user, &uid, hash) == 0;
 
-    if (!strcmp(r.method, "POST") && !strcmp(r.path, "/login")) {
-        if (!same_origin(&r)) {
-            sd_log("login rejected: origin \"%s\" and host \"%s\"", r.origin, r.host);
-            respond(403, "Forbidden", "text/plain", NULL, "origin", 6);
-            return;
-        }
-        double wait = sd_fail_wait(peer);
-        if (wait > 0) { redirect("/?e=2", NULL); return; }
-        char u[64], pass[300];
-        form_get(r.body, "user", u, sizeof u);
-        form_get(r.body, "pass", pass, sizeof pass);
-        int ok = sd_check_password(u, pass, 1);
-        explicit_bzero(pass, sizeof pass);
-        explicit_bzero(r.body, sizeof r.body);
-        if (!ok) {
-            sd_fail_note(peer, 1);
-            sd_log("failed login for '%s'", sd_valid_username(u) ? u : "?");
-            sleep(1);
-            char to[64] = "/?e=1";
-            if (sd_valid_username(u)) snprintf(to, sizeof to, "/?e=1&u=%.32s", u);
-            redirect(to, NULL);
-            return;
-        }
-        sd_fail_note(peer, 0);
-        struct passwd *pw = getpwnam(u);
-        char tok[65], cookie[160];
-        new_token(pw->pw_uid, u, tok);
-        snprintf(cookie, sizeof cookie, "Set-Cookie: lordos_remote=%s; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=43200\r\n", tok);
-        sd_log("%s logged in", u);
-        redirect("/desk", cookie);
+    if (!strcmp(r.path, "/login")) {
+        if (!post) { respond(405, "Allow: POST\r\n"); return; }
+        handle_login(&r);
         return;
     }
     if (!strcmp(r.path, "/logout")) {
-        char tok[65];
-        if (!token_from_cookie(r.cookie, tok)) token_drop_tok(tok);
-        redirect("/", "Set-Cookie: lordos_remote=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0\r\n");
+        if (!post) { respond(405, "Allow: POST\r\n"); return; }
+        if (!origin_ok(&r)) { respond(403, NULL); return; }
+        if (logged) { token_drop_hash(hash); sd_log("%s logged out", user); }
+        redirect("/", CLEAR_COOKIES);
         return;
     }
     if (!strcmp(r.path, "/") || !strcmp(r.path, "/index.html")) {
-        if (logged) redirect("/desk", NULL); else send_login(&r);
+        if (!get) { respond(405, "Allow: GET\r\n"); return; }
+        if (logged) redirect("/desk", NULL); else send_login(200, 0, r.host);
         return;
     }
     if (!strcmp(r.path, "/bg.jpg")) {             /* the login screen background (links to Crystal Crown) */
+        if (!get) { respond(405, "Allow: GET\r\n"); return; }
         char p[600];
         snprintf(p, sizeof p, "%s", rd_conf.greeter_theme);
         char *slash = strrchr(p, '/');
         if (slash) snprintf(slash, sizeof p - (size_t)(slash - p), "/assets/background.jpg");
-        int fd = open(p, O_RDONLY | O_CLOEXEC);
+        int f = open(p, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
         struct stat st;
         char *img = NULL;
-        if (fd >= 0 && !fstat(fd, &st) && st.st_size > 0 && st.st_size < (8 << 20) && (img = malloc((size_t)st.st_size)) &&
-            read(fd, img, (size_t)st.st_size) == st.st_size)
-            respond(200, "OK", "image/jpeg", NULL, img, (size_t)st.st_size);
-        else respond(404, "Not Found", "text/plain", NULL, "no", 2);
+        size_t got = 0;
+        if (f >= 0 && !fstat(f, &st) && S_ISREG(st.st_mode) && st.st_size > 0 && st.st_size < (8 << 20) && (img = malloc((size_t)st.st_size))) {
+            while (got < (size_t)st.st_size) {
+                ssize_t n = read(f, img + got, (size_t)st.st_size - got);
+                if (n < 0 && errno == EINTR) continue;
+                if (n <= 0) break;
+                got += (size_t)n;
+            }
+        }
+        if (img && got == (size_t)st.st_size) respond_page(200, "image/jpeg", NULL, img, got, NULL, NULL);
+        else respond(404, NULL);
         free(img);
-        if (fd >= 0) close(fd);
+        if (f >= 0) close(f);
         return;
     }
     if (!strcmp(r.path, "/desk")) {
+        if (!get) { respond(405, "Allow: GET\r\n"); return; }
         if (!logged) { redirect("/", NULL); return; }
-        respond(200, "OK", "text/html; charset=utf-8", NULL, _binary_src_remote_client_html_start,
-                (size_t)(_binary_src_remote_client_html_end - _binary_src_remote_client_html_start));
+        page_hashes(&desk_page);
+        respond_page(200, "text/html; charset=utf-8", NULL, desk_page.start, (size_t)(desk_page.end - desk_page.start), &desk_page, r.host);
         return;
     }
     if (!strcmp(r.path, "/ws")) {
-        if (!logged || strcasecmp(r.upgrade, "websocket") || !r.wskey[0] || !same_origin(&r)) {
-            respond(403, "Forbidden", "text/plain", NULL, "no", 2);
-            return;
-        }
-        struct passwd *pw = getpwnam(user);
-        if (!pw) return;
-        struct passwd me = *pw;
-        static char name[33], dir[512];
-        snprintf(name, sizeof name, "%s", pw->pw_name);
-        snprintf(dir, sizeof dir, "%s", pw->pw_dir);
-        me.pw_name = name;
-        me.pw_dir = dir;
-        int w = query_int(r.query, "w", 1280), h = query_int(r.query, "h", 800);
-        if (w < 800) w = 800;
-        if (h < 600) h = 600;
-        if (w > 2560) w = 2560;
-        if (h > 1600) h = 1600;
-        sess = sd_session_get(&me, w & ~1, h & ~1);
-        token_from_cookie(r.cookie, my_token);
-        if (sess < 0) { respond(503, "Service Unavailable", "text/plain", NULL, "no session", 10); return; }
-        if (ws_handshake(&r)) return;
-        conn_register(name);
-        /* from here on, no root: TLS, compression and bridge as the user */
-        if (initgroups(name, me.pw_gid) || setgid(me.pw_gid) || setuid(me.pw_uid) || setuid(0) == 0) {
-            sd_log("could not drop privileges");
-            return;
-        }
-        sd_log("connected to %s's session", name);
-        bridge(&me);
-        sd_log("disconnected");
+        if (!get) { respond(405, "Allow: GET\r\n"); return; }
+        handle_ws(&r, logged, user, uid);
         return;
     }
-    respond(404, "Not Found", "text/plain", NULL, "no", 2);
+    respond(404, NULL);
 }

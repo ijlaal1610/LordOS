@@ -120,5 +120,7 @@
   "ssh.off": "Inicio de sesión remoto desactivado",
   "ssh.on": "Inicio de sesión remoto activado",
   "ssh.saved": "Ajustes guardados",
-  "hw.firmwareChecked": "Firmware revisado"
+  "hw.firmwareChecked": "Firmware revisado",
+  "remote.blocked": "{address} bloqueada",
+  "remote.unblocked": "{address} desbloqueada"
 }

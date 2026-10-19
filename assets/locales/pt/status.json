@@ -120,5 +120,7 @@
   "ssh.off": "Login remoto desativado",
   "ssh.on": "Login remoto ativado",
   "ssh.saved": "Configurações salvas",
-  "hw.firmwareChecked": "Firmware verificado"
+  "hw.firmwareChecked": "Firmware verificado",
+  "remote.blocked": "{address} bloqueado",
+  "remote.unblocked": "{address} desbloqueado"
 }

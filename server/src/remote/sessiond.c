@@ -14,7 +14,10 @@
  *     one child per connection that drops root as soon as it knows whose session it is.
  *
  *   /etc/lordos/session.conf         AUTOLOGIN=user (empty or missing line: login screen)
- *   /etc/lordos/remote/config        enabled=0|1, port=5673, allow=all|group, insecure_dev=0 (0644)
+ *   /etc/lordos/remote/config        enabled=0|1, port=5673, allow=all|group, net=lan|list|any, insecure_dev=0 (0644)
+ *   /etc/lordos/remote/access        manual "allow <cidr>" / "block <cidr>" lists (root 0600, admin actions)
+ *   /var/lib/lordos/remote/blocklist sources blocked after failed logins (root 0600, survives restarts)
+ *   /var/lib/lordos/remote/requests  "unblock <cidr>" lines from the admin helper (read on SIGHUP)
  *   /etc/lordos/remote/cert.pem      self-signed certificate (created when remote is turned on)
  *   /etc/lordos/remote/key.pem       its key (0600)
  *   /etc/lordos/remote/fingerprint   SHA-256 fingerprint of the certificate (shown by Settings)
@@ -40,6 +43,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <grp.h>
+#include <ifaddrs.h>
+#include <sys/file.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
@@ -97,9 +102,34 @@ static void find_paths(void) {
     SP(rd_conf.workdir, "%s", exe);
 }
 
+/* A small root-owned file that nobody else can write (else it's ignored): its text, or NULL. */
+static char *read_root_file(const char *path, size_t max) {
+    int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return NULL;
+    struct stat st;
+    char *t = NULL;
+    if (!fstat(fd, &st) && S_ISREG(st.st_mode) && st.st_uid == 0 && !(st.st_mode & 022) && (size_t)st.st_size <= max &&
+        (t = malloc((size_t)st.st_size + 1))) {
+        ssize_t n = read(fd, t, (size_t)st.st_size);
+        if (n < 0) n = 0;
+        t[n] = 0;
+    } else if (!fstat(fd, &st) && (st.st_uid != 0 || (st.st_mode & 022))) sd_log("%s ignored: not owned by root or writable by others", path);
+    close(fd);
+    return t;
+}
+
+static void load_access(void) {
+    char *t = read_root_file(RD_ACCESS, 16384);
+    int bad = 0;
+    rs_access_parse(t, &rd_conf.access, &bad);
+    if (bad) sd_log("%s: %d invalid line(s) skipped", RD_ACCESS, bad);
+    free(t);
+}
+
 static void load_config(void) {
     rd_conf.port = RD_DEFAULT_PORT;
     rd_conf.enabled = rd_conf.group_only = rd_conf.insecure_dev = 0;
+    rd_conf.net_mode = RS_NET_LAN;
     FILE *f = fopen(RD_CONF_DIR "/config", "r");
     char line[256];
     while (f && fgets(line, sizeof line, f)) {
@@ -108,9 +138,11 @@ static void load_config(void) {
         if (sscanf(line, "enabled=%d", &v) == 1) rd_conf.enabled = v == 1;
         else if (sscanf(line, "port=%d", &v) == 1 && v > 0 && v < 65536) rd_conf.port = v;
         else if (sscanf(line, "allow=%31s", s) == 1) rd_conf.group_only = !strcmp(s, "group");
+        else if (sscanf(line, "net=%31s", s) == 1 && rs_net_mode(s) >= 0) rd_conf.net_mode = rs_net_mode(s);
         else if (sscanf(line, "insecure_dev=%d", &v) == 1) rd_conf.insecure_dev = v == 1;
     }
     if (f) fclose(f);
+    load_access();
 }
 
 /* Self-signed P-256 certificate for 10 years (CN = host name). */
@@ -243,6 +275,27 @@ static void write_status(void) {
         if (!c->pid) continue;
         sput(&s, "%s{\"pid\":%d,\"ip\":\"%s\",\"user\":\"%s\",\"since\":%.0f}", first ? "" : ",", (int)c->pid, c->ip, c->user, c->since);
         first = 0;
+    }
+    sput(&s, "],\"net\":\"%s\",\"blocked\":[", rs_net_name(rd_conf.net_mode));
+    first = 1;
+    double now = rd_now();
+    for (int i = 0; i < RL_MAX; i++) {
+        RlEntry *e = &rd_shared->lockout.e[i];
+        if (!e->key[0] || e->until <= now) continue;
+        sput(&s, "%s{\"ip\":\"%s\",\"until\":%.0f,\"strikes\":%d,\"manual\":false}", first ? "" : ",", e->key, e->until, e->strikes);
+        first = 0;
+    }
+    for (int i = 0; i < rd_conf.access.nblock; i++) {
+        char c[64];
+        rs_cidr_format(&rd_conf.access.block[i], c, sizeof c);
+        sput(&s, "%s{\"ip\":\"%s\",\"until\":0,\"strikes\":0,\"manual\":true}", first ? "" : ",", c);
+        first = 0;
+    }
+    sput(&s, "],\"allowed\":[");
+    for (int i = 0; i < rd_conf.access.nallow; i++) {
+        char c[64];
+        rs_cidr_format(&rd_conf.access.allow[i], c, sizeof c);
+        sput(&s, "%s\"%s\"", i ? "," : "", c);
     }
     sput(&s, "],\"monitor\":\"%s\",\"sessions\":[", rd_shared->monitor);
     first = 1;
@@ -666,7 +719,12 @@ static void from_shown(int type, const char *j) {
         char a[16] = "";
         jstr(j, "a", a, sizeof a);
         if (!strcmp(a, "power")) { session_power(j); return; }
-        if (strstr(j, "\"lock\"")) { sd_log("%s locked the screen", shown_user); show_greeter("lock", shown_user); }
+        if (strstr(j, "\"lock\"")) {
+            sd_log("%s locked the screen", shown_user);
+            struct passwd *lp = sd_valid_username(shown_user) ? getpwnam(shown_user) : NULL;
+            if (lp) rd_tokens_drop_uid(lp->pw_uid);        /* locking also signs that user's browsers out */
+            show_greeter("lock", shown_user);
+        }
         else if (strstr(j, "\"switch\"")) { sd_log("%s is switching user", shown_user); show_greeter("switch", shown_user); }
         return;
     }
@@ -700,14 +758,16 @@ static void monitor_event(void) {
 /* ---- remote desktop ---- */
 
 static SSL_CTX *tls;
+/* this process's connection children (the only pids it ever signals) */
+static struct { pid_t pid; char key[48]; } kids[RD_MAX_CHILDREN];
 
 static void stop_remote(void) {
     if (lfd >= 0) close(lfd);
     lfd = -1;
     listening = 0;
-    rd_lock();
-    for (int i = 0; i < RD_MAX_CONNS; i++) if (rd_shared->conns[i].pid) kill(rd_shared->conns[i].pid, SIGTERM);
-    rd_unlock();
+    /* only our own children (never a pid read back from shared memory) */
+    for (int i = 0; i < RD_MAX_CHILDREN; i++) if (kids[i].pid > 1) kill(kids[i].pid, SIGTERM);
+    rd_tokens_clear();                  /* turning remote off signs every browser out */
     if (tls) SSL_CTX_free(tls);
     tls = NULL;
 }
@@ -715,8 +775,19 @@ static void stop_remote(void) {
 static void start_remote(void) {
     if (ensure_cert()) { sd_log("could not create the certificate"); return; }
     write_fingerprint();
+    /* the private key: root's, 0600 (fixed if it isn't) */
+    struct stat ks;
+    if (!stat(RD_CONF_DIR "/key.pem", &ks) && (ks.st_uid != 0 || (ks.st_mode & 077))) {
+        sd_log("%s had owner %u and mode %o: set to root 0600", RD_CONF_DIR "/key.pem", (unsigned)ks.st_uid, (unsigned)(ks.st_mode & 0777));
+        if (chown(RD_CONF_DIR "/key.pem", 0, 0) || chmod(RD_CONF_DIR "/key.pem", 0600)) { sd_log("could not fix the key's permissions"); return; }
+    }
     tls = SSL_CTX_new(TLS_server_method());
+    /* TLS 1.2 and 1.3, AEAD suites with forward secrecy only (the key is P-256: ECDSA), no
+     * compression, no renegotiation, the server's order */
     if (!tls || SSL_CTX_set_min_proto_version(tls, TLS1_2_VERSION) != 1 ||
+        SSL_CTX_set_cipher_list(tls, "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305") != 1 ||
+        SSL_CTX_set_ciphersuites(tls, "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256") != 1 ||
+        SSL_CTX_set1_groups_list(tls, "X25519:P-256:P-384") != 1 ||
         SSL_CTX_use_certificate_file(tls, RD_CONF_DIR "/cert.pem", SSL_FILETYPE_PEM) != 1 ||
         SSL_CTX_use_PrivateKey_file(tls, RD_CONF_DIR "/key.pem", SSL_FILETYPE_PEM) != 1) {
         ERR_print_errors_fp(stderr);
@@ -724,12 +795,13 @@ static void start_remote(void) {
         tls = NULL;
         return;
     }
+    SSL_CTX_set_options(tls, SSL_OP_NO_COMPRESSION | SSL_OP_NO_RENEGOTIATION | SSL_OP_CIPHER_SERVER_PREFERENCE);
     lfd = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
     int one = 1, zero = 0;
     setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
     setsockopt(lfd, IPPROTO_IPV6, IPV6_V6ONLY, &zero, sizeof zero);
     struct sockaddr_in6 a = { .sin6_family = AF_INET6, .sin6_port = htons((uint16_t)rd_conf.port), .sin6_addr = in6addr_any };
-    if (lfd < 0 || bind(lfd, (struct sockaddr *)&a, sizeof a) || listen(lfd, 16)) {
+    if (lfd < 0 || bind(lfd, (struct sockaddr *)&a, sizeof a) || listen(lfd, 64)) {
         sd_log("could not listen on port %d: %s", rd_conf.port, strerror(errno));
         if (lfd >= 0) close(lfd);
         lfd = -1;
@@ -739,6 +811,47 @@ static void start_remote(void) {
     sd_log("remote desktop on https://*:%d", rd_conf.port);
 }
 
+/* Did this connection arrive on a VPN interface? (its local address belongs to one) */
+static int via_vpn(int fd) {
+    struct sockaddr_in6 me;
+    socklen_t ml = sizeof me;
+    if (getsockname(fd, (struct sockaddr *)&me, &ml)) return 0;
+    RsAddr local = { 0 };
+    memcpy(local.a, &me.sin6_addr, 16);
+    struct ifaddrs *ifs = NULL, *i;
+    if (getifaddrs(&ifs)) return 0;
+    int vpn = 0;
+    for (i = ifs; i && !vpn; i = i->ifa_next) {
+        if (!i->ifa_addr || !i->ifa_name || !rs_vpn_ifname(i->ifa_name)) continue;
+        RsAddr x = { 0 };
+        if (i->ifa_addr->sa_family == AF_INET) {
+            static const unsigned char pre[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
+            memcpy(x.a, pre, 12);
+            memcpy(x.a + 12, &((struct sockaddr_in *)i->ifa_addr)->sin_addr, 4);
+        } else if (i->ifa_addr->sa_family == AF_INET6) memcpy(x.a, &((struct sockaddr_in6 *)i->ifa_addr)->sin6_addr, 16);
+        else continue;
+        if (!memcmp(x.a, local.a, 16)) vpn = 1;
+    }
+    freeifaddrs(ifs);
+    return vpn;
+}
+
+/* Refusals are logged at most once a minute per source (a flood must not flood the journal). */
+static void refuse_log(const char *key, const char *why) {
+    static struct { char key[48]; double at; } seen[32];
+    double now = rd_now();
+    int slot = 0;
+    for (int i = 0; i < 32; i++) {
+        if (!strcmp(seen[i].key, key)) { if (now - seen[i].at < 60) return; slot = i; break; }
+        if (seen[i].at < seen[slot].at) slot = i;
+    }
+    snprintf(seen[slot].key, sizeof seen[slot].key, "%s", key);
+    seen[slot].at = now;
+    sd_log("remote connection from %s refused: %s", key, why);
+}
+
+static RcTable rate;
+
 static void accept_remote(void) {
     struct sockaddr_in6 peer;
     socklen_t pl = sizeof peer;
@@ -747,11 +860,45 @@ static void accept_remote(void) {
     char ip[64];
     inet_ntop(AF_INET6, &peer.sin6_addr, ip, sizeof ip);
     const char *shown_ip = !strncmp(ip, "::ffff:", 7) ? ip + 7 : ip;
-    int busy = 0;
+    RsAddr a = { 0 };
+    memcpy(a.a, &peer.sin6_addr, 16);
+    static const unsigned char mapped[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
+    a.v4 = !memcmp(a.a, mapped, 12);
+    char key[48];
+    rs_addr_key(&a, key, sizeof key);
+    /* everything here is cheap and happens before any TLS work: refused sources are just closed */
+    int vpn = rd_conf.net_mode == RS_NET_LAN && !rs_addr_is_local(&a) ? via_vpn(fd) : 0;
+    int acc = rs_access_decide(&rd_conf.access, rd_conf.net_mode, &a, vpn);
+    if (acc != RS_ACC_OK) {
+        refuse_log(key, acc == RS_ACC_BLOCKED ? "blocked in Settings" :
+                   rd_conf.net_mode == RS_NET_LIST ? "not in the allowed list" : "not a local network address (Settings -> Sharing)");
+        close(fd);
+        return;
+    }
     rd_lock();
-    for (int i = 0; i < RD_MAX_CONNS; i++) if (rd_shared->conns[i].pid) busy++;
+    double left = rl_blocked(&rd_shared->lockout, key, rd_now());
     rd_unlock();
-    if (busy >= RD_MAX_CONNS) { close(fd); return; }
+    if (left > 0) {
+        char why[96];
+        snprintf(why, sizeof why, "blocked after failed logins, %.0f min left", left / 60 + 0.5);
+        refuse_log(key, why);
+        close(fd);
+        return;
+    }
+    struct timespec mt;
+    clock_gettime(CLOCK_MONOTONIC, &mt);
+    if (!rc_take(&rate, key, (double)mt.tv_sec + mt.tv_nsec / 1e9)) { refuse_log(key, "too many new connections"); close(fd); return; }
+    int total = 0, mine = 0, free_slot = -1;
+    for (int i = 0; i < RD_MAX_CHILDREN; i++) {
+        if (!kids[i].pid) { if (free_slot < 0) free_slot = i; continue; }
+        total++;
+        if (!strcmp(kids[i].key, key)) mine++;
+    }
+    if (free_slot < 0 || total >= RD_MAX_CHILDREN || mine >= RD_MAX_PER_SOURCE) {
+        refuse_log(key, mine >= RD_MAX_PER_SOURCE ? "too many open connections from it" : "too many open connections");
+        close(fd);
+        return;
+    }
     pid_t c = fork();
     if (c == 0) {
         close(lfd);
@@ -761,10 +908,104 @@ static void accept_remote(void) {
         prctl(PR_SET_PDEATHSIG, SIGTERM);
         signal(SIGTERM, SIG_DFL);
         signal(SIGHUP, SIG_DFL);
-        rd_serve(tls, fd, shown_ip);
+        signal(SIGALRM, SIG_DFL);
+        rd_serve(tls, fd, shown_ip, key);
         _exit(0);
     }
+    if (c > 0) {
+        kids[free_slot].pid = c;
+        snprintf(kids[free_slot].key, sizeof kids[free_slot].key, "%s", key);
+    }
     close(fd);
+}
+
+/* ---- lockout: persistence, unblock requests from Settings, notices ---- */
+
+static void save_lockout(void) {
+    rd_lock();
+    rd_shared->lockout_dirty = 0;
+    RlTable copy = rd_shared->lockout;
+    rd_unlock();
+    char *t = malloc(RL_MAX * 128 + 256);
+    if (!t) return;
+    int n = rl_format(&copy, rd_now(), t, RL_MAX * 128 + 256);
+    mkdir("/var/lib/lordos", 0755);
+    mkdir(RL_FILE_DIR, 0700);
+    struct stat st;
+    if (n < 0 || lstat(RL_FILE_DIR, &st) || !S_ISDIR(st.st_mode) || st.st_uid != 0) { free(t); return; }
+    if (st.st_mode & 077) chmod(RL_FILE_DIR, 0700);
+    unlink(RL_FILE ".new");
+    int fd = open(RL_FILE ".new", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    if (fd < 0) { free(t); return; }
+    int ok = write(fd, t, (size_t)n) == n && !fsync(fd);
+    close(fd);
+    free(t);
+    if (!ok || rename(RL_FILE ".new", RL_FILE)) { unlink(RL_FILE ".new"); sd_log("could not save %s", RL_FILE); }
+}
+
+static void load_lockout(void) {
+    char *t = read_root_file(RL_FILE, RL_MAX * 160);
+    RlTable tab;
+    rl_parse(&tab, t, rd_now());
+    free(t);
+    int n = 0;
+    for (int i = 0; i < RL_MAX; i++) if (tab.e[i].key[0] && tab.e[i].until > rd_now()) n++;
+    rd_lock();
+    rd_shared->lockout = tab;
+    rd_unlock();
+    if (n) sd_log("remote desktop: %d source(s) still blocked after failed logins (%s)", n, RL_FILE);
+}
+
+/* "unblock <cidr>" lines the admin helper appended (remote-unblock), under flock */
+static void unblock_requests(void) {
+    int fd = open(RL_REQUESTS, O_RDWR | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return;
+    struct stat st;
+    if (fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_uid != 0 || (st.st_mode & 077)) { close(fd); unlink(RL_REQUESTS); return; }
+    flock(fd, LOCK_EX);
+    char buf[4096];
+    ssize_t n = read(fd, buf, sizeof buf - 1);
+    if (ftruncate(fd, 0)) { /* read again next time */ }
+    close(fd);
+    if (n <= 0) return;
+    buf[n] = 0;
+    for (char *line = strtok(buf, "\n"); line; line = strtok(NULL, "\n")) {
+        char net[64], extra;
+        if (sscanf(line, "unblock %63s %c", net, &extra) != 1) continue;
+        rd_lock();
+        int k = rl_unblock(&rd_shared->lockout, net);
+        if (k) { rd_shared->lockout_dirty = 1; rd_shared->version++; }
+        rd_unlock();
+        char clean[64];
+        rs_log_clean(net, strlen(net), clean, sizeof clean);
+        sd_log("remote desktop: %s unblocked from Settings (%d entr%s)", clean, k, k == 1 ? "y" : "ies");
+    }
+}
+
+/* Blocks the connection processes reported: to the session on the monitor (a notification). They
+ * wait (up to an hour) while the monitor shows the login screen. */
+static unsigned notices_done;
+
+static void deliver_notices(void) {
+    unsigned seq;
+    RdNotice ring[RD_NOTICES];
+    rd_lock();
+    seq = rd_shared->notice_seq;
+    memcpy(ring, rd_shared->notices, sizeof ring);
+    rd_unlock();
+    if (seq == notices_done) return;
+    if (shown != 'u' || sd_mon_fd() < 0) return;
+    if (seq - notices_done > RD_NOTICES) notices_done = seq - RD_NOTICES;
+    for (; notices_done != seq; notices_done++) {
+        RdNotice *n = &ring[notices_done % RD_NOTICES];
+        if (rd_now() - n->at > 3600 || !n->key[0]) continue;
+        RsCidr c;
+        if (rs_key_parse(n->key, &c)) continue;             /* only a valid address goes out */
+        char json[160];
+        snprintf(json, sizeof json, "{\"t\":\"blocked\",\"ip\":\"%s\",\"min\":%.0f,\"n\":%d}", n->key,
+                 (n->until - n->at) / 60 + 0.5, n->strikes);
+        sd_mon_notice(json);
+    }
 }
 
 /* ---- login screen processes ----
@@ -858,6 +1099,9 @@ int main(int argc, char **argv) {
     pthread_mutexattr_setpshared(&ma, PTHREAD_PROCESS_SHARED);
     pthread_mutexattr_setrobust(&ma, PTHREAD_MUTEX_ROBUST);
     pthread_mutex_init(&rd_shared->lock, &ma);
+    sd_dummy_init();
+    load_lockout();
+    unblock_requests();
     /* sessions that stayed alive from before a service restart */
     for (uid_t u = 1000; u < 1100; u++) {
         int fd = sd_session_connect(u);
@@ -914,7 +1158,8 @@ int main(int argc, char **argv) {
             reload = 0;
             int was = rd_conf.enabled, port = rd_conf.port;
             load_config();
-            sd_log("configuration: remote %s, port %d", rd_conf.enabled ? "on" : "off", rd_conf.port);
+            unblock_requests();
+            sd_log("configuration: remote %s, port %d, from %s", rd_conf.enabled ? "on" : "off", rd_conf.port, rs_net_name(rd_conf.net_mode));
             if (listening && (!rd_conf.enabled || port != rd_conf.port)) stop_remote();
             if (rd_conf.enabled && (!listening || !was)) start_remote();
             bump();
@@ -935,6 +1180,7 @@ int main(int argc, char **argv) {
                 else if (k == W_AUTOLOGIN && start_worker(W_AUTOLOGIN, pending_user, NULL)) pending = k;
                 else if (WIFEXITED(st) && WEXITSTATUS(st) && shown != 'u' && shown != 'g') show_greeter("login", NULL);
             } else {
+                for (int i = 0; i < RD_MAX_CHILDREN; i++) if (kids[i].pid == pid) memset(&kids[i], 0, sizeof kids[i]);
                 rd_lock();
                 for (int i = 0; i < RD_MAX_CONNS; i++)
                     if (rd_shared->conns[i].pid == pid) { memset(&rd_shared->conns[i], 0, sizeof rd_shared->conns[i]); rd_shared->version++; }
@@ -948,6 +1194,8 @@ int main(int argc, char **argv) {
         if (r > 0 && lfd >= 0 && (p[1].revents & POLLIN)) accept_remote();
         if (r > 0 && p[2].fd >= 0 && p[2].fd == sd_mon_fd() && p[2].revents) monitor_event();
         if (r > 0 && p[3].fd >= 0 && (p[3].revents & POLLIN)) sd_mon_hotplug();     /* hotplug */
+        if (rd_shared->lockout_dirty) save_lockout();
+        deliver_notices();
         if (rd_shared->version != seen) { seen = rd_shared->version; write_status(); }
         else {
             static double last;
@@ -957,6 +1205,7 @@ int main(int argc, char **argv) {
     /* on shutdown: cuts remote and releases the monitor; sessions stay alive (on return
      * you log in again through the login screen) */
     stop_remote();
+    save_lockout();
     if (has_monitor) sd_mon_close();
     if (worker_pid > 0) kill(worker_pid, SIGTERM);
     stop_greeters("lord-sessiond is stopping");

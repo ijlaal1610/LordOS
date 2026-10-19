@@ -46,12 +46,12 @@
 </head>
 <body>
 <div class="top"><div class="date" id="date"></div><div class="clock" id="clock"></div></div>
-<form method="post" action="/login" autocomplete="on" id="f">
+<form method="post" action="/login" enctype="application/x-www-form-urlencoded" accept-charset="UTF-8" autocomplete="on" id="f">
   <div class="avatar" id="av">👑</div>
   <div class="who" id="who"></div>
-  <div class="field"><input id="user" name="user" autocomplete="username" autocapitalize="off" spellcheck="false" required autofocus></div>
-  <div class="field" id="pf"><input id="pass" name="pass" type="password" autocomplete="current-password" required><button type="submit" id="go" aria-label="→">→</button></div>
-  <div class="err" id="err"></div>
+  <div class="field"><input id="user" name="user" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" maxlength="32" pattern="[a-z_][a-z0-9_\-]{0,31}" required autofocus></div>
+  <div class="field" id="pf"><input id="pass" name="pass" type="password" autocomplete="current-password" minlength="1" maxlength="1024" required><button type="submit" id="go" aria-label="→">→</button></div>
+  <div class="err" id="err" role="alert" aria-live="polite"></div>
 </form>
 <div class="foot" id="foot"></div>
 <div class="bl"><i></i><span id="host"></span></div>
@@ -60,18 +60,24 @@
   const L = {
     en: { user: 'Username', pass: 'Password', e1: 'Wrong username or password.', e2: 'Too many attempts. Wait a while and try again.',
           e3: 'The session was locked. Sign in again.',
+          e4: 'Too many failed attempts from this computer: it is blocked for a while. An administrator can unblock it in Settings → Sharing.',
+          e5: 'User names use lowercase letters, digits, - and _ (up to 32).', e6: 'Enter your password.',
           foot: 'LordOS remote desktop · encrypted connection. If your browser warns about the certificate, compare its fingerprint with Settings → Sharing.',
           days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
           months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
           date: (w, d, m) => `${w}, ${m} ${d}`, h12: true },
     es: { user: 'Usuario', pass: 'Contraseña', e1: 'Usuario o contraseña incorrectos.', e2: 'Demasiados intentos. Esperá un rato y probá de nuevo.',
           e3: 'La sesión se bloqueó. Volvé a ingresar.',
+          e4: 'Demasiados intentos fallidos desde esta computadora: quedó bloqueada por un rato. Un administrador puede desbloquearla en Ajustes → Compartir.',
+          e5: 'Los nombres de usuario usan minúsculas, números, - y _ (hasta 32).', e6: 'Escribí tu contraseña.',
           foot: 'Escritorio remoto de LordOS · conexión cifrada. Si el navegador avisa del certificado, compará su huella con la de Ajustes → Compartir.',
           days: ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'],
           months: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
           date: (w, d, m) => `${w}, ${d} de ${m}`, h12: false },
     pt: { user: 'Usuário', pass: 'Senha', e1: 'Usuário ou senha incorretos.', e2: 'Muitas tentativas. Espere um pouco e tente de novo.',
           e3: 'A sessão foi bloqueada. Entre de novo.',
+          e4: 'Muitas tentativas falhas deste computador: ele foi bloqueado por um tempo. Um administrador pode desbloqueá-lo em Ajustes → Compartilhar.',
+          e5: 'Nomes de usuário usam letras minúsculas, números, - e _ (até 32).', e6: 'Digite sua senha.',
           foot: 'Área de trabalho remota do LordOS · conexão criptografada. Se o navegador avisar do certificado, compare a impressão digital com Ajustes → Compartilhar.',
           days: ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'],
           months: ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'],
@@ -88,8 +94,11 @@
     $('user').placeholder = t.user;
     $('pass').placeholder = t.pass;
     $('foot').textContent = t.foot;
-    const e = new URLSearchParams(location.search).get('e');
-    $('err').textContent = e === '1' ? t.e1 : e === '2' ? t.e2 : e === '3' ? t.e3 : '';
+    // the error comes in the URL (?e=1, after a redirect) or, when the server can't redirect (this
+    // computer just got blocked), on <html data-e>; only these fixed codes are shown
+    const e = errCode();
+    $('err').textContent = ['1', '2', '3', '4', '5', '6'].includes(e) ? t['e' + e] : '';
+    if (e === '4') { $('user').disabled = true; $('pass').disabled = true; $('go').disabled = true; }
     for (const b of document.querySelectorAll('.pill')) b.setAttribute('aria-pressed', String(b.dataset.l === lang));
     tick();
   }
@@ -115,12 +124,34 @@
     try { localStorage.setItem('lordos-lang', lang); } catch (e) { /* no storage */ }
     apply();
   });
+  const ERR = document.documentElement.dataset.e || new URLSearchParams(location.search).get('e') || '';
+  function errCode() { return ERR; }
+  const NAME = /^[a-z_][a-z0-9_-]{0,31}$/;
+  // Checked here for a quick answer; the server checks everything again. The user name is kept in
+  // this tab's sessionStorage across the error page (never in the URL), the password never.
+  $('f').addEventListener('submit', (ev) => {
+    const u = $('user').value, p = $('pass').value, enc = new TextEncoder().encode(p).length;
+    let bad = '';
+    if (!NAME.test(u)) bad = '5';
+    else if (!p || enc > 1024 || p.includes('\0')) bad = '6';
+    if (bad) {
+      ev.preventDefault();
+      $('err').textContent = L[lang]['e' + bad];
+      $('pf').classList.remove('shake'); void $('pf').offsetWidth; $('pf').classList.add('shake');
+      (bad === '5' ? $('user') : $('pass')).focus();
+      return;
+    }
+    try { sessionStorage.setItem('lordos-user', u); } catch (e) { /* no storage */ }
+    $('go').disabled = true;
+  });
   $('host').textContent = location.hostname;
-  const prev = new URLSearchParams(location.search).get('u');
-  if (prev && /^[a-z_][a-z0-9_-]{0,31}$/.test(prev)) { $('user').value = prev; $('user').dispatchEvent(new Event('input')); }
+  let prev = '';
+  try { prev = sessionStorage.getItem('lordos-user') || ''; } catch (e) { /* no storage */ }
+  if (errCode() && NAME.test(prev)) { $('user').value = prev; $('user').dispatchEvent(new Event('input')); }
+  if (location.search) history.replaceState(null, '', '/');     // nothing stays in the address bar
   apply();
   setInterval(tick, 1000);
-  if (new URLSearchParams(location.search).get('e')) { $('pf').classList.add('shake'); $('pass').focus(); }
+  if (errCode()) { $('pf').classList.add('shake'); if (!$('pass').disabled) $('pass').focus(); }
 </script>
 </body>
 </html>
