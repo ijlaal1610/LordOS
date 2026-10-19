@@ -38,6 +38,8 @@ import { EmojiPanel } from './emoji.jsx';
 export { admin } from './admin.js';
 export { videoPrefs, setVideoPrefs, videoHardware, videoError, videoOptimizing, VIDEO_MODES, VIDEO_DEFAULTS } from './video.js';   // docs/VIDEO.md
 import { startVideo } from './video.js';
+export { browserFrameResult, browserFrameState, browserTabsInTitlebar, setBrowserTabsInTitlebar } from './browserframe.js';   // docs/WAYLAND.md
+import { startBrowserFrame } from './browserframe.js';
 export { errorText, statusText, codeError, parseCode } from './errors.js';
 export { logs } from './logs.js';
 export { LordOSLogo, LordOSGlyph, LordOSWordmark } from './logo.js';
@@ -193,6 +195,7 @@ export function startShell(element) {
   startHardware();                      // Night Light, idle timers, battery in the menu bar (hardware.jsx)
   startDiskWatch();                     // notices when a disk gets too hot or its health gets worse
   startVideo();                         // browser video without hardware decoding (video.js, docs/VIDEO.md)
+  startBrowserFrame();                  // "Browsers: tabs in the title bar" left for Chromium to quit (browserframe.js)
   setTimeout(reportRefusedCode, 800);   // "This LordOS component was modified and was not loaded" (docs/SIGNING.md)
 }
 

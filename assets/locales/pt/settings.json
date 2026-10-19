@@ -5,6 +5,24 @@
   "admin.system-locale": "Região do sistema",
   "admin.timezone": "Fuso horário",
   "admin.unavailable": "O assistente de administração não está ativo: o lord-server deve iniciar com sudo e o usuário estar no grupo sudo.",
+  "browserTabs.label": "Navegadores: abas na barra de título",
+  "browserTabs.hint": "Ativado: o Chromium e o Firefox desenham uma única barra com suas abas e os botões de janela do LordOS. Desativado: usam a moldura do LordOS. Altera seus perfis de navegador e vale na próxima vez que cada navegador abrir.",
+  "browserTabs.chromiumOpen": "O Chromium está aberto: seus perfis mudam assim que você o fechar.",
+  "browserTabs.failed": {
+    "one": "Não foi possível alterar {count} perfil de navegador, que ficou como estava.",
+    "other": "Não foi possível alterar {count} perfis de navegador, que ficaram como estavam."
+  },
+  "browserTabs.firefoxKept": "Um perfil do Firefox define isso no seu próprio arquivo user.js, então não foi alterado.",
+  "browserTabs.done": "Pronto. Os navegadores usam isso na próxima vez que abrirem.",
+  "browserTabs.othersOff": {
+    "one": "{count} perfil do Chromium ainda usa a moldura do LordOS",
+    "other": "{count} perfis do Chromium ainda usam a moldura do LordOS"
+  },
+  "browserTabs.othersOn": {
+    "one": "{count} perfil do Chromium ainda desenha sua própria barra",
+    "other": "{count} perfis do Chromium ainda desenham sua própria barra"
+  },
+  "browserTabs.applyAll": "Alterá-los",
   "change": "Alterar…",
   "clipboard.add": "Adicionar",
   "clipboard.appId": "id do app",
@@ -55,7 +73,7 @@
   "kb.test": "Testar teclado",
   "kb.testHint": "Digite aqui: ñ, acentos (´ + vogal), ç, AltGr…",
   "kb.use": "Usar",
-  "keywords.appearance": "modo escuro claro destaque transparência",
+  "keywords.appearance": "modo escuro claro destaque transparência navegador abas barra de título moldura",
   "keywords.clipboard": "copiar colar histórico copiado",
   "keywords.general": "sobre computador sistema versão processador memória disco",
   "keywords.keyboard": "layout método de entrada japonês chinês coreano",

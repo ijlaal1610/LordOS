@@ -7,6 +7,8 @@ const DEFAULTS = {
   accent: 'azul',
   effects: true,         // transparency with blur
   reduceMotion: false,   // decorative animations off (Settings → Appearance)
+  browserTabsInTitlebar: true,   // 0.8.4, Settings → Appearance: Chromium and Firefox draw their own bar (browserframe.js)
+  browserFramePending: false,    // that switch is still waiting for Chromium to quit
   scrollBars: 'auto',    // 0.8.3, Settings → Appearance → Show scroll bars: 'auto' | 'scrolling' | 'always'
   wallpaper: DEFAULT_WALLPAPER,  // 0.8.2: Lumo Celestial (before: 'aurora', still available)
   keyboard: 'latam',     // before M5; now keyboards (see keyboard.js)

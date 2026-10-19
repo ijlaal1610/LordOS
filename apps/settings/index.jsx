@@ -18,6 +18,7 @@ import { PrivacySettings } from './Privacy.jsx';
 import { PrintersSettings } from './Printers.jsx';
 import { TrackpadSettings } from './Trackpad.jsx';
 import { DockSettings } from './Dock.jsx';
+import { BrowserFrameSettings } from './BrowserFrame.jsx';
 // hardware pages (docs/SETTINGS.md)
 import { DisplaysSettings } from './Displays.jsx';
 import { BluetoothSettings } from './Bluetooth.jsx';
@@ -194,6 +195,7 @@ function Appearance() {
             options={[['auto', tr('settings.scrollBarsAuto')], ['scrolling', tr('settings.scrollBarsScrolling')], ['always', tr('settings.scrollBarsAlways')]]} />
         </SettingRow>
       </Section>
+      <BrowserFrameSettings />
     </Stack>
   );
 }

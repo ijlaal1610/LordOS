@@ -22,9 +22,17 @@
  *                                               (hw/hwscan.c: DMI, device tree, PCI/USB IDs, virtio
  *                                               ports, missing firmware when the kernel log is readable)
  *   lord.fan.status() / setProfile(p) / setCurve(pts) / force(v) / caseConfig()   (js_fan.c, lord-fand)
+ *   lord.browserFrame.apply(on, which)          Settings → Appearance → "Browsers: tabs in the title bar":
+ *                                               one preference in the user's Chromium/Firefox profiles
+ *                                               (hw/brframe.c); which = 'all' | 'chromium' | 'firefox';
+ *                                               { chromium: {…}, firefox: {…} } counts
+ *   lord.browserFrame.tidy()                    removes LordOS's Firefox user.js line once Firefox read it
+ *   lord.browserFrame.chromiumRunning()         Chromium's profile folder is in use
+ *   lord.browserFrame.state()                   { chromiumOn, chromiumOff }: profiles with each frame
  */
 #include "js_hw.h"
 #include "js_fan.h"
+#include "../hw/brframe.h"
 #include "../hw/bt.h"
 #include "../hw/defaults.h"
 #include "../hw/display.h"
@@ -358,6 +366,65 @@ static JSValue f_hwinfo_scan(JSContext *c, JSValueConst t, int argc, JSValueCons
 
 static const JSCFunctionListEntry hwinfo_funcs[] = { JS_CFUNC_DEF("scan", 0, f_hwinfo_scan) };
 
+/* ---- lord.browserFrame (Settings → Appearance; hw/brframe.c, docs/WAYLAND.md) ---- */
+
+/* The folders are fixed: $XDG_CONFIG_HOME (absolute) or ~/.config, and ~ for the legacy ~/.mozilla. */
+static int brf_dirs(char *cfg, size_t n, const char **home) {
+    const char *h = getenv("HOME"), *x = getenv("XDG_CONFIG_HOME");
+    if (!h || h[0] != '/') return -1;
+    *home = h;
+    if (x && x[0] == '/' && !strstr(x, "..")) return (size_t)snprintf(cfg, n, "%s", x) < n ? 0 : -1;
+    return (size_t)snprintf(cfg, n, "%s/.config", h) < n ? 0 : -1;
+}
+
+static JSValue f_brf_apply(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    char which[16] = "all", cfg[4096];
+    const char *home;
+    if (argc < 1 || !JS_IsBool(argv[0])) return JS_NULL;
+    if (argc > 1 && arg_str(c, argv[1], which, sizeof which)) return JS_NULL;
+    int ch = !strcmp(which, "all") || !strcmp(which, "chromium"), ff = !strcmp(which, "all") || !strcmp(which, "firefox");
+    if ((!ch && !ff) || brf_dirs(cfg, sizeof cfg, &home)) return JS_NULL;
+    int on = JS_ToBool(c, argv[0]);
+    BrfResult rc = {0}, rf = {0};
+    if (ch) brf_chromium_apply(cfg, on, &rc);
+    if (ff) brf_firefox_apply(cfg, home, on, &rf);
+    return json_or_null(c, brf_result_json(&rc, &rf));
+}
+
+static JSValue f_brf_tidy(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    char cfg[4096];
+    const char *home;
+    return JS_NewInt32(c, brf_dirs(cfg, sizeof cfg, &home) ? 0 : brf_firefox_tidy(cfg, home));
+}
+
+static JSValue f_brf_running(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    char cfg[4096];
+    const char *home;
+    return JS_NewBool(c, !brf_dirs(cfg, sizeof cfg, &home) && brf_chromium_running(cfg));
+}
+
+static JSValue f_brf_state(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    char cfg[4096];
+    const char *home;
+    int on = 0, off = 0;
+    if (!brf_dirs(cfg, sizeof cfg, &home)) brf_chromium_state(cfg, &on, &off);
+    JSValue o = JS_NewObject(c);
+    JS_SetPropertyStr(c, o, "chromiumOn", JS_NewInt32(c, on));
+    JS_SetPropertyStr(c, o, "chromiumOff", JS_NewInt32(c, off));
+    return o;
+}
+
+static const JSCFunctionListEntry brf_funcs[] = {
+    JS_CFUNC_DEF("state", 0, f_brf_state),
+    JS_CFUNC_DEF("apply", 2, f_brf_apply),
+    JS_CFUNC_DEF("tidy", 0, f_brf_tidy),
+    JS_CFUNC_DEF("chromiumRunning", 0, f_brf_running),
+};
+
 static void add(JSContext *c, JSValue lord, const char *name, const JSCFunctionListEntry *f, int n) {
     JSValue o = JS_NewObject(c);
     JS_SetPropertyFunctionList(c, o, f, n);
@@ -372,5 +439,6 @@ void js_hw_register(JSContext *c, JSValue lord) {
     add(c, lord, "timedate", td_funcs, sizeof td_funcs / sizeof td_funcs[0]);
     add(c, lord, "notifyd", nd_funcs, sizeof nd_funcs / sizeof nd_funcs[0]);
     add(c, lord, "hwinfo", hwinfo_funcs, sizeof hwinfo_funcs / sizeof hwinfo_funcs[0]);
+    add(c, lord, "browserFrame", brf_funcs, sizeof brf_funcs / sizeof brf_funcs[0]);
     js_fan_register(c, lord);           /* lord.fan: Settings → Cooling and Monitor (js_fan.c) */
 }

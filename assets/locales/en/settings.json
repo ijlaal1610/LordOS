@@ -5,6 +5,24 @@
   "admin.system-locale": "System region",
   "admin.timezone": "Time zone",
   "admin.unavailable": "The admin helper is not running: lord-server must start with sudo and the user must be in the sudo group.",
+  "browserTabs.label": "Browsers: tabs in the title bar",
+  "browserTabs.hint": "On: Chromium and Firefox draw a single bar with their tabs and LordOS's window buttons. Off: they use the LordOS frame. It changes your browser profiles and applies the next time each browser opens.",
+  "browserTabs.chromiumOpen": "Chromium is open: its profiles change as soon as you quit it.",
+  "browserTabs.failed": {
+    "one": "{count} browser profile could not be changed and was left as it was.",
+    "other": "{count} browser profiles could not be changed and were left as they were."
+  },
+  "browserTabs.firefoxKept": "A Firefox profile sets this in its own user.js file, so it was left alone.",
+  "browserTabs.done": "Done. The browsers use it the next time they open.",
+  "browserTabs.othersOff": {
+    "one": "{count} Chromium profile still uses the LordOS frame",
+    "other": "{count} Chromium profiles still use the LordOS frame"
+  },
+  "browserTabs.othersOn": {
+    "one": "{count} Chromium profile still draws its own bar",
+    "other": "{count} Chromium profiles still draw their own bar"
+  },
+  "browserTabs.applyAll": "Change them",
   "change": "Change…",
   "clipboard.add": "Add",
   "clipboard.appId": "app id",
@@ -55,7 +73,7 @@
   "kb.test": "Test keyboard",
   "kb.testHint": "Type here: ñ, accents (´ + vowel), ç, AltGr…",
   "kb.use": "Use",
-  "keywords.appearance": "dark light mode accent transparency",
+  "keywords.appearance": "dark light mode accent transparency browser tabs title bar frame",
   "keywords.clipboard": "copy paste history copied",
   "keywords.general": "about computer system version processor memory disk",
   "keywords.keyboard": "layout input method japanese chinese korean",
