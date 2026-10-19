@@ -34,8 +34,8 @@ MODEL=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || echo unknown)
 KREL=$(uname -r)
 row INFO "board" "$MODEL"
 case "$KREL" in
-    *-lordos-rpi-*) row PASS "kernel (LordOS build)" "$KREL" ;;
-    *) row FAIL "kernel (LordOS build)" "$KREL is not a -lordos-rpi-* kernel (Raspberry Pi's has no Landlock)" ;;
+    *-lordos-rpi-*|*-lordos.*-rpi-*) row PASS "kernel (LordOS build)" "$KREL" ;;
+    *) row FAIL "kernel (LordOS build)" "$KREL is not a -lordos[.<rev>]-rpi-* kernel (Raspberry Pi's has no Landlock)" ;;
 esac
 PS=$(getconf PAGESIZE 2>/dev/null || echo ?)
 case "$KREL:$PS" in
@@ -70,6 +70,12 @@ if [ -f "$CFG" ]; then
     done
     if [ -z "$MISS" ]; then row PASS "kernel config" "LANDLOCK SECCOMP_FILTER CGROUP_BPF BPF_SYSCALL BPF_LSM DEBUG_INFO_BTF MEMCG"
     else row FAIL "kernel config" "missing:$MISS"; fi
+    # sock_diag SOCK_DESTROY (0.8.4's kernel, 6.18.57-3+lordos): lord-netperm closes the open
+    # connections a new rule denies (docs/FIREWALL.md, "Existing connections are cut"); without it
+    # they are only dropped and the app stalls until its own timeout
+    if grep -q '^CONFIG_INET_DIAG_DESTROY=y' "$CFG" && [ "$(grep -Ec '^CONFIG_INET_(TCP|UDP)_DIAG=[ym]' "$CFG")" = 2 ]; then
+        row PASS "socket destroy" "INET_DIAG_DESTROY, INET_TCP_DIAG, INET_UDP_DIAG"
+    else row FAIL "socket destroy" "no INET_DIAG_DESTROY/INET_UDP_DIAG: blocked connections stall instead of closing"; fi
 fi
 grep -q '^Seccomp:' /proc/self/status && row PASS "seccomp" "available" || row FAIL "seccomp" "no Seccomp field in /proc/self/status"
 CTRL=$(cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null || echo "")
