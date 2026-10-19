@@ -6,8 +6,8 @@
  * (source outputs); subscribes to changes and notifies JS with "state" when something changed
  * and all replies have arrived. If PipeWire restarts, it reconnects every 2 s.
  *
- * Extras: peak meter for an input (a recording stream at 25 samples per second with
- * PEAK_DETECT, like pavucontrol) and system sounds synthesized here (uploaded once to the
+ * Extras: level meter for an input (a normal 48 kHz recording stream; the level is the largest
+ * sample of each block, see snd_meter) and system sounds synthesized here (uploaded once to the
  * server's sample cache and then played with PLAY_SAMPLE). */
 #include "snd.h"
 #include "pulse.h"
@@ -501,7 +501,7 @@ static void on_error(Pending p, uint32_t code) {
 }
 
 static void on_packet(uint32_t channel, const uint8_t *d, size_t n) {
-    if (channel != 0xffffffffu) {                   /* data: the meter (float32, one sample per peak) */
+    if (channel != 0xffffffffu) {                   /* data: the meter (float32 samples; the level is the largest) */
         if (channel == S.meter_channel && n >= 4) {
             float v = 0, m = 0;
             for (size_t i = 0; i + 4 <= n; i += 4) { memcpy(&v, d + i, 4); v = fabsf(v); if (v > m) m = v; }
@@ -828,8 +828,11 @@ int snd_move(int kind, uint32_t index, uint32_t device) {
     return cmd_send(&t, tag, R_ACK, (int)c, index);
 }
 
-/* Meter: 1-channel float recording stream at 25 Hz with PEAK_DETECT; the server sends one
- * peak per packet (4 bytes). Same as pavucontrol does. */
+/* Meter: a plain 1-channel float recording stream at 48 kHz, read in blocks of 2048 samples (~23
+ * levels a second); the level is the largest sample of each block (on_packet). Until 0.8.1 it was
+ * pavucontrol's trick, a 25 Hz stream with PEAK_DETECT and resample.peaks: in PipeWire that is a
+ * node at rate 25 with a quantum of 1, and on a VM it was seen next to PipeWire using ~36 % CPU
+ * while Settings → Sound was open. A normal-rate stream is what every recorder asks for. */
 int snd_meter(uint32_t source) {
     if (S.meter_channel != PA_INVALID_INDEX && S.fd >= 0) {
         TsOut t;
@@ -846,20 +849,20 @@ int snd_meter(uint32_t source) {
     TsOut t;
     uint32_t tag = cmd_begin(&t, PA_CMD_CREATE_RECORD_STREAM);
     uint8_t mono = 0;                               /* PA_CHANNEL_POSITION_MONO */
-    ts_ss(&t, PA_SAMPLE_FLOAT32LE, 1, 25);
+    ts_ss(&t, PA_SAMPLE_FLOAT32LE, 1, 48000);
     ts_cmap(&t, 1, &mono);
     ts_u32(&t, source);
     ts_str(&t, NULL);
     ts_u32(&t, 0xffffffffu);                        /* maxlength: the server's */
     ts_bool(&t, 0);                                 /* corked */
-    ts_u32(&t, 4);                                  /* fragsize: one sample */
+    ts_u32(&t, 2048 * 4);                           /* fragsize: 2048 samples, ~43 ms */
     ts_bool(&t, 0); ts_bool(&t, 0); ts_bool(&t, 0); ts_bool(&t, 0); ts_bool(&t, 0);   /* no_remap … fix_channels */
     ts_bool(&t, 1);                                 /* no_move */
     ts_bool(&t, 0);                                 /* variable_rate */
-    ts_bool(&t, 1);                                 /* peak_detect */
+    ts_bool(&t, 0);                                 /* peak_detect: no, computed here */
     ts_bool(&t, 1);                                 /* adjust_latency */
-    const char *kv2[] = { "media.name", "LordOS: level meter", "application.id", "org.lordos.Server", "resample.peaks", "1" };
-    ts_proplist(&t, kv2, 3);
+    const char *kv2[] = { "media.name", "LordOS: level meter", "application.id", "org.lordos.Server" };
+    ts_proplist(&t, kv2, 2);
     ts_u32(&t, PA_INVALID_INDEX);                   /* direct_on_input */
     ts_bool(&t, 0);                                 /* early_requests */
     ts_bool(&t, 1);                                 /* dont_inhibit_auto_suspend */
