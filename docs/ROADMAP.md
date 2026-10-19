@@ -516,19 +516,23 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   `tryboot` (phase 3), Debian packages as system extensions and delta updates (phase 4), `/etc` and
   execution hardening (phase 5). The classic edition stays as it is.
 
-- [ ] **Xwayland** (X11 app compatibility). Today LordOS runs Wayland apps only, so programs that
-  speak only X11 don't start. Plan:
-  - start `Xwayland` on demand (rootless) when an X11 client connects, with its own `DISPLAY`
-    socket; the compositor (`server/src/wl/`) acts as the X window manager (XWM: map, stack,
-    focus, move and resize, titles and icons, transient/popup windows, our window frame);
-  - clipboard and drag and drop bridged between X11 and Wayland;
-  - HiDPI and fractional scaling for X11 windows, multi-monitor positions;
-  - the same per-app identity as Wayland apps (cgroup scope, firewall, Dock grouping), so X11 apps
-    get the per-app network and device restrictions too;
-  - security: X11 apps can read each other's input and windows by design; X11 clients are isolated
-    from Wayland apps and protected windows (Passwords) are never exposed to them; documented in
+- [x] **Xwayland** (X11 app compatibility) — 0.8.3, see `WAYLAND.md` ("X11 apps (Xwayland)") and
+  `PRIVACY.md` ("X11 apps"):
+  - [x] `Xwayland` on demand (rootless), started by the first connection to the session's X socket
+    and stopped 10 s after the last X app; our own X window manager in C (map, stacking, focus,
+    move and resize, titles, `WM_CLASS` → `.desktop`, override-redirect menus and tooltips,
+    fullscreen, minimize, close, our window frame and cursor);
+  - [x] clipboard and primary selection bridged both ways (and `zwp_primary_selection_v1` for
+    Wayland apps); drag and drop X11 ↔ Wayland: not yet (LordOS has no Wayland drag and drop yet);
+  - [x] HiDPI policy (scale 1, scaled by the compositor) and positions across displays; not tested on
+    a HiDPI display;
+  - [x] the same per-app identity as Wayland apps (scope, firewall, Dock grouping); restricted apps
+    get no X display;
+  - [x] X11 apps never see Wayland apps, protected windows or keys typed into them; documented in
     `PRIVACY.md`;
-  - tests with real X11 apps (an xterm-style terminal, a Java/Swing app, a game) and screenshots.
+  - [x] tests with real X11 apps (XTerm, xeyes, a Swing app, Neverball), CPU and GPU paths.
+  - [ ] later: a separate or "untrusted" X display for restricted apps; X11 ↔ Wayland drag and drop;
+    sharp X11 apps on HiDPI displays.
 - [ ] **Turn the "Classic" theme into a second full appearance** (Settings → Themes), for people coming from the
   most common desktop layout: a centered taskbar with a start menu, pinned and running apps, a
   system tray with quick settings and a notification panel, snap layouts for windows, rounded

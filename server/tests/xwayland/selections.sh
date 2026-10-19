@@ -7,8 +7,8 @@
 #
 # 1. An X11 app's copy (CLIPBOARD and PRIMARY) reaches Wayland apps.
 # 2. Offers are bound to their selection: a Wayland app can't read later copies through an old offer.
-# 3. A Wayland copy is not readable by a background X11 app (no X window has the keyboard), nor by
-#    another X11 client while an X window has it (only the focused window's client may paste).
+# 3. A Wayland copy is not readable by an X11 app while no X window has the keyboard; while one has
+#    it, a request from another client's window is refused (a hint only: X11 apps share a display).
 cd "$(dirname "$0")/../.." || exit 1
 fails=0
 ok() { printf '  ok      %s\n' "$1"; }
@@ -39,7 +39,8 @@ got=$(timeout 3 xclip -o -selection clipboard 2>/dev/null)
 setsid -f xterm -title selections-test >/dev/null 2>&1 </dev/null
 sleep 3
 got=$(timeout 3 xclip -o -selection clipboard 2>/dev/null)
-[ "$got" != "wayland secret-ish" ] && ok "another X11 client can't read it while xterm has the keyboard" || bad "another X11 client read it"
+# (best effort, not a boundary: X11 doesn't authenticate the requestor; see docs/PRIVACY.md)
+[ "$got" != "wayland secret-ish" ] && ok "a paste request from another client's window is refused (best effort)" || bad "another client's window got it"
 pkill -f "xterm -title selections-test"
 
 [ $fails -eq 0 ] && echo "selections: PASSED" || echo "selections: $fails FAILED"

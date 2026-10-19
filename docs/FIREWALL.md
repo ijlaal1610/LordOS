@@ -312,7 +312,9 @@ scoping (no abstract unix socket and no signal outside it). So it can't create o
 nor start anything outside its scope, and the device program and the PipeWire guard always find
 it by its scope. It costs the app the session bus: notifications, portals and the like over
 D-Bus don't work for it. Applied at launch: restart the app to apply. Without Landlock ABI 6
-(kernel 6.12 or later) a restricted app isn't started at all, and the launcher says why.
+(kernel 6.12 or later) a restricted app isn't started at all, and the launcher says why. Such a view has no X display either (no X socket in its private `/tmp`, no `DISPLAY`): X11
+apps share one display and could watch or drive each other, so a restricted app must speak Wayland
+(`PRIVACY.md`, "X11 apps").
 
 **No access to your files.** Applied by the launcher's child after it entered its scope and right
 before `execve`, so a restriction set while the app runs applies at its next launch (Settings

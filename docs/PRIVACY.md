@@ -556,6 +556,66 @@ package keeps its plain owner while a user `.lpk` with the same id does not reac
   process itself has no network at all. Certificate warnings that happened while Mail was closed are
   shown again on the next connection attempt (the account shows its error meanwhile).
 
+## X11 apps (0.8.3)
+
+X11 apps run through Xwayland (`WAYLAND.md`, "X11 apps (Xwayland)"). X11 was designed for programs
+that trust each other, and LordOS doesn't pretend otherwise:
+
+**What X11 apps can do to each other (inherent, not fixed).** All X11 apps of a session share one X
+display. Any of them can read the others' windows (`XGetImage` on another app's window), their
+window titles and properties, the X keyboard state while an X window has the keyboard (a keylogger
+polling `XQueryKeymap` sees what is typed into xterm), and the X selections (any X client can ask
+for the CLIPBOARD and PRIMARY while they are in X, and read the property they are pasted into).
+The window manager refuses paste requests that come from a window of a client other than the
+focused one, but that is only a hint: X11 doesn't authenticate who sends a request, so it is not a
+boundary between X apps. **If two programs must not see each other, at least one of them should be
+a Wayland app.**
+
+**What LordOS controls: the border between X11 and the rest.**
+
+- **Screen and windows.** Xwayland is a Wayland client like any other: it only ever gets the
+  buffers of its own windows, never another app's surface or LordOS's screen (there is no
+  screen-copy protocol). `xwd -root` fails (`BadMatch`: rootless Xwayland has no root picture) and
+  the X window tree only holds X windows, so **Passwords, the keyring prompt and every other
+  Wayland or LordOS window are invisible to X11 apps** (`xwayland-protected.png`).
+- **Keyboard.** Xwayland receives keys only while one of its windows has the keyboard. Global X
+  grabs and keyloggers inside X see nothing typed into a LordOS or Wayland window: with Passwords
+  focused, `tests/xwayland/keysnoop.sh` sampled the X keyboard 958 times while a passphrase was typed
+  and saw no key down (the same run with xterm focused saw them). Search, the app launcher, shell
+  sheets and system prompts (keyring, permissions, the file chooser) also take the keyboard from
+  any Linux app while they are open (they are in the overlay, modal and system layers;
+  `runtime/index.js`, `sdk/wayland.js`) — this also fixed keys reaching a Wayland app behind the
+  search panel. The compositor doesn't offer Xwayland's keyboard-grab protocol.
+- **Clipboard.** What is copied in LordOS or a Wayland app enters X only while an X window has the
+  keyboard, and leaves when the keyboard goes back (the window manager gives the selection up), so
+  an X app in the background never reads it. What Passwords copies (marked sensitive) **never**
+  enters X. In the other direction, an X app's copy is read once, when it is made, and becomes
+  LordOS's.
+- **Synthetic input.** Xwayland starts with XTEST disabled, so an X app can't type or click into
+  another X app (e.g. a terminal) with synthetic events.
+- **Xwayland itself** runs in `lordos-xwayland.scope` (not lord-server's), without network (its own
+  empty network namespace) and with `no_new_privs`; it is started only by a connection to the
+  session's X socket (mode 0600, no abstract socket, no TCP) and stopped 10 s after the last X app.
+
+**Per-app identity.** An X11 app launched from LordOS is placed in its app scope
+(`app-lordos-<desktop id>.scope`) before it runs, exactly like a Wayland app, so the per-app
+firewall and the Monitor apply to it (tested: XTerm with "no internet" can't connect;
+`xwayland-firewall.png`). Its window is grouped in the Dock by `WM_CLASS`.
+
+**Restricted apps get no X display.** A Linux app with a device or "no files" restriction runs in
+its own view (private `/tmp`, see `FIREWALL.md`), and LordOS doesn't put the X socket there and
+removes `DISPLAY`: given the shared display above, a restricted X11 app could watch or drive the
+other X apps. Such an app must speak Wayland (most GTK/Qt apps do); an X11-only app with one of
+those restrictions doesn't open. Isolated `.lpk` apps never get X either (their seccomp filter
+refuses new unix sockets, and `DISPLAY` is removed). *Not done:* a separate Xwayland per restricted
+app, or "untrusted" X connections (the SECURITY extension), which would let such apps run with X
+isolated from the rest; tracked for a later version.
+
+| |
+|---|
+| ![protected](xwayland-protected.png) |
+| From XTerm, with Passwords open behind it: `xwd -root` fails, the X window tree holds only XTerm, and the keylogger test run while typing into Passwords saw 0 keys |
+
 ## Root-owned app scopes
 
 The session's cgroup subtree used to be delegated to the user (`chown`), so a Linux app without a

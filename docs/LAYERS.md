@@ -80,6 +80,11 @@ import { Layer, Overlay, LAYERS } from '@lordos/sdk';
 - Used today by: the shell's menus, the SDK's `MenuButton`, the «fill from Passwords» button
   (`AutofillButton`), Settings' pop-up buttons and Passwords' pop-up menus. Calendar, Contacts and
   Reminders keep their own per-window popover host; the Terminal's preferences use an inline list.
+- **The keyboard.** While anything shows in the `overlay`, `modal` or `system` layers (search, the
+  launcher, sheets, system prompts), no Linux app (Wayland or X11) gets the keys: `runtime/index.js`
+  counts each layer's children after every commit and `sdk/wayland.js` gives the compositor focus 0
+  (0.8.3; `PRIVACY.md`, "X11 apps"). `popover` (menus, the clipboard and emoji panels, which paste into
+  the app in front) keeps the app's keyboard.
 - **Don't** fight the order with large `zIndex` values: they only order siblings. A new kind of
   surface gets a row in the table above (and in `sdk/layers.js`) instead.
 

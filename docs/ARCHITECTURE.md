@@ -95,6 +95,11 @@ Besides the kernel and libc, only these are allowed:
 | EFF word list, 10k common passwords | passphrase generator and the offline "breached" check (CC BY 3.0 US / MIT), embedded in `lord-vault` | `third_party/wordlists` |
 | Inter, JetBrains Mono | interface and terminal fonts (OFL)            | `assets/fonts` |
 
+**Xwayland** (Debian's `xwayland` package, 0.8.3) is not linked by anything: it is a separate
+program that `lord-server` starts on demand for X11 apps (`WAYLAND.md`, "X11 apps (Xwayland)").
+The X window manager inside `lord-server` speaks the X11 protocol itself (`server/src/wl/xwm.c`,
+`x11wire.c`): no libxcb or libX11. Without the package, X11 apps simply don't open.
+
 React (`react`, `react-reconciler`) is a dependency **of the theme**, not of the system: it is bundled
 with esbuild inside the theme's `.js`. Since 0.7.0 it is React 19.3.1 with `react-reconciler` 0.34
 (the default theme weighs 367 KB with all the apps; React 18 was ~40 KB less). Node.js is only

@@ -1247,3 +1247,26 @@ removed, so `diff -r` against the backup is empty). Sessions were the autologin 
   tests) restored from the backup, the Mail restriction in `firewall.json` removed, and the test
   data deleted (`~/.config/lordos/mail`, `~/.local/share/lordos/mail`, the four apps'
   `appdata` folders, two files in `~/Documents`). Nothing in the network configuration was touched.
+
+## Step 34 — 0.8.3: X11 apps with Xwayland (VM 118 `lordos-notes`, October 19)
+
+See `WAYLAND.md` ("X11 apps (Xwayland)") and `PRIVACY.md` ("X11 apps"). Installed with
+`--no-install-recommends`:
+
+| Package | What for |
+|---|---|
+| `xwayland` 2:24.1.6 | X11 apps (the only one LordOS needs; it brings `xserver-common`, `x11-xkb-utils`) |
+| `xterm`, `x11-apps` (xeyes, xwd), `x11-utils` (xprop, xwininfo, xev) | test apps and X inspection |
+| `xclip`, `xinput`, `xdotool` | clipboard tests, the keyboard-snoop test (`tests/xwayland/keysnoop.sh`) and reading the X pointer (XTEST is off, so `xdotool` can't type) |
+| `openjdk-21-jdk-headless`, `openjdk-21-jre` | the Swing test app (`~/xwl-tests/SwingTest.java`, a `.desktop` with `StartupWMClass=SwingTest`, removed after the tests) |
+| `neverball` | an SDL game (`SDL_VIDEODRIVER=x11`) |
+
+- Build: `make -C server` (no new build dependency: the primary-selection XML is in
+  `wayland-protocols`), plus `make -C server build/clip-offers` for `tests/xwayland/selections.sh`.
+- The GPU path was tested with a temporary `lordos.service.d` drop-in `Environment=LORD_GPU=1`
+  (llvmpipe), removed afterwards.
+- Input: a uinput tablet+keyboard (`~/uinput-xwl-118.py`, the same as the earlier steps' scripts)
+  mapped to the whole desktop (2987×1067 on this VM's two displays).
+- The installed LordOS was backed up to `~/xwayland-backup-20261019` and restored after the tests;
+  `firewall.json` was restored too.
+

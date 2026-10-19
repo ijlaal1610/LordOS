@@ -6,7 +6,9 @@
  * FIFO of callbacks.
  *
  * What it does:
- *   - takes SubstructureRedirect on the root and maps the windows that ask (MapRequest); reads their
+ *   - redirects the root's children (Composite, manual: rootless Xwayland only gives redirected
+ *     windows a wl_surface), takes SubstructureRedirect on the root and maps the windows that ask
+ *     (MapRequest); reads their
  *     title, class (WM_CLASS → the app's .desktop), protocols, hints, Motif decorations, window type
  *     and transient parent; WL_SURFACE_ID tells which wl_surface shows each one;
  *   - keeps every X window where LordOS shows it (the X position is the content's position on
@@ -18,8 +20,12 @@
  *     client is reverted);
  *   - the clipboard: CLIPBOARD and PRIMARY both ways (XFixes tells when an X app copies; the copy is
  *     read once and becomes LordOS's; LordOS's is offered to X only while an X window has the
- *     keyboard, so a background X app can't read what was copied elsewhere);
- *   - the root window's cursor is LordOS's arrow (Render cursor).
+ *     keyboard, so a background X app can't read what was copied elsewhere, and a secret copied in
+ *     Passwords never is);
+ *   - the root window's cursor is LordOS's arrow (Render cursor);
+ *   - 10 s after the last X window closes, if X-Resource shows no other client, Xwayland stops.
+ * X11 apps on one display can always see each other; what this guards is the border with Wayland
+ * apps and LordOS (docs/PRIVACY.md, "X11 apps").
  * See docs/WAYLAND.md, "X11 apps (Xwayland)". */
 #include "xwm.h"
 #include "x11wire.h"
@@ -580,7 +586,10 @@ static void sel_request(const uint8_t *p) {
              target = x11_get32(p + 20), prop = x11_get32(p + 24);
     int k = sel_index(selection);
     if (!prop) prop = target;                               /* obsolete clients */
-    /* only the X app the user is in (the requestor window is that client's) may read it */
+    /* LordOS's selection is in X only while an X window has the keyboard (clip_sync). Asking from
+     * a window of the focused client is a hint, not a boundary: the requestor id isn't
+     * authenticated in X11 and X apps on one display can read each other's selections anyway
+     * (docs/PRIVACY.md, "X11 apps") */
     if (k < 0 || owner != X.wmwin || !X.sel[k].owned || !X.focus || !same_client(requestor, X.focus->id) || !lord_has(k)) {
         notify_requestor(time_, requestor, selection, target, 0);
         return;
@@ -1048,7 +1057,7 @@ static int on_fd(int fd, uint32_t mask, void *data) {
 
 int xwm_start(int fd, struct wl_event_loop *loop) {
     xwm_stop();
-    X.debug = 1; /* XWMDEBUG-TEMP */
+    X.debug = getenv("LORD_XWM_DEBUG") != NULL;     /* every window, copy and X error in the session log */
     X.fd = fd;
     X.loop = loop;
     X.ev = wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, on_fd, NULL);

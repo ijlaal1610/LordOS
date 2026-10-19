@@ -10,6 +10,38 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
+## [0.8.3] - Unreleased
+
+### Added
+
+- **X11 apps.** Programs that only speak X11 (xterm, Java/Swing apps, many games and older tools)
+  now open in LordOS through Xwayland (the `xwayland` package), with the theme's window frame, their
+  icon in the Dock (matched to their launcher by `WM_CLASS`), menus and tooltips above everything,
+  fullscreen, minimize and close, and LordOS's cursor. Xwayland only starts when an X11 app
+  connects and stops 10 seconds after the last one closes. LordOS's own X window manager is
+  written in C and speaks the X11 protocol itself, without new libraries in `lord-server`.
+- **Clipboard with X11 apps**, both ways, for the normal clipboard and the primary selection
+  (select to copy, middle click to paste); large copies and images included.
+- **Primary selection for Wayland apps** (middle-click paste between GTK, Qt and other apps).
+
+### Security
+
+- X11 apps run in their app's scope, so per-app firewall rules and the Monitor apply to them.
+- X11 apps never see Wayland apps, LordOS's screen, Passwords or the keyring prompt, nor the keys
+  typed into them; what is copied outside X enters X only while an X window has the keyboard, and
+  passwords copied in Passwords never do. Synthetic input between X11 apps (XTEST) is off.
+  Xwayland runs without network, in its own scope. X11 apps can still see each other, as in any X11
+  desktop (see the privacy documentation).
+- Apps with device or "no files" restrictions get no X display.
+- Clipboard offers to Wayland apps are bound to the selection they were made for and to the app
+  with the keyboard.
+
+### Fixed
+
+- Typing into search, the app launcher or a system prompt while a Linux app was in front sent the
+  keys to that app instead.
+- Java (AWT/Swing) windows were blank or shifted (non-reparenting window manager).
+
 ## [0.8.2] - Unreleased
 
 ### Added
