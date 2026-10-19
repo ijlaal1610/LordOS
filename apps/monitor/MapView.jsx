@@ -8,9 +8,9 @@
 // así que mover y acercar no esperan al dibujo. Las etiquetas son texto del motor: siempre nítidas.
 import { View, Text, Image, useTheme, useLocale, addListener, formatNumber, tOptional, useAppWindow, useStore, windows, settings } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { parseColor } from './draw.js';
+import { parseColor, canvas, dot } from './draw.js';
 import { COUNTRY_LL } from './countries.js';
-import { C } from './index.jsx';
+import { C, useCardStyle } from './index.jsx';
 
 // ---- traffic direction on the arcs ----
 // Dots travel along each arc while bytes move: sent (orange) from "This computer" to the place,
@@ -18,13 +18,22 @@ import { C } from './index.jsx';
 // drawn dimmed (map.c). The dots are engine views moved with lord.setStyle (no React render per
 // frame) at FLOW_FPS with the window in front and FLOW_FPS_BEHIND behind it, only for arcs on
 // screen and at most FLOW_ARCS of them; the timer stops with the window minimized, while the map
-// moves and when nothing moves. Each frame repaints the box around the dots (about 0.35 % of a
-// 1.8 GHz core per frame per second with CPU compositing, docs/MONITOR.md). With Reduce motion each
-// busy arc gets two still arrows instead.
+// moves and when nothing moves. Each dot is a small ready-made image, and each frame repaints only
+// the small boxes the dots left and entered (the engine's several damaged rectangles, 0.8.2; the
+// cost is in docs/MONITOR.md). With Reduce motion each busy arc gets two still arrows instead.
 const FLOW_FPS = 12, FLOW_FPS_BEHIND = 5, FLOW_ARCS = 12, FLOW_MIN = 256;   // FLOW_MIN: bytes per second that count as "moving"
 // 0 at FLOW_MIN, 1 from about 4 MB/s
 const flowLevel = (rate) => (rate > FLOW_MIN ? Math.max(0, Math.min(1, Math.log10(rate / FLOW_MIN) / 4.2)) : -1);
 const bez = (a, k) => { const u = 1 - k; return [u * u * a.x0 + 2 * u * k * a.cx + k * k * a.x1, u * u * a.y0 + 2 * u * k * a.cy + k * k * a.y1]; };
+
+// One moving dot as a ready-made 9×9 image (a ring and the direction's color): the engine only
+// blits it, instead of filling and stroking a rounded box with antialiasing on every frame (0.8.2).
+function dotSprite(fill, ring) {
+  const cv = canvas(9, 9), [, , , ra] = parseColor(ring);
+  dot(cv, 4.5, 4.5, 4.5, ring, ra);
+  dot(cv, 4.5, 4.5, 2.5, fill, 1);
+  return cv;
+}
 
 // arcs: [{ cc, x0, y0, cx, cy, x1, y1, tx, rx }] in the map's pixels.
 function FlowLayer({ arcs, w, h, paused }) {
@@ -72,8 +81,9 @@ function FlowLayer({ arcs, w, h, paused }) {
     tm = setTimeout(step, 1000 / fps);
     return () => clearTimeout(tm);
   }, [animate, sig, w, h, fps]);
-  if (paused || hidden) return null;
   const ring = t.mode === 'dark' ? 'rgba(20,21,24,0.85)' : 'rgba(255,255,255,0.9)';
+  const sprites = useMemo(() => ({ tx: dotSprite(C.tx, ring), rx: dotSprite(C.rx, ring) }), [ring]);
+  if (paused || hidden) return null;
   if (!motion) {
     // still markers at 38 % (received) and 62 % (sent) of each busy arc: a short comet of three
     // dots, the biggest in front, so it reads as pointing the way the bytes go (no rotation needed)
@@ -99,9 +109,8 @@ function FlowLayer({ arcs, w, h, paused }) {
       {dots.map((d) => {
         const [x, y, on] = place(d, now);
         return (
-          <View key={d.key} ref={(r) => { if (r) nodes.current.set(d.key, r.id); else nodes.current.delete(d.key); }}
-            style={{ position: 'absolute', left: on ? x : -20, top: on ? y : -20, width: 9, height: 9, borderRadius: 5, pointerEvents: 'none',
-              backgroundColor: d.dir > 0 ? C.tx : C.rx, border: `2px solid ${ring}` }} />
+          <Image key={d.key} ref={(r) => { if (r) nodes.current.set(d.key, r.id); else nodes.current.delete(d.key); }} pixels={d.dir > 0 ? sprites.tx : sprites.rx}
+            style={{ position: 'absolute', left: on ? x : -20, top: on ? y : -20, width: 9, height: 9, pointerEvents: 'none' }} />
         );
       })}
     </>
@@ -174,6 +183,7 @@ export function MapView({ places, home, selected, onSelect, geoOn, fitKey }) {
     tx: p.rateTx || 0, rx: p.rateRx || 0, idle: (p.rateTx || 0) + (p.rateRx || 0) < FLOW_MIN,
   }));
   const dark = t.mode === 'dark';
+  const card = useCardStyle();
   const colors = {
     land: rgba(dark ? '#8a93a8' : '#9aa3b5', dark ? 0.30 : 0.42),
     border: rgba(dark ? '#cfd6e6' : '#ffffff', dark ? (v && v.ppd > 6 ? 0.42 : 0.25) : 0.9),
@@ -382,7 +392,8 @@ export function MapView({ places, home, selected, onSelect, geoOn, fitKey }) {
     backgroundColor: dark ? 'rgba(40,42,48,0.92)' : 'rgba(255,255,255,0.95)', border: `1px solid ${t.separator}` };
   const btnText = { fontSize: 15, fontWeight: 600, color: t.text, lineHeight: 1 };
   return (
-    <View ref={box} style={{ flex: 1, minHeight: 120, overflow: 'hidden', borderRadius: 8, direction: 'ltr' }}
+    // the card's own color, opaque: a repaint of the moving dots starts here instead of at the card
+    <View ref={box} style={{ flex: 1, minHeight: 120, overflow: 'hidden', borderRadius: 8, direction: 'ltr', backgroundColor: card.bg }}
       onMouseDown={onMouseDown} onWheel={onWheel} onPinch={onPinch} onDoubleClick={onDoubleClick}>
       {img && <Image ref={imgRef} pixels={frame.pixels} style={{ position: 'absolute', left: img.left, top: img.top, width: img.width, height: img.height, pointerEvents: 'none' }} />}
       {v && <FlowLayer arcs={flowArcs} w={w} h={h} paused={moving || !!live.current} />}

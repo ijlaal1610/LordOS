@@ -14,6 +14,12 @@
 //   await monitor.stopProcess(p, 'TERM' | 'KILL')   the user's own: lord-server signals it; another
 //                                                  user's or root's: the root helper (administrators)
 //
+// Traffic history (0.8.2, docs/MONITOR.md "Traffic history"): lord-server records the machine's and
+// each of the user's apps' bytes per minute (7 days) and per hour (30 days) in a file of the user's,
+// while Settings → Privacy → Monitor → "Keep a traffic history" is on (settings.monitor.history).
+//   monitor.history({ from, step, n, app })  → { res, oldest, now, rx: [n], tx: [n], top: [[app, rx, tx]] } | null
+//   monitor.clearHistory()                   → true when it is gone
+//
 // Phase 2 (not implemented yet): monitor.deviceUsers() → [{ kind: 'camera' | 'microphone',
 // app, name, pid }] and the monitorDevices store; and the firewall with per-app and per-domain rules,
 // which rely on the same connection records (the `verdict` field, always 'allow' today).
@@ -22,6 +28,7 @@ import { createStore, useStore } from './store.js';
 import { locale } from './i18n.js';
 import { admin } from './admin.js';
 import { codeError } from './errors.js';
+import { settings } from './settings.js';
 
 export const MONITOR_HISTORY = 240;             // 60 s at 4 samples per second
 export const monitorSamples = createStore([]);
@@ -204,6 +211,26 @@ async function stopProcess(p, kind, { own } = {}) {
   await admin.run('proc-signal', `${p.pid} ${p.st} ${kind}`, null, { quiet: true });
 }
 
+// The history records in lord-server, with the window closed too; the switch is the user's setting
+// (lord-server ignores it on the login screen and in isolated apps).
+let historyOn = null;
+function syncHistory() {
+  const on = settings.get()?.monitor?.history !== false;
+  if (on === historyOn || !available() || typeof lord.monitor.historyEnable !== 'function') return;
+  historyOn = on;
+  try { lord.monitor.historyEnable(on); } catch (e) { /* an older lord-server */ }
+}
+if (typeof lord !== 'undefined') { syncHistory(); settings.subscribe(syncHistory); }
+
+function history({ from, step, n, app = null }) {
+  if (!available() || typeof lord.monitor.history !== 'function') return null;
+  try { return lord.monitor.history({ from: Math.floor(from), step: Math.floor(step), n: Math.floor(n), app }); } catch (e) { return null; }
+}
+function clearHistory() {
+  if (!available() || typeof lord.monitor.historyClear !== 'function') return false;
+  try { return !!lord.monitor.historyClear(); } catch (e) { return false; }
+}
+
 let infoCache = null;
 export const monitor = {
   available,
@@ -211,4 +238,6 @@ export const monitor = {
   deviceUsers: () => [],                        // phase 2
   watchProcess,
   stopProcess,
+  history,
+  clearHistory,
 };
