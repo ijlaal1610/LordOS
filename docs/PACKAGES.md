@@ -39,7 +39,11 @@ The code is in `server/src/pkg/`:
 - **HTTP instead of HTTPS.** LordOS has no TLS of its own, so `https://` sources are downloaded
   over `http://`, with the same path. Security comes from the signatures and the SHA-256 hashes,
   as with apt and `http://deb.debian.org`. Someone watching the network can see which packages
-  are downloaded, but can't change them.
+  are downloaded, but can't change them. (So a repository on a CDN must serve plain HTTP as is,
+  not redirect it: [UPDATES.md](UPDATES.md), "Serving it".)
+- **Local repositories.** A `file:/path` source (a repository on a disk or a USB stick, like apt's
+  `file:` method) is read by the same unprivileged child, as `nobody`: only world-readable files,
+  checked exactly like a download. An HTTP redirect can never lead to a `file:` URL.
 - **Downloads without root.** The process that talks to the network drops privileges before
   connecting: it becomes `nobody`, with no groups, with `no_new_privs` and no way back to root.
   It passes the bytes to the root process through a pipe. The root process only writes them into
@@ -67,6 +71,7 @@ The code is in `server/src/pkg/`:
 | `/var/lib/lordos/pkg/lists/` | Verified `InRelease` files and the compressed indexes, named by their SHA-256 (what didn't change isn't downloaded again) |
 | `/var/lib/lordos/pkg/icons/64/` | 64×64 icons of the desktop apps (DEP-11) |
 | `/var/lib/lordos/pkg/auto` | Packages LordOS installed as dependencies |
+| `/var/lib/lordos/pkg/notes` | The verified `main/notes/ReleaseNotes` of every source that has one (LordOS's; [UPDATES.md](UPDATES.md)); world-readable |
 | `/var/cache/lordos/pkg/` | `.deb` files while they're being installed (deleted when done) |
 
 ## Helper actions (`admin.run`)
@@ -164,6 +169,8 @@ lord.pkg.apps({ category, type = 'desktop-application', limit = 100, offset = 0,
     // [App + { package, installed, version, size }], sorted by name
 lord.pkg.categories()           // { AudioVideo: 210, Development: 180, … } (desktop apps)
 lord.pkg.icon(name)             // path of the 64×64 PNG or null
+lord.pkg.releaseNotes(name, version)   // Markdown release notes a source published for that version, or null
+lord.pkg.rebootRequired()       // null, or the packages that asked for a restart (/run/reboot-required.pkgs)
 
 // Summary = { name, version (candidate), summary, section, size, installedSize (bytes),
 //             installed (version or null), upgradable, essential, auto, app: App | null }

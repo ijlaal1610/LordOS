@@ -23,6 +23,27 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   CPU time, threads, context switches, page faults, start time, nice, control group and LordOS
   restrictions), open files and ports (with the addresses of each socket), the executable and the
   command line, updated every second ([docs/MONITOR.md](docs/MONITOR.md#process-actions-081)).
+- **Update LordOS from the Store, without reinstalling.** Store → Updates now shows "LordOS
+  <version> is available" with the release notes and an Update button, next to Debian's updates;
+  files, settings and accounts are kept, and a "Restart required" notice appears when the new
+  version (or a new kernel) is installed. It works the same on the ISO install, the Raspberry Pi
+  image, Debian with `install.sh` and servers, and `sudo apt update && sudo apt upgrade` does the
+  same. An optional daily check (on by default, never installs anything) notifies when something
+  new is available ([docs/UPDATES.md](docs/UPDATES.md)).
+- **A signed LordOS package repository** at `https://lordos.org/apt` (suite `stable`, amd64 and
+  arm64), signed with a dedicated OpenPGP key (Ed25519, fingerprint
+  `1DDA F390 107D F264 FA8A 0918 3972 CC6D E4DA 2336`) shipped as
+  `/usr/share/keyrings/lordos-archive-keyring.gpg`; the `lordos` package adds
+  `/etc/apt/sources.list.d/lordos.sources` and removes it when uninstalled. Built and signed on the
+  maintainer's machine by `tools/release/apt-repo.sh`, tested on a staging path first.
+- **Migrations between versions.** The package's `postinst` applies each version's system changes
+  once and in order (`/usr/lib/lordos/migrate`, `packaging/migrations/`), so skipping versions
+  converges to the same state; each user's settings get the same treatment at login
+  (`sdk/settings.js`). The first two enable per-app network permissions where they were left off,
+  and keep root's SSH key login on servers upgraded from 0.8.0 (0.8.1 turns root login off).
+- **Local repositories in the package engine:** a `file:/path` source (a disk or a USB stick) is
+  read like a download, as `nobody`, and checked the same way.
+
 - **`tools/diag/keylag.sh`: where does the typing delay come from?** In two minutes it reports the
   composition mode, the VM and its guest tools and Chromium's complaints, and with
   `lordos.inputdebug=1` on the kernel line (one boot, root only) it times each stage of a key in
@@ -144,6 +165,16 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   modesetting (for example QEMU's VMware-compatible display), the text console now says so and
   suggests a display that works; `vmwgfx` only loads on VMware itself, so the console stays
   visible elsewhere.
+
+### Upgrading
+
+- **From 0.8.0 (once):** run `curl -fsSL https://lordos.org/install.sh | sh` again. It upgrades in
+  place (keeps users, settings and the login setup) and its package adds the LordOS repository;
+  from then on new versions come through Store → Updates or `apt`. Or add the repository by hand and
+  `sudo apt update && sudo apt install lordos` ([docs/UPDATES.md](docs/UPDATES.md#how-a-system-gets-the-repository)).
+- On a server administered as root with an SSH key, the upgrade keeps root's key login
+  (`/etc/ssh/sshd_config.d/09-lordos-root-keys.conf`) even though 0.8.1's default is no root login;
+  delete that file to apply the default.
 
 ## [0.8.0-beta] - 2026-10-18
 

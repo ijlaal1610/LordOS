@@ -58,7 +58,38 @@ The releases page is the project's public changelog: every release is documented
    lines joined, its "Verifying" part replaced by the footer) plus a fixed footer: the downloads
    table, the verification steps and links to lordos.org, the paper, the docs and the security
    page. Read it once before publishing.
-7. **Publish:**
+7. **The APT repository** (what installed systems update from; [UPDATES.md](UPDATES.md)). On the
+   maintainer's Mac, where the archive key lives (never on a VM):
+
+   ```sh
+   # staging first: the same .debs, the notes from this version's CHANGELOG section
+   tools/release/apt-repo.sh build staging <release-dir>/lordos_<file-version>_amd64.deb <release-dir>/lordos_<file-version>_arm64.deb
+   tools/release/apt-repo.sh publish staging
+   tools/release/apt-repo.sh verify staging        # https and http, signature, every index hash
+   ```
+
+   On a clean VM with the previous release installed, point a copy of `lordos.sources` at
+   `https://lordos.org/apt-staging` (or a `file:` copy of the tree) and check: `sudo apt update`
+   is clean, Store → Updates shows "LordOS <version> is available" with these notes, Update installs
+   it, the migrations run (`ls /var/lib/lordos/migrations`), the user's settings are untouched,
+   "Restart required" appears and the system comes back after the restart; a second `apt install
+   --reinstall lordos` runs no migration again. On the Raspberry Pi, `apt-get update` against
+   staging in a temporary `Dir::State::Lists` (no change to the board) validates the arm64 index.
+   Then the same for the live repository:
+
+   ```sh
+   tools/release/apt-repo.sh build live <release-dir>/lordos_<file-version>_amd64.deb <release-dir>/lordos_<file-version>_arm64.deb
+   tools/release/apt-repo.sh publish live
+   tools/release/apt-repo.sh verify live
+   ```
+
+   A version is never re-uploaded with other contents (the script refuses); a fix is a new version.
+   `verify live` must pass **before** any release whose package carries `lordos.sources` is
+   published: otherwise `apt update` fails on every system that installs it. A change between
+   versions that is not just new files (a unit to enable, a renamed setting, a config to convert)
+   is a migration in `packaging/migrations/` or `sdk/settings.js` ([UPDATES.md](UPDATES.md),
+   "Migrations"), never a manual step in the release notes.
+8. **Publish:**
 
    ```sh
    gh release create v<version> --title "LordOS <version>" --prerelease --verify-tag \
@@ -68,7 +99,7 @@ The releases page is the project's public changelog: every release is documented
    Leave out `--prerelease` only for a version without a suffix. The Debian installer
    (`install.sh`) finds betas too: `releases/latest` skips pre-releases, so it falls back to the
    newest release of any kind ([INSTALL-DEBIAN.md](INSTALL-DEBIAN.md)).
-8. **Check:** download from the release page and run the verification commands from the notes;
+9. **Check:** download from the release page and run the verification commands from the notes;
    run `curl -fsSL https://lordos.org/install.sh | sh` on a clean Debian 13; update the website if
    it names the current version.
 

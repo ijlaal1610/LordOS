@@ -176,6 +176,16 @@ machine reachable from the internet:
 
 `--uninstall` removes `/etc/lordos/remote/config`, so the port is closed.
 
+## Updating
+
+The package adds the signed LordOS repository (`/etc/apt/sources.list.d/lordos.sources`, key
+`/usr/share/keyrings/lordos-archive-keyring.gpg`), so new versions arrive in place: Store → Updates
+shows "LordOS <version> is available", or `sudo apt update && sudo apt upgrade` does the same. Files,
+settings, users and the login setup are kept, and the package applies whatever each version changes
+in the system ([UPDATES.md](UPDATES.md)). Running `install.sh` again also upgrades in place; it is
+the one-time step for LordOS 0.8.0, whose package does not have the repository yet. Uninstalling
+removes the repository with the package.
+
 ## Uninstalling
 
 ```sh
