@@ -3,7 +3,7 @@
 # with BIOS and UEFI boot. See docs/ISO.md.
 #
 # Usage (as root, on Debian 13, from the root of the already built repository):
-#   make -C server -j"$(nproc)"          # lord-server and lord-sessiond (needs libssl-dev; clang for lord-netperm's BPF)
+#   make -C server -j"$(nproc)"          # lord-server and lord-sessiond (needs libssl-dev; libsrtp2-dev + libusrsctp-dev for the remote desktop's video; clang for lord-netperm's BPF)
 #   (the themes: npm run build on the development machine; the .bundle.js files travel with the tree)
 #   sudo tools/iso/build.sh [work folder]   # default /var/tmp/lordos-iso
 #

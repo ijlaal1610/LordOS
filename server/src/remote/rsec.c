@@ -590,5 +590,28 @@ int rs_browser_input(const RsJson *j, int W, int H, RsInput *in) {
         in->tlen = l;
         return in->type = RS_IN_CLIP;
     }
+    /* the video path's signaling (docs/REMOTE.md, "Video (WebRTC)"); the SDP and the candidate are
+     * parsed strictly afterwards by rtcwire.c */
+    if (!strcmp(t, "rtc")) {
+        size_t l = 0;
+        const char *x = rs_json_str(j, "sdp", &l);
+        if (!x || l < 10 || l > RS_SDP_MAX) return RS_IN_NONE;
+        in->text = x;
+        in->tlen = l;
+        return in->type = RS_IN_RTC;
+    }
+    if (!strcmp(t, "ice")) {
+        size_t l = 0;
+        const char *x = rs_json_str(j, "c", &l);
+        if (!x || l > 512) return RS_IN_NONE;
+        in->text = x;
+        in->tlen = l;
+        return in->type = RS_IN_ICE;
+    }
+    if (!strcmp(t, "vmode")) {
+        if (rs_json_num(j, "on", &a) || (a != 0 && a != 1)) return RS_IN_NONE;
+        in->a = (int)a;
+        return in->type = RS_IN_VMODE;
+    }
     return RS_IN_NONE;
 }

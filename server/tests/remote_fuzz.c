@@ -5,6 +5,8 @@
 #include "remote/rsec.h"
 #include "remote/ipnet.h"
 #include "remote/lockout.h"
+#include "remote/rtcwire.h"
+#include "rtc_offer_chrome.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -109,6 +111,114 @@ static void one(const char *b, size_t n) {
     free(c);
 }
 
+/* ---- the video path (rtcwire.c): SDP offers, candidates, STUN/TURN, RTCP, DCEP, RTP payloads ---- */
+
+static void fake_hmac(const uint8_t *key, size_t kl, const uint8_t *m, size_t n, uint8_t out[20]) {
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < kl; i++) h = (h ^ key[i]) * 16777619u;
+    for (size_t i = 0; i < n; i++) h = (h ^ m[i]) * 16777619u;
+    for (int i = 0; i < 20; i++) out[i] = (uint8_t)(h >> (i % 4 * 8));
+}
+static void pk(void *ud, const uint8_t *h, size_t hl, const uint8_t *d, size_t n, int marker) {
+    (void)ud; (void)marker;
+    volatile uint8_t x = 0;
+    for (size_t i = 0; i < hl; i++) x ^= h[i];
+    for (size_t i = 0; i < n; i++) x ^= d[i];                  /* ASan checks every byte handed out */
+}
+static void fb(void *ud, const RwFb *f) { (void)ud; (void)f; }
+
+static void rtc_one(const uint8_t *b, size_t n) {
+    uint8_t *c = malloc(n + 1);
+    memcpy(c, b, n);
+    RwOffer *o = malloc(sizeof *o);
+    if (!rw_sdp_parse_offer((const char *)c, n, (int)(rnd() & 1), o)) {
+        static char ans[16384];
+        uint8_t fp[32] = { 0 };
+        RwLocalCand lc = { "192.168.1.5", 4000, RW_CAND_HOST, 1, "", 0 };
+        RwAnswer a = { "ufraguf", "passwordpasswordpassword", fp, 1, 2, 1, &lc, 1, 3 };
+        rw_sdp_answer(o, &a, ans, (size_t)(1 + rnd() % sizeof ans));
+    }
+    free(o);
+    RwCand cd;
+    rw_cand_parse((const char *)c, n, &cd);
+    RwStun st;
+    if (!rw_stun_parse(c, n, &st)) rw_stun_check_mi(c, n, &st, (const uint8_t *)"k", 1, fake_hmac);
+    rw_is_stun(c, n);
+    rw_rtcp_parse(c, n, fb, NULL);
+    RwDcOpen dc;
+    rw_dcep_open(c, n, &dc);
+    rw_h264_packetize(c, n, 64 + rnd() % 1500, pk, NULL);
+    rw_h264_is_idr(c, n);
+    rw_vp8_packetize(c, n, 64 + rnd() % 1500, pk, NULL);
+    c[n] = 0;
+    rw_ice_server_valid((const char *)c);
+    rw_turn_user_valid((const char *)c);
+    rw_turn_pass_valid((const char *)c);
+    RwAddr ad;
+    if (!rw_addr_text((const char *)c, &ad)) { char t[64]; rw_addr_format(&ad, t, sizeof t); }
+    free(c);
+}
+
+/* seeds for rtc_one: well-formed STUN/TURN messages and RTCP compounds, built here */
+static size_t rtc_seed(uint8_t *b, size_t cap) {
+    uint8_t tid[12];
+    for (int i = 0; i < 12; i++) tid[i] = (uint8_t)rnd();
+    RwStunOut o;
+    RwAddr a = { (int)(rnd() % 2 ? 4 : 6), { 10, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 }, (uint16_t)rnd() };
+    switch (rnd() % 8) {
+    case 0: {
+        size_t n = strlen(chrome_offer);
+        memcpy(b, chrome_offer, n);
+        return mutate((char *)b, n, cap);
+    }
+    case 1: {
+        static const char *const cs[] = { "candidate:1 1 udp 2113937151 192.168.1.20 54321 typ host generation 0 network-cost 999",
+                                          "candidate:3 1 UDP 33554431 2001:db8::7 3478 typ relay raddr 2001:db8::1 rport 9",
+                                          "candidate:4 1 udp 2113937151 3d9863a1-3b3d-48f6-9ff1-49c2bc04877f.local 64198 typ host",
+                                          "stun.example.org:3478", "[2001:db8::1]:3478" };
+        const char *s = cs[rnd() % 5];
+        size_t n = strlen(s);
+        memcpy(b, s, n);
+        return mutate((char *)b, n, 2048);
+    }
+    case 2: case 3:
+        rw_so_init(&o, (uint16_t)(rnd() % 2 ? RW_STUN_BINDING_REQ : RW_TURN_ALLOCATE_OK), tid);
+        if (rnd() % 2) rw_so_attr(&o, RW_ATTR_USERNAME, "abcd:efgh", 9);
+        if (rnd() % 2) rw_so_u32(&o, RW_ATTR_PRIORITY, rnd());
+        if (rnd() % 2) rw_so_xaddr(&o, RW_ATTR_XOR_MAPPED, &a);
+        if (rnd() % 2) rw_so_xaddr(&o, RW_ATTR_XOR_RELAYED, &a);
+        if (rnd() % 3 == 0) rw_so_attr(&o, RW_ATTR_DATA, "\x16\xfe\xfd payload", 12);
+        if (rnd() % 2) rw_so_mi(&o, (const uint8_t *)"k", 1, fake_hmac);
+        if (rnd() % 2) rw_so_fingerprint(&o);
+        memcpy(b, o.b, o.n);
+        return rnd() % 2 ? mutate((char *)b, o.n, 1500) : o.n;
+    case 4: {
+        static const uint8_t rr[] = { 0x81, 0xc9, 0, 7, 1, 1, 1, 1, 2, 2, 2, 2, 25, 0, 0, 5, 0, 0, 1, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 0,
+                                      0x81, 0xcd, 0, 3, 1, 1, 1, 1, 2, 2, 2, 2, 0, 100, 0, 15,
+                                      0x8f, 0xce, 0, 5, 1, 1, 1, 1, 0, 0, 0, 0, 'R', 'E', 'M', 'B', 1, 8, 0xe8, 0, 2, 2, 2, 2 };
+        memcpy(b, rr, sizeof rr);
+        return mutate((char *)b, sizeof rr, 1500);
+    }
+    case 5: {
+        static const uint8_t op[] = { 3, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 'i', 'n', 'p', 'u', 't' };
+        memcpy(b, op, sizeof op);
+        return mutate((char *)b, sizeof op, 200);
+    }
+    default: {                                  /* an Annex B stream of random NAL units */
+        size_t n = 0;
+        while (n + 2000 < cap && rnd() % 6) {
+            static const uint8_t sc[] = { 0, 0, 0, 1 };
+            size_t k = 3 + rnd() % 2;
+            memcpy(b + n, sc + 4 - k, k);
+            n += k;
+            size_t l = rnd() % (rnd() % 4 ? 200 : 1800);
+            for (size_t i = 0; i < l; i++) b[n++] = (uint8_t)(rnd() % 5 ? rnd() | 1 : 0);
+        }
+        return n;
+    }
+    }
+}
+
 /* random WebSocket stream: well-formed frames with random flags, lengths and payloads */
 static size_t ws_stream(unsigned char *b, size_t cap) {
     size_t o = 0;
@@ -132,7 +242,12 @@ int main(int argc, char **argv) {
     static char b[200000];
     for (long i = 0; i < iters; i++) {
         size_t n;
-        unsigned kind = rnd() % 10;
+        unsigned kind = rnd() % 14;
+        if (kind >= 10) {
+            n = rtc_seed((uint8_t *)b, 40000);
+            rtc_one((const uint8_t *)b, n);
+            continue;
+        }
         if (kind < 6) {
             const char *s = seeds[rnd() % (sizeof seeds / sizeof *seeds)];
             n = strlen(s);

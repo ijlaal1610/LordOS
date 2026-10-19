@@ -533,9 +533,20 @@ static void remote_notice(const char *json) { js_remote_notice(json); }
 
 static int gpu_start(Server *s);
 
+/* Does someone need the frame in memory, composed by the CPU? Recording the screen does. The remote
+ * desktop doesn't any more (docs/REMOTE.md, "Video (WebRTC)"): with the GPU composing, the frame is
+ * read back once (gpu_read_next) for every viewer. Only protected windows still need the CPU path
+ * (they are painted black in a CPU copy of the scene, media/capture.c); LORD_REMOTE_GPU=0 forces it. */
+static int remote_needs_cpu(void) {
+    if (!mirror_clients()) return 0;
+    const char *e = getenv("LORD_REMOTE_GPU");
+    return (e && !strcmp(e, "0")) || media_protected_count() > 0;
+}
+static int need_cpu(void) { return remote_needs_cpu() || media_needs_cpu(); }
+
 /* The GPU composes one display, upright; several displays or a rotated one go by the CPU. */
 static int gpu_allowed(const Server *s) {
-    return !s->headless && out_count(s) >= 1 && !display_cpu_only() && !mirror_clients() && !media_needs_cpu();
+    return !s->headless && out_count(s) >= 1 && !display_cpu_only() && !need_cpu();
 }
 
 /* The GPU stopped: every display gets its dumb buffer back (CPU path). */
@@ -767,7 +778,7 @@ static void display_attach(const int *fds, int n, int flags) {
     if (input_open_fds(&s->input, fds + 1, n - 1)) fprintf(stderr, "monitor: no keyboard or mouse\n");
     wl_input_devices_changed();         /* is there a touch screen? (wl_seat touch) */
     s->headless = 0;
-    s->gpu_paused = mirror_clients() > 0 || media_needs_cpu();
+    s->gpu_paused = need_cpu();
     o0->on = 1;
     struct stat st;
     if (fstat(o0->kms.fd, &st) == 0) wl_set_drm_device(st.st_rdev);
@@ -1324,9 +1335,9 @@ static void render_frame(Server *s) {
         s->cap.cdirty = 1;
         s->cursor_dirty = 0;
     }
-    if (gpu_active() && (mirror_clients() || media_needs_cpu())) {     /* also when recording the screen */
-        /* someone watches the session over the network: the screen must be in memory (CPU path) */
-        fprintf(stderr, "remote: there is a connection; composing by CPU\n");
+    if (gpu_active() && need_cpu()) {     /* recording the screen, or a remote viewer with protected windows */
+        /* the screen must be in memory (CPU path) */
+        fprintf(stderr, "remote: composing by CPU (%s)\n", media_needs_cpu() ? "screen recording" : "protected windows on screen");
         gpu_tex_free(s->cursor_tex);
         s->cursor_tex = NULL;
         gpu_shutdown();
@@ -1352,8 +1363,29 @@ static void render_frame(Server *s) {
                 gpu_server = s;
                 gpu_out = o;
                 view_of(o, i);
-                /* compatible fullscreen (one display): straight to the card; otherwise composed */
-                int failed = !(out_count(s) == 1 && wl_try_scanout(s->hw_cursor || s->cursor_mode == 2)) && gpu_frame(o->gpu, &o->scene, r, gpu_layer);
+                /* the remote desktop watches: the composed frame is read back once for every viewer */
+                static uint32_t *rb;
+                static size_t rb_n;
+                int readback = o == feed && mirror_clients() > 0;
+                if (readback) {
+                    size_t need = (size_t)o->scene.w * o->scene.h;
+                    if (need > rb_n) { free(rb); rb = malloc(need * 4); rb_n = rb ? need : 0; }
+                    if (rb) gpu_read_next(rb, o->scene.w, o->scene.h);
+                    else readback = 0;
+                }
+                /* compatible fullscreen (one display): straight to the card; otherwise composed (always
+                 * composed while the remote desktop reads it back) */
+                int failed = !(!readback && out_count(s) == 1 && wl_try_scanout(s->hw_cursor || s->cursor_mode == 2)) && gpu_frame(o->gpu, &o->scene, r, gpu_layer);
+                if (readback && !failed && gpu_read_done()) {
+                    static int said;
+                    if (!said++) fprintf(stderr, "remote: composing on the GPU; frames read back for the remote desktop\n");
+                    Cur k;
+                    cursor_now(s, &k, out_scale(o));
+                    int cx, cy;
+                    pointer_phys(s, o, &cx, &cy);
+                    mirror_frame(rb, o->scene.w, o->scene.w, o->scene.h);
+                    mirror_cursor(cx, cy, k.mode, k.px, k.w, k.h, k.hx, k.hy, k.gen);
+                }
                 view_reset();
                 gpu_out = NULL;
                 o->cdirty = 0;
@@ -1708,6 +1740,9 @@ int main(int argc, char **argv) {
         if (nrd >= 0 && (delay < 0 || nrd < delay)) delay = nrd;
         double tpd = tp_timeout(now_ms());
         if (tpd >= 0 && (delay < 0 || tpd < delay)) delay = tpd;
+        mirror_tick();                      /* remote desktop video: lossless tiles once still, the encoder */
+        double mrd = mirror_timeout();
+        if (mrd >= 0 && (delay < 0 || mrd < delay)) delay = mrd;
         /* sin monitor y sin nadie mirando no se dibuja (al conectarse alguien llega un cuadro entero) */
         int unseen = s.headless && !mirror_clients() && !media_needs_cpu();   /* grabando la pantalla, sí */
         if (!s.headless && display_is_off()) unseen = 1;     /* screen off after idle (DPMS): nothing to draw */

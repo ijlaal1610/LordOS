@@ -566,5 +566,8 @@
   "hw.noKernelLog": "The kernel log could not be read",
   "app.codeRefused": "This app's code was modified and was not loaded",
   "remote.badAddress": "Not a valid address or network",
-  "remote.listFull": "The list is full (64 entries)"
+  "remote.listFull": "The list is full (64 entries)",
+  "remote.badIceServer": "Not a valid server: use name:port, like stun.example.org:3478 (at most 4)",
+  "remote.badTurnUser": "Not a valid relay user name (no spaces, at most 128 characters)",
+  "remote.badTurnPassword": "Not a valid relay password (at most 128 characters, no line breaks)"
 }

@@ -21,6 +21,19 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   quit it. Chromium profiles from before this version that still use the LordOS frame are shown on
   the page, with a button to change them too. A choice you made yourself in a Firefox `user.js`
   file is left alone, and choices you make later in the browsers' own settings stick.
+- **Remote desktop as video.** In a browser that supports WebRTC, the remote desktop now arrives as
+  real video (H.264, or VP8 when the browser has no H.264) with the session's sound (Opus), instead
+  of images. Still areas are then made pixel-perfect with lossless tiles, so text stays sharp.
+  Dragging a window went from about 23 frames per second and 12.5 Mbit/s to about 28 frames per
+  second and under 1 Mbit/s, and the connection's own process from 57 % of a core to 2 %. The
+  session encodes once (on the graphics card with VA-API when it can, else in software) for every
+  viewer of that session; the screen keeps being composed on the graphics card while someone
+  watches. Keyboard, mouse and clipboard go over a WebRTC data channel. If the browser or the
+  network can't do WebRTC, it falls back to the images, as before.
+- **Settings → Sharing → Video:** turn the video off (images only), add public STUN servers and a
+  TURN relay for connecting across networks. A built-in STUN server covers the local network, and
+  nothing reaches outside servers unless you add them. The relay's password stays on the computer,
+  readable only by the system, and is never sent to the browser.
 
 ### Changed
 

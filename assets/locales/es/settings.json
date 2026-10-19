@@ -325,5 +325,22 @@
   "sharing.blocklist": "Lista de bloqueadas",
   "sharing.blocklistFooter": "Siempre rechazadas, antes que cualquier otra regla, hasta que las quites.",
   "sharing.listEmpty": "La lista está vacía.",
-  "sharing.blockForever": "Bloquear siempre"
+  "sharing.blockForever": "Bloquear siempre",
+  "sharing.video": "Video",
+  "sharing.videoToggle": "Transmitir como video (WebRTC)",
+  "sharing.videoHint": "Más fluido y nítido que con imágenes, y con sonido. Vuelve a imágenes cuando el navegador o la red no pueden.",
+  "sharing.videoOffHint": "El navegador recibe la pantalla como imágenes.",
+  "sharing.stun": "Servidores STUN",
+  "sharing.stunPlaceholder": "stun.ejemplo.org:3478",
+  "sharing.stunHint": "Esta computadora responde STUN por sí misma, y en la red local alcanza. Agregá un servidor público solo para conectarte entre redes (hasta 4, separados por comas).",
+  "sharing.turn": "Relé (TURN)",
+  "sharing.turnServer": "Servidor",
+  "sharing.turnServerPlaceholder": "turn.ejemplo.org:3478",
+  "sharing.turnUser": "Usuario",
+  "sharing.turnPass": "Contraseña",
+  "sharing.turnPassSaved": "Guardada (nunca se muestra)",
+  "sharing.turnRemove": "Quitar el relé",
+  "sharing.turnFooter": "Solo cuando ninguno de los dos lados puede llegar al otro directamente. El relé solo ve video y entrada cifrados; su contraseña queda en esta computadora y solo el sistema puede leerla.",
+  "sharing.save": "Guardar",
+  "sharing.noneSet": "Ninguno"
 }

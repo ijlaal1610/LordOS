@@ -17,13 +17,22 @@
  *   4. Bridge: session rectangles → PNG/JPEG → browser; mouse, keyboard and clipboard from the
  *      browser (validated, rsec.c rs_browser_input) → session. Flow control: the browser
  *      acknowledges each frame ("ack") and only then does the session build the next one.
+ *   5. Video (rtc.c, docs/REMOTE.md "Video (WebRTC)"): if the browser can, it sends a WebRTC offer
+ *      over this same WebSocket; the bridge answers, the session's shared encoder feeds it H.264 or
+ *      VP8 and Opus (RP_VFRAME, RP_AFRAME), input and the lossless tiles of still areas go over data
+ *      channels. The tiles above stay as the fallback until the video plays, and if it fails.
  * Browser protocol and the security analysis: docs/REMOTE.md. */
 #include "sessiond.h"
 #include "proto.h"
 #include "rsec.h"
+#ifdef LORD_RTC
+#include "rtc.h"
+#endif
 
+#include <arpa/inet.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <netinet/in.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -62,6 +71,10 @@ static char peer[48];           /* address as shown */
 static char peer_key[48];       /* lockout key (IPv4, or the IPv6 /64) */
 static double deadline;
 static int lock_fd = -1;        /* bridge → root parent: "L" = the session was locked */
+#ifdef LORD_RTC
+static int want_rtc;            /* the page can do WebRTC (/ws?v=1) and Settings allows video */
+#endif
+static char *turn_pass;         /* read as root before the bridge drops root; the bridge's rtc.c owns it */
 
 static double mono(void) {
     struct timespec t;
@@ -585,6 +598,13 @@ static int ws_handshake(const RsReq *r) {
 /* ---- bridge (runs as the user) ---- */
 
 static int sess = -1;                  /* session socket */
+static int vmode;                      /* video mode: tiles go over the data channel, lossless, once still */
+#ifdef LORD_RTC
+static int tiles_lost;                 /* a tile didn't fit the data channel: ask for them all again */
+static double tiles_lost_at;
+static Rtc *rtc;
+static int rtc_dead;
+#endif
 static uint32_t *fb;                   /* copy of the screen (to replace with PNG) */
 static int W, H;
 typedef struct { uint16_t x, y, w, h; } Box16;
@@ -601,6 +621,31 @@ static void sess_send(int type, const void *a, size_t an) {
     if (write(sess, h, 5) != 5) return;
     if (an && write(sess, a, an) != (ssize_t)an) return;
 }
+
+#ifdef LORD_RTC
+/* A lossless tile over the "tiles" data channel: [1][x, y, w, h u16 BE][png]; halved until it fits. */
+static void dc_tile(int x, int y, int w, int h) {
+    int len = 0, jpeg = 0;
+    unsigned char *img = rd_encode(fb + (size_t)y * W + x, W, w, h, 0, &len, &jpeg);
+    if (!img) return;
+    if (len > 250000 && h > 1) {
+        free(img);
+        dc_tile(x, y, w, h / 2);
+        dc_tile(x, y + h / 2, w, h - h / 2);
+        return;
+    }
+    unsigned char *m = malloc((size_t)len + 9);
+    if (m) {
+        unsigned char hd[9] = { 1, (unsigned char)(x >> 8), (unsigned char)x, (unsigned char)(y >> 8), (unsigned char)y,
+                                (unsigned char)(w >> 8), (unsigned char)w, (unsigned char)(h >> 8), (unsigned char)h };
+        memcpy(m, hd, 9);
+        memcpy(m + 9, img, (size_t)len);
+        if (rtc_send(rtc, RTC_CH_TILES, m, (size_t)len + 9, 1)) { tiles_lost = 1; tiles_lost_at = rd_now(); }
+        free(m);
+    }
+    free(img);
+}
+#endif
 
 static void send_rect(int x, int y, int w, int h, int allow_jpeg) {
     int len = 0, jpeg = 0;
@@ -639,14 +684,55 @@ static void from_session(int type, const unsigned char *d, uint32_t n) {
         /* whatever gets overwritten no longer needs replacing */
         for (int i = 0; i < njpegs; i++)
             if (jpegs[i].x >= r[0] && jpegs[i].y >= r[1] && jpegs[i].x + jpegs[i].w <= r[0] + r[2] && jpegs[i].y + jpegs[i].h <= r[1] + r[3]) jpegs[i--] = jpegs[--njpegs];
+#ifdef LORD_RTC
+        if (vmode) { dc_tile(r[0], r[1], r[2], r[3]); break; }       /* the screen is still: lossless */
+#endif
         /* screen in motion (consecutive frames): straight JPEG, replaced with PNG once it's still */
         send_rect(r[0], r[1], r[2], r[3], rd_now() - last_frame < 0.25 ? 2 : 1);
         break;
     }
     case RP_END:
+#ifdef LORD_RTC
+        if (vmode) {                    /* the data channel is reliable: no browser ack needed */
+            unsigned char e = 3;
+            rtc_send(rtc, RTC_CH_TILES, &e, 1, 1);
+            sess_send(RP_READY, NULL, 0);
+            break;
+        }
+#endif
         ws_frame(2, (unsigned char[]){ 3 }, 1, NULL, 0);
         last_frame = rd_now();
         break;
+#ifdef LORD_RTC
+    case RP_VFRAME:
+        if (n > 8 && rtc && d[0] == rtc_codec(rtc)) {
+            uint32_t ms;
+            memcpy(&ms, d + 4, 4);
+            rtc_video(rtc, d + 8, n - 8, ms);
+        }
+        break;
+    case RP_AFRAME:
+        if (n > 4 && n <= 4 + 1500 && rtc) {
+            uint32_t smp;
+            memcpy(&smp, d, 4);
+            rtc_audio(rtc, d + 4, n - 4, smp);
+        }
+        break;
+    case RP_DAMAGE:
+        /* [2][u16 BE x, y, w, h …]: the browser drops its lossless layer there */
+        if (vmode && rtc && n >= 8 && n % 8 == 0 && n <= 8 * 256) {
+            unsigned char m[1 + 8 * 256];
+            m[0] = 2;
+            for (uint32_t i = 0; i < n / 2; i++) {
+                uint16_t v;
+                memcpy(&v, d + i * 2, 2);
+                m[1 + i * 2] = (unsigned char)(v >> 8);
+                m[2 + i * 2] = (unsigned char)v;
+            }
+            rtc_send(rtc, RTC_CH_TILES, m, 1 + n, 1);
+        }
+        break;
+#endif
     case RP_CURSOR:
         if (n >= 5) {
             int16_t x, y;
@@ -687,14 +773,29 @@ static void from_session(int type, const unsigned char *d, uint32_t n) {
     }
 }
 
-/* One validated browser message → session. */
-static void from_browser(const char *j, size_t n) {
+#ifdef LORD_RTC
+static void video_off(const char *why);
+static void video_mode(int on) {
+    if (on && (!rtc || !rtc_media_ready(rtc) || !rtc_dc_open(rtc, RTC_CH_TILES))) return;
+    if (on == vmode) return;
+    vmode = on;
+    njpegs = 0;
+    unsigned char v = (unsigned char)on;
+    sess_send(RP_VMODE, &v, 1);
+    sd_log("video: %s", on ? "playing in the browser; tiles only for still areas" : "back to tiles");
+}
+#endif
+
+/* One validated browser message → session. From a data channel (dc) only the input messages count. */
+static void from_browser(const char *j, size_t n, int dc) {
     char *sb = malloc(n + 1);
     if (!sb) return;
     RsJson o;
     RsInput in;
     if (rs_json_parse(j, n, &o, sb, n + 1) == 0) {
-        switch (rs_browser_input(&o, W, H, &in)) {
+        int type = rs_browser_input(&o, W, H, &in);
+        if (dc && (type == RS_IN_ACK || type == RS_IN_PING || type == RS_IN_RTC || type == RS_IN_ICE || type == RS_IN_VMODE)) type = RS_IN_NONE;
+        switch (type) {
         case RS_IN_PTR: { int16_t p[2] = { (int16_t)in.a, (int16_t)in.b }; sess_send(RP_PTR, p, 4); break; }
         case RS_IN_BTN: { unsigned char p[2] = { (unsigned char)in.a, (unsigned char)in.b }; sess_send(RP_BTN, p, 2); break; }
         case RS_IN_WHEEL: { signed char d = (signed char)in.a; sess_send(RP_WHEEL, &d, 1); break; }
@@ -719,6 +820,13 @@ static void from_browser(const char *j, size_t n) {
         case RS_IN_RESIZE: { uint16_t sz[2] = { (uint16_t)in.a, (uint16_t)in.b }; sess_send(RP_RESIZE, sz, 4); break; }
         case RS_IN_PING: ws_text("{\"t\":\"pong\",\"ts\":%lld}", in.ts); break;
         case RS_IN_CLIP: sess_send(RP_SETCLIP, in.text, in.tlen); break;
+#ifdef LORD_RTC
+        case RS_IN_RTC:
+            if (rtc && rtc_codec(rtc) == 0 && rtc_offer(rtc, in.text, in.tlen, 1) < 0) video_off("the offer was refused");
+            break;
+        case RS_IN_ICE: if (rtc) rtc_candidate(rtc, in.text, in.tlen); break;
+        case RS_IN_VMODE: if (in.a) video_mode(1); else video_off("the browser gave up"); break;
+#endif
         default: break;
         }
     }
@@ -729,7 +837,7 @@ static void from_browser(const char *j, size_t n) {
 static void on_ws(void *ud, int op, unsigned char *data, size_t len) {
     (void)ud;
     if (closing) return;
-    if (op == 1) from_browser((const char *)data, len);
+    if (op == 1) from_browser((const char *)data, len, 0);
     else if (op == 9) ws_frame(10, data, len, NULL, 0);
     else if (op == 8) { ws_close(1000); closing = 1; }
     else if (op == 2) { ws_close(1003); closing = 1; }        /* our page never sends binary */
@@ -788,11 +896,92 @@ static int conns_full(void) {
     return n >= RD_MAX_CONNS;
 }
 
+#ifdef LORD_RTC
+static void rtc_signal(void *ud, const char *json) { (void)ud; ws_frame(1, json, strlen(json), NULL, 0); }
+static void rtc_state(void *ud, int st, const char *why) {
+    (void)ud;
+    if (st == RTC_CONNECTED) {
+        /* this viewer takes the session's encoded video: u8 codec, u8 sound, u16 0, u32 kbit/s */
+        unsigned char v[8] = { (unsigned char)rtc_codec(rtc), 1, 0, 0 };
+        uint32_t k = 4000;
+        memcpy(v + 4, &k, 4);
+        sess_send(RP_VIDEO, v, 8);
+    } else if (st == RTC_FAILED) { rtc_dead = 1; (void)why; }
+}
+static void rtc_message(void *ud, int chan, const uint8_t *p, size_t n, int binary) {
+    (void)ud;
+    if (chan == RTC_CH_INPUT && !binary && rs_utf8_valid(p, n)) from_browser((const char *)p, n, 1);
+}
+static void rtc_key(void *ud) { (void)ud; sess_send(RP_KEYFRAME, NULL, 0); }
+static void rtc_rate(void *ud, unsigned kbps) { (void)ud; uint32_t k = kbps; sess_send(RP_RATE, &k, 4); }
+
+/* Back to the tiles for good (the video failed or the browser gave up). */
+static void video_off(const char *why) {
+    if (!rtc) return;
+    char st[160];
+    rtc_stats(rtc, st, sizeof st);
+    sd_log("video: off (%s; %s)", why, st);
+    if (vmode) { unsigned char v = 0; sess_send(RP_VMODE, &v, 1); vmode = 0; }
+    unsigned char v[8] = { 0 };
+    sess_send(RP_VIDEO, v, 8);
+    rtc_free(rtc);
+    rtc = NULL;
+    ws_text("{\"t\":\"rtc\",\"fail\":1}");
+}
+
+/* The WebRTC peer, before the hello: its UDP port is also the browser's STUN server. */
+static void rtc_start(void) {
+    RtcConfig c;
+    memset(&c, 0, sizeof c);
+    c.access = &rd_conf.access;
+    c.net_mode = rd_conf.net_mode;
+    rw_addr_text(peer, &c.ws_peer);
+    struct sockaddr_storage ls;
+    socklen_t ll = sizeof ls;
+    if (!getsockname(sock, (struct sockaddr *)&ls, &ll)) {
+        char t[64] = "";
+        if (ls.ss_family == AF_INET) inet_ntop(AF_INET, &((struct sockaddr_in *)&ls)->sin_addr, t, sizeof t);
+        else if (ls.ss_family == AF_INET6) inet_ntop(AF_INET6, &((struct sockaddr_in6 *)&ls)->sin6_addr, t, sizeof t);
+        rw_addr_text(t, &c.ws_local);
+    }
+    c.nstun = rd_conf.nstun;
+    for (int i = 0; i < rd_conf.nstun; i++) snprintf(c.stun[i], sizeof c.stun[i], "%s", rd_conf.stun[i]);
+    snprintf(c.turn, sizeof c.turn, "%s", rd_conf.turn);
+    snprintf(c.turn_user, sizeof c.turn_user, "%s", rd_conf.turn_user);
+    c.turn_pass = turn_pass;                /* rtc.c owns it now and wipes it */
+    turn_pass = NULL;
+    c.max_kbps = 12000;
+    RtcCallbacks cb = { rtc_signal, rtc_state, rtc_message, rtc_key, rtc_rate, NULL };
+    rtc = rtc_new(&c, &cb);
+}
+#endif
+
 static void bridge(const struct passwd *pw) {
     char hello[96];
     snprintf(hello, sizeof hello, "%s %s", peer, pw->pw_name);
     sess_send(RP_HELLO, hello, strlen(hello));
     fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) | O_NONBLOCK);
+#ifdef LORD_RTC
+    if (want_rtc) rtc_start();
+    if (rtc) {
+        /* the built-in STUN server is this connection's UDP port, at the address the page used */
+        char ice[600], ip[64] = "";
+        size_t o = 0;
+        RwAddr la;
+        struct sockaddr_storage ls;
+        socklen_t ll = sizeof ls;
+        if (!getsockname(sock, (struct sockaddr *)&ls, &ll)) {
+            if (ls.ss_family == AF_INET) inet_ntop(AF_INET, &((struct sockaddr_in *)&ls)->sin_addr, ip, sizeof ip);
+            else if (ls.ss_family == AF_INET6) inet_ntop(AF_INET6, &((struct sockaddr_in6 *)&ls)->sin6_addr, ip, sizeof ip);
+        }
+        if (!strncmp(ip, "::ffff:", 7)) memmove(ip, ip + 7, strlen(ip + 7) + 1);
+        int v6 = !rw_addr_text(ip, &la) && la.family == 6;
+        o += (size_t)snprintf(ice + o, sizeof ice - o, "[\"stun:%s%s%s:%d\"", v6 ? "[" : "", ip, v6 ? "]" : "", rtc_port(rtc));
+        for (int i = 0; i < rd_conf.nstun && o < sizeof ice - 120; i++) o += (size_t)snprintf(ice + o, sizeof ice - o, ",\"stun:%s\"", rd_conf.stun[i]);
+        snprintf(ice + o, sizeof ice - o, "]");
+        ws_text("{\"t\":\"hello\",\"user\":\"%s\",\"rtc\":1,\"ice\":%s}", pw->pw_name, ice);
+    } else
+#endif
     ws_text("{\"t\":\"hello\",\"user\":\"%s\"}", pw->pw_name);
     rs_ws_init(&wsr, RS_WS_MAX_MSG);
     unsigned char *sin = NULL;
@@ -810,11 +999,20 @@ static void bridge(const struct passwd *pw) {
             for (int i = 0; i < 20 && wout_len; i++) { struct pollfd q = { sock, POLLOUT, 0 }; poll(&q, 1, 100); if (ws_flush()) break; }
             return;
         }
-        struct pollfd p[2] = { { sock, (short)(POLLIN | (wout_len ? POLLOUT : 0)), 0 }, { sess, POLLIN, 0 } };
+        struct pollfd p[4] = { { sock, (short)(POLLIN | (wout_len ? POLLOUT : 0)), 0 }, { sess, POLLIN, 0 }, { -1, 0, 0 }, { -1, 0, 0 } };
+        int np = 2;
         /* while there is something to send, nothing more is read from the session (flow control) */
         if (wout_len > (4u << 20)) p[1].events = 0;
         int timeout = njpegs ? 200 : 15000;
-        int r = SSL_pending(ssl) ? 1 : poll(p, 2, timeout);
+#ifdef LORD_RTC
+        if (rtc) {
+            np += rtc_pollfds(rtc, p + 2, 2);
+            int t = rtc_timeout(rtc);
+            if (t >= 0 && t < timeout) timeout = t;
+        }
+        if (tiles_lost && timeout > 500) timeout = 500;
+#endif
+        int r = SSL_pending(ssl) ? 1 : poll(p, (nfds_t)np, timeout);
         if (r < 0 && errno != EINTR) return;
         if (SSL_pending(ssl) || (p[0].revents & POLLIN)) {
             if (ws_read()) return;
@@ -850,9 +1048,22 @@ static void bridge(const struct passwd *pw) {
             memmove(sin, sin + off, sin_len - off);
             sin_len -= off;
         }
+#ifdef LORD_RTC
+        if (rtc) {
+            if (np > 2) rtc_dispatch(rtc, p + 2, np - 2);
+            if (rtc) rtc_tick(rtc);
+            if (rtc_dead) { rtc_dead = 0; video_off("connection failed"); }
+            /* tiles that didn't fit: the whole lossless layer again, at most every 2 s */
+            if (vmode && tiles_lost && rd_now() - tiles_lost_at > 2) {
+                tiles_lost = 0;
+                unsigned char v = 1;
+                sess_send(RP_VMODE, &v, 1);
+            }
+        }
+#endif
         if (locked) { ws_flush(); return; }
         /* screen is still: whatever was JPEG is replaced with PNG (lossless) */
-        if (njpegs && rd_now() - last_frame > 0.4 && wout_len < (1u << 20)) {
+        if (njpegs && !vmode && rd_now() - last_frame > 0.4 && wout_len < (1u << 20)) {
             int k = njpegs;
             njpegs = 0;
             for (int i = 0; i < k; i++) send_rect(jpegs[i].x, jpegs[i].y, jpegs[i].w, jpegs[i].h, 0);
@@ -935,6 +1146,26 @@ static void handle_ws(const RsReq *r, int logged, const char *user, uid_t uid) {
     if (h > 1600) h = 1600;
     sess = sd_session_get(&me, w & ~1, h & ~1);
     if (sess < 0) { respond(503, NULL); return; }
+#ifdef LORD_RTC
+    want_rtc = rd_conf.video && query_num(r->query, "v", 0) == 1;
+    /* the TURN password, read here as root (RD_TURN_KEY is root 0600) and handed to the bridge's WebRTC
+     * peer in memory only; never logged, never sent to the browser */
+    if (want_rtc && rd_conf.turn[0] && rd_conf.turn_user[0]) {
+        int f = open(RD_TURN_KEY, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+        struct stat st;
+        char buf[160];
+        ssize_t got = -1;
+        if (f >= 0 && !fstat(f, &st) && S_ISREG(st.st_mode) && st.st_uid == 0 && !(st.st_mode & 077) && st.st_size < (off_t)sizeof buf)
+            got = read(f, buf, sizeof buf - 1);
+        if (f >= 0) close(f);
+        if (got > 0) {
+            buf[got] = 0;
+            buf[strcspn(buf, "\n")] = 0;
+            if (rw_turn_pass_valid(buf)) turn_pass = strdup(buf);
+        }
+        explicit_bzero(buf, sizeof buf);
+    }
+#endif
     if (ws_handshake(r)) return;
     conn_register(name);
     int pp[2];
@@ -954,6 +1185,7 @@ static void handle_ws(const RsReq *r, int logged, const char *user, uid_t uid) {
         _exit(0);
     }
     /* the root side keeps nothing of the connection: it only listens for "the session was locked" */
+    if (turn_pass) { explicit_bzero(turn_pass, strlen(turn_pass)); free(turn_pass); turn_pass = NULL; }
     close(pp[1]);
     close(sess);
     close(sock);

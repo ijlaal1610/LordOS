@@ -325,5 +325,22 @@
   "sharing.blocklist": "Lista de bloqueados",
   "sharing.blocklistFooter": "Sempre recusados, antes de qualquer outra regra, até você removê-los.",
   "sharing.listEmpty": "A lista está vazia.",
-  "sharing.blockForever": "Bloquear sempre"
+  "sharing.blockForever": "Bloquear sempre",
+  "sharing.video": "Vídeo",
+  "sharing.videoToggle": "Transmitir como vídeo (WebRTC)",
+  "sharing.videoHint": "Mais fluido e nítido que com imagens, e com som. Volta para imagens quando o navegador ou a rede não conseguem.",
+  "sharing.videoOffHint": "O navegador recebe a tela como imagens.",
+  "sharing.stun": "Servidores STUN",
+  "sharing.stunPlaceholder": "stun.exemplo.org:3478",
+  "sharing.stunHint": "Este computador responde STUN sozinho, o que basta na rede local. Adicione um servidor público só para conectar entre redes (até 4, separados por vírgulas).",
+  "sharing.turn": "Retransmissor (TURN)",
+  "sharing.turnServer": "Servidor",
+  "sharing.turnServerPlaceholder": "turn.exemplo.org:3478",
+  "sharing.turnUser": "Usuário",
+  "sharing.turnPass": "Senha",
+  "sharing.turnPassSaved": "Salva (nunca é exibida)",
+  "sharing.turnRemove": "Remover retransmissor",
+  "sharing.turnFooter": "Só quando nenhum dos lados consegue chegar ao outro diretamente. O retransmissor só vê vídeo e entrada criptografados; a senha fica neste computador e só o sistema pode lê-la.",
+  "sharing.save": "Salvar",
+  "sharing.noneSet": "Nenhum"
 }

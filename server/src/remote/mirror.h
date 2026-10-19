@@ -50,6 +50,10 @@ void mirror_shown(void);
 void mirror_frame(const uint32_t *px, int stride, int w, int h);
 /* Cursor: position and mode (0 arrow, 1 app image, 2 hidden); the image only if gen changed. */
 void mirror_cursor(int x, int y, int mode, const uint32_t *argb, int w, int h, int hx, int hy, unsigned gen);
+/* The video path: lossless tiles for video-mode viewers once the screen is still, the encoder's
+ * pending frame. Called on every loop iteration; mirror_timeout says when it has work (ms, -1 none). */
+void mirror_tick(void);
+double mirror_timeout(void);
 /* Session text clipboard (called on every loop iteration; sends only if it changed). */
 void mirror_clipboard(const char *text, unsigned gen);
 

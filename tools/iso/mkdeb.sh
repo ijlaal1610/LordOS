@@ -229,6 +229,9 @@ DOCDEPS=""
 if [ -x "$L/bin/lord-doc" ]; then DOCDEPS=", libpoppler-glib8t64, libarchive13t64, libcairo2, libfreetype6, libfontconfig1, poppler-data"; fi
 MEDIADEPS=""
 if [ -x "$L/bin/lord-media" ]; then MEDIADEPS=", libavcodec61, libavformat61, libavutil59, libswscale8, libswresample5, libva2, libva-drm2"; fi
+# the remote desktop's video (docs/REMOTE.md, "Video (WebRTC)"): lord-sessiond built with libsrtp2 and usrsctp
+RTCDEPS=""
+if objdump -p "$L/bin/lord-sessiond" 2>/dev/null | grep -q "libsrtp2"; then RTCDEPS=", libsrtp2-1, libusrsctp2"; fi
 SIZE=$(du -sk "$PKG/usr" | awk '{s += $1} END {print s}')
 cat > "$PKG/DEBIAN/control" <<C
 Package: lordos
@@ -236,7 +239,7 @@ Version: $VERSION
 Architecture: ${DEB_ARCH:-$(dpkg --print-architecture)}
 Maintainer: LordOS <lord.basex@gmail.com>
 Installed-Size: $SIZE
-Depends: libc6 (>= 2.38), libwayland-server0 (>= 1.22), libwayland-client0 (>= 1.22), libxkbcommon0 (>= 1.5), libcrypt1, libssl3t64 | libssl3, ca-certificates, passwd, procps, xkb-data$GPUDEPS$DOCDEPS$MEDIADEPS
+Depends: libc6 (>= 2.38), libwayland-server0 (>= 1.22), libwayland-client0 (>= 1.22), libxkbcommon0 (>= 1.5), libcrypt1, libssl3t64 | libssl3, ca-certificates, passwd, procps, xkb-data$GPUDEPS$DOCDEPS$MEDIADEPS$RTCDEPS
 Recommends: pipewire-pulse, wireplumber, wpasupplicant, openvpn, fonts-noto-core, locales, tzdata, sudo, cups, cups-client, avahi-daemon, mesa-va-drivers, bluez, libspa-0.2-bluetooth, power-profiles-daemon, systemd-timesyncd, shared-mime-info, gsettings-desktop-schemas, xwayland
 Section: x11
 Priority: optional

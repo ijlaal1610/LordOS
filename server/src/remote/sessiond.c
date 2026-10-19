@@ -26,6 +26,7 @@
  * SIGHUP rereads the configuration (turns remote on or off without touching the sessions).
  * It's the only LordOS program that links OpenSSL (TLS): lord-server doesn't. */
 #include "sessiond.h"
+#include "rtcwire.h"
 #include "../sec/cgroup.h"
 #include "proto.h"
 #include "rsec.h"
@@ -132,11 +133,21 @@ static void load_config(void) {
     rd_conf.port = RD_DEFAULT_PORT;
     rd_conf.enabled = rd_conf.group_only = rd_conf.insecure_dev = 0;
     rd_conf.net_mode = RS_NET_LAN;
+    rd_conf.video = 1;
+    rd_conf.nstun = 0;
+    rd_conf.turn[0] = rd_conf.turn_user[0] = 0;
     FILE *f = fopen(RD_CONF_DIR "/config", "r");
     char line[256];
     while (f && fgets(line, sizeof line, f)) {
         int v;
-        char s[32];
+        char s[32], h[160];
+        if (sscanf(line, "video=%d", &v) == 1) { rd_conf.video = v != 0; continue; }
+        if (sscanf(line, "stun=%159s", h) == 1) {
+            if (rw_ice_server_valid(h) && rd_conf.nstun < 4) snprintf(rd_conf.stun[rd_conf.nstun++], 96, "%.95s", h);
+            continue;
+        }
+        if (sscanf(line, "turn=%159s", h) == 1) { if (rw_ice_server_valid(h)) snprintf(rd_conf.turn, sizeof rd_conf.turn, "%.95s", h); continue; }
+        if (sscanf(line, "turn_user=%159s", h) == 1) { if (rw_turn_user_valid(h)) snprintf(rd_conf.turn_user, sizeof rd_conf.turn_user, "%.128s", h); continue; }
         if (sscanf(line, "enabled=%d", &v) == 1) rd_conf.enabled = v == 1;
         else if (sscanf(line, "port=%d", &v) == 1 && v > 0 && v < 65536) rd_conf.port = v;
         else if (sscanf(line, "allow=%31s", s) == 1) rd_conf.group_only = !strcmp(s, "group");
@@ -1214,7 +1225,8 @@ int main(int argc, char **argv) {
             int was = rd_conf.enabled, port = rd_conf.port;
             load_config();
             unblock_requests();
-            sd_log("configuration: remote %s, port %d, from %s", rd_conf.enabled ? "on" : "off", rd_conf.port, rs_net_name(rd_conf.net_mode));
+            sd_log("configuration: remote %s, port %d, from %s; video %s, %d STUN server(s), TURN %s", rd_conf.enabled ? "on" : "off", rd_conf.port,
+                   rs_net_name(rd_conf.net_mode), rd_conf.video ? "on" : "off", rd_conf.nstun, rd_conf.turn[0] ? "configured" : "none");
             if (listening && (!rd_conf.enabled || port != rd_conf.port)) stop_remote();
             if (rd_conf.enabled && (!listening || !was)) start_remote();
             bump();

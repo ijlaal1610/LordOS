@@ -1,0 +1,68 @@
+/* rtc.h — the remote desktop's WebRTC peer, inside the bridge (see rtc.c and docs/REMOTE.md,
+ * "Video (WebRTC)"). One per browser connection, in the process that already dropped root: ICE-lite
+ * with a built-in STUN responder, DTLS-SRTP (OpenSSL), SRTP (libsrtp2), the data channels over SCTP
+ * (usrsctp), RTP for the session's encoded video and Opus audio, and an optional TURN relay. */
+#ifndef LORD_REMOTE_RTC_H
+#define LORD_REMOTE_RTC_H
+
+#include <poll.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "ipnet.h"
+#include "rtcwire.h"
+
+typedef struct Rtc Rtc;
+
+enum { RTC_CONNECTED = 1, RTC_DC_OPEN, RTC_FAILED };
+enum { RTC_CH_INPUT = 0, RTC_CH_TILES = 1 };
+
+typedef struct {
+    void (*signal)(void *ud, const char *json);         /* a message for the browser over the WebSocket */
+    void (*state)(void *ud, int state, const char *why);
+    void (*message)(void *ud, int chan, const uint8_t *p, size_t n, int binary);   /* from a data channel */
+    void (*keyframe)(void *ud);                         /* the browser lost a frame (PLI/FIR) */
+    void (*rate)(void *ud, unsigned kbps);              /* new target bit rate for this viewer */
+    void *ud;
+} RtcCallbacks;
+
+#define RTC_MAX_STUN 4
+typedef struct {
+    const RsAccess *access;     /* who may send us UDP: the same rules as the WebSocket (ipnet.c) */
+    int net_mode;
+    RwAddr ws_peer, ws_local;   /* the authenticated WebSocket's addresses */
+    int nstun;
+    char stun[RTC_MAX_STUN][96];        /* host:port of external STUN servers (Settings → Sharing) */
+    char turn[96], turn_user[129];      /* host:port and user of a TURN server, or "" */
+    char *turn_pass;            /* in memory only; rtc_new takes it over and wipes it when done */
+    unsigned max_kbps;
+} RtcConfig;
+
+Rtc *rtc_new(const RtcConfig *cfg, const RtcCallbacks *cb);
+void rtc_free(Rtc *r);
+int  rtc_port(const Rtc *r);                /* the built-in STUN server's UDP port (for the browser) */
+
+/* The browser's offer (from the authenticated WebSocket): parsed strictly (rtcwire.c); the answer goes
+ * out through signal(). Returns the chosen RW_CODEC_* or < 0. Only one offer per connection. */
+int  rtc_offer(Rtc *r, const char *sdp, size_t n, int allow_h264);
+/* A trickled candidate from the browser ("candidate:..."): only used for TURN permissions. */
+int  rtc_candidate(Rtc *r, const char *c, size_t n);
+
+int  rtc_pollfds(Rtc *r, struct pollfd *p, int max);
+void rtc_dispatch(Rtc *r, const struct pollfd *p, int n);
+int  rtc_timeout(Rtc *r);                   /* ms until rtc_tick is due */
+void rtc_tick(Rtc *r);
+
+int  rtc_codec(const Rtc *r);               /* RW_CODEC_* agreed, 0 before the offer */
+int  rtc_media_ready(const Rtc *r);         /* SRTP keys are there: media can flow */
+/* One encoded video frame (H.264 Annex B or VP8), ms on the session's clock. */
+void rtc_video(Rtc *r, const uint8_t *f, size_t n, uint32_t ms);
+/* One Opus packet, its first sample on a 48 kHz clock. */
+void rtc_audio(Rtc *r, const uint8_t *p, size_t n, uint32_t samples);
+/* Data channel message; -1 if the channel isn't open or its send buffer is full (try later). */
+int  rtc_send(Rtc *r, int chan, const void *p, size_t n, int binary);
+int  rtc_dc_open(const Rtc *r, int chan);
+/* Line for the logs and the browser's status: "h264 2400 kbps 1.2 % lost" */
+void rtc_stats(const Rtc *r, char *out, size_t n);
+
+#endif
