@@ -72,6 +72,8 @@ install -m 644 assets/app-host.bundle.js "$L/assets/app-host.bundle.js"
 install -m 755 tools/iso/rootfs/usr/lib/lordos/lordos-live-prep "$L/lordos-live-prep"
 install -D -m 644 tools/iso/rootfs/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf "$PKG/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf"
 install -D -m 644 tools/iso/rootfs/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf "$PKG/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf"
+# in a virtual machine only: more headroom for emulated sound cards (docs/SOUND.md, "Virtual machines")
+install -D -m 644 tools/iso/rootfs/etc/wireplumber/wireplumber.conf.d/lordos-vm-audio.conf "$PKG/etc/wireplumber/wireplumber.conf.d/lordos-vm-audio.conf"
 # remote login (SSH) defaults, read only once openssh-server is installed (docs/REMOTE.md)
 install -D -m 644 tools/iso/rootfs/etc/ssh/sshd_config.d/10-lordos.conf "$PKG/etc/ssh/sshd_config.d/10-lordos.conf"
 # a process may only trace its own descendants: a restricted Linux app must not take over an
