@@ -40,7 +40,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <grp.h>
+#include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/syscall.h>
+#include <linux/kd.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -559,6 +562,33 @@ static void first_frame(void) {
     sd_log("first frame on the monitor: the boot splash can go");
 }
 
+/* No card with KMS (0.8.1): before this, the boot ended on a silent black screen. The message goes
+ * to the text console (tty1, drawn by the firmware framebuffer if there is one) a few seconds
+ * later, once the boot splash has quit. A grandchild does it, so nothing waits and nothing has to be
+ * reaped here. */
+static void tell_no_display(void) {
+    pid_t p = fork();
+    if (p < 0) return;
+    if (p > 0) { while (waitpid(p, NULL, 0) < 0 && errno == EINTR) {} return; }
+    if (fork() != 0) _exit(0);
+    syscall(SYS_close_range, 3, ~0u, 0);
+    sleep(3);
+    int t = open("/dev/tty1", O_WRONLY | O_NOCTTY | O_CLOEXEC);
+    if (t < 0) _exit(0);
+    ioctl(t, KDSETMODE, KD_TEXT);
+    static const char msg[] =
+        "\033[2J\033[H\r\n"
+        "  LordOS could not show its desktop: no display device with kernel modesetting (KMS)\r\n"
+        "  was found.\r\n\r\n"
+        "  In a virtual machine, choose another display device (VirtIO GPU or standard VGA;\r\n"
+        "  on VMware itself, its default SVGA display works). On a PC, check that the graphics\r\n"
+        "  card has a kernel driver.\r\n\r\n"
+        "  Press Ctrl+Alt+F2 for a text console.\r\n";
+    ssize_t w = write(t, msg, sizeof msg - 1);
+    (void)w;
+    _exit(0);
+}
+
 /* RP_DISPLAY_KEEP only for the first lend of this process: whatever happens to RP_SHOWN (lost on a
  * switch, the file could not be created), a later lend (lock, user switch) must start black, never
  * on the picture left by the previous session. */
@@ -826,7 +856,10 @@ int main(int argc, char **argv) {
     sd_netd_start();
     has_monitor = !no_monitor && sd_mon_open() == 0;
     if (has_monitor) boot_monitor();
-    else first_frame();                 /* nothing will be shown: the boot splash can go now */
+    else {
+        first_frame();                  /* nothing will be shown: the boot splash can go now */
+        if (!no_monitor) tell_no_display();
+    }
     if (rd_conf.enabled) start_remote();
     write_status();
 
