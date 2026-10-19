@@ -147,7 +147,8 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   image, `install.sh` and `apt upgrade` bring it (the `lordos` package now recommends it). The
   Store's update installs only what the package depends on, so after updating from the Store,
   install **xwayland** from the Store (or `sudo apt install xwayland`) to open X11 apps; Wayland
-  apps don't need it.
+  apps don't need it. For the same reason `apt-get upgrade` keeps `lordos` back; `apt upgrade`
+  (or `apt-get install lordos`) installs it.
 - **Raspberry Pi 5: blocked connections stall instead of closing.** The image keeps 0.8.2's
   LordOS kernel, which was built before `CONFIG_INET_DIAG_DESTROY`; there the firewall drops the
   packets of a connection a new rule denies at once, but the app only sees the connection end at
