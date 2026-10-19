@@ -8,6 +8,7 @@ import {
   refreshApps, launchApp, useLauncherApps, LetterIcon, typeScale, spacing, direction, t, locale, errorText, statusText,
   Markdown, Toggle, LordOSLogo, session, lordosUpdate, restartNeeded, updatePrefs, setUpdatePrefs,
 } from '@lordos/sdk';
+import { Suggested } from './suggested.js';
 
 const available = () => typeof lord.pkg !== 'undefined';
 const ready = () => available() && lord.pkg.available();
@@ -224,6 +225,7 @@ function Discover({ query }) {
   const list = lord.pkg.apps({ category: cat, limit: 60, lang: lang2() });
   return h(View, { style: { gap: 16 } },
     h(Progress),
+    h(Suggested, { deb: { state, runJob, PlanView, boxStyle } }),
     h(Text, { style: titleStyle(th) }, t('store.discover.title')),
     h(Chips, { items: CATS.filter((c) => counts[c]).map((c) => h(View, { key: c, onClick: () => setCat(c), style: {
         paddingHorizontal: 12, height: 26, justifyContent: 'center', borderRadius: 13, backgroundColor: c === cat ? th.accent : th.control } },

@@ -454,6 +454,40 @@ static int file_ok(const char *path, uint64_t size) {
     return !lstat(path, &st) && S_ISREG(st.st_mode) && (uint64_t)st.st_size == size;
 }
 
+/* What the index was built from: the list files it read (named by their own SHA-256) and their
+ * component. Stored in PKG_DIR/sources after each build: a component or source added or removed
+ * without a new InRelease upstream (enabling non-free-firmware, say) still rebuilds the index. */
+#define SOURCES_SUM PKG_DIR "/sources"
+static void wanted_sum(const Wanted *w, int nw, char hex[65]) {
+    Sha256 s;
+    uint8_t d[32];
+    sha256_init(&s);
+    for (int k = 0; k < nw; k++) {
+        sha256_update(&s, w[k].path, strlen(w[k].path));
+        sha256_update(&s, " ", 1);
+        sha256_update(&s, w[k].comp, strlen(w[k].comp));
+        sha256_update(&s, "\n", 1);
+    }
+    sha256_final(&s, d);
+    hex_encode(d, 32, hex);
+}
+
+static int sources_changed(const char *sum) {
+    char old[80] = "";
+    FILE *f = fopen(SOURCES_SUM, "re");
+    if (f) { if (!fgets(old, sizeof old, f)) old[0] = 0; fclose(f); }
+    old[strcspn(old, "\n")] = 0;
+    return strcmp(old, sum) != 0;
+}
+
+static void sources_save(const char *sum) {
+    FILE *f = fopen(SOURCES_SUM ".new", "we");
+    if (!f) return;
+    int ok = fprintf(f, "%s\n", sum) > 0;
+    ok = (fclose(f) == 0) && ok;
+    if (!ok || rename(SOURCES_SUM ".new", SOURCES_SUM)) unlink(SOURCES_SUM ".new");
+}
+
 static void gc_lists(Wanted *w, int nw, Source *src, int ns) {
     DIR *d = opendir(LISTS);
     struct dirent *e;
@@ -601,6 +635,10 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     progress("lists", (uint64_t)ns, (uint64_t)ns);
     /* release notes listed but not stored yet (an index built before LordOS read them): rebuild */
     for (int k = 0; k < nw && !changed; k++) if (w[k].kind == 4 && access(PKG_DIR "/notes", F_OK)) changed = 1;
+    /* a component or source added or removed: the same InRelease files, other lists */
+    char sum[65];
+    wanted_sum(w, nw, sum);
+    if (!changed && sources_changed(sum)) changed = 1;
     Idx cur;
     if (!changed && !failures && !idx_open(&cur, PKG_DIR)) {
         /* no list changed since last time: the index is already up to date */
@@ -723,6 +761,7 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     int wrote = pk_files && !idxb_write(b, PKG_DIR, arch, err, sizeof err);
     if (wrote) icons_cleanup(b);
     if (wrote) write_notes(notes, notes_len);
+    if (wrote && !failures) sources_save(sum);
     free(notes);
     uint32_t count = idxb_count(b);
     idxb_free(b);

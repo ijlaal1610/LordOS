@@ -561,5 +561,6 @@
   "proc.notOwn": "Este proceso es de otro usuario",
   "disk.noSmartctl": "smartmontools no está instalado",
   "disk.smartFailed": "No se pudo leer la salud del disco",
-  "disk.smartTestFailed": "El disco no inició la autoprueba"
+  "disk.smartTestFailed": "El disco no inició la autoprueba",
+  "hw.noKernelLog": "No se pudo leer el registro del kernel"
 }

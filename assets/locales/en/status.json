@@ -119,5 +119,6 @@
   "hw.caseSet": "Case: {case}",
   "ssh.off": "Remote login turned off",
   "ssh.on": "Remote login turned on",
-  "ssh.saved": "Settings saved"
+  "ssh.saved": "Settings saved",
+  "hw.firmwareChecked": "Firmware checked"
 }

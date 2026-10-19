@@ -44,7 +44,7 @@ the time fields keep `direction: 'ltr'`.
         │
         ▼  root work: closed admin actions (hw/hw_admin.c)
  admin.c ─ display-brightness, power-profile, power-suspend, power-buttons, time-ntp, time-set,
-           bt-unblock, rpi-case
+           bt-unblock, rpi-case, hw-firmware-missing (the Store's suggestions, read-only)
 
  Cooling: lord.fan (ui/js_fan.c) ── /run/lordos/fand.sock ── lord-fand (root service, src/fan)
 ```
@@ -302,6 +302,7 @@ All in `server/src/hw/hw_admin.c`, in the `actions` table through `HW_ADMIN_ACTI
 | `time-set` | `YYYY-MM-DD HH:MM:SS` | admin | `/usr/bin/timedatectl set-time` |
 | `bt-unblock` | — | anyone | rfkill "unblock all Bluetooth" on `/dev/rfkill` |
 | `rpi-case` | `none` \| `argon-one-v5` | admin | Raspberry Pi 5 only: writes `/boot/firmware/lordos-case.txt` (fixed text, included from `config.txt`; see `FANS.md`) |
+| `hw-firmware-missing` | — | anyone | read-only: reads `/dev/kmsg` and returns only the validated names of firmware files a driver asked for and that are still missing (`LOG fw <file> <driver>`), for Store → Discover's suggestions (`hw/hwscan.c`, see `PACKAGES.md`) |
 
 The validators are unit-tested in `build/settings-hw-test`.
 
