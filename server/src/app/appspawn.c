@@ -97,6 +97,7 @@ int app_spawn(const char *id) {
         if (null >= 0) { dup2(null, 0); if (null > 2) close(null); }
         /* lord-server passes the id, already validated; there are no caller arguments */
         char *const argv[] = { self, (char *)"--app", (char *)id, NULL };
+        unsetenv("DISPLAY");                    /* no X11 for isolated apps (their seccomp has no unix socket() either) */
         execve("/proc/self/exe", argv, environ);   /* not `self`: after a package upgrade it is "<path> (deleted)" */
         _exit(127);
     }

@@ -814,6 +814,10 @@ static int launch(const char *id, const char *file, const char *action) {
             _exit(126);
         }
         /* its own view (namespaces: no session sockets, only its folders), then Landlock */
+        /* a restricted app gets no X display: X11 apps share one X server and can watch each
+         * other's windows, input and selections (docs/PRIVACY.md, "X11 apps"); its private /tmp has no
+         * X socket either */
+        if (plan) unsetenv("DISPLAY");
         if (plan && (sandbox_files_isolate(&plan->cfg) ||
                      (plan->cfg.keep_home ? sandbox_apply_scope() : sandbox_apply_files(&plan->cfg)))) {
             static const char msg[] = "apps: could not apply the no-files restriction: not launched\n";

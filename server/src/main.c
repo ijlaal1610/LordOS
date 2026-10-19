@@ -37,6 +37,7 @@
 #include "tp/tp.h"
 #include "tp/tp_route.h"
 #include "wl/wl_input.h"
+#include "wl/xwayland.h"
 #include "media/media.h"
 #include "app/app.h"
 #include "app/apphost_bc.h"
@@ -1628,6 +1629,8 @@ int main(int argc, char **argv) {
         if (K0(&s)->fd >= 0 && fstat(K0(&s)->fd, &st) == 0) wl_set_drm_device(st.st_rdev);
     }
     if (ok && wl_start()) fprintf(stderr, "lord-server: no Wayland (Linux apps will not be able to open)\n");
+    /* X11 apps: an X socket now, Xwayland only when one connects (wl/xwayland.c); not on the login screen */
+    else if (ok && !s.greeter && session_user) xwl_init();
     publish_displays(&s);                   /* one wl_output per display */
     if (ok && net_open()) fprintf(stderr, "lord-server: no network notifications (rtnetlink)\n");
     /* Backups: a thread running as the user, nice 19 and idle I/O (backup/backup.c) */

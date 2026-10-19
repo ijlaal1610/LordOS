@@ -12,9 +12,9 @@
  * own (GTK) go without a frame and the shadow is clipped with their window geometry. Popup
  * menus (xdg_popup) are drawn on top of everything.
  *
- * Not there yet: linux-dmabuf (GL apps use shared memory), drag and drop,
- * app cursors, text-input (LordOS input methods inside Wayland apps),
- * Xwayland. */
+ * X11 apps go through Xwayland (xwayland.c starts it on demand, xwm.c is the X window manager):
+ * its X windows are surfaces of one more client, with the toplevel or popup role given here
+ * (wlx_attach). Not there yet: drag and drop, text-input (LordOS input methods inside Wayland apps). */
 #include "wl.h"
 #include "../keylag.h"
 
@@ -44,6 +44,9 @@
 #include "cursor-shape-v1-protocol.h"
 #include "fractional-scale-v1-protocol.h"
 #include "xdg-output-unstable-v1-protocol.h"
+#include "primary-selection-unstable-v1-protocol.h"
+#include "xwm.h"
+#include "xwayland.h"
 #include "../outputs.h"
 #include "../cursor.h"
 #include "wl_input.h"
@@ -120,6 +123,10 @@ struct Surf {
     unsigned outmask;
     int pref_scale;
     int logged_ratio;               /* buffer px per logical px ×100, last logged (docs/DISPLAYS.md) */
+    /* an X11 window (Xwayland): its window manager record, and for a menu or tooltip its place */
+    XWin *xw;
+    int xpop, xx, xy, xmin;
+    char app_alt[128];              /* X11: the WM_CLASS instance (the class is app_id) */
 };
 
 /* Shape of a surface's hole in the UI: if it changes, the UI must be repainted. */
@@ -133,6 +140,7 @@ static Surf *surfs[MAX_SURF];
 static int next_id = 1;
 
 static struct wl_display *dpy;
+static struct wl_client *xwl_client;    /* Xwayland (X11 apps), or NULL */
 static struct wl_event_loop *loop;
 static char socket_name[64];
 
@@ -258,6 +266,11 @@ static int origin(Surf *s, float *x, float *y) {
         *y = n->ay - s->gy;
         return 1;
     }
+    if (s->role == R_POPUP && s->xpop) {      /* an X11 menu or tooltip: where X put it */
+        *x = (float)s->xx;
+        *y = (float)s->xy;
+        return 1;
+    }
     if (s->role == R_POPUP && s->parent) {
         float px, py;
         if (!origin(s->parent, &px, &py)) return 0;
@@ -287,7 +300,20 @@ static void popup_box_damage(Surf *s) {
 
 /* ---- configure ---- */
 
+/* An X11 window: its size (and in fullscreen its place) is set through the window manager. */
+static void x_configure(Surf *s) {
+    if (s == fs_surf && s->fullscreen) {
+        float fx, fy, fw, fh;
+        fs_rect(&fx, &fy, &fw, &fh);
+        xwm_place(s->xw, (int)fx, (int)fy);
+    }
+    if (s->conf_w > 0 && s->conf_h > 0) xwm_resize(s->xw, s->conf_w, s->conf_h);
+    xwm_set_state(s->xw, s->maximized, s->fullscreen, s->xmin);
+    s->sent_configure = 1;
+}
+
 static void send_toplevel_configure(Surf *s) {
+    if (s->xw) { x_configure(s); return; }
     if (!s->top || !s->xdg) return;
     struct wl_array states;
     wl_array_init(&states);
@@ -565,6 +591,7 @@ static void unmap_popup(Surf *s) {
 
 static void surface_gone(struct wl_resource *r) {
     Surf *s = wl_resource_get_user_data(r);
+    if (s->xw) { xwm_surface_gone(s->xw); s->xw = NULL; }
     if (pointer_focus == s) { pointer_focus = NULL; buttons_held = 0; }
     if (key_focus == s) key_focus = NULL;
     unmap_popup(s);
@@ -626,6 +653,7 @@ static void comp_create_surface(struct wl_client *c, struct wl_resource *r, uint
     s->bscale = s->p_bscale = 1;
     surfs[slot] = s;
     wl_resource_set_implementation(res, &surface_impl, s, surface_gone);
+    if (c == xwl_client) xwm_surface_created(id);   /* WL_SURFACE_ID may have come first */
 }
 
 static void comp_create_region(struct wl_client *c, struct wl_resource *r, uint32_t id) {
@@ -1055,6 +1083,10 @@ void wl_keymap_changed(void) {
 #define CLIP_MAX (16u << 20)
 typedef struct { struct wl_resource *res; char mimes[MAX_MIMES][64]; int nmimes; } Source;
 static Source *selection;           /* source of the app owning the selection, or NULL (LordOS) */
+/* Bumped whenever the selection changes: an offer is only good for the selection it was made for,
+ * and only while its client has the keyboard (an app can't keep an old offer to read later copies). */
+static unsigned clip_offer_gen = 1;
+typedef struct { Source *src; unsigned gen; } OfferRef;
 static unsigned clip_seen;          /* LordOS clipboard generation already offered */
 static unsigned char *clip_png;     /* last copied image */
 static size_t clip_png_len;
@@ -1082,6 +1114,7 @@ static void src_gone(struct wl_resource *r) {
     Source *s = wl_resource_get_user_data(r);
     if (selection == s) {
         selection = NULL;
+        clip_offer_gen++;
         if (clip_is_image) offer_to_focus();    /* the image stays, now LordOS offers it */
     }
     free(s);
@@ -1113,7 +1146,8 @@ static void store_png(const unsigned char *png, size_t n) {
 }
 
 /* reading an app's selection into LordOS */
-typedef struct { int fd, image, sensitive; struct wl_event_source *ev; char *buf; size_t len, cap; char origin[128]; } Reader;
+typedef struct { int fd, image, sensitive, primary; struct wl_event_source *ev; char *buf; size_t len, cap; char origin[128]; } Reader;
+static void prim_store(const char *t, size_t n);
 
 static int reader_ready(int fd, uint32_t mask, void *data) {
     Reader *rd = data;
@@ -1132,7 +1166,9 @@ static int reader_ready(int fd, uint32_t mask, void *data) {
         if (n < 0 && (errno == EAGAIN || errno == EINTR)) return 0;
         break;                              /* end (or error): done */
     }
-    if (rd->len && rd->image) {
+    if (rd->primary) {
+        if (rd->len) prim_store(rd->buf, rd->len);
+    } else if (rd->len && rd->image) {
         if (rd->len > 8 && !memcmp(rd->buf, "\x89PNG\r\n\x1a\n", 8)) {
             store_png((unsigned char *)rd->buf, rd->len);
             snprintf(clip_img_origin, sizeof clip_img_origin, "%s", rd->origin);
@@ -1215,8 +1251,9 @@ static void ofr_accept(struct wl_client *c, struct wl_resource *r, uint32_t seri
     (void)c; (void)r; (void)serial; (void)mime;
 }
 static void ofr_receive(struct wl_client *c, struct wl_resource *r, const char *mime, int32_t fd) {
-    (void)c;
-    Source *src = wl_resource_get_user_data(r);
+    OfferRef *ref = wl_resource_get_user_data(r);
+    if (!ref || ref->gen != clip_offer_gen || !key_focus || key_focus->client != c) { close(fd); return; }   /* stale, or not focused */
+    Source *src = ref->src;
     if (src && src == selection) { wl_data_source_send_send(src->res, mime, fd); close(fd); return; }
     if (!src && clip_is_image && clip_png && !strcmp(mime, "image/png")) { send_bytes(fd, clip_png, clip_png_len); return; }
     if (!src && !clip_is_image && text_mime(mime)) { const char *t = term_clipboard(); send_bytes(fd, t, strlen(t)); return; }
@@ -1231,6 +1268,8 @@ static const struct wl_data_offer_interface offer_impl = {
     .accept = ofr_accept, .receive = ofr_receive, .destroy = ofr_destroy, .finish = ofr_finish, .set_actions = ofr_actions,
 };
 
+static void offer_gone(struct wl_resource *r) { free(wl_resource_get_user_data(r)); }
+
 static void offer_selection(struct wl_resource *dev) {
     struct wl_client *c = wl_resource_get_client(dev);
     if (selection && wl_resource_get_client(selection->res) == c) return;     /* it is its own */
@@ -1239,7 +1278,11 @@ static void offer_selection(struct wl_resource *dev) {
     if (!selection && !image && !t[0]) { wl_data_device_send_selection(dev, NULL); return; }
     struct wl_resource *o = wl_resource_create(c, &wl_data_offer_interface, wl_resource_get_version(dev), 0);
     if (!o) return;
-    wl_resource_set_implementation(o, &offer_impl, selection, NULL);
+    OfferRef *ref = malloc(sizeof *ref);
+    if (!ref) { wl_resource_destroy(o); return; }
+    ref->src = selection;
+    ref->gen = clip_offer_gen;
+    wl_resource_set_implementation(o, &offer_impl, ref, offer_gone);
     wl_data_device_send_data_offer(dev, o);
     if (selection) for (int i = 0; i < selection->nmimes; i++) wl_data_offer_send_offer(o, selection->mimes[i]);
     else if (image) wl_data_offer_send_offer(o, "image/png");
@@ -1292,6 +1335,7 @@ int wl_clip_use_image(const char *path) {
     close(fd);
     if (!buf || got != (size_t)st.st_size) { free(buf); return -1; }
     if (selection) { wl_data_source_send_cancelled(selection->res); selection = NULL; }
+    clip_offer_gen++;
     store_png(buf, got);
     snprintf(clip_img_origin, sizeof clip_img_origin, "lordos");
     clip_img_sensitive = 0;
@@ -1316,6 +1360,7 @@ static void dev_set_selection(struct wl_client *c, struct wl_resource *r, struct
     Source *s = src ? wl_resource_get_user_data(src) : NULL;
     if (selection && selection != s) wl_data_source_send_cancelled(selection->res);
     selection = s;
+    clip_offer_gen++;
     if (s) read_selection(s);
 }
 static const struct wl_data_device_interface device_impl = { .start_drag = dev_drag, .set_selection = dev_set_selection, .release = res_release };
@@ -1342,6 +1387,124 @@ static void bind_ddm(struct wl_client *c, void *data, uint32_t ver, uint32_t id)
     struct wl_resource *r = wl_resource_create(c, &wl_data_device_manager_interface, (int)ver, id);
     if (!r) { wl_client_post_no_memory(c); return; }
     wl_resource_set_implementation(r, &ddm_impl, NULL, NULL);
+}
+
+/* ---- primary selection (zwp_primary_selection_v1: select to copy, middle click to paste) ----
+ * Like the clipboard, but text only and kept here: what the focused app selects is read once
+ * (text/plain) and offered to the app that gets the keyboard next, and to X11 apps through
+ * Xwayland's PRIMARY (xwm.c). Only the app with the keyboard may set it. */
+static struct wl_list prim_devices;
+typedef struct { struct wl_resource *res; char mime[64]; int rank; } PSource;
+static PSource *prim_src;
+static char *prim_text;
+static size_t prim_len;
+static unsigned prim_gen;
+
+static int prim_rank(const char *m) {
+    return !strcmp(m, "text/plain;charset=utf-8") ? 4 : !strcmp(m, "UTF8_STRING") ? 3 : !strcmp(m, "text/plain") ? 2 : text_mime(m) ? 1 : 0;
+}
+static void prim_offer_to(struct wl_resource *dev);
+static void prim_offer_focus(void) {
+    if (!key_focus) return;
+    struct wl_resource *d;
+    FOR_CLIENT(&prim_devices, key_focus->client, d) prim_offer_to(d);
+}
+static void prim_store(const char *t, size_t n) {
+    char *nb = malloc(n + 1);
+    if (!nb) return;
+    memcpy(nb, t, n);
+    nb[n] = 0;
+    if (prim_text) explicit_bzero(prim_text, prim_len);
+    free(prim_text);
+    prim_text = nb;
+    prim_len = strlen(nb);
+    prim_gen++;
+    prim_offer_focus();
+}
+
+static void psrc_offer(struct wl_client *c, struct wl_resource *r, const char *mime) {
+    (void)c;
+    PSource *s = wl_resource_get_user_data(r);
+    int rk = prim_rank(mime);
+    if (s && rk > s->rank) { s->rank = rk; snprintf(s->mime, sizeof s->mime, "%s", mime); }
+}
+static const struct zwp_primary_selection_source_v1_interface psrc_impl = { .offer = psrc_offer, .destroy = res_release };
+static void psrc_gone(struct wl_resource *r) {
+    PSource *s = wl_resource_get_user_data(r);
+    if (prim_src == s) prim_src = NULL;                     /* its text stays */
+    free(s);
+}
+
+/* An offer carries the generation it was made for: it reads that selection only, and only while
+ * its client has the keyboard. */
+static void poffer_receive(struct wl_client *c, struct wl_resource *r, const char *mime, int32_t fd) {
+    unsigned *gen = wl_resource_get_user_data(r);
+    if (gen && *gen == prim_gen && key_focus && key_focus->client == c && prim_text && prim_rank(mime)) { send_bytes(fd, prim_text, prim_len); return; }
+    close(fd);
+}
+static const struct zwp_primary_selection_offer_v1_interface poffer_impl = { .receive = poffer_receive, .destroy = res_release };
+static void poffer_gone(struct wl_resource *r) { free(wl_resource_get_user_data(r)); }
+
+static void prim_offer_to(struct wl_resource *dev) {
+    struct wl_client *c = wl_resource_get_client(dev);
+    if (prim_src && wl_resource_get_client(prim_src->res) == c) return;    /* its own */
+    if (!prim_text || !prim_len) { zwp_primary_selection_device_v1_send_selection(dev, NULL); return; }
+    struct wl_resource *o = wl_resource_create(c, &zwp_primary_selection_offer_v1_interface, wl_resource_get_version(dev), 0);
+    if (!o) return;
+    unsigned *gen = malloc(sizeof *gen);
+    if (!gen) { wl_resource_destroy(o); return; }
+    *gen = prim_gen;
+    wl_resource_set_implementation(o, &poffer_impl, gen, poffer_gone);
+    zwp_primary_selection_device_v1_send_data_offer(dev, o);
+    zwp_primary_selection_offer_v1_send_offer(o, "text/plain;charset=utf-8");
+    zwp_primary_selection_offer_v1_send_offer(o, "text/plain");
+    zwp_primary_selection_offer_v1_send_offer(o, "UTF8_STRING");
+    zwp_primary_selection_device_v1_send_selection(dev, o);
+}
+
+static void pdev_set_selection(struct wl_client *c, struct wl_resource *r, struct wl_resource *src, uint32_t serial) {
+    (void)r; (void)serial;
+    if (!key_focus || key_focus->client != c) return;      /* only the app with the keyboard */
+    PSource *s = src ? wl_resource_get_user_data(src) : NULL;
+    if (prim_src && prim_src != s) zwp_primary_selection_source_v1_send_cancelled(prim_src->res);
+    prim_src = s;
+    if (!s || !s->rank) return;
+    int p[2];
+    if (pipe2(p, O_CLOEXEC | O_NONBLOCK)) return;
+    zwp_primary_selection_source_v1_send_send(s->res, s->mime, p[1]);
+    close(p[1]);
+    Reader *rd = calloc(1, sizeof *rd);
+    if (!rd) { close(p[0]); return; }
+    rd->fd = p[0];
+    rd->primary = 1;
+    rd->ev = wl_event_loop_add_fd(loop, p[0], WL_EVENT_READABLE, reader_ready, rd);
+    if (!rd->ev) { close(p[0]); free(rd); }
+}
+static const struct zwp_primary_selection_device_v1_interface pdev_impl = { .set_selection = pdev_set_selection, .destroy = res_release };
+
+static void pdm_create_source(struct wl_client *c, struct wl_resource *r, uint32_t id) {
+    PSource *s = calloc(1, sizeof *s);
+    struct wl_resource *res = s ? wl_resource_create(c, &zwp_primary_selection_source_v1_interface, wl_resource_get_version(r), id) : NULL;
+    if (!res) { free(s); wl_client_post_no_memory(c); return; }
+    s->res = res;
+    wl_resource_set_implementation(res, &psrc_impl, s, psrc_gone);
+}
+static void pdm_get_device(struct wl_client *c, struct wl_resource *r, uint32_t id, struct wl_resource *seat) {
+    (void)seat;
+    struct wl_resource *d = wl_resource_create(c, &zwp_primary_selection_device_v1_interface, wl_resource_get_version(r), id);
+    if (!d) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(d, &pdev_impl, NULL, link_gone);
+    wl_list_insert(&prim_devices, wl_resource_get_link(d));
+    if (key_focus && key_focus->client == c) prim_offer_to(d);
+}
+static const struct zwp_primary_selection_device_manager_v1_interface pdm_impl = {
+    .create_source = pdm_create_source, .get_device = pdm_get_device, .destroy = res_release,
+};
+static void bind_pdm(struct wl_client *c, void *data, uint32_t ver, uint32_t id) {
+    (void)data;
+    struct wl_resource *r = wl_resource_create(c, &zwp_primary_selection_device_manager_v1_interface, (int)ver, id);
+    if (!r) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(r, &pdm_impl, NULL, NULL);
 }
 
 /* ---- xdg_positioner ---- */
@@ -1482,7 +1645,7 @@ static void top_unmaximize(struct wl_client *c, struct wl_resource *r) {
 }
 /* Fullscreen: presented by the compositor on top of everything (and straight to the card if possible). */
 static void enter_fullscreen(Surf *s) {
-    if (!s || !s->top || s == fs_surf) return;
+    if (!s || (!s->top && !s->xw) || s == fs_surf) return;
     if (fs_surf) { fs_surf->fullscreen = 0; send_toplevel_configure(fs_surf); }
     fs_surf = s;
     s->fullscreen = 1;
@@ -1755,6 +1918,12 @@ static void surface_commit_role(Surf *s) {
             char t[520], a[260];
             json_str(t, sizeof t, s->title);
             json_str(a, sizeof a, s->app_id);
+            if (s->xw) {                    /* X11: WM_CLASS class, and its instance for the .desktop match */
+                char alt[260];
+                json_str(alt, sizeof alt, s->app_alt);
+                emit(s, "map", "{\"title\":\"%s\",\"appId\":\"%s\",\"appAlt\":\"%s\",\"x11\":true,\"width\":%d,\"height\":%d,\"csd\":%s}",
+                     t, a, alt, w, h, s->csd ? "true" : "false");
+            } else
             emit(s, "map", "{\"title\":\"%s\",\"appId\":\"%s\",\"width\":%d,\"height\":%d,\"csd\":%s}", t, a, w, h, s->csd ? "true" : "false");
             s->conf_w = w;
             s->conf_h = h;
@@ -1901,6 +2070,7 @@ void wl_paint(Canvas *c, int id, int node, float x, float y, float w, float h, f
         s->conf_h = ih;
         send_toplevel_configure(s);
     }
+    if (s->xw && s->mapped && s != fs_surf && !paint_capture_mode) xwm_place(s->xw, (int)lroundf(x), (int)lroundf(y));   /* X routes the pointer by it */
     if (s == fs_surf) return;                   /* presented by the compositor, on top of everything */
     Rect clip = rect_and(node_clip(node), (Rect){ (int)floorf(x), (int)floorf(y), (int)ceilf(x + w), (int)ceilf(y + h) });
     Rect old = canvas_push_clip(c, PVX(x), PVY(y), w * paint_view.k, h * paint_view.k);
@@ -2795,23 +2965,34 @@ void wl_set_focus(int id) {
         s->activated = 1;
         send_toplevel_configure(s);
         offer_to_focus();
+        prim_offer_focus();
         clip_seen = term_clipboard_gen();
     }
+    /* X11: the X focus follows (and with it whether X apps may read LordOS's clipboard) */
+    xwm_focus(s && s->xw ? s->xw : NULL);
     wl_display_flush_clients(dpy);
 }
 
 void wl_close(int id) {
     Surf *s = find(id);
     if (s && s->top) xdg_toplevel_send_close(s->top);
+    else if (s && s->xw) xwm_close(s->xw);
     if (dpy) wl_display_flush_clients(dpy);
 }
 
 void wl_set_state(int id, int maximized, int fullscreen) {
     Surf *s = find(id);
     (void)fullscreen;                           /* fullscreen is handled by the compositor */
-    if (!s || !s->top || s->maximized == maximized) return;
+    if (!s || (!s->top && !s->xw) || s->maximized == maximized) return;
     s->maximized = maximized;
     send_toplevel_configure(s);
+}
+
+/* Minimized by the theme: an X11 window goes to the bottom of X's stack (it never catches the
+ * pointer there) and is marked iconic. Wayland apps aren't told (xdg-shell has no such event). */
+void wl_set_minimized(int id, int minimized) {
+    Surf *s = find(id);
+    if (s && s->xw) { s->xmin = minimized; xwm_set_state(s->xw, s->maximized, s->fullscreen, minimized); }
 }
 
 /* The screen changed size (headless session, docs/SESSIONS.md): new mode for the apps
@@ -2869,6 +3050,8 @@ int wl_start(void) {
     wl_global_create(dpy, &wp_fractional_scale_manager_v1_interface, 1, NULL, bind_frac_mgr);
     wl_global_create(dpy, &wl_seat_interface, 9, NULL, bind_seat);    /* 8: axis_value120, 9: relative_direction */
     wl_global_create(dpy, &wl_data_device_manager_interface, 3, NULL, bind_ddm);
+    wl_list_init(&prim_devices);
+    wl_global_create(dpy, &zwp_primary_selection_device_manager_v1_interface, 1, NULL, bind_pdm);   /* middle-click paste */
     wl_global_create(dpy, &xdg_wm_base_interface, 6, NULL, bind_wm_base);
     wl_global_create(dpy, &zxdg_decoration_manager_v1_interface, 1, NULL, bind_decm);
     wl_list_init(&rel_pointers);
@@ -2897,6 +3080,7 @@ int wl_start(void) {
 
 void wl_stop(void) {
     if (!dpy) return;
+    xwl_stop();
     wl_display_destroy_clients(dpy);
     wl_display_destroy(dpy);
     dpy = NULL;
@@ -2915,8 +3099,10 @@ void wl_flush(void) {
         clip_seen = g;
         clip_is_image = 0;
         if (selection) { wl_data_source_send_cancelled(selection->res); selection = NULL; }
+        clip_offer_gen++;
         offer_to_focus();
     }
+    xwm_tick();                         /* X11: clipboard changes, pending requests */
     wl_display_flush_clients(dpy);
     if (keylag_enabled) keylag_flushed();
 }
@@ -2946,4 +3132,108 @@ struct wl_resource *wl__surface_at(float x, float y, float *lx, float *ly) {
         }
     }
     return target ? target->res : NULL;
+}
+
+/* ---- X11 windows (xwm.c): the role of Xwayland's surfaces ---- */
+
+struct wl_client *wlx_client(void) { return xwl_client; }
+void wlx_set_client(struct wl_client *c) { xwl_client = c; }
+
+int wlx_attach(uint32_t res_id, XWin *w, const XWinInfo *in) {
+    if (!dpy || !xwl_client) return 0;
+    struct wl_resource *r = wl_client_get_object(xwl_client, res_id);
+    if (!r || !wl_resource_instance_of(r, &wl_surface_interface, &surface_impl)) return 0;
+    Surf *s = wl_resource_get_user_data(r);
+    if (!s || s->role != R_NONE || s->xw) return 0;
+    s->xw = w;
+    s->sent_configure = 1;                                  /* no xdg configure: X sizes it */
+    snprintf(s->title, sizeof s->title, "%s", in->title ? in->title : "");
+    snprintf(s->app_id, sizeof s->app_id, "%s", in->app_id ? in->app_id : "");
+    snprintf(s->app_alt, sizeof s->app_alt, "%s", in->app_alt ? in->app_alt : "");
+    s->csd = in->csd;
+    if (in->popup) { s->role = R_POPUP; s->xpop = 1; s->xx = in->x; s->xy = in->y; }
+    else s->role = R_TOPLEVEL;
+    if (s->content) surface_commit_role(s);                 /* it already had a buffer */
+    return s->id;
+}
+
+void wlx_detach(int sid) {
+    Surf *s = find(sid);
+    if (!s) return;
+    if (s->role == R_TOPLEVEL && s->mapped) emit(s, "unmap", "{}");
+    if (s->role == R_POPUP) unmap_popup(s);
+    if (key_focus == s) key_focus = NULL;
+    if (pointer_focus == s) { pointer_focus = NULL; buttons_held = 0; }
+    if (fs_surf == s) { fs_surf = NULL; damage_add((Box){ 0, 0, ui.width, ui.height }); }
+    if (s->node) damage_node(s);
+    ui.dirty = 1;
+    s->mapped = 0;
+    s->xw = NULL;
+    s->xpop = 0;
+    s->role = R_NONE;
+}
+
+void wlx_set_title(int sid, const char *t) {
+    Surf *s = find(sid);
+    if (!s) return;
+    snprintf(s->title, sizeof s->title, "%s", t);
+    if (s->mapped && s->role == R_TOPLEVEL) { char e[520]; json_str(e, sizeof e, s->title); emit(s, "title", "{\"title\":\"%s\"}", e); }
+}
+
+void wlx_popup_moved(int sid, int x, int y) {
+    Surf *s = find(sid);
+    if (!s || !s->xpop || (s->xx == x && s->xy == y)) return;
+    popup_box_damage(s);
+    s->xx = x;
+    s->xy = y;
+    popup_box_damage(s);
+}
+
+void wlx_request(int sid, int what, int arg) {
+    Surf *s = find(sid);
+    if (!s || s->role != R_TOPLEVEL) return;
+    switch (what) {
+    case XREQ_MOVE: if (s->mapped) { buttons_held = 0; emit(s, "move", "{\"x\":%.0f,\"y\":%.0f}", press_x, press_y); } break;
+    case XREQ_RESIZE: if (s->mapped) { buttons_held = 0; emit(s, "resize", "{\"edges\":%d,\"x\":%.0f,\"y\":%.0f}", arg, press_x, press_y); } break;
+    case XREQ_MAXIMIZE: if (s->mapped) emit(s, "maximize", "{}"); break;
+    case XREQ_UNMAXIMIZE: if (s->mapped) emit(s, "unmaximize", "{}"); break;
+    case XREQ_MINIMIZE: if (s->mapped) emit(s, "minimize", "{}"); break;
+    case XREQ_FULLSCREEN: enter_fullscreen(s); break;
+    case XREQ_UNFULLSCREEN: leave_fullscreen(s); break;
+    default: break;
+    }
+}
+
+void wlx_fullscreen_rect(int *x, int *y, int *w, int *h) {
+    float fx, fy, fw, fh;
+    fs_rect(&fx, &fy, &fw, &fh);
+    *x = (int)fx; *y = (int)fy; *w = (int)fw; *h = (int)fh;
+}
+
+/* What an X11 app copied: LordOS's clipboard (the next wl_flush offers it to the focused Wayland app
+ * and cancels a Wayland app's selection). */
+void wlx_clip_text(const char *t, size_t n, const char *origin) {
+    term_set_clipboard(t, n);
+    term_clipboard_mark(origin && origin[0] ? origin : "x11", 0);
+}
+
+void wlx_clip_png(const unsigned char *png, size_t n, const char *origin) {
+    if (n < 8 || memcmp(png, "\x89PNG\r\n\x1a\n", 8)) return;
+    if (selection) { wl_data_source_send_cancelled(selection->res); selection = NULL; }
+    clip_offer_gen++;
+    store_png(png, n);
+    snprintf(clip_img_origin, sizeof clip_img_origin, "%s", origin && origin[0] ? origin : "x11");
+    clip_img_sensitive = 0;
+    offer_to_focus();
+}
+
+void wlx_primary_text(const char *t, size_t n) {
+    if (prim_src) { zwp_primary_selection_source_v1_send_cancelled(prim_src->res); prim_src = NULL; }
+    prim_store(t, n);
+}
+
+const char *wlx_primary(size_t *n, unsigned *gen) {
+    *n = prim_len;
+    *gen = prim_gen;
+    return prim_text ? prim_text : "";
 }

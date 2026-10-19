@@ -81,7 +81,7 @@ import { Layer, Overlay, LAYERS } from '@lordos/sdk';
   (`AutofillButton`), Settings' pop-up buttons and Passwords' pop-up menus. Calendar, Contacts and
   Reminders keep their own per-window popover host; the Terminal's preferences use an inline list.
 - **The keyboard (0.8.2).** While anything shows in the `overlay`, `modal` or `system` layers (search,
-  the launcher, sheets, system prompts), no Linux app gets the keys: `runtime/index.js` counts each
+  the launcher, sheets, system prompts), no Linux app (Wayland or X11) gets the keys: `runtime/index.js` counts each
   layer's children after every commit and `sdk/wayland.js` gives the compositor keyboard focus 0
   ([PRIVACY.md](PRIVACY.md#system-prompts-take-the-keyboard-082)). `popover` (menus, the clipboard and
   emoji panels, which paste into the app in front) keeps the app's keyboard.

@@ -24,6 +24,7 @@
 #include "../app/app.h"
 #include "../ime.h"
 #include "../wl/wl.h"
+#include "../wl/xwayland.h"
 #include "../keyboard.h"
 #include "../fsops.h"
 #include "../remote/mirror.h"
@@ -1344,6 +1345,7 @@ static JSValue f_wl_state(JSContext *c, JSValueConst this_val, int argc, JSValue
     int32_t id = 0;
     JS_ToInt32(c, &id, argv[0]);
     wl_set_state(id, argc > 1 && JS_ToBool(c, argv[1]), argc > 2 && JS_ToBool(c, argv[2]));
+    if (argc > 3) wl_set_minimized(id, JS_ToBool(c, argv[3]));
     return JS_UNDEFINED;
 }
 
@@ -1352,6 +1354,8 @@ static JSValue f_wl_info(JSContext *c, JSValueConst this_val, int argc, JSValueC
     JSValue o = JS_NewObject(c);
     JS_SetPropertyStr(c, o, "socket", JS_NewString(c, wl_socket()));
     JS_SetPropertyStr(c, o, "windows", JS_NewInt32(c, wl_count()));
+    JS_SetPropertyStr(c, o, "x11Display", JS_NewString(c, xwl_display()));   /* "" without Xwayland */
+    JS_SetPropertyStr(c, o, "x11Running", JS_NewBool(c, xwl_running()));
     return o;
 }
 
@@ -1370,7 +1374,7 @@ static const JSCFunctionListEntry wayland_funcs[] = {
     JS_CFUNC_DEF("hasKeyboard", 0, f_wl_has_focus),
     JS_CFUNC_DEF("focus", 1, f_wl_focus),
     JS_CFUNC_DEF("close", 1, f_wl_close),
-    JS_CFUNC_DEF("state", 3, f_wl_state),
+    JS_CFUNC_DEF("state", 4, f_wl_state),
     JS_CFUNC_DEF("info", 0, f_wl_info),
 };
 
