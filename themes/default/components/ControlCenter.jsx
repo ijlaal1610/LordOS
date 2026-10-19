@@ -1,9 +1,18 @@
 // Control Center: mode, transparency, accent, wallpaper and live CPU/RAM usage.
 import {
   View, Text, Image, Toggle, Slider, useSettings, useCpuUsage, useSystemInfo, formatBytes, wm, session, addListener, t as tr,
-  useSound, defaultSink, sound, NowPlayingTile,
+  useSound, defaultSink, sound, NowPlayingTile, findWallpaper, wallpaperThumb,
 } from '@lordos/sdk';
 import { useEffect, useRef } from 'react';
+
+// Four wallpapers fit in the tile: the current one and a few from the collection (all of them are
+// in Settings → Wallpaper, which «Change Wallpaper…» opens).
+const QUICK = ['lumo-celestial', 'crystal-crown', 'royal-flow', 'event-horizon', 'aurora'];
+function quickWallpapers(list, cur) {
+  const current = findWallpaper(list, cur);
+  const rest = QUICK.map((id) => list.find((w) => w.id === id)).filter((w) => w && w !== current);
+  return [current, ...rest].filter(Boolean).slice(0, 4);
+}
 
 function Tile({ t, children, style }) {
   return <View style={[{ padding: 12, borderRadius: 12, backgroundColor: t.hover, border: `1px solid ${t.separator}` }, style]}>{children}</View>;
@@ -113,10 +122,10 @@ export function ControlCenter({ t, top, onClose, area = null }) {
       <Tile t={t} style={{ gap: 8 }}>
         <Text style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{tr('shell.cc.wallpaper')}</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {t.wallpapers.map((w) => (
+          {quickWallpapers(t.wallpapers, s.wallpaper).map((w) => (
             <View key={w.id} onClick={() => set({ wallpaper: w.id })} style={{ width: 62, height: 40, borderRadius: 6, overflow: 'hidden',
               border: s.wallpaper === w.id ? `2px solid ${t.accent}` : `1px solid ${t.separator}` }}>
-              <Image src={w.src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <Image src={wallpaperThumb(w)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </View>
           ))}
         </View>

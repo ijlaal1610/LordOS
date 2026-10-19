@@ -5,7 +5,7 @@
 import {
   View, Text, Image, useTheme, useSettings, themes, session, keyboard, admin, languages, setLanguage, useLocale,
   reloadCatalogs, tOptional, statusText, fs, useStore, SidebarItem, Toggle, Button, TextInput, ScrollView, SearchField, Hairline, useSystemInfo, useAppWindow, useTrackpads,
-  spacing, typeScale, registerDockActions, hasTouchpad,
+  spacing, typeScale, registerDockActions, hasTouchpad, findWallpaper, wallpaperThumb, WALLPAPER_CATEGORIES,
 } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 import { SoundSettings } from './Sound.jsx';
@@ -131,37 +131,48 @@ function Appearance() {
 // A theme names its wallpapers with a locale key (nameKey) and an English fallback (name).
 const wallpaperName = (w) => (w.nameKey && tOptional(w.nameKey)) || w.name;
 
+// Grouped by category (Signature, Lumo, Cosmos, then the theme's own); grids use the thumbnails.
 function Wallpapers() {
   const t = useTheme();
   const { t: tr } = useLocale();
   const [s, set] = useSettings();
   const list = t.wallpapers || [];
   if (!list.length) return <Stack><Note>{tr('settings.noWallpapers')}</Note></Stack>;
-  const cur = list.find((w) => w.id === s.wallpaper) || list[0];
+  const cur = findWallpaper(list, s.wallpaper);
+  const cats = [...new Set([...WALLPAPER_CATEGORIES, ...list.map((w) => w.category || 'other')])]
+    .map((c) => [c, list.filter((w) => (w.category || 'other') === c)]).filter(([, ws]) => ws.length);
+  const catName = (c) => tOptional(`settings.wallpaperCategory.${c}`) || tr('settings.wallpaperCategory.other');
   return (
     <Stack>
       <Section>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.l, paddingVertical: spacing.m }}>
-          <View style={{ width: 128, height: 80, borderRadius: 8, overflow: 'hidden', border: `1px solid ${t.separator}` }}>
-            <Image src={cur.src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <View style={{ width: 128, height: 72, borderRadius: 8, overflow: 'hidden', border: `1px solid ${t.separator}` }}>
+            <Image src={wallpaperThumb(cur)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </View>
-          <Text style={{ flex: 1, minWidth: 0, fontSize: typeScale.headline, fontWeight: 600, color: t.text, textAlign: 'start' }}>{wallpaperName(cur)}</Text>
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text, textAlign: 'start' }}>{wallpaperName(cur)}</Text>
+            <Text style={{ fontSize: typeScale.caption, color: t.textDim, textAlign: 'start' }}>{catName(cur.category || 'other')}</Text>
+          </View>
         </View>
       </Section>
-      <Section title={tr('settings.section.wallpaper')}>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.l, paddingVertical: spacing.m }}>
-          {list.map((w) => (
-            <View key={w.id} onClick={() => set({ wallpaper: w.id })} style={{ alignItems: 'center', gap: 6 }}>
-              <View style={{ padding: 2, borderRadius: 10, border: `2px solid ${cur.id === w.id ? t.accent : 'transparent'}` }}>
-                <View style={{ width: 112, height: 70, borderRadius: 7, overflow: 'hidden' }}>
-                  <Image src={w.src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      {cats.map(([c, ws]) => (
+        <Section key={c} title={catName(c)}>
+          {/* 108 px items with 10 px gaps: a category of five fits on one row in the default window */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingVertical: spacing.m }}>
+            {ws.map((w) => (
+              <View key={w.id} onClick={() => set({ wallpaper: w.id })} style={{ alignItems: 'center', gap: 6, width: 108 }}>
+                <View style={{ padding: 2, borderRadius: 10, border: `2px solid ${cur.id === w.id ? t.accent : 'transparent'}` }}>
+                  <View style={{ width: 100, height: 56, borderRadius: 7, overflow: 'hidden', border: `1px solid ${t.separator}` }}>
+                    <Image src={wallpaperThumb(w)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </View>
                 </View>
+                <Text style={{ fontSize: typeScale.caption, color: cur.id === w.id ? t.text : t.textDim, fontWeight: cur.id === w.id ? 600 : 400,
+                  whiteSpace: 'nowrap', overflow: 'hidden', maxWidth: 108 }}>{wallpaperName(w)}</Text>
               </View>
-              <Text style={{ fontSize: typeScale.caption, color: cur.id === w.id ? t.text : t.textDim, fontWeight: cur.id === w.id ? 600 : 400 }}>{wallpaperName(w)}</Text>
-            </View>
-          ))}
-        </View>
-      </Section>
+            ))}
+          </View>
+        </Section>
+      ))}
     </Stack>
   );
 }

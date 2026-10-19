@@ -738,17 +738,17 @@ void rd_serve(SSL_CTX *ctx, int fd, const char *ip) {
         if (logged) redirect("/desk", NULL); else send_login(&r);
         return;
     }
-    if (!strcmp(r.path, "/bg.png")) {             /* the login screen background */
+    if (!strcmp(r.path, "/bg.jpg")) {             /* the login screen background (links to Crystal Crown) */
         char p[600];
         snprintf(p, sizeof p, "%s", rd_conf.greeter_theme);
         char *slash = strrchr(p, '/');
-        if (slash) snprintf(slash, sizeof p - (size_t)(slash - p), "/assets/background.png");
+        if (slash) snprintf(slash, sizeof p - (size_t)(slash - p), "/assets/background.jpg");
         int fd = open(p, O_RDONLY | O_CLOEXEC);
         struct stat st;
         char *img = NULL;
         if (fd >= 0 && !fstat(fd, &st) && st.st_size > 0 && st.st_size < (8 << 20) && (img = malloc((size_t)st.st_size)) &&
             read(fd, img, (size_t)st.st_size) == st.st_size)
-            respond(200, "OK", "image/png", NULL, img, (size_t)st.st_size);
+            respond(200, "OK", "image/jpeg", NULL, img, (size_t)st.st_size);
         else respond(404, "Not Found", "text/plain", NULL, "no", 2);
         free(img);
         if (fd >= 0) close(fd);

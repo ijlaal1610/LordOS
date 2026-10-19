@@ -1,5 +1,7 @@
 // Tokens of the "Lord Default" theme. The base keys (text, accent, windowBg…) are the contract
 // with apps (see sdk/theme.js); the rest belongs to this theme.
+import { lordosWallpapers } from '@lordos/sdk';
+
 export const accents = {
   azul: '#0a84ff',
   violeta: '#bf5af2',
@@ -9,13 +11,16 @@ export const accents = {
   grafito: '#8e8e93',
 };
 
-// name: English fallback; the shown name is the translation of nameKey (assets/locales/*/shell.json).
-export const wallpapers = [
-  { id: 'aurora', nameKey: 'shell.wallpaper.aurora', name: 'Aurora', src: 'assets/aurora.png' },
-  { id: 'ocean', nameKey: 'shell.wallpaper.ocean', name: 'Ocean', src: 'assets/ocean.png' },
-  { id: 'sunset', nameKey: 'shell.wallpaper.sunset', name: 'Sunset', src: 'assets/sunset.png' },
-  { id: 'graphite', nameKey: 'shell.wallpaper.graphite', name: 'Graphite', src: 'assets/graphite.png' },
+// The LordOS collection (Signature, Lumo, Cosmos; sdk/wallpapers.js) and this theme's own
+// gradients (tools/gen-wallpaper.py). name: English fallback; the shown name is the translation of
+// nameKey (assets/locales/*/shell.json). Thumbnails: assets/thumbs/ (320×180).
+const gradients = [
+  { id: 'aurora', category: 'gradients', nameKey: 'shell.wallpaper.aurora', name: 'Aurora', src: 'assets/aurora.png', thumb: 'assets/thumbs/aurora.jpg' },
+  { id: 'ocean', category: 'gradients', nameKey: 'shell.wallpaper.ocean', name: 'Ocean', src: 'assets/ocean.png', thumb: 'assets/thumbs/ocean.jpg' },
+  { id: 'sunset', category: 'gradients', nameKey: 'shell.wallpaper.sunset', name: 'Sunset', src: 'assets/sunset.png', thumb: 'assets/thumbs/sunset.jpg' },
+  { id: 'graphite', category: 'gradients', nameKey: 'shell.wallpaper.graphite', name: 'Graphite', src: 'assets/graphite.png', thumb: 'assets/thumbs/graphite.jpg' },
 ];
+export const wallpapers = [...lordosWallpapers, ...gradients];
 
 export function makeTheme({ mode, accent, effects }) {
   const dark = mode === 'dark';
