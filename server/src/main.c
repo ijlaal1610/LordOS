@@ -96,11 +96,17 @@ typedef struct {
     Canvas scene;               /* upright physical frame (pw × ph), without the cursor */
     uint32_t *frame;            /* rotated displays and the capture view: scene + fullscreen + cursor */
     Box pend;                   /* logical damage not painted on it yet (its flip was pending) */
+    DamageList pl;              /* the same as separate rectangles (paint_damage_rects); pend is their box */
     int full;                   /* paint all of it next time */
     int cdirty, cur_on;         /* the cursor moved since it was presented; it was drawn on it */
     /* CPU path: each KMS buffer only gets what changed since it was last drawn into (what was
      * repainted in the last two frames and where the cursor was), not the whole frame */
     Rect stale[2], curs[2];
+    /* the same as separate rectangles (physical): what paint_out painted this frame, and what each
+     * buffer is missing; with several damaged rectangles only those are copied (0.8.2) */
+    DamageList pstale[2];
+    Box painted[DAMAGE_MAX];
+    int npainted;
     int full_copy, was_fs;
     int gpu;                    /* its GPU output (gpu_frame), -1 = composed by the CPU */
     int wl_new;                 /* GPU path: a Linux app's window has new content not presented here yet */
@@ -676,10 +682,13 @@ static void outputs_apply(Server *s) {
         o->v = p.o[j].v;
         if (out_frames(o, o->d.rot != 0)) { fprintf(stderr, "displays: out of memory for a %dx%d frame\n", o->v.pw, o->v.ph); ok = 0; }
         memset(o->stale, 0, sizeof o->stale);
+        memset(o->pstale, 0, sizeof o->pstale);
+        o->npainted = 0;
         memset(o->curs, 0, sizeof o->curs);
         o->full = 1;
         o->full_copy = 2;
         o->pend = (Box){ 0, 0, 0, 0 };
+        o->pl.n = 0;
         if (j == p.main) s->main_out = head[j];
         fprintf(stderr, "displays: %s (%s) %dx%d at %d%%, logical %dx%d at (%d, %d)%s%s\n", o->d.connector, o->d.name, o->v.pw, o->v.ph,
                 out_scale(o), o->v.w, o->v.h, o->v.x, o->v.y, j == p.main ? ", main" : "", p.mirror ? ", mirror" : "");
@@ -958,8 +967,15 @@ static Box paint_ui(Server *s) {
         paint_layer_view(b >= 0 ? idx[b] : 0);
     }
     if (!box_empty(d)) {
-        for (int i = 0; i < OUT_MAX; i++) if (s->out[i].on) s->out[i].pend = box_join(s->out[i].pend, d);
-        s->cap.pend = box_join(s->cap.pend, d);
+        Box rs[DAMAGE_MAX];
+        int nr = paint_damage_rects(rs, DAMAGE_MAX);
+        for (int i = 0; i <= OUT_MAX; i++) {
+            Out *o = i < OUT_MAX ? &s->out[i] : &s->cap;
+            if (i < OUT_MAX && !o->on) continue;
+            if (box_empty(o->pend)) o->pl.n = 0;
+            for (int k = 0; k < nr; k++) dlist_add(&o->pl, rs[k]);
+            o->pend = box_join(o->pend, d);
+        }
     }
     ui.layout_ms = t1 - t0;
     s->layout_total += ui.layout_ms;
@@ -971,32 +987,50 @@ static Box paint_ui(Server *s) {
 static Rect paint_out(Server *s, Out *o, int index, int feed) {
     Rect r = { 0, 0, 0, 0 };
     Box b = o->pend;
+    o->npainted = 0;
     if (o->full) b = (Box){ (float)o->v.x, (float)o->v.y, (float)(o->v.x + o->v.w), (float)(o->v.y + o->v.h) };
     int whole = o->full;
     o->full = 0;
     o->pend = (Box){ 0, 0, 0, 0 };
     if (box_empty(b) || !o->scene.px) return r;
-    r = whole ? (Rect){ 0, 0, o->scene.w, o->scene.h } : out_phys_rect(&o->v, b.x0, b.y0, b.x1, b.y1);
-    if (r.x1 <= r.x0 || r.y1 <= r.y0) return (Rect){ 0, 0, 0, 0 };
-    double t0 = now_ms();
+    /* several damaged rectangles (paint.c, "Several damaged rectangles"): each one painted on its
+     * own; r, what is presented, is the box around them (the scene keeps the pixels in between) */
+    Box lb = o->pl.n ? o->pl.r[0] : (Box){ 0, 0, 0, 0 };
+    for (int k = 1; k < o->pl.n; k++) lb = box_join(lb, o->pl.r[k]);
+    int multi = !whole && o->pl.n > 1 && !gpu_active() && lb.x0 == b.x0 && lb.y0 == b.y0 && lb.x1 == b.x1 && lb.y1 == b.y1;
+    int nparts = multi ? o->pl.n : 1;
+    Box parts[DAMAGE_MAX];
+    if (multi) memcpy(parts, o->pl.r, sizeof(Box) * (size_t)nparts);
+    else parts[0] = b;
+    o->pl.n = 0;
+    double t0 = now_ms(), px = 0;
     view_of(o, index);
-    float lx0, ly0, lx1, ly1;
-    out_logical_box(&o->v, r, &lx0, &ly0, &lx1, &ly1);
-    ui.damage = (Box){ lx0, ly0, lx1, ly1 };      /* paint_root skips what this region does not need */
-    canvas_set_clip(&o->scene, r);
-    canvas_clear(&o->scene, 0x000000);
-    paint_root(&o->scene, ui.root);
-    if (feed) media_scene_painted(&o->scene);     /* recording/remote desktop with protected windows */
+    for (int k = 0; k < nparts; k++) {
+        Box q = parts[k];
+        Rect pr = whole ? (Rect){ 0, 0, o->scene.w, o->scene.h } : out_phys_rect(&o->v, q.x0, q.y0, q.x1, q.y1);
+        if (pr.x1 <= pr.x0 || pr.y1 <= pr.y0) continue;
+        float lx0, ly0, lx1, ly1;
+        out_logical_box(&o->v, pr, &lx0, &ly0, &lx1, &ly1);
+        ui.damage = (Box){ lx0, ly0, lx1, ly1 };      /* paint_root skips what this region does not need */
+        canvas_set_clip(&o->scene, pr);
+        canvas_clear(&o->scene, 0x000000);
+        paint_root(&o->scene, ui.root);
+        if (feed) media_scene_painted(&o->scene);     /* recording/remote desktop with protected windows */
+        r = rect_join(r, pr);
+        o->painted[o->npainted++] = (Box){ (float)pr.x0, (float)pr.y0, (float)pr.x1, (float)pr.y1 };
+        px += (double)(pr.x1 - pr.x0) * (pr.y1 - pr.y0);
+    }
     canvas_set_clip(&o->scene, (Rect){ 0, 0, o->scene.w, o->scene.h });
     ui.damage = (Box){ 0, 0, 0, 0 };
     view_reset();
+    if (r.x1 <= r.x0 || r.y1 <= r.y0) return (Rect){ 0, 0, 0, 0 };
     double ms = now_ms() - t0;
     ui.paint_ms += ms;
     s->paint_total += ms;
-    ui.damage_px += (double)(r.x1 - r.x0) * (r.y1 - r.y0);
+    ui.damage_px += px;
     if (s->debug || paint_profile)
-        fprintf(stderr, "render %ld: display %d, layout %.2f ms, paint %.2f ms, repainted %.0f%%\n", s->renders, index, ui.layout_ms, ms,
-                100.0 * (r.x1 - r.x0) * (r.y1 - r.y0) / ((double)o->scene.w * o->scene.h));
+        fprintf(stderr, "render %ld: display %d, layout %.2f ms, paint %.2f ms, repainted %.1f%% in %d rect%s\n", s->renders, index, ui.layout_ms, ms,
+                100.0 * px / ((double)o->scene.w * o->scene.h), nparts, nparts == 1 ? "" : "s");
     return r;
 }
 
@@ -1133,6 +1167,7 @@ static void present_cpu(Server *s, Out *o, int index, Rect r, int feed) {
     int bi = o->kms.front ^ 1, fs = wl_fullscreen_active();
     if (fs != o->was_fs) { o->was_fs = fs; o->full_copy = 2; }
     Rect need = { 0, 0, W, H };             /* what this buffer gets now (also tinted) */
+    int tinted = 0;                         /* the copied rectangles were tinted one by one */
     if (o->full_copy > 0 || fs) {
         canvas_copy(&out, &o->scene);
         if (o->full_copy > 0) o->full_copy--;
@@ -1142,11 +1177,37 @@ static void present_cpu(Server *s, Out *o, int index, Rect r, int feed) {
         if (need.y0 < 0) need.y0 = 0;
         if (need.x1 > out.w) need.x1 = out.w;
         if (need.y1 > out.h) need.y1 = out.h;
-        for (int y = need.y0; y < need.y1; y++)
-            memcpy(out.px + (size_t)y * out.stride + need.x0, o->scene.px + (size_t)y * o->scene.stride + need.x0, (size_t)(need.x1 - need.x0) * 4);
+        /* several damaged rectangles: only they go into the buffer (with the moving dots spread over
+         * the Monitor's map, the box around them was most of the screen) */
+        DamageList cp = o->pstale[bi];
+        for (int i = 0; i < o->npainted; i++) dlist_add(&cp, o->painted[i]);
+        Rect cu = o->curs[bi];
+        if (cu.x1 > cu.x0 && cu.y1 > cu.y0) dlist_add(&cp, (Box){ (float)cu.x0, (float)cu.y0, (float)cu.x1, (float)cu.y1 });
+        Box cb = cp.n ? cp.r[0] : (Box){ 0, 0, 0, 0 };
+        for (int i = 1; i < cp.n; i++) cb = box_join(cb, cp.r[i]);
+        Rect cbr = { (int)cb.x0, (int)cb.y0, (int)cb.x1, (int)cb.y1 };
+        Rect nj = rect_join(rect_join(o->stale[bi], r), o->curs[bi]);
+        if (!xf && cp.n > 1 && cbr.x0 == nj.x0 && cbr.y0 == nj.y0 && cbr.x1 == nj.x1 && cbr.y1 == nj.y1) {
+            for (int i = 0; i < cp.n; i++) {
+                Rect q = { (int)cp.r[i].x0, (int)cp.r[i].y0, (int)cp.r[i].x1, (int)cp.r[i].y1 };
+                if (q.x0 < 0) q.x0 = 0;
+                if (q.y0 < 0) q.y0 = 0;
+                if (q.x1 > out.w) q.x1 = out.w;
+                if (q.y1 > out.h) q.y1 = out.h;
+                if (q.x1 <= q.x0 || q.y1 <= q.y0) continue;
+                for (int y = q.y0; y < q.y1; y++)
+                    memcpy(out.px + (size_t)y * out.stride + q.x0, o->scene.px + (size_t)y * o->scene.stride + q.x0, (size_t)(q.x1 - q.x0) * 4);
+                display_tint(&out, q);      /* Night Light, on what was copied */
+            }
+            tinted = 1;
+        } else
+            for (int y = need.y0; y < need.y1; y++)
+                memcpy(out.px + (size_t)y * out.stride + need.x0, o->scene.px + (size_t)y * o->scene.stride + need.x0, (size_t)(need.x1 - need.x0) * 4);
     }
     o->stale[bi] = (Rect){ 0, 0, 0, 0 };
     o->stale[bi ^ 1] = rect_join(o->stale[bi ^ 1], r);
+    o->pstale[bi].n = 0;
+    for (int i = 0; i < o->npainted; i++) dlist_add(&o->pstale[bi ^ 1], o->painted[i]);
     o->curs[bi] = (Rect){ 0, 0, 0, 0 };
     view_of(o, index);
     wl_paint_fullscreen(&out);
@@ -1168,7 +1229,7 @@ static void present_cpu(Server *s, Out *o, int index, Rect r, int feed) {
     Rect cr = cursor_rect(s, o, &k);
     o->cur_on = cr.x1 > cr.x0;
     if (!xf) {
-        display_tint(&out, need);           /* Night Light without a gamma LUT (software) */
+        if (!tinted) display_tint(&out, need);   /* Night Light without a gamma LUT (software) */
         if (o->cur_on) {
             canvas_blit(&out, k.px, k.w, k.h, cr.x0, cr.y0, 0, 1, 0);
             o->curs[bi] = cr;
@@ -1496,6 +1557,7 @@ int main(int argc, char **argv) {
     if (ok && snd_start()) fprintf(stderr, "lord-server: no PipeWire for now (sound); it retries on its own\n");
     if (ok && !s.greeter) portal_start();   /* dark mode, accent and buttons for GTK/GNOME/Qt (ui/portal.c) */
     if (ok && !s.greeter) term_restore();   /* shells still alive from the previous start */
+    if (getenv("LORD_DAMAGE") && !strcmp(getenv("LORD_DAMAGE"), "1")) paint_multi_damage = 0;   /* one damaged box (paint.c) */
     remote_server = &s;
     tp_route_init(&tp_host);
     static const MirrorInput mirror_in = { remote_pointer, remote_button, remote_wheel, remote_key, remote_clip, remote_clients,

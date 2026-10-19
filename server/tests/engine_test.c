@@ -442,6 +442,151 @@ static void test_backdrop_band(void) {
     free(partial);
 }
 
+/* Several damaged rectangles (0.8.2): dots moving far apart on a "map" are repainted one rectangle
+ * at a time, and every frame must be pixel-identical to a full repaint, also with a translucent,
+ * blurred bar whose margin a dot crosses (the 0.8.1 band rule, test_backdrop_band). */
+static uint32_t rng_state = 12345;
+static uint32_t rnd(void) { rng_state = rng_state * 1103515245u + 12345u; return rng_state >> 8; }
+
+static int paint_partial(Node *root, int w, int h, int *nrects, float *area) {
+    Box d = { 0, 0, 0, 0 };
+    if (!paint_damage(root)) { *nrects = 0; *area = 0; return 0; }
+    d = ui.damage;
+    Box rs[DAMAGE_MAX];
+    int n = paint_damage_rects(rs, DAMAGE_MAX);
+    *nrects = n;
+    *area = 0;
+    for (int i = 0; i < n; i++) {
+        Box b = rs[i];
+        if (b.x0 < d.x0 || b.y0 < d.y0 || b.x1 > d.x1 || b.y1 > d.y1) return -1;     /* outside the box */
+        for (int j = i + 1; j < n; j++)
+            if (b.x0 < rs[j].x1 && rs[j].x0 < b.x1 && b.y0 < rs[j].y1 && rs[j].y0 < b.y1) return -2;   /* overlap */
+        Rect r = { (int)fmaxf(0, floorf(b.x0)), (int)fmaxf(0, floorf(b.y0)), (int)fminf((float)w, ceilf(b.x1)), (int)fminf((float)h, ceilf(b.y1)) };
+        if (r.x1 <= r.x0 || r.y1 <= r.y0) continue;
+        *area += (float)(r.x1 - r.x0) * (r.y1 - r.y0);
+        ui.damage = (Box){ (float)r.x0, (float)r.y0, (float)r.x1, (float)r.y1 };
+        canvas_set_clip(&frame, r);
+        canvas_clear(&frame, 0);
+        paint_root(&frame, root);
+    }
+    canvas_set_clip(&frame, (Rect){ 0, 0, w, h });
+    ui.damage = (Box){ 0, 0, 0, 0 };
+    return 1;
+}
+
+static int full_differs(Node *root, int w, int h, int *where) {
+    static uint32_t *ref;
+    static int rw, rh;
+    if (rw != w || rh != h) { free(ref); ref = calloc((size_t)w * h, 4); rw = w; rh = h; }
+    if (!ref) return 999;
+    Canvas rc;
+    canvas_init(&rc, ref, w, h, w);
+    ui.damage = (Box){ 0, 0, (float)w, (float)h };
+    canvas_clear(&rc, 0);
+    paint_root(&rc, root);
+    ui.damage = (Box){ 0, 0, 0, 0 };
+    int worst = 0;
+    for (int i = 0; i < w * h; i++)
+        for (int sh = 0; sh < 24; sh += 8) {
+            int dv = abs((int)((ref[i] >> sh) & 255) - (int)((fb[i] >> sh) & 255));
+            if (dv > worst) { worst = dv; *where = i; }
+        }
+    return worst;
+}
+
+static void test_multi_damage(void) {
+    enum { W = 640, H = 400, DOTS = 24 };
+    ui_reset();
+    Node *root = view(NULL);
+    ui.root = root;
+    sn(root, "backgroundColor", 0xff1c1c1e);
+    for (int i = 0; i < 16; i++) box_in(root, (float)(i * 40), 0, 14, H, 0xff2c4a7a);      /* something to blur */
+    Node *map = box_in(root, 40, 34, 560, 340, 0xff20304a);
+    ss(map, "overflow", "hidden");
+    sn(map, "borderRadius", 12);
+    for (int i = 0; i < 6; i++) box_in(map, (float)(30 + i * 80), (float)(40 + (i % 3) * 70), 50, 30, 0xff3a5a3a);   /* "land" */
+    Node *dots[DOTS];
+    float dx[DOTS], dy[DOTS];
+    for (int i = 0; i < DOTS; i++) {
+        dx[i] = (float)(rnd() % 540);
+        dy[i] = (float)(rnd() % 300);
+        dots[i] = box_in(map, dx[i], dy[i], 6, 6, i % 2 ? 0xd8ff9f0a : 0xd830d158);   /* translucent, round */
+        sn(dots[i], "borderRadius", 3);
+    }
+    Node *barl = layer_node(root, 20, W, H);
+    Node *bar = box_in(barl, 0, 0, W, 28, 0x80ffffff);
+    sn(bar, "backdropBlur", 10);
+    render(root, W, H);
+    int multi = 0, worst_all = 0, bad = 0;
+    float saved = 0;
+    for (int f = 0; f < 40; f++) {
+        for (int i = 0; i < DOTS; i++) {
+            if (i % 3 == f % 3) continue;            /* not all of them every frame */
+            dx[i] += (float)((int)(rnd() % 9) - 4) + 0.5f;
+            dy[i] += (float)((int)(rnd() % 7) - 3);
+            if (f % 10 == 7 && i == 0) dy[i] = -20;  /* up near the bar: inside its blur margin (the map clips it) */
+            if (dx[i] < -6) dx[i] = 540;
+            if (dx[i] > 560) dx[i] = 0;
+            if (dy[i] > 320 || dy[i] < -20) dy[i] = 100;
+            sn(dots[i], "left", dx[i]);
+            sn(dots[i], "top", dy[i]);
+        }
+        if (f % 13 == 5) sn(bar, "backgroundColor", f % 2 ? 0x80ffffff : 0x90f0f0ff);    /* the bar itself */
+        if (f % 17 == 9) { Node *m = box_in(barl, 200, 20, 80, 60, 0xffff3030); render(root, W, H); node_destroy(m); }   /* a menu opens, then closes */
+        layout_root(root, W, H);
+        int n = 0;
+        float area = 0;
+        int ok = paint_partial(root, W, H, &n, &area);
+        if (ok < 0) { bad++; continue; }
+        if (n > 1) { multi++; saved += area; }
+        int where = 0, worst = full_differs(root, W, H, &where);
+        if (worst > worst_all) worst_all = worst;
+        CHECK(worst <= 1, "frame %d (%d rects) differs from a full repaint by %d at %d,%d", f, n, worst, where % W, where / W);
+    }
+    CHECK(!bad, "%d frames had a rectangle outside the box or two that overlap", bad);
+    CHECK(multi >= 20, "only %d of 40 frames used several rectangles", multi);
+    /* the same with one rectangle forced, for the numbers */
+    paint_multi_damage = 0;
+    float one = 0;
+    int ones = 0;
+    for (int f = 0; f < 10; f++) {
+        for (int i = 0; i < DOTS; i++) { dx[i] = (float)(rnd() % 540); sn(dots[i], "left", dx[i]); }
+        layout_root(root, W, H);
+        int n = 0;
+        float area = 0;
+        paint_partial(root, W, H, &n, &area);
+        one += area;
+        ones++;
+        int where = 0;
+        CHECK(n <= 1 && full_differs(root, W, H, &where) <= 1, "one rectangle (LORD_DAMAGE=1) differs from a full repaint");
+    }
+    paint_multi_damage = 1;
+    if (multi && ones) printf("multi-damage: %d frames, %.0f px per frame in rectangles; one box: %.0f px\n", multi, saved / multi, one / ones);
+    /* ui.damage set directly (a full repaint): one rectangle, the whole of it */
+    damage_add((Box){ 10, 10, 20, 20 });
+    ui.damage = (Box){ 0, 0, W, H };
+    damage_add((Box){ 100, 100, 110, 110 });
+    layout_root(root, W, H);
+    paint_damage(root);
+    Box rs[DAMAGE_MAX];
+    int n = paint_damage_rects(rs, DAMAGE_MAX);
+    CHECK(n == 1 && rs[0].x0 <= 0 && rs[0].x1 >= W && rs[0].y1 >= H, "a full repaint set directly stays one rectangle (%d)", n);
+    ui.damage = (Box){ 0, 0, 0, 0 };
+    /* the list itself: overlaps merge, the cap holds */
+    DamageList l = { .n = 0 };
+    dlist_add(&l, (Box){ 0, 0, 10, 10 });
+    dlist_add(&l, (Box){ 5, 5, 15, 15 });
+    dlist_add(&l, (Box){ 100, 100, 110, 110 });
+    CHECK(l.n == 2 && l.r[0].x1 == 15 && l.r[1].x0 == 100, "dlist merges overlaps (%d)", l.n);
+    for (int i = 0; i < 100; i++) dlist_add(&l, (Box){ (float)(i * 20), 300, (float)(i * 20 + 5), 305 });
+    CHECK(l.n <= DAMAGE_MAX, "dlist stays at %d rectangles (%d)", DAMAGE_MAX, l.n);
+    int overl = 0;
+    for (int i = 0; i < l.n; i++) for (int j = i + 1; j < l.n; j++)
+        if (l.r[i].x0 < l.r[j].x1 && l.r[j].x0 < l.r[i].x1 && l.r[i].y0 < l.r[j].y1 && l.r[j].y0 < l.r[i].y1) overl++;
+    CHECK(!overl, "dlist never holds two overlapping rectangles (%d)", overl);
+    (void)worst_all;
+}
+
 static void test_transform_paint_hit(void) {
     ui_reset();
     Node *root = view(NULL);
@@ -715,6 +860,7 @@ int main(int argc, char **argv) {
     test_transform_paint_hit();
     test_layers();
     test_backdrop_band();
+    test_multi_damage();
     printf("engine-test: %d checks, %d failures\n", checks, fails);
     return fails ? 1 : 0;
 #endif

@@ -39,6 +39,7 @@ static uint32_t with_opacity(uint32_t argb, float op) {
 /* Cuadro de video que tapa todo lo que cambió (media_cover_node): lo anterior a ese nodo en el
  * orden de pintado no se ve, así que no se pinta (solo se recorre, por los recortes). */
 static int skip_until, skip_reached;
+static int paint_cull;                  /* paint_node may skip clipped subtrees outside the clip (CPU path) */
 
 static int layer_paint(Canvas *c, Node *n, float opacity);
 static int tf_paint(Canvas *c, Node *n, float opacity);
@@ -65,6 +66,15 @@ static void paint_node(Canvas *c, Node *n, float opacity) {
     if (op < 0.004f) return;
     const float k = paint_view.k;
     float x = VX(n->ax), y = VY(n->ay), w = n->w * k, h = n->h * k, rad = s->radius * k;
+    /* A box that clips its children and lies outside the region being painted: nothing of it or of
+     * its subtree can land there (0.8.2; each of several damaged rectangles is a walk of the tree,
+     * and this keeps that walk to the branches that reach it). Not through transforms, not on the
+     * GPU path (its list of app windows is built while painting) and not before the node a
+     * partial repaint starts from (its ancestors are inside the region by construction). */
+    if (paint_cull && s->overflow_hidden && !n->has_tf) {
+        float e = (s->shadow_color >> 24) ? (s->shadow_blur + fmaxf(fabsf(s->shadow_x), fabsf(s->shadow_y))) * k + 1 : 1;
+        if (x - e >= c->clip.x1 || y - e >= c->clip.y1 || x + w + e <= c->clip.x0 || y + h + e <= c->clip.y0) return;
+    }
     /* per-corner radii and per-side borders (not plain): the *4 canvas functions */
     int plain = node_edges_plain(n);
     const StyleExt *ex = s->ext;
@@ -706,6 +716,121 @@ static void blur_walk(Node *n, int *grew) {
     for (Node *c = n->first; c; c = c->next) blur_walk(c, grew);
 }
 
+/* ---- Several damaged rectangles (0.8.2) ----
+ * damage_add keeps, besides the box around everything (ui.damage), the changes as a short list of
+ * rectangles (ui.dlist). When the changes are small and far apart, the Monitor's moving dots on a
+ * world map, each one is repainted on its own: the box around them was most of the map (0.3 % of a
+ * core per frame per second, docs/MONITOR.md). Every rectangle is a complete repaint of its pixels
+ * (clear, paint the tree clipped to it), so the result is the same as with the one box.
+ *   - Two rectangles whose union wastes less than DAMAGE_PASS_PX are joined (each one is a walk of
+ *     the tree), and when they cover most of their box it is one box again.
+ *   - Blurred surfaces (backdropFilter) read the canvas around them. The 0.8.1 rule stays: a
+ *     rectangle that touches a blurred node or the margin its blur samples grows to the whole node,
+ *     and every rectangle that touches that margin joins it, so the margin is either repainted in
+ *     the same pass or not repainted this frame at all (then it still holds what it showed).
+ *   - Only on the CPU path and without a window being dragged (its layer and the GPU's window list
+ *     are built for one paint_root per frame); otherwise one box, as before. */
+#ifdef LORD_DAMAGE_SINGLE
+int paint_multi_damage = 0;             /* a build for comparing (docs/MONITOR.md, measurements) */
+#else
+int paint_multi_damage = 1;             /* LORD_DAMAGE=1 in lord-server's environment: one box */
+#endif
+static Box drects[DAMAGE_MAX];
+static int ndrects;
+
+#ifndef DAMAGE_PASS_PX
+#define DAMAGE_PASS_PX 1024.0f          /* about what one more pass costs, in pixels (measured, docs/MONITOR.md) */
+#endif
+#define DAMAGE_COVER   0.7f             /* rectangles covering this much of their box: one box */
+#define BLUR_MAX 48
+
+static Box dl_bbox(const DamageList *l) {
+    Box b = l->n ? l->r[0] : (Box){ 0, 0, 0, 0 };
+    for (int i = 1; i < l->n; i++)
+        b = (Box){ fminf(b.x0, l->r[i].x0), fminf(b.y0, l->r[i].y0), fmaxf(b.x1, l->r[i].x1), fmaxf(b.y1, l->r[i].y1) };
+    return b;
+}
+
+static void blur_collect(Node *n, Box *bb, float *bm, int *k) {
+    if (n->type == NODE_RAW || n->s.display_none) return;
+    Box b = n->prev_box;
+    if (n->s.backdrop_blur >= 1 && b.x1 > b.x0 && b.y1 > b.y0) {
+        if (*k < BLUR_MAX) { bb[*k] = b; bm[*k] = ceilf(n->s.backdrop_blur * 2) + 1; }   /* as blur_walk */
+        (*k)++;
+    }
+    for (Node *c = n->first; c; c = c->next) blur_collect(c, bb, bm, k);
+}
+
+/* The list for this frame, or 0 if it has to be one box. */
+static int multi_rects(Node *root) {
+    if (!paint_multi_damage || layer.want || gpu_active() || !root) return 0;
+    Box *d = &ui.damage;
+    if (d->x0 != ui.dlast.x0 || d->y0 != ui.dlast.y0 || d->x1 != ui.dlast.x1 || d->y1 != ui.dlast.y1) return 0;   /* set directly */
+    if (ui.dlist.n < 2) return 0;
+    DamageList l = { .n = 0 };
+    for (int i = 0; i < ui.dlist.n; i++) {
+        Box b = ui.dlist.r[i];
+        dlist_add(&l, (Box){ floorf(b.x0), floorf(b.y0), ceilf(b.x1), ceilf(b.y1) });
+    }
+    /* join what is cheaper to paint together */
+    while (l.n > 1) {
+        int bi = -1, bj = -1;
+        float best = DAMAGE_PASS_PX;
+        for (int i = 0; i < l.n; i++)
+            for (int j = i + 1; j < l.n; j++) {
+                Box u = { fminf(l.r[i].x0, l.r[j].x0), fminf(l.r[i].y0, l.r[j].y0), fmaxf(l.r[i].x1, l.r[j].x1), fmaxf(l.r[i].y1, l.r[j].y1) };
+                float w = box_area(u) - box_area(l.r[i]) - box_area(l.r[j]);
+                if (w < best) { best = w; bi = i; bj = j; }
+            }
+        if (bi < 0) break;
+        Box u = { fminf(l.r[bi].x0, l.r[bj].x0), fminf(l.r[bi].y0, l.r[bj].y0), fmaxf(l.r[bi].x1, l.r[bj].x1), fmaxf(l.r[bi].y1, l.r[bj].y1) };
+        l.r[bj] = l.r[--l.n];
+        l.r[bi] = l.r[--l.n];
+        dlist_add(&l, u);
+    }
+    /* blurred surfaces: see above */
+    Box bb[BLUR_MAX];
+    float bm[BLUR_MAX];
+    int nb = 0;
+    blur_collect(root, bb, bm, &nb);
+    if (nb > BLUR_MAX) return 0;
+    int changed = 1;
+    for (int pass = 0; changed && pass < 8; pass++) {
+        changed = 0;
+        for (int k = 0; k < nb; k++) {
+            Box b = bb[k], near = { b.x0 - bm[k], b.y0 - bm[k], b.x1 + bm[k], b.y1 + bm[k] };
+            int hits = 0, inside = 0;
+            Box u = b;
+            for (int i = 0; i < l.n; i++) {
+                if (!box_meets(l.r[i], near)) continue;
+                hits++;
+                if (box_inside(b, l.r[i])) inside = 1;
+                u = (Box){ fminf(u.x0, l.r[i].x0), fminf(u.y0, l.r[i].y0), fmaxf(u.x1, l.r[i].x1), fmaxf(u.y1, l.r[i].y1) };
+            }
+            if (!hits || (hits == 1 && inside)) continue;
+            for (int i = 0; i < l.n; i++) if (box_meets(l.r[i], near)) l.r[i--] = l.r[--l.n];
+            dlist_add(&l, (Box){ floorf(u.x0), floorf(u.y0), ceilf(u.x1), ceilf(u.y1) });
+            changed = 1;
+        }
+    }
+    if (changed || l.n < 2) return 0;
+    Box all = dl_bbox(&l);
+    float sum = 0;
+    for (int i = 0; i < l.n; i++) sum += box_area(l.r[i]);
+    if (sum >= DAMAGE_COVER * box_area(all)) return 0;
+    for (int i = 0; i < l.n; i++) drects[i] = l.r[i];
+    ndrects = l.n;
+    *d = all;
+    ui.dlast = all;
+    return 1;
+}
+
+int paint_damage_rects(Box *out, int max) {
+    int n = ndrects < max ? ndrects : max;
+    for (int i = 0; i < n; i++) out[i] = drects[i];
+    return n;
+}
+
 int paint_damage(Node *root) {
     /* lo que llegó de afuera desde el cuadro anterior (terminal, apps Linux, video): si toca la
      * ventana, se vuelve a pintar su capa; si cae afuera, lo de abajo */
@@ -724,6 +849,8 @@ int paint_damage(Node *root) {
         if (!box_inside(ext, layer.at) && !box_inside(ext, now)) layer.below_valid = 0;
     }
     if (root) damage_walk(root, 0, 1, 0, (Box){ -1e9f, -1e9f, 1e9f, 1e9f });
+    ndrects = 0;
+    if (multi_rects(root)) return 1;
     /* the damage is one box: growing it for a blurred node can reach another one (the bar and a menu) */
     for (int pass = 0, grew = 1; root && grew && pass < 4 && ui.damage.x1 > ui.damage.x0; pass++) { grew = 0; blur_walk(root, &grew); }
     if (layer.want && layer.valid && layer.part.x1 > layer.part.x0) {     /* esa parte, donde está ahora la ventana */
@@ -734,6 +861,7 @@ int paint_damage(Node *root) {
         }
     }
     Box *d = &ui.damage;
+    if (d->x1 > d->x0 && d->y1 > d->y0) { drects[0] = *d; ndrects = 1; }
     return d->x1 > d->x0 && d->y1 > d->y0;
 }
 
@@ -751,7 +879,13 @@ static void cover_walk(Node *n, Box d, Box clip, int *found) {
         if (d.x0 >= in.x0 && d.y0 >= in.y0 && d.x1 <= in.x1 && d.y1 <= in.y1) *found = n->id;
     }
     if (n->type == NODE_TEXT) return;
+    /* its children are clipped to its box: if that doesn't hold the region, none of them can */
+    if (s->overflow_hidden && !(d.x0 >= box.x0 && d.y0 >= box.y0 && d.x1 <= box.x1 && d.y1 <= box.y1)) return;
     Box inner = s->overflow_hidden ? box : clip;
+    /* rounded corners clip the children too: what lies in them shows this node's background, so
+     * a child only covers away from the corners (0.8.2) */
+    float rr = node_edges_plain(n) ? s->radius : max4(s->ext->r.rad);
+    if (s->overflow_hidden && rr > 0) inner = (Box){ inner.x0 + rr, inner.y0 + rr, inner.x1 - rr, inner.y1 - rr };
     Node *kids[MAX_KIDS];
     int k = node_children_ordered(n, kids, MAX_KIDS);
     for (int i = 0; i < k; i++) cover_walk(kids[i], d, inner, found);
@@ -771,6 +905,7 @@ void paint_root(Canvas *c, Node *root) {
     skip_until = gpu_active() ? 0 : media_cover_node(ui.damage.x0, ui.damage.y0, ui.damage.x1, ui.damage.y1);
     if (!skip_until && !gpu_active() && !layer.want) skip_until = opaque_cover_node(root);
     skip_reached = 0;
+    paint_cull = !gpu_active();
     /* una ventana que se mueve: lo de abajo se copia y se pinta desde ella (capa del arrastre) */
     if (!skip_until && below_ready(c, root)) {
         below_copy(c);
@@ -778,6 +913,7 @@ void paint_root(Canvas *c, Node *root) {
     }
     paint_node(c, root, 1);
     skip_until = 0;
+    paint_cull = 0;
     tf_gc();
     wl_paint_popups(c);                     /* menús de las apps Wayland, encima de todo */
     if (paint_profile) {
