@@ -440,6 +440,31 @@ text was fixed (sha256 `daba6313…c8ec65`). That ISO has the same binaries; onl
 With the final ISO, UEFI boot, the network, ❖L/Enter and the installer summary were repeated. Nothing
 was installed in that repeat.
 
+## Release test (0.8.2 Beta, October 19)
+
+`lordos-live-0.8.2-amd64.iso` from the `v0.8.2-beta` tag (dcb8293, build `20261019.dcb8293e`),
+1 047 648 256 bytes, sha256 `00d52aa1408805a869c383484f3e1ef675e6ffd42da299d63db916e76e1f4e73`, built on
+VM 116 with `GPU=1 RELEASE=1` from a tree whose `code-manifest.json` was signed on the maintainer's
+machine (`REQUIRE_SIGNED_CODE=1`); `lord-server --check-code`: verified, release build; `make -C server
+test`: 23 passed, 0 failed, 5 skipped (the four node suites ran on the maintainer's machine), 0 compiler
+warnings. Both `.deb`: lintian 0 errors; both SBOMs validated with `pyspdxtools`. This is the first
+version delivered to installed systems as an update, so the upgrade path was tested first.
+
+| Check | Result |
+|---|---|
+| Store → Updates on VM 120, 0.8.1 installed from the published 0.8.1 ISO (UEFI), `lordos.sources` only (`https://lordos.org/apt`): "LordOS 0.8.2 is available", the whole "What's new" with no overlapping lines | pass |
+| Update from the Store (a `file:` copy of the final live tree, then the staging repo with the first 0.8.2 build): migration 003 only, "Restart required" → Restart Now (the sheet with the open apps) → login screen with Crystal Crown → About "Version 0.8.2 · Beta", build `20261019.dcb8293e`, **Verified**; wallpaper `aurora` kept; 0 failed units; `apt install --reinstall lordos` runs no migration again | pass |
+| `apt update && apt upgrade` (0.8.1 → 0.8.2): migration 003, `settings.json` byte-identical, restart, code verified | pass |
+| `install.sh --deb` 0.8.1 → 0.8.2 and 0.8.0 → 0.8.2 (0.8.0 from its ISO, after `apt install curl`): "valid Ed25519 signature of SHA256SUMS", migrations 001–003, `session.conf` unchanged, settings kept, restart | pass |
+| VM 117, OVMF: boot menu, live desktop, About 0.8.2 Verified; install on the disk (en_US, Buenos Aires, 2 GB swap) in about 95 s; installed: login screen with Crystal Crown, new user on **Celestial**, boot 7.5 s, 0 failed units | pass |
+| VM 123, SeaBIOS, standard VGA: menu at 1024×768, live desktop (VM restored afterwards) | pass |
+| Keys and system prompts: a Wayland test client (`tools/diag/keylag-client`, `server/tests/keyfocus/shellkeys.sh`) got 6 key presses typed into the search with the first 0.8.2 build and **0** with the fix; it gets them again when the search closes | pass |
+| Disks offers smartmontools; Monitor → Disks says "No sensor" for the virtual disk; Settings → Displays → Video "Automatic" (virtual GPU: H.264); Mail, Calendar, Contacts and Reminders as `lord-server --app <id>` (seccomp, own scope); Monitor → Network history (1 h) and per-destination switches with Chromium; typing in Chromium; a copy of `/usr/lib/lordos` with one changed byte → `--check-code` FAILED | pass |
+| Raspberry Pi 5 image, read-only on the board: 33 checks pass (kernel with BPF LSM, signed manifest, build, migrations 001–003, wallpapers, drivetemp, video extension); `apt-get update` against `https://lordos.org/apt` in temporary lists: `lordos 0.8.2 arm64`, SHA-256 of the released `.deb` | pass |
+
+Found in this test: Store → Discover showed no suggestions on the QEMU VM (`qemu-guest-agent` needs the
+`org.qemu.guest_agent.0` virtio port, which these VMs don't have), so that card was not seen here.
+
 ## Release test (0.8.1 Beta, October 19)
 
 `lordos-live-0.8.1-amd64.iso` from the `v0.8.1-beta` tag (7cba92d, build `20261019.7cba92d2`),
