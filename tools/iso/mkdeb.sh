@@ -11,6 +11,8 @@
 #   /usr/lib/lordos/themes/<theme>/       theme.json, theme.bundle.js and their resources (greeter: the
 #                                         login screen)
 #   /usr/lib/lordos/assets/               fonts, texts (locales), icons, shell integration
+#   /usr/lib/lordos/code-manifest.json    SHA-256 of every bundle LordOS runs as its own code, and
+#   /usr/lib/lordos/code-manifest.sig     its Ed25519 signature (release key; docs/SIGNING.md)
 #   /usr/lib/lordos/lordos-live-prep      live preparation (grub language, folders)
 #   /usr/lib/systemd/system/lordos.service  lord-sessiond on tty1
 #   /usr/lib/lordos/lordos-splash         boot splash hand-off (Plymouth → LordOS, docs/SESSIONS.md)
@@ -75,6 +77,18 @@ cp -r assets/fonts assets/locales assets/shell assets/icons assets/mascot assets
 install -m 644 assets/app-host.bundle.js "$L/assets/app-host.bundle.js"
 # system apps that run as their own sandboxed process (manifest "process": "isolated"; e.g. Passwords)
 [ -d assets/sysapps ] && cp -r assets/sysapps "$L/assets/"
+# verified system code (docs/SIGNING.md): the manifest of every bundle above and, for a release, its
+# signature made on the maintainer's machine (tools/release/sign-code.sh). lord-server checks the
+# staged tree exactly as a session will; a release build (RELEASE=1) needs the signature.
+[ -f code-manifest.json ] || { echo "missing code-manifest.json (npm run build writes it)" >&2; exit 1; }
+install -m 644 code-manifest.json "$L/code-manifest.json"
+[ -f code-manifest.sig ] && install -m 644 code-manifest.sig "$L/code-manifest.sig"
+if [ "${REQUIRE_SIGNED_CODE:-0}" = 1 ] && [ ! -f "$L/code-manifest.sig" ]; then
+    echo "missing code-manifest.sig: sign the manifest on the maintainer's machine (tools/release/sign-code.sh)" >&2; exit 1
+fi
+server/build/lord-server --check-code "$L" > "$PKG/code-check.log" 2>&1 || {
+    tail -20 "$PKG/code-check.log" >&2; echo "the staged system code does not match code-manifest.json" >&2; exit 1; }
+tail -1 "$PKG/code-check.log"; rm -f "$PKG/code-check.log"
 install -m 755 tools/iso/rootfs/usr/lib/lordos/lordos-live-prep "$L/lordos-live-prep"
 # updates in place (docs/UPDATES.md): the repository, its key, the migrations and the restart notice
 install -D -m 644 packaging/apt/lordos.sources "$L/apt/lordos.sources"
@@ -192,6 +206,7 @@ Depends: libc6 (>= 2.38), libwayland-server0 (>= 1.22), libwayland-client0 (>= 1
 Recommends: pipewire-pulse, wireplumber, wpasupplicant, openvpn, fonts-noto-core, locales, tzdata, sudo, cups, cups-client, avahi-daemon, mesa-va-drivers, bluez, libspa-0.2-bluetooth, power-profiles-daemon, systemd-timesyncd, shared-mime-info, gsettings-desktop-schemas
 Section: x11
 Priority: optional
+Protected: yes
 Homepage: https://github.com/lordbasex/LordOS
 Description: desktop environment for Debian GNU/Linux, built from scratch
  LordOS is a desktop environment for Debian GNU/Linux with its own display

@@ -9,7 +9,8 @@
 int  js_broker_fd(void);              /* fd del broker para poll; -1 si no hay */
 void js_broker_poll(void);            /* mensajes del servidor sin pedir (indicadores, tema) */
 int  js_broker_pending(void);         /* events queued during an RPC, not dispatched yet */
-void js_broker_set_pkgdir(const char *dir);   /* antes de la caja de arena */
+void js_broker_set_pkgdir(const char *dir, int system);   /* before the sandbox; system: assets/sysapps */
+int  js_broker_code_refused(void);    /* the system app's app.js was refused (verified code) */
 int  js_broker_wants_network(void);   /* la app declaró `network` y lo tiene permitido */
 void js_broker_register(JSContext *c, JSValue lord, const char *app_id);
 /* lord.appWindows: the app's own windows (app/appclient.c, docs/PRIVACY.md) */

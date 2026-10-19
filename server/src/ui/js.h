@@ -5,7 +5,12 @@
 #include <stddef.h>
 
 int    js_init(const char *bundle_path);
+/* js_init/js_init_app return JS_REFUSED when the code was refused by the verified-code check
+ * (sec/codesig.h): the caller falls back to another theme or to js_init_recovery(). */
+#define JS_REFUSED (-2)
 int    js_init_app(const char *host_bundle, const char *app_id);   /* lord-server --app <id> */
+int    js_init_recovery(int greeter);   /* the built-in "component was modified" screen */
+int    js_app_recovery(void);           /* the same in an isolated app's window */
 void   js_shutdown(void);
 double js_tick(double now);        /* runs expired timers; ms until the next one or -1 */
 int    js_wants_frame(void);       /* there are pending requestAnimationFrame callbacks */

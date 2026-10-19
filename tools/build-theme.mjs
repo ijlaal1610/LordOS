@@ -5,6 +5,7 @@ import { build } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import path from 'node:path';
+import { writeManifest } from './code-manifest.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -24,9 +25,11 @@ const appsPlugin = {
       // "process": "isolated": a built-in app that runs as its own sandboxed process (its window in
       // the theme only starts it; see sdk/packages.js isolatedApp and buildSysApps below)
       const iso = ids.map((id) => JSON.parse(fs.readFileSync(path.join(dir, id, 'manifest.json'), 'utf8')).process === 'isolated');
+      // every app in apps/ is a system app (system: true): part of LordOS, verified with it and never
+      // removable from the Store (docs/SIGNING.md, "Verified system code")
       const list = ids.map((_, i) => (iso[i]
-        ? `{ ...M${i}, isolated: true, Component: isolatedApp(M${i}.id, A${i}.default), Icon: A${i}.Icon }`
-        : `{ ...M${i}, Component: A${i}.default, Icon: A${i}.Icon }`)).join(',\n  ');
+        ? `{ ...M${i}, system: true, isolated: true, Component: isolatedApp(M${i}.id, A${i}.default), Icon: A${i}.Icon }`
+        : `{ ...M${i}, system: true, Component: A${i}.default, Icon: A${i}.Icon }`)).join(',\n  ');
       const head = iso.some(Boolean) ? `import { isolatedApp } from ${JSON.stringify(path.join(root, 'sdk', 'packages.js'))};\n` : '';
       return { contents: `${head}${lines.join('\n')}\nexport const apps = [\n  ${list}\n];\n`, resolveDir: root, loader: 'js' };
     });
@@ -118,3 +121,7 @@ const all = fs.readdirSync(path.join(root, 'themes'))
 for (const name of (names.length ? names : all).filter((n) => n !== 'app-host' && n !== 'sysapps')) await buildTheme(name);
 if (!names.length || names.includes('app-host')) await buildAppHost();
 if (!names.length || names.includes('sysapps')) await buildSysApps();
+// the verified-code manifest of what was just built (unsigned: a development build until
+// tools/release/sign-code.sh signs it on the maintainer's machine)
+const cm = writeManifest(root);
+console.log(`code-manifest.json: ${cm.files} files${cm.changed ? '' : ' (unchanged)'}`);

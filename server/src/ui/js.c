@@ -27,6 +27,7 @@
 #include "js_help.h"
 #include "js_hw.h"
 #include "../media/media.h"
+#include "../sec/codesig.h"
 #include "ui.h"
 #include "../term/term.h"
 #include "lord_version.h"           /* build/gen: version, channel and build (Makefile) */
@@ -373,21 +374,22 @@ static JSValue call_global(const char *name, int argc, JSValueConst *argv) {
     return r;
 }
 
-int js_init(const char *bundle_path) {
-    char dir[1024];
-    snprintf(dir, sizeof dir, "%s", bundle_path);
-    snprintf(ui.theme_dir, sizeof ui.theme_dir, "%s", dirname(dir));
+/* Reads a bundle of LordOS's own code through the verified-code check (sec/codesig.c): the bytes
+ * returned are exactly the ones that were hashed. NULL (and *refused = 1) if it was refused. */
+static char *load_code(const char *path, size_t *len, int *refused) {
+    codesig_init(js_sys_assets());
+    char why[160];
+    int before = codesig_refused_count();
+    char *src = codesig_load(path, CODE_FILE_MAX, len, why, sizeof why);
+    if (!src) {
+        *refused = codesig_refused_count() > before || codesig_state() == CODE_INVALID;
+        fprintf(stderr, "js: %s not loaded: %s\n", path, why);
+    }
+    return src;
+}
 
-    FILE *f = fopen(bundle_path, "rb");
-    if (!f) { perror(bundle_path); return -1; }
-    fseek(f, 0, SEEK_END);
-    long len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char *src = malloc((size_t)len + 1);
-    if (!src || fread(src, 1, (size_t)len, f) != (size_t)len) { fclose(f); free(src); return -1; }
-    src[len] = 0;
-    fclose(f);
-
+/* A new context with the whole `lord` object of a session (or of the login screen). */
+static void session_context(void) {
     rt = JS_NewRuntime();
     JS_SetMemoryLimit(rt, 256u << 20);
     JS_SetMaxStackSize(rt, 4u << 20);
@@ -410,7 +412,7 @@ int js_init(const char *bundle_path) {
     js_wasm_register(ctx, g);           /* the WebAssembly global (our own interpreter, src/wasm) */
     js_net_register(ctx, lord);
     js_monitor_register(ctx, lord, js_sys_assets());   /* lord.monitor (app Monitor) */
-    js_sec_register(ctx, lord);        /* lord.perms and lord.sign (privacy and signing) */
+    js_sec_register(ctx, lord);        /* lord.perms, lord.sign and lord.code (privacy, signing, verified code) */
     js_media_register(ctx, lord);      /* lord.media (video, photos, screenshots, camera, recorder) */
     js_doc_register(ctx, lord);        /* lord.doc: PDF, archives and fonts through the lord-doc helper */
     js_print_register(ctx, lord);      /* lord.print: CUPS over IPP and eSCL scanners */
@@ -426,32 +428,116 @@ int js_init(const char *bundle_path) {
     js_hw_register(ctx, lord);         /* lord.display/power/bt/mime/timedate (Settings, src/hw) */
     JS_SetPropertyStr(ctx, g, "lord", lord);
     JS_FreeValue(ctx, g);
+}
 
+int js_init(const char *bundle_path) {
+    char dir[1024];
+    snprintf(dir, sizeof dir, "%s", bundle_path);
+    snprintf(ui.theme_dir, sizeof ui.theme_dir, "%s", dirname(dir));
+
+    size_t len = 0;
+    int refused = 0;
+    char *src = load_code(bundle_path, &len, &refused);
+    if (!src) return refused ? JS_REFUSED : -1;
+
+    session_context();
     double t0 = now_ms();
     int r = eval(prelude, sizeof prelude - 1, "<prelude>");
-    if (!r) r = eval(src, (size_t)len, bundle_path);
-    fprintf(stderr, "js: theme %s loaded in %.1f ms (%ld KB)\n", bundle_path, now_ms() - t0, len / 1024);
+    if (!r) r = eval(src, len, bundle_path);
+    fprintf(stderr, "js: theme %s loaded in %.1f ms (%zu KB)\n", bundle_path, now_ms() - t0, len / 1024);
     free(src);
     return r;
+}
+
+/* ---- the recovery screen ----
+ * When the theme (or the login screen, or an isolated app's code) was refused, lord-server shows
+ * this instead of a blank screen. It is compiled into the binary, so it is as trusted as
+ * lord-server itself. Texts: the "shell" catalog (code.recovery.*) when it can be read, English
+ * otherwise. */
+static const char recovery_js[] =
+    "(function(){\n"
+    "const R = globalThis.__lordRecovery || {};\n"
+    "const EN = {\n"
+    "  'code.recovery.title': 'This LordOS component was modified and was not loaded',\n"
+    "  'code.recovery.session': 'LordOS checks its own code before running it. A part of the desktop no longer matches the signed copy, so it was not started. Your files were not touched.',\n"
+    "  'code.recovery.greeter': 'LordOS checks its own code before running it. The login screen no longer matches the signed copy, so it was not started. Your files were not touched.',\n"
+    "  'code.recovery.app': 'LordOS checks its own code before running it. This app no longer matches the signed copy, so it was not started.',\n"
+    "  'code.recovery.fix': 'To repair it, reinstall LordOS: sudo apt install --reinstall lordos',\n"
+    "  'code.recovery.details': 'Not loaded:',\n"
+    "  'code.recovery.logout': 'Log Out',\n"
+    "};\n"
+    "let cat = {};\n"
+    "let lang = R.lang || 'en';\n"
+    "try { const s = lord.settings && lord.settings.load && lord.settings.load(); const o = typeof s === 'string' ? JSON.parse(s) : s;\n"
+    "  if (o && typeof o.language === 'string' && /^[a-z]{2,3}(-[A-Za-z0-9]+)?$/.test(o.language)) lang = o.language; } catch (e) { /* no settings */ }\n"
+    "try { const l = String(lang); const txt = lord.locale && lord.locale.catalog && (lord.locale.catalog(l, 'shell') || lord.locale.catalog(l.split('-')[0], 'shell'));\n"
+    "  if (txt) cat = JSON.parse(txt); } catch (e) { cat = {}; }\n"
+    "const t = k => (typeof cat[k] === 'string' && cat[k]) || EN[k];\n"
+    "const W = (lord.screen && lord.screen.width) || 800, H = (lord.screen && lord.screen.height) || 600;\n"
+    "/* colors are ARGB numbers, as runtime/style.js sends them */\n"
+    "const view = (style, parent) => { const id = lord.createNode('view'); for (const k in style) lord.setStyle(id, k, style[k]); if (parent) lord.appendChild(parent, id); return id; };\n"
+    "let lastRaw = 0;\n"
+    "const text = (s, style, parent) => { const id = lord.createNode('text'); for (const k in style) lord.setStyle(id, k, style[k]);\n"
+    "  const raw = lord.createNode('raw'); lord.setText(raw, s); lord.appendChild(id, raw); lastRaw = raw; lord.appendChild(parent, id); return id; };\n"
+    "const ds = (lord.screen && lord.screen.displays) || [];\n"
+    "const d = ds.find(x => x && x.main) || ds[0] || { x: 0, y: 0, w: W, h: H };\n"
+    "const app = R.kind === 'app';   /* an app window: fill it; a session: the main display */\n"
+    "const root = view(app ? { flex: 1, backgroundColor: 0xff1c1c1e } : { width: W, height: H, backgroundColor: 0xff1c1c1e });\n"
+    "const area = view(app ? { flex: 1, alignItems: 'stretch', justifyContent: 'center', paddingLeft: 16, paddingRight: 16 }\n"
+    "  : { position: 'absolute', left: d.x, top: d.y, width: d.w, height: d.h, alignItems: 'center', justifyContent: 'center' }, root);\n"
+    "const card = view({ ...(app ? {} : { width: Math.min(560, d.w - 40) }), paddingTop: 28, paddingBottom: 28, paddingLeft: 32, paddingRight: 32, borderRadius: 14,\n"
+    "  backgroundColor: 0xff2c2c2e, gap: 12 }, area);\n"
+    "const mark = view({ width: 44, height: 44, borderRadius: 22, backgroundColor: 0xffff9f0a, alignItems: 'center', justifyContent: 'center' }, card);\n"
+    "text('!', { color: 0xffffffff, fontSize: 26, fontWeight: 700 }, mark);\n"
+    "text(t('code.recovery.title'), { color: 0xffffffff, fontSize: 18, fontWeight: 600, textAlign: 'start' }, card);\n"
+    "text(t('code.recovery.' + (R.kind || 'session')), { color: 0xffd1d1d6, fontSize: 14, lineHeight: 20, textAlign: 'start' }, card);\n"
+    "const list = (R.refused || []).slice(0, 6);\n"
+    "if (list.length) { text(t('code.recovery.details'), { color: 0xff98989d, fontSize: 12, textAlign: 'start' }, card);\n"
+    "  for (const p of list) text(p, { color: 0xff98989d, fontSize: 12, fontFamily: 'monospace', direction: 'ltr', textAlign: 'start' }, card); }\n"
+    "text(t('code.recovery.fix'), { color: 0xffd1d1d6, fontSize: 13, lineHeight: 19, textAlign: 'start' }, card);\n"
+    "let btn = 0; const hits = new Set();\n"
+    "if (R.kind === 'session' && typeof lord.quit === 'function') {\n"
+    "  btn = view({ alignSelf: 'flex-end', paddingTop: 6, paddingBottom: 6, paddingLeft: 16, paddingRight: 16, borderRadius: 7, backgroundColor: 0xff0a84ff, cursor: 'pointer' }, card);\n"
+    "  hits.add(btn); hits.add(text(t('code.recovery.logout'), { color: 0xffffffff, fontSize: 13, fontWeight: 600 }, btn)); hits.add(lastRaw);\n"
+    "}\n"
+    "globalThis.__lordEvent = (type, id) => { if (type === 'up' && hits.has(id)) lord.quit(); };\n"
+    "globalThis.__lordKey = () => {};\n"
+    "lord.setRoot(root);\n"
+    "})();\n";
+
+/* Fills __lordRecovery = { kind, lang, refused: [paths] } and runs the recovery screen: in a fresh
+ * context (with the prelude), or in place over a running one (an isolated app whose own code was
+ * refused after its host started), where the old timers and frames are stopped first. */
+static int run_recovery(const char *kind, int inplace) {
+    JSValue g = JS_GetGlobalObject(ctx);
+    JSValue o = JS_NewObject(ctx), arr = JS_NewArray(ctx);
+    for (int i = 0; i < codesig_refused_count(); i++) JS_SetPropertyUint32(ctx, arr, (uint32_t)i, JS_NewString(ctx, codesig_refused(i)->path));
+    const char *lang = getenv("LANGUAGE");
+    if (!lang || !lang[0]) lang = getenv("LANG");
+    if (text_language()[0]) lang = text_language();     /* what the SDK showed until now (an app) */
+    char l[16] = "en";
+    if (lang && lang[0]) { snprintf(l, sizeof l, "%s", lang); l[strcspn(l, "_.:@")] = 0; }
+    JS_SetPropertyStr(ctx, o, "kind", JS_NewString(ctx, kind));
+    JS_SetPropertyStr(ctx, o, "lang", JS_NewString(ctx, l));
+    JS_SetPropertyStr(ctx, o, "refused", arr);
+    JS_SetPropertyStr(ctx, g, "__lordRecovery", o);
+    JS_FreeValue(ctx, g);
+    static const char stop[] = "globalThis.__lordTick = () => -1; globalThis.__lordWantsFrame = () => false; globalThis.__lordFrame = () => {};";
+    int r = inplace ? eval(stop, sizeof stop - 1, "<recovery>") : eval(prelude, sizeof prelude - 1, "<prelude>");
+    if (!r) r = eval(recovery_js, sizeof recovery_js - 1, "<recovery>");
+    fprintf(stderr, "js: recovery screen (%s): %d component(s) refused\n", kind, codesig_refused_count());
+    return r;
+}
+
+int js_init_recovery(int greeter) {
+    session_context();
+    return run_recovery(greeter ? "greeter" : "session", 0);
 }
 
 /* "App mode" (lord-server --app <id>): the same JS engine, but the `lord` object only has the
  * drawing primitives (local) plus the broker (fs/clipboard/perms through lord-server, which checks
  * the permissions). Loads the "app host" (React + SDK + the app), see app/appclient.c. */
-int js_init_app(const char *host_bundle, const char *app_id) {
-    char dir[1024];
-    snprintf(dir, sizeof dir, "%s", host_bundle);
-    snprintf(ui.theme_dir, sizeof ui.theme_dir, "%s", dirname(dir));
-    FILE *f = fopen(host_bundle, "rb");
-    if (!f) { perror(host_bundle); return -1; }
-    fseek(f, 0, SEEK_END);
-    long len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char *src = malloc((size_t)len + 1);
-    if (!src || fread(src, 1, (size_t)len, f) != (size_t)len) { fclose(f); free(src); return -1; }
-    src[len] = 0;
-    fclose(f);
-
+static void app_context(const char *app_id) {
     rt = JS_NewRuntime();
     JS_SetMemoryLimit(rt, 256u << 20);
     JS_SetMaxStackSize(rt, 4u << 20);
@@ -470,13 +556,36 @@ int js_init_app(const char *host_bundle, const char *app_id) {
     js_wasm_register(ctx, g);                      /* WebAssembly for the app's loadWasm */
     JS_SetPropertyStr(ctx, g, "lord", lord);
     JS_FreeValue(ctx, g);
+}
 
+int js_init_app(const char *host_bundle, const char *app_id) {
+    char dir[1024];
+    snprintf(dir, sizeof dir, "%s", host_bundle);
+    snprintf(ui.theme_dir, sizeof ui.theme_dir, "%s", dirname(dir));
+    size_t len = 0;
+    int refused = 0;
+    char *src = load_code(host_bundle, &len, &refused);
+    if (!src) {
+        if (!refused) return -1;
+        app_context(app_id);                       /* the window shows why instead of closing */
+        run_recovery("app", 0);
+        return JS_REFUSED;
+    }
+    app_context(app_id);
     double t0 = now_ms();
     int r = eval(prelude, sizeof prelude - 1, "<prelude>");
-    if (!r) r = eval(src, (size_t)len, host_bundle);
+    if (!r) r = eval(src, len, host_bundle);
     fprintf(stderr, "js: app %s loaded in %.1f ms\n", app_id, now_ms() - t0);
     free(src);
     return r;
+}
+
+/* The app's own code was refused after the host loaded (assets/sysapps/<id>/app.js): the same
+ * recovery screen in the app's window, drawn over the running context (freeing it from here would
+ * leave the broker's and the windows' references dangling). */
+int js_app_recovery(void) {
+    if (!ctx) return -1;
+    return run_recovery("app", 1);
 }
 
 void js_shutdown(void) {

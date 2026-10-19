@@ -17,6 +17,8 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include "../sec/codesig.h"
+
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,7 +33,11 @@ static uint32_t next_req = 1;
 static char app_id[48];
 static char pkg_dir[PATH_MAX];   /* carpeta del paquete (solo lectura); se fija antes de la caja de arena */
 
-void js_broker_set_pkgdir(const char *dir) { snprintf(pkg_dir, sizeof pkg_dir, "%s", dir); }
+static int pkg_system;           /* 1: a system app (assets/sysapps): its app.js is LordOS code, checked */
+static int code_refused;         /* its app.js was refused by the verified-code check */
+
+void js_broker_set_pkgdir(const char *dir, int system) { snprintf(pkg_dir, sizeof pkg_dir, "%s", dir); pkg_system = system == 1; }
+int js_broker_code_refused(void) { return code_refused; }
 
 static char *pkg_read(const char *rel, size_t max, size_t *len);
 
@@ -620,7 +626,19 @@ static JSValue f_pkg_file(JSContext *c, JSValueConst t, int argc, JSValueConst *
 static JSValue f_load_app(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc; (void)argv;
     size_t len = 0;
-    char *src = pkg_read("app.js", 16u * 1024 * 1024, &len);
+    char *src;
+    if (pkg_system && code_refused) return js_throw_code(c, "app.codeRefused", NULL);
+    if (pkg_system) {
+        /* a system app: the same check as the theme (sec/codesig.c), from one descriptor */
+        char path[PATH_MAX + 16];
+        snprintf(path, sizeof path, "%s/app.js", pkg_dir);
+        int before = codesig_refused_count();
+        src = codesig_load(path, 16u * 1024 * 1024, &len, NULL, 0);
+        if (!src && (codesig_refused_count() > before || codesig_state() == CODE_INVALID)) {
+            code_refused = 1;                      /* appclient.c shows the recovery screen */
+            return js_throw_code(c, "app.codeRefused", NULL);
+        }
+    } else src = pkg_read("app.js", 16u * 1024 * 1024, &len);
     if (!src) return js_throw_code(c, "app.loadFailed", NULL);
     JSValue r = JS_Eval(c, src, len, "app.js", JS_EVAL_TYPE_GLOBAL);
     free(src);

@@ -54,8 +54,10 @@ export { packages, packageList, refreshPackages, packageFile, loadWasm } from '.
 import { refreshPackages } from './packages.js';
 export {
   windows, wm, useWindows, configureWindows, getApp, listApps, isLiveSystem, appIdOf, workArea, workAreaOf, pointerWorkArea, appMenus, useAppMenus, windowTitle, appRegistry, appMenuClick,
-  registerBuiltinApp,
+  registerBuiltinApp, isSystemApp,
 } from './windows.js';
+export { codeStatus } from './codesig.js';
+import { reportRefusedCode } from './codesig.js';
 export { WindowShell, WINDOW_EDGE } from './windowshell.jsx';
 export { term } from './terminal.js';
 export { clipboard, clipboardHistory, clipboardPanel, clipboardKind } from './clipboard.js';
@@ -172,6 +174,7 @@ export function startShell(element) {
   startReminders();                     // calendar and reminder alarms, with the apps closed
   maybeStartTour();                     // "Welcome to LordOS", the first time
   startHardware();                      // Night Light, idle timers, battery in the menu bar (hardware.jsx)
+  setTimeout(reportRefusedCode, 800);   // "This LordOS component was modified and was not loaded" (docs/SIGNING.md)
 }
 
 // Changing the language remounts the whole interface (windows, tabs and

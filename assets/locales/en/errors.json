@@ -558,5 +558,6 @@
   "proc.denied": "Not allowed to stop this process",
   "proc.failed": "Could not stop the process",
   "proc.badArgument": "Invalid process request",
-  "proc.notOwn": "This process belongs to another user"
+  "proc.notOwn": "This process belongs to another user",
+  "app.codeRefused": "This app's code was modified and was not loaded"
 }

@@ -148,5 +148,6 @@
     "other": "Debian updates ({count})"
   },
   "updates.auto": "Check for updates automatically",
-  "updates.autoHint": "Once a day, and only to tell you. Nothing is installed without asking."
+  "updates.autoHint": "Once a day, and only to tell you. Nothing is installed without asking.",
+  "systemApp": "System app — part of LordOS"
 }
