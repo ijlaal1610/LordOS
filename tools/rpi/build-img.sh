@@ -81,7 +81,7 @@ PKGS_RPI_EXTRA="rpi-eeprom raspi-utils"
 # per flavour; otherwise Raspberry Pi's.
 OWN_KDEBS=""; ARCHIVE_K=""; OWN_FLAVOURS=""
 for fl in 2712 v8; do
-    d=$(ls "$KERNEL_DEBS"/linux-image-*-lordos-rpi-${fl}_*_arm64.deb 2>/dev/null | sort -V | tail -1 || true)
+    d=$(ls "$KERNEL_DEBS"/linux-image-*-lordos*-rpi-${fl}_*_arm64.deb 2>/dev/null | sort -V | tail -1 || true)
     if [ -n "$d" ]; then OWN_KDEBS="$OWN_KDEBS $d"; OWN_FLAVOURS="$OWN_FLAVOURS $fl"
     else ARCHIVE_K="$ARCHIVE_K linux-image-rpi-$fl"; fi
 done
@@ -107,7 +107,7 @@ kernel_warning() {
     echo "##########################################################################################" >&2
 }
 for fl in 2712 v8; do
-    case " $OWN_FLAVOURS " in *" $fl "*) echo "   kernel rpi-$fl: LordOS build ($(basename "$(ls "$KERNEL_DEBS"/linux-image-*-lordos-rpi-${fl}_*_arm64.deb | sort -V | tail -1)"))" ;;
+    case " $OWN_FLAVOURS " in *" $fl "*) echo "   kernel rpi-$fl: LordOS build ($(basename "$(ls "$KERNEL_DEBS"/linux-image-*-lordos*-rpi-${fl}_*_arm64.deb | sort -V | tail -1)"))" ;;
         *) kernel_warning "$fl" ;; esac
 done
 umount_tree() {
@@ -254,7 +254,7 @@ if [ -n "$OWN_KDEBS" ]; then
     {
         echo "# LordOS on Raspberry Pi: the kernel is LordOS's build of the Raspberry Pi kernel (Landlock, BPF LSM,"
         echo "# tools/rpi/build-kernel.sh, docs/RASPBERRY.md). Raspberry Pi's kernel packages for the same"
-        echo "# board are never installed over it; LordOS updates ship as new linux-image-*-lordos-rpi-* packages."
+        echo "# board are never installed over it; LordOS updates ship as new linux-image-*-lordos*-rpi-* packages."
         for fl in $OWN_FLAVOURS; do
             echo
             echo "Package: linux-image-rpi-$fl linux-image-*+rpt-rpi-$fl linux-headers-rpi-$fl linux-headers-*+rpt-rpi-$fl"
@@ -331,6 +331,11 @@ for kv in $KV2712 $KV8; do
     if grep -q '^CONFIG_BPF_LSM=y' "$CH/boot/config-$kv" 2>/dev/null && grep -q '^CONFIG_DEBUG_INFO_BTF=y' "$CH/boot/config-$kv"; then
         echo "   kernel $kv: BPF LSM and BTF built in"
     else echo "   WARNING: kernel $kv has no BPF LSM/BTF (\"No Bluetooth\" for Linux apps not enforced on that board)" >&2; fi
+    # sock_diag SOCK_DESTROY (6.18.57-3+lordos, 0.8.4): the firewall closes the connections a new rule denies
+    if grep -q '^CONFIG_INET_DIAG_DESTROY=y' "$CH/boot/config-$kv" 2>/dev/null &&
+       [ "$(grep -Ec '^CONFIG_INET_(TCP|UDP)_DIAG=[ym]' "$CH/boot/config-$kv")" = 2 ]; then
+        echo "   kernel $kv: sock_diag SOCK_DESTROY built in"
+    else echo "   WARNING: kernel $kv has no INET_DIAG_DESTROY/INET_UDP_DIAG (blocked connections stall instead of closing)" >&2; fi
 done
 # boot splash: the LordOS theme, and vc4 (HDMI) with DRM in the initramfs so Plymouth draws from the
 # first seconds instead of waiting for the root file system. Plymouth's own hook adds the rest of

@@ -219,6 +219,13 @@ leave the board unbootable with no way back from the Store. It goes into the rep
 image boots new kernels through the firmware's `tryboot` first and keeps the previous one as the
 fallback. The `lordos` package itself updates on the Pi like anywhere else (arm64).
 
+Since `6.18.57-3+lordos` (0.8.4) each kernel revision is its own release and package
+(`linux-image-6.18.57-lordos.3-rpi-2712`), so a new one installs next to the previous one instead of
+over it, and the previous one stays bootable from its own folder on `bootfs` (`RASPBERRY.md`,
+"Switching kernels on a board"). That is the package side of the repository path; the automatic
+`tryboot` first boot is still missing, so the kernel stays out of the repository (staging and live)
+for now.
+
 ## Tests (2026-10-18)
 
 - **Staging** (`https://lordos.org/apt-staging`, built and signed on the Mac with `apt-repo.sh`):

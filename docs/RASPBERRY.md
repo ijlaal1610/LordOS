@@ -17,6 +17,14 @@ This document gathers what's needed to build the image, write it, develop on the
 > LordOS kernel"), **switch files** on the boot partition (`ssh`, `remote-desktop`, Wi-Fi in
 > `lordos-user.txt`; see "Switch files") and a post-flash check (`verify-board`, see "After
 > flashing"). Built on the board; it is verified by booting the reflashed card.
+>
+> **Update (2026-10-19, 0.8.4):** `build-kernel.sh` now builds revision 3,
+> **`6.18.57-lordos.3-rpi-2712`** (`6.18.57-3+lordos`): the same source and options plus sock_diag
+> `SOCK_DESTROY` (`INET_DIAG_DESTROY`, `INET_UDP_DIAG`), so the firewall closes the connections a new
+> rule denies instead of leaving them stalled. Each kernel revision now has its own release, so the
+> previous one stays installed and bootable (see "Switching kernels on a board"). Cross-compiled on
+> VM 116, installed on the Pi 5 and verified there: `verify-board`, the firewall cut test (15/15,
+> TCP and QUIC closed in 0.04–0.37 s) and `make -C server test`.
 
 ## Models
 
@@ -118,19 +126,33 @@ what LordOS needs:
 sudo apt-get install -y --no-install-recommends build-essential bc bison flex libssl-dev libelf-dev \
   libdw-dev dwarves cpio kmod rsync dpkg-dev debhelper git
 tools/rpi/build-kernel.sh /var/tmp/lordos-kernel all     # 2712 (Pi 5), v8 (Pi 4), or all
-# → /var/tmp/lordos-kernel/out/linux-image-6.18.57-lordos-rpi-2712_6.18.57-2+lordos_arm64.deb, …
+# → /var/tmp/lordos-kernel/out/linux-image-6.18.57-lordos.3-rpi-2712_6.18.57-3+lordos_arm64.deb, …
+
+# or cross-compiled on an x86-64 Debian 13 (VM 116: 4 vCPU, 4 GB RAM; 67 min for 2712), the same
+# packages plus the cross compiler and the arm64 libc headers (for the headers package's tools)
+sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+RPI_KERNEL_REF=234188315037848e5b07d65b85d38edc64095caa tools/rpi/build-kernel.sh /var/tmp/pik-kernel 2712
 ```
+
+The script cross-compiles by itself when the host isn't arm64 (`CROSS_COMPILE=aarch64-linux-gnu-`,
+and `DPKG_FLAGS=-d`: `dpkg-buildpackage` would otherwise ask for arm64 build dependencies the kernel
+doesn't use). The 0.8.4 packages were built that way: same commit, same `.config` (the diff
+against the defconfig is identical to a native build's apart from the release name), same package
+size as the native `-2` (43 MB). With 4 GB of RAM a temporary 4 GB swap file was added for the
+final link; the work folder peaked at about 16 GB. Don't build on the Pi in a tmpfs or with less
+than 10 GB free on its SD card.
 
 - **Source:** `github.com/raspberrypi/linux`, branch `rpi-6.18.y` (`RPI_KERNEL_BRANCH`;
   `RPI_KERNEL_REF=<commit>` pins one). The first build (2026-10-18) used commit `234188315037`,
   kernel **6.18.57**; the archive shipped 6.18.50 at the time. The 0.8.1 rebuild (`-2+lordos`, BPF
-  LSM and BTF) uses the same commit. `out/SOURCE` records it.
+  LSM and BTF) and the 0.8.4 one (`-3+lordos`, sock_diag `SOCK_DESTROY`) use the same commit.
+  `out/SOURCE` records it.
 - **Config:** `bcm2712_defconfig` (Pi 5, 16K pages) or `bcm2711_defconfig` (Pi 4, 4K pages), then
   `scripts/config` and `olddefconfig`. The whole diff against the defconfig (`out/config-*.diff`):
 
   ```diff
   -CONFIG_LOCALVERSION="-v8-16k"
-  +CONFIG_LOCALVERSION="-lordos-rpi-2712"
+  +CONFIG_LOCALVERSION="-lordos.3-rpi-2712"
   -# CONFIG_SECURITY_LANDLOCK is not set
   +CONFIG_SECURITY_LANDLOCK=y
   -CONFIG_LSM=""
@@ -144,6 +166,10 @@ tools/rpi/build-kernel.sh /var/tmp/lordos-kernel all     # 2712 (Pi 5), v8 (Pi 4
   +CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y
   +CONFIG_DEBUG_INFO_BTF=y
   +CONFIG_DEBUG_INFO_BTF_MODULES=y
+  -# CONFIG_INET_UDP_DIAG is not set
+  +CONFIG_INET_UDP_DIAG=m
+  -# CONFIG_INET_DIAG_DESTROY is not set
+  +CONFIG_INET_DIAG_DESTROY=y
   ```
 
   plus what `olddefconfig` derives from those (`PAHOLE_HAS_SPLIT_BTF`, `PROBE_EVENTS_BTF_ARGS`,
@@ -164,14 +190,34 @@ tools/rpi/build-kernel.sh /var/tmp/lordos-kernel all     # 2712 (Pi 5), v8 (Pi 4
   (`DEB_BUILD_PROFILES=pkg.linux-lordos-rpi-<flavour>.nokerneldbg`), so the package hardly grows.
   The script checks `vmlinux` has a `.BTF` section. The build needs about 10 GB free while it runs
   (the object files carry DWARF) and takes about 50 % longer.
+- **sock_diag `SOCK_DESTROY` (0.8.4, `-3+lordos`).** When a rule changes to deny, `lord-netperm`
+  drops the packets of the app's open connections and destroys its TCP and connected UDP (QUIC)
+  sockets over sock_diag netlink, so the app sees the connection end (`FIREWALL.md`, "Existing
+  connections are cut"). Destroying needs `CONFIG_INET_DIAG_DESTROY` (TCP) and `CONFIG_INET_UDP_DIAG`
+  (UDP); `INET_DIAG` and `INET_TCP_DIAG` are already modules in the defconfig (enforced too), and the
+  kernel loads them when `lord-netperm` opens its sock_diag socket. Raspberry Pi's defconfig leaves
+  the other two off. The options were in `build-kernel.sh` since 0.8.3, but the 0.8.3 image kept
+  0.8.2's `-2+lordos` kernel, so on the Pi the connections stalled until the app's own timeout (the
+  journal says `the kernel can't destroy TCP sockets`). The script checks `INET_DIAG_DESTROY` stuck,
+  `build-img.sh` and `verify-board` check the kernel config.
 - **Already in the defconfig, checked by the script** so a future defconfig can't drop them:
   `SECCOMP_FILTER` (sandbox.c), cgroup v2 with `MEMCG`, `CGROUP_PIDS` and `CGROUP_SCHED` (per-app
   limits; `cgroup_enable=memory` is in `cmdline.txt` because Raspberry Pi turns memcg off at boot),
   and `BPF_SYSCALL`, `BPF_JIT`, `CGROUP_BPF` (lord-netperm's cgroup hooks). `USER_NS` stays as
   Raspberry Pi has it, on (the launcher's own view for restricted Linux apps uses it).
-- **Packages:** `make bindeb-pkg`, version `6.18.57-2+lordos` (`LORDOS_KREV`; `-1` was 0.8.0's,
-  without the BPF LSM), release `6.18.57-lordos-rpi-2712`
-  (`-lordos-rpi-v8` for the Pi 4). The `-rpi-<flavour>` suffix is what `raspi-firmware`'s hook keys
+- **Packages:** `make bindeb-pkg`, version `6.18.57-3+lordos` (`LORDOS_KREV`; `-1` was 0.8.0's,
+  without the BPF LSM, `-2` 0.8.1's, without `SOCK_DESTROY`), release `6.18.57-lordos.3-rpi-2712`
+  (`-lordos.3-rpi-v8` for the Pi 4).
+  - **One release per revision (since `-3`).** Revisions 1 and 2 were both
+    `6.18.57-lordos-rpi-2712`, so a new revision replaced the old one's `vmlinuz` and
+    `/lib/modules` in place: the old kernel couldn't stay bootable, since with `MODVERSIONS` and
+    `DEBUG_INFO_BTF_MODULES` (without `MODULE_ALLOW_BTF_MISMATCH`) a kernel refuses another build's
+    modules, Wi-Fi among them. Now `-lordos.<rev>-rpi-<flavour>` is its own package
+    (`linux-image-6.18.57-lordos.3-rpi-2712`) next to the previous one, as Debian does with its ABI
+    numbers. The `.<rev>` form is chosen for the order: `sort -V` (the hook's "newest") puts
+    `-lordos.3-` after `-lordos-`, while `-lordos3-` or `-3-lordos-` would sort before it and the
+    hook would keep copying the old kernel.
+  - The `-rpi-<flavour>` suffix is what `raspi-firmware`'s hook keys
   on, so it installs exactly like Raspberry Pi's: `kernel_2712.img`, initramfs, device trees and
   overlays in `/boot/firmware`. The script checks the package carries the device trees and
   overlays. Headers are built too (`linux-headers-*`), not put in the image.
@@ -191,6 +237,42 @@ tools/rpi/build-kernel.sh /var/tmp/lordos-kernel all     # 2712 (Pi 5), v8 (Pi 4
   `vmlinuz-*-rpi-2712`" and boot without Landlock. Kernel updates come as new LordOS packages.
 - **Per flavour:** if only the 2712 kernel was built, the Pi 4 kernel comes from the archive (with
   a warning, and without the pin).
+
+### Switching kernels on a board
+
+The firmware reads `config.txt` on `bootfs`; `os_prefix=<folder>/` makes it take the kernel,
+initramfs, `cmdline.txt`, device trees and overlays from that folder instead of the top level. On
+an installed system the top level is always what the packages put there: the newest LordOS kernel
+(`raspi-firmware`'s hook copies it on every install). The previous kernel stays installed (its own
+`/lib/modules`) and its boot files go in a folder, `lordos-prev/`:
+
+```sh
+# keep the running kernel's boot files before installing a new one (once per revision)
+K=$(uname -r); D=/boot/firmware/lordos-prev
+sudo mkdir -p $D/overlays && sudo cp /boot/vmlinuz-$K $D/kernel_2712.img && sudo cp /boot/initrd.img-$K $D/initramfs_2712
+sudo cp /boot/firmware/cmdline.txt $D/ && sudo cp /usr/lib/linux-image-$K/broadcom/bcm27*.dtb $D/
+sudo cp /usr/lib/linux-image-$K/overlays/* $D/overlays/
+sudo dpkg -i linux-image-6.18.57-lordos.3-rpi-2712_6.18.57-3+lordos_arm64.deb   # the hook: top level = new
+# first boot of the new kernel only once: tryboot.txt = config.txt without os_prefix
+sudo reboot "0 tryboot"         # if it doesn't come up, any reset boots config.txt again
+```
+
+- **Use the new kernel:** `config.txt` without `os_prefix` (the image's default).
+- **Back to the previous kernel:** add, at the end of `config.txt` (it's on the FAT partition, so
+  any computer with a card reader can edit it if the board doesn't boot):
+
+  ```
+  [all]
+  os_prefix=lordos-prev/
+  ```
+
+  Removing those two lines boots the new kernel again. To try the previous one **once** without
+  editing `config.txt`, put that line in `tryboot.txt` (a copy of `config.txt`) and
+  `sudo reboot "0 tryboot"`; the next reset is back on the top level.
+- `uname -r` tells them apart: `6.18.57-lordos.3-rpi-2712` (0.8.4) or `6.18.57-lordos-rpi-2712`
+  (0.8.1–0.8.3's `-2+lordos`).
+- The Pi 5 used for development (2026-10-19) has exactly this: the top level is `-3`,
+  `lordos-prev/` is `-2`, and `tryboot.txt` boots `lordos-prev/` once. Both were booted and checked.
 
 ### Packages to build it
 
@@ -452,7 +534,8 @@ sudo /usr/lib/lordos/rpi/verify-board --repo ~/LordOS  # plus make -C server tes
 
 | Check | PASS when |
 |---|---|
-| kernel | `uname -r` is a `-lordos-rpi-*` kernel; page size 16K on the Pi 5 (4K with `-rpi-v8`) |
+| kernel | `uname -r` is a `-lordos-rpi-*` or `-lordos.<rev>-rpi-*` kernel; page size 16K on the Pi 5 (4K with `-rpi-v8`) |
+| socket destroy | the kernel config has `INET_DIAG_DESTROY`, `INET_TCP_DIAG` and `INET_UDP_DIAG` (the firewall closes the connections a new rule denies) |
 | Landlock | `/sys/kernel/security/lsm` lists `landlock`; the kernel log says `landlock: Up and running`; the kernel config has `SECURITY_LANDLOCK`, `SECCOMP_FILTER`, `CGROUP_BPF`, `BPF_SYSCALL`, `MEMCG` |
 | BPF LSM, BTF | `bpf` in `/sys/kernel/security/lsm`; `/sys/kernel/btf/vmlinux` present; the kernel config has `BPF_LSM` and `DEBUG_INFO_BTF`; `lord-netperm` active |
 | seccomp, cgroups | seccomp available; the cgroup v2 `memory` controller is on (`cgroup_enable=memory`) |

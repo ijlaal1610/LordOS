@@ -772,10 +772,11 @@ per address at index 5) and the app's detail shows "Blocked traffic". The counte
 second, so the row shows the block within a second.
 
 **Kernels:** `SOCK_DESTROY` needs `CONFIG_INET_DIAG_DESTROY` (TCP) and `CONFIG_INET_UDP_DIAG` (UDP).
-Debian 13's kernel (6.12) has both. The Raspberry Pi kernel of the 0.8.2 image doesn't:
-`tools/rpi/build-kernel.sh` enables them from 0.8.3 on; with an older kernel the drop still
-applies and the journal says once that the app will see a stall (TCP retransmits until it gives
-up) instead of a reset. All 11 programs pass the verifier on 6.12 (VM 118) and on the Pi's
+Debian 13's kernel (6.12) has both. The Raspberry Pi kernel of the 0.8.2 and 0.8.3 images
+(`6.18.57-2+lordos`) doesn't; the LordOS Pi kernel has them since `6.18.57-3+lordos`
+(`6.18.57-lordos.3-rpi-2712`, 0.8.4; `RASPBERRY.md`, "The LordOS kernel"). With an older kernel the
+drop still applies and the journal says once that the app will see a stall (TCP retransmits until
+it gives up) instead of a reset. All 11 programs pass the verifier on 6.12 (VM 118) and on the Pi's
 6.18.57 (`npverify-test`, built and run in a temporary folder, removed afterwards).
 
 **Tests** (`tests/netperm_cut.sh`, VM 118, real network):

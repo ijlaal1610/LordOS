@@ -3,21 +3,26 @@
 # plus what LordOS needs that it lacks (Landlock, the BPF LSM and BTF). See docs/RASPBERRY.md,
 # "The LordOS kernel".
 #
-# Usage (on an arm64 Debian 13, ideally the Pi itself; about 75 min per flavour on a Pi 5, and
-# ~10 GB free in the work folder while one flavour builds: BTF needs the DWARF debug info):
+# Usage (on an arm64 Debian 13, e.g. the Pi itself, about 75 min per flavour on a Pi 5; or cross on
+# an x86-64 Debian 13 with gcc-aarch64-linux-gnu; ~10 GB free in the work folder while one flavour
+# builds: BTF needs the DWARF debug info):
 #   tools/rpi/build-kernel.sh [work folder] [2712|v8|all]     # default /var/tmp/lordos-kernel 2712
 #
 # Result: <work>/out/linux-image-<release>_<version>_arm64.deb (+ linux-headers-…), where
-#   <release> = <upstream version>-lordos-rpi-2712   (Pi 5: bcm2712_defconfig, 16K pages)
-#               <upstream version>-lordos-rpi-v8     (Pi 4/400/CM4: bcm2711_defconfig, 4K pages)
+#   <release> = <upstream version>-lordos.<rev>-rpi-2712   (Pi 5: bcm2712_defconfig, 16K pages)
+#               <upstream version>-lordos.<rev>-rpi-v8     (Pi 4/400/CM4: bcm2711_defconfig, 4K pages)
+# <rev> is LORDOS_KREV, so each revision is its own kernel release (own /lib/modules, own vmlinuz):
+# the previous one stays installed and bootable next to it, as with Debian's ABI bumps. Revisions 1
+# and 2 (0.8.0 to 0.8.3) were "-lordos-rpi-<flavour>"; "-lordos.<rev>" sorts after that in sort -V
+# (the hook's "newest"), "-lordos<rev>" or "-<rev>-lordos" would sort before it.
 # The "-rpi-<flavour>" suffix is what raspi-firmware's kernel hook keys on (it copies the newest
 # vmlinuz-*-rpi-2712 to kernel_2712.img and the device trees to /boot/firmware), so the package
 # installs exactly like Raspberry Pi's own. tools/rpi/build-img.sh picks these .debs up from
 # $KERNEL_DEBS (default /var/tmp/lordos-kernel/out).
 #
 # Variables: RPI_KERNEL_REPO (default the Raspberry Pi GitHub tree), RPI_KERNEL_BRANCH (rpi-6.18.y),
-# RPI_KERNEL_REF (a commit to pin; default the branch head), LORDOS_KREV (package revision, 2 since
-# 0.8.1: the BPF LSM and BTF were added to 6.18.57-1),
+# RPI_KERNEL_REF (a commit to pin; default the branch head), LORDOS_KREV (package revision: 3 since
+# 0.8.4, sock_diag SOCK_DESTROY; 2 was 0.8.1's, the BPF LSM and BTF; 1 was 0.8.0's),
 # JOBS (default nproc). Building packages needs: build-essential bc bison flex libssl-dev
 # libelf-dev libdw-dev dwarves (pahole, for BTF) cpio kmod rsync dpkg-dev debhelper git.
 set -eu
@@ -27,7 +32,7 @@ FLAVOURS=${2:-2712}
 REPO=${RPI_KERNEL_REPO:-https://github.com/raspberrypi/linux.git}
 BRANCH=${RPI_KERNEL_BRANCH:-rpi-6.18.y}
 REF=${RPI_KERNEL_REF:-}
-KREV=${LORDOS_KREV:-2}
+KREV=${LORDOS_KREV:-3}
 JOBS=${JOBS:-$(nproc)}
 SRC="$WORK/linux"
 OUT="$WORK/out"
@@ -37,7 +42,12 @@ case "$(uname -m)" in
     aarch64|arm64) CROSS="" ;;
     *) command -v aarch64-linux-gnu-gcc >/dev/null || {
            echo "build-kernel.sh: not arm64 and no aarch64-linux-gnu-gcc (gcc-aarch64-linux-gnu)" >&2; exit 1; }
-       CROSS="CROSS_COMPILE=aarch64-linux-gnu-" ;;
+       # the headers package builds its host tools (fixdep, …) for arm64: needs the arm64 libc headers
+       [ -f /usr/aarch64-linux-gnu/include/sys/types.h ] || {
+           echo "build-kernel.sh: no arm64 libc headers (libc6-dev-arm64-cross)" >&2; exit 1; }
+       # cross build (x86-64 Debian 13, e.g. VM 116): dpkg-buildpackage would ask for the arm64
+       # build dependencies (libssl-dev:arm64, …); the kernel only needs the native ones, so -d
+       CROSS="CROSS_COMPILE=aarch64-linux-gnu- DPKG_FLAGS=-d" ;;
 esac
 for t in git make gcc bc bison flex dpkg-deb dpkg-buildpackage dh rsync cpio pahole readelf; do
     command -v "$t" >/dev/null || { echo "build-kernel.sh: missing $t" >&2; exit 1; }
@@ -76,7 +86,7 @@ for FL in $FLAVOURS; do
         *) echo "build-kernel.sh: unknown flavour $FL (2712, v8 or all)" >&2; exit 1 ;;
     esac
     B="$WORK/build-$FL"
-    LV="-lordos-rpi-$FL"
+    LV="-lordos.$KREV-rpi-$FL"
     echo "== $FL: $DEFCONFIG -> $KV$LV"
     mkdir -p "$B"
     # shellcheck disable=SC2086
