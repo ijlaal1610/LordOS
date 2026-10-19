@@ -74,6 +74,8 @@ install -D -m 644 tools/iso/rootfs/etc/wireplumber/wireplumber.conf.d/lordos-blu
 install -D -m 644 tools/iso/rootfs/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf "$PKG/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf"
 # in a virtual machine only: more headroom for emulated sound cards (docs/SOUND.md, "Virtual machines")
 install -D -m 644 tools/iso/rootfs/etc/wireplumber/wireplumber.conf.d/lordos-vm-audio.conf "$PKG/etc/wireplumber/wireplumber.conf.d/lordos-vm-audio.conf"
+# vmwgfx only on VMware itself; elsewhere it removes the firmware framebuffer and fails (docs/ISO.md)
+install -D -m 644 tools/iso/rootfs/etc/modprobe.d/lordos-vmwgfx.conf "$PKG/etc/modprobe.d/lordos-vmwgfx.conf"
 # remote login (SSH) defaults, read only once openssh-server is installed (docs/REMOTE.md)
 install -D -m 644 tools/iso/rootfs/etc/ssh/sshd_config.d/10-lordos.conf "$PKG/etc/ssh/sshd_config.d/10-lordos.conf"
 # a process may only trace its own descendants: a restricted Linux app must not take over an
