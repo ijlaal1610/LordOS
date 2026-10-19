@@ -122,5 +122,7 @@
   "ssh.saved": "Configurações salvas",
   "hw.firmwareChecked": "Firmware verificado",
   "remote.blocked": "{address} bloqueado",
-  "remote.unblocked": "{address} desbloqueado"
+  "remote.unblocked": "{address} desbloqueado",
+  "remote.failures": "{count} entradas com erro",
+  "remote.failure": "Entrada com erro de {user} de {key} ({count})"
 }

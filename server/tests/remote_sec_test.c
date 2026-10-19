@@ -352,7 +352,39 @@ static void test_ipnet(void) {
     rs_cidr_parse("10.9.9.9", &c);
     CHECK(rs_access_add(acc.block, &acc.nblock, &c) == -1);
     CHECK(rs_net_mode("lan") == RS_NET_LAN && rs_net_mode("any") == RS_NET_ANY && rs_net_mode("list") == RS_NET_LIST && rs_net_mode("all") < 0);
-    CHECK(rs_vpn_ifname("wg-home") && rs_vpn_ifname("ovpn-work") && rs_vpn_ifname("tun0") && !rs_vpn_ifname("eth0") && !rs_vpn_ifname("wlan0"));
+    /* VPN interfaces: only the names LordOS's VPN manager gives */
+    CHECK(rs_vpn_ifname("wg-home") && rs_vpn_ifname("ovpn-work") && rs_vpn_ifname("ips-office") && rs_vpn_ifname("ppp-pptp") &&
+          rs_vpn_ifname("oc-corp") && rs_vpn_ifname("fvpn-x"));
+    CHECK(!rs_vpn_ifname("ppp0") && !rs_vpn_ifname("tun0") && !rs_vpn_ifname("wg0") && !rs_vpn_ifname("eth0") &&
+          !rs_vpn_ifname("wlan0") && !rs_vpn_ifname("wg-") && !rs_vpn_ifname(NULL));
+    {
+        RsAddr ifa, peer, ptp, other;
+        rs_addr_parse("10.8.0.2", &ifa);                                              /* wg-home 10.8.0.2/24 */
+        rs_addr_parse("10.8.0.7", &peer);
+        CHECK(rs_vpn_accepts("wg-home", &ifa, 96 + 24, NULL, &ifa, &peer));           /* in its subnet: OK */
+        rs_addr_parse("203.0.113.9", &peer);
+        CHECK(!rs_vpn_accepts("wg-home", &ifa, 96 + 24, NULL, &ifa, &peer));          /* public, outside: no */
+        rs_addr_parse("10.8.0.7", &peer);
+        rs_addr_parse("192.168.1.2", &other);
+        CHECK(!rs_vpn_accepts("wg-home", &ifa, 96 + 24, NULL, &other, &peer));        /* arrived on another address */
+        CHECK(!rs_vpn_accepts("wg-home", &ifa, 96 + 0, NULL, &ifa, &peer));           /* a /0 "subnet": never */
+        rs_addr_parse("100.64.3.4", &ifa);                                            /* ppp0, PPPoE uplink */
+        rs_addr_parse("198.51.100.20", &peer);
+        CHECK(!rs_vpn_accepts("ppp0", &ifa, 96 + 32, &peer, &ifa, &peer));            /* a public peer on ppp0: no */
+        rs_addr_parse("10.20.0.1", &ptp);                                             /* ppp-pptp point to point */
+        rs_addr_parse("10.20.0.2", &ifa);
+        CHECK(rs_vpn_accepts("ppp-pptp", &ifa, 96 + 32, &ptp, &ifa, &ptp));
+        CHECK(!rs_vpn_accepts("ppp-pptp", &ifa, 96 + 32, &ptp, &ifa, &peer));
+        /* in lan mode, the decision with that result */
+        RsAccess none;
+        memset(&none, 0, sizeof none);
+        CHECK(rs_access_decide(&none, RS_NET_LAN, &peer, rs_vpn_accepts("ppp0", &ifa, 96 + 32, &peer, &ifa, &peer)) == RS_ACC_NOT_ALLOWED);
+        rs_addr_parse("fd00:8::2", &ifa);
+        rs_addr_parse("fd00:8::9", &peer);
+        CHECK(rs_vpn_accepts("wg-v6", &ifa, 64, NULL, &ifa, &peer));
+        rs_addr_parse("2001:db8::9", &peer);
+        CHECK(!rs_vpn_accepts("wg-v6", &ifa, 64, NULL, &ifa, &peer));
+    }
 }
 
 static void test_lockout(void) {

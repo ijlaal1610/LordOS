@@ -293,7 +293,7 @@
   "sharing.allowPlaceholder": "Address or network, e.g. 192.168.1.0/24",
   "sharing.allowAdd": "Add",
   "sharing.remove": "Remove",
-  "sharing.blocked": "Blocked addresses",
+  "sharing.blocked": "Temporarily blocked",
   "sharing.blockedFooter": "An address is blocked after 3 failed sign-ins: for 15 minutes, then 1 hour, then 24 hours if it happens again within a day. You get a notification when it happens.",
   "sharing.blockedNone": "No address is blocked.",
   "sharing.blockedManual": "Blocked by an administrator",
@@ -301,5 +301,11 @@
   "sharing.unblock": "Unblock",
   "sharing.block": "Block",
   "sharing.blockPlaceholder": "Address or network to block",
-  "sharing.badAddress": "Write an IPv4 or IPv6 address, or a network such as 192.168.1.0/24 (at least /8; IPv6 at least /16)."
+  "sharing.badAddress": "Write an IPv4 or IPv6 address, or a network such as 192.168.1.0/24 (at least /8; IPv6 at least /16).",
+  "sharing.allowlist": "Allowlist",
+  "sharing.allowlistFooter": "Addresses and networks that may connect when \"Only these addresses\" is chosen. They still get blocked after 3 failed sign-ins.",
+  "sharing.blocklist": "Blocklist",
+  "sharing.blocklistFooter": "Always refused, before anything else, until you remove them.",
+  "sharing.listEmpty": "The list is empty.",
+  "sharing.blockForever": "Block permanently"
 }

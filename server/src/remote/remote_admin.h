@@ -12,6 +12,7 @@ void remote_act_kick(const AdminReq *r, const char *arg, size_t len);
 void remote_act_block(const AdminReq *r, const char *arg, size_t len);
 void remote_act_unblock(const AdminReq *r, const char *arg, size_t len);
 void remote_act_allow(const AdminReq *r, const char *arg, size_t len);
+void remote_act_failures(const AdminReq *r, const char *arg, size_t len);
 
 #define REMOTE_ADMIN_ACTIONS \
     { "remote-enable", remote_act_enable, A_FORK }, \
@@ -21,6 +22,7 @@ void remote_act_allow(const AdminReq *r, const char *arg, size_t len);
     { "remote-kick", remote_act_kick, 0 }, \
     { "remote-block", remote_act_block, 0 }, \
     { "remote-unblock", remote_act_unblock, 0 }, \
-    { "remote-allow", remote_act_allow, 0 },
+    { "remote-allow", remote_act_allow, 0 }, \
+    { "remote-failures", remote_act_failures, 0 },
 
 #endif

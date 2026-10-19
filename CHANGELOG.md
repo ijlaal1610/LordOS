@@ -50,11 +50,15 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   the selected sidebar row, an underline or a ring on the focused field, and bordered buttons. Lord
   Default looks as before; Classic uses smaller radii, borders and subtle highlights. Isolated
   apps (Mail, Calendar, Contacts, Reminders, Passwords) follow it too.
-- **Remote desktop: blocked and allowed addresses.** Settings → Sharing lists the addresses that
-  are blocked, with the time left and an **Unblock** button, blocks an address or network by hand,
-  and chooses who may connect: the **local network** (the default: private and link-local
-  addresses and connections that arrive over a VPN of this computer), **only these addresses**, or
-  **any address**. You get a notification when an address is blocked.
+- **Remote desktop: allowlist, blocklist and temporary blocks.** Settings → Sharing chooses who
+  may connect: the **local network** (the default: private and link-local addresses and
+  connections over a VPN of this computer), **only these addresses** (the allowlist), or **any
+  address**; keeps a **blocklist** of addresses and networks that are always refused; and lists the
+  **temporarily blocked** addresses with the time left, **Unblock** and **Block permanently**. You
+  get a notification when an address is blocked.
+- **Monitor → Network shows the remote desktop** as one more app while it's on: the browsers
+  connected with their traffic, the recent failed sign-ins (address and the name typed, for
+  administrators), the blocks and the lists, with Block and Unblock.
 
 ### Changed
 

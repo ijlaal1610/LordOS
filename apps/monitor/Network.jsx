@@ -22,6 +22,7 @@ import { MapView } from './MapView.jsx';
 import { TrafficChart, systemBuckets } from './TrafficChart.jsx';
 import { RuleSheet } from './RuleSheet.jsx';
 import { HistoryControls, HistoryChart, useHistory } from './History.jsx';
+import { REMOTE_KEY, RemoteDetail, remoteGroup, useRemoteDesktop } from './RemoteDesktop.jsx';
 
 export const appKeyOf = (c) => (c.self ? 'lordos' : c.app || c.exe || c.name || '?');
 const countryName = (cc) => (cc ? tOptional(`countries.${cc}`) || cc : '');
@@ -718,7 +719,11 @@ export function NetworkTab({ last, prefs }) {
   const sys = useSystemInfo(60000);
   const { apps: connApps } = useGroups(conns);
   const launcher = useLauncherApps();
-  const apps = useMemo(() => withFirewall(connApps, fw, launcher), [connApps, fw, launcher]);
+  const fwApps = useMemo(() => withFirewall(connApps, fw, launcher), [connApps, fw, launcher]);
+  // the remote desktop (lord-sessiond, root) as one more app while it's on (RemoteDesktop.jsx)
+  const rd = useRemoteDesktop();
+  const rdg = remoteGroup(rd, tr);
+  const apps = rdg ? [...fwApps, rdg].sort((a, b) => b.sent + b.recv - (a.sent + a.recv) || b.conns.length - a.conns.length) : fwApps;
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(() => new Set());
   const [selected, setSelected] = useState(null);       // app elegida (clave)
@@ -792,7 +797,7 @@ export function NetworkTab({ last, prefs }) {
       <View style={{ ...column, width: 270 }}>
         <ScrollView style={{ flex: 1, marginHorizontal: -12 }} contentStyle={{ paddingHorizontal: 12 }}>
           <View style={{ gap: 16 }}>
-            {selPlace ? <PlaceDetail p={selPlace} tr={tr} /> : sel ? (
+            {selPlace ? <PlaceDetail p={selPlace} tr={tr} /> : sel?.key === REMOTE_KEY ? <RemoteDetail rd={rd} Section={Section} KV={KV} tr={tr} /> : sel ? (
               <Detail g={sel} tr={tr} user={sys.user} names={names} host={host} onHost={setHost} hist={hist.get(sel.key)} range={range} end={end} onRule={(addr, action) => ruleFor(sel, addr, action)} />
             ) : <Summary groups={apps} conns={conns} last={last} tr={tr} fw={fw} names={names} range={range} sysHist={sysHist} launcher={launcher} />}
           </View>

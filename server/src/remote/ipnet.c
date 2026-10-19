@@ -208,7 +208,24 @@ int rs_access_decide(const RsAccess *acc, int mode, const RsAddr *peer, int via_
 }
 
 int rs_vpn_ifname(const char *name) {
-    static const char *const pre[] = { "wg-", "ovpn-", "ips-", "oc-", "fvpn-", "ppp", "tun", "wg", NULL };
-    for (int i = 0; pre[i]; i++) if (!strncmp(name, pre[i], strlen(pre[i]))) return 1;
+    /* exactly the names LordOS's VPN manager gives (vpn_ifname in server/src/net/wg.c): "<type>-<name>".
+     * Never a bare ppp0 (often a PPPoE internet uplink), tun0 or wg0, which anything can create. */
+    static const char *const pre[] = { "wg-", "ovpn-", "ips-", "ppp-", "oc-", "fvpn-", NULL };
+    if (!name) return 0;
+    for (int i = 0; pre[i]; i++) {
+        size_t l = strlen(pre[i]);
+        if (!strncmp(name, pre[i], l) && name[l]) return 1;
+    }
     return 0;
+}
+
+int rs_vpn_accepts(const char *ifname, const RsAddr *ifaddr, int prefix, const RsAddr *ptp, const RsAddr *local, const RsAddr *peer) {
+    if (!rs_vpn_ifname(ifname) || !ifaddr || !local || !peer) return 0;
+    if (memcmp(ifaddr->a, local->a, 16) || ifaddr->v4 != peer->v4) return 0;      /* arrived on that interface's address */
+    if (ptp && !memcmp(ptp->a, peer->a, 16)) return 1;                           /* its point-to-point peer */
+    /* inside its own subnet, and never a subnet so wide it means "anywhere" */
+    if (peer->v4 ? prefix < 96 + RS_MIN_PREFIX4 || prefix > 128 : prefix < RS_MIN_PREFIX6 || prefix > 128) return 0;
+    RsCidr c = { *ifaddr, prefix };
+    mask(&c.net, prefix);
+    return rs_cidr_contains(&c, peer);
 }

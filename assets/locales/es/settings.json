@@ -293,7 +293,7 @@
   "sharing.allowPlaceholder": "Dirección o red, p. ej. 192.168.1.0/24",
   "sharing.allowAdd": "Agregar",
   "sharing.remove": "Quitar",
-  "sharing.blocked": "Direcciones bloqueadas",
+  "sharing.blocked": "Bloqueadas temporalmente",
   "sharing.blockedFooter": "Una dirección queda bloqueada tras 3 ingresos fallidos: 15 minutos, luego 1 hora y luego 24 horas si se repite en el mismo día. Te llega una notificación cuando pasa.",
   "sharing.blockedNone": "No hay direcciones bloqueadas.",
   "sharing.blockedManual": "Bloqueada por un administrador",
@@ -301,5 +301,11 @@
   "sharing.unblock": "Desbloquear",
   "sharing.block": "Bloquear",
   "sharing.blockPlaceholder": "Dirección o red para bloquear",
-  "sharing.badAddress": "Escribí una dirección IPv4 o IPv6, o una red como 192.168.1.0/24 (al menos /8; IPv6 al menos /16)."
+  "sharing.badAddress": "Escribí una dirección IPv4 o IPv6, o una red como 192.168.1.0/24 (al menos /8; IPv6 al menos /16).",
+  "sharing.allowlist": "Lista de permitidas",
+  "sharing.allowlistFooter": "Direcciones y redes que pueden conectarse cuando se elige «Solo estas direcciones». Igual se bloquean tras 3 ingresos fallidos.",
+  "sharing.blocklist": "Lista de bloqueadas",
+  "sharing.blocklistFooter": "Siempre rechazadas, antes que cualquier otra regla, hasta que las quites.",
+  "sharing.listEmpty": "La lista está vacía.",
+  "sharing.blockForever": "Bloquear siempre"
 }

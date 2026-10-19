@@ -122,5 +122,7 @@
   "ssh.saved": "Settings saved",
   "hw.firmwareChecked": "Firmware checked",
   "remote.blocked": "{address} blocked",
-  "remote.unblocked": "{address} unblocked"
+  "remote.unblocked": "{address} unblocked",
+  "remote.failures": "{count} failed sign-ins",
+  "remote.failure": "Failed sign-in for {user} from {key} ({count})"
 }

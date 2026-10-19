@@ -288,3 +288,38 @@ void remote_act_allow(const AdminReq *r, const char *arg, size_t len) {
     reload_sessiond();
     admin_ok("remote.saved", NULL);
 }
+
+/* remote-failures: the recent failed sign-ins lord-sessiond keeps (Monitor → Network), read-only.
+ * One LOG code line per row, re-validated here: remote.failure key= count= first= last= user=. The user is
+ * what was typed in the name field, already cleaned to printable ASCII; passwords are never kept. */
+void remote_act_failures(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)arg;
+    if (len) { admin_err("admin.invalidArgument", NULL); return; }
+    char text[16384] = "";
+    int fd = open("/run/lordos/remote-failures", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    struct stat st;
+    if (fd >= 0 && !fstat(fd, &st) && S_ISREG(st.st_mode) && st.st_uid == 0 && !(st.st_mode & 077)) {
+        ssize_t n = read(fd, text, sizeof text - 1);
+        if (n > 0) text[n] = 0;
+    }
+    if (fd >= 0) close(fd);
+    int rows = 0;
+    for (char *line = strtok(text, "\n"); line && rows < 64; line = strtok(NULL, "\n")) {
+        char key[48], user[40] = "";
+        int count;
+        double first, last;
+        int used = 0;
+        RsCidr c;
+        if (line[0] == '#' || sscanf(line, "%47s %d %lf %lf %n", key, &count, &first, &last, &used) != 4 || !used) continue;
+        snprintf(user, sizeof user, "%.32s", line + used);
+        int ok = !rs_key_parse(key, &c) && count > 0 && count < 1000000 && first > 0 && last >= first && user[0];
+        for (const char *p = user; ok && *p; p++) if (*p < 0x20 || *p > 0x7e || *p == '"' || *p == '\\') ok = 0;
+        if (!ok) continue;
+        char f1[24], f2[24];
+        snprintf(f1, sizeof f1, "%.0f", first);
+        snprintf(f2, sizeof f2, "%.0f", last);
+        admin_log("remote.failure", "key", key, "count", lerr_int(count), "first", f1, "last", f2, "user", user, NULL);
+        rows++;
+    }
+    admin_ok("remote.failures", "count", lerr_int(rows), NULL);
+}

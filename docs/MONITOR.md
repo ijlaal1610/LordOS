@@ -107,6 +107,36 @@ server, and this app's rule is that no address leaves the machine.
 **"This computer"** is placed by the time zone (`/etc/localtime` → coordinates from
 `/usr/share/zoneinfo/zone1970.tab`), without the network.
 
+### Remote desktop (0.8.3)
+
+While the remote desktop is on (Settings → Sharing), it is one more row in the app list, **Remote
+desktop**, with the Sharing icon: its traffic bar and bytes, the number of browsers connected and,
+in the red badge, the failed sign-ins of the last 24 hours. `lord-sessiond` serves it as root,
+outside the session's apps, so its sockets never appear among them (they are counted in "From other
+users"); the row is built from `lord-sessiond`'s own state (`apps/monitor/RemoteDesktop.jsx`). Its
+Rule switch is fixed: the per-app firewall doesn't apply to it; its own lists do.
+
+The detail panel, in the same folding sections:
+
+- **Connected:** each browser's address, user, how long, and its traffic (bytes each way and the
+  current rate, reported by the bridge to its root parent every 2 s), with **Block**;
+- **Failed sign-ins:** address, the name that was typed (cleaned to printable ASCII), how many times
+  and when, with **Block**. Administrators only: it comes from the admin action `remote-failures`,
+  which re-validates every row; passwords are never kept anywhere;
+- **Temporarily blocked:** the lockout's blocks with the time left, **Unblock** and **Block
+  permanently**;
+- **Address lists:** the mode, the blocklist (with Unblock), the allowlist, and a field to block a
+  typed address or network.
+
+Every action is one of the fixed admin actions Settings uses (`remote-block`, `remote-unblock`;
+`sdk/remote.js` `remoteAccess`), validated again on the root side. Everything else is read-only:
+`/run/lordos/status.json` (clients, blocks, lists; no user names typed by strangers) through
+`lord.remote.status()`. See [REMOTE.md](REMOTE.md), "Blocked and allowed addresses".
+
+![Monitor → Network: the remote desktop (dark)](monitor-remote-desktop-dark.png)
+
+![The same in light mode](monitor-remote-desktop-light.png)
+
 ### Blocking cuts what is open (0.8.3)
 
 Switching an app's rule off (or a destination's switch, or adding a restriction) now also ends the

@@ -43,7 +43,12 @@ typedef struct { unsigned char hash[32], pwh[16]; uid_t uid; char user[33]; doub
  * monitor's session (RP_NOTICE) */
 typedef struct { char key[48]; double until, at; int strikes; } RdNotice;
 #define RD_NOTICES 8
-typedef struct { pid_t pid; char ip[48]; char user[33]; double since; } RdConn;
+typedef struct { pid_t pid; char ip[48]; char user[33]; double since; unsigned long long rx, tx; } RdConn;   /* rx/tx: bytes from/to the browser */
+/* Recent failed sign-ins (source, attempted name already cleaned to printable ASCII), for Monitor →
+ * Network through the admin action remote-failures (administrators only; never a password). */
+typedef struct { char key[48]; char user[33]; int count; double first, last; } RdFailLog;
+#define RD_FAILLOG 32
+#define SD_FAILURES SD_RUN_DIR "/remote-failures"     /* root 0600: "key count first last user" */
 typedef struct { pid_t pid; uid_t uid; char user[33]; double since; } SdSession;    /* a user's lord-server */
 typedef struct {
     pthread_mutex_t lock;
@@ -52,6 +57,7 @@ typedef struct {
     RlTable lockout;            /* failed-login blocks per source (lockout.h) */
     int lockout_dirty;          /* changed: the main process saves RL_FILE */
     RdNotice notices[RD_NOTICES];
+    RdFailLog faillog[RD_FAILLOG];
     unsigned notice_seq;
     RdConn conns[RD_MAX_CONNS];
     SdSession sessions[SD_MAX_SESSIONS];

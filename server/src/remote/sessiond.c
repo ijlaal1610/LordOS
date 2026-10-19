@@ -45,6 +45,7 @@
 #include <string.h>
 #include <grp.h>
 #include <ifaddrs.h>
+#include <net/if.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -274,7 +275,8 @@ static void write_status(void) {
     for (int i = 0; i < RD_MAX_CONNS; i++) {
         RdConn *c = &rd_shared->conns[i];
         if (!c->pid) continue;
-        sput(&s, "%s{\"pid\":%d,\"ip\":\"%s\",\"user\":\"%s\",\"since\":%.0f}", first ? "" : ",", (int)c->pid, c->ip, c->user, c->since);
+        sput(&s, "%s{\"pid\":%d,\"ip\":\"%s\",\"user\":\"%s\",\"since\":%.0f,\"rx\":%llu,\"tx\":%llu}", first ? "" : ",", (int)c->pid, c->ip,
+             c->user, c->since, c->rx, c->tx);
         first = 0;
     }
     sput(&s, "],\"net\":\"%s\",\"blocked\":[", rs_net_name(rd_conf.net_mode));
@@ -308,7 +310,26 @@ static void write_status(void) {
         first = 0;
     }
     rd_unlock();
+    /* failed sign-ins: only for the admin action remote-failures (root 0600), never in status.json */
+    Str fl = { 0 };
+    sput(&fl, "# lord-sessiond: recent failed remote sign-ins (key count first last user)\n");
+    rd_lock();
+    for (int i = 0; i < RD_FAILLOG; i++) {
+        RdFailLog *x = &rd_shared->faillog[i];
+        if (x->count && now - x->last < 24 * 3600) sput(&fl, "%s %d %.0f %.0f %s\n", x->key, x->count, x->first, x->last, x->user);
+    }
+    rd_unlock();
     sput(&s, "]}\n");
+    if (fl.p) {
+        unlink(SD_FAILURES ".new");
+        int ff = open(SD_FAILURES ".new", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+        if (ff >= 0) {
+            int ok = write(ff, fl.p, fl.n) == (ssize_t)fl.n;
+            close(ff);
+            if (!ok || rename(SD_FAILURES ".new", SD_FAILURES)) unlink(SD_FAILURES ".new");
+        }
+        free(fl.p);
+    }
     FILE *f = fopen(SD_STATUS ".new", "w");
     if (f && s.p) { fputs(s.p, f); }
     if (f) {
@@ -812,26 +833,53 @@ static void start_remote(void) {
     sd_log("remote desktop on https://*:%d", rd_conf.port);
 }
 
-/* Did this connection arrive on a VPN interface? (its local address belongs to one) */
-static int via_vpn(int fd) {
+/* sockaddr (AF_INET or AF_INET6) → RsAddr; 0 on success */
+static int sa_addr(const struct sockaddr *sa, RsAddr *x) {
+    static const unsigned char pre[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
+    memset(x, 0, sizeof *x);
+    if (!sa) return -1;
+    if (sa->sa_family == AF_INET) {
+        memcpy(x->a, pre, 12);
+        memcpy(x->a + 12, &((const struct sockaddr_in *)sa)->sin_addr, 4);
+        x->v4 = 1;
+        return 0;
+    }
+    if (sa->sa_family == AF_INET6) {
+        memcpy(x->a, &((const struct sockaddr_in6 *)sa)->sin6_addr, 16);
+        x->v4 = !memcmp(x->a, pre, 12);
+        return 0;
+    }
+    return -1;
+}
+
+static int mask_bits(const RsAddr *m) {
+    int n = 0;
+    for (int i = m->v4 ? 12 : 0; i < 16; i++) {
+        unsigned char b = m->a[i];
+        while (b & 0x80) { n++; b = (unsigned char)(b << 1); }
+        if (m->a[i] != 0xff) break;
+    }
+    return m->v4 ? n + 96 : n;
+}
+
+/* Does this connection count as "over a LordOS VPN" for net=lan? Only on an interface LordOS's VPN
+ * manager created (wg-, ovpn-, ips-, ppp-, oc-, fvpn- + name), to that interface's own address, and
+ * from inside its subnet or its point-to-point peer (ipnet.c rs_vpn_accepts). A bare ppp0 (a PPPoE
+ * uplink), tun0 or wg0 never counts. */
+static int via_vpn(int fd, const RsAddr *peer) {
     struct sockaddr_in6 me;
     socklen_t ml = sizeof me;
     if (getsockname(fd, (struct sockaddr *)&me, &ml)) return 0;
-    RsAddr local = { 0 };
-    memcpy(local.a, &me.sin6_addr, 16);
-    struct ifaddrs *ifs = NULL, *i;
+    RsAddr local;
+    if (sa_addr((struct sockaddr *)&me, &local)) return 0;
+    struct ifaddrs *ifs = NULL;
     if (getifaddrs(&ifs)) return 0;
     int vpn = 0;
-    for (i = ifs; i && !vpn; i = i->ifa_next) {
-        if (!i->ifa_addr || !i->ifa_name || !rs_vpn_ifname(i->ifa_name)) continue;
-        RsAddr x = { 0 };
-        if (i->ifa_addr->sa_family == AF_INET) {
-            static const unsigned char pre[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
-            memcpy(x.a, pre, 12);
-            memcpy(x.a + 12, &((struct sockaddr_in *)i->ifa_addr)->sin_addr, 4);
-        } else if (i->ifa_addr->sa_family == AF_INET6) memcpy(x.a, &((struct sockaddr_in6 *)i->ifa_addr)->sin6_addr, 16);
-        else continue;
-        if (!memcmp(x.a, local.a, 16)) vpn = 1;
+    for (struct ifaddrs *i = ifs; i && !vpn; i = i->ifa_next) {
+        RsAddr x, m, d;
+        if (!i->ifa_name || !rs_vpn_ifname(i->ifa_name) || sa_addr(i->ifa_addr, &x) || sa_addr(i->ifa_netmask, &m)) continue;
+        int ptp = (i->ifa_flags & IFF_POINTOPOINT) && !sa_addr(i->ifa_dstaddr, &d);
+        vpn = rs_vpn_accepts(i->ifa_name, &x, mask_bits(&m), ptp ? &d : NULL, &local, peer);
     }
     freeifaddrs(ifs);
     return vpn;
@@ -868,7 +916,7 @@ static void accept_remote(void) {
     char key[48];
     rs_addr_key(&a, key, sizeof key);
     /* everything here is cheap and happens before any TLS work: refused sources are just closed */
-    int vpn = rd_conf.net_mode == RS_NET_LAN && !rs_addr_is_local(&a) ? via_vpn(fd) : 0;
+    int vpn = rd_conf.net_mode == RS_NET_LAN && !rs_addr_is_local(&a) ? via_vpn(fd, &a) : 0;
     int acc = rs_access_decide(&rd_conf.access, rd_conf.net_mode, &a, vpn);
     if (acc != RS_ACC_OK) {
         refuse_log(key, acc == RS_ACC_BLOCKED ? "blocked in Settings" :

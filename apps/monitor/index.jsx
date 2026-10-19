@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Chart } from './Chart.jsx';
 import { Glyph, MonitorIcon } from './icons.jsx';
 import { NetworkTab } from './Network.jsx';
+import { RemoteGlyph } from './RemoteDesktop.jsx';
 import { MonitorPrivacy } from './Privacy.jsx';
 import { FirewallPrivacy } from './Firewall.jsx';
 import { FirewallRulesPrivacy } from './FwRules.jsx';
@@ -328,6 +329,7 @@ export const isolatedAppOf = (item) => (typeof item?.app === 'string' && item.ap
 
 export function AppGlyph({ item, size = 16 }) {
   if (item.app === 'lordos') return <LordOSLogo size={size} />;
+  if (item.app === 'remote-desktop') return <RemoteGlyph size={size} />;
   const iso = isolatedAppOf(item);
   if (iso?.Icon) return <iso.Icon size={size} />;
   if (item.appIcon) return <Image src={item.appIcon} style={{ width: size, height: size, objectFit: 'contain' }} />;

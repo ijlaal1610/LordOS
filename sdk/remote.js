@@ -18,6 +18,8 @@ import { createStore, useStore } from './store.js';
 import { t } from './i18n.js';
 import { notify } from './notify.js';
 import { wm } from './windows.js';
+import { admin } from './admin.js';
+import { parseCode } from './errors.js';
 
 export const remoteViewers = createStore([]);
 globalThis.__lordRemote = (json) => {
@@ -55,6 +57,28 @@ globalThis.__lordRemoteNotice = (n) => {
   });
 };
 export const remoteMinutesLeft = minutesLeft;
+
+// The address lists and blocks, through the fixed admin actions (server/src/remote/remote_admin.c,
+// validated again on the root side). Used by Settings → Sharing and Monitor → Network.
+//   remoteAccess.failures() → [{ key, count, first, last, user }]  (administrators only; never a password)
+export const remoteAccess = {
+  block: (cidr) => admin.run('remote-block', cidr),
+  unblock: (cidr) => admin.run('remote-unblock', cidr),
+  allow: (cidr) => admin.run('remote-allow', `add ${cidr}`),
+  disallow: (cidr) => admin.run('remote-allow', `del ${cidr}`),
+  setNet: (net) => admin.run('remote-config', `net=${net}`),
+  async failures() {
+    const rows = [];
+    await admin.run('remote-failures', '', (line) => {
+      const c = parseCode(String(line));
+      const p = c?.code === 'remote.failure' ? c.params : null;
+      if (p && remoteCidr(p.key) && /^[\x20-\x7e]{1,32}$/.test(p.user || '')) {
+        rows.push({ key: p.key, count: Number(p.count) || 0, first: Number(p.first) || 0, last: Number(p.last) || 0, user: p.user });
+      }
+    }, { quiet: true });
+    return rows.sort((a, b) => b.last - a.last);
+  },
+};
 
 function parseConfig(text) {
   const c = { port: 5673, allow: 'all', net: 'lan' };

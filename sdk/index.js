@@ -20,7 +20,7 @@ import { ImeOverlay } from './ime.js';
 import { ClipboardPanel, ClipboardToast, clipboard as clipboardApi } from './clipboard.js';
 import { SpotlightPanel } from './spotlight.js';
 import { RemoteBadge } from './remote.js';
-export { remote, remoteViewers, sshLogin, remoteCidr, remoteMinutesLeft } from './remote.js';
+export { remote, remoteViewers, sshLogin, remoteCidr, remoteMinutesLeft, remoteAccess } from './remote.js';
 export { perms, permsRev, requestPermission, markDeviceUse, useIndicators, PrivacyIndicators, PermissionPrompt, registerPrivacySection, privacySections, PERMISSIONS, onPermissionRevoked, micStart, micStop, micLevel } from './privacy.js';
 import { PermissionPrompt } from './privacy.js';
 import { Powerbox } from './powerbox.jsx';

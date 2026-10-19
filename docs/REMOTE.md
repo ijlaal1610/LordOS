@@ -101,19 +101,31 @@ takes the initials of the name being typed.
 **Who can connect** (Settings → Sharing, `net=` in `/etc/lordos/remote/config`):
 
 - **Local network** (the default): private ranges (10/8, 172.16/12, 192.168/16, 100.64/10),
-  loopback, link-local and IPv6 unique-local, plus connections that arrive on a VPN interface of
-  this computer (`wg-`, `ovpn-`, `ips-`, `oc-`, `fvpn-`, `ppp`, `tun`). Public addresses are
-  closed.
+  loopback, link-local and IPv6 unique-local, plus connections over a VPN of this computer: only
+  on an interface LordOS's VPN manager created (`wg-`, `ovpn-`, `ips-`, `ppp-`, `oc-`, `fvpn-` +
+  the VPN's name, `vpn_ifname` in `server/src/net/wg.c`), to that interface's own address, and
+  from inside its subnet or its point-to-point peer (`rs_vpn_accepts`). A bare `ppp0` (often a
+  PPPoE internet uplink), `tun0` or `wg0` never counts. Public addresses are closed.
 - **Only these addresses**: only the networks in the list.
 - **Any address**: everyone who can reach the port (still with the lockout).
 
-**Manual blocks** win over everything. The lists live in `/etc/lordos/remote/access` (root, 0600):
-`allow <cidr>` and `block <cidr>`, at most 64 of each. Networks are IPv4 /8–/32 or IPv6 /16–/128;
-host bits are cleared.
+**Two lists and the temporary blocks**, each its own section in Settings → Sharing:
 
-![Settings → Sharing: blocked addresses](settings-sharing-blocked-light.png)
+- **Allowlist:** the addresses and networks that may connect with "Only these addresses". Being on
+  it doesn't exempt an address from the lockout (an allowed machine can be compromised too), but an
+  administrator can unblock it at once.
+- **Blocklist:** always refused, checked before anything else, until removed.
+- **Temporarily blocked:** the lockout's blocks with the time left, **Unblock** and **Block
+  permanently** (moves it to the blocklist).
 
-![Settings → Sharing: only these addresses (dark)](settings-sharing-allowlist-dark.png)
+The lists live in `/etc/lordos/remote/access` (root, 0600): `allow <cidr>` and `block <cidr>`, at
+most 64 of each. Networks are IPv4 /8–/32 or IPv6 /16–/128; host bits are cleared. The same lists,
+the clients and the failed sign-ins are also in Monitor → Network ([MONITOR.md](MONITOR.md),
+"Remote desktop").
+
+![Settings → Sharing: allowlist, blocklist and temporary blocks](settings-sharing-lists-light.png)
+
+![The same in dark mode](settings-sharing-lists-dark.png)
 
 **Admin actions** (`remote_admin.c`, administrators only, validated on the root side by
 `rs_cidr_parse`):
@@ -123,7 +135,8 @@ host bits are cleared.
 | `remote-config`        | `net=lan\|list\|any` | the mode (with the existing `allow=`, `port=` lines)            |
 | `remote-block`         | `<cidr>`            | adds a manual block to `access`                                 |
 | `remote-unblock`       | `<cidr>`            | removes manual blocks inside it and appends `unblock <cidr>` to `/var/lib/lordos/remote/requests` (root 0600, `flock`); `lord-sessiond` lifts the lockout blocks inside it on SIGHUP |
-| `remote-allow`         | `add\|del <cidr>`    | the "only these addresses" list                                 |
+| `remote-allow`         | `add\|del <cidr>`    | the allowlist                                                   |
+| `remote-failures`      | none                | read-only: the recent failed sign-ins as code lines (`remote.failure key= count= first= last= user=`), from `/run/lordos/remote-failures` (root 0600); for Monitor |
 
 Unblocking from Settings forgets that address's history (its next block is 15 minutes again).
 
@@ -214,7 +227,7 @@ self-signed P-256, with CN equal to the machine name and ten years of validity. 
 A review of everything the network can reach, done for 0.8.3: the HTTP parser, the login, the
 cookie, CSRF, the WebSocket and the input messages, the privilege drop, resource limits, TLS,
 headers, logging and the lock screen. Every finding below was fixed in the same release; the tests
-are in `server/tests/remote_sec_test.c` (207 checks), `server/tests/remote_fuzz.c` (ASan+UBSan,
+are in `server/tests/remote_sec_test.c` (218 checks), `server/tests/remote_fuzz.c` (ASan+UBSan,
 100,000 random and mutated inputs on every `make -C server test`), and the attack run on VM 122
 listed after the table.
 
@@ -237,6 +250,7 @@ listed after the table.
 | 15 | Low | Log injection: `Origin`/`Host` logged raw (a bare LF forged a journal line); attempted names logged only when valid. | Everything logged is cleaned to printable ASCII; attempted names logged sanitized. | journal check. |
 | 16 | Info | The privilege drop didn't check saved ids or groups, kept the environment and every inherited descriptor, and the bridge outlived `lord-sessiond` (the parent-death signal is cleared by `setuid`). | See "Process and privileges". | `/proc` check above. |
 | 17 | Info | After a failure the user name went into the URL (`/?e=1&u=…`): a password typed into the user field ended up in the history. | The page keeps the name in `sessionStorage` and clears the address bar. | browser check. |
+| 18 | High | (Found in review of this branch.) "Local network" counted any interface named `ppp*`, `tun*` or `wg*` as a VPN, so a public address arriving over a PPPoE uplink (`ppp0`) or any tunnel passed the default. | Only LordOS's own VPN interface names (with the dash), only to that interface's address, and only from inside its subnet or its point-to-point peer. | unit tests: `ppp0` with a public peer refused; `wg-home` with an in-subnet peer accepted and a public one refused; `/0` subnets refused. |
 
 **Greeter and lock.** A remote browser can't unlock the monitor: the monitor shows the login
 screen (a separate `lord-server` as `lordos-greeter`), and the session only reaches `lord-sessiond`
@@ -261,10 +275,6 @@ scan; headers; lock. All results are in the table.
 ![Sign-in page: blocked](remote-desktop-login-blocked.png)
 
 ![Sign-in page: invalid user name](remote-desktop-login-invalid.png)
-
-![Settings → Sharing: blocked addresses (dark)](settings-sharing-blocked-dark.png)
-
-![Settings → Sharing: only these addresses](settings-sharing-allowlist-light.png)
 
 ## Measurements (VM 118: Xeon Silver 4108 at 1.8 GHz, 4 cores, no GPU, 1280×800)
 

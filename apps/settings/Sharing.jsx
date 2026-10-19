@@ -52,11 +52,14 @@ function AddressField({ placeholder, label, disabled, onAdd }) {
   );
 }
 
-// Who may connect and which addresses are blocked (docs/REMOTE.md, "Blocked and allowed addresses").
+// Who may connect, the allowlist, the blocklist and the temporary blocks (docs/REMOTE.md, "Blocked
+// and allowed addresses"). Every change goes through the fixed admin actions (remoteAccess).
 function AccessSection({ st, isAdmin, busy, act }) {
   const t = useTheme();
   const { t: tr } = useLocale();
   const hint = { lan: 'settings.sharing.netLanHint', list: 'settings.sharing.netListHint', any: 'settings.sharing.netAnyHint' }[st.net] || 'settings.sharing.netLanHint';
+  const temp = st.blocked.filter((b) => !b.manual), manual = st.blocked.filter((b) => b.manual);
+  const mono = { fontFamily: 'monospace', direction: 'ltr' };
   return (
     <>
       <Section title={tr('settings.sharing.access')}>
@@ -64,31 +67,37 @@ function AccessSection({ st, isAdmin, busy, act }) {
           <Segmented small value={st.net} onChange={(net) => isAdmin && !busy && act('remote-config', `net=${net}`)}
             options={[['lan', tr('settings.sharing.netLan')], ['list', tr('settings.sharing.netList')], ['any', tr('settings.sharing.netAny')]]} />
         </SettingRow>
-        {st.net === 'list' && (
-          <>
-            {!st.allowed.length && <SettingRow label={tr('settings.sharing.allowEmpty')} labelStyle={{ color: tint.warn }} />}
-            {st.allowed.map((c) => (
-              <SettingRow key={c} label={c} labelStyle={{ fontFamily: 'monospace', direction: 'ltr' }}>
-                {isAdmin && <Button small label={tr('settings.sharing.remove')} disabled={busy} onClick={() => act('remote-allow', `del ${c}`)} />}
-              </SettingRow>
-            ))}
-            {isAdmin && <AddressField placeholder={tr('settings.sharing.allowPlaceholder')} label={tr('settings.sharing.allowAdd')} disabled={busy}
-              onAdd={(v) => act('remote-allow', `add ${v}`)} />}
-          </>
-        )}
       </Section>
       {st.net === 'any' && <Note tone="warn">{tr('settings.sharing.netAnyWarn')}</Note>}
-      <Section title={tr('settings.sharing.blocked')} footer={tr('settings.sharing.blockedFooter')}>
-        {!st.blocked.length ? <SettingRow label={tr('settings.sharing.blockedNone')} labelStyle={{ color: t.textDim }} /> : st.blocked.map((b) => (
-          <SettingRow key={`${b.manual ? 'm' : 'a'}${b.ip}`} icon={<StatusDot color={b.manual ? tint.off : tint.error} />}
-            label={b.ip} labelStyle={{ fontFamily: 'monospace', direction: 'ltr' }}
-            hint={b.manual ? tr('settings.sharing.blockedManual')
-              : tr('settings.sharing.blockedAuto', { minutes: remoteMinutesLeft(b.until) })}>
-            {isAdmin && <Button small label={tr('settings.sharing.unblock')} disabled={busy} onClick={() => act('remote-unblock', b.ip)} />}
+      <Section title={tr('settings.sharing.allowlist')} footer={tr('settings.sharing.allowlistFooter')}>
+        {!st.allowed.length ? <SettingRow label={tr(st.net === 'list' ? 'settings.sharing.allowEmpty' : 'settings.sharing.listEmpty')}
+          labelStyle={{ color: st.net === 'list' ? tint.warn : t.textDim }} /> : null}
+        {st.allowed.map((c) => (
+          <SettingRow key={c} label={c} labelStyle={mono} icon={<StatusDot color={tint.ok} />}>
+            {isAdmin && <Button small label={tr('settings.sharing.remove')} disabled={busy} onClick={() => act('remote-allow', `del ${c}`)} />}
+          </SettingRow>
+        ))}
+        {isAdmin && <AddressField placeholder={tr('settings.sharing.allowPlaceholder')} label={tr('settings.sharing.allowAdd')} disabled={busy}
+          onAdd={(v) => act('remote-allow', `add ${v}`)} />}
+      </Section>
+      <Section title={tr('settings.sharing.blocklist')} footer={tr('settings.sharing.blocklistFooter')}>
+        {!manual.length ? <SettingRow label={tr('settings.sharing.listEmpty')} labelStyle={{ color: t.textDim }} /> : null}
+        {manual.map((b) => (
+          <SettingRow key={`m${b.ip}`} label={b.ip} labelStyle={mono} icon={<StatusDot color={tint.off} />}>
+            {isAdmin && <Button small label={tr('settings.sharing.remove')} disabled={busy} onClick={() => act('remote-unblock', b.ip)} />}
           </SettingRow>
         ))}
         {isAdmin && <AddressField placeholder={tr('settings.sharing.blockPlaceholder')} label={tr('settings.sharing.block')} disabled={busy}
           onAdd={(v) => act('remote-block', v)} />}
+      </Section>
+      <Section title={tr('settings.sharing.blocked')} footer={tr('settings.sharing.blockedFooter')}>
+        {!temp.length ? <SettingRow label={tr('settings.sharing.blockedNone')} labelStyle={{ color: t.textDim }} /> : temp.map((b) => (
+          <SettingRow key={`a${b.ip}`} icon={<StatusDot color={tint.error} />} label={b.ip} labelStyle={mono}
+            hint={tr('settings.sharing.blockedAuto', { minutes: remoteMinutesLeft(b.until) })}>
+            {isAdmin && <Button small label={tr('settings.sharing.unblock')} disabled={busy} onClick={() => act('remote-unblock', b.ip)} />}
+            {isAdmin && <Button small label={tr('settings.sharing.blockForever')} disabled={busy} onClick={() => act('remote-unblock', b.ip).then((ok) => ok && act('remote-block', b.ip))} />}
+          </SettingRow>
+        ))}
       </Section>
     </>
   );

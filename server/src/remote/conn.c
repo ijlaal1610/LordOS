@@ -382,6 +382,27 @@ static void push_notice(const char *key, double until, int strikes) {
     rd_shared->notice_seq++;
 }
 
+/* the recent failed sign-ins (under rd_lock): one row per source and attempted name */
+static void note_failure(const char *key, const char *user) {
+    double now = rd_now();
+    RdFailLog *slot = NULL, *old = &rd_shared->faillog[0];
+    for (int i = 0; i < RD_FAILLOG; i++) {
+        RdFailLog *f = &rd_shared->faillog[i];
+        if (f->count && !strcmp(f->key, key) && !strcmp(f->user, user)) { slot = f; break; }
+        if (!f->count) { if (old->count) old = f; }
+        else if (old->count && f->last < old->last) old = f;
+    }
+    if (!slot) {
+        slot = old;
+        memset(slot, 0, sizeof *slot);
+        snprintf(slot->key, sizeof slot->key, "%s", key);
+        snprintf(slot->user, sizeof slot->user, "%s", user);
+        slot->first = now;
+    }
+    slot->count++;
+    slot->last = now;
+}
+
 static void handle_login(const RsReq *r) {
     if (r->query[0]) { respond(400, NULL); return; }            /* credentials never travel in a URL */
     if (!origin_ok(r)) {
@@ -428,6 +449,7 @@ static void handle_login(const RsReq *r) {
         rd_lock();
         int blocked = rl_fail(&rd_shared->lockout, peer_key, rd_now(), &until, &strikes);
         if (blocked) push_notice(peer_key, until, strikes);
+        note_failure(peer_key, raw[0] ? raw : "?");
         rd_shared->lockout_dirty = 1;
         rd_shared->version++;
         rd_unlock();
@@ -470,6 +492,7 @@ static void handle_login(const RsReq *r) {
 
 static unsigned char *wout;
 static size_t wout_len, wout_off, wout_cap;
+static unsigned long long bytes_rx, bytes_tx;   /* from / to the browser, reported to the root parent */
 
 static void wput(const void *p, size_t n) {
     if (wout_len + n > wout_cap) {
@@ -538,6 +561,7 @@ static int ws_flush(void) {
             return -1;
         }
         wout_off += (size_t)w;
+        bytes_tx += (unsigned long long)w;
     }
     wout_off = wout_len = 0;
     return 0;
@@ -654,7 +678,7 @@ static void from_session(int type, const unsigned char *d, uint32_t n) {
     case RP_SESSION:
         /* the user locked their session: every browser of this user has to log in again */
         if (n >= 10 && memmem(d, n, "\"lock\"", 6)) {
-            if (lock_fd >= 0 && write(lock_fd, "L", 1) != 1) { /* the root parent is gone: the cookie expires anyway */ }
+            if (lock_fd >= 0 && write(lock_fd, "L\n", 2) != 2) { /* the root parent is gone: the cookie expires anyway */ }
             ws_text("{\"t\":\"bye\",\"lock\":1}");
             locked = 1;
         }
@@ -733,6 +757,7 @@ static int ws_read(void) {
             return -1;
         }
         win_len += (size_t)r;
+        bytes_rx += (unsigned long long)r;
     }
     size_t used = 0;
     int rc = rs_ws_consume(&wsr, win, win_len, &used, on_ws, NULL);
@@ -772,9 +797,15 @@ static void bridge(const struct passwd *pw) {
     rs_ws_init(&wsr, RS_WS_MAX_MSG);
     unsigned char *sin = NULL;
     size_t sin_len = 0, sin_cap = 0;
-    double last_input = rd_now();
+    double last_input = rd_now(), last_report = 0;
     for (;;) {
         if (ws_flush()) return;
+        if (lock_fd >= 0 && rd_now() - last_report >= 2) {      /* traffic, for Settings and Monitor */
+            char line[64];
+            int n = snprintf(line, sizeof line, "T %llu %llu\n", bytes_rx, bytes_tx);
+            if (write(lock_fd, line, (size_t)n) != n) { /* parent gone */ }
+            last_report = rd_now();
+        }
         if (closing) {                         /* our close frame went out (or will not): done */
             for (int i = 0; i < 20 && wout_len; i++) { struct pollfd q = { sock, POLLOUT, 0 }; poll(&q, 1, 100); if (ws_flush()) break; }
             return;
@@ -926,12 +957,28 @@ static void handle_ws(const RsReq *r, int logged, const char *user, uid_t uid) {
     close(pp[1]);
     close(sess);
     close(sock);
+    /* lines from the bridge (not trusted beyond its own counters): "L" the session was locked,
+     * "T <rx> <tx>" its traffic */
+    char line[80];
+    size_t ll = 0;
     for (;;) {
         char c;
         ssize_t n = read(pp[0], &c, 1);
         if (n < 0 && errno == EINTR) continue;
         if (n <= 0) break;
-        if (c == 'L') { rd_tokens_drop_uid(me.pw_uid); sd_log("%s locked the session: every remote cookie of that user ended", name); }
+        if (c != '\n') { if (ll < sizeof line - 1) line[ll++] = c; else ll = sizeof line; continue; }
+        if (ll >= sizeof line) { ll = 0; continue; }
+        line[ll] = 0;
+        ll = 0;
+        unsigned long long rx, tx;
+        char extra;
+        if (!strcmp(line, "L")) { rd_tokens_drop_uid(me.pw_uid); sd_log("%s locked the session: every remote cookie of that user ended", name); }
+        else if (sscanf(line, "T %llu %llu %c", &rx, &tx, &extra) == 2) {
+            rd_lock();
+            for (int i = 0; i < RD_MAX_CONNS; i++)
+                if (rd_shared->conns[i].pid == getpid()) { rd_shared->conns[i].rx = rx; rd_shared->conns[i].tx = tx; rd_shared->version++; }
+            rd_unlock();
+        }
     }
     while (waitpid(b, NULL, 0) < 0 && errno == EINTR) {}
 }

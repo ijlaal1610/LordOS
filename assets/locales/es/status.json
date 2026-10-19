@@ -122,5 +122,7 @@
   "ssh.saved": "Ajustes guardados",
   "hw.firmwareChecked": "Firmware revisado",
   "remote.blocked": "{address} bloqueada",
-  "remote.unblocked": "{address} desbloqueada"
+  "remote.unblocked": "{address} desbloqueada",
+  "remote.failures": "{count} ingresos fallidos",
+  "remote.failure": "Ingreso fallido de {user} desde {key} ({count})"
 }
