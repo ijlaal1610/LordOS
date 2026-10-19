@@ -53,9 +53,9 @@ Ausente a propósito: cualquier protocolo que le permita a una app capturar la p
 
 **¿Las apps de Linux están en una caja de arena?** No de forma predeterminada. Esto es importante: corren como tu usuario, como en cualquier sistema Debian, y pueden leer tu carpeta personal. Lo que LordOS suma es un cgroup por app, la atribución en el Monitor, el firewall por app que aplica el kernel (permitir, denegar, solo LAN, sin conexiones entrantes, reglas por dominio o dirección) y restricciones que podés fijar por app: sin cámara, sin USB y sin sockets Bluetooth (en el kernel), sin micrófono (la guardia de PipeWire de LordOS más los nodos de captura de la placa de sonido), sin notificaciones y "sin acceso a tus archivos", que se aplica desde el próximo inicio. No cubren el portapapeles, el Bluetooth a través de BlueZ en el bus del sistema ni los programas iniciados fuera del lanzador de apps. Solo las apps `.lpk` propias de LordOS tienen la caja de arena completa.
 
-**¿Una app de Linux puede ver otras ventanas o grabar la pantalla?** No a través de LordOS. El compositor solo le da a una app sus propias superficies y no ofrece ningún protocolo de captura de pantalla, no hay servidor X ni portal de captura de pantalla, y a una app restringida también se le niega el dispositivo de framebuffer, así que las ventanas protegidas como Contraseñas también quedan a salvo de ellas.
+**¿Una app de Linux puede ver otras ventanas o grabar la pantalla?** No a través de LordOS. El compositor solo le da a una app sus propias superficies y no ofrece ningún protocolo de captura de pantalla, las apps X11 solo ven otras apps X11 (nunca las apps Wayland ni a LordOS), no hay portal de captura de pantalla, y a una app restringida también se le niega el dispositivo de framebuffer, así que las ventanas protegidas como Contraseñas también quedan a salvo de ellas.
 
-**¿Y las apps que solo usan X11?** Todavía no funcionan: Xwayland no es parte de LordOS 0.8.2 Beta. Está planeado antes de la 1.0, con las apps X11 con la misma identidad por app, el mismo firewall y las mismas restricciones. Las apps GTK y Qt actuales hablan Wayland, y también el juego SDL que se probó.
+**¿Y las apps que solo usan X11?** Desde LordOS 0.8.3 Beta se abren con Xwayland, que arranca solo cuando una se conecta, con el marco de ventana del tema, su ícono en el Dock y el portapapeles compartido. Tienen la misma identidad por app, el mismo firewall y la misma atribución en el Monitor que las apps Wayland; las apps con restricciones de dispositivos o de archivos no reciben pantalla X. Se probaron XTerm, una app Java Swing y un juego SDL.
 
 **¿Y Flatpak?** LordOS no lo usa ni lo integra, y no se probó.
 
@@ -63,8 +63,8 @@ Ausente a propósito: cualquier protocolo que le permita a una app capturar la p
 
 ## Límites honestos
 
-- **Todavía sin Xwayland** (planeado antes de la 1.0), así que no hay apps que usen solo X11.
-- **Todavía no:** arrastrar y soltar entre apps, la selección primaria con clic del medio, los métodos de entrada de LordOS (coreano, japonés, chino) dentro de las apps de Linux, y los pedidos de activación de apps.
+- **Las apps X11 se ven entre sí,** como en cualquier escritorio X11; se ven nítidas solo al 100 % de escala.
+- **Todavía no:** arrastrar y soltar entre apps, los métodos de entrada de LordOS (coreano, japonés, chino) dentro de las apps de Linux, y los pedidos de activación de apps.
 - **Íconos solo en SVG:** LordOS todavía no dibuja SVG. Usa los íconos PNG que publica Debian para la mayoría de las apps, o la inicial.
 - **Las apps de terminal** con archivo `.desktop` no aparecen en el lanzador de apps; arrancalas desde la Terminal.
 - **Las apps GTK 3 mantienen su propio acento azul;** la lectura del esquema de colores desde el portal en Qt 6 no se probó.

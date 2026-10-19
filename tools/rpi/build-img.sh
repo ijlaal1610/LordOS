@@ -67,7 +67,7 @@ PKGS_BASE="initramfs-tools systemd-sysv udev kmod dbus dbus-user-session sudo lo
  iproute2 iputils-ping less nano ca-certificates apt dpkg passwd procps e2fsprogs fdisk dosfstools util-linux"
 PKGS_LORDOS="libwayland-server0 libxkbcommon0 xkb-data pipewire pipewire-pulse pipewire-alsa wireplumber rtkit
  alsa-ucm-conf wpasupplicant openvpn fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji libthai-data
- skkdic rime-data-pinyin-simp fonts-dejavu-core"
+ skkdic rime-data-pinyin-simp fonts-dejavu-core xwayland"
 # Raspberry Pi: boot firmware (start*.elf are not used on the Pi 5: its firmware lives in the
 # EEPROM) and Wi-Fi (CYW43455, firmware-brcm80211); kernels below
 PKGS_RPI="raspi-firmware firmware-brcm80211 rsync"

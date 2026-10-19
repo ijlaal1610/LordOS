@@ -42,9 +42,9 @@
             "pt": "É baseada no Debian?"
           },
           "a": {
-            "en": "Yes, on Debian 13. The kernel, drivers, Mesa, PipeWire, CUPS, BlueZ and every package in the Store come from Debian's own mirrors and keep Debian's security updates. LordOS replaces only the graphical layer: there is no X11, GNOME or KDE underneath.",
-            "es": "Sí, en Debian 13. El kernel, los drivers, Mesa, PipeWire, CUPS, BlueZ y todos los paquetes de la Tienda vienen de los mirrors de Debian y reciben sus actualizaciones de seguridad. LordOS reemplaza solo la capa gráfica: abajo no hay X11, GNOME ni KDE.",
-            "pt": "Sim, no Debian 13. O kernel, os drivers, o Mesa, o PipeWire, o CUPS, o BlueZ e todos os pacotes da Loja vêm dos espelhos do Debian e recebem as atualizações de segurança dele. O LordOS substitui só a camada gráfica: por baixo não há X11, GNOME nem KDE."
+            "en": "Yes, on Debian 13. The kernel, drivers, Mesa, PipeWire, CUPS, BlueZ and every package in the Store come from Debian's own mirrors and keep Debian's security updates. LordOS replaces only the graphical layer: there is no GNOME or KDE underneath, and X11 apps run through Xwayland only when one opens.",
+            "es": "Sí, en Debian 13. El kernel, los drivers, Mesa, PipeWire, CUPS, BlueZ y todos los paquetes de la Tienda vienen de los mirrors de Debian y reciben sus actualizaciones de seguridad. LordOS reemplaza solo la capa gráfica: abajo no hay GNOME ni KDE, y las apps X11 usan Xwayland solo cuando se abre una.",
+            "pt": "Sim, no Debian 13. O kernel, os drivers, o Mesa, o PipeWire, o CUPS, o BlueZ e todos os pacotes da Loja vêm dos espelhos do Debian e recebem as atualizações de segurança dele. O LordOS substitui só a camada gráfica: por baixo não há GNOME nem KDE, e os apps X11 usam o Xwayland só quando um deles abre."
           }
         },
         {
@@ -371,9 +371,9 @@
             "pt": "Posso rodar apps Linux comuns?"
           },
           "a": {
-            "en": "Yes, apps that speak Wayland: GTK 3 and 4 (GNOME), Qt (KDE), Firefox, Chromium and Electron apps open as normal LordOS windows, with the LordOS frame and theme. Apps that only support X11 don't run yet, because Xwayland isn't available yet.",
-            "es": "Sí, las que hablan Wayland: las apps GTK 3 y 4 (GNOME), Qt (KDE), Firefox, Chromium y Electron se abren como ventanas normales de LordOS, con su marco y su tema. Las apps que solo soportan X11 todavía no funcionan, porque Xwayland todavía no está disponible.",
-            "pt": "Sim, os que falam Wayland: apps GTK 3 e 4 (GNOME), Qt (KDE), Firefox, Chromium e Electron abrem como janelas normais do LordOS, com a moldura e o tema dele. Apps que só suportam X11 ainda não rodam, porque o Xwayland ainda não está disponível."
+            "en": "Yes, apps that speak Wayland: GTK 3 and 4 (GNOME), Qt (KDE), Firefox, Chromium and Electron apps open as normal LordOS windows, with the LordOS frame and theme. Apps that only support X11 open too, through Xwayland (since 0.8.3), with the same frame, Dock icon and per-app firewall.",
+            "es": "Sí, las que hablan Wayland: las apps GTK 3 y 4 (GNOME), Qt (KDE), Firefox, Chromium y Electron se abren como ventanas normales de LordOS, con su marco y su tema. Las apps que solo soportan X11 también se abren, con Xwayland (desde la 0.8.3), con el mismo marco, ícono en el Dock y firewall por app.",
+            "pt": "Sim, os que falam Wayland: apps GTK 3 e 4 (GNOME), Qt (KDE), Firefox, Chromium e Electron abrem como janelas normais do LordOS, com a moldura e o tema dele. Apps que só suportam X11 também abrem, pelo Xwayland (desde o 0.8.3), com a mesma moldura, ícone no Dock e firewall por app."
           }
         },
         {
@@ -397,9 +397,9 @@
             "pt": "Posso jogar?"
           },
           "a": {
-            "en": "Wayland games can run with GPU acceleration: LordOS supports fullscreen, relative pointer and pointer locking, which games need, and Neverball has been tested. Games that only use X11 need Xwayland, which isn't available yet, so many games and launchers won't start for now.",
-            "es": "Los juegos para Wayland pueden andar con aceleración por GPU: LordOS soporta pantalla completa, puntero relativo y bloqueo del puntero, que los juegos necesitan, y se probó Neverball. Los juegos que solo usan X11 necesitan Xwayland, que todavía no está disponible, así que por ahora muchos juegos y lanzadores no arrancan.",
-            "pt": "Jogos para Wayland podem rodar com aceleração por GPU: o LordOS suporta tela cheia, ponteiro relativo e travamento do ponteiro, que os jogos precisam, e o Neverball foi testado. Jogos que só usam X11 precisam do Xwayland, que ainda não está disponível, então por enquanto muitos jogos e launchers não abrem."
+            "en": "Wayland games can run with GPU acceleration: LordOS supports fullscreen, relative pointer and pointer locking, which games need, and Neverball has been tested. Games that only use X11 run through Xwayland since 0.8.3 (Neverball was tested that way too, with OpenGL and fullscreen).",
+            "es": "Los juegos para Wayland pueden andar con aceleración por GPU: LordOS soporta pantalla completa, puntero relativo y bloqueo del puntero, que los juegos necesitan, y se probó Neverball. Los juegos que solo usan X11 andan con Xwayland desde la 0.8.3 (Neverball también se probó así, con OpenGL y pantalla completa).",
+            "pt": "Jogos para Wayland podem rodar com aceleração por GPU: o LordOS suporta tela cheia, ponteiro relativo e travamento do ponteiro, que os jogos precisam, e o Neverball foi testado. Jogos que só usam X11 rodam pelo Xwayland desde o 0.8.3 (o Neverball também foi testado assim, com OpenGL e tela cheia)."
           }
         },
         {

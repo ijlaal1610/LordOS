@@ -53,9 +53,9 @@ Deliberately absent: any protocol that lets an app capture the screen or other a
 
 **Are Linux apps sandboxed?** Not by default. This is important: they run as your user, as on any Debian system, and can read your home folder. What LordOS adds is a per-app cgroup, attribution in the Monitor, the kernel-enforced per-app firewall (allow, deny, LAN only, no incoming connections, rules by domain or address), and restrictions you can set per app: no camera, no USB and no Bluetooth sockets (in the kernel), no microphone (LordOS's PipeWire guard plus the sound card's capture nodes), no notifications, and "no access to your files", applied from the next launch. They don't cover the clipboard, Bluetooth through BlueZ on the system bus, or programs started outside the app launcher. Only LordOS's own `.lpk` apps get the full sandbox.
 
-**Can a Linux app see other windows or record the screen?** Not through LordOS. The compositor only gives an app its own surfaces and offers no screen-capture protocol, there is no X server and no screen-cast portal, and a restricted app is also denied the framebuffer device, so protected windows like Passwords stay private from them too.
+**Can a Linux app see other windows or record the screen?** Not through LordOS. The compositor only gives an app its own surfaces and offers no screen-capture protocol, X11 apps only see other X11 apps (never Wayland apps or LordOS itself), there is no screen-cast portal, and a restricted app is also denied the framebuffer device, so protected windows like Passwords stay private from them too.
 
-**What about X11-only apps?** They don't run yet: Xwayland is not part of LordOS 0.8.2 Beta. It is planned before 1.0, with X11 apps getting the same per-app identity, firewall and restrictions. Current GTK and Qt apps speak Wayland, and so did the SDL game tested.
+**What about X11-only apps?** Since LordOS 0.8.3 Beta they open through Xwayland, started only when one of them connects, with the theme's window frame, their icon in the Dock and the shared clipboard. They get the same per-app identity, firewall and Monitor attribution as Wayland apps; apps with device or file restrictions get no X display. XTerm, a Java Swing app and an SDL game were tested.
 
 **And Flatpak?** LordOS doesn't use or integrate it, and it hasn't been tested.
 
@@ -63,8 +63,8 @@ Deliberately absent: any protocol that lets an app capture the screen or other a
 
 ## Honest limits
 
-- **No Xwayland yet** (planned before 1.0), so no X11-only apps.
-- **Not yet:** drag and drop between apps, the middle-click primary selection, LordOS input methods (Korean, Japanese, Chinese) inside Linux apps, and app activation requests.
+- **X11 apps can see each other,** as on any X11 desktop; they are sharp only at 100 % scale.
+- **Not yet:** drag and drop between apps, LordOS input methods (Korean, Japanese, Chinese) inside Linux apps, and app activation requests.
 - **SVG-only icons:** LordOS doesn't draw SVG yet. It uses the PNG icons Debian publishes for most apps, or the initial.
 - **Terminal apps** with a `.desktop` file aren't shown in the app launcher; start them from the Terminal.
 - **GTK 3 apps keep their own blue accent;** Qt 6's reading of the colour scheme from the portal hasn't been tested.

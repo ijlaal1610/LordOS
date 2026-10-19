@@ -53,9 +53,9 @@ Ausente de propósito: qualquer protocolo que permita a um app capturar a tela o
 
 **Os apps Linux ficam em sandbox?** Não por padrão. Isso é importante: eles rodam como o seu usuário, como em qualquer sistema Debian, e podem ler sua pasta pessoal. O que o LordOS acrescenta é um cgroup por app, a atribuição no Monitor, o firewall por app aplicado pelo kernel (permitir, negar, só LAN, sem conexões de entrada, regras por domínio ou endereço) e restrições que você pode definir por app: sem câmera, sem USB e sem sockets Bluetooth (no kernel), sem microfone (o guarda do PipeWire do LordOS mais os nós de captura da placa de som), sem notificações e "sem acesso aos seus arquivos", aplicada a partir da próxima abertura. Elas não cobrem a área de transferência, o Bluetooth através do BlueZ no barramento do sistema nem programas iniciados fora do lançador de apps. Só os apps `.lpk` do próprio LordOS recebem o sandbox completo.
 
-**Um app Linux consegue ver outras janelas ou gravar a tela?** Não pelo LordOS. O compositor só entrega a um app as superfícies dele mesmo e não oferece nenhum protocolo de captura de tela, não há servidor X nem portal de captura de tela, e um app restrito também tem o dispositivo de framebuffer negado, então janelas protegidas como a de Senhas também ficam privadas para eles.
+**Um app Linux consegue ver outras janelas ou gravar a tela?** Não pelo LordOS. O compositor só entrega a um app as superfícies dele mesmo e não oferece nenhum protocolo de captura de tela, apps X11 só veem outros apps X11 (nunca os apps Wayland nem o LordOS), não há portal de captura de tela, e um app restrito também tem o dispositivo de framebuffer negado, então janelas protegidas como a de Senhas também ficam privadas para eles.
 
-**E os apps que só falam X11?** Ainda não rodam: o Xwayland não faz parte do LordOS 0.8.2 Beta. Ele está planejado antes da 1.0, com os apps X11 ganhando a mesma identidade por app, o mesmo firewall e as mesmas restrições. Os apps GTK e Qt atuais falam Wayland, e o jogo SDL testado também.
+**E os apps que só falam X11?** Desde o LordOS 0.8.3 Beta eles abrem pelo Xwayland, que só inicia quando um deles se conecta, com a moldura de janela do tema, o ícone no Dock e a área de transferência compartilhada. Eles têm a mesma identidade por app, o mesmo firewall e a mesma atribuição no Monitor que os apps Wayland; apps com restrições de dispositivos ou de arquivos não recebem tela X. Foram testados o XTerm, um app Java Swing e um jogo SDL.
 
 **E o Flatpak?** O LordOS não o usa nem o integra, e ele não foi testado.
 
@@ -63,8 +63,8 @@ Ausente de propósito: qualquer protocolo que permita a um app capturar a tela o
 
 ## Limites honestos
 
-- **Ainda sem Xwayland** (planejado antes da 1.0), então nada de apps só X11.
-- **Ainda não:** arrastar e soltar entre apps, a seleção primária do clique do meio, os métodos de entrada do LordOS (coreano, japonês, chinês) dentro dos apps Linux e os pedidos de ativação de apps.
+- **Apps X11 se veem entre si,** como em qualquer desktop X11; ficam nítidos só em 100 % de escala.
+- **Ainda não:** arrastar e soltar entre apps, os métodos de entrada do LordOS (coreano, japonês, chinês) dentro dos apps Linux e os pedidos de ativação de apps.
 - **Ícones só em SVG:** o LordOS ainda não desenha SVG. Ele usa os ícones PNG que o Debian publica para a maioria dos apps, ou a inicial.
 - **Apps de terminal** com arquivo `.desktop` não aparecem no lançador de apps; inicie-os pelo Terminal.
 - **Os apps GTK 3 mantêm o próprio destaque azul;** a leitura do esquema de cores pelo portal no Qt 6 não foi testada.

@@ -10,7 +10,7 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
-## [0.8.3] - Unreleased
+## [0.8.3-beta] - 2026-10-19
 
 ### Added
 
@@ -63,6 +63,8 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 ### Changed
 
 - Settings → Desktop & Dock in Classic adds **Taskbar alignment** (center or start).
+- The `lordos` package recommends `xwayland`, and the ISO and the Raspberry Pi 5 image include it,
+  so X11 apps open out of the box.
 - The theme engine paints a scaled window that contains a blurred surface (a translucent
   Terminal) at its scaled size; its blur then only shows the window's own content. Before, such a
   window was drawn at full size during the Dock's minimize effect.
@@ -127,6 +129,7 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 ### Fixed
 
 - Java (AWT/Swing) windows were blank or shifted (non-reparenting window manager).
+- The Passwords and Backups icons sat off center in the Dock and the launcher.
 - **Blocking an app now cuts the connections it already has open.** Turning an app's rule off in
   Monitor → Network (or adding a deny rule for a destination or domain, or a restriction such as
   "no internet") counted its new connections as denied, but what was already open kept flowing:
@@ -137,6 +140,33 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   keep working. Switching the rule back to allow works again at once. The Monitor counts every cut
   connection as denied and shows the dropped bytes as "Blocked traffic" in the app's details. See
   [docs/FIREWALL.md](docs/FIREWALL.md), "Existing connections are cut".
+
+### Known issues and limitations
+
+- **X11 apps need Debian's `xwayland` package.** New installs from the ISO and the Raspberry Pi 5
+  image, `install.sh` and `apt upgrade` bring it (the `lordos` package now recommends it). The
+  Store's update installs only what the package depends on, so after updating from the Store,
+  install **xwayland** from the Store (or `sudo apt install xwayland`) to open X11 apps; Wayland
+  apps don't need it.
+- X11 apps can see each other, as on any X11 desktop; a separate display for restricted X11 apps,
+  drag and drop between X11 and Wayland apps and sharp X11 apps on HiDPI displays come later.
+- The other known issues of 0.8.2 still apply.
+
+### Upgrading
+
+- **From 0.8.2 or 0.8.1:** Store → Updates shows "LordOS 0.8.3 is available" with these notes;
+  **Update** installs it, and a restart finishes it. `sudo apt update && sudo apt upgrade` does the
+  same. The update runs migration 004 once (it stops Debian's smartd if smartmontools left it
+  running; from 0.8.1, migration 003 runs first); `ls /var/lib/lordos/migrations` lists the ones
+  applied. Your settings are kept.
+- **Remote desktop after the update:** connections from public internet addresses are refused
+  unless you choose **Any address** (or add them to the allowlist) in Settings → Sharing; the local
+  network and a VPN of this computer keep working. Browsers that were signed in before sign in
+  once more.
+- **From 0.8.0 (once):** run `curl -fsSL https://lordos.org/install.sh | sh` (a system installed
+  from the 0.8.0 ISO has no `curl`: run `sudo apt update && sudo apt install -y curl` first). It
+  upgrades in place to 0.8.3, runs migrations 001 to 004 and adds the LordOS repository; from then
+  on new versions come through Store → Updates.
 
 ## [0.8.2-beta] - 2026-10-19
 
@@ -1041,7 +1071,8 @@ we published. See [docs/SIGNING.md](docs/SIGNING.md).
 
 Never published; superseded by 0.8.0-beta.
 
-[Unreleased]: https://github.com/lordbasex/LordOS/compare/v0.8.2-beta...HEAD
+[Unreleased]: https://github.com/lordbasex/LordOS/compare/v0.8.3-beta...HEAD
+[0.8.3-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.2-beta...v0.8.3-beta
 [0.8.2-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.1-beta...v0.8.2-beta
 [0.8.1-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.0-beta...v0.8.1-beta
 [0.8.0-beta]: https://github.com/lordbasex/LordOS/releases/tag/v0.8.0-beta

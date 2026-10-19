@@ -28,7 +28,7 @@ for t in debootstrap mksquashfs xorriso grub-mkrescue mformat dpkg-deb; do
     command -v "$t" >/dev/null || { echo "build.sh: missing $t (see docs/ISO.md, build packages)" >&2; exit 1; }
 done
 
-# Live system packages. LordOS does not use X11, GNOME or KDE: only what is below.
+# Live system packages. LordOS does not use GNOME or KDE: only what is below (xwayland only for X11 apps).
 PKGS_BASE="linux-image-amd64 initramfs-tools live-boot live-boot-initramfs-tools systemd-sysv udev kmod dbus dbus-user-session sudo locales tzdata
  iproute2 iputils-ping less nano ca-certificates apt dpkg passwd procps"
 # gsettings-desktop-schemas: without it GTK 3 apps can't read gtk-theme from the keyfile backend
@@ -39,7 +39,7 @@ PKGS_LORDOS="libwayland-server0 libwayland-client0 libxkbcommon0 xkb-data pipewi
  libpoppler-glib8t64 libarchive13t64 poppler-data cups avahi-daemon exfatprogs ntfs-3g
  libavcodec61 libavformat61 libavutil59 libswscale8 libswresample5 libva2 libva-drm2 mesa-va-drivers
  bluez libspa-0.2-bluetooth power-profiles-daemon systemd-timesyncd shared-mime-info
- gsettings-desktop-schemas"
+ gsettings-desktop-schemas xwayland"
 PKGS_FIRMWARE="firmware-amd-graphics firmware-misc-nonfree firmware-iwlwifi firmware-realtek firmware-atheros
  firmware-sof-signed"
 PKGS_GPU="libgl1-mesa-dri libegl1 libgles2 libgbm1 mesa-vulkan-drivers mesa-utils vulkan-tools glmark2-es2-wayland"
