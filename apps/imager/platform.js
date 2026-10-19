@@ -70,7 +70,13 @@ export const platform = {
 
   // ---- a file of the user's own ----
   async pickImage() {
-    const path = await pick(/\.(img|img\.xz|iso)$/i, t('imager.image.pickTitle'));
+    // start in Downloads (where an image usually is), relative to the home folder
+    let start = '';
+    try {
+      const m = /^XDG_DOWNLOAD_DIR="\$HOME\/([^"]+)"/m.exec(fs.read('.config/user-dirs.dirs'));
+      if (m && fs.stat(m[1])?.dir) start = m[1];
+    } catch { /* the home folder */ }
+    const path = await pick(/\.(img|img\.xz|iso)$/i, t('imager.image.pickTitle'), start);
     return path ? this.imageInfo(path) : null;
   },
   imageInfo: (path) => (has() ? lord.imager.imageInfo(path) : null),

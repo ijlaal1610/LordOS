@@ -291,6 +291,8 @@
   "tab.remote": "Remote access",
   "tab.user": "User",
   "tab.wifi": "Wi-Fi",
+  "tip.cancelled.text": "The drive was cleared. Try again whenever you like; the download is kept.",
+  "tip.cancelled.title": "Stopped, all safe",
   "tip.custom.text": "Nobody vouches for this one: I can check that it's written correctly, not where it came from.",
   "tip.custom.title": "A file of your own",
   "tip.customise.text": "Set it up now and the board starts with your account, network and look. Nothing secret is stored in clear.",

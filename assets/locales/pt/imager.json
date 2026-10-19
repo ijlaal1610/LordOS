@@ -291,6 +291,8 @@
   "tab.remote": "Acesso remoto",
   "tab.user": "Usuário",
   "tab.wifi": "Wi-Fi",
+  "tip.cancelled.text": "A unidade foi limpa. Tente de novo quando quiser; o download fica guardado.",
+  "tip.cancelled.title": "Parado, tudo certo",
   "tip.custom.text": "Ninguém garante este: posso conferir que ele foi gravado direito, não de onde veio.",
   "tip.custom.title": "Um arquivo seu",
   "tip.customise.text": "Configure agora e a placa já inicia com a sua conta, a sua rede e o seu visual. Nada secreto fica salvo em texto claro.",
