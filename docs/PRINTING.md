@@ -100,6 +100,12 @@ CUPS (/run/cups/cups.sock) → Debian filters and drivers → the printer
   lengths and no control characters. There are tests in `ipp-test`: a hand-built packet, truncated
   at every byte and with a pointer loop.
 
+**Their own firewall app** (0.8.4): the IPP and eSCL connections to network printers and scanners,
+and the mDNS discovery socket, are made by the printers' connector (`lord-server --net-connector
+print`, `lordos-net-print.scope`), so they are "Printers and scanners" (`lordos:print`) in Monitor →
+Network, with their own rules (`FIREWALL.md`, "LordOS components in their own scopes"). The local
+CUPS socket is a Unix socket and isn't affected.
+
 ### Scanner (eSCL, `apps/scanner`)
 
 `server/src/print/escl.c` + the **Scanner** app (opened from Settings or from the app launcher):

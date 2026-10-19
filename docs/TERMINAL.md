@@ -282,6 +282,10 @@ RemoteHost (user@host, for automatic profile switching) and define
   line without newlines: it's the same thing the user could type into that tmux.
 - `lord.fs.read()` (for the importer) reads regular files under `$HOME`, 8 MB maximum.
 - Fonts are only looked up in font folders; those in `~/.fonts` belong to the user.
+- (0.8.4) The shell enters `lordos-net-terminal.scope` before exec (`pty.c`), so it and every
+  program it starts are the firewall app "Terminal" (`lordos:terminal`): its own row in Monitor →
+  Network, with each program's name, and its own rules (`FIREWALL.md`, "LordOS components in their
+  own scopes"). Best effort: a terminal that can't be placed still opens.
 
 ## Tests
 
