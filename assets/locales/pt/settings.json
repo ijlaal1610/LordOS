@@ -269,5 +269,10 @@
   "wallpaperCategory.lumo": "Lumo",
   "wallpaperCategory.cosmos": "Cosmos",
   "wallpaperCategory.gradients": "Degradês",
-  "wallpaperCategory.other": "Outros"
+  "wallpaperCategory.other": "Outros",
+  "style.title": "Estilo da área de trabalho",
+  "style.hint": "Os dois estilos têm os mesmos apps. A mudança é aplicada na hora, sem sair da sessão; as janelas abertas voltam.",
+  "dock.taskbarAlign": "Alinhamento da barra de tarefas",
+  "dock.alignCenter": "Centro",
+  "dock.alignStart": "Início"
 }

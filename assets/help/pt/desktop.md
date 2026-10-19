@@ -38,4 +38,13 @@ podem ficar coladas na área de trabalho como post-its.
 ## Temas
 
 O LordOS traz dois temas: **Lord Default** (barra de menus e Dock) e **Clássico** (barra de
-tarefas e menu iniciar). Eles mudam na hora em [Ajustes → Temas](settings:themes).
+tarefas e menu iniciar). Eles mudam na hora em [Ajustes → Aparência](settings:appearance).
+
+No **Clássico**: o botão iniciar (ou Super) abre o menu iniciar, onde digitar pesquisa apps,
+configurações e arquivos; com o botão direito em um app você o fixa em Iniciar ou na barra de
+tarefas. Os ícones de rede e volume abrem as configurações rápidas, e o relógio as notificações e um
+calendário. Arraste uma janela até a borda esquerda ou direita para ocupar meia tela, até um canto
+para um quarto ou até o alto para maximizá-la; passe o ponteiro pelo botão de maximizar para ver
+mais layouts. Super+setas faz o mesmo pelo teclado, Super+Tab mostra todas as janelas (visão de
+tarefas), Super+A abre as configurações rápidas, Super+N as notificações e Alt+F4 fecha a janela da
+frente.

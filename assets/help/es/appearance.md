@@ -11,8 +11,9 @@ keywords: apariencia, modo oscuro, claro, color, acento, tema, fondo, transparen
 - **Transparencias:** las barras y los menús con desenfoque. Apagarlas ahorra trabajo en equipos
   lentos.
 - **Fondo de pantalla:** [Ajustes → Fondo de pantalla](settings:wallpaper).
-- **Tema:** [Ajustes → Temas](settings:themes) cambia todo el escritorio en vivo, sin cerrar las
-  apps: **Lord Default** (barra de menú arriba y Dock) o **Clásico** (barra de tareas abajo y
-  menú de inicio).
+- **Estilo de escritorio:** [Ajustes → Apariencia](settings:appearance) cambia todo el escritorio
+  en vivo, sin cerrar las apps: **Lord Default** (barra de menú arriba y Dock) o **Clásico** (barra
+  de tareas centrada con menú de inicio, ajustes rápidos y notificaciones). Las ventanas abiertas
+  vuelven en el estilo nuevo. [Ajustes → Temas](settings:themes) muestra todos los temas instalados.
 
 Todas las apps toman los colores del tema, incluidas las que instalás desde la Tienda.

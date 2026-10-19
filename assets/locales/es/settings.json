@@ -269,5 +269,10 @@
   "wallpaperCategory.lumo": "Lumo",
   "wallpaperCategory.cosmos": "Cosmos",
   "wallpaperCategory.gradients": "Degradados",
-  "wallpaperCategory.other": "Otros"
+  "wallpaperCategory.other": "Otros",
+  "style.title": "Estilo de escritorio",
+  "style.hint": "Los dos estilos tienen las mismas apps. El cambio se aplica al instante, sin cerrar sesión; las ventanas abiertas vuelven.",
+  "dock.taskbarAlign": "Alineación de la barra de tareas",
+  "dock.alignCenter": "Centro",
+  "dock.alignStart": "Inicio"
 }
