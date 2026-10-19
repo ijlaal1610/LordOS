@@ -3,7 +3,7 @@
 // ("inset") forms. The spacing and type scale they follow is in docs/DESIGN.md.
 import { View, Text, addListener } from '@lordos/runtime';
 import { useEffect, useRef, useState } from 'react';
-import { useTheme } from './theme.js';
+import { useTheme, popupBg } from './theme.js';
 import { TextInput, useAppWindow } from './components.jsx';
 import { wm } from './windows.js';
 import { direction } from './i18n.js';
@@ -40,8 +40,8 @@ function TooltipBubble({ text, end, top }) {
   const t = useTheme();
   return (
     <View style={{ position: 'absolute', top, [end ? 'right' : 'left']: 0, zIndex: 1000, pointerEvents: 'none',
-      paddingHorizontal: 8, height: 22, borderRadius: 6, justifyContent: 'center',
-      backgroundColor: t.mode === 'dark' ? '#3a3a40' : '#fbfbfd', border: `1px solid ${t.separator}`, boxShadow: '0 4px 12px rgba(0,0,0,0.25)' }}>
+      paddingHorizontal: 8, height: 22, borderRadius: Math.max(2, t.menuRadius - 2), justifyContent: 'center',
+      backgroundColor: t.popupBg || (t.mode === 'dark' ? '#3a3a40' : '#fbfbfd'), border: `1px solid ${t.separator}`, boxShadow: '0 4px 12px rgba(0,0,0,0.25)' }}>
       <Text style={{ fontSize: 11, color: t.text, whiteSpace: 'nowrap' }}>{text}</Text>
     </View>
   );
@@ -61,7 +61,7 @@ export function ToolbarButton({ icon, label, title, onClick, active, disabled, s
   return (
     <View ref={ref} onClick={() => { tipLeave(); if (!disabled) onClick?.(); }}
       onMouseEnter={() => { setHover(true); tipEnter(); }} onMouseLeave={() => { setHover(false); tipLeave(); }}
-      style={[{ height: h, minWidth: h, paddingHorizontal: label ? 8 : 0, borderRadius: controlSize.radiusSmall, flexDirection: 'row', gap: 6,
+      style={[{ height: h, minWidth: h, paddingHorizontal: label ? 8 : 0, borderRadius: t.controlRadiusSmall, flexDirection: 'row', gap: 6,
         alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.45 : 1, zIndex: tip ? 1000 : 0,
         backgroundColor: active ? (t.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)') : hover && !disabled ? t.hover : 'transparent' }, style]}>
       {icon == null ? null : typeof icon === 'string' || typeof icon === 'number'
@@ -76,7 +76,7 @@ export function ToolbarButton({ icon, label, title, onClick, active, disabled, s
 // Buttons that belong together (zoom −/+, markup tools): one rounded track.
 export function ToolbarGroup({ children, style }) {
   const t = useTheme();
-  return <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 2, padding: 2, borderRadius: 8, backgroundColor: t.control }, style]}>{children}</View>;
+  return <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 2, padding: 2, borderRadius: t.controlRadius + 1, backgroundColor: t.control }, style]}>{children}</View>;
 }
 
 // The app's toolbar row under the title bar: 44 px, 12 px side insets, 8 px between items and a
@@ -133,7 +133,7 @@ export function MenuButton({ icon = '⋯', title, items, small }) {
       {open && (
         <Overlay anchor={btn}>
           <View ref={menu} style={{ position: 'absolute', top: (small ? controlSize.small : controlSize.regular) + 4, [end ? 'right' : 'left']: 0,
-            minWidth: 200, paddingVertical: 5, paddingHorizontal: 5, borderRadius: 8, backgroundColor: t.mode === 'dark' ? '#2c2c31' : '#ffffff',
+            minWidth: 200, paddingVertical: 5, paddingHorizontal: 5, borderRadius: t.menuRadius, backgroundColor: popupBg(t),
             border: `1px solid ${t.separator}`, boxShadow: '0 10px 30px rgba(0,0,0,0.35)' }}>
             {items.map((it, i) => (it === '-' ? <View key={`s${i}`} style={{ height: 1, marginVertical: 4, marginHorizontal: 6, backgroundColor: t.separator }} />
               : <MenuRow key={it.label} it={it} onDone={() => setOpen(false)} />))}
@@ -147,11 +147,12 @@ export function MenuButton({ icon = '⋯', title, items, small }) {
 function MenuRow({ it, onDone }) {
   const t = useTheme();
   const [hover, setHover] = useState(false);
-  const on = hover && !it.disabled;
+  const lit = hover && !it.disabled;
+  const on = lit && t.menuHighlight !== 'subtle';     // 'subtle' (a theme token): a light fill, the text keeps its color
   return (
     <View onClick={() => { if (it.disabled) return; onDone(); it.onClick?.(); }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ height: 24, paddingHorizontal: 8, borderRadius: 5, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: on ? t.accent : 'transparent',
-        opacity: it.disabled ? 0.4 : 1 }}>
+      style={{ height: 24, paddingHorizontal: 8, borderRadius: t.menuItemRadius, flexDirection: 'row', alignItems: 'center', gap: 6,
+        backgroundColor: on ? t.accent : lit ? t.hover : 'transparent', opacity: it.disabled ? 0.4 : 1 }}>
       <Text style={{ width: 12, fontSize: 11, color: on ? '#fff' : t.text }}>{it.checked ? '✓' : ''}</Text>
       <Text style={{ flex: 1, fontSize: 13, whiteSpace: 'nowrap', color: on ? '#fff' : it.destructive ? '#ff453a' : t.text }}>{it.label}</Text>
     </View>
@@ -206,7 +207,7 @@ export function GroupBox({ title, children, footer, style }) {
   return (
     <View style={[{ gap: 6 }, style]}>
       {title ? <Text style={{ fontSize: typeScale.caption, fontWeight: 600, color: t.textDim, marginLeft: spacing.s }}>{title}</Text> : null}
-      <View style={{ borderRadius: controlSize.groupRadius, backgroundColor: box, border: `1px solid ${t.separator}`, paddingHorizontal: spacing.m }}>
+      <View style={{ borderRadius: t.groupRadius, backgroundColor: box, border: `1px solid ${t.separator}`, paddingHorizontal: spacing.m }}>
         {rows.map((r, i) => (
           <View key={i}>
             {i > 0 ? <View style={{ height: 1, backgroundColor: t.separator }} /> : null}
@@ -246,7 +247,7 @@ export function ConfirmDialog({ title, detail, okLabel, cancelLabel, onOk, onCan
   return (
     <View onClick={onCancel} style={{ position: 'absolute', left: a.x, top: a.y, ...(a.w ? { width: a.w, height: a.h } : { right: 0, bottom: 0 }),
       backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'center', justifyContent: 'center' }}>
-      <View onClick={(e) => e.stopPropagation()} style={{ width: 360, padding: spacing.xl, gap: spacing.s, borderRadius: 12, backgroundColor: t.windowBg,
+      <View onClick={(e) => e.stopPropagation()} style={{ width: 360, padding: spacing.xl, gap: spacing.s, borderRadius: t.groupRadius + 2, backgroundColor: t.windowBg,
         border: `1px solid ${t.separator}`, boxShadow: '0 14px 36px rgba(0,0,0,0.45)' }}>
         <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text, textAlign: 'start' }}>{title}</Text>
         {detail ? <Text style={{ fontSize: typeScale.body, color: t.textDim, lineHeight: 1.4, textAlign: 'start' }}>{detail}</Text> : null}
@@ -263,8 +264,8 @@ function DialogButton({ t, label, onClick, primary, destructive }) {
   const bg = primary ? (destructive ? '#e5483f' : t.accent) : t.control;
   return (
     <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ height: controlSize.regular, paddingHorizontal: 14, borderRadius: controlSize.radius, justifyContent: 'center', alignItems: 'center',
-        backgroundColor: bg, opacity: hover ? 0.85 : 1 }}>
+      style={{ height: controlSize.regular, paddingHorizontal: 14, borderRadius: t.controlRadius, justifyContent: 'center', alignItems: 'center',
+        backgroundColor: bg, opacity: hover ? 0.85 : 1, ...(t.buttonBorder && !primary ? { border: `1px solid ${t.separator}` } : null) }}>
       <Text style={{ fontSize: typeScale.body, fontWeight: 500, color: primary ? '#fff' : t.text, whiteSpace: 'nowrap' }}>{label}</Text>
     </View>
   );

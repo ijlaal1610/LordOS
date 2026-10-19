@@ -99,7 +99,7 @@ export const GroupBox = Section;
 export function PageHeader({ icon, title, subtitle, children }) {
   const t = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.l, padding: spacing.l, borderRadius: 10,
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.l, padding: spacing.l, borderRadius: t.groupRadius,
       backgroundColor: t.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.025)', border: `1px solid ${t.separator}` }}>
       {icon}
       <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
@@ -170,14 +170,20 @@ export function PopUp({ value, options, onChange, width = 190, disabled }) {
   const toggle = () => { if (disabled) return; popup.set(open ? null : { node: btn.current, options, value, onChange, width }); };
   return (
     <View ref={btn} onClick={toggle} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ width, height: 24, paddingHorizontal: 9, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6,
-        backgroundColor: t.control, opacity: disabled ? 0.45 : hover || open ? 0.88 : 1, boxShadow: '0 1px 1px rgba(0,0,0,0.12)' }}>
+      style={{ width, height: 24, paddingHorizontal: 9, borderRadius: t.controlRadiusSmall, flexDirection: 'row', alignItems: 'center', gap: 6,
+        backgroundColor: t.control, opacity: disabled ? 0.45 : hover || open ? 0.88 : 1, boxShadow: '0 1px 1px rgba(0,0,0,0.12)',
+        ...(t.buttonBorder ? { border: `1px solid ${t.separator}` } : null) }}>
       {cur && cur[2] ? h(cur[2], { size: 16 }) : null}
       <Text style={{ flex: 1, fontSize: 12, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{cur ? cur[1] : ''}</Text>
-      <View style={{ width: 16, height: 18, borderRadius: 4, backgroundColor: t.accent, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 8, color: '#fff', lineHeight: 8 }}>▲</Text>
-        <Text style={{ fontSize: 8, color: '#fff', lineHeight: 8 }}>▼</Text>
-      </View>
+      {t.menuHighlight === 'subtle'
+        // a drawn chevron (the themes with subtle menus, such as Classic)
+        ? <View style={{ width: 16, height: 18, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 6, height: 6, marginTop: -3, borderRightWidth: 1.5, borderBottomWidth: 1.5, borderColor: t.textDim, transform: 'rotate(45deg)' }} />
+        </View>
+        : <View style={{ width: 16, height: 18, borderRadius: 4, backgroundColor: t.accent, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 8, color: '#fff', lineHeight: 8 }}>▲</Text>
+          <Text style={{ fontSize: 8, color: '#fff', lineHeight: 8 }}>▼</Text>
+        </View>}
     </View>
   );
 }
@@ -203,8 +209,8 @@ function PopUpLayer() {
   // not clipped by the page's scroll view
   return (
     <Overlay anchor={p.node}>
-      <View ref={menu} style={{ position: 'absolute', left: 0, top: below ? bh + 4 : -4 - height, width: Math.max(bw, p.width), height, padding: 5, borderRadius: 8, overflow: 'hidden',
-        backgroundColor: t.mode === 'dark' ? '#2c2c31' : '#ffffff', border: `1px solid ${t.separator}`, boxShadow: '0 10px 30px rgba(0,0,0,0.35)' }}>
+      <View ref={menu} style={{ position: 'absolute', left: 0, top: below ? bh + 4 : -4 - height, width: Math.max(bw, p.width), height, padding: 5, borderRadius: t.menuRadius, overflow: 'hidden',
+        backgroundColor: t.popupBg || (t.mode === 'dark' ? '#2c2c31' : '#ffffff'), border: `1px solid ${t.separator}`, boxShadow: '0 10px 30px rgba(0,0,0,0.35)' }}>
         <ScrollView style={{ flex: 1 }}>
           {p.options.map(([v, label], i) => (v === '-' ? <View key={`s${i}`} style={{ height: 1, marginVertical: 4, marginHorizontal: 6, backgroundColor: t.separator }} />
             : <PopRow key={String(v)} label={label} Icon={p.options[i][2]} checked={v === p.value} onClick={() => { popup.set(null); if (v !== p.value) p.onChange(v); }} />))}
@@ -216,11 +222,13 @@ function PopUpLayer() {
 
 function PopRow({ label, checked, onClick, Icon }) {
   const t = useTheme();
-  const [hover, setHover] = useState(false);
+  const [lit, setHover] = useState(false);
+  const hover = lit && t.menuHighlight !== 'subtle';
   return (
     <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ height: 24, paddingHorizontal: 6, borderRadius: 5, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: hover ? t.accent : 'transparent' }}>
-      <Text style={{ width: 14, fontSize: 11, color: hover ? '#fff' : t.text }}>{checked ? '✓' : ''}</Text>
+      style={{ height: 24, paddingHorizontal: 6, borderRadius: t.menuItemRadius, flexDirection: 'row', alignItems: 'center', gap: 6,
+        backgroundColor: hover ? t.accent : lit ? t.hover : 'transparent' }}>
+      <Text style={{ width: 14, fontSize: 11, color: hover ? '#fff' : checked && !hover && t.menuHighlight === 'subtle' ? t.accent : t.text }}>{checked ? '✓' : ''}</Text>
       {Icon ? <Icon size={16} /> : null}
       <Text style={{ flex: 1, fontSize: 12, whiteSpace: 'nowrap', color: hover ? '#fff' : t.text, textAlign: 'start' }}>{label}</Text>
     </View>

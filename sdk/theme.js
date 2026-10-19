@@ -17,7 +17,22 @@ export const DEFAULT_TOKENS = {
   inputBg: '#2c2c31',
   radius: 8,
   wallpapers: [],        // [{ id, nameKey (locale key), name (English fallback), src }]
+  // Shape and style of the shared controls (sdk/components.jsx, sdk/controls.jsx). A theme changes
+  // them to give every app its look without touching the apps (docs/DESIGN.md, "Theme tokens").
+  controlRadius: 7,       // Button, TextInput, SearchField, Stepper, dialog buttons
+  controlRadiusSmall: 6,  // small buttons, toolbar buttons, sidebar rows
+  groupRadius: 10,        // GroupBox (inset forms)
+  menuRadius: 8,          // MenuButton menus, tooltips use menuRadius - 2
+  menuItemRadius: 5,
+  menuHighlight: 'accent',  // 'accent': the hovered item is filled with the accent; 'subtle': a light fill
+  selection: 'fill',      // SidebarItem: 'fill' (accent background) or 'indicator' (light fill and an accent bar)
+  inputFocus: 'ring',     // TextInput: 'ring' (accent border) or 'underline' (accent line at the bottom)
+  buttonBorder: false,    // Button: a 1 px border around neutral buttons
+  popupBg: null,          // menus and tooltips; null = a light or dark surface for the mode
 };
+
+// The surface of menus, tooltips and popovers for a theme (popupBg, or one for the mode).
+export const popupBg = (t) => t.popupBg || (t.mode === 'dark' ? '#2c2c31' : '#ffffff');
 
 const ThemeContext = createContext(DEFAULT_TOKENS);
 
