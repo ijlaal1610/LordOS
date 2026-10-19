@@ -1266,6 +1266,9 @@ The installed tree was saved first in `/var/backups/lordos-classic-bak` and put 
   with `lord-qmp-input.py 119 1280 800`, keys with `qm monitor 119` `sendkey`, holding
   `flock /tmp/sistema-119-screen.lock`. Window drags for the frame times with a QMP script in the
   host's `/tmp` (deleted afterwards); lord-server's own `drag:` lines in `~/.cache/lordos/session.log`.
-- **Undone at the end:** `~/.config/lordos/settings.json` restored from its copy, the two test
-  notifications, `~/.cache/lordos-shot*.json`, `~/shot-harness`, `~/deploy-classic-119.sh` and
-  `~/LordOS-classic` deleted.
+- **Test notifications** with `notify-send` (they live in the session's memory only).
+- **Undone at the end:** `/usr/lib/lordos` put back from the backup (the files the deploy added
+  removed, the rest copied back; `diff -r` against the backup empty, then the backup deleted),
+  `~/.config/lordos/settings.json` restored from its copy, `~/.cache/lordos-shot*.json`,
+  `~/shot-harness`, `~/deploy-classic-119.sh` and `~/LordOS-classic` deleted. The VM ends at the
+  login screen.
