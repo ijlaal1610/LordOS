@@ -148,6 +148,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   Store's update installs only what the package depends on, so after updating from the Store,
   install **xwayland** from the Store (or `sudo apt install xwayland`) to open X11 apps; Wayland
   apps don't need it.
+- **Raspberry Pi 5: blocked connections stall instead of closing.** The image keeps 0.8.2's
+  LordOS kernel, which was built before `CONFIG_INET_DIAG_DESTROY`; there the firewall drops the
+  packets of a connection a new rule denies at once, but the app only sees the connection end at
+  its own timeout. The next Pi kernel build closes them like on a PC.
 - X11 apps can see each other, as on any X11 desktop; a separate display for restricted X11 apps,
   drag and drop between X11 and Wayland apps and sharp X11 apps on HiDPI displays come later.
 - The other known issues of 0.8.2 still apply.
