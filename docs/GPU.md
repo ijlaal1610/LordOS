@@ -69,6 +69,48 @@ direct scanout. The log says `gpu: GPU composition (renderer…)` or why not.
   moving the mouse composites nothing. If the driver has no cursor plane, it's drawn as a quad
   (`LORD_SW_CURSOR=1` forces it).
 
+## When the GPU context is re-created
+
+The EGL/GBM context does not live as long as the session. It is torn down and made again when the
+session leaves the monitor and comes back (login screen, lock, user switch: `SESSIONS.md`), when a
+remote viewer connects and leaves, when the displays change and when a frame fails. Every texture
+and EGLImage dies with its context, so:
+
+- **Each context has a generation** (`gpu_generation()`), and each `GpuTex` remembers its own.
+  A texture from an earlier context is *stale*: `gpu_draw` skips it, `gpu_tex_pixels` makes a new
+  one and `gpu_tex_free` only frees its memory (its GL name may already belong to a texture of the
+  new context, such as the UI's).
+- **dmabuf imports are cached per `wl_buffer` and per context** (`dm_tex` in `wl.c`): a buffer is
+  imported again the first time it is drawn in a new context. A failed import is remembered only
+  for that context.
+- **Going away** (`gpu_shutdown`): while the old context still works, the compositor reads back the
+  last frame of every window showing a dmabuf (`gpu_tex_read`) so the CPU path can keep drawing it,
+  and frees its textures. Off the GPU, linear dmabufs are mapped and copied as always; one the CPU
+  can't read (tiled) is held and the last good frame stays on screen. Buffers in a format the last
+  GPU context imported are still accepted while off the GPU.
+- **Coming back** (`gpu_init`): held buffers are imported again (no need to wait for the app's next
+  frame), shm textures are uploaded again and everything is repainted.
+- **Feedback:** if the format table or the device changed (GPU ↔ CPU), the `zwp_linux_dmabuf_feedback_v1`
+  objects are sent the new one, so apps reallocate buffers the new path can use.
+- **Direct scanout:** the buffers on the primary plane are released with the old context.
+
+Before 0.8.1 the cached imports and window textures were reused in the new context: after the
+login screen or a lock, Chromium's window (and other app windows, shm ones too) came back black.
+Test with `tests/gpu_cycle.sh` (needs a free card: stop `lordos.service` first; `build/seat-cycle`
+plays `lord-sessiond`'s part, lending the card and taking it back N times and saving what the CRTC
+shows). VM 119, virtio-gpu with llvmpipe (`LORD_GPU=1`), Chromium (`--ozone-platform=wayland`,
+which draws with shm there) and `dmabuf-client`, 10 and 20 cycles: Chromium keeps drawing every
+time it's shown again (before the fix it was black from the second time on), the session's fds
+stay flat (29) and RSS levels off at ~196 MB, as without the fix (llvmpipe's own memory);
+`LORD_GPU=0`, 5 cycles: 69 MB flat. The VM can't import a real GPU dmabuf (see "Untested"), so the
+re-import of an EGL-imported buffer was checked by reading the code path, not on screen;
+`gpu_tex_read` was checked against freshly uploaded textures (0 differing pixels).
+
+| | |
+|---|---|
+| ![before](gpu-relogin-before.png) | ![after](gpu-relogin-after.png) |
+| Before: Chromium black after the session came back to the monitor | After: still drawing after 10 off/on-monitor cycles |
+
 ## New protocols
 
 | Protocol | Version | What it does |

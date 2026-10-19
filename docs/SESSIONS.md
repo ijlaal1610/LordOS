@@ -207,6 +207,11 @@ after that the wait is 1, 2, 4… seconds, up to 5 minutes.
     main process while live processes remained in the delegated tree ("Device or resource busy");
   - autologin is applied only once per machine boot (`/run/lordos/autologin-done`), so a service
     restart doesn't unlock a locked session.
+- **Linux app windows across a lock or a switch:** leaving the monitor tears the session's GPU
+  context down and coming back makes a new one. Every window is imported again in the new context
+  and, while the session is off the monitor, a window whose buffer the CPU can't read keeps its
+  last frame. Before 0.8.1, Chromium's window came back black (`GPU.md`, "When the GPU context is
+  re-created"; `tests/gpu_cycle.sh` repeats the off/on cycle).
 
 In the SDK: `session.lock()`, `session.switchUser()` and `session.managed()`. The `default` and
 `classic` themes show those items only if `managed()` is true.

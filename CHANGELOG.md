@@ -27,6 +27,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   name, "Chromium", in every language. The Dock tooltip and Linux app notifications use the same
   short name; a real translation of the name (e.g. "Archivos") still shows, and a window without a
   `.desktop` file is named after its app id. The window's own title bar keeps the title.
+- **Linux app windows are no longer black after the login screen or a lock.** With GPU
+  composition, coming back to the monitor creates a new GPU context, but each window's buffers were
+  still drawn with their textures from the old one: Chromium's window stayed black while its audio
+  kept playing. Imports now belong to one context and are made again, windows keep
+  their last frame while the session is off the monitor, and apps get the new dmabuf formats
+  ([docs/GPU.md](docs/GPU.md#when-the-gpu-context-is-re-created)).
 
 ## [0.8.0-beta] - 2026-10-18
 
