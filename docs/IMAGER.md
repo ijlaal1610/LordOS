@@ -19,6 +19,7 @@ It is not a web page: a browser can't write a whole disk.
 | ![Customise: cooling](imager/native-10-tab-cooling.png) | ![Customise: cooling](imager/desktop-07-cooling.png) |
 | ![Writing](imager/native-15-writing.png) | ![Writing](imager/desktop-11-writing-dark.png) |
 | ![Done](imager/native-18-done.png) | ![Done](imager/desktop-12-done-dark.png) |
+| ![The Linux download running inside LordOS](imager/desktop-13-linux-in-lordos.png) | ![The Linux download, written through udisks2](imager/desktop-14-linux-done.png) |
 
 ## The steps
 
@@ -326,6 +327,7 @@ The containers keep their own `node_modules` and cargo target folders in named v
 | `server/tests/firstrun_image_test.sh` (root, VM 116) | the real 0.8.3 Raspberry Pi image written by `imager-write`, the first-run file put on its boot partition as the user, then `lordos-firstrun --root --boot`: every file it should write, owners and modes, nothing else changed in `cmdline.txt`/`config.txt`, no Wi-Fi password anywhere, the file shredded, and a broken file applies nothing | 25/25 |
 | Native app on VM 116 | the whole flow with the 0.8.3 image to the virtual stick: written and verified; the first-run file it wrote parses, its yescrypt hash verifies with `crypt(3)` and its PSK matches `pbkdf2_hmac` | ✓ |
 | Desktop app (Mac download, on the development machine) | the whole flow through the app's own commands (`LORDOS_IMAGER_TEST_STATE`, no simulated input) to a 16 GB disk image: download of 0.8.3 from GitHub, signature, image check, write, read back (the same SHA-256 as the native write, `b623f7a8…`), the first-run file on the boot partition (it parses, glibc accepts its SHA-512 hash, the PSK matches) | ✓ |
+| Linux download inside LordOS (VM 116) | the `.deb`'s binary as a Wayland app in the LordOS session: lists only the virtual stick (2 disks hidden), downloads 0.8.3 again, signature, image check, write and read back through udisks2's `OpenDevice` (the same SHA-256); without a polkit agent udisks2 answers "not authorized" and nothing on the drive is touched, with a test rule standing in for the agent the write goes through | ✓ |
 | Downloads on VM 116 | `imager-fetch meta`, the two signature files, the 558 MB image cancelled at 335 MB and resumed from the `.part` | ✓ |
 
 ## Not done or not verified yet
