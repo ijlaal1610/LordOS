@@ -65,6 +65,9 @@ int fsops_protected(const char *real) {
                                            "/.local/share/lordos/apps", "/.config/lordos/settings.json",
                                            "/.config/lordos/permisos.json",
                                            "/.config/lordos/firewall.json", /* network permissions: an app does not write its own rules */
+                                           "/.config/lordos/fwlists.json",  /* (0.8.4) subscribed blocklists: only lord.fw */
+                                           "/.config/lordos/fwlists.txt",   /* their compiled entries, read by lord-netperm */
+                                           "/.cache/lordos/fwlists",        /* their downloads: only lord-server writes them */
                                            "/.config/lordos/backup.json",   /* Backups: decides where the data goes */
                                            "/.config/lordos/mail",          /* Mail accounts and trusted certificates: only lord.mail.saveConfig (docs/MAIL.md) */
                                            "/.local/share/lordos/mail",     /* Mail cache: only lord-maild writes it */

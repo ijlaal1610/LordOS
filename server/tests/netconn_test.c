@@ -1,7 +1,6 @@
 /* netconn_test.c — the components' network connectors (src/sec/netconn.c, 0.8.4):
  * request validation on both sides, the sockets the connector makes, the real connector process
  * (this binary re-executed with --net-connector, as lord-server is) and its fail-closed start. */
-#define _GNU_SOURCE
 #include "sec/netconn.h"
 
 #include <arpa/inet.h>
@@ -71,7 +70,7 @@ static int connected(int fd) {
 }
 
 static void test_sockets(int via_process) {
-    int port, l = listener(&port);
+    int port = 0, l = listener(&port);
     CHECK(l >= 0);
     struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons((uint16_t)port) };
     inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);

@@ -69,6 +69,9 @@ strip --strip-unneeded "$L/bin/lord-server" "$L/bin/lord-sessiond" "$L/bin/lord-
 # lord-maild: IMAP/SMTP/CalDAV/CardDAV with TLS for Mail (docs/MAIL.md); lord-server only launches the one in its own folder
 [ -x server/build/lord-maild ] && install -m 755 server/build/lord-maild "$L/bin/lord-maild"
 [ -x "$L/bin/lord-maild" ] && { strip --strip-unneeded "$L/bin/lord-maild" 2>/dev/null || true; }
+# lord-fetch (0.8.4): downloads the subscribed blocklists over HTTPS, sandboxed (docs/FIREWALL.md, "Blocklists")
+[ -x server/build/lord-fetch ] && install -m 755 server/build/lord-fetch "$L/bin/lord-fetch"
+[ -x "$L/bin/lord-fetch" ] && { strip --strip-unneeded "$L/bin/lord-fetch" 2>/dev/null || true; }
 # FIDO2 security keys reachable by the session user (lord-sessiond sessions have no logind seat)
 install -d "$PKG/usr/lib/udev/rules.d"
 install -m 644 packaging/udev/71-lordos-fido.rules "$PKG/usr/lib/udev/rules.d/71-lordos-fido.rules"
@@ -79,7 +82,7 @@ for d in themes/*/; do
     install -m 644 "$d/theme.json" "$d/theme.bundle.js" "$L/themes/$n/"
     [ -d "$d/assets" ] && cp -r "$d/assets" "$L/themes/$n/"
 done
-cp -r assets/fonts assets/locales assets/shell assets/icons assets/mascot assets/monitor assets/help "$L/assets/"
+cp -r assets/fonts assets/locales assets/shell assets/icons assets/mascot assets/monitor assets/help assets/fw "$L/assets/"
 # the wallpaper collection (assets/wallpapers/README.md): once, in the standard place for desktop
 # backgrounds; lord-server reaches it as asset:wallpapers/… through the link. Only the JPEGs, the
 # thumbnails and the README (index.json is bundled into the SDK at build time).
