@@ -36,6 +36,7 @@
 
 #include <arpa/inet.h>
 #include <dirent.h>
+#include <malloc.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/bpf.h>
@@ -250,6 +251,7 @@ static void load_lists(Session *s) {
     fwl_free(s->lists);
     s->lists = fwl_domains(l) || fwl_nets(l) ? l : (fwl_free(l), NULL);
     if (s->lists) logf_("uid %u: blocklists: %zu names, %zu networks", s->uid, fwl_domains(s->lists), fwl_nets(s->lists));
+    malloc_trim(0);                     /* the file's text and the set's growth: back to the system */
 }
 
 /* ---- maps ------------------------------------------------------------------------------------ */
@@ -343,7 +345,10 @@ static void sync_scope(Session *s, Scope *sc) {
     for (int i = 0; i < c.nnodes; i++) install(sc->idx, gen, &c.nodes[i]);
     prune(sc->idx, gen);
     sc->has_domains = c.has_domains;
-    if (s->lists) { c.app.blk = s->blkset; c.app.can_deny = 1; }    /* lists deny: the filter decides for it */
+    /* the lists deny new connections in connect()/sendmsg(); an open connection to an address that
+     * just joined a list is cut by the sweep after the change (sync_blk), so the per-packet filter
+     * doesn't decide for every app because lists are on (it would cost every packet a decision) */
+    if (s->lists) c.app.blk = s->blkset;
     sc->app_v = c.app;
     if (bpfs_map_update(G.m_np_apps, &sc->cgid, &c.app, BPF_ANY)) logf_("np_apps: %s", strerror(errno));
     /* the counters' entry exists from the start: the accounting programs only add to existing
@@ -401,6 +406,8 @@ static int blk_map(uint32_t set, int fam, const uint8_t *addr, int prefix, int d
     return del ? bpfs_map_delete(G.m_np_blk6, &k) : bpfs_map_update(G.m_np_blk6, &k, &one, BPF_ANY);
 }
 
+static int blk_added;                   /* entries sync_blk installed (a sweep follows) */
+
 static void blk_want(Session *s, int fam, const uint8_t *addr, int prefix, int learned) {
     unsigned char k[18];
     size_t kl = blk_key(fam, addr, prefix, k);
@@ -420,6 +427,7 @@ static void blk_want(Session *s, int fam, const uint8_t *addr, int prefix, int l
     e->mark = G.blk_pass;
     s->nlearned += learned;
     *slot = e;
+    blk_added++;
 }
 
 /* An address the resolver now also gives for an unlisted name: no longer blocked. */
@@ -443,9 +451,12 @@ static int blk_dns_cb(void *u, int fam, const uint8_t *addr, const char (*names)
     return 0;
 }
 
+static void sweep(unsigned uid);
+
 static void sync_blk(Session *s) {
     if (!G.bpf_ok) return;
     G.blk_pass++;
+    blk_added = 0;
     if (s->lists) {
         if (!s->blkset) s->blkset = ++G.next_blkset;
         fwl_net_each(s->lists, blk_net_cb, s);
@@ -458,6 +469,7 @@ static void sync_blk(Session *s) {
         s->nlearned -= b->learned;
         free(fwmap_take(&s->blkin, e->key, e->klen));
     }
+    if (blk_added) sweep(s->uid);       /* open connections to what was just added */
 }
 
 /* ---- user@<uid>.service: the systemd-run escape ------------------------------------------- */
@@ -834,7 +846,7 @@ static int remote_of(const NpSock *k, uint8_t *a) {
  * address and whether the local port is one it bound (an incoming connection). 1 if denied. */
 static int user_denies(const Scope *sc, const NpSock *k, int *fam, uint8_t *addr, int *dir, int *port, NpRes *r) {
     const NpApp *a = &sc->app_v;
-    if (!a->can_deny) return 0;
+    if (!a->can_deny && !a->blk) return 0;
     *fam = remote_of(k, addr);
     int proto = k->proto == IPPROTO_TCP ? NP_P_TCP : NP_P_UDP, lan;
     NpList l;

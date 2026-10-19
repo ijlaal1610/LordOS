@@ -8,24 +8,31 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* The set keeps no names: a name is its 64-bit hash (fw_hash, seeded per process, so nobody can
+ * craft a name that collides on purpose), sorted for binary search, with the tag of the list it
+ * came from. A list of 380,000 names takes about 4 MB instead of 50. Networks are kept whole. */
+typedef struct { uint64_t h; uint32_t seq; uint16_t tag; uint16_t pad; } NameEnt;
+typedef struct { unsigned char k[18]; uint16_t tag; uint32_t seq; } NetEnt;
+
 struct FwLists {
-    FwMap exact, sub, nets;             /* name → tag; name → tag; (fam, prefix, network) → tag */
+    NameEnt *ex, *sub;                  /* exact names; names with every subdomain */
+    size_t nex, nsub, capex, capsub;
+    NetEnt *net;
+    size_t nnet, capnet;
+    uint32_t seq;
+    int sorted;                         /* 0: entries were added since the last sort */
     unsigned char has4[33], has6[129];  /* prefix lengths present */
-    size_t ndom, nnet;
 };
 
 FwLists *fwl_new(void) { return calloc(1, sizeof(FwLists)); }
 
 void fwl_free(FwLists *l) {
     if (!l) return;
-    fwmap_free(&l->exact, NULL);
-    fwmap_free(&l->sub, NULL);
-    fwmap_free(&l->nets, NULL);
+    free(l->ex);
+    free(l->sub);
+    free(l->net);
     free(l);
 }
-
-size_t fwl_domains(const FwLists *l) { return l ? l->ndom : 0; }
-size_t fwl_nets(const FwLists *l) { return l ? l->nnet : 0; }
 
 FwlFormat fwl_format_from_name(const char *n) {
     if (!n) return 0;
@@ -35,7 +42,7 @@ FwlFormat fwl_format_from_name(const char *n) {
     return 0;
 }
 
-/* ---- the set --------------------------------------------------------------------------------- */
+/* ---- the set ---- */
 
 static size_t net_key(int fam, const uint8_t *addr, int prefix, unsigned char *k) {
     memset(k, 0, 18);
@@ -47,14 +54,58 @@ static size_t net_key(int fam, const uint8_t *addr, int prefix, unsigned char *k
         unsigned char m = bits >= 8 ? 0xff : bits <= 0 ? 0 : (unsigned char)(0xff << (8 - bits));
         k[2 + i] = addr[i] & m;
     }
-    return (size_t)(2 + bytes);
+    return 18;
 }
 
-static int put(FwMap *m, const void *key, size_t kl, uint16_t tag) {
-    void **slot = fwmap_slot(m, key, kl, 1);
-    if (!slot) return -2;
-    if (*slot) return 1;
-    *slot = (void *)(uintptr_t)tag;
+static int name_cmp(const void *a, const void *b) {
+    const NameEnt *x = a, *y = b;
+    if (x->h != y->h) return x->h < y->h ? -1 : 1;
+    return x->seq < y->seq ? -1 : x->seq > y->seq;
+}
+
+static int net_cmp(const void *a, const void *b) {
+    const NetEnt *x = a, *y = b;
+    int c = memcmp(x->k, y->k, 18);
+    if (c) return c;
+    return x->seq < y->seq ? -1 : x->seq > y->seq;
+}
+
+/* Sorts and drops repeated entries (the first one added keeps its tag). Returns how many went. */
+static size_t uniq_names(NameEnt *v, size_t *n) {
+    if (*n < 2) return 0;
+    qsort(v, *n, sizeof *v, name_cmp);
+    size_t w = 1;
+    for (size_t i = 1; i < *n; i++) if (v[i].h != v[w - 1].h) v[w++] = v[i];
+    size_t gone = *n - w;
+    *n = w;
+    return gone;
+}
+
+static size_t finish(FwLists *l) {
+    if (!l || l->sorted) return 0;
+    size_t gone = uniq_names(l->ex, &l->nex) + uniq_names(l->sub, &l->nsub);
+    if (l->nnet > 1) {
+        qsort(l->net, l->nnet, sizeof *l->net, net_cmp);
+        size_t w = 1;
+        for (size_t i = 1; i < l->nnet; i++) if (memcmp(l->net[i].k, l->net[w - 1].k, 18)) l->net[w++] = l->net[i];
+        gone += l->nnet - w;
+        l->nnet = w;
+    }
+    l->sorted = 1;
+    return gone;
+}
+
+size_t fwl_finish(FwLists *l) { return finish(l); }
+size_t fwl_domains(const FwLists *l) { if (!l) return 0; finish((FwLists *)l); return l->nex + l->nsub; }
+size_t fwl_nets(const FwLists *l) { if (!l) return 0; finish((FwLists *)l); return l->nnet; }
+
+static int grow(void **v, size_t *cap, size_t n, size_t sz) {
+    if (n < *cap) return 0;
+    size_t c = *cap ? *cap * 2 : 1024;
+    void *p = realloc(*v, c * sz);
+    if (!p) return -1;
+    *v = p;
+    *cap = c;
     return 0;
 }
 
@@ -85,33 +136,52 @@ static int net_usable(const FwRule *r) {
     return !fw_addr_is_lan(r->fam, r->addr);
 }
 
-int fwl_add_line(FwLists *l, const char *line, size_t len, uint16_t tag) {
-    if (!l || !line || len < 3 || line[1] != ' ' || !tag) return -1;
+/* What a line is: 'd'/'s' with the name in name, 'n' with the network in r, or 0 if invalid. */
+static int check_line(const char *line, size_t len, char *name, FwRule *r) {
+    if (!line || len < 3 || line[1] != ' ') return 0;
     const char *v = line + 2;
     size_t vn = len - 2;
     if (line[0] == 'd' || line[0] == 's') {
-        char name[FW_NAME_MAX];
-        if (good_name(v, vn, name) || strlen(name) != vn || memcmp(name, v, vn)) return -1;   /* already normalized */
-        if (l->ndom >= FWL_MAX_DOMAINS) return -2;
-        int r = put(line[0] == 'd' ? &l->exact : &l->sub, name, vn, tag);
-        if (!r) l->ndom++;
-        return r;
+        if (good_name(v, vn, name) || strlen(name) != vn || memcmp(name, v, vn)) return 0;   /* already normalized */
+        return line[0];
     }
-    if (line[0] == 'n') {
-        FwRule r;
-        if (parse_net(v, vn, &r) || !net_usable(&r)) return -1;
-        if (l->nnet >= FWL_MAX_NETS) return -2;
-        unsigned char k[18];
-        size_t kl = net_key(r.fam, r.addr, r.prefix, k);
-        int x = put(&l->nets, k, kl, tag);
-        if (!x) {
-            l->nnet++;
-            if (r.fam == 4) l->has4[r.prefix] = 1;
-            else l->has6[r.prefix] = 1;
-        }
-        return x;
+    if (line[0] == 'n') return !parse_net(v, vn, r) && net_usable(r) ? 'n' : 0;
+    return 0;
+}
+
+int fwl_check_line(const char *line, size_t len) {
+    char name[FW_NAME_MAX];
+    FwRule r;
+    return check_line(line, len, name, &r) ? 0 : -1;
+}
+
+int fwl_add_line(FwLists *l, const char *line, size_t len, uint16_t tag) {
+    char name[FW_NAME_MAX];
+    FwRule r;
+    if (!l || !tag) return -1;
+    int kind = check_line(line, len, name, &r);
+    if (!kind) return -1;
+    if (kind == 'n') {
+        if (l->nnet >= FWL_MAX_NETS * 2 || grow((void **)&l->net, &l->capnet, l->nnet, sizeof *l->net)) return -2;
+        NetEnt *e = &l->net[l->nnet++];
+        net_key(r.fam, r.addr, r.prefix, e->k);
+        e->tag = tag;
+        e->seq = l->seq++;
+        if (r.fam == 4) l->has4[r.prefix] = 1;
+        else l->has6[r.prefix] = 1;
+    } else {
+        int sub = kind == 's';
+        NameEnt **v = sub ? &l->sub : &l->ex;
+        size_t *n = sub ? &l->nsub : &l->nex, *cap = sub ? &l->capsub : &l->capex;
+        if (l->nex + l->nsub >= FWL_MAX_DOMAINS * 2 || grow((void **)v, cap, *n, sizeof **v)) return -2;
+        NameEnt *e = &(*v)[(*n)++];
+        e->h = fw_hash(name, strlen(name));
+        e->tag = tag;
+        e->seq = l->seq++;
+        e->pad = 0;
     }
-    return -1;
+    l->sorted = 0;
+    return 0;
 }
 
 long fwl_add_text(FwLists *l, const char *text, size_t len, uint16_t tag) {
@@ -122,11 +192,16 @@ long fwl_add_text(FwLists *l, const char *text, size_t len, uint16_t tag) {
         if (e > i) {
             int r = fwl_add_line(l, text + i, e - i, tag);
             if (r == -1) return -1;
-            if (r == -2) return added;
-            if (r == 0) added++;
+            if (r == -2) break;
+            added++;
         }
         i = e + 1;
     }
+    finish(l);
+    /* the caps are on unique entries */
+    if (l->nex + l->nsub > FWL_MAX_DOMAINS) l->nsub = l->nex >= FWL_MAX_DOMAINS ? 0 : FWL_MAX_DOMAINS - l->nex;
+    if (l->nex > FWL_MAX_DOMAINS) l->nex = FWL_MAX_DOMAINS;
+    if (l->nnet > FWL_MAX_NETS) l->nnet = FWL_MAX_NETS;
     return added;
 }
 
@@ -149,64 +224,32 @@ FwLists *fwl_load_text(const char *text, size_t len, char *err, size_t errlen) {
         }
         i = e + 1;
     }
+    finish(l);
+    if (l->nex + l->nsub > FWL_MAX_DOMAINS || l->nnet > FWL_MAX_NETS) { snprintf(err, errlen, "too many entries"); fwl_free(l); return NULL; }
     return l;
 }
 
-typedef struct { char *p; size_t n, cap; int err; } Out;
-
-static void out_put(Out *o, const char *s, size_t n) {
-    if (o->err) return;
-    if (o->n + n + 2 > o->cap) {
-        size_t c = o->cap ? o->cap : 4096;
-        while (c < o->n + n + 2) c *= 2;
-        char *p = realloc(o->p, c);
-        if (!p) { o->err = 1; return; }
-        o->p = p;
-        o->cap = c;
+static uint16_t find_name(const NameEnt *v, size_t n, uint64_t h) {
+    size_t lo = 0, hi = n;
+    while (lo < hi) {
+        size_t m = lo + (hi - lo) / 2;
+        if (v[m].h < h) lo = m + 1;
+        else hi = m;
     }
-    memcpy(o->p + o->n, s, n);
-    o->n += n;
-    o->p[o->n] = 0;
+    return lo < n && v[lo].h == h ? v[lo].tag : 0;
 }
-
-static char *text_of(const FwLists *l, int header, size_t *len) {
-    Out o = { 0 };
-    if (header) out_put(&o, FWL_HEADER "\n", strlen(FWL_HEADER) + 1);
-    else out_put(&o, "", 0);
-    char line[FW_NAME_MAX + 8];
-    FWMAP_EACH(&l->exact, e) {
-        int n = snprintf(line, sizeof line, "d %.*s\n", (int)e->klen, (const char *)e->key);
-        out_put(&o, line, (size_t)n);
-    }
-    FWMAP_EACH(&l->sub, e) {
-        int n = snprintf(line, sizeof line, "s %.*s\n", (int)e->klen, (const char *)e->key);
-        out_put(&o, line, (size_t)n);
-    }
-    FWMAP_EACH(&l->nets, e) {
-        char ip[INET6_ADDRSTRLEN];
-        uint8_t a[16] = { 0 };
-        int fam = e->key[0], prefix = e->key[1];
-        memcpy(a, e->key + 2, fam == 4 ? 4 : 16);
-        if (!inet_ntop(fam == 4 ? AF_INET : AF_INET6, a, ip, sizeof ip)) continue;
-        int n = prefix == (fam == 4 ? 32 : 128) ? snprintf(line, sizeof line, "n %s\n", ip) : snprintf(line, sizeof line, "n %s/%d\n", ip, prefix);
-        out_put(&o, line, (size_t)n);
-    }
-    if (o.err) { free(o.p); return NULL; }
-    *len = o.n;
-    return o.p;
-}
-
-char *fwl_to_text(const FwLists *l, size_t *len) { return l ? text_of(l, 1, len) : NULL; }
 
 uint16_t fwl_match_name(const FwLists *l, const char *in) {
-    if (!l || !in || !l->ndom) return 0;
+    if (!l || !in) return 0;
+    finish((FwLists *)l);
+    if (!l->nex && !l->nsub) return 0;
     char name[FW_NAME_MAX];
     if (strnlen(in, FW_NAME_MAX + 1) > FW_NAME_MAX || fw_norm_domain(in, name)) return 0;
-    void *v = fwmap_get(&l->exact, name, strlen(name));
-    if (v) return (uint16_t)(uintptr_t)v;
+    uint16_t t = find_name(l->ex, l->nex, fw_hash(name, strlen(name)));
+    if (t) return t;
     for (const char *sfx = name; sfx;) {
-        v = fwmap_get(&l->sub, sfx, strlen(sfx));
-        if (v) return (uint16_t)(uintptr_t)v;
+        t = find_name(l->sub, l->nsub, fw_hash(sfx, strlen(sfx)));
+        if (t) return t;
         sfx = strchr(sfx, '.');
         if (sfx) sfx++;
     }
@@ -214,7 +257,9 @@ uint16_t fwl_match_name(const FwLists *l, const char *in) {
 }
 
 uint16_t fwl_match_addr(const FwLists *l, int fam, const uint8_t *addr) {
-    if (!l || !addr || !l->nnet || (fam != 4 && fam != 6)) return 0;
+    if (!l || !addr || (fam != 4 && fam != 6)) return 0;
+    finish((FwLists *)l);
+    if (!l->nnet) return 0;
     uint8_t a[16] = { 0 };
     static const uint8_t mapped[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
     if (fam == 6 && !memcmp(addr, mapped, 12)) { fam = 4; memcpy(a, addr + 12, 4); }
@@ -223,19 +268,25 @@ uint16_t fwl_match_addr(const FwLists *l, int fam, const uint8_t *addr) {
     for (int p = fam == 4 ? 32 : 128; p >= 0; p--) {
         if (!has[p]) continue;
         unsigned char k[18];
-        size_t kl = net_key(fam, a, p, k);
-        void *v = fwmap_get(&l->nets, k, kl);
-        if (v) return (uint16_t)(uintptr_t)v;
+        net_key(fam, a, p, k);
+        size_t lo = 0, hi = l->nnet;
+        while (lo < hi) {
+            size_t m = lo + (hi - lo) / 2;
+            if (memcmp(l->net[m].k, k, 18) < 0) lo = m + 1;
+            else hi = m;
+        }
+        if (lo < l->nnet && !memcmp(l->net[lo].k, k, 18)) return l->net[lo].tag;
     }
     return 0;
 }
 
 void fwl_net_each(const FwLists *l, int (*cb)(void *u, int fam, const uint8_t *addr, int prefix), void *u) {
     if (!l) return;
-    FWMAP_EACH(&l->nets, e) {
+    finish((FwLists *)l);
+    for (size_t i = 0; i < l->nnet; i++) {
         uint8_t a[16] = { 0 };
-        memcpy(a, e->key + 2, e->key[0] == 4 ? 4 : 16);
-        if (cb(u, e->key[0], a, e->key[1])) return;
+        memcpy(a, l->net[i].k + 2, l->net[i].k[0] == 4 ? 4 : 16);
+        if (cb(u, l->net[i].k[0], a, l->net[i].k[1])) return;
     }
 }
 
@@ -274,8 +325,69 @@ static int set_err(char *err, size_t errlen, const char *code) {
     return -1;
 }
 
-/* One name from a list: adds it (d/s) or counts why not. 1 added, 0 not, -1 the set is full. */
-static int raw_name(FwLists *l, const char *s, size_t n, int sub, FwlStats *st) {
+/* What the parser writes: the normalized lines, each once (a set of their hashes). */
+typedef struct {
+    char *p;
+    size_t n, cap;
+    uint64_t *set;
+    size_t nset, capset;                /* capset: a power of 2 */
+    int err;
+} Raw;
+
+static void raw_put(Raw *o, const char *s, size_t n) {
+    if (o->err) return;
+    if (o->n + n + 2 > o->cap) {
+        size_t c = o->cap ? o->cap : 65536;
+        while (c < o->n + n + 2) c *= 2;
+        char *p = realloc(o->p, c);
+        if (!p) { o->err = 1; return; }
+        o->p = p;
+        o->cap = c;
+    }
+    memcpy(o->p + o->n, s, n);
+    o->n += n;
+    o->p[o->n] = 0;
+}
+
+/* 1 if new (and now remembered), 0 if already there, -1 out of memory. */
+static int raw_seen(Raw *o, uint64_t h) {
+    if (!h) h = 1;
+    if ((o->nset + 1) * 2 > o->capset) {
+        size_t c = o->capset ? o->capset * 2 : 4096;
+        uint64_t *v = calloc(c, sizeof *v);
+        if (!v) return -1;
+        for (size_t i = 0; i < o->capset; i++) {
+            if (!o->set[i]) continue;
+            size_t k = (size_t)o->set[i] & (c - 1);
+            while (v[k]) k = (k + 1) & (c - 1);
+            v[k] = o->set[i];
+        }
+        free(o->set);
+        o->set = v;
+        o->capset = c;
+    }
+    size_t k = (size_t)h & (o->capset - 1);
+    while (o->set[k]) {
+        if (o->set[k] == h) return 0;
+        k = (k + 1) & (o->capset - 1);
+    }
+    o->set[k] = h;
+    o->nset++;
+    return 1;
+}
+
+static int raw_line(Raw *o, const char *line, size_t n, size_t *count, FwlStats *st) {
+    int r = raw_seen(o, fw_hash(line, n));
+    if (r < 0) { o->err = 1; return -1; }
+    if (!r) { st->dups++; return 0; }
+    raw_put(o, line, n);
+    raw_put(o, "\n", 1);
+    (*count)++;
+    return 1;
+}
+
+/* One name from a list: written (d/s) or counted as why not. 1 written, 0 not, -1 stop. */
+static int raw_name(Raw *o, const char *s, size_t n, int sub, FwlStats *st) {
     char name[FW_NAME_MAX];
     if (n > 2 && s[0] == '*' && s[1] == '.') { s += 2; n -= 2; sub = 1; }
     if (n > 3 && s[0] == '|' && s[1] == '|' && s[n - 1] == '^') { s += 2; n -= 3; sub = 1; }
@@ -287,31 +399,21 @@ static int raw_name(FwLists *l, const char *s, size_t n, int sub, FwlStats *st) 
     if (hosts_noise(tmp)) { st->skipped++; return 0; }
     if (fw_norm_domain(tmp, name)) { st->bad++; return 0; }
     if (!strchr(name, '.') || hosts_noise(name)) { st->skipped++; return 0; }
+    if (st->domains >= FWL_LIST_DOMAINS) return -1;
     char line[FW_NAME_MAX + 4];
     int ln = snprintf(line, sizeof line, "%c %s", sub ? 's' : 'd', name);
-    if (st->domains >= FWL_LIST_DOMAINS) return -1;
-    int r = fwl_add_line(l, line, (size_t)ln, 1);
-    if (r == -2) return -1;
-    if (r == 1) { st->dups++; return 0; }
-    if (r) { st->bad++; return 0; }
-    st->domains++;
-    return 1;
+    return raw_line(o, line, (size_t)ln, &st->domains, st);
 }
 
-static int raw_net(FwLists *l, const char *s, size_t n, FwlStats *st) {
+static int raw_net(Raw *o, const char *s, size_t n, FwlStats *st) {
     FwRule r;
     if (parse_net(s, n, &r)) { st->bad++; return 0; }
     if (!net_usable(&r)) { st->skipped++; return 0; }
+    if (st->nets >= FWL_LIST_NETS) return -1;
     char ip[INET6_ADDRSTRLEN], line[80];
     inet_ntop(r.fam == 4 ? AF_INET : AF_INET6, r.addr, ip, sizeof ip);
     int ln = r.prefix == (r.fam == 4 ? 32 : 128) ? snprintf(line, sizeof line, "n %s", ip) : snprintf(line, sizeof line, "n %s/%d", ip, r.prefix);
-    if (st->nets >= FWL_LIST_NETS) return -1;
-    int x = fwl_add_line(l, line, (size_t)ln, 1);
-    if (x == -2) return -1;
-    if (x == 1) { st->dups++; return 0; }
-    if (x) { st->bad++; return 0; }
-    st->nets++;
-    return 1;
+    return raw_line(o, line, (size_t)ln, &st->nets, st);
 }
 
 int fwl_parse_raw(const char *raw, size_t len, FwlFormat fmt, int sub, char **out, size_t *outlen,
@@ -324,8 +426,8 @@ int fwl_parse_raw(const char *raw, size_t len, FwlFormat fmt, int sub, char **ou
     if (fmt != FWL_FMT_HOSTS && fmt != FWL_FMT_DOMAINS && fmt != FWL_FMT_IPS) return set_err(err, errlen, "format");
     if (len > FWL_RAW_MAX) return set_err(err, errlen, "big");
     if (memchr(raw, 0, len)) return set_err(err, errlen, "nul");
-    FwLists *l = fwl_new();
-    if (!l) return set_err(err, errlen, "oom");
+    Raw o = { 0 };
+    Raw *l = &o;
     int full = 0;
     size_t i = 0;
     /* a UTF-8 byte order mark at the start */
@@ -333,7 +435,7 @@ int fwl_parse_raw(const char *raw, size_t len, FwlFormat fmt, int sub, char **ou
     while (i < len && !full) {
         const char *nl = memchr(raw + i, '\n', len - i);
         size_t e = nl ? (size_t)(nl - raw) : len;
-        if (e - i > FWL_LINE_MAX) { fwl_free(l); return set_err(err, errlen, "line"); }
+        if (e - i > FWL_LINE_MAX) { free(o.p); free(o.set); return set_err(err, errlen, "line"); }
         const char *s = raw + i;
         size_t n = e - i;
         i = e + 1;
@@ -370,13 +472,13 @@ int fwl_parse_raw(const char *raw, size_t len, FwlFormat fmt, int sub, char **ou
         } else {
             r = raw_net(l, tok[0], tl[0], st);     /* other columns (counts, dates) are ignored */
         }
-        if (r < 0) { full = 1; st->truncated = 1; }
+        if (r < 0) { full = 1; st->truncated = !o.err; }
     }
-    if (st->bad > 20 && st->bad * 10 > st->lines) { fwl_free(l); return set_err(err, errlen, "format"); }
-    if (!st->domains && !st->nets) { fwl_free(l); return set_err(err, errlen, "empty"); }
-    char *t = text_of(l, 0, outlen);
-    fwl_free(l);
-    if (!t) return set_err(err, errlen, "oom");
-    *out = t;
+    free(o.set);
+    if (o.err) { free(o.p); return set_err(err, errlen, "oom"); }
+    if (st->bad > 20 && st->bad * 10 > st->lines) { free(o.p); return set_err(err, errlen, "format"); }
+    if (!st->domains && !st->nets) { free(o.p); return set_err(err, errlen, "empty"); }
+    *out = o.p;
+    *outlen = o.n;
     return 0;
 }

@@ -4,7 +4,8 @@
 // The input is a flat list of flows, one per (app, destination, port):
 //   { app, appName, name, addr, port, proto: 'tcp'|'udp'|'other', dir: 'out'|'in', rx, tx, rateRx, rateTx,
 //     cc, scope, conns, denied, last, listed, system }
-//   name: the name the system resolver gave for addr (or null); last: ms of the last activity;
+//   name: the name the system resolver gave for addr (or null), names: all of them (a CNAME chain);
+//   last: ms of the last activity;
 //   listed: the id of a subscribed blocklist that covers it (or null); system: an essential system
 //   service (name resolution, time, the network service), shown but never blockable.
 //
@@ -154,7 +155,10 @@ const lc = (s) => String(s || '').toLowerCase();
 function chipMatches(f, c, countryName) {
   switch (c.type) {
     case 'app': return lc(f.appName).includes(lc(c.value)) || lc(f.app).includes(lc(c.value));
-    case 'domain': { const n = lc(f.name), v = lc(c.value); return !!n && (n === v || n.endsWith(`.${v}`) || (!v.includes('.') && n.includes(v))); }
+    case 'domain': {
+      const v = lc(c.value);
+      return (f.names && f.names.length ? f.names : [f.name]).some((x) => { const n = lc(x); return !!n && (n === v || n.endsWith(`.${v}`) || (!v.includes('.') && n.includes(v))); });
+    }
     case 'ip': { const x = parseCidr(c.value); return !!f.addr && (x ? cidrContains(x, f.addr) : lc(f.addr).startsWith(lc(c.value))); }
     case 'port': return Number(f.port) === Number(c.value);
     case 'proto': return f.proto === c.value;
@@ -169,7 +173,7 @@ export function matchesSearch(f, { chips = [], rest = '' } = {}, countryName) {
   for (const c of chips) byType.set(c.type, [...(byType.get(c.type) || []), c]);
   for (const list of byType.values()) if (!list.some((c) => chipMatches(f, c, countryName))) return false;
   if (rest) {
-    const hay = lc([f.appName, f.app, f.name, f.addr, f.port, f.proto, f.cc, countryName?.(f.cc)].join(' '));
+    const hay = lc([f.appName, f.app, f.name, ...(f.names || []), f.addr, f.port, f.proto, f.cc, countryName?.(f.cc)].join(' '));
     for (const w of lc(rest).split(/\s+/)) if (w && !hay.includes(w)) return false;
   }
   return true;

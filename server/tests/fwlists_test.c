@@ -111,7 +111,7 @@ static void test_ips(void) {
 static void test_set(void) {
     FwLists *l = fwl_new();
     CHECK(fwl_add_line(l, "d tracker.example", 17, 1) == 0);
-    CHECK(fwl_add_line(l, "d tracker.example", 17, 2) == 1);           /* the first tag stays */
+    CHECK(fwl_add_line(l, "d tracker.example", 17, 2) == 0);           /* repeated: the first tag stays */
     CHECK(fwl_add_line(l, "s ads.example", 13, 2) == 0);
     CHECK(fwl_add_line(l, "n 203.0.113.0/24", 16, 3) == 0);
     CHECK(fwl_add_line(l, "n 2001:db8::/32", 15, 4) == 0);
@@ -137,11 +137,12 @@ static void test_set(void) {
     CHECK(fwl_block_names(l, both, 2) == 2);
     CHECK(fwl_block_names(l, mixed, 2) == 0);
     CHECK(fwl_block_names(l, NULL, 0) == 0);
-    /* the compiled file: round trip, and any bad line rejects it */
-    size_t n;
-    char *t = fwl_to_text(l, &n);
+    CHECK(fwl_check_line("d tracker.example", 17) == 0 && fwl_check_line("d Tracker.example", 17) == -1 && fwl_check_line("n 10.0.0.0/8", 12) == -1);
+    /* the compiled file: round trip (repeated lines are fine), and any bad line rejects it */
+    const char *t = "lordos-fwlists 1\nd tracker.example\ns ads.example\nn 203.0.113.0/24\nd tracker.example\nn 2001:db8::/32\n";
+    size_t n = strlen(t);
     char err[64];
-    FwLists *b = t ? fwl_load_text(t, n, err, sizeof err) : NULL;
+    FwLists *b = fwl_load_text(t, n, err, sizeof err);
     CHECK(b && fwl_domains(b) == 2 && fwl_nets(b) == 2 && fwl_match_name(b, "q.ads.example") && fwl_match_addr(b, 4, ip("203.0.113.1", &fam)));
     fwl_free(b);
     const char *bad[] = { "", "lordos-fwlists 2\nd a.example\n", "lordos-fwlists 1\nd a.example\nn 10.0.0.0/8\n", "lordos-fwlists 1\nd ../etc\n",
@@ -152,7 +153,6 @@ static void test_set(void) {
     b = fwl_load_text("lordos-fwlists 1", 16, err, sizeof err);
     CHECK(b && !fwl_domains(b));
     fwl_free(b);
-    free(t);
     fwl_free(l);
 }
 
@@ -207,8 +207,8 @@ static void bench(void) {
     }
     double t3 = secs();
     CHECK(hits == 600000);
-    printf("fwlists-test: 200000-name hosts list parsed in %.0f ms, loaded in %.0f ms, 1e6 lookups in %.0f ms\n",
-           (t1 - t0) * 1e3, (t2 - t1) * 1e3, (t3 - t2) * 1e3);
+    printf("fwlists-test: 200000-name hosts list parsed in %.0f ms, loaded in %.0f ms, 1e6 lookups in %.0f ms (the set: %zu entries)\n",
+           (t1 - t0) * 1e3, (t2 - t1) * 1e3, (t3 - t2) * 1e3, fwl_domains(l));
     fwl_free(l);
     free(out);
     free(raw);

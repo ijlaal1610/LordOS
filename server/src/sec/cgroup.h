@@ -48,6 +48,12 @@ int cgroup_service_init(void);
  * service's own traffic (DHCP, the VPN daemons) apart from lord-sessiond's. Best effort: 0 placed. */
 int cgroup_service_leaf(const char *name);
 
+/* (0.8.4) A root process of a session (the admin helper's download child, before it drops to
+ * nobody) moves itself into scope `name` of its own session's subtree: lord-sessiond's placement
+ * service only places session users, and root may write the root-owned cgroup.procs itself. Only
+ * from the session's «server» leaf, only itself. 0 placed. */
+int cgroup_enter_root(const char *name);
+
 /* ---- Root-owned app scopes (lord-sessiond) ----
  * With lord-sessiond, a session's subtree stays root-owned: the scopes are created by root, with a
  * root-owned cgroup.procs, so an app cannot move itself to another cgroup (it would escape its

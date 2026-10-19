@@ -26,8 +26,12 @@ import { useLauncherApps } from './apps.js';
 import { COMPONENTS } from './netmodel.js';
 
 const SAMPLES = 300;                    // one per second: the last five minutes
-export const netStatus = createStore({ rx: 0, tx: 0, hist: [] });   // hist: [[rxRate, txRate], …]
-let timer = null, prev = null;
+// What the bar shows ({ rx, tx } as short text): it changes only when the rounded rates do, so an
+// idle network redraws nothing. The rates and the five minutes behind them stay out of any store;
+// the panel, while open, reads them once per second.
+export const netStatus = createStore({ rx: '0', tx: '0' });
+const live = { rx: 0, tx: 0, hist: [] };   // hist: [[rxRate, txRate], …]
+let timer = null, prev = null, panelOpen = false, ticks = 0;
 
 const shown = () => settings.get()?.monitor?.menuItem === true;
 
@@ -36,28 +40,37 @@ function tick() {
   try { s = typeof lord !== 'undefined' && lord.monitor?.netTotals ? lord.monitor.netTotals() : null; } catch (e) { s = null; }
   if (s && prev) {
     const dt = Math.max(0.2, (s.t - prev.t) / 1000);
-    const rx = Math.max(0, (s.rx - prev.rx) / dt), tx = Math.max(0, (s.tx - prev.tx) / dt);
-    netStatus.set((o) => ({ rx, tx, hist: [...o.hist.slice(o.hist.length >= SAMPLES ? 1 : 0), [rx, tx]] }));
+    live.rx = Math.max(0, (s.rx - prev.rx) / dt);
+    live.tx = Math.max(0, (s.tx - prev.tx) / dt);
+    live.hist.push([live.rx, live.tx]);
+    if (live.hist.length > SAMPLES) live.hist.shift();
+    // the bar's text every other second (the panel's numbers every second)
+    if (++ticks % 2 === 0) {
+      const o = netStatus.get(), n = live.hist.slice(-2), rx = short(n.reduce((a, p) => a + p[0], 0) / n.length),
+        tx = short(n.reduce((a, p) => a + p[1], 0) / n.length);
+      if (o.rx !== rx || o.tx !== tx) netStatus.set({ rx, tx });
+    }
   }
   if (s) prev = s;
-  firewall.refresh();
+  if (panelOpen) firewall.refresh();      // lord-netperm's notices only while the panel shows them
 }
 
 function sync() {
   const on = shown();
   if (on && !timer) { prev = null; tick(); timer = setInterval(tick, 1000); }
-  else if (!on && timer) { clearInterval(timer); timer = null; prev = null; netStatus.set({ rx: 0, tx: 0, hist: [] }); }
+  else if (!on && timer) { clearInterval(timer); timer = null; prev = null; live.hist = []; netStatus.set({ rx: '0', tx: '0' }); }
 }
 
 const rate = (n) => t('monitor.rate', { v: formatBytes(Math.max(0, n || 0)) });
 
-// a compact rate for the bar: "1.2M", "340K", "12"
+// a compact rate for the bar: "1.2M", "340K", "0" (under 1 KB/s: background chatter); changing the
+// text relays out the bar, so it changes only when this rounded value does
 function short(n) {
   const v = Math.max(0, n || 0);
   if (v >= 1e9) return `${(v / 1e9).toFixed(1)}G`;
   if (v >= 1e6) return `${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)}M`;
   if (v >= 1e3) return `${Math.round(v / 1e3)}K`;
-  return `${Math.round(v)}`;
+  return '0';
 }
 
 // ---- the panel ----
@@ -98,7 +111,14 @@ function appLabel(id, launcher) {
 
 function Panel({ onClose }) {
   const th = useTheme();
-  const st = useStore(netStatus);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    panelOpen = true;
+    firewall.refresh();
+    const id = setInterval(() => setTick((x) => x + 1), 1000);
+    return () => { panelOpen = false; clearInterval(id); };
+  }, []);
+  const st = live;
   const fw = useStore(firewallState);
   const launcher = useLauncherApps();
   const mode = firewall.state().mode || 'silent';
@@ -108,6 +128,12 @@ function Panel({ onClose }) {
     .sort((a, b) => b[1][4] + b[1][5] - (a[1][4] + a[1][5])).slice(0, 5);
   const now = Date.now();
   const denied = (fw.events || []).filter((e) => e.v === 'deny' && e.at && now - e.at < 10 * 60 * 1000);
+  const seenDst = new Map();                  // the latest of each (app, destination), with how many
+  for (const e of denied) {
+    const k = `${e.app}|${(e.hosts && e.hosts[0]) || e.addr}`;
+    seenDst.set(k, { e, n: (seenDst.get(k)?.n || 0) + 1 });
+  }
+  const recent = [...seenDst.values()].slice(-3).reverse();
   const label = (k) => <Text style={{ fontSize: 11, fontWeight: 600, color: th.textDim, textAlign: 'start' }}>{k}</Text>;
   const row = (k, v, color) => (
     <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -138,8 +164,8 @@ function Panel({ onClose }) {
           <Text style={{ fontSize: 10, fontWeight: 700, color: denied.length ? '#ff453a' : th.textDim }}>{formatNumber(denied.length, 0)}</Text>
         </View>
       </View>
-      {denied.slice(-3).reverse().map((e, i) => (
-        <View key={i}>{row((e.hosts && e.hosts[0]) || e.addr || '?', appLabel(e.app, launcher))}</View>
+      {recent.map(({ e, n }, i) => (
+        <View key={i}>{row(`${(e.hosts && e.hosts[0]) || e.addr || '?'}${n > 1 ? ` ×${n}` : ''}`, appLabel(e.app, launcher))}</View>
       ))}
       <View style={{ height: 1, backgroundColor: th.separator }} />
       {label(t('monitor.status.mode'))}
@@ -179,8 +205,8 @@ function NetStatusItem({ color, height }) {
   return (
     <View ref={btn} onClick={() => setOpen((o) => !o)} style={{ height, paddingHorizontal: 6, justifyContent: 'center', direction: 'ltr' }}>
       <View style={{ width: 44 }}>
-        <Text style={{ fontSize: 9, lineHeight: 1.05, color, fontFamily: 'monospace', textAlign: 'end' }}>{`↑${short(st.tx)}`}</Text>
-        <Text style={{ fontSize: 9, lineHeight: 1.05, color, fontFamily: 'monospace', textAlign: 'end' }}>{`↓${short(st.rx)}`}</Text>
+        <Text style={{ fontSize: 9, lineHeight: 1.05, color, fontFamily: 'monospace', textAlign: 'end' }}>{`↑${st.tx}`}</Text>
+        <Text style={{ fontSize: 9, lineHeight: 1.05, color, fontFamily: 'monospace', textAlign: 'end' }}>{`↓${st.rx}`}</Text>
       </View>
       {open && (
         <Overlay anchor={btn}>

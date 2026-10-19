@@ -42,14 +42,23 @@ const placeOf = (tr, h) => (h.cc ? countryName(h.cc) : h.scope ? tr(`monitor.net
 // Names the system resolver gave for each address, if lord-netperm's notices carry them ("host" or
 // "hosts"). The names belong to the system, not to one app (docs/FIREWALL.md, "Where the names come
 // from"), so one map serves every app. Without them a row offers a rule for its address instead.
+// (0.8.4) An address the resolver reached through a CNAME chain has several names (deb.debian.org →
+// debian.map.fastlydns.net): the row shows the shortest, usually the one the app asked for, and
+// allNamesOf keeps them all for the search chips and the blocklists.
+const allNames = new Map();
 function namesOf(events) {
   const out = new Map();
   for (const e of events || []) {
-    const n = Array.isArray(e.hosts) ? e.hosts[0] : e.host;
-    if (e.addr && typeof n === 'string' && n) out.set(e.addr, n);
+    const list = (Array.isArray(e.hosts) ? e.hosts : e.host ? [e.host] : []).filter((n) => typeof n === 'string' && n);
+    if (!e.addr || !list.length) continue;
+    const best = [...list].sort((a, b) => a.split('.').length - b.split('.').length || a.length - b.length)[0];
+    out.set(e.addr, best);
+    if (allNames.size > 4096 && !allNames.has(e.addr)) allNames.delete(allNames.keys().next().value);
+    allNames.set(e.addr, list);
   }
   return out;
 }
+const allNamesOf = (addr, name) => allNames.get(addr) || (name ? [name] : []);
 
 // The sheet's choices for a name: the exact name and, a level up, its parent with every subdomain.
 function nameChoices(name) {
@@ -435,6 +444,12 @@ function Summary({ groups, conns, last, tr, fw, names, range, sysHist, launcher,
   hosts.sort((a, b) => b.sent + b.recv - (a.sent + a.recv));
   if (hosts.some((h) => h.sent + h.recv)) hosts.splice(0, hosts.length, ...hosts.filter((h) => h.sent + h.recv));   // with traffic, only those that moved bytes
   const denied = (fw?.events || []).filter((e) => e.v === 'deny' && e.dir === 'out' && (!e.at || Date.now() - e.at < 10 * 60 * 1000));
+  const byDst = new Map();                    // the latest of each (app, destination), with how many
+  for (const e of denied) {
+    const k = `${e.app}|${(e.hosts && e.hosts[0]) || e.addr}`;
+    byDst.set(k, { e, n: (byDst.get(k)?.n || 0) + 1 });
+  }
+  const deniedRecent = [...byDst.values()].slice(-4).reverse();
   return (
     <>
       <Section id="traffic" title={tr('monitor.net.traffic')}>
@@ -486,9 +501,10 @@ function Summary({ groups, conns, last, tr, fw, names, range, sysHist, launcher,
         </Section>
       ) : null}
       <Section id="denied" title={tr('monitor.net.recentlyDenied')}>
-        {denied.length ? denied.slice(-4).reverse().map((e, i) => (
+        {denied.length ? deniedRecent.map(({ e, n }, i) => (
           <View key={i} style={{ gap: 1 }}>
-            <Text style={{ fontSize: 11, color: t.text, fontFamily: 'monospace', direction: 'ltr', textAlign: 'start', lineHeight: 1.3 }} numberOfLines={2}>{(e.hosts && e.hosts[0]) || e.addr || '?'}</Text>
+            <Text style={{ fontSize: 11, color: t.text, fontFamily: 'monospace', direction: 'ltr', textAlign: 'start', lineHeight: 1.3 }} numberOfLines={2}>
+              {`${(e.hosts && e.hosts[0]) || e.addr || '?'}${n > 1 ? ` ×${n}` : ''}`}</Text>
             <Text style={{ fontSize: 10, color: t.textDim, lineHeight: 1.3, textAlign: 'start' }} numberOfLines={2}>
               {`${labelOf(tr, groups.find((g) => g.key === e.app) || { key: e.app, name: e.app })} · ${tr(`monitor.net.by.${e.by === 'list' || e.by === 'restricted' || e.by === 'mode' ? e.by : 'rule'}`)}`}
             </Text>
@@ -672,9 +688,9 @@ function seen(key, active) {
 function flowsOf(apps, names, tr) {
   const out = [];
   const listedCache = new Map();
-  const listed = (name, addr) => {
-    const k = `${name || ''}|${addr}`;
-    if (!listedCache.has(k)) listedCache.set(k, firewall.listMatch(name ? [name] : [], addr));
+  const listed = (list, addr) => {
+    const k = `${list.join(',')}|${addr}`;
+    if (!listedCache.has(k)) listedCache.set(k, firewall.listMatch(list, addr));
     return listedCache.get(k);
   };
   for (const g of apps) {
@@ -684,7 +700,8 @@ function flowsOf(apps, names, tr) {
       if (!h.remote) continue;
       any = true;
       const name = names.get(h.remote) || null;
-      const common = { ...base, name, addr: h.remote, cc: h.cc || '', scope: h.scope || '', denied: h.denied ? 1 : 0, blocked: h.blocked || 0, listed: listed(name, h.remote) };
+      const all = allNamesOf(h.remote, name);
+      const common = { ...base, name, names: all, addr: h.remote, cc: h.cc || '', scope: h.scope || '', denied: h.denied ? 1 : 0, blocked: h.blocked || 0, listed: listed(all, h.remote) };
       const ps = (h.portStats || []).filter((p) => Array.isArray(p) && p.length >= 7);
       if (ps.length) {
         const share = Math.max(1, ps.length);

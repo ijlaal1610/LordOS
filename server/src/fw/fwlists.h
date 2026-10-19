@@ -10,8 +10,9 @@
  *      (localhost…) are skipped and counted.
  *
  *   2. The set (FwLists): exact names, names with every subdomain, and networks, each with a tag
- *      (which list it came from, for the Monitor's "blocked by the list …"). Name lookups walk the
- *      labels right to left; address lookups try each prefix length present, one hash lookup each.
+ *      (which list it came from, for the Monitor's "blocked by the list …"). Names are kept as
+ *      64-bit hashes (seeded per process) in sorted arrays: about 10 bytes a name. Name lookups walk
+ *      the labels right to left; address lookups try each prefix length present (binary search).
  *
  *   3. The compiled file, ~/.config/lordos/fwlists.txt: written by lord-server (js_fw.c, after
  *      validating every line again) and read by lord-netperm (root) through the same fixed-path,
@@ -62,17 +63,20 @@ typedef struct FwLists FwLists;
 
 FwLists *fwl_new(void);
 void     fwl_free(FwLists *l);
-/* Adds one normalized line ("d name", "s name", "n cidr") with a tag (1..65535). 0 added, 1
- * already there (the first tag stays), -1 invalid line, -2 the set is full. */
+/* Adds one normalized line ("d name", "s name", "n cidr") with a tag (1..65535). 0 added (a
+ * repeated entry goes at the next lookup or fwl_finish, the first tag stays), -1 invalid line,
+ * -2 the set is full. */
 int      fwl_add_line(FwLists *l, const char *line, size_t len, uint16_t tag);
-/* Adds every line of a normalized text (the lines fwl_parse_raw writes). Returns the number
- * added, or -1 if a line is invalid (the lines before it stay). */
+/* Only checks a line, as fwl_add_line would (lord-server compiles the file without keeping it). */
+int      fwl_check_line(const char *line, size_t len);
+/* Sorts and drops repeated entries; returns how many went. Lookups and counts do it on their own. */
+size_t   fwl_finish(FwLists *l);
+/* Adds every line of a normalized text (the lines fwl_parse_raw writes). Returns the number of
+ * lines added, or -1 if a line is invalid (the lines before it stay). */
 long     fwl_add_text(FwLists *l, const char *text, size_t len, uint16_t tag);
 /* The compiled file: header + lines. Replaces nothing on error: a fresh set is returned, or NULL
  * with err set. */
 FwLists *fwl_load_text(const char *text, size_t len, char *err, size_t errlen);
-/* The compiled file's text (malloc'd), every entry once. */
-char    *fwl_to_text(const FwLists *l, size_t *len);
 
 size_t   fwl_domains(const FwLists *l);
 size_t   fwl_nets(const FwLists *l);

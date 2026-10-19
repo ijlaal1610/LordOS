@@ -108,21 +108,26 @@ export function ViewButton({ view, setView, extra, tr }) {
       </View>
       {open && (
         <Overlay anchor={btn}>
-          <View ref={menu} style={{ position: 'absolute', top: 28, [direction() === 'rtl' ? 'right' : 'left']: 0, width: 236, paddingVertical: 5, paddingHorizontal: 5,
+          <View ref={menu} style={{ position: 'absolute', top: 28, [direction() === 'rtl' ? 'right' : 'left']: 0, width: 420, paddingVertical: 6, paddingHorizontal: 5,
             borderRadius: t.menuRadius, backgroundColor: t.popupBg || (t.mode === 'dark' ? '#2c2c31' : '#ffffff'), border: `1px solid ${t.separator}`,
             boxShadow: '0 10px 30px rgba(0,0,0,0.35)' }}>
-            {SECTIONS.map(([key, values], si) => (
-              <View key={key}>
-                {si ? <View style={{ height: 1, marginVertical: 4, marginHorizontal: 6, backgroundColor: t.separator }} /> : null}
-                <Text style={{ fontSize: 10, fontWeight: 600, color: t.textDim, paddingHorizontal: 8, paddingVertical: 3 }}>{tr(`monitor.net.view.${key}`)}</Text>
-                {values.map((v) => <MenuItem key={v} label={tr(`monitor.net.view.${key}.${v}`)} checked={view[key] === v} onClick={() => setView({ [key]: v })} />)}
-              </View>
-            ))}
+            {/* two columns: what the list is (grouping, order) and what it shows (direction, protocol, status) */}
+            <View style={{ flexDirection: 'row', gap: 4 }}>
+              {[['group', 'sort'], ['dir', 'proto', 'status']].map((col, ci) => (
+                <View key={ci} style={{ flex: 1, minWidth: 0 }}>
+                  {col.map((key, si) => (
+                    <View key={key}>
+                      {si ? <View style={{ height: 1, marginVertical: 3, marginHorizontal: 6, backgroundColor: t.separator }} /> : null}
+                      <Text style={{ fontSize: 10, fontWeight: 600, color: t.textDim, paddingHorizontal: 8, paddingVertical: 2 }}>{tr(`monitor.net.view.${key}`)}</Text>
+                      {SECTIONS.find(([k]) => k === key)[1].map((v) => <MenuItem key={v} label={tr(`monitor.net.view.${key}.${v}`)} checked={view[key] === v} onClick={() => setView({ [key]: v })} />)}
+                    </View>
+                  ))}
+                </View>
+              ))}
+            </View>
+            {(extra || []).length ? <View style={{ height: 1, marginVertical: 4, marginHorizontal: 6, backgroundColor: t.separator }} /> : null}
             {(extra || []).map((it) => (
-              <View key={it.label}>
-                <View style={{ height: 1, marginVertical: 4, marginHorizontal: 6, backgroundColor: t.separator }} />
-                <MenuItem label={it.label} checked={it.checked} onClick={() => { setOpen(false); it.onClick(); }} />
-              </View>
+              <MenuItem key={it.label} label={it.label} checked={it.checked} onClick={() => { setOpen(false); it.onClick(); }} />
             ))}
           </View>
         </Overlay>
@@ -137,7 +142,7 @@ function MenuItem({ label, checked, onClick }) {
   const on = hover && t.menuHighlight !== 'subtle';
   return (
     <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ height: 22, paddingHorizontal: 8, borderRadius: t.menuItemRadius, flexDirection: 'row', alignItems: 'center', gap: 6,
+      style={{ height: 21, paddingHorizontal: 8, borderRadius: t.menuItemRadius, flexDirection: 'row', alignItems: 'center', gap: 6,
         backgroundColor: on ? t.accent : hover ? t.hover : 'transparent' }}>
       <Text style={{ width: 12, fontSize: 11, color: on ? '#fff' : t.text }}>{checked ? '✓' : ''}</Text>
       <Text style={{ flex: 1, fontSize: 12, whiteSpace: 'nowrap', color: on ? '#fff' : t.text, textAlign: 'start' }}>{label}</Text>
@@ -233,17 +238,17 @@ export function Child({ node, depth, path, ctx }) {
   const destName = node.kind === 'domain' ? node.name : null;
   const destAddr = node.addr || node.flows[0]?.addr;
   const canSwitch = appOf && (node.kind === 'domain' || node.kind === 'ip') && !ctx.isSystem(appOf);
-  const inset = 14 + depth * 14;
+  const inset = depth ? 14 + depth * 14 : 4;
   return (
     <View>
-      <View onClick={() => ctx.onPick(node, appOf)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 22, borderRadius: 5,
+      <View onClick={() => ctx.onPick(node, appOf)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: depth ? 22 : 32, borderRadius: 5,
         ...(direction() === 'rtl' ? { paddingRight: inset } : { paddingLeft: inset }), backgroundColor: sel ? (t.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)') : 'transparent' }}>
         <View onClick={(e) => { if (!kids.length) return; e.stopPropagation(); ctx.toggle(key); }} style={{ width: 10, alignItems: 'center' }}>
           <Text style={{ fontSize: 8, color: t.textDim }}>{kids.length ? (open ? '▾' : direction() === 'rtl' ? '◂' : '▸') : ''}</Text>
         </View>
         {node.kind === 'app' ? <AppGlyph item={ctx.itemOf(node)} size={13} /> : <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dot }} />}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 11, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', fontFamily: node.kind === 'app' || node.kind === 'country' ? undefined : 'monospace',
+          <Text style={{ fontSize: depth ? 11 : 12, fontWeight: depth ? 400 : 600, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', fontFamily: node.kind === 'app' || node.kind === 'country' ? undefined : 'monospace',
             direction: node.kind === 'app' || node.kind === 'country' ? undefined : 'ltr', textAlign: 'start' }}>
             {label}{node.kind === 'domain' && new Set(node.flows.map((f) => f.addr)).size > 1 ? ` (${new Set(node.flows.map((f) => f.addr)).size})` : ''}
           </Text>

@@ -76,6 +76,7 @@ eq('search: two chips of one type: either', only({}, parseSearch('port:22 port:9
 eq('search: network chip', only({}, parseSearch('ip:192.0.2.0/24')), 2);
 eq('search: country by code and by name', [only({}, parseSearch('country:AR')), only({}, parseSearch('country:argen'), { countryName: (cc) => (cc === 'AR' ? 'Argentina' : cc) })], [2, 2]);
 eq('search: free text', only({}, { chips: [], rest: 'imap' }), 1);
+eq('search: any name of a CNAME chain', matchesSearch(F({ name: 'deb.debian.org', names: ['deb.debian.org', 'debian.map.cdn.example'] }), parseSearch('domain:cdn.example')), true);
 eq('search: free text needs every word', only({}, { chips: [], rest: 'firefox 8080' }), 1);
 eq('search: nothing', matchesSearch(flows[0], { chips: [{ type: 'port', value: '1' }] }), false);
 

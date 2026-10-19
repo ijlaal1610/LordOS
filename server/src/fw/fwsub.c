@@ -14,6 +14,7 @@
 #include <poll.h>
 #include <pthread.h>
 #include <signal.h>
+#include <malloc.h>
 #include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -434,25 +435,51 @@ static void *worker(void *arg) {
         }
         helper_stop(&h);
 
-        /* compile every enabled list that has a copy */
+        /* compile every enabled list that has a copy: their lines go to fwlists.txt as they are
+         * (each checked again; lord-netperm drops repeated ones), and into the set lord-server keeps
+         * for the Monitor (hashes only: a few bytes a name) */
         FwLists *s = fwl_new();
         char ids[FWS_MAX_LISTS][32];
         memset(ids, 0, sizeof ids);
-        for (int i = 0; s && i < n; i++) {
+        char tmp[PATH_MAX + 8];
+        snprintf(tmp, sizeof tmp, "%s.tmp", txt_path);
+        int ofd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0600);
+        int ok = ofd >= 0 && write(ofd, FWL_HEADER "\n", strlen(FWL_HEADER) + 1) == (ssize_t)strlen(FWL_HEADER) + 1;
+        size_t total = 0;
+        for (int i = 0; s && ok && i < n; i++) {
             if (!copy[i].on) continue;
             char p[PATH_MAX];
             cache_path(copy[i].id, "txt", p, sizeof p);
             size_t len;
             char *txt = read_file(p, FWL_FILE_MAX, &len);
             if (!txt) continue;
+            int good = 1;
+            for (size_t k = 0; k < len && good;) {
+                const char *nl = memchr(txt + k, '\n', len - k);
+                size_t e = nl ? (size_t)(nl - txt) : len;
+                if (e > k && fwl_check_line(txt + k, e - k)) good = 0;
+                k = e + 1;
+            }
+            if (!good || total + len > FWL_FILE_MAX - 64) {
+                fprintf(stderr, "lord.fw: the copy of blocklist %s is %s: left out\n", copy[i].id, good ? "too large" : "invalid");
+                free(txt);
+                continue;
+            }
             memcpy(ids[i], copy[i].id, sizeof ids[i]);
-            if (fwl_add_text(s, txt, len, (uint16_t)(i + 1)) < 0) fprintf(stderr, "lord.fw: the copy of blocklist %s is invalid\n", copy[i].id);
+            fwl_add_text(s, txt, len, (uint16_t)(i + 1));
+            for (size_t off = 0; ok && off < len;) {
+                ssize_t w = write(ofd, txt + off, len - off);
+                if (w <= 0) ok = 0;
+                else off += (size_t)w;
+            }
+            if (ok && len && txt[len - 1] != '\n') ok = write(ofd, "\n", 1) == 1;
+            total += len + 1;
             free(txt);
         }
-        size_t tl = 0;
-        char *text = s ? fwl_to_text(s, &tl) : NULL;
-        if (!text || write_file(txt_path, text, tl)) fprintf(stderr, "lord.fw: could not write %s\n", txt_path);
-        free(text);
+        if (ofd >= 0 && (fsync(ofd) || close(ofd))) ok = 0;
+        if (!ok || rename(tmp, txt_path)) { unlink(tmp); fprintf(stderr, "lord.fw: could not write %s\n", txt_path); }
+        if (s) fwl_finish(s);
+        malloc_trim(0);                 /* the copies were read on this thread: give their memory back */
 
         pthread_mutex_lock(&mu);
         fwl_free(next_set);
