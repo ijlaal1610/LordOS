@@ -86,6 +86,11 @@ guest's IP); its units have `ConditionVirtualization=vmware` and stay inactive e
 part (`open-vm-tools-desktop`, X11) and are not supported yet. GPU or CPU composition on VMware:
 see `GPU.md`.
 
+**Typing lag in Chromium on VMware (0.8.0 and the first 0.8.1 ISOs):** it was a GPU-path
+presentation bug, not `open-vm-tools`, and it is fixed in 0.8.1. See
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md), "Typing feels slow"; `tools/diag/keylag.sh` checks a
+machine in two minutes.
+
 Tested with the rebuilt ISO on VM 123 (Proxmox, q35, 4 vCPUs, emulated HD Audio):
 
 | Firmware | Display | RAM | Result |

@@ -37,6 +37,12 @@ and its buffers and the apps' dmabufs become framebuffers with `DRM_IOCTL_MODE_A
 Diagnostics: `LORD_GPU_DEBUG=1` shows the dmabuf formats, failing imports and the frames sent by
 direct scanout. The log says `gpu: GPU composition (renderer…)` or why not.
 
+**Linux apps' frames (0.8.1 fix).** A Linux app's new frame on the GPU path is only a texture,
+not UI damage. Every GPU display is therefore marked (`Out.wl_new` in `main.c`) and presents it in
+the next frame. Before 0.8.1 nothing was flipped until something else changed, so typing in
+Chromium showed up to a second late. Measurements and the key latency trace are in
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md), "Typing feels slow".
+
 **VMware virtual machines** (VMware SVGA, the `vmwgfx` kernel driver). `vmwgfx` is not in the
 list of plain drivers, so Mesa is loaded: with the machine's 3D acceleration on, Mesa's `svga`
 driver (`vmwgfx_dri.so`, in `libgl1-mesa-dri`, which the ISO ships) is the renderer and lord-server

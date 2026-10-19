@@ -23,6 +23,13 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   CPU time, threads, context switches, page faults, start time, nice, control group and LordOS
   restrictions), open files and ports (with the addresses of each socket), the executable and the
   command line, updated every second ([docs/MONITOR.md](docs/MONITOR.md#process-actions-081)).
+- **`tools/diag/keylag.sh`: where does the typing delay come from?** In two minutes it reports the
+  composition mode, the VM and its guest tools and Chromium's complaints, and with
+  `lordos.inputdebug=1` on the kernel line (one boot, root only) it times each stage of a key in
+  ms: read by `lord-server`, delivered to the app, the app's answer, on screen. The trace holds
+  timings only (no key, character or modifier), only for keys sent to Linux apps (never LordOS's
+  own fields, the Terminal, Passwords, login or lock), in a 0600 file in the session's runtime
+  folder, and stops after 120 s ([docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)).
 - **Settings → Sharing → Remote login (SSH).** A new switch, off by default on every install,
   turns the standard SSH server on and off for good (`systemctl enable --now` / `disable --now`).
   The first time, it installs `openssh-server` through the package engine (the Store's path). The
@@ -78,6 +85,15 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **Typing no longer lags in Chromium and Firefox on GPU composition.** A Linux app's new frame is
+  only a texture on the GPU path, and a display with no other change was not flipped, so a typed
+  character appeared only when something else on the screen moved (up to ~1 s later; Firefox
+  looked frozen), and Chromium logged "buggy presentation feedback". Every GPU display now presents
+  an app's new content in the next frame; a frame shown by a modeset gets its presentation feedback
+  at once; and with nothing drawn (screen off, session away from the monitor) apps still get their
+  frame callbacks once a second. Measured with Chromium: p50/p95 from the key to the screen
+  949/1866 ms before, 18/25 ms after; also in 0.8.0. Seen on VMware, reproduced on Proxmox
+  ([docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)).
 - **Menus are always above the Dock.** With the Dock on the left, the crown menu opened underneath
   it and the Dock took its clicks; select lists inside apps (Passwords' category list) were drawn
   under the form fields after them. The desktop now has one stacking order, in layers (Dock < menu
