@@ -61,7 +61,7 @@ enum { XA_PRIMARY = 1, XA_ATOM = 4, XA_CARDINAL = 6, XA_STRING = 31, XA_WINDOW =
     X(NET_CLIENT_LIST, "_NET_CLIENT_LIST") X(NET_FRAME_EXTENTS, "_NET_FRAME_EXTENTS") X(MOTIF_WM_HINTS, "_MOTIF_WM_HINTS") \
     X(WL_SURFACE_ID, "WL_SURFACE_ID") X(CLIPBOARD, "CLIPBOARD") X(TARGETS, "TARGETS") X(TIMESTAMP, "TIMESTAMP") X(INCR, "INCR") \
     X(TEXT, "TEXT") X(MIME_UTF8, "text/plain;charset=utf-8") X(MIME_TEXT, "text/plain") X(MIME_PNG, "image/png") \
-    X(PW_HINT, "x-kde-passwordManagerHint") X(LORD_SEL_CLIPBOARD, "_LORD_SEL_CLIPBOARD") X(LORD_SEL_PRIMARY, "_LORD_SEL_PRIMARY")
+    X(LORD_SEL_CLIPBOARD, "_LORD_SEL_CLIPBOARD") X(LORD_SEL_PRIMARY, "_LORD_SEL_PRIMARY")
 
 #define AE(id, name) A_##id,
 enum { ATOM_LIST(AE) A_COUNT };
@@ -251,7 +251,7 @@ static XWin *add_win(uint32_t id) {
     return w;
 }
 
-static int same_client(uint32_t a, uint32_t b) { return (a & ~X.su.id_mask) == (b & ~X.su.id_mask); }
+static int same_client(uint32_t a, uint32_t b) { return x11_same_client(a, b, X.su.id_mask); }
 
 static int is_popup_type(uint32_t t) {
     return t && (t == AT(NET_WM_WINDOW_TYPE_MENU) || t == AT(NET_WM_WINDOW_TYPE_DROPDOWN_MENU) ||
@@ -395,7 +395,10 @@ static unsigned lord_gen(int k) {
 }
 static int lord_has(int k) {
     if (k == SEL_PRIM) { size_t n; unsigned g; return wlx_primary(&n, &g) && n > 0; }
-    return wl_clip_is_image() || term_clipboard()[0];
+    if (wl_clip_is_image()) return 1;
+    /* a secret (Passwords, password fields) never goes to X: any X client can read the property the
+     * text is written to while it's pasted */
+    return term_clipboard()[0] && !term_clipboard_sensitive();
 }
 
 /* LordOS's selection is offered to X only while an X window has the keyboard, and only if it is
@@ -410,7 +413,7 @@ static void clip_sync(void) {
                 s->owned = 1;
                 s->owned_gen = g;
             }
-        } else if (!X.focus && s->owned) {
+        } else if (s->owned && (!X.focus || !lord_has(k))) {
             set_owner(0, sel_atom(k));
             s->owned = 0;
         }
@@ -577,14 +580,17 @@ static void sel_request(const uint8_t *p) {
              target = x11_get32(p + 20), prop = x11_get32(p + 24);
     int k = sel_index(selection);
     if (!prop) prop = target;                               /* obsolete clients */
-    if (k < 0 || owner != X.wmwin || !X.sel[k].owned || !X.focus) { notify_requestor(time_, requestor, selection, target, 0); return; }
+    /* only the X app the user is in (the requestor window is that client's) may read it */
+    if (k < 0 || owner != X.wmwin || !X.sel[k].owned || !X.focus || !same_client(requestor, X.focus->id) || !lord_has(k)) {
+        notify_requestor(time_, requestor, selection, target, 0);
+        return;
+    }
     int image = k == SEL_CLIP && wl_clip_is_image();
     const char *text = "";
     size_t tlen = 0;
     unsigned g;
     if (k == SEL_PRIM) text = wlx_primary(&tlen, &g);
     else if (!image) { text = term_clipboard(); tlen = strlen(text); }
-    int sensitive = k == SEL_CLIP && !image && term_clipboard_sensitive();
     if (target == AT(TARGETS)) {
         uint32_t list[10];
         uint32_t nl = 0;
@@ -592,7 +598,6 @@ static void sel_request(const uint8_t *p) {
         list[nl++] = AT(TIMESTAMP);
         if (image) list[nl++] = AT(MIME_PNG);
         else { list[nl++] = AT(UTF8_STRING); list[nl++] = AT(MIME_UTF8); list[nl++] = AT(MIME_TEXT); list[nl++] = XA_STRING; list[nl++] = AT(TEXT); }
-        if (sensitive) list[nl++] = AT(PW_HINT);
         change_prop(requestor, prop, XA_ATOM, 32, list, nl);
     } else if (target == AT(TIMESTAMP)) {
         uint32_t t = 0;
@@ -618,8 +623,6 @@ static void sel_request(const uint8_t *p) {
         free(l);
     } else if (!image && (target == AT(UTF8_STRING) || target == AT(MIME_UTF8) || target == AT(MIME_TEXT) || target == AT(TEXT))) {
         write_data(requestor, prop, target == AT(TEXT) ? AT(UTF8_STRING) : target, (const uint8_t *)text, tlen);
-    } else if (sensitive && target == AT(PW_HINT)) {        /* clipboard managers skip it */
-        change_prop(requestor, prop, AT(PW_HINT), 8, "secret", 6);
     } else {
         notify_requestor(time_, requestor, selection, target, 0);
         return;

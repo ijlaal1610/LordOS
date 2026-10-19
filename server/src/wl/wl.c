@@ -1083,6 +1083,10 @@ void wl_keymap_changed(void) {
 #define CLIP_MAX (16u << 20)
 typedef struct { struct wl_resource *res; char mimes[MAX_MIMES][64]; int nmimes; } Source;
 static Source *selection;           /* source of the app owning the selection, or NULL (LordOS) */
+/* Bumped whenever the selection changes: an offer is only good for the selection it was made for,
+ * and only while its client has the keyboard (an app can't keep an old offer to read later copies). */
+static unsigned clip_offer_gen = 1;
+typedef struct { Source *src; unsigned gen; } OfferRef;
 static unsigned clip_seen;          /* LordOS clipboard generation already offered */
 static unsigned char *clip_png;     /* last copied image */
 static size_t clip_png_len;
@@ -1110,6 +1114,7 @@ static void src_gone(struct wl_resource *r) {
     Source *s = wl_resource_get_user_data(r);
     if (selection == s) {
         selection = NULL;
+        clip_offer_gen++;
         if (clip_is_image) offer_to_focus();    /* the image stays, now LordOS offers it */
     }
     free(s);
@@ -1246,8 +1251,9 @@ static void ofr_accept(struct wl_client *c, struct wl_resource *r, uint32_t seri
     (void)c; (void)r; (void)serial; (void)mime;
 }
 static void ofr_receive(struct wl_client *c, struct wl_resource *r, const char *mime, int32_t fd) {
-    (void)c;
-    Source *src = wl_resource_get_user_data(r);
+    OfferRef *ref = wl_resource_get_user_data(r);
+    if (!ref || ref->gen != clip_offer_gen || !key_focus || key_focus->client != c) { close(fd); return; }   /* stale, or not focused */
+    Source *src = ref->src;
     if (src && src == selection) { wl_data_source_send_send(src->res, mime, fd); close(fd); return; }
     if (!src && clip_is_image && clip_png && !strcmp(mime, "image/png")) { send_bytes(fd, clip_png, clip_png_len); return; }
     if (!src && !clip_is_image && text_mime(mime)) { const char *t = term_clipboard(); send_bytes(fd, t, strlen(t)); return; }
@@ -1262,6 +1268,8 @@ static const struct wl_data_offer_interface offer_impl = {
     .accept = ofr_accept, .receive = ofr_receive, .destroy = ofr_destroy, .finish = ofr_finish, .set_actions = ofr_actions,
 };
 
+static void offer_gone(struct wl_resource *r) { free(wl_resource_get_user_data(r)); }
+
 static void offer_selection(struct wl_resource *dev) {
     struct wl_client *c = wl_resource_get_client(dev);
     if (selection && wl_resource_get_client(selection->res) == c) return;     /* it is its own */
@@ -1270,7 +1278,11 @@ static void offer_selection(struct wl_resource *dev) {
     if (!selection && !image && !t[0]) { wl_data_device_send_selection(dev, NULL); return; }
     struct wl_resource *o = wl_resource_create(c, &wl_data_offer_interface, wl_resource_get_version(dev), 0);
     if (!o) return;
-    wl_resource_set_implementation(o, &offer_impl, selection, NULL);
+    OfferRef *ref = malloc(sizeof *ref);
+    if (!ref) { wl_resource_destroy(o); return; }
+    ref->src = selection;
+    ref->gen = clip_offer_gen;
+    wl_resource_set_implementation(o, &offer_impl, ref, offer_gone);
     wl_data_device_send_data_offer(dev, o);
     if (selection) for (int i = 0; i < selection->nmimes; i++) wl_data_offer_send_offer(o, selection->mimes[i]);
     else if (image) wl_data_offer_send_offer(o, "image/png");
@@ -1323,6 +1335,7 @@ int wl_clip_use_image(const char *path) {
     close(fd);
     if (!buf || got != (size_t)st.st_size) { free(buf); return -1; }
     if (selection) { wl_data_source_send_cancelled(selection->res); selection = NULL; }
+    clip_offer_gen++;
     store_png(buf, got);
     snprintf(clip_img_origin, sizeof clip_img_origin, "lordos");
     clip_img_sensitive = 0;
@@ -1347,6 +1360,7 @@ static void dev_set_selection(struct wl_client *c, struct wl_resource *r, struct
     Source *s = src ? wl_resource_get_user_data(src) : NULL;
     if (selection && selection != s) wl_data_source_send_cancelled(selection->res);
     selection = s;
+    clip_offer_gen++;
     if (s) read_selection(s);
 }
 static const struct wl_data_device_interface device_impl = { .start_drag = dev_drag, .set_selection = dev_set_selection, .release = res_release };
@@ -1421,12 +1435,15 @@ static void psrc_gone(struct wl_resource *r) {
     free(s);
 }
 
+/* An offer carries the generation it was made for: it reads that selection only, and only while
+ * its client has the keyboard. */
 static void poffer_receive(struct wl_client *c, struct wl_resource *r, const char *mime, int32_t fd) {
-    (void)c; (void)r;
-    if (prim_text && prim_rank(mime)) { send_bytes(fd, prim_text, prim_len); return; }
+    unsigned *gen = wl_resource_get_user_data(r);
+    if (gen && *gen == prim_gen && key_focus && key_focus->client == c && prim_text && prim_rank(mime)) { send_bytes(fd, prim_text, prim_len); return; }
     close(fd);
 }
 static const struct zwp_primary_selection_offer_v1_interface poffer_impl = { .receive = poffer_receive, .destroy = res_release };
+static void poffer_gone(struct wl_resource *r) { free(wl_resource_get_user_data(r)); }
 
 static void prim_offer_to(struct wl_resource *dev) {
     struct wl_client *c = wl_resource_get_client(dev);
@@ -1434,7 +1451,10 @@ static void prim_offer_to(struct wl_resource *dev) {
     if (!prim_text || !prim_len) { zwp_primary_selection_device_v1_send_selection(dev, NULL); return; }
     struct wl_resource *o = wl_resource_create(c, &zwp_primary_selection_offer_v1_interface, wl_resource_get_version(dev), 0);
     if (!o) return;
-    wl_resource_set_implementation(o, &poffer_impl, NULL, NULL);
+    unsigned *gen = malloc(sizeof *gen);
+    if (!gen) { wl_resource_destroy(o); return; }
+    *gen = prim_gen;
+    wl_resource_set_implementation(o, &poffer_impl, gen, poffer_gone);
     zwp_primary_selection_device_v1_send_data_offer(dev, o);
     zwp_primary_selection_offer_v1_send_offer(o, "text/plain;charset=utf-8");
     zwp_primary_selection_offer_v1_send_offer(o, "text/plain");
@@ -3079,6 +3099,7 @@ void wl_flush(void) {
         clip_seen = g;
         clip_is_image = 0;
         if (selection) { wl_data_source_send_cancelled(selection->res); selection = NULL; }
+        clip_offer_gen++;
         offer_to_focus();
     }
     xwm_tick();                         /* X11: clipboard changes, pending requests */
@@ -3199,6 +3220,7 @@ void wlx_clip_text(const char *t, size_t n, const char *origin) {
 void wlx_clip_png(const unsigned char *png, size_t n, const char *origin) {
     if (n < 8 || memcmp(png, "\x89PNG\r\n\x1a\n", 8)) return;
     if (selection) { wl_data_source_send_cancelled(selection->res); selection = NULL; }
+    clip_offer_gen++;
     store_png(png, n);
     snprintf(clip_img_origin, sizeof clip_img_origin, "%s", origin && origin[0] ? origin : "x11");
     clip_img_sensitive = 0;

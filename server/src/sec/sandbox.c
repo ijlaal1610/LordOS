@@ -388,12 +388,6 @@ int sandbox_files_isolate(const SandboxFilesCfg *cfg) {
         keep[nk].fd = t; keep[nk].dir = 0; keep[nk].path = sockpath[nsock]; keep[nk].ro = 0; nk++;
         nsock++;
     }
-    /* X11 apps: the session's X socket (Xwayland), the only thing kept in the private /tmp */
-    if (cfg->x11_socket && !strncmp(cfg->x11_socket, "/tmp/.X11-unix/X", 16)) {
-        struct stat st;
-        int t = !lstat(cfg->x11_socket, &st) && S_ISSOCK(st.st_mode) ? (int)syscall(SYS_open_tree, AT_FDCWD, cfg->x11_socket, OPEN_TREE_CLONE | O_CLOEXEC) : -1;
-        if (t >= 0) { keep[nk].fd = t; keep[nk].dir = 0; keep[nk].path = cfg->x11_socket; keep[nk].ro = 0; nk++; }
-    }
     int bad = 0;
     const char *opts = "mode=0700,size=64m";
     if (!cfg->keep_home) bad |= mount("tmpfs", cfg->home, "tmpfs", MS_NOSUID | MS_NODEV, opts);

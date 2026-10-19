@@ -222,6 +222,12 @@ build/codesig-test: tests/codesig_test.c src/sec/codesig.c src/sec/json.c src/pk
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/codesig_test.c src/sec/codesig.c src/sec/json.c src/pkg/crypto.c
 	./$@ ../tools/release/lordos-release.pub.pem || { rm -f $@; exit 1; }
 # Clock time zones: TZif and POSIX rules against glibc (docs/SYSTEM.md)
+# tests/xwm_test.c: the X11 wire helpers of the window manager (src/wl/x11wire.c, docs/WAYLAND.md)
+test: build/xwm-test
+build/xwm-test: tests/xwm_test.c src/wl/x11wire.c src/wl/x11wire.h
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/xwm_test.c src/wl/x11wire.c
+	./$@ || { rm -f $@; exit 1; }
 test: build/tzif-test
 build/tzif-test: tests/tzif_test.c src/ui/tzif.c src/ui/tzif.h
 	@mkdir -p build
@@ -364,7 +370,7 @@ build/net-test: tests/net_test.c $(NET_SRC) $(PKG_SRC) build/obj/ui/stb.o src/ne
 # Test Wayland app with dmabuf (udmabuf): see docs/GPU.md. Needs libwayland-client.
 CLIENT_PROTO := stable/xdg-shell/xdg-shell unstable/xdg-decoration/xdg-decoration-unstable-v1 stable/linux-dmabuf/linux-dmabuf-v1 stable/presentation-time/presentation-time \
                 unstable/relative-pointer/relative-pointer-unstable-v1 unstable/pointer-constraints/pointer-constraints-unstable-v1 \
-                unstable/pointer-gestures/pointer-gestures-unstable-v1
+                unstable/pointer-gestures/pointer-gestures-unstable-v1 unstable/primary-selection/primary-selection-unstable-v1
 CLIENT_GEN := $(foreach p,$(CLIENT_PROTO),build/gen/client/$(notdir $(p))-client-protocol.h build/gen/client/$(notdir $(p))-protocol.c)
 define wl_client_proto
 build/gen/client/$(notdir $(1))-client-protocol.h: $(WLPROTO)/$(1).xml
@@ -377,6 +383,9 @@ endef
 $(foreach p,$(CLIENT_PROTO),$(eval $(call wl_client_proto,$(p))))
 build/dmabuf-client: tests/dmabuf_client.c $(CLIENT_GEN)
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -Ibuild/gen $(WARN) -std=c11 -o $@ tests/dmabuf_client.c $(filter %.c,$(CLIENT_GEN)) -lwayland-client
+# Clipboard and primary-selection offers bound to their selection (tests/xwayland/clip_offers.sh, docs/WAYLAND.md)
+build/clip-offers: tests/clip_offers.c $(CLIENT_GEN)
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -Ibuild/gen $(WARN) -std=c11 -o $@ tests/clip_offers.c $(filter %.c,$(CLIENT_GEN)) -lwayland-client
 # off/on-monitor cycles against one session (tests/gpu_cycle.sh, docs/GPU.md); a test tool, never installed
 build/seat-cycle: tests/seat_cycle.c
 	@mkdir -p build

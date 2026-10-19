@@ -555,17 +555,6 @@ static int grant_ok(const char *path) {
     return 1;
 }
 
-/* The session's X socket, from DISPLAY=":<n>" (set by wl/xwayland.c): kept in a restricted app's
- * private /tmp so an X11 app still opens there. NULL without one. */
-static const char *x11_socket(void) {
-    static char path[40];
-    const char *d = getenv("DISPLAY");
-    if (!d || d[0] != ':' || !d[1] || strlen(d) > 4) return NULL;
-    for (const char *q = d + 1; *q; q++) if (*q < '0' || *q > '9') return NULL;
-    snprintf(path, sizeof path, "/tmp/.X11-unix/X%s", d + 1);
-    return path;
-}
-
 static int is_dir(const char *p) { struct stat st; return !lstat(p, &st) && S_ISDIR(st.st_mode); }
 
 /* What a restricted app may touch (see sandbox.h). file: the realpath it was opened with, or NULL. */
@@ -593,7 +582,6 @@ static FilesPlan *files_plan(const DesktopApp *a, const char *file, const char *
     p->cfg.sockets[ns++] = "pipewire-0";
     p->cfg.sockets[ns++] = "pulse/native";
     p->cfg.sockets[ns] = NULL;
-    p->cfg.x11_socket = x11_socket();       /* X11 apps (Xwayland) */
     char path[PATH_MAX];
     /* its own folders, named exactly after its canonical id, created if missing */
     if (own_dir_ok(a->id)) {
@@ -669,7 +657,6 @@ static FilesPlan *view_plan(const char *cwd) {
     p->cfg.sockets[ns++] = "pipewire-0";            /* playback; capture goes through the PipeWire guard */
     p->cfg.sockets[ns++] = "pulse/native";
     p->cfg.sockets[ns] = NULL;
-    p->cfg.x11_socket = x11_socket();       /* X11 apps (Xwayland) */
     if (cwd && cwd[0] == '/') { snprintf(p->cwd, sizeof p->cwd, "%s", cwd); p->cfg.cwd = p->cwd; }
     return p;
 }
@@ -827,6 +814,10 @@ static int launch(const char *id, const char *file, const char *action) {
             _exit(126);
         }
         /* its own view (namespaces: no session sockets, only its folders), then Landlock */
+        /* a restricted app gets no X display: X11 apps share one X server and can watch each
+         * other's windows, input and selections (docs/PRIVACY.md, "X11 apps"); its private /tmp has no
+         * X socket either */
+        if (plan) unsetenv("DISPLAY");
         if (plan && (sandbox_files_isolate(&plan->cfg) ||
                      (plan->cfg.keep_home ? sandbox_apply_scope() : sandbox_apply_files(&plan->cfg)))) {
             static const char msg[] = "apps: could not apply the no-files restriction: not launched\n";

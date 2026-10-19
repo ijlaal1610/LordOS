@@ -113,6 +113,10 @@ int x11_text_target(const char *name);
 /* Preference among the text targets an owner offers (higher is better, 0 = not text). */
 int x11_text_rank(const char *name);
 
+/* Do two X resource ids belong to the same client? (The bits above the server's resource mask
+ * are the client.) The window manager answers a paste request only from the focused window's client. */
+static inline int x11_same_client(uint32_t a, uint32_t b, uint32_t id_mask) { return (a & ~id_mask) == (b & ~id_mask); }
+
 /* First free display number (0..63), given a test for whether :n is in use (a live lock file or
  * a socket). -1 if they are all taken. */
 int x11_pick_display(int (*taken)(int n, void *ctx), void *ctx);

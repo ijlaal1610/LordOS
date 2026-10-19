@@ -114,11 +114,11 @@ const host = {
   },
   appendInitialChild(parent, child) { lord.appendChild(parent.id, child.id); attach(parent, child); },
   appendChild(parent, child) { lord.appendChild(parent.id, child.id); attach(parent, child); },
-  appendChildToContainer(container, child) { lord.appendChild(container.id, child.id); attach(container, child); },
+  appendChildToContainer(container, child) { lord.appendChild(container.id, child.id); attach(container, child); layerCount(container, 1); },
   insertBefore(parent, child, before) { lord.insertBefore(parent.id, child.id, before.id); attach(parent, child); },
-  insertInContainerBefore(container, child, before) { lord.insertBefore(container.id, child.id, before.id); attach(container, child); },
+  insertInContainerBefore(container, child, before) { lord.insertBefore(container.id, child.id, before.id); attach(container, child); layerCount(container, 1); },
   removeChild(parent, child) { lord.removeChild(parent.id, child.id); },
-  removeChildFromContainer(container, child) { lord.removeChild(container.id, child.id); },
+  removeChildFromContainer(container, child) { lord.removeChild(container.id, child.id); layerCount(container, -1); },
   detachDeletedInstance(inst) { unregister(inst); lord.destroy(inst.id); },
   clearContainer() {},
 
@@ -137,7 +137,7 @@ const host = {
   getChildHostContext: (ctx) => ctx,
   getPublicInstance: (inst) => inst,
   prepareForCommit: () => null,
-  resetAfterCommit() {},
+  resetAfterCommit() { layersCommitted(); },
   preparePortalMount() {},
   setCurrentUpdatePriority(p) { updatePriority = p; },
   getCurrentUpdatePriority: () => updatePriority,
@@ -175,6 +175,28 @@ const host = {
 
 const reconciler = Reconciler(host);
 
+// ---- what is open in the layers that take the keyboard ----
+// The search, the app launcher, shell sheets and system prompts (keyring, permissions, the file
+// chooser) live in the overlay, modal and system layers (sdk/layers.js). While any of them shows
+// something, the keyboard is LordOS's: no Linux app (Wayland or X11) gets the keys typed into it
+// (sdk/wayland.js asks the compositor; docs/PRIVACY.md).
+const KEYBOARD_LAYERS = new Set([40, 60, 100]);   // overlay, modal, system
+let keyboardBusy = false;
+const keyboardWatchers = new Set();
+function layerCount(container, d) {
+  if (!container.layer) return;
+  container.count = Math.max(0, (container.count || 0) + d);
+}
+function layersCommitted() {
+  let busy = false;
+  for (const [z, c] of layerNodes) if (KEYBOARD_LAYERS.has(z) && c.count > 0) { busy = true; break; }
+  if (busy === keyboardBusy) return;
+  keyboardBusy = busy;
+  for (const fn of keyboardWatchers) { try { fn(busy); } catch (e) { console.error(e); } }
+}
+export const shellHasKeyboard = () => keyboardBusy;
+export function onShellKeyboard(fn) { keyboardWatchers.add(fn); return () => keyboardWatchers.delete(fn); }
+
 // ---- layers: one stacking order for the whole screen (sdk/layers.js, docs/LAYERS.md) ----
 // Each layer is a root node of the screen's size, above the React tree (zIndex > 0) and
 // pointerEvents 'box-none' (lord-server never hits the layer itself, only what is in it), so paint
@@ -188,7 +210,7 @@ export function layerContainer(z) {
     for (const [k, v] of [['position', 'absolute'], ['left', 0], ['top', 0], ['width', screen.width], ['height', screen.height],
       ['pointerEvents', 'box-none'], ['zIndex', z]]) lord.setStyle(id, k, v);
     lord.appendChild(rootNode, id);
-    c = { id, isContainer: true };
+    c = { id, isContainer: true, layer: z, count: 0 };
     layerNodes.set(z, c);
   }
   return c;

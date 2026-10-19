@@ -89,7 +89,6 @@ typedef struct {
     const char *rw[SANDBOX_FILES_MAX + 1];     /* NULL-terminated */
     const char *ro[SANDBOX_FILES_MAX + 1];
     const char *sockets[8];                    /* names inside runtime_dir kept visible (wayland-0...), NULL-terminated */
-    const char *x11_socket;                    /* the session's X socket (/tmp/.X11-unix/X<n>), kept in the private /tmp; or NULL */
     const char *cwd;                           /* the .desktop's Path= (or NULL: the home folder), entered inside the view */
     /* the file or folder the app was opened with ("Open with"; also in rw[] or ro[]): opened
      * again without following any symlink and only if it is still the same inode the launcher checked */
