@@ -238,13 +238,13 @@ build/tzif-test: tests/tzif_test.c src/ui/tzif.c src/ui/tzif.h
 # connection rate; then the same parsers under ASan+UBSan with many random and mutated inputs
 REMOTE_SEC_SRC := src/remote/rsec.c src/remote/ipnet.c src/remote/lockout.c src/remote/rtcwire.c
 test: build/remote-sec-test build/remote-fuzz
-build/remote-sec-test: tests/remote_sec_test.c $(REMOTE_SEC_SRC) src/remote/rsec.h src/remote/ipnet.h src/remote/lockout.h src/remote/rtcwire.h
+build/remote-sec-test: tests/remote_sec_test.c $(REMOTE_SEC_SRC) src/remote/rsec.h src/remote/ipnet.h src/remote/lockout.h src/remote/rtcwire.h tests/rtc_offer_chrome.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/remote_sec_test.c $(REMOTE_SEC_SRC)
 	./$@ || { rm -f $@; exit 1; }
-build/remote-fuzz: tests/remote_fuzz.c $(REMOTE_SEC_SRC) src/remote/rsec.h src/remote/ipnet.h src/remote/lockout.h src/remote/rtcwire.h
+build/remote-fuzz: tests/remote_fuzz.c $(REMOTE_SEC_SRC) src/remote/rsec.h src/remote/ipnet.h src/remote/lockout.h src/remote/rtcwire.h tests/rtc_offer_chrome.h
 	@mkdir -p build
-	$(CC) $(CPPFLAGS) -O1 -g $(WARN) -std=c11 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer \
+	$(CC) $(CPPFLAGS) -Itests -O1 -g $(WARN) -std=c11 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer \
 	    -o $@ tests/remote_fuzz.c $(REMOTE_SEC_SRC)
 	./$@ 100000 || { rm -f $@; exit 1; }
 # journal reader (Logs): normal and compact synthetic files, LZ4 and XZ, broken and

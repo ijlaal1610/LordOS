@@ -4,9 +4,12 @@
 #include "remote/rsec.h"
 #include "remote/ipnet.h"
 #include "remote/lockout.h"
+#include "remote/rtcwire.h"
+#include "rtc_offer_chrome.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 
 static int fails, checks;
@@ -448,6 +451,403 @@ static void test_lockout(void) {
     CHECK(rc_take(&rc, "1.2.3.5", 10.6) == 1);                                      /* others are not affected */
 }
 
+/* ---- the video path's wire formats (rtcwire.c; docs/REMOTE.md, "Video (WebRTC)") ---- */
+
+/* A small SHA-1 + HMAC for the STUN tests (the test program links only libc). */
+typedef struct { uint32_t h[5]; uint64_t n; uint8_t b[64]; size_t bl; } Sha1;
+static uint32_t rol(uint32_t x, int k) { return x << k | x >> (32 - k); }
+static void sha1_block(Sha1 *s, const uint8_t *p) {
+    uint32_t w[80], a = s->h[0], b = s->h[1], c = s->h[2], d = s->h[3], e = s->h[4];
+    for (int i = 0; i < 16; i++) w[i] = (uint32_t)p[i * 4] << 24 | (uint32_t)p[i * 4 + 1] << 16 | (uint32_t)p[i * 4 + 2] << 8 | p[i * 4 + 3];
+    for (int i = 16; i < 80; i++) w[i] = rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    for (int i = 0; i < 80; i++) {
+        uint32_t f, k;
+        if (i < 20) { f = (b & c) | (~b & d); k = 0x5A827999; }
+        else if (i < 40) { f = b ^ c ^ d; k = 0x6ED9EBA1; }
+        else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8F1BBCDC; }
+        else { f = b ^ c ^ d; k = 0xCA62C1D6; }
+        uint32_t t = rol(a, 5) + f + e + k + w[i];
+        e = d; d = c; c = rol(b, 30); b = a; a = t;
+    }
+    s->h[0] += a; s->h[1] += b; s->h[2] += c; s->h[3] += d; s->h[4] += e;
+}
+static void sha1_init(Sha1 *s) { *s = (Sha1){ { 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0 }, 0, { 0 }, 0 }; }
+static void sha1_add(Sha1 *s, const uint8_t *p, size_t n) {
+    s->n += n;
+    while (n--) { s->b[s->bl++] = *p++; if (s->bl == 64) { sha1_block(s, s->b); s->bl = 0; } }
+}
+static void sha1_end(Sha1 *s, uint8_t out[20]) {
+    uint64_t bits = s->n * 8;
+    uint8_t pad = 0x80, z = 0;
+    sha1_add(s, &pad, 1);
+    while (s->bl != 56) sha1_add(s, &z, 1);
+    uint8_t l[8];
+    for (int i = 0; i < 8; i++) l[i] = (uint8_t)(bits >> (56 - 8 * i));
+    sha1_add(s, l, 8);
+    for (int i = 0; i < 5; i++) { out[i * 4] = (uint8_t)(s->h[i] >> 24); out[i * 4 + 1] = (uint8_t)(s->h[i] >> 16); out[i * 4 + 2] = (uint8_t)(s->h[i] >> 8); out[i * 4 + 3] = (uint8_t)s->h[i]; }
+}
+static void hmac1(const uint8_t *key, size_t kl, const uint8_t *m, size_t n, uint8_t out[20]) {
+    uint8_t k[64] = { 0 }, ip[64], op[64], in[20];
+    if (kl > 64) { Sha1 s; sha1_init(&s); sha1_add(&s, key, kl); sha1_end(&s, k); } else memcpy(k, key, kl);
+    for (int i = 0; i < 64; i++) { ip[i] = k[i] ^ 0x36; op[i] = k[i] ^ 0x5c; }
+    Sha1 s;
+    sha1_init(&s); sha1_add(&s, ip, 64); sha1_add(&s, m, n); sha1_end(&s, in);
+    sha1_init(&s); sha1_add(&s, op, 64); sha1_add(&s, in, 20); sha1_end(&s, out);
+}
+
+static int hexbytes(const char *h, uint8_t *out) {
+    int n = 0;
+    for (; h[0] && h[1]; h += 2) { unsigned v; sscanf(h, "%2x", &v); out[n++] = (uint8_t)v; }
+    return n;
+}
+
+/* the offer with one line replaced (or removed, rep = NULL), or one line added after `after` */
+static char *offer_edit(const char *find, const char *rep) {
+    static char buf[40000];
+    const char *at = strstr(chrome_offer, find);
+    if (!at) { snprintf(buf, sizeof buf, "%s", chrome_offer); return buf; }
+    const char *end = strstr(at, "\r\n");
+    size_t pre = (size_t)(at - chrome_offer);
+    snprintf(buf, sizeof buf, "%.*s%s%s", (int)pre, chrome_offer, rep ? rep : "", end ? end + (rep ? 0 : 2) : "");
+    return buf;
+}
+
+static void test_sdp(void) {
+    RwOffer o;
+    size_t n = strlen(chrome_offer);
+    CHECK(rw_sdp_parse_offer(chrome_offer, n, 1, &o) == RW_OK);
+    CHECK(o.nmedia == 3 && o.vm == 0 && o.am == 1 && o.dm == 2 && o.vcodec == RW_CODEC_H264);
+    CHECK(o.m[o.vm].pt[0].pt == 96 && o.m[o.dm].sctp_port == 5000 && o.m[o.dm].max_msg == 262144);
+    int h264 = 0;
+    for (int i = 0; i < o.m[0].npt; i++) if (o.m[0].pt[i].pt == o.vpt) h264 = o.m[0].pt[i].plid == 0x42e01f && o.m[0].pt[i].pmode == 1;
+    CHECK(h264);                                                        /* constrained baseline, mode 1 */
+    CHECK(!strcmp(o.ufrag, "z1TV") && !strcmp(o.pwd, "RifL1wLzVBkO+l3mNSAqrSe8") && o.fp[0] == 0x70 && o.fp[31] == 0x39);
+    CHECK(o.setup == RW_SETUP_ACTPASS && o.ncand >= 1 && o.cand[0].mdns);
+    CHECK(rw_sdp_parse_offer(chrome_offer, n, 0, &o) == RW_OK && o.vcodec == RW_CODEC_VP8 && o.vpt == 96);   /* no H.264 encoder */
+    /* broken offers */
+    const char *e;
+    e = offer_edit("a=ice-ufrag:z1TV", NULL); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_OK);          /* the other sections carry it */
+    e = offer_edit("a=ice-ufrag:z1TV", "a=ice-ufrag:zzzz"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_EICE);   /* two in one bundle */
+    e = offer_edit("a=ice-ufrag:z1TV", "a=ice-ufrag:z1"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_EICE);       /* too short */
+    e = offer_edit("a=ice-ufrag:z1TV", "a=ice-ufrag:z1T;V"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_EICE);
+    e = offer_edit("a=ice-pwd:RifL1wLzVBkO+l3mNSAqrSe8", "a=ice-pwd:short"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_EICE);
+    e = offer_edit("a=fingerprint:sha-256 70:59", NULL); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_OK);      /* the others remain */
+    e = offer_edit("a=fingerprint:sha-256 70:59", "a=fingerprint:sha-256 70:59:D6"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_EFP);
+    e = offer_edit("a=fingerprint:sha-256 70:59", "a=fingerprint:sha-256 71:59:D6:4B:A3:67:6E:BD:AC:6A:5E:0D:3B:95:92:BA:40:F4:86:12:84:69:6C:F8:F8:D1:A0:A3:D1:C6:46:39");
+    CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_EFP);           /* two different fingerprints in one bundle */
+    e = offer_edit("a=setup:actpass", "a=setup:passive"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ESYNTAX);
+    e = offer_edit("a=group:BUNDLE 0 1 2", NULL); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ESYNTAX);
+    e = offer_edit("a=mid:1", "a=mid:0"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ESYNTAX);              /* duplicate mid */
+    e = offer_edit("a=mid:1", "a=mid:bad mid"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ESYNTAX);
+    e = offer_edit("a=rtcp-mux", NULL); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ESYNTAX);                /* video without rtcp-mux */
+    e = offer_edit("a=rtpmap:96 VP8/90000", "a=rtpmap:96 VP8/90000/"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ESYNTAX);
+    e = offer_edit("a=rtpmap:96 VP8/90000", "a=rtpmap:200 VP8/90000"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ESYNTAX);  /* pt not listed */
+    e = offer_edit("a=rtpmap:96 VP8/90000", "a=rtpmap:97 VP8/90000"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ESYNTAX);   /* twice */
+    e = offer_edit("a=fmtp:97 apt=96", "a=fmtp:97 apt=96\r\na=fmtp:97 apt=96"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ESYNTAX);
+    e = offer_edit("a=recvonly", "a=sendonly"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ECODEC);           /* no video to send */
+    e = offer_edit("v=0", "v=1"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ESYNTAX);
+    e = offer_edit("s=-", "s=\x01"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ESYNTAX);                     /* control byte */
+    e = offer_edit("s=-", "s=\xc3\xa9"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ESYNTAX);                 /* non-ASCII */
+    e = offer_edit("s=-", "S=-"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ESYNTAX);
+    e = offer_edit("a=candidate:2529583990", "a=candidate:x 1 udp 1 1.2.3.4 0 typ host"); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ESYNTAX);
+    static char strip[40000];
+    for (int pass = 0; pass < 2; pass++) {                              /* no ufrag anywhere; no fingerprint anywhere */
+        const char *key = pass ? "a=fingerprint:" : "a=ice-ufrag:";
+        size_t o2 = 0;
+        for (const char *q = chrome_offer; *q;) {
+            const char *eol = strstr(q, "\r\n");
+            size_t l = eol ? (size_t)(eol - q) + 2 : strlen(q);
+            if (strncmp(q, key, strlen(key))) { memcpy(strip + o2, q, l); o2 += l; }
+            q += l;
+        }
+        strip[o2] = 0;
+        CHECK(rw_sdp_parse_offer(strip, o2, 1, &o) == (pass ? RW_EFP : RW_EICE));
+    }
+    /* sizes */
+    static char big[RW_SDP_MAX + 100];
+    memset(big, 0, sizeof big);
+    snprintf(big, sizeof big, "%s", chrome_offer);
+    size_t bl = strlen(big);
+    while (bl + 20 < RW_SDP_MAX + 50) { memcpy(big + bl, "a=x-filler:1\r\n", 14); bl += 14; }
+    CHECK(rw_sdp_parse_offer(big, bl, 1, &o) == RW_ETOOBIG);
+    char longline[2000];
+    memset(longline, 'a', sizeof longline);
+    memcpy(longline, "a=x:", 4);
+    longline[1500] = 0;
+    e = offer_edit("s=-", longline); CHECK(rw_sdp_parse_offer(e, strlen(e), 1, &o) == RW_ETOOBIG);
+    static char many[RW_SDP_MAX];
+    size_t ml = (size_t)snprintf(many, sizeof many, "v=0\r\n");
+    for (int i = 0; i < 700 && ml + 8 < sizeof many; i++) { memcpy(many + ml, "a=x\r\n", 5); ml += 5; }
+    CHECK(rw_sdp_parse_offer(many, ml, 1, &o) == RW_ETOOBIG);
+    CHECK(rw_sdp_parse_offer("", 0, 1, &o) == RW_ESYNTAX);
+    /* the answer */
+    CHECK(rw_sdp_parse_offer(chrome_offer, n, 1, &o) == RW_OK);
+    uint8_t fp[32];
+    for (int i = 0; i < 32; i++) fp[i] = (uint8_t)i;
+    RwLocalCand c[2] = { { "192.168.1.5", 40000, RW_CAND_HOST, 2130706431, "", 0 }, { "203.0.113.9", 3478, RW_CAND_RELAY, 33554431, "198.51.100.2", 5555 } };
+    RwAnswer a = { "AbCdEfGh", "0123456789abcdefABCDEF01", fp, 111, 222, 1, c, 2, 42 };
+    char ans[16384];
+    int al = rw_sdp_answer(&o, &a, ans, sizeof ans);
+    CHECK(al > 0 && strstr(ans, "a=ice-lite\r\n") && strstr(ans, "a=setup:passive\r\n") && strstr(ans, "a=group:BUNDLE 0 1 2\r\n"));
+    CHECK(strstr(ans, "a=fingerprint:sha-256 00:01:02:03:") != NULL);
+    char want[64];
+    snprintf(want, sizeof want, "a=rtpmap:%d H264/90000\r\n", o.vpt);
+    CHECK(strstr(ans, want) && strstr(ans, "packetization-mode=1;profile-level-id=42e01f"));
+    CHECK(strstr(ans, "a=candidate:10 1 udp 2130706431 192.168.1.5 40000 typ host\r\n"));
+    CHECK(strstr(ans, "typ relay raddr 198.51.100.2 rport 5555\r\n") && strstr(ans, "a=sctp-port:5000"));
+    CHECK(strstr(ans, "a=ssrc:111 cname:lordos") && strstr(ans, "a=ssrc:222 cname:lordos") && strstr(ans, "a=rtpmap:111 opus/48000/2"));
+    CHECK(!strstr(ans, "RifL1w"));                                      /* never echoes the browser's secrets */
+    CHECK(rw_sdp_answer(&o, &a, ans, 200) == -1);                       /* doesn't fit */
+}
+
+static void test_cand(void) {
+    RwCand c;
+    const char *ok[] = {
+        "candidate:1 1 udp 2113937151 192.168.1.20 54321 typ host generation 0 network-cost 999",
+        "a=candidate:842163049 1 udp 1677729535 203.0.113.4 61000 typ srflx raddr 0.0.0.0 rport 0 generation 0",
+        "candidate:3 1 UDP 33554431 2001:db8::7 3478 typ relay raddr 2001:db8::1 rport 9",
+        "candidate:4 1 udp 2113937151 3d9863a1-3b3d-48f6-9ff1-49c2bc04877f.local 64198 typ host",
+        "candidate:5 1 tcp 1518280447 192.168.1.20 9 typ host tcptype active",
+    };
+    for (size_t i = 0; i < sizeof ok / sizeof ok[0]; i++) CHECK(rw_cand_parse(ok[i], strlen(ok[i]), &c) == RW_OK);
+    CHECK(rw_cand_parse(ok[0], strlen(ok[0]), &c) == 0 && c.type == RW_CAND_HOST && c.addr.family == 4 && c.addr.port == 54321 && !c.mdns);
+    CHECK(rw_cand_parse(ok[2], strlen(ok[2]), &c) == 0 && c.type == RW_CAND_RELAY && c.addr.family == 6);
+    CHECK(rw_cand_parse(ok[3], strlen(ok[3]), &c) == 0 && c.mdns);
+    CHECK(rw_cand_parse(ok[4], strlen(ok[4]), &c) == 0 && c.tcp);
+    const char *bad[] = {
+        "candidate:1 1 udp 2113937151 192.168.1.20 0 typ host",            /* port 0 */
+        "candidate:1 1 udp 2113937151 192.168.1.20 70000 typ host",
+        "candidate:1 1 udp 4294967296 192.168.1.20 5 typ host",            /* priority over 32 bits */
+        "candidate:1 1 sctp 1 192.168.1.20 5 typ host",
+        "candidate:1 1 udp 1 192.168.1.20 5 typ hostx",
+        "candidate:1 1 udp 1 192.168.001.20 5 typ host",                  /* leading zeros */
+        "candidate:1 1 udp 1 evil.example.com 5 typ host",                 /* only mDNS names */
+        "candidate:1 1 udp 1 1.2.3.4 5 typ host raddr",                    /* odd extension */
+        "candidate:1 1 udp 1 1.2.3.4 5 typ host X y",
+        "candidate:1  1 udp 1 1.2.3.4 5 typ host",                         /* double space */
+        "candidate:1 1 udp 1 1.2.3.4 5 typ host ",
+        "candidate:a;b 1 udp 1 1.2.3.4 5 typ host",
+        "candidate:1 0 udp 1 1.2.3.4 5 typ host",
+        "candidate:1 1 udp 1 1.2.3.4 5 typ host\x01",
+        "cand:1 1 udp 1 1.2.3.4 5 typ host",
+        "",
+    };
+    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) CHECK(rw_cand_parse(bad[i], strlen(bad[i]), &c) != RW_OK);
+    char huge[700];
+    memset(huge, 'a', sizeof huge);
+    memcpy(huge, "candidate:", 10);
+    CHECK(rw_cand_parse(huge, sizeof huge, &c) != RW_OK);
+    CHECK(rw_ice_server_valid("stun.example.org:3478") && rw_ice_server_valid("192.0.2.1:19302") && rw_ice_server_valid("[2001:db8::1]:3478"));
+    CHECK(!rw_ice_server_valid("stun.example.org") && !rw_ice_server_valid("a:0") && !rw_ice_server_valid("a:65536") && !rw_ice_server_valid("a:03478"));
+    CHECK(!rw_ice_server_valid("-a.example:1") && !rw_ice_server_valid("a..b:1") && !rw_ice_server_valid("a b:1") && !rw_ice_server_valid("[1.2.3.4]:5"));
+    CHECK(!rw_ice_server_valid("turn:x.example:1") && !rw_ice_server_valid("x.example:1\n"));
+    CHECK(rw_turn_user_valid("1700000000:alice") && !rw_turn_user_valid("al ice") && !rw_turn_user_valid("a\"b") && !rw_turn_user_valid(""));
+    CHECK(rw_turn_pass_valid("p a$$ w0rd") && !rw_turn_pass_valid("a\nb") && !rw_turn_pass_valid(""));
+}
+
+static void test_stun(void) {
+    /* a real answer of ours to Chrome, checked by hand (ICE password tnGnUTLhcP7YsCoR9B8TOTo3) */
+    uint8_t p[200];
+    int n = hexbytes("0101002c2112a442496f307873764d3849326171002000080001df408d03a44700080014891a716ef20e7a305d8e94f44f899dba06a12704802800049abe8fcc", p);
+    RwStun s;
+    CHECK(rw_is_stun(p, (size_t)n) && rw_stun_parse(p, (size_t)n, &s) == 0);
+    CHECK(s.type == RW_STUN_BINDING_OK && s.has_fp && s.mi_off == 32 && s.xor_mapped.family == 4 && s.xor_mapped.port == 65106);
+    CHECK(s.xor_mapped.a[0] == 172 && s.xor_mapped.a[1] == 17 && s.xor_mapped.a[3] == 5);
+    const char *pw = "tnGnUTLhcP7YsCoR9B8TOTo3";
+    CHECK(rw_stun_check_mi(p, (size_t)n, &s, (const uint8_t *)pw, strlen(pw), hmac1));
+    CHECK(!rw_stun_check_mi(p, (size_t)n, &s, (const uint8_t *)"wrong-password-xxxxxxxx", 23, hmac1));
+    /* our builder makes the same bytes */
+    RwStunOut o;
+    rw_so_init(&o, RW_STUN_BINDING_OK, p + 8);
+    rw_so_xaddr(&o, RW_ATTR_XOR_MAPPED, &s.xor_mapped);
+    rw_so_mi(&o, (const uint8_t *)pw, strlen(pw), hmac1);
+    rw_so_fingerprint(&o);
+    CHECK(!o.bad && o.n == (size_t)n && !memcmp(o.b, p, (size_t)n));
+    /* a request like Chrome's: username, priority, controlling, use-candidate */
+    uint8_t tid[12] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }, ctl[8] = { 0 };
+    rw_so_init(&o, RW_STUN_BINDING_REQ, tid);
+    rw_so_attr(&o, RW_ATTR_USERNAME, "AbCdEfGh:z1TV", 13);
+    rw_so_u32(&o, RW_ATTR_PRIORITY, 1853824767);
+    rw_so_attr(&o, RW_ATTR_CONTROLLING, ctl, 8);
+    rw_so_attr(&o, RW_ATTR_USE_CAND, NULL, 0);
+    rw_so_attr(&o, 0xc057, "\0\0\x03\xe7", 4);                         /* comprehension-optional: skipped */
+    rw_so_mi(&o, (const uint8_t *)"key", 3, hmac1);
+    rw_so_fingerprint(&o);
+    CHECK(rw_stun_parse(o.b, o.n, &s) == 0 && s.ulen == 13 && s.use_candidate && s.controlling && s.priority == 1853824767);
+    CHECK(rw_stun_check_mi(o.b, o.n, &s, (const uint8_t *)"key", 3, hmac1));
+    /* tampering */
+    uint8_t t[RW_STUN_MAX];
+    memcpy(t, o.b, o.n);
+    t[30] ^= 1;
+    CHECK(rw_stun_parse(t, o.n, &s) != 0);                              /* the fingerprint catches it */
+    memcpy(t, o.b, o.n);
+    t[3] += 4;
+    CHECK(rw_stun_parse(t, o.n, &s) != 0);                              /* length doesn't match */
+    CHECK(rw_stun_parse(o.b, o.n - 1, &s) != 0 && rw_stun_parse(o.b, 19, &s) != 0);
+    memcpy(t, o.b, o.n);
+    t[4] = 0;
+    CHECK(rw_stun_parse(t, o.n, &s) != 0 && !rw_is_stun(t, o.n));       /* no magic cookie */
+    /* structure rules */
+    rw_so_init(&o, RW_STUN_BINDING_REQ, tid);
+    rw_so_attr(&o, RW_ATTR_USERNAME, "a:b", 3);
+    rw_so_attr(&o, RW_ATTR_USERNAME, "a:b", 3);
+    CHECK(rw_stun_parse(o.b, o.n, &s) != 0);                            /* the same attribute twice */
+    rw_so_init(&o, RW_STUN_BINDING_REQ, tid);
+    rw_so_mi(&o, (const uint8_t *)"k", 1, hmac1);
+    rw_so_attr(&o, RW_ATTR_USERNAME, "a:b", 3);
+    CHECK(rw_stun_parse(o.b, o.n, &s) != 0);                            /* something after MESSAGE-INTEGRITY */
+    rw_so_init(&o, RW_STUN_BINDING_REQ, tid);
+    rw_so_fingerprint(&o);
+    rw_so_attr(&o, RW_ATTR_SOFTWARE, "x", 1);
+    CHECK(rw_stun_parse(o.b, o.n, &s) != 0);                            /* something after FINGERPRINT */
+    rw_so_init(&o, RW_STUN_BINDING_REQ, tid);
+    rw_so_attr(&o, 0x0030, "x", 1);
+    CHECK(rw_stun_parse(o.b, o.n, &s) != 0);                            /* unknown comprehension-required */
+    rw_so_init(&o, RW_STUN_BINDING_REQ, tid);
+    rw_so_attr(&o, RW_ATTR_PRIORITY, "abc", 3);
+    CHECK(rw_stun_parse(o.b, o.n, &s) != 0);                            /* wrong size */
+    rw_so_init(&o, RW_STUN_BINDING_REQ, tid);
+    rw_so_attr(&o, RW_ATTR_XOR_MAPPED, "\0\3\0\0\0\0\0\0", 8);
+    CHECK(rw_stun_parse(o.b, o.n, &s) != 0);                            /* unknown address family */
+    rw_so_init(&o, RW_TURN_ALLOCATE_ERR, tid);
+    rw_so_attr(&o, RW_ATTR_ERROR, "\0\0\4\1Unauthorized", 16);
+    rw_so_attr(&o, RW_ATTR_REALM, "lordos.test", 11);
+    rw_so_attr(&o, RW_ATTR_NONCE, "abcdef", 6);
+    CHECK(rw_stun_parse(o.b, o.n, &s) == 0 && s.error == 401 && s.rlen == 11 && s.nlen == 6);
+    rw_so_init(&o, RW_TURN_ALLOCATE_ERR, tid);
+    rw_so_attr(&o, RW_ATTR_ERROR, "\0\0\x09\1x", 5);
+    CHECK(rw_stun_parse(o.b, o.n, &s) != 0);                            /* class 9 */
+    RwAddr v6 = { 6, { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7 }, 3478 };
+    rw_so_init(&o, RW_TURN_ALLOCATE_OK, tid);
+    rw_so_xaddr(&o, RW_ATTR_XOR_RELAYED, &v6);
+    rw_so_u32(&o, RW_ATTR_LIFETIME, 600);
+    CHECK(rw_stun_parse(o.b, o.n, &s) == 0 && rw_addr_equal(&s.xor_relayed, &v6) && s.lifetime == 600);
+    char txt[64];
+    rw_addr_format(&v6, txt, sizeof txt);
+    CHECK(!strcmp(txt, "2001:db8::7"));
+}
+
+typedef struct { int n, rr, pli, fir, nack, remb; uint64_t br; } FbCount;
+static void fb_count(void *ud, const RwFb *f) {
+    FbCount *c = ud;
+    c->n++;
+    if (f->kind == RW_FB_RR) c->rr++;
+    if (f->kind == RW_FB_PLI) c->pli++;
+    if (f->kind == RW_FB_FIR) c->fir++;
+    if (f->kind == RW_FB_NACK) c->nack++;
+    if (f->kind == RW_FB_REMB) { c->remb++; c->br = f->bitrate; }
+}
+
+static void test_rtcp(void) {
+    uint8_t p[300];
+    FbCount c = { 0 };
+    /* RR with one block + PLI + NACK(2 items) + REMB, one compound packet */
+    int n = hexbytes("81c90007" "11111111" "22222222" "19000005" "00000100" "00000010" "00000000" "00000000"
+                     "81ce0002" "11111111" "22222222"
+                     "81cd0004" "11111111" "22222222" "0064000f" "00c80000"
+                     "8fce0005" "11111111" "00000000" "52454d42" "0108e800" "22222222", p);
+    CHECK(rw_rtcp_parse(p, (size_t)n, fb_count, &c) == 0 && c.rr == 1 && c.pli == 1 && c.nack == 2 && c.remb == 1 && c.br == (uint64_t)0xe800 << 2);
+    int k = hexbytes("84ce0004" "11111111" "00000000" "22222222" "05000000", p);
+    memset(&c, 0, sizeof c);
+    CHECK(rw_rtcp_parse(p, (size_t)k, fb_count, &c) == 0 && c.fir == 1);
+    /* broken: wrong version, length past the end, an RR claiming more blocks, a NACK without items,
+     * padding not at the end, a non-RTCP type; nothing is reported for a broken packet */
+    const char *bad[] = { "41ce000211111111" "22222222", "81ce000311111111" "22222222", "82c9000711111111" "22222222",
+                          "81cd000211111111" "22222222", "a1ce0002111111112222222281ce00021111111122222222", "81c8000011111111" "",
+                          "81640001" "00000000", "80c9" };
+    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        memset(&c, 0, sizeof c);
+        int bn = hexbytes(bad[i], p);
+        CHECK(rw_rtcp_parse(p, (size_t)bn, fb_count, &c) != 0 && c.n == 0);
+    }
+    /* a valid packet followed by garbage: the good part isn't reported either */
+    n = hexbytes("81ce0002" "11111111" "22222222" "ff", p);
+    memset(&c, 0, sizeof c);
+    CHECK(rw_rtcp_parse(p, (size_t)n, fb_count, &c) != 0 && c.n == 0);
+}
+
+static void test_dcep(void) {
+    RwDcOpen o;
+    uint8_t p[100];
+    int n = hexbytes("0300000000000000000500006c6f6c6f6c", p);    /* label "lolol" */
+    CHECK(rw_dcep_open(p, (size_t)n, &o) == 0 && !strcmp(o.label, "lolol"));
+    n = hexbytes("03800000000000000005000074696c6573", p);
+    CHECK(rw_dcep_open(p, (size_t)n, &o) == 0 && o.chan_type == 0x80 && !strcmp(o.label, "tiles"));
+    n = hexbytes("0301000000000003000500006c6f6c6f6c", p);     /* partially reliable: refused */
+    CHECK(rw_dcep_open(p, (size_t)n, &o) != 0);
+    n = hexbytes("0300000000000000000500016c6f6c6f6c78", p);   /* a subprotocol */
+    CHECK(rw_dcep_open(p, (size_t)n, &o) != 0);
+    n = hexbytes("0300000000000000000600006c6f6c6f6c", p);     /* label longer than the message */
+    CHECK(rw_dcep_open(p, (size_t)n, &o) != 0);
+    n = hexbytes("030000000000000000050000496e505554", p);     /* capitals */
+    CHECK(rw_dcep_open(p, (size_t)n, &o) != 0);
+    n = hexbytes("02", p);
+    CHECK(rw_dcep_open(p, (size_t)n, &o) != 0);
+    CHECK(rw_dcep_open(p, 0, &o) != 0);
+}
+
+typedef struct { int n, marker_at, starts, ends; size_t bytes; uint8_t first_hdr[2]; } PkCount;
+static void pk_out(void *ud, const uint8_t *h, size_t hl, const uint8_t *d, size_t n, int marker) {
+    PkCount *c = ud;
+    (void)d;
+    if (hl == 2 && (h[1] & 0x80)) c->starts++;
+    if (hl == 2 && (h[1] & 0x40)) c->ends++;
+    if (!c->n && hl) memcpy(c->first_hdr, h, hl < 2 ? hl : 2);
+    if (marker) c->marker_at = c->n;
+    c->n++;
+    c->bytes += hl + n;
+}
+
+static void test_rtp(void) {
+    static uint8_t au[4000];
+    size_t n = 0;
+    const uint8_t sps[] = { 0, 0, 0, 1, 0x67, 0x42, 0xe0, 0x1f, 0xaa }, pps[] = { 0, 0, 1, 0x68, 0xce, 0x3c, 0x80 };
+    memcpy(au + n, sps, sizeof sps); n += sizeof sps;
+    memcpy(au + n, pps, sizeof pps); n += sizeof pps;
+    au[n++] = 0; au[n++] = 0; au[n++] = 0; au[n++] = 1; au[n++] = 0x65;      /* IDR */
+    for (int i = 0; i < 3000; i++) au[n++] = (uint8_t)(i % 251 + 1);
+    PkCount c = { 0 };
+    CHECK(rw_h264_is_idr(au, n));
+    int k = rw_h264_packetize(au, n, 1100, pk_out, &c);
+    CHECK(k == 2 + 3 && c.n == 5 && c.marker_at == 4 && c.starts == 1 && c.ends == 1);
+    CHECK(c.bytes == 5 + 4 + 3 * 2 + 3000);                             /* SPS, PPS, FU-A headers + IDR body */
+    uint8_t p[] = { 0, 0, 1, 0x41, 1, 2, 3 };
+    memset(&c, 0, sizeof c);
+    CHECK(rw_h264_packetize(p, sizeof p, 1100, pk_out, &c) == 1 && !rw_h264_is_idr(p, sizeof p) && c.marker_at == 0);
+    uint8_t nostart[] = { 0x65, 1, 2, 3 };
+    CHECK(rw_h264_packetize(nostart, sizeof nostart, 1100, pk_out, &c) == -1);
+    uint8_t forbidden[] = { 0, 0, 1, 0xe5, 1 };
+    CHECK(rw_h264_packetize(forbidden, sizeof forbidden, 1100, pk_out, &c) == -1);
+    CHECK(rw_h264_packetize(au, n, 10, pk_out, &c) == -1);
+    memset(&c, 0, sizeof c);
+    CHECK(rw_vp8_packetize(au, 2500, 1000, pk_out, &c) == 3 && c.marker_at == 2 && c.first_hdr[0] == 0x10);
+}
+
+static void test_signal(void) {
+    char sb[256];
+    RsJson o;
+    RsInput in;
+    const char *j = "{\"t\":\"rtc\",\"sdp\":\"v=0\\r\\nm=video 9\"}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_RTC && in.tlen == 14);
+    j = "{\"t\":\"rtc\",\"sdp\":\"v=0\"}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_NONE);    /* too short */
+    j = "{\"t\":\"rtc\",\"sdp\":5}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_NONE);
+    j = "{\"t\":\"ice\",\"c\":\"candidate:1 1 udp 1 1.2.3.4 5 typ host\"}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_ICE);
+    j = "{\"t\":\"ice\",\"c\":\"\"}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_ICE && in.tlen == 0);
+    j = "{\"t\":\"vmode\",\"on\":1}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_VMODE && in.a == 1);
+    j = "{\"t\":\"vmode\",\"on\":2}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_NONE);
+    static char big[RS_SDP_MAX + 64], bsb[RS_SDP_MAX + 64];
+    size_t bl = (size_t)snprintf(big, sizeof big, "{\"t\":\"rtc\",\"sdp\":\"");
+    while (bl < RS_SDP_MAX + 30) big[bl++] = 'a';
+    bl += (size_t)snprintf(big + bl, sizeof big - bl, "\"}");
+    CHECK(rs_json_parse(big, bl, &o, bsb, sizeof bsb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_NONE);   /* oversized offer */
+}
+
 int main(void) {
     test_head();
     test_small();
@@ -456,6 +856,13 @@ int main(void) {
     test_json();
     test_ipnet();
     test_lockout();
+    test_sdp();
+    test_cand();
+    test_stun();
+    test_rtcp();
+    test_dcep();
+    test_rtp();
+    test_signal();
     printf("remote-sec-test: %d checks, %d failed\n", checks, fails);
     return fails ? 1 : 0;
 }

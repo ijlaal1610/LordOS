@@ -33,7 +33,7 @@ int  rw_turn_pass_valid(const char *s);
 #define RW_SDP_LINES 600
 #define RW_SDP_LINE 1024
 #define RW_MAX_MEDIA 4         /* video, audio, data channel (+1 spare) */
-#define RW_MAX_PT 48           /* payload types per m= line */
+#define RW_MAX_PT 64           /* payload types per m= line */
 #define RW_MAX_CAND 16
 
 enum { RW_KIND_AUDIO = 1, RW_KIND_VIDEO, RW_KIND_APP };
