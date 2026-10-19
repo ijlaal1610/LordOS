@@ -25,7 +25,7 @@ export const Icon = ImagerIcon;
 // Lumo's pose and tip for each step
 const HELP = {
   device: 'wave', image: 'shield', custom: 'confused', storage: 'wave', erase: 'shield', customise: 'wave', write: 'shield',
-  writing: 'run', failed: 'confused', cancelled: 'shield', 'tab.general': 'wave', 'tab.user': 'shield', 'tab.wifi': 'wave', 'tab.remote': 'shield',
+  writing: 'run', failed: 'confused', cancelled: 'shield', untouched: 'confused', 'tab.general': 'wave', 'tab.user': 'shield', 'tab.wifi': 'wave', 'tab.remote': 'shield',
   'tab.look': 'celebrate', 'tab.cooling': 'run', 'tab.more': 'shield',
 };
 
@@ -70,7 +70,7 @@ function Sidebar({ s }) {
   const steps = STEPS.filter((id) => id !== 'customise' || dev.customise);
   const cur = s.step === 'done' ? steps.length : steps.indexOf(s.step);
   const writing = isBusy(s.job) || s.job?.phase === 'failed';
-  let tip = s.step === 'write' && writing ? (s.job.phase === 'failed' ? (s.job.cancelledByUser ? 'cancelled' : 'failed') : 'writing') : s.step;
+  let tip = s.step === 'write' && writing ? (s.job.phase === 'failed' ? (s.job.cancelledByUser ? 'cancelled' : s.job.wrote ? 'failed' : 'untouched') : 'writing') : s.step;
   if (s.step === 'storage' && s.drive) tip = 'erase';
   if (s.step === 'image' && s.image && !s.image.official) tip = 'custom';
   if (s.step === 'customise' && s.customise) tip = `tab.${s.tab}`;

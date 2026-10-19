@@ -322,6 +322,8 @@
   "tip.tab.user.title": "No cartão vai só um hash",
   "tip.tab.wifi.text": "Guardo a chave derivada da rede, não a senha que você digita.",
   "tip.tab.wifi.title": "Sem senha do Wi-Fi no cartão",
+  "tip.untouched.text": "A unidade ficou como estava. Veja o que aconteceu e tente de novo.",
+  "tip.untouched.title": "Nada foi mexido",
   "tip.write.text": "Confira o resumo. Quando você confirmar, a unidade é apagada e gravada.",
   "tip.write.title": "Última conferida",
   "tip.writing.text": "Não remova a unidade. Vou ler tudo de volta para ter certeza de que ficou certo.",
@@ -385,5 +387,6 @@
   "write.start": "Apagar e gravar",
   "write.text": "Mantenha a unidade conectada. Isso leva alguns minutos.",
   "write.title": "Gravando em {name}",
+  "write.untouchedText": "Nada foi alterado na unidade.",
   "write.why": "O que aconteceu"
 }

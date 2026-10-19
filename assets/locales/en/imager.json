@@ -322,6 +322,8 @@
   "tip.tab.user.title": "Only a hash goes on the card",
   "tip.tab.wifi.text": "I store the network's derived key, not the password you type.",
   "tip.tab.wifi.title": "No Wi-Fi password on the card",
+  "tip.untouched.text": "The drive is as it was. Read what happened and try again.",
+  "tip.untouched.title": "Nothing was touched",
   "tip.write.text": "Look over the summary. After you confirm, the drive is erased and written.",
   "tip.write.title": "Last check",
   "tip.writing.text": "Don't remove the drive. I'll read everything back to be sure it's right.",
@@ -385,5 +387,6 @@
   "write.start": "Erase and write",
   "write.text": "Keep the drive plugged in. This takes a few minutes.",
   "write.title": "Writing to {name}",
+  "write.untouchedText": "Nothing on the drive was changed.",
   "write.why": "What happened"
 }

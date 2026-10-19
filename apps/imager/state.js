@@ -85,7 +85,7 @@ function progress(phase, done, total) {
     if (inst >= 0) speed = speed ? speed * 0.8 + inst * 0.2 : inst;
   }
   const eta = speed > 0 && total > done ? (total - done) / speed : null;
-  setJob({ phase, done, total, speed, eta, last: { t, done } });
+  setJob({ phase, done, total, speed, eta, last: { t, done }, ...(phase === 'write' && done > 0 ? { wrote: true } : {}) });
 }
 
 export async function run() {

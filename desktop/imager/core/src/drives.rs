@@ -314,8 +314,11 @@ mod linux {
         let block = zbus::blocking::Proxy::new(&c, "org.freedesktop.UDisks2", op.as_str(), "org.freedesktop.UDisks2.Block").map_err(|e| Error::new("imager.ejectFailed", e.to_string()))?;
         let drive: zbus::zvariant::OwnedObjectPath = block.get_property("Drive").map_err(|e| Error::new("imager.ejectFailed", e.to_string()))?;
         let dp = zbus::blocking::Proxy::new(&c, "org.freedesktop.UDisks2", drive.as_str(), "org.freedesktop.UDisks2.Drive").map_err(|e| Error::new("imager.ejectFailed", e.to_string()))?;
-        let _ = dp.call_method("Eject", &(opts(),));
-        dp.call_method("PowerOff", &(opts(),)).map(|_| ()).map_err(|e| Error::new("imager.ejectFailed", e.to_string()))
+        // Eject takes the medium out (a card reader, a stick); PowerOff then cuts a USB drive's power.
+        // Either one is enough for the drive to be removed safely.
+        let ejected = dp.call_method("Eject", &(opts(),));
+        let off = dp.call_method("PowerOff", &(opts(),));
+        if ejected.is_ok() || off.is_ok() { Ok(()) } else { Err(Error::new("imager.ejectFailed", off.err().map(|e| e.to_string()).unwrap_or_default())) }
     }
 
     fn part1(d: &Drive) -> String { if d.path.chars().last().is_some_and(|c| c.is_ascii_digit()) { format!("{}p1", d.path) } else { format!("{}1", d.path) } }

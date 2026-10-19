@@ -70,7 +70,7 @@ function Progress({ s }) {
   return (
     <View>
       <StepHeader title={tr(failed ? (j.cancelledByUser ? 'imager.write.cancelledTitle' : 'imager.write.failedTitle') : 'imager.write.title', { name: s.drive.model })}
-        text={tr(failed ? (j.cancelledByUser ? 'imager.write.cancelledText' : 'imager.write.failedText') : 'imager.write.text')} />
+        text={tr(failed ? (!j.wrote ? 'imager.write.untouchedText' : j.cancelledByUser ? 'imager.write.cancelledText' : 'imager.write.failedText') : 'imager.write.text')} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.l, marginBottom: spacing.xl }}>
         <DriveArt transport={s.drive.transport} size={48} />
         <View style={{ flex: 1, gap: 8 }}>

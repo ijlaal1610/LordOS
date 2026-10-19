@@ -322,6 +322,8 @@
   "tip.tab.user.title": "En la tarjeta solo va un hash",
   "tip.tab.wifi.text": "Guardo la clave derivada de la red, no la contraseña que escribís.",
   "tip.tab.wifi.title": "Sin contraseña de Wi-Fi en la tarjeta",
+  "tip.untouched.text": "La unidad quedó como estaba. Leé qué pasó y probá de nuevo.",
+  "tip.untouched.title": "No se tocó nada",
   "tip.write.text": "Revisá el resumen. Cuando confirmes, la unidad se borra y se graba.",
   "tip.write.title": "Último repaso",
   "tip.writing.text": "No saques la unidad. Voy a leer todo de vuelta para asegurarme de que quedó bien.",
@@ -385,5 +387,6 @@
   "write.start": "Borrar y grabar",
   "write.text": "No desconectes la unidad. Tarda unos minutos.",
   "write.title": "Grabando en {name}",
+  "write.untouchedText": "No se cambió nada en la unidad.",
   "write.why": "Qué pasó"
 }
