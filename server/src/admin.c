@@ -15,7 +15,8 @@
  *                             script and the input method dictionary (skkdic, pinyin)
  *                             (list compiled in here, not read from files)
  *
- * The package (pkg/), network and VPN (net/), installer (install/), remote desktop (remote/)
+ * The package (pkg/), network and VPN (net/), installer (install/), remote desktop and remote
+ * login (remote/: remote_admin.c, ssh_admin.c)
  * and users (users/) actions live in their modules; the table says which ones exist.
  *
  * Protocol (socketpair): request "<id> <action> <length>\n" followed by <length> bytes of
@@ -31,6 +32,7 @@
 #include "net/net.h"
 #include "install/install.h"
 #include "remote/remote_admin.h"
+#include "remote/ssh_admin.h"
 #include "users/users_admin.h"
 #include "disk/disk.h"
 #include "logs/logs_admin.h"
@@ -388,6 +390,7 @@ static const struct { const char *name; ActionFn fn; int flags; } actions[] = {
     NET_ADMIN_ACTIONS
     INSTALL_ADMIN_ACTIONS
     REMOTE_ADMIN_ACTIONS
+    SSH_ADMIN_ACTIONS
     USERS_ADMIN_ACTIONS
     DISK_ADMIN_ACTIONS
     LOGS_ADMIN_ACTIONS
