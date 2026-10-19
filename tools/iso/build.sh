@@ -43,7 +43,7 @@ PKGS_LORDOS="libwayland-server0 libwayland-client0 libxkbcommon0 xkb-data pipewi
 PKGS_FIRMWARE="firmware-amd-graphics firmware-misc-nonfree firmware-iwlwifi firmware-realtek firmware-atheros
  firmware-sof-signed"
 PKGS_GPU="libgl1-mesa-dri libegl1 libgles2 libgbm1 mesa-vulkan-drivers mesa-utils vulkan-tools glmark2-es2-wayland"
-# preinstalled browsers (Linux apps; they use the LordOS frame by default, see docs/WAYLAND.md)
+# preinstalled browsers (Linux apps; they draw their own bar with LordOS's window buttons, see docs/WAYLAND.md)
 PKGS_APPS="foot featherpad qt6-wayland chromium firefox-esr"
 # the disk installer (server/src/install): partition, format, copy and grub for UEFI and BIOS
 PKGS_INSTALLER="gdisk dosfstools e2fsprogs squashfs-tools util-linux grub-common grub2-common grub-efi-amd64-bin grub-pc-bin"
@@ -98,22 +98,25 @@ in_ch apt-get install -y -q --no-install-recommends $PKGS_BASE $PKGS_LORDOS $PKG
     >> "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
 cp "$DEB" "$CH/tmp/lordos.deb"
 in_ch apt-get install -y -q --no-install-recommends /tmp/lordos.deb >> "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
-# Chromium: new profiles with the system frame (LordOS's) instead of its own bar
+# Chromium: new profiles draw their own bar (tabs in the title bar) with the GTK theme, so the
+# window buttons are LordOS's traffic lights from LordOS's GTK theme (docs/WAYLAND.md). The user
+# goes back to the LordOS frame with «Use system title bar and borders» (Settings → Appearance).
 if [ -f "$CH/etc/chromium/master_preferences" ]; then
 python3 - "$CH/etc/chromium/master_preferences" <<'PY'
 import json, sys
 p = sys.argv[1]; d = json.load(open(p))
-d.setdefault("browser", {})["custom_chrome_frame"] = False
+d.setdefault("browser", {})["custom_chrome_frame"] = True
+d.setdefault("extensions", {}).setdefault("theme", {})["system_theme"] = 1   # 1 = GTK
 json.dump(d, open(p, "w"), indent=2)
 PY
 fi
-# Firefox ESR: same (the user changes it in Customize Toolbar > Title Bar)
+# Firefox ESR: its own bar too (the user changes it in Customize Toolbar > Title Bar)
 install -D -m 644 tools/iso/rootfs/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf "$CH/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf"
 install -D -m 644 tools/iso/rootfs/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf "$CH/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf"
 install -d "$CH/etc/firefox-esr"
-printf '%s\n' '// LordOS: Firefox windows use the system frame (the theme frame); change it in' \
-  '// Customize Toolbar > Title Bar, or in about:config.' \
-  'pref("browser.tabs.inTitlebar", 0);' > "$CH/etc/firefox-esr/lordos.js"
+printf '%s\n' '// LordOS: Firefox draws its own bar, with the window buttons in LordOS'"'"'s order (see' \
+  '// docs/WAYLAND.md); 0 gives it the LordOS frame instead (Customize Toolbar > Title Bar).' \
+  'pref("browser.tabs.inTitlebar", 1);' > "$CH/etc/firefox-esr/lordos.js"
 rm -f "$CH/tmp/lordos.deb"
 
 # 3. configuration

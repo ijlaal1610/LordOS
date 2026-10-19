@@ -2,8 +2,9 @@
 // (the SDK's AppHost); the theme only decides how the frame looks. Moving and resizing (invisible
 // borders on all 4 sides and 4 corners, <WindowShell>) is done by lord-server in C
 // (docs/WINDOWS.md); the JS drag below is only kept for a maximized window.
-import { View, Text, addListener, wm, AppHost, windowTitle, WindowShell } from '@lordos/sdk';
+import { View, Text, addListener, wm, AppHost, windowTitle, WindowShell, t as tr } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
+import { Menu } from './Menu.jsx';
 
 const TITLE_H = 40;
 const LIGHTS = [
@@ -34,12 +35,23 @@ export function Window({ win, app, t, focused, fx }) {
     return () => { offMove(); offUp(); };
   }, [win.id]);
 
-  // Linux app that draws its own frame (GTK, Chromium): only the content, with the theme's shadow.
+  // Linux app that draws its own frame (GTK, Chromium and Firefox with their own bar): only the
+  // content, with the theme's shadow. A right click on its bar asks for the window menu
+  // (w.windowMenu): the same items as the menu bar's Window menu.
   if (win.args?.csd) {
+    const wmenu = win.windowMenu;
     return (
       <WindowShell win={win} onMouseDown={() => wm.focus(win.id)}
         style={{ boxShadow: focused ? '0 24px 56px rgba(0,0,0,0.5)' : '0 10px 28px rgba(0,0,0,0.3)', ...fxs }}>
         <AppHost id={win.id} focused={focused} />
+        {wmenu && (
+          <Menu x={wmenu.x} y={wmenu.y} onClose={() => wm.closeWindowMenu(win.id)} items={[
+            { label: tr('shell.window.minimize'), onClick: () => wm.minimize(win.id) },
+            { label: tr('shell.window.maximize'), checked: !!win.maximized, onClick: () => wm.toggleMaximize(win.id) },
+            '-',
+            { label: tr('shell.window.close'), onClick: () => wm.close(win.id) },
+          ]} />
+        )}
       </WindowShell>
     );
   }

@@ -2,9 +2,10 @@
 // de lord-server (server/src/wl). Para el tema son ventanas como las de las apps LordOS: entran
 // en el gestor con la app interna 'linux' y su id es 'linux#<superficie>'.
 //
-// Las que piden decoración del servidor (Qt, foot) llevan el marco del tema; las que dibujan
-// el suyo (GTK) van "sin marco": args.csd = true, y el tema dibuja solo el contenido. Mover y
-// cambiar el tamaño desde la barra de una app GTK llega como pedido del compositor.
+// Those that ask for server-side decoration (Qt, foot) get the theme's frame; those that draw their
+// own (GTK, Chromium and Firefox with their own bar) go "frameless": args.csd = true, and the theme
+// draws only the content. The app may switch while open ('deco'). Moving, resizing and the window
+// menu from the app's own bar arrive as requests from the compositor.
 import { createElement as h } from 'react';
 import { View, Text, Surface, addListener, onShellKeyboard, shellHasKeyboard } from '@lordos/runtime';
 import { windows, wm, registerBuiltinApp, windowChrome, pointerWorkArea, getApp } from './windows.js';
@@ -95,6 +96,12 @@ globalThis.__lordWayland = (sid, type, d = {}) => {
     case 'maximize': if (win && !win.maximized) wm.toggleMaximize(id); break;
     case 'unmaximize': if (win && win.maximized) wm.toggleMaximize(id); break;
     case 'minimize': if (win) wm.minimize(id); break;
+    // The app switched who draws the frame while open (Chromium's «Use system title bar and borders»,
+    // Firefox's «Title Bar»): same window, place, size, maximized state, focus and Dock entry; only the
+    // theme's frame comes or goes (the content area grows or shrinks by it, and the app is configured).
+    case 'deco': if (win && !!win.args?.csd !== !!d.csd) { if (win.windowMenu) wm.closeWindowMenu(id); wm.setArgs(id, { csd: !!d.csd }); } break;
+    // right click on the app's own bar (xdg_toplevel.show_window_menu): the theme's window menu
+    case 'menu': if (win) { wm.focus(id); wm.showWindowMenu(id, d.x, d.y); } break;
     default: break;
   }
 };

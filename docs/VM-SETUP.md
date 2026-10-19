@@ -1341,3 +1341,33 @@ See `ISO.md`, "Release test (0.8.3 Beta, October 19)".
   `/etc/ssh/sshd_config.d/09-lordos-root-keys.conf`, so root keeps logging in with keys only), and
   `lordos.service` restarted (only the login screen was running). No reboot; network, the
   `lordbasex` account and the SD partitions untouched.
+
+## Step 38 — 0.8.4: browsers with their own bar (VM 119 `lordos-spot`, October 19)
+
+See `WAYLAND.md` ("Who draws the frame", "The browsers by default"). On VM 119 (172.17.0.54), tree
+in `~/LordOS-csd`, built there (`make -C server`, `make -C server build/deco-client`,
+`make -C server test`) and installed over `/usr/lib/lordos` by `~/deploy-csd-119.sh` (it saved
+`/usr/lib/lordos`, the original `/etc/chromium/master_preferences` and `settings.json` first, in
+`/var/backups/lordos-csd-bak`).
+
+- **Installed for the tests:** `gsettings-desktop-schemas` (the ISO has it; without it GTK 3 can't
+  read the theme and the button layout from the keyfile backend, and Chromium's GTK theme shows
+  Adwaita's buttons on the right), removed at the end. `assets/gtk/LordOS*` copied to
+  `/usr/share/themes/` (the package does that), removed at the end.
+- **Session:** `/etc/lordos/session.conf` with `AUTOLOGIN=lord` (it didn't exist; removed at the
+  end), English, light, Lord Default in `settings.json` (restored at the end).
+- **Browsers:** throwaway profiles in `/tmp` (`chromium --user-data-dir=/tmp/csd-chr2`,
+  `firefox-esr --profile /tmp/csd-ff --no-remote`), started from SSH with the session's environment
+  (`WAYLAND_DISPLAY=wayland-0`, `XDG_SESSION_TYPE=wayland`, `GSETTINGS_BACKEND=keyfile`, the session
+  bus). The user's own browser profiles were not touched. `master_preferences` was edited to test the
+  new initial preferences on a new profile and put back.
+- **Input and screenshots:** `lord-qmp-input.py 119 1280 800` and `lord-type.py 119` from the host,
+  `screendump` holding `flock /tmp/sistema-119-screen.lock`. The "before" screenshot ran the saved
+  October 18 install for a few minutes, then the new build again.
+- **The migration** (`005-0.8.4-browser-frames.sh`) ran against copies under a scratch root
+  (`LORDOS_MIGRATION_ROOT`): the 0.8.3 files change, a second run changes nothing, files an
+  administrator edited stay.
+- **Undone at the end:** `/usr/lib/lordos` restored from the backup (`diff -r` empty),
+  `master_preferences` and `settings.json` restored, the themes, the schemas package, `session.conf`,
+  the profiles, the tree, the script and the backup removed, `lordos.service` restarted to the login
+  screen. No network or Proxmox setting was touched.

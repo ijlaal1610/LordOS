@@ -1484,6 +1484,7 @@ static void switch_theme(const char *current) {
         ui_reset();
         js_init(current);
     }
+    wl_remap_all();             /* Linux app windows stay connected: they come back in the new theme */
 }
 
 /* ---- Settings → Displays and the other hardware pages (src/hw, docs/SETTINGS.md) ---- */
