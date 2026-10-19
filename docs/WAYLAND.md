@@ -36,13 +36,15 @@ Apps that only speak X11 open through Xwayland, started on demand, with our own 
 | `wl_data_device_manager` | 3 | clipboard shared with LordOS's in both directions (see below) |
 | `zwp_primary_selection_device_manager_v1` | 1 | primary selection: select to copy, middle click to paste (0.8.3, see "X11 apps") |
 | `xdg_wm_base` | 6 | windows (`xdg_toplevel`: title, move, resize, maximize, minimize, close) and popup menus (`xdg_popup` with `xdg_positioner`: anchor, gravity, flip and slide within the screen) |
-| `zxdg_decoration_manager_v1` | 1 | apps that use it (Qt, foot, Kitty, Alacritty) leave the frame to the theme |
+| `zxdg_decoration_manager_v1` | 1 | the app picks who draws the frame: server side (Qt, foot, Kitty, Alacritty: the theme's frame) or client side (Chromium with its own bar), also while it's open (0.8.4) |
 | `wp_cursor_shape_manager_v1` | 1 | the app asks for the cursor by name (Chromium, GTK 4, Qt 6) and LordOS draws its own (`cursor.c`, see `WINDOWS.md`) |
 
 Windows enter the SDK's window manager (`sdk/wayland.js`) as the internal app `linux` (id
 `linux#<surface>`): the theme sees them like any other, with their title, focus, maximize,
-minimize and Dock. Those that draw their own frame (GTK) arrive with `args.csd` and the theme
-shows only the content (both bundled themes already do). The keyboard goes to the frontmost Linux
+minimize and Dock. Those that draw their own frame (GTK, and the browsers with their own bar) arrive
+with `args.csd` and the theme shows only the content (both bundled themes already do); an app that
+switches while open sends `deco` and the same window changes presentation (see "Who draws the
+frame" below). The keyboard goes to the frontmost Linux
 app; ❖ combinations still belong to LordOS.
 
 ## How to open an app
@@ -166,24 +168,87 @@ resizing (see `WINDOWS.md`).
 
 | | |
 |---|---|
-| ![chromium](decorations-chromium.png) | ![firefox](decorations-firefox-dark.png) |
-| Chromium with the LordOS frame (without its own window buttons) | Firefox ESR with the LordOS frame, dark |
+| ![chromium light](chromium-csd-light.png) | ![chromium dark](chromium-csd-dark.png) |
+| Chromium with its own bar (0.8.4 default): tabs in the title bar and LordOS's traffic lights on the left, from LordOS's GTK theme | The same in dark: it follows the mode live |
+| ![before](chromium-csd-before.png) | ![classic](chromium-csd-classic.png) |
+| Before 0.8.4: Chromium asked to draw its own bar and LordOS put its frame on top anyway (two bars) | The Classic theme: the buttons go to the right (`:minimize,maximize,close`), switched live |
+| ![firefox](firefox-csd.png) | ![own theme](chromium-own-theme.png) |
+| Firefox ESR with its own bar: LordOS's order and side, drawn in Firefox's own style | Chromium with its «Classic» theme (not GTK): LordOS's order and side, Chromium's own buttons |
 | ![gtk dark](decorations-gtk-dark.png) | ![gtk light](decorations-gtk3-light.png) |
 | Mousepad (GTK 3, «LordOS-dark» theme) and GNOME Calculator (GTK 4/libadwaita, green accent and buttons on the left), dark | The same in light: they change live when the mode is switched in Settings |
-| ![firefox light](decorations-firefox-light.png) | |
-| Firefox switched to light live | |
 
-- **Chromium.** It uses the theme's frame if it asks for server-side decoration
-  (`zxdg_decoration`). The ISO ships `"browser": { "custom_chrome_frame": false }` in
-  `/etc/chromium/master_preferences` («Use system title bar and borders»), which applies to new
-  profiles. It goes back to its own bar in Settings → Appearance.
-- **Firefox ESR.** The ISO ships `/etc/firefox-esr/lordos.js` with
-  `pref("browser.tabs.inTitlebar", 0)`. Firefox draws with GTK 3, which doesn't speak
-  xdg-decoration: lord-server also advertises **`org_kde_kwin_server_decoration_manager`**
-  (KDE's) with «server» mode as the default. So GTK 3 asks LordOS for the frame for windows
-  without their own bar (Firefox, Mousepad). The protocol tables are hand-written in `wl.c`,
-  without plasma-wayland-protocols' XML. Firefox's bar comes back in Customize Toolbar →
-  «Title Bar».
+### Who draws the frame (0.8.4)
+
+An app chooses; LordOS **prefers** its own frame and honors the app's answer.
+
+- **xdg-decoration** (Chromium, Qt, foot): the first `configure` says `SERVER_SIDE`. If the app then
+  asks `set_mode(CLIENT_SIDE)` it gets `CLIENT_SIDE` and draws its own bar; `set_mode(SERVER_SIDE)`
+  and `unset_mode` give the theme's frame. Destroying the decoration object means the app draws its
+  own frame again (the protocol's rule).
+- **`org_kde_kwin_server_decoration`** (GTK 3, so Firefox and Mousepad): default «server»;
+  `request_mode(client)` is answered «client».
+- **Live.** When an open window changes mode (Chromium's «Use system title bar and borders»,
+  Firefox's «Title Bar»), lord-server sends JS a `deco` event (`{ csd }`) and `sdk/wayland.js` sets
+  `args.csd` on the **same** window (`wm.setArgs`): place, size (the outer frame stays where it was;
+  the content grows or shrinks by the theme's bar and the app gets a `configure`), maximized state,
+  focus and Dock entry don't change.
+- **Before 0.8.4** lord-server answered `SERVER_SIDE` whatever the app asked. Chromium with its own
+  bar then drew its tab strip and buttons and LordOS put its frame on top: two bars.
+- Tested with `build/deco-client` (`server/tests/deco_client.c`, run inside a session): every mode
+  request in both protocols, before and after mapping, with the `xdg_surface.configure` that must
+  follow; `build/deco-client hold 6` keeps switching a window to watch the theme.
+
+What a window with its own bar still gets from LordOS (both themes, `WINDOWS.md`):
+
+- the invisible resize edges around it and the theme's shadow (the app's own shadow is clipped
+  with its window geometry);
+- moving from its bar (`xdg_toplevel.move`), resizing from its edge (`xdg_toplevel.resize`),
+  maximize, restore and minimize from its own buttons, double click on its bar (the app asks to
+  maximize);
+- **the window menu**: a right click on a GTK headerbar asks `xdg_toplevel.show_window_menu`, and
+  the theme shows its menu at that point (`w.windowMenu`, `wm.showWindowMenu`): Lord Default the
+  menu bar's Window items (Minimize, Zoom, Close Window), Classic its title bar menu plus **Snap
+  layouts**, which opens the same flyout its maximize button shows on hover (an app's own maximize
+  button can't). Chromium shows its own menu on its tab strip instead (with «Use system title bar
+  and borders» in it);
+- the window-button layout LordOS publishes to GTK (`button-layout`, below), which Chromium and
+  Firefox follow live when the theme changes;
+- the things LordOS draws that never lived in the frame: the «Remote desktop: user · IP» badge is a
+  screen overlay (`sdk/remote.js`, notification layer) and a protected window is black in captures
+  through its content node (`AppHost`), so both work the same for these windows.
+
+| | |
+|---|---|
+| ![window menu](csd-window-menu.png) | ![snap layouts](csd-snap-layouts.png) |
+| GTK Demo (own frame): right click on its bar, Lord Default's window menu | Classic: the window menu's «Snap layouts» on an app with its own bar |
+
+### The browsers by default
+
+- **Chromium.** The ISO ships `/etc/chromium/master_preferences` with
+  `"browser": { "custom_chrome_frame": true }` (its own bar) and
+  `"extensions": { "theme": { "system_theme": 1 } }` (the **GTK** theme): new profiles draw the tab
+  strip in the title bar with the window buttons from LordOS's GTK theme, so they are LordOS's
+  traffic lights (13 px circles, 8 px apart, glyph on hover, grey when the window isn't focused).
+  Tested: a new profile starts that way. Back to the LordOS frame: Settings → Appearance → «Use
+  system title bar and borders» (or right click on the tab strip). With Chromium's «Classic» theme
+  the buttons keep LordOS's order and side but are Chromium's own.
+- **Firefox ESR.** `/etc/firefox-esr/lordos.js` has `pref("browser.tabs.inTitlebar", 1)`: its own
+  bar, with the window buttons in LordOS's order and side (it reads the same `button-layout`), drawn
+  in Firefox's own style: Firefox draws those buttons itself, not with the GTK theme, so they aren't
+  traffic lights. Back to the LordOS frame: Customize Toolbar → «Title Bar». Firefox draws with GTK
+  3, which doesn't speak xdg-decoration: lord-server also advertises
+  **`org_kde_kwin_server_decoration_manager`** (KDE's), with «server» as the default mode, so GTK 3
+  windows without their own bar (Firefox with «Title Bar», Mousepad) ask LordOS for the frame. The
+  protocol tables are hand-written in `wl.c`, without plasma-wayland-protocols' XML.
+- **Upgrades** (migration `005-0.8.4-browser-frames`): where the files are still what the 0.8.3 ISO
+  wrote, they change to the new defaults. Firefox's is a default pref, so every profile follows it
+  except one whose user changed «Title Bar». Chromium's are initial preferences: only new profiles
+  get them; an existing profile keeps its frame (switch as above, and Settings → Appearance → Theme →
+  «Use GTK» for the traffic lights). Home folders are never touched.
+- **The LordOS GTK theme's title buttons** (`assets/gtk/LordOS*/gtk-3.0/gtk.css`): GTK sizes a title
+  button by its 16 px icon, and Chromium does the same when it draws its tab strip with the GTK
+  theme, so the button stays 16 px and the circle is a 13 px radial gradient inside it; measured on
+  the VM: 12–13 px circles, 21 px from center to center, like LordOS's own frame.
 - **GTK 4 / libadwaita (GNOME).** They read the mode, the accent and the button order from
   **`org.freedesktop.portal.Settings`**. lord-server itself serves it (`server/src/ui/portal.c`)
   on the session bus, without xdg-desktop-portal, with Passwords' own D-Bus client
@@ -202,14 +267,16 @@ resizing (see `WINDOWS.md`).
     with LordOS's colors, bar and traffic lights.
   - GTK 3 has no accent: its own stays blue.
 - **The buttons** go on the left in traffic-light order (`close,minimize,maximize:`). The Classic
-  theme asks for them on the right with the `gtkButtons` token (`:minimize,maximize,close`).
+  theme asks for them on the right with the `gtkButtons` token (`:minimize,maximize,close`). GTK
+  apps, Chromium and Firefox move them live when the theme changes.
 - **Qt/KDE.** They use the theme's frame (xdg-decoration). Qt 6 also reads `color-scheme` from the
   portal; not tested.
 - **The JS.** The SDK's `ThemeProvider` sends mode, accent and buttons with `lord.portal.set` when
   they change.
 
 Tested in VM 118 with Chromium 155, Firefox ESR 153, Mousepad (GTK 3) and GNOME Calculator
-(GTK 4, libadwaita).
+(GTK 4, libadwaita); the 0.8.4 frame changes on VM 119 (`VM-SETUP.md`, step 37) with Chromium 155,
+Firefox ESR 153, GTK Demo (GTK 4) and foot, both themes, light and dark.
 
 ## X11 apps (Xwayland)
 
@@ -332,6 +399,11 @@ display.
 
 ## Pending
 
+- **Firefox ESR 153 ignored mouse clicks on VM 119** (October 19, QEMU's USB tablet through QMP):
+  the pointer reaches it (`enter`, `motion`, `button` on its content subsurface, checked with
+  `WAYLAND_DEBUG`) and the keyboard works, but buttons, menus and pages don't react; the same with
+  the build installed before (October 18) and with the LordOS frame, so it isn't the frame. To
+  investigate (two `wl_seat` bindings from the same client get the events twice).
 - SVG app icons (most modern GTK/Qt apps only ship SVG).
 - Opening files with a Linux app (`%f`/`%u`), `.desktop` actions and terminal apps.
 - Already done (see `GPU.md`): `linux-dmabuf` v4, GPU composition (Mesa, optional), direct

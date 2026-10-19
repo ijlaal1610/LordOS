@@ -663,6 +663,27 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
     scope is restricted: until Google verifies the app, only up to 100 listed test users can sign in;
   - Microsoft first: it is retiring password sign-in for IMAP, so OAuth will become the only way in.
 
+- [x] **Browsers with their own bar (0.8.4)** — lord-server honors the decoration mode an app asks
+  for (xdg-decoration and KDE's server-decoration), also while the window is open; Chromium and
+  Firefox draw their own bar by default, with LordOS's window buttons (traffic lights from LordOS's
+  GTK theme in Chromium), and the window menu, resize edges and snap layouts keep working. See
+  `docs/WAYLAND.md`, "Who draws the frame".
+- [ ] **Settings → Appearance: "Browsers: tabs in the title bar" (0.8.4, proposal)** — one switch,
+  on by default, that sets the browsers' own preferences for the user instead of each browser's
+  settings page:
+  - **Chromium:** writes `browser.custom_chrome_frame` (and `extensions.theme.system_theme` = 1, the
+    GTK theme, for the traffic lights) in each profile's `Preferences` under `~/.config/chromium`,
+    only while Chromium is not running (it rewrites the file on exit), through a narrow `lord.*`
+    call that edits those two keys and nothing else (never a free-form JSON write);
+  - **Firefox:** a `user.js` line `user_pref("browser.tabs.inTitlebar", 1|0)` in each profile under
+    `~/.mozilla/firefox-esr` (read at start, so it applies the next time Firefox opens);
+  - off → both go back to the LordOS frame; the page says the change applies when the browser
+    restarts;
+  - optional, separate: traffic lights in Firefox too. Firefox draws its window buttons itself (not
+    with the GTK theme), so it would need a per-profile `chrome/userChrome.css` plus
+    `toolkit.legacyUserProfileCustomizations.stylesheets`; weigh it against touching browser
+    profiles before doing it.
+
 ## After the final ISO
 
 - [ ] **AI assistants through MCP, with permissions** (study first, then build). Let an AI

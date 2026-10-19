@@ -10,6 +10,32 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
+## [0.8.4] - Unreleased
+
+### Changed
+
+- **Browsers with a single top bar.** Chromium and Firefox now draw their own bar, with the tabs in
+  the title bar and the window buttons inside it, instead of the LordOS frame on top. In Chromium
+  the buttons are LordOS's traffic lights (from LordOS's GTK theme, sized like LordOS's own frame);
+  Firefox keeps its own button style. Both put them where the LordOS theme does: on the left in Lord
+  Default, on the right in Classic, and follow a theme or light/dark change live. Going back to the
+  LordOS frame is one switch in each browser («Use system title bar and borders» in Chromium,
+  «Title Bar» in Firefox), and it now applies right away, without reopening the window. Systems
+  upgraded from 0.8.3 get the new defaults for Firefox, and for new Chromium profiles; an existing
+  Chromium profile keeps its frame until its user switches.
+
+### Fixed
+
+- **Two title bars in Chromium.** With «Use system title bar and borders» off, Chromium drew its own
+  bar and LordOS still put its frame on top: the compositor now honors the frame an app asks for
+  (xdg-decoration and the GTK 3 decoration protocol), also when it changes while the window is
+  open; the window keeps its place, size, maximized state, focus and Dock entry.
+- **Linux app windows disappeared after switching between Lord Default and Classic** (they stayed
+  open but invisible): they now come back in the new theme, maximized ones still maximized.
+- **The window menu of apps that draw their own bar.** A right click on a GTK app's own title bar
+  now opens the theme's window menu (Minimize, Zoom, Close; in Classic also Restore, Snap layouts
+  and the snap halves).
+
 ## [0.8.3] - Unreleased
 
 ### Added
