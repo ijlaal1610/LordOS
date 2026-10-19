@@ -316,6 +316,8 @@ What `install-run` validates on the root side, without trusting the interface:
 - **Fonts:** Noto (core, CJK, emoji) and DejaVu; the rest of what M5b needs: libthai-data, skkdic
   and rime-data-pinyin-simp.
 - **Sample Linux apps:** foot and FeatherPad.
+- **X11 apps (0.8.3):** `xwayland`, started by lord-server only when an X11 app connects
+  ([WAYLAND.md](WAYLAND.md), "X11 apps (Xwayland)").
 
 ## Building it
 
@@ -439,6 +441,39 @@ The installer screenshots up to "Done" and those of the installed system are fro
 text was fixed (sha256 `daba6313…c8ec65`). That ISO has the same binaries; only those texts change.
 With the final ISO, UEFI boot, the network, ❖L/Enter and the installer summary were repeated. Nothing
 was installed in that repeat.
+
+## Release test (0.8.3 Beta, October 19)
+
+`lordos-live-0.8.3-amd64.iso`, built from 36cf07b (build `20261019.36cf07b4`; the `v0.8.3-beta` tag,
+9eff265, only adds two CHANGELOG notes on top), 1 051 269 120 bytes, sha256
+`2416c730da65afe37ed6be615fd67448edf100452d443786a9113b90a05c7f5d`, built on VM 116 with `GPU=1
+RELEASE=1` from a tree whose `code-manifest.json` was signed on the maintainer's machine
+(`REQUIRE_SIGNED_CODE=1`); `lord-server --check-code`: verified, release build. `make -C server test`:
+23 passed, 0 failed, 7 skipped on VM 116 (the six node suites ran on the maintainer's machine, all
+pass) and 24 passed, 0 failed, 6 skipped on the Raspberry Pi 5; 0 compiler warnings. Both `.deb`:
+lintian 0 errors (17 warnings, the known ones); both SBOMs validated with `pyspdxtools`. New in the
+images: `xwayland` (also recommended by the package). The test VMs got a fresh 0.8.2 install from
+the published 0.8.2 ISO first (user `rtester`), so the upgrade ran on a clean system.
+
+| Check | Result |
+|---|---|
+| Store → Updates on VM 120 (0.8.2 installed from its ISO, UEFI, `lordos.sources` pointed at `apt-staging`): "LordOS 0.8.3 is available" with the notes; the plan is `lordos` only; Update → migration 004 only (a running smartd, started for the test, was stopped) → "Restart required" → Restart (the sheet with the open apps) → login screen → About "Version 0.8.3 · Beta", build `20261019.36cf07b4`, **Verified**; `lordos`, `lord-netperm`, `lord-fand` active, 0 failed units | pass |
+| `apt update && apt upgrade` (0.8.2 → 0.8.3, VM 120 back at the clean 0.8.2): 31 s, migration 004, `xwayland` installed as a new recommendation, `settings.json` byte-identical, restart, 0 failed units, X display reserved; `apt install --reinstall lordos` runs no migration again. `apt-get upgrade` keeps `lordos` back (new recommended package; noted in the release notes) | pass |
+| Smoke checks on the upgraded system: XTerm opens (Xwayland `:0`, `app-lordos-debian-xterm.scope`); the Passwords padlock and the Backups clock centered in the Dock; Settings → Appearance → Classic and back, live; overlay scroll bar visible while scrolling and gone 3 s later; smartmontools installed and smartd forced past its virtualization check: it stays off (`ConditionPathExists=/etc/lordos/smartd-enabled`) | pass |
+| Firewall: Chromium playing a video, its row switched off in Monitor → Network: its established sockets went from 10 to 0 within 0.5 s of the click, received bytes stopped; Monitor counts the denials; switching it back on works | pass |
+| Remote desktop on the upgraded VM 120 (Settings → Sharing on, "Local network"): login from the LAN (303 + `__Host-` cookie); 3 wrong passwords (1.25 s each) block the address, the 4th connection is cut before TLS; the block notification and the "Temporarily blocked" row in Settings; **Unblock** → login works again; Monitor → Network shows the "Remote desktop" row with the 3 denials | pass |
+| VM 117, OVMF: live desktop, About 0.8.3 Verified; install on the disk (en_US, Buenos Aires, 2 GB swap) in under 5 minutes; installed: login screen, `lordos` 0.8.3 and `xwayland` installed, `DISPLAY=:0`, 0 failed units, boot 7.4 s, 4.6 GB used | pass |
+| Raspberry Pi 5 (lordos 0.8.0, no repository yet): the 0.8.0 one-time step (key and `lordos.sources`), then `apt-get install lordos` from staging: 0.8.3 in 15 s, migrations 001–004, `xwayland` installed, `sshd -t` clean with root keys kept (migration 002), `lord-server --check-code` verified, `lordos` restarted to the login screen without a reboot; then the source switched to the live repository: `lordos 0.8.3` is the candidate | pass |
+| Raspberry Pi 5 image, read-only: the signed manifest (same SHA-256 as the maintainer's), build `20261019.36cf07b4` in `lord-server`, migrations 001–004, `/usr/bin/Xwayland`, the smartd drop-in, the LordOS kernel `6.18.57-lordos-rpi-2712` | pass |
+
+Found in this test:
+
+- `xwayland` was not in the ISO, the Pi image or the package's Recommends, so a new install could
+  not open X11 apps; it is now in all three (`tools/iso/build.sh`, `tools/rpi/build-img.sh`,
+  `tools/iso/mkdeb.sh`). The Store's update installs only dependencies, so a system updated from
+  the Store needs `xwayland` installed once (release notes).
+- The Pi image keeps 0.8.2's kernel, built before `CONFIG_INET_DIAG_DESTROY`: on the Pi the
+  firewall drops a denied connection's packets but doesn't close its socket (release notes).
 
 ## Release test (0.8.2 Beta, October 19)
 

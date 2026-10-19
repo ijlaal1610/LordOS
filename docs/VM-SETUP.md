@@ -1317,3 +1317,27 @@ package's files by `~/deploy-remotesec-122.sh` (it saved `/usr/lib/lordos`, `/et
   back to `lord` (the autologin had changed it), `rtest` and its home deleted, the tree, the scripts
   and the backup removed, `lordos.service` restarted on the package's 0.8.2 binaries, at the login
   screen. Network untouched.
+
+## Step 37 — 0.8.3 release test (VMs 116, 117, 120 and the Raspberry Pi, October 19)
+
+See `ISO.md`, "Release test (0.8.3 Beta, October 19)".
+
+- **VM 116:** the release tree in `~/LordOS-iso`, built there; ISO and `.deb` in
+  `/var/tmp/lordos-iso/out/` (the 0.8.0 and 0.8.1 ISOs there were removed to make room: identical
+  copies are in Proxmox's `local:iso`). Nothing installed.
+- **Proxmox:** `local:iso/lordos-live-0.8.3-amd64.iso` added. A temporary typing helper in the
+  host's `/root` was removed afterwards.
+- **VMs 117 and 120:** a Proxmox snapshot `r083pre` first; then 120 got a fresh 0.8.2 install from
+  the 0.8.2 ISO (test user `rtester`, `openssh-server`, a sudoers drop-in, `lordos.sources` on
+  `apt-staging`, smartmontools, xterm) and was upgraded twice (Store, then apt from a second
+  snapshot), and 117 installed the 0.8.3 ISO. Both were rolled back to `r083pre` (ISO, boot order
+  and disks as before: the earlier "Test User" installs, at the login screen) and the snapshots
+  deleted.
+- **Raspberry Pi 5 (172.17.0.24):** built the arm64 package and the image in
+  `/var/tmp/lordos-src-083` and `/var/tmp/lordos-rpi-v083b`. The installed LordOS went from 0.8.0
+  to 0.8.3 with apt: `/usr/share/keyrings/lordos-archive-keyring.gpg` and
+  `/etc/apt/sources.list.d/lordos.sources` (the live repository) added, `lordos` 0.8.3 with
+  `xwayland` and its 14 dependencies installed, migrations 001–004 applied (002 wrote
+  `/etc/ssh/sshd_config.d/09-lordos-root-keys.conf`, so root keeps logging in with keys only), and
+  `lordos.service` restarted (only the login screen was running). No reboot; network, the
+  `lordbasex` account and the SD partitions untouched.
