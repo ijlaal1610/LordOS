@@ -19,7 +19,7 @@ import { settings } from './settings.js';
 import { useTheme } from './theme.js';
 import { t, formatDate, formatTime, weekdayName } from './i18n.js';
 import { notify, dismissNotification } from './notify.js';
-import { linuxAppFor } from './apps.js';
+import { linuxAppFor, shortAppName } from './apps.js';
 import { admin } from './admin.js';
 import { registerStatusItem } from './statusitems.js';
 import { TextInput } from './components.jsx';
@@ -339,7 +339,7 @@ function linuxNotify(n) {
   if (prev) dismissNotification(prev, 'replaced');
   const reason = { closed: 2, expired: 1, action: 2, replaced: 0, remote: 0 };
   const id = notify({
-    app: key, label: app?.name || n.app, icon: app?.Icon || null, title: n.title, body: n.body, sticky: n.urgency === 2,
+    app: key, label: shortAppName(app) || n.app, icon: app?.Icon || null, title: n.title, body: n.body, sticky: n.urgency === 2,
     timeout: n.timeout > 0 ? n.timeout : 6000,
     actions: (n.actions || []).filter(([k]) => k !== 'default').map(([k, label]) => ({ id: k, label, run: () => lord.notifyd.action(n.id, k) })),
     onClose: (why) => { if (fromLinux.get(n.id) === id) fromLinux.delete(n.id); if (reason[why]) lord.notifyd.closed(n.id, reason[why]); },

@@ -14,7 +14,7 @@ export { keyboard } from './keyboard.js';
 export { trackpad, useTrackpads, hasTouchpad, registerGestureActions, lastSwipe, TRACKPAD_DEFAULTS, trackpadConfig, setTrackpad } from './trackpad.js';
 export { ime, useIme } from './ime.js';
 export { wayland } from './wayland.js';
-export { useLauncherApps, launchApp, refreshApps, isLinuxApp, linuxAppFor, LetterIcon, iconFromFile, APP_CATEGORIES, appCategory } from './apps.js';
+export { useLauncherApps, launchApp, refreshApps, isLinuxApp, linuxAppFor, shortAppName, windowAppName, LetterIcon, iconFromFile, APP_CATEGORIES, appCategory } from './apps.js';
 import { windowIcon as windowIconOf } from './apps.js';
 import { ImeOverlay } from './ime.js';
 import { ClipboardPanel, ClipboardToast, clipboard as clipboardApi } from './clipboard.js';

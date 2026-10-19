@@ -107,6 +107,44 @@ export function linuxAppFor(appId) {
     a.desktopId.toLowerCase().endsWith(`.${want}`)) || null;
 }
 
+// Short label of a Linux app, for the shell (menu bar, Dock, notifications). If the (translated)
+// Name contains, as whole words, the untranslated Name or the app's id, only those words:
+// "Navegador web Chromium" and "Chromium Web Browser" (chromium.desktop) → "Chromium". Otherwise
+// the translated Name as is, so a real translation ("Archivos") still shows.
+export function shortAppName(app) {
+  if (!app) return '';
+  const name = String(app.name || app.nameC || '');
+  const id = String(app.desktopId || '');
+  // a reverse-DNS id ("org.gnome.TextEditor") is named by its last part; "python3.13" is not one
+  const idName = /^[a-z]{2,}\.[^.]+\./i.test(id) ? id.slice(id.lastIndexOf('.') + 1) : id;
+  for (const c of [app.nameC, idName, app.wmClass]) {
+    const want = String(c || '').trim();
+    if (want.length < 3 || !/\p{L}/u.test(want) || want.toLowerCase() === name.toLowerCase()) continue;
+    const pat = want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[-_\s]+/g, '[-_\\s]+');
+    const m = new RegExp(`(?:^|[^\\p{L}\\p{N}])(${pat})(?=$|[^\\p{L}\\p{N}])`, 'iu').exec(name);
+    if (m) return m[1];
+  }
+  return name;
+}
+
+// A Wayland app_id as a label when no .desktop matches: "org.example.Foo" → "Foo", "foot" → "Foot".
+function prettyAppId(appId) {
+  const last = String(appId || '').split('.').filter(Boolean).pop() || '';
+  const s = last.replace(/[-_]+/g, ' ').trim();
+  return s ? s[0].toUpperCase() + s.slice(1) : '';
+}
+
+// The app name of a window, never its title: a LordOS app's name; for a Linux window, the isolated
+// app's package name, its .desktop's short name or its app_id.
+export function windowAppName(w) {
+  if (!w) return '';
+  if (!String(w.id).startsWith('linux#')) return appName(registryApp(w.id));
+  const appId = w.args?.appId || '';
+  const pkg = appId ? registryApp(appId) : null;
+  if (pkg && (pkg.package || pkg.isolated)) return pkg.isolated ? appName(pkg) : pkg.name;
+  return shortAppName(linuxAppFor(appId)) || prettyAppId(appId) || appName(registryApp('linux'));
+}
+
 // Icon of a window: its app's; for a Linux window, its .desktop's if one is found.
 export function windowIcon(w, getApp) {
   const appId = w?.args?.appId;

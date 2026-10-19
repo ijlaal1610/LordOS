@@ -20,6 +20,14 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   drop-in shipped by the `lordos` package). The Raspberry Pi image's `ssh` switch file keeps
   working and shows up as on ([docs/REMOTE.md](docs/REMOTE.md#remote-login-ssh)).
 
+### Fixed
+
+- **The menu bar names a Linux app, not its window.** Next to the crown it showed the window title
+  (for a browser, the whole page title); it now shows the app's short
+  name, "Chromium", in every language. The Dock tooltip and Linux app notifications use the same
+  short name; a real translation of the name (e.g. "Archivos") still shows, and a window without a
+  `.desktop` file is named after its app id. The window's own title bar keeps the title.
+
 ## [0.8.0-beta] - 2026-10-18
 
 LordOS is a free GNU/Linux distribution based on Debian 13 ("trixie") with its own desktop

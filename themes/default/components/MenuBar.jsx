@@ -1,6 +1,6 @@
 // Top menu bar: L menu, active app, Window menu, keyboard layout,
 // Control Center and clock.
-import { View, Text, useClock, wm, getApp, session, useAppMenus, t as tr, appName, formatDate, formatTime, keyboard, useSettings, direction, screen, windowTitle, LordOSGlyph, spotlight, PrivacyIndicators, StatusItems, help, menuClock } from '@lordos/sdk';
+import { View, Text, useClock, wm, getApp, session, useAppMenus, t as tr, appName, formatDate, formatTime, keyboard, useSettings, direction, screen, windowAppName, LordOSGlyph, spotlight, PrivacyIndicators, StatusItems, help, menuClock } from '@lordos/sdk';
 import { useRef, useState } from 'react';
 import { Menu } from './Menu.jsx';
 
@@ -88,7 +88,7 @@ export function MenuBar({ t, height, focused, onLaunchpad, onControlCenter, cont
         <BarItem t={t} active={open?.name === 'logo'} anchorRef={refs.logo} onClick={() => toggle('logo', refs.logo)}>
           <LordOSGlyph size={16} color={t.menuText} />
         </BarItem>
-        <BarItem t={t}><Label t={t} bold>{app ? (app.builtin ? windowTitle(wm.get(focused)) : appName(app)) : 'LordOS'}</Label></BarItem>
+        <BarItem t={t}><Label t={t} bold>{app ? (app.builtin ? windowAppName(wm.get(focused)) : appName(app)) : 'LordOS'}</Label></BarItem>
         {extra.map((m, i) => {
           const key = `app${i}`;
           const ref = { get current() { return appRefs.current[key]; } };

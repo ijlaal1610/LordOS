@@ -23,7 +23,7 @@ import { addListener } from '@lordos/runtime';
 import { settings } from './settings.js';
 import { createStore, useStore } from './store.js';
 import { useWindows, wm, windowTitle, appIdOf, getApp, windows } from './windows.js';
-import { useLauncherApps, launchApp, linuxAppFor, LetterIcon, windowIcon } from './apps.js';
+import { useLauncherApps, launchApp, linuxAppFor, shortAppName, windowAppName, LetterIcon, windowIcon } from './apps.js';
 import { t, locale } from './i18n.js';
 import * as fs from './fs.js';
 import {
@@ -183,7 +183,7 @@ export function useDockEntries(defaults = [], opts = {}) {
   }
   const entry = (id, a, ws) => ({
     id, kind: parseDockId(id)?.kind || 'linux', launcherId: launcherKey(id),
-    name: a?.name || windowTitle(ws[0]) || id, Icon: a?.Icon || (ws[0] ? windowIcon(ws[0], getApp) : ({ size }) => h(LetterIcon, { size, name: id })),
+    name: (a?.kind === 'linux' ? shortAppName(a) : a?.name) || (ws[0] ? windowAppName(ws[0]) : '') || id, Icon: a?.Icon || (ws[0] ? windowIcon(ws[0], getApp) : ({ size }) => h(LetterIcon, { size, name: id })),
     windows: ws, pinned: pinned.includes(id), running: ws.length > 0, focused: ws.some((w) => w.id === focused), app: a,
     locked: isLocked(id), movable: isMovable(id),
   });
