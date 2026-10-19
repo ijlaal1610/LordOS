@@ -16,8 +16,10 @@ The port is **5673**, which spells "LORD" on a phone keypad.
   before switching users).
 - **It's off by default.** It's turned on and off in Settings → Sharing → «Remote Desktop», as on
   popular desktop systems.
-- **Video:** in a browser with WebRTC the screen arrives as video with sound, and still areas are
-  then made sharp with lossless tiles; otherwise as images. See [Video (WebRTC)](#video-webrtc).
+- **Video:** the screen arrives as WebRTC video with sound, and still areas are then made sharp
+  with lossless PNG tiles. It is the only way: a browser without WebRTC gets a page that says so,
+  and a connection that can't be made says why (see [When it can't connect](#when-it-cant-connect)).
+  See [Video (WebRTC)](#video-webrtc).
 - **Terminal access** (SSH) is a separate switch on the same page: see
   [Remote login (SSH)](#remote-login-ssh).
 
@@ -35,8 +37,8 @@ The port is **5673**, which spells "LORD" on a phone keypad.
   addresses](#blocked-and-allowed-addresses).
 - **Connected now:** user, IP, whether they're watching this screen or their own desktop, and for
   how long, with a «Disconnect» button (`remote-kick`, only pids from lord-sessiond's list).
-- **Video:** the WebRTC switch (on by default), STUN servers and a TURN relay (`remote-ice`); see
-  [Video (WebRTC)](#video-webrtc).
+- **Connection:** STUN servers and a TURN relay reached over UDP, TCP or TLS (`remote-ice`); see
+  [Video (WebRTC)](#video-webrtc). There is no switch: WebRTC is the only way the remote desktop works.
 
 The actions change `/etc/lordos/remote/config` (`enabled=`, `port=`, `allow=`) and send SIGHUP to
 lord-sessiond. Turning remote off cuts the connections, but the sessions stay open, as with RDP.
@@ -146,16 +148,21 @@ Unblocking from Settings forgets that address's history (its next block is 15 mi
 
 ## Browser protocol (WebSocket `/ws`)
 
-**Server → browser.** Binary:
+The authenticated TLS WebSocket carries the sign-in's session, the WebRTC signaling, the cursor, the
+clipboard and pings. The screen itself never travels on it: it is WebRTC video (next section).
 
-- `[1][x,y,w,h u16 BE][0 png│1 jpeg][data]`: a rectangle;
-- `[2][w,h,hx,hy u16 BE][png]`: cursor image;
-- `[3]`: end of frame;
-- `[4]`: PNG refresh.
+**Server → browser.** Binary: only `[2][w,h,hx,hy u16 BE][png]`, an app's cursor image.
 
-Text (JSON): `hello` (with `rtc:1` and `ice:["stun:…"]` when video is on), `size`, `cur{x,y,m}`,
-`clip{text}`, `pong`, `bye` (with `lock:1` if the session was locked), `rtc{sdp,codec}` (our WebRTC
-answer) or `rtc{fail:1}` (back to tiles).
+Text (JSON):
+
+- `hello{user,rtc,p,ice}`: `rtc:1` and the peer number `p` and ICE servers when the bridge's
+  WebRTC peer is ready (`rtc:0`: it couldn't be created; the page says so);
+- `size`, `cur{x,y,m}`, `clip{text}`, `pong`, `bye` (with `lock:1` if the session was locked);
+- `rtc{sdp,codec,p}`: our answer (with `restart:1` for an ICE restart);
+- `rtc{fail,ready,p,ice}`: that peer is over and why (`noroute`, `dtls`, `lost`, `closed`, `server`,
+  `codec`, `offer`, `restart`, or `browser` when the page asked for it); `ready` and `p` announce the
+  new peer waiting for the next offer (at most one new peer every 2 s, 60 per connection);
+- `rtc{ready,p,ice}`: a new peer that had to wait for that 2 s limit.
 
 **Browser → server.** Text (JSON):
 
@@ -173,48 +180,45 @@ answer) or `rtc{fail:1}` (back to tiles).
 - `clip{text}`;
 - `resize{w,h}`: on connecting and when the window is resized; if the session is on the monitor,
   the monitor wins;
-- `ack`, `ping{ts}`;
-- the video's signaling: `rtc{sdp}` (the browser's offer, at most 32 KB), `ice{c}` (a trickled
-  candidate, at most 512 bytes) and `vmode{on}` (1: the video is playing; 0: back to tiles).
+- `ping{ts}`;
+- the signaling: `rtc{sdp,p}` (the browser's offer, or an ICE restart's, at most 32 KB), `ice{c,p}`
+  (a trickled candidate, at most 512 bytes) and `vmode{on}` (1: the video is playing, start the
+  lossless refresh; 0: this peer is over, make a new one). `p` is the peer the message is for: an
+  offer for an older peer of the connection is ignored, never taken as the new peer's first offer.
+
+The mouse, keyboard, clipboard and resize messages go over the `input` data channel when it is open
+(the same JSON, the same parser), else over the WebSocket.
 
 **Validation** (`rs_ws_consume`, `rs_json_parse`, `rs_browser_input` in `rsec.c`): frames must be
 masked, without RSV bits, with a known opcode and the shortest length encoding; control frames at
 most 125 bytes and never fragmented; a message at most 2 MB (fragments are joined up to that);
 text must be valid UTF-8; a binary message closes the connection (the page never sends one). Each
 text message is one flat JSON object (known keys, integers or strings, no duplicates); positions
-are clamped to the screen, key codes are keyboard keys only (1–248), the clipboard is at most 1 MB.
-Anything else is ignored or closes with 1002/1007/1009.
-
-**Compression:**
-
-- **Still screen:** PNG (lossless).
-- **Moving screen** (consecutive frames) and large areas: straight JPEG.
-- **When it becomes still:** whatever was JPEG is refreshed as PNG.
-
-**Flow control:** the browser acknowledges each frame (`ack`) only once it has drawn it, and the
-session accumulates changes until then. A slow network gets fewer frames, but always the current
-state.
+are clamped to the screen, key codes are keyboard keys only (1–248), the clipboard is at most 1 MB,
+a peer number is an integer 1–1,000,000. Anything else is ignored or closes with 1002/1007/1009.
 
 ## Video (WebRTC)
 
-![Settings → Sharing → Video](settings-sharing-video.png)
+![Settings → Sharing → Connection](settings-sharing-connection.png)
 
-When the page finds `RTCPeerConnection` and Settings allows video (`video=1`, the default), the
-remote desktop becomes a WebRTC connection between the browser and the bridge:
+The remote desktop is a WebRTC connection between the browser and the bridge. It is the only way
+the screen reaches the browser: there is no image mode to fall back to. If it fails, the page
+recovers on its own or says why and what to do.
 
-1. The page connects to `/ws?…&v=1` as always and starts with the tiles.
-2. The bridge creates its WebRTC peer and says so in `hello` (`rtc:1`, `ice:["stun:<address>:<port>"]`:
-   a STUN server of its own, see below).
+1. The page checks that the browser has WebRTC (`RTCPeerConnection`, data channels) and decodes
+   H.264 or VP8; if not, it shows the requirements and never opens the WebSocket (see
+   [When it can't connect](#when-it-cant-connect)).
+2. It connects to `/ws?…&v=1`. The bridge creates its WebRTC peer and says so in `hello` (`rtc:1`,
+   the peer number `p:1`, `ice:["stun:<address>:<port>"]`: a STUN server of its own, see below).
 3. The page makes an offer (video and audio to receive, data channels `input` and `tiles`), waits
-   for its candidates (at most 1.5 s) and sends it over the WebSocket: `{"t":"rtc","sdp":…}`.
-4. The bridge parses it strictly (`rtcwire.c`) and answers `{"t":"rtc","sdp":…,"codec":"h264"}`.
-5. ICE, DTLS and SCTP come up; the bridge tells the session `RP_VIDEO` and the session's encoder
-   starts (or a keyframe goes to the new viewer of an encoder already running).
+   for its candidates (at most 1.5 s) and sends it over the WebSocket: `{"t":"rtc","sdp":…,"p":1}`.
+4. The bridge parses it strictly (`rtcwire.c`) and answers `{"t":"rtc","sdp":…,"codec":"h264","p":1}`.
+5. ICE (over UDP or TCP), DTLS and SCTP come up; the bridge tells the session `RP_VIDEO` and the
+   session's encoder starts (or a keyframe goes to the new viewer of an encoder already running).
+   Only now does the session capture and compare frames for this viewer (`mirror_watchers`).
 6. As soon as the first frame plays, the page sends `{"t":"vmode","on":1}`: the canvas becomes a
    transparent layer over the `<video>`, input goes over the `input` data channel, and the session
-   sends tiles only when the screen is still.
-7. If no frame plays within 12 s, the connection fails, or the offer is refused, the page closes it
-   (`{"t":"vmode","on":0}`) and stays on the tiles.
+   sends lossless tiles only when the screen is still.
 
 **What travels where:**
 
@@ -224,14 +228,15 @@ remote desktop becomes a WebRTC connection between the browser and the bridge:
 | audio track | Opus, 20 ms frames, mono 48 kHz, 64 kbit/s |
 | `input` data channel | the same JSON input messages as the WebSocket (`m`, `b`, `w`, `s`, `pz`, `k`, `clip`, `resize`), parsed by the same `rs_browser_input`; at most 256 KB per message |
 | `tiles` data channel | `[1][x,y,w,h u16][png]` a lossless tile; `[2][x,y,w,h…]` these areas changed (show the video there); `[3]` done |
-| WebSocket | everything else, as before: signaling, cursor, clipboard from the session, ping |
+| WebSocket | signaling, cursor, clipboard from the session, ping |
 
 **Sharp text.** Video blurs fine text a little, so once the screen has been still for 250 ms the
 session sends the tiles that changed since the last time, as PNG, over the `tiles` channel; the page
 draws them on the layer over the video. Any change clears that layer where it happens (`RP_DAMAGE`,
 sent at once) and the video shows there again. The video is tagged sRGB (BT.709 matrix and
 primaries, sRGB transfer) so the browser shows the same colors as the tiles: the measured
-difference between both over the whole screen is 0.1 levels.
+difference between both over the whole screen is 0.1 levels. The bridge makes the PNG straight from
+the session's rectangle (`enc.c`, the only image code left); it keeps no copy of the screen.
 
 **One encoder per session.** The session's `lord-server` renders as always; the frame the remote
 desktop sees (protected windows in black, from `media_composed`, or the GPU's read-back) goes to a
@@ -253,7 +258,7 @@ screen (they are painted black in a CPU copy of the scene) and screen recording.
 forces the CPU path. While the remote desktop reads frames back, a fullscreen app is composed rather
 than scanned out directly.
 
-**ICE, STUN and TURN.**
+### ICE, STUN and TURN
 
 - The bridge is an ICE-lite agent: it never sends checks; it answers checks signed with its ICE
   password (from the answer that went over the authenticated WebSocket), from addresses that pass
@@ -264,96 +269,207 @@ than scanned out directly.
   that's all it needs, with no outside server. It must be a different port from the media: browsers
   hand every STUN packet from their STUN server's address to that server's request handler,
   including the ICE answers.
+- **ICE over TCP** (RFC 6544): for every host address, the answer also offers a passive TCP
+  candidate on the remote desktop port itself (5673), with a lower priority than UDP: where UDP is
+  blocked (a firewall, some VPNs), the browser connects there instead. See [ICE over TCP](#ice-over-tcp).
 - **External STUN** (Settings → Sharing → STUN servers, up to 4): the bridge learns its public
   address from them and offers it as a candidate; the page uses them too.
 - **TURN** (Settings → Sharing → Relay): the bridge allocates a relayed address with the long-term
   credentials, permits only the browser's candidate addresses, and offers the relay as a candidate.
-  The relay only sees DTLS and SRTP. The password is kept in `/etc/lordos/remote/turn.key` (root
-  0600), read by the connection's root process right before the bridge drops root and handed over
-  in memory; after the first answer from the relay only its MD5 key remains, and it is never logged,
-  written to the config or sent to the browser (the browser is not given the relay).
+  The relay only sees DTLS and SRTP. The bridge reaches the relay over **UDP**, **TCP** or **TLS**
+  (`turn_transport=`; TLS is the `turns:` scheme and works on port 443 where only HTTPS gets out).
+  Over TLS the relay's certificate must be valid for its name (or its IP address) under the system's
+  certificate authorities, or match a pinned SHA-256 fingerprint (`turn_fp=`, for a relay with a
+  certificate of its own); anything else is refused and logged ("self-signed certificate"). The
+  password is kept in `/etc/lordos/remote/turn.key` (root 0600), read by the connection's root process
+  right before the bridge drops root and handed over in memory; after the relay's first answer only
+  its MD5 key remains (a new peer of the same connection gets that key, never the password), and it
+  is never logged, written to the config or sent to the browser (the browser is not given the relay).
 
-**DTLS bound to the sign-in.** The bridge is the DTLS server, with a new P-256 certificate per
-connection; its fingerprint goes in the answer, over the authenticated TLS WebSocket. The browser's
-certificate must hash to the `a=fingerprint` of the offer that came over that same WebSocket, or the
-connection ends ("does not match the fingerprint of the signed-in offer") and the page stays on the
-tiles. DTLS 1.2 with ECDHE-ECDSA AES-GCM / ChaCha20-Poly1305 only; SRTP with AES-GCM (or
-AES-CM-HMAC-SHA1-80) keys exported from it. After DTLS is up, the media moves to another network
-path only after an authenticated packet (a DTLS record or SRTCP that decrypts) came from it:
-leaked ICE credentials alone can't redirect the stream.
+### ICE over TCP
 
-**Process.** The WebRTC peer lives in the bridge, which already dropped root (see Process and
-privileges): its UDP sockets are created after the drop, as the user. `lord-sessiond` now links
-libsrtp2 and usrsctp (Debian packages); `lord-server` links neither; FFmpeg stays only in
-`lord-media`.
+A connection to port 5673 that starts with a 16-bit length (RFC 4571 framing, first byte below
+0x10) instead of a TLS handshake record (0x16) is an ICE-TCP check. It goes through exactly the same
+gate as any other connection first (`accept_remote`: blocklist, "who can connect", the lockout,
+the rate and connection limits, all before any parsing). Then:
+
+1. The root connection child reads that first frame only (at most 1500 bytes, under the same 15 s
+   deadline), parses it strictly as a STUN binding request with a user name and a
+   MESSAGE-INTEGRITY attribute (`rw_ice_route`), and takes the first 8 characters of the user name:
+   the **route**. Our ICE user fragment is always `<route><4 random>`; the route is random per
+   connection and only ever travels inside the authenticated TLS WebSocket.
+2. It connects to `/run/lordos/rtc/<route>` (a folder only root can enter, 0700) and hands over the
+   TCP socket and the frame it read (`SCM_RIGHTS`); then it exits. An unknown route, a malformed
+   frame or anything that isn't such a check: the connection is closed.
+3. That listening socket was created by the connection's root process before its bridge dropped
+   root, and only the bridge holds it. The bridge accepts only from root (`SO_PEERCRED`), only a
+   TCP socket, and checks the message's integrity with its ICE password like any UDP check. A
+   connection that brings no valid check within 10 s is closed; a peer keeps at most 4.
+4. From then on the bridge reads and writes framed packets on it (STUN, DTLS, SRTP, SRTCP), with a
+   1 MB queue per connection: a packet that doesn't fit is dropped whole (media is lossy; DTLS and
+   SCTP retransmit).
+
+The media moves to an ICE-TCP path under the same rule as any other: only once an authenticated
+DTLS or SRTCP packet came over it.
+
+### Reconnecting
+
+The browser keeps the session (and its sign-in) through network trouble, in three steps:
+
+1. **ICE restart.** When ICE reports the path lost (`disconnected` for 2 s, or `failed`), the page
+   shows a small "Reconnecting…" note over the last frame and sends a new offer with new ICE
+   credentials (`restartIce`). The bridge accepts it only for the same peer: the same DTLS
+   fingerprint as the signed-in offer, the same codec and sections; it answers with new credentials
+   of its own, and the DTLS association, SCTP and the data channels go on. Up to 6 restarts, 2 to 8 s
+   apart (about 40 s); while the WebSocket itself can't deliver, the page waits instead of piling up
+   offers, and an answer to an older offer is ignored.
+2. **A new peer.** When the restarts run out, the bridge says a peer failed (`rtc{fail}`), or no
+   picture plays within 15 s, the page asks for a new peer over the same WebSocket
+   (`{"t":"vmode","on":0}`); the bridge closes the old one, stops its video subscription, and
+   announces the new one (`rtc{ready,p}`). Offers and candidates carry `p`, so nothing of an older
+   peer can reach the new one.
+3. **A new WebSocket.** If the WebSocket closes, the page reconnects with backoff (2, 4, 8, 16,
+   30 s, then every 30 s) with the same cookie: no new sign-in while the cookie is valid. If it is
+   refused twice before the `hello`, the page asks `/desk` whether the sign-in still holds; if not,
+   it goes to the sign-in page.
+
+Measured on VM 122 (headless browser on the Mac, `iptables` on the VM):
+
+| What was cut | What happened |
+|---|---|
+| UDP from the browser, from the start | video over ICE-TCP, playing about 2 s after the page loaded ("Video · H264 · TCP") |
+| UDP, while the video played | the browser moved to the TCP pair (once by itself, once after an ICE restart) about 8 s later; back to UDP when it returned |
+| UDP and TCP 5673 for 20 s | 4 ICE restarts queued; playing again 0.2–0.4 s after the path came back: the same peer, the same WebSocket |
+| UDP and TCP 5673 for 75 s | the WebSocket closed after about 31 s; the page retried with backoff and, after 3 tries, showed "The computer can't be reached" while it kept trying; playing again 1.4–1.9 s after the path came back, without signing in again |
+| only a TURN relay (over TLS) could carry the media, then the relay's ports for 55 s | 6 ICE restarts, then a new peer, which got the relay again with the kept key; playing 0.2 s after the path came back |
+
+![Reconnecting: the last frame stays, with a note](remote-desktop-reconnecting.png)
+
+### When it can't connect
+
+The page never shows anything but the video, so when there is no way to connect it says why, from
+the bridge's reason (`rtc{fail}`) and its own statistics (ICE state, candidate pairs, frames
+decoded), after two peers in a row fail. Each reason comes with what to do and a **Try again**
+button (which keeps the sign-in), and the details line for support:
+
+| Reason | When | What the page suggests |
+|---|---|---|
+| `noroute` | no ICE check reached the computer over UDP or TCP | allow UDP, or at least TCP port 5673, between the browser and the computer; across networks, add a TURN relay in Settings → Sharing |
+| `dtls` | checks arrived but the encrypted channel never came up, or the browser's certificate didn't match its signed-in offer | try again; something between them may be altering the connection |
+| `lost` | it worked, then the path went away and didn't come back | check both networks and try again; still signed in |
+| `offer` | the computer refused or didn't answer the browser's offer | update the browser; an extension may be changing the page |
+| `media` | connected, but no frame was decoded | the browser may not decode H.264 or VP8 now; try another browser |
+| `server` | the computer couldn't create the peer | try again; turn the remote desktop off and on |
+| `wsdown` | the WebSocket can't reach the computer | check that it's on and on the network; the page keeps trying |
+
+A browser without WebRTC or without H.264 and VP8 (found by the page, or by the bridge refusing an
+offer with neither, `codec`) gets a page that lists the requirements, marks the missing one and
+suggests an up-to-date browser with WebRTC on (privacy extensions that turn WebRTC off cause this
+too). The strings are in the page itself, in English, Spanish and Portuguese.
+
+![No route: what the page says](remote-desktop-error-noroute.png)
+
+![The encrypted channel couldn't be set up](remote-desktop-error-dtls.png)
+
+![A browser without WebRTC](remote-desktop-unsupported.png)
+
+### DTLS bound to the sign-in
+
+The bridge is the DTLS server, with a new P-256 certificate per peer; its fingerprint goes in the
+answer, over the authenticated TLS WebSocket. The browser's certificate must hash to the
+`a=fingerprint` of the offer that came over that same WebSocket, or the peer ends ("does not match
+the fingerprint of the signed-in offer"); an ICE restart must bring the same fingerprint. DTLS 1.2
+with ECDHE-ECDSA AES-GCM / ChaCha20-Poly1305 only; SRTP with AES-GCM (or AES-CM-HMAC-SHA1-80) keys
+exported from it. After DTLS is up, the media moves to another network path only after an
+authenticated packet (a DTLS record or SRTCP that decrypts) came from it: leaked ICE credentials
+alone can't redirect the stream, over UDP or TCP.
+
+### Process
+
+The WebRTC peer lives in the bridge, which already dropped root (see Process and privileges): its
+UDP sockets, its TURN connection and its TLS are created after the drop, as the user; the only
+socket it gets from root is the ICE-TCP handoff listener. `lord-sessiond` links libsrtp2 and
+usrsctp (Debian packages; `make` requires them for `lord-sessiond`, and the package depends on
+`libsrtp2-1` and `libusrsctp2`); `lord-server` links neither; FFmpeg stays only in `lord-media`.
 
 **Admin action:**
 
 | Action | Argument | What it does |
 |---|---|---|
-| `remote-ice` | lines: `video=on\|off`, `stun=<host:port>[,…]` (up to 4), `turn=<host:port>` (empty: no relay), `turn_user=<name>`, `turn_pass=<password>` | validates every line (`rw_ice_server_valid`, `rw_turn_user_valid`, `rw_turn_pass_valid`) before writing; the password only into `turn.key` (0600); the rest into `config` (`video=`, `stun=`, `turn=`, `turn_user=`, `turn_key=1`) and SIGHUP |
+| `remote-ice` | lines: `stun=<host:port>[,…]` (up to 4), `turn=<host:port>` (empty: no relay), `turn_transport=udp\|tcp\|tls`, `turn_fp=<SHA-256>` (empty: the system's CAs), `turn_user=<name>`, `turn_pass=<password>` | validates every line (`rw_ice_server_valid`, `rw_turn_transport`, `rw_fp_parse`, `rw_turn_user_valid`, `rw_turn_pass_valid`) before writing; the password only into `turn.key` (0600); the rest into `config` (`stun=`, `turn=`, `turn_user=`, `turn_key=1`, `turn_transport=`, `turn_fp=`) and SIGHUP. There is no `video=` line any more |
 
-![Settings → Sharing → Relay, with the password saved](settings-sharing-turn.png)
+![Settings → Sharing → Relay over TLS with a pinned certificate, the password saved](settings-sharing-turn.png)
 
 ![Protected windows stay black in the video too](remote-desktop-video-protected.png)
 
 ### Security analysis (0.8.4, video)
 
-The new network surface: the signaling messages on the WebSocket, the SDP offer and candidates, the
-UDP socket (STUN, DTLS, SRTP/SRTCP, SCTP), the data channel messages, the TURN client and the
-password storage. Unit tests in `server/tests/remote_sec_test.c` (now 352 checks, with a real
-Chrome offer), the same ASan+UBSan fuzz run on every `make -C server test` now also feeds the SDP,
-candidate, STUN/TURN, RTCP, data channel open and RTP payload code (2,000,000 inputs clean in a
-longer run), and these attacks on VM 122:
+The network surface: the signaling messages on the WebSocket, the SDP offer and candidates, the
+UDP sockets (STUN, DTLS, SRTP/SRTCP, SCTP), ICE-TCP (the root child's first frame and the bridge's
+framed stream), the data channel messages, the TURN client over UDP, TCP or TLS and the password
+storage. Unit tests in `server/tests/remote_sec_test.c` (now 387 checks, with a real Chrome offer,
+the TCP framing, the TURN stream, the route, the TURN transports, the pinned fingerprint, the TCP
+candidates and the peer number); the ASan+UBSan fuzz run on every `make -C server test` feeds the
+SDP, candidate, STUN/TURN, RTCP, data channel open, RTP payload, ICE-TCP framing, TURN stream and
+route code (1,000,000 inputs clean in a longer run). The attacks below ran on VM 122 against the
+WebRTC-only build:
 
 | # | What was tried | Result |
 |---|---|---|
-| 1 | WebSocket (the only signaling path) without a cookie, with a forged one, from a foreign `Origin` | 403, as before |
-| 2 | An offer whose fingerprint doesn't match the browser's real certificate (fingerprint swap) | DTLS refused ("does not match the fingerprint of the signed-in offer"); the page went on with tiles at 28 frames per second |
-| 3 | An offer over 32 KB | ignored; the page gave up after 12 s and stayed on tiles |
-| 4 | Data channel: 262,000 bytes of junk, a binary message on `input`, 300 keys with invalid codes; a message over 256 KB | ignored (the browser itself refuses over 256 KB; the bridge would end the connection) |
-| 5 | From another address, against a live connection: plain STUN, ICE checks with a wrong password or user fragment, a DTLS ClientHello, RTCP, random 1400 bytes, an oversized user name | only the plain STUN and a check with the right credentials were answered; nothing else |
-| 6 | The same with "Only these addresses" not listing that address | nothing answered, not even STUN; "refused ICE check" in the journal |
-| 7 | (Found here, fixed.) With stolen ICE credentials, a check with USE-CANDIDATE moved the media to the attacker's address | the media now moves only to a path that sent an authenticated DTLS or SRTCP packet: 0 packets redirected |
-| 8 | TURN password: journal, session logs, `status.json`, the config, the bridge's environment, every WebSocket message and the answer | not found anywhere; `turn.key` is root 0600 and unreadable by the user |
-| 9 | The bridge while video runs | uid/gid of the user (real, effective, saved), no capabilities, `NoNewPrivs 1`, no shared mapping; its UDP sockets created after the drop |
-| 10 | A protected window (Passwords) opened while the GPU composes and a browser watches | the session switches to the CPU path while it's on screen: black in the video, normal on the monitor |
+| 1 | WebSocket without a cookie, with a forged cookie of the right format, after logging out; a real cookie from a foreign `Origin` | 403, 403, 403; 400 |
+| 2 | An offer whose fingerprint doesn't match the browser's real certificate (fingerprint swap) | DTLS refused ("does not match the fingerprint of the signed-in offer") twice; the page showed "the encrypted video channel (DTLS) couldn't be set up" with Try again, and nothing else |
+| 3 | An offer over 32 KB | refused by the parser, never answered; the page said the offer wasn't answered after two peers |
+| 4 | Data channel: 262,000 bytes of junk, a binary message on `input`, 300 keys with invalid codes, malformed and signaling JSON; a message over 256 KB | ignored, the video kept playing (the browser itself refuses over 256 KB; the bridge would end the peer) |
+| 5 | From another address against a live peer, to its UDP media port: plain STUN, ICE checks with a wrong password or user fragment, a DTLS ClientHello, RTCP, random 1400 bytes, an oversized user name | none answered; only a check with the right credentials was |
+| 6 | The same with "Only these addresses" not listing that address | nothing answered, not even the right check ("refused ICE check" in the journal); its ICE-TCP connection was reset before TLS ("not in the allowed list") |
+| 7 | With stolen ICE credentials, checks with USE-CANDIDATE from another address over UDP, and over ICE-TCP for 6 s | 0 media packets redirected either way; the browser kept playing |
+| 8 | ICE-TCP to port 5673: a check with an unknown route, framed garbage, a zero-length frame; the right route with a wrong password; 8 such connections at once | closed at once; closed at once; closed at once; no answer, closed after 10 s; all 8 closed within 12 s |
+| 9 | An ICE restart offer with another fingerprint (and the older peer's next offers behind it) | restart refused ("it isn't the same peer"), a new peer made, the stale offer ignored ("an offer for an older peer"); playing again 2.4 s after the path came back |
+| 10 | TURN password: every WebSocket message of a session with the relay, the journal, the config, `status.json`, the session's logs, the bridge's environment | not found (the only journal lines with it were the test harness's own `sudo` commands writing `turn.key`); `turn.key` is root 0600 and unreadable by the user |
+| 11 | TURN over TLS to a relay with a self-signed certificate and no pin | refused ("self-signed certificate"), no relay; with its pinned fingerprint, the relay worked and was the only path |
+| 12 | The bridge while video runs (with a TLS relay) | uid/gid of the user (real, effective, saved), no capabilities, `NoNewPrivs 1`, no shared mapping; descriptors: 0–2 (the journal), the TLS socket, the session socket, the pipe to its root parent, the ICE-TCP handoff listener, and its own UDP and TCP sockets created after the drop |
+| 13 | A protected window (Passwords) opened while a browser watches | black in the video, normal on the monitor |
 
 What stays as it is: ICE-lite answers checks from any allowed address that knows the credentials
-(they only travel inside the authenticated TLS WebSocket); a relay sees the traffic's size and
-timing; the encoder, `lord-media`, parses only our own frames (in its sandbox, as for recording).
+(they only travel inside the authenticated TLS WebSocket), as fast as they come; a relay sees the
+traffic's size and timing; the encoder, `lord-media`, parses only our own frames (in its sandbox, as
+for recording).
 
 ### Measurements (0.8.4, video)
 
-VM 122 (Xeon Silver 4108 at 1.8 GHz, 4 vCPUs, no 3D, 1280×800), headless Chrome 155 on a Mac on the
-same LAN; dragging a window for 16 s; CPU per process from `/proc`, traffic on `eth0`.
+VM 122 (Xeon Silver 4108 at 1.8 GHz, 4 vCPUs, no 3D, 1280×800), headless Chrome on a Mac on the same
+LAN; a window dragged in circles for 16 s; CPU per process from `/proc`, traffic on `eth0`. "Before" is
+`main` at the time (video with the image path behind it), "after" this WebRTC-only build, measured
+the same hour in the same way.
 
-| Situation | Path | Frames/s | Network | lord-server | encoder | bridge(s) |
+| Situation | | Frames/s | Network | lord-server | encoder | bridge(s) |
 |---|---|---|---|---|---|---|
-| idle | tiles | 0 | < 1 kbit/s | 1 % | — | 0 % |
-| idle | video | 0.5 | < 80 kbit/s | 3 % | 2 % | 1 % |
-| dragging, 1 viewer | tiles | 23 | 12.5 Mbit/s | 53 % | — | 57 % |
-| dragging, 1 viewer | H.264 (veryfast) | 28 | 0.3–0.9 Mbit/s | 60 % | 42 % | 2 % |
-| dragging, 1 viewer | H.264 (ultrafast, the default) | 28.5 | 0.4–0.5 Mbit/s | 64 % | 31 % | 2 % |
-| dragging, 1 viewer | VP8 | 28.8 | 2.0 Mbit/s | 58 % | 46 % | 2 % |
-| dragging, 2 viewers of one session | tiles | 24 and 21 | 24 Mbit/s | 58 % | — | 58 % + 59 % |
-| dragging, 2 viewers of one session | H.264 | 28.8 and 25.2 | 2.1 Mbit/s | 61 % | 33 % (one) | 2 % + 2 % |
-| dragging, 2 users (2 sessions) | H.264 | 27.5 and 27.2 | 3.5 Mbit/s | 62 % + 65 % | 31 % + 32 % | 2 % + 2 % |
-| dragging, monitor session composed on the GPU (llvmpipe) | H.264 | 26 | 0.46 Mbit/s | 167 % (software GL) | 25 % | 2 % |
+| idle, 1 viewer | before | — | 0.09 Mbit/s | 2 % | 2 % | 1 % |
+| | after | — | 0.06–0.13 Mbit/s | 2–3 % | 2 % | 1 % |
+| dragging, 1 viewer | before | 29.2 | 0.81 Mbit/s | 54 % | 28 % | 2 % |
+| | after | 29.4 | 0.80 Mbit/s | 51 % | 27 % | 2 % |
+| dragging, 2 viewers of one session | before | 29.2 and 29.2 | 0.99 Mbit/s | 52 % | 27 % (one) | 2 % + 1 % |
+| | after | 29.1 and 29.1 | 0.92 Mbit/s | 51 % | 26 % (one) | 2 % + 1 % |
+| dragging, 2 users (2 sessions) | before | 28.1 and 28.7 | 1.44 Mbit/s | 61 % + 56 % | 28 % + 27 % | 2 % + 2 % |
+| | after | 27.3 and 28.6 | 2.01 Mbit/s | 62 % + 57 % | 26 % + 27 % | 2 % + 2 % |
+| dragging, UDP blocked | before | 0 (images, black) | 0.01 Mbit/s | 1–2 % | 0 % | 0 % |
+| | after | 29.3 (over TCP) | 0.81 Mbit/s | 52 % | 28 % | 2 % |
 
-- **Latency** (a click on the page until the pixel changes on it, 12 clicks each): tiles 63–96 ms
-  (median 66 ms); video 72–130 ms (median about 90 ms; before the flush frame, a third of the clicks
-  took 320–360 ms). Network round trip 1 ms, browser jitter buffer 15–80 ms while dragging, decode
+- **While the video plays the CPU is the same** within the noise of these runs (a few points): the
+  image path was already idle once the video played, so removing it costs nothing there and saves
+  nothing there. What went away is everything around it: the bridge no longer keeps a copy of the
+  screen or encodes JPEG/PNG for the WebSocket, and the session captures, compares and encodes
+  nothing for a browser until its video is set up (`mirror_watchers`).
+- **UDP blocked:** before, the page gave up on the video after 12 s and fell back to images, which in
+  these runs stayed black (no frames, the drag never reached the session); now the video goes over
+  ICE-TCP at full rate.
+- **Latency** (0.8.4 measurement, a click on the page until the pixel changes on it): 72–130 ms,
+  median about 90 ms. Network round trip 1 ms, browser jitter buffer 15–80 ms while dragging, decode
   2.6 ms.
-- **Quality:** still areas are pixel-identical to the tiles path (they are the same PNG tiles); in
-  motion, H.264 at 1280×800 instead of JPEG quality 70 per tile. The page's latency is shown in its
-  top bar with the mode ("Video · H264" or "Images").
-- On real graphics hardware the GPU row would not cost CPU: llvmpipe is the CPU emulating a GPU.
-  VA-API encoding was not measured (the VM has no video encoder).
+- On real graphics hardware the GPU read-back would not cost CPU (the VM's llvmpipe is the CPU
+  emulating a GPU); VA-API encoding was not measured (the VM has no video encoder).
 
 ![Dragging a window: video](remote-desktop-video-motion.png)
-
-![Dragging a window: tiles](remote-desktop-tiles-motion.png)
 
 ![The monitor composed on the GPU while a browser watches](remote-desktop-gpu-monitor.png)
 
@@ -366,7 +482,8 @@ same LAN; dragging a window for 16 s; CPU per process from `/proc`, traffic on `
    a valid cookie, `/ws` finds the user's session or creates it (`sess.c`, with the same lock as
    the monitor).
 3. **It forks the bridge, which drops root for good:** it unmaps `lord-sessiond`'s shared memory,
-   closes every descriptor but the TLS socket, the session socket and a pipe to its parent, clears
+   closes every descriptor but the TLS socket, the session socket, a pipe to its parent and the
+   ICE-TCP handoff listener (`/run/lordos/rtc/<route>`, see [ICE over TCP](#ice-over-tcp)), clears
    the environment, then `initgroups`, `setresgid`, `setresuid`, checks that the real, effective
    and saved ids are the user's and that it can't get root back, sets `no_new_privs`, not dumpable,
    and dies with its parent. TLS, compression and the bridge run as the user. The root parent keeps
@@ -391,6 +508,10 @@ self-signed P-256, with CN equal to the machine name and ten years of validity. 
 | bug in the bridge                      | it runs as the user who owns the session, without root's shared state or descriptors      |
 | access from the internet               | refused by default (local network only); use a VPN (Settings → Network → VPN)             |
 | someone on the LAN sends UDP to the video port | only allowed addresses get answers; ICE needs the password from the TLS WebSocket; DTLS needs the browser's certificate; media only moves to proven paths |
+| someone sends ICE-TCP checks to port 5673 | the same gate as any connection (lists, lockout, limits) before anything is read; a root child reads one strictly parsed frame and only routes it; the bridge checks the password, keeps at most 4 connections and closes any without a valid check after 10 s |
+| a network that blocks UDP | ICE over TCP on the remote desktop port; across networks, a TURN relay reached over TCP or TLS |
+| the network drops for a while | ICE restarts on the same encrypted association, then a new peer, then a new WebSocket, without a new sign-in; the page says why if none works |
+| a TURN relay over TLS is impersonated | its certificate must be valid for its name under the system's CAs, or match the pinned fingerprint |
 | a TURN relay reads the traffic         | it only sees DTLS and SRTP; its password stays root-only on this computer                |
 
 ## Security analysis (0.8.3)
@@ -446,22 +567,6 @@ scan; headers; lock. All results are in the table.
 ![Sign-in page: blocked](remote-desktop-login-blocked.png)
 
 ![Sign-in page: invalid user name](remote-desktop-login-invalid.png)
-
-## Measurements (VM 118: Xeon Silver 4108 at 1.8 GHz, 4 cores, no GPU, 1280×800)
-
-| Situation                                         | lord-server (session) | bridge (lord-sessiond) | monitor | network      |
-|---------------------------------------------------|----------------------|------------------------|---------|--------------|
-| idle desktop, watched from the web                | 1–2 %                | 0 %                    | —       | < 1 KB/s     |
-| just moving the mouse (web)                       | 2–3 %                | 0–1 %                  | —       | 25–40 KB/s   |
-| dragging a large window (web)                     | 95 %                 | 13 %                   | —       | 380 KB/s, 4–5 frames/s |
-| dragging a large window on the monitor (CPU)      | 80 %                 | —                      | —       | —            |
-| session nobody is watching                        | ~1 %                 | —                      | —       | —            |
-
-- **Memory per session:** about 50 MB. The login screen uses 41 MB. With software GPU
-  (llvmpipe), the monitor session uses about 145 MB.
-- **With JPEG while moving:** the bridge went from 53 % to 13 % CPU while dragging.
-- **Frames per second:** in this VM the limit is the desktop's CPU composition (blur and
-  transparency), not the network or the compression.
 
 ## Sound
 
@@ -570,9 +675,9 @@ the internet, use a VPN instead of opening the port.
 | `server/src/remote/conn.c`            | one connection: HTTP, login, WebSocket, bridge             |
 | `server/src/remote/rsec.c`            | strict parsers: request head, form, cookie, WebSocket, JSON |
 | `server/src/remote/ipnet.c`, `lockout.c` | addresses and networks, lockout and connection rate     |
-| `server/src/remote/enc.c`             | PNG/JPEG (stb_image_write, vendored in third_party/stb)    |
-| `server/src/remote/rtc.c`             | the WebRTC peer in the bridge: ICE-lite, STUN server, DTLS-SRTP, SCTP data channels, RTP, TURN client |
-| `server/src/remote/rtcwire.c`         | strict SDP, candidate, STUN/TURN, RTCP and data channel parsers; RTP payloaders (tested and fuzzed) |
+| `server/src/remote/enc.c`             | PNG for the lossless refresh and cursor images (stb_image_write, vendored in third_party/stb) |
+| `server/src/remote/rtc.c`             | the WebRTC peer in the bridge: ICE-lite over UDP and TCP, ICE restarts, STUN server, DTLS-SRTP, SCTP data channels, RTP, TURN client over UDP/TCP/TLS |
+| `server/src/remote/rtcwire.c`         | strict SDP, candidate, STUN/TURN, RTCP and data channel parsers, ICE-TCP framing and routing; RTP payloaders (tested and fuzzed) |
 | `server/src/media/mstream.c`          | the session's shared live encoder (lord-server side)        |
 | `server/src/media/helper/lm_stream.c` | the live encoder in `lord-media` (H.264/VP8, Opus)          |
 | `server/src/remote/login.html`, `client.html` | pages (embedded in the binary)                      |
@@ -582,6 +687,7 @@ the internet, use a VPN instead of opening the port.
 | `apps/settings/Sharing.jsx`, `sdk/remote.js` | Settings → Sharing and the notice on the monitor    |
 | `/etc/lordos/remote/`                 | `config`, `access`, `cert.pem`, `key.pem`, `fingerprint`, `turn.key` (root 0600) |
 | `/var/lib/lordos/remote/`             | `blocklist`, `requests` (root only)                        |
+| `/run/lordos/rtc/`                    | one ICE-TCP handoff socket per connection, named by its route (root 0700) |
 
 ## Screenshots
 

@@ -112,7 +112,10 @@ Since M8 there are two programs, and since M9 two helpers:
   only the `net-*` actions of `admin.c`. libc only. See `NETWORK.md`.
 
 - **`lord-sessiond`** (root, `lordos.service`): the login screen, the session list, the
-  monitor and the remote desktop. See `SESSIONS.md` and `REMOTE.md`.
+  monitor and the remote desktop. See `SESSIONS.md` and `REMOTE.md`. The remote desktop shows the
+  screen only as WebRTC video, from a bridge process that runs as the signed-in user: ICE over UDP
+  and over TCP on the remote desktop port (the root connection child only routes an ICE-TCP socket
+  to its bridge over `/run/lordos/rtc`), TURN over UDP, TCP or TLS, ICE restarts and reconnection.
 - **`lord-server`**: one session per user, always without a monitor of its own (`--headless`); the
   monitor and the browsers look at it through its socket.
 - **`lord-netperm`** (root, `lord-netperm.service`): per-app network permissions. It attaches its
