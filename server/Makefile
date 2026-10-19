@@ -103,7 +103,7 @@ SRC += $(DISK_SRC)
 HDR += $(wildcard src/disk/*.h)
 # LordOS Imager (docs/IMAGER.md): the imager-* actions (verified image → removable disk, downloads
 # as the user) and lordos-firstrun, the Raspberry Pi first-run file applier (src/firstrun)
-IMAGER_SRC := src/imager/imgverify.c src/imager/imager_admin.c
+IMAGER_SRC := src/imager/imgverify.c src/imager/imager_admin.c src/ui/js_imager.c
 SRC += $(IMAGER_SRC)
 HDR += $(wildcard src/imager/*.h)
 FIRSTRUN_SRC := src/firstrun/firstrun.c src/firstrun/firstrun_apply.c src/users/homedirs.c

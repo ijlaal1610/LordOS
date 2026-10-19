@@ -141,6 +141,8 @@ static void jstr(char *out, size_t cap, const char *s) {
 /* ---- programs ---- */
 
 static char *const ENV[] = { "PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8", NULL };
+/* --root: the image's SysV helpers (update-rc.d) may be of another architecture; the unit symlinks are enough */
+static char *const ENV_TEST[] = { "PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8", "SYSTEMCTL_SKIP_SYSV=1", NULL };
 
 static int run(const char *const argv[]) {
     pid_t pid = fork();
@@ -149,7 +151,7 @@ static int run(const char *const argv[]) {
         int null = open("/dev/null", O_RDWR);
         if (null >= 0) { dup2(null, 0); }
         syscall(SYS_close_range, 3, ~0u, 0);
-        execve(argv[0], (char *const *)argv, ENV);
+        execve(argv[0], (char *const *)argv, TEST ? ENV_TEST : ENV);
         _exit(127);
     }
     int st = 0;
@@ -264,8 +266,14 @@ static void apply_locale(const FirstRun *fr) {
         } else say("time zone %s is not in this image: kept UTC", fr->timezone);
     }
     if (fr->has_lang) {
-        char p[PATH_MAX], line[64];
+        char p[PATH_MAX], line[64], ln[64];
         rp(p, sizeof p, "/etc/default/locale");
+        /* Debian 13 makes /etc/default/locale a link to /etc/locale.conf: write that file instead */
+        ssize_t l = readlink(p, ln, sizeof ln - 1);
+        if (l > 0) {
+            ln[l] = 0;
+            if (!strcmp(ln, "../locale.conf") || !strcmp(ln, "/etc/locale.conf")) rp(p, sizeof p, "/etc/locale.conf");
+        }
         pathf(line, sizeof line, "LANG=%s\n", locale_of(fr->lang));
         if (write_str(p, line, 0644)) say("could not write /etc/default/locale");
         else say("language: %s", fr->lang);

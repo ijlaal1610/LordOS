@@ -162,6 +162,9 @@ EOF
     # the Store's "Suggested for your computer" rules (assets/store/suggestions.json)
     if have node; then run "suggest-engine-test (sdk/suggestengine.js)" node tests/suggest_engine_test.mjs
     else skip "suggest-engine-test" "node"; fi
+    # the LordOS Imager's shared logic (apps/imager/core) and its first-run files checked by the C parser
+    if have node; then run "imager-core-test (apps/imager/core)" node tests/imager_core_test.mjs
+    else skip "imager-core-test" "node"; fi
     # the overlay scroll bar's model (sdk/scrollbar.js): geometry, thumb hit-test and drag, fade timing
     if have node; then run "scrollbar-model-test (sdk/scrollbar.js)" node tests/scrollbar_model_test.mjs
     else skip "scrollbar-model-test" "node"; fi
