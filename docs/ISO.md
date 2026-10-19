@@ -44,6 +44,63 @@ motherboard. It works with **UEFI** and with **BIOS/Legacy**. **Secure Boot** ha
 The GRUB menu itself is in English (GRUB's default). Every entry except safe mode boots with the
 boot splash (`splash`); safe mode boots in text (`nosplash`).
 
+## Firmware and displays
+
+The ISO boots with **UEFI** and with **legacy BIOS** (a hybrid image from `grub-mkrescue`: El
+Torito for BIOS and `efi.img` for UEFI). Secure Boot has to be off. For virtual machines the
+smoothest setup is UEFI firmware, 4 GB of memory, 2–4 processors and the "Debian 64-bit" guest
+type; legacy BIOS works too since 0.8.1.
+
+**The 0.8.0 legacy BIOS bug.** On VMware Fusion with BIOS firmware (2 GB, 2 vCPUs, SVGA) the
+machine triple-faulted when the menu's 5 s timeout fired; with UEFI it booted. On Proxmox with
+SeaBIOS and the "VMware compatible" display, GRUB hung right after drawing the menu (the CPU
+halted in real mode, keys did nothing); with standard VGA it booted. Cause, found by bisecting the
+GRUB configuration on VM 123 with small test ISOs (kernel and initrd only):
+- with BIOS, GRUB draws through VBE, and `gfxmode=auto` falls back to **640×480** when the
+  display reports no EDID (both VMware's SVGA and QEMU's `vmware-svga`; VMware's log shows the
+  640×480 mode being set right before the fault);
+- at 640×480 GRUB's graphical terminal (`gfxterm`) corrupts GRUB's own memory when its font is
+  **Inter 16**, the proportional font the theme used for `terminal-font`. Without the theme's fonts,
+  with Inter 14 alone, at 800×600 or 1024×768, or with GRUB's Unifont as the terminal font, the
+  same 640×480 boot works.
+
+**Fix (0.8.1).** The theme's `terminal-font` is GRUB's fixed-width "GNU Unifont Regular 16"
+(the command line, the entry editor and boot messages; the menu items keep Inter), and on BIOS
+`grub.cfg` asks for `1024x768x32,800x600x32,auto` so the theme's layout fits (the crown no longer
+starts above the top edge). UEFI keeps `gfxmode=auto` (GOP, native mode). The theme
+(`tools/iso/grub/lordos/theme.txt`) is also the installed system's, so installed systems get the
+fix through the `lordos` package; their `/etc/default/grub` keeps `GRUB_GFXMODE=auto`, which is
+now safe at 640×480.
+
+**No KMS display.** LordOS draws through kernel modesetting. QEMU's VMware-compatible display is
+refused by `vmwgfx` ("unsupported hypervisor", "no pitchlock"), and Debian's kernel has no
+`simpledrm`, so there is no `/dev/dri/card0` with any firmware: the boot ended on a black screen.
+Since 0.8.1 `vmwgfx` loads only on VMware itself (`/etc/modprobe.d/lordos-vmwgfx.conf`, DMI vendor
+check), so the firmware framebuffer stays, and lord-sessiond writes on the text console that no
+display device with KMS was found and which display to choose instead. On VMware itself `vmwgfx`
+works (the user's VMware machine reaches the desktop with UEFI and, since 0.8.1, BIOS).
+
+**VMware guests** get `open-vm-tools` (shutdown and restart from the hypervisor, time sync, the
+guest's IP); its units have `ConditionVirtualization=vmware` and stay inactive elsewhere
+(checked on Proxmox: "unmet condition"). Shared clipboard and automatic resize need the desktop
+part (`open-vm-tools-desktop`, X11) and are not supported yet. GPU or CPU composition on VMware:
+see `GPU.md`.
+
+Tested with the rebuilt ISO on VM 123 (Proxmox, q35, 4 vCPUs, emulated HD Audio):
+
+| Firmware | Display | RAM | Result |
+|---|---|---|---|
+| SeaBIOS | VMware compatible | 2 GB | menu at 1024×768 ([screenshot](boot/bios-menu-1024.png)), the timeout boots the kernel (0.8.0: GRUB hung at the menu); no KMS device, so the text console explains it ([screenshot](boot/bios-no-kms-notice.png)) |
+| SeaBIOS | standard VGA | 2 GB | menu, splash, desktop ([screenshot](boot/bios-std-2g-desktop.png)); 1.6 GB available after login; `open-vm-tools` inactive (unmet condition); sink ERR 0 with audio playing from ~1 to ~5 minutes after login and 2 CPU burners |
+| SeaBIOS | standard VGA | 4 GB | desktop |
+| SeaBIOS | standard VGA | 2 GB | "safe mode: no GPU" entry: desktop |
+| OVMF (UEFI) | VirtIO GPU | 2 GB | menu at the native 1280×800 with the theme, splash with its bar, desktop: as in 0.8.0 |
+| VMware Fusion, BIOS | SVGA | 2 GB | 0.8.0: triple fault; 0.8.1: not re-tested on VMware here (the same GRUB code path as the QEMU case) |
+| VMware Fusion, UEFI | SVGA | 4 GB | 0.8.0 already boots to the desktop and the installer (the user's machine) |
+
+Not tested: installing to disk on a BIOS machine with this ISO (no free test disk; the installer
+writes both BIOS and UEFI GRUB, as tested on VM 117 in 0.7.0).
+
 ## Boot splash and boot menu
 
 From power-on to the login screen LordOS shows its own look: the boot menu, then the crown with a

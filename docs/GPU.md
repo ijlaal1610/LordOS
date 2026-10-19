@@ -37,6 +37,19 @@ and its buffers and the apps' dmabufs become framebuffers with `DRM_IOCTL_MODE_A
 Diagnostics: `LORD_GPU_DEBUG=1` shows the dmabuf formats, failing imports and the frames sent by
 direct scanout. The log says `gpu: GPU composition (renderer…)` or why not.
 
+**VMware virtual machines** (VMware SVGA, the `vmwgfx` kernel driver). `vmwgfx` is not in the
+list of plain drivers, so Mesa is loaded: with the machine's 3D acceleration on, Mesa's `svga`
+driver (`vmwgfx_dri.so`, in `libgl1-mesa-dri`, which the ISO ships) is the renderer and lord-server
+composites on the GPU (`GL_RENDERER` starts with `SVGA3D`); with 3D off, Mesa falls back to
+llvmpipe and lord-server to the CPU path. Which one ran is in the session log: in a LordOS
+Terminal, `grep gpu: ~/.cache/lordos/session.log` (for example `gpu: GPU composition (SVGA3D; …)`
+or `gpu: the renderer is software (llvmpipe …): CPU composition`). Not verified: the Proxmox test
+machines' "VMware compatible" display is QEMU's 2D-only `vmware-svga`, which `vmwgfx` refuses
+(since 0.8.1 it isn't even loaded there; see `ISO.md`, "Firmware and displays"), so only the
+presence of `vmwgfx_dri.so` in the image was checked. GPU composition with VMware's 3D, and why
+lord-server used ~35 % CPU with a video playing on the user's VMware machine, still need that log
+line from a real VMware guest.
+
 ## How it composites
 
 - **The UI** (React → CPU canvas) is a fullscreen texture. Per frame only what changed (the

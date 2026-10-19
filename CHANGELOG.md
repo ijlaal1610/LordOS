@@ -19,6 +19,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   lets you allow all users or only administrators. Root never logs in (`PermitRootLogin no` in a
   drop-in shipped by the `lordos` package). The Raspberry Pi image's `ssh` switch file keeps
   working and shows up as on ([docs/REMOTE.md](docs/REMOTE.md#remote-login-ssh)).
+- **Guest tools on VMware.** The ISO (and so every installed system) ships `open-vm-tools`:
+  shutdown and restart from the hypervisor, time sync and the guest's IP address. Its services only
+  run under VMware. Shared clipboard and automatic screen resize are not supported yet
+  ([docs/ISO.md](docs/ISO.md#firmware-and-displays)).
 
 ### Changed
 
@@ -32,6 +36,15 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   sent from "This computer" to the place and received back, more and faster with the rate; idle
   arcs are dimmed. Reduce motion shows still markers instead; the animation runs at 12 frames per
   second, only on screen, and stops when the window is minimized.
+- **More audio headroom in virtual machines.** When LordOS runs in a VM, emulated sound outputs
+  get 8 periods of 1024 frames, 8192 frames of headroom and interrupt-driven scheduling (a
+  WirePlumber rule that only matches in a VM; real hardware keeps its low latency). On VMware this
+  stopped YouTube stuttering in Chromium ([docs/SOUND.md](docs/SOUND.md#virtual-machines-081)).
+- **Background work yields to the desktop after login.** Mail sync runs at nice 19 with idle I/O
+  and the thumbnail worker at the lowest I/O priority, so they don't compete with sound and the
+  first windows.
+- **The input level meter in Settings → Sound** reads a normal 48 kHz stream instead of a 25 Hz
+  peak stream, which in PipeWire ran as a node with a quantum of 1.
 
 ### Fixed
 
@@ -57,6 +70,16 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 - **The Network tab's detail panel no longer hides values under its scroll bar.** The panel keeps
   a strip for the bar, and a label and value that don't fit on one line go on two instead of
   running over the next row (es/en/pt, right to left, minimum window size).
+- **The live ISO boots with legacy BIOS again.** 0.8.0 triple-faulted on VMware (and hung at the
+  boot menu on QEMU's VMware-compatible display) when booting with BIOS firmware: GRUB's graphical
+  terminal corrupted its own memory at 640×480 with the theme's proportional font. The theme now
+  uses GRUB's fixed-width font for the terminal and BIOS boots ask for 1024×768 first; UEFI is
+  unchanged. Installed systems get the same theme fix
+  ([docs/ISO.md](docs/ISO.md#firmware-and-displays)).
+- **No silent black screen without a KMS display.** When there is no display device with kernel
+  modesetting (for example QEMU's VMware-compatible display), the text console now says so and
+  suggests a display that works; `vmwgfx` only loads on VMware itself, so the console stays
+  visible elsewhere.
 
 ## [0.8.0-beta] - 2026-10-18
 

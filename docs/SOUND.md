@@ -220,6 +220,51 @@ lord-server doesn't need real time and doesn't hold PipeWire back:
 
 There was no need to change `pipewire-pulse`'s quantum.
 
+## Virtual machines (0.8.1)
+
+**Symptom (0.8.0).** On VMware (2 vCPUs, the default emulated card and later HD Audio), YouTube
+in Chromium stuttered: `pw-top` showed ERR on the ALSA sink climbing (600 → 1600) while BUSY was
+~10–30 µs, so the guest CPU wasn't the problem: the emulated card is fed by the host's timers and
+on a busy host they arrive late. It was worst in the first minutes after login.
+
+**What was already there.** PipeWire and WirePlumber detect a VM themselves (`cpu.vm.name`, from
+DMI/CPUID; `pw-cli info 0` shows it, `qemu` on Proxmox). Then PipeWire raises the minimum quantum
+to 1024 (`pipewire.conf`, `vm.overrides`) and Debian's WirePlumber gives emulated PCI cards
+1024-frame periods and 2048 frames of headroom (`/usr/share/wireplumber/wireplumber.conf.d/alsa-vm.conf`).
+On the user's VMware machine those were active and the sink still ran dry (ERR 989 → 1042 in
+~10 s with YouTube playing).
+
+**Fix.** `/etc/wireplumber/wireplumber.conf.d/lordos-vm-audio.conf` (in the `lordos` package,
+`tools/iso/rootfs/`) adds a rule for `alsa_output.*` with the same VM-only match as
+`alsa-vm.conf` (`cpu.vm.name = "~.*"`): 8 periods of 1024 frames, `api.alsa.headroom = 8192`
+(~170 ms at 48 kHz) and `api.alsa.disable-tsched = true` (the card's interrupts drive PipeWire,
+not timers). Its name sorts after `alsa-vm.conf`, so its values win. On the VMware machine it
+took ERR from climbing to 0 → 0 over 30 s of YouTube (sink WAIT 287 µs, BUSY 28 µs). On real
+hardware `cpu.vm.name` is not set, the rule doesn't match and latency stays as before. No unit or
+generator is needed: the match is WirePlumber's own.
+
+Startup: helpers that do background work right after login now yield. `lord-maild` (its first
+full sync starts at login) runs at nice 19 with the idle I/O class; the `lord-media` thumbnail and
+probe worker runs at nice 10 with the lowest best-effort I/O level. The backup thread already ran
+at nice 19, idle I/O, 5 minutes after login and never on battery. PipeWire itself runs with
+real-time priority (see above), so contention inside the guest can't starve it; what the extra
+headroom covers is the host.
+
+The input level meter in Settings → Sound used pavucontrol's 25 Hz `PEAK_DETECT` stream, which in
+PipeWire is a node at rate 25 with a quantum of 1; on the VMware machine PipeWire was seen at
+~36 % CPU while the page was open. It is now a plain 48 kHz mono stream read in blocks of 2048
+samples (~23 levels a second), opened only while the Sound page is open and closed when it
+closes (`apps/settings/Sound.jsx`, `snd_meter` in `server/src/sound/snd.c`). The Voice Recorder computes its level from
+its own recording stream and has no extra one.
+
+**Tested (VM 123, Proxmox, live ISO, emulated HD Audio with `driver=none`, SeaBIOS):** the sink
+shows the rule's values (`wpctl inspect @DEFAULT_AUDIO_SINK@`: `api.alsa.headroom = "8192"`,
+`api.alsa.disable-tsched = "true"`; `/proc/asound/card1/pcm0p/sub0/hw_params`: period 1024,
+buffer 8192), the source keeps Debian's 2048. 30 s of playback with 4 CPU burners in the guest:
+ERR 0 → 0, with and without the rule: KVM's emulated card doesn't show VMware's dropouts, so the
+fix itself was measured on the user's VMware machine, and Proxmox only checks that it applies and
+does no harm.
+
 ## Pending
 
 - **Real speakers.** The VM now has an HDA card with a codec (`audio0: ich9-intel-hda`; the user
