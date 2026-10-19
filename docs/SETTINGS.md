@@ -44,7 +44,7 @@ the time fields keep `direction: 'ltr'`.
         │
         ▼  root work: closed admin actions (hw/hw_admin.c)
  admin.c ─ display-brightness, power-profile, power-suspend, power-buttons, time-ntp, time-set,
-           bt-unblock, rpi-case
+           bt-unblock, rpi-case, video-optimize
 
  Cooling: lord.fan (ui/js_fan.c) ── /run/lordos/fand.sock ── lord-fand (root service, src/fan)
 ```
@@ -120,6 +120,11 @@ timer that sleeps until the next change (30 s steps only during the 30-minute fa
   then, and the GPU path is not tinted (pending: a multiply pass in `gpu.c`).
 
   ![Night Light applied](settings-night-light.png)
+
+- **Video in the browser.** "Optimize video for this computer" (Automatic, Always, Never) and
+  "Lower quality automatically when video stutters": when the hardware can't decode VP9 or AV1,
+  the browsers are asked for H.264 (`Video.jsx`, `sdk/video.js`, the closed admin action
+  `video-optimize`). See [VIDEO.md](VIDEO.md).
 
   Schedule: off, **sunset to sunrise** or **custom hours**, with a 30-minute fade, plus "Turn on
   now" (until the end of tonight's schedule, or 07:00). Sunrise and sunset come from the Almanac

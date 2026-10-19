@@ -258,3 +258,73 @@ void hw_act_rpi_case(const AdminReq *r, const char *arg, size_t len) {
     if (!ok || rename(tmp, dst)) { unlink(tmp); admin_err("hw.caseFailed", "errno", lerr_errno(errno), NULL); return; }
     admin_ok("hw.caseSet", "case", id, NULL);
 }
+
+/* ---- video in the browser (docs/VIDEO.md) ---- */
+
+int hw_video_files(const char *arg, char *chromium, size_t cn, char *firefox, size_t fn) {
+    char a[64], mode[16], lower[8], vp9[8], av1[8], extra[2];
+    if (!arg || strlen(arg) >= sizeof a) return -1;
+    snprintf(a, sizeof a, "%s", arg);
+    a[strcspn(a, "\n")] = 0;
+    if (sscanf(a, "%15s %7s %7s %7s %1s", mode, lower, vp9, av1, extra) != 4) return -1;
+    if (strcmp(mode, "auto") && strcmp(mode, "always") && strcmp(mode, "never")) return -1;
+    if (strcmp(lower, "on") && strcmp(lower, "off")) return -1;
+    if ((strcmp(vp9, "yes") && strcmp(vp9, "no")) || (strcmp(av1, "yes") && strcmp(av1, "no"))) return -1;
+    int hw_vp9 = !strcmp(vp9, "yes"), hw_av1 = !strcmp(av1, "yes");
+    /* Chromium: the extension's managed storage ("3rdparty" policy); the extension decides */
+    snprintf(chromium, cn,
+             "{\n  \"3rdparty\": {\n    \"extensions\": {\n      \"%s\": {\n"
+             "        \"mode\": \"%s\",\n        \"autoLower\": %s,\n        \"hwVp9\": %s,\n        \"hwAv1\": %s\n"
+             "      }\n    }\n  }\n}\n",
+             HW_VIDEO_EXT_ID, mode, !strcmp(lower, "on") ? "true" : "false", hw_vp9 ? "true" : "false", hw_av1 ? "true" : "false");
+    /* Firefox ESR (no extension: it only loads signed ones): AV1 can be turned off on its own; VP9
+     * has no such switch without turning off all of WebM, so it stays */
+    int no_av1 = !strcmp(mode, "always") || (!strcmp(mode, "auto") && !hw_av1);
+    snprintf(firefox, fn,
+             "// Written by LordOS (Settings → Displays → Video in the browser). Changes here are overwritten.\n"
+             "// See docs/VIDEO.md.\n%s",
+             no_av1 ? "pref(\"media.av1.enabled\", false);\n" : "");
+    return 0;
+}
+
+/* Writes text to path through a temporary file and rename (nothing if it is already there). */
+static int write_atomic(const char *path, const char *text) {
+    char cur[2048];
+    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd >= 0) {
+        ssize_t n = read(fd, cur, sizeof cur - 1);
+        close(fd);
+        if (n >= 0) { cur[n] = 0; if (!strcmp(cur, text)) return 0; }
+    }
+    char tmp[PATH_MAX];
+    snprintf(tmp, sizeof tmp, "%s.lordos-tmp", path);
+    fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0644);
+    if (fd < 0) return -1;
+    int ok = write(fd, text, strlen(text)) == (ssize_t)strlen(text);
+    ok = fsync(fd) == 0 && ok;
+    fchmod(fd, 0644);
+    close(fd);
+    if (!ok || rename(tmp, path)) { unlink(tmp); return -1; }
+    return 0;
+}
+
+void hw_act_video(const AdminReq *r, const char *arg, size_t len) {
+    (void)r;
+    char a[64], chromium[1024], firefox[512];
+    if (arg_copy(arg, len, a, sizeof a) || hw_video_files(a, chromium, sizeof chromium, firefox, sizeof firefox)) {
+        admin_err("admin.invalidArgument", NULL);
+        return;
+    }
+    const char *cp = "/etc/chromium/policies/managed/lordos-video.json";
+    mkdir("/etc/chromium", 0755);
+    mkdir("/etc/chromium/policies", 0755);
+    mkdir("/etc/chromium/policies/managed", 0755);
+    if (write_atomic(cp, chromium)) { admin_err("sys.writeFailed", "path", cp, NULL); return; }
+    struct stat st;
+    const char *fp = "/etc/firefox-esr/lordos-video.js";
+    if (stat("/etc/firefox-esr", &st) == 0 && S_ISDIR(st.st_mode) && write_atomic(fp, firefox)) {
+        admin_err("sys.writeFailed", "path", fp, NULL);
+        return;
+    }
+    admin_say("OK", "%s", a);   /* i18n-ok */
+}

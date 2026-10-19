@@ -36,6 +36,8 @@ import { askPower, canPower } from './power.jsx';
 export { PowerDialog, powerAsk, POWER_SECONDS } from './power.jsx';
 import { EmojiPanel } from './emoji.jsx';
 export { admin } from './admin.js';
+export { videoPrefs, setVideoPrefs, videoHardware, videoError, videoOptimizing, VIDEO_MODES, VIDEO_DEFAULTS } from './video.js';   // docs/VIDEO.md
+import { startVideo } from './video.js';
 export { errorText, statusText, codeError, parseCode } from './errors.js';
 export { logs } from './logs.js';
 export { LordOSLogo, LordOSGlyph, LordOSWordmark } from './logo.js';
@@ -172,6 +174,7 @@ export function startShell(element) {
   startReminders();                     // calendar and reminder alarms, with the apps closed
   maybeStartTour();                     // "Welcome to LordOS", the first time
   startHardware();                      // Night Light, idle timers, battery in the menu bar (hardware.jsx)
+  startVideo();                         // browser video without hardware decoding (video.js, docs/VIDEO.md)
 }
 
 // Changing the language remounts the whole interface (windows, tabs and

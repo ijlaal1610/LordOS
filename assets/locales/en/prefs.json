@@ -243,5 +243,22 @@
   "time.synced": "Synchronized with the network time servers (systemd-timesyncd).",
   "time.syncing": "Waiting for the first synchronization…",
   "time.zone": "Time zone",
-  "time.zoneFooter": "Chosen by hand: LordOS never looks up your location on the network."
+  "time.zoneFooter": "Chosen by hand: LordOS never looks up your location on the network.",
+  "video.autoLower": "Lower quality automatically when video stutters",
+  "video.autoLowerHint": "Without it, the browser shows a small notice offering to lower it.",
+  "video.checking": "Checking what this computer decodes in hardware…",
+  "video.codecsBoth": "VP9 or AV1",
+  "video.footer": "H.264 takes far less work to decode without a hardware decoder, so video plays smoothly. Applies to every user of this computer and to pages opened from now on (some browsers only after a restart). Nothing is sent anywhere.",
+  "video.mode.always": "Always",
+  "video.mode.auto": "Automatic",
+  "video.mode.never": "Never",
+  "video.optimize": "Optimize video for this computer",
+  "video.reason.noDriver": "no video decoding driver",
+  "video.reason.noProfiles": "the graphics card doesn’t support them",
+  "video.reason.virtualGpu": "virtual graphics card",
+  "video.statusAlways": "On: video sites are asked for H.264 on this computer.",
+  "video.statusAuto": "On: this computer can’t decode {codecs} in hardware ({reason}), so video sites are asked for H.264.",
+  "video.statusHardware": "Off: this computer decodes VP9 and AV1 video in hardware.",
+  "video.statusNever": "Off: video sites choose the format, even when the computer has to decode it without help.",
+  "video.title": "Video in the browser"
 }

@@ -99,5 +99,6 @@ void lm_player(const char *params, int fd, int pulse, int render);      /* lm_pl
 void lm_screenrec(const char *params, int out, int pulse, int render);  /* lm_rec.c */
 void lm_camera(const char *params, int dev, int render);                /* lm_cam.c */
 void lm_audiorec(const char *params, int out, int pulse);               /* lm_rec.c */
+void lm_hwprobe(const int *render, int n_render);                       /* lm_hwprobe.c */
 
 #endif

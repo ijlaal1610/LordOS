@@ -243,5 +243,22 @@
   "time.synced": "Sincronizada con los servidores de hora de la red (systemd-timesyncd).",
   "time.syncing": "Esperando la primera sincronización…",
   "time.zone": "Zona horaria",
-  "time.zoneFooter": "Se elige a mano: LordOS nunca busca tu ubicación en la red."
+  "time.zoneFooter": "Se elige a mano: LordOS nunca busca tu ubicación en la red.",
+  "video.autoLower": "Bajar la calidad automáticamente cuando el video se traba",
+  "video.autoLowerHint": "Si está apagado, el navegador muestra un aviso chico que ofrece bajarla.",
+  "video.checking": "Viendo qué decodifica esta computadora por hardware…",
+  "video.codecsBoth": "VP9 ni AV1",
+  "video.footer": "H.264 cuesta mucho menos de decodificar sin un decodificador por hardware, así el video se ve fluido. Vale para todos los usuarios de esta computadora y para las páginas que se abran desde ahora (algunos navegadores, recién al reiniciarse). No se envía nada a ningún lado.",
+  "video.mode.always": "Siempre",
+  "video.mode.auto": "Automático",
+  "video.mode.never": "Nunca",
+  "video.optimize": "Optimizar el video para esta computadora",
+  "video.reason.noDriver": "no hay un controlador de decodificación de video",
+  "video.reason.noProfiles": "la tarjeta gráfica no los soporta",
+  "video.reason.virtualGpu": "tarjeta gráfica virtual",
+  "video.statusAlways": "Encendido: en esta computadora se les pide H.264 a los sitios de video.",
+  "video.statusAuto": "Encendido: esta computadora no puede decodificar {codecs} por hardware ({reason}), así que se les pide H.264 a los sitios de video.",
+  "video.statusHardware": "Apagado: esta computadora decodifica video VP9 y AV1 por hardware.",
+  "video.statusNever": "Apagado: los sitios de video eligen el formato, aunque la computadora lo tenga que decodificar sin ayuda.",
+  "video.title": "Video en el navegador"
 }

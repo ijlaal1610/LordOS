@@ -24,6 +24,10 @@
 #   /usr/share/keyrings/lordos-archive-keyring.gpg   the key that signs that repository
 #   /usr/lib/lordos/migrate, migrations/  version-to-version system migrations, run by postinst
 #   /etc/kernel/postinst.d/zz-lordos-reboot-required  "restart required" after a kernel update
+#   /usr/share/chromium/extensions/lordos-video/  LordOS's own browser extension for smooth video without
+#                                         hardware decoding (Debian's chromium loads every folder there;
+#                                         docs/VIDEO.md). Its settings are written at login by the
+#                                         admin action video-optimize, not shipped (postrm removes them)
 set -eu
 OUT=${1:?uso: mkdeb.sh salida.deb}
 ROOT=$(pwd)
@@ -97,6 +101,13 @@ install -d "$PKG/usr/lib/sysctl.d"
 printf '%s\n' '# LordOS: ptrace only of descendants (docs/FIREWALL.md, "Linux apps")' 'kernel.yama.ptrace_scope = 1' > "$PKG/usr/lib/sysctl.d/50-lordos-ptrace.conf"
 chmod 644 "$PKG/usr/lib/sysctl.d/50-lordos-ptrace.conf"
 install -m 644 tools/iso/rootfs/etc/systemd/system/lordos.service "$PKG/usr/lib/systemd/system/lordos.service"
+# smooth video in Chromium without hardware decoding (docs/VIDEO.md); the Firefox manifest stays out
+X="$PKG/usr/share/chromium/extensions/lordos-video"
+install -d "$X"
+(cd assets/browser/video && find . -type f ! -name manifest.firefox.json ! -name '.*' -print) | while read -r f; do
+    install -D -m 644 "assets/browser/video/$f" "$X/$f"
+done
+find "$PKG/usr/share/chromium" -type d -exec chmod 755 {} +
 # boot splash (docs/brand/README.md, "Boot splash"): the Plymouth theme and the hand-off to LordOS
 install -m 755 tools/boot/lordos-splash "$L/lordos-splash"
 install -m 644 tools/boot/systemd/lordos-splash-quit.service "$PKG/usr/lib/systemd/system/lordos-splash-quit.service"
@@ -256,6 +267,8 @@ cat > "$PKG/DEBIAN/postrm" <<'C'
 #!/bin/sh
 set -e
 if [ "$1" = remove ] || [ "$1" = purge ]; then rm -f /etc/apt/sources.list.d/lordos.sources; fi
+# the browsers' video settings written by Settings (video-optimize, docs/VIDEO.md)
+if [ "$1" = remove ] || [ "$1" = purge ]; then rm -f /etc/chromium/policies/managed/lordos-video.json /etc/firefox-esr/lordos-video.js; fi
 if [ "$1" = purge ]; then rm -rf /var/lib/lordos/migrations; fi
 C
 chmod 755 "$PKG/DEBIAN/postrm"

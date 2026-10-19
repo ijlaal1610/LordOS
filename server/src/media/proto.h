@@ -31,6 +31,8 @@ enum {
     MK_SCREENREC,       /* screen recording: fds = mp4 output, microphone ring (or -1), render node */
     MK_CAMERA,          /* V4L2 camera: fds = /dev/videoN, render node */
     MK_AUDIOREC,        /* audio recorder: fds = wav output, microphone ring */
+    MK_HWPROBE,         /* which video codecs VA-API decodes: fds = render node → one MM_RESULT
+                           with JSON {"vaapi":bool,"vendor":"…","vp9":bool,"av1":bool,"h264":bool,"hevc":bool} */
 };
 
 /* Jobs of the MK_WORKER helper (MM_JOB with v[0] = MW_*). */
