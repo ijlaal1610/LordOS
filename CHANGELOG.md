@@ -10,8 +10,48 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
+## [0.8.1-beta] - 2026-10-19
+
+A maintenance and polish release on top of 0.8.0-beta, and the first one that installed systems
+can update to in place: from here on, new versions arrive through **Store → Updates** (or `apt`)
+from a signed LordOS repository, with no reinstall. It also brings a Dock you arrange yourself,
+remote login over SSH from Settings, Restart and Shut Down in the crown menu, process actions and
+complete traffic accounting in Monitor, Bluetooth on the Raspberry Pi 5, and fixes for typing lag
+and black windows on the GPU path and for legacy BIOS boot in virtual machines.
+
 ### Added
 
+- **A Dock you arrange yourself.** Drag any app (a LordOS app, an installed package or a Linux
+  app such as Firefox) from the app launcher onto the Dock and it lands where you drop it; drag icons
+  along the Dock to reorder them (the neighbours slide aside); drag one away and hold it for a
+  moment to remove it with a "poof", or use **Keep in Dock** / **Remove from Dock** in the menus.
+  Files stays first and the Trash last (it shows when it is full, opens in Files, takes files
+  dropped from Files and empties after a confirmation); Files, Settings and the app launcher can't
+  be removed. The Dock's menu starts with quick actions: an app's own (Settings' sections, Files'
+  folders, Mail's New Message, Monitor's tabs) or a Linux app's desktop actions from its `.desktop`
+  file. Settings → Desktop & Dock → **Reset Dock to defaults** puts the theme's apps back. The
+  Classic theme's taskbar works the same way, with a drop line. The arrangement from 0.8.0 is
+  migrated on first login ([docs/DOCK.md](docs/DOCK.md#customizing-the-dock-081)).
+- **Update LordOS from the Store, without reinstalling.** Store → Updates now shows "LordOS
+  <version> is available" with the release notes and an Update button, next to Debian's updates;
+  files, settings and accounts are kept, and a "Restart required" notice appears when the new
+  version (or a new kernel) is installed. It works the same on the ISO install, the Raspberry Pi
+  image, Debian with `install.sh` and servers, and `sudo apt update && sudo apt upgrade` does the
+  same. An optional daily check (on by default, never installs anything) notifies when something
+  new is available ([docs/UPDATES.md](docs/UPDATES.md)).
+- **Settings → Sharing → Remote login (SSH).** A new switch, off by default on every install,
+  turns the standard SSH server on and off for good (`systemctl enable --now` / `disable --now`).
+  The first time, it installs `openssh-server` through the package engine (the Store's path). The
+  page shows `ssh <user>@<address>` for this computer and its ED25519 host key fingerprint, and
+  lets you allow all users or only administrators. Root never logs in (`PermitRootLogin no` in a
+  drop-in shipped by the `lordos` package). The Raspberry Pi image's `ssh` switch file keeps
+  working and shows up as on ([docs/REMOTE.md](docs/REMOTE.md#remote-login-ssh)).
+- **Restart… and Shut Down… in the crown menu** (and behind a Power button in the Classic theme's
+  start menu); before, they were only on the login screen. Each opens a confirmation that does it
+  by itself after 60 seconds unless cancelled, lists the apps still open and warns when other users
+  are logged in. The session asks `lord-sessiond`, which only accepts those two words: any user may
+  do it alone, and only an administrator while other users have sessions open
+  ([docs/SESSIONS.md](docs/SESSIONS.md#restart-and-shut-down-from-a-session)).
 - **Monitor → Processes: stop a process and Get Info.** Select a row and use the new Stop and
   Info buttons, the right-click menu, a double click, ❖/Ctrl+I or Delete. Stop asks first, with
   **Quit** (SIGTERM), **Force Quit** (SIGKILL) and Cancel. Your own processes are signalled by the
@@ -23,13 +63,16 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   CPU time, threads, context switches, page faults, start time, nice, control group and LordOS
   restrictions), open files and ports (with the addresses of each socket), the executable and the
   command line, updated every second ([docs/MONITOR.md](docs/MONITOR.md#process-actions-081)).
-- **Update LordOS from the Store, without reinstalling.** Store → Updates now shows "LordOS
-  <version> is available" with the release notes and an Update button, next to Debian's updates;
-  files, settings and accounts are kept, and a "Restart required" notice appears when the new
-  version (or a new kernel) is installed. It works the same on the ISO install, the Raspberry Pi
-  image, Debian with `install.sh` and servers, and `sudo apt update && sudo apt upgrade` does the
-  same. An optional daily check (on by default, never installs anything) notifies when something
-  new is available ([docs/UPDATES.md](docs/UPDATES.md)).
+- **Bluetooth on the Raspberry Pi 5 image.** The on-board CYW43455 controller (on a UART, brought
+  up by the kernel) now works out of the box: the image ships BlueZ, the chip's firmware patch
+  (`bluez-firmware`), headset audio in PipeWire (`libspa-0.2-bluetooth`) and a small helper of our
+  own, `lordos-rpi-bt@hciN`, that routes call audio (SCO) over HCI so headset microphones work.
+  Settings → Bluetooth uses it as on a PC. Scanning is verified on a Pi 5; pairing a device on the
+  board is still to be tested ([docs/RASPBERRY.md](docs/RASPBERRY.md#bluetooth)).
+- **Guest tools on VMware.** The ISO (and so every installed system) ships `open-vm-tools`:
+  shutdown and restart from the hypervisor, time sync and the guest's IP address. Its services only
+  run under VMware. Shared clipboard and automatic screen resize are not supported yet
+  ([docs/ISO.md](docs/ISO.md#firmware-and-displays)).
 - **A signed LordOS package repository** at `https://lordos.org/apt` (suite `stable`, amd64 and
   arm64), signed with a dedicated OpenPGP key (Ed25519, fingerprint
   `1DDA F390 107D F264 FA8A 0918 3972 CC6D E4DA 2336`) shipped as
@@ -43,7 +86,6 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   and keep root's SSH key login on servers upgraded from 0.8.0 (0.8.1 turns root login off).
 - **Local repositories in the package engine:** a `file:/path` source (a disk or a USB stick) is
   read like a download, as `nobody`, and checked the same way.
-
 - **`tools/diag/keylag.sh`: where does the typing delay come from?** In two minutes it reports the
   composition mode, the VM and its guest tools and Chromium's complaints, and with
   `lordos.inputdebug=1` on the kernel line (one boot, root only) it times each stage of a key in
@@ -51,39 +93,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   timings only (no key, character or modifier), only for keys sent to Linux apps (never LordOS's
   own fields, the Terminal, Passwords, login or lock), in a 0600 file in the session's runtime
   folder, and stops after 120 s ([docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)).
-- **Settings → Sharing → Remote login (SSH).** A new switch, off by default on every install,
-  turns the standard SSH server on and off for good (`systemctl enable --now` / `disable --now`).
-  The first time, it installs `openssh-server` through the package engine (the Store's path). The
-  page shows `ssh <user>@<address>` for this computer and its ED25519 host key fingerprint, and
-  lets you allow all users or only administrators. Root never logs in (`PermitRootLogin no` in a
-  drop-in shipped by the `lordos` package). The Raspberry Pi image's `ssh` switch file keeps
-  working and shows up as on ([docs/REMOTE.md](docs/REMOTE.md#remote-login-ssh)).
-- **Bluetooth on the Raspberry Pi 5 image.** The on-board CYW43455 controller (on a UART, brought
-  up by the kernel) now works out of the box: the image ships BlueZ, the chip's firmware patch
-  (`bluez-firmware`), headset audio in PipeWire (`libspa-0.2-bluetooth`) and a small helper of our
-  own, `lordos-rpi-bt@hciN`, that routes call audio (SCO) over HCI so headset microphones work.
-  Settings → Bluetooth uses it as on a PC. Scanning is verified on a Pi 5; pairing a device on the
-  board is still to be tested ([docs/RASPBERRY.md](docs/RASPBERRY.md#bluetooth)).
 - **`verify-board` checks Bluetooth and the BPF LSM** on a freshly flashed board: the controller on
   its UART, `bluetoothd`, the SCO helper, the board address, `bpf` in the LSM list, the kernel's
   BTF and `lord-netperm`.
-- **Guest tools on VMware.** The ISO (and so every installed system) ships `open-vm-tools`:
-  shutdown and restart from the hypervisor, time sync and the guest's IP address. Its services only
-  run under VMware. Shared clipboard and automatic screen resize are not supported yet
-  ([docs/ISO.md](docs/ISO.md#firmware-and-displays)).
-- **Restart… and Shut Down… in the crown menu** (and behind a Power button in the Classic theme's
-  start menu); before, they were only on the login screen. Each opens a confirmation that does it
-  by itself after 60 seconds unless cancelled, lists the apps still open and warns when other users
-  are logged in. The session asks `lord-sessiond`, which only accepts those two words: any user may
-  do it alone, and only an administrator while other users have sessions open
-  ([docs/SESSIONS.md](docs/SESSIONS.md#restart-and-shut-down-from-a-session)).
 
 ### Changed
 
-- **The LordOS Raspberry Pi kernel gains the BPF LSM, BTF and Yama** (`6.18.57-2+lordos`, same
-  Raspberry Pi source as 0.8.0's `-1`): `CONFIG_BPF_LSM`, `CONFIG_DEBUG_INFO_BTF` (from `pahole`;
-  modules stripped, no debug package) and `CONFIG_SECURITY_YAMA`. The active LSM list on the Pi is
-  now `capability,landlock,yama,bpf`.
 - **Monitor → Network: a fluid traffic chart.** The sparse per-second bars are now a continuous
   mirrored strip for the last 60 s: sent above the baseline, received below, one bar per second on
   a faint track, scrolling smoothly at 4 samples per second, auto-scaled, with the minute's totals
@@ -103,6 +118,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   first windows.
 - **The input level meter in Settings → Sound** reads a normal 48 kHz stream instead of a 25 Hz
   peak stream, which in PipeWire ran as a node with a quantum of 1.
+- **The LordOS Raspberry Pi kernel gains the BPF LSM, BTF and Yama** (`6.18.57-2+lordos`, same
+  Raspberry Pi source as 0.8.0's `-1`): `CONFIG_BPF_LSM`, `CONFIG_DEBUG_INFO_BTF` (from `pahole`;
+  modules stripped, no debug package) and `CONFIG_SECURITY_YAMA`. The active LSM list on the Pi is
+  now `capability,landlock,yama,bpf`.
 
 ### Fixed
 
@@ -115,29 +134,6 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   frame callbacks once a second. Measured with Chromium: p50/p95 from the key to the screen
   949/1866 ms before, 18/25 ms after; also in 0.8.0. Seen on VMware, reproduced on Proxmox
   ([docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)).
-- **Menus are always above the Dock.** With the Dock on the left, the crown menu opened underneath
-  it and the Dock took its clicks; select lists inside apps (Passwords' category list) were drawn
-  under the form fields after them. The desktop now has one stacking order, in layers (Dock < menu
-  bar < fullscreen < launcher < menus and popovers < sheets < notifications < tooltips < drag
-  images < system prompts), and clicks follow it, in every Dock position, light and dark, RTL and
-  the Classic theme ([docs/LAYERS.md](docs/LAYERS.md)).
-- **No lighter band in the menu bar after a menu or the Control Center closes.** The menu bar's
-  background blur read the screen around it, and outside the repainted area that still held the
-  bar's previous frame, so the repainted part came out lighter until something else redrew the bar.
-  Now a change that touches a blurred surface, or the margin its blur reads, repaints the whole
-  surface (the GPU path composites the same canvas; `engine-test` checks it against a full
-  repaint).
-- **"No Bluetooth" for Linux apps is enforced on the Raspberry Pi 5** (a known issue in 0.8.0):
-  `lord-netperm` loads its Bluetooth socket program there as on a PC (`npverify-test` 37/37 on the
-  board), and a process in a restricted app's scope gets `EPERM` from `socket(AF_BLUETOOTH)` while
-  the same call outside it works.
-- **`kernel.yama.ptrace_scope = 1` applies on the Raspberry Pi 5:** 0.8.0's Pi kernel had no Yama,
-  so any process could attach to another of the same user there.
-- **The menu bar names a Linux app, not its window.** Next to the crown it showed the window title
-  (for a browser, the whole page title); it now shows the app's short
-  name, "Chromium", in every language. The Dock tooltip and Linux app notifications use the same
-  short name; a real translation of the name (e.g. "Archivos") still shows, and a window without a
-  `.desktop` file is named after its app id. The window's own title bar keeps the title.
 - **Linux app windows are no longer black after the login screen or a lock.** With GPU
   composition, coming back to the monitor creates a new GPU context, but each window's buffers were
   still drawn with their textures from the old one: Chromium's window stayed black while its audio
@@ -152,6 +148,23 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   rates per app and per address every second: 98.7–98.8 % of the interface's counters in the
   tests (an HTTP/3 download, a browser on a video site), about 0.5 µs per packet and no measurable
   cost on TCP ([docs/FIREWALL.md](docs/FIREWALL.md#the-programs)).
+- **The menu bar names a Linux app, not its window.** Next to the crown it showed the window title
+  (for a browser, the whole page title); it now shows the app's short
+  name, "Chromium", in every language. The Dock tooltip and Linux app notifications use the same
+  short name; a real translation of the name (e.g. "Archivos") still shows, and a window without a
+  `.desktop` file is named after its app id. The window's own title bar keeps the title.
+- **Menus are always above the Dock.** With the Dock on the left, the crown menu opened underneath
+  it and the Dock took its clicks; select lists inside apps (Passwords' category list) were drawn
+  under the form fields after them. The desktop now has one stacking order, in layers (Dock < menu
+  bar < fullscreen < launcher < menus and popovers < sheets < notifications < tooltips < drag
+  images < system prompts), and clicks follow it, in every Dock position, light and dark, RTL and
+  the Classic theme ([docs/LAYERS.md](docs/LAYERS.md)).
+- **No lighter band in the menu bar after a menu or the Control Center closes.** The menu bar's
+  background blur read the screen around it, and outside the repainted area that still held the
+  bar's previous frame, so the repainted part came out lighter until something else redrew the bar.
+  Now a change that touches a blurred surface, or the margin its blur reads, repaints the whole
+  surface (the GPU path composites the same canvas; `engine-test` checks it against a full
+  repaint).
 - **The Network tab's detail panel no longer hides values under its scroll bar.** The panel keeps
   a strip for the bar, and a label and value that don't fit on one line go on two instead of
   running over the next row (es/en/pt, right to left, minimum window size).
@@ -166,6 +179,37 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   suggests a display that works; `vmwgfx` only loads on VMware itself, so the console stays
   visible elsewhere.
 
+### Security
+
+- **"No Bluetooth" for Linux apps is enforced on the Raspberry Pi 5** (a known issue in 0.8.0):
+  `lord-netperm` loads its Bluetooth socket program there as on a PC (`npverify-test` 37/37 on the
+  board), and a process in a restricted app's scope gets `EPERM` from `socket(AF_BLUETOOTH)` while
+  the same call outside it works.
+- **`kernel.yama.ptrace_scope = 1` applies on the Raspberry Pi 5:** 0.8.0's Pi kernel had no Yama,
+  so any process could attach to another of the same user there.
+- **Root can't log in over SSH by default.** The `lordos` package ships
+  `/etc/ssh/sshd_config.d/10-lordos.conf` with `PermitRootLogin no`, for the new SSH switch and for
+  an SSH server installed any other way; a server upgraded from 0.8.0 that is administered as
+  root with a key keeps key-only root login (see Upgrading).
+
+### Known issues and limitations
+
+- **On the Raspberry Pi 5, pairing a Bluetooth device and a headset's audio have not been tested
+  on the board yet;** scanning works. The Pi 4 kernel in the image (`-rpi-v8`) is still 0.8.0's,
+  without the BPF LSM, so "No Bluetooth" is not enforced on a Pi 4
+  ([docs/RASPBERRY.md](docs/RASPBERRY.md#bluetooth)).
+- **Kernel updates on the Raspberry Pi come with a new image,** not through Store → Updates: the
+  LordOS Pi kernel is not in the repository until the image can fall back to the previous kernel
+  ([docs/UPDATES.md](docs/UPDATES.md#the-raspberry-pi-kernel)). The `lordos` package itself updates
+  on the Pi like anywhere else.
+- **On VMware, shared clipboard and automatic screen resize are not supported yet**
+  (`open-vm-tools-desktop` targets X11). QEMU's VMware-compatible display has no kernel modesetting:
+  use the standard VGA or virtio display there.
+- **No metered-connection setting yet:** turn off Store → Updates → Check for updates automatically
+  on a metered link.
+- The other known issues of 0.8.0 still apply, except the two fixed above (the Pi 5's "No
+  Bluetooth" and the built-in updater).
+
 ### Upgrading
 
 - **From 0.8.0 (once):** run `curl -fsSL https://lordos.org/install.sh | sh` again. It upgrades in
@@ -175,6 +219,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 - On a server administered as root with an SSH key, the upgrade keeps root's key login
   (`/etc/ssh/sshd_config.d/09-lordos-root-keys.conf`) even though 0.8.1's default is no root login;
   delete that file to apply the default.
+- **From 0.8.1 on,** Store → Updates shows each new version with its notes and installs it;
+  `sudo apt update && sudo apt upgrade` does the same. Each version's changes to the system run
+  once as migrations (`ls /var/lib/lordos/migrations` lists the ones applied), so skipping a
+  version is fine. A restart finishes the update.
 
 ## [0.8.0-beta] - 2026-10-18
 
@@ -669,6 +717,7 @@ we published. See [docs/SIGNING.md](docs/SIGNING.md).
 
 Never published; superseded by 0.8.0-beta.
 
-[Unreleased]: https://github.com/lordbasex/LordOS/compare/v0.8.0-beta...HEAD
+[Unreleased]: https://github.com/lordbasex/LordOS/compare/v0.8.1-beta...HEAD
+[0.8.1-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.0-beta...v0.8.1-beta
 [0.8.0-beta]: https://github.com/lordbasex/LordOS/releases/tag/v0.8.0-beta
 [0.7.0-beta]: https://github.com/lordbasex/LordOS/commit/389abc9

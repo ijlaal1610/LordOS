@@ -55,7 +55,7 @@ Ausente de propósito: qualquer protocolo que permita a um app capturar a tela o
 
 **Um app Linux consegue ver outras janelas ou gravar a tela?** Não pelo LordOS. O compositor só entrega a um app as superfícies dele mesmo e não oferece nenhum protocolo de captura de tela, não há servidor X nem portal de captura de tela, e um app restrito também tem o dispositivo de framebuffer negado, então janelas protegidas como a de Senhas também ficam privadas para eles.
 
-**E os apps que só falam X11?** Ainda não rodam: o Xwayland não faz parte do LordOS 0.8.0 Beta. Ele está planejado antes da 1.0, com os apps X11 ganhando a mesma identidade por app, o mesmo firewall e as mesmas restrições. Os apps GTK e Qt atuais falam Wayland, e o jogo SDL testado também.
+**E os apps que só falam X11?** Ainda não rodam: o Xwayland não faz parte do LordOS 0.8.1 Beta. Ele está planejado antes da 1.0, com os apps X11 ganhando a mesma identidade por app, o mesmo firewall e as mesmas restrições. Os apps GTK e Qt atuais falam Wayland, e o jogo SDL testado também.
 
 **E o Flatpak?** O LordOS não o usa nem o integra, e ele não foi testado.
 
