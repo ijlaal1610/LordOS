@@ -174,7 +174,9 @@ else
         mount_ch "$BR"
     fi
     rm -rf "$BR/src/LordOS"; mkdir -p "$BR/src/LordOS"
-    # code-manifest.json (+ .sig for a release): the verified system code (docs/SIGNING.md)
+    # code-manifest.json (+ .sig for a release): the verified system code (docs/SIGNING.md); the
+    # ls is split on purpose (zero, one or two file names)
+    # shellcheck disable=SC2046
     tar -C "$ROOT" --exclude=server/build --exclude=node_modules -cf - \
         package.json README.md server third_party assets themes tools \
         $(cd "$ROOT" && ls code-manifest.json code-manifest.sig 2>/dev/null) | tar -C "$BR/src/LordOS" -xf -
