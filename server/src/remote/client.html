@@ -251,6 +251,7 @@ function pinch(scale, rot) {
 }
 cv.addEventListener('wheel', (e) => {
   e.preventDefault();
+  [mx, my] = pos(e); pend = [mx, my]; flushMove();     // the wheel goes where the pointer is now
   const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? H : 1;           // to pixels
   if (e.ctrlKey) { pinch(pinchScale * Math.max(0.8, Math.min(1.25, Math.exp(-e.deltaY * k / 100))), pinchRot); return; }
   const wheelLike = e.deltaMode !== 0 || (!e.deltaX && Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 50 && !scrollOn);

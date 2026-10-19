@@ -114,10 +114,12 @@ static AVCodecContext *open_sw(Vid *e, const char *name, int fps) {
     c->framerate = (AVRational){ fps, 1 };
     c->gop_size = fps * 60;
     c->max_b_frames = 0;
+    /* the desktop is sRGB: BT.709 primaries and matrix with the sRGB transfer, so the browser doesn't
+     * re-shape the tones (dark greys came out lighter than the lossless tiles next to them) */
     c->color_range = AVCOL_RANGE_MPEG;
-    c->colorspace = AVCOL_SPC_SMPTE170M;
-    c->color_primaries = AVCOL_PRI_SMPTE170M;
-    c->color_trc = AVCOL_TRC_SMPTE170M;
+    c->colorspace = AVCOL_SPC_BT709;
+    c->color_primaries = AVCOL_PRI_BT709;
+    c->color_trc = AVCOL_TRC_IEC61966_2_1;
     AVDictionary *o = NULL;
     if (e->codec == CODEC_H264) {
         c->thread_count = 2;
@@ -191,6 +193,7 @@ static int vid_frame(Vid *e, const uint8_t *bgra, int w, int h, int64_t ms) {
     if (!e->sws) {
         e->sws = sws_getContext(w, h, AV_PIX_FMT_BGRA, e->w, e->h, e->yuv->format, SWS_POINT, NULL, NULL, NULL);
         if (!e->sws) return -1;
+        sws_setColorspaceDetails(e->sws, sws_getCoefficients(SWS_CS_ITU709), 1, sws_getCoefficients(SWS_CS_ITU709), 0, 0, 1 << 16, 1 << 16);
     }
     if (av_frame_make_writable(e->yuv) < 0) return -1;
     const uint8_t *src[1] = { bgra };

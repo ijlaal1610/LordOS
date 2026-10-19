@@ -566,5 +566,8 @@
   "hw.noKernelLog": "No se pudo leer el registro del kernel",
   "app.codeRefused": "El código de esta app fue modificado y no se cargó",
   "remote.badAddress": "No es una dirección o red válida",
-  "remote.listFull": "La lista está llena (64 entradas)"
+  "remote.listFull": "La lista está llena (64 entradas)",
+  "remote.badIceServer": "No es un servidor válido: usá nombre:puerto, como stun.ejemplo.org:3478 (como mucho 4)",
+  "remote.badTurnUser": "No es un usuario de relé válido (sin espacios, hasta 128 caracteres)",
+  "remote.badTurnPassword": "No es una contraseña de relé válida (hasta 128 caracteres, sin saltos de línea)"
 }

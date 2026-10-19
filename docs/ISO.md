@@ -375,7 +375,7 @@ installing packages and compressing.
 sudo apt-get install -y --no-install-recommends debootstrap squashfs-tools xorriso grub-pc-bin \
   grub-efi-amd64-bin grub-common mtools dosfstools lintian libgbm-dev libegl-dev libgles-dev libssl-dev \
   libpoppler-glib-dev libarchive-dev libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
-  libswresample-dev libva-dev clang
+  libswresample-dev libva-dev libsrtp2-dev libusrsctp-dev clang
 ```
 
 | Package | What for |
@@ -384,6 +384,7 @@ sudo apt-get install -y --no-install-recommends debootstrap squashfs-tools xorri
 | `libpoppler-glib-dev`, `libarchive-dev` | compiling `lord-doc` (PDF and archives); without them `make` skips it and the package ships without a PDF viewer |
 | `libavcodec-dev`, `libavformat-dev`, `libavutil-dev`, `libswscale-dev`, `libswresample-dev` | compiling `lord-media` (video, photos, camera, recorder); without them `make` skips it |
 | `libva-dev` | optional: GPU decoding (VA-API) in `lord-media` |
+| `libsrtp2-dev`, `libusrsctp-dev` | the remote desktop's video (WebRTC: SRTP and the data channels) in `lord-sessiond`; without them `make` builds the tile path only and the package doesn't depend on `libsrtp2-1`/`libusrsctp2` |
 | `clang` | compiling `lord-netperm`'s BPF programs (per-app network permissions); without it the build still works, but no rules are applied |
 | `debootstrap` | the Debian base system |
 | `squashfs-tools` | `mksquashfs` |

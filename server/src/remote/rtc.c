@@ -57,7 +57,7 @@ typedef struct {
     double last_ms;
     Hist *hist;
 } Track;
-typedef struct { RwAddr a; int relay, valid, nominated; double last; } Path;
+typedef struct { RwAddr a; int relay, valid, nominated, proven; double last; } Path;
 typedef struct {
     int state;                  /* 0 off, 1 asked, 2 asked with credentials, 3 allocated, -1 failed */
     RwAddr srv, relayed, mapped;
@@ -106,7 +106,7 @@ struct Rtc {
     /* congestion: the viewer's target */
     unsigned kbps;
     double rate_at, kf_at, lost;
-    unsigned long nacks, plis, resent;
+    unsigned long nacks, plis, resent, dtls_rx;
     double last_sr, created, last_consent, stun_win;
     int stun_n, failed;
     /* external STUN, TURN */
@@ -504,6 +504,7 @@ static void dtls_up(Rtc *r) {
     r->srtp_up = 1;
     r->dtls_up = 1;
     Path *s = sel_path(r);
+    if (s) s->proven = 1;
     char a[64] = "";
     if (s) rw_addr_format(&s->a, a, sizeof a);
     sd_log("video: connected (%s, %s, %s%s)", r->codec == RW_CODEC_H264 ? "H.264" : "VP8", gcm ? "AES-GCM" : "AES-CM", a, s && s->relay ? " via TURN" : "");
@@ -524,7 +525,7 @@ static void dtls_input(Rtc *r, const uint8_t *p, size_t n) {
     static uint8_t buf[65536];
     while (r->dtls_up && !r->failed) {
         int k = SSL_read(r->ssl, buf, sizeof buf);
-        if (k > 0) { if (r->sctp_on) usrsctp_conninput(r, buf, (size_t)k, 0); continue; }
+        if (k > 0) { r->dtls_rx++; if (r->sctp_on) usrsctp_conninput(r, buf, (size_t)k, 0); continue; }
         int e = SSL_get_error(r->ssl, k);
         if (e == SSL_ERROR_ZERO_RETURN) fail(r, "the browser closed DTLS");
         else if (e != SSL_ERROR_WANT_READ && e != SSL_ERROR_WANT_WRITE) { ERR_clear_error(); fail(r, "DTLS error"); }
@@ -703,7 +704,9 @@ static void ice_check(Rtc *r, const uint8_t *p, size_t n, const RwStun *s, const
     if (s->use_candidate && !pa->nominated) {
         for (int i = 0; i < r->npath; i++) r->path[i].nominated = 0;
         pa->nominated = 1;
-        r->sel = (int)(pa - r->path);
+        /* once DTLS is up, media only moves to a path that proved to be the browser (an authenticated
+         * DTLS or SRTCP packet from it, see prove()): ICE credentials alone can't redirect the stream */
+        if (!r->dtls_up || pa->proven) r->sel = (int)(pa - r->path);
     }
     if (r->sel < 0) r->sel = (int)(pa - r->path);
     stun_answer(r, s, from, relay);
@@ -767,6 +770,7 @@ static void turn_peer(Rtc *r, const RwAddr *a) {
 }
 
 static void handle_packet(Rtc *r, const uint8_t *p, size_t n, const RwAddr *from, int relay);
+static void prove(Rtc *r, Path *pa);
 
 static void turn_input(Rtc *r, const uint8_t *p, size_t n, const RwStun *s) {
     Turn *t = &r->turn;
@@ -829,15 +833,26 @@ static void handle_packet(Rtc *r, const uint8_t *p, size_t n, const RwAddr *from
     if (p[0] >= 20 && p[0] <= 63) {
         if (!r->offered) return;
         if (!r->dtls_up && r->sel != (int)(pa - r->path)) r->sel = (int)(pa - r->path);
+        unsigned long before = r->dtls_rx;
         dtls_input(r, p, n);
+        if (r->dtls_rx != before) prove(r, pa);           /* a record that decrypted: the browser */
     } else if (p[0] >= 128 && p[0] <= 191 && n >= 8 && p[1] >= 192 && p[1] <= 223 && r->srtp_up) {
         uint8_t b[1500 + SRTP_MAX_TRAILER_LEN];
         if (n > 1500) return;
         memcpy(b, p, n);
         int len = (int)n;
         if (srtp_unprotect_rtcp(r->rx, b, &len) != srtp_err_status_ok) return;
+        prove(r, pa);
         rw_rtcp_parse(b, (size_t)len, on_fb, r);
     }
+}
+
+/* An authenticated packet (DTLS application data or SRTCP) came from this path: it is the browser. If
+ * the browser nominated it, the media goes there now. */
+static void prove(Rtc *r, Path *pa) {
+    if (!pa || pa->proven) { if (pa && pa->nominated && r->sel != (int)(pa - r->path)) r->sel = (int)(pa - r->path); return; }
+    pa->proven = 1;
+    if (pa->nominated) r->sel = (int)(pa - r->path);
 }
 
 /* ---- life cycle ---- */
@@ -1116,6 +1131,6 @@ int rtc_dc_open(const Rtc *r, int chan) { return r && !r->failed && chan >= 0 &&
 
 void rtc_stats(const Rtc *r, char *out, size_t n) {
     if (!r) { snprintf(out, n, "-"); return; }
-    snprintf(out, n, "%s %u kbps, %.1f %% lost, %lu NACK (%lu resent), %lu PLI", r->codec == RW_CODEC_H264 ? "h264" : "vp8", r->kbps,
+    snprintf(out, n, "%s %u kbps, %.1f %% lost, %lu NACK (%lu resent), %lu PLI", r->codec == RW_CODEC_H264 ? "h264" : r->codec ? "vp8" : "no codec yet", r->kbps,
              r->lost * 100, r->nacks, r->resent, r->plis);
 }

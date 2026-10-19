@@ -95,7 +95,7 @@ PKGS_SSH="openssh-server"
 PKGS_SPLASH="plymouth plymouth-label"
 # to build lord-server (only in the build chroot, not in the image)
 PKGS_BUILD="build-essential pkg-config libxkbcommon-dev libwayland-dev wayland-protocols libgbm-dev libegl-dev libgles-dev
- libssl-dev libcrypt-dev dpkg-dev file"
+ libssl-dev libcrypt-dev libsrtp2-dev libusrsctp-dev dpkg-dev file"
 
 echo "== LordOS $VERSION: Raspberry Pi image in $WORK (host $(uname -m))"
 kernel_warning() {
