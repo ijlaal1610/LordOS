@@ -257,6 +257,10 @@ await keyring.list('mail');                         // without secrets
 ```
 
 - Items are entries of `login.lvault` with `x.kr = {owner, service, account, shared}`.
+- A **system package** (one shipped in `assets/sysapps`, such as Mail since 0.8.2) keeps the owner
+  it had when it ran in the session: its plain id (`mail`), not `app.mail`, so Mail's account
+  passwords stay where the session's need-auth handler (`sdk/mail.js`) reads them. A user `.lpk`
+  can never shadow a system package (`app_package_dir`), so it can never get that owner.
 - An app sees only its own items. Asking for another app's item returns `not-shared` plus the item
   id, so the system can ask the user; `keyring.share(id, app)` records the user's decision
   (`shared`). Sharing is an admin operation (the Passwords app or a system prompt), never the

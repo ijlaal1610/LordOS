@@ -10,6 +10,36 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
+## [0.8.2] - Unreleased
+
+### Security
+
+- **Mail, Calendar, Contacts and Reminders run in their own sandboxed process.** Like Passwords
+  and installed apps, each one is now `lord-server --app <id>` with Landlock, seccomp, no network
+  and its own cgroup scope, instead of running inside the desktop's process. Mail's window can read
+  only its own data folder; your files reach it only through the system's open/save dialog; it
+  cannot open sockets, read the mail cache, the accounts file, `~/.ssh` or other apps' data (checked
+  from inside the running process). They reach `lord-maild` only through `lord-server`, each with
+  its own list of allowed requests (Calendar cannot read mail) and its own replies and events.
+  Notifications, alarms, Dock quick actions, several windows and opening attachments keep working.
+  Monitor shows each app as its own process with its name and icon, and the firewall's per-app
+  restrictions (`lpk:mail`, …) apply to it ([docs/PRIVACY.md](docs/PRIVACY.md#system-apps-in-their-own-process-082)).
+
+### Changed
+
+- Isolated apps start faster: the app host is compiled to bytecode once per session, so an app's
+  JavaScript loads in ~23 ms instead of ~110 ms (Mail's window: ~145 ms from the click to its first
+  frame on a 1.8 GHz test machine).
+- The Dock's quick actions and **New window** now work for the apps that run in their own process;
+  Passwords stays a single window.
+- An isolated app's process is named after the app (`mail`), not `exe`, in `ps` and Monitor.
+
+### Fixed
+
+- Isolated apps showed times in UTC instead of the local time zone.
+- Trusting a self-signed certificate for an SMTP server on port 465 pinned it as the IMAP server's,
+  so sending kept failing.
+
 ## [0.8.1-beta] - 2026-10-19
 
 A maintenance and polish release on top of 0.8.0-beta, and the first one that installed systems
