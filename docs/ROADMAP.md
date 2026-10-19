@@ -555,6 +555,38 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
 
 ## After the final ISO
 
+- [ ] **AI assistants through MCP, with permissions** (study first, then build). Let an AI
+  assistant, local or remote, use LordOS through the Model Context Protocol only as far as the
+  user allows, following the same rules as the rest of the distribution. Today there is no
+  automation API at all (see `PAPER.md`, "Automation").
+  - **Study before code:** a design document (`docs/MCP.md`) reviewed like the security review:
+    threat model (prompt injection from web pages, mail and files the assistant reads; a
+    compromised or over-eager assistant; data leaving the machine), transports (local socket
+    only by default; remote access only through an explicit, authenticated opt-in), which MCP
+    features to support (tools first; resources read-only; no sampling), and how it fits the
+    privilege split (`lord-server` never runs as root and never runs arbitrary commands).
+  - **Off by default.** A switch in Settings → Privacy, and every assistant appears as its own
+    client with a name and an identity, like an app.
+  - **Ask, then grant, like camera and microphone:** each assistant requests the capabilities it
+    wants and the user approves them in a LordOS prompt, per assistant, with "once", "while
+    connected" or "always", revocable at any time in Settings. Nothing is granted silently, and
+    a request text written by the assistant is never shown as if LordOS wrote it.
+  - **Closed, validated tools only:** a fixed catalogue of actions with typed arguments (open an
+    app or a file the user picked, read the system or network state, create a calendar event,
+    draft a mail, change a named setting, take a screenshot of one window), each mapped to an
+    existing SDK or broker operation with the same checks as the UI. **No shell, no arbitrary
+    command execution, no generic file access**, never root; anything destructive or
+    outward-facing (sending mail, deleting, installing, changing security settings) needs a
+    confirmation from the user every time, and some actions are never exposed (passwords and
+    the keyring, the firewall's own rules, the signing keys).
+  - **Visible and auditable:** a menu bar indicator while an assistant is connected or acting,
+    every call logged and shown in the Monitor (who, what, when, result), a "stop all" button,
+    rate limits, and the per-app firewall and sandbox still applying to whatever the assistant
+    triggers.
+  - **Tests:** permission prompts and revocation, injection attempts through web pages and
+    mail, denied and confirmation-required paths, and an external security review of the
+    design and the code before it ships.
+
 - [ ] **Virtual machines**: a **free desktop virtualization app**, with the polish and
   way of working of the best commercial ones (not Proxmox's, which only contributes the pieces underneath: KVM, QEMU and drivers).
   A generic name and our own logo, icon and colors:
