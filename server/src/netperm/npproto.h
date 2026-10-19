@@ -21,11 +21,13 @@
  *                                                                       up to 4 names the resolver
  *                                                                       gave for addr
  *   NP_MSG_COUNTS   {"desktop:x":[allowed,denied,rx,tx,rxRate,txRate,
- *                                 [["1.2.3.4",rx,tx,rxRate,txRate],...]],...}
+ *                                 [["1.2.3.4",rx,tx,rxRate,txRate,blocked],...],blocked],...}
  *                                                                        every second, if it changed:
  *                                                                        connections, bytes (the
- *                                                                        cgroup_skb accounting) and
- *                                                                        the busiest addresses */
+ *                                                                        cgroup_skb accounting), the
+ *                                                                        busiest addresses and the
+ *                                                                        bytes the filter dropped of
+ *                                                                        connections a rule now denies */
 #ifndef LORD_NP_PROTO_H
 #define LORD_NP_PROTO_H
 

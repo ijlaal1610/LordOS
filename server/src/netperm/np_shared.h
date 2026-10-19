@@ -14,7 +14,9 @@
  *   np_lpm6    LPM    (app idx, IPv6/n) → NpList
  *   np_seen    LRU    NpSeenKey → u64 ns            to report only new connections
  *   np_counts  HASH   cgroup id → NpCount           allowed / denied, bytes received / sent
- *   np_flows   LRU    NpFlowKey → NpFlow            bytes received / sent per (app, remote address)
+ *   np_flows   LRU    NpFlowKey → NpFlow            bytes received / sent / blocked per (app, remote address)
+ *   np_bound   LRU    NpBoundKey → u8               local ports an app bound (bind with port != 0): a packet
+ *                                                     on one of them belongs to an incoming connection
  *   np_events  RINGBUF                              NpEvent towards lord-netperm
  *   np_snd     HASH   ALSA minor (u32) → u32           every ALSA node in /sys/class/sound: NP_SND_CAPTURE for the
  *                                                     capture PCMs (/dev/snd/pcmC*D*c), NP_SND_OTHER for the rest
@@ -48,6 +50,7 @@ typedef uint64_t np_u64;
 #define NP_MAX_APPS   8192      /* cgroups with a policy */
 #define NP_MAX_LPM    65536     /* entries of each trie */
 #define NP_MAX_SEEN   16384
+#define NP_MAX_BOUND  4096      /* (app, local port) of the apps' servers */
 #define NP_MAX_FLOWS  4096      /* (app, remote address) byte counters; the least recently used go first */
 #define NP_RINGBUF    (256u << 10)
 #define NP_REPEAT_NS  (5ull * 1000000000ull)   /* a repeated connection is reported again after 5 s */
@@ -78,7 +81,7 @@ typedef uint64_t np_u64;
 #define NP_DEV_CHAR       2     /* BPF_DEVCG_DEV_CHAR */
 
 enum { NP_P_ANY = 0, NP_P_TCP = 1, NP_P_UDP = 2, NP_P_OTHER = 3 };   /* like FwProto (+ other) */
-enum { NP_D_OUT = 0, NP_D_IN = 1, NP_D_DEV = 2, NP_D_BT = 3 };   /* events: DEV = a device open, BT = a Bluetooth socket */
+enum { NP_D_OUT = 0, NP_D_IN = 1, NP_D_DEV = 2, NP_D_BT = 3, NP_D_CUT = 4 };   /* events: DEV = a device open, BT = a Bluetooth socket; CUT: np_seen key of a cut socket */
 enum { NP_V_ALLOW = 0, NP_V_DENY = 1 };
 enum { NP_K_RULE = 0, NP_K_ANY = 1, NP_K_LAN = 2, NP_K_INET = 3 };   /* NpEnt.kind */
 enum { NP_M_SILENT = 0, NP_M_OFF = 2 };                              /* "ask" is treated as silent */
@@ -106,6 +109,8 @@ typedef struct {
     np_u8  mode;                /* NP_M_* */
     np_u8  has4, has6;          /* there are entries in np_lpm4 / np_lpm6 */
     np_u32 ngen;
+    np_u32 can_deny;            /* 1: a restriction or a deny entry exists (gen or tries): the packet
+                                 * filter (cgroup_skb) only decides for these apps */
     NpEnt  gen[NP_GEN_MAX];     /* lan / internet / any rules, in order */
 } NpApp;
 
@@ -127,10 +132,12 @@ typedef struct {
     np_u8  pad[2];
 } NpSeenKey;
 
-/* allowed / denied: connections (connect, bind, the first sendto in 5 s). rx / tx: IP bytes
- * received and sent by the app's sockets (cgroup/skb_ingress and skb_egress, every protocol:
- * TCP, UDP and so QUIC), loopback excluded so they compare with the interfaces' counters. */
-typedef struct { np_u64 allowed, denied, rx, tx; } NpCount;
+/* allowed / denied: connections (connect, bind, the first sendto in 5 s, and each open socket
+ * cut because a rule now denies it). rx / tx: IP bytes received and sent by the app's sockets
+ * (cgroup/skb_ingress and skb_egress, every protocol: TCP, UDP and so QUIC), loopback excluded so
+ * they compare with the interfaces' counters. blocked: IP bytes of packets the same programs
+ * dropped (in and out) because the app's current rules deny their connection; not in rx / tx. */
+typedef struct { np_u64 allowed, denied, rx, tx, blocked; } NpCount;
 
 typedef struct {
     np_u64 cgid;
@@ -139,7 +146,14 @@ typedef struct {
     np_u8  pad[7];
 } NpFlowKey;
 
-typedef struct { np_u64 rx, tx; } NpFlow;
+typedef struct { np_u64 rx, tx, blocked; } NpFlow;
+
+typedef struct {
+    np_u64 cgid;                /* the app's scope */
+    np_u16 port;                /* local port, host order */
+    np_u8  proto;               /* NP_P_TCP / NP_P_UDP */
+    np_u8  pad[5];
+} NpBoundKey;
 
 typedef struct {
     np_u64 cgid;
@@ -149,6 +163,15 @@ typedef struct {
     np_u8  fam, proto, dir, verdict, reason, record;
     np_u32 rule_id;
     np_u32 flag;
+    /* only for a cut (an open socket whose packets the filter now drops): */
+    np_u8  laddr[16];           /* the local address (same family as addr) */
+    np_u16 lport, rport;        /* the local and remote ports (port is the one the rule looked at) */
+    np_u8  cut;                 /* 0: a connection attempt; 1: first drop of this socket; 2: repeated */
+    np_u8  destroy;             /* 1: a TCP connection (not a listener) or a connected UDP socket:
+                                 * lord-netperm destroys it. 0: an unconnected UDP socket or a
+                                 * listener, which may also serve allowed peers: only the drop */
+    np_u8  pad2[2];
+    np_u64 cookie;              /* the socket's cookie (bpf_get_socket_cookie), checked by SOCK_DESTROY */
 } NpEvent;
 
 typedef struct {
@@ -236,6 +259,12 @@ NP_INLINE void np_decide(const NpApp *a, const NpList *l, int dir, int proto, in
     if (a->trusted) { r->reason = NP_BY_TRUSTED; return; }
     r->reason = NP_BY_MODE;
     r->record = a->mode == NP_M_SILENT;
+}
+
+/* Does a list of entries deny anything? (NpApp.can_deny, computed by userspace.) */
+NP_INLINE int np_ents_deny(const NpEnt *e, np_u32 n) {
+    for (np_u32 i = 0; i < n; i++) if (e[i].verdict == NP_V_DENY) return 1;
+    return 0;
 }
 
 #endif

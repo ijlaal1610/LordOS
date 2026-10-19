@@ -130,7 +130,7 @@ endif
 # builds and the service warns that it has no BPF. No libbpf or bcc.
 .DEFAULT_GOAL := all
 BPF ?= $(shell command -v clang >/dev/null 2>&1 && echo 1 || echo 0)
-NP_SRC := src/netperm/netperm.c src/netperm/bpfsys.c src/netperm/npcompile.c src/netperm/npdns.c \
+NP_SRC := src/netperm/netperm.c src/netperm/bpfsys.c src/netperm/npcompile.c src/netperm/npdns.c src/netperm/npdiag.c \
           src/fw/rules.c src/fw/dnsmap.c src/fw/fwmap.c src/sec/json.c
 ALL += build/lord-netperm
 ifeq ($(BPF),1)

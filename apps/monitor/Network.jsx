@@ -112,16 +112,18 @@ function useGroups(conns) {
 
 // Agrega a cada app su regla y sus contadores del firewall (lord.fw), y las apps que no tienen
 // conexiones abiertas pero sí intentos (una app denegada no llega a tener sockets).
-// lord-netperm's byte counters for one app ([allowed, denied, rx, tx, rxRate, txRate, flows]): the
-// kernel counts every packet of the app's sockets (TCP and UDP, so QUIC too, and the connections
-// that already closed), which replaces the open-socket estimate. flows: [[addr, rx, tx, rxRate,
-// txRate], ...], its busiest addresses.
+// lord-netperm's byte counters for one app ([allowed, denied, rx, tx, rxRate, txRate, flows,
+// blocked]): the kernel counts every packet of the app's sockets (TCP and UDP, so QUIC too, and the
+// connections that already closed), which replaces the open-socket estimate. flows: [[addr, rx, tx,
+// rxRate, txRate, blocked], ...], its busiest addresses. blocked: bytes of open connections the
+// kernel dropped because a rule now denies them.
 function applyBytes(g, v) {
   g.recv = v[2] || 0;
   g.sent = v[3] || 0;
   g.rateRx = v[4] || 0;
   g.rateTx = v[5] || 0;
   g.bytesFrom = 'kernel';
+  g.blocked = v[7] || 0;
   for (const f of Array.isArray(v[6]) ? v[6] : []) {
     if (!Array.isArray(f) || typeof f[0] !== 'string') continue;
     const known = g.hosts.get(f[0]), geo = geoSeen.get(f[0]);
@@ -130,6 +132,7 @@ function applyBytes(g, v) {
     h.sent = f[2] || 0;
     h.rateRx = f[3] || 0;
     h.rateTx = f[4] || 0;
+    h.blocked = f[5] || 0;
     g.hosts.set(f[0], h);
   }
 }
@@ -620,6 +623,7 @@ function Detail({ g, tr, user, names, host, onHost, onRule, hist, range, end }) 
         <KV k={tr('monitor.net.rule')} v={tr(g.rule === 'deny' ? 'firewall.rule.deny' : g.rule === 'allow' ? 'firewall.rule.allow' : 'firewall.rule.none')}
           color={g.rule === 'deny' ? '#ff453a' : '#30d158'} />
         {g.allowed || g.denied ? <KV k={tr('firewall.counts')} v={tr('firewall.countsValue', { allowed: g.allowed || 0, denied: g.denied || 0 })} /> : null}
+        {g.blocked ? <KV k={tr('firewall.blocked')} v={formatBytes(g.blocked)} color="#ff453a" /> : null}
         {can ? (
           <View onClick={() => openAppRules(g.key)} style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
             <Text style={{ fontSize: 11, color: t.accent }}>{tr('fwrules.appRulesLink', { count: firewall.rules(g.key).length })}</Text>

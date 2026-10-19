@@ -751,7 +751,7 @@ See `FIREWALL.md`, step 2. On VM 122 (172.17.0.56), which already had `lord-sess
   ```
 
   The unit is the same one that goes into the ISO (the text was handed to the main session). It has
-  `RestrictAddressFamilies=AF_UNIX AF_PACKET`, capabilities `CAP_BPF CAP_NET_ADMIN CAP_PERFMON
+  `RestrictAddressFamilies=AF_UNIX AF_PACKET` (`AF_NETLINK` added in 0.8.3, for sock_diag), capabilities `CAP_BPF CAP_NET_ADMIN CAP_PERFMON
   CAP_DAC_READ_SEARCH CAP_NET_RAW`, `ProtectSystem=strict`, `ProtectHome=read-only`,
   `ProtectControlGroups=yes` and `RuntimeDirectory=lordos` with `RuntimeDirectoryPreserve=yes`.
 - **Restarting `lordos.service`:** with `KillMode=process`, a `systemctl restart` leaves session

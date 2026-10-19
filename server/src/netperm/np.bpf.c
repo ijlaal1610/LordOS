@@ -17,7 +17,10 @@
  *   cgroup/lsm_socket_create    "no Bluetooth": socket(AF_BLUETOOTH) (a per-cgroup LSM program,
  *                               BPF_LSM_CGROUP: the inet sock_create hook never sees that family)
  *   cgroup/skb_ingress, egress  traffic accounting for the Monitor: bytes per app (np_counts) and
- *                               per (app, remote address) (np_flows). They never drop a packet.
+ *                               per (app, remote address) (np_flows); and the cut of connections
+ *                               opened before a rule changed: a packet whose connection the app's
+ *                               current rules deny is dropped (counted as "blocked") and its socket
+ *                               is reported once, so lord-netperm destroys it (SOCK_DESTROY).
  *
  * The same programs are also attached to the user@<uid>.service of each LordOS session, to
  * close the `systemd-run --user` escape (the process ends up there, outside lordos.service). A
@@ -33,10 +36,13 @@
  * sendto. A UDP connect() counts only the first time within 5 s, like a sendto: getaddrinfo does one
  * per address to sort them (RFC 6724) and they aren't real connections.
  *
- * The one exception is traffic accounting (skb_ingress / skb_egress), which runs per packet
- * (per GRO/GSO segment): only for the sessions' apps, two map lookups and two atomic adds, and it
- * always lets the packet through. It's what counts UDP (QUIC) and the bytes of connections that
- * already closed, which the sockets' own counters (tcp_info) can't. */
+ * The one exception is the packet filter (skb_ingress / skb_egress), which runs per packet (per
+ * GRO/GSO segment): only for the sessions' apps, two map lookups and two atomic adds. It's what
+ * counts UDP (QUIC) and the bytes of connections that already closed, which the sockets' own
+ * counters (tcp_info) can't. Only for an app whose rules can deny something (NpApp.can_deny) does
+ * it also decide, with the same np_decide as connect(): that is what cuts a TCP connection or a
+ * connected UDP socket (QUIC) that was opened before the rule changed (docs/FIREWALL.md, "Existing
+ * connections are cut"). Loopback is never filtered. */
 #define NP_BPF 1
 #include <linux/bpf.h>
 #include "netperm/np_shared.h"
@@ -51,6 +57,8 @@ static unsigned long long (*bpf_get_current_ancestor_cgroup_id)(int level) = (vo
 static long (*bpf_ringbuf_output)(void *ringbuf, void *data, unsigned long long size, unsigned long long flags) = (void *)130;
 static long (*bpf_skb_load_bytes)(const void *skb, unsigned int offset, void *to, unsigned int len) = (void *)26;
 static unsigned long long (*bpf_skb_ancestor_cgroup_id)(void *skb, int level) = (void *)83;
+static unsigned long long (*bpf_get_socket_cookie)(void *ctx) = (void *)46;
+static struct bpf_sock *(*bpf_sk_fullsock)(struct bpf_sock *sk) = (void *)95;
 
 /* the maps: only their names (lord-netperm defines them, netperm.c) */
 char np_cfg[4] SEC("maps");
@@ -63,6 +71,7 @@ char np_counts[4] SEC("maps");
 char np_events[4] SEC("maps");
 char np_snd[4] SEC("maps");
 char np_flows[4] SEC("maps");
+char np_bound[4] SEC("maps");
 
 #define AF_INET  2
 #define AF_INET6 10
@@ -97,13 +106,41 @@ NP_INLINE NpApp *find_app(NpCfg *cfg, np_u64 *cgid) {
 NP_INLINE void count(np_u64 cgid, int deny) {
     NpCount *c = bpf_map_lookup_elem(&np_counts, &cgid);
     if (!c) {
-        NpCount z = { 0, 0, 0, 0 };
+        NpCount z = { 0, 0, 0, 0, 0 };
         bpf_map_update_elem(&np_counts, &cgid, &z, BPF_NOEXIST);
         c = bpf_map_lookup_elem(&np_counts, &cgid);
         if (!c) return;
     }
     if (deny) __sync_fetch_and_add(&c->denied, 1);
     else __sync_fetch_and_add(&c->allowed, 1);
+}
+
+/* The app's trie list for an address (its networks and resolved domains), or 0; *lan: 1 LAN, 0
+ * internet, -1 unknown (fam 0). */
+NP_INLINE NpList *lookup_list(NpApp *app, int fam, const np_u8 *addr, int *lan) {
+    NpList *l = 0;
+    if (fam == 4) {
+        *lan = np_is_lan4(addr);
+        if (app->has4) {
+            NpLpm4Key k;
+            k.prefixlen = 64;
+            k.data[0] = (np_u8)(app->idx >> 24); k.data[1] = (np_u8)(app->idx >> 16);
+            k.data[2] = (np_u8)(app->idx >> 8);  k.data[3] = (np_u8)app->idx;
+            k.data[4] = addr[0]; k.data[5] = addr[1]; k.data[6] = addr[2]; k.data[7] = addr[3];
+            l = bpf_map_lookup_elem(&np_lpm4, &k);
+        }
+    } else if (fam == 6) {
+        *lan = np_is_lan6(addr);
+        if (app->has6) {
+            NpLpm6Key k;
+            k.prefixlen = 160;
+            k.data[0] = (np_u8)(app->idx >> 24); k.data[1] = (np_u8)(app->idx >> 16);
+            k.data[2] = (np_u8)(app->idx >> 8);  k.data[3] = (np_u8)app->idx;
+            for (int i = 0; i < 16; i++) k.data[4 + i] = addr[i];
+            l = bpf_map_lookup_elem(&np_lpm6, &k);
+        }
+    }
+    return l;
 }
 
 /* fam 0: unknown address. addr: 16 bytes (IPv4 in the first 4). always_count: connect and
@@ -117,28 +154,7 @@ NP_INLINE int handle(int fam, np_u8 *addr, int port, int proto, int dir, int alw
     if (!app) return 1;                                 /* neither an app scope nor a restricted user@ */
 
     int lan = -1;
-    NpList *l = 0;
-    if (fam == 4) {
-        lan = np_is_lan4(addr);
-        if (app->has4) {
-            NpLpm4Key k;
-            k.prefixlen = 64;
-            k.data[0] = (np_u8)(app->idx >> 24); k.data[1] = (np_u8)(app->idx >> 16);
-            k.data[2] = (np_u8)(app->idx >> 8);  k.data[3] = (np_u8)app->idx;
-            k.data[4] = addr[0]; k.data[5] = addr[1]; k.data[6] = addr[2]; k.data[7] = addr[3];
-            l = bpf_map_lookup_elem(&np_lpm4, &k);
-        }
-    } else if (fam == 6) {
-        lan = np_is_lan6(addr);
-        if (app->has6) {
-            NpLpm6Key k;
-            k.prefixlen = 160;
-            k.data[0] = (np_u8)(app->idx >> 24); k.data[1] = (np_u8)(app->idx >> 16);
-            k.data[2] = (np_u8)(app->idx >> 8);  k.data[3] = (np_u8)app->idx;
-            for (int i = 0; i < 16; i++) k.data[4 + i] = addr[i];
-            l = bpf_map_lookup_elem(&np_lpm6, &k);
-        }
-    }
+    NpList *l = lookup_list(app, fam, addr, &lan);
     NpRes r;
     np_decide(app, l, dir, proto, port, lan, &r);
     int deny = r.verdict == NP_V_DENY;
@@ -221,6 +237,24 @@ SEC("cgroup/sendmsg6") int np_sendmsg6(struct bpf_sock_addr *ctx) {
 /* bind: the remote address isn't known. Only if it's loopback is the connection surely local
  * (like a fw_decide query with that address); otherwise "unknown" = internet. Port 0
  * (ephemeral, used by clients) isn't checked. */
+/* A port an app bound (allowed): the packet filter treats the packets on it as an incoming
+ * connection (decided as "in" on the local port, like bind), not as one the app opened. Only for
+ * the apps' scopes (an np_counts entry). */
+NP_INLINE void remember_bound(int port, int proto) {
+    np_u32 zero = 0;
+    NpCfg *cfg = bpf_map_lookup_elem(&np_cfg, &zero);
+    if (!cfg) return;
+    np_u64 id = bpf_get_current_ancestor_cgroup_id((int)cfg->level);
+    if (!id || !bpf_map_lookup_elem(&np_counts, &id)) return;
+    NpBoundKey k;
+    __builtin_memset(&k, 0, sizeof k);
+    k.cgid = id;
+    k.port = (np_u16)port;
+    k.proto = (np_u8)proto;
+    np_u8 one = 1;
+    bpf_map_update_elem(&np_bound, &k, &one, BPF_ANY);
+}
+
 SEC("cgroup/bind4") int np_bind4(struct bpf_sock_addr *ctx) {
     int port = port_of(ctx);
     if (!port) return 1;
@@ -228,7 +262,10 @@ SEC("cgroup/bind4") int np_bind4(struct bpf_sock_addr *ctx) {
     addr4(ctx, a);
     int fam = a[0] == 127 ? 4 : 0;
     if (!fam) a[0] = a[1] = a[2] = a[3] = 0;
-    return handle(fam, a, port, proto_of(ctx->protocol), NP_D_IN, 1);
+    int proto = proto_of(ctx->protocol);
+    int ok = handle(fam, a, port, proto, NP_D_IN, 1);
+    if (ok) remember_bound(port, proto);
+    return ok;
 }
 
 SEC("cgroup/bind6") int np_bind6(struct bpf_sock_addr *ctx) {
@@ -241,7 +278,10 @@ SEC("cgroup/bind6") int np_bind6(struct bpf_sock_addr *ctx) {
         for (int i = 0; i < 16; i++) a[i] = 0;
         fam = 0;
     }
-    return handle(fam, a, port, proto_of(ctx->protocol), NP_D_IN, 1);
+    int proto = proto_of(ctx->protocol);
+    int ok = handle(fam, a, port, proto, NP_D_IN, 1);
+    if (ok) remember_bound(port, proto);
+    return ok;
 }
 
 /* "no network": the app can't create internet sockets (nor ICMP, which doesn't go through connect). */
@@ -338,48 +378,145 @@ SEC("cgroup/lsm_socket_create") int np_bt_socket(unsigned long long *ctx) {
     return 0;
 }
 
-/* ---- traffic accounting (the Monitor's bytes per app and per address) ---- */
+/* ---- the packet filter: traffic accounting and the cut of open connections ---- */
 
 #define LOOPBACK_IFINDEX 1      /* "lo" is always ifindex 1 (in every network namespace) */
+#define TCP_FLAG_RST 0x04
 
-/* Adds the packet's bytes to its app (the socket's cgroup, the scope at cfg->level) and to the
- * (app, remote address) pair. Only for apps lord-netperm knows: it creates their np_counts entry
- * when the scope appears, so nothing else (the login screen, the system) is counted or stored.
- * Loopback isn't counted. The skb starts at the IP header in both directions. */
-NP_INLINE void account(struct __sk_buff *skb, int in) {
-    if (skb->ifindex == LOOPBACK_IFINDEX) return;
+/* A dropped packet of a socket the app's rules now deny: reported once per socket (np_seen keyed
+ * by its cookie), so lord-netperm destroys it (TCP gets a reset instead of a stall, a connected UDP
+ * socket an error) and the Monitor counts one more denied connection. If the socket is still
+ * there 5 s later (a kernel without SOCK_DESTROY), it's asked again, without counting. */
+NP_INLINE void report_cut(struct __sk_buff *skb, np_u64 cgid, const NpFlowKey *k, const np_u8 *la, int lport, int rport,
+                          int proto, int dir, int port, const NpRes *r) {
+    np_u64 cookie = bpf_get_socket_cookie(skb);
+    NpSeenKey sk;
+    __builtin_memset(&sk, 0, sizeof sk);
+    sk.cgid = cgid;
+    for (int i = 0; i < 8; i++) sk.addr[i] = (np_u8)(cookie >> (i * 8));
+    sk.dir = NP_D_CUT; sk.verdict = 1;
+    np_u64 now = bpf_ktime_get_ns();
+    np_u64 *last = bpf_map_lookup_elem(&np_seen, &sk);
+    if (last && now - *last <= NP_REPEAT_NS) return;
+    int first = !last;
+    bpf_map_update_elem(&np_seen, &sk, &now, BPF_ANY);
+    if (first) count(cgid, 1);
+    NpEvent ev;
+    __builtin_memset(&ev, 0, sizeof ev);
+    ev.cgid = cgid;
+    ev.ts = now;
+    for (int i = 0; i < 16; i++) { ev.addr[i] = k->addr[i]; ev.laddr[i] = la[i]; }
+    ev.port = (np_u16)port;
+    ev.lport = (np_u16)lport; ev.rport = (np_u16)rport;
+    ev.fam = k->fam; ev.proto = (np_u8)proto; ev.dir = (np_u8)dir; ev.verdict = NP_V_DENY;
+    ev.reason = (np_u8)r->reason; ev.record = (np_u8)r->record;
+    ev.rule_id = r->rule_id; ev.flag = r->flag;
+    ev.cut = first ? 1 : 2;
+    ev.cookie = cookie;
+    /* which sockets may be destroyed: a TCP connection, not a listener (a SYN from a denied peer
+     * mustn't take the server away from the allowed ones), and a connected UDP socket (QUIC), not
+     * an unconnected one that also talks to allowed addresses */
+    struct bpf_sock *s = skb->sk;
+    if (s) s = bpf_sk_fullsock(s);
+    if (s) ev.destroy = proto == NP_P_TCP ? s->state != 10 /* TCP_LISTEN */ : proto == NP_P_UDP && s->dst_port != 0;
+    bpf_ringbuf_output(&np_events, &ev, sizeof ev, 0);
+}
+
+/* Only for apps lord-netperm knows (it creates their np_counts entry when the scope appears), so
+ * nothing else (the login screen, the system) is counted, stored or filtered. Loopback isn't
+ * counted or filtered. The skb starts at the IP header in both directions. Returns 1 (let it
+ * through) or 0 (drop). An allowed packet adds its bytes to its app (the socket's cgroup, the
+ * scope at cfg->level) and to the (app, remote address) pair; a dropped one to "blocked". */
+NP_INLINE int filter(struct __sk_buff *skb, int in) {
+    if (skb->ifindex == LOOPBACK_IFINDEX) return 1;
     np_u32 zero = 0;
     NpCfg *cfg = bpf_map_lookup_elem(&np_cfg, &zero);
-    if (!cfg) return;
+    if (!cfg) return 1;
     np_u64 cgid = bpf_skb_ancestor_cgroup_id(skb, (int)cfg->level);
-    if (!cgid) return;
+    if (!cgid) return 1;
     NpCount *c = bpf_map_lookup_elem(&np_counts, &cgid);
-    if (!c) return;
+    if (!c) return 1;
+    /* the IP header in one read (an IP packet is at least 20 bytes; IPv6 needs 40) */
+    np_u8 h[40];
+    if (bpf_skb_load_bytes(skb, 0, h, 20)) return 1;
     NpFlowKey k;
     __builtin_memset(&k, 0, sizeof k);
     k.cgid = cgid;
-    np_u8 v = 0;
-    if (bpf_skb_load_bytes(skb, 0, &v, 1)) return;
-    if (v >> 4 == 4) {
-        if (bpf_skb_load_bytes(skb, in ? 12 : 16, k.addr, 4)) return;      /* source when it comes in, destination when it goes out */
-        k.fam = 4;
-    } else if (v >> 4 == 6) {
-        if (bpf_skb_load_bytes(skb, in ? 8 : 24, k.addr, 16)) return;
+    int v6 = h[0] >> 4 == 6;
+    if (v6) {
+        if (bpf_skb_load_bytes(skb, 0, h, 40)) return 1;
+        /* the remote address: the source when it comes in, the destination when it goes out */
+        __builtin_memcpy(k.addr, in ? h + 8 : h + 24, 16);
         k.fam = 6;
-    } else return;
+    } else if (h[0] >> 4 == 4) {
+        __builtin_memcpy(k.addr, in ? h + 12 : h + 16, 4);
+        k.fam = 4;
+    } else return 1;
     np_u64 len = skb->len;
-    if (in) __sync_fetch_and_add(&c->rx, len);
-    else __sync_fetch_and_add(&c->tx, len);
+
+    int deny = 0, proto = NP_P_OTHER, dir = NP_D_OUT, port = 0, lport = 0, rport = 0;
+    np_u8 la[16];
+    NpRes r;
+    NpApp *app = cfg->on ? bpf_map_lookup_elem(&np_apps, &cgid) : 0;
+    if (app && app->can_deny) {
+        __builtin_memset(la, 0, sizeof la);
+        __builtin_memset(&r, 0, sizeof r);
+        int l4 = -1;
+        if (v6) {
+            __builtin_memcpy(la, in ? h + 24 : h + 8, 16);
+            proto = proto_of(h[6]);                              /* next header (an extension header: no ports) */
+            l4 = 40;
+        } else {
+            __builtin_memcpy(la, in ? h + 16 : h + 12, 4);
+            proto = proto_of(h[9]);
+            if (!(((np_u32)h[6] << 8 | h[7]) & 0x1fff)) l4 = (h[0] & 0xf) * 4;   /* not a later fragment */
+        }
+        int rst = 0;
+        if (l4 >= 0 && proto != NP_P_OTHER) {
+            np_u8 p[14];                                         /* ports, and the TCP flags at 13 */
+            if (!bpf_skb_load_bytes(skb, (np_u32)l4, p, proto == NP_P_TCP ? 14 : 4)) {
+                int sport = p[0] << 8 | p[1], dport = p[2] << 8 | p[3];
+                lport = in ? dport : sport;
+                rport = in ? sport : dport;
+                rst = proto == NP_P_TCP && (p[13] & TCP_FLAG_RST);
+            }
+        }
+        port = rport;
+        if (lport) {
+            NpBoundKey bk;
+            __builtin_memset(&bk, 0, sizeof bk);
+            bk.cgid = cgid;
+            bk.port = (np_u16)lport;
+            bk.proto = (np_u8)proto;
+            if (bpf_map_lookup_elem(&np_bound, &bk)) { dir = NP_D_IN; port = lport; }   /* a connection to the app's server */
+        }
+        int lan = -1;
+        NpList *l = lookup_list(app, k.fam, k.addr, &lan);
+        np_decide(app, l, dir, proto, port, lan, &r);
+        /* a reset always goes through: it is what tells the other end the connection is over */
+        deny = r.verdict == NP_V_DENY && !rst;
+    }
+
     NpFlow *f = bpf_map_lookup_elem(&np_flows, &k);
     if (!f) {
-        NpFlow z = { 0, 0 };
+        NpFlow z = { 0, 0, 0 };
         bpf_map_update_elem(&np_flows, &k, &z, BPF_NOEXIST);
         f = bpf_map_lookup_elem(&np_flows, &k);
-        if (!f) return;
     }
-    if (in) __sync_fetch_and_add(&f->rx, len);
-    else __sync_fetch_and_add(&f->tx, len);
+    if (deny) {
+        __sync_fetch_and_add(&c->blocked, len);
+        if (f) __sync_fetch_and_add(&f->blocked, len);
+        report_cut(skb, cgid, &k, la, lport, rport, proto, dir, port, &r);
+        return 0;
+    }
+    if (in) __sync_fetch_and_add(&c->rx, len);
+    else __sync_fetch_and_add(&c->tx, len);
+    if (f) {
+        if (in) __sync_fetch_and_add(&f->rx, len);
+        else __sync_fetch_and_add(&f->tx, len);
+    }
+    return 1;
 }
 
-SEC("cgroup/skb_ingress") int np_skb_in(struct __sk_buff *skb) { account(skb, 1); return 1; }
-SEC("cgroup/skb_egress") int np_skb_out(struct __sk_buff *skb) { account(skb, 0); return 1; }
+SEC("cgroup/skb_ingress") int np_skb_in(struct __sk_buff *skb) { return filter(skb, 1); }
+SEC("cgroup/skb_egress") int np_skb_out(struct __sk_buff *skb) { return filter(skb, 0); }

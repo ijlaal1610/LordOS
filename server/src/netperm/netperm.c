@@ -11,13 +11,18 @@
  *     validated path) and compiles them into maps (npcompile.c);
  *   - learns names only from the system resolver (npdns.c);
  *   - tells each lord-server about its apps' new connections over /run/lordos/netperm.sock
- *     (npproto.h). The only thing it accepts there is "reload my rules".
+ *     (npproto.h). The only thing it accepts there is "reload my rules";
+ *   - cuts the connections a rule now denies: the packet filter drops their packets in the
+ *     kernel, and this process destroys their sockets over sock_diag netlink (npdiag.c, the only
+ *     socket besides AF_UNIX and the DNS AF_PACKET one), right after a reload and whenever the
+ *     filter reports a socket.
  *
  * If the kernel has no cgroup BPF (or CAP_BPF is missing), it says so in the log and carries on
  * doing nothing: the desktop doesn't notice. With the service stopped, the programs detach on
  * their own (bpf_link): everything is allowed. */
 #include "netperm/bpfsys.h"
 #include "netperm/npcompile.h"
+#include "netperm/npdiag.h"
 #include "netperm/npdns.h"
 #include "netperm/npload.h"
 #include "netperm/npproto.h"
@@ -30,6 +35,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/bpf.h>
+#include <netinet/in.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -69,6 +75,8 @@ typedef struct {
     int has_domains, seen;
     NpApp app_v;                        /* the last thing written to np_apps */
     uint64_t allowed, denied;           /* kernel counters */
+    uint64_t blocked;                   /* bytes the packet filter dropped (np_counts) */
+    uint64_t cuts;                      /* sockets destroyed by a sweep (counted as denied) */
     uint64_t rx, tx;                    /* bytes (np_counts) */
     double rrx, rtx;                    /* bytes per second over the last tick */
 } Scope;
@@ -103,7 +111,9 @@ typedef struct {
 static struct {
     int bpf_ok;
     char bpf_err[200];                  /* a code line (errcode.h): the firewall page shows it translated */
-    int m_np_cfg, m_np_apps, m_np_union, m_np_lpm4, m_np_lpm6, m_np_seen, m_np_counts, m_np_events, m_np_snd, m_np_flows;
+    int m_np_cfg, m_np_apps, m_np_union, m_np_lpm4, m_np_lpm6, m_np_seen, m_np_counts, m_np_events, m_np_snd, m_np_flows, m_np_bound;
+    int diag_fd;                        /* NETLINK_SOCK_DIAG (npdiag.c), -1 until first used */
+    int diag_warned;                    /* the kernel can't destroy sockets: said once */
     int acct_ok;                        /* the traffic accounting programs loaded */
     FwMap flows;                        /* NpFlowKey → FlowSt: the previous reading of np_flows */
     long long counts_ns;                /* when push_counts last read the counters */
@@ -217,6 +227,7 @@ static int map_fd(const char *name) {
     if (!strcmp(name, "np_events")) return G.m_np_events;
     if (!strcmp(name, "np_snd")) return G.m_np_snd;
     if (!strcmp(name, "np_flows")) return G.m_np_flows;
+    if (!strcmp(name, "np_bound")) return G.m_np_bound;
     return -1;
 }
 #endif
@@ -294,7 +305,7 @@ static void sync_scope(Session *s, Scope *sc) {
     if (bpfs_map_update(G.m_np_apps, &sc->cgid, &c.app, BPF_ANY)) logf_("np_apps: %s", strerror(errno));
     /* the counters' entry exists from the start: the accounting programs only add to existing
      * entries, so they never store anything for a cgroup that isn't an app */
-    NpCount zero = { 0, 0, 0, 0 };
+    NpCount zero = { 0, 0, 0, 0, 0 };
     bpfs_map_update(G.m_np_counts, &sc->cgid, &zero, BPF_NOEXIST);
     np_compiled_free(&c);
 }
@@ -598,6 +609,8 @@ static void accept_client(void) {
     }
 }
 
+static void sweep(unsigned uid);
+
 static void reload_uid(unsigned uid) {
     for (int i = 0; i < G.nsess; i++) {
         if (G.sess[i].uid != uid) continue;
@@ -605,6 +618,7 @@ static void reload_uid(unsigned uid) {
         for (int k = 0; k < G.sess[i].nsc; k++) sync_scope(&G.sess[i], &G.sess[i].sc[k]);
         sync_union(&G.sess[i]);
     }
+    sweep(uid);                         /* the open connections the new rules deny */
 }
 
 static void client_read(int k) {
@@ -623,6 +637,185 @@ static void client_read(int k) {
         }
         if (c->inlen == sizeof c->in) { cl_drop(k); return; }
     }
+}
+
+/* ---- cutting the connections a rule now denies (docs/FIREWALL.md, "Existing connections are cut") ----
+ *
+ * The packet filter (np.bpf.c, cgroup_skb) already drops every packet of a connection the app's
+ * current rules deny, the moment the maps change. This side destroys the sockets too, so the app
+ * sees the connection end (ECONNABORTED, and TCP sends a reset) instead of a stall: right after a
+ * reload (a sweep of the machine's TCP and connected UDP sockets, by cgroup) and whenever the
+ * filter reports a socket it dropped a packet of (one that wasn't there in the sweep, or a domain
+ * whose address was learned later). Only sockets in an app scope of that user, only those the
+ * same np_decide denies. */
+
+static int diag_fd(void) {
+    if (G.diag_fd < 0 && (G.diag_fd = npdiag_open()) < 0 && !G.diag_warned) {
+        logf_("sock_diag: %s: open connections are cut only by dropping their packets", strerror(errno));
+        G.diag_warned = 1;
+    }
+    return G.diag_fd;
+}
+
+static int cut_sock(const NpSock *k) {
+    int fd = diag_fd();
+    if (fd < 0) return -ENOTSOCK;
+    int rc = npdiag_destroy(fd, k);
+    if (rc == -EAGAIN || rc == -EINTR || rc == -EIO) {         /* a lost answer: start over with a new socket */
+        close(G.diag_fd);
+        G.diag_fd = -1;
+    }
+    if ((rc == -EOPNOTSUPP || rc == -EPERM) && !G.diag_warned) {
+        logf_("the kernel can't destroy %s sockets (%s; CONFIG_INET_DIAG_DESTROY): their packets are dropped, the app sees a stall",
+              k->proto == IPPROTO_TCP ? "TCP" : "UDP", strerror(-rc));
+        G.diag_warned = 1;
+    }
+    return rc;
+}
+
+/* The remote address of a socket as the rules see it: an IPv4-mapped IPv6 one is IPv4. */
+static int remote_of(const NpSock *k, uint8_t *a) {
+    memset(a, 0, 16);
+    if (k->fam == AF_INET) { memcpy(a, k->dst, 4); return 4; }
+    static const uint8_t mapped[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
+    if (!memcmp(k->dst, mapped, 12)) { memcpy(a, k->dst + 12, 4); return 4; }
+    memcpy(a, k->dst, 16);
+    return 6;
+}
+
+/* The same decision as the packet filter, from userspace: the app's NpApp, its trie list for the
+ * address and whether the local port is one it bound (an incoming connection). 1 if denied. */
+static int user_denies(const Scope *sc, const NpSock *k, int *fam, uint8_t *addr, int *dir, int *port, NpRes *r) {
+    const NpApp *a = &sc->app_v;
+    if (!a->can_deny) return 0;
+    *fam = remote_of(k, addr);
+    int proto = k->proto == IPPROTO_TCP ? NP_P_TCP : NP_P_UDP, lan;
+    NpList l;
+    int have = 0;
+    if (*fam == 4) {
+        lan = np_is_lan4(addr);
+        NpLpm4Key key;
+        memset(&key, 0, sizeof key);
+        key.prefixlen = 64;
+        key.data[0] = (uint8_t)(a->idx >> 24); key.data[1] = (uint8_t)(a->idx >> 16); key.data[2] = (uint8_t)(a->idx >> 8); key.data[3] = (uint8_t)a->idx;
+        memcpy(key.data + 4, addr, 4);
+        have = a->has4 && !bpfs_map_lookup(G.m_np_lpm4, &key, &l);
+    } else {
+        lan = np_is_lan6(addr);
+        NpLpm6Key key;
+        memset(&key, 0, sizeof key);
+        key.prefixlen = 160;
+        key.data[0] = (uint8_t)(a->idx >> 24); key.data[1] = (uint8_t)(a->idx >> 16); key.data[2] = (uint8_t)(a->idx >> 8); key.data[3] = (uint8_t)a->idx;
+        memcpy(key.data + 4, addr, 16);
+        have = a->has6 && !bpfs_map_lookup(G.m_np_lpm6, &key, &l);
+    }
+    NpBoundKey bk;
+    memset(&bk, 0, sizeof bk);
+    bk.cgid = sc->cgid;
+    bk.port = k->sport;
+    bk.proto = (np_u8)proto;
+    uint8_t one;
+    *dir = NP_D_OUT;
+    *port = k->dport;
+    if (!bpfs_map_lookup(G.m_np_bound, &bk, &one)) { *dir = NP_D_IN; *port = k->sport; }
+    np_decide(a, have ? &l : NULL, *dir, proto, *port, lan, r);
+    return r->verdict == NP_V_DENY;
+}
+
+typedef struct {
+    NpSock k;
+    NpEvent ev;
+} CutReq;
+
+typedef struct {
+    unsigned uid;                       /* only this user's apps; (unsigned)-1: everyone's */
+    CutReq *v;
+    int n, cap;
+} Sweep;
+
+static int sweep_cb(void *u, const NpSock *k) {
+    Sweep *w = u;
+    Session *s;
+    Scope *sc = k->cgid ? scope_by_cgid(k->cgid, &s) : NULL;
+    if (!sc || (w->uid != (unsigned)-1 && s->uid != w->uid)) return 0;
+    int proto = k->proto == IPPROTO_TCP ? NP_P_TCP : NP_P_UDP;
+    if (k->proto == IPPROTO_TCP && k->state == 10) {           /* TCP_LISTEN: the app's server (also after a restart of this service) */
+        NpBoundKey bk;
+        memset(&bk, 0, sizeof bk);
+        bk.cgid = sc->cgid;
+        bk.port = k->sport;
+        bk.proto = (np_u8)proto;
+        uint8_t one = 1;
+        bpfs_map_update(G.m_np_bound, &bk, &one, BPF_ANY);
+        return 0;
+    }
+    if (!k->dport) return 0;                                   /* not connected */
+    CutReq q;
+    memset(&q, 0, sizeof q);
+    int fam, dir, port;
+    NpRes r;
+    if (!user_denies(sc, k, &fam, q.ev.addr, &dir, &port, &r)) return 0;
+    if (w->n == w->cap) {
+        int nc = w->cap ? w->cap * 2 : 32;
+        CutReq *nv = realloc(w->v, (size_t)nc * sizeof *nv);
+        if (!nv) return 1;
+        w->v = nv;
+        w->cap = nc;
+    }
+    q.k = *k;
+    q.ev.cgid = sc->cgid;
+    q.ev.port = (np_u16)port;
+    q.ev.fam = (np_u8)fam; q.ev.proto = (np_u8)proto; q.ev.dir = (np_u8)dir; q.ev.verdict = NP_V_DENY;
+    q.ev.reason = (np_u8)r.reason; q.ev.record = (np_u8)r.record; q.ev.rule_id = r.rule_id; q.ev.flag = r.flag;
+    w->v[w->n++] = q;
+    return 0;
+}
+
+static void on_net_event(const NpEvent *ev, int cut);
+
+/* Destroys the open sockets of uid's apps (or everyone's) that their rules now deny, and learns
+ * the ports their servers listen on. */
+static void sweep(unsigned uid) {
+    if (!G.bpf_ok) return;
+    int fd = diag_fd();
+    if (fd < 0) return;
+    Sweep w = { uid, NULL, 0, 0 };
+    /* TCP: every state but TIME_WAIT (6), CLOSE (7) and the request sockets (3, 12); UDP: connected (1) */
+    uint32_t tcp_states = ~((1u << 3) | (1u << 6) | (1u << 7) | (1u << 12)), udp_states = 1u << 1;
+    static const int fams[2] = { AF_INET, AF_INET6 };
+    for (int f = 0; f < 2; f++) {
+        int rc = npdiag_each(fd, fams[f], IPPROTO_TCP, tcp_states, sweep_cb, &w);
+        if (rc >= 0) rc = npdiag_each(fd, fams[f], IPPROTO_UDP, udp_states, sweep_cb, &w);
+        if (rc < 0 && rc != -ENOENT) {
+            logf_("sock_diag dump: %s", strerror(-rc));
+            close(G.diag_fd);
+            G.diag_fd = -1;
+            break;
+        }
+    }
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);                        /* the clock of bpf_ktime_get_ns */
+    uint64_t now = (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+    for (int i = 0; i < w.n; i++) {
+        if (cut_sock(&w.v[i].k)) continue;                      /* gone already, or the kernel can't: the drop holds */
+        /* the filter may have dropped one of its packets in the meantime and counted it already
+         * (np_seen by cookie, as report_cut keys it); otherwise mark it so it isn't counted twice */
+        NpSeenKey sk;
+        memset(&sk, 0, sizeof sk);
+        sk.cgid = w.v[i].ev.cgid;
+        uint64_t cookie = (uint64_t)w.v[i].k.cookie[0] | (uint64_t)w.v[i].k.cookie[1] << 32;
+        for (int b = 0; b < 8; b++) sk.addr[b] = (uint8_t)(cookie >> (b * 8));
+        sk.dir = NP_D_CUT;
+        sk.verdict = 1;
+        uint64_t last;
+        if (!bpfs_map_lookup(G.m_np_seen, &sk, &last)) continue;
+        bpfs_map_update(G.m_np_seen, &sk, &now, BPF_ANY);
+        Session *s;
+        Scope *sc = scope_by_cgid(w.v[i].ev.cgid, &s);
+        if (sc) { sc->cuts++; s->dirty_counts = 1; }
+        on_net_event(&w.v[i].ev, 1);
+    }
+    free(w.v);
 }
 
 /* ---- notices and counters -------------------------------------------------------------------- */
@@ -650,6 +843,34 @@ static void on_event(void *u, const void *data, uint32_t len) {
             logf_("uid %u %s: denied a Bluetooth socket (%s)", us->uid, sc ? sc->app : "user@ (union of restricted apps)", fw_flag_name(ev.flag));
         return;
     }
+    if (ev.cut) {
+        /* the packet filter dropped a packet of an open socket the rules now deny: destroy it */
+        int cut = 0;
+        if (ev.destroy && sc && (ev.fam == 4 || ev.fam == 6) && (ev.proto == NP_P_TCP || ev.proto == NP_P_UDP)) {
+            NpSock k;
+            memset(&k, 0, sizeof k);
+            k.fam = ev.fam == 4 ? AF_INET : AF_INET6;
+            k.proto = ev.proto == NP_P_TCP ? IPPROTO_TCP : IPPROTO_UDP;
+            memcpy(k.src, ev.laddr, 16);
+            memcpy(k.dst, ev.addr, 16);
+            k.sport = ev.lport;
+            k.dport = ev.rport;
+            k.cookie[0] = (uint32_t)ev.cookie;
+            k.cookie[1] = (uint32_t)(ev.cookie >> 32);
+            cut = cut_sock(&k) == 0;
+        }
+        if (ev.cut != 1) return;                    /* asked again: already counted and reported */
+        on_net_event(&ev, cut);
+        return;
+    }
+    on_net_event(&ev, 0);
+}
+
+/* A connection notice (new, denied or cut) towards the user's lord-server and the journal. */
+static void on_net_event(const NpEvent *evp, int cut) {
+    NpEvent ev = *evp;
+    Session *s;
+    Scope *sc = scope_by_cgid(ev.cgid, &s);
     char addr[INET6_ADDRSTRLEN] = "";
     if (ev.fam == 4) inet_ntop(AF_INET, ev.addr, addr, sizeof addr);
     else if (ev.fam == 6) inet_ntop(AF_INET6, ev.addr, addr, sizeof addr);
@@ -686,7 +907,7 @@ static void on_event(void *u, const void *data, uint32_t len) {
                      ev.rule_id, flag ? flag : "", ev.record, hosts);
     if (n > 0 && (size_t)n < sizeof j) send_uid(s->uid, NP_MSG_EVENT, j, (size_t)n, 1);
     if (ev.verdict == NP_V_DENY)
-        logf_("uid %u %s: denied %s %s %s:%u (%s%s%s)", s->uid, sc->app, ev.dir == NP_D_IN ? "in" : "out",
+        logf_("uid %u %s: %s %s %s %s:%u (%s%s%s)", s->uid, sc->app, cut ? "cut open" : ev.cut ? "dropping open" : "denied", ev.dir == NP_D_IN ? "in" : "out",
               ev.proto == NP_P_TCP ? "tcp" : ev.proto == NP_P_UDP ? "udp" : "other", addr[0] ? addr : "?", ev.port, by_name(ev.reason),
               ev.flag ? " " : "", ev.flag && flag ? flag : "");
 }
@@ -694,7 +915,7 @@ static void on_event(void *u, const void *data, uint32_t len) {
 /* ---- traffic per address (np_flows) ------------------------------------------------------- */
 
 typedef struct {
-    uint64_t rx, tx;                    /* the last reading */
+    uint64_t rx, tx, blocked;           /* the last reading */
     double rrx, rtx;                    /* bytes per second over the last tick */
     long long active;                   /* tick of the last change */
     long long tick;                     /* tick of the last reading that saw it */
@@ -728,9 +949,10 @@ static void read_flows(double dt) {
         uint64_t dtx = vals[i].tx >= f->tx ? vals[i].tx - f->tx : vals[i].tx;
         f->rrx = dt > 0 ? (double)drx / dt : 0;
         f->rtx = dt > 0 ? (double)dtx / dt : 0;
-        if (drx || dtx || !f->active) f->active = G.tick;
+        if (drx || dtx || vals[i].blocked != f->blocked || !f->active) f->active = G.tick;
         f->rx = vals[i].rx;
         f->tx = vals[i].tx;
+        f->blocked = vals[i].blocked;
         f->tick = G.tick;
     }
     /* the table mirrors the kernel's: what the LRU evicted (or a closed scope left) goes */
@@ -748,7 +970,7 @@ static void idle_flows(void) {
     }
 }
 
-/* [["addr",rx,tx,rxRate,txRate],...] of one app, busiest first. */
+/* [["addr",rx,tx,rxRate,txRate,blocked],...] of one app, busiest first. */
 static size_t flows_json(uint64_t cgid, char *j, size_t cap) {
     static FlowRef refs[NP_MAX_FLOWS];
     int n = 0;
@@ -762,17 +984,18 @@ static size_t flows_json(uint64_t cgid, char *j, size_t cap) {
     qsort(refs, (size_t)n, sizeof refs[0], flow_cmp);
     size_t w = 0;
     w += (size_t)snprintf(j + w, cap - w, "[");
-    for (int i = 0; i < n && i < FLOWS_PER_APP && w + 120 < cap; i++) {
+    for (int i = 0; i < n && i < FLOWS_PER_APP && w + 170 < cap; i++) {
         char addr[INET6_ADDRSTRLEN] = "";
         inet_ntop(refs[i].k->fam == 4 ? AF_INET : AF_INET6, refs[i].k->addr, addr, sizeof addr);
-        w += (size_t)snprintf(j + w, cap - w, "%s[\"%s\",%llu,%llu,%.0f,%.0f]", i ? "," : "", addr,
-                              (unsigned long long)refs[i].f->rx, (unsigned long long)refs[i].f->tx, refs[i].f->rrx, refs[i].f->rtx);
+        w += (size_t)snprintf(j + w, cap - w, "%s[\"%s\",%llu,%llu,%.0f,%.0f,%llu]", i ? "," : "", addr,
+                              (unsigned long long)refs[i].f->rx, (unsigned long long)refs[i].f->tx, refs[i].f->rrx, refs[i].f->rtx,
+                              (unsigned long long)refs[i].f->blocked);
     }
     w += (size_t)snprintf(j + w, cap - w, "]");
     return w;
 }
 
-/* Every second: {"app":[allowed,denied,rx,tx,rxRate,txRate,[[addr,rx,tx,rxRate,txRate],...]],...}
+/* Every second: {"app":[allowed,denied,rx,tx,rxRate,txRate,[[addr,rx,tx,rxRate,txRate,blocked],...],blocked],...}
  * to each user with something new (the rates are bytes per second over the last second). With
  * no traffic and no new connections nothing is sent. */
 static void push_counts(void) {
@@ -786,14 +1009,16 @@ static void push_counts(void) {
         Session *s = &G.sess[i];
         for (int k = 0; k < s->nsc; k++) {
             Scope *sc = &s->sc[k];
-            NpCount c = { 0, 0, 0, 0 };
+            NpCount c = { 0, 0, 0, 0, 0 };
             if (G.bpf_ok) bpfs_map_lookup(G.m_np_counts, &sc->cgid, &c);
-            if (c.allowed != sc->allowed || c.denied != sc->denied) s->dirty_counts = 1;
+            c.denied += sc->cuts;           /* the sockets a sweep destroyed are denied connections too */
+            if (c.allowed != sc->allowed || c.denied != sc->denied || c.blocked != sc->blocked) { s->dirty_counts = 1; bytes_moved = 1; }
             double rrx = dt > 0 && c.rx >= sc->rx ? (double)(c.rx - sc->rx) / dt : 0;
             double rtx = dt > 0 && c.tx >= sc->tx ? (double)(c.tx - sc->tx) / dt : 0;
             if (c.rx != sc->rx || c.tx != sc->tx || (rrx == 0) != (sc->rrx == 0) || (rtx == 0) != (sc->rtx == 0)) { s->dirty_counts = 1; bytes_moved = 1; }
             sc->allowed = c.allowed;
             sc->denied = c.denied;
+            sc->blocked = c.blocked;
             sc->rx = c.rx;
             sc->tx = c.tx;
             sc->rrx = rrx;
@@ -812,7 +1037,7 @@ static void push_counts(void) {
         for (int c = 0; c < G.ncl && !has_client; c++) has_client = G.cl[c].uid == s->uid;
         if (!has_client) continue;                                  /* stays dirty until someone connects */
         s->dirty_counts = 0;
-        size_t per = FW_APP_MAX * 2 + 160 + (size_t)FLOWS_PER_APP * 120;
+        size_t per = FW_APP_MAX * 2 + 200 + (size_t)FLOWS_PER_APP * 170;
         size_t cap = 64 + (size_t)s->nsc * per, w = 0;
         char *j = malloc(cap);
         if (!j) continue;
@@ -824,8 +1049,8 @@ static void push_counts(void) {
             w += (size_t)snprintf(j + w, cap - w, "%s%s:[%llu,%llu,%llu,%llu,%.0f,%.0f,", w > 1 ? "," : "", app,
                                   (unsigned long long)sc->allowed, (unsigned long long)sc->denied,
                                   (unsigned long long)sc->rx, (unsigned long long)sc->tx, sc->rrx, sc->rtx);
-            w += flows_json(sc->cgid, j + w, cap - w - 2);
-            j[w++] = ']';
+            w += flows_json(sc->cgid, j + w, cap - w - 40);
+            w += (size_t)snprintf(j + w, cap - w, ",%llu]", (unsigned long long)sc->blocked);
         }
         j[w++] = '}';
         send_uid(s->uid, NP_MSG_COUNTS, j, w, 0);
@@ -892,7 +1117,7 @@ static int bpf_setup(void) {
 #define NP_MKMAP(n, t, k, v, m, f) G.m_##n = bpfs_map_create(t, k, v, m, f, #n);
     NP_MAPS(NP_MKMAP)
 #undef NP_MKMAP
-    if (G.m_np_flows < 0 || G.m_np_snd < 0 || G.m_np_cfg < 0 || G.m_np_apps < 0 || G.m_np_union < 0 || G.m_np_lpm4 < 0 || G.m_np_lpm6 < 0 || G.m_np_seen < 0 || G.m_np_counts < 0 || G.m_np_events < 0) {
+    if (G.m_np_bound < 0 || G.m_np_flows < 0 || G.m_np_snd < 0 || G.m_np_cfg < 0 || G.m_np_apps < 0 || G.m_np_union < 0 || G.m_np_lpm4 < 0 || G.m_np_lpm6 < 0 || G.m_np_seen < 0 || G.m_np_counts < 0 || G.m_np_events < 0) {
         lerr_set(G.bpf_err, sizeof G.bpf_err, "fw.bpfMaps", "errno", lerr_errno(errno), NULL);
         return -1;
     }
@@ -1024,6 +1249,7 @@ int main(int argc, char **argv) {
     sigaction(SIGINT, &sa, NULL);
     G.dns_fd = -1;
     G.cgfd = -1;
+    G.diag_fd = -1;
     G.empty = fw_store_new();
     G.names = dnsmap_new(16384);
     G.ep = epoll_create1(EPOLL_CLOEXEC);
@@ -1050,6 +1276,7 @@ int main(int argc, char **argv) {
     attach_service();
     if (G.root_wd < 0) G.root_wd = inotify_add_watch(G.ifd, CG_ROOT "/" CG_SERVICE, IN_CREATE | IN_DELETE | IN_ONLYDIR);
     scan_all();
+    sweep((unsigned)-1);                /* what was opened while this service wasn't running, and the servers' ports */
     watch_dns();
 
     while (!quit) {

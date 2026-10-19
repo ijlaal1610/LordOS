@@ -86,10 +86,28 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 - Apps with device or "no files" restrictions get no X display.
 - Clipboard offers to Wayland apps are bound to the selection they were made for and to the app
   with the keyboard.
+- **The per-app firewall applies to open connections, not only to new ones.** A rule change used to
+  leave established TCP connections and connected UDP sockets (QUIC) outside the policy until they
+  closed. `lord-netperm`'s packet filter (the cgroup programs that already counted bytes per app)
+  now takes the same decision as at connect time for every packet of an app whose rules deny
+  something, and `lord-netperm` destroys those sockets over sock_diag netlink (its unit now also
+  allows `AF_NETLINK`; it still creates no internet sockets). "No incoming connections" now also
+  cuts connections already accepted. The Raspberry Pi kernel build enables
+  `CONFIG_INET_DIAG_DESTROY`; on a kernel without it the packets are still dropped.
 
 ### Fixed
 
 - Java (AWT/Swing) windows were blank or shifted (non-reparenting window manager).
+- **Blocking an app now cuts the connections it already has open.** Turning an app's rule off in
+  Monitor → Network (or adding a deny rule for a destination or domain, or a restriction such as
+  "no internet") counted its new connections as denied, but what was already open kept flowing:
+  a video kept playing over its established TCP and QUIC connections. Now the matching traffic stops
+  within milliseconds: the kernel drops the packets of those connections and LordOS closes them, so
+  the app sees the connection end instead of a stall. Only what the new rule denies is cut: other
+  destinations, the local network under "no internet", and the clients of a server the app runs
+  keep working. Switching the rule back to allow works again at once. The Monitor counts every cut
+  connection as denied and shows the dropped bytes as "Blocked traffic" in the app's details. See
+  [docs/FIREWALL.md](docs/FIREWALL.md), "Existing connections are cut".
 
 ## [0.8.2-beta] - 2026-10-19
 

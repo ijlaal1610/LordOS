@@ -38,6 +38,7 @@
   "rule.none": "No rule (per the mode)",
   "counts": "Connections",
   "countsValue": "{allowed} allowed · {denied} denied",
+  "blocked": "Blocked traffic",
   "r.no-clipboard": "No reading the clipboard",
   "desktopAlways": "The desktop itself always has access to files, removable drives, the clipboard and Bluetooth; restrict individual apps instead.",
   "whenNextLaunch": "{name} (at next launch)",

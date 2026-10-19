@@ -204,11 +204,12 @@ int np_compile_app(FwStore *s, const char *app, uint32_t idx, DnsMap *names, con
     const FwRule **v = malloc(((size_t)R.n + 1) * sizeof *v);
     FwMap seen = { 0 };
     if (!v) goto done;
-    int k = 0;
+    int k = 0, dom_deny = 0;
     for (int i = 0; i < R.n; i++) {
         FwDstKind kd = R.rules[i].kind;
         if (kd == FW_DST_ANY || kd == FW_DST_LAN || kd == FW_DST_INTERNET) v[k++] = &R.rules[i];
         if (kd == FW_DST_DOMAIN) out->has_domains = 1;
+        if (kd == FW_DST_DOMAIN && R.rules[i].action == FW_DENY) dom_deny = 1;   /* its addresses may come later (on_dns) */
     }
     out->truncated += fill(v, k, a->gen, &a->ngen, NP_GEN_MAX);
 
@@ -239,9 +240,11 @@ int np_compile_app(FwStore *s, const char *app, uint32_t idx, DnsMap *names, con
         dnsmap_each(names, names_app, now, host_cb, &h);
         if (h.err) goto done;
     }
+    a->can_deny = (a->flags & NP_R_NET_MASK) || dom_deny || np_ents_deny(a->gen, a->ngen);
     for (int i = 0; i < out->nnodes; i++) {
         if (out->nodes[i].fam == 4) a->has4 = 1;
         else a->has6 = 1;
+        if (np_ents_deny(out->nodes[i].list.e, out->nodes[i].list.n)) a->can_deny = 1;
     }
     rc = 0;
 done:

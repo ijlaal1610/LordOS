@@ -107,6 +107,14 @@ server, and this app's rule is that no address leaves the machine.
 **"This computer"** is placed by the time zone (`/etc/localtime` → coordinates from
 `/usr/share/zoneinfo/zone1970.tab`), without the network.
 
+### Blocking cuts what is open (0.8.3)
+
+Switching an app's rule off (or a destination's switch, or adding a restriction) now also ends the
+connections it already had: the kernel drops their packets and `lord-netperm` closes the sockets
+(`FIREWALL.md`, "Existing connections are cut"). Each cut connection adds one to the app's
+*denied* count, and the bytes dropped meanwhile show in its details as **Blocked traffic**
+(`COUNTS` index 7). Within a second of the switch the row shows it.
+
 ### Per-destination switches (0.8.2)
 
 An open app row lists the destinations it reached and gives each one an allow/block switch

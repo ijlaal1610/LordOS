@@ -23,7 +23,8 @@
     X(np_counts, BPF_MAP_TYPE_HASH,     8,                 sizeof(NpCount), NP_MAX_APPS,     0) \
     X(np_events, BPF_MAP_TYPE_RINGBUF,  0,                 0,               NP_RINGBUF,      0) \
     X(np_snd,    BPF_MAP_TYPE_HASH,     4,                 4,               NP_MAX_SND,      0) \
-    X(np_flows,  BPF_MAP_TYPE_LRU_HASH, sizeof(NpFlowKey), sizeof(NpFlow),  NP_MAX_FLOWS,    0)
+    X(np_flows,  BPF_MAP_TYPE_LRU_HASH, sizeof(NpFlowKey), sizeof(NpFlow),  NP_MAX_FLOWS,    0) \
+    X(np_bound,  BPF_MAP_TYPE_LRU_HASH, sizeof(NpBoundKey), 1,              NP_MAX_BOUND,    0)
 
 /* Each program: its section, kind and attach point. btf: the kernel function an LSM program
  * hooks (its id comes from /sys/kernel/btf/vmlinux). opt: 1 = the device, Bluetooth and traffic
@@ -47,7 +48,8 @@ static const NpProgSpec np_prog_specs[] = {
     { "cgroup/sock_create", BPF_PROG_TYPE_CGROUP_SOCK, BPF_CGROUP_INET_SOCK_CREATE, NULL, 0 },
     { "cgroup/dev", BPF_PROG_TYPE_CGROUP_DEVICE, BPF_CGROUP_DEVICE, NULL, 1 },
     { "cgroup/lsm_socket_create", BPF_PROG_TYPE_LSM, BPF_LSM_CGROUP, "bpf_lsm_socket_create", 1 },
-    /* traffic accounting for the Monitor (bytes per app and per remote address); never denies */
+    /* the packet filter: traffic accounting for the Monitor (bytes per app and per remote address)
+     * and the cut of connections a rule now denies (it drops only those packets) */
     { "cgroup/skb_ingress", BPF_PROG_TYPE_CGROUP_SKB, BPF_CGROUP_INET_INGRESS, NULL, 1 },
     { "cgroup/skb_egress", BPF_PROG_TYPE_CGROUP_SKB, BPF_CGROUP_INET_EGRESS, NULL, 1 },
 };

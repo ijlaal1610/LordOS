@@ -38,6 +38,7 @@
   "rule.none": "Sem regra (conforme o modo)",
   "counts": "Conexões",
   "countsValue": "{allowed} permitidas · {denied} negadas",
+  "blocked": "Tráfego bloqueado",
   "r.no-clipboard": "Sem ler a área de transferência",
   "desktopAlways": "A própria área de trabalho sempre tem acesso aos arquivos, unidades removíveis, área de transferência e Bluetooth; restrinja apps individuais.",
   "whenNextLaunch": "{name} (na próxima abertura)",

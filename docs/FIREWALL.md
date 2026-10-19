@@ -577,7 +577,8 @@ tests/netperm_bench.c, netperm_measure.sh   measurements
 
 - **No arguments, no execution.** It doesn't launch programs. With arguments, it doesn't start.
 - **No network of its own.** It creates no AF_INET or AF_INET6 sockets. The unit enforces this with
-  `RestrictAddressFamilies=AF_UNIX AF_PACKET` and leaves it only `CAP_BPF CAP_NET_ADMIN CAP_PERFMON
+  `RestrictAddressFamilies=AF_UNIX AF_PACKET AF_NETLINK` (netlink only for sock_diag, to destroy
+  the sockets of a connection a rule now denies) and leaves it only `CAP_BPF CAP_NET_ADMIN CAP_PERFMON
   CAP_DAC_READ_SEARCH CAP_NET_RAW`. It has `ProtectSystem=strict`, `ProtectHome=read-only` and the
   rest listed in the unit (`VM-SETUP.md`, step 20).
 - **The programs are inside the binary.** `clang -target bpf` compiles `np.bpf.c` and `build/bpf2c`
@@ -615,7 +616,7 @@ tests/netperm_bench.c, netperm_measure.sh   measurements
 | `cgroup/sock_create` | "no network": the app can't even create an AF_INET/AF_INET6 socket, so it can't ping either |
 | `cgroup/dev` | "no camera", "no USB", "no screen capture" (`/dev/fb*`) and "no microphone" (ALSA capture nodes): device `open()`/`mknod()` (see [Linux apps](#linux-apps)) |
 | `cgroup/lsm_socket_create` | "no Bluetooth": `socket(AF_BLUETOOTH)`, a per-cgroup LSM program (`BPF_LSM_CGROUP`) |
-| `cgroup/skb_ingress`, `skb_egress` | nothing: **traffic accounting** for the Monitor (bytes per app and per remote address, see below). They always let the packet through |
+| `cgroup/skb_ingress`, `skb_egress` | **traffic accounting** for the Monitor (bytes per app and per remote address, see below) and, since 0.8.3, the packets of a connection the app's current rules deny: they are dropped, so a connection opened before the rule changed stops at once (see [Existing connections are cut](#existing-connections-are-cut)) |
 
 Each program does the following:
 
@@ -721,6 +722,100 @@ connection took its bytes with it: a browser playing a video showed a few KB. No
 Every second `lord-netperm` reads `np_counts` (one lookup per app) and, only if bytes moved, the
 whole `np_flows` table in one `BPF_MAP_LOOKUP_BATCH` call, works out the rates and sends `COUNTS`
 (below). With nothing moving it reads no table and sends nothing.
+
+### Existing connections are cut
+
+Up to 0.8.2 a verdict was taken only when a connection started (`connect`, the first `sendto`,
+`bind`). Turning an app's rule off in Monitor → Network counted "Denied" for its new connections,
+but what was already open kept flowing: a video kept playing over its established TCP and QUIC
+(connected UDP) sockets. Since 0.8.3, when a rule changes to deny (the whole app, a network or
+domain rule, or a restriction such as "no internet"), the matching traffic stops within
+milliseconds, in two layers:
+
+1. **Drop in the kernel.** The `cgroup/skb_ingress` and `skb_egress` programs, which already counted
+   every packet, also decide for apps whose rules can deny something (`NpApp.can_deny`: a
+   network restriction, a deny entry, or a deny domain rule whose addresses may come later). The
+   decision is the very `np_decide` of `connect()`, on the packet's remote address and port, with
+   the same maps: the app's generic list, its trie (networks and the addresses the resolver gave for
+   its domain rules) and its restrictions. TCP and UDP, IPv4 and IPv6 (an IPv4-mapped socket sends
+   IPv4 packets, so it is decided as IPv4). Loopback is never filtered, and "no internet" keeps the
+   LAN (the same `np_is_lan4/6`). A denied packet is dropped (`return 0`) and its bytes go to
+   **blocked**, not to received/sent. A TCP reset always goes through (it's what tells the other end
+   the connection is over).
+   - **Incoming connections:** a packet on a local port the app bound (`np_bound`, filled by the
+     `bind` programs and, after a restart of the service, from the listening sockets of a
+     sock_diag dump) is decided as `in` on that port, like `bind`. So denying an app's outgoing
+     internet doesn't cut the clients of a server it runs, and "no incoming connections" now also
+     cuts the connections already accepted.
+2. **Destroy the socket.** So the app sees the connection end instead of a stall, `lord-netperm`
+   destroys it over sock_diag netlink (`SOCK_DESTROY`, `npdiag.c`): the kernel aborts it (TCP sends
+   a reset, the app gets `ECONNABORTED`). Two triggers:
+   - **right after every reload:** a dump of the machine's TCP sockets and connected UDP sockets
+     with their cgroup (`INET_DIAG_CGROUP_ID`); each one in one of that user's app scopes that the
+     same decision denies is destroyed. This also cuts idle connections (a push channel, an SSH
+     session) that send nothing;
+   - **when the filter drops a packet of a socket** it reports it once (an `NpEvent` with `cut`,
+     the 4-tuple and the socket cookie, deduplicated in `np_seen` by cookie) and `lord-netperm`
+     destroys exactly that socket (the cookie must match). That covers a domain whose address the
+     resolver gave after the connection opened, and sockets outside the dump's reach.
+
+   Listening sockets and unconnected UDP sockets are never destroyed (they may also serve
+   allowed peers): their denied packets are only dropped. QUIC is a connected UDP socket, so it
+   is destroyed too; its reconnect attempts are refused at `connect`.
+3. **Back to allow:** nothing stays behind. The filter reads the maps on every packet, so the first
+   packet after the reload passes, and new connections work at once.
+
+**What the Monitor shows:** every cut socket counts as one more *denied* connection (the kernel
+counts it on the first drop; a sweep's destroyed sockets are added by `lord-netperm`) and appears
+in the connection log as denied; the bytes dropped are sent as *blocked* (`COUNTS`, index 7, and
+per address at index 5) and the app's detail shows "Blocked traffic". The counters go out every
+second, so the row shows the block within a second.
+
+**Kernels:** `SOCK_DESTROY` needs `CONFIG_INET_DIAG_DESTROY` (TCP) and `CONFIG_INET_UDP_DIAG` (UDP).
+Debian 13's kernel (6.12) has both. The Raspberry Pi kernel of the 0.8.2 image doesn't:
+`tools/rpi/build-kernel.sh` enables them from 0.8.3 on; with an older kernel the drop still
+applies and the journal says once that the app will see a stall (TCP retransmits until it gives
+up) instead of a reset. All 11 programs pass the verifier on 6.12 (VM 118) and on the Pi's
+6.18.57 (`npverify-test`, built and run in a temporary folder, removed afterwards).
+
+**Tests** (`tests/netperm_cut.sh`, VM 118, real network):
+
+| Case | Result |
+|---|---|
+| a TCP download (`curl`, 800 KB/s) and an idle TCP session to a LAN SSH port; the app denied | the download ends 0.13–0.45 s after the rule is written (`curl: (56) Recv failure: Software caused connection abort`), the idle session gets `ECONNABORTED` 0.03 s after it |
+| an HTTP/3 download (`curl --http3-only`, one QUIC connection) | ends 0.07–0.08 s after the rule (`Software caused connection abort`) |
+| switched back to allow | a new TCP connection works at once (HTTP 200 in 0.2 s), and a new HTTP/3 request too |
+| a domain rule denying one of two running downloads | that one ends in 0.3–0.8 s, the other keeps downloading |
+| "no internet" with an internet download and an idle LAN session | the download ends, the LAN session stays open |
+| a server in the app scope, a LAN client sending (another machine), the app's outgoing traffic denied | the server receives every byte (427,000 of 427,000) |
+| the same server with "no incoming connections" | the accepted connection is cut (`ECONNABORTED` in the server, a reset at the client) |
+| Chromium playing a video (3 TCP connections, one to port 5228, and 2 QUIC sockets), the switch turned off in Monitor → Network | all 5 sockets destroyed within a second (`ss` shows none), the video stops, the row shows the denied count and Rule "Deny"; turned back on, Chromium reconnects |
+
+`netperm_integration.sh` (19/19) and `make -C server test` (0 warnings) pass as before.
+
+![Monitor after blocking Chromium while it played a video](firewall-cut-monitor.png)
+![Chromium's details: no connections left, Rule "Deny"](firewall-cut-detail.png)
+
+On a kernel with `SOCK_DESTROY` the sockets usually go before more packets arrive, so "Blocked
+traffic" stays small (often 0); it grows on a kernel without it, or for a socket the sweep
+couldn't see.
+
+**Cost** (`iperf3` through a veth pair into a private network namespace, the client in an app
+scope, as in 0.8.1; per-packet time of the program from `kernel.bpf_stats_enabled`, turned off
+again afterwards):
+
+| | TCP, ~24 Gbit/s | UDP 1 Gbit/s, 1200 B, sending | UDP 1 Gbit/s, receiving | per packet (UDP send) |
+|---|---|---|---|---|
+| 0.8.2 (accounting only), a deny rule for another network | 24.2 Gbit/s, 98.5 % sys | 54.2 / 54.7 % | 25.9 / 26.2 % | 200–206 ns |
+| 0.8.3, no rules for the app | 24.4 / 24.2 Gbit/s, 98.6 / 98.4 % | 55.5 / 52.8 % | 26.1 / 26.0 % | 231–233 ns |
+| 0.8.3, a deny rule for another network (the full decision per packet: trie, bound port, `np_decide`) | 23.9 / 24.2 Gbit/s, 99.5 / 98.7 % | 56.9 / 55.1 % | 26.2 / 26.1 % | 346–369 ns |
+
+- An app without a deny rule pays about **30 ns more per packet** (the `np_apps` lookup); one with a
+  deny rule about **150 ns**. At 104,000 packets per second that is 0.3 % and 1.6 % of one core;
+  a video over QUIC is a few thousand packets per second. TCP throughput is unchanged within
+  run-to-run noise.
+- The CPU columns are the client's system CPU (% of one core over 15 s, `iperf3 -J`), two runs each.
+- `lord-netperm` itself only works on a reload (one sock_diag dump) and on a cut socket.
 
 ### From rules to maps (`npcompile.c`)
 
@@ -1003,10 +1098,16 @@ programs:
   default rules.
 - **What isn't checked:**
   - ICMP: denied only with "no network", through `sock_create`;
-  - TCP `listen` without `bind` (ephemeral port);
-  - incoming connections that arrive at an already open port.
+  - TCP `listen` without `bind` (ephemeral port): its connections are decided as outgoing ones.
 
-  That would need `cgroup_skb/ingress`, which runs per packet.
+  Incoming connections that arrive at an already open port are now decided per packet by the
+  filter (0.8.3, [Existing connections are cut](#existing-connections-are-cut)).
+- **Cutting under `user@`:** the packet filter is attached only to `lordos.service`, so a process
+  that escaped to `user@<uid>.service` keeps the connections it already had when a restriction is
+  added; its new ones are refused by the union as before.
+- **Cuts after a restart of `lord-netperm`:** the ports an app bound before the restart come back
+  from the listening TCP sockets only; a UDP server bound before it is decided as outgoing until it
+  binds again.
 - **Per-port rules with direction `in`** are applied at `bind`, with an unknown address.
 - **The "ask" mode** is applied as silent.
 - **Per-destination rules** in the Monitor: done ("Allow / Block this domain", see

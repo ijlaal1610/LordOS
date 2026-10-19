@@ -38,6 +38,7 @@
   "rule.none": "Sin regla (según el modo)",
   "counts": "Conexiones",
   "countsValue": "{allowed} permitidas · {denied} denegadas",
+  "blocked": "Tráfico bloqueado",
   "r.no-clipboard": "Sin leer el portapapeles",
   "desktopAlways": "El escritorio en sí siempre tiene acceso a los archivos, las unidades extraíbles, el portapapeles y Bluetooth; restringe apps individuales.",
   "whenNextLaunch": "{name} (al próximo inicio)",
