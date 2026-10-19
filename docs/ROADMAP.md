@@ -594,6 +594,12 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   - Measured against today's numbers (`REMOTE.md`), with an external security review of the new
     network surface.
 
+- [ ] **Two-step sign-in (TOTP) for the remote desktop** — proposal (0.8.3 security review,
+  `REMOTE.md`): an optional one-time code from an authenticator app after the password, enabled
+  per user in Settings → Users (secret stored by `lord-sessiond` in a root-only file, QR shown once,
+  recovery codes), checked in the same constant-time path, and counted by the same lockout. Off by
+  default; required for "Any address".
+
 - [ ] **Immutable edition (A/B system images)** — 0.8.2 published the design study and an
   experimental, VM-verified prototype (`IMMUTABLE.md`, `tools/immutable/`): read-only `/usr` with
   dm-verity in two slots, one boot image per version, automatic fallback, `/etc` and `/home` kept.

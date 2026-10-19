@@ -50,6 +50,11 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   the selected sidebar row, an underline or a ring on the focused field, and bordered buttons. Lord
   Default looks as before; Classic uses smaller radii, borders and subtle highlights. Isolated
   apps (Mail, Calendar, Contacts, Reminders, Passwords) follow it too.
+- **Remote desktop: blocked and allowed addresses.** Settings → Sharing lists the addresses that
+  are blocked, with the time left and an **Unblock** button, blocks an address or network by hand,
+  and chooses who may connect: the **local network** (the default: private and link-local
+  addresses and connections that arrive over a VPN of this computer), **only these addresses**, or
+  **any address**. You get a notification when an address is blocked.
 
 ### Changed
 
@@ -74,6 +79,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 - **Debian's smartd stays off.** Installing smartmontools from Disks no longer leaves its
   monitoring daemon polling the disks every 30 minutes; Disks and the Monitor read SMART on demand.
   Administrators can opt back in (docs/SYSTEM.md, "smartd").
+- **Remote desktop now accepts the local network only by default.** Connections from public
+  internet addresses are refused unless you choose **Any address** (or list them) in Settings →
+  Sharing; a VPN of this computer still works. Browsers signed in before the update sign in once
+  more (the sign-in cookie changed).
 
 ### Security
 
@@ -94,6 +103,22 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   allows `AF_NETLINK`; it still creates no internet sockets). "No incoming connections" now also
   cuts connections already accepted. The Raspberry Pi kernel build enables
   `CONFIG_INET_DIAG_DESTROY`; on a kernel without it the packets are still dropped.
+- **Remote desktop: 3 failed sign-ins block the address.** For 15 minutes, then 1 hour, then 24
+  hours if it happens again within a day (IPv6 counted per /64). Blocked addresses are cut before
+  any TLS work and stay blocked after a restart (`/var/lib/lordos/remote/blocklist`, root only).
+  Accounts are never locked (that would let anybody lock you out); repeated failures for one
+  account only slow it down. Every failure and block goes to the journal (address and a sanitized
+  user name, never the password).
+- **Remote desktop: a full security review and hardening** ([docs/REMOTE.md](docs/REMOTE.md#security-analysis-083)).
+  The page and the server check every field strictly (user names `a-z 0-9 _ -` up to 32, passwords
+  1–1024 bytes); the request, the form, the cookie, the WebSocket and the input messages are parsed
+  strictly and refused otherwise; a wrong user name and a wrong password take exactly the same time;
+  connections that are slow, too many from one address, or from addresses not allowed are closed
+  early; the sign-in cookie is a `__Host-` cookie stored only as a hash, tied to the password (a
+  password change or lock ends it) and ended for every browser of a user when that user locks the
+  screen; sign-in and sign-out only accept requests from the page itself; TLS 1.2+ with AEAD
+  ciphers only; the part that serves the desktop runs as the user with no shared state, no other
+  descriptors and no way back to root. root can never sign in remotely.
 
 ### Fixed
 

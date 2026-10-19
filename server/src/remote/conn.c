@@ -69,6 +69,14 @@ static double mono(void) {
     return (double)t.tv_sec + t.tv_nsec / 1e9;
 }
 
+/* A failed login is answered exactly FAIL_SECONDS after the password check began, whatever the
+ * account (unknown, refused or a wrong password): the time says nothing about who exists. */
+#define FAIL_SECONDS 1.25
+static void sleep_until(double t) {
+    struct timespec ts = { (time_t)t, (long)((t - (double)(time_t)t) * 1e9) };
+    while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, NULL) == EINTR) {}
+}
+
 /* ---- blocking TLS I/O (before the bridge) ---- */
 
 static int wait_io(int out) {
@@ -76,7 +84,7 @@ static int wait_io(int out) {
     double left = deadline - mono();
     if (left <= 0) return -1;
     struct pollfd p = { sock, (short)(out ? POLLOUT : POLLIN), 0 };
-    int ms = left > 10 ? 10000 : (int)(left * 1000) + 1;
+    int ms = (int)(left * 1000) + 1;
     return poll(&p, 1, ms) > 0 ? 0 : -1;
 }
 
@@ -144,7 +152,8 @@ static const char *status_text(int code) {
     }
 }
 
-/* Every answer: no caching, no framing, no referrer, no sniffing, no powerful features, and a CSP
+/* Every answer: no caching, no framing, no referrer to other sites (same-origin, not no-referrer: with
+ * no-referrer browsers send "Origin: null" on our own form posts, and the Origin check needs it), no sniffing, no powerful features, and a CSP
  * that only lets the page's own inline code run (or nothing, for non-HTML answers). No HSTS: the
  * certificate is self-signed, and HSTS would make its warning impossible to get past. */
 static void respond_page(int code, const char *type, const char *extra, const char *body, size_t len, const Page *pg, const char *host) {
@@ -161,7 +170,7 @@ static void respond_page(int code, const char *type, const char *extra, const ch
     int n = snprintf(head, sizeof head,
         "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nConnection: close\r\n"
         "Cache-Control: no-store, max-age=0\r\nPragma: no-cache\r\n"
-        "X-Frame-Options: DENY\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n"
+        "X-Frame-Options: DENY\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: same-origin\r\n"
         "Cross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Resource-Policy: same-origin\r\n"
         "Permissions-Policy: camera=(), microphone=(), geolocation=(), usb=(), serial=(), hid=(), bluetooth=(), payment=(), display-capture=()\r\n"
         "Content-Security-Policy: %s\r\n%s\r\n", code, status_text(code), type, len, csp, extra ? extra : "");
@@ -376,10 +385,11 @@ static void push_notice(const char *key, double until, int strikes) {
 static void handle_login(const RsReq *r) {
     if (r->query[0]) { respond(400, NULL); return; }            /* credentials never travel in a URL */
     if (!origin_ok(r)) {
-        char o[64], h[64];
+        char o[64], h[64], f[24];
         rs_log_clean(r->origin, strlen(r->origin), o, sizeof o);
         rs_log_clean(r->host, strlen(r->host), h, sizeof h);
-        sd_log("login refused: origin \"%s\" is not https://%s", o, h);
+        rs_log_clean(r->fetch_site, strlen(r->fetch_site), f, sizeof f);
+        sd_log("login refused: not from this page (Origin \"%s\", Host \"%s\", Sec-Fetch-Site \"%s\")", o, h, f);
         respond(403, NULL);
         return;
     }
@@ -401,10 +411,12 @@ static void handle_login(const RsReq *r) {
     }
     int ok = 0;
     char ukey[40] = "";
+    double t0 = mono();
     if (fr == RS_FORM_OK) {
         snprintf(ukey, sizeof ukey, "u:%s", user);
         double d = rl_user_delay(sd_fail_count(ukey));        /* per account: slower, never locked */
         if (d > 0) sleep((unsigned)d);
+        t0 = mono();
         ok = sd_check_password(user, pass, 1);
     }
     explicit_bzero(pass, sizeof pass);
@@ -423,11 +435,11 @@ static void handle_login(const RsReq *r) {
         if (blocked) {
             sd_log("blocked %s for %.0f minutes after %d failed logins (block %d in 24 h)", peer_key, (until - rd_now()) / 60 + 0.5,
                    RL_FAILS, strikes);
-            sleep(1);
+            sleep_until(t0 + FAIL_SECONDS);
             send_login(403, 4, r->host);
             return;
         }
-        sleep(1);
+        sleep_until(t0 + FAIL_SECONDS);
         redirect("/?e=1", NULL);
         return;
     }
@@ -986,7 +998,7 @@ void rd_serve(SSL_CTX *ctx, int fd, const char *ip, const char *key) {
         snprintf(p, sizeof p, "%s", rd_conf.greeter_theme);
         char *slash = strrchr(p, '/');
         if (slash) snprintf(slash, sizeof p - (size_t)(slash - p), "/assets/background.jpg");
-        int f = open(p, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+        int f = open(p, O_RDONLY | O_CLOEXEC);     /* a fixed path in root's theme folder (a link to the wallpaper) */
         struct stat st;
         char *img = NULL;
         size_t got = 0;

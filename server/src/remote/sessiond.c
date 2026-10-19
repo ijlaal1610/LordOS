@@ -28,6 +28,7 @@
 #include "sessiond.h"
 #include "../sec/cgroup.h"
 #include "proto.h"
+#include "rsec.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -975,6 +976,12 @@ static void unblock_requests(void) {
         rd_lock();
         int k = rl_unblock(&rd_shared->lockout, net);
         if (k) { rd_shared->lockout_dirty = 1; rd_shared->version++; }
+        /* and the growing per-source waits of those sources start over */
+        RsCidr req, fk;
+        if (!rs_cidr_parse(net, &req))
+            for (int i = 0; i < 128; i++)
+                if (rd_shared->fails[i].key[0] && !rs_key_parse(rd_shared->fails[i].key, &fk) &&
+                    (rs_cidr_covers(&req, &fk) || rs_cidr_covers(&fk, &req))) memset(&rd_shared->fails[i], 0, sizeof rd_shared->fails[i]);
         rd_unlock();
         char clean[64];
         rs_log_clean(net, strlen(net), clean, sizeof clean);

@@ -1295,3 +1295,20 @@ The installed tree was saved first in `/var/backups/lordos-classic-bak` and put 
   `~/.config/lordos/settings.json` restored from its copy, `~/.cache/lordos-shot*.json`,
   `~/shot-harness`, `~/deploy-classic-119.sh` and `~/LordOS-classic` deleted. The VM ends at the
   login screen.
+
+## Step 36 — Remote desktop security review (VM 122 `lordos-sandbox`, October 19)
+
+See `REMOTE.md`, "Security analysis (0.8.3)". On VM 122 (172.17.0.56), tree in
+`~/LordOS-remotesec`, built there (`make -C server`, `make -C server test`) and installed over the
+package's files by `~/deploy-remotesec-122.sh` (it saved `/usr/lib/lordos`, `/etc/lordos` and
+`/var/lib/lordos/remote` to `/var/backups/lordos-remotesec-20261019` first).
+
+- **Nothing installed.** The attacks ran from the development Mac (stdlib Python client in the
+  scratchpad, a throwaway headless Chrome profile for the screenshots) and from the Raspberry Pi
+  (the same Python script over SSH stdin); OpenSSL's `s_client` on the VM did the TLS scan.
+- **Test-only account `rtest`** (password only for these tests), temporarily in `sudo` and the
+  autologin user, so the block notification reached the monitor's session; removed at the end.
+- `~/unblock-remotesec-122.sh <cidr>` writes the same request as the `remote-unblock` action.
+- **Undone at the end:** the package's files restored from the backup, `/etc/lordos` restored
+  (`session.conf` back to `AUTOLOGIN=`, remote config as before), `/var/lib/lordos/remote` removed,
+  `rtest` and its home deleted, `lordos.service` restarted to the login screen. Network untouched.

@@ -121,7 +121,7 @@ static size_t ws_stream(unsigned char *b, size_t cap) {
         else if (len < 65536) { b[o++] = 0x80 | 126; b[o++] = (unsigned char)(len >> 8); b[o++] = (unsigned char)len; }
         else { b[o++] = 0x80 | 127; for (int i = 0; i < 8; i++) b[o++] = (unsigned char)((unsigned long long)len >> (56 - 8 * i)); }
         for (int i = 0; i < 4; i++) b[o++] = (unsigned char)rnd();
-        for (size_t i = 0; i < len; i++) b[o++] = (unsigned char)(rnd() % 3 ? "{\"t\":\"m\",\"x\":1}"[i % 15] : rnd());
+        for (size_t i = 0; i < len; i++) b[o++] = (unsigned char)(rnd() % 3 ? (unsigned)(unsigned char)"{\"t\":\"m\",\"x\":1}"[i % 15] : rnd());
     }
     return o;
 }

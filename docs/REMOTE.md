@@ -29,6 +29,8 @@ The port is **5673**, which spells "LORD" on a phone keypad.
   with the one the browser shows.
 - **Who can connect:** all users, or only the `lordos-remote` group (`remote-config`;
   `remote-member` adds users to or removes them from the group).
+- **Who can connect** and **Blocked addresses**: see [Blocked and allowed
+  addresses](#blocked-and-allowed-addresses).
 - **Connected now:** user, IP, whether they're watching this screen or their own desktop, and for
   how long, with a «Disconnect» button (`remote-kick`, only pids from lord-sessiond's list).
 
@@ -49,17 +51,81 @@ and rounded fields. It has a language selector (es, en, pt) and an error shakes 
 **It doesn't show the user list**: who has an account isn't revealed to the network. The avatar
 takes the initials of the name being typed.
 
-- `POST /login`:
+- `POST /login` (only from the page itself: `Origin` must be `https://` + `Host`):
+  - the server checks every field again, strictly: the user name `^[a-z_][a-z0-9_-]{0,31}$`, the
+    password 1–1024 bytes without NUL, exactly the fields `user` and `pass`, once each
+    (`server/src/remote/rsec.c`); the page checks the same before sending;
   - it's verified against `/etc/shadow` (`getspnam` + `crypt_r`, constant-time comparison);
-  - only people's accounts: uid 1000–59999, with a shell, not locked or expired;
-  - never an account without a password, not even the live ISO's.
-- **Per-IP waits:** the first two failures don't wait. After that, 1, 2, 4… seconds up to 5
-  minutes, plus a fixed 1 s on each failure. Measured: the 5th attempt reaches `?e=2` without
-  being verified.
-- **Cookie** `lordos_remote`: 32 random bytes, `Secure; HttpOnly; SameSite=Strict`, 12 hours.
-- **Headers:** strict `Content-Security-Policy`, `X-Frame-Options: DENY`,
-  `Referrer-Policy: same-origin`, `Cache-Control: no-store`.
-- **Same origin:** the form and the WebSocket check `Origin` against `Host`.
+  - only people's accounts: uid 1000–59999, a shell listed in `/etc/shells`, not locked, not
+    expired, password not expired or due for a forced change, no `/etc/nologin`; **never root**
+    (nor an account whose group is root's);
+  - never an account without a password, not even the live ISO's;
+  - a wrong user name, a refused account and a wrong password are answered exactly 1.25 s after
+    the check began (unknown accounts spend the same `crypt` work on a dummy hash).
+- **Lockout:** 3 failed sign-ins block the address (see [Blocked and allowed
+  addresses](#blocked-and-allowed-addresses)). The old growing per-address waits stay as well.
+- **Cookie** `__Host-lordos_remote`: 32 random bytes, `Secure; HttpOnly; SameSite=Strict; Path=/`,
+  12 hours. Only its SHA-256 is kept, with a digest of the account's shadow hash: changing or
+  locking the password ends it. Locking the screen ends every cookie of that user. Signing out is a
+  `POST /logout` from the page.
+- **Headers:** `Content-Security-Policy` with the SHA-256 of the page's own script and style (no
+  `unsafe-inline`), `frame-ancestors 'none'`, `form-action 'self'`; `X-Frame-Options: DENY`,
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `Cache-Control: no-store`,
+  `Permissions-Policy` (no camera, microphone, location, USB…), `Cross-Origin-Opener-Policy` and
+  `-Resource-Policy: same-origin`. No HSTS: with a self-signed certificate it would make the
+  browser's warning impossible to get past.
+
+![Wrong password](remote-desktop-login-wrong.png)
+
+## Blocked and allowed addresses
+
+**Lockout** (`server/src/remote/lockout.c`):
+
+- 3 failed sign-ins from one address, without a successful one in between (within 24 hours),
+  block it for **15 minutes**; blocked again within 24 hours, **1 hour**; then **24 hours**.
+- IPv6 addresses count per **/64** (a host has a whole /64 to hop through).
+- The answer to the third failure is the sign-in page with the "blocked" message; after that the
+  address is closed right after `accept()`, before any TLS work.
+- Blocks are kept in `/var/lib/lordos/remote/blocklist` (root, 0600, folder 0700) and survive a
+  restart of `lord-sessiond` or of the computer.
+- A successful sign-in clears that address's count. **Accounts are never locked** (anybody could
+  lock you out); repeated failures for one user name, from any address, only slow it down: none for
+  the first 4, then 1, 2, 4 and at most 8 s before checking.
+- Each failure and each block is logged to the journal with the address and the attempted user
+  name, cleaned to printable ASCII. Never the password.
+- The user on the monitor gets a notification ("Remote desktop: address blocked") with a button
+  that opens Settings → Sharing.
+
+![The notification on the desktop](remote-desktop-block-notice.png)
+
+**Who can connect** (Settings → Sharing, `net=` in `/etc/lordos/remote/config`):
+
+- **Local network** (the default): private ranges (10/8, 172.16/12, 192.168/16, 100.64/10),
+  loopback, link-local and IPv6 unique-local, plus connections that arrive on a VPN interface of
+  this computer (`wg-`, `ovpn-`, `ips-`, `oc-`, `fvpn-`, `ppp`, `tun`). Public addresses are
+  closed.
+- **Only these addresses**: only the networks in the list.
+- **Any address**: everyone who can reach the port (still with the lockout).
+
+**Manual blocks** win over everything. The lists live in `/etc/lordos/remote/access` (root, 0600):
+`allow <cidr>` and `block <cidr>`, at most 64 of each. Networks are IPv4 /8–/32 or IPv6 /16–/128;
+host bits are cleared.
+
+![Settings → Sharing: blocked addresses](settings-sharing-blocked-light.png)
+
+![Settings → Sharing: only these addresses (dark)](settings-sharing-allowlist-dark.png)
+
+**Admin actions** (`remote_admin.c`, administrators only, validated on the root side by
+`rs_cidr_parse`):
+
+| Action                 | Argument            | What it does                                                    |
+|------------------------|---------------------|-----------------------------------------------------------------|
+| `remote-config`        | `net=lan\|list\|any` | the mode (with the existing `allow=`, `port=` lines)            |
+| `remote-block`         | `<cidr>`            | adds a manual block to `access`                                 |
+| `remote-unblock`       | `<cidr>`            | removes manual blocks inside it and appends `unblock <cidr>` to `/var/lib/lordos/remote/requests` (root 0600, `flock`); `lord-sessiond` lifts the lockout blocks inside it on SIGHUP |
+| `remote-allow`         | `add\|del <cidr>`    | the "only these addresses" list                                 |
+
+Unblocking from Settings forgets that address's history (its next block is 15 minutes again).
 
 ## Browser protocol (WebSocket `/ws`)
 
@@ -91,6 +157,14 @@ session was locked).
   the monitor wins;
 - `ack`, `ping{ts}`.
 
+**Validation** (`rs_ws_consume`, `rs_json_parse`, `rs_browser_input` in `rsec.c`): frames must be
+masked, without RSV bits, with a known opcode and the shortest length encoding; control frames at
+most 125 bytes and never fragmented; a message at most 2 MB (fragments are joined up to that);
+text must be valid UTF-8; a binary message closes the connection (the page never sends one). Each
+text message is one flat JSON object (known keys, integers or strings, no duplicates); positions
+are clamped to the screen, key codes are keyboard keys only (1–248), the clipboard is at most 1 MB.
+Anything else is ignored or closes with 1002/1007/1009.
+
 **Compression:**
 
 - **Still screen:** PNG (lossless).
@@ -103,27 +177,94 @@ state.
 
 ## Process and privileges
 
-1. `lord-sessiond` (root) accepts the connection and handles it in a child (up to 32 at a time).
-2. That child does TLS and the login. With a valid cookie, it finds the user's session or creates
-   it (`sess.c`, with the same lock as the monitor).
-3. **It drops root:** `initgroups`, `setgid`, `setuid`, and it's verified that it can't get it
-   back. TLS, compression and the bridge run as the user.
+1. `lord-sessiond` (root) accepts the connection. Refused addresses (blocked, not allowed, too many
+   connections) are closed there, before TLS. Otherwise a child handles it (48 at most, 8 per
+   address; 32 signed-in browsers).
+2. That child does TLS and reads one request under a 15 s deadline (a 90 s alarm backs it up). With
+   a valid cookie, `/ws` finds the user's session or creates it (`sess.c`, with the same lock as
+   the monitor).
+3. **It forks the bridge, which drops root for good:** it unmaps `lord-sessiond`'s shared memory,
+   closes every descriptor but the TLS socket, the session socket and a pipe to its parent, clears
+   the environment, then `initgroups`, `setresgid`, `setresuid`, checks that the real, effective
+   and saved ids are the user's and that it can't get root back, sets `no_new_privs`, not dumpable,
+   and dies with its parent. TLS, compression and the bridge run as the user. The root parent keeps
+   nothing of the connection: it only waits, and when the bridge reports that the session was
+   locked, it ends every cookie of that user.
 
 OpenSSL (TLS) is only in `lord-sessiond`; `lord-server` doesn't link it. The certificate is
 self-signed P-256, with CN equal to the machine name and ten years of validity. It's in
 `/etc/lordos/remote/cert.pem` (`key.pem` 0600) and is created the first time remote is turned on.
 
-## Threats (LAN)
+## Threats
 
 | Threat                                 | What's there                                                                             |
 |----------------------------------------|------------------------------------------------------------------------------------------|
-| someone listens on the network         | TLS 1.2+; the certificate fingerprint is shown in Settings for comparison                |
-| password guessing                      | growing per-IP waits, 1 s per failure, logged to the journal                             |
-| cookie theft                           | `HttpOnly`, `Secure`, `SameSite=Strict`, 12 h; locking the session invalidates it        |
-| another page uses the session (CSRF)   | `Origin` = `Host` on `/login` and `/ws`; `frame-ancestors 'none'`                        |
-| user enumeration                       | the login page doesn't list them; same message for wrong user and wrong password         |
-| bug in the bridge                      | it runs as the user who owns the session, not as root                                    |
-| access from the internet               | not intended: use a VPN (Settings → Network → VPN). No port is opened on the router      |
+| someone listens on the network         | TLS 1.2+ with AEAD ciphers only; the certificate fingerprint is shown in Settings          |
+| password guessing                      | 3 failures block the address (15 min, 1 h, 24 h), per-account slowdown, journal            |
+| guessing from many addresses           | each address gets 2 tries before its block; the per-account slowdown caps the rate per user |
+| user enumeration                       | no user list; same message and the same 1.25 s for unknown users and wrong passwords      |
+| cookie theft or fixation               | `__Host-`, `HttpOnly`, `Secure`, `SameSite=Strict`, 12 h, stored hashed, new at each sign-in, ended by lock, logout and password change |
+| another page uses the session (CSRF)   | `Origin` = `https://` + `Host` required on `/login`, `/logout` and `/ws`; `frame-ancestors 'none'` |
+| floods and slow clients                | 20 new connections per address then 2/s, 8 open per address, 48 in all, 15 s to send the request |
+| bug in the bridge                      | it runs as the user who owns the session, without root's shared state or descriptors      |
+| access from the internet               | refused by default (local network only); use a VPN (Settings → Network → VPN)             |
+
+## Security analysis (0.8.3)
+
+A review of everything the network can reach, done for 0.8.3: the HTTP parser, the login, the
+cookie, CSRF, the WebSocket and the input messages, the privilege drop, resource limits, TLS,
+headers, logging and the lock screen. Every finding below was fixed in the same release; the tests
+are in `server/tests/remote_sec_test.c` (207 checks), `server/tests/remote_fuzz.c` (ASan+UBSan,
+100,000 random and mutated inputs on every `make -C server test`), and the attack run on VM 122
+listed after the table.
+
+| # | Severity | What | Fix | Test |
+|---|----------|------|-----|------|
+| 1 | High | The 32-connection cap only counted signed-in browsers: any host could open unlimited connections, each a root child that waited up to 15 s per read (forever if bytes trickled in). | A child per connection only if the address is allowed, not blocked, within 20 new connections then 2/s, under 8 open from it and 48 in all; 15 s for handshake + request, 90 s alarm. | 14 parallel connections: 8 served; 60 quick requests: 8 served, 52 refused; one header byte per second: cut at 16.1 s; TCP without a TLS handshake: cut at 15.0 s. |
+| 2 | High | After dropping root the bridge still had `lord-sessiond`'s shared memory mapped read-write: it could forge a cookie for any other user, erase blocks, hold the lock (freezing the root process) or plant a pid that root later signalled when remote was turned off (`kill(-1)` = every process). | The bridge is forked after the handshake and unmaps it; root only signals pids from its own private list. | `/proc` of a live bridge: uid 1003 (real, effective, saved), no shared mapping, fds 0–2 + socket + session + pipe, `NoNewPrivs 1`. |
+| 3 | Medium | User enumeration by timing: an unknown or refused account returned before `crypt`, a wrong password after it. | Dummy hash with the same algorithm and cost; every failure answered 1.25 s after the check began. | 8–24 tries each: unknown 1254.2 ms, existing user with a wrong password 1254.1 ms, `root` 1254.6 ms, a system account 1254.8 ms (medians). |
+| 4 | Medium | No lockout (only growing waits, in a 64-entry table an attacker could cycle); no restriction on where connections came from. | Lockout per address (/64 for IPv6), 15 min → 1 h → 24 h, persistent; local network only by default; manual lists. | 3 wrong → blocked page, 4th refused before TLS; still blocked after restarting `lord-sessiond`; unblocked from Settings; "only these addresses" refused the Pi and served the listed Mac. |
+| 5 | Medium | A request without `Origin` passed the same-origin check; logout was a `GET` (any site could sign you out). | `Origin` required and equal to `https://` + `Host` on `/login`, `/logout`, `/ws`; `Sec-Fetch-Site` must agree; logout is a `POST`. | foreign `Origin`, `http://` origin, none, `cross-site`: 403; `GET /logout`: 405. |
+| 6 | Medium | Cookie: matched by substring (`xlordos_remote=` counted), no `__Host-` prefix (another service on the same host could plant one), kept in clear in shared memory, unaffected by a password change. | `__Host-lordos_remote`, exact parse, two of them refused, only SHA-256 stored, bound to the shadow hash, the old cookie dropped at sign-in. | forged, old name, duplicated: 403; after `chpasswd` and after logout: 303 to the sign-in page / 403 on `/ws`. |
+| 7 | Medium | Locking the screen ended only the cookie of the browsers connected at that moment; a browser signed in earlier could come back to the session. | Lock ends every cookie of that user (the root process for a lock on the monitor, the bridge's root parent otherwise). | a second, unconnected cookie: 200 before the lock, refused after. |
+| 8 | Low | HTTP parser: last duplicate header won, `Content-Length` read with `atol`, `Transfer-Encoding` ignored, bare LF, folding, any method served pages, bytes after the body accepted. | `rs_parse_head`: strict request line, 40 headers, 8 KB head, duplicates refused, `Transfer-Encoding` → 501, 4 KB body, one request per connection, method per path. | 22 malformed requests answered 400/405/413/414/415/431/501 as expected. |
+| 9 | Low | Form parser: first duplicate won, `%00` cut the value, long values truncated silently, unknown fields ignored, no `Content-Type` check, 256-byte password limit. | `rs_parse_login`: exactly `user` and `pass`, strict `%XX`, user name rules, password 1–1024 bytes, no NUL; form type required; no query on `/login`. | 33-character name, 1025-byte password, `%00`: refused (and counted); duplicate/unknown field, `%zz`: 400; `text/plain`: 415. |
+| 10 | Low | WebSocket: no RSV/opcode/length checks, pings up to 2 MB echoed back, fragments silently dropped, no UTF-8 check. | `rs_ws_consume` (see Browser protocol). | unmasked frame → close 1002; fuzzed. |
+| 11 | Low | Input messages were read with `strstr` (a string could smuggle `"x":` into a number); `BTN_*` codes up to 0x2ff accepted as keys. | Strict flat JSON; keys 1–248; all values clamped. | unit tests. |
+| 12 | Low | TLS used OpenSSL's default list (CBC suites in TLS 1.2), compression and renegotiation defaults; key permissions not checked. | ECDHE-ECDSA AES-GCM / ChaCha20-Poly1305 only, TLS 1.3 AEAD suites, X25519/P-256/P-384, no compression or renegotiation, server order; `key.pem` forced to root 0600. | TLS 1.0/1.1: protocol alert; TLS 1.2 accepts exactly the 3 AEAD suites; TLS 1.3 the 3 standard ones (CCM refused); compression none. |
+| 13 | Low | CSP allowed inline scripts; no `Permissions-Policy`, COOP or CORP. | Hash-based CSP, `form-action`, `base-uri`, the rest of the headers. `Referrer-Policy` stays `same-origin`: with `no-referrer` browsers send `Origin: null` on the page's own form. | header dump; Chrome sign-in works under the CSP. |
+| 14 | Low | Accounts: shells matched by substring only, root-group accounts allowed, `/etc/nologin`, forced password change and expired passwords ignored. | Shell from `/etc/shells`, no gid 0, never `root`, the shadow aging rules. | `root` refused like a wrong password. |
+| 15 | Low | Log injection: `Origin`/`Host` logged raw (a bare LF forged a journal line); attempted names logged only when valid. | Everything logged is cleaned to printable ASCII; attempted names logged sanitized. | journal check. |
+| 16 | Info | The privilege drop didn't check saved ids or groups, kept the environment and every inherited descriptor, and the bridge outlived `lord-sessiond` (the parent-death signal is cleared by `setuid`). | See "Process and privileges". | `/proc` check above. |
+| 17 | Info | After a failure the user name went into the URL (`/?e=1&u=…`): a password typed into the user field ended up in the history. | The page keeps the name in `sessionStorage` and clears the address bar. | browser check. |
+
+**Greeter and lock.** A remote browser can't unlock the monitor: the monitor shows the login
+screen (a separate `lord-server` as `lordos-greeter`), and the session only reaches `lord-sessiond`
+through the seat connection, whose requests are lock, switch user and power. Signing in from the
+browser resumes the user's session in the background, never on the monitor. Locking the monitor
+ends the remote viewers and every remote cookie of that user; a browser must sign in again with the
+password. Locking from the browser does the same.
+
+**What stays as it is.** `lord-sessiond` reads `/etc/shadow` itself instead of PAM (no PAM stack
+to configure; the account rules PAM would apply are listed under Login). The certificate is
+self-signed: compare the fingerprint the first time. An attacker on the LAN with many addresses
+gets 2 tries per address; the per-account slowdown limits that. Two-step sign-in is a proposal in
+`ROADMAP.md`.
+
+**Attack run (VM 122, Debian 13, October 19)** from the development Mac (172.17.0.5) and the
+Raspberry Pi (172.17.0.24) with a stdlib Python client, OpenSSL's `s_client` on the VM, and a
+headless browser for the pages: normal sign-in, desktop over WebSocket and sign-out; brute force
+and persistence; timing; 22 malformed requests; CSRF; WebSocket without, with forged, logged-out,
+duplicated or out-of-date cookies, wrong key, version or origin; slowloris; connection flood; TLS
+scan; headers; lock. All results are in the table.
+
+![Sign-in page: blocked](remote-desktop-login-blocked.png)
+
+![Sign-in page: invalid user name](remote-desktop-login-invalid.png)
+
+![Settings → Sharing: blocked addresses (dark)](settings-sharing-blocked-dark.png)
+
+![Settings → Sharing: only these addresses](settings-sharing-allowlist-light.png)
 
 ## Measurements (VM 118: Xeon Silver 4108 at 1.8 GHz, 4 cores, no GPU, 1280×800)
 
@@ -254,13 +395,16 @@ the internet, use a VPN instead of opening the port.
 | Path                                  | What it is                                                 |
 |---------------------------------------|------------------------------------------------------------|
 | `server/src/remote/conn.c`            | one connection: HTTP, login, WebSocket, bridge             |
+| `server/src/remote/rsec.c`            | strict parsers: request head, form, cookie, WebSocket, JSON |
+| `server/src/remote/ipnet.c`, `lockout.c` | addresses and networks, lockout and connection rate     |
 | `server/src/remote/enc.c`             | PNG/JPEG (stb_image_write, vendored in third_party/stb)    |
 | `server/src/remote/login.html`, `client.html` | pages (embedded in the binary)                      |
 | `server/src/remote/remote_admin.c`    | `remote-*` actions                                         |
 | `server/src/remote/ssh_admin.c`       | `ssh-*` actions (remote login)                             |
 | `tools/iso/rootfs/etc/ssh/sshd_config.d/10-lordos.conf` | sshd defaults shipped by the `lordos` package |
 | `apps/settings/Sharing.jsx`, `sdk/remote.js` | Settings → Sharing and the notice on the monitor    |
-| `/etc/lordos/remote/`                 | `config`, `cert.pem`, `key.pem`, `fingerprint`             |
+| `/etc/lordos/remote/`                 | `config`, `access`, `cert.pem`, `key.pem`, `fingerprint`   |
+| `/var/lib/lordos/remote/`             | `blocklist`, `requests` (root only)                        |
 
 ## Screenshots
 
