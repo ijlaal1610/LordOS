@@ -13,13 +13,13 @@
 // de regla de la lista y los contadores de permitidas/denegadas ya están en su lugar.
 import {
   View, Text, Image, ScrollView, SearchField, useTheme, useLocale, useStore, monitor, monitorConnections, useMonitor,
-  formatBytes, formatNumber, tOptional, useSystemInfo, wm, direction, firewall, firewallState, useLauncherApps, Lumo, Button,
+  formatBytes, formatNumber, tOptional, useSystemInfo, wm, direction, firewall, firewallState, useLauncherApps, Lumo, Button, useAppWindow,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { C, fmt, AppGlyph, useCardStyle } from './index.jsx';
 import { Glyph } from './icons.jsx';
-import { canvas, drawBars } from './draw.js';
 import { MapView } from './MapView.jsx';
+import { TrafficChart, systemBuckets } from './TrafficChart.jsx';
 import { RuleSheet } from './RuleSheet.jsx';
 
 export const appKeyOf = (c) => (c.self ? 'lordos' : c.app || c.exe || c.name || '?');
@@ -54,7 +54,17 @@ export function openAppRules(key) {
   wm.open('settings', { args: { section: 'privacy', nonce: Date.now() } });
 }
 
-// Agrupa las conexiones por app; los bytes por segundo salen de la diferencia con la lectura anterior.
+// Country and scope of every address seen in an open connection, so an address that only appears
+// in lord-netperm's byte counters (its socket already closed) still lands on the map.
+const geoSeen = new Map();
+function rememberGeo(c) {
+  if (!c.remote || c.dir === 'listen') return;
+  if (geoSeen.size > 4096 && !geoSeen.has(c.remote)) geoSeen.delete(geoSeen.keys().next().value);
+  geoSeen.set(c.remote, { cc: c.cc, scope: c.scope, port: `${c.proto.toUpperCase()} ${c.rport}` });
+}
+
+// Groups the connections by app. Without lord-netperm's byte counters (withFirewall), bytes and
+// rates come from the open TCP sockets (tcp_info) and the difference with the previous reading.
 function useGroups(conns) {
   const prev = useRef({ t: 0, bytes: new Map() });
   return useMemo(() => {
@@ -78,13 +88,18 @@ function useGroups(conns) {
       g.sent += s;
       g.recv += r;
       const old = before.get(c.id);
-      if (old && dt) { g.rateTx += Math.max(0, s - old[0]) / dt; g.rateRx += Math.max(0, r - old[1]) / dt; }
+      const rtx = old && dt ? Math.max(0, s - old[0]) / dt : 0, rrx = old && dt ? Math.max(0, r - old[1]) / dt : 0;
+      g.rateTx += rtx;
+      g.rateRx += rrx;
       if (c.dir === 'listen') { g.listen.push(c); continue; }
       if (c.dir === 'in') g.incoming++;
-      const h = g.hosts.get(c.remote) || { remote: c.remote, cc: c.cc, scope: c.scope, ports: new Set(), sent: 0, recv: 0, count: 0 };
+      rememberGeo(c);
+      const h = g.hosts.get(c.remote) || { remote: c.remote, cc: c.cc, scope: c.scope, ports: new Set(), sent: 0, recv: 0, rateTx: 0, rateRx: 0, count: 0 };
       h.ports.add(`${c.proto.toUpperCase()} ${c.rport}`);
       h.sent += s;
       h.recv += r;
+      h.rateTx += rtx;
+      h.rateRx += rrx;
       h.count++;
       g.hosts.set(c.remote, h);
     }
@@ -96,17 +111,49 @@ function useGroups(conns) {
 
 // Agrega a cada app su regla y sus contadores del firewall (lord.fw), y las apps que no tienen
 // conexiones abiertas pero sí intentos (una app denegada no llega a tener sockets).
+// lord-netperm's byte counters for one app ([allowed, denied, rx, tx, rxRate, txRate, flows]): the
+// kernel counts every packet of the app's sockets (TCP and UDP, so QUIC too, and the connections
+// that already closed), which replaces the open-socket estimate. flows: [[addr, rx, tx, rxRate,
+// txRate], ...], its busiest addresses.
+function applyBytes(g, v) {
+  g.recv = v[2] || 0;
+  g.sent = v[3] || 0;
+  g.rateRx = v[4] || 0;
+  g.rateTx = v[5] || 0;
+  g.bytesFrom = 'kernel';
+  for (const f of Array.isArray(v[6]) ? v[6] : []) {
+    if (!Array.isArray(f) || typeof f[0] !== 'string') continue;
+    const known = g.hosts.get(f[0]), geo = geoSeen.get(f[0]);
+    const h = known ? { ...known } : { remote: f[0], cc: geo?.cc || '', scope: geo?.scope || '', ports: new Set(geo ? [geo.port] : []), count: 0, recent: true };
+    h.recv = f[1] || 0;
+    h.sent = f[2] || 0;
+    h.rateRx = f[3] || 0;
+    h.rateTx = f[4] || 0;
+    g.hosts.set(f[0], h);
+  }
+}
+
+const hasBytes = (fw, v) => !!fw?.status?.bytes && Array.isArray(v) && v.length >= 6;
+
 function withFirewall(groups, fw, launcher) {
   const counts = fw?.counts || {};
-  const out = groups.map((g) => ({ ...g, hosts: new Map(g.hosts), rule: firewall.appRule(g.key), allowed: counts[g.key]?.[0] || 0, denied: counts[g.key]?.[1] || 0 }));
+  const out = groups.map((g) => {
+    const v = counts[g.key];
+    const n = { ...g, hosts: new Map(g.hosts), rule: firewall.appRule(g.key), allowed: v?.[0] || 0, denied: v?.[1] || 0 };
+    if (hasBytes(fw, v)) applyBytes(n, v);
+    return n;
+  });
   const have = new Set(out.map((g) => g.key));
   for (const [key, v] of Object.entries(counts)) {
-    if (have.has(key) || key === 'lordos' || !(v[0] || v[1])) continue;
+    if (have.has(key) || key === 'lordos' || !Array.isArray(v) || !(v[0] || v[1] || (hasBytes(fw, v) && (v[2] || v[3])))) continue;
     const la = launcher.find((a) => a.id === key || `lpk:${a.id}` === key);
     const name = la?.name || key.replace(/^(desktop|lpk):/, '');
-    out.push({ key, item: { app: key, appName: name, name, appIcon: la?.icon || '' }, name, exe: '', pids: new Set(), conns: [], hosts: new Map(), sent: 0, recv: 0,
-      rateTx: 0, rateRx: 0, listen: [], incoming: 0, verdict: 'deny', rule: firewall.appRule(key), allowed: v[0] || 0, denied: v[1] || 0 });
+    const g = { key, item: { app: key, appName: name, name, appIcon: la?.icon || '' }, name, exe: '', pids: new Set(), conns: [], hosts: new Map(), sent: 0, recv: 0,
+      rateTx: 0, rateRx: 0, listen: [], incoming: 0, verdict: v[1] && !v[0] ? 'deny' : 'allow', rule: firewall.appRule(key), allowed: v[0] || 0, denied: v[1] || 0 };
+    if (hasBytes(fw, v)) applyBytes(g, v);
+    out.push(g);
   }
+  out.sort((a, b) => b.sent + b.recv - (a.sent + a.recv) || b.conns.length - a.conns.length);
   // Short connections (a curl, a DNS query) close before the next sample: the destinations the
   // firewall reported recently are listed too, so they can be given a rule ("recent"; "denied" if
   // the last one was refused).
@@ -114,7 +161,8 @@ function withFirewall(groups, fw, launcher) {
   for (const e of fw?.events || []) {
     const g = byKey.get(e.app);
     if (!g || e.dir !== 'out' || !e.addr) continue;
-    const h = g.hosts.get(e.addr) || { remote: e.addr, cc: '', scope: '', ports: new Set(), sent: 0, recv: 0, count: 0, recent: true };
+    const geo = geoSeen.get(e.addr);
+    const h = g.hosts.get(e.addr) || { remote: e.addr, cc: geo?.cc || '', scope: geo?.scope || '', ports: new Set(), sent: 0, recv: 0, rateTx: 0, rateRx: 0, count: 0, recent: true };
     h.ports = new Set(h.ports).add(`${String(e.proto).toUpperCase()} ${e.port}`);
     if (h.recent) { h.denied = e.v === 'deny'; h.count++; }
     g.hosts.set(e.addr, h);
@@ -140,7 +188,24 @@ function RuleSwitch({ g, selected, tr }) {
   );
 }
 
-function AppRow({ g, open, selected, onToggle, onSelect, onHost, names, maxBytes, tr }) {
+// A tiny live indicator: the app's traffic over the last 12 s, one bar per second.
+function Activity({ hist, selected }) {
+  const t = useTheme();
+  const last = (hist || []).slice(-12);
+  while (last.length < 12) last.unshift([0, 0]);
+  const peak = Math.max(1, ...last.map((p) => p[0] + p[1]));
+  return (
+    <View style={{ width: 25, height: 12, flexDirection: 'row', alignItems: 'flex-end', gap: 1, direction: 'ltr' }}>
+      {last.map((p, i) => {
+        const v = p[0] + p[1];
+        return <View key={i} style={{ width: 1, height: v ? Math.max(2, Math.round((v / peak) * 12)) : 1, borderRadius: 1,
+          backgroundColor: selected ? 'rgba(255,255,255,0.85)' : v ? (p[1] > p[0] ? C.tx : C.rx) : t.separator }} />;
+      })}
+    </View>
+  );
+}
+
+function AppRow({ g, open, selected, onToggle, onSelect, onHost, names, maxBytes, tr, hist }) {
   const t = useTheme();
   const label = g.key === 'lordos' ? tr('monitor.lordos') : g.name;
   const total = g.sent + g.recv;
@@ -172,7 +237,8 @@ function AppRow({ g, open, selected, onToggle, onSelect, onHost, names, maxBytes
             <View style={{ width: `${(g.sent / Math.max(1, maxBytes)) * 100}%`, height: 4, backgroundColor: C.tx }} />
           </View>
         </View>
-        <Text style={{ width: 54, fontSize: 10, color: selected ? '#fff' : t.textDim, textAlign: 'end', whiteSpace: 'nowrap' }}>{total ? formatBytes(total) : '—'}</Text>
+        <Activity hist={hist} selected={selected} />
+        <Text style={{ width: 50, fontSize: 10, color: selected ? '#fff' : t.textDim, textAlign: 'end', whiteSpace: 'nowrap' }}>{total ? formatBytes(total) : '—'}</Text>
         {/* regla: permitir / denegar la red a la app (lord-netperm la aplica en el kernel) */}
         <RuleSwitch g={g} selected={selected} tr={tr} />
       </View>
@@ -193,26 +259,52 @@ function AppRow({ g, open, selected, onToggle, onSelect, onHost, names, maxBytes
   );
 }
 
-// Barras de subida/bajada de los últimos 60 s (promedio por segundo).
-function TrafficBars({ samples }) {
-  const box = useRef(null);
-  const [w, setW] = useState(0);
-  useEffect(() => {
-    if (!box.current) return;
-    const nw = Math.round(lord.getLayout(box.current.id)[2]);
-    if (nw > 0 && Math.abs(nw - w) > 1) setW(nw);
-  });
-  const pairs = [];
-  for (let i = 0; i + 4 <= samples.length; i += 4) {
-    const seg = samples.slice(i, i + 4);
-    pairs.push([seg.reduce((a, m) => a + m.net.rx, 0) / 4, seg.reduce((a, m) => a + m.net.tx, 0) / 4]);
+// Each app's rates over the last minute, one entry per second (from lord-netperm's counters, or the
+// open sockets without them): the row's activity indicator and the detail's chart.
+function useRateHistory(apps) {
+  const ref = useRef({ at: 0, map: new Map() });
+  const h = ref.current, now = Date.now();
+  if (now - h.at >= 900) {
+    h.at = now;
+    const seen = new Set();
+    for (const g of apps) {
+      seen.add(g.key);
+      const a = h.map.get(g.key) || [];
+      a.push([g.rateRx || 0, g.rateTx || 0]);
+      if (a.length > 61) a.shift();
+      h.map.set(g.key, a);
+    }
+    for (const [k, a] of h.map) {
+      if (seen.has(k)) continue;
+      a.push([0, 0]);
+      if (a.length > 61) a.shift();
+      if (a.every((p) => !p[0] && !p[1])) h.map.delete(k);
+    }
   }
-  while (pairs.length < 60) pairs.unshift([0, 0]);
-  const key = pairs.map((p) => `${Math.round(p[0])},${Math.round(p[1])}`).join(';');
-  const pixels = useMemo(() => (w ? drawBars(canvas(w, 44), pairs, [C.rx, C.tx]) : null), [w, key]);
+  return h.map;
+}
+
+// The machine's traffic: current rates, the mirrored chart of the last 60 s and its totals. It
+// redraws at the 4 samples per second with the window in front (1 per second behind).
+function SystemTraffic({ tr }) {
+  const t = useTheme();
+  const { focused } = useAppWindow() || {};
+  const samples = useMonitor({ everyMs: focused === false ? 1000 : 250 });
+  const last = samples[samples.length - 1];
+  const { buckets, shift, totals } = systemBuckets(samples, 60);
   return (
-    <View ref={box} style={{ height: 44, direction: 'ltr' }}>
-      {pixels && <Image pixels={pixels} style={{ width: w, height: 44 }} />}
+    <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: 'row', gap: 14, paddingHorizontal: 2 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 10, color: t.textDim }}>{`↓ ${tr('monitor.received')}`}</Text>
+          <Text style={{ fontSize: 14, fontWeight: 600, color: C.rx }}>{fmt.rate(tr, last?.net.rx)}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 10, color: t.textDim }}>{`↑ ${tr('monitor.sent')}`}</Text>
+          <Text style={{ fontSize: 14, fontWeight: 600, color: C.tx }}>{fmt.rate(tr, last?.net.tx)}</Text>
+        </View>
+      </View>
+      <TrafficChart buckets={buckets} shift={shift} totals={totals} seconds={60} />
     </View>
   );
 }
@@ -225,16 +317,18 @@ function placesOf(groups, appKey) {
     if (appKey && g.key !== appKey) continue;
     for (const h of g.hosts.values()) {
       if (h.scope !== 'internet' || !h.cc) continue;
-      const p = out.get(h.cc) || { cc: h.cc, count: 0, sent: 0, recv: 0, apps: new Map(), hosts: [] };
+      const p = out.get(h.cc) || { cc: h.cc, count: 0, sent: 0, recv: 0, rateTx: 0, rateRx: 0, apps: new Map(), hosts: [] };
       p.count += h.count;
       p.sent += h.sent;
       p.recv += h.recv;
+      p.rateTx += h.rateTx || 0;
+      p.rateRx += h.rateRx || 0;
       p.apps.set(g.key, g);
       p.hosts.push({ ...h, app: g });
       out.set(h.cc, p);
     }
   }
-  return [...out.values()].sort((x, y) => y.count - x.count);
+  return [...out.values()].sort((x, y) => y.count - x.count || y.sent + y.recv - (x.sent + x.recv));
 }
 
 // ---- columna derecha ----
@@ -249,17 +343,34 @@ function Section({ title, children }) {
   );
 }
 
+// The right panel's text column (270 − padding − the scroll bar's gutter) and a rough width per
+// character at 12 px: a pair that wouldn't fit on one line goes on two (the key, then the value)
+// instead of wrapping inside the row, which the engine measures as one line (the text then ran
+// over the next row).
+const PANEL_TEXT_W = 235;
+const fitsOneLine = (k, v, mono) => String(k).length * 6.3 + 8 + String(v).length * (mono ? 7.3 : 6.9) <= PANEL_TEXT_W;
+
 function KV({ k, v, mono, color }) {
   const t = useTheme();
+  if (!fitsOneLine(k, v, mono)) {
+    return (
+      <View style={{ gap: 2 }}>
+        <Text style={{ fontSize: 12, color: t.textDim, lineHeight: 1.35 }}>{k}</Text>
+        <Text style={{ fontSize: 12, fontWeight: 600, color: color || t.text, textAlign: 'end', fontFamily: mono ? 'monospace' : undefined, lineHeight: 1.35 }}>{v}</Text>
+      </View>
+    );
+  }
   return (
     <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
       <Text style={{ fontSize: 12, color: t.textDim, whiteSpace: 'nowrap' }}>{k}</Text>
-      <Text style={{ flex: 1, fontSize: 12, fontWeight: 600, color: color || t.text, textAlign: 'end', fontFamily: mono ? 'monospace' : undefined, lineHeight: 1.35 }}>{v}</Text>
+      <Text style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: color || t.text, textAlign: 'end', fontFamily: mono ? 'monospace' : undefined, whiteSpace: 'nowrap', overflow: 'hidden' }}>{v}</Text>
     </View>
   );
 }
 
-function Summary({ groups, conns, last, tr, fw }) {
+const upDown = (tr, g) => tr('monitor.net.downUp', { down: formatBytes(g.recv || 0), up: formatBytes(g.sent || 0) });
+
+function Summary({ groups, conns, last, tr, fw, names }) {
   const t = useTheme();
   let fwAllowed = 0, fwDenied = 0;
   for (const v of Object.values(fw?.counts || {})) { fwAllowed += v[0] || 0; fwDenied += v[1] || 0; }
@@ -271,6 +382,7 @@ function Summary({ groups, conns, last, tr, fw }) {
   const hosts = [];
   for (const g of groups) for (const h of g.hosts.values()) hosts.push({ ...h, app: g });
   hosts.sort((a, b) => b.sent + b.recv - (a.sent + a.recv));
+  if (hosts.some((h) => h.sent + h.recv)) hosts.splice(0, hosts.length, ...hosts.filter((h) => h.sent + h.recv));   // with traffic, only those that moved bytes
   return (
     <>
       <Section title={tr('monitor.net.traffic')}>
@@ -295,8 +407,8 @@ function Summary({ groups, conns, last, tr, fw }) {
         {groups.slice(0, 5).map((g) => (
           <View key={g.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <AppGlyph item={g.item} size={14} />
-            <Text style={{ flex: 1, fontSize: 12, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{g.key === 'lordos' ? tr('monitor.lordos') : g.name}</Text>
-            <Text style={{ fontSize: 11, color: t.textDim }}>{formatBytes(g.sent + g.recv)}</Text>
+            <Text style={{ flex: 1, minWidth: 0, fontSize: 12, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{g.key === 'lordos' ? tr('monitor.lordos') : g.name}</Text>
+            <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{upDown(tr, g)}</Text>
           </View>
         ))}
         {!groups.length && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('monitor.net.none')}</Text>}
@@ -304,11 +416,8 @@ function Summary({ groups, conns, last, tr, fw }) {
       <Section title={tr('monitor.net.topHosts')}>
         {hosts.slice(0, 6).map((h) => (
           <View key={`${h.app.key}${h.remote}`} style={{ gap: 1 }}>
-            <View style={{ flexDirection: 'row', gap: 6 }}>
-              <Text style={{ flex: 1, fontSize: 11, color: t.text, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden' }}>{h.remote}</Text>
-              <Text style={{ fontSize: 11, color: t.textDim }}>{formatBytes(h.sent + h.recv)}</Text>
-            </View>
-            <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap' }}>{`${placeOf(tr, h)} · ${h.app.key === 'lordos' ? tr('monitor.lordos') : h.app.name}`}</Text>
+            <Text style={{ fontSize: 11, color: t.text, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', direction: 'ltr', textAlign: 'start' }}>{names.get(h.remote) || h.remote}</Text>
+            <Text style={{ fontSize: 10, color: t.textDim, whiteSpace: 'nowrap', overflow: 'hidden' }}>{`${upDown(tr, h)} · ${placeOf(tr, h)} · ${h.app.key === 'lordos' ? tr('monitor.lordos') : h.app.name}`}</Text>
           </View>
         ))}
         {!hosts.length && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('monitor.net.none')}</Text>}
@@ -341,7 +450,7 @@ function HostRow({ h, name, selected, onSelect, can, onRule, tr }) {
   );
 }
 
-function Detail({ g, tr, user, names, host, onHost, onRule }) {
+function Detail({ g, tr, user, names, host, onHost, onRule, hist }) {
   const t = useTheme();
   const can = firewall.available() && firewall.enforceable(g.key);
   const ports = new Set(), local = new Set();
@@ -355,7 +464,7 @@ function Detail({ g, tr, user, names, host, onHost, onRule }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <AppGlyph item={g.item} size={32} />
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 15, fontWeight: 600, color: t.text }}>{g.key === 'lordos' ? tr('monitor.lordos') : g.name}</Text>
+          <Text style={{ fontSize: 15, fontWeight: 600, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{g.key === 'lordos' ? tr('monitor.lordos') : g.name}</Text>
           <Text style={{ fontSize: 11, color: t.textDim }}>{tr('monitor.net.connCount', { count: g.conns.length - g.listen.length })}</Text>
         </View>
       </View>
@@ -376,6 +485,7 @@ function Detail({ g, tr, user, names, host, onHost, onRule }) {
       <Section title={tr('monitor.net.data')}>
         <KV k={`↓ ${tr('monitor.received')}`} v={`${formatBytes(g.recv)} · ${fmt.rate(tr, g.rateRx)}`} color={C.rx} />
         <KV k={`↑ ${tr('monitor.sent')}`} v={`${formatBytes(g.sent)} · ${fmt.rate(tr, g.rateTx)}`} color={C.tx} />
+        <AppTraffic hist={hist} />
       </Section>
       <Section title={tr('monitor.net.ports')}>
         <Text style={{ fontSize: 12, color: t.text, lineHeight: 1.4 }}>{[...ports].join(' · ') || '—'}</Text>
@@ -393,13 +503,20 @@ function Detail({ g, tr, user, names, host, onHost, onRule }) {
   );
 }
 
+// The selected app's last minute, in the same mirrored chart as the machine's (one bar per second).
+function AppTraffic({ hist }) {
+  const list = (hist || []).slice(-60);
+  const buckets = Array.from({ length: 60 - list.length }, () => [0, 0]).concat(list);
+  return <TrafficChart buckets={buckets} height={40} seconds={60} />;
+}
+
 function PlaceDetail({ p, tr }) {
   const t = useTheme();
   const hosts = [...p.hosts].sort((a, b) => b.sent + b.recv - (a.sent + a.recv));
   return (
     <>
       <View style={{ gap: 2 }}>
-        <Text style={{ fontSize: 15, fontWeight: 600, color: t.text }}>{countryName(p.cc)}</Text>
+        <Text style={{ fontSize: 15, fontWeight: 600, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{countryName(p.cc)}</Text>
         <Text style={{ fontSize: 11, color: t.textDim }}>{tr('monitor.net.connCount', { count: p.count })}</Text>
       </View>
       <Section title={tr('monitor.net.data')}>
@@ -449,6 +566,7 @@ export function NetworkTab({ last, prefs }) {
   const [host, setHost] = useState(null);               // the selected app's address with the actions open
   const [sheet, setSheet] = useState(null);             // { app, label, dst, action, suggestions, note }
   const names = useMemo(() => namesOf(fw.events), [fw.events]);
+  const hist = useRateHistory(apps);
   const ruleFor = (g, addr, action) => {
     const name = names.get(addr);
     setSheet({ app: g.key, label: g.key === 'lordos' ? tr('monitor.lordos') : g.name, dst: name || addr, action,
@@ -470,36 +588,22 @@ export function NetworkTab({ last, prefs }) {
         <SearchField value={q} onChange={setQ} placeholder={tr('monitor.net.search')} />
         <View style={{ flexDirection: 'row', paddingHorizontal: 8 }}>
           <Text style={{ flex: 1, fontSize: 10, fontWeight: 600, color: t.textDim }}>{tr('monitor.net.apps', { count: apps.length })}</Text>
-          <Text style={{ width: 54, fontSize: 10, fontWeight: 600, color: t.textDim, textAlign: 'end' }}>{tr('monitor.net.dataCol')}</Text>
-          <Text style={{ width: 34, fontSize: 10, fontWeight: 600, color: t.textDim, textAlign: 'end' }}>{tr('monitor.net.ruleCol')}</Text>
+          <Text style={{ width: 83, fontSize: 10, fontWeight: 600, color: t.textDim, textAlign: 'end' }}>{tr('monitor.net.dataCol')}</Text>
+          <Text style={{ width: 44, fontSize: 10, fontWeight: 600, color: t.textDim, textAlign: 'end' }}>{tr('monitor.net.ruleCol')}</Text>
         </View>
-        <ScrollView style={{ flex: 1 }}>
+        <ScrollView style={{ flex: 1 }} gutter>
           {!enabled && <Text style={{ fontSize: 12, color: t.textDim, padding: 8, lineHeight: 1.4 }}>{tr('monitor.net.disabled')}</Text>}
           {enabled && !conns && <Text style={{ fontSize: 12, color: t.textDim, padding: 8 }}>{tr('monitor.loading')}</Text>}
           {enabled && conns && !conns.ok && <Text style={{ fontSize: 12, color: '#ff9f0a', padding: 8 }}>{tr('monitor.net.noDiag')}</Text>}
           {shown.map((g) => (
-            <AppRow key={g.key} g={g} tr={tr} open={open.has(g.key)} selected={selected === g.key} maxBytes={maxBytes} names={names}
+            <AppRow key={g.key} g={g} tr={tr} open={open.has(g.key)} selected={selected === g.key} maxBytes={maxBytes} names={names} hist={hist.get(g.key)}
               onToggle={() => toggle(g.key)} onSelect={() => { setPlace(null); setHost(null); setSelected(selected === g.key ? null : g.key); }}
               onHost={(addr) => { setPlace(null); setSelected(g.key); setHost(addr); }} />
           ))}
           {enabled && conns && !shown.length && <Text style={{ fontSize: 12, color: t.textDim, padding: 8 }}>{tr('monitor.net.none')}</Text>}
         </ScrollView>
         <View style={{ height: 1, backgroundColor: t.separator }} />
-        <View style={{ flexDirection: 'row', gap: 14, paddingHorizontal: 4 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 10, color: t.textDim }}>{`↓ ${tr('monitor.received')}`}</Text>
-            <Text style={{ fontSize: 14, fontWeight: 600, color: C.rx }}>{fmt.rate(tr, last.net.rx)}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 10, color: t.textDim }}>{`↑ ${tr('monitor.sent')}`}</Text>
-            <Text style={{ fontSize: 14, fontWeight: 600, color: C.tx }}>{fmt.rate(tr, last.net.tx)}</Text>
-          </View>
-        </View>
-        <TrafficBarsFromStore />
-        <View style={{ flexDirection: 'row', paddingHorizontal: 2 }}>
-          <Text style={{ flex: 1, fontSize: 9, color: t.textDim }}>{tr('monitor.agoSeconds', { n: 60 })}</Text>
-          <Text style={{ fontSize: 9, color: t.textDim }}>{tr('monitor.now')}</Text>
-        </View>
+        <SystemTraffic tr={tr} />
       </View>
       {/* centro: el mapa ocupa toda la altura */}
       <View style={{ ...column, flex: 1, minWidth: 0, gap: 8, padding: 10 }}>
@@ -519,11 +623,11 @@ export function NetworkTab({ last, prefs }) {
       </View>
       {/* derecha */}
       <View style={{ ...column, width: 270 }}>
-        <ScrollView style={{ flex: 1 }}>
+        <ScrollView style={{ flex: 1 }} gutter>
           <View style={{ gap: 16 }}>
             {selPlace ? <PlaceDetail p={selPlace} tr={tr} /> : sel ? (
-              <Detail g={sel} tr={tr} user={sys.user} names={names} host={host} onHost={setHost} onRule={(addr, action) => ruleFor(sel, addr, action)} />
-            ) : <Summary groups={apps} conns={conns} last={last} tr={tr} fw={fw} />}
+              <Detail g={sel} tr={tr} user={sys.user} names={names} host={host} onHost={setHost} hist={hist.get(sel.key)} onRule={(addr, action) => ruleFor(sel, addr, action)} />
+            ) : <Summary groups={apps} conns={conns} last={last} tr={tr} fw={fw} names={names} />}
           </View>
         </ScrollView>
       </View>
@@ -533,9 +637,4 @@ export function NetworkTab({ last, prefs }) {
       ) : null}
     </View>
   );
-}
-
-function TrafficBarsFromStore() {
-  const samples = useMonitor({ everyMs: 1000 });
-  return <TrafficBars samples={samples} />;
 }

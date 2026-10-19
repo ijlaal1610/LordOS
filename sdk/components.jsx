@@ -87,7 +87,10 @@ export function SectionTitle({ children }) {
 
 // Container with mouse-wheel scrolling and an indicator bar.
 // scrollRef (optional): { scrollTo(y), offset(), inner } to jump to a position (an index).
-export function ScrollView({ style, children, scrollRef }) {
+// gutter (optional): keep a strip on the right for the indicator bar, so it never covers the
+// content (the bar is always on the right, in right-to-left languages too).
+export const SCROLL_GUTTER = 11;
+export function ScrollView({ style, children, scrollRef, gutter }) {
   const t = useTheme();
   const outer = useRef(null), inner = useRef(null);
   const [offset, setOffset] = useState(0);
@@ -108,7 +111,7 @@ export function ScrollView({ style, children, scrollRef }) {
       const m = measure() || metrics;
       setOffset((o) => Math.max(0, Math.min(Math.max(0, m.content - m.view), Math.min(o, max) + e.deltaY)));
     }} style={[{ overflow: 'hidden', flex: 1 }, style]}>
-      <View ref={inner} style={{ translateY: -y }}>{children}</View>
+      <View ref={inner} style={gutter ? { translateY: -y, paddingRight: SCROLL_GUTTER } : { translateY: -y }}>{children}</View>
       {max > 0 && (
         <View style={{ position: 'absolute', right: 3, width: 5, borderRadius: 3, height: bar,
           top: (metrics.view - bar) * (y / max), backgroundColor: t.mode === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)' }} />

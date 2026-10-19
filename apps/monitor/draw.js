@@ -111,6 +111,41 @@ export function drawBars(cv, pairs, colors) {
   return cv;
 }
 
+// Mirrored traffic chart: one bar per time bucket, sent (tx) above the baseline and received (rx)
+// below, every bar on a faint full-height track so the chart reads as one continuous strip even
+// when idle. pairs: [rx, tx] per bucket, oldest first; the newest bar ends at the right edge.
+// shift (0..1): how far the newest bucket has filled (it grows in from the right edge while the
+// others slide left), so the strip scrolls smoothly instead of jumping one bar at a time. top: the
+// value that fills half the height.
+export function drawMirror(cv, pairs, { top, rx, tx, track, shift = 0, gap = 1 }) {
+  const { width: w, height: h, px } = cv;
+  px.fill(0);
+  const n = pairs.length;
+  if (!n) return cv;
+  const half = Math.floor((h - 1) / 2), mid = half;            // row `mid` is the baseline
+  const bw = w / (n - 1);                                      // one bucket hangs off the left edge while scrolling
+  const [rr, rg, rb] = parseColor(rx), [tr, tg, tb] = parseColor(tx), [kr, kg, kb, ka] = parseColor(track);
+  const trackPx = pack(kr, kg, kb, ka), down = pack(rr, rg, rb, 0.95), up = pack(tr, tg, tb, 0.95);
+  const downTop = pack(rr, rg, rb, 1), upTop = pack(tr, tg, tb, 1);
+  const base = pack(kr, kg, kb, Math.min(1, ka * 3));
+  const scale = (v) => (v > 0 ? Math.max(1, Math.round((Math.min(v, top) / top) * half)) : 0);   // anything moving shows at least 1 px
+  for (let i = 0; i < n; i++) {
+    // the newest bucket (still filling) grows in from the right edge; the others slide left with it
+    const right = i === n - 1 ? w : w - shift * bw - (n - 2 - i) * bw;
+    const left = i === n - 1 ? w - shift * bw : right - bw;
+    const x0 = Math.max(0, Math.round(left)), x1 = Math.min(w, Math.round(right) - gap);
+    if (x1 <= x0) continue;
+    const hu = scale(pairs[i][1]), hd = scale(pairs[i][0]);
+    for (let x = x0; x < x1; x++) {
+      for (let y = 0; y < h; y++) px[y * w + x] = trackPx;
+      for (let y = mid - hu; y < mid; y++) px[y * w + x] = y === mid - hu ? upTop : up;
+      for (let y = mid + 1; y <= mid + hd && y < h; y++) px[y * w + x] = y === mid + hd ? downTop : down;
+      px[mid * w + x] = base;
+    }
+  }
+  return cv;
+}
+
 // Punto con borde suave (radio en px, centro en x, y).
 export function dot(cv, cx, cy, rad, color, alpha = 1) {
   const [r, g, b] = parseColor(color);

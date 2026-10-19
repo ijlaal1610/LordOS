@@ -106,6 +106,8 @@
   "net.privacyLink": "Ajustes de privacidade do Monitor",
   "net.traffic": "Tráfego",
   "net.sinceBoot": "Desde a inicialização",
+  "net.lastSeconds": "últimos {n} s",
+  "net.downUp": "↓ {down} · ↑ {up}",
   "net.connections": "Conexões",
   "net.allowed": "Permitidas",
   "net.denied": "Negadas",
