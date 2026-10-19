@@ -15,10 +15,24 @@ const DEFAULTS = {
   theme: null,           // id of the chosen theme (folder in themes/)
 };
 
+// Per-user settings migrations (docs/UPDATES.md, "Migrations"): when an update changes the shape or
+// meaning of a setting, it appends [schema, (settings) => newSettings] here. Each runs once per user,
+// in order, when the session loads the file; "schema" records the last one applied. The system-wide
+// migrations (as root) are the lordos package's (packaging/migrations).
+export const SETTINGS_SCHEMA = 1;
+const MIGRATIONS = [
+  [1, (s) => s],          // 0.8.1: the schema number starts being recorded; nothing changes
+];
+export function migrateSettings(s) {
+  let out = s;
+  for (const [to, fn] of MIGRATIONS) if ((out.schema || 0) < to) out = { ...fn(out), schema: to };
+  return out;
+}
+
 function load() {
   try {
     const txt = lord.settings.load();
-    return txt ? { ...DEFAULTS, ...JSON.parse(txt) } : { ...DEFAULTS };
+    return txt ? migrateSettings({ ...DEFAULTS, ...JSON.parse(txt) }) : { ...DEFAULTS, schema: SETTINGS_SCHEMA };
   } catch (e) {
     console.warn('unreadable settings, using the defaults:', e);
     return { ...DEFAULTS };

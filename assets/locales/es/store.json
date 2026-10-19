@@ -116,5 +116,37 @@
   "info.size": "Tamaño en disco",
   "info.suite": "Distribución",
   "info.homepage": "Sitio web",
-  "debian.noneHint": "Probá con otra palabra o con el nombre del paquete de Debian."
+  "debian.noneHint": "Probá con otra palabra o con el nombre del paquete de Debian.",
+  "notify.title": {
+    "one": "Hay {count} actualización disponible",
+    "other": "Hay {count} actualizaciones disponibles"
+  },
+  "notify.body": "Abrí la Tienda para verlas e instalarlas cuando quieras.",
+  "notify.lordosTitle": "LordOS {version} está disponible",
+  "notify.lordosBody": "Mirá las novedades y actualizá desde la Tienda, sin reinstalar.",
+  "notify.open": "Abrir Actualizaciones",
+  "restart.title": "Hay que reiniciar",
+  "restart.lordos": "La nueva versión de LordOS está instalada y se usa después de reiniciar.",
+  "restart.kernel": "Hay un kernel nuevo instalado y se usa después de reiniciar.",
+  "restart.other": "Algunas actualizaciones se usan después de reiniciar.",
+  "restart.save": "Guardá tu trabajo antes.",
+  "restart.how": "Guardá tu trabajo, cerrá la sesión y elegí Reiniciar en la pantalla de inicio de sesión.",
+  "restart.later": "Más tarde",
+  "restart.now": "Reiniciar ahora…",
+  "system.available": "LordOS {version} está disponible",
+  "system.availableDetail": "Tenés la {installed} · {size} para descargar",
+  "system.update": "Actualizar",
+  "system.updateJob": "Actualizando LordOS a {version}",
+  "system.keepWorking": "Podés seguir trabajando mientras se actualiza. Tus archivos y ajustes se conservan; la nueva versión arranca después de reiniciar.",
+  "system.whatsNew": "Novedades",
+  "system.more": "Ver todo",
+  "system.less": "Ver menos",
+  "system.noNotes": "No se publicaron notas para esta versión.",
+  "system.current": "LordOS {version} está al día.",
+  "updates.debian": {
+    "one": "Actualizaciones de Debian ({count})",
+    "other": "Actualizaciones de Debian ({count})"
+  },
+  "updates.auto": "Buscar actualizaciones automáticamente",
+  "updates.autoHint": "Una vez por día, y solo para avisarte. No se instala nada sin preguntar."
 }

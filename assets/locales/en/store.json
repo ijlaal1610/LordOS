@@ -116,5 +116,37 @@
   "info.size": "Size on disk",
   "info.suite": "Distribution",
   "info.homepage": "Website",
-  "debian.noneHint": "Try another word, or the name of the Debian package."
+  "debian.noneHint": "Try another word, or the name of the Debian package.",
+  "notify.title": {
+    "one": "{count} update is available",
+    "other": "{count} updates are available"
+  },
+  "notify.body": "Open the Store to see them and install them when you want.",
+  "notify.lordosTitle": "LordOS {version} is available",
+  "notify.lordosBody": "See what's new and update from the Store, without reinstalling.",
+  "notify.open": "Open Updates",
+  "restart.title": "Restart required",
+  "restart.lordos": "The new version of LordOS is installed and is used after a restart.",
+  "restart.kernel": "A new kernel is installed and is used after a restart.",
+  "restart.other": "Some updates are used after a restart.",
+  "restart.save": "Save your work first.",
+  "restart.how": "Save your work, log out and choose Restart on the login screen.",
+  "restart.later": "Later",
+  "restart.now": "Restart Now…",
+  "system.available": "LordOS {version} is available",
+  "system.availableDetail": "You have {installed} · {size} to download",
+  "system.update": "Update",
+  "system.updateJob": "Updating LordOS to {version}",
+  "system.keepWorking": "You can keep working while it updates. Your files and settings are kept; the new version starts after a restart.",
+  "system.whatsNew": "What's new",
+  "system.more": "Show all",
+  "system.less": "Show less",
+  "system.noNotes": "No release notes were published for this version.",
+  "system.current": "LordOS {version} is up to date.",
+  "updates.debian": {
+    "one": "Debian updates ({count})",
+    "other": "Debian updates ({count})"
+  },
+  "updates.auto": "Check for updates automatically",
+  "updates.autoHint": "Once a day, and only to tell you. Nothing is installed without asking."
 }

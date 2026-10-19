@@ -6,6 +6,7 @@ import { createElement as h, useEffect, useState } from 'react';
 import {
   View, Text, Image, Button, EmptyState, GroupBox, useTheme, useStore, createStore, admin, formatBytes, formatDate,
   refreshApps, launchApp, useLauncherApps, LetterIcon, typeScale, spacing, direction, t, locale, errorText, statusText,
+  Markdown, Toggle, LordOSLogo, session, lordosUpdate, restartNeeded, updatePrefs, setUpdatePrefs,
 } from '@lordos/sdk';
 
 const available = () => typeof lord.pkg !== 'undefined';
@@ -230,10 +231,72 @@ function Discover({ query }) {
     h(Grid, { items: list, onOpen: setOpen }));
 }
 
-function Updates() {
+// LordOS itself (docs/UPDATES.md): "LordOS <version> is available", its release notes and Update.
+function LordOSCard({ up }) {
   const th = useTheme();
   const { job } = useStore(state);
   const [plan, setPlan] = useState(null);
+  const [all, setAll] = useState(false);
+  const isAdmin = admin.available();
+  const notes = (up.notes || '').trim();
+  const lines = notes.split('\n');
+  const long = lines.length > 14;
+  const confirm = () => {
+    const extra = plan.items.some((i) => i.action === 'remove' && !i.requested);
+    runJob('pkg-install', extra ? 'lordos --allow-remove' : 'lordos', t('store.system.updateJob', { version: up.version }));
+    setPlan(null);
+  };
+  return h(View, { style: boxStyle(th, { gap: spacing.m }) },
+    h(View, { style: { flexDirection: 'row', alignItems: 'center', gap: spacing.l } },
+      h(LordOSLogo, { size: 56 }),
+      h(View, { style: { flex: 1, minWidth: 0, gap: 2 } },
+        h(Text, { style: { fontSize: typeScale.title, fontWeight: 600, color: th.text, textAlign: 'start' } }, t('store.system.available', { version: up.version })),
+        h(Text, { style: { fontSize: typeScale.callout, color: th.textDim, textAlign: 'start' } },
+          t('store.system.availableDetail', { installed: up.installed, size: formatBytes(up.size || 0) }))),
+      h(Button, { primary: true, label: t('store.system.update'), disabled: !isAdmin || !!job,
+        onClick: () => isAdmin && !job && setPlan(lord.pkg.plan({ install: ['lordos'] })) })),
+    !isAdmin && h(Text, { style: { fontSize: typeScale.caption, color: '#ff9f0a', textAlign: 'start' } }, t('store.debian.needAdmin')),
+    plan && h(View, { style: { gap: spacing.s } },
+      h(PlanView, { plan }),
+      h(Text, { style: { fontSize: typeScale.caption, color: th.textDim, lineHeight: 1.4, textAlign: 'start' } }, t('store.system.keepWorking')),
+      h(View, { style: { flexDirection: 'row', gap: spacing.s, justifyContent: 'flex-end' } },
+        h(Button, { label: t('store.cancel'), onClick: () => setPlan(null) }),
+        plan.ok && h(Button, { primary: true, label: t('store.system.update'), onClick: confirm }))),
+    notes ? h(View, { style: { gap: spacing.xs } },
+      h(Hr, { th }),
+      h(Text, { style: { fontSize: typeScale.body, fontWeight: 600, color: th.text, textAlign: 'start' } }, t('store.system.whatsNew')),
+      h(Markdown, { source: all || !long ? notes : lines.slice(0, 14).join('\n') }),
+      long ? h(Button, { plain: true, small: true, label: all ? t('store.system.less') : t('store.system.more'), onClick: () => setAll(!all), style: { alignSelf: 'flex-start' } }) : null)
+      : h(Text, { style: { fontSize: typeScale.callout, color: th.textDim, textAlign: 'start' } }, t('store.system.noNotes')));
+}
+
+const Hr = ({ th }) => h(View, { style: { height: 1, backgroundColor: th.separator, marginVertical: spacing.xs } });
+
+// "Restart required": an installed update takes effect after a restart. Never restarts on its own.
+function RestartCard({ need }) {
+  const th = useTheme();
+  const [later, setLater] = useState(false);
+  if (later) return null;
+  const canRestart = typeof session.canPower === 'function' && session.canPower();
+  const kernel = need.packages.some((p) => p.startsWith('linux-image'));
+  const what = need.packages.includes('lordos') ? t('store.restart.lordos') : kernel ? t('store.restart.kernel') : t('store.restart.other');
+  return h(View, { style: boxStyle(th, { flexDirection: 'row', alignItems: 'center', gap: spacing.l, borderColor: th.accent }) },
+    h(View, { style: { width: 36, height: 36, borderRadius: 18, backgroundColor: th.accent, alignItems: 'center', justifyContent: 'center' } },
+      h(Text, { style: { fontSize: 20, color: '#fff', lineHeight: 36 } }, '⟳')),
+    h(View, { style: { flex: 1, minWidth: 0, gap: 2 } },
+      h(Text, { style: { fontSize: typeScale.body, fontWeight: 600, color: th.text, textAlign: 'start' } }, t('store.restart.title')),
+      h(Text, { style: { fontSize: typeScale.callout, color: th.textDim, lineHeight: 1.4, textAlign: 'start' } },
+        `${what} ${canRestart ? t('store.restart.save') : t('store.restart.how')}`)),
+    h(Button, { label: t('store.restart.later'), onClick: () => setLater(true) }),
+    canRestart ? h(Button, { primary: true, label: t('store.restart.now'), onClick: () => session.restart() }) : null);
+}
+
+function Updates() {
+  const th = useTheme();
+  const { job, gen } = useStore(state);
+  const [plan, setPlan] = useState(null);
+  const [prefs, setPrefs] = useState(updatePrefs);
+  void gen;
   if (!ready()) {
     return available()
       ? h(EmptyState, { icon: h(StoreGlyph), title: t('store.debian.noIndexTitle'), hint: t('store.debian.noIndex'), style: { minHeight: 380 },
@@ -241,12 +304,18 @@ function Updates() {
       : h(EmptyState, { mascot: 'confused', title: t('store.debian.unavailable'), style: { minHeight: 360 } });
   }
   const ups = lord.pkg.upgrades();
+  const own = lordosUpdate(lang2());
+  const others = ups.filter((u) => u.name !== 'lordos');
+  const need = !job ? restartNeeded() : null;
+  const auto = (on) => { setUpdatePrefs({ autoCheck: on }); setPrefs(updatePrefs()); };
   return h(View, { style: { gap: 12 } },
-    h(Progress),
     h(View, { style: { flexDirection: 'row', alignItems: 'center', gap: 8 } },
-      h(Text, { style: { flex: 1, ...titleStyle(th) } }, t('store.updates.title')),
-      h(Button, { label: t('store.debian.update'), onClick: () => !job && runJob('pkg-update', '', t('store.job.update')) }),
-      ups.length ? h(Button, { primary: true, label: t('store.updates.all'), onClick: () => !job && setPlan(lord.pkg.plan({ upgrade: true })) }) : null),
+      h(Text, { style: { flex: 1, ...titleStyle(th), textAlign: 'start' } }, t('store.updates.title')),
+      h(Button, { label: t('store.debian.update'), disabled: !!job, onClick: () => !job && runJob('pkg-update', '', t('store.job.update')) }),
+      ups.length ? h(Button, { primary: !own?.available, label: t('store.updates.all'), disabled: !!job,
+        onClick: () => !job && setPlan(lord.pkg.plan({ upgrade: true })) }) : null),
+    h(Progress),
+    need ? h(RestartCard, { need }) : null,
     plan && h(View, { style: boxStyle(th) },
       h(PlanView, { plan }),
       h(View, { style: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 4 } },
@@ -255,13 +324,23 @@ function Updates() {
           const extra = plan.items.some((i) => i.action === 'remove');
           runJob('pkg-upgrade', extra ? '--allow-remove' : '', t('store.job.upgrade')); setPlan(null);
         } }))),
-    ups.length === 0 ? h(EmptyState, { mascot: 'celebrate', title: t('store.updates.none'), style: { minHeight: 300 } }) : null,
-    ...ups.map((u) => h(View, { key: u.name, style: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 } },
-      h(PkgIcon, { name: u.name, size: 32 }),
+    own?.available ? h(LordOSCard, { up: own }) : null,
+    own && !own.available && !ups.length ? h(Text, { style: { fontSize: typeScale.callout, color: th.textDim, textAlign: 'start' } },
+      t('store.system.current', { version: own.installed })) : null,
+    ups.length === 0 ? h(EmptyState, { mascot: 'celebrate', title: t('store.updates.none'), style: { minHeight: 260 } }) : null,
+    others.length ? h(View, { style: { marginTop: spacing.s } },
+      h(Header, { th }, t('store.updates.debian', { count: others.length })),
+      h(GroupBox, null, ...others.map((u) => h(View, { key: u.name, style: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 } },
+        h(PkgIcon, { name: u.name, size: 32 }),
+        h(View, { style: { flex: 1, minWidth: 0, gap: 2 } },
+          h(Text, { style: { fontSize: 13, fontWeight: 600, color: th.text, textAlign: 'start' } }, u.name),
+          h(Text, { style: { fontSize: 11, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' } }, `${u.from} → ${u.to} · ${u.summary}`)),
+        h(Text, { style: { fontSize: 11, color: th.textDim } }, formatBytes(u.size)))))) : null,
+    h(View, { style: { flexDirection: 'row', alignItems: 'center', gap: spacing.m, marginTop: spacing.m, paddingHorizontal: spacing.xs } },
       h(View, { style: { flex: 1, minWidth: 0, gap: 2 } },
-        h(Text, { style: { fontSize: 13, fontWeight: 600, color: th.text } }, u.name),
-        h(Text, { style: { fontSize: 11, color: th.textDim, whiteSpace: 'nowrap', overflow: 'hidden' } }, `${u.from} → ${u.to} · ${u.summary}`)),
-      h(Text, { style: { fontSize: 11, color: th.textDim } }, formatBytes(u.size)))));
+        h(Text, { style: { fontSize: typeScale.body, color: th.text, textAlign: 'start' } }, t('store.updates.auto')),
+        h(Text, { style: { fontSize: typeScale.caption, color: th.textDim, lineHeight: 1.4, textAlign: 'start' } }, t('store.updates.autoHint'))),
+      h(Toggle, { on: prefs.autoCheck, onChange: auto })));
 }
 
 // Sidebar footer: when the list was last checked.

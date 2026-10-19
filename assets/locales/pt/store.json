@@ -116,5 +116,37 @@
   "info.size": "Tamanho em disco",
   "info.suite": "Distribuição",
   "info.homepage": "Site",
-  "debian.noneHint": "Tente outra palavra ou o nome do pacote do Debian."
+  "debian.noneHint": "Tente outra palavra ou o nome do pacote do Debian.",
+  "notify.title": {
+    "one": "Há {count} atualização disponível",
+    "other": "Há {count} atualizações disponíveis"
+  },
+  "notify.body": "Abra a Loja para vê-las e instalá-las quando quiser.",
+  "notify.lordosTitle": "LordOS {version} está disponível",
+  "notify.lordosBody": "Veja as novidades e atualize pela Loja, sem reinstalar.",
+  "notify.open": "Abrir Atualizações",
+  "restart.title": "É preciso reiniciar",
+  "restart.lordos": "A nova versão do LordOS está instalada e passa a ser usada depois de reiniciar.",
+  "restart.kernel": "Um kernel novo está instalado e passa a ser usado depois de reiniciar.",
+  "restart.other": "Algumas atualizações passam a valer depois de reiniciar.",
+  "restart.save": "Salve seu trabalho antes.",
+  "restart.how": "Salve seu trabalho, encerre a sessão e escolha Reiniciar na tela de login.",
+  "restart.later": "Mais tarde",
+  "restart.now": "Reiniciar agora…",
+  "system.available": "LordOS {version} está disponível",
+  "system.availableDetail": "Você tem a {installed} · {size} para baixar",
+  "system.update": "Atualizar",
+  "system.updateJob": "Atualizando o LordOS para {version}",
+  "system.keepWorking": "Você pode continuar trabalhando enquanto atualiza. Seus arquivos e ajustes são mantidos; a nova versão começa depois de reiniciar.",
+  "system.whatsNew": "Novidades",
+  "system.more": "Ver tudo",
+  "system.less": "Ver menos",
+  "system.noNotes": "Nenhuma nota foi publicada para esta versão.",
+  "system.current": "O LordOS {version} está em dia.",
+  "updates.debian": {
+    "one": "Atualizações do Debian ({count})",
+    "other": "Atualizações do Debian ({count})"
+  },
+  "updates.auto": "Procurar atualizações automaticamente",
+  "updates.autoHint": "Uma vez por dia, e só para avisar. Nada é instalado sem perguntar."
 }
