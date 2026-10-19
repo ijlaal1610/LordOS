@@ -1142,3 +1142,28 @@ folder `~/LordOS-monred`, installed into `/usr/local/lib/lordos` as in step 15 (
   `lord-qmp-input.py 118 2987 1067` (the VM has two heads, see "Several displays").
 - The session language, theme and accent were changed for the screenshots and restored from
   `~/.config-lordos-backup-monred` afterwards.
+
+## Step 29 — Mail, Calendar, Contacts and Reminders in their own process (VM 118 `lordos-notes`, October 19)
+
+See `PRIVACY.md` ("System apps in their own process"). On VM 118 (172.17.0.53), tree in
+`~/LordOS-inmut2`, built there and installed into `/usr/local/lib/lordos` (`lord-server`,
+`lord-sessiond`, and `lord-maild` and `lord-vault`, which this VM's install didn't have, plus themes
+and assets) by `~/inst-inmut2-118.sh`; the previous tree was saved in
+`~/inmut2-backup-20261019/lordos` and put back at the end (files that only the new build added were
+removed, so `diff -r` against the backup is empty). Sessions were the autologin session of `lord`
+(`/run/lordos/autologin-done` removed, then `systemctl restart lordos`).
+
+- **Installed, tests only, then purged:** `dovecot-imapd` (with `dovecot-core`, `dovecot-sieve`,
+  `libexttextcat-2.0-0`, `libexttextcat-data`, `libunwind8`), its service disabled before it ever
+  ran (`policy-rc.d`), run by hand from `/tmp/dctest` on `127.0.0.1:1143/1993` with a throwaway
+  self-signed certificate and one test user (`ana@lordos.test`, test-only password); a Python SMTP
+  sink on `127.0.0.1:2465` (a transient unit, nothing relayed). `gdb` (with `libdebuginfod1t64`,
+  `libdebuginfod-common`, `libpython3.13`, `libipt2`, `libsource-highlight*`, `libbabeltrace1`) to
+  call `open()`/`socket()` inside the sandboxed Mail process. All purged afterwards; `/tmp/dctest`
+  and the `dovecot`/`dovenull` users are gone.
+- **Input:** a uinput tablet (`~/uinput-inmut2-118.py`, as a transient unit, now with right click)
+  driven through `/run/uinput-inmut2`; screenshots with `screendump` from the Proxmox host.
+- **Undone at the end:** `~/.config/lordos/settings.json` (English UI and `debugTiming` for the
+  tests) restored from the backup, the Mail restriction in `firewall.json` removed, and the test
+  data deleted (`~/.config/lordos/mail`, `~/.local/share/lordos/mail`, the four apps'
+  `appdata` folders, two files in `~/Documents`). Nothing in the network configuration was touched.
