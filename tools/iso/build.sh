@@ -50,6 +50,10 @@ PKGS_INSTALLER="gdisk dosfstools e2fsprogs squashfs-tools util-linux grub-common
 # the boot splash (the LordOS Plymouth theme comes in the lordos package; plymouth-label draws the
 # password prompt's text for encrypted disks)
 PKGS_SPLASH="plymouth plymouth-label"
+# guest tools for VMware virtual machines (power operations from the hypervisor, time sync, guest IP
+# report). The base package only: open-vm-tools-desktop targets X11 (no clipboard sharing or automatic
+# resize yet). Its units carry ConditionVirtualization=vmware, so they don't run anywhere else.
+PKGS_VM="open-vm-tools"
 
 echo "== LordOS $VERSION: live ISO in $WORK"
 umount_all() {
@@ -90,7 +94,7 @@ in_ch() { chroot "$CH" env DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 PATH=/usr
 echo "== paquetes"
 in_ch apt-get update -q > "$WORK/apt.log" 2>&1
 # shellcheck disable=SC2086
-in_ch apt-get install -y -q --no-install-recommends $PKGS_BASE $PKGS_LORDOS $PKGS_FIRMWARE $PKGS_GPU $PKGS_APPS $PKGS_INSTALLER $PKGS_SPLASH \
+in_ch apt-get install -y -q --no-install-recommends $PKGS_BASE $PKGS_LORDOS $PKGS_FIRMWARE $PKGS_GPU $PKGS_APPS $PKGS_INSTALLER $PKGS_SPLASH $PKGS_VM \
     >> "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
 cp "$DEB" "$CH/tmp/lordos.deb"
 in_ch apt-get install -y -q --no-install-recommends /tmp/lordos.deb >> "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
