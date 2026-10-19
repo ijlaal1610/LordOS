@@ -536,16 +536,7 @@ static int scope_app(const char *name, char *app) {
     if (!strcmp(name, "server")) { snprintf(app, FW_APP_MAX, "lordos"); return 0; }
     size_t n = strlen(name);
     /* (0.8.4) LordOS's own components that use the network: lordos-net-<name>.scope → lordos:<name> */
-    if (n > 17 && !strncmp(name, "lordos-net-", 11) && !strcmp(name + n - 6, ".scope")) {
-        char comp[32];
-        size_t cl = n - 11 - 6;
-        if (cl >= sizeof comp) return -1;
-        memcpy(comp, name + 11, cl);
-        comp[cl] = 0;
-        if (!fw_component_ok(comp)) return -1;
-        snprintf(app, FW_APP_MAX, "lordos:%s", comp);
-        return 0;
-    }
+    if (!strncmp(name, "lordos-net-", 11)) return fw_component_scope(name, app, FW_APP_MAX);
     if (n < 18 || strncmp(name, "app-lordos-", 11) || strcmp(name + n - 6, ".scope")) return -1;
     return fw_app_canon(name, app, FW_APP_MAX);
 }

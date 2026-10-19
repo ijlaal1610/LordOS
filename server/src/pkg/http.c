@@ -8,6 +8,7 @@
 #include "http.h"
 #include "../errcode.h"
 #include "crypto.h"
+#include "../sec/cgroup.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -379,6 +380,12 @@ int fetch_batch(FetchItem *items, int n, FetchProgress cb, void *ud) {
         syscall(SYS_close_range, 4, ~0u, 0);
         signal(SIGPIPE, SIG_IGN);
         prctl(PR_SET_PDEATHSIG, SIGKILL);
+        /* (0.8.4) in lordos-net-store.scope, so the Store and the updates are their own app for the
+         * firewall and Monitor → Network (lordos:store); outside a LordOS session, where it is */
+        if (getenv("LORDOS_SESSIOND")) {
+            CgroupLimits lim = { 0, 0, 0 };
+            cgroup_enter("lordos-net-store.scope", &lim);
+        }
         if (drop_to_nobody()) _exit(2);
         Conn c = { .fd = -1, .out = 3 };
         for (int i = 0; i < n; i++) get_one(&c, &items[i], (uint32_t)i);

@@ -125,6 +125,8 @@ int fw_app_canon(const char *in, char *out, size_t n);
  * their own rows"): their firewall id is "lordos:<name>". 1 if name is one of them. */
 #define FW_COMPONENTS { "mail", "store", "print", "terminal", "lists", NULL }
 int fw_component_ok(const char *name);
+/* "lordos-net-<name>.scope" of a known component → "lordos:<name>" in app. 0 ok, -1 otherwise. */
+int fw_component_scope(const char *scope, char *app, size_t n);
 
 /* Destination as text ("any", "lan", "internet", "example.com", "*.example.com", "10.0.0.0/8",
  * "2001:db8::1") → kind/wildcard/domain/fam/addr/prefix of r. 0 ok, -1 invalid. */

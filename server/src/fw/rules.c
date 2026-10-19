@@ -78,6 +78,19 @@ int fw_component_ok(const char *name) {
     return 0;
 }
 
+int fw_component_scope(const char *scope, char *app, size_t n) {
+    size_t l = scope ? strlen(scope) : 0;
+    if (l <= 17 || strncmp(scope, "lordos-net-", 11) || strcmp(scope + l - 6, ".scope")) return -1;
+    char comp[32];
+    size_t cl = l - 11 - 6;
+    if (cl >= sizeof comp) return -1;
+    memcpy(comp, scope + 11, cl);
+    comp[cl] = 0;
+    if (!fw_component_ok(comp)) return -1;
+    int w = snprintf(app, n, "lordos:%s", comp);
+    return w < 0 || (size_t)w >= n ? -1 : 0;
+}
+
 int fw_app_canon(const char *in, char *out, size_t n) {
     if (!in || !out || !n) return -1;
     size_t len = strnlen(in, FW_APP_MAX);

@@ -66,6 +66,14 @@ static void test_canon(void) {
     const char *bad[] = { "", "desktop:", ":x", "a b", "a\"b", "/usr/../bin/sh", "/usr//bin", "/usr/bin/", "rel/path",
                           "app-lordos-lpk-a:b.scope", "x\n", "\xc3\xa1" };
     for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) CHECK(fw_app_canon(bad[i], o, sizeof o) == -1);
+    /* (0.8.4) the components' scopes */
+    CHECK(!fw_component_scope("lordos-net-mail.scope", o, sizeof o) && !strcmp(o, "lordos:mail"));
+    CHECK(!fw_component_scope("lordos-net-terminal.scope", o, sizeof o) && !strcmp(o, "lordos:terminal"));
+    CHECK(!fw_app_canon("lordos:store", o, sizeof o) && !strcmp(o, "lordos:store"));
+    const char *badsc[] = { "lordos-net-evil.scope", "lordos-net-.scope", "lordos-net-mail", "lordos-net-mail.scope.scope",
+                            "lordos-maild.scope", "app-lordos-mail.scope", "lordos-net-Mail.scope", NULL };
+    for (int i = 0; badsc[i]; i++) CHECK(fw_component_scope(badsc[i], o, sizeof o) == -1);
+    CHECK(fw_component_ok("lists") && !fw_component_ok("") && !fw_component_ok(NULL) && !fw_component_ok("vpn"));
     char longid[200];
     memset(longid, 'a', sizeof longid - 1);
     longid[sizeof longid - 1] = 0;

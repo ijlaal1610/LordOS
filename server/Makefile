@@ -69,7 +69,7 @@ DOC_SRC := src/doc/doc.c src/doc/wire.c src/ui/js_doc.c src/print/ipp.c src/prin
            src/print/escl.c src/print/print.c src/ui/js_print.c
 SRC += $(DOC_SRC)
 # Per-app firewall (src/fw, docs/FIREWALL.md): rules, decision and names learned from DNS
-FW_SRC := src/fw/rules.c src/fw/dnsmap.c src/fw/fwmap.c src/fw/fwlists.c src/ui/js_fw.c
+FW_SRC := src/fw/rules.c src/fw/dnsmap.c src/fw/fwmap.c src/fw/fwlists.c src/ui/js_fw.c src/sec/netconn.c
 SRC += $(FW_SRC)
 OBJ := $(SRC:src/%.c=build/obj/%.o)
 HDR := $(wildcard src/*.h src/gpu/*.h src/ui/*.h src/term/*.h src/wl/*.h src/wasm/*.h src/sound/*.h src/pkg/*.h src/net/*.h src/install/*.h src/remote/*.h src/users/*.h src/sec/*.h src/monitor/*.h src/media/*.h src/app/*.h src/doc/*.h src/print/*.h) $(WL_GEN) $(APP_CLIENT_HDR)
@@ -200,9 +200,9 @@ build/wasm-test: tests/wasm_test.c $(WASM_SRC) src/wasm/wasm.h src/wasm/wasm_int
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/wasm_test.c $(WASM_SRC) -lm
 PKG_SRC := src/pkg/crypto.c src/pkg/pgp.c src/pkg/xz.c src/pkg/deb.c src/pkg/idx.c src/pkg/status.c src/pkg/resolve.c src/pkg/http.c src/pkg/pkg.c
-build/pkg-test: tests/pkg_test.c $(PKG_SRC) build/obj/ui/stb.o src/admin.h $(wildcard src/pkg/*.h)
+build/pkg-test: tests/pkg_test.c $(PKG_SRC) src/sec/cgroup.c build/obj/ui/stb.o src/admin.h $(wildcard src/pkg/*.h)
 	@mkdir -p build
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/pkg_test.c $(PKG_SRC) build/obj/ui/stb.o -lm
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/pkg_test.c $(PKG_SRC) src/sec/cgroup.c build/obj/ui/stb.o -lm
 PKG_READ_SRC := src/pkg/deb.c src/pkg/idx.c src/pkg/status.c src/pkg/resolve.c src/pkg/crypto.c
 build/pkg-js-test: tests/pkg_js_test.c src/ui/js_pkg.c $(PKG_READ_SRC) $(QJS_OBJ) $(wildcard src/pkg/*.h)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/pkg_js_test.c src/ui/js_pkg.c $(PKG_READ_SRC) $(QJS_OBJ) -lm -lpthread
@@ -536,9 +536,17 @@ build/arcpath-test: tests/arcpath_test.c src/doc/arcpath.c src/doc/arcpath.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/arcpath_test.c src/doc/arcpath.c
 # IPP encoder/decoder, mDNS and page ranges (tests/ipp_test.c)
-build/ipp-test: tests/ipp_test.c src/print/ipp.c src/print/mdns.c src/print/cups.c src/print/phttp.c src/doc/wire.c src/sec/json.c $(wildcard src/print/*.h)
+# (0.8.4) the components' network connectors (src/sec/netconn.c) and what they need, for the tests
+NETCONN_SRC := src/sec/netconn.c src/sec/cgroup.c src/fw/rules.c src/fw/fwmap.c
+# the connectors: requests, sockets, the real connector process and its fail-closed start
+test: build/netconn-test
+build/netconn-test: tests/netconn_test.c $(NETCONN_SRC) src/sec/json.c src/sec/netconn.h src/sec/cgroup.h
 	@mkdir -p build
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/ipp_test.c src/print/ipp.c src/print/mdns.c src/print/cups.c src/print/phttp.c src/doc/wire.c src/sec/json.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/netconn_test.c $(NETCONN_SRC) src/sec/json.c -lpthread
+	./$@ || { rm -f $@; exit 1; }
+build/ipp-test: tests/ipp_test.c src/print/ipp.c src/print/mdns.c src/print/cups.c src/print/phttp.c src/doc/wire.c src/sec/json.c $(NETCONN_SRC) $(wildcard src/print/*.h)
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/ipp_test.c src/print/ipp.c src/print/mdns.c src/print/cups.c src/print/phttp.c src/doc/wire.c src/sec/json.c $(NETCONN_SRC) -lpthread
 # lord-doc end to end: malicious archives, PDF and the lockdown (needs build/lord-doc)
 build/doc-test: tests/doc_test.c src/doc/wire.c src/sec/json.c $(wildcard src/doc/*.h)
 	@mkdir -p build
@@ -550,7 +558,7 @@ include $(sort $(wildcard mk/*.mk))
 # lord-netd (docs/NETWORK.md, "The network belongs to the system"): admin.c with LORD_NETD (net-* actions
 # only) plus networking and the package engine (net-vpn-enable). libc only; lord-sessiond runs it.
 all: build/lord-netd
-NETD_OBJ := build/obj/netd/admin.o build/obj/netd/netd.o $(NET_SRC:src/%.c=build/obj/%.o) $(PKG_SRC:src/%.c=build/obj/%.o) build/obj/ui/stb.o
+NETD_OBJ := build/obj/netd/admin.o build/obj/netd/netd.o $(NET_SRC:src/%.c=build/obj/%.o) $(PKG_SRC:src/%.c=build/obj/%.o) build/obj/sec/cgroup.o build/obj/ui/stb.o
 build/obj/netd/admin.o: src/admin.c $(HDR)
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) -DLORD_NETD $(CFLAGS) $(WARN) -std=c11 -c -o $@ $<
