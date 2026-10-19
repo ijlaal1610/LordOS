@@ -148,7 +148,7 @@ static int imap_open(Imap *im, char *err, size_t ecap) {
     if (!pw) { need_auth(a); snprintf(err, ecap, "no-password"); return -2; }
     TlsInfo ti;
     char why[64];
-    im->c = open_conn(a->id, a->imap.host, a->imap.port, a->imap.sec == SEC_SSL, a->pin_imap, &ti, why, sizeof why);
+    im->c = open_conn(a->id, 0, a->imap.host, a->imap.port, a->imap.sec == SEC_SSL, a->pin_imap, &ti, why, sizeof why);
     if (!im->c) { free(pw); snprintf(err, ecap, "%s", why); return !strcmp(why, "cert") ? -3 : -1; }
     size_t len;
     char *greet = read_raw(im, &len);

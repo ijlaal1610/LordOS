@@ -18,7 +18,7 @@ static int dav_connect(Dav *d, const char *host, int port, int tls) {
     if (!tls) { snprintf(d->err, sizeof d->err, "insecure"); return -1; }
     TlsInfo ti;
     char why[64];
-    d->c = open_conn(d->a->id, host, port, 1, d->a->pin_dav, &ti, why, sizeof why);
+    d->c = open_conn(d->a->id, 0, host, port, 1, d->a->pin_dav, &ti, why, sizeof why);
     if (!d->c) { snprintf(d->err, sizeof d->err, "%s", why); return -1; }
     snprintf(d->host, sizeof d->host, "%s", host);
     d->port = port;
