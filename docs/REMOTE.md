@@ -16,6 +16,8 @@ The port is **5673**, which spells "LORD" on a phone keypad.
   before switching users).
 - **It's off by default.** It's turned on and off in Settings → Sharing → «Remote Desktop», as on
   popular desktop systems.
+- **Video:** in a browser with WebRTC the screen arrives as video with sound, and still areas are
+  then made sharp with lossless tiles; otherwise as images. See [Video (WebRTC)](#video-webrtc).
 - **Terminal access** (SSH) is a separate switch on the same page: see
   [Remote login (SSH)](#remote-login-ssh).
 
@@ -33,6 +35,8 @@ The port is **5673**, which spells "LORD" on a phone keypad.
   addresses](#blocked-and-allowed-addresses).
 - **Connected now:** user, IP, whether they're watching this screen or their own desktop, and for
   how long, with a «Disconnect» button (`remote-kick`, only pids from lord-sessiond's list).
+- **Video:** the WebRTC switch (on by default), STUN servers and a TURN relay (`remote-ice`); see
+  [Video (WebRTC)](#video-webrtc).
 
 The actions change `/etc/lordos/remote/config` (`enabled=`, `port=`, `allow=`) and send SIGHUP to
 lord-sessiond. Turning remote off cuts the connections, but the sessions stay open, as with RDP.
@@ -149,8 +153,9 @@ Unblocking from Settings forgets that address's history (its next block is 15 mi
 - `[3]`: end of frame;
 - `[4]`: PNG refresh.
 
-Text (JSON): `hello`, `size`, `cur{x,y,m}`, `clip{text}`, `pong`, `bye` (with `lock:1` if the
-session was locked).
+Text (JSON): `hello` (with `rtc:1` and `ice:["stun:…"]` when video is on), `size`, `cur{x,y,m}`,
+`clip{text}`, `pong`, `bye` (with `lock:1` if the session was locked), `rtc{sdp,codec}` (our WebRTC
+answer) or `rtc{fail:1}` (back to tiles).
 
 **Browser → server.** Text (JSON):
 
@@ -168,7 +173,9 @@ session was locked).
 - `clip{text}`;
 - `resize{w,h}`: on connecting and when the window is resized; if the session is on the monitor,
   the monitor wins;
-- `ack`, `ping{ts}`.
+- `ack`, `ping{ts}`;
+- the video's signaling: `rtc{sdp}` (the browser's offer, at most 32 KB), `ice{c}` (a trickled
+  candidate, at most 512 bytes) and `vmode{on}` (1: the video is playing; 0: back to tiles).
 
 **Validation** (`rs_ws_consume`, `rs_json_parse`, `rs_browser_input` in `rsec.c`): frames must be
 masked, without RSV bits, with a known opcode and the shortest length encoding; control frames at
@@ -187,6 +194,168 @@ Anything else is ignored or closes with 1002/1007/1009.
 **Flow control:** the browser acknowledges each frame (`ack`) only once it has drawn it, and the
 session accumulates changes until then. A slow network gets fewer frames, but always the current
 state.
+
+## Video (WebRTC)
+
+![Settings → Sharing → Video](settings-sharing-video.png)
+
+When the page finds `RTCPeerConnection` and Settings allows video (`video=1`, the default), the
+remote desktop becomes a WebRTC connection between the browser and the bridge:
+
+1. The page connects to `/ws?…&v=1` as always and starts with the tiles.
+2. The bridge creates its WebRTC peer and says so in `hello` (`rtc:1`, `ice:["stun:<address>:<port>"]`:
+   a STUN server of its own, see below).
+3. The page makes an offer (video and audio to receive, data channels `input` and `tiles`), waits
+   for its candidates (at most 1.5 s) and sends it over the WebSocket: `{"t":"rtc","sdp":…}`.
+4. The bridge parses it strictly (`rtcwire.c`) and answers `{"t":"rtc","sdp":…,"codec":"h264"}`.
+5. ICE, DTLS and SCTP come up; the bridge tells the session `RP_VIDEO` and the session's encoder
+   starts (or a keyframe goes to the new viewer of an encoder already running).
+6. As soon as the first frame plays, the page sends `{"t":"vmode","on":1}`: the canvas becomes a
+   transparent layer over the `<video>`, input goes over the `input` data channel, and the session
+   sends tiles only when the screen is still.
+7. If no frame plays within 12 s, the connection fails, or the offer is refused, the page closes it
+   (`{"t":"vmode","on":0}`) and stays on the tiles.
+
+**What travels where:**
+
+| Channel | Content |
+|---|---|
+| video track | H.264 constrained baseline (packetization mode 1) or VP8, RTP over SRTP, 90 kHz clock; frames only when the screen changed, at most 30 per second, one more tiny frame 70 ms after the last change (browsers paint a lone frame late) |
+| audio track | Opus, 20 ms frames, mono 48 kHz, 64 kbit/s |
+| `input` data channel | the same JSON input messages as the WebSocket (`m`, `b`, `w`, `s`, `pz`, `k`, `clip`, `resize`), parsed by the same `rs_browser_input`; at most 256 KB per message |
+| `tiles` data channel | `[1][x,y,w,h u16][png]` a lossless tile; `[2][x,y,w,h…]` these areas changed (show the video there); `[3]` done |
+| WebSocket | everything else, as before: signaling, cursor, clipboard from the session, ping |
+
+**Sharp text.** Video blurs fine text a little, so once the screen has been still for 250 ms the
+session sends the tiles that changed since the last time, as PNG, over the `tiles` channel; the page
+draws them on the layer over the video. Any change clears that layer where it happens (`RP_DAMAGE`,
+sent at once) and the video shows there again. The video is tagged sRGB (BT.709 matrix and
+primaries, sRGB transfer) so the browser shows the same colors as the tiles: the measured
+difference between both over the whole screen is 0.1 levels.
+
+**One encoder per session.** The session's `lord-server` renders as always; the frame the remote
+desktop sees (protected windows in black, from `media_composed`, or the GPU's read-back) goes to a
+live encoder: `lord-media` in `MK_STREAM` mode, through a sealed memfd of 3 slots, like the screen
+recording. It uses H.264 with VA-API when the card encodes it, else libx264 (`ultrafast`,
+`zerolatency`, CRF 22 with a bit-rate cap), or VP8 with libvpx (`realtime`) for browsers without
+H.264. Every viewer of the session gets the same encoded frames over the session socket
+(`RP_VFRAME`, `RP_AFRAME`); the bridge only packetizes and encrypts. The bit rate is the slowest
+viewer's: each bridge lowers its target on loss reported by the browser (receiver reports, REMB)
+and raises it slowly when there is none (300 kbit/s to 12 Mbit/s). A viewer that falls more than
+3 MB behind skips frames until the next keyframe; a lost frame (PLI, FIR) asks for one, and the
+current screen is encoded again for it. Two users means two sessions, two `lord-server`s and two
+encoders, each as its own user.
+
+**The GPU keeps composing.** Until 0.8.3 a remote viewer switched the session to CPU composition.
+Now `gpu_frame` reads the composed frame back (`gpu_read_next`) once, for the encoder and the tiles,
+and the screen keeps its GPU composition. Only two cases still use the CPU path: protected windows on
+screen (they are painted black in a CPU copy of the scene) and screen recording. `LORD_REMOTE_GPU=0`
+forces the CPU path. While the remote desktop reads frames back, a fullscreen app is composed rather
+than scanned out directly.
+
+**ICE, STUN and TURN.**
+
+- The bridge is an ICE-lite agent: it never sends checks; it answers checks signed with its ICE
+  password (from the answer that went over the authenticated WebSocket), from addresses that pass
+  the same rules as the WebSocket (`rs_access_decide`: the signed-in browser's own address, the local
+  network or the allowlist by Settings, and never a blocked one).
+- **Built-in STUN server:** a second UDP socket per connection answers plain binding requests (at
+  most 20 a second, only from allowed addresses), and the page uses it as its STUN server: on a LAN
+  that's all it needs, with no outside server. It must be a different port from the media: browsers
+  hand every STUN packet from their STUN server's address to that server's request handler,
+  including the ICE answers.
+- **External STUN** (Settings → Sharing → STUN servers, up to 4): the bridge learns its public
+  address from them and offers it as a candidate; the page uses them too.
+- **TURN** (Settings → Sharing → Relay): the bridge allocates a relayed address with the long-term
+  credentials, permits only the browser's candidate addresses, and offers the relay as a candidate.
+  The relay only sees DTLS and SRTP. The password is kept in `/etc/lordos/remote/turn.key` (root
+  0600), read by the connection's root process right before the bridge drops root and handed over
+  in memory; after the first answer from the relay only its MD5 key remains, and it is never logged,
+  written to the config or sent to the browser (the browser is not given the relay).
+
+**DTLS bound to the sign-in.** The bridge is the DTLS server, with a new P-256 certificate per
+connection; its fingerprint goes in the answer, over the authenticated TLS WebSocket. The browser's
+certificate must hash to the `a=fingerprint` of the offer that came over that same WebSocket, or the
+connection ends ("does not match the fingerprint of the signed-in offer") and the page stays on the
+tiles. DTLS 1.2 with ECDHE-ECDSA AES-GCM / ChaCha20-Poly1305 only; SRTP with AES-GCM (or
+AES-CM-HMAC-SHA1-80) keys exported from it. After DTLS is up, the media moves to another network
+path only after an authenticated packet (a DTLS record or SRTCP that decrypts) came from it:
+leaked ICE credentials alone can't redirect the stream.
+
+**Process.** The WebRTC peer lives in the bridge, which already dropped root (see Process and
+privileges): its UDP sockets are created after the drop, as the user. `lord-sessiond` now links
+libsrtp2 and usrsctp (Debian packages); `lord-server` links neither; FFmpeg stays only in
+`lord-media`.
+
+**Admin action:**
+
+| Action | Argument | What it does |
+|---|---|---|
+| `remote-ice` | lines: `video=on\|off`, `stun=<host:port>[,…]` (up to 4), `turn=<host:port>` (empty: no relay), `turn_user=<name>`, `turn_pass=<password>` | validates every line (`rw_ice_server_valid`, `rw_turn_user_valid`, `rw_turn_pass_valid`) before writing; the password only into `turn.key` (0600); the rest into `config` (`video=`, `stun=`, `turn=`, `turn_user=`, `turn_key=1`) and SIGHUP |
+
+![Settings → Sharing → Relay, with the password saved](settings-sharing-turn.png)
+
+![Protected windows stay black in the video too](remote-desktop-video-protected.png)
+
+### Security analysis (0.8.4, video)
+
+The new network surface: the signaling messages on the WebSocket, the SDP offer and candidates, the
+UDP socket (STUN, DTLS, SRTP/SRTCP, SCTP), the data channel messages, the TURN client and the
+password storage. Unit tests in `server/tests/remote_sec_test.c` (now 352 checks, with a real
+Chrome offer), the same ASan+UBSan fuzz run on every `make -C server test` now also feeds the SDP,
+candidate, STUN/TURN, RTCP, data channel open and RTP payload code (2,000,000 inputs clean in a
+longer run), and these attacks on VM 122:
+
+| # | What was tried | Result |
+|---|---|---|
+| 1 | WebSocket (the only signaling path) without a cookie, with a forged one, from a foreign `Origin` | 403, as before |
+| 2 | An offer whose fingerprint doesn't match the browser's real certificate (fingerprint swap) | DTLS refused ("does not match the fingerprint of the signed-in offer"); the page went on with tiles at 28 frames per second |
+| 3 | An offer over 32 KB | ignored; the page gave up after 12 s and stayed on tiles |
+| 4 | Data channel: 262,000 bytes of junk, a binary message on `input`, 300 keys with invalid codes; a message over 256 KB | ignored (the browser itself refuses over 256 KB; the bridge would end the connection) |
+| 5 | From another address, against a live connection: plain STUN, ICE checks with a wrong password or user fragment, a DTLS ClientHello, RTCP, random 1400 bytes, an oversized user name | only the plain STUN and a check with the right credentials were answered; nothing else |
+| 6 | The same with "Only these addresses" not listing that address | nothing answered, not even STUN; "refused ICE check" in the journal |
+| 7 | (Found here, fixed.) With stolen ICE credentials, a check with USE-CANDIDATE moved the media to the attacker's address | the media now moves only to a path that sent an authenticated DTLS or SRTCP packet: 0 packets redirected |
+| 8 | TURN password: journal, session logs, `status.json`, the config, the bridge's environment, every WebSocket message and the answer | not found anywhere; `turn.key` is root 0600 and unreadable by the user |
+| 9 | The bridge while video runs | uid/gid of the user (real, effective, saved), no capabilities, `NoNewPrivs 1`, no shared mapping; its UDP sockets created after the drop |
+| 10 | A protected window (Passwords) opened while the GPU composes and a browser watches | the session switches to the CPU path while it's on screen: black in the video, normal on the monitor |
+
+What stays as it is: ICE-lite answers checks from any allowed address that knows the credentials
+(they only travel inside the authenticated TLS WebSocket); a relay sees the traffic's size and
+timing; the encoder, `lord-media`, parses only our own frames (in its sandbox, as for recording).
+
+### Measurements (0.8.4, video)
+
+VM 122 (Xeon Silver 4108 at 1.8 GHz, 4 vCPUs, no 3D, 1280×800), headless Chrome 155 on a Mac on the
+same LAN; dragging a window for 16 s; CPU per process from `/proc`, traffic on `eth0`.
+
+| Situation | Path | Frames/s | Network | lord-server | encoder | bridge(s) |
+|---|---|---|---|---|---|---|
+| idle | tiles | 0 | < 1 kbit/s | 1 % | — | 0 % |
+| idle | video | 0.5 | < 80 kbit/s | 3 % | 2 % | 1 % |
+| dragging, 1 viewer | tiles | 23 | 12.5 Mbit/s | 53 % | — | 57 % |
+| dragging, 1 viewer | H.264 (veryfast) | 28 | 0.3–0.9 Mbit/s | 60 % | 42 % | 2 % |
+| dragging, 1 viewer | H.264 (ultrafast, the default) | 28.5 | 0.4–0.5 Mbit/s | 64 % | 31 % | 2 % |
+| dragging, 1 viewer | VP8 | 28.8 | 2.0 Mbit/s | 58 % | 46 % | 2 % |
+| dragging, 2 viewers of one session | tiles | 24 and 21 | 24 Mbit/s | 58 % | — | 58 % + 59 % |
+| dragging, 2 viewers of one session | H.264 | 28.8 and 25.2 | 2.1 Mbit/s | 61 % | 33 % (one) | 2 % + 2 % |
+| dragging, 2 users (2 sessions) | H.264 | 27.5 and 27.2 | 3.5 Mbit/s | 62 % + 65 % | 31 % + 32 % | 2 % + 2 % |
+| dragging, monitor session composed on the GPU (llvmpipe) | H.264 | 26 | 0.46 Mbit/s | 167 % (software GL) | 25 % | 2 % |
+
+- **Latency** (a click on the page until the pixel changes on it, 12 clicks each): tiles 63–96 ms
+  (median 66 ms); video 72–130 ms (median about 90 ms; before the flush frame, a third of the clicks
+  took 320–360 ms). Network round trip 1 ms, browser jitter buffer 15–80 ms while dragging, decode
+  2.6 ms.
+- **Quality:** still areas are pixel-identical to the tiles path (they are the same PNG tiles); in
+  motion, H.264 at 1280×800 instead of JPEG quality 70 per tile. The page's latency is shown in its
+  top bar with the mode ("Video · H264" or "Images").
+- On real graphics hardware the GPU row would not cost CPU: llvmpipe is the CPU emulating a GPU.
+  VA-API encoding was not measured (the VM has no video encoder).
+
+![Dragging a window: video](remote-desktop-video-motion.png)
+
+![Dragging a window: tiles](remote-desktop-tiles-motion.png)
+
+![The monitor composed on the GPU while a browser watches](remote-desktop-gpu-monitor.png)
 
 ## Process and privileges
 
@@ -221,6 +390,8 @@ self-signed P-256, with CN equal to the machine name and ten years of validity. 
 | floods and slow clients                | 20 new connections per address then 2/s, 8 open per address, 48 in all, 15 s to send the request |
 | bug in the bridge                      | it runs as the user who owns the session, without root's shared state or descriptors      |
 | access from the internet               | refused by default (local network only); use a VPN (Settings → Network → VPN)             |
+| someone on the LAN sends UDP to the video port | only allowed addresses get answers; ICE needs the password from the TLS WebSocket; DTLS needs the browser's certificate; media only moves to proven paths |
+| a TURN relay reads the traffic         | it only sees DTLS and SRTP; its password stays root-only on this computer                |
 
 ## Security analysis (0.8.3)
 
@@ -292,22 +463,14 @@ scan; headers; lock. All results are in the table.
 - **Frames per second:** in this VM the limit is the desktop's CPU composition (blur and
   transparency), not the network or the compression.
 
-## Stage 2: audio (designed, pending)
+## Sound
 
-The idea is for the bridge, which already runs as the user, to be one more client of that
-session's PipeWire:
-
-- **From the machine to the browser:**
-  - it takes the monitor of the default output;
-  - compresses it with Opus (20 ms, 48 kHz stereo, about 64 kbit/s);
-  - sends it in a new binary message, `[5][timestamp][opus]`;
-  - the browser decodes it with WebCodecs `AudioDecoder` and plays it with an `AudioWorklet`,
-    with a buffer of about 60 ms. Without WebCodecs, it falls back to Opus in WASM.
-- **Microphone (optional, by permission):** the reverse path, with an `Audio/Source` node in the
-  session.
-- **Multiple viewers:** if there are several, the audio goes to just one, the last one that asked
-  for it.
-- **Dependency:** libopus, only in lord-sessiond.
+The session's sound reaches the browser with the video (see [Video (WebRTC)](#video-webrtc)): the
+session's `lord-server` records the monitor of the default output from PipeWire itself (the same
+`maudio.c` stream as the screen recorder's microphone, `@DEFAULT_MONITOR@`, mono 48 kHz) into a
+shared-memory ring, and the live encoder makes Opus of it (20 ms frames, 64 kbit/s, low delay). The
+page starts muted (browsers only play sound after a click) and has a sound button in its top bar.
+Still to do: stereo, and the microphone the other way (by permission).
 
 ## Remote login (SSH)
 
@@ -408,12 +571,16 @@ the internet, use a VPN instead of opening the port.
 | `server/src/remote/rsec.c`            | strict parsers: request head, form, cookie, WebSocket, JSON |
 | `server/src/remote/ipnet.c`, `lockout.c` | addresses and networks, lockout and connection rate     |
 | `server/src/remote/enc.c`             | PNG/JPEG (stb_image_write, vendored in third_party/stb)    |
+| `server/src/remote/rtc.c`             | the WebRTC peer in the bridge: ICE-lite, STUN server, DTLS-SRTP, SCTP data channels, RTP, TURN client |
+| `server/src/remote/rtcwire.c`         | strict SDP, candidate, STUN/TURN, RTCP and data channel parsers; RTP payloaders (tested and fuzzed) |
+| `server/src/media/mstream.c`          | the session's shared live encoder (lord-server side)        |
+| `server/src/media/helper/lm_stream.c` | the live encoder in `lord-media` (H.264/VP8, Opus)          |
 | `server/src/remote/login.html`, `client.html` | pages (embedded in the binary)                      |
 | `server/src/remote/remote_admin.c`    | `remote-*` actions                                         |
 | `server/src/remote/ssh_admin.c`       | `ssh-*` actions (remote login)                             |
 | `tools/iso/rootfs/etc/ssh/sshd_config.d/10-lordos.conf` | sshd defaults shipped by the `lordos` package |
 | `apps/settings/Sharing.jsx`, `sdk/remote.js` | Settings → Sharing and the notice on the monitor    |
-| `/etc/lordos/remote/`                 | `config`, `access`, `cert.pem`, `key.pem`, `fingerprint`   |
+| `/etc/lordos/remote/`                 | `config`, `access`, `cert.pem`, `key.pem`, `fingerprint`, `turn.key` (root 0600) |
 | `/var/lib/lordos/remote/`             | `blocklist`, `requests` (root only)                        |
 
 ## Screenshots

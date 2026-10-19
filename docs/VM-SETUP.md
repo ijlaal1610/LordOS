@@ -1371,3 +1371,37 @@ in `~/LordOS-csd`, built there (`make -C server`, `make -C server build/deco-cli
   `master_preferences` and `settings.json` restored, the themes, the schemas package, `session.conf`,
   the profiles, the tree, the script and the backup removed, `lordos.service` restarted to the login
   screen. No network or Proxmox setting was touched.
+
+## Step 39 — 0.8.4: remote desktop over WebRTC (VM 122 `lordos-sandbox`, October 19)
+
+See `REMOTE.md`, "Video (WebRTC)". On VM 122 (172.17.0.56), tree in `~/LordOS-rtc` (synced from the
+Mac's `v084-rtc` worktree by a script of its own name, `sync-rtc-122.sh`, kept outside the repo),
+built there (`make -C server`, `make -C server test`) and installed over the package's files by
+`~/deploy-rtc-122.sh`, which saved `/usr/lib/lordos`, `/etc/lordos` and `/var/lib/lordos/remote` to
+`/var/backups/lordos-rtc-20261019` first (`~/restore-rtc-122.sh` put them back). The theme bundles
+were built on the Mac (the VM has no Node).
+
+- **Installed for the build:** `libsrtp2-dev` and `libusrsctp-dev` (with `libsrtp2-1`, `libusrsctp2`,
+  `libnss3-dev`, `libnspr4-dev`); removed at the end with `apt-get purge` + `autoremove`.
+- **Installed for the TURN tests:** `coturn` (`--no-install-recommends`, with its 11 dependencies);
+  its unit was stopped and disabled right after installing, and `turnserver` ran by hand on
+  172.17.0.56:3478 with a test-only user from `/tmp/turn-rtc.conf`. Purged at the end.
+- **Test-only accounts** `rtest` and `rtest2` (one password, only for these tests); `rtest` was put
+  in `sudo` for the Settings → Sharing screenshots and the `remote-ice` action. Both deleted with
+  their homes at the end.
+- **The GPU path:** a drop-in `/etc/systemd/system/lordos.service.d/rtc-gpu-test.conf`
+  (`Environment=LORD_GPU=1`, llvmpipe on this virtio card) and `rtest` signed in on the login screen
+  through the Proxmox host's `lord-qmp-input.py` and `lord-type.py`; screenshots with `qm monitor 122`
+  (`screendump`). The drop-in was removed.
+- **Browsers:** headless Chrome on the Mac with throwaway profiles in the scratchpad (deleted after
+  each run), driven over the DevTools protocol; CPU and traffic sampled on the VM by
+  `~/cpu-rtc-122.sh` (`/proc/<pid>/stat`, `eth0` counters); the ICE/STUN probes by
+  `/tmp/icetest-rtc.py` from the VM itself.
+- **Configuration changed during the tests** (all restored from the backup): `config` (`net=`
+  switched to `any` by a stray test click and back, `net=list` for one test, the TURN lines),
+  `access` (one test `allow` entry), `turn.key`, `session.conf`.
+- **Undone at the end:** `/usr/lib/lordos` and `/etc/lordos` restored from the backup (`diff -r`
+  empty), `/var/lib/lordos/remote` restored, `/var/lib/lordos/last-user` back to `lord`, the
+  packages above purged, the test accounts, the tree, the scripts, `/tmp` files and the backup
+  removed, `lordos.service` restarted on the package's binaries, at the login screen. eth0 and the
+  VM's network were not touched; VM 123 was not used.

@@ -572,27 +572,34 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   - **Command line:** `lordos-fw` to list, add and remove rules, switch profiles, export, and log
     allow/deny events, through the same validated API as the Monitor (no root shortcut).
 
-- [ ] **Remote desktop over WebRTC (0.8.4)** — today the browser gets PNG/JPEG tiles over a TLS
-  WebSocket, and a connection switches the session to CPU composition. The goal is real video:
-  - **Media:** H.264/VP8 video and Opus audio as WebRTC media tracks (RTP/SRTP); keyboard,
-    mouse, clipboard and a lossless refresh of still areas (sharp text) over a data channel.
-    Stack: libdatachannel (small, C API), not the full browser stack. Falls back to the current
-    mode when the browser lacks support.
-  - **Rendering once:** the GPU keeps composing while someone watches; the same frame feeds the
-    encoder (VA-API hardware encoding when present, software otherwise, with resolution and frame
-    rate lowered to fit the free CPU). Sessions without a monitor also compose on the GPU,
-    off-screen.
-  - **Per session:** one encoder per session, shared by every viewer of that session (only the
-    per-connection encryption is repeated); two users means two isolated sessions, each with its
-    own encoder and audio, inside its own `lord-server` as that user, never root. When a GPU's
-    concurrent-encode limit is reached, that session falls back to software.
-  - **ICE:** a built-in local STUN responder (LAN works with no outside server), plus optional
-    external STUN and TURN servers added in Settings → Sharing (off by default; TURN credentials
-    in the system keyring; a relay only ever sees SRTP-encrypted media). Signaling stays on the
-    existing authenticated WebSocket (login, cookie, TLS unchanged), and DTLS-SRTP runs in the
-    child that already dropped root. Protected windows stay black.
-  - Measured against today's numbers (`REMOTE.md`), with an external security review of the new
-    network surface.
+- [x] **Remote desktop over WebRTC (0.8.4)** — see `REMOTE.md`, "Video (WebRTC)". Until 0.8.3 the
+  browser got PNG/JPEG tiles over a TLS WebSocket, and a connection switched the session to CPU
+  composition. Now:
+  - [x] **Media:** H.264 (constrained baseline) or VP8 video and Opus audio as WebRTC media tracks
+    (RTP/SRTP), keyboard, mouse, clipboard and a lossless refresh of still areas (sharp text) over two
+    data channels. **Stack:** Debian 13 doesn't package libdatachannel (nor libjuice), so it is our
+    own small peer in C (`remote/rtc.c`, `remote/rtcwire.c`) on what Debian does ship: OpenSSL's
+    DTLS (already in `lord-sessiond`), libsrtp2 and usrsctp. Falls back to the tiles when the browser
+    lacks WebRTC or the connection fails.
+  - [x] **Rendering once:** the GPU keeps composing while someone watches (the composed frame is read
+    back once; only protected windows on screen, or screen recording, still need the CPU path); the
+    same frame feeds the encoder (`lord-media` MK_STREAM: VA-API when the card encodes H.264, libx264
+    otherwise; frames only when something changed, and fewer when the encoder is behind).
+  - [x] **Per session:** one encoder per session and codec, shared by every viewer (only the
+    encryption is per connection); two users means two sessions, two encoders, each as its user.
+  - [x] **ICE:** ICE-lite with a built-in STUN server per connection (LAN works with no outside
+    server), plus optional external STUN and TURN in Settings → Sharing (off by default). The TURN
+    password is kept in `/etc/lordos/remote/turn.key` (root 0600) rather than a keyring, because
+    `lord-sessiond` needs it before any user signs in and for every user; it never leaves
+    `lord-sessiond`'s bridge. Signaling only over the existing authenticated WebSocket; DTLS-SRTP runs
+    in the bridge that already dropped root, and the browser's DTLS certificate must match the
+    fingerprint of the offer that came over that WebSocket. Protected windows stay black.
+  - [x] Measured against 0.8.3's numbers (`REMOTE.md`, "Measurements (0.8.4, video)").
+  - [ ] later: VA-API encoding tested on real hardware (only the software path ran, on a VM without
+    a video encoder); a GPU's concurrent-encode limit (today a session falls back to software only
+    when the encoder can't be opened); sessions without a monitor composing on the GPU off-screen;
+    stereo sound; bandwidth estimation from transport-wide feedback (today: receiver reports, NACK
+    and REMB); an external security review of the new network surface.
 
 - [ ] **Two-step sign-in (TOTP) for the remote desktop** — proposal (0.8.3 security review,
   `REMOTE.md`): an optional one-time code from an authenticator app after the password, enabled
