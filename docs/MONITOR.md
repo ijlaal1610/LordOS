@@ -174,7 +174,7 @@ window's totals.
 - when the minute ends it **appends one record** to the file, a few dozen bytes in one `write`;
 - at startup and every 6 hours a **compaction** folds minutes older than 7 days into hours, drops
   hours older than 30 days and any damaged tail, and replaces the file atomically (a temporary file,
-  `fsync`, `rename`). 30 days with traffic every 10 minutes fit in about 30 KB (`nethist-test`); a
+  `fsync`, `rename`). 40 days of one record every 10 minutes compact to under 64 KB (`nethist-test`); a
   week of minutes with a few apps is a few hundred KB.
 
 **File format.** `"LNH1"`, a version byte and three reserved bytes, then records
