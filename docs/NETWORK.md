@@ -35,6 +35,11 @@ lord-server --user ana  ── lord-admin ──┘  net-* actions are forwarded
 - **What it is.** `lord-netd` is `admin.c` built with `LORD_NETD` (`server/src/net/netd.c` only has
   `main`). Its table has **only** the `net-*` actions, with the same validation, and it runs
   nothing those actions didn't already run. libc only.
+- **Its own cgroup leaf** (0.8.4): before its execve, the child moves itself into the root-owned
+  `lordos.service/netd` leaf (`cgroup_service_leaf`), next to lord-sessiond's `supervisor` leaf, so
+  Monitor → Network can count the network service's own traffic ("Network service", never
+  blockable; `FIREWALL.md`, "The essential system services"). A lord-netd adopted from before the
+  update stays where it was until it restarts.
 - **When it starts.** `lord-sessiond` starts it at boot, before the greeter
   (`server/src/remote/netsup.c`):
   - fixed path `<lord-sessiond's directory>/lord-netd`, root-owned and not writable by others

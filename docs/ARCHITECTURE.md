@@ -57,6 +57,7 @@ like React Native but on top of our display server.
 | `server/src/vault/`, `js_vault.c`, `sdk/vault.js`, `apps/passwords` | **M9** | Passwords and the system keyring: the sandboxed helper `lord-vault` (Monocypher: XChaCha20-Poly1305, Argon2id), own `.lvault` format, FIDO2/CTAP2 client, session keyring opened at login, Secret Service on D-Bus with own code (see `PASSWORDS.md`) |
 | `server/src/net/netd.c`, `remote/netsup.c` | **M9** | `lord-netd`: the network belongs to the system. A root service started and supervised by `lord-sessiond` at boot, serving the `net-*` actions for every session (see `NETWORK.md`) |
 | `server/src/disk/`, `js_disk.c`, `sdk/disks.js`, `apps/disks` | **M9** | Disks: listing without root (sysfs, udev database, mountinfo), our own SMART reader (ATA PASS-THROUGH over SG_IO, NVMe health log), closed `disk-*` actions, bootable USB verified with SHA-256 (see `SYSTEM.md`) |
+| `server/src/fw/fwlists.c`, `fwsub.c`, `server/src/fetch/`, `server/src/sec/netconn.c`, `apps/monitor/NetTree.jsx`, `Blocklists.jsx`, `sdk/netmodel.js`, `sdk/netstatus.jsx` | **0.8.4** | Monitor → Network, second generation: blocklists (the sandboxed downloader `lord-fetch`, compiled into lord-netperm's maps), the deny mode, LordOS's components in their own scopes (the `--net-connector` processes), the system services' traffic, the tree, chips and view menu, the menu bar network item (see `MONITOR.md`, `FIREWALL.md`) |
 | `server/src/mail/`, `js_mail.c`, `sdk/{mail,calendar,contacts}.js`, `apps/{mail,calendar,contacts,reminders}` | **M9** | Mail, Calendar, Contacts and Reminders: the sandboxed helper `lord-maild` (IMAP with IDLE/CONDSTORE, SMTP, CalDAV/CardDAV, OpenSSL) with no sockets of its own — `lord-server` connects only to configured servers and hands it the fd; own MIME, HTML sanitizer, iCalendar, vCard and XML parsers (see `MAIL.md`) |
 | `server/src/backup/`, `js_backup.c`, `sdk/backup.js`, `apps/backup` | **M9** | Backups: hard-link snapshots in a lord-server thread (nice 19, idle I/O), hourly/daily/weekly retention, optional encryption with the vendored Monocypher; no root and no `admin.c` actions (see `SYSTEM.md`) |
 | `server/src/logs/`, `js_logs.c`, `sdk/logs.js`, `apps/logs` | **M9** | Logs: our own systemd journal reader (no libsystemd), LordOS logs, system logs for admins through a closed action, live follow with inotify (see `SYSTEM.md`) |
@@ -86,7 +87,7 @@ Besides the kernel and libc, only these are allowed:
 | QuickJS              | ES2023 JavaScript engine, ~1 MB, written in C                  | vendored|
 | `stb_truetype`, `stb_image` | fonts and images; public domain, a single header    | vendored|
 | `stb_image_write`    | PNG and JPEG for the remote desktop (`lord-sessiond` only); public domain | vendored|
-| OpenSSL (`libssl`, `libcrypto`) | TLS. **Only two binaries link it**: `lord-sessiond` (remote desktop on the LAN, `REMOTE.md`) and `lord-maild` (IMAP/SMTP/CalDAV/CardDAV, certificates checked against the system CA store, `MAIL.md`). Never `lord-server` | system |
+| OpenSSL (`libssl`, `libcrypto`) | TLS. **Only three binaries link it**: `lord-sessiond` (remote desktop on the LAN, `REMOTE.md`), `lord-maild` (IMAP/SMTP/CalDAV/CardDAV, certificates checked against the system CA store, `MAIL.md`) and (0.8.4) `lord-fetch` (the blocklist downloads, sandboxed, no sockets of its own, `FIREWALL.md` "Blocklists"). Never `lord-server` | system |
 | `libcrypt`           | verifying passwords against `/etc/shadow` (`lord-sessiond`, `admin.c`) | system |
 | FFmpeg (`libavcodec`, `libavformat`, `libavutil`, `libswscale`, `libswresample`) and `libva` (+ `libva-drm`) | Decoding and encoding video, audio and images; VA-API for hardware decoding (M9, approved by the user). **Only `lord-media` links them**, the sandboxed helper; the player, synchronization and interface are our own. Never `lord-server` (`MEDIA.md`) | system |
 | Poppler (`libpoppler-glib`) and libarchive | PDF and archives (M9, approved by the user). **Only `lord-doc` links them**, the sandboxed helper; Poppler brings cairo, FreeType and fontconfig, which `lord-doc` also uses for font samples and for building PDFs. Never `lord-server` (`DOCUMENTS.md`) | system |
@@ -145,6 +146,18 @@ Since M8 there are two programs, and since M9 two helpers:
   `lord-server` (`mail/mailc.c`) for a connection, and `lord-server` connects only to the servers
   of the accounts file (or, after *Load Images*, to public addresses for remote images) and passes
   the connected fd. Its only writable folder is its cache. See `MAIL.md`.
+
+- **`lord-fetch`** (0.8.4): the blocklist downloader. Same rules as `lord-maild` (fixed path, no
+  arguments, minimal environment, `sandbox_apply_helper` after loading the CA bundle, no sockets of
+  its own); it lives for one download job, gets each list's already-connected socket, speaks TLS
+  and one HTTP GET with a size limit, parses the list strictly and returns normalized lines in a
+  sealed memfd. See `FIREWALL.md`, "Blocklists".
+
+- **The components' connectors** (0.8.4): `lord-server --net-connector mail|print|lists`, the same
+  binary re-executed with a fixed argv (like the terminal holders), each in its own
+  `lordos-net-<name>.scope`, only creating and connecting sockets for lord-server so the kernel
+  counts and decides them as that component (`sec/netconn.h`, `FIREWALL.md`, "LordOS components in
+  their own scopes").
 
 `lord-server` can still run on its own, with its own DRM and evdev, for development.
 

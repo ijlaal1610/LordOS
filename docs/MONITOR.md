@@ -30,6 +30,10 @@ itself.
 
 ### Network
 
+Since 0.8.4 the left column is a tree with a view menu, search chips and rows for LordOS's own
+parts and the system's services: see "Network, second generation (0.8.4)" below. What follows is
+the rest of the tab, and the first generation of the list.
+
 - **Left:** search (by app, address or country) and one row per app with its icon, number of
   connections, a traffic bar (received in green, sent in orange, relative to the app that moved
   the most), a tiny live activity indicator (its traffic over the last 12 s, one bar per second),
@@ -106,6 +110,132 @@ server, and this app's rule is that no address leaves the machine.
 
 **"This computer"** is placed by the time zone (`/etc/localtime` → coordinates from
 `/usr/share/zoneinfo/zone1970.tab`), without the network.
+
+### Network, second generation (0.8.4)
+
+![Monitor → Network: the tree, a listed destination and the system rows](monitor-net2-tree.png)
+
+**Rows for LordOS's own parts.** Everything built in that uses the network is a row of its own,
+backed by its own process and cgroup scope, so its rules are enforced by the kernel like any app's
+(`FIREWALL.md`, "LordOS components in their own scopes"):
+
+| Row | Firewall id | Its traffic |
+|---|---|---|
+| Mail and calendars | `lordos:mail` | lord-maild's servers (Mail, Calendar, Contacts, Reminders sync), made by Mail's connector |
+| Store and updates | `lordos:store` | the package engine's downloads (the Store, Settings → General, the daily update check) |
+| Printers and scanners | `lordos:print` | IPP and eSCL to network printers and scanners, and their mDNS discovery |
+| Terminal | `lordos:terminal` | the shell of every terminal and every program it starts; the detail lists the programs by name |
+| Blocklist updates | `lordos:lists` | the daily blocklist downloads (`lord-fetch`) |
+| VPN | `lordos:vpn` | the counters of LordOS's own VPN interfaces (Settings → Network); not blockable |
+| Name resolution (DNS) | `system:dns` | systemd-resolved; shown, never blockable |
+| Time synchronization | `system:time` | systemd-timesyncd; shown, never blockable |
+| Network service | `system:network` | lord-netd's own leaf (DHCP, Wi-Fi, the VPN daemons); shown, never blockable |
+
+Apps that never touch the network (Calculator, Notes…) never appear: a row exists only for traffic.
+The essential system rows show "System" instead of a connection count and a dash instead of a switch.
+Blocking the Store asks first, because no security update arrives while it is blocked:
+
+![Blocking the Store and updates asks first](monitor-net2-store-warning.png)
+
+The **"LordOS" row** is now what is left in lord-server itself, close to zero; every socket a
+component's connector made counts as that component's, also in the open-connections list (the
+socket's cgroup, `INET_DIAG_CGROUP_ID`, mapped to the session's scopes: conn.c `cgApp`).
+
+![The rows: Terminal with its program, the system services and the Store](monitor-net2-components.png)
+
+**The tree.** Each app opens into its destinations (the name the system resolver gave, or the
+address), a name with several addresses opens into them, and each address into its ports (TCP 443,
+UDP 443…). Every row has its received and sent bytes, a tiny up/down meter of its current rate
+(log scale), and, for a destination, its own allow/deny switch with a hint when something else
+decides it (another rule, the app's default, a restriction, the deny mode or a blocklist: "Blocked
+by the list Scam sites"). Long lists fold after eight rows ("N more…"). For an address reached
+through a CNAME chain the row shows the shortest name (usually the one the app asked for) and
+searches every name of the chain. The per-port bytes come from lord-netperm (np_flows is per
+address and port since 0.8.4; COUNTS sends each address's eight busiest ports).
+
+**The view menu** (one pop-up button at the top of the column) holds the whole view, kept per user in
+`settings.monitor.netView`:
+
+- group by: apps, domains, addresses, ports or countries (the tree's levels follow: a domain opens
+  into its apps and their ports, a port into its apps and their destinations…);
+- direction: all, outgoing, incoming; protocol: all, TCP, UDP and QUIC; status: everything,
+  allowed, denied, with rules;
+- sort by: name, most traffic, least traffic, most recent, most connections;
+- "Show network activity in the menu bar" and "Blocklists…" (Settings → Privacy).
+
+![The view menu](monitor-net2-view-menu.png) ![Grouped by port](monitor-net2-ports.png)
+
+**Search with chips.** Typing `app:firefox`, `domain:example.com`, `ip:10.0.0.0/8`, `port:443`,
+`proto:udp` (or `quic`) or `country:AR` and a space turns the token into a chip; Enter turns every
+word (an address or network becomes an IP chip, a number a port, `tcp`/`udp` a protocol, two
+capital letters a country, a name with a dot a domain, anything else an app). Chips of different
+kinds combine (app *and* domain), two of the same kind are alternatives; the rest of the text
+matches anywhere. Backspace in an empty field removes the last chip. There is no city chip: there
+is no city-level IP database with a compatible licence (see "Map").
+
+![Two chips: port 443 and domain debian.org](monitor-net2-chips.png)
+
+**The time range.** The traffic chart's zoom (1 h, 24 h, 7 d, 30 d, with ‹ ›) now also drives the
+list: in a history window it shows each app's bytes in that window, from the history file. The
+history never keeps destinations (see "Traffic history", Privacy), so in a window the rows have no
+children; the live view keeps the tree.
+
+The pure part (tokens, filters, grouping, sorting, the saved view) is `sdk/netmodel.js`, tested by
+`server/tests/netmodel_test.mjs`; the tab is `apps/monitor/Network.jsx` and `apps/monitor/NetTree.jsx`.
+
+### The menu bar network item (0.8.4)
+
+Optional and off by default (Settings → Privacy → Monitor → "Network activity in the menu bar", or
+the view menu). It shows the upload and download rates in the status area, rounded ("↑5K ↓231K",
+"0" under 1 KB/s), updated every other second and only redrawn when the rounded value changes.
+Its panel:
+
+- the sent (up) and received (down) graph of the last five minutes, 60 bars of 5 s, and their totals;
+- the apps moving data now, with their rates;
+- **Recently denied** in the last ten minutes, with a count, the same destination grouped (×N);
+- the firewall mode: Allow silently, Deny silently, Off (`FIREWALL.md`, "The modes"). The ask mode
+  is not offered until it exists; rule profiles come with the rules manager (0.8.5);
+- the blocklists (lists on, entries) and "Open Monitor…".
+
+While the item is shown it reads `lord.monitor.netTotals()` (one read of `/proc/net/dev`) once
+per second, without the Monitor's sampling thread; lord-netperm's notices are read only while the
+panel is open. Hidden, it costs nothing. `sdk/netstatus.jsx`.
+
+![The panel](menubar-network-panel.png) ![Deny silently cut the open download; DNS still works](menubar-network-deny.png)
+
+### Blocklists (0.8.4)
+
+Settings → Privacy → Blocklists (`apps/monitor/Blocklists.jsx`): the curated catalog by topic, each
+list with its source, its licence, how many entries it had and when it was downloaded; a checkbox
+turns it on, "Update Now" downloads again, and your own lists take an https address and a format.
+How they are downloaded, checked and enforced is in `FIREWALL.md`, "Blocklists". The Monitor shows
+the lists in its summary, "On the list …" under a destination, and "by a blocklist" in Recently
+denied.
+
+![Settings → Privacy → Blocklists](settings-blocklists.png)
+
+![Malware lists on, and your own list by its https address](settings-blocklists-malware.png) ![A custom address list, downloaded and checked](settings-blocklists-custom.png)
+
+### Measurements (0.8.4, VM 118, 4 vCPU Xeon Silver 4108, kernel 6.12)
+
+Same session, same test traffic (curl in an app scope: a 120 KB/s download and HTTPS requests every
+4 s), main's build (0.8.3 + 0.8.4 so far) against this one, 30 s each, lord-server's CPU in % of
+one core:
+
+| | main | this build |
+|---|---|---|
+| Monitor open on Network, traffic | 17.1 / 16.1 % | 14.8 / 14.0 % (the tree, chips, system rows; 4 blocklists on) |
+| desktop idle, menu bar item off | 2.65 % (the VM's previous install) | 2.93 % (4 blocklists on) |
+| desktop idle, menu bar item on | — | 2.95 % |
+| desktop with traffic, item on / its panel open | — | 0.97 % / 3.87 % |
+
+Memory with 4 lists (379,991 names, 19,405 networks): lord-netperm 13.8 MB (2.9 MB without lists),
+lord-server 142 MB with the Monitor open (131 MB on main). The per-packet cost is in `FIREWALL.md`
+("Measurements, 0.8.4").
+
+**Before** (main, no lists: the scam site connects) **and after:**
+
+![Before](monitor-net2-before.png) ![After, light](monitor-net2-tree-light.png)
 
 ### Remote desktop (0.8.3)
 
@@ -389,7 +519,8 @@ bottom of the tab (`settings.monitor.diskAlerts`):
 ## Architecture
 
 ```
-apps/monitor/            index.jsx (tabs), Network.jsx (Network), MapView.jsx (map), Chart.jsx,
+apps/monitor/            index.jsx (tabs), Network.jsx (Network), NetTree.jsx (0.8.4: the tree, chips and
+                         view menu), Blocklists.jsx (0.8.4: Settings → Privacy → Blocklists), MapView.jsx (map), Chart.jsx,
                          TrafficChart.jsx (mirrored sent/received chart), History.jsx (zoom and
                          history windows), draw.js (pixels),
                          icons.jsx, Privacy.jsx, countries.js (generated)
@@ -397,6 +528,8 @@ apps/monitor/Processes.jsx   the Processes tab, its context menu, the stop sheet
 apps/monitor/DisksTab.jsx    the Disks tab: rates, temperature and health per disk, the chosen disk's cards
 sdk/smart.js, sdk/smartparse.js   SMART summaries and smartctl's JSON → one model (Disks app too)
 sdk/diskwatch.js         notices when a disk gets too hot or less healthy
+sdk/netmodel.js          (0.8.4) search tokens, filters, the tree, sorting and the component rows (pure)
+sdk/netstatus.jsx        (0.8.4) the menu bar network item and the blocklists' hourly update check
 sdk/monitor.js           useMonitor(), stores monitorSamples / monitorProcesses / monitorConnections /
                          monitorDetail; monitor.watchProcess(), monitor.stopProcess()
 server/src/ui/js_monitor.c   lord.monitor (read-only, validated API)
@@ -436,6 +569,7 @@ Each disk in `sample().disk.disks` carries the same fields (`sensor`: `"nvme"`, 
 `null`; `temp` in °C or `null`; `tempT`: when it was read; `tempIdle`: a spinning disk at rest, not
 read; `awake`: I/O in the last minute).
 | `history({ from, step, n, app })` | the traffic history in `n` buckets (see "Traffic history"), or `null` |
+| `netTotals()` | (0.8.4) `{ t, rx, tx }`: the machine's byte counters now (every interface but `lo`), without the sampling thread (the menu bar item) |
 | `historyEnable(on)` / `historyClear()` | the "Keep a traffic history" setting; deletes the history |
 
 No function takes paths or commands: the only arguments are booleans, a language code (letters,
@@ -486,6 +620,9 @@ listening one) or `out`. Scope: `internet`, `lan` (private, CGNAT, link-local, U
 
 **From process to app** (`js_monitor.c`, on the screen thread with the list from `apps.c`):
 
+0. (0.8.4) a socket made in one of the session's scopes is that scope's app (`cgApp`, from the
+   socket's cgroup id; conn.c reads the session's scope ids every 5 s): Mail's connector, the
+   Terminal's programs, an app's own sockets;
 1. `lord-server` itself is **LordOS** (native apps and the Store run inside it);
 2. otherwise, the `.desktop` whose `Exec` program (`DesktopApp.bin`) matches the executable,
    `argv[0]` or the process name;

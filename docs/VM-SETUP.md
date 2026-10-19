@@ -1371,3 +1371,42 @@ in `~/LordOS-csd`, built there (`make -C server`, `make -C server build/deco-cli
   `master_preferences` and `settings.json` restored, the themes, the schemas package, `session.conf`,
   the profiles, the tree, the script and the backup removed, `lordos.service` restarted to the login
   screen. No network or Proxmox setting was touched.
+
+## Step 41 — 0.8.4: Monitor → Network, second generation (VM 118 `lordos-notes`, October 19)
+
+See `MONITOR.md` ("Network, second generation", "The menu bar network item", "Blocklists") and
+`FIREWALL.md` ("LordOS components in their own scopes", "The essential system services",
+"Blocklists"). On VM 118 (172.17.0.53), tree in `~/LordOS-netmon` (copied over SSH with `tar`: the
+VM has no rsync), built there (`make -C server`, `make -C server test`, `sudo build/npverify-test`)
+and installed over `/usr/local/lib/lordos` (`lord-server`, `lord-netperm`, the new `lord-fetch`,
+themes and assets) by `~/deploy-netmon-118.sh`, which first saved `/usr/local/lib/lordos` in
+`/var/backups/lordos-netmon-bak` and `~/.config/lordos` in `~/.config-lordos-backup-netmon`.
+`lord-sessiond` was not replaced (lord-netd isn't installed on this VM, so the network service row
+was not tested here). Nothing was installed with apt.
+
+- **Unit drop-in:** `/etc/systemd/system/lord-netperm.service.d/netmon084.conf` with
+  `RestrictAddressFamilies=AF_UNIX AF_PACKET AF_NETLINK` (this VM's unit predates 0.8.3's sock_diag);
+  removed at the end.
+- **Session:** the autologin session of `lord` (`/run/lordos/autologin-done` removed, the session's
+  lord-server ended, `lordos` restarted), English, dark and then light for the screenshots, the menu
+  bar item on (all in `settings.json`, restored at the end).
+- **Test traffic:** `curl` started from SSH inside `lordos-net-terminal.scope` (as a Terminal program)
+  and, for the A/B measurements, inside `app-lordos-npbench.scope`: HTTPS requests to public sites
+  every 4 s, two rate-limited downloads from Debian mirrors, and attempts to a listed scam domain
+  (denied by the list; while the lists were off for the A/B runs, a few requests to it went through).
+  `nc -z` to a listed domain checked that the owner's allow rule wins. The Store's "Check for
+  updates" for the Store's own row.
+- **Blocklists:** four catalog lists and one custom list downloaded over HTTPS from their sources;
+  copies in `~/.cache/lordos/fwlists`, removed at the end with `fwlists.json` and `fwlists.txt`.
+- **Measurements:** `iperf3` (already on this VM since step 28) through a veth pair `npb0`/`npb1`
+  into a private namespace `npb` (10.213.7.0/30), deleted after each run; eth0 and the network
+  configuration were not touched. For the A/B runs the 0.8.3 `lord-netperm` and main's build
+  (built in `~/LordOS-netmon-base`) were swapped in for a few minutes and the new build put back.
+- **Input and screenshots:** `lord-qmp-input.py 118 2987 1067` and `lord-type.py 118` from the
+  Proxmox host, `screendump` converted to PNG on the development machine.
+- **Undone at the end:** `/usr/local/lib/lordos` restored from the backup (`diff -r` empty), the
+  drop-in removed and `lord-netperm` restarted with the old binary, `~/.config/lordos` restored
+  (`diff -r` against the backup empty), the blocklist files and the test scopes removed, the trees,
+  scripts and backups deleted, `lordos` restarted to the login screen. The traffic history
+  (`~/.local/state/lordos/net-history.bin`) keeps the test minutes (app ids and byte counts only).
+  No Proxmox setting was touched.
