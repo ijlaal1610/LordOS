@@ -558,5 +558,6 @@
   "proc.denied": "Sem permissão para parar este processo",
   "proc.failed": "Não foi possível parar o processo",
   "proc.badArgument": "Pedido de processo inválido",
-  "proc.notOwn": "Este processo pertence a outro usuário"
+  "proc.notOwn": "Este processo pertence a outro usuário",
+  "hw.noKernelLog": "Não foi possível ler o registro do kernel"
 }

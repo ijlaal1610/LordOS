@@ -13,6 +13,10 @@
  *   rpi-case none|argon-one-v5         Raspberry Pi 5 only: writes /boot/firmware/lordos-case.txt
  *                                      (fixed text, included from config.txt; takes effect
  *                                      after a restart)                                      admin
+ *   hw-firmware-missing                (no arguments) reads the kernel log (/dev/kmsg) and returns
+ *                                      only the validated names of firmware files a driver asked
+ *                                      for and that are still missing, as "LOG fw <file> <driver>"
+ *                                      lines (the Store's suggestions, hwscan.c); read-only        anyone
  */
 #ifndef LORD_HW_ADMIN_H
 #define LORD_HW_ADMIN_H
@@ -27,6 +31,7 @@ void hw_act_ntp(const AdminReq *r, const char *arg, size_t len);
 void hw_act_time_set(const AdminReq *r, const char *arg, size_t len);
 void hw_act_bt_unblock(const AdminReq *r, const char *arg, size_t len);
 void hw_act_rpi_case(const AdminReq *r, const char *arg, size_t len);
+void hw_act_firmware_missing(const AdminReq *r, const char *arg, size_t len);
 const char *hw_rpi_case_text(const char *id);   /* fixed file text of a known case, NULL otherwise */
 
 /* Validators, exposed for tests. */
@@ -42,6 +47,7 @@ int hw_backlight_name_valid(const char *n);
     { "time-ntp", hw_act_ntp, 0 }, \
     { "time-set", hw_act_time_set, 0 }, \
     { "bt-unblock", hw_act_bt_unblock, A_ANYONE }, \
-    { "rpi-case", hw_act_rpi_case, 0 },
+    { "rpi-case", hw_act_rpi_case, 0 }, \
+    { "hw-firmware-missing", hw_act_firmware_missing, A_ANYONE },
 
 #endif

@@ -3,6 +3,7 @@
 import {
   View, Text, Image, useTheme, useLocale, useAppWindow, useStore, Button, ScrollView, SidebarItem, SectionTitle, SearchField, Hairline, EmptyState, GroupBox,
   packages, packageList, refreshPackages, useLauncherApps, launchApp, fs, formatBytes, wm, direction, typeScale, spacing,
+  suggestions, unseenSuggestions, refreshSuggestions,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useState } from 'react';
 import { debian, useDebian } from './debian.js';
@@ -310,8 +311,11 @@ export default function Store() {
     if (args?.page) setPage(args.page);
     if (args?.search) { setQuery(args.search); setPage('discover'); }       // from Search
   }, [args?.nonce]);
+  const sug = useStore(suggestions);
+  useEffect(() => { refreshSuggestions(); }, []);                  // the hardware may have changed since the last look
+  const unseen = page === 'discover' ? 0 : unseenSuggestions(sug.list).length;    // new suggestions (Discover's badge)
   const pages = [
-    ['discover', tr('store.page.discover')],
+    ['discover', tr('store.page.discover'), unseen || null],
     ['lordos', tr('store.page.lordos')],
     ['installed', tr('store.page.installed')],
     ['updates', deb.upgrades?.length ? tr('store.page.updatesCount', { count: deb.upgrades.length }) : tr('store.page.updates')],
@@ -323,7 +327,7 @@ export default function Store() {
         <Hairline edge="end" />
         <SearchField value={query} onChange={(v) => { setQuery(v); if (v && page !== 'discover' && page !== 'installed' && page !== 'lordos') setPage('discover'); }}
           placeholder={tr('store.search')} style={{ marginBottom: 10 }} />
-        {pages.map(([id, label]) => <SidebarItem key={id} label={label} selected={page === id} onClick={() => setPage(id)} />)}
+        {pages.map(([id, label, detail]) => <SidebarItem key={id} label={label} detail={detail} selected={page === id} onClick={() => setPage(id)} />)}
         <View style={{ flex: 1 }} />
         <View style={{ paddingHorizontal: 10 }}><debian.Status /></View>
       </View>

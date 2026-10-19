@@ -558,5 +558,6 @@
   "proc.denied": "No tenés permiso para detener este proceso",
   "proc.failed": "No se pudo detener el proceso",
   "proc.badArgument": "Pedido de proceso no válido",
-  "proc.notOwn": "Este proceso es de otro usuario"
+  "proc.notOwn": "Este proceso es de otro usuario",
+  "hw.noKernelLog": "No se pudo leer el registro del kernel"
 }

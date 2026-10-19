@@ -153,6 +153,9 @@ EOF
     # the Dock's pinned-list model (sdk/dockmodel.js)
     if have node; then run "dock-model-test (sdk/dockmodel.js)" node tests/dock_model_test.mjs
     else skip "dock-model-test" "node"; fi
+    # the Store's "Suggested for your computer" rules (assets/store/suggestions.json)
+    if have node; then run "suggest-engine-test (sdk/suggestengine.js)" node tests/suggest_engine_test.mjs
+    else skip "suggest-engine-test" "node"; fi
 }
 
 full() {

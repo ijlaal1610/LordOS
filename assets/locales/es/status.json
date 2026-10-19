@@ -119,5 +119,6 @@
   "hw.caseSet": "Caja: {case}",
   "ssh.off": "Inicio de sesión remoto desactivado",
   "ssh.on": "Inicio de sesión remoto activado",
-  "ssh.saved": "Ajustes guardados"
+  "ssh.saved": "Ajustes guardados",
+  "hw.firmwareChecked": "Firmware revisado"
 }

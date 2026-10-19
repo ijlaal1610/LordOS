@@ -1,5 +1,6 @@
 /* hw_admin.c — Settings' admin actions (see hw_admin.h). Runs as root in the admin helper. */
 #include "hw_admin.h"
+#include "hwscan.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -257,4 +258,24 @@ void hw_act_rpi_case(const AdminReq *r, const char *arg, size_t len) {
     close(fd);
     if (!ok || rename(tmp, dst)) { unlink(tmp); admin_err("hw.caseFailed", "errno", lerr_errno(errno), NULL); return; }
     admin_ok("hw.caseSet", "case", id, NULL);
+}
+
+/* ---- missing firmware (the Store's suggestions, hwscan.c) ---- */
+
+/* Read-only: the session can't read the kernel log when kernel.dmesg_restrict=1. Takes no
+ * argument and returns only firmware file names that pass hwscan_fw_name_valid() and the driver
+ * name parsed from the same line (letters, digits, '_' and '-'), never other log text. */
+void hw_act_firmware_missing(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)arg;
+    if (len) { admin_err("admin.invalidArgument", NULL); return; }
+    size_t n;
+    int denied;
+    char *log = hwscan_read_kmsg("", &n, &denied);
+    if (!log) { admin_err("hw.noKernelLog", NULL); return; }
+    HwFwMiss m[HWSCAN_FW_MAX];
+    int k = hwscan_fw_missing("", log, n, m, HWSCAN_FW_MAX);
+    free(log);
+    for (int i = 0; i < k; i++)
+        admin_say("LOG", "fw %s %s", m[i].file, m[i].driver[0] ? m[i].driver : "-");   /* i18n-ok: protocol line parsed by sdk/suggestengine.js */
+    admin_ok("hw.firmwareChecked", NULL);
 }

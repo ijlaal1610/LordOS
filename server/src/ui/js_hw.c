@@ -18,6 +18,9 @@
  *   lord.mime.get(mime) / set(mime, id) / guess(path) / terminal() / setTerminal(id)
  *   lord.timedate.refresh()                     answer as __lordHw('timedate', …)
  *   lord.notifyd.closed(id, reason) / action(id, key)   back to the Linux app that notified
+ *   lord.hwinfo.scan()                          read-only hardware facts for the Store's suggestions
+ *                                               (hw/hwscan.c: DMI, device tree, PCI/USB IDs, virtio
+ *                                               ports, missing firmware when the kernel log is readable)
  *   lord.fan.status() / setProfile(p) / setCurve(pts) / force(v) / caseConfig()   (js_fan.c, lord-fand)
  */
 #include "js_hw.h"
@@ -26,6 +29,7 @@
 #include "../hw/defaults.h"
 #include "../hw/display.h"
 #include "../hw/hw.h"
+#include "../hw/hwscan.h"
 #include "../hw/mimeapps.h"
 #include "../hw/notifyd.h"
 #include "../hw/ppd.h"
@@ -336,6 +340,24 @@ static JSValue f_nd_action(JSContext *c, JSValueConst t, int argc, JSValueConst 
 
 static const JSCFunctionListEntry nd_funcs[] = { JS_CFUNC_DEF("closed", 2, f_nd_closed), JS_CFUNC_DEF("action", 2, f_nd_action) };
 
+/* ---- lord.hwinfo (the Store's "Suggested for your computer", docs/PACKAGES.md) ---- */
+
+/* LORD_HWSCAN_ROOT (development and screenshots only): read a fake tree instead of the real
+ * system; the facts then say fixture: true and the Store marks them as test data. Only an absolute
+ * path without ".." is taken. */
+static const char *hwscan_root(void) {
+    const char *r = getenv("LORD_HWSCAN_ROOT");
+    if (!r || r[0] != '/' || strstr(r, "..") || strlen(r) > 200) return "";
+    return r;
+}
+
+static JSValue f_hwinfo_scan(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    return json_or_null(c, hwscan_json(hwscan_root()));
+}
+
+static const JSCFunctionListEntry hwinfo_funcs[] = { JS_CFUNC_DEF("scan", 0, f_hwinfo_scan) };
+
 static void add(JSContext *c, JSValue lord, const char *name, const JSCFunctionListEntry *f, int n) {
     JSValue o = JS_NewObject(c);
     JS_SetPropertyFunctionList(c, o, f, n);
@@ -349,5 +371,6 @@ void js_hw_register(JSContext *c, JSValue lord) {
     add(c, lord, "mime", mime_funcs, sizeof mime_funcs / sizeof mime_funcs[0]);
     add(c, lord, "timedate", td_funcs, sizeof td_funcs / sizeof td_funcs[0]);
     add(c, lord, "notifyd", nd_funcs, sizeof nd_funcs / sizeof nd_funcs[0]);
+    add(c, lord, "hwinfo", hwinfo_funcs, sizeof hwinfo_funcs / sizeof hwinfo_funcs[0]);
     js_fan_register(c, lord);           /* lord.fan: Settings → Cooling and Monitor (js_fan.c) */
 }
