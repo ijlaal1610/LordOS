@@ -123,7 +123,7 @@ static AVCodecContext *open_sw(Vid *e, const char *name, int fps) {
         c->thread_count = 2;
         c->rc_max_rate = (int64_t)e->kbps * 1000;
         c->rc_buffer_size = (int)(c->rc_max_rate / 3);       /* about 1/3 s: low latency */
-        av_dict_set(&o, "preset", "veryfast", 0);
+        av_dict_set(&o, "preset", "ultrafast", 0);
         av_dict_set(&o, "tune", "zerolatency", 0);
         av_dict_set(&o, "profile", "baseline", 0);
         av_dict_set(&o, "crf", "22", 0);

@@ -125,6 +125,9 @@ function startRtc(ice) {
   tiles.binaryType = 'arraybuffer';
   tiles.onmessage = (e) => onTile(new Uint8Array(e.data));
   pc.ontrack = (e) => {
+    // a desktop wants the newest frame now, not a smooth buffer
+    try { e.receiver.jitterBufferTarget = 0; } catch (x) {}
+    try { e.receiver.playoutDelayHint = 0; } catch (x) {}
     const ms = e.streams[0] || new MediaStream([e.track]);
     if (vid.srcObject !== ms) vid.srcObject = ms;
     vid.play().catch(() => {});

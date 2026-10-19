@@ -9,12 +9,17 @@
  *   remote-allow add|del <cidr>   the "only these addresses" list (net=list)
  *   remote-member <u>\n1|0   adds or removes a user from the lordos-remote group
  *   remote-kick <pid>        cuts a connection (only a pid from lord-sessiond's list)
+ *   remote-ice <lines>       the video path (docs/REMOTE.md, "Video (WebRTC)"): video=on|off,
+ *                            stun=<host:port>[,…] (up to 4), turn=<host:port> (empty: none),
+ *                            turn_user=<name>, turn_pass=<password> (kept in turn.key, root 0600;
+ *                            never written to the config, the logs or an answer)
  *
  * The remote desktop is part of lord-sessiond (lordos.service, docs/SESSIONS.md): these
  * actions only change /etc/lordos/remote/config and notify it with SIGHUP. */
 #include "remote_admin.h"
 #include "ipnet.h"
 #include "lockout.h"
+#include "rtcwire.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -31,6 +36,7 @@
 
 #define CONF_DIR "/etc/lordos/remote"
 #define RD_ACCESS_PATH CONF_DIR "/access"
+#define RD_TURN_KEY_PATH CONF_DIR "/turn.key"
 
 static int write_file(const char *path, const char *text, mode_t mode) {
     char tmp[PATH_MAX];
@@ -43,16 +49,28 @@ static int write_file(const char *path, const char *text, mode_t mode) {
     return ok && !rename(tmp, path) ? 0 : -1;
 }
 
-typedef struct { int enabled, port, group_only, insecure_dev, net; } Conf;
+typedef struct {
+    int enabled, port, group_only, insecure_dev, net;
+    int video, nstun, turn_key;
+    char stun[4][96], turn[96], turn_user[129];
+} Conf;
 
 static void conf_read(Conf *c) {
     c->port = 5673;
     c->enabled = c->group_only = c->insecure_dev = 0;
     c->net = RS_NET_LAN;
+    c->video = 1;
+    c->nstun = c->turn_key = 0;
+    c->turn[0] = c->turn_user[0] = 0;
     FILE *f = fopen(CONF_DIR "/config", "r");
-    char line[128], s[32];
+    char line[256], s[32], h[160];
     int v;
     while (f && fgets(line, sizeof line, f)) {
+        if (sscanf(line, "video=%d", &v) == 1) { c->video = v != 0; continue; }
+        if (sscanf(line, "turn_key=%d", &v) == 1) { c->turn_key = v == 1; continue; }
+        if (sscanf(line, "stun=%159s", h) == 1) { if (rw_ice_server_valid(h) && c->nstun < 4) snprintf(c->stun[c->nstun++], 96, "%.95s", h); continue; }
+        if (sscanf(line, "turn=%159s", h) == 1) { if (rw_ice_server_valid(h)) snprintf(c->turn, sizeof c->turn, "%.95s", h); continue; }
+        if (sscanf(line, "turn_user=%159s", h) == 1) { if (rw_turn_user_valid(h)) snprintf(c->turn_user, sizeof c->turn_user, "%.128s", h); continue; }
         if (sscanf(line, "enabled=%d", &v) == 1) c->enabled = v == 1;
         else if (sscanf(line, "port=%d", &v) == 1 && v >= 1024 && v < 65536) c->port = v;
         else if (sscanf(line, "allow=%31s", s) == 1) c->group_only = !strcmp(s, "group");
@@ -65,9 +83,11 @@ static void conf_read(Conf *c) {
 static int conf_write(const Conf *c) {
     mkdir("/etc/lordos", 0755);
     mkdir(CONF_DIR, 0755);
-    char text[256];
-    snprintf(text, sizeof text, "# LordOS · remote desktop (Settings → Sharing). See docs/REMOTE.md\nenabled=%d\nport=%d\nallow=%s\nnet=%s\ninsecure_dev=%d\n",
-             c->enabled, c->port, c->group_only ? "group" : "all", rs_net_name(c->net), c->insecure_dev);
+    char text[1400];
+    int n = snprintf(text, sizeof text, "# LordOS · remote desktop (Settings → Sharing). See docs/REMOTE.md\nenabled=%d\nport=%d\nallow=%s\nnet=%s\ninsecure_dev=%d\nvideo=%d\n",
+                     c->enabled, c->port, c->group_only ? "group" : "all", rs_net_name(c->net), c->insecure_dev, c->video);
+    for (int i = 0; i < c->nstun; i++) n += snprintf(text + n, sizeof text - (size_t)n, "stun=%s\n", c->stun[i]);
+    if (c->turn[0]) n += snprintf(text + n, sizeof text - (size_t)n, "turn=%s\nturn_user=%s\nturn_key=%d\n", c->turn, c->turn_user, c->turn_key);
     return write_file(CONF_DIR "/config", text, 0644);
 }
 
@@ -322,4 +342,60 @@ void remote_act_failures(const AdminReq *r, const char *arg, size_t len) {
         rows++;
     }
     admin_ok("remote.failures", "count", lerr_int(rows), NULL);
+}
+
+/* remote-ice: the video path's settings (Settings → Sharing → Video). Every line is checked before
+ * anything is written; the TURN password goes only to turn.key (root 0600), which lord-sessiond reads
+ * for each video connection and hands to the bridge in memory. */
+void remote_act_ice(const AdminReq *r, const char *arg, size_t len) {
+    (void)r;
+    if (len > 2048) { admin_err("admin.invalidArgument", NULL); return; }
+    Conf c;
+    conf_read(&c);
+    char buf[2050], pass[130] = "";
+    int set_turn = 0, set_pass = 0;
+    snprintf(buf, sizeof buf, "%.*s", (int)len, arg);
+    for (char *save = NULL, *line = strtok_r(buf, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
+        if (!strcmp(line, "video=on") || !strcmp(line, "video=off")) c.video = !strcmp(line, "video=on");
+        else if (!strncmp(line, "stun=", 5)) {
+            c.nstun = 0;
+            char list[600];
+            snprintf(list, sizeof list, "%s", line + 5);
+            for (char *s2 = NULL, *one = strtok_r(list, ",", &s2); one; one = strtok_r(NULL, ",", &s2)) {
+                if (c.nstun >= 4 || !rw_ice_server_valid(one)) { admin_err("remote.badIceServer", NULL); goto out; }
+                snprintf(c.stun[c.nstun++], 96, "%.95s", one);
+            }
+        } else if (!strncmp(line, "turn=", 5)) {
+            if (line[5] && !rw_ice_server_valid(line + 5)) { admin_err("remote.badIceServer", NULL); goto out; }
+            snprintf(c.turn, sizeof c.turn, "%.95s", line + 5);
+            set_turn = 1;
+        } else if (!strncmp(line, "turn_user=", 10)) {
+            if (!rw_turn_user_valid(line + 10)) { admin_err("remote.badTurnUser", NULL); goto out; }
+            snprintf(c.turn_user, sizeof c.turn_user, "%.128s", line + 10);
+        } else if (!strncmp(line, "turn_pass=", 10)) {
+            if (!rw_turn_pass_valid(line + 10)) { admin_err("remote.badTurnPassword", NULL); goto out; }
+            snprintf(pass, sizeof pass, "%s", line + 10);
+            set_pass = 1;
+        } else { admin_err("admin.invalidArgument", NULL); goto out; }
+    }
+    if (set_turn && !c.turn[0]) { c.turn_user[0] = 0; c.turn_key = 0; set_pass = 0; unlink(RD_TURN_KEY_PATH); }
+    if (c.turn[0] && !c.turn_user[0]) { admin_err("remote.badTurnUser", NULL); goto out; }
+    if (set_pass) {
+        if (!c.turn[0]) { admin_err("admin.invalidArgument", NULL); goto out; }
+        mkdir("/etc/lordos", 0755);
+        mkdir(CONF_DIR, 0755);
+        char line[140];
+        snprintf(line, sizeof line, "%s\n", pass);
+        int w = write_file(RD_TURN_KEY_PATH, line, 0600);
+        explicit_bzero(line, sizeof line);
+        if (w || chmod(RD_TURN_KEY_PATH, 0600)) { admin_err("remote.configFailed", NULL); goto out; }
+        c.turn_key = 1;
+    }
+    if (conf_write(&c)) { admin_err("remote.configFailed", NULL); goto out; }
+    pid_t pid = sessiond_pid();
+    if (pid > 0) kill(pid, SIGHUP);
+    admin_ok("remote.saved", NULL);
+out:
+    explicit_bzero(pass, sizeof pass);
+    explicit_bzero(buf, sizeof buf);
 }

@@ -26,8 +26,8 @@ typedef struct {
     int id;                     /* the MediaSrc of the helper (0: not running) */
     int viewers, audio;
     unsigned kbps, sent_kbps;
-    int w, h, pending, want_key;
-    double t0, last_feed, retry_at;
+    int w, h, pending, want_key, flushing;
+    double t0, last_feed, retry_at, flush_at;
     uint8_t *buf;
     size_t len, cap, total;
     long frames, enc100;
@@ -174,8 +174,12 @@ void mstream_want(int codec, int viewers, int audio, unsigned kbps) {
     if (!e->id) start(e, codec);
 }
 
+/* A keyframe now, even if the screen doesn't change: frames are only encoded when something changes,
+ * and a viewer that lost one (or just joined) would otherwise wait for the next change. */
 void mstream_keyframe(int codec) {
-    if (codec >= 1 && codec < MS_CODECS) E[codec].want_key = 1;
+    if (codec < 1 || codec >= MS_CODECS) return;
+    E[codec].want_key = 1;
+    E[codec].pending = 1;
 }
 
 static void feed(Enc *e, int codec) {
@@ -185,8 +189,11 @@ static void feed(Enc *e, int codec) {
         start(e, codec);
         return;
     }
-    if (!e->pending || !fpx) return;
     double t = now_ms();
+    /* one more (tiny, unchanged) frame shortly after the last change: browsers paint a lone frame late,
+     * often only when the next one arrives */
+    if (!e->pending && e->flush_at && t >= e->flush_at) { e->pending = 1; e->flush_at = 0; e->flushing = 1; }
+    if (!e->pending || !fpx) return;
     if (t - e->last_feed < 1000.0 / FPS - 1) return;
     int slot = -1;
     for (int i = 0; i < s->in_slots; i++) if (!s->in_busy[i]) { slot = i; break; }
@@ -199,6 +206,8 @@ static void feed(Enc *e, int codec) {
     s->in_busy[slot] = 1;
     e->last_feed = t;
     e->pending = 0;
+    e->flush_at = e->flushing ? 0 : t + 70;
+    e->flushing = 0;
 }
 
 void mstream_frame(const uint32_t *px, int stride, int w, int h) {
@@ -224,7 +233,8 @@ double mstream_timeout(void) {
     for (int c = 1; c < MS_CODECS; c++) {
         Enc *e = &E[c];
         if (!e->viewers) continue;
-        double d = !e->id ? (e->retry_at > t ? e->retry_at - t : 200) : e->pending ? 1000.0 / FPS - (t - e->last_feed) : -1;
+        double d = !e->id ? (e->retry_at > t ? e->retry_at - t : 200) : e->pending ? 1000.0 / FPS - (t - e->last_feed)
+                 : e->flush_at ? e->flush_at - t : -1;
         if (d >= 0 && d < 4) d = 4;
         if (d >= 0 && (best < 0 || d < best)) best = d;
     }
