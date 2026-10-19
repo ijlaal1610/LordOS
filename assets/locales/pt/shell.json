@@ -169,5 +169,15 @@
   "power.shuttingDown": "Desligando…",
   "power.restart": "Reiniciar",
   "power.shutdown": "Desligar",
-  "power.cancel": "Cancelar"
+  "power.cancel": "Cancelar",
+  "code.modifiedTitle": "Este componente do LordOS foi modificado e não foi carregado",
+  "code.modifiedBody": "Ele não corresponde mais à cópia assinada do LordOS: {list}. Reinstale o LordOS para repará-lo.",
+  "code.details": "Detalhes",
+  "code.recovery.title": "Este componente do LordOS foi modificado e não foi carregado",
+  "code.recovery.session": "O LordOS verifica o próprio código antes de executá-lo. Uma parte da área de trabalho não corresponde mais à cópia assinada, então não foi iniciada. Seus arquivos não foram tocados.",
+  "code.recovery.greeter": "O LordOS verifica o próprio código antes de executá-lo. A tela de login não corresponde mais à cópia assinada, então não foi iniciada. Seus arquivos não foram tocados.",
+  "code.recovery.app": "O LordOS verifica o próprio código antes de executá-lo. Este app não corresponde mais à cópia assinada, então não foi iniciado.",
+  "code.recovery.fix": "Para reparar, reinstale o LordOS: sudo apt install --reinstall lordos",
+  "code.recovery.details": "Não carregado:",
+  "code.recovery.logout": "Encerrar sessão"
 }

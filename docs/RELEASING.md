@@ -43,10 +43,23 @@ The releases page is the project's public changelog: every release is documented
 
    Also bump `package.json` (`version`, `lordos.channel`) and commit both.
 2. **Tag.** `git tag -a v<version> -m "LordOS <version>"` on that commit, and push the tag.
-3. **Build** from the tag: the ISO on the build VM (`tools/iso/build.sh`, [ISO.md](ISO.md)), the
-   Raspberry Pi 5 image (`tools/rpi/build-img.sh`, [RASPBERRY.md](RASPBERRY.md)) and the `.deb`
-   for amd64 and arm64. Copy them, and `tools/install/install.sh` as `install.sh`, into one release
-   folder.
+3. **Sign the system code, then build** from the tag.
+   - On the maintainer's machine (where the release key lives): `npm run build`, then
+     `tools/release/sign-code.sh`. It regenerates `code-manifest.json` (the SHA-256 of every theme
+     bundle, the app host and the system apps) and writes `code-manifest.sig` with the release key,
+     checked against `tools/release/lordos-release.pub.pem` ([SIGNING.md](SIGNING.md), "Verified system
+     code"). The bundles are the same for every architecture: one signature serves all the images.
+   - Send the tree, with both files, to the build VMs (never the key). Build lord-server as a release:
+     `make -C server RELEASE=1` (it only runs code signed with the release key, with no development
+     mode).
+   - Build the ISO on the build VM (`sudo REQUIRE_SIGNED_CODE=1 tools/iso/build.sh`, [ISO.md](ISO.md)),
+     the Raspberry Pi 5 image (`sudo RELEASE=1 REQUIRE_SIGNED_CODE=1 tools/rpi/build-img.sh`,
+     [RASPBERRY.md](RASPBERRY.md)) and the `.deb` for amd64 and arm64
+     (`REQUIRE_SIGNED_CODE=1 tools/iso/mkdeb.sh`). `mkdeb.sh` puts `code-manifest.json` and
+     `code-manifest.sig` in `/usr/lib/lordos/` and runs `lord-server --check-code` on the staged tree:
+     the package is not built if a bundle changed after signing or the signature is missing. A bundle
+     rebuilt after signing means signing again.
+   - Copy them, and `tools/install/install.sh` as `install.sh`, into one release folder.
 4. **SBOM.** On each build VM, `tools/release/make-sbom.sh lordos_<v>_<arch>.deb`, and put the
    `.spdx.json` files in the release folder ([COMPLIANCE.md](COMPLIANCE.md)).
 5. **Sign.** On the maintainer's machine, `tools/release/sign-release.sh <release-dir>`: it writes

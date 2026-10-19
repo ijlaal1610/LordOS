@@ -2,7 +2,7 @@
 // server/src/pkg; install and remove go through the administration helper).
 import {
   View, Text, Image, useTheme, useLocale, useAppWindow, useStore, Button, ScrollView, SidebarItem, SectionTitle, SearchField, Hairline, EmptyState, GroupBox,
-  packages, packageList, refreshPackages, useLauncherApps, launchApp, fs, formatBytes, wm, direction, typeScale, spacing,
+  packages, packageList, refreshPackages, useLauncherApps, launchApp, fs, formatBytes, wm, direction, typeScale, spacing, isSystemApp,
   suggestions, unseenSuggestions, refreshSuggestions,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useState } from 'react';
@@ -287,6 +287,8 @@ function InstalledPage({ query }) {
       <List count={null} empty={tr('store.debian.none')}>
         {shown.map((a) => (
           <AppRow key={a.id} icon={<a.Icon size={32} />} name={a.name} detail={a.comment || a.genericName || ''} extra={kind(a)}>
+            {/* a system app is part of LordOS: never removable here (docs/SIGNING.md, "Verified system code") */}
+            {a.kind === 'lordos' && isSystemApp(a.id) && <Text style={{ fontSize: typeScale.caption, color: t.textDim, whiteSpace: 'nowrap' }}>{tr('store.systemApp')}</Text>}
             {a.kind === 'linux' && debian.canRemove(a) && <Button small label={tr('store.remove')} onClick={() => debian.removeApp(a)} />}
             <Button small label={tr('store.open')} onClick={() => launchApp(a.id)} />
           </AppRow>

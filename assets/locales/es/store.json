@@ -223,5 +223,6 @@
   "suggest.vmwareTools.title": "Herramientas de invitado para esta máquina virtual",
   "suggest.vmwareTools.unavailable": "{packages} no está en los orígenes de paquetes de este equipo.",
   "suggest.vmwareTools.why": "Detectamos una máquina virtual de VMware.",
-  "suggest.whatChanges": "Qué cambia"
+  "suggest.whatChanges": "Qué cambia",
+  "systemApp": "App del sistema — parte de LordOS"
 }

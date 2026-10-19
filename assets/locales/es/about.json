@@ -5,6 +5,12 @@
   "channelBeta": "Beta",
   "channelDev": "Desarrollo",
   "channelRc": "Versión candidata",
+  "codeDevNote": "Compilación de desarrollo: el código del sistema no está firmado por LordOS.",
+  "codeDevelopment": "Compilación de desarrollo",
+  "codeInvalid": "Modificado — no se cargó",
+  "codeLabel": "Código del sistema",
+  "codeVerified": "Verificado",
+  "codeVerifiedNote": "Firmado por LordOS · {count} componentes",
   "cpu": "Procesador",
   "cpuUnknown": "Desconocido",
   "cpuValue": {
@@ -26,6 +32,7 @@
     "other": "{ms} ms · {count} nodos"
   },
   "server": "Servidor gráfico",
+  "systemApp": "App del sistema",
   "tagline": "Un escritorio GNU/Linux libre, rápido y seguro, construido sobre Debian y Wayland.",
   "uptime": "Encendido hace",
   "version": "Versión {v}",

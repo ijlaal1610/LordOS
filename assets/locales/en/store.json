@@ -223,5 +223,6 @@
   "suggest.vmwareTools.title": "Guest tools for this virtual machine",
   "suggest.vmwareTools.unavailable": "{packages} isn't in this computer's package sources.",
   "suggest.vmwareTools.why": "We detected a VMware virtual machine.",
-  "suggest.whatChanges": "What changes"
+  "suggest.whatChanges": "What changes",
+  "systemApp": "System app — part of LordOS"
 }

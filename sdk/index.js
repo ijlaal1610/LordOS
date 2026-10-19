@@ -56,8 +56,10 @@ export { packages, packageList, refreshPackages, packageFile, loadWasm } from '.
 import { refreshPackages } from './packages.js';
 export {
   windows, wm, openedAt, useWindows, configureWindows, getApp, listApps, isLiveSystem, appIdOf, workArea, workAreaOf, pointerWorkArea, appMenus, useAppMenus, windowTitle, appRegistry, appMenuClick,
-  registerBuiltinApp,
+  registerBuiltinApp, isSystemApp,
 } from './windows.js';
+export { codeStatus } from './codesig.js';
+import { reportRefusedCode } from './codesig.js';
 export { WindowShell, WINDOW_EDGE } from './windowshell.jsx';
 export { term } from './terminal.js';
 export { clipboard, clipboardHistory, clipboardPanel, clipboardKind } from './clipboard.js';
@@ -182,6 +184,7 @@ export function startShell(element) {
   startHardware();                      // Night Light, idle timers, battery in the menu bar (hardware.jsx)
   startDiskWatch();                     // notices when a disk gets too hot or its health gets worse
   startVideo();                         // browser video without hardware decoding (video.js, docs/VIDEO.md)
+  setTimeout(reportRefusedCode, 800);   // "This LordOS component was modified and was not loaded" (docs/SIGNING.md)
 }
 
 // Changing the language remounts the whole interface (windows, tabs and

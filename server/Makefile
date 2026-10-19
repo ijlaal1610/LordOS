@@ -51,7 +51,7 @@ QJS_OBJ := $(patsubst %,build/qjs/%.o,quickjs libregexp libunicode cutils dtoa)
 MON_SRC := src/monitor/mon.c src/monitor/disktemp.c src/monitor/nethist.c src/monitor/netrec.c src/monitor/conn.c src/monitor/procctl.c src/monitor/proc_admin.c src/monitor/mmdb.c src/monitor/map.c src/ui/js_monitor.c
 # Media (src/media, docs/MEDIA.md): only the lord-server side. Only lord-media links FFmpeg.
 MEDIA_SRC := src/media/media.c src/media/hwdec.c src/media/mview.c src/media/capture.c src/media/annot.c src/media/maudio.c src/media/mpulse.c src/media/proto.c src/ui/js_media.c
-SEC_SRC := src/sec/json.c src/sec/sign.c src/sec/pkgstate.c src/sec/perms.c src/sec/cgroup.c src/sec/sandbox.c src/sec/brokersrv.c src/sec/brokercam.c src/sec/brokerkr.c src/sec/brokermail.c src/sec/restrict.c src/sec/appid.c src/sec/pwguard.c
+SEC_SRC := src/sec/json.c src/sec/sign.c src/sec/pkgstate.c src/sec/perms.c src/sec/cgroup.c src/sec/sandbox.c src/sec/brokersrv.c src/sec/brokercam.c src/sec/brokerkr.c src/sec/brokermail.c src/sec/restrict.c src/sec/appid.c src/sec/pwguard.c src/sec/codesig.c
 # App mode: lord-server --app <id> runs an .lpk app as an isolated Wayland client (src/app)
 APP_SRC := src/app/appclient.c src/app/appspawn.c src/ui/js_broker.c src/ui/js_brokercam.c src/ui/js_brokermail.c src/app/apphost_bc.c
 SRC := src/main.c src/kms.c src/gpu/gpu.c src/input.c src/canvas.c src/admin.c src/install/install.c src/apps.c src/lpk.c src/fsops.c src/remote/mirror.c src/remote/remote_admin.c src/remote/ssh_admin.c src/users/users_admin.c src/users/homedirs.c src/keyboard.c src/keylag.c src/ime.c src/wl/wl.c \
@@ -214,6 +214,12 @@ build/sandbox-test: tests/sandbox_test.c src/sec/sandbox.c src/sec/cgroup.c src/
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -D_GNU_SOURCE -o $@ tests/sandbox_test.c src/sec/sandbox.c src/sec/cgroup.c -lpthread
 build/sign-test: tests/sign_test.c src/sec/json.c src/sec/sign.c src/lpk.c src/pkg/crypto.c build/obj/ui/stb.o $(wildcard src/sec/*.h) src/lpk.h src/pkg/crypto.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -DLORD_SIGN_TEST -o $@ tests/sign_test.c src/sec/json.c src/sec/sign.c src/lpk.c src/pkg/crypto.c build/obj/ui/stb.o -lm
+# Verified system code: manifest parser, signature, per-file check, reading under the root (docs/SIGNING.md)
+test: build/codesig-test
+build/codesig-test: tests/codesig_test.c src/sec/codesig.c src/sec/json.c src/pkg/crypto.c src/sec/codesig.h src/sec/json.h src/pkg/crypto.h build/gen/codesig_build.h
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/codesig_test.c src/sec/codesig.c src/sec/json.c src/pkg/crypto.c
+	./$@ ../tools/release/lordos-release.pub.pem || { rm -f $@; exit 1; }
 # Clock time zones: TZif and POSIX rules against glibc (docs/SYSTEM.md)
 test: build/tzif-test
 build/tzif-test: tests/tzif_test.c src/ui/tzif.c src/ui/tzif.h
@@ -443,6 +449,20 @@ build/gen/lord_version.h: FORCE
 	    '$(or $(LORD_VERSION),0.0.0)' '$(LORD_CHANNEL)' '$(shell printf %s '$(LORD_BUILD)' | tr -cd 'A-Za-z0-9.+~-')' > $@.new
 	@if cmp -s $@.new $@; then rm -f $@.new; else mv $@.new $@; fi
 build/obj/ui/js.o build/obj/ui/js_sys.o build/obj/term/pty.o: build/gen/lord_version.h
+# Verified system code (src/sec/codesig.c, docs/SIGNING.md "Verified system code"). RELEASE=1: a
+# release build, which only runs a manifest signed with the LordOS release key (no development mode).
+# CODE_PUBKEY=<64 hex>: a TEST build that trusts a throwaway key instead of the release key (VM tests
+# only; never for a release, and refused together with RELEASE=1).
+RELEASE ?= 0
+CODE_PUBKEY ?=
+ifneq ($(and $(filter 1,$(RELEASE)),$(CODE_PUBKEY)),)
+$(error CODE_PUBKEY is for test builds only, not with RELEASE=1)
+endif
+build/gen/codesig_build.h: FORCE
+	@mkdir -p build/gen
+	@{ [ '$(RELEASE)' = 1 ] && echo '#define LORD_CODE_RELEASE 1'; 	   k=$$(printf %s '$(CODE_PUBKEY)' | tr -cd '0-9a-f'); [ -n "$$k" ] && printf '#define LORD_CODE_PUBKEY_HEX "%s"\n' "$$k"; true; } > $@.new
+	@if cmp -s $@.new $@; then rm -f $@.new; else mv $@.new $@; fi
+build/obj/sec/codesig.o: build/gen/codesig_build.h
 .PHONY: FORCE
 FORCE:
 

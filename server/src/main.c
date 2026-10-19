@@ -50,6 +50,10 @@
 #include "hw/modes.h"
 #include "outputs.h"
 #include "monitor/netrec.h"
+#include "sec/codesig.h"
+
+#include <libgen.h>
+#include <limits.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -1392,6 +1396,77 @@ static void render_frame(Server *s) {
 }
 
 /* Cambio de tema pedido desde JS (lord.themes.use): se descarta el contexto JS y el árbol. */
+/* Loads the first theme that passes the verified-code check (sec/codesig.c): the one asked for,
+ * then the default and the classic theme next to it; if none can be loaded because the system code
+ * was modified, the built-in recovery screen (never a blank screen). The login screen goes straight
+ * to the recovery screen. `used` gets the bundle that is running. 0 if something is on screen. */
+static int start_theme(const char *theme, int greeter, char *used, size_t n) {
+    snprintf(used, n, "%s", theme);
+    int r = js_init(theme);
+    if (r == 0) return 0;
+    if (r != JS_REFUSED && codesig_state() != CODE_INVALID) return -1;
+    if (r == JS_REFUSED) snprintf(ui.theme_failed, sizeof ui.theme_failed, "%s", theme);   /* lord.themes.use won't go back to it */
+    if (!greeter && codesig_state() != CODE_INVALID) {
+        char root[PATH_MAX], tmp[PATH_MAX];
+        snprintf(tmp, sizeof tmp, "%s", theme);
+        char *d = dirname(tmp);                     /* .../themes/<id> */
+        snprintf(root, sizeof root, "%s", d);
+        snprintf(tmp, sizeof tmp, "%s", root);
+        snprintf(root, sizeof root, "%s", dirname(tmp));   /* .../themes */
+        static const char *const fallback[] = { "default", "classic" };
+        for (size_t i = 0; i < sizeof fallback / sizeof fallback[0]; i++) {
+            char alt[sizeof ui.theme_request];
+            if ((size_t)snprintf(alt, sizeof alt, "%.*s/%s/theme.bundle.js", (int)(sizeof alt - 32), root, fallback[i]) >= sizeof alt) continue;
+            if (!strcmp(alt, theme) || access(alt, R_OK)) continue;
+            js_shutdown();
+            ui_reset();
+            fprintf(stderr, "lord-server: theme %s was not loaded, trying %s\n", theme, alt);
+            if (js_init(alt) == 0) { snprintf(used, n, "%s", alt); return 0; }
+        }
+    }
+    js_shutdown();
+    ui_reset();
+    return js_init_recovery(greeter);
+}
+
+/* lord-server --check-code [root]: checks the signed manifest and every file it lists, the way a
+ * session would load them (docs/SIGNING.md, "Verified system code"). Used by tools/iso/mkdeb.sh
+ * and for troubleshooting. Exit 0 when everything matches; 1 otherwise; with --require-signed, a
+ * development (unsigned) manifest also fails. */
+static int check_code(int argc, char **argv) {
+    const char *root = NULL;
+    int need_signed = codesig_release_build();
+    for (int i = 2; i < argc; i++) {
+        if (!strcmp(argv[i], "--require-signed")) need_signed = 1;
+        else root = argv[i];
+    }
+    char exe[PATH_MAX], def[PATH_MAX];
+    if (!root) {                                    /* next to this binary: <root>/bin/lord-server */
+        ssize_t k = readlink("/proc/self/exe", exe, sizeof exe - 1);
+        if (k <= 0) return 1;
+        exe[k] = 0;
+        char *bin = dirname(exe);                   /* <root>/bin (dirname writes into exe) */
+        snprintf(def, sizeof def, "%s/..", bin);
+        root = def;
+    }
+    CodeState st = codesig_init_root(root, codesig_key(), need_signed);
+    const CodeManifest *m = codesig_manifest();
+    printf("root: %s\nstate: %s%s%s\nbuild: %s\n", codesig_root(), codesig_state_name(st), codesig_reason()[0] ? " — " : "",
+           codesig_reason(), codesig_release_build() ? "release" : "development");
+    int bad = st == CODE_INVALID || !m;
+    for (int i = 0; m && i < m->nfiles; i++) {
+        char path[PATH_MAX * 2], why[160];
+        snprintf(path, sizeof path, "%s/%s", codesig_root(), m->files[i].path);
+        size_t len;
+        char *b = codesig_load(path, CODE_FILE_MAX, &len, why, sizeof why);
+        printf("%-8s %s%s%s\n", b ? "ok" : "FAILED", m->files[i].path, b ? "" : ": ", b ? "" : why);
+        if (!b) bad = 1;
+        free(b);
+    }
+    printf("%s: %d file(s), %.1f ms\n", bad ? "FAILED" : "ok", m ? m->nfiles : 0, codesig_ms());
+    return bad ? 1 : 0;
+}
+
 static void switch_theme(const char *current) {
     char path[sizeof ui.theme_request];
     snprintf(path, sizeof path, "%s", ui.theme_request);
@@ -1439,6 +1514,7 @@ int main(int argc, char **argv) {
     sigaction(SIGPIPE, &pipe_sa, NULL);
     /* guardián de una sesión de terminal (ver term/hold.c): no abre pantalla ni input */
     if (argc > 1 && !strcmp(argv[1], "--term-holder")) return hold_main(argc, argv);
+    if (argc > 1 && !strcmp(argv[1], "--check-code")) return check_code(argc, argv);
     /* «modo app»: lord-server --app <id> corre una app .lpk como cliente Wayland aislado
      * (app/appclient.c). El id ya viene validado del propio lord-server (no de JS). */
     if (argc >= 3 && !strcmp(argv[1], "--app")) {
@@ -1567,15 +1643,12 @@ int main(int argc, char **argv) {
                                            remote_refresh, remote_resize, remote_greeter, display_attach, display_detach,
                                            remote_scroll, remote_pinch, remote_input_add };
     if (ok && mirror_start(s.W, s.H, &mirror_in)) fprintf(stderr, "lord-server: no remote desktop (socket)\n");
-    if (ok) {
-        char path[1024];
-        snprintf(path, sizeof path, "%s", theme);
-        ok = js_init(path) == 0;
-    }
+    char current[sizeof ui.theme_request];
+    if (ok) ok = start_theme(theme, s.greeter, current, sizeof current) == 0;
     if (ok && !s.greeter) {                  /* the app host as bytecode for isolated apps (app/apphost_bc.c) */
         char host[1200];
         snprintf(host, sizeof host, "%s/app-host.bundle.js", js_sys_assets());
-        apphost_bc_start(host);
+        apphost_bc_start(host);              /* reads it through codesig_load and compiles those bytes */
     }
     if (!ok) {
         input_close(&s.input);
@@ -1592,8 +1665,6 @@ int main(int argc, char **argv) {
     keylag_init(s.greeter);                 /* key latency trace, only with LORD_INPUT_DEBUG=1 (keylag.h) */
     int sfd = signalfd(-1, &mask, SFD_CLOEXEC);
 
-    char current[sizeof ui.theme_request];
-    snprintf(current, sizeof current, "%s", theme);
     double start = now_ms();
     while (!s.quit && !ui.quit_requested) {
         if (ui.theme_request[0]) {

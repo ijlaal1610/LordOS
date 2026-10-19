@@ -522,12 +522,14 @@ package keeps its plain owner while a user `.lpk` with the same id does not reac
 | App host JavaScript in the app | — | **23 ms** (bytecode) instead of 110 ms (parsing 430 KB) |
 | Memory | the session grows ~5 MB when Mail opens | Mail 26 MB RSS / 18 MB PSS; Calendar 22 / 15 MB; Contacts 20 / 13.5 MB; Reminders ~21 MB RSS |
 
-- **The app host as bytecode** (`app/apphost_bc.c`): three seconds after the session starts,
-  `lord-server` compiles `assets/app-host.bundle.js` once, on a thread with its own QuickJS
-  runtime, into a sealed memfd (1.7 MB). Each app process gets a read-only fd of it
-  (`LORD_APPHOST_BC_FD`) and uses it only if its header names the very file it would load (device,
-  inode, size, modification time); otherwise it parses the source. This took Mail from ~225 ms to
-  ~145 ms.
+- **The app host as bytecode** (`app/apphost_bc.c`): when the session starts, `lord-server` reads
+  `assets/app-host.bundle.js` once through the verified-code check (`codesig_load`, see
+  [SIGNING.md](SIGNING.md), "Verified system code") and, three seconds later, compiles exactly those
+  verified bytes on a thread with its own QuickJS runtime into a sealed memfd (1.7 MB); if the check
+  refuses the file nothing is compiled. Each app process gets a read-only fd of it
+  (`LORD_APPHOST_BC_FD`), loads and verifies the source itself as before, and uses the bytecode only
+  if its header carries the size and SHA-256 of those same bytes; otherwise it parses the source.
+  This took Mail from ~225 ms to ~145 ms.
 - Painting the window early (before the JavaScript) was tried and dropped: on this VM the session's
   frame drawing then competed with the app's start-up and the content arrived ~55 ms later.
 - With `"debugTiming": true` in `~/.config/lordos/settings.json` (no UI), opening an app logs

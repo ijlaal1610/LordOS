@@ -257,6 +257,7 @@ void  text_layout_draw_n(Canvas *c, const char *s, int font, float size, float l
 int   text_layout_line_bytes(const char *s, int font, float size, float max_w, int nowrap, int *bs, int *be, int max);
 int   text_ellipsis_join(char *out, int out_size, const char *s, int len);   /* prefix + "…" */
 void  text_set_language(const char *lang);                 /* picks the CJK font (ja/ko/zh) */
+const char *text_language(void);                         /* the UI language the SDK set ("" before) */
 int   text_script_fallback(uint32_t cp, int bold);         /* terminal: font per script */
 int   text_direction(const char *s);                       /* 1 if the first strong character is RTL */
 

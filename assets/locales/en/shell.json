@@ -169,5 +169,15 @@
   "power.shuttingDown": "Shutting down…",
   "power.restart": "Restart",
   "power.shutdown": "Shut Down",
-  "power.cancel": "Cancel"
+  "power.cancel": "Cancel",
+  "code.modifiedTitle": "This LordOS component was modified and was not loaded",
+  "code.modifiedBody": "It no longer matches the signed copy of LordOS: {list}. Reinstall LordOS to repair it.",
+  "code.details": "Details",
+  "code.recovery.title": "This LordOS component was modified and was not loaded",
+  "code.recovery.session": "LordOS checks its own code before running it. A part of the desktop no longer matches the signed copy, so it was not started. Your files were not touched.",
+  "code.recovery.greeter": "LordOS checks its own code before running it. The login screen no longer matches the signed copy, so it was not started. Your files were not touched.",
+  "code.recovery.app": "LordOS checks its own code before running it. This app no longer matches the signed copy, so it was not started.",
+  "code.recovery.fix": "To repair it, reinstall LordOS: sudo apt install --reinstall lordos",
+  "code.recovery.details": "Not loaded:",
+  "code.recovery.logout": "Log Out"
 }

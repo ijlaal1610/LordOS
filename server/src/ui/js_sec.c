@@ -8,6 +8,7 @@
 #include "../sec/pkgstate.h"
 #include "../lpk.h"
 #include "../sec/broker.h"
+#include "../sec/codesig.h"
 
 #include <string.h>
 
@@ -235,7 +236,57 @@ static const JSCFunctionListEntry broker_funcs[] = {
     JS_CFUNC_DEF("quit", 1, f_broker_quit),
 };
 
+/* ---- lord.code: verified system code (sec/codesig.c, docs/SIGNING.md "Verified system code") ----
+ *   lord.code.status() → { state: 'verified'|'development'|'invalid'|'unchecked', signed, release,
+ *                          version, files, ms, reason, refused: [{ path, reason }] }
+ *   lord.code.takeRefused() → the refusals not reported yet ([{ path, reason }]); each is returned once
+ *                          per session, for the "This LordOS component was modified" notification. */
+static JSValue refusal_obj(JSContext *c, const CodeRefusal *r) {
+    JSValue o = JS_NewObject(c);
+    JS_SetPropertyStr(c, o, "path", JS_NewString(c, r->path));
+    JS_SetPropertyStr(c, o, "reason", JS_NewString(c, r->reason));
+    return o;
+}
+
+static JSValue f_code_status(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
+    (void)this_val; (void)argc; (void)argv;
+    codesig_init(js_sys_assets());
+    const CodeManifest *m = codesig_manifest();
+    JSValue o = JS_NewObject(c), arr = JS_NewArray(c);
+    JS_SetPropertyStr(c, o, "state", JS_NewString(c, codesig_state_name(codesig_state())));
+    JS_SetPropertyStr(c, o, "signed", JS_NewBool(c, m && m->signed_ok));
+    JS_SetPropertyStr(c, o, "release", JS_NewBool(c, codesig_release_build()));
+    JS_SetPropertyStr(c, o, "version", JS_NewString(c, m ? m->version : ""));
+    JS_SetPropertyStr(c, o, "files", JS_NewInt32(c, m ? m->nfiles : 0));
+    JS_SetPropertyStr(c, o, "ms", JS_NewFloat64(c, codesig_ms()));
+    JS_SetPropertyStr(c, o, "reason", JS_NewString(c, codesig_reason()));
+    for (int i = 0; i < codesig_refused_count(); i++) JS_SetPropertyUint32(c, arr, (uint32_t)i, refusal_obj(c, codesig_refused(i)));
+    JS_SetPropertyStr(c, o, "refused", arr);
+    return o;
+}
+
+static JSValue f_code_take(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
+    (void)this_val; (void)argc; (void)argv;
+    JSValue arr = JS_NewArray(c);
+    uint32_t n = 0;
+    for (int i = 0; i < codesig_refused_count(); i++) {
+        CodeRefusal *r = codesig_refused(i);
+        if (r->reported) continue;
+        r->reported = 1;
+        JS_SetPropertyUint32(c, arr, n++, refusal_obj(c, r));
+    }
+    return arr;
+}
+
+static const JSCFunctionListEntry code_funcs[] = {
+    JS_CFUNC_DEF("status", 0, f_code_status),
+    JS_CFUNC_DEF("takeRefused", 0, f_code_take),
+};
+
 void js_sec_register(JSContext *c, JSValue lord) {
+    JSValue code = JS_NewObject(c);
+    JS_SetPropertyFunctionList(c, code, code_funcs, sizeof code_funcs / sizeof code_funcs[0]);
+    JS_SetPropertyStr(c, lord, "code", code);
     JSValue perms = JS_NewObject(c);
     JS_SetPropertyFunctionList(c, perms, perms_funcs, sizeof perms_funcs / sizeof perms_funcs[0]);
     JS_SetPropertyStr(c, lord, "perms", perms);

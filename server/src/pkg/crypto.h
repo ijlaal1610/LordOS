@@ -14,6 +14,8 @@ void sha256_init(Sha256 *s);
 void sha256_update(Sha256 *s, const void *data, size_t len);
 void sha256_final(Sha256 *s, uint8_t out[32]);
 void sha256(const void *data, size_t len, uint8_t out[32]);
+void sha256_select(int hw);           /* tests: 0 = C code only, 1 = best for this CPU */
+int  sha256_accelerated(void);          /* 1: the CPU's SHA-256 instructions are used (x86 SHA, ARMv8 crypto) */
 void sha512_init(Sha512 *s);
 void sha512_update(Sha512 *s, const void *data, size_t len);
 void sha512_final(Sha512 *s, uint8_t out[64]);

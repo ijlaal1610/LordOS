@@ -121,7 +121,11 @@ static int emoji_font(void) {
 
 static int mono_cjk[2] = { -2, -2 };
 
+static int lang_set;     /* the SDK has set it (text_language) */
+const char *text_language(void) { return lang_set ? lang : ""; }
+
 void text_set_language(const char *l) {
+    if (l) lang_set = 1;
     if (!l || !strcmp(l, lang)) return;
     snprintf(lang, sizeof lang, "%s", l);
     init_fonts();

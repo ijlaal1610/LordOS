@@ -6,6 +6,7 @@
  * no secrets, so it doesn't need to be constant-time. */
 #include "crypto.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 /* ---- SHA-256 ---- */
@@ -31,22 +32,96 @@ static const uint32_t K256[64] = {
 
 #define ROR32(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
 
-static void sha256_block(Sha256 *s, const uint8_t *p) {
-    uint32_t w[64];
+/* Portable C: the 64 rounds unrolled 8 at a time (the variables rotate instead of being moved),
+ * the message schedule kept in 16 words. */
+#define S256_CH(x, y, z)  (((x) & (y)) ^ (~(x) & (z)))
+#define S256_MAJ(x, y, z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
+#define S256_E0(x) (ROR32(x, 2) ^ ROR32(x, 13) ^ ROR32(x, 22))
+#define S256_E1(x) (ROR32(x, 6) ^ ROR32(x, 11) ^ ROR32(x, 25))
+#define S256_S0(x) (ROR32(x, 7) ^ ROR32(x, 18) ^ ((x) >> 3))
+#define S256_S1(x) (ROR32(x, 17) ^ ROR32(x, 19) ^ ((x) >> 10))
+#define S256_R(a, b, c, d, e, f, g, h, i) do { \
+        uint32_t t1_ = h + S256_E1(e) + S256_CH(e, f, g) + K256[i] + w[(i) & 15]; \
+        d += t1_; h = t1_ + S256_E0(a) + S256_MAJ(a, b, c); } while (0)
+
+static void sha256_block_c(uint32_t st[8], const uint8_t *p) {
+    uint32_t w[16];
     for (int i = 0; i < 16; i++) w[i] = (uint32_t)p[4 * i] << 24 | (uint32_t)p[4 * i + 1] << 16 | (uint32_t)p[4 * i + 2] << 8 | p[4 * i + 3];
-    for (int i = 16; i < 64; i++) {
-        uint32_t s0 = ROR32(w[i - 15], 7) ^ ROR32(w[i - 15], 18) ^ (w[i - 15] >> 3);
-        uint32_t s1 = ROR32(w[i - 2], 17) ^ ROR32(w[i - 2], 19) ^ (w[i - 2] >> 10);
-        w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+    uint32_t a = st[0], b = st[1], c = st[2], d = st[3], e = st[4], f = st[5], g = st[6], h = st[7];
+    for (int i = 0; i < 64; i += 8) {
+        if (i >= 16)
+            for (int j = i; j < i + 8; j++)
+                w[j & 15] += S256_S1(w[(j - 2) & 15]) + w[(j - 7) & 15] + S256_S0(w[(j - 15) & 15]);
+        S256_R(a, b, c, d, e, f, g, h, i);
+        S256_R(h, a, b, c, d, e, f, g, i + 1);
+        S256_R(g, h, a, b, c, d, e, f, i + 2);
+        S256_R(f, g, h, a, b, c, d, e, i + 3);
+        S256_R(e, f, g, h, a, b, c, d, i + 4);
+        S256_R(d, e, f, g, h, a, b, c, i + 5);
+        S256_R(c, d, e, f, g, h, a, b, i + 6);
+        S256_R(b, c, d, e, f, g, h, a, i + 7);
     }
-    uint32_t a = s->h[0], b = s->h[1], c = s->h[2], d = s->h[3], e = s->h[4], f = s->h[5], g = s->h[6], h = s->h[7];
-    for (int i = 0; i < 64; i++) {
-        uint32_t t1 = h + (ROR32(e, 6) ^ ROR32(e, 11) ^ ROR32(e, 25)) + ((e & f) ^ (~e & g)) + K256[i] + w[i];
-        uint32_t t2 = (ROR32(a, 2) ^ ROR32(a, 13) ^ ROR32(a, 22)) + ((a & b) ^ (a & c) ^ (b & c));
-        h = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;
+    st[0] += a; st[1] += b; st[2] += c; st[3] += d;
+    st[4] += e; st[5] += f; st[6] += g; st[7] += h;
+}
+
+/* The CPU's own SHA-256 instructions on aarch64, when it has them (checked once at run time: the
+ * ARMv8 cryptography extension of the Raspberry Pi 5's Cortex-A76; the Pi 4 has none). Same results
+ * bit for bit: sign_test and codesig_test run the NIST vectors through the path the machine takes,
+ * and LORD_SHA256_C=1 forces the C one to compare. x86-64 uses the C code: its SHA extensions are
+ * not used until they can be tested on such a CPU. */
+typedef void (*Sha256Blocks)(uint32_t st[8], const uint8_t *p, size_t n);
+static void sha256_blocks_c(uint32_t st[8], const uint8_t *p, size_t n) { for (; n; n--, p += 64) sha256_block_c(st, p); }
+
+#if defined(__aarch64__) && (defined(__GNUC__) || defined(__clang__))
+#include <arm_neon.h>
+#include <sys/auxv.h>
+#ifndef HWCAP_SHA2
+#define HWCAP_SHA2 (1 << 6)
+#endif
+__attribute__((target("+crypto")))
+static void sha256_blocks_arm(uint32_t st[8], const uint8_t *p, size_t n) {
+    uint32x4_t s0 = vld1q_u32(&st[0]), s1 = vld1q_u32(&st[4]);
+    for (; n; n--, p += 64) {
+        uint32x4_t abcd = s0, efgh = s1, m[4];
+        for (int i = 0; i < 4; i++) m[i] = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(p + 16 * i)));
+        for (int g = 0; g < 16; g++) {
+            uint32x4_t w = vaddq_u32(m[g & 3], vld1q_u32(&K256[4 * g]));
+            if (g < 12) m[g & 3] = vsha256su1q_u32(vsha256su0q_u32(m[g & 3], m[(g + 1) & 3]), m[(g + 2) & 3], m[(g + 3) & 3]);
+            uint32x4_t t = s0;
+            s0 = vsha256hq_u32(s0, s1, w);
+            s1 = vsha256h2q_u32(s1, t, w);
+        }
+        s0 = vaddq_u32(s0, abcd);
+        s1 = vaddq_u32(s1, efgh);
     }
-    s->h[0] += a; s->h[1] += b; s->h[2] += c; s->h[3] += d;
-    s->h[4] += e; s->h[5] += f; s->h[6] += g; s->h[7] += h;
+    vst1q_u32(&st[0], s0);
+    vst1q_u32(&st[4], s1);
+}
+static int sha256_hw(void) { return (getauxval(AT_HWCAP) & HWCAP_SHA2) != 0; }
+#define SHA256_HW sha256_blocks_arm
+#endif
+
+static Sha256Blocks sha256_blocks;
+static void sha256_pick(void) {
+    sha256_blocks = sha256_blocks_c;
+#ifdef SHA256_HW
+    if (sha256_hw() && !getenv("LORD_SHA256_C")) sha256_blocks = SHA256_HW;     /* LORD_SHA256_C=1: tests */
+#endif
+}
+static void sha256_block(Sha256 *s, const uint8_t *p) {
+    if (!sha256_blocks) sha256_pick();
+    sha256_blocks(s->h, p, 1);
+}
+/* Tests: 0 forces the C code, 1 goes back to the best path for this CPU. */
+void sha256_select(int hw) {
+    sha256_pick();
+    if (!hw) sha256_blocks = sha256_blocks_c;
+}
+/* 1 if the CPU's SHA-256 instructions are in use (for the measurements in docs/SIGNING.md). */
+int sha256_accelerated(void) {
+    if (!sha256_blocks) sha256_pick();
+    return sha256_blocks != sha256_blocks_c;
 }
 
 void sha256_init(Sha256 *s) {
@@ -70,7 +145,12 @@ void sha256_update(Sha256 *s, const void *data, size_t len) {
         sha256_block(s, s->buf);
         s->n = 0;
     }
-    for (; len >= 64; p += 64, len -= 64) sha256_block(s, p);
+    if (len >= 64) {
+        if (!sha256_blocks) sha256_pick();
+        sha256_blocks(s->h, p, len / 64);
+        p += len & ~(size_t)63;
+        len &= 63;
+    }
     memcpy(s->buf, p, len);
     s->n = len;
 }

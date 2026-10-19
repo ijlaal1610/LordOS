@@ -174,16 +174,18 @@ else
         mount_ch "$BR"
     fi
     rm -rf "$BR/src/LordOS"; mkdir -p "$BR/src/LordOS"
+    # code-manifest.json (+ .sig for a release): the verified system code (docs/SIGNING.md)
     tar -C "$ROOT" --exclude=server/build --exclude=node_modules -cf - \
-        package.json README.md server third_party assets themes tools | tar -C "$BR/src/LordOS" -xf -
+        package.json README.md server third_party assets themes tools \
+        $(cd "$ROOT" && ls code-manifest.json code-manifest.sig 2>/dev/null) | tar -C "$BR/src/LordOS" -xf -
     J=$(nproc)
-    in_root "$BR" sh -c "cd /src/LordOS && make -C server -j$J GPU=1 && make -C server build/canvas-test" > "$WORK/build.log" 2>&1 || {
+    in_root "$BR" sh -c "cd /src/LordOS && make -C server -j$J GPU=1 RELEASE=${RELEASE:-0} && make -C server build/canvas-test" > "$WORK/build.log" 2>&1 || {
         tail -40 "$WORK/build.log"; exit 1; }
     is_aarch64 "$BR/src/LordOS/server/build/lord-server" || { echo "build-img.sh: the binary is not aarch64" >&2; exit 1; }
     # canvas-test: NEON against C, bit for bit (under qemu it measures nothing, but it checks)
     in_root "$BR" /src/LordOS/server/build/canvas-test > "$WORK/canvas-test.log" 2>&1 || {
         cat "$WORK/canvas-test.log"; echo "build-img.sh: canvas-test failed (NEON ≠ C); build with NEON=0" >&2; exit 1; }
-    in_root "$BR" sh -c "cd /src/LordOS && DEB_ARCH=$ARCH sh tools/iso/mkdeb.sh /tmp/lordos.deb" >> "$WORK/build.log" 2>&1 || {
+    in_root "$BR" sh -c "cd /src/LordOS && DEB_ARCH=$ARCH REQUIRE_SIGNED_CODE=${REQUIRE_SIGNED_CODE:-0} sh tools/iso/mkdeb.sh /tmp/lordos.deb" >> "$WORK/build.log" 2>&1 || {
         tail -20 "$WORK/build.log"; exit 1; }
     cp "$BR/tmp/lordos.deb" "$DEB"
     umount_ch "$BR"

@@ -11,6 +11,7 @@
  * Lo lanza lord-server (tercera excepción acotada a «el servidor no ejecuta comandos», ver
  * AGENTS.md): el único argumento es un id validado de un paquete instalado. */
 #include "app.h"
+#include "../sec/codesig.h"
 #include "../ui/ui.h"
 #include "../ui/js.h"
 #include "../ui/js_sys.h"
@@ -262,6 +263,9 @@ static JSValue f_win_close(JSContext *c, JSValueConst t, int argc, JSValueConst 
     (void)t;
     int32_t key = -1;
     if (argc > 0) JS_ToInt32(c, &key, argv[0]);
+    /* the app's code was refused (verified code): React tears its windows down, but the main one
+     * stays to show the recovery screen */
+    if (js_broker_code_refused() && key == 0) return JS_UNDEFINED;
     win_destroy(win_by_key(key));
     return JS_UNDEFINED;
 }
@@ -471,13 +475,16 @@ int app_main(const char *id, const char *theme_bundle, const char *fonts) {
      * ps, top and the Monitor's process list show which app it is */
     prctl(PR_SET_NAME, id, 0, 0, 0);
     char dir[PATH_MAX];
+    int sys;
     {
         /* <assets> = the parent of the fonts folder; a system app there wins over a user .lpk */
         char assets[PATH_MAX];
         snprintf(assets, sizeof assets, "%s", fonts);
         char *sl = strrchr(assets, '/');
         if (sl) *sl = 0;
-        if (app_package_dir(id, assets, dir, sizeof dir) < 0) {
+        /* verified system code (sec/codesig.c): the manifest is read and checked before the sandbox */
+        codesig_init(assets);
+        if ((sys = app_package_dir(id, assets, dir, sizeof dir)) < 0) {
             fprintf(stderr, "lord-server --app: app '%s' is not installed\n", id);
             return 2;
         }
@@ -510,7 +517,7 @@ int app_main(const char *id, const char *theme_bundle, const char *fonts) {
     wl_display_roundtrip(dpy);               /* first configure */
 
     /* Caja de arena: después de conectar Wayland y abrir el broker, antes de cargar la app. */
-    js_broker_set_pkgdir(dir);               /* la carpeta del paquete, antes de la caja de arena */
+    js_broker_set_pkgdir(dir, sys);          /* the package folder, before the sandbox */
     int net = js_broker_wants_network();     /* del manifest + el permiso */
     /* el «app host» (React + SDK) es código del SO; su carpeta es de solo lectura */
     char hostdir[PATH_MAX];
@@ -526,7 +533,10 @@ int app_main(const char *id, const char *theme_bundle, const char *fonts) {
     tzset();
     sandbox_apply(&sb);
 
-    if (js_init_app(theme_bundle, id)) { fprintf(stderr, "lord-server --app: could not load the app\n"); return 1; }
+    int jr = js_init_app(theme_bundle, id);
+    if (jr == JS_REFUSED) fprintf(stderr, "lord-server --app: the app host was modified and was not loaded (recovery screen)\n");
+    else if (jr) { fprintf(stderr, "lord-server --app: could not load the app\n"); return 1; }
+    int recovered = jr == JS_REFUSED;
 
     int wfd = wl_display_get_fd(dpy);
     double start = now_ms();
@@ -535,6 +545,13 @@ int app_main(const char *id, const char *theme_bundle, const char *fonts) {
         double delay = -1;
         for (int i = 0; i < 64; i++) { delay = js_tick(now_ms()); if (delay != 0) break; }
         if (js_wants_frame()) { js_frame(now_ms()); }
+        /* the system app's own code was refused while the host loaded it: show why (outside JS) */
+        if (!recovered && js_broker_code_refused()) {
+            recovered = 1;
+            js_app_recovery();
+            for (int i = 0; i < MAX_WINS; i++) if (wins[i].used) { if (wins[i].key == 0) wins[i].node = 0; wins[i].need_render = 1; }
+            continue;
+        }
         /* one node tree for all windows: any change repaints every window (cheap: apps are small) */
         if (ui.dirty) { for (int i = 0; i < MAX_WINS; i++) if (wins[i].used) wins[i].need_render = 1; ui.dirty = 0; }
         /* a window waiting for its frame callback or a free buffer renders when those arrive */

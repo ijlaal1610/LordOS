@@ -16,3 +16,5 @@ assets/app-host.bundle.js
 assets/sysapps/
 assets/locales/*.tgz
 logs/
+/code-manifest.json
+/code-manifest.sig

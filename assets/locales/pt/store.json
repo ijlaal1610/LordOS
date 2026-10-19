@@ -223,5 +223,6 @@
   "suggest.vmwareTools.title": "Ferramentas de convidado para esta máquina virtual",
   "suggest.vmwareTools.unavailable": "{packages} não está nas fontes de pacotes deste computador.",
   "suggest.vmwareTools.why": "Detectamos uma máquina virtual VMware.",
-  "suggest.whatChanges": "O que muda"
+  "suggest.whatChanges": "O que muda",
+  "systemApp": "App do sistema — parte do LordOS"
 }

@@ -83,13 +83,17 @@ export function registerBuiltinApp(app) {
 }
 // Apps installed as a package (packages.js). They don't override the theme's.
 export function setPackageApps(list) {
-  packageApps = list.filter((a) => !themeApps.some((t) => t.id === a.id));
+  // a package is never a system app, whatever its manifest says (only apps/ built into the theme)
+  packageApps = list.filter((a) => !themeApps.some((t) => t.id === a.id)).map((a) => ({ ...a, system: false }));
   rebuild();
 }
 export const windowChrome = () => chrome;
 
 export const appIdOf = (id) => String(id ?? '').split('#')[0];
 export const getApp = (id) => registry.get(appIdOf(id));
+// A system app: built into LordOS (apps/), verified with it and not removable (docs/SIGNING.md,
+// "Verified system code"). Packages (.lpk) and Linux apps never are.
+export const isSystemApp = (id) => { const a = getApp(id); return !!(a && a.system && !a.package); };
 // Live system (ISO): apps with "live": true in their manifest (the installer) only exist there.
 let live = null;
 export const isLiveSystem = () => {

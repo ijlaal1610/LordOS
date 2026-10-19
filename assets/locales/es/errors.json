@@ -563,5 +563,6 @@
   "disk.noSmartctl": "smartmontools no está instalado",
   "disk.smartFailed": "No se pudo leer la salud del disco",
   "disk.smartTestFailed": "El disco no inició la autoprueba",
-  "hw.noKernelLog": "No se pudo leer el registro del kernel"
+  "hw.noKernelLog": "No se pudo leer el registro del kernel",
+  "app.codeRefused": "El código de esta app fue modificado y no se cargó"
 }
