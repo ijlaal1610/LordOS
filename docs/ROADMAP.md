@@ -541,6 +541,37 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
     URLs allowed. Lists never override a user's explicit allow rule.
   - Performance budget measured as in 0.8.3 (no visible cost with thousands of list entries).
 
+- [ ] **Firewall rules manager (0.8.5)** — a "Rules" section in the Monitor (our own design):
+  - **Sidebar:** All rules, Active, Denied, Recently modified, Recently used, Temporary, Unapproved
+    (rules created silently, waiting for review, with a count); then Rule groups, Blocklists and
+    Profiles, each with an on/off checkbox.
+  - **Table:** process (with icon; "Any process" for global rules) → its rules, each with an
+    enable checkbox, allow/deny icon, a readable sentence ("allow outgoing connections to domain
+    example.org"), lock for system rules, a tag for the group it belongs to; detail panel with
+    the app's identity (path, package, signature check), priority, owner, the rule's usage
+    statistics (times applied, last used) and an editor.
+  - **Rule scope:** app → servers, domains, IP/CIDR, ports and port ranges, protocol (TCP, UDP,
+    ICMP), direction (outgoing, incoming, both), local network only; durations (forever, until
+    the app quits, until restart, once, for N minutes); actions beyond allow/deny: notify, play a
+    sound (optionally scaled by traffic volume).
+  - **Identity that survives updates:** Linux apps identified by their Debian package and
+    `.desktop` id (not a versioned path); system code by LordOS's signed manifest; rules don't
+    break when an app updates.
+  - **Rule groups:** local groups by topic, and subscriptions to remote rule-group files over
+    HTTPS (validated, size-limited, unprivileged fetcher, never able to allow what a local deny
+    rule denies), switched on/off together.
+  - **Profiles:** sets of rules and groups (Home, Work, Public…), switched by hand, from the menu
+    bar item, or automatically by Wi-Fi network / connection; "effective in all profiles" rules.
+  - **Tidy up:** flags invalid rules (app no longer installed), redundant ones (covered by a
+    broader rule), never-used ones, and suggests new rules from what was recorded silently.
+  - **Quick filters** in the search field (deny rules only, temporary, from a group) and
+    import/export of rules as JSON.
+  - **Encrypted DNS:** DNS over HTTPS / TLS for the system resolver, with a short list of
+    privacy-respecting resolvers to choose from and a custom one (Settings → Network, shown in
+    the Monitor).
+  - **Command line:** `lordos-fw` to list, add and remove rules, switch profiles, export, and log
+    allow/deny events, through the same validated API as the Monitor (no root shortcut).
+
 - [ ] **Remote desktop over WebRTC (0.8.4)** — today the browser gets PNG/JPEG tiles over a TLS
   WebSocket, and a connection switches the session to CPU composition. The goal is real video:
   - **Media:** H.264/VP8 video and Opus audio as WebRTC media tracks (RTP/SRTP); keyboard,
