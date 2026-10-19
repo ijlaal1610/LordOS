@@ -128,6 +128,7 @@ static void mirror_uri(const char *in, char *out, size_t n) {
     /* no TLS of our own: https is downloaded over http (security comes from the signature, as in apt) */
     if (!strncmp(in, "https://", 8)) snprintf(out, n, "http://%s", in + 8);
     else if (!strncmp(in, "http://", 7)) snprintf(out, n, "%s", in);
+    else if (!strncmp(in, "file:/", 6)) snprintf(out, n, "%s", in);       /* a local repository (http.c) */
     size_t l = strlen(out);
     while (l && out[l - 1] == '/') out[--l] = 0;
 }
@@ -433,7 +434,20 @@ static void icons_cleanup(IdxBuilder *b) {
 
 /* ---- pkg-update ---- */
 
-typedef struct { char path[PATH_MAX]; char ext[4]; int kind, src; char comp[48]; } Wanted;   /* kind 0 Packages, 1 Translation, 2 DEP-11, 3 icons */
+#define NOTES_MAX (4u << 20)
+
+/* PKG_DIR/notes: the verified ReleaseNotes of every source (deb822: Package, Version, Notes), read
+ * by lord.pkg.releaseNotes() without root. Replaced whole; removed when no source has any. */
+static void write_notes(const char *notes, size_t len) {
+    if (!len) { unlink(PKG_DIR "/notes"); return; }
+    int fd = open(PKG_DIR "/.notes.new", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0644);
+    if (fd < 0) return;
+    int ok = write(fd, notes, len) == (ssize_t)len;
+    if (close(fd)) ok = 0;
+    if (!ok || rename(PKG_DIR "/.notes.new", PKG_DIR "/notes")) unlink(PKG_DIR "/.notes.new");
+}
+
+typedef struct { char path[PATH_MAX]; char ext[4]; int kind, src; char comp[48]; } Wanted;   /* kind 0 Packages, 1 Translation, 2 DEP-11, 3 icons, 4 release notes */
 
 static int file_ok(const char *path, uint64_t size) {
     struct stat st;
@@ -543,11 +557,12 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
         for (int c = 0; c < src[i].ncomp; c++) {
             char base[200];
             const char *ext;
-            for (int k = 0; k < 4; k++) {
+            for (int k = 0; k < 5; k++) {
                 if (k == 0) snprintf(base, sizeof base, "%s/binary-%s/Packages", src[i].comps[c], arch);
                 else if (k == 1) snprintf(base, sizeof base, "%s/i18n/Translation-en", src[i].comps[c]);
                 else if (k == 2) snprintf(base, sizeof base, "%s/dep11/Components-%s.yml", src[i].comps[c], arch);
-                else snprintf(base, sizeof base, "%s/dep11/icons-64x64.tar", src[i].comps[c]);
+                else if (k == 3) snprintf(base, sizeof base, "%s/dep11/icons-64x64.tar", src[i].comps[c]);
+                else snprintf(base, sizeof base, "%s/notes/ReleaseNotes", src[i].comps[c]);   /* LordOS's release notes */
                 const RelFile *f = rel_pick(&R[i], base, &ext);
                 if (k == 2 && f && !strcmp(ext, "")) f = NULL;     /* the uncompressed YAML is huge */
                 if (!f) { if (k == 0) admin_log("pkg.sourceMissingFile", "uri", src[i].uri, "suite", src[i].suite, "file", base, NULL); continue; }
@@ -584,6 +599,8 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     for (int i = 0; i < ns; i++) if (rel[i].status != 304) changed = 1;
     free(rel);
     progress("lists", (uint64_t)ns, (uint64_t)ns);
+    /* release notes listed but not stored yet (an index built before LordOS read them): rebuild */
+    for (int k = 0; k < nw && !changed; k++) if (w[k].kind == 4 && access(PKG_DIR "/notes", F_OK)) changed = 1;
     Idx cur;
     if (!changed && !failures && !idx_open(&cur, PKG_DIR)) {
         /* no list changed since last time: the index is already up to date */
@@ -655,15 +672,31 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     if (!b || !srcid) { admin_err("sys.outOfMemory", NULL); return; }
     for (int i = 0; i < ns; i++) srcid[i] = -1;
     int pk_files = 0, pk_missing = 0;
-    for (int pass = 0; pass < 4; pass++)
+    char *notes = NULL;                 /* every source's ReleaseNotes, one after the other */
+    size_t notes_len = 0;
+    for (int pass = 0; pass < 5; pass++)
         for (int k = 0; k < nw; k++) {
             Wanted *x = &w[k];
             if (x->kind != pass || !good[x->src]) continue;
-            progress("index", (uint64_t)(pass * nw + k), (uint64_t)(4 * nw));
+            progress("index", (uint64_t)(pass * nw + k), (uint64_t)(5 * nw));
             if (srcid[x->src] < 0) {
                 Release *rr = &R[x->src];
                 int prio = rr->not_auto ? (rr->but_auto ? 100 : 1) : 500;
                 srcid[x->src] = idxb_source(b, src[x->src].uri, src[x->src].suite, x->comp, rr->codename, rr->origin, rr->label, rr->date, rr->valid_until, prio);
+            }
+            if (pass == 4) {
+                size_t tl;
+                uint8_t *t = load_index_file(x->path, x->ext, &tl);
+                char *nn = t && notes_len + tl + 2 <= NOTES_MAX ? realloc(notes, notes_len + tl + 2) : NULL;
+                if (nn) {
+                    notes = nn;
+                    memcpy(notes + notes_len, t, tl);
+                    notes_len += tl;
+                    notes[notes_len++] = '\n';
+                    notes[notes_len++] = '\n';
+                }
+                free(t);
+                continue;
             }
             if (pass == 3) {
                 size_t tl;
@@ -689,6 +722,8 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     char err[256];
     int wrote = pk_files && !idxb_write(b, PKG_DIR, arch, err, sizeof err);
     if (wrote) icons_cleanup(b);
+    if (wrote) write_notes(notes, notes_len);
+    free(notes);
     uint32_t count = idxb_count(b);
     idxb_free(b);
     if (wrote) gc_lists(w, nw, src, ns);

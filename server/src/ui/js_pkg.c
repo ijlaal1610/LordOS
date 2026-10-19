@@ -11,6 +11,7 @@
 #include "../pkg/status.h"
 
 #include <ctype.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -547,7 +548,68 @@ static JSValue f_icon(JSContext *c, JSValueConst this_val, int argc, JSValueCons
     return icon[0] && !access(path, R_OK) ? JS_NewString(c, path) : JS_NULL;
 }
 
+/* lord.pkg.releaseNotes(name, version) → Markdown text or null: the release notes a source publishes
+ * for that version (ReleaseNotes in its signed Release, stored by pkg-update; docs/UPDATES.md). */
+static JSValue f_release_notes(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
+    (void)this_val;
+    char name[129], ver[129];
+    if (argc < 2 || arg_name(c, argv[0], name, sizeof name)) return JS_NULL;
+    const char *v = JS_ToCString(c, argv[1]);
+    if (!v) return JS_NULL;
+    int ok = strlen(v) < sizeof ver && deb_valid_version(v, strlen(v));
+    if (ok) snprintf(ver, sizeof ver, "%s", v);
+    JS_FreeCString(c, v);
+    if (!ok) return JS_NULL;
+    int fd = open(PKG_DIR "/notes", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) return JS_NULL;
+    struct stat st;
+    char *buf = NULL;
+    size_t got = 0;
+    if (!fstat(fd, &st) && S_ISREG(st.st_mode) && st.st_size > 0 && st.st_size <= (4 << 20) && (buf = malloc((size_t)st.st_size))) {
+        while (got < (size_t)st.st_size) {
+            ssize_t r = read(fd, buf + got, (size_t)st.st_size - got);
+            if (r <= 0) break;
+            got += (size_t)r;
+        }
+    }
+    close(fd);
+    size_t tl = 0;
+    char *text = buf ? deb_notes_find(buf, got, name, ver, &tl) : NULL;
+    free(buf);
+    JSValue r = text ? JS_NewStringLen(c, text, tl) : JS_NULL;
+    free(text);
+    return r;
+}
+
+/* lord.pkg.rebootRequired() → null, or the packages that asked for a restart ([] if none named):
+ * the Debian convention /run/reboot-required(.pkgs), written by LordOS's postinst and its kernel hook. */
+static JSValue f_reboot_required(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
+    (void)this_val; (void)argc; (void)argv;
+    if (access("/run/reboot-required", F_OK)) return JS_NULL;
+    JSValue arr = JS_NewArray(c);
+    FILE *f = fopen("/run/reboot-required.pkgs", "re");
+    char line[160];
+    uint32_t n = 0;
+    while (f && n < 64 && fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\r\n")] = 0;
+        if (!deb_valid_name(line, strlen(line))) continue;
+        int dup = 0;
+        for (uint32_t i = 0; i < n && !dup; i++) {
+            JSValue e = JS_GetPropertyUint32(c, arr, i);
+            const char *es = JS_ToCString(c, e);
+            dup = es && !strcmp(es, line);
+            JS_FreeCString(c, es);
+            JS_FreeValue(c, e);
+        }
+        if (!dup) JS_SetPropertyUint32(c, arr, n++, JS_NewString(c, line));
+    }
+    if (f) fclose(f);
+    return arr;
+}
+
 static const JSCFunctionListEntry pkg_funcs[] = {
+    JS_CFUNC_DEF("releaseNotes", 2, f_release_notes),
+    JS_CFUNC_DEF("rebootRequired", 0, f_reboot_required),
     JS_CFUNC_DEF("available", 0, f_available),
     JS_CFUNC_DEF("lastUpdate", 0, f_last_update),
     JS_CFUNC_DEF("sources", 0, f_sources),

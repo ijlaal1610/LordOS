@@ -339,6 +339,23 @@ static int cmd_plan(int argc, char **argv) {
     return 0;
 }
 
+/* ReleaseNotes (docs/UPDATES.md): the stanza of that package and version, " ." as an empty line */
+static void test_notes(void) {
+    const char *t = "Package: lordos\nVersion: 0.8.1\nNotes:\n ### Added\n .\n - Updates from the Store\n\n"
+                    "Package: lordos\nVersion: 0.8.2~beta1\nNotes: one line\n\nPackage: other\nVersion: 0.8.1\nNotes:\n x\n";
+    size_t n = 0;
+    char *s = deb_notes_find(t, strlen(t), "lordos", "0.8.1", &n);
+    CHECK(s && !strcmp(s, "### Added\n\n- Updates from the Store") && n == strlen(s), "notes 0.8.1: [%s]", s ? s : "(null)");
+    free(s);
+    s = deb_notes_find(t, strlen(t), "lordos", "0.8.2~beta1", &n);
+    CHECK(s && !strcmp(s, "one line"), "notes on the field line: [%s]", s ? s : "(null)");
+    free(s);
+    CHECK(!deb_notes_find(t, strlen(t), "lordos", "0.8.3", &n), "no notes for another version");
+    CHECK(!deb_notes_find(t, strlen(t), "lordo", "0.8.1", &n), "the package name must match whole");
+    CHECK(ver_cmp("0.8.1~staging1", "0.8.0") > 0 && ver_cmp("0.8.1~staging1", "0.8.1") < 0 && ver_cmp("0.8.1~beta2", "0.8.1~beta10") < 0,
+          "pre-release versions sort between releases");
+}
+
 int main(int argc, char **argv) {
     if (argc >= 4 && !strcmp(argv[1], "pgp")) {
         PgpKeyring kr = { 0 };
@@ -377,6 +394,7 @@ int main(int argc, char **argv) {
     if (!mkdtemp(dir)) return 1;
     test_versions();
     test_deb822();
+    test_notes();
     test_crypto();
     test_compress();
     test_resolver(dir);

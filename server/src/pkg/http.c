@@ -4,7 +4,7 @@
  * http://), Content-Length, chunked or until the connection closes, If-Modified-Since, and
  * a 30 s maximum time without data. It sends the parent messages over the pipe:
  *   [type 1 byte][item 4][length 4][data]   type H = "status date length", D = data, E = end
- * (E with text = error). */
+ * (E with text = error). A file: URL (a local repository) is read by the same child, as nobody. */
 #include "http.h"
 #include "../errcode.h"
 #include "crypto.h"
@@ -188,8 +188,41 @@ static int parse_url(const char *url, char *host, size_t hn, char *port, size_t 
     return 0;
 }
 
+/* A file: source (a repository on a local disk or a USB stick, as apt's file: method): read as
+ * nobody too, so only world-readable files; sent like a download, and the parent checks it the same
+ * way (size, SHA-256 against the signed index). Only from a configured source: an HTTP redirect
+ * never leads here. */
+static void get_file(Conn *c, const FetchItem *it, uint32_t idx) {
+    char err[200] = "";
+    const char *path = it->url + 5;
+    while (path[0] == '/' && path[1] == '/') path++;          /* file:///x and file:/x */
+    int fd = path[0] == '/' && !strstr(path, "/../") ? open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK) : -1;
+    struct stat st;
+    if (fd < 0 || fstat(fd, &st) || !S_ISREG(st.st_mode)) {
+        lerr_set(err, sizeof err, "pkg.http.status", "status", "404", NULL);
+    } else if (it->ims > 0 && (int64_t)st.st_mtime <= it->ims) {
+        send_msg(c->out, 'H', idx, "304 0 0", 7);
+    } else if ((uint64_t)st.st_size > it->max) {
+        lerr_set(err, sizeof err, "pkg.http.tooLarge", NULL);
+    } else {
+        char h[96];
+        snprintf(h, sizeof h, "200 %lld %lld", (long long)st.st_mtime, (long long)st.st_size);
+        if (send_msg(c->out, 'H', idx, h, (uint32_t)strlen(h))) _exit(1);
+        for (;;) {
+            ssize_t r = read(fd, c->buf, sizeof c->buf);
+            if (r < 0 && errno == EINTR) continue;
+            if (r < 0) { lerr_set(err, sizeof err, "pkg.http.connectionLost", NULL); break; }
+            if (r == 0) break;
+            if (send_msg(c->out, 'D', idx, c->buf, (uint32_t)r)) _exit(1);
+        }
+    }
+    if (fd >= 0) close(fd);
+    send_msg(c->out, 'E', idx, err, (uint32_t)strlen(err));
+}
+
 /* Downloads one item: sends H, D… and E. */
 static void get_one(Conn *c, const FetchItem *it, uint32_t idx) {
+    if (!strncmp(it->url, "file:", 5)) { get_file(c, it, idx); return; }
     char url[1100], err[200] = "", line[4096];
     snprintf(url, sizeof url, "%s", it->url);
     for (int redirects = 0;; redirects++) {

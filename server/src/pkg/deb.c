@@ -4,6 +4,7 @@
 #include "deb.h"
 
 #include <ctype.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
@@ -206,4 +207,50 @@ int deb_next_group(const char **pp, const char *end, DebRel *alts, int max) {
         if (n) return n;
         p = *pp;
     }
+}
+
+/* Release notes (docs/UPDATES.md): deb822 stanzas "Package", "Version" and a multi-line "Notes"
+ * whose continuation lines start with one space and use " ." for an empty line, like a Debian
+ * "Description". Returns the Markdown text of the matching stanza (malloc'd), or NULL. */
+char *deb_notes_find(const char *buf, size_t len, const char *pkg, const char *version, size_t *outlen) {
+    const char *pos = buf, *end = buf + len, *st, *se;
+    size_t pl = strlen(pkg), vl = strlen(version);
+    while (d822_next_stanza(&pos, end, &st, &se)) {
+        D822 it = { st, se };
+        D822Field f;
+        int name_ok = 0, ver_ok = 0;
+        const char *notes = NULL;
+        size_t nlen = 0;
+        while (d822_next_field(&it, &f)) {
+            if (d822_is(&f, "Package")) name_ok = f.vlen == pl && !memcmp(f.value, pkg, pl);
+            else if (d822_is(&f, "Version")) ver_ok = f.vlen == vl && !memcmp(f.value, version, vl);
+            else if (d822_is(&f, "Notes")) { notes = f.value; nlen = f.vlen; }
+        }
+        if (!name_ok || !ver_ok || !notes) continue;
+        char *out = malloc(nlen + 1);
+        if (!out) return NULL;
+        size_t o = 0;
+        const char *p = notes, *e = notes + nlen;
+        int first = 1;
+        while (p < e) {
+            const char *nl = memchr(p, '\n', (size_t)(e - p));
+            if (!nl) nl = e;
+            const char *l = p;
+            size_t ll = (size_t)(nl - p);
+            if (ll && l[ll - 1] == '\r') ll--;
+            if (!first && ll && *l == ' ') { l++; ll--; }
+            if (!first && ll == 1 && *l == '.') ll = 0;
+            if (!(first && !ll)) {                  /* the empty text after "Notes:" */
+                if (o) out[o++] = '\n';
+                memcpy(out + o, l, ll);
+                o += ll;
+            }
+            first = 0;
+            p = nl + 1;
+        }
+        out[o] = 0;
+        if (outlen) *outlen = o;
+        return out;
+    }
+    return NULL;
 }

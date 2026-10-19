@@ -40,4 +40,8 @@ typedef struct {
 /* Reads the next group of alternatives (up to the comma). Returns the count (0 = end). */
 int deb_next_group(const char **p, const char *end, DebRel *alts, int max);
 
+/* Release notes of pkg at version from a ReleaseNotes file (deb822 Package, Version, Notes):
+ * the Markdown text, malloc'd (the caller frees it), or NULL. See docs/UPDATES.md. */
+char *deb_notes_find(const char *buf, size_t len, const char *pkg, const char *version, size_t *outlen);
+
 #endif
