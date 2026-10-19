@@ -624,6 +624,11 @@ static void enter_sandbox(void) {
         .ro_dir_fds = NULL,
         .rw_dir_fds = rw,
     };
+    /* syncing is background work: it must not compete with the desktop and its sound right after
+     * login (0.8.1; the first full sync starts at once). nice 19 and idle I/O, set before the
+     * sandbox, whose seccomp filter doesn't allow ioprio_set */
+    setpriority(PRIO_PROCESS, 0, 19);
+    syscall(SYS_ioprio_set, 1, 0, 3 << 13);         /* IOPRIO_WHO_PROCESS, this process, IOPRIO_CLASS_IDLE */
     int mask = sandbox_apply_helper(&cfg);
     dbg("sandbox mask %#x", (unsigned)mask);
 }

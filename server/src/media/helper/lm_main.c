@@ -69,11 +69,14 @@ int main(int argc, char **argv) {
     if (m.v[0] == MK_CAMERA) ioctls |= SANDBOX_IOCTL_V4L2 | (fds[1] >= 0 ? SANDBOX_IOCTL_DRM | SANDBOX_IOCTL_DMABUF : 0);
     SandboxHelperCfg cfg = { .name = "app-lordos-media", .ro_paths = ro, .extra_syscalls = extra, .allow_ioctl_classes = ioctls,
                              .mem_max_mb = m.v[0] == MK_WORKER ? 1024 : 1536 };
+    if (m.v[0] == MK_WORKER) {                 /* thumbnails and probes: in the background (before the sandbox) */
+        setpriority(PRIO_PROCESS, 0, 10);
+        syscall(SYS_ioprio_set, 1, 0, (2 << 13) | 7);   /* IOPRIO_WHO_PROCESS, this process, best effort, lowest */
+    }
     sandbox_apply_helper(&cfg);
     switch (m.v[0]) {
     case MK_PLAY: lm_player(payload, fds[0], fds[1], fds[2]); break;
     case MK_WORKER:
-        setpriority(PRIO_PROCESS, 0, 10);       /* thumbnails and probes: in the background */
         lm_worker();
         break;
     case MK_SCREENREC: lm_screenrec(payload, fds[0], fds[1], fds[2]); break;
