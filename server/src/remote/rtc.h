@@ -48,6 +48,11 @@ typedef struct {
     int turn_has_fp;                    /* TLS: pin this certificate instead of the system's CAs */
     uint8_t turn_fp[32];
     char *turn_pass;            /* in memory only; rtc_new takes it over and wipes it when done */
+    /* or, for a later peer of the same bridge, the long-term key the first one derived (MD5 of
+     * user:realm:password, RFC 8489 §9.2.2), for that realm only; never the password again */
+    int turn_has_key;
+    uint8_t turn_key[16];
+    char turn_realm[256];
     unsigned max_kbps;
     /* ICE over TCP: lord-sessiond's root connection child hands us, over this listening socket (root's
      * /run/lordos/rtc/<route>, created before the bridge dropped root), each TCP connection to the
@@ -55,6 +60,7 @@ typedef struct {
     int ice_lfd;
     char route[9];                      /* 8 characters [A-Za-z0-9]: the start of every ufrag we use */
     int tcp_port;                       /* the remote desktop port, for our passive TCP candidates */
+    int peer_no;                        /* this connection's peer number, echoed in our answers ("p") */
 } RtcConfig;
 
 Rtc *rtc_new(const RtcConfig *cfg, const RtcCallbacks *cb);
@@ -84,6 +90,8 @@ void rtc_audio(Rtc *r, const uint8_t *p, size_t n, uint32_t samples);
 /* Data channel message; -1 if the channel isn't open or its send buffer is full (try later). */
 int  rtc_send(Rtc *r, int chan, const void *p, size_t n, int binary);
 int  rtc_dc_open(const Rtc *r, int chan);
+/* The TURN long-term key and realm of an allocated relay, for the bridge's next peer. 0 or -1. */
+int  rtc_turn_key(const Rtc *r, uint8_t key[16], char realm[256]);
 /* "udp", "tcp" or "relay": how the media goes now ("" before it does) */
 const char *rtc_path_kind(const Rtc *r);
 /* Line for the logs and the browser's status: "h264 2400 kbps 1.2 % lost" */

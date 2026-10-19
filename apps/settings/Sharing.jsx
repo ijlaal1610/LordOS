@@ -154,8 +154,10 @@ function ConnectionSection({ st, isAdmin, busy, run }) {
           <Text style={label}>{tr('settings.sharing.turnServer')}</Text>
           <TextInput value={turn} placeholder={tr('settings.sharing.turnServerPlaceholder')} style={{ direction: 'ltr' }} onChange={(v) => { setTurn(v.slice(0, 95)); setBad(''); }} />
           <Text style={label}>{tr('settings.sharing.turnTransport')}</Text>
-          <Segmented small value={transport} onChange={(v) => { setTransport(v); setBad(''); }}
-            options={[['udp', tr('settings.sharing.turnUdp')], ['tcp', tr('settings.sharing.turnTcp')], ['tls', tr('settings.sharing.turnTls')]]} />
+          <View style={{ alignSelf: 'flex-start' }}>
+            <Segmented small value={transport} onChange={(v) => { setTransport(v); setBad(''); }}
+              options={[['udp', tr('settings.sharing.turnUdp')], ['tcp', tr('settings.sharing.turnTcp')], ['tls', tr('settings.sharing.turnTls')]]} />
+          </View>
           {transport === 'tls' && <Text style={label}>{tr('settings.sharing.turnFp')}</Text>}
           {transport === 'tls' && <TextInput value={fp} placeholder={tr('settings.sharing.turnFpPlaceholder')} style={{ direction: 'ltr', fontFamily: 'monospace' }}
             onChange={(v) => { setFp(v.slice(0, 95)); setBad(''); }} />}

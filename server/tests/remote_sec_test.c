@@ -909,6 +909,17 @@ static void test_signal(void) {
     CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_ICE);
     j = "{\"t\":\"ice\",\"c\":\"\"}";
     CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_ICE && in.tlen == 0);
+    /* the peer number: optional, 1..1000000, an integer */
+    j = "{\"t\":\"rtc\",\"sdp\":\"v=0\\r\\nm=video 9\",\"p\":3}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_RTC && in.a == 3);
+    j = "{\"t\":\"rtc\",\"sdp\":\"v=0\\r\\nm=video 9\"}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_RTC && in.a == 0);
+    j = "{\"t\":\"rtc\",\"sdp\":\"v=0\\r\\nm=video 9\",\"p\":0}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_NONE);
+    j = "{\"t\":\"ice\",\"c\":\"\",\"p\":1000001}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_NONE);
+    j = "{\"t\":\"ice\",\"c\":\"\",\"p\":\"2\"}";
+    CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_NONE);   /* a string: refused */
     j = "{\"t\":\"vmode\",\"on\":1}";
     CHECK(rs_json_parse(j, strlen(j), &o, sb, sizeof sb) == 0 && rs_browser_input(&o, 1280, 800, &in) == RS_IN_VMODE && in.a == 1);
     j = "{\"t\":\"vmode\",\"on\":2}";

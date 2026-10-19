@@ -74,6 +74,9 @@ static double deadline;
 static int lock_fd = -1;        /* bridge → root parent: "L" = the session was locked */
 static char *turn_pass;         /* read as root before the bridge drops root; the bridge's rtc.c owns it */
 static int ice_lfd = -1;        /* ICE-TCP handoff: root's /run/lordos/rtc/<route>, kept by the bridge */
+static int turn_has_key;        /* the TURN key a peer derived, for the next peer (the password is gone) */
+static uint8_t turn_key_saved[16];
+static char turn_realm_saved[256];
 static char ice_route[9];
 static char ice_path[64];
 
@@ -604,7 +607,7 @@ static int tiles_lost;                 /* a refresh tile didn't fit the data cha
 static double tiles_lost_at;
 static Rtc *rtc;
 static const char *rtc_dead;           /* RTC_WHY_* of a peer that just failed */
-static int resets;
+static int resets;               /* peers made after the first; the current one is number resets + 1 */
 static double reset_at;
 static int W, H;
 static int locked, closing;
@@ -789,13 +792,16 @@ static void from_browser(const char *j, size_t n, int dc) {
         case RS_IN_PING: ws_text("{\"t\":\"pong\",\"ts\":%lld}", in.ts); break;
         case RS_IN_CLIP: sess_send(RP_SETCLIP, in.text, in.tlen); break;
         case RS_IN_RTC:
+            /* an offer for an older peer of this connection (sent before the page learned of the new
+             * one): never the new peer's first offer */
+            if (rtc && in.a && in.a != resets + 1) { sd_log("video: ignored an offer for an older peer"); break; }
             if (rtc) {
                 int first = rtc_codec(rtc) == 0, e = rtc_offer(rtc, in.text, in.tlen, 1);
                 if (e < 0) video_reset(e == RW_ECODEC ? "codec" : first ? "offer" : "restart",
                                        e == RW_ECODEC ? "the browser offers neither H.264 nor VP8" : first ? "the offer was refused" : "the ICE restart was refused");
             }
             break;
-        case RS_IN_ICE: if (rtc) rtc_candidate(rtc, in.text, in.tlen); break;
+        case RS_IN_ICE: if (rtc && (!in.a || in.a == resets + 1)) rtc_candidate(rtc, in.text, in.tlen); break;
         case RS_IN_VMODE: if (in.a) video_mode(); else video_reset("browser", "the browser closed this peer"); break;
         default: break;
         }
@@ -929,10 +935,16 @@ static int rtc_start(void) {
     memcpy(c.turn_fp, rd_conf.turn_fp, 32);
     c.turn_pass = turn_pass;                /* rtc.c owns it now and wipes it */
     turn_pass = NULL;
+    if (!c.turn_pass && turn_has_key) {
+        c.turn_has_key = 1;
+        memcpy(c.turn_key, turn_key_saved, 16);
+        memcpy(c.turn_realm, turn_realm_saved, sizeof c.turn_realm);
+    }
     c.max_kbps = 12000;
     c.ice_lfd = ice_lfd;
     memcpy(c.route, ice_route, sizeof c.route);
     c.tcp_port = rd_conf.port;
+    c.peer_no = resets + 1;
     RtcCallbacks cb = { rtc_signal, rtc_state, rtc_message, rtc_key, rtc_rate, NULL };
     rtc = rtc_new(&c, &cb);
     return rtc ? 0 : -1;
@@ -948,6 +960,7 @@ static void video_reset(const char *code, const char *why) {
     if (vmode) { unsigned char v = 0; sess_send(RP_VMODE, &v, 1); vmode = 0; }
     unsigned char v[8] = { 0 };
     sess_send(RP_VIDEO, v, 8);
+    if (!rtc_turn_key(rtc, turn_key_saved, turn_realm_saved)) turn_has_key = 1;
     rtc_free(rtc);
     rtc = NULL;
     tiles_lost = 0;
@@ -959,7 +972,7 @@ static void video_reset(const char *code, const char *why) {
     char ice[600];
     if (rtc_start()) { ws_text("{\"t\":\"rtc\",\"fail\":\"%s\",\"why2\":\"server\"}", code); return; }
     ice_list(ice, sizeof ice);
-    ws_text("{\"t\":\"rtc\",\"fail\":\"%s\",\"ready\":1,\"ice\":%s}", code, ice);
+    ws_text("{\"t\":\"rtc\",\"fail\":\"%s\",\"ready\":1,\"p\":%d,\"ice\":%s}", code, resets + 1, ice);
 }
 
 static void bridge(const struct passwd *pw) {
@@ -971,7 +984,7 @@ static void bridge(const struct passwd *pw) {
     if (rtc_start() == 0) {
         char ice[600];
         ice_list(ice, sizeof ice);
-        ws_text("{\"t\":\"hello\",\"user\":\"%s\",\"rtc\":1,\"ice\":%s}", pw->pw_name, ice);
+        ws_text("{\"t\":\"hello\",\"user\":\"%s\",\"rtc\":1,\"p\":1,\"ice\":%s}", pw->pw_name, ice);
     } else ws_text("{\"t\":\"hello\",\"user\":\"%s\",\"rtc\":0}", pw->pw_name);
     rs_ws_init(&wsr, RS_WS_MAX_MSG);
     unsigned char *sin = NULL;
@@ -1049,7 +1062,7 @@ static void bridge(const struct passwd *pw) {
         } else if (reset_at && rd_now() >= reset_at && !closing) {     /* a reset that had to wait: the new peer */
             reset_at = rd_now();
             char ice[600];
-            if (rtc_start() == 0) { ice_list(ice, sizeof ice); ws_text("{\"t\":\"rtc\",\"ready\":1,\"ice\":%s}", ice); }
+            if (rtc_start() == 0) { ice_list(ice, sizeof ice); ws_text("{\"t\":\"rtc\",\"ready\":1,\"p\":%d,\"ice\":%s}", resets + 1, ice); }
             else { ws_text("{\"t\":\"rtc\",\"fail\":\"server\"}"); reset_at = 0; }
         }
         if (locked) { ws_flush(); return; }

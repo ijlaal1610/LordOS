@@ -879,7 +879,11 @@ static void turn_send(Rtc *r, uint16_t type, int auth, const RwAddr *peers, int 
     t->sent_at = now_ms();
 }
 
+/* The TURN password (first peer) or the key a previous peer derived from it: gone once used, or when
+ * there will be no relay. */
 static void wipe_pass(Rtc *r) {
+    explicit_bzero(r->cfg.turn_key, sizeof r->cfg.turn_key);
+    r->cfg.turn_has_key = 0;
     if (!r->cfg.turn_pass) return;
     explicit_bzero(r->cfg.turn_pass, strlen(r->cfg.turn_pass));
     free(r->cfg.turn_pass);
@@ -888,6 +892,12 @@ static void wipe_pass(Rtc *r) {
 
 /* long-term credential key: MD5(user ":" realm ":" password) (RFC 8489 §9.2.2) */
 static int turn_key(Rtc *r) {
+    /* a later peer of the same bridge: the key derived by the first one, for the same realm only */
+    if (!r->cfg.turn_pass && r->cfg.turn_has_key && !strcmp(r->cfg.turn_realm, r->turn.realm)) {
+        memcpy(r->turn.key, r->cfg.turn_key, 16);
+        wipe_pass(r);
+        return 0;
+    }
     if (!r->cfg.turn_pass) return -1;
     char buf[1024];
     int k = snprintf(buf, sizeof buf, "%s:%s:%s", r->cfg.turn_user, r->turn.realm, r->cfg.turn_pass);
@@ -1080,7 +1090,7 @@ static void tcp_input(Rtc *r, int i) {
     for (int rounds = 0; c->fd >= 0 && rounds < 64; rounds++) {
         if (c->inl < sizeof c->in) {
             ssize_t got = recv(c->fd, c->in + c->inl, sizeof c->in - c->inl, MSG_DONTWAIT);
-            if (got == 0) { tcp_close(r, i, "closed by the browser"); return; }
+            if (got == 0) { tcp_close(r, i, "closed by the other end"); return; }
             if (got < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) { tcp_close(r, i, "read failed"); return; }
             if (got > 0) c->inl += (size_t)got;
         }
@@ -1271,7 +1281,7 @@ Rtc *rtc_new(const RtcConfig *cfg, const RtcCallbacks *cb) {
         raw_send(r, &a, o.b, o.n);
         r->nstun_srv++;
     }
-    if (cfg->turn[0] && cfg->turn_user[0] && cfg->turn_pass) {
+    if (cfg->turn[0] && cfg->turn_user[0] && (cfg->turn_pass || cfg->turn_has_key)) {
         Turn *t = &r->turn;
         t->transport = cfg->turn_transport;
         const char *colon = strrchr(cfg->turn, ':');
@@ -1428,8 +1438,8 @@ static void send_answer(Rtc *r) {
     int l = rw_sdp_answer(r->of, &an, sdp, sizeof sdp);
     if (l < 0) { fail(r, RTC_WHY_SERVER, "the answer does not fit"); return; }
     json_escape(sdp, esc, sizeof esc);
-    snprintf(msg, sizeof msg, "{\"t\":\"rtc\",\"sdp\":\"%s\",\"codec\":\"%s\"%s}", esc, r->codec == RW_CODEC_H264 ? "h264" : "vp8",
-             r->restarts ? ",\"restart\":1" : "");
+    snprintf(msg, sizeof msg, "{\"t\":\"rtc\",\"sdp\":\"%s\",\"codec\":\"%s\",\"p\":%d%s}", esc, r->codec == RW_CODEC_H264 ? "h264" : "vp8",
+             r->cfg.peer_no, r->restarts ? ",\"restart\":1" : "");
     if (r->cb.signal) r->cb.signal(r->cb.ud, msg);
 }
 
@@ -1611,6 +1621,13 @@ void rtc_tick(Rtc *r) {
     if (r->offered && r->dtls_up && t - r->last_consent > CONSENT_MS) fail(r, RTC_WHY_LOST, "the browser stopped answering (no ICE checks)");
     if (r->offered && !r->dtls_up && t - r->created > CONNECT_MS)
         fail(r, r->checks ? RTC_WHY_DTLS : RTC_WHY_NOROUTE, r->checks ? "no DTLS after 20 s (ICE checks arrived)" : "no connection after 20 s (no ICE check arrived over UDP or TCP)");
+}
+
+int rtc_turn_key(const Rtc *r, uint8_t key[16], char realm[256]) {
+    if (!r || r->turn.state != 3) return -1;
+    memcpy(key, r->turn.key, 16);
+    memcpy(realm, r->turn.realm, 256);
+    return 0;
 }
 
 const char *rtc_path_kind(const Rtc *r) {

@@ -108,7 +108,8 @@ enum { RS_IN_NONE = 0, RS_IN_PTR, RS_IN_BTN, RS_IN_WHEEL, RS_IN_SCROLL, RS_IN_PI
 #define RS_CLIP_MAX (1u << 20)
 typedef struct {
     int type;
-    int a, b;                   /* PTR x,y · BTN button,down · WHEEL steps · KEY code,down · RESIZE w,h · SCROLL/PINCH phase · VMODE on */
+    int a, b;                   /* PTR x,y · BTN button,down · WHEEL steps · KEY code,down · RESIZE w,h · SCROLL/PINCH phase · VMODE on
+                                 * · RTC/ICE the peer number "p" (0 if absent) */
     int32_t v1, v2;             /* SCROLL dx,dy (1/256 px) · PINCH scale ×65536, rotation ×256 */
     long long ts;               /* PING */
     const char *text;           /* CLIP, RTC (the SDP offer), ICE (a candidate; "" ends) (inside the RsJson buffer) */
