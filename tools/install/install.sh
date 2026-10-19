@@ -635,6 +635,18 @@ remote_note() {
     fi
 }
 
+# remote login (SSH): never changed here (on a server or VPS it may be how you are connected right
+# now); only reported. Settings > Sharing > Remote login installs it if needed and turns it on or off.
+ssh_note() {
+    if [ ! -x /usr/sbin/sshd ]; then
+        ok "remote login (SSH): not installed (Settings > Sharing installs it and turns it on)"
+    elif systemctl is-enabled -q ssh.service 2>/dev/null || systemctl is-enabled -q ssh.socket 2>/dev/null; then
+        ok "remote login (SSH): on, left as it was (Settings > Sharing turns it off)"
+    else
+        ok "remote login (SSH): installed but off, left as it was (Settings > Sharing turns it on)"
+    fi
+}
+
 valid_port() {
     case "$1" in ''|*[!0-9]*) return 1 ;; esac
     [ "${#1}" -ge 4 ] && [ "${#1}" -le 5 ] && [ "$1" -ge 1024 ] && [ "$1" -le 65535 ]
@@ -802,6 +814,7 @@ do_install() {
     setup_systemd
     setup_splash
     setup_remote
+    ssh_note
     network_note
     state_set INSTALLER_VERSION "$INSTALLER_VERSION"
 
