@@ -27,6 +27,9 @@ void grab_note_pointer(float x, float y, int buttons);
 int  grab_begin(int node, int edges, const GrabLimits *lim);
 int  grab_active(void);
 int  grab_cursor(void);                     /* cursor shape during the drag (cursor.h) */
+/* Where the pointer is now and the drag's edges (0 = moving); 1 while a drag is active. Read by the
+ * theme a few times per second for the window snapping preview (lord.wm.pointer, docs/WINDOWS.md). */
+int  grab_state(float *x, float *y, int *edges);
 void grab_motion(float x, float y);         /* once per frame, with the accumulated pointer */
 /* Finished (the button was released): 1 and the node's change relative to the start. */
 int  grab_finish(int *node, int *edges, float *dx, float *dy, float *dw, float *dh);

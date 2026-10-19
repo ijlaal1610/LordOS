@@ -207,9 +207,9 @@ static int box_eq(Box a, Box b) {
  * minimize, a button's press) only re-rasterizes when it crosses a step: in between it is the same
  * raster composited at another scale. Anything that changes inside (a style, a text, a child's box)
  * invalidates it (damage_walk). The GPU path composites the same CPU canvas, so it gets the same
- * result. Subtrees with an app window or a video on the GPU, or a backdrop blur, are painted
- * untransformed; terminals and app windows on the CPU path are rasterized at the display's scale
- * and never cached. */
+ * result. Subtrees with an app window or a video on the GPU are painted untransformed; terminals,
+ * backdrop blurs (blurring only the subtree's own pixels) and app windows on the CPU path are
+ * rasterized at the display's scale and never cached. */
 #define TF_CACHE 16
 #define TF_MAX_PX (2048 * 2048)
 typedef struct {
@@ -248,7 +248,10 @@ static void tf_norm(const Style *s, Style *o, StyleExt *ox) {
  * if something in it changes on its own (terminal, app window: never cached). */
 static void tf_bounds(const Node *n, Affine rel, Box *b, int *ok, int *live) {
     if (n->type == NODE_RAW || n->s.display_none) return;
-    if (n->s.backdrop_blur >= 1) *ok = 0;
+    /* a backdrop blur inside only sees what the subtree painted under it in the raster (a window's
+     * own content, not the desktop): good enough for a scaled preview (the Classic task view, the
+     * Dock's minimize), and much better than painting the subtree untransformed. Never cached. */
+    if (n->s.backdrop_blur >= 1) *live = 1;
     if (n->type == NODE_MEDIA) *ok = 0;
     if (n->type == NODE_SURFACE) { if (gpu_active()) *ok = 0; *live = 1; }
     if (n->type == NODE_TERM) *live = 1;

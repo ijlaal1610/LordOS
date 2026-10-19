@@ -15,10 +15,11 @@ export function Button({ label, onClick, primary, style, small, plain, disabled,
   const [hover, setHover] = useState(false);
   const fg = primary ? '#fff' : destructive ? '#ff453a' : t.text;
   const bg = primary ? t.accent : plain ? (hover && !disabled ? t.hover : 'transparent') : t.control;
+  const border = t.buttonBorder && !plain ? { border: `1px solid ${primary ? t.accent : t.separator}` } : null;
   return (
     <View onClick={disabled ? undefined : onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={[{ height: small ? 22 : 28, paddingHorizontal: small ? 10 : 14, borderRadius: small ? 6 : 7, flexDirection: 'row', gap: 6,
-        justifyContent: 'center', alignItems: 'center', backgroundColor: bg,
+      style={[{ height: small ? 22 : 28, paddingHorizontal: small ? 10 : 14, borderRadius: small ? t.controlRadiusSmall : t.controlRadius, flexDirection: 'row', gap: 6,
+        justifyContent: 'center', alignItems: 'center', backgroundColor: bg, ...border,
         opacity: disabled ? 0.4 : hover && !plain ? 0.85 : 1 }, style]}>
       {icon ? <Text style={{ fontSize: small ? 12 : 14, color: fg }}>{icon}</Text> : null}
       {label != null && label !== '' ? <Text style={{ fontSize: small ? 12 : 13, fontWeight: 500, color: fg, whiteSpace: 'nowrap' }}>{label}</Text> : null}
@@ -48,11 +49,11 @@ export function Segmented({ options, value, onChange, appearance = 'accent', sma
   const neutral = appearance === 'neutral';
   const raised = t.mode === 'dark' ? 'rgba(255,255,255,0.18)' : '#ffffff';
   return (
-    <View style={[{ flexDirection: 'row', backgroundColor: t.control, borderRadius: small ? 6 : 8, padding: 2 }, style]}>
+    <View style={[{ flexDirection: 'row', backgroundColor: t.control, borderRadius: small ? t.controlRadiusSmall : t.controlRadius + 1, padding: 2 }, style]}>
       {options.map(([v, label]) => {
         const on = value === v;
         return (
-          <View key={v} onClick={() => onChange(v)} style={{ paddingHorizontal: small ? 10 : 14, height: small ? 18 : 24, borderRadius: small ? 5 : 6,
+          <View key={v} onClick={() => onChange(v)} style={{ paddingHorizontal: small ? 10 : 14, height: small ? 18 : 24, borderRadius: Math.max(2, (small ? t.controlRadiusSmall : t.controlRadius) - 1),
             justifyContent: 'center', alignItems: 'center', flexGrow: fill ? 1 : 0,
             backgroundColor: on ? (neutral ? raised : t.accent) : 'transparent',
             boxShadow: on && neutral ? '0 1px 2px rgba(0,0,0,0.18)' : 'none' }}>
@@ -69,13 +70,18 @@ export function Segmented({ options, value, onChange, appearance = 'accent', sma
 export function SidebarItem({ label, selected, onClick, icon, detail, indent = 0 }) {
   const t = useTheme();
   const [hover, setHover] = useState(false);
+  // selection 'indicator' (a theme token): a light fill and a short accent bar at the leading edge
+  const ind = t.selection === 'indicator';
+  const filled = selected && !ind;
+  const sel = t.mode === 'dark' ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.06)';
   return (
     <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ height: 28, paddingLeft: 10 + indent * 14, paddingRight: 10, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 8,
-        backgroundColor: selected ? t.accent : hover ? t.hover : 'transparent' }}>
-      {typeof icon === 'string' ? <Text style={{ width: 18, textAlign: 'center', fontSize: 14, color: selected ? '#fff' : t.accent }}>{icon}</Text> : icon}
-      <Text style={{ flex: 1, fontSize: 13, fontWeight: 500, color: selected ? '#fff' : t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</Text>
-      {detail != null ? <Text style={{ fontSize: 11, color: selected ? 'rgba(255,255,255,0.8)' : t.textDim }}>{detail}</Text> : null}
+      style={{ height: 28, paddingLeft: 10 + indent * 14, paddingRight: 10, borderRadius: t.controlRadiusSmall, flexDirection: 'row', alignItems: 'center', gap: 8,
+        backgroundColor: filled ? t.accent : selected ? sel : hover ? t.hover : 'transparent' }}>
+      {selected && ind ? <View style={{ position: 'absolute', insetInlineStart: 0, top: 8, width: 3, height: 12, borderRadius: 2, backgroundColor: t.accent }} /> : null}
+      {typeof icon === 'string' ? <Text style={{ width: 18, textAlign: 'center', fontSize: 14, color: filled ? '#fff' : t.accent }}>{icon}</Text> : icon}
+      <Text style={{ flex: 1, fontSize: 13, fontWeight: selected && ind ? 600 : 500, color: filled ? '#fff' : t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</Text>
+      {detail != null ? <Text style={{ fontSize: 11, color: filled ? 'rgba(255,255,255,0.8)' : t.textDim }}>{detail}</Text> : null}
     </View>
   );
 }
@@ -211,10 +217,12 @@ export function TextInput({ value, onChange, placeholder, onSubmit, onCancel, on
 
   return (
     <View onMouseDown={() => { focusedNow = true; setFocus(token); }}
-      style={[{ height: Math.max(28, size + 15), paddingHorizontal: 10, borderRadius: 7, flexDirection: 'row', alignItems: 'center',
+      style={[{ height: Math.max(28, size + 15), paddingHorizontal: 10, borderRadius: t.controlRadius, flexDirection: 'row', alignItems: 'center',
         // the cursor goes to the logical end: on the left if the text is Arabic or Hebrew
         direction: secure ? 'ltr' : value ? textDirection(value) : 'inherit',
-        backgroundColor: t.inputBg, border: `1px solid ${isFocused ? t.accent : t.separator}`, overflow: 'hidden' }, style]}>
+        backgroundColor: t.inputBg, border: `1px solid ${isFocused && t.inputFocus !== 'underline' ? t.accent : t.separator}`, overflow: 'hidden' }, style]}>
+      {/* inputFocus 'underline' (a theme token): an accent line along the bottom edge */}
+      {isFocused && t.inputFocus === 'underline' ? <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, backgroundColor: t.accent, pointerEvents: 'none' }} /> : null}
       {value ? <Text style={{ fontSize: size, color: allSel && isFocused ? '#fff' : t.text, whiteSpace: 'nowrap',
         backgroundColor: allSel && isFocused ? t.accent : 'transparent' }}>{secure ? '•'.repeat([...value].length) : value}</Text> : null}
       {preedit && !secure ? <Preedit st={imeSt} size={size} color={t.text} accent={t.accent} /> : null}
@@ -234,7 +242,7 @@ export function Stepper({ value, onChange, min = -Infinity, max = Infinity, step
     </View>
   );
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: t.control, borderRadius: 7, height: 26 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: t.control, borderRadius: t.controlRadius, height: 26 }}>
       <Btn label="−" d={-step} />
       <Text style={{ width, textAlign: 'center', fontSize: 12, fontWeight: 600, color: t.text }}>{format(value)}</Text>
       <Btn label="+" d={step} />

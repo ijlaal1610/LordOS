@@ -8,6 +8,9 @@
 import { screen, onScreenChange, addListener, mainDisplay, displayAt, displayFor } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
 import { appName } from './i18n.js';
+import { SNAP_ZONES, snapRect, zoneAt, snapNext } from './snap.js';
+
+export { SNAP_ZONES, snapRect };
 
 let registry = new Map();
 let builtins = [];
@@ -68,12 +71,15 @@ export const appMenus = createStore({});
 
 // chrome: what the theme's frame adds around the content (borders and title bar);
 // used to open Linux app windows at the size they requested.
-export function configureWindows({ apps, workArea, chrome: c }) {
+// snap: true turns on window snapping (dragging a window to an edge of the screen, see "Snapping"
+// below); the Classic theme does.
+export function configureWindows({ apps, workArea, chrome: c, snap }) {
   themeApps = apps;
   rebuild();
   if (typeof workArea === 'function') areaFn = workArea;
   else if (workArea) { area = workArea; areaFn = null; }
   if (c) chrome = c;
+  if (snap != null) snapOn = !!snap;
 }
 
 // SDK internal apps (they don't appear in the app launcher): 'linux' = Wayland windows.
@@ -145,6 +151,57 @@ function frameRef(id, inset = 0) {
   }
   return fn;
 }
+// ---- Snapping (docs/WINDOWS.md, "Snapping") ----
+// A window dragged to the left or right edge of a display takes that half of its work area; near the
+// top or bottom of that edge, a quarter; to the top edge, the whole area (maximized). The theme turns
+// it on (configureWindows({ snap: true })), draws the preview from `snapPreview` and may offer the
+// layouts with wm.snap(id, zone). While a window is moved in C, the SDK only reads the pointer a few
+// times per second (lord.wm.pointer), never per frame.
+let snapOn = false;
+// { id, zone, rect: { x, y, w, h } } while a dragged window would snap, else null
+export const snapPreview = createStore(null);
+export const snapEnabled = () => snapOn;
+// The zone under the pointer at (x, y), or null (the rules are in snap.js, zoneAt).
+export function snapZoneAt(x, y) {
+  const d = displayAt(x, y);
+  return d ? zoneAt(x, y, workAreaOf(d)) : null;
+}
+// Snaps window `id` to `zone` in the work area of its display (or of `display`).
+function snapTo(id, zone, display) {
+  windows.set((ws) => ws.map((w) => {
+    if (w.id !== id) return w;
+    const restore = w.snapped ? w.restore : { x: w.x, y: w.y, w: w.w, h: w.h };
+    if (zone === 'max') return { ...w, maximized: true, minimized: false, snapped: null, restore: null, ...(w.snapped ? restore : null) };
+    const a = workAreaOf(display || displayFor(w));
+    const [minW, minH] = registry.get(w.app)?.minSize || [160, 100];
+    const r = snapRect(zone, a);
+    return { ...w, ...r, w: Math.max(r.w, Math.min(minW, a.w)), h: Math.max(r.h, Math.min(minH, a.h)), maximized: false, minimized: false, snapped: zone, restore };
+  }));
+}
+function unsnap(id) {
+  windows.set((ws) => ws.map((w) => {
+    if (w.id !== id) return w;
+    if (w.maximized) return { ...w, maximized: false };
+    if (!w.snapped) return w;
+    return { ...w, ...(w.restore || {}), snapped: null, restore: null };
+  }));
+}
+let previewTimer = 0;
+function watchSnap(id) {
+  clearInterval(previewTimer);
+  previewTimer = 0;
+  if (!snapOn || typeof lord === 'undefined' || !lord.wm || typeof lord.wm.pointer !== 'function') return;
+  previewTimer = setInterval(() => {
+    const p = lord.wm.pointer();
+    const zone = p.active && p.edges === 0 ? snapZoneAt(p.x, p.y) : null;
+    if (!p.active) { clearInterval(previewTimer); previewTimer = 0; }
+    const cur = snapPreview.get();
+    if ((cur ? cur.zone : null) === zone) return;
+    if (!zone) { snapPreview.set(null); return; }
+    snapPreview.set({ id, zone, rect: snapRect(zone, workAreaOf(displayAt(p.x, p.y))) });
+  }, 90);
+}
+
 function beginGrab(id, edges) {
   const w = windows.get().find((x) => x.id === id);
   const f = frameNodes.get(id);
@@ -152,15 +209,38 @@ function beginGrab(id, edges) {
   const [minW, minH] = registry.get(w.app)?.minSize || [160, 100];
   const areas = screen.displays.map((d) => workAreaOf(d)).map((a, i) => ({ x: screen.displays[i].x, w: screen.displays[i].w, y: a.y }));
   if (!lord.wm.grab(f.node, edges, { inset: f.inset, minW, minH, minTop: areaOfWindow(w).y, areas })) return false;
-  grab = { id, node: f.node, f: { x: w.x, y: w.y, w: w.w, h: w.h } };
+  grab = { id, node: f.node, edges, f: { x: w.x, y: w.y, w: w.w, h: w.h } };
+  if (!edges) watchSnap(id);
   return true;
 }
 globalThis.__lordWm = (type, d) => {
   if (type !== 'end' || !grab || grab.node !== d.node) return;
-  const { id, f } = grab;
+  const { id, f, edges } = grab;
   grab = null;
+  clearInterval(previewTimer);
+  previewTimer = 0;
+  if (snapPreview.get()) snapPreview.set(null);
   if (!d.dx && !d.dy && !d.dw && !d.dh) return;      // it was a click on the bar
-  patch(id, { x: Math.round(f.x + d.dx), y: Math.round(f.y + d.dy), w: Math.round(f.w + d.dw), h: Math.round(f.h + d.dh), maximized: false });
+  const nx = Math.round(f.x + d.dx), ny = Math.round(f.y + d.dy);
+  if (snapOn && !edges && typeof lord !== 'undefined' && lord.wm && typeof lord.wm.pointer === 'function') {
+    const p = lord.wm.pointer();
+    const zone = snapZoneAt(p.x, p.y);
+    const w = windows.get().find((x) => x.id === id);
+    if (zone && w) {
+      if (!w.snapped) patch(id, { x: nx, y: ny, w: f.w, h: f.h });   // the size to go back to: from before the first snap
+      snapTo(id, zone, displayAt(p.x, p.y));
+      return;
+    }
+    if (w && w.snapped && w.restore) {
+      // dragged out of a snapped place: back to its size, under the pointer where it was grabbed
+      const rel = f.w ? Math.min(1, Math.max(0, (p.x - nx) / f.w)) : 0.5;
+      const r = w.restore;
+      patch(id, { x: Math.round(p.x - rel * r.w), y: ny, w: r.w, h: r.h, maximized: false, snapped: null, restore: null });
+      return;
+    }
+  }
+  patch(id, { x: nx, y: ny, w: Math.round(f.w + d.dw), h: Math.round(f.h + d.dh), maximized: false,
+    ...(edges ? { snapped: null, restore: null } : null) });
 };
 
 // when each window was opened (lord.now()), for the developer timing log (settings "debugTiming")
@@ -201,10 +281,24 @@ export const wm = {
   },
   focus: (id) => windows.set((ws) => (ws[ws.length - 1]?.id === id && !ws[ws.length - 1].minimized ? ws : raise(ws, id))),
   minimize: (id) => patch(id, { minimized: true }),
-  toggleMaximize: (id) => windows.set((ws) => ws.map((w) => (w.id === id ? { ...w, maximized: !w.maximized } : w))),
-  move: (id, x, y) => patch(id, { x: Math.round(x), y: Math.round(Math.max(workAreaOf(displayAt(x, y)).y, y)), maximized: false }),
+  toggleMaximize: (id) => windows.set((ws) => ws.map((w) => (w.id !== id ? w : w.snapped && w.restore
+    ? { ...w, ...w.restore, snapped: null, restore: null, maximized: true }
+    : { ...w, maximized: !w.maximized }))),
+  // Snapping (see "Snapping" above): zone is one of SNAP_ZONES; 'restore' goes back to the size
+  // and place from before the first snap (or un-maximizes).
+  snap: (id, zone) => { if (zone === 'restore') unsnap(id); else if (SNAP_ZONES.includes(zone)) snapTo(id, zone); },
+  // Super+arrow (dir: 'left' | 'right' | 'up' | 'down'): snap.js snapNext.
+  snapKey(id, dir) {
+    const w = windows.get().find((x) => x.id === id);
+    if (!w || w.fullscreen || w.pip) return;
+    const to = snapNext(w.maximized ? 'max' : w.snapped, dir);
+    if (!to) return;
+    if (to === 'minimize') wm.minimize(id);
+    else wm.snap(id, to);
+  },
+  move: (id, x, y) => patch(id, { x: Math.round(x), y: Math.round(Math.max(workAreaOf(displayAt(x, y)).y, y)), maximized: false, snapped: null, restore: null }),
   resize: (id, w, h) => patch(id, { w: Math.round(w), h: Math.round(h) }),
-  setFrame: (id, f) => patch(id, { ...f, maximized: false }),
+  setFrame: (id, f) => patch(id, { ...f, maximized: false, snapped: null, restore: null }),
   setTitle: (id, title) => {
     const w = windows.get().find((x) => x.id === id);
     if (w && w.title !== title) patch(id, { title });

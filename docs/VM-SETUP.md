@@ -1270,3 +1270,28 @@ See `WAYLAND.md` ("X11 apps (Xwayland)") and `PRIVACY.md` ("X11 apps"). Installe
 - The installed LordOS was backed up to `~/xwayland-backup-20261019` and restored after the tests;
   `firewall.json` was restored too.
 
+## Step 35 — The Classic theme as a second full appearance (VM 119 `lordos-spot`, October 19)
+
+See `DESIGN.md` ("Classic") and `WINDOWS.md` ("Snapping"). On VM 119 (172.17.0.54), tree in
+`~/LordOS-classic`, built there (`make -C server`, `make -C server test`) and installed into
+`/usr/lib/lordos` (`lord-server`, `lord-media`, `lord-vault`, `lord-maild`, the theme bundles, the
+app host, the system apps, `assets/{fonts,locales,shell,icons,mascot,monitor,help}` and the wallpaper
+JPEGs under `assets/wallpapers`, which this older install didn't have) by `~/deploy-classic-119.sh`.
+The installed tree was saved first in `/var/backups/lordos-classic-bak` and put back at the end.
+
+- **Nothing installed with apt.** No Proxmox or network setting was touched (`eth0` keeps 172.17.0.54).
+- **Session:** `/etc/lordos/session.conf` with `AUTOLOGIN=lord` (it didn't exist; removed at the
+  end). A fresh session needs the old one's `lord-server` ended first, then `/run/lordos/autologin-done`
+  removed and `systemctl restart lordos` (restarting the service alone keeps the open session).
+- **Screenshots and measurements:** a scratch-only harness (never in the repo) was built in front of
+  both themes' bundles: it read `~/.cache/lordos-shot.json` and opened one app at a centered frame,
+  switched theme, mode or language. Screenshots with `screendump` from the Proxmox host, the pointer
+  with `lord-qmp-input.py 119 1280 800`, keys with `qm monitor 119` `sendkey`, holding
+  `flock /tmp/sistema-119-screen.lock`. Window drags for the frame times with a QMP script in the
+  host's `/tmp` (deleted afterwards); lord-server's own `drag:` lines in `~/.cache/lordos/session.log`.
+- **Test notifications** with `notify-send` (they live in the session's memory only).
+- **Undone at the end:** `/usr/lib/lordos` put back from the backup (the files the deploy added
+  removed, the rest copied back; `diff -r` against the backup empty, then the backup deleted),
+  `~/.config/lordos/settings.json` restored from its copy, `~/.cache/lordos-shot*.json`,
+  `~/shot-harness`, `~/deploy-classic-119.sh` and `~/LordOS-classic` deleted. The VM ends at the
+  login screen.

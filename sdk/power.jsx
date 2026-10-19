@@ -63,7 +63,7 @@ function Button({ th, label, onClick, primary, disabled }) {
   const bg = primary ? '#e5483f' : th.control;
   return h(View, {
     onClick: disabled ? undefined : onClick, onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false),
-    style: { height: controlSize.regular, paddingHorizontal: 14, borderRadius: controlSize.radius, justifyContent: 'center', alignItems: 'center',
+    style: { height: controlSize.regular, paddingHorizontal: 14, borderRadius: th.controlRadius ?? controlSize.radius, justifyContent: 'center', alignItems: 'center',
       backgroundColor: bg, opacity: disabled ? 0.45 : hover ? 0.85 : 1 },
   }, h(Text, { style: { fontSize: typeScale.body, fontWeight: 500, color: primary ? '#fff' : th.text, whiteSpace: 'nowrap' } }, label));
 }
@@ -126,7 +126,7 @@ export function PowerDialog() {
     style: { position: 'absolute', left: a.x, top: a.y, width: a.w, height: a.h, backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'center', justifyContent: 'center' },
   }, h(View, {
     onClick: (e) => e.stopPropagation(),
-    style: { width: 400, padding: spacing.xl, gap: spacing.s, borderRadius: 12, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`,
+    style: { width: 400, padding: spacing.xl, gap: spacing.s, borderRadius: (th.groupRadius ?? 10) + 2, backgroundColor: th.windowBg, border: `1px solid ${th.separator}`,
       boxShadow: '0 14px 36px rgba(0,0,0,0.45)' },
   },
   h(Text, { style: { fontSize: typeScale.headline, fontWeight: 600, color: th.text, textAlign: 'start' } },

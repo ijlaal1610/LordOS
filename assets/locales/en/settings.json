@@ -269,5 +269,10 @@
   "wallpaperCategory.lumo": "Lumo",
   "wallpaperCategory.cosmos": "Cosmos",
   "wallpaperCategory.gradients": "Gradients",
-  "wallpaperCategory.other": "Other"
+  "wallpaperCategory.other": "Other",
+  "style.title": "Desktop style",
+  "style.hint": "Both styles have the same apps. The change is applied right away, without logging out; open windows come back.",
+  "dock.taskbarAlign": "Taskbar alignment",
+  "dock.alignCenter": "Center",
+  "dock.alignStart": "Start"
 }

@@ -5,7 +5,7 @@
 import {
   View, Text, Image, useTheme, useSettings, themes, session, keyboard, admin, languages, setLanguage, useLocale,
   reloadCatalogs, tOptional, statusText, fs, useStore, SidebarItem, Toggle, Button, TextInput, ScrollView, SearchField, Hairline, useSystemInfo, useAppWindow, useTrackpads,
-  spacing, typeScale, registerDockActions, hasTouchpad, findWallpaper, wallpaperThumb, WALLPAPER_CATEGORIES,
+  spacing, typeScale, registerDockActions, hasTouchpad, findWallpaper, wallpaperThumb, WALLPAPER_CATEGORIES, wm,
 } from '@lordos/sdk';
 import { useEffect, useState } from 'react';
 import { SoundSettings } from './Sound.jsx';
@@ -88,12 +88,76 @@ function ModeThumb({ mode, accent }) {
   );
 }
 
+// A small picture of a desktop style: a menu bar and a Dock ('default') or a centered taskbar
+// ('classic'). Drawn with views: our own sketch, no screenshots.
+function StyleThumb({ id, accent, dark }) {
+  const glass = dark ? 'rgba(30,30,36,0.85)' : 'rgba(255,255,255,0.82)';
+  const win = dark ? '#2c2c30' : '#ffffff';
+  const classic = id === 'classic';
+  return (
+    <View style={{ width: 132, height: 82, borderRadius: 7, overflow: 'hidden', direction: 'ltr',
+      background: dark ? 'linear-gradient(160deg, #2b2d4a, #121218)' : 'linear-gradient(160deg, #cfe0ff, #eef1f7)' }}>
+      {classic ? null : <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 6, backgroundColor: glass }} />}
+      <View style={{ position: 'absolute', left: 22, top: classic ? 10 : 14, width: 86, height: 50, borderRadius: classic ? 3 : 5, backgroundColor: win,
+        boxShadow: '0 1px 4px rgba(0,0,0,0.3)' }}>
+        <View style={{ flexDirection: 'row', gap: 3, padding: 4, justifyContent: classic ? 'flex-end' : 'flex-start' }}>
+          {classic ? [0, 1, 2].map((i) => <View key={i} style={{ width: 5, height: 3, borderRadius: 1, backgroundColor: dark ? '#6a6a72' : '#b8b8c0' }} />)
+            : ['#ff5f57', '#febc2e', '#28c840'].map((c) => <View key={c} style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: c }} />)}
+        </View>
+        <View style={{ marginLeft: 6, height: 4, borderRadius: 2, backgroundColor: accent, width: 30 }} />
+      </View>
+      {classic ? (
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 11, backgroundColor: glass, flexDirection: 'row',
+          alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+          {[accent, '#8e8e93', '#8e8e93', '#8e8e93', '#8e8e93'].map((c, i) => <View key={i} style={{ width: 6, height: 6, borderRadius: 1.5, backgroundColor: c }} />)}
+        </View>
+      ) : (
+        <View style={{ position: 'absolute', left: 36, right: 36, bottom: 3, height: 9, borderRadius: 3, backgroundColor: glass, flexDirection: 'row',
+          alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+          {[0, 1, 2, 3].map((i) => <View key={i} style={{ width: 5, height: 5, borderRadius: 1.5, backgroundColor: i ? '#8e8e93' : accent }} />)}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Desktop style: the two full appearances (Lord Default and Classic), switched live. The open app
+// windows come back in the new one (sdk/index.js themes.use), Settings on this page.
+function StylePicker() {
+  const t = useTheme();
+  const { t: tr } = useLocale();
+  const list = themes.list().filter((th) => th.id === 'default' || th.id === 'classic');
+  if (list.length < 2) return null;
+  const pick = (id) => {
+    wm.open('settings', { args: { section: 'appearance' } });
+    themes.use(id);
+  };
+  return (
+    <Section title={tr('settings.style.title')} footer={tr('settings.style.hint')}>
+      <View style={{ flexDirection: 'row', gap: spacing.xxl, paddingVertical: spacing.m, justifyContent: 'center' }}>
+        {['default', 'classic'].map((id) => {
+          const th = list.find((x) => x.id === id);
+          return (
+            <View key={id} onClick={() => { if (!th.current) pick(id); }} style={{ alignItems: 'center', gap: 6 }}>
+              <View style={{ padding: 2, borderRadius: 10, border: `2px solid ${th.current ? t.accent : 'transparent'}` }}>
+                <StyleThumb id={id} accent={t.accent} dark={t.mode === 'dark'} />
+              </View>
+              <Text style={{ fontSize: typeScale.callout, fontWeight: th.current ? 600 : 400, color: t.text }}>{th.name}</Text>
+            </View>
+          );
+        })}
+      </View>
+    </Section>
+  );
+}
+
 function Appearance() {
   const t = useTheme();
   const { t: tr } = useLocale();
   const [s, set] = useSettings();
   return (
     <Stack>
+      <StylePicker />
       <Section title={tr('settings.mode')}>
         <View style={{ flexDirection: 'row', gap: spacing.xxl, paddingVertical: spacing.m, justifyContent: 'center' }}>
           {[['dark', tr('settings.dark')], ['light', tr('settings.light')]].map(([id, label]) => (

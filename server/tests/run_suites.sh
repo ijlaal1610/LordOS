@@ -153,6 +153,9 @@ EOF
     # the Dock's pinned-list model (sdk/dockmodel.js)
     if have node; then run "dock-model-test (sdk/dockmodel.js)" node tests/dock_model_test.mjs
     else skip "dock-model-test" "node"; fi
+    # window snapping geometry (sdk/snap.js): zones without gaps or overlaps, drop zones, Super+arrows
+    if have node; then run "snap-test (sdk/snap.js)" node tests/snap_test.mjs
+    else skip "snap-test" "node"; fi
     # smartctl's JSON → the Disks/Monitor SMART model (sdk/smartparse.js), with real smartctl output
     if have node; then run "smart-parse-test (sdk/smartparse.js)" node tests/smart_parse_test.mjs
     else skip "smart-parse-test" "node"; fi

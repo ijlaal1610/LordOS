@@ -11,8 +11,10 @@ keywords: aparência, modo escuro, claro, cor, destaque, tema, fundo, transparê
 - **Transparências:** as barras e os menus com desfoque. Desligá-las poupa trabalho em computadores
   lentos.
 - **Fundo de tela:** [Ajustes → Fundo de tela](settings:wallpaper).
-- **Tema:** [Ajustes → Temas](settings:themes) muda a área de trabalho inteira na hora, sem fechar
-  os apps: **Lord Default** (barra de menus no alto e Dock) ou **Clássico** (barra de tarefas
-  embaixo e menu iniciar).
+- **Estilo da área de trabalho:** [Ajustes → Aparência](settings:appearance) muda a área de
+  trabalho inteira na hora, sem fechar os apps: **Lord Default** (barra de menus no alto e Dock) ou
+  **Clássico** (barra de tarefas centralizada com menu iniciar, configurações rápidas e
+  notificações). As janelas abertas voltam no estilo novo. [Ajustes → Temas](settings:themes) lista
+  todos os temas instalados.
 
 Todos os apps usam as cores do tema, inclusive os instalados pela Loja.

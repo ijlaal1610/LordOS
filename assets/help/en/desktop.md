@@ -35,4 +35,12 @@ Change the wallpaper in [Settings → Wallpaper](settings:wallpaper). Notes from
 ## Themes
 
 LordOS ships two themes: **Lord Default** (menu bar and Dock) and **Classic** (taskbar and start
-menu). Switch them live in [Settings → Themes](settings:themes).
+menu). Switch them live in [Settings → Appearance](settings:appearance).
+
+In **Classic**: the start button (or Super) opens the start menu, where typing searches apps,
+settings and files; right click an app there to pin it to Start or to the taskbar. The network and
+volume icons open quick settings, the clock opens the notifications and a calendar. Drag a window to
+the left or right edge to fill half the screen, to a corner for a quarter, or to the top to maximize
+it; hover over the maximize button for more layouts. Super+arrows do the same from the keyboard,
+Super+Tab shows every window (task view), Super+A opens quick settings, Super+N the notifications
+and Alt+F4 closes the window in front.

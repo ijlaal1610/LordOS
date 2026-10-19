@@ -555,7 +555,7 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   - [x] tests with real X11 apps (XTerm, xeyes, a Swing app, Neverball), CPU and GPU paths.
   - [ ] later: a separate or "untrusted" X display for restricted apps; X11 ↔ Wayland drag and drop;
     sharp X11 apps on HiDPI displays.
-- [ ] **Turn the "Classic" theme into a second full appearance** (Settings → Themes), for people coming from the
+- [x] **Turn the "Classic" theme into a second full appearance** (0.8.3; Settings → Appearance → Desktop style, see `DESIGN.md`, "Classic"), for people coming from the
   most common desktop layout: a centered taskbar with a start menu, pinned and running apps, a
   system tray with quick settings and a notification panel, snap layouts for windows, rounded
   corners and translucent materials. Today `themes/classic` is only a template (taskbar and start
@@ -572,6 +572,12 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
     fonts, sounds or product names from any company, and no third-party "clone" projects' assets
     (they often bundle copyrighted material). See `docs/LORDOS-BRAND.md` and the no-brand rule;
   - before/after screenshots of every app in both themes, like the polish pass.
+  - done in 0.8.3: shape tokens for the shared controls, the frame, taskbar, start menu with
+    search, tray, quick settings, notification panel, snapping (halves, thirds, quarters, by drag,
+    layouts and Super+arrows), task view and the live switch; screenshots of every app in both
+    themes, light and dark, in `docs/classic/`. Left for later: snap groups (a pair of snapped
+    windows that move together), window thumbnails over the taskbar buttons, virtual desktops in
+    the task view, and a typography scale token (apps still set their own font sizes).
 - [ ] **Mail: sign in with Google and Microsoft (OAuth2)**, so nobody needs an app password. The
   pieces are prepared and disabled today (`sdk/mail.js` `OAUTH_PROVIDERS`, `lord-maild` answers
   `oauth-disabled`; see `MAIL.md`, "OAuth"):

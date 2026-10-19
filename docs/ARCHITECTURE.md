@@ -34,7 +34,7 @@ like React Native but on top of our display server.
 | `server/src/ui/js_sys.c` | **M3 done** | System APIs: fs (in `$HOME`), /proc, settings, themes, session |
 | `sdk/` | **M3 done** | `@lordos/sdk`: windows, settings, tokens, controls, system hooks |
 | `apps/` | **M3 done** | Apps as packages (`manifest.json` + `index.jsx`), independent of the theme |
-| `themes/classic/` | **M3 done** | Second theme and template for creating themes |
+| `themes/classic/` | **0.8.3 done** | Second full appearance (taskbar, start menu, snapping, task view) and a base for new themes |
 | `server/src/term/` | **M4 done** | Our own terminal: xterm emulator, PTY, drawing, session holders (see `TERMINAL.md`) |
 | `server/src/ui/otf.c`, `fonts.c` | **M4 done** | Our own OpenType (GSUB substitutions, CBDT emoji) and catalog of installed fonts: no HarfBuzz or fontconfig |
 | `apps/terminal/` | **M4 done** | Native Terminal app (tabs, panes, profiles…) |

@@ -4,6 +4,8 @@
  *       edges 0 = move; 1 top, 2 bottom, 4 left, 8 right (like xdg_toplevel.resize).
  *       Only with a button held down; lord-server tracks it until it is released.
  *   lord.wm.cancel()
+ *   lord.wm.pointer() → { x, y, active, edges }: the pointer now and the drag in progress (no
+ *       arguments, read only). The theme polls it while a window moves, for the snapping preview.
  * On release: __lordWm('end', { node, edges, dx, dy, dw, dh }) with the node's change.
  *
  *   lord.portal.set({ dark, accent: '#rrggbb', accentName, buttons })
@@ -64,6 +66,18 @@ static JSValue f_cancel(JSContext *c, JSValueConst t, int argc, JSValueConst *ar
     return JS_UNDEFINED;
 }
 
+static JSValue f_pointer(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    float x = 0, y = 0;
+    int edges = 0, active = grab_state(&x, &y, &edges);
+    JSValue o = JS_NewObject(c);
+    JS_SetPropertyStr(c, o, "x", JS_NewFloat64(c, x));
+    JS_SetPropertyStr(c, o, "y", JS_NewFloat64(c, y));
+    JS_SetPropertyStr(c, o, "active", JS_NewBool(c, active));
+    JS_SetPropertyStr(c, o, "edges", JS_NewInt32(c, edges));
+    return o;
+}
+
 /* Short text without odd characters (accent name, GTK button order). */
 static int get_word(JSContext *c, JSValueConst o, const char *k, char *out, size_t n, const char *allowed) {
     JSValue v = JS_GetPropertyStr(c, o, k);
@@ -102,6 +116,7 @@ static const JSCFunctionListEntry portal_funcs[] = {
 static const JSCFunctionListEntry wm_funcs[] = {
     JS_CFUNC_DEF("grab", 3, f_grab),
     JS_CFUNC_DEF("cancel", 0, f_cancel),
+    JS_CFUNC_DEF("pointer", 0, f_pointer),
 };
 
 void js_wm_register(JSContext *c, JSValue lord) {

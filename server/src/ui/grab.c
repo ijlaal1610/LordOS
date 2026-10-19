@@ -26,6 +26,13 @@ void grab_note_pointer(float x, float y, int buttons) {
 
 int grab_active(void) { return g.active; }
 
+int grab_state(float *x, float *y, int *edges) {
+    *x = ptr_x;
+    *y = ptr_y;
+    *edges = g.active ? g.edges : 0;
+    return g.active;
+}
+
 int grab_cursor(void) { return g.edges ? cursor_for_edges(g.edges) : CUR_MOVE; }
 
 static float dim_or(Dim d, float fallback) { return d.unit == UNIT_PX ? d.v : fallback; }

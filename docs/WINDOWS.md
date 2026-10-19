@@ -221,6 +221,34 @@ frame (paint 7.30–7.41, layout 0.02, 104.7–105.8 FPS), after 7.98–8.37 ms 
 0.01–0.02, 101.5–105.4 FPS). The difference is within the run-to-run spread; most of that frame is
 still the Dock's blur.
 
+## Snapping (0.8.3)
+
+A theme turns it on with `configureWindows({ snap: true })` (Classic does; Lord Default doesn't).
+The geometry is in `sdk/snap.js` (no runtime imports, tested by `server/tests/snap_test.mjs`), the
+window side in `sdk/windows.js`.
+
+- **Dropping at an edge:** within 8 px of the left or right side of a display's work area (or past
+  it, over a taskbar on that side) a window takes that half; in the top or bottom fifth of the side,
+  a quarter; at the top edge it is maximized. Halves, thirds and quarters round to whole pixels and
+  share their middle line, so two snapped windows never overlap or leave a gap.
+- **The preview** while dragging: the window still moves in C (no JS per frame). Only while a move
+  is going on, the SDK reads `lord.wm.pointer()` (`ui/js_wm.c`: the pointer and the drag's edges,
+  no arguments, read only) every 90 ms and sets `snapPreview` when the zone changes; the theme draws
+  it under the moving window. Crossing into a zone costs one rebuild of what is below the window.
+- **On release** (`__lordWm('end')`) the SDK reads the pointer once more and snaps; the size from
+  before the first snap is kept in `w.restore`. Dragging a snapped window away gives it that size
+  back under the pointer, where it was grabbed. Resizing a snapped window keeps its new size.
+- **API:** `wm.snap(id, zone)` (`left`, `right`, `top-left`, `top-right`, `bottom-left`,
+  `bottom-right`, `max`, `left-third`, `center-third`, `right-third`, `left-two-thirds`,
+  `right-two-thirds`, or `restore`), `wm.snapKey(id, 'left' | 'right' | 'up' | 'down')` for
+  Super+arrows (`snapNext` in `snap.js`), and `w.snapped` (the zone) for a theme that squares the
+  corners of a snapped window.
+- **Measured** (VM 119, 1280×800, CPU path, a 960 × 600 Files window dragged in circles for 6 s
+  three times through QMP, about 52 moves per second): Classic 7.5–7.7 ms of work per frame (JS
+  0.35, paint 6.4–6.7) and Lord Default 13.1–13.4 ms (paint 12.1–12.3, its Dock's blur), both at
+  the rate of the input. A drag that keeps crossing the top edge (the preview appearing and going)
+  costs 9 ms per frame (JS 1.6). Without the preview polling, 6.3–6.6 ms.
+
 ## Pending
 
 - A real GPU layer (the window as its own texture that is only shifted), so nothing is painted on the

@@ -2,7 +2,7 @@
 // and recent apps; in the Classic theme, the taskbar position. Saved in
 // settings.json (sdk/dock.js: DOCK_DEFAULTS) and the theme applies it live, including the work area.
 // «Reset Dock to defaults» puts the theme's apps back (dock.reset), after a confirmation in the page.
-import { View, Text, Button, useTheme, useLocale, useSettings, Toggle, Slider, dockPrefs, dock, themes, spacing, typeScale } from '@lordos/sdk';
+import { View, Text, Button, useTheme, useLocale, useSettings, Toggle, Slider, Segmented, dockPrefs, dock, themes, spacing, typeScale } from '@lordos/sdk';
 import { useState } from 'react';
 import { Stack, Section, SettingRow, Actions } from './ui.jsx';
 
@@ -89,6 +89,14 @@ export function DockSettings() {
         <Section title={tr('settings.dock.taskbar')} footer={`${tr('settings.dock.taskbarHint')} ${tr('settings.dock.sidesHint')}`}>
           <SidePicker value={p.taskbarPosition} sides={['bottom', 'top', 'left', 'right']} onChange={(v) => set({ taskbarPosition: v })} />
         </Section>
+        {p.taskbarPosition === 'bottom' || p.taskbarPosition === 'top' ? (
+          <Section>
+            <SettingRow label={tr('settings.dock.taskbarAlign')}>
+              <Segmented small appearance="neutral" value={s.taskbarAlign === 'start' ? 'start' : 'center'} onChange={(taskbarAlign) => set({ taskbarAlign })}
+                options={[['center', tr('settings.dock.alignCenter')], ['start', tr('settings.dock.alignStart')]]} />
+            </SettingRow>
+          </Section>
+        ) : null}
         <ResetDock classic />
       </Stack>
     );

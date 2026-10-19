@@ -777,6 +777,19 @@ static void test_transform_paint_hit(void) {
     for (int x = 100; x < 230; x++) { uint32_t p = pix(x, 61); if (p != 0x00ff00 && p != 0xffffff && p != 0xff0000 && p != 0x000000) soft++; }
     CHECK(pix(150, 75) == 0x00ff00, "scaled bar at 150%%: %06x", pix(150, 75));
     CHECK(soft == 0, "blurry row inside the scaled bar at 150%% (%d px)", soft);
+
+    /* a scaled subtree with a backdrop blur inside is still painted scaled (the Classic task view:
+     * a translucent Terminal); before, it was painted at full size */
+    if (FW != 160) { free(fb); fb = calloc(160 * 100, 4); FW = 160; FH = 100; }
+    canvas_init(&frame, fb, 160, 100, 160);
+    sn(a, "scaleX", 0.5); sn(a, "scaleY", 0.5);
+    sn(b, "scaleX", 1); sn(b, "scaleY", 1); sn(b, "rotate", 90);
+    sn(ac, "backgroundColor", 0x800000ff);
+    sn(ac, "backdropBlur", 6);
+    node_invalidate(a); node_invalidate(ac); node_invalidate(b);
+    render(root, 160, 100);
+    CHECK(pix(15, 15) == 0xffffff && pix(45, 30) == 0xffffff, "a blurred child kept its box unscaled: %06x %06x", pix(15, 15), pix(45, 30));
+    CHECK(pix(35, 35) == 0xff0000, "the scaled box with a blurred child: %06x", pix(35, 35));
 }
 
 #endif

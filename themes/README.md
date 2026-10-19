@@ -7,19 +7,21 @@ their own. `lord-server` runs the theme with QuickJS and paints it with its C en
 | Theme | Style |
 |---|---|
 | `default` | Lord Default: menu bar, dock with magnification, app launcher, Control Center |
-| `classic` | Classic (**template**): taskbar, start menu, everything in a single file |
+| `classic` | Classic: a centered taskbar, start menu with search, tray with quick settings and notifications, window snapping and a task view (0.8.3) |
 
 ```sh
 npm install           # once (React + esbuild)
 npm run build         # bundles every theme, with the SDK and every app
 ```
 
-The user switches themes live from **Settings → Themes** (no restart). The choice is saved and
-respected on the next start.
+The user switches themes live from **Settings → Appearance → Desktop style** (Lord Default and
+Classic) or **Settings → Themes** (any installed theme), with no restart: the LordOS app windows that
+were open come back in the new theme. The choice is saved and respected on the next start.
 
 ## Creating a new theme
 
-1. Copy `themes/classic` to `themes/mytheme`.
+1. Copy `themes/classic` to `themes/mytheme` (`index.jsx` puts the pieces together; the frame,
+   taskbar and panels are in `components/`, the colors and shape tokens in `tokens.js`).
 2. Edit `theme.json` (the name and description Settings shows).
 3. Modify `index.jsx`. A theme must:
    - call `configureWindows({ apps, workArea })` with the free area for windows,
@@ -66,6 +68,17 @@ Images (`<Image src="assets/...">`) are resolved relative to the theme's folder.
 shows `thumb` in its grid; add `lordosWallpapers` from the SDK to offer the LordOS collection, and
 draw with `wallpaperSrc(w, width, height)` so a higher-resolution variant is used where it exists,
 see `assets/wallpapers/README.md`). The theme can add any tokens of its own.
+
+Optional shape tokens restyle the SDK's shared controls in every app (see `docs/DESIGN.md`, "Theme
+tokens for the shared controls"): `controlRadius`, `controlRadiusSmall`, `groupRadius`, `menuRadius`,
+`menuItemRadius`, `menuHighlight` (`'accent'` | `'subtle'`), `selection` (`'fill'` | `'indicator'`),
+`inputFocus` (`'ring'` | `'underline'`), `buttonBorder` and `popupBg`. Without them a theme gets Lord
+Default's shapes.
+
+Two switches a taskbar theme usually wants: `configureWindows({ snap: true })` turns on window
+snapping (drag to the edges, `wm.snap`, `wm.snapKey`, and `snapPreview` to draw the preview; see
+`docs/WINDOWS.md`, "Snapping"), and `setBannerPlacement('bottom')` shows notification banners above
+a bottom taskbar instead of below a menu bar.
 
 ## Native components
 

@@ -23,6 +23,40 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 - **Clipboard with X11 apps**, both ways, for the normal clipboard and the primary selection
   (select to copy, middle click to paste); large copies and images included.
 - **Primary selection for Wayland apps** (middle-click paste between GTK, Qt and other apps).
+- **Classic, a second full appearance.** The Classic theme is no longer a template: it is a
+  complete desktop for people used to a taskbar layout, with the same apps as Lord Default. A
+  centered taskbar (or aligned to the start, on any side of the screen) with the start button,
+  search, task view, the pinned and open apps and the Trash last; a start menu with a search field
+  that searches like the system search (apps, settings, files, notes, the calculator, Help), a grid
+  of pinned apps you arrange with a right click, recently used apps, every app A–Z, and the user
+  and power button (Lock, Switch User, Log Out, Restart…, Shut Down…); a tray with quick settings
+  (network, Bluetooth, Do Not Disturb, Night Light, dark mode, transparency, volume, what is
+  playing, battery) and a notification panel with a month calendar; notifications above the
+  taskbar; and a window frame with the title at the start and the buttons at the end. Everything
+  is our own design: LordOS icons drawn by the theme, Inter, the LordOS wallpapers and names.
+  Switch between the two in **Settings → Appearance → Desktop style**, live and without logging
+  out: the windows that were open come back in the new one. Light and dark mode, right-to-left
+  languages and the accent colors work in both. See [docs/DESIGN.md](docs/DESIGN.md), "Classic".
+- **Window snapping.** In Classic, drag a window to the left or right edge to fill that half of the
+  screen, to a corner for a quarter, or to the top edge to maximize it; a preview shows where it
+  will go. Hovering over the maximize button offers layouts (halves, two thirds and one third,
+  thirds, quarters), and Super+arrows move the window in front between them. Dragging a snapped
+  window away gives it back its size. See [docs/WINDOWS.md](docs/WINDOWS.md), "Snapping".
+- **Task view.** Super+Tab (or the taskbar button) shows every window side by side, live and
+  smaller, over a dimmed desktop: click one to bring it to the front, or close it from there.
+- **Themes restyle every app.** The shared controls (buttons, fields, segmented controls, sidebars,
+  menus, tooltips, grouped forms, confirmations and the Restart/Shut Down sheet) now take their
+  shape from the theme: corner radii, a light or accent menu highlight, an accent bar or a fill for
+  the selected sidebar row, an underline or a ring on the focused field, and bordered buttons. Lord
+  Default looks as before; Classic uses smaller radii, borders and subtle highlights. Isolated
+  apps (Mail, Calendar, Contacts, Reminders, Passwords) follow it too.
+
+### Changed
+
+- Settings → Desktop & Dock in Classic adds **Taskbar alignment** (center or start).
+- The theme engine paints a scaled window that contains a blurred surface (a translucent
+  Terminal) at its scaled size; its blur then only shows the window's own content. Before, such a
+  window was drawn at full size during the Dock's minimize effect.
 
 ### Security
 
