@@ -29,6 +29,29 @@ export const monitorProcesses = createStore(null);
 export const monitorConnections = createStore(null);
 export const monitorDevices = createStore([]);  // phase 2
 export const monitorDetail = createStore(null); // Get Info of one process (procctl.c's JSON)
+// Disk temperatures while the Monitor is open: { [disk]: { t: [ms], v: [°C] } }, one point per new
+// reading (every 3 s; a resting spinning disk is not read), the last DISK_TEMP_HISTORY points.
+export const DISK_TEMP_HISTORY = 600;           // 30 min at one reading every 3 s
+export const diskTempHistory = createStore({});
+const lastTempT = new Map();
+function noteDiskTemps(s) {
+  const add = [];
+  for (const d of s?.disk?.disks || []) {
+    if (d.temp == null || !d.tempT || lastTempT.get(d.name) === d.tempT) continue;
+    lastTempT.set(d.name, d.tempT);
+    add.push(d);
+  }
+  if (!add.length) return;
+  diskTempHistory.set((h) => {
+    const n = { ...h };
+    for (const d of add) {
+      const o = n[d.name] || { t: [], v: [] };
+      const cut = o.t.length >= DISK_TEMP_HISTORY ? 1 : 0;
+      n[d.name] = { t: [...o.t.slice(cut), d.tempT], v: [...o.v.slice(cut), d.temp] };
+    }
+    return n;
+  });
+}
 
 const available = () => typeof lord.monitor !== 'undefined';
 const wants = new Map();                        // mounted useMonitor → { procs, conns }
@@ -46,7 +69,10 @@ function poll() {
   const key = `${w.procs}|${w.conns}|${w.geo}`;
   if (key !== lastWant) { lastWant = key; lord.monitor.want(w.procs, w.conns, w.geo); }
   const s = lord.monitor.sample();
-  if (s) monitorSamples.set((list) => (list.length >= MONITOR_HISTORY ? [...list.slice(1 - MONITOR_HISTORY), s] : [...list, s]));
+  if (s) {
+    monitorSamples.set((list) => (list.length >= MONITOR_HISTORY ? [...list.slice(1 - MONITOR_HISTORY), s] : [...list, s]));
+    noteDiskTemps(s);
+  }
   const lang = locale.get().lang;
   if (w.procs) { const p = lord.monitor.processes(lang); if (p) monitorProcesses.set(() => p); }
   if (watched && !watched.viaAdmin) { const d = lord.monitor.detailInfo(); if (d) monitorDetail.set(() => d); }

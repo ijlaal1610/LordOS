@@ -83,7 +83,24 @@ int  smart_summary_json(const SmartReport *r, char *out, size_t n);
 /* One ATA attribute as JSON: {id, value, worst, thresh, raw, prefail, failing}. */
 int  smart_attr_json(const SmartAttr *a, char *out, size_t n);
 
-/* ---- helper actions (disk_admin.c) ---- */
+/* ---- smartctl (smartctl.c, pure: tests/smartctl_test.c) ---- */
+
+/* sd<letters>, hd<letters> or nvme<N>n<M>: the whole disks the smart-* actions accept. */
+int    smartctl_valid_disk(const char *name);
+/* Drops the whitespace outside JSON strings, in place; returns the new length. */
+size_t smartctl_compact(char *s, size_t n);
+/* Length of the next LOG piece (at most max bytes, never inside a UTF-8 sequence). */
+size_t smartctl_chunk(const char *s, size_t n, size_t max);
+
+/* ---- helper actions (disk_admin.c, smartctl_admin.c) ---- */
+
+/* The disk-* target() check for a whole disk (the system disk allowed): /dev path into dev, and
+ * whether it is on USB. need_admin: an internal disk needs an administrator. -1 after admin_err. */
+int  disk_admin_target(const AdminReq *r, const char *name, int need_admin, char *dev, size_t n, int *usb);
+void smart_act_info(const AdminReq *r, const char *arg, size_t len);
+void smart_act_health(const AdminReq *r, const char *arg, size_t len);
+void smart_act_test(const AdminReq *r, const char *arg, size_t len);
+void smart_act_abort(const AdminReq *r, const char *arg, size_t len);
 
 void disk_act_smart(const AdminReq *r, const char *arg, size_t len);
 void disk_act_mount(const AdminReq *r, const char *arg, size_t len);
@@ -96,7 +113,9 @@ void disk_act_write_image(const AdminReq *r, const char *arg, size_t len);
 void disk_act_cancel(const AdminReq *r, const char *arg, size_t len);
 
 /* All are A_ANYONE: each one requires an administrator for internal disks (removable ones are
- * open to any session user, like udisks) and refuses the system disk. */
+ * open to any session user, like udisks) and refuses the system disk. The smart-* ones
+ * (smartmontools) accept the system disk: reading is open to anyone, a self-test on an internal disk
+ * needs an administrator. */
 #define DISK_ADMIN_ACTIONS \
     { "disk-smart", disk_act_smart, A_FORK | A_ANYONE }, \
     { "disk-mount", disk_act_mount, A_ANYONE }, \
@@ -106,6 +125,10 @@ void disk_act_cancel(const AdminReq *r, const char *arg, size_t len);
     { "disk-label", disk_act_label, A_FORK | A_ANYONE }, \
     { "disk-erase", disk_act_erase, A_FORK | A_ANYONE }, \
     { "disk-write-image", disk_act_write_image, A_FORK | A_ANYONE }, \
-    { "disk-cancel", disk_act_cancel, A_ANYONE },
+    { "disk-cancel", disk_act_cancel, A_ANYONE }, \
+    { "smart-info", smart_act_info, A_FORK | A_ANYONE }, \
+    { "smart-health", smart_act_health, A_FORK | A_ANYONE }, \
+    { "smart-test", smart_act_test, A_FORK | A_ANYONE }, \
+    { "smart-abort", smart_act_abort, A_FORK | A_ANYONE },
 
 #endif

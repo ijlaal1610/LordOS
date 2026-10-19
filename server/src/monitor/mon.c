@@ -12,6 +12,7 @@
 #include "mon.h"
 #include "monpriv.h"
 #include "procctl.h"
+#include "disktemp.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -128,8 +129,9 @@ static struct {
     pthread_cond_t cv;
     int started, refs, want_procs, want_conns, want_geo;
     double last_poll;
-    char *sample, *procs, *conns, *detail;
-    uint64_t sseq, pseq, cseq, dseq;
+    char *sample, *procs, *conns, *detail, *dtemps;
+    uint64_t sseq, pseq, cseq, dseq, tseq;
+    int watch_disks;                    /* background disk temperatures (notifications), see below */
     int detail_pid;                     /* Get Info: 0 = none */
     unsigned long long detail_start;
     char geo_path[PATH_MAX];
@@ -149,9 +151,23 @@ static struct {
     int ndisk;
 } prev;
 
-/* Disks: model and size (read once per thread start). */
-static struct { char name[32], model[96]; unsigned long long size; } dinfo[MAX_DISK];
+/* Disks: model and size (read once per thread start), the temperature sensor (disktemp.c) and
+ * the state that decides when it may be read. */
+typedef struct {
+    char name[32], model[96];
+    unsigned long long size;
+    int rota;                           /* spinning disk (queue/rotational) */
+    DiskSensor sensor;
+    unsigned long long io;              /* reads + writes seen last time */
+    double last_io;                     /* mon_now_ms of the last I/O seen (0: none yet) */
+    double temp, temp_t;                /* last reading (°C) and its wall-clock time; temp_t 0 = none */
+} DiskInfo;
+static DiskInfo dinfo[MAX_DISK];
 static int ndinfo;
+static unsigned temp_ticks;             /* samples since the last temperature read */
+#define TEMP_EVERY 12                   /* 3 s at 4 samples per second */
+#define AWAKE_MS 60000                  /* a spinning disk counts as awake for 60 s after its last I/O */
+#define WATCH_MS 30000                  /* background disk temperatures: every 30 s */
 
 /* Sensors: paths found at startup. */
 static char temp_path[8][PATH_MAX], fan_path[8][PATH_MAX];
@@ -286,6 +302,9 @@ static int whole_disk(const char *name) {
 }
 
 static void disk_info_scan(void) {
+    DiskInfo old[MAX_DISK];
+    int nold = ndinfo;
+    memcpy(old, dinfo, sizeof dinfo[0] * (size_t)nold);
     ndinfo = 0;
     DIR *d = opendir("/sys/block");
     if (!d) return;
@@ -293,20 +312,74 @@ static void disk_info_scan(void) {
     while ((e = readdir(d)) && ndinfo < MAX_DISK) {
         if (e->d_name[0] == '.' || strlen(e->d_name) >= 32 || !whole_disk(e->d_name)) continue;
         char p[PATH_MAX], t[128];
-        snprintf(dinfo[ndinfo].name, sizeof dinfo[0].name, "%s", e->d_name);
+        DiskInfo *di = &dinfo[ndinfo];
+        memset(di, 0, sizeof *di);
+        snprintf(di->name, sizeof di->name, "%s", e->d_name);
         snprintf(p, sizeof p, "/sys/block/%s/device/model", e->d_name);
         if (mon_read_small(p, t, sizeof t) <= 0) t[0] = 0;
         size_t k = strlen(t);
         while (k && isspace((unsigned char)t[k - 1])) t[--k] = 0;
-        snprintf(dinfo[ndinfo].model, sizeof dinfo[0].model, "%s", t);
+        snprintf(di->model, sizeof di->model, "%s", t);
         snprintf(p, sizeof p, "/sys/block/%s/size", e->d_name);
-        dinfo[ndinfo].size = mon_read_small(p, t, sizeof t) > 0 ? ull(t) * 512 : 0;
+        di->size = mon_read_small(p, t, sizeof t) > 0 ? ull(t) * 512 : 0;
+        snprintf(p, sizeof p, "/sys/block/%s/queue/rotational", e->d_name);
+        di->rota = mon_read_small(p, t, sizeof t) > 0 && t[0] == '1';
+        disktemp_find("/sys", e->d_name, &di->sensor);
+        for (int i = 0; i < nold; i++)          /* keep what was learned about it (a rescan) */
+            if (!strcmp(old[i].name, di->name)) { di->io = old[i].io; di->last_io = old[i].last_io; di->temp = old[i].temp; di->temp_t = old[i].temp_t; }
         ndinfo++;
     }
     closedir(d);
 }
 
-static void disk_sample(Buf *b, double dt) {
+/* Temperatures of the disks with a sensor. A spinning disk is only read while it is awake (I/O in
+ * the last minute): asking a resting drive for its temperature can keep it from spinning down. */
+static void disk_temps_read(void) {
+    double now = mon_now_ms(), wall = mon_wall_ms();
+    for (int i = 0; i < ndinfo; i++) {
+        DiskInfo *di = &dinfo[i];
+        if (!di->sensor.kind) continue;
+        if (di->rota && !(di->last_io > 0 && now - di->last_io < AWAKE_MS)) continue;
+        double c;
+        if (!disktemp_read(&di->sensor, &c)) { di->temp = c; di->temp_t = wall; }
+    }
+}
+
+static DiskInfo *dinfo_of(const char *name) {
+    for (int i = 0; i < ndinfo; i++) if (!strcmp(dinfo[i].name, name)) return &dinfo[i];
+    return NULL;
+}
+
+/* ,"rota":0,"sensor":"nvme","temp":38.9,"tempT":…,"tempMax":81,"tempCrit":84,"tempIdle":false,"awake":true
+ * (tempIdle: a spinning disk at rest, so not read; awake: I/O in the last minute) */
+static void disk_temp_fields(Buf *b, const DiskInfo *di) {
+    const char *k = di ? disktemp_kind_name(di->sensor.kind) : NULL;
+    mon_buf_printf(b, ",\"rota\":%d,\"sensor\":", di ? di->rota : 0);
+    if (k) mon_buf_str(b, k); else mon_buf_printf(b, "null");
+    if (di && k && di->temp_t > 0) mon_buf_printf(b, ",\"temp\":%.1f,\"tempT\":%.0f", di->temp, di->temp_t);
+    else mon_buf_printf(b, ",\"temp\":null,\"tempT\":0");
+    if (di && k && di->sensor.max_c >= 0) mon_buf_printf(b, ",\"tempMax\":%d", di->sensor.max_c); else mon_buf_printf(b, ",\"tempMax\":null");
+    if (di && k && di->sensor.crit_c >= 0) mon_buf_printf(b, ",\"tempCrit\":%d", di->sensor.crit_c); else mon_buf_printf(b, ",\"tempCrit\":null");
+    int awake = di && di->last_io > 0 && mon_now_ms() - di->last_io < AWAKE_MS;
+    int idle = di && k && di->rota && !awake;
+    mon_buf_printf(b, ",\"tempIdle\":%s,\"awake\":%s", idle ? "true" : "false", awake ? "true" : "false");
+}
+
+/* Just the temperatures, for the session's notifications: {"t", "disks": [{name, model, …}]} */
+static void disk_temps_json(Buf *b) {
+    mon_buf_printf(b, "{\"t\":%.0f,\"disks\":[", mon_wall_ms());
+    for (int i = 0; i < ndinfo; i++) {
+        mon_buf_printf(b, "%s{\"name\":", i ? "," : "");
+        mon_buf_str(b, dinfo[i].name);
+        mon_buf_printf(b, ",\"model\":");
+        mon_buf_str(b, dinfo[i].model);
+        disk_temp_fields(b, &dinfo[i]);
+        mon_buf_printf(b, "}");
+    }
+    mon_buf_printf(b, "]}");
+}
+
+static void disk_sample(Buf *b, double dt, int temps) {
     static char txt[65536];
     struct { char name[32]; unsigned long long rd, wr; } cur[MAX_DISK];
     int n = 0;
@@ -323,9 +396,13 @@ static void disk_sample(Buf *b, double dt) {
             snprintf(cur[n].name, sizeof cur[n].name, "%.31s", name);
             cur[n].rd = f[2] * 512;                 /* sectors read */
             cur[n].wr = f[6] * 512;                 /* sectors written */
+            DiskInfo *di = dinfo_of(name);
+            unsigned long long io = f[0] + f[4];   /* reads + writes completed */
+            if (di && di->io != io) { if (di->io || di->last_io > 0) di->last_io = mon_now_ms(); di->io = io; }
             n++;
         }
     }
+    if (temps) disk_temps_read();
     double rd = 0, wr = 0;
     Buf list = { 0 };
     for (int i = 0; i < n; i++) {
@@ -334,14 +411,16 @@ static void disk_sample(Buf *b, double dt) {
             if (!strcmp(prev.disks[j].name, cur[i].name)) { r = rate(cur[i].rd, prev.disks[j].rd, dt); w = rate(cur[i].wr, prev.disks[j].wr, dt); }
         rd += r;
         wr += w;
-        const char *model = "";
-        unsigned long long size = 0;
-        for (int k = 0; k < ndinfo; k++) if (!strcmp(dinfo[k].name, cur[i].name)) { model = dinfo[k].model; size = dinfo[k].size; }
+        const DiskInfo *di = dinfo_of(cur[i].name);
+        const char *model = di ? di->model : "";
+        unsigned long long size = di ? di->size : 0;
         mon_buf_printf(&list, "%s{\"name\":", i ? "," : "");
         mon_buf_str(&list, cur[i].name);
         mon_buf_printf(&list, ",\"model\":");
         mon_buf_str(&list, model);
-        mon_buf_printf(&list, ",\"size\":%llu,\"read\":%.0f,\"write\":%.0f,\"readTotal\":%llu,\"writeTotal\":%llu}", size, r, w, cur[i].rd, cur[i].wr);
+        mon_buf_printf(&list, ",\"size\":%llu,\"read\":%.0f,\"write\":%.0f,\"readTotal\":%llu,\"writeTotal\":%llu", size, r, w, cur[i].rd, cur[i].wr);
+        disk_temp_fields(&list, di);
+        mon_buf_printf(&list, "}");
     }
     memcpy(prev.disks, cur, sizeof cur[0] * (size_t)n);
     prev.ndisk = n;
@@ -531,8 +610,27 @@ static void publish(char **slot, uint64_t *seq, Buf *b) {
     memset(b, 0, sizeof *b);
 }
 
+/* Publishes the latest disk temperatures (lord.monitor.diskTemps). */
+static void publish_temps(void) {
+    Buf t = { 0 };
+    disk_temps_json(&t);
+    publish(&M.dtemps, &M.tseq, &t);
+}
+
+/* Background pass (the Monitor closed): rescan the disks (one plugged in), note their I/O, read. */
+static void watch_pass(void) {
+    disk_info_scan();
+    Buf junk = { 0 };
+    disk_sample(&junk, 0, 0);               /* only to see which spinning disks are awake */
+    mon_buf_free(&junk);
+    memset(&prev, 0, sizeof prev);          /* no stale rates when the Monitor opens */
+    disk_temps_read();
+    publish_temps();
+}
+
 static void *worker(void *arg) {
     (void)arg;
+    double next_watch = 0;
     Mmdb geo;
     int geo_open = 0, geo_tried = 0;
     unsigned tick = 0;
@@ -541,7 +639,23 @@ static void *worker(void *arg) {
         int slept = 0;
         while (!(M.refs > 0 && mon_now_ms() - M.last_poll < IDLE_MS)) {
             slept = 1;
-            pthread_cond_wait(&M.cv, &M.mu);
+            if (!M.watch_disks) { pthread_cond_wait(&M.cv, &M.mu); continue; }
+            /* nobody looks at the Monitor, but the session wants disk temperature notices:
+             * only the disk list and its sensors, every 30 s */
+            double left = next_watch - mon_now_ms();
+            if (left <= 0) {
+                pthread_mutex_unlock(&M.mu);
+                watch_pass();
+                next_watch = mon_now_ms() + WATCH_MS;
+                pthread_mutex_lock(&M.mu);
+                continue;
+            }
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            long long ns = ts.tv_nsec + (long long)(left * 1e6);
+            ts.tv_sec += (time_t)(ns / 1000000000LL);
+            ts.tv_nsec = (long)(ns % 1000000000LL);
+            pthread_cond_timedwait(&M.cv, &M.mu, &ts);
         }
         int wp = M.want_procs, wc = M.want_conns, wg = M.want_geo, dpid = M.detail_pid;
         unsigned long long dstart = M.detail_start;
@@ -554,6 +668,7 @@ static void *worker(void *arg) {
             disk_info_scan();
             sensors_scan();
             tick = 0;
+            temp_ticks = 0;
         }
         double t0 = mon_now_ms(), dt = prev.t > 0 ? t0 - prev.t : 0;
         Buf b = { 0 };
@@ -562,11 +677,13 @@ static void *worker(void *arg) {
         mem_sample(&b);
         load_sample(&b);
         net_sample(&b, dt);
-        disk_sample(&b, dt);
+        int temps = temp_ticks++ % TEMP_EVERY == 0;
+        disk_sample(&b, dt, temps);
         sensors_sample(&b);
         mon_buf_printf(&b, "}");
         prev.t = t0;
         publish(&M.sample, &M.sseq, &b);
+        if (temps) publish_temps();
         if (wp && tick % 4 == 0) {
             Buf p = { 0 };
             procs_scan(&p);
@@ -616,13 +733,11 @@ void mon_reset(void) {
     M.refs = 0;
     M.want_procs = M.want_conns = M.want_geo = 0;
     M.detail_pid = 0;
+    M.watch_disks = 0;
     pthread_mutex_unlock(&M.mu);
 }
 
-void mon_start(void) {
-    pthread_mutex_lock(&M.mu);
-    if (M.refs < 64) M.refs++;
-    M.last_poll = mon_now_ms();
+static void start_thread_locked(void) {
     if (!M.started) {
         pthread_t th;
         pthread_attr_t at;
@@ -632,8 +747,32 @@ void mon_start(void) {
         if (!pthread_create(&th, &at, worker, NULL)) M.started = 1;
         pthread_attr_destroy(&at);
     }
+}
+
+void mon_start(void) {
+    pthread_mutex_lock(&M.mu);
+    if (M.refs < 64) M.refs++;
+    M.last_poll = mon_now_ms();
+    start_thread_locked();
     pthread_cond_signal(&M.cv);
     pthread_mutex_unlock(&M.mu);
+}
+
+void mon_watch_disks(int on) {
+    pthread_mutex_lock(&M.mu);
+    M.watch_disks = !!on;
+    if (on) start_thread_locked();
+    pthread_cond_signal(&M.cv);
+    pthread_mutex_unlock(&M.mu);
+}
+
+/* Unlike take(), reading the temperatures does not keep the 4 Hz sampling awake. */
+char *mon_disk_temps_json(uint64_t *seq) {
+    pthread_mutex_lock(&M.mu);
+    char *r = NULL;
+    if (M.dtemps && M.tseq != *seq) { r = strdup(M.dtemps); *seq = M.tseq; }
+    pthread_mutex_unlock(&M.mu);
+    return r;
 }
 
 void mon_stop(void) {

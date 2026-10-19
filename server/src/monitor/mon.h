@@ -27,6 +27,12 @@ char *mon_conns_json(uint64_t *seq);
  * and the latest JSON. start: its start time in ticks, so a reused PID shows as gone. */
 void mon_detail(int pid, unsigned long long start);
 char *mon_detail_json(uint64_t *seq);
+/* Disk temperatures for the session's notifications (sdk/diskwatch.js): with on, the thread also
+ * wakes every 30 s while the Monitor is closed and reads only the disk sensors (spinning disks only
+ * when awake). mon_disk_temps_json: {"t", "disks": [{name, model, rota, sensor, temp, tempT, tempMax,
+ * tempCrit, tempIdle}]} if newer than *seq; reading it does not keep the 4 Hz sampling alive. */
+void mon_watch_disks(int on);
+char *mon_disk_temps_json(uint64_t *seq);
 /* Fixed data: CPU model, cores, location from the time zone, country database. */
 char *mon_info_json(void);
 

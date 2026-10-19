@@ -18,6 +18,7 @@ import { FirewallPrivacy } from './Firewall.jsx';
 import { FirewallRulesPrivacy } from './FwRules.jsx';
 import { CoolingTab } from './Cooling.jsx';
 import { ProcessesTab, ProcessLayers } from './Processes.jsx';
+import { DisksTab } from './DisksTab.jsx';
 
 export function Icon({ size }) { return <MonitorIcon size={size} />; }
 
@@ -117,6 +118,7 @@ export function Stat({ label, value, unit, icon, children }) {
 registerDockActions('monitor', () => [
   { id: 'network', label: 'monitor.network', args: { tab: 'network' } },
   { id: 'cooling', label: 'monitor.tab.cooling', args: { tab: 'cooling' } },
+  { id: 'disks', label: 'monitor.disks', args: { tab: 'disks' } },
 ]);
 
 function useSeries(samples) {
@@ -315,38 +317,6 @@ export function Cell({ col, children, color, bold }) {
         ? <Text style={{ fontSize: 12, color: color || t.text, fontWeight: bold ? 600 : 400, whiteSpace: 'nowrap', textAlign: col.num ? 'end' : 'start' }}>{children}</Text>
         : children}
     </View>
-  );
-}
-
-function DisksTab({ s, last }) {
-  const t = useTheme();
-  const { t: tr } = useLocale();
-  const card = useCardStyle();
-  const cols = [
-    { key: 'name', label: tr('monitor.diskCol'), flex: 1 },
-    { key: 'dev', label: tr('monitor.device'), width: 110 },
-    { key: 'size', label: tr('monitor.size'), width: 100, num: true },
-    { key: 'read', label: tr('monitor.read'), width: 110, num: true },
-    { key: 'write', label: tr('monitor.write'), width: 110, num: true },
-  ];
-  return (
-    <>
-      <Card icon="disk" title={tr('monitor.allDisks')}>
-        <Pair items={[{ label: tr('monitor.read'), value: fmt.rate(tr, last.disk.read), color: C.read }, { label: tr('monitor.write'), value: fmt.rate(tr, last.disk.write), color: C.write }]} />
-        <Chart series={[{ label: tr('monitor.read'), values: s.read, color: C.read }, { label: tr('monitor.write'), values: s.write, color: C.write }]}
-          format={(v) => fmt.rate(tr, v)} times={s.times} height={150} bg={card.bg} />
-      </Card>
-      <Table cols={cols} rows={last.disk.disks.map((d, i) => (
-        <View key={d.name} style={{ flexDirection: 'row', height: 30, alignItems: 'center', paddingHorizontal: 10, backgroundColor: i % 2 ? t.hover : 'transparent' }}>
-          <Cell col={cols[0]}>{d.model || tr('monitor.diskUnknown')}</Cell>
-          <Cell col={cols[1]} color={t.textDim}>{`/dev/${d.name}`}</Cell>
-          <Cell col={cols[2]}>{fmt.mem(d.size)}</Cell>
-          <Cell col={cols[3]}>{fmt.rate(tr, d.read)}</Cell>
-          <Cell col={cols[4]}>{fmt.rate(tr, d.write)}</Cell>
-        </View>
-      ))} />
-      {!last.disk.disks.length && <Text style={{ fontSize: 12, color: t.textDim }}>{tr('monitor.noDisks')}</Text>}
-    </>
   );
 }
 

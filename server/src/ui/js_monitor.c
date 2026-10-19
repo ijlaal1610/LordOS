@@ -19,6 +19,9 @@
  *                               an error code (proc.gone, proc.protected…, proc.notOwn, proc.denied).
  *                               Other users' processes go through the root helper (proc-signal,
  *                               administrators only; sdk/monitor.js).
+ *   watchDisks(on)              disk temperatures with the Monitor closed (every 30 s; sdk/diskwatch.js)
+ *   diskTemps()                 the latest { t, disks: [{ name, model, sensor, temp, tempMax, … }] } or
+ *                               null if nothing new; it does not keep the 4 Hz sampling awake
  */
 #include "js_monitor.h"
 #include "../monitor/mon.h"
@@ -38,7 +41,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static uint64_t seq_sample, seq_procs, seq_conns, seq_detail;
+static uint64_t seq_sample, seq_procs, seq_conns, seq_detail, seq_temps;
 
 static JSValue parse(JSContext *c, char *j, const char *what) {
     if (!j) return JS_NULL;
@@ -69,6 +72,17 @@ static JSValue f_want(JSContext *c, JSValueConst t, int argc, JSValueConst *argv
 static JSValue f_sample(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc; (void)argv;
     return parse(c, mon_sample_json(&seq_sample), "<monitor.sample>");
+}
+
+static JSValue f_watch_disks(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    mon_watch_disks(argc > 0 && JS_ToBool(c, argv[0]) > 0);
+    return JS_TRUE;
+}
+
+static JSValue f_disk_temps(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    return parse(c, mon_disk_temps_json(&seq_temps), "<monitor.diskTemps>");
 }
 
 static JSValue f_info(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
@@ -376,13 +390,15 @@ static const JSCFunctionListEntry monitor_funcs[] = {
     JS_CFUNC_DEF("detail", 2, f_detail),
     JS_CFUNC_DEF("detailInfo", 0, f_detail_info),
     JS_CFUNC_DEF("signal", 3, f_signal),
+    JS_CFUNC_DEF("watchDisks", 1, f_watch_disks),
+    JS_CFUNC_DEF("diskTemps", 0, f_disk_temps),
 };
 
 void js_monitor_register(JSContext *c, JSValue lord, const char *assets_dir) {
     mon_init(assets_dir);
     map_init(assets_dir);
     mon_reset();                       /* new context: the previous one's start() calls don't count */
-    seq_sample = seq_procs = seq_conns = seq_detail = 0;
+    seq_sample = seq_procs = seq_conns = seq_detail = seq_temps = 0;
     JSValue o = JS_NewObject(c);
     JS_SetPropertyFunctionList(c, o, monitor_funcs, sizeof monitor_funcs / sizeof monitor_funcs[0]);
     JS_SetPropertyStr(c, lord, "monitor", o);
