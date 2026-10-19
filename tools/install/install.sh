@@ -9,7 +9,10 @@
 # https://lordos.org/install.sh must stay byte-identical to the file in the release tag.
 # Documentation: docs/INSTALL-DEBIAN.md. No telemetry: the only network requests are to
 # api.github.com (to find the latest release), github.com (the release files) and the
-# Debian mirrors that apt already uses.
+# Debian mirrors that apt already uses. The package then adds the signed LordOS repository
+# (lordos.org/apt), so later versions arrive through Store → Updates or apt (docs/UPDATES.md).
+# Running it again on an installed LordOS (from the ISO, the Raspberry Pi image or this script)
+# upgrades it in place: files, settings and the login setup are kept.
 #
 # Everything lives inside main(), called on the last line, so a truncated download runs nothing.
 set -eu
@@ -511,8 +514,12 @@ setup_systemd() {
     if [ "$KEEP_DM" = 1 ] && [ -n "$DM_UNIT" ]; then
         return
     fi
-    as_root systemctl enable lordos.service >/dev/null 2>&1 || die "could not enable lordos.service"
-    changed "lordos.service enabled: LordOS starts on tty1 at boot"
+    if [ "$(systemctl is-enabled lordos.service 2>/dev/null || true)" = enabled ]; then
+        ok "lordos.service already enabled"
+    else
+        as_root systemctl enable lordos.service >/dev/null 2>&1 || die "could not enable lordos.service"
+        changed "lordos.service enabled: LordOS starts on tty1 at boot"
+    fi
     if [ "$(systemctl is-enabled getty@tty1.service 2>/dev/null || true)" != masked ]; then
         as_root systemctl mask getty@tty1.service >/dev/null 2>&1
         state_set GETTY_MASKED 1
@@ -763,6 +770,8 @@ do_install() {
     dm_active=0
     if [ -n "$DM_UNIT" ] && systemctl is-active -q "$DM_UNIT" 2>/dev/null; then dm_active=1; fi
     installed=$(dpkg-query -W -f '${db:Status-Abbrev} ${Version}' lordos 2>/dev/null || true)
+    LORDOS_RUNNING=0
+    if has_systemd && systemctl is-active -q lordos.service 2>/dev/null; then LORDOS_RUNNING=1; fi
 
     say ""
     step "This will:"
@@ -842,7 +851,11 @@ do_install() {
         fi
         say ""
     fi
-    if ! has_systemd; then
+    if [ "$LORDOS_RUNNING" = 1 ]; then
+        say "LordOS is running and was upgraded in place. The running session keeps working; restart"
+        say "the computer when it suits you to start the new version:  ${C_B}sudo reboot${C_0}"
+        say "(or Store → Updates → Restart). Files, settings and accounts were kept."
+    elif ! has_systemd; then
         say "No systemd here, so nothing was set to start. On a real system run the installer again."
     elif [ "$KEEP_DM" = 1 ] && [ -n "$DM_UNIT" ]; then
         say "LordOS is installed but $DM_UNIT is still your display manager. To switch later:"
@@ -868,6 +881,7 @@ do_install() {
         fi
     fi
     say ""
+    say "Updates: Store → Updates (or: sudo apt update && sudo apt upgrade). No need to reinstall."
     say "To uninstall:  curl -fsSL https://lordos.org/install.sh | sh -s -- --uninstall"
     say "Documentation: https://github.com/$REPO/blob/main/docs/INSTALL-DEBIAN.md"
 }
