@@ -5,7 +5,8 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useTheme } from './theme.js';
 import { getApp, windows, openedAt } from './windows.js';
 import { useStore } from './store.js';
-import { textDirection } from './i18n.js';
+import { textDirection, direction } from './i18n.js';
+import { SCROLLBAR, scrollbarMode, thumbGeometry, offsetForThumb, nearEdge, hitThumb, barShown, barOpacity, hideTime, barWidth } from './scrollbar.js';
 import { ime, useIme, Preedit } from './ime.js';
 
 // Push button. Optional (all additive): small (22 px high), plain (no fill until hover), disabled,
@@ -85,36 +86,145 @@ export function SectionTitle({ children }) {
   return <Text style={{ fontSize: 11, fontWeight: 600, color: t.textDim, marginLeft: 10, marginTop: 10, marginBottom: 4 }}>{children}</Text>;
 }
 
-// Container with mouse-wheel scrolling and an indicator bar.
-// scrollRef (optional): { scrollTo(y), offset(), inner } to jump to a position (an index).
-// gutter (optional): keep a strip on the right for the indicator bar, so it never covers the
-// content (the bar is always on the right, in right-to-left languages too).
+// Container with mouse-wheel / touchpad scrolling and an overlay scroll bar (sdk/scrollbar.js,
+// docs/DESIGN.md "Scroll bars"): a thin bar drawn over the content at the end edge (left in RTL),
+// hidden until the view scrolls or the pointer comes near the edge, fading out a second after the
+// last scroll. It never reserves a strip: give the content its normal padding (contentStyle) and
+// the bar sits in it. Settings → Appearance → "Show scroll bars" (theme token scrollBars:
+// 'auto' | 'scrolling' | 'always'); reduce motion shows and hides it without a fade.
+// scrollRef (optional): { scrollTo(y), offset(), inner } to jump to a position (an index, a key
+//   press); a jump that moves the view shows the bar like any other scroll.
+// contentStyle (optional): style of the scrolled content box (its padding).
+// gutter (0.8.1, optional): with "Always" only, keep a strip at the end for the bar.
 export const SCROLL_GUTTER = 11;
-export function ScrollView({ style, children, scrollRef, gutter }) {
+export function ScrollView({ style, contentStyle, children, scrollRef, gutter }) {
   const t = useTheme();
-  const outer = useRef(null), inner = useRef(null);
+  const mode = scrollbarMode(t.scrollBars);
+  const reduce = !!t.reduceMotion;
+  const rtl = direction() === 'rtl';
+  const outer = useRef(null), inner = useRef(null), thumb = useRef(null);
   const [offset, setOffset] = useState(0);
   const [metrics, setMetrics] = useState({ view: 0, content: 0 });
+  const [ui, setUi] = useState({ near: false, hover: false, dragging: false, shown: mode === 'always' });
+  const st = useRef(null);
+  if (!st.current) st.current = { lastScroll: null, hideTimer: 0, fadeTimer: 0, grab: 0, ui };
+  st.current.ui = ui; st.current.mode = mode; st.current.reduce = reduce; st.current.metrics = metrics;
   const measure = () => {
     if (!outer.current || !inner.current) return null;
     const view = lord.getLayout(outer.current.id)[3], content = lord.getLayout(inner.current.id)[3];
-    if (view !== metrics.view || content !== metrics.content) setMetrics({ view, content });
+    const m = st.current.metrics;
+    if (view !== m.view || content !== m.content) { st.current.metrics = { view, content }; setMetrics({ view, content }); }
     return { view, content };
   };
   useEffect(() => { const id = setTimeout(measure, 50); return () => clearTimeout(id); });
   const max = Math.max(0, metrics.content - metrics.view);
   const y = Math.min(offset, max);
-  const bar = metrics.content > 0 ? Math.max(24, (metrics.view * metrics.view) / metrics.content) : 0;
-  if (scrollRef) scrollRef.current = { scrollTo: (v) => { measure(); setOffset(Math.max(0, v)); }, offset: () => y, inner };
+  const geom = thumbGeometry(metrics.view, metrics.content, y);
+
+  // ---- showing and hiding ----
+  const setOpacity = (o) => { try { if (thumb.current) lord.setStyle(thumb.current.id, 'opacity', o); } catch (e) { /* unmounted */ } };
+  const update = (patch) => setUi((u) => {
+    const n = { ...u, ...patch };
+    return n.near === u.near && n.hover === u.hover && n.dragging === u.dragging && n.shown === u.shown ? u : n;
+  });
+  const model = () => ({ mode: st.current.mode, lastScroll: st.current.lastScroll, ...st.current.ui });
+  const stopFade = () => { clearInterval(st.current.fadeTimer); st.current.fadeTimer = 0; };
+  const schedule = () => {
+    const s = st.current;
+    clearTimeout(s.hideTimer);
+    const at = hideTime(model());
+    if (at == null) return;
+    s.hideTimer = setTimeout(() => {
+      if (!s.ui.shown) return;
+      if (barShown(model(), lord.now())) { schedule(); return; }
+      if (s.reduce) { s.ui = { ...s.ui, shown: false }; update({ shown: false }); return; }
+      const t0 = lord.now();
+      stopFade();
+      s.fadeTimer = setInterval(() => {
+        const o = barOpacity(model(), lord.now(), t0, false);
+        setOpacity(o);
+        if (o <= 0) { stopFade(); s.ui = { ...s.ui, shown: false }; update({ shown: false }); }
+      }, 33);
+    }, Math.max(0, at - lord.now()));
+  };
+  const show = (patch) => {
+    stopFade();
+    setOpacity(1);
+    st.current.ui = { ...st.current.ui, ...patch, shown: true };
+    update({ ...patch, shown: true });
+    schedule();
+  };
+  const scrolled = () => { st.current.lastScroll = lord.now(); show({}); };
+  useEffect(() => () => { clearTimeout(st.current.hideTimer); stopFade(); }, []);
+  useEffect(() => { if (mode === 'always') show({}); else schedule(); }, [mode]);
+
+  // ---- dragging the thumb ----
+  useEffect(() => {
+    const a = addListener('pointermove', (e) => {
+      const s = st.current;
+      if (!s.ui.dragging || !outer.current) return;
+      const [, oy] = lord.getLayout(outer.current.id);
+      const m = s.metrics;
+      setOffset(offsetForThumb(m.view, m.content, e.y - oy - s.grab));
+      s.lastScroll = lord.now();
+    });
+    const b = addListener('pointerup', () => {
+      const s = st.current;
+      if (!s.ui.dragging) return;
+      s.lastScroll = lord.now();
+      s.ui = { ...s.ui, dragging: false };
+      update({ dragging: false });
+      schedule();
+    });
+    return () => { a(); b(); };
+  }, []);
+
+  if (scrollRef) scrollRef.current = { scrollTo: (v) => {
+    const m = measure() || metrics;
+    const to = Math.max(0, Math.min(Math.max(0, m.content - m.view), v));
+    if (Math.round(to) !== Math.round(y)) scrolled();
+    setOffset(Math.max(0, v));
+  }, offset: () => y, inner };
+
+  const onMove = (e) => {
+    if (!outer.current) return;
+    const [ox, oy, ow] = lord.getLayout(outer.current.id);
+    const near = !!geom && nearEdge(e.x - ox, ow, rtl);
+    const hover = !!geom && st.current.ui.shown && hitThumb(e.x - ox, e.y - oy, ow, geom, rtl);
+    const u = st.current.ui;
+    if (near === u.near && hover === u.hover) return;
+    if (mode === 'auto' && near && !u.near) show({ near, hover });
+    else { st.current.ui = { ...u, near, hover }; update({ near, hover }); schedule(); }
+  };
+  const shown = mode === 'always' || ui.shown;
+  const wide = ui.hover || ui.dragging;
+  const thumbColor = wide ? (t.scrollThumbHover || (t.mode === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)'))
+    : (t.scrollThumb || (t.mode === 'dark' ? 'rgba(255,255,255,0.32)' : 'rgba(0,0,0,0.3)'));
+  const w = barWidth(ui);
+  const pad = gutter && mode === 'always' ? { paddingInlineEnd: SCROLL_GUTTER } : null;
   return (
     <View ref={outer} onWheel={(e) => {
       const m = measure() || metrics;
-      setOffset((o) => Math.max(0, Math.min(Math.max(0, m.content - m.view), Math.min(o, max) + e.deltaY)));
-    }} style={[{ overflow: 'hidden', flex: 1 }, style]}>
-      <View ref={inner} style={gutter ? { translateY: -y, paddingRight: SCROLL_GUTTER } : { translateY: -y }}>{children}</View>
-      {max > 0 && (
-        <View style={{ position: 'absolute', right: 3, width: 5, borderRadius: 3, height: bar,
-          top: (metrics.view - bar) * (y / max), backgroundColor: t.mode === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)' }} />
+      const mx = Math.max(0, m.content - m.view);
+      if (mx > 0 && e.deltaY) scrolled();
+      setOffset((o) => Math.max(0, Math.min(mx, Math.min(o, max) + e.deltaY)));
+    }} onMouseMove={onMove} onMouseLeave={() => { st.current.ui = { ...st.current.ui, near: false, hover: false }; update({ near: false, hover: false }); schedule(); }}
+      style={[{ overflow: 'hidden', flex: 1 }, style]}>
+      <View ref={inner} style={[{ translateY: -y }, pad, contentStyle]}>{children}</View>
+      {geom && (
+        <View onMouseDown={(e) => {
+          if (!outer.current) return;
+          const [, oy] = lord.getLayout(outer.current.id);
+          e.stopPropagation();
+          st.current.grab = e.y - oy - geom.top;
+          st.current.ui = { ...st.current.ui, dragging: true };
+          show({ dragging: true });
+        }} style={{ position: 'absolute', end: 0, top: geom.top, width: SCROLLBAR.hit, height: geom.size,
+          pointerEvents: shown ? 'auto' : 'none' }}>
+          <View ref={thumb} style={{ position: 'absolute', end: SCROLLBAR.inset, top: 0, height: geom.size, width: w,
+            borderRadius: t.scrollRadius != null ? Math.min(t.scrollRadius, w / 2) : w / 2, backgroundColor: thumbColor,
+            ...(t.scrollThumbBorder ? { border: `1px solid ${t.scrollThumbBorder}` } : null), opacity: shown ? 1 : 0 }} />
+        </View>
       )}
     </View>
   );

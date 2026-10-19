@@ -754,13 +754,14 @@ void term_paint(Canvas *c, int id, float x, float y, float w, float h, float op)
         }
     }
 
-    /* scroll bar while looking at the history */
+    /* scroll bar while looking at the history: an overlay like ScrollView's (docs/DESIGN.md, "Scroll
+     * bars"), 6 px wide and 2 px from the edge, only while scrolled back */
     int total = t->buf->count;
     if (t->view > 0 && total > t->rows) {
-        float track = h - 8, bar = fmaxf(24, track * t->rows / total);
+        float track = h - 4, bar = fmaxf(24, track * t->rows / total);
         float pos = (float)(total - t->rows - t->view) / (total - t->rows);
-        int by = (int)(y + 4 + (track - bar) * pos);
-        fill(c, (int)(x + w) - 7, by, (int)(x + w) - 3, by + (int)bar, 0x80000000u | ((lum(dbg) < 0.25f ? 0xffffff : 0x000000)));
+        int by = (int)(y + 2 + (track - bar) * pos);
+        fill(c, (int)(x + w) - 8, by, (int)(x + w) - 2, by + (int)bar, 0x80000000u | ((lum(dbg) < 0.25f ? 0xffffff : 0x000000)));
     }
 
     s->drawn_cx = t->cx;

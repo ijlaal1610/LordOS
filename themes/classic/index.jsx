@@ -28,6 +28,9 @@ function makeTheme({ mode, accent }) {
     control: dark ? '#2d323d' : '#d7dae1', inputBg: dark ? '#14161c' : '#ffffff',
     desktop: dark ? '#0f2537' : '#3a7ca5', bar: dark ? '#14171d' : '#e9ecf1', titleBg: dark ? '#232833' : '#dfe3ea',
     gtkButtons: ':minimize,maximize,close',     // GTK apps: buttons on the right, like this frame
+    // overlay scroll bars (sdk/components.jsx ScrollView): this theme's squarer, solid thumb with a hairline
+    scrollThumb: dark ? '#4a5160' : '#a9afbb', scrollThumbHover: dark ? '#5d6577' : '#8d94a2',
+    scrollThumbBorder: dark ? '#20242c' : '#eceef2', scrollRadius: 2,
   };
 }
 

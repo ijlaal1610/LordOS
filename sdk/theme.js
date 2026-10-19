@@ -49,8 +49,17 @@ function syncPortal(value) {
   } catch (e) { /* no portal */ }
 }
 
+// Settings every app's controls follow, carried with the tokens so isolated apps (which have no
+// settings file of their own) get them too: the scroll bars' mode (Settings → Appearance → Show
+// scroll bars, sdk/scrollbar.js) and reduce motion. Tokens the theme (or, in an isolated app, the
+// published tokens) already carry win.
+function settingTokens() {
+  const s = settings.get();
+  return { scrollBars: s.scrollBars || 'auto', reduceMotion: !!s.reduceMotion };
+}
+
 export function ThemeProvider({ tokens, children }) {
-  const value = { ...DEFAULT_TOKENS, ...tokens };
+  const value = { ...DEFAULT_TOKENS, ...settingTokens(), ...tokens };
   useEffect(() => { publishTokens(value); syncPortal(value); });
   return createElement(ThemeContext.Provider, { value }, children);
 }

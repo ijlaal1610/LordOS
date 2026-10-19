@@ -461,7 +461,7 @@ function InfoSheet({ want }) {
         {!ready ? <Text style={{ fontSize: 12, color: t.textDim }}>{tr('monitor.loading')}</Text>
           : d.gone ? <Text style={{ fontSize: 12, color: t.textDim, textAlign: 'start' }}>{tr('monitor.proc.goneHint')}</Text>
             : (
-              <ScrollView style={{ flex: 1 }} gutter>
+              <ScrollView style={{ flex: 1, marginInlineEnd: -12 }} contentStyle={{ paddingInlineEnd: 12 }}>
                 <View style={{ paddingBottom: 4 }}>
                   {tab === 'memory' && <MemoryTab d={d} />}
                   {tab === 'stats' && <StatsTab d={d} p={live} parent={parent} />}

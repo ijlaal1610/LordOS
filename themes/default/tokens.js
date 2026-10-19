@@ -48,6 +48,9 @@ export function makeTheme({ mode, accent, effects }) {
     dockBg: dark ? 'rgba(46,46,56,0.42)' : 'rgba(255,255,255,0.38)',
     dockBorder: dark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.55)',
     lightOff: dark ? '#4a4a50' : '#c8c8cc',
+    // overlay scroll bars (sdk/components.jsx ScrollView): a soft pill
+    scrollThumb: dark ? 'rgba(255,255,255,0.32)' : 'rgba(0,0,0,0.3)',
+    scrollThumbHover: dark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)',
     blur: effects ? 24 : 0,
   };
 }
