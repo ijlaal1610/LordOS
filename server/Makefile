@@ -69,7 +69,7 @@ DOC_SRC := src/doc/doc.c src/doc/wire.c src/ui/js_doc.c src/print/ipp.c src/prin
            src/print/escl.c src/print/print.c src/ui/js_print.c
 SRC += $(DOC_SRC)
 # Per-app firewall (src/fw, docs/FIREWALL.md): rules, decision and names learned from DNS
-FW_SRC := src/fw/rules.c src/fw/dnsmap.c src/fw/fwmap.c src/ui/js_fw.c
+FW_SRC := src/fw/rules.c src/fw/dnsmap.c src/fw/fwmap.c src/fw/fwlists.c src/ui/js_fw.c
 SRC += $(FW_SRC)
 OBJ := $(SRC:src/%.c=build/obj/%.o)
 HDR := $(wildcard src/*.h src/gpu/*.h src/ui/*.h src/term/*.h src/wl/*.h src/wasm/*.h src/sound/*.h src/pkg/*.h src/net/*.h src/install/*.h src/remote/*.h src/users/*.h src/sec/*.h src/monitor/*.h src/media/*.h src/app/*.h src/doc/*.h src/print/*.h) $(WL_GEN) $(APP_CLIENT_HDR)
@@ -131,7 +131,7 @@ endif
 .DEFAULT_GOAL := all
 BPF ?= $(shell command -v clang >/dev/null 2>&1 && echo 1 || echo 0)
 NP_SRC := src/netperm/netperm.c src/netperm/bpfsys.c src/netperm/npcompile.c src/netperm/npdns.c src/netperm/npdiag.c \
-          src/fw/rules.c src/fw/dnsmap.c src/fw/fwmap.c src/sec/json.c
+          src/fw/rules.c src/fw/dnsmap.c src/fw/fwmap.c src/fw/fwlists.c src/sec/json.c
 ALL += build/lord-netperm
 ifeq ($(BPF),1)
 NP_GEN := build/gen/np_bpf.h
@@ -313,6 +313,16 @@ build/fw-rules-test: tests/fw_rules_test.c src/fw/rules.c src/fw/fwmap.c src/sec
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/fw_rules_test.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c
 	./$@ || { rm -f $@; exit 1; }
+# subscribed blocklists (0.8.4): raw parsers, the set, the compiled file, fuzzing (docs/FIREWALL.md, "Blocklists")
+test: build/fwlists-test
+build/fwlists-test: tests/fwlists_test.c src/fw/fwlists.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c $(wildcard src/fw/*.h) src/sec/json.h
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/fwlists_test.c src/fw/fwlists.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c
+	./$@ || { rm -f $@; exit 1; }
+build/fwlists-test-asan: tests/fwlists_test.c src/fw/fwlists.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c $(wildcard src/fw/*.h)
+	@mkdir -p build
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=undefined $(WARN) -std=c11 -o $@ tests/fwlists_test.c src/fw/fwlists.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c
+	./$@
 # the destinations a user types in the rule sheet (tests/fw_dest_cases.txt), through the store's
 # parser; tests/fwrule_input_test.mjs checks the same file against sdk/fwrule.js (run_suites.sh)
 test: build/fwdest-test

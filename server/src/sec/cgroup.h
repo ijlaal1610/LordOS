@@ -43,6 +43,11 @@ int cgroup_delegate_session(unsigned uid, unsigned gid);
  * sessions' subtrees (cgroup v2's "no internal processes" rule). 0 if it did. */
 int cgroup_service_init(void);
 
+/* (0.8.4) Called by lord-sessiond in lord-netd's child, before its execve: moves the process into
+ * the root-owned lordos.service/<name> leaf (only "netd"), so lord-netperm can count the network
+ * service's own traffic (DHCP, the VPN daemons) apart from lord-sessiond's. Best effort: 0 placed. */
+int cgroup_service_leaf(const char *name);
+
 /* ---- Root-owned app scopes (lord-sessiond) ----
  * With lord-sessiond, a session's subtree stays root-owned: the scopes are created by root, with a
  * root-owned cgroup.procs, so an app cannot move itself to another cgroup (it would escape its

@@ -166,6 +166,76 @@ static void test_mode_and_trusted(void) {
     fw_store_free(s);
 }
 
+/* 0.8.4: the deny mode ("deny silently") and subscribed blocklists (FwQuery.listed) */
+static FwDecision decl(FwStore *s, const char *app, const char *ip, const char *host, int listed) {
+    FwQuery q = qry(app, FW_OUT, ip, 443, host);
+    q.listed = listed;
+    return fw_decide(s, &q);
+}
+
+static void test_deny_mode_and_lists(void) {
+    FwStore *s = fw_store_new();
+    fw_set_mode(s, FW_MODE_DENY);
+    CHECK(fw_mode(s) == FW_MODE_DENY);
+    FwDecision d = dec(s, "desktop:a", "8.8.8.8", 443, NULL);
+    CHECK(d.verdict == FW_V_DENY && d.reason == FW_BY_MODE && d.record == 1);
+    d = dec(s, "desktop:a", "192.168.1.1", 443, NULL);
+    CHECK(d.verdict == FW_V_DENY && d.reason == FW_BY_MODE);
+    d = dec(s, "desktop:a", "127.0.0.53", 53, NULL);               /* the resolver's stub: loopback stays */
+    CHECK(d.verdict == FW_V_ALLOW && d.reason == FW_BY_MODE);
+    d = dec(s, "desktop:a", "::1", 631, NULL);
+    CHECK(d.verdict == FW_V_ALLOW);
+    d = dec(s, "desktop:a", "::ffff:127.0.0.1", 631, NULL);
+    CHECK(d.verdict == FW_V_ALLOW);
+    add(s, "desktop:a", FW_OUT, "example.org", FW_ALLOW);           /* a rule still allows */
+    d = dec(s, "desktop:a", "203.0.113.5", 443, "example.org");
+    CHECK(d.verdict == FW_V_ALLOW && d.reason == FW_BY_RULE);
+    CHECK(!fw_set_trusted(s, "desktop:t", 1));                    /* trusted apps keep the network */
+    d = dec(s, "desktop:t", "8.8.8.8", 443, NULL);
+    CHECK(d.verdict == FW_V_ALLOW && d.reason == FW_BY_TRUSTED);
+    /* the mode survives the file */
+    size_t n;
+    char *j = fw_to_json(s, &n);
+    CHECK(j && strstr(j, "\"mode\":\"deny\""));
+    FwStore *t = fw_store_new();
+    char err[128];
+    CHECK(j && !fw_from_json(t, j, n, err, sizeof err) && fw_mode(t) == FW_MODE_DENY);
+    free(j);
+    fw_store_free(t);
+    fw_store_free(s);
+
+    /* lists: deny before lan/internet/any rules, never before a rule naming the destination */
+    s = fw_store_new();
+    const char *A = "desktop:b";
+    d = decl(s, A, "203.0.113.9", "tracker.example", 1);
+    CHECK(d.verdict == FW_V_DENY && d.reason == FW_BY_LIST && d.record == 1);
+    d = decl(s, A, "203.0.113.9", "tracker.example", 0);
+    CHECK(d.verdict == FW_V_ALLOW && d.reason == FW_BY_MODE);
+    add(s, A, FW_OUT, "any", FW_ALLOW);
+    add(s, A, FW_OUT, "internet", FW_ALLOW);
+    d = decl(s, A, "203.0.113.9", "tracker.example", 1);
+    CHECK(d.verdict == FW_V_DENY && d.reason == FW_BY_LIST);       /* broad rules don't override a list */
+    uint32_t mine = add(s, A, FW_OUT, "tracker.example", FW_ALLOW);
+    d = decl(s, A, "203.0.113.9", "tracker.example", 1);
+    CHECK(d.verdict == FW_V_ALLOW && d.reason == FW_BY_RULE && d.rule_id == mine);   /* the owner's allow wins */
+    uint32_t net = add(s, A, FW_OUT, "198.51.100.0/24", FW_ALLOW);
+    d = decl(s, A, "198.51.100.7", NULL, 1);
+    CHECK(d.verdict == FW_V_ALLOW && d.rule_id == net);
+    add(s, A, FW_OUT, "*.ads.example", FW_DENY);
+    d = decl(s, A, "203.0.113.10", "x.ads.example", 1);
+    CHECK(d.verdict == FW_V_DENY && d.reason == FW_BY_RULE);       /* the owner's own deny still says so */
+    CHECK(!fw_set_trusted(s, A, 1));
+    d = decl(s, "desktop:c", "203.0.113.9", NULL, 1);
+    CHECK(d.verdict == FW_V_DENY && d.reason == FW_BY_LIST);
+    CHECK(!fw_set_trusted(s, "desktop:c", 1));                    /* lists apply to trusted apps too */
+    d = decl(s, "desktop:c", "203.0.113.9", NULL, 1);
+    CHECK(d.verdict == FW_V_DENY && d.reason == FW_BY_LIST);
+    CHECK(!fw_set_restricted(s, "desktop:d", FW_R_NO_INTERNET));  /* a restriction comes first */
+    d = decl(s, "desktop:d", "203.0.113.9", NULL, 1);
+    CHECK(d.verdict == FW_V_DENY && d.reason == FW_BY_RESTRICTED);
+    fw_store_free(s);
+}
+
 static void test_precedence(void) {
     FwStore *s = fw_store_new();
     fw_set_mode(s, FW_MODE_ASK);
@@ -646,6 +716,7 @@ int main(void) {
     test_dest();
     test_lan();
     test_mode_and_trusted();
+    test_deny_mode_and_lists();
     test_precedence();
     test_restricted();
     test_lifetimes();

@@ -305,7 +305,7 @@ static int each_app(void *u, const char *app, int trusted, uint32_t flags) {
     return 0;
 }
 
-static const char *mode_name(FwMode m) { return m == FW_MODE_ASK ? "ask" : m == FW_MODE_OFF ? "off" : "silent"; }
+static const char *mode_name(FwMode m) { return m == FW_MODE_ASK ? "ask" : m == FW_MODE_OFF ? "off" : m == FW_MODE_DENY ? "deny" : "silent"; }
 
 static JSValue f_state(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc; (void)argv;
@@ -411,7 +411,8 @@ static JSValue f_set_mode(JSContext *c, JSValueConst t, int argc, JSValueConst *
     const char *s = JS_ToCString(c, argv[0]);
     snprintf(m, sizeof m, "%s", s ? s : "");
     if (s) JS_FreeCString(c, s);
-    FwMode mode = !strcmp(m, "silent") ? FW_MODE_SILENT : !strcmp(m, "ask") ? FW_MODE_ASK : !strcmp(m, "off") ? FW_MODE_OFF : (FwMode)-1;
+    FwMode mode = !strcmp(m, "silent") ? FW_MODE_SILENT : !strcmp(m, "ask") ? FW_MODE_ASK : !strcmp(m, "off") ? FW_MODE_OFF :
+                  !strcmp(m, "deny") ? FW_MODE_DENY : (FwMode)-1;
     if ((int)mode < 0) return js_throw_code(c, "fw.invalidMode", NULL);
     fw_set_mode(store, mode);
     return JS_NewBool(c, save() == 0);

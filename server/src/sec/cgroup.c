@@ -226,6 +226,20 @@ int cgroup_service_init(void) {
     return 0;
 }
 
+int cgroup_service_leaf(const char *name) {
+    if (!name || strcmp(name, "netd")) return -1;     /* the only one (docs/MONITOR.md, "Essential system traffic") */
+    char svc[PATH_MAX];
+    if (geteuid() != 0 || service_root(svc, sizeof svc)) return -1;
+    int fd = open(svc, O_PATH | O_DIRECTORY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    if (mkdirat(fd, name, 0755) && errno != EEXIST) { close(fd); return -1; }
+    int lfd = openat(fd, name, O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    int r = lfd >= 0 ? write_at(lfd, "cgroup.procs", "0") : -1;
+    if (lfd >= 0) close(lfd);
+    close(fd);
+    return r;
+}
+
 int cgroup_delegate_session(unsigned uid, unsigned gid) {
     char svc[PATH_MAX], sess[PATH_MAX];
     (void)gid;
