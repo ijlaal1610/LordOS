@@ -53,7 +53,7 @@ export * as fwRule from './fwrule.js';            // checks what the user types 
 export { packages, packageList, refreshPackages, packageFile, loadWasm } from './packages.js';
 import { refreshPackages } from './packages.js';
 export {
-  windows, wm, useWindows, configureWindows, getApp, listApps, isLiveSystem, appIdOf, workArea, workAreaOf, pointerWorkArea, appMenus, useAppMenus, windowTitle, appRegistry, appMenuClick,
+  windows, wm, openedAt, useWindows, configureWindows, getApp, listApps, isLiveSystem, appIdOf, workArea, workAreaOf, pointerWorkArea, appMenus, useAppMenus, windowTitle, appRegistry, appMenuClick,
   registerBuiltinApp,
 } from './windows.js';
 export { WindowShell, WINDOW_EDGE } from './windowshell.jsx';
@@ -93,9 +93,10 @@ export { lordosUpdate, restartNeeded, updatePrefs, setUpdatePrefs, UPDATE_DEFAUL
 export { vaultAvailable, vaultRequest, onVaultEvent, keyring, autofill, autofillReveal, KeyringPrompt, AutofillButton } from './vault.js';   // Passwords and keyring (docs/PASSWORDS.md)
 import { KeyringPrompt } from './vault.js';
 // Mail, Calendar, Contacts and Reminders through the sandboxed helper lord-maild (docs/MAIL.md)
-export { mailAvailable, mailRequest, onMailEvent, mailConfig, mailAccounts, mailStatus, autoconfig, OAUTH_PROVIDERS } from './mail.js';
+export { mailAvailable, mailRequest, onMailEvent, mailConfig, mailAccounts, mailStatus, autoconfig, OAUTH_PROVIDERS, trackMailStatus, isolatedPim, pickFileFd, closeFileFd } from './mail.js';
 export { calendars, events as calendarEvents, reminders, usePim, usePimQuery, pimRev, startOfDay } from './calendar.js';
 export { FilePicker } from './filepicker.jsx';
+export { openFileWithApps, revealPath } from './sysopen.js';   // opening files/apps for the isolated system apps
 export { books as addressBooks, contacts, displayName as contactName, initials as contactInitials, ContactPhoto } from './contacts.js';
 import { startMail } from './mail.js';
 import { startReminders } from './calendar.js';

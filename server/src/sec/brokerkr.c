@@ -155,7 +155,9 @@ void brokerkr_handle(int conn, int fd, uint32_t reqid, const char *app, char *pa
         return;
     }
     *r = (KrReq){ .st = ST_REQ, .conn = conn, .fd = fd, .reqid = reqid, .op = o };
-    snprintf(r->owner, sizeof r->owner, "app.%s", app);
+    /* a system app (assets/sysapps) keeps the owner it had in the session (Mail's account passwords
+     * stay "mail", where the session's need-auth handler reads them); a user package is "app.<id>" */
+    snprintf(r->owner, sizeof r->owner, brokersrv_conn_system(conn) ? "%s" : "app.%s", app);
     snprintf(r->service, sizeof r->service, "%s", service);
     snprintf(r->account, sizeof r->account, "%s", account);
     int sent = o == 's' ? send_vault(r, "kr-set", label, secret, NULL)
@@ -192,7 +194,7 @@ static void on_reply(KrReq *r, char *rep, size_t len) {
          * app is shown by its plain id ("app.notes" → "notes"). */
         char qa[64], qw[96], ev[256];          /* ids are short: [a-z0-9._-], at most 71 bytes */
         json_quote(qw, sizeof qw, !strncmp(other, "app.", 4) ? other + 4 : other);
-        json_quote(qa, sizeof qa, r->owner + 4);
+        json_quote(qa, sizeof qa, !strncmp(r->owner, "app.", 4) ? r->owner + 4 : r->owner);
         snprintf(r->item, sizeof r->item, "%s", item);
         r->prompt = KR_PROMPT_TAG | (++prompt_seq & 0x3fffffff);
         r->st = ST_PROMPT;

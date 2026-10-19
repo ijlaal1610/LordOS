@@ -6,5 +6,6 @@
   "minSize": [820, 480],
   "dock": true,
   "category": "Office",
-  "permissions": ["network", "fs:home"]
+  "permissions": ["network", "fs:home"],
+  "process": "isolated"
 }

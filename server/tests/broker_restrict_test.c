@@ -47,6 +47,17 @@ int brokerkr_resolve(uint32_t prompt, int allow) { (void)prompt; (void)allow; re
 void brokerkr_conn_closed(int conn) { (void)conn; }
 void brokerkr_tick(void) {}
 int brokerkr_pollfd(void) { return -1; }
+void brokermail_handle(int conn, int fd, uint32_t reqid, const char *app, char *payload, uint32_t len, int *fds, int nfds) {
+    (void)conn; (void)app; (void)payload; (void)len;
+    for (int i = 0; i < nfds; i++) if (fds[i] >= 0) { close(fds[i]); fds[i] = -1; }
+    brokersrv_reply(fd, reqid, BST_DENIED, NULL, 0, -1);
+}
+void brokermail_sys_open(int conn, int fd, uint32_t reqid, const char *app, char *payload, uint32_t len) { (void)conn; (void)app; (void)payload; (void)len; brokersrv_reply(fd, reqid, BST_DENIED, NULL, 0, -1); }
+void brokermail_conn_closed(int conn) { (void)conn; }
+void brokermail_tick(void) {}
+int brokermail_pollfd(void) { return -1; }
+int brokermail_wants_write(int conn) { (void)conn; return 0; }
+int lpk_valid_id(const char *id) { return id && id[0] && strlen(id) < 48; }
 
 struct MAudio { int open; };
 static struct MAudio mics[8];

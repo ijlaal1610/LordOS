@@ -212,7 +212,21 @@ static JSValue f_broker_quit(JSContext *c, JSValueConst t, int argc, JSValueCons
     if (app) JS_FreeCString(c, app);
     return JS_NewBool(c, ok);
 }
+/* lord.broker.openArgs(app, json, newWindow) → true if delivered or kept: args for an isolated app
+ * (wm.open(id, { args }) in the session, e.g. a notification's "Open" or the Dock's "New message").
+ * Sent as an "open" event now if the app runs, or when it starts (sdk/packages.js isolatedApp). */
+static JSValue f_broker_open_args(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    const char *app = argc > 0 && JS_IsString(argv[0]) ? JS_ToCString(c, argv[0]) : NULL;
+    size_t len = 0;
+    const char *json = argc > 1 && JS_IsString(argv[1]) ? JS_ToCStringLen(c, &len, argv[1]) : NULL;
+    int ok = app && json && brokersrv_open_args(app, json, len, argc > 2 && JS_ToBool(c, argv[2])) == 0;
+    if (app) JS_FreeCString(c, app);
+    if (json) JS_FreeCString(c, json);
+    return JS_NewBool(c, ok);
+}
 static const JSCFunctionListEntry broker_funcs[] = {
+    JS_CFUNC_DEF("openArgs", 3, f_broker_open_args),
     JS_CFUNC_DEF("resolve", 2, f_broker_resolve),
     JS_CFUNC_DEF("publish", 2, f_broker_publish),
     JS_CFUNC_DEF("pickResult", 2, f_broker_pick_result),

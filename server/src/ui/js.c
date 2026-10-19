@@ -1,5 +1,7 @@
 /* js.c — embedded QuickJS. Exposes the global `lord` object (create/modify nodes) and
  * provides setTimeout, requestAnimationFrame, console and performance, which React needs. */
+#include "../app/apphost_bc.h"
+#include <unistd.h>
 #include "js.h"
 #include "../ime.h"
 #include "../wl/wl.h"
@@ -473,8 +475,18 @@ int js_init_app(const char *host_bundle, const char *app_id) {
 
     double t0 = now_ms();
     int r = eval(prelude, sizeof prelude - 1, "<prelude>");
-    if (!r) r = eval(src, (size_t)len, host_bundle);
-    fprintf(stderr, "js: app %s loaded in %.1f ms\n", app_id, now_ms() - t0);
+    /* the app host as bytecode lord-server compiled for this session (app/apphost_bc.c), else the source */
+    const char *bcs = getenv(APPHOST_BC_ENV);
+    int bcfd = bcs ? atoi(bcs) : -1, bcok = 0, how = -1;
+    unsetenv(APPHOST_BC_ENV);
+    if (!r && bcfd > 2) {
+        how = apphost_bc_eval(ctx, host_bundle, bcfd, &bcok);
+        if (how == 1) { dump_exception(ctx); r = -1; }
+        drain_jobs();
+    }
+    if (bcfd > 2) close(bcfd);
+    if (!r && how < 0) r = eval(src, (size_t)len, host_bundle);
+    fprintf(stderr, "js: app %s loaded in %.1f ms%s\n", app_id, now_ms() - t0, how == 0 ? " (bytecode)" : "");
     free(src);
     return r;
 }

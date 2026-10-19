@@ -264,6 +264,7 @@
   "lpk.tooLarge": "The package is too large",
   "lpk.writeFailed": "Could not write the app (is the disk full?)",
   "mail.badAccounts": "The mail accounts are not valid",
+  "mail.denied": "This app may not ask Mail for that",
   "mail.requestTooLarge": "The request to Mail is too large",
   "mail.tooManyFiles": "At most {max} files at a time",
   "media.audioConvertFailed": "Could not convert the audio",

@@ -32,7 +32,7 @@
 #define MAX_APPS 32
 #define MAX_PENDING 32
 
-typedef struct { int fd, pid, used, resync; char id[48]; MAudio *mic; int mic_ringfd; int vault; } AppConn;
+typedef struct { int fd, pid, used, resync; char id[48]; MAudio *mic; int mic_ringfd; int vault, sys; } AppConn;
 static AppConn apps[MAX_APPS];
 
 /* prompts waiting for the user's answer (ui id → app + fd + permission + the app's reqid) */
@@ -47,7 +47,7 @@ static uint32_t ui_seq;
 static uint32_t next_ui_id(void) { ui_seq = (ui_seq % 0x3fffffffu) + 1; return ui_seq; }
 
 /* cola de eventos para JS (prompts a mostrar, cambios de indicador) */
-typedef struct { char kind[16]; char json[256]; } Evt;
+typedef struct { char kind[16]; char json[4096]; } Evt;
 static Evt evq[64];
 static int nevt;
 
@@ -105,6 +105,7 @@ int brokersrv_publish(const char *kind, const char *json, size_t len) {
 
 static int send_reply_fd(int fd, uint32_t reqid, int status, const void *data, uint32_t len, int passfd);
 static void clip_secret_tick(void);
+static double mono_s(void);
 static int send_reply(int fd, uint32_t reqid, int status, const void *data, uint32_t len);
 
 /* picker (powerbox): avisos pendientes de que el usuario elija un archivo */
@@ -157,6 +158,7 @@ void brokersrv_revoke(const char *app, const char *perm) {
 void brokersrv_tick(void) {
     brokercam_tick();
     brokerkr_tick();
+    brokermail_tick();
     clip_secret_tick();
     char kb[512];
     keyboard_json(kb, sizeof kb);
@@ -174,14 +176,58 @@ void brokersrv_tick(void) {
     }
 }
 
+/* Args waiting for an isolated app that is starting (brokersrv_open_args). */
+#define OPEN_ARGS_MAX (16 * 1024)
+static struct { char id[48]; char *json; double at; } open_wait[8];
+
+static void send_open(AppConn *a, const char *json, size_t len, int new_window) {
+    char *ev = malloc(len + 40);
+    if (!ev) return;
+    int n = snprintf(ev, len + 40, "{\"new\":%s,\"args\":%.*s}", new_window ? "true" : "false", (int)len, json);
+    if (n > 0) send_event(a, "open", ev, (size_t)n);
+    free(ev);
+}
+
+int brokersrv_open_args(const char *id, const char *json, size_t len, int new_window) {
+    if (!id || !lpk_valid_id(id) || !json || !len || len > OPEN_ARGS_MAX) return -1;
+    JDoc d;
+    if (json_parse(json, len, &d, NULL, 0)) return -1;
+    int obj = d.root && d.root->type == J_OBJ;
+    json_free(&d);
+    if (!obj) return -1;
+    for (int i = 0; i < MAX_APPS; i++) if (apps[i].used && !strcmp(apps[i].id, id)) { send_open(&apps[i], json, len, new_window); return 0; }
+    /* not running yet (it is being launched): keep it for a few seconds */
+    int slot = 0;
+    for (int i = 0; i < 8; i++) if (!open_wait[i].json || !strcmp(open_wait[i].id, id)) { slot = i; break; }
+    free(open_wait[slot].json);
+    open_wait[slot].json = malloc(len + 2);
+    if (!open_wait[slot].json) return -1;
+    open_wait[slot].json[0] = new_window ? '1' : '0';
+    memcpy(open_wait[slot].json + 1, json, len);
+    open_wait[slot].json[len + 1] = 0;
+    snprintf(open_wait[slot].id, sizeof open_wait[slot].id, "%s", id);
+    open_wait[slot].at = mono_s();
+    return 0;
+}
+
 int brokersrv_add(int fd, const char *id, int pid) {
     for (int i = 0; i < MAX_APPS; i++) if (!apps[i].used) {
         apps[i] = (AppConn){ .fd = fd, .pid = pid, .used = 1 };
         snprintf(apps[i].id, sizeof apps[i].id, "%s", id);
+        for (int k = 0; k < 8; k++) if (open_wait[k].json && !strcmp(open_wait[k].id, id)) {
+            if (mono_s() - open_wait[k].at < 10)
+                send_open(&apps[i], open_wait[k].json + 1, strlen(open_wait[k].json + 1), open_wait[k].json[0] == '1');
+            free(open_wait[k].json);
+            open_wait[k].json = NULL;
+        }
         return 0;
     }
     return -1;
 }
+
+void brokersrv_set_system(int fd) { for (int i = 0; i < MAX_APPS; i++) if (apps[i].used && apps[i].fd == fd) apps[i].sys = 1; }
+int brokersrv_conn_system(int conn) { return conn >= 0 && conn < MAX_APPS && apps[conn].used && apps[conn].sys; }
+void brokersrv_shell_event(const char *kind, const char *json) { queue_evt(kind, "%s", json); }
 
 /* The app is already running: ask its process for another window (Dock → «New window»). */
 int brokersrv_new_window(const char *id) {
@@ -228,6 +274,7 @@ int brokersrv_count(void) { int n = 0; for (int i = 0; i < MAX_APPS; i++) n += a
 static void drop(AppConn *a) {
     brokercam_conn_closed((int)(a - apps));
     brokerkr_conn_closed((int)(a - apps));
+    brokermail_conn_closed((int)(a - apps));
     /* its open prompts and pickers die with it: their fd may be reused by another app */
     for (int i = 0; i < MAX_PENDING; i++) {
         if (pend[i].used && pend[i].fd == a->fd) pend[i].used = 0;
@@ -288,9 +335,14 @@ static int deny_restricted(int fd, uint32_t reqid, const char *id, uint32_t flag
     return 1;
 }
 
-static void handle(AppConn *a, BrokerHdr *h, char *payload) {
+static void handle(AppConn *a, BrokerHdr *h, char *payload, int *fds, int nfds) {
     int fd = a->fd;
+    if (h->op == BOP_MAIL) { brokermail_handle((int)(a - apps), fd, h->reqid, a->id, payload, h->len, fds, nfds); return; }
+    for (int i = 0; i < nfds; i++) if (fds[i] >= 0) { close(fds[i]); fds[i] = -1; }   /* no other request carries fds */
     switch (h->op) {
+    case BOP_SYS_OPEN:
+        brokermail_sys_open((int)(a - apps), fd, h->reqid, a->id, payload, h->len);
+        break;
     case BOP_FS_HOME: {
         char p[PATH_MAX];
         snprintf(p, sizeof p, "%s/.local/share/lordos/appdata/%s", getenv("HOME"), a->id);
@@ -509,7 +561,14 @@ void brokersrv_resolve(uint32_t ui, int allow) {
 
 int brokersrv_pollfds(struct pollfd *pfd, int max) {
     int n = 0;
-    for (int i = 0; i < MAX_APPS && n < max; i++) if (apps[i].used) { pfd[n].fd = apps[i].fd; pfd[n].events = POLLIN; pfd[n].revents = 0; n++; }
+    for (int i = 0; i < MAX_APPS && n < max; i++) if (apps[i].used) {
+        pfd[n].fd = apps[i].fd;
+        pfd[n].events = POLLIN | (brokermail_wants_write(i) ? POLLOUT : 0);   /* mail replies still to send */
+        pfd[n].revents = 0;
+        n++;
+    }
+    int mf = brokermail_pollfd();                /* lord-maild answered an isolated app */
+    if (mf >= 0 && n < max) { pfd[n].fd = mf; pfd[n].events = POLLIN; pfd[n].revents = 0; n++; }
     /* last: wakes the loop when lord-vault answers a keyring request (brokersrv_tick reads it) */
     int kf = brokerkr_pollfd();
     if (kf >= 0 && n < max) { pfd[n].fd = kf; pfd[n].events = POLLIN; pfd[n].revents = 0; n++; }
@@ -526,13 +585,26 @@ void brokersrv_dispatch(struct pollfd *pfd, int n) {
         char *buf = malloc(BROKER_MAX_MSG + 1);
         if (!buf) continue;
         struct iovec iov[2] = { { &h, sizeof h }, { buf, BROKER_MAX_MSG } };
-        struct msghdr m = { .msg_iov = iov, .msg_iovlen = 2 };
-        ssize_t r = recvmsg(apps[i].fd, &m, 0);
-        if (r < (ssize_t)sizeof h) { free(buf); drop(&apps[i]); continue; }
+        /* up to 16 fds (files for lord-maild, BOP_MAIL only; closed for anything else) */
+        char cbuf[CMSG_SPACE(16 * sizeof(int))];
+        struct msghdr m = { .msg_iov = iov, .msg_iovlen = 2, .msg_control = cbuf, .msg_controllen = sizeof cbuf };
+        ssize_t r = recvmsg(apps[i].fd, &m, MSG_CMSG_CLOEXEC);
+        int fds[16], nfds = 0;
+        for (struct cmsghdr *c = CMSG_FIRSTHDR(&m); c; c = CMSG_NXTHDR(&m, c))
+            if (c->cmsg_level == SOL_SOCKET && c->cmsg_type == SCM_RIGHTS) {
+                int k = (int)((c->cmsg_len - CMSG_LEN(0)) / sizeof(int));
+                for (int j = 0; j < k; j++) {
+                    int f;
+                    memcpy(&f, CMSG_DATA(c) + j * sizeof(int), sizeof f);
+                    if (nfds < 16) fds[nfds++] = f; else close(f);
+                }
+            }
+        if (r < (ssize_t)sizeof h || (m.msg_flags & MSG_CTRUNC)) { for (int j = 0; j < nfds; j++) close(fds[j]); free(buf); drop(&apps[i]); continue; }
         uint32_t len = (uint32_t)r - sizeof h;
-        if (h.len != len || len > BROKER_MAX_MSG) { free(buf); drop(&apps[i]); continue; }
+        if (h.len != len || len > BROKER_MAX_MSG) { for (int j = 0; j < nfds; j++) close(fds[j]); free(buf); drop(&apps[i]); continue; }
         buf[len] = 0;
-        handle(&apps[i], &h, buf);
+        handle(&apps[i], &h, buf, fds, nfds);
+        for (int j = 0; j < nfds; j++) if (fds[j] >= 0) close(fds[j]);
         free(buf);
     }
 }

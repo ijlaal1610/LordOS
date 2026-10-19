@@ -1985,6 +1985,8 @@ static void add_object(JSContext *c, JSValue parent, const char *name, const JSC
 void js_sys_register_app(JSContext *c, JSValue lord) {
     add_object(c, lord, "text", text_funcs, sizeof text_funcs / sizeof text_funcs[0]);
     add_object(c, lord, "image", image_funcs, sizeof image_funcs / sizeof image_funcs[0]);
+    /* text measuring is local (fonts already loaded): Mail's body editor lays out lines with it */
+    JS_SetPropertyStr(c, lord, "measureText", JS_NewCFunction(c, f_measure_text, "measureText", 3));
 }
 
 void js_sys_register(JSContext *c, JSValue lord) {

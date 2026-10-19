@@ -3,7 +3,7 @@
 import { View, Text, addListener, displayFor } from '@lordos/runtime';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useTheme } from './theme.js';
-import { getApp, windows } from './windows.js';
+import { getApp, windows, openedAt } from './windows.js';
 import { useStore } from './store.js';
 import { textDirection } from './i18n.js';
 import { ime, useIme, Preedit } from './ime.js';
@@ -303,6 +303,10 @@ export function AppHost({ id, focused }) {
   // the window's overlay host (sdk/layers.js): lists and popovers of an isolated app's process go
   // here, above all of the window's content; in the desktop's process they go to the shell layers
   const [overlayHost, setOverlayHost] = useState(null);
+  useEffect(() => {                       // developer timing: open → first commit of this window
+    const t0 = openedAt.get(id);
+    if (t0 != null && app && !app.isolated) { openedAt.delete(id); console.log(`timing: ${app.id} window committed ${(lord.now() - t0).toFixed(1)} ms after wm.open`); }
+  }, []);
   if (!app) return null;
   const C = app.Component;
   // the content goes in its own node: `protected` paints it black in screenshots (wm.setProtected)

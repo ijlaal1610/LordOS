@@ -251,6 +251,9 @@ addListener('keydown', (e) => {
 
 // ---- quick actions ----
 
+// Can the session hand args and «new window» to an isolated built-in app's process?
+const isolatedArgs = () => typeof lord !== 'undefined' && !!lord.broker && typeof lord.broker.openArgs === 'function';
+
 // The quick actions of a Dock item: a LordOS app's (manifest "dockActions" + registerDockActions),
 // or a Linux app's desktop actions (Actions= in its .desktop, run by lord.apps.launchAction).
 export function dockQuickActions(e) {
@@ -264,7 +267,9 @@ export function dockQuickActions(e) {
   }
   if (p.kind !== 'app') return [];                          // .lpk: launchPackage takes no arguments
   const app = getApp(p.key);
-  if (!app || app.isolated) return [];
+  // an isolated built-in app (its own process) gets the action's args through the session
+  // (sdk/packages.js isolatedApp → lord.broker.openArgs)
+  if (!app || (app.isolated && !isolatedArgs())) return [];
   let fromModule = [];
   try { fromModule = actionProviders.get(p.key)?.() || []; } catch (err) { fromModule = []; }
   return cleanActions([...(Array.isArray(app.dockActions) ? app.dockActions : []), ...fromModule]).map((a) => ({
@@ -291,7 +296,10 @@ export function dockMenu(e, opts = {}) {
   const appKey = p && p.kind === 'app' ? p.key : null;
   const custom = appKey && menuProviders.get(appKey) ? menuProviders.get(appKey)(e) : null;
   if (custom && custom.length) items.push(...custom, '-');
-  else if (e.windows.length && p) items.push({ label: t('shell.dock.newWindow'), onClick: () => (appKey && !getApp(appKey)?.isolated ? wm.open(appKey, { new: true }) : launchDockItem(e.id)) }, '-');
+  else if (e.windows.length && p && !(appKey && getApp(appKey)?.singleWindow)) {
+    const iso = appKey && getApp(appKey)?.isolated;
+    items.push({ label: t('shell.dock.newWindow'), onClick: () => (appKey && (!iso || isolatedArgs()) ? wm.open(appKey, { new: true }) : launchDockItem(e.id)) }, '-');
+  }
   if (p) {
     const options = [];
     if (!dock.isPinned(e.id)) options.push({ label: opts.keepLabel || t('shell.dock.keep'), onClick: () => dock.pin(e.id) });

@@ -30,6 +30,8 @@ int brokersrv_reply(int fd, uint32_t reqid, int status, const void *data, uint32
     return sendmsg(fd, &m, MSG_NOSIGNAL) < 0 ? -1 : 0;
 }
 void brokersrv_prompt_event(const char *json) { snprintf(prompt, sizeof prompt, "%s", json); nprompts++; }
+/* connection 7 stands for a system package (assets/sysapps): its owner is its plain id */
+int brokersrv_conn_system(int conn) { return conn == 7; }
 
 static int app_end, srv_end;
 static uint32_t next_req = 1;
@@ -37,6 +39,7 @@ static char got[1 << 16];
 static int got_status;
 
 /* the app sends op/service/account/label/secret; waits for the reply (or a prompt) */
+static int call_conn;      /* broker connection the request comes from (7 = a system package) */
 static int call(const char *app, const char *op, const char *service, const char *account, const char *label, const char *secret, size_t secret_len) {
     char p[4096];
     size_t o = 0;
@@ -46,7 +49,7 @@ static int call(const char *app, const char *op, const char *service, const char
     o += secret_len;
     p[o] = 0;
     int before = nprompts;
-    brokerkr_handle(0, srv_end, next_req++, app, p, (uint32_t)o);
+    brokerkr_handle(call_conn, srv_end, next_req++, app, p, (uint32_t)o);
     double t0 = now_ms();
     while (now_ms() - t0 < 20000) {
         brokerkr_tick();
@@ -158,6 +161,13 @@ int main(void) {
     k = CALL("mail", "get", "imap.example.com", "ana", "");
     check(k == 'p' && strstr(prompt, "\"owner\":\"mail\""), ".lpk \"mail\" (owner app.mail) does not own the desktop's \"mail\" item");
     check(answer(0) == 'r' && is_err(BST_DENIED, "keyring.notShared"), "denied");
+    /* the system Mail app (assets/sysapps, its own process) keeps the desktop's owner "mail" */
+    call_conn = 7;
+    k = CALL("mail", "get", "imap.example.com", "ana", "");
+    check(k == 'r' && is_ok() && strstr(got, "desk-secret"), "system package \"mail\" (owner mail) reads the desktop's \"mail\" item");
+    CALL("mail", "list", "", "", "");
+    check(is_ok() && !strstr(got, "sync.example.org"), "system \"mail\" still does not see other apps' items");
+    call_conn = 0;
 
     /* bad requests */
     CALL("alpha", "nope", "x", "", "");

@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <math.h>
 #include <stdatomic.h>
 #include <unistd.h>
@@ -39,6 +40,8 @@ static char *pkg_read(const char *rel, size_t max, size_t *len);
 static struct { char *buf; size_t len; } queued[32];
 static int nqueued;
 static void queue_event(const char *p, size_t n) {
+    /* lord-maild replies (js_brokermail.c) are taken at once: never dropped while an RPC waits */
+    if (n > 5 && !memcmp(p, "mail", 5)) { js_brokermail_chunk(p + 5, n - 5); return; }
     if (nqueued >= 32) return;
     char *b = malloc(n + 1);
     if (!b) return;
@@ -57,11 +60,22 @@ int js_broker_fd(void) { return broker_fd; }
 
 /* RPC síncrono: manda el pedido y espera la respuesta. status recibe BrokerStatus; out/outlen el
  * payload (malloc; el llamador libera). 0 si llegó respuesta. */
-static int rpc(int op, const void *payload, uint32_t len, int *status, char **out, uint32_t *outlen) {
-    if (broker_fd < 0) { if (status) *status = BST_ERROR; return -1; }
+static int rpc_fds(int op, const void *payload, uint32_t len, const int *fds, int nfds, int *status, char **out, uint32_t *outlen) {
+    if (broker_fd < 0 || nfds < 0 || nfds > 16) { if (status) *status = BST_ERROR; return -1; }
     BrokerHdr h = { .reqid = next_req++, .op = (uint16_t)op, .status = BROKER_REQ, .len = len };
     struct iovec iov[2] = { { &h, sizeof h }, { (void *)payload, len } };
     struct msghdr m = { .msg_iov = iov, .msg_iovlen = len ? 2 : 1 };
+    char cbuf[CMSG_SPACE(16 * sizeof(int))];
+    if (nfds) {                                             /* files for lord-maild (BOP_MAIL) */
+        memset(cbuf, 0, sizeof cbuf);
+        m.msg_control = cbuf;
+        m.msg_controllen = CMSG_SPACE((size_t)nfds * sizeof(int));
+        struct cmsghdr *c = CMSG_FIRSTHDR(&m);
+        c->cmsg_level = SOL_SOCKET;
+        c->cmsg_type = SCM_RIGHTS;
+        c->cmsg_len = CMSG_LEN((size_t)nfds * sizeof(int));
+        memcpy(CMSG_DATA(c), fds, (size_t)nfds * sizeof(int));
+    }
     if (sendmsg(broker_fd, &m, MSG_NOSIGNAL) < 0) { if (status) *status = BST_ERROR; return -1; }
     for (;;) {
         BrokerHdr r;
@@ -82,6 +96,9 @@ static int rpc(int op, const void *payload, uint32_t len, int *status, char **ou
         if (out) { *out = buf; if (outlen) *outlen = pl; } else free(buf);
         return 0;
     }
+}
+static int rpc(int op, const void *payload, uint32_t len, int *status, char **out, uint32_t *outlen) {
+    return rpc_fds(op, payload, len, NULL, 0, status, out, outlen);
 }
 
 /* Un evento: "tipo\0json". El teclado se aplica acá (keyboard.c); el resto va a JS
@@ -106,6 +123,7 @@ static void dispatch_event(const char *buf, size_t n) {
     const char *kind = buf, *json = nul + 1;
     size_t jl = n - (size_t)(json - buf);
     if (!strcmp(kind, "cam")) { js_brokercam_event(json, jl); return; }     /* camera frames (js_brokercam.c) */
+    if (!strcmp(kind, "mail")) { js_brokermail_chunk(json, jl); return; }  /* lord-maild replies (js_brokermail.c) */
     if (!strcmp(kind, "keyboard")) { apply_keyboard(json, jl); return; }
     if (!strcmp(kind, "state")) {                    /* resincronizar: teclado acá, el resto a JS */
         JDoc d;
@@ -292,15 +310,22 @@ static int rpc_fd(int op, const void *payload, uint32_t len, char *name, size_t 
     struct iovec iov[2] = { { &h, sizeof h }, { (void *)payload, len } };
     struct msghdr m = { .msg_iov = iov, .msg_iovlen = len ? 2 : 1 };
     if (sendmsg(broker_fd, &m, MSG_NOSIGNAL) < 0) return -1;
+    /* events that arrive meanwhile can be large (mail chunks): a full-size buffer */
+    static char *buf;
+    if (!buf && !(buf = malloc(BROKER_MAX_MSG + 1))) return -1;
     for (;;) {
         BrokerHdr r;
-        char buf[1024];
         char cmsg[CMSG_SPACE(sizeof(int))];
-        struct iovec riov[2] = { { &r, sizeof r }, { buf, sizeof buf - 1 } };
+        struct iovec riov[2] = { { &r, sizeof r }, { buf, BROKER_MAX_MSG } };
         struct msghdr rm = { .msg_iov = riov, .msg_iovlen = 2, .msg_control = cmsg, .msg_controllen = sizeof cmsg };
-        ssize_t n = recvmsg(broker_fd, &rm, 0);
+        ssize_t n = recvmsg(broker_fd, &rm, MSG_CMSG_CLOEXEC);
         if (n < (ssize_t)sizeof r) return -1;
-        if (r.reqid != h.reqid) { if (r.op == BOP_EVENT) queue_event(buf, (uint32_t)n - sizeof r); continue; }
+        if (r.reqid != h.reqid) {
+            for (struct cmsghdr *cm = CMSG_FIRSTHDR(&rm); cm; cm = CMSG_NXTHDR(&rm, cm))   /* never keep an fd nobody asked for */
+                if (cm->cmsg_level == SOL_SOCKET && cm->cmsg_type == SCM_RIGHTS) { int f; memcpy(&f, CMSG_DATA(cm), sizeof f); close(f); }
+            if (r.op == BOP_EVENT) queue_event(buf, (uint32_t)n - sizeof r);
+            continue;
+        }
         int fd = -1;
         for (struct cmsghdr *cm = CMSG_FIRSTHDR(&rm); cm; cm = CMSG_NXTHDR(&rm, cm))
             if (cm->cmsg_level == SOL_SOCKET && cm->cmsg_type == SCM_RIGHTS) memcpy(&fd, CMSG_DATA(cm), sizeof fd);
@@ -318,6 +343,9 @@ static int rpc_fd(int op, const void *payload, uint32_t len, char *name, size_t 
 
 /* For js_brokercam.c (js_broker.h): the same RPCs, plus a send that does not wait for a reply. */
 int js_broker_rpc(int op, const void *payload, uint32_t len, int *status, char **out, uint32_t *outlen) { return rpc(op, payload, len, status, out, outlen); }
+int js_broker_rpc_fds(int op, const void *payload, uint32_t len, const int *fds, int nfds, int *status, char **out, uint32_t *outlen) {
+    return rpc_fds(op, payload, len, fds, nfds, status, out, outlen);
+}
 int js_broker_rpc_fd(int op, const void *payload, uint32_t len, char *info, size_t n) { return rpc_fd(op, payload, len, info, n); }
 int js_broker_send(int op, const void *payload, uint32_t len) {
     if (broker_fd < 0) return -1;
@@ -375,6 +403,15 @@ static JSValue f_fd_write(JSContext *c, JSValueConst t, int argc, JSValueConst *
     while (data && w < len) { ssize_t r = write(fd, data + w, len - w); if (r < 0 && errno == EINTR) continue; if (r <= 0) break; w += (size_t)r; }
     if (dyn) JS_FreeCString(c, dyn);
     return JS_NewBool(c, data && w == len);
+}
+/* lord.broker.fdSize(fd) → bytes of a file the app holds (from the system file dialog), or -1 */
+static JSValue f_fd_size(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    int32_t fd = -1;
+    if (argc > 0) JS_ToInt32(c, &fd, argv[0]);
+    struct stat st;
+    if (fd < 0 || fstat(fd, &st) || !S_ISREG(st.st_mode)) return JS_NewInt32(c, -1);
+    return JS_NewFloat64(c, (double)st.st_size);
 }
 static JSValue f_fd_close(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc;
@@ -442,6 +479,30 @@ static JSValue f_mic_level(JSContext *c, JSValueConst t, int argc, JSValueConst 
     mic_cursor = w & ~(uint64_t)1;
     double rms = n ? sqrt(sum / n) / 32768.0 : 0;
     return JS_NewFloat64(c, rms);
+}
+
+/* lord.broker.openApp(app, json, newWindow) → true: a system app opens another one with args
+ * (Mail → Calendar, Contacts → a new message). lord-server allows it only between Mail, Calendar,
+ * Contacts and Reminders, and only small args without paths (sec/brokermail.c). */
+static JSValue f_broker_open_app(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    const char *app = argc > 0 && JS_IsString(argv[0]) ? JS_ToCString(c, argv[0]) : NULL;
+    size_t jl = 0;
+    const char *json = argc > 1 && JS_IsString(argv[1]) ? JS_ToCStringLen(c, &jl, argv[1]) : NULL;
+    int ok = 0;
+    if (app && json && strlen(app) < 48 && jl <= 1500) {
+        char pl[1600];
+        int n = snprintf(pl, sizeof pl, "%s", app) + 1;
+        pl[n++] = argc > 2 && JS_ToBool(c, argv[2]) ? '1' : '0';
+        pl[n++] = 0;
+        memcpy(pl + n, json, jl);
+        n += (int)jl;
+        int st = BST_ERROR;
+        ok = !rpc(BOP_SYS_OPEN, pl, (uint32_t)n, &st, NULL, NULL) && st == BST_OK;
+    }
+    if (app) JS_FreeCString(c, app);
+    if (json) JS_FreeCString(c, json);
+    return JS_NewBool(c, ok);
 }
 
 static JSValue f_broker_menus(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
@@ -638,8 +699,8 @@ static const JSCFunctionListEntry fs_funcs[] = {
 static const JSCFunctionListEntry clip_funcs[] = { JS_CFUNC_DEF("get", 0, f_clip_get), JS_CFUNC_DEF("set", 1, f_clip_set) };
 static const JSCFunctionListEntry broker_funcs[] = {
     JS_CFUNC_DEF("request", 1, f_broker_request), JS_CFUNC_DEF("device", 2, f_broker_device), JS_CFUNC_DEF("state", 0, f_broker_state),
-    JS_CFUNC_DEF("pick", 2, f_broker_pick), JS_CFUNC_DEF("fdRead", 1, f_fd_read), JS_CFUNC_DEF("fdWrite", 2, f_fd_write), JS_CFUNC_DEF("fdClose", 1, f_fd_close),
-    JS_CFUNC_DEF("menus", 1, f_broker_menus),
+    JS_CFUNC_DEF("pick", 2, f_broker_pick), JS_CFUNC_DEF("fdRead", 1, f_fd_read), JS_CFUNC_DEF("fdWrite", 2, f_fd_write), JS_CFUNC_DEF("fdClose", 1, f_fd_close), JS_CFUNC_DEF("fdSize", 1, f_fd_size),
+    JS_CFUNC_DEF("menus", 1, f_broker_menus), JS_CFUNC_DEF("openApp", 3, f_broker_open_app),
     JS_CFUNC_DEF("micStart", 0, f_mic_start), JS_CFUNC_DEF("micStop", 0, f_mic_stop), JS_CFUNC_DEF("micLevel", 0, f_mic_level),
 };
 static const JSCFunctionListEntry locale_funcs[] = {
@@ -669,4 +730,5 @@ void js_broker_register(JSContext *c, JSValue lord, const char *id) {
     JS_SetPropertyStr(c, lord, "loadApp", JS_NewCFunction(c, f_load_app, "loadApp", 0));
     app_windows_register(c, lord);           /* several windows per isolated app */
     js_brokercam_register(c, lord);          /* lord.media: the camera through lord-server (js_brokercam.c) */
+    js_brokermail_register(c, lord, id);     /* lord.mail: system Mail, Calendar, Contacts, Reminders (js_brokermail.c) */
 }

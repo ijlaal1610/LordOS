@@ -6,6 +6,7 @@ import {
   View, Text, useTheme, useStore, useAppWindow, useKeyboard, Button, TextInput, ScrollView, t, wm, fs, monthName, formatDate, formatTime,
   Toolbar, ToolbarButton, ToolbarSpacer, ToolbarDivider, SearchField, Hairline, direction, textDirection,
   mailRequest, onMailEvent, mailStatus, mailConfig, mailAccounts, mailAvailable, addListener, clipboard, registerDockActions,
+  trackMailStatus, isolatedPim, saveFile,
 } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { HtmlView, TextView } from './HtmlView.jsx';
@@ -297,13 +298,26 @@ function Attachments({ msg }) {
   const [busy, setBusy] = useState(null);
   const atts = (msg.atts || []).filter((a) => !(a.inline && a.cid && msg.html));
   if (!atts.length) return null;
-  const fetch = async (a) => {
-    const r = await mailRequest('attachment', { acct: msg.acct, folder: msg.folder, uid: msg.uid, idx: a.idx });
-    return `${lord.mail.cacheDir()}/${r.path}`;
+  const rel = async (a) => (await mailRequest('attachment', { acct: msg.acct, folder: msg.folder, uid: msg.uid, idx: a.idx })).path;
+  const fetch = async (a) => `${lord.mail.cacheDir()}/${await rel(a)}`;
+  const open = async (a) => {
+    setBusy(a.idx);
+    // in its own process Mail cannot open files: lord-server checks the cached attachment and the
+    // session opens it with the user's apps
+    try { if (isolatedPim()) lord.mail.openAttachment(await rel(a), a.name); else openPath(await fetch(a), a.name); } catch (e) { /* shown in the row */ }
+    setBusy(null);
   };
-  const open = async (a) => { setBusy(a.idx); try { openPath(await fetch(a), a.name); } catch (e) { /* shown in the row */ } setBusy(null); };
   const save = async (a) => {
     setBusy(a.idx);
+    if (isolatedPim()) {
+      // a read-only fd of the cached attachment, then the system's save dialog
+      try {
+        const fd = lord.mail.attachmentFd(await rel(a));
+        if (fd >= 0) { const data = lord.broker.fdRead(fd); lord.broker.fdClose(fd); await saveFile(safeName(a.name), data); }
+      } catch (e) { /* cancelled or restricted */ }
+      setBusy(null);
+      return;
+    }
     try {
       const p = await fetch(a);
       const dir = ['Descargas', 'Downloads', 'Transferências'].map((d) => `${fs.home()}/${d}`).find((d) => { try { return fs.stat(d); } catch (e) { return false; } }) || fs.home();
@@ -413,6 +427,7 @@ function MessageView({ msg, width, onLink, cfg, onTrustSender, collapsed, onExpa
 
 export default function Mail() {
   const { args } = useAppWindow();
+  trackMailStatus();                      // only in its own process (lord.mail.appMode)
   if (args?.compose) return <Compose draft={typeof args.compose === 'object' ? args.compose : {}} />;
   return <MailMain />;
 }
@@ -518,7 +533,13 @@ function MailMain() {
       // the original's attachments go along (saved from the cache)
       const paths = [];
       for (const a of msg.atts || []) {
-        try { const r = await mailRequest('attachment', { acct: msg.acct, folder: msg.folder, uid: msg.uid, idx: a.idx }); paths.push(`${lord.mail.cacheDir()}/${r.path}`); } catch (e) { /* skip */ }
+        try {
+          const r = await mailRequest('attachment', { acct: msg.acct, folder: msg.folder, uid: msg.uid, idx: a.idx });
+          if (isolatedPim()) {
+            const fd = lord.mail.attachmentFd(r.path);
+            if (fd >= 0) paths.push({ fd, name: safeName(a.name), size: a.size || 0 });
+          } else paths.push(`${lord.mail.cacheDir()}/${r.path}`);
+        } catch (e) { /* skip */ }
       }
       delete d.forwardAtts;
       compose({ ...d, attachments: paths, noSignature: false });

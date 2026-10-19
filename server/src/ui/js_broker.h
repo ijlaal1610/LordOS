@@ -22,6 +22,11 @@ void app_windows_register(JSContext *c, JSValue lord);
 int  js_broker_rpc(int op, const void *payload, uint32_t len, int *status, char **out, uint32_t *outlen);
 int  js_broker_rpc_fd(int op, const void *payload, uint32_t len, char *info, size_t n);
 int  js_broker_send(int op, const void *payload, uint32_t len);
+/* the same RPC passing fds (SCM_RIGHTS, at most 16) with the request: files for lord-maild */
+int  js_broker_rpc_fds(int op, const void *payload, uint32_t len, const int *fds, int nfds, int *status, char **out, uint32_t *outlen);
+/* lord.mail of the isolated system Mail, Calendar, Contacts and Reminders (js_brokermail.c) */
+void js_brokermail_register(JSContext *c, JSValue lord, const char *app_id);
+void js_brokermail_chunk(const char *data, size_t len);
 /* lord.media of an isolated app: the camera (js_brokercam.c) */
 void js_brokercam_register(JSContext *c, JSValue lord);
 void js_brokercam_event(const char *data, size_t len);
