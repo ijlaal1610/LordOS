@@ -6,12 +6,20 @@
  * the user's own processes (/proc/<pid>/fd → "socket:[inode]"), with a cache so they aren't walked
  * on every sample. For other users' sockets only how many there are is counted.
  *
+ * (0.8.4) Each socket's cgroup comes too (INET_DIAG_CGROUP_ID): a socket made in one of the session's
+ * scopes is that app's, whoever holds it now (lord-server holds the ones Mail's connector made, a
+ * program in the Terminal is the Terminal's), so the list says "scope": the app's firewall id, the
+ * same lord-netperm counts it under.
+ *
  * The country comes from the local database (mmdb.c). No address leaves the machine. */
 #include "monpriv.h"
+#include "../fw/rules.h"
+#include "../sec/cgroup.h"
 
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <limits.h>
 #include <linux/inet_diag.h>
@@ -37,8 +45,13 @@ typedef struct {
     uint8_t src[16], dst[16];
     uint16_t sport, dport;
     uint64_t sent, recv;
+    uint64_t cg;                        /* the socket's cgroup id (0: the kernel didn't say) */
     int bytes;                          /* sent/recv valid (TCP with tcp_info) */
 } Sock;
+
+#ifndef INET_DIAG_CGROUP_ID
+#define INET_DIAG_CGROUP_ID 21
+#endif
 
 static Sock socks[MAX_SOCK];
 static int nsock;
@@ -84,6 +97,7 @@ static int dump(int fd, int fam, int proto) {
             /* attributes: tcp_info */
             int alen = (int)(h->nlmsg_len - NLMSG_LENGTH(sizeof *m));
             for (struct rtattr *a = (struct rtattr *)(m + 1); RTA_OK(a, alen); a = RTA_NEXT(a, alen)) {
+                if (a->rta_type == INET_DIAG_CGROUP_ID && RTA_PAYLOAD(a) >= 8) { memcpy(&s->cg, RTA_DATA(a), 8); continue; }
                 if (a->rta_type != INET_DIAG_INFO) continue;
                 const struct tcp_info *ti = RTA_DATA(a);
                 size_t need = offsetof(struct tcp_info, tcpi_bytes_received) + sizeof ti->tcpi_bytes_received;
@@ -192,6 +206,58 @@ static const char *const TCP_STATE[] = { "", "ESTABLISHED", "SYN_SENT", "SYN_REC
                                          "CLOSE", "CLOSE_WAIT", "LAST_ACK", "LISTEN", "CLOSING", "NEW_SYN_RECV" };
 
 /* Name and executable of a pid (small per-sample cache). */
+/* ---- cgroup id → app (the session's scopes, rescanned every 5 s) ---- */
+
+static struct { uint64_t id; char app[FW_APP_MAX]; } scopes[256];
+static int nscopes;
+static double scopes_t;
+
+static uint64_t cg_id(int dfd, const char *name) {
+    struct { struct file_handle fh; unsigned char b[64]; } h;
+    h.fh.handle_bytes = sizeof h.b;
+    int mnt;
+    if (name_to_handle_at(dfd, name, &h.fh, &mnt, 0) || h.fh.handle_bytes < 8) return 0;
+    uint64_t id;
+    memcpy(&id, h.fh.f_handle, 8);
+    return id;
+}
+
+static void scopes_scan(void) {
+    if (mon_now_ms() - scopes_t < 5000 && scopes_t) return;
+    scopes_t = mon_now_ms();
+    nscopes = 0;
+    const char *self = cgroup_self();                   /* ".../lordos-session-<uid>/server" */
+    char dir[PATH_MAX];
+    if (!self[0] || (size_t)snprintf(dir, sizeof dir, "/sys/fs/cgroup%s", self) >= sizeof dir) return;
+    char *sl = strrchr(dir, '/');
+    if (!sl || strcmp(sl, "/server")) return;           /* not a LordOS session */
+    *sl = 0;
+    int dfd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    DIR *d = dfd >= 0 ? fdopendir(dup(dfd)) : NULL;
+    struct dirent *e;
+    while (d && (e = readdir(d)) && nscopes < 256) {
+        if (e->d_type != DT_DIR || e->d_name[0] == '.') continue;
+        char app[FW_APP_MAX];
+        if (!strncmp(e->d_name, "lordos-net-", 11)) { if (fw_component_scope(e->d_name, app, sizeof app)) continue; }
+        else if (!strncmp(e->d_name, "app-lordos-", 11)) { if (fw_app_canon(e->d_name, app, sizeof app)) continue; }
+        else if (!strcmp(e->d_name, "server")) snprintf(app, sizeof app, "lordos");
+        else continue;
+        uint64_t id = cg_id(dfd, e->d_name);
+        if (!id) continue;
+        scopes[nscopes].id = id;
+        snprintf(scopes[nscopes].app, sizeof scopes[nscopes].app, "%s", app);
+        nscopes++;
+    }
+    if (d) closedir(d);
+    if (dfd >= 0) close(dfd);
+}
+
+static const char *scope_app_of(uint64_t cg) {
+    if (!cg) return "";
+    for (int i = 0; i < nscopes; i++) if (scopes[i].id == cg) return scopes[i].app;
+    return "";
+}
+
 static struct { int pid; char name[64], exe[PATH_MAX]; } pinfo[256];
 static int npinfo;
 
@@ -232,6 +298,7 @@ void conn_scan(Buf *b, const Mmdb *geo) {
             if (socks[i].uid == me && socks[i].inode) map_find(socks[i].inode, 1);
     }
     npinfo = 0;
+    scopes_scan();
     int self = (int)getpid(), n = 0;
     mon_buf_printf(b, "{\"t\":%.0f,\"ok\":true,\"list\":[", mon_wall_ms());
     for (int i = 0; i < nsock; i++) {
@@ -269,6 +336,8 @@ void conn_scan(Buf *b, const Mmdb *geo) {
         mon_buf_str(b, pi >= 0 ? pinfo[pi].name : "");
         mon_buf_printf(b, ",\"exe\":");
         mon_buf_str(b, pi >= 0 ? pinfo[pi].exe : "");
+        mon_buf_printf(b, ",\"scope\":");
+        mon_buf_str(b, scope_app_of(s->cg));
         if (s->bytes) mon_buf_printf(b, ",\"sent\":%llu,\"recv\":%llu}", (unsigned long long)s->sent, (unsigned long long)s->recv);
         else mon_buf_printf(b, ",\"sent\":null,\"recv\":null}");
         n++;

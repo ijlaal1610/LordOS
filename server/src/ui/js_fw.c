@@ -705,7 +705,7 @@ static JSValue f_update_lists(JSContext *c, JSValueConst t, int argc, JSValueCon
 static JSValue f_list_match(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     if (!lists_on) return JS_NULL;
-    const char *names[8];
+    const char *names[8] = { NULL };
     int n = 0;
     if (argc > 0 && JS_IsArray(c, argv[0])) {
         for (uint32_t i = 0; i < 8; i++) {

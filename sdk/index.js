@@ -52,6 +52,7 @@ export {
 export { sound, useSound, useSoundPeak, soundState, defaultSink, defaultSource, microphones } from './sound.js';
 export { monitor, useMonitor, monitorSamples, monitorProcesses, monitorConnections, monitorDevices, monitorDetail, MONITOR_HISTORY, diskTempHistory, DISK_TEMP_HISTORY, firewall, firewallState } from './monitor.js';
 export * as fwRule from './fwrule.js';            // checks what the user types for a firewall rule
+export * as netModel from './netmodel.js';        // (0.8.4) Monitor → Network: search tokens, filters, the tree
 export { packages, packageList, refreshPackages, packageFile, loadWasm } from './packages.js';
 import { refreshPackages } from './packages.js';
 export {
