@@ -240,12 +240,19 @@ int cgroup_enter_root(const char *name) {
     if (!sess || sscanf(sess + 1, "lordos-session-%u%c", &uid, &tail) != 1) return -1;
     int fd = open(dir, O_PATH | O_DIRECTORY | O_CLOEXEC);
     if (fd < 0) return -1;
-    if (mkdirat(fd, name, 0755) && errno != EEXIST) { close(fd); return -1; }
+    int fresh = !mkdirat(fd, name, 0755);
+    if (!fresh && errno != EEXIST) { close(fd); return -1; }
     int lfd = openat(fd, name, O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     int r = lfd >= 0 ? write_at(lfd, "cgroup.procs", "0") : -1;
     if (lfd >= 0) close(lfd);
     close(fd);
+    if (!r && fresh) cgroup_settle();
     return r;
+}
+
+void cgroup_settle(void) {
+    struct timespec ts = { 0, 250 * 1000 * 1000 };
+    nanosleep(&ts, NULL);
 }
 
 int cgroup_service_leaf(const char *name) {

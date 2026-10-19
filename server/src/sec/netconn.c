@@ -209,6 +209,7 @@ int netconn_main(int argc, char **argv) {
         fprintf(stderr, "netconn: could not place the %s connector in %s: its connections are refused\n", argv[2], scope);
         return 3;                           /* fail closed: lord-server's requests get EPIPE */
     }
+    if (getenv("LORDOS_SESSIOND")) cgroup_settle();   /* lord-netperm sees the scope before the first connect */
     for (;;) {
         NcReq r;
         ssize_t n = recv(3, &r, sizeof r, 0);

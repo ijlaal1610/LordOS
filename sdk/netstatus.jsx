@@ -10,7 +10,7 @@
 //
 // startNetStatus() (startShell) also asks lord-server, once an hour, to download the enabled
 // blocklists that are a day old (lord.fw.updateLists; lord-server does nothing when they are fresh).
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { View, Text, addListener } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
 import { settings } from './settings.js';
@@ -30,7 +30,7 @@ const SAMPLES = 300;                    // one per second: the last five minutes
 // idle network redraws nothing. The rates and the five minutes behind them stay out of any store;
 // the panel, while open, reads them once per second.
 export const netStatus = createStore({ rx: '0', tx: '0' });
-const live = { rx: 0, tx: 0, hist: [] };   // hist: [[rxRate, txRate], …]
+const live = { rx: 0, tx: 0, hist: [], n: 0 };   // hist: [[rxRate, txRate], …]; n: samples so far
 let timer = null, prev = null, panelOpen = false, ticks = 0;
 
 const shown = () => settings.get()?.monitor?.menuItem === true;
@@ -43,6 +43,7 @@ function tick() {
     live.rx = Math.max(0, (s.rx - prev.rx) / dt);
     live.tx = Math.max(0, (s.tx - prev.tx) / dt);
     live.hist.push([live.rx, live.tx]);
+    live.n++;
     if (live.hist.length > SAMPLES) live.hist.shift();
     // the bar's text every other second (the panel's numbers every second)
     if (++ticks % 2 === 0) {
@@ -75,7 +76,8 @@ function short(n) {
 
 // ---- the panel ----
 
-function Graph({ hist }) {
+// redrawn when a new 5-second bar is complete, not every second (60 bars are 180 nodes)
+const Graph = memo(function Graph({ hist }) {
   const th = useTheme();
   // 60 bars of 5 s each (the newest on the right), sent above the line and received below
   const bars = Array.from({ length: 60 }, (_, i) => {
@@ -100,7 +102,7 @@ function Graph({ hist }) {
       ))}
     </View>
   );
-}
+}, (a, b) => a.bucket === b.bucket);
 
 function appLabel(id, launcher) {
   if (id === 'lordos') return t('monitor.lordos');
@@ -148,7 +150,7 @@ function Panel({ onClose }) {
         <Text style={{ fontSize: 11, color: '#22c55e' }}>{`↓ ${rate(st.rx)}`}</Text>
         <Text style={{ fontSize: 11, color: '#f97316' }}>{`↑ ${rate(st.tx)}`}</Text>
       </View>
-      <Graph hist={st.hist} />
+      <Graph hist={st.hist} bucket={Math.floor(st.n / 5)} />
       <Text style={{ fontSize: 10, color: th.textDim, textAlign: 'start' }}>
         {t('monitor.status.lastMinutes', { down: formatBytes(sum[0]), up: formatBytes(sum[1]) })}
       </Text>

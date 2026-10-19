@@ -679,6 +679,15 @@ static void scan_all(void) {
             sync_blk(s);
         }
         s->seen = 1;
+        /* a session that ended and started again has a new folder under the same name: watch the
+         * one there now (for the same folder this returns the same watch), or a new scope would only
+         * be found by the 5-second rescan (0.8.4: a component's scope connects right away) */
+        {
+            char path[160];
+            snprintf(path, sizeof path, CG_ROOT "/" CG_SERVICE "/%s", s->dir);
+            int wd = inotify_add_watch(G.ifd, path, IN_CREATE | IN_DELETE | IN_ONLYDIR);
+            if (wd >= 0) s->wd = wd;
+        }
         scan_session(s);
     }
     if (d) closedir(d);

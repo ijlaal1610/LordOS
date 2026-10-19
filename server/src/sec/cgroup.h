@@ -54,6 +54,12 @@ int cgroup_service_leaf(const char *name);
  * from the session's «server» leaf, only itself. 0 placed. */
 int cgroup_enter_root(const char *name);
 
+/* (0.8.4) A quarter of a second for lord-netperm to see a scope that was just created (it watches
+ * the session folder with inotify) before the process in it opens a connection: otherwise the first
+ * connections would meet no policy. Called after placing a process in a new scope that connects at
+ * once (the Store's download child, the components' connectors). */
+void cgroup_settle(void);
+
 /* ---- Root-owned app scopes (lord-sessiond) ----
  * With lord-sessiond, a session's subtree stays root-owned: the scopes are created by root, with a
  * root-owned cgroup.procs, so an app cannot move itself to another cgroup (it would escape its
