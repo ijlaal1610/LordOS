@@ -46,3 +46,9 @@ These are not part of this repository; they are installed from Debian.
 Note: `lord-doc` and `lord-media` are separate helper processes. Because they link Poppler and
 Debian's FFmpeg build, those two binaries as distributed are covered by the GPL; the MIT-licensed
 LordOS source they are built from is GPL-compatible. `lord-server` itself does not link them.
+
+## Tools used to make website media (not shipped in LordOS)
+
+| Tool | Used for | License |
+|---|---|---|
+| Kokoro-82M (model and voices, run with kokoro-onnx) | the English narration of the LordOS Imager guide video on lordos.org/imager (voice `am_michael`) | Apache-2.0 |
