@@ -103,6 +103,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **Raspberry Pi 5 on an HDMI monitor: "LordOS could not show its desktop" on the first boot.** The
+  login screen gave up when the display driver (vc4) wasn't there yet as LordOS started, and the
+  board stayed on the text console. LordOS now loads the driver itself and waits up to 30 s for it,
+  and the session waits up to 30 s more for a display device before falling back.
 - **Two title bars in Chromium.** With «Use system title bar and borders» off, Chromium drew its own
   bar and LordOS still put its frame on top: the compositor now honors the frame an app asks for
   (xdg-decoration and the GTK 3 decoration protocol), also when it changes while the window is
@@ -130,14 +134,20 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 - **The remote desktop needs a browser with WebRTC and H.264 or VP8 video.** Current desktop and
   mobile browsers have both; a browser without them gets a page that lists what it needs, since
   the image mode is gone (see Removed).
+- **No Raspberry Pi 5 image in this release.** The 0.8.3 image could stay on the text console on
+  an HDMI monitor at its first boot (see Fixed); the 0.8.4 image with the fix is built but has not
+  been booted on a board with a monitor yet, so it is not published until it has. Until then the
+  LordOS Imager offers the 0.8.3 image for the Pi, which may show that message on its first boot.
+  Raspberry Pi OS Lite plus `curl -fsSL https://lordos.org/install.sh | sh` gives a working
+  LordOS 0.8.4 on the Pi 5, and installed boards update as usual.
 - **Raspberry Pi 5 boards updated from the Store or `apt` keep their kernel.** The LordOS Pi kernel
   is not in the APT repository yet (`docs/UPDATES.md`, "The Raspberry Pi kernel"), so the `-3`
-  kernel, which closes the connections of a blocked app, comes with the 0.8.4 image. On an updated
-  board with the `-2` kernel the firewall still drops a blocked connection's packets, but the app
-  only sees it end at its own timeout, as in 0.8.3.
+  kernel, which closes the connections of a blocked app, comes with the next Pi image. On a board
+  with the `-2` kernel the firewall still drops a blocked connection's packets, but the app only
+  sees it end at its own timeout, as in 0.8.3.
 - **The LordOS Imager:** the desktop downloads were tested writing to disk images, not yet to real
-  SD cards or USB sticks; the first-run file was applied to the 0.8.4 image in a test, not yet booted
-  on a board. The installer for the third platform is not code-signed yet, so the system warns
+  SD cards or USB sticks; the first-run file was applied to the 0.8.4 Pi image in a test (every
+  setting checked), not yet booted on a board. The installer for the third platform is not code-signed yet, so the system warns
   before running it the first time; its SHA-256 is in the signed `SHA256SUMS`. Images up to 0.8.3
   ignore the first-run file and start in setup mode.
 - **Existing Chromium profiles keep the LordOS frame** until you switch them (Settings → Appearance
@@ -162,8 +172,8 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   from Settings → Sharing; nothing else changes in its settings (port, addresses, the lockout).
   Where only the remote desktop's port is open, the video now connects over TCP on that port.
 - **Raspberry Pi 5:** `lordos` updates from the Store or `apt` like on a PC. The `-3` kernel comes
-  with the 0.8.4 image (write it with the LordOS Imager; back up your files first); on an updated
-  board `uname -r` still shows `6.18.57-lordos-rpi-2712`. Building and installing it by hand next
+  with the next Pi image (see Known issues); on an updated board `uname -r` still shows
+  `6.18.57-lordos-rpi-2712`. Building and installing it by hand next
   to the old one is described in `docs/RASPBERRY.md`, "Switching kernels on a board".
 - **From 0.8.0 (once):** run `curl -fsSL https://lordos.org/install.sh | sh` (a system installed
   from the 0.8.0 ISO has no `curl`: run `sudo apt update && sudo apt install -y curl` first). It
