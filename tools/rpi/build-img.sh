@@ -51,7 +51,7 @@ RPI="$ROOT/tools/rpi/rootfs"
 KERNEL_DEBS=${KERNEL_DEBS:-/var/tmp/lordos-kernel/out}
 T0=$(date +%s)
 
-for t in debootstrap dpkg-deb sfdisk losetup mkfs.vfat mkfs.ext4 xz curl gpg partx; do
+for t in debootstrap dpkg-deb sfdisk losetup mkfs.vfat mkfs.ext4 xz curl gpg partx python3; do
     command -v "$t" >/dev/null || { echo "build-img.sh: missing $t (see docs/RASPBERRY.md, build packages)" >&2; exit 1; }
 done
 case "$(uname -m)" in
@@ -64,10 +64,17 @@ esac
 # Packages. LordOS's and the sample apps are the same as the ISO's (tools/iso/build.sh); the
 # kernel and firmware change (Raspberry Pi) and there is no live-boot, grub or disk installer.
 PKGS_BASE="initramfs-tools systemd-sysv udev kmod dbus dbus-user-session sudo locales tzdata
- iproute2 iputils-ping less nano ca-certificates apt dpkg passwd procps e2fsprogs fdisk dosfstools util-linux"
+ iproute2 iputils-ping less nano ca-certificates apt dpkg passwd procps e2fsprogs fdisk dosfstools util-linux
+ systemd-timesyncd"
 PKGS_LORDOS="libwayland-server0 libxkbcommon0 xkb-data pipewire pipewire-pulse pipewire-alsa wireplumber rtkit
  alsa-ucm-conf wpasupplicant openvpn fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji libthai-data
- skkdic rime-data-pinyin-simp fonts-dejavu-core xwayland"
+ skkdic rime-data-pinyin-simp fonts-dejavu-core xwayland
+ cups avahi-daemon exfatprogs ntfs-3g power-profiles-daemon shared-mime-info gsettings-desktop-schemas"
+# The board has no clock that survives without a battery: systemd-timesyncd sets the time from the
+# network at boot (Settings → Date & Time, "Automatic time"); without it the clock starts months
+# behind and every signed package index is refused as "not valid yet". The rest is the same as the
+# ISO (printing, exFAT/NTFS drives, power profiles, the MIME database, and the GSettings schemas GTK
+# apps need to read LordOS's GTK theme).
 # Raspberry Pi: boot firmware (start*.elf are not used on the Pi 5: its firmware lives in the
 # EEPROM) and Wi-Fi (CYW43455, firmware-brcm80211); kernels below
 PKGS_RPI="raspi-firmware firmware-brcm80211 rsync"
@@ -87,7 +94,9 @@ for fl in 2712 v8; do
 done
 # Debian 13 Mesa: v3d (OpenGL ES 3.1 on the Pi 5), v3dv (Vulkan 1.2/1.3) and kmsro (vc4 + v3d)
 PKGS_GPU="libgl1-mesa-dri libegl1 libgles2 libgbm1 mesa-vulkan-drivers mesa-utils vulkan-tools glmark2-es2-wayland"
-PKGS_APPS="foot featherpad qt6-wayland"
+# the same apps as the ISO, browsers included (Debian's arm64 builds; they draw their own bar with
+# LordOS's window buttons: tools/iso/browser-defaults.sh, docs/WAYLAND.md)
+PKGS_APPS="foot featherpad qt6-wayland chromium firefox-esr"
 # the SSH server ships off; the `ssh` switch file on the boot partition (rpi/firstboot) or RPI_SSH=1 turns it on
 PKGS_SSH="openssh-server"
 # the boot splash (the LordOS Plymouth theme comes in the lordos package; plymouth-label draws the
@@ -269,6 +278,8 @@ in_root "$CH" apt-get install -y -q --no-install-recommends $PKGS_RPI_EXTRA >> "
 cp "$DEB" "$CH/tmp/lordos.deb"
 in_root "$CH" apt-get install -y -q --no-install-recommends /tmp/lordos.deb >> "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
 rm -f "$CH/tmp/lordos.deb"
+# the browsers' defaults, the same as the ISO's
+sh "$ROOT/tools/iso/browser-defaults.sh" "$CH"
 
 # ---- 3. configuration (same as the ISO, minus the live parts) ----
 echo "== configuration"

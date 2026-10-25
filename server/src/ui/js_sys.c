@@ -11,6 +11,7 @@
  * not possible to create a .desktop (the only thing lord.apps.launch runs), nor to install apps without
  * lpk.c, nor to overwrite the settings. lord.settings only writes to ~/.config/lordos/settings.json;
  * lord.themes only accepts simple names. */
+#include "../hw/hw_admin.h"
 #include "js_sys.h"
 #include "js_err.h"
 #include "ui.h"
@@ -256,6 +257,12 @@ static JSValue f_sys_info(JSContext *c, JSValueConst this_val, int argc, JSValue
         if (g && (!strcmp(g->gr_name, "sudo") || !strcmp(g->gr_name, "admin") || !strcmp(g->gr_name, "wheel"))) is_admin = 1;
     }
     JS_SetPropertyStr(c, o, "admin", JS_NewBool(c, is_admin));
+    /* the board, where Settings has a page for it: "pi5" for a BCM2712 board (Pi 5, 500, CM5:
+     * Settings → Board firmware), "" otherwise */
+    size_t clen = 0;
+    char *compat = read_small("/proc/device-tree/compatible", 512, &clen);
+    JS_SetPropertyStr(c, o, "board", JS_NewString(c, compat && hw_is_bcm2712(compat, clen) ? "pi5" : ""));
+    free(compat);
     /* live system (ISO): the installer shows up there */
     JS_SetPropertyStr(c, o, "live", JS_NewBool(c, access("/run/live/medium/live/filesystem.squashfs", F_OK) == 0));
     struct statvfs vs;                      /* system disk (/) */

@@ -21,6 +21,7 @@ pairing, Sound with a Bluetooth headset, a Linux app's notification and Files' "
 | Default Apps | with Keyboard and Trackpad | `apps/settings/DefaultApps.jsx`, `sdk/defaults.js`, `hw/defaults.c`, `hw/mimeapps.c` |
 | Energy (Battery) | with Privacy | `apps/settings/Power.jsx`, `hw/power.c`, `hw/ppd.c` |
 | Cooling | after Energy | `apps/settings/Cooling.jsx`, `sdk/cooling.jsx`, `ui/js_fan.c` → `lord-fand` (`server/src/fan/`); see `FANS.md` |
+| Board firmware | after Cooling, only on a Raspberry Pi 5 (BCM2712: Pi 5, Pi 500, CM5) | `apps/settings/Firmware.jsx`, `hw/hw_admin.c` (`rpi-eeprom-status`, `rpi-eeprom-update`) |
 
 Shared pieces: `apps/settings/ui.jsx` (a row with a hint, a pop-up button, the page header) on top of
 the SDK's `GroupBox` (`docs/DESIGN.md`). All text goes through `t()` in the `prefs` namespace
@@ -45,7 +46,7 @@ the time fields keep `direction: 'ltr'`.
         ▼  root work: closed admin actions (hw/hw_admin.c)
  admin.c ─ display-brightness, power-profile, power-suspend, power-buttons, time-ntp, time-set,
            bt-unblock, rpi-case, video-optimize, hw-firmware-missing (the Store's suggestions,
-           read-only)
+           read-only), rpi-eeprom-status (read-only), rpi-eeprom-update
 
  Cooling: lord.fan (ui/js_fan.c) ── /run/lordos/fand.sock ── lord-fand (root service, src/fan)
 ```
@@ -231,6 +232,50 @@ managed by the firmware" with their RPM). Only administrators change anything: `
 the peer and reports `canChange`. Monitor has the same view read-only, with a history and a
 "Full speed for 30 min" button.
 
+## Board firmware (Raspberry Pi 5)
+
+LordOS's own page for the bootloader in the board's EEPROM, instead of `raspi-config`. It is in the
+sidebar only on a BCM2712 board (`lord.system.info().board === 'pi5'`, from the device tree's
+`compatible` list: Raspberry Pi 5, Pi 500, Compute Module 5). It shows:
+
+- the **status**: *Up to date*, *Update available*, or *Update ready: restart to finish*;
+- the **installed** bootloader (its build date) and the **latest available**, which is the newest
+  image in the installed `rpi-eeprom` package for the configured release;
+- the **release** (*Default*, Raspberry Pi's recommended one, or *Latest*);
+- **Update** (administrators), and after it **Restart…** (the session's Restart dialog) with a note
+  to keep the power connected. Without `rpi-eeprom` it offers to install it with the package engine.
+
+New bootloader images arrive as updates of the `rpi-eeprom` package, from the LordOS repository
+([UPDATES.md](UPDATES.md), "Raspberry Pi firmware packages") or Raspberry Pi's archive that the
+image also configures. The work is two closed admin actions:
+
+- **`rpi-eeprom-status`** (anyone, no argument, read-only) runs `/usr/bin/rpi-eeprom-update` with no
+  options and parses its report strictly (`hw_eeprom_parse`): only the bootloader block, its
+  `BOOTLOADER: update available|up to date` verdict, the time stamps in `CURRENT:` and `LATEST:`
+  (between 2001 and 2096) and a lowercase release name; the verdict has to agree with the numbers,
+  and anything else is `hw.eepromFailed`. The program's own text never reaches the UI (its hint to
+  run `raspi-config` included: on LordOS this page is the way). "Pending" means
+  `/run/rpi-eeprom-update-pending` exists (the program's root-owned marker on tmpfs: an update was
+  written or staged during this boot). The reply is `OK <uptodate|available|pending> <current>
+  <latest> <release>`, checked again by the page.
+- **`rpi-eeprom-update`** (administrators, no argument) runs `/usr/bin/rpi-eeprom-update -A
+  bootloader` (fixed argument list, no shell, no file, the bootloader only) and answers with the
+  same report. Exit status 3 is `hw.eepromFrozen` (`FREEZE_VERSION=1` in the bootloader's
+  configuration), any other failure `hw.eepromUpdateFailed`.
+
+Both check the board first (`hw.notRaspberryPi5`) and that the program is root-owned and not
+writable by others (`hw.noEeprom`). How the update is applied is `rpi-eeprom-update`'s decision: on
+the LordOS image (no `flashrom`, no `rpieepromab`) it stages the image and `recovery.bin` on the boot
+partition and the bootloader flashes itself at the next boot, keeping its recovery path; with
+`rpieepromab` or `flashrom` installed it writes the EEPROM at once. Either way the new version runs
+after a restart.
+
+**Not exposed:** editing the bootloader's configuration (`rpi-eeprom-config`) and the release
+choice. The release lives in `/etc/default/rpi-eeprom-update`, a conffile of `rpi-eeprom`: writing
+it from LordOS would make dpkg ask about it on every package update (or drop the choice), so it stays
+`default` unless an administrator edits the file. Tested on the Raspberry Pi 5 (ISO.md, "Release test
+(0.8.4.1 Beta)").
+
 ## Notifications
 
 ![Notifications](settings-notifications-dark.png)
@@ -315,6 +360,8 @@ All in `server/src/hw/hw_admin.c`, in the `actions` table through `HW_ADMIN_ACTI
 | `time-set` | `YYYY-MM-DD HH:MM:SS` | admin | `/usr/bin/timedatectl set-time` |
 | `bt-unblock` | — | anyone | rfkill "unblock all Bluetooth" on `/dev/rfkill` |
 | `rpi-case` | `none` \| `argon-one-v5` | admin | Raspberry Pi 5 only: writes `/boot/firmware/lordos-case.txt` (fixed text, included from `config.txt`; see `FANS.md`) |
+| `rpi-eeprom-status` | — | anyone | BCM2712 boards only, read-only: `/usr/bin/rpi-eeprom-update` (no options), report parsed strictly; `OK <uptodate\|available\|pending> <current> <latest> <release>` (see "Board firmware") |
+| `rpi-eeprom-update` | — | admin | BCM2712 boards only: `/usr/bin/rpi-eeprom-update -A bootloader`, then the same report; the update is finished by the next restart |
 | `hw-firmware-missing` | — | anyone | read-only: reads `/dev/kmsg` and returns only the validated names of firmware files a driver asked for and that are still missing (`LOG fw <file> <driver>`), for Store → Discover's suggestions (`hw/hwscan.c`, see `PACKAGES.md`) |
 
 The validators are unit-tested in `build/settings-hw-test`.
@@ -324,7 +371,10 @@ The validators are unit-tested in `build/settings-hw-test`.
 - `build/settings-hw-test` (`make test`): EDID (QEMU's real block, serial/name identities, broken
   checksums), mode selection and refresh rates, Night Light math (temperature, ramp, sunrise and
   sunset in London, Buenos Aires, Tokyo and Svalbard, schedule across midnight, zone1970.tab),
-  mimeapps.list editing and globs2, the power_supply reader, the admin validators. 129 checks.
+  mimeapps.list editing and globs2, the power_supply reader, the admin validators and the
+  `rpi-eeprom-update` report parser (the real report from a Pi 5, verdicts that disagree with the
+  numbers, repeated or missing lines, bad time stamps and release names, the Pi 4's VL805 block, the
+  BCM2712 check).
 - `build/bt-test` (`make test`): BlueZ parsing. 32 checks.
 - `build/brframe-test` (`make test`): the browsers' title bar switch (Chromium `Preferences`,
   Firefox `user.js`, running browsers, hostile profile folders). 90 checks.

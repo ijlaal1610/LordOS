@@ -10,6 +10,71 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
+## [0.8.4.1-beta] - 2026-10-25
+
+An update of 0.8.4 for the Raspberry Pi 5: its bootloader from Settings, the browsers in the Pi image,
+and the Pi image itself, which 0.8.4 held back.
+
+### Added
+
+- **Settings → Board firmware (Raspberry Pi 5).** A new page, only on a Raspberry Pi 5 (and Pi 500,
+  Compute Module 5), for the bootloader that lives in the board's EEPROM: the installed version, the
+  newest one available, whether it is up to date, and **Update**. After updating it says a restart
+  finishes the job and offers **Restart…**; the board installs the new bootloader as it starts,
+  keeping its recovery path. This is LordOS's replacement for the bootloader part of
+  `raspi-config` (ignore `rpi-eeprom-update`'s hint to run it). It runs only the system's
+  `rpi-eeprom-update` with a fixed set of options, through two closed admin actions: reading the
+  status is open to everyone, updating needs an administrator (`docs/SETTINGS.md`, "Board
+  firmware").
+- **The bootloader updater in the LordOS repository.** `rpi-eeprom` (the bootloader images and
+  `rpi-eeprom-update`) and the few Raspberry Pi packages it needs (`raspi-utils` and its parts,
+  `raspinfo`, `kms++`) are now mirrored in `lordos.org/apt` for arm64, copied from Raspberry Pi's
+  archive only after its signature and every file's SHA-256 check out against a pinned list
+  (`tools/release/rpi-mirror.list`). A Pi with only the LordOS and Debian repositories gets new
+  bootloaders with the usual updates; PCs never see these packages (`docs/UPDATES.md`, "Raspberry
+  Pi firmware packages").
+- **Browsers in the Raspberry Pi image.** Chromium and Firefox ESR come preinstalled, as on the ISO,
+  with the same defaults: a single bar with their tabs and LordOS's window buttons, the LordOS GTK
+  theme and the video settings of Settings → Displays → Video (the defaults are now one script
+  shared by both images, `tools/iso/browser-defaults.sh`).
+- **The rest of the ISO's system packages in the Pi image:** automatic time (`systemd-timesyncd`),
+  printing (`cups`, `avahi-daemon`), exFAT and NTFS drives, power profiles, the MIME database and
+  the GTK settings schemas. The first user is also allowed to manage printers (`lpadmin`), as on a PC.
+
+### Fixed
+
+- **Raspberry Pi 5 on an HDMI monitor stayed on the text console** ("no display device with KMS").
+  The firmware ignored the display driver line in the image's `config.txt` because it came before
+  the `display_auto_detect` and `camera_auto_detect` lines; it now comes after them. Together with
+  0.8.4's longer wait for the display driver, the desktop shows on HDMI at the first boot.
+- **The Pi image's clock.** The board keeps no time without a battery and the image had no network
+  time client, so it started months behind and every update failed with "not valid yet". It now
+  sets the time from the network at boot.
+
+### Known issues and limitations
+
+- **A Pi set up from the 0.8.3 image** has no network time client: if Store → Updates fails, set the
+  time in Settings → Date & Time first, then install `systemd-timesyncd` from the Store.
+- **The bootloader release** (*Default* or *Latest*) is shown but not changed from Settings: it is
+  `/etc/default/rpi-eeprom-update`, a file of the `rpi-eeprom` package.
+- **Raspberry Pi archive on the Pi image.** The image still lists Raspberry Pi's archive, limited by
+  apt priorities to the firmware, kernel tools and utilities; the Store's own package engine does
+  not read apt priorities yet, so "Update all" there may take Raspberry Pi's builds of a few
+  packages (such as Chromium or BlueZ) instead of Debian's. `apt` follows the priorities.
+- **`install.sh` does not install browsers** (on a Raspberry Pi OS Lite or any Debian 13): install
+  Chromium or Firefox ESR from the Store if the system has none (`docs/INSTALL-DEBIAN.md`).
+
+### Upgrading
+
+- **From 0.8.4 (and 0.8.3 to 0.8.1):** Store → Updates shows "LordOS 0.8.4.1 is available" with
+  these notes; **Update** installs it and a restart finishes it. `sudo apt update && sudo apt
+  upgrade` does the same. No migration runs (`ls /var/lib/lordos/migrations` is unchanged from
+  0.8.4); your settings are kept. On a PC nothing else changes.
+- **Raspberry Pi 5:** after the update, Settings shows **Board firmware**. If it says
+  "The bootloader tools are not installed", **Install** adds `rpi-eeprom` from the LordOS
+  repository. The browsers and the other image packages above are not added to a board that is
+  already set up: install them from the Store.
+
 ## [0.8.4-beta] - 2026-10-19
 
 ### Added
@@ -1246,7 +1311,8 @@ we published. See [docs/SIGNING.md](docs/SIGNING.md).
 
 Never published; superseded by 0.8.0-beta.
 
-[Unreleased]: https://github.com/lordbasex/LordOS/compare/v0.8.4-beta...HEAD
+[Unreleased]: https://github.com/lordbasex/LordOS/compare/v0.8.4.1-beta...HEAD
+[0.8.4.1-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.4-beta...v0.8.4.1-beta
 [0.8.4-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.3-beta...v0.8.4-beta
 [0.8.3-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.2-beta...v0.8.3-beta
 [0.8.2-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.1-beta...v0.8.2-beta

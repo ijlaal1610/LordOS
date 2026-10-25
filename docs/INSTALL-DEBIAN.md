@@ -68,7 +68,14 @@ this works even though the script itself comes through a pipe.
      (`NETWORK.md`). Only interfaces nobody manages get LordOS's DHCP;
    - **remote desktop**, which stays off (port 5673 closed; Settings → Sharing turns it on);
    - your home folder and your current desktop session. The display manager is only disabled for
-     the next boot; nothing is stopped while you are using it.
+     the next boot; nothing is stopped while you are using it;
+   - **browsers.** The ISO and the Raspberry Pi image preinstall Chromium and Firefox ESR; the
+     installer doesn't (decided in 0.8.4.1): it also runs on servers and VPSs, where a few hundred
+     megabytes of browsers are unwanted, and on a desktop Debian (or Raspberry Pi OS) the browser you
+     already have keeps working inside LordOS. Install one from the Store if the system has none.
+     Without the image's defaults (`tools/iso/browser-defaults.sh`) the browsers start with the
+     LordOS frame; Settings → Appearance → «Browsers: tabs in the title bar» switches them to their
+     own single bar.
 7. **Prints** what changed, how to start LordOS and how to uninstall.
 
 What it changed is recorded in `/var/lib/lordos-installer/state`, so `--uninstall` undoes exactly

@@ -98,25 +98,10 @@ in_ch apt-get install -y -q --no-install-recommends $PKGS_BASE $PKGS_LORDOS $PKG
     >> "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
 cp "$DEB" "$CH/tmp/lordos.deb"
 in_ch apt-get install -y -q --no-install-recommends /tmp/lordos.deb >> "$WORK/apt.log" 2>&1 || { tail -30 "$WORK/apt.log"; exit 1; }
-# Chromium: new profiles draw their own bar (tabs in the title bar) with the GTK theme, so the
-# window buttons are LordOS's traffic lights from LordOS's GTK theme (docs/WAYLAND.md). The user
-# goes back to the LordOS frame with «Use system title bar and borders» (Settings → Appearance).
-if [ -f "$CH/etc/chromium/master_preferences" ]; then
-python3 - "$CH/etc/chromium/master_preferences" <<'PY'
-import json, sys
-p = sys.argv[1]; d = json.load(open(p))
-d.setdefault("browser", {})["custom_chrome_frame"] = True
-d.setdefault("extensions", {}).setdefault("theme", {})["system_theme"] = 1   # 1 = GTK
-json.dump(d, open(p, "w"), indent=2)
-PY
-fi
-# Firefox ESR: its own bar too (the user changes it in Customize Toolbar > Title Bar)
+# the browsers' defaults (their own bar with LordOS's window buttons), shared with the Pi image
+sh tools/iso/browser-defaults.sh "$CH"
 install -D -m 644 tools/iso/rootfs/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf "$CH/etc/wireplumber/wireplumber.conf.d/lordos-bluez.conf"
 install -D -m 644 tools/iso/rootfs/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf "$CH/etc/pipewire/pipewire-pulse.conf.d/lordos-no-modules.conf"
-install -d "$CH/etc/firefox-esr"
-printf '%s\n' '// LordOS: Firefox draws its own bar, with the window buttons in LordOS'"'"'s order (see' \
-  '// docs/WAYLAND.md); 0 gives it the LordOS frame instead (Customize Toolbar > Title Bar).' \
-  'pref("browser.tabs.inTitlebar", 1);' > "$CH/etc/firefox-esr/lordos.js"
 rm -f "$CH/tmp/lordos.deb"
 
 # 3. configuration

@@ -13,6 +13,13 @@
  *   rpi-case none|argon-one-v5         Raspberry Pi 5 only: writes /boot/firmware/lordos-case.txt
  *                                      (fixed text, included from config.txt; takes effect
  *                                      after a restart)                                      admin
+ *   rpi-eeprom-status                  (no arguments) BCM2712 boards (Pi 5, 500, CM5) only: runs
+ *                                      /usr/bin/rpi-eeprom-update (no options), parses its report
+ *                                      strictly and answers "OK <uptodate|available|pending>
+ *                                      <current> <latest> <release>"; read-only            anyone
+ *   rpi-eeprom-update                  (no arguments) BCM2712 only: /usr/bin/rpi-eeprom-update -A
+ *                                      bootloader (the newest bootloader of the configured
+ *                                      release; finished by a restart), then the same report admin
  *   hw-firmware-missing                (no arguments) reads the kernel log (/dev/kmsg) and returns
  *                                      only the validated names of firmware files a driver asked
  *                                      for and that are still missing, as "LOG fw <file> <driver>"
@@ -37,6 +44,16 @@ void hw_act_time_set(const AdminReq *r, const char *arg, size_t len);
 void hw_act_bt_unblock(const AdminReq *r, const char *arg, size_t len);
 void hw_act_rpi_case(const AdminReq *r, const char *arg, size_t len);
 void hw_act_firmware_missing(const AdminReq *r, const char *arg, size_t len);
+void hw_act_eeprom_status(const AdminReq *r, const char *arg, size_t len);
+void hw_act_eeprom_update(const AdminReq *r, const char *arg, size_t len);
+/* rpi-eeprom-update's report, parsed (exposed for tests) */
+typedef struct {
+    long long current, latest;          /* build time stamps (0: current unknown) */
+    char release[16];                   /* default, latest… ([a-z]) */
+    int update;                         /* the program says an update is available */
+} HwEeprom;
+int hw_eeprom_parse(const char *out, HwEeprom *e);
+int hw_is_bcm2712(const char *compat, size_t n);     /* device tree "compatible" (NUL-separated) */
 const char *hw_rpi_case_text(const char *id);   /* fixed file text of a known case, NULL otherwise */
 void hw_act_video(const AdminReq *r, const char *arg, size_t len);
 /* The two files video-optimize writes, from its argument; 0 if the argument is valid. */
@@ -58,6 +75,8 @@ int hw_backlight_name_valid(const char *n);
     { "bt-unblock", hw_act_bt_unblock, A_ANYONE }, \
     { "rpi-case", hw_act_rpi_case, 0 }, \
     { "hw-firmware-missing", hw_act_firmware_missing, A_ANYONE }, \
+    { "rpi-eeprom-status", hw_act_eeprom_status, A_ANYONE | A_FORK }, \
+    { "rpi-eeprom-update", hw_act_eeprom_update, A_FORK }, \
     { "video-optimize", hw_act_video, A_ANYONE },
 
 #endif

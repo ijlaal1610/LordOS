@@ -16,6 +16,16 @@ materials (SBOM) published with each release. The website summary is at
   written by `tools/iso/mkdeb.sh`), and each font ships its license text next to it
   (`assets/fonts/*-LICENSE.txt`).
 - Debian packages keep their own `/usr/share/doc/<package>/copyright` on the installed system.
+- **Raspberry Pi packages mirrored in the LordOS APT repository** (arm64, since 0.8.4.1;
+  `tools/release/rpi-mirror.list`, [UPDATES.md](UPDATES.md), "Raspberry Pi firmware packages") are
+  copied byte for byte, each with its own `copyright` inside: `rpi-eeprom` (scripts BSD-3-Clause;
+  bootloader images under Raspberry Pi's binary licence, which allows redistribution of unmodified
+  binaries for use with Raspberry Pi devices with the notice), `raspi-utils` and its parts
+  (BSD-3-Clause) and `kms++` (MPL-2.0). For the MPL-2.0 binaries the corresponding source is the
+  `kms++` source package of the same version in Raspberry Pi's archive (`deb-src
+  http://archive.raspberrypi.com/debian trixie main`) and upstream at
+  `https://github.com/tomba/kmsxx`; before Raspberry Pi's archive drops that version, its source
+  package has to be kept next to the binaries (open item).
 
 ## The SBOM
 

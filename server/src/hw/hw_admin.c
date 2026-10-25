@@ -260,6 +260,130 @@ void hw_act_rpi_case(const AdminReq *r, const char *arg, size_t len) {
     admin_ok("hw.caseSet", "case", id, NULL);
 }
 
+/* ---- Raspberry Pi 5 bootloader (Settings → Board firmware, docs/SETTINGS.md) ---- */
+
+/* Is this device tree "compatible" list (NUL-separated strings) a BCM2712 board (Pi 5, Pi 500,
+ * CM5)? Those keep their bootloader in an EEPROM that rpi-eeprom-update can update. */
+int hw_is_bcm2712(const char *compat, size_t n) {
+    for (size_t i = 0; compat && i < n;) {
+        size_t l = strnlen(compat + i, n - i);
+        if (l == 12 && !memcmp(compat + i, "brcm,bcm2712", 12)) return 1;
+        i += l + 1;
+    }
+    return 0;
+}
+
+static int board_is_bcm2712(void) {
+    char b[512];
+    int fd = open("/proc/device-tree/compatible", O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return 0;
+    ssize_t n = read(fd, b, sizeof b);
+    close(fd);
+    return n > 0 && hw_is_bcm2712(b, (size_t)n);
+}
+
+/* "<words> (<seconds>)" at the end of a CURRENT:/LATEST: line: the build time stamp. */
+static int eeprom_stamp(const char *v, long long *out) {
+    const char *open_p = strrchr(v, '(');
+    if (!open_p) return -1;
+    char *e;
+    errno = 0;
+    long long t = strtoll(open_p + 1, &e, 10);
+    if (errno || e == open_p + 1 || *e != ')' || e[1]) return -1;
+    if (t < 1000000000LL || t > 4000000000LL) return -1;      /* 2001 .. 2096 */
+    *out = t;
+    return 0;
+}
+
+/* rpi-eeprom-update's report (no options) → e. Only the bootloader block is read: the first
+ * "BOOTLOADER:" line, then its CURRENT, LATEST and RELEASE lines, up to an empty line or the VL805
+ * block (Pi 4). Anything unexpected makes it fail: the UI never shows the program's text. */
+int hw_eeprom_parse(const char *out, HwEeprom *e) {
+    memset(e, 0, sizeof *e);
+    int state = -1, have_cur = 0, have_lat = 0, have_rel = 0;
+    const char *p = out;
+    while (p && *p) {
+        const char *nl = strchr(p, '\n');
+        size_t len = nl ? (size_t)(nl - p) : strlen(p);
+        char line[256];
+        if (len >= sizeof line) { if (state >= 0) return -1; p = nl ? nl + 1 : NULL; continue; }
+        memcpy(line, p, len);
+        line[len] = 0;
+        p = nl ? nl + 1 : NULL;
+        const char *l = line;
+        while (*l == ' ') l++;
+        if (state < 0) {
+            if (!strcmp(l, "BOOTLOADER: update available")) state = 1;
+            else if (!strcmp(l, "BOOTLOADER: up to date")) state = 0;
+            continue;
+        }
+        if (!*l || !strncmp(l, "VL805", 5)) break;
+        if (!strncmp(l, "CURRENT: ", 9)) {
+            if (have_cur++) return -1;
+            if (strcmp(l + 9, "unknown") && eeprom_stamp(l + 9, &e->current)) return -1;
+        } else if (!strncmp(l, "LATEST: ", 8)) {
+            if (have_lat++ || eeprom_stamp(l + 8, &e->latest)) return -1;
+        } else if (!strncmp(l, "RELEASE: ", 9)) {
+            if (have_rel++) return -1;
+            size_t k = 0;
+            for (const char *r = l + 9; *r >= 'a' && *r <= 'z'; r++) if (k < sizeof e->release - 1) e->release[k++] = *r; else return -1;
+            e->release[k] = 0;
+            if (!k || (l[9 + k] && l[9 + k] != ' ')) return -1;
+        }
+        /* other lines (the hint to change the release) are ignored */
+    }
+    if (state < 0 || !have_cur || !have_lat || !have_rel) return -1;
+    /* the program's verdict has to agree with the numbers it printed */
+    if (state != (e->current && e->latest > e->current)) return -1;
+    e->update = state;
+    return 0;
+}
+
+#define RPI_EEPROM_UPDATE "/usr/bin/rpi-eeprom-update"
+#define RPI_EEPROM_PENDING "/run/rpi-eeprom-update-pending"   /* the program's own marker (tmpfs: this boot) */
+
+/* Runs the report and answers OK "<state> <current> <latest> <release>": state uptodate,
+ * available or pending (an update was written or staged in this boot: restart to finish). */
+static void eeprom_report(void) {
+    const char *const argv[] = { RPI_EEPROM_UPDATE, NULL };
+    char out[8192];
+    int rc = admin_run_capture(argv, out, sizeof out);
+    HwEeprom e;
+    if ((rc != 0 && rc != 1) || hw_eeprom_parse(out, &e)) { admin_err("hw.eepromFailed", "code", lerr_int(rc), NULL); return; }
+    struct stat st;
+    int pending = lstat(RPI_EEPROM_PENDING, &st) == 0 && S_ISREG(st.st_mode) && st.st_uid == 0;
+    admin_say("OK", "%s %lld %lld %s", pending ? "pending" : e.update ? "available" : "uptodate",   /* i18n-ok: parsed by apps/settings/Firmware.jsx */
+              e.current, e.latest, e.release);
+}
+
+static int eeprom_ready(void) {
+    if (!board_is_bcm2712()) { admin_err("hw.notRaspberryPi5", NULL); return 0; }
+    if (!file_ok(RPI_EEPROM_UPDATE)) { admin_err("hw.noEeprom", NULL); return 0; }
+    return 1;
+}
+
+void hw_act_eeprom_status(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)arg;
+    if (len) { admin_err("admin.invalidArgument", NULL); return; }
+    if (eeprom_ready()) eeprom_report();
+}
+
+/* Installs the newest bootloader of the configured release that is newer than the running one,
+ * as rpi-eeprom-update decides: on a Pi 5 it stages it for the next boot (the bootloader flashes
+ * itself, with its recovery path) or writes it at once with the A/B or flashrom update when those
+ * are installed. Bootloader only (-A bootloader), no other option, no file. */
+void hw_act_eeprom_update(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)arg;
+    if (len) { admin_err("admin.invalidArgument", NULL); return; }
+    if (!eeprom_ready()) return;
+    const char *const argv[] = { RPI_EEPROM_UPDATE, "-A", "bootloader", NULL };
+    char out[16384];
+    int rc = admin_run_capture(argv, out, sizeof out);
+    if (rc == 3) { admin_err("hw.eepromFrozen", NULL); return; }
+    if (rc != 0) { admin_err("hw.eepromUpdateFailed", "code", lerr_int(rc), NULL); return; }
+    eeprom_report();
+}
+
 /* ---- missing firmware (the Store's suggestions, hwscan.c) ---- */
 
 /* Read-only: the session can't read the kernel log when kernel.dmesg_restrict=1. Takes no

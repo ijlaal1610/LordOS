@@ -209,6 +209,47 @@ Things that only need new files (a new unit, a new default config) ship in the p
 new unit that must be enabled on upgraded systems needs a migration, since `postinst` only enables
 `lord-fand`.
 
+## Raspberry Pi firmware packages
+
+Since 0.8.4.1 the repository also carries, **for arm64 only**, the Raspberry Pi bootloader updater
+and exactly what its `Depends` need that Debian 13 doesn't have, copied unchanged from Raspberry
+Pi's archive (`archive.raspberrypi.com/debian`, trixie, main):
+
+| Package | Why |
+|---|---|
+| `rpi-eeprom` | the bootloader images (`/usr/lib/firmware/raspberrypi/bootloader-2712/…`) and `rpi-eeprom-update`, used by Settings → Board firmware (`SETTINGS.md`) |
+| `raspi-utils`, `raspi-utils-core`, `-dt`, `-eeprom`, `-otp`, `raspinfo`, `libgpiolib0`, `libdtovl0` | `rpi-eeprom` depends on `raspi-utils` (`vcgencmd`, used to read the running bootloader), which depends on these |
+| `kms++-utils`, `libkms++0` | `raspinfo` depends on them |
+
+Their recommendations (`flashrom`, `rpieepromab`) are not mirrored: without them a Pi 5 stages the
+update for the bootloader to apply at the next boot. Raspberry Pi's whole archive is never added to a
+system by LordOS's packages.
+
+- **Pinned and verified.** `tools/release/rpi-mirror.list` names each package, version, architecture
+  and SHA-256 (with its licence). `apt-repo.sh build <target> --rpi …` fetches Raspberry Pi's
+  `InRelease`, verifies it with `gpgv` against `tools/release/raspberrypi-archive-keyring.pgp` (the
+  key from Raspberry Pi's `raspberrypi-archive-keyring` package; the script checks its fingerprint,
+  `CF8A 1AF5 02A2 AA2D 763B  AE7E 82B1 2992 7FA3 303E`), checks `main/binary-arm64/Packages.gz`
+  against it, and takes a file only when its SHA-256 matches both the index and the pinned line.
+  Verified files are kept in `~/.local/share/lordos-apt/rpi-cache`, so a pinned version can still be
+  published after Raspberry Pi's archive keeps only a newer one (it keeps one version per package).
+  `apt-repo.sh rpi-fetch <target>` only fetches and verifies. A new upstream version is a new line
+  in the list, reviewed like code; the pool only grows.
+- **Only on arm64.** They live under `pool/rpi/` and only the `binary-arm64` index lists them (most
+  are `Architecture: all`, which would otherwise appear on every PC's Store).
+- **Licences** (each package's `debian/copyright`, shipped inside it): the scripts and `raspi-utils`
+  are BSD-3-Clause; the bootloader images are under Raspberry Pi's binary licence (redistribution in
+  unmodified binary form, for use with Raspberry Pi devices, with the notice: the `.deb` is copied
+  as is); `kms++` is MPL-2.0, its source is Raspberry Pi's `kms++` source package of the pinned version
+  ([COMPLIANCE.md](COMPLIANCE.md)).
+- **Which source wins.** On the LordOS Pi image, which also lists Raspberry Pi's archive with
+  priority 990 for these packages (`/etc/apt/preferences.d/raspberrypi`), apt takes the newest
+  version among the 990 sources; ours mirrors the same files, so it only matters when a newer version
+  is in one of them. No pin is needed for our copy: on a board without Raspberry Pi's archive it is
+  the only candidate (priority 500), and our package engine takes the highest version of any
+  source. A newer `rpi-eeprom` reaches a board through Store → Updates or `apt upgrade` like any
+  other package.
+
 ## The Raspberry Pi kernel
 
 The LordOS kernel for the Pi 5 (`linux-image-<version>-lordos-rpi-2712`, from

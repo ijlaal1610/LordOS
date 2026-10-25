@@ -349,6 +349,52 @@ static void test_power(void) {
 /* the admin helper's functions hw_admin.c calls (not used by the validators) */
 void admin_say(const char *kind, const char *fmt, ...) { (void)kind; (void)fmt; }
 int admin_run(const char *const argv[]) { (void)argv; return -1; }
+int admin_run_capture(const char *const argv[], char *out, size_t cap) { (void)argv; if (cap) out[0] = 0; return -1; }
+
+/* rpi-eeprom-update's report: the strict parser behind rpi-eeprom-status */
+static void test_eeprom(void) {
+    /* as printed on the Raspberry Pi 5 (rpi-eeprom 28.34-1, 2026-10-25) */
+    const char *avail =
+        "*** UPDATE AVAILABLE ***\n\nRun \"sudo rpi-eeprom-update -a\" to install this update without a prompt.\n\n"
+        "To configure the bootloader update policy run \"sudo raspi-config\"\n\n"
+        "BOOTLOADER: update available\n"
+        "   CURRENT: Tue May 26 03:01:25 PM UTC 2026 (1779807685)\n"
+        "    LATEST: Fri Sep 25 03:59:09 PM UTC 2026 (1790351949)\n"
+        "   RELEASE: default (/usr/lib/firmware/raspberrypi/bootloader-2712/default)\n"
+        "            Use raspi-config to change the release.\n";
+    HwEeprom e;
+    CHECK(!hw_eeprom_parse(avail, &e) && e.update && e.current == 1779807685LL && e.latest == 1790351949LL && !strcmp(e.release, "default"));
+    const char *same =
+        "BOOTLOADER: up to date\n   CURRENT: Fri Sep 25 03:59:09 PM UTC 2026 (1790351949)\n"
+        "    LATEST: Fri Sep 25 03:59:09 PM UTC 2026 (1790351949)\n   RELEASE: latest (/usr/lib/firmware/raspberrypi/bootloader-2712/latest)\n"
+        "            Use raspi-config to change the release.\n";
+    CHECK(!hw_eeprom_parse(same, &e) && !e.update && e.current == e.latest && !strcmp(e.release, "latest"));
+    /* the running version unknown (a chroot): never "available" */
+    CHECK(!hw_eeprom_parse("BOOTLOADER: up to date\n   CURRENT: unknown\n    LATEST: x (1790351949)\n   RELEASE: default (/x)\n", &e) && !e.update && !e.current);
+    CHECK(hw_eeprom_parse("BOOTLOADER: update available\n   CURRENT: unknown\n    LATEST: x (1790351949)\n   RELEASE: default (/x)\n", &e));
+    /* the verdict must agree with the numbers */
+    CHECK(hw_eeprom_parse("BOOTLOADER: up to date\n   CURRENT: x (1779807685)\n    LATEST: x (1790351949)\n   RELEASE: default (/x)\n", &e));
+    CHECK(hw_eeprom_parse("BOOTLOADER: update available\n   CURRENT: x (1790351949)\n    LATEST: x (1790351949)\n   RELEASE: default (/x)\n", &e));
+    /* the Pi 4's VL805 block after the bootloader's is not read */
+    CHECK(!hw_eeprom_parse("BOOTLOADER: up to date\n   CURRENT: x (1790351949)\n    LATEST: x (1790351949)\n   RELEASE: default (/x)\n\n"
+                           "  VL805_FW: Dedicated VL805 EEPROM\n     VL805: up to date\n   CURRENT: 000138c0\n    LATEST: 000138c0\n", &e) && !e.update);
+    /* refused: missing lines, repeated lines, bad numbers, odd release names, nothing at all */
+    CHECK(hw_eeprom_parse("", &e) && hw_eeprom_parse("garbage\n", &e));
+    CHECK(hw_eeprom_parse("BOOTLOADER: up to date\n   CURRENT: x (1790351949)\n   RELEASE: default (/x)\n", &e));
+    CHECK(hw_eeprom_parse("BOOTLOADER: up to date\n   CURRENT: x (1790351949)\n   CURRENT: x (1790351949)\n    LATEST: x (1790351949)\n   RELEASE: default (/x)\n", &e));
+    CHECK(hw_eeprom_parse("BOOTLOADER: up to date\n   CURRENT: x (17903519490)\n    LATEST: x (1790351949)\n   RELEASE: default (/x)\n", &e));
+    CHECK(hw_eeprom_parse("BOOTLOADER: up to date\n   CURRENT: x (1790351949) \n    LATEST: x (1790351949)\n   RELEASE: default (/x)\n", &e));
+    CHECK(hw_eeprom_parse("BOOTLOADER: up to date\n   CURRENT: x (-1)\n    LATEST: x (1790351949)\n   RELEASE: default (/x)\n", &e));
+    CHECK(hw_eeprom_parse("BOOTLOADER: up to date\n   CURRENT: x (1790351949)\n    LATEST: x (1790351949)\n   RELEASE: Default;rm (/x)\n", &e));
+    CHECK(hw_eeprom_parse("BOOTLOADER: up to date\n   CURRENT: x (1790351949)\n    LATEST: x (1790351949)\n   RELEASE: averyveryverylongname (/x)\n", &e));
+    CHECK(hw_eeprom_parse("BOOTLOADER: up to date\n   CURRENT: x (1790351949)\n    LATEST: x (1790351949)\n   RELEASE:  (/x)\n", &e));
+    /* the board: BCM2712 in the device tree's compatible list */
+    static const char pi5[] = "raspberrypi,5-model-b\0brcm,bcm2712\0";
+    static const char pi4[] = "raspberrypi,4-model-b\0brcm,bcm2711\0";
+    static const char trick[] = "brcm,bcm2712x\0xbrcm,bcm2712\0";
+    CHECK(hw_is_bcm2712(pi5, sizeof pi5 - 1) && !hw_is_bcm2712(pi4, sizeof pi4 - 1) && !hw_is_bcm2712(trick, sizeof trick - 1));
+    CHECK(!hw_is_bcm2712("brcm,bcm271", 11) && !hw_is_bcm2712(NULL, 0));
+}
 
 static void test_admin(void) {
     CHECK(hw_time_valid("2026-10-18 03:15:00") && hw_time_valid("2028-02-29 23:59:59"));
@@ -379,6 +425,7 @@ static void test_admin(void) {
 
 int main(void) {
     test_admin();
+    test_eeprom();
     test_edid();
     test_modes();
     test_night();

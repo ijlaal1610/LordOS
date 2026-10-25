@@ -56,7 +56,16 @@ SD card or an NVMe, and the same image boots on the Pi 5 and the Pi 4.
 ### What it ships
 
 - **Debian 13 (trixie) arm64**, minbase, with the same LordOS packages as the ISO: PipeWire,
-  wpa_supplicant, OpenVPN, Noto, foot, FeatherPad.
+  wpa_supplicant, OpenVPN, Noto, foot, FeatherPad, automatic time (`systemd-timesyncd`: the board
+  has no clock that keeps time without a battery, and without it the clock started months behind,
+  so every signed package index was refused as "not valid yet"), printing (`cups`, `avahi-daemon`),
+  exFAT and NTFS drives, power profiles, the MIME database and the GSettings schemas (since 0.8.4.1).
+- **Chromium and Firefox ESR** (Debian's arm64 builds, since 0.8.4.1), with the ISO's defaults from
+  the same script, `tools/iso/browser-defaults.sh`: Chromium's `master_preferences` with
+  `custom_chrome_frame` and the GTK theme, Firefox's `/etc/firefox-esr/lordos.js` (`inTitlebar` 1),
+  so both draw a single bar with LordOS's window buttons; the GTK themes, the video extension and
+  the video settings (`video-optimize`, Settings → Displays → Video) come with the lordos package.
+  Measured cost in "Release test (0.8.4.1 Beta)".
 - **The LordOS build of the Raspberry Pi kernel** (see "The LordOS kernel"), when
   `tools/rpi/build-kernel.sh` has built it; otherwise Raspberry Pi's archive kernel, with a loud
   warning (it has no Landlock, BPF LSM or BTF):
@@ -70,7 +79,15 @@ SD card or an NVMe, and the same image boots on the Pi 5 and the Pi 4.
   - `firmware-brcm80211`: Wi-Fi (CYW43455);
   - `rpi-eeprom` and `raspi-utils` (`vcgencmd`, `pinctrl`), if available.
 
-  Everything else comes from Debian, Mesa included.
+  Everything else comes from Debian, Mesa included. Since 0.8.4.1 `rpi-eeprom` and what it needs
+  are also in the LordOS repository (`UPDATES.md`, "Raspberry Pi firmware packages"): the same
+  files, so either source updates the bootloader images; with both, `apt` takes the Raspberry Pi
+  archive's copy (priority 990) and the result is the same `.deb`. The Store's package engine does
+  not read `/etc/apt/preferences.d` yet, so its "Update all" may take Raspberry Pi's builds of
+  packages Debian also has (Chromium, BlueZ…); `apt` follows the priorities.
+- **The bootloader** (in the board's EEPROM) is updated from **Settings → Board firmware**
+  (`SETTINGS.md`, "Board firmware"), not `raspi-config`: `rpi-eeprom-update`'s hint to run
+  `raspi-config` doesn't apply on LordOS.
 - **Bluetooth** (the CYW43455's Bluetooth half, on a UART; see "Bluetooth"), from Debian: `bluez`,
   `bluez-firmware` (the chip's patch, `brcm/BCM4345C0.hcd`), `libspa-0.2-bluetooth` (headsets in
   PipeWire) and `rfkill`, plus our SCO-routing helper (`lordos-rpi-bt@hciN`).

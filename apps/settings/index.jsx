@@ -27,6 +27,7 @@ import { CoolingSettings } from './Cooling.jsx';
 import { NotificationsSettings } from './Notifications.jsx';
 import { DateTimeSettings } from './DateTime.jsx';
 import { DefaultAppsSettings } from './DefaultApps.jsx';
+import { FirmwareSettings } from './Firmware.jsx';
 import { Stack, Section, SettingRow, ValueRow, Badge, Note, Message, Actions, PopUp, shade } from './ui.jsx';
 
 export function Icon({ size: s }) {
@@ -519,16 +520,33 @@ function FanGlyph() {
   );
 }
 
+// A chip: a square body with three pins on each side.
+function ChipGlyph() {
+  return (
+    <View style={{ width: 14, height: 14, direction: 'ltr' }}>
+      <View style={{ position: 'absolute', left: 3, top: 3, width: 8, height: 8, borderRadius: 1.5, backgroundColor: '#fff' }} />
+      {[4, 6.5, 9].map((y) => (
+        <View key={y}>
+          <View style={{ position: 'absolute', left: 0, top: y - 0.5, width: 3, height: 1.5, backgroundColor: '#fff' }} />
+          <View style={{ position: 'absolute', left: 11, top: y - 0.5, width: 3, height: 1.5, backgroundColor: '#fff' }} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 // Sidebar groups (as in TangoOS): [id, component, icon color, symbol (a glyph or a component)].
 const GROUPS = [
   [['general', General, '#8e8e93', 'i'], ['appearance', Appearance, '#3a3a3c', '◐'], ['wallpaper', Wallpapers, '#30b0c7', '▣'], ['dock', DockSettings, '#3a3a3c', '▁'], ['displays', DisplaysSettings, '#0a84ff', '▭']],
   [['network', NetworkSettings, '#0a84ff', '⇅'], ['bluetooth', BluetoothSettings, '#0a84ff', 'ᛒ'], ['sound', SoundSettings, '#ff375f', '♪'], ['notifications', NotificationsSettings, '#ff3b30', '◉'], ['printers', PrintersSettings, '#636366', '⎙'], ['clipboard', ClipboardSettings, '#5e5ce6', '⎘'], ['sharing', SharingSettings, '#34c759', '⇄']],
   [['language', LanguageRegion, '#30b0c7', 'A'], ['datetime', DateTimeSettings, '#0a84ff', '◷'], ['keyboard', Keyboard, '#8e8e93', '⌨'], ['trackpad', TrackpadSettings, '#8e8e93', '▭'], ['defaultapps', DefaultAppsSettings, '#8e8e93', '◫']],
-  [['power', PowerSettings, '#30d158', BoltGlyph], ['cooling', CoolingSettings, '#32ade6', FanGlyph], ['privacy', PrivacySettings, '#0a84ff', LockGlyph], ['users', UsersSettings, '#0a84ff', '☺'], ['updates', Updates, '#8e8e93', '↻'], ['themes', Themes, '#ff9f0a', '◧'], ['session', Session, '#ff453a', '↪']],
+  [['power', PowerSettings, '#30d158', BoltGlyph], ['cooling', CoolingSettings, '#32ade6', FanGlyph], ['firmware', FirmwareSettings, '#5e5ce6', ChipGlyph], ['privacy', PrivacySettings, '#0a84ff', LockGlyph], ['users', UsersSettings, '#0a84ff', '☺'], ['updates', Updates, '#8e8e93', '↻'], ['themes', Themes, '#ff9f0a', '◧'], ['session', Session, '#ff453a', '↪']],
 ];
 const SECTIONS = GROUPS.flat();
-// Trackpad only if there is a touchpad (lord-sessiond lends them with the monitor)
-const sectionShown = (id, hasPad) => id !== 'trackpad' || hasPad;
+// Trackpad only if there is a touchpad (lord-sessiond lends them with the monitor); Board firmware
+// only on a BCM2712 board (Raspberry Pi 5, 500, CM5: lord.system.info().board)
+const isPi5 = () => { try { return lord.system.info().board === 'pi5'; } catch (e) { return false; } };
+const sectionShown = (id, hasPad, pi5 = isPi5()) => (id !== 'trackpad' || hasPad) && (id !== 'firmware' || pi5);
 
 // The Dock's right-click menu lists every section, in the sidebar's order and with its names; one
 // opens Settings on that page (sdk/dock.js, quick actions). Built from SECTIONS, so it never drifts.
@@ -581,7 +599,8 @@ export default function Settings() {
   const q = query.trim().toLowerCase();
   // Trackpad only if there is a touchpad (lord-sessiond lends them with the monitor)
   const hasPad = useTrackpads().some((d) => d.kind === 'touchpad');
-  const visible = (id) => sectionShown(id, hasPad) && `${tr(`settings.section.${id}`)} ${tr(`settings.keywords.${id}`)}`.toLowerCase().includes(q);
+  const [pi5] = useState(isPi5);
+  const visible = (id) => sectionShown(id, hasPad, pi5) && `${tr(`settings.section.${id}`)} ${tr(`settings.keywords.${id}`)}`.toLowerCase().includes(q);
   const groups = GROUPS.map((g) => g.filter(([id]) => visible(id))).filter((g) => g.length);
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>

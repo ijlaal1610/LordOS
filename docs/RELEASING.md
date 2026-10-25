@@ -13,6 +13,10 @@ The releases page is the project's public changelog: every release is documented
   separately (`"lordos": {"channel": "beta"}`; empty for a stable release). The file names use
   that version: `lordos_0.8.0_amd64.deb`, `lordos-live-0.8.0-amd64.iso`,
   `lordos-0.8.0-rpi5-arm64.img.xz`.
+- **An update of a published version** that only fixes it or completes it (no features planned for
+  the next version) adds a fourth number: `0.8.4.1-beta` after `0.8.4-beta`, package `0.8.4.1`. dpkg
+  sorts it after `0.8.4` and before `0.8.5`, so Store → Updates and apt offer it like any version.
+  (Semantic Versioning has no fourth number; LordOS uses it only for these.)
 - The release title is **`LordOS <version>`**, for example `LordOS 0.8.0-beta`.
 - Every beta (any version with a suffix) is published as a **pre-release**. Only a version without
   a suffix is a normal release.
