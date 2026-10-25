@@ -12,8 +12,8 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [0.8.4.1-beta] - 2026-10-25
 
-An update of 0.8.4 for the Raspberry Pi 5: its bootloader from Settings, the browsers in the Pi image,
-and the Pi image itself, which 0.8.4 held back.
+An update of 0.8.4 for the Raspberry Pi 5: its bootloader from Settings, and a new Pi image with the
+HDMI fix, the browsers and the ISO's system packages (0.8.4 held its Pi image back).
 
 ### Added
 
@@ -53,6 +53,8 @@ and the Pi image itself, which 0.8.4 held back.
 
 ### Known issues and limitations
 
+- **The Raspberry Pi 5 image** of this version is added to the release once it has been checked on an
+  HDMI monitor; the package update above doesn't depend on it.
 - **A Pi set up from the 0.8.3 image** has no network time client: if Store → Updates fails, set the
   time in Settings → Date & Time first, then install `systemd-timesyncd` from the Store.
 - **The bootloader release** (*Default* or *Latest*) is shown but not changed from Settings: it is

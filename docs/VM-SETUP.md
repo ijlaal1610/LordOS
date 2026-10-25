@@ -1590,3 +1590,26 @@ See `ISO.md`, "Release test (0.8.4 Beta, October 19–25)".
   `/root/.config/lordos` it created); the first-run check used a loop device on a decompressed copy
   of the image in `/var/tmp/r084-fr` (removed). Network, the `lordbasex` account and the SD
   partitions untouched; the board was not reflashed.
+
+## Step 45 — 0.8.4.1 release test (VMs 116 and 120 and the Raspberry Pi, October 25)
+
+See `ISO.md`, "Release test (0.8.4.1 Beta, October 25)".
+
+- **VM 116:** started (it was stopped); the release tree in `~/LordOS-0841`, built and tested there;
+  the `.deb` and its SBOM in `/var/tmp/`. Nothing installed. Left stopped.
+- **VM 120:** a Proxmox snapshot `r0841pre` first; then a fresh 0.8.4 install from the 0.8.4 ISO
+  (test user `rtester`, `openssh-server`, a sudoers drop-in, `lordos.sources` on `apt-staging`) and
+  a snapshot `r0841base`; upgraded with the Store, then again with apt from `r0841base`. Rolled back
+  to `r0841pre` (the earlier "Test User" install, at the login screen; ISO and boot order as
+  before), both snapshots deleted, left stopped.
+- **Raspberry Pi 5 (172.17.0.24, the user's TEST SD with the 0.8.4 image):** clock set by hand
+  (the image had no time client), `debootstrap`, `xz-utils`, `curl`, `gpg`, `dosfstools`, `fdisk`,
+  `dpkg-dev`, `python3`, `dpkg-repack` and `file` installed for the native image build; the
+  installed LordOS kernels repacked with `dpkg-repack` into `/var/tmp/lordos-kernel/out` (`dpkg
+  --verify` clean first: the same files as the 0.8.4 image's). Tree in `/var/tmp/lordos-src-0841`,
+  image work folder `/var/tmp/lordos-rpi-v0841`. `lordos` 0.8.4 → 0.8.4.1 from staging (then the
+  source put back on the live repository). For the Settings test: a test-only account `rtest`
+  (sudo group) and the remote desktop turned on; both removed afterwards. Bootloader updated once
+  through Settings → Board firmware (2026/05/26 → 2026/09/25). Chromium and Firefox ESR installed
+  from Debian with the image's browser defaults, to check them (left installed). Network and
+  partitions untouched; the board was not reflashed.

@@ -443,6 +443,53 @@ text was fixed (sha256 `daba6313…c8ec65`). That ISO has the same binaries; onl
 With the final ISO, UEFI boot, the network, ❖L/Enter and the installer summary were repeated. Nothing
 was installed in that repeat.
 
+## Release test (0.8.4.1 Beta, October 25)
+
+An update of 0.8.4 (no new ISO: the 0.8.4 ISO stays the current one). `lordos_0.8.4.1_amd64.deb` built
+on VM 116 (build `20261025.9796cda3`) and `lordos_0.8.4.1_arm64.deb` with the Raspberry Pi 5 image on
+the Pi itself, natively, in `build-img.sh`'s arm64 chroot (build `20261025.5adba3b7`; the two builds
+differ only in `tools/rpi/build-img.sh`), both `RELEASE=1` from a tree whose `code-manifest.json` was
+signed on the maintainer's machine; `lord-server --check-code`: verified, release build.
+`make -C server test`: 23 passed, 0 failed, 8 skipped on VM 116 and 21 passed, 0 failed, 11 skipped in
+the Pi's arm64 chroot (`settings-hw-test` 160/160 on both, with the new `rpi-eeprom-update` parser
+cases); the seven node suites pass on the maintainer's machine; 0 compiler warnings. Both `.deb`:
+lintian 0 errors (17 warnings, the known ones); both SBOMs validated with `pyspdxtools`.
+
+The image: `lordos-0.8.4.1-rpi5-arm64.img.xz`, 784 982 908 bytes, sha256
+`da398fc6ee1cad611a07e34399a018250ab403a525157aa50a52172293d0e0da`, signed into its own
+`SHA256SUMS`/`SHA256SUMS.sig` with the release key. Against 0.8.4's image: 533 → 749 MiB compressed,
+2 747 → 3 674 MiB raw (Chromium, Firefox ESR and the ISO's system packages); the system is 2.3 GB.
+
+| Check | Result |
+|---|---|
+| Image, read-only (loop device on the Pi): `config.txt` has `display_auto_detect`/`camera_auto_detect` (lines 15–16) **before** `dtoverlay=vc4-kms-v3d` (line 21); `lordos` 0.8.4.1 verified, release build; Chromium 156 and Firefox ESR 153 (Debian's) with `custom_chrome_frame` true, the GTK theme and `inTitlebar` 1; `systemd-timesyncd`, `cups`, `avahi-daemon`, `exfatprogs`, `ntfs-3g`, `power-profiles-daemon`, `gsettings-desktop-schemas`, `rpi-eeprom` 28.34-1 installed; `lord-doc`, `lord-media` and `lord-netperm` with its BPF programs in the package; `dpkg --audit` clean | pass |
+| Store → Updates on VM 120 (0.8.4 installed from its ISO, UEFI, user `rtester`, `lordos.sources` on `apt-staging`): "LordOS 0.8.4.1 is available" with the notes; the plan is `lordos` only (11 MB); Update → no migration → "Restart required" → Restart (the sheet with the open apps) → login screen → About "Version 0.8.4.1 · Beta", build `20261025.9796cda3`, **Verified**; `lordos`, `lord-netperm`, `lord-fand` active, 0 failed units; Settings has no Board firmware on a PC (search "firmware": no results) | pass |
+| `apt update && apt-get upgrade` (VM 120 back at the fresh 0.8.4): 27 s, `lordos` and a Debian update, nothing kept back, no migration, `settings.json` byte-identical, `/run/reboot-required.pkgs` = `lordos`; `apt install --reinstall lordos` runs no migration; after the restart 0 failed units | pass |
+| Staging repository: the 11 Raspberry Pi packages verified against Raspberry Pi's signed index and the pinned SHA-256s; only the arm64 index lists them; `apt-repo.sh verify staging` passes. On the Pi, `apt-get install -s rpi-eeprom` with only Debian and LordOS sources (Raspberry Pi's archive left out, empty dpkg status) resolves everything from `LordOS:stable` and Debian | pass |
+| Raspberry Pi 5 (test SD, 0.8.4 image with the `config.txt` fix by hand): `apt-get install lordos` from staging: 0.8.4.1 in 18 s, no migration, `sshd -t` clean, `lord-server --check-code` verified | pass |
+| Settings → Board firmware on the Pi (a test account over the LordOS remote desktop): "Update available", installed Tuesday, May 26, 2026, latest Friday, September 25, 2026, release Default; **Update** → "Update ready: restart to finish" with the note and **Restart…** (the session's Restart sheet); the board staged `pieeprom.upd`, `pieeprom.sig` and `recovery.bin` and wrote `/run/rpi-eeprom-update-pending` (no `flashrom`, no `rpieepromab`) | pass |
+| After the restart: `vcgencmd bootloader_version` 2026/09/25 (`1accd665…`, was 2026/05/26 `086b83e3…`), the staged files gone; the page says "Up to date", installed = latest = September 25, 2026 | pass |
+| Browsers on the Pi (installed on the test SD the same way as the image, defaults from `browser-defaults.sh`): Chromium 156 on Wayland with one bar and LordOS's traffic lights; Firefox ESR 153 with its own single bar; Settings → Displays → Video: "Automatic", this board can't decode VP9 or AV1 in hardware, so sites are asked for H.264 | pass |
+
+Found in this test:
+
+- **The first arm64 package was incomplete.** Built in `build-img.sh`'s arm64 chroot (0.8.4's was built
+  natively on the development SD), it had no `lord-doc`, no `lord-media` and no BPF programs in
+  `lord-netperm`: the chroot lacked Poppler, libarchive, FFmpeg and clang, and `make` leaves those
+  parts out silently. It was published to staging only, then replaced there (the CDN path
+  invalidated). `build-img.sh` now installs the ISO's build packages in the chroot, copies
+  `packaging/`, and refuses a package without `lord-doc`, `lord-media` or the BPF programs.
+- **The Pi image had no network time client** (`systemd-timesyncd`): the board starts months behind
+  and refuses every signed index ("not valid yet"); the test SD needed its clock set by hand. Added.
+- **Restart from a session that is not on the monitor** (here the remote desktop) shows the Restart
+  sheet, but `lord-sessiond` only accepts power requests from the session shown on the monitor, so
+  nothing happens after the countdown; the board was restarted with `systemctl reboot`. The same
+  holds for Store → Updates' Restart Now; to fix in a later version (`canPower()` should be false
+  there).
+- **The Store's package engine ignores `/etc/apt/preferences.d`**, so on the Pi image its "Update all"
+  would take Raspberry Pi's `+rpt` builds (Chromium, BlueZ…) over Debian's; `apt` follows the
+  priorities (release notes, Known issues).
+
 ## Release test (0.8.4 Beta, October 19–25)
 
 `lordos-live-0.8.4-amd64.iso`, built from ca52be1 (build `20261025.ca52be13`; the `v0.8.4-beta` tag,

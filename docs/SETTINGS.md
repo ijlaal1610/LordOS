@@ -234,6 +234,11 @@ the peer and reports `canChange`. Monitor has the same view read-only, with a hi
 
 ## Board firmware (Raspberry Pi 5)
 
+| | | |
+|---|---|---|
+| ![Update available](settings-board-firmware-available.png) | ![Update ready](settings-board-firmware-pending.png) | ![Up to date](settings-board-firmware-uptodate.png) |
+| An update is available | Updated: restart to finish | After the restart |
+
 LordOS's own page for the bootloader in the board's EEPROM, instead of `raspi-config`. It is in the
 sidebar only on a BCM2712 board (`lord.system.info().board === 'pi5'`, from the device tree's
 `compatible` list: Raspberry Pi 5, Pi 500, Compute Module 5). It shows:

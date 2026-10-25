@@ -269,6 +269,10 @@ for now.
 
 ## Release tests
 
+- **0.8.4.1 (2026-10-25):** 0.8.4 → 0.8.4.1 from the Store and with `apt` on VM 120 (no migration,
+  nothing kept back) and with `apt` on the Raspberry Pi 5; the Raspberry Pi packages of the new
+  `pool/rpi/` resolve on a Pi with only Debian and LordOS sources ([ISO.md](ISO.md), "Release test
+  (0.8.4.1 Beta)").
 - **0.8.4 (2026-10-25):** 0.8.3 → 0.8.4 from the Store and with `apt` on VM 120, and with `apt` on the
   Raspberry Pi 5: migration 005 only, the two new libraries (`libsrtp2-1`, `libusrsctp2`) installed
   as dependencies, settings byte-identical; `apt-get upgrade` keeps `lordos` back (new
