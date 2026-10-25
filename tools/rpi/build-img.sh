@@ -103,8 +103,11 @@ PKGS_SSH="openssh-server"
 # password prompt's text for encrypted disks). See docs/RASPBERRY.md, "Boot splash".
 PKGS_SPLASH="plymouth plymouth-label"
 # to build lord-server (only in the build chroot, not in the image)
+# (the same as the ISO's build packages, docs/ISO.md: lord-doc needs Poppler and libarchive, lord-media
+# FFmpeg, lord-netperm's BPF programs clang; without them make silently leaves those parts out)
 PKGS_BUILD="build-essential pkg-config libxkbcommon-dev libwayland-dev wayland-protocols libgbm-dev libegl-dev libgles-dev
- libssl-dev libcrypt-dev libsrtp2-dev libusrsctp-dev dpkg-dev file"
+ libssl-dev libcrypt-dev libsrtp2-dev libusrsctp-dev dpkg-dev file clang
+ libpoppler-glib-dev libarchive-dev libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libva-dev"
 
 echo "== LordOS $VERSION: Raspberry Pi image in $WORK (host $(uname -m))"
 kernel_warning() {
@@ -172,8 +175,9 @@ if is_aarch64 server/build/lord-server && is_aarch64 server/build/lord-sessiond;
     DEB_ARCH=$ARCH sh tools/iso/mkdeb.sh "$DEB"
 else
     echo "== lord-server: building in an arm64 chroot ($BR)"
-    if [ ! -x "$BR/usr/bin/gcc" ]; then
-        bootstrap "$BR" "$WORK/buildroot-debootstrap.log"
+    # (re)install the build packages when the chroot is new or lacks some (an older chroot without clang)
+    if [ ! -x "$BR/usr/bin/gcc" ] || [ ! -x "$BR/usr/bin/clang" ] || [ ! -d "$BR/usr/include/aarch64-linux-gnu/libavcodec" ]; then
+        [ -x "$BR/usr/bin/gcc" ] || bootstrap "$BR" "$WORK/buildroot-debootstrap.log"
         mount_ch "$BR"
         in_root "$BR" apt-get update -q > "$WORK/buildroot-apt.log" 2>&1
         # shellcheck disable=SC2086
@@ -187,7 +191,7 @@ else
     # ls is split on purpose (zero, one or two file names)
     # shellcheck disable=SC2046
     tar -C "$ROOT" --exclude=server/build --exclude=node_modules -cf - \
-        package.json README.md server third_party assets themes tools \
+        package.json README.md server third_party assets themes tools packaging \
         $(cd "$ROOT" && ls code-manifest.json code-manifest.sig 2>/dev/null) | tar -C "$BR/src/LordOS" -xf -
     J=$(nproc)
     in_root "$BR" sh -c "cd /src/LordOS && make -C server -j$J GPU=1 RELEASE=${RELEASE:-0} && make -C server build/canvas-test" > "$WORK/build.log" 2>&1 || {
@@ -199,6 +203,11 @@ else
     in_root "$BR" sh -c "cd /src/LordOS && DEB_ARCH=$ARCH REQUIRE_SIGNED_CODE=${REQUIRE_SIGNED_CODE:-0} sh tools/iso/mkdeb.sh /tmp/lordos.deb" >> "$WORK/build.log" 2>&1 || {
         tail -20 "$WORK/build.log"; exit 1; }
     cp "$BR/tmp/lordos.deb" "$DEB"
+    # the package must be complete: the documents and media helpers and the firewall's BPF programs
+    for f in lord-doc lord-media; do
+        dpkg-deb -c "$DEB" | grep -q "/usr/lib/lordos/bin/$f\$" || { echo "build-img.sh: $f missing from the package (build packages, see $WORK/build.log)" >&2; exit 1; }
+    done
+    [ -s "$BR/src/LordOS/server/build/gen/np_bpf.h" ] || { echo "build-img.sh: lord-netperm built without its BPF programs (clang)" >&2; exit 1; }
     umount_ch "$BR"
 fi
 # mkdeb.sh (the same as the ISO's) takes the architecture from DEB_ARCH
