@@ -53,8 +53,9 @@ HDMI fix, the browsers and the ISO's system packages (0.8.4 held its Pi image ba
 
 ### Known issues and limitations
 
-- **The Raspberry Pi 5 image** of this version is added to the release once it has been checked on an
-  HDMI monitor; the package update above doesn't depend on it.
+- **A monitor plugged in after boot stays black** until the board is restarted: the login screen
+  doesn't follow the kernel's display events yet. Connect the HDMI monitor before switching the board
+  on. Fixed for 0.8.5.
 - **A Pi set up from the 0.8.3 image** has no network time client: if Store → Updates fails, set the
   time in Settings → Date & Time first, then install `systemd-timesyncd` from the Store.
 - **The bootloader release** (*Default* or *Latest*) is shown but not changed from Settings: it is
