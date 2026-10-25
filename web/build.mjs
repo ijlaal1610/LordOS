@@ -20,6 +20,7 @@ import http from 'node:http';
 import { createRequire } from 'node:module';
 import { markdown, inline, frontMatter } from './lib/md.mjs';
 import { diagram } from './lib/diagram.mjs';
+import { imagerGuide, writeBlock } from './lib/imager-guide.mjs';
 
 const WEB = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(WEB, '..');
@@ -116,6 +117,8 @@ const docCss = minCss(src('doc.css'));
 const docCssUrl = hashed(Buffer.from(docCss), 'doc', 'css');
 const homeCss = minCss(src('home.css').replace('__FONT_MEDIUM__', fontMedium));
 const homeCssUrl = hashed(Buffer.from(homeCss), 'home', 'css');
+const imagerCss = minCss(src('imager.css'));
+const imagerCssUrl = hashed(Buffer.from(imagerCss), 'imager', 'css');
 // [[PLACEHOLDER]] markers left by the content agents: highlighted when --allow-placeholders, else the build fails
 const ALLOW_PH = process.argv.includes('--allow-placeholders');
 const placeholders = new Map();
@@ -234,6 +237,16 @@ if (faqJson && !ALLOW_PH) {
   faqJson.categories = (faqJson.categories || []).filter((c) => c.items.length);
 }
 const HAS_FAQ = !!(faqJson && (faqJson.categories || []).length);
+// the LordOS Imager guide (/imager/) and the download section's "How to write LordOS" block
+const imagerDir = path.join(CONTENT, 'imager');
+const HAS_GUIDE = LANGS.every((l) => fs.existsSync(path.join(imagerDir, `guide.${l}.json`)));
+const guideText = HAS_GUIDE ? Object.fromEntries(LANGS.map((l) => [l, readJson(path.join(imagerDir, `guide.${l}.json`))])) : {};
+const IMAGER_VIDEO_DIR = process.env.IMAGER_VIDEO_DIR ? path.resolve(process.env.IMAGER_VIDEO_DIR) : path.join(imagerDir, 'video');
+const imagerLinks = (l) => ({
+  mac: `${IMAGER_DL}_universal.dmg`, win: `${IMAGER_DL}_x64_setup.exe`, linux: `${IMAGER_DL}_amd64.deb`,
+  signing: builtPages().has('legal/code-signing') ? pageUrl(l, 'legal/code-signing') : `${GITHUB}/blob/main/docs/SIGNING.md`,
+  switchFiles: `${GITHUB}/blob/main/docs/RASPBERRY.md#switch-files`,
+});
 const footerFile = path.join(CONTENT, 'footer.json');
 const footerJson = fs.existsSync(footerFile) ? readJson(footerFile) : null;
 log(`content: ${legalPages.length} legal pages${legalHeld.length ? ` (held back, placeholders: ${legalHeld.join(', ')})` : ''}, FAQ ${HAS_FAQ ? 'yes' : 'no'}${faqHeld ? ` (${faqHeld} questions with placeholders hidden)` : ''}, footer.json ${footerJson ? 'yes' : 'no'}`);
@@ -278,7 +291,7 @@ ${alts}
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preload" href="${fontExtraBold}" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="${fontMedium}" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="${cssUrl}">${doc ? `\n<link rel="stylesheet" href="${doc === 'home' ? homeCssUrl : docCssUrl}">` : ''}
+<link rel="stylesheet" href="${cssUrl}">${doc ? `\n<link rel="stylesheet" href="${doc === 'home' ? homeCssUrl : doc === 'imager' ? imagerCssUrl : docCssUrl}">` : ''}
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="LordOS">
 <meta property="og:title" content="${esc(title)}">
@@ -382,7 +395,7 @@ function linkBuilt(href) {
 }
 let _built = null;
 function builtPages() {
-  if (!_built) _built = new Set(['', 'apps', 'gallery', 'about', ...featureList.map((m) => 'features/' + m.slug), ...(HAS_PAPER ? ['paper'] : []), ...(HAS_FAQ ? ['faq'] : []), ...legalPages.map((x) => 'legal/' + x.slug), ...(legalPages.length ? ['legal', ...LEGAL_MOVED.map((m) => 'legal/' + m[0])] : [])]);
+  if (!_built) _built = new Set(['', 'apps', 'gallery', 'about', ...(HAS_GUIDE ? ['imager'] : []), ...featureList.map((m) => 'features/' + m.slug), ...(HAS_PAPER ? ['paper'] : []), ...(HAS_FAQ ? ['faq'] : []), ...legalPages.map((x) => 'legal/' + x.slug), ...(legalPages.length ? ['legal', ...LEGAL_MOVED.map((m) => 'legal/' + m[0])] : [])]);
   return _built;
 }
 // one-slot language picker: a <details> dropdown of plain links (works without JS; keeps the page)
@@ -473,7 +486,7 @@ ${icons}
 </section>`;
 }
 
-const tpl = { home: src('home.html'), gallery: src('gallery.html'), apps: src('apps.html'), notFound: src('404.html'), lightbox: src('lightbox.html'), feature: src('feature.html'), paper: src('paper.html'), legal: src('legal.html'), legalIndex: src('legal-index.html'), faq: src('faq.html'), about: src('about.html') };
+const tpl = { imager: src('imager.html'), home: src('home.html'), gallery: src('gallery.html'), apps: src('apps.html'), notFound: src('404.html'), lightbox: src('lightbox.html'), feature: src('feature.html'), paper: src('paper.html'), legal: src('legal.html'), legalIndex: src('legal-index.html'), faq: src('faq.html'), about: src('about.html') };
 
 for (const l of LANGS) {
   const t = dict[l];
@@ -570,6 +583,7 @@ ${featureList[i] ? `<a class="more" href="${pageUrl(l, 'features/' + featureList
       return `<div class="laptop" id="hero-show" role="region" aria-roledescription="carousel" aria-label="${esc(H.carousel)}"><div class="lp-screen"><span class="lp-cam" aria-hidden="true"></span><div class="lp-display">${slides}</div></div><div class="lp-base" aria-hidden="true"><span class="lp-notch"></span></div>${ctl}</div><ul class="stats">${pills}</ul>`;
     })(),
     fingerprint: FINGERPRINT, banner: l === 'en' ? banner() : '',
+    writeBlock: HAS_GUIDE ? writeBlock({ l, t, g: guideText[l], esc, links: imagerLinks(l), version: PKG.version, guideUrl: pageUrl(l, 'imager') }) : '',
     imagerMac: `${IMAGER_DL}_universal.dmg`, imagerWin: `${IMAGER_DL}_x64_setup.exe`, imagerLinux: `${IMAGER_DL}_amd64.deb`,
     faqServer: HAS_FAQ ? pageUrl(l, 'faq') + '#server-vps' : `${GITHUB}/blob/main/docs/INSTALL-DEBIAN.md#servers-and-vps`,
   }, t));
@@ -794,6 +808,17 @@ ${(c.items || []).map((it) => {
   }
 }
 
+// the LordOS Imager guide, per language
+if (HAS_GUIDE) {
+  for (const l of LANGS) {
+    const t = dict[l];
+    const { main, meta } = imagerGuide({ content: imagerDir, repo: REPO, lang: l, t, g: guideText[l], version: PKG.version, esc, webp, hashed, read, lumo: LUMO, pageUrl, prefix, links: imagerLinks(l), videoDir: IMAGER_VIDEO_DIR });
+    write(path.join(pageUrl(l, 'imager'), 'index.html'), render(tpl.imager, {
+      js: jsUrl, header: header(t, 'imager'), footer: footer(t, 'imager'), head: head(t, 'imager', meta, 'imager'), lightbox: render(tpl.lightbox, {}, t), main,
+    }, t));
+  }
+}
+
 // 404 (English, noindex)
 write('404.html', render(tpl.notFound, {
   img, js: jsUrl, toTop: toTop(dict.en),
@@ -829,7 +854,7 @@ if (fs.existsSync(secTxt)) {
   else log('security.txt held back: it still has placeholders');
 }
 write('robots.txt', `User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n`);
-const allPages = [...PAGES.filter((p) => p !== 'apps' || HAS_APPS), ...featureList.map((m) => 'features/' + m.slug), ...(HAS_PAPER ? ['paper'] : []), ...(HAS_FAQ ? ['faq'] : []), 'about', ...legalPages.map((p) => 'legal/' + p.slug), ...(legalPages.length ? ['legal'] : [])];
+const allPages = [...PAGES.filter((p) => p !== 'apps' || HAS_APPS), ...featureList.map((m) => 'features/' + m.slug), ...(HAS_PAPER ? ['paper'] : []), ...(HAS_FAQ ? ['faq'] : []), 'about', ...(HAS_GUIDE ? ['imager'] : []), ...legalPages.map((p) => 'legal/' + p.slug), ...(legalPages.length ? ['legal'] : [])];
 const urls = allPages.flatMap((p) => LANGS.map((l) => `  <url>
     <loc>${SITE}${pageUrl(l, p)}</loc>
     <lastmod>${today}</lastmod>
@@ -864,7 +889,7 @@ for (const f of html) {
 const jsSize = Buffer.byteLength(jsSrc) + Buffer.byteLength(themeSrc), cssSize = Buffer.byteLength(css);
 if (jsSize > 15 * 1024) throw new Error(`JS is ${jsSize} bytes (limit 15 KB)`);
 if (cssSize > 30 * 1024) throw new Error(`site.css is ${cssSize} bytes (limit 30 KB)`);
-for (const [n, c] of [['doc.css', docCss], ['home.css', homeCss]]) if (c.length > 30 * 1024) throw new Error(`${n} is ${c.length} bytes (limit 30 KB)`);
+for (const [n, c] of [['doc.css', docCss], ['home.css', homeCss], ['imager.css', imagerCss]]) if (c.length > 30 * 1024) throw new Error(`${n} is ${c.length} bytes (limit 30 KB)`);
 log(`built ${html.length} pages into web/dist (js ${jsSize} B, css ${cssSize} B, ${shots.length} gallery images, ${apps.length} apps); install.sh byte-identical`);
 
 // ---------- paper PDFs (headless Chromium prints the built page) ----------
