@@ -36,8 +36,10 @@ const FINGERPRINT = 'c7155b8e6bbbb180f907381994d06af76d333016cd6f3facf67cadd053e
 const GITHUB = 'https://github.com/lordbasex/LordOS';
 // the LordOS Imager downloads of the current release (package.json's version and channel)
 const PKG = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
-const RELEASE_TAG = `v${PKG.version}${PKG.lordos && PKG.lordos.channel ? '-' + PKG.lordos.channel : ''}`;
-const IMAGER_DL = `${GITHUB}/releases/download/${RELEASE_TAG}/lordos_imager_${PKG.version}`;
+// a package-only update (0.8.4.1) leaves the live ISO and the Imager on an earlier release: lordos.media
+const CHANNEL = PKG.lordos && PKG.lordos.channel ? '-' + PKG.lordos.channel : '';
+const MEDIA_VERSION = (PKG.lordos && PKG.lordos.media) || PKG.version;
+const IMAGER_DL = `${GITHUB}/releases/download/v${MEDIA_VERSION}${CHANNEL}/lordos_imager_${MEDIA_VERSION}`;
 
 const r = (...p) => path.join(REPO, ...p);
 const read = (f) => fs.readFileSync(f);
@@ -583,7 +585,7 @@ ${featureList[i] ? `<a class="more" href="${pageUrl(l, 'features/' + featureList
       return `<div class="laptop" id="hero-show" role="region" aria-roledescription="carousel" aria-label="${esc(H.carousel)}"><div class="lp-screen"><span class="lp-cam" aria-hidden="true"></span><div class="lp-display">${slides}</div></div><div class="lp-base" aria-hidden="true"><span class="lp-notch"></span></div>${ctl}</div><ul class="stats">${pills}</ul>`;
     })(),
     fingerprint: FINGERPRINT, banner: l === 'en' ? banner() : '',
-    writeBlock: HAS_GUIDE ? writeBlock({ l, t, g: guideText[l], esc, links: imagerLinks(l), version: PKG.version, guideUrl: pageUrl(l, 'imager') }) : '',
+    writeBlock: HAS_GUIDE ? writeBlock({ l, t, g: guideText[l], esc, links: imagerLinks(l), version: PKG.version, isoVersion: MEDIA_VERSION, guideUrl: pageUrl(l, 'imager') }) : '',
     imagerMac: `${IMAGER_DL}_universal.dmg`, imagerWin: `${IMAGER_DL}_x64_setup.exe`, imagerLinux: `${IMAGER_DL}_amd64.deb`,
     faqServer: HAS_FAQ ? pageUrl(l, 'faq') + '#server-vps' : `${GITHUB}/blob/main/docs/INSTALL-DEBIAN.md#servers-and-vps`,
   }, t));
@@ -812,7 +814,7 @@ ${(c.items || []).map((it) => {
 if (HAS_GUIDE) {
   for (const l of LANGS) {
     const t = dict[l];
-    const { main, meta } = imagerGuide({ content: imagerDir, repo: REPO, lang: l, t, g: guideText[l], version: PKG.version, esc, webp, hashed, read, lumo: LUMO, pageUrl, prefix, links: imagerLinks(l), videoDir: IMAGER_VIDEO_DIR });
+    const { main, meta } = imagerGuide({ content: imagerDir, repo: REPO, lang: l, t, g: guideText[l], version: MEDIA_VERSION, esc, webp, hashed, read, lumo: LUMO, pageUrl, prefix, links: imagerLinks(l), videoDir: IMAGER_VIDEO_DIR });
     write(path.join(pageUrl(l, 'imager'), 'index.html'), render(tpl.imager, {
       js: jsUrl, header: header(t, 'imager'), footer: footer(t, 'imager'), head: head(t, 'imager', meta, 'imager'), lightbox: render(tpl.lightbox, {}, t), main,
     }, t));

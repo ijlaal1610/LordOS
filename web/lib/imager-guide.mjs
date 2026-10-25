@@ -215,10 +215,10 @@ const COOL_ART = {
 };
 
 // ---- the "How to write LordOS to a USB stick or SD card" block of the download section ----
-export function writeBlock({ l, t, g, esc, links, version, guideUrl }) {
+export function writeBlock({ l, t, g, esc, links, version, isoVersion = version, guideUrl }) {
   const h = g.home;
   const md = (s) => inline(String(s || ''));
-  const iso = `lordos-live-${version}-amd64.iso`, pi = `lordos-${version}-rpi5-arm64.img.xz`;
+  const iso = `lordos-live-${isoVersion}-amd64.iso`, pi = `lordos-${version}-rpi5-arm64.img.xz`;
   const cmd = (id, label, text) => `<div class="cmd"><div class="cmd-bar"><span class="cmd-t" aria-hidden="true"><i></i><i></i><i></i>${esc(label)}</span><button type="button" class="copy" data-copy="${id}" data-done="${esc(t.copied)}" aria-label="${esc(t.copy)}: ${esc(label)}" hidden>${esc(t.copy)}</button></div><pre id="${id}" tabindex="0">${esc(text)}</pre></div>`;
   return `<section class="dl-write" id="write" aria-labelledby="wr-h">
 <div class="center"><h3 id="wr-h" class="dl-write-h">${esc(h.title)}</h3><p class="sub">${esc(h.lead)}</p></div>
