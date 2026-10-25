@@ -541,7 +541,7 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
     URLs allowed. Lists never override a user's explicit allow rule.
   - Performance budget measured as in 0.8.3 (no visible cost with thousands of list entries).
 
-- [ ] **Firewall rules manager (0.8.5)** — a "Rules" section in the Monitor (our own design):
+- [ ] **Firewall rules manager (its own release after 0.8.5)** — a "Rules" section in the Monitor (our own design):
   - **Sidebar:** All rules, Active, Denied, Recently modified, Recently used, Temporary, Unapproved
     (rules created silently, waiting for review, with a count); then Rule groups, Blocklists and
     Profiles, each with an on/off checkbox.
@@ -571,6 +571,32 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
     the Monitor).
   - **Command line:** `lordos-fw` to list, add and remove rules, switch profiles, export, and log
     allow/deny events, through the same validated API as the Monitor (no root shortcut).
+
+- [ ] **System Information (0.8.5)** — design in `BENCHMARK.md`. A native app (`apps/sysinfo`,
+  also About LordOS → System Report…) with every piece of hardware detected and what LordOS uses:
+  each GPU as separate layers (device, driver, DRM, render node, EGL context, composition, scanout,
+  video decode and encode), the services, a Compatibility panel, and the paper's claims checked on
+  this machine, each marked *configured* or *effective* (a probe app tries what must fail). JSON
+  and Markdown reports with preview, built from an allow-list of fields. The logic lives in
+  `server/src/sysreport/`, shared by the app, the `lordos-sysreport` command and tests.
+  - [ ] collector, GPU layers, `pci.ids`/EDID readers, fake-sysfs fixtures, anonymization test,
+    the read-only `hw-memory-modules` admin action, `lordos-sysreport`;
+  - [ ] Overview, Hardware and Compatibility tabs (en, es, pt, right to left);
+  - [ ] Checks, configured and effective, with the probe app and a signed `checks.json`;
+  - [ ] reports; first real reports from the Pi 5 with a monitor and the RX 580 PC.
+  - [ ] from the live USB without installing: a *Check this computer* boot entry, reports marked
+    live, nothing written to the computer's disks, saved to a removable drive; the installer shows
+    the Compatibility summary before installing.
+- [ ] **LordBench (0.8.6)** — `BENCHMARK.md`. Workloads in the sandboxed `lord-bench` helper
+  (CPU and LordOS's own work, memory, GPU, compositor, video, storage, sustained load); peak
+  performance and desktop impact measured apart; frame times against the refresh rate actually in
+  use; stops on the hardware's trip points and throttling; every result records its conditions;
+  three verdicts (performance against several reference machines, compatibility, stability), no
+  single score; results versioned.
+- [ ] **Community hardware reports (0.8.7)** — `BENCHMARK.md`. Share on GitHub with the
+  `hardware-report` template (the user submits it, LordOS sends nothing), schema validation and
+  labels in a workflow, and a tested-hardware catalogue on lordos.org that the Compatibility panel
+  reads as a signed snapshot.
 
 - [x] **Remote desktop over WebRTC (0.8.4)** — see `REMOTE.md`, "Video (WebRTC)". Until 0.8.3 the
   browser got PNG/JPEG tiles over a TLS WebSocket, and a connection switched the session to CPU
@@ -747,6 +773,35 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   - **Tests:** permission prompts and revocation, injection attempts through web pages and
     mail, denied and confirmation-required paths, and an external security review of the
     design and the code before it ships.
+
+- [ ] **Lumo, the local assistant (after 0.8.7)** — an assistant that
+  runs on the machine, talks with the user and uses LordOS only through the closed tools of the
+  MCP item above. Input: the maintainer's design notes and the results of a prototype on another system (Qwen3 1.7B and
+  4B with llama.cpp; on the test PC the CPU beat the RX 580 offload by 2.5×, so nothing is assumed
+  per vendor). Adapted to LordOS's rules:
+  - **Inference in a sandboxed helper** (`lord-ai`, like `lord-media`): the only binary that links
+    llama.cpp; no network, the model file as an fd, a private channel to `lord-server` (no TCP port,
+    no HTTP API another app could reach). The Python prototype is reference only and doesn't ship.
+  - **Models only with consent:** a signed catalogue on lordos.org (hash and licence per model),
+    downloaded through the package engine's checks, loaded on demand and unloaded when idle.
+  - **AutoTune** on `server/src/sysreport/` and LordBench: the CPU always measured as the baseline,
+    thread counts, partial and full GPU offload where the backend allows it (Vulkan in `lord-ai`
+    only), prompt and generation speed, memory; the choice and its reason stored per machine,
+    re-measured after a kernel, driver or engine change; the desktop keeps its share of the CPU.
+  - **Permission levels mapped to what exists:** reading (level 0) through the SDK's read-only
+    calls; user actions (level 1) behind a LordOS prompt like camera and microphone; administrator
+    actions (level 2) only through existing closed admin actions, with the password typed in a
+    system dialog checked by the root side, never in the chat or the model's context. The level is
+    LordOS's policy, never something the model declares.
+  - **First demo:** "Lumo, open the calculator" opens it through `lord.apps.launch(id)` with an id
+    LordOS offered, and the result shown is the launcher's real result.
+  - **For the benchmark:** explain a report in plain words, compare it with published community
+    reports, suggest what to try (a driver, a setting) and draft the issue text the user sends.
+  - **Tests:** `lumo-agent-bench`, 50–100 scenarios (right tool, valid arguments, unknown tools,
+    ambiguous requests, consent, admin without rights, real errors, prompt injection through files,
+    mail and pages), scored separately from speed; a fast model that misuses tools isn't chosen.
+  - **Off by default**, visible while working (menu bar indicator, every call in the Monitor), and
+    reviewed like the MCP study before it ships.
 
 - [ ] **Virtual machines**: a **free desktop virtualization app**, with the polish and
   way of working of the best commercial ones (not Proxmox's, which only contributes the pieces underneath: KVM, QEMU and drivers).
