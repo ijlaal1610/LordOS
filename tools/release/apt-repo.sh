@@ -23,7 +23,9 @@
 # when Raspberry Pi's InRelease verifies with tools/release/raspberrypi-archive-keyring.pgp (its
 # fingerprint checked), the index's SHA-256 matches InRelease, and the file's SHA-256 matches both
 # the index and the pinned line. Verified files are kept in $WORKDIR/rpi-cache, so a pinned version
-# can still be published after Raspberry Pi's archive has moved on (docs/UPDATES.md).
+# can still be published after Raspberry Pi's archive has moved on (docs/UPDATES.md). Pinned source
+# packages (MPL-2.0 kms++) go to pool/rpi/source/<letter>/<name>/, checked the same way against the
+# signed Sources index, so their source is offered next to the binaries.
 #
 # --notes VERSION=SECTION takes the notes of lordos VERSION from CHANGELOG.md section SECTION (for
 # example 0.8.1~staging1=Unreleased). By default the section is "VERSION" or "VERSION-<suffix>".
@@ -120,6 +122,7 @@ rpi_import() {
     grep -v '^#' "$RPI_LIST" > "$t/list"
     while read -r name ver arch sum _; do
         [ -n "$name" ] || continue
+        [ "$arch" = source ] && continue            # rpi_src_import
         case "$name$ver$arch" in *[!A-Za-z0-9.+~:_-]*) rm -rf "$t"; die "rpi-mirror.list: bad line for $name" ;; esac
         printf %s "$sum" | grep -Eq '^[0-9a-f]{64}$' || { rm -rf "$t"; die "rpi-mirror.list: bad sha256 for $name"; }
         f="$cache/${name}_${ver#*:}_$arch.deb"
@@ -151,6 +154,63 @@ rpi_import() {
         [ "$(shasum -a 256 "$f.part" | cut -d' ' -f1)" = "$sum" ] || { rm -f "$f.part"; die "$path: SHA-256 does not match"; }
         mv "$f.part" "$f"
         echo "$f"
+    done < "$t/list"
+    rm -rf "$t"
+}
+
+# the pinned Raspberry Pi source packages ("source" lines): the .dsc (pinned SHA-256, also in the
+# signed Sources index) and every file the index lists for it, into $WORKDIR/rpi-cache/src/<name>/;
+# prints those folders
+rpi_src_import() {
+    t=$(mktemp -d)
+    fpr=$(GNUPGHOME=$t gpg --batch --with-colons --show-keys "$RPI_KEYRING" 2>/dev/null | awk -F: '/^fpr/ { print $10; exit }')
+    [ "$fpr" = "$RPI_KEY_FPR" ] || { rm -rf "$t"; die "$RPI_KEYRING has fingerprint $fpr, expected $RPI_KEY_FPR"; }
+    have_index=0
+    grep -v '^#' "$RPI_LIST" | awk '$3 == "source"' > "$t/list"
+    while read -r name ver arch sum _; do
+        [ -n "$name" ] || continue
+        case "$name$ver" in *[!A-Za-z0-9.+~:_-]*) rm -rf "$t"; die "rpi-mirror.list: bad line for $name" ;; esac
+        printf %s "$sum" | grep -Eq '^[0-9a-f]{64}$' || { rm -rf "$t"; die "rpi-mirror.list: bad sha256 for $name"; }
+        dir=$WORKDIR/rpi-cache/src/$name
+        dsc="$dir/${name}_${ver#*:}.dsc"
+        mkdir -p "$dir"
+        if [ "$have_index" = 0 ]; then
+            curl -fsS -o "$t/InRelease" "$RPI_ARCHIVE/dists/trixie/InRelease" || die "cannot download Raspberry Pi's InRelease"
+            gpgv --keyring "$RPI_KEYRING" --output "$t/Release" "$t/InRelease" 2>/dev/null || die "Raspberry Pi's InRelease does not verify with $RPI_KEYRING"
+            want=$(awk '/^SHA256:/ { s = 1; next } /^[^ ]/ { s = 0 } s && $3 == "main/source/Sources.gz" { print $1 }' "$t/Release")
+            [ -n "$want" ] || die "Raspberry Pi's Release lists no main/source/Sources.gz"
+            curl -fsS -o "$t/Sources.gz" "$RPI_ARCHIVE/dists/trixie/main/source/Sources.gz" || die "cannot download Raspberry Pi's Sources index"
+            [ "$(shasum -a 256 "$t/Sources.gz" | cut -d' ' -f1)" = "$want" ] || die "Raspberry Pi's Sources.gz does not match its InRelease"
+            gzip -dc "$t/Sources.gz" > "$t/Sources"
+            have_index=1
+        fi
+        # "<directory>" then "<sha256> <file>" for each file of exactly that source package and version
+        awk -v n="$name" -v v="$ver" 'BEGIN { RS = "" } {
+            pn = pv = pd = ""; k = split($0, L, "\n"); c = 0
+            for (i = 1; i <= k; i++) {
+                if (L[i] ~ /^Package: /) pn = substr(L[i], 10); else if (L[i] ~ /^Version: /) pv = substr(L[i], 10)
+                else if (L[i] ~ /^Directory: /) pd = substr(L[i], 12)
+                else if (L[i] ~ /^Checksums-Sha256:/) c = 1
+                else if (L[i] !~ /^ /) c = 0
+                else if (c) { split(L[i], F, " "); f[++m] = F[1] " " F[3] }
+            }
+            if (pn == n && pv == v) { print pd; for (j = 1; j <= m; j++) print f[j] }
+            m = 0 }' "$t/Sources" > "$t/files"
+        [ -s "$t/files" ] || die "source $name $ver is no longer in Raspberry Pi's archive: keep $dir or pin the new version"
+        path=$(head -n 1 "$t/files")
+        case "$path" in pool/main/*) ;; *) die "$name: unexpected Directory $path" ;; esac
+        grep -qx "$sum $(basename "$dsc")" "$t/files" || die "source $name $ver: Raspberry Pi's index does not list the pinned .dsc ($sum)"
+        tail -n +2 "$t/files" > "$t/want"
+        while read -r fsum file; do
+            case "$file" in "$name"_*) ;; *) die "$name: unexpected file $file" ;; esac
+            case "$file" in *[!A-Za-z0-9.+~_-]*) die "$name: unexpected file $file" ;; esac
+            f="$dir/$file"
+            if [ -f "$f" ] && [ "$(shasum -a 256 "$f" | cut -d' ' -f1)" = "$fsum" ]; then continue; fi
+            curl -fsS -o "$f.part" "$RPI_ARCHIVE/$path/$file" || die "cannot download $path/$file"
+            [ "$(shasum -a 256 "$f.part" | cut -d' ' -f1)" = "$fsum" ] || { rm -f "$f.part"; die "$path/$file: SHA-256 does not match"; }
+            mv "$f.part" "$f"
+        done < "$t/want"
+        echo "$dir"
     done < "$t/list"
     rm -rf "$t"
 }
@@ -202,6 +262,21 @@ do_build() {
         echo "  $dest"
     done
     rm -rf "$TREE/incoming"
+    # the sources of the mirrored copyleft packages, next to them and unindexed (append-only too)
+    if [ "$RPI" = 1 ]; then
+        for d in $(rpi_src_import) ; do
+            name=$(basename "$d")
+            dest="pool/rpi/source/$(printf %s "$name" | cut -c1)/$name"
+            mkdir -p "$TREE/$dest"
+            for f in "$d"/*; do
+                if [ -f "$TREE/$dest/${f##*/}" ] && ! cmp -s "$f" "$TREE/$dest/${f##*/}"; then
+                    die "$dest/${f##*/} is already published with different contents"
+                fi
+                cp "$f" "$TREE/$dest/"
+                echo "  $dest/${f##*/}"
+            done
+        done
+    fi
 
     D=dists/$SUITE
     rm -rf "${TREE:?}/dists"
@@ -265,7 +340,13 @@ do_publish() {
     check_signatures "$TREE/dists/$SUITE/InRelease" "$TREE/dists/$SUITE/Release" "$TREE/dists/$SUITE/Release.gpg"
     # 1. packages (never change once published), 2. indexes, 3. the signed files that point at them
     aws s3 sync "$TREE/pool" "s3://$BUCKET/$PREFIX/pool" --cache-control "public, max-age=31536000, immutable" \
-        --content-type application/vnd.debian.binary-package --only-show-errors
+        --exclude "rpi/source/*" --content-type application/vnd.debian.binary-package --only-show-errors
+    if [ -d "$TREE/pool/rpi/source" ]; then
+        aws s3 sync "$TREE/pool/rpi/source" "s3://$BUCKET/$PREFIX/pool/rpi/source" --cache-control "public, max-age=31536000, immutable" \
+            --exclude "*" --include "*.dsc" --content-type "text/plain; charset=utf-8" --only-show-errors
+        aws s3 sync "$TREE/pool/rpi/source" "s3://$BUCKET/$PREFIX/pool/rpi/source" --cache-control "public, max-age=31536000, immutable" \
+            --exclude "*.dsc" --content-type application/octet-stream --only-show-errors
+    fi
     aws s3 sync "$TREE/dists" "s3://$BUCKET/$PREFIX/dists" --delete --cache-control "no-cache" \
         --exclude "*/InRelease" --exclude "*/Release" --exclude "*/Release.gpg" --only-show-errors
     for f in Release Release.gpg InRelease; do
@@ -314,6 +395,6 @@ case "$cmd" in
     build) do_build "$@" ;;
     publish) do_publish ;;
     verify) do_verify ;;
-    rpi-fetch) rpi_import ;;        # only fetch and verify the pinned Raspberry Pi packages (prints their paths)
+    rpi-fetch) rpi_import; rpi_src_import ;;   # only fetch and verify the pinned Raspberry Pi packages and sources
     *) usage ;;
 esac

@@ -240,7 +240,10 @@ system by LordOS's packages.
 - **Licences** (each package's `debian/copyright`, shipped inside it): the scripts and `raspi-utils`
   are BSD-3-Clause; the bootloader images are under Raspberry Pi's binary licence (redistribution in
   unmodified binary form, for use with Raspberry Pi devices, with the notice: the `.deb` is copied
-  as is); `kms++` is MPL-2.0, its source is Raspberry Pi's `kms++` source package of the pinned version
+  as is); `kms++` is MPL-2.0, and its source, Raspberry Pi's `kms++` source package of the pinned
+  version, is published next to the binaries: https://lordos.org/apt/pool/rpi/source/k/kms++/ (the
+  `.dsc`, `.orig.tar.xz` and `.debian.tar.xz`, pinned in `rpi-mirror.list` with architecture `source`
+  and checked against Raspberry Pi's signed `Sources` index; not indexed for `apt source`)
   ([COMPLIANCE.md](COMPLIANCE.md)).
 - **Which source wins.** On the LordOS Pi image, which also lists Raspberry Pi's archive with
   priority 990 for these packages (`/etc/apt/preferences.d/raspberrypi`), apt takes the newest

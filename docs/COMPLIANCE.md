@@ -21,11 +21,11 @@ materials (SBOM) published with each release. The website summary is at
   copied byte for byte, each with its own `copyright` inside: `rpi-eeprom` (scripts BSD-3-Clause;
   bootloader images under Raspberry Pi's binary licence, which allows redistribution of unmodified
   binaries for use with Raspberry Pi devices with the notice), `raspi-utils` and its parts
-  (BSD-3-Clause) and `kms++` (MPL-2.0). For the MPL-2.0 binaries the corresponding source is the
-  `kms++` source package of the same version in Raspberry Pi's archive (`deb-src
-  http://archive.raspberrypi.com/debian trixie main`) and upstream at
-  `https://github.com/tomba/kmsxx`; before Raspberry Pi's archive drops that version, its source
-  package has to be kept next to the binaries (open item).
+  (BSD-3-Clause) and `kms++` (MPL-2.0). For the MPL-2.0 binaries the corresponding source, the
+  `kms++` source package of the same version from Raspberry Pi's archive, is published next to them
+  at https://lordos.org/apt/pool/rpi/source/k/kms++/ (pinned in `rpi-mirror.list` with architecture
+  `source`, verified against Raspberry Pi's signed `Sources` index, kept in the append-only pool);
+  upstream is `https://github.com/tomba/kmsxx`. A new pinned kms++ version needs its `source` line too.
 
 ## The SBOM
 

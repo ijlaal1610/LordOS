@@ -6,6 +6,10 @@
 # fingerprint CF8A 1AF5 02A2 AA2D 763B  AE7E 82B1 2992 7FA3 303E). A new upstream version is a new
 # line here (the old one may stay: the pool only grows), reviewed like any other change.
 #
+# Architecture "source" pins a source package by the SHA-256 of its .dsc: the .dsc and the files it
+# lists (checked against Raspberry Pi's signed Sources index) go to pool/rpi/source/, unindexed, so the
+# source of every copyleft package we mirror (MPL-2.0 kms++) is offered next to its binaries.
+#
 # package            version                      arch   sha256 (of the .deb)                                             licence (debian/copyright)
 rpi-eeprom           28.34-1                      all    7c0be1a22e9fb6e947a3f438faa588222453ad1cf1b1c985d747a49187aa2a1f  scripts BSD-3; bootloader images: Raspberry Pi licence (unmodified binaries, for Raspberry Pi devices)
 raspi-utils          20260626-1                   all    2bdb73a551a1a3c155303d1b3486ae8ed1858729e4b1b85f791ae987e1d278b6  BSD-3-Clause
@@ -18,3 +22,4 @@ libgpiolib0          20260626-1                   arm64  594956f65e16d1fcbfd7b76
 libdtovl0            20260626-1                   arm64  4b81f914be83ca68cba2da4d8d4d70bdfe3ee9b3006b7e049e86c46d29968225  BSD-3-Clause
 kms++-utils          0~git20250807.1813ada-1      arm64  a4c2cfe1d6e9458d43c508344c2516b672033135d373392a646a3084fbcc7f11  MPL-2.0 (source: archive.raspberrypi.com deb-src kms++)
 libkms++0            0~git20250807.1813ada-1      arm64  1a22a36750d8133c1f30868c18c22ab3d5ac526f4183bfb050a34ee1c46da8db  MPL-2.0 (source: archive.raspberrypi.com deb-src kms++)
+kms++                0~git20250807.1813ada-1      source a450a5140a582b7d6c720af2b131b589f9a30064aa8529927b3feba69e028413  MPL-2.0 (the source of kms++-utils and libkms++0 above)
