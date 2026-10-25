@@ -10,6 +10,13 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
+### Fixed
+
+- The Store's package engine could not download packages with a `+` in their name (`kms++-utils`,
+  `libkms++0`) from lordos.org: the CDN reads a bare `+` as a space and answered 404. It now sends
+  `%2B`, as apt does, so Settings → Board firmware can install the bootloader tools from the LordOS
+  repository alone.
+
 ## [0.8.4.1-beta] - 2026-10-25
 
 An update of 0.8.4 for the Raspberry Pi 5: its bootloader from Settings, and a new Pi image with the

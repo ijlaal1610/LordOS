@@ -235,7 +235,16 @@ static void get_one(Conn *c, const FetchItem *it, uint32_t idx) {
         int retry = c->fd >= 0;             /* a reused connection may have been closed */
     again:
         if (conn_open(c, host, port, err, sizeof err)) break;
-        char req[1600], ims[80] = "";
+        /* '+' as %2B, as apt does: an S3 origin (lordos.org) reads a bare '+' as a space, so
+         * pool/rpi/k/kms++-utils/… would be a 404 */
+        char epath[3 * sizeof url];         /* every byte of the URL could be a '+' */
+        size_t en = 0;
+        for (const char *q = path; *q; q++) {
+            if (*q == '+') { memcpy(epath + en, "%2B", 3); en += 3; }
+            else epath[en++] = *q;
+        }
+        epath[en] = 0;
+        char req[3600], ims[80] = "";
         if (it->ims > 0) {
             char d[48];
             http_format_date(it->ims, d, sizeof d);
@@ -243,7 +252,7 @@ static void get_one(Conn *c, const FetchItem *it, uint32_t idx) {
         }
         int rl = snprintf(req, sizeof req, "GET %s HTTP/1.1\r\nHost: %s%s%s\r\nUser-Agent: LordOS-pkg/0.7\r\n"
                           "Accept-Encoding: identity\r\nConnection: keep-alive\r\n%s\r\n",
-                          path, host, strcmp(port, "80") ? ":" : "", strcmp(port, "80") ? port : "", ims);
+                          epath, host, strcmp(port, "80") ? ":" : "", strcmp(port, "80") ? port : "", ims);
         if (rl >= (int)sizeof req || conn_write(c, req, (size_t)rl) || conn_line(c, line, sizeof line)) {
             conn_close(c);
             if (retry) { retry = 0; goto again; }
