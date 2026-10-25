@@ -443,6 +443,49 @@ text was fixed (sha256 `daba6313…c8ec65`). That ISO has the same binaries; onl
 With the final ISO, UEFI boot, the network, ❖L/Enter and the installer summary were repeated. Nothing
 was installed in that repeat.
 
+## Release test (0.8.4 Beta, October 19–25)
+
+`lordos-live-0.8.4-amd64.iso`, built from ca52be1 (build `20261025.ca52be13`; the `v0.8.4-beta` tag,
+b022dc3, only adds the website's Imager guide on top), 1 052 588 032 bytes, sha256
+`73bf0124149ecd4e46efc751c1d082d2eb3e7d4c2406a19451f4dedfc144dc72`, built on VM 116 with `GPU=1
+RELEASE=1` from a tree whose `code-manifest.json` was signed on the maintainer's machine
+(`REQUIRE_SIGNED_CODE=1`); `lord-server --check-code`: verified, release build. `make -C server test`:
+23 passed, 0 failed, 8 skipped on VM 116 (the seven node suites ran on the maintainer's machine, all
+pass) and 24 passed, 0 failed, 7 skipped on the Raspberry Pi 5; 0 compiler warnings. Both `.deb`:
+lintian 0 errors (17 warnings, the known ones); both SBOMs validated with `pyspdxtools`. New
+dependencies: `libsrtp2-1` and `libusrsctp2` (the WebRTC remote desktop). The release also carries the
+LordOS Imager's desktop downloads (`lordos_imager_0.8.4_universal.dmg`, signed and notarized;
+`_amd64.deb`; `_x64_setup.exe`, not code-signed), listed in the signed `SHA256SUMS`. The test VMs got
+a fresh 0.8.3 install from the published 0.8.3 ISO first (user `rtester`), so the upgrade ran on a
+clean system. The tests started on October 19 with build `20261019.13bdd697` and were repeated on
+October 25 with the final build (it adds the Pi HDMI wait, 4d17d2d, and strips `lordos-firstrun`).
+
+| Check | Result |
+|---|---|
+| Store → Updates on VM 120 (0.8.3 installed from its ISO, UEFI, `lordos.sources` pointed at `apt-staging`): "LordOS 0.8.4 is available" with the notes; the plan is `lordos` plus `libsrtp2-1` and `libusrsctp2`; Update → migration 005 only → "Restart required" → Restart (the sheet with the open apps) → login screen → About "Version 0.8.4 · Beta", build `20261025.ca52be13`, **Verified**; `lordos`, `lord-netperm`, `lord-fand` active, 0 failed units | pass |
+| `apt update && apt upgrade` (0.8.3 → 0.8.4, VM 120 back at the clean 0.8.3): 41 s, migration 005, the two libraries installed, `settings.json` byte-identical, restart, 0 failed units; `apt install --reinstall lordos` runs no migration again. `apt-get upgrade` keeps `lordos` back (new dependencies; noted in the release notes) | pass |
+| Migration 005 on the upgraded system: `/etc/chromium/master_preferences` `custom_chrome_frame` false → true, `/etc/firefox-esr/lordos.js` `inTitlebar` 0 → 1. Settings → Appearance → "Browsers: tabs in the title bar" lists "1 Chromium profile still uses the LordOS frame" (a profile opened on 0.8.3); **Change them** → Chromium opens with a single bar and LordOS's traffic lights | pass |
+| Smoke checks: XTerm opens (Xwayland `:0`, `app-lordos-debian-xterm.scope`); the native LordOS Imager opens (Device step); the overlay scroll bar shows while scrolling and is gone once the pointer leaves; smartmontools installed and smartd forced past its virtualization check: it stays off | pass |
+| Remote desktop on the upgraded VM 120 (Settings → Sharing on, "Local network"), from the maintainer's machine in headless Chrome: H.264 video over UDP, 1280×800, the data channel up, audio packets flowing; with UDP and every TCP connection to 5673 beyond the first dropped (`iptables` on the VM, for the test only) the page shows "Couldn't connect to the remote desktop" with why and what to do, and Try again | pass |
+| VM 117, OVMF: live desktop from the 0.8.4 ISO; install on the disk (en_US, Buenos Aires, 2 GB swap) in under 2 minutes; installed: login screen, `lordos` 0.8.4, `xwayland` and `libsrtp2-1` installed, Chromium's new-profile default `custom_chrome_frame: true`, `lordos-firstrun` present, 0 failed units, boot 6.8 s, 4.6 GB used | pass |
+| Raspberry Pi 5 (lordos 0.8.3, kernel `6.18.57-lordos.3-rpi-2712`): `apt-get install lordos` from staging: 0.8.4 in 13 s, migration 005, `sshd -t` clean, `lord-server --check-code` verified; `lordos`, `lord-netperm`, `lord-fand` restarted (no reboot), `display: /dev/dri/card1`; then the source switched back to the live repository: `lordos 0.8.4` installed and candidate | pass |
+| Pi firewall cut on kernel `-3` with 0.8.4 (`server/tests/netperm_cut.sh` as root with a hand-made session cgroup, removed afterwards): TCP download cut 0.34 s after the rule, idle session 0.02 s, HTTP/3 0.07 s, a domain rule cuts only that destination, "no internet" keeps the LAN; 15/15 | pass |
+| Raspberry Pi 5 image (build `20261019.13bdd697`): decompressed and attached as a loop device on the Pi; a first-run file written by the Imager's own writer (`apps/imager/core/firstrun.js`: Spanish, Classic, user with autologin, hidden Wi-Fi, SSH keys only, remote desktop, active cooler with the performance profile and overclock) applied by the image's own arm64 `lordos-firstrun` with `--root/--boot`: 26/26 checks (every file, owners and modes, no Wi-Fi password, the file shredded, a broken file applies nothing) | pass |
+| GitHub: the release downloaded back, the key fingerprint `c7155b8e…53ea108e`, "Signature Verified Successfully" and every SHA-256 OK; the downloaded `.dmg`, marked as downloaded, accepted by the system's app check ("Notarized Developer ID") and its staple validated | pass |
+
+Found in this test:
+
+- `lordos-firstrun` was never built by `make -C server` (the Makefile reset `ALL` after adding it), so
+  the package couldn't be made; fixed (13bdd69). It wasn't stripped either (lintian error); fixed.
+- The Store refused a re-published staging package with "the file is larger than allowed": the CDN
+  still served the first 0.8.4 test build at the same URL after the staging pool was replaced. The
+  check did its job (nothing was installed); invalidating the path fixed it. Versions are never
+  replaced in the live repository, so this only concerns staging.
+- **The Pi image is not published:** a user report showed the 0.8.3 Pi image staying on the text
+  console on an HDMI monitor at its first boot. 4d17d2d makes the session wait for the display
+  driver; the rebuilt 0.8.4 image (`20261025.ca52be13`) hasn't been booted on a board with a monitor
+  yet, so it is held back (release notes, Known issues).
+
 ## Release test (0.8.3 Beta, October 19)
 
 `lordos-live-0.8.3-amd64.iso`, built from 36cf07b (build `20261019.36cf07b4`; the `v0.8.3-beta` tag,

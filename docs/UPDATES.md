@@ -226,6 +226,15 @@ over it, and the previous one stays bootable from its own folder on `bootfs` (`R
 `tryboot` first boot is still missing, so the kernel stays out of the repository (staging and live)
 for now.
 
+## Release tests
+
+- **0.8.4 (2026-10-25):** 0.8.3 → 0.8.4 from the Store and with `apt` on VM 120, and with `apt` on the
+  Raspberry Pi 5: migration 005 only, the two new libraries (`libsrtp2-1`, `libusrsctp2`) installed
+  as dependencies, settings byte-identical; `apt-get upgrade` keeps `lordos` back (new
+  dependencies). A staging package re-published under the same version was refused by the Store's
+  size check while the CDN still served the old file: staging is append-only too, and a re-upload
+  needs a CloudFront invalidation of its path ([ISO.md](ISO.md), "Release test (0.8.4 Beta)").
+
 ## Tests (2026-10-18)
 
 - **Staging** (`https://lordos.org/apt-staging`, built and signed on the Mac with `apt-repo.sh`):

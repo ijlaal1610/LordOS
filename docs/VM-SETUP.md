@@ -1559,3 +1559,34 @@ binaries installed for one round, then this branch's again.
   `iptables-save` as before, the test accounts, both trees, the scripts, the `/tmp` files and the
   backup removed, `lordos.service` restarted on the package's binaries, at the login screen.
   VMs 115, 106 and 123 were not used.
+
+## Step 44 — 0.8.4 release test (VMs 116, 117, 120 and the Raspberry Pi, October 19–25)
+
+See `ISO.md`, "Release test (0.8.4 Beta, October 19–25)".
+
+- **VM 116:** installed `libsrtp2-dev` and `libusrsctp-dev` (with `libsrtp2-1`, `libusrsctp2`,
+  `libnss3-dev`, `libnspr4-dev`), which `lord-sessiond` now needs; they stay, for the next release
+  builds. The release tree in `~/LordOS-iso`, built there; ISO and `.deb` in
+  `/var/tmp/lordos-iso/out/` (the 0.8.2 and 0.8.3 ISOs there were removed to make room: identical
+  copies are in Proxmox's `local:iso`), `apt-get clean` run. Left stopped, as it was found on the
+  25th.
+- **Proxmox:** `local:iso/lordos-live-0.8.4-amd64.iso` added. A temporary typing helper in the
+  host's `/root` was removed afterwards.
+- **VMs 117 and 120:** a Proxmox snapshot `r084pre` first; then 120 got a fresh 0.8.3 install from
+  the 0.8.3 ISO (test user `rtester`, `openssh-server`, a sudoers drop-in, `lordos.sources` on
+  `apt-staging`, xterm, a Chromium profile opened once) and a snapshot `r084base`, and was upgraded
+  three times (Store with the first build; apt and Store again with the final build, back at
+  `r084base` each time; for the tests also `smartmontools` and `iptables`); 117 installed the 0.8.4
+  ISO. Both were rolled back to `r084pre` (ISO, boot order and disks as before: the earlier "Test
+  User" installs, at the login screen), the snapshots deleted, and both left stopped.
+- **Raspberry Pi 5 (172.17.0.24):** installed `libsrtp2-dev` and `libusrsctp-dev` (with `libsrtp2-1`,
+  `libusrsctp2`, `libnss3-dev`, `libnspr4-dev`) for the native build. Removed the old image work
+  folders `/var/tmp/lordos-rpi-v081` (an unpublished 0.8.1 build) and `-v082b` (its image is the
+  published 0.8.2 one, same SHA-256) to make room. Built the arm64 package and the image in
+  `/var/tmp/lordos-src-084` and `/var/tmp/lordos-rpi-v084c`. The installed LordOS went from 0.8.3 to
+  0.8.4 with apt (from staging, then the source put back on the live repository), migration 005;
+  `lordos`, `lord-netperm` and `lord-fand` restarted, no reboot. The firewall cut test ran as root
+  with a hand-made `lordos-session-0` cgroup (removed afterwards, with the empty
+  `/root/.config/lordos` it created); the first-run check used a loop device on a decompressed copy
+  of the image in `/var/tmp/r084-fr` (removed). Network, the `lordbasex` account and the SD
+  partitions untouched; the board was not reflashed.
