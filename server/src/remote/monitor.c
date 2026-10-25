@@ -15,6 +15,7 @@
 #include "../drmcard.h"
 
 #include <errno.h>
+#include <time.h>
 #include <fcntl.h>
 #include <linux/input.h>
 #include <linux/kd.h>
@@ -54,8 +55,18 @@ static int useful(int fd) {
 }
 
 int sd_mon_open(void) {
-    if (drm_pick_card(card, sizeof card)) sd_log("no card with KMS; trying %s", card);
-    else sd_log("display: %s", card);
+    /* On ARM boards the display driver can show up well after boot (on a Raspberry Pi 5's first
+     * boot vc4 may come after lordos.service has started): wait up to 30 s for a card with KMS
+     * before giving up, instead of falling back to the text console for good. */
+    int tries = 0;
+    while (drm_pick_card(card, sizeof card) && tries < 150) {
+        if (!tries) sd_log("no card with KMS yet; waiting up to 30 s");
+        struct timespec ts = { 0, 200000000 };
+        nanosleep(&ts, NULL);
+        tries++;
+    }
+    if (tries >= 150) sd_log("no card with KMS after 30 s; trying %s", card);
+    else sd_log("display: %s%s", card, tries ? " (after waiting)" : "");
     int fd = open(CARD, O_RDWR | O_CLOEXEC);
     if (fd < 0) { sd_log("no monitor (%s: %s)", CARD, strerror(errno)); return -1; }
     close(fd);

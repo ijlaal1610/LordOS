@@ -584,7 +584,7 @@ The order of `card0` and `card1` depends on which driver loads first.
     `card1`.
   - `LORD_CARD=/dev/dri/cardN` pins it, and lord-server's `--card` still works.
 - **`lordos.service.d/rpi.conf`** waits up to 10 s for a connector to appear in `/sys/class/drm`
-  (`wait-kms`). If lord-sessiond starts before vc4 is loaded, without this it would only see v3d.
+  (`wait-kms`, up to 30 s, and it asks for `vc4` with `modprobe`; lord-sessiond then waits up to 30 s more for a card with KMS before showing the "no display" text). If lord-sessiond starts before vc4 is loaded, without this it would only see v3d.
 - **GBM and EGL** are created on the display card (vc4), as always. Mesa recognizes it (kmsro) and
   renders with v3d. Scanout buffers are created on vc4 and v3d imports them. lord-server doesn't need
   to know anything about this.
