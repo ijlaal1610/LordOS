@@ -1656,7 +1656,9 @@ int main(int argc, char **argv) {
     /* Settings' hardware pages: displays, uevents, Bluetooth, power profiles (src/hw) */
     kms_set_picker(display_pick);
     hw_server = &s;
-    if (ok && !s.greeter) hw_start(&hw_host, 1);
+    /* the login screen too, without the bus: its DRM uevents bring a monitor plugged in after boot
+     * (a card parked by display_attach) and the other displays */
+    if (ok) hw_start(&hw_host, !s.greeter);
     if (ok && !s.headless) { display_take_resync(); outputs_apply(&s); }   /* every display, the GPU if it can */
     {
         struct stat st;

@@ -12,6 +12,9 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- A monitor plugged in after boot now shows the login screen. The login screen never listened for the
+  kernel's display events, so a board booted without HDMI (a Raspberry Pi 5) stayed without video until
+  it was restarted. It now follows them like a session does, without the system bus.
 - The Store's package engine could not download packages with a `+` in their name (`kms++-utils`,
   `libkms++0`) from lordos.org: the CDN reads a bare `+` as a space and answered 404. It now sends
   `%2B`, as apt does, so Settings → Board firmware can install the bootloader tools from the LordOS
