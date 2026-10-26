@@ -9,6 +9,8 @@
 | **0.8.7 — Community hardware reports** | Publishing reports as GitHub issues, validating them, and a tested-hardware catalogue on lordos.org that the app also reads. |
 | **Later — Lumo and AutoTune** | `ROADMAP.md`, "Lumo, the local assistant": explains a report and tunes settings from what the machine measured. |
 
+Each claim of the paper, how it is checked today and what is still missing: `PAPER-VALIDATION.md`.
+
 The aim is that every claim LordOS makes (memory at idle, GPU use, isolation) can be backed by a
 reproducible report, not only a screenshot. Results must be technically defensible first and
 attractive second.
