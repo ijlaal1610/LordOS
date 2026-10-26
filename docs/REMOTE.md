@@ -574,7 +574,8 @@ The session's sound reaches the browser with the video (see [Video (WebRTC)](#vi
 session's `lord-server` records the monitor of the default output from PipeWire itself (the same
 `maudio.c` stream as the screen recorder's microphone, `@DEFAULT_MONITOR@`, mono 48 kHz) into a
 shared-memory ring, and the live encoder makes Opus of it (20 ms frames, 64 kbit/s, low delay). The
-page starts muted (browsers only play sound after a click) and has a sound button in its top bar.
+page starts muted (browsers only play sound after a click): the first click or key in the session
+turns it on, unless the viewer already chose with the sound button in its top bar.
 Still to do: stereo, and the microphone the other way (by permission).
 
 ## Remote login (SSH)

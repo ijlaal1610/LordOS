@@ -390,12 +390,19 @@ function onTile(d) {
     queue = queue.then(() => { for (const [x, y, w, h] of r) ctx.clearRect(x, y, w, h); });
   }
 }
-$('snd').onclick = () => {
-  vid.muted = !vid.muted;
-  if (!vid.muted) vid.play().catch(() => {});
+function setSound(on) {
+  vid.muted = !on;
+  if (on) vid.play().catch(() => {});
   $('snd').textContent = vid.muted ? '🔇' : '🔊';
   $('snd').title = vid.muted ? T.sndOn : T.sndOff;
-};
+}
+// browsers only play sound after a gesture: the first click or key in the session turns it on, unless
+// the viewer already chose with the button (hidden in the top bar)
+let soundChosen = false;
+$('snd').onclick = () => { soundChosen = true; setSound(vid.muted); };
+const soundOnGesture = () => { if (!soundChosen && vid.muted && !$('snd').hidden) { soundChosen = true; setSound(true); } };
+$('c').addEventListener('pointerdown', soundOnGesture);
+$('c').addEventListener('keydown', soundOnGesture);
 
 // ---- the WebSocket: sign-in, signaling, cursor, clipboard. Reconnects with backoff, without a new
 // sign-in while the cookie lasts; if the cookie is gone, /desk sends the browser to the sign-in page ----
