@@ -83,7 +83,7 @@ export const windowIcon = (w) => windowIconOf(w, getAppOf);
 export { systemInfo, systemReport, lordosVersion, useSystemInfo, useServerStats, useCpuUsage, formatBytes, formatDuration } from './system.js';
 export * as fs from './fs.js';
 export { useDirectory } from './fs.js';
-export { ThemeProvider, useTheme, DEFAULT_TOKENS } from './theme.js';
+export { ThemeProvider, useTheme, DEFAULT_TOKENS, solidOver } from './theme.js';
 export {
   Button, Toggle, Segmented, SidebarItem, SectionTitle, ScrollView, TextInput, hasTextFocus, takeTextFocus, releaseTextFocus, textFocusOwner, Stepper, Slider,
   AppHost, useAppWindow, useKeyboard, focusToken, restoreFocus, pasteIntoFocused, FloatingWindows, useWindowState,

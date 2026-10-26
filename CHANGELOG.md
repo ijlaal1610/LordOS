@@ -120,6 +120,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **A see-through line around the Terminal.** The Terminal's window has a transparent background, so
+  its 1-pixel border and the line under its title bar let what was behind the window show through (a
+  colored line when it was over another window). Both are now drawn opaque for transparent apps, in
+  Lord Flow and Lord Classic.
 - **The login screen no longer stays running behind your session.** It was a whole display server
   kept in memory after sign-in (about 53 MB of its own, 78 MB counting shared pages, measured in a
   VMware VM). It now closes 10 seconds after a session takes the screen and starts again in a few

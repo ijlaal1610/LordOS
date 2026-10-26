@@ -80,3 +80,15 @@ export function ThemeProvider({ tokens, children }) {
 }
 
 export const useTheme = () => useContext(ThemeContext);
+
+// A translucent line color (rgba) laid over an opaque one (#rrggbb), as one opaque color. A window of an
+// app with a transparent background (the Terminal) has nothing behind its border and title separator,
+// so those are drawn already mixed: otherwise what is behind the window shows through them.
+export function solidOver(rgba, hex) {
+  const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(String(rgba));
+  const h = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex));
+  if (!m || !h) return rgba;
+  const a = m[4] == null ? 1 : +m[4];
+  const c = [1, 2, 3].map((i) => Math.round(+m[i] * a + parseInt(h[i], 16) * (1 - a)));
+  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+}

@@ -7,7 +7,7 @@
 // Lord Classic has no global menu bar: an app that declares menus (File, Edit, View, Go…; the same
 // ones Lord Flow shows on top, useAppMenus) gets them in a strip under its title bar, with Window and
 // Help, as desktop apps do on a taskbar layout. Apps without menus of their own get no strip.
-import { View, Text, Layer, addListener, wm, AppHost, windowTitle, WindowShell, windowIcon, snapZoneAt, screen, useAppMenus, getApp, appGroup, windowMenuItems, t as tr } from '@lordos/sdk';
+import { View, Text, Layer, addListener, wm, AppHost, windowTitle, WindowShell, windowIcon, snapZoneAt, screen, useAppMenus, getApp, appGroup, windowMenuItems, solidOver, t as tr } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { MinimizeGlyph, MaximizeGlyph, RestoreGlyph, CloseGlyph, LayoutGlyph } from '../glyphs.jsx';
 import { Menu } from './Menu.jsx';
@@ -187,7 +187,8 @@ export function Window({ win, t, focused, app, tv }) {
   return (
     <WindowShell win={win} resizable={!tv} onMouseDown={() => wm.focus(win.id)} style={{
       borderRadius: flat ? 0 : 8, backgroundColor: app.transparent ? 'transparent' : t.windowBg, overflow: 'hidden',
-      border: `1px solid ${focused ? t.windowBorder : t.separator}`, boxShadow: shadow, ...tvStyle,
+      // a transparent app (the Terminal) has nothing behind its border: the border is drawn opaque
+      border: `1px solid ${app.transparent ? solidOver(focused ? t.windowBorder : t.separator, t.titleBg) : (focused ? t.windowBorder : t.separator)}`, boxShadow: shadow, ...tvStyle,
     }}>
       <View onMouseDown={(e) => {
         if (e.button) return;

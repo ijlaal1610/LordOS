@@ -2,7 +2,7 @@
 // (the SDK's AppHost); the theme only decides how the frame looks. Moving and resizing (invisible
 // borders on all 4 sides and 4 corners, <WindowShell>) is done by lord-server in C
 // (docs/WINDOWS.md); the JS drag below is only kept for a maximized window.
-import { View, Text, addListener, wm, AppHost, windowTitle, WindowShell, t as tr } from '@lordos/sdk';
+import { View, Text, addListener, wm, AppHost, windowTitle, WindowShell, t as tr, solidOver } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { Menu } from './Menu.jsx';
 
@@ -59,7 +59,8 @@ export function Window({ win, app, t, focused, fx }) {
   return (
     <WindowShell win={win} onMouseDown={() => wm.focus(win.id)} style={{
       borderRadius: win.maximized ? 0 : 12, backgroundColor: app.transparent ? 'transparent' : t.windowBg, overflow: 'hidden',
-      border: `1px solid ${t.windowBorder}`,
+      // a transparent app (the Terminal) has nothing behind its border: the border is drawn opaque
+      border: `1px solid ${app.transparent ? solidOver(t.windowBorder, t.titleBg) : t.windowBorder}`,
       boxShadow: focused ? '0 24px 56px rgba(0,0,0,0.55)' : '0 10px 28px rgba(0,0,0,0.32)',
       ...fxs,
     }}>
@@ -80,7 +81,7 @@ export function Window({ win, app, t, focused, fx }) {
           ))}
         </View>
       </View>
-      <View style={{ height: 1, backgroundColor: t.separator }} />
+      <View style={{ height: 1, backgroundColor: app.transparent ? solidOver(t.separator, t.titleBg) : t.separator }} />
       <View style={{ flex: 1 }}><AppHost id={win.id} focused={focused} /></View>
     </WindowShell>
   );
