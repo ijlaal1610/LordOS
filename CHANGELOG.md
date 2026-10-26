@@ -80,6 +80,13 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **On virtual cards that don't wait for the screen's refresh, the desktop drew hundreds of frames a
+  second.** The VMware graphics driver (`vmwgfx`) completes each page flip at once, so the compositor and
+  every app followed it at 500–580 frames a second on a 60 Hz display, using CPU for frames nobody sees.
+  LordOS now notices flips that complete within an eighth of a refresh, again and again, and paces frames
+  to the display's refresh on a fixed grid (59.8 frames a second at 60 Hz measured, p99 18.4 ms); real
+  graphics cards are unaffected. The same grid also paces sessions without a monitor, so waiting in whole
+  milliseconds no longer turns 60 frames a second into 57.
 - **The package now depends on `libwayland-egl1` when the Test Bench is built with its 3D view**, so
   `lordos-testbench` starts on a system that didn't have it.
 - **Remote desktop video came in blocks for the first minutes, and had no sound.** The browser's

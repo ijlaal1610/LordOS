@@ -35,4 +35,6 @@ the two apart.
 
 | Version | Machine | Conditions | What |
 |---|---|---|---|
+| 0.8.5~rc1 | `vmware-fusion` | VMware Fusion VM, virtual GPU (`vmwgfx`, SVGA3D), 1280×800 @ 60 Hz, updated from 0.8.4.1 by `apt install` | whole system 606–622 MB used one minute after sign-in, PSS of all processes 316 MB (login screen 78 MB of it); 59.8 fps at 60 Hz, p99 18.4 ms; 17 Wayland checks passed; boot 7.5 s |
+| 0.8.5~rc1 | `vmware-fusion-before-pacing` | the same, before software vblank pacing | 524 fps at 60 Hz: the driver completes flips at once |
 | 0.8.5-dev | `vm116-headless` | Proxmox VM, no GPU, headless session (remote desktop only), development install | sysreport, testbench (16 Wayland checks passed; `llvmpipe`; no frame presented without a monitor), boot |

@@ -176,6 +176,10 @@ static int out_count(const Server *s) {
     return n;
 }
 static Out *main_out(Server *s) { return &s->out[s->out[s->main_out].on ? s->main_out : 0]; }
+/* page flips that complete before vblank (see the main loop): consecutive early flips seen, 0..8 */
+static int flip_instant, flip_told;
+static double pace_next;                /* the next frame's slot when frames are paced in software, ms */
+
 static int any_flip_pending(const Server *s) {
     for (int i = 0; i < OUT_MAX; i++) if (s->out[i].on && s->out[i].kms.flip_pending) return 1;
     return 0;
@@ -1815,8 +1819,22 @@ int main(int argc, char **argv) {
         /* no monitor, no vblank: 60 frames a second, or as fast as the fastest remote viewer's screen
          * (120, 144 Hz…) */
         int hz = mirror_fps() > 60 ? mirror_fps() : 60;
-        double pace = s.headless ? s.last_render + 1000.0 / hz - 0.4 - now_ms() : 0;
-        if (wants && !all_busy(&s) && pace <= 0) { render(&s); wants = 0; }
+        /* a driver that completes page flips at once instead of on vblank (vmwgfx, some virtual cards)
+         * is paced to the mode's refresh, or the compositor and every app draw hundreds of frames a second */
+        int soft = !s.headless && flip_instant >= 3;
+        if (soft) hz = main_out(&s)->kms.mode.vrefresh > 0 ? main_out(&s)->kms.mode.vrefresh : 60;
+        /* frames start on a fixed grid of 1000/hz ms (a software vblank): waiting in whole milliseconds
+         * then never adds up, so 60 Hz stays 60 frames a second, not 57 */
+        double pace = 0, period = 1000.0 / hz, tnow = now_ms();
+        if (s.headless || soft) {
+            if (!pace_next || tnow - pace_next > period) pace_next = tnow;     /* idle, or fell behind */
+            pace = pace_next - tnow;
+        }
+        if (wants && !all_busy(&s) && pace <= 0) {
+            render(&s);
+            wants = 0;
+            if (s.headless || soft) pace_next += period;
+        }
         if (wants && pace > 0 && (delay < 0 || pace < delay)) delay = pace;
 
         int wait = delay < 0 ? -1 : (int)ceil(delay);
@@ -1871,6 +1889,14 @@ int main(int argc, char **argv) {
             if (nh) kms_dispatch_heads(heads, nh);
             /* wp_presentation follows the main display's vblank */
             if (was && !mk->flip_pending) {
+                /* a flip waits for vblank, half a period on average; one that completes within an eighth
+                 * of it, again and again, comes from a driver that doesn't wait (a virtual card) */
+                uint64_t period = mk->mode.vrefresh ? 1000000000ull / mk->mode.vrefresh : 16666667ull;
+                if (mk->flip_submit_ns && mk->flip_ns >= mk->flip_submit_ns) {
+                    if (mk->flip_ns - mk->flip_submit_ns < period / 8) { if (flip_instant < 8) flip_instant++; }
+                    else if (flip_instant > 0) flip_instant--;
+                    if (flip_instant == 3 && !flip_told++) fprintf(stderr, "kms: page flips complete before vblank: pacing to %d Hz\n", mk->mode.vrefresh ? mk->mode.vrefresh : 60);
+                }
                 wl_presented(mk->flip_ns, mk->flip_seq, mk->mode.vrefresh ? 1000000000u / mk->mode.vrefresh : 16666667u);
                 if (keylag_enabled) keylag_presented(mk->flip_ns);
             }

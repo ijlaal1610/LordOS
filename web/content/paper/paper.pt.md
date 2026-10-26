@@ -431,9 +431,11 @@ Todos os números abaixo foram medidos pelo projeto e estão documentados nos ar
 | `lord-server` sem placa com 3D (Mesa não carregado) | cerca de 32 MB de RSS | `docs/GPU.md` |
 | Uma sessão de usuário (`lord-server`), testes de área de trabalho remota | cerca de 50 MB; tela de login 41 MB | VM 118, `docs/REMOTE.md` |
 | Um app `.lpk` isolado | 13,7 MB de RSS | VM 122, `docs/PRIVACY.md` |
+| Sistema inteiro, 0.8.5~rc1 atualizado a partir da 0.8.4.1, um minuto depois do login (VM do VMware, 4,7 GB, GPU virtual) | 606–622 MB em uso; o PSS de todos os processos soma 316 MB, dos quais 110 MB são o `lord-server` da sessão e 78 MB o da tela de login (fica para trocar de usuário e bloquear) | `results/0.8.5~rc1-beta/vmware-fusion` |
 
 ### 7.2 Desenho
 
+- **Vblank por software (0.8.5).** Uma placa virtual que completa as trocas de imagem na hora (`vmwgfx` do VMware) fazia o compositor e seus apps desenharem 500–580 quadros por segundo numa tela de 60 Hz; o LordOS agora detecta isso e marca o ritmo da atualização com uma grade fixa: 59,8 quadros por segundo, p99 de 18,4 ms, nenhum quadro fora do tempo (`results/0.8.5~rc1-beta/vmware-fusion`).
 - Arrastar uma janela numa tela de 1280×800 pelo caminho da CPU: cerca de 6,7–6,9 ms de trabalho por quadro, por volta de 120 quadros por segundo (VM 118, `docs/DISPLAYS.md`).
 - A mesma janela numa tela de 2560×1600 a 150 %: cerca de 5,1 ms por quadro.
 - Vídeo: pintar direto do quadro decodificado quando só um vídeo opaco mudou levou o `lord-server` de 42 % para 13 % de um núcleo com um vídeo 1080p em janela, e de 92 % para 15 % em tela cheia (`docs/ROADMAP.md`, mídia).
