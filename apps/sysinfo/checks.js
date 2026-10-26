@@ -77,5 +77,48 @@ export function evaluate(ctx) {
   return out;
 }
 
-// The checks part 2 adds, shown as not checked yet.
-export const PENDING = ['appSandbox', 'helperSandbox', 'netpermEffective'];
+// ---- part 2: the Sandbox Probe (apps/sysprobe, server/src/app/probe.c) ----
+// result: lord.sysinfo.probe() → { probe: { v, sandbox, tries: [{ id, denied, errno }] },
+//   proc: { noNewPrivs, seccomp, capEff, cgroup, memoryMax }, at }.
+
+const KERNEL = ['fsHome', 'fsSystem', 'cgroupEscape', 'netInet', 'netUnix', 'ptrace', 'userns', 'mount', 'exec'];
+const HELPER = ['helperSocket', 'helperExec', 'helperFork', 'helperData'];
+const BROKER = ['brokerFsEscape', 'brokerClipboard', 'brokerFido', 'brokerMail'];
+
+export function evaluateProbe(result) {
+  const p = (result && result.probe) || {}, proc = (result && result.proc) || {};
+  const tries = Array.isArray(p.tries) ? p.tries : [];
+  const by = Object.fromEntries(tries.filter((t) => t && typeof t.id === 'string').map((t) => [t.id, t]));
+  // what got through: a try that must fail and didn't, or one that never ran
+  const leaks = (ids) => ids.filter((id) => !by[id] || by[id].denied !== true);
+  const out = [];
+  const ownOk = by.ownData && by.ownData.denied === false;
+
+  const k = leaks(KERNEL);
+  const procOk = proc.noNewPrivs === '1' && proc.seccomp === '2' && /^0+$/.test(proc.capEff || '');
+  if (!ownOk) out.push(row('appSandbox', '§6.4', 'effective', 'unknown', 'probeBroken'));
+  else if (k.length) out.push(row('appSandbox', '§6.4', 'effective', 'fail', 'sandboxLeaks', { list: k.join(', ') }));
+  else if (!procOk) out.push(row('appSandbox', '§6.4', 'effective', 'warn', 'sandboxProc', { nnp: proc.noNewPrivs || '?', seccomp: proc.seccomp || '?' }));
+  else out.push(row('appSandbox', '§6.4', 'effective', 'pass', 'sandboxOk', { count: KERNEL.length }));
+
+  if (by.helperRan) out.push(row('helperSandbox', '§6.7', 'effective', 'unknown', 'helperNotRun'));
+  else {
+    const h = leaks(HELPER);
+    out.push(row('helperSandbox', '§6.7', 'effective', h.length ? 'fail' : 'pass', h.length ? 'sandboxLeaks' : 'helperOk', h.length ? { list: h.join(', ') } : { count: HELPER.length }));
+  }
+
+  const b = leaks(BROKER);
+  out.push(row('broker', '§6.5', 'effective', b.length ? 'fail' : 'pass', b.length ? 'sandboxLeaks' : 'brokerOk', b.length ? { list: b.join(', ') } : { count: BROKER.length }));
+
+  // its own scope with a memory cap (§6.4: memory.max 512 MB)
+  const scoped = /\/app-lordos-lpk-sysprobe\.scope$/.test(proc.cgroup || '');
+  const mb = /^\d+$/.test(proc.memoryMax || '') ? Math.round(+proc.memoryMax / 1048576) : null;
+  if (!proc.cgroup) out.push(row('appScope', '§6.4', 'configured', 'unknown'));
+  else out.push(row('appScope', '§6.4', 'configured', scoped && mb ? 'pass' : 'warn', scoped ? (mb ? 'scopeOk' : 'scopeNoCap') : 'scopeMissing', { mb: mb || 0 }));
+  return out;
+}
+
+// What part 2 doesn't check yet.
+export const PENDING = ['netpermEffective'];
+// Before the probe has run.
+export const PROBE_CHECKS = ['appSandbox', 'helperSandbox', 'broker', 'appScope'];

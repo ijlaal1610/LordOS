@@ -28,6 +28,8 @@
  *   lord.sysinfo.facts()                        the Checks tab's facts (sysreport/facts.c): lord-server's
  *                                               uid/euid, its cgroup and who owns it, app scopes, and
  *                                               whether anything listens on the remote desktop's port
+ *   lord.sysinfo.probe()                        the last sandbox probe's result (sec/brokersrv.c, BOP_PROBE:
+ *                                               the system package `sysprobe`, app/probe.c), or null
  *   lord.sysinfo.markdown()                     the same report as Markdown, as lordos-sysreport prints it,
  *                                               with a "This session" section (System Information's Report tab)
  *   lord.fan.status() / setProfile(p) / setCurve(pts) / force(v) / caseConfig()   (js_fan.c, lord-fand)
@@ -50,6 +52,7 @@
 #include "../gpu/gpu.h"
 #include "../sysreport/sysreport.h"
 #include "../sysreport/facts.h"
+#include "../sec/broker.h"
 #include "lord_version.h"           /* build/gen: the version for the report */
 #include "../hw/mimeapps.h"
 #include "../hw/notifyd.h"
@@ -457,8 +460,15 @@ static JSValue f_sysinfo_facts(JSContext *c, JSValueConst t, int argc, JSValueCo
     return o;
 }
 
+static JSValue f_sysinfo_probe(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    const char *j = brokersrv_probe_result();
+    return j ? JS_ParseJSON(c, j, strlen(j), "<probe>") : JS_NULL;
+}
+
 static const JSCFunctionListEntry sysinfo_funcs[] = {
     JS_CFUNC_DEF("report", 0, f_sysinfo_report),
+    JS_CFUNC_DEF("probe", 0, f_sysinfo_probe),
     JS_CFUNC_DEF("facts", 0, f_sysinfo_facts),
     JS_CFUNC_DEF("markdown", 0, f_sysinfo_markdown),
 };

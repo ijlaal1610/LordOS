@@ -23,7 +23,9 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   it or save it to Documents; nothing is sent anywhere. Its Checks tab checks LordOS's claims on this
   computer (display server without root, Landlock, the per-app firewall, verified code, the remote
   desktop closed when off, app scopes owned by the system) and says whether each was only found
-  configured or actually tried.
+  configured or actually tried. **Run tests** starts a test app that tries, inside the same sandbox as
+  any isolated app, what it must not be able to do (your files, sockets, ptrace, leaving its scope,
+  exec), plus the decoders' sandbox and the requests the system must refuse.
 - **`lordos-sysreport report`** prints the hardware of this computer and what the system made of it,
   as Markdown or `--json`, with no serial numbers, addresses or names: the base of System
   Information.

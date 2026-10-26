@@ -288,12 +288,41 @@ listens on port 5673 in `/proc/net/tcp{,6}`): display server without root (§2.2
 `…/lordos-session-<uid>/server`; §11.4), composition on the GPU (§7.3) and lord-server's memory now
 (measured, no pass or fail; §7.1). On VM 116 it found two real things: `lord-netperm` isn't installed
 there (the unit doesn't exist), and the first run refused a stale `app-host.bundle.js` in the test
-tree. Part 2, the probe app that tries what must fail (sandbox, helper sandbox, a denied connection),
-waits for the maintainer's approval.
+tree. Part 2 is below.
 
 ![Checks, part 1](sysinfo-checks.png)
 
-Not yet: video decode and encode and Vulkan (shown as *Not checked*), Checks part 2.
+**Checks, part 2: the Sandbox Probe (2026-10-26, approved by the maintainer).** A system package,
+`sysprobe` (`apps/sysprobe`, built into `assets/sysapps/sysprobe` like Passwords, hidden from the launcher
+with the new manifest field `"hidden": true`), started with the existing `lord.apps.launchPackage(id)`
+like any isolated app: no new argument, path or exec. In app mode (`app/appclient.c`), for that system
+package only, `app/probe.c` runs instead of the app's code:
+
+1. **Before the app's sandbox**, while the process is single-threaded and has loaded nothing, it forks a
+   child that takes the decoding helpers' profile (`sandbox_apply_helper`, as `lord-doc` and `lord-media`)
+   and tries a unix socket, exec, fork and the app's data folder.
+2. It applies **the same sandbox as any isolated app** (same read-only folders, no network) and tries
+   what must fail: the home folder, `/etc/passwd`, the root cgroup's `cgroup.procs`, an internet and a
+   unix socket, `ptrace`, a user namespace, `mount`, `exec`. Its own data folder must work (the control:
+   a probe that can't write there reports nothing it can be trusted for).
+3. It asks its broker for what must be refused: a path outside its folder, the clipboard without
+   permission, the FIDO2 device, `lord-maild`.
+4. It sends the result as `BOP_PROBE` and exits, without a window. `brokersrv.c` takes `BOP_PROBE` only
+   from that system package, validates the JSON (≤ 8 KB) and adds what only it can read: the process's
+   `NoNewPrivs`, `Seccomp` and `CapEff` and its cgroup with `memory.max`. `lord.sysinfo.probe()` returns
+   the last result; `apps/sysinfo/checks.js` (`evaluateProbe`) turns it into four rows: the app sandbox
+   (§6.4), the helper sandbox (§6.7), the broker (§6.5) and the app's own capped scope (§6.4).
+
+On VM 116, in the isolated headless session, every try was refused (9 + 4 + 4) and the process reported
+no_new_privs, seccomp mode 2 and no capabilities; the scope row is a warning there because that session
+isn't in a LordOS session tree (lord-sessiond refused the scope, as it must). Its first run also caught a
+mistake in the probe itself: stacking the helpers' profile inside the app's sandbox is refused by the
+app's seccomp (rightly), so the helper child now starts before it.
+
+![The Sandbox Probe](sysinfo-probe.png)
+
+Not yet: a connection refused by the per-app firewall (it needs an app with network access and a
+temporary rule), video decode and encode and Vulkan (shown as *Not checked*).
 
 1. `server/src/sysreport/`: collector, GPU layers, `pci.ids`/EDID readers, fake-sysfs fixtures
    (AMD desktop, Intel laptop, Nvidia desktop, Raspberry Pi 5, VM), the anonymization test,

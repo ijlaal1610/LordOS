@@ -1,7 +1,7 @@
 // sysinfo_model_test.mjs — System Information's model (apps/sysinfo/model.js, 0.8.5): the GPU layers,
 // the reasons for CPU composition, the Compatibility panel and the Hardware sections. Run by
 // tests/run_suites.sh (needs node).
-import { evaluate, LIMITS } from '../../apps/sysinfo/checks.js';
+import { evaluate, evaluateProbe, LIMITS } from '../../apps/sysinfo/checks.js';
 import { compositionReason, cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, reportFileName, reportJson, parseMemoryLines } from '../../apps/sysinfo/model.js';
 
 let n = 0, bad = 0;
@@ -123,6 +123,26 @@ eq('development code is a warning', evaluate({ ...good, code: { state: 'developm
 eq('outside LordOS\'s session tree it is only information', evaluate({ ...good, facts: { ...good.facts, cgroup: '/user.slice/user-1000.slice/session-3.scope' } }).find((r) => r.id === 'cgroups'),
   { id: 'cgroups', paper: '§11.4', level: 'configured', state: 'info', note: 'cgroupsNotSession', vars: {} });
 eq('nothing known', st(evaluate({})), { serverUser: 'unknown', landlock: 'unknown', netperm: 'unknown', code: 'unknown', remoteClosed: 'unknown', cgroups: 'unknown', gpu: 'warn' });
+
+// ---- the Sandbox Probe ----
+const tr_ = (ids, denied = true) => ids.map((id) => ({ id, denied, errno: denied ? 13 : 0 }));
+const KER = ['fsHome', 'fsSystem', 'cgroupEscape', 'netInet', 'netUnix', 'ptrace', 'userns', 'mount', 'exec'];
+const HEL = ['helperSocket', 'helperExec', 'helperFork', 'helperData'];
+const BRO = ['brokerFsEscape', 'brokerClipboard', 'brokerFido', 'brokerMail'];
+const okProbe = { probe: { v: 1, sandbox: 63, tries: [...tr_(KER), ...tr_(['ownData'], false), ...tr_(HEL), ...tr_(BRO)] },
+  proc: { noNewPrivs: '1', seccomp: '2', capEff: '0000000000000000', cgroup: '/system.slice/lordos.service/lordos-session-1000/app-lordos-lpk-sysprobe.scope', memoryMax: '536870912' }, at: 1 };
+eq('a tight sandbox', st(evaluateProbe(okProbe)), { appSandbox: 'pass', helperSandbox: 'pass', broker: 'pass', appScope: 'pass' });
+eq('the cap in MB', evaluateProbe(okProbe).find((r) => r.id === 'appScope').vars.mb, 512);
+const leaky = { ...okProbe, probe: { ...okProbe.probe, tries: okProbe.probe.tries.map((x) => (x.id === 'netInet' || x.id === 'helperExec' || x.id === 'brokerFido' ? { ...x, denied: false } : x)) } };
+eq('leaks are named', evaluateProbe(leaky).map((r) => [r.id, r.state, r.vars.list || '']),
+  [['appSandbox', 'fail', 'netInet'], ['helperSandbox', 'fail', 'helperExec'], ['broker', 'fail', 'brokerFido'], ['appScope', 'pass', '']]);
+const missing = { ...okProbe, probe: { ...okProbe.probe, tries: okProbe.probe.tries.filter((x) => x.id !== 'ptrace') } };
+eq('a try that never ran counts as got through', evaluateProbe(missing)[0].vars.list, 'ptrace');
+eq('a broken probe is not a pass', evaluateProbe({ ...okProbe, probe: { ...okProbe.probe, tries: okProbe.probe.tries.map((x) => (x.id === 'ownData' ? { ...x, denied: true } : x)) } })[0].state, 'unknown');
+eq('no seccomp seen from outside', evaluateProbe({ ...okProbe, proc: { ...okProbe.proc, seccomp: '0' } })[0].state, 'warn');
+eq('no scope of its own', evaluateProbe({ ...okProbe, proc: { ...okProbe.proc, cgroup: '/user.slice/x.scope', memoryMax: 'max' } }).find((r) => r.id === 'appScope').note, 'scopeMissing');
+eq('helper never ran', evaluateProbe({ ...okProbe, probe: { ...okProbe.probe, tries: [...tr_(KER), ...tr_(['ownData'], false), ...tr_(['helperRan'])] } }).find((r) => r.id === 'helperSandbox').state, 'unknown');
+eq('garbage does not throw', evaluateProbe({ probe: { tries: [null, 3, { id: 5 }] } }).map((r) => r.state), ['unknown', 'fail', 'fail', 'unknown']);
 
 console.log(`sysinfo-model-test: ${n - bad} ok, ${bad} failed`);
 process.exit(bad ? 1 : 0);

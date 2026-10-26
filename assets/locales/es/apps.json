@@ -29,5 +29,6 @@
   "reminders": "Recordatorios",
   "mail": "Mail",
   "imager": "LordOS Imager",
-  "sysinfo": "Información del sistema"
+  "sysinfo": "Información del sistema",
+  "sysprobe": "Prueba del aislamiento"
 }

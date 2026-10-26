@@ -216,6 +216,18 @@ By contrast, the same app opened **in process** (the M7 mode) read `settings.jso
 `~/.config/lordos/robado.txt`. That's why a package is now never evaluated in the theme's context
 when app mode exists.
 
+### The Sandbox Probe, on the user's own computer (0.8.5)
+
+`build/sandbox-test` and the malicious app run on development machines. System Information → Checks →
+**Run tests** does the same kind of check on any installed system: it starts the system package
+`sysprobe` the way any isolated app starts, and in app mode `server/src/app/probe.c` (that package only)
+takes the same sandbox and tries what must fail (the home folder, system files, the root cgroup, sockets,
+`ptrace`, a user namespace, `mount`, `exec`), forks a child before the sandbox that takes the decoding
+helpers' profile and tries what must fail there, and asks the broker for what it must refuse. The result
+goes to lord-server as `BOP_PROBE` (only from that system package), which adds the process's
+`NoNewPrivs`, `Seccomp`, `CapEff` and cgroup. It never gets a permission or a network grant; see
+`BENCHMARK.md`, "Checks, part 2".
+
 ### `build/sandbox-test` (VM)
 
 ```

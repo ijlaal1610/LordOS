@@ -29,5 +29,6 @@
   "reminders": "Reminders",
   "mail": "Mail",
   "imager": "LordOS Imager",
-  "sysinfo": "System Information"
+  "sysinfo": "System Information",
+  "sysprobe": "Sandbox Probe"
 }

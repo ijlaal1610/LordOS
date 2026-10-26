@@ -29,5 +29,6 @@
   "reminders": "Lembretes",
   "mail": "Mail",
   "imager": "LordOS Imager",
-  "sysinfo": "Informações do sistema"
+  "sysinfo": "Informações do sistema",
+  "sysprobe": "Teste do isolamento"
 }

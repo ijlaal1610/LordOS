@@ -9,7 +9,7 @@ import {
   fs, userDirs, clipboard, wm, admin, remote, codeStatus,
 } from '@lordos/sdk';
 import { useMemo, useState } from 'react';
-import { evaluate as evaluateChecks, PENDING as PENDING_CHECKS } from './checks.js';
+import { evaluate as evaluateChecks, evaluateProbe, PENDING as PENDING_CHECKS, PROBE_CHECKS } from './checks.js';
 import { cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, compositionReason, reportFileName, reportJson, parseMemoryLines } from './model.js';
 
 // The app's icon: a chip on the brand gradient.
@@ -371,7 +371,29 @@ function CheckRow({ c }) {
   );
 }
 
+// The Sandbox Probe (apps/sysprobe): started like any isolated app; its result arrives through
+// lord-server (lord.sysinfo.probe()). It takes well under a second; after 10 s it didn't report.
+function useProbe() {
+  const [st, setSt] = useState(() => { let p = null; try { p = lord.sysinfo.probe(); } catch (e) { /* older server */ } return { busy: false, result: p, error: null }; });
+  const run = () => {
+    const since = Date.now() - 1000;
+    setSt((x) => ({ ...x, busy: true, error: null }));
+    let ok = false;
+    try { ok = !!lord.apps.launchPackage('sysprobe'); } catch (e) { ok = false; }
+    if (!ok) { setSt((x) => ({ ...x, busy: false, error: 'start' })); return; }
+    const t0 = Date.now();
+    const id = setInterval(() => {
+      let p = null;
+      try { p = lord.sysinfo.probe(); } catch (e) { p = null; }
+      if (p && p.at >= since) { clearInterval(id); setSt({ busy: false, result: p, error: null }); }
+      else if (Date.now() - t0 > 10000) { clearInterval(id); setSt((x) => ({ ...x, busy: false, error: 'timeout' })); }
+    }, 250);
+  };
+  return [st, run];
+}
+
 function Checks({ r }) {
+  const t = useTheme();
   const { t: tr } = useLocale();
   const rows = useMemo(() => {
     let facts = null, rem = null, stats = null;
@@ -380,12 +402,27 @@ function Checks({ r }) {
     try { stats = lord.stats(); } catch (e) { /* no stats */ }
     return evaluateChecks({ report: r, facts, code: codeStatus(), remote: rem, stats });
   }, [r]);
+  const [probe, runProbe] = useProbe();
+  const probeRows = useMemo(() => (probe.result ? evaluateProbe(probe.result) : null), [probe.result]);
   return (
     <ScrollView style={{ flex: 1 }}>
       <View style={{ padding: spacing.xl, gap: spacing.xl }}>
         <GroupBox footer={tr('sysinfo.checksFooter')}>
           {rows.map((c) => <CheckRow key={c.id} c={c} />)}
         </GroupBox>
+        <View style={{ gap: spacing.s }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.m }}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text, textAlign: 'start' }}>{tr('sysinfo.probe.title')}</Text>
+              <Text style={{ fontSize: typeScale.callout, color: t.textDim, textAlign: 'start', lineHeight: 1.4 }}>{tr('sysinfo.probe.intro')}</Text>
+            </View>
+            <Button primary label={probe.busy ? tr('sysinfo.probe.running') : probe.result ? tr('sysinfo.probe.again') : tr('sysinfo.probe.run')} disabled={probe.busy} onClick={runProbe} />
+          </View>
+          {probe.error ? <Text style={{ fontSize: typeScale.callout, color: '#ff453a', textAlign: 'start' }}>{tr(`sysinfo.probe.error.${probe.error}`)}</Text> : null}
+          <GroupBox footer={probe.result ? tr('sysinfo.probe.when', { time: new Date(probe.result.at).toLocaleTimeString() }) : null}>
+            {(probeRows || PROBE_CHECKS.map((id) => ({ id, level: 'effective', state: 'pending' }))).map((c) => <CheckRow key={c.id} c={c} />)}
+          </GroupBox>
+        </View>
         <GroupBox title={tr('sysinfo.checksPendingTitle')} footer={tr('sysinfo.checksPendingFooter')}>
           {PENDING_CHECKS.map((id) => <CheckRow key={id} c={{ id, level: 'effective', state: 'pending' }} />)}
         </GroupBox>
