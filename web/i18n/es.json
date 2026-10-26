@@ -175,8 +175,20 @@
       "media": "Multimedia",
       "system": "Sistema",
       "privacy": "Privacidad y seguridad"
-    }
+    },
+    "upcoming": "Llega en {v} (en desarrollo)"
   },
   "debHintA": "En un servidor sin pantalla, agregá",
-  "debHintB": "y usalo desde el navegador."
+  "debHintB": "y usalo desde el navegador.",
+  "changelog": {
+    "title": "Historial de cambios",
+    "lead": "Las notas completas de cada versión, de la más nueva a la más vieja, tal como están en CHANGELOG.md. Abrí una versión para leerla.",
+    "note": "El historial de cambios se escribe solo en inglés: lo que sigue es el texto original de CHANGELOG.md.",
+    "unreleased": "Sin publicar",
+    "inDev": "En desarrollo",
+    "yanked": "Retirada",
+    "latest": "Última versión",
+    "compare": "Cambios en GitHub",
+    "released": "Publicada"
+  }
 }

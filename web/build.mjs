@@ -18,7 +18,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import http from 'node:http';
 import { createRequire } from 'node:module';
-import { markdown, inline, frontMatter } from './lib/md.mjs';
+import { markdown, inline, frontMatter, slugify } from './lib/md.mjs';
 import { diagram } from './lib/diagram.mjs';
 import { imagerGuide, writeBlock } from './lib/imager-guide.mjs';
 
@@ -210,6 +210,34 @@ const paperDir = path.join(CONTENT, 'paper');
 const HAS_PAPER = !process.argv.includes('--no-paper') && LANGS.every((l) => fs.existsSync(path.join(paperDir, `paper.${l}.md`)));
 const paperMeta = HAS_PAPER && fs.existsSync(path.join(paperDir, 'meta.json')) ? readJson(path.join(paperDir, 'meta.json')) : {};
 const paperDiagrams = HAS_PAPER && fs.existsSync(path.join(paperDir, 'diagrams.json')) ? readJson(path.join(paperDir, 'diagrams.json')) : {};
+// CHANGELOG.md (repo root, English, Keep a Changelog): every release's full notes go on the paper page,
+// after the summary table of its Changelog section. Title, intro and link references are dropped;
+// each "## [x.y.z-beta] - date" becomes one release.
+const CHANGELOG_FILE = path.join(REPO, 'CHANGELOG.md');
+const changelog = HAS_PAPER && fs.existsSync(CHANGELOG_FILE) ? parseChangelog(fs.readFileSync(CHANGELOG_FILE, 'utf8')) : [];
+function parseChangelog(src) {
+  const refs = {};
+  src = src.replace(/\r\n/g, '\n').replace(/^\[([^\]]+)\]:\s+(\S+)[ \t]*$/gm, (_, k, u) => { refs[k.toLowerCase()] = u; return ''; });
+  // split on release headings outside fenced code
+  const rels = [];
+  let cur = null, fence = false;
+  for (const line of src.split('\n')) {
+    if (/^\s*```/.test(line)) fence = !fence;
+    if (!fence && /^## /.test(line)) { cur = { head: line.slice(3).trim(), lines: [] }; rels.push(cur); continue; }
+    if (cur) cur.lines.push(!fence && /^#{1,5} /.test(line) ? '#' + line : line); // ### Added -> h4, #### -> h5
+  }
+  return rels.map((r) => {
+    const m = r.head.match(/^\[([^\]]+)\](?:\s*-\s*(\d{4}-\d{2}-\d{2}))?/);
+    const label = m ? m[1] : r.head;
+    const unreleased = /^unreleased$/i.test(label);
+    const version = label.replace(/-beta$/i, '');
+    return {
+      label, version, unreleased, date: m && m[2] ? m[2] : '', yanked: /\[yanked\]/i.test(r.head),
+      beta: /-beta$/i.test(label), id: 'changelog-' + slugify(unreleased ? 'unreleased' : version),
+      url: refs[label.toLowerCase()] || '', body: r.lines.join('\n'),
+    };
+  });
+}
 const legalDir = path.join(CONTENT, 'legal');
 const legalIndex = fs.existsSync(path.join(legalDir, 'pages.json')) ? readJson(path.join(legalDir, 'pages.json')) : null;
 const hasPh = (text) => /\[\[[A-Z][A-Z0-9_]*\]\]/.test(text);
@@ -618,6 +646,7 @@ ${featureList[i] ? `<a class="more" href="${pageUrl(l, 'features/' + featureList
       const shot = a.shot ? `<a class="g-card" href="${a.shot.full.url}" data-w="${a.shot.full.w}" data-h="${a.shot.full.h}" data-cap="${esc(name)}" aria-label="${esc(t.apps.shotOpen + ': ' + name)}"><img src="${a.shot.thumb.url}" width="${a.shot.thumb.w}" height="${a.shot.thumb.h}" alt="${esc(name)}" loading="lazy" decoding="async"></a>` : '';
       return `<article class="app" id="app-${esc(a.id)}">
 <div class="app-head">${a.iconImg ? `<img src="${a.iconImg.url}" width="56" height="56" alt="" loading="lazy">` : ''}<div><h3>${esc(name)}</h3>${tag ? `<p class="app-tag">${esc(tag)}</p>` : ''}</div></div>
+${a.upcoming ? `<span class="iso soon">${esc(t.apps.upcoming.replace('{v}', a.upcoming))}</span>` : ''}
 ${a.isolated ? `<span class="iso" title="${esc(t.apps.isolatedTitle)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/></svg>${esc(t.apps.isolated)}</span>` : ''}
 ${feats.length ? `<ul>\n${feats.map((f) => `<li>${esc(f)}</li>`).join('\n')}\n</ul>` : ''}
 ${shot}
@@ -693,10 +722,75 @@ ${apps.filter((a) => a.category === c).sort((x, y) => appName(x, l).localeCompar
     }, t));
   });
 
+  // The paper's Changelog section (id "changelog"; a translated heading is renamed to it) gets every
+  // release of CHANGELOG.md after its summary table, each one a collapsible <details> with the newest
+  // open. Release headings are h3 (in the table of contents), their Added/Fixed… h4 and below h5;
+  // every id is prefixed with the release's ("changelog-0-8-4-1-added") so none collides with the
+  // paper's. The notes are English only: es and pt pages say so and mark the block lang="en".
+  const addChangelog = (html, headings) => {
+    const C = t.changelog;
+    const isChl = (h) => h.level === 2 && (h.id === 'changelog' || /^(\d+\.\s*)?(changelog|historial de (cambios|versiones)|registro de cambios|hist[oó]rico de (vers[oõ]es|altera[cç][oõ]es|mudan[cç]as)|registro de altera[cç][oõ]es)$/i.test(h.text.trim()));
+    let sec = headings.find(isChl);
+    if (sec && sec.id !== 'changelog') {
+      html = html.replace(`<h2 id="${sec.id}">`, '<h2 id="changelog">').replaceAll(`href="#${sec.id}"`, 'href="#changelog"');
+      sec.id = 'changelog';
+    }
+    if (!sec) {
+      // the paper has no Changelog section in this language: add one at the end
+      sec = { level: 2, id: 'changelog', text: C.title };
+      headings.push(sec);
+      html += `\n<h2 id="changelog">${esc(C.title)}<a class="anchor" href="#changelog" aria-label="${esc(t.pages.anchorLabel || 'Link to this section')}">#</a></h2>`;
+    }
+    const taken = new Set(headings.map((h) => h.id));
+    const latest = changelog.find((r) => !r.unreleased && !r.yanked);
+    const fmt = (iso) => new Date(iso + 'T12:00:00Z').toLocaleDateString(l === 'en' ? 'en-US' : l === 'es' ? 'es-AR' : 'pt-BR', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+    const relHeads = [];
+    const rels = changelog.map((r, k) => {
+      const pre = r.id;
+      const { html: inner } = markdown(r.body, {
+        anchorLabel: t.pages.anchorLabel,
+        link: (u) => (u.startsWith('#') ? `#${pre}-${u.slice(1)}` : ghLink(u)),
+        image: (url, alt) => esc(alt),
+      });
+      const body = inner.replace(/<h([4-6]) id="([^"]+)"/g, (_, n, x) => {
+        const id = `${pre}-${x}`;
+        if (taken.has(id)) console.warn('[web] changelog: duplicate id', id);
+        taken.add(id);
+        return `<h${n} id="${id}"`;
+      });
+      if (taken.has(pre)) console.warn('[web] changelog: id already used in the paper', pre);
+      taken.add(pre);
+      const name = r.unreleased ? C.unreleased : `${r.version}${r.beta ? ' Beta' : ''}`;
+      relHeads.push({ level: 3, id: pre, text: name });
+      const tags = [
+        r.unreleased ? `<span class="chl-tag chl-dev">${esc(C.inDev)}</span>` : '',
+        r === latest ? `<span class="chl-tag chl-new">${esc(C.latest)}</span>` : '',
+        r.yanked ? `<span class="chl-tag chl-yank">${esc(C.yanked)}</span>` : '',
+        r.date ? `<span class="chl-date">${esc(C.released)} <time datetime="${esc(r.date)}">${esc(fmt(r.date))}</time></span>` : '',
+      ].filter(Boolean).join('');
+      const gh = r.url ? `<p class="chl-gh"><a href="${esc(r.url)}" rel="noopener">${esc(C.compare)}</a></p>` : '';
+      return `<details class="chl"${k === 0 ? ' open' : ''}><summary><h3 id="${pre}">${esc(name)}</h3>${tags ? `<span class="chl-meta">${tags}</span>` : ''}</summary><div class="chl-body"${l === 'en' ? '' : ' lang="en"'}>\n${body}\n${gh}</div></details>`;
+    });
+    const block = `<!--chlog--><div class="chlog">
+<p class="chlog-lead">${inline(C.lead)}</p>${C.note ? `\n<p class="chlog-note">${esc(C.note)}</p>` : ''}
+${rels.join('\n')}
+</div><!--/chlog-->`;
+    // after the section's own content (the summary table), before the next ## heading
+    const start = html.indexOf('<h2 id="changelog"');
+    const next = html.indexOf('<h2 ', start + 1);
+    html = next < 0 ? `${html}\n${block}` : `${html.slice(0, next)}${block}\n${html.slice(next)}`;
+    const si = headings.indexOf(sec);
+    let ni = headings.findIndex((h, k) => k > si && h.level <= 2);
+    if (ni < 0) ni = headings.length;
+    headings.splice(ni, 0, ...relHeads);
+    return { html, headings };
+  };
+
   if (HAS_PAPER) {
     const { data: fm, body } = frontMatter(fs.readFileSync(path.join(paperDir, `paper.${l}.md`), 'utf8'));
     const meta = { ...fm, ...paperMeta };
-    const { html: bodyHtml, headings } = renderMd(body, paperDiagrams.diagrams || [], paperDiagrams.screenshots || meta.screenshots || []);
+    let { html: bodyHtml, headings } = renderMd(body, paperDiagrams.diagrams || [], paperDiagrams.screenshots || meta.screenshots || []);
+    if (changelog.length) ({ html: bodyHtml, headings } = addChangelog(bodyHtml, headings));
     const title = loc(meta.title, l) || fm.title || 'LordOS';
     const subtitle = loc(meta.subtitle, l) || fm.subtitle || '';
     // two-level table of contents from ## and ###
@@ -886,7 +980,9 @@ for (const f of html) {
     const msg = 'forbidden wording in ' + path.relative(DIST, f) + ': ' + s.match(/.{0,60}(operating system|sistema operativo|sistema operacional|\b(?:our|own|nuestro|propio|próprio|nosso)\s+X11\b|\bX11\s+(?:display\s+)?server\b|from scratch|desde cero|\bdo zero\b).{0,40}/i)[0];
     if (process.env.WEB_SKIP_WORDING) console.warn('[web] WARNING ' + msg); else throw new Error(msg);
   }
-  { const m = s.replace(/<[^>]+>/g, ' ').match(/.{0,70}(\bPi (4|400|500)\b|\bCM[45]\b).{0,50}/i); if (m) throw new Error(`only the Raspberry Pi 5 is supported; other models are not mentioned in website copy (${path.relative(DIST, f)}): …${m[0].trim()}…`); }
+  // CHANGELOG.md quoted verbatim on the paper (between <!--chlog--> marks) keeps its own history,
+  // which names other boards in two notes; every other check still covers it
+  { const m = s.replace(/<!--chlog-->[\s\S]*?<!--\/chlog-->/g, ' ').replace(/<[^>]+>/g, ' ').match(/.{0,70}(\bPi (4|400|500)\b|\bCM[45]\b).{0,50}/i); if (m) throw new Error(`only the Raspberry Pi 5 is supported; other models are not mentioned in website copy (${path.relative(DIST, f)}): …${m[0].trim()}…`); }
 }
 const jsSize = Buffer.byteLength(jsSrc) + Buffer.byteLength(themeSrc), cssSize = Buffer.byteLength(css);
 if (jsSize > 15 * 1024) throw new Error(`JS is ${jsSize} bytes (limit 15 KB)`);

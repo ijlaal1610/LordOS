@@ -29,8 +29,11 @@ El JavaScript de LordOS no puede escribir archivos `.desktop`, así que la inter
 ## Cómo se ven y se comportan
 
 - **El marco.** Las apps que le piden al compositor que dibuje su marco (las apps Qt, foot, Chromium con la barra de título del sistema) reciben el marco del tema. Las apps GTK 3 como Firefox lo reciben por un segundo protocolo de decoración que LordOS también habla. Las apps GTK 4 que dibujan su propia barra la conservan, y LordOS les recorta la sombra.
+- **Navegadores con una sola barra.** Desde 0.8.4, Chromium y Firefox preinstalados dibujan una sola barra con sus pestañas y los botones de la ventana adentro, del lado que usa el tema de LordOS (a la izquierda en Lord Default, a la derecha en Classic), y siguen en vivo un cambio de tema o de modo claro/oscuro. Un interruptor en Ajustes → Apariencia, "Navegadores: pestañas en la barra de título", vuelve a poner los dos bajo el marco de LordOS. El compositor respeta el marco que pida cada app, incluso si cambia con la ventana abierta.
 - **Claro y oscuro, en vivo.** LordOS sirve por su cuenta el portal de escritorio "Settings" en el bus de la sesión, así que las apps GTK 4 y libadwaita siguen el modo, el color de acento y el orden de los botones. Las apps GTK 3 lo siguen a través del archivo de claves de GSettings, y LordOS trae un tema GTK que combina. Las dos cambian en vivo cuando cambiás de modo.
 - **Un solo portapapeles.** El texto que copiás en una app de Linux se pega en LordOS y al revés; las imágenes siguen disponibles después de cerrar la app de origen y aparecen en el historial del portapapeles (❖V).
+- **Seleccionar para copiar, clic del medio para pegar.** Desde 0.8.3 la selección primaria funciona entre apps Wayland, y entre ellas y las apps X11. En 0.8.5 (en desarrollo) la app que copió también ve su propia copia en el portapapeles, como dice el protocolo Wayland.
+- **Los videos mantienen la pantalla encendida** (llega en 0.8.5, en desarrollo): un reproductor de video de Linux puede pedir que la pantalla no se oscurezca ni se bloquee mientras reproduce (`zwp_idle_inhibit_manager_v1`), y los temporizadores de inactividad esperan mientras su ventana está a la vista.
 - **Nítidas en cualquier escala.** Cada pantalla es un `wl_output` aparte, y la escala fraccionaria permite que GTK 4, Qt 6 y Chromium se dibujen nítidos al 125–175 %.
 - **Gestos del touchpad.** El driver de touchpad propio de LordOS les pasa a las apps de Linux los gestos de pellizcar, deslizar y mantener, así que el zoom con pellizco funciona en los navegadores.
 - **Juegos y apps de GPU.** Con una GPU, las apps le pueden pasar a LordOS buffers de GPU directamente (`linux-dmabuf`), usar pantalla completa de verdad, bloquear el puntero y recibir el movimiento crudo del mouse.
@@ -43,7 +46,9 @@ El JavaScript de LordOS no puede escribir archivos `.desktop`, así que la inter
 
 ## Qué protocolos Wayland hay
 
-`wl_compositor`, `wl_subcompositor`, `wl_shm`, `wl_output` (uno por pantalla), `xdg_wm_base` con menús emergentes, `wl_seat` (puntero, teclado, táctil), `wl_data_device_manager` (portapapeles), `zxdg_decoration_manager_v1`, el protocolo de decoración del servidor de KDE, `zxdg_output_manager_v1`, `wp_fractional_scale_v1`, `wp_viewporter`, `zwp_linux_dmabuf_v1`, `wp_presentation`, `zwp_relative_pointer_manager_v1`, `zwp_pointer_constraints_v1`, `zwp_pointer_gestures_v1` y `wp_cursor_shape_manager_v1`.
+`wl_compositor`, `wl_subcompositor`, `wl_shm`, `wl_output` (uno por pantalla), `xdg_wm_base` con menús emergentes, `wl_seat` (puntero, teclado, táctil), `wl_data_device_manager` (portapapeles), `zxdg_decoration_manager_v1`, el protocolo de decoración del servidor de KDE, `zxdg_output_manager_v1`, `wp_fractional_scale_v1`, `wp_viewporter`, `zwp_linux_dmabuf_v1`, `wp_presentation`, `zwp_relative_pointer_manager_v1`, `zwp_pointer_constraints_v1`, `zwp_pointer_gestures_v1`, `wp_cursor_shape_manager_v1`, `zwp_primary_selection_device_manager_v1` (desde 0.8.3) y `zwp_idle_inhibit_manager_v1` (0.8.5, en desarrollo).
+
+**Comprobalo desde afuera** (llega en 0.8.5, en desarrollo): el **Banco de pruebas** (`lordos-testbench`) es una ventana con una carta de ajuste que revisa el servidor gráfico como lo ve cualquier app: los tiempos de los cuadros y cuándo llegan de verdad a la pantalla, cada tecla del teclado, el mouse y la rueda, y los protocolos Wayland que ofrece el sistema.
 
 Ausente a propósito: cualquier protocolo que le permita a una app capturar la pantalla o las ventanas de otras apps.
 

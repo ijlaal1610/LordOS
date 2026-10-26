@@ -175,8 +175,20 @@
       "media": "Media",
       "system": "System",
       "privacy": "Privacy & security"
-    }
+    },
+    "upcoming": "Coming in {v} (in development)"
   },
   "debHintA": "On a server without a screen, add",
-  "debHintB": "and use it from your browser."
+  "debHintB": "and use it from your browser.",
+  "changelog": {
+    "title": "Changelog",
+    "lead": "The full notes of every release, newest first, exactly as kept in CHANGELOG.md. Open a release to read it.",
+    "note": "",
+    "unreleased": "Unreleased",
+    "inDev": "In development",
+    "yanked": "Withdrawn",
+    "latest": "Latest release",
+    "compare": "Changes on GitHub",
+    "released": "Released"
+  }
 }

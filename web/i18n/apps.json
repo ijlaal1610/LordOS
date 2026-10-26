@@ -1,7 +1,7 @@
 {
   "mail": {
     "category": "productivity",
-    "isolated": false,
+    "isolated": true,
     "icon": "apps/mail/index.jsx",
     "screenshot": "docs/screenshots/mail.png",
     "name": {"en": "Mail", "es": "Mail", "pt": "Mail"},
@@ -36,7 +36,7 @@
   },
   "calendar": {
     "category": "productivity",
-    "isolated": false,
+    "isolated": true,
     "icon": "apps/calendar/index.jsx",
     "screenshot": "docs/screenshots/calendar.png",
     "name": {"en": "Calendar", "es": "Calendario", "pt": "Calendário"},
@@ -68,7 +68,7 @@
   },
   "contacts": {
     "category": "productivity",
-    "isolated": false,
+    "isolated": true,
     "icon": "apps/contacts/index.jsx",
     "screenshot": "docs/contacts-light.png",
     "name": {"en": "Contacts", "es": "Contactos", "pt": "Contatos"},
@@ -100,7 +100,7 @@
   },
   "reminders": {
     "category": "productivity",
-    "isolated": false,
+    "isolated": true,
     "icon": "apps/reminders/index.jsx",
     "screenshot": "docs/reminders-light.png",
     "name": {"en": "Reminders", "es": "Recordatorios", "pt": "Lembretes"},
@@ -890,5 +890,76 @@
       ]
     }
   },
-  "_notes": "Apps: every folder in apps/ except about (system info dialog), installer (live-ISO only) and README.md. There is no 'linux' folder in apps/ (the Linux-window bridge is registered in sdk/wayland.js), and there is no separate privacy or firewall app: Privacy and the per-app firewall are Settings sections (Monitor registers them with registerPrivacySection) plus Monitor's Network tab, so only Passwords is in the privacy category. Names come from assets/locales/{en,es,pt}/apps.json. Isolation: only apps/passwords/manifest.json has \"process\": \"isolated\" (built into assets/sysapps/passwords by tools/build-theme.mjs). No app in apps/ ships as an .lpk; the only .lpk definitions are examples/apps/fractal and the tests/lpk-legit and tests/lpk-evil fixtures, none of them user-facing apps, so they are not included. ICONS (DOUBT): the desktop does not use an SVG or PNG for built-in apps. tools/build-theme.mjs takes the exported Icon React component from each apps/<id>/index.jsx, and the Dock draws app.Icon (themes/default/components/Dock.jsx). The icons are drawn in code with Views and gradients. So 'icon' points to the source file that draws it: apps/<id>/index.jsx, or apps/disks/icons.jsx (DisksIcon) and apps/monitor/icons.jsx (MonitorIcon). The repo has no icon files for these apps; to show them on the website someone must render them to SVG or PNG (for example, crop the Dock in docs/screenshots/*.png or export from a headless lord-server). Only .lpk apps use a real file (manifest icon, e.g. examples/apps/fractal/icon.png). SCREENSHOTS: most docs/polish/*-after-light.png captures are in Spanish (checked: backup, calculator, camera, characters, monitor), so I used them only for Passwords, which is in English. I visually checked that every other pick is English and shows the main window: the curated docs/screenshots/*.png (files, mail, calendar, photos, player, store, terminal, settings-general), plus English gallery entries (variant normal), mostly dark. Calculator and Scanner use docs/qa/*.png (English, dark). The Scanner shot only shows the 'Choose a scanner' empty state, because no English capture with a scanner exists. docs/screenshots/README.md lists passwords.png, but that file is missing. COPY: every bullet comes from the app's manifest and docs (MAIL.md, MEDIA.md, DOCUMENTS.md, SYSTEM.md, PRINTING.md, PACKAGES.md, TERMINAL.md, MONITOR.md, NOTES.md, EDITOR.md, FILES.md, PASSWORDS.md, SETTINGS.md) or the app's code (calculator keyboard and parentheses, Contacts .vcf import, Settings pages in apps/settings/).."
+  "sysinfo": {
+    "category": "system",
+    "isolated": false,
+    "upcoming": "0.8.5",
+    "icon": "apps/sysinfo/index.jsx",
+    "screenshot": "docs/sysinfo-graphics.png",
+    "name": {"en": "System Information", "es": "Información del sistema", "pt": "Informações do sistema"},
+    "tagline": {
+      "en": "Every piece of hardware, and what LordOS makes of it",
+      "es": "Todo el hardware de tu computadora y qué hace LordOS con él",
+      "pt": "Todo o hardware do seu computador e o que o LordOS faz com ele"
+    },
+    "features": {
+      "en": [
+        "Opens from About LordOS → System Report…",
+        "The graphics card layer by layer, with the reason when the screen is composed on the CPU",
+        "Compatibility: what works, what works with limits and what wasn't checked",
+        "Checks of LordOS's claims on this computer, with a Sandbox Probe that tries what an isolated app must not do",
+        "Reports in Markdown or JSON, shown before you copy or save them; nothing is sent"
+      ],
+      "es": [
+        "Se abre desde Acerca de LordOS → Informe del sistema…",
+        "La placa de video capa por capa, con el motivo cuando la pantalla se compone en la CPU",
+        "Compatibilidad: qué funciona, qué funciona con límites y qué no se comprobó",
+        "Verificaciones de lo que LordOS afirma, en esta computadora, con la Prueba del aislamiento, que intenta lo que una app aislada no debe poder hacer",
+        "Informes en Markdown o JSON, que ves antes de copiarlos o guardarlos; no se envía nada"
+      ],
+      "pt": [
+        "Abre em Sobre o LordOS → Relatório do sistema…",
+        "A placa de vídeo camada por camada, com o motivo quando a tela é composta na CPU",
+        "Compatibilidade: o que funciona, o que funciona com limites e o que não foi verificado",
+        "Verificações do que o LordOS afirma, neste computador, com o Teste do isolamento, que tenta o que um app isolado não deve conseguir fazer",
+        "Relatórios em Markdown ou JSON, que você vê antes de copiar ou salvar; nada é enviado"
+      ]
+    }
+  },
+  "imager": {
+    "category": "system",
+    "isolated": false,
+    "icon": "apps/imager/index.jsx",
+    "screenshot": "docs/imager/native-13-review.png",
+    "name": {"en": "LordOS Imager", "es": "LordOS Imager", "pt": "LordOS Imager"},
+    "tagline": {
+      "en": "Write LordOS to an SD card or a USB stick, ready for its first boot",
+      "es": "Grabá LordOS en una tarjeta SD o un pendrive, listo para su primer arranque",
+      "pt": "Grave o LordOS num cartão SD ou pendrive, pronto para a primeira inicialização"
+    },
+    "features": {
+      "en": [
+        "For the Raspberry Pi 5, or a PC from a USB stick",
+        "Official images checked against the release signature before anything is erased",
+        "Only SD cards and USB drives: internal disks are never shown",
+        "Set up the first boot: name, language, account, Wi-Fi, SSH, look and cooling",
+        "Every card is read back and compared after writing"
+      ],
+      "es": [
+        "Para la Raspberry Pi 5, o una PC desde un pendrive",
+        "Las imágenes oficiales se verifican con la firma de la versión antes de borrar nada",
+        "Solo tarjetas SD y unidades USB: los discos internos nunca aparecen",
+        "Prepará el primer arranque: nombre, idioma, cuenta, Wi-Fi, SSH, aspecto y refrigeración",
+        "Cada tarjeta se vuelve a leer y se compara después de grabarla"
+      ],
+      "pt": [
+        "Para o Raspberry Pi 5, ou um PC a partir de um pendrive",
+        "As imagens oficiais são verificadas com a assinatura da versão antes de apagar qualquer coisa",
+        "Só cartões SD e unidades USB: os discos internos nunca aparecem",
+        "Prepare a primeira inicialização: nome, idioma, conta, Wi-Fi, SSH, aparência e resfriamento",
+        "Cada cartão é lido de volta e comparado depois da gravação"
+      ]
+    }
+  },
+  "_notes": "Apps: every folder in apps/ except about (system info dialog), installer (live-ISO only) and README.md. There is no 'linux' folder in apps/ (the Linux-window bridge is registered in sdk/wayland.js), and there is no separate privacy or firewall app: Privacy and the per-app firewall are Settings sections (Monitor registers them with registerPrivacySection) plus Monitor's Network tab, so only Passwords is in the privacy category. Names come from assets/locales/{en,es,pt}/apps.json. Isolation: apps/passwords and, since 0.8.2, apps/mail, apps/calendar, apps/contacts and apps/reminders have \"process\": \"isolated\" in their manifest (built into assets/sysapps/<id> by tools/build-theme.mjs; apps/sysprobe is isolated too but hidden, a test app of System Information). System Information (sysinfo, 0.8.5 in development, marked \"upcoming\") and LordOS Imager (imager, 0.8.4) were added on 2026-10-26; their icons were exported with tools/web/render-icons.mjs. No app in apps/ ships as an .lpk; the only .lpk definitions are examples/apps/fractal and the tests/lpk-legit and tests/lpk-evil fixtures, none of them user-facing apps, so they are not included. ICONS (DOUBT): the desktop does not use an SVG or PNG for built-in apps. tools/build-theme.mjs takes the exported Icon React component from each apps/<id>/index.jsx, and the Dock draws app.Icon (themes/default/components/Dock.jsx). The icons are drawn in code with Views and gradients. So 'icon' points to the source file that draws it: apps/<id>/index.jsx, or apps/disks/icons.jsx (DisksIcon) and apps/monitor/icons.jsx (MonitorIcon). The repo has no icon files for these apps; to show them on the website someone must render them to SVG or PNG (for example, crop the Dock in docs/screenshots/*.png or export from a headless lord-server). Only .lpk apps use a real file (manifest icon, e.g. examples/apps/fractal/icon.png). SCREENSHOTS: most docs/polish/*-after-light.png captures are in Spanish (checked: backup, calculator, camera, characters, monitor), so I used them only for Passwords, which is in English. I visually checked that every other pick is English and shows the main window: the curated docs/screenshots/*.png (files, mail, calendar, photos, player, store, terminal, settings-general), plus English gallery entries (variant normal), mostly dark. Calculator and Scanner use docs/qa/*.png (English, dark). The Scanner shot only shows the 'Choose a scanner' empty state, because no English capture with a scanner exists. docs/screenshots/README.md lists passwords.png, but that file is missing. COPY: every bullet comes from the app's manifest and docs (MAIL.md, MEDIA.md, DOCUMENTS.md, SYSTEM.md, PRINTING.md, PACKAGES.md, TERMINAL.md, MONITOR.md, NOTES.md, EDITOR.md, FILES.md, PASSWORDS.md, SETTINGS.md) or the app's code (calculator keyboard and parentheses, Contacts .vcf import, Settings pages in apps/settings/).."
 }

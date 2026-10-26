@@ -48,7 +48,7 @@ If a GPU with 3D acceleration is present, composition goes through Mesa (GBM, EG
 
 There are three kinds of windows on a LordOS desktop, and they connect at different layers:
 
-- **Built-in apps and the theme** (menu bar, Dock, Files, Settings…) run inside `lord-server`'s own JavaScript context, on the UI engine.
+- **Built-in apps and the theme** (menu bar, Dock, Files, Settings…) run inside `lord-server`'s own JavaScript context, on the UI engine. The exceptions are Passwords and, since 0.8.2, Mail, Calendar, Contacts and Reminders, which run as isolated processes like `.lpk` apps.
 - **Installed `.lpk` apps** each run as a separate process (`lord-server --app <id>`, the same binary in "app mode"). That process has its own copy of the UI engine, locks itself in a sandbox and draws into a shared-memory buffer, which it hands to the compositor as an ordinary Wayland client.
 - **Linux apps** (GTK, Qt, Chromium, Firefox…) connect to the compositor's Wayland socket. They draw themselves; the theme puts its window frame around them.
 
@@ -79,7 +79,7 @@ The compositor drives several displays at once, extended or mirrored, and draws 
 - **Real GPUs are not verified yet.** The GPU path was exercised with Mesa's software renderer in virtual machines. Testing on real AMD and Nvidia cards is still pending (`docs/GPU.md`).
 - **Multiple displays were tested with two virtual heads**, not with real monitors, laptop panels or DisplayPort hubs (`docs/DISPLAYS.md`).
 - **The Raspberry Pi 5 has not been tested with a monitor attached yet.** The build, the tests and the login screen ran on a real board without HDMI (`docs/RASPBERRY.md`).
-- **Xwayland is not part of LordOS yet** (it is planned before 1.0), so apps that only speak X11 don't run. Drag and drop between Linux apps, the primary selection and LordOS input methods inside Linux apps are pending (`docs/WAYLAND.md`).
+- **X11 apps run through Xwayland since 0.8.3,** sharp only at 100 % scale and able to see each other, as on any X11 desktop. Drag and drop between Linux apps and LordOS input methods inside Linux apps are pending (`docs/WAYLAND.md`).
 - **Accessibility is mostly ahead of us:** today there is a "reduce motion" setting; a screen reader, zoom and high contrast are on the roadmap.
 
 ## Read the source

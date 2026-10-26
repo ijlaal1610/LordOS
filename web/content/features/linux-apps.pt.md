@@ -29,8 +29,11 @@ O JavaScript do LordOS não consegue escrever arquivos `.desktop`, então a inte
 ## Como eles ficam e se comportam
 
 - **A moldura.** Os apps que pedem ao compositor para desenhar sua moldura (apps Qt, foot, Chromium com a barra de título do sistema) recebem a moldura do tema. Os apps GTK 3, como o Firefox, a recebem por um segundo protocolo de decoração que o LordOS também fala. Os apps GTK 4 que desenham a própria barra a mantêm, e o LordOS apara a sombra deles.
+- **Navegadores com uma só barra.** Desde a 0.8.4, o Chromium e o Firefox pré-instalados desenham uma só barra com suas abas e os botões da janela dentro dela, do lado que o tema do LordOS usa (à esquerda no Lord Default, à direita no Classic), e acompanham ao vivo uma troca de tema ou de modo claro/escuro. Um botão em Ajustes → Aparência, "Navegadores: abas na barra de título", devolve os dois à moldura do LordOS. O compositor respeita a moldura que cada app pede, mesmo quando ela muda com a janela aberta.
 - **Claro e escuro, ao vivo.** O próprio LordOS serve o portal de desktop "Settings" no barramento da sessão, então os apps GTK 4 e libadwaita seguem o modo, a cor de destaque e a ordem dos botões. Os apps GTK 3 seguem pelo keyfile do GSettings, e o LordOS traz um tema GTK combinando. Os dois mudam ao vivo quando você troca de modo.
 - **Uma só área de transferência.** Um texto copiado num app Linux cola no LordOS e vice-versa; as imagens continuam disponíveis depois que o app de origem fecha e aparecem no histórico da área de transferência (❖V).
+- **Selecionar para copiar, clique do meio para colar.** Desde a 0.8.3 a seleção primária funciona entre apps Wayland, e entre eles e os apps X11. Na 0.8.5 (em desenvolvimento) o app que copiou também vê a própria cópia na área de transferência, como diz o protocolo Wayland.
+- **Os vídeos mantêm a tela ligada** (chega na 0.8.5, em desenvolvimento): um reprodutor de vídeo Linux pode pedir que a tela não escureça nem bloqueie enquanto toca (`zwp_idle_inhibit_manager_v1`), e os temporizadores de inatividade esperam enquanto a janela dele está à vista.
 - **Nítido em qualquer escala.** Cada tela é um `wl_output` separado, e a escala fracionária deixa GTK 4, Qt 6 e Chromium renderizarem com nitidez de 125 a 175 %.
 - **Gestos do touchpad.** O driver de touchpad próprio do LordOS repassa os gestos de pinça, deslizar e segurar aos apps Linux, então o zoom com pinça funciona nos navegadores.
 - **Jogos e apps de GPU.** Com uma GPU, os apps podem entregar buffers de GPU direto ao LordOS (`linux-dmabuf`), usar tela cheia de verdade, prender o ponteiro e receber o movimento bruto do mouse.
@@ -43,7 +46,9 @@ O JavaScript do LordOS não consegue escrever arquivos `.desktop`, então a inte
 
 ## Quais protocolos Wayland existem
 
-`wl_compositor`, `wl_subcompositor`, `wl_shm`, `wl_output` (um por tela), `xdg_wm_base` com popups, `wl_seat` (ponteiro, teclado, toque), `wl_data_device_manager` (área de transferência), `zxdg_decoration_manager_v1`, o protocolo de decoração no servidor do KDE, `zxdg_output_manager_v1`, `wp_fractional_scale_v1`, `wp_viewporter`, `zwp_linux_dmabuf_v1`, `wp_presentation`, `zwp_relative_pointer_manager_v1`, `zwp_pointer_constraints_v1`, `zwp_pointer_gestures_v1` e `wp_cursor_shape_manager_v1`.
+`wl_compositor`, `wl_subcompositor`, `wl_shm`, `wl_output` (um por tela), `xdg_wm_base` com popups, `wl_seat` (ponteiro, teclado, toque), `wl_data_device_manager` (área de transferência), `zxdg_decoration_manager_v1`, o protocolo de decoração no servidor do KDE, `zxdg_output_manager_v1`, `wp_fractional_scale_v1`, `wp_viewporter`, `zwp_linux_dmabuf_v1`, `wp_presentation`, `zwp_relative_pointer_manager_v1`, `zwp_pointer_constraints_v1`, `zwp_pointer_gestures_v1`, `wp_cursor_shape_manager_v1`, `zwp_primary_selection_device_manager_v1` (desde a 0.8.3) e `zwp_idle_inhibit_manager_v1` (0.8.5, em desenvolvimento).
+
+**Confira de fora** (chega na 0.8.5, em desenvolvimento): o **Banco de testes** (`lordos-testbench`) é uma janela com um padrão de teste que confere o servidor gráfico como qualquer app o vê: o tempo dos quadros e quando eles chegam de fato à tela, cada tecla do teclado, o mouse e a roda, e os protocolos Wayland que o sistema oferece.
 
 Ausente de propósito: qualquer protocolo que permita a um app capturar a tela ou as janelas de outros apps.
 

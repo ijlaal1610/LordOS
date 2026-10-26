@@ -48,7 +48,7 @@ Se houver uma GPU com aceleração 3D, a composição passa pelo Mesa (GBM, EGL 
 
 Há três tipos de janela num desktop LordOS, e elas se conectam em camadas diferentes:
 
-- **Os apps incluídos e o tema** (barra de menus, Dock, Arquivos, Ajustes…) rodam dentro do próprio contexto JavaScript do `lord-server`, no motor de interface.
+- **Os apps incluídos e o tema** (barra de menus, Dock, Arquivos, Ajustes…) rodam dentro do próprio contexto JavaScript do `lord-server`, no motor de interface. As exceções são Senhas e, desde a 0.8.2, Mail, Calendário, Contatos e Lembretes, que rodam como processos isolados, como os apps `.lpk`.
 - **Os apps `.lpk` instalados** rodam cada um como um processo separado (`lord-server --app <id>`, o mesmo binário em "modo app"). Esse processo tem sua própria cópia do motor de interface, se tranca num sandbox e desenha num buffer de memória compartilhada, que entrega ao compositor como um cliente Wayland comum.
 - **Os apps Linux** (GTK, Qt, Chromium, Firefox…) se conectam ao socket Wayland do compositor. Eles se desenham sozinhos; o tema coloca sua moldura de janela em volta deles.
 
@@ -79,7 +79,7 @@ O compositor controla várias telas ao mesmo tempo, estendidas ou espelhadas, e 
 - **GPUs reais ainda não foram verificadas.** O caminho da GPU foi exercitado com o renderizador por software do Mesa em máquinas virtuais. O teste em placas AMD e Nvidia reais ainda está pendente (`docs/GPU.md`).
 - **Várias telas foram testadas com duas saídas virtuais**, não com monitores reais, painéis de notebook ou hubs DisplayPort (`docs/DISPLAYS.md`).
 - **O Raspberry Pi 5 ainda não foi testado com um monitor conectado.** A compilação, os testes e a tela de login rodaram numa placa real sem HDMI (`docs/RASPBERRY.md`).
-- **O Xwayland ainda não faz parte do LordOS** (está planejado antes da 1.0), então apps que só falam X11 não rodam. Arrastar e soltar entre apps Linux, a seleção primária e os métodos de entrada do LordOS dentro de apps Linux estão pendentes (`docs/WAYLAND.md`).
+- **Os apps X11 rodam pelo Xwayland desde a 0.8.3,** nítidos só em 100 % de escala e podendo ver uns aos outros, como em qualquer desktop X11. Arrastar e soltar entre apps Linux e os métodos de entrada do LordOS dentro de apps Linux estão pendentes (`docs/WAYLAND.md`).
 - **A acessibilidade ainda está quase toda pela frente:** hoje existe um ajuste para "reduzir movimento"; leitor de tela, zoom e alto contraste estão no roadmap.
 
 ## Leia o código
