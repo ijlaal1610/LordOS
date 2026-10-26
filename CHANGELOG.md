@@ -26,6 +26,11 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   configured or actually tried. **Run tests** starts a test app that tries, inside the same sandbox as
   any isolated app, what it must not be able to do (your files, sockets, ptrace, leaving its scope,
   exec), plus the decoders' sandbox and the requests the system must refuse.
+- **Test Bench** (`lordos-testbench`): a test pattern window that checks the display server from the
+  outside: frame timing and when frames really reach the screen, every key of the keyboard, the
+  mouse and wheel, and the Wayland protocols the system offers.
+- **Monitor → Network shows ping (ICMP) sockets**, under the app that opened them, and the remote
+  desktop's own UDP ports under Remote Desktop instead of an unknown "?".
 - **`lordos-sysreport report`** prints the hardware of this computer and what the system made of it,
   as Markdown or `--json`, with no serial numbers, addresses or names: the base of System
   Information.

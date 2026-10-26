@@ -10,6 +10,8 @@
 #   /usr/lib/lordos/bin/lord-server       each session's server (looks for ../themes and ../assets)
 #   /usr/bin/lordos-sysreport             System Information's report as a command (user; docs/BENCHMARK.md)
 #   /usr/bin/lordos-fetch                 the crown and a summary of the computer (a link to lordos-sysreport)
+#   /usr/bin/lordos-testbench             the visual test bench (a Wayland client; docs/PAPER-VALIDATION.md), and
+#   /usr/share/applications/lordos-testbench.desktop   its launcher entry
 #   /usr/lib/lordos/themes/<theme>/       theme.json, theme.bundle.js and their resources (greeter: the
 #                                         login screen)
 #   /usr/lib/lordos/assets/               fonts, texts (locales), icons, shell integration
@@ -65,6 +67,13 @@ install -d "$PKG/usr/bin"
 install -m 755 server/build/lordos-sysreport "$PKG/usr/bin/lordos-sysreport"
 strip --strip-unneeded "$PKG/usr/bin/lordos-sysreport" 2>/dev/null || true
 ln -s lordos-sysreport "$PKG/usr/bin/lordos-fetch"
+# the visual test bench: a plain Wayland client, launched like any Linux app
+[ -x server/build/lordos-testbench ] && {
+    install -m 755 server/build/lordos-testbench "$PKG/usr/bin/lordos-testbench"
+    strip --strip-unneeded "$PKG/usr/bin/lordos-testbench" 2>/dev/null || true
+    install -d "$PKG/usr/share/applications"
+    install -m 644 packaging/desktop/lordos-testbench.desktop "$PKG/usr/share/applications/lordos-testbench.desktop"
+}
 # isolated PDF and archive helper (optional: make skips it without libpoppler-glib-dev/libarchive-dev);
 # lord-server only launches the lord-doc in its own folder
 [ -x server/build/lord-doc ] && install -m 755 server/build/lord-doc "$L/bin/lord-doc"

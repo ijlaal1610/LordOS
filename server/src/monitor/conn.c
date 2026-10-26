@@ -112,6 +112,50 @@ static int dump(int fd, int fam, int proto) {
     }
 }
 
+/* ICMP "ping" sockets (ping(8) without privileges): sock_diag has no dump for them, the kernel lists
+ * them in /proc/net/icmp and icmp6 (with uid and inode, like every socket of the network namespace).
+ * An unconnected ping socket has no destination: only its echo identifier, kept as the local port. */
+static void hex_addr(const char *h, int fam, uint8_t out[16]) {
+    memset(out, 0, 16);
+    int words = fam == 4 ? 1 : 4;
+    for (int w = 0; w < words; w++) {
+        unsigned long v = 0;
+        for (int k = 0; k < 8; k++) {
+            char c = h[w * 8 + k];
+            int d = c >= '0' && c <= '9' ? c - '0' : c >= 'A' && c <= 'F' ? c - 'A' + 10 : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1;
+            if (d < 0) return;
+            v = v << 4 | (unsigned long)d;
+        }
+        for (int k = 0; k < 4; k++) out[w * 4 + k] = (uint8_t)(v >> (8 * k));   /* each word in host (little-endian) order */
+    }
+}
+
+static void icmp_read(const char *path, int fam) {
+    FILE *f = fopen(path, "re");
+    if (!f) return;
+    char line[512], la[64], ra[64];
+    unsigned st, uid;
+    unsigned long inode;
+    if (!fgets(line, sizeof line, f)) { fclose(f); return; }       /* the header */
+    while (nsock < MAX_SOCK && fgets(line, sizeof line, f)) {
+        if (sscanf(line, " %*s %63s %63s %x %*s %*s %*s %u %*s %lu", la, ra, &st, &uid, &inode) != 5 || !inode) continue;
+        char *lc = strchr(la, ':'), *rc = strchr(ra, ':');
+        if (!lc || !rc || (size_t)(lc - la) != (fam == 4 ? 8u : 32u)) continue;
+        Sock *k = &socks[nsock++];
+        memset(k, 0, sizeof *k);
+        k->inode = (uint32_t)inode;
+        k->uid = uid;
+        k->fam = (uint8_t)fam;
+        k->proto = fam == 4 ? IPPROTO_ICMP : IPPROTO_ICMPV6;
+        k->state = (uint8_t)st;
+        hex_addr(la, fam, k->src);
+        hex_addr(ra, fam, k->dst);
+        k->sport = (uint16_t)strtoul(lc + 1, NULL, 16);
+        k->dport = (uint16_t)strtoul(rc + 1, NULL, 16);
+    }
+    fclose(f);
+}
+
 static int sock_dump(void) {
     nsock = 0;
     int fd = socket(AF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC, NETLINK_SOCK_DIAG);
@@ -121,6 +165,7 @@ static int sock_dump(void) {
     for (int i = 0; i < 2; i++)
         for (int j = 0; j < 2; j++) ok |= !dump(fd, fams[i], protos[j]);
     close(fd);
+    if (ok) { icmp_read("/proc/net/icmp", 4); icmp_read("/proc/net/icmp6", 6); }
     return ok ? 0 : -1;
 }
 
@@ -250,6 +295,20 @@ static void scopes_scan(void) {
     }
     if (d) closedir(d);
     if (dfd >= 0) close(dfd);
+    /* the remote desktop's bridge: forked by lord-sessiond after the sign-in, it runs as the user in
+     * lordos.service's root-owned `supervisor` group and isn't dumpable, so its sockets can't be traced to
+     * a pid; a socket of the user's in that group can only be the bridge's (its WebRTC UDP ports) */
+    char *up = strrchr(dir, '/');
+    if (up && nscopes < 256) {
+        *up = 0;
+        int pfd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        struct stat st;
+        if (pfd >= 0 && !fstatat(pfd, "supervisor", &st, AT_SYMLINK_NOFOLLOW) && S_ISDIR(st.st_mode) && st.st_uid == 0) {
+            uint64_t id = cg_id(pfd, "supervisor");
+            if (id) { scopes[nscopes].id = id; snprintf(scopes[nscopes].app, sizeof scopes[nscopes].app, "remote-desktop"); nscopes++; }
+        }
+        if (pfd >= 0) close(pfd);
+    }
 }
 
 static const char *scope_app_of(uint64_t cg) {
@@ -317,13 +376,14 @@ void conn_scan(Buf *b, const Mmdb *geo) {
         char ls[INET6_ADDRSTRLEN], rs[INET6_ADDRSTRLEN];
         inet_ntop(fam == 4 ? AF_INET : AF_INET6, src, ls, sizeof ls);
         inet_ntop(fam == 4 ? AF_INET : AF_INET6, dst, rs, sizeof rs);
-        int tcp = s->proto == IPPROTO_TCP;
+        int tcp = s->proto == IPPROTO_TCP, icmp = s->proto == IPPROTO_ICMP || s->proto == IPPROTO_ICMPV6;
         const char *dir;
-        if (tcp && s->state == 10) dir = "listen";
+        if (icmp) dir = "icmp";                                 /* a ping socket: no destination known */
+        else if (tcp && s->state == 10) dir = "listen";
         else if (!tcp && !s->dport) dir = "listen";             /* UDP without a destination: listening */
         else if (tcp && (listening_port[s->sport >> 3] & (1 << (s->sport & 7)))) dir = "in";
         else dir = "out";
-        int listening = !strcmp(dir, "listen");
+        int listening = !strcmp(dir, "listen") || icmp;
         const char *sc = listening ? "local" : scope(fam, dst);
         char cc[3] = "";
         if (geo && !strcmp(sc, "internet")) mmdb_country(geo, dst, fam, cc);
@@ -331,7 +391,7 @@ void conn_scan(Buf *b, const Mmdb *geo) {
         int pid = sl ? sl->pid : -1, pi = pid > 0 ? proc_info(pid) : -1;
         mon_buf_printf(b, "%s{\"id\":%u,\"proto\":\"%s\",\"fam\":%d,\"state\":\"%s\",\"dir\":\"%s\",\"local\":\"%s\",\"lport\":%u,"
                       "\"remote\":\"%s\",\"rport\":%u,\"scope\":\"%s\",\"cc\":\"%s\",\"pid\":%d,\"self\":%s,\"name\":",
-                   n ? "," : "", s->inode, tcp ? "tcp" : "udp", fam, tcp && s->state < 13 ? TCP_STATE[s->state] : (s->dport ? "CONNECTED" : "UNCONN"),
+                   n ? "," : "", s->inode, tcp ? "tcp" : icmp ? "icmp" : "udp", fam, tcp && s->state < 13 ? TCP_STATE[s->state] : (s->dport ? "CONNECTED" : "UNCONN"),
                    dir, ls, s->sport, listening ? "" : rs, s->dport, sc, cc, pid, pid == self ? "true" : "false");
         mon_buf_str(b, pi >= 0 ? pinfo[pi].name : "");
         mon_buf_printf(b, ",\"exe\":");

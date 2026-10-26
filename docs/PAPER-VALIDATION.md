@@ -134,7 +134,25 @@ what was measured once, what is not tested, and what the paper must correct. Upd
 | Every key, the mouse, touchpads, gamepads, and the Wayland protocols | §3.3–§3.4 | The visual test bench below |
 | Real hardware | §10.2 | Reports from System Information (0.8.7) |
 
-## Proposal: the visual test bench (`lordos-testbench`)
+## The visual test bench (`lordos-testbench`)
+
+**Phase 1 built (2026-10-26):** `server/src/testbench/` (`make -C server build/lordos-testbench`), packaged as
+`/usr/bin/lordos-testbench` with `packaging/desktop/lordos-testbench.desktop` (Test Bench in the launcher).
+The test card is ported from go-link-console's `pkg/testpattern` (same author). It shows the card with a
+live clock and a marker that moves one step per frame, frames a second and frame times, `wp_presentation`
+feedback (shown, discarded, refresh, skipped vblanks, zero-copy), the pointer (exact crosshair, eight
+buttons, wheel in steps and 120ths, axis source), the keyboard (a full ISO/ANSI layout with keypad and
+navigation keys lit while down and marked once seen, codes of keys not drawn, keysym and text from the
+compositor's keymap, modifiers and layout, repeat rate and delay) and every global with its version.
+`--auto [seconds]` prints the same as JSON. On VM 116 (headless session, CPU path) it found that
+`wp_presentation` reports every frame as discarded and no refresh rate when the session has no monitor.
+
+![Test Bench on VM 116](testbench.png)
+
+**Still to build** (from the plan below): the scripted protocol checklist, 3D with EGL and dmabuf,
+generated video at 24/30/60 fps, gamepads, and attaching its report to System Information.
+
+### The plan
 
 LordOS writes its own compositor, so it needs its own tool to show, on any computer, that what it draws
 and what it receives are right. The idea is a test-pattern window like a TV test card (and like the test

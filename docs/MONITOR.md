@@ -44,7 +44,13 @@ the rest of the tab, and the first generation of the list.
   **each one's own allow/block switch** (see "Per-destination switches"); a click on a row selects
   it in the right panel. Since 0.8.3 the app's name gets the row's whole width and wraps to two
   lines (the connection count and the denied badge sit next to the traffic bar; the column is
-  336 px and the Data and Rule columns are narrower). At the bottom, the machine's traffic:
+  336 px and the Data and Rule columns are narrower). Since 0.8.5 the list has three protocols: TCP and
+  UDP from `sock_diag`, and ICMP "ping" sockets from `/proc/net/icmp` and `icmp6` (`conn.c`,
+  `icmp_read`), shown on their app's row as "ICMP (ping)" without a destination (the kernel keeps none
+  for an unconnected ping socket). The remote desktop's bridge runs as the user but isn't dumpable, so
+  its sockets can't be traced to a pid; `conn.c` gives the sockets in `lordos.service`'s root-owned
+  `supervisor` group to Remote Desktop (its WebRTC UDP ports), instead of an unknown "?". At the bottom,
+  the machine's traffic:
   - the current download and upload speed;
   - two pills with what was sent (↑, orange) and received (↓, green) in the visible minute;
   - a **mirrored chart** of the last 60 s (`TrafficChart.jsx`, `drawMirror` in `draw.js`): one bar

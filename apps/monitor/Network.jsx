@@ -97,7 +97,7 @@ function useGroups(conns) {
       if (!g) {
         const comp = !!COMPONENTS[key] || key === 'lordos';
         g = { key, item: comp ? { app: key } : c, name: comp || (c.self && !c.cgApp) ? null : c.appName || c.name || '?', exe: c.exe, pids: new Set(), conns: [], hosts: new Map(),
-          sent: 0, recv: 0, rateTx: 0, rateRx: 0, listen: [], incoming: 0, verdict: 'allow', programs: new Set() };
+          sent: 0, recv: 0, rateTx: 0, rateRx: 0, listen: [], icmp: [], incoming: 0, verdict: 'allow', programs: new Set() };
         apps.set(key, g);
       }
       if (c.name && c.cgApp && !c.self) g.programs.add(c.name);
@@ -113,6 +113,7 @@ function useGroups(conns) {
       g.rateTx += rtx;
       g.rateRx += rrx;
       if (c.dir === 'listen') { g.listen.push(c); continue; }
+      if (c.dir === 'icmp') { g.icmp.push(c); continue; }     // a ping socket: the kernel keeps no destination
       if (c.dir === 'in') g.incoming++;
       rememberGeo(c);
       const h = g.hosts.get(c.remote) || { remote: c.remote, cc: c.cc, scope: c.scope, ports: new Set(), sent: 0, recv: 0, rateTx: 0, rateRx: 0, count: 0 };
@@ -287,7 +288,8 @@ function AppRow({ g, node, ctx, open, selected, onToggle, onSelect, maxBytes, tr
       </View>
       {open && node ? <TreeChildren node={node} ctx={ctx} /> : null}
       {open && !kids ? <Text style={{ fontSize: 11, color: t.textDim, height: 22, ...(direction() === 'rtl' ? { paddingRight: 40 } : { paddingLeft: 40 }) }}>
-        {g.listen.length ? tr('monitor.net.onlyListening', { ports: g.listen.map((c) => c.lport).join(', ') }) : tr('monitor.net.noDestinations')}</Text> : null}
+        {[g.listen.length ? tr('monitor.net.onlyListening', { ports: g.listen.map((c) => c.lport).join(', ') }) : '',
+          g.icmp?.length ? tr('monitor.net.icmpSockets', { count: g.icmp.length }) : ''].filter(Boolean).join(' · ') || tr('monitor.net.noDestinations')}</Text> : null}
     </View>
   );
 }
@@ -779,7 +781,11 @@ export function NetworkTab({ last, prefs }) {
   const rd = useRemoteDesktop();
   const rdg = remoteGroup(rd, tr);
   const vpn = useVpnGroup(tr);
-  const apps = [...fwApps, ...(rdg ? [rdg] : []), ...(vpn ? [vpn] : [])].sort((a, b) => b.sent + b.recv - (a.sent + a.recv) || b.conns.length - a.conns.length);
+  // the bridge's own sockets (its WebRTC UDP ports, found by its cgroup in conn.c) join that row
+  const bridge = fwApps.find((g) => g.key === REMOTE_KEY);
+  if (bridge && rdg) { rdg.listen = [...rdg.listen, ...bridge.listen]; rdg.conns = [...rdg.conns, ...bridge.conns]; }
+  else if (bridge) bridge.name = tr('monitor.net.remoteDesktop');
+  const apps = [...fwApps.filter((g) => !(rdg && g.key === REMOTE_KEY)), ...(rdg ? [rdg] : []), ...(vpn ? [vpn] : [])].sort((a, b) => b.sent + b.recv - (a.sent + a.recv) || b.conns.length - a.conns.length);
   const [view, setView, mprefs, setPrefs] = useNetView();
   const [chips, setChips] = useState([]);
   const [text, setText] = useState('');

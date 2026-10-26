@@ -405,5 +405,9 @@
   "status.mode": "Firewall",
   "status.lists": "Listas de bloqueio",
   "status.listsValue": "{lists} ativas · {entries} entradas",
-  "status.open": "Abrir o Monitor…"
+  "status.open": "Abrir o Monitor…",
+  "net.icmpSockets": {
+    "one": "{count} socket ICMP (ping): o sistema não guarda o destino",
+    "other": "{count} sockets ICMP (ping): o sistema não guarda o destino"
+  }
 }

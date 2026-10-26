@@ -1665,3 +1665,7 @@ over `/usr/local/lib/lordos`.
   its own `HOME`, `XDG_RUNTIME_DIR` and `dbus-run-session`, removed afterwards), driven and captured
   over its own `remote.sock` (keys, clicks and the still frame's lossless tiles); the user's session
   was not touched.
+- **Installed build (with the user's go-ahead):** `/usr/local/lib/lordos` replaced by the 0.8.5 test build
+  (backup of the previous one in `/usr/local/lib/lordos.1026.bak`), `lordos.service` restarted;
+  `lordos-sysreport`, `lordos-fetch` and `lordos-testbench` in `/usr/local/bin`, and
+  `/usr/share/applications/lordos-testbench.desktop`.

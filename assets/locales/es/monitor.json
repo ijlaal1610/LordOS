@@ -405,5 +405,9 @@
   "status.mode": "Cortafuegos",
   "status.lists": "Listas de bloqueo",
   "status.listsValue": "{lists} activas · {entries} entradas",
-  "status.open": "Abrir el Monitor…"
+  "status.open": "Abrir el Monitor…",
+  "net.icmpSockets": {
+    "one": "{count} socket ICMP (ping): el sistema no guarda su destino",
+    "other": "{count} sockets ICMP (ping): el sistema no guarda su destino"
+  }
 }
