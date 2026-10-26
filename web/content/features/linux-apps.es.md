@@ -18,7 +18,7 @@ El truco es un idioma en común. Las apps de Linux hablan **Wayland**, un protoc
 
 ## Cómo se abren
 
-Las apps con un archivo `.desktop` aparecen en el lanzador de apps, en el menú de inicio del tema Clásico y en Buscar, con sus íconos. Tocar una pasa por una puerta en `lord-server` que es angosta a propósito:
+Las apps con un archivo `.desktop` aparecen en el lanzador de apps, en el menú de inicio del tema Lord Classic y en Buscar, con sus íconos. Tocar una pasa por una puerta en `lord-server` que es angosta a propósito:
 
 1. La interfaz solo puede pasar el **id** de un archivo `.desktop` que ya esté instalado en `/usr/share/applications` o `~/.local/share/applications`, nunca un comando.
 2. `lord-server` vuelve a leer ese archivo, verifica que sea una aplicación real, visible y que no sea de terminal, y arma el comando a partir de su línea `Exec` según la especificación, sin shell y sin argumentos de quien llama. "Abrir con" en Archivos puede agregar exactamente un archivo, solo si la app declara los tipos de archivo que maneja y el archivo está en tu carpeta personal o en un disco que montaste.
@@ -29,7 +29,7 @@ El JavaScript de LordOS no puede escribir archivos `.desktop`, así que la inter
 ## Cómo se ven y se comportan
 
 - **El marco.** Las apps que le piden al compositor que dibuje su marco (las apps Qt, foot, Chromium con la barra de título del sistema) reciben el marco del tema. Las apps GTK 3 como Firefox lo reciben por un segundo protocolo de decoración que LordOS también habla. Las apps GTK 4 que dibujan su propia barra la conservan, y LordOS les recorta la sombra.
-- **Navegadores con una sola barra.** Desde 0.8.4, Chromium y Firefox preinstalados dibujan una sola barra con sus pestañas y los botones de la ventana adentro, del lado que usa el tema de LordOS (a la izquierda en Lord Default, a la derecha en Classic), y siguen en vivo un cambio de tema o de modo claro/oscuro. Un interruptor en Ajustes → Apariencia, "Navegadores: pestañas en la barra de título", vuelve a poner los dos bajo el marco de LordOS. El compositor respeta el marco que pida cada app, incluso si cambia con la ventana abierta.
+- **Navegadores con una sola barra.** Desde 0.8.4, Chromium y Firefox preinstalados dibujan una sola barra con sus pestañas y los botones de la ventana adentro, del lado que usa el tema de LordOS (a la izquierda en Lord Flow, a la derecha en Lord Classic), y siguen en vivo un cambio de tema o de modo claro/oscuro. Un interruptor en Ajustes → Apariencia, "Navegadores: pestañas en la barra de título", vuelve a poner los dos bajo el marco de LordOS. El compositor respeta el marco que pida cada app, incluso si cambia con la ventana abierta.
 - **Claro y oscuro, en vivo.** LordOS sirve por su cuenta el portal de escritorio "Settings" en el bus de la sesión, así que las apps GTK 4 y libadwaita siguen el modo, el color de acento y el orden de los botones. Las apps GTK 3 lo siguen a través del archivo de claves de GSettings, y LordOS trae un tema GTK que combina. Las dos cambian en vivo cuando cambiás de modo.
 - **Un solo portapapeles.** El texto que copiás en una app de Linux se pega en LordOS y al revés; las imágenes siguen disponibles después de cerrar la app de origen y aparecen en el historial del portapapeles (❖V).
 - **Seleccionar para copiar, clic del medio para pegar.** Desde 0.8.3 la selección primaria funciona entre apps Wayland, y entre ellas y las apps X11. En 0.8.5 (en desarrollo) la app que copió también ve su propia copia en el portapapeles, como dice el protocolo Wayland.

@@ -123,7 +123,7 @@ function StyleThumb({ id, accent, dark }) {
   );
 }
 
-// Desktop style: the two full appearances (Lord Default and Classic), switched live. The open app
+// Desktop style: the two full appearances (Lord Flow and Lord Classic), switched live. The open app
 // windows come back in the new one (sdk/index.js themes.use), Settings on this page.
 function StylePicker() {
   const t = useTheme();

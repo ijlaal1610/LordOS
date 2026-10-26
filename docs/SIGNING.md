@@ -254,7 +254,7 @@ troubleshooting: `sudo /usr/lib/lordos/bin/lord-server --check-code`).
 | | |
 |---|---|
 | ![modified](system-apps-modified.png) | ![recovery](system-apps-recovery.png) |
-| One byte changed in the default theme: the classic theme loads and says so | Every theme modified: the recovery screen |
+| One byte changed in the default theme: the Lord Classic theme loads and says so | Every theme modified: the recovery screen |
 | ![about verified](system-apps-about-verified-dark.png) | ![about development](system-apps-about-dev-light.png) |
 | About: System app, Verified | About: Development build |
 | ![app recovery](system-apps-app-recovery.png) | |

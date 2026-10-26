@@ -28,5 +28,5 @@ ningún comando escrito a mano.
   la barra de título y los bordes del sistema»; en Firefox, menú ☰ → Más herramientas → Personalizar
   barra de herramientas → desmarcar «Barra de título».
 - **GTK y GNOME** siguen el modo oscuro o claro y el color de acento de LordOS en vivo, y ponen los
-  botones de la ventana a la izquierda, como los semáforos (en el tema Clásico, a la derecha). Las
+  botones de la ventana a la izquierda, como los semáforos (en el tema Lord Classic, a la derecha). Las
   apps GTK 3 usan el tema «LordOS»; su color de acento es fijo.

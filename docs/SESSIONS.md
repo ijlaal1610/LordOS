@@ -241,7 +241,7 @@ In the SDK: `session.lock()`, `session.switchUser()` and `session.managed()`. Th
 ### Restart and Shut Down from a session
 
 Since 0.8.1 the crown menu ends with **Restart…** and **Shut Down…**, after Lock Screen, Switch
-User… and Log Out; the Classic theme has them behind a **Power** button at the bottom of its start
+User… and Log Out; the Lord Classic theme has them behind a **Power** button at the bottom of its start
 menu. Before, they were only on the login screen. Sleep is not offered: suspend and resume with the
 card lent to a session has not been tested on real hardware yet.
 
@@ -249,7 +249,7 @@ card lent to a session has not been tested on real hardware yet.
 |---|---|
 | ![crown menu](session-power-menu-light.png) | ![crown menu, dark](session-power-menu-dark.png) |
 | ![restart confirmation](session-power-restart-light.png) | ![restart confirmation, dark](session-power-restart-dark.png) |
-| ![Classic start menu, Power](session-power-classic-light.png) | ![Classic, dark](session-power-classic-dark.png) |
+| ![Lord Classic start menu, Power](session-power-classic-light.png) | ![Lord Classic, dark](session-power-classic-dark.png) |
 
 - **The confirmation** (`sdk/power.jsx`, `<PowerDialog>`, in the `modal` layer; a theme renders it
   inside its `ThemeProvider`) says what will happen and counts down 60 seconds; at zero it does it,
@@ -273,7 +273,7 @@ card lent to a session has not been tested on real hardware yet.
   session seen only through the remote desktop isn't offered them; before 0.8.5 it showed the
   sheet and nothing happened at the end of the countdown.
 - **Tested on VM 122:** the menu items, the sheet in light and dark, the countdown, Cancel and
-  Escape (no restart after the minute), the Classic Power button, a real Shut Down (`qm start` back
+  Escape (no restart after the minute), the Lord Classic Power button, a real Shut Down (`qm start` back
   to the login screen) and a real Restart (back to the login screen). The refusal with other users
   logged in was checked in the code path only: it needs a second account's password on the VM.
 

@@ -41,7 +41,7 @@ export const overclockAllowed = (cooler) => coolerHasFan(cooler);
 
 export const THEMES = ['default', 'classic'];
 export const MODES = ['light', 'dark'];
-// Lord Default's accents (themes/default/tokens.js)
+// Lord Flow's accents (themes/default/tokens.js)
 export const ACCENTS = [
   { id: 'azul', color: '#0a84ff' }, { id: 'violeta', color: '#bf5af2' }, { id: 'rosa', color: '#ff375f' },
   { id: 'naranja', color: '#ff9f0a' }, { id: 'verde', color: '#30d158' }, { id: 'grafito', color: '#8e8e93' },

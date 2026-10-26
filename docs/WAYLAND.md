@@ -57,7 +57,7 @@ From the LordOS Terminal: every new tab has `WAYLAND_DISPLAY`, `XDG_SESSION_TYPE
 `foot &` is enough. Apps also receive LordOS's language and region (`LANG`, `LC_*`, see
 `LANGUAGES.md`).
 
-They also appear in the **app launcher**, in the Classic theme's start menu and in the Store (see
+They also appear in the **app launcher**, in the Lord Classic theme's start menu and in the Store (see
 `NATIVE-APPS.md` and `PACKAGES.md`): they are the apps with a `.desktop` in
 `/usr/share/applications` or `~/.local/share/applications`. They open with one click, and their
 window carries the same icon in the Dock as in the app launcher (they're recognized by the Wayland
@@ -68,7 +68,7 @@ app id or by `StartupWMClass`).
 | ![launchpad](app-launcher-linux-apps.png) | ![launched](app-launched-from-launcher.png) |
 | The app launcher with the installed Linux apps next to the LordOS apps, each with its own icon | FeatherPad opened with one click; it carries the same icon in the Dock |
 | ![classic](classic-theme-start-menu.png) | ![classic2](classic-theme-linux-app.png) |
-| Classic theme: the start menu with LordOS apps and Linux apps, grouped by category | FeatherPad running in the classic theme, with its icon in the taskbar |
+| Lord Classic theme: the start menu with LordOS apps and Linux apps, grouped by category | FeatherPad running in the Lord Classic theme, with its icon in the taskbar |
 
 ### The launcher (`server/src/apps.c`)
 
@@ -174,7 +174,7 @@ resizing (see `WINDOWS.md`).
 | ![chromium light](chromium-csd-light.png) | ![chromium dark](chromium-csd-dark.png) |
 | Chromium with its own bar (0.8.4 default): tabs in the title bar and LordOS's traffic lights on the left, from LordOS's GTK theme | The same in dark: it follows the mode live |
 | ![before](chromium-csd-before.png) | ![classic](chromium-csd-classic.png) |
-| Before 0.8.4: Chromium asked to draw its own bar and LordOS put its frame on top anyway (two bars) | The Classic theme: the buttons go to the right (`:minimize,maximize,close`), switched live |
+| Before 0.8.4: Chromium asked to draw its own bar and LordOS put its frame on top anyway (two bars) | The Lord Classic theme: the buttons go to the right (`:minimize,maximize,close`), switched live |
 | ![firefox](firefox-csd.png) | ![own theme](chromium-own-theme.png) |
 | Firefox ESR with its own bar: LordOS's order and side, drawn in Firefox's own style | Chromium with its «Classic» theme (not GTK): LordOS's order and side, Chromium's own buttons |
 | ![gtk dark](decorations-gtk-dark.png) | ![gtk light](decorations-gtk3-light.png) |
@@ -209,8 +209,8 @@ What a window with its own bar still gets from LordOS (both themes, `WINDOWS.md`
   maximize, restore and minimize from its own buttons, double click on its bar (the app asks to
   maximize);
 - **the window menu**: a right click on a GTK headerbar asks `xdg_toplevel.show_window_menu`, and
-  the theme shows its menu at that point (`w.windowMenu`, `wm.showWindowMenu`): Lord Default the
-  menu bar's Window items (Minimize, Zoom, Close Window), Classic its title bar menu plus **Snap
+  the theme shows its menu at that point (`w.windowMenu`, `wm.showWindowMenu`): Lord Flow the
+  menu bar's Window items (Minimize, Zoom, Close Window), Lord Classic its title bar menu plus **Snap
   layouts**, which opens the same flyout its maximize button shows on hover (an app's own maximize
   button can't). Chromium shows its own menu on its tab strip instead (with «Use system title bar
   and borders» in it);
@@ -223,7 +223,7 @@ What a window with its own bar still gets from LordOS (both themes, `WINDOWS.md`
 | | |
 |---|---|
 | ![window menu](csd-window-menu.png) | ![snap layouts](csd-snap-layouts.png) |
-| GTK Demo (own frame): right click on its bar, Lord Default's window menu | Classic: the window menu's «Snap layouts» on an app with its own bar |
+| GTK Demo (own frame): right click on its bar, Lord Flow's window menu | Lord Classic: the window menu's «Snap layouts» on an app with its own bar |
 
 ### The browsers by default
 
@@ -270,7 +270,7 @@ What a window with its own bar still gets from LordOS (both themes, `WINDOWS.md`
   - The `LordOS`/`LordOS-dark` theme (`assets/gtk/`, installed in `/usr/share/themes`) is Adwaita
     with LordOS's colors, bar and traffic lights.
   - GTK 3 has no accent: its own stays blue.
-- **The buttons** go on the left in traffic-light order (`close,minimize,maximize:`). The Classic
+- **The buttons** go on the left in traffic-light order (`close,minimize,maximize:`). The Lord Classic
   theme asks for them on the right with the `gtkButtons` token (`:minimize,maximize,close`). GTK
   apps, Chromium and Firefox move them live when the theme changes.
 - **Qt/KDE.** They use the theme's frame (xdg-decoration). Qt 6 also reads `color-scheme` from the

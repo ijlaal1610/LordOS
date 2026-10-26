@@ -6,16 +6,16 @@ their own. `lord-server` runs the theme with QuickJS and paints it with its C en
 
 | Theme | Style |
 |---|---|
-| `default` | Lord Default: menu bar, dock with magnification, app launcher, Control Center |
-| `classic` | Classic: a centered taskbar, start menu with search, tray with quick settings and notifications, window snapping and a task view (0.8.3) |
+| `default` | Lord Flow: menu bar, dock with magnification, app launcher, Control Center |
+| `classic` | Lord Classic: a centered taskbar, start menu with search, tray with quick settings and notifications, window snapping and a task view (0.8.3) |
 
 ```sh
 npm install           # once (React + esbuild)
 npm run build         # bundles every theme, with the SDK and every app
 ```
 
-The user switches themes live from **Settings → Appearance → Desktop style** (Lord Default and
-Classic) or **Settings → Themes** (any installed theme), with no restart: the LordOS app windows that
+The user switches themes live from **Settings → Appearance → Desktop style** (Lord Flow and
+Lord Classic) or **Settings → Themes** (any installed theme), with no restart: the LordOS app windows that
 were open come back in the new theme. The choice is saved and respected on the next start.
 
 ## Creating a new theme

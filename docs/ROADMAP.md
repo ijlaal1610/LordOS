@@ -19,7 +19,7 @@ screenshots (QEMU `screendump`) and documented.
 - [x] Text with `stb_truetype` and the Inter font (OFL); PNG/JPEG images with `stb_image`.
 - [x] React 18 renderer (`runtime/`, `react-reconciler` 0.29) that creates and updates native nodes.
 - [x] Mouse events with bubbling (enter/leave/click), keyboard, timers, `requestAnimationFrame`.
-- [x] "Lord Default" theme: menu bar with blur, dock with magnification and tooltip, draggable
+- [x] "Lord Flow" theme: menu bar with blur, dock with magnification and tooltip, draggable
       windows with traffic lights, Files/Settings/About apps, light/dark mode and live accents.
 - [x] Cached shadows, reduced-resolution blur, damage tracking.
 
@@ -49,12 +49,12 @@ input (keyboard → characters per layout), copying only the damaged region to t
       (`ThemeProvider`/`useTheme`), `TextInput`, `ScrollView`, controls, system hooks.
 - [x] Apps as packages (`apps/<id>/manifest.json`): Files (real FS), Settings, About
       (real data), Calculator, Terminal (M4 notice).
-- [x] "Lord Default" theme: app launcher with search, Control Center (live CPU/RAM),
+- [x] "Lord Flow" theme: app launcher with search, Control Center (live CPU/RAM),
       drop-down menus, context menu, 4 wallpapers of our own.
-- [x] "Classic" theme as a template (taskbar + start menu, a single file).
+- [x] "Lord Classic" theme as a template (taskbar + start menu, a single file).
 - [x] Live theme switching from Settings, persistent, with protection against broken themes.
 
-Measured on the VM: server RAM 24–26 MB with Lord Default, 11 MB with Classic; theme
+Measured on the VM: server RAM 24–26 MB with Lord Flow, 11 MB with Lord Classic; theme
 switch ~30 ms + first frame ~60 ms.
 
 Left over from M3 and moved to later: volume and brightness (no audio or backlight on the VM),
@@ -715,7 +715,7 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   - [x] tests with real X11 apps (XTerm, xeyes, a Swing app, Neverball), CPU and GPU paths.
   - [ ] later: a separate or "untrusted" X display for restricted apps; X11 ↔ Wayland drag and drop;
     sharp X11 apps on HiDPI displays.
-- [x] **Turn the "Classic" theme into a second full appearance** (0.8.3; Settings → Appearance → Desktop style, see `DESIGN.md`, "Classic"), for people coming from the
+- [x] **Turn the "Lord Classic" theme into a second full appearance** (0.8.3; Settings → Appearance → Desktop style, see `DESIGN.md`, "Lord Classic"), for people coming from the
   most common desktop layout: a centered taskbar with a start menu, pinned and running apps, a
   system tray with quick settings and a notification panel, snap layouts for windows, rounded
   corners and translucent materials. Until 0.8.3 `themes/classic` was only a template (taskbar and

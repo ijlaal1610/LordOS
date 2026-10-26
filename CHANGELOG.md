@@ -12,6 +12,13 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Added
 
+- **The themes are called Lord Flow and Lord Classic.** The menu bar and Dock theme (formerly Lord
+  Default) is now **Lord Flow**, and the taskbar and start menu theme (formerly Classic) is **Lord
+  Classic**, in every language. Only the names changed: your choice is kept.
+- **Menus inside the window in Lord Classic.** Lord Classic has no menu bar on top, so an app with menus
+  of its own (Files, Text Editor, Notes, Terminal, PDF Viewer, Photos, Screenshots, Mail, Passwords)
+  shows them in a strip under its title bar (File, Edit, View, Go…, then Window and Help), as desktop
+  apps do with a taskbar; apps without menus of their own get no strip.
 - **Every native app has its own version.** Each app's manifest now carries a version (all start at
   0.8.5), the build refuses an app without a valid one, and Store → Installed shows it next to the app
   ("LordOS app · 0.8.5"), so the apps can later be versioned and released apart from LordOS.

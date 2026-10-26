@@ -18,7 +18,7 @@ The trick is a common language. Linux apps speak **Wayland**, a protocol for "he
 
 ## Opening them
 
-Apps with a `.desktop` file appear in the app launcher, the Classic theme's start menu and Search, with their icons. Clicking one goes through a deliberately narrow door in `lord-server`:
+Apps with a `.desktop` file appear in the app launcher, the Lord Classic theme's start menu and Search, with their icons. Clicking one goes through a deliberately narrow door in `lord-server`:
 
 1. The interface can only pass the **id** of a `.desktop` file that is already installed in `/usr/share/applications` or `~/.local/share/applications`, never a command.
 2. `lord-server` re-reads that file, checks it is a real, visible, non-terminal application, and builds the command from its `Exec` line by the specification, without a shell and without arguments from the caller. "Open With" in Files may add exactly one file, only if the app declares the file types it handles and the file is in your home folder or on a disk you mounted.
@@ -29,7 +29,7 @@ JavaScript in LordOS can't write `.desktop` files, so the interface can't invent
 ## How they look and behave
 
 - **The frame.** Apps that ask the compositor to draw their frame (Qt apps, foot, Chromium with its system title bar) get the theme's frame. GTK 3 apps such as Firefox get it through a second decoration protocol LordOS also speaks. GTK 4 apps that draw their own bar keep it, and LordOS trims their shadow.
-- **Browsers with a single bar.** Since 0.8.4, the preinstalled Chromium and Firefox draw one bar with their tabs and the window buttons inside it, on the side the LordOS theme uses (left in Lord Default, right in Classic), following a theme or light/dark change live. One switch in Settings → Appearance, "Browsers: tabs in the title bar", puts both back under the LordOS frame. The compositor honours whichever frame an app asks for, even when it changes while the window is open.
+- **Browsers with a single bar.** Since 0.8.4, the preinstalled Chromium and Firefox draw one bar with their tabs and the window buttons inside it, on the side the LordOS theme uses (left in Lord Flow, right in Lord Classic), following a theme or light/dark change live. One switch in Settings → Appearance, "Browsers: tabs in the title bar", puts both back under the LordOS frame. The compositor honours whichever frame an app asks for, even when it changes while the window is open.
 - **Light and dark, live.** LordOS serves the "Settings" desktop portal itself on the session bus, so GTK 4 and libadwaita apps follow the mode, accent colour and button order. GTK 3 apps follow through the GSettings keyfile, and LordOS ships a matching GTK theme. Both change live when you switch modes.
 - **One clipboard.** Text copied in a Linux app pastes in LordOS and the other way round; images stay available after the source app closes and appear in the clipboard history (❖V).
 - **Select to copy, middle click to paste.** Since 0.8.3 the primary selection works between Wayland apps, and between them and X11 apps. In 0.8.5 (in development) the app that copied also sees its own copy in the clipboard, as the Wayland protocol says.

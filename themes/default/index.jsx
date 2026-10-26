@@ -1,4 +1,4 @@
-// "Lord Default" theme — a menu bar and dock layout, with its own assets.
+// "Lord Flow" theme (id default) — a menu bar and dock layout, with its own assets.
 // The theme builds the desktop (wallpaper, bar, dock, app launcher, Control Center) and the
 // window frames. Apps come from apps/ through the SDK.
 import {

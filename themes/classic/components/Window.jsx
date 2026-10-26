@@ -4,13 +4,59 @@
 // offers the snap layouts (halves, thirds, quarters; sdk/windows.js "Snapping"). Moving and
 // resizing are done in C (<WindowShell>, wm.beginMove; docs/WINDOWS.md); a maximized window is
 // dragged out of its place by JS, and snaps where it is dropped.
-import { View, Text, Layer, addListener, wm, AppHost, windowTitle, WindowShell, windowIcon, snapZoneAt, screen, t as tr } from '@lordos/sdk';
+// Lord Classic has no global menu bar: an app that declares menus (File, Edit, View, Go…; the same
+// ones Lord Flow shows on top, useAppMenus) gets them in a strip under its title bar, with Window and
+// Help, as desktop apps do on a taskbar layout. Apps without menus of their own get no strip.
+import { View, Text, Layer, addListener, wm, AppHost, windowTitle, WindowShell, windowIcon, snapZoneAt, screen, useAppMenus, getApp, t as tr } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { MinimizeGlyph, MaximizeGlyph, RestoreGlyph, CloseGlyph, LayoutGlyph } from '../glyphs.jsx';
 import { Menu } from './Menu.jsx';
 
 export const TITLE_H = 34;
+const MENU_H = 26;
 const BTN_W = 44;
+
+// The window's menu strip: the app's menus, then Window and Help. One menu open at a time, under its
+// item; hovering another item while one is open moves to it, as menu bars do.
+function MenuStrip({ t, win, focused, menus }) {
+  const [open, setOpen] = useState(null);           // { i, x, y }
+  const refs = useRef([]);
+  const all = [
+    ...menus,
+    { label: tr('shell.menu.window'), items: [
+      { label: tr('shell.window.minimize'), onClick: () => wm.minimize(win.id) },
+      { label: tr('shell.window.maximize'), onClick: () => wm.toggleMaximize(win.id) },
+      '-',
+      { label: tr('shell.window.close'), hint: 'Alt+F4', onClick: () => wm.close(win.id) },
+    ] },
+    { label: tr('shell.menu.help'), items: [
+      ...(getApp('help') ? [{ label: tr('shell.help.open'), onClick: () => wm.open('help') }, '-'] : []),
+      { label: tr('shell.menu.about'), onClick: () => wm.open('about') },
+    ] },
+  ];
+  const at = (i) => {
+    const n = refs.current[i];
+    if (!n) return null;
+    const [x, y, , h] = lord.getLayout(n.id);
+    return { i, x, y: y + h + 2 };
+  };
+  return (
+    <View onMouseDown={(e) => e.stopPropagation()}
+      style={{ height: MENU_H, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, gap: 2,
+        backgroundColor: focused ? t.titleBg : t.titleBgBlur, borderBottom: `1px solid ${t.separator}` }}>
+      {all.map((m, i) => (
+        <View key={i} ref={(inst) => { refs.current[i] = inst; }}
+          onClick={() => setOpen((o) => (o?.i === i ? null : at(i)))}
+          onMouseEnter={() => { if (open && open.i !== i) setOpen(at(i)); }}
+          style={{ height: 22, paddingHorizontal: 8, borderRadius: 4, justifyContent: 'center',
+            backgroundColor: open?.i === i ? t.hover : 'transparent' }}>
+          <Text style={{ fontSize: 12, color: focused ? t.text : t.textDim, whiteSpace: 'nowrap' }}>{m.label}</Text>
+        </View>
+      ))}
+      {open && all[open.i] && <Menu t={t} x={open.x} y={open.y} items={all[open.i].items} onClose={() => setOpen(null)} width={250} />}
+    </View>
+  );
+}
 
 // The snap layouts (cells in 0..1 of the work area) and the zone each cell snaps to.
 const LAYOUTS = [
@@ -70,6 +116,7 @@ export function Window({ win, t, focused, app, tv }) {
   const [menu, setMenu] = useState(null);
   const hoverTimer = useRef(0), leaveTimer = useRef(0);
   const flat = win.maximized || !!win.snapped;
+  const appMenus = useAppMenus(win.id) || [];
   useEffect(() => {
     const offMove = addListener('pointermove', (e) => {
       const d = drag.current;
@@ -161,6 +208,7 @@ export function Window({ win, t, focused, app, tv }) {
         </FrameButton>
         <FrameButton t={t} focused={focused} danger onClick={() => wm.close(win.id)}>{(c) => <CloseGlyph color={c} />}</FrameButton>
       </View>
+      {appMenus.length ? <MenuStrip t={t} win={win} focused={focused} menus={appMenus} /> : null}
       <View style={{ flex: 1 }}><AppHost id={win.id} focused={focused && !tv} /></View>
       {tvCover}
       {layouts && !tv && <SnapLayouts t={t} win={win} at={layouts} onEnter={() => clearTimeout(leaveTimer.current)} onLeave={() => leaveMax()} onDone={() => setLayouts(null)} />}

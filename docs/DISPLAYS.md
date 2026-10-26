@@ -19,7 +19,7 @@ a 1080p one at 100 % is sharp on both. Tested on VM 118 (`lordos-notes`) with tw
 | ![gpu](displays-gpu.png) | ![unplugged](displays-unplugged.png) |
 | GPU path (llvmpipe, `LORD_GPU=1`): two EGL surfaces on one context, GTK at 150 % | The second display unplugged: its window came back to the main one |
 | ![classic](displays-classic.png) | |
-| The Classic theme: its bar on the main display, the second one is all work area | |
+| The Lord Classic theme: its bar on the main display, the second one is all work area | |
 
 The cursor plane is not in `screendump`; on the CPU path the cursor is drawn into the frame and
 shows in the captures.

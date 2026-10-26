@@ -25,7 +25,7 @@ Todo lo que se configura de LordOS está en Ajustes. El campo de arriba busca en
 | [Privacidad](settings:privacy) | Permisos de las apps (ver [Privacidad](help:privacy)) |
 | [Usuarios](settings:users) | Cuentas e inicio automático (ver [Usuarios y sesiones](help:users)) |
 | [Actualizaciones](settings:updates) | Paquetes de Debian (ver [Actualizaciones](help:updates)) |
-| [Temas](settings:themes) | Lord Default o Clásico |
+| [Temas](settings:themes) | Lord Flow o Lord Classic |
 | [Sesión](settings:session) | Cerrar la sesión |
 
 Los cambios se guardan solos. Lo que afecta a todo el equipo (red, usuarios, zona horaria,

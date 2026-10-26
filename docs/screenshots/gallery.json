@@ -379,7 +379,7 @@
   "theme": "dark",
   "variant": "rtl",
   "caption": {
-   "en": "Classic theme in Arabic",
+   "en": "Lord Classic theme in Arabic",
    "es": "Tema clásico en árabe",
    "pt": "Tema clássico em árabe"
   }
@@ -390,9 +390,9 @@
   "theme": "light",
   "variant": "normal",
   "caption": {
-   "en": "Linux app in the classic theme",
-   "es": "App de Linux con el tema clásico",
-   "pt": "App Linux no tema clássico"
+   "en": "Linux app in the Lord Classic theme",
+   "es": "App de Linux con el tema Lord Classic",
+   "pt": "App Linux no tema Lord Classic"
   }
  },
  {
@@ -401,9 +401,9 @@
   "theme": "dark",
   "variant": "normal",
   "caption": {
-   "en": "Classic theme start menu",
-   "es": "Menú de inicio del tema clásico",
-   "pt": "Menu iniciar do tema clássico"
+   "en": "Lord Classic theme start menu",
+   "es": "Menú de inicio del tema Lord Classic",
+   "pt": "Menu iniciar do tema Lord Classic"
   }
  },
  {
@@ -621,9 +621,9 @@
   "theme": "dark",
   "variant": "normal",
   "caption": {
-   "en": "Classic left taskbar with top bar",
-   "es": "Barra clásica izquierda y barra superior",
-   "pt": "Barra clássica à esquerda com barra superior"
+   "en": "Lord Classic left taskbar with top bar",
+   "es": "Barra de Lord Classic a la izquierda y barra superior",
+   "pt": "Barra do Lord Classic à esquerda com barra superior"
   }
  },
  {
@@ -632,9 +632,9 @@
   "theme": "dark",
   "variant": "normal",
   "caption": {
-   "en": "Classic taskbar on the left",
-   "es": "Barra de tareas clásica a la izquierda",
-   "pt": "Barra de tarefas clássica à esquerda"
+   "en": "Lord Classic taskbar on the left",
+   "es": "Barra de tareas de Lord Classic a la izquierda",
+   "pt": "Barra de tarefas do Lord Classic à esquerda"
   }
  },
  {
@@ -2293,9 +2293,9 @@
   "theme": "dark",
   "variant": "normal",
   "caption": {
-   "en": "Early classic theme",
-   "es": "Primer tema clásico",
-   "pt": "Primeiro tema clássico"
+   "en": "Early Lord Classic theme",
+   "es": "Primer tema Lord Classic",
+   "pt": "Primeiro tema Lord Classic"
   }
  },
  {
@@ -2656,9 +2656,9 @@
   "theme": "dark",
   "variant": "normal",
   "caption": {
-   "en": "Notes in the classic theme",
-   "es": "Notas con el tema clásico",
-   "pt": "Notas no tema clássico"
+   "en": "Notes in the Lord Classic theme",
+   "es": "Notas con el tema Lord Classic",
+   "pt": "Notas no tema Lord Classic"
   }
  },
  {

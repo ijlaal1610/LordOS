@@ -102,7 +102,7 @@ export const dock = {
 // Stored in settings.json. Left and right are physical sides of the screen, even with a
 // right-to-left language.
 export const DOCK_DEFAULTS = {
-  dockPosition: 'bottom',     // 'bottom' | 'left' | 'right' (Lord Default theme)
+  dockPosition: 'bottom',     // 'bottom' | 'left' | 'right' (Lord Flow theme)
   dockSize: 54,               // px of each icon (36–80)
   dockMagnify: true,          // magnification
   dockMagnifySize: 86,        // px of the largest icon when magnified (more than dockSize)

@@ -225,7 +225,7 @@ still the Dock's blur.
 
 ## Snapping (0.8.3)
 
-A theme turns it on with `configureWindows({ snap: true })` (Classic does; Lord Default doesn't).
+A theme turns it on with `configureWindows({ snap: true })` (Lord Classic does; Lord Flow doesn't).
 The geometry is in `sdk/snap.js` (no runtime imports, tested by `server/tests/snap_test.mjs`), the
 window side in `sdk/windows.js`.
 
@@ -246,8 +246,8 @@ window side in `sdk/windows.js`.
   Super+arrows (`snapNext` in `snap.js`), and `w.snapped` (the zone) for a theme that squares the
   corners of a snapped window.
 - **Measured** (VM 119, 1280×800, CPU path, a 960 × 600 Files window dragged in circles for 6 s
-  three times through QMP, about 52 moves per second): Classic 7.5–7.7 ms of work per frame (JS
-  0.35, paint 6.4–6.7) and Lord Default 13.1–13.4 ms (paint 12.1–12.3, its Dock's blur), both at
+  three times through QMP, about 52 moves per second): Lord Classic 7.5–7.7 ms of work per frame (JS
+  0.35, paint 6.4–6.7) and Lord Flow 13.1–13.4 ms (paint 12.1–12.3, its Dock's blur), both at
   the rate of the input. A drag that keeps crossing the top edge (the preview appearing and going)
   costs 9 ms per frame (JS 1.6). Without the preview polling, 6.3–6.6 ms.
 

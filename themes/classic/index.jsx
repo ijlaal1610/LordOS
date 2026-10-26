@@ -1,6 +1,6 @@
 // "Classic" theme — the second full appearance of LordOS: a centered taskbar with a start menu,
 // pinned and open apps, a tray with quick settings and a notification panel, window snapping
-// (halves, thirds, quarters) and a task view. The apps are the same as in Lord Default: this theme
+// (halves, thirds, quarters) and a task view. The apps are the same as in Lord Flow: this theme
 // only supplies the window frame and the shell, and restyles the SDK's shared controls through its
 // tokens (tokens.js), so every app adapts on its own. See themes/README.md and docs/DESIGN.md.
 //
