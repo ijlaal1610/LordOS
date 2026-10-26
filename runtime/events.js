@@ -103,7 +103,10 @@ globalThis.__lordEvent = (type, id, x, y, button) => {
 // XKB layout is loaded only the code and value arrive and keymap.js is used as a fallback.
 globalThis.__lordKey = (code, value, key, chr, base, flags) => {
   const ev = key === undefined ? translate(code, value) : nativeKey(code, value, key, chr, base, flags);
-  run(DiscreteEventPriority, () => { for (const fn of listeners[ev.down ? 'keydown' : 'keyup']) fn(ev); });
+  // each listener on its own: one that throws doesn't take the key from the others (a text field)
+  run(DiscreteEventPriority, () => {
+    for (const fn of listeners[ev.down ? 'keydown' : 'keyup']) { try { fn(ev); } catch (e) { console.error('key listener:', e); } }
+  });
 };
 
 // Touchpad, touchscreen and remote-desktop trackpad (server/src/tp, docs/TRACKPAD.md):

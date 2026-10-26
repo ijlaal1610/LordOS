@@ -53,7 +53,11 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   session, a virtual machine) is faster with the same pixels: the backdrop blur 2.5×, rounded
   rectangles 2×, and `canvas.c` builds at -O3. The video now follows the browser screen's refresh rate
   (60, 120, 144 Hz…) instead of a fixed 30: a video window under blurred windows went from 18 to 35
-  frames a second on a virtual machine without a GPU. The page starts muted, as browsers
+  frames a second on a virtual machine without a GPU. Heavy frames paint on several threads (up to 8,
+  only while needed): a 1080p session went from 45 to 55–58 frames a second.
+- **The keyring box couldn't be answered when several apps asked at once:** every new request wiped
+  the field and Cancel brought it back for the next one. One answer now goes to all of them, and a
+  key listener that fails no longer keeps the key from the others. The page starts muted, as browsers
   require, and its sound button hides in the top bar: the first click or key in the session now
   turns the sound on.
 - **Files → This computer** shows `/proc`, `/sys`, `/dev` and `/run` with a lock and says why it
