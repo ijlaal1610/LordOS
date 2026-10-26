@@ -1669,3 +1669,7 @@ over `/usr/local/lib/lordos`.
   (backup of the previous one in `/usr/local/lib/lordos.1026.bak`), `lordos.service` restarted;
   `lordos-sysreport`, `lordos-fetch` and `lordos-testbench` in `/usr/local/bin`, and
   `/usr/share/applications/lordos-testbench.desktop`.
+- **lord-netperm (with the user's go-ahead to change the VM):** VM 116 had no per-app firewall service (System
+  Information → Checks reported it). Installed `/usr/local/lib/lordos/bin/lord-netperm` and
+  `/etc/systemd/system/lord-netperm.service` (the ISO's unit with that path), enabled and started; the network
+  kept working.
