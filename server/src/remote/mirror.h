@@ -50,8 +50,10 @@ void mirror_greeter(const char *json);
 void mirror_shown(void);
 
 /* A new screen frame (without the cursor), for the encoder; compares it tile by tile with the previous
- * one: the damage goes out at once, the lossless tiles once the screen is still. */
-void mirror_frame(const uint32_t *px, int stride, int w, int h);
+ * one: the damage goes out at once, the lossless tiles once the screen is still. dmg (x0, y0, x1, y1):
+ * where the compositor drew since the last call, so only those tiles are compared (all of them twice a
+ * second anyway); NULL: anywhere. */
+void mirror_frame(const uint32_t *px, int stride, int w, int h, const int *dmg);
 /* Cursor: position and mode (0 arrow, 1 app image, 2 hidden); the image only if gen changed. */
 void mirror_cursor(int x, int y, int mode, const uint32_t *argb, int w, int h, int hx, int hy, unsigned gen);
 /* Lossless tiles for viewers whose video plays once the screen is still, the encoder's

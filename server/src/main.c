@@ -1243,7 +1243,10 @@ static void present_cpu(Server *s, Out *o, int index, Rect r, int feed) {
         const Canvas *seen = media_composed(&out, mirror_watchers() > 0, &mc);
         view_reset();
         mirror_composed_on_gpu(0);        /* this frame was painted on the CPU */
-        mirror_frame(seen->px, seen->stride, W, H);
+        /* only what went into this buffer can differ from the last frame (not with a fullscreen app
+         * painted over it, nor when the frame is the copy with protected windows in black) */
+        int dmg[4] = { need.x0, need.y0, need.x1, need.y1 };
+        mirror_frame(seen->px, seen->stride, W, H, seen == &out && !wl_fullscreen_active() ? dmg : NULL);
         mirror_cursor(px_, py_, k.mode, k.px, k.w, k.h, k.hx, k.hy, k.gen);
     }
     cursor_local(s, &k, out_scale(o));      /* the arrow is also an image (cursor.c) */
@@ -1283,11 +1286,22 @@ static void present_cpu(Server *s, Out *o, int index, Rect r, int feed) {
 }
 
 /* Memory frames (headless session, the capture view): scene + fullscreen, then the remote desktop. */
-static void present_memory(Server *s, Out *o, int index, int feed) {
+static void present_memory(Server *s, Out *o, int index, int feed, Rect drawn) {
     if (!o->frame) return;
+    /* Without a fullscreen app the frame is the scene itself: read it there, no copy. A fullscreen app
+     * paints over a copy (o->frame). Right after one, the whole screen counts as changed. */
+    static int fs_before;
+    int fs = wl_fullscreen_active(), whole = fs || fs_before;
+    fs_before = fs;
     Canvas out;
-    canvas_init(&out, o->frame, o->scene.w, o->scene.h, o->scene.w);
-    canvas_copy(&out, &o->scene);
+    if (fs) {
+        canvas_init(&out, o->frame, o->scene.w, o->scene.h, o->scene.w);
+        canvas_copy(&out, &o->scene);
+    } else out = o->scene;
+    if (drawn.x0 < 0) drawn.x0 = 0;
+    if (drawn.y0 < 0) drawn.y0 = 0;
+    if (drawn.x1 > out.w) drawn.x1 = out.w;
+    if (drawn.y1 > out.h) drawn.y1 = out.h;
     view_of(o, index);
     wl_paint_fullscreen(&out);
     Cur k;
@@ -1299,7 +1313,8 @@ static void present_memory(Server *s, Out *o, int index, int feed) {
         MediaCursor mc = { x, y, k.mode, k.px, k.w, k.h, k.hx, k.hy };
         const Canvas *seen = media_composed(&out, mirror_watchers() > 0, &mc);
         mirror_composed_on_gpu(0);        /* this frame was painted on the CPU */
-        mirror_frame(seen->px, seen->stride, o->scene.w, o->scene.h);
+        int dmg[4] = { drawn.x0, drawn.y0, drawn.x1, drawn.y1 };
+        mirror_frame(seen->px, seen->stride, o->scene.w, o->scene.h, seen == &out && !whole ? dmg : NULL);
         mirror_cursor(x, y, k.mode, k.px, k.w, k.h, k.hx, k.hy, k.gen);
     }
     view_reset();
@@ -1353,8 +1368,8 @@ static void render_frame(Server *s) {
     int main_shown = 0;                 /* the main display got this frame */
     if (s->headless) {
         Out *o = &s->out[0];
-        paint_out(s, o, 0, 1);
-        present_memory(s, o, 0, 1);
+        Rect drawn = paint_out(s, o, 0, 1);
+        present_memory(s, o, 0, 1, drawn);
     } else {
         for (int i = 0; i < OUT_MAX; i++) {
             Out *o = &s->out[i];
@@ -1387,7 +1402,7 @@ static void render_frame(Server *s) {
                     int cx, cy;
                     pointer_phys(s, o, &cx, &cy);
                     mirror_composed_on_gpu(1);
-                    mirror_frame(rb, o->scene.w, o->scene.w, o->scene.h);
+                    mirror_frame(rb, o->scene.w, o->scene.w, o->scene.h, NULL);
                     mirror_cursor(cx, cy, k.mode, k.px, k.w, k.h, k.hx, k.hy, k.gen);
                 }
                 view_reset();
@@ -1413,8 +1428,8 @@ static void render_frame(Server *s) {
                 c->full = out_frames(c, 1) == 0;
             }
             if (c->scene.px && (c->full || !box_empty(c->pend) || c->cdirty || wl_fullscreen_active())) {
-                paint_out(s, c, OUT_MAX, 1);
-                present_memory(s, c, OUT_MAX, 1);
+                Rect drawn = paint_out(s, c, OUT_MAX, 1);
+                present_memory(s, c, OUT_MAX, 1, drawn);
             }
         } else if (c->on) { out_free(c); c->on = 0; c->pend = (Box){ 0, 0, 0, 0 }; }
     }

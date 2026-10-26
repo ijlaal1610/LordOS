@@ -267,6 +267,12 @@ screen's refresh rate, and whether the session composes on the GPU or the CPU (h
 time per frame); 📌 keeps the bar shown (remembered in that browser). The session sends it as `RP_VINFO` (fixed-size numbers, when they change), the bridge
 turns it into `{"t":"vinfo"}` with numbers only.
 
+**Only what changed costs anything.** The compositor tells the mirror where it drew (`mirror_frame`'s
+damage box): only those 64×64 tiles are compared with the last frame (all of them twice a second
+anyway, in case), and each of the encoder's three input slots copies only what changed since it was
+last written. A session without a monitor reads the scene directly (no copy) unless a fullscreen app
+paints over it.
+
 **The GPU keeps composing.** Until 0.8.3 a remote viewer switched the session to CPU composition.
 Now `gpu_frame` reads the composed frame back (`gpu_read_next`) once, for the encoder and the tiles,
 and the screen keeps its GPU composition. Only two cases still use the CPU path: protected windows on

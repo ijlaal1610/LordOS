@@ -304,7 +304,7 @@ static void handle(Client *c, int type, const unsigned char *d, uint32_t n) {
             c->vfps = hz >= 24 && hz <= 360 ? hz : 30;
             if (c->vcodec && c->vcodec != was) c->vneed_key = 1;
             video_update();
-            if (c->vcodec && fb) mstream_frame(fb, W, W, H);
+            if (c->vcodec && fb) mstream_frame(fb, W, W, H, NULL);
             else if (c->vcodec && cb.refresh) cb.refresh();     /* the first viewer: a whole frame */
         }
         break;
@@ -571,7 +571,10 @@ void mirror_dispatch(const struct pollfd *p, int n) {
     }
 }
 
-void mirror_frame(const uint32_t *px, int stride, int w, int h) {
+#define FULL_CHECK_MS 500           /* with damage hints, every tile is still compared this often */
+
+void mirror_frame(const uint32_t *px, int stride, int w, int h, const int *dmg) {
+    static double full_at;
     if (lfd < 0 || !mirror_watchers()) { free(fb); fb = NULL; return; }
     int resized = !fb || w != W || h != H, any = 0;
     int new_size = w != W || h != H;
@@ -592,8 +595,19 @@ void mirror_frame(const uint32_t *px, int stride, int w, int h) {
     } else {
         if (!chg) chg = calloc((size_t)TW * TH, 1);
         if (chg) memset(chg, 0, (size_t)TW * TH);
-        for (int ty = 0; ty < TH; ty++)
-            for (int tx = 0; tx < TW; tx++) {
+        /* only the tiles the compositor drew over (the whole screen now and then, in case) */
+        int tx0 = 0, ty0 = 0, tx1 = TW, ty1 = TH;
+        double t = now_ms();
+        if (dmg && t - full_at < FULL_CHECK_MS) {
+            tx0 = dmg[0] < 0 ? 0 : dmg[0] / TILE;
+            ty0 = dmg[1] < 0 ? 0 : dmg[1] / TILE;
+            tx1 = dmg[2] <= 0 ? 0 : (dmg[2] + TILE - 1) / TILE;
+            ty1 = dmg[3] <= 0 ? 0 : (dmg[3] + TILE - 1) / TILE;
+            if (tx1 > TW) tx1 = TW;
+            if (ty1 > TH) ty1 = TH;
+        } else full_at = t;
+        for (int ty = ty0; ty < ty1; ty++)
+            for (int tx = tx0; tx < tx1; tx++) {
                 int x = tx * TILE, y = ty * TILE;
                 int tw = x + TILE > W ? W - x : TILE, th = y + TILE > H ? H - y : TILE;
                 int changed = 0;
@@ -612,7 +626,20 @@ void mirror_frame(const uint32_t *px, int stride, int w, int h) {
         send_damage();
         int video = 0;
         for (int i = 0; i < MAX_CLIENTS; i++) if (cl[i].fd >= 0 && cl[i].vcodec) video = 1;
-        if (video) mstream_frame(fb, W, W, H);
+        if (video) {
+            /* the changed tiles' box: the encoder's slots copy only that */
+            int box[4] = { W, H, 0, 0 };
+            for (int ty = 0; chg && ty < TH; ty++)
+                for (int tx = 0; tx < TW; tx++) {
+                    if (!chg[ty * TW + tx]) continue;
+                    int x = tx * TILE, y = ty * TILE, x1 = x + TILE > W ? W : x + TILE, y1 = y + TILE > H ? H : y + TILE;
+                    if (x < box[0]) box[0] = x;
+                    if (y < box[1]) box[1] = y;
+                    if (x1 > box[2]) box[2] = x1;
+                    if (y1 > box[3]) box[3] = y1;
+                }
+            mstream_frame(fb, W, W, H, chg && box[2] > box[0] ? box : NULL);
+        }
     }
     for (int i = 0; i < MAX_CLIENTS; i++) pump(&cl[i]);
 }

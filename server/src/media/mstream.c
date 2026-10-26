@@ -33,6 +33,7 @@ typedef struct {
     size_t len, cap, total;
     long frames, enc100;
     int hw;
+    int dirty[4][4];            /* per input slot: what changed since it was last written (x0, y0, x1, y1) */
 } Enc;
 
 static Enc E[MS_CODECS];
@@ -143,6 +144,7 @@ static int start(Enc *e, int codec) {
     e->w = fw;
     e->h = fh;
     e->t0 = now_ms();
+    for (int i = 0; i < 4; i++) { e->dirty[i][0] = e->dirty[i][1] = 0; e->dirty[i][2] = fw; e->dirty[i][3] = fh; }
     e->last_feed = 0;
     e->pending = 1;
     e->sent_kbps = e->kbps;
@@ -210,8 +212,13 @@ static void feed(Enc *e, int codec) {
     int slot = -1;
     for (int i = 0; i < s->in_slots; i++) if (!s->in_busy[i]) { slot = i; break; }
     if (slot < 0) return;                                     /* the encoder is behind: the newest frame waits */
+    /* only what changed since this slot was last written: the rest of it is already the screen */
     uint32_t *dst = (uint32_t *)(s->in_map + (size_t)slot * e->w * e->h * 4);
-    for (int y = 0; y < e->h; y++) memcpy(dst + (size_t)y * e->w, fpx + (size_t)y * fstride, (size_t)e->w * 4);
+    int *d = slot < 4 ? e->dirty[slot] : NULL, full[4] = { 0, 0, e->w, e->h };
+    if (!d) d = full;
+    int x0 = d[0] < 0 ? 0 : d[0], y0 = d[1] < 0 ? 0 : d[1], x1 = d[2] > e->w ? e->w : d[2], y1 = d[3] > e->h ? e->h : d[3];
+    for (int y = y0; y < y1 && x1 > x0; y++) memcpy(dst + (size_t)y * e->w + x0, fpx + (size_t)y * fstride + x0, (size_t)(x1 - x0) * 4);
+    if (slot < 4) d[0] = d[1] = d[2] = d[3] = 0;
     if (e->kbps != e->sent_kbps) { mp_sendv(s->sock, MM_RATE, 0, e->kbps, 0, 0, 0); e->sent_kbps = e->kbps; }
     if (e->want_key) { mp_sendv(s->sock, MM_KEYFRAME, 0, 0, 0, 0, 0); e->want_key = 0; }
     if (mp_sendv(s->sock, MM_INFRAME, (uint32_t)slot, (int64_t)(t - e->t0), 0, 0, 0)) return;
@@ -222,15 +229,27 @@ static void feed(Enc *e, int codec) {
     e->flushing = 0;
 }
 
-void mstream_frame(const uint32_t *px, int stride, int w, int h) {
+void mstream_frame(const uint32_t *px, int stride, int w, int h, const int *box) {
     fpx = px;
     fstride = stride;
     fw = w & ~1;
     fh = h & ~1;
+    int all[4] = { 0, 0, fw, fh };
+    if (!box) box = all;
     for (int c = 1; c < MS_CODECS; c++) {
         Enc *e = &E[c];
         if (!e->viewers) continue;
         if (e->id && (e->w != fw || e->h != fh)) stop(e);    /* new screen size: a new encoder */
+        for (int i = 0; i < 4; i++) {                        /* every slot misses this change */
+            int *d = e->dirty[i];
+            if (d[2] <= d[0] || d[3] <= d[1]) memcpy(d, box, sizeof all);
+            else {
+                if (box[0] < d[0]) d[0] = box[0];
+                if (box[1] < d[1]) d[1] = box[1];
+                if (box[2] > d[2]) d[2] = box[2];
+                if (box[3] > d[3]) d[3] = box[3];
+            }
+        }
         e->pending = 1;
         feed(e, c);
     }
