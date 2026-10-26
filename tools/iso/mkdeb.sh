@@ -247,6 +247,11 @@ chmod 644 "$D/changelog.gz"
 GPUDEPS=""
 # readelf (not ldd): also works when building for another architecture (tools/rpi)
 if readelf -d "$L/bin/lord-server" 2>/dev/null | grep -q "NEEDED.*libgbm"; then GPUDEPS=", libgbm1, libegl1, libgles2"; fi
+# the test bench's 3D view draws through wayland-egl (built only when Mesa's EGL was there)
+if readelf -d "$PKG/usr/bin/lordos-testbench" 2>/dev/null | grep -q "NEEDED.*libwayland-egl"; then
+    case "$GPUDEPS" in *libegl1*) ;; *) GPUDEPS="$GPUDEPS, libegl1, libgles2" ;; esac
+    GPUDEPS="$GPUDEPS, libwayland-egl1"
+fi
 DOCDEPS=""
 if [ -x "$L/bin/lord-doc" ]; then DOCDEPS=", libpoppler-glib8t64, libarchive13t64, libcairo2, libfreetype6, libfontconfig1, poppler-data"; fi
 MEDIADEPS=""

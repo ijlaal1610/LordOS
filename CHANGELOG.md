@@ -76,6 +76,8 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **The package now depends on `libwayland-egl1` when the Test Bench is built with its 3D view**, so
+  `lordos-testbench` starts on a system that didn't have it.
 - **Remote desktop video came in blocks for the first minutes, and had no sound.** The browser's
   bandwidth estimate was a fixed ceiling, so a new connection stayed near 3 Mbit/s for about three
   minutes; it now reaches the top in about 10 s on a local network and still slows down on
