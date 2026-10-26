@@ -25,6 +25,9 @@
  *                                               lordos-sysreport, no serials, addresses or names) plus
  *                                               session: how this session composes the screen and its
  *                                               GPU context (gpu/gpu.h gpu_info, lord_composition)
+ *   lord.sysinfo.facts()                        the Checks tab's facts (sysreport/facts.c): lord-server's
+ *                                               uid/euid, its cgroup and who owns it, app scopes, and
+ *                                               whether anything listens on the remote desktop's port
  *   lord.sysinfo.markdown()                     the same report as Markdown, as lordos-sysreport prints it,
  *                                               with a "This session" section (System Information's Report tab)
  *   lord.fan.status() / setProfile(p) / setCurve(pts) / force(v) / caseConfig()   (js_fan.c, lord-fand)
@@ -46,6 +49,7 @@
 #include "../hw/hwscan.h"
 #include "../gpu/gpu.h"
 #include "../sysreport/sysreport.h"
+#include "../sysreport/facts.h"
 #include "lord_version.h"           /* build/gen: the version for the report */
 #include "../hw/mimeapps.h"
 #include "../hw/notifyd.h"
@@ -435,8 +439,27 @@ static JSValue f_sysinfo_markdown(JSContext *c, JSValueConst t, int argc, JSValu
     return v;
 }
 
+static JSValue f_sysinfo_facts(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    const char *root = hwscan_root();
+    SrFacts f;
+    sr_facts(&f, root);
+    JSValue o = JS_NewObject(c);
+    JS_SetPropertyStr(c, o, "uid", JS_NewInt32(c, f.uid));
+    JS_SetPropertyStr(c, o, "euid", JS_NewInt32(c, f.euid));
+    JS_SetPropertyStr(c, o, "cgroup", JS_NewString(c, f.cgroup));
+    JS_SetPropertyStr(c, o, "leafRoot", f.leaf_root < 0 ? JS_NULL : JS_NewBool(c, f.leaf_root));
+    JS_SetPropertyStr(c, o, "parentRoot", f.parent_root < 0 ? JS_NULL : JS_NewBool(c, f.parent_root));
+    JS_SetPropertyStr(c, o, "appScopes", JS_NewInt32(c, f.app_scopes));
+    int l = sr_tcp_listening(root, 5673);   /* the remote desktop's port (docs/REMOTE.md) */
+    JS_SetPropertyStr(c, o, "remoteListening", l < 0 ? JS_NULL : JS_NewBool(c, l));
+    JS_SetPropertyStr(c, o, "fixture", JS_NewBool(c, root[0] != 0));
+    return o;
+}
+
 static const JSCFunctionListEntry sysinfo_funcs[] = {
     JS_CFUNC_DEF("report", 0, f_sysinfo_report),
+    JS_CFUNC_DEF("facts", 0, f_sysinfo_facts),
     JS_CFUNC_DEF("markdown", 0, f_sysinfo_markdown),
 };
 

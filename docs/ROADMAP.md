@@ -595,7 +595,8 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   - [x] the GPU's live layers (EGL, composition, scanout) through `lord.sysinfo` (2026-10-26);
   - [x] the read-only `hw-memory-modules` admin action (2026-10-26);
   - [x] Overview, Hardware and Compatibility tabs (en, es, pt; 2026-10-26; right to left not yet checked on screen);
-  - [ ] Checks, configured and effective, with the probe app and a signed `checks.json`;
+  - [x] Checks part 1: what lord-server sees itself, configured and effective (2026-10-26);
+  - [ ] Checks part 2: the probe app that tries what must fail (needs approval);
   - [x] reports: the Report tab with the exact text, Copy and Save to Documents (2026-10-26);
   - [ ] first real reports from the Pi 5 with a monitor and the RX 580 PC.
   - [ ] from the live USB without installing: a *Check this computer* boot entry, reports marked

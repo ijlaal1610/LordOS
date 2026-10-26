@@ -1,6 +1,7 @@
 // sysinfo_model_test.mjs — System Information's model (apps/sysinfo/model.js, 0.8.5): the GPU layers,
 // the reasons for CPU composition, the Compatibility panel and the Hardware sections. Run by
 // tests/run_suites.sh (needs node).
+import { evaluate, LIMITS } from '../../apps/sysinfo/checks.js';
 import { compositionReason, cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, reportFileName, reportJson, parseMemoryLines } from '../../apps/sysinfo/model.js';
 
 let n = 0, bad = 0;
@@ -96,6 +97,32 @@ eq('module lines', parseMemoryLines(['mem 16384|DDR4|3200|2666|DIMM_A1|BANK 0|Ki
   { sizeMB: 4096, type: 'RAM', speed: 0, configured: 0, slot: 'DIMM 0', bank: '', maker: 'QEMU' }]);
 eq('bad lines dropped', parseMemoryLines(['fw x y', 'mem 1|DDR4|1|1|a|b', 'mem x|DDR4|1|1|a|b|c', 'mem 1|DDR4|1|1|a|b|c|d', `mem 1|DDR4|1|1|${'a'.repeat(40)}|b|c`, null]), []);
 eq('not a list', parseMemoryLines(undefined), []);
+
+// ---- checks (part 1) ----
+const st = (rows) => Object.fromEntries(rows.map((r) => [r.id, r.state]));
+const good = {
+  report: { software: { landlockAbi: 6, bpfLsm: true, kernelConfig: { CONFIG_CGROUP_BPF: 'y' }, services: { 'lord-netperm': true } },
+    session: { composition: 'gpu', renderer: 'AMD Radeon RX 580' } },
+  facts: { uid: 1000, euid: 1000, cgroup: '/system.slice/lordos.service/lordos-session-1000/server', leafRoot: true, parentRoot: true, appScopes: 3, remoteListening: false },
+  code: { state: 'verified', files: 9, refused: [] }, remote: { enabled: false }, stats: { rssKB: 71680 },
+};
+eq('a healthy system', st(evaluate(good)), { serverUser: 'pass', landlock: 'pass', netperm: 'pass', code: 'pass', remoteClosed: 'pass', cgroups: 'pass', gpu: 'pass', memory: 'info' });
+eq('levels', evaluate(good).map((r) => r.level), ['configured', 'configured', 'configured', 'effective', 'effective', 'configured', 'configured', 'measured']);
+const broken = {
+  report: { software: { landlockAbi: 3, bpfLsm: false, kernelConfig: {}, services: { 'lord-netperm': false } }, session: { composition: 'gpu-off', gpuInit: 'no-3d' } },
+  facts: { uid: 0, euid: 0, cgroup: '/system.slice/lordos.service/lordos-session-0/server', leafRoot: false, parentRoot: true, appScopes: 0, remoteListening: true },
+  code: { state: 'verified', files: 9, refused: [{ path: 'x' }] }, remote: { enabled: false },
+};
+eq('a broken system', st(evaluate(broken)), { serverUser: 'fail', landlock: 'warn', netperm: 'fail', code: 'fail', remoteClosed: 'fail', cgroups: 'fail', gpu: 'warn' });
+eq('broken notes', evaluate(broken).map((r) => r.note), ['serverUserRoot', 'landlockOld', 'netpermOff', 'codeRefused', 'remoteOffListening', 'cgroupsUser', 'gpuNot.no-3d']);
+eq('remote on by choice is information', evaluate({ ...good, remote: { enabled: true }, facts: { ...good.facts, remoteListening: true } }).find((r) => r.id === 'remoteClosed'),
+  { id: 'remoteClosed', paper: '§11.4', level: 'effective', state: 'info', note: 'remoteOnListening', vars: { port: LIMITS.remotePort } });
+eq('no BPF LSM is a warning', evaluate({ ...good, report: { ...good.report, software: { ...good.report.software, bpfLsm: false } } }).find((r) => r.id === 'netperm').note, 'netpermNoLsm');
+eq('headless is information', evaluate({ ...good, report: { ...good.report, session: { composition: 'headless' } } }).find((r) => r.id === 'gpu').state, 'info');
+eq('development code is a warning', evaluate({ ...good, code: { state: 'development' } }).find((r) => r.id === 'code').state, 'warn');
+eq('outside LordOS\'s session tree it is only information', evaluate({ ...good, facts: { ...good.facts, cgroup: '/user.slice/user-1000.slice/session-3.scope' } }).find((r) => r.id === 'cgroups'),
+  { id: 'cgroups', paper: '§11.4', level: 'configured', state: 'info', note: 'cgroupsNotSession', vars: {} });
+eq('nothing known', st(evaluate({})), { serverUser: 'unknown', landlock: 'unknown', netperm: 'unknown', code: 'unknown', remoteClosed: 'unknown', cgroups: 'unknown', gpu: 'warn' });
 
 console.log(`sysinfo-model-test: ${n - bad} ok, ${bad} failed`);
 process.exit(bad ? 1 : 0);

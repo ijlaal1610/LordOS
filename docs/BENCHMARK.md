@@ -277,7 +277,23 @@ so it shows disabled):
 
 ![Hardware → Memory](sysinfo-memory.png)
 
-Not yet: video decode and encode and Vulkan (shown as *Not checked*), the Checks tab.
+**Checks, part 1 (2026-10-26):** what `lord-server` can see itself, evaluated in `apps/sysinfo/checks.js`
+(the thresholds are constants there, so they are signed with the theme bundle instead of a separate
+`checks.json`), from `lord.sysinfo.facts()` (`sysreport/facts.c`: lord-server's uid/euid from
+`/proc/self/status`, its cgroup and who owns it, the app scopes beside it, and whether anything
+listens on port 5673 in `/proc/net/tcp{,6}`): display server without root (§2.2), Landlock ABI ≥ 6
+(§6.4), `lord-netperm` running with cgroup BPF and the BPF LSM (§6.6), verified system code
+(effective: every bundle loaded this session matched; §6.9), remote desktop closed when off
+(effective: nothing listens on its port; §11.4), the session's cgroup tree owned by root (only inside
+`…/lordos-session-<uid>/server`; §11.4), composition on the GPU (§7.3) and lord-server's memory now
+(measured, no pass or fail; §7.1). On VM 116 it found two real things: `lord-netperm` isn't installed
+there (the unit doesn't exist), and the first run refused a stale `app-host.bundle.js` in the test
+tree. Part 2, the probe app that tries what must fail (sandbox, helper sandbox, a denied connection),
+waits for the maintainer's approval.
+
+![Checks, part 1](sysinfo-checks.png)
+
+Not yet: video decode and encode and Vulkan (shown as *Not checked*), Checks part 2.
 
 1. `server/src/sysreport/`: collector, GPU layers, `pci.ids`/EDID readers, fake-sysfs fixtures
    (AMD desktop, Intel laptop, Nvidia desktop, Raspberry Pi 5, VM), the anonymization test,

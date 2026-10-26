@@ -6,9 +6,10 @@
 import {
   View, Text, ScrollView, Button, useTheme, useLocale, LordOSLogo, systemReport, systemInfo, lordosVersion, formatBytes, formatNumber,
   Toolbar, ToolbarSpacer, ToolbarButton, Segmented, SidebarItem, GroupBox, FormRow, EmptyState, Hairline, spacing, typeScale,
-  fs, userDirs, clipboard, wm, admin,
+  fs, userDirs, clipboard, wm, admin, remote, codeStatus,
 } from '@lordos/sdk';
 import { useMemo, useState } from 'react';
+import { evaluate as evaluateChecks, PENDING as PENDING_CHECKS } from './checks.js';
 import { cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, compositionReason, reportFileName, reportJson, parseMemoryLines } from './model.js';
 
 // The app's icon: a chip on the brand gradient.
@@ -346,6 +347,53 @@ function Compatibility({ r }) {
   );
 }
 
+// ---- Checks ----
+
+const CHECK_COLOR = { pass: '#30d158', warn: '#ff9f0a', fail: '#ff453a', info: '#0a84ff', unknown: '#8e8e93', pending: '#8e8e93' };
+
+function CheckRow({ c }) {
+  const t = useTheme();
+  const { t: tr } = useLocale();
+  const note = !c.note ? '' : c.note.startsWith('gpuNot.')
+    ? tr('sysinfo.compat.cpuBecause', { reason: tr(`sysinfo.reason.${camel(c.note.slice(7))}`) })
+    : tr(`sysinfo.checkNote.${c.note}`, c.vars);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.m, minHeight: 44, paddingVertical: 6 }}>
+      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: CHECK_COLOR[c.state] || '#8e8e93' }} />
+      <View style={{ width: 220, gap: 2 }}>
+        <Text style={{ fontSize: typeScale.body, color: t.text, textAlign: 'start' }}>{tr(`sysinfo.check.${c.id}`)}</Text>
+        <Text style={{ fontSize: typeScale.caption, color: t.textDim, textAlign: 'start' }}>
+          {[tr(`sysinfo.level.${c.level}`), c.paper ? tr('sysinfo.paperRef', { ref: c.paper }) : ''].filter(Boolean).join(' · ')}</Text>
+      </View>
+      <Text style={{ width: 120, fontSize: typeScale.callout, fontWeight: 600, color: CHECK_COLOR[c.state], textAlign: 'start' }}>{tr(`sysinfo.checkState.${c.state}`)}</Text>
+      <Text style={{ flex: 1, minWidth: 0, fontSize: typeScale.callout, color: t.textDim, textAlign: 'start', lineHeight: 1.35 }}>{note}</Text>
+    </View>
+  );
+}
+
+function Checks({ r }) {
+  const { t: tr } = useLocale();
+  const rows = useMemo(() => {
+    let facts = null, rem = null, stats = null;
+    try { facts = lord.sysinfo.facts(); } catch (e) { /* older server */ }
+    try { rem = remote.status(); } catch (e) { /* no remote desktop */ }
+    try { stats = lord.stats(); } catch (e) { /* no stats */ }
+    return evaluateChecks({ report: r, facts, code: codeStatus(), remote: rem, stats });
+  }, [r]);
+  return (
+    <ScrollView style={{ flex: 1 }}>
+      <View style={{ padding: spacing.xl, gap: spacing.xl }}>
+        <GroupBox footer={tr('sysinfo.checksFooter')}>
+          {rows.map((c) => <CheckRow key={c.id} c={c} />)}
+        </GroupBox>
+        <GroupBox title={tr('sysinfo.checksPendingTitle')} footer={tr('sysinfo.checksPendingFooter')}>
+          {PENDING_CHECKS.map((id) => <CheckRow key={id} c={{ id, level: 'effective', state: 'pending' }} />)}
+        </GroupBox>
+      </View>
+    </ScrollView>
+  );
+}
+
 // ---- Report ----
 
 // The exact text that would be saved, line by line (leading spaces kept as no-break spaces).
@@ -415,11 +463,11 @@ export default function SystemInformation() {
       <Toolbar>
         <ToolbarSpacer />
         <Segmented appearance="neutral" value={tab} onChange={setTab}
-          options={[['overview', tr('sysinfo.tab.overview')], ['hardware', tr('sysinfo.tab.hardware')], ['compat', tr('sysinfo.tab.compat')], ['report', tr('sysinfo.tab.report')]]} />
+          options={[['overview', tr('sysinfo.tab.overview')], ['hardware', tr('sysinfo.tab.hardware')], ['compat', tr('sysinfo.tab.compat')], ['checks', tr('sysinfo.tab.checks')], ['report', tr('sysinfo.tab.report')]]} />
         <ToolbarSpacer />
         <ToolbarButton icon="↻" title={tr('sysinfo.refresh')} onClick={() => setN(n + 1)} />
       </Toolbar>
-      {tab === 'overview' ? <Overview r={r} info={info} /> : tab === 'hardware' ? <Hardware r={r} /> : tab === 'compat' ? <Compatibility r={r} /> : <Report r={r} />}
+      {tab === 'overview' ? <Overview r={r} info={info} /> : tab === 'hardware' ? <Hardware r={r} /> : tab === 'compat' ? <Compatibility r={r} /> : tab === 'checks' ? <Checks r={r} /> : <Report r={r} />}
     </View>
   );
 }
