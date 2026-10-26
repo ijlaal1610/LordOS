@@ -40,6 +40,7 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 | [DISPLAYS.md](DISPLAYS.md) | Several displays and HiDPI |
 | [GPU.md](GPU.md) | GPU composition, dmabuf and the CPU path |
 | [DOCK.md](DOCK.md) | Dock and taskbar |
+| [THEMES-GUIDE.md](THEMES-GUIDE.md) | How to build a LordOS appearance (theme): anatomy, tokens, frames, building, verified code, testing |
 | [LAYERS.md](LAYERS.md) | The desktop's stacking order: what is drawn and clicked above what |
 | [SPOTLIGHT.md](SPOTLIGHT.md) | Search and the advanced clipboard |
 | [TRACKPAD.md](TRACKPAD.md) | Touchpads, gestures and touchscreens |

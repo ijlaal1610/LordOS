@@ -1540,7 +1540,9 @@ static int check_code(int argc, char **argv) {
     return bad ? 1 : 0;
 }
 
-static void switch_theme(const char *current) {
+/* 0 if the requested theme is running; -1 if it failed and `current` (the last one that loaded) was put
+ * back: the caller keeps `current` then, so a second failed switch never falls back to a refused theme */
+static int switch_theme(const char *current) {
     char path[sizeof ui.theme_request];
     snprintf(path, sizeof path, "%s", ui.theme_request);
     ui.theme_request[0] = 0;
@@ -1553,9 +1555,12 @@ static void switch_theme(const char *current) {
         snprintf(ui.theme_failed, sizeof ui.theme_failed, "%s", path);
         js_shutdown();
         ui_reset();
-        js_init(current);
+        if (js_init(current)) fprintf(stderr, "lord-server: %s did not load again either\n", current);
+        wl_remap_all();
+        return -1;
     }
     wl_remap_all();             /* Linux app windows stay connected: they come back in the new theme */
+    return 0;
 }
 
 /* ---- Settings → Displays and the other hardware pages (src/hw, docs/SETTINGS.md) ---- */
@@ -1765,8 +1770,7 @@ int main(int argc, char **argv) {
         if (ui.theme_request[0]) {
             char next[sizeof current];
             snprintf(next, sizeof next, "%s", ui.theme_request);
-            switch_theme(current);
-            snprintf(current, sizeof current, "%s", next);
+            if (!switch_theme(current)) snprintf(current, sizeof current, "%s", next);
         }
         /* El movimiento del puntero juntado: una vez por cuadro, cuando terminó el page flip. Así un
          * mouse de 1000 Hz no llama a JS (ni a las apps Linux) mil veces por segundo. */

@@ -12,6 +12,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Added
 
+- **A guide to building an appearance.** `docs/THEMES-GUIDE.md` explains, for a React developer new to
+  LordOS, what a theme is, its parts (theme.json, tokens, the shell, window frames, menus, layers),
+  right-to-left, light and dark, several displays and the performance rules, how to build and test one,
+  and a checklist; `examples/theme-minimal/` is a small working theme to start from. It also says
+  plainly what is missing: a theme LordOS didn't sign doesn't load on a release build yet (no theme
+  package format or user trust decision exists).
 - **Settings → Displays: numbers, Identify and snapping.** With more than one display each one has a
   number (the main display is 1); clicking a display in the arrangement, or Identify, shows its number
   big on that monitor for a moment, so you know which screen is which. Dragging a display snaps it edge
@@ -120,6 +126,9 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **Two failed theme switches in a row could leave the session without a theme.** After a theme was
+  refused, the server still took it as the current one, so a second refused switch fell back to it.
+  Now the last theme that loaded stays the fallback.
 - **Apps whose launcher file has a space in its name didn't appear in Apps.** A package may name its
   `.desktop` file freely (the LordOS Imager's is `LordOS Imager.desktop`), but the launcher skipped any
   name with a space or another unusual character. Such a name now gets an id with those characters
