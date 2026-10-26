@@ -33,6 +33,7 @@ command -v lordos-sysreport >/dev/null || { echo "lordos-sysreport not installed
 [ -n "$V" ] || V=$(lordos-sysreport report --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["software"]["lordos"])' 2>/dev/null || echo unknown)
 case "$V" in *[!A-Za-z0-9.+~-]*|'') V=unknown ;; esac
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+[ -d "$ROOT/tools/results" ] || ROOT=$PWD      # copied on its own (not in the repository): write here
 D="$ROOT/results/$V/$M"
 mkdir -p "$D"
 
