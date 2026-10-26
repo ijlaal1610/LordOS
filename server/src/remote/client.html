@@ -147,12 +147,31 @@ function fit() {
   ox = r.left; oy = r.top;
 }
 addEventListener('resize', fit);
-// The session takes the window's size (if the monitor is showing it, the monitor wins).
-let resizeTimer = 0;
+// The session takes the window's size (if the monitor is showing it, the monitor wins), and the video
+// this screen's refresh rate (60, 120, 144 Hz…), measured with animation frames once the page shows.
+let resizeTimer = 0, screenHz = 0;
+function sendSize() {
+  const m = { t: 'resize', w: Math.round(innerWidth) & ~1, h: Math.round(innerHeight) & ~1 };
+  if (screenHz) m.hz = screenHz;
+  send(m);
+}
 addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => send({ t: 'resize', w: Math.round(innerWidth) & ~1, h: Math.round(innerHeight) & ~1 }), 400);
+  resizeTimer = setTimeout(sendSize, 400);
 });
+function measureHz() {
+  let n = 0, t0 = 0;
+  const step = (t) => {
+    if (!t0) t0 = t;
+    if (t - t0 < 1000) { n++; requestAnimationFrame(step); return; }
+    const raw = n * 1000 / (t - t0);
+    if (document.hidden || raw < 24) return;          // a hidden tab is throttled: no measure
+    const hz = [30, 48, 50, 60, 72, 75, 90, 100, 120, 144, 165, 180, 240].reduce((a, b) => (Math.abs(b - raw) < Math.abs(a - raw) ? b : a));
+    if (hz !== screenHz) { screenHz = hz; sendSize(); }
+  };
+  requestAnimationFrame(step);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) measureHz(); });
 
 function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 // Input goes over the WebRTC data channel when it's open (lower latency), else over the WebSocket.
@@ -415,7 +434,7 @@ function connect() {
   helloSeen = false;
   ws = new WebSocket(`wss://${location.host}/ws?w=${w}&h=${h}&v=1`);
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => { rd.wsOpens++; send({ t: 'resize', w: w & ~1, h: h & ~1 }); };     // an existing session takes this size
+  ws.onopen = () => { rd.wsOpens++; sendSize(); measureHz(); };     // an existing session takes this size
   ws.onmessage = (e) => (typeof e.data === 'string' ? onText(JSON.parse(e.data)) : onBin(new Uint8Array(e.data)));
   ws.onclose = () => {
     ws = null;

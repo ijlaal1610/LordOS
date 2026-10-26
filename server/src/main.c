@@ -1762,8 +1762,10 @@ int main(int argc, char **argv) {
             }
         }
         int wants = !unseen && (ui.dirty || s.cursor_dirty || js_wants_frame() || wl_wants_frame() || media_wants_frame() || outs_have_work(&s));
-        /* sin monitor no hay vblank: a lo sumo 60 cuadros por segundo */
-        double pace = s.headless ? s.last_render + 16.6 - now_ms() : 0;
+        /* no monitor, no vblank: 60 frames a second, or as fast as the fastest remote viewer's screen
+         * (120, 144 Hz…) */
+        int hz = mirror_fps() > 60 ? mirror_fps() : 60;
+        double pace = s.headless ? s.last_render + 1000.0 / hz - 0.4 - now_ms() : 0;
         if (wants && !all_busy(&s) && pace <= 0) { render(&s); wants = 0; }
         if (wants && pace > 0 && (delay < 0 || pace < delay)) delay = pace;
 

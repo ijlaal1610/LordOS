@@ -16,7 +16,7 @@ typedef struct {
 
 void mstream_init(const MStreamOut *out);
 /* How many viewers want this codec, with sound, and the lowest bit rate among them. 0 viewers stops it. */
-void mstream_want(int codec, int viewers, int audio, unsigned kbps);
+void mstream_want(int codec, int viewers, int audio, unsigned kbps, int fps);
 /* The session's screen changed (the frame stays valid until the next call or mstream_want(…, 0)). */
 void mstream_frame(const uint32_t *px, int stride, int w, int h);
 void mstream_keyframe(int codec);

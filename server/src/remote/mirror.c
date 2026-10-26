@@ -50,6 +50,7 @@ typedef struct {
     /* the video path (docs/REMOTE.md, "Video (WebRTC)") */
     int vcodec, vaudio, vneed_key;  /* subscribed to the session's encoder (1 H.264, 2 VP8) */
     unsigned vkbps;
+    int vfps;                       /* the frame rate this viewer's screen shows (its refresh; 30 if unknown) */
     int vmode;                      /* the video plays: lossless tiles once still, damage right away */
 } Client;
 
@@ -136,7 +137,7 @@ static void notify_clients(void) {
 /* Who wants which encoder: viewers per codec, sound, and the slowest viewer's rate. */
 static void video_update(void) {
     for (int k = 1; k < MS_CODECS; k++) {
-        int n = 0, audio = 0;
+        int n = 0, audio = 0, fps = 0;
         unsigned kbps = 0;
         for (int i = 0; i < MAX_CLIENTS; i++) {
             const Client *c = &cl[i];
@@ -144,8 +145,9 @@ static void video_update(void) {
             n++;
             audio |= c->vaudio;
             if (!kbps || c->vkbps < kbps) kbps = c->vkbps;
+            if (c->vfps > fps) fps = c->vfps;     /* the fastest screen: a slower one shows what it can */
         }
-        mstream_want(k, n, audio, kbps ? kbps : 4000);
+        mstream_want(k, n, audio, kbps ? kbps : 4000, fps);
     }
 }
 
@@ -296,6 +298,9 @@ static void handle(Client *c, int type, const unsigned char *d, uint32_t n) {
             c->vcodec = d[0];
             c->vaudio = d[1] != 0;
             c->vkbps = k < 300 ? 300 : k > 20000 ? 20000 : k;
+            uint16_t hz;
+            memcpy(&hz, d + 2, 2);
+            c->vfps = hz >= 24 && hz <= 360 ? hz : 30;
             if (c->vcodec && c->vcodec != was) c->vneed_key = 1;
             video_update();
             if (c->vcodec && fb) mstream_frame(fb, W, W, H);
@@ -475,6 +480,13 @@ int mirror_clients(void) {
     int n = 0;
     for (int i = 0; i < MAX_CLIENTS; i++) if (cl[i].fd >= 0 && !cl[i].seat) n++;
     return n;
+}
+
+/* The frame rate the remote viewers' screens show (the fastest), 0 without video viewers. */
+int mirror_fps(void) {
+    int f = 0;
+    for (int i = 0; i < MAX_CLIENTS; i++) if (cl[i].fd >= 0 && !cl[i].seat && cl[i].vcodec && cl[i].vfps > f) f = cl[i].vfps;
+    return f;
 }
 
 int mirror_watchers(void) {

@@ -40,6 +40,7 @@ int  mirror_clients(void);                            /* remote desktop connecti
 /* Connections that take the video now (RP_VIDEO): only for them is the screen captured, compared and
  * encoded. A browser that is still connecting, or reconnecting its peer, costs nothing. */
 int  mirror_watchers(void);
+int  mirror_fps(void);              /* the fastest remote viewer screen's refresh, 0 without video viewers */
 int  mirror_has_seat(void);                           /* is lord-sessiond (monitor) connected? */
 /* Requests from the session to whoever shows it (short JSON): RP_SESSION to every connection
  * ({"a":"lock"}: lock; {"a":"switch"}: switch user) and RP_GREETER to the monitor. */

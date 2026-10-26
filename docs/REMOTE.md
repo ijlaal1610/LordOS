@@ -224,7 +224,7 @@ recovers on its own or says why and what to do.
 
 | Channel | Content |
 |---|---|
-| video track | H.264 constrained baseline (packetization mode 1) or VP8, RTP over SRTP, 90 kHz clock; frames only when the screen changed, at most 30 per second, one more tiny frame 70 ms after the last change (browsers paint a lone frame late) |
+| video track | H.264 constrained baseline (packetization mode 1) or VP8, RTP over SRTP, 90 kHz clock; frames only when the screen changed, at most as many per second as the fastest viewer's screen refreshes (the page measures it: 60, 120, 144 Hz…; 30 if unknown, 240 at most), one more tiny frame 70 ms after the last change (browsers paint a lone frame late) |
 | audio track | Opus, 20 ms frames, mono 48 kHz, 64 kbit/s |
 | `input` data channel | the same JSON input messages as the WebSocket (`m`, `b`, `w`, `s`, `pz`, `k`, `clip`, `resize`), parsed by the same `rs_browser_input`; at most 256 KB per message |
 | `tiles` data channel | `[1][x,y,w,h u16][png]` a lossless tile; `[2][x,y,w,h…]` these areas changed (show the video there); `[3]` done |
@@ -253,6 +253,13 @@ it only grows with what the browser receives, so as a fixed ceiling it kept a ne
 3 MB behind skips frames until the next keyframe; a lost frame (PLI, FIR) asks for one, and the
 current screen is encoded again for it. Two users means two sessions, two `lord-server`s and two
 encoders, each as its own user.
+
+**The frame rate follows the viewer's screen.** The page measures its screen's refresh rate with
+animation frames (not while the tab is hidden) and sends it with its size (`resize`, `hz` 24–360). The
+session's encoder runs at the fastest viewer's rate (it starts again when that changes), and a session
+without a monitor composes at that rate too (at least 60); on the monitor, the monitor's own refresh
+paces composition. Measured on VM 116 (no GPU, 1280×800, a 60 fps video window under blurred windows):
+18 frames a second before 0.8.5's work on the CPU path, 35 after.
 
 **The GPU keeps composing.** Until 0.8.3 a remote viewer switched the session to CPU composition.
 Now `gpu_frame` reads the composed frame back (`gpu_read_next`) once, for the encoder and the tiles,

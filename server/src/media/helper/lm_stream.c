@@ -284,7 +284,7 @@ void lm_stream(const char *params, int ring_fd, int render) {
     int w = (int)mp_param_int(params, "width", 0), h = (int)mp_param_int(params, "height", 0);
     int fps = (int)mp_param_int(params, "fps", 30);
     long kbps = mp_param_int(params, "kbps", 4000);
-    if (fps < 5 || fps > 60) fps = 30;
+    if (fps < 5 || fps > 240) fps = 30;
     if (kbps < 200 || kbps > 50000) kbps = 4000;
     char accel[24];
     AVBufferRef *hw = codec == CODEC_H264 ? lm_hw_device(lm_hw_accel(params, accel, sizeof accel), render) : NULL;

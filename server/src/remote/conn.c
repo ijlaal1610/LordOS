@@ -606,6 +606,8 @@ static int vmode;                      /* the video plays: the lossless refresh 
 static int tiles_lost;                 /* a refresh tile didn't fit the data channel: ask for them all again */
 static double tiles_lost_at;
 static Rtc *rtc;
+static int view_hz;                 /* the browser screen's refresh rate (resize "hz"), 0 unknown */
+static void video_want(void);
 static const char *rtc_dead;           /* RTC_WHY_* of a peer that just failed */
 static int resets;               /* peers made after the first; the current one is number resets + 1 */
 static double reset_at;
@@ -788,7 +790,12 @@ static void from_browser(const char *j, size_t n, int dc) {
             sess_send(RP_KEY, p, 3);
             break;
         }
-        case RS_IN_RESIZE: { uint16_t sz[2] = { (uint16_t)in.a, (uint16_t)in.b }; sess_send(RP_RESIZE, sz, 4); break; }
+        case RS_IN_RESIZE: {
+            uint16_t sz[2] = { (uint16_t)in.a, (uint16_t)in.b };
+            sess_send(RP_RESIZE, sz, 4);
+            if (in.v1 && in.v1 != view_hz) { view_hz = in.v1; if (rtc && rtc_media_ready(rtc)) video_want(); }
+            break;
+        }
         case RS_IN_PING: ws_text("{\"t\":\"pong\",\"ts\":%lld}", in.ts); break;
         case RS_IN_CLIP: sess_send(RP_SETCLIP, in.text, in.tlen); break;
         case RS_IN_RTC:
@@ -872,15 +879,21 @@ static int conns_full(void) {
     return n >= RD_MAX_CONNS;
 }
 
+/* this viewer takes the session's encoded video: u8 codec, u8 sound, u16 frames a second (the browser
+ * screen's refresh; 0 unknown), u32 kbit/s */
+static void video_want(void) {
+    unsigned char v[8] = { (unsigned char)rtc_codec(rtc), 1, 0, 0 };
+    uint16_t hz = (uint16_t)view_hz;
+    uint32_t k = 4000;
+    memcpy(v + 2, &hz, 2);
+    memcpy(v + 4, &k, 4);
+    sess_send(RP_VIDEO, v, 8);
+}
 static void rtc_signal(void *ud, const char *json) { (void)ud; ws_frame(1, json, strlen(json), NULL, 0); }
 static void rtc_state(void *ud, int st, const char *why) {
     (void)ud;
     if (st == RTC_CONNECTED) {
-        /* this viewer takes the session's encoded video: u8 codec, u8 sound, u16 0, u32 kbit/s */
-        unsigned char v[8] = { (unsigned char)rtc_codec(rtc), 1, 0, 0 };
-        uint32_t k = 4000;
-        memcpy(v + 4, &k, 4);
-        sess_send(RP_VIDEO, v, 8);
+        video_want();
     } else if (st == RTC_FAILED) rtc_dead = why ? why : RTC_WHY_SERVER;
 }
 static void rtc_message(void *ud, int chan, const uint8_t *p, size_t n, int binary) {

@@ -51,7 +51,9 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   minutes; it now reaches the top in about 10 s on a local network and still slows down on
   congestion. Software H.264 keeps its deblocking filter. Drawing without a GPU (a remote-only
   session, a virtual machine) is faster with the same pixels: the backdrop blur 2.5×, rounded
-  rectangles 2×; a video window under the blurred menu bar went from 18 to 23 frames a second. The page starts muted, as browsers
+  rectangles 2×, and `canvas.c` builds at -O3. The video now follows the browser screen's refresh rate
+  (60, 120, 144 Hz…) instead of a fixed 30: a video window under blurred windows went from 18 to 35
+  frames a second on a virtual machine without a GPU. The page starts muted, as browsers
   require, and its sound button hides in the top bar: the first click or key in the session now
   turns the sound on.
 - **Files → This computer** shows `/proc`, `/sys`, `/dev` and `/run` with a lock and says why it

@@ -19,7 +19,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define FPS 30
+#define FPS_MAX 240          /* what the encoder is asked for at most (the viewers' screens decide) */
 #define MAX_FRAME (8u << 20)
 
 typedef struct {
@@ -28,6 +28,7 @@ typedef struct {
     unsigned kbps, sent_kbps;
     int w, h, pending, want_key, flushing;
     double t0, last_feed, retry_at, flush_at;
+    int fps;                    /* frames a second (the fastest viewer's screen) */
     uint8_t *buf;
     size_t len, cap, total;
     long frames, enc100;
@@ -110,7 +111,7 @@ static int start(Enc *e, int codec) {
     if (e->audio) s->mic = maudio_open(1, "LordOS", "Remote desktop", "@DEFAULT_MONITOR@", &ring);
     char params[200];
     snprintf(params, sizeof params, "codec=%s\nwidth=%d\nheight=%d\nfps=%d\nkbps=%u\nhw=%d\nhwaccel=%s\naudio=%d\nrender=%d\n",
-             codec == 1 ? "h264" : "vp8", fw, fh, FPS, e->kbps, render >= 0, media_hwaccel(), ring >= 0, render >= 0);
+             codec == 1 ? "h264" : "vp8", fw, fh, e->fps, e->kbps, render >= 0, media_hwaccel(), ring >= 0, render >= 0);
     int fds[2] = { ring, render };
     s->sock = media_spawn(MK_STREAM, params, fds, 2, &s->pid);
     if (render >= 0) close(render);
@@ -146,7 +147,7 @@ static int start(Enc *e, int codec) {
     e->pending = 1;
     e->sent_kbps = e->kbps;
     e->want_key = 0;
-    fprintf(stderr, "remote: video encoder for %s started (%dx%d, %u kbit/s%s)\n", codec == 1 ? "H.264" : "VP8", fw, fh, e->kbps,
+    fprintf(stderr, "remote: video encoder for %s started (%dx%d, %d fps, %u kbit/s%s)\n", codec == 1 ? "H.264" : "VP8", fw, fh, e->fps, e->kbps,
             ring >= 0 ? ", with sound" : "");
     return 0;
 }
@@ -156,9 +157,12 @@ int mstream_active(void) {
     return 0;
 }
 
-void mstream_want(int codec, int viewers, int audio, unsigned kbps) {
+void mstream_want(int codec, int viewers, int audio, unsigned kbps, int fps) {
     if (codec < 1 || codec >= MS_CODECS) return;
     Enc *e = &E[codec];
+    fps = fps < 24 ? 30 : fps > FPS_MAX ? FPS_MAX : fps;
+    if (e->id && fps != e->fps) stop(e);                      /* another frame rate: the encoder starts again */
+    e->fps = fps;
     int was = e->viewers;
     e->viewers = viewers;
     e->kbps = kbps < 300 ? 300 : kbps > 20000 ? 20000 : kbps;
@@ -194,7 +198,7 @@ static void feed(Enc *e, int codec) {
      * often only when the next one arrives */
     if (!e->pending && e->flush_at && t >= e->flush_at) { e->pending = 1; e->flush_at = 0; e->flushing = 1; }
     if (!e->pending || !fpx) return;
-    if (t - e->last_feed < 1000.0 / FPS - 1) return;
+    if (t - e->last_feed < 1000.0 / e->fps - 1) return;
     int slot = -1;
     for (int i = 0; i < s->in_slots; i++) if (!s->in_busy[i]) { slot = i; break; }
     if (slot < 0) return;                                     /* the encoder is behind: the newest frame waits */
@@ -233,7 +237,7 @@ double mstream_timeout(void) {
     for (int c = 1; c < MS_CODECS; c++) {
         Enc *e = &E[c];
         if (!e->viewers) continue;
-        double d = !e->id ? (e->retry_at > t ? e->retry_at - t : 200) : e->pending ? 1000.0 / FPS - (t - e->last_feed)
+        double d = !e->id ? (e->retry_at > t ? e->retry_at - t : 200) : e->pending ? 1000.0 / e->fps - (t - e->last_feed)
                  : e->flush_at ? e->flush_at - t : -1;
         if (d >= 0 && d < 4) d = 4;
         if (d >= 0 && (best < 0 || d < best)) best = d;

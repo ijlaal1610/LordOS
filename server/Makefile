@@ -546,6 +546,10 @@ build/obj/%.o: src/%.c $(HDR)
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -c -o $@ $<
 
+# The CPU path's pixel loops (blur, rounded rectangles, blending) vectorize at -O3: the backdrop blur
+# 9.6 → 5.3 ms and rounded rectangles 1.45× faster on x86-64, same pixels (a later -O3 wins over -O2)
+build/obj/canvas.o: CFLAGS += -O3
+
 # Third-party code: compiled as is, without our warnings.
 build/obj/ui/stb.o: src/ui/stb.c
 	@mkdir -p $(dir $@)

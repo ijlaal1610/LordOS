@@ -439,27 +439,39 @@ void canvas_backdrop_blur(Canvas *c, float x, float y, float w, float h, float r
     uint32_t *buf = malloc((size_t)sw * sh * 4);
     uint32_t *tmp = malloc((size_t)sw * 4);
     if (!buf || !tmp) { free(buf); free(tmp); return; }
-    /* the f×f average, row by row (each source pixel read once) */
-    uint32_t *acc = calloc((size_t)sw * 4, 4);
-    if (!acc) { free(buf); free(tmp); return; }
-    for (int j = 0; j < sh; j++) {
-        memset(acc, 0, (size_t)sw * 16);
-        int rows = by1 - (by0 + j * f) < f ? by1 - (by0 + j * f) : f;
-        for (int v = 0; v < rows; v++) {
-            const uint32_t *row = c->px + (size_t)(by0 + j * f + v) * c->stride + bx0;
-            for (int i = 0, px = 0; px < bx1 - bx0; i++)
-                for (int u = 0; u < f && px < bx1 - bx0; u++, px++) {
-                    uint32_t p = row[px], *a = acc + (size_t)i * 4;
-                    a[0] += (p >> 16) & 255; a[1] += (p >> 8) & 255; a[2] += p & 255; a[3] += p >> 24;
+    /* the f×f average, row by row (each source pixel read once). Two channels share a 32-bit sum
+     * (red|blue, alpha|green: at most 16 × 255 each, f <= 4); f = 1 is a copy. */
+    if (f == 1) {
+        for (int j = 0; j < sh; j++) memcpy(buf + (size_t)j * sw, c->px + (size_t)(by0 + j) * c->stride + bx0, (size_t)sw * 4);
+    } else {
+        uint32_t *acc = malloc((size_t)sw * 2 * 4);
+        if (!acc) { free(buf); free(tmp); return; }
+        int span = bx1 - bx0, full = span / f;
+        for (int j = 0; j < sh; j++) {
+            memset(acc, 0, (size_t)sw * 8);
+            int rows = by1 - (by0 + j * f) < f ? by1 - (by0 + j * f) : f;
+            for (int v = 0; v < rows; v++) {
+                const uint32_t *row = c->px + (size_t)(by0 + j * f + v) * c->stride + bx0;
+                for (int i = 0; i < full; i++) {
+                    uint32_t rb = 0, ag = 0;
+                    const uint32_t *q = row + (size_t)i * f;
+                    for (int u = 0; u < f; u++) { rb += q[u] & 0x00ff00ffu; ag += (q[u] >> 8) & 0x00ff00ffu; }
+                    acc[i * 2] += rb;
+                    acc[i * 2 + 1] += ag;
                 }
+                for (int px = full * f; px < span; px++) {
+                    acc[full * 2] += row[px] & 0x00ff00ffu;
+                    acc[full * 2 + 1] += (row[px] >> 8) & 0x00ff00ffu;
+                }
+            }
+            for (int i = 0; i < sw; i++) {
+                int cols = bx1 - (bx0 + i * f) < f ? bx1 - (bx0 + i * f) : f;
+                uint32_t n = (uint32_t)(cols * rows), rb = acc[i * 2], ag = acc[i * 2 + 1];
+                buf[(size_t)j * sw + i] = n ? ((ag >> 16) / n) << 24 | ((rb >> 16) / n) << 16 | ((ag & 0xffff) / n) << 8 | ((rb & 0xffff) / n) : 0;
+            }
         }
-        for (int i = 0; i < sw; i++) {
-            int cols = bx1 - (bx0 + i * f) < f ? bx1 - (bx0 + i * f) : f;
-            uint32_t n = (uint32_t)(cols * rows), *a = acc + (size_t)i * 4;
-            buf[(size_t)j * sw + i] = n ? (a[3] / n) << 24 | (a[0] / n) << 16 | (a[1] / n) << 8 | (a[2] / n) : 0;
-        }
+        free(acc);
     }
-    free(acc);
     int rad = radius / (2 * f) > 0 ? radius / (2 * f) : 1;
     int win = 2 * rad + 1;
     uint8_t *dt = malloc((size_t)255 * win + 1);
@@ -483,6 +495,15 @@ void canvas_backdrop_blur(Canvas *c, float x, float y, float w, float h, float r
     int *cx0 = malloc((size_t)cw * 3 * sizeof(int)), *hr = malloc((size_t)cw * 8 * sizeof(int));
     if (!cx0 || !hr) { free(cx0); free(hr); free(buf); free(tmp); return; }
     int *cx1 = cx0 + cw, *cfx = cx1 + cw, *hrow[2] = { hr, hr + (size_t)cw * 4 }, hidx[2] = { -1, -1 };
+    uint32_t *vrow = malloc((size_t)cw * 4);
+    if (!vrow) { free(cx0); free(hr); free(buf); free(tmp); return; }
+    uint8_t *vrow8 = (uint8_t *)vrow;
+    /* the columns whose coverage is whole on rows away from the corners: the same float tests as
+     * the per-pixel path (i < x + 1, i + 1 > x + w - 1) */
+    int in0 = x0, in1 = x1;
+    while (in0 < x1 && in0 < x + 1) in0++;
+    while (in1 > in0 && in1 - 1 + 1 > x + w - 1) in1--;
+    if (in0 >= in1) in0 = in1 = x1;
     for (int i = x0; i < x1; i++) {
         float u = (i - bx0 + 0.5f) * inv - 0.5f;
         if (u < 0) u = 0;
@@ -518,17 +539,30 @@ void canvas_backdrop_blur(Canvas *c, float x, float y, float w, float h, float r
             }
             if (want) bot = hrow[k]; else top = hrow[k];
         }
+        /* the row of blurred pixels: the vertical step for every channel in one plain loop (bytes in
+         * memory order are the channels of a little-endian 0xAARRGGBB) */
+        for (int k = 0; k < cw * 4; k++) vrow8[k] = (uint8_t)(((top[k] << 8) + (bot[k] - top[k]) * fy) >> 16);
         int corner_row = j < y + r || j + 1 > y + h - r;
+        int m0 = corner_row ? x1 : in0, m1 = corner_row ? x1 : in1;
         for (int i = x0; i < x1; i++) {
+            if (i == m0) {                  /* inside the edges: no coverage to work out */
+                for (; i < m1; i++) {
+                    uint32_t p = vrow[i - x0], d = row[i];
+                    if ((p >> 24) >= 255) { row[i] = p; continue; }
+                    uint32_t pa = p >> 24;
+                    uint32_t prb = p & 0xff00ff, pg = p & 0xff00, ia = 255 - pa;
+                    uint32_t drb = (((d & 0xff00ff) * ia) >> 8) & 0xff00ff, dg = (((d & 0xff00) * ia) >> 8) & 0xff00;
+                    row[i] = over_alpha(pa, d >> 24) << 24 | (prb + drb) | (pg + dg);
+                }
+                if (i >= x1) break;
+            }
             uint32_t a = 255;
             if (corner_row || i < x + 1 || i + 1 > x + w - 1) {
                 float cov = cov_of(rr_sdf(i + 0.5f, j + 0.5f, cx, cy, hw, hh, r));
                 if (cov <= 0) continue;
                 a = (uint32_t)(cov * 255 + 0.5f);
             }
-            const int *t = top + (size_t)(i - x0) * 4, *b = bot + (size_t)(i - x0) * 4;
-            uint32_t p = 0;
-            for (int s = 0; s < 4; s++) p |= (uint32_t)(((t[s] * 256 + (b[s] - t[s]) * fy) >> 16) & 255) << (s * 8);
+            uint32_t p = vrow[i - x0];
             uint32_t d = row[i];
             /* premultiplied with its alpha: over the opaque UI it is the same as before; over the hole of
              * an app window (GPU path) it stays transparent and the app shows through */
@@ -542,6 +576,7 @@ void canvas_backdrop_blur(Canvas *c, float x, float y, float w, float h, float r
     }
     free(cx0);
     free(hr);
+    free(vrow);
     free(buf);
     free(tmp);
 }
