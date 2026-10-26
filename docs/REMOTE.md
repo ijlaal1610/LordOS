@@ -495,6 +495,38 @@ the same hour in the same way.
 
 ![The monitor composed on the GPU while a browser watches](remote-desktop-gpu-monitor.png)
 
+### Measurements (0.8.5, CPU reference)
+
+The reference for the CPU path, to compare later optimizations against. VM 116 (8 vCPUs, no GPU:
+the screen is composed on the CPU, H.264 encoded by software x264), viewed from Chrome on a Mac on
+the same LAN with a 60 Hz screen; the remote desktop's top bar reports the rate and the encoder
+(`Video · H264 por software · UDP · 26/60 fps · 60 Hz · CPU`). Same day, 2026-10-26, before and after
+the 0.8.5 work on the CPU path (only the tiles that changed, the frame rate following the viewer's
+refresh rate, the thread pool of `docs/GPU.md`, "The CPU path on several threads").
+
+| Measurement | Before | After |
+|---|---|---|
+| Remote desktop, 1280×800 test scene | ~18 fps | 55–58 fps |
+| Remote desktop, 1920×1080 session playing a 60 fps clip | 45 fps (one core at 100 %) | 55–58 fps (pool, about 2 cores) |
+| Backdrop blur of a window (radius 20) | 27.7 ms | 6.0 ms on 1 thread, 2.7 ms on 8 (same pixels) |
+| x264 per frame (1280–1568 px wide) | | 12–13 ms: the software encoder's ceiling is about 75–80 fps |
+
+YouTube in Chromium inside the session, watched over the remote desktop:
+
+| Video | Played | Dropped by the player | Remote desktop bar |
+|---|---|---|---|
+| 1080p, 24 fps | real time | under 1 % | 25–26 of 60 fps |
+| 1080p, 24 fps, AV1 (17 s read from the player's statistics, 12:08:18 → 12:08:35) | 386 frames, 23–24 fps | 0 new | 26 with the video alone, 38–54 when the sidebar's animated preview and the statistics graphs also change |
+| 1080p, 60 fps, AV1 (before the pool) | 38–44 fps | about 1 in 3 | lord-server saturated |
+
+- **The bar counts screen updates, not the video's frames:** a 24 fps video alone gives about 26; anything
+  else that moves adds to it. It reached what changed in every case above.
+- **AV1 at 60 fps is the hard case without a GPU:** Chromium decodes it in software (164–189 % of a
+  core) on the same machine that composes the screen. VP9 costs less (YouTube → Settings → Playback →
+  AV1 "only for SD").
+- Not measured yet: 120/144 Hz viewers, a real GPU (the read-back and VA-API encoding), the Raspberry
+  Pi 5 (no hardware H.264 encoder: x264 there too).
+
 ## Process and privileges
 
 1. `lord-sessiond` (root) accepts the connection. Refused addresses (blocked, not allowed, too many
