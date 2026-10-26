@@ -1,7 +1,7 @@
 // displaysui.jsx — "Identify" for Settings → Displays (docs/DISPLAYS.md, "Numbers, identify and snapping"):
 //
 //   identifyDisplays(ids?)   shows each display's number (1, 2, 3…; sdk/displaylayout.js displayNumbers),
-//                            big, centered on that real display for 1.5 s, then fades it out. `ids` are
+//                            big, centered on that real display for 2 s, the screens slightly dimmed. `ids` are
 //                            lord.display.list() output ids (one or an array); none = every active display.
 //                            Returns false when there is nothing to show (no display API, mirror mode).
 //   <DisplayIdentify />      the badges; startShell mounts it in the `notification` layer (sdk/index.js,
@@ -9,15 +9,13 @@
 //
 // The desktop is one logical space across displays: each badge is placed at its display's global
 // rectangle (lord.screen.displays, matched by connector; the list's own rectangle otherwise).
-import { createElement as h, useEffect, useRef } from 'react';
-import { View, Text, displays as screenDisplays } from '@lordos/runtime';
+import { createElement as h } from 'react';
+import { View, Text, screen as desk, displays as screenDisplays } from '@lordos/runtime';
 import { createStore, useStore } from './store.js';
-import { settings } from './settings.js';
 import { displays } from './hardware.jsx';
 import { displayNumbers } from './displaylayout.js';
 
-export const IDENTIFY_MS = 1500;
-const FADE_IN_MS = 120, FADE_OUT_MS = 450;
+export const IDENTIFY_MS = 2000;
 
 export const identifying = createStore(null);    // { seq, items: [{ id, n, x, y, w, h }] }
 let seq = 0, timer = 0;
@@ -52,24 +50,14 @@ function Badge({ it }) {
 }
 
 export function DisplayIdentify() {
+  // shown at once and gone after IDENTIFY_MS (identifyDisplays clears the store): no per-frame fade,
+  // which also respects Reduce motion
   const c = useStore(identifying);
-  const reduce = useStore(settings, (s) => !!s.reduceMotion);
-  const root = useRef(null);
-  useEffect(() => {
-    if (!c || reduce || typeof lord === 'undefined' || !lord.setStyle) return undefined;
-    // opacity through lord.setStyle (no React render per frame): in quickly, hold, out at the end
-    const t0 = Date.now();
-    const set = (o) => { try { if (root.current) lord.setStyle(root.current.id, 'opacity', o); } catch (e) { /* unmounted */ } };
-    set(0);
-    const id = setInterval(() => {
-      const t = Date.now() - t0;
-      const o = t < FADE_IN_MS ? t / FADE_IN_MS : t > IDENTIFY_MS - FADE_OUT_MS ? Math.max(0, (IDENTIFY_MS - t) / FADE_OUT_MS) : 1;
-      set(Math.round(o * 100) / 100);
-      if (t >= IDENTIFY_MS) clearInterval(id);
-    }, 33);
-    return () => clearInterval(id);
-  }, [c && c.seq, reduce]);
   if (!c) return null;
-  return h(View, { ref: root, key: c.seq, style: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, pointerEvents: 'none' } },
+  // the whole desktop's size, slightly dimmed: the dim makes the numbers stand out, and a root with a
+  // background of its own is what gets the area repainted when the badges appear (a transparent root's
+  // new children were left unpainted until something else changed)
+  return h(View, { key: c.seq, style: { position: 'absolute', left: 0, top: 0, width: desk.width, height: desk.height, pointerEvents: 'none',
+    backgroundColor: 'rgba(0,0,0,0.18)' } },
     ...c.items.map((it) => h(Badge, { key: it.id, it })));
 }
