@@ -226,6 +226,49 @@ int cgroup_service_init(void) {
     return 0;
 }
 
+int cgroup_enter_root(const char *name) {
+    if (geteuid() != 0 || !cgroup_scope_name_ok(name)) return -1;
+    const char *self = cgroup_self();                   /* ".../lordos-session-<uid>/server" */
+    char dir[PATH_MAX];
+    if (!self[0] || (size_t)snprintf(dir, sizeof dir, CG_ROOT "%s", self) >= sizeof dir) return -1;
+    char *sl = strrchr(dir, '/');
+    unsigned uid;
+    char tail;
+    if (!sl || strcmp(sl, "/server")) return -1;
+    *sl = 0;
+    const char *sess = strrchr(dir, '/');
+    if (!sess || sscanf(sess + 1, "lordos-session-%u%c", &uid, &tail) != 1) return -1;
+    int fd = open(dir, O_PATH | O_DIRECTORY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    int fresh = !mkdirat(fd, name, 0755);
+    if (!fresh && errno != EEXIST) { close(fd); return -1; }
+    int lfd = openat(fd, name, O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    int r = lfd >= 0 ? write_at(lfd, "cgroup.procs", "0") : -1;
+    if (lfd >= 0) close(lfd);
+    close(fd);
+    if (!r && fresh) cgroup_settle();
+    return r;
+}
+
+void cgroup_settle(void) {
+    struct timespec ts = { 0, 250 * 1000 * 1000 };
+    nanosleep(&ts, NULL);
+}
+
+int cgroup_service_leaf(const char *name) {
+    if (!name || strcmp(name, "netd")) return -1;     /* the only one (docs/MONITOR.md, "Essential system traffic") */
+    char svc[PATH_MAX];
+    if (geteuid() != 0 || service_root(svc, sizeof svc)) return -1;
+    int fd = open(svc, O_PATH | O_DIRECTORY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    if (mkdirat(fd, name, 0755) && errno != EEXIST) { close(fd); return -1; }
+    int lfd = openat(fd, name, O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    int r = lfd >= 0 ? write_at(lfd, "cgroup.procs", "0") : -1;
+    if (lfd >= 0) close(lfd);
+    close(fd);
+    return r;
+}
+
 int cgroup_delegate_session(unsigned uid, unsigned gid) {
     char svc[PATH_MAX], sess[PATH_MAX];
     (void)gid;

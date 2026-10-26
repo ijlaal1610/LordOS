@@ -52,6 +52,7 @@
 #include "outputs.h"
 #include "monitor/netrec.h"
 #include "sec/codesig.h"
+#include "sec/netconn.h"
 
 #include <libgen.h>
 #include <limits.h>
@@ -1549,6 +1550,8 @@ int main(int argc, char **argv) {
     sigaction(SIGPIPE, &pipe_sa, NULL);
     /* guardián de una sesión de terminal (ver term/hold.c): no abre pantalla ni input */
     if (argc > 1 && !strcmp(argv[1], "--term-holder")) return hold_main(argc, argv);
+    /* (0.8.5) a component's network connector (sec/netconn.h): only creates sockets in its scope */
+    if (argc > 1 && !strcmp(argv[1], "--net-connector")) return netconn_main(argc, argv);
     if (argc > 1 && !strcmp(argv[1], "--check-code")) return check_code(argc, argv);
     /* «modo app»: lord-server --app <id> corre una app .lpk como cliente Wayland aislado
      * (app/appclient.c). El id ya viene validado del propio lord-server (no de JS). */

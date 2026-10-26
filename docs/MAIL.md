@@ -57,7 +57,10 @@ run in one sandboxed helper process, **`lord-maild`**.
 - **No socket of its own.** `lord-maild` cannot create sockets. To reach a server it sends
   `MR_CONNECT {host, port}`; `lord-server` (`mailc.c`) checks the endpoint against the accounts
   file and, if allowed, resolves it, connects (10 s timeout) on a thread of its own and passes the
-  connected socket back (`MQ_SOCK`). The allowed endpoints are exactly: each account's IMAP and
+  connected socket back (`MQ_SOCK`). (0.8.5) The socket itself is made and connected by Mail's connector
+  (`lord-server --net-connector mail`, in `lordos-net-mail.scope`), so Mail and the calendar sync
+  are their own app for the firewall and Monitor → Network ("Mail and calendars", `lordos:mail`;
+  `FIREWALL.md`, "LordOS components in their own scopes"); the endpoint check above is unchanged. The allowed endpoints are exactly: each account's IMAP and
   SMTP `host:port`, each DAV URL's `host:port`, and — for CalDAV/CardDAV discovery redirects inside
   the same provider (for example `pNN-caldav.icloud.com`) — other hosts of the same domain on port 443.
   So a malicious message that takes over `lord-maild` still cannot talk to anything else.

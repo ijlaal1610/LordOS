@@ -44,6 +44,11 @@ The code is in `server/src/pkg/`:
 - **Local repositories.** A `file:/path` source (a repository on a disk or a USB stick, like apt's
   `file:` method) is read by the same unprivileged child, as `nobody`: only world-readable files,
   checked exactly like a download. An HTTP redirect can never lead to a `file:` URL.
+- **Its own firewall app** (0.8.5): before dropping root the download child moves itself into
+  `lordos-net-store.scope` (`cgroup_enter_root`), so the Store and the updates are "Store and
+  updates" (`lordos:store`) in Monitor → Network, with their own rules; blocking them asks first,
+  because no security update arrives while they are blocked (`FIREWALL.md`, "LordOS components in
+  their own scopes").
 - **Downloads without root.** The process that talks to the network drops privileges before
   connecting: it becomes `nobody`, with no groups, with `no_new_privs` and no way back to root.
   It passes the bytes to the root process through a pipe. The root process only writes them into

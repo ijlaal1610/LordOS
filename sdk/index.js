@@ -40,6 +40,7 @@ export { videoPrefs, setVideoPrefs, videoHardware, videoError, videoOptimizing, 
 import { startVideo } from './video.js';
 export { browserFrameResult, browserFrameState, browserTabsInTitlebar, setBrowserTabsInTitlebar } from './browserframe.js';   // docs/WAYLAND.md
 import { startBrowserFrame } from './browserframe.js';
+import { startNetStatus } from './netstatus.jsx';
 export { errorText, statusText, codeError, parseCode } from './errors.js';
 export { logs } from './logs.js';
 export { LordOSLogo, LordOSGlyph, LordOSWordmark } from './logo.js';
@@ -54,6 +55,7 @@ export {
 export { sound, useSound, useSoundPeak, soundState, defaultSink, defaultSource, microphones } from './sound.js';
 export { monitor, useMonitor, monitorSamples, monitorProcesses, monitorConnections, monitorDevices, monitorDetail, MONITOR_HISTORY, diskTempHistory, DISK_TEMP_HISTORY, firewall, firewallState } from './monitor.js';
 export * as fwRule from './fwrule.js';            // checks what the user types for a firewall rule
+export * as netModel from './netmodel.js';        // (0.8.5) Monitor → Network: search tokens, filters, the tree
 export { packages, packageList, refreshPackages, packageFile, loadWasm } from './packages.js';
 import { refreshPackages } from './packages.js';
 export {
@@ -196,6 +198,7 @@ export function startShell(element) {
   startDiskWatch();                     // notices when a disk gets too hot or its health gets worse
   startVideo();                         // browser video without hardware decoding (video.js, docs/VIDEO.md)
   startBrowserFrame();                  // "Browsers: tabs in the title bar" left for Chromium to quit (browserframe.js)
+  startNetStatus();                     // (0.8.5) the menu bar's network item and the blocklists' daily update
   setTimeout(reportRefusedCode, 800);   // "This LordOS component was modified and was not loaded" (docs/SIGNING.md)
 }
 

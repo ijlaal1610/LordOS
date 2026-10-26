@@ -168,6 +168,9 @@ EOF
     # the overlay scroll bar's model (sdk/scrollbar.js): geometry, thumb hit-test and drag, fade timing
     if have node; then run "scrollbar-model-test (sdk/scrollbar.js)" node tests/scrollbar_model_test.mjs
     else skip "scrollbar-model-test" "node"; fi
+    # (0.8.5) Monitor → Network's model (sdk/netmodel.js): search tokens, filters, the tree, sorting
+    if have node; then run "netmodel-test (sdk/netmodel.js)" node tests/netmodel_test.mjs
+    else skip "netmodel-test" "node"; fi
 }
 
 full() {

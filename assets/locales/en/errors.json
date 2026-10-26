@@ -603,5 +603,11 @@
   "imager.noUdisks": "The disk service (udisks2) isn't running",
   "imager.hashFailed": "The password couldn't be hashed",
   "imager.pskFailed": "The Wi-Fi key couldn't be derived",
-  "remote.badTurnFingerprint": "Not a valid certificate fingerprint: 64 hexadecimal digits (pairs may be separated by colons)"
+  "remote.badTurnFingerprint": "Not a valid certificate fingerprint: 64 hexadecimal digits (pairs may be separated by colons)",
+  "fw.list.unknown": "Unknown blocklist",
+  "fw.list.badUrl": "Not a valid https address",
+  "fw.list.badFormat": "Unknown list format",
+  "fw.list.tooMany": "There are already 16 lists of your own",
+  "fw.list.exists": "That list is already there",
+  "fw.list.unavailable": "Blocklists are not available in this session"
 }

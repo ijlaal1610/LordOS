@@ -45,6 +45,7 @@
 #include <strings.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 static uint64_t seq_sample, seq_procs, seq_conns, seq_detail, seq_temps;
@@ -454,7 +455,23 @@ static JSValue f_history_clear(JSContext *c, JSValueConst t, int argc, JSValueCo
     return JS_NewBool(c, h && nh_clear(h) == 0);
 }
 
+/* (0.8.5) netTotals() → { t, rx, tx }: the machine's byte counters now (the menu bar's network item),
+ * without starting the sampling thread. */
+static JSValue f_net_totals(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    uint64_t rx, tx;
+    if (netrec_totals(&rx, &tx)) return JS_NULL;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    JSValue o = JS_NewObject(c);
+    JS_SetPropertyStr(c, o, "t", JS_NewFloat64(c, ts.tv_sec * 1e3 + ts.tv_nsec / 1e6));
+    JS_SetPropertyStr(c, o, "rx", JS_NewFloat64(c, (double)rx));
+    JS_SetPropertyStr(c, o, "tx", JS_NewFloat64(c, (double)tx));
+    return o;
+}
+
 static const JSCFunctionListEntry monitor_funcs[] = {
+    JS_CFUNC_DEF("netTotals", 0, f_net_totals),
     JS_CFUNC_DEF("start", 0, f_start),
     JS_CFUNC_DEF("stop", 0, f_stop),
     JS_CFUNC_DEF("want", 3, f_want),

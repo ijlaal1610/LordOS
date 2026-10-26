@@ -508,7 +508,10 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
 
 ## Before 1.0
 
-- [ ] **Monitor → Network, second generation (0.8.4)** — our own design; same function as the
+- [x] **Monitor → Network, second generation (0.8.5)** — done 2026-10-19 on VM 118, see
+  `MONITOR.md` ("Network, second generation", "The menu bar network item", "Blocklists") and
+  `FIREWALL.md` ("LordOS components in their own scopes", "The essential system services",
+  "Blocklists", "The modes"). Our own design; same function as the
   best per-app firewalls, no copied look or names.
   - **Native apps as their own rows:** every built-in component that uses the network gets a row
     with its name and icon, backed by its own process and cgroup so rules are enforced by the
@@ -540,6 +543,14 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
     format limits, parsed strictly, compiled into the existing domain/IP rule maps; custom list
     URLs allowed. Lists never override a user's explicit allow rule.
   - Performance budget measured as in 0.8.3 (no visible cost with thousands of list entries).
+  - **Done as described, except:** no city chip and no grouping by city (no city-level IP database
+    with a compatible licence); a history window lists apps only (the history never keeps
+    destinations); the switches are on destinations, not on single ports; the menu bar item offers
+    allow silently / deny silently / off (the ask mode doesn't exist yet) and no rule profiles
+    (0.8.5); "Recently denied" counts the last ten minutes.
+  - [ ] Test Mail's and the printers' connectors against a real mail server and a network printer
+    (the same connector was tested live with the blocklists); a laptop's real DHCP and VPN rows.
+  - [ ] The per-packet cost of the per-port accounting (+0.6 µs at 104,000 packets/s): find it.
 
 - [ ] **Firewall rules manager (its own release after 0.8.5)** — a "Rules" section in the Monitor (our own design):
   - **Sidebar:** All rules, Active, Denied, Recently modified, Recently used, Temporary, Unapproved

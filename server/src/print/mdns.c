@@ -1,5 +1,6 @@
 /* mdns.c — see mdns.h. */
 #include "mdns.h"
+#include "../sec/netconn.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -203,7 +204,7 @@ const char *mdns_txt(const MdnsSvc *s, const char *key, char *out, size_t n) {
 }
 
 int mdns_browse(const char *const *types, int ntypes, int ms, MdnsSvc *out, int max) {
-    int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+    int fd = netconn_socket(NC_PRINT, AF_INET, SOCK_DGRAM, NULL, 0);   /* the printers' own (sec/netconn.h) */
     if (fd < 0) return 0;
     unsigned char ttl = 255, loop = 1;
     setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof ttl);
