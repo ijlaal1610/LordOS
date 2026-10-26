@@ -88,6 +88,23 @@ line from a real VMware guest.
   moving the mouse composites nothing. If the driver has no cursor plane, it's drawn as a quad
   (`LORD_SW_CURSOR=1` forces it).
 
+## The CPU path on several threads (0.8.5)
+
+Without a GPU (a virtual machine like VM 116, a board without a working driver) the CPU path paints
+every frame. Its heavy pixel loops run on a small pool of threads (`server/src/par.c`, up to 8): the
+backdrop blur in phases (downsample, the box passes by rows and by columns, the upsample), and the
+row-local primitives (fills, strokes, gradients, blits, shadow masks) as the same call on each
+thread with the clip cut to a band of rows; the remote desktop's tile comparison and the copies into
+the encoder's slots too. The node tree, caches and everything else stay on the main thread, and the
+pixels are the same as on one thread (`blurbench`/`rrbench` compare them byte for byte).
+
+Waking the pool costs CPU, so it is used only while frames are heavy: it turns on when painting takes
+more than 70 % of a frame at the target rate (the monitor's refresh, or the fastest remote viewer's
+screen without a monitor) and off after 60 light frames in a row. On VM 116 (8 cores, Xeon 1.8 GHz), a
+1920×1080 session with a 60 fps video under blurred windows: 45 frames a second on one thread, 55–58
+with the pool. `canvas.c` builds at -O3 (its loops vectorize); the blur itself went from 28 ms to
+2.7 ms over the day's work.
+
 ## When the GPU context is re-created
 
 The EGL/GBM context does not live as long as the session. It is torn down and made again when the

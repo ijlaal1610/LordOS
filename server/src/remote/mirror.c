@@ -18,6 +18,8 @@
 #include "proto.h"
 #include "../vault/vclient.h"
 #include "../media/mstream.h"
+#include "../par.h"
+#include "../canvas.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -573,6 +575,29 @@ void mirror_dispatch(const struct pollfd *p, int n) {
 
 #define FULL_CHECK_MS 500           /* with damage hints, every tile is still compared this often */
 
+/* One frame's comparison, split by rows of tiles over the pool (par.h): every tile has its own bytes in
+ * fb, chg and each client's dirty map, so the rows don't share anything but "something changed". */
+typedef struct { const uint32_t *px; int stride, tx0, tx1; int any; } Cmp;
+static void cmp_rows(void *ctx, int ty0, int ty1) {
+    Cmp *k = ctx;
+    int any = 0;
+    for (int ty = ty0; ty < ty1; ty++)
+        for (int tx = k->tx0; tx < k->tx1; tx++) {
+            int x = tx * TILE, y = ty * TILE;
+            int tw = x + TILE > W ? W - x : TILE, th = y + TILE > H ? H - y : TILE;
+            int changed = 0;
+            for (int j = 0; j < th && !changed; j++)
+                changed = memcmp(fb + (size_t)(y + j) * W + x, k->px + (size_t)(y + j) * k->stride + x, (size_t)tw * 4) != 0;
+            if (!changed) continue;
+            for (int j = 0; j < th; j++)
+                memcpy(fb + (size_t)(y + j) * W + x, k->px + (size_t)(y + j) * k->stride + x, (size_t)tw * 4);
+            for (int i = 0; i < MAX_CLIENTS; i++) if (cl[i].fd >= 0 && cl[i].dirty) cl[i].dirty[ty * TW + tx] = 1;
+            if (chg) chg[ty * TW + tx] = 1;
+            any = 1;
+        }
+    if (any) __atomic_store_n(&k->any, 1, __ATOMIC_RELAXED);
+}
+
 void mirror_frame(const uint32_t *px, int stride, int w, int h, const int *dmg) {
     static double full_at;
     if (lfd < 0 || !mirror_watchers()) { free(fb); fb = NULL; return; }
@@ -606,20 +631,10 @@ void mirror_frame(const uint32_t *px, int stride, int w, int h, const int *dmg) 
             if (tx1 > TW) tx1 = TW;
             if (ty1 > TH) ty1 = TH;
         } else full_at = t;
-        for (int ty = ty0; ty < ty1; ty++)
-            for (int tx = tx0; tx < tx1; tx++) {
-                int x = tx * TILE, y = ty * TILE;
-                int tw = x + TILE > W ? W - x : TILE, th = y + TILE > H ? H - y : TILE;
-                int changed = 0;
-                for (int j = 0; j < th && !changed; j++)
-                    changed = memcmp(fb + (size_t)(y + j) * W + x, px + (size_t)(y + j) * stride + x, (size_t)tw * 4) != 0;
-                if (!changed) continue;
-                for (int j = 0; j < th; j++)
-                    memcpy(fb + (size_t)(y + j) * W + x, px + (size_t)(y + j) * stride + x, (size_t)tw * 4);
-                for (int i = 0; i < MAX_CLIENTS; i++) if (cl[i].fd >= 0 && cl[i].dirty) cl[i].dirty[ty * TW + tx] = 1;
-                if (chg) chg[ty * TW + tx] = 1;
-                any = 1;
-            }
+        Cmp k = { px, stride, tx0, tx1, 0 };
+        if ((long)(ty1 - ty0) * (tx1 - tx0) >= 64 && canvas_parallel_on()) par_rows(ty0, ty1, cmp_rows, &k);
+        else cmp_rows(&k, ty0, ty1);
+        any = k.any;
     }
     if (any) {
         last_change = now_ms();

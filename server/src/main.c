@@ -24,6 +24,7 @@
 #include "keyboard.h"
 #include "ui/js_sys.h"
 #include "canvas.h"
+#include "par.h"
 #include "input.h"
 #include "kms.h"
 #include "drmcard.h"
@@ -1434,6 +1435,20 @@ static void render_frame(Server *s) {
         } else if (c->on) { out_free(c); c->on = 0; c->pend = (Box){ 0, 0, 0, 0 }; }
     }
     s->frames++;
+    /* The pool only while frames are heavy: it costs CPU to wake (a light frame painted on one thread
+     * spends less), so it turns on when painting takes more than 70 % of a frame at the target rate (the
+     * monitor's refresh, or the fastest remote viewer's without a monitor) and off after 60 light frames
+     * in a row (with the pool a heavy frame paints fast, so not at once: it would flap).
+     * A 1080p video under blurred windows: 45 → 57 frames a second on VM 116. */
+    static int par_on, light;
+    Out *pm = main_out(s);
+    int hz = s->headless ? (mirror_fps() > 60 ? mirror_fps() : 60) : pm && pm->kms.mode.vrefresh ? (int)pm->kms.mode.vrefresh : 60;
+    double frame_ms = 1000.0 / hz;
+    if (!par_on && ui.paint_ms > frame_ms * 0.7 && par_threads() > 1) { par_on = 1; light = 0; canvas_parallel(par_rows); }
+    else if (par_on) {
+        light = ui.paint_ms < frame_ms * 0.25 ? light + 1 : 0;
+        if (light >= 60) { par_on = 0; canvas_parallel(NULL); }
+    }
     wl_frame_done((unsigned)now_ms());
     /* No flip event will come (a modeset instead of a page flip: the first frame, or a driver
      * without page flip): the frame is on screen already, so its presentation feedback goes now.
@@ -1702,6 +1717,10 @@ int main(int argc, char **argv) {
     static const MirrorInput mirror_in = { remote_pointer, remote_button, remote_wheel, remote_key, remote_clip, remote_clients,
                                            remote_refresh, remote_resize, remote_greeter, display_attach, display_detach,
                                            remote_scroll, remote_pinch, remote_input_add, remote_notice };
+    /* the CPU path's pixel loops on a pool (par.h): blur, blits, gradients, the remote desktop's
+     * comparison and copies; same pixels as one thread. Its threads sleep between jobs, and jobs only
+     * run inside a frame on this thread, so the processes this server forks never inherit a busy one. */
+    par_init(0);
     if (ok && mirror_start(s.W, s.H, &mirror_in)) fprintf(stderr, "lord-server: no remote desktop (socket)\n");
     char current[sizeof ui.theme_request];
     if (ok) ok = start_theme(theme, s.greeter, current, sizeof current) == 0;

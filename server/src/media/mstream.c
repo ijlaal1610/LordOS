@@ -8,6 +8,8 @@
  * If the encoder is behind (no free slot) the frame waits: the newest one goes when a slot frees up,
  * so a slow machine sends fewer frames, never old ones. Sound: the session's default output,
  * recorded by lord-server itself (maudio.c, PipeWire) into a ring the encoder reads. */
+#include "../par.h"
+#include "../canvas.h"
 #include "mstream.h"
 #include "media_int.h"
 
@@ -196,6 +198,13 @@ void mstream_keyframe(int codec) {
     E[codec].pending = 1;
 }
 
+/* the copy into an input slot, by rows over the pool (par.h) */
+typedef struct { uint32_t *dst; int w, x0, x1; } SlotCopy;
+static void slot_rows(void *ctx, int y0, int y1) {
+    SlotCopy *k = ctx;
+    for (int y = y0; y < y1; y++) memcpy(k->dst + (size_t)y * k->w + k->x0, fpx + (size_t)y * fstride + k->x0, (size_t)(k->x1 - k->x0) * 4);
+}
+
 static void feed(Enc *e, int codec) {
     MediaSrc *s = src_of(e);
     if (!s || s->sock < 0) {
@@ -217,7 +226,11 @@ static void feed(Enc *e, int codec) {
     int *d = slot < 4 ? e->dirty[slot] : NULL, full[4] = { 0, 0, e->w, e->h };
     if (!d) d = full;
     int x0 = d[0] < 0 ? 0 : d[0], y0 = d[1] < 0 ? 0 : d[1], x1 = d[2] > e->w ? e->w : d[2], y1 = d[3] > e->h ? e->h : d[3];
-    for (int y = y0; y < y1 && x1 > x0; y++) memcpy(dst + (size_t)y * e->w + x0, fpx + (size_t)y * fstride + x0, (size_t)(x1 - x0) * 4);
+    if (x1 > x0 && y1 > y0) {
+        SlotCopy k = { dst, e->w, x0, x1 };
+        if ((long)(x1 - x0) * (y1 - y0) >= 262144 && canvas_parallel_on()) par_rows(y0, y1, slot_rows, &k);
+        else slot_rows(&k, y0, y1);
+    }
     if (slot < 4) d[0] = d[1] = d[2] = d[3] = 0;
     if (e->kbps != e->sent_kbps) { mp_sendv(s->sock, MM_RATE, 0, e->kbps, 0, 0, 0); e->sent_kbps = e->kbps; }
     if (e->want_key) { mp_sendv(s->sock, MM_KEYFRAME, 0, 0, 0, 0, 0); e->want_key = 0; }
