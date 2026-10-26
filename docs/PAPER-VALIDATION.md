@@ -153,7 +153,7 @@ compositor's keymap, modifiers and layout, repeat rate and delay) and every glob
 the picture for a still capture) and in `--auto`'s JSON. Each protocol is bound at the advertised version
 and exercised, and a protocol error ends the connection with the failing check named (its first run caught
 the bench's own mistake, `wl_shm.release` on version 1, which LordOS's compositor rightly refused). First
-run on VM 116 (headless session):
+run on VM 116 (headless session); after the two compositor fixes below: 16 passed, 0 failed:
 
 | Check | Result |
 |---|---|
@@ -164,10 +164,11 @@ run on VM 116 (headless session):
 | xdg popup | pass: configured 200×100 and mapped |
 | maximize, fullscreen | pass: the configure carries the state, and loses it after unset |
 | `linux-dmabuf` v4 feedback | pass, with a finding: a headless session sends main device 0:0 (none) and 4 formats |
-| clipboard, primary selection round trip | **fail**: the compositor doesn't send a new selection back to the focused client that set it (`wl.c`, `offer_selection` returns early for "its own"); the protocol says the focused client gets every new selection. Toolkits cope, but it is a deviation |
+| clipboard, primary selection round trip | **failed, then fixed (same day)**: the compositor didn't send a new selection back to the focused client that set it (`wl.c`, `offer_selection` and `prim_offer_to` returned early for "its own"), which the protocol requires. Now the focused client gets every new selection and `dev_set_selection` offers it at once; both round trips come back intact |
 | `wp_presentation` | offered, but a headless session discards every frame and gives no refresh (the output's mode says 60 Hz) |
 | cursor shape, relative pointer, gestures | bound; they need the real pointer or a touchpad to go green |
-| not offered | text-input v3 (input methods for Linux apps), xdg-activation, idle-inhibit (a video player can't keep the screen on), single-pixel buffers, tearing control, content type, tablets, idle notify, drm-lease |
+| idle inhibit | **added (same day)**: `zwp_idle_inhibit_manager_v1`; while a shown surface holds an inhibitor, `main.c` keeps the idle timers (screen off, lock, sleep) from running. The bench creates and releases one |
+| not offered | text-input v3 (input methods for Linux apps), xdg-activation, single-pixel buffers, tearing control, content type, tablets, idle notify, drm-lease |
 
 Also seen: system shortcuts (F1 opens Help, F4 the launcher, ❖ combinations) never reach the app, so the
 keyboard test can't light them; the bench should list them as taken by the system.

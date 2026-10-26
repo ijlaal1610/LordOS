@@ -39,6 +39,7 @@ void wl_close(int id);                  /* asks the app to close the window */
 void wl_set_state(int id, int maximized, int fullscreen);
 void wl_set_minimized(int id, int minimized);   /* X11 windows: iconic and at the bottom of X's stack */
 int  wl_count(void);
+int  wl_idle_inhibited(void);             /* idle-inhibit: a shown surface asks the screen to stay on */
 void wl_output_resized(void);               /* headless: one display of ui.width × ui.height */
 void wl_remap_all(void);                    /* a new JS context (theme switched): announce the open windows again */
 /* The displays (docs/DISPLAYS.md): one wl_output (+ xdg-output) each. x, y, w, h: logical rect in the

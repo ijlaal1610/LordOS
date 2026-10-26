@@ -26,6 +26,8 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   configured or actually tried. **Run tests** starts a test app that tries, inside the same sandbox as
   any isolated app, what it must not be able to do (your files, sockets, ptrace, leaving its scope,
   exec), plus the decoders' sandbox and the requests the system must refuse.
+- **Linux video players can keep the screen on** (idle-inhibit), and an app that copies now sees its
+  own copy in the clipboard as the Wayland protocol says.
 - **Test Bench** (`lordos-testbench`): a test pattern window that checks the display server from the
   outside: frame timing and when frames really reach the screen, every key of the keyboard, the
   mouse and wheel, and the Wayland protocols the system offers.

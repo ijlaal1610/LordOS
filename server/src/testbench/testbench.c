@@ -30,6 +30,7 @@
 #include <fcntl.h>
 #include <linux/input-event-codes.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -754,6 +755,7 @@ int main(int argc, char **argv) {
             return 2;
         }
     }
+    signal(SIGPIPE, SIG_IGN);           /* a clipboard reader that hangs up must not end the bench (toolkits do the same) */
     dpy = wl_display_connect(NULL);
     if (!dpy) { fprintf(stderr, "lordos-testbench: no Wayland compositor (WAYLAND_DISPLAY)\n"); return 1; }
     xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);

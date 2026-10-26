@@ -30,6 +30,7 @@
 #include "client/pointer-constraints-unstable-v1-client-protocol.h"
 #include "client/pointer-gestures-unstable-v1-client-protocol.h"
 #include "client/primary-selection-unstable-v1-client-protocol.h"
+#include "client/idle-inhibit-unstable-v1-client-protocol.h"
 
 Check checks[48];
 int nchecks, checks_done;
@@ -450,6 +451,7 @@ int checks_run(void) {
         if (clip_offer_ready && clip_offer) {
             int pp[2];
             if (!pipe2(pp, O_CLOEXEC)) {
+                clip_sent = 0;              /* the compositor's own read of the source may have set it already */
                 wl_data_offer_receive(clip_offer, CLIP_MIME, pp[1]);
                 close(pp[1]);
                 wl_display_flush(dpy);
@@ -477,6 +479,7 @@ int checks_run(void) {
         if (prim_ready && prim_offer) {
             int pp[2];
             if (!pipe2(pp, O_CLOEXEC)) {
+                prim_sent = 0;
                 zwp_primary_selection_offer_v1_receive(prim_offer, CLIP_MIME, pp[1]);
                 close(pp[1]);
                 wl_display_flush(dpy);
@@ -525,11 +528,23 @@ int checks_run(void) {
         gest_check = c;
         set(c, CK_UNTESTED, "BOUND V%u: SWIPE OR PINCH ON A TOUCHPAD", gg->version);
     }
+    /* idle inhibit: what a video player does to keep the screen on */
+    c = begin("idle inhibit");
+    struct zwp_idle_inhibit_manager_v1 *iim = bind("zwp_idle_inhibit_manager_v1", &zwp_idle_inhibit_manager_v1_interface, 1);
+    if (!iim) set(c, CK_FAIL, "%s", "NOT OFFERED: A VIDEO PLAYER CAN'T KEEP THE SCREEN ON");
+    else {
+        struct zwp_idle_inhibitor_v1 *in = zwp_idle_inhibit_manager_v1_create_inhibitor(iim, surf);
+        sync_or();
+        if (wl_display_get_error(dpy)) return died();
+        zwp_idle_inhibitor_v1_destroy(in);
+        sync_or();
+        set(c, CK_PASS, "%s", "INHIBITOR CREATED AND RELEASED");
+    }
     /* what a desktop expects to find, offered or not */
     static const struct { const char *iface, *what; int needed; } expect[] = {
         { "wl_seat", "seat", 1 }, { "xdg_wm_base", "xdg-shell", 1 }, { "zxdg_decoration_manager_v1", "server decorations", 0 },
         { "wp_presentation", "presentation time", 0 }, { "zwp_text_input_manager_v3", "input methods (text-input v3)", 0 },
-        { "xdg_activation_v1", "xdg-activation", 0 }, { "zwp_idle_inhibit_manager_v1", "idle inhibit (video)", 0 },
+        { "xdg_activation_v1", "xdg-activation", 0 },
         { "wp_single_pixel_buffer_manager_v1", "single-pixel buffers", 0 }, { "wp_tearing_control_manager_v1", "tearing control (games)", 0 },
         { "wp_content_type_manager_v1", "content type", 0 }, { "zwp_tablet_manager_v2", "drawing tablets", 0 },
         { "ext_idle_notifier_v1", "idle notify", 0 }, { "wp_drm_lease_device_v1", "VR headsets (drm-lease)", 0 },

@@ -470,3 +470,13 @@ display.
 - Drag and drop, `text-input` (LordOS input methods inside Wayland apps), activation
   (`xdg-activation`). (Fractional scale and several outputs: done, see `DISPLAYS.md`; primary
   selection and Xwayland: done in 0.8.3, above.)
+
+## Clipboard to its owner and idle-inhibit (0.8.5)
+
+- **The selection goes to the focused client, its owner included.** `offer_selection` and `prim_offer_to`
+  used to skip the client that set the selection; the protocol says the client with the keyboard gets every
+  new selection. Now it does, and `dev_set_selection` offers the new selection at once (a receive from the
+  owner is forwarded to its own source). Found by `lordos-testbench` (`docs/PAPER-VALIDATION.md`).
+- **`zwp_idle_inhibit_manager_v1`**: a video player or a presentation creates an inhibitor on its surface;
+  while that surface is mapped, `wl_idle_inhibited()` is true and `main.c` resets the idle timers (screen off,
+  lock, sleep; Settings → Battery) on every loop.

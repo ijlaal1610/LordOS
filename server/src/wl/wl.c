@@ -43,6 +43,7 @@
 #include "pointer-constraints-unstable-v1-protocol.h"
 #include "cursor-shape-v1-protocol.h"
 #include "fractional-scale-v1-protocol.h"
+#include "idle-inhibit-unstable-v1-protocol.h"
 #include "xdg-output-unstable-v1-protocol.h"
 #include "primary-selection-unstable-v1-protocol.h"
 #include "xwm.h"
@@ -1004,6 +1005,25 @@ static const struct wl_keyboard_interface keyboard_impl = { .release = res_relea
 static const struct wl_touch_interface touch_impl = { .release = res_release };
 static void link_gone(struct wl_resource *r) { wl_list_remove(wl_resource_get_link(r)); }
 
+/* ---- idle-inhibit: a video player or a presentation keeps the screen on while its surface is shown ---- */
+static struct wl_list inhibitors;
+static void inh_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
+static const struct zwp_idle_inhibitor_v1_interface inh_impl = { .destroy = inh_destroy };
+static void iim_create(struct wl_client *c, struct wl_resource *r, uint32_t id, struct wl_resource *surface) {
+    struct wl_resource *i = wl_resource_create(c, &zwp_idle_inhibitor_v1_interface, wl_resource_get_version(r), id);
+    if (!i) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(i, &inh_impl, surface, link_gone);   /* the surface, only compared below */
+    wl_list_insert(&inhibitors, wl_resource_get_link(i));
+}
+static void iim_destroy(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
+static const struct zwp_idle_inhibit_manager_v1_interface iim_impl = { .destroy = iim_destroy, .create_inhibitor = iim_create };
+static void bind_iim(struct wl_client *c, void *data, uint32_t ver, uint32_t id) {
+    (void)data;
+    struct wl_resource *r = wl_resource_create(c, &zwp_idle_inhibit_manager_v1_interface, (int)ver, id);
+    if (!r) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(r, &iim_impl, NULL, NULL);
+}
+
 static void send_keymap(struct wl_resource *kb) {
     char *km = kb_keymap_string();
     if (!km) return;
@@ -1273,7 +1293,8 @@ static void offer_gone(struct wl_resource *r) { free(wl_resource_get_user_data(r
 
 static void offer_selection(struct wl_resource *dev) {
     struct wl_client *c = wl_resource_get_client(dev);
-    if (selection && wl_resource_get_client(selection->res) == c) return;     /* it is its own */
+    /* the focused client gets every new selection, its own included (the protocol says so; its receive is
+     * forwarded to its own source) */
     const char *t = term_clipboard();
     int image = !selection && clip_is_image && clip_png;
     if (!selection && !image && !t[0]) { wl_data_device_send_selection(dev, NULL); return; }
@@ -1363,6 +1384,7 @@ static void dev_set_selection(struct wl_client *c, struct wl_resource *r, struct
     selection = s;
     clip_offer_gen++;
     if (s) read_selection(s);
+    offer_to_focus();                   /* the new selection, to the client with the keyboard (the owner, usually) */
 }
 static const struct wl_data_device_interface device_impl = { .start_drag = dev_drag, .set_selection = dev_set_selection, .release = res_release };
 
@@ -1448,7 +1470,6 @@ static void poffer_gone(struct wl_resource *r) { free(wl_resource_get_user_data(
 
 static void prim_offer_to(struct wl_resource *dev) {
     struct wl_client *c = wl_resource_get_client(dev);
-    if (prim_src && wl_resource_get_client(prim_src->res) == c) return;    /* its own */
     if (!prim_text || !prim_len) { zwp_primary_selection_device_v1_send_selection(dev, NULL); return; }
     struct wl_resource *o = wl_resource_create(c, &zwp_primary_selection_offer_v1_interface, wl_resource_get_version(dev), 0);
     if (!o) return;
@@ -3102,6 +3123,7 @@ int wl_start(void) {
     wl_global_create(dpy, &wl_seat_interface, 9, NULL, bind_seat);    /* 8: axis_value120, 9: relative_direction */
     wl_global_create(dpy, &wl_data_device_manager_interface, 3, NULL, bind_ddm);
     wl_list_init(&prim_devices);
+    wl_list_init(&inhibitors);
     wl_global_create(dpy, &zwp_primary_selection_device_manager_v1_interface, 1, NULL, bind_pdm);   /* middle-click paste */
     wl_global_create(dpy, &xdg_wm_base_interface, 6, NULL, bind_wm_base);
     wl_global_create(dpy, &zxdg_decoration_manager_v1_interface, 1, NULL, bind_decm);
@@ -3115,6 +3137,7 @@ int wl_start(void) {
     wl_global_create(dpy, &zwp_relative_pointer_manager_v1_interface, 1, NULL, bind_relm);
     wl_global_create(dpy, &zwp_pointer_constraints_v1_interface, 1, NULL, bind_consm);
     wl_global_create(dpy, &wp_cursor_shape_manager_v1_interface, 1, NULL, bind_csm);   /* cursors by name */
+    wl_global_create(dpy, &zwp_idle_inhibit_manager_v1_interface, 1, NULL, bind_iim);  /* video keeps the screen on */
     wl_global_create(dpy, &kde_mgr_interface, 1, NULL, bind_kde_deco);   /* theme frame for GTK 3 (Firefox) */
     wl_input_globals(dpy);              /* zwp_pointer_gestures_v1 (wl_input.c) */
     /* inherited by apps opened from the LordOS terminal */
@@ -3287,4 +3310,14 @@ const char *wlx_primary(size_t *n, unsigned *gen) {
     *n = prim_len;
     *gen = prim_gen;
     return prim_text ? prim_text : "";
+}
+
+int wl_idle_inhibited(void) {
+    if (!inhibitors.next) return 0;     /* before wl_start */
+    struct wl_resource *r;
+    wl_resource_for_each(r, &inhibitors) {
+        struct wl_resource *sr = wl_resource_get_user_data(r);
+        for (int i = 0; i < MAX_SURF; i++) if (surfs[i] && surfs[i]->res == sr && surfs[i]->mapped) return 1;
+    }
+    return 0;
 }
