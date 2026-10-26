@@ -13,6 +13,8 @@
     "other": "Delete {count} items permanently?"
   },
   "confirm.empty": "Empty the Trash?",
+  "disk.mounting": "Mounting {name}…",
+  "disk.unnamed": "{size} volume",
   "empty": "Empty folder",
   "favorites": "Favorites",
   "group.date.month": "Previous 30 Days",
@@ -116,6 +118,7 @@
   "noSelection": "Select items to tag them",
   "noResults": "No results.",
   "place.apps": "Applications",
+  "place.computer": "This Computer",
   "place.desktop": "Desktop",
   "place.documents": "Documents",
   "place.downloads": "Downloads",

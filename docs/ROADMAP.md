@@ -605,6 +605,11 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   space; a click mounts it through the existing `disk-mount` action (internal disks ask for an
   administrator, removable ones don't), plus unmount and eject. **No "as root" mode** (decided: it
   would be generic root file access from the interface); "Open in Terminal here" for `sudo` work.
+  *Implemented (not yet checked on screen):* the place, read-only `lord.fs` outside the writable
+  roots (`fsops_readable`, without `/proc`, `/sys`, `/dev`, `/run`), the lock, unmounted disks that
+  mount on a click, ⏏ to eject or unmount. *Left:* "Open in Terminal here" would need a folder
+  argument for `lord.term.create()`, one of the approved launcher exceptions, so it waits for a
+  decision; size and free space per disk in the sidebar.
 - [ ] **Files: network shares (own release after 0.8.5, approved 2026-10-25)** — SMB and NFS shares
   found with mDNS or typed ("Connect to server…", `smb://host/share`), mounted by the kernel through
   one new closed admin action, `share-mount` (host, share and user validated; the password on

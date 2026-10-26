@@ -1,10 +1,12 @@
 // Files — a file browser: tabs, four views (icons, list, columns and gallery), a sidebar
 // with Favorites, Locations and Tags, the freedesktop Trash, Quick Preview, Get Info,
-// copy/cut/paste, drag and drop, and search.
+// copy/cut/paste, drag and drop, and search. Locations also has This computer (the whole tree,
+// read-only outside the home folder and the user's disks) and every disk, mounted or not.
 // Disk operations go through lord.fs (server/src/fsops.c); see docs/FILES.md.
 import {
   View, Text, useTheme, useAppWindow, useKeyboard, useStore, useLauncherApps, addListener, wm, fs, clipboard, archive, warmDocs,
   formatBytes, t as tr, ScrollView, Toolbar, ToolbarButton, ToolbarGroup, SearchField, Hairline, direction, spacing, typeScale, registerDockActions,
+  useDisks, admin, systemInfo,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FolderGlyph, DocGlyph, TAG_COLORS, TrashGlyph, DriveGlyph } from './glyphs.jsx';
@@ -38,6 +40,32 @@ const newTab = (loc, from) => ({ id: tabSeq++, loc, back: [], fwd: [], view: fro
 const winStates = new Map();
 
 const homeLoc = () => ({ type: 'dir', path: fs.home() });
+const computerLoc = () => ({ type: 'dir', path: '/' });
+// This computer is named after the machine
+const computerName = () => { try { return systemInfo().hostname || tr('files.place.computer'); } catch (e) { return tr('files.place.computer'); } };
+// Partitions (or whole disks without a table) that hold a file system and aren't mounted, off the
+// disk the system runs from: the sidebar offers them, mounted with the Disks app's disk-mount.
+const NO_MOUNT = ['', 'swap', 'crypto_LUKS', 'LVM2_member', 'linux_raid_member'];
+function unmountedDisks(list) {
+  const out = [];
+  for (const d of list || []) {
+    if (d.system) continue;
+    for (const p of d.partitions?.length ? d.partitions : [d]) {
+      if (!NO_MOUNT.includes(p.fstype || '') && !p.mountpoint) out.push({ name: p.name, label: p.label, size: p.size, removable: d.removable });
+    }
+  }
+  return out;
+}
+// What ⏏ does for a mounted volume: a removable disk is ejected whole (disk-eject), another disk's
+// partition is unmounted (disk-unmount); nothing on the disk the system runs from.
+function volumeRelease(list, path) {
+  for (const d of list || []) {
+    if (d.system) continue;
+    const p = (d.partitions?.length ? d.partitions : [d]).find((x) => x.mountpoint === path);
+    if (p) return d.removable ? { action: 'disk-eject', name: d.name } : { action: 'disk-unmount', name: p.name };
+  }
+  return null;
+}
 function argLoc(args) {
   if (args?.place === 'trash') return { type: 'trash' };
   if (!args?.path) return null;
@@ -72,6 +100,7 @@ function locTitle(loc, dirs) {
     case 'archive': return loc.inner ? fs.basename(loc.inner) : fs.basename(loc.path);
     default: {
       if (loc.path === fs.home()) return tr('files.place.home');
+      if (loc.path === '/') return computerName();
       const d = dirs.find((x) => x.path === loc.path);
       return d ? tr(`files.place.${d.label}`) : fs.basename(loc.path);
     }
@@ -82,14 +111,19 @@ function locTitle(loc, dirs) {
 
 // Source-list row: 28 px, accent-colored icon, a soft highlight when selected and the
 // accent when something is dragged over it.
-function SideItem({ label, icon, selected, onClick, t, drop, hot }) {
+function SideItem({ label, icon, selected, onClick, t, drop, hot, dim, trail }) {
   const [hover, setHover] = useState(false);
   return (
     <View onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} {...drop}
       style={{ height: 28, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, borderRadius: 6,
         backgroundColor: hot ? t.accent : selected ? (t.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)') : hover ? t.hover : 'transparent' }}>
       <View style={{ width: 18, alignItems: 'center', justifyContent: 'center' }}>{icon}</View>
-      <Text style={{ flex: 1, fontSize: typeScale.body, color: hot ? '#fff' : t.text, whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</Text>
+      <Text style={{ flex: 1, fontSize: typeScale.body, color: hot ? '#fff' : dim ? t.textDim : t.text, whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'start' }}>{label}</Text>
+      {trail && (hover || selected) ? (
+        <View onClick={(e) => { e.stopPropagation?.(); trail.onClick(); }} style={{ width: 18, alignItems: 'center' }}>
+          <Text style={{ fontSize: 12, color: t.textDim }}>{trail.glyph}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -157,6 +191,7 @@ export default function Files() {
   const [drag, setDrag] = useState(null);                 // { paths, x, y, alt }
   const [dropTarget, setDropTarget] = useState(null);
   const [volumes, setVolumes] = useState(() => fs.volumes());
+  const [diskList] = useDisks();
   useEffect(() => { setTimeout(warmDocs, 800); }, []);             // PDF Quick Preview without waiting for the helper
   const [msg, setMsg] = useState(null);
   const root = useRef(null);
@@ -176,6 +211,10 @@ export default function Files() {
   const flat = useMemo(() => groups.flatMap((g) => g.items), [groups]);
   const byPath = useMemo(() => new Map(flat.map((e) => [e.path, e])), [flat]);
   const curDir = baseLoc.type === 'dir' ? baseLoc.path : null;
+  // outside the home folder and the user's disks a folder is only browsed (lord.fs reads there but
+  // doesn't write): the actions that change it are left out
+  const readOnly = useMemo(() => { if (!curDir) return false; try { return !fs.stat(curDir).writable; } catch (e) { return true; } }, [curDir, version]);
+  const wDir = readOnly ? null : curDir;
   const title = locTitle(loc, dirs);
 
   function navigate(next, push = true) {
@@ -207,17 +246,17 @@ export default function Files() {
   // ---- actions ----
   const report = (e) => { console.log(`files: ${e?.message || e}`); setMsg(String(e?.message || e)); };
   const newFolder = (withPaths) => {
-    if (!curDir) return;
-    const name = freeName(curDir, tr('files.newFolder'));
+    if (!wDir) return;
+    const name = freeName(wDir, tr('files.newFolder'));
     try {
-      fs.mkdir(`${curDir}/${name}`);
-      if (withPaths && withPaths.length) transfer(withPaths, `${curDir}/${name}`, true);
+      fs.mkdir(`${wDir}/${name}`);
+      if (withPaths && withPaths.length) transfer(withPaths, `${wDir}/${name}`, true);
       bump();
-      setSelected(new Set([`${curDir}/${name}`]));
-      setRenaming({ path: `${curDir}/${name}`, value: name });
+      setSelected(new Set([`${wDir}/${name}`]));
+      setRenaming({ path: `${wDir}/${name}`, value: name });
     } catch (e) { report(e); }
   };
-  const startRename = (e = first) => { if (e && !e.app && !e.trash && curDir !== null) { setSelected(new Set([e.path])); setRenaming({ path: e.path, value: e.name }); } };
+  const startRename = (e = first) => { if (e && !e.app && !e.trash && wDir !== null) { setSelected(new Set([e.path])); setRenaming({ path: e.path, value: e.name }); } };
   const commitRename = () => {
     const r = renaming;
     setRenaming(null);
@@ -234,15 +273,27 @@ export default function Files() {
   const askEmpty = () => setConfirm({ text: tr('files.confirm.empty'), detail: tr('files.confirm.cantUndo'), ok: tr('files.menu.emptyTrash'),
     run: () => { fs.emptyTrash(); bump(); } });
   const toTrash = (paths = selPaths) => {
-    if (!paths.length) return;
+    if (!paths.length || readOnly) return;
     if (loc.type === 'trash') { askDelete(paths); return; }
     let n = 0;
     for (const p of paths) { try { fs.trash(p); n++; } catch (e) { report(e); } }
     if (n) { setMsg(tr('files.trashed', { count: n })); bump(); }
   };
   const restore = (paths = selPaths) => { let n = 0; for (const p of paths) { try { fs.restore(p); n++; } catch (err) { report(err); } } if (n) { setMsg(tr('files.restored', { count: n })); bump(); } };
-  const duplicate = (paths = selPaths) => { if (curDir && paths.length) transfer(paths, curDir, false); };
-  const doPaste = () => { if (curDir) paste(curDir); };
+  // disks: the same closed actions as the Disks app (an internal disk asks for an administrator)
+  const mount = (p) => {
+    setMsg(tr('files.disk.mounting', { name: p.label || p.name }));
+    admin.run('disk-mount', p.name, null, { quiet: true }).then(
+      (path) => { setVolumes(fs.volumes()); setMsg(null); const at = String(path || '').trim(); if (at.startsWith('/')) navigate(dirLoc(at)); },
+      (e) => setMsg(e.message));
+  };
+  const release = (r, path) => {
+    admin.run(r.action, r.name, null, { quiet: true }).then(
+      () => { setVolumes(fs.volumes()); setMsg(tr(r.action === 'disk-eject' ? 'disks.ejected' : 'disks.unmounted')); if (curDir && (curDir === path || curDir.startsWith(`${path}/`))) navigate(homeLoc()); },
+      (e) => setMsg(e.message));
+  };
+  const duplicate = (paths = selPaths) => { if (wDir && paths.length) transfer(paths, wDir, false); };
+  const doPaste = () => { if (wDir) paste(wDir); };
   const ctx = { navigate, linuxApps: launcherApps, t: tr, quickLook: (e) => { setSelected(new Set([e.path])); setQuick(true); },
     openArc: (e) => { setMsg(tr('docs.opening', { name: e.name })); extractEntry(e).then((real) => openEntry({ name: e.name, path: real, size: e.size, mtime: e.mtime }, ctx)).catch((err) => setMsg(tr('docs.extractError', { name: e.name, error: err.message }))); } };
   const arcReport = (m) => setMsg(m);
@@ -319,21 +370,21 @@ export default function Files() {
       ...(e.dir ? [{ label: tr('files.menu.openTab'), onClick: () => newTabAt({ type: 'dir', path: e.path }) }] : []),
       ...(!e.dir && openers.length ? [{ label: tr('files.menu.openWith'), submenu: openers.map((o) => ({ label: o.label, onClick: o.run })) }] : []),
       '-',
-      { label: tr('files.menu.trash'), hint: '❖⌫', onClick: () => toTrash(paths) },
+      { label: tr('files.menu.trash'), hint: '❖⌫', onClick: () => toTrash(paths), disabled: readOnly },
       '-',
       // compress and extract (M9, lord-doc)
-      ...(curDir && list.length === 1 && isArchiveFile(e) ? [{ label: tr('docs.extractHere'), onClick: () => extractHere(e, arcReport, tr) }] : []),
-      ...(curDir ? [{ label: list.length === 1 ? tr('docs.compressOne', { name: e.name }) : tr('docs.compressMany', { count: list.length }), onClick: () => compress(paths, curDir, arcReport, tr) }] : []),
+      ...(wDir && list.length === 1 && isArchiveFile(e) ? [{ label: tr('docs.extractHere'), onClick: () => extractHere(e, arcReport, tr) }] : []),
+      ...(wDir ? [{ label: list.length === 1 ? tr('docs.compressOne', { name: e.name }) : tr('docs.compressMany', { count: list.length }), onClick: () => compress(paths, wDir, arcReport, tr) }] : []),
       '-',
       { label: tr('files.menu.getInfo'), hint: '❖I', onClick: () => setInfo(true) },
-      { label: tr('files.menu.rename'), hint: '↵', onClick: () => startRename(e), disabled: paths.length > 1 || !curDir },
-      { label: tr('files.menu.duplicate'), hint: '❖D', onClick: () => duplicate(paths), disabled: !curDir },
+      { label: tr('files.menu.rename'), hint: '↵', onClick: () => startRename(e), disabled: paths.length > 1 || !wDir },
+      { label: tr('files.menu.duplicate'), hint: '❖D', onClick: () => duplicate(paths), disabled: !wDir },
       { label: tr('files.menu.quickLook'), hint: '␣', onClick: () => setQuick(true) },
       '-',
       { label: tr('files.menu.copy'), hint: '❖C', onClick: () => copyFiles(paths) },
-      { label: tr('files.menu.cut'), hint: '❖X', onClick: () => cutFiles(paths) },
+      { label: tr('files.menu.cut'), hint: '❖X', onClick: () => cutFiles(paths), disabled: readOnly },
       { label: tr('files.menu.copyPath'), onClick: () => clipboard.set(paths.join('\n')) },
-      ...(curDir ? [{ label: tr('files.menu.newFolderWith', { count: paths.length }), onClick: () => newFolder(paths) }] : []),
+      ...(wDir ? [{ label: tr('files.menu.newFolderWith', { count: paths.length }), onClick: () => newFolder(paths) }] : []),
       '-',
       { header: tr('files.menu.tags') }, tagSwatches(paths),
     ];
@@ -344,7 +395,7 @@ export default function Files() {
     const groupItems = ['none', 'kind', 'date', 'size'].map((k) => ({ label: tr(`files.groupBy.${k}`), checked: tab.group === k, onClick: () => patchTab({ group: k }) }));
     if (loc.type === 'trash') return [{ label: tr('files.menu.emptyTrash'), danger: true, onClick: askEmpty, disabled: !entries.length }, '-', { label: tr('files.menu.view'), submenu: viewItems }];
     return [
-      ...(curDir ? [{ label: tr('files.menu.newFolder'), hint: '❖⇧N', onClick: () => newFolder(null) }, { label: tr('files.menu.paste'), hint: 'Ctrl+V', onClick: doPaste, disabled: !clip }, '-'] : []),
+      ...(wDir ? [{ label: tr('files.menu.newFolder'), hint: '❖⇧N', onClick: () => newFolder(null) }, { label: tr('files.menu.paste'), hint: 'Ctrl+V', onClick: doPaste, disabled: !clip }, '-'] : []),
       { label: tr('files.menu.view'), submenu: viewItems },
       { label: tr('files.menu.sortBy'), submenu: sortItems },
       { label: tr('files.menu.groupBy'), submenu: groupItems },
@@ -391,7 +442,7 @@ export default function Files() {
     if (mod && b === 'i') { setInfo((v) => !v); return; }
     if (mod && b === 'd') { duplicate(); return; }
     if (mod && b === 'c') { if (selPaths.length) copyFiles(selPaths); return; }
-    if (mod && b === 'x') { if (selPaths.length) cutFiles(selPaths); return; }
+    if (mod && b === 'x') { if (selPaths.length && !readOnly) cutFiles(selPaths); return; }
     if (e.ctrl && b === 'v') { doPaste(); return; }
     if (mod && b === 'a') { setSelected(new Set(flat.map((x) => x.path))); return; }
     if (mod && b === '[') { goBack(); return; }
@@ -426,18 +477,18 @@ export default function Files() {
       { label: tr('files.menu.file'), items: [
         { label: tr('files.menu.newWindow'), hint: '❖N', onClick: () => wm.open('files', { new: true, args: { path: curDir || fs.home() } }) },
         { label: tr('files.menu.newTab'), hint: '❖T', onClick: () => newTabAt() },
-        { label: tr('files.menu.newFolder'), hint: '❖⇧N', onClick: () => newFolder(null), disabled: !curDir }, '-',
+        { label: tr('files.menu.newFolder'), hint: '❖⇧N', onClick: () => newFolder(null), disabled: !wDir }, '-',
         { label: tr('files.menu.open'), hint: '❖↓', onClick: () => openSel(), disabled: !sel.length },
         { label: tr('files.menu.getInfo'), hint: '❖I', onClick: () => setInfo(true) },
-        { label: tr('files.menu.rename'), hint: '↵', onClick: () => startRename(), disabled: sel.length !== 1 },
-        { label: tr('files.menu.duplicate'), hint: '❖D', onClick: () => duplicate(), disabled: !sel.length || !curDir },
-        { label: tr('files.menu.trash'), hint: '❖⌫', onClick: () => toTrash(), disabled: !sel.length }, '-',
+        { label: tr('files.menu.rename'), hint: '↵', onClick: () => startRename(), disabled: sel.length !== 1 || !wDir },
+        { label: tr('files.menu.duplicate'), hint: '❖D', onClick: () => duplicate(), disabled: !sel.length || !wDir },
+        { label: tr('files.menu.trash'), hint: '❖⌫', onClick: () => toTrash(), disabled: !sel.length || readOnly }, '-',
         { label: tr('files.menu.closeTab'), hint: '❖W', onClick: () => closeTab(active) },
       ] },
       { label: tr('files.menu.edit'), items: [
         { label: tr('files.menu.copy'), hint: '❖C', onClick: () => copyFiles(selPaths), disabled: !sel.length },
-        { label: tr('files.menu.cut'), hint: '❖X', onClick: () => cutFiles(selPaths), disabled: !sel.length },
-        { label: tr('files.menu.paste'), hint: 'Ctrl+V', onClick: doPaste, disabled: !clip || !curDir },
+        { label: tr('files.menu.cut'), hint: '❖X', onClick: () => cutFiles(selPaths), disabled: !sel.length || readOnly },
+        { label: tr('files.menu.paste'), hint: 'Ctrl+V', onClick: doPaste, disabled: !clip || !wDir },
         { label: tr('files.menu.selectAll'), hint: '❖A', onClick: () => setSelected(new Set(flat.map((x) => x.path))) },
       ] },
       { label: tr('files.menu.view'), items: [
@@ -450,12 +501,13 @@ export default function Files() {
         { label: tr('files.menu.up'), hint: '❖↑', onClick: goUp, disabled: !curDir || curDir === fs.home() }, '-',
         { label: tr('files.place.recent'), onClick: () => navigate({ type: 'recent' }) },
         { label: tr('files.place.home'), onClick: () => navigate(homeLoc()) },
+        { label: computerName(), onClick: () => navigate(computerLoc()) },
         ...dirs.map((d) => ({ label: tr(`files.place.${d.label}`), onClick: () => navigate({ type: 'dir', path: d.path }) })),
         { label: tr('files.place.apps'), onClick: () => navigate({ type: 'apps' }) },
         { label: tr('files.place.trash'), onClick: () => navigate({ type: 'trash' }) },
       ] },
     ]);
-  }, [tab.view, tab.back.length, tab.fwd.length, tab.loc, hidden, sel.length, clip, curDir, active, tabs.length]);
+  }, [tab.view, tab.back.length, tab.fwd.length, tab.loc, hidden, sel.length, clip, curDir, readOnly, active, tabs.length]);
 
   // ---- view ----
   const cut = new Set(clip?.mode === 'cut' ? clip.paths : []);
@@ -526,9 +578,17 @@ export default function Files() {
         <SideTitle t={t}>{tr('files.locations')}</SideTitle>
         <SideItem t={t} label={tr('files.place.home')} icon={<Glyph ch="⌂" t={t} />} selected={sideSel(homeLoc())} onClick={() => navigate(homeLoc())}
           drop={{ dropPath: fs.home() }} hot={dropTarget === fs.home()} />
-        {volumes.map((v) => (
-          <SideItem key={v.path} t={t} label={v.name} icon={<DriveGlyph color={t.accent} />} selected={sideSel(dirLoc(v.path))} onClick={() => navigate(dirLoc(v.path))}
-            drop={{ dropPath: v.path }} hot={dropTarget === v.path} />
+        <SideItem t={t} label={computerName()} icon={<DriveGlyph color={t.accent} />} selected={sideSel(computerLoc())} onClick={() => navigate(computerLoc())} />
+        {volumes.map((v) => {
+          const rel = volumeRelease(diskList, v.path);
+          return (
+            <SideItem key={v.path} t={t} label={v.name} icon={<DriveGlyph color={t.accent} />} selected={sideSel(dirLoc(v.path))} onClick={() => navigate(dirLoc(v.path))}
+              drop={{ dropPath: v.path }} hot={dropTarget === v.path} trail={rel ? { glyph: '⏏', onClick: () => release(rel, v.path) } : null} />
+          );
+        })}
+        {unmountedDisks(diskList).map((p) => (
+          <SideItem key={p.name} t={t} dim label={p.label || tr('files.disk.unnamed', { size: formatBytes(p.size) })} icon={<DriveGlyph color={t.textDim} />}
+            onClick={() => mount(p)} />
         ))}
         <SideItem t={t} label={tr('files.place.trash')} icon={<TrashGlyph color={t.accent} />} selected={sideSel({ type: 'trash' })} onClick={() => navigate({ type: 'trash' })}
           drop={{ dropTrash: true }} hot={dropTarget === 'trash:'} />

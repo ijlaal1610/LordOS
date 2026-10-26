@@ -13,6 +13,8 @@
     "other": "¿Borrar {count} elementos para siempre?"
   },
   "confirm.empty": "¿Vaciar la Papelera?",
+  "disk.mounting": "Montando {name}…",
+  "disk.unnamed": "Volumen de {size}",
   "empty": "Carpeta vacía",
   "favorites": "Favoritos",
   "group.date.month": "Últimos 30 días",
@@ -116,6 +118,7 @@
   "noSelection": "Seleccioná ítems para etiquetarlos",
   "noResults": "No se encontró nada.",
   "place.apps": "Aplicaciones",
+  "place.computer": "Este equipo",
   "place.desktop": "Escritorio",
   "place.documents": "Documentos",
   "place.downloads": "Descargas",

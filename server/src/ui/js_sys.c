@@ -2,8 +2,9 @@
  * lord.themes, lord.quit and lord.measureText.
  *
  * Security rules: the server already runs as the session user (not root);
- * lord.fs works only inside the home folder and the user's mounted disks
- * (/media/$USER, /run/media/$USER; fsops_allowed): it lists and reads (up to 8 MB), writes (up to
+ * lord.fs reads the whole tree as the user except /proc, /sys, /dev and /run (fsops_readable;
+ * listing, reading up to 8 MB, stat, du, free, search), and changes things only inside the home
+ * folder and the user's mounted disks (/media/$USER, /run/media/$USER; fsops_allowed): it writes (up to
  * 32 MB), creates folders, renames, copies and moves (in a thread, fsops.c), and sends to the freedesktop
  * Trash; real deletion is only possible inside the Trash. Writing is atomic (temporary + rename),
  * doesn't follow symbolic links in the final file and can NOT touch ~/.local/share/applications,
@@ -81,6 +82,16 @@ static int resolve_in_home(const char *path, char *out) {
     return fsops_allowed(out) ? 0 : -1;
 }
 
+/* The same for reading only (list, read, stat, du, free, search): the whole tree as the session
+ * user except the pseudo-filesystems (fsops_readable; Files → This computer, 0.8.5). */
+static int resolve_readable(const char *path, char *out) {
+    char full[PATH_MAX * 2];
+    if (path[0] == '/') snprintf(full, sizeof full, "%s", path);
+    else snprintf(full, sizeof full, "%s/%s", home, path);
+    if (!realpath(full, out)) return -1;
+    return fsops_readable(out) ? 0 : -1;
+}
+
 static char *read_small(const char *path, size_t max, size_t *len) {
     FILE *f = fopen(path, "rb");
     if (!f) return NULL;
@@ -121,7 +132,7 @@ static JSValue f_fs_list(JSContext *c, JSValueConst this_val, int argc, JSValueC
     const char *p = JS_ToCString(c, argv[0]);
     if (!p) return JS_EXCEPTION;
     char dir[PATH_MAX];
-    int bad = resolve_in_home(p, dir);
+    int bad = resolve_readable(p, dir);
     JS_FreeCString(c, p);
     if (bad) return js_throw_code(c, "fs.outsideHome", NULL);
     DIR *d = opendir(dir);
@@ -141,6 +152,8 @@ static JSValue f_fs_list(JSContext *c, JSValueConst this_val, int argc, JSValueC
         JS_SetPropertyStr(c, o, "name", JS_NewString(c, e->d_name));
         JS_SetPropertyStr(c, o, "link", JS_NewBool(c, link));
         JS_SetPropertyStr(c, o, "dir", JS_NewBool(c, S_ISDIR(st.st_mode)));
+        /* a folder this user can't open (shown with a lock in This computer) */
+        if (S_ISDIR(st.st_mode) && access(fp, R_OK | X_OK)) JS_SetPropertyStr(c, o, "locked", JS_TRUE);
         JS_SetPropertyStr(c, o, "size", JS_NewFloat64(c, (double)st.st_size));
         JS_SetPropertyStr(c, o, "mtime", JS_NewFloat64(c, (double)st.st_mtime * 1000));
         JS_SetPropertyUint32(c, arr, i++, o);
@@ -149,8 +162,8 @@ static JSValue f_fs_list(JSContext *c, JSValueConst this_val, int argc, JSValueC
     return arr;
 }
 
-/* lord.fs.read(path, 'text' | 'binary') — content of a regular file in $HOME
- * (UTF-8 text or ArrayBuffer). Used, for example, by the Terminal's profile importer. */
+/* lord.fs.read(path, 'text' | 'binary') — content of a regular file in $HOME, the user's disks or
+ * (read-only) the rest of the tree (resolve_readable) (UTF-8 text or ArrayBuffer). Used, for example, by the Terminal's profile importer. */
 static JSValue f_fs_read(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     const char *p = JS_ToCString(c, argv[0]);
@@ -159,7 +172,7 @@ static JSValue f_fs_read(JSContext *c, JSValueConst this_val, int argc, JSValueC
     int binary = mode && !strcmp(mode, "binary");
     if (mode) JS_FreeCString(c, mode);
     char path[PATH_MAX];
-    int bad = resolve_in_home(p, path);
+    int bad = resolve_readable(p, path);
     JS_FreeCString(c, p);
     if (bad) return js_throw_code(c, "fs.outsideHome", NULL);
     struct stat st;
@@ -1134,6 +1147,23 @@ static JSValue f_fs_stat(JSContext *c, JSValueConst this_val, int argc, JSValueC
     if (!p) return JS_EXCEPTION;
     char target[PATH_MAX + 300];
     int r = resolve_target(p, target, sizeof target, NULL, 0);
+    if (r == -1) {
+        /* outside the writable roots: the same answer, read-only, where reading is allowed
+         * (its folder resolved, the last name kept, so a link is described, not followed) */
+        char full[PATH_MAX * 2], rdir[PATH_MAX];
+        if (p[0] == '/') snprintf(full, sizeof full, "%s", p); else snprintf(full, sizeof full, "%s/%s", home, p);
+        size_t len = strlen(full);
+        while (len > 1 && full[len - 1] == '/') full[--len] = 0;
+        char *slash = strrchr(full, '/');
+        const char *base = slash ? slash + 1 : "";
+        if (slash && !strcmp(full, "/")) { if (fsops_readable("/")) { snprintf(target, sizeof target, "/"); r = 1; } }
+        else if (slash && base[0] && strcmp(base, ".") && strcmp(base, "..")) {
+            *slash = 0;
+            if (realpath(full[0] ? full : "/", rdir) && fsops_readable(rdir) &&
+                (size_t)snprintf(target, sizeof target, "%s%s%s", rdir, strcmp(rdir, "/") ? "/" : "", base) < sizeof target &&
+                fsops_readable(target)) r = 1;
+        }
+    }
     JS_FreeCString(c, p);
     if (r == -1) return fs_path_error(c, r);
     struct statx sx;
@@ -1179,7 +1209,7 @@ static JSValue f_fs_du(JSContext *c, JSValueConst this_val, int argc, JSValueCon
     if (argc > 1 && JS_IsNumber(argv[1])) JS_ToFloat64(c, &ms, argv[1]);
     if (ms > 3000) ms = 3000;
     char path[PATH_MAX];
-    int bad = resolve_in_home(p, path);
+    int bad = resolve_readable(p, path);
     JS_FreeCString(c, p);
     if (bad) return fs_path_error(c, -1);
     FsDu d;
@@ -1198,7 +1228,7 @@ static JSValue f_fs_free(JSContext *c, JSValueConst this_val, int argc, JSValueC
     const char *p = JS_ToCString(c, argv[0]);
     if (!p) return JS_EXCEPTION;
     char path[PATH_MAX];
-    int bad = resolve_in_home(p, path);
+    int bad = resolve_readable(p, path);
     JS_FreeCString(c, p);
     if (bad) return fs_path_error(c, -1);
     struct statvfs vs;
@@ -1236,7 +1266,7 @@ static JSValue f_fs_search(JSContext *c, JSValueConst this_val, int argc, JSValu
     (void)this_val;
     const char *p = JS_ToCString(c, argv[0]), *q = argc > 1 ? JS_ToCString(c, argv[1]) : NULL;
     char path[PATH_MAX];
-    int bad = !p || !q || resolve_in_home(p, path);
+    int bad = !p || !q || resolve_readable(p, path);
     Acc a = { c, JS_NewArray(c), 0 };
     if (!bad) fs_search(path, q, opt_int(c, argc > 2 ? argv[2] : JS_UNDEFINED, "limit", 200, 1000),
                         opt_int(c, argc > 2 ? argv[2] : JS_UNDEFINED, "depth", 8, 16), hit_cb, &a);

@@ -10,6 +10,7 @@
 /* Allowed roots: the home folder and the user's mounts (/media/$USER, /run/media/$USER). */
 void fsops_init(const char *home, const char *user);
 int  fsops_allowed(const char *real);          /* already resolved path (realpath) inside a root */
+int  fsops_readable(const char *real);         /* (0.8.5) read-only: the whole tree but /proc, /sys, /dev, /run */
 int  fsops_protected(const char *real);        /* folders JS does not write to (launcher, apps, settings) */
 
 /* ---- copy / move in a thread ---- */

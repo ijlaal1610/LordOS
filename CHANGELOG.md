@@ -12,6 +12,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Added
 
+- **Files: This Computer and every disk.** The sidebar now has This Computer, to browse the whole
+  system read-only as your user (the system's own permissions decide; the kernel's `/proc`, `/sys`,
+  `/dev` and `/run` stay out), and every disk with a file system: one that isn't mounted shows
+  dimmed and a click mounts and opens it (an internal disk asks for an administrator, as in Disks);
+  a removable one can be ejected from its ⏏. Folders you can't write show no actions that would
+  change them.
 - **Monitor → Network, second generation.** The app list is now a tree: each app opens into the
   sites and addresses it talks to, and each address into its ports, with what was sent and received
   everywhere, a small live meter and an allow/block switch on every destination. One pop-up button

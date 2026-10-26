@@ -38,6 +38,15 @@ export function DocGlyph({ size: s, kind, ext, dark }) {
 export function EntryIcon({ e, size, dark, thumb = true }) {
   if (e.Icon) return <e.Icon size={size} />;
   const kind = kindOf(e);
+  if (kind === 'folder' && e.locked) {
+    // a folder the user can't open (This computer): the system's permissions say no
+    return (
+      <View style={{ width: size, height: size }}>
+        <FolderGlyph size={size} special={e.special} />
+        <Text style={{ position: 'absolute', right: 0, bottom: 0, fontSize: Math.max(9, Math.round(size * 0.32)) }}>🔒</Text>
+      </View>
+    );
+  }
   if (kind === 'folder') return <FolderGlyph size={size} special={e.special} />;
   if (thumb && isImage(e) && size >= 32 && e.size < 24 * 1024 * 1024) {
     return (

@@ -13,6 +13,8 @@
     "other": "Apagar {count} itens para sempre?"
   },
   "confirm.empty": "Esvaziar o Lixo?",
+  "disk.mounting": "Montando {name}…",
+  "disk.unnamed": "Volume de {size}",
   "empty": "Pasta vazia",
   "favorites": "Favoritos",
   "group.date.month": "Últimos 30 dias",
@@ -116,6 +118,7 @@
   "noSelection": "Selecione itens para etiquetá-los",
   "noResults": "Nada encontrado.",
   "place.apps": "Aplicativos",
+  "place.computer": "Este computador",
   "place.desktop": "Área de Trabalho",
   "place.documents": "Documentos",
   "place.downloads": "Transferências",

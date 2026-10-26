@@ -1,6 +1,7 @@
 # Files
 
-`apps/files`. A browser for the home folder and the user's mounted disks, with the useful parts
+`apps/files`. A browser for the home folder and the user's mounted disks (and, read-only, the rest
+of the computer), with the useful parts
 of a classic desktop file manager: tabs, four views, Trash, Quick Preview, Get Info, copy/cut/paste, drag and
 drop, color tags and search. Disk operations belong to the server (`server/src/fsops.c`,
 `lord.fs` in `js_sys.c`); the app only requests them.
@@ -40,8 +41,12 @@ drop, color tags and search. Disk operations belong to the server (`server/src/f
   { path } })`). A file can be dropped onto a folder's tab.
 - **Sidebar:**
   - Favorites: Recents, Applications and the user's folders (xdg-user-dirs);
-  - Locations: Home, the disks and USB sticks mounted in `/media/$USER` or
-    `/run/media/$USER` (checked every 4 s) and the Trash;
+  - Locations: Home, **This Computer** (0.8.5: `/`, read-only, named after the machine; folders
+    the user can't open show a lock), the disks and USB sticks mounted in `/media/$USER` or
+    `/run/media/$USER` (checked every 4 s; ⏏ on hover ejects a removable disk with `disk-eject` and
+    unmounts another disk's partition with `disk-unmount`), every other disk with a file system that isn't mounted
+    (dimmed; a click mounts it with `disk-mount` and opens it; an internal one asks for an
+    administrator, as in Disks; the disk the system runs from is left out) and the Trash;
   - Color tags (they filter).
 
   Folders and the Trash accept dragged files.
@@ -129,8 +134,17 @@ drop, color tags and search. Disk operations belong to the server (`server/src/f
 | `volumes()` | `[{ path, name, fs, total, free }]` from `/proc/mounts`, only `/media/$USER/…` and `/run/media/$USER/…` |
 
 **Security:**
-- Everything goes through `resolve_target` / `resolve_in_home` (`js_sys.c`) and `fsops_allowed`:
-  only the home folder and the user's mounts.
+- Changing things goes through `resolve_target` (`js_sys.c`) and `fsops_allowed`: only the home
+  folder and the user's mounts.
+- Reading (`list`, `read`, `stat`, `du`, `free`, `search`; 0.8.5, This Computer) goes through
+  `resolve_readable` and `fsops_readable`: the whole tree as the session user, so the system's own
+  permissions decide what can be opened, except `/proc`, `/sys`, `/dev` and `/run` (this process's
+  memory, environment and open files, devices, and the session's sockets; `/run/media/$USER` stays).
+  Paths are resolved with `realpath` first, so a link into those is refused too. `stat` outside the
+  writable roots answers `writable: false`, and Files then leaves out the actions that change the
+  folder (new folder, paste, rename, duplicate, Trash, cut, compress, extract). There is no root
+  mode. Isolated `.lpk` apps don't get this: their broker only reaches their own data folder.
+  «Open with» and the helpers keep the home folder and the user's mounts.
 - Writing, copying to, moving and sending to the Trash reject the protected folders
   (`~/.local/share/applications`, `~/.config/autostart`, `~/.local/share/lordos/apps` and
   `~/.config/lordos/settings.json`). Copying *from* them is allowed.
@@ -150,8 +164,9 @@ file:
 
 ## Tests
 
-- `make -C server build/fsops-test && build/fsops-test` on a temporary home folder: 36/36. It covers:
-  - roots and protected folders;
+- `make -C server build/fsops-test && build/fsops-test` on a temporary home folder: 49/49. It covers:
+  - roots, the read-only tree (`fsops_readable`: `/`, `/etc`, the user's mounts; not `/proc`,
+    `/sys`, `/dev`, `/run`, another user's mounts or a relative path) and protected folders;
   - recursive copy with a link and permissions, and that it neither overwrites nor copies into itself;
   - move;
   - Trash: repeated names, restore without overwriting, delete only inside, and empty;

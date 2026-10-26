@@ -63,6 +63,20 @@ int main(void) {
     CHECK(fsops_allowed(H));
     CHECK(!fsops_allowed("/etc/passwd"));
     CHECK(!fsops_allowed("/tmp"));
+    /* reading only: the whole tree but the pseudo-filesystems (Files → This computer) */
+    CHECK(fsops_readable("/"));
+    CHECK(fsops_readable("/etc/passwd"));
+    CHECK(fsops_readable("/usr/share"));
+    CHECK(fsops_readable(H));
+    CHECK(fsops_readable("/run/media/nadie/USB"));
+    CHECK(fsops_readable("/procs"));
+    CHECK(!fsops_readable("/proc"));
+    CHECK(!fsops_readable("/proc/self/mem"));
+    CHECK(!fsops_readable("/sys/class"));
+    CHECK(!fsops_readable("/dev/sda"));
+    CHECK(!fsops_readable("/run/user/1000/bus"));
+    CHECK(!fsops_readable("/run/media/otro/USB"));
+    CHECK(!fsops_readable("relative/path"));
     path(a, ".local/share/applications/x.desktop");
     CHECK(fsops_protected(a));
     path(a, "Documentos/x.txt");

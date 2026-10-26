@@ -60,6 +60,18 @@ static int under(const char *p, const char *root) {
 
 int fsops_allowed(const char *real) { return under(real, home) || under(real, media1) || under(real, media2); }
 
+/* Reading only (0.8.5, Files → This computer): the whole tree as the session user, so the system's
+ * own permissions decide, except the kernel's and the runtime's pseudo-filesystems: /proc (this
+ * process's memory, environment and open files), /sys, /dev and /run (the session's sockets and
+ * runtime files; /run/media/$USER stays a root). Writing keeps fsops_allowed. */
+int fsops_readable(const char *real) {
+    if (fsops_allowed(real)) return 1;
+    if (real[0] != '/') return 0;
+    static const char *const pseudo[] = { "/proc", "/sys", "/dev", "/run", NULL };
+    for (int i = 0; pseudo[i]; i++) if (under(real, pseudo[i])) return 0;
+    return 1;
+}
+
 int fsops_protected(const char *real) {
     static const char *const protect[] = { "/.local/share/applications", "/.config/autostart",
                                            "/.local/share/lordos/apps", "/.config/lordos/settings.json",
