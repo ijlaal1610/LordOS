@@ -13,7 +13,8 @@ results/<version>/<machine>/
     testbench.json   lordos-testbench --gl --auto N: the Wayland checklist, frame times (average, p50,
                      p99, frames that missed the refresh budget), presentation, the 3D renderer, latency
     memory.txt       the whole system (`free -m`) and PSS per process (/proc/<pid>/smaps_rollup)
-    boot.txt         systemd-analyze
+    boot.txt         systemd-analyze, and the time from the kernel's start to the desktop's first frame
+                     (lord-sessiond's log line; the boot splash shows its own timer from a little later)
     lordbench.json   from 0.8.6, LordBench (docs/BENCHMARK.md)
 ```
 

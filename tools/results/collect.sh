@@ -9,7 +9,7 @@
 #   testbench.json   lordos-testbench --gl --auto N (the Wayland checklist, frame times, 3D renderer)
 #   memory.txt       whole system (`free -m`) and per process (PSS from /proc/<pid>/smaps_rollup); with
 #                    sudo, root's processes too
-#   boot.txt         systemd-analyze
+#   boot.txt         systemd-analyze, and the time to the desktop's first frame from the kernel's start
 #   README.md        when, what version, the conditions to fill in, and these exact commands
 # The version is the installed one (software.lordos in the report); --version names it for a development
 # build, e.g. 0.8.5-dev.
@@ -61,7 +61,17 @@ if [ "$MEM" = 1 ]; then
     } > "$D/memory.txt"
 fi
 
-systemd-analyze > "$D/boot.txt" 2>&1 || true
+{
+    systemd-analyze 2>&1 || true
+    echo
+    echo "# the desktop's first frame, from the kernel's start (lord-sessiond); the splash's own timer starts later"
+    journalctl -b -u lordos --no-pager 2>/dev/null | grep -o "first frame on the monitor [0-9.]* s after the kernel started" ||
+        sudo -n journalctl -b -u lordos --no-pager 2>/dev/null | grep -o "first frame on the monitor [0-9.]* s after the kernel started" ||
+        echo "(not in the journal: run with sudo, or as a member of the adm or systemd-journal group)"
+    echo "# the boot splash started: subtract the first line's monotonic time from the second's"
+    { journalctl -b -o short-monotonic --no-pager 2>/dev/null || sudo -n journalctl -b -o short-monotonic --no-pager 2>/dev/null; } |
+        grep -m2 -E "kernel: Linux version|Started plymouth-start.service" || true
+} > "$D/boot.txt"
 
 cat > "$D/README.md" <<MD
 # $M — LordOS $V
