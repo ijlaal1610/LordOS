@@ -1256,7 +1256,11 @@ static void handle_ws(const RsReq *r, int logged, const char *user, uid_t uid) {
         if (drop_root(&me, parent)) { sd_log("could not drop privileges"); _exit(1); }
         sd_log("connected to %s's session", name);
         bridge(&me);
-        sd_log("disconnected");
+        if (rtc) {                          /* how the video went, for the log (docs/REMOTE.md) */
+            char st[160];
+            rtc_stats(rtc, st, sizeof st);
+            sd_log("disconnected (video: %s)", st);
+        } else sd_log("disconnected");
         _exit(0);
     }
     /* the root side keeps nothing of the connection: it only listens for "the session was locked" */
