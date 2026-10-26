@@ -242,11 +242,14 @@ the session's rectangle (`enc.c`, the only image code left); it keeps no copy of
 desktop sees (protected windows in black, from `media_composed`, or the GPU's read-back) goes to a
 live encoder: `lord-media` in `MK_STREAM` mode, through a sealed memfd of 3 slots, like the screen
 recording. It uses H.264 with VA-API when the card encodes it, else libx264 (`ultrafast`,
-`zerolatency`, CRF 22 with a bit-rate cap), or VP8 with libvpx (`realtime`) for browsers without
+`zerolatency`, CRF 22 with a bit-rate cap, and the deblocking filter that `ultrafast` turns off), or VP8 with libvpx (`realtime`) for browsers without
 H.264. Every viewer of the session gets the same encoded frames over the session socket
 (`RP_VFRAME`, `RP_AFRAME`); the bridge only packetizes and encrypts. The bit rate is the slowest
-viewer's: each bridge lowers its target on loss reported by the browser (receiver reports, REMB)
-and raises it slowly when there is none (300 kbit/s to 12 Mbit/s). A viewer that falls more than
+viewer's: each bridge lowers its target on loss reported by the browser (receiver reports) and
+raises it by 25 % a second when there is none (6 % for 5 s after congestion; 300 kbit/s to 12 Mbit/s).
+The browser's estimate (REMB) is a ceiling only when it falls by more than 15 % or right after loss:
+it only grows with what the browser receives, so as a fixed ceiling it kept a new connection near
+3 Mbit/s for about three minutes (video in blocks); now a LAN reaches the top in about 10 s. A viewer that falls more than
 3 MB behind skips frames until the next keyframe; a lost frame (PLI, FIR) asks for one, and the
 current screen is encoded again for it. Two users means two sessions, two `lord-server`s and two
 encoders, each as its own user.

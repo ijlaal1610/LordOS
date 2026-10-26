@@ -145,8 +145,8 @@ struct Rtc {
     double sctp_t;
     Track v, a;
     /* congestion: the viewer's target */
-    unsigned kbps;
-    double rate_at, kf_at, lost;
+    unsigned kbps, remb;        /* remb: the browser's last estimate (kbit/s) */
+    double rate_at, kf_at, lost, congested_at;
     unsigned long nacks, plis, resent, dtls_rx;
     double last_sr, created, last_consent, stun_win;
     int stun_n, failed;
@@ -744,9 +744,11 @@ static void on_fb(void *ud, const RwFb *f) {
     case RW_FB_RR:
         if (f->ssrc != r->v.ssrc) break;
         r->lost = r->lost * 0.7 + f->lost_frac / 256.0 * 0.3;
-        if (f->lost_frac > 25) set_rate(r, r->kbps * 0.75);
-        else if (f->lost_frac > 5) set_rate(r, r->kbps * 0.92);
-        else if (f->lost_frac == 0 && t - r->rate_at > 1000) set_rate(r, r->kbps * 1.06 + 50);
+        if (f->lost_frac > 25) { r->congested_at = t; set_rate(r, r->kbps * 0.75); }
+        else if (f->lost_frac > 5) { r->congested_at = t; set_rate(r, r->kbps * 0.92); }
+        else if (f->lost_frac == 0 && t - r->rate_at > 1000)
+            /* no loss: up fast (a LAN reaches the top in about 10 s), slowly for 5 s after congestion */
+            set_rate(r, r->kbps * (t - r->congested_at > 5000 ? 1.25 : 1.06) + 50);
         break;
     case RW_FB_PLI:
     case RW_FB_FIR:
@@ -764,9 +766,16 @@ static void on_fb(void *ud, const RwFb *f) {
             if (h->len && h->seq == seq) { send_sel(r, h->b, h->len); r->resent++; }
         }
         break;
-    case RW_FB_REMB:
-        if (f->bitrate / 1000 < r->kbps) set_rate(r, (double)(f->bitrate / 1000));
+    case RW_FB_REMB: {
+        /* The browser's estimate only grows with what it receives, so as a fixed ceiling it kept a
+         * new connection at ~3 Mbit/s for minutes. It counts as congestion when it falls (the
+         * browser saw the delay grow) or right after loss; then it is a ceiling. */
+        unsigned b = (unsigned)(f->bitrate / 1000);
+        if (r->remb && b < r->remb * 0.85) r->congested_at = t;
+        if (t - r->congested_at < 5000 && b < r->kbps) set_rate(r, b);
+        r->remb = b;
         break;
+    }
     }
 }
 

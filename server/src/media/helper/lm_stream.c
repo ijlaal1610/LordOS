@@ -130,7 +130,9 @@ static AVCodecContext *open_sw(Vid *e, const char *name, int fps) {
         av_dict_set(&o, "profile", "baseline", 0);
         av_dict_set(&o, "crf", "22", 0);
         av_dict_set(&o, "forced-idr", "1", 0);
-        av_dict_set(&o, "x264-params", "repeat-headers=1:annexb=1:aud=0:scenecut=0", 0);
+        /* ultrafast turns the deblocking filter off, which left video in visible blocks at a few
+         * Mbit/s; it costs ~5 % of the encoder (1280x800 on a 1.8 GHz Xeon: 88 → 84 fps, 2 threads) */
+        av_dict_set(&o, "x264-params", "repeat-headers=1:annexb=1:aud=0:scenecut=0:deblock=1", 0);
     } else {
         c->thread_count = 2;
         c->bit_rate = (int64_t)e->kbps * 1000;
