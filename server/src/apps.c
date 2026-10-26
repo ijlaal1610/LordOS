@@ -46,7 +46,7 @@ extern char **environ;
 static DesktopApp *apps;
 static int napps;
 static char cached_lang[32];
-static time_t cached_mtime[2];
+static long long cached_mtime[2];      /* the folders' mtimes in ns: a file added in the same second still shows */
 
 /* ---- reading a .desktop file ---- */
 
@@ -331,8 +331,8 @@ static int seen(const char *id, char (*ids)[160], int n) {
 int apps_list(const char *lang, const DesktopApp **out) {
     char dirs[2][PATH_MAX];
     app_dirs(dirs);
-    time_t mt[2];
-    for (int d = 0; d < 2; d++) { struct stat st; mt[d] = stat(dirs[d], &st) ? 0 : st.st_mtime; }
+    long long mt[2];
+    for (int d = 0; d < 2; d++) { struct stat st; mt[d] = stat(dirs[d], &st) ? 0 : st.st_mtim.tv_sec * 1000000000LL + st.st_mtim.tv_nsec; }
     if (apps && !strcmp(cached_lang, lang) && mt[0] == cached_mtime[0] && mt[1] == cached_mtime[1]) { *out = apps; return napps; }
 
     DesktopApp *list = calloc(MAX_APPS, sizeof *list);
@@ -346,8 +346,12 @@ int apps_list(const char *lang, const DesktopApp **out) {
         while ((de = readdir(dir)) && n < MAX_APPS) {
             size_t len = strlen(de->d_name);
             if (len < 9 || strcmp(de->d_name + len - 8, ".desktop")) continue;
+            /* the id is the file name without .desktop, with any character outside [A-Za-z0-9._-] made
+             * '-' ("LordOS Imager.desktop" → "LordOS-Imager"): packages name their files freely, but the
+             * id also names the app's scope (app-lordos-<id>.scope); the real file is kept in a->file */
             char id[160];
             snprintf(id, sizeof id, "%.*s", (int)(len - 8), de->d_name);
+            for (char *q = id; *q; q++) if (!isalnum((unsigned char)*q) && !strchr("._-", *q)) *q = '-';
             if (!valid_id(id) || seen(id, ids, nids)) continue;
             if (nids < MAX_APPS * 2) snprintf(ids[nids++], sizeof ids[0], "%s", id);   /* it also shadows if hidden */
             char file[PATH_MAX * 2];

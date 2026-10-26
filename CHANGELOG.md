@@ -120,6 +120,11 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **Apps whose launcher file has a space in its name didn't appear in Apps.** A package may name its
+  `.desktop` file freely (the LordOS Imager's is `LordOS Imager.desktop`), but the launcher skipped any
+  name with a space or another unusual character. Such a name now gets an id with those characters
+  turned into `-`, and the app is listed and launched from its real file. Also, an app installed in the
+  same second the list was last read now shows up (the folders' times are compared in nanoseconds).
 - **A see-through line around the Terminal.** The Terminal's window has a transparent background, so
   its 1-pixel border and the line under its title bar let what was behind the window show through (a
   colored line when it was over another window). Both are now drawn opaque for transparent apps, in
