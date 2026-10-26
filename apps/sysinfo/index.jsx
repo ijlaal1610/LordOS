@@ -6,10 +6,10 @@
 import {
   View, Text, ScrollView, Button, useTheme, useLocale, LordOSLogo, systemReport, systemInfo, lordosVersion, formatBytes, formatNumber,
   Toolbar, ToolbarSpacer, ToolbarButton, Segmented, SidebarItem, GroupBox, FormRow, EmptyState, Hairline, spacing, typeScale,
-  fs, userDirs, clipboard, wm,
+  fs, userDirs, clipboard, wm, admin,
 } from '@lordos/sdk';
 import { useMemo, useState } from 'react';
-import { cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, compositionReason, reportFileName, reportJson } from './model.js';
+import { cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, compositionReason, reportFileName, reportJson, parseMemoryLines } from './model.js';
 
 // The app's icon: a chip on the brand gradient.
 export function Icon({ size: s }) {
@@ -184,11 +184,14 @@ function Section({ id, r }) {
         <Row label={tr('sysinfo.f.microcode')} value={c.microcode} />
       </GroupBox>);
     case 'memory': return (
-      <GroupBox>
-        <Row label={tr('sysinfo.f.total')} value={formatBytes((mem.totalKB || 0) * 1024)} />
-        <Row label={tr('sysinfo.f.swap')} value={mem.swapKB ? formatBytes(mem.swapKB * 1024) : tr('sysinfo.none')} />
-        {(mem.zram || []).map((z, i) => <Row key={i} label={tr('sysinfo.f.zram')} value={`${formatBytes(z.sizeKB * 1024)}${z.algorithm ? ` · ${z.algorithm}` : ''}`} />)}
-      </GroupBox>);
+      <View style={{ gap: spacing.xl }}>
+        <GroupBox>
+          <Row label={tr('sysinfo.f.total')} value={formatBytes((mem.totalKB || 0) * 1024)} />
+          <Row label={tr('sysinfo.f.swap')} value={mem.swapKB ? formatBytes(mem.swapKB * 1024) : tr('sysinfo.none')} />
+          {(mem.zram || []).map((z, i) => <Row key={i} label={tr('sysinfo.f.zram')} value={`${formatBytes(z.sizeKB * 1024)}${z.algorithm ? ` · ${z.algorithm}` : ''}`} />)}
+        </GroupBox>
+        <MemoryModules />
+      </View>);
     case 'graphics': return <Graphics r={r} />;
     case 'displays': return <List items={r.displays || []} render={(d, i) => (
       <GroupBox key={i} title={d.connector}>
@@ -265,6 +268,36 @@ function Section({ id, r }) {
       </View>);
     default: return null;
   }
+}
+
+// The memory modules come from the firmware's tables, which only root can read: the read-only
+// hw-memory-modules action, on request.
+function MemoryModules() {
+  const t = useTheme();
+  const { t: tr } = useLocale();
+  const [state, setState] = useState({ busy: false, list: null, error: null });
+  const read = () => {
+    const lines = [];
+    setState({ busy: true, list: null, error: null });
+    admin.run('hw-memory-modules', '', (l) => lines.push(l), { quiet: true })
+      .then(() => setState({ busy: false, list: parseMemoryLines(lines), error: null }), (e) => setState({ busy: false, list: null, error: e.message }));
+  };
+  const list = state.list;
+  return (
+    <GroupBox title={tr('sysinfo.modules.title')} footer={tr('sysinfo.modules.footer')}>
+      {list && list.length ? list.map((m, i) => (
+        <Row key={i} label={m.slot || tr('sysinfo.modules.slot', { n: i + 1 })}
+          value={m.sizeMB ? [formatBytes(m.sizeMB * 1048576), m.type, m.speed ? tr('sysinfo.modules.speed', { mts: m.configured && m.configured !== m.speed ? `${m.configured}/${m.speed}` : m.speed }) : '', m.maker].filter(Boolean).join(' · ')
+            : tr('sysinfo.modules.empty')} />
+      )) : (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.m, minHeight: 40, paddingVertical: 6 }}>
+          <Text style={{ flex: 1, fontSize: typeScale.callout, color: state.error ? '#ff453a' : t.textDim, textAlign: 'start' }}>
+            {state.error || (list ? tr('sysinfo.modules.none') : state.busy ? tr('sysinfo.modules.reading') : tr('sysinfo.modules.hint'))}</Text>
+          <Button small label={tr('sysinfo.modules.read')} disabled={state.busy || !admin.available()} onClick={read} />
+        </View>
+      )}
+    </GroupBox>
+  );
 }
 
 function Hardware({ r }) {

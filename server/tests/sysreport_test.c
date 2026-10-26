@@ -8,11 +8,14 @@
  * lordos-fetch's summary is checked on the same trees: with --share it carries none of those values
  * either, and without color it has no escape codes.
  *
+ *   build/sysreport-test smbios                the memory module lines of this machine, as the
+ *                                              hw-memory-modules action gives them (root)
  *   build/sysreport-test fixture <dir> <kind>  writes a fake tree (amd, intel, nvidia, rpi5, vm), for
  *                                              `lordos-sysreport report --root <dir>` */
 #include "sysreport/sysreport.h"
 #include "sysreport/ids.h"
 #include "sysreport/fetch.h"
+#include "sysreport/smbios.h"
 #include "sec/json.h"
 
 #include <errno.h>
@@ -523,6 +526,57 @@ static void test_fetch(const char *kind) {
     rmtree(root);
 }
 
+/* A type-17 structure: formatted area of fl bytes, then the strings. */
+static size_t smb17(uint8_t *b, int fl, unsigned size, unsigned type, unsigned speed, unsigned cfg, const char **strs, int nstr) {
+    memset(b, 0, 512);
+    b[0] = 17; b[1] = (uint8_t)fl; b[2] = 0x10;
+    b[0x0C] = (uint8_t)size; b[0x0D] = (uint8_t)(size >> 8);
+    b[0x10] = 1; b[0x11] = 2; b[0x12] = (uint8_t)type;
+    b[0x15] = (uint8_t)speed; b[0x16] = (uint8_t)(speed >> 8);
+    b[0x17] = 3; b[0x18] = 4; b[0x19] = 5; b[0x1A] = 6;      /* manufacturer, serial, asset tag, part number */
+    if (fl >= 0x22) { b[0x20] = (uint8_t)cfg; b[0x21] = (uint8_t)(cfg >> 8); }
+    size_t o = (size_t)fl;
+    for (int i = 0; i < nstr; i++) { size_t l = strlen(strs[i]); memcpy(b + o, strs[i], l); o += l + 1; }
+    b[o++] = 0;
+    return o;
+}
+
+static void test_smbios(void) {
+    uint8_t b[512];
+    SmMem m;
+    const char *s1[] = { "DIMM_A1", "BANK 0", "Kingston", "SECRET-SERIAL-9", "SECRET-ASSET", "SECRETPART-1" };
+    size_t n = smb17(b, 0x28, 16384, 0x1A, 3200, 2666, s1, 6);
+    CHECK(!smbios_memory_parse(b, n, &m), "smbios: parse");
+    CHECK(m.size_mb == 16384 && !strcmp(m.type, "DDR4") && m.speed == 3200 && m.configured == 2666, "smbios: size/type/speed %u %s %u %u", m.size_mb, m.type, m.speed, m.configured);
+    CHECK(!strcmp(m.slot, "DIMM_A1") && !strcmp(m.bank, "BANK 0") && !strcmp(m.maker, "Kingston"), "smbios: strings %s|%s|%s", m.slot, m.bank, m.maker);
+    char line[256];
+    smbios_memory_line(&m, line, sizeof line);
+    CHECK(!strcmp(line, "mem 16384|DDR4|3200|2666|DIMM_A1|BANK 0|Kingston"), "smbios: line %s", line);
+    CHECK(!strstr(line, "SECRET"), "smbios: no serial, asset tag or part number");
+    const char *s2[] = { "ChannelA-DIMM1", "BANK 1", "Not Specified" };
+    n = smb17(b, 0x22, 0x7FFF, 0x22, 0xFFFF, 0, s2, 3);
+    b[0x1C] = 0x00; b[0x1D] = 0x80; b[0x1E] = 0; b[0x1F] = 0;        /* extended size: 32768 MB */
+    CHECK(!smbios_memory_parse(b, n, &m) && m.size_mb == 32768 && !strcmp(m.type, "DDR5") && !m.maker[0], "smbios: extended size, placeholder maker");
+    const char *s3[] = { "DIMM 1", "", "Unknown" };
+    n = smb17(b, 0x1B, 0, 0x02, 0, 0, s3, 3);
+    CHECK(!smbios_memory_parse(b, n, &m) && m.size_mb == 0 && !m.type[0] && !strcmp(m.slot, "DIMM 1"), "smbios: an empty slot");
+    n = smb17(b, 0x22, 0x8000 | 2048, 0x1E, 4266, 4266, s1, 3);
+    CHECK(!smbios_memory_parse(b, n, &m) && m.size_mb == 2 && !strcmp(m.type, "LPDDR4"), "smbios: size in KB");
+    const char *s4[] = { "A|B", "x" };
+    n = smb17(b, 0x1B, 8192, 0x1A, 0, 0, s4, 2);
+    b[0x17] = 9;                                                        /* a string index past the set */
+    CHECK(!smbios_memory_parse(b, n, &m) && !strcmp(m.slot, "A?B") && !m.maker[0], "smbios: '|' replaced, missing string empty");
+    /* malformed */
+    n = smb17(b, 0x28, 8192, 0x1A, 0, 0, s1, 6);
+    CHECK(smbios_memory_parse(b, n - 1, &m) == -1, "smbios: string set without its double NUL");
+    CHECK(smbios_memory_parse(b, 0x10, &m) == -1, "smbios: too short");
+    b[0] = 16;
+    CHECK(smbios_memory_parse(b, n, &m) == -1, "smbios: another type");
+    b[0] = 17; b[1] = 0xFF;
+    CHECK(smbios_memory_parse(b, 0x40, &m) == -1, "smbios: formatted length past the buffer");
+    CHECK(smbios_memory_parse(NULL, 100, &m) == -1, "smbios: NULL");
+}
+
 static void test_empty(void) {
     char root[] = "/tmp/sysreport-empty-XXXXXX";
     if (!mkdtemp(root)) { printf("mkdtemp\n"); exit(2); }
@@ -534,12 +588,29 @@ static void test_empty(void) {
 }
 
 int main(int argc, char **argv) {
+    if (argc == 2 && !strcmp(argv[1], "smbios")) {
+        for (int i = 0; i < 64; i++) {
+            char p[96], line[256];
+            snprintf(p, sizeof p, "/sys/firmware/dmi/entries/17-%d/raw", i);
+            FILE *f = fopen(p, "rb");
+            if (!f) break;
+            uint8_t b[4096];
+            size_t n = fread(b, 1, sizeof b, f);
+            fclose(f);
+            SmMem m;
+            if (smbios_memory_parse(b, n, &m)) { printf("17-%d: malformed\n", i); continue; }
+            smbios_memory_line(&m, line, sizeof line);
+            printf("%s\n", line);
+        }
+        return 0;
+    }
     if (argc == 4 && !strcmp(argv[1], "fixture")) {
         mkdirs(argv[2]);
         fixture(argv[2], argv[3]);
         return 0;
     }
     test_ids();
+    test_smbios();
     const char *kinds[] = { "amd", "intel", "nvidia", "rpi5", "vm" };
     for (size_t i = 0; i < sizeof kinds / sizeof kinds[0]; i++) { test_kind(kinds[i]); test_fetch(kinds[i]); }
     setenv("NO_COLOR", "1", 1);

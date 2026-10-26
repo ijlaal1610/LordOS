@@ -46,7 +46,8 @@ the time fields keep `direction: 'ltr'`.
         ▼  root work: closed admin actions (hw/hw_admin.c)
  admin.c ─ display-brightness, power-profile, power-suspend, power-buttons, time-ntp, time-set,
            bt-unblock, rpi-case, video-optimize, hw-firmware-missing (the Store's suggestions,
-           read-only), rpi-eeprom-status (read-only), rpi-eeprom-update
+           read-only), hw-memory-modules (System Information, read-only),
+           rpi-eeprom-status (read-only), rpi-eeprom-update
 
  Cooling: lord.fan (ui/js_fan.c) ── /run/lordos/fand.sock ── lord-fand (root service, src/fan)
 ```
@@ -368,6 +369,7 @@ All in `server/src/hw/hw_admin.c`, in the `actions` table through `HW_ADMIN_ACTI
 | `rpi-eeprom-status` | — | anyone | BCM2712 boards only, read-only: `/usr/bin/rpi-eeprom-update` (no options), report parsed strictly; `OK <uptodate\|available\|pending> <current> <latest> <release>` (see "Board firmware") |
 | `rpi-eeprom-update` | — | admin | BCM2712 boards only: `/usr/bin/rpi-eeprom-update -A bootloader`, then the same report; the update is finished by the next restart |
 | `hw-firmware-missing` | — | anyone | read-only: reads `/dev/kmsg` and returns only the validated names of firmware files a driver asked for and that are still missing (`LOG fw <file> <driver>`), for Store → Discover's suggestions (`hw/hwscan.c`, see `PACKAGES.md`) |
+| `hw-memory-modules` | — | anyone | read-only: parses the firmware's SMBIOS memory devices (`/sys/firmware/dmi/entries/17-<n>/raw`, root only) strictly in C (`sysreport/smbios.c`) and returns one `LOG mem <size_mb>\|<type>\|<speed>\|<configured>\|<slot>\|<bank>\|<maker>` line per slot; serials, asset tags and part numbers are never read (System Information → Hardware → Memory, see `BENCHMARK.md`) |
 
 The validators are unit-tested in `build/settings-hw-test`.
 

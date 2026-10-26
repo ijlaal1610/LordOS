@@ -145,3 +145,16 @@ export function reportFileName(date, ext, exists) {
 
 // The JSON a report is saved as: the collector's fields as they are, two-space indent.
 export const reportJson = (r) => `${JSON.stringify(r, null, 2)}\n`;
+
+// hw-memory-modules' lines (hw/hw_admin.c, sysreport/smbios.c): "mem <size_mb>|<type>|<speed>|
+// <configured>|<slot>|<bank>|<maker>", one per slot. Anything else is dropped.
+export function parseMemoryLines(lines) {
+  const out = [];
+  for (const l of Array.isArray(lines) ? lines : []) {
+    const m = /^mem (\d{1,9})\|([A-Za-z0-9]{0,11})\|(\d{1,6})\|(\d{1,6})\|([\x20-\x7e]{0,31})\|([\x20-\x7e]{0,31})\|([\x20-\x7e]{0,31})$/.exec(String(l));
+    if (!m || [m[5], m[6], m[7]].some((x) => x.includes('|'))) continue;
+    out.push({ sizeMB: +m[1], type: m[2], speed: +m[3], configured: +m[4], slot: m[5], bank: m[6], maker: m[7] });
+    if (out.length >= 64) break;
+  }
+  return out;
+}

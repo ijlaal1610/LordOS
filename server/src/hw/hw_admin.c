@@ -1,6 +1,7 @@
 /* hw_admin.c — Settings' admin actions (see hw_admin.h). Runs as root in the admin helper. */
 #include "hw_admin.h"
 #include "hwscan.h"
+#include "../sysreport/smbios.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -402,6 +403,36 @@ void hw_act_firmware_missing(const AdminReq *r, const char *arg, size_t len) {
     for (int i = 0; i < k; i++)
         admin_say("LOG", "fw %s %s", m[i].file, m[i].driver[0] ? m[i].driver : "-");   /* i18n-ok: protocol line parsed by sdk/suggestengine.js */
     admin_ok("hw.firmwareChecked", NULL);
+}
+
+/* ---- System Information's memory modules (sysreport/smbios.c, docs/BENCHMARK.md) ---- */
+
+void hw_act_memory_modules(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)arg;
+    if (len) { admin_err("admin.invalidArgument", NULL); return; }
+    DIR *d = opendir("/sys/firmware/dmi/entries");
+    if (!d) { admin_ok("hw.memoryNoTables", NULL); return; }
+    struct dirent *e;
+    int n = 0;
+    while ((e = readdir(d)) && n < 64) {
+        /* "17-<n>" only: the memory devices */
+        if (strncmp(e->d_name, "17-", 3) || !e->d_name[3] || strspn(e->d_name + 3, "0123456789") != strlen(e->d_name + 3)) continue;
+        char p[128];
+        snprintf(p, sizeof p, "/sys/firmware/dmi/entries/%.32s/raw", e->d_name);
+        int fd = open(p, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+        if (fd < 0) continue;
+        uint8_t buf[4096];
+        ssize_t got = read(fd, buf, sizeof buf);
+        close(fd);
+        SmMem m;
+        if (got <= 0 || smbios_memory_parse(buf, (size_t)got, &m)) continue;
+        char line[256];
+        smbios_memory_line(&m, line, sizeof line);
+        admin_say("LOG", "%s", line);  /* i18n-ok: protocol line parsed by apps/sysinfo/model.js */
+        n++;
+    }
+    closedir(d);
+    admin_ok("hw.memoryRead", NULL);
 }
 
 /* ---- video in the browser (docs/VIDEO.md) ---- */

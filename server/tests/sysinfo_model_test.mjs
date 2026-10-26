@@ -1,7 +1,7 @@
 // sysinfo_model_test.mjs — System Information's model (apps/sysinfo/model.js, 0.8.5): the GPU layers,
 // the reasons for CPU composition, the Compatibility panel and the Hardware sections. Run by
 // tests/run_suites.sh (needs node).
-import { compositionReason, cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, reportFileName, reportJson } from '../../apps/sysinfo/model.js';
+import { compositionReason, cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, reportFileName, reportJson, parseMemoryLines } from '../../apps/sysinfo/model.js';
 
 let n = 0, bad = 0;
 const eq = (what, got, want) => {
@@ -88,6 +88,14 @@ eq('file names', [reportFileName('2026-10-26', 'md', (n) => taken.has(n)), repor
 eq('a strange date never reaches the name', reportFileName('../../x', 'md', () => false), 'lordos-report-today.md');
 eq('all taken', reportFileName('2026-10-26', 'md', () => true), null);
 eq('json text', reportJson({ schema: 1, cpu: { cores: 8 } }), '{\n  "schema": 1,\n  "cpu": {\n    "cores": 8\n  }\n}\n');
+
+// ---- memory modules ----
+eq('module lines', parseMemoryLines(['mem 16384|DDR4|3200|2666|DIMM_A1|BANK 0|Kingston', 'mem 0||0|0|DIMM_B1||', 'mem 4096|RAM|0|0|DIMM 0||QEMU']), [
+  { sizeMB: 16384, type: 'DDR4', speed: 3200, configured: 2666, slot: 'DIMM_A1', bank: 'BANK 0', maker: 'Kingston' },
+  { sizeMB: 0, type: '', speed: 0, configured: 0, slot: 'DIMM_B1', bank: '', maker: '' },
+  { sizeMB: 4096, type: 'RAM', speed: 0, configured: 0, slot: 'DIMM 0', bank: '', maker: 'QEMU' }]);
+eq('bad lines dropped', parseMemoryLines(['fw x y', 'mem 1|DDR4|1|1|a|b', 'mem x|DDR4|1|1|a|b|c', 'mem 1|DDR4|1|1|a|b|c|d', `mem 1|DDR4|1|1|${'a'.repeat(40)}|b|c`, null]), []);
+eq('not a list', parseMemoryLines(undefined), []);
 
 console.log(`sysinfo-model-test: ${n - bad} ok, ${bad} failed`);
 process.exit(bad ? 1 : 0);

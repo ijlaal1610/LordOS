@@ -268,7 +268,16 @@ existing file), with **Show in Files**. Nothing is sent anywhere: publishing com
 
 ![The Report tab](sysinfo-report.png)
 
-Not yet: `hw-memory-modules`, video decode and encode and Vulkan (shown as *Not checked*), the Checks tab.
+**Memory modules (2026-10-26):** Hardware → Memory → **Read modules** runs the read-only admin action
+`hw-memory-modules` (the SMBIOS type 17 entries only root can read, parsed in `sysreport/smbios.c`:
+slot, bank, size, type, speeds, manufacturer; never serial, asset tag or part number). On VM 116 the
+parser read `mem 4096|RAM|0|0|DIMM 0||QEMU` from QEMU's real tables (`build/sysreport-test smbios` as
+root); the button itself was not exercised on screen (the isolated test session has no admin helper,
+so it shows disabled):
+
+![Hardware → Memory](sysinfo-memory.png)
+
+Not yet: video decode and encode and Vulkan (shown as *Not checked*), the Checks tab.
 
 1. `server/src/sysreport/`: collector, GPU layers, `pci.ids`/EDID readers, fake-sysfs fixtures
    (AMD desktop, Intel laptop, Nvidia desktop, Raspberry Pi 5, VM), the anonymization test,

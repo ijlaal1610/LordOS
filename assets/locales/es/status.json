@@ -130,5 +130,7 @@
   "imager.cancelling": "Cancelando…",
   "imager.cacheCleared": "Descargas borradas",
   "imager.verifiedImage": "La imagen coincide con su SHA-256 firmado",
-  "imager.written": "Grabada y verificada"
+  "imager.written": "Grabada y verificada",
+  "hw.memoryRead": "Módulos de memoria leídos",
+  "hw.memoryNoTables": "El firmware no informa módulos de memoria"
 }
