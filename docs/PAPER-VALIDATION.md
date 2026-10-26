@@ -1,8 +1,10 @@
 # Validating the paper
 
-The technical paper (https://lordos.org/paper/, LordOS 0.8.0 Beta) makes claims about LordOS. This page
-lists each one with how it is checked today and its state in 0.8.5, so anyone can see what is proven,
-what was measured once, what is not tested, and what the paper must correct. Updated 2026-10-26.
+The technical paper (https://lordos.org/paper/, `docs/PAPER.md`) makes claims about LordOS. This page was
+written against its 0.8.0 edition and lists each claim with how it is checked today and its state in 0.8.5,
+so anyone can see what is proven, what was measured once and what is not tested. **The rows marked
+Outdated were corrected in the paper's 0.8.5 edition (2026-10-26)**, which also separates whole-system
+memory from a process's RSS (§7.1) and points to versioned results (§11.5, `docs/RESULTS.md`).
 
 **How a claim is checked**
 
@@ -12,7 +14,7 @@ what was measured once, what is not tested, and what the paper must correct. Upd
 | **Check** | System Information → Checks verifies it on the user's own computer: *configured* (the mechanism is there) or *effective* (it was tried and gave the right answer). |
 | **Measured** | A number measured by hand on a named machine; nothing repeats it yet. LordBench (0.8.6) is meant to. |
 | **Untested** | The paper itself says it wasn't tested (real hardware). |
-| **Outdated** | No longer true in 0.8.5: the paper must change. |
+| **Outdated → corrected in 0.8.5** | No longer true in 0.8.5: the paper must change. |
 | **Design** | A design rule, checked by review and `AGENTS.md`, not by a program. |
 
 ## §1–§2 Vision and architecture
@@ -37,14 +39,14 @@ what was measured once, what is not tested, and what the paper must correct. Upd
 | 3.2 | GPU path tested only with Mesa's software renderer | Untested on AMD/Nvidia/Intel | **Untested** |
 | 3.3 | Touchpad gestures replayed in tests | Test (`tp-test`, `tests/touchpad-sim`) | Holds |
 | 3.4 | Only `libwayland-server` plus generated protocol code | Design | Design |
-| 3.4 | **Xwayland not supported** | Xwayland launches on demand since 0.8.3 | **Outdated** |
+| 3.4 | **Xwayland not supported** | Xwayland launches on demand since 0.8.3 | **Outdated → corrected in 0.8.5** |
 | 3.4 | No screen-capture protocol offered to apps | Design | Design |
 | 3.5 | Scale 100–200 % per display; two virtual heads tested, real monitors not | Manual (VM 116) | Untested on real monitors |
 | 3.6 | Remote desktop off by default, port 5673 | Check `remoteClosed` (effective: `/proc/net`) | Holds |
 | 3.6 | TLS 1.2+, self-signed P-256; cookie Secure, HttpOnly, SameSite=Strict | Test (`remote-sec-test`, `remote-fuzz`) | Holds |
-| 3.6 | **Failed logins wait 1, 2, 4… s up to 5 min** | Since 0.8.3: 3 failures block the source 15 min → 1 h → 24 h, answers at a fixed 1.25 s | **Outdated** |
-| 3.6 | **Screen updates are PNG still and JPEG moving** | WebRTC video (H.264, VP8) since 0.8.4 | **Outdated** |
-| 3.6 | **No audio** | Sound since 0.8.4 (Opus) | **Outdated** |
+| 3.6 | **Failed logins wait 1, 2, 4… s up to 5 min** | Since 0.8.3: 3 failures block the source 15 min → 1 h → 24 h, answers at a fixed 1.25 s | **Outdated → corrected in 0.8.5** |
+| 3.6 | **Screen updates are PNG still and JPEG moving** | WebRTC video (H.264, VP8) since 0.8.4 | **Outdated → corrected in 0.8.5** |
+| 3.6 | **No audio** | Sound since 0.8.4 (Opus) | **Outdated → corrected in 0.8.5** |
 
 ## §4–§5 UI engine and apps
 

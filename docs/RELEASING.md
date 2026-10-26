@@ -106,7 +106,11 @@ The releases page is the project's public changelog: every release is documented
    versions that is not just new files (a unit to enable, a renamed setting, a config to convert)
    is a migration in `packaging/migrations/` or `sdk/settings.js` ([UPDATES.md](UPDATES.md),
    "Migrations"), never a manual step in the release notes.
-8. **Publish:**
+8. **Results.** Collect the evidence on each test machine with `tools/results/collect.sh <machine>` (the
+   release test VMs, the Raspberry Pi 5 with a monitor), fill in each README's conditions, commit
+   `results/<version>/`, and add `tar czf results-<version>.tar.gz results/<version>` to the release
+   files ([RESULTS.md](RESULTS.md)).
+9. **Publish:**
 
    ```sh
    gh release create v<version> --title "LordOS <version>" --prerelease --verify-tag \
@@ -116,7 +120,7 @@ The releases page is the project's public changelog: every release is documented
    Leave out `--prerelease` only for a version without a suffix. The Debian installer
    (`install.sh`) finds betas too: `releases/latest` skips pre-releases, so it falls back to the
    newest release of any kind ([INSTALL-DEBIAN.md](INSTALL-DEBIAN.md)).
-9. **Check:** download from the release page and run the verification commands from the notes;
+10. **Check:** download from the release page and run the verification commands from the notes;
    run `curl -fsSL https://lordos.org/install.sh | sh` on a clean Debian 13; update the website if
    it names the current version.
 

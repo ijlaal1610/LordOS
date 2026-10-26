@@ -1,0 +1,84 @@
+#!/bin/sh
+# collect.sh — the evidence for one machine and one LordOS version, written to results/<version>/<machine>/
+# (docs/RESULTS.md). Run it as the user, inside a LordOS session (the Test Bench is a Wayland client):
+#
+#   tools/results/collect.sh <machine> [--no-memory] [--bench-seconds N] [--version V]
+#
+# <machine> is a short name, [a-z0-9-] (e.g. vm116-headless, pi5-8gb-hdmi). It writes:
+#   sysreport.json   lordos-sysreport report --json (no serial numbers, addresses or names)
+#   testbench.json   lordos-testbench --gl --auto N (the Wayland checklist, frame times, 3D renderer)
+#   memory.txt       whole system (`free -m`) and per process (PSS from /proc/<pid>/smaps_rollup); with
+#                    sudo, root's processes too
+#   boot.txt         systemd-analyze
+#   README.md        when, what version, the conditions to fill in, and these exact commands
+# The version is the installed one (software.lordos in the report); --version names it for a development
+# build, e.g. 0.8.5-dev.
+# Nothing is sent anywhere.
+set -eu
+M=${1:-}
+case "$M" in ''|*[!a-z0-9-]*) echo "usage: $0 <machine [a-z0-9-]> [--no-memory] [--bench-seconds N]" >&2; exit 2 ;; esac
+shift
+MEM=1 SECS=30 V=
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --no-memory) MEM=0 ;;
+        --bench-seconds) SECS=$2; shift ;;
+        --version) V=$2; shift ;;
+        *) echo "unknown option $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+case "$SECS" in ''|*[!0-9]*) echo "--bench-seconds takes a number" >&2; exit 2 ;; esac
+command -v lordos-sysreport >/dev/null || { echo "lordos-sysreport not installed" >&2; exit 1; }
+[ -n "$V" ] || V=$(lordos-sysreport report --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["software"]["lordos"])' 2>/dev/null || echo unknown)
+case "$V" in *[!A-Za-z0-9.+~-]*|'') V=unknown ;; esac
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+D="$ROOT/results/$V/$M"
+mkdir -p "$D"
+
+lordos-sysreport report --json > "$D/sysreport.json"
+
+if [ -n "${WAYLAND_DISPLAY:-}" ] && command -v lordos-testbench >/dev/null; then
+    timeout $((SECS + 30)) lordos-testbench --gl --auto "$SECS" > "$D/testbench.json" || echo "the Test Bench ended with an error" >&2
+else
+    echo "no Wayland session (WAYLAND_DISPLAY) or lordos-testbench missing: testbench.json skipped" >&2
+fi
+
+if [ "$MEM" = 1 ]; then
+    {
+        echo "# free -m (whole system; 'used' excludes the reclaimable page cache)"
+        free -m
+        echo
+        echo "# PSS per process, MB (shared pages divided among the processes that map them)"
+        echo "# $( [ "$(id -u)" = 0 ] && echo 'all processes' || echo 'only processes this user can read; run with sudo for all')"
+        for f in /proc/[0-9]*/smaps_rollup; do
+            p=${f%/smaps_rollup}
+            k=$(awk '/^Pss:/ {print $2}' "$f" 2>/dev/null) || continue
+            [ -n "$k" ] || continue
+            printf '%s %s\n' "$k" "$(cat "$p/comm" 2>/dev/null)"
+        done | sort -rn | awk '{ k = $1; $1 = ""; t += k; printf "%8.1f %s\n", k / 1024, $0 } END { printf "%8.1f  total of the processes listed\n", t / 1024 }'
+    } > "$D/memory.txt"
+fi
+
+systemd-analyze > "$D/boot.txt" 2>&1 || true
+
+cat > "$D/README.md" <<MD
+# $M — LordOS $V
+
+Collected $(date -u +%Y-%m-%dT%H:%MZ) with \`tools/results/collect.sh $M\` (docs/RESULTS.md); the report's
+own version field says \`$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["software"]["lordos"])' "$D/sysreport.json" 2>/dev/null)\`.
+
+**Conditions** (fill in): hardware or VM and its resources; monitor (model, mode) or headless; how long
+the system was idle before measuring; which apps were open; power source and profile.
+
+Reproduce:
+
+\`\`\`sh
+lordos-sysreport report --json > sysreport.json
+lordos-testbench --gl --auto $SECS > testbench.json      # inside a LordOS session
+free -m                                                  # whole system
+sudo sh -c 'for f in /proc/[0-9]*/smaps_rollup; do ...'  # PSS per process: see tools/results/collect.sh
+systemd-analyze
+\`\`\`
+MD
+echo "written to $D"

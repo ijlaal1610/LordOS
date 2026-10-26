@@ -20,7 +20,7 @@ like React Native but on top of our display server.
  lord-server (C, ours)   display server: DRM/KMS + evdev, windows, focus,
         │                composition, theme decorations
         │                + Wayland protocol → GTK (GNOME), Qt (KDE) apps,
-        │                  Firefox, Electron (Wayland only: Xwayland is not supported)
+        │                  Firefox, Electron; X11 apps through Xwayland (0.8.3)
         ▼
  Linux kernel (minimal Debian 13, generic kernel with DRM)
 ```

@@ -35,6 +35,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   L locks the pointer; its last report appears in System Information → Checks. Its frame times give the
   average, the 99th percentile and the frames that missed the display's refresh budget. Keys LordOS keeps
   for itself (Print Screen, the media keys, ❖ on its own) are outlined in purple.
+- **Versioned results.** `tools/results/collect.sh` writes the evidence for one machine into
+  `results/<version>/<machine>/`: the hardware report, the Test Bench's report, whole-system memory with
+  PSS per process, and the boot time, with the conditions and the exact commands (`docs/RESULTS.md`).
+  Releases attach them to the GitHub release.
 - **Monitor → Network shows ping (ICMP), raw IP and packet sockets** (the last two can see or forge
   traffic: the row says so, with the protocol or ethertype and the interface), under the app that
   opened them, and the remote

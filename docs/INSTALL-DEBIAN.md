@@ -148,7 +148,7 @@ curl -fsSL https://lordos.org/install.sh | sh -s -- --remote-desktop --remote-po
 installer enables `lordos.service` (as on any machine without one), so `lord-sessiond` starts at
 boot and serves the login screen and the sessions over the remote desktop. Apps, Linux apps, the
 firewall and the rest of the desktop work as on a PC; without a GPU everything is drawn on the CPU.
-The remote desktop has no audio yet.
+The remote desktop carries the session's sound (Opus over WebRTC) since 0.8.4.
 
 **What `--remote-desktop` does:**
 

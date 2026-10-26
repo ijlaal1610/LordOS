@@ -421,6 +421,8 @@ All figures below were measured by the project and are documented in the files c
 
 ### 7.1 Memory and idle
 
+**Two different magnitudes.** The first rows measure the **whole system**: the "used" column of `free`, which is everything the kernel, Debian's services (systemd, journald, udev, the network, PipeWire, CUPS…), LordOS's root services and the user's session hold, without the page cache the kernel can give back. The other rows are the **resident memory (RSS) of one process**, as `ps` or `/proc/<pid>/status` report it. An RSS is not the whole system's consumption, and RSS figures can't be added up: pages of shared libraries are counted in every process that maps them. Comparing LordOS with another desktop means comparing `free`'s "used" on the same machine, after the same time idle, with the same apps open; a fair split of the shared pages per process is PSS (`/proc/<pid>/smaps_rollup`). How to repeat both, and the results of each release, are in §11.5.
+
 | Measurement | Value | Where |
 |---|---|---|
 | Whole system, live ISO, idle after a minute (4 GB, 4 cores) | 465 MB used, CPU 99 % idle | VM 117, `docs/ISO.md` |
@@ -580,6 +582,10 @@ The SBOM of each architecture (`lordos_<version>_<arch>.spdx.json`) is listed in
 - Remote desktop: `ss -ltn` shows nothing on port 5673 until you enable it in Settings → Sharing.
 - **System Information → Checks (0.8.5)** does these checks for you and says whether each was found configured or actually tried: the display server without root, Landlock, the per-app firewall with its kernel pieces, every bundle of LordOS's own code verified this session, the remote desktop's port closed when it is off (read from `/proc/net`), the session's cgroup tree owned by root, composition on the GPU, and **Run tests** for the Sandbox Probe (§6.4).
 - **`lordos-testbench --auto`** prints a JSON report of the Wayland checklist, frame and presentation timing, the 3D renderer and input-to-screen latency; `lordos-sysreport report --json` prints the hardware report without serial numbers, addresses or names.
+
+### 11.5 Versioned results
+
+Each release publishes its measurements as files in `results/<version>/<machine>/` (and attached to the GitHub release): the hardware report, the Test Bench's report, whole-system memory with PSS per process, and the boot time, each folder with its conditions and the exact commands that produced it (`tools/results/collect.sh`, `docs/RESULTS.md`). From 0.8.6 LordBench's results join them. A number in this paper that has such a file can be checked against it, and repeated.
 
 ## 12. License and credits
 

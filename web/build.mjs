@@ -20,6 +20,7 @@ import http from 'node:http';
 import { createRequire } from 'node:module';
 import { markdown, inline, frontMatter, slugify } from './lib/md.mjs';
 import { diagram } from './lib/diagram.mjs';
+import { paperMarkdown } from './lib/papermd.mjs';
 import { imagerGuide, writeBlock } from './lib/imager-guide.mjs';
 
 const WEB = path.dirname(fileURLToPath(import.meta.url));
@@ -789,6 +790,10 @@ ${rels.join('\n')}
   if (HAS_PAPER) {
     const { data: fm, body } = frontMatter(fs.readFileSync(path.join(paperDir, `paper.${l}.md`), 'utf8'));
     const meta = { ...fm, ...paperMeta };
+    if (l === 'en') {         // docs/PAPER.md, the copy on GitHub, always follows the English paper
+      const md = paperMarkdown(body, meta, paperDiagrams.diagrams || []), dst = path.join(REPO, 'docs', 'PAPER.md');
+      if (!fs.existsSync(dst) || fs.readFileSync(dst, 'utf8') !== md) { fs.writeFileSync(dst, md); log('docs/PAPER.md regenerated from paper.en.md'); }
+    }
     let { html: bodyHtml, headings } = renderMd(body, paperDiagrams.diagrams || [], paperDiagrams.screenshots || meta.screenshots || []);
     if (changelog.length) ({ html: bodyHtml, headings } = addChangelog(bodyHtml, headings));
     const title = loc(meta.title, l) || fm.title || 'LordOS';

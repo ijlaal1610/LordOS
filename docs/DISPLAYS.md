@@ -197,7 +197,7 @@ head: `screendump file.ppm vga 1` in `qm monitor 118`.
   the capture paths ran (the permission prompt appeared on the main display). The remote desktop
   with two displays was not tested with a browser.
 - **Legacy Wayland clients at 125/150/175 %** get `scale = 2` and are downscaled (bilinear): not
-  pixel-exact. Xwayland is not part of LordOS.
+  pixel-exact. X11 apps (Xwayland, 0.8.3) are scaled the same way.
 - Apps' own cursor images (`wl_pointer.set_cursor`) are not scaled.
 - Different refresh rates: each display flips on its own vblank, but `wp_presentation` and frame
   callbacks follow the main display.

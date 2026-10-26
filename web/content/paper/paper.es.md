@@ -421,6 +421,8 @@ Todas las cifras de abajo las midió el proyecto y están documentadas en los ar
 
 ### 7.1 Memoria y reposo
 
+**Dos magnitudes distintas.** Las primeras filas miden **el sistema completo**: la columna "used" de `free`, que es todo lo que ocupan el kernel, los servicios de Debian (systemd, journald, udev, la red, PipeWire, CUPS…), los servicios root de LordOS y la sesión del usuario, sin la caché de páginas que el kernel puede devolver. Las otras filas son la **memoria residente (RSS) de un proceso**, como la informan `ps` o `/proc/<pid>/status`. Un RSS no es el consumo del sistema completo, y los RSS no se pueden sumar: las páginas de las bibliotecas compartidas se cuentan en cada proceso que las mapea. Para comparar LordOS con otro escritorio hay que comparar el "used" de `free` en la misma máquina, después del mismo tiempo en reposo y con las mismas apps abiertas; el reparto justo de las páginas compartidas por proceso es el PSS (`/proc/<pid>/smaps_rollup`). Cómo repetir ambas mediciones, y los resultados de cada versión, están en §11.5.
+
 | Medición | Valor | Dónde |
 |---|---|---|
 | Sistema completo, ISO live, en reposo después de un minuto (4 GB, 4 núcleos) | 465 MB usados, CPU 99 % ociosa | VM 117, `docs/ISO.md` |
@@ -580,6 +582,10 @@ El SBOM de cada arquitectura (`lordos_<version>_<arch>.spdx.json`) también est�
 - Escritorio remoto: `ss -ltn` no muestra nada en el puerto 5673 hasta que lo activás en Ajustes → Compartir.
 - **Información del sistema → Verificaciones (0.8.5)** hace estas verificaciones por vos y dice de cada una si se encontró configurada o si de verdad se probó: el servidor gráfico sin root, Landlock, el firewall por app con sus piezas del kernel, cada bundle del código propio de LordOS verificado en esta sesión, el puerto del escritorio remoto cerrado cuando está apagado (leído de `/proc/net`), el árbol de cgroups de la sesión de propiedad de root, la composición en la GPU, y **Probar** para la Prueba del aislamiento (§6.4).
 - **`lordos-testbench --auto`** imprime un informe JSON con la lista de verificación de Wayland, los tiempos de cuadro y de presentación, el renderizador 3D y la latencia de la entrada a la pantalla; `lordos-sysreport report --json` imprime el informe de hardware sin números de serie, direcciones ni nombres.
+
+### 11.5 Resultados versionados
+
+Cada versión publica sus mediciones como archivos en `results/<versión>/<máquina>/` (y adjuntos al release de GitHub): el informe del hardware, el informe del banco de pruebas, la memoria del sistema completo con el PSS de cada proceso y el tiempo de arranque, cada carpeta con sus condiciones y los comandos exactos que la produjeron (`tools/results/collect.sh`, `docs/RESULTS.md`). Desde 0.8.6 se suman los resultados de LordBench. Un número de este documento que tenga ese archivo se puede comparar con él y repetir.
 
 ## 12. Licencia y créditos
 
