@@ -144,6 +144,7 @@
   "fs.notRegular": "Não é um arquivo comum (é um link?)",
   "fs.openFailed": "Não foi possível abrir o arquivo: {errno}",
   "fs.outsideHome": "Esse local está fora da sua pasta pessoal ou não é válido",
+  "fs.systemFolder": "O Arquivos não mostra as pastas internas do sistema (/proc, /sys, /dev e /run)",
   "fs.protected": "Essa pasta é protegida",
   "fs.tooLarge": "O arquivo é grande demais (máx. {max})",
   "fs.tooManyCopies": "Há cópias demais em andamento; tente de novo quando uma terminar",

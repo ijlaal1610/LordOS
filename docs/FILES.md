@@ -42,7 +42,8 @@ drop, color tags and search. Disk operations belong to the server (`server/src/f
 - **Sidebar:**
   - Favorites: Recents, Applications and the user's folders (xdg-user-dirs);
   - Locations: Home, **This Computer** (0.8.5: `/`, read-only, named after the machine; folders
-    the user can't open show a lock), the disks and USB sticks mounted in `/media/$USER` or
+    the user can't open, and `/proc`, `/sys`, `/dev` and `/run`, show a lock; opening one says
+    "Permission denied", or that Files doesn't show the system's internal folders), the disks and USB sticks mounted in `/media/$USER` or
     `/run/media/$USER` (checked every 4 s; ⏏ on hover ejects a removable disk with `disk-eject` and
     unmounts another disk's partition with `disk-unmount`), every other disk with a file system that isn't mounted
     (dimmed; a click mounts it with `disk-mount` and opens it; an internal one asks for an
@@ -140,7 +141,8 @@ drop, color tags and search. Disk operations belong to the server (`server/src/f
   `resolve_readable` and `fsops_readable`: the whole tree as the session user, so the system's own
   permissions decide what can be opened, except `/proc`, `/sys`, `/dev` and `/run` (this process's
   memory, environment and open files, devices, and the session's sockets; `/run/media/$USER` stays).
-  Paths are resolved with `realpath` first, so a link into those is refused too. `stat` outside the
+  Paths are resolved with `realpath` first, so a link into those is refused too; `list` refuses
+  them with `fs.systemFolder` (not `fs.outsideHome`). `stat` outside the
   writable roots answers `writable: false`, and Files then leaves out the actions that change the
   folder (new folder, paste, rename, duplicate, Trash, cut, compress, extract). There is no root
   mode. Isolated `.lpk` apps don't get this: their broker only reaches their own data folder.

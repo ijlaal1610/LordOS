@@ -89,7 +89,15 @@ static int resolve_readable(const char *path, char *out) {
     if (path[0] == '/') snprintf(full, sizeof full, "%s", path);
     else snprintf(full, sizeof full, "%s/%s", home, path);
     if (!realpath(full, out)) return -1;
-    return fsops_readable(out) ? 0 : -1;
+    return fsops_readable(out) ? 0 : -2;      /* -2: exists, but one of the folders not read */
+}
+
+/* A folder Files shows with a lock: the system's permissions don't let this user open it, or it is
+ * one of the pseudo-filesystems lord.fs doesn't read (fsops_readable). */
+static int dir_locked(const char *path) {
+    char real[PATH_MAX];
+    if (!realpath(path, real) || !fsops_readable(real)) return 1;
+    return access(real, R_OK | X_OK) != 0;
 }
 
 static char *read_small(const char *path, size_t max, size_t *len) {
@@ -134,7 +142,11 @@ static JSValue f_fs_list(JSContext *c, JSValueConst this_val, int argc, JSValueC
     char dir[PATH_MAX];
     int bad = resolve_readable(p, dir);
     JS_FreeCString(c, p);
-    if (bad) return js_throw_code(c, "fs.outsideHome", NULL);
+    if (bad) {
+        /* an existing folder that is not read on purpose (/proc, /sys, /dev, /run) says so */
+        if (bad == -2) return js_throw_code(c, "fs.systemFolder", NULL);
+        return js_throw_code(c, "fs.outsideHome", NULL);
+    }
     DIR *d = opendir(dir);
     if (!d) return js_throw_code(c, "sys.errno", "errno", lerr_errno(errno), NULL);
     JSValue arr = JS_NewArray(c);
@@ -153,7 +165,7 @@ static JSValue f_fs_list(JSContext *c, JSValueConst this_val, int argc, JSValueC
         JS_SetPropertyStr(c, o, "link", JS_NewBool(c, link));
         JS_SetPropertyStr(c, o, "dir", JS_NewBool(c, S_ISDIR(st.st_mode)));
         /* a folder this user can't open (shown with a lock in This computer) */
-        if (S_ISDIR(st.st_mode) && access(fp, R_OK | X_OK)) JS_SetPropertyStr(c, o, "locked", JS_TRUE);
+        if (S_ISDIR(st.st_mode) && dir_locked(fp)) JS_SetPropertyStr(c, o, "locked", JS_TRUE);
         JS_SetPropertyStr(c, o, "size", JS_NewFloat64(c, (double)st.st_size));
         JS_SetPropertyStr(c, o, "mtime", JS_NewFloat64(c, (double)st.st_mtime * 1000));
         JS_SetPropertyUint32(c, arr, i++, o);
