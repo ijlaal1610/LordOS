@@ -23,7 +23,10 @@ export const POWER_SECONDS = 60;
 // null, or { action: 'reboot'|'poweroff', until (ms), state: 'ask'|'sent'|'denied'|'unavailable' }
 export const powerAsk = createStore(null);
 
-export const canPower = () => typeof lord.session !== 'undefined' && typeof lord.session.power === 'function' && lord.session.managed();
+// Only in the session on the monitor: lord-sessiond reads requests from that one alone, so a session
+// seen only through the remote desktop isn't offered Restart or Shut Down.
+export const canPower = () => typeof lord.session !== 'undefined' && typeof lord.session.power === 'function' && lord.session.managed()
+  && (typeof lord.session.onMonitor !== 'function' || lord.session.onMonitor());
 
 export function askPower(action) {
   if (action !== 'reboot' && action !== 'poweroff') return;

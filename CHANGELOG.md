@@ -40,6 +40,9 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **Restart… and Shut Down… in a session seen only through the remote desktop** showed the
+  countdown and then did nothing: only the session on the monitor can ask for them. They are now
+  offered only there.
 - **The Store now follows apt's priorities** (`/etc/apt/preferences.d`), choosing the same versions
   as `apt`. On the Raspberry Pi image, "Update all" could take Raspberry Pi's builds of Chromium,
   BlueZ and other Debian packages instead of Debian's; it no longer does, and Raspberry Pi's kernel

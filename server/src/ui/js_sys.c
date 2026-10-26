@@ -1918,8 +1918,17 @@ static JSValue f_session_power(JSContext *c, JSValueConst this_val, int argc, JS
     return JS_TRUE;
 }
 
+/* lord.session.onMonitor(): is this session the one lord-sessiond shows on the monitor (it holds the
+ * seat connection)? Only that session's requests reach lord-sessiond, so Restart and Shut Down are
+ * offered only there; a session seen only through the remote desktop doesn't have it. */
+static JSValue f_session_on_monitor(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
+    (void)this_val; (void)argc; (void)argv;
+    return JS_NewBool(c, !greeter_mode && mirror_has_seat());
+}
+
 static const JSCFunctionListEntry session_funcs[] = {
     JS_CFUNC_DEF("managed", 0, f_session_managed),
+    JS_CFUNC_DEF("onMonitor", 0, f_session_on_monitor),
     JS_CFUNC_DEF("power", 1, f_session_power),
     JS_CFUNC_DEF("lock", 0, f_session_lock),
     JS_CFUNC_DEF("switchUser", 0, f_session_switch),

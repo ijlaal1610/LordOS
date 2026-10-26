@@ -246,6 +246,10 @@ card lent to a session has not been tested on real hardware yet.
     screen's channel (`RP_GREETER_IN`) and the sheet shows the refusal.
   - then the same closed path as the login screen: `systemctl reboot` or `poweroff`, fixed path,
     fixed environment, logged as `reboot requested by <user> (<n> other session(s) open)`.
+- **Only on the monitor's session** (0.8.5): the items appear only while the session holds
+  lord-sessiond's seat connection (`lord.session.onMonitor()`, which `session.canPower()` checks). A
+  session seen only through the remote desktop isn't offered them; before 0.8.5 it showed the
+  sheet and nothing happened at the end of the countdown.
 - **Tested on VM 122:** the menu items, the sheet in light and dark, the countdown, Cancel and
   Escape (no restart after the minute), the Classic Power button, a real Shut Down (`qm start` back
   to the login screen) and a real Restart (back to the login screen). The refusal with other users
