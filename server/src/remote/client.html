@@ -252,7 +252,7 @@ function setMode() {
   if (!vmode) { $('mode').textContent = ''; $('mode').title = ''; return; }
   const parts = [T.video, codec.toUpperCase() + (vinfo ? ' ' + (vinfo.hw ? T.hwEnc : T.swEnc) : '')];
   if (rd.path) parts.push(rd.path.toUpperCase());
-  if (vinfo) parts.push(`${shownFps}/${vinfo.fps} fps`);
+  parts.push(vinfo ? `${shownFps}/${vinfo.fps} fps` : `${shownFps} fps`);   // shown by this browser / encoded
   if (screenHz) parts.push(`${screenHz} Hz`);
   if (vinfo) parts.push(vinfo.gpu ? 'GPU' : 'CPU');
   $('mode').textContent = parts.join(' · ');
