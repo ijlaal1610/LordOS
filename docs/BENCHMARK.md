@@ -1,6 +1,6 @@
 # System Information, LordBench and hardware reports (proposal)
 
-**Status: design proposal; the 0.8.5 collector and `lordos-sysreport` are built (below), the rest is not.** It plans three releases and a later stage:
+**Status: design proposal. Built for 0.8.5 (in development, see "Work plan for 0.8.5" below): the collector, `lordos-sysreport report|fetch`, the System Information app (Overview, Hardware, Compatibility, Checks, Report), the Sandbox Probe and the shared measurement library `server/src/bench`. LordBench (0.8.6), community reports (0.8.7) and the `checks`/`bench` subcommands of `lordos-sysreport` are not built.** It plans three releases and a later stage:
 
 | Release | What |
 |---|---|
@@ -103,7 +103,7 @@ the test:
 |---|---|---|---|
 | `sec.server-user` | §2.2 | `lord-server`'s uid ≠ 0 | — |
 | `sec.app-sandbox` | §6.4 | `Seccomp: 2`, `NoNewPrivs: 1` on an isolated app | a probe app (a system package started like any isolated app) tries to read a file outside its grant, open a socket, `ptrace`, create a user namespace and reach another app's scope; every attempt must be refused |
-| `sec.helper-sandbox` | §6.7 | — | `lord-bench` itself checks after its own lock-in that `open` of a path, `socket` and `execve` fail |
+| `sec.helper-sandbox` | §6.7 | — | a child of the probe app that takes `sandbox_apply_helper()` checks that a unix socket, `exec`, `fork` and the app's data folder fail (0.8.5; `lord-bench` is planned to repeat it after its own lock-in in 0.8.6) |
 | `sec.landlock` | §6.4 | Landlock ABI ≥ 6 | covered by the probe app |
 | `sec.netperm` | §6.6 | `lord-netperm` running, programs attached, devices and Bluetooth programs loaded | the probe app, denied the network by a temporary rule, fails to connect to a local listener |
 | `sec.code` | §6.9 | manifest present | every loaded bundle verified in this session |
@@ -115,8 +115,8 @@ the test:
 | `gpu.used` | §7.3 | hardware renderer exists | GPU path on, or a warning with the reason |
 | `sys.time`, `sys.firmware`, `sys.fans`, `sys.memcg`, `sys.pi-bootloader`, `sys.updates` | various | as listed in the Hardware tree | — |
 
-Thresholds live in a signed data file (`assets/sysinfo/checks.json`, in the code manifest). A
-failed check offers **Report a problem** with the bug template.
+Thresholds are constants in `apps/sysinfo/checks.js`, signed with the theme bundle (the separate
+`checks.json` first planned was not needed). A failed check offers **Report a problem** with the bug template.
 
 ### Compatibility
 
@@ -235,7 +235,8 @@ before installing.
 
 ## New interfaces, all under the rules of `AGENTS.md`
 
-- `lord.sysinfo` in `server/src/ui/js_hw.c`: `scan()`, `checks()`, `report()`; in 0.8.6
+- `lord.sysinfo` in `server/src/ui/js_hw.c`: `report()`, `markdown()`, `facts()`, `probe()` (built in
+  0.8.5; the checks are evaluated in `apps/sysinfo/checks.js`); in 0.8.6
   `bench.start(kind)`, `bench.poll()`, `bench.cancel()`.
 - `lordos-sysreport`, a user command (not started by `lord-server`).
 - One read-only admin action, `hw-memory-modules` (anyone, no arguments): SMBIOS memory device
@@ -338,7 +339,7 @@ temporary rule), video decode and encode and Vulkan (shown as *Not checked*).
    (AMD desktop, Intel laptop, Nvidia desktop, Raspberry Pi 5, VM), the anonymization test,
    `hw-memory-modules`, `lordos-sysreport report`.
 2. The app: Overview, Hardware, Compatibility; About's button; en, es, pt; right to left.
-3. Checks, configured and effective, the probe app, signed `checks.json`, `lordos-sysreport checks`.
+3. Checks, configured and effective, the probe app, thresholds signed in `apps/sysinfo/checks.js` (built); `lordos-sysreport checks` (not built yet).
 4. Reports with preview; docs; screenshots on VMs; the first real reports: the Raspberry Pi 5 with a
    monitor and the maintainer's PC (Core i9-10900, Radeon RX 580), the first real AMD data in the
    project.

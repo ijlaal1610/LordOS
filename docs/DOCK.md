@@ -233,7 +233,8 @@ Settings says so below "Position on screen".
 
 ## Pending
 
-- Minimize effect (genie or scale): the engine doesn't have `transform: scale` yet.
+- A genie minimize effect: the Default theme's is a scale towards the Dock (`useMinimizing` in
+  `themes/default/index.jsx`, `transform: scale` from a cached raster; `DESIGN.md`).
 - Auto-hide for the Classic theme's bar.
 - Dragging the Dock to another edge with the mouse (⇧ on the separator).
 - Quick actions for `.lpk` apps (they would need to reach the isolated process through the broker).

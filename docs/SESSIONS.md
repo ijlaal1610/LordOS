@@ -403,7 +403,9 @@ session. Everything that changes something goes through closed `admin.c` actions
 
 ## Pending
 
-- **Multiple monitors:** a single connector is used, as before.
+- **Multiple monitors:** since 0.8.0 the session drives every display of the lent card
+  (`display_attach` → `outputs_apply` in `main.c`, see [DISPLAYS.md](DISPLAYS.md)); the lend/revoke
+  cycle with several real monitors is untested.
 - **Text consoles:** Ctrl+Alt+F2 doesn't switch consoles while LordOS is running, as before.
 - **Choosing the avatar image:** today it's a hand-typed path; the file picker is missing.
 - **Testing with a real card** (AMD, on the live USB): in the VMs, the GPU could only be tested

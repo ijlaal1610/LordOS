@@ -38,6 +38,9 @@ Apps that only speak X11 open through Xwayland, started on demand, with our own 
 | `xdg_wm_base` | 6 | windows (`xdg_toplevel`: title, move, resize, maximize, minimize, close) and popup menus (`xdg_popup` with `xdg_positioner`: anchor, gravity, flip and slide within the screen) |
 | `zxdg_decoration_manager_v1` | 1 | the app picks who draws the frame: server side (Qt, foot, Kitty, Alacritty: the theme's frame) or client side (Chromium with its own bar), also while it's open (0.8.4) |
 | `wp_cursor_shape_manager_v1` | 1 | the app asks for the cursor by name (Chromium, GTK 4, Qt 6) and LordOS draws its own (`cursor.c`, see `WINDOWS.md`) |
+| `org_kde_kwin_server_decoration_manager` | 1 | GTK 3's way to ask for the frame (Firefox, Mousepad; see "Who draws the frame") |
+| `zwp_idle_inhibit_manager_v1` | 1 | a video or presentation keeps the screen on while its surface is mapped (0.8.5, see the end of this page) |
+| `zwp_linux_dmabuf_v1` 4, `wp_presentation` 1, `wp_viewporter` 1, `zwp_relative_pointer_manager_v1` 1, `zwp_pointer_constraints_v1` 1 | | GPU buffers, presentation feedback, cropping and scaling, games' pointer (see `GPU.md` and `DISPLAYS.md`) |
 
 Windows enter the SDK's window manager (`sdk/wayland.js`) as the internal app `linux` (id
 `linux#<surface>`): the theme sees them like any other, with their title, focus, maximize,
@@ -463,7 +466,8 @@ display.
   the build installed before (October 18) and with the LordOS frame, so it isn't the frame. To
   investigate (two `wl_seat` bindings from the same client get the events twice).
 - SVG app icons (most modern GTK/Qt apps only ship SVG).
-- Opening files with a Linux app (`%f`/`%u`), `.desktop` actions and terminal apps.
+- Terminal apps (`Terminal=true`: neither listed nor launched). (Opening files with a Linux app,
+  `%f`/`%u`, and `.desktop` actions: done, see "The launcher" above; actions since 0.8.1.)
 - Already done (see `GPU.md`): `linux-dmabuf` v4, GPU composition (Mesa, optional), direct
   fullscreen scanout, `wp_presentation`, `wp_viewporter`, `relative-pointer`,
   `pointer-constraints`, real fullscreen (❖Esc exits) and app cursors (image or hidden).

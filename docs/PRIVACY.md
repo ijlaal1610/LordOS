@@ -37,13 +37,16 @@ Not every program on LordOS is sandboxed. This is exactly what applies to each k
 |---|---|---|---|---|---|
 | `.lpk` apps, Passwords, Mail, Calendar, Contacts, Reminders | own process (`lord-server --app <id>`) | yes | own (`app-lordos-lpk-<id>.scope`) | yes: every call is checked in `lord-server` | per app (`lpk:<id>`): network rules and every non-network restriction (broker) |
 | Other built-in apps | inside `lord-server` | no | `lord-server`'s | no broker: camera, microphone and screen are checked in C (`js_media.c`), notifications in `sdk/notify.js` | as "LordOS" (`lordos`): network rules; camera, microphone, screen and notifications restrictions |
-| Linux apps from the launcher | own process | no by default; with "no access to your files", their own user, mount and PID namespace plus Landlock (no seccomp), from the next launch | own (`app-lordos-<id>.scope`) | no | per app (`desktop:<id>`), when the owner sets them: network rules; camera, USB and screen (`/dev/fb*`) devices and Bluetooth sockets in the kernel (`lord-netperm`); microphone and PipeWire cameras (our PipeWire guard, plus ALSA capture nodes in the kernel); files (the launcher); notifications (our notification server). Not the clipboard, and not BlueZ over D-Bus |
+| Linux apps from the launcher | own process | no by default; with "no access to your files", or restricted from the microphone, camera, USB or Bluetooth, their own user, mount, PID and IPC namespaces plus Landlock (no seccomp), from the next launch | own (`app-lordos-<id>.scope`) | no | per app (`desktop:<id>`), when the owner sets them: network rules; camera, USB and screen (`/dev/fb*`) devices and Bluetooth sockets in the kernel (`lord-netperm`); microphone and PipeWire cameras (our PipeWire guard, plus ALSA capture nodes in the kernel); files (the launcher); notifications (our notification server). Not the clipboard, and not BlueZ over D-Bus |
 | Terminal programs | children of the Terminal's shell | no | `lord-server`'s | no | as "LordOS" (`lordos`): network rules |
 
-Flatpak and bubblewrap are not used. Namespaces are used in one place: a Linux app restricted
-with "no access to your files" starts in its own unprivileged user, mount and PID namespace,
-built by our own code in the launcher (`sec/sandbox.c`, `sandbox_files_isolate`), so it can't
-reach the session's sockets. The firewall's restrictions, where each one is enforced and what each
+Flatpak and bubblewrap are not used. Namespaces are used in two places: a Linux app restricted
+with "no access to your files", or from the microphone, camera, USB or Bluetooth, starts in its own
+unprivileged user, mount, PID and IPC namespaces (its own view: a runtime folder with only the
+Wayland and PipeWire sockets, private `/tmp`, `/dev/shm` and devpts; only "no access to your files"
+also hides the home), built by our own code in the launcher (`sec/sandbox.c`,
+`sandbox_files_isolate`), so it can't reach the session's sockets; and Xwayland (0.8.3) runs in an
+empty network namespace (see [X11 apps](#x11-apps-083)). The firewall's restrictions, where each one is enforced and what each
 one doesn't cover are in [FIREWALL.md](FIREWALL.md#non-network-restrictions) and, for Linux apps,
 [FIREWALL.md, "Linux apps"](FIREWALL.md#linux-apps).
 
@@ -182,8 +185,9 @@ Our own code, without bubblewrap, flatpak or firejail. It uses kernel 6.12 featu
   (`unshare(CLONE_NEWNET)` needs `CAP_SYS_ADMIN`). Decision: the app stays in the machine's netns,
   and **without the `network` permission** seccomp rejects `socket(AF_INET/AF_INET6)` and Landlock
   (ABI ≥ 4) denies it TCP `bind`/`connect`. With the permission (declared **and** granted, decided
-  at launch), they are allowed. The monitoring agent adds per-cgroup nftables rules (defense in
-  depth) and attributes traffic by the scope's name.
+  at launch), they are allowed. On top of that, `lord-netperm`'s cgroup BPF programs enforce the
+  app's firewall rules in the kernel (defense in depth, see `FIREWALL.md`), and traffic is
+  attributed by the scope's name.
 - **`no_new_privs`**, all capabilities dropped (empty `capset` + `PR_CAPBSET_DROP`).
 - Its own **cgroup v2**, `app-lordos-lpk-<id>.scope`: `memory.high` 192 MB, `memory.max` 512 MB,
   `cpu.max` one core.

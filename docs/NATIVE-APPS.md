@@ -33,7 +33,7 @@ assets/…           what the app reads at runtime: .wasm, images, data (optiona
   "id": "fractal",
   "name": { "es": "Fractal", "en": "Fractal" },
   "description": { "es": "Explorador del conjunto de Mandelbrot", "en": "Mandelbrot set explorer" },
-  "version": "1.0.0",
+  "version": "1.1.0",
   "icon": "icon.png",
   "size": [660, 520],
   "minSize": [360, 300],
@@ -95,7 +95,9 @@ The rest of the SDK is the same as for the bundled apps (see `apps/README.md`).
 
 ## System apps (0.8.2)
 
-The apps in `apps/` are **system apps**: they are built into the theme bundles, which LordOS checks
+The apps in `apps/` are **system apps**: they are built into the theme bundles (or, for those that
+run as their own process, `"process": "isolated"`, into `assets/sysapps/<id>/`: Passwords, Mail,
+Calendar, Contacts, Reminders and, in 0.8.5, the hidden Sandbox Probe), which LordOS checks
 against its signed manifest before running them (see [SIGNING.md](SIGNING.md), "Verified system
 code"), and the Store never offers to remove them ("System app — part of LordOS"). An installed
 `.lpk` is never a system app, even with the same id: the theme's app wins and the package is not
@@ -120,11 +122,15 @@ Since M8 there is **package signing** and a **permissions and isolation** model 
   `~/.local/share/lordos/appdata/<id>`.
 
 What **always** limits any app (installed or not): lord-server runs without root, `lord.fs`
-works only in the home folder and doesn't write to the launch/install folders, the settings or
-`permisos.json`, and JS can't run commands or create `.desktop` files.
+writes only in the home folder and the user's mounts (since 0.8.5 it reads the whole tree as the
+user, except `/proc`, `/sys`, `/dev` and `/run`; an isolated app's broker keeps only its data
+folder), never to the launch/install folders, the settings or `permisos.json`, and JS can't run
+commands or create `.desktop` files.
+
+In the isolated process the system file dialog (powerbox), the microphone and camera (as rings),
+live theme tokens and language, menus in the menu bar and several windows are done (see
+`PRIVACY.md`, «Status»).
 
 Pending:
 
-- in the isolated process: the system file dialog (powerbox), camera and microphone as an
-  fd/stream, live theme tokens and language, and menus (see `PRIVACY.md`, «Status»);
 - a LordOS app repository for the Store, with a signed catalog (see `SIGNING.md`).

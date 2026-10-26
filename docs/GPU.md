@@ -204,7 +204,8 @@ compositing is the GPU's work, and the CPU only uploads what changed in the UI.
 
 To test it on the AMD PC (live ISO):
 1. Boot.
-2. In the LordOS Terminal, `grep gpu /tmp/lord.log` (or whatever log the ISO uses): it must say
+2. In the LordOS Terminal, `grep gpu: ~/.cache/lordos/session.log` (or System Information →
+   Hardware → Graphics, 0.8.5): it must say
    `GPU composition (AMD Radeon …)` and `cursor by hardware (cursor plane)`.
 3. `vkcube`, `glmark2-es2-wayland`, a game (SuperTuxKart, 0 A.D.).
 4. With `LORD_GPU_DEBUG=1`, in fullscreen `direct scanout: N frames` must appear.

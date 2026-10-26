@@ -122,7 +122,8 @@ and `toggleTask(text, line)`.
   a single `<Text>`. So a paragraph is a row with `flexWrap: 'wrap'` and one `<Text>` per word
   (the space is attached to the word): it breaks lines between words and each word carries its
   style.
-- **Strikethrough.** Done with the combining character U+0336.
+- **Strikethrough.** A 1 px line drawn across each word (the combining character U+0336 used before
+  is missing from most fonts and drew boxes).
 
 ## Desktop widgets (`sdk/widgets.js`)
 

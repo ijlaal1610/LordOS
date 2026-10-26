@@ -319,4 +319,5 @@ for now.
   check and `shellcheck` on every new script.
 - **Not yet:** the CDN change above, so `https://lordos.org/apt-staging` is uploaded and signed but
   `InRelease` still answers 404 (the router) and http 301; `apt-repo.sh verify staging` passes
-  only after `tools/web/cdn-apt-behaviors.sh` is run by the account administrator.
+  only after `tools/web/cdn-apt-behaviors.sh` is run by the account administrator. (Done since: the 0.8.2
+  release test updated a 0.8.1 system from `https://lordos.org/apt`, `ISO.md`.)

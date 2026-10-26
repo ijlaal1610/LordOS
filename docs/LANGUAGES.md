@@ -116,15 +116,15 @@ node tools/i18n-pack.mjs new fr "Français" French zero-one-other fr_FR   # lord
 node tools/i18n-check.mjs lordos-lang-fr.json                           # missing keys and variables
 ```
 
-Then copy `lordos-lang-fr.json` to `~/Descargas` and use **Settings → Language & Region →
+Then copy `lordos-lang-fr.json` to your Downloads folder and use **Settings → Language & Region →
 Add**. Available plural rules: `one-other`, `zero-one-other`, `none`, `east-slavic`, `polish`,
 `czech-slovak`, `arabic`. `node tools/i18n-pack.mjs export pt` exports an existing language in
 the same format.
 
 `node tools/i18n-check.mjs` with no arguments checks every bundled language and also the keys the
-code uses (`t('…')` in apps, themes and SDK) that don't exist in English. Today: 391 keys,
-complete in es, en and pt. It also runs `tools/brand-check.mjs`, which fails when a third-party
-brand or product name (another operating system, its apps or features) shows up in the catalogs,
+code uses (`t('…')` in apps, themes and SDK) that don't exist in English. Today (0.8.5 in
+development): 7,856 keys, complete in es, en and pt, and 481 error codes from the server. It also runs `tools/brand-check.mjs`, which fails when a third-party
+brand or product name (another system, its apps or features) shows up in the catalogs,
 the Help articles, the app manifests, README.md or CHANGELOG.md: LordOS uses its own names
 (Search, Apps, Night Light, Quick Preview…) and generic wording. Real exceptions go in its
 `ALLOW` list.
