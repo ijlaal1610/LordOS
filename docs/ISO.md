@@ -486,9 +486,9 @@ Found in this test:
   nothing happens after the countdown; the board was restarted with `systemctl reboot`. The same
   holds for Store → Updates' Restart Now; to fix in a later version (`canPower()` should be false
   there).
-- **The Store's package engine ignores `/etc/apt/preferences.d`**, so on the Pi image its "Update all"
+- **The Store's package engine ignored `/etc/apt/preferences.d`**, so on the Pi image its "Update all"
   would take Raspberry Pi's `+rpt` builds (Chromium, BlueZ…) over Debian's; `apt` follows the
-  priorities (release notes, Known issues).
+  priorities (release notes, Known issues). Fixed for 0.8.5 (`PACKAGES.md`, "How it resolves").
 
 ## Release test (0.8.4 Beta, October 19–25)
 

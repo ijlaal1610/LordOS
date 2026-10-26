@@ -40,6 +40,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **The Store now follows apt's priorities** (`/etc/apt/preferences.d`), choosing the same versions
+  as `apt`. On the Raspberry Pi image, "Update all" could take Raspberry Pi's builds of Chromium,
+  BlueZ and other Debian packages instead of Debian's; it no longer does, and Raspberry Pi's kernel
+  packages stay blocked as the image intends.
 - **LordOS Imager offered 0.8.3 as the newest Raspberry Pi image.** It only accepted release tags
   with three numbers, so it skipped 0.8.4.1; point releases (`v0.8.4.1-beta`) are now listed and
   downloaded, in LordOS and in the desktop app, and the desktop app's update check reads them too.

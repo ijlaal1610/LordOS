@@ -11,6 +11,7 @@
 #include "pkg/deb.h"
 #include "pkg/idx.h"
 #include "pkg/pgp.h"
+#include "pkg/pin.h"
 #include "pkg/pkg.h"
 #include "pkg/resolve.h"
 #include "pkg/status.h"
@@ -315,6 +316,102 @@ static void test_resolver(const char *dir) {
     idx_close(&x);
 }
 
+/* apt's preferences: the Raspberry Pi image's pins (tools/rpi/rootfs/etc/apt/preferences.d/raspberrypi
+ * and build-img.sh's lordos-kernel), checked against what apt chooses. */
+static const char *PI_DEBIAN =
+    "Package: chromium\nVersion: 140.0-1~deb13u1\nArchitecture: arm64\nFilename: pool/c/chromium.deb\nSize: 9\nSHA256: 0000000000000000000000000000000000000000000000000000000000000000\nDescription: c\n\n"
+    "Package: bluez\nVersion: 5.82-1\nArchitecture: arm64\nFilename: pool/b/bluez.deb\nSize: 9\nSHA256: 0000000000000000000000000000000000000000000000000000000000000000\nDescription: b\n\n"
+    "Package: mesa\nVersion: 25.0-1\nArchitecture: arm64\nFilename: pool/m/mesa.deb\nSize: 9\nSHA256: 0000000000000000000000000000000000000000000000000000000000000000\nDescription: m\n\n";
+static const char *PI_RPI =
+    "Package: chromium\nVersion: 1:141.0-1+rpt1\nArchitecture: arm64\nFilename: pool/c/chromium-rpt.deb\nSize: 9\nSHA256: 0000000000000000000000000000000000000000000000000000000000000000\nDescription: c\n\n"
+    "Package: bluez\nVersion: 5.82-1+rpt2\nArchitecture: arm64\nFilename: pool/b/bluez-rpt.deb\nSize: 9\nSHA256: 0000000000000000000000000000000000000000000000000000000000000000\nDescription: b\n\n"
+    "Package: rpi-eeprom\nVersion: 28.4-1\nArchitecture: all\nFilename: pool/r/rpi-eeprom.deb\nSize: 9\nSHA256: 0000000000000000000000000000000000000000000000000000000000000000\nDescription: r\n\n"
+    "Package: raspi-config\nVersion: 2025\nArchitecture: all\nFilename: pool/r/raspi-config.deb\nSize: 9\nSHA256: 0000000000000000000000000000000000000000000000000000000000000000\nDescription: r\n\n"
+    "Package: linux-image-rpi-2712\nVersion: 1:6.12.47-1+rpt1\nArchitecture: arm64\nFilename: pool/l/k.deb\nSize: 9\nSHA256: 0000000000000000000000000000000000000000000000000000000000000000\nDescription: k\n\n";
+static const char *PI_LORDOS =
+    "Package: rpi-eeprom\nVersion: 28.3-1\nArchitecture: all\nFilename: pool/rpi/r/rpi-eeprom.deb\nSize: 9\nSHA256: 0000000000000000000000000000000000000000000000000000000000000000\nDescription: r\n\n";
+static const char *PI_PREFS =
+    "# LordOS on Raspberry Pi\n"
+    "Package: *\nPin: origin archive.raspberrypi.com\nPin-Priority: 100\n\n"
+    "Package: raspi-firmware linux-image-rpi-* linux-image-*-rpi-* rpi-eeprom raspi-utils* raspberrypi-archive-keyring\n"
+    "Pin: origin archive.raspberrypi.com\nPin-Priority: 990\n";
+static const char *PI_KERNEL =
+    "Explanation: LordOS's own kernel\nPackage: linux-image-rpi-2712 linux-image-*+rpt-rpi-2712\nPin: version *\nPin-Priority: -1\n";
+
+static void write_text(const char *path, const char *text) {
+    FILE *f = fopen(path, "w");
+    if (f) { fputs(text, f); fclose(f); }
+}
+
+static const char *cand_ver(const Idx *x, const char *name, const StPkg *inst) {
+    long c = pkg_candidate(x, name, strlen(name), inst);
+    return c < 0 ? "-" : idx_s(x, x->pkg[c].version);
+}
+
+static void test_pins(const char *dir) {
+    char root[600], path[700];
+    snprintf(root, sizeof root, "%s/pins", dir);
+    snprintf(path, sizeof path, "%s/etc", root); mkdir(root, 0755); mkdir(path, 0755);
+    snprintf(path, sizeof path, "%s/etc/apt", root); mkdir(path, 0755);
+    snprintf(path, sizeof path, "%s/etc/apt/preferences.d", root); mkdir(path, 0755);
+    pin_root = root;
+    IdxBuilder *b = idxb_new();
+    int deb = idxb_source(b, "http://deb.debian.org/debian", "stable", "main", "trixie", "Debian", "Debian", 0, 0, 500);
+    int rpi = idxb_source(b, "http://archive.raspberrypi.com/debian", "trixie", "main", "trixie", "Raspberry Pi Foundation", "Raspberry Pi Foundation", 0, 0, 500);
+    int lord = idxb_source(b, "https://lordos.org/apt", "stable", "rpi", "lordos", "LordOS", "LordOS", 0, 0, 500);
+    idxb_packages(b, deb, PI_DEBIAN, strlen(PI_DEBIAN), "arm64");
+    idxb_packages(b, rpi, PI_RPI, strlen(PI_RPI), "arm64");
+    idxb_packages(b, lord, PI_LORDOS, strlen(PI_LORDOS), "arm64");
+    char idir[700], err[200];
+    snprintf(idir, sizeof idir, "%s/pinidx", dir);
+    mkdir(idir, 0755);
+    CHECK(!idxb_write(b, idir, "arm64", err, sizeof err), "write pinned index: %s", err);
+    idxb_free(b);
+    Idx x;
+    CHECK(!idx_open(&x, idir) && !x.prio, "no preferences: source priorities only");
+    CHECK(!strcmp(cand_ver(&x, "chromium", NULL), "1:141.0-1+rpt1"), "without pins the newest wins (the old bug): %s", cand_ver(&x, "chromium", NULL));
+    idx_close(&x);
+
+    snprintf(path, sizeof path, "%s/etc/apt/preferences.d/raspberrypi", root); write_text(path, PI_PREFS);
+    snprintf(path, sizeof path, "%s/etc/apt/preferences.d/lordos-kernel", root); write_text(path, PI_KERNEL);
+    snprintf(path, sizeof path, "%s/etc/apt/preferences.d/ignored.list", root); write_text(path, "Package: *\nPin: version *\nPin-Priority: -1\n");
+    CHECK(!idx_open(&x, idir) && x.prio, "preferences read");
+    CHECK(!strcmp(cand_ver(&x, "chromium", NULL), "140.0-1~deb13u1"), "chromium from Debian: %s", cand_ver(&x, "chromium", NULL));
+    CHECK(!strcmp(cand_ver(&x, "bluez", NULL), "5.82-1"), "bluez from Debian: %s", cand_ver(&x, "bluez", NULL));
+    CHECK(!strcmp(cand_ver(&x, "rpi-eeprom", NULL), "28.4-1"), "rpi-eeprom pinned 990 to Raspberry Pi: %s", cand_ver(&x, "rpi-eeprom", NULL));
+    CHECK(!strcmp(cand_ver(&x, "raspi-config", NULL), "2025"), "only in Raspberry Pi's archive (100): still installable");
+    CHECK(!strcmp(cand_ver(&x, "linux-image-rpi-2712", NULL), "-"), "Raspberry Pi's kernel never (-1)");
+    CHECK(!strcmp(cand_ver(&x, "mesa", NULL), "25.0-1"), "untouched package");
+    /* installed versions */
+    StPkg deb_chr = { .name = "chromium", .version = "140.0-1~deb13u1" };
+    StPkg rpt_chr = { .name = "chromium", .version = "1:141.0-1+rpt1" };
+    StPkg old_chr = { .name = "chromium", .version = "139.0-1" };
+    CHECK(!strcmp(cand_ver(&x, "chromium", &deb_chr), "140.0-1~deb13u1"), "Debian's chromium installed: stays (no switch to +rpt)");
+    CHECK(!strcmp(cand_ver(&x, "chromium", &rpt_chr), "1:141.0-1+rpt1"), "an installed +rpt build is not downgraded below 1000");
+    CHECK(!strcmp(cand_ver(&x, "chromium", &old_chr), "140.0-1~deb13u1"), "an older chromium upgrades to Debian's");
+    StPkg rpt_cfg = { .name = "raspi-config", .version = "2024" };
+    CHECK(!strcmp(cand_ver(&x, "raspi-config", &rpt_cfg), "2025"), "same priority (100): the newer one upgrades");
+    /* a change in preferences.d is noticed without a new index */
+    snprintf(path, sizeof path, "%s/etc/apt/preferences.d/zz-rpt.pref", root);
+    write_text(path, "Package: chromium\nPin: release o=Raspberry Pi Foundation\nPin-Priority: 1001\n\nbroken stanza\n\nPackage: bluez\nPin: release v=1\nPin-Priority: 2000\n");
+    struct timespec ts = { 0, 20000000 };
+    nanosleep(&ts, NULL);
+    CHECK(idx_refresh(&x, idir) == 1, "preferences changed: priorities recomputed");
+    CHECK(!strcmp(cand_ver(&x, "chromium", &deb_chr), "1:141.0-1+rpt1"), "chromium pinned 1001 to Raspberry Pi: %s", cand_ver(&x, "chromium", &deb_chr));
+    StPkg new_chr = { .name = "chromium", .version = "1:150" };
+    CHECK(!strcmp(cand_ver(&x, "chromium", &new_chr), "1:141.0-1+rpt1"), "priority 1000 or more downgrades, as in apt");
+    CHECK(!strcmp(cand_ver(&x, "bluez", NULL), "5.82-1"), "release v= is not checked: never matches");
+    idx_close(&x);
+    /* the first specific pin naming a package decides; later ones for it are ignored */
+    snprintf(path, sizeof path, "%s/etc/apt/preferences.d/0-first", root);
+    write_text(path, "Package: /^chrom/\nPin: origin deb.debian.org\nPin-Priority: 600\n");
+    CHECK(!idx_open(&x, idir), "reopened");
+    CHECK(!strcmp(cand_ver(&x, "chromium", &deb_chr), "140.0-1~deb13u1"), "a /regex/ pin read first wins over zz-rpt.pref: %s", cand_ver(&x, "chromium", &deb_chr));
+    CHECK(!strcmp(cand_ver(&x, "chromium", &new_chr), "-"), "nothing newer than the installed one: no candidate");
+    idx_close(&x);
+    pin_root = dir;                     /* the other tests: no preferences */
+}
+
 static int cmd_plan(int argc, char **argv) {
     Idx x;
     Status st = { 0 };
@@ -397,7 +494,9 @@ int main(int argc, char **argv) {
     test_notes();
     test_crypto();
     test_compress();
+    pin_root = dir;                     /* never the machine's own /etc/apt/preferences */
     test_resolver(dir);
+    test_pins(dir);
     char cmd[256];
     snprintf(cmd, sizeof cmd, "rm -rf %s", dir);
     if (system(cmd)) {}

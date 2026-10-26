@@ -286,12 +286,23 @@ await admin.run('pkg-install', 'featherpad', (line) => …)    // line: "progres
 
 ## How it resolves
 
-- **Candidate.** It is the newest version from the highest-priority source:
-  - priority 500 for normal ones;
-  - 100 for `NotAutomatic` + `ButAutomaticUpgrades`, like backports;
-  - 1 for `NotAutomatic` only, like experimental.
+- **Candidate.** The same version apt would choose (`server/src/pkg/pin.c`, `pkg_candidate` in
+  `resolve.c`; since 0.8.5). Each version gets a priority:
+  - from **apt's preferences** (`/etc/apt/preferences`, then `/etc/apt/preferences.d/*` in C sort
+    order, only names of `[A-Za-z0-9_.-]` with no extension or `.pref`): the first *specific* pin
+    naming the package (globs, `/regex/` or `src:name`) decides for the versions its `Pin:` matches
+    (`origin <host>`, `release a=,n=,c=,o=,l=`, `version <glob>`); otherwise the first *general*
+    pin (`Package: *`) matching its source. A malformed stanza is skipped; a `release` key we can't
+    check (`v=`, `b=`) never matches;
+  - otherwise from its source: 500 for normal ones, 100 for `NotAutomatic` + `ButAutomaticUpgrades`
+    (backports), 1 for `NotAutomatic` only (experimental).
 
-  What was installed from backports keeps being upgraded from there. It never downgrades.
+  Then, as apt does, the versions are taken from the newest down and only a strictly higher priority
+  replaces the one chosen; the installed version counts at least 100; an older version than the
+  installed one only with 1000 or more; a negative priority never. So what was installed from
+  backports keeps being upgraded from there, and on the Raspberry Pi image Raspberry Pi's `+rpt`
+  builds of Debian packages are not taken. The preferences are re-read when they change, without a
+  new index (`idx_refresh`). Tested in `pkg-test` with the Pi image's own pin files.
 - **Dependencies.** It walks those of what changes: `Pre-Depends` and `Depends`, and `Recommends`
   with `--recommends`.
 - **Choices.** Alternatives (`a | b`) and virtual packages are tried in order. Among providers of

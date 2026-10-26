@@ -249,8 +249,8 @@ system by LordOS's packages.
   priority 990 for these packages (`/etc/apt/preferences.d/raspberrypi`), apt takes the newest
   version among the 990 sources; ours mirrors the same files, so it only matters when a newer version
   is in one of them. No pin is needed for our copy: on a board without Raspberry Pi's archive it is
-  the only candidate (priority 500), and our package engine takes the highest version of any
-  source. A newer `rpi-eeprom` reaches a board through Store → Updates or `apt upgrade` like any
+  the only candidate (priority 500), and our package engine (which follows apt's preferences since
+  0.8.5) takes the highest version among equal priorities. A newer `rpi-eeprom` reaches a board through Store → Updates or `apt upgrade` like any
   other package.
 
 ## The Raspberry Pi kernel

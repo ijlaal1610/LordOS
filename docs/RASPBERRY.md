@@ -82,9 +82,9 @@ SD card or an NVMe, and the same image boots on the Pi 5 and the Pi 4.
   Everything else comes from Debian, Mesa included. Since 0.8.4.1 `rpi-eeprom` and what it needs
   are also in the LordOS repository (`UPDATES.md`, "Raspberry Pi firmware packages"): the same
   files, so either source updates the bootloader images; with both, `apt` takes the Raspberry Pi
-  archive's copy (priority 990) and the result is the same `.deb`. The Store's package engine does
-  not read `/etc/apt/preferences.d` yet, so its "Update all" may take Raspberry Pi's builds of
-  packages Debian also has (Chromium, BlueZ…); `apt` follows the priorities.
+  archive's copy (priority 990) and the result is the same `.deb`. Since 0.8.5 the Store's package
+  engine follows `/etc/apt/preferences.d` like `apt` (`PACKAGES.md`, "How it resolves"); until then
+  its "Update all" could take Raspberry Pi's builds of packages Debian also has (Chromium, BlueZ…).
 - **The bootloader** (in the board's EEPROM) is updated from **Settings → Board firmware**
   (`SETTINGS.md`, "Board firmware"), not `raspi-config`: `rpi-eeprom-update`'s hint to run
   `raspi-config` doesn't apply on LordOS.
