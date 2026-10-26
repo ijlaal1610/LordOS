@@ -1,8 +1,8 @@
 ## Abstract
 
-LordOS is a free GNU/Linux distribution based on Debian 13 that ships a desktop environment of its own, built from its fundamental components on top of Debian and Wayland. Instead of GNOME or KDE, it has its own display server and Wayland compositor written in C (`lord-server`), its own user-interface engine (React running on the QuickJS JavaScript engine, with layout, painting and text in native C code), its own native apps, and its own security services: an app sandbox launcher, a permission broker, a per-app permission store, a kernel-enforced per-app firewall, package signing and an encrypted password vault. It reuses what is mature and widely reviewed: the Linux kernel, Debian and its packages, Mesa, PipeWire, the Wayland protocol, and a handful of libraries (FFmpeg, Poppler, libarchive, OpenSSL, Monocypher) that are confined to small sandboxed helper processes.
+LordOS is a free GNU/Linux distribution based on Debian 13 that ships a desktop environment of its own, built from its fundamental components on top of Debian and Wayland. Instead of GNOME or KDE, it has its own display server and Wayland compositor written in C (`lord-server`), its own user-interface engine (React running on the QuickJS JavaScript engine, with layout, painting and text in native C code), its own native apps, and its own security services: an app sandbox launcher, a permission broker, a per-app permission store, a kernel-enforced per-app firewall, package signing and an encrypted password vault. It reuses what is mature and widely reviewed: the Linux kernel, Debian and its packages, Mesa, PipeWire, the Wayland protocol, Xwayland for X11 apps, and a handful of libraries (FFmpeg, Poppler, libarchive, OpenSSL, libsrtp2, usrsctp, Monocypher) that are confined to small sandboxed helper processes or to the session manager.
 
-This paper describes the design and the current state of version **0.8.0 Beta** (October 2026), the first public release, for a technical reader who wants to check the project rather than take it on trust. Every claim refers to a file in the public repository. Numbers are the ones measured in the project's test logs, and are labelled with where they were measured. Things that are designed but not built are marked as such.
+This paper describes the design and the current state of **0.8.5 Beta**, as it stands in the repository on 26 October 2026, for a technical reader who wants to check the project rather than take it on trust. **0.8.5 is in development: the latest published release is 0.8.4.1** (25 October 2026); 0.8.0 (18 October) was the first public release, followed by 0.8.1, 0.8.2, 0.8.3, 0.8.4 and 0.8.4.1, each listed in `CHANGELOG.md`. Every claim refers to a file in the public repository. Numbers are the ones measured in the project's test logs, and are labelled with where they were measured. Things that are designed but not built are marked as such. Since 0.8.5, many of the claims can also be checked on the reader's own computer with System Information's Checks and the Test Bench (§11), and `docs/PAPER-VALIDATION.md` lists every claim of this paper with how it is checked.
 
 ## 1. Vision
 
@@ -20,7 +20,7 @@ The project follows a short list of rules, written down in `AGENTS.md` and `docs
 
 1. **Own the parts the user touches; reuse the foundations.** The display server, the compositor, the UI engine, the apps and the security services are LordOS's code. The kernel, Debian's packages, Mesa, PipeWire and the Wayland protocol are reused.
 2. **A strict dependency policy.** X11, wlroots, libdrm, libinput, WebKit, GTK and Qt are not used inside LordOS. Libraries that parse untrusted data are linked only by sandboxed helpers, never by the compositor.
-3. **The interface can't run commands.** JavaScript in LordOS has no API to execute arbitrary programs. There are three narrow, argument-free exceptions (the Terminal's login shell, launching an installed `.desktop` app, and starting an installed `.lpk` app in its sandbox).
+3. **The interface can't run commands.** JavaScript in LordOS has no API to execute arbitrary programs. The exceptions are few, narrow and each approved and documented in `AGENTS.md`: the Terminal's login shell; launching an installed `.desktop` app (optionally with one file the user opened, or one of the app's own named actions); starting an installed `.lpk` app in its sandbox; Xwayland, started by `lord-server` itself with a fixed command line only when an X11 app connects; the components' network connectors and the blocklist downloader, which re-execute LordOS's own binaries with fixed arguments; and the Store's download child, which places itself in its own scope. None takes text from the interface.
 4. **Root only through closed doors.** Everything that needs root goes through a fixed table of validated actions or a small dedicated service with a closed protocol.
 5. **The CPU path must always work.** GPU composition is an optimization, never a requirement.
 6. **The compositor never waits.** Helpers, apps and services talk to `lord-server` over non-blocking sockets; a hung app hangs only itself.
@@ -58,8 +58,10 @@ A running LordOS system has a small number of processes with clearly separated r
 | `lord-netperm` | root (limited capabilities) | per-app network rules, and the device and Bluetooth restrictions of Linux apps, enforced with cgroup and LSM eBPF programs |
 | `lord-fand` | root (no capabilities) | fan control by temperature |
 | `lord-server` | the user | one per session: compositor, UI engine, broker |
-| `lord-server --app <id>` | the user, sandboxed | one per running `.lpk` app (and Passwords) |
-| `lord-doc`, `lord-media`, `lord-maild`, `lord-vault` | the user, sandboxed | helpers that process untrusted data or secrets |
+| `lord-server --app <id>` | the user, sandboxed | one per running `.lpk` app, and the system apps that run isolated: Passwords, Mail, Calendar, Contacts, Reminders, and System Information's Sandbox Probe |
+| `lord-doc`, `lord-media`, `lord-maild`, `lord-vault`, `lord-fetch` | the user, sandboxed | helpers that process untrusted data or secrets (`lord-fetch` downloads the firewall's blocklists) |
+| `lord-server --net-connector mail\|print\|lists` | the user, in its own scope | opens network sockets for one LordOS component, so the firewall can see and block it separately |
+| `Xwayland` | the user, own scope and network namespace | only while an X11 app is connected, started by `lord-server` with a fixed command line |
 | login screen | `lordos-greeter` | draws the login UI; never verifies passwords itself |
 
 Each root process has a narrow, documented interface. §6.3 describes them.
@@ -76,6 +78,8 @@ Each root process has a narrow, documented interface. §6.3 describes them.
 | Session manager, network service, fan service | systemd, systemd-resolved, BlueZ, CUPS, wpa_supplicant, OpenVPN, strongSwan's daemon |
 | Debian package engine (OpenPGP, xz, HTTP, resolver) | FFmpeg, Poppler, libarchive, OpenSSL, Monocypher (in helpers only) |
 | Touchpad driver, terminal emulator, WebAssembly interpreter | stb (fonts and images), fonts under the OFL |
+| Remote desktop over WebRTC: ICE-lite, DTLS-SRTP set-up, RTP packetization, bandwidth control (encoding in `lord-media`) | libsrtp2 and usrsctp (in `lord-sessiond`'s bridge), libx264, libvpx, Opus and VA-API (in `lord-media`) |
+| System Information's collector, `lordos-sysreport`, `lordos-fetch`, the Test Bench | Xwayland (Debian's package, on demand), smartmontools, `pci.ids` and `usb.ids` |
 
 LordOS speaks to several Debian services over their own protocols with its own clients: D-Bus (BlueZ, power profiles, time and date), IPP (CUPS), the PulseAudio protocol (PipeWire), and the Secret Service. libdbus, sd-bus, libcups, libpulse, libbpf and libapt are not used.
 
@@ -83,7 +87,8 @@ LordOS speaks to several Debian services over their own protocols with its own c
 
 - **Network (`lord-netd`).** The network belongs to the system, not to a session. `lord-sessiond` starts `lord-netd` at boot with a fixed path and no arguments, so the machine has an address before anyone logs in. It runs only the closed `net-*` actions: its own DHCP client and netlink code, Wi-Fi through Debian's `wpa_supplicant`, WireGuard through LordOS's own netlink code, OpenVPN, IPsec/IKEv2 through strongSwan's `charon` driven over VICI with LordOS's own client, and optionally OpenConnect, PPTP and Fortinet-compatible tunnels. It talks only to the sessions' root helpers, over a socket that accepts only uid 0.
 - **Fans (`lord-fand`).** A root service that reads the CPU temperature every 2 s and writes fan duty from a profile, from early boot. It drives only fans its own scan found: the Raspberry Pi 5 fan header and allow-listed motherboard controllers. Laptop, GPU and unknown fans are never written. On stop, or after a crash, it restores the original kernel settings. It runs no programs, has no network, no capabilities and no device nodes.
-- **Hardware settings.** Displays (modes from KMS with EDID names, a 15-second "keep these settings?" revert, per-display persistence, rotation, Night Light), Bluetooth through BlueZ, battery and power profiles, idle and lid handling, date and time, notifications for Linux apps and default apps. Changes arrive as kernel uevents and D-Bus signals; nothing polls.
+- **Hardware settings.** Displays (modes from KMS with EDID names, a 15-second "keep these settings?" revert, per-display persistence, rotation, Night Light), Bluetooth through BlueZ, battery and power profiles, idle and lid handling, date and time, notifications for Linux apps and default apps. Changes arrive as kernel uevents and D-Bus signals; nothing polls. On a Raspberry Pi 5, Settings → Board firmware shows and updates the bootloader in the board's EEPROM through two closed admin actions (0.8.4.1).
+- **Updates.** Installed systems update in place from LordOS's signed APT repository on lordos.org, from Store → Updates or with `apt`; changes that are more than new files run as numbered, idempotent migrations (0.8.1). The Store's package engine follows apt's priorities (`/etc/apt/preferences.d`).
 
 ### Source files
 
@@ -101,7 +106,7 @@ LordOS speaks to several Debian services over their own protocols with its own c
 
 ### 3.2 Two ways to build a frame
 
-- **CPU path.** The UI and app windows are copied into a canvas, and a "dumb" buffer is presented with a page flip. It needs nothing but the kernel. It is the default when there is no 3D-capable card, and `LORD_GPU=0` forces it (the boot menu's safe mode uses it).
+- **CPU path.** The UI and app windows are copied into a canvas, and a "dumb" buffer is presented with a page flip. It needs nothing but the kernel. It is the default when there is no 3D-capable card, and `LORD_GPU=0` forces it (the boot menu's safe mode uses it). Since 0.8.5, heavy frames paint on a pool of up to 8 threads (`par.c`), only while painting takes more than 70 % of a frame at the target rate: the backdrop blur in phases and the row-local primitives split by bands of rows, with the same pixels as one thread (§7.2).
 - **GPU path.** Mesa's GBM, EGL and GLES2 (`server/src/gpu/gpu.c`). The UI becomes one texture, and only the changed region is uploaded each frame. App windows are not copied into the UI canvas: the UI leaves a transparent hole where each window goes, and window textures are drawn underneath, so an app that only changes its own content doesn't cause a UI repaint. Apps can hand over GPU buffers (`linux-dmabuf`) with no copies, and a fullscreen app with a suitable buffer is scanned out directly. The cursor uses the hardware cursor plane.
 
 The path is chosen at start-up: a card without 3D (simpledrm, bochs, virtio-gpu without virgl, and others) uses the CPU without even loading Mesa; a software OpenGL renderer also falls back to the CPU, because composing with it costs more than LordOS's own CPU path. If a GPU frame fails, the GPU is turned off and the CPU path takes over.
@@ -116,11 +121,15 @@ The path is chosen at start-up: a card without 3D (simpledrm, bochs, virtio-gpu 
 
 ### 3.4 Wayland compatibility
 
-The compositor (`server/src/wl/wl.c`) uses only `libwayland-server` and code generated from the protocol XML. It offers: `wl_compositor`, `wl_subcompositor`, `wl_shm`, `wl_output` (one per display), `xdg_wm_base` with popups, `wl_seat` (pointer, keyboard, touch), `wl_data_device_manager` (a clipboard shared with LordOS), `zxdg_decoration_manager_v1`, the KDE server-decoration protocol (so GTK 3 apps such as Firefox get the theme's frame), `zxdg_output_manager_v1`, `wp_fractional_scale_v1`, `wp_viewporter`, `zwp_linux_dmabuf_v1` v4, `wp_presentation`, `zwp_relative_pointer_manager_v1`, `zwp_pointer_constraints_v1`, `zwp_pointer_gestures_v1` and `wp_cursor_shape_manager_v1`.
+The compositor (`server/src/wl/wl.c`) uses only `libwayland-server` and code generated from the protocol XML. It offers: `wl_compositor`, `wl_subcompositor`, `wl_shm`, `wl_output` (one per display), `xdg_wm_base` with popups, `wl_seat` (pointer, keyboard, touch), `wl_data_device_manager` (a clipboard shared with LordOS), `zwp_primary_selection_device_manager_v1` (middle-click paste, 0.8.3), `zxdg_decoration_manager_v1`, the KDE server-decoration protocol (so GTK 3 apps such as Firefox get the theme's frame), `zxdg_output_manager_v1`, `wp_fractional_scale_v1`, `wp_viewporter`, `zwp_linux_dmabuf_v1` v4, `wp_presentation`, `zwp_relative_pointer_manager_v1`, `zwp_pointer_constraints_v1`, `zwp_pointer_gestures_v1`, `wp_cursor_shape_manager_v1` and `zwp_idle_inhibit_manager_v1` (a video player keeps the screen on, 0.8.5). The compositor honors the frame an app asks for, also when it changes while the window is open (0.8.4).
+
+**Checked from the outside.** The Test Bench (`lordos-testbench`, 0.8.5) is a plain Wayland client that binds each of these at the advertised version and exercises it: shm formats, outputs and their modes, xdg-output, fractional scale, a subsurface with a viewport, a popup, maximize and fullscreen states, the dmabuf feedback, clipboard and primary-selection round trips, idle-inhibit, cursor shape, relative pointer and gestures. Its first run found that the compositor didn't send a new selection back to the client that set it, as the protocol requires, and that idle-inhibit was missing; both were fixed the same day, and the run now gives 16 passed, 0 failed on VM 116 (`docs/PAPER-VALIDATION.md`).
 
 Linux windows enter the SDK's window manager like any other, with title, focus, maximize, minimize and a Dock icon. Apps that ask for server-side decoration get the theme's frame; apps that draw their own (GTK 4) keep it, and their shadow is clipped. GTK 4 and libadwaita apps follow light/dark mode, the accent and the button order through an `org.freedesktop.portal.Settings` implementation that `lord-server` serves itself on the session bus; GTK 3 follows through the GSettings keyfile.
 
-**Xwayland is not supported yet**: LordOS doesn't run X11-only apps (Xwayland is planned before 1.0, §10.3). Also pending: drag and drop, the primary selection, LordOS input methods inside Linux apps (`text-input`), activation (`xdg-activation`), explicit sync and SVG app icons. No screen-capture protocol is offered to apps.
+**X11 apps (0.8.3).** When an X11-only app connects to the session's X socket, `lord-server` starts Debian's `/usr/bin/Xwayland` with a fixed command line, rootless, in its own scope and its own network namespace, with `no_new_privs`; the compositor is the X window manager (`server/src/wl/xwm.c`), so X11 windows get the same frame, Dock entry, per-app identity, firewall rules and restrictions as Wayland ones, and the clipboard works both ways. Isolated `.lpk` apps and Linux apps restricted from devices get no `DISPLAY`. Debian's `xwayland` package must be installed.
+
+Still pending: drag and drop, LordOS input methods inside Linux apps (`text-input` v3), activation (`xdg-activation`), explicit sync, single-pixel buffers, tearing control, content type, drawing tablets and SVG app icons. No screen-capture protocol is offered to apps.
 
 ### 3.5 Several displays and HiDPI
 
@@ -132,13 +141,15 @@ Every connected display is driven at once, extended or mirrored, in one logical 
 
 `lord-sessiond` is LordOS's own session manager:
 
-- **The login screen** is a `lord-server` running as the unprivileged `lordos-greeter` user, with a special theme. It sends login requests to `lord-sessiond`; **passwords are always verified by the root process** against `/etc/shadow`, never by the greeter's JavaScript. Failed attempts wait 1, 2, 4… seconds, up to 5 minutes.
+- **The login screen** is a `lord-server` running as the unprivileged `lordos-greeter` user, with a special theme. It sends login requests to `lord-sessiond`; **passwords are always verified by the root process** against `/etc/shadow`, never by the greeter's JavaScript. Failed attempts are answered at a fixed 1.25 s, so timing reveals nothing. Since 0.8.5 it follows the kernel's display events, so a monitor plugged in after boot shows it.
 - **One session per user**, all able to live at once (fast user switching). Each is a `lord-server` that starts as root and drops privileges right away.
 - **Display lending.** `lord-sessiond` opens the graphics card and the input devices as root and lends them to the session that is on the monitor, over a Unix socket. On a switch it revokes them: `EVIOCREVOKE` makes the old session's input file descriptors stop working, and `DROP_MASTER` takes display control away, before anything is given to the next session. The visible session keeps composing on the GPU without ever being root. A session off the monitor draws in memory, and only if someone is watching it remotely.
 - **Locking really takes the session off the monitor**; it is not a layer drawn on top. If the user's session hangs, the login screen still works.
 - **Boot.** A LordOS GRUB theme draws the boot menu, and a LordOS Plymouth theme draws the splash (the crown with a progress bar). The hand-off has no black frame and no console text: Plymouth stops drawing and gives up display control while its last frame stays on screen, `lord-sessiond` takes display control and sets the first real frame of the login screen, and only then does Plymouth quit, keeping the splash on screen until it is replaced.
 
-**Remote desktop.** The same service offers the desktop to a browser on the local network at `https://<address>:5673` (5673 spells "LORD" on a phone keypad). It is **off by default** and is turned on in Settings → Sharing. It uses TLS 1.2 or later with a self-signed P-256 certificate whose fingerprint Settings shows for comparison, a strict content security policy, same-origin checks, per-IP waits on failed logins, and a session cookie that is `Secure`, `HttpOnly` and `SameSite=Strict`. The login page never lists user accounts. The process that serves a connection drops root as soon as it knows whose session it is. Screen updates are sent as PNG when still and JPEG while moving. Audio is designed but not built. Internet access is not intended; a VPN is recommended.
+**Remote desktop.** The same service offers the desktop to a browser at `https://<address>:5673` (5673 spells "LORD" on a phone keypad). It is **off by default**, is turned on in Settings → Sharing, and accepts the local network only by default (0.8.3; a list of allowed networks or any address can be chosen, and LordOS's own VPN interfaces count as local). It uses TLS 1.2 or later with a self-signed P-256 certificate whose fingerprint Settings shows for comparison, a strict content security policy, same-origin checks and a session cookie that is `Secure`, `HttpOnly` and `SameSite=Strict`; the login page never lists user accounts. **Three failed sign-ins block the source address** for 15 minutes, then 1 hour, then 24 hours (IPv6 per /64), persisted by `lord-sessiond` alone, with manual block and allow lists; failures are answered at a fixed 1.25 s. Everything from the network goes through strict parsers with unit tests and a fuzz run under ASan and UBSan (0.8.3).
+
+Since 0.8.4 the screen travels as **WebRTC video**: H.264 (VP8 when the browser lacks H.264) with the session's sound in Opus, encoded once per session by `lord-media` (VA-API on the graphics card when it can, x264 otherwise) for every viewer, with still areas made pixel-perfect by lossless tiles. Keyboard, mouse and clipboard go over a WebRTC data channel. Besides UDP, the video connects over TCP on port 5673 itself, so a firewall or VPN that lets only that port through is enough; the page reconnects by itself after an outage, and says why when it really can't connect. STUN servers and a TURN relay (UDP, TCP or TLS) can be added for other networks. The process that serves a connection drops root as soon as it knows whose session it is and keeps only four descriptors. Since 0.8.5 the video follows the browser screen's refresh rate (60, 120, 144 Hz…) instead of a fixed 30, the bandwidth ramps up in seconds instead of minutes, and a top bar shows the frame rate, the encoder and whether the screen is composed on the GPU or the CPU (§7.2). Internet access is not intended; a VPN is recommended.
 
 ### Source files
 
@@ -157,7 +168,7 @@ LordOS's interface is written in JavaScript with React, but there is no web engi
 ### 4.2 Pieces
 
 - **JavaScript:** QuickJS 2025-04-26, a small ES2023 engine in C, vendored as source and embedded in `lord-server`.
-- **React:** React 19.3.1 with `react-reconciler` 0.34, bundled with esbuild into each theme. The default theme with every app weighs 367 KB.
+- **React:** React 19.3.1 with `react-reconciler` 0.34, bundled with esbuild into each theme. The default theme with every app weighs about 1.8 MB (540 KB compressed) in 0.8.5.
 - **Layout:** LordOS's own flexbox implementation (`layout.c`), with wrapping, logical start/end edges and right-to-left mirroring.
 - **Painting:** LordOS's own 2D rasterizer with antialiased rounded rectangles, cached shadows, reduced-resolution blur and damage tracking: only the changed region is repainted. On ARM, optional NEON loops speed up blits and masks, verified bit-identical to the C code.
 - **Text:** glyphs are rasterized with `stb_truetype`. Shaping is LordOS's own OpenType code (GSUB substitutions and GPOS positioning, colour emoji), with full Unicode bidi, Arabic joining, Indic shaping and the Universal Shaping Engine (409 of 409 test sentences identical to HarfBuzz in `tests/hb_compare.py`), CJK line breaking, Thai word breaking, and per-script font fallback. HarfBuzz, FreeType, fontconfig, fribidi and ICU are not linked by `lord-server`.
@@ -170,7 +181,7 @@ LordOS's interface is written in JavaScript with React, but there is no web engi
 The JavaScript side calls native services through `lord.*` APIs implemented in C (`server/src/ui/js_*.c`): `lord.fs` (files), `lord.settings`, `lord.net`, `lord.pkg`, `lord.media`, `lord.mail`, `lord.vault`, `lord.fw`, `lord.monitor`, `lord.fan` and others. Every call validates its arguments in C. The rules are strict:
 
 - `lord-server` runs without root, and **no API executes arbitrary commands**.
-- `lord.fs` writes only in the home folder and the user's own mounts, has no general "delete" (only moving to the Trash), and refuses the folders the system reads to launch or install something or that store security decisions: `~/.local/share/applications`, `~/.config/autostart`, the installed app folder, `settings.json`, the permissions file, the firewall rules, the mail accounts file and the vault folder.
+- `lord.fs` writes only in the home folder and the user's own mounts, has no general "delete" (only moving to the Trash), and refuses the folders the system reads to launch or install something or that store security decisions: `~/.local/share/applications`, `~/.config/autostart`, the installed app folder, `settings.json`, the permissions file, the firewall rules, the blocklists, the mail accounts file and the vault folder. Since 0.8.5 its reading calls reach the whole system read-only as the user (Files → This Computer; the kernel's `/proc`, `/sys`, `/dev` and `/run` stay out, and the system's own permissions decide the rest); writing never widened, and isolated apps keep only their own data folder.
 - Anything that needs root goes through `admin.c`: a closed table of actions with arguments validated on the root side, fixed program paths and configuration generated by LordOS, never user text passed to a shell. Passwords go through standard input, never on a command line.
 - Long work never blocks a frame: helpers and services are polled from the main loop without waiting.
 
@@ -189,12 +200,15 @@ The interface ships in English (the default), Spanish and Portuguese, and more l
 
 ### 5.1 Native apps
 
-Around thirty native apps ship with LordOS, all React apps on the same engine and SDK: Files, Settings, Terminal, Store, Text Editor, Notes, Calculator, Monitor, PDF Viewer, Fonts, Emoji & Symbols, Scanner, Photos, Player, Screenshots, Camera, Recorder, Passwords, Disks, Backups, Logs, Clock, Help, Mail, Calendar, Contacts, Reminders, About and the installer. Some highlights:
+Thirty-one native apps ship with LordOS, all React apps on the same engine and SDK: Files, Settings, Terminal, Store, Text Editor, Notes, Calculator, Monitor, PDF Viewer, Fonts, Emoji & Symbols, Scanner, Photos, Player, Screenshots, Camera, Recorder, Passwords, Disks, Backups, Logs, Clock, Help, Mail, Calendar, Contacts, Reminders, LordOS Imager (0.8.4), System Information (0.8.5), About and the installer. Some highlights:
 
 - **Terminal:** LordOS's own xterm-compatible emulator in C, with tabs, split panes, profiles, inline images and Sixel, and sessions that survive a restart of `lord-server`.
-- **Monitor:** CPU, memory, disks, processes, cooling and per-app network connections on a world map, with country lookup from a local database. Its sampling thread exists only while the app is open.
-- **Disks:** LordOS's own SMART reader, formatting, and bootable USB sticks verified with SHA-256.
+- **Monitor:** CPU, memory, disks (with temperature and SMART health, 0.8.2), processes (stop a process, Get Info, 0.8.1), cooling and per-app network connections on a world map, with country lookup from a local database. Monitor → Network's second generation (0.8.5) is a tree from each app to the sites, addresses and ports it talks to, with bytes sent and received, an allow/block switch on every destination, a search with `app:`, `domain:`, `ip:`, `port:`, `proto:` and `country:` chips, and a traffic history from one hour to 30 days. It lists TCP, UDP, ICMP (ping), raw IP and packet sockets, and says when a program can see or forge traffic below TCP and UDP. Its sampling thread exists only while the app is open.
+- **System Information** (0.8.5, About LordOS → System Report…): every piece of hardware and what LordOS makes of it; the graphics card shown layer by layer (driver, display output, render node, GPU context, composition, direct scanout) with the exact reason when the screen is composed on the CPU; a Compatibility panel; memory modules from the firmware's tables through a read-only admin action that never reads serial numbers; a Report tab with the exact text before it is copied or saved (nothing is sent anywhere); and Checks (§11.4). `lordos-sysreport` prints the same report in a terminal, and `lordos-fetch` shows the LordOS crown beside a summary (`--share` leaves out the user and host names).
+- **LordOS Imager** (0.8.4): writes a signature-checked LordOS image to an SD card or USB stick, never to an internal disk, reads it back to compare, and prepares the Raspberry Pi 5's first boot (name, language, keyboard, account with only a password hash, Wi-Fi with only the derived key, SSH, remote desktop, theme and cooling). The same app exists for macOS, Linux and Windows.
+- **Disks:** LordOS's own SMART reader, the full SMART report with smartmontools, formatting, and bootable USB sticks verified with SHA-256.
 - **Backups:** hard-link snapshots with optional encryption, running at low priority.
+- **The Dock** (0.8.1) is arranged by the user, with pinned apps and the apps' own actions; the default theme gained window snapping, a task view and the **Classic** theme became a second full appearance (0.8.3, §8).
 
 ### 5.2 Installable `.lpk` apps
 
@@ -202,11 +216,11 @@ Third-party native apps are packaged as `.lpk`: a gzip-compressed tar with a man
 
 ### 5.3 The Store and Debian packages
 
-The Store shows Debian's apps by category with search, `.lpk` apps and local `.deb` files, and always shows a plan before installing or removing. Debian packages are handled by **LordOS's own package engine** (`server/src/pkg`): it reads the apt sources, verifies `InRelease` signatures with its own OpenPGP code (RSA and Ed25519), refuses expired, replayed, wrong-suite or trailing-data indexes, checks every index and `.deb` against SHA-256 values from the signed index, and resolves dependencies (plans identical to apt's in 12 test cases). Only the last step is Debian's: `dpkg` unpacks and configures, and remains the only writer of its database, so `apt` keeps working. LordOS has no TLS client of its own, so `https://` sources are fetched over `http://`; integrity rests on the signatures and hashes, but the package names downloaded are visible on the network.
+The Store shows Debian's apps by category with search, `.lpk` apps and local `.deb` files, suggestions for this computer's hardware (missing firmware, printer and scanner drivers, guest tools, 0.8.2), and LordOS's own updates (0.8.1), and always shows a plan before installing or removing. Debian packages are handled by **LordOS's own package engine** (`server/src/pkg`): it reads the apt sources, verifies `InRelease` signatures with its own OpenPGP code (RSA and Ed25519), refuses expired, replayed, wrong-suite or trailing-data indexes, checks every index and `.deb` against SHA-256 values from the signed index, and resolves dependencies (plans identical to apt's in 12 test cases). Only the last step is Debian's: `dpkg` unpacks and configures, and remains the only writer of its database, so `apt` keeps working. LordOS has no TLS client of its own, so `https://` sources are fetched over `http://`; integrity rests on the signatures and hashes, but the package names downloaded are visible on the network.
 
 ### 5.4 Linux apps
 
-Linux apps with a `.desktop` file appear in the app launcher. Launching goes through `lord.apps.launch(id)`: the interface can only name an installed `.desktop` file; `lord-server` re-reads it, checks it, builds `argv` from its `Exec` line by the specification and runs it with `execve`, without a shell or caller arguments, inside its own root-owned cgroup scope. Chromium and Firefox are preinstalled in the ISO and were verified with the LordOS frame. **Linux apps are not sandboxed by default**: they run as the user, as on any Debian system. They get attribution, the per-app firewall and the per-app restrictions the owner sets (§6.6), including an optional "no access to your files" view applied by the launcher.
+Linux apps with a `.desktop` file appear in the app launcher. Launching goes through `lord.apps.launch(id)`: the interface can only name an installed `.desktop` file; `lord-server` re-reads it, checks it, builds `argv` from its `Exec` line by the specification and runs it with `execve`, without a shell or caller arguments, inside its own root-owned cgroup scope. Chromium and Firefox are preinstalled in the ISO and the Raspberry Pi image; since 0.8.4 they draw a single bar with their tabs and LordOS's window buttons (one switch in Settings → Appearance brings back the LordOS frame), and an optional extension keeps video smooth without hardware decoding (0.8.2). X11-only apps run through Xwayland (§3.4). **Linux apps are not sandboxed by default**: they run as the user, as on any Debian system. They get attribution, the per-app firewall and the per-app restrictions the owner sets (§6.6), including an optional "no access to your files" view applied by the launcher.
 
 ### 5.5 WebAssembly
 
@@ -215,7 +229,7 @@ LordOS includes its own WebAssembly interpreter in C (`server/src/wasm`), expose
 ### 5.6 Installing LordOS
 
 - **Live ISO** for 64-bit PCs, with a graphical installer (UEFI and BIOS).
-- **Raspberry Pi 5 image** for SD card or NVMe (§7.4).
+- **Raspberry Pi 5 image** for SD card or NVMe (§7.4), written and prepared with the LordOS Imager, which also writes a first-run file the board applies once at its first boot (strictly validated; nothing is applied if any part is wrong).
 - **On an existing Debian 13**: `curl -fsSL https://lordos.org/install.sh | sh`. The script asks before changing anything, downloads `SHA256SUMS` and verifies its Ed25519 signature with the release key embedded in the script, refuses to continue without a valid signature, checks the `.deb`'s SHA-256, installs it with apt and sets the system up like the ISO. The release files are published on GitHub Releases.
 
 ### Source files
@@ -242,7 +256,7 @@ Outside the model, for now: a compromised kernel or root account; physical attac
 ### 6.2 Least privilege
 
 - `lord-server` runs as the user. In a managed session it never holds the display or input devices itself: `lord-sessiond` lends them and revokes them.
-- Libraries that parse untrusted data are linked only by helpers: FFmpeg and libva by `lord-media`; Poppler and libarchive by `lord-doc`; OpenSSL by `lord-maild` and `lord-sessiond`; Monocypher by `lord-vault`.
+- Libraries that parse untrusted data are linked only by helpers: FFmpeg, libva and the video encoders by `lord-media`; Poppler and libarchive by `lord-doc`; OpenSSL by `lord-maild`, `lord-fetch` and `lord-sessiond`; libsrtp2 and usrsctp by `lord-sessiond`, used only in the bridge that runs as the user after sign-in; Monocypher by `lord-vault`.
 - Helpers receive files and devices as file descriptors opened by `lord-server`; they never open paths.
 - The compositor never waits for a helper or an app, so a crash or a hang stays contained.
 
@@ -256,6 +270,7 @@ Outside the model, for now: a compromised kernel or root account; physical attac
 | `lord-netd` | `net-*` actions from root peers only | non-network actions; run anything from a session |
 | `lord-netperm` | `RELOAD` with no data | run programs; take arguments; open internet sockets |
 | `lord-fand` | `STATUS` for anyone; `PROFILE`, `CURVE`, `FORCE` for administrators | name paths or devices; run programs; use the network |
+| the Store's download child | moves its own pid into its root-owned download scope, from its session's `server` leaf, then drops to `nobody` | place any other process |
 
 ### 6.4 What is isolated, and the app sandbox
 
@@ -263,10 +278,11 @@ Not every program on LordOS is sandboxed. This is exactly what applies to each k
 
 | Kind | Process | Sandbox | cgroup scope | Broker and permissions | Firewall and restrictions (§6.6) |
 |---|---|---|---|---|---|
-| `.lpk` apps and Passwords | own (`lord-server --app <id>`) | Landlock, seccomp, no capabilities | own, root-owned, with limits | every call checked in C | network rules and all eight non-network restrictions, in the broker |
+| `.lpk` apps, and Passwords, Mail, Calendar, Contacts and Reminders (0.8.2) | own (`lord-server --app <id>`) | Landlock, seccomp, no capabilities | own, root-owned, with limits | every call checked in C; the four PIM apps have only their own allow-listed mail requests | network rules and all eight non-network restrictions, in the broker |
 | Other built-in apps | inside `lord-server` | no (they are part of the desktop) | `lord-server`'s | no broker; camera, microphone and screen are checked in C | as "LordOS": network rules; camera, microphone, screen and notifications |
 | Linux apps from the app launcher | own | none by default; with "no access to your files", their own user, mount and PID namespaces plus Landlock, from the next launch | own, root-owned | no | network rules; camera, microphone, USB, Bluetooth sockets, files and notifications; not the clipboard |
-| Terminal programs | children of the Terminal's shell | no | `lord-server`'s | no | as "LordOS": network rules |
+| Terminal programs | children of the Terminal's shell | no | the Terminal's own component scope (0.8.5) | no | as "Terminal": network rules, with the programs' names in the Monitor |
+| X11 apps | under Xwayland | as their launcher entry | own, like Wayland apps | no | the same as Linux apps |
 
 A program started some other way, outside the app launcher, is in no app scope and gets no per-app rules. Flatpak and bubblewrap are not used.
 
@@ -279,6 +295,8 @@ Each `.lpk` app, and the Passwords app, runs as `lord-server --app <id>`: the sa
 - **Network**: without the `network` permission (declared **and** allowed), seccomp refuses internet sockets and Landlock refuses TCP connect and bind. Network namespaces are not used, because creating one needs privileges `lord-server` doesn't have.
 
 If a kernel feature is missing, the app still starts and the log says which part is missing. The deliberately malicious test app (`tests/lpk-evil`) fails at everything it tries; `build/sandbox-test` passes 14 of 14 checks for apps and 14 of 14 with network. Measured on a VM: about 13.7 MB of RSS per isolated app, a median start of 106 ms, and 0.89 ms to apply the sandbox.
+
+**On the user's own computer (0.8.5).** System Information → Checks → **Run tests** starts the hidden system package `sysprobe` the way any isolated app starts; in app mode, for that package only, `server/src/app/probe.c` takes the same sandbox and tries what must fail: the home folder, `/etc/passwd`, the root cgroup's `cgroup.procs`, an internet and a Unix socket, `ptrace`, a user namespace, `mount` and `exec` (its own data folder must work, as a control). A child forked before the sandbox takes the decoding helpers' profile and tries a socket, `exec`, `fork` and files; and the probe asks its broker for what must be refused (a path outside its folder, the clipboard without permission, the security key, mail). `lord-server` adds what only it can read: the process's `NoNewPrivs`, `Seccomp` and `CapEff` and its cgroup's `memory.max`. On VM 116 every try was refused (9 + 4 + 4), with seccomp mode 2, no new privileges and no capabilities. The probe never gets a permission or a network grant.
 
 ### 6.5 The broker, permissions and the file dialog
 
@@ -308,7 +326,10 @@ The isolated app talks to `lord-server` only over one `SOCK_SEQPACKET` socket. E
 - **Rules in the interface.** Settings → Privacy → Network rules by app shows each app's default ("allow all" or "block all except rules") and its rules in the order they win, with when each one last matched; the sheet that adds a rule checks what is typed as it is typed. In Monitor → Network, "Allow / Block this domain" on one of an app's destinations opens the same sheet, prefilled with the name the system resolver gave for that address.
 - **Escapes.** The cgroup tree is root-owned, so an app can't move itself. A process that asks the user's systemd manager for a new unit (`systemd-run --user`) lands under `user@<uid>.service`; `lord-netperm` attaches the same programs there and holds such processes to the strictest union of that user's running restricted apps. Tested: all escape attempts denied, other users unaffected.
 - **Cost**: about 0.5 µs per UDP connect, TCP within noise, no change in throughput, since nothing runs per packet.
-- **The Monitor** shows each app's connections (from `sock_diag`) and the destinations the firewall reported recently, bytes, destinations by country from a local database, and a per-app Rule switch. No address ever leaves the machine for lookups: no reverse DNS, no online geolocation.
+- **The Monitor** shows each app's connections (from `sock_diag`, plus ICMP, raw and packet sockets from `/proc/net`) and the destinations the firewall reported recently, bytes, destinations by country from a local database, and a per-app Rule switch. No address ever leaves the machine for lookups: no reverse DNS, no online geolocation.
+- **Open connections (0.8.3).** Rules apply to connections already open, not only new ones: the programs also drop packets a rule now denies, and `lord-netperm` destroys those sockets over `sock_diag` (`SOCK_DESTROY`), so a blocked app sees its connections end within a fraction of a second (0.04–0.37 s for TCP and 0.08 s for QUIC on a Pi 5 with the LordOS kernel).
+- **LordOS's own components (0.8.5).** Mail and calendar sync, the Store and updates, printers and scanners, the Terminal and the blocklist updates each run in a scope of their own, so each can be seen and blocked separately; their sockets are opened by a small connector that `lord-server` re-executes with fixed arguments, which enters the component's scope and hands back only a connected socket. Name resolution, time synchronization, the network service and VPN tunnels are shown and never blocked; blocking the Store asks first, because security updates stop.
+- **Blocklists and "deny silently" (0.8.5).** Public lists of advertising, tracker, malware and attacking sites (each with its source and licence) are downloaded over HTTPS once a day by `lord-fetch`, a helper with no sockets of its own and the certificate checked against the system's authorities, and every line is validated again; a rule the user writes for a site always wins over a list. A new firewall mode, "deny silently", lets only what a rule allows connect and records the rest, while the computer's own services keep working. An optional menu bar item shows the traffic rates and what was recently denied.
 
 **Restrictions beyond the network.** Besides the four network restrictions (no internet, no LAN, no network, no incoming connections), the owner can restrict an app from the camera, the microphone, the screen, USB, files, the clipboard, Bluetooth and notifications. Each one is enforced where the resource is handed out, checked against the app's scope and never against a name the app gives itself, and it beats any permission granted in `permisos.json`.
 
@@ -358,7 +379,7 @@ For isolated apps the broker (`sec/restrict.c`) is the single enforcement point:
 
 `.lpk` packages carry a manifest of every file's SHA-256 and an Ed25519 signature over it. SHA-256 and Ed25519 are LordOS's own code (Ed25519 following TweetNaCl's arithmetic), tested against NIST and RFC 8032 vectors (55 of 55). Verification happens in C at install and at load. The Store shows the trust level: **LordOS** (official key, compiled into the binary so no file can add one), **Verified author** (listed in the signed catalog), **Signed by <name>**, or **Unsigned** with a warning. Updates must be signed with the same key. A signed catalog carries a revocation list. If you edit an installed app, LordOS marks it "Modified by you", can restore the original, or can share your version signed with your own key, with credit to the original.
 
-**Status:** in 0.8.0 Beta, official packages are still signed with a development key, until the final key replaces it. A signed LordOS app repository for the Store is not built yet.
+**Status:** official `.lpk` packages are still signed with a development key, until the final key replaces it. A signed LordOS app repository for `.lpk` apps is not built yet; LordOS itself updates from a signed APT repository (§6.9).
 
 ### 6.9 Release signing
 
@@ -368,13 +389,17 @@ Every release file (the `.deb`, the ISO and the Raspberry Pi image) is listed wi
 
 The private key lives only on the maintainer's machine, never in the repository or on a build machine. Each release also carries an SPDX 2.3 software bill of materials (SBOM) per architecture, listed in `SHA256SUMS` and so covered by the signature, and its release notes come from `CHANGELOG.md`, kept in the Keep a Changelog format. §11 shows how to check a download.
 
+- **The APT repository (0.8.1).** `lordos.org/apt` is a signed APT repository built and signed only on the maintainer's machine; installed systems update from it. On the Raspberry Pi 5 it also mirrors the bootloader updater and the few Raspberry Pi packages it needs, copied only after their signature and every file's SHA-256 match a pinned list (0.8.4.1).
+- **LordOS's own code is verified before it runs (0.8.2).** Every JavaScript bundle LordOS runs as its own code (the themes, the app host, the system apps) is loaded only through `codesig_load`, which checks it against `code-manifest.json` and its Ed25519 signature by the release key. A modified bundle is not loaded and the user sees why; System Information's Checks report it (§11.4). Development builds without a signed manifest say so.
+- **System apps can't be removed** from the Store (0.8.2).
+
 ### 6.10 The vault
 
 `lord-vault` keeps passwords and the session keyring in `.lvault` files: one random 32-byte vault key, wrapped once per unlock method (Argon2id password with a cost calibrated per machine, FIDO2 `hmac-secret` with LordOS's own CTAP2 client, key file, password plus key file, recovery key); content sealed with XChaCha20-Poly1305 with the whole header as associated data; attachments sealed separately; atomic saves with a backup. Every flipped byte and every truncation is detected (1,165 of 1,165 in the test). Secrets live in an `mlock`ed arena excluded from core dumps and wiped on free, in a process that is not dumpable. The Passwords window runs in its own sandboxed process, so revealed values never enter the desktop's JavaScript. The keyring opens at login with the password `lord-sessiond` verified, and serves Linux apps through LordOS's own Secret Service implementation. Real hardware security keys are not yet tested.
 
 ### 6.11 Protected windows
 
-A window marked protected (Passwords is) is painted black in every path that copies pixels out: screenshots, recordings, thumbnails, the remote desktop, and Wayland menus and fullscreen. The real monitor shows it normally. Linux apps have no screen-capture protocol to begin with.
+A window marked protected (Passwords is) is painted black in every path that copies pixels out: screenshots, recordings, thumbnails, the remote desktop, and Wayland menus and fullscreen. The real monitor shows it normally. Linux apps have no screen-capture protocol to begin with. Since 0.8.2, keys typed into LordOS's own prompts (the keyring, administrator passwords) never reach the Linux app in front.
 
 ### 6.12 Disclosure and standards
 
@@ -411,10 +436,11 @@ All figures below were measured by the project and are documented in the files c
 - The same window on a 2560×1600 display at 150 %: about 5.1 ms per frame.
 - Video: painting straight from the decoded frame when only an opaque video changed brought `lord-server` from 42 % to 13 % of a core for a windowed 1080p video, and from 92 % to 15 % fullscreen (`docs/ROADMAP.md`, media).
 - The Monitor closed costs nothing: its sampling thread doesn't exist until opened (`docs/MONITOR.md`).
+- **The CPU path in 0.8.5** (VM 116, no GPU, screen composed on the CPU, viewed through the remote desktop from a browser with a 60 Hz screen; `docs/REMOTE.md`, "Measurements (0.8.5, CPU reference)"): the backdrop blur of a window (radius 20) went from 27.7 ms to 6.0 ms on one thread and 2.7 ms on eight, with identical pixels; a 1280×800 test scene from about 18 to 55–58 frames a second; a 1920×1080 session playing a 60 fps clip from 45 (one core at 100 %) to 55–58 frames a second on the thread pool. A 1080p, 24 fps video in the browser played in real time with no frame dropped by the player over 17 s. The software H.264 encoder takes 12–13 ms a frame at 1280–1568 px wide, so it tops out near 75–80 frames a second. AV1 at 60 fps remains the hard case without a GPU: the browser decodes it in software on the same machine that composes the screen.
 
 ### 7.3 GPU
 
-On the VMs only a software renderer was available. With it, the CPU path is cheaper than "GPU" composition, which is why LordOS uses the CPU path when the only renderer is a software one. The GPU path's real benefit (composition and present close to free, zero-copy fullscreen) is expected on real cards, but **real AMD and Nvidia hardware has not been measured yet**.
+On the VMs only a software renderer was available. With it, the CPU path is cheaper than "GPU" composition, which is why LordOS uses the CPU path when the only renderer is a software one. The GPU path's real benefit (composition and present close to free, zero-copy fullscreen) is expected on real cards, but **real AMD and Nvidia hardware has not been measured yet**. Since 0.8.5 two tools report it on any machine: System Information shows each GPU layer and the exact reason when the screen is composed on the CPU, and the Test Bench draws a 3D scene with EGL and says whether the renderer is a hardware GPU, a virtual one or software (on VM 116: `llvmpipe`, software), with its draw time and whether its frames reach the screen without a copy.
 
 ### 7.4 The Raspberry Pi 5
 
@@ -433,11 +459,11 @@ The Raspberry Pi 5 is the only supported board. Results on a real board (16 GB, 
 
 **Fans.** On the Pi 5 in a test case, `lord-fand` kept the fan off at 50–53 °C during a 4-thread load (the aluminium case acts as a heatsink), drove it to 55 % (4,500 RPM) and full speed (7,400 RPM) with test curves, and restored the kernel's own settings after `SIGTERM` and `kill -9` (`docs/FANS.md`).
 
-**Not verified yet on the board:** anything with a monitor attached (modesetting, GPU composition on screen, frame rates), the desktop session, and booting the built image.
+**Monitor and image.** Since 0.8.4.1 the Raspberry Pi 5 image shows the desktop on an HDMI monitor at the first boot (the display driver line in `config.txt` now comes after the firmware's auto-detection lines, and LordOS waits up to 30 s for the driver), sets the clock from the network, and ships Chromium and Firefox ESR. Since 0.8.4 the LordOS Pi kernel (`6.18.57-lordos.3-rpi-2712`) also destroys the connections of a blocked app. **Not measured yet on the board:** frame rates and GPU composition on a monitor.
 
 ### 7.5 Modern PCs
 
-There are no measurements on real PCs in the repository yet. The ISO is tested on virtual machines (UEFI and BIOS); testing on a real AMD machine from the live USB is planned.
+There are no measurements on real PCs in the repository yet. The ISO is tested on virtual machines (UEFI and BIOS); testing on a real AMD machine from the live USB is planned. LordBench (0.8.6) is designed to measure memory and CPU at idle, boot time, frame times, video and app start in a repeatable way, and community hardware reports (0.8.7) to collect them from real machines (`docs/BENCHMARK.md`).
 
 ### Source files
 
@@ -448,7 +474,7 @@ There are no measurements on real PCs in the repository yet. The ISO is tested o
 ## 8. Visual experience
 
 - **A design guide.** Apps follow a shared guide (`docs/DESIGN.md`): an 8 px spacing grid, a small type scale, consistent control heights and one accent-coloured action per view. The tokens are exported by the SDK (`spacing`, `typeScale`, `controlSize`), and every app went through documented before-and-after polish passes in light, dark, right-to-left and small windows.
-- **Themes.** A theme is a complete desktop written in React: menu bar, Dock, app launcher, Control Center and window frame, plus its tokens. LordOS ships a default theme with a menu bar and a Dock, and a Classic theme with a taskbar and a start menu, which today is a template and becomes a second full appearance before 1.0 (§10.3). Themes switch live; settings persist.
+- **Themes.** A theme is a complete desktop written in React: menu bar, Dock, app launcher, Control Center and window frame, plus its tokens. LordOS ships **Lord Default**, with a menu bar and a Dock, and since 0.8.3 **Classic** as a second full appearance: a taskbar, a start menu with search, a tray, quick settings, a notification panel, window snapping with layouts, and its own restyling of every app. Both have window snapping and a task view. Themes switch live; settings persist.
 - **Light and dark, accents.** Both modes and the accent colour apply live to native apps, isolated apps and, through the portal and GSettings, GTK apps.
 - **Right to left.** The whole interface mirrors for Arabic, Hebrew and similar scripts, including isolated apps, which follow the session's language live.
 - **Lumo.** LordOS's mascot is Lumo, a small celestial fox, used in welcome screens, empty states and brand material, with a fixed set of poses defined in the brand guide.
@@ -476,28 +502,26 @@ There are no measurements on real PCs in the repository yet. The ISO is tested o
 
 ### 10.1 Where things stand
 
-0.8.0 Beta is the first public release; 0.7.0 was an internal build and was never published. Milestones M1 to M9 are complete: the display server, the UI engine, the SDK and themes, the terminal, languages and complex scripts, Linux app compatibility, packages and system services, sessions, isolation and the firewall, and the M9 app suites (documents and printing, media, system apps, passwords, hardware settings, mail and calendar). Before the release, the firewall's non-network restrictions became enforced for every kind of app, domain rules got an interface in Settings and the Monitor, the boot got a LordOS splash and GRUB theme, and releases gained a signed SBOM and a changelog. The final ISO was built and tested on virtual machines on 18 October 2026.
+0.8.0 Beta was the first public release (18 October 2026); 0.7.0 was an internal build and was never published. Milestones M1 to M9 are complete: the display server, the UI engine, the SDK and themes, the terminal, languages and complex scripts, Linux app compatibility, packages and system services, sessions, isolation and the firewall, and the M9 app suites (documents and printing, media, system apps, passwords, hardware settings, mail and calendar). Since then: 0.8.1 (updates from the Store, the Dock, SSH), 0.8.2 (verified system code, isolated PIM apps, disk health, traffic history), 0.8.3 (X11 apps, Classic, remote desktop hardening, open connections cut), 0.8.4 (remote desktop as WebRTC video with sound, LordOS Imager), 0.8.4.1 (Raspberry Pi bootloader from Settings, Pi image with HDMI fixed), and 0.8.5 in development (System Information with Checks and the Sandbox Probe, the Test Bench, Monitor → Network's second generation, blocklists, components in their own scopes, Files → This Computer, a faster CPU path). The Changelog below lists each release.
 
 ### 10.2 Known limitations
 
 - Real hardware: AMD and Nvidia GPUs, real monitors, laptops (battery, backlight, lid), Bluetooth controllers, printers and scanners, FIDO2 keys and real mail providers are untested.
 - The Raspberry Pi 5 is the only supported board, with LordOS's build of its kernel with Landlock; it hasn't been tested with a monitor, and its built image hasn't been booted yet.
-- Linux apps are not sandboxed by default; no Xwayland yet.
+- Linux apps are not sandboxed by default. X11 apps need Debian's `xwayland` package.
 - Firewall: no ask mode; domain rules don't see apps that resolve names with their own encrypted DNS.
 - Restrictions for Linux apps don't cover BlueZ over D-Bus, the system bus, the clipboard or apps started outside the app launcher; the `user@` union also holds the user's own services while a restricted app runs; a new PipeWire client has a window of a few milliseconds before the guard restricts it (§6.6).
-- The `.lpk` signing key is still a development key, and there is no signed LordOS app repository yet.
+- The `.lpk` signing key is still a development key, and there is no signed repository for `.lpk` apps yet.
 - Permissions: no "allow once"; camera and microphone use by Linux apps isn't shown.
 - Secure Boot must be turned off; signing with a shim is pending.
 - Package downloads use HTTP (signed and hashed).
-- Remote desktop has no audio.
+- Wayland: no drag and drop, no LordOS input methods inside Linux apps (`text-input`), no `xdg-activation`, explicit sync, tearing control or tablets (§3.4).
+- Without a GPU, AV1 video at 60 fps is heavy, since the browser decodes it in software on the same machine.
 - Accessibility (screen reader, zoom, high contrast) is not built.
 
 ### 10.3 Next
 
-Next, a Raspberry Pi 5 image booted and tested on the real board. Before 1.0, as planned in `docs/ROADMAP.md`:
-
-- **Xwayland**, started on demand, with the compositor as the X window manager and X11 apps getting the same per-app identity, firewall and restrictions as Wayland apps;
-- **the Classic theme as a second full appearance**: taskbar, start menu with search, tray, quick settings, notification panel and window snapping, with the same apps in a different skin, built only from LordOS's own design and assets.
+Next, as planned in `docs/ROADMAP.md` and `docs/BENCHMARK.md`: **0.8.6, LordBench**, repeatable measurements of CPU, memory, GPU, the compositor, video and storage; **0.8.7, community hardware reports**, published from System Information with the user's consent; and a connection refused by the per-app firewall checked on the user's own computer. Xwayland and the Classic theme, planned here for 1.0 in 0.8.0, shipped in 0.8.3.
 
 After 1.0: a desktop virtualization app built on KVM and QEMU; an Android container with LineageOS and apps from LordOS's Store; the firewall's ask mode; accessibility; and a full demo video.
 
@@ -524,7 +548,7 @@ make -C server test        # every self-contained suite
 make -C server test-full   # adds the helpers, the sandbox and the HarfBuzz comparison
 ```
 
-`make test` fails if any suite fails; a suite whose tool or data isn't installed reports "skipped" rather than passing silently. The sandbox tests need a kernel with Landlock. The ISO and the Raspberry Pi image are built as described in `docs/ISO.md` and `docs/RASPBERRY.md`.
+`make test` fails if any suite fails; a suite whose tool or data isn't installed reports "skipped" rather than passing silently. The sandbox tests need a kernel with Landlock. The ISO and the Raspberry Pi image are built as described in `docs/ISO.md` and `docs/RASPBERRY.md`. On VM 116 with the 0.8.5 tree: 23 passed, 0 failed, 10 skipped (the Node.js suites, which run on the development machine).
 
 ### 11.2 What the tests cover
 
@@ -532,6 +556,7 @@ make -C server test-full   # adds the helpers, the sandbox and the HarfBuzz comp
 - **Security:** the sandbox (app, network, helper), signing (NIST and RFC 8032 vectors), package state, archive path rules against malicious archives, `lord.fs` protections, the firewall rules (with 20,000 JSON mutations and 30,000 random operations against a linear reference), the DNS reader (200,000 random packets), the kernel-map compiler (480,000 connections), and the kernel integration test (18 of 18 on a VM).
 - **Parsers:** mail, MIME, HTML sanitizer, iCalendar, vCard and XML (30,953 checks with mutation fuzzing), the vault format, importers, QR, CBOR, D-Bus marshalling, the country database reader, journal, TZif and IPP.
 - **Engine and hardware:** layout and painting, NEON vs. C, the touchpad driver with recorded gestures, fans on fake sysfs trees, display arrangement, sound, and the WebAssembly specification suite.
+- **System Information (0.8.5):** the collector over five fake machines (an AMD desktop, an Intel laptop, an Nvidia desktop, a Raspberry Pi 5, a virtual machine) filled with serial numbers, UUIDs, MAC addresses and names that must not reach a report (none does, 460 checks), the SMBIOS memory reader against crafted and malformed tables, and the Checks and Sandbox Probe evaluation (56 checks).
 
 On the final ISO build: `make -C server test` reported 23 passed, 0 failed, 1 skipped (bidi data not installed).
 
@@ -553,6 +578,8 @@ The SBOM of each architecture (`lordos_<version>_<arch>.spdx.json`) is listed in
 - `cat /proc/<pid>/status | grep -E 'Seccomp|NoNewPrivs'` on a `lord-server --app` process shows the sandbox.
 - `systemd-cgls` shows the root-owned `lordos-session-<uid>` tree with one scope per app.
 - Remote desktop: `ss -ltn` shows nothing on port 5673 until you enable it in Settings → Sharing.
+- **System Information → Checks (0.8.5)** does these checks for you and says whether each was found configured or actually tried: the display server without root, Landlock, the per-app firewall with its kernel pieces, every bundle of LordOS's own code verified this session, the remote desktop's port closed when it is off (read from `/proc/net`), the session's cgroup tree owned by root, composition on the GPU, and **Run tests** for the Sandbox Probe (§6.4).
+- **`lordos-testbench --auto`** prints a JSON report of the Wayland checklist, frame and presentation timing, the 3D renderer and input-to-screen latency; `lordos-sysreport report --json` prints the hardware report without serial numbers, addresses or names.
 
 ## 12. License and credits
 
@@ -593,7 +620,22 @@ LordOS is created by the **iPERFEX** group: **Pablo Miranda** and **Federico Per
 | 4. UI engine | ARCHITECTURE.md, LANGUAGES.md, TERMINAL.md |
 | 5. Applications | NATIVE-APPS.md, PACKAGES.md, WASM.md, FILES.md, MEDIA.md, DOCUMENTS.md, MAIL.md, ISO.md, INSTALL-DEBIAN.md |
 | 6. Security | PRIVACY.md, FIREWALL.md, MONITOR.md, SIGNING.md, PASSWORDS.md, MEDIA.md, REMOTE.md, COMPLIANCE.md, and `SECURITY.md` |
-| 7. Performance | ISO.md, RASPBERRY.md, FANS.md, DISPLAYS.md, GPU.md |
+| 7. Performance | ISO.md, RASPBERRY.md, FANS.md, DISPLAYS.md, GPU.md, REMOTE.md, BENCHMARK.md |
 | 8. Visual experience | DESIGN.md, LORDOS-BRAND.md, LANGUAGES.md, DOCK.md |
 | 9. Extensibility | NATIVE-APPS.md, WASM.md, and `apps/README.md`, `themes/README.md` |
-| 10. Roadmap | ROADMAP.md, RELEASING.md and `CHANGELOG.md` |
+| 10. Roadmap | ROADMAP.md, RELEASING.md, UPDATES.md and `CHANGELOG.md` |
+| 11. Verification | PAPER-VALIDATION.md, BENCHMARK.md, IMAGER.md |
+
+## Changelog
+
+Every release, with its full notes on GitHub (they come from `CHANGELOG.md`, in the Keep a Changelog format). This paper is updated with every change.
+
+| Version | Date | What it brought |
+|---|---|---|
+| **0.8.5 Beta** (in development) | — | System Information (hardware, the GPU by layers, Compatibility, Report, Checks and the Sandbox Probe), `lordos-sysreport`, `lordos-fetch`, the Test Bench, Monitor → Network's second generation (a tree by app, destination and port; ICMP, raw and packet sockets), LordOS's components in their own scopes, blocklists, the "deny silently" mode, Files → This Computer, a CPU path on up to 8 threads, remote desktop video at the viewer's refresh rate, idle-inhibit and the clipboard returned to its owner. [Unreleased notes](https://github.com/lordbasex/LordOS/blob/main/CHANGELOG.md#unreleased) |
+| **0.8.4.1 Beta** | 2026-10-25 | Raspberry Pi 5: Settings → Board firmware (the bootloader), its updater in LordOS's signed repository, a new image with HDMI fixed at first boot, network time, browsers and the ISO's system packages. [Release notes](https://github.com/lordbasex/LordOS/releases/tag/v0.8.4.1-beta) |
+| **0.8.4 Beta** | 2026-10-19 | Remote desktop as WebRTC video with sound, over UDP or TCP on its own port, reconnecting by itself, with STUN and TURN; the LordOS Imager (in LordOS and for macOS, Linux and Windows) with the Pi's first-run file; browsers with a single top bar; blocked apps' connections closed on the Pi 5. [Release notes](https://github.com/lordbasex/LordOS/releases/tag/v0.8.4-beta) |
+| **0.8.3 Beta** | 2026-10-19 | X11 apps through Xwayland; the primary selection; Classic as a second full appearance; window snapping and the task view; remote desktop allow and block lists, a lockout after 3 failed sign-ins and a security review; firewall rules applied to open connections. [Release notes](https://github.com/lordbasex/LordOS/releases/tag/v0.8.3-beta) |
+| **0.8.2 Beta** | 2026-10-19 | LordOS verifies its own code before running it; Mail, Calendar, Contacts and Reminders isolated; disk temperature and SMART health; suggestions for this computer; traffic history; per-destination switches; smooth browser video without hardware decoding. [Release notes](https://github.com/lordbasex/LordOS/releases/tag/v0.8.2-beta) |
+| **0.8.1 Beta** | 2026-10-19 | Updates from the Store and a signed APT repository, migrations between versions, a Dock you arrange, remote login (SSH), Restart and Shut Down in the crown menu, stopping processes from the Monitor, Bluetooth on the Pi 5 image. [Release notes](https://github.com/lordbasex/LordOS/releases/tag/v0.8.1-beta) |
+| **0.8.0 Beta** | 2026-10-18 | The first public release: milestones M1 to M9. [Release notes](https://github.com/lordbasex/LordOS/releases/tag/v0.8.0-beta) |
