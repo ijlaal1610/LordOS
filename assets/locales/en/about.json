@@ -1,4 +1,7 @@
 {
+  "bootTime": "Startup time",
+  "bootToDesktop": "{s} s to the desktop",
+  "bootToLogin": "{s} s to the login screen",
   "build": "Build {b}",
   "buildLabel": "Build",
   "channelAlpha": "Alpha",

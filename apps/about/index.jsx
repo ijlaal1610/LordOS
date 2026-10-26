@@ -69,6 +69,9 @@ export default function About() {
         <InfoRow k={tr('about.cpu')} v={tr('about.cpuValue', { cpu: cpu.slice(0, 34) || tr('about.cpuUnknown'), count: info.cores })} />
         <InfoRow k={tr('about.memory')} v={tr('shell.cc.memDetail', { used: formatBytes((info.memTotalKB - info.memAvailableKB) * 1024), total: formatBytes(info.memTotalKB * 1024) })} />
         <InfoRow k={tr('about.uptime')} v={formatDuration(info.uptime)} />
+        {info.bootSeconds > 0 ? (
+          <InfoRow k={tr('about.bootTime')} v={tr(info.bootShown === 'session' ? 'about.bootToDesktop' : 'about.bootToLogin', { s: formatNumber(info.bootSeconds, 3) })} />
+        ) : null}
         <View style={{ height: 1, backgroundColor: t.separator, marginVertical: 8, marginHorizontal: 24 }} />
         <InfoRow k={tr('about.server')} v="lord-server (C · DRM/KMS · evdev)" />
         <InfoRow k={tr('about.engine')} v={`QuickJS + React ${reactVersion}`} />

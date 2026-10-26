@@ -183,6 +183,16 @@ greeter (JS) → RP_GREETER → lord-sessiond (root), over the login screen's so
 Failed attempts on the monitor are counted per user (`monitor:<user>`). The first two don't wait;
 after that the wait is 1, 2, 4… seconds, up to 5 minutes.
 
+### Boot time
+
+When the first frame of a boot reaches the monitor, `lord-sessiond` logs the seconds since the kernel
+started (`CLOCK_BOOTTIME`) with the LordOS version and build, and appends the same as one JSON line to
+`/var/lib/lordos/boot-times.jsonl` (`record_boot_time`: root's, 0644, written whole and renamed, the last
+200 boots, no user or host names). About LordOS shows this boot's line, found by the kernel's boot id
+(`boot_time_load` in `ui/js_sys.c`: the file must be root's and not writable by others). The boot splash
+shows its own timer (`tools/boot/plymouth/lordos/lordos.script`). How to check and compare boots:
+[RESULTS.md](RESULTS.md), "Boot time: check it yourself".
+
 ### Lock, switch user and log out
 
 **The login screen runs only when it is shown (0.8.5).** It used to stay running behind the session

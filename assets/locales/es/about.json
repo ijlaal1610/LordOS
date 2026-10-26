@@ -1,4 +1,7 @@
 {
+  "bootTime": "Tiempo de inicio",
+  "bootToDesktop": "{s} s hasta el escritorio",
+  "bootToLogin": "{s} s hasta la pantalla de inicio",
   "build": "Compilación {b}",
   "buildLabel": "Compilación",
   "channelAlpha": "Alfa",

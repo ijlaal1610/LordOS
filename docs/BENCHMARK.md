@@ -156,6 +156,7 @@ A versioned JSON (`schema: 1`) and a Markdown summary, saved to `~/Documents`:
 | Compositor | `lord-server`'s own frame counters during a scripted window drag, CPU path and GPU path |
 | Video | short test clips we generate (H.264, HEVC, VP9, AV1; 1080p and 4K) decoded in `lord-media`, hardware and software; the remote desktop's encoders |
 | Storage | sequential and random I/O on a size-limited temporary file (Full only, with a warning on SD cards) |
+| Boot | the seconds from the kernel's start to the first frame on the monitor, recorded by `lord-sessiond` on every boot with the version and build (`/var/lib/lordos/boot-times.jsonl`, built in 0.8.5; [RESULTS.md](RESULTS.md), "Boot time"): LordBench reads that history, shows each version's median and spread over its boots (the first boot after an update apart: it builds caches), and with the user's consent can reboot N times in a row to measure it |
 | Sustained | several minutes of all-core load (Full only) |
 
 ### Frame times against the refresh budget

@@ -230,6 +230,46 @@ void js_sys_cpu_name(char *out, size_t size) {
     free(txt);
 }
 
+/* This boot's time to the first frame, from lord-sessiond's /var/lib/lordos/boot-times.jsonl (root's,
+ * one JSON object a line, matched by this boot's id; docs/SESSIONS.md, "Boot time"). Read until found,
+ * then kept: it doesn't change during a boot. -1 if there's none (no lord-sessiond, an old one). */
+static double boot_secs = -1;
+static char boot_shown[12];
+static void boot_time_load(void) {
+    if (boot_secs >= 0) return;
+    char *id = read_small("/proc/sys/kernel/random/boot_id", 64, NULL);
+    if (!id) return;
+    id[strspn(id, "0123456789abcdef-")] = 0;
+    struct stat st;
+    int fd = open("/var/lib/lordos/boot-times.jsonl", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0 || fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_uid != 0 || (st.st_mode & 022) || st.st_size > 256 * 1024 || !id[0]) {
+        if (fd >= 0) close(fd);
+        free(id);
+        return;
+    }
+    char *txt = malloc((size_t)st.st_size + 1);
+    ssize_t n = txt ? read(fd, txt, (size_t)st.st_size) : -1;
+    close(fd);
+    if (n > 0) {
+        txt[n] = 0;
+        char key[64];
+        snprintf(key, sizeof key, "{\"bootId\":\"%s\",", id);
+        char *line = NULL;
+        for (char *q = txt; (q = strstr(q, key)); q++) if (q == txt || q[-1] == '\n') line = q;   /* the last one */
+        char *sec = line ? strstr(line, "\"seconds\":") : NULL, *sh = line ? strstr(line, "\"shown\":\"") : NULL;
+        char *eol = line ? strchr(line, '\n') : NULL;
+        if (sec && (!eol || sec < eol)) {
+            double v = atof(sec + 10);
+            if (v > 0 && v < 3600) {
+                boot_secs = v;
+                if (sh && (!eol || sh < eol)) { sh += 9; size_t k = strspn(sh, "abcdefghijklmnopqrstuvwxyz"); if (k < sizeof boot_shown) { memcpy(boot_shown, sh, k); boot_shown[k] = 0; } }
+            }
+        }
+    }
+    free(txt);
+    free(id);
+}
+
 static JSValue f_sys_info(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     struct utsname u;
@@ -264,6 +304,10 @@ static JSValue f_sys_info(JSContext *c, JSValueConst this_val, int argc, JSValue
     JS_SetPropertyStr(c, o, "memTotalKB", JS_NewFloat64(c, mem_total));
     JS_SetPropertyStr(c, o, "memAvailableKB", JS_NewFloat64(c, mem_avail));
     JS_SetPropertyStr(c, o, "uptime", JS_NewFloat64(c, uptime));
+    /* this boot: seconds from the kernel's start to the first frame on the monitor, and what it showed */
+    boot_time_load();
+    JS_SetPropertyStr(c, o, "bootSeconds", JS_NewFloat64(c, boot_secs));
+    JS_SetPropertyStr(c, o, "bootShown", JS_NewString(c, boot_shown));
     /* LordOS itself: package.json's version and channel ("beta"; empty for a stable release) and the build */
     JS_SetPropertyStr(c, o, "version", JS_NewString(c, LORD_VERSION));
     JS_SetPropertyStr(c, o, "channel", JS_NewString(c, LORD_CHANNEL));

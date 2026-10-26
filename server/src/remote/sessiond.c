@@ -31,6 +31,7 @@
 #include "../sec/cgroup.h"
 #include "proto.h"
 #include "rsec.h"
+#include "lord_version.h"           /* build/gen: version, channel and build (Makefile) */
 
 #include <ctype.h>
 #include <dirent.h>
@@ -58,6 +59,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
+#include <sys/utsname.h>
 #include <unistd.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
@@ -655,16 +657,65 @@ static int splash_up(void) {
     return stat(SD_FIRST_FRAME, &st) != 0;
 }
 
+/* Every boot's time to the first frame, kept across reboots to compare boots and versions:
+ * /var/lib/lordos/boot-times.jsonl (root's, 0644), one JSON object a line, the last BOOT_TIMES_MAX.
+ * Only values LordOS produces itself: no user or host names. About LordOS shows this boot's line
+ * (js_sys.c, matched by bootId). */
+#define BOOT_TIMES SD_STATE_DIR "/boot-times.jsonl"
+#define BOOT_TIMES_MAX 200
+static void record_boot_time(double secs, const char *what) {
+    char id[40] = "";
+    FILE *b = fopen("/proc/sys/kernel/random/boot_id", "re");
+    if (b) { if (!fgets(id, sizeof id, b)) id[0] = 0; fclose(b); }
+    id[strspn(id, "0123456789abcdef-")] = 0;
+    struct utsname u;
+    if (uname(&u)) u.release[0] = 0;
+    char rel[65];
+    snprintf(rel, sizeof rel, "%s", u.release);
+    for (char *q = rel; *q; q++) if (!isalnum((unsigned char)*q) && !strchr(".+~-_", *q)) *q = '_';
+    char line[400];
+    snprintf(line, sizeof line, "{\"bootId\":\"%s\",\"at\":%lld,\"seconds\":%.3f,\"shown\":\"%s\",\"version\":\"%s%s%s\",\"build\":\"%s\",\"kernel\":\"%s\"}\n",
+             id, (long long)time(NULL), secs, what, LORD_VERSION, LORD_CHANNEL[0] ? "-" : "", LORD_CHANNEL, LORD_BUILD, rel);
+    /* the older lines, at most BOOT_TIMES_MAX - 1, then this one; written whole and renamed */
+    static char old[BOOT_TIMES_MAX * 400];
+    size_t n = 0;
+    int fd = open(BOOT_TIMES, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd >= 0) {
+        ssize_t r;
+        while (n < sizeof old - 1 && (r = read(fd, old + n, sizeof old - 1 - n)) > 0) n += (size_t)r;
+        close(fd);
+    }
+    old[n] = 0;
+    int lines = 0;
+    for (size_t i = 0; i < n; i++) if (old[i] == '\n') lines++;
+    char *keep = old;
+    while (lines >= BOOT_TIMES_MAX && (keep = strchr(keep, '\n'))) { keep++; lines--; }
+    if (!keep) keep = old + n;
+    mkdir(SD_STATE_DIR, 0755);
+    char tmp[] = SD_STATE_DIR "/.boot-times.XXXXXX";
+    int t = mkostemp(tmp, O_CLOEXEC);
+    if (t < 0) { sd_log("warning: %s: %s", BOOT_TIMES, strerror(errno)); return; }
+    size_t kl = strlen(keep);
+    int ok = (kl == 0 || write(t, keep, kl) == (ssize_t)kl) && write(t, line, strlen(line)) == (ssize_t)strlen(line);
+    ok = fchmod(t, 0644) == 0 && ok;
+    ok = close(t) == 0 && ok;
+    if (!ok || rename(tmp, BOOT_TIMES)) { unlink(tmp); sd_log("warning: could not write %s", BOOT_TIMES); }
+}
+
 static void first_frame(void) {
     if (!splash_up()) return;
     int f = open(SD_FIRST_FRAME, O_WRONLY | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0644);
     if (f < 0) { sd_log("warning: %s: %s", SD_FIRST_FRAME, strerror(errno)); return; }
     close(f);
-    /* the boot time to the desktop, from the kernel's start (CLOCK_BOOTTIME), for the logs and the
-     * results (docs/RESULTS.md) */
+    /* the boot time to the screen, from the kernel's start (CLOCK_BOOTTIME), for the log, About and
+     * the results (docs/RESULTS.md) */
     struct timespec bt;
     clock_gettime(CLOCK_BOOTTIME, &bt);
-    sd_log("first frame on the monitor %.3f s after the kernel started: the boot splash can go", bt.tv_sec + bt.tv_nsec / 1e9);
+    double secs = bt.tv_sec + bt.tv_nsec / 1e9;
+    const char *what = !has_monitor ? "none" : shown == 'u' ? "session" : "login";   /* autologin, login screen, no monitor */
+    sd_log("first frame on the monitor %.3f s after the kernel started (LordOS %s%s%s, build %s, %s): the boot splash can go",
+           secs, LORD_VERSION, LORD_CHANNEL[0] ? "-" : "", LORD_CHANNEL, LORD_BUILD, what);
+    record_boot_time(secs, what);
 }
 
 /* No card with KMS (0.8.1): before this, the boot ended on a silent black screen. The message goes

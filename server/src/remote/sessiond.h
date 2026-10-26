@@ -24,6 +24,7 @@
 #define SD_FIRST_FRAME SD_RUN_DIR "/first-frame"
 #define SD_GREETER_RUN SD_RUN_DIR "/greeter"        /* XDG_RUNTIME_DIR of the login screen */
 #define SD_SESSION_CONF "/etc/lordos/session.conf"   /* AUTOLOGIN=user (empty: login screen) */
+#define SD_STATE_DIR "/var/lib/lordos"               /* boot-times.jsonl (docs/SESSIONS.md, "Boot time") */
 #define SD_USERS_DIR "/var/lib/lordos/users"         /* avatars: <user>.json and <user>.png */
 #define SD_GREETER_USER "lordos-greeter"
 #define RD_DEFAULT_PORT 5673          /* "LORD" on a phone keypad */

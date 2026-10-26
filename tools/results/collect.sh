@@ -10,6 +10,7 @@
 #   memory.txt       whole system (`free -m`) and per process (PSS from /proc/<pid>/smaps_rollup); with
 #                    sudo, root's processes too
 #   boot.txt         systemd-analyze, and the time to the desktop's first frame from the kernel's start
+#   boot-times.jsonl every recorded boot on this machine: seconds to the first frame, version, kernel
 #   README.md        when, what version, the conditions to fill in, and these exact commands
 # The version is the installed one (software.lordos in the report); --version names it for a development
 # build, e.g. 0.8.5-dev.
@@ -72,6 +73,8 @@ J() { if sudo -n true 2>/dev/null; then sudo -n journalctl "$@"; else journalctl
     J -b -o short-monotonic --no-pager 2>/dev/null | awk '/kernel: Linux version/ && !k { print; k = 1 } /Started plymouth-start.service/ && !p { print; p = 1 }' |
         sed -E 's/^(\[[^]]*\]) [^ ]+ /\1 /' || true            # without the host name: results are published
 } > "$D/boot.txt"
+# every boot's time to the first frame on this machine, with its version (lord-sessiond; no names)
+[ -r /var/lib/lordos/boot-times.jsonl ] && cp /var/lib/lordos/boot-times.jsonl "$D/boot-times.jsonl"
 
 cat > "$D/README.md" <<MD
 # $M — LordOS $V

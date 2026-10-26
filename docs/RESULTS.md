@@ -23,6 +23,43 @@ folder; run it as the user inside a LordOS session, and with `sudo` to include r
 list. Fill in the conditions in its README before committing. Each release attaches its `results/<version>`
 folder to the GitHub release (`docs/RELEASING.md`).
 
+## Boot time: check it yourself
+
+LordOS measures every boot the same way, on any machine, with no tool to install:
+
+- **On the screen.** The boot splash shows a timer in its bottom right corner, in seconds and
+  milliseconds, from the moment the splash starts. About LordOS → **Startup time** shows this boot's
+  result: the seconds from the kernel's start to the first frame on the monitor, and whether that frame
+  was the login screen or, with automatic login, the desktop.
+- **In the log.** `lord-sessiond` writes one line per boot when the first frame reaches the monitor:
+
+  ```sh
+  journalctl -b -u lordos | grep "first frame"
+  # first frame on the monitor 7.224 s after the kernel started (LordOS 0.8.5~rc1-beta, build 20261026, session)
+  ```
+
+  `-b -1`, `-b -2`… give the previous boots while the journal keeps them.
+- **The history.** Every boot is also appended to `/var/lib/lordos/boot-times.jsonl` (root's, readable by
+  everyone, the last 200 boots), one JSON object a line, so boots and versions can be compared after the
+  journal is gone:
+
+  ```sh
+  cat /var/lib/lordos/boot-times.jsonl
+  # {"bootId":"e519ea86-…","at":1793052001,"seconds":7.224,"shown":"session","version":"0.8.5~rc1-beta","build":"20261026","kernel":"6.12.113+deb13-amd64"}
+  python3 -c 'import json; [print(f"{d[\"version\"]:>16} {d[\"seconds\"]:7.3f} s  {d[\"shown\"]}") for d in map(json.loads, open("/var/lib/lordos/boot-times.jsonl"))]'
+  ```
+
+  `seconds` counts from the kernel's start (`CLOCK_BOOTTIME`), so the firmware and the boot loader are not
+  included; `shown` is `login` (the login screen), `session` (automatic login) or `none` (no monitor).
+- **The pieces.** `systemd-analyze` splits the boot into kernel and userspace, and
+  `systemd-analyze critical-chain lordos.service` shows what LordOS waited for. The splash's own timer
+  starts when Plymouth starts, a little after the kernel: `journalctl -b -o short-monotonic | grep -E
+  "kernel: Linux version|Started plymouth-start"` gives both moments, and the difference.
+- **Comparing fairly.** The same machine, the same settings (automatic login on or off changes what the
+  first frame is), several boots of each version (the first boot after an update or a new kernel is
+  slower: it builds caches); report the median. `tools/results/collect.sh` saves all of the above in
+  `boot.txt` and `boot-times.jsonl`.
+
 ## Memory: two magnitudes
 
 `free`'s "used" is the whole system's memory (kernel, Debian's services, LordOS's services, the

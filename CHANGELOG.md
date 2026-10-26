@@ -12,10 +12,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Added
 
-- **A boot timer.** The boot splash shows the time since it started, in seconds and milliseconds, in
-  the bottom right corner, and the log records when the desktop's first frame reached the screen,
-  counted from the kernel's start (`first frame on the monitor 7.267 s after the kernel started`), for
-  comparing versions and machines.
+- **Boot time, on the screen and on record.** The boot splash shows the time since it started, in
+  seconds and milliseconds, in the bottom right corner. About LordOS → Startup time shows how long this
+  boot took from the kernel's start to the login screen (or, with automatic login, the desktop). Every
+  boot is logged with the LordOS version and build (`journalctl -b -u lordos | grep "first frame"`) and
+  kept in `/var/lib/lordos/boot-times.jsonl` (the last 200 boots), so boots and versions can be compared;
+  `docs/RESULTS.md` explains how to check and compare them.
 - **`lordos-fetch`.** Type it in a terminal to see the LordOS crown beside a summary of your
   computer: system, kernel, CPU, GPU, display, memory, disk, packages and how apps are isolated.
   `lordos-fetch --share` leaves out your user and computer names, for a screenshot you'll post.
