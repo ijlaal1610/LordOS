@@ -60,6 +60,8 @@ const L = {
   en: {
     full: 'Full screen', out: 'Disconnect', conn: 'Connecting…', reconn: 'Reconnecting…', retry: 'Try again', signout: 'Sign out',
     sndOn: 'Turn sound on', sndOff: 'Turn sound off', video: 'Video', bye: 'The session ended.',
+    hwEnc: 'hardware', swEnc: 'software',
+    vinfoTip: (comp, enc, ms) => `Screen composed on the ${comp}; video encoded in ${enc} (${ms} ms per frame). Frames a second: shown here / sent by the computer.`,
     unsupTitle: 'This browser can’t show the remote desktop',
     unsupText: 'The remote desktop arrives as live video over WebRTC. This browser is missing something it needs:',
     reqRtc: 'WebRTC (RTCPeerConnection) with data channels', reqCodec: 'H.264 or VP8 video decoding', reqSecure: 'A secure (https) page — this one is',
@@ -78,6 +80,8 @@ const L = {
   es: {
     full: 'Pantalla completa', out: 'Desconectar', conn: 'Conectando…', reconn: 'Reconectando…', retry: 'Reintentar', signout: 'Cerrar sesión',
     sndOn: 'Activar el sonido', sndOff: 'Silenciar', video: 'Video', bye: 'La sesión terminó.',
+    hwEnc: 'por hardware', swEnc: 'por software',
+    vinfoTip: (comp, enc, ms) => `Pantalla compuesta en la ${comp}; video codificado ${enc} (${ms} ms por cuadro). Cuadros por segundo: mostrados aquí / enviados por la computadora.`,
     unsupTitle: 'Este navegador no puede mostrar el escritorio remoto',
     unsupText: 'El escritorio remoto llega como video en vivo por WebRTC. A este navegador le falta algo que necesita:',
     reqRtc: 'WebRTC (RTCPeerConnection) con canales de datos', reqCodec: 'Decodificar video H.264 o VP8', reqSecure: 'Una página segura (https): esta lo es',
@@ -96,6 +100,8 @@ const L = {
   pt: {
     full: 'Tela cheia', out: 'Desconectar', conn: 'Conectando…', reconn: 'Reconectando…', retry: 'Tentar de novo', signout: 'Sair',
     sndOn: 'Ativar o som', sndOff: 'Silenciar', video: 'Vídeo', bye: 'A sessão terminou.',
+    hwEnc: 'por hardware', swEnc: 'por software',
+    vinfoTip: (comp, enc, ms) => `Tela composta na ${comp}; vídeo codificado ${enc} (${ms} ms por quadro). Quadros por segundo: mostrados aqui / enviados pelo computador.`,
     unsupTitle: 'Este navegador não consegue mostrar a área de trabalho remota',
     unsupText: 'A área de trabalho remota chega como vídeo ao vivo por WebRTC. Falta a este navegador algo de que ela precisa:',
     reqRtc: 'WebRTC (RTCPeerConnection) com canais de dados', reqCodec: 'Decodificar vídeo H.264 ou VP8', reqSecure: 'Uma página segura (https): esta é',
@@ -167,7 +173,7 @@ function measureHz() {
     const raw = n * 1000 / (t - t0);
     if (document.hidden || raw < 24) return;          // a hidden tab is throttled: no measure
     const hz = [30, 48, 50, 60, 72, 75, 90, 100, 120, 144, 165, 180, 240].reduce((a, b) => (Math.abs(b - raw) < Math.abs(a - raw) ? b : a));
-    if (hz !== screenHz) { screenHz = hz; sendSize(); }
+    if (hz !== screenHz) { screenHz = hz; sendSize(); setMode(); }
   };
   requestAnimationFrame(step);
 }
@@ -239,7 +245,26 @@ function failure(why, detail) {
 // of still areas over data channels ----
 let pc = null, dcIn = null, vmode = false, codec = '', iceServers = [], offering = false, offersSent = 0, answersGot = 0, peerNo = 0;
 let playTimer = 0, discTimer = 0, restartTimer = 0, restartTries = 0, peerFails = 0, everPlayed = false, serverWhy = '';
-function setMode() { $('mode').textContent = vmode ? `${T.video} · ${codec.toUpperCase()}${rd.path ? ' · ' + rd.path.toUpperCase() : ''}` : ''; }
+// The top bar: codec and path, frames a second shown / what the computer encodes, this screen's
+// refresh rate, and how the computer makes the video (GPU or CPU composition, encoder in hardware or software)
+let vinfo = null, shownFps = 0;
+function setMode() {
+  if (!vmode) { $('mode').textContent = ''; $('mode').title = ''; return; }
+  const parts = [T.video, codec.toUpperCase() + (vinfo ? ' ' + (vinfo.hw ? T.hwEnc : T.swEnc) : '')];
+  if (rd.path) parts.push(rd.path.toUpperCase());
+  if (vinfo) parts.push(`${shownFps}/${vinfo.fps} fps`);
+  if (screenHz) parts.push(`${screenHz} Hz`);
+  if (vinfo) parts.push(vinfo.gpu ? 'GPU' : 'CPU');
+  $('mode').textContent = parts.join(' · ');
+  $('mode').title = vinfo ? T.vinfoTip(vinfo.gpu ? 'GPU' : 'CPU', vinfo.hw ? T.hwEnc : T.swEnc, vinfo.ms) : '';
+}
+setInterval(() => {
+  if (!vmode || !pc) return;
+  pc.getStats().then((st) => {
+    st.forEach((s) => { if (s.type === 'inbound-rtp' && s.kind === 'video') shownFps = Math.round(s.framesPerSecond || 0); });
+    setMode();
+  }).catch(() => {});
+}, 1000);
 function clearTimers() { clearTimeout(playTimer); clearTimeout(discTimer); clearTimeout(restartTimer); }
 function closePeer() {
   clearTimers();
@@ -465,6 +490,7 @@ function retryAll() {
 
 function onText(m) {
   if (m.t === 'size') { W = m.w; H = m.h; cv.width = W; cv.height = H; ctx.clearRect(0, 0, W, H); fit(); }
+  else if (m.t === 'vinfo') { vinfo = { hw: !!m.hw, gpu: !!m.gpu, fps: m.fps | 0, ms: Number(m.ms) || 0 }; setMode(); }
   else if (m.t === 'hello') {
     helloSeen = true;
     wsTries = 0;

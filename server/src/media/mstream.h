@@ -23,6 +23,9 @@ void mstream_keyframe(int codec);
 void mstream_tick(void);
 double mstream_timeout(void);           /* ms until mstream_tick has work, or -1 */
 int  mstream_active(void);              /* an encoder is running */
+/* The running encoder of that codec: hardware or not, frames a second, encoding time in 1/100 ms per
+ * frame. 0 if none runs. */
+int  mstream_info(int codec, int *hw, int *fps, long *enc100);
 /* "H.264 (VA-API) 30 fps 2.1 ms/frame" for the logs */
 void mstream_describe(int codec, char *out, size_t n);
 

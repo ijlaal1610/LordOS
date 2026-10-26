@@ -152,6 +152,14 @@ static int start(Enc *e, int codec) {
     return 0;
 }
 
+int mstream_info(int codec, int *hw, int *fps, long *enc100) {
+    if (codec < 1 || codec >= MS_CODECS || !E[codec].id) return 0;
+    *hw = E[codec].hw;
+    *fps = E[codec].fps;
+    *enc100 = E[codec].enc100;
+    return 1;
+}
+
 int mstream_active(void) {
     for (int c = 1; c < MS_CODECS; c++) if (E[c].id) return 1;
     return 0;

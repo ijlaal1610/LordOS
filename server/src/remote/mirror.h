@@ -57,6 +57,7 @@ void mirror_cursor(int x, int y, int mode, const uint32_t *argb, int w, int h, i
 /* Lossless tiles for viewers whose video plays once the screen is still, the encoder's
  * pending frame. Called on every loop iteration; mirror_timeout says when it has work (ms, -1 none). */
 void mirror_tick(void);
+void mirror_composed_on_gpu(int on);    /* how the session composes now (shown to remote viewers) */
 double mirror_timeout(void);
 /* Session text clipboard (called on every loop iteration; sends only if it changed). */
 void mirror_clipboard(const char *text, unsigned gen);

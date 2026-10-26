@@ -1242,6 +1242,7 @@ static void present_cpu(Server *s, Out *o, int index, Rect r, int feed) {
         view_of(o, index);
         const Canvas *seen = media_composed(&out, mirror_watchers() > 0, &mc);
         view_reset();
+        mirror_composed_on_gpu(0);        /* this frame was painted on the CPU */
         mirror_frame(seen->px, seen->stride, W, H);
         mirror_cursor(px_, py_, k.mode, k.px, k.w, k.h, k.hx, k.hy, k.gen);
     }
@@ -1297,6 +1298,7 @@ static void present_memory(Server *s, Out *o, int index, int feed) {
         /* what the browser sees and what is recorded: with the protected windows in black */
         MediaCursor mc = { x, y, k.mode, k.px, k.w, k.h, k.hx, k.hy };
         const Canvas *seen = media_composed(&out, mirror_watchers() > 0, &mc);
+        mirror_composed_on_gpu(0);        /* this frame was painted on the CPU */
         mirror_frame(seen->px, seen->stride, o->scene.w, o->scene.h);
         mirror_cursor(x, y, k.mode, k.px, k.w, k.h, k.hx, k.hy, k.gen);
     }
@@ -1384,6 +1386,7 @@ static void render_frame(Server *s) {
                     cursor_now(s, &k, out_scale(o));
                     int cx, cy;
                     pointer_phys(s, o, &cx, &cy);
+                    mirror_composed_on_gpu(1);
                     mirror_frame(rb, o->scene.w, o->scene.w, o->scene.h);
                     mirror_cursor(cx, cy, k.mode, k.px, k.w, k.h, k.hx, k.hy, k.gen);
                 }

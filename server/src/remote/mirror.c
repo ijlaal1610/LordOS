@@ -51,6 +51,7 @@ typedef struct {
     int vcodec, vaudio, vneed_key;  /* subscribed to the session's encoder (1 H.264, 2 VP8) */
     unsigned vkbps;
     int vfps;                       /* the frame rate this viewer's screen shows (its refresh; 30 if unknown) */
+    int vinfo_sent;                 /* RP_VINFO went to it at least once */
     int vmode;                      /* the video plays: lossless tiles once still, damage right away */
 } Client;
 
@@ -643,10 +644,40 @@ static void send_damage(void) {
     }
 }
 
+/* What the viewers' top bar shows about the video (RP_VINFO): sent when it changes, checked once a second. */
+static int on_gpu;
+void mirror_composed_on_gpu(int on) { on_gpu = on != 0; }
+static void vinfo_update(void) {
+    static double at;
+    static unsigned char last[8];
+    double t = now_ms();
+    if (t - at < 1000) return;
+    at = t;
+    for (int k = 1; k <= 2; k++) {
+        int hw = 0, fps = 0;
+        long enc = 0;
+        if (!mstream_info(k, &hw, &fps, &enc)) continue;
+        uint16_t f = (uint16_t)fps, e = (uint16_t)(enc < 0 ? 0 : enc > 65535 ? 65535 : enc);
+        unsigned char m[8] = { (unsigned char)hw, (unsigned char)on_gpu, 0, 0, 0, 0, (unsigned char)k, 0 };
+        memcpy(m + 2, &f, 2);
+        memcpy(m + 4, &e, 2);
+        int fresh = memcmp(m, last, 8) != 0;
+        memcpy(last, m, 8);
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            Client *c = &cl[i];
+            if (c->fd < 0 || c->vcodec != k || (!fresh && c->vinfo_sent)) continue;
+            msg(c, RP_VINFO, m, 6, NULL, 0);
+            c->vinfo_sent = 1;
+            flush(c);
+        }
+    }
+}
+
 /* Video mode clients get their lossless tiles once the screen is still; the encoder may have a
  * frame waiting for a free slot. */
 void mirror_tick(void) {
     if (lfd < 0) return;
+    vinfo_update();
     if (still()) for (int i = 0; i < MAX_CLIENTS; i++) if (cl[i].fd >= 0 && cl[i].vmode && cl[i].ready) pump(&cl[i]);
     mstream_tick();
 }

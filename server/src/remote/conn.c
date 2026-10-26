@@ -696,6 +696,15 @@ static void from_session(int type, const unsigned char *d, uint32_t n) {
             rtc_audio(rtc, d + 4, n - 4, smp);
         }
         break;
+    case RP_VINFO:
+        /* u8 hardware encoder, u8 GPU composition, u16 fps, u16 1/100 ms per frame: numbers only, to the page */
+        if (n >= 6) {
+            uint16_t f, e;
+            memcpy(&f, d + 2, 2);
+            memcpy(&e, d + 4, 2);
+            ws_text("{\"t\":\"vinfo\",\"hw\":%d,\"gpu\":%d,\"fps\":%u,\"ms\":%u.%02u}", d[0] != 0, d[1] != 0, (unsigned)f, e / 100u, e % 100u);
+        }
+        break;
     case RP_DAMAGE:
         /* [2][u16 BE x, y, w, h …]: the browser drops its lossless layer there */
         if (vmode && rtc && n >= 8 && n % 8 == 0 && n <= 8 * 256) {

@@ -261,6 +261,12 @@ without a monitor composes at that rate too (at least 60); on the monitor, the m
 paces composition. Measured on VM 116 (no GPU, 1280×800, a 60 fps video window under blurred windows):
 18 frames a second before 0.8.5's work on the CPU path, 35 after.
 
+**The page's top bar says how the video is made:** codec, encoder in hardware (VA-API) or software,
+path (UDP, TCP, relay), frames a second shown by the browser / encoded by the computer, the browser
+screen's refresh rate, and whether the session composes on the GPU or the CPU (hover: the encoding
+time per frame). The session sends it as `RP_VINFO` (fixed-size numbers, when they change), the bridge
+turns it into `{"t":"vinfo"}` with numbers only.
+
 **The GPU keeps composing.** Until 0.8.3 a remote viewer switched the session to CPU composition.
 Now `gpu_frame` reads the composed frame back (`gpu_read_next`) once, for the encoder and the tiles,
 and the screen keeps its GPU composition. Only two cases still use the CPU path: protected windows on
