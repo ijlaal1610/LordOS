@@ -264,7 +264,7 @@ paces composition. Measured on VM 116 (no GPU, 1280×800, a 60 fps video window 
 **The page's top bar says how the video is made:** codec, encoder in hardware (VA-API) or software,
 path (UDP, TCP, relay), frames a second shown by the browser / encoded by the computer, the browser
 screen's refresh rate, and whether the session composes on the GPU or the CPU (hover: the encoding
-time per frame). The session sends it as `RP_VINFO` (fixed-size numbers, when they change), the bridge
+time per frame); 📌 keeps the bar shown (remembered in that browser). The session sends it as `RP_VINFO` (fixed-size numbers, when they change), the bridge
 turns it into `{"t":"vinfo"}` with numbers only.
 
 **The GPU keeps composing.** Until 0.8.3 a remote viewer switched the session to CPU composition.
