@@ -588,9 +588,11 @@ All figures below were measured by the project and are documented in the files c
 | `lord-server` without a 3D card (Mesa not loaded) | about 32 MB RSS | `docs/GPU.md` |
 | A user session (`lord-server`), remote desktop tests | about 50 MB; login screen 41 MB | VM 118, `docs/REMOTE.md` |
 | One isolated `.lpk` app | 13.7 MB RSS | VM 122, `docs/PRIVACY.md` |
+| Whole system, 0.8.5~rc1 updated from 0.8.4.1, a minute after sign-in (VMware VM, 4.7 GB, virtual GPU) | 606–622 MB used; PSS of all processes 316 MB, of which the session's `lord-server` 110 MB and the login screen's 78 MB (it stays for switching users and locking) | `results/0.8.5~rc1-beta/vmware-fusion` |
 
 ### 7.2 Drawing
 
+- **Software vblank (0.8.5).** A virtual card that completes page flips at once (VMware's `vmwgfx`) made the compositor and its apps draw 500–580 frames a second on a 60 Hz display; LordOS now detects it and paces frames to the refresh on a fixed grid: 59.8 frames a second, p99 18.4 ms, no frame over budget (`results/0.8.5~rc1-beta/vmware-fusion`).
 - Dragging a window on one 1280×800 display on the CPU path: about 6.7–6.9 ms of work per frame, around 120 frames per second (VM 118, `docs/DISPLAYS.md`).
 - The same window on a 2560×1600 display at 150 %: about 5.1 ms per frame.
 - Video: painting straight from the decoded frame when only an opaque video changed brought `lord-server` from 42 % to 13 % of a core for a windowed 1080p video, and from 92 % to 15 % fullscreen (`docs/ROADMAP.md`, media).
