@@ -598,6 +598,19 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   - [ ] from the live USB without installing: a *Check this computer* boot entry, reports marked
     live, nothing written to the computer's disks, saved to a removable drive; the installer shows
     the Compatibility summary before installing.
+- [ ] **Files: this computer and every disk (0.8.5, approved 2026-10-25)** — a "This computer"
+  place named after the machine: the system's root folder, **read-only and as the user** (what the
+  user can already read; folders they can't read show a lock; writing stays limited to the home
+  folder and the user's mounts), and every disk and partition, mounted or not, with size and free
+  space; a click mounts it through the existing `disk-mount` action (internal disks ask for an
+  administrator, removable ones don't), plus unmount and eject. **No "as root" mode** (decided: it
+  would be generic root file access from the interface); "Open in Terminal here" for `sudo` work.
+- [ ] **Files: network shares (own release after 0.8.5, approved 2026-10-25)** — SMB and NFS shares
+  found with mDNS or typed ("Connect to server…", `smb://host/share`), mounted by the kernel through
+  one new closed admin action, `share-mount` (host, share and user validated; the password on
+  standard input, never in argv; fixed options `nosuid,nodev` and the user's uid; only under
+  `/media/<user>/`), the password in the keyring, the mount's traffic as its own firewall app.
+
 - [ ] **LordBench (0.8.6)** — `BENCHMARK.md`. Workloads in the sandboxed `lord-bench` helper
   (CPU and LordOS's own work, memory, GPU, compositor, video, storage, sustained load); peak
   performance and desktop impact measured apart; frame times against the refresh rate actually in
