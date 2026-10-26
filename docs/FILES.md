@@ -148,8 +148,10 @@ drop, color tags and search. Disk operations belong to the server (`server/src/f
   mode. Isolated `.lpk` apps don't get this: their broker only reaches their own data folder.
   «Open with» and the helpers keep the home folder and the user's mounts.
 - Writing, copying to, moving and sending to the Trash reject the protected folders
-  (`~/.local/share/applications`, `~/.config/autostart`, `~/.local/share/lordos/apps` and
-  `~/.config/lordos/settings.json`). Copying *from* them is allowed.
+  (`fsops_protected`: `~/.local/share/applications`, `~/.config/autostart`,
+  `~/.local/share/lordos/apps`, `~/.config/lordos/settings.json`, the permission and firewall
+  decisions `permisos.json` and `firewall.json`, the blocklists (0.8.5), `backup.json`, the Mail
+  accounts and cache, and the Passwords vaults). Copying *from* them is allowed.
 - There is no general `remove`.
 
 ## «Open with» a Linux app: `lord.apps.launchWith(id, path)`
@@ -186,7 +188,6 @@ file:
 - Selection rectangle by dragging on empty space.
 - PDF, video and SVG thumbnails in the icon view (PDF already shows in Quick Preview); app icons per
   file type.
-- Ejecting disks (needs an `admin.c` action or udisks).
 - Watching folders with inotify: today the view reloads on re-entering or after one of its own
   operations.
 - The status bar and the path bar end up behind the Dock with the window maximized, as on other

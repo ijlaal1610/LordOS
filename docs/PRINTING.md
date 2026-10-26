@@ -47,7 +47,7 @@ CUPS (/run/cups/cups.sock) → Debian filters and drivers → the printer
 
 ### Why without libcups
 
-- **IPP is enough:** it's a simple binary format, and what LordOS needs is seven operations
+- **IPP is enough:** it's a simple binary format, and what LordOS needs is eight operations
   (CUPS-Get-Printers, CUPS-Get-Default, Get-Jobs, Print-Job, Cancel-Job, CUPS-Add-Modify-Printer,
   CUPS-Delete-Printer and CUPS-Set-Default). libcups would also bring its DNS-SD (avahi-client),
   GnuTLS and PPD management, which aren't used.
@@ -118,7 +118,7 @@ CUPS socket is a Unix socket and isn't affected.
   - `201 Location`, then `GET …/NextDocument`, retrying while it answers 503;
   - what arrives is saved in `~/.cache/lordos/scan/`.
 - **Preview** at the lowest resolution. **The area** is chosen by dragging over the preview.
-- **Save as PDF, PNG or JPEG** in Documents or Pictures, as "Escaneo <date> <time>":
+- **Save as PDF, PNG or JPEG** in Documents or Pictures, as "Scan <date> <time>" (named in the interface language):
   - if the scanner provides that format, it's copied as is;
   - otherwise lord-doc converts it (stb_image and cairo), at the real size according to the
     resolution;

@@ -62,7 +62,8 @@ The releases page is the project's public changelog: every release is documented
      (`REQUIRE_SIGNED_CODE=1 tools/iso/mkdeb.sh`). `mkdeb.sh` puts `code-manifest.json` and
      `code-manifest.sig` in `/usr/lib/lordos/` and runs `lord-server --check-code` on the staged tree:
      the package is not built if a bundle changed after signing or the signature is missing. A bundle
-     rebuilt after signing means signing again.
+     rebuilt after signing means signing again. An update with a fourth number may ship without a
+     new ISO (0.8.4.1 did: the 0.8.4 ISO stayed the current one, see [ISO.md](ISO.md)).
    - Copy them, and `tools/install/install.sh` as `install.sh`, into one release folder.
 4. **SBOM.** On each build VM, `tools/release/make-sbom.sh lordos_<v>_<arch>.deb`, and put the
    `.spdx.json` files in the release folder ([COMPLIANCE.md](COMPLIANCE.md)).

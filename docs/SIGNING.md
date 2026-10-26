@@ -39,7 +39,8 @@ SHA-256 and Ed25519 are **our own code**, small and readable. Ed25519 follows th
 (`ed25519_sign`/`ed25519_public`) was added on top of the verification the package engine already
 had. The JSON reader is our own and strict (`server/src/sec/json.c`).
 
-**No OpenSSL:** by policy only `lord-sessiond` links it. `.lpk` verification happens in C, at
+**No OpenSSL:** by policy only `lord-sessiond`, `lord-maild` and (0.8.5) `lord-fetch` link it, never
+`lord-server`. `.lpk` verification happens in C, at
 install time (`lpk_check` in `js_sys.c`) and at load time (modification detection via
 `pkg_status`).
 
@@ -137,6 +138,9 @@ in `SHA256SUMS`, and `SHA256SUMS` is signed with the LordOS release key:
   or on a build VM. Keep an offline backup of it.
 - The Debian installer refuses to install when the signature is missing or invalid, before the
   `.deb` is downloaded.
+- Installed systems update from the signed APT repository on lordos.org (0.8.1), which has its own
+  OpenPGP key (`packaging/keys/lordos-archive-keyring.gpg`), because APT needs OpenPGP; see
+  [UPDATES.md](UPDATES.md).
 
 Checking a download by hand (OpenSSL 3):
 
@@ -169,7 +173,7 @@ development tree), lists the size and SHA-256 of every file LordOS runs as JavaS
 |---|---|
 | `themes/<theme>/theme.bundle.js` | the shell, the SDK, the React runtime and **every native app** (they are bundled into each theme), for `default`, `classic` and `greeter` (the login screen) |
 | `assets/app-host.bundle.js` | React + SDK of isolated app processes (`lord-server --app <id>`) |
-| `assets/sysapps/<id>/app.js` | system apps that run as their own sandboxed process (Passwords) |
+| `assets/sysapps/<id>/app.js` | system apps that run as their own sandboxed process (Passwords; Mail, Calendar, Contacts and Reminders since 0.8.2; System Information's Sandbox Probe `sysprobe` in 0.8.5) |
 
 ```json
 {
@@ -240,7 +244,7 @@ development state: without a valid signature nothing is loaded.
   **recovery screen** — compiled into lord-server, so it is as trusted as lord-server itself — says
   what happened, lists the files and how to repair it (`sudo apt install --reinstall lordos`); in a
   session it has a Log Out button. Never a blank screen.
-- **An isolated system app** (Passwords): its window shows the same recovery screen instead of the app.
+- **An isolated system app** (Passwords, Mail, Calendar, Contacts, Reminders): its window shows the same recovery screen instead of the app.
 
 `lord.code.status()` (`ui/js_sec.c`) gives the SDK the state and the refusals; `sdk/codesig.js`
 shows the notification. `lord-server --check-code [<folder>] [--require-signed]` checks a whole tree

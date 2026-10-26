@@ -1,6 +1,6 @@
 # Settings: Displays, Bluetooth, Energy, Cooling, Notifications, Date & Time, Default Apps
 
-Six Settings pages laid out like the system settings of popular desktop systems, with the hardware side in
+Eight Settings pages laid out like the system settings of popular desktop systems, with the hardware side in
 `server/src/hw/` (C, libc only) and the session side in `sdk/hardware.jsx`, `sdk/defaults.js` and
 `sdk/notify.js`. Tested on VM 118 (`lordos-notes`) with `lord-sessiond`, virtio-gpu and a virtual
 Bluetooth controller (`btvirt`). Screenshots: `docs/settings-*.png`.
@@ -212,7 +212,9 @@ with real hardware** (no controller in the VMs).
   poll timeout): screen off is the connector's DPMS (`kms_dpms`; nothing is drawn while it is off),
   "require password" locks the session through `lord-sessiond` N seconds after the screen goes off,
   and sleep runs the closed action `power-suspend` (`systemctl suspend`). The VM is never put to
-  sleep in the tests.
+  sleep in the tests. Since 0.8.5 a Linux app that holds a Wayland idle inhibitor
+  (`zwp_idle_inhibit_manager_v1`, `wl.c`) on a shown surface, such as a video player, counts as
+  activity (`wl_idle_inhibited` in `main.c`), so the screen stays on.
 - **Power button and lid.** What systemd-logind does (sleep, hibernate, shut down, do nothing). The
   admin action `power-buttons <power> <lid> <lid-on-ac>` writes
   `/etc/systemd/logind.conf.d/lordos.conf` (a short list of values, validated) and runs
@@ -398,7 +400,6 @@ The validators are unit-tested in `build/settings-hw-test`.
 - Night Light on the GPU path when the card has no gamma LUT.
 - Brightness, battery, lid and power profiles on real laptops; Bluetooth with real controllers.
 - Notifications on the lock screen; a notification center listing the history.
-- Wayland idle inhibit (a video player does not keep the screen on yet).
 
 ## ISO packages
 

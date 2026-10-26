@@ -8,10 +8,10 @@ access" permission on Android and other systems. It is built in steps:
 | 1 | Rule store, the decision maker and the names learned from DNS (`server/src/fw`), with tests | **done** |
 | 2 | Enforce it in the kernel with cgroup hooks: the root service `lord-netperm` (`server/src/netperm`) | **done** (VM 122) |
 | 3 | Monitor: the "Rule" column and the counters | **done**: per-app switch, counters and "Allow / Block this domain" per destination |
-| 4 | Settings: "Trusted apps" and "Restricted apps" | **done**: lists and mode (silent / off) |
+| 4 | Settings: "Trusted apps" and "Restricted apps" | **done**: lists and mode (silent / off; deny since 0.8.5) |
 | 4b | Settings: network rules by app (domains, addresses, networks) | **done** (VM 122), see [Rules by app](#rules-by-app-settings-and-monitor) |
 | 5 | "Ask" mode | planned (see "The ask mode") |
-| 0.8.5 | Blocklists, the deny mode, LordOS's components and the system services as their own apps | **done** (VM 118), see [Blocklists](#blocklists-084), [components](#lordos-components-in-their-own-scopes-084) |
+| 0.8.5 | Blocklists, the deny mode, LordOS's components and the system services as their own apps | **done** (VM 118), see [Blocklists](#blocklists-085), [components](#lordos-components-in-their-own-scopes-085) |
 
 Step 1 is C code only, with no daemon and without touching the kernel or the network (step 2,
 below, is the service that enforces it):
@@ -173,7 +173,7 @@ the app gives itself.
 | | PipeWire guard (`sec/pwguard.c`) | `Video/Source` nodes hidden from the app, its `Stream/Input/Video` streams destroyed | within 1 s | unit test only (no PipeWire camera node on the test VM) |
 | no USB | `lord-netperm`, `cgroup/dev` | `/dev/bus/usb/*` (189), `/dev/hidraw*` (dynamic, from `/proc/devices`), `/dev/ttyACM*` (166), `/dev/ttyUSB*` (188) | at once (next `open`) | `devices.sh` |
 | no Bluetooth | `lord-netperm`, `cgroup/lsm_socket_create` | `socket(AF_BLUETOOTH, …)` → `EPERM` | at once (new sockets) | `tests/fwlinux/bluetooth.sh` |
-| no screen capture | by design, and `lord-netperm` | the compositor offers no capture protocol, there's no X server, no screen-cast portal is installed; `/dev/fb*` (29) is denied | always | `tests/fwlinux/screen.sh` |
+| no screen capture | by design, and `lord-netperm` | the compositor offers no capture protocol, Xwayland (0.8.3) sees only X windows and a restricted app gets no X display, no screen-cast portal is installed; `/dev/fb*` (29) is denied | always | `tests/fwlinux/screen.sh` |
 | no microphone | PipeWire guard | capture nodes (`Audio/Source*`, `Audio/Duplex`) and their ports hidden, the app's `Stream/Input/Audio` streams destroyed, including a recording already running | within 1 s | `tests/fwlinux/mic.sh` (`pw-record`, `parecord`, `arecord`) |
 | | `lord-netperm`, `cgroup/dev` | ALSA capture PCM nodes (`/dev/snd/pcmC*D*c`, from `/sys/class/sound`): recording from the card without PipeWire | at once (next `open`) | `mic.sh` |
 | no access to your files | the launcher (`apps.c`, `sec/sandbox.c`) | its own user, mount and PID namespace and Landlock (below) | at the next launch | `tests/fwlinux/files.sh` (a probe app, malicious `.desktop` files, `gtk4-print-editor`) |
@@ -232,10 +232,15 @@ D-Bus proxy per app in front of the system bus, which isn't built. `no-files` do
 system bus either (see below).
 
 **Screen capture.** No Linux app can copy the screen, restricted or not: the compositor
-(`wl/wl.c`) offers no screencopy, image-capture or dmabuf-export protocol, Xwayland isn't
-supported, and no `xdg-desktop-portal` screen-cast backend is installed, so PipeWire has no screen
-node. `screen.sh` checks all four on the running system (`build/wl-globals` lists the globals as
-a client sees them), and `no-screen` also denies `/dev/fb*`. If a screen-cast portal backend is
+(`wl/wl.c`) offers no screencopy, image-capture or dmabuf-export protocol, and no
+`xdg-desktop-portal` screen-cast backend is installed, so PipeWire has no screen node. Since 0.8.3
+X11 apps run through Xwayland, which is a Wayland client like any other: an X app can read other X
+apps' windows on the shared X display, but never a Wayland or LordOS window (rootless, no root
+picture), and a restricted app gets no X display at all (`PRIVACY.md`, "X11 apps"). `screen.sh`
+checks the compositor's globals (`build/wl-globals` lists them as a client sees them), the portal
+and PipeWire on the running system, and `no-screen` also denies `/dev/fb*`. (Its "no X server
+socket" check predates Xwayland: with the session's X socket in place since 0.8.3 that line fails
+and needs updating.) If a screen-cast portal backend is
 ever installed, this no longer holds and `screen.sh` fails.
 
 **The PipeWire guard (`sec/pwguard.c`).** `lord-server` keeps one connection of its own to the
@@ -1449,8 +1454,8 @@ What remains of steps 3 and 4 (the original design; what's done is above, in "`l
 - **The counters:**
   - "allowed" and "denied" come from `FwDecision.verdict`;
   - those with `record = 1` are the ones silent mode leaves for review;
-  - each connection carries the `verdict` (today fixed at `'allow'`, see `docs/MONITOR.md`,
-    "Phase 2").
+  - each connection carries the `verdict` (fixed at `'allow'` in this design; it is the kernel's
+    verdict since step 2, see `docs/MONITOR.md`, "Phase 2").
 
 ### Step 4: Settings
 
@@ -1458,7 +1463,8 @@ What remains of steps 3 and 4 (the original design; what's done is above, in "`l
   - **Trusted apps:** `fw_set_trusted`;
   - **Restricted apps:** `fw_set_restricted`, with a checkbox per restriction from the table
     above.
-- **The mode selector:** silent / ask / off.
+- **The mode selector:** silent / ask / off (built as silent / off, plus deny in 0.8.5; ask is
+  still to come).
 - **Outside the network:** the non-network restrictions are queried with `fw_blocks` (through
   `sec/restrict.h`) before `perms.c`, by the broker for isolated apps and by `js_media.c` and
   `sdk/notify.js` for the built-in apps. Exactly what is enforced where is in

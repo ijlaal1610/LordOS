@@ -140,7 +140,9 @@ Details in `WAYLAND.md`.
 - [x] Clipboard shared with LordOS in both directions, `xdg-decoration`.
 - [ ] Launching `.desktop` apps from the app launcher (needs an approved exception to "the server
       doesn't execute commands"), `linux-dmabuf`, app cursors, drag and drop,
-      `text-input`, Xwayland.
+      `text-input`, Xwayland. (Later: the launcher in M7, `linux-dmabuf` with the GPU path, app
+      cursors and `cursor-shape-v1` in M8, Xwayland in 0.8.3; drag and drop and `text-input` are
+      still missing.)
 
 ## M7 — Apps, packages and system services ✅ (2026-10-16)
 
@@ -171,7 +173,8 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
       Trash, Quick Preview, Get Info, background copy/move (`fsops.c`),
       drag and drop, tags, search, mounted disks and «Open With» (`launchWith`).
 - [ ] Left over from M7: OpenConnect and IPsec (strongSwan), WPA3/Enterprise, real per-app
-      permissions, a signed LordOS app repository.
+      permissions (done in M8, `PRIVACY.md`), a signed LordOS app repository. (OpenConnect and IPsec/IKEv2
+      came in M9, `NETWORK.md`; WPA-Enterprise is still missing.)
 - [x] `flexWrap` in our own layout engine (`layout.c`).
 - [x] Notes: sticky notes on the desktop (widgets), markdown with reading view and index, images,
       attachments and emoji, saved automatically in `~/Notes` (`NOTES.md`).
@@ -181,7 +184,7 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
 - [x] Our own session: `lord-sessiond` with a login screen, lock (❖L), fast user
   switching, parallel sessions and Settings → Users (`SESSIONS.md`).
 - [x] Remote desktop on the LAN from the browser (port 5673, off by default;
-  `REMOTE.md`). Pending: audio (stage 2, designed).
+  `REMOTE.md`). Audio came with WebRTC in 0.8.4 (Opus; see "Remote desktop over WebRTC" below).
 - [x] Privacy and signing of `.lpk` apps (`PRIVACY.md`, `SIGNING.md`):
   - [x] Our own sandbox (`server/src/sec/sandbox.c`): Landlock (ABI≤6), seccomp-bpf (allow
     list), no network without permission, `no_new_privs`, dropped capabilities and per-app cgroup v2;
@@ -219,11 +222,13 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
     Trusted apps and Restricted apps;
   - [x] non-network restrictions (camera, microphone, screen, USB, files, clipboard, Bluetooth,
     notifications) enforced for LordOS apps in the broker, `js_media.c` and `sdk/notify.js`, with
-    live revocation (`FIREWALL.md`, "Non-network restrictions"); Linux apps: network only;
+    live revocation (`FIREWALL.md`, "Non-network restrictions"); Linux apps: network only (later
+    also devices, files and notifications, `FIREWALL.md`, "Linux apps");
   - [x] root-owned scopes: `lord-sessiond` places every app process and a Linux app can't move
-    itself to another cgroup (VM 122). Still open: `systemd-run --user --scope` (PID 1 moves it
-    into `user@<uid>.service`).
-  - [ ] "ask" mode (designed), per-destination switches.
+    itself to another cgroup (VM 122). Then still open, closed since: `systemd-run --user --scope`
+    (PID 1 moves it into `user@<uid>.service`; `lord-netperm` now holds it to the per-user union and
+    device-restricted apps get their own view, `FIREWALL.md`, «Escape via `systemd-run --user`»).
+  - [ ] "ask" mode (designed). (Per-destination switches: done in 0.8.2, `MONITOR.md`.)
 - [x] **Monitor** app, phase 1 (`MONITOR.md`), tested on VM 123:
   - [x] Overview, CPU, Memory, Network, Disks and Processes tabs with the look of TangoOS's
     Monitor;
@@ -234,11 +239,15 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
   - [x] country by IP with our own MaxMind DB reader and DB-IP Lite (CC BY 4.0), no network;
   - [x] item in Settings → Privacy.
   - [x] Phase 2, firewall: see "Per-app firewall" above.
-  - [ ] Phase 2, the rest: connection alerts ("ask"), camera and microphone in use (`monitor.deviceUsers()`), host names without
-    reverse DNS, history and usage alerts.
-- [ ] GPU sessions (today they are drawn on the CPU), VT switching and multiple monitors.
-- [ ] More native LordOS apps in React (text editor, image viewer, browser).
-- [ ] Installable image based on minimal Debian 13, with LordOS as `.deb` packages.
+  - [ ] Phase 2, the rest: connection alerts ("ask"), camera and microphone in use (`monitor.deviceUsers()`)
+    and usage alerts. (Host names from the system resolver, without reverse DNS, and the traffic
+    history: done in 0.8.2, `MONITOR.md`.)
+- [ ] VT switching. (GPU sessions: done, `lord-sessiond` lends the card to the visible session,
+  `SESSIONS.md`; multiple monitors: done in M9, `DISPLAYS.md`.)
+- [ ] A native browser. (The text editor and the image viewer are done: `EDITOR.md`, Photos in
+  `MEDIA.md`.)
+- [x] Installable image based on minimal Debian 13, with LordOS as `.deb` packages: the live ISO
+  with its installer (`ISO.md`), and since 0.8.1 updates from the signed APT repository (`UPDATES.md`).
 - [ ] **ARM64 / Raspberry Pi 5 as an official platform** (`RASPBERRY.md`):
   - [x] Portability audit of `server/` for aarch64: unsigned char, 16K pages,
     arm64 seccomp, alignment and `ARCH` in the Makefile (no `-march=native`).
@@ -258,8 +267,8 @@ our own installer, and network, VPN, sound and clipboard with our own interface.
     `6.18.57-lordos-rpi-2712`), pinned over the archive kernel.
   - [x] Switch files on the boot partition: `ssh`, `remote-desktop`, Wi-Fi in `lordos-user.txt`;
     `tools/rpi/verify-board.sh` after flashing.
-  - [ ] Run `build-img.sh` and test on the 16 GB Pi 5 (test list in `RASPBERRY.md`,
-    with screenshots through the remote desktop).
+  - [x] Run `build-img.sh` and test on the 16 GB Pi 5 (test list in `RASPBERRY.md`; the image is
+    a release file since 0.8.0; results in `RASPBERRY.md` and the release tests in `ISO.md`).
   - [ ] Hardware video on the Pi 5 (HEVC via V4L2 stateless; H.264 in software) in
     `lord-media`.
   - [ ] A «create user» step on the login screen, instead of setup mode.
@@ -332,12 +341,12 @@ Details in `MEDIA.md`. Tested on VM 119 with screenshots (`photos-*`, `music-*`,
   - fullscreen and picture in picture (`wm.setFullscreen`/`wm.setPip` in the SDK);
   - music library by artist and album with cover art, queue, shuffle and repeat;
   - media keys and the Control Center tile.
-- [x] **Photos:** photo library from `~/Imágenes` with thumbnails in `~/.cache/lordos/thumbs`, viewer with zoom,
+- [x] **Photos:** photo library from the pictures folder (`~/Pictures` in English) with thumbnails in `~/.cache/lordos/thumbs`, viewer with zoom,
   panning, rotation, fullscreen, slideshow, animated GIF, HEIC/AVIF/WebP/BMP, basic
   editing saved as a copy, and printing.
 - [x] **Screenshots:**
   - screen, window or area, and a timer;
-  - to the clipboard or to `~/Imágenes/Capturas`;
+  - to the clipboard or to `~/Pictures/Screenshots`;
   - floating thumbnail and annotation editor;
   - screen recording to MP4 (H.264 + AAC from the microphone);
   - shortcuts ❖⇧3/❖⇧4/❖⇧5 and Print Screen.
@@ -452,9 +461,10 @@ Details in `SETTINGS.md`. Tested on VM 118 (`settings-*.png`), Bluetooth with a 
   12/24 h, menu bar clock format.
 - [x] **Default Apps:** `mimeapps.list` and `xdg-terminals.list`; Files' "Open With" and
   `lord.apps.launchWith('', path)` honor them.
-- [ ] **Pending:** extend/mirror across displays; sharp HiDPI and 125/150 %; Night Light on the GPU
-  path without a LUT; real laptops (battery, backlight, lid) and real Bluetooth controllers;
-  notifications on the lock screen and a notification center; Wayland idle inhibit.
+- [ ] **Pending:** Night Light on the GPU path without a LUT; real laptops (battery, backlight, lid)
+  and real Bluetooth controllers; notifications on the lock screen and a notification center.
+  (Done since: extend/mirror across displays and sharp HiDPI at 100–200 %, `DISPLAYS.md`; Wayland
+  idle inhibit in 0.8.5.)
 
 ## M9 — Mail, Calendar, Contacts and Reminders ✅ (2026-10-18)
 
@@ -478,6 +488,9 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   **invitations** from Mail (Accept / Maybe / Decline with iTIP REPLY), **Reminders** (lists, due
   dates, priorities, flags, smart lists, VTODO over CalDAV), **Contacts** (local and CardDAV,
   groups, photo; Mail autocompletes from it). Alarms ring with the apps closed.
+- [x] **Isolated apps (0.8.2):** Mail, Calendar, Contacts and Reminders run as their own sandboxed
+  processes (`lord-server --app <id>`), with `BOP_MAIL` and per-app allow lists in the broker
+  (`sec/brokermail.c`, `MAIL.md`).
 - [x] **Tests:** `mail-test` 30,953 checks (IMAP, MIME, charsets, HTML sanitizer, iCal, vCard, XML,
   mutation fuzzing), `mailnet-test` 138, `mailc-test` 69; ASan/UBSan target.
 - [ ] Real providers (Gmail, Yahoo and the others in the table) and OAuth2 with a registered client ID.
@@ -503,8 +516,9 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   uniform margins and spacing, alignment, typographic hierarchy, sidebars,
   toolbars and sheets as in the design guide, controls with the same size and height, nothing overlapping or
   clipped; in light, dark, RTL and in small windows; with before and after screenshots.
-- [ ] **Final ISO** with everything (check that `lord-doc` and `lord-media` are inside) and a **Raspberry
-  Pi 5 image** (`tools/rpi/build-img.sh`), tested on the real Pi.
+- [x] **Final ISO** with everything (check that `lord-doc` and `lord-media` are inside) and a **Raspberry
+  Pi 5 image** (`tools/rpi/build-img.sh`), tested on the real Pi: released as 0.8.0 (`ISO.md`,
+  `RASPBERRY.md`).
 
 ## Before 1.0
 
@@ -704,8 +718,8 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
 - [x] **Turn the "Classic" theme into a second full appearance** (0.8.3; Settings → Appearance → Desktop style, see `DESIGN.md`, "Classic"), for people coming from the
   most common desktop layout: a centered taskbar with a start menu, pinned and running apps, a
   system tray with quick settings and a notification panel, snap layouts for windows, rounded
-  corners and translucent materials. Today `themes/classic` is only a template (taskbar and start
-  menu); it becomes a complete, polished theme with the same name:
+  corners and translucent materials. Until 0.8.3 `themes/classic` was only a template (taskbar and
+  start menu); it became a complete, polished theme with the same name:
   - **same apps, different skin:** no app is rewritten. Native apps keep every feature; the theme
     supplies the window frame, title bar buttons on the right, menus, controls, typography scale and
     spacing through the SDK's theme tokens and components (`configureWindows`, shared controls), so

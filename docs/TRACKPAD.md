@@ -411,9 +411,9 @@ The maximum is a frame that was being drawn on the CPU at that exact moment.
 
 - **Isolated apps:** they don't have their own inertia for fine scrolling (Wayland apps do it
   themselves; LordOS's is for the theme's interface).
-- **CPU compositing:** each frame copies the whole screen to the graphics card's buffer
-  (`canvas_copy` in `main.c`). Copying only what changed would further lower the cost of panning the
-  map.
+- **CPU compositing:** each frame copies the bounding box of what changed to the graphics card's
+  buffer (`present_cpu` in `main.c`); copying only the separate damaged rectangles is written but
+  off by default (`LORD_DAMAGE=multi`), and would further lower the cost of panning the map.
 - **Missing gestures:**
   - drag lock (tap and drag that continues when the finger lifts for a moment);
   - edge scrolling for single-finger touchpads;

@@ -12,8 +12,8 @@ curl -fsSL https://lordos.org/install.sh | sh
 The script asks before changing anything. It reads the answers from the terminal (`/dev/tty`), so
 this works even though the script itself comes through a pipe.
 
-> **Status (2026-10-18):** 0.8.0-beta is published, but the repository is still private, so the download from
-> GitHub doesn't work publicly yet. Until then, use `--deb` with a package you already have (see
+> **Status (2026-10-26):** the latest release is 0.8.4.1-beta, but the repository is still private, so the download from GitHub doesn't work publicly
+> yet. Until then, use `--deb` with a package you already have (see
 > [Testing](#testing)).
 
 ## Requirements
@@ -252,7 +252,7 @@ sudo reboot
 - `shellcheck -s sh tools/install/install.sh` must be clean (also `-s dash`, Debian's `/bin/sh`).
 - Release layout the script expects: tag `vX`, assets `SHA256SUMS` (`sha256sum` format), the
   `lordos_<version>_<arch>.deb` files listed in it (the version inside the name doesn't have to match
-  the tag), and later `SHA256SUMS.sig`.
+  the tag), and `SHA256SUMS.sig` (required: without it the script stops).
 
 ### Testing
 

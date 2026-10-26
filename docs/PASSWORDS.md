@@ -70,7 +70,7 @@ editor, generator, first run); the shots below are from the first version.
 **Why this split.** Everything that touches plaintext vault data, parses untrusted files (KDBX,
 CSV, JSON, images with QR codes) or talks to the security key runs in one small helper that cannot
 open the network, sockets or paths, the same model as `lord-doc` and `lord-media`
-(`docs/PRIVACY.md`, "Ayudantes"). `lord-server` (the compositor) only relays: it never holds
+(`docs/PRIVACY.md`, "Decoding helpers"). `lord-server` (the compositor) only relays: it never holds
 the vault key and never parses the vault. The UI gets just what it shows:
 
 - the list view gets titles, user names, URLs, tags and flags, **never** a secret;
@@ -265,7 +265,8 @@ await keyring.list('mail');                         // without secrets
   id, so the system can ask the user; `keyring.share(id, app)` records the user's decision
   (`shared`). Sharing is an admin operation (the Passwords app or a system prompt), never the
   asking app itself.
-- **Trust boundary:** built-in apps run in the shell's JavaScript context, so for them the owner
+- **Trust boundary:** built-in apps (other than the isolated system packages: Passwords, and since
+  0.8.2 Mail, Calendar, Contacts and Reminders) run in the shell's JavaScript context, so for them the owner
   string is passed by trusted system code, not enforced by a process boundary. For isolated `.lpk`
   apps the owner is set by `lord-server` from the broker (see below). The Passwords app process
   manages the keyring over its own vault channel, which only the system `passwords` package

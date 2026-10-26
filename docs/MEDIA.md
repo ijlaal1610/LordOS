@@ -6,9 +6,9 @@ interface and compositing are our own.
 
 | App | id | What it does |
 |---|---|---|
-| **Photos** | `photos` | Photo library of `~/Imágenes` with thumbnails and a viewer: zoom, panning, rotation, full screen, slideshow, animated GIF and basic editing (crop, rotate, brightness and contrast) saved as a copy |
+| **Photos** | `photos` | Photo library of the pictures folder (XDG, `~/Pictures` in English) with thumbnails and a viewer: zoom, panning, rotation, full screen, slideshow, animated GIF and basic editing (crop, rotate, brightness and contrast) saved as a copy |
 | **Player** | `player` | Video with synced audio, time bar, volume, `.srt` and in-track subtitles, full screen, picture in picture; music library by artist and album with covers, queue, shuffle and repeat; media keys and the Control Center |
-| **Screenshots** | `screenshots` | Screen, window or area, timer, to the clipboard or to `~/Imágenes/Capturas`, floating thumbnail and annotation editor (arrow, box, text, blur); record the screen to MP4 with optional microphone |
+| **Screenshots** | `screenshots` | Screen, window or area, timer, to the clipboard or to `~/Pictures/Screenshots`, floating thumbnail and annotation editor (arrow, box, text, blur); record the screen to MP4 with optional microphone |
 | **Camera** | `camera` | V4L2 preview, JPEG photo, H.264 + AAC video, mirror, choose camera |
 | **Recorder** | `recorder` | Record the microphone, waveform, list, rename, trim and export to Opus, MP3 or WAV |
 
@@ -166,7 +166,7 @@ changing the output, so a compromised decoder must not have it. Audio goes throu
 ### Protected windows
 
 `wm.setProtected(id, true)` (SDK) marks a window as protected, like the capture protection of other desktop systems
-(KeePassXC uses it). The future Passwords app will use it. It looks normal on screen and comes out
+(KeePassXC uses it). The Passwords app uses it (`"protected": true` in its manifest). It looks normal on screen and comes out
 **black** in:
 
 - **Screenshots** (`lord.media.screenshot`): the tree is painted again onto a separate canvas in
@@ -185,8 +185,9 @@ How it works:
 - The SDK sets the `protected` prop on the node of the window's content (`AppHost`).
 - The engine stores it in `Node.protect` (`lord.setProp(id, 'protected', bool)`).
 - The theme's frame (title included) stays visible, so an app that needs it sets a generic title.
-- The server doesn't allow capturing on the GPU path: screen recording composites on the CPU, the
-  same as when someone is watching through remote desktop.
+- Screen recording composites on the CPU. Since 0.8.4 a remote desktop viewer no longer does: the
+  GPU path reads the composed frame back (`gpu_read_next`), except while a protected window is on
+  screen, when the session composites on the CPU so the window can be painted black (`REMOTE.md`).
 - Screenshots has a menu item "Privacy → Protect the front window from screenshots" to use it with
   any window.
 
@@ -195,8 +196,8 @@ How it works:
 Screen, microphone and camera go through the system permissions (`sec/perms.c`, `PRIVACY.md`):
 
 - the SDK asks for the permission with `requestPermission` (the system draws the prompt);
-- `js_media.c` checks again in C that the saved decision is "allow": `permitted()`, the point
-  where the broker will hook in;
+- `js_media.c` checks again in C that the saved decision is "allow": `permitted()`; isolated `.lpk` apps go through the broker,
+  and their camera through `BOP_CAMERA` (`sec/brokercam.c`, `PRIVACY.md`);
 - while in use, the green and orange dots in the menu bar light up (`markDeviceUse`).
 
 ### Shortcuts (global, also with a Linux app in front)
@@ -263,10 +264,11 @@ Events: `__lordMedia(id, type, data)`. Types: `info`, `pos`, `state`, `sub`, `st
 - **"Open with":** Photos for images and Player for audio and video, both as the default option.
 - **Quick Preview:** the one in Files (from the documents agent) uses `media.poster`.
 - **Where things are saved:**
-  - screenshots in `~/Imágenes/Capturas`;
-  - camera in `~/Imágenes/Cámara`;
-  - recordings in `~/Música/Grabaciones`;
-  - with xdg-user-dirs the user's folders are respected.
+  - screenshots in `~/Pictures/Screenshots`;
+  - camera in `~/Pictures/Camera`;
+  - recordings in `~/Music/Recordings`;
+  - with xdg-user-dirs the user's folders are respected, and the subfolder's name follows the
+    language (`Capturas`, `Cámara`, `Grabaciones` in Spanish).
 - **Music library:** saved in `~/.cache/lordos/music.json`, by path, size and date. Only the tags
   of what changed are read again.
 

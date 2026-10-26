@@ -114,14 +114,15 @@ For the editor, these were added to the system:
 - **`fontFamily: 'monospace'`** in the engine (`style.c` and `text.c`; JetBrains Mono is loaded
   the first time it is used). The runtime used to drop `fontFamily`.
 - **`lord.fs.write`, `mkdir` and `rename`** (`server/src/ui/js_sys.c`):
-  - only inside the home folder, with the destination folder resolved with `realpath`;
+  - only inside the home folder (and, later, the user's mounts in `/media/$USER` and
+    `/run/media/$USER`), with the destination folder resolved with `realpath`;
   - they don't follow symlinks on the final file;
   - writing is atomic (temporary file in the same folder + `fsync` + `rename`) and keeps the
     permissions;
   - up to 32 MB;
   - they can't touch `~/.local/share/applications`, `~/.config/autostart`,
-    `~/.local/share/lordos/apps` or `~/.config/lordos/settings.json`, not even through a symlink
-    (tested): JS can't create a `.desktop` file, which is the only thing `lord.apps.launch` runs.
+    `~/.local/share/lordos/apps` or `~/.config/lordos/settings.json` (nor the other protected
+    files and folders added since, `FILES.md`), not even through a symlink (tested): JS can't create a `.desktop` file, which is the only thing `lord.apps.launch` runs.
 
 ## Performance (measured)
 

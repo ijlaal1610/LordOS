@@ -238,7 +238,7 @@ case gets nothing Argon-specific. The illustration shows the Argon only after it
 | `dtoverlay=dwc2,dr_mode=host` (front USB, audio) | `rpi-case argon-one-v5` → `lordos-case.txt` |
 | `dtparam=nvme`, `pciex1_gen=3` | already in the LordOS image's `config.txt` |
 | `usb_max_current_enable=1` | **not set**: it lets the board draw 1.6 A for USB, which is only safe with a 5 A supply; documented here instead |
-| `PSU_MAX_CURRENT=5000` in the bootloader EEPROM | **not done**: LordOS does not rewrite the EEPROM (later, if ever, as a separate admin action) |
+| `PSU_MAX_CURRENT=5000` in the bootloader EEPROM | **not done**: LordOS does not change the bootloader configuration (Settings → Board firmware, 0.8.4.1, only applies Raspberry Pi's bootloader updates, never `rpi-eeprom-config`) |
 | Power button daemon (GPIO 4 pulses) | not needed on the V5: the Raspberry Pi 5's own power button is handled by systemd-logind (Settings → Energy) |
 | IR remote (LIRC, `gpio-ir` on GPIO 23) | not on the V5 (not in its feature list); left for a case that has it |
 | OLED module, ZigBee module (optional add-ons) | not supported |
@@ -267,8 +267,9 @@ case gets nothing Argon-specific. The illustration shows the Argon only after it
 
 ## Not done or untested
 
-- The installed `.deb` and the unit on the real Raspberry Pi (tested with the unit's properties
-  through `systemd-run`, not as the packaged `lord-fand.service`).
+- The fan curve under the packaged `lord-fand.service` on the real Raspberry Pi: the packaged unit
+  runs there (the 0.8.4 update restarted it, `ISO.md`, "Release test (0.8.4 Beta)"), but the
+  measurements above were taken with the unit's properties through `systemd-run`.
 - Real PC motherboards (`nct67xx`, `it87`) and laptops: fake sysfs only.
 - The `rpi-case` action on the real board (it writes the boot partition; not run on the user's
   card) and the case's front USB ports and DAC with `dwc2` in host mode.

@@ -31,7 +31,7 @@ like React Native but on top of our display server.
 | `server/src/ui/` | **M2 done** | Nodes, styles, flexbox, text, images, painting, damage, QuickJS |
 | `runtime/`    | **M2 done** | React renderer (`@lordos/runtime`): a host config for the stock `react-reconciler` package, CSS → native, events |
 | `themes/default/` | **M2 done** | Theme with a menu bar, a dock and an app launcher, with our own assets |
-| `server/src/ui/js_sys.c` | **M3 done** | System APIs: fs (in `$HOME`), /proc, settings, themes, session |
+| `server/src/ui/js_sys.c` | **M3 done** | System APIs: fs (writes in the home folder and the user's mounts; since 0.8.5 reads the whole tree except `/proc`, `/sys`, `/dev`, `/run`), /proc, settings, themes, session |
 | `sdk/` | **M3 done** | `@lordos/sdk`: windows, settings, tokens, controls, system hooks |
 | `apps/` | **M3 done** | Apps as packages (`manifest.json` + `index.jsx`), independent of the theme |
 | `themes/classic/` | **0.8.3 done** | Second full appearance (taskbar, start menu, snapping, task view) and a base for new themes |
@@ -54,12 +54,12 @@ like React Native but on top of our display server.
 | `server/src/media/hwdec.c`, `sdk/video.js`, `assets/browser/video/` | **0.8.2** | Video in the browser without hardware decoding: per-boot VP9/AV1 decoding probe, the closed admin action `video-optimize` and LordOS's own Chromium extension that asks YouTube for H.264 and offers a lower quality when video stutters (see `VIDEO.md`) |
 | `server/src/fan/`, `js_fan.c`, `sdk/cooling.jsx` | **M8** | Fans: the root service `lord-fand` drives them by temperature; Settings → Cooling and Monitor → Cooling (see `FANS.md`) |
 | `server/src/monitor/`, `js_monitor.c`, `apps/monitor/` | **M8** | Monitor: CPU, memory, network, disks, processes and per-app connections with a map; its own thread only while the app is open, sock_diag and country by IP from a local database (see `MONITOR.md`) |
-| `server/src/vault/`, `js_vault.c`, `sdk/vault.js`, `apps/passwords` | **M9** | Passwords and the system keyring: the sandboxed helper `lord-vault` (Monocypher: XChaCha20-Poly1305, Argon2id), own `.lvault` format, FIDO2/CTAP2 client, session keyring opened at login, Secret Service on D-Bus with own code (see `PASSWORDS.md`) |
+| `server/src/vault/`, `js_vault.c`, `sdk/vault.js`, `apps/passwords` | **M9** | Passwords and the system keyring (the Passwords UI runs as its own isolated process): the sandboxed helper `lord-vault` (Monocypher: XChaCha20-Poly1305, Argon2id), own `.lvault` format, FIDO2/CTAP2 client, session keyring opened at login, Secret Service on D-Bus with own code (see `PASSWORDS.md`) |
 | `server/src/net/netd.c`, `remote/netsup.c` | **M9** | `lord-netd`: the network belongs to the system. A root service started and supervised by `lord-sessiond` at boot, serving the `net-*` actions for every session (see `NETWORK.md`) |
 | `server/src/disk/`, `js_disk.c`, `sdk/disks.js`, `apps/disks` | **M9** | Disks: listing without root (sysfs, udev database, mountinfo), our own SMART reader (ATA PASS-THROUGH over SG_IO, NVMe health log), closed `disk-*` actions, bootable USB verified with SHA-256 (see `SYSTEM.md`) |
 | `server/src/imager/`, `server/src/firstrun/`, `js_imager.c`, `apps/imager`, `desktop/imager` | **0.8.4** | LordOS Imager: verified image → removable drive (`imager-*` actions, `xz` and `curl` as the user), the Raspberry Pi first-run file and its applier `lordos-firstrun`, and the same UI as a Tauri app for other computers (see `IMAGER.md`) |
 | `server/src/fw/fwlists.c`, `fwsub.c`, `server/src/fetch/`, `server/src/sec/netconn.c`, `apps/monitor/NetTree.jsx`, `Blocklists.jsx`, `sdk/netmodel.js`, `sdk/netstatus.jsx` | **0.8.5** | Monitor → Network, second generation: blocklists (the sandboxed downloader `lord-fetch`, compiled into lord-netperm's maps), the deny mode, LordOS's components in their own scopes (the `--net-connector` processes), the system services' traffic, the tree, chips and view menu, the menu bar network item (see `MONITOR.md`, `FIREWALL.md`) |
-| `server/src/mail/`, `js_mail.c`, `sdk/{mail,calendar,contacts}.js`, `apps/{mail,calendar,contacts,reminders}` | **M9** | Mail, Calendar, Contacts and Reminders: the sandboxed helper `lord-maild` (IMAP with IDLE/CONDSTORE, SMTP, CalDAV/CardDAV, OpenSSL) with no sockets of its own — `lord-server` connects only to configured servers and hands it the fd; own MIME, HTML sanitizer, iCalendar, vCard and XML parsers (see `MAIL.md`) |
+| `server/src/mail/`, `js_mail.c`, `sdk/{mail,calendar,contacts}.js`, `apps/{mail,calendar,contacts,reminders}` | **M9** | Mail, Calendar, Contacts and Reminders (each app an isolated process since 0.8.2): the sandboxed helper `lord-maild` (IMAP with IDLE/CONDSTORE, SMTP, CalDAV/CardDAV, OpenSSL) with no sockets of its own — `lord-server` connects only to configured servers and hands it the fd; own MIME, HTML sanitizer, iCalendar, vCard and XML parsers (see `MAIL.md`) |
 | `server/src/backup/`, `js_backup.c`, `sdk/backup.js`, `apps/backup` | **M9** | Backups: hard-link snapshots in a lord-server thread (nice 19, idle I/O), hourly/daily/weekly retention, optional encryption with the vendored Monocypher; no root and no `admin.c` actions (see `SYSTEM.md`) |
 | `server/src/logs/`, `js_logs.c`, `sdk/logs.js`, `apps/logs` | **M9** | Logs: our own systemd journal reader (no libsystemd), LordOS logs, system logs for admins through a closed action, live follow with inotify (see `SYSTEM.md`) |
 | `server/src/ui/tzif.c`, `js_help.c`, `sdk/{notify,alarms,statusitems,help}.js`, `apps/{clock,help}` | **M9** | Clock (our own TZif reader, session alarms with the app closed), session notifications, menu-bar status items, Help (markdown articles in es/en/pt, welcome tour, Search source) (see `SYSTEM.md`) |
@@ -87,7 +87,7 @@ Besides the kernel and libc, only these are allowed:
 | Mesa: `libgbm`, `libEGL`, `libGLESv2` | GPU composition and dmabuf buffers from apps (games); optional: without a 3D GPU or without the `-dev` packages it builds and runs without Mesa (approved by the user on 2026-10-16, see `GPU.md`) | system |
 | QuickJS              | ES2023 JavaScript engine, ~1 MB, written in C                  | vendored|
 | `stb_truetype`, `stb_image` | fonts and images; public domain, a single header    | vendored|
-| `stb_image_write`    | PNG for the remote desktop's lossless refresh of still areas and cursor images (`lord-sessiond` only); public domain | vendored|
+| `stb_image_write`    | PNG for the remote desktop's lossless refresh of still areas and cursor images (`lord-sessiond`), and images written by the `lord-doc` and `lord-maild` helpers; public domain | vendored|
 | OpenSSL (`libssl`, `libcrypto`) | TLS. **Only three binaries link it**: `lord-sessiond` (remote desktop on the LAN, `REMOTE.md`), `lord-maild` (IMAP/SMTP/CalDAV/CardDAV, certificates checked against the system CA store, `MAIL.md`) and (0.8.5) `lord-fetch` (the blocklist downloads, sandboxed, no sockets of its own, `FIREWALL.md` "Blocklists"). Never `lord-server` | system |
 | `libcrypt`           | verifying passwords against `/etc/shadow` (`lord-sessiond`, `admin.c`) | system |
 | `libsrtp2`, `usrsctp` | the remote desktop's video (WebRTC, 0.8.4): SRTP and the data channels' SCTP, in `lord-sessiond`'s bridge only (as the user, after it dropped root); with OpenSSL's DTLS and our own ICE-lite, SDP and RTP code (`remote/rtc.c`, `remote/rtcwire.c`) because Debian 13 packages no libdatachannel. Required for `lord-sessiond` since the remote desktop shows the screen only over WebRTC (the image path was removed in 0.8.4). Never `lord-server` | system |
@@ -96,7 +96,7 @@ Besides the kernel and libc, only these are allowed:
 | `clang` (build time only) | the BPF programs of `lord-netperm` (`np.bpf.c`, `clang -target bpf`); they are embedded in the binary. Without clang (`BPF=0`) the service runs without BPF. Neither libbpf nor bcc is used | build machine |
 | Monocypher 4.0.2 | XChaCha20-Poly1305, Argon2id/Argon2d, BLAKE2b, ChaCha20 for the Passwords vault and the KeePass importer (approved by the user; CC0/BSD-2, one C file). **Only `lord-vault` links it**; its official test vectors run in `make test` (`PASSWORDS.md`) | vendored |
 | EFF word list, 10k common passwords | passphrase generator and the offline "breached" check (CC BY 3.0 US / MIT), embedded in `lord-vault` | `third_party/wordlists` |
-| Inter, JetBrains Mono | interface and terminal fonts (OFL)            | `assets/fonts` |
+| Inter, Plus Jakarta Sans, JetBrains Mono | interface, display and terminal fonts (OFL) | `assets/fonts` |
 
 **Xwayland** (Debian's `xwayland` package, 0.8.3) is not linked by anything: it is a separate
 program that `lord-server` starts on demand for X11 apps (`WAYLAND.md`, "X11 apps (Xwayland)").
@@ -108,7 +108,7 @@ with esbuild inside the theme's `.js`. Since 0.7.0 it is React 19.3.1 with `reac
 (the default theme weighs 367 KB with all the apps; React 18 was ~40 KB less). Node.js is only
 used on the development machine.
 
-Since M8 there are two programs, and since M9 two helpers:
+Besides `lord-server`, these programs and helpers run (root services, then sandboxed helpers):
 
 - **`lord-netd`** (M9, root): the system network, started and supervised by `lord-sessiond` at boot;
   only the `net-*` actions of `admin.c`. libc only. See `NETWORK.md`.
@@ -200,13 +200,16 @@ Since M7, what LordOS does with its own code and what it delegates to a Debian p
   - `openvpn`;
   - `resolvectl` and `networkctl`.
   - `powerprofilesctl`, `systemctl suspend`/`reload systemd-logind` and `timedatectl` (Settings'
-    closed `power-*` and `time-*` actions, `SETTINGS.md`).
+    closed `power-*` and `time-*` actions, `SETTINGS.md`);
+  - `smartctl` (0.8.2, `smart-*` actions) and, on the Raspberry Pi 5, `rpi-eeprom-update` (0.8.4.1,
+    Settings → Board firmware).
 - **Sound server:** PipeWire, over the PulseAudio protocol.
 
-apt, libapt, gpgv, curl, zlib, liblzma, NetworkManager, wireguard-tools, libpulse,
-libpipewire, libcups, avahi-client and SANE are not used.
+apt, libapt, gpgv, zlib, liblzma, NetworkManager, wireguard-tools, libpulse,
+libpipewire, libcups, avahi-client and SANE are not used. `curl` is used only by LordOS Imager's
+`imager-*` actions (0.8.4), run as the user with a fixed path, never linked (`IMAGER.md`).
 
-Forbidden: X11/Xorg, wlroots, libdrm, libinput, Mesa as a requirement (only as the optional GPU path), WebKit/Chromium,
+Forbidden: X11/Xorg (Xwayland is a separate program started on demand, see above), wlroots, libdrm, libinput, Mesa as a requirement (only as the optional GPU path), WebKit/Chromium,
 GTK/Qt inside LordOS; bubblewrap, flatpak, firejail or libseccomp for isolation (it is
 our own code using Landlock and seccomp-bpf directly). Vendored = copied as source code into `third_party/`.
 
@@ -215,7 +218,7 @@ our own code using Landlock and seccomp-bpf directly). Vendored = copied as sour
 | Architecture | Machines | Status | Image |
 |---|---|---|---|
 | x86-64 (amd64) | PC with UEFI or BIOS; AMD, Intel or Nvidia GPU, or no 3D GPU (CPU) | primary, tested on VM | live ISO with installer (`ISO.md`) |
-| ARM64 (aarch64) | **Raspberry Pi 5** (the only supported board) | ready, not tested on the board | SD/NVMe image, `tools/rpi/build-img.sh` (`RASPBERRY.md`) |
+| ARM64 (aarch64) | **Raspberry Pi 5** (the only supported board) | tested on the board (`RASPBERRY.md`, release tests in `ISO.md`) | SD/NVMe image, `tools/rpi/build-img.sh` (`RASPBERRY.md`) |
 
 The code is the same. The differences:
 
@@ -265,9 +268,13 @@ other bundle; settings persist on disk.
 
 ## Security
 
-- `lord-server` starts with sudo only to open DRM, evdev and the console; right away it switches to the
-  session user (`SUDO_USER` or `--user`), keeping only `CAP_SYS_TTY_CONFIG`.
-- `lord.fs` is read-only and rejects paths that (after `realpath`) leave `$HOME`.
+- In a session, `lord-server` runs as the user, started by `lord-sessiond`, which lends it the DRM and
+  input devices (`SESSIONS.md`). Run on its own for development, it starts with sudo only to open
+  DRM, evdev and the console; right away it switches to the session user (`SUDO_USER` or `--user`), keeping only `CAP_SYS_TTY_CONFIG`.
+- `lord.fs` writes only in the home folder and the user's mounts (after `realpath`), with a deny list
+  of folders the system reads to launch or install something or that store a security decision;
+  since 0.8.5 its reading calls reach the whole tree as the user, except `/proc`, `/sys`, `/dev` and
+  `/run` (`FILES.md`).
 - `lord.settings` only writes `~/.config/lordos/settings.json` (max. 64 KB, atomic write).
 - `lord.themes.use` only accepts plain folder names in `themes/`; a theme that fails
   to load is banned to avoid loops.
@@ -275,13 +282,17 @@ other bundle; settings persist on disk.
   `code-manifest.json`, signed with the release key and checked by lord-server at load time from the
   same read that is evaluated (`server/src/sec/codesig.c`, `SIGNING.md`, "Verified system code").
   A modified bundle is not run: another theme, or the built-in recovery screen.
-- There is no API to run arbitrary commands. The only way to start a process is
+- There is no API to run arbitrary commands. JS can start a process only through
   `lord.term.create()`, which launches the user's own login shell (the one in `/etc/passwd`)
-  with no capabilities and no `SUDO_*` variables, just like any terminal emulator.
+  with no capabilities and no `SUDO_*` variables, just like any terminal emulator;
+  `lord.apps.launch(id)` and its variants, which run only the `Exec` line of an installed `.desktop`
+  without a shell (`WAYLAND.md`); and `lord.apps.launchPackage(id)`, which starts an installed `.lpk`
+  as an isolated process (`PRIVACY.md`).
 - The clipboard belongs to the session (in memory). Terminal programs can write it
   (OSC 52) but not read it.
-- Manifest `permissions` are declarative until there is per-app isolation.
-- External Wayland apps (M5) will only see their own surfaces.
+- Manifest `permissions` are enforced since M8: each `.lpk` runs isolated and the broker checks every
+  call against the user's decisions (`PRIVACY.md`).
+- External Wayland apps (M6) only see their own surfaces.
 - Documents that come from outside (PDFs, archives, fonts, scanner images) are opened
   only in `lord-doc`, sandboxed. A malicious file can bring that process down, but not
   `lord-server`. Extracting never writes outside the destination folder (`DOCUMENTS.md`, «Extracting

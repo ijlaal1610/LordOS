@@ -20,8 +20,8 @@ erased.
 
 - **Linux and other Unix-like systems:**
   ```sh
-  sha256sum -c lordos-live-0.7.0-amd64.iso.sha256      # or: shasum -a 256 -c …
-  sudo dd if=lordos-live-0.7.0-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
+  sha256sum -c lordos-live-0.8.4-amd64.iso.sha256      # or: shasum -a 256 -c …
+  sudo dd if=lordos-live-0.8.4-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
   ```
   `/dev/sdX` is the whole USB stick (not a partition). On BSD-derived systems it is usually `/dev/rdiskN`: find
   it with the system disk tool and unmount it first.
@@ -315,7 +315,8 @@ What `install-run` validates on the root side, without trusting the interface:
 - **Wi-Fi:** wpa_supplicant and Intel (iwlwifi), Realtek and Atheros firmware.
 - **Fonts:** Noto (core, CJK, emoji) and DejaVu; the rest of what M5b needs: libthai-data, skkdic
   and rime-data-pinyin-simp.
-- **Sample Linux apps:** foot and FeatherPad.
+- **Linux apps:** Chromium and Firefox ESR (preinstalled browsers that draw their own bar with
+  LordOS's window buttons, `WAYLAND.md`), plus foot and FeatherPad as samples.
 - **X11 apps (0.8.3):** `xwayland`, started by lord-server only when an X11 app connects
   ([WAYLAND.md](WAYLAND.md), "X11 apps (Xwayland)").
 
@@ -359,7 +360,8 @@ previous one is kept with its date: `lordos-live-0.7.0-amd64-20261016-1529.iso` 
 lord-server is compiled with `make -C server GPU=1` (it needs `libgbm-dev libegl-dev libgles-dev`) so
 the ISO ships GPU compositing (Mesa; see `GPU.md`).
 
-Measured on VM 116 (4 Xeon Silver 4108 cores, 4 GB): **~8 minutes**, almost all of it downloading and
+Measured on VM 116 (4 Xeon Silver 4108 cores, 4 GB) for 0.7.0: **~8 minutes** (14.5 minutes for 0.8.0, see
+"Release test (0.8.0 Beta)"), almost all of it downloading and
 installing packages and compressing.
 
 | | |
@@ -380,7 +382,7 @@ sudo apt-get install -y --no-install-recommends debootstrap squashfs-tools xorri
 
 | Package | What for |
 |---|---|
-| `libssl-dev` | compiling `lord-sessiond` (remote desktop TLS); without it, `make` builds only lord-server and `mkdeb.sh` refuses |
+| `libssl-dev` | compiling `lord-sessiond` (remote desktop TLS), `lord-maild` (Mail) and, in 0.8.5, `lord-fetch` (the blocklists); without it, `make` builds only lord-server and `mkdeb.sh` refuses |
 | `libpoppler-glib-dev`, `libarchive-dev` | compiling `lord-doc` (PDF and archives); without them `make` skips it and the package ships without a PDF viewer |
 | `libavcodec-dev`, `libavformat-dev`, `libavutil-dev`, `libswscale-dev`, `libswresample-dev` | compiling `lord-media` (video, photos, camera, recorder); without them `make` skips it |
 | `libva-dev` | optional: GPU decoding (VA-API) in `lord-media` |
@@ -393,7 +395,8 @@ sudo apt-get install -y --no-install-recommends debootstrap squashfs-tools xorri
 
 ### lintian
 
-`lintian lordos_0.7.0_amd64.deb` reports no errors. Two warnings remain, on purpose:
+`lintian lordos_0.7.0_amd64.deb` reported no errors and two warnings, on purpose (the later release
+tests list theirs: 0 errors and 17 known warnings for 0.8.4.1). The two:
 
 - **`duplicate-font-file`:** JetBrains Mono ships in `assets/fonts` because the Terminal needs it even
   when `fonts-jetbrains-mono` isn't installed.
@@ -739,13 +742,14 @@ It boots from the CD first.
 
 - **Secure Boot:** sign with shim and our own MOK, or with Debian's shim plus a signed grub. Today
   Secure Boot has to be turned off.
-- **Switching consoles** (Ctrl+Alt+F2) while lord-server runs: part of M8's own session work.
-- **Installer to disk** (M8) and optional persistence on the USB stick (live-boot's `persistence`).
+- **Switching consoles** (Ctrl+Alt+F2) while LordOS runs (still not possible, see `SESSIONS.md`).
+- Optional persistence on the USB stick (live-boot's `persistence`). (The installer to disk is done:
+  "Installing to disk" above.)
 - **Keyboard:** `lordos-live-prep` sets the live user's layout from the boot entry's language
   (English: US, Español: Latin American, Português: Brazilian) and it's changed in Settings →
   Keyboard. A selector on first boot is missing.
-- **Real GPU (AMD/Nvidia):** tested with this ISO on real hardware. The GPU path is done by another
-  fork; the ISO already ships Mesa and the firmware, and the "safe mode" entry passes `LORD_GPU=0`.
+- **Real GPU (AMD/Nvidia):** to be tested with the ISO on real hardware. The GPU path is built
+  (`GPU.md`); the ISO ships Mesa and the firmware, and the "safe mode" entry passes `LORD_GPU=0`.
 - **Network robustness:** `net/state.c` takes `/etc/network/interfaces` as a sign of ifupdown even
   when ifupdown isn't installed. It should also check that `/sbin/ifup` exists. Today the ISO works
   around it in `lordos-live-prep`.

@@ -21,7 +21,7 @@ memory from a process's RSS (§7.1) and points to versioned results (§11.5, `do
 
 | § | Claim | How | State |
 |---|---|---|---|
-| 1.2 | JavaScript has no API to run programs, with three narrow exceptions | Design (`AGENTS.md`); the exceptions grew since: Xwayland (0.8.3), the network connectors and the blocklist downloader (0.8.5) | **Outdated**: list the approved exceptions |
+| 1.2 | JavaScript has no API to run programs, with three narrow exceptions | Design (`AGENTS.md`); the exceptions grew since: Xwayland (0.8.3), the network connectors and the blocklist downloader (0.8.5) | **Outdated → corrected in 0.8.5** (§1.2 now lists them, the Store's download child included) |
 | 1.2 | GPU composition optional, the CPU path always works | Test (`canvas-test`, CPU path in every test); Check `gpu` says which path and why | Holds |
 | 1.2 | The compositor never waits on helpers or apps | Design (non-blocking sockets) | Design |
 | 2.2 | `lord-server` runs as the user | Check `serverUser` (configured) | Holds |
@@ -52,11 +52,11 @@ memory from a process's RSS (§7.1) and points to versioned results (§11.5, `do
 
 | § | Claim | How | State |
 |---|---|---|---|
-| 4.2 | React 19.3.1, QuickJS 2025-04-26; default theme 367 KB | Build output | Size changed: re-measure |
+| 4.2 | React 19.3.1, QuickJS 2025-04-26; default theme 367 KB | Build output | Size changed → corrected in 0.8.5 (about 1.8 MB, 540 KB compressed) |
 | 4.2 | Shaping identical to HarfBuzz on 409 of 409 sentences | Test (`shape-test`, `hb_compare.py` in `test-full`) | Holds |
 | 4.2, 7.4 | NEON loops bit-identical to C | Test (`canvas-test` on the Pi) | Holds |
 | 4.4 | English, Spanish, Portuguese; keys and brand names checked | Test (`tools/i18n-check.mjs`) | Holds |
-| 5.1 | About thirty native apps | Count | 33 in `apps/`, System Information and its hidden probe included |
+| 5.1 | About thirty native apps | Count | 33 in `apps/`, System Information and its hidden probe included; the 0.8.5 edition says thirty-one (without the live installer and the hidden probe) |
 | 5.2 | `.lpk` limits: 2,000 files, 64 MB | Test (`pkg-test`, `sign-test`) | Holds |
 | 5.3 | InRelease signatures, plans equal to apt's in 12 cases | Test (`pkg-test`, `engine-test`) | Holds |
 | 5.3 | Downloads over HTTP even for HTTPS sources | Still true (signatures carry integrity) | Holds |
@@ -83,7 +83,7 @@ memory from a process's RSS (§7.1) and points to versioned results (§11.5, `do
 | 6.6 | A denied app can't connect | Not yet effective on the user's machine | **Pending** (Checks) |
 | 6.7 | Helpers: no sockets, no exec, seccomp on every thread, exit if it fails | Sandbox Probe `helperSandbox` (effective); Test (`sandbox-test helper`, 17/17) | Holds |
 | 6.8 | Ed25519 and SHA-256 against NIST and RFC 8032: 55 of 55 | Test (`sign-test`) | Holds |
-| 6.8 | Official `.lpk` packages signed with a development key | Changed? Re-check before publishing | Re-check |
+| 6.8 | Official `.lpk` packages signed with a development key | `server/src/sec/keys.h` (checked 2026-10-26: only the development key) | Holds; re-check before publishing |
 | 6.9 | Release key fingerprint, SBOM in SPDX 2.3 | Release scripts | Manual |
 | 6.9 | Every bundle verified against the signed manifest | Check `code` (effective: this session's bundles) | Holds |
 | 6.10 | Vault: Argon2id, XChaCha20-Poly1305, 1,165 of 1,165 tamper tests | Test (`vault.mk` suites) | Holds |
@@ -100,7 +100,7 @@ memory from a process's RSS (§7.1) and points to versioned results (§11.5, `do
 | 7.1 | `lord-server` without 3D ~32 MB RSS; session ~50 MB, login 41 MB | Measured once; Check `memory` shows the current number (VM 116 today: ~100 MB in a headless session with apps open) | **Re-measure** at idle |
 | 7.2 | Window drag 1280×800 CPU path 6.7–6.9 ms, ~120 fps | Measured once (VM 118) | Measured → LordBench |
 | 7.2 | Video: lord-server 42 % → 13 %, fullscreen 92 % → 15 % of a core | Measured once | Measured |
-| 7.2 | — | New in 0.8.5: remote desktop CPU reference (`REMOTE.md`, "Measurements (0.8.5, CPU reference)") | Add to the paper |
+| 7.2 | — | New in 0.8.5: remote desktop CPU reference (`REMOTE.md`, "Measurements (0.8.5, CPU reference)") | Added in the 0.8.5 edition (§7.2) |
 | 7.3 | GPU benefits on real cards not measured | — | **Untested** |
 | 7.4 | Pi 5: build 1 min 02 s, tests 23/0/0, NEON 2.0–2.3×, idle 36 MB, fan behaviour | Measured once on the Pi | Measured |
 | 7.5 | No measurements on real PCs | — | **Untested** |
@@ -117,14 +117,21 @@ memory from a process's RSS (§7.1) and points to versioned results (§11.5, `do
 
 ## What the paper must change for 0.8.5
 
+State in the 0.8.5 edition (`web/content/paper/paper.en.md`, checked 2026-10-26) after each item:
+
 1. §1.2: the approved exceptions are more than three (Xwayland, the network connectors, the blocklist
-   downloader, the Store's download child, the Sandbox Probe's system package).
-2. §3.4: Xwayland is supported on demand (0.8.3).
+   downloader, the Store's download child, the Sandbox Probe's system package). **Done**; the Sandbox
+   Probe is not listed as an exception there, since it starts through `lord.apps.launchPackage(id)` (§6.4
+   describes it).
+2. §3.4: Xwayland is supported on demand (0.8.3). **Done.**
 3. §3.6: remote login lockout (3 failures; 15 min → 1 h → 24 h; fixed 1.25 s answers); WebRTC video with
-   H.264/VP8 and Opus sound instead of PNG/JPEG and no audio.
+   H.264/VP8 and Opus sound instead of PNG/JPEG and no audio. **Done.**
 4. §7: re-measure `lord-server`'s memory at idle and the theme's size; add the 0.8.5 remote desktop and CPU
-   path measurements (`REMOTE.md`, `GPU.md`).
+   path measurements (`REMOTE.md`, `GPU.md`). **Partly:** the theme's size and the 0.8.5 CPU path are in;
+   §7.1 now separates whole-system memory from a process's RSS, but `lord-server`'s idle RSS is still the
+   0.8.0 number (not re-measured).
 5. §6: mention that anyone can now check the sandbox on their own computer (System Information → Checks).
+   **Done** (§6.4).
 
 ## What is still missing to validate everything
 
