@@ -12,6 +12,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Added
 
+- **Settings → Displays: numbers, Identify and snapping.** With more than one display each one has a
+  number (the main display is 1); clicking a display in the arrangement, or Identify, shows its number
+  big on that monitor for a moment, so you know which screen is which. Dragging a display snaps it edge
+  to edge and aligns it with the others (side by side, stacked or offset), and a drop never leaves two
+  displays overlapping or apart. The server keeps a position that fits exactly, and a chain of three
+  displays is no longer pulled back onto the main one on every change.
 - **A fuller Window menu, in both themes.** Minimize, Zoom, Fill, Center; **Move & Resize** with the
   left, right, top and bottom halves, the quarters and thirds, arrangements of two windows (left and
   right, right and left, top and bottom, bottom and top) or four (quarters) with the windows behind it,

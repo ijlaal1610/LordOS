@@ -40,10 +40,60 @@ shows in the captures.
 - The **main display** gets the menu bar and the Dock; with "Show menu bar on all displays" the
   menu bar is drawn on each one. The work area is per display.
 
-The math is in `server/src/outputs.c` (pure functions, `build/outputs-test`, 119 checks): scale
+The math is in `server/src/outputs.c` (pure functions, `build/outputs-test`, 131 checks): scale
 rounding and the recommended scale, logical ↔ physical, damage rectangles, mirrored views,
-snapping, fixing overlaps after a change, normalizing, the pointer across displays and the
+snapping, checking a dropped position (`out_fits`) and a whole arrangement (`out_valid`), fixing overlaps after a change, normalizing, the pointer across displays and the
 display with most of a window.
+
+## Numbers, identify and snapping (Settings → Displays)
+
+Like macOS's "Arrange Displays", with more than one display (extend mode):
+
+- **Numbers.** Every active display gets a number: the main display is **1**, the others follow in
+  the order `lord.display.list()` gives them (connector order). `displayNumbers(outputs)` in
+  `sdk/displaylayout.js` computes them; the arrangement's tiles show the number in a small circle
+  next to the name, and the selected display's header shows "Display 2" next to its name. Making
+  another display the main one renumbers them (the main one is always 1). No numbers in mirror mode
+  or with a single display.
+- **Identify.** Clicking a tile (without dragging it) or the **Identify** button under the
+  arrangement calls `identifyDisplays(ids?)` (`sdk/displaysui.jsx`, exported by `@lordos/sdk`): the
+  number is drawn big (a 120–240 px rounded badge, 30 % of the display's short side) centered on
+  the real display for 1.5 s, fading in (120 ms) and out (the last 450 ms) with `lord.setStyle`
+  on the overlay's opacity (no React render per frame; no fade with "Reduce motion"). The clicked
+  tile flashes (lighter fill, accent ring) for the same time. The badges are `<DisplayIdentify />`,
+  mounted by `startShell` in the `notification` layer (`sdk/index.js`, see `LAYERS.md`), so both
+  themes get it without code of their own. Each badge sits at its display's global logical
+  rectangle (`lord.screen.displays`, matched by connector), since the desktop is one space across
+  displays; it takes no clicks (`pointerEvents: 'none'`).
+- **Magnetic arrangement.** While a tile is dragged, `snapDisplay(rects, i, x, y, threshold)`
+  moves each axis independently to the nearest of these targets within 12 preview px (converted
+  to logical px with the preview's scale): edge to edge (its left on the other's right, its right
+  on the other's left, the same for top/bottom), starts aligned (tops or lefts), ends aligned
+  (bottoms or rights) and centers aligned. Only displays near on the other axis (no further than
+  the threshold) attract an axis, so a display far below another doesn't stick to its side. The
+  preview's scale is frozen during the drag, so the tile follows the pointer; it is dimmed while
+  its position would not be valid.
+- **On drop**, `resolveDrop(...)` returns the snapped position when it is valid (it overlaps no
+  display and shares an edge, at least one pixel and not just a corner, with one of them); otherwise
+  the nearest valid position: beside, above or below each display, with the position along that
+  edge kept (clamped so the edges share a pixel), aligned to the start, end or center when within
+  the threshold, or slid just past a display that is in the way. Any relative position is allowed:
+  side by side, stacked, or offset diagonally as long as edges touch.
+- **lord-server keeps it exactly.** `lord.display.arrange(conn, x, y, true)` (`display_arrange`)
+  checks the position with `out_fits` (the same rule as `placementOk` in the SDK); a fitting
+  position is kept as is (`out_snap` with no alignment), anything else is still snapped next to a
+  display with the old 24 px alignment. `out_fix`, run on every plan, leaves a valid arrangement
+  alone (`out_valid`: no overlaps and every display joined through shared edges), so a chain such as
+  main ← display 3 ← display 2 is no longer re-snapped onto the main display; only an arrangement
+  that overlaps or has floating displays (after a scale or resolution change, an unplug, or dragging
+  away the display in the middle of a chain) is re-snapped in order.
+- Tests: `server/tests/display_layout_test.mjs` (numbers, touching, the snap targets, drops on top,
+  in empty space, corner-only, three displays, and a sweep of about 25,000 drops that must all touch and
+  never overlap; run by `make -C server test` through `run_suites.sh` when node exists) and the
+  `out_fits`/`out_valid`/chain checks in `build/outputs-test`.
+- **Untested on real hardware:** the identify badges and the drag were not run on two displays yet
+  (no multi-display machine where this was written); VM 118's two virtio-gpu heads are the
+  intended check.
 
 ## How it is drawn
 

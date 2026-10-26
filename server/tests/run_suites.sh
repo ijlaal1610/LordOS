@@ -174,6 +174,9 @@ EOF
     # (0.8.5) System Information's model (apps/sysinfo/model.js): GPU layers, CPU reasons, Compatibility
     if have node; then run "sysinfo-model-test (apps/sysinfo/model.js)" node tests/sysinfo_model_test.mjs
     else skip "sysinfo-model-test" "node"; fi
+    # (0.8.5) Settings → Displays' arrangement (sdk/displaylayout.js): numbers, magnetic snap, valid drops
+    if have node; then run "display-layout-test (sdk/displaylayout.js)" node tests/display_layout_test.mjs
+    else skip "display-layout-test" "node"; fi
 }
 
 full() {

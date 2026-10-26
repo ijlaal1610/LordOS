@@ -121,6 +121,10 @@ export {
   CLOCK_DEFAULTS, applyIdle,
 } from './hardware.jsx';
 import { DisplayConfirm, BluetoothPrompt, startHardware } from './hardware.jsx';
+// Settings → Displays: numbering, Identify (a big number on each real display) and magnetic arrangement
+export { identifyDisplays, identifying as identifyingDisplays, IDENTIFY_MS } from './displaysui.jsx';
+import { DisplayIdentify } from './displaysui.jsx';
+export { displayNumbers, snapDisplay, resolveDrop, placementOk as displayPlacementOk, SNAP_PREVIEW_PX } from './displaylayout.js';
 // Fans and cooling (lord-fand, docs/FANS.md): Settings → Cooling and Monitor → Cooling
 export { useFan, fanStatus, fanHistory, fanCase, fanControl, refreshFan, coolingVariant, heatColor, CoolingArt, FanCurveChart, formatTemp, FAN_HISTORY } from './cooling.jsx';
 export { DEFAULT_CATEGORIES, defaultFor, setDefaultFor, candidatesFor, defaultOpenerId, nativeOf } from './defaults.js';
@@ -234,7 +238,7 @@ function LocaleRoot({ children }) {
     at('overlay', SpotlightPanel),
     at('popover', ClipboardPanel, EmojiPanel),
     at('modal', PrintDialog),
-    at('notification', NotificationBanner, ClipboardToast, RemoteBadge),
+    at('notification', NotificationBanner, ClipboardToast, RemoteBadge, DisplayIdentify),
     at('system', PermissionPrompt, Powerbox, KeyringPrompt, BluetoothPrompt, DisplayConfirm),
     at('input', ImeOverlay));
 }
