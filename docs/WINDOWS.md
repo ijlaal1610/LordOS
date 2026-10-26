@@ -56,7 +56,9 @@ wm.beginResize(id, edges)     // edges as in xdg_toplevel.resize: 1 top, 2 botto
 - Limits: the minimum size is the manifest's `minSize` (Linux apps, 160×100). The frame doesn't go
   above the work area (the menu bar) and 48 px always remain visible.
 - `xdg_toplevel.move` and `xdg_toplevel.resize` from apps that draw their own frame (GTK, Chromium
-  with CSD) use the same thing (`sdk/wayland.js`).
+  with CSD) use the same thing (`sdk/wayland.js`). Since 0.8.3 X11 apps under Xwayland that draw
+  their own frame ask with `_NET_WM_MOVERESIZE`, which the window manager for X (`wl/xwm.c`) turns
+  into the same request.
 - If the theme didn't mark the window's node (`wm.frameRef`), or the window is maximized,
   `beginMove` returns `false` and the theme can fall back to its old JS dragging.
 

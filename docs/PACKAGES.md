@@ -98,7 +98,7 @@ All of them run in a separate process (`A_FORK`) and require an administrator us
 - Recommended packages are not installed by default. `--recommends` adds them, and if one of them
   can't be installed it doesn't stop the rest.
 - If a request forces removing something that wasn't asked for, the action fails with
-  `ERR también hay que quitar: a, b` ("these must also be removed"). For example:
+  `ERR pkg.removeAlso names=a,b` ("these must also be removed"). For example:
   - installing `postfix` removes `exim4`, because they are two mail programs and can't coexist;
   - removing a library removes what depends on it.
 
@@ -120,10 +120,11 @@ LOG plan held libfoo                               (upgrades that can't be done 
 LOG plan total 4034148 24981                       (bytes to download, KB the installed size changes by)
 LOG progress download 1048576 4034148              (phases: lists, index, download, unpack, configure, remove)
 LOG Unpacking featherpad (1.6.1-1) ...             (everything else: text for the log)
-OK 3 instalado(s), 0 actualizado(s), 0 quitado(s)
+OK pkg.done installed=3 upgraded=0 removed=0
 ```
 
-(The final `OK` line is the helper's literal output: 3 installed, 0 upgraded, 0 removed.)
+(The final `OK` line is a code line, as every helper reply: the UI shows it translated, "3 installed,
+0 upgraded, 0 removed".)
 
 The `progress <phase> <done> <total>` lines are for a progress bar.
 
@@ -179,14 +180,14 @@ needs `contrib` as well as `non-free`), is never offered as installable.
 
 | Detected | How | Suggests | Notes |
 |---|---|---|---|
-| VMware virtual machine | DMI `sys_vendor` "VMware, Inc." or a PCI device of vendor `15ad` | `open-vm-tools` | Preinstalled since 0.8.1, so it normally shows as installed. `open-vm-tools-desktop` is not suggested: it targets X11 (clipboard and resize will come when LordOS supports them) |
+| VMware virtual machine | DMI `sys_vendor` "VMware, Inc." or a PCI device of vendor `15ad` | `open-vm-tools` | Preinstalled since 0.8.1, so it normally shows as installed. `open-vm-tools-desktop` is not suggested: it targets an X11 session (LordOS runs X11 apps through Xwayland since 0.8.3, but its clipboard and resize integration was not tested there) |
 | QEMU/KVM guest with a guest agent channel | a virtio port named `org.qemu.guest_agent.0` (only present when the host enabled the agent) | `qemu-guest-agent` | Clean shutdown from the host, frozen disks for backups, the guest's address |
 | VirtualBox virtual machine | DMI product "VirtualBox" or PCI `80ee:cafe` | `virtualbox-guest-utils` | **Not in Debian 13** (main, contrib or backports): the card explains that, and that the kernel already has the guest drivers (display with VMSVGA, shared folders) |
 | NVIDIA graphics card (x86_64) | PCI vendor `10de`, class `0300`/`0302`/`0380` | `linux-headers-amd64`, `nvidia-driver`, `firmware-misc-nonfree` | **non-free**. The card says the free `nouveau` driver is in use and stays the default; what changes: DKMS builds the module for each kernel, Secure Boot needs its key enrolled at the next restart, cards older than about 2014 need the free driver, and the LordOS desktop hasn't been tested with this driver yet. `nvidia-driver` also depends on packages in `contrib` (`nvidia-installer-cleanup`): without both components in the sources the card explains that instead (the LordOS ISO enables both) |
 | USB printer | an interface of class `07`, by USB vendor ID: HP `03f0` → `hplip`, Epson `04b8` → `printer-driver-escpr`, Brother `04f9` → `printer-driver-brlaser`, Samsung `04e8` → `printer-driver-splix`, Canon `04a9` → `printer-driver-gutenprint` | the vendor's Debian driver | Vendors not in the table get nothing: most printers work driverless with CUPS |
 | USB printer with IPP over USB | interface `07/01/04` | `ipp-usb` | Driverless printing and scanning: the device shows up like a network printer |
 | USB scanner | udev's `libsane_matched=yes` for the device (`/run/udev/data/c189:N`; needs libsane's udev rules installed), by vendor: HP → `libsane-hpaio` | the vendor's SANE backend | Other vendors' backends are already in `libsane1` |
-| Raspberry Pi 5 (and 500, CM5) | device tree `compatible` | `rpi-eeprom`, `raspi-utils`, `gpiod` (those that exist) | `rpi-eeprom` and `raspi-utils` come from the Raspberry Pi archive the LordOS image configures; `gpiod` from Debian |
+| Raspberry Pi 5 (and 500, CM5) | device tree `compatible` | `rpi-eeprom`, `raspi-utils`, `gpiod` (those that exist) | `rpi-eeprom` and `raspi-utils` come from the Raspberry Pi archive the LordOS image configures, and since 0.8.4.1 also from the LordOS repository (`UPDATES.md`, "Raspberry Pi firmware packages"); `gpiod` from Debian |
 | A device that asked for missing firmware | the firmware loader's "Direct firmware load for X failed" / "firmware: failed to load X" lines in the kernel log, minus files present now | the package that ships X (`iwlwifi-*`, `intel/ibt-*` → `firmware-iwlwifi`; `rtl_bt/`, `rtw88/`, `rtw89/`, `rtlwifi/`, `rtl_nic/` → `firmware-realtek`; `ath*k/`, `ar3k/`, `qca/`, `htc_*` → `firmware-atheros`; `brcm/brcmfmac*` → `firmware-brcm80211`; `brcm/BCM*` → `bluez-firmware`; `mediatek/`, `mt76*` → `firmware-mediatek`; `mrvl/`, `libertas/` → `firmware-libertas`; `amdgpu/`, `radeon/` → `firmware-amd-graphics`; `i915/`, `xe/` → `firmware-intel-graphics`; `nvidia/` → `firmware-nvidia-graphics`) | **non-free-firmware**, one card per package (Wi-Fi, Bluetooth, network adapter, graphics). The prefixes were checked against trixie's `non-free-firmware` Contents. If the package is installed and a file is still missing, nothing is offered. Files no prefix matches (e.g. `regulatory.db`, which a VM without Wi-Fi also asks for) get no card |
 
 Cards are ordered: installable, then explained (not available), then installed.

@@ -77,6 +77,10 @@ All are in the closed table of `admin.c` (macro `DISK_ADMIN_ACTIONS` in `disk/di
 Long actions send `LOG progress phase=<table|mkfs|erase|write|verify> done=<n> total=<n>`, which
 the app shows as a bar.
 
+Since 0.8.5 (in development) Files' sidebar lists every disk too and uses the same actions:
+`disk-mount` when an unmounted one is clicked (an internal disk asks for an administrator, as here),
+and `disk-eject` or `disk-unmount` from its ⏏ (`FILES.md`).
+
 ### Security
 
 - **The same rules for all of them, on the root side (`target()` in `disk_admin.c`):**
@@ -90,7 +94,7 @@ the app shows as a bar.
   down to the real disks. Only `disk-smart` and the `smart-*` actions accept it: they only read,
   or start the disk's own self-test, which does not change data.
 - **Who can:**
-  - internal disks, only an administrator (group `sudo`);
+  - internal disks, only an administrator (groups `sudo`, `admin` or `wheel`);
   - removable ones (USB, `removable=1`, `mmc` cards), any session user, like udisks with active
     sessions;
   - reading SMART, anyone.
@@ -403,7 +407,8 @@ In the **Backups** tab: snapshots by day, the tree of each one (with real sizes)
 - **The same rules as `lord.fs`:** it only writes in the home folder and the user's disks
   (`fsops_allowed`, on the resolved folder), never in protected places (`fsops_protected`:
   `~/.local/share/applications`, `~/.config/autostart`, `~/.local/share/lordos/apps`,
-  `settings.json`, `permisos.json`, `backup.json`). A `.desktop` file planted in a backup is not
+  `settings.json`, `permisos.json`, `backup.json`, and also `firewall.json`, the blocklists, the
+  Mail accounts and cache and the Passwords vaults, the whole list in `server/src/fsops.c`). A `.desktop` file planted in a backup is not
   restored, not even through a link in the home folder that points to a protected folder.
 - **No escapes through the backup:** the requested path is validated (`bk_rel_valid`) and its
   resolved folder must stay inside the snapshot.
@@ -710,6 +715,8 @@ dismissNotification(id);
 - Clicking the banner runs the first action; the × closes it.
 - `notifyHistory`: the last 50 of the session, in memory only.
 - Up to three actions per notification. The API is stable: Clock and Backups use it.
+- Linux apps reach the same banners through the session's `org.freedesktop.Notifications` server
+  (`server/src/hw/notifyd.c`), with per-app settings in Settings → Notifications (`SETTINGS.md`).
 
 ### Screenshots
 

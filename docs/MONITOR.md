@@ -11,7 +11,11 @@ Phase 1 was read-only. Since then the Network tab holds per-app firewall rules (
 0.8.1, the Processes tab can stop a process and show its details ("Process actions"). In 0.8.2
 each destination of an app has its own allow/block switch, the traffic chart reaches back 30 days
 ("Traffic history"), the Disks tab shows each disk's temperature and health, and the session can
-notify when a disk gets too hot or less healthy ("Disk temperature and health").
+notify when a disk gets too hot or less healthy ("Disk temperature and health"). In 0.8.3 the
+remote desktop is a row of its own and blocking an app cuts the connections it had open. In 0.8.5
+(in development) the Network tab becomes a tree with a view menu and search chips, LordOS's own
+components and the system's services get rows of their own, and the menu bar network item and the
+blocklists arrive ("Network, second generation").
 
 ## Tabs
 
@@ -23,6 +27,7 @@ notify when a disk gets too hot or less healthy ("Disk temperature and health").
 | Network | apps with connections, map, summary or detail of the chosen app (see below) |
 | Disks | total read and write; one row per disk (model, `/dev`, size, temperature, health, rates); the chosen disk's temperature over the last 30 minutes and its health, with "Open in Disks" (see "Disk temperature and health") |
 | Processes | sortable table (CPU, memory, threads, PID, user), search, "Mine" / "All"; Stop and Get Info for the selected process (see "Process actions") |
+| Cooling | the cooling hardware drawn live, the active fan profile, a temperature and fan history and "full speed" (`apps/monitor/Cooling.jsx`, see `FANS.md`) |
 
 Charts pause with the mouse over them and show a crosshair with the values at that instant, as in
 TangoOS. Time always runs left to right, also in Arabic and Hebrew; the rest of the window mirrors
@@ -115,7 +120,8 @@ the rest of the tab, and the first generation of the list.
     by app");
   - with a country chosen: bytes, apps and addresses (with ports and app).
 
-Hosts are shown as IPs. There is no reverse DNS: asking for an IP's name sends it to the DNS
+Hosts are shown by the name the system resolver gave the app (see "Per-destination switches"), or
+as IPs when there is none. There is no reverse DNS: asking for an IP's name sends it to the DNS
 server, and this app's rule is that no address leaves the machine.
 
 **"This computer"** is placed by the time zone (`/etc/localtime` → coordinates from
@@ -204,7 +210,8 @@ Its panel:
 - the apps moving data now, with their rates;
 - **Recently denied** in the last ten minutes, with a count, the same destination grouped (×N);
 - the firewall mode: Allow silently, Deny silently, Off (`FIREWALL.md`, "The modes"). The ask mode
-  is not offered until it exists; rule profiles come with the rules manager (0.8.5);
+  is not offered until it exists; rule profiles come with the rules manager (its own release after
+  0.8.5, `ROADMAP.md`);
 - the blocklists (lists on, entries) and "Open Monitor…".
 
 While the item is shown it reads `lord.monitor.netTotals()` (one read of `/proc/net/dev`) once
@@ -298,7 +305,8 @@ edits (`FIREWALL.md`, "Rules by app"); there is no new enforcement:
   switch never moves under the pointer.
 - **What the switch shows** is what the app's rules decide for that destination right now:
   `sdk/fwrule.js` `decide()` runs the same order as `fw_decide` (restrictions, then the most
-  specific matching rule; no rule: the mode, which allows). When another rule decides, the row
+  specific matching rule; no rule: the mode, which allows — since 0.8.5 the "Deny silently" mode and the
+  blocklists can also decide, `decide()`'s `mode` and lists). When another rule decides, the row
   says which ("By the rule \*.example.com", "Follows this app's default"); a restriction ("no
   internet") locks the switch and says so.
 - **What a click does** (`toggleOp()`): it writes the rule for exactly that name (or address),
@@ -554,7 +562,10 @@ server/src/monitor/procctl.c the protected list, proc_signal() (pidfd) and the G
 server/src/monitor/proc_admin.c  the root helper's proc-signal / proc-info (administrators)
 assets/monitor/          land.bin (Natural Earth 1:50m), geoip-country.mmdb.xz (DB-IP Lite)
 tools/gen-monitor-data.py    generates that data, countries.js and the country names
-tests/mmdb_test.c, tests/map_bench.c   reader test and map benchmark
+apps/monitor/RemoteDesktop.jsx  (0.8.3) the remote desktop row and its detail
+apps/monitor/Cooling.jsx     the Cooling tab (lord.fan, see FANS.md)
+apps/monitor/Firewall.jsx, FwRules.jsx, RuleSheet.jsx   Settings → Privacy's firewall sections and the rule sheet
+server/tests/mmdb_test.c, server/tests/map_bench.c   reader test and map benchmark
 ```
 
 ### lord.monitor
@@ -575,12 +586,13 @@ tests/mmdb_test.c, tests/map_bench.c   reader test and map benchmark
 | `watchDisks(on)` | (0.8.2) with the Monitor closed, the thread wakes every 30 s and reads only the disk sensors |
 | `diskTemps()` | (0.8.2) `{ t, disks: [{ name, model, rota, sensor, temp, tempT, tempMax, tempCrit, tempIdle, awake }] }` or `null` if nothing new; it does not keep the 4 Hz sampling alive |
 
-Each disk in `sample().disk.disks` carries the same fields (`sensor`: `"nvme"`, `"drivetemp"` or
-`null`; `temp` in °C or `null`; `tempT`: when it was read; `tempIdle`: a spinning disk at rest, not
-read; `awake`: I/O in the last minute).
 | `history({ from, step, n, app })` | the traffic history in `n` buckets (see "Traffic history"), or `null` |
 | `netTotals()` | (0.8.5) `{ t, rx, tx }`: the machine's byte counters now (every interface but `lo`), without the sampling thread (the menu bar item) |
 | `historyEnable(on)` / `historyClear()` | the "Keep a traffic history" setting; deletes the history |
+
+Each disk in `sample().disk.disks` carries the same fields (`sensor`: `"nvme"`, `"drivetemp"` or
+`null`; `temp` in °C or `null`; `tempT`: when it was read; `tempIdle`: a spinning disk at rest, not
+read; `awake`: I/O in the last minute).
 
 No function takes paths or commands: the only arguments are booleans, a language code (letters,
 digits, `-` and `_`, up to 15), a PID with its start time (integers), `'TERM'` or `'KILL'`, and the
@@ -606,8 +618,9 @@ history's integers and app id (`[A-Za-z0-9._:@+~/-]`, up to 127).
 ### Connections
 
 `conn.c` does the same as `ss`: a `NETLINK_SOCK_DIAG` dump for TCP and UDP, IPv4 and IPv6, with
-`INET_DIAG_INFO` (`tcpi_bytes_acked` and `tcpi_bytes_received` come from `tcp_info`). No root
-needed. For other users' sockets, only how many there are is counted.
+`INET_DIAG_INFO` (`tcpi_bytes_acked` and `tcpi_bytes_received` come from `tcp_info`). Since 0.8.5 it
+also reads ICMP "ping", raw IP and packet sockets from `/proc/net/{icmp,icmp6,raw,raw6,packet}` (see
+"Network" above). No root needed. For other users' sockets, only how many there are is counted.
 
 **Bytes per app (0.8.1).** `tcp_info` only exists for TCP and only while the socket is open, so up
 to 0.8.0 UDP — and with it QUIC: HTTP/3, a browser playing a video — counted nothing, and a closed
@@ -702,12 +715,14 @@ With `Uint32Array` it costs one pixel per write.
 ## Privacy
 
 Settings → Privacy → **Monitor** (registered with `registerPrivacySection` if the page exists) has
-three switches, saved in `settings.monitor`, and a button:
+four switches, saved in `settings.monitor`, and a button:
 
 - `connections`: see each app's connections. When off, the thread doesn't query sock_diag.
 - `geo`: place them on the map. When off, the country database isn't loaded.
 - `history` (0.8.2, on by default): keep the traffic history (bytes per minute and per hour, never
   addresses; see "Traffic history"). **Clear History** deletes it.
+- `menuItem` (0.8.5, off by default): the network activity item in the menu bar (see "The menu bar
+  network item").
 
 ## Phase 2
 
@@ -724,6 +739,11 @@ three switches, saved in `settings.monitor`, and a button:
   the system resolver returned; an app with its own encrypted DNS is held only by address rules.
   Screenshots: [light](firewall-domain-rules-monitor-light.png),
   [dark](firewall-domain-rules-monitor-dark.png).
+- **Host names** without asking anyone (0.8.2): `lord-netperm` learns them from the system resolver
+  and its notices carry them (`hosts`); the destinations are listed by those names.
+- (0.8.2) Each destination's own switch and the traffic history; (0.8.3) blocking cuts the open
+  connections; (0.8.5) the tree, the "Deny silently" mode, the blocklists and LordOS's own components
+  as rows of their own (see "Network, second generation").
 
 **Planned:**
 
@@ -731,9 +751,6 @@ three switches, saved in `settings.monitor`, and a button:
 - **Connection alerts** (the "ask" mode, `FIREWALL.md`) and rules per country.
 - **Devices:** `monitor.deviceUsers()` → `[{ kind: 'camera' | 'microphone', app, name, pid }]` and
   the `monitorDevices` store (already exported, empty).
-- **Host names** without asking anyone: `lord-netperm` already learns them from the system
-  resolver; its notices don't carry them to the session yet. The Network tab shows a `host` /
-  `hosts` field as soon as a notice brings one.
 - Usage alerts (the history is in place since 0.8.2).
 
 ## Measurements

@@ -338,8 +338,12 @@ The containers keep their own `node_modules` and cargo target folders in named v
 
 - **Not booted on a real Raspberry Pi:** the first-run file was applied with `--root` to the real
   0.8.3 image (arm64) from an amd64 build, and the image's own `firstboot` script runs `lordos-firstrun`
-  but wasn't executed (no board was reflashed, as asked). The next Pi image build ships
-  `lordos-firstrun`; images up to 0.8.3 ignore the file and start in setup mode.
+  but wasn't executed (no board was reflashed, as asked). Since 0.8.4 the `lordos` package ships
+  `lordos-firstrun`, so the Pi image published with 0.8.4.1 reads the file (a 0.8.4 image build
+  applied a file from the Imager's writer with `--root/--boot`: 26/26, `ISO.md`, "Release test (0.8.4
+  Beta, October 19–25)"); images up to 0.8.3
+  ignore it and start in setup mode. A real first boot from a card the Imager prepared is still not
+  recorded.
 - **Not tested with real drives:** only virtual ones (the USB gadget on VM 116, a disk image on the
   development machine). The authorized-open prompt of the Mac download, udisks2's `OpenDevice` with
   polkit and the Windows download were not run against a real stick (the test opened its own disk

@@ -129,7 +129,7 @@ Status: ✅ done and tested in the VM · 🟡 partial · ⏳ pending · — does
 | Per-line timestamps | ✅ | ❖⇧E |
 | Ctrl/❖+click on paths and links | 🟡 | paths under `$HOME` open Files; URLs are copied (there is no browser) |
 | Instant Replay | ✅ | ❖⌥B, up to 1200 frames / 6 MB per session |
-| Log the session to a file, save the contents | ✅ | `~/.local/share/lordos/terminal/`, `~/Documentos` |
+| Log the session to a file, save the contents | ✅ | `~/.local/share/lordos/terminal/`, the documents folder (`XDG_DOCUMENTS_DIR`, in the user's language) |
 | Broadcast input to all panes | ✅ | ❖⌥I |
 | Alert when the command finishes | ✅ | ❖⌥A |
 

@@ -25,6 +25,14 @@ This document gathers what's needed to build the image, write it, develop on the
 > previous one stays installed and bootable (see "Switching kernels on a board"). Cross-compiled on
 > VM 116, installed on the Pi 5 and verified there: `verify-board`, the firewall cut test (15/15,
 > TCP and QUIC closed in 0.04–0.37 s) and `make -C server test`.
+>
+> **Update (2026-10-25, 0.8.4.1):** the Pi 5 image shows the login screen and the desktop on an HDMI
+> monitor from the first boot (the display driver line in `config.txt` now comes after
+> `display_auto_detect`/`camera_auto_detect`, plus 0.8.4's longer wait for the display driver;
+> `CHANGELOG.md`, 0.8.4.1, Fixed). The image also brings Chromium, Firefox ESR and the ISO's system
+> packages, and the bootloader is updated from Settings → Board firmware. A monitor plugged in after
+> boot is followed from 0.8.5 (in development). **Still not measured:** frame rates and GPU composition
+> timings on a monitor (checklist item 5), two monitors and 4K.
 
 ## Models
 
@@ -65,7 +73,7 @@ SD card or an NVMe, and the same image boots on the Pi 5 and the Pi 4.
   `custom_chrome_frame` and the GTK theme, Firefox's `/etc/firefox-esr/lordos.js` (`inTitlebar` 1),
   so both draw a single bar with LordOS's window buttons; the GTK themes, the video extension and
   the video settings (`video-optimize`, Settings → Displays → Video) come with the lordos package.
-  Measured cost in "Release test (0.8.4.1 Beta)".
+  Measured cost in `ISO.md`, "Release test (0.8.4.1 Beta, October 25)".
 - **The LordOS build of the Raspberry Pi kernel** (see "The LordOS kernel"), when
   `tools/rpi/build-kernel.sh` has built it; otherwise Raspberry Pi's archive kernel, with a loud
   warning (it has no Landlock, BPF LSM or BTF):
@@ -799,7 +807,8 @@ the per-app firewall was off on the Pi; `build-img.sh` enables it now. **The Lor
 BPF LSM** (`CONFIG_BPF_LSM` is not set, and no BTF), so "No Bluetooth" for Linux apps isn't enforced
 on the Pi (`lord-netperm` reports `"bluetooth":false`); the network and device programs work. Turning
 on `CONFIG_BPF_LSM` and `CONFIG_DEBUG_INFO_BTF` in `build-kernel.sh` is pending. **The image has not
-been booted on a board yet.**
+been booted on a board yet.** (Later: both options are on since 0.8.1's `-2+lordos` kernel, see "The
+LordOS kernel".)
 
 ## Results on the board (2026-10-18)
 
@@ -848,7 +857,9 @@ Notes for the image:
 
 Still to do on the board: everything in the checklist that needs a monitor (items 1, 2, 4–8, 10, 15
 with screenshots, 16 HDMI audio, 17), the desktop session, and booting the built image from a
-second SD card or an NVMe.
+second SD card or an NVMe. (Later: a 0.8.4 image was booted from a test SD card for the 0.8.4.1
+release test, `ISO.md`, and the desktop shows on HDMI since 0.8.4.1, see the status at the top; the
+measurements with a monitor are still to do.)
 
 ## Server portability audit (aarch64)
 
@@ -879,7 +890,7 @@ EGL/GLES/GBM ones. What follows is the result.
 - **Page size (16K on the Pi 5):** there's no hardcoded 4096 in `mmap`, shm or buffers.
   - Dumb buffers use `CREATE_DUMB`'s `size` and `pitch`.
   - WASM memory reserves and protects in multiples of 64 KiB (a multiple of 16K).
-  - The Monitor uses `sysconf(_SC_PAGESIZE)` (`monitor/mon.c:443`).
+  - The Monitor uses `sysconf(_SC_PAGESIZE)` (`monitor/mon.c`).
   - The dmabuf feedback does `memfd` + `mmap` of an arbitrary size, which is valid.
 - **Unaligned reads and endianness:**
   - the OpenType, MaxMind DB, xz, PNG/JPEG (stb), thbrk and IME readers read byte by byte in
@@ -911,6 +922,6 @@ EGL/GLES/GBM ones. What follows is the result.
 | `server/src/kms.c` `read_scanout_formats` | `IN_FORMATS` with `UNIVERSAL_PLANES` untested on vc4. If it fails, it stays as before |
 | `server/src/drmcard.h` | `GETCONNECTOR` forces an EDID read per card at startup (~50 ms). Hotplug: if HDMI is plugged in after boot, lord-sessiond has already chosen the card (vc4 anyway, because it has connectors) |
 | `server/src/sec/sandbox.c` | seccomp: check on the board that no `.lpk` app dies from a syscall that arm64 glibc uses and x86 doesn't. Landlock: the Raspberry Pi kernel might not have it; `cmdline.txt` asks for `lsm=landlock,…`. The shared helper profile (`sandbox_apply_helper`) uses the same list and is fine on arm64, but has no `ioctl`: hardware video (V4L2 on the Pi, VA-API on the PC) inside the sandbox needs it (the sandbox agent was told) |
-| `server/src/monitor/mon.c:703` | The Monitor's "model name" stays empty on ARM. The Monitor agent was told (`js_sys.c`'s `arm_cpu_name` would do) |
+| `server/src/monitor/mon.c` | The Monitor's "model name" stayed empty on ARM. Fixed: `lord.monitor.info().cpuModel` now comes from `js_sys_cpu_name()`, the same one About uses (`js_monitor.c`) |
 | `server/src/install/install.c:677` | The installer uses `grub-install --target=x86_64-efi`. On the Pi it doesn't apply (it's not live, the installer doesn't appear), but it's what would have to change for an ARM64/UEFI installer |
 | page size | Some third-party program (not LordOS) assumes 4K: Widevine, box64, old jemalloc. If needed, `kernel=kernel8.img` in `config.txt` (4K, a bit slower) |

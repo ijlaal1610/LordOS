@@ -16,8 +16,8 @@ the renders by hand.
 
 LordOS is a free, fast and secure GNU/Linux distribution based on Debian, with a desktop environment of
 its own, built from its fundamental components on top of Debian and Wayland. It has its own display server and Wayland compositor written in C and
-its own React-based interface engine, the whole system idles at 465–487 MB of RAM
-(`lord-server` 32–36 MB), and it brings a Dock, an app launcher, a menu bar, instant search and polished
+its own React-based interface engine, the whole system idles at 465–487 MB of RAM (measured once,
+live ISO and installed, in a VM; `lord-server` 32–36 MB RSS at idle; the paper's §7.1), and it brings a Dock, an app launcher, a menu bar, instant search and polished
 native apps to PCs and to the Raspberry Pi 5, while still running regular Linux applications. The
 crown stands for a desktop where the user rules: fast, private and fully under their control.
 

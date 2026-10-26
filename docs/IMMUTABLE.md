@@ -50,7 +50,7 @@ experimental edition (PC, UEFI, full desktop, updates from the Store) is phase 1
 ## Goals
 
 1. **A read-only, verified `/usr`.** Nothing at run time — not an app, not the user, not root — can
-   change a file of the operating system in a way that survives a reboot or goes unnoticed: every
+   change a file of the system in a way that survives a reboot or goes unnoticed: every
    block is checked against a hash that the boot chain vouches for.
 2. **Atomic updates with automatic rollback.** An update is written next to the running system and
    becomes active only by booting it. A power cut in the middle leaves the old system untouched. A

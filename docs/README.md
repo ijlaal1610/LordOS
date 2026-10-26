@@ -26,6 +26,8 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 | [IMAGER.md](IMAGER.md) | LordOS Imager: writing LordOS to cards and sticks, in LordOS and on other computers, and the first-run file |
 | [INSTALL-DEBIAN.md](INSTALL-DEBIAN.md) | Installing LordOS on an existing Debian 13 with one command |
 | [VM-SETUP.md](VM-SETUP.md) | The development VM, step by step |
+| [UPDATES.md](UPDATES.md) | Updating an installed system in place from the signed APT repository, and migrations |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Known problems and how to fix them (for example a modified system component) |
 | [RELEASING.md](RELEASING.md) | How a release is made: changelog, tag, build, sign, SBOM and the GitHub release notes |
 | [../CHANGELOG.md](../CHANGELOG.md) | What changed in each version (also the body of each GitHub release) |
 
@@ -38,6 +40,7 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 | [DISPLAYS.md](DISPLAYS.md) | Several displays and HiDPI |
 | [GPU.md](GPU.md) | GPU composition, dmabuf and the CPU path |
 | [DOCK.md](DOCK.md) | Dock and taskbar |
+| [LAYERS.md](LAYERS.md) | The desktop's stacking order: what is drawn and clicked above what |
 | [SPOTLIGHT.md](SPOTLIGHT.md) | Search and the advanced clipboard |
 | [TRACKPAD.md](TRACKPAD.md) | Touchpads, gestures and touchscreens |
 | [SESSIONS.md](SESSIONS.md) | Login screen, sessions, user switching, boot splash hand-off |
@@ -49,7 +52,7 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 | Document | What it covers |
 |---|---|
 | [PRIVACY.md](PRIVACY.md) | App isolation, permissions, and what is isolated today |
-| [FIREWALL.md](FIREWALL.md) | Per-app firewall, restrictions and domain rules |
+| [FIREWALL.md](FIREWALL.md) | Per-app firewall, restrictions, domain rules and blocklists (0.8.5) |
 | [SIGNING.md](SIGNING.md) | Package signing, trust levels and release signing |
 | [IMMUTABLE.md](IMMUTABLE.md) | Design study: an immutable edition with A/B system images (0.8.2, experimental prototype) |
 | [SECURITY-REVIEW-0.8.0.md](SECURITY-REVIEW-0.8.0.md) | Security review before 0.8.0-beta: every finding and its status |
@@ -72,8 +75,9 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 | [DOCUMENTS.md](DOCUMENTS.md) | PDFs, archives, fonts and emoji |
 | [PRINTING.md](PRINTING.md) | Printing and scanning |
 | [MEDIA.md](MEDIA.md) | Photos, Player, Screenshots, Camera and Recorder |
+| [VIDEO.md](VIDEO.md) | Video in the browser without hardware decoding (H.264 instead of VP9/AV1) |
 | [MAIL.md](MAIL.md) | Mail, Calendar, Contacts and Reminders |
-| [MONITOR.md](MONITOR.md) | Monitor: usage, network map, firewall, cooling |
+| [MONITOR.md](MONITOR.md) | Monitor: usage, processes, network map and connections, firewall, disk health, cooling |
 | [SYSTEM.md](SYSTEM.md) | Disks, Backups, Logs, Clock and Help |
 
 ## System and hardware
@@ -84,6 +88,14 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 | [NETWORK.md](NETWORK.md) | Networking and VPNs |
 | [SOUND.md](SOUND.md) | Sound (PipeWire) |
 | [FANS.md](FANS.md) | Fan control on the Raspberry Pi 5 and PCs |
+| [BENCHMARK.md](BENCHMARK.md) | System Information (0.8.5), LordBench and hardware reports: design and status |
+
+## Measurements and validation
+
+| Document | What it covers |
+|---|---|
+| [PAPER-VALIDATION.md](PAPER-VALIDATION.md) | Each claim of the paper, how it is checked and its state |
+| [RESULTS.md](RESULTS.md) | Versioned results: measurements per version and machine, with the commands that produced them |
 
 ## Images and assets
 
@@ -95,6 +107,9 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 | [iso-final/](iso-final/) | Screenshots of the final ISO test |
 | [polish/](polish/) | Before and after screenshots of the visual polish pass |
 | [packs/](packs/) | Sample language pack and script test text |
+| [classic/](classic/) | Screenshots of the classic theme and the default theme, light and dark |
+| [imager/](imager/) | Screenshots of LordOS Imager (native app and desktop app) |
+| [qa/](qa/) | Screenshots of the app-by-app QA pass (see [VM-SETUP.md](VM-SETUP.md)) |
 
 ## Research notes
 

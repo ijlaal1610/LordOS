@@ -75,7 +75,8 @@ import { Layer, Overlay, LAYERS } from '@lordos/sdk';
   `onClose` is called on a click outside (the anchor included toggles itself) and on Escape. In
   the desktop's process it goes to the `popover` layer, above the Dock and the other windows; a
   protected window's list stays black in screenshots. In an isolated app's process (`.lpk`
-  apps and Passwords, `"process": "isolated"`) it goes to the window's own overlay host, above all
+  apps and the system apps with `"process": "isolated"`: Passwords and, since 0.8.2, Mail, Calendar,
+  Contacts and Reminders) it goes to the window's own overlay host, above all
   of the window's content (the app's surface is the window, so it can't leave it).
 - Used today by: the shell's menus, the SDK's `MenuButton`, the «fill from Passwords» button
   (`AutofillButton`), Settings' pop-up buttons and Passwords' pop-up menus. Calendar, Contacts and
