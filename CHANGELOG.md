@@ -46,6 +46,14 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **Remote desktop video came in blocks for the first minutes, and had no sound.** The browser's
+  bandwidth estimate was a fixed ceiling, so a new connection stayed near 3 Mbit/s for about three
+  minutes; it now reaches the top in about 10 s on a local network and still slows down on
+  congestion. Software H.264 keeps its deblocking filter. The page starts muted, as browsers
+  require, and its sound button hides in the top bar: the first click or key in the session now
+  turns the sound on.
+- **Files → This computer** shows `/proc`, `/sys`, `/dev` and `/run` with a lock and says why it
+  doesn't open them, instead of "outside your home folder".
 - **Restart… and Shut Down… in a session seen only through the remote desktop** showed the
   countdown and then did nothing: only the session on the monitor can ask for them. They are now
   offered only there.
