@@ -21,6 +21,10 @@
  *   lord.hwinfo.scan()                          read-only hardware facts for the Store's suggestions
  *                                               (hw/hwscan.c: DMI, device tree, PCI/USB IDs, virtio
  *                                               ports, missing firmware when the kernel log is readable)
+ *   lord.sysinfo.report()                       System Information (sysreport/: the same report as
+ *                                               lordos-sysreport, no serials, addresses or names) plus
+ *                                               session: how this session composes the screen and its
+ *                                               GPU context (gpu/gpu.h gpu_info, lord_composition)
  *   lord.fan.status() / setProfile(p) / setCurve(pts) / force(v) / caseConfig()   (js_fan.c, lord-fand)
  *   lord.browserFrame.apply(on, which)          Settings → Appearance → "Browsers: tabs in the title bar":
  *                                               one preference in the user's Chromium/Firefox profiles
@@ -38,6 +42,8 @@
 #include "../hw/display.h"
 #include "../hw/hw.h"
 #include "../hw/hwscan.h"
+#include "../gpu/gpu.h"
+#include "../sysreport/sysreport.h"
 #include "../hw/mimeapps.h"
 #include "../hw/notifyd.h"
 #include "../hw/ppd.h"
@@ -366,6 +372,33 @@ static JSValue f_hwinfo_scan(JSContext *c, JSValueConst t, int argc, JSValueCons
 
 static const JSCFunctionListEntry hwinfo_funcs[] = { JS_CFUNC_DEF("scan", 0, f_hwinfo_scan) };
 
+/* ---- lord.sysinfo (System Information, docs/BENCHMARK.md) ---- */
+
+static JSValue f_sysinfo_report(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    SysReport *r = malloc(sizeof *r);
+    if (!r) return JS_NULL;
+    const char *root = hwscan_root();       /* the same development fixtures as the Store's */
+    sysreport_collect(r, root, NULL, NULL);
+    JSValue v = json_or_null(c, sysreport_json(r));
+    free(r);
+    if (!JS_IsObject(v)) return v;
+    GpuInfo g;
+    gpu_info(&g);
+    JSValue s = JS_NewObject(c);
+    JS_SetPropertyStr(c, s, "composition", JS_NewString(c, lord_composition()));
+    JS_SetPropertyStr(c, s, "gpuInit", JS_NewString(c, g.why));
+    JS_SetPropertyStr(c, s, "renderer", JS_NewString(c, g.renderer));
+    JS_SetPropertyStr(c, s, "renderNode", JS_NewString(c, g.render_node));
+    JS_SetPropertyStr(c, s, "dmabuf", JS_NewBool(c, g.dmabuf));
+    JS_SetPropertyStr(c, s, "scanouts", JS_NewFloat64(c, (double)g.scanouts));
+    JS_SetPropertyStr(c, s, "fixture", JS_NewBool(c, root[0] != 0));
+    JS_SetPropertyStr(c, v, "session", s);
+    return v;
+}
+
+static const JSCFunctionListEntry sysinfo_funcs[] = { JS_CFUNC_DEF("report", 0, f_sysinfo_report) };
+
 /* ---- lord.browserFrame (Settings → Appearance; hw/brframe.c, docs/WAYLAND.md) ---- */
 
 /* The folders are fixed: $XDG_CONFIG_HOME (absolute) or ~/.config, and ~ for the legacy ~/.mozilla. */
@@ -439,6 +472,7 @@ void js_hw_register(JSContext *c, JSValue lord) {
     add(c, lord, "timedate", td_funcs, sizeof td_funcs / sizeof td_funcs[0]);
     add(c, lord, "notifyd", nd_funcs, sizeof nd_funcs / sizeof nd_funcs[0]);
     add(c, lord, "hwinfo", hwinfo_funcs, sizeof hwinfo_funcs / sizeof hwinfo_funcs[0]);
+    add(c, lord, "sysinfo", sysinfo_funcs, sizeof sysinfo_funcs / sizeof sysinfo_funcs[0]);
     add(c, lord, "browserFrame", brf_funcs, sizeof brf_funcs / sizeof brf_funcs[0]);
     js_fan_register(c, lord);           /* lord.fan: Settings → Cooling and Monitor (js_fan.c) */
 }

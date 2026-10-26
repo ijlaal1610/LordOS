@@ -592,9 +592,9 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   `server/src/sysreport/`, shared by the app, the `lordos-sysreport` command and tests.
   - [x] collector, `pci.ids`/`usb.ids`/EDID readers, fake-sysfs fixtures, anonymization test,
     `lordos-sysreport report` (2026-10-26);
-  - [ ] the GPU's live layers (EGL, composition, scanout) through `lord.sysinfo`, the read-only
-    `hw-memory-modules` admin action;
-  - [ ] Overview, Hardware and Compatibility tabs (en, es, pt, right to left);
+  - [x] the GPU's live layers (EGL, composition, scanout) through `lord.sysinfo` (2026-10-26);
+  - [ ] the read-only `hw-memory-modules` admin action;
+  - [x] Overview, Hardware and Compatibility tabs (en, es, pt; 2026-10-26; right to left not yet checked on screen);
   - [ ] Checks, configured and effective, with the probe app and a signed `checks.json`;
   - [ ] reports; first real reports from the Pi 5 with a monitor and the RX 580 PC.
   - [ ] from the live USB without installing: a *Check this computer* boot entry, reports marked

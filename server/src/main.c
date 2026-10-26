@@ -50,6 +50,7 @@
 #include "ui/js_logs.h"
 #include "hw/hw.h"
 #include "hw/modes.h"
+#include "ui/js_hw.h"
 #include "outputs.h"
 #include "monitor/netrec.h"
 #include "sec/codesig.h"
@@ -1566,6 +1567,17 @@ static int hw_heads(Kms **out, int max) {
 }
 static void hw_redraw(void) { if (hw_server) full_damage(hw_server); }
 static const DisplayHost hw_host = { hw_kms, hw_redraw, js_hw_event, hw_heads };
+
+const char *lord_composition(void) {
+    Server *s = hw_server;
+    if (!s) return "";
+    if (gpu_active()) return "gpu";
+    if (s->headless) return "headless";
+    if (out_count(s) < 1) return "no-display";
+    if (display_cpu_only()) return "rotated";
+    if (need_cpu()) return "capture";
+    return "gpu-off";
+}
 
 /* A client that hangs up mid-write (remote desktop, Wayland, a helper) must not kill the
  * session: writes get EPIPE instead. Caught, not SIG_IGN, so exec'd children (shells, Linux

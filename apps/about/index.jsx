@@ -1,7 +1,7 @@
 // About LordOS: real system data (/proc) and display server stats.
 import { version as reactVersion } from 'react';
 import { useMemo } from 'react';
-import { View, Text, LordOSLogo, LordOSWordmark, Lumo, screen, lordosVersion, useTheme, useSystemInfo, useServerStats, formatBytes, formatDuration, formatNumber, typeScale, codeStatus, isSystemApp, t as tr } from '@lordos/sdk';
+import { View, Text, Button, wm, LordOSLogo, LordOSWordmark, Lumo, screen, lordosVersion, useTheme, useSystemInfo, useServerStats, formatBytes, formatDuration, formatNumber, typeScale, codeStatus, isSystemApp, t as tr } from '@lordos/sdk';
 
 export function Icon({ size }) {
   return <LordOSLogo size={size} />;
@@ -76,6 +76,9 @@ export default function About() {
         <InfoRow k={tr('about.display')} v={`${screen.width} × ${screen.height}`} />
         <InfoRow k={tr('about.ram')} v={`${formatNumber(st.rssKB / 1024, 1)} MB (JS ${formatNumber(st.jsKB / 1024, 1)} MB)`} />
         <InfoRow k={tr('about.render')} v={tr('about.renderValue', { ms: formatNumber(st.layoutMs + st.paintMs, 1), count: st.nodes })} />
+      </View>
+      <View style={{ marginTop: 12 }}>
+        <Button small label={tr('about.systemReport')} onClick={() => wm.open('sysinfo')} />
       </View>
       <View style={{ flex: 1, minHeight: 12 }} />
       <View style={{ alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24 }}>

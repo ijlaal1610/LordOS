@@ -33,6 +33,7 @@
   },
   "server": "Servidor gráfico",
   "systemApp": "App do sistema",
+  "systemReport": "Relatório do sistema…",
   "tagline": "Um desktop GNU/Linux livre, rápido e seguro, construído sobre Debian e Wayland.",
   "uptime": "Ligado há",
   "version": "Versão {v}",

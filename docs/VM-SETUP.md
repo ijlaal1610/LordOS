@@ -1661,3 +1661,7 @@ over `/usr/local/lib/lordos`.
 
 - **Installed:** `usb.ids` (Debian, architecture `all`: the USB vendor and product names, read by
   `lordos-sysreport`; `pci.ids` was already installed). The package recommends both.
+- **The app:** `lord-server` from that tree in an isolated headless session (`--headless 1280x800`,
+  its own `HOME`, `XDG_RUNTIME_DIR` and `dbus-run-session`, removed afterwards), driven and captured
+  over its own `remote.sock` (keys, clicks and the still frame's lossless tiles); the user's session
+  was not touched.

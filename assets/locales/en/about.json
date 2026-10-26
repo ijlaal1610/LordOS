@@ -33,6 +33,7 @@
   },
   "server": "Display server",
   "systemApp": "System app",
+  "systemReport": "System Report…",
   "tagline": "A free, fast and secure GNU/Linux desktop, built on Debian and Wayland.",
   "uptime": "Uptime",
   "version": "Version {v}",

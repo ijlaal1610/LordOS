@@ -80,7 +80,7 @@ import { startDiskWatch } from './diskwatch.js';
 import { maybeStartTour } from './help.js';
 import { getApp as getAppOf, isLiveSystem as isLiveSystemOf, wm as wmOf, windows as windowsStore } from './windows.js';
 export const windowIcon = (w) => windowIconOf(w, getAppOf);
-export { systemInfo, lordosVersion, useSystemInfo, useServerStats, useCpuUsage, formatBytes, formatDuration } from './system.js';
+export { systemInfo, systemReport, lordosVersion, useSystemInfo, useServerStats, useCpuUsage, formatBytes, formatDuration } from './system.js';
 export * as fs from './fs.js';
 export { useDirectory } from './fs.js';
 export { ThemeProvider, useTheme, DEFAULT_TOKENS } from './theme.js';

@@ -26,6 +26,7 @@ int  gpu_init(Kms *k) { (void)k; return -1; }
 int  gpu_active(void) { return 0; }
 void gpu_shutdown(void) {}
 const char *gpu_renderer(void) { return ""; }
+void gpu_info(GpuInfo *i) { *i = (GpuInfo){ .why = "not-built", .renderer = "", .render_node = "" }; }
 int  gpu_formats(GpuFormat *out, int max) { (void)out; (void)max; return 0; }
 int  gpu_device(dev_t *dev) { (void)dev; return -1; }
 GpuTex *gpu_tex_pixels(GpuTex *t, const uint32_t *px, int w, int h, int opaque) { (void)t; (void)px; (void)w; (void)h; (void)opaque; return NULL; }
@@ -138,6 +139,9 @@ static struct {
 
 /* These outlive the context (G is wiped by gpu_shutdown). */
 static unsigned last_gen;
+static const char *last_why = "";       /* gpu_info: the last gpu_init's outcome */
+static unsigned long total_scanouts;
+static char last_renderer[160];         /* the software renderer that was turned down */
 static void (*hook_lost)(void), (*hook_changed)(void);
 
 void gpu_set_hooks(void (*lost)(void), void (*changed)(void)) { hook_lost = lost; hook_changed = changed; }
@@ -380,22 +384,31 @@ int gpu_add_output(Kms *k) {
 int gpu_active(void) { return G.on; }
 const char *gpu_renderer(void) { return G.renderer; }
 
+void gpu_info(GpuInfo *i) {
+    i->why = last_why;
+    i->renderer = G.on ? G.renderer : !strcmp(last_why, "software") ? last_renderer : "";
+    i->render_node = G.on ? G.render_node : "";
+    i->dmabuf = G.on && G.create_image != NULL;
+    i->scanouts = total_scanouts;
+}
+
 int gpu_init(Kms *k) {
     const char *env = getenv("LORD_GPU");
     G.debug = getenv("LORD_GPU_DEBUG") != NULL;
-    if (env && !strcmp(env, "0")) { fprintf(stderr, "gpu: off (LORD_GPU=0), CPU composition\n"); return -1; }
+    if (env && !strcmp(env, "0")) { fprintf(stderr, "gpu: off (LORD_GPU=0), CPU composition\n"); last_why = "env-off"; return -1; }
     G.k = k;
     char drv[64];
     if (!drm_accelerated(k->fd, drv, sizeof drv) && !(env && !strcmp(env, "1"))) {
         fprintf(stderr, "gpu: the card (%s) has no 3D acceleration: CPU composition (LORD_GPU=1 forces it)\n", drv);
+        last_why = "no-3d";
         return -1;
     }
     G.gbm = gbm_create_device(k->fd);
-    if (!G.gbm) { fprintf(stderr, "gpu: no GBM on the card, CPU composition\n"); return -1; }
+    if (!G.gbm) { fprintf(stderr, "gpu: no GBM on the card, CPU composition\n"); last_why = "no-gbm"; return -1; }
     PFNEGLGETPLATFORMDISPLAYEXTPROC get_display = (PFNEGLGETPLATFORMDISPLAYEXTPROC)eglGetProcAddress("eglGetPlatformDisplayEXT");
     G.dpy = get_display ? get_display(EGL_PLATFORM_GBM_KHR, G.gbm, NULL) : eglGetDisplay((EGLNativeDisplayType)G.gbm);
     EGLint maj, min;
-    if (G.dpy == EGL_NO_DISPLAY || !eglInitialize(G.dpy, &maj, &min)) { fprintf(stderr, "gpu: EGL did not start, CPU composition\n"); goto fail; }
+    if (G.dpy == EGL_NO_DISPLAY || !eglInitialize(G.dpy, &maj, &min)) { fprintf(stderr, "gpu: EGL did not start, CPU composition\n"); last_why = "no-egl"; goto fail; }
     const char *exts = eglQueryString(G.dpy, EGL_EXTENSIONS);
     query_render_node();
     eglBindAPI(EGL_OPENGL_ES_API);
@@ -408,25 +421,27 @@ int gpu_init(Kms *k) {
         EGLint vid = 0;
         if (eglGetConfigAttrib(G.dpy, cfgs[i], EGL_NATIVE_VISUAL_ID, &vid) && vid == GBM_FORMAT_XRGB8888) cfg = cfgs[i];
     }
-    if (!cfg) { fprintf(stderr, "gpu: no XRGB8888 EGL config, CPU composition\n"); goto fail; }
+    if (!cfg) { fprintf(stderr, "gpu: no XRGB8888 EGL config, CPU composition\n"); last_why = "no-config"; goto fail; }
     static const EGLint ctx_attr[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
     G.ctx = eglCreateContext(G.dpy, cfg, EGL_NO_CONTEXT, ctx_attr);
     G.cfg = cfg;
     G.gen = ++last_gen;
     if (last_gen == 0) G.gen = last_gen = 1;    /* 0 means "no context" */
-    if (G.ctx == EGL_NO_CONTEXT || out_setup(&G.out[0], k)) { fprintf(stderr, "gpu: could not create the context or the surface, CPU composition\n"); goto fail; }
+    if (G.ctx == EGL_NO_CONTEXT || out_setup(&G.out[0], k)) { fprintf(stderr, "gpu: could not create the context or the surface, CPU composition\n"); last_why = "no-context"; goto fail; }
 
     const char *rend = (const char *)glGetString(GL_RENDERER), *gl_exts = (const char *)glGetString(GL_EXTENSIONS);
     snprintf(G.renderer, sizeof G.renderer, "%s", rend ? rend : "?");
     int software = strstr(G.renderer, "llvmpipe") || strstr(G.renderer, "softpipe") || strstr(G.renderer, "swrast");
     if (software && !(env && !strcmp(env, "1"))) {
         fprintf(stderr, "gpu: the renderer is software (%s): CPU composition (LORD_GPU=1 forces it)\n", G.renderer);
+        last_why = "software";
+        snprintf(last_renderer, sizeof last_renderer, "%s", G.renderer);
         goto fail;
     }
     G.bgra = has_ext(gl_exts, "GL_EXT_texture_format_BGRA8888");
     G.have_external = has_ext(gl_exts, "GL_OES_EGL_image_external");
     if (!has_ext(gl_exts, "GL_EXT_unpack_subimage")) dbg("no GL_EXT_unpack_subimage: the whole canvas is uploaded");
-    if (make_prog(0, fs_2d) || (G.have_external && make_prog(1, fs_ext))) { fprintf(stderr, "gpu: shaders failed, CPU composition\n"); goto fail; }
+    if (make_prog(0, fs_2d) || (G.have_external && make_prog(1, fs_ext))) { fprintf(stderr, "gpu: shaders failed, CPU composition\n"); last_why = "shaders"; goto fail; }
     if (has_ext(exts, "EGL_EXT_image_dma_buf_import")) {
         G.create_image = (PFNEGLCREATEIMAGEKHRPROC)eglGetProcAddress("eglCreateImageKHR");
         G.destroy_image = (PFNEGLDESTROYIMAGEKHRPROC)eglGetProcAddress("eglDestroyImageKHR");
@@ -442,6 +457,7 @@ int gpu_init(Kms *k) {
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
     G.on = 1;
+    last_why = "on";
     if (G.debug) {
         GpuFormat f[64];
         int nf = gpu_formats(f, 64);
@@ -790,6 +806,7 @@ int gpu_scanout(const GpuDmabuf *d, void (*done)(void *), void *data) {
         return -1;
     }
     G.scanouts++;
+    total_scanouts++;
     if (G.debug && (G.scanouts == 1 || G.scanouts % 300 == 0)) dbg("direct scanout: %ld frames (composed %ld)", G.scanouts, G.frames);
     return present(o, s);
 }

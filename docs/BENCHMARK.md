@@ -247,8 +247,22 @@ machine. `lordos-fetch` (the same binary under that name; `lordos-sysreport fetc
 the brand colors beside a short summary (system, computer, kernel, uptime, packages, shell, display, CPU,
 GPU, memory, disk, isolation); the user and host names appear only on screen and `--share` leaves them out
 for a screenshot to post; `--color=auto|always|never`, `NO_COLOR` respected, true color when `COLORTERM`
-says so, plain ASCII without color. Not yet: the GPU's EGL, composition and scanout layers (they come from the running
-`lord-server`, with `lord.sysinfo`), `hw-memory-modules`, the app.
+says so, plain ASCII without color. **The app (2026-10-26):** `apps/sysinfo` (also About LordOS → System Report…) with Overview, Hardware and
+Compatibility, from `lord.sysinfo.report()` (`ui/js_hw.c`): the same report plus `session`, how this
+session composes the screen now (`lord_composition()` in `main.c`: `gpu`, `headless`, `no-display`,
+`rotated`, `capture` or `gpu-off`) and the GPU context (`gpu_info()`: the last `gpu_init` outcome as a
+fixed code, the renderer, render node, dmabuf import and direct scanouts since start). The layers and
+the Compatibility panel are worked out in `apps/sysinfo/model.js` (`server/tests/sysinfo_model_test.mjs`).
+Checked on VM 116 in an isolated headless session (own home, runtime folder and bus):
+
+![Overview](sysinfo-overview.png)
+
+![Graphics as separate layers](sysinfo-graphics.png)
+
+![Compatibility](sysinfo-compatibility.png)
+
+Not yet: `hw-memory-modules`, video decode and encode and Vulkan (shown as *Not checked*), the Checks
+and Report tabs.
 
 1. `server/src/sysreport/`: collector, GPU layers, `pci.ids`/EDID readers, fake-sysfs fixtures
    (AMD desktop, Intel laptop, Nvidia desktop, Raspberry Pi 5, VM), the anonymization test,

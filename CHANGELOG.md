@@ -15,6 +15,11 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 - **`lordos-fetch`.** Type it in a terminal to see the LordOS crown beside a summary of your
   computer: system, kernel, CPU, GPU, display, memory, disk, packages and how apps are isolated.
   `lordos-fetch --share` leaves out your user and computer names, for a screenshot you'll post.
+- **System Information** (About LordOS → System Report…): every piece of hardware this computer has
+  and what LordOS makes of it. The graphics card is shown layer by layer (driver, display output,
+  render node, GPU context, composition, direct scanout) with the exact reason when the screen is
+  composed on the CPU, and a Compatibility panel says what works, what works with limits and what
+  wasn't checked.
 - **`lordos-sysreport report`** prints the hardware of this computer and what the system made of it,
   as Markdown or `--json`, with no serial numbers, addresses or names: the base of System
   Information.

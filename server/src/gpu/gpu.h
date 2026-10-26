@@ -26,6 +26,19 @@ int  gpu_active(void);
 void gpu_shutdown(void);
 const char *gpu_renderer(void);         /* "llvmpipe (LLVM …)", "AMD Radeon …" */
 
+/* What System Information shows of the GPU path (docs/BENCHMARK.md, "The GPU as separate layers").
+ * why: the last gpu_init's outcome, a fixed code: "on", "not-built" (built without Mesa), "env-off"
+ * (LORD_GPU=0), "no-3d", "no-gbm", "no-egl", "no-config", "no-context", "software" (llvmpipe and
+ * the like), "shaders", or "" (never tried). The rest is the live context's, "" or 0 without one
+ * (the renderer also names the software one that was turned down);
+ * scanouts counts the frames shown directly since lord-server started. */
+typedef struct {
+    const char *why, *renderer, *render_node;
+    int dmabuf;
+    unsigned long scanouts;
+} GpuInfo;
+void gpu_info(GpuInfo *i);
+
 /* Formats/modifiers that can be imported (linux-dmabuf) and the DRM device. */
 int  gpu_formats(GpuFormat *out, int max);
 int  gpu_device(dev_t *dev);
