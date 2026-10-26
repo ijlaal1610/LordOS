@@ -409,5 +409,7 @@
   "net.icmpSockets": {
     "one": "{count} ICMP (ping) socket: the system doesn't keep its destination",
     "other": "{count} ICMP (ping) sockets: the system doesn't keep their destination"
-  }
+  },
+  "net.rawSockets": "raw IP sockets ({what}): it can see or forge IP traffic",
+  "net.packetSockets": "packet sockets ({what}): it can see or forge traffic on the network card"
 }

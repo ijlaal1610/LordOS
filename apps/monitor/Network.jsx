@@ -82,6 +82,12 @@ function rememberGeo(c) {
   geoSeen.set(c.remote, { cc: c.cc, scope: c.scope, port: `${c.proto.toUpperCase()} ${c.rport}` });
 }
 
+// Raw IP and packet sockets (conn.c): the protocol or ethertype by name where it's a common one.
+const IP_PROTOS = { 1: 'ICMP', 2: 'IGMP', 6: 'TCP', 17: 'UDP', 41: 'IPv6', 47: 'GRE', 50: 'ESP', 58: 'ICMPv6', 89: 'OSPF', 112: 'VRRP', 132: 'SCTP', 255: 'IP' };
+export const ipProtoName = (n) => IP_PROTOS[n] || `IP ${n}`;
+const ETHERTYPES = { 0x0003: 'ALL', 0x0800: 'IPv4', 0x0806: 'ARP', 0x86dd: 'IPv6', 0x888e: 'EAPOL', 0x88cc: 'LLDP', 0x8100: 'VLAN', 0x88f7: 'PTP' };
+export const etherName = (n) => ETHERTYPES[n] || `0x${(n || 0).toString(16).padStart(4, '0')}`;
+
 // Groups the connections by app. Without lord-netperm's byte counters (withFirewall), bytes and
 // rates come from the open TCP sockets (tcp_info) and the difference with the previous reading.
 function useGroups(conns) {
@@ -97,7 +103,7 @@ function useGroups(conns) {
       if (!g) {
         const comp = !!COMPONENTS[key] || key === 'lordos';
         g = { key, item: comp ? { app: key } : c, name: comp || (c.self && !c.cgApp) ? null : c.appName || c.name || '?', exe: c.exe, pids: new Set(), conns: [], hosts: new Map(),
-          sent: 0, recv: 0, rateTx: 0, rateRx: 0, listen: [], icmp: [], incoming: 0, verdict: 'allow', programs: new Set() };
+          sent: 0, recv: 0, rateTx: 0, rateRx: 0, listen: [], icmp: [], raw: [], packet: [], incoming: 0, verdict: 'allow', programs: new Set() };
         apps.set(key, g);
       }
       if (c.name && c.cgApp && !c.self) g.programs.add(c.name);
@@ -114,6 +120,8 @@ function useGroups(conns) {
       g.rateRx += rrx;
       if (c.dir === 'listen') { g.listen.push(c); continue; }
       if (c.dir === 'icmp') { g.icmp.push(c); continue; }     // a ping socket: the kernel keeps no destination
+      if (c.dir === 'raw') { g.raw.push(c); continue; }       // raw IP (CAP_NET_RAW): lport holds the IP protocol
+      if (c.dir === 'packet') { g.packet.push(c); continue; } // a packet socket (CAP_NET_RAW): ethertype and interface
       if (c.dir === 'in') g.incoming++;
       rememberGeo(c);
       const h = g.hosts.get(c.remote) || { remote: c.remote, cc: c.cc, scope: c.scope, ports: new Set(), sent: 0, recv: 0, rateTx: 0, rateRx: 0, count: 0 };
@@ -289,7 +297,10 @@ function AppRow({ g, node, ctx, open, selected, onToggle, onSelect, maxBytes, tr
       {open && node ? <TreeChildren node={node} ctx={ctx} /> : null}
       {open && !kids ? <Text style={{ fontSize: 11, color: t.textDim, height: 22, ...(direction() === 'rtl' ? { paddingRight: 40 } : { paddingLeft: 40 }) }}>
         {[g.listen.length ? tr('monitor.net.onlyListening', { ports: g.listen.map((c) => c.lport).join(', ') }) : '',
-          g.icmp?.length ? tr('monitor.net.icmpSockets', { count: g.icmp.length }) : ''].filter(Boolean).join(' · ') || tr('monitor.net.noDestinations')}</Text> : null}
+          g.icmp?.length ? tr('monitor.net.icmpSockets', { count: g.icmp.length }) : '',
+          g.raw?.length ? tr('monitor.net.rawSockets', { what: [...new Set(g.raw.map((c) => ipProtoName(c.lport)))].join(', ') }) : '',
+          g.packet?.length ? tr('monitor.net.packetSockets', { what: [...new Set(g.packet.map((c) => `${etherName(c.ethertype)}${c.iface ? ` · ${c.iface}` : ''}`))].join(', ') }) : '',
+        ].filter(Boolean).join(' · ') || tr('monitor.net.noDestinations')}</Text> : null}
     </View>
   );
 }

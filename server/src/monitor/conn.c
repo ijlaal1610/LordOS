@@ -27,6 +27,7 @@
 #include <linux/rtnetlink.h>
 #include <linux/sock_diag.h>
 #include <linux/tcp.h>
+#include <net/if.h>
 #include <netinet/in.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -112,9 +113,16 @@ static int dump(int fd, int fam, int proto) {
     }
 }
 
-/* ICMP "ping" sockets (ping(8) without privileges): sock_diag has no dump for them, the kernel lists
- * them in /proc/net/icmp and icmp6 (with uid and inode, like every socket of the network namespace).
- * An unconnected ping socket has no destination: only its echo identifier, kept as the local port. */
+/* What sock_diag doesn't dump, read from the tables the kernel keeps per network namespace (every
+ * socket, with uid and inode):
+ *   /proc/net/icmp, icmp6   ICMP "ping" sockets (ping(8) without privileges); an unconnected ping
+ *                           socket has no destination, only its echo identifier (kept as sport);
+ *   /proc/net/raw, raw6     raw IP sockets (CAP_NET_RAW: traceroute -I, a privileged ping, routing
+ *                           daemons); the "port" of the local address is the IP protocol (kept as sport);
+ *   /proc/net/packet        packet sockets (CAP_NET_RAW: DHCP clients, 802.1X, LLDP, capture tools):
+ *                           ethertype (sport) and interface index (dport).
+ * They can see or forge traffic below TCP and UDP, so the Monitor lists them. */
+#define PROTO_PACKET 254                /* not an IP protocol: a packet socket (AF_PACKET) */
 static void hex_addr(const char *h, int fam, uint8_t out[16]) {
     memset(out, 0, 16);
     int words = fam == 4 ? 1 : 4;
@@ -130,7 +138,8 @@ static void hex_addr(const char *h, int fam, uint8_t out[16]) {
     }
 }
 
-static void icmp_read(const char *path, int fam) {
+/* proto: IPPROTO_ICMP (icmp, icmp6) or IPPROTO_RAW (raw, raw6) */
+static void inet_table_read(const char *path, int fam, int proto) {
     FILE *f = fopen(path, "re");
     if (!f) return;
     char line[512], la[64], ra[64];
@@ -146,12 +155,35 @@ static void icmp_read(const char *path, int fam) {
         k->inode = (uint32_t)inode;
         k->uid = uid;
         k->fam = (uint8_t)fam;
-        k->proto = fam == 4 ? IPPROTO_ICMP : IPPROTO_ICMPV6;
+        k->proto = (uint8_t)(proto == IPPROTO_ICMP && fam == 6 ? IPPROTO_ICMPV6 : proto);
         k->state = (uint8_t)st;
         hex_addr(la, fam, k->src);
         hex_addr(ra, fam, k->dst);
         k->sport = (uint16_t)strtoul(lc + 1, NULL, 16);
         k->dport = (uint16_t)strtoul(rc + 1, NULL, 16);
+    }
+    fclose(f);
+}
+
+/* "sk RefCnt Type Proto Iface R Rmem User Inode" */
+static void packet_table_read(void) {
+    FILE *f = fopen("/proc/net/packet", "re");
+    if (!f) return;
+    char line[256];
+    unsigned type, eth, ifx, uid;
+    unsigned long inode;
+    if (!fgets(line, sizeof line, f)) { fclose(f); return; }
+    while (nsock < MAX_SOCK && fgets(line, sizeof line, f)) {
+        if (sscanf(line, " %*s %*s %u %x %u %*s %*s %u %lu", &type, &eth, &ifx, &uid, &inode) != 5 || !inode) continue;
+        Sock *k = &socks[nsock++];
+        memset(k, 0, sizeof *k);
+        k->inode = (uint32_t)inode;
+        k->uid = uid;
+        k->fam = 17;                         /* AF_PACKET */
+        k->proto = PROTO_PACKET;
+        k->state = (uint8_t)type;            /* SOCK_RAW 3 (with link header) or SOCK_DGRAM 2 */
+        k->sport = (uint16_t)eth;
+        k->dport = (uint16_t)ifx;
     }
     fclose(f);
 }
@@ -165,7 +197,13 @@ static int sock_dump(void) {
     for (int i = 0; i < 2; i++)
         for (int j = 0; j < 2; j++) ok |= !dump(fd, fams[i], protos[j]);
     close(fd);
-    if (ok) { icmp_read("/proc/net/icmp", 4); icmp_read("/proc/net/icmp6", 6); }
+    if (ok) {
+        inet_table_read("/proc/net/icmp", 4, IPPROTO_ICMP);
+        inet_table_read("/proc/net/icmp6", 6, IPPROTO_ICMP);
+        inet_table_read("/proc/net/raw", 4, IPPROTO_RAW);
+        inet_table_read("/proc/net/raw6", 6, IPPROTO_RAW);
+        packet_table_read();
+    }
     return ok ? 0 : -1;
 }
 
@@ -364,6 +402,23 @@ void conn_scan(Buf *b, const Mmdb *geo) {
         Sock *s = &socks[i];
         if (s->uid != me || !s->inode) continue;
         int fam = s->fam;
+        Slot *psl = NULL;
+        if (s->proto == PROTO_PACKET) {      /* no addresses: ethertype and interface */
+            psl = map_find(s->inode, 0);
+            int pp = psl ? psl->pid : -1, pq = pp > 0 ? proc_info(pp) : -1;
+            char ifn[IF_NAMESIZE] = "";
+            if (!if_indextoname(s->dport, ifn)) ifn[0] = 0;
+            mon_buf_printf(b, "%s{\"id\":%u,\"proto\":\"packet\",\"fam\":17,\"state\":\"%s\",\"dir\":\"packet\",\"ethertype\":%u,\"iface\":",
+                           n ? "," : "", s->inode, s->state == 3 ? "RAW" : "DGRAM", s->sport);
+            mon_buf_str(b, ifn);
+            mon_buf_printf(b, ",\"local\":\"\",\"lport\":0,\"remote\":\"\",\"rport\":0,\"scope\":\"local\",\"cc\":\"\",\"pid\":%d,\"self\":%s,\"name\":", pp, pp == self ? "true" : "false");
+            mon_buf_str(b, pq >= 0 ? pinfo[pq].name : "");
+            mon_buf_printf(b, ",\"exe\":");
+            mon_buf_str(b, pq >= 0 ? pinfo[pq].exe : "");
+            mon_buf_printf(b, ",\"cgApp\":\"\",\"sent\":null,\"recv\":null}");
+            n++;
+            continue;
+        }
         uint8_t src[16], dst[16];
         memcpy(src, s->src, 16);
         memcpy(dst, s->dst, 16);
@@ -376,14 +431,15 @@ void conn_scan(Buf *b, const Mmdb *geo) {
         char ls[INET6_ADDRSTRLEN], rs[INET6_ADDRSTRLEN];
         inet_ntop(fam == 4 ? AF_INET : AF_INET6, src, ls, sizeof ls);
         inet_ntop(fam == 4 ? AF_INET : AF_INET6, dst, rs, sizeof rs);
-        int tcp = s->proto == IPPROTO_TCP, icmp = s->proto == IPPROTO_ICMP || s->proto == IPPROTO_ICMPV6;
+        int tcp = s->proto == IPPROTO_TCP, icmp = s->proto == IPPROTO_ICMP || s->proto == IPPROTO_ICMPV6, raw = s->proto == IPPROTO_RAW;
         const char *dir;
         if (icmp) dir = "icmp";                                 /* a ping socket: no destination known */
+        else if (raw) dir = "raw";                              /* raw IP: sport holds the IP protocol */
         else if (tcp && s->state == 10) dir = "listen";
         else if (!tcp && !s->dport) dir = "listen";             /* UDP without a destination: listening */
         else if (tcp && (listening_port[s->sport >> 3] & (1 << (s->sport & 7)))) dir = "in";
         else dir = "out";
-        int listening = !strcmp(dir, "listen") || icmp;
+        int listening = !strcmp(dir, "listen") || icmp || raw;
         const char *sc = listening ? "local" : scope(fam, dst);
         char cc[3] = "";
         if (geo && !strcmp(sc, "internet")) mmdb_country(geo, dst, fam, cc);
@@ -391,7 +447,7 @@ void conn_scan(Buf *b, const Mmdb *geo) {
         int pid = sl ? sl->pid : -1, pi = pid > 0 ? proc_info(pid) : -1;
         mon_buf_printf(b, "%s{\"id\":%u,\"proto\":\"%s\",\"fam\":%d,\"state\":\"%s\",\"dir\":\"%s\",\"local\":\"%s\",\"lport\":%u,"
                       "\"remote\":\"%s\",\"rport\":%u,\"scope\":\"%s\",\"cc\":\"%s\",\"pid\":%d,\"self\":%s,\"name\":",
-                   n ? "," : "", s->inode, tcp ? "tcp" : icmp ? "icmp" : "udp", fam, tcp && s->state < 13 ? TCP_STATE[s->state] : (s->dport ? "CONNECTED" : "UNCONN"),
+                   n ? "," : "", s->inode, tcp ? "tcp" : icmp ? "icmp" : raw ? "raw" : "udp", fam, tcp && s->state < 13 ? TCP_STATE[s->state] : (s->dport ? "CONNECTED" : "UNCONN"),
                    dir, ls, s->sport, listening ? "" : rs, s->dport, sc, cc, pid, pid == self ? "true" : "false");
         mon_buf_str(b, pi >= 0 ? pinfo[pi].name : "");
         mon_buf_printf(b, ",\"exe\":");

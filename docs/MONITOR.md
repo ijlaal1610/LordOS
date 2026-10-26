@@ -44,10 +44,14 @@ the rest of the tab, and the first generation of the list.
   **each one's own allow/block switch** (see "Per-destination switches"); a click on a row selects
   it in the right panel. Since 0.8.3 the app's name gets the row's whole width and wraps to two
   lines (the connection count and the denied badge sit next to the traffic bar; the column is
-  336 px and the Data and Rule columns are narrower). Since 0.8.5 the list has three protocols: TCP and
-  UDP from `sock_diag`, and ICMP "ping" sockets from `/proc/net/icmp` and `icmp6` (`conn.c`,
-  `icmp_read`), shown on their app's row as "ICMP (ping)" without a destination (the kernel keeps none
-  for an unconnected ping socket). The remote desktop's bridge runs as the user but isn't dumpable, so
+  336 px and the Data and Rule columns are narrower). Since 0.8.5 the list covers what sits below TCP and
+  UDP too (`conn.c`): TCP and UDP from `sock_diag`; ICMP "ping" sockets from `/proc/net/icmp` and `icmp6`,
+  shown as "ICMP (ping)" without a destination (the kernel keeps none for an unconnected ping socket);
+  raw IP sockets from `/proc/net/raw` and `raw6`, with their IP protocol (ICMP, IGMP, GRE, ESP, OSPF,
+  VRRP…); and packet sockets from `/proc/net/packet`, with the ethertype (ALL, IPv4, ARP, IPv6, EAPOL,
+  LLDP…) and the interface. Raw and packet sockets need `CAP_NET_RAW` and can see or forge traffic, so
+  the row says so. `build/conn-dump` prints one reading for checking it by hand (on VM 116: a ping, a raw
+  ICMP socket and an ARP packet socket on eth0, the last two from a process given `CAP_NET_RAW`). The remote desktop's bridge runs as the user but isn't dumpable, so
   its sockets can't be traced to a pid; `conn.c` gives the sockets in `lordos.service`'s root-owned
   `supervisor` group to Remote Desktop (its WebRTC UDP ports), instead of an unknown "?". At the bottom,
   the machine's traffic:

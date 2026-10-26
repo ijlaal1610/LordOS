@@ -409,5 +409,7 @@
   "net.icmpSockets": {
     "one": "{count} socket ICMP (ping): el sistema no guarda su destino",
     "other": "{count} sockets ICMP (ping): el sistema no guarda su destino"
-  }
+  },
+  "net.rawSockets": "sockets IP raw ({what}): puede ver o fabricar tráfico IP",
+  "net.packetSockets": "sockets de paquete ({what}): puede ver o fabricar tráfico en la placa de red"
 }

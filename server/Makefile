@@ -376,6 +376,9 @@ build/map-bench: tests/map_bench.c src/monitor/map.c src/monitor/map.h src/monit
 # Monitor process actions (src/monitor/procctl.c): the protected list, stat parsing, a signal that
 # refuses a stale start time (PID reuse), TERM/KILL on a child, and the Get Info JSON
 test: build/procctl-test
+# one reading of Monitor → Network's sockets (tests/conn_dump.c), for checking conn.c by hand
+build/conn-dump: tests/conn_dump.c src/monitor/conn.c src/monitor/mon.c src/monitor/disktemp.c src/monitor/mmdb.c src/pkg/xz.c build/obj/ui/stb.o
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/conn_dump.c src/monitor/mon.c src/monitor/disktemp.c src/monitor/conn.c src/monitor/procctl.c src/monitor/mmdb.c src/pkg/xz.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c src/sec/cgroup.c build/obj/ui/stb.o -lm -lpthread
 build/procctl-test: tests/procctl_test.c src/monitor/procctl.c src/monitor/procctl.h src/monitor/mon.c src/monitor/disktemp.c src/monitor/conn.c src/monitor/mmdb.c src/pkg/xz.c build/obj/ui/stb.o
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/procctl_test.c src/monitor/procctl.c src/monitor/mon.c src/monitor/disktemp.c src/monitor/conn.c src/monitor/mmdb.c src/pkg/xz.c src/fw/rules.c src/fw/fwmap.c src/sec/json.c src/sec/cgroup.c build/obj/ui/stb.o -lm -lpthread
 	./$@ || { rm -f $@; exit 1; }
