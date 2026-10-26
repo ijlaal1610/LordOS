@@ -149,8 +149,33 @@ compositor's keymap, modifiers and layout, repeat rate and delay) and every glob
 
 ![Test Bench on VM 116](testbench.png)
 
-**Still to build** (from the plan below): the scripted protocol checklist, 3D with EGL and dmabuf,
-generated video at 24/30/60 fps, gamepads, and attaching its report to System Information.
+**Phase 2, the protocol checklist (2026-10-26, `checks.c`):** runs at start (F5 runs it again; Pause freezes
+the picture for a still capture) and in `--auto`'s JSON. Each protocol is bound at the advertised version
+and exercised, and a protocol error ends the connection with the failing check named (its first run caught
+the bench's own mistake, `wl_shm.release` on version 1, which LordOS's compositor rightly refused). First
+run on VM 116 (headless session):
+
+| Check | Result |
+|---|---|
+| `wl_shm` formats | pass: ARGB8888 and XRGB8888 |
+| `wl_output` modes, `zxdg_output` layout | pass: LORD-1 1280×800 at 60.00 Hz, scale 1, logical 1280×800 at 0,0 |
+| fractional scale | pass: preferred 1.000 |
+| subsurface + viewport | pass: shown (its frame callback came back), viewport 48 → 96 |
+| xdg popup | pass: configured 200×100 and mapped |
+| maximize, fullscreen | pass: the configure carries the state, and loses it after unset |
+| `linux-dmabuf` v4 feedback | pass, with a finding: a headless session sends main device 0:0 (none) and 4 formats |
+| clipboard, primary selection round trip | **fail**: the compositor doesn't send a new selection back to the focused client that set it (`wl.c`, `offer_selection` returns early for "its own"); the protocol says the focused client gets every new selection. Toolkits cope, but it is a deviation |
+| `wp_presentation` | offered, but a headless session discards every frame and gives no refresh (the output's mode says 60 Hz) |
+| cursor shape, relative pointer, gestures | bound; they need the real pointer or a touchpad to go green |
+| not offered | text-input v3 (input methods for Linux apps), xdg-activation, idle-inhibit (a video player can't keep the screen on), single-pixel buffers, tearing control, content type, tablets, idle notify, drm-lease |
+
+Also seen: system shortcuts (F1 opens Help, F4 the launcher, ❖ combinations) never reach the app, so the
+keyboard test can't light them; the bench should list them as taken by the system.
+
+**Still to build:** 3D with EGL and dmabuf (which renderer: hardware, or software like llvmpipe), direct
+scanout in fullscreen, generated video at 24/30/60 fps with cadence and judder, input-to-screen latency from
+event and presentation times, pointer lock and confine, keys taken by system shortcuts, gamepads, a check
+with the real monitor and GPU, and attaching the report to System Information.
 
 ### The plan
 

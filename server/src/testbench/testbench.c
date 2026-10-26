@@ -12,7 +12,8 @@
  *     axis source;
  *   - the Wayland globals the compositor advertises, with their versions.
  *
- *   lordos-testbench                    interactive
+ *   lordos-testbench                    interactive (F5 runs the protocol checklist again, Pause freezes
+ *                                       the picture: one still frame to compare or capture)
  *   lordos-testbench --auto [seconds]   runs for a while (default 5 s), prints a JSON report and exits
  *
  * It reads no files and talks to nothing but the compositor. */
@@ -21,6 +22,7 @@
 #endif
 #include "card.h"
 #include "draw.h"
+#include "tb.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -55,26 +57,28 @@
 #define C_CROSS    TB_RGB(0, 230, 255)
 
 /* ---- Wayland ---- */
-static struct wl_display *dpy;
-static struct wl_compositor *comp;
-static struct wl_shm *shm;
-static struct xdg_wm_base *wm;
-static struct wl_seat *seat;
-static struct wl_pointer *pointer;
-static struct wl_keyboard *keyboard;
+struct wl_display *dpy;
+struct wl_registry *registry;
+struct wl_compositor *comp;
+struct wl_shm *shm;
+struct xdg_wm_base *wm;
+struct wl_seat *seat;
+struct wl_pointer *pointer;
+struct wl_keyboard *keyboard;
 static struct zxdg_decoration_manager_v1 *decoman;
 static struct wp_presentation *presentation;
-static struct wl_surface *surf;
-static struct xdg_surface *xsurf;
-static struct xdg_toplevel *top;
+struct wl_surface *surf;
+struct xdg_surface *xsurf;
+struct xdg_toplevel *top;
+uint32_t kb_serial, ptr_serial, toplevel_states;
 
-typedef struct { uint32_t name, version; char iface[64]; } Global;
-static Global globals[96];
-static int nglobals;
+Global globals[96];
+int nglobals;
 
 typedef struct { struct wl_buffer *b; uint32_t *px; size_t size; int w, h, busy; } Buf;
 static Buf bufs[2];
-static int win_w = 1280, win_h = 800, configured, closed, frame_pending;
+int win_w = 1280, win_h = 800;
+static int configured, closed, frame_pending;
 static Card card;
 static int card_x, card_y;
 
@@ -101,6 +105,7 @@ static double ptr_x = -1, ptr_y = -1;
 static int ptr_in, btn_down[16], btn_seen[16];
 static long wheel_v, wheel_h, wheel120_v, wheel120_h;
 static char axis_src[16] = "-";
+static int rerun_checks, paused;          /* F5 runs the checklist again; Pause freezes the picture */
 
 /* ---- the keyboard drawn on screen: evdev codes, widths in quarter units ---- */
 typedef struct { int code, w; const char *label; } Key;
@@ -245,7 +250,9 @@ static void draw_panel(Surf *s, int x0) {
     if (presentation) {
         snprintf(v, sizeof v, "%lu SHOWN  %lu DISCARDED", presented, discarded);
         stat_line(s, x, &y, "PRESENTED", v, discarded ? C_WARN : C_GOOD);
-        snprintf(v, sizeof v, refresh_ns ? "%.2f HZ" : "UNKNOWN", refresh_ns ? 1e9 / refresh_ns : 0);
+        if (refresh_ns) snprintf(v, sizeof v, "%.2f HZ", 1e9 / refresh_ns);
+        else if (out_refresh_mhz) snprintf(v, sizeof v, "%.2f HZ (OUTPUT MODE; NONE IN FEEDBACK)", out_refresh_mhz / 1000.0);
+        else snprintf(v, sizeof v, "UNKNOWN");
         stat_line(s, x, &y, "REFRESH", v, C_TEXT);
         snprintf(v, sizeof v, "%lu", vblank_skips);
         stat_line(s, x, &y, "VBLANKS SKIPPED", v, vblank_skips ? C_WARN : C_GOOD);
@@ -285,7 +292,23 @@ static void draw_panel(Surf *s, int x0) {
     if (repeat_rate >= 0) snprintf(v, sizeof v, "%d/S AFTER %d MS", repeat_rate, repeat_delay); else snprintf(v, sizeof v, "NOT SENT");
     stat_line(s, x, &y, "REPEAT", v, C_TEXT);
     y += 8;
-    /* globals */
+    /* the protocol checklist (checks.c), or the globals until it has run */
+    if (nchecks) {
+        int pass = 0, fail = 0;
+        for (int i = 0; i < nchecks; i++) { pass += checks[i].state == CK_PASS; fail += checks[i].state == CK_FAIL; }
+        snprintf(v, sizeof v, "WAYLAND  %d GLOBALS  CHECKS %d OK  %d FAILED  (F5 AGAIN)", nglobals, pass, fail);
+        d_text(s, x, y, 1, fail ? C_BAD : C_HEAD, v);
+        y += 14;
+        for (int i = 0; i < nchecks && y < s->h - kbd_h() - 10; i++) {
+            static const uint32_t col[4] = { TB_RGB(140, 140, 160), TB_RGB(120, 230, 150), TB_RGB(255, 90, 80), TB_RGB(110, 170, 255) };
+            d_fill(s, x, y + 1, 6, 6, col[checks[i].state & 3]);
+            char line[240];
+            snprintf(line, sizeof line, "%.22s  %.*s", checks[i].id, (pw - 28) / 6 - 26, checks[i].detail);
+            d_text(s, x + 10, y, 1, checks[i].state == CK_FAIL ? C_BAD : C_TEXT, line);
+            y += 10;
+        }
+        return;
+    }
     snprintf(v, sizeof v, "WAYLAND  %d GLOBALS", nglobals);
     d_text(s, x, y, 1, C_HEAD, v);
     y += 14;
@@ -398,7 +421,7 @@ static void fb_discarded(void *d, struct wp_presentation_feedback *f) { (void)d;
 static const struct wp_presentation_feedback_listener fb_listener = { fb_sync, fb_presented, fb_discarded };
 
 static void redraw(void);
-static void frame_done(void *d, struct wl_callback *cb, uint32_t t) { (void)d; (void)t; wl_callback_destroy(cb); frame_pending = 0; redraw(); }
+static void frame_done(void *d, struct wl_callback *cb, uint32_t t) { (void)d; (void)t; wl_callback_destroy(cb); frame_pending = 0; if (!paused) redraw(); }
 static const struct wl_callback_listener frame_listener = { frame_done };
 
 static void redraw(void) {
@@ -443,7 +466,10 @@ static void xs_configure(void *d, struct xdg_surface *x, uint32_t serial) {
 }
 static const struct xdg_surface_listener xs_listener = { xs_configure };
 static void top_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *states) {
-    (void)d; (void)t; (void)states;
+    (void)d; (void)t;
+    toplevel_states = 0;
+    uint32_t *st;
+    wl_array_for_each(st, states) if (*st < 32) toplevel_states |= 1u << *st;
     if (w >= 640 && h >= 480) { win_w = w; win_h = h; }
 }
 static void top_close(void *d, struct xdg_toplevel *t) { (void)d; (void)t; closed = 1; }
@@ -466,17 +492,20 @@ static void kb_keymap(void *d, struct wl_keyboard *k, uint32_t fmt, int32_t fd, 
     keymap = km;
     kstate = xkb_state_new(km);
 }
-static void kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *sf, struct wl_array *keys) { (void)d; (void)k; (void)s; (void)sf; (void)keys; kb_focus = 1; }
+static void kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *sf, struct wl_array *keys) { (void)d; (void)k; (void)sf; (void)keys; kb_focus = 1; kb_serial = s; }
 static void kb_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *sf) {
     (void)d; (void)k; (void)s; (void)sf;
     kb_focus = 0;
     memset(down, 0, sizeof down);                /* keys still down when focus left aren't down for us */
 }
 static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t t, uint32_t key, uint32_t state) {
-    (void)d; (void)k; (void)serial; (void)t;
+    (void)d; (void)k; (void)t;
+    kb_serial = serial;
     if (key > KEY_MAX) return;
     int pressed = state == WL_KEYBOARD_KEY_STATE_PRESSED;
     down[key] = (unsigned char)pressed;
+    if (pressed && key == KEY_F5) rerun_checks = 1;
+    if (pressed && key == KEY_PAUSE) { paused = !paused; if (!paused && !frame_pending) redraw(); }
     if (pressed && !seen[key]) {
         seen[key] = 1;
         if (on_map((int)key)) nseen++;
@@ -519,7 +548,8 @@ static const struct wl_keyboard_listener kb_listener = { kb_keymap, kb_enter, kb
 
 /* ---- pointer ---- */
 static void p_enter(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf, wl_fixed_t x, wl_fixed_t y) {
-    (void)d; (void)p; (void)s; (void)sf;
+    (void)d; (void)p; (void)sf;
+    ptr_serial = s;
     ptr_in = 1;
     ptr_x = wl_fixed_to_double(x);
     ptr_y = wl_fixed_to_double(y);
@@ -527,7 +557,8 @@ static void p_enter(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface
 static void p_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf) { (void)d; (void)p; (void)s; (void)sf; ptr_in = 0; memset(btn_down, 0, sizeof btn_down); }
 static void p_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x, wl_fixed_t y) { (void)d; (void)p; (void)t; ptr_x = wl_fixed_to_double(x); ptr_y = wl_fixed_to_double(y); }
 static void p_button(void *d, struct wl_pointer *p, uint32_t s, uint32_t t, uint32_t button, uint32_t state) {
-    (void)d; (void)p; (void)s; (void)t;
+    (void)d; (void)p; (void)t;
+    ptr_serial = s;
     int i = (int)button - BTN_LEFT;              /* BTN_LEFT, RIGHT, MIDDLE, SIDE, EXTRA, FORWARD, BACK, TASK */
     if (i < 0 || i >= 8) return;
     btn_down[i] = state == WL_POINTER_BUTTON_STATE_PRESSED;
@@ -595,6 +626,13 @@ static void report(FILE *o) {
             no_buffer, presentation ? "true" : "false", presented, discarded, refresh_ns ? 1e9 / refresh_ns : 0, vblank_skips, zero_copy,
             keyboard ? "true" : "false", pointer ? "true" : "false", repeat_rate, repeat_delay);
     for (int i = 0; i < nglobals; i++) fprintf(o, "%s{\"interface\":\"%s\",\"version\":%u}", i ? "," : "", globals[i].iface, globals[i].version);
+    static const char *st[4] = { "untested", "pass", "fail", "info" };
+    fprintf(o, "],\"outputRefreshHz\":%.3f,\"checks\":[", out_refresh_mhz / 1000.0);
+    for (int i = 0; i < nchecks; i++) {
+        fprintf(o, "%s{\"id\":\"%s\",\"state\":\"%s\",\"detail\":\"", i ? "," : "", checks[i].id, st[checks[i].state & 3]);
+        for (const char *q = checks[i].detail; *q; q++) if (*q != '"' && *q != '\\') fputc(*q, o);
+        fprintf(o, "\"}");
+    }
     fprintf(o, "]}\n");
 }
 
@@ -613,8 +651,8 @@ int main(int argc, char **argv) {
     dpy = wl_display_connect(NULL);
     if (!dpy) { fprintf(stderr, "lordos-testbench: no Wayland compositor (WAYLAND_DISPLAY)\n"); return 1; }
     xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    struct wl_registry *reg = wl_display_get_registry(dpy);
-    wl_registry_add_listener(reg, &reg_listener, NULL);
+    registry = wl_display_get_registry(dpy);
+    wl_registry_add_listener(registry, &reg_listener, NULL);
     wl_display_roundtrip(dpy);
     if (!comp || !shm || !wm) { fprintf(stderr, "lordos-testbench: the compositor lacks wl_compositor, wl_shm or xdg_wm_base\n"); return 1; }
     if (presentation) wp_presentation_add_listener(presentation, &pres_listener, NULL);
@@ -632,9 +670,16 @@ int main(int argc, char **argv) {
     }
     wl_surface_commit(surf);
     double start = now_ms();
+    int ran = 0;
     while (!closed && wl_display_dispatch(dpy) != -1) {
+        if ((!ran && frames > 2) || rerun_checks) {
+            ran = 1;
+            rerun_checks = 0;
+            if (checks_run() < 0) break;            /* the compositor ended the connection */
+        }
         if (auto_s > 0 && frames && now_ms() - start > auto_s * 1000) break;
     }
+    if (wl_display_get_error(dpy) && !checks_done) fprintf(stderr, "lordos-testbench: the connection ended (error %d)\n", wl_display_get_error(dpy));
     if (auto_s > 0) report(stdout);
     for (int i = 0; i < 2; i++) buf_free(&bufs[i]);
     card_free(&card);
