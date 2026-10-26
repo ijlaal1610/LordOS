@@ -404,6 +404,13 @@ static void file_value(const char *path, const char *key, char *out, size_t n) {
 }
 
 static char greeter_mode[8] = "login", greeter_user[33];
+/* The login screen costs a lord-server (about 50 MB of its own memory, measured in a VM) and isn't
+ * needed while a session is on the monitor: it is stopped this long after a session takes the monitor,
+ * and started again for a lock, a user switch or a log out (sd_greeter_get starts it on demand). */
+#define GREETER_LINGER_S 10
+static double greeter_stop_at;
+static double greeter_asked_at;
+static int left_on_purpose;             /* the monitor was just taken from the session for a lock or a switch */         /* when the login screen was asked for (lock, switch), to log the wait */
 
 /* The last user whose session was shown on the monitor: the login screen preselects it. Kept in
  * SD_LAST_USER (root's, 0644) so it survives a reboot; only a valid user name is read back. */
@@ -488,8 +495,13 @@ static WorkKind pending;
 static char pending_user[33];
 
 static void set_mode(const char *mode, const char *user) {
-    snprintf(greeter_mode, sizeof greeter_mode, "%s", mode);
-    snprintf(greeter_user, sizeof greeter_user, "%s", user ? user : "");
+    /* through copies: callers may pass greeter_mode and greeter_user themselves (a retry), and an
+     * snprintf onto its own source is undefined (it left the mode empty) */
+    char m[sizeof greeter_mode], u[sizeof greeter_user];
+    snprintf(m, sizeof m, "%s", mode ? mode : "login");
+    snprintf(u, sizeof u, "%s", user ? user : "");
+    memcpy(greeter_mode, m, sizeof m);
+    memcpy(greeter_user, u, sizeof u);
 }
 
 /* In a child: the login screen (creates it if needed) to the monitor. */
@@ -584,7 +596,7 @@ static int start_worker(WorkKind kind, const char *user, char *pass) {
 
 static void show_greeter(const char *mode, const char *user) {
     set_mode(mode, user);
-    if (start_worker(W_GREETER, NULL, NULL)) pending = W_GREETER;
+    if (start_worker(W_GREETER, NULL, NULL)) { pending = W_GREETER; sd_log("login screen (%s) queued behind a running worker", greeter_mode); }
 }
 
 static void power(const char *what, const char *who) {
@@ -648,7 +660,11 @@ static void first_frame(void) {
     int f = open(SD_FIRST_FRAME, O_WRONLY | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0644);
     if (f < 0) { sd_log("warning: %s: %s", SD_FIRST_FRAME, strerror(errno)); return; }
     close(f);
-    sd_log("first frame on the monitor: the boot splash can go");
+    /* the boot time to the desktop, from the kernel's start (CLOCK_BOOTTIME), for the logs and the
+     * results (docs/RESULTS.md) */
+    struct timespec bt;
+    clock_gettime(CLOCK_BOOTTIME, &bt);
+    sd_log("first frame on the monitor %.3f s after the kernel started: the boot splash can go", bt.tv_sec + bt.tv_nsec / 1e9);
 }
 
 /* No card with KMS (0.8.1): before this, the boot ended on a silent black screen. The message goes
@@ -697,6 +713,9 @@ static void from_worker(void) {
     if (n <= 0) { if (fd >= 0) close(fd); return; }
     char user[40];
     if (!strcmp(buf, "show g") && fd >= 0) {
+        greeter_stop_at = 0;
+        if (greeter_asked_at) sd_log("monitor: the login screen (%s), %.0f ms after the screen went dark", greeter_mode, (rd_now() - greeter_asked_at) * 1000);
+        greeter_asked_at = 0;
         set_shown('g', NULL);
         if (sd_mon_show(fd, "-", keep_lend())) { sd_mon_lost(); set_shown('-', NULL); }
         return;
@@ -705,7 +724,7 @@ static void from_worker(void) {
         sd_log("monitor: %s's session", user);
         set_shown('u', user);
         if (sd_mon_show(fd, user, keep_lend())) { sd_mon_lost(); set_shown('-', NULL); show_greeter("login", NULL); }
-        else save_last_user(user);
+        else { save_last_user(user); greeter_stop_at = rd_now() + GREETER_LINGER_S; }
         return;
     }
     if (fd >= 0) close(fd);
@@ -747,6 +766,24 @@ static void session_power(const char *j) {
     power(what, who);
 }
 
+/* Lock and switch user: the login screen isn't kept running behind a session (it is stopped a few
+ * seconds after a session takes the monitor, greeter_stop_at), and starting it takes a moment. So the
+ * monitor is taken from the session first: input revoked, its framebuffers removed (the screen goes
+ * dark), and only then is the login screen asked for. An unlocked desktop is never left on the screen
+ * while it starts. */
+static void leave_for_greeter(const char *mode) {
+    char user[40];
+    snprintf(user, sizeof user, "%s", shown_user);
+    greeter_stop_at = 0;
+    greeter_asked_at = rd_now();
+    left_on_purpose = 1;                /* the closed connection isn't the session ending (monitor_event) */
+    double t0 = rd_now();
+    sd_mon_lost();
+    sd_log("monitor: taken from %s in %.0f ms", user, (rd_now() - t0) * 1000);
+    set_shown('-', NULL);
+    show_greeter(mode, user);
+}
+
 /* Requests from the session being shown: lock, switch user, restart or shut down; from the login screen:
  * log in, restart or shut down. */
 static void from_shown(int type, const char *j) {
@@ -759,9 +796,9 @@ static void from_shown(int type, const char *j) {
             sd_log("%s locked the screen", shown_user);
             struct passwd *lp = sd_valid_username(shown_user) ? getpwnam(shown_user) : NULL;
             if (lp) rd_tokens_drop_uid(lp->pw_uid);        /* locking also signs that user's browsers out */
-            show_greeter("lock", shown_user);
+            leave_for_greeter("lock");
         }
-        else if (strstr(j, "\"switch\"")) { sd_log("%s is switching user", shown_user); show_greeter("switch", shown_user); }
+        else if (strstr(j, "\"switch\"")) { sd_log("%s is switching user", shown_user); leave_for_greeter("switch"); }
         return;
     }
     if (type != RP_GREETER || shown != 'g') return;
@@ -782,7 +819,8 @@ static void from_shown(int type, const char *j) {
 }
 
 static void monitor_event(void) {
-    if (sd_mon_read(from_shown) == 0) return;
+    left_on_purpose = 0;
+    if (sd_mon_read(from_shown) == 0 || left_on_purpose) { left_on_purpose = 0; return; }
     /* the session being shown ended: it logged out, or the login screen crashed */
     char was = shown;
     sd_mon_lost();
@@ -1281,6 +1319,10 @@ int main(int argc, char **argv) {
         if (r > 0 && lfd >= 0 && (p[1].revents & POLLIN)) accept_remote();
         if (r > 0 && p[2].fd >= 0 && p[2].fd == sd_mon_fd() && p[2].revents) monitor_event();
         if (r > 0 && p[3].fd >= 0 && (p[3].revents & POLLIN)) sd_mon_hotplug();     /* hotplug */
+        if (greeter_stop_at && rd_now() >= greeter_stop_at) {
+            greeter_stop_at = 0;
+            if (shown == 'u' && worker_pid < 0 && pending == W_NONE) stop_greeters("a session is on the monitor");
+        }
         if (rd_shared->lockout_dirty) save_lockout();
         deliver_notices();
         if (rd_shared->version != seen) { seen = rd_shared->version; write_status(); }

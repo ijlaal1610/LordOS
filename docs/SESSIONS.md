@@ -185,6 +185,18 @@ after that the wait is 1, 2, 4… seconds, up to 5 minutes.
 
 ### Lock, switch user and log out
 
+**The login screen runs only when it is shown (0.8.5).** It used to stay running behind the session
+after sign-in, a whole `lord-server` (about 53 MB of its own memory, 78 MB of PSS, measured in a VMware
+VM). Now `lord-sessiond` stops it 10 s after a session takes the monitor (`GREETER_LINGER_S`), and
+`sd_greeter_get` starts it again for a lock, a user switch or a log out; its socket is up in 8–22 ms
+and it reaches the monitor about 20 ms after it's asked for. On a lock or a switch the monitor is taken
+from the session **first** (`leave_for_greeter`: input revoked, its framebuffers removed, the screen
+dark), and only then is the login screen asked for, so an unlocked desktop never stays on the screen
+while it starts. Taking the monitor away is the slow part on some drivers: 1.18 s on VMware's
+`vmwgfx` (removing the framebuffer on the screen turns the output off), the same as before this change.
+The log says both: `monitor: taken from <user> in N ms` and `monitor: the login screen (lock), N ms
+after the screen went dark`.
+
 - **Lock screen:** ❖L, ❖Ctrl+Q, or the logo menu → «Lock Screen».
   1. The session sends `RP_SESSION {"a":"lock"}` to all its viewers.
   2. The monitor shows the login screen with that user.

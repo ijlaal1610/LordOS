@@ -12,6 +12,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Added
 
+- **A boot timer.** The boot splash shows the time since it started, in seconds and milliseconds, in
+  the bottom right corner, and the log records when the desktop's first frame reached the screen,
+  counted from the kernel's start (`first frame on the monitor 7.267 s after the kernel started`), for
+  comparing versions and machines.
 - **`lordos-fetch`.** Type it in a terminal to see the LordOS crown beside a summary of your
   computer: system, kernel, CPU, GPU, display, memory, disk, packages and how apps are isolated.
   `lordos-fetch --share` leaves out your user and computer names, for a screenshot you'll post.
@@ -80,6 +84,13 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **The login screen no longer stays running behind your session.** It was a whole display server
+  kept in memory after sign-in (about 53 MB of its own, 78 MB counting shared pages, measured in a
+  VMware VM). It now closes 10 seconds after a session takes the screen and starts again in a few
+  milliseconds when you lock, switch user or log out; the whole system went from 603 to 548 MB in use.
+  When you lock, the screen goes dark first and only then is the login screen started, so the unlocked
+  desktop is never left visible meanwhile. Also fixed: asking for the login screen twice on a lock (the
+  monitor handed over a second time), and its mode coming out empty when a request was retried.
 - **On virtual cards that don't wait for the screen's refresh, the desktop drew hundreds of frames a
   second.** The VMware graphics driver (`vmwgfx`) completes each page flip at once, so the compositor and
   every app followed it at 500–580 frames a second on a 60 Hz display, using CPU for frames nobody sees.

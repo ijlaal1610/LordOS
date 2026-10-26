@@ -338,10 +338,10 @@ static void spawn(const struct passwd *pw, const char *rt, const char *lang, int
 }
 
 static int wait_socket(const char *path, uid_t uid, int greeter) {
-    for (int i = 0; i < 200; i++) {               /* up to 20 s while the theme loads */
+    for (int i = 0; i < 1000; i++) {              /* up to 20 s while the theme loads, every 20 ms */
         int fd = greeter ? connect_path(path) : sd_session_connect(uid);
         if (fd >= 0) return fd;
-        usleep(100000);
+        usleep(20000);
     }
     return -1;
 }
