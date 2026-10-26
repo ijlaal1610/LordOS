@@ -40,6 +40,8 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **LordOS Imager offered 0.8.3 as the newest Raspberry Pi image.** It only accepted release tags
+  with three numbers, so it skipped 0.8.4.1; point releases (`v0.8.4.1-beta`) are now listed.
 - A monitor plugged in after boot now shows the login screen. The login screen never listened for the
   kernel's display events, so a board booted without HDMI (a Raspberry Pi 5) stayed without video until
   it was restarted. It now follows them like a session does, without the system bus.
