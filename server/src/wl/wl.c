@@ -29,6 +29,7 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include <time.h>
+#include <signal.h>
 #include <unistd.h>
 #include <linux/input-event-codes.h>
 #include <wayland-server-core.h>
@@ -3050,6 +3051,23 @@ void wl_close(int id) {
     if (s && s->top) xdg_toplevel_send_close(s->top);
     else if (s && s->xw) xwm_close(s->xw);
     if (dpy) wl_display_flush_clients(dpy);
+}
+
+/* Force Quit (the crown menu): SIGKILL to the process that owns this Wayland window, for an app that
+ * stopped answering. Only a client of this session's user, never lord-server itself, never pid 1, and
+ * never an X11 window (its client is Xwayland, which every X11 app shares: those are asked to close).
+ * 0, or an error code for the interface. */
+const char *wl_kill(int id) {
+    Surf *s = find(id);
+    if (!s || !s->top) return s && s->xw ? "app.forceQuitX11" : "app.notFound";
+    pid_t pid = 0;
+    uid_t uid = (uid_t)-1;
+    gid_t gid;
+    wl_client_get_credentials(wl_resource_get_client(s->top), &pid, &uid, &gid);
+    if (pid <= 1 || pid == getpid() || uid != getuid()) return "app.forceQuitRefused";
+    if (kill(pid, SIGKILL)) return "app.forceQuitFailed";
+    fprintf(stderr, "wayland: force quit pid %d (window %d)\n", (int)pid, id);
+    return NULL;
 }
 
 void wl_set_state(int id, int maximized, int fullscreen) {

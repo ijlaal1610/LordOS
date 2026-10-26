@@ -239,3 +239,4 @@ function LocaleRoot({ children }) {
     at('input', ImeOverlay));
 }
 export { lordosWallpapers, wallpaperSrc, wallpaperThumb, findWallpaper, DEFAULT_WALLPAPER, GREETER_WALLPAPER, WALLPAPER_CATEGORIES } from './wallpapers.js';
+export { appGroup, appMenuItems, runningApps, forceQuit, recentItems, storeUpdates } from './appcontrol.js';

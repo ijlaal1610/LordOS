@@ -345,7 +345,7 @@ export default function TerminalApp() {
       { label: actionLabel('clearBuffer'), onClick: () => run(wid, 'clearBuffer') },
       { label: actionLabel('find'), onClick: () => run(wid, 'find') },
       '-',
-      { label: actionLabel('preferences'), onClick: () => run(wid, 'preferences') },
+      { label: actionLabel('preferences'), hint: '❖,', onClick: () => run(wid, 'preferences') },
       { label: actionLabel('closePane'), onClick: () => closePane(wid, s) },
     ] });
   };

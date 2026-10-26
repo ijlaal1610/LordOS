@@ -1433,6 +1433,16 @@ static JSValue f_wl_close(JSContext *c, JSValueConst this_val, int argc, JSValue
     return JS_UNDEFINED;
 }
 
+/* lord.wayland.kill(id) → '' or an error code: Force Quit of a Linux app's window (wl_kill: its own
+ * process only, same user, never X11 or lord-server). */
+static JSValue f_wl_kill(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
+    (void)this_val; (void)argc;
+    int32_t id = 0;
+    if (JS_ToInt32(c, &id, argv[0]) || id <= 0) return JS_NewString(c, "sys.badArgument");
+    const char *err = wl_kill(id);
+    return JS_NewString(c, err ? err : "");
+}
+
 static JSValue f_wl_state(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val;
     int32_t id = 0;
@@ -1467,6 +1477,7 @@ static const JSCFunctionListEntry wayland_funcs[] = {
     JS_CFUNC_DEF("hasKeyboard", 0, f_wl_has_focus),
     JS_CFUNC_DEF("focus", 1, f_wl_focus),
     JS_CFUNC_DEF("close", 1, f_wl_close),
+    JS_CFUNC_DEF("kill", 1, f_wl_kill),
     JS_CFUNC_DEF("state", 4, f_wl_state),
     JS_CFUNC_DEF("info", 0, f_wl_info),
 };

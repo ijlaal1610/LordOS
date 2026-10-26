@@ -12,6 +12,13 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Added
 
+- **The app menu and Force Quit (Lord Flow).** Clicking the app's name in the menu bar opens its
+  menu: About <app> (its icon, name, own version and where it comes from), Settings… (the app's own,
+  ❖,), Hide <app>, Hide Others, Show All and Quit <app> (❖Q). The crown menu adds the Store, with how
+  many updates are waiting, Recent Items, and Force Quit…, which lists the open apps and ends the chosen
+  one without asking it: a Linux or isolated app's own process only (`lord.wayland.kill`, the same
+  user's client, never X11, which is asked to close), a built-in app without its close guard. In Lord
+  Classic, About <app> is in each window's Help menu.
 - **The themes are called Lord Flow and Lord Classic.** The menu bar and Dock theme (formerly Lord
   Default) is now **Lord Flow**, and the taskbar and start menu theme (formerly Classic) is **Lord
   Classic**, in every language. Only the names changed: your choice is kept.
