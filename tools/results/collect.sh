@@ -61,16 +61,15 @@ if [ "$MEM" = 1 ]; then
     } > "$D/memory.txt"
 fi
 
+J() { if sudo -n true 2>/dev/null; then sudo -n journalctl "$@"; else journalctl "$@"; fi; }   # all entries if allowed
 {
     systemd-analyze 2>&1 || true
     echo
     echo "# the desktop's first frame, from the kernel's start (lord-sessiond); the splash's own timer starts later"
-    journalctl -b -u lordos --no-pager 2>/dev/null | grep -o "first frame on the monitor [0-9.]* s after the kernel started" ||
-        sudo -n journalctl -b -u lordos --no-pager 2>/dev/null | grep -o "first frame on the monitor [0-9.]* s after the kernel started" ||
+    J -b -u lordos --no-pager 2>/dev/null | grep -o "first frame on the monitor [0-9.]* s after the kernel started" ||
         echo "(not in the journal: run with sudo, or as a member of the adm or systemd-journal group)"
     echo "# the boot splash started: subtract the first line's monotonic time from the second's"
-    { journalctl -b -o short-monotonic --no-pager 2>/dev/null || sudo -n journalctl -b -o short-monotonic --no-pager 2>/dev/null; } |
-        grep -m2 -E "kernel: Linux version|Started plymouth-start.service" || true
+    J -b -o short-monotonic --no-pager 2>/dev/null | awk '/kernel: Linux version/ && !k { print; k = 1 } /Started plymouth-start.service/ && !p { print; p = 1 }' || true
 } > "$D/boot.txt"
 
 cat > "$D/README.md" <<MD
