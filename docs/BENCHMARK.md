@@ -1,6 +1,6 @@
 # System Information, LordBench and hardware reports (proposal)
 
-**Status: design proposal, nothing here is built yet.** It plans three releases and a later stage:
+**Status: design proposal; the 0.8.5 collector and `lordos-sysreport` are built (below), the rest is not.** It plans three releases and a later stage:
 
 | Release | What |
 |---|---|
@@ -236,6 +236,15 @@ before installing.
 - Data packages `pci.ids` and `usb.ids` (Debian, architecture `all`), documented in `VM-SETUP.md`.
 
 ## Work plan for 0.8.5
+
+**Built (2026-10-26):** `server/src/sysreport/` (the collector, `ids.c` for `pci.ids`/`usb.ids`, the JSON
+and Markdown output), `lordos-sysreport report [--json | --markdown]` in `/usr/bin` (package `lordos`,
+which recommends `pci.ids` and `usb.ids`), and `tests/sysreport_test.c`: five fake machines (AMD desktop,
+Intel laptop, Nvidia desktop, Raspberry Pi 5, VM) full of serials, UUIDs, MAC addresses, a host name, a
+user name, monitor serials and a MAC inside an interface name, none of which may reach a report
+(`build/sysreport-test fixture <dir> <kind>` writes one for `--root`). Checked on VM 116 against the real
+machine. Not yet: the GPU's EGL, composition and scanout layers (they come from the running
+`lord-server`, with `lord.sysinfo`), `hw-memory-modules`, the app.
 
 1. `server/src/sysreport/`: collector, GPU layers, `pci.ids`/EDID readers, fake-sysfs fixtures
    (AMD desktop, Intel laptop, Nvidia desktop, Raspberry Pi 5, VM), the anonymization test,

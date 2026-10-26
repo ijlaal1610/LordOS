@@ -1,0 +1,515 @@
+/* sysreport_test.c — System Information's collector (src/sysreport) over fake trees: an AMD desktop,
+ * an Intel laptop, an Nvidia desktop, a Raspberry Pi 5 and a VM. Each tree is full of things a report
+ * must never carry (serial numbers, UUIDs, MAC addresses, a host name, a user name, a monitor's serial,
+ * a MAC inside an interface name); the test checks what each report finds, that its JSON is valid,
+ * and that none of those values reaches the JSON or the Markdown.
+ *
+ *   build/sysreport-test                       the tests (make test)
+ *   build/sysreport-test fixture <dir> <kind>  writes a fake tree (amd, intel, nvidia, rpi5, vm), for
+ *                                              `lordos-sysreport report --root <dir>` */
+#include "sysreport/sysreport.h"
+#include "sysreport/ids.h"
+#include "sec/json.h"
+
+#include <errno.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+static int n_ok, n_bad;
+#define CHECK(cond, ...) do { if (cond) n_ok++; else { n_bad++; printf("✗ " __VA_ARGS__); printf("\n"); } } while (0)
+
+static void mkdirs(const char *path) {
+    char p[1024];
+    snprintf(p, sizeof p, "%s", path);
+    for (char *s = p + 1; *s; s++) if (*s == '/') { *s = 0; mkdir(p, 0755); *s = '/'; }
+    mkdir(p, 0755);
+}
+
+/* <root>/<rel> with data (parent folders created); len < 0: strlen. */
+static void putn(const char *root, const char *rel, const void *data, int len) {
+    char p[1024], d[1024];
+    snprintf(p, sizeof p, "%s/%s", root, rel);
+    snprintf(d, sizeof d, "%s", p);
+    char *sl = strrchr(d, '/');
+    if (sl) { *sl = 0; mkdirs(d); }
+    FILE *f = fopen(p, "wb");
+    if (!f) { printf("cannot write %s: %s\n", p, strerror(errno)); exit(2); }
+    fwrite(data, 1, len < 0 ? strlen(data) : (size_t)len, f);
+    fclose(f);
+}
+static void put(const char *root, const char *rel, const char *text) { putn(root, rel, text, -1); }
+
+static void lnk(const char *root, const char *rel, const char *target) {
+    char p[1024], d[1024];
+    snprintf(p, sizeof p, "%s/%s", root, rel);
+    snprintf(d, sizeof d, "%s", p);
+    char *sl = strrchr(d, '/');
+    if (sl) { *sl = 0; mkdirs(d); }
+    unlink(p);
+    if (symlink(target, p)) printf("symlink %s: %s\n", p, strerror(errno));
+}
+
+static void driver(const char *root, const char *dir, const char *name) {
+    char rel[512], target[256];
+    snprintf(rel, sizeof rel, "%s/driver", dir);
+    snprintf(target, sizeof target, "../../../bus/drivers/%s", name);
+    lnk(root, rel, target);
+}
+
+/* A 128-byte EDID 1.4 with a name, a serial descriptor and a native mode. */
+static void edid(uint8_t *e, const char *pnp, uint16_t product, const char *name, const char *serial, int w, int h, int wcm, int hcm, int year) {
+    memset(e, 0, 128);
+    static const uint8_t hdr[8] = { 0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0 };
+    memcpy(e, hdr, 8);
+    uint16_t m = (uint16_t)(((pnp[0] - 'A' + 1) << 10) | ((pnp[1] - 'A' + 1) << 5) | (pnp[2] - 'A' + 1));
+    e[8] = (uint8_t)(m >> 8); e[9] = (uint8_t)m;
+    e[10] = (uint8_t)product; e[11] = (uint8_t)(product >> 8);
+    e[12] = 0xef; e[13] = 0xbe; e[14] = 0xad; e[15] = 0xde;      /* serial 0xdeadbeef */
+    e[16] = 10; e[17] = (uint8_t)(year - 1990);
+    e[18] = 1; e[19] = 4; e[20] = 0x80; e[21] = (uint8_t)wcm; e[22] = (uint8_t)hcm;
+    uint8_t *t = e + 54;                                          /* detailed timing */
+    t[0] = 0x56; t[1] = 0x5e;
+    t[2] = (uint8_t)w; t[4] = (uint8_t)((w >> 8) << 4);
+    t[5] = (uint8_t)h; t[7] = (uint8_t)((h >> 8) << 4);
+    const char *txt[2] = { name, serial };
+    uint8_t tag[2] = { 0xfc, 0xff };
+    for (int k = 0; k < 2; k++) {
+        uint8_t *d = e + 72 + 18 * k;
+        d[3] = tag[k];
+        size_t n = strlen(txt[k]);
+        for (int i = 0; i < 13; i++) d[5 + i] = (size_t)i < n ? (uint8_t)txt[k][i] : (size_t)i == n ? 0x0a : 0x20;
+    }
+    e[108 + 3] = 0x10;                                            /* dummy descriptor */
+    unsigned sum = 0;
+    for (int i = 0; i < 127; i++) sum += e[i];
+    e[127] = (uint8_t)(256 - sum % 256);
+}
+
+static const char *PCI_IDS =
+    "# pci.ids (a few lines)\n"
+    "1002  Advanced Micro Devices, Inc. [AMD/ATI]\n"
+    "\t67df  Ellesmere [Radeon RX 470/480/570/570X/580/580X/590]\n"
+    "\t\t1002 0b31  Radeon RX 580\n"
+    "\tab38  Navi 10 HDMI Audio\n"
+    "10de  NVIDIA Corporation\n"
+    "\t2684  AD102 [GeForce RTX 4090]\n"
+    "144d  Samsung Electronics Co Ltd\n"
+    "\ta808  NVMe SSD Controller SM981/PM981/PM983\n"
+    "1af4  Red Hat, Inc.\n"
+    "\t1050  Virtio 1.0 GPU\n"
+    "8086  Intel Corporation\n"
+    "\t9a49  TigerLake-LP GT2 [Iris Xe Graphics]\n"
+    "\t2725  Wi-Fi 6E(802.11ax) AX210/AX1675* 2x2 [Typhoon Peak]\n"
+    "C 02  Network controller\n"
+    "\t80  Network controller\n"
+    "C 03  Display controller\n"
+    "\t00  VGA compatible controller\n"
+    "\t80  Display controller\n"
+    "C 01  Mass storage controller\n"
+    "\t08  Non-Volatile memory controller\n";
+
+static const char *USB_IDS =
+    "046d  Logitech, Inc.\n"
+    "\tc52b  Unifying Receiver\n"
+    "0bda  Realtek Semiconductor Corp.\n"
+    "\t8153  RTL8153 Gigabit Ethernet Adapter\n"
+    "C 00  (Defined at Interface level)\n";
+
+/* the things no report may carry */
+static const char *SECRETS[] = { "SECRET", "secret", "deadbeef", "DEADBEEF", "de:ad:be:ef", "4c4c4544", "enxdeadbeef", "SECRETMON", "secretuser", "/home/" };
+
+static void common_secrets(const char *r) {
+    put(r, "proc/sys/kernel/hostname", "secret-host\n");
+    put(r, "sys/class/dmi/id/product_serial", "SECRET-SERIAL-123\n");
+    put(r, "sys/class/dmi/id/product_uuid", "4c4c4544-0042-3510-8051-b7c04f4d4d32\n");
+    put(r, "sys/class/dmi/id/board_serial", "SECRET-BOARD\n");
+    put(r, "sys/class/dmi/id/chassis_serial", "SECRET-CHASSIS\n");
+    put(r, "etc/hostname", "secret-host\n");
+    put(r, "etc/passwd", "secretuser:x:1000:1000:Secret User,,,:/home/secretuser:/bin/bash\n");
+}
+
+static void kernel(const char *r, const char *rel) {
+    char p[256];
+    put(r, "proc/sys/kernel/osrelease", rel);
+    snprintf(p, sizeof p, "boot/config-%s", rel);
+    put(r, p, "#\n# Linux kernel config\n#\nCONFIG_SECURITY_LANDLOCK=y\nCONFIG_BPF_SYSCALL=y\n# CONFIG_BPF_LSM is not set\nCONFIG_ZRAM=m\nCONFIG_USER_NS=y\n");
+    put(r, "sys/kernel/security/lsm", "lockdown,capability,landlock,yama,apparmor,bpf");
+    put(r, "sys/fs/cgroup/cgroup.controllers", "cpu memory io pids");
+    put(r, "etc/os-release", "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\nID=debian\nVERSION_ID=\"13\"\n");
+    put(r, "usr/share/misc/pci.ids", PCI_IDS);
+    put(r, "usr/share/misc/usb.ids", USB_IDS);
+}
+
+static void cpus(const char *r, int threads, int per_core) {
+    for (int i = 0; i < threads; i++) {
+        char p[256], v[16];
+        snprintf(p, sizeof p, "sys/devices/system/cpu/cpu%d/topology/core_id", i);
+        snprintf(v, sizeof v, "%d\n", i / per_core);
+        put(r, p, v);
+        snprintf(p, sizeof p, "sys/devices/system/cpu/cpu%d/topology/physical_package_id", i);
+        put(r, p, "0\n");
+    }
+    put(r, "sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq", "800000\n");
+    put(r, "sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", "4200000\n");
+    put(r, "sys/devices/system/cpu/cpu0/cpufreq/scaling_governor", "schedutil\n");
+    put(r, "sys/devices/system/cpu/cpu0/cache/index0/level", "1"); put(r, "sys/devices/system/cpu/cpu0/cache/index0/type", "Data");
+    put(r, "sys/devices/system/cpu/cpu0/cache/index0/size", "32K");
+    put(r, "sys/devices/system/cpu/cpu0/cache/index1/level", "1"); put(r, "sys/devices/system/cpu/cpu0/cache/index1/type", "Instruction");
+    put(r, "sys/devices/system/cpu/cpu0/cache/index1/size", "32K");
+    put(r, "sys/devices/system/cpu/cpu0/cache/index2/level", "2"); put(r, "sys/devices/system/cpu/cpu0/cache/index2/type", "Unified");
+    put(r, "sys/devices/system/cpu/cpu0/cache/index2/size", "512K");
+    put(r, "sys/devices/system/cpu/cpu0/cache/index3/level", "3"); put(r, "sys/devices/system/cpu/cpu0/cache/index3/type", "Unified");
+    put(r, "sys/devices/system/cpu/cpu0/cache/index3/size", "32768K");
+}
+
+/* a PCI device under /sys/bus/pci/devices */
+static void pcidev(const char *r, const char *slot, const char *ven, const char *dev, const char *cls, const char *drv) {
+    char d[256], f[300];
+    snprintf(d, sizeof d, "sys/bus/pci/devices/%s", slot);
+    snprintf(f, sizeof f, "%s/vendor", d); put(r, f, ven);
+    snprintf(f, sizeof f, "%s/device", d); put(r, f, dev);
+    snprintf(f, sizeof f, "%s/class", d); put(r, f, cls);
+    if (drv) driver(r, d, drv);
+}
+
+/* a DRM card: device ids (or none for a platform GPU), driver, a render node and connectors */
+static void card(const char *r, int n, const char *ven, const char *dev, const char *drv, int render, int boot) {
+    char d[256], f[300];
+    snprintf(d, sizeof d, "sys/class/drm/card%d/device", n);
+    if (ven) { snprintf(f, sizeof f, "%s/vendor", d); put(r, f, ven); snprintf(f, sizeof f, "%s/device", d); put(r, f, dev); }
+    if (boot) { snprintf(f, sizeof f, "%s/boot_vga", d); put(r, f, "1\n"); }
+    driver(r, d, drv);
+    if (render) { snprintf(f, sizeof f, "%s/drm/renderD%d/dev", d, 128 + n); put(r, f, "226:128\n"); }
+    snprintf(f, sizeof f, "%s/serial", d); put(r, f, "SECRET-GPU\n");
+}
+
+static void conn(const char *r, int n, const char *name, int connected, const uint8_t *ed, const char *modes) {
+    char d[256], f[300];
+    snprintf(d, sizeof d, "sys/class/drm/card%d-%s", n, name);
+    snprintf(f, sizeof f, "%s/status", d); put(r, f, connected ? "connected\n" : "disconnected\n");
+    snprintf(f, sizeof f, "%s/enabled", d); put(r, f, connected ? "enabled\n" : "disabled\n");
+    if (ed) { snprintf(f, sizeof f, "%s/edid", d); putn(r, f, ed, 128); }
+    if (modes) { snprintf(f, sizeof f, "%s/modes", d); put(r, f, modes); }
+}
+
+static void netif(const char *r, const char *name, const char *drv, int wifi, const char *speed) {
+    char d[256], f[300];
+    snprintf(d, sizeof d, "sys/class/net/%s", name);
+    snprintf(f, sizeof f, "%s/address", d); put(r, f, "de:ad:be:ef:00:01\n");
+    snprintf(f, sizeof f, "%s/type", d); put(r, f, "1\n");
+    snprintf(f, sizeof f, "%s/operstate", d); put(r, f, speed ? "up\n" : "down\n");
+    if (speed) { snprintf(f, sizeof f, "%s/speed", d); put(r, f, speed); }
+    if (drv) { snprintf(f, sizeof f, "%s/device", d); driver(r, f, drv); }
+    if (wifi) { snprintf(f, sizeof f, "%s/wireless/x", d); put(r, f, ""); }
+}
+
+static void disk(const char *r, const char *name, const char *model, const char *sectors, int rot, const char *link) {
+    char d[256], f[300];
+    snprintf(d, sizeof d, "sys/block/%s", name);
+    if (link) {                         /* sdX is a link into the device tree: its path says the bus */
+        char real[256];
+        snprintf(real, sizeof real, "sys/devices/%s/block/%s", link, name);
+        snprintf(f, sizeof f, "%s/size", real); put(r, f, sectors);
+        snprintf(f, sizeof f, "../devices/%s/block/%s", link, name);
+        lnk(r, d, f);
+    } else {
+        snprintf(f, sizeof f, "%s/size", d); put(r, f, sectors);
+    }
+    snprintf(f, sizeof f, "%s/queue/rotational", d); put(r, f, rot ? "1\n" : "0\n");
+    snprintf(f, sizeof f, "%s/removable", d); put(r, f, "0\n");
+    snprintf(f, sizeof f, "%s/device/model", d); put(r, f, model);
+    snprintf(f, sizeof f, "%s/device/serial", d); put(r, f, "SECRET-DISK\n");
+    snprintf(f, sizeof f, "%s/device/wwid", d); put(r, f, "eui.SECRET0000\n");
+}
+
+static void fixture(const char *r, const char *kind) {
+    uint8_t ed[128];
+    common_secrets(r);
+    kernel(r, "6.12.43+deb13-amd64");
+    put(r, "proc/meminfo", "MemTotal:       32768000 kB\nMemFree:  1 kB\nSwapTotal:       2097148 kB\n");
+    put(r, "proc/asound/cards", " 0 [Generic        ]: HDA-Intel - HD-Audio Generic\n                      HD-Audio Generic at 0xfcd00000 irq 89\n");
+    put(r, "run/lordos/netperm.sock", "");
+    if (!strcmp(kind, "amd")) {
+        put(r, "sys/class/dmi/id/sys_vendor", "Micro-Star International Co., Ltd.\n");
+        put(r, "sys/class/dmi/id/product_name", "MS-7C02\n");
+        put(r, "sys/class/dmi/id/product_version", "To be filled by O.E.M.\n");
+        put(r, "sys/class/dmi/id/board_vendor", "Micro-Star International Co., Ltd.\n");
+        put(r, "sys/class/dmi/id/board_name", "B450 TOMAHAWK MAX (MS-7C02)\n");
+        put(r, "sys/class/dmi/id/chassis_type", "3\n");
+        put(r, "sys/class/dmi/id/bios_vendor", "American Megatrends Inc.\n");
+        put(r, "sys/class/dmi/id/bios_version", "3.J0\n");
+        put(r, "sys/class/dmi/id/bios_date", "11/23/2023\n");
+        uint8_t sb[5] = { 6, 0, 0, 0, 1 };
+        putn(r, "sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c", sb, 5);
+        put(r, "proc/cpuinfo", "processor\t: 0\nvendor_id\t: AuthenticAMD\nmodel name\t: AMD Ryzen 7 5800X 8-Core Processor\n"
+                               "microcode\t: 0xa201205\nflags\t\t: fpu sse4_2 avx avx2 fma aes sha_ni\n");
+        cpus(r, 16, 2);
+        card(r, 0, "0x1002", "0x67df", "amdgpu", 1, 1);
+        edid(ed, "DEL", 0xa0c4, "DELL U2720Q", "SECRETMON01", 3840, 2160, 60, 34, 2021);
+        conn(r, 0, "DP-1", 1, ed, "3840x2160\n2560x1440\n");
+        conn(r, 0, "HDMI-A-1", 0, NULL, NULL);
+        pcidev(r, "0000:0a:00.0", "0x1002", "0x67df", "0x030000", "amdgpu");
+        pcidev(r, "0000:0a:00.1", "0x1002", "0xab38", "0x040300", "snd_hda_intel");
+        pcidev(r, "0000:01:00.0", "0x144d", "0xa808", "0x010802", "nvme");
+        disk(r, "nvme0n1", "Samsung SSD 970 EVO Plus 1TB\n", "1953525168\n", 0, NULL);
+        put(r, "sys/block/nvme0n1/device/device/current_link_speed", "8.0 GT/s PCIe\n");
+        put(r, "sys/block/nvme0n1/device/device/current_link_width", "4\n");
+        disk(r, "sda", "WDC WD40EFRX-68N\n", "7814037168\n", 1, "pci0000:00/0000:00:01.3/ata1/host0/target0:0:0/0:0:0:0");
+        disk(r, "loop0", "", "1000\n", 0, NULL);
+        netif(r, "enp5s0", "r8169", 0, "1000\n");
+        netif(r, "docker0", NULL, 0, NULL);
+        put(r, "sys/bus/usb/devices/usb1/idVendor", "1d6b\n");
+        put(r, "sys/bus/usb/devices/1-2/idVendor", "046d\n"); put(r, "sys/bus/usb/devices/1-2/idProduct", "c52b\n");
+        put(r, "sys/bus/usb/devices/1-2/speed", "12\n"); put(r, "sys/bus/usb/devices/1-2/bDeviceClass", "00\n");
+        put(r, "sys/bus/usb/devices/1-2/serial", "SECRET-USB\n"); put(r, "sys/bus/usb/devices/1-2/product", "secretuser's receiver\n");
+        driver(r, "sys/bus/usb/devices/1-2/1-2:1.0", "usbhid");
+        put(r, "sys/class/hwmon/hwmon0/name", "k10temp"); put(r, "sys/class/hwmon/hwmon0/temp1_input", "41250");
+        put(r, "sys/class/hwmon/hwmon1/name", "nct6797"); put(r, "sys/class/hwmon/hwmon1/fan1_input", "900");
+        put(r, "sys/class/hwmon/hwmon1/fan2_input", "0");
+    } else if (!strcmp(kind, "intel")) {
+        put(r, "sys/class/dmi/id/sys_vendor", "LENOVO\n");
+        put(r, "sys/class/dmi/id/product_name", "20XW0026US\n");
+        put(r, "sys/class/dmi/id/product_version", "ThinkPad X1 Carbon Gen 9\n");
+        put(r, "sys/class/dmi/id/chassis_type", "10\n");
+        put(r, "sys/class/dmi/id/bios_vendor", "LENOVO\n");
+        put(r, "sys/firmware/efi/x", "");
+        put(r, "proc/cpuinfo", "processor\t: 0\nvendor_id\t: GenuineIntel\nmodel name\t: 11th Gen Intel(R) Core(TM) i7-1165G7 @ 2.80GHz\n"
+                               "flags\t\t: fpu sse4_2 avx avx2 avx512f fma aes vaes\n");
+        cpus(r, 8, 2);
+        card(r, 0, "0x8086", "0x9a49", "i915", 1, 1);
+        edid(ed, "AUO", 0x2336, "", "SECRETMON02", 1920, 1200, 30, 19, 2020);
+        conn(r, 0, "eDP-1", 1, ed, "1920x1200\n");
+        pcidev(r, "0000:00:02.0", "0x8086", "0x9a49", "0x030000", "i915");
+        pcidev(r, "0000:00:14.3", "0x8086", "0x2725", "0x028000", "iwlwifi");
+        netif(r, "wlp0s20f3", "iwlwifi", 1, "866\n");
+        netif(r, "enxdeadbeef0001", "r8152", 0, "1000\n");   /* the name carries the MAC */
+        put(r, "sys/class/power_supply/BAT0/type", "Battery\n");
+        put(r, "sys/class/power_supply/BAT0/manufacturer", "SMP\n");
+        put(r, "sys/class/power_supply/BAT0/model_name", "5B10W13975\n");
+        put(r, "sys/class/power_supply/BAT0/technology", "Li-poly\n");
+        put(r, "sys/class/power_supply/BAT0/capacity", "76\n");
+        put(r, "sys/class/power_supply/BAT0/status", "Discharging\n");
+        put(r, "sys/class/power_supply/BAT0/energy_full", "45000000\n");
+        put(r, "sys/class/power_supply/BAT0/energy_full_design", "57000000\n");
+        put(r, "sys/class/power_supply/BAT0/serial_number", "SECRET-BAT\n");
+        put(r, "sys/class/power_supply/AC/type", "Mains\n");
+        put(r, "sys/class/power_supply/AC/online", "0\n");
+        put(r, "sys/class/power_supply/hidpp_battery_0/type", "Battery\n");
+        put(r, "sys/class/power_supply/hidpp_battery_0/scope", "Device\n");
+        put(r, "sys/class/bluetooth/hci0/address", "de:ad:be:ef:00:02\n");
+        driver(r, "sys/class/bluetooth/hci0/device", "btusb");
+        put(r, "sys/class/bluetooth/hci0:256/x", "");
+        put(r, "sys/class/thermal/thermal_zone0/type", "x86_pkg_temp"); put(r, "sys/class/thermal/thermal_zone0/temp", "52000");
+    } else if (!strcmp(kind, "nvidia")) {
+        put(r, "sys/class/dmi/id/sys_vendor", "ASUS\n");
+        put(r, "sys/class/dmi/id/chassis_type", "7\n");
+        put(r, "proc/cpuinfo", "processor\t: 0\nvendor_id\t: GenuineIntel\nmodel name\t: Intel(R) Core(TM) i9-10900\nflags\t\t: avx2\n");
+        cpus(r, 20, 2);
+        card(r, 0, "0x10de", "0x2684", "nouveau", 1, 1);
+        conn(r, 0, "DP-1", 0, NULL, NULL);
+        pcidev(r, "0000:01:00.0", "0x10de", "0x2684", "0x030000", "nouveau");
+    } else if (!strcmp(kind, "rpi5")) {
+        putn(r, "proc/device-tree/model", "Raspberry Pi 5 Model B Rev 1.0", 31);
+        putn(r, "proc/device-tree/compatible", "raspberrypi,5-model-b\0brcm,bcm2712\0", 36);
+        put(r, "proc/cpuinfo", "processor\t: 0\nBogoMIPS\t: 108.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\n"
+                               "CPU implementer\t: 0x41\nCPU part\t: 0xd0b\n\nprocessor\t: 1\n\n"
+                               "Revision\t: d04170\nSerial\t\t: 10000000deadbeef\nModel\t\t: Raspberry Pi 5 Model B Rev 1.0\n");
+        cpus(r, 4, 1);
+        put(r, "proc/sys/kernel/arch", "aarch64\n");
+        card(r, 0, NULL, NULL, "v3d", 1, 0);
+        card(r, 1, NULL, NULL, "vc4-drm", 0, 0);
+        edid(ed, "SAM", 0x7155, "LS27A600U", "SECRETMON03", 2560, 1440, 60, 34, 2022);
+        conn(r, 1, "HDMI-A-1", 1, ed, "2560x1440\n");
+        conn(r, 1, "HDMI-A-2", 0, NULL, NULL);
+        conn(r, 1, "Writeback-1", 0, NULL, NULL);
+        disk(r, "mmcblk0", "", "62333952\n", 0, NULL);
+        disk(r, "mmcblk0boot0", "", "8192\n", 0, NULL);
+        put(r, "sys/devices/platform/soc@107c000000/soc@107c000000:firmware/get_throttled", "0x50000\n");
+        put(r, "sys/block/zram0/disksize", "2147483648\n");
+        put(r, "sys/block/zram0/comp_algorithm", "lzo lzo-rle lz4 [zstd]\n");
+        put(r, "sys/class/hwmon/hwmon2/name", "pwmfan"); put(r, "sys/class/hwmon/hwmon2/fan1_input", "2900");
+    } else if (!strcmp(kind, "vm")) {
+        put(r, "sys/class/dmi/id/sys_vendor", "QEMU\n");
+        put(r, "sys/class/dmi/id/product_name", "Standard PC (Q35 + ICH9, 2009)\n");
+        put(r, "sys/class/dmi/id/chassis_type", "1\n");
+        put(r, "sys/class/dmi/id/bios_vendor", "SeaBIOS\n");
+        put(r, "proc/cpuinfo", "processor\t: 0\nvendor_id\t: GenuineIntel\nmodel name\t: Intel Xeon Processor (Skylake, IBRS)\n"
+                               "flags\t\t: fpu sse4_2 avx avx2 hypervisor\n");
+        cpus(r, 4, 1);
+        card(r, 0, "0x1af4", "0x1050", "virtio-pci", 0, 1);
+        conn(r, 0, "Virtual-1", 1, NULL, "1280x800\n1024x768\n");
+        disk(r, "vda", "", "67108864\n", 1, NULL);
+        netif(r, "ens18", "virtio_net", 0, "-1\n");
+    }
+}
+
+static int contains(const char *hay, const char *needle) { return hay && strstr(hay, needle) != NULL; }
+
+/* Collects the tree, checks the JSON parses and holds no secret; returns the report and its texts. */
+static SysReport *run(const char *root, char **json, char **md) {
+    SysReport *r = calloc(1, sizeof *r);
+    sysreport_collect(r, root, NULL, NULL);
+    snprintf(r->sw.lordos, sizeof r->sw.lordos, "0.8.5-beta");
+    *json = sysreport_json(r);
+    *md = sysreport_markdown(r);
+    JDoc doc;
+    char err[128] = "";
+    CHECK(*json && !json_parse(*json, strlen(*json), &doc, err, sizeof err), "%s: JSON invalid: %s", root, err);
+    if (*json && !err[0]) json_free(&doc);
+    for (size_t i = 0; i < sizeof SECRETS / sizeof SECRETS[0]; i++) {
+        CHECK(!contains(*json, SECRETS[i]), "%s: the JSON carries \"%s\"", root, SECRETS[i]);
+        CHECK(!contains(*md, SECRETS[i]), "%s: the Markdown carries \"%s\"", root, SECRETS[i]);
+    }
+    return r;
+}
+
+static void test_ids(void) {
+    char path[] = "/tmp/sysreport-ids-XXXXXX";
+    int fd = mkstemp(path);
+    if (fd < 0 || write(fd, PCI_IDS, strlen(PCI_IDS)) != (ssize_t)strlen(PCI_IDS)) { printf("mkstemp\n"); exit(2); }
+    close(fd);
+    IdsDb db;
+    CHECK(!ids_open(&db, path), "ids_open");
+    char v[96], d[96];
+    ids_lookup(&db, "1002", "67df", v, sizeof v, d, sizeof d);
+    CHECK(!strcmp(v, "Advanced Micro Devices, Inc. [AMD/ATI]") && !strcmp(d, "Ellesmere [Radeon RX 470/480/570/570X/580/580X/590]"), "ids amd: %s / %s", v, d);
+    ids_lookup(&db, "10DE", "2684", v, sizeof v, d, sizeof d);
+    CHECK(!strcmp(v, "NVIDIA Corporation") && !strcmp(d, "AD102 [GeForce RTX 4090]"), "ids uppercase: %s / %s", v, d);
+    ids_lookup(&db, "1002", "2684", v, sizeof v, d, sizeof d);     /* another vendor's device */
+    CHECK(!strcmp(v, "Advanced Micro Devices, Inc. [AMD/ATI]") && !d[0], "ids no device across vendors: %s", d);
+    ids_lookup(&db, "1002", "0b31", v, sizeof v, d, sizeof d);     /* a subsystem line, not a device */
+    CHECK(!d[0], "ids subsystem is not a device: %s", d);
+    ids_lookup(&db, "dead", "beef", v, sizeof v, d, sizeof d);
+    CHECK(!v[0] && !d[0], "ids unknown");
+    ids_lookup(&db, "10d", "2684", v, sizeof v, d, sizeof d);
+    CHECK(!v[0], "ids short vendor id");
+    char cn[48], sn[48];
+    ids_pci_class(&db, "030000", cn, sizeof cn, sn, sizeof sn);
+    CHECK(!strcmp(cn, "Display controller") && !strcmp(sn, "VGA compatible controller"), "class: %s / %s", cn, sn);
+    ids_pci_class(&db, "028000", cn, sizeof cn, sn, sizeof sn);
+    CHECK(!strcmp(cn, "Network controller") && !strcmp(sn, "Network controller"), "class 0280: %s / %s", cn, sn);
+    ids_pci_class(&db, "0c0330", cn, sizeof cn, sn, sizeof sn);
+    CHECK(!cn[0] && !sn[0], "class unknown");
+    ids_close(&db);
+    unlink(path);
+    CHECK(ids_open(&db, "/nonexistent/pci.ids") == -1, "ids missing file");
+    ids_lookup(&db, "1002", "67df", v, sizeof v, d, sizeof d);
+    CHECK(!v[0] && !d[0], "ids lookups on an empty db");
+}
+
+static void rmtree(const char *dir) {
+    char cmd[1200];
+    snprintf(cmd, sizeof cmd, "rm -rf '%s'", dir);
+    if (system(cmd)) printf("cannot remove %s\n", dir);
+}
+
+static void test_kind(const char *kind) {
+    char root[] = "/tmp/sysreport-test-XXXXXX";
+    if (!mkdtemp(root)) { printf("mkdtemp\n"); exit(2); }
+    fixture(root, kind);
+    char *json, *md;
+    SysReport *r = run(root, &json, &md);
+    CHECK(r->schema == 1 && strlen(r->date) == 10, "%s: schema/date", kind);
+    CHECK(!strcmp(r->sw.os, "Debian GNU/Linux 13 (trixie)") && !strcmp(r->sw.os_version, "13"), "%s: os %s", kind, r->sw.os);
+    CHECK(r->sw.landlock_abi == -1, "%s: landlock unknown under a fake root", kind);
+    CHECK(r->sw.bpf_lsm && r->sw.cgroup2 && r->sw.netperm && !r->sw.fand, "%s: lsm/cgroup/services", kind);
+    int ll = 0, bl = 0, zr = 0;
+    for (int i = 0; i < r->sw.nkconf; i++) {
+        if (!strcmp(r->sw.kconf[i].name, "CONFIG_SECURITY_LANDLOCK")) ll = !strcmp(r->sw.kconf[i].value, "y");
+        if (!strcmp(r->sw.kconf[i].name, "CONFIG_BPF_LSM")) bl = !strcmp(r->sw.kconf[i].value, "n");
+        if (!strcmp(r->sw.kconf[i].name, "CONFIG_ZRAM")) zr = !strcmp(r->sw.kconf[i].value, "m");
+    }
+    CHECK(ll && bl && zr, "%s: kernel config", kind);
+    CHECK(r->naudio == 1 && !strcmp(r->audio[0], "HD-Audio Generic"), "%s: audio %s", kind, r->audio[0]);
+    CHECK(contains(md, "# System report") && contains(md, "| LordOS | 0.8.5-beta |"), "%s: markdown head", kind);
+
+    if (!strcmp(kind, "amd")) {
+        CHECK(!strcmp(r->machine.vendor, "Micro-Star International Co., Ltd.") && !r->machine.version[0], "amd: dmi (placeholder dropped)");
+        CHECK(!strcmp(r->machine.chassis, "desktop") && !strcmp(r->machine.firmware, "uefi") && r->machine.secure_boot == 1, "amd: chassis/firmware/sb");
+        CHECK(!r->machine.virt[0], "amd: bare metal");
+        CHECK(r->cpu.threads == 16 && r->cpu.cores == 8 && r->cpu.sockets == 1, "amd: topology %d/%d/%d", r->cpu.sockets, r->cpu.cores, r->cpu.threads);
+        CHECK(r->cpu.max_mhz == 4200 && r->cpu.min_mhz == 800 && !strcmp(r->cpu.governor, "schedutil"), "amd: freq");
+        CHECK(r->cpu.l1d_kb == 32 && r->cpu.l2_kb == 512 && r->cpu.l3_kb == 32768, "amd: caches");
+        CHECK(!strcmp(r->cpu.flags, "sse4_2 avx avx2 fma aes sha_ni"), "amd: flags \"%s\"", r->cpu.flags);
+        CHECK(r->mem.total_kb == 32768000 && r->mem.swap_kb == 2097148 && !r->mem.zram_n, "amd: memory");
+        CHECK(r->ngpu == 1 && !strcmp(r->gpu[0].driver, "amdgpu") && r->gpu[0].render_node && r->gpu[0].boot_vga
+              && r->gpu[0].connectors == 2 && r->gpu[0].connected == 1 && !strcmp(r->gpu[0].bus, "pci"), "amd: gpu");
+        CHECK(contains(r->gpu[0].device, "Radeon RX 470/480/570"), "amd: gpu name %s", r->gpu[0].device);
+        CHECK(r->ndisplay == 1 && !strcmp(r->display[0].name, "DELL U2720Q") && !strcmp(r->display[0].pnp, "DEL")
+              && r->display[0].pref_w == 3840 && r->display[0].year == 2021 && r->display[0].diag_tenths > 270
+              && !strcmp(r->display[0].connector, "DP-1") && !strcmp(r->display[0].mode, "3840x2160"), "amd: display");
+        CHECK(r->ndisk == 2 && !strcmp(r->disk[0].name, "nvme0n1") && !strcmp(r->disk[0].transport, "nvme")
+              && !strcmp(r->disk[0].link, "8.0 GT/s PCIe x4") && !strcmp(r->disk[1].transport, "sata") && r->disk[1].rotational, "amd: disks");
+        CHECK(r->npci == 3 && !strcmp(r->pci[0].class_name, "Non-Volatile memory controller") && !strcmp(r->pci[0].driver, "nvme"), "amd: pci");
+        CHECK(r->nusb == 1 && !strcmp(r->usb[0].product, "Unifying Receiver") && !strcmp(r->usb[0].driver, "usbhid") && r->usb[0].speed_mbps == 12, "amd: usb");
+        CHECK(r->nnet == 2 && !strcmp(r->net[0].kind, "virtual") && !strcmp(r->net[1].kind, "ethernet") && r->net[1].speed_mbps == 1000, "amd: net");
+        int fans = 0;
+        for (int i = 0; i < r->nthermal; i++) fans += r->thermal[i].fans;
+        CHECK(r->nthermal == 2 && r->thermal[0].milli_c == 41250 && fans == 2, "amd: thermal");
+        CHECK(!r->pi.is_pi && !contains(json, "raspberryPi"), "amd: no Pi");
+    } else if (!strcmp(kind, "intel")) {
+        CHECK(!strcmp(r->machine.chassis, "laptop") && !strcmp(r->machine.version, "ThinkPad X1 Carbon Gen 9") && r->machine.secure_boot == -1, "intel: machine");
+        CHECK(!strcmp(r->cpu.flags, "sse4_2 avx avx2 fma avx512f aes vaes"), "intel: flags %s", r->cpu.flags);
+        CHECK(r->ndisplay == 1 && !r->display[0].name[0] && !strcmp(r->display[0].pnp, "AUO") && contains(md, "| eDP-1 | AUO, 2020 |"), "intel: panel");
+        CHECK(r->nnet == 2 && !strcmp(r->net[0].kind, "ethernet") && !strcmp(r->net[0].driver, "r8152")
+              && !strcmp(r->net[1].kind, "wifi") && !strcmp(r->net[1].driver, "iwlwifi"), "intel: net %s %s", r->net[0].kind, r->net[1].kind);
+        CHECK(r->npower == 2 && !strcmp(r->power[0].kind, "ac") && r->power[0].online == 0
+              && !strcmp(r->power[1].kind, "battery") && r->power[1].capacity == 76 && r->power[1].health == 78, "intel: power");
+        CHECK(contains(md, "holds 78 % of its design charge"), "intel: markdown battery");
+        CHECK(r->nbt == 1 && !strcmp(r->bt_driver[0], "btusb"), "intel: bluetooth");
+        CHECK(contains(r->pci[1].class_name, "Network controller") && contains(r->pci[1].device, "AX210"), "intel: wifi pci");
+    } else if (!strcmp(kind, "nvidia")) {
+        CHECK(r->ngpu == 1 && !strcmp(r->gpu[0].vendor, "NVIDIA Corporation") && !strcmp(r->gpu[0].driver, "nouveau") && !r->gpu[0].connected, "nvidia: gpu");
+        CHECK(r->cpu.cores == 10 && r->cpu.threads == 20 && !strcmp(r->machine.chassis, "desktop"), "nvidia: cpu/chassis");
+        CHECK(!r->ndisplay && !contains(md, "## Displays"), "nvidia: no displays");
+    } else if (!strcmp(kind, "rpi5")) {
+        CHECK(r->pi.is_pi && !strcmp(r->pi.revision, "d04170") && r->pi.throttled == 0x50000, "rpi5: pi %s %x", r->pi.revision, r->pi.throttled);
+        CHECK(!strcmp(r->machine.firmware, "dt") && !strcmp(r->machine.model, "Raspberry Pi 5 Model B Rev 1.0"), "rpi5: machine");
+        CHECK(!strcmp(r->cpu.vendor, "ARM") && !strcmp(r->cpu.model, "Cortex-A76") && !strcmp(r->cpu.arch, "aarch64"), "rpi5: cpu %s %s", r->cpu.vendor, r->cpu.model);
+        CHECK(!strcmp(r->cpu.flags, "asimd aes sha2 crc32 atomics"), "rpi5: features %s", r->cpu.flags);
+        CHECK(r->ngpu == 2 && !strcmp(r->gpu[0].bus, "platform") && !strcmp(r->gpu[0].driver, "v3d") && r->gpu[0].render_node
+              && !strcmp(r->gpu[1].driver, "vc4-drm") && r->gpu[1].connectors == 2 && r->gpu[1].connected == 1, "rpi5: gpus");
+        CHECK(r->ndisplay == 1 && !strcmp(r->display[0].card, "card1") && !strcmp(r->display[0].name, "LS27A600U"), "rpi5: display");
+        CHECK(r->ndisk == 1 && !strcmp(r->disk[0].transport, "mmc"), "rpi5: sd card (boot partitions skipped)");
+        CHECK(r->mem.zram_n == 1 && r->mem.zram_kb[0] == 2097152 && !strcmp(r->mem.zram_algo[0], "zstd"), "rpi5: zram");
+        CHECK(contains(json, "\"raspberryPi\":{") && contains(md, "under-voltage or throttling seen (0x50000)"), "rpi5: report");
+    } else if (!strcmp(kind, "vm")) {
+        CHECK(!strcmp(r->machine.virt, "kvm") && !strcmp(r->machine.chassis, "vm") && !strcmp(r->machine.firmware, "bios"), "vm: virt %s %s", r->machine.virt, r->machine.chassis);
+        CHECK(r->ngpu == 1 && !strcmp(r->gpu[0].device, "Virtio 1.0 GPU") && !r->gpu[0].render_node, "vm: gpu");
+        CHECK(r->ndisplay == 1 && !r->display[0].pref_w && contains(md, "| Virtual-1 | — | — | 1280x800 |"), "vm: display without EDID");
+        CHECK(r->ndisk == 1 && !strcmp(r->disk[0].transport, "virtio") && r->nnet == 1 && r->net[0].speed_mbps == -1, "vm: disk/net");
+        CHECK(contains(json, "\"speedMbps\":null"), "vm: unknown speed is null");
+    }
+    free(json);
+    free(md);
+    free(r);
+    rmtree(root);
+}
+
+static void test_empty(void) {
+    char root[] = "/tmp/sysreport-empty-XXXXXX";
+    if (!mkdtemp(root)) { printf("mkdtemp\n"); exit(2); }
+    char *json, *md;
+    SysReport *r = run(root, &json, &md);
+    CHECK(!r->ngpu && !r->ndisk && !r->cpu.threads && contains(md, "none found"), "empty tree");
+    free(json); free(md); free(r);
+    rmtree(root);
+}
+
+int main(int argc, char **argv) {
+    if (argc == 4 && !strcmp(argv[1], "fixture")) {
+        mkdirs(argv[2]);
+        fixture(argv[2], argv[3]);
+        return 0;
+    }
+    test_ids();
+    const char *kinds[] = { "amd", "intel", "nvidia", "rpi5", "vm" };
+    for (size_t i = 0; i < sizeof kinds / sizeof kinds[0]; i++) test_kind(kinds[i]);
+    test_empty();
+    printf("sysreport-test: %d ok, %d failed\n", n_ok, n_bad);
+    return n_bad ? 1 : 0;
+}

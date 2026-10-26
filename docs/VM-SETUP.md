@@ -1652,3 +1652,12 @@ was not tested here). Nothing was installed with apt.
   scripts and backups deleted, `lordos` restarted to the login screen. The traffic history
   (`~/.local/state/lordos/net-history.bin`) keeps the test minutes (app ids and byte counts only).
   No Proxmox setting was touched.
+
+## Step 47 — 0.8.5: System Information's collector (VM 116 `lordos-gpu`, October 26)
+
+See `BENCHMARK.md` ("0.8.5 — System Information"). Built in `~/LordOS-085fs` (`make -C server
+build/lordos-sysreport build/sysreport-test`) and run from there as `lord`; nothing was installed
+over `/usr/local/lib/lordos`.
+
+- **Installed:** `usb.ids` (Debian, architecture `all`: the USB vendor and product names, read by
+  `lordos-sysreport`; `pci.ids` was already installed). The package recommends both.
