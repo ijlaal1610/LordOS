@@ -69,7 +69,8 @@ J() { if sudo -n true 2>/dev/null; then sudo -n journalctl "$@"; else journalctl
     J -b -u lordos --no-pager 2>/dev/null | grep -o "first frame on the monitor [0-9.]* s after the kernel started" ||
         echo "(not in the journal: run with sudo, or as a member of the adm or systemd-journal group)"
     echo "# the boot splash started: subtract the first line's monotonic time from the second's"
-    J -b -o short-monotonic --no-pager 2>/dev/null | awk '/kernel: Linux version/ && !k { print; k = 1 } /Started plymouth-start.service/ && !p { print; p = 1 }' || true
+    J -b -o short-monotonic --no-pager 2>/dev/null | awk '/kernel: Linux version/ && !k { print; k = 1 } /Started plymouth-start.service/ && !p { print; p = 1 }' |
+        sed -E 's/^(\[[^]]*\]) [^ ]+ /\1 /' || true            # without the host name: results are published
 } > "$D/boot.txt"
 
 cat > "$D/README.md" <<MD
