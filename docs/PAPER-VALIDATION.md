@@ -172,10 +172,25 @@ run on VM 116 (headless session):
 Also seen: system shortcuts (F1 opens Help, F4 the launcher, ❖ combinations) never reach the app, so the
 keyboard test can't light them; the bench should list them as taken by the system.
 
-**Still to build:** 3D with EGL and dmabuf (which renderer: hardware, or software like llvmpipe), direct
-scanout in fullscreen, generated video at 24/30/60 fps with cadence and judder, input-to-screen latency from
-event and presentation times, pointer lock and confine, keys taken by system shortcuts, gamepads, a check
-with the real monitor and GPU, and attaching the report to System Information.
+**Phase 3 (2026-10-26, `gl3d.c` and `testbench.c`):**
+
+- **3D (G, or `--gl`):** a rotating cube with EGL and OpenGL ES 2 on a subsurface through Mesa's Wayland
+  platform, as a game draws: the renderer, vendor and version, whether it is a hardware GPU, a virtual
+  GPU or software (llvmpipe and the like, i.e. the CPU), the time to draw a frame (`glFinish`), and its
+  frames' presentation with the zero-copy flag (direct scanout). On VM 116: `llvmpipe (LLVM 19.1.7)`,
+  software, 0.5–8 ms a frame.
+- **Input to screen:** the time of each key or click (the event's timestamp) to the presentation time of
+  the frame that shows it (`wp_presentation`, CLOCK_MONOTONIC). In the headless session it says "not
+  measurable": no frame is presented there.
+- **Generated video (V):** content at 24, 30 or 60 fps with a square that steps once per content frame,
+  and how many refreshes each content frame stayed (24 on 60 Hz should be 2 and 3 alternating).
+- **Pointer lock (L):** `zwp_pointer_constraints_v1.lock_pointer`, shown as locked or not.
+- Built without EGL the bench still runs and the 3D row says so.
+
+![3D on VM 116 (software renderer)](testbench-3d.png)
+
+**Still to build:** pointer confine, keys taken by system shortcuts, gamepads, a run with the real monitor and
+GPU (presentation, latency, zero-copy), and attaching the report to System Information.
 
 ### The plan
 

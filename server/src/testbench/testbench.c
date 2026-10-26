@@ -15,6 +15,7 @@
  *   lordos-testbench                    interactive (F5 runs the protocol checklist again, Pause freezes
  *                                       the picture: one still frame to compare or capture)
  *   lordos-testbench --auto [seconds]   runs for a while (default 5 s), prints a JSON report and exits
+ *   --gl                                 also starts the 3D view (G does it interactively)
  *
  * It reads no files and talks to nothing but the compositor. */
 #ifndef _GNU_SOURCE
@@ -23,6 +24,7 @@
 #include "card.h"
 #include "draw.h"
 #include "tb.h"
+#include "gl3d.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -40,6 +42,7 @@
 #include "client/xdg-shell-client-protocol.h"
 #include "client/xdg-decoration-unstable-v1-client-protocol.h"
 #include "client/presentation-time-client-protocol.h"
+#include "client/pointer-constraints-unstable-v1-client-protocol.h"
 
 /* ---- colours ---- */
 #define C_BG       TB_RGB(18, 18, 26)
@@ -67,6 +70,10 @@ struct wl_pointer *pointer;
 struct wl_keyboard *keyboard;
 static struct zxdg_decoration_manager_v1 *decoman;
 static struct wp_presentation *presentation;
+static struct wl_subcompositor *subcomp;
+static struct zwp_pointer_constraints_v1 *constraints;
+static struct zwp_locked_pointer_v1 *locked;
+static int lock_on;
 struct wl_surface *surf;
 struct xdg_surface *xsurf;
 struct xdg_toplevel *top;
@@ -105,7 +112,20 @@ static double ptr_x = -1, ptr_y = -1;
 static int ptr_in, btn_down[16], btn_seen[16];
 static long wheel_v, wheel_h, wheel120_v, wheel120_h;
 static char axis_src[16] = "-";
-static int rerun_checks, paused;          /* F5 runs the checklist again; Pause freezes the picture */
+static int rerun_checks, paused;
+/* input to screen: the time of the last key or button, kept until the frame showing it is presented */
+static uint32_t lat_ev;
+static int lat_pending;
+static double lat_last = -1, lat_sum;
+static unsigned long lat_n, lat_lost;
+static int clock_mono = 1;              /* wp_presentation's clock is CLOCK_MONOTONIC (the event times' base) */
+/* generated video: content at 24/30/60 fps, and how many refreshes each content frame stayed */
+static int video_fps;                   /* 0 off */
+static long video_last = -1;
+static int video_run;
+static unsigned long video_hold[5];     /* frames held 1, 2, 3, 4, 5+ refreshes */
+/* the 3D view's presentation */
+static unsigned long g_presented, g_zero;          /* F5 runs the checklist again; Pause freezes the picture */
 
 /* ---- the keyboard drawn on screen: evdev codes, widths in quarter units ---- */
 typedef struct { int code, w; const char *label; } Key;
@@ -263,6 +283,26 @@ static void draw_panel(Surf *s, int x0) {
     stat_line(s, x, &y, "NO FREE BUFFER", v, no_buffer ? C_WARN : C_TEXT);
     snprintf(v, sizeof v, "%d X %d", win_w, win_h);
     stat_line(s, x, &y, "WINDOW", v, C_TEXT);
+    if (lat_n) snprintf(v, sizeof v, "%.1f MS LAST  %.1f AVG  (%lu)", lat_last, lat_sum / lat_n, lat_n);
+    else snprintf(v, sizeof v, lat_lost ? "NOT MEASURABLE (%lu FRAMES NOT PRESENTED)" : "PRESS A KEY OR CLICK", lat_lost);
+    stat_line(s, x, &y, "INPUT TO SCREEN", v, lat_n ? (lat_sum / lat_n > 50 ? C_WARN : C_GOOD) : C_DIM);
+    y += 8;
+    /* graphics: the 3D view (G) */
+    d_text(s, x, y, 1, C_HEAD, "GRAPHICS  (G: 3D  V: VIDEO  L: LOCK POINTER)");
+    y += 14;
+    if (gl3d_on()) {
+        stat_line(s, x, &y, "RENDERER", gl3d.renderer, C_TEXT);
+        stat_line(s, x, &y, "KIND", gl3d.kind, strstr(gl3d.kind, "SOFTWARE") ? C_WARN : C_GOOD);
+        snprintf(v, sizeof v, "%.2f MS PER FRAME  %lu FRAMES", gl3d.gpu_ms, gl3d.frames);
+        stat_line(s, x, &y, "DRAW TIME", v, C_TEXT);
+        snprintf(v, sizeof v, "%lu SHOWN  %lu ZERO-COPY", g_presented, g_zero);
+        stat_line(s, x, &y, "3D PRESENTED", v, C_TEXT);
+    } else stat_line(s, x, &y, "3D", gl3d.error[0] ? gl3d.error : (gl3d.renderer[0] ? gl3d.renderer : "OFF"), gl3d.error[0] ? C_BAD : C_DIM);
+    if (video_fps) {
+        snprintf(v, sizeof v, "%d FPS: HELD 1X %lu  2X %lu  3X %lu  4X %lu  5+ %lu", video_fps, video_hold[0], video_hold[1], video_hold[2], video_hold[3], video_hold[4]);
+        stat_line(s, x, &y, "VIDEO CADENCE", v, C_TEXT);
+    }
+    if (locked) stat_line(s, x, &y, "POINTER LOCK", lock_on ? "LOCKED (L TO RELEASE)" : "ASKED, NOT LOCKED YET", lock_on ? C_GOOD : C_WARN);
     y += 8;
     /* pointer */
     d_text(s, x, y, 1, C_HEAD, "POINTER");
@@ -387,6 +427,15 @@ static void draw(Buf *b) {
     int steps = 60, cell = c.w / steps;
     d_fill(&s, card_x + c.x + (int)(frames % steps) * cell, card_y + c.y + c.h - 4, cell > 2 ? cell - 1 : 2, 3, C_LAMP_ON);
     draw_pad(&s);
+    if (video_fps) {                     /* the generated video: a square that steps once per content frame */
+        long idx = (long)(t_last * video_fps / 1000.0);
+        int track = card.w - 40, pos = (int)(idx % 60) * track / 60;
+        d_fill(&s, card_x + 20, card_y + card.h - 26, track, 14, TB_RGB(20, 20, 20));
+        d_fill(&s, card_x + 20 + pos, card_y + card.h - 26, track / 60 + 2, 14, TB_RGB(255, 255, 255));
+        char vt[32];
+        snprintf(vt, sizeof vt, "%d FPS", video_fps);
+        d_text(&s, card_x + 24, card_y + card.h - 40, 1, TB_RGB(255, 255, 255), vt);
+    }
     draw_panel(&s, b->w - panel_w());
     draw_keyboard(&s, b->h - kbd_h());
     /* the crosshair: the exact pointer position, on top of everything */
@@ -420,6 +469,27 @@ static void fb_presented(void *d, struct wp_presentation_feedback *f, uint32_t s
 static void fb_discarded(void *d, struct wp_presentation_feedback *f) { (void)d; discarded++; wp_presentation_feedback_destroy(f); }
 static const struct wp_presentation_feedback_listener fb_listener = { fb_sync, fb_presented, fb_discarded };
 
+/* the frame that shows an input: its presentation time minus the event's time */
+static void lat_presented(void *d, struct wp_presentation_feedback *f, uint32_t sec_hi, uint32_t sec_lo, uint32_t nsec,
+                          uint32_t refresh, uint32_t seq_hi, uint32_t seq_lo, uint32_t flags) {
+    (void)refresh; (void)seq_hi; (void)seq_lo; (void)flags;
+    uint32_t ev = (uint32_t)(uintptr_t)d;
+    uint64_t t = ((((uint64_t)sec_hi << 32) | sec_lo) * 1000ull) + nsec / 1000000u;
+    double l = (double)(uint32_t)((uint32_t)t - ev);
+    if (clock_mono && l < 2000) { lat_last = l; lat_sum += l; lat_n++; } else lat_lost++;
+    wp_presentation_feedback_destroy(f);
+}
+static void lat_discarded(void *d, struct wp_presentation_feedback *f) { (void)d; lat_lost++; wp_presentation_feedback_destroy(f); }
+static const struct wp_presentation_feedback_listener lat_listener = { fb_sync, lat_presented, lat_discarded };
+static void g_presented_cb(void *d, struct wp_presentation_feedback *f, uint32_t a, uint32_t b, uint32_t c, uint32_t r, uint32_t e, uint32_t g, uint32_t flags) {
+    (void)d; (void)a; (void)b; (void)c; (void)r; (void)e; (void)g;
+    g_presented++;
+    if (flags & WP_PRESENTATION_FEEDBACK_KIND_ZERO_COPY) g_zero++;
+    wp_presentation_feedback_destroy(f);
+}
+static void g_discarded_cb(void *d, struct wp_presentation_feedback *f) { (void)d; wp_presentation_feedback_destroy(f); }
+static const struct wp_presentation_feedback_listener g_listener = { fb_sync, g_presented_cb, g_discarded_cb };
+
 static void redraw(void);
 static void frame_done(void *d, struct wl_callback *cb, uint32_t t) { (void)d; (void)t; wl_callback_destroy(cb); frame_pending = 0; if (!paused) redraw(); }
 static const struct wl_callback_listener frame_listener = { frame_done };
@@ -441,6 +511,20 @@ static void redraw(void) {
     if (b) {
         draw(b);
         frames++;
+    }
+    if (video_fps) {                     /* how many refreshes each content frame stays */
+        long idx = (long)(t * video_fps / 1000.0);
+        if (idx != video_last) { if (video_last >= 0 && video_run) video_hold[video_run > 5 ? 4 : video_run - 1]++; video_last = idx; video_run = 1; }
+        else video_run++;
+    }
+    if (gl3d_on()) {
+        gl3d_place(card_x, card_y, card.w, card.h);
+        if (presentation) wp_presentation_feedback_add_listener(wp_presentation_feedback(presentation, gl3d_surface()), &g_listener, NULL);
+        gl3d_frame(t);
+    }
+    if (lat_pending && b && presentation) {
+        wp_presentation_feedback_add_listener(wp_presentation_feedback(presentation, surf), &lat_listener, (void *)(uintptr_t)lat_ev);
+        lat_pending = 0;
     }
     struct wl_callback *cb = wl_surface_frame(surf);
     wl_callback_add_listener(cb, &frame_listener, NULL);
@@ -498,14 +582,19 @@ static void kb_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surfa
     kb_focus = 0;
     memset(down, 0, sizeof down);                /* keys still down when focus left aren't down for us */
 }
+static void toggle_lock(void);
 static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t t, uint32_t key, uint32_t state) {
-    (void)d; (void)k; (void)t;
+    (void)d; (void)k;
     kb_serial = serial;
     if (key > KEY_MAX) return;
     int pressed = state == WL_KEYBOARD_KEY_STATE_PRESSED;
     down[key] = (unsigned char)pressed;
     if (pressed && key == KEY_F5) rerun_checks = 1;
     if (pressed && key == KEY_PAUSE) { paused = !paused; if (!paused && !frame_pending) redraw(); }
+    if (pressed) { lat_ev = t; lat_pending = 1; }
+    if (pressed && key == KEY_G) { if (gl3d_on()) gl3d_stop(); else if (subcomp) gl3d_start(dpy, comp, subcomp, surf, card_x, card_y, card.w, card.h); }
+    if (pressed && key == KEY_V) { video_fps = video_fps == 0 ? 24 : video_fps == 24 ? 30 : video_fps == 30 ? 60 : 0; memset(video_hold, 0, sizeof video_hold); video_last = -1; video_run = 0; }
+    if (pressed && key == KEY_L) toggle_lock();
     if (pressed && !seen[key]) {
         seen[key] = 1;
         if (on_map((int)key)) nseen++;
@@ -557,12 +646,12 @@ static void p_enter(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface
 static void p_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf) { (void)d; (void)p; (void)s; (void)sf; ptr_in = 0; memset(btn_down, 0, sizeof btn_down); }
 static void p_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x, wl_fixed_t y) { (void)d; (void)p; (void)t; ptr_x = wl_fixed_to_double(x); ptr_y = wl_fixed_to_double(y); }
 static void p_button(void *d, struct wl_pointer *p, uint32_t s, uint32_t t, uint32_t button, uint32_t state) {
-    (void)d; (void)p; (void)t;
+    (void)d; (void)p;
     ptr_serial = s;
     int i = (int)button - BTN_LEFT;              /* BTN_LEFT, RIGHT, MIDDLE, SIDE, EXTRA, FORWARD, BACK, TASK */
     if (i < 0 || i >= 8) return;
     btn_down[i] = state == WL_POINTER_BUTTON_STATE_PRESSED;
-    if (btn_down[i]) btn_seen[i] = 1;
+    if (btn_down[i]) { btn_seen[i] = 1; lat_ev = t; lat_pending = 1; }
 }
 static void p_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t axis, wl_fixed_t v) {
     (void)d; (void)p; (void)t;
@@ -583,6 +672,17 @@ static void p_value120(void *d, struct wl_pointer *p, uint32_t axis, int32_t v) 
 }
 static void p_reldir(void *d, struct wl_pointer *p, uint32_t axis, uint32_t dir) { (void)d; (void)p; (void)axis; (void)dir; }
 static const struct wl_pointer_listener p_listener = { p_enter, p_leave, p_motion, p_button, p_axis, p_frame, p_source, p_stop, p_discrete, p_value120, p_reldir };
+
+/* pointer lock (L): the pointer stays put and only relative motion arrives (games, 3D viewers) */
+static void lk_locked(void *d, struct zwp_locked_pointer_v1 *l) { (void)d; (void)l; lock_on = 1; }
+static void lk_unlocked(void *d, struct zwp_locked_pointer_v1 *l) { (void)d; (void)l; lock_on = 0; }
+static const struct zwp_locked_pointer_v1_listener lk_l = { lk_locked, lk_unlocked };
+static void toggle_lock(void) {
+    if (locked) { zwp_locked_pointer_v1_destroy(locked); locked = NULL; lock_on = 0; return; }
+    if (!constraints || !pointer) return;
+    locked = zwp_pointer_constraints_v1_lock_pointer(constraints, surf, pointer, NULL, ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT);
+    zwp_locked_pointer_v1_add_listener(locked, &lk_l, NULL);
+}
 
 static void seat_caps(void *d, struct wl_seat *s, uint32_t caps) {
     (void)d;
@@ -608,11 +708,13 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char
     else if (!strcmp(iface, wl_seat_interface.name) && !seat) { seat = wl_registry_bind(r, name, &wl_seat_interface, vmin(version, 9)); wl_seat_add_listener(seat, &seat_listener, NULL); }
     else if (!strcmp(iface, zxdg_decoration_manager_v1_interface.name)) decoman = wl_registry_bind(r, name, &zxdg_decoration_manager_v1_interface, 1);
     else if (!strcmp(iface, wp_presentation_interface.name)) presentation = wl_registry_bind(r, name, &wp_presentation_interface, 1);
+    else if (!strcmp(iface, wl_subcompositor_interface.name)) subcomp = wl_registry_bind(r, name, &wl_subcompositor_interface, 1);
+    else if (!strcmp(iface, zwp_pointer_constraints_v1_interface.name)) constraints = wl_registry_bind(r, name, &zwp_pointer_constraints_v1_interface, 1);
 }
 static void reg_remove(void *d, struct wl_registry *r, uint32_t name) { (void)d; (void)r; (void)name; }
 static const struct wl_registry_listener reg_listener = { reg_global, reg_remove };
 
-static void pres_clock(void *d, struct wp_presentation *p, uint32_t id) { (void)d; (void)p; clock_id = id; }
+static void pres_clock(void *d, struct wp_presentation *p, uint32_t id) { (void)d; (void)p; clock_id = id; clock_mono = id == CLOCK_MONOTONIC; }
 static const struct wp_presentation_listener pres_listener = { pres_clock };
 
 /* ---- the --auto report ---- */
@@ -627,7 +729,9 @@ static void report(FILE *o) {
             keyboard ? "true" : "false", pointer ? "true" : "false", repeat_rate, repeat_delay);
     for (int i = 0; i < nglobals; i++) fprintf(o, "%s{\"interface\":\"%s\",\"version\":%u}", i ? "," : "", globals[i].iface, globals[i].version);
     static const char *st[4] = { "untested", "pass", "fail", "info" };
-    fprintf(o, "],\"outputRefreshHz\":%.3f,\"checks\":[", out_refresh_mhz / 1000.0);
+    fprintf(o, "],\"outputRefreshHz\":%.3f,\"latency\":{\"n\":%lu,\"avgMs\":%.2f,\"notPresented\":%lu},", out_refresh_mhz / 1000.0, lat_n, lat_n ? lat_sum / lat_n : 0, lat_lost);
+    fprintf(o, "\"gl\":{\"renderer\":\"%s\",\"vendor\":\"%s\",\"version\":\"%s\",\"kind\":\"%s\",\"error\":\"%s\",\"drawMs\":%.3f,\"frames\":%lu,\"presented\":%lu,\"zeroCopy\":%lu},\"checks\":[",
+            gl3d.renderer, gl3d.vendor, gl3d.version, gl3d.kind, gl3d.error, gl3d.gpu_ms, gl3d.frames, g_presented, g_zero);
     for (int i = 0; i < nchecks; i++) {
         fprintf(o, "%s{\"id\":\"%s\",\"state\":\"%s\",\"detail\":\"", i ? "," : "", checks[i].id, st[checks[i].state & 3]);
         for (const char *q = checks[i].detail; *q; q++) if (*q != '"' && *q != '\\') fputc(*q, o);
@@ -638,13 +742,15 @@ static void report(FILE *o) {
 
 int main(int argc, char **argv) {
     double auto_s = 0;
+    int auto_gl = 0;
     for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "--auto")) {
+        if (!strcmp(argv[i], "--gl")) auto_gl = 1;
+        else if (!strcmp(argv[i], "--auto")) {
             auto_s = 5;
             if (i + 1 < argc && atof(argv[i + 1]) > 0) auto_s = atof(argv[++i]);
             if (auto_s > 600) auto_s = 600;
         } else {
-            fprintf(stderr, "usage: lordos-testbench [--auto [seconds]]\n");
+            fprintf(stderr, "usage: lordos-testbench [--gl] [--auto [seconds]]\n");
             return 2;
         }
     }
@@ -676,6 +782,7 @@ int main(int argc, char **argv) {
             ran = 1;
             rerun_checks = 0;
             if (checks_run() < 0) break;            /* the compositor ended the connection */
+            if (auto_gl && subcomp && !gl3d_on()) gl3d_start(dpy, comp, subcomp, surf, card_x, card_y, card.w, card.h);
         }
         if (auto_s > 0 && frames && now_ms() - start > auto_s * 1000) break;
     }
