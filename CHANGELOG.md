@@ -12,6 +12,9 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Added
 
+- **Every native app has its own version.** Each app's manifest now carries a version (all start at
+  0.8.5), the build refuses an app without a valid one, and Store → Installed shows it next to the app
+  ("LordOS app · 0.8.5"), so the apps can later be versioned and released apart from LordOS.
 - **Boot time, on the screen and on record.** The boot splash shows the time since it started, in
   seconds and milliseconds, in the bottom right corner. About LordOS → Startup time shows how long this
   boot took from the kernel's start to the login screen (or, with automatic login, the desktop). Every

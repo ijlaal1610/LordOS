@@ -1,5 +1,6 @@
 {
   "id": "sysinfo",
+  "version": "0.8.5",
   "name": "System Information",
   "description": "Every piece of hardware detected and what LordOS makes of it",
   "size": [

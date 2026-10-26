@@ -1,5 +1,6 @@
 {
   "id": "sysprobe",
+  "version": "0.8.5",
   "name": "Sandbox Probe",
   "description": "System Information's test app: tries what an isolated app must not be able to do",
   "size": [

@@ -280,7 +280,8 @@ function InstalledPage({ query }) {
   const apps = useLauncherApps();
   const q = query.trim().toLowerCase();
   const shown = apps.filter((a) => !q || `${a.name} ${a.comment || ''} ${a.id}`.toLowerCase().includes(q));
-  const kind = (a) => tr(`store.kind.${a.kind}`);
+  // the kind, and a LordOS app's or package's own version (manifest "version")
+  const kind = (a) => (a.version && a.kind !== 'linux' ? tr('store.kindVersion', { kind: tr(`store.kind.${a.kind}`), v: a.version }) : tr(`store.kind.${a.kind}`));
   return (
     <View>
       <PageTitle title={tr('store.installed.title')} />

@@ -17,6 +17,12 @@ const appsPlugin = {
     b.onLoad({ filter: /.*/, namespace: 'lordos-apps' }, () => {
       const dir = path.join(root, 'apps');
       const ids = fs.readdirSync(dir).filter((d) => fs.existsSync(path.join(dir, d, 'manifest.json'))).sort();
+      // every native app carries its own version (semver, apps/README.md), shown in the Store; apps may
+      // move to repositories of their own and be versioned apart from LordOS
+      for (const id of ids) {
+        const v = JSON.parse(fs.readFileSync(path.join(dir, id, 'manifest.json'), 'utf8')).version;
+        if (typeof v !== 'string' || !/^\d+\.\d+\.\d+(?:[-~][0-9A-Za-z.]+)?$/.test(v)) throw new Error(`apps/${id}/manifest.json: "version" must be semver (e.g. "0.8.5"), got ${JSON.stringify(v)}`);
+      }
       const lines = ids.map((id, i) => {
         const base = path.join(dir, id);
         return `import * as A${i} from ${JSON.stringify(path.join(base, 'index.jsx'))};\n` +
