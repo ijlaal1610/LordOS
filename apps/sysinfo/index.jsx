@@ -4,11 +4,12 @@
 // lordos-fetch), read once on open and again with Refresh; model.js works out the GPU layers and the
 // Compatibility panel. Nothing here holds serial numbers, addresses or names: the report has none.
 import {
-  View, Text, ScrollView, useTheme, useLocale, LordOSLogo, systemReport, systemInfo, lordosVersion, formatBytes, formatNumber,
+  View, Text, ScrollView, Button, useTheme, useLocale, LordOSLogo, systemReport, systemInfo, lordosVersion, formatBytes, formatNumber,
   Toolbar, ToolbarSpacer, ToolbarButton, Segmented, SidebarItem, GroupBox, FormRow, EmptyState, Hairline, spacing, typeScale,
+  fs, userDirs, clipboard, wm,
 } from '@lordos/sdk';
 import { useMemo, useState } from 'react';
-import { cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, compositionReason } from './model.js';
+import { cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, compositionReason, reportFileName, reportJson } from './model.js';
 
 // The app's icon: a chip on the brand gradient.
 export function Icon({ size: s }) {
@@ -312,6 +313,63 @@ function Compatibility({ r }) {
   );
 }
 
+// ---- Report ----
+
+// The exact text that would be saved, line by line (leading spaces kept as no-break spaces).
+function Preview({ text }) {
+  const t = useTheme();
+  const lines = useMemo(() => text.split('\n'), [text]);
+  return (
+    <View style={{ flex: 1, borderRadius: t.groupRadius, border: `1px solid ${t.separator}`, overflow: 'hidden',
+      backgroundColor: t.mode === 'dark' ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.03)' }}>
+      <ScrollView style={{ flex: 1 }} contentStyle={{ padding: spacing.m, direction: 'ltr' }}>
+        {lines.map((l, i) => (
+          <Text key={i} style={{ fontFamily: 'monospace', fontSize: 12, lineHeight: 1.45, color: t.text, textAlign: 'left', minHeight: 17 }}>
+            {l.replace(/^ +/, (m) => '\u00a0'.repeat(m.length)) || '\u00a0'}</Text>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+function Report({ r }) {
+  const t = useTheme();
+  const { t: tr } = useLocale();
+  const [fmt, setFmt] = useState('markdown');
+  const [msg, setMsg] = useState(null);
+  const md = useMemo(() => { try { return lord.sysinfo.markdown() || ''; } catch (e) { return ''; } }, [r]);
+  const text = fmt === 'json' ? reportJson(r) : md;
+  const save = () => {
+    const dir = userDirs().documents;
+    try { fs.mkdir(dir); } catch (e) { /* already there */ }
+    const name = reportFileName(r.date, fmt === 'json' ? 'json' : 'md', (n) => { try { return !!fs.stat(`${dir}/${n}`); } catch (e) { return false; } });
+    if (!name) { setMsg({ ok: false, text: tr('sysinfo.report.saveFailed') }); return; }
+    try {
+      fs.write(`${dir}/${name}`, text);
+      setMsg({ ok: true, text: tr('sysinfo.report.saved', { name }), dir });
+    } catch (e) { setMsg({ ok: false, text: tr('sysinfo.report.saveFailed') }); }
+  };
+  const copy = () => { clipboard.set(text); setMsg({ ok: true, text: tr('sysinfo.report.copied') }); };
+  return (
+    <View style={{ flex: 1, padding: spacing.xl, gap: spacing.m }}>
+      <Text style={{ fontSize: typeScale.callout, color: t.textDim, textAlign: 'start', lineHeight: 1.4 }}>{tr('sysinfo.report.intro')}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s }}>
+        <Segmented small value={fmt} onChange={(v) => { setFmt(v); setMsg(null); }} options={[['markdown', tr('sysinfo.report.markdown')], ['json', 'JSON']]} />
+        <View style={{ flex: 1 }} />
+        <Button label={tr('sysinfo.report.copy')} onClick={copy} />
+        <Button primary label={tr('sysinfo.report.save')} onClick={save} />
+      </View>
+      {msg ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s }}>
+          <Text style={{ fontSize: typeScale.callout, color: msg.ok ? '#30d158' : '#ff453a', textAlign: 'start' }}>{msg.text}</Text>
+          {msg.dir ? <Button small plain label={tr('sysinfo.report.showInFiles')} onClick={() => wm.open('files', { new: true, args: { path: msg.dir } })} /> : null}
+        </View>
+      ) : null}
+      <Preview text={text} />
+    </View>
+  );
+}
+
 export default function SystemInformation() {
   const { t: tr } = useLocale();
   const [tab, setTab] = useState('overview');
@@ -324,11 +382,11 @@ export default function SystemInformation() {
       <Toolbar>
         <ToolbarSpacer />
         <Segmented appearance="neutral" value={tab} onChange={setTab}
-          options={[['overview', tr('sysinfo.tab.overview')], ['hardware', tr('sysinfo.tab.hardware')], ['compat', tr('sysinfo.tab.compat')]]} />
+          options={[['overview', tr('sysinfo.tab.overview')], ['hardware', tr('sysinfo.tab.hardware')], ['compat', tr('sysinfo.tab.compat')], ['report', tr('sysinfo.tab.report')]]} />
         <ToolbarSpacer />
         <ToolbarButton icon="↻" title={tr('sysinfo.refresh')} onClick={() => setN(n + 1)} />
       </Toolbar>
-      {tab === 'overview' ? <Overview r={r} info={info} /> : tab === 'hardware' ? <Hardware r={r} /> : <Compatibility r={r} />}
+      {tab === 'overview' ? <Overview r={r} info={info} /> : tab === 'hardware' ? <Hardware r={r} /> : tab === 'compat' ? <Compatibility r={r} /> : <Report r={r} />}
     </View>
   );
 }

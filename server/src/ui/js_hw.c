@@ -25,6 +25,8 @@
  *                                               lordos-sysreport, no serials, addresses or names) plus
  *                                               session: how this session composes the screen and its
  *                                               GPU context (gpu/gpu.h gpu_info, lord_composition)
+ *   lord.sysinfo.markdown()                     the same report as Markdown, as lordos-sysreport prints it,
+ *                                               with a "This session" section (System Information's Report tab)
  *   lord.fan.status() / setProfile(p) / setCurve(pts) / force(v) / caseConfig()   (js_fan.c, lord-fand)
  *   lord.browserFrame.apply(on, which)          Settings → Appearance → "Browsers: tabs in the title bar":
  *                                               one preference in the user's Chromium/Firefox profiles
@@ -44,6 +46,7 @@
 #include "../hw/hwscan.h"
 #include "../gpu/gpu.h"
 #include "../sysreport/sysreport.h"
+#include "lord_version.h"           /* build/gen: the version for the report */
 #include "../hw/mimeapps.h"
 #include "../hw/notifyd.h"
 #include "../hw/ppd.h"
@@ -374,12 +377,20 @@ static const JSCFunctionListEntry hwinfo_funcs[] = { JS_CFUNC_DEF("scan", 0, f_h
 
 /* ---- lord.sysinfo (System Information, docs/BENCHMARK.md) ---- */
 
+/* The report of this machine (or of the development fixture), with LordOS's version; NULL on OOM. */
+static SysReport *sysinfo_collect(void) {
+    SysReport *r = malloc(sizeof *r);
+    if (!r) return NULL;
+    sysreport_collect(r, hwscan_root(), NULL, NULL);      /* the same development fixtures as the Store's */
+    snprintf(r->sw.lordos, sizeof r->sw.lordos, "%s%s%s", LORD_VERSION, LORD_CHANNEL[0] ? "-" : "", LORD_CHANNEL);
+    return r;
+}
+
 static JSValue f_sysinfo_report(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t; (void)argc; (void)argv;
-    SysReport *r = malloc(sizeof *r);
+    const char *root = hwscan_root();
+    SysReport *r = sysinfo_collect();
     if (!r) return JS_NULL;
-    const char *root = hwscan_root();       /* the same development fixtures as the Store's */
-    sysreport_collect(r, root, NULL, NULL);
     JSValue v = json_or_null(c, sysreport_json(r));
     free(r);
     if (!JS_IsObject(v)) return v;
@@ -397,7 +408,37 @@ static JSValue f_sysinfo_report(JSContext *c, JSValueConst t, int argc, JSValueC
     return v;
 }
 
-static const JSCFunctionListEntry sysinfo_funcs[] = { JS_CFUNC_DEF("report", 0, f_sysinfo_report) };
+static JSValue f_sysinfo_markdown(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    SysReport *r = sysinfo_collect();
+    char *md = r ? sysreport_markdown(r) : NULL;
+    free(r);
+    if (!md) return JS_NULL;
+    GpuInfo g;
+    gpu_info(&g);
+    const char *comp = lord_composition();
+    char sess[512];
+    if (!strcmp(comp, "gpu"))
+        snprintf(sess, sizeof sess, "\n## This session\n\nThe screen is composed on the GPU (%s); %lu frames shown by direct scanout since the session started.\n",
+                 g.renderer, g.scanouts);
+    else
+        snprintf(sess, sizeof sess, "\n## This session\n\nThe screen is composed on the CPU (`%s`%s%s).\n",
+                 comp, !strcmp(comp, "gpu-off") && g.why[0] ? ", GPU: " : "", !strcmp(comp, "gpu-off") ? g.why : "");
+    size_t a = strlen(md), b = strlen(sess);
+    char *all = malloc(a + b + 1);
+    if (!all) { free(md); return JS_NULL; }
+    memcpy(all, md, a);
+    memcpy(all + a, sess, b + 1);
+    free(md);
+    JSValue v = JS_NewString(c, all);
+    free(all);
+    return v;
+}
+
+static const JSCFunctionListEntry sysinfo_funcs[] = {
+    JS_CFUNC_DEF("report", 0, f_sysinfo_report),
+    JS_CFUNC_DEF("markdown", 0, f_sysinfo_markdown),
+};
 
 /* ---- lord.browserFrame (Settings → Appearance; hw/brframe.c, docs/WAYLAND.md) ---- */
 

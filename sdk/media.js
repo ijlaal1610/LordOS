@@ -189,7 +189,8 @@ export function userDirs() {
     const m = new RegExp(`^XDG_${key}_DIR="\\$HOME/([^"]+)"`, 'm').exec(conf);
     return `${home}/${m ? m[1] : def}`;
   };
-  return { home, pictures: get('PICTURES', 'Pictures'), music: get('MUSIC', 'Music'), videos: get('VIDEOS', 'Videos'), desktop: get('DESKTOP', 'Desktop') };
+  return { home, pictures: get('PICTURES', 'Pictures'), music: get('MUSIC', 'Music'), videos: get('VIDEOS', 'Videos'), desktop: get('DESKTOP', 'Desktop'),
+    documents: get('DOCUMENTS', 'Documents') };
 }
 
 // ---- what's playing now (Control Center and media keys) ----

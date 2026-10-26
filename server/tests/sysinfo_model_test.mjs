@@ -1,7 +1,7 @@
 // sysinfo_model_test.mjs — System Information's model (apps/sysinfo/model.js, 0.8.5): the GPU layers,
 // the reasons for CPU composition, the Compatibility panel and the Hardware sections. Run by
 // tests/run_suites.sh (needs node).
-import { compositionReason, cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName } from '../../apps/sysinfo/model.js';
+import { compositionReason, cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, reportFileName, reportJson } from '../../apps/sysinfo/model.js';
 
 let n = 0, bad = 0;
 const eq = (what, got, want) => {
@@ -80,6 +80,14 @@ eq('throttle 0x50000', throttleFlags(0x50000), { underVoltageNow: false, cappedN
   underVoltage: true, capped: false, throttled: true, softLimit: false });
 eq('throttle unknown', [throttleFlags(null), throttleFlags(-1)], [null, null]);
 eq('names', [machineName(vm), machineName({ machine: { model: 'Raspberry Pi 5 Model B Rev 1.0' } }), machineName({})], ['QEMU Standard PC', 'Raspberry Pi 5 Model B Rev 1.0', '']);
+
+// ---- the Report tab ----
+const taken = new Set(['lordos-report-2026-10-26.md', 'lordos-report-2026-10-26-2.md']);
+eq('file names', [reportFileName('2026-10-26', 'md', (n) => taken.has(n)), reportFileName('2026-10-26', 'json', (n) => taken.has(n))],
+  ['lordos-report-2026-10-26-3.md', 'lordos-report-2026-10-26.json']);
+eq('a strange date never reaches the name', reportFileName('../../x', 'md', () => false), 'lordos-report-today.md');
+eq('all taken', reportFileName('2026-10-26', 'md', () => true), null);
+eq('json text', reportJson({ schema: 1, cpu: { cores: 8 } }), '{\n  "schema": 1,\n  "cpu": {\n    "cores": 8\n  }\n}\n');
 
 console.log(`sysinfo-model-test: ${n - bad} ok, ${bad} failed`);
 process.exit(bad ? 1 : 0);

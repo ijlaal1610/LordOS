@@ -132,3 +132,16 @@ export function machineName(r) {
   const m = (r && r.machine) || {};
   return [m.vendor, m.product].filter(Boolean).join(' ') || m.model || '';
 }
+
+// The Report tab's file name: lordos-report-<date>.<ext>, or -2, -3… when one with that name exists.
+export function reportFileName(date, ext, exists) {
+  const base = `lordos-report-${/^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : 'today'}`;
+  for (let i = 1; i < 100; i++) {
+    const name = `${base}${i > 1 ? `-${i}` : ''}.${ext}`;
+    if (!exists(name)) return name;
+  }
+  return null;
+}
+
+// The JSON a report is saved as: the collector's fields as they are, two-space indent.
+export const reportJson = (r) => `${JSON.stringify(r, null, 2)}\n`;

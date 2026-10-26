@@ -217,7 +217,7 @@ char *sysreport_markdown(const SysReport *r) {
     char t[256], u[64];
     const SrMachine *m = &r->machine;
     hb_printf(&b, "# System report\n\n");
-    hb_printf(&b, "Made on %s by `lordos-sysreport` (schema %d). It lists the hardware and what the system made of it; it holds no serial numbers, addresses, host or user names.\n\n", r->date, r->schema);
+    hb_printf(&b, "Made on %s by LordOS's System Information (schema %d). It lists the hardware and what the system made of it; it holds no serial numbers, addresses, host or user names.\n\n", r->date, r->schema);
 
     hb_printf(&b, "## Overview\n\n| | |\n|---|---|\n");
     two(t, sizeof t, m->vendor, m->product);

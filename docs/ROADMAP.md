@@ -596,7 +596,8 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   - [ ] the read-only `hw-memory-modules` admin action;
   - [x] Overview, Hardware and Compatibility tabs (en, es, pt; 2026-10-26; right to left not yet checked on screen);
   - [ ] Checks, configured and effective, with the probe app and a signed `checks.json`;
-  - [ ] reports; first real reports from the Pi 5 with a monitor and the RX 580 PC.
+  - [x] reports: the Report tab with the exact text, Copy and Save to Documents (2026-10-26);
+  - [ ] first real reports from the Pi 5 with a monitor and the RX 580 PC.
   - [ ] from the live USB without installing: a *Check this computer* boot entry, reports marked
     live, nothing written to the computer's disks, saved to a removable drive; the installer shows
     the Compatibility summary before installing.

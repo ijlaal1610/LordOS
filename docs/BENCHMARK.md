@@ -261,8 +261,14 @@ Checked on VM 116 in an isolated headless session (own home, runtime folder and 
 
 ![Compatibility](sysinfo-compatibility.png)
 
-Not yet: `hw-memory-modules`, video decode and encode and Vulkan (shown as *Not checked*), the Checks
-and Report tabs.
+**Report tab (2026-10-26):** the exact text that would be saved, as Markdown (`lord.sysinfo.markdown()`:
+`lordos-sysreport`'s text plus a "This session" section) or JSON (the report as `lord.sysinfo.report()`
+gives it); **Copy** and **Save to Documents** (`lordos-report-<date>.md|json`, `-2`, `-3`… never over an
+existing file), with **Show in Files**. Nothing is sent anywhere: publishing comes with 0.8.7.
+
+![The Report tab](sysinfo-report.png)
+
+Not yet: `hw-memory-modules`, video decode and encode and Vulkan (shown as *Not checked*), the Checks tab.
 
 1. `server/src/sysreport/`: collector, GPU layers, `pci.ids`/EDID readers, fake-sysfs fixtures
    (AMD desktop, Intel laptop, Nvidia desktop, Raspberry Pi 5, VM), the anonymization test,

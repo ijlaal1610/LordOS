@@ -19,7 +19,8 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   and what LordOS makes of it. The graphics card is shown layer by layer (driver, display output,
   render node, GPU context, composition, direct scanout) with the exact reason when the screen is
   composed on the CPU, and a Compatibility panel says what works, what works with limits and what
-  wasn't checked.
+  wasn't checked. Its Report tab shows the exact text of a report (Markdown or JSON) before you copy
+  it or save it to Documents; nothing is sent anywhere.
 - **`lordos-sysreport report`** prints the hardware of this computer and what the system made of it,
   as Markdown or `--json`, with no serial numbers, addresses or names: the base of System
   Information.
