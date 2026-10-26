@@ -69,6 +69,8 @@
 typedef struct { uint16_t seq, len; uint8_t b[MTU + 64]; } Hist;
 typedef struct {
     uint32_t ssrc, ts_off, last_ts, packets, octets;
+    uint32_t last_in;           /* the encoder's last time (ms or samples), to keep the clock going forward */
+    int have_in;
     uint16_t seq;
     int pt;
     double last_ms;
@@ -693,9 +695,20 @@ static void rtp_out(void *ud, const uint8_t *hdr, size_t hl, const uint8_t *data
 int rtc_media_ready(const Rtc *r) { return r && r->srtp_up && !r->failed && r->sel >= 0; }
 int rtc_codec(const Rtc *r) { return r ? r->codec : 0; }
 
+/* The session's encoder counts from its own start, and it starts again when the screen size changes
+ * (or after a crash) while this peer goes on: its time going back moves the offset instead, so the
+ * RTP timestamps keep going forward. Going back made the browser drop the new frames as old ones,
+ * freeze and ask for keyframes over and over. */
+static uint32_t track_ts(Track *t, uint32_t in, uint32_t step, uint32_t mul) {
+    if (t->have_in && (int32_t)(in - t->last_in) <= 0) t->ts_off += (t->last_in - in + step) * mul;
+    t->last_in = in;
+    t->have_in = 1;
+    return t->ts_off + in * mul;
+}
+
 void rtc_video(Rtc *r, const uint8_t *f, size_t n, uint32_t ms) {
     if (!rtc_media_ready(r) || !n) return;
-    PktCtx c = { r, &r->v, r->v.ts_off + ms * 90 };
+    PktCtx c = { r, &r->v, track_ts(&r->v, ms, 33, 90) };
     r->v.last_ts = c.ts;
     r->v.last_ms = now_ms();
     if (r->codec == RW_CODEC_H264) rw_h264_packetize(f, n, MTU, rtp_out, &c);
@@ -704,7 +717,7 @@ void rtc_video(Rtc *r, const uint8_t *f, size_t n, uint32_t ms) {
 
 void rtc_audio(Rtc *r, const uint8_t *p, size_t n, uint32_t samples) {
     if (!rtc_media_ready(r) || !n || n > MTU || r->of->am < 0) return;
-    PktCtx c = { r, &r->a, r->a.ts_off + samples };
+    PktCtx c = { r, &r->a, track_ts(&r->a, samples, 960, 1) };
     r->a.last_ts = c.ts;
     r->a.last_ms = now_ms();
     rtp_out(&c, NULL, 0, p, n, 0);
