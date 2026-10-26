@@ -1,6 +1,6 @@
 // Top menu bar: L menu, active app, Window menu, keyboard layout,
 // Control Center and clock.
-import { View, Text, useClock, wm, getApp, session, useAppMenus, t as tr, appName, formatDate, formatTime, keyboard, useSettings, direction, screen, windowAppName, LordOSGlyph, spotlight, PrivacyIndicators, StatusItems, help, menuClock, appMenuItems, recentItems, storeUpdates } from '@lordos/sdk';
+import { View, Text, useClock, wm, getApp, session, useAppMenus, t as tr, appName, formatDate, formatTime, keyboard, useSettings, direction, screen, windowAppName, LordOSGlyph, spotlight, PrivacyIndicators, StatusItems, help, menuClock, appMenuItems, recentItems, storeUpdates, windowMenuItems } from '@lordos/sdk';
 import { useRef, useState } from 'react';
 import { Menu } from './Menu.jsx';
 
@@ -75,12 +75,8 @@ export function MenuBar({ t, height, focused, onLaunchpad, onControlCenter, cont
     ] },
     // the app menu under the app's name (About, Settings…, Hide, Quit; sdk/appcontrol.js)
     app: { items: app ? appMenuItems(focused) : [{ label: tr('shell.menu.about'), onClick: () => wm.open('about') }] },
-    window: { items: [
-      { label: tr('shell.window.minimize'), disabled: !app, onClick: () => wm.minimize(focused) },
-      { label: tr('shell.window.maximize'), disabled: !app, onClick: () => wm.toggleMaximize(focused) },
-      '-',
-      { label: tr('shell.window.close'), disabled: !app, onClick: () => wm.close(focused) },
-    ] },
+    // Minimize, Zoom, Fill, Center, Move & Resize, Move to <display>, the open windows (sdk/windowmenu.js)
+    window: { items: windowMenuItems(app ? focused : null) },
     help: { items: [
       ...(getApp('help') ? [{ label: tr('shell.help.open'), onClick: () => wm.open('help') }, { label: tr('shell.help.tour'), onClick: () => help.startTour() }, '-'] : []),
       { label: tr('shell.menu.about'), onClick: () => wm.open('about') },

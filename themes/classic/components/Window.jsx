@@ -7,7 +7,7 @@
 // Lord Classic has no global menu bar: an app that declares menus (File, Edit, View, Go…; the same
 // ones Lord Flow shows on top, useAppMenus) gets them in a strip under its title bar, with Window and
 // Help, as desktop apps do on a taskbar layout. Apps without menus of their own get no strip.
-import { View, Text, Layer, addListener, wm, AppHost, windowTitle, WindowShell, windowIcon, snapZoneAt, screen, useAppMenus, getApp, appGroup, t as tr } from '@lordos/sdk';
+import { View, Text, Layer, addListener, wm, AppHost, windowTitle, WindowShell, windowIcon, snapZoneAt, screen, useAppMenus, getApp, appGroup, windowMenuItems, t as tr } from '@lordos/sdk';
 import { useEffect, useRef, useState } from 'react';
 import { MinimizeGlyph, MaximizeGlyph, RestoreGlyph, CloseGlyph, LayoutGlyph } from '../glyphs.jsx';
 import { Menu } from './Menu.jsx';
@@ -23,12 +23,7 @@ function MenuStrip({ t, win, focused, menus }) {
   const refs = useRef([]);
   const all = [
     ...menus,
-    { label: tr('shell.menu.window'), items: [
-      { label: tr('shell.window.minimize'), onClick: () => wm.minimize(win.id) },
-      { label: tr('shell.window.maximize'), onClick: () => wm.toggleMaximize(win.id) },
-      '-',
-      { label: tr('shell.window.close'), hint: 'Alt+F4', onClick: () => wm.close(win.id) },
-    ] },
+    { label: tr('shell.menu.window'), items: windowMenuItems(win.id) },
     { label: tr('shell.menu.help'), items: [
       ...(getApp('help') ? [{ label: tr('shell.help.open'), onClick: () => wm.open('help') }, '-'] : []),
       ...(getApp('appabout') && appGroup(win.id) ? [{ label: tr('shell.app.about', { app: appGroup(win.id).name }), onClick: () => wm.open('appabout', { new: true, args: { key: appGroup(win.id).key, win: win.id } }) }] : []),

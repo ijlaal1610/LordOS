@@ -12,6 +12,17 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Added
 
+- **A fuller Window menu, in both themes.** Minimize, Zoom, Fill, Center; **Move & Resize** with the
+  left, right, top and bottom halves, the quarters and thirds, arrangements of two windows (left and
+  right, right and left, top and bottom, bottom and top) or four (quarters) with the windows behind it,
+  and Return to Previous Size; **Move to <display>** for every other display (a snapped window keeps
+  its zone, the rest keep their place relative to the screen); Bring All to Front; and the open
+  windows, the one in front checked.
+- **Dock: Open at Login and Assign To.** A Dock item's Options menu can open the app when you sign in
+  (started the same way as a Dock click) and, with more than one display, assign it to a display: its
+  new windows open there (kept by the display's name across boots).
+- **One place to choose the desktop style.** Settings → Appearance → Desktop style now lists every
+  installed theme, and the separate Themes page is gone (an old link to it opens Appearance).
 - **The app menu and Force Quit (Lord Flow).** Clicking the app's name in the menu bar opens its
   menu: About <app> (its icon, name, own version and where it comes from), Settings… (the app's own,
   ❖,), Hide <app>, Hide Others, Show All and Quit <app> (❖Q). The crown menu adds the Store, with how

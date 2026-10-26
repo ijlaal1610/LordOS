@@ -240,3 +240,4 @@ function LocaleRoot({ children }) {
 }
 export { lordosWallpapers, wallpaperSrc, wallpaperThumb, findWallpaper, DEFAULT_WALLPAPER, GREETER_WALLPAPER, WALLPAPER_CATEGORIES } from './wallpapers.js';
 export { appGroup, appMenuItems, runningApps, forceQuit, recentItems, storeUpdates } from './appcontrol.js';
+export { windowMenuItems, moveResizeItems } from './windowmenu.js';

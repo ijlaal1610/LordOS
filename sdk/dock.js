@@ -22,7 +22,8 @@ import { useEffect } from 'react';
 import { addListener } from '@lordos/runtime';
 import { settings } from './settings.js';
 import { createStore, useStore } from './store.js';
-import { useWindows, wm, windowTitle, appIdOf, getApp, windows } from './windows.js';
+import { useWindows, wm, windowTitle, appIdOf, getApp, windows, setDisplayAssignment, isLiveSystem } from './windows.js';
+import { screen, onScreenChange } from '@lordos/runtime';
 import { useLauncherApps, launchApp, linuxAppFor, shortAppName, windowAppName, LetterIcon, windowIcon } from './apps.js';
 import { t, locale } from './i18n.js';
 import * as fs from './fs.js';
@@ -307,6 +308,19 @@ export function dockMenu(e, opts = {}) {
     // where the app lives, when Files can open it (a .lpk's folder; a .desktop of the user's own)
     if (p.kind === 'lpk' && getApp(p.key)?.dir) options.push({ label: t('shell.dock.showInFiles'), onClick: () => wm.open('files', { args: { path: getApp(p.key).dir } }) });
     if (p.kind === 'desktop' && e.app?.user) options.push({ label: t('shell.dock.showInFiles'), onClick: () => wm.open('files', { args: { path: '~/.local/share/applications' } }) });
+    // Open at Login (0.8.5): started through the same safe path as a Dock click, once per session
+    if (p.kind !== 'shell') {
+      const on = loginApps().includes(e.id);
+      options.push({ label: t('shell.dock.openAtLogin'), checked: on, onClick: () => settings.set({ loginApps: on ? loginApps().filter((x) => x !== e.id) : [...loginApps(), e.id] }) });
+    }
+    // Assign to a display (0.8.5): its new windows open there; by the display's name, kept across boots
+    if (screen.displays.length > 1 && e.launcherId) {
+      const cur = (settings.get().appDisplays || {})[e.launcherId] || '';
+      const set = (name) => { const m = { ...(settings.get().appDisplays || {}) }; if (name) m[e.launcherId] = name; else delete m[e.launcherId]; settings.set({ appDisplays: m }); };
+      options.push('-', { label: t('shell.dock.assignTo'), disabled: true });
+      screen.displays.forEach((d, i) => options.push({ label: t('shell.dock.assignDisplay', { n: i + 1, name: d.name || '' }).trim(), checked: cur === d.name, onClick: () => set(d.name) }));
+      options.push({ label: t('shell.dock.assignNone'), checked: !cur, onClick: () => set('') });
+    }
     if (options.length) items.push({ label: t('shell.dock.options'), submenu: options }, '-');
   }
   if (e.windows.length) {
@@ -422,3 +436,16 @@ addListener('keydown', (e) => {
   clearTimeout(holdTimer);
   if (dockDrag.get()) { endedAt = Date.now(); dockDrag.set(null); }
 });
+
+// ---- Open at Login and display assignments (0.8.5) ----
+const loginApps = () => (Array.isArray(settings.get().loginApps) ? settings.get().loginApps : []);
+setDisplayAssignment((key) => {
+  const name = (settings.get().appDisplays || {})[key];
+  const d = name ? screen.displays.find((x) => x.name === name) : null;
+  return d ? d.id : null;
+});
+// once per session, a few seconds after it starts (never in the live system's first run, never in an
+// isolated app's process), each through launchDockItem: the same safe paths as a Dock click
+if (typeof lord !== 'undefined' && typeof lord.appId !== 'string' && typeof lord.greeter === 'undefined' && !isLiveSystem()) {
+  setTimeout(() => { for (const id of loginApps()) { try { launchDockItem(id); } catch (e) { /* uninstalled */ } } }, 3000);
+}

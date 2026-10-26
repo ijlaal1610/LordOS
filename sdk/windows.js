@@ -39,6 +39,15 @@ export function workAreaOf(d) {
 const pointerDisplay = () => (pointer.x >= 0 ? displayAt(pointer.x, pointer.y) : mainDisplay());
 // Work area of the display under the pointer (where a new window opens).
 export const pointerWorkArea = () => workAreaOf(pointerDisplay());
+// The display an app's new windows open on: the one the user assigned it to in the Dock (Options ›
+// Assign to, sdk/dock.js sets the hook), else the one under the pointer.
+let assignHook = null;
+export function setDisplayAssignment(fn) { assignHook = fn; }
+export function openingArea(appKey) {
+  const id = appKey && assignHook ? assignHook(appKey) : null;
+  const d = id != null ? screen.displays.find((x) => x.id === id) : null;
+  return workAreaOf(d || pointerDisplay());
+}
 const areaOfWindow = (w) => workAreaOf(displayFor(w));
 let seq = 2;
 const guards = new Map();
@@ -114,7 +123,7 @@ function place(appId, count, frame) {
   if (frame) return { ...frame, minimized: false, maximized: false };
   const [sw, sh] = registry.get(appId)?.size || [640, 420];
   const offset = (count % 6) * 30;
-  const area = workAreaOf(pointerDisplay());       // where the pointer is (docs/DISPLAYS.md)
+  const area = openingArea(appId);                 // its assigned display, or where the pointer is (docs/DISPLAYS.md)
   // the whole window stays inside the work area: a cascaded window must not slide under the
   // Dock, which would cover (and take the clicks of) its bottom edge
   const w = Math.min(sw, area.w), h = Math.min(sh, area.h);
@@ -288,6 +297,38 @@ export const wm = {
   // Snapping (see "Snapping" above): zone is one of SNAP_ZONES; 'restore' goes back to the size
   // and place from before the first snap (or un-maximizes).
   snap: (id, zone) => { if (zone === 'restore') unsnap(id); else if (SNAP_ZONES.includes(zone)) snapTo(id, zone); },
+  // The Window menu (sdk/windowmenu.js, 0.8.5): centered in its display's work area at its own size.
+  center(id) {
+    const w = windows.get().find((x) => x.id === id);
+    if (!w) return;
+    const a = workAreaOf(displayFor(w)), r = w.snapped && w.restore ? w.restore : w;
+    const ww = Math.min(r.w, a.w), hh = Math.min(r.h, a.h);
+    patch(id, { x: Math.round(a.x + (a.w - ww) / 2), y: Math.round(a.y + (a.h - hh) / 2), w: ww, h: hh, maximized: false, snapped: null, restore: null });
+  },
+  // To another display: the same place relative to the work area (a snapped window keeps its zone, a
+  // maximized one stays maximized), its size kept inside the new area.
+  moveToDisplay(id, displayId) {
+    const w = windows.get().find((x) => x.id === id);
+    const d = screen.displays.find((x) => x.id === displayId);
+    if (!w || !d) return;
+    if (w.snapped) { snapTo(id, w.snapped, d); return; }
+    const from = workAreaOf(displayFor(w)), to = workAreaOf(d);
+    const ww = Math.min(w.w, to.w), hh = Math.min(w.h, to.h);
+    const fx = from.w > w.w ? (w.x - from.x) / (from.w - w.w) : 0, fy = from.h > w.h ? (w.y - from.y) / (from.h - w.h) : 0;
+    const clamp = (v) => Math.max(0, Math.min(1, v));
+    patch(id, { x: Math.round(to.x + clamp(fx) * (to.w - ww)), y: Math.round(to.y + clamp(fy) * (to.h - hh)), w: ww, h: hh });
+  },
+  // Several windows at once on the display of the first: 'left-right', 'right-left', 'top-bottom',
+  // 'bottom-top' (two windows) or 'quarters' (up to four).
+  arrange(ids, layout) {
+    const zones = { 'left-right': ['left', 'right'], 'right-left': ['right', 'left'], 'top-bottom': ['top', 'bottom'], 'bottom-top': ['bottom', 'top'],
+      quarters: ['top-left', 'top-right', 'bottom-left', 'bottom-right'] }[layout];
+    const first = windows.get().find((x) => x.id === ids[0]);
+    if (!zones || !first) return;
+    const d = displayFor(first);
+    ids.slice(0, zones.length).forEach((id, i) => { snapTo(id, zones[i], d); });
+    for (const id of [...ids.slice(0, zones.length)].reverse()) wm.focus(id);
+  },
   // Super+arrow (dir: 'left' | 'right' | 'up' | 'down'): snap.js snapNext.
   snapKey(id, dir) {
     const w = windows.get().find((x) => x.id === id);

@@ -12,7 +12,7 @@ Tudo o que se configura no LordOS está nos Ajustes. O campo no alto busca entre
 | Seção | O que tem |
 |---|---|
 | [Geral](settings:general) | Este computador: nome, software e armazenamento |
-| [Aparência](settings:appearance) | Modo escuro ou claro, cor de destaque, transparências |
+| [Aparência](settings:appearance) | Estilo da área de trabalho (Lord Flow ou Lord Classic), modo escuro ou claro, cor de destaque, transparências |
 | [Fundo de tela](settings:wallpaper) | O fundo da área de trabalho |
 | [Rede](settings:network) | Cabo, Wi-Fi e VPN (veja [Rede](help:network)) |
 | [Som](settings:sound) | Saídas, entradas, volume por app (veja [Som](help:sound)) |
@@ -25,7 +25,6 @@ Tudo o que se configura no LordOS está nos Ajustes. O campo no alto busca entre
 | [Privacidade](settings:privacy) | Permissões dos apps (veja [Privacidade](help:privacy)) |
 | [Usuários](settings:users) | Contas e login automático (veja [Usuários e sessões](help:users)) |
 | [Atualizações](settings:updates) | Pacotes do Debian (veja [Atualizações](help:updates)) |
-| [Temas](settings:themes) | Lord Flow ou Lord Classic |
 | [Sessão](settings:session) | Sair da sessão |
 
 As mudanças se salvam sozinhas. O que afeta o computador inteiro (rede, usuários, fuso horário,

@@ -14,7 +14,6 @@ keywords: aparência, modo escuro, claro, cor, destaque, tema, fundo, transparê
 - **Estilo da área de trabalho:** [Ajustes → Aparência](settings:appearance) muda a área de
   trabalho inteira na hora, sem fechar os apps: **Lord Flow** (barra de menus no alto e Dock) ou
   **Lord Classic** (barra de tarefas centralizada com menu iniciar, configurações rápidas e
-  notificações). As janelas abertas voltam no estilo novo. [Ajustes → Temas](settings:themes) lista
-  todos os temas instalados.
+  notificações). As janelas abertas voltam no estilo novo. Qualquer outro tema instalado também aparece aqui.
 
 Todos os apps usam as cores do tema, inclusive os instalados pela Loja.

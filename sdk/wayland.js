@@ -8,10 +8,13 @@
 // menu from the app's own bar arrive as requests from the compositor.
 import { createElement as h } from 'react';
 import { View, Text, Surface, addListener, onShellKeyboard, shellHasKeyboard } from '@lordos/runtime';
-import { windows, wm, registerBuiltinApp, windowChrome, pointerWorkArea, getApp } from './windows.js';
+import { windows, wm, registerBuiltinApp, windowChrome, pointerWorkArea, openingArea, getApp } from './windows.js';
 import { useAppWindow } from './components.jsx';
 import { locale, appName } from './i18n.js';
 import { linuxAppFor } from './apps.js';
+
+// the launcher entry a new window belongs to (as sdk/dock.js launcherIdOf), for its assigned display
+const launcherKeyFor = (appId) => (!appId ? null : getApp(appId)?.package || getApp(appId)?.isolated ? appId : linuxAppFor(appId)?.id || null);
 
 const idOf = (sid) => `linux#${sid}`;
 export const surfaceOf = (wid) => (String(wid).startsWith('linux#') ? Number(String(wid).slice(6)) || 0 : 0);
@@ -57,7 +60,7 @@ globalThis.__lordWayland = (sid, type, d = {}) => {
       // X11 (Xwayland): the WM_CLASS class, or its instance when only that names a .desktop
       if (d.x11 && d.appAlt && !linuxAppFor(d.appId) && linuxAppFor(d.appAlt)) d = { ...d, appId: d.appAlt };
       const c = d.csd ? { w: 0, h: 0 } : windowChrome();
-      const area = pointerWorkArea();         // on the display under the pointer (docs/DISPLAYS.md)
+      const area = openingArea(launcherKeyFor(d.appId));   // its assigned display, or under the pointer (docs/DISPLAYS.md)
       const w = Math.min(area.w, d.width + c.w), hh = Math.min(area.h, d.height + c.h);
       const n = windows.get().length;
       // cascaded, but always inside the work area (never under the Dock)

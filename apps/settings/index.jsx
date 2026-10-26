@@ -123,13 +123,15 @@ function StyleThumb({ id, accent, dark }) {
   );
 }
 
-// Desktop style: the two full appearances (Lord Flow and Lord Classic), switched live. The open app
-// windows come back in the new one (sdk/index.js themes.use), Settings on this page.
+// Desktop style: every installed theme (Lord Flow and Lord Classic first; the login screen's is hidden),
+// switched live. The open app windows come back in the new one (sdk/index.js themes.use), Settings on
+// this page. Since 0.8.5 this is the only place to choose a theme (there is no separate Themes page).
 function StylePicker() {
   const t = useTheme();
   const { t: tr } = useLocale();
-  const list = themes.list().filter((th) => th.id === 'default' || th.id === 'classic');
-  if (list.length < 2) return null;
+  const order = (id) => (id === 'default' ? 0 : id === 'classic' ? 1 : 2);
+  const list = [...themes.list()].sort((a, b) => order(a.id) - order(b.id) || a.name.localeCompare(b.name));
+  if (!list.length) return null;
   const pick = (id) => {
     wm.open('settings', { args: { section: 'appearance' } });
     themes.use(id);
@@ -137,8 +139,8 @@ function StylePicker() {
   return (
     <Section title={tr('settings.style.title')} footer={tr('settings.style.hint')}>
       <View style={{ flexDirection: 'row', gap: spacing.xxl, paddingVertical: spacing.m, justifyContent: 'center' }}>
-        {['default', 'classic'].map((id) => {
-          const th = list.find((x) => x.id === id);
+        {list.map((th) => {
+          const id = th.id;
           return (
             <View key={id} onClick={() => { if (!th.current) pick(id); }} style={{ alignItems: 'center', gap: 6 }}>
               <View style={{ padding: 2, borderRadius: 10, border: `2px solid ${th.current ? t.accent : 'transparent'}` }}>
@@ -451,25 +453,6 @@ function Keyboard() {
   );
 }
 
-function Themes() {
-  const t = useTheme();
-  const { t: tr } = useLocale();
-  const list = themes.list();
-  return (
-    <Stack>
-      <Section footer={tr('settings.themes.hint')}>
-        {list.map((th) => (
-          <SettingRow key={th.id} icon={<Badge glyph="◧" color={th.current ? t.accent : '#8e8e93'} size={28} />} label={th.name} hint={th.description}>
-            {th.current
-              ? <Text style={{ fontSize: typeScale.callout, fontWeight: 600, color: t.accent }}>{tr('settings.themes.current')}</Text>
-              : <Button small label={tr('settings.themes.use')} onClick={() => themes.use(th.id)} />}
-          </SettingRow>
-        ))}
-      </Section>
-    </Stack>
-  );
-}
-
 function Session() {
   const { t: tr } = useLocale();
   return (
@@ -540,7 +523,7 @@ const GROUPS = [
   [['general', General, '#8e8e93', 'i'], ['appearance', Appearance, '#3a3a3c', '◐'], ['wallpaper', Wallpapers, '#30b0c7', '▣'], ['dock', DockSettings, '#3a3a3c', '▁'], ['displays', DisplaysSettings, '#0a84ff', '▭']],
   [['network', NetworkSettings, '#0a84ff', '⇅'], ['bluetooth', BluetoothSettings, '#0a84ff', 'ᛒ'], ['sound', SoundSettings, '#ff375f', '♪'], ['notifications', NotificationsSettings, '#ff3b30', '◉'], ['printers', PrintersSettings, '#636366', '⎙'], ['clipboard', ClipboardSettings, '#5e5ce6', '⎘'], ['sharing', SharingSettings, '#34c759', '⇄']],
   [['language', LanguageRegion, '#30b0c7', 'A'], ['datetime', DateTimeSettings, '#0a84ff', '◷'], ['keyboard', Keyboard, '#8e8e93', '⌨'], ['trackpad', TrackpadSettings, '#8e8e93', '▭'], ['defaultapps', DefaultAppsSettings, '#8e8e93', '◫']],
-  [['power', PowerSettings, '#30d158', BoltGlyph], ['cooling', CoolingSettings, '#32ade6', FanGlyph], ['firmware', FirmwareSettings, '#5e5ce6', ChipGlyph], ['privacy', PrivacySettings, '#0a84ff', LockGlyph], ['users', UsersSettings, '#0a84ff', '☺'], ['updates', Updates, '#8e8e93', '↻'], ['themes', Themes, '#ff9f0a', '◧'], ['session', Session, '#ff453a', '↪']],
+  [['power', PowerSettings, '#30d158', BoltGlyph], ['cooling', CoolingSettings, '#32ade6', FanGlyph], ['firmware', FirmwareSettings, '#5e5ce6', ChipGlyph], ['privacy', PrivacySettings, '#0a84ff', LockGlyph], ['users', UsersSettings, '#0a84ff', '☺'], ['updates', Updates, '#8e8e93', '↻'], ['session', Session, '#ff453a', '↪']],
 ];
 const SECTIONS = GROUPS.flat();
 // Trackpad only if there is a touchpad (lord-sessiond lends them with the monitor); Board firmware
@@ -594,7 +577,8 @@ export default function Settings() {
   const [section, setSectionState] = useState(lastSection);
   const [query, setQuery] = useState('');
   const setSection = (s) => { lastSection = s; setSectionState(s); };
-  useEffect(() => { if (args?.section && SECTIONS.some(([id]) => id === args.section)) setSection(args.section); }, [args?.nonce]);
+  // 'themes' (the old Themes page, links from older help) now opens Appearance
+  useEffect(() => { const sec = args?.section === 'themes' ? 'appearance' : args?.section; if (sec && SECTIONS.some(([id]) => id === sec)) setSection(sec); }, [args?.nonce]);
   const [, Body] = SECTIONS.find(([id]) => id === section) || SECTIONS[0];
   const q = query.trim().toLowerCase();
   // Trackpad only if there is a touchpad (lord-sessiond lends them with the monitor)
