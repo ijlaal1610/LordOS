@@ -243,7 +243,11 @@ which recommends `pci.ids` and `usb.ids`), and `tests/sysreport_test.c`: five fa
 Intel laptop, Nvidia desktop, Raspberry Pi 5, VM) full of serials, UUIDs, MAC addresses, a host name, a
 user name, monitor serials and a MAC inside an interface name, none of which may reach a report
 (`build/sysreport-test fixture <dir> <kind>` writes one for `--root`). Checked on VM 116 against the real
-machine. Not yet: the GPU's EGL, composition and scanout layers (they come from the running
+machine. `lordos-fetch` (the same binary under that name; `lordos-sysreport fetch`) shows the crown in
+the brand colors beside a short summary (system, computer, kernel, uptime, packages, shell, display, CPU,
+GPU, memory, disk, isolation); the user and host names appear only on screen and `--share` leaves them out
+for a screenshot to post; `--color=auto|always|never`, `NO_COLOR` respected, true color when `COLORTERM`
+says so, plain ASCII without color. Not yet: the GPU's EGL, composition and scanout layers (they come from the running
 `lord-server`, with `lord.sysinfo`), `hw-memory-modules`, the app.
 
 1. `server/src/sysreport/`: collector, GPU layers, `pci.ids`/EDID readers, fake-sysfs fixtures

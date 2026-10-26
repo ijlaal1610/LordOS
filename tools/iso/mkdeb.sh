@@ -9,6 +9,7 @@
 #   /usr/lib/lordos/bin/lord-fand         fan control by temperature (root, own service, enabled)
 #   /usr/lib/lordos/bin/lord-server       each session's server (looks for ../themes and ../assets)
 #   /usr/bin/lordos-sysreport             System Information's report as a command (user; docs/BENCHMARK.md)
+#   /usr/bin/lordos-fetch                 the crown and a summary of the computer (a link to lordos-sysreport)
 #   /usr/lib/lordos/themes/<theme>/       theme.json, theme.bundle.js and their resources (greeter: the
 #                                         login screen)
 #   /usr/lib/lordos/assets/               fonts, texts (locales), icons, shell integration
@@ -63,6 +64,7 @@ install -m 755 server/build/lordos-firstrun "$L/bin/lordos-firstrun"
 install -d "$PKG/usr/bin"
 install -m 755 server/build/lordos-sysreport "$PKG/usr/bin/lordos-sysreport"
 strip --strip-unneeded "$PKG/usr/bin/lordos-sysreport" 2>/dev/null || true
+ln -s lordos-sysreport "$PKG/usr/bin/lordos-fetch"
 # isolated PDF and archive helper (optional: make skips it without libpoppler-glib-dev/libarchive-dev);
 # lord-server only launches the lord-doc in its own folder
 [ -x server/build/lord-doc ] && install -m 755 server/build/lord-doc "$L/bin/lord-doc"

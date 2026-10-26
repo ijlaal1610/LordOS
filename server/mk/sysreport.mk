@@ -1,8 +1,11 @@
 # System Information (0.8.5, src/sysreport, docs/BENCHMARK.md): the collector, shared by the
-# `lordos-sysreport` command and (later) lord.sysinfo. Read-only, no root, libc only.
-SYSREPORT_SRC := src/sysreport/sysreport.c src/sysreport/sysreport_out.c src/sysreport/ids.c src/hw/edid.c src/hw/jbuf.c src/sec/json.c
+# `lordos-sysreport` and `lordos-fetch` commands (one binary; build/lordos-fetch is a link) and
+# (later) lord.sysinfo. Read-only, no root, libc only.
+SYSREPORT_SRC := src/sysreport/sysreport.c src/sysreport/fetch.c src/sysreport/sysreport_out.c src/sysreport/ids.c src/hw/edid.c src/hw/jbuf.c src/sec/json.c
 SYSREPORT_HDR := $(wildcard src/sysreport/*.h) src/hw/edid.h src/hw/jbuf.h src/sec/json.h
-all: build/lordos-sysreport
+all: build/lordos-sysreport build/lordos-fetch
+build/lordos-fetch: build/lordos-sysreport
+	ln -sf lordos-sysreport $@
 build/lordos-sysreport: src/sysreport/cli.c $(SYSREPORT_SRC) $(SYSREPORT_HDR) build/gen/lord_version.h
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) -Ibuild/gen $(CFLAGS) $(WARN) -std=c11 -o $@ src/sysreport/cli.c $(SYSREPORT_SRC)

@@ -12,6 +12,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Added
 
+- **`lordos-fetch`.** Type it in a terminal to see the LordOS crown beside a summary of your
+  computer: system, kernel, CPU, GPU, display, memory, disk, packages and how apps are isolated.
+  `lordos-fetch --share` leaves out your user and computer names, for a screenshot you'll post.
+- **`lordos-sysreport report`** prints the hardware of this computer and what the system made of it,
+  as Markdown or `--json`, with no serial numbers, addresses or names: the base of System
+  Information.
 - **Files: This Computer and every disk.** The sidebar now has This Computer, to browse the whole
   system read-only as your user (the system's own permissions decide; the kernel's `/proc`, `/sys`,
   `/dev` and `/run` stay out), and every disk with a file system: one that isn't mounted shows

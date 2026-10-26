@@ -5,10 +5,14 @@
  * and that none of those values reaches the JSON or the Markdown.
  *
  *   build/sysreport-test                       the tests (make test)
+ * lordos-fetch's summary is checked on the same trees: with --share it carries none of those values
+ * either, and without color it has no escape codes.
+ *
  *   build/sysreport-test fixture <dir> <kind>  writes a fake tree (amd, intel, nvidia, rpi5, vm), for
  *                                              `lordos-sysreport report --root <dir>` */
 #include "sysreport/sysreport.h"
 #include "sysreport/ids.h"
+#include "sysreport/fetch.h"
 #include "sec/json.h"
 
 #include <errno.h>
@@ -490,6 +494,35 @@ static void test_kind(const char *kind) {
     rmtree(root);
 }
 
+static void test_fetch(const char *kind) {
+    char root[] = "/tmp/sysreport-fetch-XXXXXX";
+    if (!mkdtemp(root)) { printf("mkdtemp\n"); exit(2); }
+    fixture(root, kind);
+    SysReport *r = calloc(1, sizeof *r);
+    sysreport_collect(r, root, NULL, NULL);
+    snprintf(r->sw.lordos, sizeof r->sw.lordos, "0.8.5-beta");
+    FetchLive l;
+    fetch_live(&l, root, 1);
+    CHECK(!l.user[0] && !l.host[0], "%s: --share has no names", kind);
+    FetchColor modes[3] = { FETCH_PLAIN, FETCH_256, FETCH_TRUECOLOR };
+    for (int m = 0; m < 3; m++) {
+        char *out = fetch_render(r, &l, modes[m]);
+        CHECK(out && contains(out, "LordOS 0.8.5-beta (Debian GNU/Linux 13 (trixie))") && contains(out, "CPU"), "%s/%d: fetch lines", kind, m);
+        for (size_t i = 0; i < sizeof SECRETS / sizeof SECRETS[0]; i++)
+            CHECK(!contains(out, SECRETS[i]), "%s/%d: fetch --share carries \"%s\"", kind, m, SECRETS[i]);
+        CHECK(m != FETCH_PLAIN || !strchr(out, '\033'), "%s: plain fetch has escape codes", kind);
+        CHECK(m != FETCH_TRUECOLOR || contains(out, "\033[38;2;255;214;10m"), "%s: true color gem", kind);
+        CHECK(m != FETCH_256 || contains(out, "\033[38;5;220m"), "%s: 256-color gem", kind);
+        free(out);
+    }
+    fetch_live(&l, root, 0);
+    char *out = fetch_render(r, &l, FETCH_PLAIN);
+    CHECK(contains(out, "@secret-host"), "%s: without --share the host is on screen", kind);
+    free(out);
+    free(r);
+    rmtree(root);
+}
+
 static void test_empty(void) {
     char root[] = "/tmp/sysreport-empty-XXXXXX";
     if (!mkdtemp(root)) { printf("mkdtemp\n"); exit(2); }
@@ -508,7 +541,13 @@ int main(int argc, char **argv) {
     }
     test_ids();
     const char *kinds[] = { "amd", "intel", "nvidia", "rpi5", "vm" };
-    for (size_t i = 0; i < sizeof kinds / sizeof kinds[0]; i++) test_kind(kinds[i]);
+    for (size_t i = 0; i < sizeof kinds / sizeof kinds[0]; i++) { test_kind(kinds[i]); test_fetch(kinds[i]); }
+    setenv("NO_COLOR", "1", 1);
+    CHECK(fetch_color_mode("auto", 1) == FETCH_PLAIN && fetch_color_mode("always", 0) != FETCH_PLAIN, "NO_COLOR and --color=always");
+    unsetenv("NO_COLOR");
+    setenv("TERM", "xterm-256color", 1);
+    setenv("COLORTERM", "truecolor", 1);
+    CHECK(fetch_color_mode("auto", 1) == FETCH_TRUECOLOR && fetch_color_mode("auto", 0) == FETCH_PLAIN && fetch_color_mode("never", 1) == FETCH_PLAIN, "color modes");
     test_empty();
     printf("sysreport-test: %d ok, %d failed\n", n_ok, n_bad);
     return n_bad ? 1 : 0;
