@@ -60,6 +60,11 @@
 #define C_KEY      TB_RGB(44, 44, 56)
 #define C_SEEN     TB_RGB(30, 80, 50)
 #define C_CROSS    TB_RGB(0, 230, 255)
+#define C_SYSTEM   TB_RGB(150, 110, 255)
+
+/* keys LordOS's compositor keeps for itself (wl.c, wl_key): Print Screen, the media keys and ❖ on its own
+ * (its press never reaches an app; ❖ combinations are LordOS's shortcuts) */
+static int system_key(int code) { return code == KEY_SYSRQ || code == KEY_LEFTMETA || code == KEY_RIGHTMETA; }
 
 /* ---- Wayland ---- */
 struct wl_display *dpy;
@@ -220,6 +225,7 @@ static void draw_keys(Surf *s, const Key *row, int n, int x, int y, int unit, in
             uint32_t bg = down[k->code] ? C_LAMP_ON : seen[k->code] ? C_SEEN : C_KEY;
             d_fill(s, x, y, w, kh, bg);
             if (seen[k->code] && !down[k->code]) d_frame(s, x, y, w, kh, 1, C_GOOD);
+            else if (system_key(k->code)) d_frame(s, x, y, w, kh, 1, C_SYSTEM);
             d_text_c(s, x + w / 2, y + kh / 2, 1, down[k->code] ? TB_RGB(0, 0, 0) : C_TEXT, k->label);
         }
         x += k->w * unit / 4;
@@ -240,6 +246,7 @@ static void draw_keyboard(Surf *s, int y0) {
     }
     char t[160];
     snprintf(t, sizeof t, "KEYBOARD  %d OF %d KEYS SEEN%s%s", nseen, map_total(), other_keys[0] ? "   OTHER: " : "", other_keys);
+    d_text(s, s->w - 12 - d_text_w("PURPLE: KEPT BY LORDOS (PRINT, SUPER ALONE, MEDIA KEYS)", 1), y0 + 10, 1, C_SYSTEM, "PURPLE: KEPT BY LORDOS (PRINT, SUPER ALONE, MEDIA KEYS)");
     d_text(s, 12, y0 + 10, 1, nseen == map_total() ? C_GOOD : C_HEAD, t);
 }
 

@@ -198,8 +198,11 @@ Linux app.
 
 ![The Test Bench in System Information](sysinfo-bench.png)
 
-**Still to build:** pointer confine, keys taken by system shortcuts, gamepads, and a run with the real monitor and
-GPU (presentation, latency, zero-copy).
+Keys LordOS's compositor keeps (`wl.c`, `wl_key`: Print Screen, the media keys, ❖ on its own) are outlined in
+purple on the bench's keyboard, so a key that never lights isn't mistaken for a broken one.
+
+**Still to build:** pointer confine, gamepads, and a run with the real monitor and GPU (presentation, latency,
+zero-copy).
 
 ### The plan
 
