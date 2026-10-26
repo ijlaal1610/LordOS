@@ -6,10 +6,10 @@
 import {
   View, Text, ScrollView, Button, useTheme, useLocale, LordOSLogo, systemReport, systemInfo, lordosVersion, formatBytes, formatNumber,
   Toolbar, ToolbarSpacer, ToolbarButton, Segmented, SidebarItem, GroupBox, FormRow, EmptyState, Hairline, spacing, typeScale,
-  fs, userDirs, clipboard, wm, admin, remote, codeStatus,
+  fs, userDirs, clipboard, wm, admin, remote, codeStatus, launchApp,
 } from '@lordos/sdk';
 import { useMemo, useState } from 'react';
-import { evaluate as evaluateChecks, evaluateProbe, PENDING as PENDING_CHECKS, PROBE_CHECKS } from './checks.js';
+import { evaluate as evaluateChecks, evaluateProbe, evaluateBench, PENDING as PENDING_CHECKS, PROBE_CHECKS } from './checks.js';
 import { cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, compositionReason, reportFileName, reportJson, parseMemoryLines } from './model.js';
 
 // The app's icon: a chip on the brand gradient.
@@ -392,6 +392,38 @@ function useProbe() {
   return [st, run];
 }
 
+// The Test Bench (a Wayland client of its own, lordos-testbench): its last report, read from the user's state
+// folder, and a button that opens it from the launcher like any Linux app.
+function useBenchReport(n) {
+  return useMemo(() => {
+    try { return JSON.parse(fs.read(`${fs.home()}/.local/state/lordos/testbench.json`)); } catch (e) { return null; }
+  }, [n]);
+}
+
+function BenchGroup() {
+  const t = useTheme();
+  const { t: tr } = useLocale();
+  const [n, setN] = useState(0);
+  const b = useBenchReport(n);
+  const rows = useMemo(() => evaluateBench(b), [b]);
+  return (
+    <View style={{ gap: spacing.s }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.m }}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text, textAlign: 'start' }}>{tr('sysinfo.bench.title')}</Text>
+          <Text style={{ fontSize: typeScale.callout, color: t.textDim, textAlign: 'start', lineHeight: 1.4 }}>{tr('sysinfo.bench.intro')}</Text>
+        </View>
+        <Button label={tr('sysinfo.bench.reload')} onClick={() => setN(n + 1)} />
+        <Button primary label={tr('sysinfo.bench.open')} onClick={() => launchApp('desktop:lordos-testbench')} />
+      </View>
+      <GroupBox footer={b && b.at ? tr('sysinfo.probe.when', { time: new Date(b.at).toLocaleString() }) : null}>
+        {rows ? rows.map((c) => <CheckRow key={c.id} c={c} />)
+          : <CheckRow c={{ id: 'wayland', level: 'effective', state: 'pending', paper: '§3.4' }} />}
+      </GroupBox>
+    </View>
+  );
+}
+
 function Checks({ r }) {
   const t = useTheme();
   const { t: tr } = useLocale();
@@ -423,6 +455,7 @@ function Checks({ r }) {
             {(probeRows || PROBE_CHECKS.map((id) => ({ id, level: 'effective', state: 'pending' }))).map((c) => <CheckRow key={c.id} c={c} />)}
           </GroupBox>
         </View>
+        <BenchGroup />
         <GroupBox title={tr('sysinfo.checksPendingTitle')} footer={tr('sysinfo.checksPendingFooter')}>
           {PENDING_CHECKS.map((id) => <CheckRow key={id} c={{ id, level: 'effective', state: 'pending' }} />)}
         </GroupBox>

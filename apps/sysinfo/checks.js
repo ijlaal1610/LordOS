@@ -122,3 +122,23 @@ export function evaluateProbe(result) {
 export const PENDING = ['netpermEffective'];
 // Before the probe has run.
 export const PROBE_CHECKS = ['appSandbox', 'helperSandbox', 'broker', 'appScope'];
+
+// ---- the Test Bench's last report (lordos-testbench, ~/.local/state/lordos/testbench.json) ----
+// The Wayland checklist (§3.4), the 3D renderer, whether frames are presented and input-to-screen latency.
+export function evaluateBench(b) {
+  if (!b || b.tool !== 'lordos-testbench' || !Array.isArray(b.checks)) return null;
+  const out = [];
+  const fails = b.checks.filter((c) => c && c.state === 'fail');
+  const passes = b.checks.filter((c) => c && c.state === 'pass').length;
+  out.push(row('wayland', '§3.4', 'effective', b.checks.length ? (fails.length ? 'fail' : 'pass') : 'unknown',
+    fails.length ? 'benchFails' : 'benchPasses', { pass: passes, fail: fails.length, list: fails.map((c) => c.id).join(', ') }));
+  const gl = b.gl || {};
+  if (gl.renderer) out.push(row('renderer3d', '§7.3', 'effective', /SOFTWARE/.test(gl.kind || '') ? 'warn' : 'pass', 'benchRenderer', { renderer: gl.renderer, ms: Math.round((gl.drawMs || 0) * 100) / 100 }));
+  else if (gl.error) out.push(row('renderer3d', '§7.3', 'effective', 'unknown', 'benchNo3d', { error: gl.error }));
+  else out.push(row('renderer3d', '§7.3', 'effective', 'unknown', 'benchNo3dRun'));
+  if (b.presentation) out.push(row('presented', '§7.2', 'measured', b.presented ? 'info' : 'warn', b.presented ? 'benchPresented' : 'benchNotPresented',
+    { shown: b.presented || 0, discarded: b.discarded || 0, hz: Math.round((b.refreshHz || b.outputRefreshHz || 0) * 100) / 100, fps: Math.round((b.fps || 0) * 10) / 10 }));
+  const lat = b.latency || {};
+  if (lat.n) out.push(row('latency', '§7.2', 'measured', 'info', 'benchLatency', { ms: Math.round(lat.avgMs * 10) / 10, n: lat.n }));
+  return out;
+}

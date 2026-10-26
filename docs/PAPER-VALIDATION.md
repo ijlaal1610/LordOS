@@ -190,8 +190,16 @@ keyboard test can't light them; the bench should list them as taken by the syste
 
 ![3D on VM 116 (software renderer)](testbench-3d.png)
 
-**Still to build:** pointer confine, keys taken by system shortcuts, gamepads, a run with the real monitor and
-GPU (presentation, latency, zero-copy), and attaching the report to System Information.
+**Phase 4 (2026-10-26): the report in System Information.** The bench writes its last report to
+`~/.local/state/lordos/testbench.json` (atomically, after its checklist and on exit); System Information →
+Checks shows it (Wayland protocols, the 3D renderer, whether frames reach the screen, input-to-screen
+latency; `evaluateBench` in `apps/sysinfo/checks.js`, tested) with **Open Test Bench**, which launches it like any
+Linux app.
+
+![The Test Bench in System Information](sysinfo-bench.png)
+
+**Still to build:** pointer confine, keys taken by system shortcuts, gamepads, and a run with the real monitor and
+GPU (presentation, latency, zero-copy).
 
 ### The plan
 

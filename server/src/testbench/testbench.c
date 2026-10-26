@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 #include <wayland-client.h>
@@ -722,10 +723,10 @@ static const struct wp_presentation_listener pres_listener = { pres_clock };
 static void report(FILE *o) {
     double span = t_last - t_first, sum = 0, mx = 0;
     for (int i = 0; i < nint; i++) { sum += intervals[i]; if (intervals[i] > mx) mx = intervals[i]; }
-    fprintf(o, "{\"tool\":\"lordos-testbench\",\"v\":1,\"window\":[%d,%d],\"frames\":%lu,\"fps\":%.2f,\"frameMsAvg\":%.3f,\"frameMsMax\":%.3f,"
+    fprintf(o, "{\"tool\":\"lordos-testbench\",\"v\":1,\"at\":%lld,\"window\":[%d,%d],\"frames\":%lu,\"fps\":%.2f,\"frameMsAvg\":%.3f,\"frameMsMax\":%.3f,"
                "\"noFreeBuffer\":%lu,\"presentation\":%s,\"presented\":%lu,\"discarded\":%lu,\"refreshHz\":%.3f,\"vblankSkips\":%lu,\"zeroCopy\":%lu,"
                "\"keyboard\":%s,\"pointer\":%s,\"repeat\":[%d,%d],\"globals\":[",
-            win_w, win_h, frames, span > 0 && frames > 1 ? (frames - 1) * 1000.0 / span : 0.0, nint ? sum / nint : 0, mx,
+            (long long)time(NULL) * 1000, win_w, win_h, frames, span > 0 && frames > 1 ? (frames - 1) * 1000.0 / span : 0.0, nint ? sum / nint : 0, mx,
             no_buffer, presentation ? "true" : "false", presented, discarded, refresh_ns ? 1e9 / refresh_ns : 0, vblank_skips, zero_copy,
             keyboard ? "true" : "false", pointer ? "true" : "false", repeat_rate, repeat_delay);
     for (int i = 0; i < nglobals; i++) fprintf(o, "%s{\"interface\":\"%s\",\"version\":%u}", i ? "," : "", globals[i].iface, globals[i].version);
@@ -739,6 +740,27 @@ static void report(FILE *o) {
         fprintf(o, "\"}");
     }
     fprintf(o, "]}\n");
+}
+
+/* The last report, for System Information's Checks: $XDG_STATE_HOME/lordos/testbench.json (or
+ * ~/.local/state/lordos/testbench.json), written whole and renamed into place. */
+static void save_report(void) {
+    const char *st = getenv("XDG_STATE_HOME"), *home = getenv("HOME");
+    char dir[512], tmp[600], path[600];
+    if (st && st[0] == '/') snprintf(dir, sizeof dir, "%s/lordos", st);
+    else if (home && home[0] == '/') snprintf(dir, sizeof dir, "%s/.local/state/lordos", home);
+    else return;
+    char parent[512];
+    snprintf(parent, sizeof parent, "%s", dir);
+    char *sl = strrchr(parent, '/');
+    if (sl) { *sl = 0; mkdir(parent, 0700); }
+    mkdir(dir, 0700);
+    snprintf(tmp, sizeof tmp, "%s/.testbench.json.tmp", dir);
+    snprintf(path, sizeof path, "%s/testbench.json", dir);
+    FILE *f = fopen(tmp, "we");
+    if (!f) return;
+    report(f);
+    if (fclose(f) == 0) rename(tmp, path); else unlink(tmp);
 }
 
 int main(int argc, char **argv) {
@@ -783,13 +805,15 @@ int main(int argc, char **argv) {
         if ((!ran && frames > 2) || rerun_checks) {
             ran = 1;
             rerun_checks = 0;
-            if (checks_run() < 0) break;            /* the compositor ended the connection */
+            if (checks_run() < 0) { save_report(); break; }   /* the compositor ended the connection */
+            save_report();
             if (auto_gl && subcomp && !gl3d_on()) gl3d_start(dpy, comp, subcomp, surf, card_x, card_y, card.w, card.h);
         }
         if (auto_s > 0 && frames && now_ms() - start > auto_s * 1000) break;
     }
     if (wl_display_get_error(dpy) && !checks_done) fprintf(stderr, "lordos-testbench: the connection ended (error %d)\n", wl_display_get_error(dpy));
     if (auto_s > 0) report(stdout);
+    if (frames) save_report();
     for (int i = 0; i < 2; i++) buf_free(&bufs[i]);
     card_free(&card);
     wl_display_disconnect(dpy);

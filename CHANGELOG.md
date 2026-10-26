@@ -30,7 +30,9 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   own copy in the clipboard as the Wayland protocol says.
 - **Test Bench** (`lordos-testbench`): a test pattern window that checks the display server from the
   outside: frame timing and when frames really reach the screen, every key of the keyboard, the
-  mouse and wheel, and the Wayland protocols the system offers.
+  mouse and wheel, and the Wayland protocols the system offers. G draws a 3D scene and says whether a
+  real graphics card or the processor renders it; V plays generated video at 24, 30 or 60 frames a second;
+  L locks the pointer; its last report appears in System Information → Checks.
 - **Monitor → Network shows ping (ICMP), raw IP and packet sockets** (the last two can see or forge
   traffic: the row says so, with the protocol or ethertype and the interface), under the app that
   opened them, and the remote

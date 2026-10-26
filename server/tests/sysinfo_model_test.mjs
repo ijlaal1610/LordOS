@@ -1,7 +1,7 @@
 // sysinfo_model_test.mjs — System Information's model (apps/sysinfo/model.js, 0.8.5): the GPU layers,
 // the reasons for CPU composition, the Compatibility panel and the Hardware sections. Run by
 // tests/run_suites.sh (needs node).
-import { evaluate, evaluateProbe, LIMITS } from '../../apps/sysinfo/checks.js';
+import { evaluate, evaluateProbe, evaluateBench, LIMITS } from '../../apps/sysinfo/checks.js';
 import { compositionReason, cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, reportFileName, reportJson, parseMemoryLines } from '../../apps/sysinfo/model.js';
 
 let n = 0, bad = 0;
@@ -143,6 +143,16 @@ eq('no seccomp seen from outside', evaluateProbe({ ...okProbe, proc: { ...okProb
 eq('no scope of its own', evaluateProbe({ ...okProbe, proc: { ...okProbe.proc, cgroup: '/user.slice/x.scope', memoryMax: 'max' } }).find((r) => r.id === 'appScope').note, 'scopeMissing');
 eq('helper never ran', evaluateProbe({ ...okProbe, probe: { ...okProbe.probe, tries: [...tr_(KER), ...tr_(['ownData'], false), ...tr_(['helperRan'])] } }).find((r) => r.id === 'helperSandbox').state, 'unknown');
 eq('garbage does not throw', evaluateProbe({ probe: { tries: [null, 3, { id: 5 }] } }).map((r) => r.state), ['unknown', 'fail', 'fail', 'unknown']);
+
+// ---- the Test Bench's report ----
+const bench = { tool: 'lordos-testbench', at: 1, fps: 59.9, presentation: true, presented: 600, discarded: 0, refreshHz: 60,
+  latency: { n: 4, avgMs: 21.25 }, gl: { renderer: 'AMD Radeon RX 580', kind: 'HARDWARE GPU', drawMs: 0.4 },
+  checks: [{ id: 'a', state: 'pass' }, { id: 'b', state: 'pass' }, { id: 'c', state: 'info' }] };
+eq('a good bench', st(evaluateBench(bench)), { wayland: 'pass', renderer3d: 'pass', presented: 'info', latency: 'info' });
+eq('a failing check is named', evaluateBench({ ...bench, checks: [...bench.checks, { id: 'clipboard round trip', state: 'fail' }] })[0].vars.list, 'clipboard round trip');
+eq('software renderer warns, headless presents nothing', st(evaluateBench({ ...bench, presented: 0, discarded: 9, gl: { renderer: 'llvmpipe', kind: 'SOFTWARE (CPU)' }, latency: {} })),
+  { wayland: 'pass', renderer3d: 'warn', presented: 'warn' });
+eq('not a bench report', [evaluateBench(null), evaluateBench({ tool: 'x' }), evaluateBench({ tool: 'lordos-testbench' })], [null, null, null]);
 
 console.log(`sysinfo-model-test: ${n - bad} ok, ${bad} failed`);
 process.exit(bad ? 1 : 0);
