@@ -25,6 +25,7 @@
 #include "draw.h"
 #include "tb.h"
 #include "gl3d.h"
+#include "../bench/bench.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -97,16 +98,11 @@ static Card card;
 static int card_x, card_y;
 
 /* ---- measurements ---- */
-static double now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
-static unsigned long frames, no_buffer;
-static double t_first, t_last;
-#define HIST 240
-static double intervals[HIST];
-static int nint;
-static unsigned long presented, discarded, vblank_skips, zero_copy;
-static uint32_t refresh_ns, clock_id;
-static double last_present_ms;
-static uint64_t last_msc;
+#define now_ms bench_now_ms
+static BenchFrames ft;                  /* frame times (src/bench, shared with LordBench) */
+static BenchPresent pr;
+static unsigned long no_buffer;
+static uint32_t clock_id;
 
 /* ---- input ---- */
 static struct xkb_context *xkb;
@@ -123,8 +119,7 @@ static int rerun_checks, paused;
 /* input to screen: the time of the last key or button, kept until the frame showing it is presented */
 static uint32_t lat_ev;
 static int lat_pending;
-static double lat_last = -1, lat_sum;
-static unsigned long lat_n, lat_lost;
+static BenchLatency lat = { .last = -1 };
 static int clock_mono = 1;              /* wp_presentation's clock is CLOCK_MONOTONIC (the event times' base) */
 /* generated video: content at 24/30/60 fps, and how many refreshes each content frame stayed */
 static int video_fps;                   /* 0 off */
@@ -266,35 +261,33 @@ static void draw_panel(Surf *s, int x0) {
     /* timing */
     d_text(s, x, y, 1, C_HEAD, "TIMING");
     y += 14;
-    double span = t_last - t_first;
-    double fps = span > 0 && frames > 1 ? (frames - 1) * 1000.0 / span : 0;
-    double sum = 0, mx = 0;
-    for (int i = 0; i < nint; i++) { sum += intervals[i]; if (intervals[i] > mx) mx = intervals[i]; }
-    snprintf(v, sizeof v, "%.1f", fps);
+    BenchStats st;
+    bench_frames_stats(&ft, &st);
+    snprintf(v, sizeof v, "%.1f", bench_frames_fps(&ft));
     stat_line(s, x, &y, "FRAMES/S", v, C_GOOD);
-    snprintf(v, sizeof v, "%.2f MS AVG  %.2f MAX", nint ? sum / nint : 0, mx);
-    stat_line(s, x, &y, "FRAME TIME", v, mx > (refresh_ns ? refresh_ns / 1e6 * 1.5 : 25) ? C_WARN : C_TEXT);
-    snprintf(v, sizeof v, "%lu", frames);
+    snprintf(v, sizeof v, "%.2f MS AVG  %.2f P99  %.2f MAX", st.avg, st.p99, st.max);
+    stat_line(s, x, &y, "FRAME TIME", v, st.p99 > (pr.refresh_ns ? pr.refresh_ns / 1e6 * 1.5 : 25) ? C_WARN : C_TEXT);
+    snprintf(v, sizeof v, "%lu", ft.frames);
     stat_line(s, x, &y, "FRAMES", v, C_TEXT);
     if (presentation) {
-        snprintf(v, sizeof v, "%lu SHOWN  %lu DISCARDED", presented, discarded);
-        stat_line(s, x, &y, "PRESENTED", v, discarded ? C_WARN : C_GOOD);
-        if (refresh_ns) snprintf(v, sizeof v, "%.2f HZ", 1e9 / refresh_ns);
+        snprintf(v, sizeof v, "%lu SHOWN  %lu DISCARDED", pr.presented, pr.discarded);
+        stat_line(s, x, &y, "PRESENTED", v, pr.discarded ? C_WARN : C_GOOD);
+        if (pr.refresh_ns) snprintf(v, sizeof v, "%.2f HZ", bench_refresh_hz(&pr));
         else if (out_refresh_mhz) snprintf(v, sizeof v, "%.2f HZ (OUTPUT MODE; NONE IN FEEDBACK)", out_refresh_mhz / 1000.0);
         else snprintf(v, sizeof v, "UNKNOWN");
         stat_line(s, x, &y, "REFRESH", v, C_TEXT);
-        snprintf(v, sizeof v, "%lu", vblank_skips);
-        stat_line(s, x, &y, "VBLANKS SKIPPED", v, vblank_skips ? C_WARN : C_GOOD);
-        snprintf(v, sizeof v, "%lu", zero_copy);
+        snprintf(v, sizeof v, "%lu", pr.vblank_skips);
+        stat_line(s, x, &y, "VBLANKS SKIPPED", v, pr.vblank_skips ? C_WARN : C_GOOD);
+        snprintf(v, sizeof v, "%lu", pr.zero_copy);
         stat_line(s, x, &y, "ZERO-COPY", v, C_TEXT);
     } else stat_line(s, x, &y, "PRESENTED", "NO WP_PRESENTATION", C_WARN);
     snprintf(v, sizeof v, "%lu", no_buffer);
     stat_line(s, x, &y, "NO FREE BUFFER", v, no_buffer ? C_WARN : C_TEXT);
     snprintf(v, sizeof v, "%d X %d", win_w, win_h);
     stat_line(s, x, &y, "WINDOW", v, C_TEXT);
-    if (lat_n) snprintf(v, sizeof v, "%.1f MS LAST  %.1f AVG  (%lu)", lat_last, lat_sum / lat_n, lat_n);
-    else snprintf(v, sizeof v, lat_lost ? "NOT MEASURABLE (%lu FRAMES NOT PRESENTED)" : "PRESS A KEY OR CLICK", lat_lost);
-    stat_line(s, x, &y, "INPUT TO SCREEN", v, lat_n ? (lat_sum / lat_n > 50 ? C_WARN : C_GOOD) : C_DIM);
+    if (lat.n) snprintf(v, sizeof v, "%.1f MS LAST  %.1f AVG  (%lu)", lat.last, bench_latency_avg(&lat), lat.n);
+    else snprintf(v, sizeof v, lat.lost ? "NOT MEASURABLE (%lu FRAMES NOT PRESENTED)" : "PRESS A KEY OR CLICK", lat.lost);
+    stat_line(s, x, &y, "INPUT TO SCREEN", v, lat.n ? (bench_latency_avg(&lat) > 50 ? C_WARN : C_GOOD) : C_DIM);
     y += 8;
     /* graphics: the 3D view (G) */
     d_text(s, x, y, 1, C_HEAD, "GRAPHICS  (G: 3D  V: VIDEO  L: LOCK POINTER)");
@@ -404,9 +397,8 @@ static void draw_pad(Surf *s) {
     d_circle(s, fx, fy + off, fr, LAMP(KEY_Z)); d_text_c(s, fx + 1, fy + off, 1, C_TEXT, "B");
     AT(0.40, 0.36, mx, my); d_circle(s, mx, my, u / 2 + 1, LAMP(KEY_RIGHTSHIFT)); d_text_c(s, mx + 1, my, 1, C_TEXT, "-");
     AT(0.60, 0.36, px, py); d_circle(s, px, py, u / 2 + 1, LAMP(KEY_ENTER)); d_text_c(s, px + 1, py, 1, C_TEXT, "+");
-    double span = t_last - t_first;
     char t[48];
-    snprintf(t, sizeof t, "%.1f FPS", span > 0 && frames > 1 ? (frames - 1) * 1000.0 / span : 0.0);
+    snprintf(t, sizeof t, "%.1f FPS", bench_frames_fps(&ft));
     AT(0.5, 0.82, tx, ty);
     d_text_c(s, tx, ty, u / 6 > 1 ? u / 6 : 1, C_GOOD, t);
 #undef AT
@@ -434,10 +426,10 @@ static void draw(Buf *b) {
     int sc = c.h / 10 > 1 ? c.h / 10 : 1;
     d_text_c(&s, card_x + c.x + c.w / 2, card_y + c.y + c.h / 2 - sc, sc, TB_RGB(235, 235, 235), clk);
     int steps = 60, cell = c.w / steps;
-    d_fill(&s, card_x + c.x + (int)(frames % steps) * cell, card_y + c.y + c.h - 4, cell > 2 ? cell - 1 : 2, 3, C_LAMP_ON);
+    d_fill(&s, card_x + c.x + (int)(ft.frames % steps) * cell, card_y + c.y + c.h - 4, cell > 2 ? cell - 1 : 2, 3, C_LAMP_ON);
     draw_pad(&s);
     if (video_fps) {                     /* the generated video: a square that steps once per content frame */
-        long idx = (long)(t_last * video_fps / 1000.0);
+        long idx = (long)(ft.last * video_fps / 1000.0);
         int track = card.w - 40, pos = (int)(idx % 60) * track / 60;
         d_fill(&s, card_x + 20, card_y + card.h - 26, track, 14, TB_RGB(20, 20, 20));
         d_fill(&s, card_x + 20 + pos, card_y + card.h - 26, track / 60 + 2, 14, TB_RGB(255, 255, 255));
@@ -461,21 +453,11 @@ static void fb_sync(void *d, struct wp_presentation_feedback *f, struct wl_outpu
 static void fb_presented(void *d, struct wp_presentation_feedback *f, uint32_t sec_hi, uint32_t sec_lo, uint32_t nsec,
                          uint32_t refresh, uint32_t seq_hi, uint32_t seq_lo, uint32_t flags) {
     (void)d;
-    presented++;
-    if (refresh) refresh_ns = refresh;
-    if (flags & WP_PRESENTATION_FEEDBACK_KIND_ZERO_COPY) zero_copy++;
-    uint64_t msc = ((uint64_t)seq_hi << 32) | seq_lo;
-    double t = (((uint64_t)sec_hi << 32) | sec_lo) * 1e3 + nsec / 1e6;
-    if (last_msc && msc > last_msc + 1) vblank_skips += msc - last_msc - 1;
-    else if (!msc && last_present_ms > 0 && refresh_ns) {     /* no counter: count from the times */
-        double gap = (t - last_present_ms) / (refresh_ns / 1e6);
-        if (gap > 1.5) vblank_skips += (unsigned long)(gap + 0.5) - 1;
-    }
-    last_msc = msc;
-    last_present_ms = t;
+    bench_present(&pr, (((uint64_t)sec_hi << 32) | sec_lo) * 1e3 + nsec / 1e6, ((uint64_t)seq_hi << 32) | seq_lo, refresh,
+                  !!(flags & WP_PRESENTATION_FEEDBACK_KIND_ZERO_COPY));
     wp_presentation_feedback_destroy(f);
 }
-static void fb_discarded(void *d, struct wp_presentation_feedback *f) { (void)d; discarded++; wp_presentation_feedback_destroy(f); }
+static void fb_discarded(void *d, struct wp_presentation_feedback *f) { (void)d; pr.discarded++; wp_presentation_feedback_destroy(f); }
 static const struct wp_presentation_feedback_listener fb_listener = { fb_sync, fb_presented, fb_discarded };
 
 /* the frame that shows an input: its presentation time minus the event's time */
@@ -485,10 +467,10 @@ static void lat_presented(void *d, struct wp_presentation_feedback *f, uint32_t 
     uint32_t ev = (uint32_t)(uintptr_t)d;
     uint64_t t = ((((uint64_t)sec_hi << 32) | sec_lo) * 1000ull) + nsec / 1000000u;
     double l = (double)(uint32_t)((uint32_t)t - ev);
-    if (clock_mono && l < 2000) { lat_last = l; lat_sum += l; lat_n++; } else lat_lost++;
+    bench_latency_add(&lat, clock_mono ? l : -1);
     wp_presentation_feedback_destroy(f);
 }
-static void lat_discarded(void *d, struct wp_presentation_feedback *f) { (void)d; lat_lost++; wp_presentation_feedback_destroy(f); }
+static void lat_discarded(void *d, struct wp_presentation_feedback *f) { (void)d; lat.lost++; wp_presentation_feedback_destroy(f); }
 static const struct wp_presentation_feedback_listener lat_listener = { fb_sync, lat_presented, lat_discarded };
 static void g_presented_cb(void *d, struct wp_presentation_feedback *f, uint32_t a, uint32_t b, uint32_t c, uint32_t r, uint32_t e, uint32_t g, uint32_t flags) {
     (void)d; (void)a; (void)b; (void)c; (void)r; (void)e; (void)g;
@@ -513,13 +495,9 @@ static void redraw(void) {
         if (!b) { no_buffer++; }
     }
     double t = now_ms();
-    if (frames) {
-        intervals[nint < HIST ? nint++ : (int)(frames % HIST)] = t - t_last;
-    } else t_first = t;
-    t_last = t;
     if (b) {
+        bench_frames_add(&ft, t);
         draw(b);
-        frames++;
     }
     if (video_fps) {                     /* how many refreshes each content frame stays */
         long idx = (long)(t * video_fps / 1000.0);
@@ -728,47 +706,38 @@ static const struct wp_presentation_listener pres_listener = { pres_clock };
 
 /* ---- the --auto report ---- */
 static void report(FILE *o) {
-    double span = t_last - t_first, sum = 0, mx = 0;
-    for (int i = 0; i < nint; i++) { sum += intervals[i]; if (intervals[i] > mx) mx = intervals[i]; }
+    BenchStats fs;
+    bench_frames_stats(&ft, &fs);
+    double hz = bench_refresh_hz(&pr) > 0 ? bench_refresh_hz(&pr) : out_refresh_mhz / 1000.0;
     fprintf(o, "{\"tool\":\"lordos-testbench\",\"v\":1,\"at\":%lld,\"window\":[%d,%d],\"frames\":%lu,\"fps\":%.2f,\"frameMsAvg\":%.3f,\"frameMsMax\":%.3f,"
+               "\"frameMsP50\":%.3f,\"frameMsP99\":%.3f,\"missedBudget\":%d,"
                "\"noFreeBuffer\":%lu,\"presentation\":%s,\"presented\":%lu,\"discarded\":%lu,\"refreshHz\":%.3f,\"vblankSkips\":%lu,\"zeroCopy\":%lu,"
                "\"keyboard\":%s,\"pointer\":%s,\"repeat\":[%d,%d],\"globals\":[",
-            (long long)time(NULL) * 1000, win_w, win_h, frames, span > 0 && frames > 1 ? (frames - 1) * 1000.0 / span : 0.0, nint ? sum / nint : 0, mx,
-            no_buffer, presentation ? "true" : "false", presented, discarded, refresh_ns ? 1e9 / refresh_ns : 0, vblank_skips, zero_copy,
+            (long long)time(NULL) * 1000, win_w, win_h, ft.frames, bench_frames_fps(&ft), fs.avg, fs.max,
+            fs.p50, fs.p99, hz > 0 ? bench_frames_missed(&ft, 1000.0 / hz) : 0,
+            no_buffer, presentation ? "true" : "false", pr.presented, pr.discarded, bench_refresh_hz(&pr), pr.vblank_skips, pr.zero_copy,
             keyboard ? "true" : "false", pointer ? "true" : "false", repeat_rate, repeat_delay);
     for (int i = 0; i < nglobals; i++) fprintf(o, "%s{\"interface\":\"%s\",\"version\":%u}", i ? "," : "", globals[i].iface, globals[i].version);
     static const char *st[4] = { "untested", "pass", "fail", "info" };
-    fprintf(o, "],\"outputRefreshHz\":%.3f,\"latency\":{\"n\":%lu,\"avgMs\":%.2f,\"notPresented\":%lu},", out_refresh_mhz / 1000.0, lat_n, lat_n ? lat_sum / lat_n : 0, lat_lost);
-    fprintf(o, "\"gl\":{\"renderer\":\"%s\",\"vendor\":\"%s\",\"version\":\"%s\",\"kind\":\"%s\",\"error\":\"%s\",\"drawMs\":%.3f,\"frames\":%lu,\"presented\":%lu,\"zeroCopy\":%lu},\"checks\":[",
-            gl3d.renderer, gl3d.vendor, gl3d.version, gl3d.kind, gl3d.error, gl3d.gpu_ms, gl3d.frames, g_presented, g_zero);
+    fprintf(o, "],\"outputRefreshHz\":%.3f,\"latency\":{\"n\":%lu,\"avgMs\":%.2f,\"notPresented\":%lu},", out_refresh_mhz / 1000.0, lat.n, bench_latency_avg(&lat), lat.lost);
+    fprintf(o, "\"gl\":{\"renderer\":");
+    bench_json_str(o, gl3d.renderer);
+    fprintf(o, ",\"vendor\":");
+    bench_json_str(o, gl3d.vendor);
+    fprintf(o, ",\"version\":");
+    bench_json_str(o, gl3d.version);
+    fprintf(o, ",\"kind\":\"%s\",\"error\":\"%s\",\"drawMs\":%.3f,\"frames\":%lu,\"presented\":%lu,\"zeroCopy\":%lu},\"checks\":[",
+            gl3d.kind, gl3d.error, gl3d.gpu_ms, gl3d.frames, g_presented, g_zero);
     for (int i = 0; i < nchecks; i++) {
-        fprintf(o, "%s{\"id\":\"%s\",\"state\":\"%s\",\"detail\":\"", i ? "," : "", checks[i].id, st[checks[i].state & 3]);
-        for (const char *q = checks[i].detail; *q; q++) if (*q != '"' && *q != '\\') fputc(*q, o);
-        fprintf(o, "\"}");
+        fprintf(o, "%s{\"id\":\"%s\",\"state\":\"%s\",\"detail\":", i ? "," : "", checks[i].id, st[checks[i].state & 3]);
+        bench_json_str(o, checks[i].detail);
+        fprintf(o, "}");
     }
     fprintf(o, "]}\n");
 }
 
-/* The last report, for System Information's Checks: $XDG_STATE_HOME/lordos/testbench.json (or
- * ~/.local/state/lordos/testbench.json), written whole and renamed into place. */
-static void save_report(void) {
-    const char *st = getenv("XDG_STATE_HOME"), *home = getenv("HOME");
-    char dir[512], tmp[600], path[600];
-    if (st && st[0] == '/') snprintf(dir, sizeof dir, "%s/lordos", st);
-    else if (home && home[0] == '/') snprintf(dir, sizeof dir, "%s/.local/state/lordos", home);
-    else return;
-    char parent[512];
-    snprintf(parent, sizeof parent, "%s", dir);
-    char *sl = strrchr(parent, '/');
-    if (sl) { *sl = 0; mkdir(parent, 0700); }
-    mkdir(dir, 0700);
-    snprintf(tmp, sizeof tmp, "%s/.testbench.json.tmp", dir);
-    snprintf(path, sizeof path, "%s/testbench.json", dir);
-    FILE *f = fopen(tmp, "we");
-    if (!f) return;
-    report(f);
-    if (fclose(f) == 0) rename(tmp, path); else unlink(tmp);
-}
+/* The last report, for System Information's Checks: ~/.local/state/lordos/testbench.json (bench_save). */
+static void save_report(void) { bench_save("testbench", report); }
 
 int main(int argc, char **argv) {
     double auto_s = 0;
@@ -809,18 +778,18 @@ int main(int argc, char **argv) {
     double start = now_ms();
     int ran = 0;
     while (!closed && wl_display_dispatch(dpy) != -1) {
-        if ((!ran && frames > 2) || rerun_checks) {
+        if ((!ran && ft.frames > 2) || rerun_checks) {
             ran = 1;
             rerun_checks = 0;
             if (checks_run() < 0) { save_report(); break; }   /* the compositor ended the connection */
             save_report();
             if (auto_gl && subcomp && !gl3d_on()) gl3d_start(dpy, comp, subcomp, surf, card_x, card_y, card.w, card.h);
         }
-        if (auto_s > 0 && frames && now_ms() - start > auto_s * 1000) break;
+        if (auto_s > 0 && ft.frames && now_ms() - start > auto_s * 1000) break;
     }
     if (wl_display_get_error(dpy) && !checks_done) fprintf(stderr, "lordos-testbench: the connection ended (error %d)\n", wl_display_get_error(dpy));
     if (auto_s > 0) report(stdout);
-    if (frames) save_report();
+    if (ft.frames) save_report();
     for (int i = 0; i < 2; i++) buf_free(&bufs[i]);
     card_free(&card);
     wl_display_disconnect(dpy);

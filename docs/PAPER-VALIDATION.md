@@ -201,6 +201,11 @@ Linux app.
 Keys LordOS's compositor keeps (`wl.c`, `wl_key`: Print Screen, the media keys, ❖ on its own) are outlined in
 purple on the bench's keyboard, so a key that never lights isn't mistaken for a broken one.
 
+**Shared code (2026-10-26).** The measurement pieces moved to `server/src/bench/`, shared with LordBench
+(0.8.6): frame times now give p50, p99 and frames that missed the refresh budget (`frameMsP50`,
+`frameMsP99`, `missedBudget` in the report); `build/bench-test` (22 checks) found that vblanks skipped were
+never counted from presentation times when the first frame was at time 0, fixed.
+
 **Still to build:** pointer confine, gamepads, and a run with the real monitor and GPU (presentation, latency,
 zero-copy).
 

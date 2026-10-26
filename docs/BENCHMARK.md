@@ -32,6 +32,14 @@ server/src/bench/            LordBench workloads (library)
 - **`lordos-sysreport`** is an ordinary user command in `/usr/bin` that the user or a test script
   runs; `lord-server` never runs it. It writes the same JSON as the app, so reports can be made on
   a machine without a session (a headless Pi, a VM over SSH, CI).
+- **Shared with the Test Bench.** `lordos-testbench` (0.8.5, `src/testbench`, a Wayland client that checks
+  the display server from the outside) and LordBench keep their own names and jobs, but the measurement
+  pieces live once, in `server/src/bench/`, and both link them: `bench.c` (the clock; frame times with
+  average, p50, p99 and frames that missed the refresh budget; presentation accounting with vblanks skipped
+  and zero-copy frames; input-to-screen latency; the GL renderer's kind; JSON strings; the report written
+  atomically to `~/.local/state/lordos/<name>.json`) and `glscene.c` (the fixed 3D scene, drawn with GLES2
+  in whatever context is current: the bench's wayland-egl window, LordBench's offscreen context). Tested by
+  `build/bench-test`. LordBench's workloads go next to them.
 - **`lord-bench`** is the helper the app starts for workloads, launched like `lord-doc` and
   `lord-media`: fixed path (`<lord-server dir>/lord-bench`), no arguments, minimal environment,
   channel on fd 3, `sandbox_apply_helper()` before any work; it gets only the render node and a
