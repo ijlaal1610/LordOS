@@ -13,19 +13,18 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 ### Added
 
 - **A curated catalog of AI apps in the LordOS repository (in development).** `apt/catalog.json` lists
-  ten apps with their package, summary (en/es/pt), licence, vendor, architectures (amd64 and arm64) and
+  nine apps with their package, summary (en/es/pt), licence, vendor, architectures (amd64 and arm64) and
   a pinned source; `apt/keys/` holds the vendors' APT keys, `apt/recipes/` LordOS's build recipes and
   `apt/build.sh` checks and fetches them (`apt/README.md`, `docs/UPDATES.md` "Mirrored apps
   (catalog)"). Claude Code, Claude Desktop, Visual Studio Code and Cursor come straight from their
   vendors' signed APT repositories ("direct"): `apt/build.sh check` verifies the pinned key
   fingerprint, the signed `InRelease`, the index hash and the package for each architecture. The other
-  six are verified on the maintainer's Mac and published in `pool/catalog/` by
+  five are verified on the maintainer's Mac and published in `pool/catalog/` by
   `tools/release/apt-repo.sh build … --catalog`: goose 1.56.0 and opencode 1.19.4 (the vendor's .deb,
-  pinned SHA-256), and four packages LordOS builds in `debian:trixie` containers with no network —
-  `ollama` 0.40.11 (the official release split into `ollama`, with `ollama.service` enabled on install
-  as upstream does, and `ollama-cuda` with the NVIDIA libraries, so a Raspberry Pi never downloads
-  them), `llama.cpp` 0.7.0 and `whisper.cpp` 1.9.5 (from the pinned source tag, CPU only, every CPU
-  variant built and the best one picked at run time) and `codex-cli` 0.164.0 (OpenAI's static binary,
+  pinned SHA-256), and three packages LordOS builds in `debian:trixie` containers with no network —
+  `llama.cpp` 0.7.0, the local model runner (`-hf` downloads GGUF models from Hugging Face over HTTPS;
+  every CPU variant built and the best one picked at run time, plus the Vulkan backend, loaded only
+  when a Vulkan device exists), `whisper.cpp` 1.9.5 (CPU) and `codex-cli` 0.164.0 (OpenAI's static binary,
   its sigstore signature checked with cosign). Vendor packages are never modified; what their
   maintainer scripts do when the Store installs them (VS Code, Claude Desktop and Cursor add their own
   APT source) is documented.
@@ -247,6 +246,18 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   `libkms++0`) from lordos.org: the CDN reads a bare `+` as a space and answered 404. It now sends
   `%2B`, as apt does, so Settings → Board firmware can install the bootloader tools from the LordOS
   repository alone.
+
+### Known issues and limitations
+
+- **Remote desktop: black corners on a window being dragged.** While a window is dragged, the frames the
+  remote desktop sends can show its rounded corners black; the monitor itself shows them right (checked on
+  VM 116 against the display output). Being looked at.
+- **llama.cpp on a GPU is not tested on real hardware yet.** Its Vulkan backend is meant for AMD (Mesa
+  RADV), NVIDIA (the NVIDIA driver or NVK) and Intel GPUs and falls back to the CPU without one; only the
+  CPU path and the backend loading (software Vulkan) were checked.
+- **Searching "displays" in Spotlight** opens the Help article on touchpads and touch screens before
+  Settings → Displays.
+- **Settings → Displays:** in the arrangement, the name of a small display is cut without an ellipsis.
 
 ## [0.8.4.1-beta] - 2026-10-25
 
