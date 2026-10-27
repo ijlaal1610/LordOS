@@ -315,7 +315,10 @@ noise of the build without the check (727–870 ms against 745–855 ms).
 3. `REQUIRE_SIGNED_CODE=1 tools/iso/mkdeb.sh` installs both files into `/usr/lib/lordos/` and runs
    `lord-server --check-code` on the staged tree: the `.deb` is not built if a bundle doesn't match
    or (release build) the signature is missing. The ISO and the Raspberry Pi image install that `.deb`
-   (`tools/rpi/build-img.sh` passes `RELEASE` and `REQUIRE_SIGNED_CODE` to its arm64 chroot).
+   (`tools/rpi/build-img.sh` passes `RELEASE` and `REQUIRE_SIGNED_CODE` to its arm64 chroot). An x86-64
+   host packaging an `server/build` already compiled for aarch64 can't run that `lord-server`, so it
+   sets `CODE_CHECK_SERVER` to a `lord-server` built for the host from the same tree: the check reads
+   only the bundles and the signature, which are the same on both architectures.
 
 See [RELEASING.md](RELEASING.md), step 3.
 

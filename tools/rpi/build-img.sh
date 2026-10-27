@@ -16,7 +16,9 @@
 # image before it grows on boot, 512), RPI_SSH=1 (SSH server on from the start, for development;
 # otherwise it ships off and the `ssh` switch file turns it on), RPI_KEY_NOCHECK=1 (do not verify
 # the Raspberry Pi archive key fingerprint; not recommended), KERNEL_DEBS (folder with the LordOS
-# kernel packages from tools/rpi/build-kernel.sh, default /var/tmp/lordos-kernel/out).
+# kernel packages from tools/rpi/build-kernel.sh, default /var/tmp/lordos-kernel/out), CODE_CHECK_SERVER
+# (an x86-64 host with an aarch64 server/build: a lord-server built for the host from the same tree,
+# used only to check the signed system code; docs/SIGNING.md).
 #
 # Kernel: the LordOS build of the Raspberry Pi kernel (with Landlock, the BPF LSM and BTF) when its
 # .debs are in $KERNEL_DEBS; otherwise Raspberry Pi's archive kernel, which has none of them (a loud
@@ -172,6 +174,10 @@ is_aarch64() {      # aarch64 ELF (e_machine = 0xb7)
 [ -f themes/greeter/theme.bundle.js ] || { echo "build-img.sh: themes missing (npm run build on the development machine)" >&2; exit 1; }
 if is_aarch64 server/build/lord-server && is_aarch64 server/build/lord-sessiond; then
     echo "== lord-server: using server/build (already aarch64)"
+    # mkdeb.sh checks the signed system code with lord-server, which can't run here on x86-64
+    if [ "$NATIVE" = 0 ] && [ ! -x "${CODE_CHECK_SERVER:-}" ]; then
+        echo "build-img.sh: server/build is aarch64 on an $(uname -m) host: set CODE_CHECK_SERVER to a lord-server built for this host from the same tree" >&2; exit 1
+    fi
     DEB_ARCH=$ARCH sh tools/iso/mkdeb.sh "$DEB"
 else
     echo "== lord-server: building in an arm64 chroot ($BR)"
@@ -401,7 +407,7 @@ if [ "${RPI_SSH:-0}" = 1 ]; then in_root "$CH" systemctl enable ssh.service > /d
 umount_ch "$CH"
 
 # ---- 4. the image: MBR, 512 MiB FAT32 (bootfs) + ext4 (rootfs) ----
-echo "== imagen"
+echo "== image"
 ROOT_MB=$(( $(du -sm "$CH" | cut -f1) - $(du -sm "$CH/boot/firmware" | cut -f1) ))
 BOOT_MB=512
 SIZE_MB=$((4 + BOOT_MB + ROOT_MB * 115 / 100 + IMG_EXTRA_MB))

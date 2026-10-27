@@ -61,44 +61,51 @@ install -m 755 server/build/lord-sessiond "$L/bin/lord-sessiond"
 install -m 755 server/build/lord-netd "$L/bin/lord-netd"
 install -m 755 server/build/lord-netperm "$L/bin/lord-netperm"
 install -m 755 server/build/lord-fand "$L/bin/lord-fand"
+# strip for the package's architecture: the host's strip can't read another architecture's binaries
+# (an aarch64 server/build packaged on x86-64 by tools/rpi/build-img.sh), and its errors are ignored below
+STRIP=strip
+if [ "${DEB_ARCH:-}" = arm64 ] && [ "$(dpkg --print-architecture)" != arm64 ]; then
+    STRIP=aarch64-linux-gnu-strip
+    command -v "$STRIP" > /dev/null || { echo "missing $STRIP (binutils-aarch64-linux-gnu)" >&2; exit 1; }
+fi
 # the LordOS Imager's first-run file applier (Raspberry Pi image, rpi/firstboot; docs/IMAGER.md)
 install -m 755 server/build/lordos-firstrun "$L/bin/lordos-firstrun"
 # System Information's report for a terminal, SSH or CI; lord-server never runs it
 install -d "$PKG/usr/bin"
 install -m 755 server/build/lordos-sysreport "$PKG/usr/bin/lordos-sysreport"
-strip --strip-unneeded "$PKG/usr/bin/lordos-sysreport" 2>/dev/null || true
+"$STRIP" --strip-unneeded "$PKG/usr/bin/lordos-sysreport" 2>/dev/null || true
 ln -s lordos-sysreport "$PKG/usr/bin/lordos-fetch"
 # the visual test bench: a plain Wayland client, launched like any Linux app
 [ -x server/build/lordos-testbench ] && {
     install -m 755 server/build/lordos-testbench "$PKG/usr/bin/lordos-testbench"
-    strip --strip-unneeded "$PKG/usr/bin/lordos-testbench" 2>/dev/null || true
+    "$STRIP" --strip-unneeded "$PKG/usr/bin/lordos-testbench" 2>/dev/null || true
     install -d "$PKG/usr/share/applications"
     install -m 644 packaging/desktop/lordos-testbench.desktop "$PKG/usr/share/applications/lordos-testbench.desktop"
 }
 # isolated PDF and archive helper (optional: make skips it without libpoppler-glib-dev/libarchive-dev);
 # lord-server only launches the lord-doc in its own folder
 [ -x server/build/lord-doc ] && install -m 755 server/build/lord-doc "$L/bin/lord-doc"
-strip --strip-unneeded "$L/bin/lord-server" "$L/bin/lord-sessiond" "$L/bin/lord-netd" "$L/bin/lord-netperm" "$L/bin/lord-fand" "$L/bin/lordos-firstrun" 2>/dev/null || true
-[ -x "$L/bin/lord-doc" ] && { strip --strip-unneeded "$L/bin/lord-doc" 2>/dev/null || true; }
+"$STRIP" --strip-unneeded "$L/bin/lord-server" "$L/bin/lord-sessiond" "$L/bin/lord-netd" "$L/bin/lord-netperm" "$L/bin/lord-fand" "$L/bin/lordos-firstrun" 2>/dev/null || true
+[ -x "$L/bin/lord-doc" ] && { "$STRIP" --strip-unneeded "$L/bin/lord-doc" 2>/dev/null || true; }
 # lord-server only launches the lord-media in its own folder (media: video, photos, camera, recorder)
 [ -x server/build/lord-media ] && install -m 755 server/build/lord-media "$L/bin/lord-media"
-[ -x "$L/bin/lord-media" ] && { strip --strip-unneeded "$L/bin/lord-media" 2>/dev/null || true; }
+[ -x "$L/bin/lord-media" ] && { "$STRIP" --strip-unneeded "$L/bin/lord-media" 2>/dev/null || true; }
 # lord-vault: Passwords and the system keyring (docs/PASSWORDS.md); lord-server only launches the one in its own folder
 [ -x server/build/lord-vault ] && install -m 755 server/build/lord-vault "$L/bin/lord-vault"
-[ -x "$L/bin/lord-vault" ] && { strip --strip-unneeded "$L/bin/lord-vault" 2>/dev/null || true; }
+[ -x "$L/bin/lord-vault" ] && { "$STRIP" --strip-unneeded "$L/bin/lord-vault" 2>/dev/null || true; }
 # lord-maild: IMAP/SMTP/CalDAV/CardDAV with TLS for Mail (docs/MAIL.md); lord-server only launches the one in its own folder
 [ -x server/build/lord-maild ] && install -m 755 server/build/lord-maild "$L/bin/lord-maild"
-[ -x "$L/bin/lord-maild" ] && { strip --strip-unneeded "$L/bin/lord-maild" 2>/dev/null || true; }
+[ -x "$L/bin/lord-maild" ] && { "$STRIP" --strip-unneeded "$L/bin/lord-maild" 2>/dev/null || true; }
 # lord-fetch (0.8.5): downloads the subscribed blocklists over HTTPS, sandboxed (docs/FIREWALL.md, "Blocklists")
 [ -x server/build/lord-fetch ] && install -m 755 server/build/lord-fetch "$L/bin/lord-fetch"
-[ -x "$L/bin/lord-fetch" ] && { strip --strip-unneeded "$L/bin/lord-fetch" 2>/dev/null || true; }
+[ -x "$L/bin/lord-fetch" ] && { "$STRIP" --strip-unneeded "$L/bin/lord-fetch" 2>/dev/null || true; }
 # the app catalog (0.8.5, apt/): Store → Artificial Intelligence; pkg-source-add reads it as root
 install -d "$L/apt/keys"
 install -m 644 apt/catalog.json "$L/apt/catalog.json"
 for k in apt/keys/*.asc; do install -m 644 "$k" "$L/apt/keys/"; done
 # lord-tls (0.8.5): HTTPS for the package engine's downloads, sandboxed (docs/PACKAGES.md, "HTTPS")
 [ -x server/build/lord-tls ] && install -m 755 server/build/lord-tls "$L/bin/lord-tls"
-[ -x "$L/bin/lord-tls" ] && { strip --strip-unneeded "$L/bin/lord-tls" 2>/dev/null || true; }
+[ -x "$L/bin/lord-tls" ] && { "$STRIP" --strip-unneeded "$L/bin/lord-tls" 2>/dev/null || true; }
 # FIDO2 security keys reachable by the session user (lord-sessiond sessions have no logind seat)
 install -d "$PKG/usr/lib/udev/rules.d"
 install -m 644 packaging/udev/71-lordos-fido.rules "$PKG/usr/lib/udev/rules.d/71-lordos-fido.rules"
@@ -132,7 +139,10 @@ install -m 644 code-manifest.json "$L/code-manifest.json"
 if [ "${REQUIRE_SIGNED_CODE:-0}" = 1 ] && [ ! -f "$L/code-manifest.sig" ]; then
     echo "missing code-manifest.sig: sign the manifest on the maintainer's machine (tools/release/sign-code.sh)" >&2; exit 1
 fi
-server/build/lord-server --check-code "$L" > "$PKG/code-check.log" 2>&1 || {
+# the check is the same on any architecture: building another architecture's package on this host
+# (tools/rpi/build-img.sh on x86-64 with an aarch64 server/build), CODE_CHECK_SERVER names a
+# lord-server built for this host from the same tree
+"${CODE_CHECK_SERVER:-server/build/lord-server}" --check-code "$L" > "$PKG/code-check.log" 2>&1 || {
     tail -20 "$PKG/code-check.log" >&2; echo "the staged system code does not match code-manifest.json" >&2; exit 1; }
 tail -1 "$PKG/code-check.log"; rm -f "$PKG/code-check.log"
 install -m 755 tools/iso/rootfs/usr/lib/lordos/lordos-live-prep "$L/lordos-live-prep"

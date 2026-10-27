@@ -10,6 +10,18 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Raspberry Pi image on an x86-64 host with an aarch64 `server/build`:** `tools/iso/mkdeb.sh` checks the
+  signed system code by running `lord-server --check-code`, which can't run an aarch64 binary on x86-64
+  (it failed as "the staged system code does not match code-manifest.json"). `CODE_CHECK_SERVER` now names
+  a `lord-server` built for the host from the same tree, and `tools/rpi/build-img.sh` asks for it instead of
+  failing later. Found building the 0.8.5 image; the check itself is unchanged (`docs/SIGNING.md`).
+- **Same build, unstripped binaries:** `mkdeb.sh` stripped with the host's `strip`, which can't read aarch64
+  binaries and whose errors are ignored, so that package shipped every binary with its symbols (17 MB
+  instead of 11 MB, the same files). It now uses `aarch64-linux-gnu-strip` when it packages arm64 on another
+  architecture, and stops if it is missing.
+
 ## [0.8.5-beta] - 2026-10-27
 
 ### Added
