@@ -10,9 +10,11 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
+## [0.8.5-beta] - 2026-10-27
+
 ### Added
 
-- **A curated catalog of AI apps in the LordOS repository (in development).** `apt/catalog.json` lists
+- **A curated catalog of AI apps in the LordOS repository.** `apt/catalog.json` lists
   nine apps with their package, summary (en/es/pt), licence, vendor, architectures (amd64 and arm64) and
   a pinned source; `apt/keys/` holds the vendors' APT keys, `apt/recipes/` LordOS's build recipes and
   `apt/build.sh` checks and fetches them (`apt/README.md`, `docs/UPDATES.md` "Mirrored apps
@@ -324,6 +326,16 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 - **Searching "displays" in the search panel** opens the Help article on touchpads and touch screens before
   Settings → Displays.
 - **Settings → Displays:** in the arrangement, the name of a small display is cut without an ellipsis.
+
+### Upgrading
+
+- **From 0.8.4.1 or 0.8.4 (and 0.8.3 to 0.8.1):** Store → Updates shows "LordOS 0.8.5 is available"
+  with these notes; **Update** installs it and a restart finishes it. `sudo apt update && sudo apt
+  upgrade` does the same. No migration runs (`ls /var/lib/lordos/migrations` is unchanged from 0.8.4);
+  your settings are kept. Tested before the release with the same package built as 0.8.5~rc2: a VMware
+  machine on 0.8.4.1 and a Raspberry Pi 5 on 0.8.4, both with apt, then a restart.
+- The Store's new Artificial Intelligence and Commercial pages add a maker's repository only when you
+  install one of its apps, and remove it when you remove the app.
 
 ## [0.8.4.1-beta] - 2026-10-25
 
@@ -1629,7 +1641,8 @@ we published. See [docs/SIGNING.md](docs/SIGNING.md).
 
 Never published; superseded by 0.8.0-beta.
 
-[Unreleased]: https://github.com/lordbasex/LordOS/compare/v0.8.4.1-beta...HEAD
+[Unreleased]: https://github.com/lordbasex/LordOS/compare/v0.8.5-beta...HEAD
+[0.8.5-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.4.1-beta...v0.8.5-beta
 [0.8.4.1-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.4-beta...v0.8.4.1-beta
 [0.8.4-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.3-beta...v0.8.4-beta
 [0.8.3-beta]: https://github.com/lordbasex/LordOS/compare/v0.8.2-beta...v0.8.3-beta
