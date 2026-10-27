@@ -124,7 +124,7 @@ Each root process has a narrow, documented interface. §6.3 describes them.
 | Native apps and themes | QuickJS 2025-04-26 (vendored) |
 | Sandbox, broker, permissions, signing, firewall service, vault | Mesa (optional), PipeWire, `libwayland`, `libxkbcommon` |
 | Session manager, network service, fan service | systemd, systemd-resolved, BlueZ, CUPS, wpa_supplicant, OpenVPN, strongSwan's daemon |
-| Debian package engine (OpenPGP, xz, HTTP, resolver) | FFmpeg, Poppler, libarchive, OpenSSL, Monocypher (in helpers only) |
+| Debian package engine (OpenPGP, xz, HTTP and HTTPS, resolver) | FFmpeg, Poppler, libarchive, OpenSSL, Monocypher (in helpers only) |
 | Touchpad driver, terminal emulator, WebAssembly interpreter | stb (fonts and images), fonts under the OFL |
 | Remote desktop over WebRTC: ICE-lite, DTLS-SRTP set-up, RTP packetization, bandwidth control (encoding in `lord-media`) | libsrtp2 and usrsctp (in `lord-sessiond`'s bridge), libx264, libvpx, Opus and VA-API (in `lord-media`) |
 | System Information's collector, `lordos-sysreport`, `lordos-fetch`, the Test Bench | Xwayland (Debian's package, on demand), smartmontools, `pci.ids` and `usb.ids` |
@@ -340,7 +340,7 @@ Outside the model, for now: a compromised kernel or root account; physical attac
 ### 6.2 Least privilege
 
 - `lord-server` runs as the user. In a managed session it never holds the display or input devices itself: `lord-sessiond` lends them and revokes them.
-- Libraries that parse untrusted data are linked only by helpers: FFmpeg, libva and the video encoders by `lord-media`; Poppler and libarchive by `lord-doc`; OpenSSL by `lord-maild`, `lord-fetch` and `lord-sessiond`; libsrtp2 and usrsctp by `lord-sessiond`, used only in the bridge that runs as the user after sign-in; Monocypher by `lord-vault`.
+- Libraries that parse untrusted data are linked only by helpers: FFmpeg, libva and the video encoders by `lord-media`; Poppler and libarchive by `lord-doc`; OpenSSL by `lord-maild`, `lord-fetch`, `lord-tls` (HTTPS for the package engine's downloads: it verifies the certificate and the host name and only relays bytes; the signed index still decides about packages) and `lord-sessiond`; libsrtp2 and usrsctp by `lord-sessiond`, used only in the bridge that runs as the user after sign-in; Monocypher by `lord-vault`.
 - Helpers receive files and devices as file descriptors opened by `lord-server`; they never open paths.
 - The compositor never waits for a helper or an app, so a crash or a hang stays contained.
 
@@ -663,7 +663,7 @@ There are no measurements on real PCs in the repository yet. The ISO is tested o
 
 ### 10.1 Where things stand
 
-0.8.0 Beta was the first public release (18 October 2026); 0.7.0 was an internal build and was never published. Milestones M1 to M9 are complete: the display server, the UI engine, the SDK and themes, the terminal, languages and complex scripts, Linux app compatibility, packages and system services, sessions, isolation and the firewall, and the M9 app suites (documents and printing, media, system apps, passwords, hardware settings, mail and calendar). Since then: 0.8.1 (updates from the Store, the Dock, SSH), 0.8.2 (verified system code, isolated PIM apps, disk health, traffic history), 0.8.3 (X11 apps, Lord Classic, remote desktop hardening, open connections cut), 0.8.4 (remote desktop as WebRTC video with sound, LordOS Imager), 0.8.4.1 (Raspberry Pi bootloader from Settings, Pi image with HDMI fixed), and 0.8.5 in development (System Information with Checks and the Sandbox Probe, the Test Bench, Monitor → Network's second generation, blocklists, components in their own scopes, Files → This Computer, a faster CPU path). The Changelog below lists each release.
+0.8.0 Beta was the first public release (18 October 2026); 0.7.0 was an internal build and was never published. Milestones M1 to M9 are complete: the display server, the UI engine, the SDK and themes, the terminal, languages and complex scripts, Linux app compatibility, packages and system services, sessions, isolation and the firewall, and the M9 app suites (documents and printing, media, system apps, passwords, hardware settings, mail and calendar). Since then: 0.8.1 (updates from the Store, the Dock, SSH), 0.8.2 (verified system code, isolated PIM apps, disk health, traffic history), 0.8.3 (X11 apps, Lord Classic, remote desktop hardening, open connections cut), 0.8.4 (remote desktop as WebRTC video with sound, LordOS Imager), 0.8.4.1 (Raspberry Pi bootloader from Settings, Pi image with HDMI fixed), and 0.8.5 in development (System Information with Checks and the Sandbox Probe, the Test Bench, Monitor → Network's second generation, blocklists, components in their own scopes, Files → This Computer, a faster CPU path, HTTPS in the package engine, an Artificial Intelligence category in the Store whose apps with a signed vendor repository install from it with the key LordOS pins, root over SSH as an advanced option, per-app colors on Monitor's map). The Changelog below lists each release.
 
 ### 10.2 Known limitations
 
