@@ -546,7 +546,8 @@ no migration (`UPDATES.md`). What it delivered, each item described in its own d
   and user switch are faster (`SESSIONS.md`); software vblank pacing on drivers that complete flips at
   once (`CHANGELOG.md`, `RESULTS.md`); idle-inhibit for Linux apps (`WAYLAND.md`).
 
-**Next: 0.8.6** — Flatpak and Flathub (after a design review) and LordBench (items below).
+**Next: 0.8.6** — LordBench (item below) and stability. Flatpak and Flathub are not planned for any release (decided by
+the maintainer on 2026-10-27, item below).
 
 ## Before 1.0
 
@@ -663,8 +664,11 @@ no migration (`UPDATES.md`). What it delivered, each item described in its own d
   standard input, never in argv; fixed options `nosuid,nodev` and the user's uid; only under
   `/media/<user>/`), the password in the keyring, the mount's traffic as its own firewall app.
 
-- [ ] **Flatpak and Flathub (0.8.6, approved by the maintainer on 2026-10-27; needs a design
-  review before code)** — a Flathub section in the Store. The design review is written (`FLATPAK.md`,
+- [ ] **Flatpak and Flathub (future, undecided; not planned for any release)** — a Flathub section in the Store. On
+  2026-10-27 the maintainer decided not to implement it for now: the priority is the system's stability, and Flatpak
+  would add complexity (bubblewrap, OSTree, portals, seven new exceptions to `AGENTS.md`) and future problems. The
+  design review is kept as documentation (`FLATPAK.md`); nothing is built until the maintainer decides whether to
+  do it at all.
   2026-10-27) and waits for approval. Today LordOS neither uses nor integrates
   Flatpak, and its rules keep isolation as LordOS's own code (no bubblewrap/flatpak for `.lpk`). What
   has to be solved so Flatpak apps follow LordOS's security model:

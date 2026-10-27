@@ -550,7 +550,7 @@ A 0.8.0 Beta foi o primeiro lançamento público (18 de outubro de 2026); a 0.7.
 
 ### 10.3 Próximos passos
 
-A seguir, como planejado em `docs/ROADMAP.md` e `docs/BENCHMARK.md`: **0.8.6, LordBench**, medições repetíveis de CPU, memória, GPU, compositor, vídeo e armazenamento, e uma seção Flathub na Loja, que antes precisa de uma revisão de design para que os apps Flatpak mantenham os escopos de app, o firewall e as restrições do LordOS; **0.8.7, relatórios de hardware da comunidade**, publicados a partir das Informações do sistema com o consentimento do usuário; e uma conexão recusada pelo firewall por app, conferida no próprio computador do usuário. O Xwayland e o tema Lord Classic, planejados aqui para a 1.0 na 0.8.0, saíram na 0.8.3. A revisão de design do Flatpak está escrita (`docs/FLATPAK.md`) e aguarda a aprovação do responsável antes de qualquer código.
+A seguir, como planejado em `docs/ROADMAP.md` e `docs/BENCHMARK.md`: **0.8.6, LordBench**, medições repetíveis de CPU, memória, GPU, compositor, vídeo e armazenamento; **0.8.7, relatórios de hardware da comunidade**, publicados a partir das Informações do sistema com o consentimento do usuário; e uma conexão recusada pelo firewall por app, conferida no próprio computador do usuário. O Xwayland e o tema Lord Classic, planejados aqui para a 1.0 na 0.8.0, saíram na 0.8.3. Flatpak e Flathub não estão planejados para nenhuma versão: fica uma revisão de design em `docs/FLATPAK.md` para o futuro, mas, para manter a estabilidade do sistema, não é construído.
 
 Depois da 1.0: um app de virtualização para desktop construído sobre KVM e QEMU; um contêiner Android com LineageOS e apps da Loja do LordOS; o modo "perguntar" do firewall; acessibilidade; e um vídeo de demonstração completo.
 

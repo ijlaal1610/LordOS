@@ -384,9 +384,9 @@
             "pt": "Tem suporte a Flatpak?"
           },
           "a": {
-            "en": "Not yet: LordOS doesn't integrate Flatpak in 0.8.5-beta. The Store installs Debian packages and LordOS `.lpk` apps, and isolated apps use LordOS's own sandbox. A Flathub section is planned for 0.8.6; its design review (how Flatpak apps keep LordOS's per-app firewall, scopes and restrictions) is written and waits for approval before any code.",
-            "es": "Todavía no: LordOS 0.8.5-beta no integra Flatpak. La Tienda instala paquetes de Debian y apps `.lpk` de LordOS, y las apps aisladas usan el sandbox propio de LordOS. Para la 0.8.6 está planeada una sección de Flathub; su revisión de diseño (cómo las apps Flatpak conservan el firewall por app, los scopes y las restricciones de LordOS) está escrita y espera aprobación antes de escribir código.",
-            "pt": "Ainda não: o LordOS 0.8.5-beta não integra o Flatpak. A Loja instala pacotes do Debian e apps `.lpk` do LordOS, e os apps isolados usam o sandbox próprio do LordOS. Uma seção Flathub está planejada para a 0.8.6; a revisão de design (como os apps Flatpak mantêm o firewall por app, os escopos e as restrições do LordOS) está escrita e aguarda aprovação antes de qualquer código."
+            "en": "No. LordOS doesn't integrate Flatpak, and it isn't planned for now: to keep the system stable we don't want the extra complexity. The Store installs Debian packages and LordOS `.lpk` apps, and isolated apps use LordOS's own sandbox. A design review of how Flatpak could fit LordOS's per-app firewall and restrictions is kept in the documentation for the future.",
+            "es": "No. LordOS no integra Flatpak y por ahora no está planeado: para mantener la estabilidad del sistema no queremos sumar esa complejidad. La Tienda instala paquetes de Debian y apps `.lpk` de LordOS, y las apps aisladas usan el sandbox propio de LordOS. En la documentación queda una revisión de diseño de cómo Flatpak podría encajar con el firewall por app y las restricciones de LordOS, para el futuro.",
+            "pt": "Não. O LordOS não integra o Flatpak e, por enquanto, isso não está planejado: para manter a estabilidade do sistema, não queremos acrescentar essa complexidade. A Loja instala pacotes do Debian e apps `.lpk` do LordOS, e os apps isolados usam o sandbox próprio do LordOS. Na documentação fica uma revisão de design de como o Flatpak poderia se encaixar no firewall por app e nas restrições do LordOS, para o futuro."
           }
         },
         {

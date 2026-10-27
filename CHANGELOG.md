@@ -56,7 +56,9 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   - **Tests:** `tests/lordbench_test.c` (260 checks: records, workloads, fake sysfs trees of an x86 laptop and a Pi 5,
     boot history) and `tests/sysinfo_perf_test.mjs` (30 checks).
   - **Not built yet:** the desktop-impact mode, the compositor and video workloads, and `lordos-sysreport bench`.
-- **Flatpak and Flathub design review** (`docs/FLATPAK.md`, no code): a launcher-owned scope per Flatpak app so the
+- **Flatpak and Flathub design review, kept for the future** (`docs/FLATPAK.md`, no code; the maintainer decided on
+  2026-10-27 not to implement Flatpak for now, to keep the system stable, and it is not planned for any release): a
+  launcher-owned scope per Flatpak app so the
   firewall and restrictions see it as itself, `flatpak run` arguments built in C, per-user installs through a closed
   set of commands in their own network scope with Flathub's key pinned, and the exceptions to `AGENTS.md` the
   maintainer has to approve before any code.
