@@ -10,7 +10,7 @@
 // Notices:  {t:'hello', mode, user, last, host, layouts, variants, lang, users:[{name, full, color, image, admin, open}]}
 //           (last: the user whose session was last shown on the monitor)
 //           {t:'mode', mode:'login'|'lock'|'switch', user} · {t:'ok'} · {t:'fail', wait} · {t:'error'} · {t:'busy'}
-import { render, screen } from '@lordos/runtime';
+import { render, screen, mainBox, onScreenChange } from '@lordos/runtime';
 import {
   View, Text, Image, TextInput, ThemeProvider, useStore, locale, t, formatDate, formatTime, setLanguage, languages, keyboard, settings, LordOSWordmark,
   lordosWallpapers, findWallpaper, wallpaperSrc, GREETER_WALLPAPER,
@@ -126,6 +126,8 @@ function Greeter() {
   const { lang } = useStore(locale);
   const s = useStore(settings);
   const [now, setNow] = useState(() => new Date());
+  // a display plugged in or out while it shows: lay it out again on the main one
+  useEffect(() => onScreenChange(() => setNow(new Date())), []);
   const [info, setInfo] = useState({ users: [], host: '', mode: 'login', user: '' });
   const [sel, setSel] = useState('');
   const [pass, setPass] = useState('');
@@ -210,7 +212,9 @@ function Greeter() {
   const anyOpen = info.users.some((u) => u.open);
   const power = (a) => { if (anyOpen && confirm !== a) setConfirm(a); else { setConfirm(null); send({ t: 'power', a }); } };
 
-  const H = screen.height, W = screen.width;
+  // with several displays the clock, the user and the buttons go on the main one (they used to be laid
+  // out over the whole desktop, cut at the seam); the wallpaper covers every display
+  const M = mainBox(), H = M.height, W = M.width;
   const clockSize = Math.round(Math.min(H * 0.17, W * 0.12));
   const avatarSize = Math.round(Math.max(76, Math.min(110, H * 0.12)));
   const kbs = keyboard.configured();
@@ -221,8 +225,10 @@ function Greeter() {
   return (
     <ThemeProvider tokens={{ mode: 'dark', accent: '#ffffff', text: '#ffffff', textDim: 'rgba(255,255,255,0.55)',
       inputBg: 'rgba(255,255,255,0.16)', separator: 'rgba(255,255,255,0.22)' }}>
-      <View style={{ width: W, height: H, direction: 'ltr' }}>
-        <Image src={wallpaperSrc(findWallpaper(lordosWallpapers, GREETER_WALLPAPER), W, H) || 'assets/background.jpg'} style={{ position: 'absolute', left: 0, top: 0, width: W, height: H, objectFit: 'cover' }} />
+      <View style={{ width: screen.width, height: screen.height, direction: 'ltr' }}>
+        <Image src={wallpaperSrc(findWallpaper(lordosWallpapers, GREETER_WALLPAPER), screen.width, screen.height) || 'assets/background.jpg'}
+          style={{ position: 'absolute', left: 0, top: 0, width: screen.width, height: screen.height, objectFit: 'cover' }} />
+        <View style={{ position: 'absolute', left: M.left, top: M.top, width: W, height: H }}>
 
         {/* date and clock */}
         <View style={{ position: 'absolute', left: 0, top: Math.round(H * 0.085), width: W, alignItems: 'center' }}>
@@ -296,6 +302,7 @@ function Greeter() {
           items={langs.map((l) => [l.id, l.name, l.id === lang])} /> : null}
         {menu === 'kb' ? <PopupList right={20 + 100} onClose={() => setMenu(null)} onPick={(i) => settings.set({ keyboardIndex: Number(i) })}
           items={kbs.map((k, i) => [String(i), keyboard.list().find((x) => x.id === k.layout)?.name || k.layout, i === kbIdx])} /> : null}
+        </View>
       </View>
     </ThemeProvider>
   );

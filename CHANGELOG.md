@@ -153,6 +153,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **The sign-in and lock screen with several displays.** It was laid out over the whole desktop, so the
+  clock, the user and the password field were cut at the seam between two displays; they now go on the
+  main display (the wallpaper still covers every display) and follow a display plugged in or out while it
+  shows. Verified on VM 118 with two displays.
 - **Monitor → Network: the map always shows the traffic.** The arc to a country with no traffic at that
   moment was drawn almost transparent, so a selected app's destinations looked unconnected; arcs now stay
   plainly visible. Any traffic moves dots along the arcs (orange out, green in), not only above 256 B/s,
