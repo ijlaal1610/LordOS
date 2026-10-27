@@ -419,3 +419,21 @@ sudo build/pkg-test run pkg-install "cowsay sl"
 - **`control.tar.zst`** in local `.deb` files (Ubuntu); Debian's use xz.
 - **Incremental index diffs** (`Packages.diff`). Today the whole index is downloaded when it
   changes.
+
+## HTTPS (0.8.5)
+
+The engine downloads `https://` sources over TLS and `http://` ones as before. The download child (nobody,
+in `lordos-net-store.scope`) resolves and connects the TCP socket itself; for `https://` it starts
+`lord-tls` (`server/src/tls/tlsproxy.c`, next to `lord-server`, root's) with the socket on fd 3 and a
+socketpair on fd 4. lord-tls loads the system's CA bundle, takes the helpers' sandbox (no sockets, no exec,
+no files), does a TLS 1.2+ handshake with SNI, checks the chain and the host name, answers `1` (or `0`,
+which the engine reports as `pkg.http.tlsFailed`) and then relays plain HTTP, so the HTTP code is the
+same for both schemes. Redirects may go from `http://` to `https://`, never back (`pkg.http.downgrade`).
+TLS adds privacy and refuses an impostor server; what is installed is still decided by the signed
+index and each file's SHA-256, exactly as over HTTP. Sources written as `https://` are no longer
+rewritten to `http://`.
+
+Tested against real servers (`server/tests/pkg_https_test.c`, run as root with network, not part of
+`make test`): an HTTPS-only vendor repository, lordos.org over both schemes, an HTTP→HTTPS redirect, and
+self-signed, wrong-host and expired certificates refused (7/7).
+

@@ -91,6 +91,9 @@ strip --strip-unneeded "$L/bin/lord-server" "$L/bin/lord-sessiond" "$L/bin/lord-
 # lord-fetch (0.8.5): downloads the subscribed blocklists over HTTPS, sandboxed (docs/FIREWALL.md, "Blocklists")
 [ -x server/build/lord-fetch ] && install -m 755 server/build/lord-fetch "$L/bin/lord-fetch"
 [ -x "$L/bin/lord-fetch" ] && { strip --strip-unneeded "$L/bin/lord-fetch" 2>/dev/null || true; }
+# lord-tls (0.8.5): HTTPS for the package engine's downloads, sandboxed (docs/PACKAGES.md, "HTTPS")
+[ -x server/build/lord-tls ] && install -m 755 server/build/lord-tls "$L/bin/lord-tls"
+[ -x "$L/bin/lord-tls" ] && { strip --strip-unneeded "$L/bin/lord-tls" 2>/dev/null || true; }
 # FIDO2 security keys reachable by the session user (lord-sessiond sessions have no logind seat)
 install -d "$PKG/usr/lib/udev/rules.d"
 install -m 644 packaging/udev/71-lordos-fido.rules "$PKG/usr/lib/udev/rules.d/71-lordos-fido.rules"

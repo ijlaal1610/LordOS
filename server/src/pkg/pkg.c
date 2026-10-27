@@ -125,9 +125,8 @@ static void mirror_uri(const char *in, char *out, size_t n) {
         return;
     }
     if (!strncmp(in, "mirror+", 7)) in += 7;
-    /* no TLS of our own: https is downloaded over http (security comes from the signature, as in apt) */
-    if (!strncmp(in, "https://", 8)) snprintf(out, n, "http://%s", in + 8);
-    else if (!strncmp(in, "http://", 7)) snprintf(out, n, "%s", in);
+    /* (0.8.5) https:// stays https (http.c → lord-tls); the signature is still what is trusted */
+    if (!strncmp(in, "https://", 8) || !strncmp(in, "http://", 7)) snprintf(out, n, "%s", in);
     else if (!strncmp(in, "file:/", 6)) snprintf(out, n, "%s", in);       /* a local repository (http.c) */
     size_t l = strlen(out);
     while (l && out[l - 1] == '/') out[--l] = 0;

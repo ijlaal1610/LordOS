@@ -12,6 +12,11 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Added
 
+- **The Store downloads over HTTPS.** LordOS's package engine now speaks HTTPS as well as HTTP: a small
+  sandboxed helper (`lord-tls`) checks the server's certificate and name and encrypts the download, so
+  repositories that only accept HTTPS work, and what you install is private on the network. Every
+  package is still checked against its signed index, as before; a secure download is never redirected
+  to plain HTTP.
 - **A guide to building an appearance.** `docs/THEMES-GUIDE.md` explains, for a React developer new to
   LordOS, what a theme is, its parts (theme.json, tokens, the shell, window frames, menus, layers),
   right-to-left, light and dark, several displays and the performance rules, how to build and test one,
