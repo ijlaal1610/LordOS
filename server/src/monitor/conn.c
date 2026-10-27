@@ -355,7 +355,7 @@ static const char *scope_app_of(uint64_t cg) {
     return "";
 }
 
-static struct { int pid; char name[64], exe[PATH_MAX]; } pinfo[256];
+static struct { int pid; char name[64], exe[PATH_MAX]; uint64_t cg; } pinfo[256];   /* cg: the process's cgroup id */
 static int npinfo;
 
 static int proc_info(int pid) {
@@ -370,6 +370,16 @@ static int proc_info(int pid) {
     snprintf(p, sizeof p, "/proc/%d/exe", pid);
     ssize_t k = readlink(p, pinfo[i].exe, sizeof pinfo[i].exe - 1);
     pinfo[i].exe[k > 0 ? k : 0] = 0;
+    /* for sockets the kernel gives no cgroup for (ping and raw sockets from /proc/net, packet sockets):
+     * the owning process's own cgroup, "0::/<path>" (cgroup v2) */
+    char line[PATH_MAX], path[PATH_MAX + 32];
+    pinfo[i].cg = 0;
+    snprintf(p, sizeof p, "/proc/%d/cgroup", pid);
+    if (mon_read_small(p, line, sizeof line) > 3 && !strncmp(line, "0::/", 4)) {
+        line[strcspn(line, "\n")] = 0;
+        if (!strstr(line, "/..") && (size_t)snprintf(path, sizeof path, "/sys/fs/cgroup%s", line + 3) < sizeof path)
+            pinfo[i].cg = cg_id(AT_FDCWD, path);
+    }
     return i;
 }
 
@@ -415,7 +425,9 @@ void conn_scan(Buf *b, const Mmdb *geo) {
             mon_buf_str(b, pq >= 0 ? pinfo[pq].name : "");
             mon_buf_printf(b, ",\"exe\":");
             mon_buf_str(b, pq >= 0 ? pinfo[pq].exe : "");
-            mon_buf_printf(b, ",\"cgApp\":\"\",\"sent\":null,\"recv\":null}");
+            mon_buf_printf(b, ",\"cgApp\":");
+            mon_buf_str(b, scope_app_of(pq >= 0 ? pinfo[pq].cg : 0));
+            mon_buf_printf(b, ",\"sent\":null,\"recv\":null}");
             n++;
             continue;
         }
@@ -453,7 +465,7 @@ void conn_scan(Buf *b, const Mmdb *geo) {
         mon_buf_printf(b, ",\"exe\":");
         mon_buf_str(b, pi >= 0 ? pinfo[pi].exe : "");
         mon_buf_printf(b, ",\"cgApp\":");
-        mon_buf_str(b, scope_app_of(s->cg));
+        mon_buf_str(b, scope_app_of(s->cg ? s->cg : pi >= 0 ? pinfo[pi].cg : 0));
         if (s->bytes) mon_buf_printf(b, ",\"sent\":%llu,\"recv\":%llu}", (unsigned long long)s->sent, (unsigned long long)s->recv);
         else mon_buf_printf(b, ",\"sent\":null,\"recv\":null}");
         n++;

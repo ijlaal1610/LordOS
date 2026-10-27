@@ -250,7 +250,7 @@ function Activity({ hist, selected }) {
   );
 }
 
-function AppRow({ g, node, ctx, open, selected, onToggle, onSelect, maxBytes, tr, hist, onConfirm }) {
+function AppRow({ g, node, ctx, open, selected, onToggle, onSelect, maxBytes, tr, hist, onConfirm, mapColor }) {
   const t = useTheme();
   const label = labelOf(tr, g);
   const total = g.sent + g.recv;
@@ -263,6 +263,7 @@ function AppRow({ g, node, ctx, open, selected, onToggle, onSelect, maxBytes, tr
         <View onClick={(e) => { e.stopPropagation(); onToggle(); }} style={{ width: 14, alignItems: 'center' }}>
           <Text style={{ fontSize: 10, color: selected ? '#fff' : t.textDim }}>{kids || g.listen.length ? (open ? '▾' : direction() === 'rtl' ? '◂' : '▸') : ''}</Text>
         </View>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: mapColor || 'transparent' }} />
         <AppGlyph item={g.item} size={20} />
         <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
           {/* the name gets the whole width (two lines at most); the counts go next to the traffic bar */}
@@ -362,18 +363,47 @@ function SystemTraffic({ tr, range, setRange, end, setEnd, sysHist }) {
 
 // ---- lugares (países con conexiones) ----
 
-function placesOf(groups, appKey) {
+// Each app's color on the map (its arcs) and in the list (the dot before its icon): the order in which
+// apps first reached the internet in this Monitor, so the first twelve are all different and an app
+// keeps its color while Monitor is open. Orange and green stay for the moving dots (sent, received).
+const MAP_COLORS = ['#0a84ff', '#bf5af2', '#ff375f', '#64d2ff', '#ffd60a', '#5e5ce6', '#66d4cf', '#ac8e68', '#ff6482', '#da8fff', '#a2845e', '#e5e5ea'];
+const mapColorOf = new Map();
+export function appMapColor(key) {
+  if (!mapColorOf.has(key)) mapColorOf.set(key, MAP_COLORS[mapColorOf.size % MAP_COLORS.length]);
+  return mapColorOf.get(key);
+}
+
+// The map's places: every app's (or the selected app's) internet hosts by country; with a search or a
+// filter, only the hosts of the flows it shows (`only`: a Set of "app|address").
+// Short connections (a page, a curl, a package download) often close before their own rate is
+// measured, while the app's rate (its cgroup counters) is always there: what the hosts' rates don't
+// account for is spread over the app's internet hosts by their bytes, so the arcs move whenever the app
+// does (an estimate per country, the direction is exact).
+function placesOf(groups, appKey, only) {
   const out = new Map();
   for (const g of groups) {
     if (appKey && g.key !== appKey) continue;
-    for (const h of g.hosts.values()) {
-      if (h.scope !== 'internet' || !h.cc) continue;
-      const p = out.get(h.cc) || { cc: h.cc, count: 0, sent: 0, recv: 0, rateTx: 0, rateRx: 0, apps: new Map(), hosts: [] };
+    const net = [...g.hosts.values()].filter((h) => h.scope === 'internet' && h.cc);
+    const share = (dir) => {
+      const own = net.reduce((a, h) => a + (h[dir === 'rx' ? 'rateRx' : 'rateTx'] || 0), 0);
+      const left = Math.max(0, (dir === 'rx' ? g.rateRx : g.rateTx) - own || 0);
+      const bytes = net.reduce((a, h) => a + (dir === 'rx' ? h.recv : h.sent) + 1, 0);
+      return (h) => (left > 0 && bytes > 0 ? left * ((dir === 'rx' ? h.recv : h.sent) + 1) / bytes : 0);
+    };
+    const extraRx = share('rx'), extraTx = share('tx');
+    for (const h of net) {
+      if (only && !only.has(`${g.key}|${h.remote}`)) continue;
+      const p = out.get(h.cc) || { cc: h.cc, count: 0, sent: 0, recv: 0, rateTx: 0, rateRx: 0, apps: new Map(), hosts: [], links: new Map() };
+      const l = p.links.get(g.key) || { app: g.key, color: appMapColor(g.key), tx: 0, rx: 0, bytes: 0 };
+      l.tx += (h.rateTx || 0) + extraTx(h);
+      l.rx += (h.rateRx || 0) + extraRx(h);
+      l.bytes += h.sent + h.recv;
+      p.links.set(g.key, l);
       p.count += h.count;
       p.sent += h.sent;
       p.recv += h.recv;
-      p.rateTx += h.rateTx || 0;
-      p.rateRx += h.rateRx || 0;
+      p.rateTx += (h.rateTx || 0) + extraTx(h);
+      p.rateRx += (h.rateRx || 0) + extraRx(h);
       p.apps.set(g.key, g);
       p.hosts.push({ ...h, app: g });
       out.set(h.cc, p);
@@ -847,7 +877,7 @@ export function NetworkTab({ last, prefs }) {
 
   const maxBytes = Math.max(1, ...apps.map((g) => g.sent + g.recv), ...histRoots.map((g) => g.sent + g.recv));
   const sel = apps.find((g) => g.key === selected) || histRoots.find((g) => g.key === selected) || null;
-  const places = placesOf(apps, sel ? sel.key : null);
+  const places = placesOf(apps, sel ? sel.key : null, filtered ? new Set(shownFlows.map((f) => `${f.app}|${f.addr}`)) : null);
   const selPlace = places.find((p) => p.cc === place) || null;
   const toggle = (key) => setOpen((s0) => { const n = new Set(s0); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   const ctx = {
@@ -909,13 +939,17 @@ export function NetworkTab({ last, prefs }) {
               if (!g) return null;
               // filtered, the row adds up what matched; otherwise the app's own totals (the kernel's)
               const shownG = filtered ? { ...g, recv: n.rx, sent: n.tx, rateRx: n.rateRx, rateTx: n.rateTx } : g;
+              const onMap = [...g.hosts.values()].some((h) => h.scope === 'internet' && h.cc);
               return <AppRow key={n.key} g={shownG} node={n} ctx={ctx} tr={tr} open={open.has(n.key)} selected={selected === g.key} maxBytes={maxBytes} hist={hist.get(g.key)}
+                mapColor={onMap ? appMapColor(g.key) : null}
                 onConfirm={(x) => setConfirm(x)} onToggle={() => toggle(n.key)}
                 onSelect={() => { setPlace(null); setHost(null); setSelected(selected === g.key ? null : g.key); }} />;
             }
             return <Child key={n.key} node={n} depth={0} path="" ctx={ctx} />;
           })}
           {enabled && conns && !roots.length && <Text style={{ fontSize: 12, color: t.textDim, padding: 8 }}>{chips.length || text ? tr('monitor.net.noMatch') : tr('monitor.net.none')}</Text>}
+          {/* a click on the empty space under the rows clears the selection (the map shows every app again) */}
+          <View style={{ flexGrow: 1, minHeight: 160 }} onClick={() => { if (selected || place || host) { setSelected(null); setPlace(null); setHost(null); } }} />
         </ScrollView>
         <View style={{ height: 1, backgroundColor: t.separator }} />
         <SystemTraffic tr={tr} range={range} setRange={setRange} end={end} setEnd={setEnd} sysHist={sysHist} />

@@ -88,8 +88,17 @@ the rest of the tab, and the first generation of the list.
 
   **Direction of the traffic.** While bytes move, dots travel along each arc: sent (orange) from
   "This computer" to the place, received (green) back. The higher the rate, the more dots (1 to 4
-  each way) and the faster they go (3.4 s to 1 s per trip, on a log scale from 256 B/s to about
-  4 MB/s). An idle arc has no dots and is drawn dimmed (`idle` in the map request, `map.c`). The
+  each way) and the faster they go (3.4 s to 1 s per trip, on a log scale from 64 B/s to about
+  4 MB/s); any traffic at all moves (one slow dot each way below 64 B/s, 0.8.5). An idle arc has no
+  dots and is drawn thinner, still plainly visible (`idle` in the map request, `map.c`). The map
+  follows the list: every app's places, the selected app's, or, with a search or a filter (direction,
+  protocol, status, chips), only the places of the connections the list shows. Each app has its own
+  arc per place, in its own color (the dot before it in the list; the order apps first reached the
+  internet, twelve colors), lifted apart when several apps reach the same country (`arcs` in the map
+  request: color and lift per arc). A host's own rate misses short connections, so what the app's rate
+  doesn't account for is spread over its internet hosts by their bytes. Sockets the kernel reports
+  without a cgroup (ping and raw sockets from /proc/net, packet sockets) take their process's
+  (`/proc/<pid>/cgroup`, `conn.c`). The
   dots are small ready-made images (a ring and the direction's color, drawn once) moved with
   `lord.setStyle`, no React render per frame: 12 frames per second with the window in front, 5
   behind it, at most the 12 busiest arcs and only those on screen; the timer stops with the window

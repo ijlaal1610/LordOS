@@ -269,7 +269,8 @@ static int color_prop(JSContext *c, JSValueConst o, const char *k, uint32_t *out
 }
 
 /* map({ width, height, lon, lat, ppd, land, border, accent, homeColor, selColor,
- *       home: { lon, lat } | null, dots: [{ lon, lat, r, sel, idle }] }) → request number */
+ *       home: { lon, lat } | null, dots: [{ lon, lat, r, sel, idle }],
+ *       arcs?: [{ lon, lat, lift, color, sel, idle }] }) → request number */
 static JSValue f_map(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     if (argc < 1 || !JS_IsObject(argv[0])) return js_throw_code(c, "sys.badArgument", NULL);
@@ -312,6 +313,34 @@ static JSValue f_map(JSContext *c, JSValueConst t, int argc, JSValueConst *argv)
         JS_FreeValue(c, d);
     }
     JS_FreeValue(c, dots);
+    /* arcs: [{ lon, lat, lift, color, sel, idle }] (optional, 0.8.5) */
+    JSValue arcs = JS_GetPropertyStr(c, o, "arcs");
+    n = 0;
+    if (JS_IsArray(c, arcs)) {
+        JSValue lv = JS_GetPropertyStr(c, arcs, "length");
+        JS_ToUint32(c, &n, lv);
+        JS_FreeValue(c, lv);
+    }
+    for (uint32_t i = 0; i < n && q.narcs < MAP_MAX_ARCS; i++) {
+        JSValue d = JS_GetPropertyUint32(c, arcs, i);
+        double lon, lat, lift;
+        uint32_t col;
+        if (JS_IsObject(d) && !num_prop(c, d, "lon", -180, 180, &lon) && !num_prop(c, d, "lat", -90, 90, &lat) &&
+            !num_prop(c, d, "lift", 0, 1, &lift) && !color_prop(c, d, "color", &col)) {
+            MapArc *m = &q.arcs[q.narcs++];
+            m->lon = (float)lon;
+            m->lat = (float)lat;
+            m->lift = (float)lift;
+            m->color = col;
+            JSValue sv = JS_GetPropertyStr(c, d, "sel"), iv = JS_GetPropertyStr(c, d, "idle");
+            m->sel = JS_ToBool(c, sv) > 0;
+            m->idle = JS_IsBool(iv) && JS_ToBool(c, iv) > 0;
+            JS_FreeValue(c, sv);
+            JS_FreeValue(c, iv);
+        }
+        JS_FreeValue(c, d);
+    }
+    JS_FreeValue(c, arcs);
     return JS_NewFloat64(c, (double)map_request(&q));
 }
 

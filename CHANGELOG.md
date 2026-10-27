@@ -12,6 +12,23 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Added
 
+- **A curated catalog of AI apps in the LordOS repository (in development).** `apt/catalog.json` lists
+  ten apps with their package, summary (en/es/pt), licence, vendor, architectures (amd64 and arm64) and
+  a pinned source; `apt/keys/` holds the vendors' APT keys, `apt/recipes/` LordOS's build recipes and
+  `apt/build.sh` checks and fetches them (`apt/README.md`, `docs/UPDATES.md` "Mirrored apps
+  (catalog)"). Claude Code, Claude Desktop, Visual Studio Code and Cursor come straight from their
+  vendors' signed APT repositories ("direct"): `apt/build.sh check` verifies the pinned key
+  fingerprint, the signed `InRelease`, the index hash and the package for each architecture. The other
+  six are verified on the maintainer's Mac and published in `pool/catalog/` by
+  `tools/release/apt-repo.sh build … --catalog`: goose 1.56.0 and opencode 1.19.4 (the vendor's .deb,
+  pinned SHA-256), and four packages LordOS builds in `debian:trixie` containers with no network —
+  `ollama` 0.40.11 (the official release split into `ollama`, with `ollama.service` enabled on install
+  as upstream does, and `ollama-cuda` with the NVIDIA libraries, so a Raspberry Pi never downloads
+  them), `llama.cpp` 0.7.0 and `whisper.cpp` 1.9.5 (from the pinned source tag, CPU only, every CPU
+  variant built and the best one picked at run time) and `codex-cli` 0.164.0 (OpenAI's static binary,
+  its sigstore signature checked with cosign). Vendor packages are never modified; what their
+  maintainer scripts do when the Store installs them (VS Code, Claude Desktop and Cursor add their own
+  APT source) is documented.
 - **Root over SSH, as an advanced option.** Settings → Sharing → Advanced lets an administrator allow
   root to log in over SSH with a public key only, or with a key or a password, for tests and
   administration: the keys are pasted or imported from a `.pub` file and listed with their
@@ -136,6 +153,20 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **Monitor → Network: the map always shows the traffic.** The arc to a country with no traffic at that
+  moment was drawn almost transparent, so a selected app's destinations looked unconnected; arcs now stay
+  plainly visible. Any traffic moves dots along the arcs (orange out, green in), not only above 256 B/s,
+  so a slow app (a ping, a chat) shows its direction too. And the map follows the search and the filters
+  like the list does: all apps, the selected app, or only the connections the filters leave.
+  Short connections (a page, a download) used to close before their own rate was read, which left the
+  arcs still while the app moved megabytes: the app's own rate is now spread over its destinations.
+- **Monitor → Network: one color per app on the map.** Each app's arcs have their own color, shown as a
+  dot before the app in the list, and apps that reach the same country get separate arcs, so Chromium,
+  the Terminal and the Store can be told apart; the moving dots stay orange (out) and green (in).
+- **Monitor → Network: `ping` counts under the Terminal.** Ping and raw sockets carry no cgroup of their
+  own, so `ping` run in the Terminal showed as a separate, empty app; such sockets now take their
+  process's cgroup and appear under the app that ran them.
+- **Monitor → Network: a click on the empty space under the list clears the selection.**
 - **Two failed theme switches in a row could leave the session without a theme.** After a theme was
   refused, the server still took it as the current one, so a second refused switch fell back to it.
   Now the last theme that loaded stays the fallback.
