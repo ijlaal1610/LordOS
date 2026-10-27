@@ -7566,5 +7566,258 @@
    "es": "Redimensionar una ventana",
    "pt": "Redimensionando uma janela"
   }
+ },
+ {
+  "file": "docs/app-menu.png",
+  "category": "desktop",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "The app menu in the menu bar: About, Settings, Hide and Quit",
+   "es": "El menú de la app en la barra: Acerca de, Ajustes, Ocultar y Salir",
+   "pt": "O menu do app na barra: Sobre, Ajustes, Ocultar e Sair"
+  }
+ },
+ {
+  "file": "docs/classic-in-window-menus.png",
+  "category": "desktop",
+  "theme": "dark",
+  "variant": "normal",
+  "caption": {
+   "en": "Lord Classic: an app's own menus in a strip under its title bar",
+   "es": "Lord Classic: los menús de la app en una franja bajo la barra de título",
+   "pt": "Lord Classic: os menus do app numa faixa sob a barra de título"
+  }
+ },
+ {
+  "file": "docs/crown-menu.png",
+  "category": "desktop",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "The crown menu with the Store, Recent Items and Force Quit",
+   "es": "El menú de la corona con la Tienda, Ítems recientes y Forzar salida",
+   "pt": "O menu da coroa com a Loja, Itens recentes e Forçar saída"
+  }
+ },
+ {
+  "file": "docs/files-this-computer.png",
+  "category": "apps",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "Files → This Computer: the whole system, read-only",
+   "es": "Archivos → Este equipo: todo el sistema, de solo lectura",
+   "pt": "Arquivos → Este computador: todo o sistema, só leitura"
+  }
+ },
+ {
+  "file": "docs/force-quit.png",
+  "category": "desktop",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "Force Quit: end an app that stopped responding",
+   "es": "Forzar salida: cerrá una app que dejó de responder",
+   "pt": "Forçar saída: encerre um app que parou de responder"
+  }
+ },
+ {
+  "file": "docs/lordos-fetch.png",
+  "category": "apps",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "lordos-fetch in the Terminal: the crown and a summary of the computer",
+   "es": "lordos-fetch en la Terminal: la corona y un resumen del equipo",
+   "pt": "lordos-fetch no Terminal: a coroa e um resumo do computador"
+  }
+ },
+ {
+  "file": "docs/menubar-network-activity.png",
+  "category": "privacy",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "Network activity in the menu bar: the last five minutes, apps and the firewall mode",
+   "es": "Actividad de red en la barra: los últimos cinco minutos, las apps y el modo del cortafuegos",
+   "pt": "Atividade de rede na barra: os últimos cinco minutos, os apps e o modo do firewall"
+  }
+ },
+ {
+  "file": "docs/monitor-network-tree.png",
+  "category": "privacy",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "Monitor → Network: each app opens into the sites it talks to",
+   "es": "Monitor → Red: cada app se abre en los sitios con los que habla",
+   "pt": "Monitor → Rede: cada app se abre nos sites com que fala"
+  }
+ },
+ {
+  "file": "docs/monitor-network-view-menu.png",
+  "category": "privacy",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "Monitor → Network: group, sort and filter from one pop-up",
+   "es": "Monitor → Red: agrupar, ordenar y filtrar desde un solo menú",
+   "pt": "Monitor → Rede: agrupar, ordenar e filtrar num só menu"
+  }
+ },
+ {
+  "file": "docs/privacy-blocklists.png",
+  "category": "privacy",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "Settings → Privacy → Blocklists: public lists of ads, trackers and malware",
+   "es": "Ajustes → Privacidad → Listas de bloqueo: listas públicas de publicidad, rastreadores y malware",
+   "pt": "Ajustes → Privacidade → Listas de bloqueio: listas públicas de anúncios, rastreadores e malware"
+  }
+ },
+ {
+  "file": "docs/privacy-deny-silently.png",
+  "category": "privacy",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "Firewall mode Deny silently: only what a rule allows can connect",
+   "es": "Modo del cortafuegos Denegar en silencio: solo se conecta lo que una regla permite",
+   "pt": "Modo do firewall Negar em silêncio: só conecta o que uma regra permite"
+  }
+ },
+ {
+  "file": "docs/settings-desktop-style.png",
+  "category": "settings",
+  "theme": "dark",
+  "variant": "normal",
+  "caption": {
+   "en": "Settings → Appearance → Desktop style: Lord Flow or Lord Classic",
+   "es": "Ajustes → Apariencia → Estilo de escritorio: Lord Flow o Lord Classic",
+   "pt": "Ajustes → Aparência → Estilo da área de trabalho: Lord Flow ou Lord Classic"
+  }
+ },
+ {
+  "file": "docs/store-ai.png",
+  "category": "apps",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "Store → Artificial Intelligence: the curated catalog of AI apps",
+   "es": "Tienda → Inteligencia Artificial: el catálogo curado de apps de IA",
+   "pt": "Loja → Inteligência Artificial: o catálogo curado de apps de IA"
+  }
+ },
+ {
+  "file": "docs/store-app-page.png",
+  "category": "apps",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "An app's page in the Store, with its row of facts",
+   "es": "La página de una app en la Tienda, con su fila de datos",
+   "pt": "A página de um app na Loja, com sua linha de dados"
+  }
+ },
+ {
+  "file": "docs/store-commercial.png",
+  "category": "apps",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "Store → Commercial: apps from their makers' signed repositories",
+   "es": "Tienda → Comerciales: apps de los repositorios firmados de sus fabricantes",
+   "pt": "Loja → Comerciais: apps dos repositórios assinados dos fabricantes"
+  }
+ },
+ {
+  "file": "docs/store-discover.png",
+  "category": "apps",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "The Store's Discover page with the featured banner",
+   "es": "La página Descubrir de la Tienda con el banner destacado",
+   "pt": "A página Descobrir da Loja com o banner em destaque"
+  }
+ },
+ {
+  "file": "docs/store-for-this-computer.png",
+  "category": "apps",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "Store → For this computer: nothing missing on this machine",
+   "es": "Tienda → Para este equipo: no falta nada en esta máquina",
+   "pt": "Loja → Para este computador: nada faltando nesta máquina"
+  }
+ },
+ {
+  "file": "docs/system-info-checks.png",
+  "category": "hardware",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "System Information → Checks, with the sandbox tests passed",
+   "es": "Información del sistema → Comprobaciones, con las pruebas de aislamiento aprobadas",
+   "pt": "Informações do sistema → Verificações, com os testes de isolamento aprovados"
+  }
+ },
+ {
+  "file": "docs/system-info-graphics.png",
+  "category": "hardware",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "System Information: the graphics card layer by layer",
+   "es": "Información del sistema: la tarjeta gráfica capa por capa",
+   "pt": "Informações do sistema: a placa gráfica camada por camada"
+  }
+ },
+ {
+  "file": "docs/system-info-overview.png",
+  "category": "hardware",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "System Information: an overview of this computer",
+   "es": "Información del sistema: un resumen de este equipo",
+   "pt": "Informações do sistema: um resumo deste computador"
+  }
+ },
+ {
+  "file": "docs/system-info-report.png",
+  "category": "hardware",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "System Information → Report: the exact text before you copy or save it",
+   "es": "Información del sistema → Informe: el texto exacto antes de copiarlo o guardarlo",
+   "pt": "Informações do sistema → Relatório: o texto exato antes de copiar ou salvar"
+  }
+ },
+ {
+  "file": "docs/test-bench-window.png",
+  "category": "hardware",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "Test Bench: frame timing, keyboard, pointer and Wayland checks",
+   "es": "Banco de pruebas: tiempos de cuadro, teclado, puntero y comprobaciones de Wayland",
+   "pt": "Bancada de testes: tempos de quadro, teclado, ponteiro e verificações do Wayland"
+  }
+ },
+ {
+  "file": "docs/window-menu-move-resize.png",
+  "category": "desktop",
+  "theme": "light",
+  "variant": "normal",
+  "caption": {
+   "en": "Window → Move & Resize: halves, quarters, thirds and arrangements",
+   "es": "Ventana → Mover y redimensionar: mitades, cuartos, tercios y disposiciones",
+   "pt": "Janela → Mover e redimensionar: metades, quartos, terços e arranjos"
+  }
  }
 ]
