@@ -253,3 +253,13 @@ head: `screendump file.ppm vga 1` in `qm monitor 118`.
   callbacks follow the main display.
 - Per-display Night Light: the temperature is the same for all; if any display lacks a gamma LUT
   the software tint is used for all of them.
+
+## Assigning an app to a display (0.8.5)
+
+Dock → Options → Assign To lists the displays when there is more than one: an app assigned to one opens
+its new windows there, wherever the pointer is; "None" follows the pointer. The assignment is kept in
+`settings.appDisplays` by the display's connector (`HDMI-A-1`, `DP-2`, from `lord.screen.displays[].connector`),
+not its name, because two monitors of the same model share a name; a value saved by name before still
+works while it names a single display (`sdk/dock.js`, `assignedDisplay`). The sign-in and lock screen
+shows its clock, users and buttons on the main display and its wallpaper on every display
+(`themes/greeter`).

@@ -313,12 +313,13 @@ export function dockMenu(e, opts = {}) {
       const on = loginApps().includes(e.id);
       options.push({ label: t('shell.dock.openAtLogin'), checked: on, onClick: () => settings.set({ loginApps: on ? loginApps().filter((x) => x !== e.id) : [...loginApps(), e.id] }) });
     }
-    // Assign to a display (0.8.5): its new windows open there; by the display's name, kept across boots
+    // Assign to a display (0.8.5): its new windows open there; by the display's connector (two monitors
+    // of the same model share a name), kept across boots
     if (screen.displays.length > 1 && e.launcherId) {
-      const cur = (settings.get().appDisplays || {})[e.launcherId] || '';
+      const cur = assignedDisplay((settings.get().appDisplays || {})[e.launcherId]);
       const set = (name) => { const m = { ...(settings.get().appDisplays || {}) }; if (name) m[e.launcherId] = name; else delete m[e.launcherId]; settings.set({ appDisplays: m }); };
       options.push('-', { label: t('shell.dock.assignTo'), disabled: true });
-      screen.displays.forEach((d, i) => options.push({ label: t('shell.dock.assignDisplay', { n: i + 1, name: d.name || '' }).trim(), checked: cur === d.name, onClick: () => set(d.name) }));
+      screen.displays.forEach((d, i) => options.push({ label: t('shell.dock.assignDisplay', { n: i + 1, name: d.name || '' }).trim(), checked: cur === d, onClick: () => set(displayKey(d)) }));
       options.push({ label: t('shell.dock.assignNone'), checked: !cur, onClick: () => set('') });
     }
     if (options.length) items.push({ label: t('shell.dock.options'), submenu: options }, '-');
@@ -439,9 +440,18 @@ addListener('keydown', (e) => {
 
 // ---- Open at Login and display assignments (0.8.5) ----
 const loginApps = () => (Array.isArray(settings.get().loginApps) ? settings.get().loginApps : []);
+// An assignment is the display's connector ("HDMI-A-1"); one saved before by name still works while
+// that name belongs to a single display.
+const displayKey = (d) => d.connector || d.name;
+function assignedDisplay(v) {
+  if (!v) return null;
+  const byConn = screen.displays.find((x) => x.connector && x.connector === v);
+  if (byConn) return byConn;
+  const byName = screen.displays.filter((x) => x.name === v);
+  return byName.length === 1 ? byName[0] : null;
+}
 setDisplayAssignment((key) => {
-  const name = (settings.get().appDisplays || {})[key];
-  const d = name ? screen.displays.find((x) => x.name === name) : null;
+  const d = assignedDisplay((settings.get().appDisplays || {})[key]);
   return d ? d.id : null;
 });
 // once per session, a few seconds after it starts (never in the live system's first run, never in an

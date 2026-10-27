@@ -153,6 +153,11 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **Dock → Options → Assign To with two monitors of the same model.** The assignment was kept by the
+  display's name, which two identical monitors share: both showed as checked and new windows went to the
+  first. It is now kept by the connector (HDMI-A-1, DP-2…); an assignment saved by name still works
+  while that name belongs to one display. Verified on VM 118 with two displays of the same name: Notes
+  assigned to the second display opens there after being moved to the first and quit.
 - **The sign-in and lock screen with several displays.** It was laid out over the whole desktop, so the
   clock, the user and the password field were cut at the seam between two displays; they now go on the
   main display (the wallpaper still covers every display) and follow a display plugged in or out while it
