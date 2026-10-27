@@ -1673,3 +1673,15 @@ over `/usr/local/lib/lordos`.
   Information → Checks reported it). Installed `/usr/local/lib/lordos/bin/lord-netperm` and
   `/etc/systemd/system/lord-netperm.service` (the ISO's unit with that path), enabled and started; the network
   kept working.
+
+## Step — 0.8.5 release: Raspberry Pi kernel and image on VM 116 (2026-10-27)
+
+To cross-build the LordOS Pi 5 kernel (`tools/rpi/build-kernel.sh`, pinned commit
+`234188315037848e5b07d65b85d38edc64095caa`) and the Pi image (`tools/rpi/build-img.sh`) on the x86-64
+VM 116, as `docs/RASPBERRY.md` lists:
+
+```sh
+sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross build-essential \
+  bc bison flex libssl-dev libelf-dev libdw-dev dwarves cpio kmod rsync dpkg-dev debhelper git \
+  qemu-user-static binfmt-support fdisk dosfstools e2fsprogs xz-utils curl gpg util-linux
+```
