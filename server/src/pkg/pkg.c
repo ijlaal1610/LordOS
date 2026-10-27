@@ -15,6 +15,7 @@
  * (phases: lists, index, download, unpack, configure, remove) and "plan <action> <package>
  * <version> <bytes>" before starting; the rest of the LOGs are text to display. */
 #include "pkg.h"
+#include "../sec/json.h"
 #include "crypto.h"
 #include "deb.h"
 #include "http.h"
@@ -450,7 +451,38 @@ static void write_notes(const char *notes, size_t len) {
     if (!ok || rename(PKG_DIR "/.notes.new", PKG_DIR "/notes")) unlink(PKG_DIR "/.notes.new");
 }
 
-typedef struct { char path[PATH_MAX]; char ext[4]; int kind, src; char comp[48]; } Wanted;   /* kind 0 Packages, 1 Translation, 2 DEP-11, 3 icons, 4 release notes */
+/* The Store's banner (Store → Discover, apt/featured/ in the repository): a small JSON object and a
+ * PNG, both listed in LordOS's signed InRelease. The JSON is checked to parse here and again by the
+ * Store; the PNG only by its signature and size (it is drawn like the DEP-11 icons). Without them the
+ * Store shows its own banner. */
+#define FEATURED_MAX (64u << 10)
+#define BANNER_MAX (2u << 20)
+static int featured_valid(const uint8_t *t, size_t n) {
+    if (!n || n > FEATURED_MAX) return 0;
+    JDoc d;
+    if (json_parse((const char *)t, n, &d, NULL, 0)) return 0;
+    int ok = d.root && d.root->type == J_OBJ;
+    json_free(&d);
+    return ok;
+}
+static int banner_valid(const uint8_t *t, size_t n) {
+    static const uint8_t png[8] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n' };
+    return n > 8 && n <= BANNER_MAX && !memcmp(t, png, 8);
+}
+static void write_one(const char *path, const char *tmp, const uint8_t *d, size_t n) {
+    if (!d || !n) { unlink(path); return; }
+    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0644);
+    if (fd < 0) return;
+    int ok = write(fd, d, n) == (ssize_t)n;
+    if (close(fd)) ok = 0;
+    if (!ok || rename(tmp, path)) unlink(tmp);
+}
+static void write_featured(const uint8_t *feat, size_t fl, const uint8_t *img, size_t il) {
+    write_one(PKG_DIR "/featured.json", PKG_DIR "/.featured.json.new", feat, fl);
+    write_one(PKG_DIR "/featured.png", PKG_DIR "/.featured.png.new", feat ? img : NULL, il);
+}
+
+typedef struct { char path[PATH_MAX]; char ext[4]; int kind, src; char comp[48]; } Wanted;   /* kind 0 Packages, 1 Translation, 2 DEP-11, 3 icons, 4 release notes, 5 featured, 6 banner */
 
 static int file_ok(const char *path, uint64_t size) {
     struct stat st;
@@ -594,12 +626,15 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
         for (int c = 0; c < src[i].ncomp; c++) {
             char base[200];
             const char *ext;
-            for (int k = 0; k < 5; k++) {
+            for (int k = 0; k < 7; k++) {
+                if (k >= 5 && strcmp(R[i].origin, "LordOS")) continue;   /* the Store's banner: LordOS's repository only */
                 if (k == 0) snprintf(base, sizeof base, "%s/binary-%s/Packages", src[i].comps[c], arch);
                 else if (k == 1) snprintf(base, sizeof base, "%s/i18n/Translation-en", src[i].comps[c]);
                 else if (k == 2) snprintf(base, sizeof base, "%s/dep11/Components-%s.yml", src[i].comps[c], arch);
                 else if (k == 3) snprintf(base, sizeof base, "%s/dep11/icons-64x64.tar", src[i].comps[c]);
-                else snprintf(base, sizeof base, "%s/notes/ReleaseNotes", src[i].comps[c]);   /* LordOS's release notes */
+                else if (k == 4) snprintf(base, sizeof base, "%s/notes/ReleaseNotes", src[i].comps[c]);   /* LordOS's release notes */
+                else if (k == 5) snprintf(base, sizeof base, "%s/featured/Featured", src[i].comps[c]);    /* the Store's banner (JSON) */
+                else snprintf(base, sizeof base, "%s/featured/Banner", src[i].comps[c]);                  /* and its image (PNG) */
                 const RelFile *f = rel_pick(&R[i], base, &ext);
                 if (k == 2 && f && !strcmp(ext, "")) f = NULL;     /* the uncompressed YAML is huge */
                 if (!f) { if (k == 0) admin_log("pkg.sourceMissingFile", "uri", src[i].uri, "suite", src[i].suite, "file", base, NULL); continue; }
@@ -638,6 +673,7 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     progress("lists", (uint64_t)ns, (uint64_t)ns);
     /* release notes listed but not stored yet (an index built before LordOS read them): rebuild */
     for (int k = 0; k < nw && !changed; k++) if (w[k].kind == 4 && access(PKG_DIR "/notes", F_OK)) changed = 1;
+    for (int k = 0; k < nw && !changed; k++) if (w[k].kind == 5 && access(PKG_DIR "/featured.json", F_OK)) changed = 1;
     /* a component or source added or removed: the same InRelease files, other lists */
     char sum[65];
     wanted_sum(w, nw, sum);
@@ -715,15 +751,26 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     int pk_files = 0, pk_missing = 0;
     char *notes = NULL;                 /* every source's ReleaseNotes, one after the other */
     size_t notes_len = 0;
-    for (int pass = 0; pass < 5; pass++)
+    uint8_t *feat = NULL, *banner = NULL;   /* the Store's banner: its JSON and its PNG */
+    size_t feat_len = 0, banner_len = 0;
+    for (int pass = 0; pass < 7; pass++)
         for (int k = 0; k < nw; k++) {
             Wanted *x = &w[k];
             if (x->kind != pass || !good[x->src]) continue;
-            progress("index", (uint64_t)(pass * nw + k), (uint64_t)(5 * nw));
+            progress("index", (uint64_t)(pass * nw + k), (uint64_t)(7 * nw));
             if (srcid[x->src] < 0) {
                 Release *rr = &R[x->src];
                 int prio = rr->not_auto ? (rr->but_auto ? 100 : 1) : 500;
                 srcid[x->src] = idxb_source(b, src[x->src].uri, src[x->src].suite, x->comp, rr->codename, rr->origin, rr->label, rr->date, rr->valid_until, prio);
+            }
+            if (pass >= 5) {                    /* the banner: one of each, checked here; drawn by the Store */
+                size_t tl;
+                uint8_t *t = load_index_file(x->path, x->ext, &tl);
+                int okf = t && (pass == 5 ? featured_valid(t, tl) : banner_valid(t, tl));
+                if (okf && pass == 5 && !feat) { feat = t; feat_len = tl; t = NULL; }
+                else if (okf && pass == 6 && !banner) { banner = t; banner_len = tl; t = NULL; }
+                free(t);
+                continue;
             }
             if (pass == 4) {
                 size_t tl;
@@ -764,6 +811,9 @@ void pkg_act_update(const AdminReq *r, const char *arg, size_t len) {
     int wrote = pk_files && !idxb_write(b, PKG_DIR, arch, err, sizeof err);
     if (wrote) icons_cleanup(b);
     if (wrote) write_notes(notes, notes_len);
+    if (wrote) write_featured(feat, feat_len, banner, banner_len);
+    free(feat);
+    free(banner);
     if (wrote && !failures) sources_save(sum);
     free(notes);
     uint32_t count = idxb_count(b);

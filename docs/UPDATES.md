@@ -331,6 +331,33 @@ under the vendor's own names (the key dearmored because the name ends in `.gpg`)
 come only from the root-owned catalog and pass a strict character set (`lordos*` source names are
 refused).
 
+## The Store's banner
+
+Store → Discover opens with a banner LordOS can change between releases. Its source is in the
+repository: `apt/featured/featured.json` and `apt/featured/banner.png` (1400 × 340 works; the picture
+is drawn with `objectFit: cover` under a shade on the text side). The JSON:
+
+```json
+{
+  "schema": 1,
+  "catalog": "llama.cpp",          // a catalog app id (apt/catalog.json), or "package": "<Debian package>"
+  "kicker": { "en": "…", "es": "…", "pt": "…" },
+  "title":  { "en": "…", "es": "…", "pt": "…" },
+  "text":   { "en": "…", "es": "…", "pt": "…" },
+  "colors": ["#1c1638", "#3a2f8a"] // the gradient under the picture
+}
+```
+
+`tools/release/apt-repo.sh build` checks both (a schema 1 object of at most 64 KB; a PNG of at most
+2 MB) and publishes them as `dists/stable/main/featured/Featured` and `…/Banner`, listed in the
+signed Release. The package engine (`server/src/pkg/pkg.c`, `featured_valid`/`banner_valid`) fetches
+them on each list update only from a source whose signed Release says `Origin: LordOS`, checks their
+hashes like every index, parses the JSON and the PNG signature, and writes
+`/var/lib/lordos/pkg/featured.json` and `featured.png`; `lord.pkg.featured()` reads them, with no
+arguments. Without them the Store shows a skeleton until the first list update, and a catalog app
+when the repository publishes no banner. To change it: edit the two files, rebuild and publish the
+repository; machines see it at their next list update.
+
 ## The Raspberry Pi kernel
 
 The LordOS kernel for the Pi 5 (`linux-image-<version>-lordos-rpi-2712`, from

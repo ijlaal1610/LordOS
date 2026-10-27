@@ -327,6 +327,24 @@ do_build() {
     done
     xz -9 -k -f "$TREE/$D/main/notes/ReleaseNotes"
 
+    # the Store's banner (Store → Discover): apt/featured/featured.json and apt/featured/banner.png,
+    # edited in the repository and signed here with the indexes (the engine reads them only from this
+    # repository, docs/UPDATES.md "The Store's banner")
+    rm -rf "$TREE/$D/main/featured"
+    if [ -f "$ROOT/apt/featured/featured.json" ]; then
+        python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); assert isinstance(d,dict) and d.get("schema")==1' "$ROOT/apt/featured/featured.json" ||
+            die "apt/featured/featured.json is not a schema 1 JSON object"
+        [ "$(wc -c < "$ROOT/apt/featured/featured.json")" -le 65536 ] || die "apt/featured/featured.json is over 64 KB"
+        mkdir -p "$TREE/$D/main/featured"
+        cp "$ROOT/apt/featured/featured.json" "$TREE/$D/main/featured/Featured"
+        if [ -f "$ROOT/apt/featured/banner.png" ]; then
+            [ "$(head -c 8 "$ROOT/apt/featured/banner.png" | od -An -tx1 | tr -d ' \n')" = 89504e470d0a1a0a ] || die "apt/featured/banner.png is not a PNG"
+            [ "$(wc -c < "$ROOT/apt/featured/banner.png")" -le 2097152 ] || die "apt/featured/banner.png is over 2 MB"
+            cp "$ROOT/apt/featured/banner.png" "$TREE/$D/main/featured/Banner"
+        fi
+        echo "  featured banner: $(python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("catalog") or d.get("package") or "?")' "$ROOT/apt/featured/featured.json")"
+    fi
+
     debtool apt-ftparchive \
         -o APT::FTPArchive::Release::Origin=LordOS \
         -o APT::FTPArchive::Release::Label=LordOS \
@@ -336,6 +354,7 @@ do_build() {
         -o APT::FTPArchive::Release::Components=main \
         -o APT::FTPArchive::Release::Description="LordOS updates for Debian 13 (trixie)" \
         -o APT::FTPArchive::Release::Patterns::=ReleaseNotes -o APT::FTPArchive::Release::Patterns::=ReleaseNotes.xz \
+        -o APT::FTPArchive::Release::Patterns::=Featured -o APT::FTPArchive::Release::Patterns::=Banner \
         release "$D" > "$TREE/Release.new"
     mv "$TREE/Release.new" "$TREE/$D/Release"
 

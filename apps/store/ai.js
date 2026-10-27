@@ -6,9 +6,10 @@
 // verified sources (docs/UPDATES.md, "Mirrored apps (catalog)"). Installing goes through the package
 // engine like any Debian package: the plan first, then pkg-install.
 import { createElement as h, useState } from 'react';
-import { View, Text, Button, GroupBox, useTheme, useStore, useSystemInfo, admin, locale, typeScale, spacing, t } from '@lordos/sdk';
+import { View, Text, Image, Button, LetterIcon, useTheme, useStore, useSystemInfo, admin, locale, formatBytes, typeScale, spacing, t } from '@lordos/sdk';
 import catalog from '../../apt/catalog.json';
 import { debian } from './debian.js';
+import { Card, CardGrid, Featured, FeaturedSkeleton, Pill, Shelf, nameColor } from './ui.js';
 
 const lang2 = () => (locale.get().lang || 'en').split('-')[0];
 // the kernel's machine name as Debian names the architecture
@@ -17,25 +18,29 @@ const summary = (a) => (a.summary && (a.summary[lang2()] || a.summary.en)) || ''
 const installed = (pkg) => { try { return !!(lord.pkg.info(pkg, {}) || {}).installed; } catch (e) { return false; } };
 const offered = (pkg) => { try { return !!lord.pkg.info(pkg, {}); } catch (e) { return false; } };
 
-function Row({ a, onOpen, here }) {
-  const th = useTheme();
-  const fits = !here || !a.arches || a.arches.includes(here);
+// The icon of a catalog app: the package's own icon once it is in the lists, else its initial.
+function AiIcon({ a, size }) {
+  let icon = null;
+  try { icon = offered(a.package) ? lord.pkg.icon(a.package) : null; } catch (e) { icon = null; }
+  return icon ? h(Image, { src: icon, style: { width: size, height: size, objectFit: 'contain' } }) : h(LetterIcon, { size, name: a.name.replace(/\.[a-z]+$/i, '') });
+}
+
+const kindOf = (a) => t(`store.ai.kind.${a.kind}`);
+const sizeOf = (a) => { try { const i = lord.pkg.info(a.package, {}); return i && i.installedSize ? formatBytes(i.installedSize) : ''; } catch (e) { return ''; } };
+const fitsHere = (a, here) => !here || !a.arches || a.arches.includes(here);
+
+function AiCard({ a, here, onOpen }) {
+  const fits = fitsHere(a, here);
   const inst = installed(a.package);
-  return h(View, { onClick: () => fits && onOpen(a.package), style: { flexDirection: 'row', alignItems: 'center', gap: spacing.m, paddingVertical: spacing.s, opacity: fits ? 1 : 0.5 } },
-    h(View, { style: { width: 40, height: 40, borderRadius: 10, backgroundColor: th.accent, alignItems: 'center', justifyContent: 'center' } },
-      h(Text, { style: { fontSize: 18, fontWeight: 700, color: '#fff' } }, (a.name || '?').slice(0, 1))),
-    h(View, { style: { flex: 1, minWidth: 0, gap: 2 } },
-      h(Text, { style: { fontSize: typeScale.body, fontWeight: 600, color: th.text, textAlign: 'start' } }, a.name),
-      h(Text, { style: { fontSize: typeScale.callout, color: th.textDim, textAlign: 'start' } }, summary(a)),
-      h(Text, { style: { fontSize: typeScale.caption, color: th.textDim, textAlign: 'start' } },
-        [t(`store.ai.kind.${a.kind}`), a.vendor, a.license, !fits ? t('store.ai.notForArch', { arch: here }) : null].filter(Boolean).join(' · '))),
-    inst ? h(Text, { style: { fontSize: typeScale.caption, fontWeight: 500, color: '#30d158' } }, t('store.installedBadge'))
-      : h(Button, { small: true, label: t('store.ai.view'), disabled: !fits, onClick: () => onOpen(a.package) }));
+  return h(Card, { icon: h(AiIcon, { a, size: 56 }), name: a.name, kind: `${kindOf(a)} · ${a.vendor || ''}`, summary: summary(a), dim: !fits,
+    note: !fits ? t('store.ai.notForArch', { arch: here }) : sizeOf(a),
+    action: fits ? h(Pill, { label: inst ? t('store.ai.view') : t('store.get'), onClick: () => onOpen(a.package) }) : null,
+    onClick: () => fits && onOpen(a.package) });
 }
 
 // An app from its maker's repository that isn't in the package lists yet: say whose repository is
 // added, then add it and fetch the lists (both admin actions), and show the usual details.
-function AddSource({ a, onDone, onBack }) {
+function AddSource({ a, onDone }) {
   const th = useTheme();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -45,7 +50,6 @@ function AddSource({ a, onDone, onBack }) {
     admin.run('pkg-source-add', a.id).then(() => admin.run('pkg-update')).then(onDone, (e) => setErr(e.message)).finally(() => setBusy(false));
   };
   return h(View, { style: { gap: spacing.l, maxWidth: 640 } },
-    h(Button, { plain: true, small: true, label: `‹ ${t('store.back')}`, onClick: onBack, style: { alignSelf: 'flex-start' } }),
     h(Text, { style: { fontSize: typeScale.largeTitle, fontWeight: 600, color: th.text, textAlign: 'start' } }, a.name),
     h(Text, { style: { fontSize: typeScale.body, color: th.text, lineHeight: 1.45, textAlign: 'start' } },
       t('store.ai.sourceIntro', { name: a.name, vendor: a.vendor || '', url: (a.source && a.source.url) || '' })),
@@ -58,7 +62,7 @@ function AddSource({ a, onDone, onBack }) {
 
 // A LordOS-built app that isn't in the package lists yet (they were fetched before the catalog had it):
 // fetching them again (pkg-update) brings it, instead of the package page's "not found".
-function NotListed({ a, onDone, onBack }) {
+function NotListed({ a, onDone }) {
   const th = useTheme();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -68,7 +72,6 @@ function NotListed({ a, onDone, onBack }) {
     admin.run('pkg-update').then(onDone, (e) => setErr(e.message)).finally(() => setBusy(false));
   };
   return h(View, { style: { gap: spacing.l, maxWidth: 640 } },
-    h(Button, { plain: true, small: true, label: `‹ ${t('store.back')}`, onClick: onBack, style: { alignSelf: 'flex-start' } }),
     h(Text, { style: { fontSize: typeScale.largeTitle, fontWeight: 600, color: th.text, textAlign: 'start' } }, a.name),
     h(Text, { style: { fontSize: typeScale.body, color: th.text, lineHeight: 1.45, textAlign: 'start' } }, t('store.ai.notListed', { name: a.name })),
     err ? h(Text, { style: { fontSize: typeScale.caption, color: '#ff453a', textAlign: 'start' } }, err) : null,
@@ -76,33 +79,85 @@ function NotListed({ a, onDone, onBack }) {
       h(Button, { primary: true, label: busy ? t('store.ai.updating') : t('store.ai.updateLists'), disabled: busy || !admin.available(), onClick: update })));
 }
 
-export function AiPage({ query }) {
+const useHere = () => { const info = useSystemInfo(60000); return DEB_ARCH[info.arch] || info.arch || ''; };
+export const catalogApps = () => catalog.apps || [];
+export const catalogApp = (pkg) => (catalog.apps || []).find((x) => x.package === pkg);
+
+// A catalog app's page: add its maker's repository first, fetch the lists when LordOS's own package
+// isn't in them yet, else the usual package page.
+export function AiDetail({ pkg }) {
+  useStore(locale);
+  const [, setTick] = useState(0);
+  const a = catalogApp(pkg);
+  const direct = a && a.source && a.source.delivery === 'direct';
+  if (direct && !offered(pkg)) return h(AddSource, { a, onDone: () => setTick((x) => x + 1) });
+  if (a && !direct && !offered(pkg)) return h(NotListed, { a, onDone: () => setTick((x) => x + 1) });
+  // removing an app from its maker's repository also removes that repository, unless another
+  // installed catalog app uses the same one (Claude Code and Claude Desktop share a key, not a repo)
+  const onRemoved = () => {
+    if (!direct) return;
+    const sameRepo = (catalog.apps || []).some((x) => x.id !== a.id && x.source && x.source.url === a.source.url && installed(x.package));
+    if (!sameRepo) admin.run('pkg-source-remove', a.id).catch(() => {});
+  };
+  return h(debian.Details, { name: pkg, onRemoved });
+}
+
+// The Artificial Intelligence page: the catalog as cards (the search narrows it).
+export function AiPage({ query, onOpen }) {
   const th = useTheme();
   useStore(locale);
-  const [open, setOpen] = useState(null);
-  const info = useSystemInfo(60000);
-  const here = DEB_ARCH[info.arch] || info.arch || '';
-  const [, setTick] = useState(0);
-  if (open) {
-    const a = (catalog.apps || []).find((x) => x.package === open);
-    const direct = a && a.source && a.source.delivery === 'direct';
-    if (direct && !offered(open)) return h(AddSource, { a, onBack: () => setOpen(null), onDone: () => setTick((x) => x + 1) });
-    if (a && !direct && !offered(open)) return h(NotListed, { a, onBack: () => setOpen(null), onDone: () => setTick((x) => x + 1) });
-    // removing an app from its maker's repository also removes that repository, unless another
-    // installed catalog app uses the same one (Claude Code and Claude Desktop share a key, not a repo)
-    const onRemoved = () => {
-      if (!direct) return;
-      const sameRepo = (catalog.apps || []).some((x) => x.id !== a.id && x.source && x.source.url === a.source.url && installed(x.package));
-      if (!sameRepo) admin.run('pkg-source-remove', a.id).catch(() => {});
-    };
-    return h(debian.Details, { name: open, onBack: () => setOpen(null), onRemoved });
-  }
+  const here = useHere();
   const q = (query || '').trim().toLowerCase();
   const apps = (catalog.apps || []).filter((a) => !q || `${a.name} ${summary(a)} ${a.vendor || ''}`.toLowerCase().includes(q));
   const missing = apps.some((a) => !offered(a.package) && !(a.source && a.source.delivery === 'direct'));
   return h(View, { style: { gap: spacing.l } },
-    h(Text, { style: { fontSize: typeScale.largeTitle, fontWeight: 600, color: th.text, textAlign: 'start' } }, t('store.ai.title')),
-    h(Text, { style: { fontSize: typeScale.body, color: th.textDim, lineHeight: 1.45, maxWidth: 640, textAlign: 'start' } }, t('store.ai.intro')),
+    h(Text, { style: { fontSize: typeScale.body, color: th.textDim, lineHeight: 1.45, maxWidth: 680, textAlign: 'start' } }, t('store.ai.intro')),
     missing ? h(Text, { style: { fontSize: typeScale.caption, color: '#ff9f0a', textAlign: 'start' } }, t('store.ai.refresh')) : null,
-    h(GroupBox, null, ...apps.map((a) => h(Row, { key: a.id, a, here, onOpen: setOpen }))));
+    h(debian.Progress),
+    h(CardGrid, null, ...apps.map((a) => h(AiCard, { key: a.id, a, here, onOpen }))));
+}
+
+// The banner LordOS publishes in its repository (apt/featured/featured.json and banner.png, signed with
+// the indexes and verified by the package engine; lord.pkg.featured()), or null.
+function published() {
+  try { return typeof lord.pkg.featured === 'function' ? lord.pkg.featured() : null; } catch (e) { return null; }
+}
+const loc = (v) => (v && typeof v === 'object' ? v[lang2()] || v.en || '' : typeof v === 'string' ? v : '');
+
+// For Discover: the banner, always (the published one; without package lists yet its skeleton;
+// without a published one, a catalog app not installed here, a different one each day), then the AI
+// shelf.
+export function AiDiscover({ onOpen, onOpenDeb, onMore }) {
+  useStore(locale);
+  const here = useHere();
+  const apps = (catalog.apps || []).filter((a) => fitsHere(a, here));
+  const fresh = apps.filter((a) => !installed(a.package));
+  const pool = fresh.length ? fresh : apps;
+  let ready = false;
+  try { ready = lord.pkg.available(); } catch (e) { ready = false; }
+  const pub = ready ? published() : null;
+  let banner;
+  if (pub && pub.data) {
+    const d = pub.data;
+    const a = d.catalog ? (catalog.apps || []).find((x) => x.id === d.catalog) : null;
+    const pkg = a ? a.package : typeof d.package === 'string' ? d.package : null;
+    const open = () => pkg && (a ? onOpen(pkg) : onOpenDeb(pkg));
+    const colors = Array.isArray(d.colors) && d.colors.every((c) => /^#[0-9a-f]{6}$/i.test(c)) ? d.colors : null;
+    banner = pub.image || !ready
+      ? h(Featured, { image: pub.image, colors, kicker: loc(d.kicker), title: loc(d.title) || (a && a.name) || pkg || '', text: loc(d.text) || (a ? summary(a) : ''),
+        action: pkg ? h(Pill, { big: true, onDark: true, label: installed(pkg) ? t('store.ai.view') : t('store.get'), onClick: open }) : null, onClick: open })
+      : h(FeaturedSkeleton);
+  } else if (!ready) {
+    banner = h(FeaturedSkeleton);
+  } else if (pool.length) {
+    const f = pool[Math.floor(Date.now() / 86400000) % pool.length];
+    banner = h(Featured, { icon: h(AiIcon, { a: f, size: 96 }), glow: nameColor(f.name.replace(/\.[a-z]+$/i, '')),
+      kicker: t('store.featured', { category: t('store.page.ai') }), title: f.name, text: summary(f),
+      action: h(Pill, { big: true, onDark: true, label: installed(f.package) ? t('store.ai.view') : t('store.get'), onClick: () => onOpen(f.package) }),
+      onClick: () => onOpen(f.package) });
+  }
+  return h(View, { style: { gap: 26 } },
+    banner || null,
+    apps.length ? h(Shelf, { title: t('store.page.ai'), more: t('store.seeAll', { count: apps.length }), onMore },
+      h(CardGrid, null, ...apps.slice(0, 4).map((a) => h(AiCard, { key: a.id, a, here, onOpen })))) : null);
 }

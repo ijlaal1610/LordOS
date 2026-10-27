@@ -41,6 +41,24 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   downloaded the model on first run and answered over its HTTP API on the CPU (about 33 tokens/s, no
   Vulkan device); on VM 116, Cursor's and VS Code's sources added, Cursor installed (its own script
   rewrote the same file), `apt update` and the Store's own update both clean, then removed.
+- **The Store's new look.** A sidebar in three groups (Store: Discover, For this computer, Installed,
+  Updates; Categories: Artificial Intelligence and Debian's ten categories, each with its count; LordOS
+  apps), the page's title, a back button and the search in a toolbar, and apps as cards in a grid
+  that fills the window: icon, name, category, two lines of summary, the download size and a Get,
+  Open or View button. Discover opens with a featured banner, then the AI shelf and a shelf per
+  category with "See all"; an app's page has a larger icon and a row of facts (version, size,
+  category, distribution). The hardware suggestions moved to their own page, For this computer,
+  which keeps the badge for new ones.
+- **A featured banner LordOS can change without a release.** Discover's banner comes from
+  `apt/featured/featured.json` and `apt/featured/banner.png` in the repository: `apt-repo.sh` checks
+  them (a schema 1 JSON object of at most 64 KB, a PNG of at most 2 MB) and publishes them signed with
+  the indexes (`main/featured/`), and the package engine takes them only from a source whose signed
+  Release says `Origin: LordOS`, checks their hashes, parses the JSON and the PNG signature, and keeps
+  them in `/var/lib/lordos/pkg/` (`lord.pkg.featured()`, read-only). The picture fills the banner
+  under a shade; while it isn't there yet the Store draws a skeleton of the banner (it pulses, unless
+  Reduce motion is on), and a system whose repository has no banner shows a catalog app instead.
+  Tested on VM 116 against lordos.org/apt-staging: the banner, its skeleton without the image, For
+  this computer, the categories and the cards.
 - **Root over SSH, as an advanced option.** Settings → Sharing → Advanced lets an administrator allow
   root to log in over SSH with a public key only, or with a key or a password, for tests and
   administration: the keys are pasted or imported from a `.pub` file and listed with their
