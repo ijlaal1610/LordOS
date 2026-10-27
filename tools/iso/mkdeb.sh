@@ -91,6 +91,10 @@ strip --strip-unneeded "$L/bin/lord-server" "$L/bin/lord-sessiond" "$L/bin/lord-
 # lord-fetch (0.8.5): downloads the subscribed blocklists over HTTPS, sandboxed (docs/FIREWALL.md, "Blocklists")
 [ -x server/build/lord-fetch ] && install -m 755 server/build/lord-fetch "$L/bin/lord-fetch"
 [ -x "$L/bin/lord-fetch" ] && { strip --strip-unneeded "$L/bin/lord-fetch" 2>/dev/null || true; }
+# the app catalog (0.8.5, apt/): Store → Artificial Intelligence; pkg-source-add reads it as root
+install -d "$L/apt/keys"
+install -m 644 apt/catalog.json "$L/apt/catalog.json"
+for k in apt/keys/*.asc; do install -m 644 "$k" "$L/apt/keys/"; done
 # lord-tls (0.8.5): HTTPS for the package engine's downloads, sandboxed (docs/PACKAGES.md, "HTTPS")
 [ -x server/build/lord-tls ] && install -m 755 server/build/lord-tls "$L/bin/lord-tls"
 [ -x "$L/bin/lord-tls" ] && { strip --strip-unneeded "$L/bin/lord-tls" 2>/dev/null || true; }

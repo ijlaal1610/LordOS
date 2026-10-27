@@ -6,6 +6,12 @@
  *                            /usr/share/keyrings/lordos-<id>.asc
  *   pkg-source-remove <id>   removes both
  *
+ * A vendor whose package always writes its own source (Cursor: cursor.sources, Signed-By
+ * /usr/share/keyrings/anysphere.gpg) would leave two entries for one repository with different
+ * Signed-By, which makes apt refuse every source. Its catalog entry names those files
+ * ("files": {"sources": "cursor", "keyring": "anysphere.gpg"}) and the same text is written there
+ * instead, the key dearmored when the name ends in .gpg, so the package's own write changes nothing.
+ *
  * Nothing comes from the caller but the id: the repository, suite, components, architectures and key
  * come from the catalog the lordos package ships (<LordOS dir>/apt/catalog.json and apt/keys/, root's,
  * not writable by others), every field is checked against a strict character set, the key file must
@@ -122,7 +128,26 @@ static int write_atomic(const char *path, const char *data, size_t n) {
 }
 
 /* the catalog entry for id, as the fields of its .sources and its key; 0 or an error already sent */
-typedef struct { char name[80], url[201], suites[128], comps[128], arches[64], keypath[PATH_MAX]; uint8_t fpr[20]; } Repo;
+typedef struct { char name[80], url[201], suites[128], comps[128], arches[64], keypath[PATH_MAX], sname[48], kname[64]; uint8_t fpr[20]; } Repo;
+
+/* a keyring file name: lowercase letters, digits and ._-, ending in .asc or .gpg */
+static int good_keyname(const char *s) {
+    size_t n = s ? strlen(s) : 0;
+    if (n < 5 || n > 63 || s[0] == '.' || s[0] == '-' || (strcmp(s + n - 4, ".asc") && strcmp(s + n - 4, ".gpg"))) return 0;
+    for (size_t i = 0; i < n; i++) if (!islower((unsigned char)s[i]) && !isdigit((unsigned char)s[i]) && !strchr(".-_", s[i])) return 0;
+    return 1;
+}
+
+/* the paths of id's .sources and keyring: the vendor's names from the catalog, else lordos-<id> */
+static void repo_paths(const char *id, const Repo *r, char *spath, size_t scap, char *kpath, size_t kcap) {
+    if (r && r->sname[0]) {
+        snprintf(spath, scap, SOURCES_DIR "/%s.sources", r->sname);
+        snprintf(kpath, kcap, KEYRINGS "/%s", r->kname);
+    } else {
+        snprintf(spath, scap, SOURCES_DIR "/lordos-%s.sources", id);
+        snprintf(kpath, kcap, KEYRINGS "/lordos-%s.asc", id);
+    }
+}
 static int find_repo(const char *id, Repo *r) {
     char dir[PATH_MAX], path[PATH_MAX];
     if (lordos_dir(dir, sizeof dir)) { admin_err("pkg.catalogMissing", NULL); return -1; }
@@ -155,6 +180,14 @@ static int find_repo(const char *id, Repo *r) {
     snprintf(r->name, sizeof r->name, "%s", name ? name : id);
     for (char *p = r->name; *p; p++) if ((unsigned char)*p < 0x20 || *p == '#') *p = ' ';
     if ((size_t)snprintf(r->keypath, sizeof r->keypath, "%s/apt/keys/%s", dir, kb) >= sizeof r->keypath) { admin_err("pkg.catalogBad", NULL); goto out; }
+    r->sname[0] = r->kname[0] = 0;
+    const JVal *files = json_get(src, "files");
+    if (files) {
+        const char *sn = json_str(files, "sources"), *kn = json_str(files, "keyring");
+        if (!good_id(sn) || !good_keyname(kn) || !strncmp(sn, "lordos", 6)) { admin_err("pkg.catalogBad", NULL); goto out; }
+        snprintf(r->sname, sizeof r->sname, "%s", sn);
+        snprintf(r->kname, sizeof r->kname, "%s", kn);
+    }
     rc = 0;
 out:
     json_free(&doc);
@@ -182,11 +215,16 @@ void pkg_act_source_add(const AdminReq *req, const char *arg, size_t len) {
     pgp_keyring_free(&kr);
     if (!match) { free(key); admin_err("pkg.keyMismatch", "id", id, NULL); return; }
     char kpath[PATH_MAX], spath[PATH_MAX], text[1200];
-    snprintf(kpath, sizeof kpath, KEYRINGS "/lordos-%s.asc", id);
-    snprintf(spath, sizeof spath, SOURCES_DIR "/lordos-%s.sources", id);
+    repo_paths(id, &r, spath, sizeof spath, kpath, sizeof kpath);
     mkdir(KEYRINGS, 0755);
     mkdir(SOURCES_DIR, 0755);
-    int bad = write_atomic(kpath, key, klen);
+    int bad;
+    if (!strcmp(kpath + strlen(kpath) - 4, ".gpg")) {
+        uint8_t *bin = NULL;
+        long blen = pgp_dearmor(key, klen, &bin);
+        bad = blen <= 0 || write_atomic(kpath, (const char *)bin, (size_t)blen);
+        free(bin);
+    } else bad = write_atomic(kpath, key, klen);
     free(key);
     if (bad) { admin_err("sys.writeFailed", "path", kpath, NULL); return; }
     int n = snprintf(text, sizeof text,
@@ -205,9 +243,10 @@ void pkg_act_source_remove(const AdminReq *req, const char *arg, size_t len) {
     memcpy(id, arg, len);
     id[len] = 0;
     if (!good_id(id)) { admin_err("admin.invalidArgument", NULL); return; }
+    Repo r;
+    if (find_repo(id, &r)) return;
     char kpath[PATH_MAX], spath[PATH_MAX];
-    snprintf(kpath, sizeof kpath, KEYRINGS "/lordos-%s.asc", id);
-    snprintf(spath, sizeof spath, SOURCES_DIR "/lordos-%s.sources", id);
+    repo_paths(id, &r, spath, sizeof spath, kpath, sizeof kpath);
     if ((unlink(spath) && errno != ENOENT) || (unlink(kpath) && errno != ENOENT)) { admin_err("sys.writeFailed", "path", spath, NULL); return; }
     admin_ok("pkg.sourceRemoved", "id", id, NULL);
 }

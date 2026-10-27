@@ -132,17 +132,21 @@ static void mirror_uri(const char *in, char *out, size_t n) {
     while (l && out[l - 1] == '/') out[--l] = 0;
 }
 
-static int words(const char *v, size_t n, char out[][96], int max) {
+/* comma: also split on ',' (apt accepts "Architectures: amd64,arm64", which Cursor's package writes) */
+static int words_sep(const char *v, size_t n, char out[][96], int max, int comma) {
     int k = 0;
     size_t i = 0;
+#define WSEP(c) (isspace((unsigned char)(c)) || (comma && (c) == ','))
     while (i < n && k < max) {
-        while (i < n && isspace((unsigned char)v[i])) i++;
+        while (i < n && WSEP(v[i])) i++;
         size_t s = i;
-        while (i < n && !isspace((unsigned char)v[i])) i++;
+        while (i < n && !WSEP(v[i])) i++;
         if (i > s) { snprintf(out[k], 96, "%.*s", (int)(i - s), v + s); k++; }
     }
     return k;
+#undef WSEP
 }
+static int words(const char *v, size_t n, char out[][96], int max) { return words_sep(v, n, out, max, 0); }
 
 static void add_source(Source *src, int *ns, const char *uri, const char *suite, char comps[][96], int nc,
                        const char *signed_by, size_t sblen) {
@@ -197,7 +201,7 @@ static void parse_deb822(const char *buf, size_t len, Source *src, int *ns, cons
             else if (d822_is(&f, "URIs")) nu = words(f.value, f.vlen, uris, 8);
             else if (d822_is(&f, "Suites")) nsu = words(f.value, f.vlen, suites, 8);
             else if (d822_is(&f, "Components")) nc = words(f.value, f.vlen, comps, 16);
-            else if (d822_is(&f, "Architectures")) na = words(f.value, f.vlen, archs, 8);
+            else if (d822_is(&f, "Architectures")) na = words_sep(f.value, f.vlen, archs, 8, 1);
             else if (d822_is(&f, "Enabled") && f.vlen >= 2 && !strncasecmp(f.value, "no", 2)) enabled = 0;
             else if (d822_is(&f, "Signed-By")) { sb = f.value; sbl = f.vlen; }
         }

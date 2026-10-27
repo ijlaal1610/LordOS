@@ -98,7 +98,7 @@ function PlanView({ plan }) {
 
 // ---- package page ----
 
-function Details({ name, onBack }) {
+function Details({ name, onBack, onRemoved }) {
   const th = useTheme();
   const { gen, job } = useStore(state);
   const [plan, setPlan] = useState(null);
@@ -116,7 +116,7 @@ function Details({ name, onBack }) {
   const confirm = () => {
     const extra = plan.p.items.some((i) => i.action === 'remove' && !i.requested);
     if (plan.kind === 'install') runJob('pkg-install', extra ? `${name} --allow-remove` : name, t('store.job.install', { name: app?.name || name }));
-    else runJob('pkg-remove', extra ? `${name} --cascade` : name, t('store.job.remove', { name: app?.name || name }));
+    else runJob('pkg-remove', extra ? `${name} --cascade` : name, t('store.job.remove', { name: app?.name || name })).then((ok) => { if (ok && onRemoved) onRemoved(name); });
     setPlan(null);
   };
   const desc = (info.appDescription || info.description || '').trim();
@@ -364,6 +364,7 @@ function packageOfApp(a) {
 
 export const debian = {
   available: ready,
+  Details,
   Discover,
   Updates,
   Status,

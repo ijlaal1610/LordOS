@@ -6,6 +6,7 @@ import {
   suggestions, unseenSuggestions, refreshSuggestions,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useState } from 'react';
+import { AiPage } from './ai.js';
 import { debian, useDebian } from './debian.js';
 
 // The user's Downloads folder relative to home ("Downloads/"), from xdg-user-dirs; without it, the
@@ -320,15 +321,16 @@ export default function Store() {
   const pages = [
     ['discover', tr('store.page.discover'), unseen || null],
     ['lordos', tr('store.page.lordos')],
+    ['ai', tr('store.page.ai')],
     ['installed', tr('store.page.installed')],
     ['updates', deb.upgrades?.length ? tr('store.page.updatesCount', { count: deb.upgrades.length }) : tr('store.page.updates')],
   ];
-  const Page = { discover: debian.Discover, lordos: LordOSPage, installed: InstalledPage, updates: debian.Updates }[page];
+  const Page = { discover: debian.Discover, lordos: LordOSPage, ai: AiPage, installed: InstalledPage, updates: debian.Updates }[page];
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>
       <View style={{ width: 210, backgroundColor: t.sidebarBg, paddingHorizontal: 10, paddingTop: 10, paddingBottom: 12, gap: 2 }}>
         <Hairline edge="end" />
-        <SearchField value={query} onChange={(v) => { setQuery(v); if (v && page !== 'discover' && page !== 'installed' && page !== 'lordos') setPage('discover'); }}
+        <SearchField value={query} onChange={(v) => { setQuery(v); if (v && page !== 'discover' && page !== 'installed' && page !== 'lordos' && page !== 'ai') setPage('discover'); }}
           placeholder={tr('store.search')} style={{ marginBottom: 10 }} />
         {pages.map(([id, label, detail]) => <SidebarItem key={id} label={label} detail={detail} selected={page === id} onClick={() => setPage(id)} />)}
         <View style={{ flex: 1 }} />

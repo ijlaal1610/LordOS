@@ -253,6 +253,84 @@ system by LordOS's packages.
   0.8.5) takes the highest version among equal priorities. A newer `rpi-eeprom` reaches a board through Store → Updates or `apt upgrade` like any
   other package.
 
+## Mirrored apps (catalog)
+
+LordOS offers a curated list of third-party apps (today nine AI apps) through the Store with its normal
+package engine. The list is `apt/catalog.json` in the repository (schema, update steps and trust rules:
+`apt/README.md`); the vendors' signing keys are in `apt/keys/`, LordOS's build recipes in
+`apt/recipes/`. An app reaches a system in one of two ways:
+
+| Delivery | Apps | How |
+|---|---|---|
+| **direct** | Claude Code (`claude-code`), Claude Desktop (`claude-desktop`), Visual Studio Code (`code`), Cursor (`cursor`) | the vendor has a signed APT repository: the user's system adds it (a deb822 `.sources` with the key pinned in the catalog) and installs and updates from the vendor. Nothing is copied to lordos.org. |
+| **mirror** | `llama.cpp`, `whisper.cpp`, `codex-cli` (built by LordOS); `goose`, `opencode` (the vendor's .deb) | no vendor repository: verified on the maintainer's Mac and published in `pool/catalog/` of lordos.org/apt, signed with the LordOS archive key with everything else. |
+
+The flow, on the maintainer's Mac only (like the rest of the repository):
+
+1. `apt/build.sh check` validates the catalog and, for every vendor repository, that its key file
+   holds exactly the pinned fingerprint, that `InRelease` verifies with it (`gpgv`, `VALIDSIG` by that
+   fingerprint, suite and `Valid-Until`), that `Packages` matches `InRelease`, and that the package
+   exists for each architecture (it prints the newest version).
+2. `tools/release/apt-repo.sh build <target> --catalog …` runs `apt/build.sh fetch`: every pinned
+   download over https, checked against its SHA-256 (and codex-cli against its sigstore signature with
+   `cosign`); every vendor .deb checked again for its `Package`, `Version` and `Architecture`; the
+   recipes run in `debian:trixie` containers of each architecture (amd64 natively, arm64 under qemu)
+   with no network. The results go to `pool/catalog/<letter>/<name>/` and into the `binary-amd64` and
+   `binary-arm64` indexes like `pool/main`, then the whole repository is signed as before.
+3. Everything verified or built is kept in `~/.local/share/lordos-apt/catalog-cache`: a version that
+   disappears upstream can still be published, and a built package is never rebuilt for the same
+   version (the pool is append-only; `apt-repo.sh` refuses a different file with a published name).
+
+What LordOS builds, and how:
+
+- **llama.cpp** (the local model runner; `llama-cli -hf <user>/<model>-GGUF` and `llama-server -hf …`
+  download models from Hugging Face themselves, over HTTPS with OpenSSL) and **whisper.cpp**: built
+  from the upstream source tarball of a pinned tag, portable (`GGML_NATIVE=OFF`, every CPU variant of
+  the architecture built as a backend module and the best one loaded at run time), programs in
+  `/usr/bin`, libraries in `/usr/lib/<name>` (RUNPATH). llama.cpp also has the Vulkan backend
+  (`GGML_VULKAN`) as one more module, `libggml-vulkan.so`, loaded only when a Vulkan device exists;
+  `libvulkan1` (the loader, about 0.5 MB) is a dependency and `mesa-vulkan-drivers` a recommendation.
+  Checked on 2026-10-27 in `debian:trixie` containers (amd64, and arm64 under qemu), with no GPU: with
+  no Vulkan driver `llama-cli --list-devices` lists none and the CPU backends are used; with Mesa's
+  software driver (lavapipe) the Vulkan backend loads and, with `GGML_VK_VISIBLE_DEVICES=0`, lists
+  `Vulkan0: llvmpipe` (ggml skips CPU-type Vulkan devices unless asked). On real AMD, Intel or NVIDIA
+  hardware the GPU is picked by default; that path has not been tested on hardware yet.
+  whisper.cpp is CPU only. llama-server's web UI is upstream's CI build of the same commit (a pinned
+  input), because the build has no network; whisper.cpp's `talk-llama` example (which clones llama.cpp
+  at configure time) is left out. No model is downloaded at build time.
+- **codex-cli**: OpenAI's static musl binary as `/usr/bin/codex`, with the Apache-2.0 `LICENSE` and
+  `NOTICE`; it recommends `bubblewrap` (Codex's Linux sandbox) and `ripgrep`.
+
+**Vendor maintainer scripts.** LordOS never modifies a vendor package. The package engine runs `dpkg`
+with `DEBIAN_FRONTEND=noninteractive` and no terminal, without preseeding debconf, so this is what each
+does on installation (read from the packages of 2026-10-26: code 1.143.1, claude-desktop 3.6556.2,
+cursor 3.27.14, claude-code 2.1.308, goose 1.56.0, opencode 1.19.4):
+
+| Package | On install, unattended |
+|---|---|
+| `claude-code` | no maintainer scripts. |
+| `code` | debconf `code/add-microsoft-repo` defaults to true and there is no terminal, so it writes `/etc/apt/sources.list.d/vscode.sources` (Signed-By `/usr/share/keyrings/microsoft.gpg`, created with `gpg --dearmor`) **unless** a source file already has `URIs: https://packages.microsoft.com/repos/code`; it writes the keyring in both cases. It also links `/usr/bin/code`, registers `/usr/bin/editor` (priority 0) and, with `code/add-copilot-command` defaulting to true, links `/usr/bin/copilot` to VS Code's Copilot CLI shim (which offers to install Copilot CLI when run). postrm deletes `vscode.sources` and the keyring. |
+| `claude-desktop` | writes `/usr/share/keyrings/claude-desktop-archive-keyring.asc` always, and `/etc/apt/sources.list.d/claude-desktop.list` plus `/etc/apt/apt.conf.d/50claude-desktop` (unattended-upgrades origin) **unless** another source already lists `downloads.claude.ai/claude-desktop/apt/stable` (or `/etc/default/claude-desktop` has `CLAUDE_DESKTOP_ADD_REPO=false`). It also writes an unconfined AppArmor `userns` profile when `/etc/apparmor.d/abi/4.0` exists, a GNOME Shell search provider, MIME types and `/usr/bin/ccd`. `chrome-sandbox` is setuid root. It recommends `qemu-system-x86`, `ovmf` and `virtiofsd`. |
+| `cursor` | debconf `cursor/add-cursor-repo` defaults to true and it does **not** look for an existing source: it always writes `/etc/apt/sources.list.d/cursor.sources` (Signed-By `/usr/share/keyrings/anysphere.gpg`, created with `gpg --dearmor` if missing). Ships `/etc/apparmor.d/cursor-sandbox` (loaded if AppArmor is active) and `/etc/sysctl.d/50-cursor.conf` (comments only); `chrome-sandbox` setuid root; `/usr/bin/cursor`, `/usr/bin/editor` (priority 0). postrm deletes `cursor.sources` and the keyring. |
+| `goose` | no maintainer scripts; `chrome-sandbox` is shipped setuid root. |
+| `opencode` | `/usr/bin/ai.opencode.desktop` through update-alternatives; `chrome-sandbox` made setuid only when unprivileged user namespaces don't work; an AppArmor profile copied to `/etc/apparmor.d/ai.opencode.desktop` when AppArmor is enabled. It ships electron-updater's `app-update.yml` (GitHub releases). |
+
+So that the vendor scripts and LordOS's own source agree, a direct app's source should be written
+**before** its package is installed, with `Types: deb` and the `URIs` exactly as in the catalog (VS
+Code and Claude Desktop then skip their own entry), and for Cursor, which always writes its own, the
+system's file should be exactly Cursor's: `/etc/apt/sources.list.d/cursor.sources` with
+`Signed-By: /usr/share/keyrings/anysphere.gpg` (the pinned key, dearmored). Two entries for the same
+repository with different `Signed-By` make `apt update` fail ("Conflicting values set for option
+Signed-By … The list of sources could not be read", checked with Debian 13's apt in a `debian:trixie`
+container on 2026-10-26).
+
+That is what `pkg-source-add` does (`server/src/pkg/sources_admin.c`): the Store adds the source before
+installing, and an entry with `"files": {"sources": "cursor", "keyring": "anysphere.gpg"}` is written
+under the vendor's own names (the key dearmored because the name ends in `.gpg`) instead of
+`lordos-<id>.sources` and `lordos-<id>.asc`; `pkg-source-remove` removes the same files. Both names
+come only from the root-owned catalog and pass a strict character set (`lordos*` source names are
+refused).
+
 ## The Raspberry Pi kernel
 
 The LordOS kernel for the Pi 5 (`linux-image-<version>-lordos-rpi-2712`, from

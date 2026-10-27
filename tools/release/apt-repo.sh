@@ -1,7 +1,7 @@
 #!/bin/sh
 # apt-repo.sh — the signed LordOS APT repository on lordos.org (docs/UPDATES.md, docs/RELEASING.md).
 #
-#   tools/release/apt-repo.sh build   <target> [--notes VERSION=SECTION]… [--rpi] <file.deb>…
+#   tools/release/apt-repo.sh build   <target> [--notes VERSION=SECTION]… [--rpi] [--catalog] <file.deb>…
 #   tools/release/apt-repo.sh publish <target>
 #   tools/release/apt-repo.sh verify  <target>
 #   tools/release/apt-repo.sh rpi-fetch <target>     (only fetches and verifies the --rpi packages)
@@ -26,6 +26,14 @@
 # can still be published after Raspberry Pi's archive has moved on (docs/UPDATES.md). Pinned source
 # packages (MPL-2.0 kms++) go to pool/rpi/source/<letter>/<name>/, checked the same way against the
 # signed Sources index, so their source is offered next to the binaries.
+#
+# --catalog also adds the curated apps of apt/catalog.json that LordOS mirrors (apt/README.md): it runs
+# `apt/build.sh fetch`, which downloads every pinned vendor file, verifies it (pinned SHA-256, sigstore,
+# a vendor's signed APT index) and builds LordOS's own packages from apt/recipes/ in debian:trixie
+# containers (amd64 and arm64), keeping everything in $WORKDIR/catalog-cache. Those .debs go to
+# pool/catalog/<letter>/<name>/ and into the indexes of their architectures, like pool/main. Apps whose
+# vendor has its own signed APT repository ("delivery": "direct") are only checked, never mirrored: the
+# user's system installs them from the vendor (docs/UPDATES.md, "Mirrored apps (catalog)").
 #
 # --notes VERSION=SECTION takes the notes of lordos VERSION from CHANGELOG.md section SECTION (for
 # example 0.8.1~staging1=Unreleased). By default the section is "VERSION" or "VERSION-<suffix>".
@@ -219,12 +227,13 @@ rpi_src_import() {
 is_rpi_pkg() { grep -v '^#' "$RPI_LIST" | awk -v n="$1" '$1 == n { f = 1 } END { exit !f }'; }
 
 do_build() {
-    NOTES_MAP=""; RPI=0
+    NOTES_MAP=""; RPI=0; CATALOG=0; cats=
     while [ $# -gt 0 ]; do
         case "$1" in
             --notes) [ $# -ge 2 ] || die "--notes needs VERSION=SECTION"; NOTES_MAP="$NOTES_MAP $2"; shift ;;
             --notes=*) NOTES_MAP="$NOTES_MAP ${1#*=}" ;;
             --rpi) RPI=1 ;;
+            --catalog) CATALOG=1 ;;
             -*) die "unknown option $1" ;;
             *) break ;;
         esac
@@ -236,6 +245,13 @@ do_build() {
         echo "  Raspberry Pi packages verified: $(echo "$rpis" | wc -l | tr -d ' ')"
         # shellcheck disable=SC2086
         set -- "$@" $rpis
+    fi
+    if [ "$CATALOG" = 1 ]; then
+        cats=$(LORDOS_APT_DIR=$WORKDIR "$ROOT/apt/build.sh" fetch) || die "apt/build.sh fetch failed"
+        echo "  catalog packages verified: $(echo "$cats" | grep -c .)"
+        # shellcheck disable=SC2086
+        set -- "$@" $cats
+        cats=" $(echo $cats) "
     fi
     mkdir -p "$TREE/pool/main"
     # the pool is append-only: start from what is published (old versions stay installable)
@@ -253,6 +269,7 @@ do_build() {
         case "$name" in lib?*) dir=$(printf %s "$name" | cut -c1-4) ;; *) dir=$(printf %s "$name" | cut -c1) ;; esac
         comp=main
         is_rpi_pkg "$name" && comp=rpi
+        case "$cats" in *" $deb "*) comp=catalog ;; esac
         dest="pool/$comp/$dir/$name/${name}_${ver#*:}_$arch.deb"
         if [ -f "$TREE/$dest" ] && ! cmp -s "$TREE/incoming/$b" "$TREE/$dest"; then
             die "$dest is already published with different contents: a version is never replaced (bump it)"
@@ -286,6 +303,10 @@ do_build() {
         # the Raspberry Pi packages (pool/rpi) only in the arm64 index: "all" packages would show up on PCs
         if [ "$a" = arm64 ] && [ -d "$TREE/pool/rpi" ]; then
             debtool apt-ftparchive --arch "$a" packages pool/rpi >> "$TREE/$D/main/binary-$a/Packages"
+        fi
+        # the mirrored catalog apps (pool/catalog), for each architecture like pool/main
+        if [ -d "$TREE/pool/catalog" ]; then
+            debtool apt-ftparchive --arch "$a" packages pool/catalog >> "$TREE/$D/main/binary-$a/Packages"
         fi
         xz -9 -k -f "$TREE/$D/main/binary-$a/Packages"
         gzip -9 -n -k -f "$TREE/$D/main/binary-$a/Packages"

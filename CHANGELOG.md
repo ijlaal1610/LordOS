@@ -19,7 +19,7 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   (catalog)"). Claude Code, Claude Desktop, Visual Studio Code and Cursor come straight from their
   vendors' signed APT repositories ("direct"): `apt/build.sh check` verifies the pinned key
   fingerprint, the signed `InRelease`, the index hash and the package for each architecture. The other
-  five are verified on the maintainer's Mac and published in `pool/catalog/` by
+  five are verified on the maintainer's machine and published in `pool/catalog/` by
   `tools/release/apt-repo.sh build … --catalog`: goose 1.56.0 and opencode 1.19.4 (the vendor's .deb,
   pinned SHA-256), and three packages LordOS builds in `debian:trixie` containers with no network —
   `llama.cpp` 0.7.0, the local model runner (`-hf` downloads GGUF models from Hugging Face over HTTPS;
@@ -28,6 +28,19 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   its sigstore signature checked with cosign). Vendor packages are never modified; what their
   maintainer scripts do when the Store installs them (VS Code, Claude Desktop and Cursor add their own
   APT source) is documented.
+- **Store → Artificial Intelligence.** The catalog as a page of the Store: each app with its kind,
+  vendor and licence, dimmed on an architecture it doesn't support. An app from its vendor's repository
+  first says whose repository it adds and its key fingerprint, then adds it (`pkg-source-add`, the key
+  checked against the catalog's fingerprint) and fetches the lists; removing the app removes that
+  repository unless another installed catalog app uses it. An app LordOS builds that the lists don't
+  have yet offers to fetch them again instead of "package not found". Cursor's package always writes
+  its own source (`cursor.sources`, `Signed-By: /usr/share/keyrings/anysphere.gpg`), and a second entry
+  for the same repository with another `Signed-By` stops apt reading any source, so its catalog entry
+  names those files and LordOS writes the same ones (the key dearmored). Tested on the VMware machine:
+  llama.cpp installed from the Store (14 MB), `llama-server -hf ggml-org/Qwen3-0.6B-GGUF:Q8_0`
+  downloaded the model on first run and answered over its HTTP API on the CPU (about 33 tokens/s, no
+  Vulkan device); on VM 116, Cursor's and VS Code's sources added, Cursor installed (its own script
+  rewrote the same file), `apt update` and the Store's own update both clean, then removed.
 - **Root over SSH, as an advanced option.** Settings → Sharing → Advanced lets an administrator allow
   root to log in over SSH with a public key only, or with a key or a password, for tests and
   administration: the keys are pasted or imported from a `.pub` file and listed with their
@@ -152,6 +165,9 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **The Store ignored a repository written as `Architectures: amd64,arm64`.** apt accepts commas there
+  (Cursor's package writes it that way); LordOS's package engine split only on spaces, so it dropped
+  that source and never saw the app's updates. Both are accepted now.
 - **Locking the screen and switching user are faster.** Handing the screen to the sign-in screen waited
   for every input device to close, and the last close of a USB mouse stops its transfers: about 0.7 s for
   VMware's virtual USB mouse, so a lock took 0.6 to 1.1 s there. Access is still cut at once
@@ -255,7 +271,7 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 - **llama.cpp on a GPU is not tested on real hardware yet.** Its Vulkan backend is meant for AMD (Mesa
   RADV), NVIDIA (the NVIDIA driver or NVK) and Intel GPUs and falls back to the CPU without one; only the
   CPU path and the backend loading (software Vulkan) were checked.
-- **Searching "displays" in Spotlight** opens the Help article on touchpads and touch screens before
+- **Searching "displays" in the search panel** opens the Help article on touchpads and touch screens before
   Settings → Displays.
 - **Settings → Displays:** in the arrangement, the name of a small display is cut without an ellipsis.
 
