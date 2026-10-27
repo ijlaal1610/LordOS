@@ -171,7 +171,7 @@ static void take_back(void) {
         ioctl(ins[i], EVIOCREVOKE, NULL);
         double e = rd_now();
         if (e - a > 0.05 && strlen(slow) < sizeof slow - 40)
-            snprintf(slow + strlen(slow), sizeof slow - strlen(slow), " %s revoke %.0f", inname[i], (e - a) * 1000);
+            snprintf(slow + strlen(slow), sizeof slow - strlen(slow), " %.15s revoke %.0f", inname[i], (e - a) * 1000);
     }
     close_later(ins, nin);
     nin = 0;
