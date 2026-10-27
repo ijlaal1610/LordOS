@@ -6,6 +6,10 @@
  *                            /usr/share/keyrings/lordos-<id>.asc
  *   pkg-source-remove <id>   removes both
  *
+ * A vendor whose package adds a one-line .list unless one already names its repository (Spotify)
+ * gets "optout": "<name>.list" in the catalog: an empty file of that name is created only when it
+ * doesn't exist, and removed with the source only while it is still empty.
+ *
  * A vendor whose package always writes its own source (Cursor: cursor.sources, Signed-By
  * /usr/share/keyrings/anysphere.gpg) would leave two entries for one repository with different
  * Signed-By, which makes apt refuse every source. Its catalog entry names those files
@@ -128,7 +132,7 @@ static int write_atomic(const char *path, const char *data, size_t n) {
 }
 
 /* the catalog entry for id, as the fields of its .sources and its key; 0 or an error already sent */
-typedef struct { char name[80], url[201], suites[128], comps[128], arches[64], keypath[PATH_MAX], sname[48], kname[64]; uint8_t fpr[20]; } Repo;
+typedef struct { char name[80], url[201], suites[128], comps[128], arches[64], keypath[PATH_MAX], sname[48], kname[64], optout[48]; uint8_t fpr[20]; } Repo;
 
 /* a keyring file name: lowercase letters, digits and ._-, ending in .asc or .gpg */
 static int good_keyname(const char *s) {
@@ -180,7 +184,17 @@ static int find_repo(const char *id, Repo *r) {
     snprintf(r->name, sizeof r->name, "%s", name ? name : id);
     for (char *p = r->name; *p; p++) if ((unsigned char)*p < 0x20 || *p == '#') *p = ' ';
     if ((size_t)snprintf(r->keypath, sizeof r->keypath, "%s/apt/keys/%s", dir, kb) >= sizeof r->keypath) { admin_err("pkg.catalogBad", NULL); goto out; }
-    r->sname[0] = r->kname[0] = 0;
+    r->sname[0] = r->kname[0] = r->optout[0] = 0;
+    /* "optout": the empty one-line list file whose presence tells the vendor's package not to add its
+     * own source (Spotify: spotify.list); created only when missing, removed only when still empty */
+    const char *oo = json_str(src, "optout");
+    if (oo) {
+        size_t on = strlen(oo);
+        int ok = on > 5 && on < sizeof r->optout && !strcmp(oo + on - 5, ".list") && strncmp(oo, "lordos", 6) && islower((unsigned char)oo[0]);
+        for (size_t i = 0; ok && i < on; i++) if (!islower((unsigned char)oo[i]) && !isdigit((unsigned char)oo[i]) && !strchr(".-_", oo[i])) ok = 0;
+        if (!ok) { admin_err("pkg.catalogBad", NULL); goto out; }
+        snprintf(r->optout, sizeof r->optout, "%s", oo);
+    }
     const JVal *files = json_get(src, "files");
     if (files) {
         const char *sn = json_str(files, "sources"), *kn = json_str(files, "keyring");
@@ -228,10 +242,16 @@ void pkg_act_source_add(const AdminReq *req, const char *arg, size_t len) {
     free(key);
     if (bad) { admin_err("sys.writeFailed", "path", kpath, NULL); return; }
     int n = snprintf(text, sizeof text,
-                     "# Added by LordOS (Store → Artificial Intelligence): %s. Removing it in the Store removes this file.\n"
+                     "# Added by LordOS (Store): %s. Removing it in the Store removes this file.\n"
                      "Types: deb\nURIs: %s\nSuites: %s\nComponents: %s\nArchitectures: %s\nSigned-By: %s\n",
                      r.name, r.url, r.suites, r.comps, r.arches, kpath);
     if (n <= 0 || n >= (int)sizeof text || write_atomic(spath, text, (size_t)n)) { unlink(kpath); admin_err("sys.writeFailed", "path", spath, NULL); return; }
+    if (r.optout[0]) {
+        char opath[PATH_MAX];
+        snprintf(opath, sizeof opath, SOURCES_DIR "/%s", r.optout);
+        int ofd = open(opath, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0644);
+        if (ofd >= 0) close(ofd);                    /* an existing file (the user's own) stays as it is */
+    }
     admin_ok("pkg.sourceAdded", "id", id, NULL);
 }
 
@@ -248,5 +268,11 @@ void pkg_act_source_remove(const AdminReq *req, const char *arg, size_t len) {
     char kpath[PATH_MAX], spath[PATH_MAX];
     repo_paths(id, &r, spath, sizeof spath, kpath, sizeof kpath);
     if ((unlink(spath) && errno != ENOENT) || (unlink(kpath) && errno != ENOENT)) { admin_err("sys.writeFailed", "path", spath, NULL); return; }
+    if (r.optout[0]) {
+        char opath[PATH_MAX];
+        struct stat ost;
+        snprintf(opath, sizeof opath, SOURCES_DIR "/%s", r.optout);
+        if (!lstat(opath, &ost) && S_ISREG(ost.st_mode) && ost.st_size == 0) unlink(opath);
+    }
     admin_ok("pkg.sourceRemoved", "id", id, NULL);
 }

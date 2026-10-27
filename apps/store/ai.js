@@ -80,7 +80,10 @@ function NotListed({ a, onDone }) {
 }
 
 const useHere = () => { const info = useSystemInfo(60000); return DEB_ARCH[info.arch] || info.arch || ''; };
-export const catalogApps = () => catalog.apps || [];
+// The catalog's sections: "ai" (entries without a section) and "commercial" (free of charge, no
+// source code: the page says so before anything is installed).
+const sectionOf = (a) => a.section || 'ai';
+export const catalogApps = (section) => (catalog.apps || []).filter((a) => !section || sectionOf(a) === section);
 export const catalogApp = (pkg) => (catalog.apps || []).find((x) => x.package === pkg);
 
 // A catalog app's page: add its maker's repository first, fetch the lists when LordOS's own package
@@ -103,18 +106,23 @@ export function AiDetail({ pkg }) {
 }
 
 // The Artificial Intelligence page: the catalog as cards (the search narrows it).
-export function AiPage({ query, onOpen }) {
+// A catalog section as cards (the search narrows it): Artificial Intelligence, or Commercial.
+export function AiPage({ query, onOpen, onPage, section = 'ai' }) {
   const th = useTheme();
   useStore(locale);
   const here = useHere();
   const q = (query || '').trim().toLowerCase();
-  const apps = (catalog.apps || []).filter((a) => !q || `${a.name} ${summary(a)} ${a.vendor || ''}`.toLowerCase().includes(q));
+  const apps = catalogApps(section).filter((a) => !q || `${a.name} ${summary(a)} ${a.vendor || ''}`.toLowerCase().includes(q));
   const missing = apps.some((a) => !offered(a.package) && !(a.source && a.source.delivery === 'direct'));
   return h(View, { style: { gap: spacing.l } },
-    h(Text, { style: { fontSize: typeScale.body, color: th.textDim, lineHeight: 1.45, maxWidth: 680, textAlign: 'start' } }, t('store.ai.intro')),
+    h(Text, { style: { fontSize: typeScale.body, color: th.textDim, lineHeight: 1.45, maxWidth: 680, textAlign: 'start' } }, t(section === 'commercial' ? 'store.commercial.intro' : 'store.ai.intro')),
     missing ? h(Text, { style: { fontSize: typeScale.caption, color: '#ff9f0a', textAlign: 'start' } }, t('store.ai.refresh')) : null,
     h(debian.Progress),
-    h(CardGrid, null, ...apps.map((a) => h(AiCard, { key: a.id, a, here, onOpen }))));
+    h(CardGrid, null, ...apps.map((a) => h(AiCard, { key: a.id, a, here, onOpen }))),
+    // the graphics drivers stay where the hardware is detected (Store → For this computer)
+    section === 'commercial' ? h(View, { style: { flexDirection: 'row', alignItems: 'center', gap: spacing.m, marginTop: spacing.s } },
+      h(Text, { style: { flex: 1, fontSize: typeScale.callout, color: th.textDim, lineHeight: 1.4, textAlign: 'start' } }, t('store.commercial.drivers')),
+      h(Button, { small: true, label: t('store.commercial.openDrivers'), onClick: () => onPage && onPage('suggested') })) : null);
 }
 
 // The banner LordOS publishes in its repository (apt/featured/featured.json and banner.png, signed with
@@ -130,7 +138,7 @@ const loc = (v) => (v && typeof v === 'object' ? v[lang2()] || v.en || '' : type
 export function AiDiscover({ onOpen, onOpenDeb, onMore }) {
   useStore(locale);
   const here = useHere();
-  const apps = (catalog.apps || []).filter((a) => fitsHere(a, here));
+  const apps = catalogApps('ai').filter((a) => fitsHere(a, here));
   const fresh = apps.filter((a) => !installed(a.package));
   const pool = fresh.length ? fresh : apps;
   let ready = false;

@@ -8,7 +8,7 @@ export const CARD_BASIS = 250;
 
 // Sidebar glyphs: monochrome symbols drawn in the accent color (docs/DESIGN.md, "Icons").
 export const GLYPH = {
-  discover: '✦', suggested: '◫', installed: '▣', updates: '↻', lordos: '◆', ai: '✧',
+  discover: '✦', suggested: '◫', installed: '▣', updates: '↻', lordos: '◆', ai: '✧', commercial: '★',
   AudioVideo: '♪', Development: '⌘', Education: 'ⓘ', Game: '♟', Graphics: '◐', Network: '⇄', Office: '▤',
   Science: '⚛', System: '⚙', Utility: '⚒',
 };
@@ -62,7 +62,7 @@ export function Card({ icon, name, kind, summary, note, action, onClick, dim }) 
 export function CardGrid({ children }) {
   const items = (Array.isArray(children) ? children.flat() : [children]).filter(Boolean);
   const fill = [0, 1, 2, 3].map((i) => h(View, { key: `fill${i}`, style: { flexGrow: 1, flexBasis: CARD_BASIS, minWidth: 220, height: 0 } }));
-  return h(View, { style: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 12 } }, ...items, ...fill);
+  return h(View, { style: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 } }, ...items, ...fill);
 }
 
 // A section heading over a grid, with an optional "See all" at the end.

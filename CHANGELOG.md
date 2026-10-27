@@ -59,6 +59,20 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   Reduce motion is on), and a system whose repository has no banner shows a catalog app instead.
   Tested on VM 116 against lordos.org/apt-staging: the banner, its skeleton without the image, For
   this computer, the categories and the cards.
+- **Store → Commercial.** Free-of-charge apps whose source code isn't public, from their makers'
+  signed APT repositories with the key LordOS pins: Google Chrome (amd64 and arm64), Edge and
+  Spotify (amd64). The page says before anything is installed that LordOS can't review or fix what they
+  do, and points to For this computer for graphics drivers. Their packages write their own APT
+  source: for Chrome and Edge the catalog names those files (`google-chrome.sources`,
+  `microsoft-edge.sources` and their keyrings) so the package's write changes nothing, and for
+  Spotify, which adds `spotify.list` unless that file exists, a new catalog field `optout` makes
+  `pkg-source-add` create it empty (only when missing; `pkg-source-remove` deletes it only while it
+  is still empty). Tested on the VMware machine with the admin action and LordOS's package engine:
+  the three sources added, the three apps installed (Chrome 156.0.8078.47, Edge 156.0.4314.50,
+  Spotify 1.2.95), `apt update` with no error or warning and the engine's update clean afterwards,
+  and Chrome's window opening in the session. Spotify's package also copies its key into
+  `/etc/apt/trusted.gpg.d/`, trusted by apt for any source without Signed-By (Debian's own sources
+  have one). Steam needs i386 multiarch, which LordOS's package engine doesn't do yet (roadmap).
 - **Root over SSH, as an advanced option.** Settings → Sharing → Advanced lets an administrator allow
   root to log in over SSH with a public key only, or with a key or a password, for tests and
   administration: the keys are pasted or imported from a `.pub` file and listed with their
@@ -289,6 +303,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 - **llama.cpp on a GPU is not tested on real hardware yet.** Its Vulkan backend is meant for AMD (Mesa
   RADV), NVIDIA (the NVIDIA driver or NVK) and Intel GPUs and falls back to the CPU without one; only the
   CPU path and the backend loading (software Vulkan) were checked.
+- **The live ISO's boot menu on legacy BIOS** shows a black rectangle in place of the menu until a key
+  is pressed; the entries are there and the timeout boots the first one as usual. Seen on QEMU with
+  SeaBIOS (standard VGA and virtio displays); 0.8.4's ISO does the same, and UEFI draws the menu at
+  once. A hidden countdown widget in the theme did not change it.
 - **Searching "displays" in the search panel** opens the Help article on touchpads and touch screens before
   Settings → Displays.
 - **Settings → Displays:** in the arrangement, the name of a small display is cut without an ellipsis.

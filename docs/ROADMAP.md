@@ -635,6 +635,36 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   standard input, never in argv; fixed options `nosuid,nodev` and the user's uid; only under
   `/media/<user>/`), the password in the keyring, the mount's traffic as its own firewall app.
 
+- [ ] **Flatpak and Flathub (0.8.6, approved by the maintainer on 2026-10-27; needs a design
+  review before code)** — a Flathub section in the Store. Today LordOS neither uses nor integrates
+  Flatpak, and its rules keep isolation as LordOS's own code (no bubblewrap/flatpak for `.lpk`). What
+  has to be solved so Flatpak apps follow LordOS's security model:
+  - **Identity and the firewall:** `flatpak run` moves the app into its own transient
+    `app-flatpak-<id>-*.scope` under `user@`, where `lord-netperm` treats it as an escape and applies
+    the per-user union, not that app's rules. Flatpak apps must start through LordOS's launcher in
+    LordOS's app scope (or a root-owned `lordos-flatpak-<id>` scope) so Monitor, the firewall and the
+    device restrictions see them as themselves; device-restricted apps have no session bus, which
+    `flatpak run` needs today.
+  - **The launcher:** their `.desktop` files live in `/var/lib/flatpak/exports/share/applications`
+    and `~/.local/share/flatpak/exports/share/applications`; adding a launch path is an `AGENTS.md`
+    exception that needs its own review.
+  - **Permissions:** each app declares its own (often the whole home, X11, every device) and asks
+    through xdg-desktop-portal, which LordOS doesn't run; they would need to be shown and limited in
+    Settings → Privacy, and a LordOS portal backend would route file, screen, camera and microphone
+    requests to LordOS's own prompts.
+  - **Installing:** per user (`--user`, no root), so no new admin action; the Flathub remote pinned by
+    its key, and its signed appstream data (not the website's API) as the Store's catalog, through a
+    network path that needs approval like `lord-fetch`.
+
+- [ ] **Steam in the Store's Commercial section (needs multiarch)** — Debian 13's `steam-installer`
+  (contrib) depends on `steam-libs-i386`: 72 i386 packages with `--no-install-recommends`, after
+  `dpkg --add-architecture i386` (checked in a `debian:trixie` container, 2026-10-27). LordOS's package
+  engine is native-architecture only today (`binary-<native>` and `binary-all` indexes, foreign
+  packages skipped, `:i386` qualifiers dropped). Needs: a closed admin action for the one fixed value
+  (`pkg-foreign-arch i386`), an index and status keyed by (name, arch), the Multi-Arch rules in the
+  resolver (same arch by default; `foreign`, `allowed` with `:any`, explicit `:i386`), co-installable
+  `Multi-Arch: same` packages and dpkg called with `name:arch`.
+
 - [ ] **LordBench (0.8.6)** — `BENCHMARK.md`. Workloads in the sandboxed `lord-bench` helper
   (CPU and LordOS's own work, memory, GPU, compositor, video, storage, sustained load); peak
   performance and desktop impact measured apart; frame times against the refresh rate actually in

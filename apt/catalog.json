@@ -339,6 +339,116 @@
           "arm64": "Same as amd64 with the armv8.0 to armv9.2 CPU variants. Built natively in a debian:trixie arm64 container (qemu on the Mac)."
         }
       }
+    },
+    {
+      "id": "google-chrome",
+      "package": "google-chrome-stable",
+      "name": "Google Chrome",
+      "summary": {
+        "en": "Google's web browser, with sync across devices through a Google account",
+        "es": "El navegador web de Google, con sincronización entre dispositivos mediante una cuenta de Google",
+        "pt": "O navegador web do Google, com sincronização entre dispositivos por meio de uma conta Google"
+      },
+      "license": "Proprietary (Google Chrome Terms of Service)",
+      "vendor": "Google",
+      "homepage": "https://www.google.com/chrome/",
+      "arches": [
+        "amd64",
+        "arm64"
+      ],
+      "kind": "browser",
+      "section": "commercial",
+      "source": {
+        "type": "apt",
+        "delivery": "direct",
+        "url": "https://dl.google.com/linux/chrome-stable/deb",
+        "suite": "stable",
+        "components": [
+          "main"
+        ],
+        "arches": [
+          "amd64",
+          "arm64"
+        ],
+        "key": "keys/google.asc",
+        "fingerprint": "EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796",
+        "package": "google-chrome-stable",
+        "files": {
+          "sources": "google-chrome",
+          "keyring": "google-chrome.gpg"
+        }
+      }
+    },
+    {
+      "id": "microsoft-edge",
+      "package": "microsoft-edge-stable",
+      "name": "Microsoft Edge",
+      "summary": {
+        "en": "Microsoft's web browser, based on Chromium",
+        "es": "El navegador web de Microsoft, basado en Chromium",
+        "pt": "O navegador web da Microsoft, baseado no Chromium"
+      },
+      "license": "Proprietary (Microsoft Software License Terms for Microsoft Edge)",
+      "vendor": "Microsoft",
+      "homepage": "https://www.microsoft.com/edge",
+      "arches": [
+        "amd64"
+      ],
+      "kind": "browser",
+      "section": "commercial",
+      "source": {
+        "type": "apt",
+        "delivery": "direct",
+        "url": "https://packages.microsoft.com/repos/edge-stable",
+        "suite": "stable",
+        "components": [
+          "main"
+        ],
+        "arches": [
+          "amd64"
+        ],
+        "key": "keys/microsoft.asc",
+        "fingerprint": "BC528686B50D79E339D3721CEB3E94ADBE1229CF",
+        "package": "microsoft-edge-stable",
+        "files": {
+          "sources": "microsoft-edge",
+          "keyring": "microsoft-edge.gpg"
+        }
+      }
+    },
+    {
+      "id": "spotify",
+      "package": "spotify-client",
+      "name": "Spotify",
+      "summary": {
+        "en": "Music and podcast streaming, free with ads or with a Premium subscription",
+        "es": "Música y podcasts en streaming, gratis con anuncios o con una suscripción Premium",
+        "pt": "Música e podcasts em streaming, grátis com anúncios ou com uma assinatura Premium"
+      },
+      "license": "Proprietary (Spotify Terms of Use)",
+      "vendor": "Spotify",
+      "homepage": "https://www.spotify.com",
+      "arches": [
+        "amd64"
+      ],
+      "kind": "music",
+      "section": "commercial",
+      "source": {
+        "type": "apt",
+        "delivery": "direct",
+        "url": "https://repository.spotify.com",
+        "suite": "stable",
+        "components": [
+          "non-free"
+        ],
+        "arches": [
+          "amd64"
+        ],
+        "key": "keys/spotify.asc",
+        "fingerprint": "E1096BCBFF6D418796DE78515384CE82BA52C83A",
+        "package": "spotify-client",
+        "optout": "spotify.list"
+      }
     }
   ]
 }

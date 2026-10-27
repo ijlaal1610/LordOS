@@ -255,14 +255,15 @@ system by LordOS's packages.
 
 ## Mirrored apps (catalog)
 
-LordOS offers a curated list of third-party apps (today nine AI apps) through the Store with its normal
-package engine. The list is `apt/catalog.json` in the repository (schema, update steps and trust rules:
-`apt/README.md`); the vendors' signing keys are in `apt/keys/`, LordOS's build recipes in
-`apt/recipes/`. An app reaches a system in one of two ways:
+LordOS offers a curated list of third-party apps (today nine AI apps, and three free-of-charge
+proprietary apps in a "commercial" section: Google Chrome, Microsoft Edge and Spotify) through the
+Store with its normal package engine. The list is `apt/catalog.json` in the repository (schema,
+update steps and trust rules: `apt/README.md`); the vendors' signing keys are in `apt/keys/`,
+LordOS's build recipes in `apt/recipes/`. An app reaches a system in one of two ways:
 
 | Delivery | Apps | How |
 |---|---|---|
-| **direct** | Claude Code (`claude-code`), Claude Desktop (`claude-desktop`), Visual Studio Code (`code`), Cursor (`cursor`) | the vendor has a signed APT repository: the user's system adds it (a deb822 `.sources` with the key pinned in the catalog) and installs and updates from the vendor. Nothing is copied to lordos.org. |
+| **direct** | Claude Code (`claude-code`), Claude Desktop (`claude-desktop`), Visual Studio Code (`code`), Cursor (`cursor`); commercial: Google Chrome (`google-chrome-stable`, amd64 and arm64), Microsoft Edge (`microsoft-edge-stable`, amd64), Spotify (`spotify-client`, amd64) | the vendor has a signed APT repository: the user's system adds it (a deb822 `.sources` with the key pinned in the catalog) and installs and updates from the vendor. Nothing is copied to lordos.org. |
 | **mirror** | `llama.cpp`, `whisper.cpp`, `codex-cli` (built by LordOS); `goose`, `opencode` (the vendor's .deb) | no vendor repository: verified on the maintainer's Mac and published in `pool/catalog/` of lordos.org/apt, signed with the LordOS archive key with everything else. |
 
 The flow, on the maintainer's Mac only (like the rest of the repository):
@@ -304,7 +305,8 @@ What LordOS builds, and how:
 **Vendor maintainer scripts.** LordOS never modifies a vendor package. The package engine runs `dpkg`
 with `DEBIAN_FRONTEND=noninteractive` and no terminal, without preseeding debconf, so this is what each
 does on installation (read from the packages of 2026-10-26: code 1.143.1, claude-desktop 3.6556.2,
-cursor 3.27.14, claude-code 2.1.308, goose 1.56.0, opencode 1.19.4):
+cursor 3.27.14, claude-code 2.1.308, goose 1.56.0, opencode 1.19.4; of 2026-10-27: google-chrome-stable
+156.0.8078.47-1, microsoft-edge-stable 156.0.4314.50-1, spotify-client 1:1.2.95.453.g0eeebbed):
 
 | Package | On install, unattended |
 |---|---|
@@ -313,6 +315,9 @@ cursor 3.27.14, claude-code 2.1.308, goose 1.56.0, opencode 1.19.4):
 | `claude-desktop` | writes `/usr/share/keyrings/claude-desktop-archive-keyring.asc` always, and `/etc/apt/sources.list.d/claude-desktop.list` plus `/etc/apt/apt.conf.d/50claude-desktop` (unattended-upgrades origin) **unless** another source already lists `downloads.claude.ai/claude-desktop/apt/stable` (or `/etc/default/claude-desktop` has `CLAUDE_DESKTOP_ADD_REPO=false`). It also writes an unconfined AppArmor `userns` profile when `/etc/apparmor.d/abi/4.0` exists, a GNOME Shell search provider, MIME types and `/usr/bin/ccd`. `chrome-sandbox` is setuid root. It recommends `qemu-system-x86`, `ovmf` and `virtiofsd`. |
 | `cursor` | debconf `cursor/add-cursor-repo` defaults to true and it does **not** look for an existing source: it always writes `/etc/apt/sources.list.d/cursor.sources` (Signed-By `/usr/share/keyrings/anysphere.gpg`, created with `gpg --dearmor` if missing). Ships `/etc/apparmor.d/cursor-sandbox` (loaded if AppArmor is active) and `/etc/sysctl.d/50-cursor.conf` (comments only); `chrome-sandbox` setuid root; `/usr/bin/cursor`, `/usr/bin/editor` (priority 0). postrm deletes `cursor.sources` and the keyring. |
 | `goose` | no maintainer scripts; `chrome-sandbox` is shipped setuid root. |
+| `google-chrome-stable` | always writes `/usr/share/keyrings/google-chrome.gpg` (Google's key EB4C 1BFD … D38B 4796 with its three current signing subkeys). On a new install (no `/etc/default/google-chrome`), or when `google-chrome.sources` already exists, it writes `/etc/apt/sources.list.d/google-chrome.sources` (`URIs: https://dl.google.com/linux/chrome-stable/deb/`, `Architectures:` the machine's, Signed-By that keyring) and `/etc/default/google-chrome` (`repo_add_once="false"`, `repo_reenable_on_distupgrade="true"`); it migrates and removes a legacy `google-chrome.list` and `/etc/apt/trusted.gpg.d/google-chrome.gpg`. The daily `/etc/cron.daily/google-chrome` rewrites the key and, while `google-chrome.sources` exists, the source; it doesn't recreate a removed one. An `/etc/default/google-chrome` with `repo_add_once="false"` and no `google-chrome.sources` stops it from adding one. Also `x-www-browser`/`gnome-www-browser` alternatives (priority 200), icons, `defaults.list`, and an AppArmor profile when `/etc/apparmor.d/abi/4.0` exists. postrm cleans the source, key and defaults file only on purge. |
+| `microsoft-edge-stable` | the same scripts as Chrome's: `/usr/share/keyrings/microsoft-edge.gpg` (Microsoft's key BC52 8686 … BE12 29CF, the same as VS Code's), `/etc/apt/sources.list.d/microsoft-edge.sources` (`URIs: https://packages.microsoft.com/repos/edge-stable`, the same index as `repos/edge`; the file carries `Architectures: amd64` twice, which apt accepts), `/etc/default/microsoft-edge`, `/etc/cron.daily/microsoft-edge`; purge-only cleanup. |
+| `spotify-client` | copies its key (`spotify-2025-11-21-5384CE82BA52C83A.gpg`, E109 6BCB … BA52 C83A) into `/etc/apt/trusted.gpg.d/` (trusted for every source without Signed-By), and writes `/etc/apt/sources.list.d/spotify.list` (`deb https://repository.spotify.com stable non-free`, no signed-by) unless a `.list` file already names that repository or `spotify.list` exists. It only looks at `.list` files, not `.sources`. Icons and the menu entry through `xdg-icon-resource`/`xdg-desktop-menu`; no postrm. The vendor-documented opt-out is an empty `spotify.list`. |
 | `opencode` | `/usr/bin/ai.opencode.desktop` through update-alternatives; `chrome-sandbox` made setuid only when unprivileged user namespaces don't work; an AppArmor profile copied to `/etc/apparmor.d/ai.opencode.desktop` when AppArmor is enabled. It ships electron-updater's `app-update.yml` (GitHub releases). |
 
 So that the vendor scripts and LordOS's own source agree, a direct app's source should be written
@@ -330,6 +335,22 @@ under the vendor's own names (the key dearmored because the name ends in `.gpg`)
 `lordos-<id>.sources` and `lordos-<id>.asc`; `pkg-source-remove` removes the same files. Both names
 come only from the root-owned catalog and pass a strict character set (`lordos*` source names are
 refused).
+
+The commercial entries, checked in `debian:trixie` containers on 2026-10-27 with Debian 13's apt (source
+written as `pkg-source-add` writes it, then `apt-get install`, `apt-get update` and, for Chrome and Edge,
+their cron job):
+
+- **Google Chrome** uses `"files": {"sources": "google-chrome", "keyring": "google-chrome.gpg"}` and the
+  URL the package itself writes (`dl.google.com/linux/chrome-stable/deb`): the package replaces the
+  file with its own text for the same repository and key, and `apt-get update` is clean. With
+  `lordos-<id>` names and the documented `linux/chrome/deb` URL the system would keep two sources for
+  the same packages (different URLs, so apt doesn't refuse them; both appear in `apt-cache policy`).
+- **Microsoft Edge** is the same with `microsoft-edge` / `microsoft-edge.gpg` and `repos/edge-stable`.
+- **Spotify** has no `files`: its package writes a `.list` whatever `.sources` exist. With LordOS's
+  `lordos-spotify.sources` and the package's `spotify.list` apt only warns ("Target Packages … is
+  configured multiple times") and `apt-get update` succeeds; with an empty `spotify.list` created
+  before the install (Spotify's documented opt-out) there is no warning, but `pkg-source-add` doesn't
+  write that file yet. Spotify's key goes into `trusted.gpg.d` in both cases.
 
 ## The Store's banner
 
