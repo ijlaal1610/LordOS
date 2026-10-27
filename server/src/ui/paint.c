@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <time.h>
 
@@ -487,13 +488,34 @@ static void layer_fill(int x0, int y0, int x1, int y1) {
         else for (int x = x0; x < x1; x++) row[x] = v;
     }
 }
+/* Where the window's app surfaces are, in layer pixels: only there can a 0 pixel be an app's hole.
+ * Elsewhere a 0 is what a rounded clip left outside its corner, and taking it for a hole made the
+ * corners of a dragged window black on the GPU path (nothing shows through where there is no app). */
+#define LAYER_SURF_MAX 32
+typedef struct { int x0, y0, x1, y1; } LSurf;
+static LSurf lsurf[LAYER_SURF_MAX];
+static int nlsurf, lsurf_all;
+static void layer_surfaces(Node *n, int ox, int oy) {
+    if (n->type == NODE_RAW || n->s.display_none) return;
+    if (n->type == NODE_SURFACE) {
+        if (nlsurf == LAYER_SURF_MAX) lsurf_all = 1;        /* too many: every 0 counts, as before */
+        else lsurf[nlsurf++] = (LSurf){ (int)floorf(VX(n->ax)) - ox, (int)floorf(VY(n->ay)) - oy,
+                                                   (int)ceilf(VX(n->ax + n->w)) - ox, (int)ceilf(VY(n->ay + n->h)) - oy };
+    }
+    if (n->type != NODE_TEXT) for (Node *k = n->first; k; k = k->next) layer_surfaces(k, ox, oy);
+}
+static int in_surface(int x, int y) {
+    if (lsurf_all) return 1;
+    for (int i = 0; i < nlsurf; i++) if (x >= lsurf[i].x0 && x < lsurf[i].x1 && y >= lsurf[i].y0 && y < lsurf[i].y1) return 1;
+    return 0;
+}
 static void layer_holes(int x0, int y0, int x1, int y1) {
     if (!gpu_active() || !layer.hole) return;
     for (int y = y0; y < y1; y++) {
         uint32_t *row = layer.px + (size_t)y * layer.w;
         uint8_t *m = layer.hole + (size_t)y * layer.w;
         for (int x = x0; x < x1; x++) {
-            m[x] = row[x] == 0;
+            m[x] = row[x] == 0 && (nlsurf || lsurf_all) && in_surface(x, y);
             if (row[x] == SENTINEL) row[x] = 0;
         }
     }
@@ -550,6 +572,8 @@ static int layer_render(Node *n, float opacity) {
     paint_node(&lc, n, opacity);
     layer.rendering = 0;
     skip_until = skip;
+    nlsurf = lsurf_all = 0;
+    layer_surfaces(n, x0, y0);
     layer_holes(0, 0, w, h);
     layer.valid = 1;
     layer.painted = 1;
@@ -575,6 +599,8 @@ static void layer_render_part(Node *n, float opacity) {
     paint_node(&lc, n, opacity);
     layer.rendering = 0;
     skip_until = skip;
+    nlsurf = lsurf_all = 0;
+    layer_surfaces(n, x0, y0);
     layer_holes(px0, py0, px1, py1);
     layer.painted = 1;
     float k = paint_view.k, lx = (x0 - paint_view.dx) / k + paint_view.x, ly = (y0 - paint_view.dy) / k + paint_view.y;

@@ -153,6 +153,16 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **Locking the screen and switching user are faster.** Handing the screen to the sign-in screen waited
+  for every input device to close, and the last close of a USB mouse stops its transfers: about 0.7 s for
+  VMware's virtual USB mouse, so a lock took 0.6 to 1.1 s there. Access is still cut at once
+  (EVIOCREVOKE); the close now happens on a short-lived thread. Measured on a VMware Fusion VM: 903 ms
+  → 141 ms from the lock to the sign-in screen. A slow hand-off is logged with the time of each step.
+- **A dragged window's corners on the GPU path.** While a window is dragged it is painted from a cached
+  layer, and on the GPU path every fully transparent pixel of that layer was taken for the hole of a
+  Linux app's window, including the pixels outside its rounded corners. Now only pixels inside an app
+  surface can be holes. (Black corners while dragging were also seen in remote-desktop frames; that path
+  is still being looked at.)
 - **Dock → Options → Assign To with two monitors of the same model.** The assignment was kept by the
   display's name, which two identical monitors share: both showed as checked and new windows went to the
   first. It is now kept by the connector (HDMI-A-1, DP-2…); an assignment saved by name still works
