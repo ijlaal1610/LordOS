@@ -12,6 +12,11 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Added
 
+- **Root over SSH, as an advanced option.** Settings → Sharing → Advanced lets an administrator allow
+  root to log in over SSH with a public key only, or with a key or a password, for tests and
+  administration: the keys are pasted or imported from a `.pub` file and listed with their
+  fingerprints, root's password can be set, every change asks for your password again, and a warning
+  stays visible while it is on. Off by default, and off again with one click.
 - **The Store downloads over HTTPS.** LordOS's package engine now speaks HTTPS as well as HTTP: a small
   sandboxed helper (`lord-tls`) checks the server's certificate and name and encrypts the download, so
   repositories that only accept HTTPS work, and what you install is private on the network. Every

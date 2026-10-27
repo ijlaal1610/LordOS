@@ -125,7 +125,7 @@ static int set_password(const char *user, const char *pass) {
     return rc;
 }
 
-static int check_password(const char *user, const char *pass) {
+int users_check_password(const char *user, const char *pass) {
     struct spwd *sp = getspnam(user);
     if (!sp || !sp->sp_pwdp || !sp->sp_pwdp[0] || sp->sp_pwdp[0] == '!' || sp->sp_pwdp[0] == '*') return 0;
     struct crypt_data cd;
@@ -266,7 +266,7 @@ void users_act_passwd(const AdminReq *r, const char *arg, size_t len) {
     int self = !strcmp(name, r->user);
     if (!person(name) || !valid_pass(pass)) admin_err("users.badNameOrPassword", NULL);
     else if (!self && !r->admin) admin_err("users.passwordNotAllowed", NULL);
-    else if (self && !check_password(name, old)) { sleep(1); admin_err("users.wrongPassword", NULL); }
+    else if (self && !users_check_password(name, old)) { sleep(1); admin_err("users.wrongPassword", NULL); }
     else if (set_password(name, pass)) admin_err("users.setPasswordFailed", NULL);
     else admin_ok("users.passwordChanged", NULL);
     explicit_bzero(buf, len);

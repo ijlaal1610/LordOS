@@ -753,3 +753,23 @@ the internet, use a VPN instead of opening the port.
 - ![lock: the browser goes back to the login](remote-desktop-web-locked.png)
 - ![remote login on (dark)](settings-sharing-ssh-dark.png)
 - ![remote login off (light)](settings-sharing-ssh-off-light.png)
+
+## Root over SSH (advanced, 0.8.5)
+
+Off by default. Settings → Sharing → **Advanced: root over SSH** offers three modes: **Off** (the shipped
+`10-lordos.conf` keeps `PermitRootLogin no`), **Keys only** (`PermitRootLogin prohibit-password`) and
+**Key or password** (`PermitRootLogin yes`), written as `/etc/ssh/sshd_config.d/05-lordos-root.conf`
+(sshd keeps the first value it reads, and 05 comes first), checked with `sshd -t` and reloaded. Root's
+allowed public keys are listed with their SHA-256 fingerprints; a key is pasted or imported from a `.pub`
+file and validated in C before it reaches `/root/.ssh/authorized_keys` (no options, a known key type, a
+blob that matches it); key pairs are made with `ssh-keygen -t ed25519` on the computer that connects, so
+the private key never leaves it. In the password mode root's password can be set (chpasswd, standard
+input). Every change asks for the administrator's own password again, checked as root. "Only
+administrators" (AllowGroups) includes root, which only matters with this on. A warning stays on the page
+while it is on. Actions: `ssh-root`, `ssh-root-key`, `ssh-root-password`, `ssh-root-status`
+(`server/src/remote/ssh_root.c`); tests: `build/ssh-root-test` (key lines and fingerprints, 17 checks,
+the same fingerprints as `ssh-keygen -l` for Ed25519 and RSA keys) and `tests/ssh_root_e2e.c` (run as
+root on a test machine: a wrong password refused, keys-only mode, a key added and a duplicate refused,
+`ssh root@` from another computer accepted with it, the key removed and the mode off, `ssh root@`
+refused; done on VM 116 on 2026-10-26).
+

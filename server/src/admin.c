@@ -33,6 +33,7 @@
 #include "install/install.h"
 #include "remote/remote_admin.h"
 #include "remote/ssh_admin.h"
+#include "remote/ssh_root.h"
 #include "users/users_admin.h"
 #include "disk/disk.h"
 #include "imager/imager_admin.h"
@@ -393,6 +394,7 @@ static const struct { const char *name; ActionFn fn; int flags; } actions[] = {
     INSTALL_ADMIN_ACTIONS
     REMOTE_ADMIN_ACTIONS
     SSH_ADMIN_ACTIONS
+    SSH_ROOT_ACTIONS
     USERS_ADMIN_ACTIONS
     DISK_ADMIN_ACTIONS
     IMAGER_ADMIN_ACTIONS
