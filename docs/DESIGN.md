@@ -201,6 +201,14 @@ Inter, the LordOS wallpapers and LordOS names, no assets or names from any other
   44 × 34 px minimize, maximize/restore and close buttons at the end (close turns red on hover);
   corners of 8 px, square when maximized or snapped; the focused window has a stronger border and
   shadow. In right-to-left languages the engine mirrors the row (buttons at the start).
+- **Menus inside the window (0.8.5):** Lord Classic has no menu bar on top, so an app that declares
+  menus (`useAppMenus`: Files, Text Editor, Notes, Terminal, PDF Viewer, Photos, Screenshots, Mail,
+  Passwords) shows them in a 26 px strip under its title bar (File, Edit, View, Go…, then Window and
+  Help, one menu open at a time; `MenuStrip` in `themes/classic/components/Window.jsx`). Apps without
+  menus of their own get no strip. Help holds About <app>; the Window menu is the same in both themes
+  (`windowMenuItems`, `sdk/windowmenu.js`: Minimize, Zoom, Fill, Center, Move & Resize, Move to
+  <display>, Bring All to Front and the open windows), and the app menu and Force Quit come from
+  `sdk/appcontrol.js` (Lord Flow shows them under the app's name and in the crown menu).
 - **Taskbar:** 48 px (56 px wide on the left or right), a translucent material with the theme's
   blur (none with Transparency off). Buttons are 40 × 40 with a 6 px radius; the running app has a
   short pill below its icon, longer and in the accent color when it is in front. Tooltips after

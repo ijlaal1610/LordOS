@@ -43,7 +43,7 @@ in it, so an empty part of a layer lets the click through to whatever is below.
 | `overlay` | 40 | the app launcher, search |
 | `popover` | 50 | menus, context menus, the Dock's menus, the Control Center, select lists, popovers, the clipboard and emoji panels, the Lord Classic start menu, quick settings, notification panel and snap layouts |
 | `modal` | 60 | shell sheets and confirmations (Empty Trash, Restart…, Shut Down…), the print dialog |
-| `notification` | 70 | notification banners, the clipboard toast, the remote desktop badge |
+| `notification` | 70 | notification banners, the clipboard toast, the remote desktop badge, the displays' Identify numbers (0.8.5, they never take clicks) |
 | `tooltip` | 80 | tooltips (the Dock's and the Lord Classic taskbar's names) |
 | `drag` | 90 | drag images, the Dock's «poof» |
 | `system` | 100 | permission prompts, the keyring password prompt, Bluetooth pairing, «Keep this display?», the file chooser |
@@ -67,7 +67,7 @@ import { Layer, Overlay, LAYERS } from '@lordos/sdk';
 </Overlay>
 ```
 
-- **Themes:** put every surface above the windows in its layer. The default theme's `Menu.jsx`
+- **Themes:** put every surface above the windows in its layer. The Lord Flow theme's `Menu.jsx`
   does it by itself, so any menu built with it is in `popover`. `startShell` places the SDK's own
   surfaces (search, notifications, prompts, fullscreen windows) in theirs.
 - **`Overlay`:** its children are positioned against the anchor's box, so `top: h + 4, left: 0`

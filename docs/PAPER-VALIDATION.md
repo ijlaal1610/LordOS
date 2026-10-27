@@ -3,7 +3,8 @@
 The technical paper (https://lordos.org/paper/, `docs/PAPER.md`) makes claims about LordOS. This page was
 written against its 0.8.0 edition and lists each claim with how it is checked today and its state in 0.8.5,
 so anyone can see what is proven, what was measured once and what is not tested. **The rows marked
-Outdated were corrected in the paper's 0.8.5 edition (2026-10-26)**, which also separates whole-system
+Outdated were corrected in the paper's 0.8.5 edition (2026-10-26; published with the 0.8.5-beta release on
+2026-10-27)**, which also separates whole-system
 memory from a process's RSS (§7.1) and points to versioned results (§11.5, `docs/RESULTS.md`).
 
 **How a claim is checked**
@@ -101,6 +102,7 @@ memory from a process's RSS (§7.1) and points to versioned results (§11.5, `do
 | 7.1 | `lord-server` without 3D ~32 MB RSS; session ~50 MB, login 41 MB | Measured once; Check `memory` shows the current number (VM 116 today: ~100 MB in a headless session with apps open) | **Re-measure** at idle |
 | 7.2 | Window drag 1280×800 CPU path 6.7–6.9 ms, ~120 fps | Measured once (VM 118) | Measured → LordBench |
 | 7.2 | Video: lord-server 42 % → 13 %, fullscreen 92 % → 15 % of a core | Measured once | Measured |
+| 7.1 | — | New in the 0.8.5-beta edition: the released package measured on a VMware VM updated from 0.8.4.1, whole system 592 MB used and the first frame 7.4 s after the kernel started (`results/0.8.5-beta/vmware-fusion`, `RESULTS.md`) | Measured, versioned results (§7.1) |
 | 7.2 | — | New in 0.8.5: remote desktop CPU reference (`REMOTE.md`, "Measurements (0.8.5, CPU reference)") | Added in the 0.8.5 edition (§7.2) |
 | 7.3 | GPU benefits on real cards not measured | — | **Untested** |
 | 7.4 | Pi 5: build 1 min 02 s, tests 23/0/0, NEON 2.0–2.3×, idle 36 MB, fan behaviour | Measured once on the Pi | Measured |

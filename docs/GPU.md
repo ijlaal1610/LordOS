@@ -52,9 +52,18 @@ Terminal, `grep gpu: ~/.cache/lordos/session.log` (for example `gpu: GPU composi
 or `gpu: the renderer is software (llvmpipe …): CPU composition`). Not verified: the Proxmox test
 machines' "VMware compatible" display is QEMU's 2D-only `vmware-svga`, which `vmwgfx` refuses
 (since 0.8.1 it isn't even loaded there; see `ISO.md`, "Firmware and displays"), so only the
-presence of `vmwgfx_dri.so` in the image was checked. GPU composition with VMware's 3D, and why
-lord-server used ~35 % CPU with a video playing on the user's VMware machine, still need that log
-line from a real VMware guest.
+presence of `vmwgfx_dri.so` in the image was checked there. On a real VMware Fusion guest (0.8.5-beta,
+`results/0.8.5-beta/vmware-fusion/`) the session composes on the GPU with the SVGA3D renderer, and the
+Test Bench measured 59.8 frames a second at 60 Hz (p99 17.9 ms).
+
+**Flips that complete at once (0.8.5).** `vmwgfx` completes each page flip immediately instead of at the
+next vblank, so before 0.8.5 the compositor and every app followed it at 500–580 frames a second on a
+60 Hz display, burning CPU on frames nobody sees. `main.c` now counts flips that complete within an
+eighth of a refresh period (`flip_instant`); from three on it paces frames itself to the mode's refresh
+on a fixed grid (`pace_next`), as headless sessions already were. A flip that really waits for vblank
+lowers the count again, so real graphics cards are unaffected. Measured on the VMware Fusion guest when
+it was fixed: 59.8 frames a second at 60 Hz, p99 18.4 ms. The same grid paces sessions without a monitor, so waiting in whole
+milliseconds no longer turns 60 frames a second into 57.
 
 ## How it composites
 
@@ -70,6 +79,11 @@ line from a real VMware guest.
   another, too: the hole was opened later.
 - **The canvas keeps alpha.** Our own blends (`canvas.c`, `term_paint.c`) now compute the output
   alpha. Nothing changes on the CPU path (KMS is XRGB).
+- **A window being dragged** is painted from a cached layer. On the GPU path only the pixels of that
+  layer that lie inside an app surface are taken as holes (0.8.5): before, every fully transparent
+  pixel was, including those outside a window's rounded corners, which then showed black while
+  dragging. (Black corners in the remote desktop's frames of a dragged window are a known issue of
+  0.8.5-beta, still being looked at.)
 - **Background blur** (Dock, Control Center) also carries alpha. Over an app window it tints but
   doesn't blur, because the window isn't in the canvas. Blurring app content is pending; it needs
   a GPU blur pass.

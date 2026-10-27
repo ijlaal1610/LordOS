@@ -103,6 +103,12 @@ code"), and the Store never offers to remove them ("System app — part of LordO
 `.lpk` is never a system app, even with the same id: the theme's app wins and the package is not
 listed. `isSystemApp(id)` from `@lordos/sdk` tells them apart.
 
+**Each system app has its own version (0.8.5).** Every `apps/<id>/manifest.json` carries a `version`
+(all start at `0.8.5`); `tools/build-theme.mjs` refuses an app without a valid semver one
+(`MAJOR.MINOR.PATCH`, optionally `-` or `~` and a suffix). Store → Installed shows it next to the app
+("LordOS app · 0.8.5") and About <app> shows it too, so the apps can later be versioned and released
+apart from LordOS.
+
 ## Permissions and trust (M8)
 
 Since M8 there is **package signing** and a **permissions and isolation** model (see

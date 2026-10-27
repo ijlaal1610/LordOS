@@ -520,6 +520,34 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   Pi 5 image** (`tools/rpi/build-img.sh`), tested on the real Pi: released as 0.8.0 (`ISO.md`,
   `RASPBERRY.md`).
 
+## Release 0.8.5-beta ✅ (2026-10-27)
+
+Released 2026-10-27 (`CHANGELOG.md`, "0.8.5-beta"; ISO `lordos-live-0.8.5-amd64.iso` and the
+Raspberry Pi 5 image `lordos-0.8.5-rpi5-arm64.img.xz`). Updated in place from 0.8.4.1 and 0.8.4 with
+no migration (`UPDATES.md`). What it delivered, each item described in its own document:
+
+- [x] Monitor → Network, second generation, the menu bar network item, blocklists and the "Deny
+  silently" mode; LordOS's own components (mail, Store, printing, Terminal, blocklists) in their own
+  firewall scopes (`MONITOR.md`, `FIREWALL.md`; item below).
+- [x] The Store: a new look, the Artificial Intelligence catalog and the Commercial page (vendor
+  repositories added with `pkg-source-add`), a signed featured banner, downloads over HTTPS
+  (`lord-tls`) and apt's priorities (`PACKAGES.md`, `UPDATES.md`, "Mirrored apps (catalog)").
+- [x] System Information with its Sandbox Probe, `lordos-sysreport`, `lordos-fetch`, the Test Bench,
+  the boot time on the splash and on record, and versioned results (`BENCHMARK.md`, `PRIVACY.md`,
+  `RESULTS.md`).
+- [x] Files: This Computer and every disk (item below; `FILES.md`, `SYSTEM.md`).
+- [x] Root over SSH as an advanced option (`REMOTE.md`, "Root over SSH").
+- [x] Settings → Displays: numbers, Identify and snapping; one place to choose the desktop style;
+  the themes renamed Lord Flow and Lord Classic; the app menu and Force Quit, a fuller Window menu,
+  menus inside the window in Lord Classic, Dock Open at Login and Assign To (`SETTINGS.md`,
+  `WINDOWS.md`); a guide to building an appearance (`THEMES-GUIDE.md`); a version per native app
+  (`NATIVE-APPS.md`).
+- [x] The login screen runs only while it is shown, follows a monitor plugged in after boot, and lock
+  and user switch are faster (`SESSIONS.md`); software vblank pacing on drivers that complete flips at
+  once (`CHANGELOG.md`, `RESULTS.md`); idle-inhibit for Linux apps (`WAYLAND.md`).
+
+**Next: 0.8.6** — Flatpak and Flathub (after a design review) and LordBench (items below).
+
 ## Before 1.0
 
 - [x] **Monitor → Network, second generation (0.8.5)** — done 2026-10-19 on VM 118, see
@@ -597,7 +625,7 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   - **Command line:** `lordos-fw` to list, add and remove rules, switch profiles, export, and log
     allow/deny events, through the same validated API as the Monitor (no root shortcut).
 
-- [ ] **System Information (0.8.5)** — design in `BENCHMARK.md`. A native app (`apps/sysinfo`,
+- [x] **System Information (released in 0.8.5-beta, 2026-10-27; the open sub-items remain)** — design in `BENCHMARK.md`. A native app (`apps/sysinfo`,
   also About LordOS → System Report…) with every piece of hardware detected and what LordOS uses:
   each GPU as separate layers (device, driver, DRM, render node, EGL context, composition, scanout,
   video decode and encode), the services, a Compatibility panel, and the paper's claims checked on
@@ -617,7 +645,7 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
   - [ ] from the live USB without installing: a *Check this computer* boot entry, reports marked
     live, nothing written to the computer's disks, saved to a removable drive; the installer shows
     the Compatibility summary before installing.
-- [ ] **Files: this computer and every disk (0.8.5, approved 2026-10-25)** — a "This computer"
+- [x] **Files: this computer and every disk (released in 0.8.5-beta, 2026-10-27; approved 2026-10-25)** — a "This computer"
   place named after the machine: the system's root folder, **read-only and as the user** (what the
   user can already read; folders they can't read show a lock; writing stays limited to the home
   folder and the user's mounts), and every disk and partition, mounted or not, with size and free

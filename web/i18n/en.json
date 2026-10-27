@@ -17,7 +17,7 @@
   "navDownload": "Download",
   "navSupport": "Support",
   "navAbout": "About",
-  "badge": "Version 0.8.4.1 · Beta",
+  "badge": "Version 0.8.5 · Beta",
   "heroTitle": "The free, fast and secure Linux desktop.",
   "heroLead": "LordOS is a free GNU/Linux distribution based on Debian with its own desktop environment, display server and Wayland compositor written in C, its own interface engine, and native apps made to feel calm, clear and private.",
   "ctaDownload": "Download LordOS",
@@ -36,7 +36,7 @@
     ],
     [
       "A firewall you can see",
-      "Watch every connection on a live world map, then allow or block it per app."
+      "Watch every connection on a live world map, then allow or block it per app, or turn on blocklists of ad, tracker and malware sites."
     ],
     [
       "Passwords built in",

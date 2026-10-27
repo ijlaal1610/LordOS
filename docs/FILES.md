@@ -98,7 +98,9 @@ drop, color tags and search. Disk operations belong to the server (`server/src/f
   `~/.local/share/lordos/tags.json` (path → colors).
 - **Path bar** at the bottom, clickable on each segment, and **status bar** («N items, X
   available», «N of M selected» or a copy's progress).
-- **App menus** in the theme's bar: File, Edit, View and Go.
+- **App menus** in the theme's bar: File, Edit, View and Go (in Lord Classic, since 0.8.5, in a strip
+  under the window's title bar). In a folder the user can't write (This Computer), the menus and the
+  context menu leave out or disable the actions that would change it.
 
 ## Shortcuts
 

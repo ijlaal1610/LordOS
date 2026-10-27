@@ -36,7 +36,7 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 | Document | What it covers |
 |---|---|
 | [WAYLAND.md](WAYLAND.md) | Linux apps (GTK, Qt, browsers) on our Wayland compositor |
-| [WINDOWS.md](WINDOWS.md) | Moving and resizing windows, cursors |
+| [WINDOWS.md](WINDOWS.md) | Moving and resizing windows, the Window menu, cursors |
 | [DISPLAYS.md](DISPLAYS.md) | Several displays and HiDPI |
 | [GPU.md](GPU.md) | GPU composition, dmabuf and the CPU path |
 | [DOCK.md](DOCK.md) | Dock and taskbar |
@@ -45,7 +45,7 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 | [SPOTLIGHT.md](SPOTLIGHT.md) | Search and the advanced clipboard |
 | [TRACKPAD.md](TRACKPAD.md) | Touchpads, gestures and touchscreens |
 | [SESSIONS.md](SESSIONS.md) | Login screen, sessions, user switching, boot splash hand-off |
-| [REMOTE.md](REMOTE.md) | Remote desktop on the LAN (off by default, port 5673) |
+| [REMOTE.md](REMOTE.md) | Remote desktop on the LAN (off by default, port 5673), SSH and root over SSH (0.8.5, advanced) |
 | [LANGUAGES.md](LANGUAGES.md) | Languages, regions, complex scripts, input methods, error messages |
 
 ## Privacy and security
@@ -67,7 +67,7 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 | Document | What it covers |
 |---|---|
 | [NATIVE-APPS.md](NATIVE-APPS.md) | Installable native apps (`.lpk`) |
-| [PACKAGES.md](PACKAGES.md) | Debian packages and the Store |
+| [PACKAGES.md](PACKAGES.md) | Debian packages and the Store: our package engine, HTTPS downloads (0.8.5), the AI and Commercial catalogs |
 | [WASM.md](WASM.md) | WebAssembly apps |
 | [FILES.md](FILES.md) | Files |
 | [TERMINAL.md](TERMINAL.md) | Terminal |
@@ -108,7 +108,7 @@ Website: [lordos.org](https://lordos.org) · Brand kit: [LORDOS-BRAND.md](LORDOS
 | [iso-final/](iso-final/) | Screenshots of the final ISO test |
 | [polish/](polish/) | Before and after screenshots of the visual polish pass |
 | [packs/](packs/) | Sample language pack and script test text |
-| [classic/](classic/) | Screenshots of the Lord Classic theme and the default theme, light and dark |
+| [classic/](classic/) | Screenshots of the Lord Classic theme and the Lord Flow theme, light and dark |
 | [imager/](imager/) | Screenshots of LordOS Imager (native app and desktop app) |
 | [qa/](qa/) | Screenshots of the app-by-app QA pass (see [VM-SETUP.md](VM-SETUP.md)) |
 

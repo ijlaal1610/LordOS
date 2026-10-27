@@ -244,7 +244,9 @@ A separate vault, like the *login* keyring of other desktop systems:
 
 When the session starts without a password (autologin, remote desktop for now), the keyring stays
 locked; the first app that needs it triggers a system prompt (`<KeyringPrompt />`, mounted by
-`startShell`) asking for the login password.
+`startShell`) asking for the login password. When several apps ask at once (0.8.5, `sdk/vault.js`),
+the requests queue behind one box: one answer goes to all of them, a new request no longer wipes the
+field, and Cancel answers every queued request instead of bringing the box back for the next one.
 
 ### `lord.keyring` / SDK `keyring` (native apps)
 

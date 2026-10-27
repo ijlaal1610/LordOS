@@ -112,6 +112,14 @@ shell. The user approved it for M7. Limits:
   - `.lpk` packages are installed in another folder.
 
   So the interface can't invent a command: it can only pick an app that's already installed.
+- **File names with spaces (0.8.5):** a package may name its `.desktop` freely (`LordOS
+  Imager.desktop`). Its id is the file name with every character other than letters, digits, `.`, `_`
+  and `-` turned into `-` (`LordOS-Imager`), and the app is listed and launched from its real file;
+  the id rules above are unchanged. The two folders' modification times are compared in nanoseconds,
+  so an app installed in the same second the list was last read also shows up.
+- **Force Quit (0.8.5):** `lord.wayland.kill(surface)` sends SIGKILL only to the Wayland client that
+  owns that surface, a process of the same user, never `lord-server`; X11 windows are only asked to
+  close (`WINDOWS.md`, "The Window menu, the app menu and Force Quit").
 
 Icons: the `hicolor` PNG (64, 48, 128… px) or the one in `/usr/share/pixmaps` is used. Apps that
 only ship SVG (FeatherPad, GTK Demo) use the 64 px PNG Debian publishes in AppStream, which the

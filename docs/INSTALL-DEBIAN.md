@@ -12,9 +12,9 @@ curl -fsSL https://lordos.org/install.sh | sh
 The script asks before changing anything. It reads the answers from the terminal (`/dev/tty`), so
 this works even though the script itself comes through a pipe.
 
-> **Status (2026-10-26):** the latest release is 0.8.4.1-beta, but the repository is still private, so the download from GitHub doesn't work publicly
-> yet. Until then, use `--deb` with a package you already have (see
-> [Testing](#testing)).
+> **Status (2026-10-27):** the latest release is 0.8.5-beta, and the GitHub repository is now public, so
+> the installer can look up and download its release files. Without access to GitHub, use `--deb` with a
+> package you already have (see [Testing](#testing)).
 
 ## Requirements
 

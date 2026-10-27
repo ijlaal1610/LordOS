@@ -251,6 +251,29 @@ window side in `sdk/windows.js`.
   the rate of the input. A drag that keeps crossing the top edge (the preview appearing and going)
   costs 9 ms per frame (JS 1.6). Without the preview polling, 6.3–6.6 ms.
 
+## The Window menu, the app menu and Force Quit (0.8.5)
+
+The same menus in both themes, built by the SDK (`sdk/windowmenu.js`, `sdk/appcontrol.js`); Lord Flow
+shows them in its menu bar (Window, the app's name, the crown menu), Lord Classic in each window's own
+Window and Help menus (its in-window menu strip, since it has no menu bar).
+
+- **Window menu** (`windowMenuItems`): Minimize, Zoom, Fill, Center; **Move & Resize** with the halves
+  (left, right, top, bottom), the quarters and thirds (the zones of `wm.snap`, see "Snapping"), the
+  arrangements of two windows (left and right, right and left, top and bottom, bottom and top) or four
+  (quarters) with the windows behind it (`wm.arrange`), and Return to Previous Size (`wm.snap(id,
+  'restore')`); **Move to <display>** for every other display (`wm.moveToDisplay`: a snapped window
+  keeps its zone, the rest keep their place relative to the screen); Bring All to Front; and the open
+  windows, the one in front checked.
+- **App menu** (`appMenuItems`, Lord Flow: a click on the app's name in the menu bar): About <app> (its
+  icon, name, own version and where it comes from; a system window, `apps/appabout`), Settings… (the
+  app's own, ❖,), Hide <app>, Hide Others, Show All and Quit <app> (❖Q). In Lord Classic, About <app>
+  is in each window's Help menu.
+- **Force Quit…** (the crown menu, a system window `apps/forcequit`) lists the open apps and ends the
+  chosen one without asking it (`forceQuit`): a Linux or isolated app's own process gets SIGKILL from
+  lord-server through `lord.wayland.kill(surface)` (`js_sys.c`), only that client of the same user and
+  never lord-server itself; an X11 window is only asked to close (every X11 app shares Xwayland); a
+  built-in app that runs in the session closes without its close guard.
+
 ## Pending
 
 - A real GPU layer (the window as its own texture that is only shifted), so nothing is painted on the

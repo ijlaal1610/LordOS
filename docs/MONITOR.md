@@ -13,9 +13,9 @@ each destination of an app has its own allow/block switch, the traffic chart rea
 ("Traffic history"), the Disks tab shows each disk's temperature and health, and the session can
 notify when a disk gets too hot or less healthy ("Disk temperature and health"). In 0.8.3 the
 remote desktop is a row of its own and blocking an app cuts the connections it had open. In 0.8.5
-(in development) the Network tab becomes a tree with a view menu and search chips, LordOS's own
-components and the system's services get rows of their own, and the menu bar network item and the
-blocklists arrive ("Network, second generation").
+(0.8.5-beta, released 2026-10-27) the Network tab became a tree with a view menu and search chips, LordOS's own
+components and the system's services got rows of their own, and the menu bar network item and the
+blocklists arrived ("Network, second generation").
 
 ## Tabs
 
@@ -92,7 +92,8 @@ the rest of the tab, and the first generation of the list.
   4 MB/s); any traffic at all moves (one slow dot each way below 64 B/s, 0.8.5). An idle arc has no
   dots and is drawn thinner, still plainly visible (`idle` in the map request, `map.c`). The map
   follows the list: every app's places, the selected app's, or, with a search or a filter (direction,
-  protocol, status, chips), only the places of the connections the list shows. Each app has its own
+  protocol, status, chips), only the places of the connections the list shows. A click on the empty space
+  under the list clears the selection (0.8.5). Each app has its own
   arc per place, in its own color (the dot before it in the list; the order apps first reached the
   internet, twelve colors), lifted apart when several apps reach the same country (`arcs` in the map
   request: color and lift per arc). A host's own rate misses short connections, so what the app's rate

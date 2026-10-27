@@ -17,7 +17,7 @@
   "navDownload": "Descargar",
   "navSupport": "Apoyar",
   "navAbout": "Nosotros",
-  "badge": "Versión 0.8.4.1 · Beta",
+  "badge": "Versión 0.8.5 · Beta",
   "heroTitle": "El escritorio Linux libre, rápido y seguro.",
   "heroLead": "LordOS es una distribución GNU/Linux libre basada en Debian con su propio entorno de escritorio, servidor gráfico y compositor Wayland escritos en C, su propio motor de interfaz y apps nativas pensadas para sentirse tranquilas, claras y privadas.",
   "ctaDownload": "Descargar LordOS",
@@ -36,7 +36,7 @@
     ],
     [
       "Un firewall que se ve",
-      "Mirá cada conexión en un mapa del mundo en vivo y permití o bloqueá por app."
+      "Mirá cada conexión en un mapa del mundo en vivo y permití o bloqueá por app, o activá listas de bloqueo de publicidad, rastreadores y malware."
     ],
     [
       "Contraseñas incluidas",

@@ -39,7 +39,7 @@ SHA-256 and Ed25519 are **our own code**, small and readable. Ed25519 follows th
 (`ed25519_sign`/`ed25519_public`) was added on top of the verification the package engine already
 had. The JSON reader is our own and strict (`server/src/sec/json.c`).
 
-**No OpenSSL:** by policy only `lord-sessiond`, `lord-maild` and (0.8.5) `lord-fetch` link it, never
+**No OpenSSL:** by policy only `lord-sessiond`, `lord-maild` and (0.8.5) `lord-fetch` and `lord-tls` link it, never
 `lord-server`. `.lpk` verification happens in C, at
 install time (`lpk_check` in `js_sys.c`) and at load time (modification detection via
 `pkg_status`).
@@ -237,7 +237,9 @@ development state: without a valid signature nothing is loaded.
 - The bundle is **not run**. The refusal is logged (`code: REFUSED themes/default/theme.bundle.js:
   SHA-256 differs from the manifest — this LordOS component was modified and was not loaded` in the
   session log or the journal) and remembered for the session.
-- **A theme:** lord-server falls back to the default theme, then the classic one, and the desktop
+- **A theme:** at session start lord-server falls back to Lord Flow (`default`), then Lord Classic
+  (`classic`); on a theme switch it keeps the last theme that loaded (since 0.8.5, so two refused
+  switches in a row no longer leave the session without a theme). The desktop
   shows a notification: **"This LordOS component was modified and was not loaded"**, naming the file,
   with a Details button (About). The broken theme is not offered again in this session.
 - **Nothing left to load** (every theme, the login screen, or a bad manifest/signature): the built-in

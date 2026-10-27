@@ -38,7 +38,14 @@ Not every program on LordOS is sandboxed. This is exactly what applies to each k
 | `.lpk` apps, Passwords, Mail, Calendar, Contacts, Reminders | own process (`lord-server --app <id>`) | yes | own (`app-lordos-lpk-<id>.scope`) | yes: every call is checked in `lord-server` | per app (`lpk:<id>`): network rules and every non-network restriction (broker) |
 | Other built-in apps | inside `lord-server` | no | `lord-server`'s | no broker: camera, microphone and screen are checked in C (`js_media.c`), notifications in `sdk/notify.js` | as "LordOS" (`lordos`): network rules; camera, microphone, screen and notifications restrictions |
 | Linux apps from the launcher | own process | no by default; with "no access to your files", or restricted from the microphone, camera, USB or Bluetooth, their own user, mount, PID and IPC namespaces plus Landlock (no seccomp), from the next launch | own (`app-lordos-<id>.scope`) | no | per app (`desktop:<id>`), when the owner sets them: network rules; camera, USB and screen (`/dev/fb*`) devices and Bluetooth sockets in the kernel (`lord-netperm`); microphone and PipeWire cameras (our PipeWire guard, plus ALSA capture nodes in the kernel); files (the launcher); notifications (our notification server). Not the clipboard, and not BlueZ over D-Bus |
-| Terminal programs | children of the Terminal's shell | no | `lord-server`'s | no | as "LordOS" (`lordos`): network rules |
+| Terminal programs | children of the Terminal's shell | no | `lordos-net-terminal.scope` (0.8.5; best effort, `lord-server`'s if it can't be placed) | no | as "Terminal" (`lordos:terminal`, 0.8.5): network rules, each program listed by name |
+| LordOS's network components (0.8.5): Mail's sync, the Store's downloads, printers and scanners, the blocklist downloads | a connector (`lord-server --net-connector <name>`) or the package engine's download child | the connectors: no (fixed requests only, `no_new_privs`); `lord-fetch` and `lord-tls`: the helpers' sandbox | own, root-owned `lordos-net-<name>.scope` | no | per component (`lordos:mail`, `lordos:store`, `lordos:print`, `lordos:lists`): network rules ([FIREWALL.md](FIREWALL.md), "LordOS components in their own scopes") |
+
+Built-in apps reach files through `lord.fs`: since 0.8.5 its reading calls (`list`, `read`, `stat`,
+`du`, `free`, `search`) reach the whole tree as the session user (`fsops_readable`; the system's own
+permissions decide), except `/proc`, `/sys`, `/dev` and `/run` (Files → This Computer); writing is
+unchanged (the home folder and the user's mounts, with the deny list), there is no root mode, and an
+isolated app's broker keeps only its data folder.
 
 Flatpak and bubblewrap are not used. Namespaces are used in two places: a Linux app restricted
 with "no access to your files", or from the microphone, camera, USB or Bluetooth, starts in its own
@@ -246,7 +253,9 @@ sandbox-test helper: 17/17   see "Helpers" below
 ## Decoding helpers: `sandbox_apply_helper`
 
 A single sandbox for all of LordOS, no copies: the helpers that decode untrusted data
-(`lord-media`: video, photos, camera; `lord-doc`: Poppler and libarchive) use
+(`lord-media`: video, photos, camera; `lord-doc`: Poppler and libarchive; and the other helpers:
+`lord-maild`, `lord-vault`, and since 0.8.5 the blocklist downloader `lord-fetch` and the package
+engine's TLS relay `lord-tls`) use
 `sandbox_apply_helper(const SandboxHelperCfg *cfg)` from `server/src/sec/sandbox.h`:
 
 ```c

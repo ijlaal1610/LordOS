@@ -33,10 +33,12 @@ Linux apps you already use (Chromium, Firefox, GTK and Qt apps) run alongside th
 |---|---|
 | **[A desktop of its own](https://lordos.org/features/own-desktop/)** | Its own display server and Wayland compositor in C and its own interface engine, on a solid Debian base. Smooth on any 64-bit PC (amd64), and light enough for the Raspberry Pi 5 (arm64). |
 | **[Private by design](https://lordos.org/features/private-by-design/)** | Installable LordOS apps run isolated and ask before using your camera, microphone, files or network. You decide. |
-| **[A firewall you can see](https://lordos.org/features/visible-firewall/)** | Watch every connection on a live world map, then allow or block it per app, by domain, address or network, and restrict camera, microphone, files and more. |
+| **[A firewall you can see](https://lordos.org/features/visible-firewall/)** | Watch every connection on a live world map, then allow or block it per app, by domain, address or network, and restrict camera, microphone, files and more. Subscribe to public blocklists of ads, trackers and malware, or deny everything a rule doesn't allow. |
 | **[Passwords built in](https://lordos.org/features/passwords/)** | A vault for passwords, 2FA codes and cards that unlocks with a password or a USB key. |
 | **[Mail, Calendar, Contacts](https://lordos.org/features/mail-calendar/)** | Native apps for your accounts, with remote images blocked until you say so. |
 | **[Your Linux apps too](https://lordos.org/features/linux-apps/)** | Chromium, Firefox and GTK apps fit right in, with the same window frame and dark mode. |
+| **AI apps in the Store** | A curated catalog: Claude Code, Claude Desktop, Visual Studio Code, Cursor, Codex CLI, goose, opencode, and llama.cpp and whisper.cpp to run models on your own computer, each from a pinned, verified source. The Store downloads over HTTPS. |
+| **System Information** | Every piece of hardware and what LordOS makes of it, a report you can read before you copy it, and checks that try LordOS's security claims on your own computer. |
 
 Measured, not promised: the whole system idles at **465–487 MB of RAM**, of which `lord-server`
 (the display server with the whole desktop) is **32–36 MB**, and boots in about **16 s** (see
@@ -45,12 +47,14 @@ Measured, not promised: the whole system idles at **465–487 MB of RAM**, of wh
 
 ## Get LordOS
 
-Releases are signed and published on [GitHub Releases](https://github.com/lordbasex/LordOS/releases)
+The latest release is **[0.8.5-beta](https://github.com/lordbasex/LordOS/releases/tag/v0.8.5-beta)**
+(2026-10-27). Releases are signed and published on [GitHub Releases](https://github.com/lordbasex/LordOS/releases)
 and on [lordos.org](https://lordos.org/#download).
 
-- **PC (64-bit):** a live and installable ISO. Try it without installing.
-- **Raspberry Pi 5:** a ready-to-flash image for SD card or NVMe, with fan control and our own
-  kernel. The Raspberry Pi 5 is the only supported board.
+- **PC (64-bit):** a live and installable ISO, `lordos-live-0.8.5-amd64.iso`. Try it without installing.
+- **Raspberry Pi 5:** a ready-to-flash image for SD card or NVMe, `lordos-0.8.5-rpi5-arm64.img.xz`,
+  with fan control and our own kernel. The Raspberry Pi 5 is the only supported board.
+- **Already running LordOS?** It updates in place from the signed repository on lordos.org.
 - **Already on Debian 13?** Install LordOS on top of your current system with one command:
 
   ```sh
@@ -75,7 +79,7 @@ Status: **beta**. See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/ROADMAP.md`](doc
 - `server/`: `lord-server` (display server and Wayland compositor: DRM/KMS and evdev straight
   from the kernel, without X11, libdrm or libinput) plus `lord-sessiond`, `lord-netd`,
   `lord-netperm`, `lord-fand` and the sandboxed helpers (`lord-media`, `lord-doc`, `lord-vault`,
-  `lord-maild`).
+  `lord-maild`, `lord-fetch`, `lord-tls`).
 - `runtime/`: `@lordos/runtime`, the React renderer for lord-server.
 - `sdk/`: `@lordos/sdk`, the API for themes and apps.
 - `apps/`: the native apps. See [`apps/README.md`](apps/README.md).

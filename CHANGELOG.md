@@ -10,6 +10,15 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ## [Unreleased]
 
+### Release
+
+- **0.8.5-beta published** (2026-10-27): the GitHub release carries the live ISO, the Raspberry Pi 5 image
+  (`lordos-0.8.5-rpi5-arm64.img.xz`, the LordOS kernel 6.18.57-lordos.3 for the Pi 5; the Pi 4 still boots Raspberry
+  Pi's archive kernel), the amd64 and arm64 packages with their SBOMs, `install.sh` and the three desktop downloads of **LordOS Imager 0.8.5**
+  (the universal build, signed and notarized; the 64-bit installer; the Debian package). The Imager 0.8.5 is the first desktop build that reads point
+  releases (`v0.8.4.1-beta`) in its app update check and its release list. `SHA256SUMS` (11 files) is signed with the
+  release key. The site's downloads (`lordos.media`) now point to 0.8.5.
+
 ### Fixed
 
 - **Raspberry Pi image on an x86-64 host with an aarch64 `server/build`:** `tools/iso/mkdeb.sh` checks the

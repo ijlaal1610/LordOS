@@ -632,6 +632,15 @@ page starts muted (browsers only play sound after a click): the first click or k
 turns it on, unless the viewer already chose with the sound button in its top bar.
 Still to do: stereo, and the microphone the other way (by permission).
 
+**Known issue (0.8.5):** while a window is dragged, the frames the remote desktop sends can show its
+rounded corners black; the monitor itself shows them right (checked on VM 116 against the display
+output). The same symptom on the monitor's GPU path was fixed in 0.8.5; the remote desktop's path is
+still being looked at.
+
+**Restart… and Shut Down…** are offered only in the session on the monitor (0.8.5): a session seen only
+through the remote desktop can't ask for them, and used to show the countdown and then do nothing
+(`SESSIONS.md`, "Restart and Shut Down from a session").
+
 ## Remote login (SSH)
 
 Settings → Sharing also has **«Remote login (SSH)»**: other computers open a terminal on this one

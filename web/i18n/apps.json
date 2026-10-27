@@ -524,31 +524,31 @@
     "screenshot": "docs/screenshots/files.png",
     "name": {"en": "Files", "es": "Archivos", "pt": "Arquivos"},
     "tagline": {
-      "en": "Browse your home folder, disks and USB sticks",
-      "es": "Recorré tu carpeta personal, discos y pendrives",
-      "pt": "Navegue pela sua pasta pessoal, discos e pendrives"
+      "en": "Browse your home folder, every disk and the whole system",
+      "es": "Recorré tu carpeta personal, cada disco y todo el sistema",
+      "pt": "Navegue pela sua pasta pessoal, cada disco e todo o sistema"
     },
     "features": {
       "en": [
         "Tabs and four views: icons, list, columns, gallery",
         "Quick Preview with the Space bar",
         "Color tags, search and Recents",
-        "Trash with restore",
-        "Compress and extract archives"
+        "This computer: the whole system, read-only, as your user",
+        "Every disk in the sidebar, mounted with a click; trash and archives"
       ],
       "es": [
         "Pestañas y cuatro vistas: íconos, lista, columnas, galería",
         "Vista rápida con la barra espaciadora",
         "Etiquetas de color, búsqueda y Recientes",
-        "Papelera con restauración",
-        "Comprimí y extraé archivos comprimidos"
+        "Este equipo: todo el sistema, solo lectura, como tu usuario",
+        "Cada disco en la barra lateral, se monta con un clic; papelera y archivos comprimidos"
       ],
       "pt": [
         "Abas e quatro visões: ícones, lista, colunas, galeria",
         "Visualização rápida com a barra de espaço",
         "Etiquetas de cor, busca e Recentes",
-        "Lixeira com restauração",
-        "Compacte e extraia arquivos compactados"
+        "Este computador: todo o sistema, só leitura, como seu usuário",
+        "Cada disco na barra lateral, montado com um clique; lixeira e arquivos compactados"
       ]
     }
   },
@@ -566,23 +566,23 @@
     "features": {
       "en": [
         "Network, Wi-Fi, VPN and Bluetooth",
-        "Displays, Night Light, sound and notifications",
-        "Appearance, themes, wallpaper and the Dock",
-        "Privacy, app permissions and network access",
+        "Displays (numbered, with Identify), Night Light, sound and notifications",
+        "Appearance: desktop style (Lord Flow or Lord Classic), wallpaper and the Dock",
+        "Privacy, app permissions, network access and blocklists",
         "Users, remote desktop and updates"
       ],
       "es": [
         "Red, Wi-Fi, VPN y Bluetooth",
-        "Pantallas, luz nocturna, sonido y notificaciones",
-        "Apariencia, temas, fondo de pantalla y el Dock",
-        "Privacidad, permisos de apps y acceso a la red",
+        "Pantallas (numeradas, con Identificar), luz nocturna, sonido y notificaciones",
+        "Apariencia: estilo de escritorio (Lord Flow o Lord Classic), fondo de pantalla y el Dock",
+        "Privacidad, permisos de apps, acceso a la red y listas de bloqueo",
         "Usuarios, escritorio remoto y actualizaciones"
       ],
       "pt": [
         "Rede, Wi-Fi, VPN e Bluetooth",
-        "Telas, luz noturna, som e notificações",
-        "Aparência, temas, papel de parede e o Dock",
-        "Privacidade, permissões de apps e acesso à rede",
+        "Telas (numeradas, com Identificar), luz noturna, som e notificações",
+        "Aparência: estilo da área de trabalho (Lord Flow ou Lord Classic), papel de parede e o Dock",
+        "Privacidade, permissões de apps, acesso à rede e listas de bloqueio",
         "Usuários, área de trabalho remota e atualizações"
       ]
     }
@@ -602,22 +602,22 @@
       "en": [
         "Live CPU, memory, network and disk charts",
         "Processes you can sort and search",
-        "Each app's connections on a world map",
-        "Block an app's network access with one switch",
+        "Each app's sites, addresses and ports as a tree, and on a world map",
+        "Allow or block an app, or one destination, with a switch",
         "Temperatures and fans in the Cooling tab"
       ],
       "es": [
         "Gráficos en vivo de CPU, memoria, red y disco",
         "Procesos que podés ordenar y buscar",
-        "Las conexiones de cada app en un mapa del mundo",
-        "Bloqueá el acceso a la red de una app con un interruptor",
+        "Los sitios, direcciones y puertos de cada app en un árbol y en un mapa del mundo",
+        "Permití o bloqueá una app, o un destino, con un interruptor",
         "Temperaturas y ventiladores en la pestaña Refrigeración"
       ],
       "pt": [
         "Gráficos ao vivo de CPU, memória, rede e disco",
         "Processos que você pode ordenar e pesquisar",
-        "As conexões de cada app em um mapa-múndi",
-        "Bloqueie o acesso à rede de um app com um botão",
+        "Os sites, endereços e portas de cada app em uma árvore e em um mapa-múndi",
+        "Permita ou bloqueie um app, ou um destino, com um botão",
         "Temperaturas e ventoinhas na aba Resfriamento"
       ]
     }
@@ -670,25 +670,25 @@
     },
     "features": {
       "en": [
-        "Debian apps by category, with search",
+        "Debian apps by category, as cards in a grid, with search",
+        "Artificial Intelligence and Commercial apps from their makers' signed repositories",
         "See exactly what changes before you install",
-        "Install LordOS apps (.lpk) without root",
-        "All updates in one click",
-        "Open a .deb or .lpk from Files to install it"
+        "Install LordOS apps (.lpk) without root, or a .deb or .lpk from Files",
+        "All updates in one click, over HTTPS from https:// sources"
       ],
       "es": [
-        "Apps de Debian por categoría, con búsqueda",
+        "Apps de Debian por categoría, como tarjetas en una grilla, con búsqueda",
+        "Apps de Inteligencia Artificial y Comerciales desde los repositorios firmados de sus fabricantes",
         "Mirá exactamente qué cambia antes de instalar",
-        "Instalá apps de LordOS (.lpk) sin root",
-        "Todas las actualizaciones con un clic",
-        "Abrí un .deb o .lpk desde Archivos para instalarlo"
+        "Instalá apps de LordOS (.lpk) sin root, o un .deb o .lpk desde Archivos",
+        "Todas las actualizaciones con un clic, por HTTPS desde fuentes https://"
       ],
       "pt": [
-        "Apps do Debian por categoria, com busca",
+        "Apps do Debian por categoria, como cartões em uma grade, com busca",
+        "Apps de Inteligência Artificial e Comerciais dos repositórios assinados dos fabricantes",
         "Veja exatamente o que muda antes de instalar",
-        "Instale apps do LordOS (.lpk) sem root",
-        "Todas as atualizações com um clique",
-        "Abra um .deb ou .lpk pelo Arquivos para instalá-lo"
+        "Instale apps do LordOS (.lpk) sem root, ou um .deb ou .lpk pelo Arquivos",
+        "Todas as atualizações com um clique, por HTTPS de fontes https://"
       ]
     }
   },
@@ -893,7 +893,6 @@
   "sysinfo": {
     "category": "system",
     "isolated": false,
-    "upcoming": "0.8.5",
     "icon": "apps/sysinfo/index.jsx",
     "screenshot": "docs/sysinfo-graphics.png",
     "name": {"en": "System Information", "es": "Información del sistema", "pt": "Informações do sistema"},
@@ -961,5 +960,5 @@
       ]
     }
   },
-  "_notes": "Apps: every folder in apps/ except about (system info dialog), installer (live-ISO only) and README.md. There is no 'linux' folder in apps/ (the Linux-window bridge is registered in sdk/wayland.js), and there is no separate privacy or firewall app: Privacy and the per-app firewall are Settings sections (Monitor registers them with registerPrivacySection) plus Monitor's Network tab, so only Passwords is in the privacy category. Names come from assets/locales/{en,es,pt}/apps.json. Isolation: apps/passwords and, since 0.8.2, apps/mail, apps/calendar, apps/contacts and apps/reminders have \"process\": \"isolated\" in their manifest (built into assets/sysapps/<id> by tools/build-theme.mjs; apps/sysprobe is isolated too but hidden, a test app of System Information). System Information (sysinfo, 0.8.5 in development, marked \"upcoming\") and LordOS Imager (imager, 0.8.4) were added on 2026-10-26; their icons were exported with tools/web/render-icons.mjs. No app in apps/ ships as an .lpk; the only .lpk definitions are examples/apps/fractal and the tests/lpk-legit and tests/lpk-evil fixtures, none of them user-facing apps, so they are not included. ICONS (DOUBT): the desktop does not use an SVG or PNG for built-in apps. tools/build-theme.mjs takes the exported Icon React component from each apps/<id>/index.jsx, and the Dock draws app.Icon (themes/default/components/Dock.jsx). The icons are drawn in code with Views and gradients. So 'icon' points to the source file that draws it: apps/<id>/index.jsx, or apps/disks/icons.jsx (DisksIcon) and apps/monitor/icons.jsx (MonitorIcon). The repo has no icon files for these apps; to show them on the website someone must render them to SVG or PNG (for example, crop the Dock in docs/screenshots/*.png or export from a headless lord-server). Only .lpk apps use a real file (manifest icon, e.g. examples/apps/fractal/icon.png). SCREENSHOTS: most docs/polish/*-after-light.png captures are in Spanish (checked: backup, calculator, camera, characters, monitor), so I used them only for Passwords, which is in English. I visually checked that every other pick is English and shows the main window: the curated docs/screenshots/*.png (files, mail, calendar, photos, player, store, terminal, settings-general), plus English gallery entries (variant normal), mostly dark. Calculator and Scanner use docs/qa/*.png (English, dark). The Scanner shot only shows the 'Choose a scanner' empty state, because no English capture with a scanner exists. docs/screenshots/README.md lists passwords.png, but that file is missing. COPY: every bullet comes from the app's manifest and docs (MAIL.md, MEDIA.md, DOCUMENTS.md, SYSTEM.md, PRINTING.md, PACKAGES.md, TERMINAL.md, MONITOR.md, NOTES.md, EDITOR.md, FILES.md, PASSWORDS.md, SETTINGS.md) or the app's code (calculator keyboard and parentheses, Contacts .vcf import, Settings pages in apps/settings/).."
+  "_notes": "Apps: every folder in apps/ except about (system info dialog), installer (live-ISO only) and README.md. There is no 'linux' folder in apps/ (the Linux-window bridge is registered in sdk/wayland.js), and there is no separate privacy or firewall app: Privacy and the per-app firewall are Settings sections (Monitor registers them with registerPrivacySection) plus Monitor's Network tab, so only Passwords is in the privacy category. Names come from assets/locales/{en,es,pt}/apps.json. Isolation: apps/passwords and, since 0.8.2, apps/mail, apps/calendar, apps/contacts and apps/reminders have \"process\": \"isolated\" in their manifest (built into assets/sysapps/<id> by tools/build-theme.mjs; apps/sysprobe is isolated too but hidden, a test app of System Information). System Information (sysinfo, released in 0.8.5) and LordOS Imager (imager, 0.8.4) were added on 2026-10-26; their icons were exported with tools/web/render-icons.mjs. No app in apps/ ships as an .lpk; the only .lpk definitions are examples/apps/fractal and the tests/lpk-legit and tests/lpk-evil fixtures, none of them user-facing apps, so they are not included. ICONS (DOUBT): the desktop does not use an SVG or PNG for built-in apps. tools/build-theme.mjs takes the exported Icon React component from each apps/<id>/index.jsx, and the Dock draws app.Icon (themes/default/components/Dock.jsx). The icons are drawn in code with Views and gradients. So 'icon' points to the source file that draws it: apps/<id>/index.jsx, or apps/disks/icons.jsx (DisksIcon) and apps/monitor/icons.jsx (MonitorIcon). The repo has no icon files for these apps; to show them on the website someone must render them to SVG or PNG (for example, crop the Dock in docs/screenshots/*.png or export from a headless lord-server). Only .lpk apps use a real file (manifest icon, e.g. examples/apps/fractal/icon.png). SCREENSHOTS: most docs/polish/*-after-light.png captures are in Spanish (checked: backup, calculator, camera, characters, monitor), so I used them only for Passwords, which is in English. I visually checked that every other pick is English and shows the main window: the curated docs/screenshots/*.png (files, mail, calendar, photos, player, store, terminal, settings-general), plus English gallery entries (variant normal), mostly dark. Calculator and Scanner use docs/qa/*.png (English, dark). The Scanner shot only shows the 'Choose a scanner' empty state, because no English capture with a scanner exists. docs/screenshots/README.md lists passwords.png, but that file is missing. COPY: every bullet comes from the app's manifest and docs (MAIL.md, MEDIA.md, DOCUMENTS.md, SYSTEM.md, PRINTING.md, PACKAGES.md, TERMINAL.md, MONITOR.md, NOTES.md, EDITOR.md, FILES.md, PASSWORDS.md, SETTINGS.md) or the app's code (calculator keyboard and parentheses, Contacts .vcf import, Settings pages in apps/settings/).."
 }

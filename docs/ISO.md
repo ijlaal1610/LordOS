@@ -20,8 +20,8 @@ erased.
 
 - **Linux and other Unix-like systems:**
   ```sh
-  sha256sum -c lordos-live-0.8.4-amd64.iso.sha256      # or: shasum -a 256 -c …
-  sudo dd if=lordos-live-0.8.4-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
+  sha256sum -c lordos-live-0.8.5-amd64.iso.sha256      # or: shasum -a 256 -c …
+  sudo dd if=lordos-live-0.8.5-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
   ```
   `/dev/sdX` is the whole USB stick (not a partition). On BSD-derived systems it is usually `/dev/rdiskN`: find
   it with the system disk tool and unmount it first.
@@ -128,6 +128,11 @@ text in between.
   the initramfs, so it shows from the initramfs on. The bar follows Plymouth's boot progress, eased so
   it never jumps or goes back; there are no text messages, and **Esc** shows the text console as
   usual. If a disk is encrypted (LUKS), a styled password field with a lock replaces the bar.
+  Since 0.8.5 the bottom right corner shows the time since the splash started, in seconds and
+  milliseconds (it never goes backwards); the time from the kernel's start to LordOS's first frame
+  is logged by lord-sessiond on every boot (`journalctl -b -u lordos | grep "first frame"`, kept in
+  `/var/lib/lordos/boot-times.jsonl`, the last 200 boots) and shown in About LordOS → Startup time
+  (`RESULTS.md`, "Boot time").
 - **Installed system:** the installer writes `GRUB_CMDLINE_LINUX_DEFAULT="quiet splash
   vt.global_cursor_default=0 loglevel=3"`, `GRUB_GFXPAYLOAD_LINUX=keep`, `GRUB_TERMINAL_OUTPUT=gfxterm`
   and `GRUB_THEME` (each only when Plymouth and the themes are in the copied system), then rebuilds
@@ -150,7 +155,10 @@ monitor" (27.9 s), `lordos-splash-quit.service` finished, then `plymouth-quit.se
 | ![Splash before the hand-off](boot/iso-handoff-1-splash.png) | ![Desktop after the hand-off](boot/iso-handoff-2-desktop.png) | ![Journal](boot/iso-handoff-journal.png) |
 
 Not done yet: while GRUB loads the kernel it clears its terminal area to black for about a second
-(visible in the recording); and an encrypted-disk (LUKS) boot was not tested on a VM, only the
+(visible in the recording; a known issue of 0.8.5-beta: on legacy BIOS, which reads the disc slowly,
+the black rectangle inside the theme's background lasts a few seconds, seen on QEMU with SeaBIOS; 0.8.4's
+ISO does the same, and neither a background image in each entry nor a hidden countdown in the theme
+changed it); and an encrypted-disk (LUKS) boot was not tested on a VM, only the
 static preview of the password field (`docs/boot/splash-preview-password.png`).
 
 The images come from `python3 tools/boot/gen-boot-assets.py` (rsvg-convert; `--preview` also
@@ -382,7 +390,7 @@ sudo apt-get install -y --no-install-recommends debootstrap squashfs-tools xorri
 
 | Package | What for |
 |---|---|
-| `libssl-dev` | compiling `lord-sessiond` (remote desktop TLS), `lord-maild` (Mail) and, in 0.8.5, `lord-fetch` (the blocklists); without it, `make` builds only lord-server and `mkdeb.sh` refuses |
+| `libssl-dev` | compiling `lord-sessiond` (remote desktop TLS), `lord-maild` (Mail) and, since 0.8.5, `lord-fetch` (the blocklists) and `lord-tls` (the package engine's HTTPS); without it, `make` builds only lord-server and `mkdeb.sh` refuses |
 | `libpoppler-glib-dev`, `libarchive-dev` | compiling `lord-doc` (PDF and archives); without them `make` skips it and the package ships without a PDF viewer |
 | `libavcodec-dev`, `libavformat-dev`, `libavutil-dev`, `libswscale-dev`, `libswresample-dev` | compiling `lord-media` (video, photos, camera, recorder); without them `make` skips it |
 | `libva-dev` | optional: GPU decoding (VA-API) in `lord-media` |
@@ -445,6 +453,21 @@ The installer screenshots up to "Done" and those of the installed system are fro
 text was fixed (sha256 `daba6313…c8ec65`). That ISO has the same binaries; only those texts change.
 With the final ISO, UEFI boot, the network, ❖L/Enter and the installer summary were repeated. Nothing
 was installed in that repeat.
+
+## Release test (0.8.5 Beta, October 27)
+
+`lordos-live-0.8.5-amd64.iso` and the Raspberry Pi image `lordos-0.8.5-rpi5-arm64.img.xz` are the
+0.8.5-beta release files. What the CHANGELOG records as tested before the release:
+
+| Test | Result |
+|---|---|
+| Update with apt, the same package built as `0.8.5~rc2`: a VMware machine on 0.8.4.1 and a Raspberry Pi 5 on 0.8.4, then a restart | no migration (`/var/lib/lordos/migrations` unchanged from 0.8.4), settings kept |
+| Update 0.8.4.1 → 0.8.5 through LordOS's package engine against lordos.org/apt-staging, VMware Fusion guest (`results/0.8.5-beta/vmware-fusion/`) | first frame on the monitor 7.4 s after the kernel started; GPU composition on SVGA3D; Test Bench 59.8 frames a second at 60 Hz |
+
+Known issues of the release that concern the image: the legacy BIOS black rectangle between the boot
+menu and the splash ("Boot splash and boot menu" above). The others (the remote desktop's black corners
+on a dragged window, llama.cpp on a GPU not tested on real hardware, the "displays" search, a small
+display's name cut in Settings → Displays) are in the CHANGELOG.
 
 ## Release test (0.8.4.1 Beta, October 25)
 

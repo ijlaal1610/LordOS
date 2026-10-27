@@ -26,7 +26,7 @@ It is not a web page: a browser can't write a whole disk.
 | Step | What it does |
 |---|---|
 | **Device** | Raspberry Pi 5 (the only supported board; Pi 500/CM5 and Pi 4/400 are listed as "not supported yet", Pi 3 and Zero 2 as "not planned") or **PC (USB stick)**, which writes the amd64 live ISO. For the Pi, the memory advice: 4 GB minimum, 8 GB comfortable, 16 GB for the best performance. |
-| **System image** | The latest LordOS release (version, date, download size, "Signed by LordOS"), older releases on request, or **an image file of your own** (`.img`, `.img.xz`, `.iso`) with a clear warning that nobody vouches for it. Downloads are cached and resume after an interruption. |
+| **System image** | The latest LordOS release (version, date, download size, "Signed by LordOS"), older releases on request (since 0.8.5 point releases such as `v0.8.4.1-beta` are listed too: the tag is `v` and three numbers, or four for a point release, plus an optional suffix; `apps/imager/core/releases.js` and the desktop app's core), or **an image file of your own** (`.img`, `.img.xz`, `.iso`) with a clear warning that nobody vouches for it. Downloads are cached and resume after an interruption. |
 | **Storage** | Only removable drives (USB, SD cards): model, size, kind, labels, what is mounted. Internal disks and the disk the computer runs from are never listed, and "show all drives" doesn't exist. Too small, write-protected and over-2-TiB drives are shown disabled with the reason; a very large removable drive gets a warning. Erasing is spelled out before anything happens. |
 | **Customise** (Pi only) | A switch, then seven tabs: **General** (computer name, language, time zone, keyboard layout, Wi-Fi country), **User** (full name, user name, password with confirmation and a strength hint, automatic login), **Wi-Fi** (network name, password or open network, hidden network, a scan on LordOS), **Remote access** (SSH off / keys only / password and keys, keys pasted or from a `.pub` file; LordOS remote desktop on or off), **Appearance** (Lord Flow or Lord Classic, light or dark, accent, wallpaper), **Cooling** (case with a fan, active cooler, passive case, nothing; a profile; a mild overclock only with a fan), **More** (Bluetooth, automatic update checks, and the statement that LordOS collects nothing). Profiles save and load everything except secrets. |
 | **Write** | A summary, then "Erase and write" asks once more. Download (if needed) → release signature → image check → write → read back and compare → first-run file → eject. Progress, speed and time left; Cancel at any time (the drive is wiped so it never looks half-written). |
@@ -277,7 +277,7 @@ On the development machine (the Mac download is built on one), with Rust (rustup
 ```sh
 desktop/imager/scripts/build-mac.sh
 # → desktop/imager/target/release/bundle/macos/LordOS Imager.app (6.3 MB)
-#   desktop/imager/target/universal-apple-darwin/release/bundle/dmg/lordos_imager_0.8.4_universal.dmg (7.1 MB)
+#   desktop/imager/target/universal-apple-darwin/release/bundle/dmg/lordos_imager_0.8.5_universal.dmg (7.5 MB)
 ```
 
 **Signing (since 2026-10-19):** the download is built for both processor families
@@ -296,7 +296,7 @@ In a Debian 13 container (Docker), so the host needs nothing but Docker:
 
 ```sh
 desktop/imager/scripts/build-linux.sh
-# → desktop/imager/target/linux/lordos_imager_0.8.4_amd64.deb (4.1 MB, depends on udisks2 and WebKitGTK 4.1)
+# → desktop/imager/target/linux/lordos_imager_0.8.5_amd64.deb (4.1 MB, depends on udisks2 and WebKitGTK 4.1)
 #   desktop/imager/target/linux/lordos-imager (7.6 MB)
 ```
 
@@ -307,7 +307,7 @@ xwin downloads), NSIS for the installer:
 
 ```sh
 desktop/imager/scripts/build-windows.sh
-# → desktop/imager/target/windows/lordos_imager_0.8.4_x64_setup.exe (3.3 MB)
+# → desktop/imager/target/windows/lordos_imager_0.8.5_x64_setup.exe (3.3 MB)
 #   desktop/imager/target/windows/lordos-imager.exe (6.2 MB, requireAdministrator)
 ```
 

@@ -53,11 +53,13 @@ https://lordos.org/apt-staging/        the same layout, for tests before anythin
 `lordos.org` is S3 behind CloudFront. Two things the website's defaults do would break APT, so the
 repository paths need their own CloudFront cache behaviors, `apt/*` and `apt-staging/*`:
 
-1. **Plain HTTP must be served, not redirected.** Our package engine has no TLS of its own (see
-   [PACKAGES.md](PACKAGES.md), "HTTP instead of HTTPS") and reads `https://` sources over `http://`,
-   exactly like `http://deb.debian.org`: what protects the files is the signature and the SHA-256
-   of every file, not the transport. `apt` itself uses HTTPS. Viewer protocol policy: **HTTP and
-   HTTPS** (`allow-all`).
+1. **Plain HTTP must be served, not redirected.** Until 0.8.4 our package engine had no TLS of its
+   own and read `https://` sources over `http://`, exactly like `http://deb.debian.org`: what protects
+   the files is the signature and the SHA-256 of every file, not the transport. Since 0.8.5 it speaks
+   HTTPS through `lord-tls` ([PACKAGES.md](PACKAGES.md), "HTTPS") and sources written as `https://`
+   stay HTTPS, but systems updating from 0.8.4.1 or older still read the repository over `http://`
+   until they have 0.8.5, and `apt` itself uses HTTPS. Viewer protocol policy: **HTTP and HTTPS**
+   (`allow-all`).
 2. **No URL rewriting.** The site's `lordos-router` function (viewer request) turns a path without
    an extension into `<path>/index.html`, and APT's files `InRelease`, `Release` and `Packages` have
    none. The two behaviors have **no function association**.
@@ -398,6 +400,12 @@ for now.
 
 ## Release tests
 
+- **0.8.5 (2026-10-27):** 0.8.4.1 → 0.8.5 with `apt` on a VMware machine and 0.8.4 → 0.8.5 with `apt`
+  on the Raspberry Pi 5, both tested before the release with the same package built as `0.8.5~rc2`,
+  then a restart; no migration runs (`/var/lib/lordos/migrations` unchanged from 0.8.4) and the
+  settings are kept. The VMware machine was also updated from 0.8.4.1 to the 0.8.5 package with
+  LordOS's package engine against `lordos.org/apt-staging` and measured afterwards
+  (`results/0.8.5-beta/vmware-fusion/`, [RESULTS.md](RESULTS.md)).
 - **0.8.4.1 (2026-10-25):** 0.8.4 → 0.8.4.1 from the Store and with `apt` on VM 120 (no migration,
   nothing kept back) and with `apt` on the Raspberry Pi 5; the Raspberry Pi packages of the new
   `pool/rpi/` resolve on a Pi with only Debian and LordOS sources ([ISO.md](ISO.md), "Release test

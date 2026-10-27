@@ -63,6 +63,8 @@ LordOS aims at modest machines. A few real measurements from the project's test 
 - The final test ISO, idle a minute after login on a 4 GB, 4-core VM: **465 MB of RAM used** for the whole system in the live session and **487 MB** on the installed system, with the CPU **99 % idle**. Boot took 16.3 s (`docs/ISO.md`, "Final ISO test").
 - On a Raspberry Pi 5 (16 GB) at the login screen, without a monitor: `lord-server` at **36 MB RSS** and 0.6 % CPU (`docs/RASPBERRY.md`).
 - When the machine has no 3D-capable card, `lord-server` doesn't even load Mesa and stays at about 32 MB of RSS (`docs/GPU.md`).
+- Since 0.8.5 the login screen no longer stays in memory behind your session: it closes 10 seconds after a session takes the screen and starts again in a few milliseconds when you lock or switch user. On a VMware VM the whole system went from **603 to 548 MB** in use, and locking the screen went from 903 ms to **141 ms**.
+- On virtual graphics cards that complete every page flip at once (VMware's `vmwgfx`), 0.8.5 paces frames to the display's refresh instead of drawing 500–580 frames a second: **59.8 frames a second** at 60 Hz, 99th percentile 18.4 ms. Every boot's time is shown in About LordOS → Startup time and kept for comparing versions (`docs/RESULTS.md`).
 
 These numbers come from virtual machines and one board, not from a range of real PCs. They are a starting point, not a promise for every machine.
 
@@ -70,7 +72,7 @@ These numbers come from virtual machines and one board, not from a range of real
 
 ## Many displays, sharp text
 
-The compositor drives several displays at once, extended or mirrored, and draws each one at its own scale: 100, 125, 150, 175 or 200 %. Text, vectors and images are rasterized at each display's real resolution, so a 4K panel at 150 % next to a 1080p one at 100 % is sharp on both. Linux apps get one `wl_output` per display and the fractional scale protocol, so GTK 4, Qt 6 and Chromium render sharp too.
+The compositor drives several displays at once, extended or mirrored, and draws each one at its own scale: 100, 125, 150, 175 or 200 %. Text, vectors and images are rasterized at each display's real resolution, so a 4K panel at 150 % next to a 1080p one at 100 % is sharp on both. Linux apps get one `wl_output` per display and the fractional scale protocol, so GTK 4, Qt 6 and Chromium render sharp too. Since 0.8.5, Settings → Displays numbers each display, Identify shows that number big on the monitor itself, and a dragged display snaps edge to edge without overlapping. The Window menu can move a window to another display, and the Dock can assign an app to one.
 
 [[shot:1]]
 

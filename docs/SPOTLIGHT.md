@@ -158,3 +158,5 @@ Sensitive content never enters the history, but it can still be pasted:
 - Search: searching file contents (today, names only), contacts and mail (the apps exist since
   M9, but they are not search sources yet), and a «Lock screen» action (locking exists, ❖L, but
   Search only offers dark/light mode and log out).
+- Known issue in 0.8.5: searching "displays" lists the Help article on touchpads and touch screens
+  before Settings → Displays.

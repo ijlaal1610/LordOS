@@ -71,9 +71,9 @@
     {
       "file": "docs/sysinfo-probe.png",
       "caption": {
-        "en": "System Information → Checks (0.8.5, in development): the Sandbox Probe's tries, each refused or flagged.",
-        "es": "Información del sistema → Verificaciones (0.8.5, en desarrollo): los intentos de la Prueba del aislamiento, cada uno rechazado o señalado.",
-        "pt": "Informações do sistema → Verificações (0.8.5, em desenvolvimento): as tentativas do Teste do isolamento, cada uma recusada ou sinalizada."
+        "en": "System Information → Checks (since 0.8.5): the Sandbox Probe's tries, each refused or flagged.",
+        "es": "Información del sistema → Verificaciones (desde 0.8.5): los intentos de la Prueba del aislamiento, cada uno rechazado o señalado.",
+        "pt": "Informações do sistema → Verificações (desde a 0.8.5): as tentativas do Teste do isolamento, cada uma recusada ou sinalizada."
       }
     }
   ],
@@ -506,9 +506,9 @@
     {
       "path": "server/src/app/probe.c",
       "what": {
-        "en": "The Sandbox Probe (0.8.5, in development)",
-        "es": "La Prueba del aislamiento (0.8.5, en desarrollo)",
-        "pt": "O Teste do isolamento (0.8.5, em desenvolvimento)"
+        "en": "The Sandbox Probe (since 0.8.5)",
+        "es": "La Prueba del aislamiento (desde 0.8.5)",
+        "pt": "O Teste do isolamento (desde a 0.8.5)"
       }
     }
   ]

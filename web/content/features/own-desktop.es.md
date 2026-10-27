@@ -63,6 +63,8 @@ LordOS apunta a máquinas modestas. Algunas mediciones reales de los registros d
 - La ISO de la prueba final, en reposo un minuto después de ingresar, en una VM de 4 GB y 4 núcleos: **465 MB de RAM usados** por todo el sistema en la sesión live y **487 MB** en el sistema instalado, con la CPU **99 % ociosa**. El arranque tardó 16,3 s (`docs/ISO.md`, "Final ISO test").
 - En una Raspberry Pi 5 (16 GB) en la pantalla de ingreso, sin monitor: `lord-server` con **36 MB de RSS** y 0,6 % de CPU (`docs/RASPBERRY.md`).
 - Cuando la máquina no tiene una placa con 3D, `lord-server` ni siquiera carga Mesa y se queda en unos 32 MB de RSS (`docs/GPU.md`).
+- Desde 0.8.5 la pantalla de ingreso ya no queda en memoria detrás de tu sesión: se cierra 10 segundos después de que una sesión toma la pantalla y vuelve a arrancar en pocos milisegundos cuando bloqueás o cambiás de usuario. En una VM de VMware todo el sistema pasó de **603 a 548 MB** en uso, y bloquear la pantalla pasó de 903 ms a **141 ms**.
+- En placas de video virtuales que completan cada cambio de cuadro al instante (`vmwgfx`, de VMware), 0.8.5 ajusta los cuadros a la frecuencia de la pantalla en vez de dibujar 500–580 por segundo: **59,8 cuadros por segundo** a 60 Hz, percentil 99 de 18,4 ms. El tiempo de cada arranque se muestra en Acerca de LordOS → Tiempo de inicio y se guarda para comparar versiones (`docs/RESULTS.md`).
 
 Estos números salen de máquinas virtuales y de una sola placa, no de una variedad de PCs reales. Son un punto de partida, no una promesa para cualquier máquina.
 
@@ -70,7 +72,7 @@ Estos números salen de máquinas virtuales y de una sola placa, no de una varie
 
 ## Muchas pantallas, texto nítido
 
-El compositor maneja varias pantallas a la vez, extendidas o en espejo, y dibuja cada una con su propia escala: 100, 125, 150, 175 o 200 %. Texto, vectores e imágenes se rasterizan a la resolución real de cada pantalla, así que un panel 4K al 150 % al lado de uno 1080p al 100 % se ve nítido en los dos. Las apps de Linux reciben un `wl_output` por pantalla y el protocolo de escala fraccionaria, así que GTK 4, Qt 6 y Chromium también se ven nítidos.
+El compositor maneja varias pantallas a la vez, extendidas o en espejo, y dibuja cada una con su propia escala: 100, 125, 150, 175 o 200 %. Texto, vectores e imágenes se rasterizan a la resolución real de cada pantalla, así que un panel 4K al 150 % al lado de uno 1080p al 100 % se ve nítido en los dos. Las apps de Linux reciben un `wl_output` por pantalla y el protocolo de escala fraccionaria, así que GTK 4, Qt 6 y Chromium también se ven nítidos. Desde 0.8.5, Ajustes → Pantallas numera cada pantalla, Identificar muestra ese número en grande en el propio monitor, y una pantalla arrastrada se pega borde con borde sin superponerse. El menú Ventana puede mover una ventana a otra pantalla, y el Dock puede asignar una app a una.
 
 [[shot:1]]
 

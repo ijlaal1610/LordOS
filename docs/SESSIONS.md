@@ -54,7 +54,10 @@ watching, it goes back to the GPU on its own. It was like that in M7 too.
 - **Creation:** when creating a session, the monitor and the network take a per-user lock
   (`/run/lordos/spawn-<uid>.lock`). So two sessions of the same user are never created.
 - **`/run/user/<uid>`:** if it doesn't exist, `user@<uid>.service` is started, which also starts
-  its PipeWire.
+  its PipeWire. Since 0.8.5 `lord-sessiond` starts `user@<uid>` and waits for the user's session bus
+  socket (up to 5 s) before starting the session: with automatic login the session used to start a
+  few milliseconds before the bus existed, so `lord-vault` (the Secret Service) and the notification
+  server never got on it (`PASSWORDS.md`).
 - **GPU:**
   - by default, each session uses it while it's on the monitor;
   - with `lordos.gpu=0` on the kernel line (grub's safe mode) or `LORD_GPU=0` in the service,
@@ -81,6 +84,12 @@ watching, it goes back to the GPU on its own. It was like that in M7 too.
    - it revokes its input with `EVIOCREVOKE`: its fds stop working even if it doesn't close them;
    - it takes master away with `DROP_MASTER` on its own copy of the same open file;
    - only then does it give a new card and input to the incoming session.
+
+   Since 0.8.5 the revoked input fds are closed on a short-lived detached thread (`close_inputs` in
+   `monitor.c`): the last close of a USB mouse stops its transfers, about 0.7 s for VMware's virtual
+   USB mouse, and the hand-off used to wait for it. Access is still cut at once by `EVIOCREVOKE`.
+   Measured on a VMware Fusion VM: 903 ms → 141 ms from the lock to the sign-in screen. A slow
+   hand-off is logged with the time of each step.
 
 **Hot plugging and unplugging:**
 
@@ -162,6 +171,13 @@ an admin helper. Its runtime is in `/run/lordos/greeter` and its home in
   - the keyboard, if the system has several (`/etc/default/keyboard`);
   - Restart and Shut Down. If there are open sessions, they ask for confirmation.
 - A wrong password shakes the field. After many attempts, it asks you to wait.
+- **Several displays (0.8.5):** the clock, the user and the password field go on the main display
+  (the wallpaper still covers every display), instead of being laid out over the whole desktop and
+  cut at the seam between two displays; they follow a display plugged in or out while the screen
+  shows. Verified on VM 118 with two displays.
+- **A monitor plugged in after boot (0.8.5):** the login screen follows the kernel's DRM uevents like
+  a session does, without the system bus (`main.c`), so a board booted without HDMI (a Raspberry Pi 5)
+  shows the login screen when a monitor is connected instead of staying without video.
 
 To request things, the JS uses `lord.greeter.send(json)`. That function only exists in greeter
 mode. The request travels like this:
@@ -204,6 +220,8 @@ from the session **first** (`leave_for_greeter`: input revoked, its framebuffers
 dark), and only then is the login screen asked for, so an unlocked desktop never stays on the screen
 while it starts. Taking the monitor away is the slow part on some drivers: 1.18 s on VMware's
 `vmwgfx` (removing the framebuffer on the screen turns the output off), the same as before this change.
+Most of that was the input close; with it moved to a thread (see "The monitor" above) the lock to the
+sign-in screen measured 141 ms on a VMware Fusion VM.
 The log says both: `monitor: taken from <user> in N ms` and `monitor: the login screen (lock), N ms
 after the screen went dark`.
 

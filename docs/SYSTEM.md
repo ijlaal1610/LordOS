@@ -77,7 +77,7 @@ All are in the closed table of `admin.c` (macro `DISK_ADMIN_ACTIONS` in `disk/di
 Long actions send `LOG progress phase=<table|mkfs|erase|write|verify> done=<n> total=<n>`, which
 the app shows as a bar.
 
-Since 0.8.5 (in development) Files' sidebar lists every disk too and uses the same actions:
+Since 0.8.5 Files' sidebar lists every disk too and uses the same actions:
 `disk-mount` when an unmounted one is clicked (an internal disk asks for an administrator, as here),
 and `disk-eject` or `disk-unmount` from its ⏏ (`FILES.md`).
 

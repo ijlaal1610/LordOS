@@ -37,6 +37,8 @@ Everything is applied live, without restarting, and is saved in
 | `dockRecents` | `true`/`false`: the last 3 used apps that are not pinned, after a separator line | `false` |
 | `taskbarPosition` | `bottom`, `top`, `left`, `right` (Lord Classic theme) | `bottom` |
 | `taskbarAlign` | `center`, `start`: where the taskbar's buttons go when it is at the bottom or top (Lord Classic theme, 0.8.3) | `center` |
+| `loginApps` | Dock item ids opened when the session starts (Options › Open at Login, 0.8.5) | `[]` |
+| `appDisplays` | app → display connector (`HDMI-A-1`, `DP-2`…) its new windows open on (Options › Assign To, 0.8.5) | `{}` |
 
 The SDK records recent apps in `dockRecentApps` every time an app opens a window
 (`useDockEntries(defaults, { recents: 3 })`).
@@ -140,9 +142,17 @@ launcher item isn't shown there). The model is tested by `server/tests/dock_mode
 From the top: the app's **quick actions**, its windows (when it runs), the app's own items
 (`registerDockMenu`, e.g. the Terminal's New Window and New Tab) or New Window, **Options ›**
 (Keep in Dock / Remove from Dock; Show in Files for a `.lpk` and for the user's own `.desktop`
-files), then Show All Windows, Hide and Quit, or Open. The menu follows `DESIGN.md`'s look, is
+files; Open at Login and, with more than one display, Assign To, see below), then Show All Windows, Hide and Quit, or Open. The menu follows `DESIGN.md`'s look, is
 keyboard navigable (↑ ↓ Home End, Enter or Space, → opens a submenu and ← closes it, Escape) and
 scrolls when it is taller than the screen.
+
+**Open at Login and Assign To (0.8.5).** Options › **Open at Login** (every item except the
+shell's own) adds the item to `settings.loginApps`; once per session, about 3 s after it starts, each
+one is opened through `launchDockItem`, the same paths as a Dock click (never in the live system's
+first run, in the sign-in screen or in an isolated app's process; an uninstalled one is skipped).
+With more than one display, Options › **Assign To** lists them ("None" follows the pointer): the
+app's new windows open on that display, kept in `settings.appDisplays` by the display's connector
+(`sdk/dock.js`, `assignedDisplay`; see `DISPLAYS.md`, "Assigning an app to a display").
 
 Quick actions are generic. An app declares them in its manifest or from its module:
 
@@ -233,11 +243,10 @@ Settings says so below "Position on screen".
 
 ## Pending
 
-- A genie minimize effect: the Default theme's is a scale towards the Dock (`useMinimizing` in
+- A genie minimize effect: the Lord Flow theme's is a scale towards the Dock (`useMinimizing` in
   `themes/default/index.jsx`, `transform: scale` from a cached raster; `DESIGN.md`).
 - Auto-hide for the Lord Classic theme's bar.
 - Dragging the Dock to another edge with the mouse (⇧ on the separator).
 - Quick actions for `.lpk` apps (they would need to reach the isolated process through the broker).
 - Ejecting a drive by dropping it on the Trash (Files has no draggable drive items yet).
-- "Open at Login" in the Options submenu (LordOS has no login items yet).
 - The Lord Classic taskbar shows a drop line, without the Dock's sliding neighbours.

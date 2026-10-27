@@ -142,6 +142,9 @@ Like macOS's "Arrange Displays", with more than one display (extend mode):
 - **Unplugging**: the theme gets the new `lord.screen.displays`; the SDK moves windows that are no
   longer on any display to the main one (centered) and keeps the others inside their display's
   work area.
+- **The login screen** follows the same DRM uevents since 0.8.5 (without the system bus), so a monitor
+  plugged in after boot shows it (a Raspberry Pi 5 booted without HDMI used to stay without video until
+  restarted), and it lays out its clock, users and buttons again on the main display.
 - **No free CRTC** (the card drives fewer displays than are connected): the display is listed as
   connected but not active, and Settings says so.
 - **Settings** changes are live with the 15 s "Keep these display settings?" countdown (mode,
@@ -160,8 +163,11 @@ Like macOS's "Arrange Displays", with more than one display (extend mode):
   a window never goes under a menu bar but can go up to the top of a display without one.
 - System dialogs (permission prompts, Search, clipboard, keyring, print dialog, the display
   confirmation) go on the main display (`mainBox()`); fullscreen SDK windows cover their display.
-- Both themes: wallpaper per display, menu bar (default) or taskbar (classic) and Dock on the main
+- Both themes: wallpaper per display, menu bar (Lord Flow) or taskbar (Lord Classic) and Dock on the main
   display, the app launcher and Control Center on the main display (or the menu bar's display).
+- **Window menu → Move to <display>** (0.8.5, both themes, `sdk/windowmenu.js`): one item for every
+  other display; `wm.moveToDisplay(id, displayId)` (`sdk/windows.js`) keeps a snapped window in its zone
+  on the new display and keeps any other window's place relative to the work area, shrunk to fit.
 
 ## Wayland
 

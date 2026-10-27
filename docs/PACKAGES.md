@@ -17,7 +17,9 @@ The code is in `server/src/pkg/`:
 | `idx.c` | The compact index that `pkg-update` builds and that is read with mmap |
 | `status.c` | Reading `/var/lib/dpkg/status` (what is installed) |
 | `resolve.c` | Dependency resolver and installation order |
-| `http.c` | HTTP/1.1 client, with a child process that runs as `nobody` |
+| `pin.c` | apt's preferences and priorities (0.8.5, see "How it resolves") |
+| `http.c` | HTTP/1.1 client, with a child process that runs as `nobody`; HTTPS through `lord-tls` (0.8.5, see "HTTPS") |
+| `sources_admin.c` | `pkg-source-add`/`pkg-source-remove`: vendor repositories from LordOS's catalog (0.8.5) |
 | `pkg.c` | Privileged helper actions (update, install, remove, local `.deb`) |
 | `../ui/js_pkg.c` | `lord.pkg`, the queries for the UI (without root) |
 
@@ -36,11 +38,13 @@ The code is in `server/src/pkg/`:
   given in the signed index. Only then is it stored, read or passed to dpkg.
 - **Keyring.** It is taken as trusted, as gpgv does: it is a root-owned file installed by
   `debian-archive-keyring`.
-- **HTTP instead of HTTPS.** LordOS has no TLS of its own, so `https://` sources are downloaded
-  over `http://`, with the same path. Security comes from the signatures and the SHA-256 hashes,
-  as with apt and `http://deb.debian.org`. Someone watching the network can see which packages
-  are downloaded, but can't change them. (So a repository on a CDN must serve plain HTTP as is,
-  not redirect it: [UPDATES.md](UPDATES.md), "Serving it".)
+- **HTTPS since 0.8.5.** Until 0.8.4 LordOS had no TLS of its own and downloaded `https://` sources
+  over `http://`, with the same path; since 0.8.5 they are downloaded over HTTPS through the sandboxed
+  `lord-tls` helper (see "HTTPS" below), and `http://` sources as before. Either way security comes
+  from the signatures and the SHA-256 hashes, as with apt; HTTPS adds privacy (someone watching the
+  network no longer sees which packages are downloaded from an HTTPS source) and refuses an impostor
+  server. A secure download is never redirected to plain HTTP. (A repository on a CDN should still
+  serve plain HTTP as is, for systems not yet on 0.8.5: [UPDATES.md](UPDATES.md), "Serving it".)
 - **Local repositories.** A `file:/path` source (a repository on a disk or a USB stick, like apt's
   `file:` method) is read by the same unprivileged child, as `nobody`: only world-readable files,
   checked exactly like a download. An HTTP redirect can never lead to a `file:` URL.
@@ -90,8 +94,25 @@ The code is in `server/src/pkg/`:
 | `pkg-autoremove` | (none): removes dependencies that are no longer used |
 | `pkg-upgrade` | `[--allow-remove]` |
 | `pkg-install-file` | `/home/user/…/file.deb [--allow-remove]` |
+| `pkg-source-add` | `<id>` (0.8.5): a catalog entry's vendor repository |
+| `pkg-source-remove` | `<id>` (0.8.5) |
 
 All of them run in a separate process (`A_FORK`) and require an administrator user.
+
+**Vendor repositories (0.8.5, `sources_admin.c`).** Store → Artificial Intelligence and Store →
+Commercial add a maker's signed APT repository only when one of its apps is installed. Only the id comes
+from the caller: the entry is read from LordOS's catalog (`<LordOS dir>/apt/catalog.json` and
+`apt/keys/`, shipped root-owned by the lordos package), must be `"type": "apt", "delivery": "direct"`,
+every field passes a strict character set, and the key file must hold a primary key with exactly the
+catalog's fingerprint. The action writes `/etc/apt/sources.list.d/lordos-<id>.sources` (Signed-By that
+key) and `/usr/share/keyrings/lordos-<id>.asc` as fixed-format files. A package that always writes its
+own source (Cursor, Chrome, Edge) gets the vendor's own file names from the catalog's `files`, with the
+same text, so the package's write changes nothing (two entries for one repository with different
+Signed-By would make apt refuse every source); for Spotify, whose package adds `spotify.list` unless that
+file exists, the catalog's `optout` makes `pkg-source-add` create it empty (only when missing) and
+`pkg-source-remove` delete it only while it is still empty. Removing the last installed app of a
+repository removes that repository. The catalog itself is described in `UPDATES.md`, "Mirrored apps
+(catalog)".
 
 ### Confirmations
 
@@ -152,9 +173,35 @@ progress. "Updates" lists what can be upgraded and upgrades everything together.
 | ![sudoku](store-installed-app.png) | |
 | Installed and opened from the Store (GTK 4 + libadwaita, in Spanish, with its AppStream icon in the Dock) | |
 
+**The Store since 0.8.5.** A sidebar in three groups (Store: Discover, For this computer, Installed,
+Updates; Categories: Artificial Intelligence and Debian's ten categories, each with its count; LordOS
+apps), the page's title, a back button and the search in a toolbar, and apps as cards in a grid (icon,
+name, category, two lines of summary, the download size and a Get, Open or View button). Discover opens
+with a featured banner, then the AI shelf and a shelf per category; an app's page has a row of facts
+(version, size, category, distribution). The hardware suggestions moved to their own page, **For this
+computer** (below). Store → Installed shows each native LordOS app's own version.
+
+- **Artificial Intelligence** lists LordOS's catalog of AI apps (`UPDATES.md`, "Mirrored apps
+  (catalog)"), each with its kind, vendor and licence, dimmed on an architecture it doesn't support. An
+  app from its vendor's repository first says whose repository it adds and its key fingerprint, then
+  adds it (`pkg-source-add`) and fetches the lists; an app LordOS builds that the lists don't have yet
+  offers to fetch them again.
+- **Commercial** lists free-of-charge apps whose source code isn't public (Google Chrome, Microsoft
+  Edge, Spotify), from their makers' signed repositories with the key LordOS pins. The page says before
+  anything is installed that LordOS can't review or fix what they do. Tested on the VMware machine:
+  the three sources added, the three apps installed, `apt update` and the engine's update clean
+  afterwards. Steam needs i386 multiarch, which the engine doesn't do yet (see "Pending").
+- **The featured banner** comes from the LordOS repository (`apt/featured/featured.json` and
+  `banner.png`, published under `main/featured/` and listed in the signed InRelease). The engine takes
+  them only from a source whose signed Release says `Origin: LordOS`, checks their hashes, that the
+  JSON is an object of at most 64 KB and that the PNG has a PNG signature and at most 2 MB, and keeps
+  them in `/var/lib/lordos/pkg/` (`lord.pkg.featured()`, read-only). Until the picture is there the
+  Store draws a skeleton of the banner (it pulses, unless Reduce motion is on); a repository without a banner shows
+  a catalog app instead.
+
 ## Suggested for your computer
 
-Store → Discover starts with **Suggested for your computer**: Debian packages for the hardware
+Store → **For this computer** (until 0.8.5 the top of Discover) shows **Suggested for your computer**: Debian packages for the hardware
 LordOS finds, each card saying why it appears, what it installs and, for software that isn't free,
 that it isn't (with an orange label; such cards never have a highlighted button, and the plan
 repeats the notice). **Install** shows the usual plan and runs `pkg-install` through the admin
@@ -270,6 +317,7 @@ lord.pkg.apps({ category, type = 'desktop-application', limit = 100, offset = 0,
 lord.pkg.categories()           // { AudioVideo: 210, Development: 180, … } (desktop apps)
 lord.pkg.icon(name)             // path of the 64×64 PNG or null
 lord.pkg.releaseNotes(name, version)   // Markdown release notes a source published for that version, or null
+lord.pkg.featured()             // (0.8.5) the Store's banner from the signed LordOS repository, or null
 lord.pkg.rebootRequired()       // null, or the packages that asked for a restart (/run/reboot-required.pkgs)
 
 // Summary = { name, version (candidate), summary, section, size, installedSize (bytes),
@@ -304,6 +352,8 @@ await admin.run('pkg-install', 'featherpad', (line) => …)    // line: "progres
   backports keeps being upgraded from there, and on the Raspberry Pi image Raspberry Pi's `+rpt`
   builds of Debian packages are not taken. The preferences are re-read when they change, without a
   new index (`idx_refresh`). Tested in `pkg-test` with the Pi image's own pin files.
+- **Sources.** One-line `.list` files and deb822 `.sources`; since 0.8.5 `Architectures:` may be
+  separated by commas as well as spaces (`amd64,arm64`, as Cursor's package writes it), as apt accepts.
 - **Dependencies.** It walks those of what changes: `Pre-Depends` and `Depends`, and `Recommends`
   with `--recommends`.
 - **Choices.** Alternatives (`a | b`) and virtual packages are tried in order. Among providers of
@@ -432,6 +482,9 @@ same for both schemes. Redirects may go from `http://` to `https://`, never back
 TLS adds privacy and refuses an impostor server; what is installed is still decided by the signed
 index and each file's SHA-256, exactly as over HTTP. Sources written as `https://` are no longer
 rewritten to `http://`.
+
+A `+` in a file's path is sent as `%2B`, as apt does (0.8.5): lordos.org's CDN reads a bare `+` as a
+space, so packages such as `kms++-utils` and `libkms++0` failed with 404 before.
 
 Tested against real servers (`server/tests/pkg_https_test.c`, run as root with network, not part of
 `make test`): an HTTPS-only vendor repository, lordos.org over both schemes, an HTTP→HTTPS redirect, and

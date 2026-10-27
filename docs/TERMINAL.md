@@ -103,7 +103,7 @@ Status: ✅ done and tested in the VM · 🟡 partial · ⏳ pending · — does
 | Dim inactive panes | ✅ | |
 | Multiple windows | ✅ | the SDK's window manager |
 | Dropdown window (hotkey window) | ✅ | F12 or ❖\` |
-| Transparency and blur | ✅ | |
+| Transparency and blur | ✅ | since 0.8.5 the window's 1-pixel border and the line under its title bar are drawn opaque in both themes, so nothing behind the window shows through them |
 | Status bar | ✅ | directory, process, exit code, size, time |
 | Toolbelt | ✅ | jobs, recent commands, captured output, clipboard, directories, profiles, notes |
 | Save/restore window arrangement | ✅ | in `settings.json` |

@@ -72,7 +72,7 @@ run in one sandboxed helper process, **`lord-maild`**.
   to (no DNS rebinding). Redirects (at most 3) go through the same check; each image is capped at
   5 MB and 20 s. Tested by `build/mailc-test`.
 - **OpenSSL** is linked only by `lord-maild`, `lord-sessiond` and, since 0.8.5, `lord-fetch` (the blocklist
-  downloader; see `ARCHITECTURE.md`).
+  downloader) and `lord-tls` (the package engine's HTTPS); see `ARCHITECTURE.md`.
   `lord-server` never links it.
 - **The compositor never waits**: requests are asynchronous (`lord.mail.poll()`), and inside
   `lord-maild` network work runs on account threads, never on the thread that reads the channel.

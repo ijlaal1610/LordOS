@@ -63,6 +63,8 @@ O LordOS mira máquinas modestas. Algumas medições reais dos registros de test
 - A ISO do teste final, ociosa um minuto após o login numa VM com 4 GB e 4 núcleos: **465 MB de RAM em uso** para o sistema inteiro na sessão live e **487 MB** no sistema instalado, com a CPU **99 % ociosa**. O boot levou 16,3 s (`docs/ISO.md`, "Final ISO test").
 - Num Raspberry Pi 5 (16 GB), na tela de login e sem monitor: `lord-server` com **36 MB de RSS** e 0,6 % de CPU (`docs/RASPBERRY.md`).
 - Quando a máquina não tem placa com 3D, o `lord-server` nem carrega o Mesa e fica em torno de 32 MB de RSS (`docs/GPU.md`).
+- Desde a 0.8.5 a tela de login não fica mais na memória atrás da sua sessão: ela fecha 10 segundos depois que uma sessão assume a tela e volta a iniciar em poucos milissegundos quando você bloqueia ou troca de usuário. Numa VM do VMware o sistema inteiro passou de **603 para 548 MB** em uso, e bloquear a tela passou de 903 ms para **141 ms**.
+- Em placas de vídeo virtuais que concluem cada troca de quadro na hora (`vmwgfx`, do VMware), a 0.8.5 ajusta os quadros à frequência da tela em vez de desenhar 500–580 por segundo: **59,8 quadros por segundo** a 60 Hz, percentil 99 de 18,4 ms. O tempo de cada boot aparece em Sobre o LordOS → Tempo de inicialização e fica guardado para comparar versões (`docs/RESULTS.md`).
 
 Esses números vêm de máquinas virtuais e de uma placa, não de uma variedade de PCs reais. São um ponto de partida, não uma promessa para toda máquina.
 
@@ -70,7 +72,7 @@ Esses números vêm de máquinas virtuais e de uma placa, não de uma variedade 
 
 ## Várias telas, texto nítido
 
-O compositor controla várias telas ao mesmo tempo, estendidas ou espelhadas, e desenha cada uma na sua própria escala: 100, 125, 150, 175 ou 200 %. Texto, vetores e imagens são rasterizados na resolução real de cada tela, então um painel 4K a 150 % ao lado de um 1080p a 100 % fica nítido nos dois. Os apps Linux recebem um `wl_output` por tela e o protocolo de escala fracionária, então GTK 4, Qt 6 e Chromium também renderizam com nitidez.
+O compositor controla várias telas ao mesmo tempo, estendidas ou espelhadas, e desenha cada uma na sua própria escala: 100, 125, 150, 175 ou 200 %. Texto, vetores e imagens são rasterizados na resolução real de cada tela, então um painel 4K a 150 % ao lado de um 1080p a 100 % fica nítido nos dois. Os apps Linux recebem um `wl_output` por tela e o protocolo de escala fracionária, então GTK 4, Qt 6 e Chromium também renderizam com nitidez. Desde a 0.8.5, Ajustes → Telas numera cada tela, Identificar mostra esse número grande no próprio monitor, e uma tela arrastada se encaixa borda com borda sem sobrepor. O menu Janela pode mover uma janela para outra tela, e o Dock pode atribuir um app a uma delas.
 
 [[shot:1]]
 

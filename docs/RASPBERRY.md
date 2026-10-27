@@ -31,8 +31,16 @@ This document gathers what's needed to build the image, write it, develop on the
 > `display_auto_detect`/`camera_auto_detect`, plus 0.8.4's longer wait for the display driver;
 > `CHANGELOG.md`, 0.8.4.1, Fixed). The image also brings Chromium, Firefox ESR and the ISO's system
 > packages, and the bootloader is updated from Settings → Board firmware. A monitor plugged in after
-> boot is followed from 0.8.5 (in development). **Still not measured:** frame rates and GPU composition
+> boot is followed since 0.8.5 (the login screen listens for the kernel's display events too). **Still not measured:** frame rates and GPU composition
 > timings on a monitor (checklist item 5), two monitors and 4K.
+>
+> **Update (2026-10-27, 0.8.5):** released with the image `lordos-0.8.5-rpi5-arm64.img.xz`. A Pi 5 on
+> 0.8.4 updated to the same package built as `0.8.5~rc2` with `apt` and restarted (no migration;
+> `CHANGELOG.md`, 0.8.5, Upgrading). What changes on the Pi: the login screen follows a monitor plugged
+> in after boot (`SESSIONS.md`), the Store follows apt's priorities so "Update all" no longer takes
+> Raspberry Pi's builds of Debian packages, and packages with a `+` in their name (`kms++-utils`,
+> `libkms++0`) download from lordos.org, so Settings → Board firmware can install the bootloader tools
+> from the LordOS repository alone (`PACKAGES.md`). Still not measured: the same as above.
 
 ## Models
 

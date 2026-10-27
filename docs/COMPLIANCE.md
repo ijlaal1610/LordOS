@@ -26,6 +26,15 @@ materials (SBOM) published with each release. The website summary is at
   at https://lordos.org/apt/pool/rpi/source/k/kms++/ (pinned in `rpi-mirror.list` with architecture
   `source`, verified against Raspberry Pi's signed `Sources` index, kept in the append-only pool);
   upstream is `https://github.com/tomba/kmsxx`. A new pinned kms++ version needs its `source` line too.
+- **The app catalog (0.8.5, Store → Artificial Intelligence and Commercial;** `apt/catalog.json`,
+  `apt/README.md`, [UPDATES.md](UPDATES.md), "Mirrored apps (catalog)") records each app's licence.
+  Apps delivered `direct` (Claude Code, Claude Desktop, Visual Studio Code, Cursor, Google Chrome,
+  Microsoft Edge, Spotify, all proprietary) are not redistributed by LordOS: the Store adds the
+  vendor's own signed APT repository with a pinned key, and the package comes from there under the
+  vendor's terms. The packages published in `pool/catalog/` are goose (Apache-2.0) and opencode (MIT),
+  the vendors' `.deb` files unmodified with a pinned SHA-256, and three LordOS builds: `llama.cpp` and
+  `whisper.cpp` (MIT), built from the upstream source tarball pinned by URL and SHA-256 in the
+  catalog, and `codex-cli` (Apache-2.0), OpenAI's static binary with its sigstore signature checked.
 
 ## The SBOM
 
