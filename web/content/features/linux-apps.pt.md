@@ -62,7 +62,9 @@ Ausente de propósito: qualquer protocolo que permita a um app capturar a tela o
 
 **E os apps que só falam X11?** Desde o LordOS 0.8.3 Beta eles abrem pelo Xwayland, que só inicia quando um deles se conecta, com a moldura de janela do tema, o ícone no Dock e a área de transferência compartilhada. Eles têm a mesma identidade por app, o mesmo firewall e a mesma atribuição no Monitor que os apps Wayland; apps com restrições de dispositivos ou de arquivos não recebem tela X. Foram testados o XTerm, um app Java Swing e um jogo SDL.
 
-**E o Flatpak?** O LordOS não o usa nem o integra, e ele não foi testado.
+**E o Flatpak?** Hoje o LordOS não o usa nem o integra. Uma seção do Flathub está planejada para a 0.8.6, quando os apps Flatpak puderem seguir o modelo do LordOS: identidade própria no firewall e no Monitor, permissões em Ajustes → Privacidade e os avisos do próprio LordOS.
+
+**E apps como Chrome ou Spotify?** (0.8.5, em desenvolvimento) Loja → Comerciais instala apps gratuitos cujo código-fonte não é público a partir dos repositórios assinados dos fabricantes, com a chave fixada pelo LordOS, e avisa antes de instalar qualquer coisa.
 
 **Os pacotes vêm por HTTPS?** Desde o LordOS 0.8.5 (em desenvolvimento), sim para as fontes `https://`: um pequeno helper isolado, o `lord-tls`, verifica o certificado e o nome do servidor e criptografa o download, então ninguém na rede consegue ver quais pacotes você baixa, e um download seguro nunca é mandado de volta para HTTP sem criptografia. Até a 0.8.4.1 eles vinham por `http://`. Nos dois casos a segurança vem das assinaturas e dos hashes: todo índice precisa ter uma assinatura válida de uma chave confiável, não pode estar expirado nem ser mais antigo que o já guardado, e cada arquivo é conferido contra seu SHA-256 antes de ser usado, então ninguém na rede consegue alterá-los.
 
