@@ -342,6 +342,12 @@ sandboxed `lord-vault` authenticates and serves on it.
 - Items are entries of `login.lvault` with `x.ss = {attrs, ctype}`; non-UTF-8 secrets are stored
   base64.
 - If another service already owns the name (gnome-keyring, kwallet), LordOS does not take it.
+  Two things keep it LordOS's (0.8.5): `lord-sessiond` starts a session only once the user's session
+  bus exists (with automatic login it used to start a few milliseconds earlier, and `lord-vault` then
+  never got on the bus), and the lordos package ships
+  `/usr/lib/systemd/user/gnome-keyring-daemon.service.d/lordos.conf`, which starts gnome-keyring (when
+  an app pulls it in) with only its PKCS#11 component. Its D-Bus activation file runs only when
+  nobody owns the name.
 - **Access control is the freedesktop one:** like gnome-keyring, any app of the session that can
   reach the bus can read the unlocked collection. Isolated `.lpk` apps cannot open the bus socket.
 - **Chromium:** current Chromium releases keep their saved logins in their own database and store

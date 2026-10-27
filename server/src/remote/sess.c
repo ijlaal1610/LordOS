@@ -357,14 +357,22 @@ int sd_session_get(const struct passwd *pw, int w, int h) {
         char rt[64];
         snprintf(rt, sizeof rt, "/run/user/%u", (unsigned)pw->pw_uid);
         struct stat st;
-        if (stat(rt, &st)) {
-            /* no logind session: the user's service manager creates /run/user/<uid>
-             * (and starts its PipeWire) */
+        char bus[80];
+        snprintf(bus, sizeof bus, "%s/bus", rt);
+        if (stat(bus, &st)) {
+            /* no logind session, or one whose service manager is still starting (autologin at
+             * boot): /run/user/<uid> comes first, from user-runtime-dir@, and the session bus
+             * socket a moment later, from user@. A session started before the bus has no Secret
+             * Service and no notification server for its whole life (lord-vault and notifyd
+             * connect once), and the first app asking for org.freedesktop.secrets gets
+             * gnome-keyring by D-Bus activation when it is installed. "systemctl start" returns
+             * once the manager is up (its dbus.socket listening); then wait for the socket. */
             char unit[64];
             snprintf(unit, sizeof unit, "user@%u.service", (unsigned)pw->pw_uid);
             const char *const a[] = { "/usr/bin/systemctl", "start", unit, NULL };
             sd_run_wait(a);
-            for (int i = 0; i < 50 && stat(rt, &st); i++) usleep(100000);
+            for (int i = 0; i < 50 && stat(bus, &st); i++) usleep(100000);
+            if (stat(bus, &st)) sd_log("no session bus at %s: the session starts without it", bus);
         }
         if (stat(rt, &st) || st.st_uid != pw->pw_uid) sd_log("no %s", rt);
         else {

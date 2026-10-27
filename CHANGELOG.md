@@ -197,6 +197,17 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **A session started at boot could live without its keyring service and its notifications.** With
+  automatic login, `lord-sessiond` started the session as soon as `/run/user/<uid>` existed, a few
+  milliseconds before the user's service manager opened the session bus, so `lord-vault` (the Secret
+  Service) and the notification server for Linux apps never got on the bus. Apps then got nothing, or,
+  when an app had pulled in gnome-keyring, that one by D-Bus activation, with its own "Choose password
+  for new keyring" window. `lord-sessiond` now starts `user@<uid>` and waits for the bus socket (up to
+  5 s) before starting the session. And when an app pulls in gnome-keyring, a drop-in shipped by the
+  lordos package (`gnome-keyring-daemon.service.d/lordos.conf`) keeps only its PKCS#11 component, so
+  LordOS's own keyring keeps the Secret Service. Tested on the VMware machine: after a reboot with
+  automatic login, `org.freedesktop.secrets` and `org.freedesktop.Notifications` belong to the LordOS
+  session, and Chrome asks through LordOS's own keyring prompt.
 - **The Store ignored a repository written as `Architectures: amd64,arm64`.** apt accepts commas there
   (Cursor's package writes it that way); LordOS's package engine split only on spaces, so it dropped
   that source and never saw the app's updates. Both are accepted now.
@@ -303,10 +314,13 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 - **llama.cpp on a GPU is not tested on real hardware yet.** Its Vulkan backend is meant for AMD (Mesa
   RADV), NVIDIA (the NVIDIA driver or NVK) and Intel GPUs and falls back to the CPU without one; only the
   CPU path and the backend loading (software Vulkan) were checked.
-- **The live ISO's boot menu on legacy BIOS** shows a black rectangle in place of the menu until a key
-  is pressed; the entries are there and the timeout boots the first one as usual. Seen on QEMU with
-  SeaBIOS (standard VGA and virtio displays); 0.8.4's ISO does the same, and UEFI draws the menu at
-  once. A hidden countdown widget in the theme did not change it.
+- **Legacy BIOS: a black rectangle between the boot menu and the splash.** The menu itself shows
+  normally; when its 5 s run out (or Enter is pressed), GRUB loads the kernel and the initrd (about
+  100 MB) from the disc and shows its terminal area, painted black, inside the theme's background until
+  the kernel starts: a few seconds on BIOS, which reads the disc slowly, and barely visible on UEFI.
+  Seen on QEMU with SeaBIOS; 0.8.4's ISO does the same. Small test images with the same GRUB, theme and
+  `grub.cfg` but no 900 MB system image show the menu and no rectangle; a background image set in each
+  entry and a hidden countdown widget in the theme did not change it.
 - **Searching "displays" in the search panel** opens the Help article on touchpads and touch screens before
   Settings → Displays.
 - **Settings → Displays:** in the arrangement, the name of a small display is cut without an ellipsis.

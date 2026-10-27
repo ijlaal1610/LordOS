@@ -34,6 +34,7 @@
 #   /etc/kernel/postinst.d/zz-lordos-reboot-required  "restart required" after a kernel update
 #   /usr/lib/modules-load.d/lordos-drivetemp.conf    SATA disk temperatures (drivetemp) at boot
 #   /usr/lib/systemd/system/smartmontools.service.d/lordos.conf  Debian's smartd stays off
+#   /usr/lib/systemd/user/gnome-keyring-daemon.service.d/lordos.conf  gnome-keyring without the Secret Service
 #   /usr/share/chromium/extensions/lordos-video/  LordOS's own browser extension for smooth video without
 #                                         hardware decoding (Debian's chromium loads every folder there;
 #                                         docs/VIDEO.md). Its settings are written at login by the
@@ -152,6 +153,8 @@ install -D -m 644 tools/iso/rootfs/etc/modprobe.d/lordos-vmwgfx.conf "$PKG/etc/m
 install -D -m 644 tools/iso/rootfs/etc/modules-load.d/lordos-drivetemp.conf "$PKG/usr/lib/modules-load.d/lordos-drivetemp.conf"
 # Debian's smartd stays off: Disks and the Monitor read SMART on demand (docs/SYSTEM.md, "smartd")
 install -D -m 644 packaging/systemd/smartmontools-lordos.conf "$PKG/usr/lib/systemd/system/smartmontools.service.d/lordos.conf"
+# gnome-keyring, if an app pulls it in, without its Secret Service: LordOS keeps that name (docs/PASSWORDS.md)
+install -D -m 644 packaging/systemd/gnome-keyring-lordos.conf "$PKG/usr/lib/systemd/user/gnome-keyring-daemon.service.d/lordos.conf"
 # remote login (SSH) defaults, read only once openssh-server is installed (docs/REMOTE.md)
 install -D -m 644 tools/iso/rootfs/etc/ssh/sshd_config.d/10-lordos.conf "$PKG/etc/ssh/sshd_config.d/10-lordos.conf"
 # a process may only trace its own descendants: a restricted Linux app must not take over an
