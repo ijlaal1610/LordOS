@@ -664,7 +664,8 @@ no migration (`UPDATES.md`). What it delivered, each item described in its own d
   `/media/<user>/`), the password in the keyring, the mount's traffic as its own firewall app.
 
 - [ ] **Flatpak and Flathub (0.8.6, approved by the maintainer on 2026-10-27; needs a design
-  review before code)** — a Flathub section in the Store. Today LordOS neither uses nor integrates
+  review before code)** — a Flathub section in the Store. The design review is written (`FLATPAK.md`,
+  2026-10-27) and waits for approval. Today LordOS neither uses nor integrates
   Flatpak, and its rules keep isolation as LordOS's own code (no bubblewrap/flatpak for `.lpk`). What
   has to be solved so Flatpak apps follow LordOS's security model:
   - **Identity and the firewall:** `flatpak run` moves the app into its own transient
@@ -699,6 +700,10 @@ no migration (`UPDATES.md`). What it delivered, each item described in its own d
   use; stops on the hardware's trip points and throttling; every result records its conditions;
   three verdicts (performance against several reference machines, compatibility, stability), no
   single score; results versioned.
+  *In development (2026-10-27):* the `lord-bench` helper, CPU, memory, GPU, storage and sustained workloads,
+  the thermal, throttle and battery guards, the boot history and System Information → Performance are built
+  (`BENCHMARK.md`, "Built so far"); desktop impact, the compositor and video workloads and the Pi 5 and x86 PC
+  references are left.
 - [ ] **Community hardware reports (0.8.7)** — `BENCHMARK.md`. Share on GitHub with the
   `hardware-report` template (the user submits it, LordOS sends nothing), schema validation and
   labels in a workflow, and a tested-hardware catalogue on lordos.org that the Compatibility panel

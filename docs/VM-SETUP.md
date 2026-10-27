@@ -1685,3 +1685,11 @@ sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-
   bc bison flex libssl-dev libelf-dev libdw-dev dwarves cpio kmod rsync dpkg-dev debhelper git \
   qemu-user-static binfmt-support fdisk dosfstools e2fsprogs xz-utils curl gpg util-linux
 ```
+
+## Step — 0.8.6 in development: LordBench on VM 116 (2026-10-27)
+
+See `BENCHMARK.md` ("Built so far"). Built in `~/LordOS-086` (`make -C server`, plus `build/lordbench-cli` to run
+it from a terminal) and run from there as `lord`; nothing was installed over `/usr/local/lib/lordos` and no
+package was added. The build uses `xz` (xz-utils, already installed: `dpkg-deb` depends on it) to compress the
+xz workload's fixed text (`build/gen/lb_corpus.h`). The app was checked in an isolated headless session of that
+tree (own `HOME`, `XDG_RUNTIME_DIR` and bus, driven over its `remote.sock`), removed afterwards.

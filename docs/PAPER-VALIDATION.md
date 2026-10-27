@@ -141,7 +141,7 @@ State in the 0.8.5 edition (`web/content/paper/paper.en.md`, checked 2026-10-26)
 | Gap | Covers | Plan |
 |---|---|---|
 | A denied connection, tried on the user's machine | §6.6 effective | An app with network access and a temporary rule (Checks) |
-| Repeatable performance numbers | §7 | LordBench (0.8.6): idle memory and CPU, boot, frame times, video, app start |
+| Repeatable performance numbers | §7 | LordBench (0.8.6, in development: CPU, memory, GPU offscreen, storage, sustained load and the boot time per version are built, `BENCHMARK.md` "Built so far"; idle memory and CPU, frame times under load, video and app start are not) |
 | Rendering, 3D and video on every GPU | §3.2, §7.2–7.3 | The visual test bench below |
 | Every key, the mouse, touchpads, gamepads, and the Wayland protocols | §3.3–§3.4 | The visual test bench below |
 | Real hardware | §10.2 | Reports from System Information (0.8.7) |

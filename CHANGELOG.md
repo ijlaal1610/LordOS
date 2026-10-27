@@ -19,6 +19,48 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   releases (`v0.8.4.1-beta`) in its app update check and its release list. `SHA256SUMS` (11 files) is signed with the
   release key. The site's downloads (`lordos.media`) now point to 0.8.5.
 
+### Added
+
+- **LordBench, first part (in development for 0.8.6; `docs/BENCHMARK.md`, "Built so far"):** System Information has a
+  **Performance** tab with a Quick test (about half a minute) and a Full test (adds storage and three minutes of
+  sustained load). The work runs in **`lord-bench`**, a new sandboxed helper launched by lord-server like `lord-doc`
+  and `lord-media` (its own folder only, no arguments, `sandbox_apply_helper` before any work, scope
+  `lordos-bench.scope`, 2 GB cap), which gets only the GPU's render node and an unnamed scratch file opened by
+  lord-server and answers only with fixed-size records lord-server checks.
+  - **Workloads**, each the median of three runs with its spread, on one core and on all:
+    - SHA-256 and a 256×256 matrix product;
+    - the package engine's xz decoder on a fixed 2 MB text generated at build time;
+    - QuickJS running a fixed script;
+    - memory copy and triad bandwidth and a 64 MB pointer-chase latency;
+    - OpenGL ES 2 offscreen at 1920×1080 on the render node: the 3D scene, fill rate, texture upload and 8 layers;
+    - (Full only) sequential write and read and random 4 KiB reads on up to 1 GB;
+    - (Full only) a sustained all-core load sampled every 10 s with the temperature.
+  - **Guards**, read by lord-server:
+    - refused on battery below 30 %;
+    - waits for a quiet CPU, at most 30 s; otherwise the run is marked busy;
+    - stops within 2 °C of the passive trip point (10 °C of the critical one without one);
+    - the peak tests also stop when the x86 throttle counters grow or the Raspberry Pi firmware reports throttling;
+    - in the sustained test, throttling is recorded with its time and temperature instead.
+  - **Results:** shown as "×N" of each reference machine per category, never one score, with three verdicts:
+    - performance;
+    - compatibility, from the Compatibility tab;
+    - stability: stops, failed measurements, throttling, under-voltage, a sustained drop and a busy start.
+
+    Each result also shows the change against the previous run and the conditions that differ, every recorded
+    condition, the boot time per LordOS version and **Save to Documents**. Nothing is sent anywhere.
+  - **Recorded conditions:** temperatures and trip points, power, governor, platform profile, GPU kind, disk kind,
+    composition and display modes. No names or identities.
+  - **Reference:** the only reference machine so far is VM 116 (8 vCPU Xeon Silver 4108, llvmpipe). A Full run there
+    measured 977 MB/s SHA-256 and 19.7 GFLOP/s on all cores, and 20.2 GB/s memory copy. The Pi 5 and x86 PC
+    references come when they are measured.
+  - **Tests:** `tests/lordbench_test.c` (260 checks: records, workloads, fake sysfs trees of an x86 laptop and a Pi 5,
+    boot history) and `tests/sysinfo_perf_test.mjs` (30 checks).
+  - **Not built yet:** the desktop-impact mode, the compositor and video workloads, and `lordos-sysreport bench`.
+- **Flatpak and Flathub design review** (`docs/FLATPAK.md`, no code): a launcher-owned scope per Flatpak app so the
+  firewall and restrictions see it as itself, `flatpak run` arguments built in C, per-user installs through a closed
+  set of commands in their own network scope with Flathub's key pinned, and the exceptions to `AGENTS.md` the
+  maintainer has to approve before any code.
+
 ### Fixed
 
 - **Raspberry Pi image on an x86-64 host with an aarch64 `server/build`:** `tools/iso/mkdeb.sh` checks the

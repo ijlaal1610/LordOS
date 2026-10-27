@@ -1,6 +1,6 @@
 # System Information, LordBench and hardware reports (proposal)
 
-**Status: design proposal. Built and released in 0.8.5-beta (2026-10-27; see "Work plan for 0.8.5" below): the collector, `lordos-sysreport report|fetch`, the System Information app (Overview, Hardware, Compatibility, Checks, Report), the Sandbox Probe and the shared measurement library `server/src/bench`. LordBench (0.8.6), community reports (0.8.7) and the `checks`/`bench` subcommands of `lordos-sysreport` are not built.** It plans three releases and a later stage:
+**Status: design proposal. Built and released in 0.8.5-beta (2026-10-27; see "Work plan for 0.8.5" below): the collector, `lordos-sysreport report|fetch`, the System Information app (Overview, Hardware, Compatibility, Checks, Report), the Sandbox Probe and the shared measurement library `server/src/bench`. LordBench (0.8.6) is in development: the `lord-bench` helper, its CPU, memory, GPU, storage and sustained workloads, the guards and System Information's Performance tab are built (see "Built so far" under 0.8.6); the desktop-impact mode, the compositor and video workloads and two of the three reference machines are not. Community reports (0.8.7) and the `checks`/`bench` subcommands of `lordos-sysreport` are not built.** It plans three releases and a later stage:
 
 | Release | What |
 |---|---|
@@ -43,8 +43,8 @@ server/src/bench/            LordBench workloads (library)
 - **`lord-bench`** is the helper the app starts for workloads, launched like `lord-doc` and
   `lord-media`: fixed path (`<lord-server dir>/lord-bench`), no arguments, minimal environment,
   channel on fd 3, `sandbox_apply_helper()` before any work; it gets only the render node and a
-  temporary file as fds. It links libc and Mesa's EGL/GLES (already used by the GPU path), nothing
-  new. The CLI links the same library directly.
+  temporary file as fds. It links libc, Mesa's GBM/EGL/GLES (already used by the GPU path) and the
+  vendored QuickJS (one of its workloads), nothing new. The CLI links the same library directly.
 
 ## 0.8.5 — System Information
 
@@ -192,6 +192,88 @@ Three separate verdicts, never folded into one score:
   and a workstation are each compared with something similar.
 - **Compatibility**: from the Compatibility panel.
 - **Stability**: errors and crashes during the run, frames missed under load, throttling.
+
+### Built so far (in development for 0.8.6, 2026-10-27)
+
+Unreleased; the latest release is 0.8.5-beta. Checked on VM 116 (Proxmox VE, 8 vCPU of a Xeon Silver
+4108, 4 GB, virtio disk, no GPU passthrough: Mesa's llvmpipe) from a terminal (`build/lordbench-cli`) and
+in an isolated headless session through System Information → Performance.
+
+- **`lord-bench`** (`server/src/bench/lbmain.c`, `mk/lordbench.mk`): launched by lord-server
+  (`bench/lbrun.c`) from its own folder only (owned by root or the user, not writable by others), no
+  arguments, `LANG` only (and `LORDOS_SESSIOND` in a lord-sessiond session), the channel on fd 3. It
+  receives one fixed-size request (`LbGo`, `bench/lbproto.h`) with at most two fds lord-server opened: the
+  GPU's render node (`/dev/dri/renderD128…`) and, for Full, an unnamed scratch file (`O_TMPFILE` in
+  `~/.cache`, at most 1 GB and a quarter of the free space). Then it locks itself in with
+  `sandbox_apply_helper` before any work (scope `lordos-bench.scope`, 2 GB memory cap, read-only
+  `/usr/lib`, `/usr/share`, `/sys/dev/char`, `/sys/devices` for Mesa, DRM and dma-buf ioctls only when
+  it got the render node, no sockets, no exec, threads only). It answers only with fixed-size records
+  (`LbMsg`: a measurement id, a value and its spread); lord-server checks each one (`lb_msg_valid`: the
+  magic, a known kind and id, finite values in range) and writes the JSON itself. Stopping is a SIGKILL.
+- **Workloads** (`bench/lbwork.c`, `bench/lbgpu.c`), each repeated three times and reported as the
+  median with its spread (max − min), on one core and on all of them:
+  - CPU: SHA-256 (`pkg/crypto.c`, with the CPU's SHA instructions when present); a 256×256
+    double-precision matrix product; decompressing a fixed 2 MB text with the package engine's own xz
+    decoder (`pkg/xz.c`; the text is generated at build time by `bench/lbcorpus.c` and compressed with
+    `xz -9`), instead of the deflate in the design above; QuickJS running a fixed script (strings, JSON,
+    sorting, objects, a regular expression), one runtime per thread. The layout, paint and shaping
+    workloads are not built.
+  - Memory: copy and triad bandwidth on all cores (32 MB arrays in Quick, 128 MB in Full) and the
+    latency of a dependent pointer chase over 64 MB.
+  - GPU: OpenGL ES 2 offscreen on the render node (GBM + EGL, a surfaceless context, a 1920×1080
+    framebuffer object; every frame ends with `glFinish`): the 3D scene of the Test Bench
+    (`bench/glscene.c`), fill rate with 16 blended full-screen quads, 1920×1080 RGBA texture uploads and
+    8 blended screen-size layers.
+  - Storage (Full only): sequential write with `fdatasync`, sequential read after dropping the page
+    cache for that file, random 4 KiB reads for 3 s; the file is emptied at the end and, being unnamed,
+    disappears with the fd.
+  - Sustained (Full only, 3 minutes from the app): the matrix product on every core, a sample every
+    10 s with the temperature lord-server read at that moment.
+- **Guards and conditions** (`bench/lbcond.c`, read by lord-server, never by the helper): the hottest
+  thermal zone (or the CPU's coretemp/k10temp/zenpower hwmon sensor) and the lowest passive and
+  critical trip points; the x86 thermal throttle counters; the Raspberry Pi firmware's `get_throttled`
+  flags and its `rpi_volt` under-voltage alarm; cpufreq, governor and ACPI platform profile; batteries
+  (a device's own battery, such as a mouse's, is ignored) and mains. A run is refused on battery below
+  30 %, waits for 10 s in a row below 15 % CPU (at most 30 s, then it runs marked "busy"), stops within
+  2 °C of the passive trip point (or 10 °C of the critical one when there is no passive), and in the peak
+  tests stops when the throttle counters grow or the Pi says it is throttling now; in the sustained test
+  throttling is recorded with its time and temperature instead. The kind of disk under the scratch file
+  is recorded (NVMe, SD/eMMC, SSD, HDD, USB, virtual, or RAM in the live session). Unit tests on fake
+  sysfs trees (`tests/lordbench_test.c`, 260 checks): an x86 laptop on battery, a Raspberry Pi 5.
+- **The result** (`~/.local/state/lordos/lordbench.json`, the previous one kept as
+  `lordbench-prev.json`; a refused run keeps the last result): LordBench's version, the mode, status and
+  stop reason, LordOS and kernel versions, live or installed, threads, the quiet wait, conditions before
+  and after, the disk kind, the GPU kind (hardware, virtual or software), the sandbox mask, this
+  session's composition and each active display's connector, mode, refresh, scale and rotation (no
+  names, vendors or identities), every measurement with its unit, what was skipped and why, and the
+  sustained samples. `lord.sysinfo.bench.boots()` groups lord-sessiond's boot history by version
+  (median, range, the first boot after an update apart).
+- **System Information → Performance** (`apps/sysinfo/performance.jsx`, model in `perf.js`, tested in
+  `server/tests/sysinfo_perf_test.mjs`): Quick and Full, progress by measurement, then the three verdicts
+  (performance as "×N" per category against each reference measured with the same LordBench version;
+  compatibility counted from the Compatibility tab; stability from the status, failed measurements,
+  throttling, under-voltage, a sustained drop above 10 % and a busy start), every measurement with its
+  "×N" and its change against the previous run, the conditions that differ from the previous run, the
+  conditions, the boot times per version, and **Save to Documents** (the JSON). Nothing is sent.
+- **Reference machines** (`apps/sysinfo/references.js`): only VM 116 so far (a Full run with a 30 s
+  sustained test, numbers below). The Raspberry Pi 5 8 GB and the modest x86 PC are added when measured.
+
+VM 116, Full, LordBench 1 (2026-10-27): SHA-256 167 MB/s on one core and 977 MB/s on eight; matrix
+product 3.4 and 19.7 GFLOP/s; xz 61 and 354 MB/s; QuickJS 58 and 336 runs/s; memory copy 20.2 GB/s,
+triad 22.8 GB/s, latency 90 ns; llvmpipe: scene 794 fps, fill 395 Mpixel/s, upload 9,676 MB/s, 8 layers
+22.6 fps; virtio disk: 219 MB/s write, 517 MB/s read, 5,619 random reads/s; sustained 19.8 GFLOP/s from
+start to end. A Quick run took 33 s, a Full run with 30 s sustained 117 s.
+
+The same Full run from System Information in the isolated headless session (3 minutes of sustained load;
+its home is on tmpfs, so the storage test measured memory and says so, ×24 the reference's virtio disk):
+
+![System Information → Performance](sysinfo-performance.png)
+
+Not built yet: the desktop-impact mode (the helper already takes the low-priority flag, `LB_GO_LOW`;
+the scripted scene and the frame-time and input-latency measurement while it runs are missing), the
+compositor workload (lord-server's own frame counters during a scripted window drag), the video
+workload (clips decoded in `lord-media`, hardware and software, and the remote desktop's encoders),
+rebooting N times for the boot time, repeating the helper-sandbox self-test inside `lord-bench` (`sec.helper-sandbox`), the Pi 5 and x86 PC references, and `lordos-sysreport bench`.
 
 ## 0.8.7 — Community hardware reports
 

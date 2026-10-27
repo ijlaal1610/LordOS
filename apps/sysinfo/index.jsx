@@ -2,7 +2,7 @@
 // makes of it. Overview, Hardware (a source list and a detail pane) and Compatibility. The report
 // comes from lord.sysinfo.report() (server/src/sysreport, the same collector as lordos-sysreport and
 // lordos-fetch), read once on open and again with Refresh; model.js works out the GPU layers and the
-// Compatibility panel. Nothing here holds serial numbers, addresses or names: the report has none.
+// Compatibility panel; Performance (0.8.6, performance.jsx) runs LordBench. Nothing here holds serial numbers, addresses or names: the report has none.
 import {
   View, Text, ScrollView, Button, useTheme, useLocale, LordOSLogo, systemReport, systemInfo, lordosVersion, formatBytes, formatNumber,
   Toolbar, ToolbarSpacer, ToolbarButton, Segmented, SidebarItem, GroupBox, FormRow, EmptyState, Hairline, spacing, typeScale,
@@ -10,6 +10,7 @@ import {
 } from '@lordos/sdk';
 import { useMemo, useState } from 'react';
 import { evaluate as evaluateChecks, evaluateProbe, evaluateBench, PENDING as PENDING_CHECKS, PROBE_CHECKS } from './checks.js';
+import Performance from './performance.jsx';
 import { cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, compositionReason, reportFileName, reportJson, parseMemoryLines } from './model.js';
 
 // The app's icon: a chip on the brand gradient.
@@ -533,11 +534,11 @@ export default function SystemInformation() {
       <Toolbar>
         <ToolbarSpacer />
         <Segmented appearance="neutral" value={tab} onChange={setTab}
-          options={[['overview', tr('sysinfo.tab.overview')], ['hardware', tr('sysinfo.tab.hardware')], ['compat', tr('sysinfo.tab.compat')], ['checks', tr('sysinfo.tab.checks')], ['report', tr('sysinfo.tab.report')]]} />
+          options={[['overview', tr('sysinfo.tab.overview')], ['hardware', tr('sysinfo.tab.hardware')], ['compat', tr('sysinfo.tab.compat')], ['checks', tr('sysinfo.tab.checks')], ['perf', tr('sysinfo.tab.perf')], ['report', tr('sysinfo.tab.report')]]} />
         <ToolbarSpacer />
         <ToolbarButton icon="↻" title={tr('sysinfo.refresh')} onClick={() => setN(n + 1)} />
       </Toolbar>
-      {tab === 'overview' ? <Overview r={r} info={info} /> : tab === 'hardware' ? <Hardware r={r} /> : tab === 'compat' ? <Compatibility r={r} /> : tab === 'checks' ? <Checks r={r} /> : <Report r={r} />}
+      {tab === 'overview' ? <Overview r={r} info={info} /> : tab === 'hardware' ? <Hardware r={r} /> : tab === 'compat' ? <Compatibility r={r} /> : tab === 'checks' ? <Checks r={r} /> : tab === 'perf' ? <Performance r={r} /> : <Report r={r} />}
     </View>
   );
 }

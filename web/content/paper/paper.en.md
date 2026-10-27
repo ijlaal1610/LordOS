@@ -488,7 +488,7 @@ The Raspberry Pi 5 is the only supported board. Results on a real board (16 GB, 
 
 ### 7.5 Modern PCs
 
-There are no measurements on real PCs in the repository yet. The ISO is tested on virtual machines (UEFI and BIOS); testing on a real AMD machine from the live USB is planned. LordBench (0.8.6) is designed to measure memory and CPU at idle, boot time, frame times, video and app start in a repeatable way, and community hardware reports (0.8.7) to collect them from real machines (`docs/BENCHMARK.md`).
+There are no measurements on real PCs in the repository yet. The ISO is tested on virtual machines (UEFI and BIOS); testing on a real AMD machine from the live USB is planned. LordBench (0.8.6) is designed to measure memory and CPU at idle, boot time, frame times, video and app start in a repeatable way, and community hardware reports (0.8.7) to collect them from real machines (`docs/BENCHMARK.md`). In development for 0.8.6 (unreleased; the latest release is 0.8.5-beta), its first part is built: a sandboxed `lord-bench` helper that measures the CPU, memory, the GPU offscreen, storage and a sustained load, stops near the temperature limit or when the processor throttles, and records the conditions of each run, shown in System Information → Performance as "×N" of reference machines; so far the only reference is a virtual machine, and the desktop-impact, compositor and video measurements are not built.
 
 ### Source files
 
@@ -550,7 +550,7 @@ There are no measurements on real PCs in the repository yet. The ISO is tested o
 
 ### 10.3 Next
 
-Next, as planned in `docs/ROADMAP.md` and `docs/BENCHMARK.md`: **0.8.6, LordBench**, repeatable measurements of CPU, memory, GPU, the compositor, video and storage, and a Flathub section in the Store, which needs a design review first so Flatpak apps keep LordOS's app scopes, firewall and restrictions; **0.8.7, community hardware reports**, published from System Information with the user's consent; and a connection refused by the per-app firewall checked on the user's own computer. Xwayland and the Lord Classic theme, planned here for 1.0 in 0.8.0, shipped in 0.8.3.
+Next, as planned in `docs/ROADMAP.md` and `docs/BENCHMARK.md`: **0.8.6, LordBench**, repeatable measurements of CPU, memory, GPU, the compositor, video and storage, and a Flathub section in the Store, which needs a design review first so Flatpak apps keep LordOS's app scopes, firewall and restrictions; **0.8.7, community hardware reports**, published from System Information with the user's consent; and a connection refused by the per-app firewall checked on the user's own computer. Xwayland and the Lord Classic theme, planned here for 1.0 in 0.8.0, shipped in 0.8.3. The Flatpak design review is written (`docs/FLATPAK.md`) and waits for the maintainer's approval before any code.
 
 After 1.0: a desktop virtualization app built on KVM and QEMU; an Android container with LineageOS and apps from LordOS's Store; the firewall's ask mode; accessibility; and a full demo video.
 

@@ -96,6 +96,9 @@ ln -s lordos-sysreport "$PKG/usr/bin/lordos-fetch"
 # lord-maild: IMAP/SMTP/CalDAV/CardDAV with TLS for Mail (docs/MAIL.md); lord-server only launches the one in its own folder
 [ -x server/build/lord-maild ] && install -m 755 server/build/lord-maild "$L/bin/lord-maild"
 [ -x "$L/bin/lord-maild" ] && { "$STRIP" --strip-unneeded "$L/bin/lord-maild" 2>/dev/null || true; }
+# lord-bench (0.8.6): LordBench's sandboxed workloads (docs/BENCHMARK.md); lord-server only launches the one in its own folder
+[ -x server/build/lord-bench ] && install -m 755 server/build/lord-bench "$L/bin/lord-bench"
+[ -x "$L/bin/lord-bench" ] && { "$STRIP" --strip-unneeded "$L/bin/lord-bench" 2>/dev/null || true; }
 # lord-fetch (0.8.5): downloads the subscribed blocklists over HTTPS, sandboxed (docs/FIREWALL.md, "Blocklists")
 [ -x server/build/lord-fetch ] && install -m 755 server/build/lord-fetch "$L/bin/lord-fetch"
 [ -x "$L/bin/lord-fetch" ] && { "$STRIP" --strip-unneeded "$L/bin/lord-fetch" 2>/dev/null || true; }

@@ -32,6 +32,11 @@
  *                                               the system package `sysprobe`, app/probe.c), or null
  *   lord.sysinfo.markdown()                     the same report as Markdown, as lordos-sysreport prints it,
  *                                               with a "This session" section (System Information's Report tab)
+ *   lord.sysinfo.bench.start(mode, sustainedS) / poll() / cancel() / saved(which) / boots()
+ *                                               LordBench (bench/lbrun.c, the lord-bench helper): mode
+ *                                               'quick' | 'full'; poll() → {state, step, progress, result};
+ *                                               saved(0|1) the last or previous result; boots() the boot
+ *                                               times per LordOS version (lord-sessiond's history)
  *   lord.fan.status() / setProfile(p) / setCurve(pts) / force(v) / caseConfig()   (js_fan.c, lord-fand)
  *   lord.browserFrame.apply(on, which)          Settings → Appearance → "Browsers: tabs in the title bar":
  *                                               one preference in the user's Chromium/Firefox profiles
@@ -52,6 +57,7 @@
 #include "../gpu/gpu.h"
 #include "../sysreport/sysreport.h"
 #include "../sysreport/facts.h"
+#include "../bench/lbrun.h"
 #include "../sec/broker.h"
 #include "lord_version.h"           /* build/gen: the version for the report */
 #include "../hw/mimeapps.h"
@@ -466,6 +472,91 @@ static JSValue f_sysinfo_probe(JSContext *c, JSValueConst t, int argc, JSValueCo
     return j ? JS_ParseJSON(c, j, strlen(j), "<probe>") : JS_NULL;
 }
 
+/* ---- lord.sysinfo.bench (LordBench) ---- */
+
+/* what a result records about this session: how the screen is composed and each active display's
+ * connector, mode, refresh, scale and rotation (no names, vendors or identities) */
+static char *bench_session_json(JSContext *c) {
+    GpuInfo g;
+    gpu_info(&g);
+    JSValue o = JS_NewObject(c);
+    JS_SetPropertyStr(c, o, "composition", JS_NewString(c, lord_composition()));
+    JS_SetPropertyStr(c, o, "gpuInit", JS_NewString(c, g.why ? g.why : ""));
+    JS_SetPropertyStr(c, o, "renderer", JS_NewString(c, g.renderer ? g.renderer : ""));
+    JSValue outs = JS_NewArray(c);
+    JSValue d = json_or_null(c, display_list_json());
+    JSValue list = JS_IsObject(d) ? JS_GetPropertyStr(c, d, "outputs") : JS_UNDEFINED;
+    uint32_t k = 0;
+    for (uint32_t i = 0; JS_IsArray(c, list) && i < 16; i++) {
+        JSValue e = JS_GetPropertyUint32(c, list, i);
+        if (!JS_IsObject(e)) { JS_FreeValue(c, e); break; }
+        JSValue act = JS_GetPropertyStr(c, e, "active");
+        if (JS_ToBool(c, act) > 0) {
+            JSValue x = JS_NewObject(c);
+            static const char *const keep[] = { "connector", "builtin", "mode", "scale", "rotation" };
+            for (int f = 0; f < 5; f++) JS_SetPropertyStr(c, x, keep[f], JS_GetPropertyStr(c, e, keep[f]));
+            JS_SetPropertyUint32(c, outs, k++, x);
+        }
+        JS_FreeValue(c, act);
+        JS_FreeValue(c, e);
+    }
+    JS_FreeValue(c, list);
+    JS_FreeValue(c, d);
+    JS_SetPropertyStr(c, o, "displays", outs);
+    JSValue str = JS_JSONStringify(c, o, JS_UNDEFINED, JS_UNDEFINED);
+    JS_FreeValue(c, o);
+    const char *s = JS_ToCString(c, str);
+    char *r = s ? strdup(s) : NULL;
+    if (s) JS_FreeCString(c, s);
+    JS_FreeValue(c, str);
+    return r;
+}
+
+static JSValue f_bench_start(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    const char *mode = argc > 0 ? JS_ToCString(c, argv[0]) : NULL;
+    if (!mode) return JS_FALSE;
+    int sus = argc > 1 ? arg_int(c, argv[1], 0) : 0;
+    char *extra = bench_session_json(c);
+    int r = lbrun_start(mode, sus, extra);
+    free(extra);
+    JS_FreeCString(c, mode);
+    return JS_NewBool(c, r == 0);
+}
+
+static JSValue f_bench_poll(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    return json_or_null(c, lbrun_poll());
+}
+
+static JSValue f_bench_cancel(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)c; (void)t; (void)argc; (void)argv;
+    lbrun_cancel();
+    return JS_UNDEFINED;
+}
+
+static JSValue f_bench_saved(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t;
+    int which = argc > 0 ? arg_int(c, argv[0], 0) : 0;
+    if (which != 0 && which != 1) return JS_NULL;
+    JSValue v = json_or_null(c, lbrun_saved(which));
+    if (JS_IsException(v)) { JS_FreeValue(c, JS_GetException(c)); return JS_NULL; }
+    return v;
+}
+
+static JSValue f_bench_boots(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    return json_or_null(c, lbrun_boot_history("/var/lib/lordos/boot-times.jsonl"));
+}
+
+static const JSCFunctionListEntry bench_funcs[] = {
+    JS_CFUNC_DEF("start", 2, f_bench_start),
+    JS_CFUNC_DEF("poll", 0, f_bench_poll),
+    JS_CFUNC_DEF("cancel", 0, f_bench_cancel),
+    JS_CFUNC_DEF("saved", 1, f_bench_saved),
+    JS_CFUNC_DEF("boots", 0, f_bench_boots),
+};
+
 static const JSCFunctionListEntry sysinfo_funcs[] = {
     JS_CFUNC_DEF("report", 0, f_sysinfo_report),
     JS_CFUNC_DEF("probe", 0, f_sysinfo_probe),
@@ -547,6 +638,11 @@ void js_hw_register(JSContext *c, JSValue lord) {
     add(c, lord, "notifyd", nd_funcs, sizeof nd_funcs / sizeof nd_funcs[0]);
     add(c, lord, "hwinfo", hwinfo_funcs, sizeof hwinfo_funcs / sizeof hwinfo_funcs[0]);
     add(c, lord, "sysinfo", sysinfo_funcs, sizeof sysinfo_funcs / sizeof sysinfo_funcs[0]);
+    JSValue si = JS_GetPropertyStr(c, lord, "sysinfo");
+    JSValue bo = JS_NewObject(c);
+    JS_SetPropertyFunctionList(c, bo, bench_funcs, sizeof bench_funcs / sizeof bench_funcs[0]);
+    JS_SetPropertyStr(c, si, "bench", bo);
+    JS_FreeValue(c, si);
     add(c, lord, "browserFrame", brf_funcs, sizeof brf_funcs / sizeof brf_funcs[0]);
     js_fan_register(c, lord);           /* lord.fan: Settings → Cooling and Monitor (js_fan.c) */
 }
