@@ -1,7 +1,7 @@
 // sysinfo_perf_test.mjs — LordBench's model (apps/sysinfo/perf.js, 0.8.6): ratios against the reference
 // machines, category means, the stability and compatibility verdicts, comparisons with the previous
 // result and the conditions that differ. Run by tests/run_suites.sh (needs node).
-import { CATEGORIES, DESKTOP_CATEGORIES, desktopVerdict, REFERENCES, ratio, categoryRatios, comparableReferences, stability, compatibilityVerdict, conditionDiffs, changes, sustainedSeries, refreshBudget, fileName } from '../../apps/sysinfo/perf.js';
+import { CATEGORIES, DESKTOP_CATEGORIES, SANDBOX_TRIES, ENGINE_IDS, desktopVerdict, REFERENCES, ratio, categoryRatios, comparableReferences, stability, compatibilityVerdict, conditionDiffs, changes, sustainedSeries, refreshBudget, fileName } from '../../apps/sysinfo/perf.js';
 
 let n = 0, bad = 0;
 const eq = (what, got, want) => {
@@ -23,10 +23,17 @@ const ref = { lordbench: 1, results: { 'cpu.sha256.1': { value: 100 }, 'cpu.matm
 
 // every measurement of a peak run (lord-bench's and lord-media's) is in exactly one category
 const ids = CATEGORIES.flatMap((c) => c.ids);
-eq('28 measurements, no repeats', [ids.length, new Set(ids).size], [28, 28]);
-eq('references have every measurement', REFERENCES.every((r) => ids.every((id) => r.results[id] && r.results[id].value > 0)), true);
+eq('32 measurements, no repeats', [ids.length, new Set(ids).size], [32, 32]);
+eq('references have every measurement or say it was not measured', REFERENCES.every((r) => ids.every((id) => (r.results[id] && r.results[id].value > 0) !== (r.notMeasured || []).includes(id))), true);
 
 near('×2 SHA', ratio(res(), ref, 'cpu.sha256.1'), 2);
+// the engine's own workloads compare only within one LordOS version
+const engRef = { lordbench: 1, results: { 'cpu.ui.1': { value: 20, lordos: '0.8.6' }, 'cpu.sha256.1': { value: 50 } } };
+const engRes = (v) => res({ lordos: v, results: { 'cpu.ui.1': { value: 40 }, 'cpu.sha256.1': { value: 100 } } });
+near('engine id, same version', ratio(engRes('0.8.6'), engRef, 'cpu.ui.1'), 2);
+eq('engine id, another version: no ×N', ratio(engRes('0.8.7'), engRef, 'cpu.ui.1'), null);
+near('other ids ignore the version', ratio(engRes('0.8.7'), engRef, 'cpu.sha256.1'), 2);
+eq('every engine id of a reference carries its version', REFERENCES.every((r) => ENGINE_IDS.every((id) => !r.results[id] || typeof r.results[id].lordos === 'string')), true);
 near('latency: lower is better', ratio(res(), ref, 'mem.latency'), 2);
 eq('missing on one side', ratio(res(), ref, 'gpu.scene'), null);
 const cr = categoryRatios(res(), ref);
@@ -43,6 +50,18 @@ eq('Pi throttling and under-voltage', stability(res({ after: { rpiThrottled: 0x5
 eq('Pi: only past events', stability(res({ after: { rpiThrottled: 0x50000 } })).state, 'pass');
 eq('sustained dropped 20 %', stability(res({ results: { 'sustained.start': { value: 50 }, 'sustained.end': { value: 40 } } })).notes, [{ id: 'sustainedDrop', vars: { pct: 20 } }]);
 eq('not quiet', stability(res({ quiet: { quiet: false, busyPct: 37.4 } })).notes, [{ id: 'notQuiet', vars: { pct: 37 } }]);
+// the helper-sandbox self-test
+const tries = (over = {}) => SANDBOX_TRIES.map((id) => ({ id, denied: over[id] == null ? true : over[id], errno: 1 }));
+eq('every try refused: said, still a pass', stability(res({ sandboxTries: tries() })), { state: 'pass', notes: [{ id: 'sandboxHeld', vars: { count: 6 }, info: true }] });
+eq('a try that worked fails the run', stability(res({ sandboxTries: tries({ helperExec: false }) })), { state: 'fail', notes: [{ id: 'sandboxLeaks', vars: { ids: ['helperExec'] } }] });
+eq('a missing try counts as not refused', stability(res({ sandboxTries: tries().filter((t) => t.id !== 'helperRead') })).notes[0].vars.ids, ['helperRead']);
+// without Landlock (mask SB_SECCOMP|SB_NOPRIV|SB_NOCAPS, no SB_LANDLOCK_FS) the file tries only warn
+const noLl = { sandbox: 8 | 16 | 32, sandboxTries: tries({ helperNewFile: false, helperRead: false }) };
+eq('no Landlock: the file tries warn', stability(res(noLl)), { state: 'warn', notes: [{ id: 'sandboxPartial', vars: { ids: ['helperNewFile', 'helperRead'] } }] });
+eq('no Landlock: exec still fails', stability(res({ ...noLl, sandboxTries: tries({ helperNewFile: false, helperExec: false }) })).state, 'fail');
+eq('with Landlock: a file try fails', stability(res({ sandbox: 2 | 8 | 16 | 32, sandboxTries: tries({ helperRead: false }) })).state, 'fail');
+eq('no Landlock: a missing file try still fails', stability(res({ sandbox: 8, sandboxTries: tries().filter((t) => t.id !== 'helperRead') })).state, 'fail');
+eq('older results have no self-test', stability(res()).notes, []);
 eq('a measurement failed', stability(res({ skipped: { 'gpu.scene': 'failed', 'disk.seqread': 'mode' } })).notes, [{ id: 'measureFailed', vars: { count: 1 } }]);
 
 eq('compatibility: limits warn', compatibilityVerdict([{ state: 'works' }, { state: 'limits' }, { state: 'absent' }]),

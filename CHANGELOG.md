@@ -22,7 +22,7 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 ### Added
 
 - **LordBench, first part (in development for 0.8.6; `docs/BENCHMARK.md`, "Built so far"):** System Information has a
-  **Performance** tab with a Quick test (about half a minute) and a Full test (adds storage and three minutes of
+  **Performance** tab with a Quick test (less than a minute) and a Full test (adds storage and three minutes of
   sustained load). The work runs in **`lord-bench`**, a new sandboxed helper launched by lord-server like `lord-doc`
   and `lord-media` (its own folder only, no arguments, `sandbox_apply_helper` before any work, scope
   `lordos-bench.scope`, 2 GB cap), which gets only the GPU's render node and an unnamed scratch file opened by
@@ -31,6 +31,26 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
     - SHA-256 and a 256×256 matrix product;
     - the package engine's xz decoder on a fixed 2 MB text generated at build time;
     - QuickJS running a fixed script;
+    - **LordOS's own interface work** (`bench/lbui.c`, the engine's real code linked into `lord-bench`): layout and
+      paint of a fixed 1920×1080 scene built in C (529 nodes: a translucent top bar, a file manager with a 40-row
+      list, a settings window with a wrapped paragraph and controls, a notification and the Dock with backdrop
+      blur, shadows, a rotated badge, a half-transparent card), every node invalidated and the whole screen painted
+      each frame, in frames per second (`cpu.ui.1`; `cpu.ui.n` is the same with the paint's row bands on up to 8
+      threads, as lord-server's paint threads); and shaping fixed paragraphs in Latin, Arabic with embedded
+      left-to-right text, Devanagari, Thai and Chinese with kana (`bench/lbtext.h`) as the engine's text layout does
+      (bidi, script runs, each character's font, GSUB and GPOS, the visual order), in runs per second, one core
+      and all (`cpu.shape.1/n`). The helper opens no files: the scene is fixed data and the fonts are built into the
+      binary (`build/gen/lb_fonts.h`): LordOS's Inter and Debian 13's Noto Sans Arabic, Devanagari, Thai and CJK SC
+      subset to exactly those paragraphs with every layout feature kept (`tools/gen-lbfonts.py`, committed in
+      `server/src/bench/fonts` with their OFL licence; Inter pinned by its SHA-256 in `mk/lordbench.mk`, so a new
+      Inter fails the build until the references are measured again); `build/shape-test` gives the same glyph
+      positions with each subset as with the full system font, though the subsets shape about 12 % faster than the
+      full fonts (fewer lookups), so the workload is comparable only with itself. These four numbers measure
+      LordOS's engine with the machine: a reference value of one carries the LordOS version it was measured with and
+      gives a "×N" only to a result of that version (`ENGINE_IDS` in `apps/sysinfo/perf.js`). The paint threads of
+      `cpu.ui.n` start each run from a clean pool, and the shaping threads only read the shared script table (set
+      before they start; ThreadSanitizer had found a race there). `lord-bench` grows from 1.48 to 2.42 MB of code;
+      its sandbox, seccomp list and fds are unchanged;
     - memory copy and triad bandwidth and a 64 MB pointer-chase latency;
     - OpenGL ES 2 offscreen at 1920×1080 on the render node: the 3D scene, fill rate, texture upload and 8 layers;
     - (Full only) sequential write and read and random 4 KiB reads on up to 1 GB;
@@ -41,10 +61,24 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
     - stops within 2 °C of the passive trip point (10 °C of the critical one without one);
     - the peak tests also stop when the x86 throttle counters grow or the Raspberry Pi firmware reports throttling;
     - in the sustained test, throttling is recorded with its time and temperature instead.
+  - **Helper-sandbox self-test** (`sec.helper-sandbox`, repeated inside `lord-bench`): right after
+    `sandbox_apply_helper` and before any work, `lord-bench` tries six things that must fail, the Sandbox Probe's
+    helper tries plus two: a unix socket, an internet socket, exec, fork, a new file (`O_TMPFILE` in `/tmp`) and
+    reading `/etc/passwd`. None could change anything if it worked (exec is called with an invalid environment
+    pointer, so an allowed one fails with `EFAULT` before anything is replaced; a socket or unnamed file is closed at
+    once; a forked child only exits). Each try is a fixed record (`LB_MSG_SANDBOX`, checked by `lb_msg_valid`), the
+    result lists them as `sandboxTries` (id, refused, errno), the Stability verdict fails a run where one got
+    through or is missing (naming each try in the user's language, "run a program", …) and otherwise says that all
+    six were refused; on a kernel without Landlock the two file tries only warn, since the sandbox mask already
+    records that limit. `lordos-sysreport bench` checks the same six by name ("N of 6 tries refused", a
+    `NOT REFUSED` line for each one that worked or is missing) and exits with 3 when one got through. On VM 116 all six
+    were refused (`EPERM` from seccomp for the sockets, exec and fork; `EACCES` from Landlock for the files), and a
+    trace of a run shows the CPU workloads open no file.
   - **Results:** shown as "×N" of each reference machine per category, never one score, with three verdicts:
     - performance;
     - compatibility, from the Compatibility tab;
-    - stability: stops, failed measurements, throttling, under-voltage, a sustained drop and a busy start.
+    - stability: stops, failed measurements, throttling, under-voltage, a sustained drop, a busy start and the
+      helper-sandbox self-test.
 
     Each result also shows the change against the previous run and the conditions that differ, every recorded
     condition, the boot time per LordOS version and **Save to Documents**. Nothing is sent anywhere.
@@ -75,7 +109,11 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   - **References:** VM 116 (8 vCPU Xeon Silver 4108, llvmpipe) and a **Raspberry Pi 5 16 GB** (SD card, V3D), each a
     real Full run (`apps/sysinfo/references.js`):
     - VM 116: SHA-256 166/984 MB/s (one core/all), matrix product 3.3/19.9 GFLOP/s, memory copy 20.0 GB/s; software
-      decoding H.264 1080p 399 fps, AV1 1080p 201 fps, HEVC 4K 102 fps; H.264 encoder 106 fps.
+      decoding H.264 1080p 399 fps, AV1 1080p 201 fps, HEVC 4K 102 fps; H.264 encoder 106 fps. The interface
+      workloads, from a later Full run (2026-10-28): layout and paint 37.0 fps on one core and 39.9 fps with the
+      paint threads (a frame is about 28 ms, almost all of it paint: the layout of the 529 nodes takes 0.15 ms, and
+      only big row-local fills, shadows and blits are split into bands); shaping 619 runs/s on one core and 3,595 on
+      eight. A Quick run from a terminal now takes 46 s. The Pi 5 has not been measured with them yet (its reference lists them as not measured).
     - Pi 5: SHA-256 933/3,693 MB/s, matrix product 2.26/5.99 GFLOP/s, memory copy 7.6 GB/s, latency 115 ns; V3D scene
       795 fps, fill 2,455 Mpixel/s; SD card 66 MB/s write, 91 MB/s read; 3 minutes sustained at 5.86 → 5.88 GFLOP/s
       with the fan, 55.6 °C at most; software decoding H.264 1080p 258 fps, AV1 1080p 159 fps, H.264 4K 55 fps,
@@ -96,7 +134,7 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
     lord-server's own code (`bench/lbrun.c`): the same guards, helpers and result file, which System Information then
     shows. `lordos-sysreport` is now installed in `/usr/lib/lordos/bin` with `/usr/bin/lordos-sysreport` and
     `lordos-fetch` as links (`tools/iso/mkdeb.sh`), because the helpers are only started from next to their own
-    binary. A quick run took 39 s on VM 116. On VM 116 (headless, with a remote viewer)
+    binary. A quick run took 39 s on VM 116 (46 s with the interface workloads). On VM 116 (headless, with a remote viewer)
     59.6 fps alone, p99 13.3 ms; p99 22.9 ms and 12.5 % late under load.
   - **Boot measured:** the Pi 5 reaches the login screen on its monitor 5.99 s after the kernel starts (systemd: 2.1 s
     kernel + 4.2 s userspace).
@@ -105,10 +143,12 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
     and the temperature are the evidence instead.
   - **Tests:** `tests/lordbench_test.c` (records, workloads, fake sysfs trees of an x86 laptop and a Pi 5, boot
     history, the frame recorder and its pointer latency, the synthetic pointer's thread and eventfd, the video
-    records, the boot test state file; 973 checks) and `tests/sysinfo_perf_test.mjs` (43 checks, with the desktop
-    verdict, the pointer latency notes and the video category).
-  - **Not built yet:** hardware video decoding, the layout/paint/shaping workloads, the helper-sandbox self-test
-    inside `lord-bench` and the x86 PC reference.
+    records, the boot test state file, the interface scene with every style key known, each paragraph shaped with no
+    missing glyph and the same twice, the sandbox self-test's records; 1,178 checks) and
+    `tests/sysinfo_perf_test.mjs` (55 checks, with the desktop verdict, the pointer latency notes, the video
+    category, the self-test in the stability verdict with and without Landlock, and the engine workloads compared
+    only within one LordOS version).
+  - **Not built yet:** hardware video decoding and the x86 PC reference.
 - **Flatpak and Flathub design review, kept for the future** (`docs/FLATPAK.md`, no code; the maintainer decided on
   2026-10-27 not to implement Flatpak for now, to keep the system stable, and it is not planned for any release): a
   launcher-owned scope per Flatpak app so the

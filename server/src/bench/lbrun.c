@@ -107,7 +107,14 @@ typedef struct {
     int nsamples;
     double throttle_at, throttle_temp;
     double budget_ms, gap_max;          /* desktop: the refresh period and the longest wait between frames */
+    int sbx_have[LB_SBX_COUNT], sbx_refused[LB_SBX_COUNT], sbx_errno[LB_SBX_COUNT];    /* the helper-sandbox self-test */
 } Res;
+
+static void put_sandbox(Res *r, const LbMsg *m) {
+    r->sbx_have[m->id] = 1;
+    r->sbx_refused[m->id] = m->value == 1;
+    r->sbx_errno[m->id] = (int)m->aux;
+}
 
 static void cond_json(HBuf *b, const LbCond *c) {
     hb_printf(b, "{");
@@ -148,6 +155,14 @@ static char *build_result(const Job *j, int st, const char *why, const Res *r, c
     hb_printf(&b, ",\"storage\":{\"kind\":\"%s\",\"mb\":%u}", storage, storage_mb);
     hb_printf(&b, ",\"gpuKind\":\"%s\"", r->gpu_kind == 0 ? "hardware" : r->gpu_kind == 1 ? "virtual" : r->gpu_kind == 2 ? "software" : "");
     hb_printf(&b, ",\"sandbox\":%d", r->sandbox);
+    int any_sbx = 0;
+    for (int i = 0; i < LB_SBX_COUNT; i++) any_sbx |= r->sbx_have[i];
+    if (any_sbx) {                      /* what lord-bench tried after locking itself in: each one must be denied */
+        hb_printf(&b, ",\"sandboxTries\":[");
+        for (int i = 0, k = 0; i < LB_SBX_COUNT; i++) if (r->sbx_have[i])
+            hb_printf(&b, "%s{\"id\":\"%s\",\"denied\":%s,\"errno\":%d}", k++ ? "," : "", lb_sbx_name(i), r->sbx_refused[i] ? "true" : "false", r->sbx_errno[i]);
+        hb_printf(&b, "]");
+    }
     if (j->extra) hb_printf(&b, ",\"session\":%s", j->extra);
     hb_printf(&b, ",\"results\":{");
     int first = 1;
@@ -447,7 +462,8 @@ static void *run(void *arg) {
             if (m.kind == LB_MSG_SAMPLE && m.aux >= 2) {          /* the first two seconds warm the load up */
                 if (!recording) { lbf_begin(); recording = 1; }
                 else { work += m.value; nwork++; }
-            } else if (m.kind == LB_MSG_DONE) { r->sandbox = (int)m.aux; finished = 1; }
+            } else if (m.kind == LB_MSG_SANDBOX) put_sandbox(r, &m);
+            else if (m.kind == LB_MSG_DONE) { r->sandbox = (int)m.aux; finished = 1; }
         }
         if (finished) {
             int framed = put_frames(r, LB_DESK_FPS) == 0;
@@ -520,6 +536,7 @@ static void *run(void *arg) {
             }
             break;
         case LB_MSG_GPUINFO: r->gpu_kind = (int)m.value; break;
+        case LB_MSG_SANDBOX: put_sandbox(r, &m); break;
         case LB_MSG_DONE: r->sandbox = (int)m.aux; finished = 1; st = ST_DONE; break;
         }
         pthread_mutex_unlock(&mu);

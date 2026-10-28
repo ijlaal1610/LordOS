@@ -1,11 +1,14 @@
 /* lordbench_test.c — LordBench without the helper process (docs/BENCHMARK.md, "0.8.6 — LordBench"): the
- * records lord-server accepts from lord-bench and from lord-media's video measurement, the compositor's frame
- * statistics, short runs of every CPU, memory and storage workload, the
+ * records lord-server accepts from lord-bench and from lord-media's video measurement (and the helper-sandbox
+ * self-test's), the compositor's frame statistics, short runs of every CPU, memory and storage workload (the
+ * UI engine's scene and the shaper's paragraphs with every glyph in the built-in fonts), the
  * conditions read from fake sysfs trees (temperatures and trip points, throttle counters, the Pi's
  * flags, batteries) with the thermal and battery guards, the boot history per version and the boot time
  * test's state file and its steps. */
 #include "../src/bench/lbproto.h"
 #include "../src/bench/lbwork.h"
+#include "../src/bench/lbui.h"
+#include "../src/bench/lbtext.h"
 #include "../src/bench/lbcond.h"
 #include "../src/bench/lbrun.h"
 #include "../src/bench/lbframes.h"
@@ -78,6 +81,24 @@ int main(void) {
     CHECK(!lb_msg_valid(&m), "a video skip reason from lord-bench");
     CHECK(lb_lower_better(LB_COMP_P99) && lb_lower_better(LB_DESK_MISSED) && !lb_lower_better(LB_DESK_FPS) && !lb_lower_better(LB_VID_AV1_1080), "which are lower-better");
     CHECK(!strcmp(lb_name(LB_VENC_VP8), "video.enc.vp8") && !strcmp(lb_unit(LB_COMP_MISSED), "%"), "video and frame names");
+    CHECK(!strcmp(lb_name(LB_CPU_UIN), "cpu.ui.n") && !strcmp(lb_unit(LB_CPU_UI1), "fps") && !strcmp(lb_name(LB_CPU_SHAPE1), "cpu.shape.1"), "UI names");
+    m = msg(LB_MSG_RESULT, LB_CPU_SHAPEN, 1200, 3);
+    CHECK(lb_msg_valid(&m), "a shaping result");
+    /* the helper-sandbox self-test's records */
+    m = msg(LB_MSG_SANDBOX, LB_SBX_EXEC, 1, 1);
+    CHECK(lb_msg_valid(&m), "a refused try");
+    m = msg(LB_MSG_SANDBOX, LB_SBX_READ, 0, 0);
+    CHECK(lb_msg_valid(&m), "a try that worked");
+    m = msg(LB_MSG_SANDBOX, LB_SBX_COUNT, 1, 1);
+    CHECK(!lb_msg_valid(&m), "a try out of range");
+    m = msg(LB_MSG_SANDBOX, LB_SBX_FORK, 0.5, 1);
+    CHECK(!lb_msg_valid(&m), "a try neither refused nor not");
+    m = msg(LB_MSG_SANDBOX, LB_SBX_FORK, 1, 4096);
+    CHECK(!lb_msg_valid(&m), "an errno out of range");
+    m = msg(LB_MSG_SANDBOX, LB_SBX_FORK, 1, 1.5);
+    CHECK(!lb_msg_valid(&m), "a fractional errno");
+    for (int i = 0; i < LB_SBX_COUNT; i++) CHECK(lb_sbx_name(i) && !strncmp(lb_sbx_name(i), "helper", 6), "try names %d", i);
+    CHECK(!lb_sbx_name(LB_SBX_COUNT) && !lb_sbx_name(-1) && !strcmp(lb_sbx_name(LB_SBX_FORK), "helperFork"), "try names out of range");
 
     /* ---- lord-media's video records ---- */
     CHECK(lbv_record_valid(VB_HEVC_2160, VBR_RESULT, 24500, 300, 0), "a video result");
@@ -185,6 +206,22 @@ int main(void) {
     CHECK((v = lb_xz(1, 0.1)) > 1, "xz %f", v);
     CHECK((v = lb_js(1, 0.2)) > 0.5, "js %f", v);
     CHECK((v = lb_js(2, 0.2)) > 0.5, "js x2 %f", v);
+    /* the UI engine's scene: every style key known, then frames on one thread and with the paint bands */
+    int nodes = 0, unknown = -1;
+    CHECK(lb_ui_check(&nodes, &unknown) == 0 && nodes > 400 && unknown == 0, "scene: %d nodes, %d unknown styles", nodes, unknown);
+    CHECK((v = lb_ui(1, 0.3)) > 0.5, "ui %f", v);
+    CHECK((v = lb_ui(4, 0.3)) > 0.5, "ui x4 %f", v);
+    /* the shaper: each paragraph shapes to real glyphs of its built-in fonts (none missing: the subsets cover
+     * them), the same every time */
+    for (int p = 0; p < LB_PARA_COUNT; p++) {
+        int g = 0, bad = -1, g2 = 0, bad2 = -1;
+        long adv = 0, adv2 = 0;
+        CHECK(lb_shape_check(p, &g, &bad, &adv) == 0 && g > 80 && bad == 0 && adv > 0, "paragraph %d: %d glyphs, %d missing, advance %ld", p, g, bad, adv);
+        CHECK(lb_shape_check(p, &g2, &bad2, &adv2) == 0 && g2 == g && bad2 == bad && adv2 == adv, "paragraph %d shapes the same twice", p);
+    }
+    CHECK(lb_shape_check(LB_PARA_COUNT, NULL, NULL, NULL) == -1, "a paragraph out of range");
+    CHECK((v = lb_shape(1, 0.2)) > 1, "shape %f", v);
+    CHECK((v = lb_shape(2, 0.2)) > 1, "shape x2 %f", v);
     CHECK((v = lb_mem_copy(2, 8, 0.1)) > 0.05, "copy %f", v);
     CHECK((v = lb_mem_triad(2, 8, 0.1)) > 0.05, "triad %f", v);
     CHECK((v = lb_mem_latency(8, 200000)) > 0.1 && v < 10000, "latency %f", v);

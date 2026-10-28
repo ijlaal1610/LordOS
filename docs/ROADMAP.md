@@ -708,8 +708,13 @@ the maintainer on 2026-10-27, item below).
   the thermal, throttle and battery guards, the boot history and System Information → Performance are built
   (`BENCHMARK.md`, "Built so far"), and so are the video workloads (software decoding, the remote desktop's
   encoders), the desktop-impact mode (the compositor's frame times alone and under a low-priority load), the N-boot
-  test, the pointer-to-screen latency, `lordos-sysreport bench` and the Pi 5 reference. Left: hardware video
-  decoding, the x86 PC reference, and the rest of what it found on the Pi 5 (the desktop fell to 24 fps under load;
+  test, the pointer-to-screen latency, `lordos-sysreport bench` and the Pi 5 reference. *(2026-10-28)* Also built:
+  LordOS's own interface work as workloads (layout and paint of a fixed 1920×1080 scene with the engine's real
+  code, one core and with the paint threads, and shaping fixed paragraphs in five scripts, with the fonts built
+  into the helper; VM 116: 37.0 and 39.9 fps, 619 and 3,595 runs/s), and the helper-sandbox self-test inside
+  `lord-bench` (six tries that must fail, checked by the Stability verdict and `lordos-sysreport bench`). Left:
+  hardware video decoding, the x86 PC reference, measuring the Pi 5 with the interface workloads (its reference
+  lists them as not measured), and the rest of what it found on the Pi 5 (the desktop fell to 24 fps under load;
   the compositor's CPU weight and its real-time priority fix it on VM 116; on the Pi 5 with its monitor they take it
   to 29–30 fps and the frame's own build time under load, 15–16 ms instead of 7, is what remains to find,
   `BENCHMARK.md` "The desktop under load").

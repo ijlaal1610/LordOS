@@ -11,7 +11,7 @@ import {
   View, Text, ScrollView, Button, useTheme, useLocale, GroupBox, FormRow, Segmented, formatNumber, spacing, typeScale, fs, userDirs, wm, admin, session,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useState } from 'react';
-import { CATEGORIES, DESKTOP_CATEGORIES, categoryRatios, comparableReferences, stability, compatibilityVerdict, desktopVerdict, conditionDiffs, changes, sustainedSeries, fileName } from './perf.js';
+import { CATEGORIES, DESKTOP_CATEGORIES, ratio, categoryRatios, comparableReferences, stability, compatibilityVerdict, desktopVerdict, conditionDiffs, changes, sustainedSeries, fileName } from './perf.js';
 import { startScene } from './scene.jsx';
 import { compatibility } from './model.js';
 
@@ -71,15 +71,23 @@ function Verdict({ label, state, detail, states = 'verdictState' }) {
   );
 }
 
+// the stability verdict's text: what went wrong (or that nothing did), then what was only checked (info notes:
+// the helper sandbox held)
+function stabilityText(stab, tr) {
+  const vars = (v) => (Array.isArray(v.ids) ? { ...v, list: v.ids.map((id) => tr(`sysinfo.perf.sbx.${id}`)).join(', ') } : v);
+  const say = (ns) => ns.map((n) => tr(`sysinfo.perf.note.${n.id}`, vars(n.vars))).join(' ');
+  const warns = stab.notes.filter((n) => !n.info), infos = stab.notes.filter((n) => n.info);
+  return [warns.length ? say(warns) : tr('sysinfo.perf.note.none'), say(infos)].filter(Boolean).join(' ');
+}
+
 function Measurement({ id, res, refs, change }) {
   const t = useTheme();
   const { t: tr } = useLocale();
   const m = res.results && res.results[id];
   const skipped = res.skipped && res.skipped[id];
   const vs = refs.map((r) => {
-    const a = m && r.results[id];
-    if (!a || !(m.value > 0)) return null;
-    const x = m.lowerBetter ? a.value / m.value : m.value / a.value;
+    const x = ratio(res, r, id);
+    if (x == null) return null;
     return tr('sysinfo.perf.timesRef', { x: formatNumber(x, 2), ref: tr(`sysinfo.perf.ref.${r.id}`) });
   }).filter(Boolean).join(' · ');
   const ch = change != null && Math.abs(change) >= 0.005
@@ -230,7 +238,7 @@ function Result({ res, report }) {
           <Verdict label={tr('sysinfo.perf.v.desktop')} state={dv.state} states="deskState"
             detail={dv.notes.map((n) => tr(`sysinfo.perf.dnote.${n.id}`, Object.fromEntries(Object.entries(n.vars).map(([k, v]) => [k, formatNumber(v, 1)])))).join(' ') || tr('sysinfo.perf.dnote.none')} />
           <Verdict label={tr('sysinfo.perf.v.stability')} state={stab.state}
-            detail={stab.notes.length ? stab.notes.map((n) => tr(`sysinfo.perf.note.${n.id}`, n.vars)).join(' ') : tr('sysinfo.perf.note.none')} />
+            detail={stabilityText(stab, tr)} />
         </GroupBox>
       ) : (
         <GroupBox title={tr('sysinfo.perf.verdicts')} footer={tr('sysinfo.perf.verdictsFooter')}>
@@ -238,7 +246,7 @@ function Result({ res, report }) {
           <Verdict label={tr('sysinfo.perf.v.compatibility')} state={compat.state}
             detail={tr('sysinfo.perf.compatCount', { works: compat.count.works, limits: compat.count.limits, no: compat.count.no })} />
           <Verdict label={tr('sysinfo.perf.v.stability')} state={stab.state}
-            detail={stab.notes.length ? stab.notes.map((n) => tr(`sysinfo.perf.note.${n.id}`, n.vars)).join(' ') : tr('sysinfo.perf.note.none')} />
+            detail={stabilityText(stab, tr)} />
         </GroupBox>
       )}
       {(desktop ? DESKTOP_CATEGORIES : CATEGORIES).map((c) => (

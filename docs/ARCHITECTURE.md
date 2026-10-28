@@ -100,6 +100,7 @@ Besides the kernel and libc, only these are allowed:
 | Monocypher 4.0.2 | XChaCha20-Poly1305, Argon2id/Argon2d, BLAKE2b, ChaCha20 for the Passwords vault and the KeePass importer (approved by the user; CC0/BSD-2, one C file). **Only `lord-vault` links it**; its official test vectors run in `make test` (`PASSWORDS.md`) | vendored |
 | EFF word list, 10k common passwords | passphrase generator and the offline "breached" check (CC BY 3.0 US / MIT), embedded in `lord-vault` | `third_party/wordlists` |
 | Inter, Plus Jakarta Sans, JetBrains Mono | interface, display and terminal fonts (OFL) | `assets/fonts` |
+| Noto Sans Arabic, Devanagari, Thai and CJK SC, subset | LordBench's shaping workload (0.8.6, in development): Debian 13's fonts subset to its fixed paragraphs by `tools/gen-lbfonts.py` (fontTools, on the maintainer's machine only, not a build dependency) and built into `lord-bench` with Inter Regular, which opens no files (OFL; `BENCHMARK.md`) | `server/src/bench/fonts` |
 
 **Xwayland** (Debian's `xwayland` package, 0.8.3) is not linked by anything: it is a separate
 program that `lord-server` starts on demand for X11 apps (`WAYLAND.md`, "X11 apps (Xwayland)").

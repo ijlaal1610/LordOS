@@ -58,9 +58,11 @@ static unsigned char *map_file(const char *path, size_t *size) {
 
 static unsigned be16(const unsigned char *d, size_t n, size_t off) { return off + 2 <= n ? (unsigned)(d[off] << 8 | d[off + 1]) : 0; }
 
-static int load(Font *f, const char *path, int index) {
+/* a font already in memory (mapped: munmap it if it isn't a font) */
+static int load_bytes(Font *f, unsigned char *data, size_t size, int index, int mapped) {
     memset(f, 0, sizeof *f);
-    f->data = map_file(path, &f->size);
+    f->data = data;
+    f->size = size;
     if (!f->data) return -1;
     int off = stbtt_GetFontOffsetForIndex(f->data, index);
     if (off < 0) off = 0;
@@ -76,12 +78,19 @@ static int load(Font *f, const char *path, int index) {
         f->descent = -500;
     } else {
         otf_free(&f->otf);
-        munmap(f->data, f->size);
+        if (mapped) munmap(f->data, f->size);
         f->data = NULL;
         return -1;
     }
-    snprintf(f->path, sizeof f->path, "%s", path);
     f->index = index;
+    return 0;
+}
+
+static int load(Font *f, const char *path, int index) {
+    size_t size = 0;
+    unsigned char *data = map_file(path, &size);
+    if (load_bytes(f, data, size, index, 1)) return -1;
+    snprintf(f->path, sizeof f->path, "%s", path);
     return 0;
 }
 
@@ -96,6 +105,19 @@ int text_init(const char *dir) {
         }
     }
     nfonts = NFONTS;
+    cache_cap = 4096;
+    cache = calloc(cache_cap, sizeof *cache);
+    return cache ? 0 : -1;
+}
+
+/* LordBench's helper (bench/lbui.c), which opens no files: one interface font built into the binary
+ * fills the four Inter slots; there is no monospace or brand font (they would be opened by path). */
+int text_init_mem(const unsigned char *data, size_t size) {
+    for (int i = 0; i < NFONTS; i++)
+        if (load_bytes(&fonts[i], (unsigned char *)data, size, 0, 0)) return -1;
+    nfonts = NFONTS;
+    font_dir[0] = 0;
+    mono_font[0] = mono_font[1] = brand_font[0] = brand_font[1] = -1;
     cache_cap = 4096;
     cache = calloc(cache_cap, sizeof *cache);
     return cache ? 0 : -1;

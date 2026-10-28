@@ -214,6 +214,8 @@ const Glyph *text_glyph_id(int font, uint32_t gid, float size);
 const Glyph *text_glyph_color(int font, uint32_t gid, int max_w, int max_h);
 void  text_font_vmetrics(int font, float size, float *asc, float *desc);
 int   text_init(const char *font_dir);
+/* For LordBench's helper, which opens no files: one interface font already in memory (it must stay there) */
+int   text_init_mem(const unsigned char *data, size_t size);
 /* Weight + TEXT_MONO picks the monospaced font (JetBrains Mono) in text_measure/text_draw and in
  * lord.measureText: this way the font travels with the weight without changing the signatures. */
 #define TEXT_MONO 1000.0f

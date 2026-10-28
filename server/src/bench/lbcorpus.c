@@ -1,7 +1,8 @@
 /* lbcorpus.c — a build tool for LordBench's xz workload (lbwork.c, lb_xz): `lbcorpus text` writes a
  * fixed text of LB_CORPUS_SIZE bytes (words drawn from a fixed list with a fixed seed, so every build
  * gets the same one), and `lbcorpus header` turns its xz-compressed form on standard input into
- * build/gen/lb_corpus.h. Runs at build time only; nothing of it ships. */
+ * build/gen/lb_corpus.h. `lbcorpus embed <name>` writes standard input as a C array <name> (the fonts
+ * of build/gen/lb_fonts.h, lbui.c). Runs at build time only; nothing of it ships. */
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -54,6 +55,16 @@ int main(int argc, char **argv) {
         printf("\n};\n");
         return n ? 0 : 1;
     }
-    fprintf(stderr, "usage: lbcorpus text | header < corpus.xz\n");
+    if (argc == 3 && !strcmp(argv[1], "embed")) {
+        for (const char *c = argv[2]; *c; c++)
+            if (!((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '_')) return 2;
+        printf("static const unsigned char %s[] = {", argv[2]);
+        int c;
+        size_t n = 0;
+        while ((c = getchar()) != EOF) printf("%s%d,", n++ % 24 ? "" : "\n", c);
+        printf("\n};\n");
+        return n ? 0 : 1;
+    }
+    fprintf(stderr, "usage: lbcorpus text | header < corpus.xz | embed <name> < file\n");
     return 2;
 }

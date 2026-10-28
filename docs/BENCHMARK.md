@@ -103,7 +103,7 @@ the test:
 |---|---|---|---|
 | `sec.server-user` | §2.2 | `lord-server`'s uid ≠ 0 | — |
 | `sec.app-sandbox` | §6.4 | `Seccomp: 2`, `NoNewPrivs: 1` on an isolated app | a probe app (a system package started like any isolated app) tries to read a file outside its grant, open a socket, `ptrace`, create a user namespace and reach another app's scope; every attempt must be refused |
-| `sec.helper-sandbox` | §6.7 | — | a child of the probe app that takes `sandbox_apply_helper()` checks that a unix socket, `exec`, `fork` and the app's data folder fail (0.8.5; `lord-bench` is planned to repeat it after its own lock-in in 0.8.6) |
+| `sec.helper-sandbox` | §6.7 | — | a child of the probe app that takes `sandbox_apply_helper()` checks that a unix socket, `exec`, `fork` and the app's data folder fail (0.8.5); `lord-bench` repeats it after its own lock-in on every LordBench run, with an internet socket, a new file and a system file too, shown in Performance's Stability verdict (0.8.6, in development) |
 | `sec.landlock` | §6.4 | Landlock ABI ≥ 6 | covered by the probe app |
 | `sec.netperm` | §6.6 | `lord-netperm` running, programs attached, devices and Bluetooth programs loaded | the probe app, denied the network by a temporary rule, fails to connect to a local listener |
 | `sec.code` | §6.9 | manifest present | every loaded bundle verified in this session |
@@ -215,14 +215,54 @@ development package.
   it got the render node, no sockets, no exec, threads only). It answers only with fixed-size records
   (`LbMsg`: a measurement id, a value and its spread); lord-server checks each one (`lb_msg_valid`: the
   magic, a known kind and id, finite values in range) and writes the JSON itself. Stopping is a SIGKILL.
-- **Workloads** (`bench/lbwork.c`, `bench/lbgpu.c`), each repeated three times and reported as the
+- **Workloads** (`bench/lbwork.c`, `bench/lbui.c`, `bench/lbgpu.c`), each repeated three times and reported as the
   median with its spread (max − min), on one core and on all of them:
   - CPU: SHA-256 (`pkg/crypto.c`, with the CPU's SHA instructions when present); a 256×256
     double-precision matrix product; decompressing a fixed 2 MB text with the package engine's own xz
     decoder (`pkg/xz.c`; the text is generated at build time by `bench/lbcorpus.c` and compressed with
     `xz -9`), instead of the deflate in the design above; QuickJS running a fixed script (strings, JSON,
-    sorting, objects, a regular expression), one runtime per thread. The layout, paint and shaping
-    workloads are not built.
+    sorting, objects, a regular expression), one runtime per thread.
+  - LordOS's own interface work (`bench/lbui.c`), with the engine's real code linked into `lord-bench`
+    (`ui/node.c`, `style.c`, `layout.c`, `paint.c`, `text.c`, `canvas.c`, the shaper `otf.c`, `shape*.c`,
+    `bidi.c`; the Wayland, terminal, media and GPU hooks of `paint.c` are stubs, as in `tests/engine_test.c`):
+    - **Layout and paint** (`cpu.ui.1`, `cpu.ui.n`, frames per second): a fixed 1920×1080 scene built in C,
+      529 nodes: a translucent top bar with backdrop blur, a file manager (title bar, a 14-item sidebar, a
+      toolbar, a 40-row list with ellipsized names), a settings window with a wrapped paragraph and ten rows of
+      fields and switches, a notification with backdrop blur, a half-transparent card, a rotated badge and the
+      Dock with backdrop blur and twelve shadowed icons, over wallpaper shapes. One frame invalidates every node,
+      lays the tree out, computes the damage and paints the whole screen; the glyph, text and shadow caches stay
+      warm, as on a running desktop (one frame before the clock starts fills them). `cpu.ui.1` is everything on
+      one core; `cpu.ui.n` the same frames with the paint's row-local loops split in bands over up to 8 threads
+      (`canvas_parallel`, the same pieces as lord-server's paint threads, `par.c`, without their real-time
+      priority), so it measures what the compositor's own threads gain, not N independent copies: the engine
+      keeps one tree per process.
+    - **Shaping** (`cpu.shape.1`, `cpu.shape.n`, runs per second, summed over the threads): one run shapes five
+      fixed paragraphs (`bench/lbtext.h`: Latin with kerning, ligatures and accents; Arabic with marks, `lam-alef`
+      and embedded left-to-right words and numbers; Devanagari with conjuncts, reph and reordered vowel signs; Thai
+      with stacked marks and SARA AM; Chinese with kana and full-width punctuation), each as the first step of the
+      engine's text layout (`textlayout.c`): bidi levels, scripts with the common characters joining their
+      neighbours, each character's font (Inter if it has the character, else its script's), each run of one
+      font, script and direction through `shape_run` (GSUB, the Arabic, Indic and Thai shapers, GPOS), then the
+      visual order of the paragraph as one line. Each thread has its own shaper and font tables.
+    - **No files.** The scene is fixed data and the fonts are bytes inside the binary (`build/gen/lb_fonts.h`,
+      made at build time by `bench/lbcorpus.c`): LordOS's Inter Regular (the scene draws every weight with it and
+      uses only characters it covers, so the engine never looks for a fallback font), and Debian 13's Noto Sans Arabic,
+      Devanagari, Thai and CJK SC subset to exactly the characters of those paragraphs and their decompositions,
+      with every layout feature and lookup they reach (`tools/gen-lbfonts.py`, run by hand when a paragraph
+      changes; the results are committed in `server/src/bench/fonts` with their OFL licence, so every build shapes
+      with the same bytes; Inter is pinned by its SHA-256 in `mk/lordbench.mk`, `LB_INTER_SHA256`, and a new Inter
+      fails the build until the references are measured again). With each subset `build/shape-test` gives the
+      same glyph positions as with the full system font, but it is not the same work: the subsets shape about
+      12 % faster than the full fonts (fewer lookups, smaller coverage tables; VM 116, 587–631 against 514–560
+      runs/s on one core), so the workload is comparable only with itself. Line breaking is not part of the run: the engine's Thai word breaker reads libthai's dictionary
+      from a file. A trace of a run shows these workloads open nothing; the helper's sandbox, seccomp list and fds
+      are unchanged. `lord-bench` grows from 1.48 to 2.42 MB of code (about 0.63 MB of fonts) and 0.46 MB of
+      static data.
+    - **They measure LordOS's engine together with the machine.** An optimisation of `paint.c`, `layout.c` or the
+      shaper changes these four numbers on the same hardware. So a reference value of one of them carries the
+      LordOS version it was measured with (`"lordos"` in `apps/sysinfo/references.js`; `ENGINE_IDS` in
+      `perf.js`) and gives a "×N" only to a result of that same version; a release re-measures them on the
+      reference machines.
   - Memory: copy and triad bandwidth on all cores (32 MB arrays in Quick, 128 MB in Full) and the
     latency of a dependent pointer chase over 64 MB.
   - GPU: OpenGL ES 2 offscreen on the render node (GBM + EGL, a surfaceless context, a 1920×1080
@@ -289,10 +329,29 @@ development package.
   throttling is recorded with its time and temperature instead. The kind of disk under the scratch file
   is recorded (NVMe, SD/eMMC, SSD, HDD, USB, virtual, or RAM in the live session). Unit tests on fake
   sysfs trees (`tests/lordbench_test.c`): an x86 laptop on battery, a Raspberry Pi 5.
+- **Helper-sandbox self-test** (`sec.helper-sandbox`, repeated inside `lord-bench`, `sandbox_tries` in
+  `bench/lbmain.c`): right after `sandbox_apply_helper` and before any work, in every mode, `lord-bench` tries six
+  things that must fail: the Sandbox Probe's helper tries (`app/probe.c`) with its own versions of the data-folder
+  one, plus an internet socket and a system file. A unix socket (`helperSocket`), an internet socket
+  (`helperInet`), `execve` of `/usr/bin/true` (`helperExec`), `fork` (`helperFork`), a new unnamed file in `/tmp`
+  (`helperNewFile`, `O_TMPFILE`: lord-bench has no writable folder) and reading `/etc/passwd` (`helperRead`). None
+  could change anything if it worked: exec is called with an invalid environment pointer, so an exec the sandbox
+  let through fails with `EFAULT` before anything is replaced (and counts as not refused); a socket or the unnamed
+  file is closed at once; a forked child only exits. Each try is one fixed record (`LB_MSG_SANDBOX`: the try, refused
+  or not, its errno; `lb_msg_valid` checks all three), the result lists them as `sandboxTries`, the Stability
+  verdict fails a run where one got through or is missing and otherwise adds "refused all 6" without changing the
+  state (results from before have none); the tries are named to the user in their language ("run a program", …).
+  On a kernel without Landlock (no `SB_LANDLOCK_FS` in the sandbox mask) the two file tries are expected to work:
+  that is the kernel's limit, already recorded in the mask, so they make the verdict warn ("Without Landlock in
+  this kernel the benchmark helper could still: …"), not fail. `lordos-sysreport bench` checks the same six by
+  name: "helper sandbox: N of 6 tries refused", a `NOT REFUSED: <id>` line for each one that worked or is
+  missing (and "allowed without Landlock" for the file tries on such a kernel). On VM 116 all six were refused:
+  `EPERM` from seccomp for the sockets, exec and fork, `EACCES` from Landlock for the two files.
 - **The result** (`~/.local/state/lordos/lordbench.json`, the previous one kept as
   `lordbench-prev.json`; a refused run keeps the last result): LordBench's version, the mode, status and
   stop reason, LordOS and kernel versions, live or installed, threads, the quiet wait, conditions before
-  and after, the disk kind, the GPU kind (hardware, virtual or software), the sandbox mask, this
+  and after, the disk kind, the GPU kind (hardware, virtual or software), the sandbox mask and the
+  helper-sandbox self-test's tries, this
   session's composition and each active display's connector, mode, refresh, scale and rotation (no
   names, vendors or identities), every measurement with its unit, what was skipped and why, and the
   sustained samples. `lord.sysinfo.bench.boots()` groups lord-sessiond's boot history by version
@@ -301,11 +360,14 @@ development package.
   `server/tests/sysinfo_perf_test.mjs`): Quick and Full, progress by measurement, then the three verdicts
   (performance as "×N" per category against each reference measured with the same LordBench version;
   compatibility counted from the Compatibility tab; stability from the status, failed measurements,
-  throttling, under-voltage, a sustained drop above 10 % and a busy start), every measurement with its
+  throttling, under-voltage, a sustained drop above 10 %, a busy start and the helper-sandbox self-test),
+  every measurement with its
   "×N" and its change against the previous run, the conditions that differ from the previous run, the
   conditions, the boot times per version, and **Save to Documents** (the JSON). Nothing is sent.
 - **Reference machines** (`apps/sysinfo/references.js`): VM 116 and the Raspberry Pi 5 16 GB, each a Full run
-  copied from the `lordbench.json` it wrote (numbers below). The modest x86 PC is added when measured.
+  copied from the `lordbench.json` it wrote (numbers below). A measurement added after a machine's run is listed in
+  its `notMeasured` until it is measured again: VM 116's layout, paint and shaping numbers come from a later Full
+  run; the Pi 5 has none yet. The modest x86 PC is added when measured.
 
 VM 116, Full with 30 s sustained, LordBench 1 (2026-10-27, 159 s): SHA-256 166 MB/s on one core and 984 MB/s on
 eight; matrix product 3.3 and 19.9 GFLOP/s; xz 60 and 363 MB/s; QuickJS 57 and 336 runs/s; memory copy
@@ -313,6 +375,18 @@ eight; matrix product 3.3 and 19.9 GFLOP/s; xz 60 and 363 MB/s; QuickJS 57 and 3
 8 layers 22.9 fps; virtio disk: 378 MB/s write, 517 MB/s read, 6,256 random reads/s; sustained 19.6 → 19.8
 GFLOP/s; software video decoding H.264 1080p 399 fps, HEVC 1080p 385, VP9 1080p 215, AV1 1080p 201, H.264 4K
 76, HEVC 4K 102; encoders H.264 106 fps and VP8 54 fps at 1080p. A Quick run took 33 s.
+
+VM 116, the interface workloads, Full without sustained or storage, LordBench 1 (2026-10-28, 142 s; its other
+measurements were within 4 % of the run above): layout and paint 37.0 fps on one core (spread 0.2) and 39.9 fps
+with the paint threads (spread 1.3); shaping 619 runs/s on one core and 3,595 runs/s on eight (5.8×). A frame of
+the scene takes about 28 ms, almost all of it paint (the layout of the 529 nodes with every node invalidated takes
+0.15 ms): llvmpipe is not involved, and only the big row-local loops (fills, shadow masks, blits of 512×512 pixels
+or more) are split into bands, so the paint threads gain about 8 %. Three Quick runs from a terminal gave
+35.8–36.2 fps, 40.3–40.8 fps, 625–629 runs/s and 3,565–3,596 runs/s; a Quick run from a terminal now takes 46 s
+(39 s before). After the review fixes (the shaping threads' shared script table set before they start, a clean
+paint pool for each run; ThreadSanitizer finds nothing in `lb_ui` and `lb_shape` repeated) a fourth Quick run gave
+36.4 fps, 40.6 fps, 631 runs/s and 3,607 runs/s, in 46 s, with all six sandbox tries refused. The reference values
+carry the LordOS version that run reported (`0.8.5-beta`, this branch's `package.json`).
 
 Raspberry Pi 5 16 GB, Full with 180 s sustained, LordBench 1 (2026-10-27, 339 s): SHA-256 933 MB/s on one core
 and 3,693 MB/s on four (the CPU's SHA instructions); matrix product 2.26 and 5.99 GFLOP/s; xz 67 and 254 MB/s;
@@ -446,12 +520,14 @@ then shows it). It is installed as `/usr/lib/lordos/bin/lordos-sysreport` with `
 `lordos-fetch` as links, because `lbrun` only starts the `lord-bench` and `lord-media` next to its own binary
 (`/proc/self/exe`; a group- or world-writable helper is refused, so a build tree made with umask 002 needs `chmod
 g-w`). Without a session the helpers get no cgroup scope, and the desktop test needs a session. One line per
-measurement (or the JSON with `--json`); exit 0 when the run finished. On VM 116 a quick run took 39 s.
+measurement (or the JSON with `--json`); exit 0 when the run finished, 1 when it didn't, and 3 when it finished
+but the helper-sandbox self-test let a try through or one is missing (text output only; with `--json` the exit
+code is 0 or 1 and the tries are in `sandboxTries`). On VM 116 a quick run took 46 s.
 
 Not built yet: hardware video decoding (no test machine has VA-API, and the Pi 5's HEVC decoder needs FFmpeg's
-`v4l2request`); the layout, paint and shaping CPU workloads; repeating the helper-sandbox self-test inside
-`lord-bench` (`sec.helper-sandbox`); detecting the Pi's firmware throttling during a run on kernels that don't
-expose it; and the x86 PC reference.
+`v4l2request`); detecting the Pi's firmware throttling during a run on kernels that don't expose it; measuring the
+Pi 5 with the layout, paint and shaping workloads (its reference lists them as not measured); and the x86 PC
+reference.
 
 ## 0.8.7 — Community hardware reports
 

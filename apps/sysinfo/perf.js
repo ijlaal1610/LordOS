@@ -7,7 +7,8 @@
 import { REFERENCES } from './references.js';
 
 export const CATEGORIES = [
-  { id: 'cpu', ids: ['cpu.sha256.1', 'cpu.sha256.n', 'cpu.matmul.1', 'cpu.matmul.n', 'cpu.xz.1', 'cpu.xz.n', 'cpu.js.1', 'cpu.js.n'] },
+  { id: 'cpu', ids: ['cpu.sha256.1', 'cpu.sha256.n', 'cpu.matmul.1', 'cpu.matmul.n', 'cpu.xz.1', 'cpu.xz.n', 'cpu.js.1', 'cpu.js.n',
+    'cpu.ui.1', 'cpu.ui.n', 'cpu.shape.1', 'cpu.shape.n'] },
   { id: 'memory', ids: ['mem.copy', 'mem.triad', 'mem.latency'] },
   { id: 'gpu', ids: ['gpu.scene', 'gpu.fill', 'gpu.upload', 'gpu.layers'] },
   { id: 'storage', ids: ['disk.seqwrite', 'disk.seqread', 'disk.random4k'] },
@@ -20,17 +21,29 @@ export const DESKTOP_CATEGORIES = [
   { id: 'compositor', ids: ['comp.fps', 'comp.p50', 'comp.p99', 'comp.missed', 'comp.in50', 'comp.in99'] },
   { id: 'desktop', ids: ['desk.fps', 'desk.p50', 'desk.p99', 'desk.missed', 'desk.in50', 'desk.in99', 'desk.work'] },
 ];
+// the helper-sandbox self-test lord-bench makes after locking itself in (server/src/bench/lbproto.h, LB_SBX_*):
+// every one of these must be refused
+export const SANDBOX_TRIES = ['helperSocket', 'helperInet', 'helperExec', 'helperFork', 'helperNewFile', 'helperRead'];
+// the tries only Landlock refuses, and its bit in the sandbox mask (server/src/sec/sandbox.h, SB_LANDLOCK_FS)
+export const LANDLOCK_TRIES = ['helperNewFile', 'helperRead'];
+const SB_LANDLOCK_FS = 2;
 export const MISSED_WARN = 5;           // % of frames shown late before the verdict warns
 export const MISSED_FAIL = 25;
 export const INPUT_WARN_FRAMES = 3;     // pointer-to-screen p99 above this many refresh periods warns
 
 export { REFERENCES };
 
+// the measurements that time LordOS's own engine code (layout, paint, shaping) with the machine: a reference
+// value of one carries the LordOS version it was measured with ("lordos"), and is used only for a result of that
+// same version, so an engine change (or a new interface font) never shows up as a faster or slower machine
+export const ENGINE_IDS = ['cpu.ui.1', 'cpu.ui.n', 'cpu.shape.1', 'cpu.shape.n'];
+
 // ×N of the reference for one measurement (latency: the reference's time over ours); null if either
-// is missing
+// is missing, or if the reference value belongs to another LordOS version (ENGINE_IDS)
 export function ratio(res, ref, id) {
   const a = res && res.results && res.results[id], b = ref && ref.results && ref.results[id];
   if (!a || !b || !(a.value > 0) || !(b.value > 0)) return null;
+  if (b.lordos != null && b.lordos !== res.lordos) return null;
   return a.lowerBetter ? b.value / a.value : a.value / b.value;
 }
 
@@ -73,6 +86,21 @@ export function stability(res) {
   }
   if (res.sustained && res.sustained.throttleAtS != null) warn('sustainedThrottle', { s: res.sustained.throttleAtS, temp: res.sustained.throttleTempC });
   if (res.quiet && !res.quiet.quiet) warn('notQuiet', { pct: Math.round(res.quiet.busyPct) });
+  // the helper's own sandbox (sec.helper-sandbox): a try that wasn't refused, or one missing, fails the run;
+  // all refused is said too (info: it doesn't change the state). Results from before it was built have none.
+  // On a kernel without Landlock (the sandbox mask has no SB_LANDLOCK_FS) the two tries only Landlock refuses
+  // are expected to work: that is the kernel's limit, already in the mask, so it warns instead of failing.
+  // The notes carry ids (vars.ids); the page translates each one (sysinfo.perf.sbx.<id>).
+  if (Array.isArray(res.sandboxTries)) {
+    const by = Object.fromEntries(res.sandboxTries.filter((t) => t && typeof t.id === 'string').map((t) => [t.id, t]));
+    const leaks = SANDBOX_TRIES.filter((id) => !by[id] || by[id].denied !== true);
+    const noLandlock = typeof res.sandbox === 'number' && !(res.sandbox & SB_LANDLOCK_FS);
+    const partial = noLandlock ? leaks.filter((id) => LANDLOCK_TRIES.includes(id) && by[id]) : [];
+    const real = leaks.filter((id) => !partial.includes(id));
+    if (real.length) { state = 'fail'; notes.push({ id: 'sandboxLeaks', vars: { ids: real } }); }
+    if (partial.length) warn('sandboxPartial', { ids: partial });
+    if (!leaks.length) notes.push({ id: 'sandboxHeld', vars: { count: SANDBOX_TRIES.length }, info: true });
+  }
   return { state, notes };
 }
 

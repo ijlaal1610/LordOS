@@ -39,6 +39,10 @@ enum {
     LB_CPU_XZN,                         /* the same on all cores, MB/s */
     LB_CPU_JS1,                         /* QuickJS running a fixed script, one core, runs/s */
     LB_CPU_JSN,                         /* the same on all cores, runs/s */
+    LB_CPU_UI1,                         /* the UI engine's layout and paint of a fixed 1920×1080 scene, one core, frames/s (lbui.h) */
+    LB_CPU_UIN,                         /* the same with the paint's row bands on up to 8 threads (as lord-server's paint threads), frames/s */
+    LB_CPU_SHAPE1,                      /* shaping fixed paragraphs in five scripts (lbtext.h), one core, runs/s */
+    LB_CPU_SHAPEN,                      /* the same on all cores, runs/s */
     LB_MEM_COPY,                        /* memory bandwidth, copy, GB/s */
     LB_MEM_TRIAD,                       /* memory bandwidth, triad, GB/s */
     LB_MEM_LAT,                         /* memory latency, a pointer chase over 64 MB, ns */
@@ -90,6 +94,23 @@ enum {
     LB_MSG_SAMPLE,                      /* sustained: value = GFLOP/s of the last interval, aux = seconds since start */
     LB_MSG_DONE,                        /* the run ended; aux = the sandbox mask */
     LB_MSG_GPUINFO,                     /* value = 0 hardware, 1 virtual, 2 software (bench_gl_kind) */
+    LB_MSG_SANDBOX,                     /* id: an LB_SBX_* try, value 1 refused (0 it worked), aux = its errno */
+};
+
+/* The helper-sandbox self-test (sec.helper-sandbox; the same tries as the Sandbox Probe's helper child,
+ * app/probe.c), made by lord-bench right after sandbox_apply_helper and before any work. Every one must
+ * fail, and none could change anything if it didn't: a socket or a file that opened is closed at once
+ * (the file is unnamed, O_TMPFILE), exec is called with an invalid environment pointer (an exec the
+ * sandbox allows fails with EFAULT before anything is replaced), and a fork that worked would only
+ * _exit(0) in the child. */
+enum {
+    LB_SBX_SOCKET = 0,                  /* socket(AF_UNIX): no new sockets (a unix one could reach the session bus) */
+    LB_SBX_INET,                        /* socket(AF_INET): no network */
+    LB_SBX_EXEC,                        /* execve("/usr/bin/true"): no programs */
+    LB_SBX_FORK,                        /* fork(): threads only */
+    LB_SBX_NEWFILE,                     /* O_TMPFILE in /tmp: no writable folder */
+    LB_SBX_READ,                        /* /etc/passwd: no files outside its read-only system folders */
+    LB_SBX_COUNT
 };
 enum { LB_SKIP_NODEV = 1, LB_SKIP_FAILED, LB_SKIP_MODE, LB_SKIP_MEMORY,
        LB_SKIP_NOCODEC,                 /* video: this system's FFmpeg has no encoder or decoder for it */
@@ -101,9 +122,11 @@ typedef struct {
 } LbMsg;
 
 const char *lb_name(int id);            /* "cpu.sha256.1", …; NULL out of range */
+const char *lb_sbx_name(int id);        /* "helperSocket", …; NULL out of range */
 const char *lb_unit(int id);            /* "MB/s", "GFLOP/s", "runs/s", "GB/s", "ns", "fps", "Mpx/s", "IOPS", "ms", "%" */
 int         lb_lower_better(int id);    /* 1 for latency, frame times and missed frames */
-/* 1 if a record from lord-bench is acceptable: magic, kind, an id lord-bench measures, finite values in range */
+/* 1 if a record from lord-bench is acceptable: magic, kind, an id lord-bench measures (or a sandbox try),
+ * finite values in range */
 int         lb_msg_valid(const LbMsg *m);
 
 #endif

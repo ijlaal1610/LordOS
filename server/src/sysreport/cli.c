@@ -16,7 +16,9 @@
 #include "sysreport.h"
 #include "fetch.h"
 #include "lord_version.h"
+#include "../bench/lbproto.h"
 #include "../bench/lbrun.h"
+#include "../sec/sandbox.h"
 #include "../sec/json.h"
 
 #include <signal.h>
@@ -46,11 +48,18 @@ static int usage(int fetch) {
 static volatile sig_atomic_t interrupted;
 static void on_signal(int sig) { (void)sig; interrupted = 1; }
 
-/* One line per measurement and per skipped one, from the result JSON lbrun built. */
-static void bench_print(const char *json) {
+static int json_has_try(const JVal *tries, const char *name) {
+    for (const JVal *t = tries->kid; t; t = t->next) { const char *id = json_str(t, "id"); if (id && !strcmp(id, name)) return 1; }
+    return 0;
+}
+
+/* One line per measurement and per skipped one, from the result JSON lbrun built. Returns how many of the
+ * helper-sandbox self-test's tries were not refused (a missing one counts; the file tries on a kernel without
+ * Landlock don't), 0 for a result without the test. */
+static int bench_print(const char *json) {
     JDoc d;
     char err[96];
-    if (json_parse(json, strlen(json), &d, err, sizeof err)) { puts(json); return; }
+    if (json_parse(json, strlen(json), &d, err, sizeof err)) { puts(json); return 0; }
     const JVal *r = json_get(d.root, "result");
     const char *status = json_str(r, "status"), *stop = json_str(r, "stopReason");
     printf("LordBench %d, %s test: %s in %.0f s (LordOS %s, %s, %.0f threads)\n", (int)json_num(r, "lordbench", 0),
@@ -70,7 +79,31 @@ static void bench_print(const char *json) {
         printf("  %-18s %s\n", m->key, m->type == J_STR ? m->str : "");
     }
     if (only_full) printf("(%d more with --full)\n", only_full);
+    /* the helper-sandbox self-test lord-bench made after locking itself in: every one of the LB_SBX_COUNT tries
+     * must be there and refused, as the Stability verdict checks (apps/sysinfo/perf.js) */
+    const JVal *sb = json_get(r, "sandboxTries");
+    int leaks = 0;
+    if (sb && sb->type == J_ARR) {
+        int denied[LB_SBX_COUNT] = { 0 };
+        for (int i = 0; i < LB_SBX_COUNT; i++)
+            for (const JVal *t = sb->kid; t; t = t->next) {
+                const char *id = json_str(t, "id");
+                if (id && !strcmp(id, lb_sbx_name(i))) { denied[i] = json_bool(t, "denied", 0); break; }
+            }
+        /* without Landlock in the kernel (no SB_LANDLOCK_FS in the mask) the two file tries are expected to work:
+         * said, not counted, as the verdict only warns for them */
+        int no_landlock = !((int)json_num(r, "sandbox", 0) & SB_LANDLOCK_FS), refused = 0;
+        for (int i = 0; i < LB_SBX_COUNT; i++) refused += denied[i];
+        printf("helper sandbox: %d of %d tries refused\n", refused, LB_SBX_COUNT);
+        for (int i = 0; i < LB_SBX_COUNT; i++) {
+            if (denied[i]) continue;
+            int file_try = i == LB_SBX_NEWFILE || i == LB_SBX_READ;
+            if (no_landlock && file_try && json_has_try(sb, lb_sbx_name(i))) printf("  allowed without Landlock: %s\n", lb_sbx_name(i));
+            else { printf("  NOT REFUSED: %s\n", lb_sbx_name(i)); leaks++; }
+        }
+    }
     json_free(&d);
+    return leaks;
 }
 
 static int bench(int full, int json) {
@@ -90,11 +123,12 @@ static int bench(int full, int json) {
         char *p = lbrun_poll();
         if (!p) return 1;
         if (!strstr(p, "\"state\":\"waiting\"") && !strstr(p, "\"state\":\"running\"")) {
+            int leaks = 0;
             if (json) puts(p);
-            else bench_print(p);
+            else leaks = bench_print(p);
             int ok = strstr(p, "\"status\":\"done\"") != NULL;
             free(p);
-            return ok ? 0 : 1;
+            return !ok ? 1 : leaks ? 3 : 0;     /* 3: finished, but the helper sandbox let a try through */
         }
         const char *st = strstr(p, "\"step\":\"");
         if (st && isatty(2)) {                      /* progress on the terminal only */

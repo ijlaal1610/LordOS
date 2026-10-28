@@ -1,6 +1,7 @@
 // LordBench's reference machines (docs/BENCHMARK.md, "Results without one magic number"): a result is
 // shown as "×N" of each one measured with the same LordBench version. Every entry is a real Full run,
-// copied from the lordbench.json it wrote, with the machine described in sysinfo.perf.ref.<id>.
+// copied from the lordbench.json it wrote, with the machine described in sysinfo.perf.ref.<id>. A measurement
+// added to LordBench after a reference's run is listed in its notMeasured until that machine is measured again.
 // Planned: a modest x86 PC; it is added when it has been measured.
 export const REFERENCES = [
   {
@@ -22,6 +23,12 @@ export const REFERENCES = [
       'video.vp9.1080': { value: 215.005 }, 'video.av1.1080': { value: 200.887 },
       'video.h264.2160': { value: 75.624 }, 'video.hevc.2160': { value: 102.252 },
       'video.enc.h264': { value: 106.12 }, 'video.enc.vp8': { value: 54.175 },
+      // the layout, paint and shaping workloads, from a later Full run of the same machine (2026-10-28, no
+      // sustained or storage part; its other measurements were within 4 % of the ones above). They time LordOS's
+      // engine too, so each carries the LordOS version the run reported and is compared only with results of that
+      // version (perf.js ENGINE_IDS): measure them again for every release
+      'cpu.ui.1': { value: 36.9702, lordos: '0.8.5-beta' }, 'cpu.ui.n': { value: 39.9302, lordos: '0.8.5-beta' },
+      'cpu.shape.1': { value: 618.791, lordos: '0.8.5-beta' }, 'cpu.shape.n': { value: 3595.11, lordos: '0.8.5-beta' },
     },
   },
   {
@@ -45,5 +52,6 @@ export const REFERENCES = [
       'video.h264.2160': { value: 55.007 }, 'video.hevc.2160': { value: 57.213 },
       'video.enc.h264': { value: 75.332 }, 'video.enc.vp8': { value: 54.526 },
     },
+    notMeasured: ['cpu.ui.1', 'cpu.ui.n', 'cpu.shape.1', 'cpu.shape.n'],
   },
 ];

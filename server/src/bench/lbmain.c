@@ -5,16 +5,19 @@
  * most two fds lord-server opened: the GPU's render node and a scratch file for the storage test. Then,
  * before any work, it locks itself in with sandbox_apply_helper (sec/sandbox.c, the same as
  * lord-doc's and lord-media's): no network, no exec, no new files, read-only system libraries for Mesa,
- * DRM ioctls only on the fd it was given. It answers only with fixed-size LbMsg records (lbproto.h);
- * lord-server checks each one, watches temperatures and throttling, and kills it to stop. */
+ * DRM ioctls only on the fd it was given. Right after that it checks its own lock-in (the helper-sandbox
+ * self-test, sandbox_tries: things that must fail). It answers only with fixed-size LbMsg records
+ * (lbproto.h); lord-server checks each one, watches temperatures and throttling, and kills it to stop. */
 #include "lbproto.h"
 #include "lbwork.h"
+#include "lbui.h"
 #ifdef LORD_GPU
 #include "lbgpu.h"
 #endif
 #include "../sec/sandbox.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +26,7 @@
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #define SOCK 3
@@ -51,6 +55,8 @@ static double w_sha(void *c)   { Ctx *x = c; return lb_sha256(x->threads, x->sec
 static double w_mat(void *c)   { Ctx *x = c; return lb_matmul(x->threads, x->secs); }
 static double w_xz(void *c)    { Ctx *x = c; return lb_xz(x->threads, x->secs); }
 static double w_js(void *c)    { Ctx *x = c; return lb_js(x->threads, x->secs); }
+static double w_ui(void *c)    { Ctx *x = c; return lb_ui(x->threads, x->secs); }
+static double w_shape(void *c) { Ctx *x = c; return lb_shape(x->threads, x->secs); }
 static double w_copy(void *c)  { Ctx *x = c; return lb_mem_copy(x->threads, x->mb, x->secs); }
 static double w_triad(void *c) { Ctx *x = c; return lb_mem_triad(x->threads, x->mb, x->secs); }
 static double w_lat(void *c)   { Ctx *x = c; return lb_mem_latency(x->mb, x->hops); }
@@ -67,6 +73,39 @@ static void on_sample(double gflops, double t_s, void *ctx) {
     if (!s->n++) s->first = gflops;
     s->last = gflops;
     send_msg(LB_MSG_SAMPLE, 0, gflops, t_s);
+}
+
+/* ---- the helper-sandbox self-test (lbproto.h, LB_SBX_*): each try must fail; none changes anything ---- */
+
+static void sbx_put(int id, int refused, int err) { send_msg(LB_MSG_SANDBOX, id, refused, refused && err > 0 && err < 4096 ? err : 0); }
+static void sbx_fd(int id, int fd) {
+    int e = errno;
+    sbx_put(id, fd < 0, e);
+    if (fd >= 0) close(fd);                     /* it worked: an unnamed file or an unconnected socket, gone */
+}
+
+static void sandbox_tries(void) {
+    errno = 0;
+    sbx_fd(LB_SBX_SOCKET, socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0));
+    errno = 0;
+    sbx_fd(LB_SBX_INET, socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
+    /* an invalid environment pointer: an exec the sandbox let through fails with EFAULT before anything is
+     * replaced, so EFAULT means it was not refused */
+    static char *const argv[] = { (char *)"/usr/bin/true", NULL };
+    errno = 0;
+    long r = syscall(SYS_execve, "/usr/bin/true", argv, (char *const *)1);
+    int e = errno;
+    sbx_put(LB_SBX_EXEC, r < 0 && e != EFAULT, e);
+    errno = 0;
+    pid_t pid = fork();
+    e = errno;
+    if (pid == 0) _exit(0);
+    if (pid > 0) waitpid(pid, NULL, 0);
+    sbx_put(LB_SBX_FORK, pid < 0, e);
+    errno = 0;
+    sbx_fd(LB_SBX_NEWFILE, open("/tmp", O_TMPFILE | O_WRONLY | O_CLOEXEC, 0600));
+    errno = 0;
+    sbx_fd(LB_SBX_READ, open("/etc/passwd", O_RDONLY | O_CLOEXEC));
 }
 
 static void skip_all(int from, int to, int why) {
@@ -129,6 +168,7 @@ int main(int argc, char **argv) {
                              .allow_ioctl_classes = gpu_fd >= 0 ? SANDBOX_IOCTL_DRM | SANDBOX_IOCTL_DMABUF : 0,
                              .mem_max_mb = 2048 };
     int mask = sandbox_apply_helper(&cfg);
+    sandbox_tries();
 
     if (go.mode == LB_MODE_LOAD) {              /* desktop impact: only the load, while lord-server records frames */
         Sus s = { 0, 0, 0 };
@@ -147,6 +187,10 @@ int main(int argc, char **argv) {
     measure(LB_CPU_XZN, reps, w_xz, &all);
     measure(LB_CPU_JS1, reps, w_js, &one);
     measure(LB_CPU_JSN, reps, w_js, &all);
+    measure(LB_CPU_UI1, reps, w_ui, &one);
+    measure(LB_CPU_UIN, reps, w_ui, &all);
+    measure(LB_CPU_SHAPE1, reps, w_shape, &one);
+    measure(LB_CPU_SHAPEN, reps, w_shape, &all);
     Ctx mem = { threads, full ? 1.5 : 0.5, full ? 128 : 32, 0 };
     measure(LB_MEM_COPY, reps, w_copy, &mem);
     measure(LB_MEM_TRIAD, reps, w_triad, &mem);

@@ -108,6 +108,7 @@ memory from a process's RSS (§7.1) and points to versioned results (§11.5, `do
 | 7.4 | Pi 5: build 1 min 02 s, tests 23/0/0, NEON 2.0–2.3×, idle 36 MB, fan behaviour | Measured once on the Pi | Measured |
 | 7.4 | — | New, 0.8.6 in development: with a 1920×1080 60 Hz monitor, login screen 5.99 s after the kernel starts; desktop 59.4 fps alone (p99 13.0 ms, 1 % late) and 24 fps under a low-priority all-core load (96.5 % late); 3 minutes sustained at 5.9 GFLOP/s, 55.6 °C; software video decoding per codec. LordBench on the Pi (`BENCHMARK.md`, "Built so far") | Measured with LordBench (one run each); the load result led to a fix (compositor CPU weight: 31–33 % → 7–8 % late without the monitor), to re-measure on the monitor |
 | 7.5 | No measurements on real PCs | — | **Untested** |
+| 7.5 | — | New, 0.8.6 in development: LordBench's interface workloads on VM 116 (layout and paint 37.0/39.9 fps, shaping 619/3,595 runs/s; compared only within the same LordOS version) and the helper-sandbox self-test (six tries, all refused on VM 116: seccomp `EPERM`, Landlock `EACCES`) (`BENCHMARK.md`, "Built so far") | Measured with LordBench (one Full and three Quick runs); not yet on the Pi 5 |
 
 ## §10–§11 Limits and verification
 
@@ -142,7 +143,7 @@ State in the 0.8.5 edition (`web/content/paper/paper.en.md`, checked 2026-10-26)
 | Gap | Covers | Plan |
 |---|---|---|
 | A denied connection, tried on the user's machine | §6.6 effective | An app with network access and a temporary rule (Checks) |
-| Repeatable performance numbers | §7 | LordBench (0.8.6, in development: CPU, memory, GPU offscreen, storage, sustained load, software video decoding and encoders, the desktop's frame times and pointer-to-screen latency alone and under load (and the compositor's CPU weight and real-time priority they led to), the boot time per version, the N-boot test and `lordos-sysreport bench` are built, with VM 116 and the Pi 5 as references, `BENCHMARK.md` "Built so far"; idle memory and CPU, hardware video decoding and app start are not) |
+| Repeatable performance numbers | §7 | LordBench (0.8.6, in development: CPU, memory, GPU offscreen, storage, sustained load, software video decoding and encoders, the desktop's frame times and pointer-to-screen latency alone and under load (and the compositor's CPU weight and real-time priority they led to), the boot time per version, the N-boot test, `lordos-sysreport bench`, the interface layout/paint and shaping workloads and the helper-sandbox self-test are built, with VM 116 and the Pi 5 as references, `BENCHMARK.md` "Built so far"; idle memory and CPU, hardware video decoding and app start are not) |
 | Rendering, 3D and video on every GPU | §3.2, §7.2–7.3 | The visual test bench below |
 | Every key, the mouse, touchpads, gamepads, and the Wayland protocols | §3.3–§3.4 | The visual test bench below |
 | Real hardware | §10.2 | Reports from System Information (0.8.7) |
