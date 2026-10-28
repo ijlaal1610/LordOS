@@ -143,7 +143,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   new lord-sessiond (main thread `SCHED_RR|SCHED_RESET_ON_FORK`, 7 paint threads `SCHED_RR`, every other thread and
   child `SCHED_OTHER` with a limit of 0). LordBench's desktop test under load on VM 116, two runs each: late frames
   2.65–2.92 % → 0.28 %, frame build p99 16.3–16.8 → 11.0–12.7 ms, pointer to screen p99 31.0–32.3 → 24.7–25.5 ms
-  (as without load); the load got the same CPU time. Not yet measured on the Pi 5.
+  (as without load); the load got the same CPU time. On the Pi 5 with its monitor (GPU composition), two runs: under
+  load 24.0 → 28.9–30.5 fps, frame build p50 20.1 → 15.4–16.2 ms, the main thread's wait for a CPU down to about
+  0.07 ms per second; still 94–98 % late, because under the load a frame takes 15–16 ms of the main thread's own CPU
+  time to build (7 ms alone) and misses the 16.7 ms refresh. That cause is not found yet.
 - **LordBench on the Raspberry Pi 5 measured no GPU:** inside `lord-bench`'s sandbox Mesa's loader could not identify
   the V3D render node ("failed to retrieve device information") and every GPU measurement was skipped. The sandbox
   now also allows reading `/sys/firmware/devicetree` and `/dev/dri` (read-only; the GPU is still reached only

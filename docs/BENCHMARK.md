@@ -407,7 +407,23 @@ runs each:
 | + real-time priority | 11.0–12.7 ms | 0.28 % | 13.3–14.3 ms | 24.7–25.5 ms | 90.4–91.0 s |
 
 Under load the desktop now measures as it does alone (pointer p99 about 25 ms alone), and the load got the same CPU
-time. **Not yet measured on the Pi 5** (it needs the new package installed), with or without its monitor.
+time.
+
+**On the Pi 5 with its monitor (GPU composition, 1920×1080 at 60 Hz)**, the installed session with both changes
+(package 0.8.6-dev3, logged in automatically), two runs: the session log says `compositor at real-time priority 2
+(SCHED_RR, 4 threads)`, the `server` leaf has weight 1000, and its children run `SCHED_OTHER` with a limit of 0.
+
+| Pi 5, monitor, under load | Frames shown | Build p50 | Build p99 | Late | Pointer to screen p50 | p99 |
+|---|---|---|---|---|---|---|
+| 0.8.5 (2026-10-27) | 24.0 fps | 20.1 ms | 29.3 ms | 96.5 % | — | — |
+| weight + real-time priority | 28.9–30.5 fps | 15.4–16.2 ms | 18.9–19.2 ms | 94.3–98.3 % | 49.0–51.4 ms | 75.6–94.0 ms |
+
+Alone, in the same runs: 59.0–59.2 fps, build 6.9–7.1 ms (p50), 1.4–1.7 % late, pointer to screen 25.4–25.6 ms
+(p50). The scheduling part is solved: sampled during the run, the compositor's main thread waited about 0.07 ms per
+second for a CPU (299 ms per second before the weight). What remains is the frame itself: under the load it takes
+15–16 ms of the main thread's own CPU time to build instead of 7 ms, so it misses the 16.7 ms refresh and the
+monitor shows every other one (about 30 fps). The cause is not found yet; the load keeps four cores busy with
+matrix products, and the CPU and the GPU share the Pi's memory, but that has not been measured.
 
 **What remains.** The shared memory makes each frame about 20 % slower to build under load on the Pi, which no
 priority fixes; the Pi kernel at `CONFIG_HZ=1000` (`tools/rpi/build-kernel.sh`, a rebuild) is not built.

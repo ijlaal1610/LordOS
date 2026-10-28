@@ -710,7 +710,8 @@ the maintainer on 2026-10-27, item below).
   encoders), the desktop-impact mode (the compositor's frame times alone and under a low-priority load), the N-boot
   test, the pointer-to-screen latency, `lordos-sysreport bench` and the Pi 5 reference. Left: hardware video
   decoding, the x86 PC reference, and the rest of what it found on the Pi 5 (the desktop fell to 24 fps under load;
-  the compositor's CPU weight and its real-time priority fix it on VM 116; the Pi measurement is pending,
+  the compositor's CPU weight and its real-time priority fix it on VM 116; on the Pi 5 with its monitor they take it
+  to 29–30 fps and the frame's own build time under load, 15–16 ms instead of 7, is what remains to find,
   `BENCHMARK.md` "The desktop under load").
 - [ ] **Community hardware reports (0.8.7)** — `BENCHMARK.md`. Share on GitHub with the
   `hardware-report` template (the user submits it, LordOS sends nothing), schema validation and
