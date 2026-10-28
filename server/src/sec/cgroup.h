@@ -37,6 +37,9 @@ const char *cgroup_self(void);
  * lord-sessiond on request (cgroup_place_serve). Best effort: without delegation (Delegate=yes in
  * lordos.service) it warns and goes on. Returns 0 on success. See docs/SESSIONS.md. */
 int cgroup_delegate_session(unsigned uid, unsigned gid);
+/* cpu.weight of the session's «server» leaf (the compositor), against 100 for each app scope and helper */
+#define CG_SERVER_CPU_WEIGHT "1000"
+
 
 /* Called by lord-sessiond at startup (root, lordos.service with Delegate=yes): moves itself to the
  * "supervisor" leaf so the service root can enable memory/CPU/pids for the

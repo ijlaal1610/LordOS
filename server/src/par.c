@@ -7,6 +7,9 @@
 #include <pthread.h>
 #include <sched.h>
 #include <stdatomic.h>
+#include <stdint.h>
+#include <string.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 #define PAR_MAX 8
@@ -40,6 +43,7 @@ static void run_pieces(void) {
 
 static void *worker(void *arg) {
     (void)arg;
+    par_short_slice();
     unsigned long seen = 0;
     for (;;) {
         pthread_mutex_lock(&mu);
@@ -58,6 +62,7 @@ void par_init(int threads) {
         threads = !sched_getaffinity(0, sizeof set, &set) ? CPU_COUNT(&set) : (int)sysconf(_SC_NPROCESSORS_ONLN);
     }
     if (threads > PAR_MAX) threads = PAR_MAX;
+    par_short_slice();                      /* the caller: the compositor's main thread */
     for (int i = 1; i < threads; i++) {
         pthread_t t;
         pthread_attr_t at;
@@ -93,4 +98,21 @@ void par_rows(int j0, int j1, ParFn fn, void *ctx) {
     while (atomic_load(&left) > 0) pthread_cond_wait(&done, &mu);
     pthread_mutex_unlock(&mu);
     atomic_flag_clear(&busy);
+}
+
+/* struct sched_attr (linux/sched/types.h), declared here: glibc has no wrapper before 2.41 */
+struct par_sched_attr { uint32_t size, policy; uint64_t flags; int32_t nice; uint32_t priority;
+                        uint64_t runtime, deadline, period; uint32_t util_min, util_max; };
+
+void par_short_slice(void) {
+#ifdef SYS_sched_setattr
+    struct par_sched_attr a;
+    memset(&a, 0, sizeof a);
+    a.size = sizeof a;
+    a.policy = SCHED_OTHER;
+    a.flags = 0x01;                         /* SCHED_FLAG_RESET_ON_FORK: children start with the default */
+    a.nice = (int32_t)nice(0);              /* keep this thread's nice value */
+    a.runtime = 500000;                     /* ns; the kernel allows 0.1–100 ms */
+    syscall(SYS_sched_setattr, 0, &a, 0);
+#endif
 }

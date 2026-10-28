@@ -325,11 +325,55 @@ Desktop impact:
 | | under load | 24.0 fps | 20.1 ms | 29.3 ms | 96.5 % |
 
 On the Pi the desktop stays at the refresh rate alone, but under an all-core load at the lowest priority (which
-still got 5.0 GFLOP/s done) it falls to 24 frames per second: a stability problem LordBench found, to be
-investigated (the time to build a frame is already 11 ms of the 16.7 ms budget at rest, and the load competes for
-the cores and the memory bandwidth the compositor's paint threads use). The first scene moved its window from JS
+still got 5.0 GFLOP/s done) it fell to 24 frames per second: a stability problem LordBench found, investigated
+below ("The desktop under load"). The first scene moved its window from JS
 (`wm.move` every frame) and measured React instead of the compositor (12.8 fps on VM 116); it was replaced by the
 drag's own path in C before these numbers.
+
+#### The desktop under load (2026-10-28)
+
+**Cause.** lord-sessiond puts the compositor in the session's `server` cgroup and every app and helper in a
+scope next to it (`lordos-bench.scope` for LordBench's load). A process's nice value only counts against
+processes in the same cgroup; between cgroups the kernel shares the CPU by `cpu.weight`, and every one of them had
+the default, 100. So the load's nice 19 did nothing against the compositor, and any app keeping every core busy
+would do the same. Measured from `/proc/<pid>/task/*/schedstat` during the test (Pi 5, the session without its
+monitor, CPU composition): the compositor's main thread waited for a CPU 17 ms per second alone and **299 ms per
+second** under the load (1.05 ms each time it woke up), and its three paint threads waited longer than they ran.
+
+**Changes.**
+
+- lord-sessiond gives the `server` leaf `cpu.weight` 1000 when it creates a session (`CG_SERVER_CPU_WEIGHT`,
+  `sec/cgroup.c`); app scopes and helpers keep 100. Root writes it in the root-owned subtree it already manages; no
+  new request or interface.
+- The compositor's main thread and its paint threads ask for a 0.5 ms time slice (`par_short_slice`, `par.c`:
+  `sched_setattr` with EEVDF's custom slice, Linux 6.12+, unprivileged, ignored by older kernels), so they get the
+  CPU back sooner when they wake up beside busy threads. `SCHED_FLAG_RESET_ON_FORK`: checked on both kernels that
+  the processes and threads they start get the default slice again.
+
+**Measured**, LordBench's desktop test under load, the same structure as a real session (the compositor and the
+load in sibling cgroups; on the Pi with user scopes, since the installed session can't be changed without root):
+
+| Machine | Compositor | Frames shown | Build p50 | Build p99 | Late |
+|---|---|---|---|---|---|
+| Pi 5, no monitor (CPU composition) | before (weight 100) | 34.6 fps | 20.7 ms | 40.8 ms | 61 % |
+| | weight 1000 | 42.2 fps | 16.5 ms | 34.3 ms | 35 % |
+| | weight 1000 and 0.5 ms slice | 47.6 fps | 14.0 ms | 31.4 ms | 23–24 % |
+| VM 116 (8 vCPU) | before | 52–58 fps | 6.6–13.0 ms | 16.6–24.6 ms | 8.6–17.5 % |
+| | weight 1000 and 0.5 ms slice | 58.9–59.5 fps | 6.2–6.3 ms | 15.5–17.8 ms | 4.5–6.9 % |
+
+The load still got its work done (3.0–3.7 GFLOP/s on the Pi in every row). Without load nothing changes (59–60 fps).
+A weight of 10000 or a 0.1 ms slice did not do better than 1000 and 0.5 ms. Also tried and dropped: turning the
+paint threads off when the frame waits for them under load (its own measurement showed the threads still saved
+time, so it never acted). On VM 116 a session started by the new lord-sessiond has `cpu.weight` 1000 on `server`
+and the 0.5 ms slice on the main thread and its 7 paint threads only. **Not yet measured with the monitor and GPU
+composition on the Pi**, where the 24 fps above came from; that needs the new package installed.
+
+**What remains.** Under load the main thread still waits about 0.9 ms each time it wakes up, whatever the weight:
+when a thread of the load gets a CPU it keeps it until the next scheduler tick, which is 4 ms on the LordOS Pi kernel
+(`CONFIG_HZ=250`), and the shared memory makes each frame about 20 % slower to build. Two further steps, not built:
+the Pi kernel at `CONFIG_HZ=1000` (`tools/rpi/build-kernel.sh`, a rebuild), and a real-time priority for the
+compositor's main thread (`SCHED_RR`, as other desktops do through rtkit) granted by lord-sessiond with a CPU-time
+limit, which is a new privilege and needs the maintainer's approval first.
 
 Boot: the Pi 5 reaches the login screen on its monitor 5.99 s after the kernel starts (lord-sessiond's record;
 systemd-analyze gives 2.1 s kernel + 4.2 s userspace). Boots where the monitor was connected late took 61 and

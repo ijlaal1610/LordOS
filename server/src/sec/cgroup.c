@@ -282,6 +282,11 @@ int cgroup_delegate_session(unsigned uid, unsigned gid) {
     if (sfd < 0) return -1;
     if (mkdirat(sfd, "server", 0755) && errno != EEXIST) { close(sfd); return -1; }
     int lfd = openat(sfd, "server", O_DIRECTORY | O_CLOEXEC);
+    /* The compositor weighs ten times an app scope or helper: with the default weight, an app keeping
+     * every core busy took half of the compositor's CPU whatever its nice value (nice only counts inside
+     * one cgroup), and a Raspberry Pi 5's desktop fell from 59 to 24 frames a second
+     * (docs/BENCHMARK.md, "The desktop under load"). Best effort: without the cpu controller it stays. */
+    if (lfd >= 0) write_at(lfd, "cpu.weight", CG_SERVER_CPU_WEIGHT);
     if (lfd < 0 || write_at(lfd, "cgroup.procs", "0")) { fprintf(stderr, "cgroup: could not move session %u to its leaf: %s\n", uid, strerror(errno)); if (lfd >= 0) close(lfd); close(sfd); return -1; }
     /* The subtree stays root-owned (it used to be chowned to the user). lord-sessiond creates the
      * app scopes on request (cgroup_place_serve) with a root-owned cgroup.procs, so no user

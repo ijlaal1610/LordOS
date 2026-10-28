@@ -670,7 +670,9 @@ Now the subtree stays **root-owned** and the scopes are created by root:
 
 - `cgroup_delegate_session()` (`server/src/sec/cgroup.c`) creates `lordos-session-<uid>/server`
   and moves the session's `lord-server` there, but no longer chowns anything to the user
-  (`cgroup_harden_session`). At startup, `cgroup_service_init()` hardens the subtrees left by an
+  (`cgroup_harden_session`). Since 0.8.6 (in development) it also gives `server` `cpu.weight` 1000
+  against 100 for every scope, so a busy app can't take half of the compositor's CPU (nice values
+  don't count between cgroups; `BENCHMARK.md`, "The desktop under load"). At startup, `cgroup_service_init()` hardens the subtrees left by an
   older `lord-sessiond` (sessions survive a restart).
 - `lord-sessiond` forks a small root child (`server/src/remote/cgsup.c`) that listens on
   `/run/lordos/cgroup.sock` (`SOCK_SEQPACKET`, mode 0666; `SO_PEERCRED` decides). It serves one

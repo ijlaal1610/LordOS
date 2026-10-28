@@ -82,7 +82,8 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
       HEVC 4K 57 fps; H.264 encoder 75 fps. Quick takes 34 s, Full 339 s.
   - **Desktop impact measured** on the Pi 5 with a 1920×1080 60 Hz monitor and GPU composition: alone 59.4 fps, frame
     build 10.9 ms median and 13.0 ms p99, 1.0 % late; under the low-priority all-core load 24.0 fps, 20.1/29.3 ms,
-    96.5 % late. A stability problem found by LordBench, to be investigated. On VM 116 (headless, with a remote viewer)
+    96.5 % late. A stability problem found by LordBench; its cause and a first fix are under Fixed ("The desktop
+    under load"). On VM 116 (headless, with a remote viewer)
     59.6 fps alone, p99 13.3 ms; p99 22.9 ms and 12.5 % late under load.
   - **Boot measured:** the Pi 5 reaches the login screen on its monitor 5.99 s after the kernel starts (systemd: 2.1 s
     kernel + 4.2 s userspace).
@@ -103,6 +104,20 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **The desktop under load** (found by LordBench's desktop test; `docs/BENCHMARK.md`, "The desktop under load"): the
+  compositor's cgroup (`server`) had the same `cpu.weight` as every app scope, and nice values don't count between
+  cgroups, so an app keeping every core busy took half of the compositor's CPU even at nice 19. On a Raspberry Pi 5
+  the compositor's main thread waited 299 ms per second for a CPU under load (17 ms alone). Now:
+  - lord-sessiond gives the session's `server` leaf `cpu.weight` 1000 (apps and helpers keep 100), in the root-owned
+    subtree it already manages (`CG_SERVER_CPU_WEIGHT`, `sec/cgroup.c`);
+  - the compositor's main thread and paint threads ask for a 0.5 ms time slice (`par_short_slice`, `par.c`; EEVDF's
+    custom slice, Linux 6.12+, unprivileged, not inherited by what they start).
+
+  LordBench's desktop test under load, without a monitor: on the Pi 5 34.6 → 47.6 frames per second, p50 20.7 →
+  14.0 ms, late frames 61 % → 23 %; on VM 116 8.6–17.5 % → 4.5–6.9 % late. Nothing changes without load. Checked on
+  VM 116 that a new session gets the weight and that only those threads get the slice. Not yet measured with the
+  Pi's monitor and GPU composition. What remains (the Pi kernel's 4 ms scheduler tick, a real-time priority for
+  the compositor) is described there and not built.
 - **LordBench on the Raspberry Pi 5 measured no GPU:** inside `lord-bench`'s sandbox Mesa's loader could not identify
   the V3D render node ("failed to retrieve device information") and every GPU measurement was skipped. The sandbox
   now also allows reading `/sys/firmware/devicetree` and `/dev/dri` (read-only; the GPU is still reached only
