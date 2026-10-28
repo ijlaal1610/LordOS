@@ -1,14 +1,18 @@
-// System Information → Performance (0.8.6, docs/BENCHMARK.md "0.8.6 — LordBench"). Quick (about half a
-// minute) or Full (storage on a scratch file and a sustained load too) runs of the lord-bench helper
-// through lord.sysinfo.bench (server/src/bench/lbrun.c); while it runs this view polls every 500 ms. The
-// result is shown by category as "×N" of each reference machine (perf.js, references.js), with the
-// three verdicts, the conditions it ran under, the change since the previous run and the boot times
-// per version. Nothing is sent anywhere; Save writes the JSON to Documents.
+// System Information → Performance (0.8.6, docs/BENCHMARK.md "0.8.6 — LordBench"). Quick (about a minute)
+// or Full (storage on a scratch file, a sustained load and every video codec too) runs of the lord-bench
+// helper and of lord-media's video measurement through lord.sysinfo.bench (server/src/bench/lbrun.c), and
+// Desktop impact: the compositor's frame times while a test window moves (scene.jsx), alone and with every
+// core loaded at the lowest priority. While a run goes on this view polls every 500 ms. A peak result is
+// shown by category as "×N" of each reference machine (perf.js, references.js), with the three verdicts;
+// a desktop result against the display's refresh budget. Both with the conditions they ran under and the
+// change since the previous run of the same kind, and the boot times per version. Nothing is sent
+// anywhere; Save writes the JSON to Documents.
 import {
-  View, Text, ScrollView, Button, useTheme, useLocale, GroupBox, FormRow, formatNumber, spacing, typeScale, fs, userDirs, wm,
+  View, Text, ScrollView, Button, useTheme, useLocale, GroupBox, FormRow, Segmented, formatNumber, spacing, typeScale, fs, userDirs, wm, admin, session,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useState } from 'react';
-import { CATEGORIES, categoryRatios, comparableReferences, stability, compatibilityVerdict, conditionDiffs, changes, sustainedSeries, fileName } from './perf.js';
+import { CATEGORIES, DESKTOP_CATEGORIES, categoryRatios, comparableReferences, stability, compatibilityVerdict, desktopVerdict, conditionDiffs, changes, sustainedSeries, fileName } from './perf.js';
+import { startScene } from './scene.jsx';
 import { compatibility } from './model.js';
 
 const VERDICT_COLOR = { pass: '#30d158', warn: '#ff9f0a', fail: '#ff453a', unknown: '#8e8e93' };
@@ -38,7 +42,7 @@ function useBench() {
   const start = (mode) => {
     let ok = false;
     try { ok = !!bench().start(mode, mode === 'full' ? SUSTAINED_S : 0); } catch (e) { ok = false; }
-    if (ok) setSt({ state: 'waiting', step: '', progress: 0 });
+    if (ok) setSt({ state: 'waiting', mode, step: '', progress: 0 });
     else setSt((x) => ({ ...x, error: 'start' }));
   };
   const cancel = () => { try { bench().cancel(); } catch (e) { /* nothing to cancel */ } };
@@ -54,14 +58,14 @@ function Bar({ value }) {
   );
 }
 
-function Verdict({ label, state, detail }) {
+function Verdict({ label, state, detail, states = 'verdictState' }) {
   const t = useTheme();
   const { t: tr } = useLocale();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.m, minHeight: 40, paddingVertical: 8 }}>
       <View style={{ width: 10, height: 10, marginTop: 5, borderRadius: 5, backgroundColor: VERDICT_COLOR[state] || '#8e8e93' }} />
       <Text style={{ width: 150, fontSize: typeScale.body, color: t.text, textAlign: 'start' }}>{label}</Text>
-      <Text style={{ width: 110, fontSize: typeScale.callout, fontWeight: 600, color: VERDICT_COLOR[state], textAlign: 'start' }}>{tr(`sysinfo.perf.verdictState.${state}`)}</Text>
+      <Text style={{ width: 110, fontSize: typeScale.callout, fontWeight: 600, color: VERDICT_COLOR[state], textAlign: 'start' }}>{tr(`sysinfo.perf.${states}.${state}`)}</Text>
       <Text style={{ flex: 1, minWidth: 0, fontSize: typeScale.callout, color: t.textDim, textAlign: 'start', lineHeight: 1.4 }}>{detail}</Text>
     </View>
   );
@@ -122,18 +126,58 @@ function Conditions({ res }) {
   );
 }
 
+// the boot time test (bench/boottest.h): N restarts in a row, each boot's time recorded by lord-sessiond;
+// started with the boot-test admin action and then the normal Restart (its confirmation included)
+const BOOT_TEST_N = [3, 5, 10];
+function BootTest({ onChange }) {
+  const t = useTheme();
+  const { t: tr } = useLocale();
+  const [n, setN] = useState(5);
+  const [state, setState] = useState(() => { try { return bench().bootTest(); } catch (e) { return null; } });
+  const [err, setErr] = useState('');
+  const refresh = () => { try { setState(bench().bootTest()); } catch (e) { setState(null); } onChange && onChange(); };
+  const start = async () => {
+    setErr('');
+    try { await admin.run('boot-test', String(n)); } catch (e) { setErr(e.message || String(e)); return; }
+    refresh();
+    session.restart();
+  };
+  const stop = async () => { try { await admin.run('boot-test-cancel', ''); } catch (e) { setErr(e.message || String(e)); } refresh(); };
+  return (
+    <View style={{ gap: spacing.s, paddingVertical: 6 }}>
+      {state ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.m }}>
+          <Text style={{ flex: 1, fontSize: typeScale.body, color: t.text, textAlign: 'start', lineHeight: 1.4 }}>
+            {tr(state.left === state.total ? 'sysinfo.perf.bootTestSet' : 'sysinfo.perf.bootTestRunning', { n: state.total, done: state.total - state.left })}</Text>
+          {state.left === state.total && session.canPower() ? <Button label={tr('sysinfo.perf.bootTestRestart')} onClick={() => session.restart()} /> : null}
+          <Button label={tr('sysinfo.perf.bootTestStop')} onClick={stop} />
+        </View>
+      ) : (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.m }}>
+          <Text style={{ flex: 1, fontSize: typeScale.body, color: t.text, textAlign: 'start', lineHeight: 1.4 }}>{tr('sysinfo.perf.bootTestAsk')}</Text>
+          <Segmented appearance="neutral" value={n} onChange={setN} options={BOOT_TEST_N.map((x) => [x, String(x)])} />
+          <Button label={tr('sysinfo.perf.bootTestStart')} disabled={!session.canPower()} onClick={start} />
+        </View>
+      )}
+      {err ? <Text style={{ fontSize: typeScale.callout, color: '#ff453a', textAlign: 'start' }}>{err}</Text> : null}
+    </View>
+  );
+}
+
 function Boots() {
   const { t: tr } = useLocale();
-  const rows = useMemo(() => { try { return bench() ? bench().boots() : null; } catch (e) { return null; } }, []);
-  if (!rows || !rows.length) return null;
+  const [rev, setRev] = useState(0);
+  const rows = useMemo(() => { try { return bench() ? bench().boots() : null; } catch (e) { return null; } }, [rev]);
   return (
     <GroupBox title={tr('sysinfo.perf.boots')} footer={tr('sysinfo.perf.bootsFooter')}>
-      {rows.slice(-6).reverse().map((r) => (
-        <Row key={r.version} label={r.version} value={r.boots
+      {(rows || []).slice(-6).reverse().map((r) => (
+        <Row key={r.version} label={r.version} value={(r.boots
           ? tr('sysinfo.perf.bootLine', { median: formatNumber(r.median, 1), min: formatNumber(r.min, 1), max: formatNumber(r.max, 1), n: r.boots })
             + (r.first != null ? ` · ${tr('sysinfo.perf.bootFirst', { s: formatNumber(r.first, 1) })}` : '')
-          : tr('sysinfo.perf.bootOnlyFirst', { s: formatNumber(r.first, 1) })} />
+          : tr('sysinfo.perf.bootOnlyFirst', { s: formatNumber(r.first, 1) }))
+          + (r.test ? ` · ${tr('sysinfo.perf.bootTestLine', { median: formatNumber(r.test.median, 1), min: formatNumber(r.test.min, 1), max: formatNumber(r.test.max, 1), n: r.test.boots, of: r.test.of })}` : '')} />
       ))}
+      <BootTest onChange={() => setRev((x) => x + 1)} />
     </GroupBox>
   );
 }
@@ -141,12 +185,14 @@ function Boots() {
 function Result({ res, report }) {
   const t = useTheme();
   const { t: tr } = useLocale();
-  const refs = useMemo(() => comparableReferences(res), [res]);
-  const prev = useMemo(() => { const s0 = readSaved(0); return s0 && s0.at === res.at ? readSaved(1) : s0; }, [res]);
+  const desktop = res.mode === 'desktop', slot = desktop ? 2 : 0;
+  const refs = useMemo(() => (desktop ? [] : comparableReferences(res)), [res]);
+  const prev = useMemo(() => { const s0 = readSaved(slot); return s0 && s0.at === res.at ? readSaved(slot + 1) : s0; }, [res]);
   const prevComparable = prev && prev.at !== res.at ? prev : null;
   const ch = useMemo(() => changes(res, prevComparable), [res, prevComparable]);
   const diffs = useMemo(() => (ch ? conditionDiffs(res, prevComparable) : []), [res, prevComparable, ch]);
   const stab = useMemo(() => stability(res), [res]);
+  const dv = useMemo(() => desktopVerdict(res), [res]);
   const compat = useMemo(() => compatibilityVerdict(compatibility(report)), [report]);
   const perfText = refs.map((r) => {
     const cr = categoryRatios(res, r);
@@ -179,14 +225,23 @@ function Result({ res, report }) {
           {msg.dir ? <Button small plain label={tr('sysinfo.report.showInFiles')} onClick={() => wm.open('files', { new: true, args: { path: msg.dir } })} /> : null}
         </View>
       ) : null}
-      <GroupBox title={tr('sysinfo.perf.verdicts')} footer={tr('sysinfo.perf.verdictsFooter')}>
-        <Verdict label={tr('sysinfo.perf.v.performance')} state={refs.length ? 'pass' : 'unknown'} detail={perfText} />
-        <Verdict label={tr('sysinfo.perf.v.compatibility')} state={compat.state}
-          detail={tr('sysinfo.perf.compatCount', { works: compat.count.works, limits: compat.count.limits, no: compat.count.no })} />
-        <Verdict label={tr('sysinfo.perf.v.stability')} state={stab.state}
-          detail={stab.notes.length ? stab.notes.map((n) => tr(`sysinfo.perf.note.${n.id}`, n.vars)).join(' ') : tr('sysinfo.perf.note.none')} />
-      </GroupBox>
-      {CATEGORIES.map((c) => (
+      {desktop ? (
+        <GroupBox title={tr('sysinfo.perf.verdicts')} footer={tr('sysinfo.perf.deskFooter', { budget: formatNumber((res.frames && res.frames.budgetMs) || 0, 1) })}>
+          <Verdict label={tr('sysinfo.perf.v.desktop')} state={dv.state} states="deskState"
+            detail={dv.notes.map((n) => tr(`sysinfo.perf.dnote.${n.id}`, { p99: formatNumber(n.vars.p99, 1), budget: formatNumber(n.vars.budget, 1), pct: formatNumber(n.vars.pct, 1) })).join(' ') || tr('sysinfo.perf.dnote.none')} />
+          <Verdict label={tr('sysinfo.perf.v.stability')} state={stab.state}
+            detail={stab.notes.length ? stab.notes.map((n) => tr(`sysinfo.perf.note.${n.id}`, n.vars)).join(' ') : tr('sysinfo.perf.note.none')} />
+        </GroupBox>
+      ) : (
+        <GroupBox title={tr('sysinfo.perf.verdicts')} footer={tr('sysinfo.perf.verdictsFooter')}>
+          <Verdict label={tr('sysinfo.perf.v.performance')} state={refs.length ? 'pass' : 'unknown'} detail={perfText} />
+          <Verdict label={tr('sysinfo.perf.v.compatibility')} state={compat.state}
+            detail={tr('sysinfo.perf.compatCount', { works: compat.count.works, limits: compat.count.limits, no: compat.count.no })} />
+          <Verdict label={tr('sysinfo.perf.v.stability')} state={stab.state}
+            detail={stab.notes.length ? stab.notes.map((n) => tr(`sysinfo.perf.note.${n.id}`, n.vars)).join(' ') : tr('sysinfo.perf.note.none')} />
+        </GroupBox>
+      )}
+      {(desktop ? DESKTOP_CATEGORIES : CATEGORIES).map((c) => (
         <GroupBox key={c.id} title={tr(`sysinfo.perf.cat.${c.id}`)}>
           {c.ids.map((id) => <Measurement key={id} id={id} res={res} refs={refs} change={ch ? ch[id] : null} />)}
           {c.id === 'sustained' && series.length ? (
@@ -209,7 +264,12 @@ export default function Performance({ r }) {
   const t = useTheme();
   const { t: tr } = useLocale();
   const [st, running, start, cancel] = useBench();
-  const res = st.result || (running ? null : readSaved(0));
+  const fresh = st.result || null;
+  const res = fresh && fresh.mode !== 'desktop' ? fresh : running ? null : readSaved(0);
+  const dres = fresh && fresh.mode === 'desktop' ? fresh : running ? null : readSaved(2);
+  // the desktop run's scene, while lord-server records frames (comp.* and desk.* steps)
+  const scene = running && st.mode === 'desktop' && /^(comp|desk)\./.test(st.step || '');
+  useEffect(() => (scene ? startScene() : undefined), [scene]);
   if (st.state === 'unavailable') return <View style={{ padding: spacing.xl }}><Text style={{ color: t.textDim, textAlign: 'start' }}>{tr('sysinfo.perf.unavailable')}</Text></View>;
   return (
     <ScrollView style={{ flex: 1 }}>
@@ -220,6 +280,7 @@ export default function Performance({ r }) {
             <Text style={{ fontSize: typeScale.callout, color: t.textDim, textAlign: 'start', lineHeight: 1.4 }}>{tr('sysinfo.perf.intro')}</Text>
           </View>
           {running ? <Button label={tr('sysinfo.perf.cancel')} onClick={cancel} /> : [
+            <Button key="d" label={tr('sysinfo.perf.desktop')} onClick={() => start('desktop')} />,
             <Button key="f" label={tr('sysinfo.perf.full')} onClick={() => start('full')} />,
             <Button key="q" primary label={tr('sysinfo.perf.quick')} onClick={() => start('quick')} />,
           ]}
@@ -231,10 +292,16 @@ export default function Performance({ r }) {
             <Text style={{ fontSize: typeScale.body, color: t.text, textAlign: 'start' }}>
               {st.state === 'waiting' ? tr('sysinfo.perf.waiting') : tr('sysinfo.perf.measuring', { what: st.step ? tr(`sysinfo.perf.m.${key(st.step)}`) : '…' })}</Text>
             <Bar value={st.progress || 0} />
-            <Text style={{ fontSize: typeScale.caption, color: t.textDim, textAlign: 'start' }}>{tr('sysinfo.perf.keepStill')}</Text>
+            <Text style={{ fontSize: typeScale.caption, color: t.textDim, textAlign: 'start' }}>{tr(st.mode === 'desktop' ? 'sysinfo.perf.deskKeepStill' : 'sysinfo.perf.keepStill')}</Text>
           </View>
         ) : null}
-        {res ? <Result res={res} report={r} /> : !running ? <Text style={{ fontSize: typeScale.callout, color: t.textDim, textAlign: 'start' }}>{tr('sysinfo.perf.none')}</Text> : null}
+        {res ? <Result res={res} report={r} /> : !running && !dres ? <Text style={{ fontSize: typeScale.callout, color: t.textDim, textAlign: 'start' }}>{tr('sysinfo.perf.none')}</Text> : null}
+        {dres ? (
+          <View style={{ gap: spacing.l }}>
+            <Text style={{ fontSize: typeScale.headline, fontWeight: 600, color: t.text, textAlign: 'start', paddingTop: spacing.m }}>{tr('sysinfo.perf.deskTitle')}</Text>
+            <Result res={dres} report={r} />
+          </View>
+        ) : null}
         {!running ? <Boots /> : null}
       </View>
     </ScrollView>

@@ -55,6 +55,7 @@
 #include "monitor/netrec.h"
 #include "sec/codesig.h"
 #include "sec/netconn.h"
+#include "bench/lbframes.h"
 
 #include <libgen.h>
 #include <limits.h>
@@ -1144,6 +1145,7 @@ static void render_frame(Server *s);
 static void render(Server *s) {
     double t0 = now_ms();
     render_frame(s);
+    lbf_frame(now_ms() - t0);                   /* LordBench's compositor measurement (bench/lbframes.c) */
     if (dstat.active) {
         double t1 = now_ms(), js = dstat.js - dstat.work_js;
         double work = (t1 - t0) + js;
@@ -1455,6 +1457,11 @@ static void render_frame(Server *s) {
         if (light >= 60) { par_on = 0; canvas_parallel(NULL); }
     }
     wl_frame_done((unsigned)now_ms());
+    if (s->headless) {                          /* no flip without a monitor: the frame is out now */
+        struct timespec t;
+        clock_gettime(CLOCK_MONOTONIC, &t);
+        lbf_presented((uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec, (uint32_t)(1000000000u / (unsigned)hz));
+    }
     /* No flip event will come (a modeset instead of a page flip: the first frame, or a driver
      * without page flip): the frame is on screen already, so its presentation feedback goes now.
      * Otherwise the apps' feedback would wait for some later flip. */
@@ -1463,6 +1470,7 @@ static void render_frame(Server *s) {
         clock_gettime(CLOCK_MONOTONIC, &t);
         uint64_t ns = (uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec;
         wl_presented(ns, mo->kms.flip_seq, mo->kms.mode.vrefresh ? 1000000000u / mo->kms.mode.vrefresh : 16666667u);
+        lbf_presented(ns, mo->kms.mode.vrefresh ? 1000000000u / mo->kms.mode.vrefresh : 16666667u);
         if (keylag_enabled) keylag_presented(ns);
     }
     frame_stats(s, now_ms() - t0, ui.layout_ms + ui.paint_ms);
@@ -1778,6 +1786,8 @@ int main(int argc, char **argv) {
             dispatch_pointer(&s);
             if (gpu_active()) update_cursor(&s);
         }
+        /* LordBench's scene moves its window one step per frame, as a drag does (ui/grab.c) */
+        if (grab_scripted() && !any_flip_pending(&s)) grab_script_tick(now_ms());
         /* Timers del tema (React agenda su trabajo con setTimeout/setImmediate). */
         double delay = -1, tick0 = now_ms();
         for (int i = 0; i < 64; i++) {
@@ -1902,6 +1912,7 @@ int main(int argc, char **argv) {
                     if (flip_instant == 3 && !flip_told++) fprintf(stderr, "kms: page flips complete before vblank: pacing to %d Hz\n", mk->mode.vrefresh ? mk->mode.vrefresh : 60);
                 }
                 wl_presented(mk->flip_ns, mk->flip_seq, mk->mode.vrefresh ? 1000000000u / mk->mode.vrefresh : 16666667u);
+                lbf_presented(mk->flip_ns, mk->mode.vrefresh ? 1000000000u / mk->mode.vrefresh : 16666667u);
                 if (keylag_enabled) keylag_presented(mk->flip_ns);
             }
         }

@@ -1,6 +1,7 @@
 // LordBench's model (0.8.6, docs/BENCHMARK.md "0.8.6 — LordBench"): the measurements by category, how a
 // result compares with the reference machines (×N of each, never one score), the three verdicts
-// (performance, compatibility, stability), and what changed against the previous result. Pure
+// (performance, compatibility, stability), the desktop run's verdict against the refresh budget, and what
+// changed against the previous result. Pure
 // functions over the result JSON lord.sysinfo.bench writes (server/src/bench/lbrun.c); tested in
 // server/tests/sysinfo_perf_test.mjs.
 import { REFERENCES } from './references.js';
@@ -11,7 +12,16 @@ export const CATEGORIES = [
   { id: 'gpu', ids: ['gpu.scene', 'gpu.fill', 'gpu.upload', 'gpu.layers'] },
   { id: 'storage', ids: ['disk.seqwrite', 'disk.seqread', 'disk.random4k'] },
   { id: 'sustained', ids: ['sustained.start', 'sustained.end'] },
+  { id: 'video', ids: ['video.h264.1080', 'video.hevc.1080', 'video.vp9.1080', 'video.av1.1080', 'video.h264.2160', 'video.hevc.2160', 'video.enc.h264', 'video.enc.vp8'] },
 ];
+
+// the desktop run (mode 'desktop'): the compositor alone, then with every core loaded at the lowest priority
+export const DESKTOP_CATEGORIES = [
+  { id: 'compositor', ids: ['comp.fps', 'comp.p50', 'comp.p99', 'comp.missed'] },
+  { id: 'desktop', ids: ['desk.fps', 'desk.p50', 'desk.p99', 'desk.missed', 'desk.work'] },
+];
+export const MISSED_WARN = 5;           // % of frames shown late before the verdict warns
+export const MISSED_FAIL = 25;
 
 export { REFERENCES };
 
@@ -71,6 +81,27 @@ export function compatibilityVerdict(rows) {
   for (const r of rows || []) if (count[r.state] != null) count[r.state]++;
   const state = count.no ? 'fail' : count.limits ? 'warn' : rows && rows.length ? 'pass' : 'unknown';
   return { state, count };
+}
+
+// the desktop verdict (docs/BENCHMARK.md, "Frame times against the refresh budget"): a phase passes when the
+// 99th percentile of the time to build a frame fits the refresh period in use and few frames came late
+export function desktopVerdict(res) {
+  const r = (res && res.results) || {};
+  const budget = res && res.frames && res.frames.budgetMs;
+  if (!budget || (!r['comp.p99'] && !r['desk.p99'])) return { state: 'unknown', notes: [] };
+  const notes = [];
+  let state = 'pass';
+  const worse = (s) => { if (s === 'fail' || (s === 'warn' && state === 'pass')) state = s; };
+  for (const phase of ['comp', 'desk']) {
+    const p99 = r[`${phase}.p99`], missed = r[`${phase}.missed`];
+    if (!p99) continue;
+    const vars = { p99: p99.value, budget, pct: missed ? missed.value : 0 };
+    if (p99.value > budget) { notes.push({ id: `${phase}Over`, vars }); worse('warn'); }
+    else notes.push({ id: `${phase}Fits`, vars });
+    if (missed && missed.value > MISSED_FAIL) { notes.push({ id: `${phase}MissedMany`, vars }); worse('fail'); }
+    else if (missed && missed.value > MISSED_WARN) { notes.push({ id: `${phase}Missed`, vars }); worse('warn'); }
+  }
+  return { state, notes };
 }
 
 // ---- comparing two results ----

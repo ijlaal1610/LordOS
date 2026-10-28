@@ -154,6 +154,16 @@ static AVCodecContext *open_sw(Vid *e, const char *name, int fps) {
     return c;
 }
 
+AVCodecContext *lm_stream_sw_encoder(int vp8, int w, int h, int fps, unsigned kbps) {
+    Vid e;
+    memset(&e, 0, sizeof e);
+    e.codec = vp8 ? CODEC_VP8 : CODEC_H264;
+    e.w = w & ~1;
+    e.h = h & ~1;
+    e.kbps = kbps;
+    return open_sw(&e, vp8 ? "libvpx" : "libx264", fps);
+}
+
 static int vid_open(Vid *e, int codec, int w, int h, int fps, unsigned kbps, AVBufferRef *hw) {
     memset(e, 0, sizeof *e);
     e->codec = codec;

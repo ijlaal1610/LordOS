@@ -14,7 +14,8 @@
 #define LB_VERSION 1                    /* LordBench's version: results compare only with the same one */
 
 /* what to run */
-enum { LB_MODE_QUICK = 1, LB_MODE_FULL = 2 };
+enum { LB_MODE_QUICK = 1, LB_MODE_FULL = 2,
+       LB_MODE_LOAD = 3 };              /* desktop impact: only the all-core load for sustained_s, a sample a second */
 /* LbGo.flags */
 enum {
     LB_GO_GPU     = 1,                  /* an fd with the render node follows */
@@ -50,8 +51,32 @@ enum {
     LB_DISK_RAND,                       /* storage, random 4 KiB reads, IOPS */
     LB_SUS_START,                       /* sustained: all-core matrix multiply, first 10 s, GFLOP/s */
     LB_SUS_END,                         /* sustained: last 10 s, GFLOP/s */
+    /* measured by lord-media (bench/lbvideo.c, media/helper/lm_vbench.c), never by lord-bench */
+    LB_VID_H264_1080,                   /* software decoding of a generated clip, frames/s */
+    LB_VID_HEVC_1080,
+    LB_VID_VP9_1080,
+    LB_VID_AV1_1080,
+    LB_VID_H264_2160,
+    LB_VID_HEVC_2160,
+    LB_VENC_H264,                       /* the remote desktop's encoders with its own settings, 1920×1080, frames/s */
+    LB_VENC_VP8,
+    /* measured by lord-server itself (bench/lbframes.c), desktop mode only */
+    LB_COMP_FPS,                        /* the compositor, a scripted scene, nothing else running: frames shown per second */
+    LB_COMP_P50,                        /* ms to build a frame, median */
+    LB_COMP_P99,                        /* ms to build a frame, 99th percentile */
+    LB_COMP_MISSED,                     /* intervals longer than 1.5 refresh periods, % */
+    LB_DESK_FPS,                        /* the same scene with an all-core load at the lowest priority */
+    LB_DESK_P50,
+    LB_DESK_P99,
+    LB_DESK_MISSED,
+    LB_DESK_WORK,                       /* what the load got done meanwhile, GFLOP/s */
     LB_COUNT
 };
+#define LB_HELPER_LAST LB_SUS_END       /* lord-bench may only report ids up to this one */
+#define LB_VID_FIRST   LB_VID_H264_1080
+#define LB_VID_LAST    LB_VENC_VP8
+#define LB_DESK_FIRST  LB_COMP_FPS
+#define LB_DESK_LAST   LB_DESK_WORK
 
 /* LbMsg.kind */
 enum {
@@ -62,7 +87,9 @@ enum {
     LB_MSG_DONE,                        /* the run ended; aux = the sandbox mask */
     LB_MSG_GPUINFO,                     /* value = 0 hardware, 1 virtual, 2 software (bench_gl_kind) */
 };
-enum { LB_SKIP_NODEV = 1, LB_SKIP_FAILED, LB_SKIP_MODE, LB_SKIP_MEMORY };
+enum { LB_SKIP_NODEV = 1, LB_SKIP_FAILED, LB_SKIP_MODE, LB_SKIP_MEMORY,
+       LB_SKIP_NOCODEC,                 /* video: this system's FFmpeg has no encoder or decoder for it */
+       LB_SKIP_NOFRAMES };              /* desktop: the compositor showed too few frames (another session in front) */
 
 typedef struct {
     uint32_t magic, kind, id, pad;
@@ -70,9 +97,9 @@ typedef struct {
 } LbMsg;
 
 const char *lb_name(int id);            /* "cpu.sha256.1", …; NULL out of range */
-const char *lb_unit(int id);            /* "MB/s", "GFLOP/s", "runs/s", "GB/s", "ns", "fps", "Mpx/s", "IOPS" */
-int         lb_lower_better(int id);    /* 1 for latency */
-/* 1 if a record from the helper is acceptable: magic, kind, id in range, finite values in range */
+const char *lb_unit(int id);            /* "MB/s", "GFLOP/s", "runs/s", "GB/s", "ns", "fps", "Mpx/s", "IOPS", "ms", "%" */
+int         lb_lower_better(int id);    /* 1 for latency, frame times and missed frames */
+/* 1 if a record from lord-bench is acceptable: magic, kind, an id lord-bench measures, finite values in range */
 int         lb_msg_valid(const LbMsg *m);
 
 #endif

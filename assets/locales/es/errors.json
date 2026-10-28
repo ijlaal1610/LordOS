@@ -53,6 +53,8 @@
   "backup.tooManyExclusions": "Demasiadas exclusiones",
   "backup.verifyFailed": "Un archivo de la copia no pasó la verificación (alterado o clave equivocada)",
   "backup.wrongPassphrase": "Frase incorrecta",
+  "bench.bootTestFailed": "No se pudo guardar el estado de la prueba de arranque",
+  "bench.bootTestLive": "La prueba de arranque no funciona en la sesión en vivo: nada de lo que registra sobrevive a un reinicio",
   "camera.busy": "La cámara está ocupada",
   "camera.failed": "La cámara dejó de funcionar",
   "camera.invalid": "Cámara inválida",

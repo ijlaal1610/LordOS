@@ -34,9 +34,13 @@
  *                                               with a "This session" section (System Information's Report tab)
  *   lord.sysinfo.bench.start(mode, sustainedS) / poll() / cancel() / saved(which) / boots()
  *                                               LordBench (bench/lbrun.c, the lord-bench helper): mode
- *                                               'quick' | 'full'; poll() → {state, step, progress, result};
- *                                               saved(0|1) the last or previous result; boots() the boot
- *                                               times per LordOS version (lord-sessiond's history)
+ *                                               'quick' | 'full' (then video in lord-media) | 'desktop'
+ *                                               (the compositor's frame times, alone and under load);
+ *                                               poll() → {state, step, progress, result}; saved(0|1) the
+ *                                               last or previous peak result, saved(2|3) the desktop ones;
+ *                                               boots() the boot times per LordOS version (lord-sessiond's history);
+ *                                               bootTest() the boot time test's state or null (bench/boottest.h;
+ *                                               started and stopped with the boot-test admin actions)
  *   lord.fan.status() / setProfile(p) / setCurve(pts) / force(v) / caseConfig()   (js_fan.c, lord-fand)
  *   lord.browserFrame.apply(on, which)          Settings → Appearance → "Browsers: tabs in the title bar":
  *                                               one preference in the user's Chromium/Firefox profiles
@@ -58,6 +62,7 @@
 #include "../sysreport/sysreport.h"
 #include "../sysreport/facts.h"
 #include "../bench/lbrun.h"
+#include "../bench/boottest.h"
 #include "../sec/broker.h"
 #include "lord_version.h"           /* build/gen: the version for the report */
 #include "../hw/mimeapps.h"
@@ -538,7 +543,7 @@ static JSValue f_bench_cancel(JSContext *c, JSValueConst t, int argc, JSValueCon
 static JSValue f_bench_saved(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
     (void)t;
     int which = argc > 0 ? arg_int(c, argv[0], 0) : 0;
-    if (which != 0 && which != 1) return JS_NULL;
+    if (which < 0 || which > 3) return JS_NULL;
     JSValue v = json_or_null(c, lbrun_saved(which));
     if (JS_IsException(v)) { JS_FreeValue(c, JS_GetException(c)); return JS_NULL; }
     return v;
@@ -549,12 +554,25 @@ static JSValue f_bench_boots(JSContext *c, JSValueConst t, int argc, JSValueCons
     return json_or_null(c, lbrun_boot_history("/var/lib/lordos/boot-times.jsonl"));
 }
 
+/* the boot time test's state (bench/boottest.h): {total, left, at} while one is set, else null */
+static JSValue f_bench_boot_test(JSContext *c, JSValueConst t, int argc, JSValueConst *argv) {
+    (void)t; (void)argc; (void)argv;
+    BootTest b;
+    if (bt_read(BT_PATH, &b)) return JS_NULL;
+    JSValue o = JS_NewObject(c);
+    JS_SetPropertyStr(c, o, "total", JS_NewInt32(c, b.total));
+    JS_SetPropertyStr(c, o, "left", JS_NewInt32(c, b.left));
+    JS_SetPropertyStr(c, o, "at", JS_NewFloat64(c, (double)b.at));
+    return o;
+}
+
 static const JSCFunctionListEntry bench_funcs[] = {
     JS_CFUNC_DEF("start", 2, f_bench_start),
     JS_CFUNC_DEF("poll", 0, f_bench_poll),
     JS_CFUNC_DEF("cancel", 0, f_bench_cancel),
     JS_CFUNC_DEF("saved", 1, f_bench_saved),
     JS_CFUNC_DEF("boots", 0, f_bench_boots),
+    JS_CFUNC_DEF("bootTest", 0, f_bench_boot_test),
 };
 
 static const JSCFunctionListEntry sysinfo_funcs[] = {

@@ -1,4 +1,6 @@
 {
+  "bench.bootTestCancelled": "Teste de inicialização interrompido",
+  "bench.bootTestSet": "Teste de inicialização: {n} inicializações",
   "disk.cancelling": "Cancelando",
   "disk.ejected": "Ejetado",
   "disk.erased": "Apagado",

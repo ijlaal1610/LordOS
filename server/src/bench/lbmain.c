@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
     struct iovec iov = { &go, sizeof go };
     struct msghdr mh = { .msg_iov = &iov, .msg_iovlen = 1, .msg_control = cbuf, .msg_controllen = sizeof cbuf };
     ssize_t r = recvmsg(SOCK, &mh, MSG_CMSG_CLOEXEC);
-    if (r != (ssize_t)sizeof go || go.magic != LB_MAGIC || (go.mode != LB_MODE_QUICK && go.mode != LB_MODE_FULL)) return 1;
+    if (r != (ssize_t)sizeof go || go.magic != LB_MAGIC || (go.mode != LB_MODE_QUICK && go.mode != LB_MODE_FULL && go.mode != LB_MODE_LOAD)) return 1;
     int nfd = 0;
     for (struct cmsghdr *c = CMSG_FIRSTHDR(&mh); c; c = CMSG_NXTHDR(&mh, c))
         if (c->cmsg_level == SOL_SOCKET && c->cmsg_type == SCM_RIGHTS) {
@@ -114,8 +114,12 @@ int main(int argc, char **argv) {
         syscall(SYS_ioprio_set, 1, 0, (3 << 13));       /* IOPRIO_CLASS_IDLE */
     }
     setenv("MESA_SHADER_CACHE_DISABLE", "true", 1);    /* no cache folder: nothing to write */
+    /* Mesa's loader names the GPU behind the render node it got through libdrm, which lists /dev/dri and, for a
+     * GPU that isn't on PCI (the Raspberry Pi 5's v3d), reads its device tree node; without them "MESA-LOADER:
+     * failed to retrieve device information" and no GPU tests (found on the Pi 5, 0.8.6). Read-only: a device
+     * opened here gets no ioctls (Landlock's IOCTL_DEV, ABI 5 and later), only the fd lord-server passed does */
     static const char *const ro[] = { "/usr/lib", "/usr/lib64", "/lib", "/lib64", "/usr/share", "/etc/ld.so.cache",
-                                      "/sys/dev/char", "/sys/devices", NULL };
+                                      "/sys/dev/char", "/sys/devices", "/sys/firmware/devicetree", "/dev/dri", NULL };
     static const int extra[] = { SYS_getcpu, SYS_kcmp, SYS_membarrier, SYS_sched_getparam, SYS_sched_getscheduler,
 #ifdef SYS_futex_waitv
                                  SYS_futex_waitv,
@@ -125,6 +129,13 @@ int main(int argc, char **argv) {
                              .allow_ioctl_classes = gpu_fd >= 0 ? SANDBOX_IOCTL_DRM | SANDBOX_IOCTL_DMABUF : 0,
                              .mem_max_mb = 2048 };
     int mask = sandbox_apply_helper(&cfg);
+
+    if (go.mode == LB_MODE_LOAD) {              /* desktop impact: only the load, while lord-server records frames */
+        Sus s = { 0, 0, 0 };
+        if (go.sustained_s >= 5 && go.sustained_s <= 120) lb_sustained(threads, go.sustained_s, 1, on_sample, &s);
+        send_msg(LB_MSG_DONE, 0, 0, mask < 0 ? 0 : mask);
+        return 0;
+    }
 
     Ctx one = { 1, full ? 1.5 : 0.5, 0, 0 }, all = { threads, full ? 1.5 : 0.5, 0, 0 };
     int reps = 3;

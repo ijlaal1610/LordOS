@@ -6,8 +6,9 @@
 // password, opening the session, rebooting, powering off) is requested with lord.greeter.send() and the answer
 // arrives through __lordGreeter: this JS never sees /etc/shadow.
 //
-// Requests: {t:'hello'} · {t:'login', user, pass} · {t:'power', a:'reboot'|'poweroff'}
-// Notices:  {t:'hello', mode, user, last, host, layouts, variants, lang, users:[{name, full, color, image, admin, open}]}
+// Requests: {t:'hello'} · {t:'login', user, pass} · {t:'power', a:'reboot'|'poweroff'} · {t:'bootTestCancel'}
+// Notices:  {t:'hello', mode, user, last, host, layouts, variants, lang, users:[{name, full, color, image, admin, open}],
+//            bootTest?:{k, n, in}} (a boot time test restarts in `in` seconds; a login cancels it)
 //           (last: the user whose session was last shown on the monitor)
 //           {t:'mode', mode:'login'|'lock'|'switch', user} · {t:'ok'} · {t:'fail', wait} · {t:'error'} · {t:'busy'}
 import { render, screen, mainBox, onScreenChange } from '@lordos/runtime';
@@ -154,7 +155,8 @@ function Greeter() {
   useEffect(() => {
     const on = (m) => {
       if (m.t === 'hello') {
-        setInfo((old) => ({ ...old, ...m }));
+        // a boot time test restarts soon (LordBench, bench/boottest.h): when, by this screen's clock
+        setInfo((old) => ({ ...old, ...m, bootTest: m.bootTest ? { ...m.bootTest, end: Date.now() + m.bootTest.in * 1000 } : null }));
         // system keyboard and language (/etc/default/keyboard and /etc/default/locale)
         const layouts = String(m.layouts || 'latam').split(',').filter(Boolean);
         const variants = String(m.variants || '').split(',');
@@ -237,6 +239,16 @@ function Greeter() {
           <Text style={{ fontSize: clockSize, fontWeight: 700, color: 'rgba(255,255,255,0.86)', marginTop: -Math.round(clockSize * 0.04),
             letterSpacing: -Math.round(clockSize * 0.03) }}>{formatTime(now)}</Text>
         </View>
+
+        {/* LordBench's boot time test: which boot this was, the restart's countdown and a way to stop it */}
+        {info.bootTest ? (
+          <View style={{ position: 'absolute', left: Math.round(W / 2 - 230), top: 18, width: 460, padding: 12, gap: 8, borderRadius: 14,
+            backgroundColor: 'rgba(30,22,40,0.88)', border: '1px solid rgba(255,255,255,0.18)', alignItems: 'center' }}>
+            <Text style={{ fontSize: 13, color: '#fff', textAlign: 'center', lineHeight: 1.35 }}>
+              {t('greeter.bootTest', { k: info.bootTest.k, n: info.bootTest.n, s: Math.max(0, Math.ceil((info.bootTest.end - now.getTime()) / 1000)) })}</Text>
+            <Pill label={t('greeter.bootTestCancel')} onClick={() => send({ t: 'bootTestCancel' })} />
+          </View>
+        ) : null}
 
         {/* selected user and password */}
         <View style={{ position: 'absolute', left: 0, top: Math.round(H * 0.6) - avatarSize, width: W, alignItems: 'center' }}>

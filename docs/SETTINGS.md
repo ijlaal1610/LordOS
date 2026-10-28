@@ -47,7 +47,8 @@ the time fields keep `direction: 'ltr'`.
  admin.c ─ display-brightness, power-profile, power-suspend, power-buttons, time-ntp, time-set,
            bt-unblock, rpi-case, video-optimize, hw-firmware-missing (the Store's suggestions,
            read-only), hw-memory-modules (System Information, read-only),
-           rpi-eeprom-status (read-only), rpi-eeprom-update
+           rpi-eeprom-status (read-only), rpi-eeprom-update, boot-test, boot-test-cancel (LordBench's
+           boot time test, docs/BENCHMARK.md)
 
  Cooling: lord.fan (ui/js_fan.c) ── /run/lordos/fand.sock ── lord-fand (root service, src/fan)
 ```

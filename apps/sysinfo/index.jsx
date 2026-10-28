@@ -6,11 +6,12 @@
 import {
   View, Text, ScrollView, Button, useTheme, useLocale, LordOSLogo, systemReport, systemInfo, lordosVersion, formatBytes, formatNumber,
   Toolbar, ToolbarSpacer, ToolbarButton, Segmented, SidebarItem, GroupBox, FormRow, EmptyState, Hairline, spacing, typeScale,
-  fs, userDirs, clipboard, wm, admin, remote, codeStatus, launchApp,
+  fs, userDirs, clipboard, wm, admin, remote, codeStatus, launchApp, useAppWindow,
 } from '@lordos/sdk';
 import { useMemo, useState } from 'react';
 import { evaluate as evaluateChecks, evaluateProbe, evaluateBench, PENDING as PENDING_CHECKS, PROBE_CHECKS } from './checks.js';
 import Performance from './performance.jsx';
+import { Scene } from './scene.jsx';
 import { cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, compositionReason, reportFileName, reportJson, parseMemoryLines } from './model.js';
 
 // The app's icon: a chip on the brand gradient.
@@ -523,6 +524,12 @@ function Report({ r }) {
 }
 
 export default function SystemInformation() {
+  const { args } = useAppWindow() || {};
+  if (args && args.scene) return <Scene />;      // LordBench's desktop scene (scene.jsx)
+  return <SystemInformationMain />;
+}
+
+function SystemInformationMain() {
   const { t: tr } = useLocale();
   const [tab, setTab] = useState('overview');
   const [n, setN] = useState(0);

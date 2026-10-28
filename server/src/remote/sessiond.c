@@ -32,6 +32,7 @@
 #include "proto.h"
 #include "rsec.h"
 #include "lord_version.h"           /* build/gen: version, channel and build (Makefile) */
+#include "../bench/boottest.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -445,6 +446,11 @@ static void save_last_user(const char *user) {
     if (!ok || rename(SD_LAST_USER ".new", SD_LAST_USER)) unlink(SD_LAST_USER ".new");
 }
 
+/* LordBench's boot time test (bench/boottest.h): after a test boot's first frame, when to restart (rd_now()
+ * seconds, 0 = not pending) and which boot of how many this one was */
+static double bt_reboot_at;
+static int bt_k, bt_n;
+
 static void greeter_reply_hello(void) {
     Str s = { 0 };
     sput(&s, "{\"t\":\"hello\",\"mode\":\"%s\",\"user\":\"%s\",\"last\":\"%s\",\"host\":\"", greeter_mode, greeter_user,
@@ -456,7 +462,12 @@ static void greeter_reply_hello(void) {
     file_value("/etc/default/keyboard", "XKBLAYOUT", layouts, sizeof layouts);
     file_value("/etc/default/keyboard", "XKBVARIANT", variants, sizeof variants);
     file_value("/etc/default/locale", "LANG", lang, sizeof lang);
-    sput(&s, "\",\"layouts\":\"%s\",\"variants\":\"%s\",\"lang\":\"%s\",\"users\":[", layouts, variants, lang);
+    sput(&s, "\",\"layouts\":\"%s\",\"variants\":\"%s\",\"lang\":\"%s\",", layouts, variants, lang);
+    if (bt_reboot_at > 0) {
+        double left = bt_reboot_at - rd_now();
+        sput(&s, "\"bootTest\":{\"k\":%d,\"n\":%d,\"in\":%d},", bt_k, bt_n, left > 0 ? (int)(left + 0.5) : 0);
+    }
+    sput(&s, "\"users\":[");
     setpwent();
     int first = 1, count = 0;
     struct passwd *pw;
@@ -663,7 +674,7 @@ static int splash_up(void) {
  * (js_sys.c, matched by bootId). */
 #define BOOT_TIMES SD_STATE_DIR "/boot-times.jsonl"
 #define BOOT_TIMES_MAX 200
-static void record_boot_time(double secs, const char *what) {
+static void record_boot_time(double secs, const char *what, int test_k, int test_n) {
     char id[40] = "";
     FILE *b = fopen("/proc/sys/kernel/random/boot_id", "re");
     if (b) { if (!fgets(id, sizeof id, b)) id[0] = 0; fclose(b); }
@@ -673,9 +684,10 @@ static void record_boot_time(double secs, const char *what) {
     char rel[65];
     snprintf(rel, sizeof rel, "%s", u.release);
     for (char *q = rel; *q; q++) if (!isalnum((unsigned char)*q) && !strchr(".+~-_", *q)) *q = '_';
-    char line[400];
-    snprintf(line, sizeof line, "{\"bootId\":\"%s\",\"at\":%lld,\"seconds\":%.3f,\"shown\":\"%s\",\"version\":\"%s%s%s\",\"build\":\"%s\",\"kernel\":\"%s\"}\n",
-             id, (long long)time(NULL), secs, what, LORD_VERSION, LORD_CHANNEL[0] ? "-" : "", LORD_CHANNEL, LORD_BUILD, rel);
+    char line[400], test[48] = "";
+    if (test_k > 0) snprintf(test, sizeof test, ",\"test\":%d,\"testOf\":%d", test_k, test_n);     /* a boot time test's boot */
+    snprintf(line, sizeof line, "{\"bootId\":\"%s\",\"at\":%lld,\"seconds\":%.3f,\"shown\":\"%s\",\"version\":\"%s%s%s\",\"build\":\"%s\",\"kernel\":\"%s\"%s}\n",
+             id, (long long)time(NULL), secs, what, LORD_VERSION, LORD_CHANNEL[0] ? "-" : "", LORD_CHANNEL, LORD_BUILD, rel, test);
     /* the older lines, at most BOOT_TIMES_MAX - 1, then this one; written whole and renamed */
     static char old[BOOT_TIMES_MAX * 400];
     size_t n = 0;
@@ -715,7 +727,43 @@ static void first_frame(void) {
     const char *what = !has_monitor ? "none" : shown == 'u' ? "session" : "login";   /* autologin, login screen, no monitor */
     sd_log("first frame on the monitor %.3f s after the kernel started (LordOS %s%s%s, build %s, %s): the boot splash can go",
            secs, LORD_VERSION, LORD_CHANNEL[0] ? "-" : "", LORD_CHANNEL, LORD_BUILD, what);
-    record_boot_time(secs, what);
+    /* LordBench's boot time test: this boot's number, and another restart if any are left */
+    BootTest b, after;
+    struct stat bst;
+    int have = bt_read(BT_PATH, &b) == 0, k = 0;
+    int act = bt_next(have, &b, (long long)time(NULL), &k, &after);
+    if (!have && !lstat(BT_PATH, &bst)) { unlink(BT_PATH); sd_log("boot time test: %s is not valid; removed", BT_PATH); }
+    if (act == BT_STALE) { unlink(BT_PATH); sd_log("boot time test: the state is too old; removed"); }
+    else if (act == BT_LAST) { unlink(BT_PATH); sd_log("boot time test: boot %d of %d, the last one", k, b.total); }
+    else if (act == BT_AGAIN) {
+        if (bt_write(BT_PATH, &after)) { unlink(BT_PATH); sd_log("warning: boot time test: could not write %s; stopped", BT_PATH); }
+        else {
+            bt_reboot_at = rd_now() + BT_SETTLE_S;
+            bt_k = k;
+            bt_n = b.total;
+            sd_log("boot time test: boot %d of %d; restarting in %d s (a login at the login screen cancels it)", k, b.total, BT_SETTLE_S);
+        }
+    }
+    record_boot_time(secs, what, act == BT_LAST || act == BT_AGAIN ? k : 0, b.total);
+}
+
+/* the boot time test stops: no restart, the state file removed */
+static void boot_test_cancel(const char *why) {
+    if (bt_reboot_at <= 0) return;
+    bt_reboot_at = 0;
+    unlink(BT_PATH);
+    sd_log("boot time test cancelled (%s) after boot %d of %d", why, bt_k, bt_n);
+}
+
+/* the restart, if nobody cancelled meanwhile and the file still says what this boot wrote */
+static void boot_test_tick(void) {
+    if (bt_reboot_at <= 0 || rd_now() < bt_reboot_at) return;
+    bt_reboot_at = 0;
+    BootTest c;
+    if (bt_read(BT_PATH, &c) || c.total != bt_n || c.left != bt_n - bt_k) { sd_log("boot time test: cancelled meanwhile"); return; }
+    char who[64];
+    snprintf(who, sizeof who, "by the boot time test (boot %d of %d done)", bt_k, bt_n);
+    power("reboot", who);
 }
 
 /* No card with KMS (0.8.1): before this, the boot ended on a silent black screen. The message goes
@@ -860,8 +908,12 @@ static void from_shown(int type, const char *j) {
         char u[40] = "", pass[300] = "";
         jstr(j, "user", u, sizeof u);
         jstr(j, "pass", pass, sizeof pass);
+        boot_test_cancel("a login at the login screen");
         if (!sd_valid_username(u) || start_worker(W_LOGIN, u, pass)) sd_mon_greeter("{\"t\":\"busy\"}");
         explicit_bzero(pass, sizeof pass);
+    } else if (!strcmp(t, "bootTestCancel")) {
+        boot_test_cancel("from the login screen");
+        greeter_reply_hello();
     } else if (!strcmp(t, "power")) {
         char what[16] = "";
         jstr(j, "a", what, sizeof what);
@@ -1375,6 +1427,7 @@ int main(int argc, char **argv) {
             if (shown == 'u' && worker_pid < 0 && pending == W_NONE) stop_greeters("a session is on the monitor");
         }
         if (rd_shared->lockout_dirty) save_lockout();
+        boot_test_tick();
         deliver_notices();
         if (rd_shared->version != seen) { seen = rd_shared->version; write_status(); }
         else {

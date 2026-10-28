@@ -77,7 +77,9 @@ We took the way the apps of popular desktop systems work, never their logos or t
   the background; images, edits and exports in the foreground). Workers exit on their own after
   20 s without work. A one-shot `MK_HWPROBE` helper lists, once per boot, which codecs VA-API
   decodes on the render nodes it gets (`lm_hwprobe.c`, for "Video in the browser": see
-  [VIDEO.md](VIDEO.md)).
+  [VIDEO.md](VIDEO.md)). A one-shot `MK_VBENCH` helper (0.8.6, LordBench) gets no fds at all: it makes
+  its test clips in memory and answers only fixed `MM_BENCH` records (`lm_vbench.c`, lord-server's side in
+  `bench/lbvideo.c`; see [BENCHMARK.md](BENCHMARK.md)).
 - **It never receives a path.** lord-server validates each path with the same rules as `lord.fs`
   (home folder and the user's mounts), opens the file and passes it the fd.
   - Outputs are created as temporary files next to the destination. When they finish well they're

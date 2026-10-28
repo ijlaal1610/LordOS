@@ -37,9 +37,12 @@ int grab_cursor(void) { return g.edges ? cursor_for_edges(g.edges) : CUR_MOVE; }
 
 static float dim_or(Dim d, float fallback) { return d.unit == UNIT_PX ? d.v : fallback; }
 
-int grab_begin(int node, int edges, const GrabLimits *lim) {
+/* LordBench's scripted move (grab_script_begin): the node follows a fixed path, one step per frame */
+static struct { int on; double t0; float rx, ry, period; } sc;
+
+static int setup(int node, int edges, const GrabLimits *lim) {
     Node *n = node_get(node);
-    if (!n || !ptr_buttons || !n->s.absolute) return -1;
+    if (!n || !n->s.absolute) return -1;
     if (g.active) grab_cancel();
     memset(&g, 0, sizeof g);
     g.active = 1;
@@ -56,6 +59,35 @@ int grab_begin(int node, int edges, const GrabLimits *lim) {
     g.oy = n->ay - n->y;
     paint_layer_begin(node, g.edges != 0);
     return 0;
+}
+
+int grab_begin(int node, int edges, const GrabLimits *lim) {
+    if (!ptr_buttons) return -1;
+    sc.on = 0;
+    return setup(node, edges, lim);
+}
+
+int grab_script_begin(int node, const GrabLimits *lim, float rx, float ry, float period_ms) {
+    if (rx < 0 || ry < 0 || period_ms < 500) return -1;
+    if (setup(node, 0, lim)) return -1;
+    sc.on = 1;
+    sc.t0 = -1;
+    sc.rx = rx;
+    sc.ry = ry;
+    sc.period = period_ms;
+    ui.dirty = 1;
+    return 0;
+}
+
+int grab_scripted(void) { return sc.on && g.active; }
+
+/* a figure of eight that starts and ends where the window was: x = rx sin(k), y = ry sin(2k) / 2 */
+void grab_script_tick(double now_ms) {
+    if (!sc.on) return;
+    if (!g.active) { sc.on = 0; return; }
+    if (sc.t0 < 0) sc.t0 = now_ms;
+    double k = 2 * M_PI * (now_ms - sc.t0) / sc.period;
+    grab_motion(g.px0 + (float)(sc.rx * sin(k)), g.py0 + (float)(sc.ry * sin(2 * k) / 2));
 }
 
 static float clampf(float v, float lo, float hi) { return v < lo ? lo : v > hi ? hi : v; }
@@ -105,6 +137,7 @@ void grab_motion(float px, float py) {
 
 int grab_finish(int *node, int *edges, float *dx, float *dy, float *dw, float *dh) {
     if (!g.active || ptr_buttons) return 0;
+    if (sc.on) { grab_cancel(); return 0; }         /* the person moved the pointer: the scene stops where it is */
     *node = g.node;
     *edges = g.edges;
     *dx = g.x - g.x0;
@@ -117,6 +150,7 @@ int grab_finish(int *node, int *edges, float *dx, float *dy, float *dw, float *d
 }
 
 void grab_cancel(void) {
+    sc.on = 0;
     if (!g.active) return;
     g.active = 0;
     paint_layer_end();

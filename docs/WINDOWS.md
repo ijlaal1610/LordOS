@@ -237,6 +237,11 @@ window side in `sdk/windows.js`.
   is going on, the SDK reads `lord.wm.pointer()` (`ui/js_wm.c`: the pointer and the drag's edges,
   no arguments, read only) every 90 ms and sets `snapPreview` when the zone changes; the theme draws
   it under the moving window. Crossing into a zone costs one rebuild of what is below the window.
+- **A scripted move (0.8.6, LordBench):** `wm.scriptMove(id, { rx, ry, periodMs })` asks lord-server to move
+  the window along a figure of eight through this same path (`lord.wm.script`, `grab_script_begin` in
+  `ui/grab.c`: the window painted once into a layer, one step per frame from the main loop, no button held
+  and no JS per frame); pointer input or `wm.stopScript()` stops it. Only System Information's desktop
+  scene uses it (`apps/sysinfo/scene.jsx`), to measure the compositor ([BENCHMARK.md](BENCHMARK.md)).
 - **On release** (`__lordWm('end')`) the SDK reads the pointer once more and snaps; the size from
   before the first snap is kept in `w.restore`. Dragging a snapped window away gives it that size
   back under the pointer, where it was grabbed. Resizing a snapped window keeps its new size.

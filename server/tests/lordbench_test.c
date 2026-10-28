@@ -1,11 +1,17 @@
 /* lordbench_test.c — LordBench without the helper process (docs/BENCHMARK.md, "0.8.6 — LordBench"): the
- * records lord-server accepts from lord-bench, short runs of every CPU, memory and storage workload, the
+ * records lord-server accepts from lord-bench and from lord-media's video measurement, the compositor's frame
+ * statistics, short runs of every CPU, memory and storage workload, the
  * conditions read from fake sysfs trees (temperatures and trip points, throttle counters, the Pi's
- * flags, batteries) with the thermal and battery guards, and the boot history per version. */
+ * flags, batteries) with the thermal and battery guards, the boot history per version and the boot time
+ * test's state file and its steps. */
 #include "../src/bench/lbproto.h"
 #include "../src/bench/lbwork.h"
 #include "../src/bench/lbcond.h"
 #include "../src/bench/lbrun.h"
+#include "../src/bench/lbframes.h"
+#include "../src/bench/lbvideo.h"
+#include "../src/bench/boottest.h"
+#include "../src/media/proto.h"
 
 #include <fcntl.h>
 #include <math.h>
@@ -58,6 +64,58 @@ int main(void) {
         for (int k = 0; k < i; k++) CHECK(strcmp(lb_name(i), lb_name(k)), "unique %s", lb_name(i));
     }
     CHECK(!lb_name(LB_COUNT) && !lb_name(-1), "names out of range");
+    /* lord-bench may not report what lord-media or lord-server measure */
+    m = msg(LB_MSG_RESULT, LB_VID_H264_1080, 60, 1);
+    CHECK(!lb_msg_valid(&m), "a video result from lord-bench");
+    m = msg(LB_MSG_RESULT, LB_COMP_P99, 3, 0);
+    CHECK(!lb_msg_valid(&m), "a frame time from lord-bench");
+    m = msg(LB_MSG_STEP, LB_DESK_FPS, 0, 0);
+    CHECK(!lb_msg_valid(&m), "a desktop step from lord-bench");
+    m = msg(LB_MSG_SKIP, LB_SUS_END, 0, LB_SKIP_NOCODEC);
+    CHECK(!lb_msg_valid(&m), "a video skip reason from lord-bench");
+    CHECK(lb_lower_better(LB_COMP_P99) && lb_lower_better(LB_DESK_MISSED) && !lb_lower_better(LB_DESK_FPS) && !lb_lower_better(LB_VID_AV1_1080), "which are lower-better");
+    CHECK(!strcmp(lb_name(LB_VENC_VP8), "video.enc.vp8") && !strcmp(lb_unit(LB_COMP_MISSED), "%"), "video and frame names");
+
+    /* ---- lord-media's video records ---- */
+    CHECK(lbv_record_valid(VB_HEVC_2160, VBR_RESULT, 24500, 300, 0), "a video result");
+    CHECK(lbv_record_valid(VB_AV1_1080, VBR_SKIP, 0, 0, VBS_NOCODEC), "a video skip");
+    CHECK(lbv_record_valid(VB_ENC_VP8, VBR_STEP, 0, 0, 0), "a video step");
+    CHECK(!lbv_record_valid(VB_COUNT, VBR_RESULT, 1000, 0, 0), "a video id out of range");
+    CHECK(!lbv_record_valid(VB_H264_1080, VBR_RESULT, 0, 0, 0), "a zero rate");
+    CHECK(!lbv_record_valid(VB_H264_1080, VBR_RESULT, -5, 0, 0), "a negative rate");
+    CHECK(!lbv_record_valid(VB_H264_1080, VBR_RESULT, 1000, -1, 0), "a negative spread");
+    CHECK(!lbv_record_valid(VB_H264_1080, VBR_RESULT, 200000000LL, 0, 0), "an absurd rate");
+    CHECK(!lbv_record_valid(VB_H264_1080, VBR_SKIP, 0, 0, 9), "an unknown video skip reason");
+    CHECK(!lbv_record_valid(VB_H264_1080, 7, 0, 0, 0), "an unknown video record kind");
+
+    /* ---- the compositor's frame recorder ---- */
+    LbFrameStats fs;
+    lbf_frame(5);                                       /* not recording: ignored */
+    lbf_presented(1000, 16666667);
+    lbf_begin();
+    uint64_t t = 1000000000ull;
+    for (int i = 0; i < 100; i++) {
+        lbf_frame(i == 99 ? 40.0 : 2.0 + (i % 3));      /* one slow frame */
+        t += i == 50 || i == 70 ? 50000000ull : 16666667ull;   /* two long waits */
+        lbf_presented(t, 16666667);
+    }
+    CHECK(lbf_end(&fs) == 0, "frame stats");
+    CHECK(fs.frames == 100 && fs.shown == 100, "frames %d shown %d", fs.frames, fs.shown);
+    CHECK(fabs(fs.budget_ms - 16.667) < 0.01, "budget %f", fs.budget_ms);
+    CHECK(fs.work_p50 == 3.0, "p50 %f", fs.work_p50);
+    CHECK(fs.work_p99 == 4.0 && fs.work_max == 40.0, "p99 %f max %f", fs.work_p99, fs.work_max);
+    CHECK(fabs(fs.missed_pct - 200.0 / 99) < 0.01, "missed %f", fs.missed_pct);
+    CHECK(fabs(fs.gap_max - 50) < 0.01, "gap %f", fs.gap_max);
+    CHECK(fs.fps > 50 && fs.fps < 60, "fps %f", fs.fps);
+    lbf_frame(9);                                       /* stopped: ignored */
+    lbf_begin();
+    lbf_presented(5, 0);
+    CHECK(lbf_end(&fs) == -1 && fs.shown == 1 && fs.frames == 0, "one frame is not enough");
+    lbf_begin();
+    lbf_presented(100, 0);
+    lbf_presented(50, 0);                               /* out of order: dropped */
+    lbf_presented(200, 0);
+    CHECK(lbf_end(&fs) == 0 && fs.shown == 2, "out-of-order times dropped");
 
     /* ---- workloads, short ---- */
     double v;
@@ -171,7 +229,13 @@ int main(void) {
         "{\"bootId\":\"e\",\"at\":5,\"seconds\":18.000,\"shown\":\"greeter\",\"version\":\"0.8.5-beta\",\"build\":\"x\",\"kernel\":\"k\"}\n"
         "{\"bootId\":\"f\",\"at\":6,\"seconds\":21.000,\"shown\":\"greeter\",\"version\":\"0.8.5-beta\",\"build\":\"x\",\"kernel\":\"k\"}\n"
         "{\"bootId\":\"g\",\"at\":7,\"seconds\":19.000,\"shown\":\"greeter\",\"version\":\"0.8.5-beta\",\"build\":\"x\",\"kernel\":\"k\"}\n"
-        "{\"bootId\":\"h\",\"at\":8,\"seconds\":\"x\",\"version\":\"0.8.5\\\"evil\"}\n";
+        "{\"bootId\":\"h\",\"at\":8,\"seconds\":\"x\",\"version\":\"0.8.5\\\"evil\"}\n"
+        "{\"bootId\":\"i\",\"at\":9,\"seconds\":50.000,\"shown\":\"login\",\"version\":\"0.8.6-beta\",\"build\":\"x\",\"kernel\":\"k\"}\n"
+        "{\"bootId\":\"j\",\"at\":10,\"seconds\":31.000,\"shown\":\"login\",\"version\":\"0.8.6-beta\",\"build\":\"x\",\"kernel\":\"k\",\"test\":1,\"testOf\":3}\n"
+        "{\"bootId\":\"k\",\"at\":11,\"seconds\":30.000,\"shown\":\"login\",\"version\":\"0.8.6-beta\",\"build\":\"x\",\"kernel\":\"k\",\"test\":2,\"testOf\":3}\n"
+        "{\"bootId\":\"l\",\"at\":12,\"seconds\":29.000,\"shown\":\"login\",\"version\":\"0.8.6-beta\",\"build\":\"x\",\"kernel\":\"k\",\"test\":1,\"testOf\":4}\n"
+        "{\"bootId\":\"m\",\"at\":13,\"seconds\":33.000,\"shown\":\"login\",\"version\":\"0.8.6-beta\",\"build\":\"x\",\"kernel\":\"k\",\"test\":2,\"testOf\":4}\n"
+        "{\"bootId\":\"n\",\"at\":14,\"seconds\":99.000,\"shown\":\"login\",\"version\":\"0.8.6-beta\",\"build\":\"x\",\"kernel\":\"k\",\"test\":4,\"testOf\":4}\n";
     CHECK(fd >= 0 && write(fd, lines, strlen(lines)) == (ssize_t)strlen(lines), "boot file");
     fchmod(fd, 0644);
     close(fd);
@@ -179,11 +243,51 @@ int main(void) {
     CHECK(h && strstr(h, "{\"version\":\"0.8.4-beta\",\"boots\":2,\"median\":21.00,\"min\":20.00,\"max\":22.00,\"first\":30.00}"), "0.8.4: %s", h ? h : "null");
     CHECK(h && strstr(h, "{\"version\":\"0.8.5-beta\",\"boots\":3,\"median\":19.00,\"min\":18.00,\"max\":21.00,\"first\":40.00}"), "0.8.5: %s", h ? h : "null");
     CHECK(h && !strstr(h, "evil"), "a bad line is skipped");
+    CHECK(h && strstr(h, "\"test\":{\"boots\":2,\"of\":4,\"at\":12,\"median\":31.00,\"min\":29.00,\"max\":33.00}"),
+          "the latest boot time test, a boot out of order left out: %s", h ? h : "null");
+    CHECK(h && !strstr(h, "0.8.5-beta\",\"boots\":3,\"median\":19.00,\"min\":18.00,\"max\":21.00,\"first\":40.00,\"test\""), "no test in 0.8.5");
     free(h);
     chmod(bt, 0666);
     CHECK(!(h = lbrun_boot_history(bt)), "a file others can write is refused");
     free(h);
     unlink(bt);
+
+    /* ---- the boot time test's state (bench/boottest.c) ---- */
+    BootTest b = { 5, 5, 1793000000LL }, bs, after;
+    char text[128];
+    CHECK(bt_format(&b, text, sizeof text) == 0 && !strcmp(text, "lordos-boot-test 1\ntotal 5\nleft 5\nat 1793000000\n"), "format: %s", text);
+    CHECK(bt_parse(text, &bs) == 0 && bs.total == 5 && bs.left == 5 && bs.at == 1793000000LL, "parse");
+    CHECK(bt_parse("lordos-boot-test 1\ntotal 11\nleft 5\nat 1\n", &bs), "more than BT_MAX refused");
+    CHECK(bt_parse("lordos-boot-test 1\ntotal 1\nleft 1\nat 1\n", &bs), "fewer than BT_MIN refused");
+    CHECK(bt_parse("lordos-boot-test 1\ntotal 3\nleft 4\nat 1\n", &bs), "left above total refused");
+    CHECK(bt_parse("lordos-boot-test 1\ntotal 3\nleft 0\nat 1\n", &bs), "nothing left refused");
+    CHECK(bt_parse("lordos-boot-test 1\ntotal 3\nleft 2\nat 1\nrm -rf /\n", &bs), "trailing text refused");
+    CHECK(bt_parse("lordos-boot-test 1\ntotal 3\nleft 2\nat -1\n", &bs), "a negative time refused");
+    CHECK(bt_parse("lordos-boot-test 1\ntotal  3\nleft 2\nat 1\n", &bs), "extra spaces refused");
+    CHECK(bt_parse("lordos-boot-test 2\ntotal 3\nleft 2\nat 1\n", &bs), "another format version refused");
+    CHECK(bt_parse("lordos-boot-test 1\ntotal 3\nleft 2\nat 99999999999999\n", &bs), "a huge number refused");
+    BootTest bad = { 3, 0, 1 };
+    CHECK(bt_format(&bad, text, sizeof text) == -1, "an invalid state isn't written");
+    int k = 0;
+    long long now = 1793000100LL;
+    CHECK(bt_next(0, &b, now, &k, &after) == BT_NONE, "no file, no test");
+    CHECK(bt_next(1, &b, now, &k, &after) == BT_AGAIN && k == 1 && after.left == 4 && after.total == 5 && after.at == now, "boot 1 of 5");
+    BootTest last = { 5, 1, now - 100 };
+    CHECK(bt_next(1, &last, now, &k, &after) == BT_LAST && k == 5, "boot 5 of 5 is the last");
+    BootTest old = { 5, 3, now - BT_STALE_S - 1 }, future = { 5, 3, now + 3600 };
+    CHECK(bt_next(1, &old, now, &k, &after) == BT_STALE, "an old state is discarded");
+    CHECK(bt_next(1, &future, now, &k, &after) == BT_STALE, "a state from the future is discarded");
+    /* the test always ends: from any valid state, at most BT_MAX boots */
+    BootTest cur = { BT_MAX, BT_MAX, now };
+    int boots = 0, act;
+    while ((act = bt_next(1, &cur, now, &k, &after)) == BT_AGAIN && boots < 100) { cur = after; boots++; }
+    CHECK(act == BT_LAST && boots == BT_MAX - 1 && k == BT_MAX, "%d restarts for %d boots", boots, BT_MAX);
+    char bf[] = "/tmp/lordbench-boottest-XXXXXX";
+    fd = mkstemp(bf);
+    close(fd);
+    CHECK(bt_write(bf, &b) == 0, "write");
+    CHECK(getuid() == 0 ? bt_read(bf, &bs) == 0 : bt_read(bf, &bs) == -1, "read only a root-owned file");
+    unlink(bf);
 
     /* ---- the run's state without a helper ---- */
     char *p = lbrun_poll();

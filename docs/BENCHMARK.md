@@ -197,7 +197,10 @@ Three separate verdicts, never folded into one score:
 
 Unreleased; the latest release is 0.8.5-beta. Checked on VM 116 (Proxmox VE, 8 vCPU of a Xeon Silver
 4108, 4 GB, virtio disk, no GPU passthrough: Mesa's llvmpipe) from a terminal (`build/lordbench-cli`) and
-in an isolated headless session through System Information → Performance.
+in an isolated headless session through System Information → Performance, and on a Raspberry Pi 5 16 GB
+(SD card, the LordOS kernel 6.18.57-lordos.3, V3D 7.1, the fan on its header) from a terminal and in the
+maintainer's own session on a 1920×1080 60 Hz monitor (HDMI-A-1 and HDMI-A-2 both tried), with a 0.8.6
+development package.
 
 - **`lord-bench`** (`server/src/bench/lbmain.c`, `mk/lordbench.mk`): launched by lord-server
   (`bench/lbrun.c`) from its own folder only (owned by root or the user, not writable by others), no
@@ -206,7 +209,9 @@ in an isolated headless session through System Information → Performance.
   GPU's render node (`/dev/dri/renderD128…`) and, for Full, an unnamed scratch file (`O_TMPFILE` in
   `~/.cache`, at most 1 GB and a quarter of the free space). Then it locks itself in with
   `sandbox_apply_helper` before any work (scope `lordos-bench.scope`, 2 GB memory cap, read-only
-  `/usr/lib`, `/usr/share`, `/sys/dev/char`, `/sys/devices` for Mesa, DRM and dma-buf ioctls only when
+  `/usr/lib`, `/usr/share`, `/sys/dev/char`, `/sys/devices`, `/sys/firmware/devicetree` and `/dev/dri` for
+  Mesa (without the last two, Mesa's loader on the Pi 5 could not identify the V3D device and every GPU
+  measurement was skipped; the GPU itself is still reached only through the render node fd), DRM and dma-buf ioctls only when
   it got the render node, no sockets, no exec, threads only). It answers only with fixed-size records
   (`LbMsg`: a measurement id, a value and its spread); lord-server checks each one (`lb_msg_valid`: the
   magic, a known kind and id, finite values in range) and writes the JSON itself. Stopping is a SIGKILL.
@@ -229,6 +234,40 @@ in an isolated headless session through System Information → Performance.
     disappears with the fd.
   - Sustained (Full only, 3 minutes from the app): the matrix product on every core, a sample every
     10 s with the temperature lord-server read at that moment.
+- **Video** (after the helper's measurements, Quick and Full): a `lord-media` job (`MK_VBENCH`,
+  `media/helper/lm_vbench.c`, launched from lord-server's folder by `bench/lbvideo.c`, no fds at all). It makes its
+  own test clips in memory from a synthetic picture (gradients, moving blocks and a little noise, the same every
+  time) with this system's FFmpeg: H.264 (libx264 `veryfast`, 8 Mbit/s), HEVC (libx265 `ultrafast`), VP9 (libvpx
+  realtime) and AV1 (SVT-AV1 preset 12, else libaom or rav1e) at 1080p, and H.264 and HEVC at 4K. Each clip is
+  decoded in software the way the player does (every core, frame and slice threads) over and over for at least a
+  second, three times, as frames per second. Then the remote desktop's own encoders with their settings
+  (`lm_stream_sw_encoder`: libx264 `ultrafast`/`zerolatency`, libvpx VP8 realtime) encode 1920×1080 frames as fast
+  as they can. Quick measures H.264 at 1080p and the H.264 encoder; an encoder or decoder this FFmpeg lacks is
+  "skipped: no codec". lord-media answers only `MM_BENCH` records (a measurement, a kind, a rate in thousandths),
+  checked by `lbv_record_valid` before they become results. Hardware decoding is not measured: neither test
+  machine has it (no VA-API on VM 116; the Pi 5's HEVC decoder needs FFmpeg's `v4l2request`, which Debian's FFmpeg
+  lacks).
+- **Desktop impact** (its own button, its own result file `lordbench-desktop.json`): after the quiet wait,
+  System Information opens a second window with a scene (cards, shadows and one element that turns through
+  `lord.setStyle`) and lord-server moves that window along a figure of eight through the drag's own path
+  (`lord.wm.script`, `grab_script_begin` in `ui/grab.c`: painted once into a layer, one step per frame, no JS per
+  frame). lord-server records every frame it builds and every frame the main display shows (`bench/lbframes.c`,
+  from `render()` and the page flips; one atomic read per frame when off): 10 s alone, then 10 s while `lord-bench`
+  loads every core at the lowest priority (`LB_MODE_LOAD`: nice 19, idle I/O class) after 2 s of warm-up. Each
+  phase gives the frames shown per second, the time to build a frame (median and 99th percentile) and the share of
+  intervals between shown frames longer than 1.5 refresh periods; the load phase also gives the work the load
+  got done. The verdict compares the 99th percentile with the refresh period actually in use and warns above 5 %
+  late frames (problems above 25 %). Without a monitor the compositor draws only while someone watches (the
+  remote desktop), so a headless session gives "skipped: too few frames" unless a viewer is connected. Input
+  latency is not measured yet.
+- **Boot time test** (Performance → Boot time, administrators): N boots in a row (3, 5 or 10). The closed admin
+  action `boot-test <n>` writes `/var/lib/lordos/boot-test` in a fixed format (`bench/boottest.c`) and the session
+  restarts as usual (its confirmation included). At each boot's first frame lord-sessiond records the boot with its
+  number in the test and, while boots are left, writes the file again and restarts 30 s later; the login screen
+  shows the boot and the countdown with **Stop the test**, and a login there stops it too (`docs/SESSIONS.md`,
+  "Boot time"). The test always ends: the count only goes down, a state older than 30 minutes is discarded, and
+  lord-sessiond reads the file again right before restarting. The Boot time group shows the latest test's median
+  and range per version.
 - **Guards and conditions** (`bench/lbcond.c`, read by lord-server, never by the helper): the hottest
   thermal zone (or the CPU's coretemp/k10temp/zenpower hwmon sensor) and the lowest passive and
   critical trip points; the x86 thermal throttle counters; the Raspberry Pi firmware's `get_throttled`
@@ -239,7 +278,7 @@ in an isolated headless session through System Information → Performance.
   tests stops when the throttle counters grow or the Pi says it is throttling now; in the sustained test
   throttling is recorded with its time and temperature instead. The kind of disk under the scratch file
   is recorded (NVMe, SD/eMMC, SSD, HDD, USB, virtual, or RAM in the live session). Unit tests on fake
-  sysfs trees (`tests/lordbench_test.c`, 260 checks): an x86 laptop on battery, a Raspberry Pi 5.
+  sysfs trees (`tests/lordbench_test.c`): an x86 laptop on battery, a Raspberry Pi 5.
 - **The result** (`~/.local/state/lordos/lordbench.json`, the previous one kept as
   `lordbench-prev.json`; a refused run keeps the last result): LordBench's version, the mode, status and
   stop reason, LordOS and kernel versions, live or installed, threads, the quiet wait, conditions before
@@ -255,25 +294,59 @@ in an isolated headless session through System Information → Performance.
   throttling, under-voltage, a sustained drop above 10 % and a busy start), every measurement with its
   "×N" and its change against the previous run, the conditions that differ from the previous run, the
   conditions, the boot times per version, and **Save to Documents** (the JSON). Nothing is sent.
-- **Reference machines** (`apps/sysinfo/references.js`): only VM 116 so far (a Full run with a 30 s
-  sustained test, numbers below). The Raspberry Pi 5 8 GB and the modest x86 PC are added when measured.
+- **Reference machines** (`apps/sysinfo/references.js`): VM 116 and the Raspberry Pi 5 16 GB, each a Full run
+  copied from the `lordbench.json` it wrote (numbers below). The modest x86 PC is added when measured.
 
-VM 116, Full, LordBench 1 (2026-10-27): SHA-256 167 MB/s on one core and 977 MB/s on eight; matrix
-product 3.4 and 19.7 GFLOP/s; xz 61 and 354 MB/s; QuickJS 58 and 336 runs/s; memory copy 20.2 GB/s,
-triad 22.8 GB/s, latency 90 ns; llvmpipe: scene 794 fps, fill 395 Mpixel/s, upload 9,676 MB/s, 8 layers
-22.6 fps; virtio disk: 219 MB/s write, 517 MB/s read, 5,619 random reads/s; sustained 19.8 GFLOP/s from
-start to end. A Quick run took 33 s, a Full run with 30 s sustained 117 s.
+VM 116, Full with 30 s sustained, LordBench 1 (2026-10-27, 159 s): SHA-256 166 MB/s on one core and 984 MB/s on
+eight; matrix product 3.3 and 19.9 GFLOP/s; xz 60 and 363 MB/s; QuickJS 57 and 336 runs/s; memory copy
+20.0 GB/s, triad 22.8 GB/s, latency 91 ns; llvmpipe: scene 802 fps, fill 407 Mpixel/s, upload 9,457 MB/s,
+8 layers 22.9 fps; virtio disk: 378 MB/s write, 517 MB/s read, 6,256 random reads/s; sustained 19.6 → 19.8
+GFLOP/s; software video decoding H.264 1080p 399 fps, HEVC 1080p 385, VP9 1080p 215, AV1 1080p 201, H.264 4K
+76, HEVC 4K 102; encoders H.264 106 fps and VP8 54 fps at 1080p. A Quick run took 33 s.
 
-The same Full run from System Information in the isolated headless session (3 minutes of sustained load;
-its home is on tmpfs, so the storage test measured memory and says so, ×24 the reference's virtio disk):
+Raspberry Pi 5 16 GB, Full with 180 s sustained, LordBench 1 (2026-10-27, 339 s): SHA-256 933 MB/s on one core
+and 3,693 MB/s on four (the CPU's SHA instructions); matrix product 2.26 and 5.99 GFLOP/s; xz 67 and 254 MB/s;
+QuickJS 54 and 181 runs/s; memory copy 7.6 GB/s, triad 7.3 GB/s, latency 115 ns; V3D (hardware): scene 795 fps,
+fill 2,455 Mpixel/s, upload 3,897 MB/s, 8 layers 115 fps; SD card: 66 MB/s write, 91 MB/s read, 2,692 random
+reads/s; sustained 5.86 → 5.88 GFLOP/s over 3 minutes with the fan, 55.6 °C at most, no speed lost; software
+video decoding H.264 1080p 258 fps, HEVC 1080p 246, VP9 1080p 204, AV1 1080p 159, H.264 4K 55, HEVC 4K 57;
+encoders H.264 75 fps and VP8 55 fps. A Quick run took 34 s. On this kernel the firmware's `get_throttled` file and
+a cpufreq cooling device are not exposed, so firmware throttling can't be seen during a run (the stop on
+throttling does not fire on the Pi; the `rpi_volt` under-voltage alarm is read); the sustained curve and the
+temperature are the evidence that it did not throttle.
+
+Desktop impact:
+
+| Machine | Phase | Frames shown | Build p50 | Build p99 | Late |
+|---|---|---|---|---|---|
+| VM 116, headless, one remote viewer, llvmpipe | alone | 59.6 fps | 5.4 ms | 13.3 ms | — |
+| | under load | — | — | 22.9 ms | 12.5 % |
+| Pi 5, 1920×1080 60 Hz monitor, GPU composition | alone | 59.4 fps | 10.9 ms | 13.0 ms | 1.0 % |
+| | under load | 24.0 fps | 20.1 ms | 29.3 ms | 96.5 % |
+
+On the Pi the desktop stays at the refresh rate alone, but under an all-core load at the lowest priority (which
+still got 5.0 GFLOP/s done) it falls to 24 frames per second: a stability problem LordBench found, to be
+investigated (the time to build a frame is already 11 ms of the 16.7 ms budget at rest, and the load competes for
+the cores and the memory bandwidth the compositor's paint threads use). The first scene moved its window from JS
+(`wm.move` every frame) and measured React instead of the compositor (12.8 fps on VM 116); it was replaced by the
+drag's own path in C before these numbers.
+
+Boot: the Pi 5 reaches the login screen on its monitor 5.99 s after the kernel starts (lord-sessiond's record;
+systemd-analyze gives 2.1 s kernel + 4.2 s userspace). Boots where the monitor was connected late took 61 and
+103 s, which is the wait for the monitor, not the boot. The N-boot test was checked by its unit tests
+(`tests/lordbench_test.c`: the state file's format, parsing, ownership, staleness and countdown) only;
+the measured Pi number is a single boot.
+
+The same Full run from System Information in VM 116's isolated headless session (3 minutes of sustained load;
+its home is on tmpfs, so the storage test measured memory and says so, ×24 the reference's virtio disk; this
+screenshot predates the video and desktop parts):
 
 ![System Information → Performance](sysinfo-performance.png)
 
-Not built yet: the desktop-impact mode (the helper already takes the low-priority flag, `LB_GO_LOW`;
-the scripted scene and the frame-time and input-latency measurement while it runs are missing), the
-compositor workload (lord-server's own frame counters during a scripted window drag), the video
-workload (clips decoded in `lord-media`, hardware and software, and the remote desktop's encoders),
-rebooting N times for the boot time, repeating the helper-sandbox self-test inside `lord-bench` (`sec.helper-sandbox`), the Pi 5 and x86 PC references, and `lordos-sysreport bench`.
+Not built yet: input latency in the desktop-impact mode; hardware video decoding (no test machine has VA-API, and
+the Pi 5's HEVC decoder needs FFmpeg's `v4l2request`); the layout, paint and shaping CPU workloads; repeating the
+helper-sandbox self-test inside `lord-bench` (`sec.helper-sandbox`); detecting the Pi's firmware throttling
+during a run on kernels that don't expose it; the x86 PC reference; and `lordos-sysreport bench`.
 
 ## 0.8.7 — Community hardware reports
 

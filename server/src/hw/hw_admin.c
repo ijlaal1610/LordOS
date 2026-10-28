@@ -2,6 +2,7 @@
 #include "hw_admin.h"
 #include "hwscan.h"
 #include "../sysreport/smbios.h"
+#include "../bench/boottest.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -13,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 /* One argument line, trimmed, into out. 0 if it fits. */
@@ -504,3 +506,29 @@ void hw_act_video(const AdminReq *r, const char *arg, size_t len) {
     }
     admin_say("OK", "%s", a);   /* i18n-ok */
 }
+
+/* ---- LordBench's boot time test (bench/boottest.h, docs/BENCHMARK.md "Boot") ---- */
+
+/* boot-test <n>: n restarts in a row (BT_MIN..BT_MAX), each boot's time recorded by lord-sessiond. Only
+ * writes the fixed-format state file; the restart itself is asked by the session as any other (Restart). */
+void hw_act_boot_test(const AdminReq *r, const char *arg, size_t len) {
+    (void)r;
+    char v[4];
+    if (arg_copy(arg, len, v, sizeof v) || !v[0] || strspn(v, "0123456789") != strlen(v)) { admin_err("admin.invalidArgument", NULL); return; }
+    int n = atoi(v);
+    if (n < BT_MIN || n > BT_MAX) { admin_err("admin.invalidArgument", NULL); return; }
+    struct stat st;
+    if (!stat("/run/live", &st)) { admin_err("bench.bootTestLive", NULL); return; }   /* nothing survives a restart there */
+    mkdir("/var/lib/lordos", 0755);
+    BootTest b = { n, n, (long long)time(NULL) };
+    if (bt_write(BT_PATH, &b)) { admin_err("bench.bootTestFailed", "errno", lerr_errno(errno), NULL); return; }
+    admin_ok("bench.bootTestSet", "n", v, NULL);
+}
+
+/* boot-test-cancel: no more restarts (the boots already measured stay in the history) */
+void hw_act_boot_test_cancel(const AdminReq *r, const char *arg, size_t len) {
+    (void)r; (void)arg; (void)len;
+    if (unlink(BT_PATH) && errno != ENOENT) { admin_err("bench.bootTestFailed", "errno", lerr_errno(errno), NULL); return; }
+    admin_ok("bench.bootTestCancelled", NULL);
+}
+

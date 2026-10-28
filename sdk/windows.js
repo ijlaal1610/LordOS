@@ -212,12 +212,13 @@ function watchSnap(id) {
   }, 90);
 }
 
+const grabAreas = () => screen.displays.map((d) => workAreaOf(d)).map((a, i) => ({ x: screen.displays[i].x, w: screen.displays[i].w, y: a.y }));
 function beginGrab(id, edges) {
   const w = windows.get().find((x) => x.id === id);
   const f = frameNodes.get(id);
   if (!w || !f || w.maximized || w.fullscreen || typeof lord === 'undefined' || !lord.wm) return false;
   const [minW, minH] = registry.get(w.app)?.minSize || [160, 100];
-  const areas = screen.displays.map((d) => workAreaOf(d)).map((a, i) => ({ x: screen.displays[i].x, w: screen.displays[i].w, y: a.y }));
+  const areas = grabAreas();
   if (!lord.wm.grab(f.node, edges, { inset: f.inset, minW, minH, minTop: areaOfWindow(w).y, areas })) return false;
   grab = { id, node: f.node, edges, f: { x: w.x, y: w.y, w: w.w, h: w.h } };
   if (!edges) watchSnap(id);
@@ -381,6 +382,16 @@ export const wm = {
   frameRef,
   beginMove: (id) => beginGrab(id, 0),
   beginResize: (id, edges) => beginGrab(id, edges & 15),
+  // LordBench's desktop scene (apps/sysinfo/scene.jsx): lord-server moves the window along a figure of
+  // eight (rx × ry px, one turn every periodMs) through the drag's own path, one step per frame, until
+  // stopScript() or pointer input. The store keeps the old place: the scene's window is closed after.
+  scriptMove(id, { rx, ry, periodMs }) {
+    const w = windows.get().find((x) => x.id === id);
+    const f = frameNodes.get(id);
+    if (!w || !f || w.maximized || w.fullscreen || typeof lord === 'undefined' || !lord.wm || typeof lord.wm.script !== 'function') return false;
+    return !!lord.wm.script(f.node, { rx, ry, periodMs, inset: f.inset, minTop: areaOfWindow(w).y, areas: grabAreas() });
+  },
+  stopScript: () => { if (typeof lord !== 'undefined' && lord.wm) lord.wm.cancel(); },
   // Effective geometry (a maximized window takes the work area).
   frame: (w) => { if (!w.maximized) return w; const a = areaOfWindow(w); return { x: a.x, y: a.y, w: a.w, h: a.h }; },
 };

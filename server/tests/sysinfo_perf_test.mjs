@@ -1,7 +1,7 @@
 // sysinfo_perf_test.mjs — LordBench's model (apps/sysinfo/perf.js, 0.8.6): ratios against the reference
 // machines, category means, the stability and compatibility verdicts, comparisons with the previous
 // result and the conditions that differ. Run by tests/run_suites.sh (needs node).
-import { CATEGORIES, REFERENCES, ratio, categoryRatios, comparableReferences, stability, compatibilityVerdict, conditionDiffs, changes, sustainedSeries, refreshBudget, fileName } from '../../apps/sysinfo/perf.js';
+import { CATEGORIES, DESKTOP_CATEGORIES, desktopVerdict, REFERENCES, ratio, categoryRatios, comparableReferences, stability, compatibilityVerdict, conditionDiffs, changes, sustainedSeries, refreshBudget, fileName } from '../../apps/sysinfo/perf.js';
 
 let n = 0, bad = 0;
 const eq = (what, got, want) => {
@@ -21,9 +21,9 @@ const res = (over = {}) => ({
 });
 const ref = { lordbench: 1, results: { 'cpu.sha256.1': { value: 100 }, 'cpu.matmul.1': { value: 2 }, 'mem.latency': { value: 90 } } };
 
-// every measurement lord-bench reports is in exactly one category
+// every measurement of a peak run (lord-bench's and lord-media's) is in exactly one category
 const ids = CATEGORIES.flatMap((c) => c.ids);
-eq('20 measurements, no repeats', [ids.length, new Set(ids).size], [20, 20]);
+eq('28 measurements, no repeats', [ids.length, new Set(ids).size], [28, 28]);
 eq('references have every measurement', REFERENCES.every((r) => ids.every((id) => r.results[id] && r.results[id].value > 0)), true);
 
 near('×2 SHA', ratio(res(), ref, 'cpu.sha256.1'), 2);
@@ -65,6 +65,24 @@ eq('no displays', refreshBudget(res({ session: {} })), null);
 const at = Date.UTC(2026, 9, 27, 12) / 1000;
 eq('file name', fileName(at, () => false), 'lordbench-2026-10-27.json');
 eq('file name taken', fileName(at, (x) => x === 'lordbench-2026-10-27.json'), 'lordbench-2026-10-27-2.json');
+
+// the desktop run
+const desk = (results, budgetMs = 1000 / 60) => ({ mode: 'desktop', frames: { budgetMs }, results });
+const v = (value) => ({ value });
+eq('no frames: unknown', desktopVerdict(desk({})).state, 'unknown');
+eq('no budget: unknown', desktopVerdict({ results: { 'comp.p99': v(3) } }).state, 'unknown');
+let dv = desktopVerdict(desk({ 'comp.p99': v(4), 'comp.missed': v(0), 'desk.p99': v(9), 'desk.missed': v(1.5) }));
+eq('both fit', dv.state, 'pass');
+eq('both fit: notes', dv.notes.map((x) => x.id), ['compFits', 'deskFits']);
+dv = desktopVerdict(desk({ 'comp.p99': v(4), 'comp.missed': v(0), 'desk.p99': v(21), 'desk.missed': v(3) }));
+eq('p99 over the budget under load', [dv.state, dv.notes.map((x) => x.id)], ['warn', ['compFits', 'deskOver']]);
+dv = desktopVerdict(desk({ 'comp.p99': v(4), 'comp.missed': v(8), 'desk.p99': v(5), 'desk.missed': v(40) }));
+eq('late frames', [dv.state, dv.notes.map((x) => x.id)], ['fail', ['compFits', 'compMissed', 'deskFits', 'deskMissedMany']]);
+eq('a 144 Hz budget is tighter', desktopVerdict(desk({ 'comp.p99': v(9), 'comp.missed': v(0) }, 1000 / 144)).state, 'warn');
+eq('every desktop id is a server measurement', DESKTOP_CATEGORIES.flatMap((c) => c.ids).every((id) => /^(comp|desk)\./.test(id)), true);
+eq('video is a peak category', CATEGORIES.some((c) => c.id === 'video' && c.ids.length === 8), true);
+const dch = changes(desk({ 'desk.p99': { value: 8, lowerBetter: true } }), desk({ 'desk.p99': { value: 10, lowerBetter: true } }));
+near('a faster frame is better', dch['desk.p99'], 10 / 8 - 1);
 
 console.log(`sysinfo-perf-test: ${n - bad} ok, ${bad} failed`);
 process.exit(bad ? 1 : 0);

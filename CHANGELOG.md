@@ -50,12 +50,50 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
     condition, the boot time per LordOS version and **Save to Documents**. Nothing is sent anywhere.
   - **Recorded conditions:** temperatures and trip points, power, governor, platform profile, GPU kind, disk kind,
     composition and display modes. No names or identities.
-  - **Reference:** the only reference machine so far is VM 116 (8 vCPU Xeon Silver 4108, llvmpipe). A Full run there
-    measured 977 MB/s SHA-256 and 19.7 GFLOP/s on all cores, and 20.2 GB/s memory copy. The Pi 5 and x86 PC
-    references come when they are measured.
-  - **Tests:** `tests/lordbench_test.c` (260 checks: records, workloads, fake sysfs trees of an x86 laptop and a Pi 5,
-    boot history) and `tests/sysinfo_perf_test.mjs` (30 checks).
-  - **Not built yet:** the desktop-impact mode, the compositor and video workloads, and `lordos-sysreport bench`.
+  - **Video:** a `lord-media` job (`MK_VBENCH`, `media/helper/lm_vbench.c`, launched by `bench/lbvideo.c` with no
+    fds) generates its own test clips in memory from a fixed synthetic picture (H.264, HEVC, VP9 and AV1 at 1080p;
+    H.264 and HEVC at 4K) and decodes each in software the way the player does, as frames per second; then the
+    remote desktop's own encoders (`lm_stream_sw_encoder`: H.264 and VP8) encode 1080p frames. Quick measures H.264
+    1080p and the H.264 encoder. lord-media answers only `MM_BENCH` records, checked by `lbv_record_valid`. Hardware
+    decoding is not measured (neither test machine has it).
+  - **Desktop impact** (its own button and result file, `lordbench-desktop.json`): System Information opens a scene
+    window and lord-server moves it along a figure of eight through the drag's own path (`lord.wm.script`,
+    `grab_script_begin` in `ui/grab.c`, no JS per frame; `wm.scriptMove`/`wm.stopScript` in the SDK). lord-server
+    records every frame it builds and every frame the display shows (`bench/lbframes.c`): 10 s alone, then 10 s
+    while `lord-bench` loads every core at the lowest priority (`LB_MODE_LOAD`, nice 19, idle I/O). Each phase gives
+    frames per second, the time to build a frame (median, 99th percentile) and the share of late frames (intervals
+    over 1.5 refresh periods); the verdict compares the 99th percentile with the refresh period in use and warns
+    above 5 % late (problem above 25 %). Frame times never come from a helper: `lb_msg_valid` refuses ids past
+    `LB_HELPER_LAST`.
+  - **Boot time test** (Performance → Boot time, administrators): 3, 5 or 10 boots in a row. The closed admin action
+    `boot-test <2..10>` writes `/var/lib/lordos/boot-test` in a fixed format (`bench/boottest.c`) and
+    `boot-test-cancel` (anyone) removes it; the session restarts as usual. At each boot's first frame lord-sessiond
+    records the boot with its number in the test and, while boots are left, restarts 30 s later. The login screen
+    shows the boot and the countdown with **Stop the test**, and a login stops it too. The count only goes down, a
+    state older than 30 minutes is discarded, and the action is refused in the live session. The Boot time group shows
+    each version's latest test (median and range). Checked by unit tests; not yet run end to end on a machine.
+  - **References:** VM 116 (8 vCPU Xeon Silver 4108, llvmpipe) and a **Raspberry Pi 5 16 GB** (SD card, V3D), each a
+    real Full run (`apps/sysinfo/references.js`):
+    - VM 116: SHA-256 166/984 MB/s (one core/all), matrix product 3.3/19.9 GFLOP/s, memory copy 20.0 GB/s; software
+      decoding H.264 1080p 399 fps, AV1 1080p 201 fps, HEVC 4K 102 fps; H.264 encoder 106 fps.
+    - Pi 5: SHA-256 933/3,693 MB/s, matrix product 2.26/5.99 GFLOP/s, memory copy 7.6 GB/s, latency 115 ns; V3D scene
+      795 fps, fill 2,455 Mpixel/s; SD card 66 MB/s write, 91 MB/s read; 3 minutes sustained at 5.86 → 5.88 GFLOP/s
+      with the fan, 55.6 °C at most; software decoding H.264 1080p 258 fps, AV1 1080p 159 fps, H.264 4K 55 fps,
+      HEVC 4K 57 fps; H.264 encoder 75 fps. Quick takes 34 s, Full 339 s.
+  - **Desktop impact measured** on the Pi 5 with a 1920×1080 60 Hz monitor and GPU composition: alone 59.4 fps, frame
+    build 10.9 ms median and 13.0 ms p99, 1.0 % late; under the low-priority all-core load 24.0 fps, 20.1/29.3 ms,
+    96.5 % late. A stability problem found by LordBench, to be investigated. On VM 116 (headless, with a remote viewer)
+    59.6 fps alone, p99 13.3 ms; p99 22.9 ms and 12.5 % late under load.
+  - **Boot measured:** the Pi 5 reaches the login screen on its monitor 5.99 s after the kernel starts (systemd: 2.1 s
+    kernel + 4.2 s userspace).
+  - **Pi limitation:** the LordOS Pi kernel exposes neither the firmware's `get_throttled` nor a cpufreq cooling
+    device, so LordBench's stop on throttling can't fire there (the under-voltage alarm is read); the sustained curve
+    and the temperature are the evidence instead.
+  - **Tests:** `tests/lordbench_test.c` (records, workloads, fake sysfs trees of an x86 laptop and a Pi 5, boot
+    history, the frame recorder, the video records, the boot test state file) and `tests/sysinfo_perf_test.mjs` (40
+    checks, with the desktop verdict and the video category).
+  - **Not built yet:** input latency, hardware video decoding, the layout/paint/shaping workloads, the helper-sandbox
+    self-test inside `lord-bench`, the x86 PC reference and `lordos-sysreport bench`.
 - **Flatpak and Flathub design review, kept for the future** (`docs/FLATPAK.md`, no code; the maintainer decided on
   2026-10-27 not to implement Flatpak for now, to keep the system stable, and it is not planned for any release): a
   launcher-owned scope per Flatpak app so the
@@ -65,6 +103,10 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **LordBench on the Raspberry Pi 5 measured no GPU:** inside `lord-bench`'s sandbox Mesa's loader could not identify
+  the V3D render node ("failed to retrieve device information") and every GPU measurement was skipped. The sandbox
+  now also allows reading `/sys/firmware/devicetree` and `/dev/dri` (read-only; the GPU is still reached only
+  through the render node fd lord-server opens), and the Pi reports a hardware GPU.
 - **Raspberry Pi image on an x86-64 host with an aarch64 `server/build`:** `tools/iso/mkdeb.sh` checks the
   signed system code by running `lord-server --check-code`, which can't run an aarch64 binary on x86-64
   (it failed as "the staged system code does not match code-manifest.json"). `CODE_CHECK_SERVER` now names

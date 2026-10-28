@@ -53,6 +53,8 @@
   "backup.tooManyExclusions": "Too many exclusions",
   "backup.verifyFailed": "A backup file failed verification (tampered with or wrong key)",
   "backup.wrongPassphrase": "Wrong passphrase",
+  "bench.bootTestFailed": "Could not save the boot time test's state",
+  "bench.bootTestLive": "The boot time test can't run in the live session: nothing it records survives a restart",
   "camera.busy": "The camera is busy",
   "camera.failed": "The camera stopped working",
   "camera.invalid": "Invalid camera",

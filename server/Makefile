@@ -499,7 +499,8 @@ build/lord-server: $(OBJ) build/obj/ui/stb.o $(QJS_OBJ) $(WL_OBJ)
 
 SESSIOND_OBJ := build/obj/remote/sessiond.o build/obj/remote/sess.o build/obj/remote/monitor.o build/obj/remote/conn.o \
                 build/obj/remote/enc.o build/obj/remote/pages.o build/obj/sec/cgroup.o build/obj/remote/netsup.o build/obj/remote/cgsup.o \
-                build/obj/remote/rsec.o build/obj/remote/ipnet.o build/obj/remote/lockout.o build/obj/remote/rtcwire.o build/obj/remote/rtc.o
+                build/obj/remote/rsec.o build/obj/remote/ipnet.o build/obj/remote/lockout.o build/obj/remote/rtcwire.o build/obj/remote/rtc.o \
+                build/obj/bench/boottest.o
 # The remote desktop shows the screen only over WebRTC (docs/REMOTE.md, "Video (WebRTC)"): our own peer in
 # the bridge, on Debian's libsrtp2 and usrsctp (and OpenSSL's DTLS). lord-sessiond can't be built without
 # them (libsrtp2-dev, libusrsctp-dev).

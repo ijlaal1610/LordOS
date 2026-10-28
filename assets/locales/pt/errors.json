@@ -53,6 +53,8 @@
   "backup.tooManyExclusions": "Exclusões demais",
   "backup.verifyFailed": "Um arquivo do backup falhou na verificação (adulterado ou chave errada)",
   "backup.wrongPassphrase": "Frase incorreta",
+  "bench.bootTestFailed": "Não foi possível salvar o estado do teste de inicialização",
+  "bench.bootTestLive": "O teste de inicialização não funciona na sessão ao vivo: nada do que ele registra sobrevive a uma reinicialização",
   "camera.busy": "A câmera está ocupada",
   "camera.failed": "A câmera parou de funcionar",
   "camera.invalid": "Câmera inválida",

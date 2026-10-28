@@ -1,4 +1,6 @@
 {
+  "bench.bootTestCancelled": "Boot time test stopped",
+  "bench.bootTestSet": "Boot time test: {n} boots",
   "disk.cancelling": "Cancelling",
   "disk.ejected": "Ejected",
   "disk.erased": "Erased",

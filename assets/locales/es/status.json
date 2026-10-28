@@ -1,4 +1,6 @@
 {
+  "bench.bootTestCancelled": "Prueba de arranque detenida",
+  "bench.bootTestSet": "Prueba de arranque: {n} arranques",
   "disk.cancelling": "Cancelando",
   "disk.ejected": "Expulsado",
   "disk.erased": "Borrado",
