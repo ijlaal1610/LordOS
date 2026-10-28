@@ -708,9 +708,9 @@ the maintainer on 2026-10-27, item below).
   the thermal, throttle and battery guards, the boot history and System Information → Performance are built
   (`BENCHMARK.md`, "Built so far"), and so are the video workloads (software decoding, the remote desktop's
   encoders), the desktop-impact mode (the compositor's frame times alone and under a low-priority load), the N-boot
-  test and the Pi 5 reference. Left: input latency, hardware video decoding, the x86 PC reference,
-  `lordos-sysreport bench`, and the rest of what it found on the Pi 5 (the desktop fell to 24 fps under load; a first
-  fix, the compositor's CPU weight and time slice, is built, `BENCHMARK.md` "The desktop under load").
+  test, the pointer-to-screen latency, `lordos-sysreport bench` and the Pi 5 reference. Left: hardware video
+  decoding, the x86 PC reference, and the rest of what it found on the Pi 5 (the desktop fell to 24 fps under load;
+  the compositor's CPU weight fixes most of it, `BENCHMARK.md` "The desktop under load").
 - [ ] **Community hardware reports (0.8.7)** — `BENCHMARK.md`. Share on GitHub with the
   `hardware-report` template (the user submits it, LordOS sends nothing), schema validation and
   labels in a workflow, and a tested-hardware catalogue on lordos.org that the Compatibility panel

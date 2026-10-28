@@ -65,10 +65,14 @@ enum {
     LB_COMP_P50,                        /* ms to build a frame, median */
     LB_COMP_P99,                        /* ms to build a frame, 99th percentile */
     LB_COMP_MISSED,                     /* intervals longer than 1.5 refresh periods, % */
+    LB_COMP_IN50,                       /* ms from a synthetic pointer event to the frame showing it, median (lbinput.h) */
+    LB_COMP_IN99,                       /* the same, 99th percentile */
     LB_DESK_FPS,                        /* the same scene with an all-core load at the lowest priority */
     LB_DESK_P50,
     LB_DESK_P99,
     LB_DESK_MISSED,
+    LB_DESK_IN50,
+    LB_DESK_IN99,
     LB_DESK_WORK,                       /* what the load got done meanwhile, GFLOP/s */
     LB_COUNT
 };

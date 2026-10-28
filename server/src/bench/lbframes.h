@@ -17,11 +17,18 @@ typedef struct {
     double budget_ms;                   /* the main display's refresh period */
     double missed_pct;                  /* intervals between shown frames longer than 1.5 periods, % of them */
     double gap_max;                     /* the longest interval, ms */
+    int inputs;                         /* synthetic pointer events shown (bench/lbinput.h) */
+    double in_p50, in_p99;              /* ms from such an event to the presentation of the first frame showing it */
 } LbFrameStats;
 
 /* main.c */
 void lbf_frame(double work_ms);
 void lbf_presented(uint64_t ns, uint32_t period_ns);
+/* the synthetic pointer: an event (stamped ev_ns) was applied to the scene, before the next frame is built
+ * (lbinput.c); then main.c says, after building a frame, whether the main display got it: the events
+ * applied so far are in that frame and their latency ends at its presentation */
+void lbf_input(uint64_t ev_ns);
+void lbf_built(int main_drawn);
 
 /* lbrun.c: begin clears and starts; end stops and fills st (0, or -1 with fewer than 2 shown frames) */
 void lbf_begin(void);

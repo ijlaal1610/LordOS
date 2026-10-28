@@ -240,7 +240,10 @@ window side in `sdk/windows.js`.
 - **A scripted move (0.8.6, LordBench):** `wm.scriptMove(id, { rx, ry, periodMs })` asks lord-server to move
   the window along a figure of eight through this same path (`lord.wm.script`, `grab_script_begin` in
   `ui/grab.c`: the window painted once into a layer, one step per frame from the main loop, no button held
-  and no JS per frame); pointer input or `wm.stopScript()` stops it. Only System Information's desktop
+  and no JS per frame). The positions come from LordBench's synthetic pointer (`bench/lbinput.c`, a 125 Hz
+  thread on an eventfd the main loop polls like a device; taken once per frame like a real mouse's motion), so
+  the test also measures pointer-to-screen latency; without that thread the path follows the clock. Pointer
+  input or `wm.stopScript()` stops it. Only System Information's desktop
   scene uses it (`apps/sysinfo/scene.jsx`), to measure the compositor ([BENCHMARK.md](BENCHMARK.md)).
 - **On release** (`__lordWm('end')`) the SDK reads the pointer once more and snaps; the size from
   before the first snap is kept in `w.restore`. Dragging a snapped window away gives it that size

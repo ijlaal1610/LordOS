@@ -3,10 +3,11 @@
 # sustained load), and lord-server's side (lbrun.c: conditions, the quiet wait, thermal and throttle
 # guards, the result file; lord.sysinfo.bench in ui/js_hw.c). The helper links libc, QuickJS (one of
 # its workloads) and, with GPU=1, Mesa (GBM, EGL, GLESv2); nothing else.
-LB_SRV_SRC := src/bench/lbrun.c src/bench/lbcond.c src/bench/lbproto.c src/bench/bench.c src/bench/lbframes.c src/bench/lbvideo.c
+LB_SRV_SRC := src/bench/lbrun.c src/bench/lbcond.c src/bench/lbproto.c src/bench/bench.c src/bench/lbframes.c src/bench/lbvideo.c src/bench/lbinput.c
 LB_SRV_OBJ := $(LB_SRV_SRC:src/%.c=build/obj/%.o)
 $(LB_SRV_OBJ): $(wildcard src/bench/*.h) src/media/proto.h build/gen/lord_version.h
-build/obj/main.o: src/bench/lbframes.h
+build/obj/main.o: src/bench/lbframes.h src/bench/lbinput.h
+build/obj/ui/grab.o: src/bench/lbinput.h
 build/lord-server: $(LB_SRV_OBJ)
 build/obj/ui/js_hw.o: src/bench/lbrun.h
 
@@ -30,11 +31,11 @@ build/lord-bench: $(LB_SRC) $(LB_GL_SRC) build/obj/ui/stb.o $(QJS_OBJ) build/gen
 # the workloads (short), the record checks, the thermal guard on fake sysfs trees and the boot history
 test: build/lordbench-test
 build/lordbench-test: tests/lordbench_test.c src/bench/lbwork.c src/bench/lbproto.c src/bench/lbcond.c src/bench/lbrun.c src/bench/bench.c \
-                      src/bench/lbframes.c src/bench/lbvideo.c src/bench/boottest.c src/media/proto.c src/pkg/crypto.c src/pkg/xz.c src/hw/jbuf.c src/sec/json.c build/obj/ui/stb.o $(QJS_OBJ) build/gen/lb_corpus.h \
+                      src/bench/lbframes.c src/bench/lbinput.c src/bench/lbvideo.c src/bench/boottest.c src/media/proto.c src/pkg/crypto.c src/pkg/xz.c src/hw/jbuf.c src/sec/json.c build/obj/ui/stb.o $(QJS_OBJ) build/gen/lb_corpus.h \
                       build/gen/lord_version.h $(wildcard src/bench/*.h)
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/lordbench_test.c src/bench/lbwork.c src/bench/lbproto.c src/bench/lbcond.c \
-	    src/bench/lbrun.c src/bench/bench.c src/bench/lbframes.c src/bench/lbvideo.c src/bench/boottest.c src/media/proto.c src/pkg/crypto.c src/pkg/xz.c src/hw/jbuf.c src/sec/json.c build/obj/ui/stb.o $(QJS_OBJ) -lm -lpthread
+	    src/bench/lbrun.c src/bench/bench.c src/bench/lbframes.c src/bench/lbinput.c src/bench/lbvideo.c src/bench/boottest.c src/media/proto.c src/pkg/crypto.c src/pkg/xz.c src/hw/jbuf.c src/sec/json.c build/obj/ui/stb.o $(QJS_OBJ) -lm -lpthread
 	./$@ || { rm -f $@; exit 1; }
 # from a terminal, without a session: build/lordbench-cli quick|full [sustained_s] (needs build/lord-bench, and build/lord-media
 # for the video measurements; desktop mode needs a session: without one its frame results are skipped)

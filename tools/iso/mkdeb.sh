@@ -8,8 +8,10 @@
 #   /usr/lib/lordos/bin/lord-netd         system networking (root; launched and watched by lord-sessiond)
 #   /usr/lib/lordos/bin/lord-fand         fan control by temperature (root, own service, enabled)
 #   /usr/lib/lordos/bin/lord-server       each session's server (looks for ../themes and ../assets)
-#   /usr/bin/lordos-sysreport             System Information's report as a command (user; docs/BENCHMARK.md)
-#   /usr/bin/lordos-fetch                 the crown and a summary of the computer (a link to lordos-sysreport)
+#   /usr/bin/lordos-sysreport             System Information's report and LordBench as a command (user;
+#                                         docs/BENCHMARK.md): a link to /usr/lib/lordos/bin/lordos-sysreport,
+#                                         which starts the lord-bench and lord-media next to it
+#   /usr/bin/lordos-fetch                 the crown and a summary of the computer (a link to the same binary)
 #   /usr/bin/lordos-testbench             the visual test bench (a Wayland client; docs/PAPER-VALIDATION.md), and
 #   /usr/share/applications/lordos-testbench.desktop   its launcher entry
 #   /usr/lib/lordos/themes/<theme>/       theme.json, theme.bundle.js and their resources (greeter: the
@@ -70,11 +72,13 @@ if [ "${DEB_ARCH:-}" = arm64 ] && [ "$(dpkg --print-architecture)" != arm64 ]; t
 fi
 # the LordOS Imager's first-run file applier (Raspberry Pi image, rpi/firstboot; docs/IMAGER.md)
 install -m 755 server/build/lordos-firstrun "$L/bin/lordos-firstrun"
-# System Information's report for a terminal, SSH or CI; lord-server never runs it
+# System Information's report and LordBench for a terminal, SSH or CI; lord-server never runs it. In the
+# LordOS folder because `bench` only starts the lord-bench next to its own binary (/proc/self/exe)
 install -d "$PKG/usr/bin"
-install -m 755 server/build/lordos-sysreport "$PKG/usr/bin/lordos-sysreport"
-"$STRIP" --strip-unneeded "$PKG/usr/bin/lordos-sysreport" 2>/dev/null || true
-ln -s lordos-sysreport "$PKG/usr/bin/lordos-fetch"
+install -m 755 server/build/lordos-sysreport "$L/bin/lordos-sysreport"
+"$STRIP" --strip-unneeded "$L/bin/lordos-sysreport" 2>/dev/null || true
+ln -s ../lib/lordos/bin/lordos-sysreport "$PKG/usr/bin/lordos-sysreport"
+ln -s ../lib/lordos/bin/lordos-sysreport "$PKG/usr/bin/lordos-fetch"
 # the visual test bench: a plain Wayland client, launched like any Linux app
 [ -x server/build/lordos-testbench ] && {
     install -m 755 server/build/lordos-testbench "$PKG/usr/bin/lordos-testbench"

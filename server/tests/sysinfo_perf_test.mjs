@@ -78,6 +78,10 @@ dv = desktopVerdict(desk({ 'comp.p99': v(4), 'comp.missed': v(0), 'desk.p99': v(
 eq('p99 over the budget under load', [dv.state, dv.notes.map((x) => x.id)], ['warn', ['compFits', 'deskOver']]);
 dv = desktopVerdict(desk({ 'comp.p99': v(4), 'comp.missed': v(8), 'desk.p99': v(5), 'desk.missed': v(40) }));
 eq('late frames', [dv.state, dv.notes.map((x) => x.id)], ['fail', ['compFits', 'compMissed', 'deskFits', 'deskMissedMany']]);
+dv = desktopVerdict(desk({ 'comp.p99': v(4), 'comp.missed': v(0), 'comp.in50': v(20), 'comp.in99': v(30), 'desk.p99': v(9), 'desk.missed': v(1), 'desk.in50': v(35), 'desk.in99': v(60) }));
+eq('pointer latency: within three frames alone, over under load', [dv.state, dv.notes.map((x) => x.id)], ['warn', ['compFits', 'compInputOk', 'deskFits', 'deskInputSlow']]);
+eq('pointer latency notes carry their numbers', dv.notes[3].vars, { in50: 35, in99: 60 });
+eq('no pointer latency without both numbers', desktopVerdict(desk({ 'comp.p99': v(4), 'comp.in99': v(90) })).notes.map((x) => x.id), ['compFits']);
 eq('a 144 Hz budget is tighter', desktopVerdict(desk({ 'comp.p99': v(9), 'comp.missed': v(0) }, 1000 / 144)).state, 'warn');
 eq('every desktop id is a server measurement', DESKTOP_CATEGORIES.flatMap((c) => c.ids).every((id) => /^(comp|desk)\./.test(id)), true);
 eq('video is a peak category', CATEGORIES.some((c) => c.id === 'video' && c.ids.length === 8), true);

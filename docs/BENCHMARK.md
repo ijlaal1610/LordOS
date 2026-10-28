@@ -258,8 +258,18 @@ development package.
   intervals between shown frames longer than 1.5 refresh periods; the load phase also gives the work the load
   got done. The verdict compares the 99th percentile with the refresh period actually in use and warns above 5 %
   late frames (problems above 25 %). Without a monitor the compositor draws only while someone watches (the
-  remote desktop), so a headless session gives "skipped: too few frames" unless a viewer is connected. Input
-  latency is not measured yet.
+  remote desktop), so a headless session gives "skipped: too few frames" unless a viewer is connected.
+- **Pointer to screen** (in both phases of the desktop test): the scene's window is moved by a **synthetic pointer**
+  (`bench/lbinput.c`), a thread of lord-server that plays a 125 Hz mouse: each event is stamped with the monotonic
+  clock when it is made, goes into a ring and is announced on an eventfd the main loop polls like an input device;
+  the main loop takes the newest position once per frame, as it does with a real mouse's motion, and moves the
+  window through the drag's path. Each event's latency ends at the presentation of the first frame that shows it or
+  a later position (`lbf_input`, `lbf_built`, `lbf_presented` in `bench/lbframes.c`); the results are the median and
+  the 99th percentile (`comp.in50/in99`, `desk.in50/in99`), and the verdict warns when the 99th percentile passes
+  three refresh periods. It measures lord-server's part (waking up, the frame, the flip), not the mouse, USB or the
+  kernel's; the positions only move LordBench's own window. Without the thread the scene moves by the clock and the
+  latency is "failed". On VM 116 without a monitor: 14.6 ms median and 25.2 ms p99 alone, 15.1 and 30.9 ms under
+  load; on the Pi 5 (no monitor): about 15.7 and 27 ms alone, 22 and 52 ms under load ("The desktop under load").
 - **Boot time test** (Performance → Boot time, administrators): N boots in a row (3, 5 or 10). The closed admin
   action `boot-test <n>` writes `/var/lib/lordos/boot-test` in a fixed format (`bench/boottest.c`) and the session
   restarts as usual (its confirmation included). At each boot's first frame lord-sessiond records the boot with its
@@ -340,40 +350,39 @@ would do the same. Measured from `/proc/<pid>/task/*/schedstat` during the test 
 monitor, CPU composition): the compositor's main thread waited for a CPU 17 ms per second alone and **299 ms per
 second** under the load (1.05 ms each time it woke up), and its three paint threads waited longer than they ran.
 
-**Changes.**
+**Change.** lord-sessiond gives the `server` leaf `cpu.weight` 1000 when it creates a session
+(`CG_SERVER_CPU_WEIGHT`, `sec/cgroup.c`); app scopes and helpers keep 100. Root writes it in the root-owned subtree
+it already manages; no new request or interface. Checked on VM 116: a session started by the new lord-sessiond has
+`cpu.weight` 1000 on `server` and 100 on its scopes.
 
-- lord-sessiond gives the `server` leaf `cpu.weight` 1000 when it creates a session (`CG_SERVER_CPU_WEIGHT`,
-  `sec/cgroup.c`); app scopes and helpers keep 100. Root writes it in the root-owned subtree it already manages; no
-  new request or interface.
-- The compositor's main thread and its paint threads ask for a 0.5 ms time slice (`par_short_slice`, `par.c`:
-  `sched_setattr` with EEVDF's custom slice, Linux 6.12+, unprivileged, ignored by older kernels), so they get the
-  CPU back sooner when they wake up beside busy threads. `SCHED_FLAG_RESET_ON_FORK`: checked on both kernels that
-  the processes and threads they start get the default slice again.
+**Measured** with the final LordBench of this version (the scene moved by the synthetic pointer, so the pointer
+latency is measured too), under load, on the Pi 5 without its monitor (CPU composition), two runs each. The
+installed session can't be changed without root, so the test ran in a second session laid out the same way: the
+compositor and the load in sibling cgroups (user scopes), the weight set on the compositor's.
 
-**Measured**, LordBench's desktop test under load, the same structure as a real session (the compositor and the
-load in sibling cgroups; on the Pi with user scopes, since the installed session can't be changed without root):
+| Compositor's weight | Frames shown | Build p50 | Build p99 | Late | Pointer to screen p50 | p99 |
+|---|---|---|---|---|---|---|
+| 100 (before) | 43.3–45.3 fps | 19.6–19.8 ms | 39.6–45.9 ms | 30.7–33.0 % | 31.8–33.3 ms | 66.8–75.3 ms |
+| 1000 | 56.4–56.9 fps | 12.4–12.6 ms | 28.6–33.4 ms | 7.3–8.3 % | 22.1–22.2 ms | 51.5–53.4 ms |
 
-| Machine | Compositor | Frames shown | Build p50 | Build p99 | Late |
-|---|---|---|---|---|---|
-| Pi 5, no monitor (CPU composition) | before (weight 100) | 34.6 fps | 20.7 ms | 40.8 ms | 61 % |
-| | weight 1000 | 42.2 fps | 16.5 ms | 34.3 ms | 35 % |
-| | weight 1000 and 0.5 ms slice | 47.6 fps | 14.0 ms | 31.4 ms | 23–24 % |
-| VM 116 (8 vCPU) | before | 52–58 fps | 6.6–13.0 ms | 16.6–24.6 ms | 8.6–17.5 % |
-| | weight 1000 and 0.5 ms slice | 58.9–59.5 fps | 6.2–6.3 ms | 15.5–17.8 ms | 4.5–6.9 % |
+Alone nothing changes (59.6–60 fps, about 0.2 % late, pointer to screen 15.5–15.8 ms median). The load still got
+2.7–3.4 GFLOP/s done. With the earlier scene (moved by the clock instead of the synthetic pointer) the same change
+took the Pi from 61 % to 35 % late frames, and VM 116 (8 vCPU) from 8.6–17.5 % to 5.6–9.0 % (p99 16.6–24.6 →
+16.4–17.5 ms). **Not yet measured with the monitor and GPU composition on the Pi**, where the 24 fps above came from;
+that needs the new package installed.
 
-The load still got its work done (3.0–3.7 GFLOP/s on the Pi in every row). Without load nothing changes (59–60 fps).
-A weight of 10000 or a 0.1 ms slice did not do better than 1000 and 0.5 ms. Also tried and dropped: turning the
-paint threads off when the frame waits for them under load (its own measurement showed the threads still saved
-time, so it never acted). On VM 116 a session started by the new lord-sessiond has `cpu.weight` 1000 on `server`
-and the 0.5 ms slice on the main thread and its 7 paint threads only. **Not yet measured with the monitor and GPU
-composition on the Pi**, where the 24 fps above came from; that needs the new package installed.
+**Tried and dropped.** A 0.5 ms time slice for the compositor's threads (EEVDF's custom slice, `sched_setattr`):
+it looked like a gain at first, but the tool that set it from outside also gave it to the load; set only on the
+compositor's threads, as lord-server would, it made no difference (8–10 % late with weight 1000, 28–33 % with 100).
+And turning the paint threads off when the frame waits for them under load: their own measurement showed they still
+saved time, so it never acted.
 
-**What remains.** Under load the main thread still waits about 0.9 ms each time it wakes up, whatever the weight:
-when a thread of the load gets a CPU it keeps it until the next scheduler tick, which is 4 ms on the LordOS Pi kernel
-(`CONFIG_HZ=250`), and the shared memory makes each frame about 20 % slower to build. Two further steps, not built:
-the Pi kernel at `CONFIG_HZ=1000` (`tools/rpi/build-kernel.sh`, a rebuild), and a real-time priority for the
-compositor's main thread (`SCHED_RR`, as other desktops do through rtkit) granted by lord-sessiond with a CPU-time
-limit, which is a new privilege and needs the maintainer's approval first.
+**What remains.** Under load the main thread still waits about 0.9 ms each time it wakes up: when a thread of the
+load gets a CPU it keeps it until the next scheduler tick, 4 ms on the LordOS Pi kernel (`CONFIG_HZ=250`), and the
+shared memory makes each frame about 20 % slower to build. Two further steps, not built: the Pi kernel at
+`CONFIG_HZ=1000` (`tools/rpi/build-kernel.sh`, a rebuild), and a real-time priority for the compositor's main thread
+(`SCHED_RR`, as other desktops do through rtkit) granted by lord-sessiond with a CPU-time limit, which is a new
+privilege and needs the maintainer's approval first.
 
 Boot: the Pi 5 reaches the login screen on its monitor 5.99 s after the kernel starts (lord-sessiond's record;
 systemd-analyze gives 2.1 s kernel + 4.2 s userspace). Boots where the monitor was connected late took 61 and
@@ -387,10 +396,18 @@ screenshot predates the video and desktop parts):
 
 ![System Information → Performance](sysinfo-performance.png)
 
-Not built yet: input latency in the desktop-impact mode; hardware video decoding (no test machine has VA-API, and
-the Pi 5's HEVC decoder needs FFmpeg's `v4l2request`); the layout, paint and shaping CPU workloads; repeating the
-helper-sandbox self-test inside `lord-bench` (`sec.helper-sandbox`); detecting the Pi's firmware throttling
-during a run on kernels that don't expose it; the x86 PC reference; and `lordos-sysreport bench`.
+**`lordos-sysreport bench [--quick | --full] [--json]`** (`sysreport/cli.c`): LordBench from a terminal, over SSH or
+in CI, through lord-server's own code (`bench/lbrun.c`, the same guards, helpers and result file as the app, which
+then shows it). It is installed as `/usr/lib/lordos/bin/lordos-sysreport` with `/usr/bin/lordos-sysreport` and
+`lordos-fetch` as links, because `lbrun` only starts the `lord-bench` and `lord-media` next to its own binary
+(`/proc/self/exe`; a group- or world-writable helper is refused, so a build tree made with umask 002 needs `chmod
+g-w`). Without a session the helpers get no cgroup scope, and the desktop test needs a session. One line per
+measurement (or the JSON with `--json`); exit 0 when the run finished. On VM 116 a quick run took 39 s.
+
+Not built yet: hardware video decoding (no test machine has VA-API, and the Pi 5's HEVC decoder needs FFmpeg's
+`v4l2request`); the layout, paint and shaping CPU workloads; repeating the helper-sandbox self-test inside
+`lord-bench` (`sec.helper-sandbox`); detecting the Pi's firmware throttling during a run on kernels that don't
+expose it; and the x86 PC reference.
 
 ## 0.8.7 — Community hardware reports
 

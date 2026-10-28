@@ -228,7 +228,7 @@ function Result({ res, report }) {
       {desktop ? (
         <GroupBox title={tr('sysinfo.perf.verdicts')} footer={tr('sysinfo.perf.deskFooter', { budget: formatNumber((res.frames && res.frames.budgetMs) || 0, 1) })}>
           <Verdict label={tr('sysinfo.perf.v.desktop')} state={dv.state} states="deskState"
-            detail={dv.notes.map((n) => tr(`sysinfo.perf.dnote.${n.id}`, { p99: formatNumber(n.vars.p99, 1), budget: formatNumber(n.vars.budget, 1), pct: formatNumber(n.vars.pct, 1) })).join(' ') || tr('sysinfo.perf.dnote.none')} />
+            detail={dv.notes.map((n) => tr(`sysinfo.perf.dnote.${n.id}`, Object.fromEntries(Object.entries(n.vars).map(([k, v]) => [k, formatNumber(v, 1)])))).join(' ') || tr('sysinfo.perf.dnote.none')} />
           <Verdict label={tr('sysinfo.perf.v.stability')} state={stab.state}
             detail={stab.notes.length ? stab.notes.map((n) => tr(`sysinfo.perf.note.${n.id}`, n.vars)).join(' ') : tr('sysinfo.perf.note.none')} />
         </GroupBox>

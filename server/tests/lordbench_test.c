@@ -9,6 +9,7 @@
 #include "../src/bench/lbcond.h"
 #include "../src/bench/lbrun.h"
 #include "../src/bench/lbframes.h"
+#include "../src/bench/lbinput.h"
 #include "../src/bench/lbvideo.h"
 #include "../src/bench/boottest.h"
 #include "../src/media/proto.h"
@@ -18,7 +19,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <poll.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 static int fails, oks;
@@ -116,6 +119,63 @@ int main(void) {
     lbf_presented(50, 0);                               /* out of order: dropped */
     lbf_presented(200, 0);
     CHECK(lbf_end(&fs) == 0 && fs.shown == 2, "out-of-order times dropped");
+
+    /* ---- input latency: events applied before a frame end at that frame's presentation ---- */
+    lbf_input(1000);                                    /* not recording: ignored */
+    lbf_begin();
+    lbf_presented(10000000, 16666667);
+    lbf_input(11000000);                                /* two events, then a frame the main display gets */
+    lbf_input(19000000);
+    lbf_built(1);
+    lbf_input(20000000);                                /* applied after that frame was built: the next one */
+    lbf_presented(26666667, 16666667);                  /* 15.67 and 7.67 ms */
+    lbf_built(0);                                       /* a frame only another display got: still waiting */
+    lbf_presented(43333334, 16666667);                  /* nothing in it */
+    lbf_built(1);
+    lbf_presented(60000000, 16666667);                  /* 40 ms */
+    CHECK(lbf_end(&fs) == 0 && fs.inputs == 3, "input events %d", fs.inputs);
+    CHECK(fabs(fs.in_p50 - 15.666667) < 0.001 && fabs(fs.in_p99 - 40) < 0.001, "input p50 %f p99 %f", fs.in_p50, fs.in_p99);
+    lbf_begin();
+    for (int i = 0; i < 200; i++) lbf_input(1000 + (uint64_t)i);   /* more than one frame can hold: the newest kept */
+    lbf_built(1);
+    lbf_presented(5000, 0);
+    lbf_presented(6000, 0);
+    CHECK(lbf_end(&fs) == 0 && fs.inputs == 64 && fabs(fs.in_p99 - (5000 - 1136) / 1e6) < 1e-9, "a full batch keeps the newest %d %f", fs.inputs, fs.in_p99);
+    lbf_begin();
+    lbf_input(9000);
+    lbf_built(1);
+    lbf_presented(5000, 0);                             /* a presentation stamped before the event: not a latency */
+    lbf_presented(6000, 0);
+    CHECK(lbf_end(&fs) == 0 && fs.inputs == 0, "no negative latency");
+
+    /* ---- the synthetic pointer: its path, and the thread's events through the eventfd ---- */
+    float dx, dy;
+    lbi_path(200, 100, 4000, 1000, &dx, &dy);           /* a quarter turn: x = rx, y = ry sin(π) / 2 = 0 */
+    CHECK(fabs(dx - 200) < 0.01 && fabs(dy) < 0.01, "path at a quarter %f %f", dx, dy);
+    lbi_path(200, 100, 4000, 500, &dx, &dy);            /* an eighth: x = rx sin(π/4), y = ry / 2 */
+    CHECK(fabs(dx - 141.42) < 0.01 && fabs(dy - 50) < 0.01, "path at an eighth %f %f", dx, dy);
+    CHECK(lbi_start(10, 10, 100) == -1 && lbi_fd() == -1, "a period under 500 ms is refused");
+    CHECK(lbi_take(&dx, &dy) == 0, "nothing to take while stopped");
+    lbf_begin();
+    CHECK(lbi_start(200, 100, 2000) == 0 && lbi_fd() >= 0, "the synthetic pointer starts");
+    int took = 0, wakes = 0;
+    for (int i = 0; i < 12; i++) {                      /* about 12 frames of 16 ms */
+        struct pollfd pf = { lbi_fd(), POLLIN, 0 };
+        if (poll(&pf, 1, 100) == 1) { wakes++; lbi_drain(); }
+        struct timespec ts = { 0, 16000000 };
+        nanosleep(&ts, NULL);
+        if (lbi_take(&dx, &dy)) took++;
+        lbf_built(1);
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        lbf_presented((uint64_t)now.tv_sec * 1000000000ull + (uint64_t)now.tv_nsec, 16666667);
+    }
+    lbi_stop();
+    CHECK(lbi_fd() == -1 && lbi_take(&dx, &dy) == 0, "the synthetic pointer stops");
+    CHECK(wakes >= 10 && took >= 10, "it wakes the loop like a device (%d wakes, %d frames with events)", wakes, took);
+    CHECK(lbf_end(&fs) == 0 && fs.inputs >= 15 && fs.inputs <= 30, "about 125 events a second: %d in ~0.2 s", fs.inputs);
+    CHECK(fs.in_p50 > 0 && fs.in_p99 < 100, "latencies %f %f", fs.in_p50, fs.in_p99);
+    CHECK(fabs(dx) <= 200.01 && fabs(dy) <= 50.01, "positions on the path %f %f", dx, dy);
 
     /* ---- workloads, short ---- */
     double v;

@@ -326,17 +326,22 @@ static void put_skip(Res *r, int id, int why) {
 
 static void set_step(int id) { pthread_mutex_lock(&mu); step = id; pthread_mutex_unlock(&mu); }
 
-/* the compositor's frames as four results from `first` (fps, p50, p99, missed); -1 with too few frames */
+/* the compositor's frames as six results from `first` (fps, p50, p99, missed, input latency p50 and p99);
+ * -1 with too few frames */
 static int put_frames(Res *r, int first) {
     LbFrameStats fs;
     if (lbf_end(&fs) || fs.shown < 30) {
-        for (int i = 0; i < 4; i++) put_skip(r, first + i, LB_SKIP_NOFRAMES);
+        for (int i = 0; i < 6; i++) put_skip(r, first + i, LB_SKIP_NOFRAMES);
         return -1;
     }
     put_result(r, first, fs.fps, 0);
     put_result(r, first + 1, fs.work_p50, 0);
     put_result(r, first + 2, fs.work_p99, 0);
     put_result(r, first + 3, fs.missed_pct, 0);
+    if (fs.inputs >= 30) {                  /* the synthetic pointer moved the scene (bench/lbinput.h) */
+        put_result(r, first + 4, fs.in_p50, 0);
+        put_result(r, first + 5, fs.in_p99, 0);
+    } else for (int i = 4; i < 6; i++) put_skip(r, first + i, LB_SKIP_FAILED);
     pthread_mutex_lock(&mu);
     r->budget_ms = fs.budget_ms;
     if (fs.gap_max > r->gap_max) r->gap_max = fs.gap_max;

@@ -1,6 +1,7 @@
 /* grab.c — window dragging in C: move and resize without JS per frame (grab.h). */
 #include "grab.h"
 #include "../cursor.h"
+#include "../bench/lbinput.h"
 
 #include <math.h>
 #include <string.h>
@@ -37,8 +38,14 @@ int grab_cursor(void) { return g.edges ? cursor_for_edges(g.edges) : CUR_MOVE; }
 
 static float dim_or(Dim d, float fallback) { return d.unit == UNIT_PX ? d.v : fallback; }
 
-/* LordBench's scripted move (grab_script_begin): the node follows a fixed path, one step per frame */
+/* LordBench's scripted move (grab_script_begin): the node follows the synthetic pointer (bench/lbinput.h), or
+ * without it the same path by the clock, one step per frame */
 static struct { int on; double t0; float rx, ry, period; } sc;
+
+static void script_off(void) {
+    sc.on = 0;
+    lbi_stop();
+}
 
 static int setup(int node, int edges, const GrabLimits *lim) {
     Node *n = node_get(node);
@@ -63,7 +70,7 @@ static int setup(int node, int edges, const GrabLimits *lim) {
 
 int grab_begin(int node, int edges, const GrabLimits *lim) {
     if (!ptr_buttons) return -1;
-    sc.on = 0;
+    script_off();
     return setup(node, edges, lim);
 }
 
@@ -75,19 +82,25 @@ int grab_script_begin(int node, const GrabLimits *lim, float rx, float ry, float
     sc.rx = rx;
     sc.ry = ry;
     sc.period = period_ms;
+    lbi_start(rx, ry, period_ms);           /* if it fails, the clock drives it (no input latency) */
     ui.dirty = 1;
     return 0;
 }
 
 int grab_scripted(void) { return sc.on && g.active; }
 
-/* a figure of eight that starts and ends where the window was: x = rx sin(k), y = ry sin(2k) / 2 */
+/* a figure of eight that starts and ends where the window was (lbi_path) */
 void grab_script_tick(double now_ms) {
     if (!sc.on) return;
-    if (!g.active) { sc.on = 0; return; }
+    if (!g.active) { script_off(); return; }
+    float dx, dy;
+    if (lbi_fd() >= 0) {                    /* the synthetic pointer's newest position, if one came */
+        if (lbi_take(&dx, &dy)) grab_motion(g.px0 + dx, g.py0 + dy);
+        return;
+    }
     if (sc.t0 < 0) sc.t0 = now_ms;
-    double k = 2 * M_PI * (now_ms - sc.t0) / sc.period;
-    grab_motion(g.px0 + (float)(sc.rx * sin(k)), g.py0 + (float)(sc.ry * sin(2 * k) / 2));
+    lbi_path(sc.rx, sc.ry, sc.period, now_ms - sc.t0, &dx, &dy);
+    grab_motion(g.px0 + dx, g.py0 + dy);
 }
 
 static float clampf(float v, float lo, float hi) { return v < lo ? lo : v > hi ? hi : v; }
@@ -150,7 +163,7 @@ int grab_finish(int *node, int *edges, float *dx, float *dy, float *dw, float *d
 }
 
 void grab_cancel(void) {
-    sc.on = 0;
+    script_off();
     if (!g.active) return;
     g.active = 0;
     paint_layer_end();

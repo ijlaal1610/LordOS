@@ -22,16 +22,19 @@ static const struct { const char *name, *unit; } meas[LB_COUNT] = {
     [LB_VENC_H264] = { "video.enc.h264", "fps" },      [LB_VENC_VP8] = { "video.enc.vp8", "fps" },
     [LB_COMP_FPS] = { "comp.fps", "fps" },  [LB_COMP_P50] = { "comp.p50", "ms" },
     [LB_COMP_P99] = { "comp.p99", "ms" },   [LB_COMP_MISSED] = { "comp.missed", "%" },
+    [LB_COMP_IN50] = { "comp.in50", "ms" }, [LB_COMP_IN99] = { "comp.in99", "ms" },
     [LB_DESK_FPS] = { "desk.fps", "fps" },  [LB_DESK_P50] = { "desk.p50", "ms" },
     [LB_DESK_P99] = { "desk.p99", "ms" },   [LB_DESK_MISSED] = { "desk.missed", "%" },
+    [LB_DESK_IN50] = { "desk.in50", "ms" }, [LB_DESK_IN99] = { "desk.in99", "ms" },
     [LB_DESK_WORK] = { "desk.work", "GFLOP/s" },
 };
 
 const char *lb_name(int id) { return id >= 0 && id < LB_COUNT ? meas[id].name : NULL; }
 const char *lb_unit(int id) { return id >= 0 && id < LB_COUNT ? meas[id].unit : NULL; }
 int lb_lower_better(int id) {
-    return id == LB_MEM_LAT || id == LB_COMP_P50 || id == LB_COMP_P99 || id == LB_COMP_MISSED || id == LB_DESK_P50 ||
-           id == LB_DESK_P99 || id == LB_DESK_MISSED;
+    return id == LB_MEM_LAT || id == LB_COMP_P50 || id == LB_COMP_P99 || id == LB_COMP_MISSED || id == LB_COMP_IN50 ||
+           id == LB_COMP_IN99 || id == LB_DESK_P50 || id == LB_DESK_P99 || id == LB_DESK_MISSED || id == LB_DESK_IN50 ||
+           id == LB_DESK_IN99;
 }
 
 int lb_msg_valid(const LbMsg *m) {

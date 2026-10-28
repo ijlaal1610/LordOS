@@ -17,11 +17,12 @@ export const CATEGORIES = [
 
 // the desktop run (mode 'desktop'): the compositor alone, then with every core loaded at the lowest priority
 export const DESKTOP_CATEGORIES = [
-  { id: 'compositor', ids: ['comp.fps', 'comp.p50', 'comp.p99', 'comp.missed'] },
-  { id: 'desktop', ids: ['desk.fps', 'desk.p50', 'desk.p99', 'desk.missed', 'desk.work'] },
+  { id: 'compositor', ids: ['comp.fps', 'comp.p50', 'comp.p99', 'comp.missed', 'comp.in50', 'comp.in99'] },
+  { id: 'desktop', ids: ['desk.fps', 'desk.p50', 'desk.p99', 'desk.missed', 'desk.in50', 'desk.in99', 'desk.work'] },
 ];
 export const MISSED_WARN = 5;           // % of frames shown late before the verdict warns
 export const MISSED_FAIL = 25;
+export const INPUT_WARN_FRAMES = 3;     // pointer-to-screen p99 above this many refresh periods warns
 
 export { REFERENCES };
 
@@ -100,6 +101,12 @@ export function desktopVerdict(res) {
     else notes.push({ id: `${phase}Fits`, vars });
     if (missed && missed.value > MISSED_FAIL) { notes.push({ id: `${phase}MissedMany`, vars }); worse('fail'); }
     else if (missed && missed.value > MISSED_WARN) { notes.push({ id: `${phase}Missed`, vars }); worse('warn'); }
+    const in50 = r[`${phase}.in50`], in99 = r[`${phase}.in99`];
+    if (in50 && in99) {                 // the synthetic pointer (bench/lbinput.h)
+      const ivars = { in50: in50.value, in99: in99.value };
+      if (in99.value > budget * INPUT_WARN_FRAMES) { notes.push({ id: `${phase}InputSlow`, vars: ivars }); worse('warn'); }
+      else notes.push({ id: `${phase}InputOk`, vars: ivars });
+    }
   }
   return { state, notes };
 }

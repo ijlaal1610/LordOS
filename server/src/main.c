@@ -17,6 +17,7 @@
  */
 #include "admin.h"
 #include "keylag.h"
+#include "bench/lbinput.h"
 #include "net/net.h"
 #include "disk/disk.h"
 #include "backup/backup.h"
@@ -1441,6 +1442,7 @@ static void render_frame(Server *s) {
             }
         } else if (c->on) { out_free(c); c->on = 0; c->pend = (Box){ 0, 0, 0, 0 }; }
     }
+    lbf_built(s->headless || main_shown);      /* LordBench: the synthetic pointer's events are in this frame */
     s->frames++;
     /* The pool only while frames are heavy: it costs CPU to wake (a light frame painted on one thread
      * spends less), so it turns on when painting takes more than 70 % of a frame at the target rate (the
@@ -1885,6 +1887,8 @@ int main(int argc, char **argv) {
         if (pbase >= 0) pfd[n++] = (struct pollfd){ portal_fd(), (short)(POLLIN | (portal_wants_write() ? POLLOUT : 0)), 0 };
         int lgbase = logs_fd() >= 0 ? n : -1;                    /* app Registros: consultas e inotify */
         if (lgbase >= 0) pfd[n++] = (struct pollfd){ logs_fd(), POLLIN, 0 };
+        int lbibase = lbi_fd() >= 0 ? n : -1;                    /* LordBench's synthetic pointer, like a device */
+        if (lbibase >= 0) pfd[n++] = (struct pollfd){ lbi_fd(), POLLIN, 0 };
         int mbase = n, nm = mirror_pollfds(pfd + n, 12);
         n += nm;
         int brkbase = n, nbrk = brokersrv_pollfds(pfd + n, 32);   /* apps .lpk aisladas (broker) */
@@ -1941,6 +1945,7 @@ int main(int argc, char **argv) {
         if (pbase >= 0 && pfd[pbase].revents) portal_dispatch();
         if (bkbase >= 0 && pfd[bkbase].revents) backup_dispatch(js_backup_event);
         if (lgbase >= 0 && pfd[lgbase].revents) logs_dispatch(js_logs_event);
+        if (lbibase >= 0 && pfd[lbibase].revents) lbi_drain();  /* taken once per frame by grab_script_tick */
         if (nm) mirror_dispatch(pfd + mbase, nm);
         if (nbrk) brokersrv_dispatch(pfd + brkbase, nbrk);
         if (nabr) brokersrv_audio_dispatch(pfd + abr, nabr);
