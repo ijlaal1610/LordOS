@@ -4,9 +4,15 @@
  * thread; a call made inside a piece, or from another thread while a job runs, runs serially. */
 #include "par.h"
 
+#include <errno.h>
 #include <pthread.h>
 #include <sched.h>
+#include <signal.h>
 #include <stdatomic.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/resource.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 #define PAR_MAX 8
@@ -38,8 +44,11 @@ static void run_pieces(void) {
     inside = 0;
 }
 
+static atomic_int rt_tids[PAR_MAX];  /* the threads at real-time priority, for rt_demote */
+static atomic_int rt_on;
+
 static void *worker(void *arg) {
-    (void)arg;
+    if (atomic_load(&rt_on)) atomic_store(&rt_tids[(long)arg], (int)syscall(SYS_gettid));
     unsigned long seen = 0;
     for (;;) {
         pthread_mutex_lock(&mu);
@@ -51,8 +60,38 @@ static void *worker(void *arg) {
     return NULL;
 }
 
+/* SIGXCPU: a thread ran PAR_RT_TIME_US on real time without blocking (a bug, or a very long theme
+ * load). Every thread goes back to the normal policy for the rest of the session; nothing is killed. */
+static void rt_demote(int sig) {
+    (void)sig;
+    struct sched_param p = { 0 };
+    for (int i = 0; i < PAR_MAX; i++) {
+        int t = atomic_load(&rt_tids[i]);
+        if (t) sched_setscheduler(t, SCHED_OTHER, &p);
+    }
+    if (atomic_exchange(&rt_on, 0)) {
+        static const char m[] = "lord-server: back to the normal priority (a thread ran too long on real time, or it could not be set)\n";
+        if (write(2, m, sizeof m - 1) < 0) {}
+    }
+}
+
+static int rt_set(int flags) {
+    struct sched_param p = { .sched_priority = PAR_RT_PRIO };
+    return sched_setscheduler(0, SCHED_RR | flags, &p);
+}
+
 void par_init(int threads) {
     if (nthreads > 1) return;
+    /* Real-time priority (par.h): only if lord-sessiond allowed it; the workers inherit it from this
+     * thread, which then takes SCHED_RESET_ON_FORK so nothing it starts later does */
+    struct rlimit rl;
+    if (!getrlimit(RLIMIT_RTPRIO, &rl) && rl.rlim_cur >= PAR_RT_PRIO) {
+        signal(SIGXCPU, rt_demote);
+        if (!rt_set(0)) {
+            atomic_store(&rt_tids[0], (int)syscall(SYS_gettid));
+            atomic_store(&rt_on, 1);
+        } else fprintf(stderr, "lord-server: no real-time priority (%s)\n", strerror(errno));
+    }
     if (threads <= 0) {
         cpu_set_t set;
         threads = !sched_getaffinity(0, sizeof set, &set) ? CPU_COUNT(&set) : (int)sysconf(_SC_NPROCESSORS_ONLN);
@@ -63,12 +102,22 @@ void par_init(int threads) {
         pthread_attr_t at;
         pthread_attr_init(&at);
         pthread_attr_setstacksize(&at, 256 * 1024);
-        if (pthread_create(&t, &at, worker, NULL)) { pthread_attr_destroy(&at); break; }
+        if (pthread_create(&t, &at, worker, (void *)(long)i)) { pthread_attr_destroy(&at); break; }
         pthread_attr_destroy(&at);
         pthread_detach(t);
         nthreads++;
     }
+    if (atomic_load(&rt_on)) {
+        if (rt_set(SCHED_RESET_ON_FORK)) rt_demote(0);   /* never leave a thread that forks at real time */
+        else fprintf(stderr, "lord-server: compositor at real-time priority %d (SCHED_RR, %d threads)\n", PAR_RT_PRIO, nthreads);
+    }
+    /* the limit goes to 0 for good, hard limit included: apps, helpers and shells this server starts
+     * can never ask for real time */
+    rl.rlim_cur = rl.rlim_max = 0;
+    setrlimit(RLIMIT_RTPRIO, &rl);
 }
+
+int par_realtime(void) { return atomic_load(&rt_on); }
 
 int par_threads(void) { return nthreads; }
 

@@ -129,8 +129,21 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   session gets the weight. Not yet measured with the Pi's monitor and GPU composition. A 0.5 ms scheduler time slice
   for the compositor's threads was also tried (it was in the previous commit) and removed: measured alone, it made no
   difference; its first numbers had been inflated because the test tool also gave the slice to the load. What
-  remains (the Pi kernel's 4 ms scheduler tick, a real-time priority for the compositor) is described there and not
-  built.
+  remains is described there.
+- **The desktop under load, second step: a real-time priority for the compositor** (approved by the maintainer on
+  2026-10-28; `docs/BENCHMARK.md`, "The desktop under load"). With the weight, the compositor's main thread still
+  waited up to a scheduler tick each time it woke up under load. Now lord-sessiond starts the session's lord-server
+  with `RLIMIT_RTPRIO` 2 and `RLIMIT_RTTIME` 5 s (`remote/sess.c`); lord-server, right after dropping root and before
+  it starts any process or thread (`par_init`, `par.c`, moved there in `main.c`), puts its main thread and its paint
+  threads at `SCHED_RR` priority 2, gives the main thread `SCHED_RESET_ON_FORK` so everything it starts later gets the
+  normal policy, and lowers `RLIMIT_RTPRIO` to 0, soft and hard, so no app, helper or shell can ask for real time.
+  The root admin helper lowers its own limit to 0 as well (its download child drops to `nobody`). A thread that runs
+  5 s on real time without blocking gets `SIGXCPU` and every thread goes back to the normal policy; nothing is
+  killed. The session log says `compositor at real-time priority 2 (SCHED_RR, N threads)`. Checked on VM 116 with the
+  new lord-sessiond (main thread `SCHED_RR|SCHED_RESET_ON_FORK`, 7 paint threads `SCHED_RR`, every other thread and
+  child `SCHED_OTHER` with a limit of 0). LordBench's desktop test under load on VM 116, two runs each: late frames
+  2.65–2.92 % → 0.28 %, frame build p99 16.3–16.8 → 11.0–12.7 ms, pointer to screen p99 31.0–32.3 → 24.7–25.5 ms
+  (as without load); the load got the same CPU time. Not yet measured on the Pi 5.
 - **LordBench on the Raspberry Pi 5 measured no GPU:** inside `lord-bench`'s sandbox Mesa's loader could not identify
   the V3D render node ("failed to retrieve device information") and every GPU measurement was skipped. The sandbox
   now also allows reading `/sys/firmware/devicetree` and `/dev/dri` (read-only; the GPU is still reached only

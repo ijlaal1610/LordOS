@@ -57,6 +57,7 @@
 #include <sys/file.h>
 #include <sys/inotify.h>
 #include <sys/prctl.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -1014,6 +1015,10 @@ int admin_start(const char *user) {
         int null = open("/dev/null", O_RDWR);
         if (null >= 0) { dup2(null, 0); dup2(null, 1); }
         syscall(SYS_close_range, 4, ~0u, 0);
+        /* the real-time limit lord-sessiond gave the compositor (par.h) is not the helper's: the
+         * processes it drops to another user (the Store's download child) must not inherit it */
+        struct rlimit rtp = { 0, 0 };
+        setrlimit(RLIMIT_RTPRIO, &rtp);
         helper(3, user);
     }
     close(sv[1]);

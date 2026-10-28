@@ -1719,6 +1719,12 @@ int main(int argc, char **argv) {
         if (!freopen(log, "w", stderr)) { /* carries on without a log */ }
         setvbuf(stderr, NULL, _IOLBF, 0);
     }
+    /* the CPU path's pixel loops on a pool (par.h): blur, blits, gradients, the remote desktop's
+     * comparison and copies; same pixels as one thread. Its threads sleep between jobs, and jobs only
+     * run inside a frame on this thread, so the processes this server forks never inherit a busy one.
+     * Here, before this server starts any process or thread: it takes the real-time priority
+     * lord-sessiond allows and lowers that limit to 0, so nothing started later inherits it. */
+    par_init(0);
     /* GPU (Mesa) after dropping root: if there is no usable one, the CPU path goes on */
     /* Settings' hardware pages: displays, uevents, Bluetooth, power profiles (src/hw) */
     kms_set_picker(display_pick);
@@ -1748,10 +1754,6 @@ int main(int argc, char **argv) {
     static const MirrorInput mirror_in = { remote_pointer, remote_button, remote_wheel, remote_key, remote_clip, remote_clients,
                                            remote_refresh, remote_resize, remote_greeter, display_attach, display_detach,
                                            remote_scroll, remote_pinch, remote_input_add, remote_notice };
-    /* the CPU path's pixel loops on a pool (par.h): blur, blits, gradients, the remote desktop's
-     * comparison and copies; same pixels as one thread. Its threads sleep between jobs, and jobs only
-     * run inside a frame on this thread, so the processes this server forks never inherit a busy one. */
-    par_init(0);
     if (ok && mirror_start(s.W, s.H, &mirror_in)) fprintf(stderr, "lord-server: no remote desktop (socket)\n");
     char current[sizeof ui.theme_request];
     if (ok) ok = start_theme(theme, s.greeter, current, sizeof current) == 0;

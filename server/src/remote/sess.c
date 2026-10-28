@@ -9,6 +9,7 @@
 #include "sessiond.h"
 #include "../sec/cgroup.h"
 #include "rsec.h"
+#include "../par.h"
 
 #include <crypt.h>
 #include <ctype.h>
@@ -22,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/file.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -327,6 +329,12 @@ static void spawn(const struct passwd *pw, const char *rt, const char *lang, int
         if (sd_input_debug && !greeter) env[ne++] = "LORD_INPUT_DEBUG=1";   /* key latency trace, never the login screen */
         env[ne] = NULL;
         if (!greeter) cgroup_delegate_session(uid, pw->pw_gid);   /* cgroup subtree for the apps (docs/SESSIONS.md) */
+        /* real-time priority for the compositor's threads: lord-server takes it in par_init and lowers
+         * the limit to 0 before it starts anything, so no app inherits it; a thread that runs 5 s
+         * without blocking gets SIGXCPU and goes back to the normal policy (par.h) */
+        struct rlimit rtp = { PAR_RT_PRIO, PAR_RT_PRIO }, rtt = { PAR_RT_TIME_US, RLIM_INFINITY };
+        setrlimit(RLIMIT_RTPRIO, &rtp);
+        setrlimit(RLIMIT_RTTIME, &rtt);
         const char *const a_user[] = { rd_conf.server, "--headless", size, "--user", user, "--theme", rd_conf.theme,
                                        "--fonts", rd_conf.fonts, "--shell", rd_conf.shell, NULL };
         const char *const a_greeter[] = { rd_conf.server, "--headless", size, "--greeter", "--user", user, "--theme", rd_conf.greeter_theme,

@@ -377,12 +377,40 @@ compositor's threads, as lord-server would, it made no difference (8–10 % late
 And turning the paint threads off when the frame waits for them under load: their own measurement showed they still
 saved time, so it never acted.
 
-**What remains.** Under load the main thread still waits about 0.9 ms each time it wakes up: when a thread of the
-load gets a CPU it keeps it until the next scheduler tick, 4 ms on the LordOS Pi kernel (`CONFIG_HZ=250`), and the
-shared memory makes each frame about 20 % slower to build. Two further steps, not built: the Pi kernel at
-`CONFIG_HZ=1000` (`tools/rpi/build-kernel.sh`, a rebuild), and a real-time priority for the compositor's main thread
-(`SCHED_RR`, as other desktops do through rtkit) granted by lord-sessiond with a CPU-time limit, which is a new
-privilege and needs the maintainer's approval first.
+**Real-time priority (approved by the maintainer on 2026-10-28).** With the weight, the main thread under load
+still waited about 0.9 ms each time it woke up: a thread of the load that has a CPU keeps it until the next
+scheduler tick (4 ms on the LordOS Pi kernel, `CONFIG_HZ=250`). Now the compositor's main thread and its paint
+threads run at `SCHED_RR` priority 2 (the lowest real-time levels: ahead of every normal thread, behind the kernel's
+own), as KWin does for its compositor and Mutter for the thread that sends frames to the screen:
+
+- lord-sessiond starts the session's lord-server with `RLIMIT_RTPRIO` 2 and `RLIMIT_RTTIME` 5 s (soft; `remote/sess.c`).
+- lord-server takes it in `par_init` (`par.c`) right after dropping root, before it starts any process or other
+  thread: the main thread takes `SCHED_RR`, the paint threads inherit it, then the main thread adds
+  `SCHED_RESET_ON_FORK`, so every thread and process it starts later (apps, helpers, Mesa's threads, LordBench's
+  load) gets the normal policy. Then it lowers `RLIMIT_RTPRIO` to 0, soft and hard: nothing it starts can ask for
+  real time, and it can't either. The root admin helper, forked before, lowers its own to 0 too (its download child
+  drops to `nobody`).
+- A thread that runs 5 s of CPU on real time without blocking (a bug) gets `SIGXCPU`, and every thread goes back to
+  the normal policy for the rest of the session; nothing is killed. The session log says which happened
+  (`compositor at real-time priority 2 (SCHED_RR, N threads)`).
+- Without lord-sessiond, or on a kernel that refuses it (`CONFIG_RT_GROUP_SCHED`), nothing changes.
+
+Checked on VM 116 with the new lord-sessiond: the main thread is `SCHED_RR|SCHED_RESET_ON_FORK`, the 7 paint threads
+`SCHED_RR`, the other 22 threads and every child (`lord-admin`, `lord-vault`, `lord-maild`, `lord-doc`, the
+terminal's shell, `lord-bench`) `SCHED_OTHER` with a real-time limit of 0. Measured on VM 116 (8 vCPU, no monitor,
+CPU composition) under load, the session at weight 1000 laid out as lord-sessiond does, with the same limits; two
+runs each:
+
+| VM 116, under load | Build p99 | Late | Pointer to screen p50 | p99 | Load's CPU |
+|---|---|---|---|---|---|
+| Weight 1000 | 16.3–16.8 ms | 2.65–2.92 % | 14.8–15.1 ms | 31.0–32.3 ms | 91.3–91.6 s |
+| + real-time priority | 11.0–12.7 ms | 0.28 % | 13.3–14.3 ms | 24.7–25.5 ms | 90.4–91.0 s |
+
+Under load the desktop now measures as it does alone (pointer p99 about 25 ms alone), and the load got the same CPU
+time. **Not yet measured on the Pi 5** (it needs the new package installed), with or without its monitor.
+
+**What remains.** The shared memory makes each frame about 20 % slower to build under load on the Pi, which no
+priority fixes; the Pi kernel at `CONFIG_HZ=1000` (`tools/rpi/build-kernel.sh`, a rebuild) is not built.
 
 Boot: the Pi 5 reaches the login screen on its monitor 5.99 s after the kernel starts (lord-sessiond's record;
 systemd-analyze gives 2.1 s kernel + 4.2 s userspace). Boots where the monitor was connected late took 61 and
